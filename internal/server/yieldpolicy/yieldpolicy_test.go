@@ -1,4 +1,4 @@
-package servicelevel
+package yieldpolicy
 
 import (
 	"testing"

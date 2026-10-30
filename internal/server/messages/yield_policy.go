@@ -1,7 +1,7 @@
 package messages
 
 // Product error codes of yield policies: how a deployment shares GPUs with
-// others (internal/server/servicelevel).
+// others (internal/server/yieldpolicy).
 const (
 	// ErrorYieldPolicyInvalid: a field of the yield policy is none of the
 	// allowed values, out of its range, or missing ({field}, {reason}:

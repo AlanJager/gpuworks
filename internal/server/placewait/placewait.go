@@ -39,7 +39,7 @@ type Waiter struct {
 	DeploymentID uint
 	// Cards are the cards it waits for. They stay its once the holders'
 	// sleeps are ordered: a sleeper's wake does not take them back while it
-	// waits (servicelevel.KeepsCardsAgainst).
+	// waits (yieldpolicy.KeepsCardsAgainst).
 	Cards Cards
 	// Holders are the awake instances on them whose sleep is not ordered
 	// yet: what the residency arbiter puts to sleep. None is a wait for

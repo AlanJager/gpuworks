@@ -4,7 +4,7 @@
 // an operator gives by hand. There is no load-driven scaling. What it decides
 // on its own is residency (residency.go): it puts a deployment to sleep for
 // another waiting for its cards only as the holder's yield policy, chosen by
-// an operator, says it must give way (servicelevel.Yields), which preempts a
+// an operator, says it must give way (yieldpolicy.Yields), which preempts a
 // deployment that yields when busy.
 //
 // It reads and acts through the Source and Actions interfaces, so the

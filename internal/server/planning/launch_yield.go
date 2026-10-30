@@ -5,8 +5,8 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/scheduler"
-	"gpuworks.ai/gpuworks/internal/server/servicelevel"
 	"gpuworks.ai/gpuworks/internal/server/store"
+	"gpuworks.ai/gpuworks/internal/server/yieldpolicy"
 )
 
 // A replica of a deployment that shares cards by yield policy may start on
@@ -39,7 +39,7 @@ func (y *LaunchYield) HolderInstances() []string {
 type YieldHolder struct {
 	DeploymentID uint
 	Deployment   string
-	Policy       servicelevel.Policy
+	Policy       yieldpolicy.Policy
 	Instance     string
 }
 
@@ -84,12 +84,12 @@ func instancesOnCards(candidates []*store.Instance, plan *scheduler.Plan) []*sto
 // even so. Sharing deployments are single-node, so an instance is a whole
 // replica.
 func launchYield(st *store.Store, node *store.Node, insts []store.Instance, policy string, req scheduler.Request, dtypeOK bool, dtypeReason string, servingUnavailable bool, view ledgerView) *LaunchYield {
-	if policy == "" || policy == servicelevel.Never {
+	if policy == "" || policy == yieldpolicy.Never {
 		return nil
 	}
 	shares := sharingByID(st)
 	for id, dep := range shares {
-		if !servicelevel.SharesCardsWith(policy, dep.YieldPolicy) {
+		if !yieldpolicy.SharesCardsWith(policy, dep.YieldPolicy) {
 			delete(shares, id)
 		}
 	}
@@ -130,10 +130,10 @@ func launchYield(st *store.Store, node *store.Node, insts []store.Instance, poli
 
 // YieldRefusal is the refusal of a launch that waits for holders to give up
 // node's cards: each holder deployment once, with the terms it gives way to
-// a deployment of policy on (servicelevel.TermsOf), and the instances. The
+// a deployment of policy on (yieldpolicy.TermsOf), and the instances. The
 // params are for display; what the launch waits for is the LaunchYield
 // itself (LaunchPlan.YieldWait).
-func YieldRefusal(node *store.Node, policy servicelevel.Policy, yield *LaunchYield) scheduler.Reason {
+func YieldRefusal(node *store.Node, policy yieldpolicy.Policy, yield *LaunchYield) scheduler.Reason {
 	holders := []map[string]any{}
 	seen := map[uint]bool{}
 	for _, h := range yield.Holders {
@@ -141,7 +141,7 @@ func YieldRefusal(node *store.Node, policy servicelevel.Policy, yield *LaunchYie
 			continue
 		}
 		seen[h.DeploymentID] = true
-		terms := servicelevel.TermsOf(h.Policy, policy)
+		terms := yieldpolicy.TermsOf(h.Policy, policy)
 		entry := map[string]any{"deployment": h.Deployment, "at_once": terms.AtOnce}
 		if !terms.AtOnce {
 			entry["idle_sec"] = int(terms.Idle / time.Second)

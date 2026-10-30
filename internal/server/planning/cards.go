@@ -2,8 +2,8 @@ package planning
 
 import (
 	"gpuworks.ai/gpuworks/internal/proto"
-	"gpuworks.ai/gpuworks/internal/server/servicelevel"
 	"gpuworks.ai/gpuworks/internal/server/store"
+	"gpuworks.ai/gpuworks/internal/server/yieldpolicy"
 )
 
 // Card is one GPU of one node.
@@ -75,7 +75,7 @@ func reservedAgainst(st *store.Store, policy string) func(*store.Instance) bool 
 		return nil
 	}
 	if policy == "" {
-		policy = servicelevel.Never
+		policy = yieldpolicy.Never
 	}
 	policies := make(map[uint]string, len(sharing))
 	for _, dep := range sharing {
@@ -85,6 +85,6 @@ func reservedAgainst(st *store.Store, policy string) func(*store.Instance) bool 
 	}
 	return func(in *store.Instance) bool {
 		other, ok := policies[in.DeploymentID]
-		return ok && !servicelevel.SharesCardsWith(policy, other)
+		return ok && !yieldpolicy.SharesCardsWith(policy, other)
 	}
 }

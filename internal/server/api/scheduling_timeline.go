@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
-	"gpuworks.ai/gpuworks/internal/server/servicelevel"
 	"gpuworks.ai/gpuworks/internal/server/store"
+	"gpuworks.ai/gpuworks/internal/server/yieldpolicy"
 )
 
 const (
@@ -229,7 +229,7 @@ func (a *apiHandlers) timelineDeployments(deployments map[uint]store.ResidencyDe
 	var shared, every []uint
 	for id, info := range deployments {
 		every = append(every, id)
-		if info.Yield != servicelevel.Never {
+		if info.Yield != yieldpolicy.Never {
 			shared = append(shared, id)
 		}
 	}

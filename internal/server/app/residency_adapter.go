@@ -8,8 +8,8 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/placewait"
 	"gpuworks.ai/gpuworks/internal/server/planning"
 	"gpuworks.ai/gpuworks/internal/server/proxy"
-	"gpuworks.ai/gpuworks/internal/server/servicelevel"
 	"gpuworks.ai/gpuworks/internal/server/store"
+	"gpuworks.ai/gpuworks/internal/server/yieldpolicy"
 )
 
 // A yield sleeps at the level the holder's policy prefers: auto is L1 when
@@ -140,21 +140,21 @@ func wakeableByRequest(dep *store.Deployment) bool {
 
 // Wakeable says the deployment is active, asleep by the platform's choice,
 // and has a sleeper to wake.
-func (a *residencyAdapter) Wakeable(id uint) (servicelevel.Policy, bool) {
+func (a *residencyAdapter) Wakeable(id uint) (yieldpolicy.Policy, bool) {
 	dep, err := a.store.GetDeployment(id)
 	if err != nil || !wakeableByRequest(dep) {
-		return servicelevel.Policy{}, false
+		return yieldpolicy.Policy{}, false
 	}
 	insts, err := a.store.InstancesForDeployment(id)
 	if err != nil {
-		return servicelevel.Policy{}, false
+		return yieldpolicy.Policy{}, false
 	}
 	for i := range insts {
 		if store.HoldsSleepIntent(&insts[i]) && planning.InstanceSleepIntent(&insts[i]) > 0 {
 			return dep.Policy(), true
 		}
 	}
-	return servicelevel.Policy{}, false
+	return yieldpolicy.Policy{}, false
 }
 
 // Blocking is what keeps the first of the deployment's waiting replicas from
@@ -225,7 +225,7 @@ func (a *residencyAdapter) Activity(id uint) automation.Activity {
 }
 
 // Yield puts the holder's replica to sleep at the level its policy prefers
-// (servicelevel.Policy.SleepLevel, resolved by planning.OrderSleep: auto is
+// (yieldpolicy.Policy.SleepLevel, resolved by planning.OrderSleep: auto is
 // L1 unless the host cannot hold the weights), a sleep the platform chose
 // (not held: a request for it waits and wakes it again). A holder that
 // prefers L1 is refused when the host cannot hold the weights, as an

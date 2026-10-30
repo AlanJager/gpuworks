@@ -9,8 +9,8 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"gpuworks.ai/gpuworks/internal/server/planning"
-	"gpuworks.ai/gpuworks/internal/server/servicelevel"
 	"gpuworks.ai/gpuworks/internal/server/store"
+	"gpuworks.ai/gpuworks/internal/server/yieldpolicy"
 )
 
 const (
@@ -91,7 +91,7 @@ func (a *apiHandlers) deploymentLabels() (nameOf func(uint) string, levelOf func
 		if known, ok := deployments[id]; ok {
 			return known
 		}
-		known := labelled{level: servicelevel.Never}
+		known := labelled{level: yieldpolicy.Never}
 		if dep, err := a.d.Store.GetDeployment(id); err == nil {
 			known = labelled{name: dep.Name, level: dep.Policy().Yield}
 		}

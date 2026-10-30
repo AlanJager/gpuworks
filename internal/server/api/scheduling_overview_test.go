@@ -13,8 +13,8 @@ import (
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"gpuworks.ai/gpuworks/internal/server/auth"
-	"gpuworks.ai/gpuworks/internal/server/servicelevel"
 	"gpuworks.ai/gpuworks/internal/server/store"
+	"gpuworks.ai/gpuworks/internal/server/yieldpolicy"
 )
 
 // overviewRig is a router over a real store whose bus and presence are wired,
@@ -90,7 +90,7 @@ func newOverviewRig(t *testing.T) *overviewRig {
 		}
 		return dep
 	}
-	rig.qwen, rig.batch, rig.night = mk("qwen", servicelevel.Never), mk("batch", servicelevel.TimeSlice), mk("night", servicelevel.Idle)
+	rig.qwen, rig.batch, rig.night = mk("qwen", yieldpolicy.Never), mk("batch", yieldpolicy.TimeSlice), mk("night", yieldpolicy.Idle)
 	spec := func(desiredSleep int, claim int64) string {
 		return fmt.Sprintf(`{"desired_sleep":%d,"memory_claim_bytes":%d}`, desiredSleep, claim)
 	}

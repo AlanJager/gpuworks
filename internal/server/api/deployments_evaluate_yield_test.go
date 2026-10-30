@@ -11,8 +11,8 @@ import (
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/bus"
 	"gpuworks.ai/gpuworks/internal/server/deploy"
-	"gpuworks.ai/gpuworks/internal/server/servicelevel"
 	"gpuworks.ai/gpuworks/internal/server/store"
+	"gpuworks.ai/gpuworks/internal/server/yieldpolicy"
 )
 
 // The deploy form's previews say why a draft does not fit as the controller
@@ -45,7 +45,7 @@ func TestEvaluateSaysADraftWaitsForTheHolderToYield(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	anytime, _ := servicelevel.Parse(servicelevel.Anytime, servicelevel.Overrides{})
+	anytime, _ := yieldpolicy.Parse(yieldpolicy.Anytime, yieldpolicy.Overrides{})
 	if err := st.SetDeploymentYieldPolicy(batch.ID, anytime); err != nil {
 		t.Fatal(err)
 	}

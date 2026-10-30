@@ -1,4 +1,4 @@
-// Package servicelevel is how a deployment shares GPUs with others: its yield
+// Package yieldpolicy is how a deployment shares GPUs with others: its yield
 // policy and the parameters that go with it. It is a leaf, read by the store
 // (the columns' values), the gateway (how long a request may wait for a
 // wake) and the residency arbiter (who may put whom to sleep).
@@ -8,7 +8,7 @@
 // sleep when that one yields at all and either has been idle for its idle
 // time, ranks lower and yields when busy, or takes turns with it and has
 // served its turn.
-package servicelevel
+package yieldpolicy
 
 import (
 	"slices"

@@ -54,7 +54,7 @@
   "adr/README.md": "b3c6f2980db76cca421f31f4b429a6b95cbf15b4c08d0305a856e9e06de6d544",
   "dev/README.md": "3c5a133a63b1942a5911ce5e9f63aa855874a191c89d39c2d9e4a05613331592",
   "dev/benchmark-reporting-standard.md": "31d07977867e74e1aa19640fd959ae7ae597de85614a541ca98ece4b5351d049",
-  "dev/code-map.md": "010b1809f1922172aea8c6afd215d2ba95e70339099ac0f304ee9fcb8a77aa0b",
+  "dev/code-map.md": "6d42c6a4b433209c2952cd9a610fca21f60941e62e62395f515bbe8e4ba9e335",
   "dev/contributing.md": "5a7815d5b90c977a6b285bb8b256b8eb0a1885976bcd34fd1f5053ee16cf6b98",
   "dev/engine-queue-observation.md": "178a2b29a515f01f6856c133aa0810b3b0be5d95b3a38ea07ccd7d3486474cd0",
   "dev/ledgers/a100-verification-bug-registry.md": "94e3d3f09b94a8b75546862bb292d9ea1c432f043c9b2c882c96f2f712d215b6",
@@ -128,6 +128,6 @@
   "adr/0058-scheduling-center-acts-through-operator-orders.md": "259f1ebc2bf47bb14efdb2a08f12fa9af495c33b764c56430115146bdbc8bda0",
   "how-to/batch-api.md": "600d357eb387a1479258c7a93969ee62281dbd3eddb7969d6032379952f5703c",
   "how-to/scheduling-center.md": "aa10b1fc950c1106a38a0c1eace7779bb298f379a43b90a6d953885b928e15aa",
-  "adr/0059-service-levels-and-the-residency-arbiter.md": "d97d4a48ffe4acd32243d92205d8cd645d9fb096f0c39063bb93eb194d46bd72",
+  "adr/0059-service-levels-and-the-residency-arbiter.md": "022f084db7fc84d90e5de40992ff0a256756b7acb1c87283cd30c62eb8dcaaf7",
   "explanation/service-levels.md": "b3ec39dc162bb0c27482e529ef4f270da42175b332d26e0e636b7fe65ee114d4"
 }

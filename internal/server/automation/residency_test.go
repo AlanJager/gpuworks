@@ -7,13 +7,13 @@ import (
 	"testing"
 	"time"
 
-	"gpuworks.ai/gpuworks/internal/server/servicelevel"
+	"gpuworks.ai/gpuworks/internal/server/yieldpolicy"
 )
 
 // residencyWorld is the arbiter's view of a few deployments on shared cards.
 type residencyWorld struct {
 	*fakeWorld
-	levels    map[uint]servicelevel.Policy
+	levels    map[uint]yieldpolicy.Policy
 	asleep    map[uint]bool // asleep by the platform's choice
 	waiters   []Waiter
 	blocking  map[uint]Blocking
@@ -28,13 +28,13 @@ type residencyWorld struct {
 
 func newResidencyWorld() *residencyWorld {
 	return &residencyWorld{
-		fakeWorld: newFakeWorld(), levels: map[uint]servicelevel.Policy{}, asleep: map[uint]bool{}, blocking: map[uint]Blocking{},
+		fakeWorld: newFakeWorld(), levels: map[uint]yieldpolicy.Policy{}, asleep: map[uint]bool{}, blocking: map[uint]Blocking{},
 		activity: map[uint]Activity{}, fitsNow: map[uint]bool{}, settling: map[uint]bool{},
 	}
 }
 
 func (w *residencyWorld) Waiters() ([]Waiter, error) { return w.waiters, nil }
-func (w *residencyWorld) Wakeable(id uint) (servicelevel.Policy, bool) {
+func (w *residencyWorld) Wakeable(id uint) (yieldpolicy.Policy, bool) {
 	return w.levels[id], w.asleep[id]
 }
 func (w *residencyWorld) Blocking(id uint) (Blocking, error) { return w.blocking[id], nil }
@@ -80,8 +80,8 @@ func (w *residencyWorld) eventsFor(id uint) []string {
 }
 
 // pol is a yield policy with its defaults.
-func pol(yield string) servicelevel.Policy {
-	p, _ := servicelevel.Parse(yield, servicelevel.Overrides{})
+func pol(yield string) yieldpolicy.Policy {
+	p, _ := yieldpolicy.Parse(yield, yieldpolicy.Overrides{})
 	return p
 }
 
@@ -89,10 +89,10 @@ var t0 = time.Date(2026, 10, 28, 9, 0, 0, 0, time.UTC)
 
 func TestARequestWakesADeploymentThatFits(t *testing.T) {
 	w := newResidencyWorld()
-	w.levels[1] = pol(servicelevel.Never)
+	w.levels[1] = pol(yieldpolicy.Never)
 	w.asleep[1] = true
 	w.fitsNow[1] = true
-	w.waiters = []Waiter{{DeploymentID: 1, Policy: pol(servicelevel.Never), Since: t0}}
+	w.waiters = []Waiter{{DeploymentID: 1, Policy: pol(yieldpolicy.Never), Since: t0}}
 	e, c := newResidencyEvaluator(w, t0)
 	e.residency(c.t)
 	if !slices.Equal(w.events, []string{"1 AUTO_WAKE"}) || w.params[0]["trigger"] != TriggerRequest {
@@ -114,11 +114,11 @@ func TestARequestWakesADeploymentThatFits(t *testing.T) {
 func TestOnlineTakesItsCardsFromOfflineAndOfflineResumesWhenOnlineIdles(t *testing.T) {
 	w := newResidencyWorld()
 	const online, offline = 1, 2
-	w.levels[online], w.levels[offline] = pol(servicelevel.Idle), pol(servicelevel.Anytime)
+	w.levels[online], w.levels[offline] = pol(yieldpolicy.Idle), pol(yieldpolicy.Anytime)
 	w.asleep[online] = true
 	w.activity[offline] = Activity{InFlight: 3, LastRequest: t0}
-	w.waiters = []Waiter{{DeploymentID: online, Policy: pol(servicelevel.Idle), Since: t0}}
-	w.blocking[online] = Blocking{Holders: []Holder{{DeploymentID: offline, Policy: pol(servicelevel.Anytime), Instances: []string{"off-1"}}}}
+	w.waiters = []Waiter{{DeploymentID: online, Policy: pol(yieldpolicy.Idle), Since: t0}}
+	w.blocking[online] = Blocking{Holders: []Holder{{DeploymentID: offline, Policy: pol(yieldpolicy.Anytime), Instances: []string{"off-1"}}}}
 	e, c := newResidencyEvaluator(w, t0)
 	e.residency(c.t)
 	if !slices.Equal(w.yields, []string{"2 abort=true"}) {
@@ -133,7 +133,7 @@ func TestOnlineTakesItsCardsFromOfflineAndOfflineResumesWhenOnlineIdles(t *testi
 	w.waiters = nil
 	w.asleep[online] = false
 	w.fitsNow[offline] = false
-	w.blocking[offline] = Blocking{Holders: []Holder{{DeploymentID: online, Policy: pol(servicelevel.Idle), Instances: []string{"on-1"}}}}
+	w.blocking[offline] = Blocking{Holders: []Holder{{DeploymentID: online, Policy: pol(yieldpolicy.Idle), Instances: []string{"on-1"}}}}
 	w.activity[online] = Activity{InFlight: 1, LastRequest: c.t}
 	c.t = c.t.Add(time.Minute)
 	e.residency(c.t)
@@ -171,13 +171,13 @@ func TestOnlineTakesItsCardsFromOfflineAndOfflineResumesWhenOnlineIdles(t *testi
 func TestSharedDeploymentsTakeTurnsAndDrain(t *testing.T) {
 	w := newResidencyWorld()
 	const a, b = 1, 2
-	w.levels[a], w.levels[b] = pol(servicelevel.TimeSlice), pol(servicelevel.TimeSlice)
+	w.levels[a], w.levels[b] = pol(yieldpolicy.TimeSlice), pol(yieldpolicy.TimeSlice)
 	w.asleep[b] = true
 	w.activity[a] = Activity{InFlight: 2, LastRequest: t0}
-	w.blocking[b] = Blocking{Holders: []Holder{{DeploymentID: a, Policy: pol(servicelevel.TimeSlice), Instances: []string{"a-1"}}}}
+	w.blocking[b] = Blocking{Holders: []Holder{{DeploymentID: a, Policy: pol(yieldpolicy.TimeSlice), Instances: []string{"a-1"}}}}
 	e, c := newResidencyEvaluator(w, t0)
 	e.res.awakeAt[a] = t0
-	w.waiters = []Waiter{{DeploymentID: b, Policy: pol(servicelevel.TimeSlice), Since: t0}}
+	w.waiters = []Waiter{{DeploymentID: b, Policy: pol(yieldpolicy.TimeSlice), Since: t0}}
 
 	c.t = t0.Add(time.Minute)
 	e.residency(c.t)
@@ -204,11 +204,11 @@ func TestSharedDeploymentsTakeTurnsAndDrain(t *testing.T) {
 func TestADrainThatRunsOverCutsTheRestOff(t *testing.T) {
 	w := newResidencyWorld()
 	const a, b = 1, 2
-	w.levels[a], w.levels[b] = pol(servicelevel.TimeSlice), pol(servicelevel.Idle)
+	w.levels[a], w.levels[b] = pol(yieldpolicy.TimeSlice), pol(yieldpolicy.Idle)
 	w.asleep[b] = true
 	w.activity[a] = Activity{InFlight: 1, LastRequest: t0}
-	w.blocking[b] = Blocking{Holders: []Holder{{DeploymentID: a, Policy: pol(servicelevel.TimeSlice), Instances: []string{"a-1"}}}}
-	w.waiters = []Waiter{{DeploymentID: b, Policy: pol(servicelevel.Idle), Since: t0}}
+	w.blocking[b] = Blocking{Holders: []Holder{{DeploymentID: a, Policy: pol(yieldpolicy.TimeSlice), Instances: []string{"a-1"}}}}
+	w.waiters = []Waiter{{DeploymentID: b, Policy: pol(yieldpolicy.Idle), Since: t0}}
 	e, c := newResidencyEvaluator(w, t0)
 	e.residency(c.t)
 	if !slices.Equal(w.drains, []string{"1 true"}) {
@@ -231,17 +231,17 @@ func TestNoOneYieldsUnlessEveryHolderMay(t *testing.T) {
 		name     string
 		blocking Blocking
 	}{
-		{"a resident holder", Blocking{Holders: []Holder{{DeploymentID: 2, Policy: pol(servicelevel.Anytime)}, {DeploymentID: 3, Policy: pol(servicelevel.Never)}}}},
-		{"a busy online holder", Blocking{Holders: []Holder{{DeploymentID: 2, Policy: pol(servicelevel.Anytime)}, {DeploymentID: 3, Policy: pol(servicelevel.Idle)}}}},
-		{"an occupant nothing can move", Blocking{Holders: []Holder{{DeploymentID: 2, Policy: pol(servicelevel.Anytime)}}, Blocked: true}},
+		{"a resident holder", Blocking{Holders: []Holder{{DeploymentID: 2, Policy: pol(yieldpolicy.Anytime)}, {DeploymentID: 3, Policy: pol(yieldpolicy.Never)}}}},
+		{"a busy online holder", Blocking{Holders: []Holder{{DeploymentID: 2, Policy: pol(yieldpolicy.Anytime)}, {DeploymentID: 3, Policy: pol(yieldpolicy.Idle)}}}},
+		{"an occupant nothing can move", Blocking{Holders: []Holder{{DeploymentID: 2, Policy: pol(yieldpolicy.Anytime)}}, Blocked: true}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			w := newResidencyWorld()
-			w.levels[1] = pol(servicelevel.TimeSlice)
+			w.levels[1] = pol(yieldpolicy.TimeSlice)
 			w.asleep[1] = true
 			w.activity[3] = Activity{InFlight: 1}
 			w.blocking[1] = tc.blocking
-			w.waiters = []Waiter{{DeploymentID: 1, Policy: pol(servicelevel.TimeSlice), Since: t0}}
+			w.waiters = []Waiter{{DeploymentID: 1, Policy: pol(yieldpolicy.TimeSlice), Since: t0}}
 			e, c := newResidencyEvaluator(w, t0)
 			c.t = t0.Add(time.Hour)
 			e.residency(c.t)
@@ -256,11 +256,11 @@ func TestHigherRankWaitersAreServedFirstAndAHolderYieldsOnce(t *testing.T) {
 	w := newResidencyWorld()
 	// Offline 3 holds the cards both shared 1 (waiting longer) and online 2
 	// want: online goes first, and the holder is not put to sleep twice.
-	w.levels[1], w.levels[2], w.levels[3] = pol(servicelevel.TimeSlice), pol(servicelevel.Idle), pol(servicelevel.Anytime)
+	w.levels[1], w.levels[2], w.levels[3] = pol(yieldpolicy.TimeSlice), pol(yieldpolicy.Idle), pol(yieldpolicy.Anytime)
 	w.asleep[1], w.asleep[2] = true, true
-	holder := Blocking{Holders: []Holder{{DeploymentID: 3, Policy: pol(servicelevel.Anytime), Instances: []string{"off"}}}}
+	holder := Blocking{Holders: []Holder{{DeploymentID: 3, Policy: pol(yieldpolicy.Anytime), Instances: []string{"off"}}}}
 	w.blocking[1], w.blocking[2] = holder, holder
-	w.waiters = []Waiter{{DeploymentID: 1, Policy: pol(servicelevel.TimeSlice), Since: t0}, {DeploymentID: 2, Policy: pol(servicelevel.Idle), Since: t0.Add(time.Minute)}}
+	w.waiters = []Waiter{{DeploymentID: 1, Policy: pol(yieldpolicy.TimeSlice), Since: t0}, {DeploymentID: 2, Policy: pol(yieldpolicy.Idle), Since: t0.Add(time.Minute)}}
 	w.activity[3] = Activity{InFlight: 4}
 	e, c := newResidencyEvaluator(w, t0)
 	c.t = t0.Add(2 * time.Minute)
@@ -278,11 +278,11 @@ func TestHigherRankWaitersAreServedFirstAndAHolderYieldsOnce(t *testing.T) {
 
 func TestAFailedYieldIsRecorded(t *testing.T) {
 	w := newResidencyWorld()
-	w.levels[1], w.levels[2] = pol(servicelevel.Idle), pol(servicelevel.Anytime)
+	w.levels[1], w.levels[2] = pol(yieldpolicy.Idle), pol(yieldpolicy.Anytime)
 	w.asleep[1] = true
 	w.yieldErr = fmt.Errorf("agent unreachable")
-	w.blocking[1] = Blocking{Holders: []Holder{{DeploymentID: 2, Policy: pol(servicelevel.Anytime)}}}
-	w.waiters = []Waiter{{DeploymentID: 1, Policy: pol(servicelevel.Idle), Since: t0}}
+	w.blocking[1] = Blocking{Holders: []Holder{{DeploymentID: 2, Policy: pol(yieldpolicy.Anytime)}}}
+	w.waiters = []Waiter{{DeploymentID: 1, Policy: pol(yieldpolicy.Idle), Since: t0}}
 	e, c := newResidencyEvaluator(w, t0)
 	e.residency(c.t)
 	if got := w.eventsFor(2); len(got) != 1 || w.params[0]["action"] != "sleep" || w.params[0]["reason"] != "agent unreachable" {
@@ -308,10 +308,10 @@ func TestOffWithoutResidency(t *testing.T) {
 func TestAYieldedHolderLeavesTheCardsToTheWaiterWhileItWakes(t *testing.T) {
 	w := newResidencyWorld()
 	const online, offline = 1, 2
-	w.levels[online], w.levels[offline] = pol(servicelevel.Idle), pol(servicelevel.Anytime)
+	w.levels[online], w.levels[offline] = pol(yieldpolicy.Idle), pol(yieldpolicy.Anytime)
 	w.asleep[online] = true
-	w.waiters = []Waiter{{DeploymentID: online, Policy: pol(servicelevel.Idle), Since: t0}}
-	w.blocking[online] = Blocking{Holders: []Holder{{DeploymentID: offline, Policy: pol(servicelevel.Anytime), Instances: []string{"off"}}}}
+	w.waiters = []Waiter{{DeploymentID: online, Policy: pol(yieldpolicy.Idle), Since: t0}}
+	w.blocking[online] = Blocking{Holders: []Holder{{DeploymentID: offline, Policy: pol(yieldpolicy.Anytime), Instances: []string{"off"}}}}
 	e, c := newResidencyEvaluator(w, t0)
 	e.residency(c.t)
 	if !slices.Equal(w.yields, []string{"2 abort=true"}) {
@@ -337,7 +337,7 @@ func TestAYieldedHolderLeavesTheCardsToTheWaiterWhileItWakes(t *testing.T) {
 
 func TestAYieldGuardDoesNotOutliveItsTime(t *testing.T) {
 	w := newResidencyWorld()
-	w.levels[1], w.levels[2] = pol(servicelevel.Idle), pol(servicelevel.Anytime)
+	w.levels[1], w.levels[2] = pol(yieldpolicy.Idle), pol(yieldpolicy.Anytime)
 	w.asleep[1], w.asleep[2] = true, true
 	e, c := newResidencyEvaluator(w, t0)
 	e.res.preempted[2] = t0
@@ -355,11 +355,11 @@ func TestAYieldGuardDoesNotOutliveItsTime(t *testing.T) {
 // wake.
 func TestAWakeThatWaitedForAYieldKeepsItsTrigger(t *testing.T) {
 	w := newResidencyWorld()
-	w.levels[1], w.levels[2] = pol(servicelevel.Idle), pol(servicelevel.Anytime)
+	w.levels[1], w.levels[2] = pol(yieldpolicy.Idle), pol(yieldpolicy.Anytime)
 	w.asleep[1] = true
 	w.activity[2] = Activity{InFlight: 1}
-	w.waiters = []Waiter{{DeploymentID: 1, Policy: pol(servicelevel.Idle), Since: t0}}
-	w.blocking[1] = Blocking{Holders: []Holder{{DeploymentID: 2, Policy: pol(servicelevel.Anytime), Instances: []string{"off"}}}}
+	w.waiters = []Waiter{{DeploymentID: 1, Policy: pol(yieldpolicy.Idle), Since: t0}}
+	w.blocking[1] = Blocking{Holders: []Holder{{DeploymentID: 2, Policy: pol(yieldpolicy.Anytime), Instances: []string{"off"}}}}
 	e, c := newResidencyEvaluator(w, t0)
 	e.residency(c.t)
 	w.waits = []WaitingWake{{DeploymentID: 1, Instances: []string{"i-1"}, Since: t0}}
@@ -378,11 +378,11 @@ func TestAWakeThatWaitedForAYieldKeepsItsTrigger(t *testing.T) {
 func TestAYieldedHolderWithItsOwnRequestsLeavesTheCardsWhileTheWaiterWakes(t *testing.T) {
 	w := newResidencyWorld()
 	const online, offline = 1, 2
-	w.levels[online], w.levels[offline] = pol(servicelevel.Idle), pol(servicelevel.Anytime)
+	w.levels[online], w.levels[offline] = pol(yieldpolicy.Idle), pol(yieldpolicy.Anytime)
 	w.asleep[online] = true
 	w.activity[offline] = Activity{InFlight: 4}
-	w.waiters = []Waiter{{DeploymentID: online, Policy: pol(servicelevel.Idle), Since: t0}}
-	w.blocking[online] = Blocking{Holders: []Holder{{DeploymentID: offline, Policy: pol(servicelevel.Anytime), Instances: []string{"off"}}}}
+	w.waiters = []Waiter{{DeploymentID: online, Policy: pol(yieldpolicy.Idle), Since: t0}}
+	w.blocking[online] = Blocking{Holders: []Holder{{DeploymentID: offline, Policy: pol(yieldpolicy.Anytime), Instances: []string{"off"}}}}
 	e, c := newResidencyEvaluator(w, t0)
 	e.residency(c.t)
 	if len(w.yields) != 1 {
@@ -391,7 +391,7 @@ func TestAYieldedHolderWithItsOwnRequestsLeavesTheCardsWhileTheWaiterWakes(t *te
 	// Offline's batch requests are now held for it, and its card reads free
 	// while online's wake is on its way.
 	w.fitsNow[offline] = true
-	w.waiters = append(w.waiters, Waiter{DeploymentID: offline, Policy: pol(servicelevel.Anytime), Since: c.t})
+	w.waiters = append(w.waiters, Waiter{DeploymentID: offline, Policy: pol(yieldpolicy.Anytime), Since: c.t})
 	c.t = c.t.Add(3 * time.Second)
 	e.residency(c.t)
 	if slices.Contains(w.wakeCalls, offline) {
@@ -412,13 +412,13 @@ func TestAYieldedHolderWithItsOwnRequestsLeavesTheCardsWhileTheWaiterWakes(t *te
 func TestATurnEndingFallsDueAndIsActedOnAtOnce(t *testing.T) {
 	w := newResidencyWorld()
 	const a, b = 1, 2
-	w.levels[a], w.levels[b] = pol(servicelevel.TimeSlice), pol(servicelevel.TimeSlice)
+	w.levels[a], w.levels[b] = pol(yieldpolicy.TimeSlice), pol(yieldpolicy.TimeSlice)
 	w.asleep[b] = true
 	w.activity[a] = Activity{InFlight: 1, LastRequest: t0}
-	w.blocking[b] = Blocking{Holders: []Holder{{DeploymentID: a, Policy: pol(servicelevel.TimeSlice), Instances: []string{"a-1"}}}}
+	w.blocking[b] = Blocking{Holders: []Holder{{DeploymentID: a, Policy: pol(yieldpolicy.TimeSlice), Instances: []string{"a-1"}}}}
 	e, c := newResidencyEvaluator(w, t0)
 	e.res.awakeAt[a] = t0
-	w.waiters = []Waiter{{DeploymentID: b, Policy: pol(servicelevel.TimeSlice), Since: t0.Add(100 * time.Second)}}
+	w.waiters = []Waiter{{DeploymentID: b, Policy: pol(yieldpolicy.TimeSlice), Since: t0.Add(100 * time.Second)}}
 
 	c.t = t0.Add(100 * time.Second)
 	e.residency(c.t)
@@ -447,11 +447,11 @@ func TestATurnEndingFallsDueAndIsActedOnAtOnce(t *testing.T) {
 // on the busy poll; with nothing waiting nothing falls due.
 func TestABusyIdleHolderIsPolled(t *testing.T) {
 	w := newResidencyWorld()
-	w.levels[1], w.levels[2] = pol(servicelevel.Idle), pol(servicelevel.Anytime)
+	w.levels[1], w.levels[2] = pol(yieldpolicy.Idle), pol(yieldpolicy.Anytime)
 	w.asleep[2] = true
 	w.activity[1] = Activity{InFlight: 1, LastRequest: t0}
-	w.blocking[2] = Blocking{Holders: []Holder{{DeploymentID: 1, Policy: pol(servicelevel.Idle), Instances: []string{"a"}}}}
-	w.waiters = []Waiter{{DeploymentID: 2, Policy: pol(servicelevel.Anytime), Since: t0}}
+	w.blocking[2] = Blocking{Holders: []Holder{{DeploymentID: 1, Policy: pol(yieldpolicy.Idle), Instances: []string{"a"}}}}
+	w.waiters = []Waiter{{DeploymentID: 2, Policy: pol(yieldpolicy.Anytime), Since: t0}}
 	e, c := newResidencyEvaluator(w, t0)
 	e.residency(c.t)
 	if after, ok := e.residencyDue(); !ok || after != busyPoll {
@@ -471,10 +471,10 @@ func TestABusyIdleHolderIsPolled(t *testing.T) {
 func TestAReplicaWaitingToBePlacedHasTheHolderYield(t *testing.T) {
 	w := newResidencyWorld()
 	const batch, chat = 1, 2
-	w.levels[batch], w.levels[chat] = pol(servicelevel.Anytime), pol(servicelevel.Idle)
+	w.levels[batch], w.levels[chat] = pol(yieldpolicy.Anytime), pol(yieldpolicy.Idle)
 	w.activity[batch] = Activity{InFlight: 2, LastRequest: t0}
-	w.blocking[chat] = Blocking{Holders: []Holder{{DeploymentID: batch, Policy: pol(servicelevel.Anytime), Instances: []string{"b-1"}}}}
-	w.waiters = []Waiter{{DeploymentID: chat, Policy: pol(servicelevel.Idle), Since: t0, Place: true}}
+	w.blocking[chat] = Blocking{Holders: []Holder{{DeploymentID: batch, Policy: pol(yieldpolicy.Anytime), Instances: []string{"b-1"}}}}
+	w.waiters = []Waiter{{DeploymentID: chat, Policy: pol(yieldpolicy.Idle), Since: t0, Place: true}}
 	w.settling[chat] = true
 	e, c := newResidencyEvaluator(w, t0)
 	e.residency(c.t)
@@ -491,7 +491,7 @@ func TestAReplicaWaitingToBePlacedHasTheHolderYield(t *testing.T) {
 	// The replica is placed and starts; batch wants its cards back and
 	// waits while chat settles, however long past the wake guard.
 	w.waiters = nil
-	w.blocking[batch] = Blocking{Holders: []Holder{{DeploymentID: chat, Policy: pol(servicelevel.Idle), Instances: []string{"c-1"}}}}
+	w.blocking[batch] = Blocking{Holders: []Holder{{DeploymentID: chat, Policy: pol(yieldpolicy.Idle), Instances: []string{"c-1"}}}}
 	c.t = t0.Add(5 * time.Minute)
 	e.residency(c.t)
 	if len(w.yields) != 1 || len(w.wakeCalls) != 0 {
@@ -521,11 +521,11 @@ func TestAReplicaWaitingToBePlacedHasTheHolderYield(t *testing.T) {
 func TestAHolderStillStartingIsNotAskedToYield(t *testing.T) {
 	w := newResidencyWorld()
 	const batch, nightly = 1, 2
-	w.levels[batch], w.levels[nightly] = pol(servicelevel.Anytime), pol(servicelevel.TimeSlice)
+	w.levels[batch], w.levels[nightly] = pol(yieldpolicy.Anytime), pol(yieldpolicy.TimeSlice)
 	w.asleep[batch] = true
-	starting := Holder{DeploymentID: nightly, Policy: pol(servicelevel.TimeSlice), Instances: []string{"n-1"}, Starting: true}
+	starting := Holder{DeploymentID: nightly, Policy: pol(yieldpolicy.TimeSlice), Instances: []string{"n-1"}, Starting: true}
 	w.blocking[batch] = Blocking{Holders: []Holder{starting}}
-	w.waiters = []Waiter{{DeploymentID: batch, Policy: pol(servicelevel.Anytime), Since: t0}}
+	w.waiters = []Waiter{{DeploymentID: batch, Policy: pol(yieldpolicy.Anytime), Since: t0}}
 	e, c := newResidencyEvaluator(w, t0)
 	c.t = t0.Add(time.Hour)
 	e.residency(c.t)
@@ -572,12 +572,12 @@ func TestScheduleLocation(t *testing.T) {
 func TestAHolderScalingUpStillYieldsItsRunningReplica(t *testing.T) {
 	w := newResidencyWorld()
 	const batch, chat = 1, 2
-	w.levels[batch], w.levels[chat] = pol(servicelevel.Anytime), pol(servicelevel.Idle)
+	w.levels[batch], w.levels[chat] = pol(yieldpolicy.Anytime), pol(yieldpolicy.Idle)
 	w.activity[batch] = Activity{InFlight: 1, LastRequest: t0}
 	// batch's second replica is starting, or waits for chat's cards.
 	w.settling[batch] = true
-	w.blocking[chat] = Blocking{Holders: []Holder{{DeploymentID: batch, Policy: pol(servicelevel.Anytime), Instances: []string{"b-1"}}}}
-	w.waiters = []Waiter{{DeploymentID: chat, Policy: pol(servicelevel.Idle), Since: t0, Place: true}}
+	w.blocking[chat] = Blocking{Holders: []Holder{{DeploymentID: batch, Policy: pol(yieldpolicy.Anytime), Instances: []string{"b-1"}}}}
+	w.waiters = []Waiter{{DeploymentID: chat, Policy: pol(yieldpolicy.Idle), Since: t0, Place: true}}
 	e, c := newResidencyEvaluator(w, t0)
 	e.residency(c.t)
 	if !slices.Equal(w.yields, []string{"1 abort=true"}) {
@@ -590,17 +590,17 @@ func TestAHolderScalingUpStillYieldsItsRunningReplica(t *testing.T) {
 func TestAHolderYieldsOnceForTheFirstWaiter(t *testing.T) {
 	w := newResidencyWorld()
 	const batch, chat, nightly = 1, 2, 3
-	w.levels[batch], w.levels[chat], w.levels[nightly] = pol(servicelevel.Anytime), pol(servicelevel.Idle), pol(servicelevel.TimeSlice)
+	w.levels[batch], w.levels[chat], w.levels[nightly] = pol(yieldpolicy.Anytime), pol(yieldpolicy.Idle), pol(yieldpolicy.TimeSlice)
 	w.asleep[batch] = true
 	w.activity[chat] = Activity{LastRequest: t0}
-	holder := Blocking{Holders: []Holder{{DeploymentID: chat, Policy: pol(servicelevel.Idle), Instances: []string{"c-1"}}}}
+	holder := Blocking{Holders: []Holder{{DeploymentID: chat, Policy: pol(yieldpolicy.Idle), Instances: []string{"c-1"}}}}
 	w.blocking[batch], w.blocking[nightly] = holder, holder
 	e, c := newResidencyEvaluator(w, t0)
 	e.res.preempted[batch] = t0
 	for i := 1; i <= 13; i++ {
 		c.t = t0.Add(time.Duration(i*5) * time.Second)
 		if i == 4 {
-			w.waiters = []Waiter{{DeploymentID: nightly, Policy: pol(servicelevel.TimeSlice), Since: c.t, Place: true}}
+			w.waiters = []Waiter{{DeploymentID: nightly, Policy: pol(yieldpolicy.TimeSlice), Since: c.t, Place: true}}
 		}
 		e.residency(c.t)
 	}
@@ -614,11 +614,11 @@ func TestAHolderYieldsOnceForTheFirstWaiter(t *testing.T) {
 func TestAYieldInFlightIsPolledUntilTheWaiterWakes(t *testing.T) {
 	w := newResidencyWorld()
 	const online, batch = 1, 2
-	w.levels[online], w.levels[batch] = pol(servicelevel.Idle), pol(servicelevel.Anytime)
+	w.levels[online], w.levels[batch] = pol(yieldpolicy.Idle), pol(yieldpolicy.Anytime)
 	w.asleep[online] = true
 	w.activity[batch] = Activity{InFlight: 1, LastRequest: t0}
-	w.blocking[online] = Blocking{Holders: []Holder{{DeploymentID: batch, Policy: pol(servicelevel.Anytime), Instances: []string{"b-1"}}}}
-	w.waiters = []Waiter{{DeploymentID: online, Policy: pol(servicelevel.Idle), Since: t0}}
+	w.blocking[online] = Blocking{Holders: []Holder{{DeploymentID: batch, Policy: pol(yieldpolicy.Anytime), Instances: []string{"b-1"}}}}
+	w.waiters = []Waiter{{DeploymentID: online, Policy: pol(yieldpolicy.Idle), Since: t0}}
 	e, c := newResidencyEvaluator(w, t0)
 	e.residency(c.t)
 	if !slices.Equal(w.yields, []string{"2 abort=true"}) {
@@ -643,11 +643,11 @@ func TestAYieldInFlightIsPolledUntilTheWaiterWakes(t *testing.T) {
 func TestAYieldPollLooksOnlyAtTheWaiterItIsFor(t *testing.T) {
 	w := newResidencyWorld()
 	const online, batch, other = 1, 2, 5
-	w.levels[online], w.levels[batch] = pol(servicelevel.Idle), pol(servicelevel.Anytime)
+	w.levels[online], w.levels[batch] = pol(yieldpolicy.Idle), pol(yieldpolicy.Anytime)
 	w.asleep[online] = true
 	w.activity[batch] = Activity{InFlight: 1, LastRequest: t0}
-	w.blocking[online] = Blocking{Holders: []Holder{{DeploymentID: batch, Policy: pol(servicelevel.Anytime), Instances: []string{"b-1"}}}}
-	w.waiters = []Waiter{{DeploymentID: online, Policy: pol(servicelevel.Idle), Since: t0}}
+	w.blocking[online] = Blocking{Holders: []Holder{{DeploymentID: batch, Policy: pol(yieldpolicy.Anytime), Instances: []string{"b-1"}}}}
+	w.waiters = []Waiter{{DeploymentID: online, Policy: pol(yieldpolicy.Idle), Since: t0}}
 	w.waits = []WaitingWake{
 		{DeploymentID: other, Instances: []string{"o-1"}, Since: t0},
 		{DeploymentID: online, Instances: []string{"i-1"}, Since: t0},

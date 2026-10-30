@@ -12,8 +12,8 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/netplan"
 	"gpuworks.ai/gpuworks/internal/server/pdmode"
 	"gpuworks.ai/gpuworks/internal/server/planning"
-	"gpuworks.ai/gpuworks/internal/server/servicelevel"
 	"gpuworks.ai/gpuworks/internal/server/store"
+	"gpuworks.ai/gpuworks/internal/server/yieldpolicy"
 )
 
 // fieldPDPlacement is the deploy form control PD placement errors belong to.
@@ -374,7 +374,7 @@ func (a *apiHandlers) previewPDRank(env evaluatePDEnv, pd *planning.PDPlacement,
 	if fits {
 		item.GPUs = plan.Output.Result.Plan.GPUIndexes
 	} else {
-		item.Reason = plan.Output.Refusal(target, servicelevel.Policy{Yield: requestYield(req.YieldPolicy)})
+		item.Reason = plan.Output.Refusal(target, yieldpolicy.Policy{Yield: requestYield(req.YieldPolicy)})
 	}
 	return item, plan, nil
 }

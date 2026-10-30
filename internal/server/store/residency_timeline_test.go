@@ -9,7 +9,7 @@ import (
 	"gorm.io/gorm"
 
 	"gpuworks.ai/gpuworks/internal/proto"
-	"gpuworks.ai/gpuworks/internal/server/servicelevel"
+	"gpuworks.ai/gpuworks/internal/server/yieldpolicy"
 )
 
 var residencyBase = time.Date(2026, 10, 28, 12, 0, 0, 0, time.UTC)
@@ -104,7 +104,7 @@ func seedResidency(t *testing.T) (*Store, *Node, map[string]uint) {
 	}
 	ids := map[string]uint{}
 	for _, name := range []string{"alpha", "beta"} {
-		dep, err := s.CreateDeployment(withPolicy(&Deployment{ModelID: 1, NodeID: node.ID, Name: name, ServedName: name, Engine: "vllm", Sleepable: true, State: DeployActive}, servicelevel.TimeSlice))
+		dep, err := s.CreateDeployment(withPolicy(&Deployment{ModelID: 1, NodeID: node.ID, Name: name, ServedName: name, Engine: "vllm", Sleepable: true, State: DeployActive}, yieldpolicy.TimeSlice))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -292,7 +292,7 @@ func TestResidencySwitchCounts(t *testing.T) {
 		t.Fatalf("the overview counts %d yields, the timeline %d", overview, got[a].Yielded+got[b].Yielded)
 	}
 	names, err := s.ResidencyDeployments([]uint{a, 9999})
-	if err != nil || names[a].Name != "alpha" || names[a].Yield != servicelevel.TimeSlice {
+	if err != nil || names[a].Name != "alpha" || names[a].Yield != yieldpolicy.TimeSlice {
 		t.Fatalf("names = %+v, %v", names, err)
 	}
 	if _, ok := names[9999]; ok {

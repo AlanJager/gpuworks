@@ -13,8 +13,8 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/placewait"
 	"gpuworks.ai/gpuworks/internal/server/planning"
 	"gpuworks.ai/gpuworks/internal/server/proxy"
-	"gpuworks.ai/gpuworks/internal/server/servicelevel"
 	"gpuworks.ai/gpuworks/internal/server/store"
+	"gpuworks.ai/gpuworks/internal/server/yieldpolicy"
 )
 
 // automationAdapter backs the scheduling automation with the store, the
@@ -229,7 +229,7 @@ func (a *automationAdapter) WakeWaiting(deploymentID uint, uuids []string) ([]st
 // notForPlacement splits the sleepers of dep into those a wake may take
 // cards for and those it leaves asleep: the ones on a card a replica waits
 // to be placed on, of a deployment that keeps them against dep
-// (servicelevel.KeepsCardsAgainst: the cards were given up for it). The
+// (yieldpolicy.KeepsCardsAgainst: the cards were given up for it). The
 // placement waits name the cards they wait for, so the cards stay the
 // waiter's after the holders' sleeps are ordered, until it is placed.
 func (a *automationAdapter) notForPlacement(dep *store.Deployment, sleepers []store.Instance) (free, held []store.Instance) {
@@ -247,7 +247,7 @@ func (a *automationAdapter) notForPlacement(dep *store.Deployment, sleepers []st
 			continue
 		}
 		waiter, err := a.store.GetDeployment(w.DeploymentID)
-		if err != nil || !servicelevel.KeepsCardsAgainst(waiter.Policy(), policy) {
+		if err != nil || !yieldpolicy.KeepsCardsAgainst(waiter.Policy(), policy) {
 			continue
 		}
 		for _, index := range w.Cards.GPUIndexes {

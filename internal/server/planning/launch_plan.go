@@ -57,9 +57,9 @@ type LaunchRequest struct {
 
 	ServedName string
 	Sleepable  bool
-	// YieldPolicy is the deployment's (servicelevel): the cards of
-	// deployments it does not share with stay reserved against it even while
-	// they sleep. Empty reads as never.
+	// YieldPolicy is the deployment's yield policy (package yieldpolicy):
+	// the cards of deployments it does not share with stay reserved against
+	// it even while they sleep. Empty reads as never.
 	YieldPolicy        string
 	MasterAddr         string
 	MasterPort         int

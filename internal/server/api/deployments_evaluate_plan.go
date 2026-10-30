@@ -9,8 +9,8 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/deploy"
 	placementeval "gpuworks.ai/gpuworks/internal/server/placement"
 	"gpuworks.ai/gpuworks/internal/server/planning"
-	"gpuworks.ai/gpuworks/internal/server/servicelevel"
 	"gpuworks.ai/gpuworks/internal/server/store"
+	"gpuworks.ai/gpuworks/internal/server/yieldpolicy"
 )
 
 // evaluatePlanEnv is the state the preview's single plan call reads.
@@ -109,7 +109,7 @@ func (a *apiHandlers) evaluatePlan(env evaluatePlanEnv) (evaluatePlanResult, boo
 		if !previewPlan.Output.Fits() {
 			// Why it does not fit, as the controller would say it: waiting for
 			// holders to yield, or for sleepers' cards, reads as such.
-			result.Message = previewPlan.Output.Refusal(node, servicelevel.Policy{Yield: requestYield(req.YieldPolicy)})
+			result.Message = previewPlan.Output.Refusal(node, yieldpolicy.Policy{Yield: requestYield(req.YieldPolicy)})
 		}
 		resp.Plan = result
 		if len(previewPlan.Output.Eviction) > 0 {

@@ -7,8 +7,8 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"gpuworks.ai/gpuworks/internal/server/deploy"
 	"gpuworks.ai/gpuworks/internal/server/planning"
-	"gpuworks.ai/gpuworks/internal/server/servicelevel"
 	"gpuworks.ai/gpuworks/internal/server/store"
+	"gpuworks.ai/gpuworks/internal/server/yieldpolicy"
 )
 
 // evaluateAutomaticPlacement answers placement_mode=auto for a single-node,
@@ -140,7 +140,7 @@ func (a *apiHandlers) rankEligible(eligible []dto.EligibleNode, model *store.Mod
 func scheduleReasonOf(out planning.Output, node *store.Node, yield string) dto.ScheduleReason {
 	reason := out.Result.Message
 	if !out.Fits() {
-		reason = out.Refusal(node, servicelevel.Policy{Yield: yield})
+		reason = out.Refusal(node, yieldpolicy.Policy{Yield: yield})
 	}
 	return dto.ScheduleReason{Code: reason.Code, Params: reason.Params, Message: reason.Message, Score: reason.Score}
 }
@@ -185,7 +185,7 @@ func (a *apiHandlers) revalidateAutomaticPlacement(ctx context.Context, req *dto
 		detail = plan.Output.PlacementError.Error()
 	} else if plan.Output.Fits() {
 		return nil
-	} else if refusal := plan.Output.Refusal(node, servicelevel.Policy{Yield: requestYield(req.YieldPolicy)}); refusal.Code != "" {
+	} else if refusal := plan.Output.Refusal(node, yieldpolicy.Policy{Yield: requestYield(req.YieldPolicy)}); refusal.Code != "" {
 		detail = refusal.Message
 		if detail == "" {
 			detail = refusal.Code

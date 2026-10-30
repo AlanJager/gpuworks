@@ -79,7 +79,7 @@ type Deployment struct {
 	// another node; 0 never moves it.
 	NodeReplaceAfterSec int `gorm:"not null;default:600"`
 	// The deployment's yield policy and its parameters (package
-	// servicelevel, docs/explanation/service-levels.md): YieldPolicy is how
+	// yieldpolicy, docs/explanation/service-levels.md): YieldPolicy is how
 	// it shares GPUs with others (never, idle, timeslice, anytime); the
 	// others are normalized on write, so a parameter that does not apply to
 	// the policy is its zero value.

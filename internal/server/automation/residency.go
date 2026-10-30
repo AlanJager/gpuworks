@@ -5,7 +5,7 @@ import (
 	"sort"
 	"time"
 
-	"gpuworks.ai/gpuworks/internal/server/servicelevel"
+	"gpuworks.ai/gpuworks/internal/server/yieldpolicy"
 )
 
 // Triggers of the residency arbiter's orders.
@@ -24,7 +24,7 @@ const (
 // whose next replica waits for room to be placed.
 type Waiter struct {
 	DeploymentID uint
-	Policy       servicelevel.Policy
+	Policy       yieldpolicy.Policy
 	// Since is when its oldest held request came, or its replica started
 	// waiting.
 	Since time.Time
@@ -39,7 +39,7 @@ type Waiter struct {
 type Holder struct {
 	DeploymentID uint
 	Name         string
-	Policy       servicelevel.Policy
+	Policy       yieldpolicy.Policy
 	// Instances are the replica's instances, put to sleep together.
 	Instances []string
 	// Starting says the replica is still starting: it has served nothing
@@ -71,7 +71,7 @@ type ResidencySource interface {
 	// Wakeable says the deployment is still asleep by the platform's choice
 	// and active, with its policy; a deployment put back to sleep by an
 	// operator is not.
-	Wakeable(deploymentID uint) (policy servicelevel.Policy, ok bool)
+	Wakeable(deploymentID uint) (policy yieldpolicy.Policy, ok bool)
 	// Blocking is what keeps the deployment's waiting sleepers from waking.
 	Blocking(deploymentID uint) (Blocking, error)
 	// Activity is the deployment's traffic.
@@ -87,7 +87,7 @@ type ResidencySource interface {
 type ResidencyActions interface {
 	// Yield puts a holder's replica to sleep for another deployment, cutting
 	// its requests off when abort; it returns the level it chose (the
-	// holder's sleep level preference, servicelevel.Policy.SleepLevel).
+	// holder's sleep level preference, yieldpolicy.Policy.SleepLevel).
 	Yield(deploymentID uint, instances []string, abort bool) (int, error)
 	// Drain stops (on) or resumes routing new requests to the deployment;
 	// they are held as if it slept.
@@ -205,7 +205,7 @@ func (e *Evaluator) demandChan() <-chan struct{} {
 
 type waiting struct {
 	id     uint
-	policy servicelevel.Policy
+	policy yieldpolicy.Policy
 	since  time.Time
 	resume bool
 	place  bool
@@ -213,7 +213,7 @@ type waiting struct {
 
 // residency wakes the deployments requests wait for, and makes room for
 // them by putting holders to sleep when their yield policies say they must
-// give way (servicelevel.Yields). It notes when the next yield falls due.
+// give way (yieldpolicy.Yields). It notes when the next yield falls due.
 func (e *Evaluator) residency(now time.Time) {
 	r := e.res
 	if r == nil {
@@ -389,8 +389,8 @@ func (e *Evaluator) makeRoom(now time.Time, w waiting, yielding map[uint]bool) {
 	if blocking.Blocked || len(blocking.Holders) == 0 {
 		return
 	}
-	waiter := servicelevel.Waiter{Policy: w.policy}
-	reasons := make([]servicelevel.Reason, len(blocking.Holders))
+	waiter := yieldpolicy.Waiter{Policy: w.policy}
+	reasons := make([]yieldpolicy.Reason, len(blocking.Holders))
 	for i, h := range blocking.Holders {
 		if yielding[h.DeploymentID] || h.DeploymentID == w.id {
 			return
@@ -408,7 +408,7 @@ func (e *Evaluator) makeRoom(now time.Time, w waiting, yielding map[uint]bool) {
 			return
 		}
 		state := e.holderState(now, h)
-		reason, ok := servicelevel.Yields(state, waiter)
+		reason, ok := yieldpolicy.Yields(state, waiter)
 		if !ok {
 			e.noteDue(now, state, waiter)
 			return
@@ -426,7 +426,7 @@ func (e *Evaluator) makeRoom(now time.Time, w waiting, yielding map[uint]bool) {
 }
 
 // holderState is a holder as the yield rule reads it.
-func (e *Evaluator) holderState(now time.Time, h Holder) servicelevel.Holder {
+func (e *Evaluator) holderState(now time.Time, h Holder) yieldpolicy.Holder {
 	r := e.res
 	if r.starting[h.DeploymentID] {
 		delete(r.starting, h.DeploymentID)
@@ -436,7 +436,7 @@ func (e *Evaluator) holderState(now time.Time, h Holder) servicelevel.Holder {
 	if at, ok := r.awakeAt[h.DeploymentID]; ok && at.After(since) {
 		since = at
 	}
-	out := servicelevel.Holder{Policy: h.Policy, AwakeFor: now.Sub(since)}
+	out := yieldpolicy.Holder{Policy: h.Policy, AwakeFor: now.Sub(since)}
 	act := r.source.Activity(h.DeploymentID)
 	out.Busy = act.InFlight > 0 || act.Held > 0
 	if !out.Busy {
@@ -451,8 +451,8 @@ func (e *Evaluator) holderState(now time.Time, h Holder) servicelevel.Holder {
 
 // noteDue moves the next look up to when holder must give way to waiter, or
 // to the next busy poll when it gives way once idle and is busy now.
-func (e *Evaluator) noteDue(now time.Time, holder servicelevel.Holder, waiter servicelevel.Waiter) {
-	after, ok := servicelevel.Due(holder, waiter)
+func (e *Evaluator) noteDue(now time.Time, holder yieldpolicy.Holder, waiter yieldpolicy.Waiter) {
+	after, ok := yieldpolicy.Due(holder, waiter)
 	if !ok {
 		if !holder.Busy || holder.Policy.IdleRelease() == 0 {
 			return
@@ -493,11 +493,11 @@ func (e *Evaluator) residencyDue() (time.Duration, bool) {
 // nothing running and sleeps at once. Otherwise its policy says what becomes
 // of the requests still running (Policy.Drain): cut off at once, or new ones
 // are held and those running get the time its policy gives them.
-func (e *Evaluator) yield(now time.Time, h Holder, reason servicelevel.Reason, w waiting) {
+func (e *Evaluator) yield(now time.Time, h Holder, reason yieldpolicy.Reason, w waiting) {
 	r := e.res
 	params := map[string]any{"trigger": TriggerPreempt, "reason": string(reason), "for_deployment": w.id, "instances": h.Instances}
 	abort, limit := h.Policy.Drain()
-	if reason == servicelevel.ReasonIdle {
+	if reason == yieldpolicy.ReasonIdle {
 		e.sleepHolder(h.DeploymentID, h.Instances, false, params)
 		return
 	}

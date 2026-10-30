@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"gpuworks.ai/gpuworks/internal/server/servicelevel"
+	"gpuworks.ai/gpuworks/internal/server/yieldpolicy"
 )
 
 func TestTheEvaluatorTicksEveryTenSeconds(t *testing.T) {
@@ -19,27 +19,27 @@ func TestTheEvaluatorTicksEveryTenSeconds(t *testing.T) {
 
 // holderWorld is a holder (1) awake with requests running and a waiting
 // higher-ranked deployment (2) that has to wait for its cards.
-func holderWorld(holder servicelevel.Policy, inFlight int) (*residencyWorld, *Evaluator, *clock) {
+func holderWorld(holder yieldpolicy.Policy, inFlight int) (*residencyWorld, *Evaluator, *clock) {
 	w := newResidencyWorld()
-	w.levels[1], w.levels[2] = holder, pol(servicelevel.Idle)
+	w.levels[1], w.levels[2] = holder, pol(yieldpolicy.Idle)
 	w.asleep[2] = true
 	w.activity[1] = Activity{InFlight: inFlight, LastRequest: t0}
 	w.blocking[2] = Blocking{Holders: []Holder{{DeploymentID: 1, Policy: holder, Instances: []string{"h-1"}}}}
-	w.waiters = []Waiter{{DeploymentID: 2, Policy: pol(servicelevel.Idle), Since: t0}}
+	w.waiters = []Waiter{{DeploymentID: 2, Policy: pol(yieldpolicy.Idle), Since: t0}}
 	e, c := newResidencyEvaluator(w, t0)
 	return w, e, c
 }
 
 func TestUnfinishedRequestsAreHandledAsThePolicySays(t *testing.T) {
-	waitFor := func(sec int) servicelevel.Policy {
-		p := pol(servicelevel.TimeSlice)
+	waitFor := func(sec int) yieldpolicy.Policy {
+		p := pol(yieldpolicy.TimeSlice)
 		p.UnfinishedWaitSec = sec
 		return p
 	}
-	abortShared := pol(servicelevel.TimeSlice)
-	abortShared.Unfinished, abortShared.UnfinishedWaitSec = servicelevel.UnfinishedAbort, 0
-	waitOffline := pol(servicelevel.Anytime)
-	waitOffline.Unfinished, waitOffline.UnfinishedWaitSec = servicelevel.UnfinishedWait, 90
+	abortShared := pol(yieldpolicy.TimeSlice)
+	abortShared.Unfinished, abortShared.UnfinishedWaitSec = yieldpolicy.UnfinishedAbort, 0
+	waitOffline := pol(yieldpolicy.Anytime)
+	waitOffline.Unfinished, waitOffline.UnfinishedWaitSec = yieldpolicy.UnfinishedWait, 90
 
 	t.Run("abort cuts them off at once, even on a timeslice deployment", func(t *testing.T) {
 		w, e, c := holderWorld(abortShared, 4)
@@ -49,7 +49,7 @@ func TestUnfinishedRequestsAreHandledAsThePolicySays(t *testing.T) {
 		}
 	})
 	t.Run("abort on an anytime deployment is the preset", func(t *testing.T) {
-		w, e, c := holderWorld(pol(servicelevel.Anytime), 4)
+		w, e, c := holderWorld(pol(yieldpolicy.Anytime), 4)
 		e.residency(c.t)
 		if !slices.Equal(w.yields, []string{"1 abort=true"}) {
 			t.Fatalf("yields %v", w.yields)
@@ -107,7 +107,7 @@ func TestUnfinishedRequestsAreHandledAsThePolicySays(t *testing.T) {
 
 // idleHolderWorld is an idle holder of the policy (1) with a waiter (2) of
 // the policy, looked at once, idleFor into the holder's idleness.
-func idleHolderWorld(holder, waiter servicelevel.Policy, idleFor time.Duration) *residencyWorld {
+func idleHolderWorld(holder, waiter yieldpolicy.Policy, idleFor time.Duration) *residencyWorld {
 	w := newResidencyWorld()
 	w.levels[1], w.levels[2] = holder, waiter
 	w.asleep[2] = true
@@ -122,9 +122,9 @@ func idleHolderWorld(holder, waiter servicelevel.Policy, idleFor time.Duration) 
 
 // A custom idle time moves when an idle deployment gives its cards up.
 func TestAnIdleDeploymentGivesWayAfterItsOwnIdleTime(t *testing.T) {
-	custom := pol(servicelevel.Idle)
+	custom := pol(yieldpolicy.Idle)
 	custom.IdleSec = 30
-	offline := pol(servicelevel.Anytime)
+	offline := pol(yieldpolicy.Anytime)
 	if w := idleHolderWorld(custom, offline, 29*time.Second); len(w.yields) != 0 {
 		t.Fatalf("gave way before its 30 s: %v", w.yields)
 	}
@@ -135,12 +135,12 @@ func TestAnIdleDeploymentGivesWayAfterItsOwnIdleTime(t *testing.T) {
 
 // An anytime holder yields to an equal waiting once idle for its idle time.
 func TestEqualAnytimeDeploymentsYieldAfterTheirIdleTime(t *testing.T) {
-	holder := pol(servicelevel.Anytime)
+	holder := pol(yieldpolicy.Anytime)
 	holder.IdleSec = 45
-	if w := idleHolderWorld(holder, pol(servicelevel.Anytime), 44*time.Second); len(w.yields) != 0 {
+	if w := idleHolderWorld(holder, pol(yieldpolicy.Anytime), 44*time.Second); len(w.yields) != 0 {
 		t.Fatalf("yielded to an equal before it was idle 45 s: %v", w.yields)
 	}
-	if w := idleHolderWorld(holder, pol(servicelevel.Anytime), 45*time.Second); !slices.Equal(w.yields, []string{"1 abort=false"}) {
+	if w := idleHolderWorld(holder, pol(yieldpolicy.Anytime), 45*time.Second); !slices.Equal(w.yields, []string{"1 abort=false"}) {
 		t.Fatalf("yields %v", w.yields)
 	}
 }

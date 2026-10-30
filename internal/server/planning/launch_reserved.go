@@ -2,8 +2,8 @@ package planning
 
 import (
 	"gpuworks.ai/gpuworks/internal/server/scheduler"
-	"gpuworks.ai/gpuworks/internal/server/servicelevel"
 	"gpuworks.ai/gpuworks/internal/server/store"
+	"gpuworks.ai/gpuworks/internal/server/yieldpolicy"
 )
 
 // A deployment that shares cards by yield policy keeps them while asleep, for
@@ -23,7 +23,7 @@ type LaunchReserved struct {
 type ReservedSleeper struct {
 	DeploymentID uint
 	Deployment   string
-	Policy       servicelevel.Policy
+	Policy       yieldpolicy.Policy
 }
 
 // launchReserved re-plans req without the reservation; nil when nothing is

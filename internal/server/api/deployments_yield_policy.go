@@ -10,8 +10,8 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/internal/server/planning"
-	"gpuworks.ai/gpuworks/internal/server/servicelevel"
 	"gpuworks.ai/gpuworks/internal/server/store"
+	"gpuworks.ai/gpuworks/internal/server/yieldpolicy"
 )
 
 // setYieldPolicy sets how the deployment shares its GPUs with others and the
@@ -47,7 +47,7 @@ func (a *apiHandlers) setYieldPolicy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	out := dto.YieldPolicyOf(p)
-	if p.Yield == servicelevel.Idle {
+	if p.Yield == yieldpolicy.Idle {
 		if out.IdleNeighbours, err = a.idleNeighbours(dep); err != nil {
 			writeErr(w, http.StatusInternalServerError, err)
 			return
@@ -57,14 +57,14 @@ func (a *apiHandlers) setYieldPolicy(w http.ResponseWriter, r *http.Request) {
 }
 
 // writeYieldPolicyViolation writes why a yield policy is refused.
-func writeYieldPolicyViolation(w http.ResponseWriter, v *servicelevel.Violation) {
+func writeYieldPolicyViolation(w http.ResponseWriter, v *yieldpolicy.Violation) {
 	params := map[string]any{"field": v.Field, "reason": v.Reason}
 	text := fmt.Sprintf("%s is not a valid value", v.Field)
 	switch v.Reason {
-	case servicelevel.ReasonRange:
+	case yieldpolicy.ReasonRange:
 		params["minimum"], params["maximum"] = v.Min, v.Max
 		text = fmt.Sprintf("%s is %d to %d", v.Field, v.Min, v.Max)
-	case servicelevel.ReasonRequired:
+	case yieldpolicy.ReasonRequired:
 		text = fmt.Sprintf("%s is required", v.Field)
 	}
 	writeProductError(w, http.StatusBadRequest, messages.ErrorYieldPolicyInvalid, text, params)
@@ -73,9 +73,9 @@ func writeYieldPolicyViolation(w http.ResponseWriter, v *servicelevel.Violation)
 // yieldPolicyAllowed writes the refusal and returns false when a policy other
 // than never meets a deployment that may hold none: refusal is the
 // deployment's planning.YieldPolicyRefusal code, engine its engine.
-func yieldPolicyAllowed(w http.ResponseWriter, p servicelevel.Policy, refusal, engine string) bool {
+func yieldPolicyAllowed(w http.ResponseWriter, p yieldpolicy.Policy, refusal, engine string) bool {
 	switch {
-	case p.Yield == servicelevel.Never || refusal == "":
+	case p.Yield == yieldpolicy.Never || refusal == "":
 		return true
 	case refusal == messages.ErrorYieldPolicyShape:
 		writeProductError(w, http.StatusBadRequest, refusal, "only a single-node deployment shares its cards by yield policy", nil)
@@ -103,7 +103,7 @@ func (a *apiHandlers) idleNeighbours(dep *store.Deployment) ([]string, error) {
 	var out []string
 	for i := range sharing {
 		other := &sharing[i]
-		if other.ID == dep.ID || !servicelevel.IdleNeighbours(servicelevel.Idle, other.YieldPolicy) {
+		if other.ID == dep.ID || !yieldpolicy.IdleNeighbours(yieldpolicy.Idle, other.YieldPolicy) {
 			continue
 		}
 		insts, err := a.d.Store.InstancesForDeployment(other.ID)
@@ -123,9 +123,9 @@ func (a *apiHandlers) idleNeighbours(dep *store.Deployment) ([]string, error) {
 // createYieldPolicy is the policy a new deployment is stored with: never when
 // the request states none. It checks it as setYieldPolicy checks a change,
 // writing the refusal.
-func createYieldPolicy(w http.ResponseWriter, req dto.DeployRequest, engine string, pd bool) (servicelevel.Policy, bool) {
+func createYieldPolicy(w http.ResponseWriter, req dto.DeployRequest, engine string, pd bool) (yieldpolicy.Policy, bool) {
 	if req.YieldPolicy == nil {
-		return servicelevel.Policy{Yield: servicelevel.Never}, true
+		return yieldpolicy.Policy{Yield: yieldpolicy.Never}, true
 	}
 	p, v := req.YieldPolicy.Parse()
 	if v != nil {
@@ -140,12 +140,12 @@ func createYieldPolicy(w http.ResponseWriter, req dto.DeployRequest, engine stri
 // none or a malformed one.
 func requestYield(stated *dto.YieldPolicyRequest) string {
 	if stated == nil {
-		return servicelevel.Never
+		return yieldpolicy.Never
 	}
 	if p, v := stated.Parse(); v == nil {
 		return p.Yield
 	}
-	return servicelevel.Never
+	return yieldpolicy.Never
 }
 
 // yieldPolicyDictionary answers the yield policies with their defaults,

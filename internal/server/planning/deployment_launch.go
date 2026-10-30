@@ -18,8 +18,8 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/deploy"
 	"gpuworks.ai/gpuworks/internal/server/inferenceapi"
 	"gpuworks.ai/gpuworks/internal/server/scheduler"
-	"gpuworks.ai/gpuworks/internal/server/servicelevel"
 	"gpuworks.ai/gpuworks/internal/server/store"
+	"gpuworks.ai/gpuworks/internal/server/yieldpolicy"
 )
 
 // DeploymentAPIContract returns the contract used by the runtime launch.
@@ -208,7 +208,7 @@ func (o Output) Fits() bool { return o.Result.OK && o.Result.Plan != nil }
 // (YieldRefusal) or only for sleepers' cards (ReservedRefusal) says so; any
 // other is the scheduler's own reason. The controller and every preview
 // that shows a refusal read it here, so they say the same.
-func (o Output) Refusal(node *store.Node, policy servicelevel.Policy) scheduler.Reason {
+func (o Output) Refusal(node *store.Node, policy yieldpolicy.Policy) scheduler.Reason {
 	switch {
 	case o.Yield != nil:
 		return YieldRefusal(node, policy, o.Yield)
@@ -237,7 +237,7 @@ func PlanTemplateLaunch(ctx context.Context, st *store.Store, networks Networks,
 		return plan, nil, err
 	}
 	if !plan.Output.Fits() {
-		reason := plan.Output.Refusal(node, servicelevel.Policy{Yield: req.YieldPolicy})
+		reason := plan.Output.Refusal(node, yieldpolicy.Policy{Yield: req.YieldPolicy})
 		return plan, &reason, nil
 	}
 	validateGPU, err := TemplateGPUValidator(templateLayer)

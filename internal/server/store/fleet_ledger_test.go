@@ -9,7 +9,7 @@ import (
 	"gorm.io/gorm"
 
 	"gpuworks.ai/gpuworks/internal/proto"
-	"gpuworks.ai/gpuworks/internal/server/servicelevel"
+	"gpuworks.ai/gpuworks/internal/server/yieldpolicy"
 )
 
 // The fleet reads must each be a range of an index, or a pass over a small
@@ -87,7 +87,7 @@ func TestLedgerDeploymentsAndModels(t *testing.T) {
 		t.Fatalf("deployments = %d", len(deployments))
 	}
 	for _, d := range deployments {
-		if d.Name == "" || d.Policy().Yield != servicelevel.TimeSlice || d.ModelID != 1 || d.QuickParams != "" {
+		if d.Name == "" || d.Policy().Yield != yieldpolicy.TimeSlice || d.ModelID != 1 || d.QuickParams != "" {
 			t.Errorf("deployment row = %+v, want name, level and model only", d)
 		}
 	}

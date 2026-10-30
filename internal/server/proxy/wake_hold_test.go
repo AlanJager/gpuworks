@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"gpuworks.ai/gpuworks/internal/server/servicelevel"
 	"gpuworks.ai/gpuworks/internal/server/store"
+	"gpuworks.ai/gpuworks/internal/server/yieldpolicy"
 )
 
 // newSleepingProxy is a gateway in front of one sleepable deployment whose
@@ -198,7 +198,7 @@ func TestAHeldRequestTimesOutWithRetryAfter(t *testing.T) {
 func TestAHeldRequestWaitsForTheDeploymentsHoldMaxSec(t *testing.T) {
 	p, st, key, depID, front := newSleepingProxy(t, false)
 	p.SetWakeDemand(func(uint) {})
-	if err := st.SetDeploymentYieldPolicy(depID, servicelevel.Policy{Yield: servicelevel.Anytime, SleepLevel: servicelevel.LevelAuto, Unfinished: servicelevel.UnfinishedAbort, HoldMaxSec: 1}); err != nil {
+	if err := st.SetDeploymentYieldPolicy(depID, yieldpolicy.Policy{Yield: yieldpolicy.Anytime, SleepLevel: yieldpolicy.LevelAuto, Unfinished: yieldpolicy.UnfinishedAbort, HoldMaxSec: 1}); err != nil {
 		t.Fatal(err)
 	}
 	start := time.Now()
@@ -215,7 +215,7 @@ func TestAHeldRequestWaitsForTheDeploymentsHoldMaxSec(t *testing.T) {
 		t.Fatalf("holdMax = %v", got)
 	}
 	// A deployment with no hold stated is held for the default.
-	if got := p.hold.holdMax(&store.Deployment{}); got != servicelevel.DefaultHoldMax {
+	if got := p.hold.holdMax(&store.Deployment{}); got != yieldpolicy.DefaultHoldMax {
 		t.Fatalf("default holdMax = %v", got)
 	}
 }

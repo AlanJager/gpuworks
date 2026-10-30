@@ -5,7 +5,7 @@ import (
 
 	"gorm.io/gorm"
 
-	"gpuworks.ai/gpuworks/internal/server/servicelevel"
+	"gpuworks.ai/gpuworks/internal/server/yieldpolicy"
 )
 
 // Automation event codes and the trigger the residency arbiter gives its
@@ -145,7 +145,7 @@ func (s *Store) ResidencyDeployments(ids []uint) (map[uint]ResidencyDeployment, 
 	}
 	for _, d := range gone {
 		if _, ok := out[d.ID]; !ok {
-			out[d.ID] = ResidencyDeployment{ID: d.ID, Name: d.Name, Yield: servicelevel.Never}
+			out[d.ID] = ResidencyDeployment{ID: d.ID, Name: d.Name, Yield: yieldpolicy.Never}
 		}
 	}
 	return out, nil

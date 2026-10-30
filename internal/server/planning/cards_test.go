@@ -10,8 +10,8 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/bus"
 	"gpuworks.ai/gpuworks/internal/server/deploy"
 	"gpuworks.ai/gpuworks/internal/server/scheduler"
-	"gpuworks.ai/gpuworks/internal/server/servicelevel"
 	"gpuworks.ai/gpuworks/internal/server/store"
+	"gpuworks.ai/gpuworks/internal/server/yieldpolicy"
 )
 
 // A sleeping deployment that shares its cards by yield policy keeps them
@@ -47,21 +47,21 @@ func TestASleepingSharersCardsAreReservedAgainstLevelsItDoesNotShareWith(t *test
 		return scheduler.Schedule(req, snap).OK
 	}
 	// A never sleeper: its card is free for anyone, as before.
-	for _, level := range []string{"", servicelevel.Never, servicelevel.Idle, servicelevel.Anytime} {
+	for _, level := range []string{"", yieldpolicy.Never, yieldpolicy.Idle, yieldpolicy.Anytime} {
 		if !fits(level) {
 			t.Fatalf("a never sleeper's card is closed to %q", level)
 		}
 	}
-	if reservedAgainst(st, servicelevel.Idle) != nil {
+	if reservedAgainst(st, yieldpolicy.Idle) != nil {
 		t.Fatal("a reservation without any deployment sharing by yield policy")
 	}
 
-	if err := st.SetDeploymentYieldPolicy(dep.ID, servicelevel.Policy{Yield: servicelevel.Idle, IdleSec: 300}); err != nil {
+	if err := st.SetDeploymentYieldPolicy(dep.ID, yieldpolicy.Policy{Yield: yieldpolicy.Idle, IdleSec: 300}); err != nil {
 		t.Fatal(err)
 	}
 	for level, want := range map[string]bool{
-		"": false, servicelevel.Never: false, servicelevel.Idle: true,
-		servicelevel.TimeSlice: true, servicelevel.Anytime: true,
+		"": false, yieldpolicy.Never: false, yieldpolicy.Idle: true,
+		yieldpolicy.TimeSlice: true, yieldpolicy.Anytime: true,
 	} {
 		if got := fits(level); got != want {
 			t.Fatalf("a %q newcomer on a sleeping idle deployment's card fits = %v, want %v", level, got, want)
@@ -73,16 +73,16 @@ func TestASleepingSharersCardsAreReservedAgainstLevelsItDoesNotShareWith(t *test
 	}
 
 	// A never newcomer is refused by name: it would fit but for the sleeper.
-	view := ledgerView{reserved: reservedAgainst(st, servicelevel.Never)}
+	view := ledgerView{reserved: reservedAgainst(st, yieldpolicy.Never)}
 	reserved := launchReserved(st, node, nodeInstances(t, st, node), req, true, "", false, view)
 	if reserved == nil || len(reserved.Sleepers) != 1 || reserved.Sleepers[0].Deployment != "chat" || len(reserved.GPUIndexes) != 1 || reserved.GPUIndexes[0] != 0 {
 		t.Fatalf("reserved = %+v, want chat asleep on card 0", reserved)
 	}
-	if reserved.Sleepers[0].DeploymentID != dep.ID || reserved.Sleepers[0].Policy.Yield != servicelevel.Idle {
+	if reserved.Sleepers[0].DeploymentID != dep.ID || reserved.Sleepers[0].Policy.Yield != yieldpolicy.Idle {
 		t.Fatalf("sleeper = %+v", reserved.Sleepers[0])
 	}
 	// An edit preview of chat itself does not name its own sleeper.
-	own := ledgerView{excludeDeployment: dep.ID, reserved: reservedAgainst(st, servicelevel.Never)}
+	own := ledgerView{excludeDeployment: dep.ID, reserved: reservedAgainst(st, yieldpolicy.Never)}
 	if got := launchReserved(st, node, nodeInstances(t, st, node), req, true, "", false, own); got != nil {
 		t.Fatalf("an edit preview names its own sleeper: %+v", got)
 	}
@@ -98,12 +98,12 @@ func TestASleepingSharersCardsAreReservedAgainstLevelsItDoesNotShareWith(t *test
 		t.Fatal(err)
 	}
 	st.Bus.PublishChange("deployment", fmt.Sprint(dep.ID), "test")
-	for _, level := range []string{"", servicelevel.Never, servicelevel.Idle} {
+	for _, level := range []string{"", yieldpolicy.Never, yieldpolicy.Idle} {
 		if !fits(level) {
 			t.Fatalf("a %q newcomer is kept off a held sleeper's card", level)
 		}
 	}
-	if launchReserved(st, node, nodeInstances(t, st, node), req, true, "", false, ledgerView{reserved: reservedAgainst(st, servicelevel.Never)}) != nil {
+	if launchReserved(st, node, nodeInstances(t, st, node), req, true, "", false, ledgerView{reserved: reservedAgainst(st, yieldpolicy.Never)}) != nil {
 		t.Fatal("a held sleeper is named as reserving its card")
 	}
 }

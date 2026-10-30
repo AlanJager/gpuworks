@@ -3,9 +3,9 @@ package planning
 import (
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/messages"
-	"gpuworks.ai/gpuworks/internal/server/servicelevel"
 	"gpuworks.ai/gpuworks/internal/server/sleep"
 	"gpuworks.ai/gpuworks/internal/server/store"
+	"gpuworks.ai/gpuworks/internal/server/yieldpolicy"
 )
 
 // Every sleep order - an operator's for a deployment, a role or a replica, a
@@ -13,7 +13,7 @@ import (
 // an operator's yielding wake - takes its level and is written here, so the
 // rule of which level a sleep lands at is stated once.
 //
-// A level is asked for as a preference (servicelevel.LevelAuto, LevelL1,
+// A level is asked for as a preference (yieldpolicy.LevelAuto, LevelL1,
 // LevelL2): auto sleeps at L1 and at L2 where a host cannot hold the weights
 // an L1 sleep moves into its memory (L1HostMemoryRefusal); l1 is refused
 // there instead; l2 needs no host memory and is never refused for it.
@@ -24,11 +24,11 @@ import (
 func SleepPreference(level int) string {
 	switch level {
 	case proto.SleepLevelL1:
-		return servicelevel.LevelL1
+		return yieldpolicy.LevelL1
 	case proto.SleepLevelL2:
-		return servicelevel.LevelL2
+		return yieldpolicy.LevelL2
 	}
-	return servicelevel.LevelAuto
+	return yieldpolicy.LevelAuto
 }
 
 // ResolveSleepLevel is the level a sleep of the named instances of dep lands
@@ -36,14 +36,14 @@ func SleepPreference(level int) string {
 // cannot hold is refused (SLEEP_HOST_MEMORY_INSUFFICIENT), an auto one falls
 // back to L2. host nil knows nothing and refuses nothing.
 func ResolveSleepLevel(st *store.Store, dep *store.Deployment, named []store.Instance, pref string, host HostMemory) (int, *SleepRefusal) {
-	if pref == servicelevel.LevelL2 {
+	if pref == yieldpolicy.LevelL2 {
 		return proto.SleepLevelL2, nil
 	}
 	refusal := L1HostMemoryRefusal(st, dep, named, host)
 	switch {
 	case refusal == nil:
 		return proto.SleepLevelL1, nil
-	case pref == servicelevel.LevelL1:
+	case pref == yieldpolicy.LevelL1:
 		return 0, refusal
 	}
 	return proto.SleepLevelL2, nil
@@ -51,7 +51,7 @@ func ResolveSleepLevel(st *store.Store, dep *store.Deployment, named []store.Ins
 
 // SleepOrder is one sleep order for a deployment.
 type SleepOrder struct {
-	// Pref is the level preference (servicelevel.LevelAuto, LevelL1,
+	// Pref is the level preference (yieldpolicy.LevelAuto, LevelL1,
 	// LevelL2).
 	Pref string
 	// Mode is the pause mode (proto.SleepModeWait or SleepModeAbort).
@@ -76,7 +76,7 @@ func OrderSleep(st *store.Store, dep *store.Deployment, order SleepOrder, host H
 		return 0, &SleepRefusal{Code: code, Params: map[string]any{"engine": dep.Engine}}, nil
 	}
 	level := proto.SleepLevelL2
-	if order.Pref != servicelevel.LevelL2 {
+	if order.Pref != yieldpolicy.LevelL2 {
 		insts, err := st.InstancesForDeployment(dep.ID)
 		if err != nil {
 			return 0, nil, err

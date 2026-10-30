@@ -6,8 +6,8 @@ import (
 	"testing"
 
 	"gpuworks.ai/gpuworks/internal/proto"
-	"gpuworks.ai/gpuworks/internal/server/servicelevel"
 	"gpuworks.ai/gpuworks/internal/server/store"
+	"gpuworks.ai/gpuworks/internal/server/yieldpolicy"
 )
 
 // A pool replica waiting for the holders of one node's card to yield is
@@ -17,15 +17,15 @@ import (
 // the pool.
 func TestARecheckOfAPlacementWaitTriesTheWaitedNodeAlone(t *testing.T) {
 	st, hub, nodes, model := poolFixture(t, "pool_wait_recheck", 3, 1)
-	policy := func(yield string) servicelevel.Policy {
-		p, _ := servicelevel.Parse(yield, servicelevel.Overrides{})
+	policy := func(yield string) yieldpolicy.Policy {
+		p, _ := yieldpolicy.Parse(yield, yieldpolicy.Overrides{})
 		return p
 	}
 	batch, err := st.CreateDeployment(&store.Deployment{Name: "batch", ModelID: model.ID, NodeID: nodes[0].ID, ServedName: "batch", Engine: "vllm", Sleepable: true, State: store.DeployActive, Replicas: 3})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := st.SetDeploymentYieldPolicy(batch.ID, policy(servicelevel.Anytime)); err != nil {
+	if err := st.SetDeploymentYieldPolicy(batch.ID, policy(yieldpolicy.Anytime)); err != nil {
 		t.Fatal(err)
 	}
 	for i, node := range nodes {
@@ -34,7 +34,7 @@ func TestARecheckOfAPlacementWaitTriesTheWaitedNodeAlone(t *testing.T) {
 		}
 	}
 	online := poolDeployment(t, st, model, nodes[0].ID, 1, store.PlacementSpread, nil)
-	if err := st.SetDeploymentYieldPolicy(online.ID, policy(servicelevel.Idle)); err != nil {
+	if err := st.SetDeploymentYieldPolicy(online.ID, policy(yieldpolicy.Idle)); err != nil {
 		t.Fatal(err)
 	}
 	if online, err = st.GetDeployment(online.ID); err != nil {
@@ -81,7 +81,7 @@ func TestARecheckOfAPlacementWaitTriesTheWaitedNodeAlone(t *testing.T) {
 
 	// Batch stops sharing its cards: the waited node no longer fits even
 	// with a yield, and the search goes on to the free node.
-	if err := st.SetDeploymentYieldPolicy(batch.ID, policy(servicelevel.Never)); err != nil {
+	if err := st.SetDeploymentYieldPolicy(batch.ID, policy(yieldpolicy.Never)); err != nil {
 		t.Fatal(err)
 	}
 	node, ok := pick()

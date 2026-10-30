@@ -17,9 +17,9 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/network"
 	"gpuworks.ai/gpuworks/internal/server/placewait"
 	"gpuworks.ai/gpuworks/internal/server/planning"
-	"gpuworks.ai/gpuworks/internal/server/servicelevel"
 	"gpuworks.ai/gpuworks/internal/server/store"
 	"gpuworks.ai/gpuworks/internal/server/tsdb"
+	"gpuworks.ai/gpuworks/internal/server/yieldpolicy"
 )
 
 // automationFixture is one node with one 24 GiB GPU and a sleepable vLLM
@@ -349,7 +349,7 @@ func TestAutomationRunsAPDRoleSchedule(t *testing.T) {
 // for it. One ranked lower does not hold the card.
 func TestAWakeLeavesTheCardsAPlacementWaitsFor(t *testing.T) {
 	adapter, st, dep := automationFixture(t)
-	anytime, _ := servicelevel.Parse(servicelevel.Anytime, servicelevel.Overrides{})
+	anytime, _ := yieldpolicy.Parse(yieldpolicy.Anytime, yieldpolicy.Overrides{})
 	if err := st.SetDeploymentYieldPolicy(dep.ID, anytime); err != nil {
 		t.Fatal(err)
 	}
@@ -363,7 +363,7 @@ func TestAWakeLeavesTheCardsAPlacementWaitsFor(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	idle, _ := servicelevel.Parse(servicelevel.Idle, servicelevel.Overrides{})
+	idle, _ := yieldpolicy.Parse(yieldpolicy.Idle, yieldpolicy.Overrides{})
 	if err := st.SetDeploymentYieldPolicy(newcomer.ID, idle); err != nil {
 		t.Fatal(err)
 	}

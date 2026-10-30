@@ -18,8 +18,8 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/parallelism"
 	"gpuworks.ai/gpuworks/internal/server/placement"
 	"gpuworks.ai/gpuworks/internal/server/scheduler"
-	"gpuworks.ai/gpuworks/internal/server/servicelevel"
 	"gpuworks.ai/gpuworks/internal/server/store"
+	"gpuworks.ai/gpuworks/internal/server/yieldpolicy"
 	pkgest "gpuworks.ai/gpuworks/pkg/estimate"
 	"gpuworks.ai/gpuworks/pkg/modelconfig"
 )
@@ -77,9 +77,9 @@ type Input struct {
 	// instances: an edit of the deployment replaces them, so what they hold
 	// now is not in the way of the launch being previewed. Zero excludes none.
 	ExcludeDeploymentID uint
-	// YieldPolicy is the launching deployment's (servicelevel.Never, Idle, ...):
+	// YieldPolicy is the launching deployment's (yieldpolicy.Never, Idle, ...):
 	// a sleeping deployment that does not share its cards with that policy
-	// keeps its whole claim on them (servicelevel.SharesCardsWith), so the
+	// keeps its whole claim on them (yieldpolicy.SharesCardsWith), so the
 	// launch does not take cards it would want back. Empty reads as never.
 	YieldPolicy string
 	// ModelRules are the deployment's model source rules (store.SourceRules).
@@ -306,7 +306,7 @@ func (in Input) Evaluate(st *store.Store) Output {
 		// holders, and only one sleepers keep cards from may be refused by
 		// their name: anything else reads nothing more. One read of the
 		// node's instances serves both re-plans.
-		shares := in.YieldPolicy != "" && in.YieldPolicy != servicelevel.Never
+		shares := in.YieldPolicy != "" && in.YieldPolicy != yieldpolicy.Never
 		if !in.Unloaded && st != nil && (shares || view.reserved != nil) {
 			if insts, err := st.InstancesForNode(in.Node.ID); err == nil {
 				out.Yield = launchYield(st, in.Node, insts, in.YieldPolicy, req, dtypeOK, dtypeReason, in.ServingUnavailable, view)

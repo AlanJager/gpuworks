@@ -10,8 +10,8 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/network"
 	"gpuworks.ai/gpuworks/internal/server/placewait"
 	"gpuworks.ai/gpuworks/internal/server/proxy"
-	"gpuworks.ai/gpuworks/internal/server/servicelevel"
 	"gpuworks.ai/gpuworks/internal/server/store"
+	"gpuworks.ai/gpuworks/internal/server/yieldpolicy"
 )
 
 // residencyFixture is the automation fixture's deployment asleep at L2 with
@@ -29,7 +29,7 @@ func residencyFixture(t *testing.T) (*residencyAdapter, *automationAdapter, *sto
 	if err != nil {
 		t.Fatal(err)
 	}
-	offline, _ := servicelevel.Parse(servicelevel.Anytime, servicelevel.Overrides{})
+	offline, _ := yieldpolicy.Parse(yieldpolicy.Anytime, yieldpolicy.Overrides{})
 	if err := st.SetDeploymentYieldPolicy(other.ID, offline); err != nil {
 		t.Fatal(err)
 	}
@@ -51,7 +51,7 @@ func (noServingNetworks) ServingEndpoints() (map[string]network.ServingEndpoint,
 
 func TestResidencyAdapterFindsTheHolderAndPutsItToSleep(t *testing.T) {
 	res, auto, st, dep, other := residencyFixture(t)
-	if policy, ok := res.Wakeable(dep.ID); !ok || policy.Yield != servicelevel.Never {
+	if policy, ok := res.Wakeable(dep.ID); !ok || policy.Yield != yieldpolicy.Never {
 		t.Fatalf("an auto-slept deployment is not wakeable: %+v %v", policy, ok)
 	}
 	if _, ok := res.Wakeable(other.ID); ok {
@@ -69,7 +69,7 @@ func TestResidencyAdapterFindsTheHolderAndPutsItToSleep(t *testing.T) {
 		t.Fatalf("blocking = %+v err=%v", b, err)
 	}
 	h := b.Holders[0]
-	if h.DeploymentID != other.ID || h.Name != "batch" || h.Policy.Yield != servicelevel.Anytime || !slices.Equal(h.Instances, []string{"batch-1"}) {
+	if h.DeploymentID != other.ID || h.Name != "batch" || h.Policy.Yield != yieldpolicy.Anytime || !slices.Equal(h.Instances, []string{"batch-1"}) {
 		t.Fatalf("holder = %+v", h)
 	}
 
@@ -93,7 +93,7 @@ func TestResidencyAdapterFindsTheHolderAndPutsItToSleep(t *testing.T) {
 	if woken, err := auto.WakeWaiting(dep.ID, result.Waiting); err != nil || len(woken) != 1 {
 		t.Fatalf("waiting wake after the yield = %v err=%v", woken, err)
 	}
-	if policy, ok := res.Wakeable(other.ID); !ok || policy.Yield != servicelevel.Anytime {
+	if policy, ok := res.Wakeable(other.ID); !ok || policy.Yield != yieldpolicy.Anytime {
 		t.Fatalf("the holder put to sleep for another is not wakeable: %+v %v", policy, ok)
 	}
 }
@@ -203,17 +203,17 @@ func TestResidencyAdapterYieldFollowsTheHoldersSleepLevelPreference(t *testing.T
 		level      int
 		refused    bool
 	}{
-		{"auto with room", servicelevel.LevelAuto, roomy, proto.SleepLevelL1, false},
-		{"auto without room", servicelevel.LevelAuto, full, proto.SleepLevelL2, false},
-		{"l2 with room", servicelevel.LevelL2, roomy, proto.SleepLevelL2, false},
-		{"l2 without room", servicelevel.LevelL2, full, proto.SleepLevelL2, false},
-		{"l1 with room", servicelevel.LevelL1, roomy, proto.SleepLevelL1, false},
-		{"l1 without room is refused", servicelevel.LevelL1, full, 0, true},
+		{"auto with room", yieldpolicy.LevelAuto, roomy, proto.SleepLevelL1, false},
+		{"auto without room", yieldpolicy.LevelAuto, full, proto.SleepLevelL2, false},
+		{"l2 with room", yieldpolicy.LevelL2, roomy, proto.SleepLevelL2, false},
+		{"l2 without room", yieldpolicy.LevelL2, full, proto.SleepLevelL2, false},
+		{"l1 with room", yieldpolicy.LevelL1, roomy, proto.SleepLevelL1, false},
+		{"l1 without room is refused", yieldpolicy.LevelL1, full, 0, true},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			res, auto, st, dep, other := residencyFixture(t)
 			res.host = c.host
-			if err := st.SetDeploymentYieldPolicy(other.ID, servicelevel.Policy{Yield: servicelevel.Anytime, SleepLevel: c.pref, Unfinished: servicelevel.UnfinishedAbort, HoldMaxSec: 1800}); err != nil {
+			if err := st.SetDeploymentYieldPolicy(other.ID, yieldpolicy.Policy{Yield: yieldpolicy.Anytime, SleepLevel: c.pref, Unfinished: yieldpolicy.UnfinishedAbort, HoldMaxSec: 1800}); err != nil {
 				t.Fatal(err)
 			}
 			if _, err := auto.Wake(dep.ID); err != nil {

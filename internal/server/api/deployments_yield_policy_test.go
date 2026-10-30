@@ -9,13 +9,13 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
-	"gpuworks.ai/gpuworks/internal/server/servicelevel"
 	"gpuworks.ai/gpuworks/internal/server/store"
+	"gpuworks.ai/gpuworks/internal/server/yieldpolicy"
 )
 
 // presetDeployment states the yield policy, with its defaults, on dep.
 func presetDeployment(dep *store.Deployment, yield string) *store.Deployment {
-	p, _ := servicelevel.Parse(yield, servicelevel.Overrides{})
+	p, _ := yieldpolicy.Parse(yield, yieldpolicy.Overrides{})
 	dep.SetPolicy(p)
 	return dep
 }
@@ -73,7 +73,7 @@ func TestYieldPolicyRouteAuthAndTarget(t *testing.T) {
 	if rec := rig.do(read, http.MethodPut, path, body); rec.Code != http.StatusForbidden || decodeBody(t, rec)["code"] != "PLATFORM_TOKEN_READ_ONLY" {
 		t.Fatalf("read token = %d %s, want 403", rec.Code, rec.Body)
 	}
-	if dep, _ := rig.st.GetDeployment(rig.sleepy.ID); dep.Policy().Yield != servicelevel.Never {
+	if dep, _ := rig.st.GetDeployment(rig.sleepy.ID); dep.Policy().Yield != yieldpolicy.Never {
 		t.Fatalf("a refused request changed the policy to %+v", dep.Policy())
 	}
 	if rec := rig.do(rig.mint("write"), http.MethodPut, path, body); rec.Code != http.StatusOK || strings.TrimSpace(rec.Body.String()) != answer {
@@ -102,7 +102,7 @@ func TestTheServiceLevelAndIdleSleepRoutesAreGone(t *testing.T) {
 			}
 		}
 	}
-	if dep, _ := rig.st.GetDeployment(rig.sleepy.ID); dep.Policy().Yield != servicelevel.Never {
+	if dep, _ := rig.st.GetDeployment(rig.sleepy.ID); dep.Policy().Yield != yieldpolicy.Never {
 		t.Fatalf("a removed route changed the policy: %+v", dep.Policy())
 	}
 }
@@ -207,7 +207,7 @@ func TestYieldPolicySetting(t *testing.T) {
 		}
 	}
 	// Every refusal left the last accepted policy: the upper bounds test's.
-	if dep, _ := rig.st.GetDeployment(rig.sleepy.ID); dep.Policy().IdleSec != 604800 || dep.Policy().HoldMaxSec != 3600 || dep.Policy().Yield != servicelevel.Idle {
+	if dep, _ := rig.st.GetDeployment(rig.sleepy.ID); dep.Policy().IdleSec != 604800 || dep.Policy().HoldMaxSec != 3600 || dep.Policy().Yield != yieldpolicy.Idle {
 		t.Fatalf("a refused request changed the policy: %+v", dep.Policy())
 	}
 }
@@ -229,7 +229,7 @@ func TestTwoIdleDeploymentsOnACardAreNamed(t *testing.T) {
 	if rec.Code != http.StatusOK || strings.TrimSpace(rec.Body.String()) != `{"policy":"idle","idle_sec":30,"sleep_level":"auto","hold_max_sec":300,"idle_neighbours":["other"]}` {
 		t.Fatalf("second idle on a shared card = %d %s, want 200 naming other", rec.Code, rec.Body)
 	}
-	if dep, _ := rig.st.GetDeployment(rig.sleepy.ID); dep.Policy().Yield != servicelevel.Idle {
+	if dep, _ := rig.st.GetDeployment(rig.sleepy.ID); dep.Policy().Yield != yieldpolicy.Idle {
 		t.Fatalf("the second idle policy was not stored: %+v", dep.Policy())
 	}
 	// The deployment itself does not carry the warning: only the answer.
@@ -312,7 +312,7 @@ func TestANewDeploymentsYieldPolicyIsCheckedLikeAChange(t *testing.T) {
 			}
 		})
 	}
-	if requestYield(policy(`{"policy":"gold"}`)) != servicelevel.Never {
+	if requestYield(policy(`{"policy":"gold"}`)) != yieldpolicy.Never {
 		t.Fatal("a malformed policy plans as never")
 	}
 }
@@ -350,7 +350,7 @@ func TestYieldPolicyDictionary(t *testing.T) {
 		}
 	}
 	// What a client reads off applies and applies_when is the server's rule
-	// (servicelevel.Applies) for every choice of the selectors.
+	// (yieldpolicy.Applies) for every choice of the selectors.
 	for _, entry := range dict.Policies {
 		for _, level := range dict.SleepLevels {
 			for _, mode := range dict.Unfinished {
@@ -366,7 +366,7 @@ func TestYieldPolicyDictionary(t *testing.T) {
 						client[name] = client[name] && held
 					}
 				}
-				rule := servicelevel.Policy{Yield: entry.Policy, SleepLevel: level, Unfinished: mode}.Normalize().Applies()
+				rule := yieldpolicy.Policy{Yield: entry.Policy, SleepLevel: level, Unfinished: mode}.Normalize().Applies()
 				server := map[string]bool{
 					"idle_sec": rule.IdleSec, "sleep_level": rule.SleepLevel, "max_serve_sec": rule.MaxServeSec,
 					"unfinished": rule.Unfinished, "unfinished_wait_sec": rule.UnfinishedWaitSec, "hold_max_sec": rule.HoldMaxSec,
