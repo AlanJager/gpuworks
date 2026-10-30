@@ -41,6 +41,7 @@ func (n *NodeRuntime) startCardSmoke(ctx context.Context) {
 			ours, _ := n.cardsInUse()
 			return ours[card.Ident]
 		},
+		Foreign: func(card cardsmoke.Card) bool { return n.occupancy.foreign(card.Ident) },
 		// Until the control plane says what this node runs, no card can be
 		// told apart from one that is serving, and creating a context on a
 		// card that is serving can disturb it. That is the whole round's

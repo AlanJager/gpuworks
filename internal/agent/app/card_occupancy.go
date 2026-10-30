@@ -88,6 +88,14 @@ func (o *cardOccupancy) remember(gpus []proto.GPUInfo) (changed []proto.GPUInfo)
 	return changed
 }
 
+// foreign reports whether the last answer found somebody outside the
+// platform using the card.
+func (o *cardOccupancy) foreign(ident string) bool {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return len(o.last[ident]) > 0
+}
+
 // restate lays the last answer over cards this round could not examine.
 func (o *cardOccupancy) restate(gpus []proto.GPUInfo) {
 	o.mu.Lock()

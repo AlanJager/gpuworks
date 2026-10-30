@@ -369,6 +369,19 @@ if the vendor tool just failed to return the inventory, asking it for processes 
 The platform recognizes its own instances by each card's hardware identity. An instance started by an older version, whose desired state records only device indexes,
 gets its identities filled in by a migration when the server is upgraded, and the agent also maps those indexes to cards through the latest probe, so it still counts as the platform's own.
 
+Such a card is also left out of the periodic runtime check and of the recheck after an instance fails to start: someone else's workload should not be disturbed,
+and memory held by someone else says nothing about whether the runtime can use the card. The card keeps its last check result, and checking resumes once the processes exit.
+
+Where each vendor's card processes are read from:
+
+| Vendor | Source | Command to verify |
+|---|---|---|
+| NVIDIA | `nvidia-smi --query-compute-apps` | `nvidia-smi --query-compute-apps=pid,process_name,gpu_bus_id,used_gpu_memory --format=csv` |
+| PPU | `ppu-smi --query-compute-apps` | `ppu-smi --query-compute-apps=pid,process_name,pci.bus_id --format=csv` |
+| Ascend | The process table at the end of `npu-smi info` (the same call as the probe), matched to the card's Bus-Id by NPU/Chip | `npu-smi info` |
+| Hygon | The KFD driver's sysfs (`/sys/class/kfd/kfd/proc/<pid>/queues/*/gpuid`); only a process that created queues on this card counts as using it | `hy-smi --showpids` |
+| Apple | Not determined: a single unified-memory GPU that system processes (such as WindowServer) always use, so per-process occupancy is meaningless | — |
+
 ### Diagnosis Finds an Unrecognized Accelerator
 
 Doctor reports “Unrecognized accelerator device” (`accelerator_unrecognized`): the host has

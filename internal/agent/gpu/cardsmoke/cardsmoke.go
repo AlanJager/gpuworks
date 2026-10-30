@@ -107,6 +107,11 @@ type Config struct {
 	// a context on a card in use can disturb what runs there, and a card
 	// that is serving has already answered this question.
 	Busy func(card Card) bool
+	// Foreign reports that somebody outside the platform is using the
+	// card. It is left alone even when asked about directly (CheckNow):
+	// their workload is not ours to disturb, and a card whose memory they
+	// hold says nothing about whether the runtime can use it.
+	Foreign func(card Card) bool
 	// Unavailable explains why no attempt can be made at all right now —
 	// the driver is not answering, the runtime is missing — or returns "".
 	// Checked once per round, because it is a property of the host, and
@@ -353,6 +358,10 @@ func (r *Runner) tryUnlessBusy(ctx context.Context, card Card, skipBusy bool) st
 			r.record(card.Ident, Outcome{At: r.cfg.Now(), Failures: failures, Detail: detail})
 		}
 		return detail
+	}
+	if r.cfg.Foreign != nil && r.cfg.Foreign(card) {
+		// Like a serving card, the card keeps whatever it last said.
+		return ""
 	}
 	if skipBusy && r.busy(card) {
 		// Serving work is itself the answer, so the card keeps whatever it

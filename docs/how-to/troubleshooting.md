@@ -370,6 +370,19 @@ CLI 说不了话的那些（已直通、没驱动、驱动没带起来），不�
 平台按卡的硬件身份认出自己的实例；较早版本启动、期望状态里只记了设备序号的实例，
 升级 server 时迁移会补上身份，agent 也会按最近一次探测把序号对应到卡，同样算作平台自己的。
 
+这张卡同时不做周期运行时检查，实例启动失败后的补检也跳过它：别人的业务不该被打扰，
+卡的显存被别人占着也说明不了运行时能不能用它；卡保留上一次检查的结论，进程退出后恢复检查。
+
+各厂商从哪里读卡上的进程：
+
+| 厂商 | 来源 | 复核命令 |
+|---|---|---|
+| NVIDIA | `nvidia-smi --query-compute-apps` | `nvidia-smi --query-compute-apps=pid,process_name,gpu_bus_id,used_gpu_memory --format=csv` |
+| PPU | `ppu-smi --query-compute-apps` | `ppu-smi --query-compute-apps=pid,process_name,pci.bus_id --format=csv` |
+| 昇腾 | `npu-smi info` 末尾的进程表（与探测共用一次调用），按 NPU/Chip 对到卡的 Bus-Id | `npu-smi info` |
+| 海光 | KFD 驱动的 sysfs（`/sys/class/kfd/kfd/proc/<pid>/queues/*/gpuid`），只把在这张卡上建了队列的进程算作占用 | `hy-smi --showpids` |
+| Apple | 不判定：一块统一内存的 GPU，系统进程（如 WindowServer）始终在用，进程级占用没有意义 | — |
+
 ### 诊断发现未识别的加速卡
 
 doctor 里出现「有未识别的加速卡设备」（`accelerator_unrecognized`）：本机有属于已支持厂商的
