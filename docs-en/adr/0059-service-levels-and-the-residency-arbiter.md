@@ -139,3 +139,15 @@ The original decision, “when a new deployment starts and its cards are held by
 - Measured in the process test: an online (`idle`) deployment created onto a card an awake yield-anytime (`anytime`) deployment held started serving about 6 seconds after creation, and the yield-anytime deployment was put to sleep by rank.
 - Multi-node and PD deployments must still use `never` and take no part; when their cards are held they wait as “does not fit”, as before.
 - A new deployment's replica can thereby make others sleep; the action is still written to the timeline (`AUTO_SLEEP`, `trigger: preempt`, `for_deployment` being the new deployment).
+
+## Amendment (2026-10-30): A Held Sleep Keeps No Card
+
+Until now, when a deployment that shares cards by yield policy was asleep, its whole claim was kept against deployments it does not share with (`never`), whoever had ordered the sleep. In use, after an operator put a sharing deployment to sleep by hand, a new deployment pinned to that card was never placed, which read as "no empty card", although a request could not wake that sleep anyway. This is changed:
+
+**1. Cards are kept only when a request can wake the sleeper.** The reservation applies only to a sleeper whose `Deployment.WakesOnRequest()` is true: the deployment is sleepable and the sleep is not a held sleep (`sleep_held`, a sleep an operator or a schedule ordered). The gateway (hold the request or answer 503), the residency arbiter and placement ask the same question, which has one answer.
+
+**2. A held sleep keeps no card.** A request cannot wake it, so its cards are open to any new deployment; the later wake by the operator or the schedule already has to wait for room (`?wait=true`) or make it (`?yield=true`), and not fitting is a stated semantic, not a defect.
+
+**3. A kept card says whose it is.** When a new deployment does not fit only because sleepers keep their cards, the reason is the new scheduling reason code `reserved_for_sleepers`, with the parameters `node`, `gpus` and `sleepers` (each with `deployment` and `policy`), and the UI gives three ways out: pick another card, turn on sleep for this deployment with a yield policy that can share cards, or put the deployment holding the cards to sleep by hand.
+
+**Consequences.** A deployment put to sleep by hand may have its cards taken before it is woken; this agrees with "the capacity a sleep gives up is really given up". The yield policies and the yield rule are unchanged.

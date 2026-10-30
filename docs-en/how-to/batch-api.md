@@ -151,7 +151,7 @@ Cancel with `client.batches.cancel(batch.id)` and list with `client.batches.list
 
 The **Batches** page in the **Inference Services** group of the left menu runs a batch without code. **Call it through the API** at the top of the page expands to the curl and SDK calls above, for the address you opened the console from; the usage note on the **API Keys** page points to these endpoints too.
 
-1. Click **Create batch**, choose the `.jsonl` file and the endpoint (`endpoint`), and submit. The file is validated line by line on upload here too, and an error names the line and the reason. The **Model** drop-down sets the model every request uses (see [Choosing the Model](#指定模型)), and **Completion window** changes the batch's time limit (see [Completion Window](#完成时限)). Without a file at hand, pick a deployment under **Sample file** in the dialog (the sample uses the **Model** when one is chosen) and click **Download sample** for a 5-request `.jsonl` sample, or **Use sample** to create a batch with it as is.
+1. Click **Create batch**, choose the `.jsonl` file and the endpoint (`endpoint`), and submit. The file is validated line by line on upload here too, and an error names the line and the reason. The **Model** drop-down sets the model every request uses (see [Choosing the Model](#指定模型)), and **Completion window** changes the batch's time limit (see [Completion Window](#完成时限)). Without a file at hand, pick a deployment under **Sample file** in the dialog (the sample uses the **Model** when one is chosen) and click **Download sample** for a 1000-request `.jsonl` sample (a mix of tasks such as math reasoning, translation, summarization, writing and code, in English and Chinese, with `max_tokens` 512, enough to keep a GPU busy for minutes; the same model gives the same content every time), or **Use sample** to create a batch with it as is.
 2. The list shows each batch's ID, status, endpoint, model (shown only when one was chosen, otherwise "Per file line"), progress (completed out of total, with the failure count), creation time, and expiry time; use **Filter by status** to narrow it.
 3. Click a row to open the detail drawer: summary, request counts, the timeline of stages, metadata, and **Download input**, **Download output**, and **Download errors**. A failed batch (`failed`) also shows the failure reason.
 4. While a batch has not ended, click **Cancel batch** and confirm in the page.
@@ -179,7 +179,17 @@ The chosen model must be the served model name of a running or sleeping deployme
 - One the platform put to sleep itself (yielding): when a request arrives, the gateway holds it, wakes the deployment, and lets it through once awake, as for any request.
 - One you or a schedule put to sleep (`sleep_held` is `true` in the deployment detail): a request does **not** wake it. The batch is still created, but the create response carries `warnings` (the console shows a notice), and the requests are retried until someone wakes the deployment or the batch expires. The console's drop-down marks such a deployment "Asleep (held, requests do not wake it)".
 
-**Checking the models in the file**: after you choose a file in the console, the browser reads it (when it is at most 50 MB) and lists every model it uses. With no model chosen, if some model has no available deployment on the platform, a warning names those models, and their requests would get 404 into the error file; with a model chosen, the models in the file are replaced by it and only a notice is shown. The check never blocks submitting, and files over 50 MB are not checked.
+**Checking the models in the file when no model is chosen**: when the batch is created, the platform reads the stored input file once, takes the distinct `body.model` values of its lines, and looks each up by the rules above. If some model is served by no running or sleeping deployment (a stopped or deleted deployment does not count), the creation is refused with HTTP 400; no batch is created and the uploaded file stays, ready for the next creation:
+
+```json
+{"error":{"message":"The input file names models that no active deployment serves: A, B. Set a model to send every request to, or deploy these models first","type":"invalid_request_error","param":"input_file_id","code":"model_not_found"}}
+```
+
+The message names at most 5 models and ends with `, ...` when there are more; in the console this is `BATCH_MODEL_UNKNOWN` (`params.models`). To fix it, choose a model so that all requests go to it, or deploy the models in the file first. When some models in the file sleep by an operator's or a schedule's order (a held sleep) and the rest are served, the batch is still created and the create response carries a `warnings` entry `model_sleep_held` (`param` is `input_file_id` and it lists those models; with a model chosen, `param` is `model`). With a model chosen the models in the file are not checked (they are replaced), only the chosen one is.
+
+A deployment stopped or deleted after the batch was created is not covered by this check: its requests get a 404 one by one at run time and go to the error file.
+
+After you choose a file in the console, the browser also reads it (when it is at most 50 MB) and lists every model it uses. With no model chosen, if some model has no available deployment, a warning names those models and says the batch cannot be created; with a model chosen, the models in the file are replaced by it and only a notice is shown. The check in the browser is an early hint; the server's check at creation decides, and files over 50 MB are not checked in the browser.
 
 ## Completion Window
 
@@ -241,7 +251,7 @@ The platform separates "the request itself is wrong" from "the platform cannot s
 | 503 (the deployment is asleep and did not wake within the hold, or has no replica yet), 429, 408, any other 5xx, or a connection error | Retried automatically; not a failure |
 | Any other 4xx: 400 invalid request, 404 model not found, 401, and so on | Final failure: written to the error file and counted in `failed` |
 
-Retries use exponential backoff from 2 seconds, doubling up to 60 seconds, honoring any `Retry-After` in the answer and adding jitter, until the batch expires. A batch with a misspelled model name gets a 404 for every line quickly and ends in the error file instead of waiting until expiry.
+Retries use exponential backoff from 2 seconds, doubling up to 60 seconds, honoring any `Retry-After` in the answer and adding jitter, until the batch expires. Without a chosen model, a file naming a model nothing serves is refused at creation; for a model that goes away after creation, every line gets a 404 quickly and ends in the error file instead of waiting until expiry.
 
 ## Batches in Usage and Request Records
 
@@ -274,7 +284,8 @@ How a batch interacts with a yield-anytime deployment:
 |---|---|
 | Upload returns 400 with `Line N` | Fix the file by the line number and error code, for example `duplicate_custom_id`, `streaming_not_supported`, `invalid_url` |
 | Creating a batch returns 400 `endpoint_mismatch` | `endpoint` must equal the `url` of every line in the file |
-| Creating a batch returns 400 `model_not_found` (`BATCH_MODEL_UNKNOWN` in the console) | No running or sleeping deployment serves the chosen `model`; check the served model name and whether the deployment was stopped |
+| Creating a batch returns 400 `model_not_found` (`BATCH_MODEL_UNKNOWN` in the console) with `param` `model` | No running or sleeping deployment serves the chosen `model`; check the served model name and whether the deployment was stopped |
+| Creating a batch returns 400 `model_not_found` (`BATCH_MODEL_UNKNOWN` in the console) with `param` `input_file_id` | With no `model` chosen, the models of the file (listed in the message) are served by no running or sleeping deployment; choose a `model` to receive every request, or deploy these models first; the file need not be uploaded again |
 | Creating a batch returns 400 `invalid_completion_window` | `completion_window` must be a whole number of hours from `1h` to `72h`, such as `"48h"` |
 | Creating a batch returns 400 `file_not_found` | The file ID is wrong, or the file is not a `purpose=batch` file of the same user |
 | The batch stays in `validating` | 32 batches are already executing across the server; it is waiting for a slot |

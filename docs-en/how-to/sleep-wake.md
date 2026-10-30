@@ -113,6 +113,8 @@ Details of yielding:
 
 Once waiting starts, the hold is cleared: the deployment is meant to be awake, so a request that arrives while it waits is held by the gateway for that wake, and the residency arbiter may make room for it under the yield policies, instead of getting a 503 (before, the hold stayed until the wake landed).
 
+A sleep you or a schedule ordered (a held sleep) **keeps no card for itself**: a request cannot wake it, so its cards are open to any new deployment and may be taken before you wake it. The later wake then either waits for room or makes it, the two options above. A sleep the platform made when yielding cards is the opposite: a request can wake it, and a sleeping deployment that shares cards keeps them for that wake, see [Yield Policy: How Deployments Share a Set of GPUs](../explanation/service-levels.md#放置怎样为共卡留位置).
+
 While a deployment waits, its details page shows a waiting banner and the start time (the deployment's `wake_waiting_since`). To give up waiting, click **Cancel waiting**, or call:
 
 ```bash

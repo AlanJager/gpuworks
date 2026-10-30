@@ -1677,7 +1677,7 @@ server 组装上下文后运行带只读工具的 agent 循环。工具以提问
 
 | Method | Path | 说明 | 鉴权 |
 |---|---|---|---|
-| GET | `/api/v1/playground/models` | 可在 Playground 调用的已部署模型列表，不包含全局设置中的 AI 助手外部模型；`html_preview.allow_network` 是 HTML 预览的网络策略（来自安全设置） | JWT |
+| GET | `/api/v1/playground/models` | 可在 Playground 调用的已部署模型列表，不包含全局设置中的 AI 助手外部模型；`html_preview.allow_network` 是 HTML 预览的网络策略（来自安全设置）；每项模型有 `sleeping`（布尔），休眠中且请求能唤醒它（部署可休眠、休眠不是运维或定时计划下的保持休眠）时另有 `wakes_on_request: true`（否则省略）：这样的模型收到请求会由网关挂起、唤醒后放行，没有它的休眠模型请求回 503，须先唤醒；试验场据此提示 | JWT |
 | GET | `/api/v1/playground/openapi.json` | Playground 代理的 OpenAPI 描述 | JWT |
 | ANY | `/api/v1/playground/v1/*` | Playground 内部代理（管理 JWT 保护，非 `/v1` 网关 key） | JWT |
 
@@ -1700,7 +1700,7 @@ Playground 与 `/v1` 网关的边界、外部模型命名 `external:<config-id>:
 | GET | `/api/v1/batches` | 批处理任务列表，最新优先，返回分页结构 `{items,page,page_size,total}`。`state` 为 8 种状态之一，多个值以逗号分隔；非法值返回 400 `LIST_FILTER_INVALID`；不支持 `q`，带 `q` 同样返回 400 `LIST_FILTER_INVALID`。管理员看到所有用户的任务，其他用户只看到自己的。列表项不含 `input_filename` | JWT |
 | GET | `/api/v1/batches/{id}` | 批处理任务详情，含 `input_filename`；不存在或不是自己的任务（管理员除外）返回 404 `BATCH_NOT_FOUND` | JWT |
 | GET | `/api/v1/batches/{id}/files/{kind}` | 下载任务的文件，`kind` 为 `input`、`output`、`error`，响应是 JSON Lines（`application/x-ndjson`，带附件文件名）；`kind` 非法返回 400 `BATCH_REQUEST_INVALID`，文件不存在或已删除返回 404 `BATCH_NOT_FOUND` | JWT |
-| POST | `/api/v1/batches` | 创建批处理任务：`multipart/form-data`，字段 `file`（JSONL）、`endpoint`，可选 `completion_window`（`1h` 到 `72h` 的整小时，默认 `24h`，不合法返回 400 `BATCH_REQUEST_INVALID`，`params.field` 为 `completion_window`）和 `model`（指定后每个请求的 `body.model` 都改成它，必须是某个运行中或休眠中的部署的对外模型名，否则 400 `BATCH_MODEL_UNKNOWN`）；上传时逐行校验，成功返回 201 和任务对象，所选模型的部署是手动休眠（请求不会唤醒）时响应带 `warnings`。任务属于当前登录用户 | JWT(admin) |
+| POST | `/api/v1/batches` | 创建批处理任务：`multipart/form-data`，字段 `file`（JSONL）、`endpoint`，可选 `completion_window`（`1h` 到 `72h` 的整小时，默认 `24h`，不合法返回 400 `BATCH_REQUEST_INVALID`，`params.field` 为 `completion_window`）和 `model`（指定后每个请求的 `body.model` 都改成它，必须是某个运行中或休眠中的部署的对外模型名，否则 400 `BATCH_MODEL_UNKNOWN`）；上传时逐行校验，成功返回 201 和任务对象，所选模型（未指定 `model` 时是文件里各行的模型）的部署是手动休眠（请求不会唤醒）时响应带 `warnings`。未指定 `model` 时，文件里有模型没有运行中或休眠中的部署使用，返回 400 `BATCH_MODEL_UNKNOWN`（`params.models` 与 `params.model` 为这些模型名，最多列 5 个，更多以 `, ...` 结尾），不创建任务。任务属于当前登录用户 | JWT(admin) |
 | POST | `/api/v1/batches/{id}/cancel` | 取消任务，返回带 `cancelling` 状态的任务对象；已结束的任务返回 409 `BATCH_NOT_CANCELLABLE` | JWT(admin) |
 
 读取（GET）使用只读平台令牌即可；写入需要管理员角色（否则 403 `ADMINISTRATOR_REQUIRED`）和读写范围的平台令牌（否则 403 `PLATFORM_TOKEN_READ_ONLY`）。
@@ -1735,7 +1735,7 @@ Playground 与 `/v1` 网关的边界、外部模型命名 `external:<config-id>:
 | `BATCH_NOT_CANCELLABLE` | 409 | 任务已结束 |
 | `BATCH_FILE_INVALID` | 400 | 输入文件无效；`params` 为 `{line, reason, detail}`，`line` 为 0 表示整个文件，`reason` 是下文的校验错误码 |
 | `BATCH_FILE_TOO_LARGE` | 413 | 文件超过上限；`params` 为 `{limit_mb}` |
-| `BATCH_MODEL_UNKNOWN` | 400 | 创建时指定的 `model` 没有运行中或休眠中的部署使用；`params` 为 `{model}`。已停止的部署不算 |
+| `BATCH_MODEL_UNKNOWN` | 400 | 创建时指定的 `model` 没有运行中或休眠中的部署使用，`params` 为 `{model}`；或没有指定 `model` 时，输入文件里的这些模型没有部署使用，`params` 为 `{model, models}`（同一份列表文本，最多 5 个名字，更多以 `, ...` 结尾）。已停止、已删除的部署不算 |
 | `BATCH_REQUEST_INVALID` | 400 | 请求的某个字段无效；`params` 为 `{field, reason}`，例如不是 multipart、缺少 `file`、`endpoint` 不被支持、`endpoint` 与文件内的 `url` 不一致 |
 
 文件保存在 server 数据目录的 `batch-files/` 下。
@@ -1774,7 +1774,7 @@ Playground 与 `/v1` 网关的边界、外部模型命名 `external:<config-id>:
 | `endpoint` | 必填，`/v1/chat/completions`、`/v1/completions`、`/v1/embeddings` 之一，且等于文件内每一行的 `url`，否则 400 `endpoint_mismatch` |
 | `completion_window` | 必填，`"24h"`（OpenAI 的取值）或 `"1h"` 到 `"72h"` 的整小时（gpuworks 扩展，不带前导零），否则 400 `invalid_completion_window`（`param` 为 `completion_window`）。`expires_at` 是 `created_at` 加这段时间 |
 | `metadata` | 可选，字符串到字符串的对象，最多 16 个键，键 1–64 个字符，值至多 512 个字符，否则 400 `invalid_metadata` |
-| `model` | gpuworks 扩展，可选。对外模型名，每个请求发往它，行里自己的 `body.model` 被替换；省略则各行用自己的模型。必须是某个运行中或休眠中的部署的对外模型名，否则 400 `model_not_found`（`param` 为 `model`）。该部署被人工或定时计划休眠（请求不会唤醒）时仍然接受，创建的响应带 `warnings` |
+| `model` | gpuworks 扩展，可选。对外模型名，每个请求发往它，行里自己的 `body.model` 被替换；省略则各行用自己的模型。必须是某个运行中或休眠中的部署的对外模型名，否则 400 `model_not_found`（`param` 为 `model`）。该部署被人工或定时计划休眠（请求不会唤醒）时仍然接受，创建的响应带 `warnings`。省略 `model` 时，平台在创建时读一遍输入文件，其中有模型没有运行中或休眠中的部署使用（已停止或已删除的不算），返回 400 `model_not_found`，`param` 为 `input_file_id`，不创建任务，文件保留可重用；错误体如下，模型名最多列 5 个，更多以 `, ...` 结尾：`{"error":{"message":"The input file names models that no active deployment serves: A, B. Set a model to send every request to, or deploy these models first","type":"invalid_request_error","param":"input_file_id","code":"model_not_found"}}`。指定了 `model` 时不检查文件里的模型（未知的 `model` 仍是 400 `model_not_found`，`param` 为 `model`）；创建之后才下线的模型在运行时逐个请求失败 |
 
 任务对象的时间都是 Unix 秒，还没到达的为 `null`：
 
@@ -1782,7 +1782,7 @@ Playground 与 `/v1` 网关的边界、外部模型命名 `external:<config-id>:
 {"id":"batch_5a1e9d03c7b24f6e8d2a4b19","object":"batch","endpoint":"/v1/chat/completions","errors":null,"input_file_id":"file-3f9c2a7e1b6d4c8a90e5d721","completion_window":"24h","status":"in_progress","output_file_id":null,"error_file_id":null,"created_at":1790000010,"in_progress_at":1790000012,"expires_at":1790086410,"finalizing_at":null,"completed_at":null,"failed_at":null,"expired_at":null,"cancelling_at":null,"cancelled_at":null,"request_counts":{"total":1000,"completed":410,"failed":3},"metadata":null}
 ```
 
-- 指定了 `model` 的任务对象多一个 `model` 字段（没指定时不出现）；创建的响应在需要时多一个 `warnings` 数组 `[{"code":"model_sleep_held","message":"…","param":"model"}]`，其他读取不带。这两个字段是 gpuworks 扩展，官方 SDK 会忽略它们。
+- 指定了 `model` 的任务对象多一个 `model` 字段（没指定时不出现）；创建的响应在需要时多一个 `warnings` 数组 `[{"code":"model_sleep_held","message":"…","param":"model"}]`（没有指定 `model`、文件里的模型被保持休眠时，`param` 为 `input_file_id`，消息列出这些模型），其他读取不带。这两个字段是 gpuworks 扩展，官方 SDK 会忽略它们。
 - `id` 是 `batch_` 加 24 位十六进制；没有 `metadata` 时为 `null`；`errors` 平时为 `null`，`failed` 状态下是 `{"object":"list","data":[{"code","message","param":null,"line":null}]}`。
 - `status` 取值：`validating`（排队等执行名额，全 server 同时最多执行 32 个任务）、`in_progress`、`finalizing`、`completed`、`failed`（只因平台故障，例如输入文件消失）、`expired`（超过完成时限，没有结果的请求写入错误文件，错误码 `batch_expired`）、`cancelling`、`cancelled`。
 - 取消：不再发送新请求，在途请求最多再等 2 分钟，之后任务以 `cancelled` 结束，已有结果留在输出文件和错误文件里。

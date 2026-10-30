@@ -93,7 +93,7 @@ var routeDocs = map[string]string{
 	"/api/v1/nodes/{}/terminal/settings":        "该节点终端能力与限制（kill switch、并发上限等）",
 	"/api/v1/notices":                           "页头通知铃铛 `{notices: [{id, severity, kind, title?, body?, url?, published_at, read}], unread}`：发布方签名发布的、适用于本安装的通知（`kind` 为 `security` / `release` / `event`，`title`/`body` 按语言给出纯文本）；按紧急程度、再按时间排序，`read` 与 `unread` 按调用者计算",
 	"/api/v1/platform-tokens":                   "当前用户的令牌：`{items:[{id,name,prefix,scope,created_at,expires_at,last_used_at}], total}`；`last_used_at` 每分钟最多更新一次",
-	"/api/v1/playground/models":                 "可在 Playground 调用的已部署模型列表，不包含全局设置中的 AI 助手外部模型；`html_preview.allow_network` 是 HTML 预览的网络策略（来自安全设置）",
+	"/api/v1/playground/models":                 "可在 Playground 调用的已部署模型列表，不包含全局设置中的 AI 助手外部模型；`html_preview.allow_network` 是 HTML 预览的网络策略（来自安全设置）；每项模型有 `sleeping`（布尔），休眠中且请求能唤醒它（部署可休眠、休眠不是运维或定时计划下的保持休眠）时另有 `wakes_on_request: true`（否则省略）：这样的模型收到请求会由网关挂起、唤醒后放行，没有它的休眠模型请求回 503，须先唤醒；试验场据此提示",
 	"/api/v1/playground/openapi.json":           "Playground 代理的 OpenAPI 描述",
 	"/api/v1/providers":                         "已配置的云厂商账号列表",
 	"/api/v1/providers/kinds":                   "支持的云厂商种类，含各自的凭据字段（`credential_fields[].default_value` 为可选的非敏感字段创建默认值，`placeholder` 仅为提示）、默认 `server_dial` 监听地址，以及 `server_dial_supported`（AutoDL 为 false：Pro 实例只开放 HTTP 端口）与 `server_dial_auto_port`（Vast、RunPod 为 true：驱动按平台的端口映射自选监听端口与接入地址）",

@@ -748,6 +748,7 @@ runveil（udocker）节点拉取镜像时，agent 日志（`<state>/agent.log`�
 | `insufficient_empty_gpus` / `insufficient_shared_gpus` | 空闲整卡 / 可共享的卡不够 |
 | `pinned_gpus_unavailable` | 手动放置的 PD 实例钉住的卡被其他部署占着；参数给出 `node`、`gpus`（钉住的卡号）和 `holders`（占卡的部署）。实例不会改用同节点的其他空卡，而是等钉住的卡空出来：停掉或迁走占卡的部署，或把这个部署切成自动放置（`PUT /deployments/{id}/placement-mode`），由平台改用空闲的卡。钉住的卡被平台外进程占着、不健康或空着仍放不下时，仍是对应的原因码 |
 | `waiting_for_yield` | 副本在共卡的部署按出让策略让出卡后放得下，正在等它们让卡；参数给出 `node`、`holders`（占卡的部署，各带 `at_once`，或 `idle_sec` 与按时自动出让的 `max_serve_sec`：它按什么条件把卡让给这个部署）和 `instances`。占卡者睡下后自行解决，见[新部署怎样放到共用的卡上](scheduling-center.md#新部署怎样放到共用的卡上)；不自动出让的占卡者从不被要求让卡 |
+| `reserved_for_sleepers` | 只因为休眠中的部署为请求唤醒留着卡，这个部署放不下；参数给出 `node`、`gpus`（它本来会用的卡）和 `sleepers`（休眠者，每项 `deployment` 与它的出让策略 `policy`）。共卡的休眠部署在请求能唤醒它时才留卡；你或定时计划下的休眠（保持休眠）不留卡。处理：换一张卡，为本部署开启可休眠并选能共卡的出让策略，或手动休眠占卡的部署，见[新部署怎样放到共用的卡上](scheduling-center.md#新部署怎样放到共用的卡上) |
 | `no_free_gpu` | 没有空闲的 GPU |
 | `no_healthy_gpu` | 节点自己的卡都不在能服务的健康级别 |
 | `no_owned_gpu` | 节点没有归本机使用的卡：一张都没有，或全部直通给虚拟机、未绑定驱动、被其他驱动持有 |
