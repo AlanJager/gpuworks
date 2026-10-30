@@ -45,7 +45,7 @@ Open the **Scheduling Center** page. The upper half shows the whole cluster, the
   Hover or keyboard-focus a cell to see the card's details: node, card index, model, memory, the shares that are serving, asleep and free, and its occupants (deployment, yield policy, serving or asleep). The heatmap itself carries no occupant detail, so even a thousand-card fleet costs one read of about 290 KB (about 25 KB gzipped).
 - **Filters and view**: filter by GPU model (several allowed), node label (`key=value`) and node state (has free cards, has sleepers, has cards held outside, offline); type a part of a deployment name in "Find a deployment" and the cards it occupies get a red ring while the rest fade, with a count of the occupied cards. Group by node (the default), by GPU model, or by the value of a node label; sort by name, by free capacity (the unclaimed memory of the cards, not counting offline, faulty or externally held cards) or by contention (sleepers waiting to wake, plus the requests held for deployments asleep on the node, plus the yields of deployments that have cards on it). **Clear filters and view** returns to the default.
 - **Node drawer**: click a cell or a node name and a drawer opens that node: a bar per card split into serving usage, the residue memory of sleepers and free memory, the occupants of each card (deployment and its yield policy, serving or asleep, sleep level, claim and residue), cards held by processes outside the platform marked, and below them the node's [residency timeline](#residency-timeline). The drawer reads only that one node, and only when it is open.
-- **Deployments waiting for placement**: deployments the scheduler refused in the last 30 minutes, with reasons written the same way as the placement status in deployment details.
+- **Deployments waiting for placement**: deployments the scheduler refused in the last 30 minutes, with reasons written the same way as the placement status in deployment details. A new replica waiting for deployments that share its cards to give them up shows the reason `waiting_for_yield` (see [How a New Deployment Gets onto a Shared Card](#新部署怎样放到共用的卡上) below).
 - **Waiting wakes**: which deployments are waiting and since when; the wait can be cancelled.
 - **Schedule actions in the next 24 hours**: time, deployment, action.
 - **Deployments sharing cards**: the stats, over a 6 or 24 hour window, of the deployments across the whole cluster whose yield policy is not never yield; see [Residency Timeline](#residency-timeline).
@@ -306,6 +306,20 @@ When the platform itself put a deployment to sleep (yielding cards), a request t
 - When a yield-on-a-turn or yield-anytime deployment yields, the requests still running are handled by `unfinished`: `abort` cuts them off at once; `wait` first stops new requests (they are held) and waits for the in-flight requests to finish, cutting off what is still running at `unfinished_wait_sec`. An interrupted **non-streaming** request is held by the gateway and replayed once the deployment is back (up to 3 times), so the client only gets the result of the run that finished; a **streaming** request has already started to produce output and cannot be replayed: the client sees HTTP 200, `finish_reason` of `"abort"`, and truncated content, and must retry. The platform-managed [batch jobs](batch-api.md#与随时出让搭配) retry interrupted requests automatically.
 - A deployment that yielded cards sleeps at its `sleep_level` (under `auto` L1 first; the L1 warm-up at instance start already pinned the host memory, and it falls back to L2 when the host cannot hold it); yield-on-a-turn and yield-anytime deployments resume automatically once cards are free. After a server restart, a deployment that yielded its cards is woken only when a request arrives.
 
+### How a New Deployment Gets onto a Shared Card
+
+When you create a new deployment (or add a replica to one), the cards it needs may be held awake by another deployment. When its yield policy is not never yield and the holding deployment's policy is not never yield either, the new replica does not stay at "does not fit": **Deployments waiting for placement** shows `waiting_for_yield` and the holders give up the cards under their yield policies:
+
+> Waiting: batch yields the GPU at once; shared yields the GPU after 30 seconds idle or 2 minutes served this turn. Then the replica is placed on gpu-1.
+
+The reason's parameters are `node`, `holders` (one entry per holding deployment: `deployment`, `at_once`, and when it does not give way at once also `idle_sec`, and for yield-on-a-turn also `max_serve_sec`, that is, the terms on which it gives the cards to this new deployment) and `instances`. Once the holders are asleep, the replica is placed and started automatically; nothing needs to be done by hand. In short:
+
+- The holders sleep under [the same yield rule](../explanation/service-levels.md#让卡规则), using the yield policy of the new deployment: when the new deployment ranks higher, yield-on-a-turn and yield-anytime holders give way at once; otherwise a holder gives way once idle for its idle time; between two yield-on-a-turn deployments it gives way when the holder has served its longest serving time this turn.
+- A new deployment with never yield waits for nobody and needs the cards to be free; a holder with never yield is never asked to give way, so the new replica still waits as one that does not fit.
+- The controller plans the replica again every 5 seconds. A replica of a deployment with a node pool takes a node that needs a yield only when no node fits outright.
+- A holder that gave way does not take the cards back while the new replica is being placed and started (up to 10 minutes); the new replica's turn and idle time count from when it begins to serve.
+- The wait lives in server memory only; after a restart the controller notes it again on its first pass.
+
 ## 调度记录
 
 The **Scheduling history** at the bottom of the Scheduling Center page lists the scheduling events of the whole cluster, newest first:
@@ -363,6 +377,6 @@ For the events of node-loss rescheduling after a node is lost and of drain moves
 
 - Cards are yielded only when the yield policy allows it: a deployment that never yields automatically never sleeps for anyone else; a yielding wake still happens only when an operator names it and the occupant can sleep.
 - No load-based scaling: the replica count changes only when a schedule entry is due.
-- Yield policies other than never yield automatically apply only to single-node deployments; when a new deployment starts and the cards are held by an awake lower-level deployment, the platform does not yield cards for the start, and the deployment waits as one that does not fit.
+- Yield policies other than never yield automatically apply only to single-node deployments; a multi-node or PD deployment whose cards are held still waits as one that does not fit.
 - A scheduled replica count applies only to single-node deployments and automatically placed multi-node and PD ones, not to multi-node or PD deployments placed by hand; a PD entry changes one role, so changing both takes two entries.
 - The evaluator runs inside the server process; nothing happens automatically while the server is down, and after it recovers only the newest entry within 12 hours is made up.

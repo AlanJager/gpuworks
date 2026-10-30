@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -580,5 +582,26 @@ func TestUploadRefusesAFileThatIsNotJSONL(t *testing.T) {
 	}
 	if n := len(globFiles(t, v.cfg.Dir)); n != 2 {
 		t.Fatalf("%d files kept, want only the two accepted", n)
+	}
+}
+
+// A failure that is no refusal answers 500 internal_error with no detail,
+// and logs the cause with the request, so an operator can find it.
+func TestAnInternalFailureIsLogged(t *testing.T) {
+	var logged bytes.Buffer
+	r := newRig(t, Config{Log: slog.New(slog.NewTextHandler(&logged, nil))}, echo)
+	r.start()
+	h := r.svc.V1Handler(func(*http.Request) (Owner, bool) { return Owner{UserID: 1, APIKeyID: 11}, true })
+	v := &v1Rig{rig: r, h: h}
+	file := v.uploadBatchFile("k1", `{"custom_id":"a","method":"POST","url":"/v1/chat/completions","body":{"model":"m","messages":[]}}`+"\n")
+	r.repo.mu.Lock()
+	r.repo.createErr = errors.New("table batches has no column named model_override")
+	r.repo.mu.Unlock()
+	rec := v.do("k1", "POST", "/v1/batches", "application/json", strings.NewReader(`{"input_file_id":"`+file["id"].(string)+`","endpoint":"/v1/chat/completions","completion_window":"24h"}`))
+	if rec.Code != 500 || strings.TrimSpace(rec.Body.String()) != `{"error":{"message":"internal error","type":"server_error","param":null,"code":"internal_error"}}` {
+		t.Fatalf("create = %d %s", rec.Code, rec.Body)
+	}
+	if out := logged.String(); !strings.Contains(out, "batch: request failed") || !strings.Contains(out, "path=/v1/batches") || !strings.Contains(out, "no column named model_override") {
+		t.Fatalf("log = %q, want the cause and the request", out)
 	}
 }

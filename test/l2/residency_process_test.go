@@ -29,35 +29,7 @@ func TestProcessARequestTakesTheCardsBackFromAnOfflineDeployment(t *testing.T) {
 
 	create := func(served string, extra map[string]any) (uint, processInstance) {
 		t.Helper()
-		body := map[string]any{
-			"model_id": modelID, "node_uuid": node, "served_name": served,
-			"engine": "vllm", "image": "gpuworks/fake-engine:test", "sleepable": true,
-		}
-		for k, v := range extra {
-			body[k] = v
-		}
-		raw, _ := json.Marshal(body)
-		resp, data := authedDo(t, http.MethodPost, base, token, "/api/v1/deployments", raw)
-		if resp.StatusCode != http.StatusCreated {
-			t.Fatalf("create %s status=%d body=%s", served, resp.StatusCode, data)
-		}
-		var created struct {
-			ID uint `json:"id"`
-		}
-		if err := json.Unmarshal(data, &created); err != nil {
-			t.Fatal(err)
-		}
-		inst := waitInstance(t, base, token, func(inst processInstance) bool {
-			return inst.DeploymentID == created.ID && inst.State == "running" && inst.ContainerID != "" && len(inst.Argv) > 0
-		})
-		t.Cleanup(func() {
-			if resp, err := authedDo(t, http.MethodDelete, base, token, "/api/v1/deployments/"+itoa(created.ID), nil); err == nil && resp != nil {
-				resp.Body.Close()
-			}
-			waitDeploymentGone(t, base, token, created.ID, 30*time.Second)
-			_ = exec.Command("docker", "rm", "-f", inst.ContainerID).Run()
-		})
-		return created.ID, inst
+		return createFakeSleepable(t, base, token, node, modelID, served, extra)
 	}
 
 	// The online deployment, asleep, and the offline one on the card it gave
@@ -173,4 +145,53 @@ func deploymentField(t *testing.T, base, token string, deploymentID uint, field 
 		t.Fatalf("deployment %d: %v (%s)", deploymentID, err, data)
 	}
 	return wire[field]
+}
+
+// createFakeSleepable creates a sleepable fake-engine deployment of served on
+// node, with the extra request fields, and waits for its instance to run.
+// When the test ends the deployment is deleted, its container removed as a
+// last resort.
+func createFakeSleepable(t *testing.T, base, token, node string, modelID uint, served string, extra map[string]any) (uint, processInstance) {
+	t.Helper()
+	id := postFakeSleepable(t, base, token, node, modelID, served, extra)
+	inst := waitInstance(t, base, token, func(inst processInstance) bool {
+		return inst.DeploymentID == id && inst.State == "running" && inst.ContainerID != "" && len(inst.Argv) > 0
+	})
+	t.Cleanup(func() {
+		removeDeployment(t, base, token, id)
+		_ = exec.Command("docker", "rm", "-f", inst.ContainerID).Run()
+	})
+	return id, inst
+}
+
+// postFakeSleepable creates the deployment without waiting for it to run.
+func postFakeSleepable(t *testing.T, base, token, node string, modelID uint, served string, extra map[string]any) uint {
+	t.Helper()
+	body := map[string]any{
+		"model_id": modelID, "node_uuid": node, "served_name": served,
+		"engine": "vllm", "image": "gpuworks/fake-engine:test", "sleepable": true,
+	}
+	for k, v := range extra {
+		body[k] = v
+	}
+	raw, _ := json.Marshal(body)
+	resp, data := authedDo(t, http.MethodPost, base, token, "/api/v1/deployments", raw)
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("create %s status=%d body=%s", served, resp.StatusCode, data)
+	}
+	var created struct {
+		ID uint `json:"id"`
+	}
+	if err := json.Unmarshal(data, &created); err != nil {
+		t.Fatal(err)
+	}
+	return created.ID
+}
+
+// removeDeployment deletes the deployment and waits until it is gone.
+func removeDeployment(t *testing.T, base, token string, id uint) {
+	if resp, err := authedDo(t, http.MethodDelete, base, token, "/api/v1/deployments/"+itoa(id), nil); err == nil && resp != nil {
+		resp.Body.Close()
+	}
+	waitDeploymentGone(t, base, token, id, 30*time.Second)
 }

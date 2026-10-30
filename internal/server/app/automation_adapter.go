@@ -9,6 +9,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/automation"
 	"gpuworks.ai/gpuworks/internal/server/messages"
+	"gpuworks.ai/gpuworks/internal/server/placewait"
 	"gpuworks.ai/gpuworks/internal/server/planning"
 	"gpuworks.ai/gpuworks/internal/server/proxy"
 	"gpuworks.ai/gpuworks/internal/server/servicelevel"
@@ -27,8 +28,11 @@ type automationAdapter struct {
 	acct    *proxy.Accountant
 	metrics tsdb.Store
 	scale   func(deploymentID uint, role string, replicas int) error
-	log     *slog.Logger
-	now     func() time.Time
+	// waits are the replicas waiting to be placed (the controller's): a wake
+	// does not take the cards one of at least its rank waits for.
+	waits *placewait.Registry
+	log   *slog.Logger
+	now   func() time.Time
 }
 
 // runAutomation carries out schedules, auto sleep, waiting wakes and the
@@ -36,12 +40,15 @@ type automationAdapter struct {
 // nudges it, since a waiting wake may fit once another instance sleeps or
 // goes; a request the gateway holds for a sleeping deployment asks it to wake
 // that one.
-func runAutomation(ctx context.Context, st *store.Store, px *proxy.Proxy, acct *proxy.Accountant, metrics tsdb.Store, scale func(deploymentID uint, role string, replicas int) error, log *slog.Logger) {
-	adapter := &automationAdapter{store: st, acct: acct, metrics: metrics, scale: scale, log: log, now: time.Now}
+func runAutomation(ctx context.Context, st *store.Store, px *proxy.Proxy, acct *proxy.Accountant, metrics tsdb.Store, scale func(deploymentID uint, role string, replicas int) error, waits *placewait.Registry, log *slog.Logger) {
+	adapter := &automationAdapter{store: st, acct: acct, metrics: metrics, scale: scale, waits: waits, log: log, now: time.Now}
 	evaluator := automation.New(adapter, adapter, log)
 	if px != nil {
-		residency := &residencyAdapter{store: st, proxy: px, acct: acct, host: adapter.hostMemory}
+		residency := &residencyAdapter{store: st, proxy: px, acct: acct, host: adapter.hostMemory, waits: waits, now: time.Now}
 		evaluator.WithResidency(residency, residency)
+		if waits != nil {
+			waits.OnWait(evaluator.Demand)
+		}
 		px.SetWakeDemand(evaluator.Demand)
 	}
 	if st.Bus != nil {
@@ -183,11 +190,16 @@ func (a *automationAdapter) Wake(deploymentID uint) (automation.WakeResult, erro
 	if err != nil {
 		return automation.WakeResult{}, err
 	}
-	woken, refused, err := planning.OrderWake(a.store, dep, match, planning.Sleepers(insts), true, true)
-	if err != nil {
-		return automation.WakeResult{}, err
+	sleepers, held := a.notForPlacement(dep, planning.Sleepers(insts))
+	var woken []store.Instance
+	var refused []planning.WakeRefusal
+	if len(sleepers) > 0 {
+		woken, refused, err = planning.OrderWake(a.store, dep, match, sleepers, true, len(held) == 0)
+		if err != nil {
+			return automation.WakeResult{}, err
+		}
 	}
-	result := automation.WakeResult{Woken: uuidList(woken)}
+	result := automation.WakeResult{Woken: uuidList(woken), Waiting: uuidList(held)}
 	for _, r := range refused {
 		result.Waiting = append(result.Waiting, uuidList(r.Instances)...)
 	}
@@ -242,11 +254,62 @@ func (a *automationAdapter) WakeWaiting(deploymentID uint, uuids []string) ([]st
 	if err != nil {
 		return nil, err
 	}
+	waiting, _ = a.notForPlacement(dep, waiting)
+	if len(waiting) == 0 {
+		return nil, nil
+	}
 	woken, _, err := planning.OrderWake(a.store, dep, match, waiting, true, false)
 	if err != nil {
 		return nil, err
 	}
 	return uuidList(woken), nil
+}
+
+// notForPlacement splits the sleepers of dep into those a wake may take
+// cards for and those it leaves asleep: the ones on a card a replica waits
+// to be placed on, of a deployment that ranks at least as high as dep (the
+// cards were given up for it). The placement waits name the instances they
+// wait for; their cards are the ones taken.
+func (a *automationAdapter) notForPlacement(dep *store.Deployment, sleepers []store.Instance) (free, held []store.Instance) {
+	if a.waits == nil {
+		return sleepers, nil
+	}
+	waits := a.waits.Waiting(a.now())
+	if len(waits) == 0 {
+		return sleepers, nil
+	}
+	var holders []store.Instance
+	rank := dep.Policy().Rank()
+	for _, w := range waits {
+		if w.DeploymentID == dep.ID {
+			continue
+		}
+		waiter, err := a.store.GetDeployment(w.DeploymentID)
+		if err != nil || waiter.Policy().Rank() < rank {
+			continue
+		}
+		for _, uuid := range w.Instances {
+			if in, err := a.store.InstanceByUUID(uuid); err == nil {
+				holders = append(holders, *in)
+			}
+		}
+	}
+	taken := planning.InstanceCards(holders)
+	for _, in := range sleepers {
+		out := false
+		for card := range planning.InstanceCards([]store.Instance{in}) {
+			if taken[card] {
+				out = true
+				break
+			}
+		}
+		if out {
+			held = append(held, in)
+		} else {
+			free = append(free, in)
+		}
+	}
+	return free, held
 }
 
 func (a *automationAdapter) EndWaiting(deploymentID uint, uuids []string) error {

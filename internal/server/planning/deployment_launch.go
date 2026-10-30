@@ -18,6 +18,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/deploy"
 	"gpuworks.ai/gpuworks/internal/server/inferenceapi"
 	"gpuworks.ai/gpuworks/internal/server/scheduler"
+	"gpuworks.ai/gpuworks/internal/server/servicelevel"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -209,6 +210,9 @@ func PlanTemplateLaunch(ctx context.Context, st *store.Store, networks Networks,
 	}
 	if !plan.Output.Result.OK || plan.Output.Result.Plan == nil {
 		reason := plan.Output.Result.Message
+		if plan.Output.Yield != nil {
+			reason = YieldRefusal(node, servicelevel.Policy{Yield: req.YieldPolicy}, plan.Output.Yield)
+		}
 		return plan, &reason, nil
 	}
 	validateGPU, err := TemplateGPUValidator(templateLayer)

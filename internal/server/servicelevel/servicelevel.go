@@ -398,20 +398,18 @@ const (
 	ReasonTurn Reason = "turn"
 )
 
-// Yields says whether holder must give its cards to waiter, and why. A
-// never holder does not.
+// Yields says whether holder must give its cards to waiter, and why: by
+// TermsOf, against what the holder is doing. A never holder does not.
 func Yields(holder Holder, waiter Waiter) (Reason, bool) {
-	hp, wp := holder.Policy, waiter.Policy
-	if !ValidYield(hp.Yield) || hp.Yield == Never {
+	terms := TermsOf(holder.Policy, waiter.Policy)
+	switch {
+	case terms.Never:
 		return "", false
-	}
-	if release := hp.IdleRelease(); !holder.Busy && holder.IdleFor >= release {
+	case !holder.Busy && holder.IdleFor >= holder.Policy.IdleRelease():
 		return ReasonIdle, true
-	}
-	if hp.Preemptible() && wp.Rank() > hp.Rank() {
+	case terms.AtOnce:
 		return ReasonRank, true
-	}
-	if hp.TakesTurns() && wp.Rank() == hp.Rank() && holder.AwakeFor >= hp.Turn() {
+	case terms.Turn > 0 && holder.AwakeFor >= terms.Turn:
 		return ReasonTurn, true
 	}
 	return "", false
@@ -426,21 +424,47 @@ func Due(holder Holder, waiter Waiter) (time.Duration, bool) {
 	if _, ok := Yields(holder, waiter); ok {
 		return 0, true
 	}
-	hp, wp := holder.Policy, waiter.Policy
-	if !ValidYield(hp.Yield) || hp.Yield == Never {
+	terms := TermsOf(holder.Policy, waiter.Policy)
+	if terms.Never {
 		return 0, false
 	}
 	var due time.Duration
 	ok := false
 	if !holder.Busy {
-		due, ok = hp.IdleRelease()-holder.IdleFor, true
+		due, ok = terms.Idle-holder.IdleFor, true
 	}
-	if hp.TakesTurns() && wp.Rank() == hp.Rank() {
-		if left := hp.Turn() - holder.AwakeFor; !ok || left < due {
+	if terms.Turn > 0 {
+		if left := terms.Turn - holder.AwakeFor; !ok || left < due {
 			due, ok = left, true
 		}
 	}
 	return due, ok
+}
+
+// Terms are when a holder gives its cards to a waiter: AtOnce, whatever it
+// is doing; else once idle for Idle, or, when Turn is set, once it has served
+// that long. Never is a holder that does not give them up at all.
+type Terms struct {
+	Never  bool
+	AtOnce bool
+	Idle   time.Duration
+	Turn   time.Duration
+}
+
+// TermsOf are the terms of Yields, stated without a holder's state: what a
+// waiter is told it waits for.
+func TermsOf(holder, waiter Policy) Terms {
+	if !ValidYield(holder.Yield) || holder.Yield == Never {
+		return Terms{Never: true}
+	}
+	if holder.Preemptible() && waiter.Rank() > holder.Rank() {
+		return Terms{AtOnce: true}
+	}
+	out := Terms{Idle: holder.IdleRelease()}
+	if holder.TakesTurns() && waiter.Rank() == holder.Rank() {
+		out.Turn = holder.Turn()
+	}
+	return out
 }
 
 // SharesCardsWith says a deployment of yield policy a may be placed on cards

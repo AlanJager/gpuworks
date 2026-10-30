@@ -18,6 +18,7 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/network"
+	"gpuworks.ai/gpuworks/internal/server/placewait"
 	"gpuworks.ai/gpuworks/internal/server/planning"
 	"gpuworks.ai/gpuworks/internal/server/prepobs"
 	"gpuworks.ai/gpuworks/internal/server/provider"
@@ -49,9 +50,12 @@ type Controller struct {
 	log        *slog.Logger
 	// servingDial reaches serving forwarders (checkServingPath); nil dials
 	// with the default dialer. Tests replace it.
-	servingDial  servingdial.DialFunc
-	q            *workq
-	cacheQ       *workq
+	servingDial servingdial.DialFunc
+	q           *workq
+	cacheQ      *workq
+	// waits are the deployments whose replica waits for others to give up
+	// cards (placement_wait.go), read by the residency arbiter.
+	waits        *placewait.Registry
 	retryBackoff time.Duration
 	offlineGrace time.Duration
 	// watchingSince is when this server began watching its nodes (Run). A
@@ -155,6 +159,7 @@ func New(st *store.Store, hub HubPusher, log *slog.Logger) *Controller {
 		retryBackoff: 15 * time.Second, offlineGrace: 2 * time.Minute,
 		maxAttempts: 3, modelSyncs: map[string]*modelSyncRun{}, sleepPushed: map[uint]map[string]sleepOrder{},
 		now: time.Now, observation: newObservationRefresh(), evictions: prepobs.NewPhases[store.FileRef](),
+		waits: placewait.New(),
 	}
 	c.SetEnginePorts(defaultEnginePorts.Start, defaultEnginePorts.End)
 	return c

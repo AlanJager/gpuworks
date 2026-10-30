@@ -5,7 +5,7 @@ Date: 2026-10-28 · Status: Accepted
 Terminology follows `CONTEXT.md`: **yield policy** (called service level in the original decision of 2026-10-28), **residency arbiter**, **yield**, **held sleep**.
 Changes two points of decision 1 in [ADR 0058](0058-scheduling-center-acts-through-operator-orders.md): “no preemption” and “the gateway does not hold requests while waiting for a wake”;
 the rest (schedules, idle sleep, waiting wakes, yielding wakes, sleep releasing capacity down to a residue) is unchanged.
-This page keeps the original decision of 2026-10-28 and two amendments of 2026-10-29; **service level** and the presets are no longer terms after the second amendment (the last section), which states the current behaviour.
+This page keeps the original decision of 2026-10-28 and three amendments of 2026-10-29; **service level** and the presets are no longer terms after the second amendment, which states the current behaviour; the third amendment (the last section) adds that a new deployment waits for cards too.
 
 ## Background
 
@@ -60,7 +60,7 @@ Held requests, in-flight counts, each deployment's residency start this turn, th
 - The two sharing patterns, real-time plus batch and several models taking turns, no longer need operators to arrange them by hand; every action still maps one-to-one to a timeline entry.
 - When an offline or shared deployment is preempted, its in-flight requests are truncated: a non-streaming request is held by the gateway and replayed once the deployment resumes; a streaming request cannot be replayed, so the client sees HTTP 200 with `finish_reason: "abort"` and must retry on its own, and long jobs are better sent as platform-hosted batch jobs.
 - Yielding uses L1: the pinned host memory is already held since the prewarm, so L1 takes no more, switches fastest and reads nothing from disk; the cost is that every sleepable deployment holds about 1.9 times its weight size in host memory from the start, which hosts running several of them must plan for.
-- The first version covers only single-node deployments; multi-node and PD stay resident. When a new deployment starts and the cards are held by an awake lower-level deployment, the first version does not preempt for the start, and the deployment waits as one that does not fit, to be placed once the other yields or sleeps.
+- The first version covers only single-node deployments; multi-node and PD stay resident. When a new deployment starts and the cards are held by an awake lower-level deployment, the first version does not preempt for the start, and the deployment waits as one that does not fit, to be placed once the other yields or sleeps (replaced by the amendment at the end of this page).
 - The arbiter and the gateway counts live in memory and are read per deployment without scanning all deployments; levels affect only the few deployments that share cards by service level, and the path for resident deployments is unchanged.
 
 ## Amendment (2026-10-29): One Yield Policy Replaces the Separate Service Level and Idle Sleep Settings
@@ -121,3 +121,21 @@ After the previous amendment there were two layers in the UI: the yield policy w
 - A deployment that relied on “auto sleep when not preempted” to free GPU memory no longer sleeps by itself after the upgrade; use a schedule to sleep at fixed times.
 - The length of a `timeslice` turn is now an upper limit the operator states; a model that is slow to switch needs a larger `max_serve_sec` set by hand.
 - Two `idle` deployments sharing a card is no longer refused, and operators need to read the warning.
+
+## Amendment (2026-10-29): A New Deployment as a Waiter for Cards
+
+The original decision, “when a new deployment starts and its cards are held by an awake lower-level deployment, the first version does not preempt for the start, and the deployment waits as one that does not fit” (in Consequences), is replaced by this section. In use, an online deployment created onto a card an awake batch deployment held stayed at “does not fit” until an operator made room by hand, which is the opposite of “when the realtime side comes, take the card back”. Now a new replica is a waiter for cards too.
+
+**1. Placement plans again with the holders that share the cards counted as asleep.** When a deployment whose yield policy is not `never` starts a new replica and it does not fit, placement counts the awake instances of the deployments that share cards with it (whose policy is not `never` either) as asleep and plans again; if it fits, the replica is no longer “does not fit” but waits to be placed, with the scheduling reason code `waiting_for_yield` and the parameters `node`, `holders` (one entry per holding deployment: `deployment`, `at_once`, and when it does not give way at once also `idle_sec`, and for yield-on-a-turn `max_serve_sec`, that is, the terms on which it gives way to this new deployment) and `instances`. The terms come from the yield rule (`servicelevel.TermsOf`), shared by placement, the arbiter and the UI wording.
+
+**2. The residency arbiter treats the replica like a request held for a sleeping deployment, with the new deployment's policy.** The holders sleep under the same yield rule: when the new replica ranks higher, yield-on-a-turn and yield-anytime holders give way at once; otherwise a holder gives way once idle for its idle time; between two yield-on-a-turn deployments it gives way when the holder has served its longest serving time this turn. A new deployment with `never` waits for nobody and still needs free cards; a holder with `never` is never asked to give way.
+
+**3. The controller plans again every 5 seconds.** A replica with a node pool takes a node that needs a yield only when no node fits outright. The wait lives in memory only and adds nothing to persistence; after a server restart the controller notes it again on its first pass.
+
+**4. A holder that gave way does not take the cards back.** The deployment that yielded does not take the cards back while the new replica is being placed and started (up to 10 minutes; loading a model can take minutes); the new replica's turn and idle time count from when it begins to serve, otherwise it would be made to give way again right after waking for having “served enough” or “been idle”.
+
+**Consequences.**
+
+- Measured in the process test: an online (`idle`) deployment created onto a card an awake yield-anytime (`anytime`) deployment held started serving about 6 seconds after creation, and the yield-anytime deployment was put to sleep by rank.
+- Multi-node and PD deployments must still use `never` and take no part; when their cards are held they wait as “does not fit”, as before.
+- A new deployment's replica can thereby make others sleep; the action is still written to the timeline (`AUTO_SLEEP`, `trigger: preempt`, `for_deployment` being the new deployment).

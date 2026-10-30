@@ -1,6 +1,7 @@
 package automation
 
 import (
+	"fmt"
 	"sort"
 	"time"
 
@@ -19,12 +20,18 @@ const (
 	TriggerPreempt = "preempt"
 )
 
-// Waiter is a deployment with requests held for its wake.
+// Waiter is a deployment with requests held for its wake, or (Place) one
+// whose next replica waits for room to be placed.
 type Waiter struct {
 	DeploymentID uint
 	Policy       servicelevel.Policy
-	// Since is when its oldest held request came.
+	// Since is when its oldest held request came, or its replica started
+	// waiting.
 	Since time.Time
+	// Place says it has nothing asleep to wake: what blocks it is what keeps
+	// its replica from being placed, and once that sleeps the controller
+	// places it.
+	Place bool
 }
 
 // Holder is an awake replica on cards a waiting deployment needs, and the
@@ -65,6 +72,9 @@ type ResidencySource interface {
 	Blocking(deploymentID uint) (Blocking, error)
 	// Activity is the deployment's traffic.
 	Activity(deploymentID uint) Activity
+	// Settling says the deployment is not serving yet: its replica waits to
+	// be placed, or an instance of it is still starting.
+	Settling(deploymentID uint) bool
 }
 
 // ResidencyActions is how the residency arbiter acts.
@@ -110,6 +120,9 @@ type residencyState struct {
 	// next is when the last look found the next yield due, zero when none
 	// is (Evaluator.residencyDue).
 	next time.Time
+	// starting are holders last seen still starting: once one serves, its
+	// turn and idle time count from then.
+	starting map[uint]bool
 }
 
 type yielded struct {
@@ -118,8 +131,12 @@ type yielded struct {
 }
 
 // yieldGuard is how long a holder leaves the cards it gave up to the one it
-// gave them to, at most, while that one wakes.
-const yieldGuard = 2 * time.Minute
+// gave them to, at most, while that one wakes; startGuard, while that one
+// is placed and starts, which loading a model can take minutes of.
+const (
+	yieldGuard = 2 * time.Minute
+	startGuard = 10 * time.Minute
+)
 
 type drain struct {
 	since time.Time
@@ -128,6 +145,10 @@ type drain struct {
 	instances []string
 	params    map[string]any
 }
+
+// yieldPoll is how often the arbiter looks while a yield it ordered lands,
+// so the waiter wakes as soon as the room is there.
+const yieldPoll = 250 * time.Millisecond
 
 // busyPoll is how often the arbiter looks again at a holder that yields
 // once idle but is busy: no clock says when its requests end.
@@ -142,7 +163,7 @@ func (e *Evaluator) WithResidency(source ResidencySource, actions ResidencyActio
 	e.res = &residencyState{
 		source: source, actions: actions, demand: make(chan struct{}, 1),
 		awakeAt: map[uint]time.Time{}, preempted: map[uint]time.Time{}, draining: map[uint]drain{}, wokeAt: map[uint]time.Time{},
-		yieldedFor: map[uint]yielded{}, wakeTrigger: map[uint]string{},
+		yieldedFor: map[uint]yielded{}, wakeTrigger: map[uint]string{}, starting: map[uint]bool{},
 	}
 	return e
 }
@@ -171,6 +192,7 @@ type waiting struct {
 	policy servicelevel.Policy
 	since  time.Time
 	resume bool
+	place  bool
 }
 
 // residency wakes the deployments requests wait for, and makes room for
@@ -192,7 +214,7 @@ func (e *Evaluator) residency(now time.Time) {
 	listed := map[uint]bool{}
 	for _, w := range waiters {
 		listed[w.DeploymentID] = true
-		queue = append(queue, waiting{id: w.DeploymentID, policy: w.Policy, since: w.Since})
+		queue = append(queue, waiting{id: w.DeploymentID, policy: w.Policy, since: w.Since, place: w.Place})
 	}
 	for id, since := range r.preempted {
 		if listed[id] {
@@ -215,6 +237,9 @@ func (e *Evaluator) residency(now time.Time) {
 		}
 		return queue[a].since.Before(queue[b].since)
 	})
+	if len(queue) > 0 {
+		e.log.Debug("automation: residency look", "queue", queueText(queue))
+	}
 	yielding := map[uint]bool{}
 	for id := range r.draining {
 		yielding[id] = true
@@ -241,13 +266,24 @@ func (e *Evaluator) residency(now time.Time) {
 			delete(r.wokeAt, id)
 		}
 	}
+	// While a yield lands, look often: the waiter's wake waits on it, and a
+	// nudge would add its settle on top of the sleep.
+	for _, y := range r.yieldedFor {
+		if now.Sub(y.at) < yieldGuard {
+			if _, asleep := r.source.Wakeable(y.to); asleep {
+				r.dueAt(now.Add(yieldPoll))
+				break
+			}
+		}
+	}
 }
 
 // serveWaiter wakes a waiter, or, when its wake waits for room, puts to
 // sleep what blocks it once that must give way. ordered says its wake was
-// ordered already and waits for room: only the blockers are looked at.
+// ordered already and waits for room: only the blockers are looked at, as
+// for a replica waiting to be placed.
 func (e *Evaluator) serveWaiter(now time.Time, w waiting, ordered bool, yielding map[uint]bool) {
-	if !ordered && !e.orderWake(now, w) {
+	if !ordered && !w.place && !e.orderWake(now, w) {
 		return
 	}
 	e.makeRoom(now, w, yielding)
@@ -298,8 +334,16 @@ func (e *Evaluator) makeRoom(now time.Time, w waiting, yielding map[uint]bool) {
 		if yielding[h.DeploymentID] || h.DeploymentID == w.id {
 			return
 		}
-		// Put to sleep for this waiter already: the sleep has not landed.
-		if y, ok := r.yieldedFor[h.DeploymentID]; ok && y.to == w.id && now.Sub(y.at) < yieldGuard {
+		// Put to sleep for a waiter already: the sleep has not landed, and
+		// the cards it frees are that waiter's.
+		if y, ok := r.yieldedFor[h.DeploymentID]; ok && now.Sub(y.at) < yieldGuard {
+			return
+		}
+		// A holder still starting has served nothing and is asked nothing:
+		// look again once it may have started.
+		if r.source.Settling(h.DeploymentID) {
+			r.starting[h.DeploymentID] = true
+			r.dueAt(now.Add(busyPoll))
 			return
 		}
 		state := e.holderState(now, h)
@@ -323,6 +367,10 @@ func (e *Evaluator) makeRoom(now time.Time, w waiting, yielding map[uint]bool) {
 // holderState is a holder as the yield rule reads it.
 func (e *Evaluator) holderState(now time.Time, h Holder) servicelevel.Holder {
 	r := e.res
+	if r.starting[h.DeploymentID] {
+		delete(r.starting, h.DeploymentID)
+		r.awakeAt[h.DeploymentID] = now
+	}
 	since := e.started
 	if at, ok := r.awakeAt[h.DeploymentID]; ok && at.After(since) {
 		since = at
@@ -450,6 +498,29 @@ func (e *Evaluator) stillWakingFor(now time.Time, id uint) bool {
 			return true
 		}
 	}
+	if now.Sub(y.at) < startGuard && r.source.Settling(y.to) {
+		return true
+	}
+	// The one it gave way to serves now: its turn, and its idle time,
+	// count from here.
+	if at, ok := r.awakeAt[y.to]; !ok || at.Before(y.at) {
+		r.awakeAt[y.to] = now
+	}
 	delete(r.yieldedFor, id)
 	return false
+}
+
+func queueText(queue []waiting) []string {
+	out := make([]string, len(queue))
+	for i, w := range queue {
+		kind := "request"
+		switch {
+		case w.place:
+			kind = "place"
+		case w.resume:
+			kind = "resume"
+		}
+		out[i] = fmt.Sprintf("%d:%s:%s", w.id, w.policy.Yield, kind)
+	}
+	return out
 }

@@ -1,5 +1,8 @@
 {
-  "noOperations": {"title": "This deployment will expose no inference API", "description": "The model declares no inference operation (chat, text completion, embeddings and so on): the deployment will not appear in the Playground and cannot be health checked. Set its operations on the Models page before deploying."},
+  "noOperations": {
+    "title": "This deployment will expose no inference API",
+    "description": "The model declares no inference operation (chat, text completion, embeddings and so on): the deployment will not appear in the Playground and cannot be health checked. Set its operations on the Models page before deploying."
+  },
   "catalog": {
     "myModels": "My models",
     "catalogModels": "Built-in catalog",
@@ -158,6 +161,7 @@
     "pool_empty": "No node can take a replica now: of {{nodes}} nodes, {{unmet}} do not satisfy the deployment's node requirements, {{cordoned}} are cordoned and {{offline}} are offline. Bring a node online or uncordon it, add one that satisfies the requirements, or widen them.",
     "node_cordoned": "Node {{node}} is cordoned; the replica starts once scheduling resumes there, or pick another node under Adjust replicas.",
     "pool_no_fit": "None of the {{tried}} best of {{candidates}} candidate nodes has room for a replica. The best, {{node}}, refused: {{first}}. Free resources there, scale down another deployment, or add nodes.",
+    "waiting_for_yield": "Waiting until {{holders}}; the replica then goes on {{node}}.",
     "model_unavailable": "Model {{model}} could not be acquired on node {{node}}, or waits for a source to be chosen, so no replica starts there. Retry the sync for that node on the models page, or use the public download instead.",
     "image_delivery_waiting": "Waiting for image {{image}} to arrive on node {{node}}. Check its transfer progress on the images page; a stalled peer transfer is cancelled so it can be retried.",
     "image_delivery_failed": "Pre-pulling image {{image}} on node {{node}} failed, so the multi-node deployment cannot start. The platform keeps retrying; check the reason on the images page or review the pull settings.",
@@ -942,7 +946,12 @@
     "hostPathPlaceholder": "Host path, for example /srv/cache",
     "volumePlaceholder": "Volume name",
     "containerPathPlaceholder": "Container path, for example /cache",
-    "purpose": { "label": "Purpose", "models": "Models", "data": "Data", "scratch": "Scratch" },
+    "purpose": {
+      "label": "Purpose",
+      "models": "Models",
+      "data": "Data",
+      "scratch": "Scratch"
+    },
     "readOnly": "Read-only",
     "deleteMountAria": "Delete mount",
     "addMount": "Add Mount"
@@ -1013,5 +1022,15 @@
     "applyNote": {
       "partition_change": "Turning dGPU on or off, or changing its partition backend, retires every old instance before the new ones start: the replicas cannot be replaced one at a time, and the service is interrupted until they are ready."
     }
+  },
+  "scheduleHolder": {
+    "atOnce": "{{deployment}} gives up its GPUs now",
+    "idle": "{{deployment}} gives up its GPUs after {{idle}} idle",
+    "idleOrTurn": "{{deployment}} gives up its GPUs after {{idle}} idle or {{turn}} of serving",
+    "sleeping": "the deployments giving up their GPUs finish going to sleep",
+    "separator": "; ",
+    "seconds": "{{value}} s",
+    "minutes": "{{value}} min",
+    "hours": "{{value}} h"
   }
 }

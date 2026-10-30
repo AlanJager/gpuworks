@@ -86,10 +86,21 @@ A sleep ordered by an operator or a schedule is a held sleep: a request does not
 
 When a deployment that shares cards by yield policy (any policy other than never yield) is asleep, deployments it does not share with (never yield) still count its full claim, so no deployment lands on its cards and leaves it unable to wake; for the other deployments that share cards by yield policy only the residue counts and they may be placed there. The yield policy can already be chosen when a deployment is created, and placement and preview are computed from its policy.
 
+## How a New Replica Waits for Room
+
+When a deployment that shares cards by yield policy (any policy other than never yield) starts a new replica, the cards it needs may be held awake by other deployments that share them. The replica then no longer stays unplaceable: placement plans it again with the awake instances of the deployments that share cards with it (whose policy is not never yield either) counted as asleep; if it fits that way, the replica waits for them to give up the cards, and the pending reason is `waiting_for_yield`. The reason names the node, the terms on which each holder deployment gives way (`holders`: `at_once` gives way at once, or after `idle_sec` idle or `max_serve_sec` served in this turn), and the holding instances. The UI reads, for example: "Waiting: batch yields the GPU at once; shared yields the GPU after 30 seconds idle or 2 minutes served this turn. Then the replica is placed on gpu-1."
+
+- **The residency arbiter treats the replica like a request held for a sleeping deployment**, with the policy of the deployment the replica belongs to, and puts the holders to sleep by [the same yield rule](#让卡规则): when the newcomer ranks higher, yield-on-a-turn and yield-anytime holders give way at once; otherwise the holder gives way once it has been idle for its idle time; between two yield-on-a-turn deployments it gives way when the holder has served its longest serving time this turn. The replica is placed and started only after the holders are asleep and only their residue is left on the cards.
+- **A new deployment with never yield waits for nobody** and still needs free cards; a holder with never yield is never asked to give way.
+- While it waits, the controller plans the replica again every 5 seconds. When a deployment has several candidate nodes (a pool), a node that needs a yield is taken only when no node fits outright.
+- A holder that gave way does not take the cards back while the new replica is being placed and started (up to 10 minutes); the new replica's turn and idle time count from when it begins to serve.
+- The wait lives in server memory only: after a server restart the controller notes it again on its first pass.
+- Measured (process test): an online (yield-when-idle) deployment created onto a card an offline (yield-anytime) deployment held awake started serving about 6 seconds after creation, and the offline one was put to sleep by rank.
+
 ## Limitations
 
 - Policies other than never yield cover single-node deployments only; a multi-node or PD deployment must use never yield.
-- When a new deployment starts while its cards are held by an awake deployment, the platform does not make that one yield for the start; the new deployment waits as unplaceable until the other yields or sleeps.
+- A new replica waiting for holders to give up cards applies only to single-node deployments that share cards by yield policy (see the section above); a multi-node or PD deployment uses never yield and still waits as unplaceable when its cards are held.
 - Held requests, each wake's start time, and the pending-resume list all live in server memory: after a server restart, a deployment that yielded its cards is woken only when a request arrives.
 - Requests interrupted on yield-anytime and yield-on-a-turn deployments must be retried by the client; the platform-managed [batch jobs](../how-to/batch-api.md#与随时出让搭配) (`/v1/batches`) retry automatically until the job expires.
 - A deployment does not sleep on its own while no other deployment waits for its cards. A deployment that had "auto sleep when not preempted" turned on before the upgrade no longer sleeps on its own when nobody waits for its cards; to sleep at fixed times, use a [schedule](../how-to/scheduling-center.md#定时计划).

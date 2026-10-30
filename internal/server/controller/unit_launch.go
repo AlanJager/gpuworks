@@ -229,6 +229,7 @@ func (c *Controller) persistGeneration(ctx context.Context, dep *store.Deploymen
 		return err
 	}
 	persisted = true
+	c.waits.Done(dep.ID)
 	// Every rank is pushed even when one push fails: the rows are written,
 	// and a rank whose push is skipped would wait for a push nothing else
 	// makes. A node that missed its push gets the desired state when it

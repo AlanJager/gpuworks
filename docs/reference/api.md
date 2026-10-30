@@ -680,7 +680,7 @@ macOS 忽略 `no_systemd`。
 
 - `node_requirements` 总是出现，无条件时为 `{}`；固定节点存于 `gpuworks.ai/node`，已删除的节点仍保留在条件中，但无法匹配。
   详情额外返回 `node_requirement_labels[]`：`{key,value,display,display_code?,nodes}`。节点与网络显示名称；`nodes` 是当前匹配数量，0 不代表条件失效，而是当前没有节点匹配。列表不带这些显示字段。
-- `placement_strategy` 为 `spread` 或 `binpack`。普通单机副本尚无实例时，`placement_status{unscheduled,reason,at}` 给出等待数量与最近原因：`pool_empty` 或 `pool_no_fit`。
+- `placement_strategy` 为 `spread` 或 `binpack`。普通单机副本尚无实例时，`placement_status{unscheduled,reason,at}` 给出等待数量与最近原因：`pool_empty`、`pool_no_fit` 或 `waiting_for_yield`（等共卡的部署按出让策略让卡，见[使用调度中心](../how-to/scheduling-center.md#新部署怎样放到共用的卡上)）。
   原因参数包含各类计数、最多 3 台最接近的候选及拒绝原因；每个等待超时窗口最多记录一次。
 - `placement_mode` 只在多机与 PD 部署出现：`auto` 表示节点由平台挑选（创建时按空闲卡挑，单元启动时放不下再换），`manual` 表示节点是运维写的；升级前已有的部署都是 `manual`。单机部署不带这个字段，它的放置写在节点条件里（`GET /deployments/{id}/draft` 的 `placement_mode` 与 `node_uuid`）。
 - `max_replicas` 是调整副本数的上限；`restart_requested_at` 只在滚动重启进行中出现。

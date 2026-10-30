@@ -284,6 +284,12 @@ const (
 	// were each planned and none had room; {node} and {first} are the best
 	// one and why it refused.
 	ReasonPoolNoFit = "pool_no_fit"
+	// ReasonWaitingForYield: the replica fits on {node} once deployments
+	// sharing its cards by yield policy give them up ({holders}: each one's
+	// {deployment} and the terms it gives way on: {at_once}, or once idle
+	// {idle_sec} or, taking turns, at the end of {max_serve_sec}); the
+	// residency arbiter puts them to sleep by those terms.
+	ReasonWaitingForYield = "waiting_for_yield"
 	// ReasonModelUnavailable: a model the replica reads ({model}) is stuck on
 	// its node ({node}) - its acquisition failed or waits for an operator to
 	// choose a source ({state}, {detail}).
