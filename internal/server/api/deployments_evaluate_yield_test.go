@@ -15,12 +15,18 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/yieldpolicy"
 )
 
-// The deploy form's previews say why a draft does not fit as the controller
-// would record it: a draft that shares cards by yield policy, on a card an
-// awake deployment that gives way to it holds, waits for that one to yield
-// (waiting_for_yield), in the manual plan and in the automatic candidates
-// alike; a draft that shares with no one reads as the card being in use.
-func TestEvaluateSaysADraftWaitsForTheHolderToYield(t *testing.T) {
+// yieldEvaluate is a node of one 80 GiB card held awake by batch (yield
+// policy anytime) and an evaluate call against it, for drafts of the model.
+type yieldEvaluate struct {
+	st       *store.Store
+	model    *store.Model
+	batch    *store.Deployment
+	evaluate func(body string) map[string]any
+	raw      func(body string) []byte
+}
+
+func newYieldEvaluate(t *testing.T) *yieldEvaluate {
+	t.Helper()
 	st, err := store.Open("file:"+t.Name()+"?mode=memory&cache=shared", bus.New())
 	if err != nil {
 		t.Fatal(err)
@@ -54,19 +60,35 @@ func TestEvaluateSaysADraftWaitsForTheHolderToYield(t *testing.T) {
 		t.Fatal(err)
 	}
 	h := &apiHandlers{d: Deps{Store: st}}
-	evaluate := func(body string) map[string]any {
+	raw := func(body string) []byte {
 		t.Helper()
 		rec := httptest.NewRecorder()
 		h.evaluate(rec, httptest.NewRequest(http.MethodPost, "/api/v1/evaluate", strings.NewReader(body)))
 		if rec.Code != http.StatusOK {
 			t.Fatalf("evaluate status = %d body = %s", rec.Code, rec.Body.String())
 		}
+		return rec.Body.Bytes()
+	}
+	evaluate := func(body string) map[string]any {
+		t.Helper()
 		var out map[string]any
-		if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		if err := json.Unmarshal(raw(body), &out); err != nil {
 			t.Fatal(err)
 		}
 		return out
 	}
+	return &yieldEvaluate{st: st, model: model, batch: batch, evaluate: evaluate, raw: raw}
+}
+
+// The deploy form's previews say why a draft does not fit as the controller
+// would record it: a draft that shares cards by yield policy, on a card an
+// awake deployment that gives way to it holds, waits for that one to yield
+// (waiting_for_yield), in the manual plan and in the automatic candidates
+// alike; a draft that never yields does not wait for it, and says so
+// (does_not_wait_for_yield, TestEvaluateNamesTheHoldersYieldPolicyKeepsADraftFrom).
+func TestEvaluateSaysADraftWaitsForTheHolderToYield(t *testing.T) {
+	f := newYieldEvaluate(t)
+	model, evaluate := f.model, f.evaluate
 	planCode := func(out map[string]any) string {
 		plan, _ := out["plan"].(map[string]any)
 		message, _ := plan["message"].(map[string]any)
@@ -79,8 +101,8 @@ func TestEvaluateSaysADraftWaitsForTheHolderToYield(t *testing.T) {
 	if got := planCode(evaluate(fmt.Sprintf(manual, model.ID, idle))); got != "waiting_for_yield" {
 		t.Fatalf("manual plan of an idle draft = %q, want waiting_for_yield", got)
 	}
-	if got := planCode(evaluate(fmt.Sprintf(manual, model.ID, ""))); got == "waiting_for_yield" || got == "" {
-		t.Fatalf("manual plan of a never draft = %q, want the scheduler's own refusal", got)
+	if got := planCode(evaluate(fmt.Sprintf(manual, model.ID, ""))); got != "does_not_wait_for_yield" {
+		t.Fatalf("manual plan of a never draft = %q, want does_not_wait_for_yield", got)
 	}
 
 	auto := evaluate(fmt.Sprintf(`{"model_id":%d,"engine":"vllm","placement_mode":"auto","target_vendor":"nvidia","sleepable":true%s}`, model.ID, idle))
@@ -107,5 +129,63 @@ func TestEvaluateSaysADraftWaitsForTheHolderToYield(t *testing.T) {
 		if got := jsonOf(t, evaluate(tc.body)["yield_policy_eligible"]); got != tc.want {
 			t.Errorf("%s: yield_policy_eligible = %s, want %s", tc.name, got, tc.want)
 		}
+	}
+}
+
+// rawPart is the literal wire JSON at path in an evaluate answer: an object
+// key, or "node=<uuid>" for that node's entry of a candidates list.
+func rawPart(t *testing.T, body []byte, path ...string) string {
+	t.Helper()
+	for _, key := range path {
+		if node, ok := strings.CutPrefix(key, "node="); ok {
+			var list []map[string]json.RawMessage
+			if err := json.Unmarshal(body, &list); err != nil {
+				t.Fatal(err)
+			}
+			body = nil
+			for _, entry := range list {
+				if string(entry["node_uuid"]) == `"`+node+`"` {
+					body, _ = json.Marshal(entry)
+				}
+			}
+			continue
+		}
+		var object map[string]json.RawMessage
+		if err := json.Unmarshal(body, &object); err != nil {
+			t.Fatal(err)
+		}
+		body = object[key]
+	}
+	return string(body)
+}
+
+// When yield policy keeps a draft off a card an awake deployment holds, the
+// plan and the automatic candidate name the holder and its policy: a draft
+// that never yields does not wait for a holder that would yield
+// (does_not_wait_for_yield), and a holder that never yields does not give
+// way to a draft that shares (held_by_non_yielding).
+func TestEvaluateNamesTheHoldersYieldPolicyKeepsADraftFrom(t *testing.T) {
+	f := newYieldEvaluate(t)
+	manual := fmt.Sprintf(`{"model_id":%d,"engine":"vllm","node_uuid":"yield-node","sleepable":true%%s}`, f.model.ID)
+	auto := fmt.Sprintf(`{"model_id":%d,"engine":"vllm","placement_mode":"auto","target_vendor":"nvidia","sleepable":true%%s}`, f.model.ID)
+	check := func(policy, want string) {
+		t.Helper()
+		if got := rawPart(t, f.raw(fmt.Sprintf(manual, policy)), "plan", "message"); got != want {
+			t.Errorf("manual plan %q = %s, want %s", policy, got, want)
+		}
+		if got := rawPart(t, f.raw(fmt.Sprintf(auto, policy)), "candidates", "node=yield-node", "reason"); got != want {
+			t.Errorf("automatic candidate %q = %s, want %s", policy, got, want)
+		}
+	}
+	check("", `{"code":"does_not_wait_for_yield","params":{"blockers":[],"gpus":[0],"holders":[{"deployment":"batch","policy":"anytime"}],"node":"yield-node"}}`)
+
+	if err := f.st.SetDeploymentYieldPolicy(f.batch.ID, yieldpolicy.Policy{Yield: yieldpolicy.Never}); err != nil {
+		t.Fatal(err)
+	}
+	check(`,"yield_policy":{"policy":"idle"}`, `{"code":"held_by_non_yielding","params":{"blockers":[{"deployment":"batch","policy":"never"}],"gpus":[0],"holders":[],"node":"yield-node"}}`)
+	// A never draft beside a never holder is the card in use: yield policy
+	// is not what keeps it off.
+	if got := rawPart(t, f.raw(fmt.Sprintf(manual, "")), "plan", "message"); strings.Contains(got, "yield") {
+		t.Errorf("never draft beside a never holder = %s", got)
 	}
 }

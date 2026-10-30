@@ -60,7 +60,11 @@ type LaunchRequest struct {
 	// YieldPolicy is the deployment's yield policy (package yieldpolicy):
 	// the cards of deployments it does not share with stay reserved against
 	// it even while they sleep. Empty reads as never.
-	YieldPolicy        string
+	YieldPolicy string
+	// ExplainHolders asks a refusal to name the awake holders yield policy
+	// keeps the launch from (Input.ExplainHolders): the deploy form's
+	// evaluation sets it, the controller does not.
+	ExplainHolders     bool
 	MasterAddr         string
 	MasterPort         int
 	VRAMLimitBytes     int64
@@ -223,6 +227,7 @@ func launchInput(st *store.Store, req LaunchRequest) (Input, error) {
 		ExcludeDeploymentID:  req.ExcludeDeploymentID,
 		DeploymentID:         req.Source.DeploymentID,
 		YieldPolicy:          req.YieldPolicy,
+		ExplainHolders:       req.ExplainHolders,
 		Parallel:             req.Placement.Parallelism(req.Topology.NNodes),
 		GPUIndexes:           req.Placement.GPUIndexes,
 		VRAMLimitBytes:       req.VRAMLimitBytes,

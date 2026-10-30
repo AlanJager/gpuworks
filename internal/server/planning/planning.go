@@ -85,6 +85,10 @@ type Input struct {
 	// keeps its whole claim on them (yieldpolicy.SharesCardsWith), so the
 	// launch does not take cards it would want back. Empty reads as never.
 	YieldPolicy string
+	// ExplainHolders names, when the launch does not fit only because yield
+	// policy keeps it off awake holders' cards, those holders (launchHeld).
+	// The deploy form's evaluation asks for it; the controller does not.
+	ExplainHolders bool
 	// ModelRules are the deployment's model source rules (store.SourceRules).
 	ModelRules store.SourceRules
 }
@@ -113,7 +117,10 @@ type Output struct {
 	Yield *LaunchYield
 	// Reserved is set when no fit only because sleepers keep their cards for
 	// a request's wake against this launch (launchReserved).
-	Reserved       *LaunchReserved
+	Reserved *LaunchReserved
+	// Held is set when no fit only because yield policy keeps the launch off
+	// awake holders' cards, and only when Input.ExplainHolders asks (launchHeld).
+	Held           *LaunchHeld
 	Placement      placement.Result
 	PlacementError error
 }
@@ -307,14 +314,18 @@ func (in Input) Evaluate(st *store.Store) Output {
 		out.Eviction = suggestEviction(st, in.Node, req, in.ServingUnavailable, view)
 		// Only a launch that shares cards by yield policy may wait for
 		// holders, and only one sleepers keep cards from may be refused by
-		// their name: anything else reads nothing more. One read of the
-		// node's instances serves both re-plans.
+		// their name, or one whose evaluation asks who holds its cards
+		// (ExplainHolders): anything else reads nothing more. One read of
+		// the node's instances serves every re-plan.
 		shares := in.YieldPolicy != "" && in.YieldPolicy != yieldpolicy.Never
-		if !in.Unloaded && st != nil && (shares || view.reserved != nil) {
+		if !in.Unloaded && st != nil && (shares || view.reserved != nil || in.ExplainHolders) {
 			if insts, err := st.InstancesForNode(in.Node.ID); err == nil {
 				out.Yield = launchYield(st, in.Node, insts, in.DeploymentID, in.YieldPolicy, req, dtypeOK, dtypeReason, in.ServingUnavailable, view)
 				if out.Yield == nil {
 					out.Reserved = launchReserved(st, in.Node, insts, req, dtypeOK, dtypeReason, in.ServingUnavailable, view)
+				}
+				if out.Yield == nil && out.Reserved == nil && in.ExplainHolders {
+					out.Held = launchHeld(st, in.Node, insts, in.DeploymentID, in.YieldPolicy, req, dtypeOK, dtypeReason, in.ServingUnavailable, view)
 				}
 			}
 		}

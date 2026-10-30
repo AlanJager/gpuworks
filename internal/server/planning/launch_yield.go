@@ -161,17 +161,23 @@ func YieldRefusal(node *store.Node, policy yieldpolicy.Policy, yield *LaunchYiel
 			continue
 		}
 		seen[h.DeploymentID] = true
-		terms := yieldpolicy.TermsOf(h.Policy, policy)
-		entry := map[string]any{"deployment": h.Deployment, "at_once": terms.AtOnce}
-		if !terms.AtOnce {
-			entry["idle_sec"] = int(terms.Idle / time.Second)
-			if terms.Turn > 0 {
-				entry["max_serve_sec"] = int(terms.Turn / time.Second)
-			}
-		}
+		entry := map[string]any{"deployment": h.Deployment}
+		addTerms(entry, yieldpolicy.TermsOf(h.Policy, policy))
 		holders = append(holders, entry)
 	}
 	return scheduler.Reason{Code: scheduler.ReasonWaitingForYield, Params: map[string]any{
 		"node": node.DisplayName(), "holders": holders, "instances": yield.HolderInstances(),
 	}}
+}
+
+// addTerms states in a holder's entry the terms it gives way on: at_once, or
+// idle_sec and, taking turns, max_serve_sec.
+func addTerms(entry map[string]any, terms yieldpolicy.Terms) {
+	entry["at_once"] = terms.AtOnce
+	if !terms.AtOnce {
+		entry["idle_sec"] = int(terms.Idle / time.Second)
+		if terms.Turn > 0 {
+			entry["max_serve_sec"] = int(terms.Turn / time.Second)
+		}
+	}
 }

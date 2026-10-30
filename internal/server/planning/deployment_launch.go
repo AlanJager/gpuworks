@@ -205,7 +205,8 @@ func (o Output) Fits() bool { return o.Result.OK && o.Result.Plan != nil }
 
 // Refusal is why a plan that does not fit cannot be placed on node, for a
 // deployment of policy: a launch that waits for holders to yield
-// (YieldRefusal) or only for sleepers' cards (ReservedRefusal) says so; any
+// (YieldRefusal), only for sleepers' cards (ReservedRefusal), or that yield
+// policy keeps off awake holders' cards (HeldRefusal) says so; any
 // other is the scheduler's own reason. The controller and every preview
 // that shows a refusal read it here, so they say the same.
 func (o Output) Refusal(node *store.Node, policy yieldpolicy.Policy) scheduler.Reason {
@@ -214,6 +215,8 @@ func (o Output) Refusal(node *store.Node, policy yieldpolicy.Policy) scheduler.R
 		return YieldRefusal(node, policy, o.Yield)
 	case o.Reserved != nil:
 		return ReservedRefusal(node, o.Reserved)
+	case o.Held != nil:
+		return HeldRefusal(node, policy, o.Held)
 	}
 	return o.Result.Message
 }

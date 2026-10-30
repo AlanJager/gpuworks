@@ -1288,7 +1288,7 @@ extra_args 解析（`EXTRA_ARGS_INVALID`）、挂载（`MOUNT_CONTAINER_PATH`/`M
 语义保持不变，不能用 `null` 替代明确清除。复合引擎参数只有在适配器能无损识别、
 且完整关闭对应配置时才能从模板移除；未知 connector 或混合配置返回冲突，避免误删其他能力。
 
-自动模式评估返回 `selected_node`、逐节点 `candidates` 与选中节点的 `plan`。放不下时 `plan` 和各候选的 `reason` 说的与控制器一致：占卡者让卡后就能放下时是 `waiting_for_yield`，只因休眠者留着卡放不下时是 `reserved_for_sleepers`（按草稿的出让策略算），不再一律是放不下。
+自动模式评估返回 `selected_node`、逐节点 `candidates` 与选中节点的 `plan`。放不下时 `plan` 和各候选的 `reason` 说的与控制器一致：占卡者让卡后就能放下时是 `waiting_for_yield`，只因休眠者留着卡放不下时是 `reserved_for_sleepers`（按草稿的出让策略算），不再一律是放不下。占卡的部署都睡下就能放下、但出让策略让草稿等不到它们时，评估另外说明：草稿不自动出让时是 `does_not_wait_for_yield`，有占卡者不自动出让时是 `held_by_non_yielding`，参数 `node`、`gpus`、`holders`、`blockers`（见[新部署怎样放到共用的卡上](../how-to/scheduling-center.md#新部署怎样放到共用的卡上)）；这两个原因只出现在评估里。
 
 评估响应另有 `yield_policy_eligible`（`{ok, reason?}`，形状同部署详情的同名字段，`reason` 为 `SLEEP_NOT_ENABLED`、`SLEEP_ENGINE_UNSUPPORTED` 或 `YIELD_POLICY_SHAPE`），按草稿的可休眠、引擎、节点数与是否 PD 算出，就是创建时会做的那个检查，部署表单据此决定能不能选出让策略；草稿的引擎还未确定时不出现。创建部署时表单把选定的出让策略原样发来，不满足时由服务端拒绝（`SLEEP_NOT_ENABLED` / `SLEEP_ENGINE_UNSUPPORTED` / `YIELD_POLICY_SHAPE`）。
 创建时提交 `selected_node.uuid` 作为 `node_uuid`，同时提交 `plan.plan.gpus`

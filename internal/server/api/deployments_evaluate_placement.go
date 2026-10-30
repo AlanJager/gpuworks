@@ -65,7 +65,7 @@ func (a *apiHandlers) evaluateAutomaticPlacement(ctx context.Context, req *dto.D
 			Topology:   planning.DistTopology{NNodes: 1, Role: "standalone"},
 			Source:     planning.LaunchSourceFromRequest(image, requestOverrides),
 			ModelMount: modelMount, ComponentMounts: componentMounts,
-			ServedName: servedName, Sleepable: req.Sleepable, YieldPolicy: requestYield(req.YieldPolicy),
+			ServedName: servedName, Sleepable: req.Sleepable, YieldPolicy: requestYield(req.YieldPolicy), ExplainHolders: true,
 			MasterAddr: req.MasterAddr, MasterPort: req.MasterPort,
 			VRAMLimitBytes: int64(req.VRAMLimitGiB * (1 << 30)), PartitionBackend: backend,
 			APIContract: previewSelection.APIContract,

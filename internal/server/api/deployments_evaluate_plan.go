@@ -82,7 +82,7 @@ func (a *apiHandlers) evaluatePlan(env evaluatePlanEnv) (evaluatePlanResult, boo
 			Topology:   planning.DistTopology{NNodes: max(req.NNodes, 1), Role: "standalone"},
 			Source:     planning.LaunchSourceFromRequest(resp.Image, env.requestOverrides),
 			ModelMount: env.modelMount, ComponentMounts: env.componentMounts,
-			ServedName: env.servedName, Sleepable: req.Sleepable, YieldPolicy: requestYield(req.YieldPolicy),
+			ServedName: env.servedName, Sleepable: req.Sleepable, YieldPolicy: requestYield(req.YieldPolicy), ExplainHolders: true,
 			MasterAddr: req.MasterAddr, MasterPort: req.MasterPort,
 			VRAMLimitBytes: int64(req.VRAMLimitGiB * (1 << 30)), PartitionBackend: req.PartitionBackend,
 			RuntimeImageCached: out.nodeImageCached, APIContract: previewSelection.APIContract,
