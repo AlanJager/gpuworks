@@ -7,7 +7,7 @@ import (
 )
 
 // A wake that did not fit can wait for room (Instance.WakeWaitingSince): the
-// controller wakes the instances once their GPUs can take them back, and gives
+// automation wakes the instances once their GPUs can take them back, and gives
 // up after the wait limit. Any sleep or wake order written for an instance
 // ends its wait (writeSleepIntent).
 

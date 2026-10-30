@@ -144,6 +144,24 @@ func TestYieldEventsAreTheSleepsMadeForAnother(t *testing.T) {
 	}
 }
 
+// for_deployment is read in one place: a positive id, or 0 for anything else.
+func TestEventForDeployment(t *testing.T) {
+	for data, want := range map[string]uint{
+		`{"trigger":"preempt","for_deployment":7}`: 7,
+		`{"trigger":"idle"}`:                       0,
+		``:                                         0,
+		`not json`:                                 0,
+		`{"for_deployment":-3}`:                    0,
+		`{"for_deployment":2.5}`:                   0,
+		`{"for_deployment":"7"}`:                   0,
+		`{"trigger":5,"for_deployment":9}`:         9,
+	} {
+		if got := EventForDeployment(data); got != want {
+			t.Errorf("EventForDeployment(%q) = %d, want %d", data, got, want)
+		}
+	}
+}
+
 // The inputs of the sharing stats are those of the named deployments' instances,
 // wherever they are and whatever else runs beside them.
 func TestResidencyInputsOfDeployments(t *testing.T) {

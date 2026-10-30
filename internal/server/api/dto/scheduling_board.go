@@ -3,14 +3,12 @@ package dto
 import "time"
 
 // SchedulingBoard is the scheduling center's view: who holds each GPU, what
-// waits to be placed or woken, what the schedules will do next and what the
-// automation did last. Nodes is a page of the fleet (page/page_size).
+// waits to be placed or woken and what the schedules will do next. Nodes is a page of the fleet (page/page_size).
 type SchedulingBoard struct {
 	Nodes        ListPage[BoardNode]   `json:"nodes"`
 	Pending      []BoardPending        `json:"pending"`
 	WaitingWakes []BoardWaitingWake    `json:"waiting_wakes"`
 	Upcoming     []BoardUpcomingAction `json:"upcoming"`
-	Recent       []BoardEvent          `json:"recent"`
 }
 
 // BoardNode is one node and its GPUs.
@@ -78,14 +76,4 @@ type BoardUpcomingAction struct {
 	Replicas *int      `json:"replicas,omitempty"`
 	Role     string    `json:"role,omitempty"`
 	At       time.Time `json:"at"`
-}
-
-// BoardEvent is one thing the scheduling center did, from a deployment's
-// timeline.
-type BoardEvent struct {
-	DeploymentID uint           `json:"deployment_id"`
-	Deployment   string         `json:"deployment"`
-	Code         string         `json:"code"`
-	Params       map[string]any `json:"params"`
-	At           time.Time      `json:"at"`
 }

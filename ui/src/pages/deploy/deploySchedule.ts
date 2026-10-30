@@ -1,6 +1,7 @@
 import type { TFunction } from "i18next";
 
 import type { ScheduleMessageLike } from "../../api";
+import { durationText } from "../durationText";
 
 /** Render a structured scheduler reason while preserving historical strings. */
 export function scheduleText(
@@ -104,9 +105,7 @@ interface YieldHolderTerms {
 }
 
 function spanText(t: TFunction<"deploy">, seconds: number): string {
-  if (seconds >= 3600 && seconds % 3600 === 0) return t("scheduleHolder.hours", { value: seconds / 3600 });
-  if (seconds >= 60 && seconds % 60 === 0) return t("scheduleHolder.minutes", { value: seconds / 60 });
-  return t("scheduleHolder.seconds", { value: seconds });
+  return durationText(t as never, seconds, "exact");
 }
 
 // holdersText words who a replica waits for and when each gives way.

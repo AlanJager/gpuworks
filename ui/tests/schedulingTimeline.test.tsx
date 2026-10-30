@@ -227,7 +227,7 @@ test("the sharing table lists the yield policy, awake time, switches, yields and
   const qwen = table.getByRole("link", { name: "qwen" }).closest("tr") as HTMLElement;
   const cells = within(qwen);
   assert.ok(cells.getByText(i18n.t("deployments:yieldPolicy.policy.name.timeslice")));
-  assert.ok(cells.getByText(i18n.t("scheduling:timeline.awakeShare", { span: i18n.t("scheduling:timeline.duration.hours", { hours: 2, minutes: 0 }), share: 33.3 })));
+  assert.ok(cells.getByText(i18n.t("scheduling:timeline.awakeShare", { span: i18n.t("deployments:duration.hoursMinutes", { hours: 2, minutes: 0 }), share: 33.3 })));
   assert.ok(cells.getByText("3")); // switches
   assert.ok(cells.getByText("4")); // held requests
   assert.ok(cells.getByText(i18n.t("scheduling:timeline.wait.seconds", { value: "4.2" })));
@@ -235,7 +235,7 @@ test("the sharing table lists the yield policy, awake time, switches, yields and
   // No held request, no wait figure: a dash, not a zero.
   const llama = within(table.getByRole("link", { name: "llama" }).closest("tr") as HTMLElement);
   assert.equal(llama.getAllByText("—").length, 2);
-  assert.ok(llama.getByText(i18n.t("scheduling:timeline.awakeShare", { span: i18n.t("scheduling:timeline.duration.seconds", { seconds: 30 }), share: 0.1 })));
+  assert.ok(llama.getByText(i18n.t("scheduling:timeline.awakeShare", { span: i18n.t("deployments:duration.seconds", { value: 30 }), share: 0.1 })));
 });
 
 test("a failed refresh keeps the last timeline and warns", async () => {

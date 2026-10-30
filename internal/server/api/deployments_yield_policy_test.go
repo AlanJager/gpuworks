@@ -330,6 +330,7 @@ func TestYieldPolicyDictionary(t *testing.T) {
 		`{"policy":"idle","defaults":{"policy":"idle","idle_sec":60,"sleep_level":"auto","hold_max_sec":300},"applies":["idle_sec","sleep_level","hold_max_sec"]},` +
 		`{"policy":"timeslice","defaults":{"policy":"timeslice","idle_sec":30,"sleep_level":"auto","max_serve_sec":120,"unfinished":"wait","unfinished_wait_sec":30,"hold_max_sec":600},"applies":["idle_sec","sleep_level","max_serve_sec","unfinished","unfinished_wait_sec","hold_max_sec"]},` +
 		`{"policy":"anytime","defaults":{"policy":"anytime","idle_sec":30,"sleep_level":"auto","unfinished":"abort","unfinished_wait_sec":30,"hold_max_sec":3600},"applies":["idle_sec","sleep_level","unfinished","unfinished_wait_sec","hold_max_sec"]}],` +
+		`"applies_when":{"unfinished_wait_sec":{"unfinished":["wait"]}},` +
 		`"bounds":{"hold_max_sec":{"minimum":10,"maximum":3600},"idle_sec":{"minimum":15,"maximum":604800,"at_most":"max_serve_sec"},"max_serve_sec":{"minimum":30,"maximum":86400},"unfinished_wait_sec":{"minimum":1,"maximum":600}},` +
 		`"sleep_levels":["auto","l1","l2"],"unfinished":["abort","wait"]}`
 	if rec.Code != http.StatusOK || strings.TrimSpace(rec.Body.String()) != want {
@@ -346,6 +347,36 @@ func TestYieldPolicyDictionary(t *testing.T) {
 		_ = json.Unmarshal(raw, &req)
 		if _, v := req.Parse(); v != nil {
 			t.Errorf("%s defaults refused: %+v", entry.Policy, v)
+		}
+	}
+	// What a client reads off applies and applies_when is the server's rule
+	// (servicelevel.Applies) for every choice of the selectors.
+	for _, entry := range dict.Policies {
+		for _, level := range dict.SleepLevels {
+			for _, mode := range dict.Unfinished {
+				chosen := map[string]string{"sleep_level": level, "unfinished": mode}
+				client := map[string]bool{}
+				for _, name := range entry.Applies {
+					client[name] = true
+					for selector, values := range dict.AppliesWhen[name] {
+						held := false
+						for _, v := range values {
+							held = held || v == chosen[selector]
+						}
+						client[name] = client[name] && held
+					}
+				}
+				rule := servicelevel.Policy{Yield: entry.Policy, SleepLevel: level, Unfinished: mode}.Normalize().Applies()
+				server := map[string]bool{
+					"idle_sec": rule.IdleSec, "sleep_level": rule.SleepLevel, "max_serve_sec": rule.MaxServeSec,
+					"unfinished": rule.Unfinished, "unfinished_wait_sec": rule.UnfinishedWaitSec, "hold_max_sec": rule.HoldMaxSec,
+				}
+				for name, applies := range server {
+					if client[name] != applies {
+						t.Errorf("%s with sleep_level=%s unfinished=%s: the dictionary says %s applies %v, the rule %v", entry.Policy, level, mode, name, client[name], applies)
+					}
+				}
+			}
 		}
 	}
 	if rec := rig.do(rig.session, http.MethodPost, "/api/v1/scheduling/yield-policies", "{}"); rec.Code != http.StatusMethodNotAllowed {

@@ -104,6 +104,18 @@ func TestSchedulingCatalogue(t *testing.T) {
 	if _, ok := SchedulingCategoryOf("INSTANCE_STATE_CHANGED"); ok {
 		t.Fatal("a state change is not a scheduling entry")
 	}
+	for code, want := range map[string]string{
+		EventSleepOrdered:     EventKindLifecycle,
+		EventReplicaRestarted: EventKindSchedule,
+		"AUTO_SLEEP":          EventKindAutomation,
+	} {
+		if kind, ok := SchedulingEventKind(code); !ok || kind != want {
+			t.Errorf("SchedulingEventKind(%s) = %q %v, want %q", code, kind, ok, want)
+		}
+	}
+	if kind, ok := SchedulingEventKind("INSTANCE_STATE_CHANGED"); ok {
+		t.Fatalf("a state change has kind %q in the catalogue", kind)
+	}
 }
 
 // Every shape of the read must be served by an index range, in id order: a

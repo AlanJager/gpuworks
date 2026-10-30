@@ -52,6 +52,22 @@ test("which parameters apply comes from the dictionary, and the wait time only w
   assert.deepEqual(names({ ...draftOfPolicy(dictionary, "timeslice"), unfinished: "abort" }), ["hold_max_sec", "idle_sec", "max_serve_sec", "sleep_level", "unfinished"]);
 });
 
+test("the conditions under which a parameter applies are the dictionary's applies_when, not the model's", () => {
+  const names = (dict: YieldPolicyDictionary, draft: YieldDraft) => [...applicable(dict, draft)].sort();
+  // A server that made the wait time apply while aborting (and the hold time
+  // only at sleep level l2) is followed as it states it.
+  const other = structuredClone(dictionary);
+  other.applies_when = { unfinished_wait_sec: { unfinished: ["abort"] }, hold_max_sec: { sleep_level: ["l2"] } };
+  const anytime = draftOfPolicy(other, "anytime");
+  assert.deepEqual(names(other, anytime), ["idle_sec", "sleep_level", "unfinished", "unfinished_wait_sec"]);
+  assert.deepEqual(names(other, { ...anytime, unfinished: "wait", sleep_level: "l2" }), ["hold_max_sec", "idle_sec", "sleep_level", "unfinished"]);
+  // Choosing the mode under which the wait time applies fills its default.
+  assert.equal(chooseUnfinished(other, { policy: "timeslice", unfinished: "wait" }, "abort").unfinished_wait_sec, 30);
+  // No conditions: every listed parameter applies.
+  other.applies_when = {};
+  assert.ok(applicable(other, anytime).has("unfinished_wait_sec"));
+});
+
 test("the request is the policy with the parameters that apply, none of them null, in wire order", () => {
   assert.equal(JSON.stringify(requestOfDraft(dictionary, draftOfPolicy(dictionary, "never"))), '{"policy":"never"}');
   assert.equal(

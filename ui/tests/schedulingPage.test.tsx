@@ -41,7 +41,6 @@ function queues(overrides: Partial<Board> = {}): Board {
       { deployment_id: 7, deployment: "qwen", schedule_id: 1, action: "sleep", sleep_level: 2, at: "2026-10-25T22:00:00Z" },
       { deployment_id: 7, deployment: "qwen", schedule_id: 2, action: "replicas", replicas: 3, at: "2026-10-26T06:00:00Z" },
     ],
-    recent: [],
     ...overrides,
   };
 }

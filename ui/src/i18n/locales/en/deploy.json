@@ -1030,9 +1030,6 @@
     "idle": "{{deployment}} gives up its GPUs after {{idle}} idle",
     "idleOrTurn": "{{deployment}} gives up its GPUs after {{idle}} idle or {{turn}} of serving",
     "sleeping": "the deployments giving up their GPUs finish going to sleep",
-    "separator": "; ",
-    "seconds": "{{value}} s",
-    "minutes": "{{value}} min",
-    "hours": "{{value}} h"
+    "separator": "; "
   }
 }

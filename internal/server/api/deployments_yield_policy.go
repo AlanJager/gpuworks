@@ -76,9 +76,9 @@ func writeYieldPolicyViolation(w http.ResponseWriter, v *servicelevel.Violation)
 }
 
 // yieldPolicyEligible checks the policy against what the deployment is: it
-// writes the refusal and returns false when a policy other than never, or
-// auto sleep, meets a deployment that cannot sleep, or a policy other than
-// never a multi-node or PD one. refusal says why a deployment cannot sleep.
+// writes the refusal and returns false when a policy other than never meets a
+// deployment that cannot sleep, or a multi-node or PD one. refusal says why a
+// deployment cannot sleep.
 func yieldPolicyEligible(w http.ResponseWriter, p servicelevel.Policy, multiNode bool, refusal func() *planning.SleepRefusal) bool {
 	if p.Yield == servicelevel.Never {
 		return true
@@ -87,7 +87,7 @@ func yieldPolicyEligible(w http.ResponseWriter, p servicelevel.Policy, multiNode
 		writeSleepRefusal(w, http.StatusBadRequest, r)
 		return false
 	}
-	if p.Yield != servicelevel.Never && multiNode {
+	if multiNode {
 		writeProductError(w, http.StatusBadRequest, messages.ErrorYieldPolicyShape, "only a single-node deployment shares its cards by yield policy", nil)
 		return false
 	}

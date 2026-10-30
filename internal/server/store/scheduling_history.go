@@ -53,20 +53,21 @@ const (
 // schedulingEventCodes is THE catalogue of the scheduling history: which
 // timeline codes belong to it and in which category. A code recorded
 // elsewhere (controller, automation, API handlers) is listed here by its
-// literal because those packages cannot be imported from the store; a test in
-// the api package pins every one of their constants to this list.
+// literal because those packages cannot be imported from the store; a test
+// in the app package (scheduling_catalogue_test.go) pins every one of their
+// constants to this list.
 //
 // The kind is part of the entry because the read goes by (kind, id): the
 // instance_events index that serves it (migration 183), so a page costs a
 // bounded range scan rather than a pass over the timeline.
 var schedulingEventCodes = []SchedulingEventCode{
-	{"AUTO_SLEEP", EventKindAutomation, SchedulingAuto},
-	{"AUTO_WAKE", EventKindAutomation, SchedulingAuto},
+	{codeAutoSleep, EventKindAutomation, SchedulingAuto},
+	{codeAutoWake, EventKindAutomation, SchedulingAuto},
 	{"AUTO_SCALE", EventKindAutomation, SchedulingAuto},
 	{"WAKE_WAITING", EventKindAutomation, SchedulingAuto},
 	{"WAKE_WAIT_TIMEOUT", EventKindAutomation, SchedulingAuto},
 	{"SCHEDULE_ACTION_FAILED", EventKindAutomation, SchedulingAuto},
-	{"YIELDED_FOR_WAKE", EventKindAutomation, SchedulingAuto},
+	{codeYieldedForWake, EventKindAutomation, SchedulingAuto},
 	{"UNIT_PLACED", EventKindAutomation, SchedulingAuto},
 	{"NODE_DRAIN_MOVED", EventKindAutomation, SchedulingAuto},
 
@@ -86,6 +87,17 @@ var schedulingEventCodes = []SchedulingEventCode{
 	{EventDeploymentRollingRestarted, EventKindSchedule, SchedulingManual},
 	{EventSleepOrdered, EventKindLifecycle, SchedulingManual},
 	{EventWakeOrdered, EventKindLifecycle, SchedulingManual},
+}
+
+// SchedulingEventKind is the row kind a scheduling history code is written
+// with; ok is false for a code the history does not list.
+func SchedulingEventKind(code string) (kind string, ok bool) {
+	for _, entry := range schedulingEventCodes {
+		if entry.Code == code {
+			return entry.Kind, true
+		}
+	}
+	return "", false
 }
 
 // SchedulingEventCodes is the catalogue, in a stable order.

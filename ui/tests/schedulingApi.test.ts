@@ -63,6 +63,7 @@ test("the yield policy answer carries the idle neighbours as the server states t
 test("the yield policy dictionary is one plain read of the scheduling endpoint, returned as the server states it", async () => {
   const wire = {
     policies: [{ policy: "never", defaults: { policy: "never" }, applies: [] }, { policy: "idle", defaults: { policy: "idle", idle_sec: 60 }, applies: ["idle_sec"] }],
+    applies_when: { unfinished_wait_sec: { unfinished: ["wait"] } },
     bounds: { idle_sec: { minimum: 15, maximum: 604800, at_most: "max_serve_sec" } },
     sleep_levels: ["auto", "l1", "l2"],
     unfinished: ["abort", "wait"],

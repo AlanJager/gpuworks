@@ -26,6 +26,7 @@ export type YieldPolicy = import("../../src/api.ts").YieldPolicy;
 export type YieldPolicyRequest = import("../../src/api.ts").YieldPolicyRequest;
 export type YieldPolicyAnswer = import("../../src/api.ts").YieldPolicyAnswer;
 export type YieldPolicyDictionary = import("../../src/api.ts").YieldPolicyDictionary;
+type YieldParamName = import("../../src/api.ts").YieldParamName;
 
 export const p = locale.deployments.schedulingPolicy;
 export const y = locale.deployments.yieldPolicy;
@@ -76,7 +77,12 @@ export function serverAnswer(body: YieldPolicyRequest): YieldPolicyAnswer {
   const given = body as unknown as Record<string, unknown>;
   const stored: Record<string, unknown> = { policy: entry.policy };
   const wanted = new Set(entry.applies);
-  if ((given.unfinished ?? (entry.defaults as Record<string, unknown>).unfinished) !== "wait") wanted.delete("unfinished_wait_sec");
+  for (const [name, when] of Object.entries(dictionary.applies_when)) {
+    for (const [selector, values] of Object.entries(when ?? {})) {
+      const held = given[selector] ?? (entry.defaults as Record<string, unknown>)[selector];
+      if (!(values ?? []).includes(held as string)) wanted.delete(name as YieldParamName);
+    }
+  }
   for (const name of entry.applies) {
     if (!wanted.has(name)) continue;
     const value = given[name] ?? (entry.defaults as Record<string, unknown>)[name];

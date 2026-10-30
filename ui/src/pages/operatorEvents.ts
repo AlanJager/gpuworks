@@ -1,6 +1,7 @@
 import type { TFunction } from "i18next";
 
 import type { InstanceEvent } from "../api";
+import { paramList as list, paramNumber as num, paramText as text } from "./eventParams";
 
 /**
  * The deployment timeline entries an operator's order leaves (kind
@@ -14,21 +15,6 @@ const known = new Set<string>(operatorEventCodes);
 
 export function isOperatorEvent(code: string): boolean {
   return known.has(code);
-}
-
-function text(event: InstanceEvent, name: string): string {
-  const value = event.params?.[name];
-  return typeof value === "string" ? value.trim() : "";
-}
-
-function num(event: InstanceEvent, name: string): number | undefined {
-  const value = event.params?.[name];
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
-}
-
-function list(event: InstanceEvent, name: string): string[] {
-  const value = event.params?.[name];
-  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 }
 
 /** Word one operator order from its code and params. */

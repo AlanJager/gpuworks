@@ -17,6 +17,9 @@
       "applies": ["idle_sec", "sleep_level", "unfinished", "unfinished_wait_sec", "hold_max_sec"]
     }
   ],
+  "applies_when": {
+    "unfinished_wait_sec": { "unfinished": ["wait"] }
+  },
   "bounds": {
     "hold_max_sec": { "minimum": 10, "maximum": 3600 },
     "idle_sec": { "minimum": 15, "maximum": 604800, "at_most": "max_serve_sec" },

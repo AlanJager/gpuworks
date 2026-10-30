@@ -185,11 +185,6 @@
       "waitP95": "Wait p95"
     },
     "awakeShare": "{{span}} ({{share}}%)",
-    "duration": {
-      "seconds": "{{seconds}} s",
-      "minutes": "{{minutes}} min",
-      "hours": "{{hours}} h {{minutes}} min"
-    },
     "wait": {
       "ms": "{{value}} ms",
       "seconds": "{{value}} s",

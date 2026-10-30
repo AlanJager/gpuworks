@@ -7,7 +7,7 @@ import YieldPolicyEditor from "./yieldPolicy/DeploymentYieldPolicy";
 import { savedPolicy } from "./yieldPolicy/model";
 import { yieldSummary } from "./yieldPolicy/summary";
 import ScheduleSection, { scheduleOrderText, type Schedules } from "./DeploymentSchedule";
-import { durationText } from "./nodeReplacementEvents";
+import { durationText } from "./durationText";
 
 // What a section reads and calls: the deployment, the schedule rows the card
 // loaded, and the reload after a change.

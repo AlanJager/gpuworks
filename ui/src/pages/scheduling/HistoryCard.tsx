@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { Alert, Button, Card, Segmented, Select, Space, Spin, Tag, Typography } from "antd";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
@@ -163,34 +163,43 @@ function DeploymentFilter({ value, onChange }: { value: number | null; onChange:
   );
 }
 
-function DeploymentCell({ row }: { row: SchedulingHistoryEntry }) {
+// DeploymentRef names a deployment an entry is about: a link to it, or - when
+// it was deleted, or the server could not name it - its name or "#id" with no
+// page to open.
+function DeploymentRef({ id, name, deleted }: { id: number; name?: string; deleted?: boolean }) {
   const { t } = useTranslation("scheduling");
-  const name = row.deployment || `#${row.deployment_id}`;
-  if (row.deployment_deleted) return <span>{t("history.deleted", { name })}</span>;
-  return <Link to={`/deployments?deployment=${row.deployment_id}`}>{name}</Link>;
+  const label = name || `#${id}`;
+  if (deleted) return <span>{t("history.deleted", { name: label })}</span>;
+  if (!name) return <span>{label}</span>;
+  return <Link to={`/deployments?deployment=${id}`}>{label}</Link>;
 }
 
-// TARGET marks where the details name the deployment the entry acted for, so
-// that name can be a link.
+// TARGET marks where the details name the deployment the entry acted for:
+// the wording is plain text (i18next), so the name is put in as a marker and
+// each marker is then rendered as a DeploymentRef.
 const TARGET = "\u0000target\u0000";
 
 // DetailsCell words an entry as the deployment's own timeline words it, so
 // the two read the same, with the deployment it acted for (a yield's) named
 // and linked rather than "#id".
 function DetailsCell({ row }: { row: SchedulingHistoryEntry }) {
-  const { t } = useTranslation("scheduling");
   const { t: tDeployments } = useTranslation("deployments");
   const { t: tCommon } = useTranslation("common");
   const event = { id: row.id, kind: row.kind, code: row.code, params: row.params, created_at: row.created_at };
-  const text = instanceEventText(tDeployments, tCommon, event, { withActor: false, deploymentLabel: row.target ? () => TARGET : undefined });
   const target = row.target;
+  const text = instanceEventText(tDeployments, tCommon, event, { withActor: false, deploymentLabel: target ? () => TARGET : undefined });
   if (!target || !text.includes(TARGET)) return <Typography.Text>{text}</Typography.Text>;
-  const name = target.name || `#${target.id}`;
-  const label = target.deleted || !target.name
-    ? <span>{target.deleted ? t("history.deleted", { name }) : name}</span>
-    : <Link to={`/deployments?deployment=${target.id}`}>{name}</Link>;
-  const [before, ...after] = text.split(TARGET);
-  return <Typography.Text>{before}{label}{after.join(name)}</Typography.Text>;
+  const parts = text.split(TARGET);
+  return (
+    <Typography.Text>
+      {parts.map((part, index) => (
+        <Fragment key={index}>
+          {index > 0 && <DeploymentRef id={target.id} name={target.name} deleted={target.deleted} />}
+          {part}
+        </Fragment>
+      ))}
+    </Typography.Text>
+  );
 }
 
 // HistoryTable lists the entries; the actor has a column of its own.
@@ -198,7 +207,7 @@ function HistoryTable({ rows }: { rows: SchedulingHistoryEntry[] }) {
   const { t } = useTranslation("scheduling");
   const columns: ResourceColumn<SchedulingHistoryEntry>[] = [
     { key: "at", title: t("history.columns.at"), width: 160, render: (_: unknown, row) => formatTime(row.created_at) },
-    { key: "deployment", title: t("history.columns.deployment"), width: 180, render: (_: unknown, row) => <DeploymentCell row={row} /> },
+    { key: "deployment", title: t("history.columns.deployment"), width: 180, render: (_: unknown, row) => <DeploymentRef id={row.deployment_id} name={row.deployment} deleted={row.deployment_deleted} /> },
     { key: "action", title: t("history.columns.action"), width: 160, render: (_: unknown, row) => t(`history.action.${row.code}`, { defaultValue: row.code }) },
     {
       key: "details",

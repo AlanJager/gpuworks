@@ -87,7 +87,7 @@ func (a *apiHandlers) schedulingHistory(w http.ResponseWriter, r *http.Request) 
 			params[i] = map[string]any{}
 		}
 		note(ev.DeploymentID)
-		note(forDeployment(params[i]))
+		note(store.EventForDeployment(ev.Data))
 	}
 	names, err := a.d.Store.DeploymentNames(ids)
 	if err != nil {
@@ -104,7 +104,7 @@ func (a *apiHandlers) schedulingHistory(w http.ResponseWriter, r *http.Request) 
 		if name, ok := names[ev.DeploymentID]; ok {
 			item.Deployment, item.DeploymentDeleted = name.Name, name.Deleted
 		}
-		if target := forDeployment(params[i]); target != 0 {
+		if target := store.EventForDeployment(ev.Data); target != 0 {
 			item.Target = &dto.SchedulingHistoryDeployment{ID: target}
 			if name, ok := names[target]; ok {
 				item.Target.Name, item.Target.Deleted = name.Name, name.Deleted
@@ -116,13 +116,4 @@ func (a *apiHandlers) schedulingHistory(w http.ResponseWriter, r *http.Request) 
 		items = append(items, item)
 	}
 	writeJSON(w, http.StatusOK, dto.NewCursorPage(items))
-}
-
-// forDeployment is the deployment an entry's params say it acted for
-// (for_deployment, a JSON number), 0 when none.
-func forDeployment(params map[string]any) uint {
-	if v, ok := params["for_deployment"].(float64); ok && v > 0 && v == float64(uint(v)) {
-		return uint(v)
-	}
-	return 0
 }

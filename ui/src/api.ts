@@ -1063,7 +1063,10 @@ export interface TimelineDeployment {
   wait_p95_ms?: number;
 }
 
-export type TimelineHours = 6 | 24;
+// The windows (hours) GET /scheduling/timeline answers for, the first the
+// default: the one list the timeline and sharing stats pickers offer.
+export const timelineWindows = [6, 24] as const;
+export type TimelineHours = (typeof timelineWindows)[number];
 
 export interface SchedulingTimeline {
   window: { from: string; to: string; hours: TimelineHours };
@@ -1164,14 +1167,6 @@ export interface BoardUpcoming {
   at: string;
 }
 
-export interface BoardEvent {
-  deployment_id: number;
-  deployment: string;
-  code: string;
-  params?: Record<string, unknown>;
-  at: string;
-}
-
 /** Who or what caused a scheduling history entry. */
 export type SchedulingCategory = "auto" | "failure" | "manual";
 
@@ -1216,7 +1211,6 @@ export interface SchedulingBoard {
   pending: BoardPending[];
   waiting_wakes: BoardWaitingWake[];
   upcoming: BoardUpcoming[];
-  recent: BoardEvent[];
 }
 
 /** A node page row omits topology and path usage (GET /nodes/{uuid} has them). */
@@ -1984,9 +1978,14 @@ export interface YieldBound {
 }
 
 // The yield policy dictionary: the policies in rank order with their defaults,
-// the bounds of the numeric parameters and the values of the choices.
+// the conditions under which a parameter applies, the bounds of the numeric
+// parameters and the values of the choices. applies_when narrows a policy's
+// applies: a parameter it names applies only while each parameter it lists
+// holds one of the given values (unfinished_wait_sec while unfinished is
+// "wait").
 export interface YieldPolicyDictionary {
   policies: YieldPolicyEntry[];
+  applies_when: Partial<Record<YieldParamName, Partial<Record<YieldParamName, string[]>>>>;
   bounds: Partial<Record<YieldParamName, YieldBound>>;
   sleep_levels: YieldSleepLevel[];
   unfinished: YieldUnfinished[];

@@ -1030,9 +1030,6 @@
     "idle": "{{deployment}} 闲置 {{idle}}后让出 GPU",
     "idleOrTurn": "{{deployment}} 闲置 {{idle}}或本轮服务满 {{turn}}后让出 GPU",
     "sleeping": "已让出 GPU 的部署完成休眠",
-    "separator": "；",
-    "seconds": "{{value}} 秒",
-    "minutes": "{{value}} 分钟",
-    "hours": "{{value}} 小时"
+    "separator": "；"
   }
 }

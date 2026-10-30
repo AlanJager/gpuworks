@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -338,7 +339,7 @@ func TestSchedulingBoardOfOneNode(t *testing.T) {
 	if len(cards) != 2 || len(cards[1].Occupants) != 2 || cards[1].Occupants[1].State != "asleep" || cards[1].Occupants[1].YieldPolicy != "idle" {
 		t.Fatalf("cards = %+v", cards)
 	}
-	for _, list := range []string{`"pending":[]`, `"waiting_wakes":[]`, `"upcoming":[]`, `"recent":[]`} {
+	for _, list := range []string{`"pending":[]`, `"waiting_wakes":[]`, `"upcoming":[]`} {
 		if !strings.Contains(rec.Body.String(), list) {
 			t.Errorf("a node board lacks %s: %s", list, rec.Body)
 		}
@@ -348,6 +349,45 @@ func TestSchedulingBoardOfOneNode(t *testing.T) {
 	}
 	if rec = rig.do(rig.session, http.MethodGet, "/api/v1/scheduling/board?node=nobody", ""); rec.Code != http.StatusNotFound {
 		t.Fatalf("an unknown node = %d %s", rec.Code, rec.Body)
+	}
+	if strings.Contains(rec.Body.String(), `"recent"`) {
+		t.Fatalf("the board lists no recent events: %s", rec.Body)
+	}
+}
+
+// The board's q matches a node as GET /nodes does: by name, hostname or
+// UUID, whichever of them the node is shown by.
+func TestSchedulingBoardSearchesAsTheNodeList(t *testing.T) {
+	rig := newOverviewRig(t)
+	if err := rig.st.DB().Model(&store.Node{}).Where("uuid = ?", "gpu-c").Updates(map[string]any{"name": "rack-7", "hostname": "host-c"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	for q, want := range map[string][]string{
+		"HOST-C": {"gpu-c"}, // the hostname of a node shown by its name
+		"rack-7": {"gpu-c"},
+		"gpu-a":  {"gpu-a"}, // the UUID
+		"gpu-":   {"gpu-a", "gpu-b", "gpu-c"},
+		"none":   {},
+	} {
+		rec := rig.do(rig.session, http.MethodGet, "/api/v1/scheduling/board?q="+q, "")
+		if rec.Code != http.StatusOK {
+			t.Fatalf("q=%s = %d %s", q, rec.Code, rec.Body)
+		}
+		if strings.Contains(rec.Body.String(), `"recent"`) {
+			t.Fatalf("the board lists no recent events: %s", rec.Body)
+		}
+		var board dto.SchedulingBoard
+		if err := json.Unmarshal(rec.Body.Bytes(), &board); err != nil {
+			t.Fatal(err)
+		}
+		got := []string{}
+		for _, n := range board.Nodes.Items {
+			got = append(got, n.UUID)
+		}
+		sort.Strings(got)
+		if strings.Join(got, ",") != strings.Join(want, ",") || board.Nodes.Total != len(want) {
+			t.Errorf("q=%s matched %v (total %d), want %v", q, got, board.Nodes.Total, want)
+		}
 	}
 }
 

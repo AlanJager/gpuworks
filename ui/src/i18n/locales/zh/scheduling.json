@@ -185,11 +185,6 @@
       "waitP95": "挂起等待 p95"
     },
     "awakeShare": "{{span}}（{{share}}%）",
-    "duration": {
-      "seconds": "{{seconds}} 秒",
-      "minutes": "{{minutes}} 分",
-      "hours": "{{hours}} 小时 {{minutes}} 分"
-    },
     "wait": {
       "ms": "{{value}} 毫秒",
       "seconds": "{{value}} 秒",

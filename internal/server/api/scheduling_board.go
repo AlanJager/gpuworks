@@ -19,14 +19,11 @@ const (
 	boardPendingWindow = 30 * time.Minute
 	// boardUpcomingWindow is how far ahead the board lists schedule actions.
 	boardUpcomingWindow = 24 * time.Hour
-	// boardRecent is how many of the scheduling center's latest events the
-	// board lists.
-	boardRecent = 50
 )
 
 // schedulingBoard answers GET /scheduling/board: a page of nodes (page,
 // page_size, q as for GET /nodes) with each GPU's holders, and fleet-wide what
-// waits, what is scheduled next and what was done lately. With node=<uuid> it
+// waits and what is scheduled next. With node=<uuid> it
 // answers for that one node alone, without the fleet-wide lists (the drawer of
 // the overview reads it). With queues=1 it answers the fleet-wide lists alone
 // and reads no node. It only reads.
@@ -43,7 +40,7 @@ func (a *apiHandlers) schedulingBoard(w http.ResponseWriter, r *http.Request) {
 	nameOf, levelOf := a.deploymentLabels()
 	board := dto.SchedulingBoard{
 		Nodes:   dto.ListPage[dto.BoardNode]{Items: []dto.BoardNode{}, Page: query.page, PageSize: query.pageSize},
-		Pending: []dto.BoardPending{}, WaitingWakes: []dto.BoardWaitingWake{}, Upcoming: []dto.BoardUpcomingAction{}, Recent: []dto.BoardEvent{},
+		Pending: []dto.BoardPending{}, WaitingWakes: []dto.BoardWaitingWake{}, Upcoming: []dto.BoardUpcomingAction{},
 	}
 	// queues=1 asks for the fleet-wide lists alone, which is what the
 	// overview page reads beside its heatmap: no node is read for it.
@@ -55,7 +52,7 @@ func (a *apiHandlers) schedulingBoard(w http.ResponseWriter, r *http.Request) {
 		}
 		var matched []store.Node
 		for _, node := range nodes {
-			if query.search == "" || strings.Contains(strings.ToLower(node.DisplayName()+" "+node.UUID), query.search) {
+			if query.matchesSearch(node.Name, node.Hostname, node.UUID) {
 				matched = append(matched, node)
 			}
 		}
@@ -79,10 +76,6 @@ func (a *apiHandlers) schedulingBoard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if board.Upcoming, err = a.boardUpcoming(now, nameOf); err != nil {
-		writeErr(w, http.StatusInternalServerError, err)
-		return
-	}
-	if board.Recent, err = a.boardRecent(nameOf); err != nil {
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
@@ -186,12 +179,7 @@ func (a *apiHandlers) hasUnfilledReplica(dep *store.Deployment) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	for _, slot := range match.Slots {
-		if slot.Inst == nil {
-			return true, nil
-		}
-	}
-	return false, nil
+	return match.Unfilled(), nil
 }
 
 func (a *apiHandlers) boardWaitingWakes(nameOf func(uint) string) ([]dto.BoardWaitingWake, error) {
@@ -233,21 +221,5 @@ func (a *apiHandlers) boardUpcoming(now time.Time, nameOf func(uint) string) ([]
 		}
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].At.Before(out[j].At) })
-	return out, nil
-}
-
-func (a *apiHandlers) boardRecent(nameOf func(uint) string) ([]dto.BoardEvent, error) {
-	events, err := a.d.Store.RecentEventsOfKind(store.EventKindAutomation, boardRecent)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]dto.BoardEvent, 0, len(events))
-	for _, ev := range events {
-		item := dto.BoardEvent{DeploymentID: ev.DeploymentID, Deployment: nameOf(ev.DeploymentID), Code: ev.Code, Params: map[string]any{}, At: ev.CreatedAt.UTC()}
-		if ev.Data != "" {
-			_ = json.Unmarshal([]byte(ev.Data), &item.Params)
-		}
-		out = append(out, item)
-	}
 	return out, nil
 }

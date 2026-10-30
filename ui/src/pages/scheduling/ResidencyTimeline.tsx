@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Alert, Button, Card, Segmented, Spin, Typography } from "antd";
 import { useTranslation } from "react-i18next";
-import { api, usePolling, type BoardNode, type TimelineHours } from "../../api";
+import { api, timelineWindows, usePolling, type BoardNode, type TimelineHours } from "../../api";
 import EmptyState from "../../components/EmptyState";
 import { TimelineLegend, TimelineNodes } from "./TimelineLanes";
 import { SharingTable } from "./TimelineStats";
@@ -9,15 +9,14 @@ import { SharingTable } from "./TimelineStats";
 // The timeline reads the event log over the window, so it refreshes more
 // slowly than the board.
 const TIMELINE_POLL_MS = 60_000;
-const WINDOWS: TimelineHours[] = [6, 24];
 
 // ResidencyTimeline is the scheduling center's residency timeline for the
 // nodes of the board's current page: per card, which deployment held it and in
-// what state over the last 6 or 24 hours, and the stats of the deployments
+// what state over the last hours (timelineWindows), and the stats of the deployments
 // that share cards.
 export default function ResidencyTimeline({ nodes }: { nodes: BoardNode[] }) {
   const { t } = useTranslation("scheduling");
-  const [hours, setHours] = useState<TimelineHours>(6);
+  const [hours, setHours] = useState<TimelineHours>(timelineWindows[0]);
   const uuids = nodes.map((node) => node.uuid);
   const key = uuids.join(",");
   const gpuNames = new Map<string, string>();
@@ -28,7 +27,7 @@ export default function ResidencyTimeline({ nodes }: { nodes: BoardNode[] }) {
       <Segmented<TimelineHours>
         aria-label={t("timeline.window")}
         value={hours}
-        options={WINDOWS.map((value) => ({ value, label: t("timeline.hours", { hours: value }) }))}
+        options={timelineWindows.map((value) => ({ value, label: t("timeline.hours", { hours: value }) }))}
         onChange={setHours}
       />
     </div>
