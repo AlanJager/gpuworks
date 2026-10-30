@@ -1,4 +1,4 @@
-# Use the Scheduling Center: Schedules, Yield Policies, and Waiting Wakes
+# Use Scheduling Analysis: Schedules, Yield Policies, and Waiting Wakes
 
 This guide explains how to have the platform carry out sleep, wake, and replica-count changes you agreed on in advance, and how to read the scheduling board to see who holds each card, what is waiting, and what is about to happen.
 
@@ -9,9 +9,9 @@ This guide explains how to have the platform carry out sleep, wake, and replica-
 - Scheduled sleep, scheduled wake, and yield policies require the deployment to be **sleep capable** (vLLM, enabled at creation); see [Sleep and Wake Operations](sleep-wake.md) for the conditions.
 - A scheduled replica count applies to single-node deployments and to multi-node and PD deployments placed automatically (`placement_mode` `auto`; a PD deployment is scheduled one role at a time); multi-node and PD deployments placed by hand are not supported.
 - Yield policies other than never yield automatically apply only to sleep-capable single-node deployments; a multi-node or PD deployment must use never yield automatically.
-- The scheduling center does not scale by load. The platform makes one deployment give up its cards for another only when its yield policy allows it; see [Yield policy](#出让策略).
+- Scheduling analysis does not scale by load. The platform makes one deployment give up its cards for another only when its yield policy allows it; see [Yield policy](#出让策略).
 
-## What the Scheduling Center Does
+## What Scheduling Analysis Does
 
 | Feature | What you agree in advance | What the platform does when due |
 |---|---|---|
@@ -27,7 +27,7 @@ The **Scheduling policy** card in deployment details keeps these settings in one
 
 ## Scheduling Board
 
-Open the **Scheduling Center** page. The upper half shows the whole cluster, the lower half the queues and the history:
+Open **Scheduling Analysis** from the “Overview” group of the left menu (`/scheduling`, right below “Usage analytics”). The upper half shows the whole cluster, the lower half the queues and the history:
 
 - **Summary strip**: the total number of cards in the cluster; how many are serving, asleep, free, held by a process outside the platform, faulty, or on an offline node (six disjoint classes that add up to the total); the cards and free cards by GPU model, for example "L20 ×320, 41 free"; and contention - wakes waiting for room, requests the gateway holds for a wake right now, yields in the last hour - plus the deployments waiting for placement and the schedule actions in the next 24 hours. These figures are computed by the server for the whole cluster and do not change with the filters below.
 - **GPU heatmap**: one small cell (about 12 px) per card, grouped by node; 1000 nodes of 8 cards fit on one or two screens. The colour is the card's state, with the legend at the top right of the card:
@@ -322,16 +322,18 @@ The reason's parameters are `node`, `holders` (one entry per holding deployment:
 
 ## 调度记录
 
-The **Scheduling history** at the bottom of the Scheduling Center page lists the scheduling events of the whole cluster, newest first:
+The **Scheduling history** at the bottom of the Scheduling Analysis page lists the scheduling events of the whole cluster, newest first:
 
 | Column | Content |
 |---|---|
 | Time | When the event happened |
-| Deployment | Opens that deployment; a deleted deployment is marked "deleted" |
+| Deployment | The deployment name is clickable and opens that deployment's detail; a deleted deployment is marked "deleted" |
 | Action | The action name for the event code, such as automatic sleep, replica rebuilt, replicas changed |
 | Reason and details | The same wording as the deployment timeline: from which node to which, which attempt, the schedule that triggered it, the replica count change, and so on |
 | Category | **Automatic**: the platform acted on its own settings or schedules; **Failure**: something went wrong and the platform is dealing with it or has given up; **Manual**: an operator's order |
 | By | Who gave a manual order; empty for automatic and failure events |
+
+An entry that gave cards to another deployment (a yield) also names that deployment, clickable the same way; it shows “deleted” when that deployment is gone.
 
 Filter by category, deployment (search by name), and time range (last hour / 24 hours / 7 days), and page with Older / Newer, 20 entries per page. The API is `GET /api/v1/scheduling/history`; see the [history API](../reference/api.md#调度记录).
 

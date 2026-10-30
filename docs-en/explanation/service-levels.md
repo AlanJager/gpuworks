@@ -1,6 +1,6 @@
 # Yield Policy: How Deployments Share a Set of GPUs
 
-This page explains what a yield policy is, the rule by which the platform makes one deployment give up its cards for another, and the trade-offs behind that rule. For the steps see [Use the Scheduling Center](../how-to/scheduling-center.md#出让策略), and for the decision record see [ADR 0059](../adr/0059-service-levels-and-the-residency-arbiter.md).
+This page explains what a yield policy is, the rule by which the platform makes one deployment give up its cards for another, and the trade-offs behind that rule. For the steps see [Use Scheduling Analysis](../how-to/scheduling-center.md#出让策略), and for the decision record see [ADR 0059](../adr/0059-service-levels-and-the-residency-arbiter.md).
 
 ## Why This Is Needed
 

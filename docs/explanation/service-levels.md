@@ -1,6 +1,6 @@
 # 出让策略：几个部署怎样共用一批 GPU
 
-本文解释出让策略是什么、平台按什么规则让一个部署为另一个让卡，以及这些规则背后的取舍。操作步骤见[使用调度中心](../how-to/scheduling-center.md#出让策略)，决策记录见 [ADR 0059](../adr/0059-service-levels-and-the-residency-arbiter.md)。
+本文解释出让策略是什么、平台按什么规则让一个部署为另一个让卡，以及这些规则背后的取舍。操作步骤见[使用调度分析](../how-to/scheduling-center.md#出让策略)，决策记录见 [ADR 0059](../adr/0059-service-levels-and-the-residency-arbiter.md)。
 
 ## 为什么需要
 

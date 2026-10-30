@@ -617,7 +617,7 @@ Do not uniformly treat absent optional fields as `0` or empty arrays. Use the fo
 
 - `node_requirements` is always present and is `{}` when there are no requirements. Fixed nodes are stored in `gpuworks.ai/node`; deleted nodes remain in the requirements but cannot match.
   Details additionally return `node_requirement_labels[]`: `{key,value,display,display_code?,nodes}`. Nodes and networks display names; `nodes` is the current match count. A value of 0 does not mean the requirement is invalid, only that no nodes currently match. Lists do not include these display fields.
-- `placement_strategy` is `spread` or `binpack`. When a regular single-node replica has no instance yet, `placement_status{unscheduled,reason,at}` provides the waiting count and latest reason: `pool_empty`, `pool_no_fit` or `waiting_for_yield` (waiting for deployments that share its cards to give them up by yield policy; see [Use the Scheduling Center](../how-to/scheduling-center.md#新部署怎样放到共用的卡上)).
+- `placement_strategy` is `spread` or `binpack`. When a regular single-node replica has no instance yet, `placement_status{unscheduled,reason,at}` provides the waiting count and latest reason: `pool_empty`, `pool_no_fit` or `waiting_for_yield` (waiting for deployments that share its cards to give them up by yield policy; see [Use Scheduling Analysis](../how-to/scheduling-center.md#新部署怎样放到共用的卡上)).
   Reason parameters include counts by category, up to 3 closest candidates, and rejection reasons; at most one event is recorded per waiting timeout window.
 - `placement_mode` appears only on multi-node and PD deployments: `auto` means the platform picks the nodes (at creation from free cards, and again when a unit starts and no longer fits), `manual` means the operator wrote them; deployments that existed before the upgrade are all `manual`. Single-node deployments do not carry this field; their placement is in the node requirements (`placement_mode` and `node_uuid` in `GET /deployments/{id}/draft`).
 - `max_replicas` is the upper limit when adjusting replica counts; `restart_requested_at` appears only while a rolling restart is in progress.
@@ -757,7 +757,7 @@ A wake without these parameters behaves as before. For usage see [Sleep and Wake
 
 ### Yield Policy
 
-`PUT /api/v1/deployments/{id}/yield-policy` sets how a deployment gets along with the other deployments that share its cards. The yield policy is the only thing to choose. For the rules see [Yield Policy: How Deployments Share a Set of GPUs](../explanation/service-levels.md), and for the steps see [Use the Scheduling Center](../how-to/scheduling-center.md#出让策略). The body:
+`PUT /api/v1/deployments/{id}/yield-policy` sets how a deployment gets along with the other deployments that share its cards. The yield policy is the only thing to choose. For the rules see [Yield Policy: How Deployments Share a Set of GPUs](../explanation/service-levels.md), and for the steps see [Use Scheduling Analysis](../how-to/scheduling-center.md#出让策略). The body:
 
 ```json
 {"policy":"timeslice","idle_sec":30,"sleep_level":"auto","max_serve_sec":120,"unfinished":"wait","unfinished_wait_sec":30,"hold_max_sec":600}
@@ -836,7 +836,7 @@ When creating a deployment (`POST /api/v1/deployments`), `yield_policy` takes th
 
 Without a token the answer is 401, and other methods such as `POST` are 405.
 
-The `trigger` of the timeline event `AUTO_SLEEP` is `schedule` (a schedule) or `preempt` (yielding cards, with `reason` `idle` / `rank` / `turn`); `level` is always the level the platform actually chose (1 or 2). For event codes see [Use the Scheduling Center](../how-to/scheduling-center.md#时间线事件).
+The `trigger` of the timeline event `AUTO_SLEEP` is `schedule` (a schedule) or `preempt` (yielding cards, with `reason` `idle` / `rank` / `turn`); `level` is always the level the platform actually chose (1 or 2). For event codes see [Use Scheduling Analysis](../how-to/scheduling-center.md#时间线事件).
 
 ### Schedules
 
@@ -858,7 +858,7 @@ The `trigger` of the timeline event `AUTO_SLEEP` is `schedule` (a schedule) or `
 | `enabled` | May be omitted in a request, default true |
 | `next_at` | Response field, the next time it runs; omitted when disabled |
 
-Each occurrence runs once; after a server outage only the newest missed occurrence runs, and only if it is within 12 hours; manual operations are not overridden; a new or edited entry takes effect from its next occurrence. See [Use the Scheduling Center](../how-to/scheduling-center.md).
+Each occurrence runs once; after a server outage only the newest missed occurrence runs, and only if it is within 12 hours; manual operations are not overridden; a new or edited entry takes effect from its next occurrence. See [Use Scheduling Analysis](../how-to/scheduling-center.md).
 
 ### Scheduling Board
 
@@ -874,7 +874,7 @@ Each occurrence runs once; after a server outage only the newest missed occurren
 
 `?node=<uuid>` reads only that node: `nodes` is a one-row page (`page` and `page_size` 1, `total` 1; `page`, `page_size` and `q` are ignored) and `pending`, `waiting_wakes`, `upcoming` and `recent` are empty arrays; an unknown node returns 404. The console reads it when a node's drawer is open, at a cost independent of the cluster size. `?queues=1` is the opposite: it answers only `pending`, `waiting_wakes`, `upcoming` and `recent`, with an empty `nodes` page, and reads no node.
 
-For timeline event codes see [Use the Scheduling Center](../how-to/scheduling-center.md#时间线事件) and [Reschedule Replicas on Node Loss](../how-to/node-failover.md#时间线事件).
+For timeline event codes see [Use Scheduling Analysis](../how-to/scheduling-center.md#时间线事件) and [Reschedule Replicas on Node Loss](../how-to/node-failover.md#时间线事件).
 
 ### Scheduling Overview
 
@@ -943,7 +943,7 @@ The response comes from a cache in the server's memory and is not recomputed for
 | `segments[]` | One instance holding the card for a stretch: `deployment_id`, `deployment`, `instance`, `state` (`awake` / `asleep` / `switching` / `starting`), `level` (1 or 2) while asleep, `from`, `to` (both inside the window); an instance on several cards appears once on each |
 | `deployments[]` | Deployments that held these cards in the window and whose yield policy is not `never` (each with its `yield_policy`): `awake_seconds` (time at least one replica was awake), `awake_share` (of the window, 0 to 1), `switches` (`yielded` + `wakes`), `yielded` (put to sleep to give a card to another deployment), `yielded_to` (another deployment gave a card to it), `wakes` (the platform woke it), `held_requests` (requests the gateway held while it woke), `wait_p50_ms` / `wait_p95_ms` (the waits of those requests, approximate; omitted when no request was held or the gateway keeps no metrics) |
 
-The timeline is derived from instance records and the event log; the `INSTANCE_REMOVED` event written when an instance is removed (`kind` `residency`, params `node_id`, `gpus`) says which node and cards it held. For the semantics and limits see [Use the Scheduling Center](../how-to/scheduling-center.md#residency-timeline).
+The timeline is derived from instance records and the event log; the `INSTANCE_REMOVED` event written when an instance is removed (`kind` `residency`, params `node_id`, `gpus`) says which node and cards it held. For the semantics and limits see [Use Scheduling Analysis](../how-to/scheduling-center.md#residency-timeline).
 
 ### 调度记录
 
@@ -981,6 +981,7 @@ curl --fail-with-body -sS \
 | `category` | `auto`: the platform acted on its own settings or schedules; `failure`: something went wrong and the platform is dealing with it or has given up; `manual`: an operator's order |
 | `params` | The event code's params, as on the deployment timeline |
 | `actor` | The user who gave the order; present only on `manual` events whose request carried an identity, and also in `params.actor` |
+| `target` | The deployment the event acted for, `{id, name?, deleted?}`, taken from `params.for_deployment` (for example the deployment a yield gave the cards to); the whole field is omitted when there is none. A deleted deployment carries `deleted: true` with the name taken from what it left behind, and `name` is omitted when not even a name is known. The UI uses it to show a clickable yield target next to the deployment name |
 
 The server decides in one place which event codes belong to the history and in which category:
 

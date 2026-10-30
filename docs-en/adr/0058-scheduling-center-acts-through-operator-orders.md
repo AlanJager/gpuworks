@@ -72,3 +72,5 @@ and afterward the replicas take part in refill and replacement like any other.
 - Node-loss rescheduling, its undo, and the drain surge keep their state in memory, so a server restart may lose the chance to undo or choose the replacement node again, in exchange for adding no persisted facts for these short-lived states.
 - The evaluator runs inside the server process: nothing happens automatically while the server is down, and after it recovers only the newest schedule entry within 12 hours is made up.
 - The evaluator reads only deployments that have a schedule, an idle setting, or a wait, and never scans them all, in keeping with the scale target; the board is paged by node and reads occupants only for the nodes on the page.
+
+> Note, 2026-10-30: the page this record calls the “scheduling center” is now named “Scheduling analysis” (in the “Overview” menu group, route still `/scheduling`); the decisions are unchanged.

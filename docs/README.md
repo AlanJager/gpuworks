@@ -57,7 +57,7 @@
 - [PD 分离部署](how-to/pd-disaggregation.md)
 - [启用和排查 dGPU](how-to/dgpu.md)
 - [让实例 sleep / wake](how-to/sleep-wake.md)
-- [使用调度中心：定时计划、出让策略、唤醒等位](how-to/scheduling-center.md)
+- [使用调度分析：定时计划、出让策略、唤醒等位](how-to/scheduling-center.md)
 - [节点失联重调度](how-to/node-failover.md)
 - [运行批处理任务：Batch API 与控制台](how-to/batch-api.md)
 

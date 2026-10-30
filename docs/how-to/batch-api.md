@@ -278,7 +278,7 @@ curl -sS "$GPUWORKS_URL/v1/batches" \
 | 创建任务 400 `invalid_completion_window` | `completion_window` 必须是 `1h` 到 `72h` 的整小时，如 `"48h"` |
 | 创建任务 400 `file_not_found` | 文件 ID 写错，或不是同一用户的 `purpose=batch` 文件 |
 | 任务一直 `validating` | 全 server 已有 32 个任务在执行，排队等名额 |
-| 任务停在 `in_progress`、计数不动 | 部署可能在休眠或被让卡；看部署时间线和调度中心。请求在重试，不算失败 |
+| 任务停在 `in_progress`、计数不动 | 部署可能在休眠或被让卡；看部署时间线和调度分析。请求在重试，不算失败 |
 | 全部请求进了错误文件，状态码 404 | `model` 与部署对外的模型名不一致 |
 | 读输出文件 404 | 任务已结束超过 30 天，文件已删除；或者没有成功的请求，输出文件本就不存在 |
 | 401 `invalid_api_key` | 检查 `Authorization: Bearer <key>` |

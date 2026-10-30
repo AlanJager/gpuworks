@@ -278,7 +278,7 @@ How a batch interacts with a yield-anytime deployment:
 | Creating a batch returns 400 `invalid_completion_window` | `completion_window` must be a whole number of hours from `1h` to `72h`, such as `"48h"` |
 | Creating a batch returns 400 `file_not_found` | The file ID is wrong, or the file is not a `purpose=batch` file of the same user |
 | The batch stays in `validating` | 32 batches are already executing across the server; it is waiting for a slot |
-| The batch stays in `in_progress` and the counts do not move | The deployment may be asleep or have yielded its cards; check the deployment timeline and the scheduling center. Requests are being retried and do not count as failures |
+| The batch stays in `in_progress` and the counts do not move | The deployment may be asleep or have yielded its cards; check the deployment timeline and the scheduling analysis. Requests are being retried and do not count as failures |
 | All requests land in the error file with status 404 | `model` does not match the deployment's served model name |
 | Reading the output file returns 404 | The batch ended more than 30 days ago and the file was deleted, or no request succeeded so the output file never existed |
 | 401 `invalid_api_key` | Check `Authorization: Bearer <key>` |
