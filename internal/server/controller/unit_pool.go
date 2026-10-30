@@ -162,6 +162,23 @@ func (c *Controller) pickPoolNode(ctx context.Context, deployment *unitDeploymen
 		}
 		planning.ConsumePlacementHint(dep.ID, hinted)
 	}
+	// A replica waiting for the holders of cards on one node to yield
+	// (placewait) is rechecked every placewait.Recheck: that node is tried
+	// first, and while it still fits only once they yield the wait goes on
+	// without re-planning the rest of the pool. Only when it no longer fits
+	// even then does the search go on down the ranking.
+	waitedFirst := false
+	if !hasHint {
+		if w, waiting := c.waits.Get(dep.ID, c.now()); waiting {
+			for i, index := range order {
+				if pool.Ranked[index].Node.ID == w.Cards.NodeID {
+					order = append(append([]int{index}, order[:i]...), order[i+1:]...)
+					waitedFirst = true
+					break
+				}
+			}
+		}
+	}
 	tried := 0
 	// closest are the candidates refused this pass, best first: what the
 	// deployment's status shows as the nodes nearest to running a replica.
@@ -192,6 +209,9 @@ func (c *Controller) pickPoolNode(ctx context.Context, deployment *unitDeploymen
 		if yield != nil {
 			if yieldWait == nil {
 				yieldWait, waitsFor = refusal, yield
+			}
+			if waitedFirst && tried == 1 {
+				break
 			}
 			continue
 		}

@@ -11,7 +11,9 @@ import (
 // them up waits for them (scheduler.ReasonWaitingForYield): the controller
 // notes the deployment in its placement waits, which the residency arbiter
 // serves like a request held for a sleeping deployment, and plans the replica
-// again every placewait.Recheck until the holders have slept and it fits.
+// again every placewait.Recheck until the holders have slept and it fits. A
+// pool replica's recheck plans the node it waits on first and stops there
+// while that node still fits once its holders sleep (pickPoolNode).
 // What it waits for is the plan's typed planning.LaunchYield; the refusal's
 // params are for display only.
 

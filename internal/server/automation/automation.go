@@ -168,11 +168,7 @@ func (e *Evaluator) Run(ctx context.Context) {
 			e.Tick()
 			rearm()
 		case <-due.C:
-			now := e.now()
-			// A yield may have landed: the waiting wake it made room for
-			// goes first, as on a nudge, without the nudge's settle.
-			e.waitingWakes(now)
-			e.residency(now)
+			e.due(e.now())
 			rearm()
 		case <-e.wake:
 			if settled == nil {
@@ -208,13 +204,20 @@ func (e *Evaluator) Tick() {
 	e.schedules(now)
 }
 
-func (e *Evaluator) waitingWakes(now time.Time) {
+func (e *Evaluator) waitingWakes(now time.Time) { e.waitingWakesOf(now, nil) }
+
+// waitingWakesOf looks at the waiting wakes of the deployments only names,
+// or at every one when only is nil.
+func (e *Evaluator) waitingWakesOf(now time.Time, only map[uint]bool) {
 	waits, err := e.source.WaitingWakes()
 	if err != nil {
 		e.log.Warn("automation: read waiting wakes", "err", err)
 		return
 	}
 	for _, w := range waits {
+		if only != nil && !only[w.DeploymentID] {
+			continue
+		}
 		if now.Sub(w.Since) >= e.waitMax {
 			if err := e.actions.EndWaiting(w.DeploymentID, w.Instances); err != nil {
 				e.log.Warn("automation: end a wake's wait", "deployment", w.DeploymentID, "err", err)

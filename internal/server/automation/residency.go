@@ -126,6 +126,10 @@ type residencyState struct {
 	// next is when the last look found the next yield due, zero when none
 	// is (Evaluator.residencyDue).
 	next time.Time
+	// poll is when to look next whether a yield has landed, zero while
+	// none is landing (yieldPoll): that look is at the waiting wakes the
+	// yields made room for alone (Evaluator.yieldLanding).
+	poll time.Time
 	// starting are holders last seen still starting: once one serves, its
 	// turn and idle time count from then.
 	starting map[uint]bool
@@ -153,7 +157,9 @@ type drain struct {
 }
 
 // yieldPoll is how often the arbiter looks while a yield it ordered lands,
-// so the waiter wakes as soon as the room is there.
+// so the waiter wakes as soon as the room is there. Such a look is at the
+// waiter's waiting wake alone: nothing else changes because a sleep landed,
+// and the instance changes it makes nudge the evaluator for the rest.
 const yieldPoll = 250 * time.Millisecond
 
 // busyPoll is how often the arbiter looks again at a holder that yields
@@ -278,14 +284,59 @@ func (e *Evaluator) residency(now time.Time) {
 	}
 	// While a yield lands, look often: the waiter's wake waits on it, and a
 	// nudge would add its settle on top of the sleep.
-	for _, y := range r.yieldedFor {
+	e.pollLanding(now, e.landing(now))
+}
+
+// landing are the deployments yields were ordered for within yieldGuard: the
+// ones whose wake waits for those yields to land.
+func (e *Evaluator) landing(now time.Time) map[uint]bool {
+	out := map[uint]bool{}
+	for _, y := range e.res.yieldedFor {
 		if now.Sub(y.at) < yieldGuard {
-			if _, asleep := r.source.Wakeable(y.to); asleep {
-				r.dueAt(now.Add(yieldPoll))
-				break
-			}
+			out[y.to] = true
 		}
 	}
+	return out
+}
+
+// pollLanding sets the yield poll while one of the deployments the yields
+// were for is still asleep, and clears it once none is.
+func (e *Evaluator) pollLanding(now time.Time, landing map[uint]bool) {
+	r := e.res
+	r.poll = time.Time{}
+	for id := range landing {
+		if _, asleep := r.source.Wakeable(id); asleep {
+			r.poll = now.Add(yieldPoll)
+			return
+		}
+	}
+}
+
+// due acts on the evaluator's next look falling due. A look due for the
+// yield poll alone wakes the waiting wakes the yields were for once they fit
+// (yieldLanding); any other is a full look - the waiting wakes, then the
+// arbiter.
+func (e *Evaluator) due(now time.Time) {
+	if r := e.res; r != nil && !r.poll.IsZero() && !now.Before(r.poll) && (r.next.IsZero() || now.Before(r.next)) {
+		e.yieldLanding(now)
+		return
+	}
+	// A yield may have landed: the waiting wake it made room for goes
+	// first, as on a nudge, without the nudge's settle.
+	e.waitingWakes(now)
+	e.residency(now)
+}
+
+// yieldLanding looks at the waiting wakes of the deployments yields were
+// ordered for, and only those: on a fleet with many waiting wakes, a look at
+// every one on each yield poll would take the lifecycle lock for each,
+// four times a second.
+func (e *Evaluator) yieldLanding(now time.Time) {
+	landing := e.landing(now)
+	if len(landing) > 0 {
+		e.waitingWakesOf(now, landing)
+	}
+	e.pollLanding(now, landing)
 }
 
 // serveWaiter wakes a waiter, or, when its wake waits for room, puts to
@@ -421,10 +472,17 @@ func (r *residencyState) dueAt(at time.Time) {
 // residencyDue is how long until the arbiter must look again, ok false when
 // nothing falls due (the tick still looks).
 func (e *Evaluator) residencyDue() (time.Duration, bool) {
-	if e.res == nil || e.res.next.IsZero() {
+	if e.res == nil {
 		return 0, false
 	}
-	after := e.res.next.Sub(e.now())
+	next := e.res.next
+	if poll := e.res.poll; !poll.IsZero() && (next.IsZero() || poll.Before(next)) {
+		next = poll
+	}
+	if next.IsZero() {
+		return 0, false
+	}
+	after := next.Sub(e.now())
 	if after < 0 {
 		after = 0
 	}

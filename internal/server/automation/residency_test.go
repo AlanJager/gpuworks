@@ -635,3 +635,61 @@ func TestAYieldInFlightIsPolledUntilTheWaiterWakes(t *testing.T) {
 		t.Fatalf("still polling every %v after the waiter woke", after)
 	}
 }
+
+// A yield-poll look is at the waiting wake the yield made room for alone:
+// another deployment's waiting wake is left to the nudges and the tick, so
+// a fleet with many waiting wakes is not walked four times a second. Once
+// the waiter wakes the poll stops; a look due for anything else is whole.
+func TestAYieldPollLooksOnlyAtTheWaiterItIsFor(t *testing.T) {
+	w := newResidencyWorld()
+	const online, batch, other = 1, 2, 5
+	w.levels[online], w.levels[batch] = pol(servicelevel.Idle), pol(servicelevel.Anytime)
+	w.asleep[online] = true
+	w.activity[batch] = Activity{InFlight: 1, LastRequest: t0}
+	w.blocking[online] = Blocking{Holders: []Holder{{DeploymentID: batch, Policy: pol(servicelevel.Anytime), Instances: []string{"b-1"}}}}
+	w.waiters = []Waiter{{DeploymentID: online, Policy: pol(servicelevel.Idle), Since: t0}}
+	w.waits = []WaitingWake{
+		{DeploymentID: other, Instances: []string{"o-1"}, Since: t0},
+		{DeploymentID: online, Instances: []string{"i-1"}, Since: t0},
+	}
+	e, c := newResidencyEvaluator(w, t0)
+	e.residency(c.t)
+	if !slices.Equal(w.yields, []string{"2 abort=true"}) {
+		t.Fatalf("yields %v", w.yields)
+	}
+
+	// The sleep has not landed: the poll looks at the waiter's wake, only.
+	w.orders = nil
+	c.t = c.t.Add(yieldPoll)
+	e.due(c.t)
+	if !slices.Equal(w.orders, []string{"wake-waiting 1 [i-1]"}) {
+		t.Fatalf("orders on a yield poll = %v, want the waiter's waiting wake alone", w.orders)
+	}
+	if after, ok := e.residencyDue(); !ok || after != yieldPoll {
+		t.Fatalf("next look in %v (%v), want the yield poll again", after, ok)
+	}
+
+	// It lands and the waiter wakes: the poll stops.
+	w.orders = nil
+	w.fits[online] = []string{"i-1"}
+	w.asleep[online] = false
+	c.t = c.t.Add(yieldPoll)
+	e.due(c.t)
+	if !slices.Equal(w.orders, []string{"wake-waiting 1 [i-1]"}) {
+		t.Fatalf("orders = %v", w.orders)
+	}
+	if got := w.eventsFor(online); len(got) == 0 || !strings.HasPrefix(got[len(got)-1], "1 AUTO_WAKE") {
+		t.Fatalf("waiter events %v, want its wake recorded", got)
+	}
+	if after, ok := e.residencyDue(); ok && after <= yieldPoll {
+		t.Fatalf("still polling every %v after the waiter woke", after)
+	}
+
+	// A look due for something else is whole: every waiting wake.
+	w.orders = nil
+	e.res.next = c.t
+	e.due(c.t)
+	if !slices.Contains(w.orders, "wake-waiting 5 [o-1]") {
+		t.Fatalf("orders on a full look = %v, want every waiting wake", w.orders)
+	}
+}
