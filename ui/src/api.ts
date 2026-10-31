@@ -2047,7 +2047,7 @@ export interface DataRetentionView {
 }
 
 export interface DataRetentionStore {
-  kind: "metrics" | "logs" | "requests" | "usage" | "quality" | "gpu" | "gpu_time";
+  kind: "metrics" | "logs" | "requests" | "usage" | "quality" | "gpu" | "gpu_time" | "scheduling";
   file: string;
   file_bytes: number | null;
   hourly_rows: number | null;

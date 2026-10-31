@@ -42,7 +42,7 @@ export function TimelineNodes({ timeline, gpuNames }: { timeline: SchedulingTime
   );
 }
 
-function TimelineNodeBlock({ node, span, hours, stats, gpuNames }: { node: TimelineNode; span: Span; hours: 6 | 24; stats: TimelineDeployment[]; gpuNames: Map<string, string> }) {
+function TimelineNodeBlock({ node, span, hours, stats, gpuNames }: { node: TimelineNode; span: Span; hours: number; stats: TimelineDeployment[]; gpuNames: Map<string, string> }) {
   const { t } = useTranslation("scheduling");
   const ticks = ticksOf(span, hours);
   return (

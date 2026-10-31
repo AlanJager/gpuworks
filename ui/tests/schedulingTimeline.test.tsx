@@ -25,6 +25,7 @@ const s = locale.scheduling;
 const original = { ...schedulingApi };
 const FROM = "2026-10-28T06:00:00Z";
 const TO = "2026-10-28T12:00:00Z";
+const NODE_WINDOWS = [{ key: "6h", seconds: 21600 }, { key: "24h", seconds: 86400 }];
 const at = (hoursAfterFrom: number) => new Date(Date.parse(FROM) + hoursAfterFrom * 3600_000).toISOString();
 
 const nodes: BoardNode[] = [{
@@ -37,7 +38,8 @@ const nodes: BoardNode[] = [{
 
 function timeline(overrides: Partial<Timeline> = {}): Timeline {
   return {
-    window: { from: FROM, to: TO, hours: 6 },
+    window: { from: FROM, to: TO, hours: 6, key: "6h", seconds: 21600 },
+    windows: NODE_WINDOWS,
     nodes: [{
       uuid: "node-a", name: "gpu-a",
       gpus: [
@@ -206,19 +208,23 @@ test("a block names itself to assistive tech and shows a tooltip on hover and on
   assert.equal(screen.queryByRole("tooltip"), null);
 });
 
-test("the window selector asks for 24 hours and keeps showing the card meanwhile", async () => {
+test("the window selector offers the server's windows, asks for 24 hours and keeps showing the card meanwhile", async () => {
   const asked: unknown[] = [];
   schedulingApi.timeline = async (query) => {
     asked.push(query);
-    return timeline({ window: { from: FROM, to: TO, hours: query.hours } });
+    const key = query.window ?? "6h";
+    const hours = key === "24h" ? 24 : 6;
+    return timeline({ window: { from: FROM, to: TO, hours, key, seconds: hours * 3600 } });
   };
   const user = mount();
   await screen.findByRole("group", { name: i18n.t("scheduling:timeline.gpuAria", { node: "gpu-a", index: 0 }) });
-  assert.deepEqual(asked, [{ nodes: ["node-a"], hours: 6 }]);
-  const selector = screen.getByRole("radiogroup", { name: s.timeline.window });
+  // The first read leaves the window to the server, whose answer lists the choices.
+  assert.deepEqual(asked, [{ nodes: ["node-a"], window: undefined }]);
+  const selector = await screen.findByRole("radiogroup", { name: s.timeline.window });
+  assert.equal(within(selector).getAllByRole("radio").length, NODE_WINDOWS.length);
   assert.ok(within(selector).getByLabelText(i18n.t("scheduling:timeline.hours", { hours: 6 })));
   await user.click(within(selector).getByText(i18n.t("scheduling:timeline.hours", { hours: 24 })));
-  await waitFor(() => assert.deepEqual(asked.at(-1), { nodes: ["node-a"], hours: 24 }));
+  await waitFor(() => assert.deepEqual(asked.at(-1), { nodes: ["node-a"], window: "24h" }));
   assert.ok(screen.getByRole("group", { name: i18n.t("scheduling:timeline.gpuAria", { node: "gpu-a", index: 0 }) }));
 });
 
@@ -280,7 +286,7 @@ test("a failed refresh keeps the last timeline and warns", async () => {
   };
   const user = mount();
   await screen.findByRole("group", { name: i18n.t("scheduling:timeline.gpuAria", { node: "gpu-a", index: 0 }) });
-  await user.click(within(screen.getByRole("radiogroup", { name: s.timeline.window })).getByText(i18n.t("scheduling:timeline.hours", { hours: 24 })));
+  await user.click(within(await screen.findByRole("radiogroup", { name: s.timeline.window })).getByText(i18n.t("scheduling:timeline.hours", { hours: 24 })));
   assert.ok(await screen.findByText(i18n.t("scheduling:timeline.refreshFailed", { detail: "boom" })));
   assert.ok(screen.getByRole("group", { name: i18n.t("scheduling:timeline.gpuAria", { node: "gpu-a", index: 0 }) }));
 });

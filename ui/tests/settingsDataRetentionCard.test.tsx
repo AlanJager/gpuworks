@@ -35,6 +35,7 @@ const status: Status = {
     { kind: "metrics", file: "metrics.db", file_bytes: 3 * 1024 ** 3, hourly_rows: null, daily_rows: null, earliest_ms: Date.UTC(2026, 9, 19) },
     { kind: "usage", file: "main", file_bytes: null, hourly_rows: 1234, daily_rows: 56, earliest_ms: null },
     { kind: "gpu", file: "stats.db", file_bytes: 40 * 1024 ** 2, hourly_rows: 99, daily_rows: 3, earliest_ms: null },
+    { kind: "scheduling", file: "stats.db", file_bytes: 40 * 1024 ** 2, hourly_rows: 4321, daily_rows: 7, earliest_ms: null },
   ],
   live_since_ms: 1, backfill: { usage_done: true, usage_through_ms: 0, quality_done: true, quality_through_ms: 0 },
   retain: { at_ms: Date.UTC(2026, 9, 22, 12) }, rollup: { at_ms: 0 }, usage_flush: { at_ms: 0, rows: 0, ms: 0 },
@@ -66,6 +67,10 @@ test("what each store holds is shown beside its retention, with the bounds the s
   assert.ok(await screen.findByText(i18n.t("settings:dataRetention.rows", { hourly: (1234).toLocaleString(), daily: "56" }), { exact: false }));
   assert.equal(screen.getAllByText(i18n.t("settings:dataRetention.range.hours", { min: 24, max: 720 })).length, 2);
   assert.ok(screen.getByText(d.billing));
+  // The scheduling activity is always counted: its rows show, with no switch.
+  assert.ok(screen.getByText(d.alwaysOn.scheduling));
+  assert.ok(screen.getByText(i18n.t("settings:dataRetention.rows", { hourly: (4321).toLocaleString(), daily: "7" }), { exact: false }));
+  assert.equal(screen.queryByRole("switch", { name: d.alwaysOn.scheduling }), null);
   assert.equal((screen.getByLabelText(d.fields.usage_daily_days) as HTMLInputElement).value, "400");
   // Nothing changed: nothing to save.
   assert.equal((screen.getByRole("button", { name: locale.settings.common.save }) as HTMLButtonElement).disabled, true);

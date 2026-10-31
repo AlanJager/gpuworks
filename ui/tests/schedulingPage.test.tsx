@@ -24,6 +24,7 @@ const { default: SchedulingPage } = await import("../src/pages/SchedulingPage.ts
 type Board = import("../src/schedulingApi.ts").SchedulingBoard;
 type Overview = import("../src/schedulingApi.ts").SchedulingOverview;
 type Timeline = import("../src/schedulingApi.ts").SchedulingTimeline;
+type Activity = import("../src/schedulingApi.ts").SchedulingActivity;
 
 const GIB = 1024 ** 3;
 const s = locale.scheduling;
@@ -67,15 +68,27 @@ function nodeBoard(uuid: string): Board {
   });
 }
 
-const sharing = (): Timeline => ({
-  window: { from: "2026-10-28T06:00:00Z", to: "2026-10-28T12:00:00Z", hours: 6 }, nodes: [],
+const SHARING_WINDOWS = [{ key: "15m", seconds: 900 }, { key: "1h", seconds: 3600 }, { key: "6h", seconds: 21600 }, { key: "24h", seconds: 86400 }];
+const sharing = (key = "6h"): Timeline => ({
+  window: { from: "2026-10-28T06:00:00Z", to: "2026-10-28T12:00:00Z", hours: 6, key, seconds: SHARING_WINDOWS.find((w) => w.key === key)?.seconds ?? 21600 },
+  windows: SHARING_WINDOWS, nodes: [],
   deployments: [{ deployment_id: 8, deployment: "llama", yield_policy: "timeslice", awake_seconds: 3600, awake_share: 0.25, present_seconds: 14400, switches: 3, yielded: 2, yielded_to: 1, wakes: 1, held_requests: 6, wait_p50_ms: 4200, wait_p95_ms: 31000 }],
 });
 
-interface Calls { board: unknown[]; timeline: unknown[] }
+interface Calls { board: unknown[]; timeline: unknown[]; activity: unknown[] }
 
-function serve(options: { overview?: () => Promise<Overview>; board?: () => Board; sharing?: () => Timeline } = {}): Calls {
-  const calls: Calls = { board: [], timeline: [] };
+const activity = (): Activity => ({
+  from: "2026-10-27T12:00:00Z", to: "2026-10-28T12:00:00Z", bucket_seconds: 900,
+  reasons: [{ key: "idle_yield", count: 0 }, { key: "rank_preemption", count: 0 }], buckets: [], top_cards: [], beyond_retention: false,
+});
+
+function serve(options: { overview?: () => Promise<Overview>; board?: () => Board; sharing?: (key?: string) => Timeline } = {}): Calls {
+  const calls: Calls = { board: [], timeline: [], activity: [] };
+  // The activity card has its own tests (schedulingActivity.test.tsx).
+  schedulingApi.activity = async (range) => {
+    calls.activity.push(range);
+    return activity();
+  };
   schedulingApi.overview = options.overview ?? (async () => smallFleet());
   schedulingApi.board = async (query) => {
     calls.board.push(query);
@@ -85,8 +98,11 @@ function serve(options: { overview?: () => Promise<Overview>; board?: () => Boar
   };
   schedulingApi.timeline = async (query) => {
     calls.timeline.push(query);
-    if ("sharing" in query) return (options.sharing ?? sharing)();
-    return { window: { from: "2026-10-28T06:00:00Z", to: "2026-10-28T12:00:00Z", hours: 6 }, nodes: [], deployments: [] };
+    if ("sharing" in query) return (options.sharing ?? sharing)(query.window);
+    return {
+      window: { from: "2026-10-28T06:00:00Z", to: "2026-10-28T12:00:00Z", hours: 6, key: "6h", seconds: 21600 },
+      windows: [{ key: "6h", seconds: 21600 }, { key: "24h", seconds: 86400 }], nodes: [], deployments: [],
+    };
   };
   // The scheduling history has its own tests (schedulingHistory.test.tsx).
   schedulingApi.history = async () => ({ items: [{
@@ -287,7 +303,7 @@ test("opening a node reads it in full: each GPU as a bar with its holders, and i
   assert.ok(within(drawer).getByText(s.states.awake, { selector: ".scheduling-gpu-state" }));
   assert.ok(within(drawer).getByText(s.states.held_outside, { selector: ".scheduling-gpu-state" }));
   assert.ok(within(drawer).getByText(s.timeline.title));
-  await waitFor(() => assert.deepEqual(calls.timeline.find((query) => "nodes" in (query as object)), { nodes: ["node-a"], hours: 6 }));
+  await waitFor(() => assert.deepEqual(calls.timeline.find((query) => "nodes" in (query as object)), { nodes: ["node-a"], window: undefined }));
   await user.click(within(drawer).getByRole("link", { name: "qwen" }));
   assert.equal(screen.getByTestId("loc").textContent, "/deployments?deployment=7");
 });
@@ -416,15 +432,22 @@ test("a refused cancel keeps the waiting wake and says why", async () => {
 
 test("the sharing stats cover the fleet, are read for the chosen window, and say when they fail", async () => {
   let fail = false;
-  const calls = serve({ sharing: () => { if (fail) throw new Error("log unavailable"); return sharing(); } });
+  const calls = serve({ sharing: (key) => { if (fail) throw new Error("log unavailable"); return sharing(key); } });
   const user = mount();
   const title = await screen.findByText(s.sharing.title);
   const card = title.closest(".ant-card") as HTMLElement;
   await within(card).findByRole("link", { name: "llama" });
-  assert.deepEqual(calls.timeline.at(-1), { sharing: true, hours: 6 });
+  // The first read leaves the window to the server; its answer lists the four
+  // windows, 6 hours chosen.
+  assert.deepEqual(calls.timeline.at(-1), { sharing: true, window: undefined });
+  const picker = within(card).getByRole("radiogroup", { name: s.timeline.window });
+  assert.deepEqual(within(picker).getAllByRole("radio").map((radio) => (radio as HTMLInputElement).checked), [false, false, true, false]);
+  assert.ok(within(picker).getByText(i18n.t("scheduling:timeline.minutes", { minutes: 15 })));
+  await user.click(within(picker).getByText(i18n.t("scheduling:timeline.hours", { hours: 1 })));
+  await waitFor(() => assert.deepEqual(calls.timeline.at(-1), { sharing: true, window: "1h" }));
   fail = true;
   await user.click(within(card).getByText(i18n.t("scheduling:timeline.hours", { hours: 24 })));
-  await waitFor(() => assert.deepEqual(calls.timeline.at(-1), { sharing: true, hours: 24 }));
+  await waitFor(() => assert.deepEqual(calls.timeline.at(-1), { sharing: true, window: "24h" }));
   assert.ok(await within(card).findByText(i18n.t("scheduling:sharing.refreshFailed", { detail: "log unavailable" })), "the last stats stay under the warning");
   assert.ok(within(card).getByRole("link", { name: "llama" }));
 });

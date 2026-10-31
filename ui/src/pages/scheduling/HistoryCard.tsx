@@ -8,7 +8,7 @@ import EmptyState from "../../components/EmptyState";
 import ResourceTable, { type ResourceColumn } from "../../components/resourceTable/ResourceTable";
 import TimeRangePicker from "../../components/TimeRangePicker";
 import { formatTime } from "../../i18n/datetime";
-import { resolveRange, type QuickRangeKey, type TimeRangeSelection } from "../../timeRange";
+import { SCHEDULING_QUICK_RANGES, resolveRange, type QuickRangeKey, type TimeRangeSelection } from "../../timeRange";
 import { instanceEventText } from "../instanceEvents";
 import { NodeLink } from "./NodeLink";
 
@@ -17,9 +17,6 @@ const HISTORY_POLL_MS = 15_000;
 // is a next page without counting the history.
 const PAGE_SIZE = 20;
 const CATEGORY_COLORS: Record<SchedulingCategory, string> = { auto: "blue", failure: "red", manual: "default" };
-
-// The quick ranges the history offers: up to a week, besides a custom range.
-export const HISTORY_QUICK_RANGES: readonly QuickRangeKey[] = ["15m", "1h", "6h", "1d", "1w"];
 
 interface Filters {
   category: SchedulingCategory | "all";
@@ -133,7 +130,7 @@ export default function HistoryCard() {
           onChange={(value) => refine({ category: value as Filters["category"] })}
         />
         <DeploymentFilter value={filters.deployment} onChange={(deployment) => refine({ deployment })} />
-        <TimeRangePicker quickRanges={HISTORY_QUICK_RANGES} value={filters.range} onChange={(range) => { if (range) refine({ range }); }} />
+        <TimeRangePicker quickRanges={SCHEDULING_QUICK_RANGES} value={filters.range} onChange={(range) => { if (range) refine({ range }); }} />
       </Space>
       {body}
     </Card>

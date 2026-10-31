@@ -183,7 +183,8 @@
       "seconds": "{{value}} 秒",
       "minutes": "{{value}} 分"
     },
-    "cardsOnNode": "{{node}} · GPU {{gpus}}"
+    "cardsOnNode": "{{node}} · GPU {{gpus}}",
+    "minutes": "{{minutes}} 分钟"
   },
   "states": {
     "awake": "提供服务",
@@ -268,5 +269,34 @@
   "queues": {
     "loading": "正在加载等待与计划…",
     "loadFailed": "无法加载等待与计划"
+  },
+  "activity": {
+    "title": "调度活动",
+    "loading": "正在加载调度活动…",
+    "loadFailed": "无法加载调度活动",
+    "refreshFailed": "刷新调度活动失败：{{detail}}",
+    "empty": "这段时间没有调度活动。",
+    "chartAria": "按原因堆叠的调度活动，每根柱子 {{bucket}}",
+    "totals": "每根柱子 {{bucket}}",
+    "beyondRetention": "超出统计保留期：范围开头的一段没有统计数据。",
+    "topCards": "最近切换最频繁的卡",
+    "topCardsEmpty": "这段时间没有卡换过占用者。",
+    "gpu": "GPU {{index}}",
+    "switches": "{{count}} 次",
+    "reason": {
+      "idle_yield": "闲置让卡",
+      "rank_preemption": "排位抢占",
+      "timeslice_turn": "时间片轮转",
+      "operator_yield": "运维让位",
+      "scheduled": "定时计划",
+      "failure": "失败（重建 / 替换 / 超时）",
+      "queued": "无法调度 / 排队"
+    },
+    "bucket": {
+      "seconds": "{{value}} 秒",
+      "minutes": "{{value}} 分钟",
+      "hours": "{{value}} 小时",
+      "days": "{{value}} 天"
+    }
   }
 }
