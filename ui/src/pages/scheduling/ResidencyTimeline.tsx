@@ -54,7 +54,6 @@ function TimelineBody({ uuids, window, gpuNames, onAnswer }: {
   useEffect(() => {
     if (data) onAnswer({ windows: data.windows, key: data.window.key });
     // The answer's windows change rarely; offeredKey says when they did.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [offeredKey]);
   if (!data && timeline.error) {
     return (
