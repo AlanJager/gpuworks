@@ -69,7 +69,7 @@ function nodeBoard(uuid: string): Board {
 
 const sharing = (): Timeline => ({
   window: { from: "2026-10-28T06:00:00Z", to: "2026-10-28T12:00:00Z", hours: 6 }, nodes: [],
-  deployments: [{ deployment_id: 8, deployment: "llama", yield_policy: "timeslice", awake_seconds: 3600, awake_share: 0.25, switches: 3, yielded: 2, yielded_to: 1, wakes: 1, held_requests: 6, wait_p50_ms: 4200, wait_p95_ms: 31000 }],
+  deployments: [{ deployment_id: 8, deployment: "llama", yield_policy: "timeslice", awake_seconds: 3600, awake_share: 0.25, present_seconds: 14400, switches: 3, yielded: 2, yielded_to: 1, wakes: 1, held_requests: 6, wait_p50_ms: 4200, wait_p95_ms: 31000 }],
 });
 
 interface Calls { board: unknown[]; timeline: unknown[] }

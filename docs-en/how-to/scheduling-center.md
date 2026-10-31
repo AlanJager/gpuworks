@@ -101,12 +101,12 @@ The **Residency timeline** in the node drawer draws a horizontal time axis for e
 
 The time ticks are drawn to scale. Hover a block, or focus it with the keyboard, to see the deployment, the state and the start and end times. The window is 6 or 24 hours (6 by default); any other `hours` returns 400 `FIELD_INVALID`, with a message saying the choices are `6, 24`.
 
-The **Deployments sharing cards** table on the page lists the deployments across the whole cluster that held cards in the window and whose yield policy is not never yield (the drawer shows the same table under its timeline, limited to the deployments that held that node's cards):
+The **Deployments sharing cards** table on the page lists the deployments across the whole cluster that held cards in the window and whose yield policy is not never yield (the drawer shows the same table under its timeline, limited to the deployments that held that node's cards). Deployments deleted since that gave a card up or were given one in the window are listed too, their name followed by "(deleted)" and greyed, with no link and — for the level, as the [scheduling history](#调度记录) shows deleted deployments: they did share cards in the window, and deleting them should not make other deployments' "Yielded to" shrink.
 
 | Column | Meaning |
 |---|---|
 | Node and GPUs | The nodes and GPUs its replicas are on now, one line per node; — when none is placed |
-| Serving time, share | The time at least one replica was serving, and its share of the window |
+| Serving time, share | The time at least one replica was serving / the time the deployment existed in the window, and the first as a share of the second. It existed from the later of the window's start and its creation to the earlier of now and its deletion, so a deployment created partway through the window and serving since shows close to 100%, not its share of the whole window |
 | Switches | Times it yielded plus times the platform woke it |
 | Yielded, yielded to | Times it was put to sleep to give a card to another deployment, and times another deployment gave a card to it |
 | Held requests, wait p50 / p95 | Requests the gateway held while it woke, and the median and 95th percentile of their waits |
@@ -127,7 +127,8 @@ What the figures mean and where they stop:
 
 - **A yield is counted one way**: the overview's "yields in the last hour", the timeline's "Yielded" and "Yielded to", and the shared-cards table count the same kind of event: the residency arbiter putting a holder to sleep (a yield), and an operator's yielding wake (`?yield=true`) putting an occupant to sleep. An operator's yielding wake also records which deployment it was for (`for_deployment`), so it links to that deployment in the [scheduling history](#调度记录) and counts in that deployment's "Yielded to" too.
 - The timeline is derived from instance records and the event log; nothing else is stored for it. Removing an instance now also records an `INSTANCE_REMOVED` event naming the node and cards it held; instances removed before the upgrade have no such record and do not appear in past segments.
-- With `node`, only the nodes named in the request count: replicas of a deployment on other nodes are not part of its serving time, and "yielded to" counts only the deployments that also held these cards giving way to it. `sharing=1` counts all the instances of these deployments across the cluster, reads only as much as the number of sharing deployments, and its result is cached for about 30 seconds.
+- With `node`, only the replicas on the nodes named in the request count: replicas of a deployment on other nodes are not part of its serving time. "Switches", "Yielded" and "Yielded to" are the deployment's own counts across the cluster, the same as `sharing=1` gives; "Yielded to" goes by the `for_deployment` the yield recorded, also when the one that gave way has been deleted. `sharing=1` counts all the instances of these deployments across the cluster, reads only as much as the number of sharing deployments and the window's automatic sleeps and wakes, and its result is cached for about 30 seconds.
+- A deleted deployment's creation time and yield policy are not kept: the time it existed counts from the earliest its instances appear in the window, up to its deletion.
 - A follower of a multi-node replica follows its leader's sleep and wake.
 - At most the latest 200 segments of a card are returned; older ones are left out and the console says so.
 - The wait quantiles approximate the window: the gateway's quantile of each flush interval, weighted by the requests of that interval, not an exact per-request quantile of the window. The counts start again from zero when the gateway restarts, and both columns stay empty when no request was held in the window. The metric the gateway records is `wake_hold_wait_ms`, see [Inference Metrics](../reference/inference-metrics.md).

@@ -564,7 +564,7 @@ macOS 忽略 `no_systemd`。
 | GET | `/api/v1/scheduling/board` | 调度看板：`?page=&page_size=&q=` 分页的节点（每张卡的醒着占用、休眠残留、可用量、占用者与外部进程）加全集群的 `pending`（最近 30 分钟被调度拒绝的部署）、`waiting_wakes`、`upcoming`（未来 24 小时的计划动作）；`q` 匹配节点名称、主机名或 UUID；每张卡带服务端算出的 `state` 与 `switching`；已不再有 `recent`（最近的自动化事件看调度记录）；`?node=<uuid>` 只回答这一个节点（一行的 `nodes` 页，其余三项为空，不存在的节点 404），`?queues=1` 只回答后三项（`nodes` 为空页，不读任何节点）；见[调度看板](#调度看板) | JWT |
 | GET | `/api/v1/scheduling/overview` | 调度总览：全集群每个节点、每张卡的紧凑状态与汇总，一次返回，供热力图使用；来自缓存（至多每 2 秒重建一次），带 `ETag`，`If-None-Match` 命中返回 304；见[调度总览](#调度总览) | JWT |
 | GET | `/api/v1/scheduling/history` | 调度记录：全集群的调度事件，最新优先、游标分页（`limit`、`before`，同部署时间线），可按 `deployment_id`、`category`（`auto` / `failure` / `manual`，逗号分隔）、`since` / `until`（RFC 3339）筛选；非法筛选 400 `FIELD_INVALID`（`params.field`），非法游标或页大小 400 `EVENT_CURSOR_INVALID` / `EVENT_LIMIT_INVALID`；见[调度记录](#调度记录) | JWT |
-| GET | `/api/v1/scheduling/timeline` | 驻留时间线：`?node=<uuid>`（可重复，至多 200 个，通常是被打开的节点）`&hours=6\|24`（默认 6）。每张卡过去 `hours` 小时里各部署实例占用它的分段（`awake` / `asleep` / `switching` / `starting`），以及出现过的非常驻部署的统计；`?sharing=1&hours=` 不带 `node`，只回答全集群出让策略不是 `never` 的部署的统计（`nodes` 为空，约 30 秒缓存）；缺少 `node`（且没有 `sharing`）、`sharing` 不是 1 或与 `node` 同用、`hours` 不是 6 / 24 时 400 `FIELD_INVALID`（`params.field`，消息 `hours is one of 6, 24`），不存在的节点被略过；见[驻留时间线](#驻留时间线) | JWT |
+| GET | `/api/v1/scheduling/timeline` | 驻留时间线：`?node=<uuid>`（可重复，至多 200 个，通常是被打开的节点）`&hours=6\|24`（默认 6）。每张卡过去 `hours` 小时里各部署实例占用它的分段（`awake` / `asleep` / `switching` / `starting`），以及出现过的非常驻部署的统计；`?sharing=1&hours=` 不带 `node`，只回答全集群出让策略不是 `never` 的部署（及窗口内参与过让位、已删除的部署）的统计（`nodes` 为空，约 30 秒缓存）；缺少 `node`（且没有 `sharing`）、`sharing` 不是 1 或与 `node` 同用、`hours` 不是 6 / 24 时 400 `FIELD_INVALID`（`params.field`，消息 `hours is one of 6, 24`），不存在的节点被略过；见[驻留时间线](#驻留时间线) | JWT |
 | GET | `/api/v1/scheduling/yield-policies` | 出让策略字典：四个策略按等级从高到低，每个带 `defaults` 与可能适用的参数 `applies`，加只在另一个参数取某些值时才适用的条件 `applies_when`，各数值参数的范围 `bounds`（`at_most` 为不得超过的另一个参数）、`sleep_levels`、`unfinished`，客户端据此编辑，不另存默认值；见[出让策略](#出让策略) | JWT |
 | PUT | `/api/v1/deployments/{id}/pd` | PD 部署调整各角色副本（`roles.<role>.units`）与 `fallback`；`mode`、角色的 `tp`/`pp`、`kv_load_failure` 不可变（`PD_IMMUTABLE`）；非 PD 部署 400 `PD_NOT_PD` | JWT |
 | POST | `/api/v1/deployments/{id}/restart` | 按当前配置重建部署，重置副本重试次数；请求体可选 `strategy`（默认 `rolling`，`all` 会中断服务）；见[重启策略](#重启策略) | JWT |
@@ -1016,7 +1016,7 @@ macOS 忽略 `no_systemd`。
 
 ### 驻留时间线
 
-`GET /api/v1/scheduling/timeline?node=<uuid>&node=<uuid>&hours=6` 只读。它与看板分开，因为看板每隔几秒刷新，而时间线要读窗口内的事件日志；界面按被打开的节点和所选窗口读一次，约每分钟刷新。`?sharing=1&hours=6` 不带 `node`：只回答全集群出让策略不是 `never` 的部署的统计（`deployments[]`，`nodes` 为空数组），只读这些部署的实例与事件，并缓存约 30 秒；界面用它显示「共卡部署」表。响应：
+`GET /api/v1/scheduling/timeline?node=<uuid>&node=<uuid>&hours=6` 只读。它与看板分开，因为看板每隔几秒刷新，而时间线要读窗口内的事件日志；界面按被打开的节点和所选窗口读一次，约每分钟刷新。`?sharing=1&hours=6` 不带 `node`：只回答全集群出让策略不是 `never` 的部署、以及窗口内参与过让位后已删除的部署的统计（`deployments[]`，`nodes` 为空数组），只读这些部署的实例与事件，加上窗口内自动化休眠/唤醒事件的一段 `(kind, id)` 索引范围，并缓存约 30 秒；界面用它显示「共卡部署」表。响应：
 
 ```json
 {
@@ -1035,7 +1035,8 @@ macOS 忽略 `no_systemd`。
   }],
   "deployments": [{
     "deployment_id": 7, "deployment": "qwen", "yield_policy": "timeslice",
-    "awake_seconds": 10800, "awake_share": 0.5, "switches": 3, "yielded": 1, "yielded_to": 1, "wakes": 2,
+    "awake_seconds": 10800, "awake_share": 0.5, "present_seconds": 21600,
+    "switches": 3, "yielded": 1, "yielded_to": 1, "wakes": 2,
     "held_requests": 4, "wait_p50_ms": 4200, "wait_p95_ms": 31000,
     "cards": [{"node_id": 3, "node": "gpu3", "gpus": [0]}]
   }]
@@ -1047,7 +1048,7 @@ macOS 忽略 `no_systemd`。
 | `window` | 窗口：`hours`（6 或 24）、`from`、`to`（现在） |
 | `nodes[].gpus[]` | 与看板同样的卡（`index`），`segments[]` 从旧到新；`truncated` 为 true 表示只保留了最近 200 段 |
 | `segments[]` | 一个实例在一段时间里占着这张卡：`deployment_id`、`deployment`、`instance`、`state`（`awake` / `asleep` / `switching` / `starting`）、休眠时的 `level`（1 或 2）、`from`、`to`（都落在窗口内）；多卡实例在每张卡上各出现一次 |
-| `deployments[]` | 窗口内占过这些卡、出让策略不是 `never` 的部署（带各自的 `yield_policy`）：`awake_seconds`（至少一个副本醒着的时间）、`awake_share`（占窗口，0 到 1）、`switches`（`yielded` + `wakes`）、`yielded`（为别的部署让出卡而休眠，驻留仲裁的抢占与运维的让位唤醒都算，与总览的 `yields_last_hour` 同一口径）、`yielded_to`（别的部署为它让出，按事件的 `for_deployment` 计）、`wakes`（平台唤醒它）、`held_requests`（网关为等它唤醒而挂起的请求数）、`wait_p50_ms` / `wait_p95_ms`（这些请求的等待，近似值，没有被挂起的请求或网关不保留指标时省略）、`cards`（各副本此刻所在的节点与卡，按节点：`node_id`、`node`（节点显示名，节点已不存在时为空）、`gpus`；没有放置时为空数组） |
+| `deployments[]` | 窗口内占过这些卡、出让策略不是 `never` 的部署（带各自的 `yield_policy`），以及窗口内让出过卡或被让过卡、此后已删除的部署（`deployment_deleted: true`，`deployment` 是它留下的名字，`yield_policy` 为空字符串，因为删除后不保留）：`awake_seconds`（至少一个副本醒着的时间）、`present_seconds`（部署在窗口内存在的时长：从 max(窗口起点, 部署创建时间与首个实例时间中较早者) 到 min(现在, 删除时间)；已删除的部署不保留创建时间，按它的实例在窗口内最早出现的时间算，删除时间未知时按最后一段的结束）、`awake_share`（`awake_seconds` / `present_seconds`，0 到 1，`present_seconds` 为 0 时为 0）、`switches`（`yielded` + `wakes`）、`yielded`（为别的部署让出卡而休眠，驻留仲裁的抢占与运维的让位唤醒都算，与总览的 `yields_last_hour` 同一口径）、`yielded_to`（别的部署为它让出，按事件的 `for_deployment` 计，让出者已删除也计）、`wakes`（平台唤醒它）、`held_requests`（网关为等它唤醒而挂起的请求数）、`wait_p50_ms` / `wait_p95_ms`（这些请求的等待，近似值，没有被挂起的请求或网关不保留指标时省略）、`cards`（各副本此刻所在的节点与卡，按节点：`node_id`、`node`（节点显示名，节点已不存在时为空）、`gpus`；没有放置时为空数组）。四个切换计数是部署自身在整个集群里的计数，由窗口内全集群自动化休眠/唤醒事件的一段 `(kind, id)` 索引范围数出，按窗口缓存约 30 秒，带 `node` 与 `sharing=1` 两种读法共用这一份，给出同样的值 |
 
 时间线由实例记录与事件日志推导，移除实例时记录的 `INSTANCE_REMOVED` 事件（`kind` 为 `residency`，参数 `node_id`、`gpus`）说明它占过的节点与卡。语义与限制见[使用调度分析](../how-to/scheduling-center.md#驻留时间线)。
 

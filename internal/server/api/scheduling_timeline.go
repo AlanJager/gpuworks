@@ -10,7 +10,6 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"gpuworks.ai/gpuworks/internal/server/store"
-	"gpuworks.ai/gpuworks/internal/server/yieldpolicy"
 )
 
 const (
@@ -136,12 +135,16 @@ func (a *apiHandlers) residencyTimeline(uuids []string, now time.Time, hours int
 	if err != nil {
 		return out, err
 	}
-	return a.fillTimeline(out, cards, insts, events, from, now)
+	counts, err := a.switchCounts(now, hours)
+	if err != nil {
+		return out, err
+	}
+	return a.fillTimeline(out, cards, insts, events, counts, from, now)
 }
 
 // fillTimeline derives the segments of the instances into the cards' lanes
 // (none for the fleet's sharing stats) and the stats of the shared deployments.
-func (a *apiHandlers) fillTimeline(out dto.SchedulingTimeline, cards map[uint]map[int]*timelineCard, insts []store.ResidencyInstance, events map[string][]store.ResidencyEvent, from, now time.Time) (dto.SchedulingTimeline, error) {
+func (a *apiHandlers) fillTimeline(out dto.SchedulingTimeline, cards map[uint]map[int]*timelineCard, insts []store.ResidencyInstance, events map[string][]store.ResidencyEvent, counts map[uint]store.ResidencySwitches, from, now time.Time) (dto.SchedulingTimeline, error) {
 	var err error
 	type derived struct {
 		inst store.ResidencyInstance
@@ -165,9 +168,11 @@ func (a *apiHandlers) fillTimeline(out dto.SchedulingTimeline, cards map[uint]ma
 		return out, err
 	}
 	awake := map[uint][]interval{}
+	seen := map[uint]interval{}
 	for _, d := range all {
 		info := deployments[d.inst.DeploymentID]
 		for _, seg := range d.segs {
+			seen[d.inst.DeploymentID] = seen[d.inst.DeploymentID].cover(seg.From, seg.To)
 			if seg.State == store.ResidencyAwake {
 				awake[d.inst.DeploymentID] = append(awake[d.inst.DeploymentID], interval{seg.From, seg.To})
 			}
@@ -199,78 +204,10 @@ func (a *apiHandlers) fillTimeline(out dto.SchedulingTimeline, cards map[uint]ma
 			}
 		}
 	}
-	out.Deployments, err = a.timelineDeployments(deployments, awake, placementsOf(insts), from, now)
-	return out, err
-}
-
-// interval is a stretch of time.
-type interval struct{ from, to time.Time }
-
-// unionSeconds is the time the intervals cover together.
-func unionSeconds(spans []interval) int64 {
-	sort.Slice(spans, func(i, j int) bool { return spans[i].from.Before(spans[j].from) })
-	var total time.Duration
-	var end time.Time
-	for _, span := range spans {
-		start := span.from
-		if start.Before(end) {
-			start = end
-		}
-		if span.to.After(start) {
-			total += span.to.Sub(start)
-			end = span.to
-		}
-	}
-	return int64(total.Seconds() + 0.5)
-}
-
-// timelineDeployments are the stats of the deployments that share GPUs.
-func (a *apiHandlers) timelineDeployments(deployments map[uint]store.ResidencyDeployment, awake map[uint][]interval, placed placements, from, now time.Time) ([]dto.TimelineDeployment, error) {
-	var shared, every []uint
-	for id, info := range deployments {
-		every = append(every, id)
-		if info.Yield != yieldpolicy.Never {
-			shared = append(shared, id)
-		}
-	}
-	out := []dto.TimelineDeployment{}
-	if len(shared) == 0 {
-		return out, nil
-	}
-	var counts map[uint]store.ResidencySwitches
-	first, ok, err := a.d.Store.ResidencyWindowStart(from)
-	if err != nil {
-		return nil, err
-	}
-	if ok {
-		if counts, err = a.d.Store.ResidencySwitchCounts(every, first); err != nil {
-			return nil, err
-		}
-	}
-	waits := a.holdWaits(shared, from, now)
-	cards, err := a.cardsOf(placed, shared)
-	if err != nil {
-		return nil, err
-	}
-	window := now.Sub(from).Seconds()
-	for _, id := range shared {
-		info, c, wait := deployments[id], counts[id], waits[id]
-		seconds := unionSeconds(awake[id])
-		out = append(out, dto.TimelineDeployment{
-			DeploymentID: id, Deployment: info.Name, YieldPolicy: info.Yield,
-			AwakeSeconds: seconds, AwakeShare: min(float64(seconds)/window, 1),
-			Switches: c.Yielded + c.Wakes, Yielded: c.Yielded, YieldedTo: c.YieldedTo, Wakes: c.Wakes,
-			HeldRequests: wait.held, WaitP50Ms: wait.p50, WaitP95Ms: wait.p95,
-			Cards: nonNilCards(cards[id]),
-		})
-	}
-	sort.Slice(out, func(i, j int) bool {
-		if out[i].Deployment != out[j].Deployment {
-			return out[i].Deployment < out[j].Deployment
-		}
-		return out[i].DeploymentID < out[j].DeploymentID
+	out.Deployments, err = a.timelineDeployments(timelineStatsInput{
+		deployments: deployments, counts: counts, awake: awake, seen: seen, placed: placementsOf(insts), from: from, now: now,
 	})
-	return out, nil
+	return out, err
 }
 
 // joinInts lists numbers for a message: "6, 24".
