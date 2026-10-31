@@ -9,8 +9,11 @@ import (
 	"net/http/httptest"
 	"runtime"
 	"sort"
+	"sync/atomic"
 	"testing"
 	"time"
+
+	"gorm.io/gorm"
 
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
@@ -36,6 +39,13 @@ type scaleFleet struct {
 	deps    Deps
 	session string
 }
+
+// sharingStatementBudget is how many statements a cold read of the fleet's
+// sharing stats may run: a fixed set, never one per deployment or instance.
+const sharingStatementBudget = 100
+
+// sessionStatements is how many statements a request's session check runs.
+const sessionStatements = 5
 
 func seedScaleFleet(t *testing.T) *scaleFleet {
 	t.Helper()
@@ -274,7 +284,6 @@ func TestSchedulingOverviewAtFleetScale(t *testing.T) {
 	for _, path := range []string{
 		"/api/v1/scheduling/board?node=node-0500",
 		"/api/v1/scheduling/timeline?node=node-0500&hours=6",
-		"/api/v1/scheduling/timeline?sharing=1&hours=24",
 	} {
 		started := time.Now()
 		if got := fleet.get(path); got.Code != http.StatusOK {
@@ -285,6 +294,73 @@ func TestSchedulingOverviewAtFleetScale(t *testing.T) {
 		if took > 4*requestBudget {
 			t.Errorf("%s took %v at fleet scale", path, took)
 		}
+	}
+
+	sharingAtFleetScale(t, fleet, rebuildBudget, requestBudget)
+}
+
+// sharingAtFleetScale checks the fleet's sharing stats, which read the events
+// of every shared deployment over the window: a rebuild, not a drawer's read.
+// The work is asserted - a fixed number of statements whatever the fleet's
+// size - and the time of a cold build is the best of three against the
+// rebuild budget, so a host busy with other tests does not fail a budget the
+// code meets; a repeat within the cache's lifetime is answered from it within
+// the request budget.
+func sharingAtFleetScale(t *testing.T, fleet *scaleFleet, rebuildBudget, requestBudget time.Duration) {
+	t.Helper()
+	const path = "/api/v1/scheduling/timeline?sharing=1&hours=24"
+	var statements atomic.Int64
+	db := fleet.rig.st.DB()
+	count := func(*gorm.DB) { statements.Add(1) }
+	for _, err := range []error{
+		db.Callback().Query().After("gorm:query").Register("test:sharing_query", count),
+		db.Callback().Row().After("gorm:row").Register("test:sharing_row", count),
+	} {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Cleanup(func() {
+		_ = db.Callback().Query().Remove("test:sharing_query")
+		_ = db.Callback().Row().Remove("test:sharing_row")
+	})
+
+	// Cold: the stats built on the test's own handlers, nothing cached, as
+	// the best of three; every build runs a fixed set of statements.
+	cold, most := time.Hour, int64(0)
+	for i := 0; i < 3; i++ {
+		statements.Store(0)
+		started := time.Now()
+		if _, err := fleet.a.sharingTimeline(time.Now().UTC(), 24); err != nil {
+			t.Fatal(err)
+		}
+		cold, most = min(cold, time.Since(started)), max(most, statements.Load())
+	}
+	t.Logf("%s cold: %v (best of 3, budget %v), %d statements", path, cold, rebuildBudget, most)
+	if cold > rebuildBudget {
+		t.Errorf("%s took %v cold, budget %v", path, cold, rebuildBudget)
+	}
+	if most > sharingStatementBudget {
+		t.Errorf("%s ran %d statements cold, want at most %d whatever the fleet's size", path, most, sharingStatementBudget)
+	}
+
+	// Through the router: the first request builds, a repeat within the
+	// cache's lifetime runs only the session's statements.
+	if got := fleet.get(path); got.Code != http.StatusOK {
+		t.Fatalf("%s = %d %s", path, got.Code, got.Body)
+	}
+	statements.Store(0)
+	started := time.Now()
+	if got := fleet.get(path); got.Code != http.StatusOK {
+		t.Fatalf("%s = %d %s", path, got.Code, got.Body)
+	}
+	cached := time.Since(started)
+	t.Logf("%s cached: %v (budget %v), %d statements", path, cached, requestBudget, statements.Load())
+	if cached > requestBudget {
+		t.Errorf("%s took %v from the cache, budget %v", path, cached, requestBudget)
+	}
+	if got := statements.Load(); got > sessionStatements {
+		t.Errorf("a repeat within %v ran %d statements, want the session's %d at most", sharingTTL, got, sessionStatements)
 	}
 }
 

@@ -3,12 +3,14 @@ package store
 import (
 	"encoding/json"
 	"math"
+	"sort"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
 )
 
-// residencyEventChunk bounds the instance UUIDs in one IN list.
+// residencyEventChunk bounds the instance UUIDs in one IN list or JSON list.
 const residencyEventChunk = 200
 
 var (
@@ -71,12 +73,22 @@ func residencyWindowQuery(db *gorm.DB, uuids []string, firstID uint) *gorm.DB {
 	return db.Model(&InstanceEvent{}).Where("instance_uuid IN ? AND id >= ? AND code IN ?", uuids, firstID, residencyWindowCode)
 }
 
-// residencyPriorQuery reads an instance's newest events before beforeID among
-// the given codes, walking the (instance_uuid, id) index backwards. limit is
-// how many: a sleep result may be a rolled-back order, which says nothing about
-// the level, so the caller reads a few and takes the newest that applied.
-func residencyPriorQuery(db *gorm.DB, uuid string, beforeID uint, codes []string, limit int) *gorm.DB {
-	return db.Model(&InstanceEvent{}).Where("instance_uuid = ? AND id < ? AND code IN ?", uuid, beforeID, codes).Order("id DESC").Limit(limit)
+// residencyPriorQuery reads the newest events before beforeID among the given
+// codes of each instance of uuids, in one statement: each instance's own
+// correlated subquery walks the (instance_uuid, id) index backwards. limit is
+// how many per instance: a sleep result may be a rolled-back order, which says
+// nothing about the level, so the caller reads a few and takes the newest that
+// applied. uuids is at most residencyEventChunk long.
+func residencyPriorQuery(db *gorm.DB, uuids []string, beforeID uint, codes []string, limit int) *gorm.DB {
+	values := strings.TrimSuffix(strings.Repeat("(?),", len(uuids)), ",")
+	args := make([]any, 0, len(uuids)+3)
+	for _, uuid := range uuids {
+		args = append(args, uuid)
+	}
+	args = append(args, beforeID, codes, limit)
+	return db.Raw(`WITH u(uuid) AS (VALUES `+values+`)
+		SELECT e.* FROM u JOIN instance_events e ON e.id IN (
+		SELECT p.id FROM instance_events p WHERE p.instance_uuid = u.uuid AND p.id < ? AND p.code IN ? ORDER BY p.id DESC LIMIT ?)`, args...)
 }
 
 // residencyPriorSleepResults is how many sleep results before the window are
@@ -235,24 +247,32 @@ func (s *Store) residencyEvents(sources map[string]bool, firstID uint, haveWindo
 	out := map[string][]ResidencyEvent{}
 	uuids := make([]string, 0, len(sources))
 	for uuid := range sources {
-		if uuid == "" {
-			continue
+		if uuid != "" {
+			uuids = append(uuids, uuid)
 		}
-		uuids = append(uuids, uuid)
+	}
+	for start := 0; start < len(uuids); start += residencyEventChunk {
+		chunk := uuids[start:min(start+residencyEventChunk, len(uuids))]
 		var state, sleeps []InstanceEvent
-		if err := residencyPriorQuery(db, uuid, firstID, residencyStateCodes, 1).Find(&state).Error; err != nil {
+		if err := residencyPriorQuery(db, chunk, firstID, residencyStateCodes, 1).Find(&state).Error; err != nil {
 			return nil, err
 		}
-		if err := residencyPriorQuery(db, uuid, firstID, []string{instanceEventSleepResult}, residencyPriorSleepResults).Find(&sleeps).Error; err != nil {
+		if err := residencyPriorQuery(db, chunk, firstID, []string{instanceEventSleepResult}, residencyPriorSleepResults).Find(&sleeps).Error; err != nil {
 			return nil, err
 		}
 		for _, row := range state {
-			out[uuid] = append(out[uuid], decodeResidencyEvent(row))
+			out[row.InstanceUUID] = append(out[row.InstanceUUID], decodeResidencyEvent(row))
 		}
+		// Newest first, so each instance keeps its newest sleep result that applied.
+		sort.Slice(sleeps, func(i, j int) bool { return sleeps[i].ID > sleeps[j].ID })
+		took := map[string]bool{}
 		for _, row := range sleeps {
+			if took[row.InstanceUUID] {
+				continue
+			}
 			if ev := decodeResidencyEvent(row); ev.Result == "applied" {
-				out[uuid] = append(out[uuid], ev)
-				break
+				out[row.InstanceUUID] = append(out[row.InstanceUUID], ev)
+				took[row.InstanceUUID] = true
 			}
 		}
 	}
