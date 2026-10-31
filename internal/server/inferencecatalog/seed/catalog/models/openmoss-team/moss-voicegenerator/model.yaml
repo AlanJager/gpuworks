@@ -41,5 +41,5 @@ specs:
         required: true
         label:
           en: Voice instructions
-          zh-CN: 音色描述
+          zh: 音色描述
 input_modalities: [text]

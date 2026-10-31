@@ -40,12 +40,12 @@ specs:
         required: true
         label:
           en: Voice
-          zh-CN: 音色
+          zh: 音色
       - name: instructions
         kind: text
         label:
           en: Style or emotion instructions
-          zh-CN: 风格或情绪说明
+          zh: 风格或情绪说明
       - name: language
         kind: select
         options:
@@ -63,7 +63,7 @@ specs:
         default: Auto
         label:
           en: Language
-          zh-CN: 语言
+          zh: 语言
 - name: bf16-customvoice-0-6b-vllm-nvidia-turing
   display_profile: compatible
   scenario: balanced
@@ -104,12 +104,12 @@ specs:
         required: true
         label:
           en: Voice
-          zh-CN: 音色
+          zh: 音色
       - name: instructions
         kind: text
         label:
           en: Style or emotion instructions
-          zh-CN: 风格或情绪说明
+          zh: 风格或情绪说明
       - name: language
         kind: select
         options:
@@ -127,7 +127,7 @@ specs:
         default: Auto
         label:
           en: Language
-          zh-CN: 语言
+          zh: 语言
 # Apple silicon (macOS 15+, M1-M5): served by the gpuworks adapter in the
 # gpuworks-runner metal package, which pins the instance to this model
 # (the gateway rewrites every request's "model").
@@ -173,12 +173,12 @@ specs:
         required: true
         label:
           en: Voice
-          zh-CN: 音色
+          zh: 音色
       - name: instructions
         kind: text
         label:
           en: Style or emotion instructions
-          zh-CN: 风格或情绪说明
+          zh: 风格或情绪说明
       - name: language
         kind: select
         options:
@@ -196,5 +196,5 @@ specs:
         default: Auto
         label:
           en: Language
-          zh-CN: 语言
+          zh: 语言
 input_modalities: [text]

@@ -53,6 +53,10 @@ specs:
           repo_id: k2-fsa/OmniVoice
           revision: 18db15024ce4b7e15638be6ef0e283d99d282f39
           subfolder: audio_tokenizer
+      - modelscope:
+          repo_id: k2-fsa/OmniVoice
+          revision: 316f89b819e04e49dfbd0239f85e4e363b862cce
+          subfolder: audio_tokenizer
     weight_bytes: 805675058
     mount_path: /models/audio-tokenizer
   api:
@@ -63,6 +67,9 @@ specs:
       mode: sync
       inputs:
       - name: ref_audio
+        label:
+          en: Reference audio
+          zh: 参考音频
         kind: audio
         encoding: data_url
 - name: bf16-vllm-ppu-7556c17e
@@ -96,6 +103,9 @@ specs:
       mode: sync
       inputs:
       - name: ref_audio
+        label:
+          en: Reference audio
+          zh: 参考音频
         kind: audio
         encoding: data_url
 input_modalities: [text, audio]
