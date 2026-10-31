@@ -93,7 +93,8 @@ func TestCatalogNamePredicatesAgreeOnNormalizedNames(t *testing.T) {
 
 // The cards the catalog has name predicates for are matched by at least one
 // of them under their stored names; the cards it has none for are matched by
-// none. ppu-smi on the PPU host reports PPU-ZW810E (architecture Beethoven),
+// none. H100 is matched since the vLLM Hopper profiles of GLM-5.3-Flash and
+// Qwen3.8-Flash-Next name it. ppu-smi on the PPU host reports PPU-ZW810E (architecture Beethoven),
 // which the PPU predicates name next to PPU-M890.
 func TestCatalogNamePredicatesMatchStoredNames(t *testing.T) {
 	predicates := catalogNamePredicates(t)
@@ -110,7 +111,7 @@ func TestCatalogNamePredicatesMatchStoredNames(t *testing.T) {
 	for _, g := range reportedGPUNames {
 		want := true
 		switch g.raw {
-		case "Quadro RTX 8000", "NVIDIA GeForce RTX 2080 Ti", "NVIDIA H100 80GB HBM3", "NVIDIA A100-SXM4-80GB",
+		case "Quadro RTX 8000", "NVIDIA GeForce RTX 2080 Ti", "NVIDIA A100-SXM4-80GB",
 			"Ascend Ascend910", "Ascend 310P3", "Hygon DCU":
 			want = false
 		}
