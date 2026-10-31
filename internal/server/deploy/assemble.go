@@ -128,6 +128,11 @@ func ResolveLaunchWithWarnings(input ResolveLaunchInput) (ResolvedLaunch, []mess
 	if err != nil {
 		return ResolvedLaunch{}, nil, fmt.Errorf("resolve launch variables: %w", err)
 	}
+	if input.Engine.Name() == EngineVLLM {
+		if err := prepareVLLMSleepable(&params); err != nil {
+			return ResolvedLaunch{}, nil, fmt.Errorf("resolve launch: %w", err)
+		}
+	}
 
 	built := input.Engine.Build(params)
 	for _, extra := range []map[string]string{computeNetworkEnv(params), runveilEnv(input.Engine.Name(), params)} {
@@ -181,6 +186,9 @@ func ResolveLaunchWithWarnings(input ResolveLaunchInput) (ResolvedLaunch, []mess
 	}
 	for key, value := range overrides.Env {
 		launch.Env[key] = value
+	}
+	if err := validateVLLMSleepableEnv(input.Engine.Name(), params, launch.Env); err != nil {
+		return ResolvedLaunch{}, nil, fmt.Errorf("resolve launch: %w", err)
 	}
 	if overrides.CmdDisplay != "" {
 		launch.Argv = append([]string(nil), commandArgv...)

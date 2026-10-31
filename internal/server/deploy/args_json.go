@@ -76,9 +76,13 @@ func ValidateExtraArgsJSON(args []string) error {
 		if json.Valid([]byte(value)) {
 			continue
 		}
-		return messages.NewProductError(ErrorExtraArgsJSONInvalid,
-			flag+" takes JSON but "+value+" is not valid JSON; wrap the value in single quotes, e.g. "+flag+" '{\"key\":\"value\"}'",
-			map[string]any{"flag": flag, "value": value})
+		return extraArgsJSONError(flag, value)
 	}
 	return nil
+}
+
+func extraArgsJSONError(flag, value string) error {
+	return messages.NewProductError(ErrorExtraArgsJSONInvalid,
+		flag+" takes JSON but "+value+" is not valid JSON; wrap the value in single quotes, e.g. "+flag+" '{\"key\":\"value\"}'",
+		map[string]any{"flag": flag, "value": value})
 }

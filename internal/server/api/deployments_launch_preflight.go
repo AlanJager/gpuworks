@@ -24,6 +24,9 @@ func preflightCreateRuntimes(base deploy.ResolveLaunchInput, rawOverrides map[st
 		if node != nil {
 			input.Params.RuntimeDriver = node.RuntimeDriver
 			input.Params.Host = deploy.RuntimeBindHost(node.RuntimeDriver)
+			if node.GPUVendor != "" {
+				input.Params.Vendor = node.GPUVendor
+			}
 			if image := imageFor(node); image != "" {
 				input.Image = image
 			}

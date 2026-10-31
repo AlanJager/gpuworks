@@ -12,6 +12,9 @@ type ProductError struct {
 // Product error codes shared by domain services and the API layer.
 const (
 	ErrorAgentUpgradeRequired = "AGENT_UPGRADE_REQUIRED"
+	// ErrorFieldInvalid carries a validation error whose params.detail explains
+	// the rejected value. The API exposes the same stable code and translation.
+	ErrorFieldInvalid = "FIELD_INVALID"
 
 	// The experience environment's console (internal/experience) refuses
 	// what would act on the host or leave the environment, and deployments
