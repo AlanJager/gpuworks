@@ -76,11 +76,11 @@ const (
 	ErrorDeploymentDeleting                     = "DEPLOYMENT_DELETING"
 	ErrorServedNameInUse                        = "SERVED_NAME_IN_USE"
 	ErrorRestartStrategyInvalid                 = "RESTART_STRATEGY_INVALID"
-	ErrorReplicasTooFew                         = "REPLICAS_TOO_FEW"
+	ErrorReplicasTooFew                         = messages.ErrorReplicasTooFew
 	ErrorReplicasBodyShape                      = "REPLICAS_BODY_SHAPE"
-	ErrorReplicasRemoveInvalid                  = "REPLICAS_REMOVE_INVALID"
+	ErrorReplicasRemoveInvalid                  = messages.ErrorReplicasRemoveInvalid
 	ErrorReplicasChanged                        = "REPLICAS_CHANGED"
-	ErrorReplicasRemoveTooMany                  = "REPLICAS_REMOVE_TOO_MANY"
+	ErrorReplicasRemoveTooMany                  = messages.ErrorReplicasRemoveTooMany
 	ErrorUnitUnknown                            = "UNIT_UNKNOWN"
 	ErrorUnitNotFailed                          = "UNIT_NOT_FAILED"
 	ErrorUnitRetryNotActive                     = "UNIT_RETRY_NOT_ACTIVE"
@@ -95,8 +95,8 @@ const (
 	ErrorWakeGPUHeldOutside                     = "WAKE_GPU_HELD_OUTSIDE"
 	ErrorSleepHostMemoryInsufficient            = "SLEEP_HOST_MEMORY_INSUFFICIENT"
 	ErrorNodeReplacementInvalid                 = "NODE_REPLACEMENT_INVALID"
-	ErrorReplicasPlaceOnTooMany                 = "REPLICAS_PLACE_ON_TOO_MANY"
-	ErrorReplicasPlaceOnRefused                 = "REPLICAS_PLACE_ON_REFUSED"
+	ErrorReplicasPlaceOnTooMany                 = messages.ErrorReplicasPlaceOnTooMany
+	ErrorReplicasPlaceOnRefused                 = messages.ErrorReplicasPlaceOnRefused
 	ErrorDistributedNodeCount                   = "DISTRIBUTED_NODE_COUNT"
 	ErrorDistributedTPRequired                  = "DISTRIBUTED_TP_REQUIRED"
 	ErrorMasterPortInvalid                      = "MASTER_PORT_INVALID"
@@ -392,17 +392,11 @@ func writeProductError(w http.ResponseWriter, status int, code, fallback string,
 // Automatic placement of multi-node and PD deployments (placement_mode
 // "auto"; deployments_auto_units.go).
 const (
-	// ErrorUnitPlacementNone: no group of nodes can take the deployment now;
-	// how many nodes there are ({nodes}) and how many each check left out
-	// ({unmet}, {cordoned}, {offline}, {busy}, {no_network}), and the largest
-	// group short of the ranks ({largest}).
-	ErrorUnitPlacementNone = "UNIT_PLACEMENT_NONE"
+	ErrorUnitPlacementNone = messages.ErrorUnitPlacementNone
 	// ErrorAutoPlacementTPRequired: an automatic multi-node request states no
 	// placement.tp, so how many free GPUs each node needs is unknown.
-	ErrorAutoPlacementTPRequired = "AUTO_PLACEMENT_TP_REQUIRED"
-	// ErrorAutoPlacementPDMultiNode: an automatic PD request has a role whose
-	// units span nodes ({role}); those name their nodes.
-	ErrorAutoPlacementPDMultiNode = "AUTO_PLACEMENT_PD_MULTI_NODE"
+	ErrorAutoPlacementTPRequired  = "AUTO_PLACEMENT_TP_REQUIRED"
+	ErrorAutoPlacementPDMultiNode = messages.ErrorAutoPlacementPDMultiNode
 	// ErrorPlacementModeShape: PUT /deployments/{id}/placement-mode on a
 	// single-node deployment, which states its placement in its node
 	// requirements.
@@ -497,7 +491,8 @@ const (
 const (
 	// ErrorBatchNotFound: no such batch, file or output file for the caller.
 	ErrorBatchNotFound = "BATCH_NOT_FOUND"
-	// ErrorBatchNotCancellable: the batch has finished ({status}).
+	// ErrorBatchNotCancellable: the batch has finished or is assembling its
+	// results ({status}).
 	ErrorBatchNotCancellable = "BATCH_NOT_CANCELLABLE"
 	// ErrorBatchFileInvalid: the uploaded file is not a valid batch input:
 	// {line} of it (0 for the file as a whole), {reason} the check that failed
@@ -508,7 +503,8 @@ const (
 	// ErrorBatchRequestInvalid: a field of the request ({field}) is not valid.
 	ErrorBatchRequestInvalid = "BATCH_REQUEST_INVALID"
 	// ErrorBatchModelUnknown: no active deployment serves the {model} the batch
-	// was asked to send its requests to.
+	// was asked to send its requests to. Models a file's requests name are
+	// refused with messages.ErrorBatchFileModelsUnknown instead.
 	ErrorBatchModelUnknown = "BATCH_MODEL_UNKNOWN"
 )
 

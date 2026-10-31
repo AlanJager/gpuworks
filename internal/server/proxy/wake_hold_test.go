@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"gpuworks.ai/gpuworks/internal/server/servicelevel"
 	"gpuworks.ai/gpuworks/internal/server/store"
+	"gpuworks.ai/gpuworks/internal/server/yieldpolicy"
 )
 
 // newSleepingProxy is a gateway in front of one sleepable deployment whose
@@ -25,7 +25,7 @@ func newSleepingProxy(t *testing.T, held bool) (*Proxy, *store.Store, string, ui
 		t.Fatal(err)
 	}
 	if held {
-		if err := st.DB().Model(&store.Deployment{}).Where("id = ?", depID).Update("sleep_held", true).Error; err != nil {
+		if err := st.DB().Model(&store.Instance{}).Where("uuid = ?", "omni-instance").Update("sleep_held", true).Error; err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -198,7 +198,7 @@ func TestAHeldRequestTimesOutWithRetryAfter(t *testing.T) {
 func TestAHeldRequestWaitsForTheDeploymentsHoldMaxSec(t *testing.T) {
 	p, st, key, depID, front := newSleepingProxy(t, false)
 	p.SetWakeDemand(func(uint) {})
-	if err := st.SetDeploymentYieldPolicy(depID, servicelevel.Policy{Yield: servicelevel.Anytime, SleepLevel: servicelevel.LevelAuto, Unfinished: servicelevel.UnfinishedAbort, HoldMaxSec: 1}); err != nil {
+	if err := st.SetDeploymentYieldPolicy(depID, yieldpolicy.Policy{Yield: yieldpolicy.Anytime, SleepLevel: yieldpolicy.LevelAuto, Unfinished: yieldpolicy.UnfinishedAbort, HoldMaxSec: 1}); err != nil {
 		t.Fatal(err)
 	}
 	start := time.Now()
@@ -215,17 +215,17 @@ func TestAHeldRequestWaitsForTheDeploymentsHoldMaxSec(t *testing.T) {
 		t.Fatalf("holdMax = %v", got)
 	}
 	// A deployment with no hold stated is held for the default.
-	if got := p.hold.holdMax(&store.Deployment{}); got != servicelevel.DefaultHoldMax {
+	if got := p.hold.holdMax(&store.Deployment{}); got != yieldpolicy.DefaultHoldMax {
 		t.Fatalf("default holdMax = %v", got)
 	}
 }
 
 func TestASleepHeldWhileWaitingEndsTheHold(t *testing.T) {
-	p, st, key, depID, front := newSleepingProxy(t, false)
+	p, st, key, _, front := newSleepingProxy(t, false)
 	p.SetWakeDemand(func(uint) {
 		go func() {
 			time.Sleep(100 * time.Millisecond)
-			_ = st.DB().Model(&store.Deployment{}).Where("id = ?", depID).Update("sleep_held", true).Error
+			_ = st.DB().Model(&store.Instance{}).Where("uuid = ?", "omni-instance").Update("sleep_held", true).Error
 		}()
 	})
 	start := time.Now()
@@ -243,11 +243,11 @@ func TestADrainingDeploymentHoldsNewRequestsUntilItResumes(t *testing.T) {
 	if err := st.DB().Model(&store.Instance{}).Where("uuid = ?", "omni-instance").Update("sleep_level", 0).Error; err != nil {
 		t.Fatal(err)
 	}
-	p.SetDraining(depID, true)
+	p.SetDraining(depID, []string{"omni-instance"}, true)
 	p.SetWakeDemand(func(uint) {
 		go func() {
 			time.Sleep(150 * time.Millisecond)
-			p.SetDraining(depID, false)
+			p.SetDraining(depID, []string{"omni-instance"}, false)
 		}()
 	})
 	start := time.Now()
@@ -258,7 +258,7 @@ func TestADrainingDeploymentHoldsNewRequestsUntilItResumes(t *testing.T) {
 	if waited := time.Since(start); waited < 150*time.Millisecond {
 		t.Fatalf("a draining deployment took a new request after %v", waited)
 	}
-	if p.hold.isDraining(depID) {
+	if p.hold.drainingOf(depID) != nil {
 		t.Fatal("still draining")
 	}
 }

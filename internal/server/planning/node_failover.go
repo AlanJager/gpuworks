@@ -49,8 +49,9 @@ type ListedRank struct {
 }
 
 // LoadUnitSuggestFacts reads what a choice of nodes for a deployment's ranks
-// is decided from, in bulk: every node with its GPUs, which GPUs awake
-// instances hold, where the model is, the deployment's node requirements, and
+// is decided from, in bulk: every node with its GPUs, which GPUs it cannot
+// take (HeldGPUs: awake instances' and sleepers' kept against it), where the
+// model is, the deployment's node requirements, and
 // the nodes' resolved networks. listed are the ranks the deployment lists: a
 // leader there cannot lead another replica, and a listed rank no instance of
 // the deployment holds yet claims its cards.
@@ -59,7 +60,7 @@ func LoadUnitSuggestFacts(st *store.Store, resolve func([]store.Node) (netplan.R
 	if err != nil {
 		return UnitSuggestFacts{}, err
 	}
-	held, err := st.AwakeGPUHolders()
+	held, err := HeldGPUs(st, dep.YieldPolicy)
 	if err != nil {
 		return UnitSuggestFacts{}, err
 	}

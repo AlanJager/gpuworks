@@ -15,12 +15,16 @@ export interface BatchErrorText {
 
 /**
  * batchErrorText words a batch error. An invalid input file names its line
- * (line 0 is the whole file) and a request error its field and reason in the
- * reader's language; every other product error goes through the shared
- * translation of its code.
+ * (line 0 is the whole file), a request error its field and reason and a file
+ * whose models nothing serves those models, in the reader's language; every
+ * other product error goes through the shared translation of its code.
  */
 export function batchErrorText(t: APIErrorTranslator, tCommon: APIErrorTranslator, error: unknown): BatchErrorText {
   if (error instanceof APIError) {
+    if (error.code === "BATCH_FILE_MODELS_UNKNOWN") {
+      const params = { ...error.params, models: modelList(t, error.params) };
+      return { message: apiErrorText(tCommon, new APIError(error.code, params, error.fallback, error.status)) };
+    }
     const reason = String(error.params?.reason ?? "");
     if (error.code === "BATCH_FILE_INVALID" && FILE_REASONS.has(reason)) {
       const line = Number(error.params?.line ?? 0);
@@ -33,4 +37,21 @@ export function batchErrorText(t: APIErrorTranslator, tCommon: APIErrorTranslato
     }
   }
   return { message: apiErrorText(tCommon, error) };
+}
+
+/**
+ * modelList is the {models, more} of a message about the models of an input
+ * file as the list its text formats with the reader's list separators: the
+ * names the server sent, then "N more" when it found further ones.
+ */
+export function modelList(t: APIErrorTranslator, params: Record<string, unknown> | undefined): string[] {
+  const models = Array.isArray(params?.models) ? params.models.map(String) : [];
+  const more = Number(params?.more ?? 0);
+  return more > 0 ? [...models, t("errors.moreModels", { count: more })] : models;
+}
+
+/** batchWarningText words a warning of a created batch in the reader's language. */
+export function batchWarningText(t: APIErrorTranslator, warning: { code: string; params?: Record<string, unknown> }): string {
+  const params = warning.code === "BATCH_FILE_MODELS_SLEEP_HELD" ? { ...warning.params, models: modelList(t, warning.params) } : warning.params;
+  return t(`create.warnings.${warning.code}`, { ...params, defaultValue: warning.code });
 }

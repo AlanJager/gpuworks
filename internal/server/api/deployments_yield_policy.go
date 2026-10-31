@@ -10,13 +10,14 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/internal/server/planning"
-	"gpuworks.ai/gpuworks/internal/server/servicelevel"
 	"gpuworks.ai/gpuworks/internal/server/store"
+	"gpuworks.ai/gpuworks/internal/server/yieldpolicy"
 )
 
 // setYieldPolicy sets how the deployment shares its GPUs with others and the
 // parameters that go with it (docs/explanation/service-levels.md). A policy
-// other than never needs a sleepable, single-node deployment. It answers the
+// other than never needs a deployment planning.YieldPolicyRefusal allows: one
+// that can sleep, single-node and not PD. It answers the
 // policy as stored, naming the other idle-policy deployments on the same
 // cards when the policy is idle: the two may share, but neither gives way
 // to the other while busy.
@@ -38,13 +39,7 @@ func (a *apiHandlers) setYieldPolicy(w http.ResponseWriter, r *http.Request) {
 		writeYieldPolicyViolation(w, v)
 		return
 	}
-	pd, _ := planning.PDOf(dep.Placement)
-	if !yieldPolicyEligible(w, p, pd != nil || dep.NNodes > 1, func() *planning.SleepRefusal {
-		if code := planning.SleepEligibility(dep); code != "" {
-			return &planning.SleepRefusal{Code: code, Params: map[string]any{"engine": dep.Engine}}
-		}
-		return nil
-	}) {
+	if !yieldPolicyAllowed(w, p, planning.YieldPolicyRefusal(dep), dep.Engine) {
 		return
 	}
 	if err := a.d.Store.SetDeploymentYieldPolicy(dep.ID, p); err != nil {
@@ -52,7 +47,7 @@ func (a *apiHandlers) setYieldPolicy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	out := dto.YieldPolicyOf(p)
-	if p.Yield == servicelevel.Idle {
+	if p.Yield == yieldpolicy.Idle {
 		if out.IdleNeighbours, err = a.idleNeighbours(dep); err != nil {
 			writeErr(w, http.StatusInternalServerError, err)
 			return
@@ -62,36 +57,32 @@ func (a *apiHandlers) setYieldPolicy(w http.ResponseWriter, r *http.Request) {
 }
 
 // writeYieldPolicyViolation writes why a yield policy is refused.
-func writeYieldPolicyViolation(w http.ResponseWriter, v *servicelevel.Violation) {
+func writeYieldPolicyViolation(w http.ResponseWriter, v *yieldpolicy.Violation) {
 	params := map[string]any{"field": v.Field, "reason": v.Reason}
 	text := fmt.Sprintf("%s is not a valid value", v.Field)
 	switch v.Reason {
-	case servicelevel.ReasonRange:
+	case yieldpolicy.ReasonRange:
 		params["minimum"], params["maximum"] = v.Min, v.Max
 		text = fmt.Sprintf("%s is %d to %d", v.Field, v.Min, v.Max)
-	case servicelevel.ReasonRequired:
+	case yieldpolicy.ReasonRequired:
 		text = fmt.Sprintf("%s is required", v.Field)
 	}
 	writeProductError(w, http.StatusBadRequest, messages.ErrorYieldPolicyInvalid, text, params)
 }
 
-// yieldPolicyEligible checks the policy against what the deployment is: it
-// writes the refusal and returns false when a policy other than never, or
-// auto sleep, meets a deployment that cannot sleep, or a policy other than
-// never a multi-node or PD one. refusal says why a deployment cannot sleep.
-func yieldPolicyEligible(w http.ResponseWriter, p servicelevel.Policy, multiNode bool, refusal func() *planning.SleepRefusal) bool {
-	if p.Yield == servicelevel.Never {
+// yieldPolicyAllowed writes the refusal and returns false when a policy other
+// than never meets a deployment that may hold none: refusal is the
+// deployment's planning.YieldPolicyRefusal code, engine its engine.
+func yieldPolicyAllowed(w http.ResponseWriter, p yieldpolicy.Policy, refusal, engine string) bool {
+	switch {
+	case p.Yield == yieldpolicy.Never || refusal == "":
 		return true
+	case refusal == messages.ErrorYieldPolicyShape:
+		writeProductError(w, http.StatusBadRequest, refusal, "only a single-node deployment shares its cards by yield policy", nil)
+	default:
+		writeSleepRefusal(w, http.StatusBadRequest, &planning.SleepRefusal{Code: refusal, Params: map[string]any{"engine": engine}})
 	}
-	if r := refusal(); r != nil {
-		writeSleepRefusal(w, http.StatusBadRequest, r)
-		return false
-	}
-	if p.Yield != servicelevel.Never && multiNode {
-		writeProductError(w, http.StatusBadRequest, messages.ErrorYieldPolicyShape, "only a single-node deployment shares its cards by yield policy", nil)
-		return false
-	}
-	return true
+	return false
 }
 
 // idleNeighbours names the other idle-policy deployments with an instance on
@@ -112,7 +103,7 @@ func (a *apiHandlers) idleNeighbours(dep *store.Deployment) ([]string, error) {
 	var out []string
 	for i := range sharing {
 		other := &sharing[i]
-		if other.ID == dep.ID || !servicelevel.IdleNeighbours(servicelevel.Idle, other.YieldPolicy) {
+		if other.ID == dep.ID || !yieldpolicy.IdleNeighbours(yieldpolicy.Idle, other.YieldPolicy) {
 			continue
 		}
 		insts, err := a.d.Store.InstancesForDeployment(other.ID)
@@ -132,22 +123,16 @@ func (a *apiHandlers) idleNeighbours(dep *store.Deployment) ([]string, error) {
 // createYieldPolicy is the policy a new deployment is stored with: never when
 // the request states none. It checks it as setYieldPolicy checks a change,
 // writing the refusal.
-func createYieldPolicy(w http.ResponseWriter, req dto.DeployRequest, engine string, pd bool) (servicelevel.Policy, bool) {
+func createYieldPolicy(w http.ResponseWriter, req dto.DeployRequest, engine string, pd bool) (yieldpolicy.Policy, bool) {
 	if req.YieldPolicy == nil {
-		return servicelevel.Policy{Yield: servicelevel.Never}, true
+		return yieldpolicy.Policy{Yield: yieldpolicy.Never}, true
 	}
 	p, v := req.YieldPolicy.Parse()
 	if v != nil {
 		writeYieldPolicyViolation(w, v)
 		return p, false
 	}
-	ok := yieldPolicyEligible(w, p, pd || req.NNodes > 1, func() *planning.SleepRefusal {
-		if !req.Sleepable {
-			return &planning.SleepRefusal{Code: ErrorSleepNotEnabled, Params: map[string]any{"engine": engine}}
-		}
-		return nil
-	})
-	return p, ok
+	return p, yieldPolicyAllowed(w, p, planning.DraftYieldPolicyRefusal(req.Sleepable, engine, req.NNodes, pd), engine)
 }
 
 // requestYield is the yield policy a request states, for the placement
@@ -155,12 +140,12 @@ func createYieldPolicy(w http.ResponseWriter, req dto.DeployRequest, engine stri
 // none or a malformed one.
 func requestYield(stated *dto.YieldPolicyRequest) string {
 	if stated == nil {
-		return servicelevel.Never
+		return yieldpolicy.Never
 	}
 	if p, v := stated.Parse(); v == nil {
 		return p.Yield
 	}
-	return servicelevel.Never
+	return yieldpolicy.Never
 }
 
 // yieldPolicyDictionary answers the yield policies with their defaults,

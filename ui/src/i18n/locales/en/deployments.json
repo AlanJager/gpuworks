@@ -76,21 +76,26 @@
     "wakeAll": "Wake all",
     "heldHint": "Put to sleep by an operator or a schedule: requests do not wake it",
     "requestWakesHint": "A request wakes it automatically",
+    "someHeldHint": "Some replicas were put to sleep by an operator or a schedule: a request wakes only the others",
     "wakeWhatFits": "Wake what fits",
     "partialWoken": "Woke {{woken}}; {{refused}} could not fit back on their cards",
     "waitStarted": "Waiting for room: the wake follows when the GPUs free up",
-    "yieldStarted": "Putting {{names}} to sleep; the wake follows once there is room",
+    "yieldStarted": "Putting {{names}} to sleep; the wake follows once there is room. {{names}} stay asleep: requests do not wake them, wake them by hand",
     "refused": {
       "title": "Not enough GPU memory to wake",
       "wait": "Wait for room",
       "yield": "Put {{occupants}} to sleep, then wake",
+      "yieldConfirm": "Put {{occupants}} to sleep, then wake?",
+      "yieldHeld": "{{occupants}} will stay asleep: requests do not wake them, someone has to wake them by hand (or a schedule does).",
+      "yieldOk": "Put to sleep and wake",
+      "yieldCancel": "Cancel",
       "theOccupants": "the occupants",
-      "hint": "Waiting wakes what fits now and wakes the rest when the GPUs free up (it gives up after 30 minutes). Putting the occupants to sleep frees the GPUs first; if an occupant cannot sleep, nothing is changed.",
+      "hint": "Waiting wakes what fits now and wakes the rest when the GPUs free up (it gives up after {{limit}}). Putting the occupants to sleep frees the GPUs first; if an occupant cannot sleep, nothing is changed.",
       "heldOutside": "A process outside the platform holds the GPU"
     },
     "waiting": {
       "since": "Waiting for room since {{time}}",
-      "hint": "The server wakes the sleepers when their GPUs can take them back, and gives up after 30 minutes.",
+      "hint": "The server wakes the sleepers when their GPUs can take them back, and gives up after {{limit}}.",
       "cancel": "Cancel waiting",
       "cancelled": "Stopped waiting",
       "cancelFailed": "Failed to cancel waiting: {{detail}}"
@@ -348,6 +353,7 @@
     "sleeping": "Sleeping L{{level}} ({{storage}})",
     "fallingAsleep": "Going to sleep · L{{level}}",
     "waking": "Waking up",
+    "held": "Held asleep: requests do not wake it",
     "rank": {
       "leader": "leader · rank {{rank}}",
       "follower": "follower · rank {{rank}}",
@@ -727,12 +733,6 @@
     "minutes": "min",
     "save": "Save",
     "retry": "Reload schedule",
-    "duration": {
-      "seconds": "{{value}} s",
-      "minutes": "{{value}} min",
-      "hours": "{{value}} h",
-      "days": "{{value}} d"
-    },
     "cause": {
       "schedule": "by its schedule",
       "idle": "after {{idle}} without requests (auto sleep when not preempted)",
@@ -771,7 +771,7 @@
       "deleteConfirm": "Delete this scheduled order?",
       "deleted": "Scheduled order deleted",
       "empty": "No scheduled orders.",
-      "noActions": "This deployment can neither sleep nor change its replica count on a schedule: sleep and wake need a sleepable deployment, and replica counts are scheduled only for single-node deployments and automatically placed multi-node or PD ones.",
+      "noActions": "This deployment can neither sleep nor change its replica count on a schedule:",
       "loadFailed": "Failed to load the schedule: {{detail}}",
       "saveFailed": "Failed to save the order: {{detail}}",
       "deleteFailed": "Failed to delete the order: {{detail}}",
@@ -862,10 +862,10 @@
         "anytime": "Yield anytime"
       },
       "description": {
-        "never": "Is never pushed out automatically; its GPUs free up only after a manual or scheduled sleep. For always-on services (default).",
-        "idle": "Gives its GPUs up only when another deployment waits and it has been idle for the idle time; on a request it can take them back from yield-on-a-turn and yield-anytime deployments. For online services.",
-        "timeslice": "Gives its GPUs up once idle for the idle time; when sharing with other yield-on-a-turn deployments, also once it has served for the longest serving time (even with requests running); gives way at once to a higher-ranked deployment. For several models taking turns on the same GPUs.",
-        "anytime": "Gives way at once to a higher-ranked deployment, busy or not; resumes by itself when the GPUs are free again. For batch and offline work."
+        "never": "Never gives up its GPU memory and compute; for always-on services",
+        "idle": "Gives up its GPU memory and compute when idle and a model sharing its cards needs them; for online workloads",
+        "timeslice": "Gives up its GPU memory and compute when idle or its turn is over and a model sharing its cards needs them; for several models taking turns",
+        "anytime": "Gives up its GPU memory and compute at once to a higher-priority deployment that needs them; for batch and offline work"
       }
     },
     "field": {
@@ -922,12 +922,6 @@
     "save": "Save",
     "saved": "Node-loss rescheduling saved",
     "saveFailed": "Failed to save node-loss rescheduling: {{detail}}",
-    "duration": {
-      "seconds": "{{value}} s",
-      "minutes": "{{value}} min",
-      "hours": "{{value}} h",
-      "days": "{{value}} d"
-    },
     "movedTo": "rescheduled to {{node}}",
     "movedElsewhere": "is rebuilt on another node",
     "placedFrom": " (was on {{from}})",
@@ -945,5 +939,12 @@
       "replica": "a replica",
       "unit": "replica {{label}}"
     }
+  },
+  "duration": {
+    "seconds": "{{value}} s",
+    "minutes": "{{value}} min",
+    "hours": "{{value}} h",
+    "days": "{{value}} d",
+    "hoursMinutes": "{{hours}} h {{minutes}} min"
   }
 }

@@ -86,7 +86,7 @@ func (a *apiHandlers) playgroundModels(w http.ResponseWriter, r *http.Request) {
 		catalog.Models = append(catalog.Models, dto.PlaygroundModel{
 			ID: dep.ServedName, Label: dep.ServedName, Operations: playgroundOperations(contract, dep.ServedName),
 			InputModalities: modelView.InputModalities, ContextLength: model.ContextLength,
-			Sleeping: sleeping, DeploymentID: dep.ID, TemplateID: dep.TemplateID, TemplateSpecSource: dep.TemplateSpecSource, TemplateSpecName: dep.TemplateSpecName, PublicDataPlane: true,
+			Sleeping: sleeping, WakesOnRequest: sleeping && planning.RequestWakes(dep, candidate.instances), DeploymentID: dep.ID, TemplateID: dep.TemplateID, TemplateSpecSource: dep.TemplateSpecSource, TemplateSpecName: dep.TemplateSpecName, PublicDataPlane: true,
 			ExtraParameterPresets: playgroundPresets(playgroundThinkingSwitchFor(dep.Engine, dep.ServedName, model, hasChat)),
 		})
 	}

@@ -7,15 +7,16 @@ import (
 )
 
 // A wake that did not fit can wait for room (Instance.WakeWaitingSince): the
-// controller wakes the instances once their GPUs can take them back, and gives
+// automation wakes the instances once their GPUs can take them back, and gives
 // up after the wait limit. Any sleep or wake order written for an instance
 // ends its wait (writeSleepIntent).
 
 // MarkWakeWaiting starts the wait of a deployment's sleeping instances whose
 // wake did not fit. An instance already waiting keeps its start, so asking
 // again does not extend the wait. A wake that waits is a wake all the same:
-// the deployment's sleep is no longer held (Deployment.SleepHeld), so a
-// request for it is held for the wake rather than refused.
+// the named instances' sleep is no longer held (Instance.SleepHeld), so a
+// request for the deployment is held for the wake rather than refused; the
+// deployment's other sleepers keep their holds.
 func (s *Store) MarkWakeWaiting(depID uint, uuids []string, at time.Time) error {
 	if len(uuids) == 0 {
 		return nil
@@ -26,7 +27,8 @@ func (s *Store) MarkWakeWaiting(depID uint, uuids []string, at time.Time) error 
 			Update("wake_waiting_since", at.UTC()).Error; err != nil {
 			return err
 		}
-		return tx.Model(&Deployment{}).Where("id = ? AND sleep_held = ?", depID, true).Update("sleep_held", false).Error
+		return tx.Model(&Instance{}).Where("deployment_id = ? AND uuid IN ? AND sleep_held = ?", depID, uuids, true).
+			Update("sleep_held", false).Error
 	})
 	if err != nil {
 		return err

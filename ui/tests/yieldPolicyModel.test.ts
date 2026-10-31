@@ -1,11 +1,10 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { test } from "node:test";
-import type { YieldPolicyDictionary } from "../src/api.ts";
+import type { YieldPolicyDictionary } from "../src/yieldPolicyApi.ts";
 import {
   applicable,
   boundOf,
-  canYield,
   chooseUnfinished,
   draftEqual,
   draftErrors,
@@ -50,6 +49,22 @@ test("which parameters apply comes from the dictionary, and the wait time only w
   assert.deepEqual(names(draftOfPolicy(dictionary, "anytime")), ["hold_max_sec", "idle_sec", "sleep_level", "unfinished"]);
   assert.deepEqual(names({ ...draftOfPolicy(dictionary, "anytime"), unfinished: "wait" }), ["hold_max_sec", "idle_sec", "sleep_level", "unfinished", "unfinished_wait_sec"]);
   assert.deepEqual(names({ ...draftOfPolicy(dictionary, "timeslice"), unfinished: "abort" }), ["hold_max_sec", "idle_sec", "max_serve_sec", "sleep_level", "unfinished"]);
+});
+
+test("the conditions under which a parameter applies are the dictionary's applies_when, not the model's", () => {
+  const names = (dict: YieldPolicyDictionary, draft: YieldDraft) => [...applicable(dict, draft)].sort();
+  // A server that made the wait time apply while aborting (and the hold time
+  // only at sleep level l2) is followed as it states it.
+  const other = structuredClone(dictionary);
+  other.applies_when = { unfinished_wait_sec: { unfinished: ["abort"] }, hold_max_sec: { sleep_level: ["l2"] } };
+  const anytime = draftOfPolicy(other, "anytime");
+  assert.deepEqual(names(other, anytime), ["idle_sec", "sleep_level", "unfinished", "unfinished_wait_sec"]);
+  assert.deepEqual(names(other, { ...anytime, unfinished: "wait", sleep_level: "l2" }), ["hold_max_sec", "idle_sec", "sleep_level", "unfinished"]);
+  // Choosing the mode under which the wait time applies fills its default.
+  assert.equal(chooseUnfinished(other, { policy: "timeslice", unfinished: "wait" }, "abort").unfinished_wait_sec, 30);
+  // No conditions: every listed parameter applies.
+  other.applies_when = {};
+  assert.ok(applicable(other, anytime).has("unfinished_wait_sec"));
 });
 
 test("the request is the policy with the parameters that apply, none of them null, in wire order", () => {
@@ -149,15 +164,10 @@ test("idle_sec may not exceed max_serve_sec when both apply, and the bounds come
   assert.equal(boundOf({ ...dictionary, bounds: {} }, timeslice, "hold_max_sec"), null);
 });
 
-test("a deployment holds a policy or, with none, never; only a sleepable single-node non-PD one can yield", () => {
+test("a deployment holds a policy or, with none, never", () => {
   assert.deepEqual(savedPolicy({ id: 1 } as never), { policy: "never" });
   const held = { policy: "anytime", idle_sec: 30, sleep_level: "auto", unfinished: "abort", hold_max_sec: 3600 } as const;
   assert.deepEqual(savedPolicy({ id: 1, yield_policy: held } as never), held);
-  assert.equal(canYield({ sleepable: true, nnodes: 1 } as never), true);
-  assert.equal(canYield({ sleepable: true } as never), true);
-  assert.equal(canYield({ sleepable: false, nnodes: 1 } as never), false);
-  assert.equal(canYield({ sleepable: true, nnodes: 2 } as never), false);
-  assert.equal(canYield({ sleepable: true, nnodes: 1, pd: { mode: "ep", roles: [] } } as never), false);
 });
 
 test("paramsOfValue reads a policy out of a form value or a stored draft and drops what it does not know", () => {

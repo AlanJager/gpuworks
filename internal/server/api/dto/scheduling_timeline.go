@@ -47,8 +47,8 @@ type TimelineSegment struct {
 	To           time.Time `json:"to"`
 }
 
-// TimelineDeployment is what a deployment that shares GPUs (any service level
-// but resident) did on the listed nodes over the window. AwakeSeconds is the
+// TimelineDeployment is what a deployment that shares GPUs (any yield policy
+// but never) did on the listed nodes over the window. AwakeSeconds is the
 // time at least one of its instances there was awake and AwakeShare that over
 // the window (0 to 1). Yielded counts the times it was put to sleep for
 // another deployment, YieldedTo those another was put to sleep for it, Wakes

@@ -143,11 +143,9 @@ func (a *apiHandlers) scheduleFromRequest(w http.ResponseWriter, r *http.Request
 		return invalid("time", "use HH:MM, 00:00 to 23:59")
 	}
 	row.Minute = minute
-	if row.Timezone != "" {
-		if _, err := time.LoadLocation(row.Timezone); err != nil {
-			writeProductError(w, http.StatusBadRequest, messages.ErrorScheduleTimezoneUnknown, "the server does not know this time zone", map[string]any{"timezone": row.Timezone})
-			return nil, false
-		}
+	if _, err := automation.ScheduleLocation(row.Timezone); err != nil {
+		writeProductError(w, http.StatusBadRequest, messages.ErrorScheduleTimezoneUnknown, "the server does not know this time zone", map[string]any{"timezone": row.Timezone})
+		return nil, false
 	}
 	switch req.Action {
 	case store.ScheduleActionSleep, store.ScheduleActionWake:
@@ -173,11 +171,11 @@ func (a *apiHandlers) scheduleFromRequest(w http.ResponseWriter, r *http.Request
 			return invalid("sleep_level", "only a sleep order sets a level")
 		}
 		role := strings.TrimSpace(req.Role)
-		if err := scheduledReplicasRefusal(dep, role); err != nil {
+		if err := planning.ScheduledReplicasRefusal(dep, role); err != nil {
 			writeErr(w, http.StatusBadRequest, err)
 			return nil, false
 		}
-		lowest, highest := scheduledReplicasBounds(dep, role)
+		lowest, highest := planning.ReplicaBounds(dep, role)
 		if req.Replicas == nil || *req.Replicas < lowest || *req.Replicas > highest {
 			return invalid("replicas", fmt.Sprintf("a replica count is %d to %d", lowest, highest))
 		}
@@ -203,19 +201,28 @@ func parseScheduleTime(raw string) (int, bool) {
 	return h*60 + m, true
 }
 
-// automationSchedule is a stored order as the automation reads it. An unknown
-// zone (validated on write, so only a zone the server lost since) falls back
-// to the server's own.
-func automationSchedule(row store.LifecycleSchedule) automation.Schedule {
-	loc := time.Local
-	if row.Timezone != "" {
-		if l, err := time.LoadLocation(row.Timezone); err == nil {
-			loc = l
-		}
+// AutomationSchedule is a stored order as the automation runs it, in the
+// zone it names (automation.ScheduleLocation). A zone the server does not
+// know (validated on write, so only one the server lost since) is an error:
+// the automation skips the order rather than run it in another zone.
+func AutomationSchedule(row store.LifecycleSchedule) (automation.Schedule, error) {
+	loc, err := automation.ScheduleLocation(row.Timezone)
+	if err != nil {
+		return automation.Schedule{}, err
 	}
 	s := automation.Schedule{ID: row.ID, DeploymentID: row.DeploymentID, Action: row.Action, Weekdays: row.Weekdays, Minute: row.Minute, Location: loc, SleepLevel: row.SleepLevel, Replicas: row.Replicas, Role: row.Role}
 	if row.LastFiredAt != nil {
 		s.LastFiredAt = *row.LastFiredAt
+	}
+	return s, nil
+}
+
+// automationSchedule is AutomationSchedule as the API shows an order: one the
+// automation skips names no occurrence, so it shows none either.
+func automationSchedule(row store.LifecycleSchedule) automation.Schedule {
+	s, err := AutomationSchedule(row)
+	if err != nil {
+		return automation.Schedule{}
 	}
 	return s
 }
@@ -271,4 +278,14 @@ func (a *apiHandlers) endWakeWaiting(w http.ResponseWriter, r *http.Request) {
 		waiting = []string{}
 	}
 	writeJSON(w, http.StatusOK, dto.List[string]{Items: waiting, Total: len(waiting)})
+}
+
+// scheduleCapabilitiesDTO is what a deployment's schedule may order, as the
+// deployment DTO carries it for the schedule editor.
+func scheduleCapabilitiesDTO(c planning.ScheduleCapabilities) dto.ScheduleCapabilities {
+	out := dto.ScheduleCapabilities{Sleep: dto.EligibilityOf(c.Sleep), Wake: dto.EligibilityOf(c.Wake), Replicas: []dto.ReplicaCapability{}}
+	for _, r := range c.Replicas {
+		out.Replicas = append(out.Replicas, dto.ReplicaCapability{Role: r.Role, Minimum: r.Lowest, Maximum: r.Highest, OK: r.Refusal == "", Reason: r.Refusal})
+	}
+	return out
 }

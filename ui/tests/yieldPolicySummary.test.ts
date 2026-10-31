@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createI18n } from "./helpers/dom.ts";
-import { paramsSummary, spanText, yieldSummary } from "../src/pages/yieldPolicy/summary.ts";
+import { durationText } from "../src/pages/durationText.ts";
+import { paramsSummary, yieldSummary } from "../src/pages/yieldPolicy/summary.ts";
+
+const spanText = (t: Parameters<typeof durationText>[0], seconds: number) => durationText(t, seconds, "exact");
 
 // The one line a policy is summed up in on the scheduling policy card, in both
 // languages. It reads the saved parameters alone: no dictionary is involved.
@@ -49,10 +52,10 @@ for (const lng of ["en", "zh"] as const) {
   });
 
   test(`${lng}: spans read in days, hours or minutes when they divide evenly, else in seconds`, () => {
-    assert.equal(spanText(t, 30), i18n.t("deployments:automation.duration.seconds", { value: 30 }));
-    assert.equal(spanText(t, 90), i18n.t("deployments:automation.duration.seconds", { value: 90 }));
-    assert.equal(spanText(t, 300), i18n.t("deployments:automation.duration.minutes", { value: 5 }));
-    assert.equal(spanText(t, 7200), i18n.t("deployments:automation.duration.hours", { value: 2 }));
-    assert.equal(spanText(t, 172800), i18n.t("deployments:automation.duration.days", { value: 2 }));
+    assert.equal(spanText(t, 30), i18n.t("deployments:duration.seconds", { value: 30 }));
+    assert.equal(spanText(t, 90), i18n.t("deployments:duration.seconds", { value: 90 }));
+    assert.equal(spanText(t, 300), i18n.t("deployments:duration.minutes", { value: 5 }));
+    assert.equal(spanText(t, 7200), i18n.t("deployments:duration.hours", { value: 2 }));
+    assert.equal(spanText(t, 172800), i18n.t("deployments:duration.days", { value: 2 }));
   });
 }

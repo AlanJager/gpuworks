@@ -2,6 +2,7 @@ package planning
 
 import (
 	"fmt"
+	"time"
 
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/sleep"
@@ -23,6 +24,25 @@ func HostMemoryFromMetrics(latest func(metric, nodeUUID string) (float64, bool))
 			return 0, 0, false
 		}
 		return int64(total - used), int64(total), true
+	}
+}
+
+// hostMemoryWindow is how recent a host memory sample must be to count: a
+// node that reported nothing since is not known.
+const hostMemoryWindow = 2 * time.Minute
+
+// RecentHostMemory reads a node's host memory from the samples its agent
+// reported within hostMemoryWindow of now: latest answers a node's newest
+// sample of a metric since sinceMS. Nil latest knows nothing.
+func RecentHostMemory(latest func(metric, nodeUUID string, sinceMS int64) (float64, bool), now func() time.Time) HostMemory {
+	if latest == nil {
+		return nil
+	}
+	return func(nodeUUID string) (int64, int64, bool) {
+		since := now().Add(-hostMemoryWindow).UnixMilli()
+		return HostMemoryFromMetrics(func(metric, node string) (float64, bool) {
+			return latest(metric, node, since)
+		})(nodeUUID)
 	}
 }
 

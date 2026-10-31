@@ -1,9 +1,9 @@
 {
   "page": {
-    "title": "Scheduling",
+    "title": "Scheduling analysis",
     "description": "Who holds each GPU, what waits to be placed or woken, and what schedules and automation do next",
-    "loading": "Loading the scheduling board…",
-    "loadFailed": "Could not load the scheduling board",
+    "loading": "Loading scheduling analysis…",
+    "loadFailed": "Could not load scheduling analysis",
     "refreshFailed": "Could not refresh the board: {{detail}}",
     "retry": "Retry"
   },
@@ -94,7 +94,6 @@
     "deleted": "{{name}} (deleted)",
     "filters": {
       "category": "Filter by category",
-      "range": "Filter by time range",
       "deployment": "Filter by deployment",
       "deploymentPlaceholder": "All deployments",
       "deploymentNone": "No matching deployment"
@@ -106,10 +105,7 @@
       "manual": "Manual"
     },
     "range": {
-      "all": "All time",
-      "1h": "Last hour",
-      "24h": "Last 24 hours",
-      "7d": "Last 7 days"
+      "all": "All time"
     },
     "columns": {
       "at": "Time",
@@ -185,11 +181,6 @@
       "waitP95": "Wait p95"
     },
     "awakeShare": "{{span}} ({{share}}%)",
-    "duration": {
-      "seconds": "{{seconds}} s",
-      "minutes": "{{minutes}} min",
-      "hours": "{{hours}} h {{minutes}} min"
-    },
     "wait": {
       "ms": "{{value}} ms",
       "seconds": "{{value}} s",
@@ -200,7 +191,7 @@
     "awake": "Serving",
     "asleep": "Asleep",
     "free": "Free",
-    "held": "Held outside the platform",
+    "held_outside": "Held outside the platform",
     "unhealthy": "Faulty",
     "offline": "Node offline"
   },
@@ -219,7 +210,6 @@
     "detail": {
       "claimed": "{{pct}}% claimed by serving deployments",
       "residue": "{{pct}}% kept by sleepers",
-      "held": "A process outside the platform uses it",
       "switching": "changing state",
       "holders": "Held by {{list}}"
     },

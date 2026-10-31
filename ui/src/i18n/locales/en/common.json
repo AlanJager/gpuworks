@@ -477,6 +477,7 @@
     "SCHEDULE_REPLICAS_MANUAL_PLACEMENT": "This multi-node or PD deployment's replicas are placed by hand, so a schedule cannot set their count; switch it to automatic placement first.",
     "YIELD_POLICY_INVALID": "The yield policy is not valid ({{field}}): {{reason}}.",
     "YIELD_POLICY_SHAPE": "Only a single-node deployment can yield its GPUs; a multi-node or PD deployment stays on never yield automatically.",
+    "YIELD_POLICY_NEEDS_SLEEP": "This deployment's yield policy is {{policy}}, and it yields its GPUs by sleeping, so sleep cannot be turned off. Set the yield policy to never yield automatically first, then turn sleep off.",
     "NODE_REPLACEMENT_INVALID": "The wait before node-loss rescheduling must be 0 (off) or between {{minimum}} and {{maximum}} seconds.",
     "WAKE_YIELD_BLOCKED": "Cannot make room: {{occupants}} cannot be put to sleep (not sleepable, the last awake role of a PD deployment, or a process outside the platform). Nothing was changed.",
     "REPLICAS_PLACE_ON_TOO_MANY": "{{count}} nodes were named for the first placement, but only {{maximum}} replicas are added.",
@@ -486,11 +487,12 @@
     "AUTO_PLACEMENT_PD_MULTI_NODE": "Automatic placement takes PD instances that fit one node, but the {{role}} role's instances span nodes. Switch to manual placement and name their nodes.",
     "PLACEMENT_MODE_SHAPE": "A single-node deployment states its placement in its node requirements; automatic and manual placement apply to multi-node and PD deployments.",
     "BATCH_NOT_FOUND": "The batch or file was not found, or its output has expired and was deleted.",
-    "BATCH_NOT_CANCELLABLE": "The batch has already finished and cannot be cancelled.",
+    "BATCH_NOT_CANCELLABLE": "The batch can no longer be cancelled: it has finished or is assembling its results.",
     "BATCH_FILE_INVALID": "The batch input file is not valid. {{detail}}",
     "BATCH_FILE_TOO_LARGE": "The batch input file is larger than {{limit_mb}} MB.",
     "BATCH_MODEL_UNKNOWN": "No active deployment serves the model {{model}}. Choose a deployment that exists on the platform.",
     "BATCH_REQUEST_INVALID": "The batch request is not valid ({{field}}): {{reason}}",
+    "BATCH_FILE_MODELS_UNKNOWN": "The file names models that no active deployment serves: {{models, list}}. Choose a model to send every request to, or deploy these models first.",
     "AGENT_UPGRADE_REFUSED": "Agent upgrade request could not proceed: {{detail}}"
   },
   "httpError": {
@@ -556,7 +558,7 @@
     "logs": "Logs",
     "settings": "Settings",
     "networks": "Networks",
-    "scheduling": "Scheduling",
+    "scheduling": "Scheduling analysis",
     "batches": "Batches"
   },
   "branding": {

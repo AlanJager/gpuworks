@@ -4,8 +4,8 @@
 // absent.
 import { getJSON, listQueryString, localizedResponseError, type ListPage, type ListQuery } from "./api";
 
+/** The endpoints the sample file knows how to fill; the ones offered are the dictionary's. */
 export type BatchEndpoint = "/v1/chat/completions" | "/v1/completions" | "/v1/embeddings";
-export const BATCH_ENDPOINTS: readonly BatchEndpoint[] = ["/v1/chat/completions", "/v1/completions", "/v1/embeddings"];
 
 export type BatchStatus =
   | "validating"
@@ -16,9 +16,6 @@ export type BatchStatus =
   | "expired"
   | "cancelling"
   | "cancelled";
-export const BATCH_STATUSES: readonly BatchStatus[] = [
-  "validating", "in_progress", "finalizing", "cancelling", "completed", "failed", "expired", "cancelled",
-];
 
 export type BatchFileKind = "input" | "output" | "error";
 
@@ -34,7 +31,10 @@ export interface BatchFailure {
   message: string;
 }
 
-/** A finding that does not refuse the batch; BATCH_MODEL_SLEEP_HELD says the model's deployment sleeps by an operator's order, which requests do not wake. */
+/**
+ * A finding that does not refuse the batch: BATCH_MODEL_SLEEP_HELD {model} says the model the batch was given sleeps by an
+ * operator's order, which requests do not wake; BATCH_FILE_MODELS_SLEEP_HELD {models, more} says so of models its file names.
+ */
 export interface BatchWarning {
   code: string;
   params?: Record<string, unknown>;
@@ -44,6 +44,8 @@ export interface Batch {
   id: string;
   endpoint: BatchEndpoint | string;
   status: BatchStatus;
+  /** Whether a cancel would stop the batch now; the server decides (a finalizing batch, for one, ends as it is). */
+  cancellable: boolean;
   input_file_id: string;
   /** Only on a single batch (GET, create, cancel), not on list rows. */
   input_filename?: string;
@@ -55,6 +57,8 @@ export interface Batch {
   request_counts: BatchRequestCounts;
   metadata: Record<string, string>;
   failure?: BatchFailure;
+  /** When the output and error files are deleted, the server's retention after the batch ended; absent while it runs or without files. */
+  output_expires_at?: string;
   /** Non-blocking findings of creating the batch; only on the create response. */
   warnings?: BatchWarning[];
   user_id: number;
@@ -77,33 +81,42 @@ export interface BatchCreateOptions {
   signal?: AbortSignal;
 }
 
-/** The completion windows a batch may ask for, in whole hours. */
-export const BATCH_WINDOW_HOURS = { min: 1, max: 72, default: 24 } as const;
+/**
+ * What a served name is to a batch, as the server judges it (the same rule its
+ * create check uses): served now, asleep with a sleep a request wakes, or
+ * asleep by an operator's or a schedule's order, which requests do not wake.
+ */
+export type BatchModelState = "served" | "asleep" | "asleep_held";
 
-/** The limits the create form shows; the server enforces them. */
-export const BATCH_LIMITS = { maxFileMB: 200, maxRequests: 50_000 } as const;
+export interface BatchModel {
+  name: string;
+  state: BatchModelState | string;
+}
 
-/** Output and error files are deleted this long after the batch ended. */
-export const BATCH_OUTPUT_RETENTION_DAYS = 30;
+/**
+ * What a batch is offered with (GET /api/v1/batches/dictionary): the server
+ * enforces every one of these, the page only shows them.
+ */
+export interface BatchDictionary {
+  endpoints: string[];
+  completion_window_hours: { min: number; max: number; default: number };
+  max_file_bytes: number;
+  max_file_lines: number;
+  /** Every status, in the order a filter lists them. */
+  statuses: BatchStatus[];
+  output_retention_days: number;
+  /** The served names of the active deployments, the ones that serve first. */
+  models: BatchModel[];
+}
 
 /** Seconds-level cadence at which the server checkpoints a running batch's progress. */
 export const BATCH_POLL_MS = 5000;
 
 const TERMINAL: ReadonlySet<string> = new Set(["completed", "failed", "expired", "cancelled"]);
 
-/** Whether a batch is still moving: validating, running, finalizing or being cancelled. */
+/** Whether a batch is still moving (validating, running, finalizing or being cancelled), so the page keeps polling it. */
 export function isBatchActive(status: string): boolean {
   return !TERMINAL.has(status);
-}
-
-/** Whether the owner can still ask for the batch to be cancelled. */
-export function isBatchCancellable(status: string): boolean {
-  return isBatchActive(status) && status !== "cancelling";
-}
-
-/** When the batch ended: the latest of its terminal timestamps, absent while it runs. */
-export function batchEndedAt(batch: Batch): string | undefined {
-  return batch.completed_at ?? batch.failed_at ?? batch.expired_at ?? batch.cancelled_at;
 }
 
 /** The authenticated link of one of a batch's JSON Lines files (the session cookie carries the login). */
@@ -112,12 +125,13 @@ export function batchFileURL(id: string, kind: BatchFileKind): string {
 }
 
 export const batchApi = {
+  dictionary: () => getJSON<BatchDictionary>("/api/v1/batches/dictionary"),
   list: (query: ListQuery) => getJSON<ListPage<Batch>>(`/api/v1/batches?${listQueryString(query)}`),
   get: (id: string) => getJSON<Batch>(`/api/v1/batches/${encodeURIComponent(id)}`),
   /**
    * Uploads the JSONL input and starts the batch (admin only). model, when
    * given, replaces the model of every line; completionWindowHours is the time
-   * the batch has (the server's default is 24, BATCH_WINDOW_HOURS the range).
+   * the batch has (the dictionary's completion_window_hours bound it).
    */
   create: async (file: File, endpoint: string, options: BatchCreateOptions = {}): Promise<Batch> => {
     const { model, completionWindowHours, signal } = options;

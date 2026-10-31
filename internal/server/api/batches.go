@@ -24,6 +24,8 @@ type BatchService interface {
 	// CreateFromUpload reads a multipart form with a "file" (the JSONL input)
 	// and an "endpoint", validates the file while saving it and starts the batch.
 	CreateFromUpload(c BatchCaller, form *multipart.Reader) (dto.Batch, error)
+	// Dictionary is what a batch can be created with (dto.BatchDictionary).
+	Dictionary() (dto.BatchDictionary, error)
 	// Download opens the input, output or error file of a batch (kind "input",
 	// "output" or "error").
 	Download(c BatchCaller, id, kind string) (BatchDownload, error)
@@ -99,6 +101,21 @@ func (a *apiHandlers) listBatches(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, page)
+}
+
+// batchDictionary serves GET /api/v1/batches/dictionary: the endpoints,
+// windows, limits, statuses, retention and models a batch is offered with.
+func (a *apiHandlers) batchDictionary(w http.ResponseWriter, r *http.Request) {
+	if a.d.Batches == nil {
+		writeErr(w, http.StatusNotFound, errBatchesUnavailable)
+		return
+	}
+	d, err := a.d.Batches.Dictionary()
+	if err != nil {
+		a.writeBatchError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, d)
 }
 
 // getBatch serves GET /api/v1/batches/{id}.

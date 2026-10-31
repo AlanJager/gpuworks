@@ -7,20 +7,20 @@ import (
 
 	"gorm.io/gorm"
 
-	"gpuworks.ai/gpuworks/internal/server/servicelevel"
+	"gpuworks.ai/gpuworks/internal/server/yieldpolicy"
 )
 
 // Policy is the deployment's yield policy as its columns state it,
 // normalized; the policy a row from before the columns reads as is never.
-func (d *Deployment) Policy() servicelevel.Policy {
-	return servicelevel.Policy{
+func (d *Deployment) Policy() yieldpolicy.Policy {
+	return yieldpolicy.Policy{
 		Yield: d.YieldPolicy, IdleSec: d.IdleSec, SleepLevel: d.SleepLevelPref,
 		MaxServeSec: d.MaxServeSec, Unfinished: d.Unfinished, UnfinishedWaitSec: d.UnfinishedWaitSec, HoldMaxSec: d.HoldMaxSec,
 	}.Normalize()
 }
 
 // SetPolicy states p in the deployment's columns (not saved), normalized.
-func (d *Deployment) SetPolicy(p servicelevel.Policy) {
+func (d *Deployment) SetPolicy(p yieldpolicy.Policy) {
 	p = p.Normalize()
 	d.YieldPolicy, d.IdleSec, d.SleepLevelPref = p.Yield, p.IdleSec, p.SleepLevel
 	d.MaxServeSec, d.Unfinished, d.UnfinishedWaitSec, d.HoldMaxSec = p.MaxServeSec, p.Unfinished, p.UnfinishedWaitSec, p.HoldMaxSec
@@ -33,7 +33,7 @@ var yieldPolicyColumns = []string{
 }
 
 // SetDeploymentYieldPolicy stores the deployment's yield policy, normalized.
-func (s *Store) SetDeploymentYieldPolicy(id uint, p servicelevel.Policy) error {
+func (s *Store) SetDeploymentYieldPolicy(id uint, p yieldpolicy.Policy) error {
 	p = p.Normalize()
 	res := s.db.Model(&Deployment{}).Where("id = ?", id).Updates(map[string]any{
 		"yield_policy": p.Yield, "idle_sec": p.IdleSec, "sleep_level_pref": p.SleepLevel,
@@ -66,7 +66,7 @@ func (s *Store) SharingDeployments() ([]Deployment, error) {
 		return slices.Clone(c.rows), nil
 	}
 	var out []Deployment
-	err := s.reader().Where("desired_state = ? AND yield_policy NOT IN ?", DeployActive, []string{"", servicelevel.Never}).
+	err := s.reader().Where("desired_state = ? AND yield_policy NOT IN ?", DeployActive, []string{"", yieldpolicy.Never}).
 		Order("id").Find(&out).Error
 	if err != nil {
 		return nil, err
@@ -117,7 +117,8 @@ func addDeploymentIdleSleep(db *gorm.DB) error {
 	return nil
 }
 
-// addDeploymentServiceLevel adds the service level and the held-sleep flag.
+// addDeploymentServiceLevel adds the service level and the held-sleep flag
+// (191 moved the flag to the instances).
 // An existing deployment reads as resident, and one asleep now (ordered
 // deployment-wide, or with a replica at a sleep level) is held: before the
 // flag nothing woke a sleeper on request, so none is woken by one after it.
@@ -131,8 +132,8 @@ func addDeploymentServiceLevel(db *gorm.DB) error {
 			return err
 		}
 	}
-	if !db.Migrator().HasColumn(&Deployment{}, "SleepHeld") {
-		if err := db.Migrator().AddColumn(&Deployment{}, "SleepHeld"); err != nil {
+	if !db.Migrator().HasColumn(&deploymentSleepHeldColumn{}, "SleepHeld") {
+		if err := db.Migrator().AddColumn(&deploymentSleepHeldColumn{}, "SleepHeld"); err != nil {
 			return err
 		}
 		added = true
@@ -152,7 +153,7 @@ func addDeploymentServiceLevel(db *gorm.DB) error {
 
 // presetColumns are what migration 189 writes for each service level: the
 // preset's parameters as they were when the migration was written (the
-// presets of package servicelevel may change later; a migration may not).
+// defaults of package yieldpolicy may change later; a migration may not).
 var presetColumns = []struct {
 	level                                  string
 	yield                                  string

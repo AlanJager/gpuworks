@@ -191,8 +191,16 @@ func TestWakeYieldPutsASleepableCoTenantToSleep(t *testing.T) {
 				t.Fatalf("the co-tenant has no YIELDED_FOR_WAKE event: %+v", events)
 			}
 			// The co-tenant's deployment-wide level is not an order of its own.
-			if got, _ := f.st.GetDeployment(f.newcomer.ID); got.DesiredSleep != 0 {
+			got, _ := f.st.GetDeployment(f.newcomer.ID)
+			if got.DesiredSleep != 0 {
 				t.Fatalf("a replica-level yield set the deployment level to %d", got.DesiredSleep)
+			}
+			// The yielder stays asleep, held: a request does not wake it
+			// (store.Deployment.WakesOnRequest, which the gateway and the
+			// residency arbiter read); only an operator's or a schedule's
+			// wake does (docs/explanation/service-levels.md).
+			if !inst.SleepHeld || got.WakesOnRequest(inst) {
+				t.Fatalf("the yielder is held=%v wakes on request=%v, want held and not woken by a request", inst.SleepHeld, got.WakesOnRequest(inst))
 			}
 		})
 	}

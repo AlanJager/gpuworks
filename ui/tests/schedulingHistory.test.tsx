@@ -16,12 +16,14 @@ const { cleanup, render, screen, waitFor, within, fireEvent } = await import("@t
 const userEvent = (await import("@testing-library/user-event")).default;
 const { MemoryRouter, Route, Routes, useLocation } = await import("react-router-dom");
 const { api } = await import("../src/api.ts");
-const { default: HistoryCard } = await import("../src/pages/scheduling/HistoryCard.tsx");
-type Entry = import("../src/api.ts").SchedulingHistoryEntry;
-type Query = import("../src/api.ts").SchedulingHistoryQuery;
+const { schedulingApi } = await import("../src/schedulingApi.ts");
+const { default: HistoryCard, historyWindow } = await import("../src/pages/scheduling/HistoryCard.tsx");
+type Entry = import("../src/schedulingApi.ts").SchedulingHistoryEntry;
+type Query = import("../src/schedulingApi.ts").SchedulingHistoryQuery;
 
 const h = locale.scheduling.history;
-const original = { schedulingHistory: api.schedulingHistory, deploymentsPage: api.deploymentsPage };
+const original = { deploymentsPage: api.deploymentsPage };
+const originalScheduling = { ...schedulingApi };
 
 function entry(id: number, overrides: Partial<Entry> = {}): Entry {
   return {
@@ -62,7 +64,7 @@ const choose = (user: ReturnType<typeof userEvent.setup>, name: string) => user.
 
 function serve(items: Entry[] | ((query: Query) => Entry[])) {
   const queries: Query[] = [];
-  api.schedulingHistory = async (query) => { queries.push(query); return { items: typeof items === "function" ? items(query) : items }; };
+  schedulingApi.history = async (query) => { queries.push(query); return { items: typeof items === "function" ? items(query) : items }; };
   api.deploymentsPage = async (query) => ({
     items: [{ id: 7, name: "qwen" }, { id: 8, name: "llama" }].filter((d) => !query.q || d.name.includes(query.q)),
     page: 1, page_size: 20, total: 2,
@@ -73,13 +75,14 @@ function serve(items: Entry[] | ((query: Query) => Entry[])) {
 afterEach(() => {
   cleanup();
   Object.assign(api, original);
+  Object.assign(schedulingApi, originalScheduling);
 });
 after(() => closeChannels());
 
 test("a loading status shows until the history answers", async () => {
   let release!: () => void;
   const gate = new Promise<void>((resolve) => { release = resolve; });
-  api.schedulingHistory = async () => { await gate; return { items: sample }; };
+  schedulingApi.history = async () => { await gate; return { items: sample }; };
   mount();
   assert.ok(screen.getByRole("status"));
   assert.ok(screen.getByText(h.loading));
@@ -120,6 +123,31 @@ test("each entry shows its time, deployment, action, worded details, category an
   assert.equal(screen.getByTestId("loc").textContent, "/deployments?deployment=7");
 });
 
+test("an entry that gave GPUs to another deployment names it, and the name opens it", async () => {
+  const preempt = (id: number, target: Entry["target"]) => entry(id, {
+    params: { trigger: "preempt", reason: "rank", for_deployment: target?.id ?? 0, level: 1, instances: ["abcdef012345"] }, target,
+  });
+  serve([
+    preempt(40, { id: 8, name: "llama" }),
+    preempt(39, { id: 9, name: "gone", deleted: true }),
+    preempt(38, { id: 11 }),
+  ]);
+  const user = mount();
+  await screen.findByRole("link", { name: "llama" });
+  const rows = screen.getAllByRole("row").slice(1);
+  // The sentence reads as the timeline's, with the name where "#id" was.
+  const sentence = i18n.t("deployments:instance.event.AUTO_SLEEP", {
+    level: 1, instances: "abcdef01", cause: i18n.t("deployments:automation.preempt.rank", { who: "llama" }),
+  });
+  assert.equal(within(rows[0]).getByText((_, el) => el?.tagName === "SPAN" && el.textContent === sentence && el.querySelector("a") !== null) !== null, true);
+  // A deleted one is named but has no page; an unknown one shows its id.
+  assert.ok(within(rows[1]).getByText(i18n.t("scheduling:history.deleted", { name: "gone" })));
+  assert.equal(within(rows[1]).queryAllByRole("link").map((a) => a.textContent).join(), "qwen");
+  assert.ok(within(rows[2]).getByText(/#11/));
+  await user.click(within(rows[0]).getByRole("link", { name: "llama" }));
+  assert.equal(screen.getByTestId("loc").textContent, "/deployments?deployment=8");
+});
+
 test("an empty history says so, and says differently when filters hide everything", async () => {
   const queries = serve([]);
   const user = mount();
@@ -131,7 +159,7 @@ test("an empty history says so, and says differently when filters hide everythin
 
 test("a failed first load shows the error and retries on request", async () => {
   let calls = 0;
-  api.schedulingHistory = async () => {
+  schedulingApi.history = async () => {
     calls += 1;
     if (calls === 1) throw new Error("history unavailable");
     return { items: sample };
@@ -146,7 +174,7 @@ test("a failed first load shows the error and retries on request", async () => {
 
 test("a later failed refresh keeps the entries and warns", async () => {
   let calls = 0;
-  api.schedulingHistory = async () => {
+  schedulingApi.history = async () => {
     calls += 1;
     if (calls > 1) throw new Error("server restarting");
     return { items: sample };
@@ -177,16 +205,36 @@ test("the category filter works from the keyboard and starts over from the newes
   assert.equal(queries.at(-1)?.before, undefined);
 });
 
-test("the time range asks for entries since that long ago", async () => {
+test("the time range is the platform's picker and asks for entries since that long ago", async () => {
   const queries = serve(sample);
-  const user = mount();
+  mount();
   await screen.findByText("qwen");
   assert.equal(queries[0].since, undefined);
+  const box = screen.getByRole("combobox", { name: locale.deployments.timeRange.ariaLabel });
+  fireEvent.mouseDown(box);
+  const day = await waitFor(() => {
+    const option = document.querySelector(`.ant-select-item-option[title="${locale.deployments.timeRange["1d"]}"]`);
+    assert.ok(option, "the quick ranges are offered");
+    return option;
+  });
+  assert.ok(document.querySelector(`.ant-select-item-option[title="${h.range.all}"]`), "all time is the first choice");
+  assert.ok(document.querySelector(`.ant-select-item-option[title="${locale.deployments.timeRange.custom}"]`), "a custom range is offered");
   const before = Date.now();
-  await choose(user, h.range["24h"]);
+  fireEvent.click(day!);
   await waitFor(() => assert.ok(queries.at(-1)?.since));
   const since = Date.parse(queries.at(-1)?.since ?? "");
   assert.ok(since >= before - 86_400_000 - 1000 && since <= Date.now() - 86_400_000 + 1000, `since = ${queries.at(-1)?.since}`);
+  assert.equal(queries.at(-1)?.until, undefined, "a quick range slides with now");
+});
+
+test("a history window is open for all time, slides for a quick range and is fixed for a custom one", () => {
+  const now = Date.parse("2026-10-30T12:00:00Z");
+  assert.deepEqual(historyWindow(null, now), {});
+  assert.deepEqual(historyWindow({ kind: "quick", key: "1h" }, now), { since: "2026-10-30T11:00:00.000Z", until: undefined });
+  assert.deepEqual(
+    historyWindow({ kind: "custom", startMS: Date.parse("2026-10-29T08:06:00Z"), endMS: Date.parse("2026-10-29T08:21:00Z") }, now),
+    { since: "2026-10-29T08:06:00.000Z", until: "2026-10-29T08:21:00.000Z" },
+  );
 });
 
 test("a deployment is found by name and chosen from the keyboard", async () => {

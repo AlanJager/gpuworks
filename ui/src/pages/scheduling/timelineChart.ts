@@ -1,4 +1,5 @@
-import type { YieldPolicyName, TimelineDeployment, TimelineHours, TimelineSegment, TimelineState } from "../../api";
+import type { TimelineDeployment, TimelineHours, TimelineSegment, TimelineState } from "../../schedulingApi";
+import type { YieldPolicyName } from "../../yieldPolicyApi";
 import { colors } from "../../theme/tokens";
 
 // Geometry of the residency timeline. Every x is a position on a track that is
@@ -36,9 +37,12 @@ export interface Tick {
   x: number;
 }
 
-/** Ticks at the local whole hours (every hour for 6 h, every 4 h for 24 h) inside the window. */
+/**
+ * Ticks at the local whole hours inside the window, about six of them: every
+ * hour for 6 h, every 4 h for 24 h.
+ */
 export function ticksOf(span: Span, hours: TimelineHours): Tick[] {
-  const step = hours === 6 ? 1 : 4;
+  const step = Math.max(1, Math.round(hours / 6));
   const first = new Date(span.fromMs);
   first.setMinutes(0, 0, 0);
   const out: Tick[] = [];

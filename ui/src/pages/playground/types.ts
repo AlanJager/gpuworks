@@ -12,6 +12,8 @@ export interface PlaygroundModel {
   input_modalities?: string[];
   context_length?: number;
   sleeping: boolean;
+  /** Set on a sleeping model whose sleep a request ends: sending wakes it. */
+  wakes_on_request?: boolean;
   deployment_id?: number;
   template_id?: number;
   template_spec_source?: string;

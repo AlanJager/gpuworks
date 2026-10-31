@@ -748,6 +748,9 @@ runveil（udocker）节点拉取镜像时，agent 日志（`<state>/agent.log`�
 | `insufficient_empty_gpus` / `insufficient_shared_gpus` | 空闲整卡 / 可共享的卡不够 |
 | `pinned_gpus_unavailable` | 手动放置的 PD 实例钉住的卡被其他部署占着；参数给出 `node`、`gpus`（钉住的卡号）和 `holders`（占卡的部署）。实例不会改用同节点的其他空卡，而是等钉住的卡空出来：停掉或迁走占卡的部署，或把这个部署切成自动放置（`PUT /deployments/{id}/placement-mode`），由平台改用空闲的卡。钉住的卡被平台外进程占着、不健康或空着仍放不下时，仍是对应的原因码 |
 | `waiting_for_yield` | 副本在共卡的部署按出让策略让出卡后放得下，正在等它们让卡；参数给出 `node`、`holders`（占卡的部署，各带 `at_once`，或 `idle_sec` 与按时自动出让的 `max_serve_sec`：它按什么条件把卡让给这个部署）和 `instances`。占卡者睡下后自行解决，见[新部署怎样放到共用的卡上](scheduling-center.md#新部署怎样放到共用的卡上)；不自动出让的占卡者从不被要求让卡 |
+| `reserved_for_sleepers` | 只因为休眠中的部署为请求唤醒留着卡，这个部署放不下；参数给出 `node`、`gpus`（它本来会用的卡）和 `sleepers`（休眠者，每项 `deployment` 与它的出让策略 `policy`）。共卡的休眠部署在请求能唤醒它时才留卡；你或定时计划下的休眠（保持休眠）不留卡。处理：换一张卡，为本部署开启可休眠并选能共卡的出让策略，或手动休眠占卡的部署，见[新部署怎样放到共用的卡上](scheduling-center.md#新部署怎样放到共用的卡上) |
+| `does_not_wait_for_yield` | 仅部署表单预览：占卡的部署都睡下就放得下，但本部署不自动出让，不等它们让卡；参数给出 `node`、`gpus`、`holders`（会让给共卡部署的占卡者）和 `blockers`（不自动出让的占卡者），每项 `deployment` 与出让策略 `policy`。处理：为本部署开启可休眠并选能共卡的出让策略；有 `blockers` 时还要换一张卡或为它们开启能共卡的出让策略 |
+| `held_by_non_yielding` | 仅部署表单预览：占卡的部署都睡下就放得下，但 `blockers` 里的部署不自动出让，不会把卡让给本部署；参数给出 `node`、`gpus`、`blockers`（每项 `deployment`、`policy`）和 `holders`（会让卡的占卡者，另带 `waiting_for_yield` 的让卡条件）。处理：换一张卡，或为 `blockers` 里的部署开启可休眠并选能共卡的出让策略 |
 | `no_free_gpu` | 没有空闲的 GPU |
 | `no_healthy_gpu` | 节点自己的卡都不在能服务的健康级别 |
 | `no_owned_gpu` | 节点没有归本机使用的卡：一张都没有，或全部直通给虚拟机、未绑定驱动、被其他驱动持有 |
@@ -861,7 +864,7 @@ agent 每 15 秒检查一次运行中实例的容器。被 `docker stop`、进�
 | 404 | `no deployment serves model <name>` | 模型名不是部署的 served name（`GET /v1/models` 可列出），或部署已停止 |
 | 404 | `deployment <name> does not expose <METHOD> <path>` | 只有试验场（`/api/v1/playground/v1/*`）会做 contract 检查并返回它：该部署的 API contract 不包含这个接口（比如对 Chat 模型调 `/v1/embeddings`）；`GET /api/v1/playground/openapi.json` 可查看它声明了哪些接口。公网 `/v1` 不做这项检查，请求原样转给引擎，由引擎自己返回 404 等 |
 | 404 | （`/v1` 整个路径 404） | 访问的监听地址不承载推理 API，检查 `listen.gateway` |
-| 503 | `model is asleep; wake it first (console, or POST /api/v1/deployments/<id>/wake; a schedule or a waiting wake may also wake it)` | 没有可服务的清醒副本；在控制台或调用 `POST /api/v1/deployments/{id}/wake` 唤醒，定时计划或等位中的唤醒也会唤醒它，见[调度中心](scheduling-center.md)。休眠意图发出后，所选实例即不再接收新请求 |
+| 503 | `model is asleep; wake it first (console, or POST /api/v1/deployments/<id>/wake; a schedule or a waiting wake may also wake it)` | 没有可服务的清醒副本；在控制台或调用 `POST /api/v1/deployments/{id}/wake` 唤醒，定时计划或等位中的唤醒也会唤醒它，见[调度分析](scheduling-center.md)。休眠意图发出后，所选实例即不再接收新请求 |
 | 503 | `no running instance for <name> (still starting?)` | 没有 running 副本：还在启动、失败、被停止或节点离线；看实例状态 |
 | 503 | `distributed model <name> is not ready: rank N is unavailable`、`distributed model leader is offline for <name>`、`distributed model leader is not ready for <name>`、`distributed deployment node set is incomplete for <name>` | 多机部署的 rank 或 leader 没就绪 |
 | 503 + `Retry-After: 2` | `upstream error: … data lane unavailable: … did not reattach within 5s` | 节点数据通道断开后 5 秒内没重连；**可重试**，不会回落到控制通道 |
@@ -923,6 +926,7 @@ agent 每 15 秒检查一次运行中实例的容器。被 `docker stop`、进�
 | `SCHEDULE_REPLICAS_MANUAL_PLACEMENT` | 400 | 手动放置的多机或 PD 部署不能定时改副本数；先用 `PUT /deployments/{id}/placement-mode` 切到自动放置。计划写好后才切到手动放置的，到点时计划失败并记 `SCHEDULE_ACTION_FAILED` |
 | `YIELD_POLICY_INVALID` | 400 | 出让策略请求不合法：`params.field` 是字段（`policy`、`sleep_level`、`unfinished`、`idle_sec`、`max_serve_sec`、`unfinished_wait_sec`、`hold_max_sec`），`params.reason` 为 `required`（没给 `policy`：请求体是 `{}`，或只带参数不带 `policy`）、`invalid_value`（不在允许的取值里）或 `out_of_range`（数值越界，另带 `minimum`、`maximum`；按时自动出让的闲置时间超过最长服务时间时，`idle_sec` 的 `maximum` 就是最长服务时间）；见[出让策略](scheduling-center.md#出让策略) |
 | `YIELD_POLICY_SHAPE` | 400 | 多机或 PD 部署只能是不自动出让 |
+| `YIELD_POLICY_NEEDS_SLEEP` | 400 | 编辑部署时要关掉可休眠，但它的出让策略（`params.policy`）不是不自动出让；先把出让策略改为不自动出让 |
 | `NODE_REPLACEMENT_INVALID` | 400 | 重调度等待时间要是 0（从不）或 60–604800 秒 |
 | `REPLICAS_PLACE_ON_TOO_MANY` | 400 | `place_on` 的节点数超过本次增加的副本数 |
 | `REPLICAS_PLACE_ON_REFUSED` | 409 | `place_on` 里的某个节点不能放新副本，`params.reason` 为 `unknown`（节点不存在）、`offline`、`cordoned`、`requirements`（不满足节点条件）或 `no_room`（试算放不下）；自动放置的多机部署还有 `no_group`（所写的节点凑不成一个放得下的副本：不同计算网络或架构，或卡不够） |
@@ -940,7 +944,7 @@ agent 每 15 秒检查一次运行中实例的容器。被 `docker stop`、进�
 
 **现象**：到点没有休眠 / 唤醒，或部署被意外睡下。
 
-**怎么确认与处理**：先看部署时间线里事件类型为 `automation` 的条目，或调度中心的**最近的自动动作**：
+**怎么确认与处理**：先看部署时间线里事件类型为 `automation` 的条目，或调度分析的**最近的自动动作**：
 
 | 事件 | 含义与处理 |
 |---|---|

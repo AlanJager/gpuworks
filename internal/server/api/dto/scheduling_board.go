@@ -3,14 +3,12 @@ package dto
 import "time"
 
 // SchedulingBoard is the scheduling center's view: who holds each GPU, what
-// waits to be placed or woken, what the schedules will do next and what the
-// automation did last. Nodes is a page of the fleet (page/page_size).
+// waits to be placed or woken and what the schedules will do next. Nodes is a page of the fleet (page/page_size).
 type SchedulingBoard struct {
 	Nodes        ListPage[BoardNode]   `json:"nodes"`
 	Pending      []BoardPending        `json:"pending"`
 	WaitingWakes []BoardWaitingWake    `json:"waiting_wakes"`
 	Upcoming     []BoardUpcomingAction `json:"upcoming"`
-	Recent       []BoardEvent          `json:"recent"`
 }
 
 // BoardNode is one node and its GPUs.
@@ -23,7 +21,11 @@ type BoardNode struct {
 
 // BoardGPU is one GPU as the ledger charges it: AwakeBytes is what awake
 // instances claim, SleepingBytes the residue sleepers keep, FreeBytes the
-// rest. HeldOutside is a process outside the platform on the card.
+// rest. State is the card's state as the overview gives it (one of
+// SchedulingOverview.States: offline, unhealthy, held_outside, awake, asleep,
+// free). HeldOutside is a process outside the platform on the card, whatever
+// the state; Switching an instance on it starting, going to sleep, waking or
+// draining.
 type BoardGPU struct {
 	Index         int             `json:"index"`
 	Name          string          `json:"name"`
@@ -31,7 +33,9 @@ type BoardGPU struct {
 	AwakeBytes    int64           `json:"awake_bytes"`
 	SleepingBytes int64           `json:"sleeping_bytes"`
 	FreeBytes     int64           `json:"free_bytes"`
+	State         string          `json:"state"`
 	HeldOutside   bool            `json:"held_outside"`
+	Switching     bool            `json:"switching"`
 	Occupants     []BoardOccupant `json:"occupants"`
 }
 
@@ -78,14 +82,4 @@ type BoardUpcomingAction struct {
 	Replicas *int      `json:"replicas,omitempty"`
 	Role     string    `json:"role,omitempty"`
 	At       time.Time `json:"at"`
-}
-
-// BoardEvent is one thing the scheduling center did, from a deployment's
-// timeline.
-type BoardEvent struct {
-	DeploymentID uint           `json:"deployment_id"`
-	Deployment   string         `json:"deployment"`
-	Code         string         `json:"code"`
-	Params       map[string]any `json:"params"`
-	At           time.Time      `json:"at"`
 }

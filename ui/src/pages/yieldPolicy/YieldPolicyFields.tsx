@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { InputNumber, Radio, Select, Space, Tag, Typography } from "antd";
 import { useTranslation } from "react-i18next";
-import type { YieldParamName, YieldPolicyDictionary, YieldSleepLevel, YieldUnfinished } from "../../api";
+import type { YieldParamName, YieldPolicyDictionary, YieldSleepLevel, YieldUnfinished } from "../../yieldPolicyApi";
 import {
   type NumericField,
   type YieldDraft,

@@ -1,7 +1,6 @@
 package planning
 
 import (
-	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/estimate"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
@@ -49,7 +48,7 @@ func QuotaRoom(st *store.Store, dep *store.Deployment, limitBytes int64, live []
 	var order []card
 	for i := range insts {
 		inst := &insts[i]
-		if !changing[inst.UUID] || inst.State == proto.InstStopped || (inst.State == proto.InstFailed && inst.Phase != proto.PhaseSleep) {
+		if !changing[inst.UUID] || !holdsClaim(inst) {
 			continue // keeps its claim, or holds none (gpuAllocations skips it too)
 		}
 		node, ok := nodes[inst.NodeID]

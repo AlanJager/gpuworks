@@ -27,6 +27,10 @@ const (
 	StatusCancelled  = "cancelled"
 )
 
+// Statuses are every status of a batch, the ones still moving first, in the
+// order a client lists them.
+var Statuses = []string{StatusValidating, StatusInProgress, StatusFinalizing, StatusCancelling, StatusCompleted, StatusFailed, StatusExpired, StatusCancelled}
+
 // Terminal reports whether a batch in status has finished for good.
 func Terminal(status string) bool {
 	switch status {
@@ -36,25 +40,35 @@ func Terminal(status string) bool {
 	return false
 }
 
+// Cancellable reports whether Cancel moves a batch in status to cancelling:
+// one that has not started or is running. A finalizing batch is assembling its
+// results and ends as it is; a cancelling one is already on its way.
+func Cancellable(status string) bool {
+	return status == StatusValidating || status == StatusInProgress
+}
+
 // Purposes of a file: the OpenAI Files API's names.
 const (
 	PurposeBatch  = "batch"
 	PurposeOutput = "batch_output"
 )
 
-// Endpoints a batch may call, and the only completion window.
+// Endpoints a batch may call.
 const (
 	EndpointChat       = "/v1/chat/completions"
 	EndpointCompletion = "/v1/completions"
 	EndpointEmbedding  = "/v1/embeddings"
-	CompletionWindow   = "24h"
 )
 
 // The completion windows a batch may ask for, in whole hours: "24h" is OpenAI's
-// and the default, "1h" to "72h" are a gpuworks extension.
+// and the default (CompletionWindow), MinWindowHours to MaxWindowHours are a
+// gpuworks extension.
 const (
-	MinWindowHours = 1
-	MaxWindowHours = 72
+	CompletionWindow = "24h"
+	// DefaultWindowHours is CompletionWindow in hours (a test holds them equal).
+	DefaultWindowHours = 24
+	MinWindowHours     = 1
+	MaxWindowHours     = 72
 )
 
 // ParseWindow reads a completion window of the form "<hours>h" with whole
@@ -152,6 +166,10 @@ const (
 type Warning struct {
 	Code    string
 	Message string
+	// Param is the request field the warning is about.
+	Param string
+	// Models are the served names it is about.
+	Models []string
 }
 
 // Owner is the owner a batch acts for when it sends requests.
@@ -210,17 +228,42 @@ type ModelState int
 const (
 	// ModelUnknown: no active deployment serves the name.
 	ModelUnknown ModelState = iota
-	// ModelAvailable: an active deployment serves it, running or asleep in a
-	// way a request wakes (the gateway holds the request and wakes it).
+	// ModelAvailable: an active deployment serving it is awake (or starting):
+	// requests go to it.
 	ModelAvailable
-	// ModelSleepHeld: every active deployment serving it sleeps by an
-	// operator's or a schedule's order, which a request does not wake.
+	// ModelSleepHeld: every active deployment serving it sleeps and a request
+	// does not wake it (an operator's or a schedule's order).
 	ModelSleepHeld
+	// ModelAsleep: no active deployment serving it is awake, and one sleeps in
+	// a way a request wakes (the gateway holds the request and wakes it).
+	ModelAsleep
 )
 
-// Models looks a served model name up among the platform's deployments.
+// Accepts says requests for a model in this state are sent at once: it
+// serves or a request wakes it. A held model is accepted with a warning,
+// an unknown one refused.
+func (m ModelState) Accepts() bool { return m == ModelAvailable || m == ModelAsleep }
+
+// Better says m serves a batch better than other: awake before asleep before
+// held before unknown. A name several deployments share is as good as the best.
+func (m ModelState) Better(other ModelState) bool { return modelRank[m] > modelRank[other] }
+
+var modelRank = map[ModelState]int{ModelUnknown: 0, ModelSleepHeld: 1, ModelAsleep: 2, ModelAvailable: 3}
+
+// ModelEntry is a served name with what it is to a batch.
+type ModelEntry struct {
+	Name  string
+	State ModelState
+}
+
+// Models looks a served model name up among the platform's deployments, and
+// lists every name a batch can be sent to. Both answer from the same rule, so
+// the list a client chooses from and the check a create makes agree.
 type Models interface {
 	Lookup(name string) (ModelState, error)
+	// List is every served name of an active deployment with its state,
+	// none ModelUnknown, the best served first and then by name.
+	List() ([]ModelEntry, error)
 }
 
 // Reply is what sending one request came to.
@@ -267,11 +310,33 @@ type Error struct {
 	Param   string
 	// Model is the model name a refusal about a model names.
 	Model string
+	// Models are the models of an input file that a refusal about them names,
+	// in the order of the file: at most a few dozen, however many it names.
+	Models []string
 	// Line is the line of the input file the error is about, 0 for none.
 	Line int
 }
 
 func (e *Error) Error() string { return e.Message }
+
+// Codes of the refusals that callers tell apart: the console maps them to
+// product errors of their own.
+const (
+	CodeFileNotFound         = "file_not_found"
+	CodeBatchNotFound        = "batch_not_found"
+	CodeModelNotFound        = "model_not_found"
+	CodeBatchNotCancellable  = "batch_not_cancellable"
+	CodeEmptyFile            = "empty_file"
+	CodeTooManyRequests      = "too_many_requests"
+	CodeInvalidFileExtension = "invalid_file_extension"
+)
+
+// Request fields a refusal or warning about models is about: the model every
+// request is sent to, or the input file whose lines name their own.
+const (
+	ParamModel       = "model"
+	ParamInputFileID = "input_file_id"
+)
 
 func invalid(code, param, message string) *Error {
 	return &Error{Status: 400, Type: "invalid_request_error", Code: code, Param: param, Message: message}

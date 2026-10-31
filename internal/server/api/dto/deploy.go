@@ -156,14 +156,27 @@ type Deployment struct {
 	// replicas move (after_sec 0 never moves them).
 	NodeReplacement NodeReplacement `json:"node_replacement"`
 	// YieldPolicy is how the deployment shares GPUs with others and the
-	// parameters that go with it; SleepHeld says
-	// an operator's or a schedule's sleep holds it, so a request does not
-	// wake it.
+	// parameters that go with it.
 	YieldPolicy YieldPolicy `json:"yield_policy"`
-	SleepHeld   bool        `json:"sleep_held"`
+	// SleepHold says how its asleep replicas are held, derived from each
+	// replica's own hold (Instance.SleepHeld): SleepHoldAll when an
+	// operator's or a schedule's sleep holds every one (a request wakes
+	// none), SleepHoldSome when it holds some (a request wakes the others),
+	// SleepHoldNone when the platform put them all to sleep (a request
+	// wakes them); absent with none asleep. SleepHeld is SleepHoldAll: the
+	// deployment has replicas asleep and a request wakes none of them.
+	SleepHold string `json:"sleep_hold,omitempty"`
+	SleepHeld bool   `json:"sleep_held"`
 	// WakeWaitingSince is when the oldest wake of the deployment that waits
-	// for room started waiting; absent when none waits.
+	// for room started waiting; absent when none waits. A waiting wake gives
+	// up after WakeWaitLimitSec.
 	WakeWaitingSince *time.Time `json:"wake_waiting_since,omitempty"`
+	WakeWaitLimitSec int        `json:"wake_wait_limit_sec"`
+	// YieldPolicyEligible says whether the deployment may hold a yield policy
+	// other than never (planning.YieldPolicyRefusal), and
+	// ScheduleCapabilities what its schedule may order.
+	YieldPolicyEligible  Eligibility          `json:"yield_policy_eligible"`
+	ScheduleCapabilities ScheduleCapabilities `json:"schedule_capabilities"`
 	// PlacementMode is "auto" when the platform picks a multi-node or PD
 	// deployment's nodes whenever a unit starts, "manual" when they are the
 	// operator's; absent for a single-node deployment, whose draft says it.
@@ -293,6 +306,13 @@ type RoutingPolicyOption struct {
 	Description localization.Text `json:"description"`
 }
 
+// A deployment's SleepHold: how its asleep replicas are held.
+const (
+	SleepHoldAll  = "all"
+	SleepHoldSome = "some"
+	SleepHoldNone = "none"
+)
+
 // Instance is the API view of a running replica.
 type Instance struct {
 	PreStartArgv   []string `json:"pre_start_argv,omitempty"`
@@ -324,6 +344,10 @@ type Instance struct {
 	// Asleep says the gateway sends the instance nothing because of sleep:
 	// ordered to sleep, or still reporting a sleep level.
 	Asleep bool `json:"asleep"`
+	// SleepHeld says an operator's or a schedule's sleep holds the
+	// instance: a request does not wake it. Its deployment's other
+	// instances may be held or not on their own.
+	SleepHeld bool `json:"sleep_held"`
 	// Replica is the replica the instance fills (as its leader or a
 	// follower of its generation); absent when it fills none.
 	Replica *InstanceReplica `json:"replica,omitempty"`
@@ -529,57 +553,4 @@ type DeploymentRequirementsRequest struct {
 	NodeRequirements map[string][]string `json:"node_requirements"`
 	// PlacementStrategy is spread or binpack; unstated keeps the current one.
 	PlacementStrategy string `json:"placement_strategy,omitempty"`
-}
-
-// UnitSuggestRequest asks for the nodes of one more multi-node replica
-// (POST /deployments/{id}/units/suggest), given the replicas listed so far
-// in the editor: their leaders cannot lead it, and the cards of the ones not
-// yet running are counted as taken.
-type UnitSuggestRequest struct {
-	Units []UnitInput `json:"units"`
-}
-
-// UnitInput is one listed multi-node replica: its leader node, then its
-// followers' nodes rank by rank.
-type UnitInput struct {
-	NodeUUID  string          `json:"node_uuid"`
-	Followers []UnitRankInput `json:"followers,omitempty"`
-}
-
-// UnitRankInput is one follower rank's node.
-type UnitRankInput struct {
-	NodeUUID string `json:"node_uuid"`
-}
-
-// UnitSuggestion is a proposed replica for the operator to confirm: Unit is
-// its leader then followers, on nodes that share Network and one GPU
-// architecture (Arch, vendor/family), each rank trial-planned. Unit is nil
-// when no group fits; Reason then says why (unit_none with the counts of
-// nodes each check left out, or unit_no_fit with the first refusal).
-type UnitSuggestion struct {
-	Unit    *UnitInput              `json:"unit"`
-	Network *DeploymentNetworkBrief `json:"network,omitempty"`
-	Arch    string                  `json:"arch,omitempty"`
-	Nodes   []UnitSuggestedNode     `json:"nodes,omitempty"`
-	Reason  *ScheduleReason         `json:"reason,omitempty"`
-}
-
-// DeploymentNetworkBrief names a network.
-type DeploymentNetworkBrief struct {
-	ID   uint   `json:"id"`
-	Name string `json:"name"`
-}
-
-// UnitSuggestedNode is one rank's node in a suggestion, rank order.
-type UnitSuggestedNode struct {
-	UUID     string `json:"uuid"`
-	Name     string `json:"name"`
-	FreeGPUs int    `json:"free_gpus"`
-	Model    string `json:"model"`
-}
-
-// PlacementModeRequest switches a multi-node or PD deployment between
-// automatic placement ("auto") and the operator's own ("manual").
-type PlacementModeRequest struct {
-	Mode string `json:"mode"`
 }

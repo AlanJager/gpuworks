@@ -8,7 +8,7 @@ import (
 	"gorm.io/gorm"
 
 	"gpuworks.ai/gpuworks/internal/proto"
-	"gpuworks.ai/gpuworks/internal/server/servicelevel"
+	"gpuworks.ai/gpuworks/internal/server/yieldpolicy"
 )
 
 // The reads below serve the scheduling center's overview of the whole fleet
@@ -71,18 +71,17 @@ func (s *Store) LedgerModels(ids []uint) ([]Model, error) {
 	return out, nil
 }
 
-// yieldEventsQuery reads the automation events from firstID on that record a
-// deployment giving its cards up for another: a range of the (kind, id) index
-// that holds the automation events of the window and nothing older.
+// yieldEventsQuery reads the automation events from firstID on that may
+// record a deployment giving its cards up for another (IsYield tells which
+// do): a range of the (kind, id) index that holds the automation events of
+// the window and nothing older.
 func yieldEventsQuery(db *gorm.DB, firstID uint) *gorm.DB {
 	return db.Model(&InstanceEvent{}).
-		Where("kind = ? AND id >= ? AND code IN ?", EventKindAutomation, firstID, []string{residencyAutoSleep, "YIELDED_FOR_WAKE"})
+		Where("kind = ? AND id >= ? AND code IN ?", EventKindAutomation, firstID, []string{codeAutoSleep, codeYieldedForWake})
 }
 
-// YieldEvents are the sleeps the automation ordered since the time, from
-// which the caller counts the yields: a deployment put to sleep so that
-// another could wake (an operator's yielding wake, or the residency arbiter's
-// preemption).
+// YieldEvents are the sleeps ordered for another deployment since the time,
+// from which the caller counts the yields with IsYield.
 func (s *Store) YieldEvents(since time.Time) ([]InstanceEvent, error) {
 	first, ok, err := s.ResidencyWindowStart(since)
 	if err != nil || !ok {
@@ -93,24 +92,12 @@ func (s *Store) YieldEvents(since time.Time) ([]InstanceEvent, error) {
 	return out, err
 }
 
-// IsYield reports whether an event from YieldEvents is a yield.
-func IsYield(ev InstanceEvent) bool {
-	switch ev.Code {
-	case "YIELDED_FOR_WAKE":
-		return true
-	case residencyAutoSleep:
-		var data switchEventData
-		return json.Unmarshal([]byte(ev.Data), &data) == nil && data.Trigger == residencyTriggerPreempt
-	}
-	return false
-}
-
 // SharedDeploymentIDs are the ids of the deployments that share GPUs: those
 // of a yield policy other than never, and any whose live instances sit
 // on a card together with another deployment's, sorted.
 func (s *Store) SharedDeploymentIDs() ([]uint, error) {
 	var ids []uint
-	if err := s.reader().Model(&Deployment{}).Where("yield_policy NOT IN ?", []string{"", servicelevel.Never}).Pluck("id", &ids).Error; err != nil {
+	if err := s.reader().Model(&Deployment{}).Where("yield_policy NOT IN ?", []string{"", yieldpolicy.Never}).Pluck("id", &ids).Error; err != nil {
 		return nil, err
 	}
 	// Deployments whose live instances sit on one card together share it

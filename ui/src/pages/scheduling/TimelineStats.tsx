@@ -2,16 +2,9 @@ import { Tag } from "antd";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
-import type { TimelineDeployment } from "../../api";
+import type { TimelineDeployment } from "../../schedulingApi";
 import ResourceTable, { type ResourceColumn } from "../../components/resourceTable/ResourceTable";
-
-/** spanText words a number of seconds as hours and minutes. */
-export function spanText(t: TFunction<"scheduling">, seconds: number): string {
-  if (seconds < 60) return t("timeline.duration.seconds", { seconds: Math.round(seconds) });
-  const minutes = Math.round(seconds / 60);
-  if (minutes < 60) return t("timeline.duration.minutes", { minutes });
-  return t("timeline.duration.hours", { hours: Math.floor(minutes / 60), minutes: minutes % 60 });
-}
+import { durationText } from "../durationText";
 
 /** waitText words a wait in milliseconds; none is a dash. */
 export function waitText(t: TFunction<"scheduling">, ms?: number): string {
@@ -37,7 +30,7 @@ export function SharingTable({ rows }: { rows: TimelineDeployment[] }) {
       key: "awake",
       title: t("timeline.columns.awake"),
       width: 170,
-      render: (_: unknown, row) => <span className="scheduling-num">{t("timeline.awakeShare", { span: spanText(t, row.awake_seconds), share: Math.round(row.awake_share * 1000) / 10 })}</span>,
+      render: (_: unknown, row) => <span className="scheduling-num">{t("timeline.awakeShare", { span: durationText(t, row.awake_seconds, "elapsed"), share: Math.round(row.awake_share * 1000) / 10 })}</span>,
     },
     { key: "switches", title: t("timeline.columns.switches"), width: 90, render: num("switches") },
     { key: "yielded", title: t("timeline.columns.yielded"), width: 90, render: num("yielded") },

@@ -3,17 +3,17 @@ import { test } from "node:test";
 import { arrange, buildModel, compareNames, countStates, freeMiB, NO_FILTERS, type OverviewModel } from "../src/pages/scheduling/overviewModel.ts";
 import { awakeFill, fillOf, mix, stateFill } from "../src/pages/scheduling/cellColor.ts";
 import { colors } from "../src/theme/tokens.ts";
-import { bigFleet, card, FLAGS, overviewOf, smallFleet } from "./helpers/overviewFixtures.ts";
+import { bigFleet, card, overviewOf, smallFleet, STATES } from "./helpers/overviewFixtures.ts";
 
 // The overview's decoding, filtering, grouping and sorting, with no DOM.
 
 const model = (): OverviewModel => buildModel(smallFleet()).model;
 const names = (arranged: ReturnType<typeof arrange>) => arranged.sections.map((s) => s.nodes.map((n) => `${n.node.name}:${n.cards.map((c) => c.index).join("")}`));
 
-test("the compact cards decode into states, in the order a card is the first of them that holds", () => {
+test("the compact cards decode into the states the server names", () => {
   const { nodes } = model();
   const states = nodes.map((n) => n.cards.map((c) => c.state));
-  assert.deepEqual(states, [["awake", "awake"], ["offline"], ["held", "asleep", "free"]]);
+  assert.deepEqual(states, [["awake", "awake"], ["offline"], ["held_outside", "asleep", "free"]]);
   const [a] = nodes;
   assert.deepEqual(a.cards[1].occupants, [{ deployment: 1, asleep: false }, { deployment: 2, asleep: true }]);
   assert.equal(a.cards[1].switching, true);
@@ -22,12 +22,17 @@ test("the compact cards decode into states, in the order a card is the first of 
   assert.equal(nodes[2].cards[0].model, "H100");
   assert.deepEqual(a.labels, { zone: "a" });
   assert.equal(a.contention, 5);
-  // A faulty card is faulty before it is held, and an offline node's cards are offline whatever they hold.
+  // The page derives no state: a card is what the server says, whatever its shares or its node.
   const odd = buildModel(overviewOf([
-    { uuid: "x", name: "x", online: true, cards: [card(0, 0, 50, 0, FLAGS.unhealthy | FLAGS.held), card(1, 0, 50, 0, FLAGS.held)] },
-    { uuid: "y", name: "y", online: false, cards: [card(0, 0, 50, 0, FLAGS.unhealthy)] },
+    { uuid: "x", name: "x", online: true, cards: [card(0, 0, 50, 0, { state: "unhealthy" }), card(1, 0, 50, 0, { state: "held_outside" })] },
   ], ["L20"])).model;
-  assert.deepEqual(odd.nodes.map((n) => n.cards.map((c) => c.state)), [["unhealthy", "held"], ["offline"]]);
+  assert.deepEqual(odd.nodes.map((n) => n.cards.map((c) => c.state)), [["unhealthy", "held_outside"]]);
+  // The positions are the response's own: a server that lists its states in another order is read by it.
+  const reordered = smallFleet();
+  const order = [...STATES].reverse();
+  for (const node of reordered.nodes) for (const wire of node.cards) wire[5] = order.indexOf(STATES[wire[5]]);
+  reordered.states = order;
+  assert.deepEqual(buildModel(reordered).model.nodes.map((n) => n.cards.map((c) => c.state)), states);
 });
 
 test("the labels of the fleet are listed by key with their values", () => {
@@ -114,8 +119,8 @@ test("free capacity counts only cards that can take work, by their unclaimed sha
 });
 
 test("the states of an arrangement are counted over what is shown", () => {
-  assert.deepEqual(countStates(arrange(model(), NO_FILTERS, "node", "name")), { awake: 2, asleep: 1, free: 1, held: 1, unhealthy: 0, offline: 1 });
-  assert.deepEqual(countStates(arrange(model(), { ...NO_FILTERS, models: ["H100"] }, "node", "name")), { awake: 0, asleep: 1, free: 1, held: 1, unhealthy: 0, offline: 0 });
+  assert.deepEqual(countStates(arrange(model(), NO_FILTERS, "node", "name")), { awake: 2, asleep: 1, free: 1, held_outside: 1, unhealthy: 0, offline: 1 });
+  assert.deepEqual(countStates(arrange(model(), { ...NO_FILTERS, models: ["H100"] }, "node", "name")), { awake: 0, asleep: 1, free: 1, held_outside: 1, unhealthy: 0, offline: 0 });
 });
 
 test("a large fleet decodes and arranges quickly", () => {
@@ -135,7 +140,7 @@ test("a large fleet decodes and arranges quickly", () => {
 test("colours come from the theme: one per state, and an awake card deepens with its claim", () => {
   assert.equal(stateFill.awake, colors.chartPrimary);
   assert.equal(stateFill.asleep, colors.chartQuaternary);
-  assert.equal(stateFill.held, colors.chartSecondary);
+  assert.equal(stateFill.held_outside, colors.chartSecondary);
   assert.equal(new Set(Object.values(stateFill)).size, 6, "six states, six colours");
   assert.equal(mix("#000000", "#ffffff", 0.5), "#808080");
   assert.equal(mix("#102030", "#102030", 0.9), "#102030");

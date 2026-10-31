@@ -15,8 +15,8 @@ import (
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"gpuworks.ai/gpuworks/internal/server/auth"
-	"gpuworks.ai/gpuworks/internal/server/servicelevel"
 	"gpuworks.ai/gpuworks/internal/server/store"
+	"gpuworks.ai/gpuworks/internal/server/yieldpolicy"
 )
 
 // The fleet the scheduling center is sized for (CLAUDE.md): 1000 nodes of 8
@@ -50,7 +50,7 @@ func seedScaleFleet(t *testing.T) *scaleFleet {
 	if err := db.CreateInBatches(&models, 50).Error; err != nil {
 		t.Fatal(err)
 	}
-	levels := []string{servicelevel.Never, servicelevel.Idle, servicelevel.TimeSlice, servicelevel.Anytime}
+	levels := []string{yieldpolicy.Never, yieldpolicy.Idle, yieldpolicy.TimeSlice, yieldpolicy.Anytime}
 	deployments := make([]store.Deployment, scaleDeploys)
 	for i := range deployments {
 		deployments[i] = store.Deployment{

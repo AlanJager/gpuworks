@@ -9,7 +9,6 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"gpuworks.ai/gpuworks/internal/server/planning"
 	"gpuworks.ai/gpuworks/internal/server/store"
@@ -33,14 +32,7 @@ func (a *apiHandlers) sleepInstance(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if level == proto.SleepLevelL1 {
-		if refusal := planning.L1HostMemoryRefusal(a.d.Store, dep, members, a.hostMemory); refusal != nil {
-			writeSleepRefusal(w, http.StatusConflict, refusal)
-			return
-		}
-	}
-	if err := a.d.Store.OrderInstancesSleepHeld(dep.ID, uuidsOf(members), level, mode, true); err != nil {
-		writeReplicaOrderErr(w, err)
+	if !a.orderSleep(w, dep, planning.SleepOrder{Pref: planning.SleepPreference(level), Mode: mode, Held: true, Instances: uuidsOf(members)}, writeReplicaOrderErr) {
 		return
 	}
 	a.sleepOrdered(r, dep.ID, level, mode, "replica", "", uuidsOf(members))

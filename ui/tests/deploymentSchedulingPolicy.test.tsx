@@ -5,6 +5,7 @@ import React, { useState } from "react";
 import { I18nextProvider } from "react-i18next";
 import { createI18n } from "./helpers/dom.ts";
 import { trackMessageChannels } from "./helpers/trackedMessageChannels.ts";
+import * as shapes from "./helpers/deploymentCapabilities.ts";
 
 // A deployment's scheduling policy card: one summary line over the
 // policies (rescheduling on node loss, schedule, yield policy), and
@@ -16,18 +17,22 @@ const { i18n, locale } = await createI18n(["deployments", "deploy"]);
 const { cleanup, fireEvent, render, screen, waitFor, within } = await import("@testing-library/react");
 const userEvent = (await import("@testing-library/user-event")).default;
 const { api } = await import("../src/api.ts");
+const { yieldPolicyApi } = await import("../src/yieldPolicyApi.ts");
+const { deploymentScheduleApi } = await import("../src/deploymentScheduleApi.ts");
 const { APIError } = await import("../src/apiError.ts");
 const { formatTime } = await import("../src/i18n/datetime.ts");
 const { default: DeploymentSchedulingPolicy } = await import("../src/pages/DeploymentSchedulingPolicy.tsx");
 type Deployment = import("../src/api.ts").Deployment;
-type Schedule = import("../src/api.ts").LifecycleSchedule;
+type Schedule = import("../src/deploymentScheduleApi.ts").LifecycleSchedule;
 
 const p = locale.deployments.schedulingPolicy;
 const a = locale.deployments.automation;
 const n = locale.deployments.nodeReplacement;
 const original = { ...api };
+const originalYieldPolicyApi = { ...yieldPolicyApi };
+const originalDeploymentScheduleApi = { ...deploymentScheduleApi };
 // The dictionary the server answers GET /scheduling/yield-policies with, literally.
-const dictionary = JSON.parse(fs.readFileSync(new URL("./fixtures/yield-policies.json", import.meta.url), "utf8")) as import("../src/api.ts").YieldPolicyDictionary;
+const dictionary = JSON.parse(fs.readFileSync(new URL("./fixtures/yield-policies.json", import.meta.url), "utf8")) as import("../src/yieldPolicyApi.ts").YieldPolicyDictionary;
 
 function deployment(overrides: Record<string, unknown> = {}): Deployment {
   return {
@@ -36,6 +41,7 @@ function deployment(overrides: Record<string, unknown> = {}): Deployment {
     health: { status: "off", threshold_sec: 60, last: null, recent_mean_ms: null, recent_ok: 0, recent: [] },
     template_deviated: false, tokenize_enabled: false, created_at: "2026-10-01T00:00:00Z",
     node_replacement: { after_sec: 600 },
+    ...shapes.sleepableSingleNode,
     ...overrides,
   } as unknown as Deployment;
 }
@@ -56,19 +62,19 @@ function stub() {
   role = "admin";
   changed = 0;
   api.me = async () => ({ id: 1, username: "u", role }) as Awaited<ReturnType<typeof api.me>>;
-  api.deploymentSchedule = async () => ({ items: schedules, total: schedules.length });
-  api.createSchedule = async (_id, body) => {
+  deploymentScheduleApi.list = async () => ({ items: schedules, total: schedules.length });
+  deploymentScheduleApi.create = async (_id, body) => {
     const row = { ...body, id: 20 + schedules.length, enabled: body.enabled ?? true, next_at: "2026-10-30T15:00:00Z" } as Schedule;
     schedules = [...schedules, row];
     return row;
   };
-  api.setYieldPolicy = async (_id, body) => {
+  yieldPolicyApi.set = async (_id, body) => {
     // For these tests the policy the server holds is what was sent, whole; the
     // editor's own save path has its tests in deploymentYieldPolicySave.
     current = { ...current, yield_policy: body };
     return body;
   };
-  api.yieldPolicies = async () => structuredClone(dictionary);
+  yieldPolicyApi.dictionary = async () => structuredClone(dictionary);
   api.setNodeReplacement = async (_id, body) => { current = { ...current, node_replacement: body }; return body; };
 }
 
@@ -94,7 +100,7 @@ const level = (value: string) => item(y.summaryLabel, value);
 const labelled = (scope: ReturnType<typeof within>, text: string) => scope.getByText(text).closest("button") as HTMLButtonElement;
 const dialogs = () => screen.getAllByRole("dialog");
 
-afterEach(() => { cleanup(); Object.assign(api, original); });
+afterEach(() => { cleanup(); Object.assign(api, original); Object.assign(yieldPolicyApi, originalYieldPolicyApi); Object.assign(deploymentScheduleApi, originalDeploymentScheduleApi); });
 after(() => closeChannels());
 
 test("collapsed, the card sums up node-loss rescheduling, the schedule and the yield policy in one line", async () => {
@@ -145,18 +151,18 @@ test("the yield policy is summed up by its name and the parameters that matter; 
   mount(deployment({ yield_policy: { policy: "anytime", idle_sec: 30, sleep_level: "auto", unfinished: "abort", hold_max_sec: 3600 } }));
   await screen.findByText(line(failover("10 min"), schedule(p.none), level("Yield anytime · idle 30 s")));
   cleanup();
-  mount(deployment({ sleepable: false }));
+  mount(deployment({ sleepable: false, ...shapes.notSleepableSingleNode }));
   await screen.findByText(line(failover("10 min"), schedule(p.none)));
   assert.equal(screen.queryByText(new RegExp(y.summaryLabel)), null);
 });
 
 test("the schedule part says it is loading, and that it failed when the list cannot be read", async () => {
   stub();
-  api.deploymentSchedule = () => new Promise(() => {});
+  deploymentScheduleApi.list = () => new Promise(() => {});
   mount();
   await screen.findByText(line(failover("10 min"), schedule(p.loading), level(y.policy.name.never)));
   cleanup();
-  api.deploymentSchedule = async () => { throw new APIError("DEPLOYMENT_NOT_FOUND", {}, "no such deployment", 404); };
+  deploymentScheduleApi.list = async () => { throw new APIError("DEPLOYMENT_NOT_FOUND", {}, "no such deployment", 404); };
   mount();
   await screen.findByText(line(failover("10 min"), schedule(p.loadFailed), level(y.policy.name.never)));
 });
@@ -194,7 +200,7 @@ test("the edit action opens the dialog from the keyboard, with a tab for each po
   await waitFor(() => assert.equal(screen.queryByRole("dialog"), null));
   cleanup();
 
-  const user2 = mount(deployment({ sleepable: false }));
+  const user2 = mount(deployment({ sleepable: false, ...shapes.notSleepableSingleNode }));
   await user2.click(await screen.findByRole("button", { name: p.edit }));
   const plain = within(await screen.findByRole("dialog"));
   assert.deepEqual(plain.getAllByRole("tab").map((tab) => tab.textContent), [n.title, a.schedule.title]);
@@ -223,8 +229,8 @@ test("saving the wait on the first tab calls the node replacement API and update
 test("saving the yield policy on its tab calls the yield policy API and updates the summary", async () => {
   stub();
   const saved: unknown[] = [];
-  const set = api.setYieldPolicy;
-  api.setYieldPolicy = async (id, body) => { saved.push(body); return set(id, body); };
+  const set = yieldPolicyApi.set;
+  yieldPolicyApi.set = async (id, body) => { saved.push(body); return set(id, body); };
   const user = mount();
   await user.click(await screen.findByRole("button", { name: p.edit }));
   await user.click(within(await screen.findByRole("dialog")).getByRole("tab", { name: y.title }));
@@ -259,7 +265,7 @@ test("adding an order on the schedule tab reloads the list and the summary", asy
 test("a refused save is shown and leaves the summary as it was", async () => {
   stub();
   api.setNodeReplacement = async () => { throw new APIError("NODE_REPLACEMENT_INVALID", { minimum: 60, maximum: 604800 }, "out of range", 400); };
-  api.setYieldPolicy = async () => { throw new APIError("SLEEP_NOT_ENABLED", {}, "sleep mode was not enabled", 400); };
+  yieldPolicyApi.set = async () => { throw new APIError("SLEEP_NOT_ENABLED", {}, "sleep mode was not enabled", 400); };
   const user = mount();
   await user.click(await screen.findByRole("button", { name: p.edit }));
   const dialog = within(await screen.findByRole("dialog"));

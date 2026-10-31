@@ -22,4 +22,15 @@ type SchedulingHistoryEntry struct {
 	Category          string         `json:"category"`
 	Params            map[string]any `json:"params"`
 	Actor             string         `json:"actor,omitempty"`
+	// Target is the deployment the entry acted for (params.for_deployment:
+	// the one a yield gave the GPUs to), named; absent when there is none.
+	Target *SchedulingHistoryDeployment `json:"target,omitempty"`
+}
+
+// SchedulingHistoryDeployment names a deployment an entry refers to; Name is
+// empty when it is unknown, Deleted when it is gone.
+type SchedulingHistoryDeployment struct {
+	ID      uint   `json:"id"`
+	Name    string `json:"name,omitempty"`
+	Deleted bool   `json:"deleted,omitempty"`
 }

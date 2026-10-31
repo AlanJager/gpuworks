@@ -1293,6 +1293,7 @@ var migrations = []migration{
 	{Version: 188, Name: "lifecycle_schedule_role", Apply: addLifecycleScheduleRole},
 	{Version: 189, Name: "deployment_yield_policy", Apply: addDeploymentYieldPolicy},
 	{Version: 190, Name: "deployment_yield_policy_reshape", Apply: reshapeDeploymentYieldPolicy},
+	{Version: 191, Name: "instance_sleep_held", Apply: moveSleepHeldToInstances},
 }
 
 // modelFileNetworkColumns are the columns migrations 76 and 77 added to

@@ -228,11 +228,11 @@ export function buildPayload(
   if (v.image) payload.image = v.image;
   if (v.extra_args) payload.extra_args = v.extra_args;
   if (v.sleepable) payload.sleepable = true;
-  // Only a sleepable single-node deployment can leave never; the server
-  // refuses the rest, and never is what an absent policy means.
+  // The policy chosen is sent as it is: whether the draft may hold it is the
+  // server's to judge (it refuses the create, and the form shows the
+  // evaluation's reason). Never is what an absent policy means.
   const yieldPolicy = paramsOfValue(v.yield_policy);
-  if (yieldPolicy && yieldPolicy.policy !== "never" && v.sleepable && !pdActive(v) && Number(v.nnodes || 1) <= 1)
-    payload.yield_policy = yieldPolicy;
+  if (yieldPolicy && yieldPolicy.policy !== "never") payload.yield_policy = yieldPolicy;
   if (
     v.vram_limit_gib != null &&
     v.vram_limit_gib !== "" &&

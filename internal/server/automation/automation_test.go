@@ -56,8 +56,13 @@ func (w *fakeWorld) Sleep(id uint, level int, held bool) (int, error) {
 	}
 	return level, w.sleepErr
 }
-func (w *fakeWorld) Wake(id uint) (WakeResult, error) {
-	w.orders = append(w.orders, fmt.Sprintf("wake %d", id))
+func (w *fakeWorld) Wake(id uint, held bool) (WakeResult, error) {
+	// A schedule's wake is held: it wakes every sleeper, held or not.
+	order := fmt.Sprintf("wake %d", id)
+	if !held {
+		order += " (request)"
+	}
+	w.orders = append(w.orders, order)
 	return w.wakeResult, w.wakeErr
 }
 func (w *fakeWorld) WakeWaiting(id uint, instances []string) ([]string, error) {

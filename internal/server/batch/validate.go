@@ -90,7 +90,7 @@ func scanInput(src io.Reader, w io.Writer) (inputStats, *Error) {
 			if trimmed := bytes.TrimSpace(buf); len(trimmed) > 0 {
 				requests++
 				if requests > MaxFileLines {
-					return st, &Error{Status: 400, Type: "invalid_request_error", Code: "too_many_requests", Line: lineNo, Message: fmt.Sprintf("the file has more than %d requests", MaxFileLines)}
+					return st, &Error{Status: 400, Type: "invalid_request_error", Code: CodeTooManyRequests, Line: lineNo, Message: fmt.Sprintf("the file has more than %d requests", MaxFileLines)}
 				}
 				url, lerr := checkLine(trimmed, lineNo, seen)
 				if lerr != nil {
@@ -109,7 +109,7 @@ func scanInput(src io.Reader, w io.Writer) (inputStats, *Error) {
 		}
 	}
 	if requests == 0 {
-		return st, &Error{Status: 400, Type: "invalid_request_error", Code: "empty_file", Message: "the file has no requests"}
+		return st, &Error{Status: 400, Type: "invalid_request_error", Code: CodeEmptyFile, Message: "the file has no requests"}
 	}
 	st.Bytes = counted.n
 	st.Lines = requests

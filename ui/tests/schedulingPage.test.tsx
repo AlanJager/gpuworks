@@ -18,18 +18,17 @@ const { cleanup, fireEvent, render, screen, waitFor, within } = await import("@t
 const userEvent = (await import("@testing-library/user-event")).default;
 const { MemoryRouter, Route, Routes, useLocation } = await import("react-router-dom");
 const { api } = await import("../src/api.ts");
+const { schedulingApi } = await import("../src/schedulingApi.ts");
 const { APIError } = await import("../src/apiError.ts");
 const { default: SchedulingPage } = await import("../src/pages/SchedulingPage.tsx");
-type Board = import("../src/api.ts").SchedulingBoard;
-type Overview = import("../src/api.ts").SchedulingOverview;
-type Timeline = import("../src/api.ts").SchedulingTimeline;
+type Board = import("../src/schedulingApi.ts").SchedulingBoard;
+type Overview = import("../src/schedulingApi.ts").SchedulingOverview;
+type Timeline = import("../src/schedulingApi.ts").SchedulingTimeline;
 
 const GIB = 1024 ** 3;
 const s = locale.scheduling;
-const original = {
-  schedulingOverview: api.schedulingOverview, schedulingBoard: api.schedulingBoard, endWakeWaiting: api.endWakeWaiting,
-  schedulingHistory: api.schedulingHistory, schedulingTimeline: api.schedulingTimeline,
-};
+const original = { endWakeWaiting: api.endWakeWaiting };
+const originalScheduling = { ...schedulingApi };
 
 /** The fleet-wide lists of the board, as GET /scheduling/board?queues=1 answers. */
 function queues(overrides: Partial<Board> = {}): Board {
@@ -41,7 +40,6 @@ function queues(overrides: Partial<Board> = {}): Board {
       { deployment_id: 7, deployment: "qwen", schedule_id: 1, action: "sleep", sleep_level: 2, at: "2026-10-25T22:00:00Z" },
       { deployment_id: 7, deployment: "qwen", schedule_id: 2, action: "replicas", replicas: 3, at: "2026-10-26T06:00:00Z" },
     ],
-    recent: [],
     ...overrides,
   };
 }
@@ -54,13 +52,13 @@ function nodeBoard(uuid: string): Board {
         uuid, name: "gpu-a", online: true,
         gpus: [
           {
-            index: 0, name: "L20", memory_bytes: 48 * GIB, awake_bytes: 20 * GIB, sleeping_bytes: 4 * GIB, free_bytes: 24 * GIB, held_outside: false,
+            index: 0, name: "L20", memory_bytes: 48 * GIB, awake_bytes: 20 * GIB, sleeping_bytes: 4 * GIB, free_bytes: 24 * GIB, state: "awake", held_outside: false, switching: false,
             occupants: [
               { deployment_id: 7, deployment: "qwen", yield_policy: "idle", instance: "inst-qwen-0001", state: "awake", claim_bytes: 20 * GIB },
               { deployment_id: 8, deployment: "llama", yield_policy: "timeslice", instance: "inst-llama-0001", state: "asleep", sleep_level: 2, claim_bytes: 20 * GIB, residue_bytes: 4 * GIB },
             ],
           },
-          { index: 1, name: "L20", memory_bytes: 48 * GIB, awake_bytes: 0, sleeping_bytes: 0, free_bytes: 40 * GIB, held_outside: true, occupants: [] },
+          { index: 1, name: "L20", memory_bytes: 48 * GIB, awake_bytes: 0, sleeping_bytes: 0, free_bytes: 40 * GIB, state: "held_outside", held_outside: true, switching: false, occupants: [] },
         ],
       }],
       page: 1, page_size: 1, total: 1,
@@ -78,20 +76,20 @@ interface Calls { board: unknown[]; timeline: unknown[] }
 
 function serve(options: { overview?: () => Promise<Overview>; board?: () => Board; sharing?: () => Timeline } = {}): Calls {
   const calls: Calls = { board: [], timeline: [] };
-  api.schedulingOverview = options.overview ?? (async () => smallFleet());
-  api.schedulingBoard = async (query) => {
+  schedulingApi.overview = options.overview ?? (async () => smallFleet());
+  schedulingApi.board = async (query) => {
     calls.board.push(query);
     if ("node" in query) return nodeBoard(query.node);
     if ("queues" in query) return (options.board ?? queues)();
     throw new Error(`the page must not ask for a page of nodes: ${JSON.stringify(query)}`);
   };
-  api.schedulingTimeline = async (query) => {
+  schedulingApi.timeline = async (query) => {
     calls.timeline.push(query);
     if ("sharing" in query) return (options.sharing ?? sharing)();
     return { window: { from: "2026-10-28T06:00:00Z", to: "2026-10-28T12:00:00Z", hours: 6 }, nodes: [], deployments: [] };
   };
   // The scheduling history has its own tests (schedulingHistory.test.tsx).
-  api.schedulingHistory = async () => ({ items: [{
+  schedulingApi.history = async () => ({ items: [{
     id: 1, created_at: "2026-10-25T07:00:00Z", deployment_id: 7, deployment: "qwen", kind: "automation", code: "AUTO_SLEEP", category: "auto",
     params: { trigger: "idle", level: 2, idle_sec: 900 },
   }] });
@@ -121,6 +119,7 @@ function mount() {
 afterEach(() => {
   cleanup();
   Object.assign(api, original);
+  Object.assign(schedulingApi, originalScheduling);
 });
 after(() => closeChannels());
 
@@ -163,7 +162,7 @@ test("a failed first load shows the error and retries on request", async () => {
 
 test("an empty fleet says so, and every queue says it is empty", async () => {
   serve({
-    overview: async () => ({ summary: { nodes: 0, online_nodes: 0, cards: 0, awake: 0, asleep: 0, free: 0, held_outside: 0, unhealthy: 0, offline: 0, by_model: [], contention: { waiting_wakes: 0, held_requests: 0, yields_last_hour: 0 } }, models: [], deployments: [], nodes: [] }),
+    overview: async () => ({ summary: { nodes: 0, online_nodes: 0, cards: 0, awake: 0, asleep: 0, free: 0, held_outside: 0, unhealthy: 0, offline: 0, by_model: [], contention: { waiting_wakes: 0, held_requests: 0, yields_last_hour: 0 } }, states: ["offline", "unhealthy", "held_outside", "awake", "asleep", "free"], models: [], deployments: [], nodes: [] }),
     board: () => queues({ pending: [], waiting_wakes: [], upcoming: [] }),
   });
   mount();
@@ -182,7 +181,7 @@ test("the summary counts the cards by state and model and the contention, with t
   };
   assert.equal(tile(s.summary.cardsTitle, s.summary.total), "6");
   assert.ok(within(summary).getByText(i18n.t("scheduling:summary.nodesOnline", { online: 2, count: 3 })));
-  for (const [state, count] of [["awake", "2"], ["asleep", "1"], ["free", "1"], ["held", "1"], ["offline", "1"]]) {
+  for (const [state, count] of [["awake", "2"], ["asleep", "1"], ["free", "1"], ["held_outside", "1"], ["offline", "1"]]) {
     assert.equal(tile(s.summary.cardsTitle, s.states[state as keyof typeof s.states]), count, state);
   }
   assert.equal(within(summary).queryByText(s.states.unhealthy), null, "no faulty card, no faulty tile");
@@ -206,7 +205,7 @@ test("the heatmap shows every card and says how many are shown; the page never r
   assert.ok(status().includes(i18n.t("scheduling:heatmap.shown", { nodes: 3, cards: 6 })));
   assert.deepEqual(calls.board, [{ queues: true }]);
   const legend = screen.getByRole("list", { name: s.nodes.legend.title });
-  for (const label of [s.states.awake, s.states.asleep, s.states.free, s.states.held, s.states.offline, s.heatmap.legendSwitching]) assert.ok(within(legend).getByText(label), label);
+  for (const label of [s.states.awake, s.states.asleep, s.states.free, s.states.held_outside, s.states.offline, s.heatmap.legendSwitching]) assert.ok(within(legend).getByText(label), label);
 });
 
 test("filters narrow the heatmap by model, node label and state, and a search rings the deployment's cards", async () => {
@@ -282,6 +281,9 @@ test("opening a node reads it in full: each GPU as a bar with its holders, and i
   assert.ok(within(asleep).getByText(new RegExp(i18n.t("scheduling:nodes.occupant.asleep", { level: 2, residue: "4.0 GiB" }))));
   assert.ok(within(asleep).getByText(level("timeslice")));
   assert.ok(within(drawer).getByText(s.nodes.heldOutside));
+  // Each card names the state the server gave it, the one its heatmap cell shows.
+  assert.ok(within(drawer).getByText(s.states.awake, { selector: ".scheduling-gpu-state" }));
+  assert.ok(within(drawer).getByText(s.states.held_outside, { selector: ".scheduling-gpu-state" }));
   assert.ok(within(drawer).getByText(s.timeline.title));
   await waitFor(() => assert.deepEqual(calls.timeline.find((query) => "nodes" in (query as object)), { nodes: ["node-a"], hours: 6 }));
   await user.click(within(drawer).getByRole("link", { name: "qwen" }));
@@ -291,8 +293,8 @@ test("opening a node reads it in full: each GPU as a bar with its holders, and i
 test("a node that cannot be read says so in its drawer and retries", async () => {
   serve();
   let calls = 0;
-  const base = api.schedulingBoard;
-  api.schedulingBoard = async (query) => {
+  const base = schedulingApi.board;
+  schedulingApi.board = async (query) => {
     if ("node" in query) { calls += 1; if (calls === 1) throw new Error("node unavailable"); }
     return base(query);
   };
@@ -350,8 +352,8 @@ test("a waiting wake is cancelled from the keyboard, then the queues and the ove
   const cancelled: number[] = [];
   api.endWakeWaiting = async (id) => { cancelled.push(id); waiting = []; return { items: ["inst-llama-0001"], total: 1 }; };
   let reads = 0;
-  const base = api.schedulingOverview;
-  api.schedulingOverview = async () => { reads += 1; return base(); };
+  const base = schedulingApi.overview;
+  schedulingApi.overview = async () => { reads += 1; return base(); };
   const user = mount();
   await screen.findByText("big-model");
   const before = reads;

@@ -148,6 +148,39 @@ func TestSchedulingHistoryOfADeletedDeployment(t *testing.T) {
 	}
 }
 
+// An entry that gave GPUs to another deployment names it (target), as it
+// names its own: live by name, gone with deleted set, unknown by id alone.
+func TestSchedulingHistoryNamesTheDeploymentAYieldWasFor(t *testing.T) {
+	rig := newScheduleRig(t)
+	rig.st.AddDeploymentEventCode(rig.sleepable.ID, store.EventKindAutomation, "AUTO_SLEEP", map[string]any{"trigger": "preempt", "reason": "rank", "for_deployment": rig.plain.ID, "level": 1})
+	rig.st.AddDeploymentEventCode(rig.sleepable.ID, store.EventKindAutomation, "AUTO_SLEEP", map[string]any{"trigger": "preempt", "reason": "idle", "for_deployment": rig.multi.ID, "level": 1})
+	rig.st.AddDeploymentEventCode(rig.sleepable.ID, store.EventKindAutomation, "AUTO_SLEEP", map[string]any{"trigger": "preempt", "reason": "idle", "for_deployment": 9999, "level": 1})
+	rig.st.AddDeploymentEventCode(rig.sleepable.ID, store.EventKindAutomation, "AUTO_WAKE", map[string]any{"trigger": "request"})
+	if err := rig.st.DeleteDeployment(rig.multi.ID); err != nil {
+		t.Fatal(err)
+	}
+	status, items, body := rig.history(t, rig.session, "")
+	if status != http.StatusOK || len(items) != 4 {
+		t.Fatalf("history = %d %s", status, body)
+	}
+	target := func(item map[string]any) string {
+		raw, _ := json.Marshal(item["target"])
+		return string(raw)
+	}
+	if got := target(items[3]); got != fmt.Sprintf(`{"id":%d,"name":"plain"}`, rig.plain.ID) {
+		t.Errorf("yield for a live deployment: target = %s", got)
+	}
+	if got := target(items[2]); got != fmt.Sprintf(`{"deleted":true,"id":%d,"name":"multi"}`, rig.multi.ID) {
+		t.Errorf("yield for a deleted deployment: target = %s", got)
+	}
+	if got := target(items[1]); got != `{"id":9999}` {
+		t.Errorf("yield for an unknown deployment: target = %s", got)
+	}
+	if _, has := items[0]["target"]; has {
+		t.Errorf("an entry for no one carries a target: %v", items[0])
+	}
+}
+
 // Every order an operator gives through the API leaves an entry with the
 // user's name, and a change that changes nothing leaves none.
 func TestOperatorOrdersAreInTheHistoryWithTheirActor(t *testing.T) {

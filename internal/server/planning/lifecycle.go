@@ -110,6 +110,9 @@ func instanceUUIDs(insts []store.Instance) []string {
 type YieldTarget struct {
 	Deployment *store.Deployment
 	Instance   store.Instance
+	// Members are the instances of the replica it leads, leader first
+	// (ReplicaMembers): a sleep order for it is written on every one.
+	Members []store.Instance
 }
 
 // YieldBlocker is an occupant a yielding wake cannot put to sleep, and why:
@@ -124,7 +127,9 @@ type YieldBlocker struct {
 // need, each replica once (a multi-node replica sleeps whole through its
 // leader), and the occupants that cannot be put to sleep. A wake that yields
 // proceeds only when there are no blockers: putting some occupants to sleep
-// and not others would take service away without making room.
+// and not others would take service away without making room. An occupant
+// already ordered to sleep is no target: the wake waits for that sleep, and
+// it is not ordered or counted as a yield again.
 func YieldTargets(st *store.Store, refusals []WakeRefusal) ([]YieldTarget, []YieldBlocker, error) {
 	var targets []YieldTarget
 	var blockers []YieldBlocker
@@ -143,7 +148,7 @@ func YieldTargets(st *store.Store, refusals []WakeRefusal) ([]YieldTarget, []Yie
 				continue
 			}
 			for _, in := range allocations[short.GPUIndex].Instances {
-				if waking[in.UUID] || seen[in.UUID] || chargesResidue(st, &in) || !proto.InstanceFillsReplica(in.State) {
+				if waking[in.UUID] || seen[in.UUID] || InstanceSleepIntent(&in) > 0 || !proto.InstanceFillsReplica(in.State) {
 					continue
 				}
 				seen[in.UUID] = true
@@ -173,7 +178,9 @@ func YieldTargets(st *store.Store, refusals []WakeRefusal) ([]YieldTarget, []Yie
 					blockers = append(blockers, YieldBlocker{Deployment: dep.Name, Code: refusal.Code})
 					continue
 				}
-				targets = append(targets, YieldTarget{Deployment: dep, Instance: inst})
+				// A target has a slot: an instance without one is refused
+				// its sleep (InstanceSleepRefusal) and is a blocker above.
+				targets = append(targets, YieldTarget{Deployment: dep, Instance: inst, Members: ReplicaMembers(slot)})
 			}
 		}
 	}

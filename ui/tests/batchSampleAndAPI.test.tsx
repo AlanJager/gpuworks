@@ -4,7 +4,7 @@ import React from "react";
 import { I18nextProvider } from "react-i18next";
 import { createI18n, dom } from "./helpers/dom.ts";
 import { trackMessageChannels } from "./helpers/trackedMessageChannels.ts";
-import { batch, page } from "./helpers/batchFixtures.ts";
+import { batch, dictionary, page } from "./helpers/batchFixtures.ts";
 
 // The sample requests file (downloaded or used as is), the .jsonl-only file
 // picker, and the panel that tells the reader batches are an API.
@@ -21,31 +21,22 @@ const { MemoryRouter, Route, Routes } = await import("react-router-dom");
 const { api } = await import("../src/api.ts");
 const { batchApi } = await import("../src/batchApi.ts");
 const { default: BatchesPage } = await import("../src/pages/BatchesPage.tsx");
-const { batchSampleJSONL, sampleFileName, SAMPLE_LINES } = await import("../src/pages/batches/batchSample.ts");
+const { batchSampleJSONL, samplePrompts, sampleFileName, SAMPLE_LINES, SAMPLE_MAX_TOKENS, SAMPLE_TASK_TYPES } = await import("../src/pages/batches/batchSample.ts");
 const { batchAPISteps } = await import("../src/pages/batches/BatchAPIUsage.tsx");
 
 const b = locale.batches;
-const original = { list: batchApi.list, create: batchApi.create, me: api.me, deployments: api.deployments };
+const original = { list: batchApi.list, create: batchApi.create, dictionary: batchApi.dictionary, me: api.me };
 
 beforeEach(() => {
   localStorage.clear();
   api.me = (async () => ({ role: "admin" })) as never;
   batchApi.list = (async () => page([])) as never;
-  api.deployments = (async () => ({
-    items: [
-      { id: 1, served_name: "qwen-chat", desired_state: "active", runtime_state: "running", state: "running" },
-      { id: 2, served_name: "stopped-one", desired_state: "stopped", runtime_state: "stopped", state: "stopped" },
-      { id: 3, served_name: "qwen-chat", desired_state: "active", runtime_state: "running", state: "running" },
-      { id: 4, served_name: "embedder", desired_state: "active", runtime_state: "running", state: "running" },
-    ],
-    total: 4,
-  })) as never;
+  batchApi.dictionary = async () => dictionary([{ name: "qwen-chat", state: "served" }, { name: "embedder", state: "served" }]);
 });
 afterEach(() => {
   cleanup();
-  Object.assign(batchApi, { list: original.list, create: original.create });
+  Object.assign(batchApi, { list: original.list, create: original.create, dictionary: original.dictionary });
   api.me = original.me;
-  api.deployments = original.deployments;
 });
 after(() => closeChannels());
 
@@ -69,21 +60,68 @@ async function openCreate(user: ReturnType<typeof userEvent.setup>) {
   return screen.findByRole("dialog", { name: b.create.title });
 }
 
-test("a sample is valid batch input for every endpoint", () => {
+test("a sample is a thousand valid batch requests for every endpoint", () => {
+  assert.equal(SAMPLE_LINES, 1000);
   for (const endpoint of ["/v1/chat/completions", "/v1/completions", "/v1/embeddings"] as const) {
-    const lines = batchSampleJSONL(endpoint, "m").trimEnd().split("\n").map((line) => JSON.parse(line));
+    const text = batchSampleJSONL(endpoint, "m");
+    assert.ok(text.endsWith("}\n"));
+    const lines = text.trimEnd().split("\n").map((line) => JSON.parse(line));
     assert.equal(lines.length, SAMPLE_LINES);
+    assert.deepEqual(lines.map((line) => line.custom_id), Array.from({ length: SAMPLE_LINES }, (_, n) => `req-${String(n + 1).padStart(4, "0")}`));
     assert.equal(new Set(lines.map((line) => line.custom_id)).size, SAMPLE_LINES, "custom_id is unique");
     for (const line of lines) {
+      // The server's per-line rules: an object with a non-empty string
+      // custom_id, method POST, a known url and a body naming the model.
+      assert.deepEqual(Object.keys(line).sort(), ["body", "custom_id", "method", "url"]);
       assert.equal(line.method, "POST");
       assert.equal(line.url, endpoint);
       assert.equal(line.body.model, "m");
       assert.equal(line.body.stream, undefined, "no stream: batches refuse streaming requests");
+      if (endpoint === "/v1/chat/completions") {
+        assert.deepEqual(line.body.messages.map((m: { role: string }) => m.role), ["user"]);
+        assert.equal(line.body.max_tokens, SAMPLE_MAX_TOKENS);
+      } else if (endpoint === "/v1/completions") {
+        assert.equal(typeof line.body.prompt, "string");
+        assert.equal(line.body.max_tokens, SAMPLE_MAX_TOKENS);
+      } else {
+        assert.equal(typeof line.body.input, "string");
+      }
     }
-    assert.ok(endpoint !== "/v1/chat/completions" || Array.isArray(lines[0].body.messages));
-    assert.ok(endpoint !== "/v1/embeddings" || typeof lines[0].body.input === "string");
+    assert.ok(Buffer.byteLength(text) < 1 << 20, "the file stays well under the 200 MB upload limit");
     assert.match(sampleFileName(endpoint), /^batch-sample-[a-z-]+\.jsonl$/);
   }
+});
+
+test("a sample is deterministic and applies the chosen model", () => {
+  assert.equal(batchSampleJSONL("/v1/chat/completions", "qwen"), batchSampleJSONL("/v1/chat/completions", "qwen"));
+  const a = JSON.parse(batchSampleJSONL("/v1/chat/completions", "qwen").split("\n")[0]);
+  const b = JSON.parse(batchSampleJSONL("/v1/chat/completions", "llama").split("\n")[0]);
+  assert.equal(a.body.model, "qwen");
+  assert.equal(b.body.model, "llama");
+  assert.deepEqual(a.body.messages, b.body.messages, "the model changes, the prompts do not");
+  assert.notDeepEqual(samplePrompts(20, 1), samplePrompts(20, 2), "the seed drives the prompts");
+});
+
+test("a sample mixes distinct, long-answer prompts in English and Chinese", () => {
+  const prompts = samplePrompts();
+  assert.equal(prompts.length, SAMPLE_LINES);
+  assert.equal(new Set(prompts).size, SAMPLE_LINES, "no two prompts are the same");
+  assert.ok(SAMPLE_TASK_TYPES >= 8, "at least eight kinds of task");
+  // Request n uses kind n mod SAMPLE_TASK_TYPES, so the first round shows every kind.
+  assert.equal(new Set(prompts.slice(0, SAMPLE_TASK_TYPES).map((p) => p.slice(0, 12))).size, SAMPLE_TASK_TYPES);
+  const cjk = prompts.filter((p) => /\p{Script=Han}/u.test(p)).length;
+  assert.ok(cjk >= 400 && cjk <= 600, `about half the prompts are Chinese (got ${cjk})`);
+  for (const p of prompts) assert.ok(p.length >= 30 && p.length <= 400, `a prompt of reasonable length: ${p}`);
+});
+
+test("the sample generator ships small: at most 20 KB minified and gzipped", async () => {
+  const { transformSync } = await import("esbuild");
+  const { readFileSync } = await import("node:fs");
+  const { gzipSync } = await import("node:zlib");
+  const source = readFileSync(new URL("../src/pages/batches/batchSample.ts", import.meta.url), "utf8");
+  const { code } = transformSync(source, { loader: "ts", minify: true, format: "esm" });
+  const gzipped = gzipSync(code, { level: 9 }).length;
+  assert.ok(gzipped <= 20 * 1024, `the generator is ${gzipped} bytes gzipped`);
 });
 
 test("the file picker takes only .jsonl", async () => {

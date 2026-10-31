@@ -5,12 +5,11 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/automation"
-	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/internal/server/placewait"
 	"gpuworks.ai/gpuworks/internal/server/planning"
 	"gpuworks.ai/gpuworks/internal/server/proxy"
-	"gpuworks.ai/gpuworks/internal/server/servicelevel"
 	"gpuworks.ai/gpuworks/internal/server/store"
+	"gpuworks.ai/gpuworks/internal/server/yieldpolicy"
 )
 
 // A yield sleeps at the level the holder's policy prefers: auto is L1 when
@@ -47,11 +46,8 @@ func (a *residencyAdapter) Waiters() ([]automation.Waiter, error) {
 		if n == 0 {
 			continue
 		}
-		dep, err := a.store.GetDeployment(id)
-		if err != nil {
-			continue
-		}
-		if !wakeableByRequest(dep) {
+		dep, ok := a.wakeableByRequest(id)
+		if !ok {
 			continue
 		}
 		out = append(out, automation.Waiter{DeploymentID: id, Policy: dep.Policy(), Since: since})
@@ -74,7 +70,8 @@ func (a *residencyAdapter) placeWaits() []placewait.Waiter {
 }
 
 // Settling says the deployment's replica waits to be placed, or an instance
-// of it is still starting.
+// of it is still starting: asked of the deployment a holder gave its cards
+// to, which is not serving yet.
 func (a *residencyAdapter) Settling(id uint) bool {
 	if a.waits != nil {
 		if _, ok := a.waits.Get(id, a.now()); ok {
@@ -85,9 +82,13 @@ func (a *residencyAdapter) Settling(id uint) bool {
 	if err != nil {
 		return false
 	}
+	return anyStarting(insts)
+}
+
+// anyStarting says one of the instances has not started serving yet.
+func anyStarting(insts []store.Instance) bool {
 	for i := range insts {
-		switch insts[i].State {
-		case proto.InstPending, proto.InstPulling, proto.InstStarting, proto.InstOptimizing:
+		if planning.InstanceStarting(&insts[i]) {
 			return true
 		}
 	}
@@ -95,14 +96,16 @@ func (a *residencyAdapter) Settling(id uint) bool {
 }
 
 // placeBlocking is what keeps a replica waiting to be placed: the awake
-// instances it waits for, still awake, by deployment. Sharing deployments
-// are single-node, so an instance is a whole replica.
+// holders it waits for, still awake with no sleep ordered, by deployment
+// (planning.HoldsCardsAwake: one still starting holds its cards too, and
+// reads starting). Sharing deployments are single-node, so an instance is a
+// whole replica.
 func (a *residencyAdapter) placeBlocking(w placewait.Waiter) (automation.Blocking, error) {
 	var out automation.Blocking
 	at := map[uint]int{}
-	for _, uuid := range w.Instances {
+	for _, uuid := range w.Holders {
 		in, err := a.store.InstanceByUUID(uuid)
-		if err != nil || in.State != proto.InstRunning || planning.InstanceSleepIntent(in) > 0 || in.SleepLevel > 0 {
+		if err != nil || !planning.HoldsCardsAwake(in) || planning.InstanceSleepIntent(in) > 0 {
 			continue
 		}
 		index, ok := at[in.DeploymentID]
@@ -116,31 +119,40 @@ func (a *residencyAdapter) placeBlocking(w placewait.Waiter) (automation.Blockin
 			index = len(out.Holders) - 1
 		}
 		out.Holders[index].Instances = append(out.Holders[index].Instances, in.UUID)
+		out.Holders[index].Starting = out.Holders[index].Starting || planning.InstanceStarting(in)
 	}
 	return out, nil
 }
 
-func wakeableByRequest(dep *store.Deployment) bool {
-	return dep.State == store.DeployActive && dep.Sleepable && !dep.SleepHeld
-}
-
-// Wakeable says the deployment is active, asleep by the platform's choice,
-// and has a sleeper to wake.
-func (a *residencyAdapter) Wakeable(id uint) (servicelevel.Policy, bool) {
+// wakeableByRequest is the deployment when it is active and has a sleeper
+// (ordered to sleep) a request wakes (store.Deployment.WakesOnRequest): an
+// operator's or a schedule's sleepers are not woken for a request or a
+// resume, while the platform's sleepers of the same deployment are.
+func (a *residencyAdapter) wakeableByRequest(id uint) (*store.Deployment, bool) {
 	dep, err := a.store.GetDeployment(id)
-	if err != nil || !wakeableByRequest(dep) {
-		return servicelevel.Policy{}, false
+	if err != nil || dep.State != store.DeployActive || !dep.Sleepable {
+		return nil, false
 	}
 	insts, err := a.store.InstancesForDeployment(id)
 	if err != nil {
-		return servicelevel.Policy{}, false
+		return nil, false
 	}
 	for i := range insts {
-		if store.HoldsSleepIntent(&insts[i]) && planning.InstanceSleepIntent(&insts[i]) > 0 {
-			return dep.Policy(), true
+		if store.HoldsSleepIntent(&insts[i]) && planning.InstanceSleepIntent(&insts[i]) > 0 && dep.WakesOnRequest(&insts[i]) {
+			return dep, true
 		}
 	}
-	return servicelevel.Policy{}, false
+	return nil, false
+}
+
+// Wakeable says the deployment is active and has a sleeper a request wakes
+// (wakeableByRequest), with its policy.
+func (a *residencyAdapter) Wakeable(id uint) (yieldpolicy.Policy, bool) {
+	dep, ok := a.wakeableByRequest(id)
+	if !ok {
+		return yieldpolicy.Policy{}, false
+	}
+	return dep.Policy(), true
 }
 
 // Blocking is what keeps the first of the deployment's waiting replicas from
@@ -185,16 +197,6 @@ func (a *residencyAdapter) Blocking(id uint) (automation.Blocking, error) {
 	out := automation.Blocking{Blocked: len(blockers) > 0}
 	at := map[uint]int{}
 	for _, target := range targets {
-		members := []store.Instance{target.Instance}
-		targetInsts, err := a.store.InstancesForDeployment(target.Deployment.ID)
-		if err != nil {
-			return automation.Blocking{}, err
-		}
-		if targetMatch, err := planning.DeploymentMatch(a.store, target.Deployment, targetInsts); err == nil {
-			if slot := targetMatch.SlotOf(target.Instance.UUID); slot != nil {
-				members = planning.ReplicaMembers(slot)
-			}
-		}
 		index, ok := at[target.Deployment.ID]
 		if !ok {
 			at[target.Deployment.ID] = len(out.Holders)
@@ -203,9 +205,12 @@ func (a *residencyAdapter) Blocking(id uint) (automation.Blocking, error) {
 			})
 			index = len(out.Holders) - 1
 		}
-		for _, member := range members {
+		for _, member := range target.Members {
 			out.Holders[index].Instances = append(out.Holders[index].Instances, member.UUID)
 		}
+		// Whether the holder is starting is its replica's own: another
+		// replica of its deployment starting does not hold this one back.
+		out.Holders[index].Starting = out.Holders[index].Starting || anyStarting(target.Members)
 	}
 	return out, nil
 }
@@ -218,52 +223,39 @@ func (a *residencyAdapter) Activity(id uint) automation.Activity {
 }
 
 // Yield puts the holder's replica to sleep at the level its policy prefers
-// (auto: L1 unless the host cannot hold the weights, planning.
-// L1HostMemoryRefusal), a sleep the platform chose (not held: a request for
-// it waits and wakes it again). A holder that prefers L1 is refused when the
-// host cannot hold the weights, as an operator's L1 sleep is.
+// (yieldpolicy.Policy.SleepLevel, resolved by planning.OrderSleep: auto is
+// L1 unless the host cannot hold the weights), a sleep the platform chose
+// (not held: a request for it waits and wakes it again). A holder that
+// prefers L1 is refused when the host cannot hold the weights, as an
+// operator's L1 sleep is.
 func (a *residencyAdapter) Yield(id uint, instances []string, abort bool) (int, error) {
 	defer planning.LockLifecycle()()
 	mode := proto.SleepModeWait
 	if abort {
 		mode = proto.SleepModeAbort
 	}
-	level := proto.SleepLevelL1
-	if dep, err := a.store.GetDeployment(id); err == nil {
-		pref := dep.Policy().SleepLevelPref()
-		if pref == servicelevel.LevelL2 {
-			level = proto.SleepLevelL2
-		} else {
-			want := map[string]bool{}
-			for _, uuid := range instances {
-				want[uuid] = true
-			}
-			insts, err := a.store.InstancesForDeployment(id)
-			if err != nil {
-				return 0, err
-			}
-			var named []store.Instance
-			for _, in := range insts {
-				if want[in.UUID] {
-					named = append(named, in)
-				}
-			}
-			if refusal := planning.L1HostMemoryRefusal(a.store, dep, named, a.host); refusal != nil {
-				if pref == servicelevel.LevelL1 {
-					return 0, messages.NewProductError(refusal.Code, "the host memory cannot hold the weights an L1 sleep moves there", refusal.Params)
-				}
-				level = proto.SleepLevelL2
-			}
-		}
-	}
-	if err := a.store.OrderInstancesSleepHeld(id, instances, level, mode, false); err != nil {
+	dep, err := a.store.GetDeployment(id)
+	if err != nil {
 		return 0, err
 	}
-	return level, nil
+	level, refusal, err := planning.OrderSleep(a.store, dep, planning.SleepOrder{
+		Pref: dep.Policy().SleepLevel, Mode: mode, Instances: append([]string{}, instances...),
+	}, a.host)
+	if refusal != nil {
+		return 0, refusal.Err()
+	}
+	return level, err
 }
 
-func (a *residencyAdapter) Drain(id uint, on bool) {
-	a.proxy.SetDraining(id, on)
+// Drain stops (on) or resumes the gateway routing new requests to the
+// instances; the deployment's other replicas take them.
+func (a *residencyAdapter) Drain(id uint, instances []string, on bool) {
+	a.proxy.SetDraining(id, instances, on)
+}
+
+// InstancesInFlight is the requests the gateway serves on the instances.
+func (a *residencyAdapter) InstancesInFlight(instances []string) int {
+	return a.proxy.InstancesInFlight(instances)
 }
 
 // wakeHeldBy is the gateway's held requests by deployment, for the scheduling

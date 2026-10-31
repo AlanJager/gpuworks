@@ -147,6 +147,13 @@ func waitEvent(t *testing.T, base, token string, deploymentID uint, code string)
 // token, the node's UUID and the model's id. Skips without Docker.
 func startDockerAutomationRig(t *testing.T, name string) (string, string, string, uint) {
 	t.Helper()
+	return startDockerAutomationRigOn(t, name, "A100x1,24576")
+}
+
+// startDockerAutomationRigOn is startDockerAutomationRig on the fake GPUs
+// fakeGPU names (GPUWORKS_FAKE_GPU: <model>x<count>[,<MiB>]).
+func startDockerAutomationRigOn(t *testing.T, name, fakeGPU string) (string, string, string, uint) {
+	t.Helper()
 	if _, err := exec.LookPath("docker"); err != nil {
 		if os.Getenv("GPUWORKS_TEST_STRICT") == "1" {
 			t.Fatalf("docker required in strict mode: %v", err)
@@ -193,7 +200,7 @@ func startDockerAutomationRig(t *testing.T, name string) (string, string, string
 	agent := exec.Command(agentBin, "run", "--server", base, "--token", nodeToken,
 		"--state", filepath.Join(t.TempDir(), "agent-state"))
 	agent.Env = append(os.Environ(),
-		"GPUWORKS_FAKE_GPU=A100x1,24576",
+		"GPUWORKS_FAKE_GPU="+fakeGPU,
 		"GPUWORKS_FAKE_GPU_NO_INJECT=1",
 		"GPUWORKS_RUNTIME_DRIVER=docker",
 		"GPUWORKS_LOG_LEVEL=warn")

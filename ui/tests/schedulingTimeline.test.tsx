@@ -14,15 +14,15 @@ const { i18n, locale } = await createI18n(["scheduling", "deployments", "deploy"
 const { cleanup, render, screen, waitFor, within, fireEvent } = await import("@testing-library/react");
 const userEvent = (await import("@testing-library/user-event")).default;
 const { MemoryRouter } = await import("react-router-dom");
-const { api } = await import("../src/api.ts");
+const { schedulingApi } = await import("../src/schedulingApi.ts");
 const { default: ResidencyTimeline } = await import("../src/pages/scheduling/ResidencyTimeline.tsx");
 const { blockOf, ticksOf, lanesOf, CHART_WIDTH } = await import("../src/pages/scheduling/timelineChart.ts");
 const { colors } = await import("../src/theme/tokens.ts");
-type Timeline = import("../src/api.ts").SchedulingTimeline;
-type BoardNode = import("../src/api.ts").BoardNode;
+type Timeline = import("../src/schedulingApi.ts").SchedulingTimeline;
+type BoardNode = import("../src/schedulingApi.ts").BoardNode;
 
 const s = locale.scheduling;
-const original = { schedulingTimeline: api.schedulingTimeline };
+const original = { ...schedulingApi };
 const FROM = "2026-10-28T06:00:00Z";
 const TO = "2026-10-28T12:00:00Z";
 const at = (hoursAfterFrom: number) => new Date(Date.parse(FROM) + hoursAfterFrom * 3600_000).toISOString();
@@ -30,8 +30,8 @@ const at = (hoursAfterFrom: number) => new Date(Date.parse(FROM) + hoursAfterFro
 const nodes: BoardNode[] = [{
   uuid: "node-a", name: "gpu-a", online: true,
   gpus: [
-    { index: 0, name: "RTX 8000", memory_bytes: 1, awake_bytes: 0, sleeping_bytes: 0, free_bytes: 1, held_outside: false, occupants: [] },
-    { index: 1, name: "RTX 8000", memory_bytes: 1, awake_bytes: 0, sleeping_bytes: 0, free_bytes: 1, held_outside: false, occupants: [] },
+    { index: 0, name: "RTX 8000", memory_bytes: 1, awake_bytes: 0, sleeping_bytes: 0, free_bytes: 1, state: "free", held_outside: false, switching: false, occupants: [] },
+    { index: 1, name: "RTX 8000", memory_bytes: 1, awake_bytes: 0, sleeping_bytes: 0, free_bytes: 1, state: "free", held_outside: false, switching: false, occupants: [] },
   ],
 }];
 
@@ -72,7 +72,7 @@ function mount(list: BoardNode[] = nodes) {
 
 afterEach(() => {
   cleanup();
-  Object.assign(api, original);
+  Object.assign(schedulingApi, original);
 });
 after(() => closeChannels());
 
@@ -105,7 +105,7 @@ test("lanes are one per deployment in the order they first held the card; unlist
 test("a loading status shows until the timeline answers", async () => {
   let release!: () => void;
   const gate = new Promise<void>((resolve) => { release = resolve; });
-  api.schedulingTimeline = async () => { await gate; return timeline(); };
+  schedulingApi.timeline = async () => { await gate; return timeline(); };
   mount();
   assert.ok(screen.getByRole("status"));
   assert.ok(screen.getByText(s.timeline.loading));
@@ -116,7 +116,7 @@ test("a loading status shows until the timeline answers", async () => {
 
 test("a failed first load shows the error and retries on request", async () => {
   let calls = 0;
-  api.schedulingTimeline = async () => {
+  schedulingApi.timeline = async () => {
     calls += 1;
     if (calls === 1) throw new Error("timeline unavailable");
     return timeline();
@@ -131,14 +131,14 @@ test("a failed first load shows the error and retries on request", async () => {
 
 test("with no nodes on the page there is nothing to ask for", async () => {
   let asked = 0;
-  api.schedulingTimeline = async () => { asked += 1; return timeline(); };
+  schedulingApi.timeline = async () => { asked += 1; return timeline(); };
   mount([]);
   assert.ok(screen.getByText(s.timeline.noNodes));
   assert.equal(asked, 0);
 });
 
 test("a window nobody held a card in says so, and an empty sharing table says so", async () => {
-  api.schedulingTimeline = async () => timeline({
+  schedulingApi.timeline = async () => timeline({
     nodes: [{ uuid: "node-a", name: "gpu-a", gpus: [{ index: 0, truncated: false, segments: [] }] }],
     deployments: [],
   });
@@ -149,7 +149,7 @@ test("a window nobody held a card in says so, and an empty sharing table says so
 });
 
 test("each card is lanes of blocks coloured by state from the theme, with a legend and hour ticks", async () => {
-  api.schedulingTimeline = async () => timeline();
+  schedulingApi.timeline = async () => timeline();
   mount();
   const gpu0 = within(await screen.findByRole("group", { name: i18n.t("scheduling:timeline.gpuAria", { node: "gpu-a", index: 0 }) }));
   assert.ok(gpu0.getByText(i18n.t("scheduling:nodes.gpuLabel", { index: 0, name: "RTX 8000" })));
@@ -173,7 +173,7 @@ test("each card is lanes of blocks coloured by state from the theme, with a lege
 });
 
 test("a block names itself to assistive tech and shows a tooltip on hover and on keyboard focus", async () => {
-  api.schedulingTimeline = async () => timeline();
+  schedulingApi.timeline = async () => timeline();
   const user = mount();
   const sleeping = await screen.findByRole("img", { name: new RegExp(`qwen · ${i18n.t("scheduling:timeline.state.asleepLevel", { level: 2 })}`) });
   assert.equal(sleeping.getAttribute("tabindex"), "0");
@@ -204,7 +204,7 @@ test("a block names itself to assistive tech and shows a tooltip on hover and on
 
 test("the window selector asks for 24 hours and keeps showing the card meanwhile", async () => {
   const asked: unknown[] = [];
-  api.schedulingTimeline = async (query) => {
+  schedulingApi.timeline = async (query) => {
     asked.push(query);
     return timeline({ window: { from: FROM, to: TO, hours: query.hours } });
   };
@@ -219,7 +219,7 @@ test("the window selector asks for 24 hours and keeps showing the card meanwhile
 });
 
 test("the sharing table lists the yield policy, awake time, switches, yields and the held requests' waits", async () => {
-  api.schedulingTimeline = async () => timeline();
+  schedulingApi.timeline = async () => timeline();
   mount();
   await screen.findByText(s.timeline.sharingTitle);
   const table = within(screen.getByRole("table"));
@@ -227,7 +227,7 @@ test("the sharing table lists the yield policy, awake time, switches, yields and
   const qwen = table.getByRole("link", { name: "qwen" }).closest("tr") as HTMLElement;
   const cells = within(qwen);
   assert.ok(cells.getByText(i18n.t("deployments:yieldPolicy.policy.name.timeslice")));
-  assert.ok(cells.getByText(i18n.t("scheduling:timeline.awakeShare", { span: i18n.t("scheduling:timeline.duration.hours", { hours: 2, minutes: 0 }), share: 33.3 })));
+  assert.ok(cells.getByText(i18n.t("scheduling:timeline.awakeShare", { span: i18n.t("deployments:duration.hoursMinutes", { hours: 2, minutes: 0 }), share: 33.3 })));
   assert.ok(cells.getByText("3")); // switches
   assert.ok(cells.getByText("4")); // held requests
   assert.ok(cells.getByText(i18n.t("scheduling:timeline.wait.seconds", { value: "4.2" })));
@@ -235,12 +235,12 @@ test("the sharing table lists the yield policy, awake time, switches, yields and
   // No held request, no wait figure: a dash, not a zero.
   const llama = within(table.getByRole("link", { name: "llama" }).closest("tr") as HTMLElement);
   assert.equal(llama.getAllByText("—").length, 2);
-  assert.ok(llama.getByText(i18n.t("scheduling:timeline.awakeShare", { span: i18n.t("scheduling:timeline.duration.seconds", { seconds: 30 }), share: 0.1 })));
+  assert.ok(llama.getByText(i18n.t("scheduling:timeline.awakeShare", { span: i18n.t("deployments:duration.seconds", { value: 30 }), share: 0.1 })));
 });
 
 test("a failed refresh keeps the last timeline and warns", async () => {
   let calls = 0;
-  api.schedulingTimeline = async () => {
+  schedulingApi.timeline = async () => {
     calls += 1;
     if (calls > 1) throw new Error("boom");
     return timeline();

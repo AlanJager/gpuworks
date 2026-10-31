@@ -133,6 +133,10 @@ type EvaluateResponse struct {
 	// PD previews a PD disaggregated draft instance by instance; the command
 	// fields above then describe the first decode instance.
 	PD *EvaluatePD `json:"pd,omitempty"`
+	// YieldPolicyEligible says whether the draft may be created with a yield
+	// policy other than never (planning.DraftYieldPolicyRefusal), the check
+	// the create makes; absent until the draft's engine is known.
+	YieldPolicyEligible *Eligibility `json:"yield_policy_eligible,omitempty"`
 }
 
 // EvaluatePD is the preview of a PD draft (ADR 0028).

@@ -2,7 +2,7 @@ import { Alert, Empty, Space, Tag, Typography } from "antd";
 import { WarningOutlined } from "@ant-design/icons";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import type { BoardGPU, BoardNode, BoardOccupant } from "../../api";
+import type { BoardGPU, BoardNode, BoardOccupant } from "../../schedulingApi";
 import { formatBytes } from "../../format";
 
 // Legend explains the three parts of every GPU bar once for the whole board.
@@ -44,6 +44,11 @@ function NodeCard({ node }: { node: BoardNode }) {
   );
 }
 
+/** The tag colour of a card state; a state the page does not know is plain. */
+const STATE_TAG: Record<string, string | undefined> = {
+  awake: "blue", asleep: "purple", free: "green", held_outside: "orange", unhealthy: "red", offline: "default",
+};
+
 function GpuRow({ node, gpu }: { node: BoardNode; gpu: BoardGPU }) {
   const { t } = useTranslation("scheduling");
   const total = Math.max(gpu.memory_bytes, 1);
@@ -52,7 +57,11 @@ function GpuRow({ node, gpu }: { node: BoardNode; gpu: BoardGPU }) {
   return (
     <div className="scheduling-gpu">
       <div className="scheduling-gpu-head">
-        <Typography.Text>{t("nodes.gpuLabel", { index: gpu.index, name: gpu.name })}</Typography.Text>
+        <Space size={6} align="center">
+          <Typography.Text>{t("nodes.gpuLabel", { index: gpu.index, name: gpu.name })}</Typography.Text>
+          {/* The server's state of the card, the one its heatmap cell shows. */}
+          <Tag className={`scheduling-gpu-state is-${gpu.state}`} color={STATE_TAG[gpu.state]}>{t(`states.${gpu.state}`)}</Tag>
+        </Space>
         <Typography.Text type="secondary" className="scheduling-num">
           {t("nodes.figures", { awake: size(gpu.awake_bytes), sleeping: size(gpu.sleeping_bytes), free: size(gpu.free_bytes), total: size(gpu.memory_bytes) })}
         </Typography.Text>

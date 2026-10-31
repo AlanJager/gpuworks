@@ -1,17 +1,18 @@
-import type { OverviewDeployment, SchedulingOverview } from "../../api";
-
-/** The bits of a card's flags in the overview. */
-export const OVERVIEW_FLAG = { heldOutside: 1, switching: 2, unhealthy: 4 } as const;
+import type { OverviewDeployment, SchedulingOverview } from "../../schedulingApi";
 
 // The scheduling overview as the heatmap works with it: the response's compact
 // arrays decoded into cards, and the filtering, grouping and sorting of the
 // whole fleet, all in the browser from the one response. Nothing here touches
 // the DOM, so it is tested on its own (overviewModel.test.ts).
 
-/** What a card is, in the first of these that holds. */
-export type CellState = "offline" | "unhealthy" | "held" | "awake" | "asleep" | "free";
+/**
+ * What a card is. The server derives it (the overview's `states`, which each
+ * card refers to by position); the page only names and colours it.
+ */
+export type CellState = "offline" | "unhealthy" | "held_outside" | "awake" | "asleep" | "free";
 
-export const CELL_STATES: CellState[] = ["awake", "asleep", "free", "held", "unhealthy", "offline"];
+/** The order the legend and the summary show the states in. */
+export const CELL_STATES: CellState[] = ["awake", "asleep", "free", "held_outside", "unhealthy", "offline"];
 
 export interface Occupant {
   /** Position in OverviewModel.deployments. */
@@ -26,9 +27,7 @@ export interface CardView {
   memoryMiB: number;
   awakePct: number;
   sleepingPct: number;
-  held: boolean;
   switching: boolean;
-  unhealthy: boolean;
   occupants: Occupant[];
   state: CellState;
 }
@@ -50,25 +49,14 @@ export interface OverviewModel {
   labels: Array<{ key: string; values: string[] }>;
 }
 
-function stateOf(online: boolean, unhealthy: boolean, held: boolean, awakePct: number, sleepingPct: number): CellState {
-  if (!online) return "offline";
-  if (unhealthy) return "unhealthy";
-  if (held) return "held";
-  if (awakePct > 0) return "awake";
-  if (sleepingPct > 0) return "asleep";
-  return "free";
-}
-
-function nodeViewOf(node: SchedulingOverview["nodes"][number], models: string[]): NodeView {
+function nodeViewOf(node: SchedulingOverview["nodes"][number], models: string[], states: string[]): NodeView {
   const view: NodeView = { uuid: node.uuid, name: node.name, online: node.online, labels: node.labels ?? {}, contention: node.contention ?? 0, cards: [] };
-  for (const [index, model, memoryMiB, awakePct, sleepingPct, flags, occupants] of node.cards) {
-    const held = (flags & OVERVIEW_FLAG.heldOutside) !== 0;
-    const unhealthy = (flags & OVERVIEW_FLAG.unhealthy) !== 0;
+  for (const [index, model, memoryMiB, awakePct, sleepingPct, state, switching, occupants] of node.cards) {
     view.cards.push({
-      node: view, index, model: models[model] ?? "", memoryMiB, awakePct, sleepingPct, held, unhealthy,
-      switching: (flags & OVERVIEW_FLAG.switching) !== 0,
+      node: view, index, model: models[model] ?? "", memoryMiB, awakePct, sleepingPct,
+      switching: switching === 1,
       occupants: (occupants ?? []).map((code) => ({ deployment: code >> 1, asleep: (code & 1) === 1 })),
-      state: stateOf(node.online, unhealthy, held, awakePct, sleepingPct),
+      state: states[state] as CellState,
     });
   }
   return view;
@@ -82,9 +70,9 @@ function nodeViewOf(node: SchedulingOverview["nodes"][number], models: string[])
 export function buildModel(overview: SchedulingOverview, previous?: Map<string, { signature: string; view: NodeView }>): { model: OverviewModel; seen: Map<string, { signature: string; view: NodeView }> } {
   const seen = new Map<string, { signature: string; view: NodeView }>();
   const nodes = overview.nodes.map((node) => {
-    const signature = JSON.stringify([node.name, node.online, node.contention, node.labels, node.cards, overview.models]);
+    const signature = JSON.stringify([node.name, node.online, node.contention, node.labels, node.cards, overview.models, overview.states]);
     const known = previous?.get(node.uuid);
-    const entry = known && known.signature === signature ? known : { signature, view: nodeViewOf(node, overview.models) };
+    const entry = known && known.signature === signature ? known : { signature, view: nodeViewOf(node, overview.models, overview.states) };
     seen.set(node.uuid, entry);
     return entry.view;
   });
@@ -154,7 +142,7 @@ export function compareNames(a: string, b: string): number {
 export function freeMiB(cards: CardView[]): number {
   let total = 0;
   for (const card of cards) {
-    if (card.state === "offline" || card.state === "unhealthy" || card.state === "held") continue;
+    if (card.state === "offline" || card.state === "unhealthy" || card.state === "held_outside") continue;
     total += (card.memoryMiB * Math.max(100 - card.awakePct - card.sleepingPct, 0)) / 100;
   }
   return total;
@@ -169,7 +157,7 @@ function nodeMatches(node: NodeView, cards: CardView[], filters: Filters): boole
   switch (filters.state) {
     case "free": return cards.some((card) => card.state === "free");
     case "sleepers": return cards.some((card) => card.occupants.some((o) => o.asleep));
-    case "held": return cards.some((card) => card.held);
+    case "held": return cards.some((card) => card.state === "held_outside");
     case "offline": return !node.online;
     default: return true;
   }
@@ -244,7 +232,7 @@ export function arrange(model: OverviewModel, filters: Filters, groupBy: GroupBy
 
 /** How many cards of the arrangement are in each state. */
 export function countStates(arrangement: Arrangement): Record<CellState, number> {
-  const counts: Record<CellState, number> = { awake: 0, asleep: 0, free: 0, held: 0, unhealthy: 0, offline: 0 };
+  const counts: Record<CellState, number> = { awake: 0, asleep: 0, free: 0, held_outside: 0, unhealthy: 0, offline: 0 };
   for (const section of arrangement.sections) for (const item of section.nodes) for (const card of item.cards) counts[card.state] += 1;
   return counts;
 }

@@ -1,6 +1,7 @@
 import UnsupportedModel from "./UnsupportedModel"
+import SleepNotice from "./SleepNotice";
 import RequestDrawer from "./RequestDrawer";
-import { Alert, Button, Empty, Input, Select, Space, Tag, Typography, message } from "antd";
+import { Button, Empty, Input, Select, Space, Tag, Typography, message } from "antd";
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { modelsForOperation, operationOf } from "./operations";
@@ -63,7 +64,7 @@ export default function RealtimePage({ catalog }: { catalog: PlaygroundCatalog }
         <Tag color={state === "connected" ? "green" : state === "connecting" ? "blue" : "default"}>{t(`realtime.${state}`)}</Tag>
         {state === "disconnected" ? <Button type="primary" onClick={connect}>{t("realtime.connect")}</Button> : <Button danger onClick={disconnect}>{t("realtime.disconnect")}</Button>}
       </Space>
-      {models.find((item) => item.id === model)?.sleeping && <Alert type="warning" showIcon message={t("realtime.sleeping")} />}
+      <SleepNotice model={models.find((item) => item.id === model)} />
       <Typography.Title level={5}>{t("realtime.outgoingEvent")}</Typography.Title>
       <Input.TextArea aria-label={t("realtime.outgoingEvent")} value={event} onChange={(change) => setEvent(change.target.value)} autoSize={{ minRows: 4 }} />
       <Button disabled={state !== "connected"} onClick={send}>{t("realtime.send")}</Button>

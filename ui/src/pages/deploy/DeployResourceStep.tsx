@@ -178,7 +178,7 @@ export default function DeployResourceStep({
           </Form.Item>
         </Col>
         <Col xs={24} md={12}>
-          <DeployYieldPolicyField />
+          <DeployYieldPolicyField eligibility={result?.yield_policy_eligible} />
         </Col>
         <Form.Item name="partition_backend" hidden>
           <Input />

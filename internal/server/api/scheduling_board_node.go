@@ -29,6 +29,6 @@ func (a *apiHandlers) schedulingBoardNode(w http.ResponseWriter, uuid string) {
 	}
 	writeJSON(w, http.StatusOK, dto.SchedulingBoard{
 		Nodes:   dto.ListPage[dto.BoardNode]{Items: []dto.BoardNode{a.boardNode(node, online, nameOf, levelOf)}, Page: 1, PageSize: 1, Total: 1},
-		Pending: []dto.BoardPending{}, WaitingWakes: []dto.BoardWaitingWake{}, Upcoming: []dto.BoardUpcomingAction{}, Recent: []dto.BoardEvent{},
+		Pending: []dto.BoardPending{}, WaitingWakes: []dto.BoardWaitingWake{}, Upcoming: []dto.BoardUpcomingAction{},
 	})
 }

@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
-	"gpuworks.ai/gpuworks/internal/server/servicelevel"
 	"gpuworks.ai/gpuworks/internal/server/store"
+	"gpuworks.ai/gpuworks/internal/server/yieldpolicy"
 )
 
 const (
@@ -19,16 +19,16 @@ const (
 	timelineSegmentCap = 200
 	// timelineMaxNodes bounds the nodes one request names (a board page).
 	timelineMaxNodes = 200
-	// timelineDefaultHours is the window when none is asked for.
-	timelineDefaultHours = 6
 )
 
-// timelineWindows are the windows (hours) the timeline answers for.
+// timelineWindows are the windows (hours) the timeline answers for; the first
+// is the one when none is asked for. The UI offers the same list
+// (timelineWindows in ui/src/api.ts).
 var timelineWindows = []int{6, 24}
 
 // schedulingTimeline answers GET /scheduling/timeline: for the nodes named by
 // repeated node parameters (the board's current page), each GPU's residency
-// over the last hours (6 or 24) - which deployment's instance held it and in
+// over the last hours (one of timelineWindows) - which deployment's instance held it and in
 // what state - and the stats of the deployments that share GPUs.
 //
 // With sharing=1 and no node it answers the stats of the deployments that
@@ -42,11 +42,11 @@ func (a *apiHandlers) schedulingTimeline(w http.ResponseWriter, r *http.Request)
 	invalid := func(field, reason string) {
 		writeProductError(w, http.StatusBadRequest, ErrorFieldInvalid, field+" "+reason, map[string]any{"field": field})
 	}
-	hours := timelineDefaultHours
+	hours := timelineWindows[0]
 	if raw := strings.TrimSpace(r.URL.Query().Get("hours")); raw != "" {
 		n, err := strconv.Atoi(raw)
 		if err != nil || !containsInt(timelineWindows, n) {
-			invalid("hours", "is 6 or 24")
+			invalid("hours", "is one of "+joinInts(timelineWindows))
 			return
 		}
 		hours = n
@@ -229,7 +229,7 @@ func (a *apiHandlers) timelineDeployments(deployments map[uint]store.ResidencyDe
 	var shared, every []uint
 	for id, info := range deployments {
 		every = append(every, id)
-		if info.Yield != servicelevel.Never {
+		if info.Yield != yieldpolicy.Never {
 			shared = append(shared, id)
 		}
 	}
@@ -266,4 +266,13 @@ func (a *apiHandlers) timelineDeployments(deployments map[uint]store.ResidencyDe
 		return out[i].DeploymentID < out[j].DeploymentID
 	})
 	return out, nil
+}
+
+// joinInts lists numbers for a message: "6, 24".
+func joinInts(values []int) string {
+	parts := make([]string, len(values))
+	for i, v := range values {
+		parts[i] = strconv.Itoa(v)
+	}
+	return strings.Join(parts, ", ")
 }

@@ -68,13 +68,26 @@ func (a *apiHandlers) schedulingHistory(w http.ResponseWriter, r *http.Request) 
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
+	// Each entry's deployment, and the one a yield was for, named in one read.
+	params := make([]map[string]any, len(events))
 	ids := make([]uint, 0, len(events))
 	seen := map[uint]bool{}
-	for _, ev := range events {
-		if !seen[ev.DeploymentID] {
-			seen[ev.DeploymentID] = true
-			ids = append(ids, ev.DeploymentID)
+	note := func(id uint) {
+		if id != 0 && !seen[id] {
+			seen[id] = true
+			ids = append(ids, id)
 		}
+	}
+	for i, ev := range events {
+		params[i] = map[string]any{}
+		if ev.Data != "" {
+			_ = json.Unmarshal([]byte(ev.Data), &params[i])
+		}
+		if params[i] == nil {
+			params[i] = map[string]any{}
+		}
+		note(ev.DeploymentID)
+		note(store.EventForDeployment(ev.Data))
 	}
 	names, err := a.d.Store.DeploymentNames(ids)
 	if err != nil {
@@ -82,20 +95,20 @@ func (a *apiHandlers) schedulingHistory(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	items := make([]dto.SchedulingHistoryEntry, 0, len(events))
-	for _, ev := range events {
+	for i, ev := range events {
 		category, _ := store.SchedulingCategoryOf(ev.Code)
 		item := dto.SchedulingHistoryEntry{
 			ID: ev.ID, CreatedAt: utcTime(ev.CreatedAt), DeploymentID: ev.DeploymentID, Instance: ev.InstanceUUID,
-			Kind: ev.Kind, Code: ev.Code, Category: string(category), Params: map[string]any{},
+			Kind: ev.Kind, Code: ev.Code, Category: string(category), Params: params[i],
 		}
 		if name, ok := names[ev.DeploymentID]; ok {
 			item.Deployment, item.DeploymentDeleted = name.Name, name.Deleted
 		}
-		if ev.Data != "" {
-			_ = json.Unmarshal([]byte(ev.Data), &item.Params)
-		}
-		if item.Params == nil {
-			item.Params = map[string]any{}
+		if target := store.EventForDeployment(ev.Data); target != 0 {
+			item.Target = &dto.SchedulingHistoryDeployment{ID: target}
+			if name, ok := names[target]; ok {
+				item.Target.Name, item.Target.Deleted = name.Name, name.Deleted
+			}
 		}
 		if actor, ok := item.Params["actor"].(string); ok {
 			item.Actor = actor

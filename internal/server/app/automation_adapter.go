@@ -7,29 +7,29 @@ import (
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/proto"
+	"gpuworks.ai/gpuworks/internal/server/api"
 	"gpuworks.ai/gpuworks/internal/server/automation"
 	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/internal/server/placewait"
 	"gpuworks.ai/gpuworks/internal/server/planning"
 	"gpuworks.ai/gpuworks/internal/server/proxy"
-	"gpuworks.ai/gpuworks/internal/server/servicelevel"
 	"gpuworks.ai/gpuworks/internal/server/store"
-	"gpuworks.ai/gpuworks/internal/server/tsdb"
+	"gpuworks.ai/gpuworks/internal/server/yieldpolicy"
 )
-
-// automationEventKind is the timeline kind of what the automation does.
-const automationEventKind = store.EventKindAutomation
 
 // automationAdapter backs the scheduling automation with the store, the
 // ledger, the gateway's request clock and the host memory the agents report.
 // Every order takes the lifecycle order lock, as an operator's does.
 type automationAdapter struct {
-	store   *store.Store
-	acct    *proxy.Accountant
-	metrics tsdb.Store
-	scale   func(deploymentID uint, role string, replicas int) error
+	store *store.Store
+	acct  *proxy.Accountant
+	// host reads a node's host memory as its agent recently reported it
+	// (api.HostMemory, the reader an operator's sleep uses); nil knows
+	// nothing.
+	host  planning.HostMemory
+	scale func(deploymentID uint, role string, replicas int) error
 	// waits are the replicas waiting to be placed (the controller's): a wake
-	// does not take the cards one of at least its rank waits for.
+	// does not take the cards one that keeps them against it waits for.
 	waits *placewait.Registry
 	log   *slog.Logger
 	now   func() time.Time
@@ -40,11 +40,11 @@ type automationAdapter struct {
 // nudges it, since a waiting wake may fit once another instance sleeps or
 // goes; a request the gateway holds for a sleeping deployment asks it to wake
 // that one.
-func runAutomation(ctx context.Context, st *store.Store, px *proxy.Proxy, acct *proxy.Accountant, metrics tsdb.Store, scale func(deploymentID uint, role string, replicas int) error, waits *placewait.Registry, log *slog.Logger) {
-	adapter := &automationAdapter{store: st, acct: acct, metrics: metrics, scale: scale, waits: waits, log: log, now: time.Now}
+func runAutomation(ctx context.Context, st *store.Store, px *proxy.Proxy, acct *proxy.Accountant, host planning.HostMemory, scale func(deploymentID uint, role string, replicas int) error, waits *placewait.Registry, log *slog.Logger) {
+	adapter := &automationAdapter{store: st, acct: acct, host: host, scale: scale, waits: waits, log: log, now: time.Now}
 	evaluator := automation.New(adapter, adapter, log)
 	if px != nil {
-		residency := &residencyAdapter{store: st, proxy: px, acct: acct, host: adapter.hostMemory, waits: waits, now: time.Now}
+		residency := &residencyAdapter{store: st, proxy: px, acct: acct, host: host, waits: waits, now: time.Now}
 		evaluator.WithResidency(residency, residency)
 		if waits != nil {
 			waits.OnWait(evaluator.Demand)
@@ -78,30 +78,14 @@ func (a *automationAdapter) Schedules() ([]automation.Schedule, error) {
 	}
 	out := make([]automation.Schedule, 0, len(rows))
 	for _, row := range rows {
-		loc, err := scheduleLocation(row.Timezone)
+		s, err := api.AutomationSchedule(row)
 		if err != nil {
 			a.log.Warn("automation: schedule time zone unknown; skipped", "schedule", row.ID, "timezone", row.Timezone)
 			continue
 		}
-		s := automation.Schedule{
-			ID: row.ID, DeploymentID: row.DeploymentID, Action: row.Action, Weekdays: row.Weekdays, Minute: row.Minute,
-			Location: loc, SleepLevel: row.SleepLevel, Replicas: row.Replicas, Role: row.Role,
-		}
-		if row.LastFiredAt != nil {
-			s.LastFiredAt = *row.LastFiredAt
-		}
 		out = append(out, s)
 	}
 	return out, nil
-}
-
-// scheduleLocation is a schedule's time zone: its IANA name, or the server's
-// own zone when it names none.
-func scheduleLocation(name string) (*time.Location, error) {
-	if name == "" {
-		return time.Local, nil
-	}
-	return time.LoadLocation(name)
 }
 
 // WaitingWakes groups the instances whose wake waits by deployment, each
@@ -128,52 +112,32 @@ func (a *automationAdapter) WaitingWakes() ([]automation.WaitingWake, error) {
 	return out, nil
 }
 
-// sleepLevelOf is the sleep level order of a policy's preference.
-func sleepLevelOf(pref string) int {
-	switch pref {
-	case servicelevel.LevelL1:
-		return proto.SleepLevelL1
-	case servicelevel.LevelL2:
-		return proto.SleepLevelL2
-	}
-	return automation.LevelAuto
-}
-
 // Sleep orders a deployment to sleep as an operator's deployment-wide order
-// does: refused when the deployment cannot sleep, or at L1 when a host
-// cannot hold the weights. At the auto level it sleeps at L1, or at L2 where
-// the host cannot hold the weights; it returns the level ordered.
+// does (planning.OrderSleep): refused when the deployment cannot sleep, or at
+// an explicit L1 when a host cannot hold the weights; at the auto level
+// (automation.LevelAuto) it sleeps at L1, or at L2 where the host cannot hold
+// the weights. It returns the level ordered.
 func (a *automationAdapter) Sleep(deploymentID uint, level int, held bool) (int, error) {
 	defer planning.LockLifecycle()()
 	dep, err := a.store.GetDeployment(deploymentID)
 	if err != nil {
 		return 0, err
 	}
-	if code := planning.SleepEligibility(dep); code != "" {
-		return 0, messages.NewProductError(code, "the deployment cannot sleep", map[string]any{"engine": dep.Engine})
+	ordered, refusal, err := planning.OrderSleep(a.store, dep, planning.SleepOrder{
+		Pref: planning.SleepPreference(level), Mode: proto.SleepModeWait, Held: held,
+	}, a.host)
+	if refusal != nil {
+		return 0, refusal.Err()
 	}
-	auto := level == automation.LevelAuto
-	if auto {
-		level = proto.SleepLevelL1
-	}
-	if level == proto.SleepLevelL1 {
-		insts, err := a.store.InstancesForDeployment(dep.ID)
-		if err != nil {
-			return 0, err
-		}
-		if refusal := planning.L1HostMemoryRefusal(a.store, dep, planning.Sleepers(insts), a.hostMemory); refusal != nil {
-			if !auto {
-				return 0, messages.NewProductError(refusal.Code, "the host memory cannot hold the weights an L1 sleep moves there", refusal.Params)
-			}
-			level = proto.SleepLevelL2
-		}
-	}
-	return level, a.store.OrderDeploymentSleepHeld(dep.ID, level, proto.SleepModeWait, held)
+	return ordered, err
 }
 
 // Wake wakes the deployment's sleepers that fit and leaves the rest waiting
-// for room.
-func (a *automationAdapter) Wake(deploymentID uint) (automation.WakeResult, error) {
+// for room. A held wake (a schedule's) names every sleeper; one a request or
+// a resume drives names only those a request wakes
+// (store.Deployment.WakesOnRequest), so the sleepers an operator or a
+// schedule holds stay asleep and held.
+func (a *automationAdapter) Wake(deploymentID uint, held bool) (automation.WakeResult, error) {
 	defer planning.LockLifecycle()()
 	dep, err := a.store.GetDeployment(deploymentID)
 	if err != nil {
@@ -190,16 +154,21 @@ func (a *automationAdapter) Wake(deploymentID uint) (automation.WakeResult, erro
 	if err != nil {
 		return automation.WakeResult{}, err
 	}
-	sleepers, held := a.notForPlacement(dep, planning.Sleepers(insts))
+	named := planning.Sleepers(insts)
+	whole := true
+	if !held {
+		named, whole = wakesOnRequest(dep, named)
+	}
+	sleepers, kept := a.notForPlacement(dep, named)
 	var woken []store.Instance
 	var refused []planning.WakeRefusal
 	if len(sleepers) > 0 {
-		woken, refused, err = planning.OrderWake(a.store, dep, match, sleepers, true, len(held) == 0)
+		woken, refused, err = planning.OrderWake(a.store, dep, match, sleepers, true, whole && len(kept) == 0)
 		if err != nil {
 			return automation.WakeResult{}, err
 		}
 	}
-	result := automation.WakeResult{Woken: uuidList(woken), Waiting: uuidList(held)}
+	result := automation.WakeResult{Woken: uuidList(woken), Waiting: uuidList(kept)}
 	for _, r := range refused {
 		result.Waiting = append(result.Waiting, uuidList(r.Instances)...)
 	}
@@ -207,6 +176,19 @@ func (a *automationAdapter) Wake(deploymentID uint) (automation.WakeResult, erro
 		return result, err
 	}
 	return result, nil
+}
+
+// wakesOnRequest are the sleepers a request wakes, and whether they are all
+// of them: a held sleeper stays asleep, so a wake that leaves one is not the
+// deployment-wide wake.
+func wakesOnRequest(dep *store.Deployment, sleepers []store.Instance) ([]store.Instance, bool) {
+	out := make([]store.Instance, 0, len(sleepers))
+	for i := range sleepers {
+		if dep.WakesOnRequest(&sleepers[i]) {
+			out = append(out, sleepers[i])
+		}
+	}
+	return out, len(out) == len(sleepers)
 }
 
 // WakeWaiting wakes the named waiting instances whose GPUs can take them back
@@ -267,9 +249,10 @@ func (a *automationAdapter) WakeWaiting(deploymentID uint, uuids []string) ([]st
 
 // notForPlacement splits the sleepers of dep into those a wake may take
 // cards for and those it leaves asleep: the ones on a card a replica waits
-// to be placed on, of a deployment that ranks at least as high as dep (the
-// cards were given up for it). The placement waits name the instances they
-// wait for; their cards are the ones taken.
+// to be placed on, of a deployment that keeps them against dep
+// (yieldpolicy.KeepsCardsAgainst: the cards were given up for it). The
+// placement waits name the cards they wait for, so the cards stay the
+// waiter's after the holders' sleeps are ordered, until it is placed.
 func (a *automationAdapter) notForPlacement(dep *store.Deployment, sleepers []store.Instance) (free, held []store.Instance) {
 	if a.waits == nil {
 		return sleepers, nil
@@ -278,38 +261,24 @@ func (a *automationAdapter) notForPlacement(dep *store.Deployment, sleepers []st
 	if len(waits) == 0 {
 		return sleepers, nil
 	}
-	var holders []store.Instance
-	rank := dep.Policy().Rank()
+	taken := map[planning.Card]bool{}
+	policy := dep.Policy()
 	for _, w := range waits {
 		if w.DeploymentID == dep.ID {
 			continue
 		}
 		waiter, err := a.store.GetDeployment(w.DeploymentID)
-		if err != nil || waiter.Policy().Rank() < rank {
+		if err != nil || !yieldpolicy.KeepsCardsAgainst(waiter.Policy(), policy) {
 			continue
 		}
-		for _, uuid := range w.Instances {
-			if in, err := a.store.InstanceByUUID(uuid); err == nil {
-				holders = append(holders, *in)
-			}
+		for _, index := range w.Cards.GPUIndexes {
+			taken[planning.Card{NodeID: w.Cards.NodeID, Index: index}] = true
 		}
 	}
-	taken := planning.InstanceCards(holders)
-	for _, in := range sleepers {
-		out := false
-		for card := range planning.InstanceCards([]store.Instance{in}) {
-			if taken[card] {
-				out = true
-				break
-			}
-		}
-		if out {
-			held = append(held, in)
-		} else {
-			free = append(free, in)
-		}
+	if len(taken) == 0 {
+		return sleepers, nil
 	}
-	return free, held
+	return planning.SplitByCards(sleepers, taken)
 }
 
 func (a *automationAdapter) EndWaiting(deploymentID uint, uuids []string) error {
@@ -317,7 +286,7 @@ func (a *automationAdapter) EndWaiting(deploymentID uint, uuids []string) error 
 }
 
 // ScaleReplicas sets the deployment's replica count through the API's own
-// path (api.ReplicaScaler): a multi-node deployment the platform places gets
+// path (planning.Scaling.ScaleScheduled): a multi-node deployment the platform places gets
 // its nodes picked as an operator's request would, a PD deployment's role is
 // scaled through the PD update, and a refusal (a deployment placed by hand,
 // no room for a replica, a role below its minimum) comes back as the product
@@ -331,23 +300,7 @@ func (a *automationAdapter) MarkFired(scheduleID uint, at time.Time) error {
 }
 
 func (a *automationAdapter) Record(deploymentID uint, code string, params map[string]any) {
-	a.store.AddDeploymentEventCode(deploymentID, automationEventKind, code, params)
-}
-
-// hostMemory is a node's host memory as its agent reported it in the last two
-// minutes.
-func (a *automationAdapter) hostMemory(nodeUUID string) (available, total int64, ok bool) {
-	if a.metrics == nil {
-		return 0, 0, false
-	}
-	since := a.now().Add(-2 * time.Minute).UnixMilli()
-	return planning.HostMemoryFromMetrics(func(metric, node string) (float64, bool) {
-		rows, err := a.metrics.QueryLatest(metric, map[string]string{"node": node}, since)
-		if err != nil || len(rows) == 0 {
-			return 0, false
-		}
-		return rows[0].Value, true
-	})(nodeUUID)
+	a.store.AddDeploymentEventCode(deploymentID, store.EventKindAutomation, code, params)
 }
 
 func uuidList(insts []store.Instance) []string {

@@ -136,6 +136,12 @@ func TestPlanLaunchAgreesBetweenTheControllerAndThePreview(t *testing.T) {
 	if !controllerPlan.Output.Result.OK || !previewPlan.Output.Result.OK {
 		t.Fatalf("controller=%+v preview=%+v", controllerPlan.Output.Result, previewPlan.Output.Result)
 	}
+	// Only the controller's launch names its deployment: a preview's has
+	// none yet, or an edit's is excluded whole (ExcludeDeploymentID).
+	if controllerPlan.Input.DeploymentID != dep.ID || previewPlan.Input.DeploymentID != 0 {
+		t.Fatalf("deployment ids = %d, %d", controllerPlan.Input.DeploymentID, previewPlan.Input.DeploymentID)
+	}
+	previewPlan.Input.DeploymentID = dep.ID
 	if !reflect.DeepEqual(controllerPlan.Input, previewPlan.Input) {
 		t.Fatalf("inputs differ:\n controller %+v\n preview    %+v", controllerPlan.Input, previewPlan.Input)
 	}

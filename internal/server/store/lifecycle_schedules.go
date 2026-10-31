@@ -142,11 +142,3 @@ func indexInstanceEventKind(db *gorm.DB) error {
 	}
 	return db.Exec("CREATE INDEX IF NOT EXISTS idx_instance_events_kind_id ON instance_events(kind, id)").Error
 }
-
-// RecentEventsOfKind is the newest limit events of a kind across every
-// deployment, newest first.
-func (s *Store) RecentEventsOfKind(kind string, limit int) ([]InstanceEvent, error) {
-	var out []InstanceEvent
-	err := s.reader().Where("kind = ?", kind).Order("id desc").Limit(limit).Find(&out).Error
-	return out, err
-}

@@ -477,6 +477,7 @@
     "SCHEDULE_REPLICAS_MANUAL_PLACEMENT": "多机或 PD 部署的副本由运维手动放置，不能按副本数定时调整；先把它切换为自动放置。",
     "YIELD_POLICY_INVALID": "出让策略不合法（{{field}}）：{{reason}}。",
     "YIELD_POLICY_SHAPE": "只有单机部署能出让 GPU；多机与 PD 部署的出让策略只能是不自动出让。",
+    "YIELD_POLICY_NEEDS_SLEEP": "该部署的出让策略是 {{policy}}，出让 GPU 就是休眠，不能关闭可休眠。请先在调度策略里把出让策略改为不自动出让，再关闭可休眠。",
     "NODE_REPLACEMENT_INVALID": "节点失联重调度的等待时间只能是 0（关闭）或 {{minimum}} 到 {{maximum}} 秒。",
     "WAKE_YIELD_BLOCKED": "无法让位：{{occupants}} 不能休眠（未启用休眠、PD 部署最后一个清醒的角色，或是平台外的进程）。未做任何改动。",
     "REPLICAS_PLACE_ON_TOO_MANY": "首次放置指定了 {{count}} 个节点，但只新增了 {{maximum}} 个副本。",
@@ -486,11 +487,12 @@
     "AUTO_PLACEMENT_PD_MULTI_NODE": "自动放置只处理一台节点放得下的 PD 实例，但 {{role}} 角色的实例跨了多个节点。请改为手动放置并指定它们的节点。",
     "PLACEMENT_MODE_SHAPE": "单机部署的放置写在节点条件里；自动 / 手动放置只适用于多机和 PD 部署。",
     "BATCH_NOT_FOUND": "找不到该批处理任务或文件，或其输出文件已过期并被删除。",
-    "BATCH_NOT_CANCELLABLE": "该批处理任务已结束，无法取消。",
+    "BATCH_NOT_CANCELLABLE": "该批处理任务已无法取消：它已结束，或正在汇总结果。",
     "BATCH_FILE_INVALID": "批处理输入文件无效。{{detail}}",
     "BATCH_FILE_TOO_LARGE": "批处理输入文件超过 {{limit_mb}} MB。",
     "BATCH_MODEL_UNKNOWN": "没有运行中的部署使用模型名 {{model}}，请选择平台上已有的部署。",
     "BATCH_REQUEST_INVALID": "批处理请求无效（{{field}}）：{{reason}}",
+    "BATCH_FILE_MODELS_UNKNOWN": "文件里的这些模型没有运行中的部署：{{models, list}}。请选一个模型来接收全部请求，或先部署这些模型。",
     "AGENT_UPGRADE_REFUSED": "Agent 升级请求无法执行：{{detail}}"
   },
   "httpError": {
@@ -556,7 +558,7 @@
     "logs": "日志",
     "settings": "设置",
     "networks": "网络",
-    "scheduling": "调度中心",
+    "scheduling": "调度分析",
     "batches": "批处理任务"
   },
   "branding": {

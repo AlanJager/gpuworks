@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"gpuworks.ai/gpuworks/internal/server/servicelevel"
 	"gpuworks.ai/gpuworks/internal/server/store"
+	"gpuworks.ai/gpuworks/internal/server/yieldpolicy"
 )
 
 const (
@@ -48,7 +48,7 @@ func newPreemptibleProxy(t *testing.T, level string, replies ...string) (*Proxy,
 // defaults.
 func presetDeployment(yield string) *store.Deployment {
 	dep := &store.Deployment{Engine: "vllm", Sleepable: true}
-	p, _ := servicelevel.Parse(yield, servicelevel.Overrides{})
+	p, _ := yieldpolicy.Parse(yield, yieldpolicy.Overrides{})
 	dep.SetPolicy(p)
 	return dep
 }
@@ -78,7 +78,7 @@ func wakeAfter(p *Proxy, st *store.Store, delay time.Duration) {
 }
 
 func TestACutOffReplyIsReplayedOnceTheDeploymentServesAgain(t *testing.T) {
-	for _, level := range []string{servicelevel.Anytime, servicelevel.TimeSlice} {
+	for _, level := range []string{yieldpolicy.Anytime, yieldpolicy.TimeSlice} {
 		t.Run(level, func(t *testing.T) {
 			p, st, key, _, front, calls := newPreemptibleProxy(t, level, abortedReply, finishedReply)
 			wakeAfter(p, st, 150*time.Millisecond)
@@ -97,9 +97,9 @@ func TestReplayIsOnlyForPreemptibleNonStreamingRequests(t *testing.T) {
 	for _, tc := range []struct {
 		name, level, body string
 	}{
-		{"a stream", servicelevel.Anytime, `{"model":"omni","stream":true,"messages":[]}`},
-		{"an online deployment", servicelevel.Idle, `{"model":"omni","messages":[]}`},
-		{"a resident deployment", servicelevel.Never, `{"model":"omni","messages":[]}`},
+		{"a stream", yieldpolicy.Anytime, `{"model":"omni","stream":true,"messages":[]}`},
+		{"an online deployment", yieldpolicy.Idle, `{"model":"omni","messages":[]}`},
+		{"a resident deployment", yieldpolicy.Never, `{"model":"omni","messages":[]}`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			p, st, key, _, front, calls := newPreemptibleProxy(t, tc.level, abortedReply, finishedReply)
@@ -120,7 +120,7 @@ func TestReplayStopsAfterItsLimit(t *testing.T) {
 		calls.Add(1)
 		_, _ = io.WriteString(w, abortedReply)
 	})
-	p, _, key, _, closeUpstream := newAccountingProxyFor(t, upstream, presetDeployment(servicelevel.Anytime))
+	p, _, key, _, closeUpstream := newAccountingProxyFor(t, upstream, presetDeployment(yieldpolicy.Anytime))
 	defer closeUpstream()
 	front := httptest.NewServer(p.Handler())
 	defer front.Close()

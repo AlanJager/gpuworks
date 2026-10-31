@@ -90,7 +90,7 @@
       "output": "下载输出文件",
       "error": "下载错误文件",
       "unavailable": "不可用",
-      "hint": "输出文件和错误文件在任务结束 {{days}} 天后删除。",
+      "hint": "输出文件和错误文件将于 {{time}} 删除。",
       "expired": "该文件已过期并被删除。"
     },
     "cancelPending": "已请求取消。在执行中的请求结束之前（最多 2 分钟），任务会一直显示为取消中。",
@@ -127,11 +127,12 @@
       "count": "文件使用了 {{count}} 个模型：{{models}}",
       "none": "文件里没有读到模型名。",
       "skipped": "文件超过 50 MB，没有在浏览器里检查其中的模型。",
-      "unknown": "文件里的这些模型在平台上没有可用的部署，对应的请求会失败：{{models}}。可以在上面选一个模型来替代它们。",
+      "unknown": "文件里的这些模型在平台上没有可用的部署，无法创建任务：{{models}}。可以在上面选一个模型来替代它们，或先部署这些模型。",
       "replaced": "文件里的模型 {{models}} 都会被替换为 {{model}}。"
     },
     "warnings": {
-      "BATCH_MODEL_SLEEP_HELD": "{{model}} 被手动或定时计划休眠，请求不会唤醒它：任务的请求会一直重试，直到有人唤醒它或任务过期。"
+      "BATCH_MODEL_SLEEP_HELD": "{{model}} 被手动或定时计划休眠，请求不会唤醒它：任务的请求会一直重试，直到有人唤醒它或任务过期。",
+      "BATCH_FILE_MODELS_SLEEP_HELD": "文件里的 {{models, list}} 被手动或定时计划休眠，请求不会唤醒它们：这些请求会一直重试，直到有人唤醒它们或任务过期。"
     },
     "created": "已创建批处理任务 {{id}}",
     "hintTitle": "格式与限制",
@@ -140,17 +141,22 @@
       "line": "每行一个请求：{\"custom_id\", \"method\": \"POST\", \"url\", \"body\": {\"model\", ...}}。",
       "unique": "custom_id 在文件内必须唯一。",
       "sameUrl": "所有行的 url 必须相同，并且等于所选端点。",
-      "noStream": "不支持流式请求。"
+      "noStream": "不支持流式请求。",
+      "retention": "任务结束后，输出文件和错误文件保留 {{days}} 天。"
     },
     "tooLarge": "文件超过 {{limit}} MB。",
     "failed": "无法创建批处理任务",
     "sample": {
       "title": "示例文件",
-      "help": "按所选端点和模型生成 5 个请求的示例，可以下载后修改，也可以直接用它创建任务。",
       "model": "示例使用的模型",
       "noModel": "暂无运行中的部署",
       "download": "下载示例",
       "use": "使用示例"
+    },
+    "dictionary": {
+      "loading": "正在读取批处理任务的可选项...",
+      "failed": "无法读取批处理任务的可选项",
+      "retry": "重试"
     }
   },
   "errors": {
@@ -177,7 +183,8 @@
       "missing_required_parameter": "缺少必填字段",
       "invalid_multipart": "上传的表单无效"
     },
-    "requestInvalid": "批处理请求无效（{{field}}）：{{reason}}"
+    "requestInvalid": "批处理请求无效（{{field}}）：{{reason}}",
+    "moreModels": "另外 {{count}} 个"
   },
   "api": {
     "title": "通过 API 调用（OpenAI 兼容的 /v1/files 与 /v1/batches）",

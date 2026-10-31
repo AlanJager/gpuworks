@@ -61,9 +61,9 @@ func (a *apiHandlers) scaleReplicas(w http.ResponseWriter, r *http.Request) {
 		if dep.UnitsAuto && len(req.Units) == 0 && req.Replicas != nil {
 			// The platform places this deployment: a count, with nodes
 			// optionally named for the new replicas' first placement.
-			units, status, err := a.autoReplicaUnits(dep, *req.Replicas, req.PlaceOn, req.Remove)
+			units, err := a.scaling().AutoReplicaUnits(dep, *req.Replicas, req.PlaceOn, req.Remove)
 			if err != nil {
-				writeErr(w, status, err)
+				writeScaleErr(w, err)
 				return
 			}
 			a.setReplicaUnits(w, r, dep, units)
@@ -158,8 +158,8 @@ func (a *apiHandlers) scaleReplicas(w http.ResponseWriter, r *http.Request) {
 // setReplicaUnits writes a multi-node deployment's listed replicas and
 // answers with the deployment.
 func (a *apiHandlers) setReplicaUnits(w http.ResponseWriter, r *http.Request, dep *store.Deployment, units []planning.PDUnit) {
-	if status, err := a.applyReplicaUnits(dep, units); err != nil {
-		writeErr(w, status, err)
+	if err := a.scaling().ApplyReplicaUnits(dep, units); err != nil {
+		writeScaleErr(w, err)
 		return
 	}
 	updated, err := a.d.Store.GetDeployment(dep.ID)
@@ -169,41 +169,6 @@ func (a *apiHandlers) setReplicaUnits(w http.ResponseWriter, r *http.Request, de
 	}
 	a.recordReplicasChanged(r, dep.ID, max(dep.Replicas, 1), max(updated.Replicas, 1))
 	writeJSON(w, http.StatusOK, a.deploymentDTO(updated, true))
-}
-
-// applyReplicaUnits writes a multi-node deployment's replicas, as
-// planning.PlanReplicaUnits checks and derives them; the status goes with the
-// error for the response.
-func (a *apiHandlers) applyReplicaUnits(dep *store.Deployment, units []planning.PDUnit) (int, error) {
-	nodes := map[string]*store.Node{}
-	var named []*store.Node
-	for _, uuid := range planning.ReplicaUnitNodes(units) {
-		node, err := a.d.Store.NodeWithGPUs(uuid)
-		if errors.Is(err, store.ErrNotFound) {
-			continue // PlanReplicaUnits names the unknown node
-		}
-		if err != nil {
-			return http.StatusInternalServerError, err
-		}
-		nodes[uuid] = node
-		named = append(named, node)
-	}
-	reqs, err := a.d.Store.DeploymentRequirements(dep.ID)
-	if err != nil {
-		return http.StatusInternalServerError, err
-	}
-	patch, err := planning.PlanReplicaUnits(dep, reqs, a.resolveForRequirements(named, reqs), units, nodes)
-	if err != nil {
-		return http.StatusBadRequest, err
-	}
-	if err := a.d.Store.SetDeploymentReplicaUnits(dep.ID, patch); err != nil {
-		if errors.Is(err, store.ErrNotFound) {
-			// Deleted while the request was read.
-			return http.StatusNotFound, err
-		}
-		return http.StatusInternalServerError, err
-	}
-	return 0, nil
 }
 
 // recordReplicasChanged puts an operator's change of the replica count on the

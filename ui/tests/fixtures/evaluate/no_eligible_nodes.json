@@ -348,5 +348,9 @@
   },
   "engine_decides_param_keys": [
     "enable_request_metrics"
-  ]
+  ],
+  "yield_policy_eligible": {
+    "ok": false,
+    "reason": "SLEEP_NOT_ENABLED"
+  }
 }

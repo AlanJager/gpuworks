@@ -9,7 +9,7 @@ import (
 	"gorm.io/gorm"
 
 	"gpuworks.ai/gpuworks/internal/proto"
-	"gpuworks.ai/gpuworks/internal/server/servicelevel"
+	"gpuworks.ai/gpuworks/internal/server/yieldpolicy"
 )
 
 var residencyBase = time.Date(2026, 10, 28, 12, 0, 0, 0, time.UTC)
@@ -104,7 +104,7 @@ func seedResidency(t *testing.T) (*Store, *Node, map[string]uint) {
 	}
 	ids := map[string]uint{}
 	for _, name := range []string{"alpha", "beta"} {
-		dep, err := s.CreateDeployment(withPolicy(&Deployment{ModelID: 1, NodeID: node.ID, Name: name, ServedName: name, Engine: "vllm", Sleepable: true, State: DeployActive}, servicelevel.TimeSlice))
+		dep, err := s.CreateDeployment(withPolicy(&Deployment{ModelID: 1, NodeID: node.ID, Name: name, ServedName: name, Engine: "vllm", Sleepable: true, State: DeployActive}, yieldpolicy.TimeSlice))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -256,12 +256,16 @@ func TestResidencySwitchCounts(t *testing.T) {
 	// a schedule; one older sleep is outside the window; an idle sleep is not
 	// a yield.
 	old := now.Add(-48 * time.Hour)
-	putEvent(t, s, "", b, EventKindAutomation, residencyAutoSleep, old, fmt.Sprintf(`{"trigger":"preempt","for_deployment":%d}`, a))
-	putEvent(t, s, "", a, EventKindAutomation, residencyAutoWake, now.Add(-5*time.Hour), `{"trigger":"request"}`)
-	putEvent(t, s, "", b, EventKindAutomation, residencyAutoSleep, now.Add(-4*time.Hour), fmt.Sprintf(`{"trigger":"preempt","reason":"rank","for_deployment":%d}`, a))
-	putEvent(t, s, "", b, EventKindAutomation, residencyAutoSleep, now.Add(-3*time.Hour), `{"trigger":"idle"}`)
-	putEvent(t, s, "", a, EventKindAutomation, residencyAutoWake, now.Add(-2*time.Hour), `{"trigger":"schedule"}`)
-	putEvent(t, s, "", b, EventKindAutomation, residencyAutoSleep, now.Add(-time.Hour), fmt.Sprintf(`{"trigger":"preempt","reason":"turn","for_deployment":%d}`, a))
+	putEvent(t, s, "", b, EventKindAutomation, "AUTO_SLEEP", old, fmt.Sprintf(`{"trigger":"preempt","for_deployment":%d}`, a))
+	putEvent(t, s, "", a, EventKindAutomation, "AUTO_WAKE", now.Add(-5*time.Hour), `{"trigger":"request"}`)
+	putEvent(t, s, "", b, EventKindAutomation, "AUTO_SLEEP", now.Add(-4*time.Hour), fmt.Sprintf(`{"trigger":"preempt","reason":"rank","for_deployment":%d}`, a))
+	putEvent(t, s, "", b, EventKindAutomation, "AUTO_SLEEP", now.Add(-3*time.Hour), `{"trigger":"idle"}`)
+	putEvent(t, s, "", a, EventKindAutomation, "AUTO_WAKE", now.Add(-2*time.Hour), `{"trigger":"schedule"}`)
+	putEvent(t, s, "", b, EventKindAutomation, "AUTO_SLEEP", now.Add(-time.Hour), fmt.Sprintf(`{"trigger":"preempt","reason":"turn","for_deployment":%d}`, a))
+	// An operator's yielding wake of alpha put beta to sleep: a yield too,
+	// recorded on beta with alpha's name (no id), so beta's count has it and
+	// no deployment is credited as yielded-to.
+	putEvent(t, s, "", b, EventKindAutomation, "YIELDED_FOR_WAKE", now.Add(-30*time.Minute), `{"deployment":"alpha","instances":["b-1"],"level":1}`)
 	first, ok, err := s.ResidencyWindowStart(now.Add(-6 * time.Hour))
 	if err != nil || !ok {
 		t.Fatalf("window start: %v %v", ok, err)
@@ -270,11 +274,25 @@ func TestResidencySwitchCounts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got[a] != (ResidencySwitches{YieldedTo: 2, Wakes: 2}) || got[b] != (ResidencySwitches{Yielded: 2}) {
+	if got[a] != (ResidencySwitches{YieldedTo: 2, Wakes: 2}) || got[b] != (ResidencySwitches{Yielded: 3}) {
 		t.Fatalf("counts = %+v", got)
 	}
+	// The overview's count of the same window goes by the same definition.
+	events, err := s.YieldEvents(now.Add(-6 * time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	overview := 0
+	for _, ev := range events {
+		if IsYield(ev) {
+			overview++
+		}
+	}
+	if overview != got[a].Yielded+got[b].Yielded {
+		t.Fatalf("the overview counts %d yields, the timeline %d", overview, got[a].Yielded+got[b].Yielded)
+	}
 	names, err := s.ResidencyDeployments([]uint{a, 9999})
-	if err != nil || names[a].Name != "alpha" || names[a].Yield != servicelevel.TimeSlice {
+	if err != nil || names[a].Name != "alpha" || names[a].Yield != yieldpolicy.TimeSlice {
 		t.Fatalf("names = %+v, %v", names, err)
 	}
 	if _, ok := names[9999]; ok {

@@ -459,11 +459,7 @@ func allocateInstances(st *store.Store, node *store.Node, instances []store.Inst
 	// The node is homogeneous, so one architecture describes every claim on it.
 	_, _, archFamily, _ := nodeGPUProfile(node)
 	for _, instance := range instances {
-		// A failed non-sleep generation is handled by the controller's removing
-		// flow and follows the master ledger: it is not a live claim. A failed
-		// sleep report is different - its engine may still own the card - so retain
-		// that claim until the agent confirms stopped.
-		if instance.State == proto.InstStopped || (instance.State == proto.InstFailed && instance.Phase != proto.PhaseSleep) || view.excludes(&instance) {
+		if !holdsClaim(&instance) || view.excludes(&instance) {
 			continue
 		}
 		// A wake order is conservative until the agent reports awake: the
@@ -511,14 +507,12 @@ func chargesResidue(st *store.Store, in *store.Instance) bool {
 // pairs the deployment with its engine's declared capability so callers that
 // hold the entity need not assemble the policy input themselves.
 func SleepEligibility(dep *store.Deployment) string {
-	profile, _ := deploy.ProfileForEngine(dep.Engine)
-	return sleep.Eligible(sleep.Deployment{Sleepable: dep.Sleepable, Caps: profile.Sleep})
+	return sleep.Eligible(sleep.Deployment{Sleepable: dep.Sleepable, Caps: deploy.SleepCapsForEngine(dep.Engine)})
 }
 
 // SleepDeclarable answers whether a deployment request may declare itself
 // sleepable on the engine it names; a request that does not ask to sleep is
 // always fine.
 func SleepDeclarable(sleepable bool, engine string) string {
-	profile, _ := deploy.ProfileForEngine(engine)
-	return sleep.Declarable(sleep.Deployment{Sleepable: sleepable, Caps: profile.Sleep})
+	return sleep.Declarable(sleep.Deployment{Sleepable: sleepable, Caps: deploy.SleepCapsForEngine(engine)})
 }

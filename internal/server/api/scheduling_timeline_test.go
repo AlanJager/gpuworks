@@ -10,8 +10,8 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
-	"gpuworks.ai/gpuworks/internal/server/servicelevel"
 	"gpuworks.ai/gpuworks/internal/server/store"
+	"gpuworks.ai/gpuworks/internal/server/yieldpolicy"
 )
 
 type timelineRig struct {
@@ -43,7 +43,7 @@ func newTimelineRig(t *testing.T) *timelineRig {
 		}
 		return dep
 	}
-	r := &timelineRig{scheduleRig: rig, node: node, t0: time.Now().UTC().Truncate(time.Second).Add(-3 * time.Hour), shared: mk("night-batch", servicelevel.TimeSlice), res: mk("always-on", servicelevel.Never)}
+	r := &timelineRig{scheduleRig: rig, node: node, t0: time.Now().UTC().Truncate(time.Second).Add(-3 * time.Hour), shared: mk("night-batch", yieldpolicy.TimeSlice), res: mk("always-on", yieldpolicy.Never)}
 	for _, in := range []store.Instance{
 		{UUID: "inst-shared", DeploymentID: r.shared.ID, NodeID: node.ID, State: proto.InstRunning, GPUIndexes: "[0]", CreatedAt: r.t0},
 		{UUID: "inst-plain", DeploymentID: r.plain.ID, NodeID: node.ID, State: proto.InstRunning, GPUIndexes: "[1]", CreatedAt: r.t0},

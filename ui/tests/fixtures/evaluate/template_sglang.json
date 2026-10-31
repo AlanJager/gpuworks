@@ -357,5 +357,9 @@
     "kv_cache_dtype": "auto",
     "log_level": "info",
     "served_model_name": ""
+  },
+  "yield_policy_eligible": {
+    "ok": false,
+    "reason": "SLEEP_NOT_ENABLED"
   }
 }
