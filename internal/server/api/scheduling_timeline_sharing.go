@@ -46,20 +46,30 @@ func (a *apiHandlers) cachedSharingTimeline(now time.Time, hours int) (dto.Sched
 
 // sharingTimeline is the stats of the deployments that share GPUs across the
 // fleet, with no node's lanes: what the scheduling center shows beside the
-// overview, read for the shared deployments' instances only.
+// overview, read for the shared deployments' instances only. The deployments
+// deleted since that took part in a yield over the window are read too: they
+// shared cards then.
 func (a *apiHandlers) sharingTimeline(now time.Time, hours int) (dto.SchedulingTimeline, error) {
 	from := now.Add(-time.Duration(hours) * time.Hour)
 	out := dto.SchedulingTimeline{
 		Window: dto.TimelineWindow{From: from, To: now, Hours: hours},
 		Nodes:  []dto.TimelineNode{}, Deployments: []dto.TimelineDeployment{},
 	}
+	counts, err := a.switchCounts(now, hours)
+	if err != nil {
+		return out, err
+	}
 	ids, err := a.d.Store.SharedDeploymentIDs()
 	if err != nil {
 		return out, err
 	}
-	insts, events, err := a.d.Store.ResidencyInputsOf(ids, from)
+	gone, err := a.deletedSharers(ids, counts)
 	if err != nil {
 		return out, err
 	}
-	return a.fillTimeline(out, nil, insts, events, from, now)
+	insts, events, err := a.d.Store.ResidencyInputsOf(append(ids, gone...), from)
+	if err != nil {
+		return out, err
+	}
+	return a.fillTimeline(out, nil, insts, events, counts, from, now)
 }

@@ -181,7 +181,7 @@
       "waitP50": "挂起等待 p50",
       "waitP95": "挂起等待 p95"
     },
-    "awakeShare": "{{span}}（{{share}}%）",
+    "awakeShare": "{{span}} / {{present}}（{{share}}%）",
     "wait": {
       "ms": "{{value}} 毫秒",
       "seconds": "{{value}} 秒",

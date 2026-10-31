@@ -43,6 +43,10 @@ type overviewCache struct {
 	rebuilds atomic.Int64
 	// sharing is the fleet's sharing stats (scheduling_timeline_sharing.go).
 	sharing sharingCache
+	// switches is every deployment's switch counts per window
+	// (scheduling_timeline_stats.go), which the sharing stats and the node
+	// timelines both read.
+	switches switchCache
 }
 
 // schedulingOverview answers GET /scheduling/overview: every node and each

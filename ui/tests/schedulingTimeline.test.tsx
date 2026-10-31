@@ -54,8 +54,9 @@ function timeline(overrides: Partial<Timeline> = {}): Timeline {
       ],
     }],
     deployments: [
-      { deployment_id: 7, deployment: "qwen", yield_policy: "timeslice", awake_seconds: 7200, awake_share: 0.3333, switches: 3, yielded: 1, yielded_to: 2, wakes: 2, held_requests: 4, wait_p50_ms: 4200, wait_p95_ms: 31000, cards: [{ node_id: 1, node: "gpu-a", gpus: [0, 1] }, { node_id: 9, node: "", gpus: [2] }] },
-      { deployment_id: 8, deployment: "llama", yield_policy: "anytime", awake_seconds: 30, awake_share: 0.0014, switches: 0, yielded: 0, yielded_to: 0, wakes: 0, held_requests: 0, cards: [] },
+      { deployment_id: 7, deployment: "qwen", yield_policy: "timeslice", awake_seconds: 7200, awake_share: 0.3333, present_seconds: 21600, switches: 3, yielded: 1, yielded_to: 2, wakes: 2, held_requests: 4, wait_p50_ms: 4200, wait_p95_ms: 31000, cards: [{ node_id: 1, node: "gpu-a", gpus: [0, 1] }, { node_id: 9, node: "", gpus: [2] }] },
+      { deployment_id: 8, deployment: "llama", yield_policy: "anytime", awake_seconds: 30, awake_share: 0.0014, present_seconds: 21600, switches: 0, yielded: 0, yielded_to: 0, wakes: 0, held_requests: 0, cards: [] },
+      { deployment_id: 11, deployment: "old-batch", deployment_deleted: true, yield_policy: "", awake_seconds: 6900, awake_share: 0.9583, present_seconds: 7200, switches: 2, yielded: 2, yielded_to: 0, wakes: 0, held_requests: 0, cards: [] },
     ],
     ...overrides,
   };
@@ -100,6 +101,9 @@ test("lanes are one per deployment in the order they first held the card; unlist
   const lanes = lanesOf(timeline().nodes[0].gpus[0].segments, timeline().deployments);
   assert.deepEqual(lanes.map((lane) => [lane.deployment, lane.policy, lane.segments.length]), [["qwen", "timeslice", 3], ["llama", "anytime", 1]]);
   assert.equal(lanesOf(timeline().nodes[0].gpus[1].segments, timeline().deployments)[0].policy, "never");
+  assert.ok(lanes.every((lane) => !lane.deleted));
+  const gone = lanesOf([{ deployment_id: 11, deployment: "old-batch", instance: "i11", state: "awake", from: at(0), to: at(2) }], timeline().deployments);
+  assert.deepEqual(gone.map((lane) => [lane.deployment, lane.deleted]), [["old-batch", true]]);
 });
 
 test("a loading status shows until the timeline answers", async () => {
@@ -227,7 +231,7 @@ test("the sharing table lists the yield policy, awake time, switches, yields and
   const qwen = table.getByRole("link", { name: "qwen" }).closest("tr") as HTMLElement;
   const cells = within(qwen);
   assert.ok(cells.getByText(i18n.t("deployments:yieldPolicy.policy.name.timeslice")));
-  assert.ok(cells.getByText(i18n.t("scheduling:timeline.awakeShare", { span: i18n.t("deployments:duration.hoursMinutes", { hours: 2, minutes: 0 }), share: 33.3 })));
+  assert.ok(cells.getByText(i18n.t("scheduling:timeline.awakeShare", { span: i18n.t("deployments:duration.hoursMinutes", { hours: 2, minutes: 0 }), present: i18n.t("deployments:duration.hoursMinutes", { hours: 6, minutes: 0 }), share: 33.3 })));
   // Where it is now: each node with its GPUs, a node no longer known by id.
   assert.ok(cells.getByText(i18n.t("scheduling:timeline.cardsOnNode", { node: "gpu-a", gpus: "0, 1" })));
   assert.ok(cells.getByText(i18n.t("scheduling:timeline.cardsOnNode", { node: "#9", gpus: "2" })));
@@ -239,7 +243,28 @@ test("the sharing table lists the yield policy, awake time, switches, yields and
   const llama = within(table.getByRole("link", { name: "llama" }).closest("tr") as HTMLElement);
   // Not placed anywhere, and no wait figures: dashes, not zeros.
   assert.equal(llama.getAllByText("—").length, 3);
-  assert.ok(llama.getByText(i18n.t("scheduling:timeline.awakeShare", { span: i18n.t("deployments:duration.seconds", { value: 30 }), share: 0.1 })));
+  assert.ok(llama.getByText(i18n.t("scheduling:timeline.awakeShare", { span: i18n.t("deployments:duration.seconds", { value: 30 }), present: i18n.t("deployments:duration.hoursMinutes", { hours: 6, minutes: 0 }), share: 0.1 })));
+});
+
+test("a deleted deployment that shared cards is listed greyed and marked, with no link, no policy and its share of the time it existed", async () => {
+  const base = timeline();
+  const gpus = base.nodes[0].gpus.map((gpu) => gpu.index === 1 ? { ...gpu, segments: [{ deployment_id: 11, deployment: "old-batch", instance: "i11", state: "awake" as const, from: at(0), to: at(2) }, ...gpu.segments] } : gpu);
+  schedulingApi.timeline = async () => ({ ...base, nodes: [{ ...base.nodes[0], gpus }] });
+  mount();
+  await screen.findByText(s.timeline.sharingTitle);
+  // Its lane is marked the same way, with no link either.
+  const lane = screen.getByRole("group", { name: i18n.t("scheduling:timeline.laneAria", { deployment: "old-batch" }) }).closest(".timeline-lane") as HTMLElement;
+  assert.ok(within(lane).getByText(i18n.t("scheduling:history.deleted", { name: "old-batch" })).closest(".ant-typography-secondary"));
+  assert.equal(within(lane).queryByRole("link"), null);
+  const table = within(screen.getByRole("table"));
+  const name = table.getByText(i18n.t("scheduling:history.deleted", { name: "old-batch" }));
+  assert.ok(name.closest(".ant-typography-secondary"), "the deleted name is greyed");
+  assert.equal(table.queryByRole("link", { name: /old-batch/ }), null);
+  const row = within(name.closest("tr") as HTMLElement);
+  // No policy kept: a dash for the level, as for no cards; awake 1 h 55 min
+  // of the 2 h it existed.
+  assert.equal(row.getAllByText("—").length, 4);
+  assert.ok(row.getByText(i18n.t("scheduling:timeline.awakeShare", { span: i18n.t("deployments:duration.hoursMinutes", { hours: 1, minutes: 55 }), present: i18n.t("deployments:duration.hoursMinutes", { hours: 2, minutes: 0 }), share: 95.8 })));
 });
 
 test("a failed refresh keeps the last timeline and warns", async () => {
