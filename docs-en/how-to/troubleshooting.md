@@ -379,6 +379,11 @@ gets its identities filled in by a migration when the server is upgraded, and th
 Such a card is also left out of the periodic runtime check and of the recheck after an instance fails to start: someone else's workload should not be disturbed,
 and memory held by someone else says nothing about whether the runtime can use the card. The card keeps its last check result, and checking resumes once the processes exit.
 
+While the runtime check's own process (or container) is on a card, and for 15 seconds after it ends, the card is not judged for use outside the platform and keeps the previous round's answer,
+so the check never reports a card as “In use outside the platform”. If the card is given to an instance, or a process outside the platform appears, while it is being checked, a failure of that check is discarded:
+it is not recorded on the card and earns no backoff. An instance waits for a check in progress on its cards before starting (at most 10 seconds), so the two do not push each other out on a card
+only one process may open (an Ascend die without device-share). Diagnose's checks follow the same rules.
+
 Where each vendor's card processes are read from:
 
 | Vendor | Source | Command to verify |

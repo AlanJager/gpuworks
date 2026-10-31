@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"sync"
+	"time"
 
 	"gpuworks.ai/gpuworks/internal/accelerator"
 	"gpuworks.ai/gpuworks/internal/agent/engine"
@@ -96,6 +97,18 @@ func (o *cardOccupancy) foreign(ident string) bool {
 	return len(o.last[ident]) > 0
 }
 
+// smokeOccupancyGrace is how long after a runtime check a listing may still
+// show its process: npu-smi's table is reused for five seconds, and the
+// listing is read a moment after the probe that fetched it.
+const smokeOccupancyGrace = 15 * time.Second
+
+// restateCard lays the last answer over one card this round did not examine.
+func (o *cardOccupancy) restateCard(card *proto.GPUInfo) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	card.ForeignProcesses = append([]proto.CardProcess(nil), o.last[accelerator.CardIdent(card.UUID, card.PCIeBDF)]...)
+}
+
 // restate lays the last answer over cards this round could not examine.
 func (o *cardOccupancy) restate(gpus []proto.GPUInfo) {
 	o.mu.Lock()
@@ -158,6 +171,13 @@ func (n *NodeRuntime) applyForeignProcesses(ctx context.Context, gpus []proto.GP
 		card := &gpus[i]
 		ident := accelerator.CardIdent(card.UUID, card.PCIeBDF)
 		if !accelerator.CardUsable(card.Ownership) {
+			continue
+		}
+		if n.cardSmoke.Touched(ident, smokeOccupancyGrace) {
+			// The runtime check's own process is on the card, or was when
+			// the vendor tool listed it. The check only asks cards nobody
+			// uses, so the last answer stands for this round.
+			n.occupancy.restateCard(card)
 			continue
 		}
 		// A card of ours is examined only when every instance on it sleeps

@@ -57,6 +57,9 @@ func (n *NodeRuntime) startCardSmoke(ctx context.Context) {
 		Unavailable: func() string { return smokeUnavailable(check) },
 		Timeout:     check.Timeout,
 	})
+	if n.engine != nil {
+		n.engine.SetCardGate(n.cardSmoke.WaitIdle)
+	}
 	n.cardSmokeCtx = ctx
 	go n.cardSmoke.Run(ctx)
 }

@@ -559,7 +559,17 @@ func TestDoctorAsksEachHygonCardAndSkipsForeignOnes(t *testing.T) {
 	ctx := withDoctorCardsInUse(t.Context(), func() (map[string]bool, bool) { return map[string]bool{}, true })
 	foreign := accelerator.CardIdent("hygon-c", "0000:69:00.0")
 	ctx = withDoctorForeignCards(ctx, func(ident string) bool { return ident == foreign })
+	inFlight := map[string]int{}
+	var began []string
+	ctx = withDoctorAttempts(ctx, func(ident string) func() {
+		inFlight[ident]++
+		began = append(began, ident)
+		return func() { inFlight[ident]-- }
+	})
 	doctorCardRuntimeChecks(ctx, &r, cards)
+	if len(began) != 2 || inFlight[began[0]] != 0 || inFlight[began[1]] != 0 {
+		t.Fatalf("attempts begun %v, in flight after %v: want each checked card marked and released", began, inFlight)
+	}
 
 	if strings.Join(asked, ",") != "0000:67:00.0,0000:68:00.0" {
 		t.Fatalf("asked %v, want the two cards nobody else uses", asked)

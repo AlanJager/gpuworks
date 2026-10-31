@@ -172,6 +172,9 @@ type Runner struct {
 	// deferred is whether the last round asked no card because what this
 	// node runs was not known yet, which one retry can resolve.
 	deferred bool
+	// attempts are the checks on each card now and a moment ago (Touched,
+	// WaitIdle).
+	attempts attemptLog
 }
 
 func New(cfg Config) *Runner {
@@ -382,8 +385,10 @@ func (r *Runner) tryUnlessBusy(ctx context.Context, card Card, skipBusy bool) st
 		finishedAt time.Time
 	}
 	done := make(chan attemptAnswer, 1)
+	end := r.Begin(card.Ident)
 	go func() {
 		err := r.cfg.Try(attempt, card)
+		end()
 		// Sent before the mark is cleared, so the runner either sees the
 		// answer or finds the mark already gone, never a mark left behind.
 		done <- attemptAnswer{err: err, finishedAt: time.Now()}
@@ -433,6 +438,17 @@ func (r *Runner) tryUnlessBusy(ctx context.Context, card Card, skipBusy bool) st
 		// shutdown's, not the card's.
 		return ""
 	}
+	if err != nil && r.claimedDuring(card, skipBusy) {
+		// An instance was placed on the card, or somebody outside the
+		// platform started using it, while it was being asked. On a card
+		// only one process may open, the failure is theirs having got
+		// there first, not the card's: nothing is recorded and no backoff
+		// is earned. A round asks it again once it is free.
+		if err == timeoutErr {
+			return timeoutErr.Error()
+		}
+		return ""
+	}
 	if inconclusive := inconclusiveReason(err); inconclusive != "" {
 		// A host failure cannot push a card into a backoff it did not earn.
 		return inconclusive
@@ -448,6 +464,13 @@ func (r *Runner) tryUnlessBusy(ctx context.Context, card Card, skipBusy bool) st
 		return timeoutErr.Error()
 	}
 	return ""
+}
+
+// claimedDuring reports whether the card was taken by an instance (only when
+// the attempt was one that leaves held cards alone) or by somebody outside
+// the platform since the attempt began.
+func (r *Runner) claimedDuring(card Card, skipBusy bool) bool {
+	return (skipBusy && r.busy(card)) || (r.cfg.Foreign != nil && r.cfg.Foreign(card))
 }
 
 func (r *Runner) backingOff(ident string) bool {

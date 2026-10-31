@@ -193,7 +193,9 @@ func (run *doctorDieRun) ask(ctx context.Context, dies []doctorDie) {
 		budgetCut := remaining < timeout
 		attemptTimeout := min(timeout, remaining)
 		attempt, cancel := context.WithTimeout(ctx, attemptTimeout)
+		end := doctorBeginAttempt(ctx, accelerator.CardIdent(die.gpu.UUID, die.gpu.PCIeBDF))
 		err := run.check.Try(attempt, die.visible)
+		end()
 		expired := attempt.Err() != nil
 		cancel()
 		at := time.Now()
@@ -227,6 +229,33 @@ func (run *doctorDieRun) ask(ctx context.Context, dies []doctorDie) {
 // doctorHeldCards is the dies held by serving instances, and whether that is
 // known. A run with no source for it (the standalone CLI, which runs beside
 // whatever the agent is serving) asks every die.
+type doctorAttemptsKey struct{}
+
+// withDoctorAttempts tells a doctor run how to mark a check as on a card
+// (cardsmoke.Runner.Begin), so the occupancy report and an instance starting
+// on the card see it the way they see the periodic check.
+func withDoctorAttempts(ctx context.Context, begin func(ident string) func()) context.Context {
+	return context.WithValue(ctx, doctorAttemptsKey{}, begin)
+}
+
+func doctorBeginAttempt(ctx context.Context, idents ...string) func() {
+	begin, ok := ctx.Value(doctorAttemptsKey{}).(func(string) func())
+	if !ok || begin == nil {
+		return func() {}
+	}
+	ends := make([]func(), 0, len(idents))
+	for _, ident := range idents {
+		if ident != "" {
+			ends = append(ends, begin(ident))
+		}
+	}
+	return func() {
+		for _, end := range ends {
+			end()
+		}
+	}
+}
+
 type doctorRuntimeCheckKey struct{}
 
 // withDoctorRuntimeCheck tells a doctor run how this node asks its cards, so
