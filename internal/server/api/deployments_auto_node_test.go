@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
+	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
 // An automatic single-node create may name no node: the server picks the one
@@ -84,5 +85,85 @@ func TestAutomaticCreateWithoutANodeReportsWhyNoneFits(t *testing.T) {
 	}
 	if deps, err := st.ListDeployments(); err != nil || len(deps) != 0 {
 		t.Fatalf("a refused create stored %d deployments (%v)", len(deps), err)
+	}
+}
+
+// When the cards the server picked are taken before the create re-checks
+// them (another create placing replicas a moment earlier), a create that
+// named no node is placed again on a node that still fits; a create that
+// named its node keeps the stale conflict (covered by
+// TestAutomaticPlacementCreateRejectsWhenVRAMWasTaken).
+func TestAutomaticCreateWithoutANodePicksAgainWhenThePickIsTaken(t *testing.T) {
+	h, st := automaticPlacementFixture(t)
+	big, err := st.UpsertModel(&store.Model{Source: "huggingface", SourceID: "org/auto-big", Revision: "main", Name: "auto-big", WeightBytes: 40 << 30})
+	if err != nil {
+		t.Fatal(err)
+	}
+	occupier, err := st.CreateDeployment(&store.Deployment{Name: "occupier", ModelID: big.ID, State: "active"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var picks []string
+	afterAutomaticPick = func(nodeUUID string) {
+		picks = append(picks, nodeUUID)
+		if len(picks) > 1 {
+			return
+		}
+		node, err := st.NodeByUUID(nodeUUID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := st.CreateInstance(&store.Instance{UUID: "taken-" + nodeUUID, DeploymentID: occupier.ID, NodeID: node.ID, State: "running", GPUIndexes: "[0]", APIPort: 30001}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Cleanup(func() { afterAutomaticPick = nil })
+
+	rec := httptest.NewRecorder()
+	h.createDeployment(rec, httptest.NewRequest(http.MethodPost, "/api/v1/deployments", strings.NewReader(fmt.Sprintf(`{"name":"again","served_name":"again","model_id":%d,"engine":"vllm","image":"example/vllm:test","placement_mode":"auto","quick_params":{}}`, big.ID))))
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d body = %s, want the second pick to succeed", rec.Code, rec.Body.String())
+	}
+	if len(picks) != 2 || picks[0] == picks[1] {
+		t.Fatalf("picks = %v, want a second pick on the other 80 GiB node", picks)
+	}
+}
+
+// Picking again is bounded: when every pick is taken, the create gives up
+// after automaticPickAttempts and stores nothing.
+func TestAutomaticCreateWithoutANodeStopsPickingAgain(t *testing.T) {
+	h, st := automaticPlacementFixture(t)
+	big, err := st.UpsertModel(&store.Model{Source: "huggingface", SourceID: "org/auto-big", Revision: "main", Name: "auto-big", WeightBytes: 40 << 30})
+	if err != nil {
+		t.Fatal(err)
+	}
+	occupier, err := st.CreateDeployment(&store.Deployment{Name: "occupier", ModelID: big.ID, State: "active"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	picks := 0
+	afterAutomaticPick = func(nodeUUID string) {
+		picks++
+		node, err := st.NodeByUUID(nodeUUID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := st.CreateInstance(&store.Instance{UUID: fmt.Sprintf("taken-%d", picks), DeploymentID: occupier.ID, NodeID: node.ID, State: "running", GPUIndexes: "[0]", APIPort: 30001 + picks}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Cleanup(func() { afterAutomaticPick = nil })
+
+	rec := httptest.NewRecorder()
+	h.createDeployment(rec, httptest.NewRequest(http.MethodPost, "/api/v1/deployments", strings.NewReader(fmt.Sprintf(`{"name":"never","served_name":"never","model_id":%d,"engine":"vllm","image":"example/vllm:test","placement_mode":"auto","quick_params":{}}`, big.ID))))
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("status = %d body = %s, want a conflict once no pick holds", rec.Code, rec.Body.String())
+	}
+	if picks > automaticPickAttempts {
+		t.Fatalf("picked %d times, want at most %d", picks, automaticPickAttempts)
+	}
+	deps, err := st.ListDeployments()
+	if err != nil || len(deps) != 1 {
+		t.Fatalf("deployments = %d (%v), want only the occupier", len(deps), err)
 	}
 }
