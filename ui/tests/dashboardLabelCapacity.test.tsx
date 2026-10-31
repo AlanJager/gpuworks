@@ -73,7 +73,7 @@ function stub() {
   api.nodesPage = async () => ({ items: [], total: 0 }) as never;
   api.monitorOverview = async () => ({ as_of: 1000, stale: false, services: [], signals: [
     { key: "ready_replicas", collected: true, value: 2, denominator: 3 },
-    { key: "request_rate", collected: true, value: 12.3 },
+    { key: "request_rate", collected: true, value: 12.3, denominator: 19.96 },
     { key: "error_rate", collected: true, value: 1.2 },
     { key: "ttft", collected: true, value: 345.6, detail: { upper_bound: true } },
     { key: "waiting", collected: true, value: 2.4 },
@@ -152,7 +152,7 @@ test("overview token total adds reported input and output once and opens the sam
 test("monitor summary uses current monitor signals and links to the monitor's matching range", async () => {
   stub(); renderPage();
   const monitor = document.querySelector(".dashboard-overview-monitor")!;
-  await waitFor(() => assert.deepEqual([...monitor.querySelectorAll(".dashboard-overview-metric strong")].map((value) => value.textContent), ["12.3 req/s", "1.2%", "345.6 ms", "2.4"]));
+  await waitFor(() => assert.deepEqual([...monitor.querySelectorAll(".dashboard-overview-metric strong")].map((value) => value.textContent), ["12.3 req/s · 20 conn", "1.2%", "345.6 ms", "2.4"]));
   assert.equal(monitor.querySelector(".dashboard-overview-replica-count")?.textContent, "Ready replicas 2/3");
   assert.equal(monitor.querySelector(".dashboard-overview-count")?.textContent, "Last 5 minutes");
   assert.equal(monitor.querySelector("a.dashboard-overview-module-arrow")?.getAttribute("href"), "/monitor?range=6h");

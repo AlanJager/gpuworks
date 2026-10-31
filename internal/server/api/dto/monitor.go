@@ -57,6 +57,10 @@ type Point [2]float64
 // {"upper_bound": true} on those two signals for exactly this reason, so
 // the UI can label the number instead of presenting it as an exact
 // statistic.
+//
+// For "request_rate", Denominator is the gateway's average requests in
+// flight over the same window (the concurrency the rate was served at),
+// absent when no deployment reports the in-flight gauge.
 type MonitorSignal struct {
 	Key         string         `json:"key"`
 	Collected   bool           `json:"collected"`

@@ -147,7 +147,7 @@ func (a *apiHandlers) deploymentDTOFrom(rows dtoLookup, d *store.Deployment, wit
 	}
 	out.Operations = []dto.DeploymentOperation{}
 	model := rows.model(d.ModelID)
-	contract := inferenceapi.ResolveDeploymentContract(nil, d, insts) // no operations
+	contract := inferenceapi.ResolveDeploymentContract(nil, d) // no operations
 	if model != nil && d.ModelID != 0 {
 		contract = inferenceapi.ModelContract(model)
 	}

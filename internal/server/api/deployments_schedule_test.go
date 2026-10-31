@@ -208,7 +208,7 @@ func TestScheduleValidation(t *testing.T) {
 		{name: "wake with replicas", body: `{"action":"wake","weekdays":[1],"time":"21:00","replicas":2}`, field: "replicas"},
 		{name: "replicas without count", body: `{"action":"replicas","weekdays":[1],"time":"21:00"}`, dep: rig.plain, field: "replicas"},
 		{name: "replicas 0", body: `{"action":"replicas","weekdays":[1],"time":"21:00","replicas":0}`, dep: rig.plain, field: "replicas"},
-		{name: "replicas 33", body: `{"action":"replicas","weekdays":[1],"time":"21:00","replicas":33}`, dep: rig.plain, field: "replicas"},
+		{name: "replicas 1025", body: `{"action":"replicas","weekdays":[1],"time":"21:00","replicas":1025}`, dep: rig.plain, field: "replicas"},
 		{name: "replicas negative", body: `{"action":"replicas","weekdays":[1],"time":"21:00","replicas":-1}`, dep: rig.plain, field: "replicas"},
 		{name: "unknown time zone", body: `{"action":"wake","weekdays":[1],"time":"21:00","timezone":"Mars/Base"}`, status: 400, code: "SCHEDULE_TIMEZONE_UNKNOWN"},
 		{name: "replicas of a multi-node deployment placed by hand", body: `{"action":"replicas","weekdays":[1],"time":"21:00","replicas":2}`, dep: rig.multi, status: 400, code: "SCHEDULE_REPLICAS_MANUAL_PLACEMENT"},

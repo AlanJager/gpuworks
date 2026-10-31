@@ -193,7 +193,7 @@ export default function DashboardPage() {
       </Card>
       <Card size="small" className="dashboard-overview-panel dashboard-overview-monitor"><PanelHead title={t("overview.monitorSummary")} extra={<><Tooltip title={t("overview.replicaCountTip")}><span className="dashboard-overview-replica-count">{t("overview.readyReplicasLabel")} <strong>{fmt(readyReplicas)}/{fmt(desiredReplicas)}</strong></span></Tooltip><span className="dashboard-overview-count">{monitorStatus}</span><ModuleArrow to="/monitor?range=6h" label={t("overview.viewMonitor")} /></>} />
         <div className="dashboard-overview-metrics">
-          <Metric label={t("overview.requestRate")} value={requestRate?.collected && requestRate.value != null ? `${requestRate.value.toFixed(1)} req/s` : "—"} tip={t("overview.requestRateTip")} />
+          <Metric label={t("overview.requestRate")} value={requestRate?.collected && requestRate.value != null ? `${requestRate.value.toFixed(1)} req/s${requestRate.denominator != null ? ` · ${Number(requestRate.denominator.toFixed(1))} ${t("overview.inflightUnit")}` : ""}` : "—"} tip={t("overview.requestRateTip")} />
           <Metric label={t("overview.errorRate")} value={errorRate?.collected ? fmtPct(errorRate.value) : "—"} tip={t("overview.errorRateTip")} />
           <Metric label={t("overview.ttftP95")} value={ttft?.collected && ttft.value != null ? `${ttft.value.toFixed(1)} ms` : "—"} tip={t("overview.ttftP95Tip")} />
           <Metric label={t("overview.waitingP95")} value={waiting?.collected && waiting.value != null ? waiting.value.toFixed(1) : "—"} tip={t("overview.waitingP95Tip")} />

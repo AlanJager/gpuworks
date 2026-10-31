@@ -138,6 +138,10 @@ func (a *apiHandlers) createDeployment(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err)
 		return
 	}
+	if err := a.pickAutomaticNode(r, &req); err != nil {
+		writeErr(w, http.StatusConflict, err)
+		return
+	}
 	reqs, strategy, status, err := a.requestPlacement(&req)
 	if err != nil {
 		writeErr(w, status, err)

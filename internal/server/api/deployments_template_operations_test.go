@@ -199,7 +199,7 @@ func TestTemplateDeploymentMakesRegisteredModelWithoutTaskUsable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	contract := inferenceapi.ResolveDeploymentContract(st, row, nil)
+	contract := inferenceapi.ResolveDeploymentContract(st, row)
 	if !inferenceapi.AllowsContractRequest(contract, http.MethodPost, "/v1/embeddings") {
 		t.Fatalf("proxy contract still refuses the template's operation: %+v", contract.Operations)
 	}

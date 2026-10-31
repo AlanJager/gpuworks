@@ -378,8 +378,7 @@ func (p *Proxy) PlaygroundHandler(box *auth.Secretbox) http.HandlerFunc {
 			writeErr(w, status, message)
 			return
 		}
-		instances, _ := p.store.InstancesForDeployment(deployment.ID)
-		contract := inferenceapi.ResolveDeploymentContract(p.store, deployment, instances)
+		contract := inferenceapi.ResolveDeploymentContract(p.store, deployment)
 		if !inferenceapi.AllowsContractRequest(contract, r.Method, r.URL.Path) {
 			p.acct.RecordImmediate(deployment.ID, http.StatusNotFound, false)
 			writeErr(w, http.StatusNotFound, fmt.Sprintf("deployment %s does not expose %s %s", modelName, r.Method, r.URL.Path))
