@@ -31,6 +31,11 @@ var (
 		"remapped_rows.pending",
 		"remapped_rows.failure",
 	}
+	// NVIDIARecoveryField is the recovery the driver itself asks for after an
+	// error ("None", or a reset, a reboot, draining P2P first); drivers from
+	// R550 answer it. It is the state behind most Xid events: the driver
+	// clears it once the recovery has been done.
+	NVIDIARecoveryField = "gpu_recovery_action"
 	// HygonRASBlocks are the driver's RAS blocks whose error counts the agent
 	// reads (/sys/bus/pci/devices/<bdf>/ras/<block>_err_count): memory first,
 	// then the blocks a K100 driver enables RAS for. A block whose file is
@@ -78,6 +83,10 @@ func HealthGuideFor(card HealthCard, evidence []HealthField) (HealthGuide, bool)
 	// so it is answered here instead of in each vendor's rules.
 	if card.Code == HealthRuntimeUnusable {
 		return runtimeUnusableGuide(card)
+	}
+	// PCIe findings are read from sysfs the same way on every vendor.
+	if guide, ok := pcieHealthGuide(card.Code, evidence); ok {
+		return guide, true
 	}
 	target := HealthTarget(card.BDF, card.Index)
 	if target == "" {
@@ -202,6 +211,59 @@ func nvidiaHealthGuide(code, target string, evidence []HealthField) (HealthGuide
 		return memory, true
 	case HealthMemoryRemapFailed, HealthMemoryErrorHistory:
 		return memory, true
+	case HealthNVLinkDown:
+		return HealthGuide{
+			Probe:   "nvidia-smi nvlink -s -e -i " + target,
+			Recheck: "nvidia-smi topo -m; dmesg | grep -i xid",
+		}, true
+	case HealthResetRequired, HealthRebootRequired, HealthPowerCycleRequired:
+		// The driver's own recovery request; only a reset is a command.
+		recovery := HealthGuide{
+			Probe:   "nvidia-smi --query-gpu=pci.bus_id," + NVIDIARecoveryField + " --format=csv -i " + target,
+			Recheck: "nvidia-smi -q -i " + target + "; dmesg | grep -i xid",
+		}
+		if code == HealthResetRequired {
+			recovery.Actions = []string{"nvidia-smi -r -i " + target}
+		}
+		return recovery, true
+	}
+	return HealthGuide{}, false
+}
+
+// PCIeLinkField and PCIeAERField name the evidence of PCIe findings: one field
+// per link or device, named by its PCI address.
+const (
+	PCIeLinkField = "PCIe Link "
+	PCIeAERField  = "PCIe AER "
+)
+
+// pcieHealthGuide shows the link or the error counters of the first device
+// the evidence names; lspci prints both ends of the link it is asked about.
+func pcieHealthGuide(code string, evidence []HealthField) (HealthGuide, bool) {
+	prefix := ""
+	switch code {
+	case HealthPCIeLinkDegraded:
+		prefix = PCIeLinkField
+	case HealthPCIeErrors, HealthPCIeFatal:
+		prefix = PCIeAERField
+	default:
+		return HealthGuide{}, false
+	}
+	for _, f := range evidence {
+		bdf, ok := strings.CutPrefix(f.Name, prefix)
+		if !ok || bdf == "" {
+			continue
+		}
+		if prefix == PCIeLinkField {
+			return HealthGuide{
+				Probe:   "cat /sys/bus/pci/devices/" + bdf + "/{current,max}_link_{speed,width}",
+				Recheck: "lspci -vv -s " + bdf + " | grep -E 'LnkCap:|LnkSta:'",
+			}, true
+		}
+		return HealthGuide{
+			Probe:   "grep -H TOTAL /sys/bus/pci/devices/" + bdf + "/aer_dev_*",
+			Recheck: "dmesg | grep -i -E 'AER|pcieport'",
+		}, true
 	}
 	return HealthGuide{}, false
 }

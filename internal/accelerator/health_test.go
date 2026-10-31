@@ -139,7 +139,6 @@ func TestGuideFor(t *testing.T) {
 		{vendor: "ppu", code: HealthMemoryRepairPending, index: -1},
 		{vendor: "apple", code: HealthMemoryRepairPending, target: bdf},
 		{vendor: "hygon", code: HealthResetRequired, target: bdf},
-		{vendor: "nvidia", code: HealthResetRequired, target: bdf},
 		{vendor: "ppu", code: "legacy_code", target: bdf},
 	} {
 		if g, ok := HealthGuideFor(HealthCard{Vendor: tc.vendor, Code: tc.code, BDF: tc.target, Index: tc.index}, nil); ok {
@@ -174,5 +173,17 @@ func TestHealthGuideProbeQueriesTheRecordedFields(t *testing.T) {
 	g, _ = HealthGuideFor(HealthCard{Vendor: "ppu", Code: HealthMemoryRepairPending, BDF: "0000:7e:00.0"}, []HealthField{{Value: "remapped rows pending"}})
 	if !strings.Contains(g.Probe, strings.Join(PPUHealthMemoryFields, ",")) {
 		t.Fatalf("legacy probe = %q", g.Probe)
+	}
+}
+
+func TestNVIDIARecoveryGuide(t *testing.T) {
+	bdf := "0000:17:00.0"
+	g, ok := HealthGuideFor(HealthCard{Vendor: "nvidia", Code: HealthResetRequired, BDF: bdf}, nil)
+	if !ok || g.Probe != "nvidia-smi --query-gpu=pci.bus_id,gpu_recovery_action --format=csv -i "+bdf || len(g.Actions) != 1 || g.Actions[0] != "nvidia-smi -r -i "+bdf {
+		t.Fatalf("reset guide = %+v ok=%v", g, ok)
+	}
+	g, ok = HealthGuideFor(HealthCard{Vendor: "nvidia", Code: HealthRebootRequired, BDF: bdf}, nil)
+	if !ok || len(g.Actions) != 0 || !strings.Contains(g.Recheck, "xid") {
+		t.Fatalf("reboot guide = %+v ok=%v", g, ok)
 	}
 }
