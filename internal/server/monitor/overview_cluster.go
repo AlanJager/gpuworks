@@ -99,6 +99,13 @@ type ClusterSignals struct {
 	// (every class summed), DiagnosisWindow-at-WindowStep bucketed, from the
 	// same fleet-wide proxy series - no separate query.
 	RequestsPerSecSeries []tsdb.Point
+	// HasInflight/InflightAvg are the gateway's requests in flight across
+	// the fleet, averaged over DiagnosisWindow: the sum of every
+	// deployment's Window.InflightAvg, which over the same buckets is the
+	// mean of the combined gauge - the concurrency RequestsPerSec was
+	// served at.
+	HasInflight bool
+	InflightAvg float64
 
 	// ProxyNoRecent is true when gpuworks_proxy_requests_total (the family
 	// behind both request_rate and error_rate) has no sample anywhere in
@@ -404,6 +411,10 @@ func BuildCluster(ctx context.Context, deps Deps, rng time.Duration) (ClusterSna
 		if reqW.HasRequestRate {
 			snap.Signals.HasRequestRate = true
 			snap.Signals.RequestsPerSec += reqW.RequestsPerSec
+		}
+		if w.HasInflight {
+			snap.Signals.HasInflight = true
+			snap.Signals.InflightAvg += w.InflightAvg
 		}
 		if reqW.HasErrRate {
 			snap.Signals.HasErrRate = true
