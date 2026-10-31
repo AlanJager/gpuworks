@@ -81,14 +81,14 @@ const focusIn = (dialog: HTMLElement) => waitFor(() => assert.ok(dialog.closest(
 
 const submitButton = (dialog: HTMLElement) => within(dialog).getByRole("button", { name: b.create.submit }) as HTMLButtonElement;
 
-test("creating a batch uploads the chosen file and endpoint, closes the dialog and opens the new batch", async () => {
-  const calls: Array<{ name: string; endpoint: string }> = [];
+test("creating a batch uploads the chosen file without an endpoint, closes the dialog and opens the new batch", async () => {
+  const calls: Array<{ name: string; endpoint?: string }> = [];
   let created: Batch | undefined;
   batchApi.list = async () => page(created ? [created] : []);
   batchApi.get = async () => created!;
-  batchApi.create = async (file, endpoint) => {
-    calls.push({ name: file.name, endpoint });
-    created = batch({ id: "batch_new", status: "validating", input_filename: file.name, endpoint });
+  batchApi.create = async (file, options) => {
+    calls.push({ name: file.name, endpoint: options?.endpoint });
+    created = batch({ id: "batch_new", status: "validating", input_filename: file.name, endpoint: "/v1/embeddings" });
     return created;
   };
   const user = mountPage();
@@ -102,10 +102,10 @@ test("creating a batch uploads the chosen file and endpoint, closes the dialog a
   assert.equal(fileInput.getAttribute("accept"), ".jsonl");
   await user.upload(fileInput, jsonl());
   assert.ok(await within(dialog).findByText(/^reqs\.jsonl \(/));
-  await user.click(within(dialog).getByRole("combobox", { name: b.create.endpoint }));
-  await user.click(await screen.findByText("/v1/embeddings", { selector: ".ant-select-item-option-content" }));
+  // The batch's endpoint is the file's: the dialog does not ask for one.
+  assert.equal(within(dialog).queryByRole("combobox", { name: "Endpoint" }), null);
   await user.click(submitButton(dialog));
-  await waitFor(() => assert.deepEqual(calls, [{ name: "reqs.jsonl", endpoint: "/v1/embeddings" }]));
+  await waitFor(() => assert.deepEqual(calls, [{ name: "reqs.jsonl", endpoint: undefined }]));
   await waitFor(() => assert.ok(!screen.queryByRole("dialog", { name: b.create.title })));
   await waitFor(() => assert.equal(screen.getByTestId("loc").textContent, "/batches?detail=batch_new"));
   assert.ok(await screen.findByText(b.create.created.replace("{{id}}", "batch_new")));
@@ -113,22 +113,17 @@ test("creating a batch uploads the chosen file and endpoint, closes the dialog a
   await within(drawer).findByText("reqs.jsonl");
 });
 
-test("the endpoint defaults to chat completions and offers the three endpoints", async () => {
+test("a file asking for two endpoints is refused at the line that differs", async () => {
   batchApi.list = async () => page([]);
-  const sent: string[] = [];
-  batchApi.create = async (_file, endpoint) => { sent.push(endpoint); return batch({ id: "batch_n" }); };
-  batchApi.get = async () => batch({ id: "batch_n" });
+  batchApi.create = async () => {
+    throw new APIError("BATCH_FILE_INVALID", { line: 3, reason: "mixed_endpoints", detail: "Line 3: the url differs from the first request's; a batch calls one endpoint" }, "Line 3: the url differs", 400);
+  };
   const user = mountPage();
   const dialog = await openCreate(user);
-  const select = within(dialog).getByRole("combobox", { name: b.create.endpoint });
-  await user.click(select);
-  for (const endpoint of ["/v1/chat/completions", "/v1/completions", "/v1/embeddings"]) {
-    assert.ok(await screen.findByText(endpoint, { selector: ".ant-select-item-option-content" }), endpoint);
-  }
-  escape();
   await user.upload(within(dialog).getByLabelText(b.create.file), jsonl());
   await user.click(submitButton(dialog));
-  await waitFor(() => assert.deepEqual(sent, ["/v1/chat/completions"]));
+  const want = b.errors.fileLine.replace("{{line}}", "3").replace("{{reason}}", b.errors.fileReasons.mixed_endpoints);
+  assert.ok(await within(dialog).findByText(want));
 });
 
 test("an invalid file names its line, keeps the dialog open and lets the file be replaced", async () => {
@@ -252,7 +247,7 @@ test("the dialog is operable from the keyboard: Tab reaches the controls, Enter 
   fileInput.focus();
   await user.upload(fileInput, jsonl("kb.jsonl"));
   await user.tab();
-  assert.ok(document.activeElement === within(dialog).getByRole("combobox", { name: b.create.endpoint }));
+  assert.ok(document.activeElement === within(dialog).getByRole("spinbutton", { name: b.create.window.label }));
   const submit = submitButton(dialog);
   submit.focus();
   await user.keyboard("{Enter}");
@@ -307,8 +302,8 @@ test("the dialog reads the batch dictionary: loading, a failed read with a retry
   }));
   const fileInput = await within(dialog).findByLabelText(b.create.file);
   assert.equal(within(dialog).queryByRole("status"), null);
-  // The server's endpoint, window bounds and default, limits and retention.
-  assert.ok(within(dialog).getByText("/v1/embeddings", { selector: ".ant-select-selection-item" }));
+  // The server's endpoints for the sample, window bounds and default, limits and retention.
+  assert.ok(within(dialog).getByText(b.create.sample.endpoints.embeddings.replace("{{endpoint}}", "/v1/embeddings"), { selector: ".ant-select-selection-item" }));
   assert.equal((within(dialog).getByLabelText(b.create.window.label) as HTMLInputElement).value, "6");
   assert.ok(within(dialog).getByText(i18n.t("batches:create.window.help", { min: 2, max: 12, default: 6 })));
   assert.ok(within(dialog).getByText(i18n.t("batches:create.hint.format", { size: 10, requests: 1000 })));

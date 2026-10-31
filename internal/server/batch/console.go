@@ -10,15 +10,17 @@ import (
 )
 
 // CreateFromUpload creates a batch from the console's form: a "file" with the
-// JSONL requests and an "endpoint", in either order, and optionally a
-// "completion_window" (CompletionWindow by default, MinWindowHours to
-// MaxWindowHours) and a "model" that every request is sent to. The file is
-// validated while it is saved; one that is refused, or an endpoint it does
+// JSONL requests and optionally, in any order, an "endpoint" (the url the
+// file's requests ask for when absent), a "completion_window"
+// (CompletionWindow by default, MinWindowHours to MaxWindowHours) and a
+// "model" that every request is sent to. The file is validated while it is
+// saved; one that is refused, or an endpoint it does
 // not fit, leaves nothing behind.
 func (s *Service) CreateFromUpload(owner Owner, mr *multipart.Reader) (Batch, error) {
 	var (
 		endpoint, window, model string
 		saved                   *File
+		stats                   inputStats
 	)
 	window = CompletionWindow
 	for {
@@ -46,15 +48,22 @@ func (s *Service) CreateFromUpload(owner Owner, mr *multipart.Reader) (Batch, er
 				s.discard(owner, saved)
 				return Batch{}, invalid("invalid_multipart", "file", "the request has more than one file")
 			}
-			f, err := s.Upload(owner, part.FileName(), part)
+			f, st, err := s.upload(owner, part.FileName(), part)
 			if err != nil {
 				return Batch{}, err
 			}
-			saved = &f
+			saved, stats = &f, st
 		}
 	}
 	if saved == nil {
 		return Batch{}, invalid("missing_required_parameter", "file", "file is required")
+	}
+	if endpoint == "" {
+		if stats.MixedLine > 0 {
+			s.discard(owner, saved)
+			return Batch{}, lineError(stats.MixedLine, "mixed_endpoints", "url", "the url differs from the first request's; a batch calls one endpoint")
+		}
+		endpoint = saved.Endpoint
 	}
 	b, err := s.CreateBatch(owner, CreateRequest{InputFileID: saved.ID, Endpoint: endpoint, CompletionWindow: window, Model: model})
 	if err != nil {

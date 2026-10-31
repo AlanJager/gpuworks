@@ -21,7 +21,7 @@ const { MemoryRouter, Route, Routes } = await import("react-router-dom");
 const { api } = await import("../src/api.ts");
 const { batchApi } = await import("../src/batchApi.ts");
 const { default: BatchesPage } = await import("../src/pages/BatchesPage.tsx");
-const { batchSampleJSONL, samplePrompts, sampleFileName, SAMPLE_LINES, SAMPLE_MAX_TOKENS, SAMPLE_TASK_TYPES } = await import("../src/pages/batches/batchSample.ts");
+const { batchSampleJSONL, embeddingInputs, samplePrompts, sampleFileName, sampleLines, SAMPLE_EMBEDDING_LINES, SAMPLE_LINES, SAMPLE_MAX_TOKENS, SAMPLE_TASK_TYPES } = await import("../src/pages/batches/batchSample.ts");
 const { batchAPISteps } = await import("../src/pages/batches/BatchAPIUsage.tsx");
 
 const b = locale.batches;
@@ -60,15 +60,17 @@ async function openCreate(user: ReturnType<typeof userEvent.setup>) {
   return screen.findByRole("dialog", { name: b.create.title });
 }
 
-test("a sample is a thousand valid batch requests for every endpoint", () => {
+test("a sample is a thousand valid batch requests, ten thousand for embeddings", () => {
   assert.equal(SAMPLE_LINES, 1000);
-  for (const endpoint of ["/v1/chat/completions", "/v1/completions", "/v1/embeddings"] as const) {
+  assert.equal(SAMPLE_EMBEDDING_LINES, 10000);
+  for (const [endpoint, count, width] of [["/v1/chat/completions", 1000, 4], ["/v1/completions", 1000, 4], ["/v1/embeddings", 10000, 5]] as const) {
+    assert.equal(sampleLines(endpoint), count);
     const text = batchSampleJSONL(endpoint, "m");
     assert.ok(text.endsWith("}\n"));
     const lines = text.trimEnd().split("\n").map((line) => JSON.parse(line));
-    assert.equal(lines.length, SAMPLE_LINES);
-    assert.deepEqual(lines.map((line) => line.custom_id), Array.from({ length: SAMPLE_LINES }, (_, n) => `req-${String(n + 1).padStart(4, "0")}`));
-    assert.equal(new Set(lines.map((line) => line.custom_id)).size, SAMPLE_LINES, "custom_id is unique");
+    assert.equal(lines.length, count);
+    assert.deepEqual(lines.map((line) => line.custom_id), Array.from({ length: count }, (_, n) => `req-${String(n + 1).padStart(width, "0")}`));
+    assert.equal(new Set(lines.map((line) => line.custom_id)).size, count, "custom_id is unique");
     for (const line of lines) {
       // The server's per-line rules: an object with a non-empty string
       // custom_id, method POST, a known url and a body naming the model.
@@ -87,8 +89,21 @@ test("a sample is a thousand valid batch requests for every endpoint", () => {
         assert.equal(typeof line.body.input, "string");
       }
     }
-    assert.ok(Buffer.byteLength(text) < 1 << 20, "the file stays well under the 200 MB upload limit");
+    assert.ok(Buffer.byteLength(text) < 8 << 20, "the file stays well under the 200 MB upload limit");
     assert.match(sampleFileName(endpoint), /^batch-sample-[a-z-]+\.jsonl$/);
+  }
+});
+
+test("an embeddings sample embeds ten thousand distinct texts, each two prompts", () => {
+  const texts = embeddingInputs();
+  assert.equal(texts.length, SAMPLE_EMBEDDING_LINES);
+  assert.equal(new Set(texts).size, SAMPLE_EMBEDDING_LINES, "no two texts are the same");
+  assert.deepEqual(embeddingInputs(50), embeddingInputs(50), "the same seed gives the same texts");
+  const prompts = samplePrompts(SAMPLE_EMBEDDING_LINES);
+  for (const [n, text] of texts.slice(0, 50).entries()) {
+    const [first, second] = text.split("\n");
+    assert.equal(first, prompts[n]);
+    assert.ok(prompts.includes(second), "the second half is a prompt of the sample too");
   }
 });
 
@@ -133,9 +148,9 @@ test("the file picker takes only .jsonl", async () => {
 });
 
 test("use the sample: it names an active deployment and goes up as the request file", async () => {
-  let sent: { file: File; endpoint: string } | null = null;
-  batchApi.create = (async (file: File, endpoint: string) => {
-    sent = { file, endpoint };
+  let sent: { file: File; endpoint?: string } | null = null;
+  batchApi.create = (async (file: File, options?: { endpoint?: string }) => {
+    sent = { file, endpoint: options?.endpoint };
     return batch();
   }) as never;
   const user = mountPage();
@@ -149,11 +164,36 @@ test("use the sample: it names an active deployment and goes up as the request f
   await waitFor(() => assert.equal(submit.disabled, false));
   await user.click(submit);
   await waitFor(() => assert.ok(sent));
-  const got = sent as unknown as { file: File; endpoint: string };
-  assert.equal(got.endpoint, "/v1/chat/completions");
+  const got = sent as unknown as { file: File; endpoint?: string };
+  assert.equal(got.endpoint, undefined, "the server reads the endpoint from the file");
   assert.equal(got.file.name, "batch-sample-chat-completions.jsonl");
   const text = await got.file.text();
   assert.equal(JSON.parse(text.split("\n")[0]).body.model, "qwen-chat");
+});
+
+test("the sample type picks the endpoint of the sample, and the file goes up without one", async () => {
+  let sent: { file: File; endpoint?: string } | null = null;
+  batchApi.create = (async (file: File, options?: { endpoint?: string }) => {
+    sent = { file, endpoint: options?.endpoint };
+    return batch();
+  }) as never;
+  const user = mountPage();
+  const dialog = await openCreate(user);
+  await waitFor(() => assert.ok(dialog.textContent?.includes("qwen-chat")));
+  await user.click(within(dialog).getByRole("combobox", { name: b.create.sample.endpoint }));
+  for (const key of ["chat", "completions"] as const) {
+    assert.ok(await screen.findByText(b.create.sample.endpoints[key].replace("{{endpoint}}", key === "chat" ? "/v1/chat/completions" : "/v1/completions"), { selector: ".ant-select-item-option-content" }));
+  }
+  await user.click(await screen.findByText(b.create.sample.endpoints.embeddings.replace("{{endpoint}}", "/v1/embeddings"), { selector: ".ant-select-item-option-content" }));
+  await user.click(screen.getByRole("button", { name: b.create.sample.use }));
+  await user.click(within(dialog.closest(".ant-modal") as HTMLElement).getByRole("button", { name: b.create.submit }));
+  await waitFor(() => assert.ok(sent));
+  const got = sent as unknown as { file: File; endpoint?: string };
+  assert.equal(got.endpoint, undefined);
+  assert.equal(got.file.name, "batch-sample-embeddings.jsonl");
+  const first = JSON.parse((await got.file.text()).split("\n")[0]);
+  assert.equal(first.url, "/v1/embeddings");
+  assert.equal(typeof first.body.input, "string");
 });
 
 test("download the sample hands the browser a .jsonl file", async () => {

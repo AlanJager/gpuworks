@@ -22,7 +22,8 @@ type BatchService interface {
 	Get(c BatchCaller, id string) (dto.Batch, error)
 	Cancel(c BatchCaller, id string) (dto.Batch, error)
 	// CreateFromUpload reads a multipart form with a "file" (the JSONL input)
-	// and an "endpoint", validates the file while saving it and starts the batch.
+	// and optionally an "endpoint" (inferred from the file when absent),
+	// validates the file while saving it and starts the batch.
 	CreateFromUpload(c BatchCaller, form *multipart.Reader) (dto.Batch, error)
 	// Dictionary is what a batch can be created with (dto.BatchDictionary).
 	Dictionary() (dto.BatchDictionary, error)
@@ -147,14 +148,14 @@ func (a *apiHandlers) cancelBatch(w http.ResponseWriter, r *http.Request) {
 }
 
 // createBatch serves POST /api/v1/batches: a multipart form with the input
-// file and its endpoint.
+// file and, optionally, its endpoint (the url its requests ask for when absent).
 func (a *apiHandlers) createBatch(w http.ResponseWriter, r *http.Request) {
 	if a.d.Batches == nil {
 		writeErr(w, http.StatusNotFound, errBatchesUnavailable)
 		return
 	}
 	if mt, params, err := mime.ParseMediaType(r.Header.Get("Content-Type")); err != nil || mt != "multipart/form-data" || params["boundary"] == "" {
-		writeProductError(w, http.StatusBadRequest, ErrorBatchRequestInvalid, "the request must be multipart/form-data with the fields file and endpoint", map[string]any{"field": "file"})
+		writeProductError(w, http.StatusBadRequest, ErrorBatchRequestInvalid, "the request must be multipart/form-data with a file field", map[string]any{"field": "file"})
 		return
 	}
 	form, err := r.MultipartReader()

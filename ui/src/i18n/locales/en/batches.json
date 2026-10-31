@@ -106,7 +106,6 @@
     "fileHelp": "Choose a .jsonl file (JSON Lines), one request per line.",
     "fileSelected": "{{name}} ({{size}})",
     "fileRequired": "Choose a requests file first.",
-    "endpoint": "Endpoint",
     "window": {
       "label": "Completion window",
       "unit": "hours",
@@ -140,7 +139,7 @@
       "format": "JSON Lines, at most {{size}} MB and {{requests, number}} requests.",
       "line": "Each line is one request: {\"custom_id\", \"method\": \"POST\", \"url\", \"body\": {\"model\", ...}}.",
       "unique": "custom_id must be unique within the file.",
-      "sameUrl": "All lines use the same url, and it must equal the endpoint you choose.",
+      "sameUrl": "All lines use the same url; the batch calls that endpoint.",
       "noStream": "Streaming requests are not supported.",
       "retention": "The output and error files are kept for {{days}} days after the batch ends."
     },
@@ -148,6 +147,12 @@
     "failed": "Could not create the batch",
     "sample": {
       "title": "Sample file",
+      "endpoint": "Sample type",
+      "endpoints": {
+        "chat": "Chat ({{endpoint}})",
+        "completions": "Completions ({{endpoint}})",
+        "embeddings": "Embeddings ({{endpoint}})"
+      },
       "model": "Model the sample uses",
       "noModel": "No active deployment",
       "download": "Download sample",
@@ -175,10 +180,11 @@
       "line_too_long": "the line is too long",
       "empty_file": "the file has no requests",
       "too_many_requests": "the file has more requests than a batch allows",
-      "upload_failed": "the upload could not be read"
+      "upload_failed": "the upload could not be read",
+      "mixed_endpoints": "the url differs from the first line's; a batch calls one endpoint"
     },
     "requestReasons": {
-      "endpoint_mismatch": "the requests in the file do not all use the chosen endpoint",
+      "endpoint_mismatch": "the requests in the file do not all use the given endpoint",
       "invalid_endpoint": "the endpoint is not supported",
       "missing_required_parameter": "a required field is missing",
       "invalid_multipart": "the upload is not a valid form"
