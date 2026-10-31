@@ -291,7 +291,7 @@ from coverage_completion_queue import summary
 # These counts move only when a manifest declaration changes.
 BASELINE = {
     "1": 135, "2": 271, "3": 266, "4": 304, "5": 192, "6": 132,
-    "7": 105, "8": 100, "9": 83, "10": 101, "11": 83, "out": 368,
+    "7": 105, "8": 100, "9": 82, "10": 101, "11": 83, "out": 368,
 }
 
 
@@ -303,7 +303,7 @@ class QueueTest(unittest.TestCase):
         self.assertIsNone(extra)
         self.assertEqual(dict(counts), BASELINE)
         self.assertEqual(total, sum(BASELINE.values()))
-        self.assertEqual(total, 2140)
+        self.assertEqual(total, 2139)
 
 
 if __name__ == "__main__":

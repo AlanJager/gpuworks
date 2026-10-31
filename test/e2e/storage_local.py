@@ -105,7 +105,9 @@ def exercise_name_taken(page, server, storage, name, path, report, bad_http, con
         closer = page.locator(".ant-drawer-close").first
         if closer.count() and closer.is_visible():
             closer.click()
-            page.wait_for_timeout(200)
+            # The detail drawer unmounts after its close transition finishes, so wait for the
+            # drawer to be gone rather than for a fixed delay.
+            expect(page.locator(".ant-drawer-open")).to_have_count(0)
         else:
             break
     expect(page.locator(".ant-drawer-open")).to_have_count(0)
@@ -410,6 +412,53 @@ def exercise_edit_conflict(page, server, storage, common, storage_id, name, path
 # Mainline: 独立 server/SQLite → 存储页新增本地存储 → NFS 类型显示 Export/Mount point
 #           且未试挂时不可保存 → 非法名称与相对路径都不发请求 → 合法本地存储创建
 #           → 刷新/独立 GET 回读 → UI 删除后列表消失且 GET 404
+def exercise_html_escaping(page, storage, common, posts, bad_responses, server):
+    """2.7: a path carrying HTML is shown as text wherever the product displays it.
+
+    A second storage is created through the real form, so the mainline assertions that read the
+    first one are untouched. Its stored path is then moved through the real PATCH route, and the
+    detail view and the list are each read back. A rendered element instead of text would mean
+    the value reached the DOM as HTML, so the checks look for the tag as a node, not only for its
+    characters.
+    """
+    marker = "e2e-xss-<img src=x onerror=1>"
+    escaped_name = "e2e-xss-" + uuid.uuid4().hex[:8]
+    escaped_path = str(server.storage_root / "e2e-xss")
+    api_base = page.url.split("/storage")[0]
+    action(page, storage["page"]["add"]).click()
+    dialog = page.get_by_role("dialog")
+    expect(dialog).to_be_visible()
+    boxes = dialog.get_by_role("textbox")
+    boxes.nth(0).fill(escaped_name)
+    boxes.nth(1).fill(escaped_path)
+    with page.expect_response(lambda r: urlsplit(r.url).path == STORAGES
+                              and r.request.method == "POST") as created:
+        button(dialog, storage["form"]["save"]).click()
+    check(created.value.status == 201, f"escaping storage create HTTP {created.value.status}")
+    escaped_id = created.value.json()["id"]
+    injected = f"{escaped_path}-{marker}"
+    updated = page.request.patch(f"{api_base}{STORAGES}/{escaped_id}", data={"path": injected})
+    check(updated.status in {200, 204}, f"path injection PATCH HTTP {updated.status}")
+    reread = page.request.get(f"{api_base}{STORAGES}/{escaped_id}").json()
+    check(reread.get("path") == injected, f"persisted path differs: {reread.get('path')!r}")
+    page.goto(f"{api_base}/storage?storage={escaped_id}")
+    shown = page.get_by_text(injected, exact=True).first
+    expect(shown).to_be_visible()
+    check(page.locator("img[src='x']").count() == 0 and page.locator("script:has-text('onerror')").count() == 0,
+          "the injected path created DOM nodes on the detail view")
+    check(shown.evaluate("element => element.children.length") == 0,
+          "the detail view renders the path through child nodes, not as text")
+    page.goto(f"{api_base}/storage")
+    expect(page.get_by_role("heading", name=storage["page"]["title"], exact=True)).to_be_visible()
+    list_row = page.get_by_role("row").filter(has_text=escaped_name).first
+    expect(list_row).to_be_visible()
+    check(list_row.locator("img[src='x']").count() == 0 and list_row.locator("script").count() == 0,
+          "the list row created DOM nodes from the path")
+    page.request.delete(f"{api_base}{STORAGES}/{escaped_id}")
+    return {"marker": marker, "shown_as_text": True, "injected_nodes": 0,
+            "persisted": True, "patch_status": updated.status}
+
+
 def test_storage_local(page, context, server, artifacts, report, locale):
     storage, common, auth = strings(locale)
     name = f"e2e-{report['run_id'].lower()}-{uuid.uuid4().hex[:6]}"
@@ -577,6 +626,7 @@ def test_storage_local(page, context, server, artifacts, report, locale):
     expect(page.get_by_text(common["storageType"]["local"], exact=True).first).to_be_visible()
     expect(page.get_by_text(path, exact=True).first).to_be_visible()
     expect(page.get_by_text(storage["scope"]["all"], exact=True).first).to_be_visible()
+
     config_title = storage["overview"]["config"]
     # The overview is a stack of DetailSection blocks now, not antd cards: the
     # section is a <section class="detail-section"> headed by an h5.
@@ -643,6 +693,13 @@ def test_storage_local(page, context, server, artifacts, report, locale):
     check(page.evaluate("document.documentElement.scrollWidth <= innerWidth"),
           "storage page has horizontal overflow")
     report["last_step"] = "browser-errors-clear"
+
+    # 2.7 runs last, against its own storage, so moving the path cannot disturb the mainline
+    # assertions that already read the first one.
+    report["last_step"] = "html-escaping"
+    report["html_escaping"] = exercise_html_escaping(
+        page, storage, common, posts, bad_responses, server)
+    report["evidence"].append({"layer": "ui", "html_escaping": report["html_escaping"]})
 
     report["evidence"].extend([
         {"layer": "ui", "page": "/storage", "modal": storage["form"]["addTitle"],
