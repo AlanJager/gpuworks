@@ -314,7 +314,7 @@ func TestLogsContextContract(t *testing.T) {
 	}
 
 	// Window bounds are validated server-side.
-	for _, bad := range []string{"before=501", "after=-1", "ts=0"} {
+	for _, bad := range []string{"before=1001", "after=-1", "ts=0"} {
 		code, _ = h.get(t, "/api/v1/logs/context?instance=i&"+bad)
 		if code != http.StatusBadRequest {
 			t.Fatalf("%s status = %d, want 400", bad, code)
@@ -324,10 +324,10 @@ func TestLogsContextContract(t *testing.T) {
 	if code != http.StatusBadRequest || body["code"] != ErrorLogsContextInvalid {
 		t.Fatalf("bare context = %d %v", code, body["code"])
 	}
-	// 100 is a legitimate custom window now (server cap 500).
-	code, _ = h.get(t, "/api/v1/logs/context?instance=i&ts=11&id=76&before=100&after=100")
+	// The cap itself is a legitimate custom window.
+	code, _ = h.get(t, "/api/v1/logs/context?instance=i&ts=11&id=76&before=1000&after=1000")
 	if code != http.StatusOK {
-		t.Fatalf("before=100 status = %d, want 200", code)
+		t.Fatalf("before=1000 status = %d, want 200", code)
 	}
 }
 

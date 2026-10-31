@@ -180,8 +180,8 @@ After identifying a time range and instance ID in instance details, open **Logs*
    | **Keyword** | Full-text search, for example, `CUDA out of memory` |
 
 2. **View results**. Leaving the keyword blank returns recent logs (equivalent to tail). Click **Load more** if results span multiple pages. Hit counts are capped at 1 million; above the counting limit, they appear as `N+`, not an exact total.
-3. **Expand context**. Click **Context** on a hit to view several lines before and after it. For agent and server logs, restrict the scope by node and source; do not reuse the instance filter.
-4. **View the histogram**. Above the search results, log volume is counted by time bucket × level using the current filters (red for error/fatal, blue for other levels, including lines without a level). Find the abnormal time range, then narrow the scope.
+3. **Expand context**. Click **Context** on a hit to view several lines before and after it (up to 1000 per side). For agent and server logs, restrict the scope by node and source; do not reuse the instance filter.
+4. **View the histogram**. Above the search results, log volume is counted by time bucket × level using the current filters (red for error/fatal, blue for other levels, including lines without a level). Click a bar to narrow the time range to that bucket (switching to Custom); the new range is redrawn with finer buckets, so you can keep clicking to drill down.
 5. **Return to the original event**. Match the level, time, source, and instance UUID in a hit to the corresponding event in instance details.
 
 To search through the API, use `GET /api/v1/logs/search`. Add `with_total=1` to retrieve hit counts, and use `cursor_ts` / `cursor_id` for pagination.
