@@ -29,16 +29,16 @@ declarations:
             kind: audio
             encoding: data_url
             required: true
-            label: { en: Reference audio, zh-CN: 参考音频 }
+            label: { en: Reference audio, zh: 参考音频 }
           - name: ref_text
             kind: text
             required: true
-            label: { en: Reference transcript, zh-CN: 参考音频的文字 }
+            label: { en: Reference transcript, zh: 参考音频的文字 }
           - name: language
             kind: select
             options: [Auto, Chinese, English, Japanese, Korean, German, French, Russian, Portuguese, Spanish, Italian]
             default: Auto
-            label: { en: Language, zh-CN: 语言 }
+            label: { en: Language, zh: 语言 }
   qwen/qwen3-tts-12hz-1.7b-base: *base
 
   qwen/qwen3-tts-12hz-0.6b-customvoice: &customvoice
@@ -54,15 +54,15 @@ declarations:
             kind: select
             options: []            # runtime discovery: GET /v1/audio/voices
             required: true
-            label: { en: Voice, zh-CN: 音色 }
+            label: { en: Voice, zh: 音色 }
           - name: instructions
             kind: text
-            label: { en: Style or emotion instructions, zh-CN: 风格或情绪说明 }
+            label: { en: Style or emotion instructions, zh: 风格或情绪说明 }
           - name: language
             kind: select
             options: [Auto, Chinese, English, Japanese, Korean, German, French, Russian, Portuguese, Spanish, Italian]
             default: Auto
-            label: { en: Language, zh-CN: 语言 }
+            label: { en: Language, zh: 语言 }
   qwen/qwen3-tts-12hz-1.7b-customvoice: *customvoice
 
   qwen/qwen3-tts-12hz-1.7b-voicedesign:
@@ -79,12 +79,12 @@ declarations:
             kind: text
             required: true
             default: 体现撒娇稚嫩的萝莉女声，音调偏高
-            label: { en: Voice description, zh-CN: 音色描述 }
+            label: { en: Voice description, zh: 音色描述 }
           - name: language
             kind: select
             options: [Auto, Chinese, English, Japanese, Korean, German, French, Russian, Portuguese, Spanish, Italian]
             default: Auto
-            label: { en: Language, zh-CN: 语言 }
+            label: { en: Language, zh: 语言 }
 
 # P5 (plan-unify-model-kinds appendix A) dispositions decided on 2026-09-05
 # after reading each model.yaml; applied in P5 E1 together with the lint.
