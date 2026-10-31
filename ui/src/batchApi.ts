@@ -74,8 +74,10 @@ export interface Batch {
   cancelled_at?: string;
 }
 
-/** What the create call takes besides the file and the endpoint. */
+/** What the create call takes besides the file. */
 export interface BatchCreateOptions {
+  /** The url the file's requests ask for; the server reads it from the file when absent. */
+  endpoint?: BatchEndpoint;
   model?: string;
   completionWindowHours?: number;
   signal?: AbortSignal;
@@ -129,15 +131,16 @@ export const batchApi = {
   list: (query: ListQuery) => getJSON<ListPage<Batch>>(`/api/v1/batches?${listQueryString(query)}`),
   get: (id: string) => getJSON<Batch>(`/api/v1/batches/${encodeURIComponent(id)}`),
   /**
-   * Uploads the JSONL input and starts the batch (admin only). model, when
-   * given, replaces the model of every line; completionWindowHours is the time
-   * the batch has (the dictionary's completion_window_hours bound it).
+   * Uploads the JSONL input and starts the batch (admin only). The batch's
+   * endpoint is the url of the file's requests unless endpoint is given; model,
+   * when given, replaces the model of every line; completionWindowHours is the
+   * time the batch has (the dictionary's completion_window_hours bound it).
    */
-  create: async (file: File, endpoint: string, options: BatchCreateOptions = {}): Promise<Batch> => {
-    const { model, completionWindowHours, signal } = options;
+  create: async (file: File, options: BatchCreateOptions = {}): Promise<Batch> => {
+    const { endpoint, model, completionWindowHours, signal } = options;
     const body = new FormData();
     body.append("file", file, file.name);
-    body.append("endpoint", endpoint);
+    if (endpoint) body.append("endpoint", endpoint);
     if (model) body.append("model", model);
     if (completionWindowHours !== undefined) body.append("completion_window", `${completionWindowHours}h`);
     const res = await fetch("/api/v1/batches", { method: "POST", credentials: "include", body, signal });

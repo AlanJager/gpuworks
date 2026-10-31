@@ -14,23 +14,29 @@ import (
 // Upload saves and validates an input file (purpose "batch", the only one).
 // A refused file leaves nothing behind.
 func (s *Service) Upload(owner Owner, filename string, src io.Reader) (File, error) {
+	f, _, err := s.upload(owner, filename, src)
+	return f, err
+}
+
+// upload is Upload that also tells what validating the file found.
+func (s *Service) upload(owner Owner, filename string, src io.Reader) (File, inputStats, error) {
 	if !strings.EqualFold(filepath.Ext(cleanFilename(filename)), ".jsonl") {
-		return File{}, invalid(CodeInvalidFileExtension, "file", "a batch input file must be JSON Lines with the .jsonl extension")
+		return File{}, inputStats{}, invalid(CodeInvalidFileExtension, "file", "a batch input file must be JSON Lines with the .jsonl extension")
 	}
 	if err := os.MkdirAll(s.cfg.Dir, 0o750); err != nil {
-		return File{}, err
+		return File{}, inputStats{}, err
 	}
 	tmp, err := os.CreateTemp(s.cfg.Dir, "upload-*.tmp")
 	if err != nil {
-		return File{}, err
+		return File{}, inputStats{}, err
 	}
 	defer os.Remove(tmp.Name())
 	stats, verr := scanInput(src, tmp)
 	if cerr := tmp.Close(); verr == nil && cerr != nil {
-		return File{}, cerr
+		return File{}, inputStats{}, cerr
 	}
 	if verr != nil {
-		return File{}, verr
+		return File{}, inputStats{}, verr
 	}
 	f := File{
 		ID: randomID("file-"), UserID: owner.UserID, APIKeyID: owner.APIKeyID, Purpose: PurposeBatch,
@@ -39,13 +45,13 @@ func (s *Service) Upload(owner Owner, filename string, src io.Reader) (File, err
 	}
 	dst, _ := s.filePath(f.ID)
 	if err := os.Rename(tmp.Name(), dst); err != nil {
-		return File{}, err
+		return File{}, inputStats{}, err
 	}
 	if err := s.repo.CreateFile(f); err != nil {
 		_ = os.Remove(dst)
-		return File{}, err
+		return File{}, inputStats{}, err
 	}
-	return f, nil
+	return f, stats, nil
 }
 
 // cleanFilename keeps the base name of an uploaded file, within the column.

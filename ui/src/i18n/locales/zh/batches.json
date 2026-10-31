@@ -106,7 +106,6 @@
     "fileHelp": "选择 .jsonl 文件（JSON Lines），每行一个请求。",
     "fileSelected": "{{name}}（{{size}}）",
     "fileRequired": "请先选择请求文件。",
-    "endpoint": "端点",
     "window": {
       "label": "完成时限",
       "unit": "小时",
@@ -140,7 +139,7 @@
       "format": "JSON Lines 格式，文件不超过 {{size}} MB、{{requests, number}} 个请求。",
       "line": "每行一个请求：{\"custom_id\", \"method\": \"POST\", \"url\", \"body\": {\"model\", ...}}。",
       "unique": "custom_id 在文件内必须唯一。",
-      "sameUrl": "所有行的 url 必须相同，并且等于所选端点。",
+      "sameUrl": "所有行的 url 必须相同，任务按它调用对应的端点。",
       "noStream": "不支持流式请求。",
       "retention": "任务结束后，输出文件和错误文件保留 {{days}} 天。"
     },
@@ -148,6 +147,12 @@
     "failed": "无法创建批处理任务",
     "sample": {
       "title": "示例文件",
+      "endpoint": "示例类型",
+      "endpoints": {
+        "chat": "对话（{{endpoint}}）",
+        "completions": "文本补全（{{endpoint}}）",
+        "embeddings": "向量嵌入（{{endpoint}}）"
+      },
       "model": "示例使用的模型",
       "noModel": "暂无运行中的部署",
       "download": "下载示例",
@@ -175,10 +180,11 @@
       "line_too_long": "该行过长",
       "empty_file": "文件中没有请求",
       "too_many_requests": "文件中的请求数超过批处理任务的上限",
-      "upload_failed": "无法读取上传的内容"
+      "upload_failed": "无法读取上传的内容",
+      "mixed_endpoints": "该行的 url 与第一行不同，一个任务只能调用一个端点"
     },
     "requestReasons": {
-      "endpoint_mismatch": "文件中的请求没有全部使用所选端点",
+      "endpoint_mismatch": "文件中的请求没有全部使用指定的端点",
       "invalid_endpoint": "不支持该端点",
       "missing_required_parameter": "缺少必填字段",
       "invalid_multipart": "上传的表单无效"
