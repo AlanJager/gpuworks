@@ -54,9 +54,9 @@ func (s *Store) ResidencyWindowStart(since time.Time) (uint, bool, error) {
 }
 
 // residencyBoundaryQuery reads the first event at or after since by the
-// created_at index.
+// created_at index. Normalize the bound to match UTC timestamps stored as text.
 func residencyBoundaryQuery(db *gorm.DB, since time.Time) *gorm.DB {
-	return db.Model(&InstanceEvent{}).Select("id").Where("created_at >= ?", since).Order("created_at, id").Limit(1)
+	return db.Model(&InstanceEvent{}).Select("id").Where("created_at >= ?", since.UTC()).Order("created_at, id").Limit(1)
 }
 
 // residencyRemovedQuery reads the INSTANCE_REMOVED events from firstID on, of
