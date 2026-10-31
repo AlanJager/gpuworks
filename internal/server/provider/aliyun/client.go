@@ -134,49 +134,82 @@ func (c *client) callWithKey(ctx context.Context, creds provider.Credentials, ke
 	bases := c.bases(creds, p, region)
 	var lastErr, transportErr error
 	for i, base := range bases {
-		for attempt := 0; attempt < attemptsPerHost; attempt++ {
-			if attempt > 0 {
-				if err := c.sleep(ctx, retryBase<<(attempt-1)); err != nil {
-					return err
-				}
-			}
-			body, err := c.do(ctx, base.host, base.url, key, p, action, query)
-			if err == nil {
-				if out == nil {
-					return nil
-				}
-				if err := json.Unmarshal(body, out); err != nil {
-					return fmt.Errorf("aliyun: decode %s response: %w", action, err)
-				}
-				return nil
-			}
-			lastErr = err
-			var apiErr *apiError
-			if errors.As(err, &apiErr) {
-				if apiErr.Code == "InvalidOperation.NotSupportedEndpoint" && transportErr != nil {
-					// The central host does not serve this region either: the
-					// regional host's own failure is the one to report.
-					return fmt.Errorf("%w (the central endpoint does not serve region %s)", transportErr, region)
-				}
-				if !apiErr.retryable() {
-					return err
-				}
-				continue
+		// A transport failure on a regional host goes to the next host rather
+		// than spend the retries on a host this network cannot use.
+		body, err := c.retryHost(ctx, base, key, p, action, query, 0, i < len(bases)-1)
+		if err == nil {
+			return decodeResponse(action, body, out)
+		}
+		lastErr = err
+		var apiErr *apiError
+		if !errors.As(err, &apiErr) {
+			if ctx.Err() != nil {
+				return ctx.Err()
 			}
 			if transportErr == nil {
 				transportErr = err
 			}
-			if ctx.Err() != nil {
-				return ctx.Err()
+			continue
+		}
+		if apiErr.Code == "InvalidOperation.NotSupportedEndpoint" && transportErr != nil {
+			// The central host does not serve this region, so the regional
+			// host is the only way in and its failure may have been a passing
+			// reset or timeout: spend its remaining retries before giving up.
+			body, err := c.retryHost(ctx, bases[0], key, p, action, query, 1, false)
+			if err == nil {
+				return decodeResponse(action, body, out)
 			}
-			// A transport failure on a regional host: go to the next host
-			// rather than spend the retries on a host this network cannot use.
-			if i < len(bases)-1 {
-				break
+			if errors.As(err, &apiErr) || ctx.Err() != nil {
+				return err
 			}
+			return fmt.Errorf("%w (the central endpoint does not serve region %s)", err, region)
+		}
+		if !apiErr.retryable() {
+			return err
 		}
 	}
 	return lastErr
+}
+
+// retryHost sends the call to one host, from attempt `from` up to
+// attemptsPerHost with exponential backoff, retrying throttling and
+// server-side failures. A transport failure ends it early when
+// stopOnTransport is set; otherwise it is retried too.
+func (c *client) retryHost(ctx context.Context, base endpoint, key accessKey, p product, action string, query map[string]string, from int, stopOnTransport bool) ([]byte, error) {
+	var lastErr error
+	for attempt := from; attempt < attemptsPerHost; attempt++ {
+		if attempt > 0 {
+			if err := c.sleep(ctx, retryBase<<(attempt-1)); err != nil {
+				return nil, err
+			}
+		}
+		body, err := c.do(ctx, base.host, base.url, key, p, action, query)
+		if err == nil {
+			return body, nil
+		}
+		lastErr = err
+		var apiErr *apiError
+		if errors.As(err, &apiErr) {
+			if !apiErr.retryable() {
+				return nil, err
+			}
+			continue
+		}
+		if ctx.Err() != nil || stopOnTransport {
+			return nil, err
+		}
+	}
+	return nil, lastErr
+}
+
+func decodeResponse(action string, body []byte, out any) error {
+	if out == nil {
+		return nil
+	}
+	if err := json.Unmarshal(body, out); err != nil {
+		return fmt.Errorf("aliyun: decode %s response: %w", action, err)
+	}
+	return nil
 }
 
 // endpoint is a host requests are signed for and the URL they go to.

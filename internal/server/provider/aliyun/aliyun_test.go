@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -342,6 +343,92 @@ func TestUnreachableRegionalHostFallsBackToCentral(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "ecs.cn-wulanchabu.aliyuncs.com") || !strings.Contains(err.Error(), "central endpoint does not serve region cn-wulanchabu") {
 		t.Fatalf("err = %v", err)
 	}
+}
+
+// A regional host the central host cannot stand in for gets its retries: one
+// connection reset there must not fail the call.
+func TestRegionalHostBlipIsRetriedWhenCentralDoesNotServeTheRegion(t *testing.T) {
+	// The regional host resets the first connection, as the real one did
+	// from CI (2026-10-28), and answers after that.
+	d, fake, regionalCalls := newResettingRegionalHost(t, 1)
+	instances, err := d.ListInstances(context.Background(), userCreds)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(instances) != 1 || instances[0].ExternalID != "i-gz" {
+		t.Fatalf("instances = %+v", instances)
+	}
+	if got := regionalCalls.Load(); got != 2 {
+		t.Fatalf("regional host called %d times, want the reset attempt and one retry", got)
+	}
+	if got := centralDescribeInstances(fake); got != 1 {
+		t.Fatalf("central host asked %d times, want once", got)
+	}
+}
+
+// When every retry on the regional host fails too, the call gives up after
+// attemptsPerHost tries there and names the regional failure.
+func TestRegionalHostDownIsReportedWhenCentralDoesNotServeTheRegion(t *testing.T) {
+	d, fake, regionalCalls := newResettingRegionalHost(t, attemptsPerHost)
+	_, err := d.ListInstances(context.Background(), userCreds)
+	if err == nil || !strings.Contains(err.Error(), "central endpoint does not serve region cn-guangzhou") || strings.Contains(err.Error(), "NotSupportedEndpoint") {
+		t.Fatalf("err = %v", err)
+	}
+	if got := regionalCalls.Load(); got != attemptsPerHost {
+		t.Fatalf("regional host called %d times, want %d", got, attemptsPerHost)
+	}
+	if got := centralDescribeInstances(fake); got != 1 {
+		t.Fatalf("central host asked %d times, want once", got)
+	}
+}
+
+// newResettingRegionalHost serves cn-guangzhou from a regional host that
+// resets the first `resets` DescribeInstances connections, behind a central
+// host that refuses the region.
+func newResettingRegionalHost(t *testing.T, resets int32) (*Driver, *fakeAliyun, *atomic.Int32) {
+	t.Helper()
+	d, fake := newFake(t, func(c fakeCall) (int, any) {
+		switch {
+		case c.action == "DescribeRegions":
+			return 200, regionsBody("cn-guangzhou")
+		case c.host == centralECSHost:
+			return 404, map[string]string{"Code": "InvalidOperation.NotSupportedEndpoint", "Message": "The specified endpoint cant operate this region.", "RequestId": "req-central"}
+		}
+		return 200, map[string]any{"Instances": map[string]any{"Instance": []any{instanceJSON("i-gz", "cn-guangzhou", "Running", "8.134.0.1", "172.16.0.1", 1, "NVIDIA A10")}}}
+	})
+	regionalCalls := new(atomic.Int32) // DescribeInstances calls
+	regional := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("x-acs-action") == "DescribeInstances" && regionalCalls.Add(1) <= resets {
+			conn, _, err := w.(http.Hijacker).Hijack()
+			if err != nil {
+				t.Errorf("hijack: %v", err)
+				return
+			}
+			_ = conn.Close()
+			return
+		}
+		fake.ServeHTTP(w, r)
+	}))
+	t.Cleanup(regional.Close)
+	healthy := d.api.baseURL
+	d.api.baseURL = func(host string) *url.URL {
+		if host == "ecs.cn-guangzhou.aliyuncs.com" {
+			u, _ := url.Parse(regional.URL)
+			return u
+		}
+		return healthy(host)
+	}
+	return d, fake, regionalCalls
+}
+
+func centralDescribeInstances(fake *fakeAliyun) int {
+	var n int
+	for _, c := range fake.calls {
+		if c.host == centralECSHost && c.action == "DescribeInstances" {
+			n++
+		}
+	}
+	return n
 }
 
 // With a role ARN the AccessKey only assumes the role; every other call is
