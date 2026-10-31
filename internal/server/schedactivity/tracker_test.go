@@ -165,3 +165,24 @@ func TestSpansMergeAndClip(t *testing.T) {
 		t.Fatalf("pruned = %+v", s)
 	}
 }
+
+// An instance deleted without a removal event (it held no card) stops being
+// awake when the rows say it is gone; one heard of after the rows were read
+// is kept.
+func TestForgetEndsInstancesTheRowsNoLongerHold(t *testing.T) {
+	tr := NewTracker()
+	tr.Ready(base.UnixMilli(), 0)
+	tr.Observe(status(1, "kept", 7, at(0), proto.InstRunning, ""))
+	tr.Observe(status(2, "gone", 8, at(0), proto.InstRunning, ""))
+	tr.Observe(status(4, "new", 9, at(2*time.Hour), proto.InstRunning, ""))
+	if n := tr.Forget(map[string]bool{"kept": true}, at(2*time.Hour), at(time.Hour)); n != 1 {
+		t.Fatalf("forgot %d, want the one gone (the new one was heard of after the read)", n)
+	}
+	deps := tr.Deployments(base, at(3*time.Hour), nil)
+	if deps[7].AwakeMS != (3*time.Hour).Milliseconds() || deps[8].AwakeMS != time.Hour.Milliseconds() {
+		t.Fatalf("awake %v and %v, want the kept instance's 3h and the gone one's 1h", time.Duration(deps[7].AwakeMS)*time.Millisecond, time.Duration(deps[8].AwakeMS)*time.Millisecond)
+	}
+	if _, ok := tr.instances["new"]; !ok {
+		t.Fatal("an instance created after the read was forgotten")
+	}
+}

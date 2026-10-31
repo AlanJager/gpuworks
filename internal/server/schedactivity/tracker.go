@@ -27,6 +27,10 @@ const (
 	// pendingCap bounds the events held while the replay runs; past it the
 	// oldest are dropped (the replay is read from the log anyway).
 	pendingCap = 200_000
+	// forgetMargin is how much older than the read of the live instances an
+	// instance's last event must be for Forget to end it: an event's time is
+	// read before its row is written.
+	forgetMargin = time.Minute
 )
 
 var reasonCount = len(store.ActivityReasons())
@@ -130,6 +134,8 @@ type instance struct {
 	dep         uint
 	m           store.ResidencyMachine
 	awake, held bool
+	// seen is when its last event happened (Unix ms).
+	seen int64
 }
 
 // deployment is a deployment's awake and held time.
@@ -289,6 +295,7 @@ func (t *Tracker) applyResidency(ev store.ObservedEvent, at int64) {
 		t.instances[ev.InstanceUUID] = inst
 	}
 	inst.m.Apply(*ev.Residency)
+	inst.seen = max(inst.seen, at)
 	state, held := inst.m.Label()
 	awake := held && state == store.ResidencyAwake
 	if awake == inst.awake && held == inst.held {
@@ -319,6 +326,26 @@ func delta(on bool) int {
 		return 1
 	}
 	return -1
+}
+
+// Forget ends, at at, every instance followed that live does not hold: one
+// deleted without a removal event (it held no card) would otherwise stay
+// awake for ever. live is every instance row's UUID as read at readAt; an
+// instance heard of since (created after the read) is kept.
+func (t *Tracker) Forget(live map[string]bool, readAt, at time.Time) int {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	gone := 0
+	for uuid, inst := range t.instances {
+		if live[uuid] || inst.seen >= readAt.Add(-forgetMargin).UnixMilli() {
+			continue
+		}
+		gone++
+		t.applyResidency(store.ObservedEvent{At: at, DeploymentID: inst.dep, InstanceUUID: uuid,
+			Residency: &store.ResidencyEvent{Code: store.EventInstanceRemoved, At: at}}, at.UnixMilli())
+		delete(t.instances, uuid)
+	}
+	return gone
 }
 
 // Prune drops what ended before the span: the deployments' stretches and

@@ -112,7 +112,17 @@ func (s *Service) Flush(ctx context.Context, final bool) error {
 	if err := s.Stats.ReplaceSchedulingHours(ctx, hours); err != nil {
 		return err
 	}
+	if len(hours) > 0 {
+		// Once an hour: stop following instances deleted without a removal
+		// event, then drop what has aged out.
+		readAt := s.Now()
+		live, err := s.Store.InstanceUUIDs()
+		if err != nil {
+			return err
+		}
+		s.Tracker.Forget(live, readAt, now)
+		s.Tracker.Prune(now)
+	}
 	s.flushedThrough = max(s.flushedThrough, current)
-	s.Tracker.Prune(now)
 	return nil
 }

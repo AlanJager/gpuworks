@@ -194,13 +194,16 @@ func (s *Store) schedulingPlacement(code, rowInstance string, params map[string]
 	if len(instances) == 0 {
 		return params, nil
 	}
+	_, namedUUIDs := params[EventParamNodeUUIDs]
+	_, namedNode := params["node"]
+	if (namedUUIDs || namedNode) && !isSwitchCode(code) {
+		return params, nil // its nodes are named and it changes no card's hands
+	}
 	placed, err := s.instancePlacements(instances)
 	if err != nil {
 		return params, nil
 	}
 	cards := eventCards(instances, placed)
-	_, namedUUIDs := params[EventParamNodeUUIDs]
-	_, namedNode := params["node"]
 	if namedUUIDs || namedNode {
 		return params, cards
 	}
@@ -267,6 +270,27 @@ func observedEvent(row InstanceEvent, cards []EventCard) (ObservedEvent, bool) {
 		ev.Cards = cards
 	}
 	return ev, ev.Counted || ev.Yield || ev.Wake
+}
+
+// isSwitchCode says an event of the code may change a card's hands (a yield
+// or a wake: IsYield, IsAutoWake), so its cards are wanted.
+func isSwitchCode(code string) bool {
+	return code == codeAutoSleep || code == codeAutoWake || code == codeYieldedForWake
+}
+
+// InstanceUUIDs is the UUID of every instance row: what the scheduling
+// activity checks the instances it follows against, so that one deleted
+// without a removal event (it held no card) is not followed for ever.
+func (s *Store) InstanceUUIDs() (map[string]bool, error) {
+	var uuids []string
+	if err := s.reader().Model(&Instance{}).Pluck("uuid", &uuids).Error; err != nil {
+		return nil, err
+	}
+	out := make(map[string]bool, len(uuids))
+	for _, uuid := range uuids {
+		out[uuid] = true
+	}
+	return out, nil
 }
 
 func isResidencyCode(code string) bool {
