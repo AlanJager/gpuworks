@@ -587,3 +587,24 @@ func TestDoctorAsksEachHygonCardAndSkipsForeignOnes(t *testing.T) {
 		t.Fatalf("findings = %+v", r.Findings)
 	}
 }
+
+// A second diagnosis while one is running is refused rather than queued: it
+// would only add checks on a driver the first may be stuck in.
+func TestOnlyOneDiagnosisRunsAtATime(t *testing.T) {
+	withNoTools(t)
+	n := newNodeRuntime(slog.New(slog.DiscardHandler), nil, t.TempDir(), "none",
+		realAscendProber{&gpu.FixedProber{VendorName: "ascend", GPUs: ascendDies(1)}}, nil)
+	n.doctorRunning.Store(true)
+	if _, err := n.OnRPC(context.Background(), proto.RPCNodeDoctor, nil); err == nil || !strings.Contains(err.Error(), "already running") {
+		t.Fatalf("err = %v, want the second diagnosis refused", err)
+	}
+	n.doctorRunning.Store(false)
+	h := &ascendHost{timeout: time.Second, try: func(context.Context, string) error { return nil }}
+	h.install(t)
+	if _, err := n.OnRPC(context.Background(), proto.RPCNodeDoctor, nil); err != nil {
+		t.Fatal(err)
+	}
+	if n.doctorRunning.Load() {
+		t.Fatal("the diagnosis did not release its turn")
+	}
+}

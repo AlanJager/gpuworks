@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/exec"
 	"strings"
-	"time"
 
 	"gpuworks.ai/gpuworks/internal/accelerator"
 )
@@ -58,11 +57,7 @@ func findHygonHIPLibrary() (string, bool) {
 }
 
 func runHygonSmokeCommand(ctx context.Context, library, bdf string) ([]byte, error) {
-	cmd := exec.CommandContext(ctx, "python3", "-c", accelerator.HygonHIPSmokeScript)
-	cmd.Env = hygonSmokeEnv(os.Environ(), library, bdf)
-	killGroupOnCancel(cmd)
-	cmd.WaitDelay = 5 * time.Second
-	return cmd.CombinedOutput()
+	return runRuntimeCheck(ctx, hygonSmokeEnv(os.Environ(), library, bdf), "python3", "-c", accelerator.HygonHIPSmokeScript)
 }
 
 // hygonSmokeEnv is the environment the HIP check runs in. The agent's own
@@ -89,6 +84,9 @@ func hygonSmokeEnv(base []string, library, bdf string) []string {
 // verdict, the host's is not, and an attempt without the success marker never
 // passes.
 func hygonSmokeVerdict(out []byte, err error) error {
+	if refused := stillRunning(err); refused != nil {
+		return refused
+	}
 	text := string(out)
 	if detail, ok := ascendSmokeMarkerDetail(text, hygonSmokeUnavailableMarker); ok {
 		return &HostRuntimeUnavailableError{Reason: "the Hygon HIP runtime could not be used on this host: " + detail}

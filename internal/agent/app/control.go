@@ -314,6 +314,10 @@ func (n *NodeRuntime) pathUsage() []proto.PathUsage {
 func (n *NodeRuntime) OnRPC(ctx context.Context, method string, params json.RawMessage) (any, error) {
 	switch method {
 	case proto.RPCNodeDoctor:
+		if !n.doctorRunning.CompareAndSwap(false, true) {
+			return nil, errors.New("a diagnosis is already running on this node; wait for it to finish")
+		}
+		defer n.doctorRunning.Store(false)
 		ctx, cancel := context.WithTimeout(ctx, doctorBudget)
 		defer cancel()
 		ctx = withDoctorCardsInUse(ctx, n.cardsInUse)

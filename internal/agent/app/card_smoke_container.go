@@ -61,6 +61,54 @@ type containerSmoke struct {
 
 	mu    sync.Mutex
 	image string // chosen by the last Prerequisite
+	// leftovers are containers of earlier attempts not yet seen gone: the
+	// check inside was killed and is stuck in the driver, or the runtime
+	// would not remove it. Until they are gone no new container is started,
+	// so a card stuck in the driver gathers one container, not one a round.
+	leftovers map[string]bool
+}
+
+// clearLeftovers removes what it can of earlier attempts' containers and says
+// why no new one may start, or "".
+func (c *containerSmoke) clearLeftovers(ctx context.Context, d runtime.Driver) string {
+	c.mu.Lock()
+	ids := make([]string, 0, len(c.leftovers))
+	for id := range c.leftovers {
+		ids = append(ids, id)
+	}
+	c.mu.Unlock()
+	var remaining []string
+	for _, id := range ids {
+		if containerGone(ctx, d, id) {
+			c.mu.Lock()
+			delete(c.leftovers, id)
+			c.mu.Unlock()
+			continue
+		}
+		remaining = append(remaining, id)
+	}
+	if len(remaining) == 0 {
+		return ""
+	}
+	return "an earlier runtime check container has not exited (" + strings.Join(remaining, ", ") + "); no new one is started until it does"
+}
+
+// containerGone stops and removes a container and reports whether it is gone.
+// An inspection that fails says nothing, so it is not gone.
+func containerGone(ctx context.Context, d runtime.Driver, id string) bool {
+	_ = d.Stop(ctx, id)
+	_ = d.Remove(ctx, id)
+	st, err := d.Status(ctx, id)
+	return err == nil && !st.Exists
+}
+
+func (c *containerSmoke) leaveBehind(id string) {
+	c.mu.Lock()
+	if c.leftovers == nil {
+		c.leftovers = map[string]bool{}
+	}
+	c.leftovers[id] = true
+	c.mu.Unlock()
 }
 
 // pick chooses the image to ask from, or says why there is none.
@@ -71,6 +119,9 @@ func (c *containerSmoke) pick(ctx context.Context) string {
 	}
 	if !containerSmokeDrivers[d.Name()] {
 		return "the check from inside a runner image is not run on " + d.Name() + " nodes, where a container unpacks the whole image"
+	}
+	if reason := c.clearLeftovers(ctx, d); reason != "" {
+		return reason
 	}
 	seen := map[string]bool{}
 	for _, ref := range c.images() {
@@ -119,6 +170,9 @@ func (c *containerSmoke) try(ctx context.Context, visible string) (err error) {
 	name := fmt.Sprintf("gpuworks-card-smoke-%d-%s", index, strconv.FormatInt(time.Now().UnixNano(), 36))
 	start, cancel := context.WithTimeout(ctx, containerSmokeStartBudget)
 	defer cancel()
+	if reason := c.clearLeftovers(start, d); reason != "" {
+		return unavailable("cannot start: %s", reason)
+	}
 	ws, err := c.builder.BuildCardSmokeWorkload(image, index, name, []string{"python3", "-c", script})
 	if err != nil {
 		return unavailable("could not be built: %v", err)
@@ -130,10 +184,9 @@ func (c *containerSmoke) try(ctx context.Context, visible string) (err error) {
 	defer func() {
 		cleanup, cancelCleanup := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancelCleanup()
-		_ = d.Stop(cleanup, id)
-		// A container left behind is removed by name before the next
-		// attempt; the card has answered either way.
-		_ = d.Remove(cleanup, id)
+		if !containerGone(cleanup, d, id) {
+			c.leaveBehind(id)
+		}
 	}()
 	// From here a hang is the card's: the runner's own deadline (ctx)
 	// grades it, as it does on the host.

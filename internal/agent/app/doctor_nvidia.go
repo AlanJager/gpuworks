@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"strings"
@@ -113,6 +114,9 @@ func diagnosticCUDA(ctx context.Context) string {
 	probeCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	if err := gpu.CUDARuntimeSmoke(probeCtx); err != nil {
+		if reason := gpu.HostRuntimeUnavailable(err); reason != "" {
+			return "SKIP (" + reason + ")"
+		}
 		return "FAIL: " + err.Error()
 	}
 	return "PASS cuInit=ok cuDeviceGet=ok cuCtxCreate=ok cuMemAlloc=4096B cuMemFree=ok cuCtxDestroy=ok"
@@ -185,9 +189,14 @@ func diagnosticNCCL(ctx context.Context, count int) string {
 	return runPythonFileDiagnostic(probeCtx, ncclScript)
 }
 
+// runPythonDiagnostic runs under the node's runtime-check key, like every
+// check that opens the driver (gpu.RuntimeCheckKey): a check stuck in the
+// driver is never joined by another, however often Diagnose is clicked.
 func runPythonDiagnostic(ctx context.Context, script string) string {
-	out, err := exec.CommandContext(ctx, "python3", "-c", script).CombinedOutput()
-	return formatDiagnosticOutput(out, err)
+	out, err := gpu.RunTracked(ctx, gpu.RuntimeCheckKey, 0, func(ctx context.Context) *exec.Cmd {
+		return exec.CommandContext(ctx, "python3", "-c", script)
+	})
+	return formatDiagnosticOutput([]byte(out), err)
 }
 
 func runPythonFileDiagnostic(ctx context.Context, script string) string {
@@ -204,11 +213,16 @@ func runPythonFileDiagnostic(ctx context.Context, script string) string {
 	if err := f.Close(); err != nil {
 		return "FAIL: cannot close diagnostic script: " + err.Error()
 	}
-	out, err := exec.CommandContext(ctx, "python3", path).CombinedOutput()
-	return formatDiagnosticOutput(out, err)
+	out, err := gpu.RunTracked(ctx, gpu.RuntimeCheckKey, 0, func(ctx context.Context) *exec.Cmd {
+		return exec.CommandContext(ctx, "python3", path)
+	})
+	return formatDiagnosticOutput([]byte(out), err)
 }
 
 func formatDiagnosticOutput(out []byte, err error) string {
+	if errors.Is(err, gpu.ErrStillRunning) {
+		return "SKIP (an earlier runtime check on this node was killed and has not exited; nothing new is started until it does)"
+	}
 	result := strings.TrimSpace(string(out))
 	if err != nil {
 		if result == "" {
