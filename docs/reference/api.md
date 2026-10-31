@@ -1150,7 +1150,7 @@ curl --fail-with-body -sS \
 
 - `place_on` 可选，仅增加副本时使用：节点 UUID 列表，新副本先在这些节点启动，只管第一次放置，提示保存在 server 内存里。个数多于新增的副本数 400 `REPLICAS_PLACE_ON_TOO_MANY`（`params.count`、`maximum`）；某节点不可用 409 `REPLICAS_PLACE_ON_REFUSED`（`params.node`、`reason`：`unknown`、`offline`、`cordoned`、`requirements`、`no_room`，视情况带 `detail` 或 `code` / `params`）。
 - `remove` 可选，指定缩容时移除哪些实例的副本。这些副本进入 `draining`，处理完请求后退役；不指定时由服务端选择，先选未就绪的，再选最新创建的。
-- 数量必须满足 1 ≤ N ≤ 部署的 `max_replicas`（当前 32），否则报 `REPLICAS_TOO_FEW` / `REPLICAS_TOO_MANY`。
+- 数量必须满足 1 ≤ N ≤ 部署的 `max_replicas`（当前 1024），否则报 `REPLICAS_TOO_FEW` / `REPLICAS_TOO_MANY`。
 - `remove` 多于减少的副本数时返回 400 `REPLICAS_REMOVE_TOO_MANY`；指定的实例没有在承担本部署的副本时返回 400 `REPLICAS_REMOVE_INVALID`。
 - 副本数或指定的实例在请求期间已被改动，例如并发扩缩或实例刚失败：409 `REPLICAS_CHANGED`，不写入任何改动。
 

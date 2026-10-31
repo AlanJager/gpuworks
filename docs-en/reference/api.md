@@ -1142,7 +1142,7 @@ For **single-node deployments**, submit the replica count: `{"replicas":N,"remov
 
 - `place_on` is optional and used only when adding replicas: a list of node UUIDs the new replicas start on first. It decides only the first placement, and the hint is kept in server memory. Naming more nodes than replicas added returns 400 `REPLICAS_PLACE_ON_TOO_MANY` (`params.count`, `maximum`); a node that cannot take a replica returns 409 `REPLICAS_PLACE_ON_REFUSED` (`params.node`, `reason`: `unknown`, `offline`, `cordoned`, `requirements`, `no_room`, with `detail` or `code` / `params` where relevant).
 - `remove` is optional and specifies which instances' replicas to remove when scaling down. These replicas enter `draining` and retire after finishing requests. If omitted, the server selects replicas, choosing unready replicas first, then the most recently created.
-- The count must satisfy 1 ≤ N ≤ the deployment's `max_replicas` (currently 32); otherwise returns `REPLICAS_TOO_FEW` / `REPLICAS_TOO_MANY`.
+- The count must satisfy 1 ≤ N ≤ the deployment's `max_replicas` (currently 1024); otherwise returns `REPLICAS_TOO_FEW` / `REPLICAS_TOO_MANY`.
 - Returns 400 `REPLICAS_REMOVE_TOO_MANY` if `remove` contains more entries than the number of replicas being removed; returns 400 `REPLICAS_REMOVE_INVALID` if a specified instance is not serving a replica of this deployment.
 - If the replica count or specified instances change during the request, for example because of concurrent scaling or an instance that has just failed: 409 `REPLICAS_CHANGED`, with no changes written.
 

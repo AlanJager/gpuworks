@@ -141,7 +141,7 @@ func TestEvaluateAndCreateShareReplicaValidation(t *testing.T) {
 		name, shape, code string
 	}{
 		{name: "negative", shape: `"replicas":-1`, code: ErrorReplicasNegative},
-		{name: "over limit", shape: `"replicas":33`, code: ErrorReplicasTooMany},
+		{name: "over limit", shape: `"replicas":1025`, code: ErrorReplicasTooMany},
 		{name: "distributed replicas", shape: `"replicas":2,"nnodes":2`, code: ErrorDistributedReplicaCount},
 	} {
 		for _, endpoint := range []string{"/api/v1/evaluate", "/api/v1/deployments"} {

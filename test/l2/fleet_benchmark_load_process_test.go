@@ -5,6 +5,7 @@ package l2
 import (
 	"encoding/json"
 	"fmt"
+	"gpuworks.ai/gpuworks/internal/server/planning"
 	"os"
 	"os/exec"
 	"strconv"
@@ -31,7 +32,8 @@ import (
 //
 //	GPUWORKS_TEST_PERF=1 go test -count=1 -v -tags=multiproc -timeout 60m ./test/l2/ -run '^TestFleetServerOriginBenchmarkAcrossProcesses$'
 //
-// Knobs: GPUWORKS_BENCH_REPLICAS (32), GPUWORKS_BENCH_CONCURRENCY (300), GPUWORKS_BENCH_REQUESTS_PER_CONCURRENCY
+// Knobs: GPUWORKS_BENCH_REPLICAS (32), GPUWORKS_BENCH_NODES (1; replicas are
+// spread over the nodes by automatic placement), GPUWORKS_BENCH_CONCURRENCY (300), GPUWORKS_BENCH_REQUESTS_PER_CONCURRENCY
 // (10); engine shape GPUWORKS_BENCH_TTFT_MS (200), _TPOT_MS (3), _DELTAS
 // (1024); budgets GPUWORKS_BENCH_MAX_RSS_MIB (2048) and
 // GPUWORKS_BENCH_MAX_ERROR_PERMILLE (1).
@@ -39,8 +41,9 @@ func TestFleetServerOriginBenchmarkAcrossProcesses(t *testing.T) {
 	if os.Getenv("GPUWORKS_TEST_PERF") != "1" {
 		t.Skip("server-origin benchmark load case; set GPUWORKS_TEST_PERF=1 on an idle host to run (full command in the test's doc comment)")
 	}
-	const nodeCount = 1
 	replicas := fleet.EnvInt("GPUWORKS_BENCH_REPLICAS", 32)
+	nodeCount := max(fleet.EnvInt("GPUWORKS_BENCH_NODES", 1), 1)
+	gpusPerNode := (replicas + nodeCount - 1) / nodeCount
 	concurrency := fleet.EnvInt("GPUWORKS_BENCH_CONCURRENCY", 300)
 	multiplier := fleet.EnvInt("GPUWORKS_BENCH_REQUESTS_PER_CONCURRENCY", 10)
 	ttft := time.Duration(fleet.EnvInt("GPUWORKS_BENCH_TTFT_MS", 200)) * time.Millisecond
@@ -48,8 +51,8 @@ func TestFleetServerOriginBenchmarkAcrossProcesses(t *testing.T) {
 	deltas := fleet.EnvInt("GPUWORKS_BENCH_DELTAS", 1024)
 	maxRSS := float64(fleet.EnvInt("GPUWORKS_BENCH_MAX_RSS_MIB", 2048))
 	maxErrorPermille := fleet.EnvInt("GPUWORKS_BENCH_MAX_ERROR_PERMILLE", 1)
-	if replicas > 32 {
-		t.Fatalf("GPUWORKS_BENCH_REPLICAS=%d: one deployment on one node cannot exceed 32 replicas", replicas)
+	if replicas > planning.MaxReplicas {
+		t.Fatalf("GPUWORKS_BENCH_REPLICAS=%d: one deployment cannot exceed %d replicas", replicas, planning.MaxReplicas)
 	}
 	requireFleetFileDescriptors(t, 4*replicas+6*concurrency+6*nodeCount+2048)
 
@@ -87,7 +90,7 @@ func TestFleetServerOriginBenchmarkAcrossProcesses(t *testing.T) {
 		"--roster", rosterPath, "--server", base,
 		"--state-root", workRoot+"/agents",
 		"--model-dir", modelDir, "--ready", readyPath,
-		"--gpus", strconv.Itoa(replicas),
+		"--gpus", strconv.Itoa(gpusPerNode),
 		"--engine-ttft", ttft.String(), "--engine-tpot", tpot.String(),
 		"--engine-chunks", strconv.Itoa(deltas),
 		"--log", workRoot+"/fleet-agent.log")
@@ -106,12 +109,22 @@ func TestFleetServerOriginBenchmarkAcrossProcesses(t *testing.T) {
 	if err != nil {
 		t.Fatalf("register the preloaded model: %v", err)
 	}
-	// The load shape is what matters here, not the replicas' spread: the
-	// server's side of the run is the same for 32 replicas on one node.
-	body, _ := json.Marshal(map[string]any{
+	// One node pins the deployment there; several spread it by automatic
+	// placement, every node holding the preloaded model at the same path.
+	request := map[string]any{
 		"model_id": modelID, "node_uuid": roster[0].UUID, "served_name": "bench-model", "replicas": replicas,
 		"quick_params": map[string]any{"max_model_len": 8192},
-	})
+	}
+	if nodeCount > 1 {
+		for _, node := range roster[1:] {
+			path, _ := json.Marshal(map[string]string{"node_uuid": node.UUID, "path": modelDir})
+			if err := client.PostJSON(fmt.Sprintf("/api/v1/models/%d/register-path", modelID), path, nil); err != nil {
+				t.Fatalf("register the preloaded model on %s: %v", node.Name, err)
+			}
+		}
+		request["placement_mode"] = "auto"
+	}
+	body, _ := json.Marshal(request)
 	var deployment struct {
 		ID uint `json:"id"`
 	}
@@ -149,7 +162,7 @@ func TestFleetServerOriginBenchmarkAcrossProcesses(t *testing.T) {
 		State    string `json:"state"`
 		Error    string `json:"error"`
 		Progress struct {
-			Completed     int `json:"completed"`
+			Completed    int `json:"completed"`
 			CurrentPoint *struct {
 				RequestTotal int `json:"request_total"`
 			} `json:"current_point"`
