@@ -256,6 +256,15 @@ func doctorBeginAttempt(ctx context.Context, idents ...string) func() {
 	}
 }
 
+type doctorHeldFindingsKey struct{}
+
+// withDoctorHeldFindings has a doctor run add what this agent's hardware
+// watches hold (PCIe, NVLink, Xid) to the cards the vendor tool describes:
+// the diagnosis must see everything the reports do.
+func withDoctorHeldFindings(ctx context.Context, held func([]proto.GPUInfo)) context.Context {
+	return context.WithValue(ctx, doctorHeldFindingsKey{}, held)
+}
+
 type doctorRuntimeCheckKey struct{}
 
 // withDoctorRuntimeCheck tells a doctor run how this node asks its cards, so

@@ -51,7 +51,7 @@
   "adr/0055-long-term-statistics.md": "93c7c3918efd24fdee0dbcc8d7fa4ca52e507f75a3d4469a732acab10c85288f",
   "adr/0056-image-pull-connection-budget.md": "ccaf291f99ca23252c8247cba90dca621ad8a22db0502035cbae2879423ada24",
   "adr/0057-units-placed-by-writing-the-pick-back.md": "bc8bcaca43bdd7ae923fe1b394afb9cc8d89b1fe8a04c99a21a91d18532121bf",
-  "adr/README.md": "b3c6f2980db76cca421f31f4b429a6b95cbf15b4c08d0305a856e9e06de6d544",
+  "adr/README.md": "88864d82f75b75abc7aebd0b134955a4e91f4dfda046b4d881dcf1ed4935d2b4",
   "dev/README.md": "3c5a133a63b1942a5911ce5e9f63aa855874a191c89d39c2d9e4a05613331592",
   "dev/benchmark-reporting-standard.md": "31d07977867e74e1aa19640fd959ae7ae597de85614a541ca98ece4b5351d049",
   "dev/code-map.md": "9caa3a3096740ad163f9bad98f52aeefe4fc10011fc2d1e7153f3ab39dcf02e2",
@@ -95,7 +95,7 @@
   "how-to/rent-cloud-gpus.md": "908f4bbd671c5e676f5040f75c6aa181686f380ad5dd9c89ff0249789335ade9",
   "how-to/sleep-wake.md": "69a1e23558eb0233e0b044ec4bbd10461755a3caee72f5a3cf8162cb1cc2312a",
   "how-to/storages.md": "2b80df4d0e8ae9d242a3f180179fe0b2e861791d1265537f8a01734eb6c2dcf3",
-  "how-to/troubleshooting.md": "c242a19a586c671609c61e9998443db8cb021c565cb3a3aea1a7364efb916145",
+  "how-to/troubleshooting.md": "891ed1ccf51607dca2c80a1aa793759532d71af7f9621d0ef0d8d0ebdfb939a0",
   "how-to/upgrade-and-compatibility.md": "78c7592f75b36088bd839d88e535fcf32d7daa3c54c685a3b8ed3380a810c93a",
   "how-to/use-ai-helper.md": "5a57ff49247970e28de95d0fd51958435a95554355f921942fe6dc9bbdea2c28",
   "how-to/use-mcp.md": "96d72b65ef2c22f89a8999f5447ef3ff76a091345c7eda33daa597128dbac854",
@@ -128,6 +128,7 @@
   "adr/0058-scheduling-center-acts-through-operator-orders.md": "259f1ebc2bf47bb14efdb2a08f12fa9af495c33b764c56430115146bdbc8bda0",
   "how-to/batch-api.md": "949d867689a3cff3cdc77618a25eb355e7b5ca1a9508e3c22ac6da7531e7b17a",
   "how-to/scheduling-center.md": "4b598b3226f44dc4f8482741545c388bd8408e66a57e444c14f33bef3a4313d6",
+  "adr/0060-card-health-from-hardware-facts.md": "8df92de8e08e009da35393c77eb14527a9dde33c27ba4efd48cd8bcca1afa48b",
   "adr/0059-service-levels-and-the-residency-arbiter.md": "9a5473d42661c8d13fd217aa45dd068e6d5a80062d804516cf2b16a9906fa1ff",
   "explanation/service-levels.md": "32175df4500632102079ad84a38eb0fef2c6b808290ab259eb00bd58b568c97f"
 }

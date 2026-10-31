@@ -444,8 +444,8 @@ PCI 设备，但不符合该厂商任何一条识别规则——通常是我们�
 | 级别 | 调度 | 含义 |
 |---|---|---|
 | 正常 | 照常 | 无发现，或只有已处理的历史错误（`memory_error_history`） |
-| 告警 | 照常，但健康卡不够时才用（评估结果带 `degraded_gpus_used`） | `memory_repair_pending`（待复位）、`vendor_health_warning`（厂商工具 Warning） |
-| 故障 | 停止 | `memory_uncorrectable_errors`、`memory_remap_failed`、`reset_required`、`reboot_required`、`power_cycle_required`、`vendor_health_fault`、`runtime_unusable`（运行时用不了这张卡）、`driver_init_failed`（驱动没带起来）、`vendor_cli_unanswered`（厂商 CLI 没应答，读不到信息） |
+| 告警 | 照常，但健康卡不够时才用（评估结果带 `degraded_gpus_used`） | `memory_repair_pending`（待复位）、`vendor_health_warning`（厂商工具 Warning）、`pcie_link_degraded`（PCIe 链路降级）、`pcie_errors`（PCIe 可恢复错误）、`nvlink_down`（NVLink 掉线） |
+| 故障 | 停止 | `memory_uncorrectable_errors`、`memory_remap_failed`、`reset_required`、`reboot_required`、`power_cycle_required`、`vendor_health_fault`、`runtime_unusable`（运行时用不了这张卡）、`driver_init_failed`（驱动没带起来）、`vendor_cli_unanswered`（厂商 CLI 没应答，读不到信息）、`pcie_fatal_errors`（PCIe 致命错误） |
 
 「能不能用」是一个结论，由 server 在存卡时判定一次（健康等级、卡的归属、平台外占用三者合一），
 API 的 `schedulable` 字段就是它，界面与调度都读这一个字段，不各自再推一遍。**不要读 `healthy`**：
@@ -457,9 +457,10 @@ API 的 `schedulable` 字段就是它，界面与调度都读这一个字段，�
 | 厂商 | 命令 | 字段与判定 |
 |---|---|---|
 | PPU | `ppu-smi --query-ppu=...` | `remapped_rows.pending` / `retired_pages.pending` 为 Yes → 待复位；`ecc.errors.uncorrected.volatile.dram` > 0 → 显存故障；`remapped_rows.failure` 为 Yes → 显存故障；`xid.correctable.ppu_reset` / `os_reboot` / `cold_reboot` 有值 → 需要复位 / 重启主机 / 断电重启；`ecc.errors.uncorrected.aggregate.dram`、`retired_pages.double_bit.count`、`remapped_rows.uncorrectable` 是复位不清零的累计值，只作历史记录 |
-| NVIDIA | `nvidia-smi --query-gpu=...` | `ecc.errors.uncorrected.volatile.total` > 0 → 显存故障；`remapped_rows.pending` / `retired_pages.pending` 为 Yes → 待复位；`remapped_rows.failure` 为 Yes → 显存故障；`ecc.errors.uncorrected.aggregate.total` 只作历史记录；卡不支持的字段返回 `[N/A]`，不参与判定 |
+| NVIDIA | `nvidia-smi --query-gpu=...` | `ecc.errors.uncorrected.volatile.total` > 0 → 显存故障；`remapped_rows.pending` / `retired_pages.pending` 为 Yes → 待复位；`remapped_rows.failure` 为 Yes → 显存故障；`ecc.errors.uncorrected.aggregate.total` 只作历史记录；卡不支持的字段返回 `[N/A]`，不参与判定；驱动要求的恢复动作 `gpu_recovery_action`（R550 起）为 Reset → 需要复位、Reboot → 需要重启主机，驱动完成恢复后自己清掉。另读内核日志 `/dev/kmsg` 里的 Xid（需 root）：79（卡掉线）→ 需要重启主机；61、62、95、119、120、140 → 需要复位，二者都保持到之后这张卡的运行时检查通过（或主机重启）；13、31、43 等应用自身错误和 48、63、64 这类有状态字段的 Xid 只记日志。NVLink 每 5 分钟读一次 `nvidia-smi nvlink -s -e`（没有活动 NVLink 的主机每小时一次），活动链路少于这张卡曾有的数量、连续两次 → NVLink 掉线（告警），并立刻重新读拓扑，调度随之不再把它和原来互联的卡视为一组 |
 | 昇腾 | `npu-smi info`，非 OK 时再 `npu-smi info -t health -i <NPU> -c <Chip>` | Health 为 Warning → 告警；Alarm / Critical → 故障；错误码与错误信息原样展示，含义查华为文档 |
 | 海光 | 驱动 sysfs `/sys/bus/pci/devices/<BDF>/ras/`（与 `hy-smi --showrasinfo all`、`--showpagesinfo` 同源，不起进程） | `umc_err_count` 的 `ue` > 0 → 显存故障；其他模块（gfx、sdma 等）`ue` > 0 → 厂商故障；`gpu_vram_bad_pages` 有 P（待退役）→ 待复位，有 F（退役失败）→ 显存故障，只有 R（已退役）→ 历史记录；`ce`（可纠正）只作依据。驱动没有 RAS 文件时不判定 |
+| 所有厂商（PCIe） | 卡到根端口路径上各设备的 sysfs：`current/max_link_speed`、`current/max_link_width`、`aer_dev_{correctable,nonfatal,fatal}`（不起进程；判断端口类型要读配置空间，需 root） | 某段链路的通道数低于两端都支持的值 → PCIe 链路降级（告警）；速率低于两端都支持的值也算，但只在卡被本节点实例使用且不在休眠时判断（空闲卡和交换芯片上行口会主动降速，K100 的交换芯片上行口空闲时是 2.5/8 GT/s）；连续 3 次才判、连续 3 次正常才恢复；虚拟机里只看卡自己这一段。AER 计数以 agent 启动时为基准，只看增量：新的非致命错误 → PCIe 可恢复错误（告警，15 分钟无新错误自动恢复）；新的致命错误 → PCIe 致命错误（故障，直到之后这张卡的运行时检查通过）。固件接管错误处理（firmware-first）的平台计数恒为 0，看不出问题 |
 
 **怎么复核与处理**：使用健康状态说明中按该卡 PCI 地址生成的复核命令。以下以 PPU 待复位为例，
 `0000:7e:00.0` 要替换为自己的卡地址。

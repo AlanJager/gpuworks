@@ -261,6 +261,9 @@ func doctorAccelerators(ctx context.Context, r *proto.DoctorReport, p gpu.Prober
 	// accelerator tool found (CPU-only node)".
 	vendor := p.Vendor()
 	gpus, err := p.Probe(ctx)
+	if held, ok := ctx.Value(doctorHeldFindingsKey{}).(func([]proto.GPUInfo)); ok && held != nil {
+		held(gpus)
+	}
 	doctorUnrecognizedFunctions(r)
 	if vendor == "" && len(gpus) == 0 && err == nil {
 		// Nothing here claims to be an accelerator host.

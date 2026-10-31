@@ -121,6 +121,12 @@ func (n *NodeRuntime) CardHealthFindings(ctx context.Context, gpus []proto.GPUIn
 		n.occupancy.learnCards(gpus)
 	}
 	n.applyForeignProcesses(ctx, gpus, probeOK)
+	// Cards that exist only in a fixture have no PCIe path on this host.
+	if !gpu.IsSynthetic(n.prober) {
+		n.applyPCIeFindings(gpus, n.cardsBusy(), n.runtimeCheckPassedSince)
+		n.applyXidFindings(gpus, n.runtimeCheckPassedSince)
+		n.applyNVLinkFindings(ctx, gpus)
+	}
 	if n.cardSmoke == nil {
 		return
 	}
