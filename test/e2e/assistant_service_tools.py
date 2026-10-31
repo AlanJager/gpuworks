@@ -273,6 +273,20 @@ def test_assistant_service_tools(page, context, server, artifacts, report, local
         seen_presets.append({"preset": preset_key, "base_url": expected_base, "model": expected_model})
     check(len(seen_presets) == 4, "not every preset was selected")
     report["preset_enumeration"] = seen_presets
+    # 1.6: the preset is the controlling field for base address and model. Its rule is to
+    # overwrite both on every change rather than keep what the operator typed, so a hand-typed
+    # address must be replaced by the next preset's declared values.
+    modal.get_by_label(settings["ai"]["baseUrl"], exact=True).fill("https://hand-typed.invalid/v1")
+    modal.get_by_label(settings["ai"]["model"], exact=True).fill("hand-typed-model")
+    modal.locator(".ant-select-selector").first.click()
+    reopen = page.locator(".ant-select-dropdown:visible .ant-select-item-option").filter(
+        has_text=re.compile(r"^" + re.escape(settings["ai"]["presetName"]["bailian"]) + r"$"))
+    expect(reopen).to_be_visible()
+    reopen.click()
+    expect(modal.get_by_label(settings["ai"]["baseUrl"], exact=True)).to_have_value(
+        "https://dashscope.aliyuncs.com/compatible-mode/v1")
+    expect(modal.get_by_label(settings["ai"]["model"], exact=True)).to_have_value("qwen-plus")
+    report["preset_cascade"] = {"overwrites_typed_base_url": True, "overwrites_typed_model": True}
     modal.locator(".ant-select-selector").first.click()
     custom = page.locator(".ant-select-dropdown:visible .ant-select-item-option").filter(
         has_text=re.compile(r"^" + re.escape(settings["ai"]["presetName"]["custom"]) + r"$"))
