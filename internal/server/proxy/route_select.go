@@ -24,23 +24,45 @@ func (p *Proxy) selectDeploymentInstance(modelName string) (*store.Deployment, t
 }
 
 func (p *Proxy) selectDeploymentInstanceWithKey(modelName, affinity string) (*store.Deployment, target, int, string, bool) {
+	return p.selectScopedDeploymentInstance(nil, modelName, affinity)
+}
+
+// selectScopedDeploymentInstance is selectDeploymentInstanceWithKey over the
+// deployments the caller's API key may call (nil: all). A name served only by
+// deployments outside the scope is 403; deployments outside it are never
+// touched, so a scoped caller cannot wake or load them.
+func (p *Proxy) selectScopedDeploymentInstance(scope *store.APIKeyIdentity, modelName, affinity string) (*store.Deployment, target, int, string, bool) {
+	allowed := func(id uint) bool { return scope == nil || scope.Allows(id) }
 	if p.routes != nil {
 		deployments, ok := p.routes.snapshot(modelName)
 		if ok {
 			for _, rd := range deployments {
+				if !allowed(rd.dep.ID) {
+					continue
+				}
 				if tgt, ok := p.pickRouted(rd, modelName, affinity, p.hold.drainingOf(rd.dep.ID)); ok {
 					return rd.dep, tgt, 0, "", false
 				}
 			}
 			// A dirty snapshot is refreshed asynchronously. The name-scoped store
 			// lookup below is the bounded correctness fallback; never rebuild the
-			// complete route table on the request path.
+			// complete route table on the request path. It also settles a
+			// name the snapshot shows only outside the caller's scope.
 		}
 		p.routes.requestRebuild()
 	}
-	deployments, err := p.store.DeploymentsByServedName(modelName)
-	if err != nil || len(deployments) == 0 {
+	served, err := p.store.DeploymentsByServedName(modelName)
+	if err != nil || len(served) == 0 {
 		return nil, target{}, http.StatusNotFound, "no deployment serves model " + modelName, false
+	}
+	deployments := served[:0:0]
+	for _, dep := range served {
+		if allowed(dep.ID) {
+			deployments = append(deployments, dep)
+		}
+	}
+	if len(deployments) == 0 {
+		return nil, target{}, http.StatusForbidden, deniedMessage(modelName), false
 	}
 	message := "no running instance for " + modelName + " (still starting?)"
 	// attempted tracks which deployment the surfaced message (and asleep
@@ -65,8 +87,10 @@ func (p *Proxy) selectDeploymentInstanceWithKey(modelName, affinity string) (*st
 	return attempted, target{}, http.StatusServiceUnavailable, message, asleep
 }
 
-// pickRouted picks one of a snapshot deployment's replicas that is not
-// draining, false when none is ready. A multi-node deployment drains whole.
+func deniedMessage(modelName string) string {
+	return "this API key may not call model " + modelName
+}
+
 func (p *Proxy) pickRouted(rd *routeDeployment, modelName, affinity string, draining map[string]bool) (target, bool) {
 	if draining != nil && rd.nnodes > 1 {
 		return target{}, false

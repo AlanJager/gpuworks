@@ -207,7 +207,7 @@ func (p *Proxy) holdForWake(ctx context.Context, w http.ResponseWriter, modelNam
 			changed = p.hold.next()
 		case <-recheck.C:
 		}
-		got, tgt, status, msg, asleep := p.selectDeploymentInstanceWithKey(modelName, affinity)
+		got, tgt, status, msg, asleep := p.selectForRequest(ctx, modelName, affinity)
 		if status == 0 || !asleep {
 			return got, tgt, status, msg, asleep
 		}

@@ -253,9 +253,17 @@ server 等 doctor 最多 2 分钟，agent 自己把一次诊断限制在 100 秒
 
 会改驱动状态的命令（如昇腾 `npu-smi set`）和要求即时结果的调用不用旧结果：仍限时 10 秒，超时后被 kill
 仍不退出的（卡在驱动里的 D 状态进程）只等 3 秒就放手，日志 `gpu command did not exit after kill`；
-在它退出（日志 `stuck gpu command exited`）之前，同一个 CLI 的这类调用直接失败（`a previous call has not exited`）。
+在它退出（日志 `stuck gpu command exited`）之前，同一个 CLI 的这类调用直接失败（`an earlier call has not exited`），不再启动新进程。
+同一个 CLI 的这类调用一次只跑一个，两个同时到达也不会各起一个进程；超时时连同它启动的子进程一起 kill。
 
-持续出现时在节点上 `ps -eo pid,stat,etime,cmd | grep -- -smi` 看有没有 `D` 状态的进程，并查 `dmesg` 里的
+同样的规则也管着其他会进驱动的命令，所以无论调用多频繁，每一类最多只会有一个卡死的进程：
+- **运行时检查**：周期逐卡检查（所有厂商、主机上或容器里）、诊断里的逐卡检查和 NVIDIA 的 CUDA / peer access / NCCL 检查共用一个"运行时检查"名额，同一时刻只有一个在跑。
+  其中一个卡死后，新的检查都不启动：周期检查整轮跳过，诊断里显示为未检查或 `SKIP (an earlier runtime check on this node was killed and has not exited ...)`，都不判卡故障。
+- **容器里的检查**：容器删不掉（里面的进程卡在驱动里）时记下它，在它消失之前不再起新容器。
+- **昇腾 `hccn_tool`**（每分钟读加速卡网口）：按 die 各一个名额、每次限时 3 秒，某个 die 卡死只影响这个 die，节点状态上报不会被它拖住。
+- **诊断**：一个节点同一时刻只跑一次，第二次请求直接返回 `a diagnosis is already running on this node`。
+
+持续出现时在节点上 `ps -eo pid,stat,etime,cmd | grep -E -- '-smi|hccn_tool|python3'` 看有没有 `D` 状态的进程，并查 `dmesg` 里的
 Xid / NVRM 报错。
 
 ### 某张卡运行时不可用或驱动初始化失败

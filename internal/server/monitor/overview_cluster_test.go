@@ -367,3 +367,34 @@ func TestBuildClusterPropagatesTSDBError(t *testing.T) {
 		t.Fatal("expected BuildCluster to propagate the TSDB error, not return zeros")
 	}
 }
+
+// The cluster request rate carries the concurrency it was served at: the
+// gateway's in-flight gauge of every deployment, averaged over the window,
+// summed across the fleet.
+func TestBuildClusterInflightSumsAcrossServices(t *testing.T) {
+	store := newTestStore(t)
+	inv := Inventory{
+		Deployments: []DeploymentRef{{ID: 1, Name: "a"}, {ID: 2, Name: "b"}},
+		Instances:   []InstanceRef{{UUID: "i1", DeploymentID: 1}, {UUID: "i2", DeploymentID: 2}},
+	}
+	deps := Deps{TSDB: store, Inventory: inventoryFunc(inv), Now: func() time.Time { return baseTime }}
+	start := baseTime.Add(-70 * time.Second)
+	for i := 0; i < 8; i++ {
+		at := start.Add(time.Duration(i) * 10 * time.Second)
+		for dep, inflight := range map[string]float64{"1": 4, "2": 16} {
+			writeSample(t, store, "gpuworks_proxy_requests_total", map[string]string{"deployment": dep, "class": "2xx"}, float64(50*(i+1)), at)
+			writeSample(t, store, "gpuworks_proxy_requests_inflight", map[string]string{"deployment": dep}, inflight, at)
+		}
+	}
+
+	snap, err := BuildCluster(context.Background(), deps, time.Hour)
+	if err != nil {
+		t.Fatalf("BuildCluster: %v", err)
+	}
+	if !snap.Signals.HasRequestRate || snap.Signals.RequestsPerSec != 10 {
+		t.Fatalf("RequestsPerSec = %v has=%v, want 10/true (5/s per service)", snap.Signals.RequestsPerSec, snap.Signals.HasRequestRate)
+	}
+	if !snap.Signals.HasInflight || snap.Signals.InflightAvg != 20 {
+		t.Fatalf("InflightAvg = %v has=%v, want 20/true (4 + 16)", snap.Signals.InflightAvg, snap.Signals.HasInflight)
+	}
+}

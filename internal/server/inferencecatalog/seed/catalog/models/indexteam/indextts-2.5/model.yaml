@@ -108,6 +108,9 @@ specs:
       mode: sync
       inputs:
       - name: ref_audio
+        label:
+          en: Reference audio
+          zh: 参考音频
         kind: audio
         encoding: data_url
         required: true

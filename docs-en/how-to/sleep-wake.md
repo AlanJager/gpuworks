@@ -81,6 +81,10 @@ Sleep state after recreation depends on the sleep scope:
 
 L1 moves weights into host memory. Before sleeping, the platform estimates the weights to move for the instances about to sleep on each node (each rank of a multi-node replica counts its share) and compares them with the node's most recently reported available memory. If the need exceeds the available memory minus the headroom, it refuses; the headroom is the larger of 5% of total host memory and 4 GiB. The refusal is 409 `SLEEP_HOST_MEMORY_INSUFFICIENT` with the parameters `node`, `need_gib`, and `available_gib`; use L2 instead. A node with no recent host memory observation is not judged, and the decision is left to you.
 
+An engine that has already slept at L1 once is not counted. On its first L1 sleep vLLM copies the weights into pinned host memory and keeps that memory afterwards, awake as well, without returning it to the system; the platform does an L1 prewarm right after every sleepable instance starts, so the memory is held from startup and already excluded from the available memory the node reports. Counting the weights again would count the same memory twice and refuse sleeps that need no new memory. The agent reports this after the prewarm or an L1 sleep succeeds; when an instance gets a new process (rebuilt or restarted) it is counted again until its own prewarm completes. An older agent that does not report it is still counted by its weights.
+
+How much is held varies by model; plan host memory from measurements: about 1.9 times the weights for 7B/14B models on an L20, and 1.44 and 1.78 times the GPU weights for DeepSeek-V4.1-Flash and GLM-5.3-Flash at TP8 on an H20. An L2 sleep does not return it either.
+
 ## What the GPU Can Do After Sleep
 
 A sleeping instance holds only its **residue** on each GPU (the CUDA context, allocator pools, the CUDA graph pool, and communication buffers on multiple GPUs); the rest of the GPU memory can go to other deployments. The residue is recorded per instance and is no longer a fixed constant:
@@ -152,7 +156,7 @@ When one instance fails to sleep, only its own desired state and any still-activ
 | Result | Next Action |
 |---|---|
 | Actual sleep state can be confirmed | The platform preserves the confirmed actual sleep level and failure reason, and rolls back only the desired state still associated with this failed command to that level. Resolve the cause, then click the corresponding button again; failed commands are not retried automatically |
-| State cannot be confirmed, or an L2 wake fails after partially allocating GPU memory | The instance is marked failed, continues to account for full GPU memory usage, and is blocked from gateway forwarding. The platform removes and recreates this instance generation. Wait for the recreation result; do not estimate available GPU memory using the sleep residual |
+| State cannot be confirmed, an L2 wake fails after partially allocating GPU memory, or the engine answers the sleep command with an error yet reports itself asleep (its weights may be only partly offloaded) | The instance is marked failed, continues to account for full GPU memory usage, and is blocked from gateway forwarding. The platform removes and recreates this instance generation. Wait for the recreation result; do not estimate available GPU memory using the sleep residual |
 
 ## Limitations
 

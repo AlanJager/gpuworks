@@ -69,7 +69,7 @@ func (a *apiHandlers) playgroundModels(w http.ResponseWriter, r *http.Request) {
 		// deployment some of whose replicas are awake is served by them, so it
 		// needs no wake.
 		sleeping := candidate.score == 1
-		contract := inferenceapi.ResolveDeploymentContract(a.d.Store, dep, candidate.instances)
+		contract := inferenceapi.ResolveDeploymentContract(a.d.Store, dep)
 		contract.Operations = omitUnservedTranscription(contract.Operations, candidate.instances)
 		if len(contract.Operations) == 0 {
 			// An explicitly empty or invalid model operation configuration has no

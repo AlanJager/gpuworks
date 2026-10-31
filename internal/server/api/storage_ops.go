@@ -404,25 +404,15 @@ func (a *apiHandlers) storageUsage(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
+	modelBytesByNode, imageBytesByNode, err := a.d.Store.NodeDiskUsage()
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
 	out := make([]dto.StorageNodeUsage, 0, len(nodes))
 	for i := range nodes {
 		node := &nodes[i]
-		var modelBytes int64
-		if files, err := a.d.Store.ModelFilesForNode(node.ID); err == nil {
-			for _, file := range files {
-				if file.State == proto.MFDownloading || file.State == proto.MFSyncing || file.State == proto.MFFailed || file.State == proto.MFRegistered || file.State == proto.MFPresent {
-					modelBytes += file.Downloaded
-				}
-			}
-		}
-		var imageBytes int64
-		if rows, err := a.d.Store.ImageNodesForNode(node.ID); err == nil {
-			for _, row := range rows {
-				if row.State == store.ImageStatePresent {
-					imageBytes += row.SizeBytes
-				}
-			}
-		}
+		modelBytes, imageBytes := modelBytesByNode[node.ID], imageBytesByNode[node.ID]
 		var paths []proto.PathUsage
 		_ = json.Unmarshal([]byte(node.PathUsage), &paths)
 		total, available := modelsDiskUsage(paths)

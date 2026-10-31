@@ -181,14 +181,20 @@ func TestEvaluateRequestSharesTheCreateBodyWireContract(t *testing.T) {
 
 func TestAPIKeyDTOContractCannotExposeSecret(t *testing.T) {
 	created := time.Date(2026, 8, 29, 8, 0, 0, 0, time.UTC)
-	object := marshalJSONObject(t, dto.APIKey{Name: "automation", Prefix: "gw_abcd", Created: created})
+	object := marshalJSONObject(t, dto.APIKey{Name: "automation", Prefix: "gw_abcd", Created: created, AllDeployments: true, Deployments: []dto.APIKeyDeployment{}})
 	want := map[string]any{
-		"name":       "automation",
-		"prefix":     "gw_abcd",
-		"created_at": "2026-08-29T08:00:00Z",
+		"name":            "automation",
+		"prefix":          "gw_abcd",
+		"created_at":      "2026-08-29T08:00:00Z",
+		"all_deployments": true,
+		"deployments":     []any{},
 	}
 	if !reflect.DeepEqual(object, want) {
 		t.Fatalf("API key response contract=%#v, want exactly %#v", object, want)
+	}
+	scoped := marshalJSONObject(t, dto.APIKey{Name: "a", Prefix: "gw_a", Created: created, Deployments: []dto.APIKeyDeployment{{ID: 3, Name: "qwen", ServedName: "qwen-chat"}}})
+	if !reflect.DeepEqual(scoped["deployments"], []any{map[string]any{"id": float64(3), "name": "qwen", "served_name": "qwen-chat"}}) || scoped["all_deployments"] != false {
+		t.Fatalf("scoped key contract=%#v", scoped)
 	}
 }
 

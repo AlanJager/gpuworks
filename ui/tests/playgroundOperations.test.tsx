@@ -529,13 +529,13 @@ test("Switching to a reference-audio model drops the previous model's voice", as
   assert.deepEqual(requests, [{ model: "switch-reference-model", input: "Hello from GPUWorks" }]);
 });
 
-test("Reference audio uses shared translations without a template label and keeps its API input name", async () => {
+test("Reference audio uses template translations and keeps its API input name", async () => {
   const previousLanguage = i18n.language;
   await act(async () => { await i18n.changeLanguage("zh"); });
   try {
     const audioCatalog: PlaygroundCatalog = { ...catalog, models: [model("localized-reference-model", [{
       ...operation("openai.audio.speech", "/v1/audio/speech", "audio", "audio"),
-      inputs: [{ name: "ref_audio", kind: "audio", encoding: "data_url" }],
+      inputs: [{ name: "ref_audio", kind: "audio", encoding: "data_url", label: { en: "Reference audio", zh: "参考音频" } }],
     }])] };
     const requests: Record<string, unknown>[] = [];
     globalThis.fetch = (async (input, init) => {
@@ -566,7 +566,7 @@ test("Reference audio uses shared translations without a template label and keep
   }
 });
 
-test("Template labels take precedence over shared names and unknown inputs keep their API names", async () => {
+test("Template labels own translated names and unlabeled inputs keep their API names", async () => {
   const { default: InputsForm } = await import("../src/pages/playground/InputsForm.tsx");
   const previousLanguage = i18n.language;
   await act(async () => { await i18n.changeLanguage("zh"); });
@@ -580,6 +580,12 @@ test("Template labels take precedence over shared names and unknown inputs keep 
     assert.ok(screen.getByLabelText("custom_note"));
     await act(async () => { await i18n.changeLanguage("en"); });
     assert.ok(screen.getByLabelText("Voice sample"));
+    cleanup();
+    render(<I18nextProvider i18n={i18n}><InputsForm fields={[
+      { name: "ref_audio", kind: "audio", encoding: "data_url" },
+    ]} values={{}} onChange={() => undefined} /></I18nextProvider>);
+    assert.ok(screen.getByLabelText("ref_audio"));
+    assert.equal(screen.queryByLabelText("Reference audio"), null);
   } finally {
     await act(async () => { await i18n.changeLanguage(previousLanguage); });
   }

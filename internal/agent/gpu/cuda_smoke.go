@@ -18,13 +18,11 @@ import (
 // driver ignores the kill until it leaves the kernel, and without it the
 // caller would wait as long as the driver does.
 var cudaSmokeCommand = func(ctx context.Context, visible string, name string, args ...string) ([]byte, error) {
-	cmd := exec.CommandContext(ctx, name, args...)
-	killGroupOnCancel(cmd)
+	var env []string
 	if visible != "" {
-		cmd.Env = append(os.Environ(), "CUDA_VISIBLE_DEVICES="+visible)
+		env = append(os.Environ(), "CUDA_VISIBLE_DEVICES="+visible)
 	}
-	cmd.WaitDelay = 5 * time.Second
-	return cmd.CombinedOutput()
+	return runRuntimeCheck(ctx, env, name, args...)
 }
 
 // CUDARuntimeSmokeOn asks whether the runtime can use one card, named as
@@ -54,6 +52,9 @@ func CUDARuntimeSmoke(ctx context.Context) error {
 // cudaSmokeVerdict reads the attempt's output. It is shared so a per-card
 // check and the whole-node one cannot disagree about what counts as a pass.
 func cudaSmokeVerdict(out []byte, err error) error {
+	if refused := stillRunning(err); refused != nil {
+		return refused
+	}
 	if err != nil {
 		detail := strings.TrimSpace(string(out))
 		if detail == "" {

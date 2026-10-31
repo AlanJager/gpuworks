@@ -191,7 +191,7 @@ func BuildService(ctx context.Context, deps Deps, deploymentID uint, rng time.Du
 		noteAsOf(time.UnixMilli(p.TimeMS).UTC())
 	}
 	snap.AsOf = asOf
-	snap.Stale = asOf.IsZero() || now.Sub(asOf) > staleAfter
+	snap.Stale = StaleAt(asOf, now)
 	return snap, nil
 }
 

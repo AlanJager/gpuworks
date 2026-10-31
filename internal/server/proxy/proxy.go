@@ -323,11 +323,11 @@ func New(st *store.Store, networks Networks, hub Tunneler, log *slog.Logger, max
 // Handler returns the /v1 handler with API-key auth.
 func (p *Proxy) Handler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		caller, ok := p.authenticate(w, r)
+		caller, identity, ok := p.authenticate(w, r)
 		if !ok {
 			return
 		}
-		r = r.WithContext(uxrecord.WithCaller(r.Context(), caller))
+		r = r.WithContext(withKeyScope(uxrecord.WithCaller(r.Context(), caller), identity))
 		r.Header.Del(instanceHeader) // pinning is an internal-entry feature
 		p.serveAuthenticated(w, r)
 	}
@@ -368,7 +368,7 @@ func (p *Proxy) PlaygroundHandler(box *auth.Secretbox) http.HandlerFunc {
 		deployment, tgt, pinned, status, message, asleep := p.pinnedTarget(r, modelName)
 		if !pinned {
 			affinity := p.affinityKey(modelName, r)
-			deployment, tgt, status, message, asleep = p.selectDeploymentInstanceWithKey(modelName, affinity)
+			deployment, tgt, status, message, asleep = p.selectForRequest(r.Context(), modelName, affinity)
 			if status != 0 && asleep {
 				deployment, tgt, status, message, asleep = p.holdForWake(r.Context(), w, modelName, affinity, deployment)
 			}
@@ -378,8 +378,7 @@ func (p *Proxy) PlaygroundHandler(box *auth.Secretbox) http.HandlerFunc {
 			writeErr(w, status, message)
 			return
 		}
-		instances, _ := p.store.InstancesForDeployment(deployment.ID)
-		contract := inferenceapi.ResolveDeploymentContract(p.store, deployment, instances)
+		contract := inferenceapi.ResolveDeploymentContract(p.store, deployment)
 		if !inferenceapi.AllowsContractRequest(contract, r.Method, r.URL.Path) {
 			p.acct.RecordImmediate(deployment.ID, http.StatusNotFound, false)
 			writeErr(w, http.StatusNotFound, fmt.Sprintf("deployment %s does not expose %s %s", modelName, r.Method, r.URL.Path))
@@ -495,7 +494,7 @@ func (p *Proxy) serveAuthenticated(w http.ResponseWriter, r *http.Request) {
 
 func (p *Proxy) serveModel(w http.ResponseWriter, r *http.Request, modelName string) {
 	affinity := p.affinityKey(modelName, r)
-	dep, tgt, status, msg, asleep := p.selectDeploymentInstanceWithKey(modelName, affinity)
+	dep, tgt, status, msg, asleep := p.selectForRequest(r.Context(), modelName, affinity)
 	if status != 0 && asleep {
 		dep, tgt, status, msg, asleep = p.holdForWake(r.Context(), w, modelName, affinity, dep)
 	}
@@ -552,12 +551,12 @@ func (p *Proxy) serveSelectedTarget(w http.ResponseWriter, r *http.Request, publ
 // authenticate checks the platform API key and names the caller: the key
 // and its owner, received now. With no keys configured yet every request is
 // allowed (dev) and the caller is anonymous.
-func (p *Proxy) authenticate(w http.ResponseWriter, r *http.Request) (uxrecord.Caller, bool) {
-	caller, ok := p.Identify(r)
+func (p *Proxy) authenticate(w http.ResponseWriter, r *http.Request) (uxrecord.Caller, store.APIKeyIdentity, bool) {
+	caller, identity, ok := p.identifyKey(r)
 	if !ok {
 		writeErr(w, http.StatusUnauthorized, "invalid or missing API key")
 	}
-	return caller, ok
+	return caller, identity, ok
 }
 
 func writeErr(w http.ResponseWriter, code int, msg string) {

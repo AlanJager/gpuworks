@@ -42,12 +42,12 @@ specs:
         required: true
         label:
           en: Voice
-          zh-CN: 音色
+          zh: 音色
       - name: instructions
         kind: text
         label:
           en: Style or emotion instructions
-          zh-CN: 风格或情绪说明
+          zh: 风格或情绪说明
       - name: language
         kind: select
         options:
@@ -65,7 +65,7 @@ specs:
         default: Auto
         label:
           en: Language
-          zh-CN: 语言
+          zh: 语言
 - name: bf16-vllm-ascend-760501dc
   display_profile: general
   scenario: balanced
@@ -109,12 +109,12 @@ specs:
         required: true
         label:
           en: Voice
-          zh-CN: 音色
+          zh: 音色
       - name: instructions
         kind: text
         label:
           en: Style or emotion instructions
-          zh-CN: 风格或情绪说明
+          zh: 风格或情绪说明
       - name: language
         kind: select
         options:
@@ -132,7 +132,7 @@ specs:
         default: Auto
         label:
           en: Language
-          zh-CN: 语言
+          zh: 语言
 - name: bf16-vllm-ascend-a3-760501dc
   display_profile: general
   scenario: balanced
@@ -176,12 +176,12 @@ specs:
         required: true
         label:
           en: Voice
-          zh-CN: 音色
+          zh: 音色
       - name: instructions
         kind: text
         label:
           en: Style or emotion instructions
-          zh-CN: 风格或情绪说明
+          zh: 风格或情绪说明
       - name: language
         kind: select
         options:
@@ -199,5 +199,5 @@ specs:
         default: Auto
         label:
           en: Language
-          zh-CN: 语言
+          zh: 语言
 input_modalities: [text]

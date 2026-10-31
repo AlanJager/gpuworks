@@ -67,7 +67,7 @@
     "partition_backend": "nvidia-dgpu",
     "vram_limit_bytes": 12884901888,
     "replicas": 1,
-    "max_replicas": 32,
+    "max_replicas": 1024,
     "routing_policy": "least_request",
     "ready_replicas": 1,
     "health": {
@@ -103,7 +103,7 @@
       "replicas": [
         {
           "minimum": 1,
-          "maximum": 32,
+          "maximum": 1024,
           "ok": true
         }
       ]

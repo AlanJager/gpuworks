@@ -41,5 +41,5 @@ specs:
         required: true
         label:
           en: Ambient sound
-          zh-CN: 环境音描述
+          zh: 环境音描述
 input_modalities: [text]

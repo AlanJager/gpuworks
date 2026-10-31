@@ -19,9 +19,9 @@ const original = { apiKeys: api.apiKeys, platformTokens: api.platformTokens };
 const originalKeyUsage = analyticsApi.keyUsage;
 
 const keys = [
-  { name: "live-app", prefix: "gw-live00000", created_at: "2026-10-01T00:00:00Z" },
-  { name: "idle-app", prefix: "gw-idle00000", created_at: "2026-10-01T00:00:00Z" },
-  { name: "unused-app", prefix: "gw-none00000", created_at: "2026-10-01T00:00:00Z" },
+  { name: "live-app", prefix: "gw-live00000", created_at: "2026-10-01T00:00:00Z", all_deployments: true, deployments: [] },
+  { name: "idle-app", prefix: "gw-idle00000", created_at: "2026-10-01T00:00:00Z", all_deployments: true, deployments: [] },
+  { name: "unused-app", prefix: "gw-none00000", created_at: "2026-10-01T00:00:00Z", all_deployments: true, deployments: [] },
 ];
 
 function Probe() {

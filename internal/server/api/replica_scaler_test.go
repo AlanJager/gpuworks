@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"gpuworks.ai/gpuworks/internal/server/planning"
 	"net/http"
 	"slices"
 	"strings"
@@ -85,11 +86,11 @@ func TestReplicaScalerSingleNodeAndPD(t *testing.T) {
 	if got, _ := rig.st.GetDeployment(rig.plain.ID); got.Replicas != 3 {
 		t.Fatalf("replicas = %d, want 3", got.Replicas)
 	}
-	if err := scale(rig.plain.ID, "", 99); err != nil {
+	if err := scale(rig.plain.ID, "", planning.MaxReplicas+67); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := rig.st.GetDeployment(rig.plain.ID); got.Replicas != 32 {
-		t.Fatalf("replicas = %d, want the limit 32", got.Replicas)
+	if got, _ := rig.st.GetDeployment(rig.plain.ID); got.Replicas != planning.MaxReplicas {
+		t.Fatalf("replicas = %d, want the limit %d", got.Replicas, planning.MaxReplicas)
 	}
 	if err := scale(rig.pd.ID, "", 2); err == nil || productErrorCode(t, err) != "SCHEDULE_INVALID" {
 		t.Fatalf("PD without a role: err = %v", err)

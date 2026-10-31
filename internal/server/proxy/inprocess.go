@@ -4,12 +4,14 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/server/auth"
+	"gpuworks.ai/gpuworks/internal/server/store"
 	"gpuworks.ai/gpuworks/internal/server/uxrecord"
 )
 
@@ -45,20 +47,27 @@ type InProcessReply struct {
 // does: with no key configured yet every request is allowed, anonymously.
 // False when the key is missing or invalid.
 func (p *Proxy) Identify(r *http.Request) (uxrecord.Caller, bool) {
+	caller, _, ok := p.identifyKey(r)
+	return caller, ok
+}
+
+// identifyKey is Identify that also returns the key's identity, whose scope
+// limits the deployments the request may reach.
+func (p *Proxy) identifyKey(r *http.Request) (uxrecord.Caller, store.APIKeyIdentity, bool) {
 	caller := uxrecord.Caller{Source: uxrecord.SourceAPI, ReceivedMS: time.Now().UnixMilli()}
 	if !p.store.HasAnyAPIKey() {
-		return caller, true
+		return caller, store.APIKeyIdentity{}, true
 	}
 	key := auth.BearerToken(r.Header.Get("Authorization"))
 	if key == "" {
-		return caller, false
+		return caller, store.APIKeyIdentity{}, false
 	}
 	identity, ok := p.store.ResolveAPIKey(key)
 	if !ok {
-		return caller, false
+		return caller, store.APIKeyIdentity{}, false
 	}
 	caller.APIKeyID, caller.UserID = identity.KeyID, identity.UserID
-	return caller, true
+	return caller, identity, true
 }
 
 // Do posts body to path (a /v1 path) as caller's request and returns the
@@ -66,7 +75,17 @@ func (p *Proxy) Identify(r *http.Request) (uxrecord.Caller, bool) {
 // (a batch's, say). ctx bounds it, the wake hold included.
 func (p *Proxy) Do(ctx context.Context, caller uxrecord.Caller, path string, body []byte) InProcessReply {
 	caller.ReceivedMS = time.Now().UnixMilli()
-	req, err := http.NewRequestWithContext(uxrecord.WithCaller(ctx, caller), http.MethodPost, path, bytes.NewReader(body))
+	reqCtx := uxrecord.WithCaller(ctx, caller)
+	if caller.APIKeyID != 0 {
+		// The key's scope now, not when the batch was created: an edit
+		// applies to the requests still to send.
+		identity, err := p.store.APIKeyScopeByID(caller.APIKeyID)
+		if err != nil {
+			return InProcessReply{Err: fmt.Errorf("read the API key's scope: %w", err)}
+		}
+		reqCtx = withKeyScope(reqCtx, identity)
+	}
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, path, bytes.NewReader(body))
 	if err != nil {
 		return InProcessReply{Err: err}
 	}

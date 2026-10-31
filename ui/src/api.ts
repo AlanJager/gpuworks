@@ -2011,6 +2011,23 @@ export interface ApiKey {
   created_at: string;
   /** When the key was revoked; a revoked key no longer authenticates. */
   revoked_at?: string;
+  /** The key may call every deployment; otherwise only `deployments`. */
+  all_deployments: boolean;
+  /** Empty when all_deployments, or when every granted deployment is gone. */
+  deployments: ApiKeyDeployment[];
+}
+
+/** A deployment a restricted API key may call. */
+export interface ApiKeyDeployment {
+  id: number;
+  name: string;
+  served_name: string;
+}
+
+/** Which deployments an API key may call (POST /apikeys, PUT /apikeys/{prefix}/scope). */
+export interface ApiKeyScope {
+  all_deployments: boolean;
+  deployment_ids: number[];
 }
 
 /** How long each kind of data is kept (GET/PUT /api/v1/data-retention). */
@@ -4490,8 +4507,10 @@ export const api = {
     ),
 
   apiKeys: () => getJSON<List<ApiKey>>("/api/v1/apikeys"),
-  createApiKey: (name: string) =>
-    sendJSON<{ key: string } & ApiKey>("POST", "/api/v1/apikeys", { name }),
+  createApiKey: (name: string, scope?: ApiKeyScope) =>
+    sendJSON<{ key: string; name: string }>("POST", "/api/v1/apikeys", { name, ...scope }),
+  setApiKeyScope: (prefix: string, scope: ApiKeyScope) =>
+    sendJSON<ApiKey>("PUT", `/api/v1/apikeys/${prefix}/scope`, scope),
   revokeApiKey: (prefix: string) =>
     sendJSON<void>("DELETE", `/api/v1/apikeys/${prefix}`),
   platformTokens: () => getJSON<List<PlatformToken>>("/api/v1/platform-tokens"),

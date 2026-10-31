@@ -34,10 +34,9 @@ const (
 var verifyAPIKeyHash = auth.VerifyPassword
 
 type verifiedAPIKey struct {
-	id      uint
-	userID  uint
-	prefix  string
-	expires time.Time
+	identity APIKeyIdentity
+	prefix   string
+	expires  time.Time
 }
 
 // verifyCall is one slow check in progress; concurrent requests presenting
@@ -45,10 +44,9 @@ type verifiedAPIKey struct {
 // a restart in front of a busy client population would run one 64 MiB
 // argon2id per in-flight request at once.
 type verifyCall struct {
-	done   chan struct{}
-	id     uint
-	userID uint
-	ok     bool
+	done     chan struct{}
+	identity APIKeyIdentity
+	ok       bool
 }
 
 type apiKeyCache struct {
@@ -56,6 +54,9 @@ type apiKeyCache struct {
 	verified map[[sha256.Size]byte]verifiedAPIKey
 	inflight map[[sha256.Size]byte]*verifyCall
 	lastUsed map[uint]time.Time
+	// scopes caches APIKeyScopeByID by key ID, for requests sent on a key's
+	// behalf without its secret (a batch's).
+	scopes map[uint]verifiedAPIKey
 	// hasAny caches HasAnyAPIKey: 0 unknown, 1 none, 2 some.
 	hasAny int
 	// generation advances on every key create/delete. A reader samples it
@@ -95,7 +96,7 @@ func (c *apiKeyCache) lookup(digest [sha256.Size]byte) (verifiedAPIKey, bool) {
 	return entry, true
 }
 
-func (c *apiKeyCache) remember(generation uint64, digest [sha256.Size]byte, id, userID uint, prefix string) {
+func (c *apiKeyCache) remember(generation uint64, digest [sha256.Size]byte, identity APIKeyIdentity, prefix string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if generation != c.generation {
@@ -117,7 +118,7 @@ func (c *apiKeyCache) remember(generation uint64, digest [sha256.Size]byte, id, 
 			clear(c.verified)
 		}
 	}
-	c.verified[digest] = verifiedAPIKey{id: id, userID: userID, prefix: prefix, expires: c.clock().Add(apiKeyCacheTTL)}
+	c.verified[digest] = verifiedAPIKey{identity: identity, prefix: prefix, expires: c.clock().Add(apiKeyCacheTTL)}
 }
 
 // join returns the in-progress check for digest, and whether the caller is
@@ -150,7 +151,12 @@ func (c *apiKeyCache) forget(prefix string) {
 	for digest, entry := range c.verified {
 		if entry.prefix == prefix {
 			delete(c.verified, digest)
-			delete(c.lastUsed, entry.id)
+			delete(c.lastUsed, entry.identity.KeyID)
+		}
+	}
+	for id, entry := range c.scopes {
+		if entry.prefix == prefix {
+			delete(c.scopes, id)
 		}
 	}
 	c.hasAny = 0
@@ -201,4 +207,26 @@ func (c *apiKeyCache) changed() {
 	c.hasAny = 0
 	c.generation++
 	c.mu.Unlock()
+}
+
+func (c *apiKeyCache) lookupScope(id uint) (APIKeyIdentity, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	entry, ok := c.scopes[id]
+	if !ok || !c.clock().Before(entry.expires) {
+		return APIKeyIdentity{}, false
+	}
+	return entry.identity, true
+}
+
+func (c *apiKeyCache) rememberScope(generation uint64, identity APIKeyIdentity, prefix string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if generation != c.generation {
+		return
+	}
+	if c.scopes == nil || len(c.scopes) >= apiKeyCacheMaxEntries {
+		c.scopes = make(map[uint]verifiedAPIKey)
+	}
+	c.scopes[identity.KeyID] = verifiedAPIKey{identity: identity, prefix: prefix, expires: c.clock().Add(apiKeyCacheTTL)}
 }

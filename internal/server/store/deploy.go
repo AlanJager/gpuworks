@@ -431,7 +431,7 @@ func (s *Store) SetDeploymentState(id uint, state DeploymentState) error {
 // removed together with the deployment; its names stay behind in
 // DeletedDeployment for the usage and statistics it leaves.
 func (s *Store) DeleteDeployment(id uint) error {
-	var deletedInstances []string
+	var deletedInstances, scopedKeys []string
 	var removals []InstanceEvent
 	err := s.db.Transaction(func(tx *gorm.DB) error {
 		var dep Deployment
@@ -464,6 +464,10 @@ func (s *Store) DeleteDeployment(id uint) error {
 		if err := tx.Where("deployment_id = ?", id).Delete(&LifecycleSchedule{}).Error; err != nil {
 			return err
 		}
+		var err error
+		if scopedKeys, err = dropDeploymentGrants(tx, id); err != nil {
+			return err
+		}
 		result := tx.Delete(&Deployment{}, id)
 		if result.Error != nil {
 			return result.Error
@@ -473,6 +477,9 @@ func (s *Store) DeleteDeployment(id uint) error {
 		}
 		return nil
 	})
+	for _, prefix := range scopedKeys {
+		s.apiKeys.forget(prefix)
+	}
 	if err == nil {
 		for _, ev := range removals {
 			s.observe(ev, nil)
@@ -693,6 +700,16 @@ func (s *Store) updateInstanceStatus(inst *Instance, st proto.InstanceStatus) er
 		// without one (a later probe, an older agent) keeps it.
 		if st.SleepLevel > 0 && st.SleepResidueBytes > 0 {
 			updates["sleep_residue_bytes"] = st.SleepResidueBytes
+		}
+		// A new process holds no host buffer yet; once an L1 sleep pinned one,
+		// it stays until the process goes. An adopting agent (after its own
+		// restart) does not know and reports none, which must not clear it:
+		// only a report of a process starting does.
+		switch {
+		case st.State == proto.InstPending || st.State == proto.InstPulling || st.State == proto.InstStarting:
+			updates["l1_host_buffer_held"] = false
+		case st.L1HostBufferHeld && (st.State == proto.InstRunning || st.Phase == proto.PhaseSleep):
+			updates["l1_host_buffer_held"] = true
 		}
 	}
 	if len(st.Ports) > 0 {

@@ -54,7 +54,7 @@ func TestTheDeploymentSaysWhatMayBeOffered(t *testing.T) {
 	}
 	pdManual := create(&store.Deployment{Name: "pd-manual", Engine: "vllm", Sleepable: true, Replicas: 1, Placement: capabilitiesPDPlacement})
 	pdAuto := create(&store.Deployment{Name: "pd-auto", Engine: "vllm", Sleepable: true, Replicas: 1, Placement: capabilitiesPDPlacement, UnitsAuto: true})
-	const single = `[{"minimum":1,"maximum":32,"ok":true}]`
+	const single = `[{"minimum":1,"maximum":1024,"ok":true}]`
 	const manual = `"SCHEDULE_REPLICAS_MANUAL_PLACEMENT"`
 	for _, tc := range []struct {
 		name      string
@@ -68,7 +68,7 @@ func TestTheDeploymentSaysWhatMayBeOffered(t *testing.T) {
 		{"not sleepable", rig.plain, `{"ok":false,"reason":"SLEEP_NOT_ENABLED"}`,
 			`{"sleep":{"ok":false,"reason":"SLEEP_NOT_ENABLED"},"wake":{"ok":false,"reason":"SLEEP_NOT_ENABLED"},"replicas":` + single + `}`, `1800`},
 		{"multi-node placed by hand", rig.multi, `{"ok":false,"reason":"YIELD_POLICY_SHAPE"}`,
-			`{"sleep":{"ok":true},"wake":{"ok":true},"replicas":[{"minimum":1,"maximum":32,"ok":false,"reason":` + manual + `}]}`, `1800`},
+			`{"sleep":{"ok":true},"wake":{"ok":true},"replicas":[{"minimum":1,"maximum":1024,"ok":false,"reason":` + manual + `}]}`, `1800`},
 		{"PD placed by hand", pdManual, `{"ok":false,"reason":"YIELD_POLICY_SHAPE"}`,
 			`{"sleep":{"ok":true},"wake":{"ok":true},"replicas":[{"role":"decode","minimum":1,"maximum":32,"ok":false,"reason":` + manual + `},{"role":"prefill","minimum":0,"maximum":32,"ok":false,"reason":` + manual + `}]}`, `1800`},
 		{"PD placed by the platform", pdAuto, `{"ok":false,"reason":"YIELD_POLICY_SHAPE"}`,

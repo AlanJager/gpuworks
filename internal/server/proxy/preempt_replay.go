@@ -67,7 +67,7 @@ func (p *Proxy) serveReplayingPreemption(w http.ResponseWriter, r *http.Request,
 		var status int
 		var msg string
 		var asleep bool
-		dep, tgt, status, msg, asleep = p.selectDeploymentInstanceWithKey(modelName, affinity)
+		dep, tgt, status, msg, asleep = p.selectForRequest(r.Context(), modelName, affinity)
 		if status != 0 && asleep {
 			dep, tgt, status, msg, asleep = p.holdForWake(r.Context(), w, modelName, affinity, dep)
 		}

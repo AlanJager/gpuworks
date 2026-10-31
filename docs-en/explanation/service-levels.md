@@ -80,7 +80,7 @@ Measured on an L20 (vLLM 0.17.1, 7B and 14B models): with two models swapping on
 
 So the sleep level defaults to `auto`: L1 first, falling back to L2 when available host memory cannot hold the weights (the estimate is conservative). Choose `l1` for strict L1 (refused where it does not fit, instead of quietly getting slower), or `l2` to trade switch time for host memory.
 
-This also means: **a sleep-capable deployment holds host memory of about 1.9 times its weight size from startup.** When several sleep-capable deployments run on one host, plan its host memory by that amount.
+This also means: **a sleep-capable deployment holds host memory of 1.4–1.9 times its weight size from startup**; the factor varies by model (about 1.9 for 7B/14B models on an L20; 1.44 for DeepSeek-V4.1-Flash and 1.78 for GLM-5.3-Flash at TP8 on an H20), and an L2 sleep does not return it. When several sleep-capable deployments run on one host, plan its host memory by that amount: an H20 host with 2 TB of memory holds two sleep-capable deployments with 300–400 GB of weights each, not three.
 
 ## Held Sleep
 
