@@ -251,6 +251,28 @@ def test_assistant_service_tools(page, context, server, artifacts, report, local
     from assistant_add_inventory import exercise_add_inventory
     report["add_inventory"] = exercise_add_inventory(modal, settings)
     expect(modal.get_by_text(settings["ai"]["addService"], exact=True)).to_be_visible()
+    # 1.5: every preset the dropdown actually offers is selected on its own and has to fill the
+    # base address and model it declares. Only deepseek (the default) and custom were exercised.
+    preset_expectations = [
+        ("bailian", "https://dashscope.aliyuncs.com/compatible-mode/v1", "qwen-plus"),
+        ("siliconflow", "https://api.siliconflow.cn/v1", ""),
+        ("openrouter", "https://openrouter.ai/api/v1", ""),
+        ("poe", "https://api.poe.com/v1", "GPT-5"),
+    ]
+    seen_presets = []
+    for preset_key, expected_base, expected_model in preset_expectations:
+        modal.locator(".ant-select-selector").first.click()
+        label = settings["ai"]["presetName"][preset_key]
+        option = page.locator(".ant-select-dropdown:visible .ant-select-item-option").filter(
+            has_text=re.compile(r"^" + re.escape(label) + r"$"))
+        expect(option).to_be_visible()
+        option.click()
+        expect(modal.locator(".ant-select-selection-item").first).to_have_text(label)
+        expect(modal.get_by_label(settings["ai"]["baseUrl"], exact=True)).to_have_value(expected_base)
+        expect(modal.get_by_label(settings["ai"]["model"], exact=True)).to_have_value(expected_model)
+        seen_presets.append({"preset": preset_key, "base_url": expected_base, "model": expected_model})
+    check(len(seen_presets) == 4, "not every preset was selected")
+    report["preset_enumeration"] = seen_presets
     modal.locator(".ant-select-selector").first.click()
     custom = page.locator(".ant-select-dropdown:visible .ant-select-item-option").filter(
         has_text=re.compile(r"^" + re.escape(settings["ai"]["presetName"]["custom"]) + r"$"))
