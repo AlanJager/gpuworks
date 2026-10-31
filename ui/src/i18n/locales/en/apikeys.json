@@ -3,7 +3,8 @@
     "cancel": "Cancel",
     "close": "Close",
     "create": "Create",
-    "revoke": "Revoke"
+    "revoke": "Revoke",
+    "save": "Save"
   },
   "breadcrumb": {
     "platform": "Platform"
@@ -32,7 +33,8 @@
     "prefix": "Prefix",
     "status": "Status",
     "tokensToday": "Tokens today",
-    "tokens7d": "Tokens, last 7 days"
+    "tokens7d": "Tokens, last 7 days",
+    "scope": "Scope"
   },
   "title": "API Tokens",
   "usage": "Usage",
@@ -77,5 +79,23 @@
   "tokens": {
     "tooltip": "Input {{input}} (cached {{cached}}) · Output {{output}}",
     "open": "{{tokens}} tokens of {{name}}, open in Usage analytics"
+  },
+  "scope": {
+    "label": "Model services it can call",
+    "all": "All model services",
+    "some": "Selected model services",
+    "pick": "Choose model services",
+    "required": "Choose at least one model service",
+    "noDeployments": "No model services",
+    "loadFailed": "Could not load model services: {{detail}}",
+    "noneLeft": "None (deleted)",
+    "noneLeftHelp": "Every chosen model service has been deleted, so this token cannot call any model now.",
+    "more": "+{{count}}",
+    "edit": "Change scope",
+    "editAria": "Change what “{{name}}” can call",
+    "editTitle": "Model services “{{name}}” can call",
+    "editHelp": "The token's next request uses the new scope.",
+    "saved": "Updated",
+    "saveFailed": "Could not save: {{detail}}"
   }
 }

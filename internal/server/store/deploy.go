@@ -431,7 +431,7 @@ func (s *Store) SetDeploymentState(id uint, state DeploymentState) error {
 // removed together with the deployment; its names stay behind in
 // DeletedDeployment for the usage and statistics it leaves.
 func (s *Store) DeleteDeployment(id uint) error {
-	var deletedInstances []string
+	var deletedInstances, scopedKeys []string
 	err := s.db.Transaction(func(tx *gorm.DB) error {
 		var dep Deployment
 		if err := tx.Select("ID", "Name", "ServedName").First(&dep, id).Error; err != nil {
@@ -461,6 +461,10 @@ func (s *Store) DeleteDeployment(id uint) error {
 		if err := tx.Where("deployment_id = ?", id).Delete(&LifecycleSchedule{}).Error; err != nil {
 			return err
 		}
+		var err error
+		if scopedKeys, err = dropDeploymentGrants(tx, id); err != nil {
+			return err
+		}
 		result := tx.Delete(&Deployment{}, id)
 		if result.Error != nil {
 			return result.Error
@@ -470,6 +474,9 @@ func (s *Store) DeleteDeployment(id uint) error {
 		}
 		return nil
 	})
+	for _, prefix := range scopedKeys {
+		s.apiKeys.forget(prefix)
+	}
 	if err == nil {
 		for _, uuid := range deletedInstances {
 			s.Bus.PublishChange("instance", uuid, "deleted")

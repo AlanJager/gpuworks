@@ -8,7 +8,7 @@ are enforced by the server. The frontend only reports real user interactions and
 
 Platform API Tokens continue to protect management APIs and MCP based on the owning user's permissions, token scopes, and independent expiration. They do not participate in login session renewal or password-change revocation.
 
-API keys protect the /v1 data plane. A per-node token only proves the identity of an agent connection;
+API keys protect the /v1 data plane and can be limited to chosen model services (deployments): a model outside the scope returns 403, `/v1/models` lists only the models in scope, and batch requests run under the key's current scope. A per-node token only proves the identity of an agent connection;
 server_dial uses an HMAC challenge to prevent inbound connections from parties without the token.
 
 preflight, peer sync, and model/image streams use

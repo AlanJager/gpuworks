@@ -16,15 +16,28 @@ type User struct {
 // clear for O(1) lookup; the full key is verified against an argon2id hash.
 // A revoked key stays, so its usage keeps a name; it never authenticates
 // again and its prefix is never reused.
+//
+// Restricted false lets the key reach every deployment. True limits it to the
+// deployments granted in api_key_deployments; a restricted key whose grants
+// are all gone (the deployments were deleted) reaches none.
 type APIKey struct {
-	ID        uint   `gorm:"primaryKey"`
-	Name      string `gorm:"size:128"`
-	Prefix    string `gorm:"uniqueIndex;size:16"` // first chars, clear
-	Hash      string `gorm:"size:256"`            // argon2id of full key
-	UserID    uint   `gorm:"index"`
-	CreatedAt time.Time
-	LastUsed  *time.Time
-	RevokedAt *time.Time
+	ID         uint   `gorm:"primaryKey"`
+	Name       string `gorm:"size:128"`
+	Prefix     string `gorm:"uniqueIndex;size:16"` // first chars, clear
+	Hash       string `gorm:"size:256"`            // argon2id of full key
+	UserID     uint   `gorm:"index"`
+	CreatedAt  time.Time
+	LastUsed   *time.Time
+	RevokedAt  *time.Time
+	Restricted bool
+}
+
+// APIKeyDeployment grants a restricted API key one deployment. Rows go with
+// the deployment when it is deleted, so a later deployment that happens to
+// reuse its ID is never granted by accident.
+type APIKeyDeployment struct {
+	APIKeyID     uint `gorm:"primaryKey;autoIncrement:false"`
+	DeploymentID uint `gorm:"primaryKey;autoIncrement:false;index"`
 }
 
 // ManagementSession stores only the hash of a browser or management credential.
