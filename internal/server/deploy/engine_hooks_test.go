@@ -88,3 +88,20 @@ func (plainEngine) Profile() Profile { return Profile{Name: "plain"} }
 func (plainEngine) Build(Params) ResolvedLaunch {
 	return ResolvedLaunch{Entrypoint: []string{"plain"}}
 }
+
+// The sleep capability read on hot paths is the one the full profile
+// declares, for every registered engine, the default and an unknown one.
+func TestSleepCapsForEngineMatchesTheProfile(t *testing.T) {
+	for _, name := range append(EngineNames(), "") {
+		profile, err := ProfileForEngine(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := SleepCapsForEngine(name); !reflect.DeepEqual(got, profile.Sleep) {
+			t.Errorf("%q: SleepCapsForEngine = %+v, profile says %+v", name, got, profile.Sleep)
+		}
+	}
+	if got := SleepCapsForEngine("no-such-engine"); !reflect.DeepEqual(got, SleepCaps{}) {
+		t.Errorf("unknown engine has caps %+v", got)
+	}
+}

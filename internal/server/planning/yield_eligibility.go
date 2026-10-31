@@ -22,8 +22,7 @@ func YieldPolicyRefusal(dep *store.Deployment) string {
 // by its request rather than stored: whether it asks to sleep, its engine,
 // how many nodes a replica spans and whether it is PD.
 func DraftYieldPolicyRefusal(sleepable bool, engine string, nnodes int, pd bool) string {
-	profile, _ := deploy.ProfileForEngine(engine)
-	if code := sleep.Eligible(sleep.Deployment{Sleepable: sleepable, Caps: profile.Sleep}); code != "" {
+	if code := sleep.Eligible(sleep.Deployment{Sleepable: sleepable, Caps: deploy.SleepCapsForEngine(engine)}); code != "" {
 		return code
 	}
 	if nnodes > 1 || pd {
