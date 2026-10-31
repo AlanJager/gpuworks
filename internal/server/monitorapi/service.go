@@ -156,23 +156,45 @@ func detachedContext(ctx context.Context) (context.Context, context.CancelFunc) 
 // for "give up waiting on someone else's in-flight computation" - is left
 // untouched, so a caller that aborts while merely *waiting* still returns
 // promptly.
+//
+// A cached overview may be older than the request (monitor.Cached serves a
+// stale one while it refreshes), so Stale is judged again at serve time from
+// the as_of it carries. as_of itself stays what the snapshot was built from.
 func (s *Service) Overview(ctx context.Context, rng time.Duration) (dto.MonitorOverview, error) {
-	return s.overview.Get(ctx, "cluster", "", rng.String(), func(computeCtx context.Context) (dto.MonitorOverview, error) {
+	out, err := s.overview.Get(ctx, "cluster", "", rng.String(), func(computeCtx context.Context) (dto.MonitorOverview, error) {
 		detached, cancel := detachedContext(computeCtx)
 		defer cancel()
 		return s.buildOverview(detached, rng)
 	})
+	if err == nil {
+		out.Stale = out.Stale || staleAtServe(out.AsOf, s.deps.now())
+	}
+	return out, err
+}
+
+// staleAtServe is monitor.StaleAt for an as_of in the wire's milliseconds
+// (0: no sample at all).
+func staleAtServe(asOfMS int64, now time.Time) bool {
+	var asOf time.Time
+	if asOfMS != 0 {
+		asOf = time.UnixMilli(asOfMS)
+	}
+	return monitor.StaleAt(asOf, now)
 }
 
 // Deployment serves the /monitor/deployments/{id} snapshot. See Overview's
 // doc comment for why compute runs under a detached, timeout-bounded
 // context.
 func (s *Service) Deployment(ctx context.Context, id uint, rng time.Duration) (dto.MonitorDeployment, error) {
-	return s.deployment.Get(ctx, "service", strconv.FormatUint(uint64(id), 10), rng.String(), func(computeCtx context.Context) (dto.MonitorDeployment, error) {
+	out, err := s.deployment.Get(ctx, "service", strconv.FormatUint(uint64(id), 10), rng.String(), func(computeCtx context.Context) (dto.MonitorDeployment, error) {
 		detached, cancel := detachedContext(computeCtx)
 		defer cancel()
 		return s.buildDeployment(detached, id, rng)
 	})
+	if err == nil {
+		out.Stale = out.Stale || staleAtServe(out.AsOf, s.deps.now())
+	}
+	return out, err
 }
 
 // Series serves the /monitor/series metric browser. See Overview's doc
@@ -202,7 +224,8 @@ func (s *Service) At(end time.Time) *Service {
 	view := *s
 	view.deps.Now = func() time.Time { return end }
 	now := func() time.Time { return end }
-	// TTL 0: every call computes; single-flight still collapses duplicates.
+	// TTL 0: nothing is kept or served stale, every call computes;
+	// single-flight still collapses duplicates.
 	view.overview = monitor.NewCached[dto.MonitorOverview](now, 0)
 	view.deployment = monitor.NewCached[dto.MonitorDeployment](now, 0)
 	view.series = monitor.NewCached[[]dto.MonitorSeries](now, 0)
