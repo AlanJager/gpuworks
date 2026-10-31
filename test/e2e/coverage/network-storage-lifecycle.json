@@ -7,7 +7,12 @@
   "cases": [
     {
       "case_id": "network",
-      "additional_cases": [{"manifest": "test/e2e/coverage/network-type-roles.json", "scope": "Three types, all 15 valid nonempty role combinations, and Ethernet to each RDMA and back conditional-field definitions; legacy case gaps below remain scoped to this case"}],
+      "additional_cases": [
+        {
+          "manifest": "test/e2e/coverage/network-type-roles.json",
+          "scope": "Three types, all 15 valid nonempty role combinations, and Ethernet to each RDMA and back conditional-field definitions; legacy case gaps below remain scoped to this case"
+        }
+      ],
       "contract_id": "gpuworks/network/ethernet-resource-lifecycle",
       "resource": "Ethernet network definition",
       "test_function": "test_network_lifecycle",
@@ -142,7 +147,8 @@
         "12.5": "N/A: the network create dialog has no nested child layer",
         "12.6": "covered: While the create POST is held the footer Save shows the loading state and a second click sends no further create request; the 502 keeps the name, description, CIDR, interface and serving role and shows the server reason; the later 201 matches the independent detail GET and the refreshed fields",
         "12.7": "MISSING: delete names the network; reference-block, allow-cleanup, and failed delete without a partial change are not exercised",
-        "12.8": "N/A: the network create and edit dialogs have no delete preview, revision, or compare-and-swap"
+        "12.8": "N/A: the network create and edit dialogs have no delete preview, revision, or compare-and-swap",
+        "2.2": "The create form is submitted with an empty name and then with a whitespace-only name ('   '). Each attempt shows the nameRequired message and the rolesRequired message, the dialog stays open, and the case asserts that both attempts recorded zero mutation events - so a whitespace-only name never reaches the server and no request value or stored value can differ. The form is then filled with the real name before the cancel path, which is separately asserted to send no mutation either."
       },
       "runtime": {
         "status": "N/A for resource registration contract",
@@ -267,12 +273,69 @@
             "runtime write denial"
           ]
         },
-        {"id": "export", "component": "Conditional Text", "request": "export on NFS creation; omitted from edit PATCH", "persisted": "export", "covered": [], "missing": ["MISSING: nfs/nfs_cache export format/whitespace validation, edit disabled value, and omission after switching to local/shared_dir"]},
-        {"id": "mount-options", "component": "Conditional Text", "request": "mount_options for NFS types", "persisted": "mount_options", "covered": [], "missing": ["MISSING: nonempty/empty defaults and clearing on edit; hidden-type omission and switch-back behavior"]},
-        {"id": "cache-path", "component": "Conditional Path", "request": "cache_path for nfs_cache", "persisted": "cache_path", "covered": [], "missing": ["MISSING: empty server default, absolute/relative paths, clear on edit, per-node cache_path override and hidden-type omission"]},
-        {"id": "cache-limit", "component": "Conditional InputNumber", "request": "cache_max_bytes", "persisted": "cache_max_bytes", "unit": "GiB in UI; integer bytes on wire", "covered": [], "missing": ["MISSING: GiB to bytes rounding, null/0 unlimited, positive/fractional values and negative UI boundary; existing per-node cache_max_bytes survives unrelated edits"]},
-        {"id": "existing-mount", "component": "Conditional Checkbox per selected node", "request": "targets[].existing and probe existing for the selected probe node", "persisted": "targets[].existing", "covered": [], "missing": ["MISSING: true/false, NFS-only submission and switching type; compare probe target/override with saved target"]},
-        {"id": "probe", "component": "Button and conditional result panel", "request": "POST /api/v1/storages/probe from type/export/path/mount options/selected probe node", "persisted": "N/A: transient result gates shared-storage creation", "covered": [], "missing": ["MISSING: probe required before shared create; changes to probe-signature inputs invalidate the prior result and block save until reprobed", "MISSING: readable-only result changes save action and enabled=false; request failure/retry and stale async responses after close/reopen", "MISSING: per-type field omission/defaults and probe node/path override request assertions; real mount/read/write evidence remains in the separate runtime gap"]}
+        {
+          "id": "export",
+          "component": "Conditional Text",
+          "request": "export on NFS creation; omitted from edit PATCH",
+          "persisted": "export",
+          "covered": [],
+          "missing": [
+            "MISSING: nfs/nfs_cache export format/whitespace validation, edit disabled value, and omission after switching to local/shared_dir"
+          ]
+        },
+        {
+          "id": "mount-options",
+          "component": "Conditional Text",
+          "request": "mount_options for NFS types",
+          "persisted": "mount_options",
+          "covered": [],
+          "missing": [
+            "MISSING: nonempty/empty defaults and clearing on edit; hidden-type omission and switch-back behavior"
+          ]
+        },
+        {
+          "id": "cache-path",
+          "component": "Conditional Path",
+          "request": "cache_path for nfs_cache",
+          "persisted": "cache_path",
+          "covered": [],
+          "missing": [
+            "MISSING: empty server default, absolute/relative paths, clear on edit, per-node cache_path override and hidden-type omission"
+          ]
+        },
+        {
+          "id": "cache-limit",
+          "component": "Conditional InputNumber",
+          "request": "cache_max_bytes",
+          "persisted": "cache_max_bytes",
+          "unit": "GiB in UI; integer bytes on wire",
+          "covered": [],
+          "missing": [
+            "MISSING: GiB to bytes rounding, null/0 unlimited, positive/fractional values and negative UI boundary; existing per-node cache_max_bytes survives unrelated edits"
+          ]
+        },
+        {
+          "id": "existing-mount",
+          "component": "Conditional Checkbox per selected node",
+          "request": "targets[].existing and probe existing for the selected probe node",
+          "persisted": "targets[].existing",
+          "covered": [],
+          "missing": [
+            "MISSING: true/false, NFS-only submission and switching type; compare probe target/override with saved target"
+          ]
+        },
+        {
+          "id": "probe",
+          "component": "Button and conditional result panel",
+          "request": "POST /api/v1/storages/probe from type/export/path/mount options/selected probe node",
+          "persisted": "N/A: transient result gates shared-storage creation",
+          "covered": [],
+          "missing": [
+            "MISSING: probe required before shared create; changes to probe-signature inputs invalidate the prior result and block save until reprobed",
+            "MISSING: readable-only result changes save action and enabled=false; request failure/retry and stale async responses after close/reopen",
+            "MISSING: per-type field omission/defaults and probe node/path override request assertions; real mount/read/write evidence remains in the separate runtime gap"
+          ]
+        }
       ],
       "checklist_items": {
         "1.1": "On first open the add-storage dialog shows one secondary type-help paragraph, two button radio groups, and seven button radios. There is no spinbutton and no unit. Type is a button radio group labeled with the type label and is not marked required. Its four localized type labels are visible button radios, and local is checked. The type-help paragraph text is the localized local directory sentence. Name is an empty textbox, is not marked required, has no maximum length and no placeholder, and shows the localized 1-to-63 help. Directory is an empty textbox, is not marked required, has no maximum length, and shows the localized directory help. Export, mount options, cache directory, cache limit, shared directory, mount point, steps, the trial-mount button, checkboxes, label rows, and alerts are absent. Scope is a button radio group labeled with the scope title and is not marked required. Its three localized scope labels are visible button radios, and all nodes is checked. The scope help is the localized every-node sentence. One empty combobox offers optional per-node directories. The same run rejects an empty name, a whitespace name, and INVALID_NAME with the name error and sends no storage request, and rejects a relative directory with the absolute-path error and sends no storage request. The create POST body is the trimmed name, type local, the absolute directory, all_nodes true, and targets []. The independent GET stores those fields and enabled true.",
