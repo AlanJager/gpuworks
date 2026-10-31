@@ -171,6 +171,7 @@
     "sharingEmpty": "这段时间没有共卡（出让策略不是不自动出让）的部署占用过卡。",
     "columns": {
       "deployment": "部署",
+      "cards": "节点与卡",
       "level": "出让策略",
       "awake": "提供服务时长",
       "switches": "切换",
@@ -185,7 +186,8 @@
       "ms": "{{value}} 毫秒",
       "seconds": "{{value}} 秒",
       "minutes": "{{value}} 分"
-    }
+    },
+    "cardsOnNode": "{{node}} · GPU {{gpus}}"
   },
   "states": {
     "awake": "提供服务",

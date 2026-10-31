@@ -171,6 +171,7 @@
     "sharingEmpty": "No deployment that shares cards (any yield policy but never) held cards in this window.",
     "columns": {
       "deployment": "Deployment",
+      "cards": "Node and GPUs",
       "level": "Yield policy",
       "awake": "Serving time",
       "switches": "Switches",
@@ -185,7 +186,8 @@
       "ms": "{{value}} ms",
       "seconds": "{{value}} s",
       "minutes": "{{value}} min"
-    }
+    },
+    "cardsOnNode": "{{node}} · GPU {{gpus}}"
   },
   "states": {
     "awake": "Serving",

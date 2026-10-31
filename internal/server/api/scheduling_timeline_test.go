@@ -134,7 +134,7 @@ func TestSchedulingTimelineWire(t *testing.T) {
 	}
 	d.AwakeSeconds, d.AwakeShare = 0, 0
 	line, _ := json.Marshal(d)
-	if want := fmt.Sprintf(`{"deployment_id":%d,"deployment":"night-batch","yield_policy":"timeslice","awake_seconds":0,"awake_share":0,"switches":3,"yielded":1,"yielded_to":1,"wakes":2,"held_requests":0}`, r.shared.ID); string(line) != want {
+	if want := fmt.Sprintf(`{"deployment_id":%d,"deployment":"night-batch","yield_policy":"timeslice","awake_seconds":0,"awake_share":0,"switches":3,"yielded":1,"yielded_to":1,"wakes":2,"held_requests":0,"cards":[{"node_id":%d,"node":"tl-node","gpus":[0]}]}`, r.shared.ID, r.node.ID); string(line) != want {
 		t.Fatalf("stats\n got  %s\n want %s", line, want)
 	}
 	if share := got.Deployments[0].AwakeShare; share <= 0.3 || share >= 0.6 {
@@ -283,5 +283,47 @@ func TestHoldWaitsReadTheGatewaysSeries(t *testing.T) {
 	}
 	if none := (&apiHandlers{}).holdWaits([]uint{5}, from, now); len(none) != 0 {
 		t.Fatalf("without metrics = %v", none)
+	}
+}
+
+// The sharing stats say where each deployment is now: its live instances'
+// cards by node, a TP replica's cards sorted, two replicas on one node merged,
+// a node no longer known kept by id, and a removed instance nowhere.
+func TestSharingStatsSayWhereEachDeploymentIs(t *testing.T) {
+	r := newTimelineRig(t)
+	other, err := r.st.RegisterNode("tl-other", store.HashToken("token-2"), "tl-other")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, in := range []store.Instance{
+		{UUID: "inst-shared-tp", DeploymentID: r.shared.ID, NodeID: other.ID, State: proto.InstRunning, GPUIndexes: "[3,2]", CreatedAt: r.t0},
+		{UUID: "inst-shared-2", DeploymentID: r.shared.ID, NodeID: r.node.ID, State: proto.InstRunning, GPUIndexes: "[1]", CreatedAt: r.t0},
+	} {
+		in := in
+		if err := r.st.DB().Create(&in).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	status, body := r.get("?sharing=1&hours=6")
+	if status != http.StatusOK {
+		t.Fatalf("sharing = %d %s", status, body)
+	}
+	want := fmt.Sprintf(`"cards":[{"node_id":%d,"node":"tl-node","gpus":[0,1]},{"node_id":%d,"node":"tl-other","gpus":[2,3]}]`, r.node.ID, other.ID)
+	if !strings.Contains(body, want) {
+		t.Fatalf("sharing cards\n got  %s\n want %s", body, want)
+	}
+
+	placed := placementsOf([]store.ResidencyInstance{
+		{UUID: "gone", DeploymentID: 7, NodeID: 5, GPUs: []int{0}, Live: false},
+		{UUID: "here", DeploymentID: 7, NodeID: 999, GPUs: []int{1, 1}, Live: true},
+		{UUID: "cpu", DeploymentID: 8, NodeID: 5, Live: true},
+	})
+	cards, err := (&apiHandlers{d: Deps{Store: r.st}}).cardsOf(placed, []uint{7, 8, 9})
+	if err != nil {
+		t.Fatal(err)
+	}
+	line, _ := json.Marshal(cards)
+	if string(line) != `{"7":[{"node_id":999,"node":"","gpus":[1]}],"8":[{"node_id":5,"node":"","gpus":[]}]}` {
+		t.Fatalf("cards = %s", line)
 	}
 }

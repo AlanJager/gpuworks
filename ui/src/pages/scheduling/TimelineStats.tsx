@@ -2,7 +2,7 @@ import { Tag } from "antd";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
-import type { TimelineDeployment } from "../../schedulingApi";
+import type { TimelineCards, TimelineDeployment } from "../../schedulingApi";
 import ResourceTable, { type ResourceColumn } from "../../components/resourceTable/ResourceTable";
 import { durationText } from "../durationText";
 
@@ -25,6 +25,7 @@ export function SharingTable({ rows }: { rows: TimelineDeployment[] }) {
   const num = (key: keyof TimelineDeployment) => (_: unknown, row: TimelineDeployment) => <span className="scheduling-num">{String(row[key])}</span>;
   const columns: ResourceColumn<TimelineDeployment>[] = [
     { key: "deployment", title: t("timeline.columns.deployment"), width: 200, render: (_: unknown, row) => <Link to={`/deployments?deployment=${row.deployment_id}`}>{row.deployment}</Link> },
+    { key: "cards", title: t("timeline.columns.cards"), width: 180, render: (_: unknown, row) => <CardsCell cards={row.cards} /> },
     { key: "level", title: t("timeline.columns.level"), width: 90, render: (_: unknown, row) => <Tag>{tDeploy(`yieldPolicy.policy.name.${row.yield_policy}`)}</Tag> },
     {
       key: "awake",
@@ -49,5 +50,21 @@ export function SharingTable({ rows }: { rows: TimelineDeployment[] }) {
       columnSettings={false}
       emptyDescription={t("timeline.sharingEmpty")}
     />
+  );
+}
+
+// CardsCell lists where a deployment is now, one node per line: its name (or
+// id when the node is gone) and the GPUs its instances hold there.
+function CardsCell({ cards }: { cards: TimelineCards[] | undefined }) {
+  const { t } = useTranslation("scheduling");
+  if (!cards?.length) return <span>—</span>;
+  return (
+    <span className="scheduling-cards">
+      {cards.map((entry) => (
+        <span key={entry.node_id} style={{ display: "block" }}>
+          {t("timeline.cardsOnNode", { node: entry.node || `#${entry.node_id}`, gpus: entry.gpus.join(", ") || "—" })}
+        </span>
+      ))}
+    </span>
   );
 }
