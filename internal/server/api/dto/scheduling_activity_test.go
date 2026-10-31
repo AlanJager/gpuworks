@@ -14,8 +14,8 @@ func TestSchedulingActivityWire(t *testing.T) {
 	from := time.Date(2026, 10, 30, 12, 0, 0, 0, time.UTC)
 	in := SchedulingActivity{
 		From: from, To: from.Add(30 * time.Minute), BucketSeconds: 900,
-		Reasons: []ActivityReason{{Key: "idle_yield", Count: 3}, {Key: "queued", Count: 0}},
-		Buckets: []ActivityBucket{{Start: from, Counts: []int64{1, 0}}, {Start: from.Add(15 * time.Minute), Counts: []int64{2, 0}}},
+		Reasons:  []ActivityReason{{Key: "idle_yield", Count: 3}, {Key: "queued", Count: 0}},
+		Buckets:  []ActivityBucket{{Start: from, Counts: []int64{1, 0}}, {Start: from.Add(15 * time.Minute), Counts: []int64{2, 0}}},
 		TopCards: []ActivityCard{{NodeUUID: "5f0c-node", Node: "gpu3", GPUIndex: 2, Switches: 7}, {NodeUUID: "gone", GPUIndex: 0, Switches: 1}},
 	}
 	want := `{"from":"2026-10-30T12:00:00Z","to":"2026-10-30T12:30:00Z","bucket_seconds":900,` +

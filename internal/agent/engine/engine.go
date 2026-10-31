@@ -93,6 +93,8 @@ type Engine struct {
 	// puller pulls images from an instance's candidate sources; the node's
 	// image.pull RPC shares it (see WithImagePuller).
 	puller *imagepull.Puller
+	// cardGate is what a start waits on before launching (SetCardGate).
+	cardGate func(ctx context.Context, idents []string, limit time.Duration) bool
 }
 
 // WithNetworkConfig injects the node's network configuration reader. Its URL

@@ -137,7 +137,8 @@ func TestGuideFor(t *testing.T) {
 		{vendor: "ppu", code: "", target: bdf},
 		// A card the vendor tool never enumerated has no index of its own.
 		{vendor: "ppu", code: HealthMemoryRepairPending, index: -1},
-		{vendor: "hygon", code: HealthMemoryRepairPending, target: bdf},
+		{vendor: "apple", code: HealthMemoryRepairPending, target: bdf},
+		{vendor: "hygon", code: HealthResetRequired, target: bdf},
 		{vendor: "nvidia", code: HealthResetRequired, target: bdf},
 		{vendor: "ppu", code: "legacy_code", target: bdf},
 	} {

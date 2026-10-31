@@ -102,8 +102,8 @@ func (s *Store) SharedDeploymentIDs() ([]uint, error) {
 	}
 	// Deployments whose live instances sit on one card together share it
 	// whatever their level (a resident one asleep beside another, say).
-	live, err := s.LiveInstances()
-	if err != nil {
+	var live []Instance
+	if err := liveInstancesQuery(s.reader()).Select("DeploymentID", "NodeID", "GPUIndexes").Find(&live).Error; err != nil {
 		return nil, err
 	}
 	type card struct {

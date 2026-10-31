@@ -570,3 +570,43 @@ func TestCheckNowSaysNothingWhenTheHostCannotBeAsked(t *testing.T) {
 		t.Fatalf("outcomes = %+v, want none", r.Outcomes())
 	}
 }
+
+// A card somebody outside the platform is using is left alone by the round
+// and by CheckNow alike, and keeps what it last answered: a context created
+// next to their workload could disturb it, and the memory they hold says
+// nothing about whether the runtime can use the card.
+func TestForeignCardsAreNeverAsked(t *testing.T) {
+	now, advance := clock(t)
+	rec := &recorder{fail: map[string]error{"b": errors.New("cuCtxCreate=2")}, now: now}
+	foreign := map[string]bool{}
+	r := New(Config{
+		Cards:    func(context.Context) []Card { return cards("a", "b") },
+		Try:      rec.try,
+		Foreign:  func(c Card) bool { return foreign[c.Ident] },
+		Interval: time.Hour,
+		Now:      now,
+	})
+	r.RunOnce(context.Background())
+	if got := rec.idents(); len(got) != 2 {
+		t.Fatalf("attempts = %v, want both cards asked while nobody else uses them", got)
+	}
+	failed := r.Outcomes()["b"]
+
+	foreign["a"], foreign["b"] = true, true
+	advance(2 * time.Hour)
+	r.RunOnce(context.Background())
+	r.CheckNow(context.Background(), map[string]bool{"a": true, "b": true})
+	if got := rec.idents(); len(got) != 2 {
+		t.Fatalf("attempts = %v, want no card asked while it is used outside the platform", got)
+	}
+	if got := r.Outcomes()["b"]; got != failed {
+		t.Fatalf("outcome = %+v, want the last answer kept (%+v)", got, failed)
+	}
+
+	delete(foreign, "a")
+	advance(2 * time.Hour)
+	r.RunOnce(context.Background())
+	if got := rec.idents(); len(got) != 3 || got[2] != "a" {
+		t.Fatalf("attempts = %v, want the card asked again once it is free", got)
+	}
+}

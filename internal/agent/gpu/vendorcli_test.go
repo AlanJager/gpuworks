@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -65,15 +66,19 @@ func TestRunVendorCLITimeoutIsUnresponsiveAndCallerCancelIsNot(t *testing.T) {
 	}
 }
 
-// A CLI that does not exit after the kill (here: a child keeps the output
-// pipe open, standing in for a process stuck in the driver) releases the
+// A CLI that does not exit after the kill (here: a child in a session of its
+// own, out of reach of the group kill, keeps the output pipe open — standing
+// in for a process stuck in the driver, which ignores SIGKILL) releases the
 // caller after the grace period, and further calls fail at once without
 // starting another process until it is gone.
 func TestRunVendorCLIStuckProcessFailsFastUntilItExits(t *testing.T) {
+	if _, err := exec.LookPath("setsid"); err != nil {
+		t.Skip("setsid is needed to keep a child out of the killed process group")
+	}
 	shortVendorCLITimeouts(t, 200*time.Millisecond, 50*time.Millisecond)
 	dir := fakeCLI(t, "gw-stuck-smi", `echo x >> "$(dirname "$0")/starts"
 if [ -e "$(dirname "$0")/healthy" ]; then echo ok; exit 0; fi
-sleep 2 &
+setsid sleep 2 &
 sleep 5
 `)
 	starts := func() int {
@@ -153,5 +158,38 @@ func TestNVIDIAUnresponsiveCLIDoesNotDowngradeQueries(t *testing.T) {
 	}
 	if _, ok := metrics[0].Values["gpuworks_gpu_memory_bandwidth_utilization"]; !ok {
 		t.Fatalf("recovered Metrics lost top-tier fields: %+v", metrics[0].Values)
+	}
+}
+
+// A CLI that is a wrapper (a script starting the real tool) is killed with
+// everything it started: the helper must not outlive the call holding the
+// driver and the output pipe.
+func TestRunVendorCLITimeoutKillsTheWholeProcessGroup(t *testing.T) {
+	shortVendorCLITimeouts(t, 200*time.Millisecond, 3*time.Second)
+	dir := fakeCLI(t, "gw-wrapper-smi", `sleep 30 &
+echo $! > "$(dirname "$0")/child"
+wait
+`)
+	if _, err := RunVendorCLI(t.Context(), nil, "gw-wrapper-smi"); !IsCLIUnresponsive(err) {
+		t.Fatalf("err = %v, want unresponsive", err)
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, "child"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	pid := strings.TrimSpace(string(raw))
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		if _, err := os.Stat("/proc/" + pid); err != nil {
+			break // gone
+		}
+		stat, _ := os.ReadFile("/proc/" + pid + "/stat")
+		if fields := strings.Fields(string(stat)); len(fields) > 2 && fields[2] == "Z" {
+			break // killed, waiting for init to reap it
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the wrapper's child %s outlived the call", pid)
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
 }
