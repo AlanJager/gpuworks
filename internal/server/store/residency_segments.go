@@ -175,3 +175,18 @@ func DeriveResidency(inst ResidencyInstance, events []ResidencyEvent, from, to t
 func SortResidencyEvents(events []ResidencyEvent) {
 	sort.Slice(events, func(i, j int) bool { return events[i].ID < events[j].ID })
 }
+
+// ResidencyMachine is an instance's state as its events leave it, for a
+// reader that follows the events as they come (the scheduling activity)
+// rather than deriving a window's segments: the same rules as
+// DeriveResidency.
+type ResidencyMachine struct{ m residencyMachine }
+
+// Apply moves the machine by one event.
+func (r *ResidencyMachine) Apply(ev ResidencyEvent) { r.m.apply(ev) }
+
+// Label is what the instance is doing, ok false while it holds no card.
+func (r *ResidencyMachine) Label() (ResidencyState, bool) {
+	state, _, ok := r.m.label()
+	return state, ok
+}

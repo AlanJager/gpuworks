@@ -3,8 +3,6 @@ package store
 import (
 	"encoding/json"
 	"time"
-
-	"gorm.io/gorm"
 )
 
 // Automation event codes and the trigger the residency arbiter gives its
@@ -17,11 +15,6 @@ const (
 	codeYieldedForWake = "YIELDED_FOR_WAKE"
 	triggerPreempt     = "preempt"
 )
-
-// residencySwitchCodes are the codes a switch on the cards is recorded with:
-// the automation's sleeps and wakes, and the sleep an operator's yielding
-// wake ordered.
-var residencySwitchCodes = []string{codeAutoSleep, codeAutoWake, codeYieldedForWake}
 
 // IsYield reports whether an event records a yield: a deployment put to sleep
 // so that another could have its cards. It is either the residency arbiter's
@@ -72,47 +65,6 @@ type ResidencySwitches struct {
 	YieldedTo int
 	// Wakes: the platform woke it (a request, a resume, a schedule).
 	Wakes int
-}
-
-// residencySwitchEventsQuery reads the sleeps and wakes the automation
-// recorded from firstID on, of every deployment: a range of the (kind, id)
-// index that holds the automation events of the window and nothing older.
-// Every deployment is read rather than some, because a yield counts for the
-// deployment it made room for (for_deployment, in the data), which no index
-// holds, and the one that gave way may be elsewhere or deleted.
-func residencySwitchEventsQuery(db *gorm.DB, firstID uint) *gorm.DB {
-	return db.Model(&InstanceEvent{}).Select("deployment_id", "code", "data").
-		Where("kind = ? AND id >= ? AND code IN ?", EventKindAutomation, firstID, residencySwitchCodes)
-}
-
-// ResidencySwitchCounts counts every deployment's switches since the window
-// began (firstID, from ResidencyWindowStart), deleted ones included. It is
-// the one count the fleet's sharing stats and a node page's timeline both
-// answer from, so a deployment's figures are the same in either: a yield
-// counts toward the deployment it was made for whether or not the one that
-// gave way still exists.
-func (s *Store) ResidencySwitchCounts(firstID uint) (map[uint]ResidencySwitches, error) {
-	out := map[uint]ResidencySwitches{}
-	var events []InstanceEvent
-	if err := residencySwitchEventsQuery(s.reader(), firstID).Find(&events).Error; err != nil {
-		return nil, err
-	}
-	for _, ev := range events {
-		counts := out[ev.DeploymentID]
-		switch {
-		case IsAutoWake(ev):
-			counts.Wakes++
-		case IsYield(ev):
-			counts.Yielded++
-			if to := EventForDeployment(ev.Data); to != 0 && to != ev.DeploymentID {
-				waiting := out[to]
-				waiting.YieldedTo++
-				out[to] = waiting
-			}
-		}
-		out[ev.DeploymentID] = counts
-	}
-	return out, nil
 }
 
 // TookPartInYields says the deployment gave its cards up to another, or was

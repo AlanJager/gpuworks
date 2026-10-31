@@ -100,7 +100,7 @@ func TestSchedulingTimelineWire(t *testing.T) {
 	f := func(d time.Duration) string { return r.t0.Add(d).Format(time.RFC3339) }
 	to := got.Window.To.Format(time.RFC3339)
 	from := got.Window.From.Format(time.RFC3339)
-	if want := fmt.Sprintf(`"window":{"from":%q,"to":%q,"hours":6}`, from, to); !strings.Contains(body, want) {
+	if want := fmt.Sprintf(`"window":{"from":%q,"to":%q,"hours":6,"key":"6h","seconds":21600},"windows":[{"key":"6h","seconds":21600},{"key":"24h","seconds":86400}]`, from, to); !strings.Contains(body, want) {
 		t.Fatalf("window\n got  %s\n want %s", body, want)
 	}
 	seg := func(dep uint, name, inst, state string, level int, a, b string) string {

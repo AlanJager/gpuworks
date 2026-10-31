@@ -6,17 +6,29 @@ import "time"
 // nodes: for each GPU, which deployment's instance held it and in what state
 // over a window ending now, and the stats of the deployments that share cards.
 type SchedulingTimeline struct {
-	Window      TimelineWindow       `json:"window"`
-	Nodes       []TimelineNode       `json:"nodes"`
-	Deployments []TimelineDeployment `json:"deployments"`
+	Window TimelineWindow `json:"window"`
+	// Windows are the windows the request may ask for, the default first:
+	// the UI offers these and no list of its own.
+	Windows     []TimelineWindowOption `json:"windows"`
+	Nodes       []TimelineNode         `json:"nodes"`
+	Deployments []TimelineDeployment   `json:"deployments"`
 }
 
-// TimelineWindow is the stretch of time the timeline covers: Hours long,
-// ending at To.
+// TimelineWindow is the stretch of time the timeline covers, ending at To:
+// Key names it (one of Windows), Seconds is its length and Hours its whole
+// hours (0 for a window under an hour).
 type TimelineWindow struct {
-	From  time.Time `json:"from"`
-	To    time.Time `json:"to"`
-	Hours int       `json:"hours"`
+	From    time.Time `json:"from"`
+	To      time.Time `json:"to"`
+	Hours   int       `json:"hours"`
+	Key     string    `json:"key"`
+	Seconds int64     `json:"seconds"`
+}
+
+// TimelineWindowOption is one window a timeline may be asked for.
+type TimelineWindowOption struct {
+	Key     string `json:"key"`
+	Seconds int64  `json:"seconds"`
 }
 
 // TimelineNode is one node and its GPUs' timelines.

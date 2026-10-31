@@ -126,7 +126,7 @@ func seedScaleFleet(t *testing.T) *scaleFleet {
 	if err != nil {
 		t.Fatal(err)
 	}
-	deps := Deps{Store: rig.st, Bus: rig.st.Bus, AuthSigner: signer, AI: &fakeAI{available: true}, Online: func(uuid string) bool { return !offline[uuid] },
+	deps := Deps{Store: rig.st, Bus: rig.st.Bus, AuthSigner: signer, SchedulingActivity: replayActivity{rig.st}, AI: &fakeAI{available: true}, Online: func(uuid string) bool { return !offline[uuid] },
 		WakeHeld: func() map[uint]int { return map[uint]int{deployments[4].ID: 2, deployments[8].ID: 5} }}
 	admin, _ := rig.st.VerifyUser("admin", "password")
 	session, err := managementSessionTestToken(t, rig.st, signer, auth.Claims{UserID: admin.ID, Username: admin.Username, Role: admin.Role})
