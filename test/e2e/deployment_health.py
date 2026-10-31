@@ -314,8 +314,18 @@ def test_deployment_health(page, context, server, artifacts, report, locale, dat
         expect(dialog).to_be_visible()
         return dialog
 
+    first_delete = open_delete()
+    # 12.7: the confirmation names the deployment and states what deleting it does, so the
+    # operator is not confirming a bare "are you sure".
+    expect(first_delete).to_contain_text(target["name"])
+    expect(first_delete).to_contain_text(deployments["delete"]["description"])
+    impact_text = first_delete.inner_text()
+    check(target["name"] in impact_text and deployments["delete"]["description"] in impact_text,
+          f"delete confirmation lacks the name or its impact: {impact_text!r}")
+    report["delete_confirmation"] = {"name": target["name"],
+                                     "impact": deployments["delete"]["description"]}
     dialog = assert_nested_dismissals(
-        open_delete(), drawer, open_delete,
+        first_delete, drawer, open_delete,
         [("cancel", cancel_button(deployments["delete"]["cancel"])),
          ("escape", escape), ("close", close_button), ("mask", mask)],
         lambda: len(deletes), remove)

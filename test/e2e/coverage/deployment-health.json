@@ -300,8 +300,8 @@
     },
     {
       "item": "12.7",
-      "status": "MISSING",
-      "reason": "Outside this bounded deployment health editor/runtime contract; not a whole-page or generic-component completion claim"
+      "status": "partial",
+      "reason": "Partial: the delete confirmation names the deployment and states what deleting it does - both are read from the open dialog, and the case fails if either is absent (proven by mutation: dropping the impact paragraph from the delete modal makes the case fail). The cancel path is also covered: cancel, Escape, close and mask each leave the deployment in place with zero DELETE requests and an unchanged stored record. Not covered here: a server-side refusal of the delete itself, and any reference-blocking path - deployments are a top-level resource with no in-use guard in internal/server/api, so there is no refusal to reproduce from this component."
     },
     {
       "item": "12.8",
