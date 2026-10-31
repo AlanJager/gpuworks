@@ -185,7 +185,7 @@ func (a *apiHandlers) cachedActivity(ctx context.Context, key string, from, to t
 	if c.byRange == nil || len(c.byRange) >= activityCacheSize {
 		c.byRange = map[string]activityEntry{}
 	}
-	c.byRange[key] = activityEntry{out: out, at: time.Now()}
+	c.byRange[key] = activityEntry{out: out, at: time.Now().UTC()}
 	c.reads.Add(1)
 	return out, nil
 }

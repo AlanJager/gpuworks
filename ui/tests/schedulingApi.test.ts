@@ -156,11 +156,14 @@ test("the scheduling history asks for a cursor page with its filters in the quer
 });
 
 test("the residency timeline names every node and the window in the query", async () => {
-  const seen = fake(200, { window: { from: "a", to: "b", hours: 24 }, nodes: [], deployments: [] });
-  await schedulingApi.timeline({ nodes: ["n-1", "n-2"], hours: 24 });
-  await schedulingApi.timeline({ sharing: true, hours: 6 });
+  const seen = fake(200, { scope: "node", window: { from: "a", to: "b", hours: 24, key: "24h", seconds: 86400 }, windows: [], nodes: [], deployments: [] });
+  await schedulingApi.timeline({ nodes: ["n-1", "n-2"], window: "24h" });
+  await schedulingApi.timeline({ sharing: true, window: "15m" });
+  // Without a window the server answers its default.
+  await schedulingApi.timeline({ sharing: true });
   assert.deepEqual(seen, [
-    { url: "/api/v1/scheduling/timeline?node=n-1&node=n-2&hours=24", method: undefined, body: undefined },
-    { url: "/api/v1/scheduling/timeline?sharing=1&hours=6", method: undefined, body: undefined },
+    { url: "/api/v1/scheduling/timeline?node=n-1&node=n-2&window=24h", method: undefined, body: undefined },
+    { url: "/api/v1/scheduling/timeline?sharing=1&window=15m", method: undefined, body: undefined },
+    { url: "/api/v1/scheduling/timeline?sharing=1", method: undefined, body: undefined },
   ]);
 });

@@ -39,11 +39,12 @@ func TestSchedulingActivityWire(t *testing.T) {
 func TestTimelineWindowWire(t *testing.T) {
 	from := time.Date(2026, 10, 30, 12, 0, 0, 0, time.UTC)
 	in := SchedulingTimeline{
+		Scope:   TimelineScopeFleet,
 		Window:  TimelineWindow{From: from, To: from.Add(15 * time.Minute), Hours: 0, Key: "15m", Seconds: 900},
 		Windows: []TimelineWindowOption{{Key: "15m", Seconds: 900}, {Key: "6h", Seconds: 21600}},
 		Nodes:   []TimelineNode{}, Deployments: []TimelineDeployment{},
 	}
-	want := `{"window":{"from":"2026-10-30T12:00:00Z","to":"2026-10-30T12:15:00Z","hours":0,"key":"15m","seconds":900},` +
+	want := `{"scope":"fleet","window":{"from":"2026-10-30T12:00:00Z","to":"2026-10-30T12:15:00Z","hours":0,"key":"15m","seconds":900},` +
 		`"windows":[{"key":"15m","seconds":900},{"key":"6h","seconds":21600}],"nodes":[],"deployments":[]}`
 	if got := marshalString(t, in); got != want {
 		t.Fatalf("marshal\n got %s\nwant %s", got, want)
