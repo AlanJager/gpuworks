@@ -29,7 +29,7 @@ The **Scheduling policy** card in deployment details keeps these settings in one
 
 Open **Scheduling Analysis** from the “Overview” group of the left menu (`/scheduling`, right below “Usage analytics”). The upper half shows the whole cluster, the lower half the queues and the history:
 
-- **Summary strip**: the total number of cards in the cluster; how many are serving, asleep, free, held by a process outside the platform, faulty, or on an offline node (six disjoint classes that add up to the total); the cards and free cards by GPU model, for example "L20 ×320, 41 free"; and contention - wakes waiting for room, requests the gateway holds for a wake right now, yields in the last hour - plus the deployments waiting for placement and the schedule actions in the next 24 hours. These figures are computed by the server for the whole cluster and do not change with the filters below.
+- **Summary strip**: the total number of cards in the cluster; how many are serving, asleep, free, held by a process outside the platform, faulty, or on an offline node (six disjoint classes that add up to the total); and contention - wakes waiting for room, requests the gateway holds for a wake right now, yields in the last hour - plus the deployments waiting for placement and the schedule actions in the next 24 hours. These figures are computed by the server for the whole cluster and do not change with the filters below.
 - **GPU heatmap**: one small cell (about 12 px) per card, grouped by node; 1000 nodes of 8 cards fit on one or two screens. The colour is the card's state, with the legend at the top right of the card:
 
   | Colour | Meaning |
@@ -46,7 +46,7 @@ Open **Scheduling Analysis** from the “Overview” group of the left menu (`/s
 
   Hover or keyboard-focus a cell to see the card's details: node, card index, model, memory, the shares that are serving, asleep and free, and its occupants (deployment, yield policy, serving or asleep). The heatmap itself carries no occupant detail, so even a thousand-card fleet costs one read of about 290 KB (about 25 KB gzipped).
 - **Filters and view**: filter by GPU model (several allowed), node label (`key=value`) and node state (has free cards, has sleepers, has cards held outside, offline); type a part of a deployment name in "Find a deployment" and the cards it occupies get a red ring while the rest fade, with a count of the occupied cards. Group by node (the default), by GPU model, or by the value of a node label; sort by name, by free capacity (the unclaimed memory of the cards, not counting offline, faulty or externally held cards) or by contention (sleepers waiting to wake, plus the requests held for deployments asleep on the node, plus the yields of deployments that have cards on it). **Clear filters and view** returns to the default.
-- **Node drawer**: click a cell or a node name and a drawer opens that node: a bar per card split into serving usage, the residue memory of sleepers and free memory, the occupants of each card (deployment and its yield policy, serving or asleep, sleep level, claim and residue), cards held by processes outside the platform marked, and below them the node's [residency timeline](#residency-timeline). The drawer reads only that one node, and only when it is open.
+- **Node drawer**: click a cell, or a node name anywhere on the page (the "Node and GPUs" column of the sharing table, the "Node" column of the scheduling history), and a drawer opens that node: a bar per card split into serving usage, the residue memory of sleepers and free memory, the occupants of each card (deployment and its yield policy, serving or asleep, sleep level, claim and residue), cards held by processes outside the platform marked, and below them the node's [residency timeline](#residency-timeline). The drawer reads only that one node, and only when it is open. The open node is in the address (`/scheduling?node=<node UUID>`), so a link to it opens it directly; closing the drawer removes the parameter, and the browser's Back button returns to the node opened before.
 - **Deployments waiting for placement**: deployments the scheduler refused in the last 30 minutes, with reasons written the same way as the placement status in deployment details. A new replica waiting for deployments that share its cards to give them up shows the reason `waiting_for_yield` (see [How a New Deployment Gets onto a Shared Card](#新部署怎样放到共用的卡上) below); when it does not fit only because sleeping deployments keep their cards for a request's wake, the reason is `reserved_for_sleepers` (same section).
 - **Waiting wakes**: which deployments are waiting and since when; the wait can be cancelled.
 - **Schedule actions in the next 24 hours**: time, deployment, action.
@@ -105,7 +105,7 @@ The **Deployments sharing cards** table on the page lists the deployments across
 
 | Column | Meaning |
 |---|---|
-| Node and GPUs | The nodes and GPUs its replicas are on now, one line per node; — when none is placed |
+| Node and GPUs | The nodes and GPUs its replicas are on now, one line per node; a node name is clickable and opens that node's drawer, a node that no longer exists shows as `#id` and is not clickable; — when none is placed |
 | Serving time, share | The time at least one replica was serving / the time the deployment existed in the window, and the first as a share of the second. It existed from the later of the window's start and its creation to the earlier of now and its deletion, so a deployment created partway through the window and serving since shows close to 100%, not its share of the whole window |
 | Switches | Times it yielded plus times the platform woke it |
 | Yielded, yielded to | Times it was put to sleep to give a card to another deployment, and times another deployment gave a card to it |
@@ -353,6 +353,7 @@ The **Scheduling history** at the bottom of the Scheduling Analysis page lists t
 |---|---|
 | Time | When the event happened |
 | Deployment | The deployment name is clickable and opens that deployment's detail; a deleted deployment is marked "deleted" |
+| Node | The node or nodes the event concerns; a node name is clickable and opens that node's drawer on this page. A node that no longer exists, or one an older event kept only by name, shows its name and is not clickable; — when the node cannot be told |
 | Action | The action name for the event code, such as automatic sleep, replica rebuilt, replicas changed |
 | Reason and details | The same wording as the deployment timeline: from which node to which, which attempt, the schedule that triggered it, the replica count change, and so on |
 | Category | **Automatic**: the platform acted on its own settings or schedules; **Failure**: something went wrong and the platform is dealing with it or has given up; **Manual**: an operator's order |
@@ -360,7 +361,7 @@ The **Scheduling history** at the bottom of the Scheduling Analysis page lists t
 
 An entry that gave cards to another deployment (a yield) also names that deployment, clickable the same way; it shows “deleted” when that deployment is gone.
 
-Filter by category, deployment (search by name), and time range (the platform’s time picker: quick ranges from 15 minutes to 1 year, or custom start and end times), and page with Older / Newer, 20 entries per page. The API is `GET /api/v1/scheduling/history`; see the [history API](../reference/api.md#调度记录).
+Filter by category, deployment (search by name), and time range (the platform’s time picker, the last 24 hours by default; quick ranges of 15 minutes, 1 hour, 6 hours, 1 day and 1 week, or custom start and end times), and page with Older / Newer, 20 entries per page. The API is `GET /api/v1/scheduling/history`; see the [history API](../reference/api.md#调度记录).
 
 What is in the history:
 
@@ -369,6 +370,8 @@ What is in the history:
 - **Manual**: changing the replica count, restarting a deployment or a replica, retrying a replica, and ordering sleep and wake (`SLEEP_ORDERED`, `WAKE_ORDERED`). A manual event records the user who gave the order.
 
 The history holds only these scheduling events; instance state changes, configuration edits, and the like are not in it and stay on each deployment's timeline.
+
+The "Node" column finds the nodes an event concerns in this order: the nodes the event's params recorded (`node_uuids`, or an older event's `node` and `nodes`), then the nodes the instances the event names (`instance`, `instances`) are on now, and otherwise none. Instances are removed in time, so events record their nodes in their params when they are written; see [Timeline events](#timeline-events).
 
 ## First Placement Nodes
 
@@ -396,7 +399,9 @@ An order an operator gives through the API is also written to the deployment tim
 | `SLEEP_ORDERED` | Sleep was ordered | `level`, `mode`, `scope`, `role`, `instances`, `actor` |
 | `WAKE_ORDERED` | A wake started waking instances | `instances`, `actor` |
 
-When a failed replica is rebuilt automatically the controller records `REPLICA_REBUILT` (params `replica`, `role`, `attempt`, `reason`, `node`); see the [history API](../reference/api.md#调度记录).
+When a failed replica is rebuilt automatically the controller records `REPLICA_REBUILT` (params `replica`, `role`, `attempt`, `reason`, `node`, `node_uuids`); see the [history API](../reference/api.md#调度记录).
+
+The events the scheduling history lists also carry `node_uuids` when they are written: the list of node UUIDs the event concerns, which the history's "Node" column uses. An event that names instances (`instance`, `instances`, or an event on an instance, such as `AUTO_SLEEP`, `AUTO_WAKE`, `YIELDED_FOR_WAKE`, `WAKE_WAITING`, `WAKE_WAIT_TIMEOUT`, `SLEEP_ORDERED`, `WAKE_ORDERED`, `REPLICA_RESTARTED`, `DEPLOYMENT_RESTARTED`, `UNIT_RETRY_EXHAUSTED`) records the nodes those instances were on; the controller's node events record the nodes they concern: `REPLICA_REBUILT` the node of the new attempt's leader, `NODE_REPLACED` and `NODE_REPLACE_REVERTED` the nodes moved from and to, `NODE_REPLACE_NO_CANDIDATE` the lost nodes, `UNIT_PLACED` and `NODE_DRAIN_MOVED` every node of the placements before and after, `UNIT_RETRIED` and `DEPLOYMENT_ROLLING_STALLED` the nodes of the failed attempts. `DEPLOYMENT_UNSCHEDULABLE` keeps its existing `node` (a node UUID) instead. Orders for the whole deployment (a scheduled sleep, a replica count, a rolling restart) concern no particular node and do not carry it.
 
 For the events of node-loss rescheduling after a node is lost and of drain moves (`NODE_REPLACED` and the like), see [Reschedule Replicas on Node Loss](node-failover.md#时间线事件).
 

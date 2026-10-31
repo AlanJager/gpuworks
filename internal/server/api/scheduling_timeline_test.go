@@ -146,8 +146,8 @@ func TestSchedulingTimelineWire(t *testing.T) {
 	// The row as it is on the wire, with the awake figures (which move with
 	// the clock) checked above.
 	wire := body[strings.Index(body, `"deployments":[`):]
-	if want := fmt.Sprintf(`"deployments":[{"deployment_id":%d,"deployment":"night-batch","yield_policy":"timeslice","awake_seconds":%d,"awake_share":%s,"present_seconds":%d,"switches":3,"yielded":1,"yielded_to":1,"wakes":2,"held_requests":0,"cards":[{"node_id":%d,"node":"tl-node","gpus":[0]}]}]}`,
-		r.shared.ID, wantAwake, strconv.FormatFloat(d.AwakeShare, 'g', -1, 64), present, r.node.ID); wire != want {
+	if want := fmt.Sprintf(`"deployments":[{"deployment_id":%d,"deployment":"night-batch","yield_policy":"timeslice","awake_seconds":%d,"awake_share":%s,"present_seconds":%d,"switches":3,"yielded":1,"yielded_to":1,"wakes":2,"held_requests":0,"cards":[{"node_id":%d,"node_uuid":%q,"node":"tl-node","gpus":[0]}]}]}`,
+		r.shared.ID, wantAwake, strconv.FormatFloat(d.AwakeShare, 'g', -1, 64), present, r.node.ID, r.node.UUID); wire != want {
 		t.Fatalf("stats\n got  %s\n want %s", wire, want)
 	}
 }
@@ -318,7 +318,7 @@ func TestSharingStatsSayWhereEachDeploymentIs(t *testing.T) {
 	if status != http.StatusOK {
 		t.Fatalf("sharing = %d %s", status, body)
 	}
-	want := fmt.Sprintf(`"cards":[{"node_id":%d,"node":"tl-node","gpus":[0,1]},{"node_id":%d,"node":"tl-other","gpus":[2,3]}]`, r.node.ID, other.ID)
+	want := fmt.Sprintf(`"cards":[{"node_id":%d,"node_uuid":%q,"node":"tl-node","gpus":[0,1]},{"node_id":%d,"node_uuid":%q,"node":"tl-other","gpus":[2,3]}]`, r.node.ID, r.node.UUID, other.ID, other.UUID)
 	if !strings.Contains(body, want) {
 		t.Fatalf("sharing cards\n got  %s\n want %s", body, want)
 	}

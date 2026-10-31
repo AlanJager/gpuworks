@@ -43,7 +43,6 @@ func TestSchedulingOverviewWire(t *testing.T) {
 	overview := SchedulingOverview{
 		Summary: OverviewSummary{
 			Nodes: 2, OnlineNodes: 1, Cards: 3, Awake: 1, Asleep: 0, Free: 1, HeldOutside: 0, Unhealthy: 0, Offline: 1,
-			ByModel:    []OverviewModelSummary{{Model: "L20", Cards: 3, Awake: 1, Free: 1, Offline: 1}},
 			Contention: OverviewContention{WaitingWakes: 1, HeldRequests: 4, YieldsLastHour: 2},
 		},
 		States:      []string{"offline", "unhealthy", "held_outside", "awake", "asleep", "free"},
@@ -59,7 +58,6 @@ func TestSchedulingOverviewWire(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := `{"summary":{"nodes":2,"online_nodes":1,"cards":3,"awake":1,"asleep":0,"free":1,"held_outside":0,"unhealthy":0,"offline":1,` +
-		`"by_model":[{"model":"L20","cards":3,"awake":1,"asleep":0,"free":1,"held_outside":0,"unhealthy":0,"offline":1}],` +
 		`"contention":{"waiting_wakes":1,"held_requests":4,"yields_last_hour":2}},` +
 		`"states":["offline","unhealthy","held_outside","awake","asleep","free"],` +
 		`"models":["L20"],"deployments":[{"id":7,"name":"qwen","yield_policy":"timeslice"}],` +

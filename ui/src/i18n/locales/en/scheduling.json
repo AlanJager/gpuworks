@@ -15,8 +15,6 @@
     "cardsTitle": "Cards by state",
     "total": "Total cards",
     "nodesOnline": "{{online}} of {{count}} nodes online",
-    "models": "Cards by GPU model",
-    "modelLine": "{{model}} ×{{cards}}, {{free}} free",
     "contentionTitle": "Contention and queues",
     "heldRequests": "Requests held for a wake now",
     "yields": "Yields in the last hour"
@@ -85,7 +83,7 @@
     "loading": "Loading the scheduling history…",
     "loadFailed": "Cannot load the scheduling history",
     "refreshFailed": "Refreshing the scheduling history failed: {{detail}}",
-    "empty": "Nothing has been scheduled yet.",
+    "empty": "Nothing was scheduled in the last 24 hours; choose a longer time range to see more.",
     "emptyFiltered": "No scheduling history matches the filters.",
     "pagination": "Scheduling history pages",
     "page": "Page {{page}}",
@@ -104,12 +102,10 @@
       "failure": "Failure",
       "manual": "Manual"
     },
-    "range": {
-      "all": "All time"
-    },
     "columns": {
       "at": "Time",
       "deployment": "Deployment",
+      "node": "Node",
       "action": "Action",
       "details": "Reason and details",
       "category": "Category",

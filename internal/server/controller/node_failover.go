@@ -2,6 +2,8 @@ package controller
 
 import (
 	"context"
+	"slices"
+	"sort"
 	"sync"
 	"time"
 
@@ -113,6 +115,7 @@ func (c *Controller) failoverPoolReplicas(deployment *unitDeployment, insts []st
 		c.log.Warn("replica's node lost; replacing it on another node", "dep", dep.ID, "instance", inst.UUID, "node", node.UUID)
 		c.store.AddDeploymentEventCode(dep.ID, nodeReplaceEventKind, EventNodeReplaced, map[string]any{
 			"from": node.DisplayName(), "instances": []string{inst.UUID}, "after_sec": dep.NodeReplaceAfterSec,
+			store.EventParamNodeUUIDs: []string{node.UUID},
 		})
 	}
 	if err := c.retire(dep, insts, lost, nodeReplacedMessage); err != nil {
@@ -198,7 +201,8 @@ func (c *Controller) failoverNamedUnits(ctx context.Context, deployment *unitDep
 	for _, move := range plan.moves {
 		move.MovedAt = now
 		moves = append(moves, move)
-		params := map[string]any{"from": c.nodeName(deployment, move.From), "to": c.nodeName(deployment, move.To), "after_sec": dep.NodeReplaceAfterSec, "unit": move.Unit + 1, "rank": move.Rank}
+		params := map[string]any{"from": c.nodeName(deployment, move.From), "to": c.nodeName(deployment, move.To), "after_sec": dep.NodeReplaceAfterSec, "unit": move.Unit + 1, "rank": move.Rank,
+			store.EventParamNodeUUIDs: nodeUUIDList(move.From, move.To)}
 		if move.Role != "" {
 			params["role"] = move.Role
 		}
@@ -252,7 +256,8 @@ func (c *Controller) revertFailovers(dep *store.Deployment, deployment *unitDepl
 		return false, nil
 	}
 	for _, move := range reverted {
-		params := map[string]any{"from": c.nodeName(deployment, move.To), "to": c.nodeName(deployment, move.From), "unit": move.Unit + 1, "rank": move.Rank}
+		params := map[string]any{"from": c.nodeName(deployment, move.To), "to": c.nodeName(deployment, move.From), "unit": move.Unit + 1, "rank": move.Rank,
+			store.EventParamNodeUUIDs: nodeUUIDList(move.To, move.From)}
 		if move.Role != "" {
 			params["role"] = move.Role
 		}
@@ -302,11 +307,16 @@ func (c *Controller) recordNoCandidate(dep *store.Deployment, lost map[string]bo
 	}
 	c.failover.noneSince[dep.ID] = now
 	c.failover.mu.Unlock()
-	var names []string
+	uuids := make([]string, 0, len(lost))
 	for uuid := range lost {
+		uuids = append(uuids, uuid)
+	}
+	sort.Strings(uuids)
+	names := make([]string, 0, len(uuids))
+	for _, uuid := range uuids {
 		names = append(names, c.nodeName(deployment, uuid))
 	}
-	c.store.AddDeploymentEventCode(dep.ID, nodeReplaceEventKind, EventNodeReplaceNoCandidate, map[string]any{"nodes": names})
+	c.store.AddDeploymentEventCode(dep.ID, nodeReplaceEventKind, EventNodeReplaceNoCandidate, map[string]any{"nodes": names, store.EventParamNodeUUIDs: uuids})
 	c.q.addAfter(depKey(dep.ID), time.Minute)
 }
 
@@ -328,4 +338,25 @@ func (c *Controller) nodeName(deployment *unitDeployment, uuid string) string {
 		return node.DisplayName()
 	}
 	return uuid
+}
+
+// nodeUUIDList is the node UUIDs a scheduling event concerns
+// (store.EventParamNodeUUIDs), in the order given, each once and none empty.
+func nodeUUIDList(uuids ...string) []string {
+	out := make([]string, 0, len(uuids))
+	for _, uuid := range uuids {
+		if uuid != "" && !slices.Contains(out, uuid) {
+			out = append(out, uuid)
+		}
+	}
+	return out
+}
+
+// rankUUIDs is the node UUID of each of a unit's ranks.
+func rankUUIDs(unit planning.PDUnit) []string {
+	out := make([]string, 0, 1+len(unit.Followers))
+	for _, rank := range unit.Ranks() {
+		out = append(out, rank.NodeUUID)
+	}
+	return out
 }

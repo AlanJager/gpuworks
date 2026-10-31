@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
@@ -46,7 +47,7 @@ func TestSchedulingHistoryWire(t *testing.T) {
 	}
 	// The wire form of each entry, exactly: id and time vary, the rest is fixed.
 	want := []string{
-		`{"category":"failure","code":"REPLICA_REBUILT","deployment":"multi","deployment_id":%d,"kind":"lifecycle","params":{"attempt":2,"node":"gpu-1","reason":"oom","replica":1}}`,
+		`{"category":"failure","code":"REPLICA_REBUILT","deployment":"multi","deployment_id":%d,"kind":"lifecycle","nodes":[{"name":"gpu-1"}],"params":{"attempt":2,"node":"gpu-1","reason":"oom","replica":1}}`,
 		`{"actor":"alice","category":"manual","code":"REPLICAS_CHANGED","deployment":"plain","deployment_id":%d,"kind":"lifecycle","params":{"actor":"alice","from":1,"to":3}}`,
 		`{"category":"auto","code":"AUTO_SLEEP","deployment":"sleepy","deployment_id":%d,"kind":"automation","params":{"idle_sec":900,"level":2,"trigger":"idle"}}`,
 	}
@@ -234,10 +235,70 @@ func TestInstanceSleepAndWakeOrdersAreInTheTimeline(t *testing.T) {
 	if len(events) != 2 || events[0].Code != store.EventWakeOrdered || events[1].Code != store.EventSleepOrdered {
 		t.Fatalf("events = %+v", events)
 	}
-	if got := events[0].Data; got != `{"instances":["plain-0"]}` {
+	if got := events[0].Data; got != `{"instances":["plain-0"],"node_uuids":["sleep-node"]}` {
 		t.Errorf("wake params = %s", got)
 	}
-	if got := events[1].Data; got != `{"instances":["plain-0"],"level":2,"mode":"wait","scope":"replica"}` {
+	if got := events[1].Data; got != `{"instances":["plain-0"],"level":2,"mode":"wait","node_uuids":["sleep-node"],"scope":"replica"}` {
 		t.Errorf("sleep params = %s", got)
+	}
+}
+
+// Each entry names the nodes it concerns: those its params name (by UUID,
+// or by name on older rows), else those the live instances it names are on;
+// a gone node keeps a name and has no UUID to open; an entry with neither
+// carries no nodes.
+func TestSchedulingHistoryNamesTheNodesOfEachEntry(t *testing.T) {
+	rig := newScheduleRig(t)
+	gpuA := store.Node{UUID: "node-hist-a", Name: "gpu-a"}
+	gpuB := store.Node{UUID: "node-hist-b", Hostname: "host-b"}
+	for _, n := range []*store.Node{&gpuA, &gpuB} {
+		if err := rig.st.DB().Create(n).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := rig.st.DB().Create(&store.Instance{UUID: "hist-inst-a", DeploymentID: rig.plain.ID, NodeID: gpuA.ID}).Error; err != nil {
+		t.Fatal(err)
+	}
+	// Rows as they were written before events kept their nodes.
+	legacy := func(code, kind, data string) {
+		if err := rig.st.DB().Create(&store.InstanceEvent{DeploymentID: rig.plain.ID, Kind: kind, Code: code, Data: data, CreatedAt: time.Now().UTC()}).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	legacy("AUTO_WAKE", store.EventKindAutomation, `{"trigger":"request","instances":["hist-inst-a"]}`)
+	legacy("AUTO_WAKE", store.EventKindAutomation, `{"trigger":"request","instances":["hist-inst-gone"]}`)
+	legacy(store.EventReplicaRebuilt, store.EventKindLifecycle, `{"replica":1,"node":"gpu-old"}`)
+	legacy("NODE_REPLACE_NO_CANDIDATE", store.EventKindAutomation, `{"nodes":["gpu-x","gpu-y"]}`)
+	rig.st.AddDeploymentEventCode(rig.plain.ID, store.EventKindSchedule, store.EventDeploymentUnschedulable, map[string]any{"node": gpuB.UUID})
+	rig.st.AddDeploymentEventCode(rig.plain.ID, store.EventKindAutomation, "NODE_REPLACED", map[string]any{store.EventParamNodeUUIDs: []string{"0123456789abcdef", gpuA.UUID}})
+	// Written now, an event naming an instance keeps the instance's node.
+	rig.st.AddDeploymentEventCode(rig.plain.ID, store.EventKindLifecycle, store.EventWakeOrdered, map[string]any{"instances": []string{"hist-inst-a"}})
+
+	status, items, body := rig.history(t, rig.session, "")
+	if status != http.StatusOK || len(items) != 7 {
+		t.Fatalf("history = %d %s", status, body)
+	}
+	nodes := func(item map[string]any) string {
+		if _, has := item["nodes"]; !has {
+			return "absent"
+		}
+		raw, _ := json.Marshal(item["nodes"])
+		return string(raw)
+	}
+	for i, want := range []string{
+		`[{"name":"gpu-a","uuid":"node-hist-a"}]`,                     // WAKE_ORDERED: kept at write time
+		`[{"name":"01234567"},{"name":"gpu-a","uuid":"node-hist-a"}]`, // NODE_REPLACED: a gone node by its short UUID
+		`[{"name":"host-b","uuid":"node-hist-b"}]`,                    // DEPLOYMENT_UNSCHEDULABLE: "node" is a UUID
+		`[{"name":"gpu-x"},{"name":"gpu-y"}]`,                         // older NODE_REPLACE_NO_CANDIDATE: names only
+		`[{"name":"gpu-old"}]`,                                        // older REPLICA_REBUILT: a name only
+		`absent`,                                                      // the instance is gone
+		`[{"name":"gpu-a","uuid":"node-hist-a"}]`,                     // older AUTO_WAKE: the live instance's node
+	} {
+		if got := nodes(items[i]); got != want {
+			t.Errorf("%s (item %d) nodes = %s, want %s", items[i]["code"], i, got, want)
+		}
+	}
+	if params := items[0]["params"].(map[string]any); fmt.Sprint(params[store.EventParamNodeUUIDs]) != "[node-hist-a]" {
+		t.Errorf("WAKE_ORDERED params = %v, want the node kept", params)
 	}
 }

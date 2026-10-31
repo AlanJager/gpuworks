@@ -73,6 +73,8 @@ export interface TimelineDeployment {
 /** The GPUs a deployment's instances hold on one node; node is empty for a node no longer known. */
 export interface TimelineCards {
   node_id: number;
+  /** Absent, as is the name, for a node no longer known. */
+  node_uuid?: string;
   node: string;
   gpus: number[];
 }
@@ -128,10 +130,6 @@ export interface OverviewCounts {
   offline: number;
 }
 
-export interface OverviewModelCounts extends OverviewCounts {
-  model: string;
-}
-
 export interface OverviewContention {
   waiting_wakes: number;
   held_requests: number;
@@ -154,7 +152,7 @@ export interface OverviewDeployment {
 }
 
 export interface SchedulingOverview {
-  summary: OverviewCounts & { nodes: number; online_nodes: number; by_model: OverviewModelCounts[]; contention: OverviewContention };
+  summary: OverviewCounts & { nodes: number; online_nodes: number; contention: OverviewContention };
   /** The card states the cards refer to by position. */
   states: string[];
   models: string[];
@@ -208,6 +206,14 @@ export interface SchedulingHistoryEntry {
   actor?: string;
   /** The deployment the entry acted for (a yield gave it the GPUs), named. */
   target?: SchedulingHistoryDeployment;
+  /** The nodes the entry concerns; absent when it names none the server can tell. */
+  nodes?: SchedulingHistoryNode[];
+}
+
+/** A node a history entry concerns; uuid is absent for a node that is gone. */
+export interface SchedulingHistoryNode {
+  uuid?: string;
+  name: string;
 }
 
 /** A deployment a history entry refers to; name is absent when unknown. */

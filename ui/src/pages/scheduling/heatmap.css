@@ -29,7 +29,6 @@
 .hm-swatch.is-hit { background: transparent; box-shadow: 0 0 0 2px var(--hm-highlight); }
 .hm-strip { display: grid; gap: 12px; margin-bottom: 16px; }
 .hm-strip-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
-.hm-models { display: flex; flex-wrap: wrap; gap: 6px 8px; margin: 0; padding: 0; list-style: none; }
 .hm-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 12px; }
 .hm-filters .ant-select { min-width: 160px; }
 .hm-status { margin: 0 0 8px; font-size: 12px; opacity: .75; font-variant-numeric: tabular-nums; }

@@ -33,29 +33,16 @@ type SchedulingOverview struct {
 // outside the platform uses it), Awake (an instance claims memory on it),
 // Asleep (only sleepers' residue is on it), Free. They add up to Cards.
 type OverviewSummary struct {
-	Nodes       int                    `json:"nodes"`
-	OnlineNodes int                    `json:"online_nodes"`
-	Cards       int                    `json:"cards"`
-	Awake       int                    `json:"awake"`
-	Asleep      int                    `json:"asleep"`
-	Free        int                    `json:"free"`
-	HeldOutside int                    `json:"held_outside"`
-	Unhealthy   int                    `json:"unhealthy"`
-	Offline     int                    `json:"offline"`
-	ByModel     []OverviewModelSummary `json:"by_model"`
-	Contention  OverviewContention     `json:"contention"`
-}
-
-// OverviewModelSummary is the same count for the cards of one GPU model.
-type OverviewModelSummary struct {
-	Model       string `json:"model"`
-	Cards       int    `json:"cards"`
-	Awake       int    `json:"awake"`
-	Asleep      int    `json:"asleep"`
-	Free        int    `json:"free"`
-	HeldOutside int    `json:"held_outside"`
-	Unhealthy   int    `json:"unhealthy"`
-	Offline     int    `json:"offline"`
+	Nodes       int                `json:"nodes"`
+	OnlineNodes int                `json:"online_nodes"`
+	Cards       int                `json:"cards"`
+	Awake       int                `json:"awake"`
+	Asleep      int                `json:"asleep"`
+	Free        int                `json:"free"`
+	HeldOutside int                `json:"held_outside"`
+	Unhealthy   int                `json:"unhealthy"`
+	Offline     int                `json:"offline"`
+	Contention  OverviewContention `json:"contention"`
 }
 
 // OverviewContention is how hard the deployments push on each other for

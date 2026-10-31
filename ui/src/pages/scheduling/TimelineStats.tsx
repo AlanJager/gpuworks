@@ -1,3 +1,4 @@
+import { Fragment } from "react";
 import { Tag, Typography } from "antd";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
@@ -5,6 +6,7 @@ import type { TFunction } from "i18next";
 import type { TimelineCards, TimelineDeployment } from "../../schedulingApi";
 import ResourceTable, { type ResourceColumn } from "../../components/resourceTable/ResourceTable";
 import { durationText } from "../durationText";
+import { NodeLink } from "./NodeLink";
 
 /** waitText words a wait in milliseconds; none is a dash. */
 export function waitText(t: TFunction<"scheduling">, ms?: number): string {
@@ -53,6 +55,9 @@ export function SharingTable({ rows }: { rows: TimelineDeployment[] }) {
   );
 }
 
+// NODE_MARK is where the wording puts the node's name, rendered as its link.
+const NODE_MARK = "\u0000node\u0000";
+
 // DeploymentName links to a deployment, or - when it was deleted - names it,
 // greyed and marked, with no page to open, as the scheduling history does.
 function DeploymentName({ row }: { row: TimelineDeployment }) {
@@ -62,7 +67,8 @@ function DeploymentName({ row }: { row: TimelineDeployment }) {
 }
 
 // CardsCell lists where a deployment is now, one node per line: its name (or
-// id when the node is gone) and the GPUs its instances hold there.
+// id when the node is gone), which opens its drawer, and the GPUs its
+// instances hold there.
 function CardsCell({ cards }: { cards: TimelineCards[] | undefined }) {
   const { t } = useTranslation("scheduling");
   if (!cards?.length) return <span>—</span>;
@@ -70,7 +76,12 @@ function CardsCell({ cards }: { cards: TimelineCards[] | undefined }) {
     <span className="scheduling-cards">
       {cards.map((entry) => (
         <span key={entry.node_id} style={{ display: "block" }}>
-          {t("timeline.cardsOnNode", { node: entry.node || `#${entry.node_id}`, gpus: entry.gpus.join(", ") || "—" })}
+          {t("timeline.cardsOnNode", { node: NODE_MARK, gpus: entry.gpus.join(", ") || "—" }).split(NODE_MARK).map((part, index) => (
+            <Fragment key={index}>
+              {index > 0 && <NodeLink uuid={entry.node_uuid} name={entry.node || `#${entry.node_id}`} />}
+              {part}
+            </Fragment>
+          ))}
         </span>
       ))}
     </span>

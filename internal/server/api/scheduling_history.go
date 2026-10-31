@@ -94,12 +94,17 @@ func (a *apiHandlers) schedulingHistory(w http.ResponseWriter, r *http.Request) 
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
+	nodes, err := a.historyNodes(events, params)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
 	items := make([]dto.SchedulingHistoryEntry, 0, len(events))
 	for i, ev := range events {
 		category, _ := store.SchedulingCategoryOf(ev.Code)
 		item := dto.SchedulingHistoryEntry{
 			ID: ev.ID, CreatedAt: utcTime(ev.CreatedAt), DeploymentID: ev.DeploymentID, Instance: ev.InstanceUUID,
-			Kind: ev.Kind, Code: ev.Code, Category: string(category), Params: params[i],
+			Kind: ev.Kind, Code: ev.Code, Category: string(category), Params: params[i], Nodes: nodes[i],
 		}
 		if name, ok := names[ev.DeploymentID]; ok {
 			item.Deployment, item.DeploymentDeleted = name.Name, name.Deleted

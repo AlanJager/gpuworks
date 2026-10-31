@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -52,6 +53,9 @@ func TestAnAutomaticReplicaMovesTheRankWhoseCardIsTaken(t *testing.T) {
 	to, _ := events[0]["to"].([]any)
 	if len(from) != 2 || from[1] != f.nodes[1].DisplayName() || len(to) != 2 || to[1] != f.nodes[2].DisplayName() {
 		t.Fatalf("event from=%v to=%v, want display names", from, to)
+	}
+	if got := fmt.Sprint(events[0][store.EventParamNodeUUIDs]); got != fmt.Sprint([]any{f.nodes[0].UUID, f.nodes[1].UUID, f.nodes[2].UUID}) {
+		t.Fatalf("UNIT_PLACED node_uuids = %s, want the nodes of both placements", got)
 	}
 	insts, _ := f.st.InstancesForDeployment(dep.ID)
 	onNew := 0

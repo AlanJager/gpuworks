@@ -933,7 +933,7 @@ func (s *Store) AddDeploymentEventCode(deploymentID uint, kind, code string, par
 }
 
 func (s *Store) addEvent(ev *InstanceEvent, kind, code string, params map[string]any) {
-	_ = addEventTo(s.db, ev, kind, code, params)
+	_ = addEventTo(s.db, ev, kind, code, s.withSchedulingNodes(code, ev.InstanceUUID, params))
 }
 
 func addEventTo(tx *gorm.DB, ev *InstanceEvent, kind, code string, params map[string]any) error {

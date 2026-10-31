@@ -24,20 +24,15 @@ const ZERO = { cards: 0, awake: 0, asleep: 0, free: 0, held_outside: 0, unhealth
 /** overviewOf wraps nodes in a response whose summary is counted from the cards' states, as the server counts. */
 export function overviewOf(nodes: OverviewNode[], models: string[], deployments: SchedulingOverview["deployments"] = [], contention = { waiting_wakes: 0, held_requests: 0, yields_last_hour: 0 }): SchedulingOverview {
   const summary = { ...ZERO, nodes: nodes.length, online_nodes: nodes.filter((n) => n.online).length };
-  const byModel = new Map<string, typeof ZERO & { model: string }>();
   for (const node of nodes) {
     if (!node.online) node.cards = node.cards.map((wire) => { const out = [...wire] as OverviewCardWire; out[5] = 0; return out; });
-    for (const [, model, , , , state] of node.cards) {
-      const row = byModel.get(models[model]) ?? { model: models[model], ...ZERO };
-      byModel.set(models[model], row);
+    for (const [, , , , , state] of node.cards) {
       const bucket = STATES[state] as keyof typeof ZERO;
-      for (const target of [summary, row]) {
-        target.cards += 1;
-        target[bucket] += 1;
-      }
+      summary.cards += 1;
+      summary[bucket] += 1;
     }
   }
-  return { summary: { ...summary, by_model: [...byModel.values()], contention }, states: STATES, models, deployments, nodes };
+  return { summary: { ...summary, contention }, states: STATES, models, deployments, nodes };
 }
 
 /** The small fleet most tests read: three nodes, two GPU models, three deployments. */
