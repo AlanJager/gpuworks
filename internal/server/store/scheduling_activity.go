@@ -32,6 +32,10 @@ const (
 	ActivityOperatorYield ActivityReason = "operator_yield"
 	// ActivityScheduled: a schedule slept, woke or scaled a deployment.
 	ActivityScheduled ActivityReason = "scheduled"
+	// ActivityPlacement: the platform placed a new replica on a node
+	// (UNIT_PLACED) or moved one off a node an operator drains
+	// (NODE_DRAIN_MOVED). A replica moved off a lost node is a failure.
+	ActivityPlacement ActivityReason = "placement"
 	// ActivityFailure: a replica rebuilt, a node replaced, a unit out of
 	// retries, a rolling update stalled, a wake that timed out waiting, an
 	// automatic order that failed.
@@ -44,7 +48,7 @@ const (
 // activityReasons is the order the reasons are listed and stacked in.
 var activityReasons = []ActivityReason{
 	ActivityIdleYield, ActivityRankPreemption, ActivityTimesliceTurn, ActivityOperatorYield,
-	ActivityScheduled, ActivityFailure, ActivityQueued,
+	ActivityScheduled, ActivityPlacement, ActivityFailure, ActivityQueued,
 }
 
 // ActivityReasons lists every reason, in the order they are shown.
@@ -61,6 +65,13 @@ func ActivityReasonIndex(r ActivityReason) int {
 	return -1
 }
 
+// The codes of a replica placed or moved by a drain, as the controller writes
+// them (pinned by scheduling_catalogue_test.go in the app package).
+const (
+	codeUnitPlaced     = "UNIT_PLACED"
+	codeNodeDrainMoved = "NODE_DRAIN_MOVED"
+)
+
 // triggerSchedule is the trigger of a schedule's orders, as the automation
 // writes it (pinned by scheduling_catalogue_test.go in the app package).
 const triggerSchedule = "schedule"
@@ -68,8 +79,7 @@ const triggerSchedule = "schedule"
 // SchedulingActivityReason is the reason the scheduling activity counts an
 // event under; ok is false for an event it does not count: a wake a request,
 // a resume or a freed card brought (the other half of a yield, counted as
-// the card's switch but not as a reason of its own), a replica placed or
-// moved, an operator's order.
+// the card's switch but not as a reason of its own) and an operator's order.
 func SchedulingActivityReason(code, data string) (ActivityReason, bool) {
 	var params struct {
 		Trigger string `json:"trigger"`
@@ -102,6 +112,8 @@ func SchedulingActivityReason(code, data string) (ActivityReason, bool) {
 		return ActivityScheduled, true
 	case codeYieldedForWake:
 		return ActivityOperatorYield, true
+	case codeUnitPlaced, codeNodeDrainMoved:
+		return ActivityPlacement, true
 	case "WAKE_WAITING", EventDeploymentUnschedulable:
 		return ActivityQueued, true
 	case "WAKE_WAIT_TIMEOUT", "SCHEDULE_ACTION_FAILED":

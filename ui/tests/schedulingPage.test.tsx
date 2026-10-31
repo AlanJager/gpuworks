@@ -70,6 +70,7 @@ function nodeBoard(uuid: string): Board {
 
 const SHARING_WINDOWS = [{ key: "15m", seconds: 900 }, { key: "1h", seconds: 3600 }, { key: "6h", seconds: 21600 }, { key: "24h", seconds: 86400 }];
 const sharing = (key = "6h"): Timeline => ({
+  scope: "fleet",
   window: { from: "2026-10-28T06:00:00Z", to: "2026-10-28T12:00:00Z", hours: 6, key, seconds: SHARING_WINDOWS.find((w) => w.key === key)?.seconds ?? 21600 },
   windows: SHARING_WINDOWS, nodes: [],
   deployments: [{ deployment_id: 8, deployment: "llama", yield_policy: "timeslice", awake_seconds: 3600, awake_share: 0.25, present_seconds: 14400, switches: 3, yielded: 2, yielded_to: 1, wakes: 1, held_requests: 6, wait_p50_ms: 4200, wait_p95_ms: 31000 }],
@@ -100,6 +101,7 @@ function serve(options: { overview?: () => Promise<Overview>; board?: () => Boar
     calls.timeline.push(query);
     if ("sharing" in query) return (options.sharing ?? sharing)(query.window);
     return {
+      scope: "node",
       window: { from: "2026-10-28T06:00:00Z", to: "2026-10-28T12:00:00Z", hours: 6, key: "6h", seconds: 21600 },
       windows: [{ key: "6h", seconds: 21600 }, { key: "24h", seconds: 86400 }], nodes: [], deployments: [],
     };
@@ -437,6 +439,8 @@ test("the sharing stats cover the fleet, are read for the chosen window, and say
   const title = await screen.findByText(s.sharing.title);
   const card = title.closest(".ant-card") as HTMLElement;
   await within(card).findByRole("link", { name: "llama" });
+  // The server says these are the fleet's figures: no node-only hint.
+  assert.equal(within(card).queryByRole("img", { name: s.timeline.scopeNode }), null);
   // The first read leaves the window to the server; its answer lists the four
   // windows, 6 hours chosen.
   assert.deepEqual(calls.timeline.at(-1), { sharing: true, window: undefined });

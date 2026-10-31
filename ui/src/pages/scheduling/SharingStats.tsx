@@ -3,7 +3,7 @@ import { Alert, Button, Card, Spin } from "antd";
 import { useTranslation } from "react-i18next";
 import { usePolling } from "../../api";
 import { schedulingApi } from "../../schedulingApi";
-import { SharingTable } from "./TimelineStats";
+import { ScopeHint, SharingTable } from "./TimelineStats";
 import WindowPicker from "./WindowPicker";
 
 const SHARING_POLL_MS = 60_000;
@@ -45,5 +45,6 @@ export default function SharingStats() {
       </Spin>
     );
   }
-  return <Card className="scheduling-card" title={t("sharing.title")} extra={picker}>{body}</Card>;
+  const title = <>{t("sharing.title")}<ScopeHint scope={data?.scope} /></>;
+  return <Card className="scheduling-card" title={title} extra={picker}>{body}</Card>;
 }

@@ -38,6 +38,7 @@ const nodes: BoardNode[] = [{
 
 function timeline(overrides: Partial<Timeline> = {}): Timeline {
   return {
+    scope: "node",
     window: { from: FROM, to: TO, hours: 6, key: "6h", seconds: 21600 },
     windows: NODE_WINDOWS,
     nodes: [{
@@ -254,6 +255,25 @@ test("the sharing table lists the yield policy, awake time, switches, yields and
   // Not placed anywhere, and no wait figures: dashes, not zeros.
   assert.equal(llama.getAllByText("—").length, 3);
   assert.ok(llama.getByText(i18n.t("scheduling:timeline.awakeShare", { span: i18n.t("deployments:duration.seconds", { value: 30 }), present: i18n.t("deployments:duration.hoursMinutes", { hours: 6, minutes: 0 }), share: 0.1 })));
+});
+
+test("the stats' title says, from the server's scope, that they count only this node's replicas, by hover or keyboard", async () => {
+  schedulingApi.timeline = async () => timeline();
+  const user = mount();
+  const title = await screen.findByRole("heading", { name: new RegExp(s.timeline.sharingTitle) });
+  const hint = within(title).getByRole("img", { name: s.timeline.scopeNode });
+  assert.equal(hint.getAttribute("tabindex"), "0");
+  // Tab to it: the tooltip opens on focus with the sentence.
+  for (let i = 0; i < 50 && document.activeElement !== hint; i += 1) await user.tab();
+  assert.equal(document.activeElement, hint, "the hint is reachable by keyboard");
+  const tip = await screen.findByRole("tooltip");
+  assert.equal(tip.textContent, s.timeline.scopeNode);
+  // Over the fleet, the same table says nothing.
+  cleanup();
+  schedulingApi.timeline = async () => timeline({ scope: "fleet" });
+  mount();
+  const fleetTitle = await screen.findByRole("heading", { name: new RegExp(s.timeline.sharingTitle) });
+  assert.equal(within(fleetTitle).queryByRole("img"), null);
 });
 
 test("a deleted deployment that shared cards is listed greyed and marked, with no link, no policy and its share of the time it existed", async () => {

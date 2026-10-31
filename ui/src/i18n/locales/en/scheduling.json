@@ -99,6 +99,7 @@
     "category": {
       "all": "All",
       "auto": "Automatic",
+      "placement": "Placement & moves",
       "failure": "Failure",
       "manual": "Manual"
     },
@@ -163,6 +164,7 @@
     "loading": "Loading the residency timeline…",
     "loadFailed": "Failed to load the residency timeline",
     "refreshFailed": "Failed to refresh the residency timeline: {{detail}}",
+    "scopeNode": "These figures count only this node's replicas",
     "sharingTitle": "Deployments sharing cards",
     "sharingEmpty": "No deployment that shares cards (any yield policy but never) held cards in this window.",
     "columns": {

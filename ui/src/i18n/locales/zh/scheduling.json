@@ -99,6 +99,7 @@
     "category": {
       "all": "全部",
       "auto": "自动",
+      "placement": "放置与迁移",
       "failure": "故障",
       "manual": "手动"
     },
@@ -163,6 +164,7 @@
     "loading": "正在加载驻留时间线…",
     "loadFailed": "无法加载驻留时间线",
     "refreshFailed": "刷新驻留时间线失败：{{detail}}",
+    "scopeNode": "只统计本节点上的副本",
     "sharingTitle": "共卡部署",
     "sharingEmpty": "这段时间没有共卡（出让策略不是不自动出让）的部署占用过卡。",
     "columns": {

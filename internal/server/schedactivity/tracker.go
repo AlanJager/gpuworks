@@ -55,12 +55,22 @@ type depHit struct {
 	kind hitKind
 }
 
+// nodeHit says a deployment hit (deps[hit] of the same minute) happened on
+// a node: one per node of the cards the event concerns, the hits of one
+// event next to each other, so that a read over several nodes counts the
+// event once.
+type nodeHit struct {
+	hit  uint32
+	node uint32
+}
+
 // bucket is one minute.
 type bucket struct {
-	minute  int64 // Unix minute it holds; a slot holding another is empty
-	reasons []int64
-	cards   []cardHit
-	deps    []depHit
+	minute   int64 // Unix minute it holds; a slot holding another is empty
+	reasons  []int64
+	cards    []cardHit
+	deps     []depHit
+	nodeHits []nodeHit
 }
 
 // spans is a set of stretches of time (Unix ms) kept merged: closed ones and,
@@ -244,7 +254,7 @@ func (t *Tracker) slot(minute int64) *bucket {
 	switch {
 	case b.minute == minute:
 	case b.minute < minute:
-		*b = bucket{minute: minute, reasons: b.reasons[:0], cards: b.cards[:0], deps: b.deps[:0]}
+		*b = bucket{minute: minute, reasons: b.reasons[:0], cards: b.cards[:0], deps: b.deps[:0], nodeHits: b.nodeHits[:0]}
 		if b.reasons == nil {
 			b.reasons = make([]int64, reasonCount)
 		} else {
@@ -272,6 +282,7 @@ func (t *Tracker) apply(ev store.ObservedEvent) {
 			b.reasons[i]++
 		}
 	}
+	first := len(b.deps)
 	switch {
 	case ev.Yield:
 		b.deps = append(b.deps, depHit{uint32(ev.DeploymentID), hitYielded})
@@ -283,8 +294,19 @@ func (t *Tracker) apply(ev store.ObservedEvent) {
 	default:
 		return
 	}
-	for _, c := range ev.Cards {
-		b.cards = append(b.cards, cardHit{t.node(c.NodeUUID), int32(c.GPU)})
+	// The event's nodes are those of its cards (sorted by node, so a node's
+	// cards are next to each other); each hit is placed on each once.
+	var last uint32
+	for i, c := range ev.Cards {
+		node := t.node(c.NodeUUID)
+		b.cards = append(b.cards, cardHit{node, int32(c.GPU)})
+		if i > 0 && node == last {
+			continue
+		}
+		last = node
+		for hit := first; hit < len(b.deps); hit++ {
+			b.nodeHits = append(b.nodeHits, nodeHit{uint32(hit), node})
+		}
 	}
 }
 

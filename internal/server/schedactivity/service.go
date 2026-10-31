@@ -273,3 +273,10 @@ func (s *Service) topCards(cards map[store.EventCard]int64, n int) ([]dto.Activi
 func (s *Service) Deployments(from, to time.Time, want map[uint]bool) map[uint]store.DeploymentActivity {
 	return s.Tracker.Deployments(from, to, want)
 }
+
+// DeploymentsOnNodes is each deployment's yields, yields to it and wakes over
+// [from, to) on the named nodes, from the memory; want, when not nil, limits
+// it to some.
+func (s *Service) DeploymentsOnNodes(nodes []string, from, to time.Time, want map[uint]bool) map[uint]store.ResidencySwitches {
+	return s.Tracker.DeploymentsOnNodes(nodes, from, to, want)
+}

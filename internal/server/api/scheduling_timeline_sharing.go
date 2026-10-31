@@ -61,7 +61,7 @@ func (a *apiHandlers) cachedSharingTimeline(now time.Time, win timelineWindow) (
 // activity, so nothing reads the event log.
 func (a *apiHandlers) sharingTimeline(now time.Time, win timelineWindow) (dto.SchedulingTimeline, error) {
 	out := dto.SchedulingTimeline{
-		Window: win.wire(now), Windows: timelineOptions(sharingWindows),
+		Scope: dto.TimelineScopeFleet, Window: win.wire(now), Windows: timelineOptions(sharingWindows),
 		Nodes: []dto.TimelineNode{}, Deployments: []dto.TimelineDeployment{},
 	}
 	from := out.Window.From
@@ -81,7 +81,7 @@ func (a *apiHandlers) sharingTimeline(now time.Time, win timelineWindow) (dto.Sc
 			ids = append(ids, id)
 		}
 	}
-	out.Deployments, err = a.sharingRows(ids, acts, from, now)
+	out.Deployments, err = a.sharingRows(ids, fleetFigures(acts, from, now), from, now)
 	return out, err
 }
 

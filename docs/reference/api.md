@@ -1016,10 +1016,11 @@ macOS 忽略 `no_systemd`。
 
 ### 驻留时间线
 
-`GET /api/v1/scheduling/timeline?node=<uuid>&node=<uuid>&window=6h` 只读。它与看板分开，因为看板每隔几秒刷新，而泳道要读窗口内的事件日志；界面按被打开的节点和所选窗口读一次，约每分钟刷新。窗口可选 `6h`、`24h`（默认 `6h`）。`?sharing=1&window=6h` 不带 `node`：只回答全集群出让策略不是 `never` 的部署、以及窗口内参与过让位后已删除的部署的统计（`deployments[]`，`nodes` 为空数组），窗口可选 `15m`、`1h`、`6h`、`24h`（默认 `6h`），缓存约 30 秒；界面用它显示「共卡部署」表。两种读法的统计都来自[调度活动](#调度活动)的内存汇总，不读事件日志；可选的窗口由响应的 `windows` 给出，界面据此显示，不另存一份。旧参数 `hours=6|24` 仍可用，等同 `window=6h|24h`。响应：
+`GET /api/v1/scheduling/timeline?node=<uuid>&node=<uuid>&window=6h` 只读。它与看板分开，因为看板每隔几秒刷新，而泳道要读窗口内的事件日志；界面按被打开的节点和所选窗口读一次，约每分钟刷新。窗口可选 `6h`、`24h`（默认 `6h`）。`?sharing=1&window=6h` 不带 `node`：只回答全集群出让策略不是 `never` 的部署、以及窗口内参与过让位后已删除的部署的统计（`deployments[]`，`nodes` 为空数组），窗口可选 `15m`、`1h`、`6h`、`24h`（默认 `6h`），缓存约 30 秒；界面用它显示「共卡部署」表。两种读法的统计都不读事件日志：`sharing=1` 是各部署在整个集群里的值，带 `node` 只统计这些节点上的副本，响应的 `scope` 说明是哪一种；可选的窗口由响应的 `windows` 给出，界面据此显示，不另存一份。旧参数 `hours=6|24` 仍可用，等同 `window=6h|24h`。响应：
 
 ```json
 {
+  "scope": "node",
   "window": {"from": "2026-10-28T06:00:00Z", "to": "2026-10-28T12:00:00Z", "hours": 6, "key": "6h", "seconds": 21600},
   "windows": [{"key": "6h", "seconds": 21600}, {"key": "24h", "seconds": 86400}],
   "nodes": [{
@@ -1046,11 +1047,12 @@ macOS 忽略 `no_systemd`。
 
 | 字段 | 含义 |
 |---|---|
+| `scope` | `deployments[]` 里的数统计的范围：带 `node` 时为 `node`（只统计部署在这些节点上的副本），`sharing=1` 时为 `fleet`（部署的全部副本）；界面据此显示「只统计本节点上的副本」的提示，不自行推断 |
 | `window` | 窗口：`key`（`windows` 之一）、`seconds`（长度）、`hours`（整小时数，不足一小时的窗口为 0）、`from`、`to`（现在） |
 | `windows` | 这一读法可选的窗口（`key`、`seconds`），按界面显示的顺序：带 `node` 时 `6h`、`24h`，`sharing=1` 时 `15m`、`1h`、`6h`、`24h` |
 | `nodes[].gpus[]` | 与看板同样的卡（`index`），`segments[]` 从旧到新；`truncated` 为 true 表示只保留了最近 200 段 |
 | `segments[]` | 一个实例在一段时间里占着这张卡：`deployment_id`、`deployment`、`instance`、`state`（`awake` / `asleep` / `switching` / `starting`）、休眠时的 `level`（1 或 2）、`from`、`to`（都落在窗口内）；多卡实例在每张卡上各出现一次 |
-| `deployments[]` | 窗口内占过这些卡、出让策略不是 `never` 的部署（带各自的 `yield_policy`），以及窗口内让出过卡或被让过卡、此后已删除的部署（`deployment_deleted: true`，`deployment` 是它留下的名字，`yield_policy` 为空字符串，因为删除后不保留）：`awake_seconds`（至少一个副本醒着的时间）、`present_seconds`（部署在窗口内存在的时长：从 max(窗口起点, 部署创建时间与首个实例时间中较早者) 到 min(现在, 删除时间)；已删除的部署不保留创建时间，按它的实例在窗口内最早出现的时间算，删除时间未知时按最后一段的结束）、`awake_share`（`awake_seconds` / `present_seconds`，0 到 1，`present_seconds` 为 0 时为 0）、`switches`（`yielded` + `wakes`）、`yielded`（为别的部署让出卡而休眠，驻留仲裁的抢占与运维的让位唤醒都算，与总览的 `yields_last_hour` 同一口径）、`yielded_to`（别的部署为它让出，按事件的 `for_deployment` 计，让出者已删除也计）、`wakes`（平台唤醒它）、`held_requests`（网关为等它唤醒而挂起的请求数）、`wait_p50_ms` / `wait_p95_ms`（这些请求的等待，近似值，没有被挂起的请求或网关不保留指标时省略）、`cards`（各副本此刻所在的节点与卡，按节点：`node_id`、`node_uuid`（节点已不存在时省略）、`node`（节点显示名，节点已不存在时为空）、`gpus`；没有放置时为空数组）。这些数（切换计数、`awake_seconds`、`present_seconds`）都是部署自身在整个集群里的值，来自[调度活动](#调度活动)的内存汇总，带 `node` 与 `sharing=1` 两种读法共用这一份，给出同样的值；带 `node` 时只列出在这些节点的卡上出现过的部署，`cards` 列出它所有副本此刻所在的节点与卡 |
+| `deployments[]` | 窗口内占过这些卡、出让策略不是 `never` 的部署（带各自的 `yield_policy`），以及窗口内让出过卡或被让过卡、此后已删除的部署（`deployment_deleted: true`，`deployment` 是它留下的名字，`yield_policy` 为空字符串，因为删除后不保留）：`awake_seconds`（至少一个副本醒着的时间）、`present_seconds`（`fleet`：部署在窗口内存在的时长，从 max(窗口起点, 部署创建时间与首个实例时间中较早者) 到 min(现在, 删除时间)，已删除的部署不保留创建时间，按它的实例在窗口内最早出现的时间算，删除时间未知时按最后一段的结束；`node`：窗口内至少一个副本在这些节点上占着卡的时长，即这些节点泳道上它各段的并集）、`awake_share`（`awake_seconds` / `present_seconds`，0 到 1，`present_seconds` 为 0 时为 0）、`switches`（`yielded` + `wakes`）、`yielded`（为别的部署让出卡而休眠，驻留仲裁的抢占与运维的让位唤醒都算，与总览的 `yields_last_hour` 同一口径）、`yielded_to`（别的部署为它让出，按事件的 `for_deployment` 计，让出者已删除也计）、`wakes`（平台唤醒它）、`held_requests`（网关为等它唤醒而挂起的请求数）、`wait_p50_ms` / `wait_p95_ms`（这些请求的等待，近似值，没有被挂起的请求或网关不保留指标时省略）、`cards`（各副本此刻所在的节点与卡，按节点：`node_id`、`node_uuid`（节点已不存在时省略）、`node`（节点显示名，节点已不存在时为空）、`gpus`；没有放置时为空数组）。`scope` 为 `fleet` 时这些数（切换计数、`awake_seconds`、`present_seconds`）是部署自身在整个集群里的值，来自[调度活动](#调度活动)的内存汇总；为 `node` 时只统计部署在这些节点上的副本：`awake_seconds` 与 `present_seconds` 由与泳道同一份分段算出，`yielded`、`yielded_to`、`wakes` 来自调度活动内存里按节点记下的计数（事件涉及的卡在这些节点上才计，同时涉及多个所列节点的事件只计一次；最近 24 小时都在内存里，不新增持久化）。带 `node` 时只列出在这些节点的卡上出现过的部署；`held_requests`、等待分位与 `cards` 两种范围相同：网关为部署而不是为某个副本挂起请求，`cards` 列出它所有副本此刻所在的节点与卡 |
 
 泳道由实例记录与事件日志推导，移除实例时记录的 `INSTANCE_REMOVED` 事件（`kind` 为 `residency`，参数 `node_id`、`gpus`）说明它占过的节点与卡。语义与限制见[使用调度分析](../how-to/scheduling-center.md#驻留时间线)。
 
@@ -1064,9 +1066,10 @@ macOS 忽略 `no_systemd`。
   "reasons": [
     {"key": "idle_yield", "count": 120}, {"key": "rank_preemption", "count": 34},
     {"key": "timeslice_turn", "count": 410}, {"key": "operator_yield", "count": 2},
-    {"key": "scheduled", "count": 8}, {"key": "failure", "count": 3}, {"key": "queued", "count": 17}
+    {"key": "scheduled", "count": 8}, {"key": "placement", "count": 5}, {"key": "failure", "count": 3},
+    {"key": "queued", "count": 17}
   ],
-  "buckets": [{"start": "2026-10-30T12:00:00Z", "counts": [1, 0, 5, 0, 0, 0, 0]}],
+  "buckets": [{"start": "2026-10-30T12:00:00Z", "counts": [1, 0, 5, 0, 0, 1, 0, 0]}],
   "top_cards": [{"node_uuid": "5f0c…", "node": "gpu3", "gpu_index": 2, "switches": 61}],
   "beyond_retention": false
 }
@@ -1075,12 +1078,12 @@ macOS 忽略 `no_systemd`。
 | 字段 | 含义 |
 |---|---|
 | `from`、`to`、`bucket_seconds` | 第一个桶的起点（按桶长对齐，可能略早于请求的起点；一天的桶按统计时区的日界对齐）、范围的终点、桶长（秒） |
-| `reasons[]` | 全部原因，按堆叠顺序，带范围内的合计：`idle_yield`（驻留仲裁让闲置的占卡者让卡）、`rank_preemption`（排位更高的部署抢占可抢占的占卡者；没有写明原因的抢占也算在这里）、`timeslice_turn`（同级部署轮流使用，占卡者用满了它的时间片）、`operator_yield`（运维的让位唤醒，`YIELDED_FOR_WAKE`）、`scheduled`（定时计划的休眠、唤醒与改副本数）、`failure`（副本重建、节点失联迁移及其回退与无处可迁、重试预算用尽、滚动重启停住、唤醒等位超时、自动指令失败）、`queued`（部署放不下 `DEPLOYMENT_UNSCHEDULABLE`、唤醒开始等位 `WAKE_WAITING`）。请求或恢复触发的唤醒、副本被自动放置或迁出、运维指令不计入任何原因 |
+| `reasons[]` | 全部原因，按堆叠顺序，带范围内的合计：`idle_yield`（驻留仲裁让闲置的占卡者让卡）、`rank_preemption`（排位更高的部署抢占可抢占的占卡者；没有写明原因的抢占也算在这里）、`timeslice_turn`（同级部署轮流使用，占卡者用满了它的时间片）、`operator_yield`（运维的让位唤醒，`YIELDED_FOR_WAKE`）、`scheduled`（定时计划的休眠、唤醒与改副本数）、`placement`（放置与迁移：平台把新副本放到节点上 `UNIT_PLACED`、把副本从运维排空的节点迁出 `NODE_DRAIN_MOVED`）、`failure`（副本重建、节点失联迁移及其回退与无处可迁、重试预算用尽、滚动重启停住、唤醒等位超时、自动指令失败）、`queued`（部署放不下 `DEPLOYMENT_UNSCHEDULABLE`、唤醒开始等位 `WAKE_WAITING`）。请求或恢复触发的唤醒（让位的另一半，已在让出的一侧计过，仍计入卡的切换）与运维指令不计入任何原因；节点失联后的迁移 `NODE_REPLACED` 属于 `failure` |
 | `buckets[]` | 从 `from` 起每个桶一项（没有事件的桶也在），`counts` 与 `reasons` 同序 |
 | `top_cards[]` | 范围内切换最频繁的至多 20 张卡，多者在前：`node_uuid`、`node`（节点显示名，节点已不存在时为空）、`gpu_index`、`switches`（卡上的让卡次数加唤醒次数，按事件涉及的实例当时所占的卡计） |
 | `beyond_retention` | 范围开头早于统计按天保留期，那一段没有数据 |
 
-数据从哪来：事件写入时，store 把调度事件和实例的状态、休眠、移除事件交给内存汇总，每个事件只在它所在的那一分钟上加几个数（原因计数、所涉卡、部署的让出 / 被让 / 唤醒），实例状态的变化维护各部署至少一个副本醒着、以及有副本占卡的时间段，不为每个事件写库。内存保留最近约 25 小时；server 启动时按 `(kind, id)` 与实例索引回放一次窗口内的事件。每个整点过后，上一小时整小时写入 stats.db 的三张小时表（各原因的事件数、每张卡的切换数、每个共卡部署的醒着与存在秒数和让出 / 被让 / 唤醒），重写同一小时得到同样的行；server 停止时写入进行中的那一小时。小时表与天表按数据保留设置（`GET /api/v1/data-retention`）的 `stats_hourly_days` / `stats_daily_days` 保留（默认 31 天与 400 天），天表在一天结束后由小时表汇总。读取时最近 24 小时只读内存，更早的部分读小时表或天表（按卡汇总走主键范围），不随事件日志的增长变慢。
+数据从哪来：事件写入时，store 把调度事件和实例的状态、休眠、移除事件交给内存汇总，每个事件只在它所在的那一分钟上加几个数（原因计数、所涉卡、部署的让出 / 被让 / 唤醒及其所在节点），实例状态的变化维护各部署至少一个副本醒着、以及有副本占卡的时间段，不为每个事件写库。内存保留最近约 25 小时；server 启动时按 `(kind, id)` 与实例索引回放一次窗口内的事件。每个整点过后，上一小时整小时写入 stats.db 的三张小时表（各原因的事件数、每张卡的切换数、每个共卡部署的醒着与存在秒数和让出 / 被让 / 唤醒），重写同一小时得到同样的行；server 停止时写入进行中的那一小时。小时表与天表按数据保留设置（`GET /api/v1/data-retention`）的 `stats_hourly_days` / `stats_daily_days` 保留（默认 31 天与 400 天），天表在一天结束后由小时表汇总。读取时最近 24 小时只读内存，更早的部分读小时表或天表（按卡汇总走主键范围），不随事件日志的增长变慢。
 
 ### 调度记录
 

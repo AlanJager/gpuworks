@@ -36,6 +36,10 @@ func (r replayActivity) Deployments(from, to time.Time, want map[uint]bool) map[
 	return r.service().Deployments(from, to, want)
 }
 
+func (r replayActivity) DeploymentsOnNodes(nodes []string, from, to time.Time, want map[uint]bool) map[uint]store.ResidencySwitches {
+	return r.service().DeploymentsOnNodes(nodes, from, to, want)
+}
+
 // fixedActivity answers what it is given and records what it was asked.
 type fixedActivity struct {
 	out   dto.SchedulingActivity
@@ -51,6 +55,10 @@ func (f *fixedActivity) Deployments(time.Time, time.Time, map[uint]bool) map[uin
 	return map[uint]store.DeploymentActivity{}
 }
 
+func (f *fixedActivity) DeploymentsOnNodes([]string, time.Time, time.Time, map[uint]bool) map[uint]store.ResidencySwitches {
+	return map[uint]store.ResidencySwitches{}
+}
+
 // The activity on the wire: buckets stacked by reason, the reasons in their
 // order with the range's totals, the cards that changed hands most named by
 // their node.
@@ -63,6 +71,9 @@ func TestSchedulingActivityWire(t *testing.T) {
 	r.st.AddDeploymentEventCode(r.shared.ID, store.EventKindAutomation, "AUTO_SLEEP", map[string]any{"trigger": "preempt", "reason": "idle", "for_deployment": r.plain.ID, "instances": []string{"inst-shared"}})
 	r.st.AddDeploymentEventCode(r.shared.ID, store.EventKindAutomation, "AUTO_WAKE", map[string]any{"trigger": "request", "instances": []string{"inst-shared"}})
 	r.st.AddDeploymentEventCode(r.plain.ID, store.EventKindSchedule, store.EventDeploymentUnschedulable, map[string]any{"node": other})
+	// A replica placed and one moved off a drained node: placement.
+	r.st.AddDeploymentEventCode(r.plain.ID, store.EventKindAutomation, "UNIT_PLACED", map[string]any{"node": other, "replica": 1})
+	r.st.AddDeploymentEventCode(r.plain.ID, store.EventKindAutomation, "NODE_DRAIN_MOVED", map[string]any{"node": other, "instance": "inst-plain"})
 	rec := r.do(r.session, http.MethodGet, "/api/v1/scheduling/activity?window=1h", "")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("activity = %d %s", rec.Code, rec.Body)
@@ -75,14 +86,14 @@ func TestSchedulingActivityWire(t *testing.T) {
 	if got.BucketSeconds != 60 || len(got.Buckets) < 60 || len(got.Buckets) > 61 || got.BeyondRetention {
 		t.Fatalf("buckets = %d of %ds, beyond %v", len(got.Buckets), got.BucketSeconds, got.BeyondRetention)
 	}
-	if want := `"reasons":[{"key":"idle_yield","count":1},{"key":"rank_preemption","count":1},{"key":"timeslice_turn","count":0},{"key":"operator_yield","count":0},{"key":"scheduled","count":0},{"key":"failure","count":0},{"key":"queued","count":1}]`; !strings.Contains(body, want) {
+	if want := `"reasons":[{"key":"idle_yield","count":1},{"key":"rank_preemption","count":1},{"key":"timeslice_turn","count":0},{"key":"operator_yield","count":0},{"key":"scheduled","count":0},{"key":"placement","count":2},{"key":"failure","count":0},{"key":"queued","count":1}]`; !strings.Contains(body, want) {
 		t.Fatalf("reasons on the wire:\n%s\nwant %s", body, want)
 	}
 	if want := fmt.Sprintf(`"top_cards":[{"node_uuid":%q,"node":"tl-node","gpu_index":0,"switches":3}]`, r.node.UUID); !strings.Contains(body, want) {
 		t.Fatalf("top cards on the wire:\n%s\nwant %s", body, want)
 	}
 	last := got.Buckets[len(got.Buckets)-1]
-	if fmt.Sprint(last.Counts) != "[1 1 0 0 0 0 1]" || !strings.Contains(body, `"counts":[0,0,0,0,0,0,0]`) {
+	if fmt.Sprint(last.Counts) != "[1 1 0 0 0 2 0 1]" || !strings.Contains(body, `"counts":[0,0,0,0,0,0,0,0]`) {
 		t.Fatalf("last bucket = %+v", last)
 	}
 	if !got.From.Equal(got.Buckets[0].Start) || got.To.Before(last.Start) {

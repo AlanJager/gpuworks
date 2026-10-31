@@ -48,7 +48,7 @@ func (r *timelineRig) addGoneDeployment(name string, gone time.Duration, yieldsT
 	r.event(uuid, dep.ID, "state", "INSTANCE_CREATED", 0, `{"state":"pending"}`)
 	r.event(uuid, dep.ID, "state", "INSTANCE_STATUS_UPDATED", 5*time.Minute, `{"state":"running","phase":""}`)
 	for _, at := range yieldsTo {
-		r.event("", dep.ID, store.EventKindAutomation, "AUTO_SLEEP", at, fmt.Sprintf(`{"trigger":"preempt","reason":"rank","for_deployment":%d,"level":1}`, to))
+		r.event("", dep.ID, store.EventKindAutomation, "AUTO_SLEEP", at, fmt.Sprintf(`{"trigger":"preempt","reason":"rank","for_deployment":%d,"level":1,"instances":[%q]}`, to, uuid))
 	}
 	if err := r.st.DeleteDeployment(dep.ID); err != nil {
 		r.t.Fatal(err)
@@ -74,7 +74,7 @@ func TestSharingStatsCountADeletedDeploymentsYields(t *testing.T) {
 	gone := r.addGoneDeployment("old-batch", 2*time.Hour, []time.Duration{30 * time.Minute, time.Hour}, r.shared.ID)
 	quiet := r.addGoneDeployment("quiet", time.Hour, nil, 0)
 	// One yield by a deployment that still exists, to compare with.
-	r.st.AddDeploymentEventCode(r.plain.ID, store.EventKindAutomation, "AUTO_SLEEP", map[string]any{"trigger": "preempt", "reason": "turn", "for_deployment": r.shared.ID})
+	r.st.AddDeploymentEventCode(r.plain.ID, store.EventKindAutomation, "AUTO_SLEEP", map[string]any{"trigger": "preempt", "reason": "turn", "for_deployment": r.shared.ID, "instances": []string{"inst-plain"}})
 
 	views := map[string]string{"fleet": "?sharing=1&hours=6", "node": "?node=" + r.node.UUID + "&hours=6"}
 	rows := map[string][2]map[string]any{}
@@ -108,7 +108,8 @@ func TestSharingStatsCountADeletedDeploymentsYields(t *testing.T) {
 		}
 		rows[view] = [2]map[string]any{shared, deleted}
 	}
-	// The two views agree on every switch count.
+	// Every instance is on the one node, so the two views agree on every
+	// switch count and on the time present.
 	for i, name := range []string{"shared", "deleted"} {
 		for _, key := range []string{"switches", "yielded", "yielded_to", "wakes", "present_seconds"} {
 			if f, n := rows["fleet"][i][key], rows["node"][i][key]; f != n {
@@ -123,7 +124,9 @@ func TestSharingStatsCountADeletedDeploymentsYields(t *testing.T) {
 }
 
 // A deployment created inside the window and awake since is awake for nearly
-// all the time it existed, not for the fraction of the window that is.
+// all the time it existed, not for the fraction of the window that is. The
+// fleet counts its presence from the deployment's creation; a node from when
+// its instance there first held cards.
 func TestSharingStatsShareIsOfTheTimeADeploymentExisted(t *testing.T) {
 	r := newTimelineRig(t)
 	born := r.t0.Add(-16 * time.Hour) // 19 h before now, 5 h into a 24 h window
@@ -142,13 +145,17 @@ func TestSharingStatsShareIsOfTheTimeADeploymentExisted(t *testing.T) {
 			t.Fatalf("%s = %d %s", view, status, body)
 		}
 		d := got.Deployments[0]
-		// Present from the deployment's creation (before its instance's).
+		// Present from the deployment's creation (before its instance's), or
+		// on the node from its instance's.
 		present := int64(got.Window.To.Sub(born).Seconds())
+		if view == "node" {
+			present = int64(got.Window.To.Sub(born.Add(time.Minute)).Seconds())
+		}
 		awake := int64(got.Window.To.Sub(born.Add(2 * time.Minute)).Seconds())
 		if d.PresentSeconds != present || d.AwakeSeconds != awake {
 			t.Fatalf("%s: present %d awake %d, want %d and %d", view, d.PresentSeconds, d.AwakeSeconds, present, awake)
 		}
-		if want := float64(awake) / float64(present); d.AwakeShare != want || d.AwakeShare < 0.99 {
+		if want := float64(awake) / float64(present); d.AwakeShare != want || d.AwakeShare < 0.99 || got.Scope != view {
 			t.Fatalf("%s: awake share = %v, want %v (not %v, the share of the window)", view, d.AwakeShare, want, float64(awake)/(24*3600))
 		}
 	}

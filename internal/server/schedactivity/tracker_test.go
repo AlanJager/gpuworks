@@ -50,7 +50,7 @@ func TestObservedEventsWaitForTheReplay(t *testing.T) {
 	tr.Observe(yield(10, 1, 2, at(3*time.Minute), store.ActivityTimesliceTurn, card))
 	out := [][]int64{make([]int64, reasonCount)}
 	tr.AddReasons(base.UnixMilli(), at(time.Hour).UnixMilli(), base.UnixMilli(), hourMS, out)
-	if fmt.Sprint(out[0]) != "[1 1 1 0 0 0 0]" {
+	if fmt.Sprint(out[0]) != "[1 1 1 0 0 0 0 0]" {
 		t.Fatalf("reasons = %v, want one each of idle, rank, turn", out[0])
 	}
 	cards := map[store.EventCard]int64{}
@@ -123,7 +123,7 @@ func TestTheRingForgetsOldMinutes(t *testing.T) {
 	tr.Observe(yield(3, 1, 0, at(0), store.ActivityTimesliceTurn)) // older than the ring now holds
 	out := [][]int64{make([]int64, reasonCount)}
 	tr.AddReasons(base.UnixMilli(), later.Add(time.Minute).UnixMilli(), base.UnixMilli(), later.Add(time.Minute).UnixMilli()-base.UnixMilli(), out)
-	if fmt.Sprint(out[0]) != "[0 1 0 0 0 0 0]" {
+	if fmt.Sprint(out[0]) != "[0 1 0 0 0 0 0 0]" {
 		t.Fatalf("reasons = %v", out[0])
 	}
 }

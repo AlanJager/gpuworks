@@ -140,7 +140,7 @@ type timelineCard struct {
 
 func (a *apiHandlers) residencyTimeline(uuids []string, now time.Time, win timelineWindow) (dto.SchedulingTimeline, error) {
 	out := dto.SchedulingTimeline{
-		Window: win.wire(now), Windows: timelineOptions(nodeWindows),
+		Scope: dto.TimelineScopeNode, Window: win.wire(now), Windows: timelineOptions(nodeWindows),
 		Nodes: []dto.TimelineNode{}, Deployments: []dto.TimelineDeployment{},
 	}
 	from := out.Window.From
@@ -172,24 +172,31 @@ func (a *apiHandlers) residencyTimeline(uuids []string, now time.Time, win timel
 	if err != nil {
 		return out, err
 	}
-	return a.fillTimeline(out, cards, insts, events, from, now)
+	nodeUUIDs := make([]string, len(out.Nodes))
+	for i, node := range out.Nodes {
+		nodeUUIDs[i] = node.UUID
+	}
+	return a.fillTimeline(out, nodeUUIDs, cards, insts, events, from, now)
 }
 
 // fillTimeline derives the segments of the instances into the cards' lanes
-// and lists the stats of the deployments whose instances held them, from the
-// scheduling activity like the fleet's sharing stats.
-func (a *apiHandlers) fillTimeline(out dto.SchedulingTimeline, cards map[uint]map[int]*timelineCard, insts []store.ResidencyInstance, events map[string][]store.ResidencyEvent, from, now time.Time) (dto.SchedulingTimeline, error) {
+// and lists the stats of the deployments whose instances held them, counting
+// only those instances: their awake and present time from the same segments,
+// their yields and wakes from the scheduling activity's counts of the nodes.
+func (a *apiHandlers) fillTimeline(out dto.SchedulingTimeline, nodeUUIDs []string, cards map[uint]map[int]*timelineCard, insts []store.ResidencyInstance, events map[string][]store.ResidencyEvent, from, now time.Time) (dto.SchedulingTimeline, error) {
 	type derived struct {
 		inst store.ResidencyInstance
 		segs []store.ResidencySegment
 	}
 	var all []derived
 	depIDs := map[uint]bool{}
+	segsOf := map[uint][]store.ResidencySegment{}
 	for _, inst := range insts {
 		segs := store.DeriveResidency(inst, events[inst.EventsOf()], from, now)
 		if len(segs) > 0 {
 			all = append(all, derived{inst, segs})
 			depIDs[inst.DeploymentID] = true
+			segsOf[inst.DeploymentID] = append(segsOf[inst.DeploymentID], segs...)
 		}
 	}
 	ids := make([]uint, 0, len(depIDs))
@@ -232,8 +239,11 @@ func (a *apiHandlers) fillTimeline(out dto.SchedulingTimeline, cards map[uint]ma
 			}
 		}
 	}
-	acts := a.d.SchedulingActivity.Deployments(from, now, depIDs)
-	out.Deployments, err = a.sharingRows(ids, acts, from, now)
+	switches := a.d.SchedulingActivity.DeploymentsOnNodes(nodeUUIDs, from, now, depIDs)
+	out.Deployments, err = a.sharingRows(ids, func(id uint, _ store.ResidencyDeployment) (sharingFigures, bool) {
+		awake, present := store.SegmentCoverage(segsOf[id])
+		return sharingFigures{ResidencySwitches: switches[id], awakeMS: awake, presentMS: present}, present > 0
+	}, from, now)
 	return out, err
 }
 

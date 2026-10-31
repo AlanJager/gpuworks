@@ -113,7 +113,7 @@ func TestActivityAddsStoredHoursToTheMemory(t *testing.T) {
 		for _, n := range b.Counts {
 			sum += n
 		}
-		if b.Start.Equal(old) && fmt.Sprint(b.Counts) != "[4 0 0 0 0 0 2]" {
+		if b.Start.Equal(old) && fmt.Sprint(b.Counts) != "[4 0 0 0 0 0 0 2]" {
 			t.Fatalf("stored hour bucket = %+v", b)
 		}
 	}

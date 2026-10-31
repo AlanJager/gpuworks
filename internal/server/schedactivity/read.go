@@ -70,14 +70,7 @@ func (t *Tracker) Deployments(from, to time.Time, want map[uint]bool) map[uint]s
 				continue
 			}
 			d := out[id]
-			switch h.kind {
-			case hitYielded:
-				d.Yielded++
-			case hitYieldedTo:
-				d.YieldedTo++
-			case hitWake:
-				d.Wakes++
-			}
+			d.ResidencySwitches = h.add(d.ResidencySwitches)
 			out[id] = d
 		}
 	})
@@ -97,5 +90,56 @@ func (t *Tracker) Deployments(from, to time.Time, want map[uint]bool) map[uint]s
 		}
 		out[id] = d
 	}
+	return out
+}
+
+// add counts the hit into c.
+func (h depHit) add(c store.ResidencySwitches) store.ResidencySwitches {
+	switch h.kind {
+	case hitYielded:
+		c.Yielded++
+	case hitYieldedTo:
+		c.YieldedTo++
+	case hitWake:
+		c.Wakes++
+	}
+	return c
+}
+
+// DeploymentsOnNodes is each deployment's yields, yields to it and wakes in
+// the minutes starting in [from, to) that happened on the named nodes (by
+// UUID): those of events whose cards are on one of them, an event counted
+// once however many of them it concerns. want, when not nil, limits it to
+// some deployments. A deployment with none is absent.
+func (t *Tracker) DeploymentsOnNodes(nodes []string, from, to time.Time, want map[uint]bool) map[uint]store.ResidencySwitches {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	out := map[uint]store.ResidencySwitches{}
+	on := map[uint32]bool{}
+	for _, uuid := range nodes {
+		if id, ok := t.nodes[uuid]; ok {
+			on[id] = true
+		}
+	}
+	if len(on) == 0 {
+		return out
+	}
+	fromMS, toMS := from.UnixMilli(), to.UnixMilli()
+	t.minutesOf(fromMS-fromMS%minuteMS, toMS, func(_ int64, b *bucket) {
+		// Every hit of an event is placed on each of its nodes, the events in
+		// order: once one of its nodes is named all its hits are counted, and a
+		// hit at or below the last counted is one counted already.
+		counted := -1
+		for _, nh := range b.nodeHits {
+			if !on[nh.node] || int(nh.hit) <= counted {
+				continue
+			}
+			counted = int(nh.hit)
+			h := b.deps[nh.hit]
+			if id := uint(h.dep); want == nil || want[id] {
+				out[id] = h.add(out[id])
+			}
+		}
+	})
 	return out
 }

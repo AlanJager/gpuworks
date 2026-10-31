@@ -81,12 +81,14 @@ func TestSchedulingTimelineWire(t *testing.T) {
 	r.event("inst-shared", r.shared.ID, "state", "INSTANCE_STATUS_UPDATED", 2*time.Hour, `{"state":"running","phase":"sleep"}`)
 	r.event("inst-shared", r.shared.ID, "sleep", "INSTANCE_SLEEP_RESULT", 2*time.Hour+time.Minute, `{"result":"applied","level":0}`)
 	r.event("inst-shared", r.shared.ID, "state", "INSTANCE_STATUS_UPDATED", 2*time.Hour+time.Minute, `{"state":"running","phase":""}`)
-	// It yielded once to the deployment sharing card 1 and was woken twice.
-	r.st.AddDeploymentEventCode(r.shared.ID, store.EventKindAutomation, "AUTO_SLEEP", map[string]any{"trigger": "preempt", "reason": "rank", "for_deployment": r.plain.ID, "level": 2})
-	r.st.AddDeploymentEventCode(r.shared.ID, store.EventKindAutomation, "AUTO_WAKE", map[string]any{"trigger": "resume"})
-	r.st.AddDeploymentEventCode(r.shared.ID, store.EventKindAutomation, "AUTO_WAKE", map[string]any{"trigger": "schedule"})
+	// It yielded once to the deployment sharing card 1 and was woken twice,
+	// each event naming its instance on this node, as the automation writes
+	// them.
+	r.st.AddDeploymentEventCode(r.shared.ID, store.EventKindAutomation, "AUTO_SLEEP", map[string]any{"trigger": "preempt", "reason": "rank", "for_deployment": r.plain.ID, "level": 2, "instances": []string{"inst-shared"}})
+	r.st.AddDeploymentEventCode(r.shared.ID, store.EventKindAutomation, "AUTO_WAKE", map[string]any{"trigger": "resume", "instances": []string{"inst-shared"}})
+	r.st.AddDeploymentEventCode(r.shared.ID, store.EventKindAutomation, "AUTO_WAKE", map[string]any{"trigger": "schedule", "instances": []string{"inst-shared"}})
 	// A neighbour on the page put to sleep for the shared deployment counts as yielded-to.
-	r.st.AddDeploymentEventCode(r.plain.ID, store.EventKindAutomation, "AUTO_SLEEP", map[string]any{"trigger": "preempt", "reason": "turn", "for_deployment": r.shared.ID})
+	r.st.AddDeploymentEventCode(r.plain.ID, store.EventKindAutomation, "AUTO_SLEEP", map[string]any{"trigger": "preempt", "reason": "turn", "for_deployment": r.shared.ID, "instances": []string{"inst-plain"}})
 	// The resident one: nothing recorded at all, so its row says awake.
 
 	status, body := r.get("?node=" + r.node.UUID)
@@ -100,6 +102,9 @@ func TestSchedulingTimelineWire(t *testing.T) {
 	f := func(d time.Duration) string { return r.t0.Add(d).Format(time.RFC3339) }
 	to := got.Window.To.Format(time.RFC3339)
 	from := got.Window.From.Format(time.RFC3339)
+	if !strings.HasPrefix(body, `{"scope":"node","window":`) {
+		t.Fatalf("a node's timeline is not marked node-scoped: %s", body)
+	}
 	if want := fmt.Sprintf(`"window":{"from":%q,"to":%q,"hours":6,"key":"6h","seconds":21600},"windows":[{"key":"6h","seconds":21600},{"key":"24h","seconds":86400}]`, from, to); !strings.Contains(body, want) {
 		t.Fatalf("window\n got  %s\n want %s", body, want)
 	}

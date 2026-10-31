@@ -11,8 +11,9 @@ import (
 
 // Each scheduling event counts under one reason, or none: the preemptions by
 // their reason, the schedules' orders, the operator's yielding wake, the
-// failures and the queued; a wake on demand, a placement and an operator's
-// order count under none.
+// placements and moves off a drained node, the failures (a move off a lost
+// node among them) and the queued; a wake on demand and an operator's order
+// count under none.
 func TestSchedulingActivityReasons(t *testing.T) {
 	for _, c := range []struct {
 		code, data string
@@ -38,8 +39,9 @@ func TestSchedulingActivityReasons(t *testing.T) {
 		{"NODE_REPLACE_NO_CANDIDATE", `{}`, ActivityFailure},
 		{EventUnitRetryExhausted, `{}`, ActivityFailure},
 		{EventDeploymentRollingStalled, `{}`, ActivityFailure},
-		{"UNIT_PLACED", `{}`, ""},
-		{"NODE_DRAIN_MOVED", `{}`, ""},
+		{"NODE_REPLACE_REVERTED", `{}`, ActivityFailure},
+		{"UNIT_PLACED", `{"replica":1}`, ActivityPlacement},
+		{"NODE_DRAIN_MOVED", `{"from_node":"a"}`, ActivityPlacement},
 		{EventSleepOrdered, `{}`, ""},
 		{"INSTANCE_STATUS_UPDATED", `{}`, ""},
 	} {
@@ -48,7 +50,7 @@ func TestSchedulingActivityReasons(t *testing.T) {
 			t.Errorf("%s %s = %q %v, want %q", c.code, c.data, got, ok, c.want)
 		}
 	}
-	if len(ActivityReasons()) != 7 || ActivityReasonIndex(ActivityQueued) != 6 || ActivityReasonIndex("nope") != -1 {
+	if len(ActivityReasons()) != 8 || ActivityReasonIndex(ActivityPlacement) != 5 || ActivityReasonIndex(ActivityQueued) != 7 || ActivityReasonIndex("nope") != -1 {
 		t.Fatalf("reasons = %v", ActivityReasons())
 	}
 }

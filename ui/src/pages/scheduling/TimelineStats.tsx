@@ -1,10 +1,12 @@
 import { Fragment } from "react";
-import { Tag, Typography } from "antd";
+import { InfoCircleOutlined } from "@ant-design/icons";
+import { Tag, Tooltip, Typography } from "antd";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
-import type { TimelineCards, TimelineDeployment } from "../../schedulingApi";
+import type { TimelineCards, TimelineDeployment, TimelineScope } from "../../schedulingApi";
 import ResourceTable, { type ResourceColumn } from "../../components/resourceTable/ResourceTable";
+import { colors } from "../../theme/tokens";
 import { durationText } from "../durationText";
 import { NodeLink } from "./NodeLink";
 
@@ -52,6 +54,23 @@ export function SharingTable({ rows }: { rows: TimelineDeployment[] }) {
       columnSettings={false}
       emptyDescription={t("timeline.sharingEmpty")}
     />
+  );
+}
+
+/**
+ * ScopeHint is the info mark beside the stats' title when the server says
+ * the figures count only the replicas on the page's nodes, reachable by
+ * keyboard, its tooltip opening on focus as on hover. Over the fleet there is
+ * nothing to say.
+ */
+export function ScopeHint({ scope }: { scope: TimelineScope | undefined }) {
+  const { t } = useTranslation("scheduling");
+  if (scope !== "node") return null;
+  const text = t("timeline.scopeNode");
+  return (
+    <Tooltip title={text} trigger={["hover", "focus"]}>
+      <InfoCircleOutlined role="img" aria-label={text} tabIndex={0} style={{ color: colors.muted, fontSize: 13, marginLeft: 6, cursor: "help" }} />
+    </Tooltip>
   );
 }
 

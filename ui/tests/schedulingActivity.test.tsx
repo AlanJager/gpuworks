@@ -36,13 +36,13 @@ type Activity = import("../src/schedulingApi.ts").SchedulingActivity;
 
 const s = locale.scheduling;
 const original = { ...schedulingApi };
-const REASONS = ["idle_yield", "rank_preemption", "timeslice_turn", "operator_yield", "scheduled", "failure", "queued"];
+const REASONS = ["idle_yield", "rank_preemption", "timeslice_turn", "operator_yield", "scheduled", "placement", "failure", "queued"];
 
 function activity(overrides: Partial<Activity> = {}): Activity {
-  const buckets = [0, 1, 2].map((i) => ({ start: new Date(Date.parse("2026-10-28T10:00:00Z") + i * 900_000).toISOString(), counts: REASONS.map((_, r) => (r === 1 ? i : r === 5 ? 1 : 0)) }));
+  const buckets = [0, 1, 2].map((i) => ({ start: new Date(Date.parse("2026-10-28T10:00:00Z") + i * 900_000).toISOString(), counts: REASONS.map((_, r) => (r === 1 ? i : r === 6 ? 1 : 0)) }));
   return {
     from: "2026-10-28T10:00:00Z", to: "2026-10-28T10:45:00Z", bucket_seconds: 900,
-    reasons: REASONS.map((key, r) => ({ key, count: r === 1 ? 3 : r === 5 ? 3 : 0 })),
+    reasons: REASONS.map((key, r) => ({ key, count: r === 1 ? 3 : r === 6 ? 3 : 0 })),
     buckets,
     top_cards: Array.from({ length: 12 }, (_, i) => ({ node_uuid: `node-${i}`, node: i === 3 ? "" : `gpu-${i}`, gpu_index: i % 8, switches: 40 - i })),
     beyond_retention: false,
@@ -76,7 +76,10 @@ test("the chart stacks one series per reason the server names, in its order and 
   assert.deepEqual(series.map((one) => one.name), REASONS.map((key) => `name:${key}`));
   assert.ok(series.every((one) => one.stack === "activity"));
   assert.deepEqual(series[1].data, [0, 1, 2]);
-  assert.equal(series[5].itemStyle.color, colors.danger);
+  assert.equal(series[5].itemStyle.color, colors.chartSlate);
+  assert.equal(series[6].itemStyle.color, colors.danger);
+  // Every reason the server names has a colour of its own.
+  assert.equal(new Set(series.map((one) => one.itemStyle.color)).size, REASONS.length);
   assert.equal(reasonColor("something_new", 0), colors.chartSecondary);
   assert.equal((option.xAxis as { data: string[] }).data.length, 3);
   assert.equal(isEmpty(data), false);

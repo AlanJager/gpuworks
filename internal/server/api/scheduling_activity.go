@@ -31,6 +31,11 @@ type SchedulingActivity interface {
 	// span its instances held cards in over [from, to) (at most the last 24
 	// hours); want, when not nil, limits it to some deployments.
 	Deployments(from, to time.Time, want map[uint]bool) map[uint]store.DeploymentActivity
+	// DeploymentsOnNodes is each deployment's yields, yields to it and wakes
+	// over [from, to) (at most the last 24 hours) of the events whose cards
+	// are on the named nodes (by UUID), each event once; want, when not nil,
+	// limits it to some deployments.
+	DeploymentsOnNodes(nodes []string, from, to time.Time, want map[uint]bool) map[uint]store.ResidencySwitches
 }
 
 // activityWindow is a window the activity answers for and its bucket.

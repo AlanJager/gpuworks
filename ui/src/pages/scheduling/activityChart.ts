@@ -14,6 +14,7 @@ const REASON_COLORS: Record<string, string> = {
   timeslice_turn: colors.chartQuaternary,
   operator_yield: colors.chartViolet,
   scheduled: colors.chartTertiary,
+  placement: colors.chartSlate,
   failure: colors.danger,
   queued: colors.warning,
 };

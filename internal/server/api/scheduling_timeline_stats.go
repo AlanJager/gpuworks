@@ -9,11 +9,14 @@ import (
 )
 
 // The stats of the deployments that share GPUs, as the fleet's sharing stats
-// and a node page's timeline both answer them (docs/reference/api.md,
-// section 驻留时间线). Both read the scheduling activity's rollups
-// (SchedulingActivity.Deployments), the one count of a deployment's yields,
-// wakes, awake and present time, so a deployment's figures are the same in
-// either and neither reads the event log for them.
+// and a node page's timeline answer them (docs/reference/api.md, section
+// 驻留时间线). Neither reads the event log for them. The fleet's are each
+// deployment's own wherever it ran (SchedulingActivity.Deployments); a node
+// page's count only its instances on the named nodes: the awake and present
+// time from the segments the page's lanes are derived from
+// (store.SegmentCoverage), the yields and wakes from the activity's counts
+// of those nodes (SchedulingActivity.DeploymentsOnNodes). The answer's scope
+// says which.
 
 // timelineWindow is a window a timeline answers for.
 type timelineWindow struct {
@@ -31,21 +34,46 @@ func (w timelineWindow) wire(now time.Time) dto.TimelineWindow {
 	return dto.TimelineWindow{From: now.Add(-w.span), To: now, Hours: int(w.span / time.Hour), Key: w.key, Seconds: int64(w.span / time.Second)}
 }
 
+// sharingFigures is what a row of the stats counts for a deployment, over
+// the fleet or on some nodes.
+type sharingFigures struct {
+	store.ResidencySwitches
+	awakeMS, presentMS int64
+}
+
+// fleetFigures is a deployment's figures across the fleet, from the
+// activity: ok is false when its instances held no card in the window.
+func fleetFigures(acts map[uint]store.DeploymentActivity, from, now time.Time) func(uint, store.ResidencyDeployment) (sharingFigures, bool) {
+	return func(id uint, info store.ResidencyDeployment) (sharingFigures, bool) {
+		act := acts[id]
+		if act.HeldFrom.IsZero() {
+			return sharingFigures{}, false
+		}
+		start, end := store.Presence(info, act.HeldFrom, act.HeldTo, from, now)
+		return sharingFigures{ResidencySwitches: act.ResidencySwitches, awakeMS: act.AwakeMS, presentMS: end.Sub(start).Milliseconds()}, true
+	}
+}
+
 // sharingRows are the stats of the deployments among ids that share cards
 // over [from, now] (store.ListedInSharing) and whose instances held cards
-// then, with their figures from the activity.
-func (a *apiHandlers) sharingRows(ids []uint, acts map[uint]store.DeploymentActivity, from, now time.Time) ([]dto.TimelineDeployment, error) {
+// then, with the figures figuresOf gives (ok false: none held cards).
+func (a *apiHandlers) sharingRows(ids []uint, figuresOf func(uint, store.ResidencyDeployment) (sharingFigures, bool), from, now time.Time) ([]dto.TimelineDeployment, error) {
 	out := []dto.TimelineDeployment{}
 	infos, err := a.d.Store.ResidencyDeployments(ids)
 	if err != nil {
 		return nil, err
 	}
 	var listed []uint
+	figures := map[uint]sharingFigures{}
 	for _, id := range ids {
 		info, ok := infos[id]
-		act := acts[id]
-		if ok && !act.HeldFrom.IsZero() && store.ListedInSharing(info, act.ResidencySwitches) {
+		if !ok {
+			continue
+		}
+		fig, held := figuresOf(id, info)
+		if held && store.ListedInSharing(info, fig.ResidencySwitches) {
 			listed = append(listed, id)
+			figures[id] = fig
 		}
 	}
 	if len(listed) == 0 {
@@ -61,10 +89,8 @@ func (a *apiHandlers) sharingRows(ids []uint, acts map[uint]store.DeploymentActi
 	}
 	waits := a.holdWaits(listed, from, now)
 	for _, id := range listed {
-		info, act, wait := infos[id], acts[id], waits[id]
-		awake := roundedSeconds(act.AwakeMS)
-		start, end := store.Presence(info, act.HeldFrom, act.HeldTo, from, now)
-		present := roundedSeconds(end.Sub(start).Milliseconds())
+		info, fig, wait := infos[id], figures[id], waits[id]
+		awake, present := roundedSeconds(fig.awakeMS), roundedSeconds(fig.presentMS)
 		share := 0.0
 		if present > 0 {
 			share = min(float64(awake)/float64(present), 1)
@@ -72,7 +98,7 @@ func (a *apiHandlers) sharingRows(ids []uint, acts map[uint]store.DeploymentActi
 		out = append(out, dto.TimelineDeployment{
 			DeploymentID: id, Deployment: info.Name, DeploymentDeleted: info.Deleted, YieldPolicy: info.Yield,
 			AwakeSeconds: awake, AwakeShare: share, PresentSeconds: present,
-			Switches: act.Yielded + act.Wakes, Yielded: act.Yielded, YieldedTo: act.YieldedTo, Wakes: act.Wakes,
+			Switches: fig.Yielded + fig.Wakes, Yielded: fig.Yielded, YieldedTo: fig.YieldedTo, Wakes: fig.Wakes,
 			HeldRequests: wait.held, WaitP50Ms: wait.p50, WaitP95Ms: wait.p95,
 			Cards: nonNilCards(cards[id]),
 		})

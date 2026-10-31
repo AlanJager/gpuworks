@@ -5,7 +5,7 @@ import { usePolling } from "../../api";
 import { schedulingApi, type BoardNode, type SchedulingTimeline, type TimelineWindowOption } from "../../schedulingApi";
 import EmptyState from "../../components/EmptyState";
 import { TimelineLegend, TimelineNodes } from "./TimelineLanes";
-import { SharingTable } from "./TimelineStats";
+import { ScopeHint, SharingTable } from "./TimelineStats";
 import WindowPicker from "./WindowPicker";
 
 // The timeline reads the event log over the window, so it refreshes more
@@ -90,7 +90,7 @@ function TimelineBody({ uuids, window, gpuNames, onAnswer }: {
           <TimelineNodes timeline={data} gpuNames={gpuNames} />
         </>
       )}
-      <Typography.Title level={5} className="timeline-sharing-title">{t("timeline.sharingTitle")}</Typography.Title>
+      <Typography.Title level={5} className="timeline-sharing-title">{t("timeline.sharingTitle")}<ScopeHint scope={data.scope} /></Typography.Title>
       <SharingTable rows={data.deployments} />
     </Spin>
   );

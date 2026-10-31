@@ -68,8 +68,8 @@ var schedulingEventCodes = []SchedulingEventCode{
 	{"WAKE_WAIT_TIMEOUT", EventKindAutomation, SchedulingAuto},
 	{"SCHEDULE_ACTION_FAILED", EventKindAutomation, SchedulingAuto},
 	{codeYieldedForWake, EventKindAutomation, SchedulingAuto},
-	{"UNIT_PLACED", EventKindAutomation, SchedulingAuto},
-	{"NODE_DRAIN_MOVED", EventKindAutomation, SchedulingAuto},
+	{codeUnitPlaced, EventKindAutomation, SchedulingAuto},
+	{codeNodeDrainMoved, EventKindAutomation, SchedulingAuto},
 
 	{"NODE_REPLACED", EventKindAutomation, SchedulingFailure},
 	{"NODE_REPLACE_REVERTED", EventKindAutomation, SchedulingFailure},

@@ -86,7 +86,11 @@ export interface TimelineWindowOption {
   seconds: number;
 }
 
+/** What a timeline's deployment figures count: node, only their replicas on the named nodes; fleet, all of them. The server's to say. */
+export type TimelineScope = "node" | "fleet";
+
 export interface SchedulingTimeline {
+  scope: TimelineScope;
   /** The window answered: hours is its whole hours (0 under an hour). */
   window: { from: string; to: string; hours: number; key: string; seconds: number };
   /** The windows the picker offers, in order; the server's list, not the UI's. */

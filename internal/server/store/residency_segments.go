@@ -190,3 +190,42 @@ func (r *ResidencyMachine) Label() (ResidencyState, bool) {
 	state, _, ok := r.m.label()
 	return state, ok
 }
+
+// SegmentCoverage is how much of the time some segments cover - a
+// deployment's instances on some nodes, as DeriveResidency gives them -
+// with overlapping instances counted once: awakeMS where at least one was
+// awake, presentMS where at least one held cards in any state. It is the
+// node-local counterpart of the scheduling activity's awake and held time,
+// by the same rule (an instance awake while it holds cards and is awake).
+func SegmentCoverage(segs []ResidencySegment) (awakeMS, presentMS int64) {
+	var awake, present [][2]int64
+	for _, seg := range segs {
+		span := [2]int64{seg.From.UnixMilli(), seg.To.UnixMilli()}
+		if span[1] <= span[0] {
+			continue
+		}
+		present = append(present, span)
+		if seg.State == ResidencyAwake {
+			awake = append(awake, span)
+		}
+	}
+	return mergedLength(awake), mergedLength(present)
+}
+
+// mergedLength is the length of the union of some spans.
+func mergedLength(spans [][2]int64) int64 {
+	sort.Slice(spans, func(i, j int) bool { return spans[i][0] < spans[j][0] })
+	var total, end int64
+	started := false
+	for _, s := range spans {
+		switch {
+		case !started || s[0] >= end:
+			total += s[1] - s[0]
+			end, started = s[1], true
+		case s[1] > end:
+			total += s[1] - end
+			end = s[1]
+		}
+	}
+	return total
+}

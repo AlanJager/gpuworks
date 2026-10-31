@@ -30,6 +30,8 @@ func TestActivityReasonsReadTheAutomationEvents(t *testing.T) {
 		{automation.EventWakeWaitTimeout, map[string]any{}, store.ActivityFailure},
 		{automation.EventScheduleActionFailed, map[string]any{}, store.ActivityFailure},
 		{controller.EventNodeReplaced, map[string]any{}, store.ActivityFailure},
+		{controller.EventUnitPlaced, map[string]any{}, store.ActivityPlacement},
+		{controller.EventNodeDrainMoved, map[string]any{}, store.ActivityPlacement},
 	} {
 		data, err := json.Marshal(c.params)
 		if err != nil {
@@ -39,6 +41,9 @@ func TestActivityReasonsReadTheAutomationEvents(t *testing.T) {
 			t.Errorf("%s %s = %q %v, want %q", c.code, data, got, ok, c.want)
 		}
 	}
+	// A wake a request or a resume brought is the other half of a yield,
+	// counted on the sleeping side: it counts under no reason (the card's
+	// switch still counts it).
 	for _, trigger := range []string{automation.TriggerRequest, automation.TriggerResume, automation.TriggerWakeWaiting, automation.TriggerOperator} {
 		data, _ := json.Marshal(map[string]any{"trigger": trigger})
 		if got, ok := store.SchedulingActivityReason(automation.EventAutoWake, string(data)); ok {
