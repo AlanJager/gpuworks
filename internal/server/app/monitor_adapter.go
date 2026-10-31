@@ -54,10 +54,12 @@ func newMonitorAPIService(st *store.Store, ts tsdb.Store, now func() time.Time, 
 }
 
 // inventory reads the current deployments/instances/nodes/GPUs from the
-// store into monitor's read-only snapshot shape. GPU allocation uses
-// planning.GPUAllocations - the same ledger internal/server/api/gpus.go
-// reads for /gpus - so a deployment's VRAM claim agrees between the two
-// endpoints.
+// store into monitor's read-only snapshot shape. GPU allocation uses the
+// planning ledger - the same arithmetic as planning.GPUAllocations, which
+// internal/server/api/gpus.go reads for /gpus, here charged for the whole
+// fleet in one pass (planning.FleetAllocations) - so a deployment's VRAM
+// claim agrees between the two endpoints and the number of reads does not
+// grow with the node count.
 func (a *monitorInventoryAdapter) inventory(ctx context.Context) (monitor.Inventory, error) {
 	if err := ctx.Err(); err != nil {
 		return monitor.Inventory{}, err
@@ -105,12 +107,17 @@ func (a *monitorInventoryAdapter) inventory(ctx context.Context) (monitor.Invent
 	for i := range instances {
 		inv.Instances = append(inv.Instances, instanceRef(&instances[i], nodeUUIDByID))
 	}
+	// One pass charges every node from the instances and deployments read
+	// above, instead of one instance read per node (planning.GPUAllocations).
+	allocations, err := planning.FleetAllocations(a.store, nodes, instances, deployments)
+	if err != nil {
+		return monitor.Inventory{}, err
+	}
 	for i := range nodes {
 		n := &nodes[i]
 		inv.Nodes = append(inv.Nodes, nodeRef(n))
-		allocations := planning.GPUAllocations(a.store, n)
 		for _, gpu := range n.OwnedGPUs() {
-			alloc := allocations[gpu.Index]
+			alloc := allocations[n.ID][gpu.Index]
 			inv.GPUs = append(inv.GPUs, monitor.GPURef{
 				NodeUUID: n.UUID, Index: gpu.Index, UUID: gpu.UUID,
 				MemoryTotalBytes: gpu.MemoryTotal, AllocatedBytes: alloc.AllocatedBytes, Healthy: gpu.Healthy(),

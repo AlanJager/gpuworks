@@ -22,6 +22,14 @@ const DiagnosisWindow = 5 * time.Minute
 // rather than silently going quiet).
 const staleAfter = 30 * time.Second
 
+// StaleAt reports whether a snapshot whose newest sample is from asOf (zero:
+// it has none) counts as stale at now. A snapshot served from the cache after
+// it was built is judged again at the time it is served, not when it was
+// built.
+func StaleAt(asOf, now time.Time) bool {
+	return asOf.IsZero() || now.Sub(asOf) > staleAfter
+}
+
 // ClusterSnapshot is the /monitor cluster-layer view (plan §3.1).
 type ClusterSnapshot struct {
 	AsOf    time.Time
@@ -511,6 +519,6 @@ func BuildCluster(ctx context.Context, deps Deps, rng time.Duration) (ClusterSna
 	}
 
 	snap.AsOf = asOf
-	snap.Stale = asOf.IsZero() || now.Sub(asOf) > staleAfter
+	snap.Stale = StaleAt(asOf, now)
 	return snap, nil
 }
