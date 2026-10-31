@@ -54,16 +54,13 @@ func (s *Store) NodesForLabels(withGPUs bool) ([]Node, error) {
 // NodeNamesByID is the display name (Node.DisplayName) of the nodes of ids,
 // one query of the columns it is made from; an unknown id is absent.
 func (s *Store) NodeNamesByID(ids []uint) (map[uint]string, error) {
-	out := map[uint]string{}
-	if len(ids) == 0 {
-		return out, nil
-	}
-	var nodes []Node
-	if err := s.reader().Select("id", "uuid", "name", "hostname").Where("id IN ?", ids).Find(&nodes).Error; err != nil {
+	refs, err := s.NodeRefsByID(ids)
+	if err != nil {
 		return nil, err
 	}
-	for _, n := range nodes {
-		out[n.ID] = n.DisplayName()
+	out := make(map[uint]string, len(refs))
+	for id, ref := range refs {
+		out[id] = ref.Name
 	}
 	return out, nil
 }

@@ -118,7 +118,12 @@ func (a *apiHandlers) retryUnit(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	a.operatorEvent(r, dep.ID, store.EventUnitRetried, map[string]any{"role": req.Role, "unit": req.Index, "attempts": len(attempts)})
+	params := map[string]any{"role": req.Role, "unit": req.Index, "attempts": len(attempts)}
+	// Where the attempts given up on ran: they are removed after this.
+	if nodes, err := a.d.Store.NodeUUIDsOfInstances(uuidsOf(attempts)); err == nil && len(nodes) > 0 {
+		params[store.EventParamNodeUUIDs] = nodes
+	}
+	a.operatorEvent(r, dep.ID, store.EventUnitRetried, params)
 	updated, err := a.d.Store.GetDeployment(dep.ID)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err)

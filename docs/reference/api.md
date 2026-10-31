@@ -563,7 +563,7 @@ macOS 忽略 `no_systemd`。
 | PUT | `/api/v1/deployments/{id}/node-replacement` | 设置节点失联重调度的等待时间 `{"after_sec":600}`，0 为从不，否则 60–604800，200 返回同样的请求体；越界 400 `NODE_REPLACEMENT_INVALID`（`params.minimum`、`maximum`）；见[节点失联重调度](../how-to/node-failover.md) | JWT |
 | GET | `/api/v1/scheduling/board` | 调度看板：`?page=&page_size=&q=` 分页的节点（每张卡的醒着占用、休眠残留、可用量、占用者与外部进程）加全集群的 `pending`（最近 30 分钟被调度拒绝的部署）、`waiting_wakes`、`upcoming`（未来 24 小时的计划动作）；`q` 匹配节点名称、主机名或 UUID；每张卡带服务端算出的 `state` 与 `switching`；已不再有 `recent`（最近的自动化事件看调度记录）；`?node=<uuid>` 只回答这一个节点（一行的 `nodes` 页，其余三项为空，不存在的节点 404），`?queues=1` 只回答后三项（`nodes` 为空页，不读任何节点）；见[调度看板](#调度看板) | JWT |
 | GET | `/api/v1/scheduling/overview` | 调度总览：全集群每个节点、每张卡的紧凑状态与汇总，一次返回，供热力图使用；来自缓存（至多每 2 秒重建一次），带 `ETag`，`If-None-Match` 命中返回 304；见[调度总览](#调度总览) | JWT |
-| GET | `/api/v1/scheduling/history` | 调度记录：全集群的调度事件，最新优先、游标分页（`limit`、`before`，同部署时间线），可按 `deployment_id`、`category`（`auto` / `failure` / `manual`，逗号分隔）、`since` / `until`（RFC 3339）筛选；非法筛选 400 `FIELD_INVALID`（`params.field`），非法游标或页大小 400 `EVENT_CURSOR_INVALID` / `EVENT_LIMIT_INVALID`；见[调度记录](#调度记录) | JWT |
+| GET | `/api/v1/scheduling/history` | 调度记录：全集群的调度事件，最新优先、游标分页（`limit`、`before`，同部署时间线），可按 `deployment_id`、`category`（`auto` / `failure` / `manual`，逗号分隔）、`since` / `until`（RFC 3339）筛选；每条带它涉及的节点 `nodes`（`uuid`、`name`）；非法筛选 400 `FIELD_INVALID`（`params.field`），非法游标或页大小 400 `EVENT_CURSOR_INVALID` / `EVENT_LIMIT_INVALID`；见[调度记录](#调度记录) | JWT |
 | GET | `/api/v1/scheduling/timeline` | 驻留时间线：`?node=<uuid>`（可重复，至多 200 个，通常是被打开的节点）`&hours=6\|24`（默认 6）。每张卡过去 `hours` 小时里各部署实例占用它的分段（`awake` / `asleep` / `switching` / `starting`），以及出现过的非常驻部署的统计；`?sharing=1&hours=` 不带 `node`，只回答全集群出让策略不是 `never` 的部署的统计（`nodes` 为空，约 30 秒缓存）；缺少 `node`（且没有 `sharing`）、`sharing` 不是 1 或与 `node` 同用、`hours` 不是 6 / 24 时 400 `FIELD_INVALID`（`params.field`，消息 `hours is one of 6, 24`），不存在的节点被略过；见[驻留时间线](#驻留时间线) | JWT |
 | GET | `/api/v1/scheduling/yield-policies` | 出让策略字典：四个策略按等级从高到低，每个带 `defaults` 与可能适用的参数 `applies`，加只在另一个参数取某些值时才适用的条件 `applies_when`，各数值参数的范围 `bounds`（`at_most` 为不得超过的另一个参数）、`sleep_levels`、`unfinished`，客户端据此编辑，不另存默认值；见[出让策略](#出让策略) | JWT |
 | PUT | `/api/v1/deployments/{id}/pd` | PD 部署调整各角色副本（`roles.<role>.units`）与 `fallback`；`mode`、角色的 `tp`/`pp`、`kv_load_failure` 不可变（`PD_IMMUTABLE`）；非 PD 部署 400 `PD_NOT_PD` | JWT |
@@ -988,7 +988,6 @@ macOS 忽略 `no_systemd`。
   "summary": {
     "nodes": 3, "online_nodes": 2, "cards": 6,
     "awake": 2, "asleep": 1, "free": 1, "held_outside": 1, "unhealthy": 0, "offline": 1,
-    "by_model": [{"model": "L20", "cards": 3, "awake": 2, "asleep": 0, "free": 0, "held_outside": 0, "unhealthy": 0, "offline": 1}],
     "contention": {"waiting_wakes": 1, "held_requests": 3, "yields_last_hour": 1}
   },
   "states": ["offline", "unhealthy", "held_outside", "awake", "asleep", "free"],
@@ -1003,7 +1002,7 @@ macOS 忽略 `no_systemd`。
 
 | 字段 | 含义 |
 |---|---|
-| `summary` | 全集群的卡数。每张卡只计入第一个成立的桶，顺序为：`offline`（节点不在线）、`unhealthy`（卡故障或因所有权、健康状态不可用）、`held_outside`（被平台外进程占用）、`awake`（有实例占着显存）、`asleep`（只有休眠者的残留）、`free`；六个桶之和等于 `cards`。`by_model` 是同样的计数按 GPU 型号（卡名）分开，卡数多的在前 |
+| `summary` | 全集群的卡数。每张卡只计入第一个成立的桶，顺序为：`offline`（节点不在线）、`unhealthy`（卡故障或因所有权、健康状态不可用）、`held_outside`（被平台外进程占用）、`awake`（有实例占着显存）、`asleep`（只有休眠者的残留）、`free`；六个桶之和等于 `cards` |
 | `summary.contention` | `waiting_wakes`：有休眠实例在等位唤醒的部署数；`held_requests`：网关此刻挂起等唤醒的请求数；`yields_last_hour`：最近一小时为别的部署让位而休眠的次数。让位只有一个口径：驻留仲裁的抢占（`AUTO_SLEEP`，`trigger` 为 `preempt`）和运维的让位唤醒（`YIELDED_FOR_WAKE`）都算，时间线的 `yielded`、`yielded_to` 数的是同一批事件；让位唤醒同样记 `for_deployment` |
 | `states` | 卡的状态名，按上面互斥桶的先后：`offline`、`unhealthy`、`held_outside`、`awake`、`asleep`、`free`；卡用下标引用它。一张卡属于哪个状态由服务端判定（调度看板的 `gpus[].state` 是同一份结果），客户端只负责配色和措辞，不自己再推一遍 |
 | `models`、`deployments` | 卡引用的字典：GPU 型号名；占着卡的部署（`id`、`name`、`yield_policy`：`never`、`idle`、`timeslice` 或 `anytime`）。各按首次出现的顺序 |
@@ -1037,7 +1036,7 @@ macOS 忽略 `no_systemd`。
     "deployment_id": 7, "deployment": "qwen", "yield_policy": "timeslice",
     "awake_seconds": 10800, "awake_share": 0.5, "switches": 3, "yielded": 1, "yielded_to": 1, "wakes": 2,
     "held_requests": 4, "wait_p50_ms": 4200, "wait_p95_ms": 31000,
-    "cards": [{"node_id": 3, "node": "gpu3", "gpus": [0]}]
+    "cards": [{"node_id": 3, "node_uuid": "5f0c…", "node": "gpu3", "gpus": [0]}]
   }]
 }
 ```
@@ -1047,7 +1046,7 @@ macOS 忽略 `no_systemd`。
 | `window` | 窗口：`hours`（6 或 24）、`from`、`to`（现在） |
 | `nodes[].gpus[]` | 与看板同样的卡（`index`），`segments[]` 从旧到新；`truncated` 为 true 表示只保留了最近 200 段 |
 | `segments[]` | 一个实例在一段时间里占着这张卡：`deployment_id`、`deployment`、`instance`、`state`（`awake` / `asleep` / `switching` / `starting`）、休眠时的 `level`（1 或 2）、`from`、`to`（都落在窗口内）；多卡实例在每张卡上各出现一次 |
-| `deployments[]` | 窗口内占过这些卡、出让策略不是 `never` 的部署（带各自的 `yield_policy`）：`awake_seconds`（至少一个副本醒着的时间）、`awake_share`（占窗口，0 到 1）、`switches`（`yielded` + `wakes`）、`yielded`（为别的部署让出卡而休眠，驻留仲裁的抢占与运维的让位唤醒都算，与总览的 `yields_last_hour` 同一口径）、`yielded_to`（别的部署为它让出，按事件的 `for_deployment` 计）、`wakes`（平台唤醒它）、`held_requests`（网关为等它唤醒而挂起的请求数）、`wait_p50_ms` / `wait_p95_ms`（这些请求的等待，近似值，没有被挂起的请求或网关不保留指标时省略）、`cards`（各副本此刻所在的节点与卡，按节点：`node_id`、`node`（节点显示名，节点已不存在时为空）、`gpus`；没有放置时为空数组） |
+| `deployments[]` | 窗口内占过这些卡、出让策略不是 `never` 的部署（带各自的 `yield_policy`）：`awake_seconds`（至少一个副本醒着的时间）、`awake_share`（占窗口，0 到 1）、`switches`（`yielded` + `wakes`）、`yielded`（为别的部署让出卡而休眠，驻留仲裁的抢占与运维的让位唤醒都算，与总览的 `yields_last_hour` 同一口径）、`yielded_to`（别的部署为它让出，按事件的 `for_deployment` 计）、`wakes`（平台唤醒它）、`held_requests`（网关为等它唤醒而挂起的请求数）、`wait_p50_ms` / `wait_p95_ms`（这些请求的等待，近似值，没有被挂起的请求或网关不保留指标时省略）、`cards`（各副本此刻所在的节点与卡，按节点：`node_id`、`node_uuid`（节点已不存在时省略）、`node`（节点显示名，节点已不存在时为空）、`gpus`；没有放置时为空数组） |
 
 时间线由实例记录与事件日志推导，移除实例时记录的 `INSTANCE_REMOVED` 事件（`kind` 为 `residency`，参数 `node_id`、`gpus`）说明它占过的节点与卡。语义与限制见[使用调度分析](../how-to/scheduling-center.md#驻留时间线)。
 
@@ -1065,7 +1064,8 @@ curl --fail-with-body -sS \
 {"items":[
   {"id":812,"created_at":"2026-10-28T09:14:03Z","deployment_id":7,"deployment":"qwen","kind":"schedule",
    "code":"REPLICA_REBUILT","category":"failure",
-   "params":{"replica":1,"attempt":2,"reason":"CUDA out of memory","node":"gpu-3"}},
+   "params":{"replica":1,"attempt":2,"reason":"CUDA out of memory","node":"gpu-3","node_uuids":["5f0c…"]},
+   "nodes":[{"uuid":"5f0c…","name":"gpu-3"}]},
   {"id":810,"created_at":"2026-10-28T09:10:41Z","deployment_id":7,"deployment":"qwen","kind":"schedule",
    "code":"REPLICAS_CHANGED","category":"manual","params":{"from":1,"to":3,"actor":"alice"},"actor":"alice"}
 ]}
@@ -1087,6 +1087,7 @@ curl --fail-with-body -sS \
 | `category` | `auto`：平台按设置或计划自己动手；`failure`：出了问题，平台在应对或已放弃；`manual`：运维下的指令 |
 | `params` | 事件码的参数，同部署时间线 |
 | `actor` | 下指令的用户名；只有 `manual` 事件、且请求带身份时才有，也在 `params.actor` 里 |
+| `nodes` | 事件涉及的节点 `[{uuid?, name}]`，按顺序取第一个有结果的：事件参数里记下的节点（`node_uuids`；较早事件的 `node` 是节点 UUID 或名称，`nodes` 是名称），事件提到的实例（`instance`、`instances`，或事件所在的实例）现在所在的节点；都没有时省略整个字段。只有服务端仍认识的节点带 `uuid`（界面据此打开节点抽屉）；节点已不存在时 `name` 是 UUID 的前 8 位，较早事件只记了名称的就用这个名称。整页的节点一次查询得出 |
 | `target` | 事件为之动作的部署 `{id, name?, deleted?}`，即 `params.for_deployment`（例如让卡时让给的那个部署）；没有则省略整个字段。部署已删除时带 `deleted: true`，名称取自留下的记录，连名称都没有时省略 `name`。界面据此在部署名之外再显示一个可点击的让卡对象 |
 
 哪些事件码属于调度记录、各属哪一类，由 server 一处决定：
@@ -1117,6 +1118,9 @@ curl --fail-with-body -sS \
 | `attempt` | 这是第几次尝试 |
 | `reason` | 上一次尝试失败的消息，超过 200 个字符截断 |
 | `node` | 新一次尝试的 leader 所在节点名称 |
+| `node_uuids` | 同一节点的 UUID（列表） |
+
+调度记录收录的事件在写入时带 `node_uuids`（事件涉及的节点 UUID 列表）：提到实例的事件记这些实例当时所在的节点，控制器的节点事件记它涉及的节点（迁出与迁入、失联、前后两次放置、失败尝试所在）；`DEPLOYMENT_UNSCHEDULABLE` 用已有的 `node`（节点 UUID）。对整个部署下的指令（定时休眠、改副本数、滚动重启）不带。逐码说明见[使用调度分析](../how-to/scheduling-center.md#时间线事件)。
 
 读取走 `instance_events` 的 `(kind, id)` 索引，按事件类型各取一页再合并，不扫描整张时间线。
 

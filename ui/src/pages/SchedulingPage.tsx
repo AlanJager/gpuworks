@@ -1,4 +1,4 @@
-import { useCallback, useDeferredValue, useMemo, useRef, useState } from "react";
+import { useDeferredValue, useMemo, useRef, useState } from "react";
 import { Alert, Button, Card, Spin, message } from "antd";
 import { useTranslation } from "react-i18next";
 import { api, usePolling } from "../api";
@@ -11,6 +11,7 @@ import Heatmap from "./scheduling/HeatmapGrid";
 import HeatmapLegend from "./scheduling/HeatmapLegend";
 import HistoryCard from "./scheduling/HistoryCard";
 import NodeDrawer from "./scheduling/NodeDrawer";
+import { useNodeParam } from "./scheduling/NodeLink";
 import OverviewFilters, { DEFAULT_VIEW, type ViewState } from "./scheduling/OverviewFilters";
 import SharingStats from "./scheduling/SharingStats";
 import SummaryStrip from "./scheduling/SummaryStrip";
@@ -22,14 +23,17 @@ const POLL_MS = 10_000;
 // with the fleet's summary above it, what waits to be placed or woken, what the
 // schedules do next, the stats of the deployments that share cards and, as the
 // scheduling history, what the platform and the operators did to the
-// deployments. A node opens in a drawer for its cards in detail.
+// deployments. A node opens in a drawer for its cards in detail, from the
+// heatmap or any node named on the page.
 export default function SchedulingPage() {
   const { t } = useTranslation("scheduling");
   const { t: tCommon } = useTranslation("common");
   const overview = usePolling(() => schedulingApi.overview(), POLL_MS);
   const queues = usePolling(() => schedulingApi.board({ queues: true }), POLL_MS);
   const [view, setView] = useState<ViewState>(DEFAULT_VIEW);
-  const [open, setOpen] = useState<{ uuid: string; name: string } | null>(null);
+  // The open node lives in the URL (?node=<uuid>), so a link anywhere on the
+  // page opens it, the browser goes back from it, and it can be shared.
+  const { node: openUUID, openNode, closeNode } = useNodeParam();
   const [cancelling, setCancelling] = useState<number | null>(null);
 
   // A poll that finds the fleet unchanged hands the grid the same node views.
@@ -47,10 +51,10 @@ export default function SchedulingPage() {
     () => (built ? arrange(built, { ...view.filters, search }, view.groupBy, view.sortBy) : null),
     [built, view.filters, search, view.groupBy, view.sortBy],
   );
-  const openNode = useCallback((uuid: string) => {
-    const node = built?.nodes.find((candidate) => candidate.uuid === uuid);
-    setOpen({ uuid, name: node?.name ?? uuid });
-  }, [built]);
+  const openName = useMemo(
+    () => (openUUID ? (built?.nodes.find((candidate) => candidate.uuid === openUUID)?.name ?? openUUID) : ""),
+    [built, openUUID],
+  );
 
   const cancelWake = async (row: BoardWaitingWake) => {
     setCancelling(row.deployment_id);
@@ -123,7 +127,7 @@ export default function SchedulingPage() {
           </>
         )}
       </Card>
-      <NodeDrawer uuid={open?.uuid ?? null} name={open?.name ?? ""} onClose={() => setOpen(null)} />
+      <NodeDrawer uuid={openUUID} name={openName} onClose={closeNode} />
       <QueueCards board={board} error={queues.error} onRetry={() => void queues.refetch()} cancelling={cancelling} onCancel={(row) => void cancelWake(row)} />
       <SharingStats />
       <HistoryCard />

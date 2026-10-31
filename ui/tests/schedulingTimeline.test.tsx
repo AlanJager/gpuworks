@@ -54,7 +54,7 @@ function timeline(overrides: Partial<Timeline> = {}): Timeline {
       ],
     }],
     deployments: [
-      { deployment_id: 7, deployment: "qwen", yield_policy: "timeslice", awake_seconds: 7200, awake_share: 0.3333, switches: 3, yielded: 1, yielded_to: 2, wakes: 2, held_requests: 4, wait_p50_ms: 4200, wait_p95_ms: 31000, cards: [{ node_id: 1, node: "gpu-a", gpus: [0, 1] }, { node_id: 9, node: "", gpus: [2] }] },
+      { deployment_id: 7, deployment: "qwen", yield_policy: "timeslice", awake_seconds: 7200, awake_share: 0.3333, switches: 3, yielded: 1, yielded_to: 2, wakes: 2, held_requests: 4, wait_p50_ms: 4200, wait_p95_ms: 31000, cards: [{ node_id: 1, node_uuid: "node-a", node: "gpu-a", gpus: [0, 1] }, { node_id: 9, node: "", gpus: [2] }] },
       { deployment_id: 8, deployment: "llama", yield_policy: "anytime", awake_seconds: 30, awake_share: 0.0014, switches: 0, yielded: 0, yielded_to: 0, wakes: 0, held_requests: 0, cards: [] },
     ],
     ...overrides,
@@ -229,8 +229,12 @@ test("the sharing table lists the yield policy, awake time, switches, yields and
   assert.ok(cells.getByText(i18n.t("deployments:yieldPolicy.policy.name.timeslice")));
   assert.ok(cells.getByText(i18n.t("scheduling:timeline.awakeShare", { span: i18n.t("deployments:duration.hoursMinutes", { hours: 2, minutes: 0 }), share: 33.3 })));
   // Where it is now: each node with its GPUs, a node no longer known by id.
-  assert.ok(cells.getByText(i18n.t("scheduling:timeline.cardsOnNode", { node: "gpu-a", gpus: "0, 1" })));
-  assert.ok(cells.getByText(i18n.t("scheduling:timeline.cardsOnNode", { node: "#9", gpus: "2" })));
+  const line = (text: string) => cells.getByText((_, el) => el?.tagName === "SPAN" && (el as HTMLElement).style.display === "block" && el.textContent === text);
+  assert.ok(line(i18n.t("scheduling:timeline.cardsOnNode", { node: "gpu-a", gpus: "0, 1" })));
+  assert.ok(line(i18n.t("scheduling:timeline.cardsOnNode", { node: "#9", gpus: "2" })));
+  // A known node's name opens its drawer; a gone one has nothing to open.
+  assert.equal(cells.getByRole("link", { name: "gpu-a" }).getAttribute("href"), "/?node=node-a");
+  assert.equal(cells.queryByRole("link", { name: "#9" }), null);
   assert.ok(cells.getByText("3")); // switches
   assert.ok(cells.getByText("4")); // held requests
   assert.ok(cells.getByText(i18n.t("scheduling:timeline.wait.seconds", { value: "4.2" })));

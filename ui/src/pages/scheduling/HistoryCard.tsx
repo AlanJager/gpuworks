@@ -6,10 +6,11 @@ import { api, usePolling } from "../../api";
 import { schedulingApi, type SchedulingCategory, type SchedulingHistoryEntry } from "../../schedulingApi";
 import EmptyState from "../../components/EmptyState";
 import ResourceTable, { type ResourceColumn } from "../../components/resourceTable/ResourceTable";
-import TimeRangePicker, { type TimeRangeValue } from "../../components/TimeRangePicker";
+import TimeRangePicker from "../../components/TimeRangePicker";
 import { formatTime } from "../../i18n/datetime";
-import { resolveRange } from "../../timeRange";
+import { resolveRange, type QuickRangeKey, type TimeRangeSelection } from "../../timeRange";
 import { instanceEventText } from "../instanceEvents";
+import { NodeLink } from "./NodeLink";
 
 const HISTORY_POLL_MS = 15_000;
 // A page shows PAGE_SIZE entries; one more is asked for to know whether there
@@ -17,22 +18,27 @@ const HISTORY_POLL_MS = 15_000;
 const PAGE_SIZE = 20;
 const CATEGORY_COLORS: Record<SchedulingCategory, string> = { auto: "blue", failure: "red", manual: "default" };
 
+// The quick ranges the history offers: up to a week, besides a custom range.
+export const HISTORY_QUICK_RANGES: readonly QuickRangeKey[] = ["15m", "1h", "6h", "1d", "1w"];
+
 interface Filters {
   category: SchedulingCategory | "all";
   deployment: number | null;
-  // null is all time; a quick range slides with now, a custom one is fixed.
-  range: TimeRangeValue;
+  // A quick range slides with now, a custom one is fixed.
+  range: TimeRangeSelection;
 }
 
-const NO_FILTERS: Filters = { category: "all", deployment: null, range: null };
+// The history opens on the last day.
+const DEFAULT_RANGE_KEY: QuickRangeKey = "1d";
+const DEFAULT_RANGE: TimeRangeSelection = { kind: "quick", key: DEFAULT_RANGE_KEY };
+const NO_FILTERS: Filters = { category: "all", deployment: null, range: DEFAULT_RANGE };
 
 /**
- * The since/until of a history query: none for all time, since now minus the
- * span for a quick range (it slides as the page polls, so it has no end), and
- * both ends of a custom range.
+ * The since/until of a history query: since now minus the span for a quick
+ * range (it slides as the page polls, so it has no end), and both ends of a
+ * custom range.
  */
-export function historyWindow(range: TimeRangeValue, nowMS: number): { since?: string; until?: string } {
-  if (!range) return {};
+export function historyWindow(range: TimeRangeSelection, nowMS: number): { since?: string; until?: string } {
   const window = resolveRange(range, nowMS);
   return {
     since: new Date(window.startMS).toISOString(),
@@ -70,7 +76,7 @@ export default function HistoryCard() {
   const entries = history.data?.items ?? [];
   const shown = entries.slice(0, PAGE_SIZE);
   const hasNext = entries.length > PAGE_SIZE;
-  const filtered = filters.category !== "all" || filters.deployment !== null || filters.range !== null;
+  const filtered = filters.category !== "all" || filters.deployment !== null || !(filters.range.kind === "quick" && filters.range.key === DEFAULT_RANGE_KEY);
 
   let body;
   if (!history.data && history.error) {
@@ -127,7 +133,7 @@ export default function HistoryCard() {
           onChange={(value) => refine({ category: value as Filters["category"] })}
         />
         <DeploymentFilter value={filters.deployment} onChange={(deployment) => refine({ deployment })} />
-        <TimeRangePicker liveLabel={t("history.range.all")} value={filters.range} onChange={(range) => refine({ range })} />
+        <TimeRangePicker quickRanges={HISTORY_QUICK_RANGES} value={filters.range} onChange={(range) => { if (range) refine({ range }); }} />
       </Space>
       {body}
     </Card>
@@ -212,12 +218,29 @@ function DetailsCell({ row }: { row: SchedulingHistoryEntry }) {
   );
 }
 
+// NodesCell names the nodes an entry concerns, each opening its drawer; none
+// is a dash.
+function NodesCell({ nodes }: { nodes?: SchedulingHistoryEntry["nodes"] }) {
+  if (!nodes?.length) return <span>—</span>;
+  return (
+    <span>
+      {nodes.map((node, index) => (
+        <Fragment key={`${node.uuid ?? ""}:${node.name}`}>
+          {index > 0 && ", "}
+          <NodeLink uuid={node.uuid} name={node.name} />
+        </Fragment>
+      ))}
+    </span>
+  );
+}
+
 // HistoryTable lists the entries; the actor has a column of its own.
 function HistoryTable({ rows }: { rows: SchedulingHistoryEntry[] }) {
   const { t } = useTranslation("scheduling");
   const columns: ResourceColumn<SchedulingHistoryEntry>[] = [
     { key: "at", title: t("history.columns.at"), width: 160, render: (_: unknown, row) => formatTime(row.created_at) },
     { key: "deployment", title: t("history.columns.deployment"), width: 180, render: (_: unknown, row) => <DeploymentRef id={row.deployment_id} name={row.deployment} deleted={row.deployment_deleted} /> },
+    { key: "node", title: t("history.columns.node"), width: 140, render: (_: unknown, row) => <NodesCell nodes={row.nodes} /> },
     { key: "action", title: t("history.columns.action"), width: 160, render: (_: unknown, row) => t(`history.action.${row.code}`, { defaultValue: row.code }) },
     {
       key: "details",

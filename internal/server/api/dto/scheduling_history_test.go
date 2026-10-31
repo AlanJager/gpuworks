@@ -31,6 +31,13 @@ func TestSchedulingHistoryEntryWire(t *testing.T) {
 			in:   SchedulingHistoryEntry{ID: 2, CreatedAt: at, DeploymentID: 3, Kind: "automation", Code: "AUTO_WAKE", Category: "auto", Params: map[string]any{}},
 			wire: `{"id":2,"created_at":"2026-10-28T09:14:03Z","deployment_id":3,"kind":"automation","code":"AUTO_WAKE","category":"auto","params":{}}`,
 		},
+		{
+			name: "the nodes an entry concerns: a known one by UUID and name, a gone one by name only",
+			in: SchedulingHistoryEntry{ID: 5, CreatedAt: at, DeploymentID: 7, Kind: "automation", Code: "NODE_REPLACED", Category: "failure",
+				Params: map[string]any{"node_uuids": []any{"5f0c-node", "a1b2c3d4-gone"}},
+				Nodes:  []SchedulingHistoryNode{{UUID: "5f0c-node", Name: "gpu3"}, {Name: "a1b2c3d4"}}},
+			wire: `{"id":5,"created_at":"2026-10-28T09:14:03Z","deployment_id":7,"kind":"automation","code":"NODE_REPLACED","category":"failure","params":{"node_uuids":["5f0c-node","a1b2c3d4-gone"]},"nodes":[{"uuid":"5f0c-node","name":"gpu3"},{"name":"a1b2c3d4"}]}`,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := marshalString(t, tc.in); got != tc.wire {

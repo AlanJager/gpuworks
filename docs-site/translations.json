@@ -100,7 +100,7 @@
   "how-to/use-ai-helper.md": "5a57ff49247970e28de95d0fd51958435a95554355f921942fe6dc9bbdea2c28",
   "how-to/use-mcp.md": "96d72b65ef2c22f89a8999f5447ef3ff76a091345c7eda33daa597128dbac854",
   "reference/api-conventions.md": "be9237a197c811a623e5bd4e1aba875de5a46b333c3def6b5ac223b7a125a551",
-  "reference/api.md": "1222e8539bfa43245a656cc7486ac6638309fd824d94a6e4534706c0332f51bc",
+  "reference/api.md": "7d9f6ffda48de0abb55221292c45b4e2dc94a2ddc4f9e9750069f90c404cbe0d",
   "reference/ascend-support-matrix.md": "78bb969b8b0686f0884ef68c070f875351febbf6a42e038e92ef7c99d4422fef",
   "reference/cli.md": "dd8c4e4697db18c181c27ec3e375c6e07e9158aa7adcea3b07096fd0c3530986",
   "reference/configuration.md": "c2352398ce4023126997df8a521287526f605d22bd6c4c89f280ef0a4c3ff780",
@@ -127,7 +127,7 @@
   "tutorials/trace-slow-request.md": "6e582ef2a8658da1057336f4ee79f5a41179dbae69773cd0b753431027acc065",
   "adr/0058-scheduling-center-acts-through-operator-orders.md": "259f1ebc2bf47bb14efdb2a08f12fa9af495c33b764c56430115146bdbc8bda0",
   "how-to/batch-api.md": "71da4c5daff8e153cf00df6a16b72ebd7a16ecf395f7676acf5a2fec09607464",
-  "how-to/scheduling-center.md": "d26b153c4c1756be9d6e7100ce555f746580456b7e003687b922aa440945e6cc",
+  "how-to/scheduling-center.md": "2f02f28f9043521e10e01a146921154b9e93fd2fe4f2ea6bbcddfb5d6902dd1f",
   "adr/0059-service-levels-and-the-residency-arbiter.md": "9a5473d42661c8d13fd217aa45dd068e6d5a80062d804516cf2b16a9906fa1ff",
   "explanation/service-levels.md": "4e60b000f4f7255090fc73cc53415fdcb470680930298ec41e630412ffe61674"
 }

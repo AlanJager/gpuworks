@@ -269,7 +269,7 @@ func TestDeploymentRetryRemovesPriorContainersAndKeepsTerminalFailure(t *testing
 		if err := json.Unmarshal([]byte(ev.Data), &params); err != nil {
 			t.Fatal(err)
 		}
-		want := map[string]any{"replica": float64(1), "attempt": float64(i + 2), "reason": "fixture failure", "node": node.DisplayName()}
+		want := map[string]any{"replica": float64(1), "attempt": float64(i + 2), "reason": "fixture failure", "node": node.DisplayName(), store.EventParamNodeUUIDs: []any{node.UUID}}
 		if !reflect.DeepEqual(params, want) || ev.Kind != store.EventKindLifecycle {
 			t.Fatalf("rebuild %d = kind %q %v, want %v", i, ev.Kind, params, want)
 		}

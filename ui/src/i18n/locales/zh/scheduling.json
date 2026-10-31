@@ -15,8 +15,6 @@
     "cardsTitle": "各状态的卡数",
     "total": "卡总数",
     "nodesOnline": "{{count}} 个节点中 {{online}} 个在线",
-    "models": "各 GPU 型号的卡数",
-    "modelLine": "{{model}} ×{{cards}}，{{free}} 张空闲",
     "contentionTitle": "争用与队列",
     "heldRequests": "此刻挂起等唤醒的请求",
     "yields": "近 1 小时的让位次数"
@@ -85,7 +83,7 @@
     "loading": "正在加载调度记录…",
     "loadFailed": "无法加载调度记录",
     "refreshFailed": "刷新调度记录失败：{{detail}}",
-    "empty": "还没有调度记录。",
+    "empty": "近 24 小时没有调度记录，可以选更长的时间范围。",
     "emptyFiltered": "没有符合筛选条件的调度记录。",
     "pagination": "调度记录分页",
     "page": "第 {{page}} 页",
@@ -104,12 +102,10 @@
       "failure": "故障",
       "manual": "手动"
     },
-    "range": {
-      "all": "全部时间"
-    },
     "columns": {
       "at": "时间",
       "deployment": "部署",
+      "node": "节点",
       "action": "动作",
       "details": "原因与详情",
       "category": "类别",

@@ -467,7 +467,6 @@ function DeploymentDetail({
             <Descriptions.Item label={t("detail.node")}><DeploymentRuntimeNodeLinks dep={dep} /></Descriptions.Item>
             <Descriptions.Item label={t("detail.targetNode")}><DeploymentNodeLinks dep={dep} /></Descriptions.Item>
             {dep.placement_mode && <Descriptions.Item label={t("unitsPlacement.label")} span={2}><PlacementModeControl dep={dep} onChanged={() => void load()} /></Descriptions.Item>}
-            {!dep.pd && (dep.nnodes ?? 1) <= 1 && <Descriptions.Item label={t("detail.placement.requirements")} span={2}><Space size={4} wrap><RequirementTags dep={dep} />{dep.placement_strategy && <Tag color="blue">{t(`detail.placement.strategy.${dep.placement_strategy}`, { defaultValue: dep.placement_strategy })}</Tag>}<EditRequirementsButton dep={dep} onChanged={() => void load()} /></Space></Descriptions.Item>}
             <Descriptions.Item label={t("detail.state")}>
               {/* A partly slept deployment serves, so it stays running here too,
                   with the sleep count beside it rather than a plain badge. */}
@@ -476,6 +475,7 @@ function DeploymentDetail({
             <Descriptions.Item label={<Space size={0}>{t("detail.health")}<HealthCheckHelp /></Space>}><HealthCheckEditor key={`${dep.id}-${dep.health.threshold_sec}`} dep={dep} onChanged={load} /></Descriptions.Item>
             <Descriptions.Item label={<Space size={0}>{t("detail.tokenize")}<TokenizeHelp /></Space>}><TokenizeEditor dep={dep} onChanged={load} /></Descriptions.Item>
             <Descriptions.Item label={t("detail.sleepable")}>{dep.sleepable ? t("detail.yes") : t("detail.no")}</Descriptions.Item>
+            {!dep.pd && (dep.nnodes ?? 1) <= 1 && <Descriptions.Item label={t("detail.placement.requirements")} span={2}><Space size={4} wrap><RequirementTags dep={dep} />{dep.placement_strategy && <Tag color="blue">{t(`detail.placement.strategy.${dep.placement_strategy}`, { defaultValue: dep.placement_strategy })}</Tag>}<EditRequirementsButton dep={dep} onChanged={() => void load()} /></Space></Descriptions.Item>}
               <Descriptions.Item label={t("detail.replicas")}><Space size={8}>{dep.ready_replicas != null && <Typography.Text type={dep.ready_replicas < dep.replicas ? "warning" : undefined}>{t("detail.readyReplicas", { ready: dep.ready_replicas, desired: dep.replicas })}</Typography.Text>}<ReplicasEditor key={`${dep.id}-${dep.replicas}`} dep={dep} onChanged={load} /></Space></Descriptions.Item>
       {dep.replicas > 1 && <Descriptions.Item label={<Space size={4}>{t("detail.routingPolicy")}<RoutingPolicyHelp policies={routingPolicies} /></Space>}><Select size="small" loading={routingBusy || routingPolicies.length === 0} value={dep.routing_policy} onChange={changeRouting} options={routingOptions} /></Descriptions.Item>}
       {dep.template_id && <Descriptions.Item label={t("detail.inferenceTemplate")}><Tag color={dep.template_deviated ? "orange" : "green"}>{dep.template_deviated ? t("detail.deviated") : t("detail.notDeviated")}</Tag>{dep.template_scenario && <Typography.Text type="secondary"> {dep.template_scenario}</Typography.Text>}</Descriptions.Item>}

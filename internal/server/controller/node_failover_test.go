@@ -227,6 +227,10 @@ func TestALostRankMovesToASpareNode(t *testing.T) {
 	if len(events) != 1 || events[0]["from"] != f.nodes[1].DisplayName() || events[0]["to"] != f.nodes[2].DisplayName() {
 		t.Fatalf("NODE_REPLACED events = %v", events)
 	}
+	// The event keeps the nodes it moved between, by UUID, for the scheduling history.
+	if got := fmt.Sprint(events[0][store.EventParamNodeUUIDs]); got != fmt.Sprint([]any{f.nodes[1].UUID, f.nodes[2].UUID}) {
+		t.Fatalf("NODE_REPLACED node_uuids = %s", got)
+	}
 	// The unit starts again on its new nodes, with a full retry budget.
 	f.settle(t, dep.ID, 3)
 	insts, _ := f.st.InstancesForDeployment(dep.ID)
@@ -259,7 +263,7 @@ func TestAReturningNodeTakesItsRankBackOnlyBeforeTheMoveRan(t *testing.T) {
 	if got := failoverUnits(t, f.st, dep.ID); got[0][1] != f.nodes[1].UUID {
 		t.Fatalf("not taken back before the move ran: %v", got)
 	}
-	if events := eventCodes(t, f.st, dep.ID, EventNodeReplaceReverted); len(events) != 1 {
+	if events := eventCodes(t, f.st, dep.ID, EventNodeReplaceReverted); len(events) != 1 || fmt.Sprint(events[0][store.EventParamNodeUUIDs]) != fmt.Sprint([]any{f.nodes[2].UUID, f.nodes[1].UUID}) {
 		t.Fatalf("NODE_REPLACE_REVERTED events = %v", events)
 	}
 
@@ -314,7 +318,7 @@ func TestNoMoveWhenReplacementIsOffOrNoNodeFits(t *testing.T) {
 	if got := failoverUnits(t, g.st, dep.ID); got[0][1] != g.nodes[1].UUID {
 		t.Fatalf("moved with no spare node: %v", got)
 	}
-	if events := eventCodes(t, g.st, dep.ID, EventNodeReplaceNoCandidate); len(events) != 1 {
+	if events := eventCodes(t, g.st, dep.ID, EventNodeReplaceNoCandidate); len(events) != 1 || fmt.Sprint(events[0][store.EventParamNodeUUIDs]) != fmt.Sprint([]any{g.nodes[1].UUID}) {
 		t.Fatalf("NODE_REPLACE_NO_CANDIDATE events = %v, want one", events)
 	}
 }
@@ -358,7 +362,7 @@ func TestALostSingleNodeReplicaStartsOnAnotherNode(t *testing.T) {
 	if onOther != 1 || failed != 0 {
 		t.Fatalf("after the loss = %+v; want one replica on the other node and no failed attempt", insts)
 	}
-	if events := eventCodes(t, f.st, dep.ID, EventNodeReplaced); len(events) != 1 {
+	if events := eventCodes(t, f.st, dep.ID, EventNodeReplaced); len(events) != 1 || fmt.Sprint(events[0][store.EventParamNodeUUIDs]) != fmt.Sprint([]any{lostNode.UUID}) {
 		t.Fatalf("NODE_REPLACED events = %v", events)
 	}
 }
@@ -429,7 +433,7 @@ func TestADrainingNodesReplicaMovesAfterItsReplacementRuns(t *testing.T) {
 	if len(got) != 1 || got[0][0] != f.nodes[2].UUID || got[0][1] != f.nodes[3].UUID {
 		t.Fatalf("placement after the replacement ran = %v", got)
 	}
-	if events := eventCodes(t, f.st, dep.ID, EventNodeDrainMoved); len(events) != 1 {
+	if events := eventCodes(t, f.st, dep.ID, EventNodeDrainMoved); len(events) != 1 || len(events[0][store.EventParamNodeUUIDs].([]any)) < 2 {
 		t.Fatalf("NODE_DRAIN_MOVED events = %v", events)
 	}
 	insts, _ = f.st.InstancesForDeployment(dep.ID)

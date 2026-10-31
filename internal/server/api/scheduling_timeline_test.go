@@ -134,7 +134,7 @@ func TestSchedulingTimelineWire(t *testing.T) {
 	}
 	d.AwakeSeconds, d.AwakeShare = 0, 0
 	line, _ := json.Marshal(d)
-	if want := fmt.Sprintf(`{"deployment_id":%d,"deployment":"night-batch","yield_policy":"timeslice","awake_seconds":0,"awake_share":0,"switches":3,"yielded":1,"yielded_to":1,"wakes":2,"held_requests":0,"cards":[{"node_id":%d,"node":"tl-node","gpus":[0]}]}`, r.shared.ID, r.node.ID); string(line) != want {
+	if want := fmt.Sprintf(`{"deployment_id":%d,"deployment":"night-batch","yield_policy":"timeslice","awake_seconds":0,"awake_share":0,"switches":3,"yielded":1,"yielded_to":1,"wakes":2,"held_requests":0,"cards":[{"node_id":%d,"node_uuid":"tl-node","node":"tl-node","gpus":[0]}]}`, r.shared.ID, r.node.ID); string(line) != want {
 		t.Fatalf("stats\n got  %s\n want %s", line, want)
 	}
 	if share := got.Deployments[0].AwakeShare; share <= 0.3 || share >= 0.6 {
@@ -308,7 +308,7 @@ func TestSharingStatsSayWhereEachDeploymentIs(t *testing.T) {
 	if status != http.StatusOK {
 		t.Fatalf("sharing = %d %s", status, body)
 	}
-	want := fmt.Sprintf(`"cards":[{"node_id":%d,"node":"tl-node","gpus":[0,1]},{"node_id":%d,"node":"tl-other","gpus":[2,3]}]`, r.node.ID, other.ID)
+	want := fmt.Sprintf(`"cards":[{"node_id":%d,"node_uuid":%q,"node":"tl-node","gpus":[0,1]},{"node_id":%d,"node_uuid":%q,"node":"tl-other","gpus":[2,3]}]`, r.node.ID, r.node.UUID, other.ID, other.UUID)
 	if !strings.Contains(body, want) {
 		t.Fatalf("sharing cards\n got  %s\n want %s", body, want)
 	}

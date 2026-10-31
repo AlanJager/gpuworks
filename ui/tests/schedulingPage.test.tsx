@@ -16,7 +16,7 @@ const closeChannels = trackMessageChannels();
 const { i18n, locale } = await createI18n(["scheduling", "deployments", "deploy"]);
 const { cleanup, fireEvent, render, screen, waitFor, within } = await import("@testing-library/react");
 const userEvent = (await import("@testing-library/user-event")).default;
-const { MemoryRouter, Route, Routes, useLocation } = await import("react-router-dom");
+const { MemoryRouter, Route, Routes, useLocation, useNavigate } = await import("react-router-dom");
 const { api } = await import("../src/api.ts");
 const { schedulingApi } = await import("../src/schedulingApi.ts");
 const { APIError } = await import("../src/apiError.ts");
@@ -91,20 +91,26 @@ function serve(options: { overview?: () => Promise<Overview>; board?: () => Boar
   // The scheduling history has its own tests (schedulingHistory.test.tsx).
   schedulingApi.history = async () => ({ items: [{
     id: 1, created_at: "2026-10-25T07:00:00Z", deployment_id: 7, deployment: "qwen", kind: "automation", code: "AUTO_SLEEP", category: "auto",
-    params: { trigger: "idle", level: 2, idle_sec: 900 },
+    params: { trigger: "idle", level: 2, idle_sec: 900 }, nodes: [{ uuid: "node-c", name: "gpu-c" }],
   }] });
   return calls;
 }
 
 function Probe() {
   const location = useLocation();
-  return <div data-testid="loc">{location.pathname}{location.search}</div>;
+  const navigate = useNavigate();
+  return (
+    <>
+      <div data-testid="loc">{location.pathname}{location.search}</div>
+      <button type="button" onClick={() => navigate(-1)}>browser back</button>
+    </>
+  );
 }
 
-function mount() {
+function mount(path = "/scheduling") {
   render(
     <I18nextProvider i18n={i18n}>
-      <MemoryRouter initialEntries={["/scheduling"]}>
+      <MemoryRouter initialEntries={[path]}>
         <Routes>
           <Route path="/scheduling" element={<SchedulingPage />} />
           <Route path="*" element={<div>elsewhere</div>} />
@@ -162,7 +168,7 @@ test("a failed first load shows the error and retries on request", async () => {
 
 test("an empty fleet says so, and every queue says it is empty", async () => {
   serve({
-    overview: async () => ({ summary: { nodes: 0, online_nodes: 0, cards: 0, awake: 0, asleep: 0, free: 0, held_outside: 0, unhealthy: 0, offline: 0, by_model: [], contention: { waiting_wakes: 0, held_requests: 0, yields_last_hour: 0 } }, states: ["offline", "unhealthy", "held_outside", "awake", "asleep", "free"], models: [], deployments: [], nodes: [] }),
+    overview: async () => ({ summary: { nodes: 0, online_nodes: 0, cards: 0, awake: 0, asleep: 0, free: 0, held_outside: 0, unhealthy: 0, offline: 0, contention: { waiting_wakes: 0, held_requests: 0, yields_last_hour: 0 } }, states: ["offline", "unhealthy", "held_outside", "awake", "asleep", "free"], models: [], deployments: [], nodes: [] }),
     board: () => queues({ pending: [], waiting_wakes: [], upcoming: [] }),
   });
   mount();
@@ -171,7 +177,7 @@ test("an empty fleet says so, and every queue says it is empty", async () => {
   assert.equal(screen.queryByRole("group", { name: s.heatmap.aria }), null);
 });
 
-test("the summary counts the cards by state and model and the contention, with the queues' counts", async () => {
+test("the summary counts the cards by state and the contention, with the queues' counts", async () => {
   serve();
   mount();
   const summary = await screen.findByRole("group", { name: s.summary.title });
@@ -185,11 +191,7 @@ test("the summary counts the cards by state and model and the contention, with t
     assert.equal(tile(s.summary.cardsTitle, s.states[state as keyof typeof s.states]), count, state);
   }
   assert.equal(within(summary).queryByText(s.states.unhealthy), null, "no faulty card, no faulty tile");
-  const models = within(summary).getByRole("list", { name: s.summary.models });
-  assert.deepEqual(within(models).getAllByRole("listitem").map((li) => li.textContent), [
-    i18n.t("scheduling:summary.modelLine", { model: "L20", cards: 3, free: 0 }),
-    i18n.t("scheduling:summary.modelLine", { model: "H100", cards: 3, free: 1 }),
-  ]);
+  assert.equal(within(summary).queryByRole("list"), null, "no line of cards per GPU model");
   assert.equal(tile(s.summary.contentionTitle, s.summary.waitingWakes), "1");
   assert.equal(tile(s.summary.contentionTitle, s.summary.heldRequests), "3");
   assert.equal(tile(s.summary.contentionTitle, s.summary.yields), "2");
@@ -306,6 +308,42 @@ test("a node that cannot be read says so in its drawer and retries", async () =>
   assert.ok(within(drawer).getByText("node unavailable"));
   await user.click(within(drawer).getByRole("button", { name: s.page.retry }));
   await within(drawer).findByRole("region", { name: "gpu-a" });
+});
+
+test("the open node is in the URL: opening sets ?node=, closing clears it, and the browser goes back to it", async () => {
+  serve();
+  const user = mount();
+  await screen.findByRole("group", { name: s.heatmap.aria });
+  await user.click(screen.getByRole("button", { name: new RegExp("^gpu-a GPU 0,") }));
+  await within(await screen.findByRole("dialog")).findByRole("region", { name: "gpu-a" });
+  assert.equal(screen.getByTestId("loc").textContent, "/scheduling?node=node-a");
+  await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Close" }));
+  await waitFor(() => assert.equal(screen.getByTestId("loc").textContent, "/scheduling"));
+  await waitFor(() => assert.equal(document.querySelector(".ant-drawer-open"), null));
+  await user.click(screen.getByRole("button", { name: "browser back" }));
+  assert.equal(screen.getByTestId("loc").textContent, "/scheduling?node=node-a");
+  await within(await screen.findByRole("dialog")).findByRole("region", { name: "gpu-a" });
+  await user.click(screen.getByRole("button", { name: "browser back" }));
+  assert.equal(screen.getByTestId("loc").textContent, "/scheduling");
+  await waitFor(() => assert.equal(document.querySelector(".ant-drawer-open"), null));
+});
+
+test("a link to /scheduling?node= opens that node's drawer, titled with its name", async () => {
+  const calls = serve();
+  mount("/scheduling?node=node-c");
+  const drawer = await screen.findByRole("dialog");
+  assert.ok(within(drawer).getByText("gpu-c"));
+  await waitFor(() => assert.deepEqual(calls.board.find((query) => "node" in (query as object)), { node: "node-c" }));
+});
+
+test("a node named in the scheduling history opens its drawer on the page", async () => {
+  serve();
+  const user = mount();
+  const history = (await screen.findByText(s.history.title)).closest(".ant-card") as HTMLElement;
+  await user.click(await within(history).findByRole("link", { name: "gpu-c" }));
+  assert.equal(screen.getByTestId("loc").textContent, "/scheduling?node=node-c");
+  const drawer = await screen.findByRole("dialog");
+  assert.ok(within(drawer).getByText("gpu-c"));
 });
 
 test("a node can be opened from the keyboard alone", async () => {

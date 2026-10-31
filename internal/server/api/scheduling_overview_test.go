@@ -137,8 +137,6 @@ func TestSchedulingOverviewWire(t *testing.T) {
 	}
 	_, rec := rig.overview(t)
 	want := fmt.Sprintf(`{"summary":{"nodes":3,"online_nodes":2,"cards":6,"awake":2,"asleep":1,"free":1,"held_outside":1,"unhealthy":0,"offline":1,`+
-		`"by_model":[{"model":"L20","cards":3,"awake":2,"asleep":0,"free":0,"held_outside":0,"unhealthy":0,"offline":1},`+
-		`{"model":"H100","cards":3,"awake":0,"asleep":1,"free":1,"held_outside":1,"unhealthy":0,"offline":0}],`+
 		`"contention":{"waiting_wakes":1,"held_requests":3,"yields_last_hour":1}},`+
 		`"states":["offline","unhealthy","held_outside","awake","asleep","free"],`+
 		`"models":["L20","H100"],`+
@@ -168,16 +166,6 @@ func TestSchedulingOverviewSummaryAddsUp(t *testing.T) {
 	s := out.Summary
 	if sum := s.Awake + s.Asleep + s.Free + s.HeldOutside + s.Unhealthy + s.Offline; sum != s.Cards || s.Cards != 6 {
 		t.Fatalf("summary %+v: buckets add to %d, cards %d", s, sum, s.Cards)
-	}
-	byModel := 0
-	for _, m := range s.ByModel {
-		if m.Awake+m.Asleep+m.Free+m.HeldOutside+m.Unhealthy+m.Offline != m.Cards {
-			t.Errorf("model %+v does not add up", m)
-		}
-		byModel += m.Cards
-	}
-	if byModel != s.Cards {
-		t.Fatalf("models count %d cards of %d", byModel, s.Cards)
 	}
 	assertCardStatesMatchSummary(t, out)
 	// A card on an offline node is offline whatever it holds, and one held
@@ -249,7 +237,7 @@ func TestSchedulingOverviewEndpointContract(t *testing.T) {
 func TestSchedulingOverviewOfAnEmptyFleet(t *testing.T) {
 	rig := newScheduleRig(t)
 	rec := rig.do(rig.session, http.MethodGet, "/api/v1/scheduling/overview", "")
-	want := `{"summary":{"nodes":0,"online_nodes":0,"cards":0,"awake":0,"asleep":0,"free":0,"held_outside":0,"unhealthy":0,"offline":0,"by_model":[],"contention":{"waiting_wakes":0,"held_requests":0,"yields_last_hour":0}},"states":["offline","unhealthy","held_outside","awake","asleep","free"],"models":[],"deployments":[],"nodes":[]}`
+	want := `{"summary":{"nodes":0,"online_nodes":0,"cards":0,"awake":0,"asleep":0,"free":0,"held_outside":0,"unhealthy":0,"offline":0,"contention":{"waiting_wakes":0,"held_requests":0,"yields_last_hour":0}},"states":["offline","unhealthy","held_outside","awake","asleep","free"],"models":[],"deployments":[],"nodes":[]}`
 	if rec.Code != http.StatusOK || strings.TrimSpace(rec.Body.String()) != want {
 		t.Fatalf("empty fleet = %d %s", rec.Code, rec.Body)
 	}

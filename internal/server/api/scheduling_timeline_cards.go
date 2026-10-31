@@ -54,7 +54,7 @@ func (a *apiHandlers) cardsOf(placed placements, ids []uint) (map[uint][]dto.Tim
 	for nodeID := range nodeIDs {
 		list = append(list, nodeID)
 	}
-	names, err := a.d.Store.NodeNamesByID(list)
+	refs, err := a.d.Store.NodeRefsByID(list)
 	if err != nil {
 		return nil, err
 	}
@@ -62,7 +62,8 @@ func (a *apiHandlers) cardsOf(placed placements, ids []uint) (map[uint][]dto.Tim
 		for nodeID, gpus := range placed[id] {
 			sorted := slices.Clone(gpus)
 			sort.Ints(sorted)
-			out[id] = append(out[id], dto.TimelineCards{NodeID: nodeID, Node: names[nodeID], GPUs: sorted})
+			ref := refs[nodeID]
+			out[id] = append(out[id], dto.TimelineCards{NodeID: nodeID, NodeUUID: ref.UUID, Node: ref.Name, GPUs: sorted})
 		}
 		sort.Slice(out[id], func(i, j int) bool {
 			if out[id][i].Node != out[id][j].Node {

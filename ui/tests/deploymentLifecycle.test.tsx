@@ -405,6 +405,17 @@ test("the replica count is edited in place and applied once changed", async () =
   assert.deepEqual(scales[1], { id: 1, body: { replicas: 3 } });
 });
 
+test("the node conditions sit on the row just above the replica count", async () => {
+  stub("deploymentsPage", async () => listPage([deployment()]));
+  stub("deployment", async () => deployment());
+  await openDetail();
+  const labels = [...document.querySelectorAll(".ant-drawer .ant-descriptions-item-label")].map((el) => el.textContent);
+  const conditions = labels.indexOf(locale.detail.placement.requirements);
+  assert.ok(conditions >= 0, `no node conditions among ${labels.join(", ")}`);
+  assert.equal(labels[conditions + 1], locale.detail.replicas);
+  assert.equal(labels[conditions - 1], locale.detail.sleepable);
+});
+
 test("a PD or multi-node deployment shows its replica count read-only", async () => {
   const multi = deployment({ nnodes: 2, replicas: 1 });
   stub("deploymentsPage", async () => listPage([multi]));

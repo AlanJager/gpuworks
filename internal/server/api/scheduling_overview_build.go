@@ -39,7 +39,6 @@ func (a *apiHandlers) buildOverview(now time.Time) (*dto.SchedulingOverview, err
 	out := &dto.SchedulingOverview{States: overviewStates, Models: []string{}, Deployments: []dto.OverviewDeployment{}, Nodes: make([]dto.OverviewNode, 0, len(nodes))}
 	modelAt := map[string]int{}
 	deploymentAt := map[uint]int{}
-	byModel := map[string]*dto.OverviewModelSummary{}
 	summary := &out.Summary
 	summary.Nodes = len(nodes)
 	for i := range nodes {
@@ -62,7 +61,6 @@ func (a *apiHandlers) buildOverview(now time.Time) (*dto.SchedulingOverview, err
 				model = len(out.Models)
 				modelAt[card.Name] = model
 				out.Models = append(out.Models, card.Name)
-				byModel[card.Name] = &dto.OverviewModelSummary{Model: card.Name}
 			}
 			state := card.State(isOnline)
 			wire := dto.OverviewCard{
@@ -87,7 +85,7 @@ func (a *apiHandlers) buildOverview(now time.Time) (*dto.SchedulingOverview, err
 				wire.Occupants = append(wire.Occupants, code)
 			}
 			item.Cards = append(item.Cards, wire)
-			count(summary, byModel[card.Name], state)
+			count(summary, state)
 		}
 		item.Contention = pressure.waitingOn[node.ID]
 		for id := range asleepOnNode {
@@ -99,11 +97,6 @@ func (a *apiHandlers) buildOverview(now time.Time) (*dto.SchedulingOverview, err
 		out.Nodes = append(out.Nodes, item)
 	}
 	out.Summary.Contention = dto.OverviewContention{WaitingWakes: len(pressure.waiting), HeldRequests: pressure.heldTotal, YieldsLastHour: pressure.yieldTotal}
-	out.Summary.ByModel = make([]dto.OverviewModelSummary, 0, len(byModel))
-	for _, model := range out.Models {
-		out.Summary.ByModel = append(out.Summary.ByModel, *byModel[model])
-	}
-	sort.SliceStable(out.Summary.ByModel, func(i, j int) bool { return out.Summary.ByModel[i].Cards > out.Summary.ByModel[j].Cards })
 	return out, nil
 }
 
@@ -132,30 +125,23 @@ var overviewStates, overviewStateAt = func() ([]string, map[planning.CardState]i
 	return names, at
 }()
 
-// count adds one card to the fleet's and its model's summary, in the bucket
-// of its state (planning.FleetCard.State).
-func count(summary *dto.OverviewSummary, model *dto.OverviewModelSummary, state planning.CardState) {
+// count adds one card to the fleet's summary, in the bucket of its state
+// (planning.FleetCard.State).
+func count(summary *dto.OverviewSummary, state planning.CardState) {
 	summary.Cards++
-	model.Cards++
 	switch state {
 	case planning.CardOffline:
 		summary.Offline++
-		model.Offline++
 	case planning.CardUnhealthy:
 		summary.Unhealthy++
-		model.Unhealthy++
 	case planning.CardHeldOutside:
 		summary.HeldOutside++
-		model.HeldOutside++
 	case planning.CardAwake:
 		summary.Awake++
-		model.Awake++
 	case planning.CardAsleep:
 		summary.Asleep++
-		model.Asleep++
 	default:
 		summary.Free++
-		model.Free++
 	}
 }
 

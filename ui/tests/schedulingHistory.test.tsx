@@ -33,10 +33,10 @@ function entry(id: number, overrides: Partial<Entry> = {}): Entry {
 }
 
 const sample: Entry[] = [
-  entry(30),
+  entry(30, { nodes: [{ uuid: "node-a", name: "gpu-a" }] }),
   entry(29, { code: "REPLICAS_CHANGED", kind: "schedule", category: "manual", params: { from: 1, to: 3, actor: "alice" }, actor: "alice", deployment_id: 8, deployment: "llama" }),
-  entry(28, { code: "REPLICA_REBUILT", kind: "schedule", category: "failure", params: { replica: 1, attempt: 2, node: "gpu-3", reason: "CUDA out of memory" }, deployment_id: 9, deployment: "gone", deployment_deleted: true }),
-  entry(27, { code: "NODE_REPLACED", category: "failure", params: { from: "gpu-1", instances: ["abcdef012345"], after_sec: 600 }, deployment_id: 10, deployment: undefined }),
+  entry(28, { code: "REPLICA_REBUILT", kind: "schedule", category: "failure", params: { replica: 1, attempt: 2, node: "gpu-3", reason: "CUDA out of memory" }, deployment_id: 9, deployment: "gone", deployment_deleted: true, nodes: [{ name: "gpu-3" }] }),
+  entry(27, { code: "NODE_REPLACED", category: "failure", params: { from: "gpu-1", instances: ["abcdef012345"], after_sec: 600 }, deployment_id: 10, deployment: undefined, nodes: [{ uuid: "node-1", name: "gpu-1" }, { uuid: "node-2", name: "gpu-2" }] }),
 ];
 
 function Probe() {
@@ -123,6 +123,22 @@ test("each entry shows its time, deployment, action, worded details, category an
   assert.equal(screen.getByTestId("loc").textContent, "/deployments?deployment=7");
 });
 
+test("each entry names the nodes it concerns; a known one opens its drawer on the scheduling page, a gone one is plain, none is a dash", async () => {
+  serve(sample);
+  const user = mount();
+  await screen.findByText("llama");
+  const rows = screen.getAllByRole("row").slice(1);
+  assert.ok(screen.getByRole("columnheader", { name: h.columns.node }));
+  assert.ok(within(rows[0]).getByRole("link", { name: "gpu-a" }));
+  assert.ok(within(rows[1]).getAllByText("—").length >= 1, "an entry with no node shows a dash");
+  assert.equal(within(rows[1]).queryByRole("link", { name: /gpu/ }), null);
+  assert.ok(within(rows[2]).getByText("gpu-3"));
+  assert.equal(within(rows[2]).queryByRole("link", { name: "gpu-3" }), null, "a node the server no longer knows has nothing to open");
+  assert.deepEqual(within(rows[3]).getAllByRole("link").map((a) => a.textContent), ["gpu-1", "gpu-2"]);
+  await user.click(within(rows[3]).getByRole("link", { name: "gpu-2" }));
+  assert.equal(screen.getByTestId("loc").textContent, "/scheduling?node=node-2");
+});
+
 test("an entry that gave GPUs to another deployment names it, and the name opens it", async () => {
   const preempt = (id: number, target: Entry["target"]) => entry(id, {
     params: { trigger: "preempt", reason: "rank", for_deployment: target?.id ?? 0, level: 1, instances: ["abcdef012345"] }, target,
@@ -205,31 +221,39 @@ test("the category filter works from the keyboard and starts over from the newes
   assert.equal(queries.at(-1)?.before, undefined);
 });
 
-test("the time range is the platform's picker and asks for entries since that long ago", async () => {
+test("the time range is the platform's picker: the last day by default, up to a week or a custom range", async () => {
   const queries = serve(sample);
   mount();
+  const opened = Date.now();
   await screen.findByText("qwen");
-  assert.equal(queries[0].since, undefined);
+  // The history opens on the last day, sliding with now.
+  const first = Date.parse(queries[0].since ?? "");
+  assert.ok(first >= opened - 86_400_000 - 1000 && first <= Date.now() - 86_400_000 + 1000, `first since = ${queries[0].since}`);
+  assert.equal(queries[0].until, undefined);
   const box = screen.getByRole("combobox", { name: locale.deployments.timeRange.ariaLabel });
+  assert.ok(within(box.closest(".ant-select") as HTMLElement).getByTitle(locale.deployments.timeRange["1d"]), "the picker shows the last day");
   fireEvent.mouseDown(box);
   const day = await waitFor(() => {
     const option = document.querySelector(`.ant-select-item-option[title="${locale.deployments.timeRange["1d"]}"]`);
     assert.ok(option, "the quick ranges are offered");
     return option;
   });
-  assert.ok(document.querySelector(`.ant-select-item-option[title="${h.range.all}"]`), "all time is the first choice");
-  assert.ok(document.querySelector(`.ant-select-item-option[title="${locale.deployments.timeRange.custom}"]`), "a custom range is offered");
+  // Up to a week and a custom range; no month, no year and no "all time".
+  const offered = [...document.querySelectorAll(".ant-select-item-option")].map((el) => el.getAttribute("title"));
+  assert.deepEqual(offered, [...["15m", "1h", "6h", "1d", "1w"].map((key) => locale.deployments.timeRange[key as "1d"]), locale.deployments.timeRange.custom]);
+  assert.ok(day);
+  const hour = document.querySelector(`.ant-select-item-option[title="${locale.deployments.timeRange["1h"]}"]`) as HTMLElement;
   const before = Date.now();
-  fireEvent.click(day!);
-  await waitFor(() => assert.ok(queries.at(-1)?.since));
+  fireEvent.click(hour);
+  await waitFor(() => assert.ok(Date.parse(queries.at(-1)?.since ?? "") >= before - 3_600_000 - 1000));
   const since = Date.parse(queries.at(-1)?.since ?? "");
-  assert.ok(since >= before - 86_400_000 - 1000 && since <= Date.now() - 86_400_000 + 1000, `since = ${queries.at(-1)?.since}`);
+  assert.ok(since <= Date.now() - 3_600_000 + 1000, `since = ${queries.at(-1)?.since}`);
   assert.equal(queries.at(-1)?.until, undefined, "a quick range slides with now");
+  assert.equal(queries.at(-1)?.before, undefined, "a new range starts from the newest entries");
 });
 
-test("a history window is open for all time, slides for a quick range and is fixed for a custom one", () => {
+test("a history window slides for a quick range and is fixed for a custom one", () => {
   const now = Date.parse("2026-10-30T12:00:00Z");
-  assert.deepEqual(historyWindow(null, now), {});
   assert.deepEqual(historyWindow({ kind: "quick", key: "1h" }, now), { since: "2026-10-30T11:00:00.000Z", until: undefined });
   assert.deepEqual(
     historyWindow({ kind: "custom", startMS: Date.parse("2026-10-29T08:06:00Z"), endMS: Date.parse("2026-10-29T08:21:00Z") }, now),

@@ -563,7 +563,7 @@ This endpoint does not check whether a user spec with the same name already exis
 | PUT | `/api/v1/deployments/{id}/node-replacement` | Set how long a lost node is waited for before its replicas move, `{"after_sec":600}`; 0 is never, otherwise 60–604800. 200 returns the same body; out of range returns 400 `NODE_REPLACEMENT_INVALID` (`params.minimum`, `maximum`); see [Reschedule Replicas on Node Loss](../how-to/node-failover.md) | JWT |
 | GET | `/api/v1/scheduling/board` | The scheduling board: nodes paged by `?page=&page_size=&q=` (each GPU's awake usage, sleep residue, free amount, occupants, and outside processes) plus fleet-wide `pending` (deployments refused by the scheduler in the last 30 minutes), `waiting_wakes`, `upcoming` (schedule actions in the next 24 hours); `q` matches a node's name, hostname or UUID; each GPU carries the `state` and `switching` the server derives; there is no `recent` any more (read the scheduling history for the latest automation events); `?node=<uuid>` answers for that one node only (a one-row `nodes` page and empty other lists; 404 for an unknown node), and `?queues=1` answers only the last three lists (an empty `nodes` page, no node is read); see [Scheduling Board](#调度看板) | JWT |
 | GET | `/api/v1/scheduling/overview` | The scheduling overview: every node and the compact state of every card of the whole cluster in one response, plus the summary, for the heatmap; served from a cache (rebuilt at most every 2 seconds), with an `ETag` and a 304 for a matching `If-None-Match`; see [Scheduling Overview](#调度总览) | JWT |
-| GET | `/api/v1/scheduling/history` | The scheduling history: scheduling events of the whole cluster, newest first, cursor-paged (`limit`, `before`, as for the deployment timeline), filterable by `deployment_id`, `category` (`auto` / `failure` / `manual`, comma separated), and `since` / `until` (RFC 3339); an invalid filter returns 400 `FIELD_INVALID` (`params.field`), an invalid cursor or page size 400 `EVENT_CURSOR_INVALID` / `EVENT_LIMIT_INVALID`; see [Scheduling History](#调度记录) | JWT |
+| GET | `/api/v1/scheduling/history` | The scheduling history: scheduling events of the whole cluster, newest first, cursor-paged (`limit`, `before`, as for the deployment timeline), filterable by `deployment_id`, `category` (`auto` / `failure` / `manual`, comma separated), and `since` / `until` (RFC 3339); each entry carries the nodes it concerns, `nodes` (`uuid`, `name`); an invalid filter returns 400 `FIELD_INVALID` (`params.field`), an invalid cursor or page size 400 `EVENT_CURSOR_INVALID` / `EVENT_LIMIT_INVALID`; see [Scheduling History](#调度记录) | JWT |
 | GET | `/api/v1/scheduling/timeline` | The residency timeline: `?node=<uuid>` (repeatable, at most 200, normally the node that was opened) `&hours=6\|24` (default 6). The segments in which each deployment's instance held each card over the last `hours` (`awake` / `asleep` / `switching` / `starting`), and the stats of the deployments whose yield policy is not `never` that appear; `?sharing=1&hours=` without `node` answers only the stats of the cluster's deployments whose yield policy is not `never` (`nodes` empty, cached for about 30 seconds); a missing `node` (without `sharing`), a `sharing` that is not 1 or is used with `node`, or an `hours` that is not 6 or 24 returns 400 `FIELD_INVALID` (`params.field`, message `hours is one of 6, 24`), unknown nodes are skipped; see [Residency Timeline](#residency-timeline) | JWT |
 | GET | `/api/v1/scheduling/yield-policies` | The dictionary of yield policies: the four policies from the highest rank to the lowest, each with its `defaults` and the parameters that can apply (`applies`), plus the conditions under which a parameter applies only when another has certain values (`applies_when`), the range of each numeric parameter (`bounds`, with `at_most` naming another parameter it may not exceed), `sleep_levels`, and `unfinished`, from which a client edits without keeping its own defaults; see [Yield policy](#出让策略) | JWT |
 | PUT | `/api/v1/deployments/{id}/pd` | Adjust replicas for each role (`roles.<role>.units`) and `fallback` in a PD deployment. `mode`, each role's `tp`/`pp`, and `kv_load_failure` are immutable (`PD_IMMUTABLE`). Returns 400 `PD_NOT_PD` for non-PD deployments | JWT |
@@ -980,7 +980,6 @@ For timeline event codes see [Use Scheduling Analysis](../how-to/scheduling-cent
   "summary": {
     "nodes": 3, "online_nodes": 2, "cards": 6,
     "awake": 2, "asleep": 1, "free": 1, "held_outside": 1, "unhealthy": 0, "offline": 1,
-    "by_model": [{"model": "L20", "cards": 3, "awake": 2, "asleep": 0, "free": 0, "held_outside": 0, "unhealthy": 0, "offline": 1}],
     "contention": {"waiting_wakes": 1, "held_requests": 3, "yields_last_hour": 1}
   },
   "states": ["offline", "unhealthy", "held_outside", "awake", "asleep", "free"],
@@ -995,7 +994,7 @@ For timeline event codes see [Use Scheduling Analysis](../how-to/scheduling-cent
 
 | Field | Meaning |
 |---|---|
-| `summary` | The card counts of the whole cluster. A card is counted once, in the first bucket that holds, in this order: `offline` (its node is not online), `unhealthy` (the card is faulty or unusable because of ownership or health), `held_outside` (a process outside the platform uses it), `awake` (an instance holds memory on it), `asleep` (only sleepers' residue is on it), `free`; the six buckets add up to `cards`. `by_model` is the same count per GPU model (the card's name), the model with the most cards first |
+| `summary` | The card counts of the whole cluster. A card is counted once, in the first bucket that holds, in this order: `offline` (its node is not online), `unhealthy` (the card is faulty or unusable because of ownership or health), `held_outside` (a process outside the platform uses it), `awake` (an instance holds memory on it), `asleep` (only sleepers' residue is on it), `free`; the six buckets add up to `cards` |
 | `summary.contention` | `waiting_wakes`: deployments with a sleeping instance waiting for room to wake; `held_requests`: requests the gateway holds for a wake right now; `yields_last_hour`: sleeps in the last hour that made room for another deployment. A yield is counted one way: the residency arbiter's preemption (`AUTO_SLEEP` with `trigger` `preempt`) and an operator's yielding wake (`YIELDED_FOR_WAKE`) both count, and the timeline's `yielded` and `yielded_to` count the same events; a yielding wake records `for_deployment` too |
 | `states` | The names of the card states, in the order of the disjoint buckets above: `offline`, `unhealthy`, `held_outside`, `awake`, `asleep`, `free`; a card refers to one by its index. Which state a card is in is decided by the server (the board's `gpus[].state` is the same result); a client only maps it to colour and words and does not work it out again |
 | `models`, `deployments` | The dictionaries the cards refer to: GPU model names, and the deployments that occupy a card (`id`, `name`, `yield_policy`: `never`, `idle`, `timeslice`, or `anytime`), each in order of first appearance |
@@ -1029,7 +1028,7 @@ The response comes from a cache in the server's memory and is not recomputed for
     "deployment_id": 7, "deployment": "qwen", "yield_policy": "timeslice",
     "awake_seconds": 10800, "awake_share": 0.5, "switches": 3, "yielded": 1, "yielded_to": 1, "wakes": 2,
     "held_requests": 4, "wait_p50_ms": 4200, "wait_p95_ms": 31000,
-    "cards": [{"node_id": 3, "node": "gpu3", "gpus": [0]}]
+    "cards": [{"node_id": 3, "node_uuid": "5f0c…", "node": "gpu3", "gpus": [0]}]
   }]
 }
 ```
@@ -1039,7 +1038,7 @@ The response comes from a cache in the server's memory and is not recomputed for
 | `window` | The window: `hours` (6 or 24), `from`, `to` (now) |
 | `nodes[].gpus[]` | The same cards as the board (`index`); `segments[]` run oldest to newest; `truncated` true means only the latest 200 segments were kept |
 | `segments[]` | One instance holding the card for a stretch: `deployment_id`, `deployment`, `instance`, `state` (`awake` / `asleep` / `switching` / `starting`), `level` (1 or 2) while asleep, `from`, `to` (both inside the window); an instance on several cards appears once on each |
-| `deployments[]` | Deployments that held these cards in the window and whose yield policy is not `never` (each with its `yield_policy`): `awake_seconds` (time at least one replica was awake), `awake_share` (of the window, 0 to 1), `switches` (`yielded` + `wakes`), `yielded` (put to sleep to give a card to another deployment; the residency arbiter's preemption and an operator's yielding wake both count, the same basis as the overview's `yields_last_hour`), `yielded_to` (another deployment gave a card to it, counted by the event's `for_deployment`), `wakes` (the platform woke it), `held_requests` (requests the gateway held while it woke), `wait_p50_ms` / `wait_p95_ms` (the waits of those requests, approximate; omitted when no request was held or the gateway keeps no metrics), `cards` (where its replicas are now, by node: `node_id`, `node` (the node's display name, empty for a node no longer known) and `gpus`; an empty array when none is placed) |
+| `deployments[]` | Deployments that held these cards in the window and whose yield policy is not `never` (each with its `yield_policy`): `awake_seconds` (time at least one replica was awake), `awake_share` (of the window, 0 to 1), `switches` (`yielded` + `wakes`), `yielded` (put to sleep to give a card to another deployment; the residency arbiter's preemption and an operator's yielding wake both count, the same basis as the overview's `yields_last_hour`), `yielded_to` (another deployment gave a card to it, counted by the event's `for_deployment`), `wakes` (the platform woke it), `held_requests` (requests the gateway held while it woke), `wait_p50_ms` / `wait_p95_ms` (the waits of those requests, approximate; omitted when no request was held or the gateway keeps no metrics), `cards` (where its replicas are now, by node: `node_id`, `node_uuid` (omitted for a node no longer known), `node` (the node's display name, empty for a node no longer known) and `gpus`; an empty array when none is placed) |
 
 The timeline is derived from instance records and the event log; the `INSTANCE_REMOVED` event written when an instance is removed (`kind` `residency`, params `node_id`, `gpus`) says which node and cards it held. For the semantics and limits see [Use Scheduling Analysis](../how-to/scheduling-center.md#residency-timeline).
 
@@ -1057,7 +1056,8 @@ curl --fail-with-body -sS \
 {"items":[
   {"id":812,"created_at":"2026-10-28T09:14:03Z","deployment_id":7,"deployment":"qwen","kind":"schedule",
    "code":"REPLICA_REBUILT","category":"failure",
-   "params":{"replica":1,"attempt":2,"reason":"CUDA out of memory","node":"gpu-3"}},
+   "params":{"replica":1,"attempt":2,"reason":"CUDA out of memory","node":"gpu-3","node_uuids":["5f0c…"]},
+   "nodes":[{"uuid":"5f0c…","name":"gpu-3"}]},
   {"id":810,"created_at":"2026-10-28T09:10:41Z","deployment_id":7,"deployment":"qwen","kind":"schedule",
    "code":"REPLICAS_CHANGED","category":"manual","params":{"from":1,"to":3,"actor":"alice"},"actor":"alice"}
 ]}
@@ -1079,6 +1079,7 @@ curl --fail-with-body -sS \
 | `category` | `auto`: the platform acted on its own settings or schedules; `failure`: something went wrong and the platform is dealing with it or has given up; `manual`: an operator's order |
 | `params` | The event code's params, as on the deployment timeline |
 | `actor` | The user who gave the order; present only on `manual` events whose request carried an identity, and also in `params.actor` |
+| `nodes` | The nodes the event concerns, `[{uuid?, name}]`, from the first of these that yields any: the nodes the event's params recorded (`node_uuids`; an older event's `node` is a node UUID or name, its `nodes` are names), and the nodes the instances the event names (`instance`, `instances`, or the instance the event is on) are on now; the whole field is omitted when there are none. Only a node the server still knows carries `uuid` (the UI opens its drawer by it); for a node that no longer exists `name` is the first 8 characters of its UUID, and an older event that kept only a name gives that name. The nodes of a whole page are found in one query |
 | `target` | The deployment the event acted for, `{id, name?, deleted?}`, taken from `params.for_deployment` (for example the deployment a yield gave the cards to); the whole field is omitted when there is none. A deleted deployment carries `deleted: true` with the name taken from what it left behind, and `name` is omitted when not even a name is known. The UI uses it to show a clickable yield target next to the deployment name |
 
 The server decides in one place which event codes belong to the history and in which category:
@@ -1109,6 +1110,9 @@ When a failed replica is rebuilt, the controller records `REPLICA_REBUILT` (depl
 | `attempt` | Which attempt this is |
 | `reason` | The message of the previous failed attempt, cut off after 200 characters |
 | `node` | The name of the node of the new attempt's leader |
+| `node_uuids` | The UUID of the same node (a list) |
+
+The events the scheduling history lists carry `node_uuids` (the list of node UUIDs the event concerns) when they are written: an event that names instances records the nodes those instances were on, and the controller's node events record the nodes they concern (moved from and to, lost, the placements before and after, where the failed attempts ran); `DEPLOYMENT_UNSCHEDULABLE` uses its existing `node` (a node UUID). Orders for the whole deployment (a scheduled sleep, a replica count, a rolling restart) do not carry it. See [Use the scheduling center](../how-to/scheduling-center.md#timeline-events) for each code.
 
 The read goes through the `(kind, id)` index of `instance_events`: one page per event kind, merged, without scanning the whole timeline.
 

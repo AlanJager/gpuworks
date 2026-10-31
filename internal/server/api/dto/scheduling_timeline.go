@@ -77,9 +77,11 @@ type TimelineDeployment struct {
 }
 
 // TimelineCards is the GPUs a deployment's instances hold on one node now;
-// Node is empty for a node no longer known.
+// Node is empty for a node no longer known, and so is NodeUUID, by which
+// the UI opens the node.
 type TimelineCards struct {
-	NodeID uint   `json:"node_id"`
-	Node   string `json:"node"`
-	GPUs   []int  `json:"gpus"`
+	NodeID   uint   `json:"node_id"`
+	NodeUUID string `json:"node_uuid,omitempty"`
+	Node     string `json:"node"`
+	GPUs     []int  `json:"gpus"`
 }

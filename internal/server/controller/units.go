@@ -440,7 +440,8 @@ func (c *Controller) recordReplicaRebuilt(dep *store.Deployment, unit planning.U
 	if len(reason) > rebuildReasonRunes {
 		reason = append(reason[:rebuildReasonRunes], '…')
 	}
-	params := map[string]any{"replica": unit.Index + 1, "attempt": len(attempts) + 1, "reason": string(reason), "node": leader.DisplayName()}
+	params := map[string]any{"replica": unit.Index + 1, "attempt": len(attempts) + 1, "reason": string(reason), "node": leader.DisplayName(),
+		store.EventParamNodeUUIDs: []string{leader.UUID}}
 	if unit.Role != "" {
 		params["role"] = unit.Role
 	}
