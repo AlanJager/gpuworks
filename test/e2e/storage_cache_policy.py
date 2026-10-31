@@ -353,7 +353,9 @@ def test_storage_cache_policy(page, server, artifacts, report, storage_id, stora
     evidence.append({'layer': 'ui', 'node_inventory': report['node_inventory']})
 
     def reopen_node():
-        button(row('Cache node 01'), cm['configure']).click()
+        trigger = button(row('Cache node 01'), cm['configure'])
+        trigger.focus()
+        trigger.click()
         opened = page.get_by_role('dialog', name=cm['nodeTitle'].replace('{{node}}', 'Cache node 01'), exact=True)
         expect(opened).to_be_visible()
         return opened
