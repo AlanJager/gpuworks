@@ -253,9 +253,17 @@ The server waits for doctor for at most 2 minutes; the agent limits a diagnosis 
 
 Commands that change driver state (such as Ascend `npu-smi set`) and calls requiring immediate results do not use old results: they still have a 10-second timeout. If they do not exit after being killed
 (processes stuck in D state inside the driver), the agent waits only 3 seconds before giving up and logging `gpu command did not exit after kill`;
-until that process exits (logged as `stuck gpu command exited`), calls of this kind to the same CLI fail immediately (`a previous call has not exited`).
+until that process exits (logged as `stuck gpu command exited`), calls of this kind to the same CLI fail immediately (`an earlier call has not exited`) without starting a new process.
+Calls of this kind to one CLI run one at a time, so two arriving together do not start a process each; on timeout the command is killed together with the processes it started.
 
-If this persists, run `ps -eo pid,stat,etime,cmd | grep -- -smi` on the node to check for processes in `D` state, and check `dmesg` for
+The same rules govern the other commands that enter the driver, so however often they are called, each kind has at most one stuck process:
+- **Runtime checks**: the periodic per-card checks (every vendor, on the host or in a container), Diagnose's per-card checks and the NVIDIA CUDA / peer access / NCCL checks share one "runtime check" slot, so only one runs at a time.
+  Once one is stuck, no new check starts: the periodic round is skipped and Diagnose shows not checked or `SKIP (an earlier runtime check on this node was killed and has not exited ...)`; neither marks a card as failed.
+- **Checks in a container**: a container that cannot be removed (its process is stuck in the driver) is remembered, and no new container is started until it is gone.
+- **Ascend `hccn_tool`** (reading the accelerator NICs every minute): one slot per die and 3 seconds per call, so a stuck die affects only that die and never holds up the node's status report.
+- **Diagnose**: one at a time per node; a second request returns `a diagnosis is already running on this node`.
+
+If this persists, run `ps -eo pid,stat,etime,cmd | grep -E -- '-smi|hccn_tool|python3'` on the node to check for processes in `D` state, and check `dmesg` for
 Xid / NVRM errors.
 
 ### A Card Is Unusable by the Runtime or Fails Driver Initialization

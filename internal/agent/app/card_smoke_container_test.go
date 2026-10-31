@@ -25,12 +25,16 @@ type smokeRuntime struct {
 	runErr    error
 	statusErr error
 	hang      bool
-	exitCode  int
-	logs      string
+	// unkillable keeps a container whose process is stuck in the driver:
+	// stopping and removing it do nothing.
+	unkillable bool
+	exitCode   int
+	logs       string
 
 	mu      sync.Mutex
 	runs    []runtime.WorkloadSpec
 	removed []string
+	gone    map[string]bool
 	checked []string
 }
 
@@ -61,13 +65,25 @@ func (r *smokeRuntime) Run(_ context.Context, spec runtime.WorkloadSpec) (string
 }
 func (r *smokeRuntime) Remove(_ context.Context, id string) error {
 	r.mu.Lock()
+	defer r.mu.Unlock()
 	r.removed = append(r.removed, id)
-	r.mu.Unlock()
+	if r.unkillable {
+		return errors.New("container is not stopped: process stuck in uninterruptible sleep")
+	}
+	if r.gone == nil {
+		r.gone = map[string]bool{}
+	}
+	r.gone[id] = true
 	return nil
 }
-func (r *smokeRuntime) Status(context.Context, string) (runtime.Status, error) {
+func (r *smokeRuntime) Status(_ context.Context, id string) (runtime.Status, error) {
 	if r.statusErr != nil {
 		return runtime.Status{}, r.statusErr
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.gone[id] {
+		return runtime.Status{}, nil
 	}
 	return runtime.Status{Exists: true, Running: r.hang, ExitCode: r.exitCode}, nil
 }
@@ -182,7 +198,7 @@ func TestContainerSmokeGradesTheCardApartFromTheContainer(t *testing.T) {
 				!strings.HasPrefix(run.Name, "gpuworks-card-smoke-2-") {
 				t.Fatalf("workload = %+v", run)
 			}
-			if tc.r.runErr == nil && (len(r.removed) != 1 || r.removed[0] != "id-"+run.Name) {
+			if tc.r.runErr == nil && (len(r.removed) == 0 || r.removed[0] != "id-"+run.Name || !r.gone["id-"+run.Name]) {
 				t.Fatalf("removed %v, want the container gone after the check", r.removed)
 			}
 		})
@@ -201,8 +217,44 @@ func TestContainerSmokeHangIsLeftToTheRunnersDeadline(t *testing.T) {
 	if !errors.Is(err, context.DeadlineExceeded) || gpu.HostRuntimeUnavailable(err) != "" {
 		t.Fatalf("err = %v, want the deadline (the card did not answer)", err)
 	}
-	if len(r.removed) != 1 {
+	if len(r.removed) == 0 {
 		t.Fatalf("removed %v, want the hung container removed", r.removed)
+	}
+}
+
+// A container whose check is stuck in the driver cannot be removed. It is
+// kept as a leftover: no new container is started while it exists, so a card
+// stuck in the driver gathers one container, not one a round; once it is
+// gone, checks start again.
+func TestAStuckCheckContainerBlocksNewOnesUntilItIsGone(t *testing.T) {
+	r := &smokeRuntime{name: "docker", images: map[string]bool{ppuImage: true}, hang: true, unkillable: true}
+	c := newPPUSmoke(r, ppuImage)
+	if reason := c.pick(t.Context()); reason != "" {
+		t.Fatal(reason)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 200*time.Millisecond)
+	defer cancel()
+	if err := c.try(ctx, "2"); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("err = %v", err)
+	}
+	if reason := c.pick(t.Context()); !strings.Contains(reason, "has not exited") {
+		t.Fatalf("pick = %q, want the round refused while the container remains", reason)
+	}
+	err := c.try(t.Context(), "3")
+	if gpu.HostRuntimeUnavailable(err) == "" || len(r.runs) != 1 {
+		t.Fatalf("err = %v, runs = %d: want no second container and a host-level answer", err, len(r.runs))
+	}
+
+	// The driver lets go: the next round removes it and checks again.
+	r.mu.Lock()
+	r.unkillable, r.hang = false, false
+	r.logs = "CUDA_RUNTIME_SMOKE_OK\n"
+	r.mu.Unlock()
+	if reason := c.pick(t.Context()); reason != "" {
+		t.Fatalf("pick = %q after the container could be removed", reason)
+	}
+	if err := c.try(t.Context(), "3"); err != nil || len(r.runs) != 2 {
+		t.Fatalf("err = %v, runs = %d", err, len(r.runs))
 	}
 }
 
