@@ -328,12 +328,12 @@ func TestResidencyQueryPlans(t *testing.T) {
 	s := newTestStore(t)
 	db := s.DB()
 	queries := map[string]*gorm.DB{
-		"window start":   residencyBoundaryQuery(db, residencyBase),
-		"removed":        residencyRemovedQuery(db, 100),
-		"window events":  residencyWindowQuery(db, []string{"a", "b"}, 100),
-		"prior state":    residencyPriorQuery(db, "a", 100, residencyStateCodes, 1),
-		"prior sleep":    residencyPriorQuery(db, "a", 100, []string{instanceEventSleepResult}, residencyPriorSleepResults),
-		"switch events":  residencySwitchEventsQuery(db, 100),
+		"window start":  residencyBoundaryQuery(db, residencyBase),
+		"removed":       residencyRemovedQuery(db, 100),
+		"window events": residencyWindowQuery(db, []string{"a", "b"}, 100),
+		"prior state":   residencyPriorQuery(db, []string{"a", "b"}, 100, residencyStateCodes, 1),
+		"prior sleep":   residencyPriorQuery(db, []string{"a", "b"}, 100, []string{instanceEventSleepResult}, residencyPriorSleepResults),
+		"switch events": residencySwitchEventsQuery(db, 100),
 	}
 	// The switches are one range of the (kind, id) index over the window,
 	// whatever deployments are asked about.
@@ -386,5 +386,45 @@ func TestResidencyPriorLevelSkipsARolledBackOrder(t *testing.T) {
 	segs := DeriveResidency(insts[0], events["napper"], from, now)
 	if len(segs) != 1 || segs[0].State != ResidencyAsleep || segs[0].Level != 1 || !segs[0].From.Equal(from) {
 		t.Fatalf("segments = %+v, want asleep L1 over the whole window", segs)
+	}
+}
+
+// The events before the window are read for many instances at once: each
+// instance, on either side of a batch's edge, still gets its own newest state
+// and its own newest sleep result that applied, never a neighbour's.
+func TestResidencyPriorEventsAcrossBatches(t *testing.T) {
+	s, node, ids := seedResidency(t)
+	now := time.Now().UTC()
+	n := residencyEventChunk + 7
+	for i := 0; i < n; i++ {
+		uuid := fmt.Sprintf("many-%03d", i)
+		if err := s.DB().Create(&Instance{UUID: uuid, DeploymentID: ids["alpha"], NodeID: node.ID, State: proto.InstRunning, GPUIndexes: "[0]", CreatedAt: now.Add(-30 * time.Hour)}).Error; err != nil {
+			t.Fatal(err)
+		}
+		putEvent(t, s, uuid, ids["alpha"], "state", instanceEventStatusUpdated, now.Add(-29*time.Hour), `{"state":"running","phase":""}`)
+		level := 1 + i%2
+		putEvent(t, s, uuid, ids["alpha"], "sleep", instanceEventSleepResult, now.Add(-12*time.Hour), fmt.Sprintf(`{"result":"applied","level":%d}`, level))
+		if i%3 == 0 {
+			putEvent(t, s, uuid, ids["alpha"], "sleep", instanceEventSleepResult, now.Add(-10*time.Hour), `{"result":"failed_rollback","target":0,"actual":1}`)
+		}
+	}
+	putEvent(t, s, "other", ids["beta"], "state", instanceEventStatusUpdated, now.Add(-time.Hour), `{"state":"running","phase":""}`) // something happened in the window
+	from := now.Add(-6 * time.Hour)
+	insts, events, err := s.ResidencyInputs([]uint{node.ID}, from)
+	if err != nil || len(insts) != n {
+		t.Fatalf("inputs = %d instances, %v; want %d", len(insts), err, n)
+	}
+	for _, inst := range insts {
+		var i int
+		if _, err := fmt.Sscanf(inst.UUID, "many-%03d", &i); err != nil {
+			t.Fatalf("unexpected instance %q", inst.UUID)
+		}
+		if got := len(events[inst.UUID]); got != 2 {
+			t.Fatalf("%s has %d events before the window, want its state and its applied sleep: %+v", inst.UUID, got, events[inst.UUID])
+		}
+		segs := DeriveResidency(inst, events[inst.UUID], from, now)
+		if len(segs) != 1 || segs[0].State != ResidencyAsleep || segs[0].Level != 1+i%2 {
+			t.Fatalf("%s segments = %+v, want asleep L%d over the whole window", inst.UUID, segs, 1+i%2)
+		}
 	}
 }
