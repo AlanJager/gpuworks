@@ -115,6 +115,27 @@ func TestSleepFailureTargetWireContract(t *testing.T) {
 	}
 }
 
+// l1_host_buffer_held travels only when true; an older agent's report, which
+// lacks the key, reads as not known to hold one.
+func TestL1HostBufferHeldWireContract(t *testing.T) {
+	raw, err := json.Marshal(InstanceStatus{UUID: "instance", State: InstRunning, L1HostBufferHeld: true})
+	if err != nil || !strings.Contains(string(raw), `"l1_host_buffer_held":true`) {
+		t.Fatalf("held wire=%s err=%v", raw, err)
+	}
+	var got InstanceStatus
+	if err := json.Unmarshal(raw, &got); err != nil || !got.L1HostBufferHeld {
+		t.Fatalf("held round trip=%+v err=%v", got, err)
+	}
+	raw, err = json.Marshal(InstanceStatus{UUID: "instance", State: InstRunning})
+	if err != nil || strings.Contains(string(raw), "l1_host_buffer_held") {
+		t.Fatalf("not held wire=%s err=%v", raw, err)
+	}
+	var old InstanceStatus
+	if err := json.Unmarshal([]byte(`{"uuid":"instance","state":"running","sleep_level":1}`), &old); err != nil || old.L1HostBufferHeld {
+		t.Fatalf("older agent report=%+v err=%v", old, err)
+	}
+}
+
 func TestModelFileTaskSubfolderWireContract(t *testing.T) {
 	want := ModelFileTask{
 		Key: "9-2", ModelID: 9, Source: "modelscope", SourceID: "MiniMax/MiniMax-H3",

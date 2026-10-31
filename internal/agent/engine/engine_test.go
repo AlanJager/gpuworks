@@ -769,16 +769,28 @@ type sleepHTTPServer struct {
 	status      map[string]int
 	body        map[string]string
 	probeBodies []string
+	// drop closes the connection of a request to the path without an answer:
+	// a transport failure, after which the order may still have run.
+	drop map[string]bool
 }
 
 func newSleepHTTPServer(t *testing.T) *sleepHTTPServer {
 	t.Helper()
-	h := &sleepHTTPServer{t: t, status: map[string]int{}, body: map[string]string{}, bodies: map[string]string{}}
+	h := &sleepHTTPServer{t: t, status: map[string]int{}, body: map[string]string{}, bodies: map[string]string{}, drop: map[string]bool{}}
 	h.body["/is_sleeping"] = `{"is_sleeping":false}`
 	h.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h.calls = append(h.calls, r.Method+" "+r.URL.RequestURI())
 		if raw, _ := io.ReadAll(r.Body); len(raw) > 0 {
 			h.bodies[r.URL.Path] = string(raw)
+		}
+		if h.drop[r.URL.Path] {
+			conn, _, err := w.(http.Hijacker).Hijack()
+			if err != nil {
+				t.Errorf("hijack %s: %v", r.URL.Path, err)
+				return
+			}
+			_ = conn.Close()
+			return
 		}
 		code := h.status[r.URL.Path]
 		if code == 0 {
@@ -953,9 +965,11 @@ func TestReconcileSleepProbeErrorReportsUncertain(t *testing.T) {
 	}
 }
 
-func TestReconcileSleepReportsAppliedWhenSleepCompletedDespiteHTTPError(t *testing.T) {
+// The connection of the sleep order broke without an answer, and the engine
+// says it sleeps: the order ran to the end, so it is reported applied.
+func TestReconcileSleepReportsAppliedWhenSleepCompletedDespiteATransportError(t *testing.T) {
 	h := newSleepHTTPServer(t)
-	h.status["/sleep"] = http.StatusInternalServerError
+	h.drop["/sleep"] = true
 	h.body["/is_sleeping"] = `{"is_sleeping":true}`
 	reported := make(chan proto.InstanceStatus, 1)
 	e := New(&headlessTestDriver{}, func(st proto.InstanceStatus) { reported <- st }, slog.Default(), t.TempDir())
@@ -963,6 +977,74 @@ func TestReconcileSleepReportsAppliedWhenSleepCompletedDespiteHTTPError(t *testi
 	st := <-reported
 	if st.State != proto.InstRunning || st.SleepLevel != 1 || st.Phase != "" || st.Message != "" {
 		t.Fatalf("late sleep report = %+v", st)
+	}
+}
+
+// vLLM answers a sleep that failed part way with 500 while /is_sleeping reads
+// true (its scheduler paused before the offload). Measured on vLLM 0.30: the
+// weights were partly moved out, the wake that followed was a no-op and the
+// next request crashed the engine with an illegal memory access. The agent
+// must not report that engine asleep: it fails the generation, closed to the
+// gateway, for the controller to rebuild.
+func TestReconcileSleepRefusedByTheEngineYetSleepingIsUncertain(t *testing.T) {
+	h := newSleepHTTPServer(t)
+	h.status["/sleep"] = http.StatusInternalServerError
+	h.body["/is_sleeping"] = `{"is_sleeping":true}`
+	reported := make(chan proto.InstanceStatus, 1)
+	e := New(&headlessTestDriver{}, func(st proto.InstanceStatus) { reported <- st }, slog.Default(), t.TempDir())
+	e.servingEpoch["half-offloaded"] = 7
+	e.reconcileSleep(context.Background(), proto.InstanceDesiredState{UUID: "half-offloaded", Sleepable: true, DesiredSleep: 1, APIPort: h.port(t)})
+	st := <-reported
+	if st.State != proto.InstFailed || st.Phase != proto.PhaseSleep || !strings.Contains(st.Message, "uncertain") || !strings.Contains(st.Message, "http 500") {
+		t.Fatalf("refused sleep report = %+v, want a failed generation in the sleep phase", st)
+	}
+	if got := e.sleepLevel["half-offloaded"]; got != 0 {
+		t.Fatalf("level = %d, want the level the agent last applied (0)", got)
+	}
+	if _, watched := e.servingEpoch["half-offloaded"]; watched {
+		t.Fatal("the failed generation is still watched for its container's exit")
+	}
+	if st.L1HostBufferHeld {
+		t.Fatalf("a refused sleep claimed the host buffer: %+v", st)
+	}
+	want := []string{"POST /sleep?level=1&mode=wait", "GET /is_sleeping"}
+	if strings.Join(h.calls, ",") != strings.Join(want, ",") {
+		t.Fatalf("calls = %+v, want %+v (no retry of the ambiguous order)", h.calls, want)
+	}
+}
+
+// The agent reports that an engine holds the pinned host buffer of an L1
+// sleep once one went through, and keeps saying so awake; an L2 sleep pins
+// none, and forgetting the instance forgets it.
+func TestReconcileSleepReportsTheL1HostBuffer(t *testing.T) {
+	h := newSleepHTTPServer(t)
+	reported := make(chan proto.InstanceStatus, 8)
+	e := New(&headlessTestDriver{}, func(st proto.InstanceStatus) { reported <- st }, slog.Default(), t.TempDir())
+	spec := proto.InstanceDesiredState{UUID: "buffer", Sleepable: true, APIPort: h.port(t), Ports: []int{h.port(t)}}
+
+	spec.DesiredSleep = 2
+	e.reconcileSleep(context.Background(), spec)
+	if st := <-reported; st.SleepLevel != 2 || st.L1HostBufferHeld {
+		t.Fatalf("L2 report = %+v, want no host buffer", st)
+	}
+	spec.DesiredSleep = 0
+	e.reconcileSleep(context.Background(), spec)
+	if st := <-reported; st.SleepLevel != 0 || st.L1HostBufferHeld {
+		t.Fatalf("wake from L2 report = %+v, want no host buffer", st)
+	}
+	spec.DesiredSleep = 1
+	e.reconcileSleep(context.Background(), spec)
+	if st := <-reported; st.SleepLevel != 1 || !st.L1HostBufferHeld {
+		t.Fatalf("L1 report = %+v, want the host buffer held", st)
+	}
+	spec.DesiredSleep = 0
+	e.reconcileSleep(context.Background(), spec)
+	if st := <-reported; st.SleepLevel != 0 || !st.L1HostBufferHeld {
+		t.Fatalf("wake from L1 report = %+v, want the host buffer still held", st)
+	}
+	e.forgetSleepState(spec.UUID)
+	if e.holdsL1HostBuffer(spec.UUID) {
+		t.Fatal("a forgotten instance still holds a host buffer")
 	}
 }
 
@@ -1051,6 +1133,9 @@ func TestProbeAndReportPrewarmsOnceAndSkipsWhenDesiredSleepNonzero(t *testing.T)
 	if first.State != proto.InstOptimizing || second.State != proto.InstRunning {
 		t.Fatalf("prewarm reports = %+v, %+v", first, second)
 	}
+	if !second.L1HostBufferHeld {
+		t.Fatalf("running report after the prewarm = %+v, want the host buffer held", second)
+	}
 	if len(h.calls) != 4 || h.calls[0] != "GET /health" || h.calls[1] != "POST /sleep?level=1" || h.calls[2] != "POST /wake_up" || h.calls[3] != "GET /openapi.json" {
 		t.Fatalf("first prewarm calls = %+v", h.calls)
 	}
@@ -1068,8 +1153,8 @@ func TestProbeAndReportPrewarmsOnceAndSkipsWhenDesiredSleepNonzero(t *testing.T)
 	e2 := New(driver, func(st proto.InstanceStatus) { reported2 <- st }, slog.Default(), t.TempDir())
 	spec2 := proto.InstanceDesiredState{UUID: "prewarm-sleeping", Sleepable: true, DesiredSleep: 1, APIPort: h2.port(t), StartTimeout: 1}
 	e2.probeAndReport(context.Background(), spec2, "container")
-	if st := <-reported2; st.State != proto.InstRunning {
-		t.Fatalf("desired sleeping report = %+v", st)
+	if st := <-reported2; st.State != proto.InstRunning || st.L1HostBufferHeld {
+		t.Fatalf("desired sleeping report = %+v, want running without a host buffer (no prewarm)", st)
 	}
 	for _, call := range h2.calls {
 		if strings.HasPrefix(call, "POST /sleep") || call == "POST /wake_up" {
@@ -1086,7 +1171,9 @@ func TestAdoptRunningContainerSkipsPrewarm(t *testing.T) {
 	e := New(driver, func(st proto.InstanceStatus) { reported <- st }, slog.Default(), t.TempDir())
 	spec := proto.InstanceDesiredState{UUID: "adopt-prewarmed", Sleepable: true, DesiredSleep: 0, APIPort: h.port(t), StartTimeout: 1}
 	e.startOrAdopt(context.Background(), spec)
-	if st := <-reported; st.State != proto.InstRunning {
+	// An adopting agent does not know whether the engine holds a host buffer
+	// and says none; the server keeps what the earlier agent reported.
+	if st := <-reported; st.State != proto.InstRunning || st.L1HostBufferHeld {
 		t.Fatalf("adopt report=%+v", st)
 	}
 	for _, call := range h.calls {
