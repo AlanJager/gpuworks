@@ -1167,7 +1167,7 @@ curl --fail-with-body -sS \
 |---|---|
 | `quick_params` | 按 `/engines` 参数字典声明的类型提交值；显式 `false` 与省略不同 |
 | `quick_params_unset` | 本次明确不继承的参数 key 数组，阻止模板回填；不写入持久化配置 |
-| `placement_mode` | `auto` 由服务端选择节点，`manual` 使用显式节点；省略按 `manual`。单机：只是请求里的说法，部署不存这个字段，手动放置存为节点条件 `gpuworks.ai/node: [node_uuid]`。多机与 PD：`auto` 时服务端在创建时为请求没写的 rank 或单元挑节点（见[自动放置多机与 PD 部署](#自动放置多机与-pd-部署)），部署保存为自动放置，详情的 `placement_mode` 为 `auto` |
+| `placement_mode` | `auto` 由服务端选择节点，`manual` 使用显式节点；省略按 `manual`。单机：只是请求里的说法，部署不存这个字段，手动放置存为节点条件 `gpuworks.ai/node: [node_uuid]`；自动放置的创建可以不带 `node_uuid`，服务端先按评估同样的规则挑一台再照常创建，没有节点放得下时返回 409 `AUTOMATIC_PLACEMENT_UNAVAILABLE`（`params.candidates` 为候选节点数，`reasons` 为各候选的原因码），带了评估选中的 `node_uuid` 则照旧复核，资源变化时返回 `AUTOMATIC_PLACEMENT_STALE`。多机与 PD：`auto` 时服务端在创建时为请求没写的 rank 或单元挑节点（见[自动放置多机与 PD 部署](#自动放置多机与-pd-部署)），部署保存为自动放置，详情的 `placement_mode` 为 `auto` |
 | `target_vendor` | 评估与创建使用同一加速器厂商；存为节点条件 `gpuworks.ai/vendor`。未给时创建按落点节点的厂商补上 |
 | `node_requirements` | 节点条件：`{"<key>": ["<value>", …]}`，同一键的多个值是「其中之一」，不同键「同时满足」。键可以是节点标签，也可以是系统标签（见上「节点标签」）；保留域里不是这八个系统键的一律拒绝（拼错的键不会悄悄匹配 0 台），`gpuworks.ai/vendor` 只能有一个值，网络键的值是网络 ID 或 `management`。多机与 PD 部署逐 rank 列节点，不接受 `gpuworks.ai/node`。错误 `NODE_REQUIREMENTS_INVALID`；所选节点不满足 `NODE_REQUIREMENTS_UNMET`（`params.detail` 写明哪个键） |
 | `yield_policy` | 出让策略，对象，形状同 `PUT /deployments/{id}/yield-policy` 的请求体（`policy` 加参数）；省略按 `never`。`never` 以外的策略要求 `sleepable`，策略不是 `never` 还要求单机部署，否则 400 `YIELD_POLICY_INVALID` / `SLEEP_NOT_ENABLED` / `YIELD_POLICY_SHAPE`。评估按它计算放置：按出让策略共卡的部署睡着时，对不与它共卡的部署仍按全量占用 |
