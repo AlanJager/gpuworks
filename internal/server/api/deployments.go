@@ -100,7 +100,7 @@ func (a *apiHandlers) cloneDeployment(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, a.deploymentDTO(created, true))
 }
 
-func (a *apiHandlers) createDeployment(w http.ResponseWriter, r *http.Request) {
+func (a *apiHandlers) createDeploymentOnce(w http.ResponseWriter, r *http.Request) {
 	var req dto.DeployRequest
 	if !decodeJSONBody(w, r, &req) {
 		return
