@@ -22,11 +22,11 @@ import (
 
 // schemaVersion is stored in PRAGMA user_version. A file written by a newer
 // schema is refused rather than misread.
-const schemaVersion = 2
+const schemaVersion = 3
 
 // schemaSteps take a file from one version to the next: step i makes
 // version i+1.
-var schemaSteps = [][]string{schemaV1, schemaV2}
+var schemaSteps = [][]string{schemaV1, schemaV2, schemaV3}
 
 // Store is stats.db.
 type Store struct {
@@ -128,10 +128,12 @@ const (
 	KindQuality Kind = "quality"
 	KindGPU     Kind = "gpu"
 	KindGPUTime Kind = "gpu_time"
+	// KindScheduling is the scheduling activity (scheduling.go).
+	KindScheduling Kind = "scheduling"
 )
 
 // Kinds lists them.
-func Kinds() []Kind { return []Kind{KindQuality, KindGPU, KindGPUTime} }
+func Kinds() []Kind { return []Kind{KindQuality, KindGPU, KindGPUTime, KindScheduling} }
 
 // tables are the hour and day tables of a kind.
 func (k Kind) tables() (hourly, daily []string) {
@@ -142,6 +144,9 @@ func (k Kind) tables() (hourly, daily []string) {
 		return []string{"gpu_hourly", "gpu_node_hourly", "gpu_model_hourly"}, []string{"gpu_daily", "gpu_node_daily", "gpu_model_daily"}
 	case KindGPUTime:
 		return []string{"gpu_time_hourly", "gpu_capacity_hourly"}, []string{"gpu_time_daily", "gpu_capacity_daily"}
+	case KindScheduling:
+		return []string{"sched_reason_hourly", "sched_card_hourly", "sched_deployment_hourly"},
+			[]string{"sched_reason_daily", "sched_card_daily", "sched_deployment_daily"}
 	}
 	return nil, nil
 }
