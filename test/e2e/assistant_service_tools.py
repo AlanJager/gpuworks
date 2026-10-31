@@ -331,6 +331,34 @@ def test_assistant_service_tools(page, context, server, artifacts, report, local
     check(fixture.api_key not in page.locator("body").inner_text(),
           "the settings page rendered the upstream key after saving")
 
+    # 7.2: an edit that leaves the key blank means "keep the stored key", not "clear it". The
+    # request must omit the field entirely and the server must still hold the original key.
+    row = card.get_by_role("row").filter(has_text=config_name)
+    row.get_by_role("button", name=settings["common"]["edit"], exact=True).click()
+    edit_modal = page.get_by_role("dialog", name=settings["ai"]["editService"], exact=True)
+    expect(edit_modal).to_be_visible()
+    edit_key = edit_modal.get_by_label(settings["ai"]["upstreamKey"], exact=True)
+    expect(edit_key).to_have_value("")
+    expect(edit_modal.get_by_label(settings["ai"]["name"], exact=True)).to_have_value(config_name)
+    check(not _enter_posts(page, edit_key), "Enter in the blank edit key submitted the form")
+    with page.expect_response(lambda r: r.request.method == "PATCH"
+                              and urlsplit(r.url).path.startswith(CONFIGS)) as edited:
+        button(edit_modal, settings["common"]["save"]).click()
+    check(edited.value.status == 200, f"AI config edit HTTP {edited.value.status}")
+    edit_body = edited.value.request.post_data_json
+    check("api_key" not in edit_body,
+          f"a blank edit key was still submitted: {sorted(edit_body)}")
+    expect(edit_modal).not_to_be_visible(timeout=8000)
+    after_edit = page.request.get(server.base + CONFIGS)
+    check(after_edit.status == 200, f"AI configs GET after edit HTTP {after_edit.status}")
+    kept_rows = after_edit.json()["items"]
+    kept = next(item for item in kept_rows if item["name"] == config_name)
+    check(fixture.api_key not in json.dumps(kept),
+          "the stored key leaked through the config list")
+    check(kept["id"] == created.value.json()["id"],
+          "the edit replaced the AI config instead of updating it")
+    report["edit_keeps_key"] = {"request_has_api_key": False, "dialog_closed": True}
+
     node_name = f"e2e-{report['run_id']}-assistant-node"
     created_node = page.request.post(server.base + NODES,
                                      data={"name": node_name, "server_url": server.base})
