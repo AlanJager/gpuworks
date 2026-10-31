@@ -206,6 +206,10 @@ type Deps struct {
 	// Analytics is usage analytics: the data retention every store is
 	// kept under (analytics.go). Nil answers 404.
 	Analytics Analytics
+	// SchedulingActivity is the scheduling activity's rollups
+	// (scheduling_activity.go): the activity route, the sharing stats and
+	// the node timelines' counts read it. Nil answers those 404.
+	SchedulingActivity SchedulingActivity
 	// Experience is the experience environment beside the server
 	// (experience.go). Nil answers 404: the environment's own console, or a
 	// harness.
@@ -605,6 +609,7 @@ func Router(d Deps, policies ...auth.SessionPolicy) http.Handler {
 			r.Get("/scheduling/overview", a.schedulingOverview)
 			r.Get("/scheduling/history", a.schedulingHistory)
 			r.Get("/scheduling/timeline", a.schedulingTimeline)
+			r.Get("/scheduling/activity", a.schedulingActivity)
 			r.Get("/scheduling/yield-policies", a.yieldPolicyDictionary)
 			r.Get("/monitor/deployments/{id}", a.monitorDeployment)
 			r.Get("/monitor/deployments/{id}/requests", a.monitorRequests)

@@ -54,7 +54,7 @@
   "adr/README.md": "88864d82f75b75abc7aebd0b134955a4e91f4dfda046b4d881dcf1ed4935d2b4",
   "dev/README.md": "3c5a133a63b1942a5911ce5e9f63aa855874a191c89d39c2d9e4a05613331592",
   "dev/benchmark-reporting-standard.md": "31d07977867e74e1aa19640fd959ae7ae597de85614a541ca98ece4b5351d049",
-  "dev/code-map.md": "9caa3a3096740ad163f9bad98f52aeefe4fc10011fc2d1e7153f3ab39dcf02e2",
+  "dev/code-map.md": "c91c76ebae965a6c6b22d32a6aa245afe37bb191c5fe1efcf6225688d24e258b",
   "dev/contributing.md": "5a7815d5b90c977a6b285bb8b256b8eb0a1885976bcd34fd1f5053ee16cf6b98",
   "dev/engine-queue-observation.md": "178a2b29a515f01f6856c133aa0810b3b0be5d95b3a38ea07ccd7d3486474cd0",
   "dev/ledgers/a100-verification-bug-registry.md": "94e3d3f09b94a8b75546862bb292d9ea1c432f043c9b2c882c96f2f712d215b6",
@@ -100,7 +100,7 @@
   "how-to/use-ai-helper.md": "5a57ff49247970e28de95d0fd51958435a95554355f921942fe6dc9bbdea2c28",
   "how-to/use-mcp.md": "96d72b65ef2c22f89a8999f5447ef3ff76a091345c7eda33daa597128dbac854",
   "reference/api-conventions.md": "be9237a197c811a623e5bd4e1aba875de5a46b333c3def6b5ac223b7a125a551",
-  "reference/api.md": "f12967645d929d1021e78f84606413aa7868de197c190d78a23a4ea1fd5f44d7",
+  "reference/api.md": "7234a2ed5d08456c9299c0ef56fbdfe018147a4536b6698a3d6b1f388b844a60",
   "reference/ascend-support-matrix.md": "78bb969b8b0686f0884ef68c070f875351febbf6a42e038e92ef7c99d4422fef",
   "reference/cli.md": "dd8c4e4697db18c181c27ec3e375c6e07e9158aa7adcea3b07096fd0c3530986",
   "reference/configuration.md": "c2352398ce4023126997df8a521287526f605d22bd6c4c89f280ef0a4c3ff780",
@@ -127,8 +127,8 @@
   "tutorials/trace-slow-request.md": "6e582ef2a8658da1057336f4ee79f5a41179dbae69773cd0b753431027acc065",
   "adr/0058-scheduling-center-acts-through-operator-orders.md": "259f1ebc2bf47bb14efdb2a08f12fa9af495c33b764c56430115146bdbc8bda0",
   "how-to/batch-api.md": "949d867689a3cff3cdc77618a25eb355e7b5ca1a9508e3c22ac6da7531e7b17a",
-  "how-to/scheduling-center.md": "4b598b3226f44dc4f8482741545c388bd8408e66a57e444c14f33bef3a4313d6",
-  "adr/0060-card-health-from-hardware-facts.md": "8df92de8e08e009da35393c77eb14527a9dde33c27ba4efd48cd8bcca1afa48b",
+  "how-to/scheduling-center.md": "ce7101b7a3f4712098f375e0ccd9dab2e922978e74bd2231c751cc66568017d6",
   "adr/0059-service-levels-and-the-residency-arbiter.md": "9a5473d42661c8d13fd217aa45dd068e6d5a80062d804516cf2b16a9906fa1ff",
-  "explanation/service-levels.md": "32175df4500632102079ad84a38eb0fef2c6b808290ab259eb00bd58b568c97f"
+  "explanation/service-levels.md": "32175df4500632102079ad84a38eb0fef2c6b808290ab259eb00bd58b568c97f",
+  "adr/0060-card-health-from-hardware-facts.md": "8df92de8e08e009da35393c77eb14527a9dde33c27ba4efd48cd8bcca1afa48b"
 }

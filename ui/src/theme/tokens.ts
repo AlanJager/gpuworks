@@ -39,6 +39,7 @@ export const colors = {
   chartQuaternary: "#9a45e4",
   chartTeal: "#01c8e6",
   chartViolet: "#4f57ff",
+  chartSlate: "#5b7083",
   chartGrid: "#e5e7eb",
   chartTick: "#9ca3af",
 } as const;

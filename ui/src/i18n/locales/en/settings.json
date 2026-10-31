@@ -389,6 +389,9 @@
       "gpu": "GPU utilization: utilization, memory, power, temperature",
       "gpu_time": "GPU hours: cards each deployment held × hours"
     },
+    "alwaysOn": {
+      "scheduling": "Scheduling activity: scheduling events by reason, card switches, sharing deployments' awake time (always counted)"
+    },
     "groups": {
       "metrics": {
         "title": "Raw metric samples",
@@ -407,8 +410,8 @@
         "description": "Tokens every API key used on every deployment, by hour and by day, never sampled; usage analytics and billing read it."
       },
       "stats": {
-        "title": "Service quality / GPU utilization / GPU hours",
-        "description": "The long-term statistics of usage analytics share one retention and can be switched off one by one; a statistic switched off stops counting and what it has ages out."
+        "title": "Service quality / GPU utilization / GPU hours / scheduling activity",
+        "description": "The long-term statistics of usage analytics and scheduling analysis share one retention; the first three can be switched off one by one, and a statistic switched off stops counting and what it has ages out."
       },
       "zone": {
         "title": "Statistics time zone",

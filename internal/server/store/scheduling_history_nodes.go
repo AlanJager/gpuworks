@@ -140,34 +140,3 @@ func paramStrings(v any) []string {
 func EventNodeUUIDs(params map[string]any) []string {
 	return paramStrings(params[EventParamNodeUUIDs])
 }
-
-// withSchedulingNodes adds to a scheduling history event the nodes it
-// concerns (EventParamNodeUUIDs) when its writer named none: the nodes of the
-// instances it names, read while they still exist. An event of another code,
-// one that names its nodes already ("node" included) or one that names no
-// instance is left as it is. The caller's map is not changed.
-func (s *Store) withSchedulingNodes(code, rowInstance string, params map[string]any) map[string]any {
-	if _, ok := SchedulingEventKind(code); !ok {
-		return params
-	}
-	if _, named := params[EventParamNodeUUIDs]; named {
-		return params
-	}
-	if _, named := params["node"]; named {
-		return params
-	}
-	instances := EventInstances(rowInstance, params)
-	if len(instances) == 0 {
-		return params
-	}
-	nodes, err := s.NodeUUIDsOfInstances(instances)
-	if err != nil || len(nodes) == 0 {
-		return params
-	}
-	out := make(map[string]any, len(params)+1)
-	for k, v := range params {
-		out[k] = v
-	}
-	out[EventParamNodeUUIDs] = nodes
-	return out
-}

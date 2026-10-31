@@ -99,6 +99,7 @@
     "category": {
       "all": "All",
       "auto": "Automatic",
+      "placement": "Placement & moves",
       "failure": "Failure",
       "manual": "Manual"
     },
@@ -163,6 +164,7 @@
     "loading": "Loading the residency timeline…",
     "loadFailed": "Failed to load the residency timeline",
     "refreshFailed": "Failed to refresh the residency timeline: {{detail}}",
+    "scopeNode": "These figures count only this node's replicas",
     "sharingTitle": "Deployments sharing cards",
     "sharingEmpty": "No deployment that shares cards (any yield policy but never) held cards in this window.",
     "columns": {
@@ -183,7 +185,8 @@
       "seconds": "{{value}} s",
       "minutes": "{{value}} min"
     },
-    "cardsOnNode": "{{node}} · GPU {{gpus}}"
+    "cardsOnNode": "{{node}} · GPU {{gpus}}",
+    "minutes": "{{minutes}} min"
   },
   "states": {
     "awake": "Serving",
@@ -268,5 +271,34 @@
   "queues": {
     "loading": "Loading what waits and what is scheduled…",
     "loadFailed": "Could not load what waits and what is scheduled"
+  },
+  "activity": {
+    "title": "Scheduling activity",
+    "loading": "Loading the scheduling activity…",
+    "loadFailed": "Could not load the scheduling activity",
+    "refreshFailed": "Could not refresh the scheduling activity: {{detail}}",
+    "empty": "No scheduling activity in this range.",
+    "chartAria": "Scheduling activity stacked by reason, {{bucket}} per bar",
+    "totals": "{{bucket}} per bar",
+    "beyondRetention": "Beyond the statistics retention: the start of the range has no figures.",
+    "topCards": "Cards that switched most",
+    "topCardsEmpty": "No card changed hands in this range.",
+    "gpu": "GPU {{index}}",
+    "switches": "{{count}} times",
+    "reason": {
+      "idle_yield": "Idle yield",
+      "rank_preemption": "Rank preemption",
+      "timeslice_turn": "Time-slice turn",
+      "operator_yield": "Operator yield",
+      "scheduled": "Schedule",
+      "failure": "Failure (rebuilt / replaced / timed out)",
+      "queued": "Unschedulable / queued"
+    },
+    "bucket": {
+      "seconds": "{{value}} s",
+      "minutes": "{{value}} min",
+      "hours": "{{value}} h",
+      "days": "{{value}} d"
+    }
   }
 }

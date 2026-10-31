@@ -161,6 +161,11 @@ go list -e -f '{{.ImportPath}}{{"\t"}}{{join .Imports " "}}' ./... \
 子包读取节点/GPU 并管理资源占用；实际持久化职责未扩大，但包级直接导入数从 19 增加到 20，
 相应调整上限。公共 provider/controller 的接口和依赖不变。
 
+2026-10-31：调度活动（`docs/reference/api.md` 的「调度活动」）。新包 `internal/server/schedactivity` 按 store 交出的事件
+（`store.ObservedEvent`，事件写入后由 `store.SetEventObserver` 回调）在内存里累加最近 24 小时，并从 store 回放与读取部署名，
+`store_concrete_importers` 21→22；`api_deps_fields` 56→57（`Deps.SchedulingActivity`，调度活动路由、共卡部署统计与节点时间线
+共读的这份内存汇总，没有对应的 store 行）。
+
 ### api_fanout（初值 36）
 
 意图：`api` 包扇出全仓最高（计划 B1）。计数为 `api` 直接 import 的**本仓库**包数。

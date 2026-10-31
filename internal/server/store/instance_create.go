@@ -8,11 +8,15 @@ import "gorm.io/gorm"
 // model files insts[i] mounts. Each instance's created event is published only
 // after the commit.
 func (s *Store) CreateInstances(insts []*Instance, reads [][]InstanceModelFile) error {
+	var created []InstanceEvent
 	if err := s.db.Transaction(func(tx *gorm.DB) error {
+		created = created[:0]
 		for i, inst := range insts {
-			if err := s.createInstance(tx, inst); err != nil {
+			ev, err := s.createInstance(tx, inst)
+			if err != nil {
 				return err
 			}
+			created = append(created, ev)
 			if i >= len(reads) {
 				continue
 			}
@@ -26,6 +30,9 @@ func (s *Store) CreateInstances(insts []*Instance, reads [][]InstanceModelFile) 
 		return nil
 	}); err != nil {
 		return err
+	}
+	for _, ev := range created {
+		s.observe(ev, nil)
 	}
 	for _, inst := range insts {
 		s.Bus.PublishChange("instance", inst.UUID, "created")

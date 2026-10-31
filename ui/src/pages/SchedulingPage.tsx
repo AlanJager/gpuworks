@@ -9,6 +9,7 @@ import PageHeader from "../components/PageHeader";
 import { PendingTable, UpcomingTable, WaitingWakesTable } from "./scheduling/BoardTables";
 import Heatmap from "./scheduling/HeatmapGrid";
 import HeatmapLegend from "./scheduling/HeatmapLegend";
+import ActivityCard from "./scheduling/ActivityCard";
 import HistoryCard from "./scheduling/HistoryCard";
 import NodeDrawer from "./scheduling/NodeDrawer";
 import { useNodeParam } from "./scheduling/NodeLink";
@@ -24,7 +25,8 @@ const POLL_MS = 10_000;
 // schedules do next, the stats of the deployments that share cards and, as the
 // scheduling history, what the platform and the operators did to the
 // deployments. A node opens in a drawer for its cards in detail, from the
-// heatmap or any node named on the page.
+// heatmap or any node named on the page. Below the heatmap, the scheduling
+// activity over a range and the cards that changed hands most.
 export default function SchedulingPage() {
   const { t } = useTranslation("scheduling");
   const { t: tCommon } = useTranslation("common");
@@ -127,6 +129,7 @@ export default function SchedulingPage() {
           </>
         )}
       </Card>
+      <ActivityCard />
       <NodeDrawer uuid={openUUID} name={openName} onClose={closeNode} />
       <QueueCards board={board} error={queues.error} onRetry={() => void queues.refetch()} cancelling={cancelling} onCancel={(row) => void cancelWake(row)} />
       <SharingStats />

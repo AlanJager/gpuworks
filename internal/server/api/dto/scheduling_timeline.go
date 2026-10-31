@@ -6,17 +6,39 @@ import "time"
 // nodes: for each GPU, which deployment's instance held it and in what state
 // over a window ending now, and the stats of the deployments that share cards.
 type SchedulingTimeline struct {
-	Window      TimelineWindow       `json:"window"`
-	Nodes       []TimelineNode       `json:"nodes"`
-	Deployments []TimelineDeployment `json:"deployments"`
+	// Scope says what the deployments' figures count: TimelineScopeNode,
+	// only their instances on the named nodes; TimelineScopeFleet, all of
+	// them. The UI says so from this and does not work it out.
+	Scope  string         `json:"scope"`
+	Window TimelineWindow `json:"window"`
+	// Windows are the windows the request may ask for, the default first:
+	// the UI offers these and no list of its own.
+	Windows     []TimelineWindowOption `json:"windows"`
+	Nodes       []TimelineNode         `json:"nodes"`
+	Deployments []TimelineDeployment   `json:"deployments"`
 }
 
-// TimelineWindow is the stretch of time the timeline covers: Hours long,
-// ending at To.
+// The scopes of a timeline's deployment figures.
+const (
+	TimelineScopeNode  = "node"
+	TimelineScopeFleet = "fleet"
+)
+
+// TimelineWindow is the stretch of time the timeline covers, ending at To:
+// Key names it (one of Windows), Seconds is its length and Hours its whole
+// hours (0 for a window under an hour).
 type TimelineWindow struct {
-	From  time.Time `json:"from"`
-	To    time.Time `json:"to"`
-	Hours int       `json:"hours"`
+	From    time.Time `json:"from"`
+	To      time.Time `json:"to"`
+	Hours   int       `json:"hours"`
+	Key     string    `json:"key"`
+	Seconds int64     `json:"seconds"`
+}
+
+// TimelineWindowOption is one window a timeline may be asked for.
+type TimelineWindowOption struct {
+	Key     string `json:"key"`
+	Seconds int64  `json:"seconds"`
 }
 
 // TimelineNode is one node and its GPUs' timelines.
@@ -49,22 +71,25 @@ type TimelineSegment struct {
 
 // TimelineDeployment is what a deployment that shares GPUs (any yield policy
 // but never, or a deleted one that gave its cards up or was given another's
-// in the window) did on the listed nodes over the window. DeploymentDeleted
-// marks a deleted one: Deployment is the name it left behind and YieldPolicy
-// is empty (not kept). PresentSeconds is the part of the window it existed
-// in: from its creation (or its first instance, when earlier or the creation
-// is not kept) or the window's start, to its deletion or the window's end.
-// AwakeSeconds is the time at least one of its instances there was awake and
-// AwakeShare that over PresentSeconds (0 to 1; 0 when PresentSeconds is).
-// The switch counts are the deployment's own wherever it ran, the same in
-// the fleet's stats and a node page's: Yielded counts the times it was put
-// to sleep for another deployment, YieldedTo those another (existing or
-// since deleted) was put to sleep for it, Wakes those the platform woke it,
-// and Switches is Yielded plus Wakes.
-// HeldRequests counts the requests the gateway held while it woke; the waits
-// are approximated from the gateway's per-interval quantiles weighted by the
-// requests of each interval and are absent when no request was held or the
-// gateway's metrics are not kept.
+// in the window) did over the window, counted as the timeline's Scope says.
+// DeploymentDeleted marks a deleted one: Deployment is the name it left
+// behind and YieldPolicy is empty (not kept).
+// Over the fleet, PresentSeconds is the part of the window it existed in:
+// from its creation (or its first instance, when earlier or the creation is
+// not kept) or the window's start, to its deletion or the window's end; on
+// nodes, the part of the window at least one of its instances there held
+// cards. AwakeSeconds is the time at least one of its instances (there) was
+// awake and AwakeShare that over PresentSeconds (0 to 1; 0 when
+// PresentSeconds is). Yielded counts the times it was put to sleep for
+// another deployment, YieldedTo those another (existing or since deleted)
+// was put to sleep for it, Wakes those the platform woke it - on nodes, only
+// the events whose cards are there - and Switches is Yielded plus Wakes.
+// HeldRequests counts the requests the gateway held while it woke, the
+// deployment's in either scope (the gateway holds a request for the
+// deployment, not an instance); the waits are approximated from the
+// gateway's per-interval quantiles weighted by the requests of each interval
+// and are absent when no request was held or the gateway's metrics are not
+// kept.
 type TimelineDeployment struct {
 	DeploymentID      uint   `json:"deployment_id"`
 	Deployment        string `json:"deployment"`

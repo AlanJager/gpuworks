@@ -248,7 +248,10 @@ func TestResidencyFollowerTakesItsLeadersSleep(t *testing.T) {
 	}
 }
 
-func TestResidencySwitchCounts(t *testing.T) {
+// The replay of the scheduling activity hands over every yield and wake of
+// the window, deleted deployments' included; counted the way the activity
+// counts them they give each deployment's switches.
+func TestSchedulingActivityReplayCountsSwitches(t *testing.T) {
 	s, _, ids := seedResidency(t)
 	now := time.Now().UTC()
 	a, b := ids["alpha"], ids["beta"]
@@ -280,12 +283,31 @@ func TestResidencySwitchCounts(t *testing.T) {
 	}
 	// Another kind of event with a switch's code is not one.
 	putEvent(t, s, "", b, "state", "AUTO_WAKE", now.Add(-20*time.Minute), `{}`)
-	first, ok, err := s.ResidencyWindowStart(now.Add(-6 * time.Hour))
-	if err != nil || !ok {
-		t.Fatalf("window start: %v %v", ok, err)
-	}
-	got, err := s.ResidencySwitchCounts(first)
+	through, err := s.LastEventID()
 	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[uint]ResidencySwitches{}
+	count := func(evs []ObservedEvent) {
+		for _, ev := range evs {
+			c := got[ev.DeploymentID]
+			switch {
+			case ev.Wake:
+				c.Wakes++
+			case ev.Yield:
+				c.Yielded++
+				if ev.ForDeployment != 0 && ev.ForDeployment != ev.DeploymentID {
+					to := got[ev.ForDeployment]
+					to.YieldedTo++
+					got[ev.ForDeployment] = to
+				}
+			default:
+				continue
+			}
+			got[ev.DeploymentID] = c
+		}
+	}
+	if err := s.ReplaySchedulingActivity(ActivityReplay{Since: now.Add(-6 * time.Hour), ThroughID: through, Scheduling: count}, now); err != nil {
 		t.Fatal(err)
 	}
 	if len(got) != 3 || got[a] != (ResidencySwitches{YieldedTo: 4, Wakes: 2}) || got[b] != (ResidencySwitches{Yielded: 3}) || got[g] != (ResidencySwitches{Yielded: 2}) {
@@ -328,22 +350,22 @@ func TestResidencyQueryPlans(t *testing.T) {
 	s := newTestStore(t)
 	db := s.DB()
 	queries := map[string]*gorm.DB{
-		"window start":  residencyBoundaryQuery(db, residencyBase),
-		"removed":       residencyRemovedQuery(db, 100),
-		"window events": residencyWindowQuery(db, []string{"a", "b"}, 100),
-		"prior state":   residencyPriorQuery(db, []string{"a", "b"}, 100, residencyStateCodes, 1),
-		"prior sleep":   residencyPriorQuery(db, []string{"a", "b"}, 100, []string{instanceEventSleepResult}, residencyPriorSleepResults),
-		"switch events": residencySwitchEventsQuery(db, 100),
+		"window start":    residencyBoundaryQuery(db, residencyBase),
+		"removed":         residencyRemovedQuery(db, 100),
+		"window events":   residencyWindowQuery(db, []string{"a", "b"}, 100),
+		"prior state":     residencyPriorQuery(db, []string{"a", "b"}, 100, residencyStateCodes, 1),
+		"prior sleep":     residencyPriorQuery(db, []string{"a", "b"}, 100, []string{instanceEventSleepResult}, residencyPriorSleepResults),
+		"activity replay": activityReplayQuery(db, EventKindAutomation, []string{codeAutoSleep, codeAutoWake}, 100, 200),
 	}
-	// The switches are one range of the (kind, id) index over the window,
-	// whatever deployments are asked about.
-	stmt := residencySwitchEventsQuery(db, 100).Session(&gorm.Session{DryRun: true}).Find(&[]InstanceEvent{}).Statement
+	// The activity's replay is one range of the (kind, id) index over the
+	// window, whatever deployments there are.
+	stmt := activityReplayQuery(db, EventKindAutomation, []string{codeAutoSleep, codeAutoWake}, 100, 200).Session(&gorm.Session{DryRun: true}).Find(&[]InstanceEvent{}).Statement
 	var plan []struct{ Detail string }
 	if err := db.Raw("EXPLAIN QUERY PLAN "+stmt.SQL.String(), stmt.Vars...).Scan(&plan).Error; err != nil {
 		t.Fatal(err)
 	}
-	if len(plan) != 1 || !strings.Contains(plan[0].Detail, "idx_instance_events_kind_id (kind=? AND id>?)") {
-		t.Errorf("switch events plan = %+v, want one range of idx_instance_events_kind_id", plan)
+	if len(plan) != 1 || !strings.Contains(plan[0].Detail, "idx_instance_events_kind_id (kind=? AND id>? AND id<?)") {
+		t.Errorf("activity replay plan = %+v, want one range of idx_instance_events_kind_id", plan)
 	}
 	for name, q := range queries {
 		stmt := q.Session(&gorm.Session{DryRun: true}).Find(&[]InstanceEvent{}).Statement

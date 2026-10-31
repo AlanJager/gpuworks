@@ -18,7 +18,7 @@ const GROUPS: { key: string; fields: NumericField[]; stores: DataRetentionStore[
   { key: "logs", fields: ["logs_hours"], stores: ["logs"] },
   { key: "requests", fields: ["request_log_days", "request_log_max_mb"], stores: ["requests"] },
   { key: "usage", fields: ["usage_hourly_days", "usage_daily_days"], stores: ["usage"] },
-  { key: "stats", fields: ["stats_hourly_days", "stats_daily_days"], stores: ["quality", "gpu", "gpu_time"] },
+  { key: "stats", fields: ["stats_hourly_days", "stats_daily_days"], stores: ["quality", "gpu", "gpu_time", "scheduling"] },
 ];
 
 const SWITCHES: { field: "quality" | "gpu" | "gpu_time"; store: DataRetentionStore["kind"] }[] = [
@@ -194,6 +194,11 @@ export default function DataRetentionCard() {
                         {holding(store(kind))}
                       </Space>
                     ))}
+                    {/* The scheduling activity is always counted: no switch. */}
+                    <Space size={12} wrap>
+                      <Text>{t("dataRetention.alwaysOn.scheduling")}</Text>
+                      {holding(store("scheduling"))}
+                    </Space>
                   </Space>
                 ) : (
                   g.stores.map((kind) => <div key={kind}>{holding(store(kind))}</div>)

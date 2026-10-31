@@ -8,16 +8,25 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
 )
 
-// sharingTTL is how long the fleet's sharing stats are kept: they are read
-// from the event log over a window of hours for every shared deployment, so a
-// page polling them and a few viewers share one read.
+// sharingWindows are the windows of the fleet's sharing stats, in the order
+// the UI offers them; sharingDefault is the one when none is asked for.
+var (
+	sharingWindows = []timelineWindow{
+		{"15m", 15 * time.Minute}, {"1h", time.Hour}, {"6h", 6 * time.Hour}, {"24h", 24 * time.Hour},
+	}
+	sharingDefault = sharingWindows[2]
+)
+
+// sharingTTL is how long the fleet's sharing stats are kept: a page polling
+// them and a few viewers share one read of the deployments and the
+// gateway's held requests.
 const sharingTTL = 30 * time.Second
 
 // sharingCache keeps the last sharing stats of each window.
 type sharingCache struct {
-	mu      sync.Mutex
-	byHours map[int]sharingEntry
-	reads   atomic.Int64
+	mu    sync.Mutex
+	byKey map[string]sharingEntry
+	reads atomic.Int64
 }
 
 type sharingEntry struct {
@@ -25,51 +34,61 @@ type sharingEntry struct {
 	at  time.Time
 }
 
-func (a *apiHandlers) cachedSharingTimeline(now time.Time, hours int) (dto.SchedulingTimeline, error) {
+func (a *apiHandlers) cachedSharingTimeline(now time.Time, win timelineWindow) (dto.SchedulingTimeline, error) {
 	c := &a.overview.sharing
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if entry, ok := c.byHours[hours]; ok && time.Since(entry.at) < sharingTTL {
+	if entry, ok := c.byKey[win.key]; ok && time.Since(entry.at) < sharingTTL {
 		return entry.out, nil
 	}
-	out, err := a.sharingTimeline(now, hours)
+	out, err := a.sharingTimeline(now, win)
 	if err != nil {
 		return out, err
 	}
-	if c.byHours == nil {
-		c.byHours = map[int]sharingEntry{}
+	if c.byKey == nil {
+		c.byKey = map[string]sharingEntry{}
 	}
-	c.byHours[hours] = sharingEntry{out: out, at: time.Now().UTC()}
+	c.byKey[win.key] = sharingEntry{out: out, at: time.Now().UTC()}
 	c.reads.Add(1)
 	return out, nil
 }
 
 // sharingTimeline is the stats of the deployments that share GPUs across the
 // fleet, with no node's lanes: what the scheduling center shows beside the
-// overview, read for the shared deployments' instances only. The deployments
-// deleted since that took part in a yield over the window are read too: they
-// shared cards then.
-func (a *apiHandlers) sharingTimeline(now time.Time, hours int) (dto.SchedulingTimeline, error) {
-	from := now.Add(-time.Duration(hours) * time.Hour)
+// overview. The candidates are the deployments that share cards now
+// (store.SharedDeploymentIDs) and those that took part in a yield over the
+// window, deleted ones included; their figures come from the scheduling
+// activity, so nothing reads the event log.
+func (a *apiHandlers) sharingTimeline(now time.Time, win timelineWindow) (dto.SchedulingTimeline, error) {
 	out := dto.SchedulingTimeline{
-		Window: dto.TimelineWindow{From: from, To: now, Hours: hours},
-		Nodes:  []dto.TimelineNode{}, Deployments: []dto.TimelineDeployment{},
+		Scope: dto.TimelineScopeFleet, Window: win.wire(now), Windows: timelineOptions(sharingWindows),
+		Nodes: []dto.TimelineNode{}, Deployments: []dto.TimelineDeployment{},
 	}
-	counts, err := a.switchCounts(now, hours)
+	from := out.Window.From
+	acts := a.d.SchedulingActivity.Deployments(from, now, nil)
+	shared, err := a.d.Store.SharedDeploymentIDs()
 	if err != nil {
 		return out, err
 	}
-	ids, err := a.d.Store.SharedDeploymentIDs()
-	if err != nil {
-		return out, err
+	seen := map[uint]bool{}
+	ids := make([]uint, 0, len(shared))
+	for _, id := range shared {
+		seen[id] = true
+		ids = append(ids, id)
 	}
-	gone, err := a.deletedSharers(ids, counts)
-	if err != nil {
-		return out, err
+	for id, act := range acts {
+		if !seen[id] && act.TookPartInYields() {
+			ids = append(ids, id)
+		}
 	}
-	insts, events, err := a.d.Store.ResidencyInputsOf(append(ids, gone...), from)
-	if err != nil {
-		return out, err
+	out.Deployments, err = a.sharingRows(ids, fleetFigures(acts, from, now), from, now)
+	return out, err
+}
+
+func timelineOptions(windows []timelineWindow) []dto.TimelineWindowOption {
+	out := make([]dto.TimelineWindowOption, len(windows))
+	for i, w := range windows {
+		out[i] = w.option()
 	}
-	return a.fillTimeline(out, nil, insts, events, counts, from, now)
+	return out
 }

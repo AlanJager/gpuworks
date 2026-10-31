@@ -218,6 +218,7 @@ GET /api/v1/pull/registry-credentials
 GET /api/v1/pull/source-rules
 GET /api/v1/pull/sync-groups
 GET /api/v1/routing-policies
+GET /api/v1/scheduling/activity
 GET /api/v1/scheduling/board
 GET /api/v1/scheduling/history
 GET /api/v1/scheduling/overview

@@ -42,7 +42,7 @@ func newOverviewRig(t *testing.T) *overviewRig {
 	base := newScheduleRig(t)
 	rig := &overviewRig{scheduleRig: base, offline: map[string]bool{"gpu-b": true}, held: map[uint]int{}}
 	deps := Deps{
-		Store: base.st, Bus: base.st.Bus, AuthSigner: nil,
+		Store: base.st, Bus: base.st.Bus, AuthSigner: nil, SchedulingActivity: replayActivity{base.st},
 		Online:   func(uuid string) bool { return !rig.offline[uuid] },
 		WakeHeld: func() map[uint]int { return rig.held },
 	}
@@ -439,41 +439,24 @@ func TestSharingStatsAreKeptPerWindow(t *testing.T) {
 	rig := newOverviewRig(t)
 	a := rig.handlers
 	now := time.Now().UTC()
+	six, _ := windowOf(sharingWindows, "6h")
+	quarter, _ := windowOf(sharingWindows, "15m")
 	for i := 0; i < 5; i++ {
-		if _, err := a.cachedSharingTimeline(now, 6); err != nil {
+		if _, err := a.cachedSharingTimeline(now, six); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if _, err := a.cachedSharingTimeline(now, 24); err != nil {
+	if _, err := a.cachedSharingTimeline(now, quarter); err != nil {
 		t.Fatal(err)
 	}
 	if got := a.overview.sharing.reads.Load(); got != 2 {
-		t.Fatalf("6 requests over two windows read the log %d times, want 2", got)
+		t.Fatalf("6 requests over two windows read %d times, want 2", got)
 	}
-	entry := a.overview.sharing.byHours[6]
+	entry := a.overview.sharing.byKey["6h"]
 	entry.at = entry.at.Add(-sharingTTL)
-	a.overview.sharing.byHours[6] = entry
-	if _, err := a.cachedSharingTimeline(now, 6); err != nil || a.overview.sharing.reads.Load() != 3 {
+	a.overview.sharing.byKey["6h"] = entry
+	if _, err := a.cachedSharingTimeline(now, six); err != nil || a.overview.sharing.reads.Load() != 3 {
 		t.Fatalf("an old entry was not read again: %v", err)
-	}
-	// The switch counts, read over every automation event of the window, are
-	// one read per window for the fleet's stats and the node pages alike.
-	if got := a.overview.switches.reads.Load(); got != 2 {
-		t.Fatalf("the switch counts of two windows were read %d times, want 2", got)
-	}
-	for i := 0; i < 3; i++ {
-		if _, err := a.residencyTimeline([]string{"any-node"}, now, 6); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if got := a.overview.switches.reads.Load(); got != 2 {
-		t.Fatalf("node pages read the switch counts again (%d reads)", got)
-	}
-	switches := a.overview.switches.byHours[24]
-	switches.at = switches.at.Add(-switchesTTL)
-	a.overview.switches.byHours[24] = switches
-	if _, err := a.residencyTimeline([]string{"any-node"}, now, 24); err != nil || a.overview.switches.reads.Load() != 3 {
-		t.Fatalf("old switch counts were not read again: %v", err)
 	}
 }
 

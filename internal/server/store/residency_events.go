@@ -26,15 +26,18 @@ const (
 )
 
 // recordInstanceRemoved appends the INSTANCE_REMOVED event for an instance
-// about to be deleted, in the deleting transaction. An instance that never
-// held a card has nothing to record.
-func recordInstanceRemoved(tx *gorm.DB, inst *Instance) error {
+// about to be deleted, in the deleting transaction, and returns it. An
+// instance that never held a card has nothing to record.
+func recordInstanceRemoved(tx *gorm.DB, inst *Instance) ([]InstanceEvent, error) {
 	gpus := instanceGPUIndexes(inst)
 	if inst.NodeID == 0 || len(gpus) == 0 {
-		return nil
+		return nil, nil
 	}
-	return addEventTo(tx, &InstanceEvent{InstanceID: inst.ID, InstanceUUID: inst.UUID, DeploymentID: inst.DeploymentID},
-		EventKindResidency, EventInstanceRemoved, map[string]any{"node_id": inst.NodeID, "gpus": gpus})
+	ev := InstanceEvent{InstanceID: inst.ID, InstanceUUID: inst.UUID, DeploymentID: inst.DeploymentID}
+	if err := addEventTo(tx, &ev, EventKindResidency, EventInstanceRemoved, map[string]any{"node_id": inst.NodeID, "gpus": gpus}); err != nil {
+		return nil, err
+	}
+	return []InstanceEvent{ev}, nil
 }
 
 // instanceGPUIndexes decodes the GPUIndexes column; an unreadable value holds

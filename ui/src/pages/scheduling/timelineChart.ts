@@ -1,4 +1,4 @@
-import type { TimelineDeployment, TimelineHours, TimelineSegment, TimelineState } from "../../schedulingApi";
+import type { TimelineDeployment, TimelineSegment, TimelineState } from "../../schedulingApi";
 import type { YieldPolicyName } from "../../yieldPolicyApi";
 import { colors } from "../../theme/tokens";
 
@@ -41,7 +41,7 @@ export interface Tick {
  * Ticks at the local whole hours inside the window, about six of them: every
  * hour for 6 h, every 4 h for 24 h.
  */
-export function ticksOf(span: Span, hours: TimelineHours): Tick[] {
+export function ticksOf(span: Span, hours: number): Tick[] {
   const step = Math.max(1, Math.round(hours / 6));
   const first = new Date(span.fromMs);
   first.setMinutes(0, 0, 0);

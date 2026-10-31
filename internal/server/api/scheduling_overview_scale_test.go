@@ -140,7 +140,7 @@ func seedScaleFleet(t *testing.T) *scaleFleet {
 	if err != nil {
 		t.Fatal(err)
 	}
-	deps := Deps{Store: rig.st, Bus: rig.st.Bus, AuthSigner: signer, AI: &fakeAI{available: true}, Online: func(uuid string) bool { return !offline[uuid] },
+	deps := Deps{Store: rig.st, Bus: rig.st.Bus, AuthSigner: signer, SchedulingActivity: replayActivity{rig.st}.service(), AI: &fakeAI{available: true}, Online: func(uuid string) bool { return !offline[uuid] },
 		WakeHeld: func() map[uint]int { return map[uint]int{deployments[4].ID: 2, deployments[8].ID: 5} }}
 	admin, _ := rig.st.VerifyUser("admin", "password")
 	session, err := managementSessionTestToken(t, rig.st, signer, auth.Claims{UserID: admin.ID, Username: admin.Username, Role: admin.Role})
@@ -337,8 +337,9 @@ func overBudget(took, budget time.Duration) bool {
 	return !raceEnabled && took > budget
 }
 
-// sharingAtFleetScale checks the fleet's sharing stats, which read the events
-// of every shared deployment over the window: a rebuild, not a drawer's read.
+// sharingAtFleetScale checks the fleet's sharing stats, which read the
+// scheduling activity's rollups of every shared deployment over the window: a
+// rebuild, not a drawer's read.
 // The work is asserted - a fixed number of statements whatever the fleet's
 // size - and the time of a cold build is the best of three against the
 // rebuild budget, so a host busy with other tests does not fail a budget the
@@ -346,7 +347,7 @@ func overBudget(took, budget time.Duration) bool {
 // the request budget.
 func sharingAtFleetScale(t *testing.T, fleet *scaleFleet, statements *atomic.Int64, rebuildBudget, requestBudget time.Duration) {
 	t.Helper()
-	const path = "/api/v1/scheduling/timeline?sharing=1&hours=24"
+	const path = "/api/v1/scheduling/timeline?sharing=1&window=24h"
 
 	// Cold: the stats built on the test's own handlers, nothing cached, as
 	// the best of three; every build runs a fixed set of statements.
@@ -354,7 +355,7 @@ func sharingAtFleetScale(t *testing.T, fleet *scaleFleet, statements *atomic.Int
 	for i := 0; i < 3; i++ {
 		statements.Store(0)
 		started := time.Now()
-		if _, err := fleet.a.sharingTimeline(time.Now().UTC(), 24); err != nil {
+		if _, err := fleet.a.sharingTimeline(time.Now().UTC(), sharingWindows[len(sharingWindows)-1]); err != nil {
 			t.Fatal(err)
 		}
 		cold, most = min(cold, time.Since(started)), max(most, statements.Load())

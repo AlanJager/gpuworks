@@ -39,3 +39,14 @@
 .timeline-tooltip { position: absolute; bottom: calc(100% + 6px); z-index: 2; transform: translateX(-50%); padding: 4px 8px; border-radius: 4px; background: #181a1d; color: #ffffff; font-size: 12px; white-space: nowrap; pointer-events: none; }
 .timeline-none { display: block; margin-top: 4px; font-size: 12px; }
 .timeline-sharing-title { margin: 16px 0 8px; }
+.activity-body { display: flex; flex-wrap: wrap; gap: 16px; }
+.activity-chart { flex: 1 1 420px; min-width: 0; }
+.activity-empty { display: flex; align-items: center; justify-content: center; }
+.activity-totals { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 4px; font-size: 12px; }
+.activity-total { font-variant-numeric: tabular-nums; }
+.activity-top { flex: 0 1 280px; min-width: 200px; overflow: hidden; }
+.activity-top-title { display: block; height: 32px; line-height: 32px; }
+.activity-top-list { margin: 0; padding: 0; list-style: none; }
+.activity-top-list > li { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; border-bottom: 1px solid #f0f2f5; }
+.activity-top-card { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.activity-top-count { flex: none; color: #707275; font-variant-numeric: tabular-nums; }

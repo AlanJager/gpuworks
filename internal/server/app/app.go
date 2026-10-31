@@ -375,6 +375,7 @@ func New(cfg Config, log *slog.Logger) (*App, error) {
 		Monitor:              monitorService{monSvc},
 		Telemetry:            telemetry,
 		Analytics:            newAnalyticsAPI(ops, st, obs, cfg.DataDir),
+		SchedulingActivity:   ops.sched,
 		Experience:           experienceLauncher(cfg, log),
 		UsageReport:          a.usage,
 		Notices:              a.notices,
@@ -500,6 +501,7 @@ func (a *App) Run(ctx context.Context) error {
 	if a.obs != nil {
 		goBG(func() { a.ops.run(ctx) })
 		goBG(func() { a.ops.backfill(ctx) })
+		goBG(func() { a.ops.replayScheduling(ctx) })
 		goBG(func() { a.obs.logIngestLoop(ctx) })
 		go func() {
 			defer close(metricsDone)

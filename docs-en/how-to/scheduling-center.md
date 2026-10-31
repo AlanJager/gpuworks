@@ -46,11 +46,12 @@ Open **Scheduling Analysis** from the “Overview” group of the left menu (`/s
 
   Hover or keyboard-focus a cell to see the card's details: node, card index, model, memory, the shares that are serving, asleep and free, and its occupants (deployment, yield policy, serving or asleep). The heatmap itself carries no occupant detail, so even a thousand-card fleet costs one read of about 290 KB (about 25 KB gzipped).
 - **Filters and view**: filter by GPU model (several allowed), node label (`key=value`) and node state (has free cards, has sleepers, has cards held outside, offline); type a part of a deployment name in "Find a deployment" and the cards it occupies get a red ring while the rest fade, with a count of the occupied cards. Group by node (the default), by GPU model, or by the value of a node label; sort by name, by free capacity (the unclaimed memory of the cards, not counting offline, faulty or externally held cards) or by contention (sleepers waiting to wake, plus the requests held for deployments asleep on the node, plus the yields of deployments that have cards on it). **Clear filters and view** returns to the default.
-- **Node drawer**: click a cell, or a node name anywhere on the page (the "Node and GPUs" column of the sharing table, the "Node" column of the scheduling history), and a drawer opens that node: a bar per card split into serving usage, the residue memory of sleepers and free memory, the occupants of each card (deployment and its yield policy, serving or asleep, sleep level, claim and residue), cards held by processes outside the platform marked, and below them the node's [residency timeline](#residency-timeline). The drawer reads only that one node, and only when it is open. The open node is in the address (`/scheduling?node=<node UUID>`), so a link to it opens it directly; closing the drawer removes the parameter, and the browser's Back button returns to the node opened before.
+- **Node drawer**: click a cell, or a node name anywhere on the page ("Cards that switched most" beside the scheduling activity, the "Node and GPUs" column of the sharing table, the "Node" column of the scheduling history), and a drawer opens that node: a bar per card split into serving usage, the residue memory of sleepers and free memory, the occupants of each card (deployment and its yield policy, serving or asleep, sleep level, claim and residue), cards held by processes outside the platform marked, and below them the node's [residency timeline](#residency-timeline). The drawer reads only that one node, and only when it is open. The open node is in the address (`/scheduling?node=<node UUID>`), so a link to it opens it directly; closing the drawer removes the parameter, and the browser's Back button returns to the node opened before.
+- **Scheduling activity**: below the heatmap, a bar chart of scheduling events stacked by reason, with the cards that switched most over the same range beside it; see [Scheduling Activity](#scheduling-activity).
 - **Deployments waiting for placement**: deployments the scheduler refused in the last 30 minutes, with reasons written the same way as the placement status in deployment details. A new replica waiting for deployments that share its cards to give them up shows the reason `waiting_for_yield` (see [How a New Deployment Gets onto a Shared Card](#新部署怎样放到共用的卡上) below); when it does not fit only because sleeping deployments keep their cards for a request's wake, the reason is `reserved_for_sleepers` (same section).
 - **Waiting wakes**: which deployments are waiting and since when; the wait can be cancelled.
 - **Schedule actions in the next 24 hours**: time, deployment, action.
-- **Deployments sharing cards**: the stats, over a 6 or 24 hour window, of the deployments across the whole cluster whose yield policy is not never yield; see [Residency Timeline](#residency-timeline).
+- **Deployments sharing cards**: the stats, over a window of 15 minutes, 1 hour, 6 hours (the default) or 24 hours, of the deployments across the whole cluster whose yield policy is not never yield; see [Residency Timeline](#residency-timeline).
 - **Scheduling history**: when, why and what was scheduled; see [Scheduling History](#调度记录).
 
 The heatmap works from the keyboard alone: Tab enters it and the focus rests on one cell; Left and Right move between cards (continuing across nodes), Up and Down move between neighbouring nodes at the same position, Page Up and Page Down jump ten nodes, Home and End go to the first and last card; Enter or Space opens that node's drawer. The page refreshes every 10 seconds and redraws nothing when the cluster has not changed.
@@ -99,7 +100,7 @@ The **Residency timeline** in the node drawer draws a horizontal time axis for e
 | Switching | Between a sleep or wake order and its result |
 | Starting | Being created, pulling its image or loading; not serving yet |
 
-The time ticks are drawn to scale. Hover a block, or focus it with the keyboard, to see the deployment, the state and the start and end times. The window is 6 or 24 hours (6 by default); any other `hours` returns 400 `FIELD_INVALID`, with a message saying the choices are `6, 24`.
+The time ticks are drawn to scale. Hover a block, or focus it with the keyboard, to see the deployment, the state and the start and end times. The window is 6 or 24 hours (6 hours by default). In both places the windows offered come from the server with the response (`windows`), and the console shows them; any other `window` in a request returns 400 `FIELD_INVALID`, with a message naming the windows offered.
 
 The **Deployments sharing cards** table on the page lists the deployments across the whole cluster that held cards in the window and whose yield policy is not never yield (the drawer shows the same table under its timeline, limited to the deployments that held that node's cards). Deployments deleted since that gave a card up or were given one in the window are listed too, their name followed by "(deleted)" and greyed, with no link and — for the level, as the [scheduling history](#调度记录) shows deleted deployments: they did share cards in the window, and deleting them should not make other deployments' "Yielded to" shrink.
 
@@ -115,23 +116,52 @@ The endpoint is separate so that it does not slow down the overview, which refre
 
 ```bash
 curl --fail-with-body -sS \
-  "$API_URL/api/v1/scheduling/timeline?node=$NODE_UUID&hours=6" \
+  "$API_URL/api/v1/scheduling/timeline?node=$NODE_UUID&window=6h" \
   -H "Authorization: Bearer $TOKEN"
 
 curl --fail-with-body -sS \
-  "$API_URL/api/v1/scheduling/timeline?sharing=1&hours=6" \
+  "$API_URL/api/v1/scheduling/timeline?sharing=1&window=1h" \
   -H "Authorization: Bearer $TOKEN"
 ```
 
 What the figures mean and where they stop:
 
 - **A yield is counted one way**: the overview's "yields in the last hour", the timeline's "Yielded" and "Yielded to", and the shared-cards table count the same kind of event: the residency arbiter putting a holder to sleep (a yield), and an operator's yielding wake (`?yield=true`) putting an occupant to sleep. An operator's yielding wake also records which deployment it was for (`for_deployment`), so it links to that deployment in the [scheduling history](#调度记录) and counts in that deployment's "Yielded to" too.
-- The timeline is derived from instance records and the event log; nothing else is stored for it. Removing an instance now also records an `INSTANCE_REMOVED` event naming the node and cards it held; instances removed before the upgrade have no such record and do not appear in past segments.
-- With `node`, only the replicas on the nodes named in the request count: replicas of a deployment on other nodes are not part of its serving time. "Switches", "Yielded" and "Yielded to" are the deployment's own counts across the cluster, the same as `sharing=1` gives; "Yielded to" goes by the `for_deployment` the yield recorded, also when the one that gave way has been deleted. `sharing=1` counts all the instances of these deployments across the cluster, reads only as much as the number of sharing deployments and the window's automatic sleeps and wakes, and its result is cached for about 30 seconds.
+- The lanes are derived from instance records and the event log. Removing an instance now also records an `INSTANCE_REMOVED` event naming the node and cards it held; instances removed before the upgrade have no such record and do not appear in past segments.
+- The figures in the table (serving time, time existed, switches, yielded, yielded to) come from the rollups of the [scheduling activity](#scheduling-activity), not from the event log: they are counted as the events are written, the last 24 hours kept in memory and replayed from the event log once when the server restarts.
+- The drawer's table lists only the deployments that appeared on that node's cards, and counts only their replicas on that node: the serving and present time come from its segments in that node's lanes (present is the time at least one of its replicas held cards on the node), and the switches, yields, yields to it and wakes count only the events that concern cards on the node; the ⓘ icon beside the table's title (on hover or keyboard focus) says "These figures count only this node's replicas", shown from the scope the server returns. The page's sharing table still gives each deployment's figures across the cluster (all its replicas), so for a deployment with replicas on several nodes the drawers' figures add up to the sharing table's (except awake and present time where the nodes overlap). The held requests and their waits are what the gateway recorded for the whole deployment and are the same in both; "Node and GPUs" shows where all its replicas are now. "Yielded to" goes by the `for_deployment` the yield recorded, also when the one that gave way has been deleted. The result of `sharing=1` is cached for about 30 seconds.
 - A deleted deployment's creation time and yield policy are not kept: the time it existed counts from the earliest its instances appear in the window, up to its deletion.
 - A follower of a multi-node replica follows its leader's sleep and wake.
 - At most the latest 200 segments of a card are returned; older ones are left out and the console says so.
 - The wait quantiles approximate the window: the gateway's quantile of each flush interval, weighted by the requests of that interval, not an exact per-request quantile of the window. The counts start again from zero when the gateway restarts, and both columns stay empty when no request was held in the window. The metric the gateway records is `wake_hold_wait_ms`, see [Inference Metrics](../reference/inference-metrics.md).
+
+## Scheduling Activity
+
+The **Scheduling activity** card below the GPU heatmap on the Scheduling Analysis page shows, as stacked bars, why the platform scheduled over a range:
+
+| Reason | Events counted |
+|---|---|
+| Idle yield | The residency arbiter put an idle holder to sleep for a deployment waiting for its cards |
+| Rank preemption | A higher-ranked deployment preempted a preemptible holder (a preemption that names no reason counts here too) |
+| Time-slice turn | Equals took turns and the holder had used its time slice |
+| Operator yield | An operator's yielding wake put an occupant to sleep (`YIELDED_FOR_WAKE`) |
+| Schedule | A schedule's sleeps, wakes and replica changes |
+| Placement & moves | The platform placed a new replica on a node (`UNIT_PLACED`) or moved one off a node an operator drains (`NODE_DRAIN_MOVED`) |
+| Failure (rebuilt / replaced / timed out) | Replicas rebuilt, node failover moves (with their reverts and the moves with nowhere to go), retry budgets exhausted, rolling restarts stalled, wake waits that timed out, automatic orders that failed |
+| Unschedulable / queued | A deployment that cannot be placed, a wake that starts waiting |
+
+Wakes a request or a resume brought (the other half of a yield, already counted once on the side that gave way, though still a switch of the card) and operator orders count under no reason; they are all in the [scheduling history](#调度记录). A move off a lost node counts as a failure. The reasons and their order come from the server; the console only colours and words them.
+
+- **Range**: the last 24 hours by default; the quick ranges are 15 minutes, 1 hour, 6 hours, 1 day and 1 week (the same as the scheduling history's), or a custom start and end. The server picks how long a bar is for the range: 1 minute for 15 minutes and 1 hour, 5 minutes for 6 hours, 15 minutes for 24 hours, 1 hour for a week, and for a custom range the shortest that keeps it within about 200 bars.
+- **Cards that switched most**: the cards that changed hands most over the same range (node, card index, count), as many rows as fit the chart's height; click a node name to open that node's drawer. A yield or a wake on a card is one switch, by the cards the event's instances held at the time.
+- **Retention**: the last 24 hours are counted in the server's memory, by the minute; older figures are written to stats.db by the hour, kept 31 days by the hour and 400 days by the day (the [data retention](../reference/api.md#analytics-usage-analysis) setting shared with usage analytics' long-term statistics). When a custom range begins before the daily retention, the card says it is beyond the statistics retention, and that part has no figures.
+- **Scale**: neither the chart nor the list reads the event log. Each event adds a few numbers to the minute it fell in as it is written, and each hour is written to the database once; with 1000 deployments each switching 10 times an hour, a day of events and a week of hourly rollups, reading 24 hours or a week takes at most a few hundred milliseconds, and answers are cached for about 30 seconds.
+
+The API is `GET /api/v1/scheduling/activity`; see [the scheduling activity API](../reference/api.md#scheduling-activity):
+
+```bash
+curl --fail-with-body -sS "$API_URL/api/v1/scheduling/activity?window=7d" -H "Authorization: Bearer $TOKEN"
+```
 
 ## Schedules
 
