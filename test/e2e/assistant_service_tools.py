@@ -292,9 +292,30 @@ def test_assistant_service_tools(page, context, server, artifacts, report, local
     upstream_key = modal.get_by_label(settings["ai"]["upstreamKey"], exact=True)
     expect(upstream_key).to_have_attribute("type", "password")
     upstream_key.fill(fixture.api_key)
-    from assistant_add_keyboard import exercise_add_keyboard
+    from assistant_add_keyboard import _enter_posts, exercise_add_keyboard
     report["add_keyboard"] = exercise_add_keyboard(page, modal, settings, config_name)
     report["last_step"] = "add-keyboard"
+    # 7.1: the upstream key is the only credential this form carries. On create it is required and
+    # a whitespace-only value is refused in the form, so neither can reach the server. The field is
+    # a password input, so the typed value is never rendered as text.
+    key_field = modal.get_by_label(settings["ai"]["upstreamKey"], exact=True)
+    expect(key_field).to_have_attribute("type", "password")
+    type_before = type(key_field.input_value())
+    for blank in ("", "   "):
+        key_field.fill(blank)
+        check(not _enter_posts(page, key_field),
+              f"an upstream key of {blank!r} submitted the form")
+        expect(modal).to_be_visible()
+        expect(modal.get_by_text(settings["ai"]["keyRequired"], exact=True)).to_be_visible()
+        expect(key_field).to_have_attribute("aria-invalid", "true")
+    # The evidence records the fact rather than the attribute value: the artifact scrubber
+    # rewrites the literal attribute value, so storing it would only read back as [REDACTED].
+    report["upstream_key_required"] = {"blank_refused": True, "whitespace_refused": True,
+                                       "masked_input": True}
+    key_field.fill(fixture.api_key)
+    expect(key_field).to_have_value(fixture.api_key)
+    check(key_field.input_value() == fixture.api_key and type_before is not None,
+          "the upstream key field does not hold what was typed")
     exercise_add_inflight(page, modal, settings, config_name, fixture.base, fixture.model,
                            fixture.api_key, bad_responses, console_errors, report["evidence"])
     with page.expect_response(lambda r: urlsplit(r.url).path == CONFIGS
