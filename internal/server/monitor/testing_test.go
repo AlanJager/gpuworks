@@ -15,7 +15,7 @@ import (
 // CLAUDE.md's "test fixtures must faithfully reproduce real behavior" rule.
 // tsdb is pure Go (glebarez/go-sqlite), so this is cheap enough to do in
 // every test that needs a store.
-func newTestStore(t *testing.T) tsdb.Store {
+func newTestStore(t testing.TB) tsdb.Store {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "monitor-test.db")
 	store, err := tsdb.OpenSQLite(path)
@@ -27,7 +27,7 @@ func newTestStore(t *testing.T) tsdb.Store {
 }
 
 // writeSample writes one sample, failing the test on error.
-func writeSample(t *testing.T, store tsdb.Store, metric string, labels map[string]string, value float64, at time.Time) {
+func writeSample(t testing.TB, store tsdb.Store, metric string, labels map[string]string, value float64, at time.Time) {
 	t.Helper()
 	if err := store.WriteBatch([]tsdb.Sample{{Metric: metric, Labels: labels, Value: value, TimeMS: at.UnixMilli()}}); err != nil {
 		t.Fatalf("write sample %s: %v", metric, err)
@@ -37,7 +37,7 @@ func writeSample(t *testing.T, store tsdb.Store, metric string, labels map[strin
 // writeSeries writes one value per tick starting at start and spaced step
 // apart, len(values) samples total - the common shape for "this metric held
 // steady/ramped for N ticks" test setup.
-func writeSeries(t *testing.T, store tsdb.Store, metric string, labels map[string]string, start time.Time, step time.Duration, values []float64) {
+func writeSeries(t testing.TB, store tsdb.Store, metric string, labels map[string]string, start time.Time, step time.Duration, values []float64) {
 	t.Helper()
 	for i, v := range values {
 		writeSample(t, store, metric, labels, v, start.Add(time.Duration(i)*step))
