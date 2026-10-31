@@ -263,14 +263,21 @@ Xid / NVRM errors.
 **`runtime_unusable`: accelerator runtime context creation failed**
 
 A card's health is “Runtime cannot use it” (`runtime_unusable`): accelerator runtime smoke checks target each card every 15 minutes.
-Cards running instances are skipped, the whole round is skipped if the driver does not respond, and the check does not change the node's connection status.
+Cards running instances and cards in use by processes outside the platform are skipped, the whole round is skipped if the driver does not respond, and the check does not change the node's connection status.
 NVIDIA requires `python3` and `libcuda.so.1` and creates a CUDA context on the selected card. One card failing to initialize often makes `cuInit`
 fail for the entire host, so examine findings for the other cards as well. On an Ascend host with CANN installed, the check uses `python3` and
 `libascendcl.so` to create an ACL context and allocate 4 KiB. For example, `aclrtSetDevice=507033` marks that die unusable
 (a die passed through to a VM can return the same code, so first confirm during manual review that nothing else occupies it;
 the smoke check itself only asks about cards owned by this node). A driver-only Ascend node without `libascendcl.so` skips the check rather than reporting a missing tool as a card failure.
+On a Hygon host with DTK installed, the check uses `python3` and `libamdhip64.so` (`/opt/dtk/lib` and similar) to find the card by its PCI address, `hipSetDevice` to it and allocate 4 KiB;
+for example, `hipMalloc=2` marks that card unusable. HIP not listing the card or `hipInit` failing is a host problem, not a card failure; without DTK the check is skipped.
+A node whose host has no vendor runtime (a PPU host usually has only the management library `libhgml.so`; an Ascend host with the driver but without CANN) is checked inside a container instead:
+it borrows an inference image of the same framework that is **already** on the node (a tag starting with `hggc` / `cann`, preferring images this node's instances use), injects only this card the way a real instance gets it,
+runs the same check inside (about 0.45 s per card on PPU, container start included), and removes the container. No image is ever pulled for the check: without such an image on the node the check is skipped and the vendor tool's verdict stands.
+This is done only on docker / nerdctl nodes; on udocker a container means unpacking or copying the whole image into a rootfs (27–61 s and 17 GB of disk each time for a 17 GB image on ext4),
+so udocker nodes are not checked this way. A container that does not start, or an image without the runtime or python, is a host problem, not a card failure. Apple has no check.
 
-**Diagnose now runs the same per-die check on Ascend, on demand.** Node details → Diagnose and `gpuworks-agent doctor` run the runtime check above once for each die this node owns
+**Diagnose now runs the same per-card check (per die on Ascend) on Ascend and Hygon, on demand.** Node details → Diagnose and `gpuworks-agent doctor` run the runtime check above once for each die this node owns
 (it is the same code as the periodic check, not a second implementation), so a die the periodic check has already marked `runtime_unusable` always shows up in the diagnosis.
 A failing die is shown as “Runtime cannot use it” in the accelerator table, and **Action required** lists a `runtime_unusable` item per die (level Error, with the same evidence the periodic check records).
 When the table already carries a more specific vendor verdict for the die (for example `reset_required`), the table keeps that one and `runtime_unusable` is still listed on its own.
@@ -369,6 +376,24 @@ if the vendor tool just failed to return the inventory, asking it for processes 
 The platform recognizes its own instances by each card's hardware identity. An instance started by an older version, whose desired state records only device indexes,
 gets its identities filled in by a migration when the server is upgraded, and the agent also maps those indexes to cards through the latest probe, so it still counts as the platform's own.
 
+Such a card is also left out of the periodic runtime check and of the recheck after an instance fails to start: someone else's workload should not be disturbed,
+and memory held by someone else says nothing about whether the runtime can use the card. The card keeps its last check result, and checking resumes once the processes exit.
+
+While the runtime check's own process (or container) is on a card, and for 15 seconds after it ends, the card is not judged for use outside the platform and keeps the previous round's answer,
+so the check never reports a card as “In use outside the platform”. If the card is given to an instance, or a process outside the platform appears, while it is being checked, a failure of that check is discarded:
+it is not recorded on the card and earns no backoff. An instance waits for a check in progress on its cards before starting (at most 10 seconds), so the two do not push each other out on a card
+only one process may open (an Ascend die without device-share). Diagnose's checks follow the same rules.
+
+Where each vendor's card processes are read from:
+
+| Vendor | Source | Command to verify |
+|---|---|---|
+| NVIDIA | `nvidia-smi --query-compute-apps` | `nvidia-smi --query-compute-apps=pid,process_name,gpu_bus_id,used_gpu_memory --format=csv` |
+| PPU | `ppu-smi --query-compute-apps` | `ppu-smi --query-compute-apps=pid,process_name,pci.bus_id --format=csv` |
+| Ascend | The process table at the end of `npu-smi info` (the same call as the probe), matched to the card's Bus-Id by NPU/Chip | `npu-smi info` |
+| Hygon | The KFD driver's sysfs (`/sys/class/kfd/kfd/proc/<pid>/queues/*/gpuid`); only a process that created queues on this card counts as using it | `hy-smi --showpids` |
+| Apple | Not determined: a single unified-memory GPU that system processes (such as WindowServer) always use, so per-process occupancy is meaningless | — |
+
 ### Diagnosis Finds an Unrecognized Accelerator
 
 Doctor reports “Unrecognized accelerator device” (`accelerator_unrecognized`): the host has
@@ -388,7 +413,7 @@ Each item in “Action required” provides **Evidence** (the command or call us
 An **Action** command, such as a reset command, is provided only when the vendor tool itself gives a recovery method.
 
 Checks include accelerator health (see the next section), disk space below 10% free (root partition, model directory, container data directory, and storage),
-an unresponsive selected container runtime, accelerator tool execution failures, NVIDIA CUDA initialization failures and multi-card communication check failures, and Ascend per-die runtime check failures (`runtime_unusable`).
+an unresponsive selected container runtime, accelerator tool execution failures, NVIDIA CUDA initialization failures and multi-card communication check failures, and Ascend per-die and Hygon per-card runtime check failures (`runtime_unusable`). Cards in use by processes outside the platform are not checked and are listed as not checked.
 
 There are five additional runtime and filesystem checks (see [Runtime Provisioning Failures and Filesystems on Container Nodes](#运行时初始化失败与容器节点的文件系统)):
 `runtime_provision_failed` (runtime provisioning failed), `runtime_state_untraversable` (the dedicated runtime user cannot reach the agent directory), `path_noexec`, `path_read_only`, and `path_ephemeral`.
@@ -425,6 +450,7 @@ Evidence fields for each vendor:
 | PPU | `ppu-smi --query-ppu=...` | `remapped_rows.pending` / `retired_pages.pending` is Yes → reset pending; `ecc.errors.uncorrected.volatile.dram` > 0 → GPU memory fault; `remapped_rows.failure` is Yes → GPU memory fault; `xid.correctable.ppu_reset` / `os_reboot` / `cold_reboot` has a value → reset / host reboot / power cycle required; `ecc.errors.uncorrected.aggregate.dram`, `retired_pages.double_bit.count`, and `remapped_rows.uncorrectable` are cumulative values that survive resets and serve only as historical records |
 | NVIDIA | `nvidia-smi --query-gpu=...` | `ecc.errors.uncorrected.volatile.total` > 0 → GPU memory fault; `remapped_rows.pending` / `retired_pages.pending` is Yes → reset pending; `remapped_rows.failure` is Yes → GPU memory fault; `ecc.errors.uncorrected.aggregate.total` serves only as a historical record; unsupported fields return `[N/A]` and do not affect the assessment |
 | Ascend | `npu-smi info`, then `npu-smi info -t health -i <NPU> -c <Chip>` if the result is not OK | Health is Warning → warning; Alarm / Critical → fault; error codes and messages appear unchanged; consult Huawei documentation for their meanings |
+| Hygon | Driver sysfs `/sys/bus/pci/devices/<BDF>/ras/` (the same source as `hy-smi --showrasinfo all` and `--showpagesinfo`, no process started) | `ue` > 0 in `umc_err_count` → memory fault; `ue` > 0 in another block (gfx, sdma, …) → vendor fault; a P (pending retirement) row in `gpu_vram_bad_pages` → reset pending, an F (retirement failed) row → memory fault, only R (retired) rows → history; `ce` (correctable) is evidence only. No verdict when the driver has no RAS files |
 
 **How to verify and resolve**: Use the verification command generated for the card's PCI address in the health status description. The following example uses a PPU pending reset;
 replace `0000:7e:00.0` with your card's address.

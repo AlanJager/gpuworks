@@ -54,6 +54,15 @@ var hostRuntimeChecks = map[string]HostRuntimeCheck{
 		},
 		Try: AscendRuntimeSmokeOn,
 	},
+	accelerator.VendorHygon: {
+		CLI:          "hy-smi",
+		Prerequisite: HygonHIPSmokePrerequisite,
+		// The script finds the card by its address among every card HIP
+		// lists, so the address is the name; a card without one cannot be
+		// told apart from its neighbours.
+		Visible: func(g proto.GPUInfo) (string, bool) { return g.PCIeBDF, g.PCIeBDF != "" },
+		Try:     HygonRuntimeSmokeOn,
+	},
 }
 
 // HostRuntimeUnavailableError reports that a check never reached the card:

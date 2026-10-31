@@ -86,6 +86,8 @@ func (p *HygonProber) Probe(ctx context.Context) ([]proto.GPUInfo, error) {
 	})
 	for i := range gpus {
 		gpus[i].DriverVersion = driver
+		code, evidence := hygonHealth(gpus[i].PCIeBDF, p.read)
+		SetCardFinding(&gpus[i], code, evidence)
 	}
 
 	p.mu.Lock()

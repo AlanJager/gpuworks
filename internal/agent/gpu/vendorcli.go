@@ -57,6 +57,7 @@ func RunVendorCLI(ctx context.Context, stdin io.Reader, name string, args ...str
 	var out bytes.Buffer
 	cmd := exec.CommandContext(runCtx, name, args...)
 	cmd.Stdin = stdin
+	killGroupOnCancel(cmd)
 	cmd.Stdout = &out
 	cmd.Stderr = &out
 	// Bounds the wait for output pipes held open by a child of the CLI.

@@ -79,7 +79,7 @@ func (h *ascendHost) report(ctx context.Context, dies []proto.GPUInfo) proto.Doc
 			HealthStatus: g.HealthStatus, HealthCode: g.HealthCode,
 		})
 	}
-	doctorAscendChecks(ctx, &r, dies)
+	doctorCardRuntimeChecks(ctx, &r, dies)
 	return r
 }
 
@@ -520,5 +520,70 @@ func TestDoctorAscendWithoutOwnedDiesAddsNothing(t *testing.T) {
 	r := h.report(context.Background(), dies)
 	if len(r.Facts) != 0 || len(r.Findings) != 0 || len(h.asked) != 0 {
 		t.Fatalf("facts %+v findings %+v asked %v", r.Facts, r.Findings, h.asked)
+	}
+}
+
+// Hygon cards are asked through HIP, one by one by address, like Ascend dies;
+// a card someone outside the platform is using is left alone, as the
+// periodic check leaves it.
+func TestDoctorAsksEachHygonCardAndSkipsForeignOnes(t *testing.T) {
+	real, ok := gpu.HostRuntimeCheckFor("hygon")
+	if !ok {
+		t.Fatal("hygon has no host runtime check")
+	}
+	original := doctorHostRuntimeCheck
+	t.Cleanup(func() { doctorHostRuntimeCheck = original })
+	var asked []string
+	doctorHostRuntimeCheck = func(vendor string) (gpu.HostRuntimeCheck, bool) {
+		check := real
+		check.Prerequisite = func() string { return "" }
+		check.Try = func(_ context.Context, bdf string) error {
+			asked = append(asked, bdf)
+			if bdf == "0000:68:00.0" {
+				return errors.New("hygon hip runtime smoke failed: hipMalloc=2")
+			}
+			return nil
+		}
+		return check, true
+	}
+	cards := []proto.GPUInfo{
+		{Index: 0, UUID: "hygon-a", Vendor: "hygon", PCIeBDF: "0000:67:00.0", HealthStatus: accelerator.HealthOK},
+		{Index: 1, UUID: "hygon-b", Vendor: "hygon", PCIeBDF: "0000:68:00.0", HealthStatus: accelerator.HealthOK},
+		{Index: 2, UUID: "hygon-c", Vendor: "hygon", PCIeBDF: "0000:69:00.0", HealthStatus: accelerator.HealthOK},
+	}
+	var r proto.DoctorReport
+	r.Accelerators = &proto.DoctorAccelerators{Vendor: "hygon"}
+	for _, g := range cards {
+		r.Accelerators.GPUs = append(r.Accelerators.GPUs, proto.DoctorGPU{Index: g.Index, PCIeBDF: g.PCIeBDF, HealthStatus: g.HealthStatus})
+	}
+	ctx := withDoctorCardsInUse(t.Context(), func() (map[string]bool, bool) { return map[string]bool{}, true })
+	foreign := accelerator.CardIdent("hygon-c", "0000:69:00.0")
+	ctx = withDoctorForeignCards(ctx, func(ident string) bool { return ident == foreign })
+	inFlight := map[string]int{}
+	var began []string
+	ctx = withDoctorAttempts(ctx, func(ident string) func() {
+		inFlight[ident]++
+		began = append(began, ident)
+		return func() { inFlight[ident]-- }
+	})
+	doctorCardRuntimeChecks(ctx, &r, cards)
+	if len(began) != 2 || inFlight[began[0]] != 0 || inFlight[began[1]] != 0 {
+		t.Fatalf("attempts begun %v, in flight after %v: want each checked card marked and released", began, inFlight)
+	}
+
+	if strings.Join(asked, ",") != "0000:67:00.0,0000:68:00.0" {
+		t.Fatalf("asked %v, want the two cards nobody else uses", asked)
+	}
+	fact := cardRuntimeFact(r)
+	for _, want := range []string{"per-card HIP runtime check of the 3 cards", "1 passed, 1 failed, 1 not checked", "not checked (a process outside the platform is using it): 2"} {
+		if !strings.Contains(fact, want) {
+			t.Fatalf("fact lacks %q:\n%s", want, fact)
+		}
+	}
+	if row := rowFor(t, r, 1); row.HealthCode != accelerator.HealthRuntimeUnusable {
+		t.Fatalf("failed card row = %+v", row)
+	}
+	if len(r.Findings) != 1 || r.Findings[0].Targets[0].PCIeBDF != "0000:68:00.0" {
+		t.Fatalf("findings = %+v", r.Findings)
 	}
 }

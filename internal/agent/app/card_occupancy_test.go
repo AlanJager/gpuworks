@@ -11,6 +11,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/accelerator"
 	"gpuworks.ai/gpuworks/internal/agent/engine"
 	"gpuworks.ai/gpuworks/internal/agent/gpu"
+	"gpuworks.ai/gpuworks/internal/agent/gpu/cardsmoke"
 	"gpuworks.ai/gpuworks/internal/agent/runtime/recording"
 	"gpuworks.ai/gpuworks/internal/proto"
 )
@@ -358,5 +359,44 @@ func TestASleepersCardReportsAProcessThatIsNotItsEngine(t *testing.T) {
 	n.CardHealthFindings(context.Background(), cards, true)
 	if len(cards[0].ForeignProcesses) != 0 {
 		t.Fatalf("a card of ours with unknown processes = %+v, want it left alone", cards[0].ForeignProcesses)
+	}
+}
+
+// The runtime check's own process on a card nobody uses is not somebody
+// outside the platform: while it runs, and for a moment after (the vendor
+// listing can be a few seconds old), the card keeps its last answer.
+func TestTheRuntimeChecksOwnProcessIsNotForeign(t *testing.T) {
+	now := time.Date(2026, 10, 31, 12, 0, 0, 0, time.UTC)
+	n := occupancyNode(t, twoOwnedCards(), []gpu.ComputeProcess{
+		{PID: 9001, Name: "python3", PCIeBDF: "0000:3f:00.0", MemoryBytes: 300 << 20},
+		{PID: 4242, Name: "python3", PCIeBDF: "0000:40:00.0", MemoryBytes: 8 << 30},
+	}, nil)
+	n.cardSmoke = cardsmoke.New(cardsmoke.Config{Now: func() time.Time { return now }})
+	checked := accelerator.CardIdent("GPU-3f", "0000:3f:00.0")
+
+	end := n.cardSmoke.Begin(checked)
+	cards := twoOwnedCards()
+	n.CardHealthFindings(context.Background(), cards, true)
+	if len(cards[0].ForeignProcesses) != 0 {
+		t.Fatalf("the card being checked = %+v, want the check's process left out", cards[0].ForeignProcesses)
+	}
+	if len(cards[1].ForeignProcesses) != 1 {
+		t.Fatalf("the other card = %+v, want its foreign process still named", cards[1].ForeignProcesses)
+	}
+
+	end()
+	now = now.Add(10 * time.Second)
+	cards = twoOwnedCards()
+	n.CardHealthFindings(context.Background(), cards, true)
+	if len(cards[0].ForeignProcesses) != 0 {
+		t.Fatal("a listing taken just after the check still blamed its process")
+	}
+
+	// Past the grace period a process there is somebody's.
+	now = now.Add(time.Minute)
+	cards = twoOwnedCards()
+	n.CardHealthFindings(context.Background(), cards, true)
+	if len(cards[0].ForeignProcesses) != 1 {
+		t.Fatalf("card = %+v, want the process reported once the check is long over", cards[0].ForeignProcesses)
 	}
 }
