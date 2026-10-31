@@ -180,6 +180,98 @@ specs:
     - type: openai.chat
       endpoint: /v1/chat/completions
       mode: stream
+# vLLM on 8 Hopper cards with at least 120 GiB each (H200, H20 141 GB). The
+# FP8 checkpoint is 38.96 GiB per card at TP8 (measured), which leaves most of
+# the card to the KV pool, so the model's own 1M-token window is kept (no
+# --max-model-len). Runs the verified gpuworks vLLM 0.30.0 runner rather than
+# the upstream nightly. Only the 141 GB H20 was run on hardware; H200 shares
+# its memory size and architecture but was not.
+- name: fp8-vllm-nvidia-hopper-141g-tp8
+  display_profile: compatible
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: fp8
+    sources:
+    - huggingface:
+        repo_id: zai-org/GLM-5.3-Flash
+        revision: 46a050bec13002ad29ee795c16e61cf4fa3c4a9c
+  weight_bytes: 328337455672
+  gpus:
+    vendor: nvidia
+    name: (^|[^A-Za-z0-9])(?:H200|H20|H100)([^A-Za-z0-9]|$)
+    display_target: nvidia
+  args:
+  - --no-enable-flashinfer-autotune
+  - --tool-call-parser
+  - glm47
+  - --reasoning-parser
+  - glm47
+  - --enable-auto-tool-choice
+  env:
+    VLLM_ENGINE_READY_TIMEOUT_S: '3600'
+  placement:
+    language: starlark
+    resolver: |
+      def resolve(gpu):
+          if gpu.count != 8:
+              return reject("this recipe requires exactly 8 GPUs per node")
+          if gpu.min_memory_gib < 120:
+              return reject("the 1M-context profile needs cards with at least 120 GiB (H200, H20 141 GB); use the 80/96 GB Hopper profile")
+          return {"TP_SIZE": 8, "SP_DEGREE": 1}
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+# Same recipe for 80-96 GB Hopper cards (H100 80 GB, H20 96 GB). Weights take
+# 38.96 GiB of the ~79.6 GiB an H100 reports, so the context is capped at 256K
+# to keep the KV pool, CUDA graphs and warm-up peak inside the 0.90 budget.
+# Not run on hardware.
+- name: fp8-vllm-nvidia-hopper-80-96g-tp8
+  display_profile: compatible
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: fp8
+    sources:
+    - huggingface:
+        repo_id: zai-org/GLM-5.3-Flash
+        revision: 46a050bec13002ad29ee795c16e61cf4fa3c4a9c
+  weight_bytes: 328337455672
+  gpus:
+    vendor: nvidia
+    name: (^|[^A-Za-z0-9])(?:H200|H20|H100)([^A-Za-z0-9]|$)
+    display_target: nvidia
+  args:
+  - --no-enable-flashinfer-autotune
+  - --tool-call-parser
+  - glm47
+  - --reasoning-parser
+  - glm47
+  - --enable-auto-tool-choice
+  - --max-model-len
+  - '262144'
+  env:
+    VLLM_ENGINE_READY_TIMEOUT_S: '3600'
+  placement:
+    language: starlark
+    resolver: |
+      def resolve(gpu):
+          if gpu.count != 8:
+              return reject("this recipe requires exactly 8 GPUs per node")
+          if gpu.min_memory_gib >= 120:
+              return reject("cards with at least 120 GiB use the 1M-context Hopper profile")
+          return {"TP_SIZE": 8, "SP_DEGREE": 1}
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
 - name: fp8-vllm-amd-mi355x-tp4
   display_profile: compatible
   scenario: balanced
