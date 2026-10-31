@@ -1028,7 +1028,8 @@ The response comes from a cache in the server's memory and is not recomputed for
   "deployments": [{
     "deployment_id": 7, "deployment": "qwen", "yield_policy": "timeslice",
     "awake_seconds": 10800, "awake_share": 0.5, "switches": 3, "yielded": 1, "yielded_to": 1, "wakes": 2,
-    "held_requests": 4, "wait_p50_ms": 4200, "wait_p95_ms": 31000
+    "held_requests": 4, "wait_p50_ms": 4200, "wait_p95_ms": 31000,
+    "cards": [{"node_id": 3, "node": "gpu3", "gpus": [0]}]
   }]
 }
 ```
@@ -1038,7 +1039,7 @@ The response comes from a cache in the server's memory and is not recomputed for
 | `window` | The window: `hours` (6 or 24), `from`, `to` (now) |
 | `nodes[].gpus[]` | The same cards as the board (`index`); `segments[]` run oldest to newest; `truncated` true means only the latest 200 segments were kept |
 | `segments[]` | One instance holding the card for a stretch: `deployment_id`, `deployment`, `instance`, `state` (`awake` / `asleep` / `switching` / `starting`), `level` (1 or 2) while asleep, `from`, `to` (both inside the window); an instance on several cards appears once on each |
-| `deployments[]` | Deployments that held these cards in the window and whose yield policy is not `never` (each with its `yield_policy`): `awake_seconds` (time at least one replica was awake), `awake_share` (of the window, 0 to 1), `switches` (`yielded` + `wakes`), `yielded` (put to sleep to give a card to another deployment; the residency arbiter's preemption and an operator's yielding wake both count, the same basis as the overview's `yields_last_hour`), `yielded_to` (another deployment gave a card to it, counted by the event's `for_deployment`), `wakes` (the platform woke it), `held_requests` (requests the gateway held while it woke), `wait_p50_ms` / `wait_p95_ms` (the waits of those requests, approximate; omitted when no request was held or the gateway keeps no metrics) |
+| `deployments[]` | Deployments that held these cards in the window and whose yield policy is not `never` (each with its `yield_policy`): `awake_seconds` (time at least one replica was awake), `awake_share` (of the window, 0 to 1), `switches` (`yielded` + `wakes`), `yielded` (put to sleep to give a card to another deployment; the residency arbiter's preemption and an operator's yielding wake both count, the same basis as the overview's `yields_last_hour`), `yielded_to` (another deployment gave a card to it, counted by the event's `for_deployment`), `wakes` (the platform woke it), `held_requests` (requests the gateway held while it woke), `wait_p50_ms` / `wait_p95_ms` (the waits of those requests, approximate; omitted when no request was held or the gateway keeps no metrics), `cards` (where its replicas are now, by node: `node_id`, `node` (the node's display name, empty for a node no longer known) and `gpus`; an empty array when none is placed) |
 
 The timeline is derived from instance records and the event log; the `INSTANCE_REMOVED` event written when an instance is removed (`kind` `residency`, params `node_id`, `gpus`) says which node and cards it held. For the semantics and limits see [Use Scheduling Analysis](../how-to/scheduling-center.md#residency-timeline).
 

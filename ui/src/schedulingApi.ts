@@ -59,6 +59,15 @@ export interface TimelineDeployment {
   held_requests: number;
   wait_p50_ms?: number;
   wait_p95_ms?: number;
+  /** Where its live instances are now, by node; empty when none is placed. */
+  cards: TimelineCards[];
+}
+
+/** The GPUs a deployment's instances hold on one node; node is empty for a node no longer known. */
+export interface TimelineCards {
+  node_id: number;
+  node: string;
+  gpus: number[];
 }
 
 // The windows (hours) GET /scheduling/timeline answers for, the first the

@@ -54,8 +54,8 @@ function timeline(overrides: Partial<Timeline> = {}): Timeline {
       ],
     }],
     deployments: [
-      { deployment_id: 7, deployment: "qwen", yield_policy: "timeslice", awake_seconds: 7200, awake_share: 0.3333, switches: 3, yielded: 1, yielded_to: 2, wakes: 2, held_requests: 4, wait_p50_ms: 4200, wait_p95_ms: 31000 },
-      { deployment_id: 8, deployment: "llama", yield_policy: "anytime", awake_seconds: 30, awake_share: 0.0014, switches: 0, yielded: 0, yielded_to: 0, wakes: 0, held_requests: 0 },
+      { deployment_id: 7, deployment: "qwen", yield_policy: "timeslice", awake_seconds: 7200, awake_share: 0.3333, switches: 3, yielded: 1, yielded_to: 2, wakes: 2, held_requests: 4, wait_p50_ms: 4200, wait_p95_ms: 31000, cards: [{ node_id: 1, node: "gpu-a", gpus: [0, 1] }, { node_id: 9, node: "", gpus: [2] }] },
+      { deployment_id: 8, deployment: "llama", yield_policy: "anytime", awake_seconds: 30, awake_share: 0.0014, switches: 0, yielded: 0, yielded_to: 0, wakes: 0, held_requests: 0, cards: [] },
     ],
     ...overrides,
   };
@@ -228,13 +228,17 @@ test("the sharing table lists the yield policy, awake time, switches, yields and
   const cells = within(qwen);
   assert.ok(cells.getByText(i18n.t("deployments:yieldPolicy.policy.name.timeslice")));
   assert.ok(cells.getByText(i18n.t("scheduling:timeline.awakeShare", { span: i18n.t("deployments:duration.hoursMinutes", { hours: 2, minutes: 0 }), share: 33.3 })));
+  // Where it is now: each node with its GPUs, a node no longer known by id.
+  assert.ok(cells.getByText(i18n.t("scheduling:timeline.cardsOnNode", { node: "gpu-a", gpus: "0, 1" })));
+  assert.ok(cells.getByText(i18n.t("scheduling:timeline.cardsOnNode", { node: "#9", gpus: "2" })));
   assert.ok(cells.getByText("3")); // switches
   assert.ok(cells.getByText("4")); // held requests
   assert.ok(cells.getByText(i18n.t("scheduling:timeline.wait.seconds", { value: "4.2" })));
   assert.ok(cells.getByText(i18n.t("scheduling:timeline.wait.seconds", { value: "31" })));
   // No held request, no wait figure: a dash, not a zero.
   const llama = within(table.getByRole("link", { name: "llama" }).closest("tr") as HTMLElement);
-  assert.equal(llama.getAllByText("—").length, 2);
+  // Not placed anywhere, and no wait figures: dashes, not zeros.
+  assert.equal(llama.getAllByText("—").length, 3);
   assert.ok(llama.getByText(i18n.t("scheduling:timeline.awakeShare", { span: i18n.t("deployments:duration.seconds", { value: 30 }), share: 0.1 })));
 });
 

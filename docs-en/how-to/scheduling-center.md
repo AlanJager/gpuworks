@@ -105,6 +105,7 @@ The **Deployments sharing cards** table on the page lists the deployments across
 
 | Column | Meaning |
 |---|---|
+| Node and GPUs | The nodes and GPUs its replicas are on now, one line per node; — when none is placed |
 | Serving time, share | The time at least one replica was serving, and its share of the window |
 | Switches | Times it yielded plus times the platform woke it |
 | Yielded, yielded to | Times it was put to sleep to give a card to another deployment, and times another deployment gave a card to it |

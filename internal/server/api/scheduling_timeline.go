@@ -199,7 +199,7 @@ func (a *apiHandlers) fillTimeline(out dto.SchedulingTimeline, cards map[uint]ma
 			}
 		}
 	}
-	out.Deployments, err = a.timelineDeployments(deployments, awake, from, now)
+	out.Deployments, err = a.timelineDeployments(deployments, awake, placementsOf(insts), from, now)
 	return out, err
 }
 
@@ -225,7 +225,7 @@ func unionSeconds(spans []interval) int64 {
 }
 
 // timelineDeployments are the stats of the deployments that share GPUs.
-func (a *apiHandlers) timelineDeployments(deployments map[uint]store.ResidencyDeployment, awake map[uint][]interval, from, now time.Time) ([]dto.TimelineDeployment, error) {
+func (a *apiHandlers) timelineDeployments(deployments map[uint]store.ResidencyDeployment, awake map[uint][]interval, placed placements, from, now time.Time) ([]dto.TimelineDeployment, error) {
 	var shared, every []uint
 	for id, info := range deployments {
 		every = append(every, id)
@@ -248,6 +248,10 @@ func (a *apiHandlers) timelineDeployments(deployments map[uint]store.ResidencyDe
 		}
 	}
 	waits := a.holdWaits(shared, from, now)
+	cards, err := a.cardsOf(placed, shared)
+	if err != nil {
+		return nil, err
+	}
 	window := now.Sub(from).Seconds()
 	for _, id := range shared {
 		info, c, wait := deployments[id], counts[id], waits[id]
@@ -257,6 +261,7 @@ func (a *apiHandlers) timelineDeployments(deployments map[uint]store.ResidencyDe
 			AwakeSeconds: seconds, AwakeShare: min(float64(seconds)/window, 1),
 			Switches: c.Yielded + c.Wakes, Yielded: c.Yielded, YieldedTo: c.YieldedTo, Wakes: c.Wakes,
 			HeldRequests: wait.held, WaitP50Ms: wait.p50, WaitP95Ms: wait.p95,
+			Cards: nonNilCards(cards[id]),
 		})
 	}
 	sort.Slice(out, func(i, j int) bool {

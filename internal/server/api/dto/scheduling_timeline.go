@@ -71,4 +71,15 @@ type TimelineDeployment struct {
 	HeldRequests int      `json:"held_requests"`
 	WaitP50Ms    *float64 `json:"wait_p50_ms,omitempty"`
 	WaitP95Ms    *float64 `json:"wait_p95_ms,omitempty"`
+	// Cards is where its live instances are now, by node; empty when none
+	// is placed.
+	Cards []TimelineCards `json:"cards"`
+}
+
+// TimelineCards is the GPUs a deployment's instances hold on one node now;
+// Node is empty for a node no longer known.
+type TimelineCards struct {
+	NodeID uint   `json:"node_id"`
+	Node   string `json:"node"`
+	GPUs   []int  `json:"gpus"`
 }
