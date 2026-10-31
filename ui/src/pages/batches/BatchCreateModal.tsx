@@ -12,6 +12,13 @@ export const BATCH_FILE_ACCEPT = ".jsonl";
 
 const MB = 1024 * 1024;
 
+// The i18n key naming a sample by its endpoint; an endpoint without one shows as is.
+const sampleEndpointKey: Record<string, string> = {
+  "/v1/chat/completions": "chat",
+  "/v1/completions": "completions",
+  "/v1/embeddings": "embeddings",
+};
+
 function sizeText(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < MB) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -40,11 +47,11 @@ function useDictionary(open: boolean) {
 }
 
 /**
- * BatchCreateModal uploads a JSONL requests file with the endpoint it targets.
- * What it offers - the endpoints, the completion window, the file limits and
- * the models - is the server's batch dictionary. An invalid file is answered
- * with the line to fix; the dialog stays open so the file can be replaced, and
- * closes once the batch exists.
+ * BatchCreateModal uploads a JSONL requests file; the batch calls the url its
+ * requests ask for. What it offers - the sample endpoints, the completion
+ * window, the file limits and the models - is the server's batch dictionary.
+ * An invalid file is answered with the line to fix; the dialog stays open so
+ * the file can be replaced, and closes once the batch exists.
  */
 export default function BatchCreateModal({ open, onClose, onCreated }: {
   open: boolean;
@@ -55,14 +62,15 @@ export default function BatchCreateModal({ open, onClose, onCreated }: {
   const { t: tCommon } = useTranslation("common");
   const { dictionary, error: dictionaryError, retry } = useDictionary(open);
   const [file, setFile] = useState<File | null>(null);
-  // The endpoint and the window the reader chose; until then the dictionary's first and default.
-  const [chosenEndpoint, setEndpoint] = useState<string | undefined>(undefined);
+  // The window the reader chose; until then the dictionary's default.
   const [chosenWindow, setWindowHours] = useState<number | null | undefined>(undefined);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<BatchErrorText | null>(null);
   const [model, setModel] = useState<string | undefined>(undefined);
   const [sampleModel, setSampleModel] = useState<string>("");
-  const endpoint = chosenEndpoint ?? dictionary?.endpoints[0] ?? "";
+  const [chosenSampleEndpoint, setSampleEndpoint] = useState<string | undefined>(undefined);
+  // The endpoint of the sample to download or use; the batch itself takes the file's.
+  const sampleEndpoint = (chosenSampleEndpoint ?? dictionary?.endpoints[0] ?? "") as BatchEndpoint;
   const bounds = dictionary?.completion_window_hours;
   const windowHours = chosenWindow === undefined ? (bounds?.default ?? null) : chosenWindow;
   const windowValid = !!bounds && windowHours !== null && Number.isInteger(windowHours) && windowHours >= bounds.min && windowHours <= bounds.max;
@@ -86,14 +94,12 @@ export default function BatchCreateModal({ open, onClose, onCreated }: {
   }, [file]);
   const sampleModelName = model || sampleModel || defaultSample || "your-model";
   const useSample = () => {
-    const ep = endpoint as BatchEndpoint;
-    pick(new File([batchSampleJSONL(ep, sampleModelName)], sampleFileName(ep), { type: "application/jsonl" }));
+    pick(new File([batchSampleJSONL(sampleEndpoint, sampleModelName)], sampleFileName(sampleEndpoint), { type: "application/jsonl" }));
   };
 
   const reset = () => {
     setFile(null);
     setError(null);
-    setEndpoint(undefined);
     setModel(undefined);
     setWindowHours(undefined);
   };
@@ -106,7 +112,7 @@ export default function BatchCreateModal({ open, onClose, onCreated }: {
     setSubmitting(true);
     setError(null);
     try {
-      const batch = await batchApi.create(file, endpoint, { model, completionWindowHours: windowHours ?? undefined });
+      const batch = await batchApi.create(file, { model, completionWindowHours: windowHours ?? undefined });
       reset();
       onCreated(batch);
     } catch (e) {
@@ -148,17 +154,6 @@ export default function BatchCreateModal({ open, onClose, onCreated }: {
           <BatchFileModels fileModels={fileModels} skipped={skipped && !tooLarge} known={known} override={model} />
         </div>
         <div className="batch-create-field">
-          <label htmlFor="batch-create-endpoint">{t("create.endpoint")}</label>
-          <Select
-            id="batch-create-endpoint"
-            value={endpoint}
-            onChange={setEndpoint}
-            disabled={submitting}
-            options={dictionary.endpoints.map((value) => ({ value, label: value }))}
-            style={{ width: "100%" }}
-          />
-        </div>
-        <div className="batch-create-field">
           <label htmlFor="batch-create-window">{t("create.window.label")}</label>
           <InputNumber
             id="batch-create-window"
@@ -182,6 +177,14 @@ export default function BatchCreateModal({ open, onClose, onCreated }: {
           <label htmlFor="batch-create-sample-model">{t("create.sample.title")}</label>
           <div className="batch-create-sample">
             <Select
+              aria-label={t("create.sample.endpoint")}
+              value={sampleEndpoint}
+              onChange={setSampleEndpoint}
+              disabled={submitting}
+              options={dictionary.endpoints.map((value) => ({ value, label: sampleEndpointKey[value] ? t(`create.sample.endpoints.${sampleEndpointKey[value]}`, { endpoint: value }) : value }))}
+              style={{ minWidth: 200 }}
+            />
+            <Select
               id="batch-create-sample-model"
               aria-label={t("create.sample.model")}
               value={model || sampleModel || defaultSample || undefined}
@@ -191,7 +194,7 @@ export default function BatchCreateModal({ open, onClose, onCreated }: {
               options={modelOptions.map((option) => ({ value: option.name, label: `${option.name} · ${stateText(option.state)}` }))}
               style={{ minWidth: 200, flex: 1 }}
             />
-            <Button onClick={() => downloadBatchSample(endpoint as BatchEndpoint, sampleModelName)} disabled={submitting}>
+            <Button onClick={() => downloadBatchSample(sampleEndpoint, sampleModelName)} disabled={submitting}>
               {t("create.sample.download")}
             </Button>
             <Button onClick={useSample} disabled={submitting}>{t("create.sample.use")}</Button>

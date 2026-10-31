@@ -7,12 +7,21 @@ import type { BatchEndpoint } from "../../batchApi";
 // so the batch keeps a card busy for minutes, while the generator itself
 // ships as a few KB. The same seed always gives the same file.
 
-// SAMPLE_LINES is how many requests a sample file holds.
+// SAMPLE_LINES is how many requests a sample file holds; an embeddings
+// request is cheap, so its sample holds SAMPLE_EMBEDDING_LINES to keep a card
+// as busy.
 export const SAMPLE_LINES = 1000;
+export const SAMPLE_EMBEDDING_LINES = 10000;
 
-// SAMPLE_MAX_TOKENS caps each generated answer: long enough for worked
-// solutions and short essays, short enough to keep one request bounded.
-export const SAMPLE_MAX_TOKENS = 512;
+// sampleLines is how many requests the sample for the endpoint holds.
+export function sampleLines(endpoint: BatchEndpoint): number {
+  return endpoint === "/v1/embeddings" ? SAMPLE_EMBEDDING_LINES : SAMPLE_LINES;
+}
+
+// SAMPLE_MAX_TOKENS caps each generated answer: room for a reasoning model's
+// thinking before the worked solution or essay, while one request stays
+// bounded. A deployment's context must hold it plus the prompt.
+export const SAMPLE_MAX_TOKENS = 4096;
 
 const SEED = 20261030;
 
@@ -165,6 +174,26 @@ export function samplePrompts(count = SAMPLE_LINES, seed = SEED): string[] {
   return out;
 }
 
+/**
+ * embeddingInputs draws `count` distinct texts to embed: text n is prompt n
+ * with a second prompt drawn after it, redrawn while the pair repeats, since
+ * the templates alone give fewer distinct prompts than an embeddings sample
+ * holds.
+ */
+export function embeddingInputs(count = SAMPLE_EMBEDDING_LINES, seed = SEED): string[] {
+  const pool = samplePrompts(count, seed);
+  const r = rng(seed + 1);
+  const seen = new Set<string>();
+  return pool.map((first) => {
+    let text: string;
+    do {
+      text = `${first}\n${pick(r, pool)}`;
+    } while (seen.has(text));
+    seen.add(text);
+    return text;
+  });
+}
+
 const sampleBodies: Record<BatchEndpoint, (model: string, prompt: string) => Record<string, unknown>> = {
   "/v1/chat/completions": (model, prompt) => ({ model, messages: [{ role: "user", content: prompt }], max_tokens: SAMPLE_MAX_TOKENS }),
   "/v1/completions": (model, prompt) => ({ model, prompt, max_tokens: SAMPLE_MAX_TOKENS }),
@@ -173,12 +202,14 @@ const sampleBodies: Record<BatchEndpoint, (model: string, prompt: string) => Rec
 
 /**
  * batchSampleJSONL is a ready-to-upload requests file for the endpoint and
- * model: one request per line with a unique custom_id (req-0001, ...),
+ * model, sampleLines(endpoint) requests by default: one request per line with
+ * a unique custom_id (req-0001, ..., zero-padded to the widest number),
  * method POST, the endpoint as url and a body naming the model.
  */
-export function batchSampleJSONL(endpoint: BatchEndpoint, model: string, lines = SAMPLE_LINES): string {
+export function batchSampleJSONL(endpoint: BatchEndpoint, model: string, lines = sampleLines(endpoint)): string {
   const width = String(lines).length < 4 ? 4 : String(lines).length;
-  return samplePrompts(lines).map((prompt, n) => JSON.stringify({
+  const texts = endpoint === "/v1/embeddings" ? embeddingInputs(lines) : samplePrompts(lines);
+  return texts.map((prompt, n) => JSON.stringify({
     custom_id: `req-${String(n + 1).padStart(width, "0")}`,
     method: "POST",
     url: endpoint,

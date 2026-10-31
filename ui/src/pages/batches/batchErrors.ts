@@ -3,6 +3,7 @@ import { APIError, apiErrorText, type APIErrorTranslator } from "../../apiError"
 const FILE_REASONS = new Set([
   "invalid_json_line", "missing_custom_id", "duplicate_custom_id", "invalid_method", "invalid_url", "missing_body",
   "missing_model", "streaming_not_supported", "line_too_long", "empty_file", "too_many_requests", "upload_failed",
+  "mixed_endpoints",
 ]);
 const REQUEST_REASONS = new Set(["endpoint_mismatch", "invalid_endpoint", "missing_required_parameter", "invalid_multipart"]);
 

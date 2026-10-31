@@ -117,3 +117,36 @@ func TestConsoleFormWindow(t *testing.T) {
 		t.Fatalf("refused windows left files behind: %d, was %d", len(r.repo.files), files)
 	}
 }
+
+// Without an endpoint the console form takes the url the file's requests ask
+// for; a file asking for two is refused at the first line that differs and
+// leaves no file behind.
+func TestConsoleFormInfersTheEndpoint(t *testing.T) {
+	r := newRig(t, Config{}, echo)
+	r.start()
+	embed := `{"custom_id":"e1","method":"POST","url":"/v1/embeddings","body":{"model":"m","input":"x"}}` + "\n"
+	b, err := r.svc.CreateFromUpload(testOwner, multipartForm(t, nil, embed))
+	if err != nil || b.Endpoint != EndpointEmbedding {
+		t.Fatalf("inferred: %+v err=%v", b, err)
+	}
+	b, err = r.svc.CreateFromUpload(testOwner, multipartForm(t, map[string]string{"endpoint": EndpointChat}, inputLines(2)))
+	if err != nil || b.Endpoint != EndpointChat {
+		t.Fatalf("given: %+v err=%v", b, err)
+	}
+	files := len(r.repo.files)
+	mixed := inputLines(2) + `{"custom_id":"e1","method":"POST","url":"/v1/embeddings","body":{"model":"m","input":"x"}}` + "\n" +
+		`{"custom_id":"p1","method":"POST","url":"/v1/completions","body":{"model":"m","prompt":"x"}}` + "\n"
+	_, err = r.svc.CreateFromUpload(testOwner, multipartForm(t, nil, mixed))
+	be, ok := err.(*Error)
+	if !ok || be.Code != "mixed_endpoints" || be.Line != 3 || be.Param != "url" || be.Status != 400 {
+		t.Fatalf("mixed: %+v", err)
+	}
+	if len(r.repo.files) != files {
+		t.Fatalf("the refused file was kept: %d, was %d", len(r.repo.files), files)
+	}
+	// A given endpoint is still checked against the file.
+	_, err = r.svc.CreateFromUpload(testOwner, multipartForm(t, map[string]string{"endpoint": EndpointEmbedding}, inputLines(1)))
+	if be, ok := err.(*Error); !ok || be.Code != "endpoint_mismatch" {
+		t.Fatalf("mismatch: %+v", err)
+	}
+}

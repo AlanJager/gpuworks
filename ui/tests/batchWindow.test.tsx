@@ -62,7 +62,7 @@ const windowInput = (dialog: HTMLElement) => within(dialog).getByRole("spinbutto
 
 test("the window defaults to 24 hours, which is what is sent", async () => {
   const sent: Array<number | undefined> = [];
-  batchApi.create = (async (_file: File, _endpoint: string, options?: { completionWindowHours?: number }) => {
+  batchApi.create = (async (_file: File, options?: { completionWindowHours?: number }) => {
     sent.push(options?.completionWindowHours);
     return batch({ id: "batch_w", completion_window: "24h" });
   }) as never;
@@ -77,7 +77,7 @@ test("the window defaults to 24 hours, which is what is sent", async () => {
 
 test("a chosen window is sent in hours and the hint follows it", async () => {
   const sent: Array<number | undefined> = [];
-  batchApi.create = (async (_file: File, _endpoint: string, options?: { completionWindowHours?: number }) => {
+  batchApi.create = (async (_file: File, options?: { completionWindowHours?: number }) => {
     sent.push(options?.completionWindowHours);
     return batch({ id: "batch_w", completion_window: "72h" });
   }) as never;

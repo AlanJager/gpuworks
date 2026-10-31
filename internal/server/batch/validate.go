@@ -24,6 +24,9 @@ type inputStats struct {
 	Lines int
 	// Endpoint is the url every request asks for, "" when they differ.
 	Endpoint string
+	// MixedLine is the first line whose url differs from the first request's,
+	// 0 when they all ask for the same one.
+	MixedLine int
 }
 
 // fileLimit is the size an input file may have; a test lowers it.
@@ -99,8 +102,9 @@ func scanInput(src io.Reader, w io.Writer) (inputStats, *Error) {
 				switch {
 				case requests == 1:
 					st.Endpoint = url
-				case st.Endpoint != url:
+				case st.MixedLine == 0 && st.Endpoint != url:
 					st.Endpoint = ""
+					st.MixedLine = lineNo
 				}
 			}
 		}
