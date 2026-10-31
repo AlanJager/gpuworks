@@ -456,6 +456,25 @@ func TestSharingStatsAreKeptPerWindow(t *testing.T) {
 	if _, err := a.cachedSharingTimeline(now, 6); err != nil || a.overview.sharing.reads.Load() != 3 {
 		t.Fatalf("an old entry was not read again: %v", err)
 	}
+	// The switch counts, read over every automation event of the window, are
+	// one read per window for the fleet's stats and the node pages alike.
+	if got := a.overview.switches.reads.Load(); got != 2 {
+		t.Fatalf("the switch counts of two windows were read %d times, want 2", got)
+	}
+	for i := 0; i < 3; i++ {
+		if _, err := a.residencyTimeline([]string{"any-node"}, now, 6); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := a.overview.switches.reads.Load(); got != 2 {
+		t.Fatalf("node pages read the switch counts again (%d reads)", got)
+	}
+	switches := a.overview.switches.byHours[24]
+	switches.at = switches.at.Add(-switchesTTL)
+	a.overview.switches.byHours[24] = switches
+	if _, err := a.residencyTimeline([]string{"any-node"}, now, 24); err != nil || a.overview.switches.reads.Load() != 3 {
+		t.Fatalf("old switch counts were not read again: %v", err)
+	}
 }
 
 // queues=1 answers the fleet-wide lists with no node in them.

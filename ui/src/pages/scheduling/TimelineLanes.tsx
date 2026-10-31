@@ -93,8 +93,14 @@ function LaneRow({ lane, span, ticks }: { lane: Lane; span: Span; ticks: number[
   return (
     <div className="timeline-lane">
       <div className="timeline-lane-label">
-        <Link to={`/deployments?deployment=${lane.deploymentID}`}>{lane.deployment}</Link>
-        <span className="timeline-level">{tDeploy(`yieldPolicy.policy.name.${lane.policy}`)}</span>
+        {lane.deleted ? (
+          <Typography.Text type="secondary">{t("history.deleted", { name: lane.deployment })}</Typography.Text>
+        ) : (
+          <>
+            <Link to={`/deployments?deployment=${lane.deploymentID}`}>{lane.deployment}</Link>
+            <span className="timeline-level">{tDeploy(`yieldPolicy.policy.name.${lane.policy}`)}</span>
+          </>
+        )}
       </div>
       <div className="timeline-track">
         <svg viewBox={`0 0 ${CHART_WIDTH} ${LANE_HEIGHT}`} preserveAspectRatio="none" role="group" aria-label={t("timeline.laneAria", { deployment: lane.deployment })}>

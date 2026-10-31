@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -132,13 +133,22 @@ func TestSchedulingTimelineWire(t *testing.T) {
 	if d.AwakeSeconds != wantAwake {
 		t.Fatalf("awake seconds = %d, want %d", d.AwakeSeconds, wantAwake)
 	}
-	d.AwakeSeconds, d.AwakeShare = 0, 0
-	line, _ := json.Marshal(d)
-	if want := fmt.Sprintf(`{"deployment_id":%d,"deployment":"night-batch","yield_policy":"timeslice","awake_seconds":0,"awake_share":0,"switches":3,"yielded":1,"yielded_to":1,"wakes":2,"held_requests":0,"cards":[{"node_id":%d,"node_uuid":"tl-node","node":"tl-node","gpus":[0]}]}`, r.shared.ID, r.node.ID); string(line) != want {
-		t.Fatalf("stats\n got  %s\n want %s", line, want)
+	// It has existed for the 3 hours since its instance was created (its row
+	// is newer, which a deployment's never is in life): the share is of
+	// those, not of the 6 h window.
+	present := int64(got.Window.To.Sub(r.t0).Seconds())
+	if d.PresentSeconds != present {
+		t.Fatalf("present seconds = %d, want %d", d.PresentSeconds, present)
 	}
-	if share := got.Deployments[0].AwakeShare; share <= 0.3 || share >= 0.6 {
-		t.Fatalf("awake share = %v, want about half of the 6 h window", share)
+	if want := float64(wantAwake) / float64(present); d.AwakeShare != want {
+		t.Fatalf("awake share = %v, want %v (awake over present)", d.AwakeShare, want)
+	}
+	// The row as it is on the wire, with the awake figures (which move with
+	// the clock) checked above.
+	wire := body[strings.Index(body, `"deployments":[`):]
+	if want := fmt.Sprintf(`"deployments":[{"deployment_id":%d,"deployment":"night-batch","yield_policy":"timeslice","awake_seconds":%d,"awake_share":%s,"present_seconds":%d,"switches":3,"yielded":1,"yielded_to":1,"wakes":2,"held_requests":0,"cards":[{"node_id":%d,"node_uuid":%q,"node":"tl-node","gpus":[0]}]}]}`,
+		r.shared.ID, wantAwake, strconv.FormatFloat(d.AwakeShare, 'g', -1, 64), present, r.node.ID, r.node.UUID); wire != want {
+		t.Fatalf("stats\n got  %s\n want %s", wire, want)
 	}
 }
 

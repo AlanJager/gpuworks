@@ -48,10 +48,17 @@ export interface TimelineNode {
 
 export interface TimelineDeployment {
   deployment_id: number;
+  /** Its name; for a deleted deployment, the one it left behind. */
   deployment: string;
-  yield_policy: YieldPolicyName;
+  /** Set when the deployment has been deleted since it shared cards in the window. */
+  deployment_deleted?: boolean;
+  /** Its yield policy; empty for a deleted deployment, whose policy is not kept. */
+  yield_policy: YieldPolicyName | "";
   awake_seconds: number;
+  /** awake_seconds over present_seconds, 0 to 1. */
   awake_share: number;
+  /** The part of the window the deployment existed in, in seconds. */
+  present_seconds: number;
   switches: number;
   yielded: number;
   yielded_to: number;

@@ -100,7 +100,7 @@ test("the model select lists the dictionary's models in its order, each with the
 
 test("the chosen model goes up with the file; without one the upload carries none", async () => {
   const calls: Array<string | undefined> = [];
-  batchApi.create = (async (_file: File, _endpoint: string, options?: { model?: string }) => {
+  batchApi.create = (async (_file: File, options?: { model?: string }) => {
     const model = options?.model;
     calls.push(model);
     return batch({ id: "batch_m", status: "validating", model });
@@ -121,7 +121,7 @@ test("the chosen model goes up with the file; without one the upload carries non
 });
 
 test("a model whose sleep is held shows the warning, and the server's warning after creating is shown too", async () => {
-  batchApi.create = (async (_file: File, _endpoint: string, options?: { model?: string }) =>
+  batchApi.create = (async (_file: File, options?: { model?: string }) =>
     batch({ id: "batch_h", status: "validating", model: options?.model, warnings: [{ code: "BATCH_MODEL_SLEEP_HELD", params: { model: options?.model } }] })) as never;
   batchApi.get = (async () => batch({ id: "batch_h", model: "held-model" })) as never;
   const user = mountPage();

@@ -1,5 +1,5 @@
 import { Fragment } from "react";
-import { Tag } from "antd";
+import { Tag, Typography } from "antd";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
@@ -26,14 +26,14 @@ export function SharingTable({ rows }: { rows: TimelineDeployment[] }) {
   const { t: tDeploy } = useTranslation("deployments");
   const num = (key: keyof TimelineDeployment) => (_: unknown, row: TimelineDeployment) => <span className="scheduling-num">{String(row[key])}</span>;
   const columns: ResourceColumn<TimelineDeployment>[] = [
-    { key: "deployment", title: t("timeline.columns.deployment"), width: 200, render: (_: unknown, row) => <Link to={`/deployments?deployment=${row.deployment_id}`}>{row.deployment}</Link> },
+    { key: "deployment", title: t("timeline.columns.deployment"), width: 200, render: (_: unknown, row) => <DeploymentName row={row} /> },
     { key: "cards", title: t("timeline.columns.cards"), width: 180, render: (_: unknown, row) => <CardsCell cards={row.cards} /> },
-    { key: "level", title: t("timeline.columns.level"), width: 90, render: (_: unknown, row) => <Tag>{tDeploy(`yieldPolicy.policy.name.${row.yield_policy}`)}</Tag> },
+    { key: "level", title: t("timeline.columns.level"), width: 90, render: (_: unknown, row) => (row.yield_policy ? <Tag>{tDeploy(`yieldPolicy.policy.name.${row.yield_policy}`)}</Tag> : <span>—</span>) },
     {
       key: "awake",
       title: t("timeline.columns.awake"),
       width: 170,
-      render: (_: unknown, row) => <span className="scheduling-num">{t("timeline.awakeShare", { span: durationText(t, row.awake_seconds, "elapsed"), share: Math.round(row.awake_share * 1000) / 10 })}</span>,
+      render: (_: unknown, row) => <span className="scheduling-num">{t("timeline.awakeShare", { span: durationText(t, row.awake_seconds, "elapsed"), present: durationText(t, row.present_seconds, "elapsed"), share: Math.round(row.awake_share * 1000) / 10 })}</span>,
     },
     { key: "switches", title: t("timeline.columns.switches"), width: 90, render: num("switches") },
     { key: "yielded", title: t("timeline.columns.yielded"), width: 90, render: num("yielded") },
@@ -57,6 +57,14 @@ export function SharingTable({ rows }: { rows: TimelineDeployment[] }) {
 
 // NODE_MARK is where the wording puts the node's name, rendered as its link.
 const NODE_MARK = "\u0000node\u0000";
+
+// DeploymentName links to a deployment, or - when it was deleted - names it,
+// greyed and marked, with no page to open, as the scheduling history does.
+function DeploymentName({ row }: { row: TimelineDeployment }) {
+  const { t } = useTranslation("scheduling");
+  if (row.deployment_deleted) return <Typography.Text type="secondary">{t("history.deleted", { name: row.deployment || `#${row.deployment_id}` })}</Typography.Text>;
+  return <Link to={`/deployments?deployment=${row.deployment_id}`}>{row.deployment}</Link>;
+}
 
 // CardsCell lists where a deployment is now, one node per line: its name (or
 // id when the node is gone), which opens its drawer, and the GPUs its

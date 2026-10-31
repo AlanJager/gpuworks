@@ -254,6 +254,11 @@ func TestBatchConsoleCreateGetAndDownload(t *testing.T) {
 	if _, err = console.CreateFromUpload(caller, form(map[string]string{"file": twoLines, "endpoint": "/v1/embeddings"})); err == nil || err.(*api.BatchError).Code != api.ErrorBatchRequestInvalid {
 		t.Fatalf("endpoint mismatch = %v", err)
 	}
+	mixed := twoLines + `{"custom_id":"e","method":"POST","url":"/v1/embeddings","body":{"model":"m","input":"x"}}` + "\n"
+	_, err = console.CreateFromUpload(caller, form(map[string]string{"file": mixed}))
+	if be, ok := err.(*api.BatchError); !ok || be.Code != api.ErrorBatchFileInvalid || be.Params["line"] != 3 || be.Params["reason"] != "mixed_endpoints" {
+		t.Fatalf("mixed endpoints = %+v", err)
+	}
 	page, err := console.List(caller, nil, 1, 50)
 	if err != nil || page.Total != 1 || len(page.Items) != 1 {
 		t.Fatalf("the refused uploads left batches behind: %+v %v", page, err)

@@ -177,7 +177,7 @@
       "waitP50": "Wait p50",
       "waitP95": "Wait p95"
     },
-    "awakeShare": "{{span}} ({{share}}%)",
+    "awakeShare": "{{span}} of {{present}} ({{share}}%)",
     "wait": {
       "ms": "{{value}} ms",
       "seconds": "{{value}} s",

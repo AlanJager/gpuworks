@@ -266,16 +266,33 @@ func TestResidencySwitchCounts(t *testing.T) {
 	// recorded on beta with alpha's name (no id), so beta's count has it and
 	// no deployment is credited as yielded-to.
 	putEvent(t, s, "", b, EventKindAutomation, "YIELDED_FOR_WAKE", now.Add(-30*time.Minute), `{"deployment":"alpha","instances":["b-1"],"level":1}`)
+	// gamma, deleted since, yielded to alpha twice: alpha's yielded-to counts
+	// them though the one that gave way is gone, and gamma keeps its count.
+	gone, err := s.CreateDeployment(withPolicy(&Deployment{ModelID: 1, Name: "gamma", ServedName: "gamma", Engine: "vllm", Sleepable: true, State: DeployActive}, yieldpolicy.Anytime))
+	if err != nil {
+		t.Fatal(err)
+	}
+	g := gone.ID
+	putEvent(t, s, "", g, EventKindAutomation, "AUTO_SLEEP", now.Add(-50*time.Minute), fmt.Sprintf(`{"trigger":"preempt","reason":"rank","for_deployment":%d}`, a))
+	putEvent(t, s, "", g, EventKindAutomation, "AUTO_SLEEP", now.Add(-40*time.Minute), fmt.Sprintf(`{"trigger":"preempt","reason":"rank","for_deployment":%d}`, a))
+	if err := s.DeleteDeployment(g); err != nil {
+		t.Fatal(err)
+	}
+	// Another kind of event with a switch's code is not one.
+	putEvent(t, s, "", b, "state", "AUTO_WAKE", now.Add(-20*time.Minute), `{}`)
 	first, ok, err := s.ResidencyWindowStart(now.Add(-6 * time.Hour))
 	if err != nil || !ok {
 		t.Fatalf("window start: %v %v", ok, err)
 	}
-	got, err := s.ResidencySwitchCounts([]uint{a, b}, first)
+	got, err := s.ResidencySwitchCounts(first)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got[a] != (ResidencySwitches{YieldedTo: 2, Wakes: 2}) || got[b] != (ResidencySwitches{Yielded: 3}) {
+	if len(got) != 3 || got[a] != (ResidencySwitches{YieldedTo: 4, Wakes: 2}) || got[b] != (ResidencySwitches{Yielded: 3}) || got[g] != (ResidencySwitches{Yielded: 2}) {
 		t.Fatalf("counts = %+v", got)
+	}
+	if !got[a].TookPartInYields() || !got[g].TookPartInYields() || (ResidencySwitches{Wakes: 3}).TookPartInYields() {
+		t.Fatal("taking part in yields is giving cards up or being given them, not waking")
 	}
 	// The overview's count of the same window goes by the same definition.
 	events, err := s.YieldEvents(now.Add(-6 * time.Hour))
@@ -288,12 +305,16 @@ func TestResidencySwitchCounts(t *testing.T) {
 			overview++
 		}
 	}
-	if overview != got[a].Yielded+got[b].Yielded {
-		t.Fatalf("the overview counts %d yields, the timeline %d", overview, got[a].Yielded+got[b].Yielded)
+	if timeline := got[a].Yielded + got[b].Yielded + got[g].Yielded; overview != timeline {
+		t.Fatalf("the overview counts %d yields, the timeline %d", overview, timeline)
 	}
-	names, err := s.ResidencyDeployments([]uint{a, 9999})
-	if err != nil || names[a].Name != "alpha" || names[a].Yield != yieldpolicy.TimeSlice {
+	names, err := s.ResidencyDeployments([]uint{a, g, 9999})
+	if err != nil || names[a].Name != "alpha" || names[a].Yield != yieldpolicy.TimeSlice || names[a].Deleted || names[a].Since.IsZero() || !names[a].Until.IsZero() {
 		t.Fatalf("names = %+v, %v", names, err)
+	}
+	// A deleted one keeps its name and when it went; its policy is not kept.
+	if d := names[g]; d.Name != "gamma" || !d.Deleted || d.Yield != "" || !d.Since.IsZero() || d.Until.IsZero() {
+		t.Fatalf("deleted deployment = %+v", d)
 	}
 	if _, ok := names[9999]; ok {
 		t.Fatal("an unknown deployment has a name")
@@ -312,7 +333,17 @@ func TestResidencyQueryPlans(t *testing.T) {
 		"window events":  residencyWindowQuery(db, []string{"a", "b"}, 100),
 		"prior state":    residencyPriorQuery(db, "a", 100, residencyStateCodes, 1),
 		"prior sleep":    residencyPriorQuery(db, "a", 100, []string{instanceEventSleepResult}, residencyPriorSleepResults),
-		"own automation": residencyOwnEventsQuery(db, []uint{1, 2}, 100),
+		"switch events":  residencySwitchEventsQuery(db, 100),
+	}
+	// The switches are one range of the (kind, id) index over the window,
+	// whatever deployments are asked about.
+	stmt := residencySwitchEventsQuery(db, 100).Session(&gorm.Session{DryRun: true}).Find(&[]InstanceEvent{}).Statement
+	var plan []struct{ Detail string }
+	if err := db.Raw("EXPLAIN QUERY PLAN "+stmt.SQL.String(), stmt.Vars...).Scan(&plan).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(plan) != 1 || !strings.Contains(plan[0].Detail, "idx_instance_events_kind_id (kind=? AND id>?)") {
+		t.Errorf("switch events plan = %+v, want one range of idx_instance_events_kind_id", plan)
 	}
 	for name, q := range queries {
 		stmt := q.Session(&gorm.Session{DryRun: true}).Find(&[]InstanceEvent{}).Statement
