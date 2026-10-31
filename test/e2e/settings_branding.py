@@ -581,6 +581,47 @@ def test_branding(page, context, browser, server, artifacts, report, locale):
           f"browser errors: {page_errors}, {other_logs}")
     check(page.evaluate("document.documentElement.scrollWidth <= innerWidth"),
           "settings page has horizontal overflow")
+    report["last_step"] = "branding-html-escaping"
+    # 2.7: the product name is free text, so it can carry markup. It is shown on the sign-in
+    # page, in the header and in the document title, and every one of those has to keep it as
+    # text. The value is saved through the real PATCH and read back from the independent GET.
+    markup_name = "e2e-<img src=x onerror=1>-brand"
+    name_input = field_input(branding["productName"])
+    name_input.fill(markup_name)
+    with page.expect_response(lambda r: urlsplit(r.url).path == BRANDING
+                              and r.request.method in {"PUT", "PATCH"}) as markup_saved:
+        click_save()
+    check(markup_saved.value.status == 200, f"markup name save HTTP {markup_saved.value.status}")
+    stored_markup = branding_doc(page.request.get(server.base + BRANDING), "markup name")
+    check(stored_markup["product_name"] == markup_name,
+          f"the stored name is not the markup string: {stored_markup['product_name']!r}")
+    # The edit control holds the value verbatim, and the page built no element from it.
+    expect(field_input(branding["productName"])).to_have_value(markup_name)
+    check(page.locator("img[src='x']").count() == 0,
+          "the name created an img element on the settings page")
+    # The sign-in page is the public surface for the same value.
+    markup_context = browser.new_context(
+        viewport=report["viewport"],
+        locale="zh-CN" if locale == "zh" else "en-US", timezone_id="UTC")
+    try:
+        markup_page = markup_context.new_page()
+        markup_page.goto(server.base + "/login")
+        shown = markup_page.get_by_text(markup_name, exact=True).first
+        expect(shown).to_be_visible()
+        check(shown.evaluate("element => element.children.length") == 0,
+              "the sign-in page renders the name through child nodes, not as text")
+        check(markup_page.locator("img[src='x']").count() == 0,
+              "the name created an img element on the sign-in page")
+        check(markup_page.title() == markup_name,
+              f"sign-in document title is {markup_page.title()!r}")
+    finally:
+        markup_context.close()
+    report["html_escaping"] = {"markup": markup_name, "stored": True, "sign_in_text": True,
+                               "settings_text": True, "injected_nodes": 0}
+    # Restore the name so the recorded evidence matches the original brand.
+    field_input(branding["productName"]).fill(product_name)
+    click_save()
+    expect(field_input(branding["productName"])).to_have_value(product_name)
     report["last_step"] = "browser-errors-clear"
 
     report["evidence"].extend([
