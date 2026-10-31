@@ -25,7 +25,7 @@ func (n *NodeRuntime) startCardSmoke(ctx context.Context) {
 	if n.prober == nil {
 		return
 	}
-	check, ok := gpu.HostRuntimeCheckFor(n.prober.Vendor())
+	check, ok := n.cardRuntimeCheck(n.prober.Vendor())
 	if !ok {
 		return
 	}

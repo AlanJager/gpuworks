@@ -318,6 +318,7 @@ func (n *NodeRuntime) OnRPC(ctx context.Context, method string, params json.RawM
 		defer cancel()
 		ctx = withDoctorCardsInUse(ctx, n.cardsInUse)
 		ctx = withDoctorForeignCards(ctx, n.occupancy.foreign)
+		ctx = withDoctorRuntimeCheck(ctx, n.cardRuntimeCheck)
 		return buildDoctorReport(ctx, n.prober, n.doctorPathUsage(), n.runtimeDriver()), nil
 	case proto.RPCNodeSetAccelerator:
 		return n.handleSetAcceleratorRPC(params)

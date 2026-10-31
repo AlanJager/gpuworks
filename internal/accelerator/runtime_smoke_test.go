@@ -222,3 +222,31 @@ func TestHygonRuntimeSmokeCommand(t *testing.T) {
 		t.Fatalf("guide = %+v ok=%v", g, ok)
 	}
 }
+
+func TestRunnerTagFramework(t *testing.T) {
+	for ref, want := range map[string]string{
+		"swr.cn-north-4.myhuaweicloud.com/zs_wjl/gpuworks-runner:hggc13.0-sglang0.5.13-r6": "hggc",
+		"gpuworks/gpuworks-runner:cann9.0.0-910b-vllm0.27.1-r1":                            "cann",
+		"registry:5000/gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2@sha256:abc":       "cuda",
+		"gpuworks/gpuworks-runner:dtk26.04-vllm0.18.1-r1":                                  "dtk",
+		"registry:5000/cann":  "",
+		"my/custom:latest":    "",
+		"my/hggc-tools:hggcx": "",
+		"my/custom:cann":      "",
+	} {
+		if got := RunnerTagFramework(ref); got != want {
+			t.Errorf("RunnerTagFramework(%q) = %q, want %q", ref, got, want)
+		}
+	}
+	for vendor, want := range map[string]string{"ppu": "hggc", "ascend": "cann", "nvidia": "", "hygon": "", "apple": ""} {
+		got, ok := ContainerSmokeFramework(vendor)
+		if got != want || ok != (want != "") {
+			t.Errorf("ContainerSmokeFramework(%q) = %q %v", vendor, got, ok)
+		}
+	}
+	for name, script := range map[string]string{"cuda graded": CUDAGradedSmokeScript, "ascend container": ascendContainerPreamble} {
+		if strings.Contains(script, "'") {
+			t.Errorf("%s script contains a single quote", name)
+		}
+	}
+}

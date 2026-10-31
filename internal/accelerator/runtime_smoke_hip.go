@@ -95,7 +95,6 @@ if rc:
     print("HYGON_HIP_SMOKE_CLEANUP: hipFree=%d" % rc, flush=True)
 print("HYGON_HIP_SMOKE_OK", flush=True)`
 
-
 // HygonRuntimeSmokeCommand reproduces the Hygon per-card check for the card at
 // bdf, finding the DTK installation where the agent looks for it.
 func HygonRuntimeSmokeCommand(bdf string) string {

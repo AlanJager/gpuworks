@@ -78,7 +78,7 @@ func doctorCardRuntimeChecks(ctx context.Context, r *proto.DoctorReport, gpus []
 	if vendor == accelerator.VendorNVIDIA {
 		return
 	}
-	check, ok := doctorHostRuntimeCheck(r.Accelerators.Vendor)
+	check, ok := doctorRuntimeCheck(ctx)(r.Accelerators.Vendor)
 	if !ok {
 		return
 	}
@@ -105,8 +105,11 @@ func doctorCardRuntimeChecks(ctx context.Context, r *proto.DoctorReport, gpus []
 	}
 
 	run := doctorDieRun{check: check, notChecked: unnamed, vendor: vendor, unit: "card", runtime: "HIP"}
-	if vendor == accelerator.VendorAscend {
+	switch vendor {
+	case accelerator.VendorAscend:
 		run.unit, run.runtime = "die", "ACL"
+	case accelerator.VendorPPU:
+		run.runtime = "HGGC"
 	}
 	if reason := smokeUnavailable(check); reason != "" {
 		run.stopped = reason
@@ -224,6 +227,22 @@ func (run *doctorDieRun) ask(ctx context.Context, dies []doctorDie) {
 // doctorHeldCards is the dies held by serving instances, and whether that is
 // known. A run with no source for it (the standalone CLI, which runs beside
 // whatever the agent is serving) asks every die.
+type doctorRuntimeCheckKey struct{}
+
+// withDoctorRuntimeCheck tells a doctor run how this node asks its cards, so
+// it asks them the way the periodic check does (from inside a runner image
+// where the host has no runtime).
+func withDoctorRuntimeCheck(ctx context.Context, check func(vendor string) (gpu.HostRuntimeCheck, bool)) context.Context {
+	return context.WithValue(ctx, doctorRuntimeCheckKey{}, check)
+}
+
+func doctorRuntimeCheck(ctx context.Context) func(string) (gpu.HostRuntimeCheck, bool) {
+	if check, ok := ctx.Value(doctorRuntimeCheckKey{}).(func(string) (gpu.HostRuntimeCheck, bool)); ok && check != nil {
+		return check
+	}
+	return doctorHostRuntimeCheck
+}
+
 type doctorForeignCardsKey struct{}
 
 // withDoctorForeignCards tells a doctor run which cards the last occupancy

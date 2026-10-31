@@ -271,7 +271,11 @@ NVIDIA 需要 `python3` 和 `libcuda.so.1`，在这张卡上创建 CUDA 上下�
 冒烟本身只问本节点拥有的卡）。driver-only 昇腾节点没有 `libascendcl.so` 时跳过检查，不把缺工具算成卡故障。
 海光在主机装有 DTK 时用 `python3` + `libamdhip64.so`（`/opt/dtk/lib` 等）按 PCI 地址找到这张卡，`hipSetDevice` 后分配 4 KiB，
 例如 `hipMalloc=2` 表示这张卡无法使用；HIP 列不出这张卡或 `hipInit` 失败算主机的问题，不判卡故障；没装 DTK 时跳过检查。
-PPU 主机上通常只有管理库（`libhgml.so`）、没有 HGGC 运行时，暂不做主机侧冒烟，沿用 `ppu-smi` 的结论；Apple 也不做。
+主机上没有厂商运行时的节点（PPU 主机通常只有管理库 `libhgml.so`；只装驱动、没装 CANN 的昇腾主机）改在容器里检查：
+借用节点上**已有**的同框架推理镜像（镜像 tag 以 `hggc` / `cann` 开头，优先用本节点实例正在用的镜像），按真实实例的方式只注入这一张卡，
+在里面跑同一段检查（PPU 实测每卡约 0.45 秒，含容器启动），用完即删。绝不为检查拉镜像：节点上没有这类镜像时跳过检查，沿用厂商工具的结论。
+只在 docker / nerdctl 节点这样做；udocker 节点建容器要把整个镜像解包或复制成一份 rootfs（ext4 上 17 GB 的镜像每次 27–61 秒、占 17 GB 磁盘），
+不在 udocker 上做。容器起不来、镜像里没有运行时或 python 都算主机的问题，不判卡故障。Apple 不做。
 
 **点「诊断」会立刻对昇腾、海光做同一项逐卡（昇腾逐 die）检查**：节点详情的「诊断」与 `gpuworks-agent doctor` 对本节点拥有的每张 die 按需跑一遍上面这项运行时检查
 （和周期检查是同一段代码，不另写一套），所以周期检查已经判为 `runtime_unusable` 的 die，诊断里一定看得到。

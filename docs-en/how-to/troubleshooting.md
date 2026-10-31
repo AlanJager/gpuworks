@@ -271,7 +271,11 @@ fail for the entire host, so examine findings for the other cards as well. On an
 the smoke check itself only asks about cards owned by this node). A driver-only Ascend node without `libascendcl.so` skips the check rather than reporting a missing tool as a card failure.
 On a Hygon host with DTK installed, the check uses `python3` and `libamdhip64.so` (`/opt/dtk/lib` and similar) to find the card by its PCI address, `hipSetDevice` to it and allocate 4 KiB;
 for example, `hipMalloc=2` marks that card unusable. HIP not listing the card or `hipInit` failing is a host problem, not a card failure; without DTK the check is skipped.
-A PPU host usually has only the management library (`libhgml.so`) and no HGGC runtime, so there is no host-side check yet and `ppu-smi`'s verdict stands; Apple has none either.
+A node whose host has no vendor runtime (a PPU host usually has only the management library `libhgml.so`; an Ascend host with the driver but without CANN) is checked inside a container instead:
+it borrows an inference image of the same framework that is **already** on the node (a tag starting with `hggc` / `cann`, preferring images this node's instances use), injects only this card the way a real instance gets it,
+runs the same check inside (about 0.45 s per card on PPU, container start included), and removes the container. No image is ever pulled for the check: without such an image on the node the check is skipped and the vendor tool's verdict stands.
+This is done only on docker / nerdctl nodes; on udocker a container means unpacking or copying the whole image into a rootfs (27–61 s and 17 GB of disk each time for a 17 GB image on ext4),
+so udocker nodes are not checked this way. A container that does not start, or an image without the runtime or python, is a host problem, not a card failure. Apple has no check.
 
 **Diagnose now runs the same per-card check (per die on Ascend) on Ascend and Hygon, on demand.** Node details → Diagnose and `gpuworks-agent doctor` run the runtime check above once for each die this node owns
 (it is the same code as the periodic check, not a second implementation), so a die the periodic check has already marked `runtime_unusable` always shows up in the diagnosis.
