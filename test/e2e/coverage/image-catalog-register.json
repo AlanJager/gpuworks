@@ -228,7 +228,6 @@
       "1.2",
       "1.5",
       "1.11",
-      "2.1",
       "2.2",
       "4.4",
       "5.1",
@@ -248,6 +247,7 @@
     "1.15": "The custom add drawer stacks its sections in one vertical space whose row gap is 20 pixels. Tab reaches Add Image. Enter in the empty image reference sends no image import and leaves that field empty. Enter in the filled reference registry.example/team/enter:v1 sends no image import, leaves the drawer open, and keeps that reference. Submitting an empty image reference shows the enter-an-image-reference sentence. At 1440×900 the image reference and Add Image are both inside the viewport and do not overlap.",
     "1.9": "While the custom image import is held the Add Image button stays loading and a second click sends no further import. The later 200 is the only stored series",
     "1.10": "The 502 keeps the import drawer and the typed reference, series name, and versions, shows upstream fixture is unreachable, and stores no series. The retry 200 matches the independent detail GET",
-    "12.6": "covered: While the custom image import is held the Add Image button shows the loading state and a second click sends no further import; the 502 keeps the typed reference, series name, and versions, shows upstream fixture is unreachable, and stores no series; the later 200 matches the independent detail GET and the reloaded link"
+    "12.6": "covered: While the custom image import is held the Add Image button shows the loading state and a second click sends no further import; the 502 keeps the typed reference, series name, and versions, shows upstream fixture is unreachable, and stores no series; the later 200 matches the independent detail GET and the reloaded link",
+    "2.1": "Every text control in the register drawer is read before any edit, through exercise_register_inventory: the archive address, series name, image reference, engine version and framework version each have their actual value asserted with to_have_value('') rather than inferred from a placeholder, each carries its accessible label, and each placeholder is asserted separately. Required state is asserted per field through aria-required: the image reference and framework version are required, the others are not. The drawer is also counted - five textboxes, no spinbutton - so a control added or removed fails the case, and the whole sweep asserts that reading sent no mutation."
   }
 }
