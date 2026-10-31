@@ -252,9 +252,9 @@ func TestFailedSleepNeverCarriesAResidue(t *testing.T) {
 	}
 }
 
-func TestSleepThatTookEffectDespiteAnHTTPFailureCarriesAResidue(t *testing.T) {
+func TestSleepThatTookEffectDespiteATransportFailureCarriesAResidue(t *testing.T) {
 	h := newSleepHTTPServer(t)
-	h.status["/sleep"] = 500
+	h.drop["/sleep"] = true
 	h.probeBodies = []string{`{"is_sleeping":true}`}
 	prober := newResidueProber(map[int]float64{0: 2 << 30})
 	e, reported := newResidueEngine(t, prober)

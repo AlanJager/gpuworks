@@ -678,6 +678,16 @@ func (s *Store) updateInstanceStatus(inst *Instance, st proto.InstanceStatus) er
 		if st.SleepLevel > 0 && st.SleepResidueBytes > 0 {
 			updates["sleep_residue_bytes"] = st.SleepResidueBytes
 		}
+		// A new process holds no host buffer yet; once an L1 sleep pinned one,
+		// it stays until the process goes. An adopting agent (after its own
+		// restart) does not know and reports none, which must not clear it:
+		// only a report of a process starting does.
+		switch {
+		case st.State == proto.InstPending || st.State == proto.InstPulling || st.State == proto.InstStarting:
+			updates["l1_host_buffer_held"] = false
+		case st.L1HostBufferHeld && (st.State == proto.InstRunning || st.Phase == proto.PhaseSleep):
+			updates["l1_host_buffer_held"] = true
+		}
 	}
 	if len(st.Ports) > 0 {
 		updates["ports"] = jsonStr(st.Ports)

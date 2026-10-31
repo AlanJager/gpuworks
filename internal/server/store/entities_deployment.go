@@ -176,6 +176,14 @@ type Instance struct {
 	// card was shared, or the agent predates the measurement): the ledger
 	// then charges an estimate (sleep.ResidueBytes).
 	SleepResidueBytes int64
+	// L1HostBufferHeld says the instance's engine completed an L1 sleep since
+	// its process started, as its agent reports (proto.InstanceStatus): vLLM
+	// keeps the pinned host memory it copies the weights into for the life of
+	// the process, so a later L1 sleep takes no host memory the node has not
+	// already given it (planning.L1HostMemoryRefusal). It cannot be derived:
+	// an instance launched under an L2 order and woken since has none, and an
+	// older agent does not report it. A new process clears it.
+	L1HostBufferHeld bool `gorm:"not null;default:false"`
 	// WakeWaitingSince is when a wake that did not fit started waiting for
 	// room; nil when no wake waits. The controller wakes the instance once its
 	// GPUs can take it back, or gives up after the wait limit.

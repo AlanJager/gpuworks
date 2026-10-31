@@ -112,7 +112,8 @@ func (e *Engine) probeAndReport(ctx context.Context, spec proto.InstanceDesiredS
 					UUID: spec.UUID, State: proto.InstRunning, ContainerID: id,
 					Ports: spec.Ports, DirectAddr: fmt.Sprintf("127.0.0.1:%d", spec.APIPort),
 					Measured: e.collectMeasured(ctx, spec, id), SleepLevel: actualSleep,
-					OpenAPIPaths: readOpenAPIPaths(ctx, client, spec.APIPort),
+					OpenAPIPaths:     readOpenAPIPaths(ctx, client, spec.APIPort),
+					L1HostBufferHeld: e.holdsL1HostBuffer(spec.UUID),
 				})
 				return true
 			}

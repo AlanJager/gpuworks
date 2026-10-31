@@ -282,6 +282,12 @@ type InstanceStatus struct {
 	// those cards to itself; 0 when it was not measured. The server's ledger
 	// charges it instead of an estimate while the instance sleeps.
 	SleepResidueBytes int64 `json:"sleep_residue_bytes,omitempty"`
+	// L1HostBufferHeld says the engine completed an L1 sleep since its
+	// container started (the agent's startup prewarm or an order). vLLM keeps
+	// the pinned host memory an L1 sleep copies the weights into for the life
+	// of the process, so a later L1 sleep of this instance takes no host
+	// memory it does not already hold. False when not known.
+	L1HostBufferHeld bool `json:"l1_host_buffer_held,omitempty"`
 	// RuntimeAssetDigests acknowledges assets that were verified and published
 	// into the local content-addressed cache before container creation.
 	RuntimeAssetDigests []string `json:"runtime_asset_digests,omitempty"`
