@@ -19,6 +19,11 @@ import (
 // pin the same one), so a failure is never a Docker upgrade in disguise.
 const dockerMajor = "29"
 
+// dockerMirrors are the Docker CE apt repositories tried in order, all
+// mainland: one caught mid-sync serves an index whose size does not match its
+// Release file, and apt refuses it until the sync ends.
+const dockerMirrors = "https://mirrors.aliyun.com/docker-ce/linux/ubuntu https://mirrors.tuna.tsinghua.edu.cn/docker-ce/linux/ubuntu https://mirrors.ustc.edu.cn/docker-ce/linux/ubuntu https://repo.huaweicloud.com/docker-ce/linux/ubuntu"
+
 // installDockerCommand installs Docker CE <dockerMajor>.x and the NVIDIA
 // container toolkit, configures the nvidia runtime, and prints one evidence
 // line the validation (and the L4 cases) check.
@@ -38,15 +43,29 @@ apt_retry() {
 case "${ID:-}" in ubuntu) ;; *) echo "unsupported distribution: ${ID:-unknown}" >&2; exit 1;; esac
 codename="${VERSION_CODENAME:?}"
 arch="$(dpkg --print-architecture)"
+# A resumed build finds the Docker repository an earlier attempt wrote; a
+# mirror of it caught mid-sync would fail the base update too.
+rm -f /etc/apt/sources.list.d/docker.list
 apt_retry apt-get update -o Acquire::Retries=3
 apt_retry apt-get install -y --no-upgrade curl gnupg ca-certificates
 install -m 0755 -d /etc/apt/keyrings
-curl -fsSL --retry 5 https://mirrors.aliyun.com/docker-ce/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
-chmod a+r /etc/apt/keyrings/docker.asc
-printf 'deb [arch=%s signed-by=/etc/apt/keyrings/docker.asc] https://mirrors.aliyun.com/docker-ce/linux/ubuntu %s stable\n' "$arch" "$codename" >/etc/apt/sources.list.d/docker.list
-apt_retry apt-get update -o Acquire::Retries=3
-docker_version="$(apt-cache madison docker-ce | awk '$3 ~ /^5:` + dockerMajor + `\./ {print $3; exit}')"
-[ -n "$docker_version" ] || { echo 'Docker CE ` + dockerMajor + `.x is unavailable from the mirror' >&2; exit 1; }
+docker_version=""
+for base in ` + dockerMirrors + `; do
+  if curl -fsSL --retry 3 --connect-timeout 15 "$base/gpg" -o /etc/apt/keyrings/docker.asc; then
+    chmod a+r /etc/apt/keyrings/docker.asc
+    printf 'deb [arch=%s signed-by=/etc/apt/keyrings/docker.asc] %s %s stable\n' "$arch" "$base" "$codename" >/etc/apt/sources.list.d/docker.list
+    # A mirror caught mid-sync fails the index check; the next one is tried.
+    for try in 1 2 3; do
+      if apt-get update -o Acquire::Retries=3; then
+        docker_version="$(apt-cache madison docker-ce | awk '$3 ~ /^5:` + dockerMajor + `\./ {print $3; exit}')"
+        break
+      fi
+      sleep 10
+    done
+  fi
+  if [ -n "$docker_version" ]; then echo "docker-ce installed from $base"; break; fi
+done
+[ -n "$docker_version" ] || { echo 'Docker CE ` + dockerMajor + `.x is unavailable from every mirror' >&2; exit 1; }
 apt_retry apt-get install -y --allow-downgrades docker-ce="$docker_version" docker-ce-cli="$docker_version" containerd.io docker-buildx-plugin docker-compose-plugin
 ` + toolkitInstall + `
 nvidia-ctk runtime configure --runtime=docker

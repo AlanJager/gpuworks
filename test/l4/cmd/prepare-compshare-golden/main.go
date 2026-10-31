@@ -281,7 +281,9 @@ func printGPUChecks(results []gpuCheck) {
 	}
 }
 
-func modelFiles(ctx context.Context) ([]remoteFile, error) { return goldenimage.ModelFiles(ctx) }
+func modelFiles(ctx context.Context) ([]remoteFile, error) {
+	return goldenimage.ModelFiles(ctx, goldenimage.DefaultModelRepo, goldenimage.DefaultModelRev)
+}
 
 func waitSSH(ctx context.Context, instance *cloudprovider.Instance) error {
 	if len(instance.PrivateKey) > 0 {
