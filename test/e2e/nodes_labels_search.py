@@ -249,7 +249,13 @@ def test_node_labels_search(page, context, server, artifacts, report, locale):
         stayed = page.request.get(server.base + NODES + f"/{node_a['uuid']}")
         check(stayed.json()["labels"] == {}, f"label key {text!r} changed stored labels")
 
-    reject_key("   ")
+    # A whitespace-only key never reaches the server: the form marks it required (whitespace:
+    # true in NodeLabelsModal), so no PUT is sent and the stored labels stay empty.
+    key_input.fill("   ")
+    value_input.fill("alpha")
+    save_button.click()
+    expect(modal.get_by_text(ui["labels"]["keyRequired"], exact=True)).to_be_visible()
+    check(len(requests) == puts_before_keys, "a whitespace-only key was submitted")
     reject_key(" team ")
     key_input.fill("team")
     value_input.fill("alpha")
@@ -458,11 +464,12 @@ def test_node_labels_search(page, context, server, artifacts, report, locale):
     expected_reject = {"method": "PUT", "path": labels_path, "status": 400}
     unexpected = [item for item in bad_responses if item != expected_reject]
     check(not unexpected, "unexpected browser HTTP errors: " + str(unexpected))
-    # Four resource-400 lines: two whitespace keys, the reserved key, and the
-    # 86-character value. Any other console error still fails the case.
+    # Three resource-400 lines: the padded key, the reserved key, and the 86-character value.
+    # The whitespace-only key is refused by the form and never reaches the server. Any other
+    # console error still fails the case.
     allowed_console = [item for item in console_errors
                        if "400" in item and ("load resource" in item or "加载资源" in item)]
-    check(len(allowed_console) == 4
+    check(len(allowed_console) == 3
           and len(allowed_console) == len(console_errors) and not page_errors,
           f"browser errors: {page_errors}, {console_errors}")
     check(page.evaluate("document.documentElement.scrollWidth <= innerWidth"),
@@ -473,7 +480,6 @@ def test_node_labels_search(page, context, server, artifacts, report, locale):
     saved_body = {"labels": {"team": "alpha"}}
     held_body = {"labels": {"team": "alpha"}}
     check(requests == [
-        {"method": "PUT", "path": labels_path, "body": {"labels": {"   ": "alpha"}}},
         {"method": "PUT", "path": labels_path, "body": {"labels": {" team ": "alpha"}}},
         {"method": "PUT", "path": labels_path, "body": rejected_body},
         {"method": "PUT", "path": labels_path, "body": held_body},

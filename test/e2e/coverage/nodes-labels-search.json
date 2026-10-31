@@ -8,7 +8,12 @@
   "page_id": "nodes",
   "lane": "local-real-server-sqlite",
   "identity": "admin",
-  "required_evidence": ["ui", "request", "persistence", "cleanup"],
+  "required_evidence": [
+    "ui",
+    "request",
+    "persistence",
+    "cleanup"
+  ],
   "runtime_evidence": {
     "status": "N/A",
     "reason": "The two nodes are offline definitions prepared through the product API. No agent, container, GPU or engine is claimed."
@@ -25,32 +30,68 @@
       "component": "Menu action + Form.List modal",
       "request": "PUT /nodes/{uuid}/labels {\"labels\":{\"team\":\"alpha\"}}",
       "persisted": "labels",
-      "covered": ["add key/value and save", "row tag", "refresh", "independent GET", "reserved gpuworks.ai/ key rejected through the UI with the modal open and stored labels unchanged", "corrected save succeeds"],
-      "missing": ["editing an existing value", "removing a label", "duplicate-key and empty-key validation", "long key/value bounds"]
+      "covered": [
+        "add key/value and save",
+        "row tag",
+        "refresh",
+        "independent GET",
+        "reserved gpuworks.ai/ key rejected through the UI with the modal open and stored labels unchanged",
+        "corrected save succeeds"
+      ],
+      "missing": [
+        "editing an existing value",
+        "removing a label",
+        "duplicate-key and empty-key validation",
+        "long key/value bounds"
+      ]
     },
     {
       "id": "node.search",
       "component": "Search input",
       "request": "GET /nodes?q=...",
       "persisted": "N/A: ephemeral filter",
-      "covered": ["partial runId matches both nodes", "exact name matches only the target, total=1", "missing value returns the empty state and total=0", "clearing restores both rows and total=2", "query and result ID set checked against an independent GET"],
-      "missing": ["search by hostname or UUID", "special characters and case/whitespace contract", "pagination with a filtered set"]
+      "covered": [
+        "partial runId matches both nodes",
+        "exact name matches only the target, total=1",
+        "missing value returns the empty state and total=0",
+        "clearing restores both rows and total=2",
+        "query and result ID set checked against an independent GET"
+      ],
+      "missing": [
+        "search by hostname or UUID",
+        "special characters and case/whitespace contract",
+        "pagination with a filtered set"
+      ]
     },
     {
       "id": "node.label-filter",
       "component": "Multi-select fed by node facets",
       "request": "GET /nodes?label=team%3Dalpha",
       "persisted": "N/A: ephemeral filter",
-      "covered": ["selecting team=alpha keeps the labeled node and excludes the other", "GET /nodes?label=team%3Dalpha returns exactly the target with total=1", "the clear control removes team=alpha, both rows return, and the independent GET total is 2"],
-      "missing": ["clearing the selector search restores all candidates", "multiple label AND semantics", "a combination whose individual filters match but whose intersection is empty", "facet values changing after another edit"]
+      "covered": [
+        "selecting team=alpha keeps the labeled node and excludes the other",
+        "GET /nodes?label=team%3Dalpha returns exactly the target with total=1",
+        "the clear control removes team=alpha, both rows return, and the independent GET total is 2"
+      ],
+      "missing": [
+        "clearing the selector search restores all candidates",
+        "multiple label AND semantics",
+        "a combination whose individual filters match but whose intersection is empty",
+        "facet values changing after another edit"
+      ]
     },
     {
       "id": "node.cleanup",
       "component": "N/A: API fixture cleanup",
       "request": "DELETE /nodes/{uuid}?force=true",
       "persisted": "removal",
-      "covered": ["both owned nodes deleted", "independent GET returns 404"],
-      "missing": ["the force-removal UI and failure path, already covered by gpuworks/node/removal-with-explicit-force"]
+      "covered": [
+        "both owned nodes deleted",
+        "independent GET returns 404"
+      ],
+      "missing": [
+        "the force-removal UI and failure path, already covered by gpuworks/node/removal-with-explicit-force"
+      ]
     }
   ],
   "checklist_items": {
@@ -76,7 +117,8 @@
     "12.1": "Edit labels on the node row opens one dialog named by the labels title, and the add-label control is the visible business control",
     "12.2": "The row menu and labels modal open inside the 1440x900 viewport; the modal container and Save button are reachable",
     "12.3": "Default focus is inside the labels dialog. Tab and Shift+Tab each cycle across at least two controls and never leave the dialog",
-    "12.6": "covered: While the label PUT is held the footer Save shows the loading state and a second click sends no further save; the 502 keeps the team and alpha draft and shows the server reason; the later 200 matches the reloaded row and the independent GET"
+    "12.6": "covered: While the label PUT is held the footer Save shows the loading state and a second click sends no further save; the 502 keeps the team and alpha draft and shows the server reason; the later 200 matches the reloaded row and the independent GET",
+    "2.7": "A label value is free text, so it can carry markup. '<img src=x onerror=1>' is written through the real labels PUT, and the independent GET confirms the server holds that exact string. The node list row renders each label as key=value text, so the case requires the literal 'team=<img src=x onerror=1>' to be visible as text and requires that no img[src=x] element exists on the page. The plain value is restored afterwards so the rest of the case reads what it seeded. Proven by mutation: rendering the cell tag text with dangerouslySetInnerHTML in CellTags makes the case fail. While adding this the case turned out to be red on its own for an unrelated reason - the form refuses a whitespace-only label key (whitespace: true in NodeLabelsModal), so that check no longer sends a PUT - and that expectation was corrected in the same change."
   },
   "missing": [
     "MISSING: checklist 10.4 (column sorting) — no sort interaction is exercised",
