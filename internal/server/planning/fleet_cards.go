@@ -97,15 +97,60 @@ func FleetCards(st *store.Store, nodes []store.Node) (*FleetLedger, error) {
 	if err != nil {
 		return nil, err
 	}
+	charge, err := newFleetCharge(st, instances, deployments)
+	if err != nil {
+		return nil, err
+	}
 	out := &FleetLedger{Cards: make(map[uint][]FleetCard, len(nodes)), Deployments: make(map[uint]FleetDeployment, len(deployments))}
-	modelOf := make(map[uint]uint, len(deployments))
 	for i := range deployments {
 		d := &deployments[i]
 		out.Deployments[d.ID] = FleetDeployment{Name: d.Name, YieldPolicy: d.Policy().Yield}
-		modelOf[d.ID] = d.ModelID
+	}
+	for i := range nodes {
+		node := &nodes[i]
+		out.Cards[node.ID] = nodeCards(st, node, charge.byNode[node.ID], charge.residue, charge.sleeper, charge.reported)
+	}
+	return out, nil
+}
+
+// FleetAllocations is GPUAllocations for every given node at once, by node ID,
+// from instances and deployments the caller already holds (any state: the
+// ledger itself skips the ones that hold no claim) instead of one read of
+// the node's instances per node. Only the models of the sleepers are read,
+// once. The figures are the per-node ledger's, charged by the same
+// arithmetic (allocateInstances).
+func FleetAllocations(st *store.Store, nodes []store.Node, instances []store.Instance, deployments []store.Deployment) (map[uint]map[int]GPUAllocation, error) {
+	charge, err := newFleetCharge(st, instances, deployments)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[uint]map[int]GPUAllocation, len(nodes))
+	for i := range nodes {
+		node := &nodes[i]
+		out[node.ID] = allocateInstances(st, node, charge.byNode[node.ID], ledgerView{}, charge.residue, charge.sleeper)
+	}
+	return out, nil
+}
+
+// fleetCharge is what charging the whole fleet's instances shares between
+// nodes: the instances by node, how a sleeper is told and what its residue
+// is sized from, all derived from rows read once for the fleet.
+type fleetCharge struct {
+	byNode   map[uint][]store.Instance
+	residue  *residues
+	sleeper  func(*store.Instance) bool
+	reported func(*store.Instance) int
+}
+
+// newFleetCharge prepares the charge of instances against the fleet. The
+// deployments need only carry their ID and model.
+func newFleetCharge(st *store.Store, instances []store.Instance, deployments []store.Deployment) (*fleetCharge, error) {
+	modelOf := make(map[uint]uint, len(deployments))
+	for i := range deployments {
+		modelOf[deployments[i].ID] = deployments[i].ModelID
 	}
 
-	byNode := make(map[uint][]store.Instance, len(nodes))
+	byNode := make(map[uint][]store.Instance)
 	// A follower of a multi-node replica sleeps with its leader, which is
 	// another row of the same deployment: those deployments' rows are kept
 	// together to look the leader up.
@@ -148,12 +193,7 @@ func FleetCards(st *store.Store, nodes []store.Node) (*FleetLedger, error) {
 	}
 	residue := newResidues(st)
 	residue.known = func(deploymentID uint) float64 { return modelParams(byModel[modelOf[deploymentID]]) }
-
-	for i := range nodes {
-		node := &nodes[i]
-		out.Cards[node.ID] = nodeCards(st, node, byNode[node.ID], residue, sleeper, reported)
-	}
-	return out, nil
+	return &fleetCharge{byNode: byNode, residue: residue, sleeper: sleeper, reported: reported}, nil
 }
 
 // NodeCards is one node's cards, as FleetCards gives them, from that node's
