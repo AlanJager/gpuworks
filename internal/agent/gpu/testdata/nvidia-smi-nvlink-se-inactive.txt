@@ -1,0 +1,6 @@
+GPU 0: Quadro RTX 8000 (UUID: GPU-68881cae-d1a9-a54a-1448-5e260b5b5206)
+NVML: Unable to retrieve NVLink information as all links are inActive
+NVML: Unable to retrieve NVLink errors as all links are inActive
+GPU 1: NVIDIA GeForce RTX 2080 Ti (UUID: GPU-e330d2f2-9085-bbf9-33f8-1655c1ea9450)
+NVML: Unable to retrieve NVLink information as all links are inActive
+NVML: Unable to retrieve NVLink errors as all links are inActive

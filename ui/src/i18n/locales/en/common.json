@@ -731,6 +731,26 @@
         "summary": "The card is bound to its vendor driver, but the driver could not bring it up, so nothing can use it and the vendor tool does not list it.",
         "action": "Check the driver errors in the node's dmesg (for NVIDIA: NVRM lines such as \"RmInitAdapter failed\"). The card usually needs a reset, and sometimes the host needs a reboot; where the card is not meant for this host, unbind it from the vendor driver."
       },
+      "pcie_link_degraded": {
+        "label": "PCIe link degraded",
+        "summary": "A PCIe link between the card and its root port runs at fewer lanes (or, while the card is busy, a lower speed) than both of its ends support, report after report. The card still works but loads models and moves data more slowly, so it is used only when healthy cards run out.",
+        "action": "Use the command below to see what both ends of the link support and what they negotiated. It is usually a badly seated card, a riser or cable, or a slot set to a lower speed in the BIOS; check and reseat it while the host is idle."
+      },
+      "pcie_errors": {
+        "label": "PCIe errors",
+        "summary": "PCIe devices between the card and its root port reported new recovered errors. The card still works and recovers on its own after 15 minutes without new errors.",
+        "action": "Use the command below to see the error counters, and look for AER entries in dmesg. Errors that keep coming usually mean a signal problem in the link or slot."
+      },
+      "pcie_fatal_errors": {
+        "label": "PCIe fatal errors",
+        "summary": "PCIe devices between the card and its root port reported new fatal errors, after which the link has to be reset. The card is not given work until a runtime check passes on it again.",
+        "action": "Use the command below to see the error counters, and look for AER entries in dmesg. The card usually needs a reset or the host a reboot; if it keeps happening, contact the hardware vendor."
+      },
+      "nvlink_down": {
+        "label": "NVLink down",
+        "summary": "Fewer of this card's NVLinks are active than it has had, two checks in a row. The card still works, but work spread across cards is slower, and the scheduler no longer groups it with the cards it was linked to.",
+        "action": "Use the command below to see each link's state and error counters, and look for Xid 74 in dmesg. It usually needs a card reset or a host reboot; on NVSwitch systems also check the Fabric Manager."
+      },
       "memory_repair_pending": {
         "label": "Reset pending",
         "summary": "Memory rows or pages on this card are marked for replacement; the replacement takes effect at the next reset.",

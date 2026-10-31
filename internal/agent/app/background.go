@@ -3,6 +3,8 @@ package app
 import (
 	"context"
 
+	"gpuworks.ai/gpuworks/internal/accelerator"
+
 	"gpuworks.ai/gpuworks/internal/agent/collector"
 	"gpuworks.ai/gpuworks/internal/agent/engine"
 	"gpuworks.ai/gpuworks/internal/agent/gpu"
@@ -27,6 +29,11 @@ func (n *NodeRuntime) StartBackground(ctx context.Context, nodeUUID string) {
 	go runCollector(ctx, col)
 	go n.runStorages(ctx)
 	n.startCardSmoke(ctx)
+	if n.prober != nil && accelerator.NormalizeVendor(n.prober.Vendor()) == accelerator.VendorNVIDIA && !gpu.IsSynthetic(n.prober) {
+		xid := &gpu.XidWatcher{}
+		n.xid.Store(xid)
+		go xid.Run(ctx)
+	}
 	if n.journal == nil {
 		n.journal = journald{}
 	}
