@@ -412,6 +412,17 @@ type APIKey struct {
 	// Revoked is when the key was revoked; a revoked key never authenticates
 	// and is listed so its past usage keeps a name.
 	Revoked *time.Time `json:"revoked_at,omitempty"`
+	// AllDeployments: the key may call every deployment. Otherwise only
+	// Deployments, which may have become empty when they were all deleted.
+	AllDeployments bool               `json:"all_deployments"`
+	Deployments    []APIKeyDeployment `json:"deployments"`
+}
+
+// APIKeyDeployment is a deployment a restricted API key may call.
+type APIKeyDeployment struct {
+	ID         uint   `json:"id"`
+	Name       string `json:"name"`
+	ServedName string `json:"served_name"`
 }
 
 // DeployRequest is the create-deployment body.

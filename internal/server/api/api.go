@@ -492,6 +492,7 @@ func Router(d Deps, policies ...auth.SessionPolicy) http.Handler {
 			r.Get("/apikeys", a.listAPIKeys)
 			r.Post("/apikeys", a.createAPIKey)
 			r.Delete("/apikeys/{prefix}", a.deleteAPIKey)
+			r.Put("/apikeys/{prefix}/scope", a.setAPIKeyScope)
 			r.Get("/mcp/status", a.mcpStatus)
 			r.With(a.managementAdmin).Put("/mcp/settings", a.putMCPSettings)
 

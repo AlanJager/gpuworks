@@ -7,10 +7,12 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
-// ModelsHandler serves GET /v1/models listing deployed served-names (OpenAI shape).
+// ModelsHandler serves GET /v1/models listing deployed served-names (OpenAI
+// shape), only those of deployments the caller's API key may call.
 func (p *Proxy) ModelsHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if _, ok := p.authenticate(w, r); !ok {
+		_, identity, ok := p.authenticate(w, r)
+		if !ok {
 			return
 		}
 		deps, _ := p.store.ListDeployments()
@@ -21,7 +23,7 @@ func (p *Proxy) ModelsHandler() http.HandlerFunc {
 		}
 		out := []model{}
 		for _, d := range deps {
-			if d.State == store.DeployActive && d.ServedName != "" {
+			if d.State == store.DeployActive && d.ServedName != "" && identity.Allows(d.ID) {
 				out = append(out, model{ID: d.ServedName, Object: "model", OwnedBy: "gpuworks"})
 			}
 		}
