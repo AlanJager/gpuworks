@@ -64,8 +64,16 @@ type Node struct {
 	UUID string `json:"uuid"`
 	// Scheduling is schedulable, cordoned or draining.
 	Scheduling string `json:"scheduling"`
-	Name       string `json:"name,omitempty"`
-	Token      string `json:"token,omitempty"`
+	// SchedulingBy is who set Scheduling: operator or platform; absent on a
+	// schedulable node, or a cordon set before the author was recorded. The
+	// platform lifts only its own.
+	SchedulingBy string `json:"scheduling_by,omitempty"`
+	// CordonReason is why the platform holds the node out of scheduling
+	// now (runtime_gpu_blocked, card_needs_host_reboot); absent unless
+	// SchedulingBy is platform. A client renders the code in its language.
+	CordonReason string `json:"cordon_reason,omitempty"`
+	Name         string `json:"name,omitempty"`
+	Token        string `json:"token,omitempty"`
 	// InstallCommand installs this node's agent, and is also how a node
 	// whose agent the platform cannot restore itself is brought back. It
 	// carries the token, so it is returned only alongside it.

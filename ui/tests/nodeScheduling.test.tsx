@@ -81,6 +81,29 @@ test("a cordon the operator chose has no tooltip, and a cause the client does no
   assert.ok((await screen.findByRole("tooltip")).textContent?.includes("gpu_from_the_future"));
 });
 
+// Who stopped scheduling is said where the tag is: an operator's stop is
+// theirs to lift, the platform's names its reason and that it lifts itself.
+test("the tag says who stopped scheduling and, for the platform, why and that it will lift it", async () => {
+  const user = userEvent.setup({ document: dom.window.document });
+  const hoverText = async (n: object) => {
+    render(<I18nextProvider i18n={i18n}><NodeSchedulingTag node={{ ...(node as object), scheduling: "cordoned", ...n } as never} /></I18nextProvider>);
+    await user.hover(screen.getByText(sched.state.cordoned));
+    const text = (await screen.findByRole("tooltip")).textContent ?? "";
+    cleanup();
+    return text;
+  };
+  assert.equal(await hoverText({ scheduling_by: "operator" }), sched.by.operator);
+
+  const reboot = await hoverText({ scheduling_by: "platform", cordon_reason: "card_needs_host_reboot" });
+  assert.ok(reboot.includes(sched.cordonReason.card_needs_host_reboot), reboot);
+  assert.ok(reboot.includes(sched.by.platformLifts), reboot);
+  assert.ok(!reboot.includes("card_needs_host_reboot"), "the raw code is not shown");
+
+  const runtime = await hoverText({ scheduling_by: "platform", cordon_reason: "runtime_gpu_blocked", runtime_driver: "docker",
+    runtime_gpu_blocked: "gpu_plugin_missing", runtime_gpu_plugin: "NVIDIA Container Toolkit" });
+  assert.ok(runtime.includes("NVIDIA Container Toolkit") && runtime.includes(sched.by.platformLifts), runtime);
+});
+
 test("draining lists what a drain moves and warns about what it leaves; evicting asks first", async () => {
   let scheduling = "schedulable";
   const set: string[] = [];

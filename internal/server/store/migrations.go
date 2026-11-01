@@ -1296,6 +1296,15 @@ var migrations = []migration{
 	{Version: 191, Name: "instance_sleep_held", Apply: moveSleepHeldToInstances},
 	{Version: 192, Name: "instance_l1_host_buffer", Apply: addInstanceL1HostBuffer},
 	{Version: 193, Name: "api_key_scope", Apply: addAPIKeyScope},
+	{Version: 194, Name: "node_scheduling_source", Apply: func(db *gorm.DB) error {
+		if !db.Migrator().HasTable(&Node{}) || db.Migrator().HasColumn(&Node{}, "SchedulingBy") {
+			return nil
+		}
+		// Empty on every existing row: a cordon set before this was
+		// recorded has no known author, and the platform leaves one it
+		// cannot prove is its own alone.
+		return db.Migrator().AddColumn(&Node{}, "SchedulingBy")
+	}},
 }
 
 // modelFileNetworkColumns are the columns migrations 76 and 77 added to

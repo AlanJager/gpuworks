@@ -43,6 +43,10 @@ type Node struct {
 	// (NodeScheduling): empty while it takes them, cordoned or draining
 	// while it does not. Nothing else records it.
 	Scheduling NodeScheduling `gorm:"size:16;not null;default:''"`
+	// SchedulingBy is who set Scheduling to its current value, so the
+	// platform lifts only its own cordons (SchedulingSource). Empty on a
+	// schedulable node.
+	SchedulingBy SchedulingSource `gorm:"size:16;not null;default:''"`
 
 	// Hardware summary (denormalized for list views; full detail via GPUs).
 	OS               string `gorm:"size:32"`
@@ -80,7 +84,7 @@ type Node struct {
 	// state), so out-of-band restart and reinstall reach this node's agent on
 	// a host that runs several; empty for nodes installed another way, which
 	// recovery treats as the default /opt/gpuworks.
-	InstallDir string `gorm:"size:512"`
+	InstallDir        string `gorm:"size:512"`
 	LastRemoteAddr    string `gorm:"size:128"` // address observed by the control plane
 	RuntimeDriver     string `gorm:"size:16"`  // docker | nerdctl | udocker | host (detected)
 	RuntimePreference string `gorm:"size:16"`  // auto | docker | nerdctl | udocker (desired)
@@ -112,11 +116,11 @@ type Node struct {
 	// Only the agent can see the host's PCI bus, and the cards rows hold
 	// only the managed vendor's.
 	AcceleratorVendors string `gorm:"type:text"`
-	Runtimes              string `gorm:"type:text"` // JSON []string of container runtimes the agent detected
-	PartitionAssets       string `gorm:"type:text"` // JSON []proto.AssetReport
-	PartitionProbes       string `gorm:"type:text"` // JSON []proto.PartitionProbeResult
-	NetworkInventory      string `gorm:"type:text"` // JSON proto.NetInventory, latest agent report
-	ServingForward        string `gorm:"type:text"` // JSON store.ServingForwardStatus, the gateway's last direct-path outcome
+	Runtimes           string `gorm:"type:text"` // JSON []string of container runtimes the agent detected
+	PartitionAssets    string `gorm:"type:text"` // JSON []proto.AssetReport
+	PartitionProbes    string `gorm:"type:text"` // JSON []proto.PartitionProbeResult
+	NetworkInventory   string `gorm:"type:text"` // JSON proto.NetInventory, latest agent report
+	ServingForward     string `gorm:"type:text"` // JSON store.ServingForwardStatus, the gateway's last direct-path outcome
 	// ManagementRolesOff lists the roles (netplan roles) the management network
 	// may not carry for this node; JSON []string, empty means all of them.
 	ManagementRolesOff      string `gorm:"type:text;column:management_roles_off"`

@@ -359,8 +359,15 @@ When an explicitly selected runtime (or the runtime on an Ascend node) cannot pr
 the platform automatically stops scheduling on the node: hover over “Scheduling stopped” in the node list to see the reason, and use the “Runtime plugin” row in node details to identify the missing plugin and copy its installation command.
 If you manually resume scheduling before resolving the cause, the UI warns you about it, and the platform stops scheduling again on the next report;
 
-on the first report after the cause is resolved (the plugin is installed, or the agent switches to a runtime that does not need a plugin), the platform automatically resumes scheduling
-(the platform does not record who stopped scheduling, so it also resumes nodes that an operator manually stopped after the platform stopped them).
+on the first report after the cause is resolved (the plugin is installed, or the agent switches to a runtime that does not need a plugin), the platform automatically resumes scheduling.
+The platform records who stopped scheduling and lifts only its own stops: a node an operator stopped by hand (including after the platform stopped it) is never resumed automatically.
+
+**When a card needs a host reboot to recover**
+
+When a card reports `reboot_required` or `power_cycle_required` (for example NVIDIA Xid 79, or the driver's recovery action is a reboot), the platform likewise stops scheduling on the whole node:
+nothing short of rebooting the host recovers the card, and the other cards behind the same driver may be affected. The rules are the same as above — hover over “Scheduling stopped” to see why;
+an administrator may resume scheduling by hand to try a deployment, and while the cause remains the next report (about a minute later) stops it again;
+once the host has rebooted and the card is healthy, the first report resumes scheduling automatically. A fault that only needs a card reset (`reset_required`) stops only that card, not the whole node.
 
 ### Card Is Passed Through, Has No Driver Bound, or Is Held by Another Driver
 

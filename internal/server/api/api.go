@@ -1079,6 +1079,8 @@ func nodeDTO(n *store.Node, includeToken bool) dto.Node {
 	d := dto.Node{
 		UUID:                  n.UUID,
 		Scheduling:            nodeSchedulingName(n.Scheduling),
+		SchedulingBy:          string(n.SchedulingBy),
+		CordonReason:          n.CordonReason(),
 		Name:                  n.Name,
 		State:                 n.ConnectionState(),
 		Hostname:              n.Hostname,

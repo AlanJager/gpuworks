@@ -158,6 +158,12 @@ export interface Node {
   // scheduling is whether the node takes new replicas: cordoned takes none,
   // draining also moves the replicas a pool placed there.
   scheduling?: NodeScheduling;
+  // scheduling_by is who set scheduling (absent when nobody holds the node,
+  // or the author was not recorded): the platform lifts only its own.
+  scheduling_by?: "operator" | "platform";
+  // cordon_reason is why the platform holds the node now; absent unless
+  // scheduling_by is platform.
+  cordon_reason?: "runtime_gpu_blocked" | "card_needs_host_reboot";
   name?: string;
   token?: string;
   /** Installs this node's agent; returned with the token, and the way back
