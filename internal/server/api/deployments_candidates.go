@@ -80,7 +80,7 @@ func (a *apiHandlers) deploymentPool(dep *store.Deployment) (*planning.Pool, int
 	if err != nil {
 		return nil, 0, err
 	}
-	held, err := a.d.Store.AwakeGPUHolders()
+	held, err := planning.HeldGPUs(a.d.Store, dep.YieldPolicy)
 	if err != nil {
 		return nil, 0, err
 	}

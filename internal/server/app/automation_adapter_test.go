@@ -14,11 +14,12 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/automation"
 	"gpuworks.ai/gpuworks/internal/server/bus"
 	"gpuworks.ai/gpuworks/internal/server/messages"
+	"gpuworks.ai/gpuworks/internal/server/network"
 	"gpuworks.ai/gpuworks/internal/server/placewait"
 	"gpuworks.ai/gpuworks/internal/server/planning"
-	"gpuworks.ai/gpuworks/internal/server/servicelevel"
 	"gpuworks.ai/gpuworks/internal/server/store"
 	"gpuworks.ai/gpuworks/internal/server/tsdb"
+	"gpuworks.ai/gpuworks/internal/server/yieldpolicy"
 )
 
 // automationFixture is one node with one 24 GiB GPU and a sleepable vLLM
@@ -53,6 +54,15 @@ func automationFixture(t *testing.T) (*automationAdapter, *store.Store, *store.D
 	return adapter, st, dep
 }
 
+func mustInstance(t *testing.T, st *store.Store, uuid string) *store.Instance {
+	t.Helper()
+	in, err := st.InstanceByUUID(uuid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return in
+}
+
 func intentOf(t *testing.T, st *store.Store, uuid string) int {
 	t.Helper()
 	in, err := st.InstanceByUUID(uuid)
@@ -71,13 +81,13 @@ func TestAutomationAdapterSleeps(t *testing.T) {
 	if got := intentOf(t, st, "auto-1"); got != 1 {
 		t.Fatalf("intent after the automation's sleep = %d, want 1", got)
 	}
-	if got, _ := st.GetDeployment(dep.ID); got.SleepHeld {
+	if mustInstance(t, st, "auto-1").SleepHeld {
 		t.Fatal("a platform sleep is held: a request would not wake it")
 	}
 	if _, err := adapter.Sleep(dep.ID, 2, true); err != nil {
 		t.Fatalf("held sleep: %v", err)
 	}
-	if got, _ := st.GetDeployment(dep.ID); !got.SleepHeld {
+	if !mustInstance(t, st, "auto-1").SleepHeld {
 		t.Fatal("a schedule's sleep is not held")
 	}
 }
@@ -99,7 +109,8 @@ func TestAutomationAdapterRefusesL1WhenTheHostCannotHoldTheWeights(t *testing.T)
 	}); err != nil {
 		t.Fatal(err)
 	}
-	adapter.metrics = metrics
+	// The reader the app wires: the metrics store through the API's host memory.
+	adapter.host = api.HostMemory((&observability{tsdb: metrics}).latestMetrics)
 	_, err = adapter.Sleep(dep.ID, 1, true)
 	coded, ok := err.(interface{ Code() string })
 	if !ok || coded.Code() != "SLEEP_HOST_MEMORY_INSUFFICIENT" {
@@ -147,7 +158,7 @@ func TestAutomationAdapterWakeWaitsAndWakesWhenItFits(t *testing.T) {
 	if _, err := st.CreateInstance(&store.Instance{UUID: "other-1", DeploymentID: other.ID, NodeID: dep.NodeID, State: proto.InstRunning, GPUIndexes: "[0]", NNodes: 1, DesiredStateJSON: string(spec)}); err != nil {
 		t.Fatal(err)
 	}
-	result, err := adapter.Wake(dep.ID)
+	result, err := adapter.Wake(dep.ID, true)
 	if err != nil || len(result.Woken) != 0 || len(result.Waiting) != 1 || result.Waiting[0] != "auto-1" {
 		t.Fatalf("wake onto a taken card = %+v err=%v", result, err)
 	}
@@ -189,7 +200,7 @@ func TestAutomationAdapterWakeWaitsAndWakesWhenItFits(t *testing.T) {
 // leaving the deployment as it was.
 func TestAutomationAdapterScalesThroughTheAPIsPath(t *testing.T) {
 	adapter, st, dep := automationFixture(t)
-	adapter.scale = api.ReplicaScaler(api.Deps{Store: st})
+	adapter.scale = planning.Scaling{Store: st, Resolve: network.New(st, network.StoreCatalog{Store: st}).Resolve}.ScaleScheduled
 	if err := adapter.ScaleReplicas(dep.ID, "", 3); err != nil {
 		t.Fatal(err)
 	}
@@ -248,7 +259,7 @@ func pdAutomationFixture(t *testing.T) (*automationAdapter, *store.Store, *store
 	if err != nil {
 		t.Fatal(err)
 	}
-	adapter.scale = api.ReplicaScaler(api.Deps{Store: st})
+	adapter.scale = planning.Scaling{Store: st, Resolve: network.New(st, network.StoreCatalog{Store: st}).Resolve}.ScaleScheduled
 	return adapter, st, dep
 }
 
@@ -338,7 +349,7 @@ func TestAutomationRunsAPDRoleSchedule(t *testing.T) {
 // for it. One ranked lower does not hold the card.
 func TestAWakeLeavesTheCardsAPlacementWaitsFor(t *testing.T) {
 	adapter, st, dep := automationFixture(t)
-	anytime, _ := servicelevel.Parse(servicelevel.Anytime, servicelevel.Overrides{})
+	anytime, _ := yieldpolicy.Parse(yieldpolicy.Anytime, yieldpolicy.Overrides{})
 	if err := st.SetDeploymentYieldPolicy(dep.ID, anytime); err != nil {
 		t.Fatal(err)
 	}
@@ -352,16 +363,29 @@ func TestAWakeLeavesTheCardsAPlacementWaitsFor(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	idle, _ := servicelevel.Parse(servicelevel.Idle, servicelevel.Overrides{})
+	idle, _ := yieldpolicy.Parse(yieldpolicy.Idle, yieldpolicy.Overrides{})
 	if err := st.SetDeploymentYieldPolicy(newcomer.ID, idle); err != nil {
 		t.Fatal(err)
 	}
 	waits := placewait.New()
 	adapter.waits = waits
-	waits.Wait(newcomer.ID, []string{"auto-1"}, time.Now())
+	card := placewait.Cards{NodeID: dep.NodeID, GPUIndexes: []int{0}}
+	// auto-1's sleep is ordered already: the controller's next plan of the
+	// newcomer waits for no holder, only for that sleep to land. The card is
+	// still the newcomer's.
+	waits.Wait(newcomer.ID, card, nil, time.Now())
+	if woken, err := adapter.WakeWaiting(dep.ID, []string{"auto-1"}); err != nil || len(woken) != 0 {
+		t.Fatalf("waiting wake onto a card whose holder's sleep was ordered for a placement = %v err=%v", woken, err)
+	}
+	// A wait for other cards leaves the sleeper be.
+	waits.Wait(newcomer.ID, placewait.Cards{NodeID: dep.NodeID, GPUIndexes: []int{1}}, nil, time.Now())
+	if free, held := adapter.notForPlacement(dep, []store.Instance{*mustInstance(t, st, "auto-1")}); len(free) != 1 || len(held) != 0 {
+		t.Fatalf("a wait for card 1 kept card 0: free %d held %d", len(free), len(held))
+	}
+	waits.Wait(newcomer.ID, card, []string{"auto-1"}, time.Now())
 
 	// The newcomer is idle and ranks higher: the card is its.
-	result, err := adapter.Wake(dep.ID)
+	result, err := adapter.Wake(dep.ID, true)
 	if err != nil || len(result.Woken) != 0 || len(result.Waiting) != 1 || intentOf(t, st, "auto-1") != 1 {
 		t.Fatalf("wake onto a placement's card = %+v err=%v intent=%d, want it left waiting", result, err, intentOf(t, st, "auto-1"))
 	}

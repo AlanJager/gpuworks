@@ -1,6 +1,7 @@
 package app
 
 import (
+	"encoding/json"
 	"testing"
 
 	"gpuworks.ai/gpuworks/internal/server/automation"
@@ -49,6 +50,40 @@ func TestSchedulingCatalogueCoversTheRecordedCodes(t *testing.T) {
 		entry, ok := have[want.code]
 		if !ok || entry.Kind != want.kind || entry.Category != want.category {
 			t.Errorf("%s: catalogue has %+v (listed %v), want kind %s category %s", want.code, entry, ok, want.kind, want.category)
+		}
+	}
+}
+
+// The store counts yields and wakes (store.IsYield, store.IsAutoWake,
+// store.EventForDeployment) from the automation's events by the codes and
+// trigger it spells itself; this pins those spellings to the automation's
+// constants by feeding the store events written as the automation writes
+// them (residency.go's preemption, wake_wait.go's yielding wake).
+func TestStoreYieldClassifierReadsTheAutomationEvents(t *testing.T) {
+	preempt, err := json.Marshal(map[string]any{"trigger": automation.TriggerPreempt, "reason": "rank", "for_deployment": uint(7), "instances": []string{"i-1"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	scheduled, _ := json.Marshal(map[string]any{"trigger": automation.TriggerSchedule, "schedule_id": 3})
+	for _, c := range []struct {
+		ev          store.InstanceEvent
+		yield, wake bool
+		forDep      uint
+	}{
+		{store.InstanceEvent{Code: automation.EventAutoSleep, Data: string(preempt)}, true, false, 7},
+		{store.InstanceEvent{Code: automation.EventYieldedForWake, Data: `{"deployment":"alpha","instances":["i-2"],"level":1}`}, true, false, 0},
+		{store.InstanceEvent{Code: automation.EventAutoSleep, Data: string(scheduled)}, false, false, 0},
+		{store.InstanceEvent{Code: automation.EventAutoWake, Data: `{"trigger":"request"}`}, false, true, 0},
+		{store.InstanceEvent{Code: automation.EventAutoScale, Data: `{}`}, false, false, 0},
+	} {
+		if got := store.IsYield(c.ev); got != c.yield {
+			t.Errorf("IsYield(%s %s) = %v, want %v", c.ev.Code, c.ev.Data, got, c.yield)
+		}
+		if got := store.IsAutoWake(c.ev); got != c.wake {
+			t.Errorf("IsAutoWake(%s) = %v, want %v", c.ev.Code, got, c.wake)
+		}
+		if got := store.EventForDeployment(c.ev.Data); got != c.forDep {
+			t.Errorf("EventForDeployment(%s) = %d, want %d", c.ev.Data, got, c.forDep)
 		}
 	}
 }

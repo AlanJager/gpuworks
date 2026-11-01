@@ -66,7 +66,7 @@ func (a *apiHandlers) resolveManagedBenchmarkTarget(r *http.Request, deploymentI
 	// Both the gateway and direct benchmark paths send Chat Completions.
 	// Use the model's current contract just as the proxy does; a ready HTTP
 	// container does not imply that it exposes this operation.
-	contract := inferenceapi.ResolveDeploymentContract(a.d.Store, dep, nil)
+	contract := inferenceapi.ResolveDeploymentContract(a.d.Store, dep)
 	if !inferenceapi.AllowsContractRequest(contract, http.MethodPost, "/v1/chat/completions") {
 		return managedBenchmarkTarget{}, &benchmarkTargetError{http.StatusBadRequest, ErrorBenchmarkChatRequired, "benchmark target must declare the Chat Completions operation"}
 	}

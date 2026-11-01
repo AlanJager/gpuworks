@@ -3,6 +3,7 @@ package gpu
 import (
 	"context"
 	"errors"
+	"os/exec"
 	"strconv"
 	"time"
 
@@ -54,6 +55,41 @@ var hostRuntimeChecks = map[string]HostRuntimeCheck{
 		},
 		Try: AscendRuntimeSmokeOn,
 	},
+	accelerator.VendorHygon: {
+		CLI:          "hy-smi",
+		Prerequisite: HygonHIPSmokePrerequisite,
+		// The script finds the card by its address among every card HIP
+		// lists, so the address is the name; a card without one cannot be
+		// told apart from its neighbours.
+		Visible: func(g proto.GPUInfo) (string, bool) { return g.PCIeBDF, g.PCIeBDF != "" },
+		Try:     HygonRuntimeSmokeOn,
+	},
+}
+
+// RuntimeCheckKey is the one key every runtime check on this node runs under
+// (RunTracked): the periodic per-card checks of every vendor, and Doctor's.
+// They all open the same driver, so they take turns, and once one is stuck in
+// it the node has exactly one such process until the driver lets it go.
+const RuntimeCheckKey = "accelerator-runtime-check"
+
+// runRuntimeCheck runs a runtime check process under RuntimeCheckKey with env
+// as its environment (nil inherits the agent's).
+func runRuntimeCheck(ctx context.Context, env []string, name string, args ...string) ([]byte, error) {
+	out, err := RunTracked(ctx, RuntimeCheckKey, 0, func(ctx context.Context) *exec.Cmd {
+		cmd := exec.CommandContext(ctx, name, args...)
+		cmd.Env = env
+		return cmd
+	})
+	return []byte(out), err
+}
+
+// stillRunning is what a check refused because an earlier one is stuck says:
+// the host's problem, not the card's.
+func stillRunning(err error) error {
+	if errors.Is(err, ErrStillRunning) {
+		return &HostRuntimeUnavailableError{Reason: "an earlier runtime check on this node was killed and has not exited: " + err.Error()}
+	}
+	return nil
 }
 
 // HostRuntimeUnavailableError reports that a check never reached the card:

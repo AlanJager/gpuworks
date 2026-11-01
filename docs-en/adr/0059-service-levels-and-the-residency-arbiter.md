@@ -30,13 +30,13 @@ about 2.5 seconds with L1, and with L2 3.5–5 seconds while the model files sta
 
 Two online deployments cannot share a card: when both are busy neither yields, and each one's requests wait on the other forever. Changing a level is rejected in that case (409 `SERVICE_LEVEL_ONLINE_SHARED`), and placement never puts an online deployment on the cards of another online deployment.
 
-**2. There is exactly one yield rule** (`servicelevel.Yields`): a waiting W can make an awake H sleep if and only if H is not resident and at least one of the following holds:
+**2. There is exactly one yield rule** (`yieldpolicy.Yields`): a waiting W can make an awake H sleep if and only if H is not resident and at least one of the following holds:
 
 - H is idle (no in-flight and no held requests) for the yield time of its level (5 minutes for online, 1 minute for shared, 10 seconds for offline);
 - H can be preempted (shared or offline) and W has a higher level;
 - H and W are both shared, H has stayed for Q this turn (Q = max(2 minutes, 10 × the measured switch time)), and W's head request has waited 30 seconds.
 
-If the cards a waiter needs hold several awake replicas, they either all yield or none does: yielding only some would stop service without freeing any room. Waiters queue by level and then by how long the head request has waited, so peers are not starved.
+If the cards a waiter needs hold several awake replicas, they either all yield or none does: yielding only some would stop service without freeing any room. Waiters queue by level and then by how long the head request has waited, so peers are not starved. Within a level, a waiter that a request waits for (or a replica waits to be placed for) goes before a deployment that only waits to take its cards back from the pending-resume list (amended 2026-11-01: on an H20 node with three time-sliced deployments sharing the cards, a resume queued ahead of a request made the request wait for the resumer's idle time as well, stretching its first token from about 8 s to 67 s).
 
 **3. The gateway holds requests for a deployment the platform put to sleep.** When a request reaches a sleeping deployment whose sleep was made by the platform (idle sleep, an arbiter yield),
 the gateway holds the request, notifies the arbiter, and picks an instance again every time the routes are rebuilt; holding has limits on count (256 per deployment, 4096 in total) and on time (2 minutes for resident and online, 10 minutes for shared, 30 minutes for offline),
@@ -126,7 +126,7 @@ After the previous amendment there were two layers in the UI: the yield policy w
 
 The original decision, “when a new deployment starts and its cards are held by an awake lower-level deployment, the first version does not preempt for the start, and the deployment waits as one that does not fit” (in Consequences), is replaced by this section. In use, an online deployment created onto a card an awake batch deployment held stayed at “does not fit” until an operator made room by hand, which is the opposite of “when the realtime side comes, take the card back”. Now a new replica is a waiter for cards too.
 
-**1. Placement plans again with the holders that share the cards counted as asleep.** When a deployment whose yield policy is not `never` starts a new replica and it does not fit, placement counts the awake instances of the deployments that share cards with it (whose policy is not `never` either) as asleep and plans again; if it fits, the replica is no longer “does not fit” but waits to be placed, with the scheduling reason code `waiting_for_yield` and the parameters `node`, `holders` (one entry per holding deployment: `deployment`, `at_once`, and when it does not give way at once also `idle_sec`, and for yield-on-a-turn `max_serve_sec`, that is, the terms on which it gives way to this new deployment) and `instances`. The terms come from the yield rule (`servicelevel.TermsOf`), shared by placement, the arbiter and the UI wording.
+**1. Placement plans again with the holders that share the cards counted as asleep.** When a deployment whose yield policy is not `never` starts a new replica and it does not fit, placement counts the awake instances of the deployments that share cards with it (whose policy is not `never` either) as asleep and plans again; if it fits, the replica is no longer “does not fit” but waits to be placed, with the scheduling reason code `waiting_for_yield` and the parameters `node`, `holders` (one entry per holding deployment: `deployment`, `at_once`, and when it does not give way at once also `idle_sec`, and for yield-on-a-turn `max_serve_sec`, that is, the terms on which it gives way to this new deployment) and `instances`. The terms come from the yield rule (`yieldpolicy.TermsOf`), shared by placement, the arbiter and the UI wording.
 
 **2. The residency arbiter treats the replica like a request held for a sleeping deployment, with the new deployment's policy.** The holders sleep under the same yield rule: when the new replica ranks higher, yield-on-a-turn and yield-anytime holders give way at once; otherwise a holder gives way once idle for its idle time; between two yield-on-a-turn deployments it gives way when the holder has served its longest serving time this turn. A new deployment with `never` waits for nobody and still needs free cards; a holder with `never` is never asked to give way.
 
@@ -139,3 +139,27 @@ The original decision, “when a new deployment starts and its cards are held by
 - Measured in the process test: an online (`idle`) deployment created onto a card an awake yield-anytime (`anytime`) deployment held started serving about 6 seconds after creation, and the yield-anytime deployment was put to sleep by rank.
 - Multi-node and PD deployments must still use `never` and take no part; when their cards are held they wait as “does not fit”, as before.
 - A new deployment's replica can thereby make others sleep; the action is still written to the timeline (`AUTO_SLEEP`, `trigger: preempt`, `for_deployment` being the new deployment).
+
+## Amendment (2026-10-30): A Held Sleep Keeps No Card
+
+Until now, when a deployment that shares cards by yield policy was asleep, its whole claim was kept against deployments it does not share with (`never`), whoever had ordered the sleep. In use, after an operator put a sharing deployment to sleep by hand, a new deployment pinned to that card was never placed, which read as "no empty card", although a request could not wake that sleep anyway. This is changed:
+
+**1. Cards are kept only when a request can wake the sleeper.** The reservation applies only to a sleeper whose `Deployment.WakesOnRequest()` is true: the deployment is sleepable and the sleep is not a held sleep (`sleep_held`, a sleep an operator or a schedule ordered). The gateway (hold the request or answer 503), the residency arbiter and placement ask the same question, which has one answer.
+
+**2. A held sleep keeps no card.** A request cannot wake it, so its cards are open to any new deployment; the later wake by the operator or the schedule already has to wait for room (`?wait=true`) or make it (`?yield=true`), and not fitting is a stated semantic, not a defect.
+
+**3. A kept card says whose it is.** When a new deployment does not fit only because sleepers keep their cards, the reason is the new scheduling reason code `reserved_for_sleepers`, with the parameters `node`, `gpus` and `sleepers` (each with `deployment` and `policy`), and the UI gives three ways out: pick another card, turn on sleep for this deployment with a yield policy that can share cards, or put the deployment holding the cards to sleep by hand.
+
+**Consequences.** A deployment put to sleep by hand may have its cards taken before it is woken; this agrees with "the capacity a sleep gives up is really given up". The yield policies and the yield rule are unchanged.
+
+## Amendment (2026-10-30): A Held Sleep Is Recorded per Instance
+
+The original decision recorded the held sleep on the deployment (`deployments.sleep_held`), which caused two defects: waking one instance cleared the hold of the whole deployment, so the other instances the operator still wanted asleep became wakeable by a request; and while a deployment was held, a replica the residency arbiter put to sleep to yield cards (not held) was also treated as not wakeable and was never resumed.
+
+**1. The hold is a fact of the instance.** Migration 191 adds `instances.sleep_held` (boolean), backfills it as held for the instances ordered asleep in a deployment that was held, and then drops `deployments.sleep_held`, so the hold has one source. A held sleep holds only the instances it names (every instance for a deployment-wide or scheduled sleep, that role's for a role sleep, that replica for a replica sleep, the yielded replicas for a yielding wake); a wake clears the hold of only the instances it wakes or leaves waiting; and the platform's sleep does not touch holds. A deployment-wide sleep order is always held: only an operator or a schedule puts a whole deployment to sleep, while the platform names replicas; an instance started under such an order is held too.
+
+**2. Whether a request wakes it is asked per instance.** `Deployment.WakesOnRequest(instance)`: the deployment is sleepable and that instance is not held. Every deployment-level answer is derived from it: the gateway holds a request while the deployment has a sleeper a request can wake and answers 503 at once when every sleeper is held; batch model states, the Playground's `wakes_on_request`, the cards placement keeps, and the residency arbiter's wakeable check and resume all do the same. A wake driven by a request or a resume wakes only the instances that are not held; an operator's or a schedule's wake wakes the instances it names and clears their holds.
+
+**3. The gateway reads nothing more for it.** When the gateway finds a deployment asleep it has already read that deployment's instance rows for the request (the snapshot carries only awake candidates); the hold flag is in those same rows, the verdict is recorded with that refusal, and `holdForWake` reads it directly, with no new query.
+
+**4. The deployment DTO carries only derived values.** `sleep_hold` (`all`/`some`/`none`, omitted with no replica asleep) is derived from the asleep replicas' holds, and `sleep_held` is kept as `sleep_hold == all`; the instance DTO adds `sleep_held`. The UI shows its hint from `sleep_hold` and tags each replica from the instance's `sleep_held`, deciding nothing itself.

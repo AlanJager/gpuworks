@@ -10,9 +10,9 @@ for (const name of ["window", "document", "navigator"] as const) {
   Object.defineProperty(globalThis, name, { value: dom.window[name], configurable: true });
 }
 const batchApiModule = await import("../src/batchApi.ts");
-const { batchApi, batchFileURL, isBatchActive, isBatchCancellable, batchEndedAt, BATCH_ENDPOINTS, BATCH_STATUSES } = batchApiModule;
+const { batchApi, batchFileURL, isBatchActive } = batchApiModule;
 const { APIError } = await import("../src/apiError.ts");
-const { batch, page } = await import("./helpers/batchFixtures.ts");
+const { batch, dictionary, page } = await import("./helpers/batchFixtures.ts");
 const originalFetch = globalThis.fetch;
 afterEach(() => { globalThis.fetch = originalFetch; });
 
@@ -48,7 +48,7 @@ test("get reads one batch by its encoded id", async () => {
 test("create posts the file and the endpoint as multipart fields", async () => {
   const seen = fake(201, batch({ status: "validating" }));
   const file = new File(['{"custom_id":"a"}\n'], "reqs.jsonl", { type: "application/x-ndjson" });
-  const created = await batchApi.create(file, "/v1/embeddings");
+  const created = await batchApi.create(file, { endpoint: "/v1/embeddings" });
   assert.equal(created.status, "validating");
   assert.equal(seen[0].url, "/api/v1/batches");
   assert.equal(seen[0].method, "POST");
@@ -57,31 +57,33 @@ test("create posts the file and the endpoint as multipart fields", async () => {
   assert.deepEqual([...form.keys()].sort(), ["endpoint", "file"]);
   assert.equal(form.get("endpoint"), "/v1/embeddings");
   assert.equal((form.get("file") as File).name, "reqs.jsonl");
+  await batchApi.create(file);
+  assert.deepEqual([...(seen[1].body as FormData).keys()], ["file"], "without an endpoint the server reads the file's");
 });
 
 test("create adds the model field only when a model is chosen", async () => {
   const seen = fake(201, batch({ status: "validating", model: "qwen-chat" }));
   const file = new File(["x"], "reqs.jsonl");
-  const created = await batchApi.create(file, "/v1/chat/completions", { model: "qwen-chat" });
+  const created = await batchApi.create(file, { model: "qwen-chat" });
   assert.equal(created.model, "qwen-chat");
-  assert.deepEqual([...(seen[0].body as FormData).keys()].sort(), ["endpoint", "file", "model"]);
+  assert.deepEqual([...(seen[0].body as FormData).keys()].sort(), ["file", "model"]);
   assert.equal((seen[0].body as FormData).get("model"), "qwen-chat");
-  await batchApi.create(file, "/v1/chat/completions", { model: "" });
-  assert.deepEqual([...(seen[1].body as FormData).keys()].sort(), ["endpoint", "file"]);
+  await batchApi.create(file, { model: "" });
+  assert.deepEqual([...(seen[1].body as FormData).keys()].sort(), ["file"]);
 });
 
 test("create sends the completion window in hours as completion_window", async () => {
   const seen = fake(201, batch({ status: "validating", completion_window: "72h" }));
   const file = new File(["x"], "reqs.jsonl");
-  const created = await batchApi.create(file, "/v1/chat/completions", { completionWindowHours: 72 });
+  const created = await batchApi.create(file, { completionWindowHours: 72 });
   assert.equal(created.completion_window, "72h");
-  assert.deepEqual([...(seen[0].body as FormData).keys()].sort(), ["completion_window", "endpoint", "file"]);
+  assert.deepEqual([...(seen[0].body as FormData).keys()].sort(), ["completion_window", "file"]);
   assert.equal((seen[0].body as FormData).get("completion_window"), "72h");
 });
 
 test("create raises the product error with its code and params", async () => {
   fake(400, { error: "line 7: custom_id is missing", code: "BATCH_FILE_INVALID", params: { line: 7, reason: "missing_custom_id", detail: "line 7: custom_id is missing" } });
-  const failure = await batchApi.create(new File(["x"], "r.jsonl"), "/v1/completions").catch((e: unknown) => e);
+  const failure = await batchApi.create(new File(["x"], "r.jsonl")).catch((e: unknown) => e);
   assert.ok(failure instanceof APIError);
   assert.equal(failure.code, "BATCH_FILE_INVALID");
   assert.equal(failure.status, 400);
@@ -106,19 +108,20 @@ test("file links name the kind under the batch", () => {
   assert.equal(batchFileURL("batch_aaa111", "error"), "/api/v1/batches/batch_aaa111/files/error");
 });
 
-test("a status is active until the batch ended, and cancellable unless already cancelling", () => {
+test("a status is active, and polled, until the batch ended", () => {
   const active = ["validating", "in_progress", "finalizing", "cancelling"];
   const terminal = ["completed", "failed", "expired", "cancelled"];
-  assert.deepEqual([...BATCH_STATUSES].sort(), [...active, ...terminal].sort());
   for (const status of active) assert.equal(isBatchActive(status), true, status);
   for (const status of terminal) assert.equal(isBatchActive(status), false, status);
-  assert.deepEqual(active.filter(isBatchCancellable), ["validating", "in_progress", "finalizing"]);
-  assert.deepEqual(terminal.filter(isBatchCancellable), []);
 });
 
-test("the end of a batch is its terminal timestamp, absent while it runs", () => {
-  assert.equal(batchEndedAt(batch()), undefined);
-  assert.equal(batchEndedAt(batch({ status: "completed", completed_at: "2026-10-28T10:00:00Z" })), "2026-10-28T10:00:00Z");
-  assert.equal(batchEndedAt(batch({ status: "cancelled", cancelled_at: "2026-10-28T10:05:00Z" })), "2026-10-28T10:05:00Z");
-  assert.deepEqual([...BATCH_ENDPOINTS], ["/v1/chat/completions", "/v1/completions", "/v1/embeddings"]);
+test("the dictionary is one plain read, returned as the server states it", async () => {
+  const wire = dictionary([{ name: "qwen", state: "served" }, { name: "held", state: "asleep_held" }]);
+  const seen = fake(200, wire);
+  const got = await batchApi.dictionary();
+  assert.equal(seen[0].url, "/api/v1/batches/dictionary");
+  assert.equal(seen[0].method, undefined);
+  assert.deepEqual(got, wire);
+  fake(500, { error: "boom" });
+  await assert.rejects(batchApi.dictionary());
 });

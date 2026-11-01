@@ -16,20 +16,20 @@ const closeChannels = trackMessageChannels();
 const { i18n, locale } = await createI18n(["scheduling", "deployments", "deploy"]);
 const { cleanup, fireEvent, render, screen, waitFor, within } = await import("@testing-library/react");
 const userEvent = (await import("@testing-library/user-event")).default;
-const { MemoryRouter, Route, Routes, useLocation } = await import("react-router-dom");
+const { MemoryRouter, Route, Routes, useLocation, useNavigate } = await import("react-router-dom");
 const { api } = await import("../src/api.ts");
+const { schedulingApi } = await import("../src/schedulingApi.ts");
 const { APIError } = await import("../src/apiError.ts");
 const { default: SchedulingPage } = await import("../src/pages/SchedulingPage.tsx");
-type Board = import("../src/api.ts").SchedulingBoard;
-type Overview = import("../src/api.ts").SchedulingOverview;
-type Timeline = import("../src/api.ts").SchedulingTimeline;
+type Board = import("../src/schedulingApi.ts").SchedulingBoard;
+type Overview = import("../src/schedulingApi.ts").SchedulingOverview;
+type Timeline = import("../src/schedulingApi.ts").SchedulingTimeline;
+type Activity = import("../src/schedulingApi.ts").SchedulingActivity;
 
 const GIB = 1024 ** 3;
 const s = locale.scheduling;
-const original = {
-  schedulingOverview: api.schedulingOverview, schedulingBoard: api.schedulingBoard, endWakeWaiting: api.endWakeWaiting,
-  schedulingHistory: api.schedulingHistory, schedulingTimeline: api.schedulingTimeline,
-};
+const original = { endWakeWaiting: api.endWakeWaiting };
+const originalScheduling = { ...schedulingApi };
 
 /** The fleet-wide lists of the board, as GET /scheduling/board?queues=1 answers. */
 function queues(overrides: Partial<Board> = {}): Board {
@@ -41,7 +41,6 @@ function queues(overrides: Partial<Board> = {}): Board {
       { deployment_id: 7, deployment: "qwen", schedule_id: 1, action: "sleep", sleep_level: 2, at: "2026-10-25T22:00:00Z" },
       { deployment_id: 7, deployment: "qwen", schedule_id: 2, action: "replicas", replicas: 3, at: "2026-10-26T06:00:00Z" },
     ],
-    recent: [],
     ...overrides,
   };
 }
@@ -54,13 +53,13 @@ function nodeBoard(uuid: string): Board {
         uuid, name: "gpu-a", online: true,
         gpus: [
           {
-            index: 0, name: "L20", memory_bytes: 48 * GIB, awake_bytes: 20 * GIB, sleeping_bytes: 4 * GIB, free_bytes: 24 * GIB, held_outside: false,
+            index: 0, name: "L20", memory_bytes: 48 * GIB, awake_bytes: 20 * GIB, sleeping_bytes: 4 * GIB, free_bytes: 24 * GIB, state: "awake", held_outside: false, switching: false,
             occupants: [
               { deployment_id: 7, deployment: "qwen", yield_policy: "idle", instance: "inst-qwen-0001", state: "awake", claim_bytes: 20 * GIB },
               { deployment_id: 8, deployment: "llama", yield_policy: "timeslice", instance: "inst-llama-0001", state: "asleep", sleep_level: 2, claim_bytes: 20 * GIB, residue_bytes: 4 * GIB },
             ],
           },
-          { index: 1, name: "L20", memory_bytes: 48 * GIB, awake_bytes: 0, sleeping_bytes: 0, free_bytes: 40 * GIB, held_outside: true, occupants: [] },
+          { index: 1, name: "L20", memory_bytes: 48 * GIB, awake_bytes: 0, sleeping_bytes: 0, free_bytes: 40 * GIB, state: "held_outside", held_outside: true, switching: false, occupants: [] },
         ],
       }],
       page: 1, page_size: 1, total: 1,
@@ -69,44 +68,67 @@ function nodeBoard(uuid: string): Board {
   });
 }
 
-const sharing = (): Timeline => ({
-  window: { from: "2026-10-28T06:00:00Z", to: "2026-10-28T12:00:00Z", hours: 6 }, nodes: [],
-  deployments: [{ deployment_id: 8, deployment: "llama", yield_policy: "timeslice", awake_seconds: 3600, awake_share: 0.25, switches: 3, yielded: 2, yielded_to: 1, wakes: 1, held_requests: 6, wait_p50_ms: 4200, wait_p95_ms: 31000 }],
+const SHARING_WINDOWS = [{ key: "15m", seconds: 900 }, { key: "1h", seconds: 3600 }, { key: "6h", seconds: 21600 }, { key: "24h", seconds: 86400 }];
+const sharing = (key = "6h"): Timeline => ({
+  scope: "fleet",
+  window: { from: "2026-10-28T06:00:00Z", to: "2026-10-28T12:00:00Z", hours: 6, key, seconds: SHARING_WINDOWS.find((w) => w.key === key)?.seconds ?? 21600 },
+  windows: SHARING_WINDOWS, nodes: [],
+  deployments: [{ deployment_id: 8, deployment: "llama", yield_policy: "timeslice", awake_seconds: 3600, awake_share: 0.25, present_seconds: 14400, switches: 3, yielded: 2, yielded_to: 1, wakes: 1, held_requests: 6, wait_p50_ms: 4200, wait_p95_ms: 31000 }],
 });
 
-interface Calls { board: unknown[]; timeline: unknown[] }
+interface Calls { board: unknown[]; timeline: unknown[]; activity: unknown[] }
 
-function serve(options: { overview?: () => Promise<Overview>; board?: () => Board; sharing?: () => Timeline } = {}): Calls {
-  const calls: Calls = { board: [], timeline: [] };
-  api.schedulingOverview = options.overview ?? (async () => smallFleet());
-  api.schedulingBoard = async (query) => {
+const activity = (): Activity => ({
+  from: "2026-10-27T12:00:00Z", to: "2026-10-28T12:00:00Z", bucket_seconds: 900,
+  reasons: [{ key: "idle_yield", count: 0 }, { key: "rank_preemption", count: 0 }], buckets: [], top_cards: [], beyond_retention: false,
+});
+
+function serve(options: { overview?: () => Promise<Overview>; board?: () => Board; sharing?: (key?: string) => Timeline } = {}): Calls {
+  const calls: Calls = { board: [], timeline: [], activity: [] };
+  // The activity card has its own tests (schedulingActivity.test.tsx).
+  schedulingApi.activity = async (range) => {
+    calls.activity.push(range);
+    return activity();
+  };
+  schedulingApi.overview = options.overview ?? (async () => smallFleet());
+  schedulingApi.board = async (query) => {
     calls.board.push(query);
     if ("node" in query) return nodeBoard(query.node);
     if ("queues" in query) return (options.board ?? queues)();
     throw new Error(`the page must not ask for a page of nodes: ${JSON.stringify(query)}`);
   };
-  api.schedulingTimeline = async (query) => {
+  schedulingApi.timeline = async (query) => {
     calls.timeline.push(query);
-    if ("sharing" in query) return (options.sharing ?? sharing)();
-    return { window: { from: "2026-10-28T06:00:00Z", to: "2026-10-28T12:00:00Z", hours: 6 }, nodes: [], deployments: [] };
+    if ("sharing" in query) return (options.sharing ?? sharing)(query.window);
+    return {
+      scope: "node",
+      window: { from: "2026-10-28T06:00:00Z", to: "2026-10-28T12:00:00Z", hours: 6, key: "6h", seconds: 21600 },
+      windows: [{ key: "6h", seconds: 21600 }, { key: "24h", seconds: 86400 }], nodes: [], deployments: [],
+    };
   };
   // The scheduling history has its own tests (schedulingHistory.test.tsx).
-  api.schedulingHistory = async () => ({ items: [{
+  schedulingApi.history = async () => ({ items: [{
     id: 1, created_at: "2026-10-25T07:00:00Z", deployment_id: 7, deployment: "qwen", kind: "automation", code: "AUTO_SLEEP", category: "auto",
-    params: { trigger: "idle", level: 2, idle_sec: 900 },
+    params: { trigger: "idle", level: 2, idle_sec: 900 }, nodes: [{ uuid: "node-c", name: "gpu-c" }],
   }] });
   return calls;
 }
 
 function Probe() {
   const location = useLocation();
-  return <div data-testid="loc">{location.pathname}{location.search}</div>;
+  const navigate = useNavigate();
+  return (
+    <>
+      <div data-testid="loc">{location.pathname}{location.search}</div>
+      <button type="button" onClick={() => navigate(-1)}>browser back</button>
+    </>
+  );
 }
 
-function mount() {
+function mount(path = "/scheduling") {
   render(
     <I18nextProvider i18n={i18n}>
-      <MemoryRouter initialEntries={["/scheduling"]}>
+      <MemoryRouter initialEntries={[path]}>
         <Routes>
           <Route path="/scheduling" element={<SchedulingPage />} />
           <Route path="*" element={<div>elsewhere</div>} />
@@ -121,6 +143,7 @@ function mount() {
 afterEach(() => {
   cleanup();
   Object.assign(api, original);
+  Object.assign(schedulingApi, originalScheduling);
 });
 after(() => closeChannels());
 
@@ -163,7 +186,7 @@ test("a failed first load shows the error and retries on request", async () => {
 
 test("an empty fleet says so, and every queue says it is empty", async () => {
   serve({
-    overview: async () => ({ summary: { nodes: 0, online_nodes: 0, cards: 0, awake: 0, asleep: 0, free: 0, held_outside: 0, unhealthy: 0, offline: 0, by_model: [], contention: { waiting_wakes: 0, held_requests: 0, yields_last_hour: 0 } }, models: [], deployments: [], nodes: [] }),
+    overview: async () => ({ summary: { nodes: 0, online_nodes: 0, cards: 0, awake: 0, asleep: 0, free: 0, held_outside: 0, unhealthy: 0, offline: 0, contention: { waiting_wakes: 0, held_requests: 0, yields_last_hour: 0 } }, states: ["offline", "unhealthy", "held_outside", "awake", "asleep", "free"], models: [], deployments: [], nodes: [] }),
     board: () => queues({ pending: [], waiting_wakes: [], upcoming: [] }),
   });
   mount();
@@ -172,7 +195,7 @@ test("an empty fleet says so, and every queue says it is empty", async () => {
   assert.equal(screen.queryByRole("group", { name: s.heatmap.aria }), null);
 });
 
-test("the summary counts the cards by state and model and the contention, with the queues' counts", async () => {
+test("the summary counts the cards by state and the contention, with the queues' counts", async () => {
   serve();
   mount();
   const summary = await screen.findByRole("group", { name: s.summary.title });
@@ -182,15 +205,11 @@ test("the summary counts the cards by state and model and the contention, with t
   };
   assert.equal(tile(s.summary.cardsTitle, s.summary.total), "6");
   assert.ok(within(summary).getByText(i18n.t("scheduling:summary.nodesOnline", { online: 2, count: 3 })));
-  for (const [state, count] of [["awake", "2"], ["asleep", "1"], ["free", "1"], ["held", "1"], ["offline", "1"]]) {
+  for (const [state, count] of [["awake", "2"], ["asleep", "1"], ["free", "1"], ["held_outside", "1"], ["offline", "1"]]) {
     assert.equal(tile(s.summary.cardsTitle, s.states[state as keyof typeof s.states]), count, state);
   }
   assert.equal(within(summary).queryByText(s.states.unhealthy), null, "no faulty card, no faulty tile");
-  const models = within(summary).getByRole("list", { name: s.summary.models });
-  assert.deepEqual(within(models).getAllByRole("listitem").map((li) => li.textContent), [
-    i18n.t("scheduling:summary.modelLine", { model: "L20", cards: 3, free: 0 }),
-    i18n.t("scheduling:summary.modelLine", { model: "H100", cards: 3, free: 1 }),
-  ]);
+  assert.equal(within(summary).queryByRole("list"), null, "no line of cards per GPU model");
   assert.equal(tile(s.summary.contentionTitle, s.summary.waitingWakes), "1");
   assert.equal(tile(s.summary.contentionTitle, s.summary.heldRequests), "3");
   assert.equal(tile(s.summary.contentionTitle, s.summary.yields), "2");
@@ -206,7 +225,7 @@ test("the heatmap shows every card and says how many are shown; the page never r
   assert.ok(status().includes(i18n.t("scheduling:heatmap.shown", { nodes: 3, cards: 6 })));
   assert.deepEqual(calls.board, [{ queues: true }]);
   const legend = screen.getByRole("list", { name: s.nodes.legend.title });
-  for (const label of [s.states.awake, s.states.asleep, s.states.free, s.states.held, s.states.offline, s.heatmap.legendSwitching]) assert.ok(within(legend).getByText(label), label);
+  for (const label of [s.states.awake, s.states.asleep, s.states.free, s.states.held_outside, s.states.offline, s.heatmap.legendSwitching]) assert.ok(within(legend).getByText(label), label);
 });
 
 test("filters narrow the heatmap by model, node label and state, and a search rings the deployment's cards", async () => {
@@ -282,8 +301,11 @@ test("opening a node reads it in full: each GPU as a bar with its holders, and i
   assert.ok(within(asleep).getByText(new RegExp(i18n.t("scheduling:nodes.occupant.asleep", { level: 2, residue: "4.0 GiB" }))));
   assert.ok(within(asleep).getByText(level("timeslice")));
   assert.ok(within(drawer).getByText(s.nodes.heldOutside));
+  // Each card names the state the server gave it, the one its heatmap cell shows.
+  assert.ok(within(drawer).getByText(s.states.awake, { selector: ".scheduling-gpu-state" }));
+  assert.ok(within(drawer).getByText(s.states.held_outside, { selector: ".scheduling-gpu-state" }));
   assert.ok(within(drawer).getByText(s.timeline.title));
-  await waitFor(() => assert.deepEqual(calls.timeline.find((query) => "nodes" in (query as object)), { nodes: ["node-a"], hours: 6 }));
+  await waitFor(() => assert.deepEqual(calls.timeline.find((query) => "nodes" in (query as object)), { nodes: ["node-a"], window: undefined }));
   await user.click(within(drawer).getByRole("link", { name: "qwen" }));
   assert.equal(screen.getByTestId("loc").textContent, "/deployments?deployment=7");
 });
@@ -291,8 +313,8 @@ test("opening a node reads it in full: each GPU as a bar with its holders, and i
 test("a node that cannot be read says so in its drawer and retries", async () => {
   serve();
   let calls = 0;
-  const base = api.schedulingBoard;
-  api.schedulingBoard = async (query) => {
+  const base = schedulingApi.board;
+  schedulingApi.board = async (query) => {
     if ("node" in query) { calls += 1; if (calls === 1) throw new Error("node unavailable"); }
     return base(query);
   };
@@ -304,6 +326,42 @@ test("a node that cannot be read says so in its drawer and retries", async () =>
   assert.ok(within(drawer).getByText("node unavailable"));
   await user.click(within(drawer).getByRole("button", { name: s.page.retry }));
   await within(drawer).findByRole("region", { name: "gpu-a" });
+});
+
+test("the open node is in the URL: opening sets ?node=, closing clears it, and the browser goes back to it", async () => {
+  serve();
+  const user = mount();
+  await screen.findByRole("group", { name: s.heatmap.aria });
+  await user.click(screen.getByRole("button", { name: new RegExp("^gpu-a GPU 0,") }));
+  await within(await screen.findByRole("dialog")).findByRole("region", { name: "gpu-a" });
+  assert.equal(screen.getByTestId("loc").textContent, "/scheduling?node=node-a");
+  await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Close" }));
+  await waitFor(() => assert.equal(screen.getByTestId("loc").textContent, "/scheduling"));
+  await waitFor(() => assert.equal(document.querySelector(".ant-drawer-open"), null));
+  await user.click(screen.getByRole("button", { name: "browser back" }));
+  assert.equal(screen.getByTestId("loc").textContent, "/scheduling?node=node-a");
+  await within(await screen.findByRole("dialog")).findByRole("region", { name: "gpu-a" });
+  await user.click(screen.getByRole("button", { name: "browser back" }));
+  assert.equal(screen.getByTestId("loc").textContent, "/scheduling");
+  await waitFor(() => assert.equal(document.querySelector(".ant-drawer-open"), null));
+});
+
+test("a link to /scheduling?node= opens that node's drawer, titled with its name", async () => {
+  const calls = serve();
+  mount("/scheduling?node=node-c");
+  const drawer = await screen.findByRole("dialog");
+  assert.ok(within(drawer).getByText("gpu-c"));
+  await waitFor(() => assert.deepEqual(calls.board.find((query) => "node" in (query as object)), { node: "node-c" }));
+});
+
+test("a node named in the scheduling history opens its drawer on the page", async () => {
+  serve();
+  const user = mount();
+  const history = (await screen.findByText(s.history.title)).closest(".ant-card") as HTMLElement;
+  await user.click(await within(history).findByRole("link", { name: "gpu-c" }));
+  assert.equal(screen.getByTestId("loc").textContent, "/scheduling?node=node-c");
+  const drawer = await screen.findByRole("dialog");
+  assert.ok(within(drawer).getByText("gpu-c"));
 });
 
 test("a node can be opened from the keyboard alone", async () => {
@@ -350,8 +408,8 @@ test("a waiting wake is cancelled from the keyboard, then the queues and the ove
   const cancelled: number[] = [];
   api.endWakeWaiting = async (id) => { cancelled.push(id); waiting = []; return { items: ["inst-llama-0001"], total: 1 }; };
   let reads = 0;
-  const base = api.schedulingOverview;
-  api.schedulingOverview = async () => { reads += 1; return base(); };
+  const base = schedulingApi.overview;
+  schedulingApi.overview = async () => { reads += 1; return base(); };
   const user = mount();
   await screen.findByText("big-model");
   const before = reads;
@@ -376,15 +434,24 @@ test("a refused cancel keeps the waiting wake and says why", async () => {
 
 test("the sharing stats cover the fleet, are read for the chosen window, and say when they fail", async () => {
   let fail = false;
-  const calls = serve({ sharing: () => { if (fail) throw new Error("log unavailable"); return sharing(); } });
+  const calls = serve({ sharing: (key) => { if (fail) throw new Error("log unavailable"); return sharing(key); } });
   const user = mount();
   const title = await screen.findByText(s.sharing.title);
   const card = title.closest(".ant-card") as HTMLElement;
   await within(card).findByRole("link", { name: "llama" });
-  assert.deepEqual(calls.timeline.at(-1), { sharing: true, hours: 6 });
+  // The server says these are the fleet's figures: no node-only hint.
+  assert.equal(within(card).queryByRole("img", { name: s.timeline.scopeNode }), null);
+  // The first read leaves the window to the server; its answer lists the four
+  // windows, 6 hours chosen.
+  assert.deepEqual(calls.timeline.at(-1), { sharing: true, window: undefined });
+  const picker = within(card).getByRole("radiogroup", { name: s.timeline.window });
+  assert.deepEqual(within(picker).getAllByRole("radio").map((radio) => (radio as HTMLInputElement).checked), [false, false, true, false]);
+  assert.ok(within(picker).getByText(i18n.t("scheduling:timeline.minutes", { minutes: 15 })));
+  await user.click(within(picker).getByText(i18n.t("scheduling:timeline.hours", { hours: 1 })));
+  await waitFor(() => assert.deepEqual(calls.timeline.at(-1), { sharing: true, window: "1h" }));
   fail = true;
   await user.click(within(card).getByText(i18n.t("scheduling:timeline.hours", { hours: 24 })));
-  await waitFor(() => assert.deepEqual(calls.timeline.at(-1), { sharing: true, hours: 24 }));
+  await waitFor(() => assert.deepEqual(calls.timeline.at(-1), { sharing: true, window: "24h" }));
   assert.ok(await within(card).findByText(i18n.t("scheduling:sharing.refreshFailed", { detail: "log unavailable" })), "the last stats stay under the warning");
   assert.ok(within(card).getByRole("link", { name: "llama" }));
 });

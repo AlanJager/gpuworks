@@ -72,6 +72,8 @@ func TestAPIKeyCreationRouteRequiresAuthenticationAndPost(t *testing.T) {
 		{http.MethodPost, "/api/v1/apikeys", "", http.StatusUnauthorized},
 		{http.MethodPatch, "/api/v1/apikeys", rig.session, http.StatusMethodNotAllowed},
 		{http.MethodPost, "/api/v1/apikeys/not-a-route/unknown", rig.session, http.StatusNotFound},
+		{http.MethodPut, "/api/v1/apikeys/gw-x/scope", "", http.StatusUnauthorized},
+		{http.MethodPost, "/api/v1/apikeys/gw-x/scope", rig.session, http.StatusMethodNotAllowed},
 	} {
 		if rec := rig.do(tc.token, tc.method, tc.path, `{"name":"client"}`); rec.Code != tc.status {
 			t.Errorf("%s %s: %d, want %d", tc.method, tc.path, rec.Code, tc.status)
@@ -126,6 +128,7 @@ GET /api/v1/analytics/usage
 GET /api/v1/apikeys
 GET /api/v1/auth/me
 GET /api/v1/batches
+GET /api/v1/batches/dictionary
 GET /api/v1/batches/{id}
 GET /api/v1/batches/{id}/files/{kind}
 GET /api/v1/benchmarks
@@ -215,6 +218,7 @@ GET /api/v1/pull/registry-credentials
 GET /api/v1/pull/source-rules
 GET /api/v1/pull/sync-groups
 GET /api/v1/routing-policies
+GET /api/v1/scheduling/activity
 GET /api/v1/scheduling/board
 GET /api/v1/scheduling/history
 GET /api/v1/scheduling/overview
@@ -361,6 +365,7 @@ POST /api/v1/telemetry/export/test
 POST /api/v1/updates/prefetch
 POST /api/v1/updates/server
 POST /api/v1/updates/server/upload
+PUT /api/v1/apikeys/{prefix}/scope
 PUT /api/v1/data-retention
 PUT /api/v1/deployments/{id}
 PUT /api/v1/deployments/{id}/dgpu

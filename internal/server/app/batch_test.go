@@ -15,6 +15,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/api"
 	"gpuworks.ai/gpuworks/internal/server/batch"
 	"gpuworks.ai/gpuworks/internal/server/bus"
+	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -164,6 +165,9 @@ func TestConsoleBatchErrorsBecomeProductErrors(t *testing.T) {
 		{&batch.Error{Status: 400, Code: "empty_file"}, 400, api.ErrorBatchFileInvalid},
 		{&batch.Error{Status: 400, Code: "endpoint_mismatch", Param: "endpoint"}, 400, api.ErrorBatchRequestInvalid},
 		{&batch.Error{Status: 400, Code: "model_not_found", Param: "model", Model: "ghost"}, 400, api.ErrorBatchModelUnknown},
+		{&batch.Error{Status: 400, Code: "model_not_found", Param: "input_file_id", Models: []string{"a", "b"}}, 400, messages.ErrorBatchFileModelsUnknown},
+		{&batch.Error{Status: 400, Code: "too_many_requests", Line: 50001}, 400, api.ErrorBatchFileInvalid},
+		{&batch.Error{Status: 400, Code: "invalid_file_extension", Param: "file"}, 400, api.ErrorBatchFileInvalid},
 	} {
 		got, ok := consoleBatchError(tc.err).(*api.BatchError)
 		if !ok || got.Status != tc.status || got.Code != tc.code {
@@ -198,7 +202,8 @@ func TestBatchConsoleCreateGetAndDownload(t *testing.T) {
 		return multipart.NewReader(&buf, mw.Boundary())
 	}
 	created, err := console.CreateFromUpload(caller, form(map[string]string{"file": twoLines, "endpoint": "/v1/chat/completions"}))
-	if err != nil || created.InputFilename != "my.jsonl" || created.RequestCounts.Total != 2 || created.UserID != 2 || created.APIKeyID != 0 {
+	if err != nil || created.InputFilename != "my.jsonl" || created.RequestCounts.Total != 2 || created.UserID != 2 || created.APIKeyID != 0 ||
+		!created.Cancellable || created.OutputExpiresAt != nil {
 		t.Fatalf("created = %+v err=%v", created, err)
 	}
 	var output string
@@ -210,6 +215,11 @@ func TestBatchConsoleCreateGetAndDownload(t *testing.T) {
 			t.Fatal(err)
 		}
 		if b.Status == "completed" {
+			// A finished batch is not cancellable, and its output is kept the
+			// service's retention (30 days by default) after it ended.
+			if b.Cancellable || b.CompletedAt == nil || b.OutputExpiresAt == nil || !b.OutputExpiresAt.Equal(b.CompletedAt.Add(30*24*time.Hour)) {
+				t.Fatalf("completed batch = %+v", b)
+			}
 			output, completed = b.OutputFileID, b.RequestCounts.Completed
 			break
 		}
@@ -243,6 +253,11 @@ func TestBatchConsoleCreateGetAndDownload(t *testing.T) {
 	}
 	if _, err = console.CreateFromUpload(caller, form(map[string]string{"file": twoLines, "endpoint": "/v1/embeddings"})); err == nil || err.(*api.BatchError).Code != api.ErrorBatchRequestInvalid {
 		t.Fatalf("endpoint mismatch = %v", err)
+	}
+	mixed := twoLines + `{"custom_id":"e","method":"POST","url":"/v1/embeddings","body":{"model":"m","input":"x"}}` + "\n"
+	_, err = console.CreateFromUpload(caller, form(map[string]string{"file": mixed}))
+	if be, ok := err.(*api.BatchError); !ok || be.Code != api.ErrorBatchFileInvalid || be.Params["line"] != 3 || be.Params["reason"] != "mixed_endpoints" {
+		t.Fatalf("mixed endpoints = %+v", err)
 	}
 	page, err := console.List(caller, nil, 1, 50)
 	if err != nil || page.Total != 1 || len(page.Items) != 1 {

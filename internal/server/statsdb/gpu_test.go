@@ -134,7 +134,7 @@ func TestSchemaV2FillsTheNodeAndModelRowsOfAFirstSchemaFile(t *testing.T) {
 		var version int
 		var nodeUtil, modelUtil, nodeDay float64
 		var nodeN int64
-		if err := s.reader.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version != 2 {
+		if err := s.reader.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version != schemaVersion {
 			t.Fatalf("version = %d %v", version, err)
 		}
 		if err := s.reader.QueryRow(`SELECT util_sum, util_n FROM gpu_node_hourly WHERE hour_ms = 1000 AND node_uuid = 'n1' AND gpu_model = 'H100'`).Scan(&nodeUtil, &nodeN); err != nil || nodeUtil != 3 || nodeN != 2 {

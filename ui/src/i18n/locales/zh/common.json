@@ -116,13 +116,16 @@
     "PLATFORM_TOKEN_SCOPE_INVALID": "令牌范围只能是 read 或 write，不能是“{{scope}}”。",
     "PLATFORM_TOKEN_NAME_INVALID": "令牌名称去除首尾空白后须为 1 到 {{max}} 个 UTF-8 字节。",
     "API_KEY_NAME_REQUIRED": "请填写 API Key 名称",
+    "API_KEY_SCOPE_INVALID": "请选择“全部模型服务”，或至少选择一个模型服务。",
+    "API_KEY_DEPLOYMENT_UNKNOWN": "所选的模型服务已不存在（ID {{ids}}），请刷新后重新选择。",
+    "API_KEY_NOT_FOUND": "该 API Key 不存在或已吊销。",
     "PLATFORM_TOKEN_EXPIRY_INVALID": "令牌有效期须为 0（永不过期）到 {{max}} 天。",
     "PLATFORM_TOKEN_ID_INVALID": "令牌 ID 无效。",
     "MCP_DISABLED": "MCP 服务未开启。",
     "METRIC_REQUIRED": "请选择指标。",
     "METRIC_UNKNOWN": "没有名为“{{metric}}”的指标。相近的有：{{similar}}。",
     "LOGS_FILTER_INVALID": "日志筛选中的级别或来源无效。",
-    "LOGS_CONTEXT_INVALID": "上下文需要行定位且窗口为 0-50 行。",
+    "LOGS_CONTEXT_INVALID": "上下文需要行定位且窗口为 0-1000 行。",
     "LOGS_FILTER_INSTANCES_CONFLICT": "日志筛选不能同时指定 instance 和 instances，两者只能二选一。",
     "LOGS_FILTER_INSTANCES_TOO_MANY": "日志筛选的 instances 列表有 {{count}} 个，超过上限 {{maximum}} 个。",
     "TERMINAL_TARGET_UNSUPPORTED": "不支持终端目标“{{target}}”。",
@@ -480,6 +483,7 @@
     "SCHEDULE_REPLICAS_MANUAL_PLACEMENT": "多机或 PD 部署的副本由运维手动放置，不能按副本数定时调整；先把它切换为自动放置。",
     "YIELD_POLICY_INVALID": "出让策略不合法（{{field}}）：{{reason}}。",
     "YIELD_POLICY_SHAPE": "只有单机部署能出让 GPU；多机与 PD 部署的出让策略只能是不自动出让。",
+    "YIELD_POLICY_NEEDS_SLEEP": "该部署的出让策略是 {{policy}}，出让 GPU 就是休眠，不能关闭可休眠。请先在调度策略里把出让策略改为不自动出让，再关闭可休眠。",
     "NODE_REPLACEMENT_INVALID": "节点失联重调度的等待时间只能是 0（关闭）或 {{minimum}} 到 {{maximum}} 秒。",
     "WAKE_YIELD_BLOCKED": "无法让位：{{occupants}} 不能休眠（未启用休眠、PD 部署最后一个清醒的角色，或是平台外的进程）。未做任何改动。",
     "REPLICAS_PLACE_ON_TOO_MANY": "首次放置指定了 {{count}} 个节点，但只新增了 {{maximum}} 个副本。",
@@ -489,11 +493,12 @@
     "AUTO_PLACEMENT_PD_MULTI_NODE": "自动放置只处理一台节点放得下的 PD 实例，但 {{role}} 角色的实例跨了多个节点。请改为手动放置并指定它们的节点。",
     "PLACEMENT_MODE_SHAPE": "单机部署的放置写在节点条件里；自动 / 手动放置只适用于多机和 PD 部署。",
     "BATCH_NOT_FOUND": "找不到该批处理任务或文件，或其输出文件已过期并被删除。",
-    "BATCH_NOT_CANCELLABLE": "该批处理任务已结束，无法取消。",
+    "BATCH_NOT_CANCELLABLE": "该批处理任务已无法取消：它已结束，或正在汇总结果。",
     "BATCH_FILE_INVALID": "批处理输入文件无效。{{detail}}",
     "BATCH_FILE_TOO_LARGE": "批处理输入文件超过 {{limit_mb}} MB。",
     "BATCH_MODEL_UNKNOWN": "没有运行中的部署使用模型名 {{model}}，请选择平台上已有的部署。",
     "BATCH_REQUEST_INVALID": "批处理请求无效（{{field}}）：{{reason}}",
+    "BATCH_FILE_MODELS_UNKNOWN": "文件里的这些模型没有运行中的部署：{{models, list}}。请选一个模型来接收全部请求，或先部署这些模型。",
     "AGENT_UPGRADE_REFUSED": "Agent 升级请求无法执行：{{detail}}"
   },
   "httpError": {
@@ -559,7 +564,7 @@
     "logs": "日志",
     "settings": "设置",
     "networks": "网络",
-    "scheduling": "调度中心",
+    "scheduling": "调度分析",
     "batches": "批处理任务"
   },
   "branding": {
@@ -728,6 +733,26 @@
         "label": "驱动初始化失败",
         "summary": "卡已绑定厂商驱动，但驱动没能把它带起来，因此厂商工具不会列出它，任何程序也用不了。",
         "action": "在节点上用 dmesg 查看驱动报错（NVIDIA 看 NVRM 行，如 \"RmInitAdapter failed\"）。通常需要复位这张卡，有时需要重启主机；如果这张卡本不该归本机使用，把它从厂商驱动解绑。"
+      },
+      "pcie_link_degraded": {
+        "label": "PCIe 链路降级",
+        "summary": "卡到根端口之间有一段 PCIe 链路的通道数（或卡在忙时的速率）低于两端都支持的值，连续多次上报都如此。卡还能用，但加载模型和传数据更慢，健康卡不够时才会用它。",
+        "action": "用下面的命令看这段链路两端的能力和当前协商值。通常是卡没插好、转接卡或线缆问题，或 BIOS 把插槽设成了低速；在主机空闲时检查并重新插拔。"
+      },
+      "pcie_errors": {
+        "label": "PCIe 报错",
+        "summary": "卡到根端口之间的 PCIe 设备新报告了可恢复的错误。卡还能用，15 分钟内没有新错误就自动恢复。",
+        "action": "用下面的命令看错误计数，并在 dmesg 里查 AER 记录。反复出现通常是链路或插槽的信号问题。"
+      },
+      "pcie_fatal_errors": {
+        "label": "PCIe 致命错误",
+        "summary": "卡到根端口之间的 PCIe 设备新报告了致命错误，链路需要重置。在这张卡的运行时检查重新通过之前，它不会被分配。",
+        "action": "用下面的命令看错误计数，并在 dmesg 里查 AER 记录。通常需要复位这张卡或重启主机；反复出现请联系硬件厂商。"
+      },
+      "nvlink_down": {
+        "label": "NVLink 掉线",
+        "summary": "这张卡当前活动的 NVLink 少于它曾经有过的数量，连续两次检查都如此。卡还能用，但跨卡的计算会变慢，调度时不再把它和原来互联的卡视为一组。",
+        "action": "用下面的命令看每条链路的状态与错误计数，并在 dmesg 里查 Xid 74。通常需要复位卡或重启主机；NVSwitch 机型还要检查 Fabric Manager。"
       },
       "memory_repair_pending": {
         "label": "待复位",

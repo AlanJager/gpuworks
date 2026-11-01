@@ -210,13 +210,24 @@ func queryProxyMetrics(store tsdb.Store, deploymentKey string, startMS, endMS, s
 // never populates Idle; callers that need it call FetchIdleSeries
 // separately once they know (needsIdleCheck) it is actually warranted.
 func FetchWindowSeries(store tsdb.Store, deploymentID uint, instances []InstanceRef, now, spanStart time.Time, stepMS int64) (WindowSeries, error) {
+	ws, _, err := fetchWindowSeries(store, deploymentID, instances, now, spanStart, stepMS)
+	return ws, err
+}
+
+// fetchWindowSeries is FetchWindowSeries that also returns the engine's own
+// series as fetched, before resolveSources let the gateway stand in for the
+// signals the engine left empty. BuildService's replica rows read the
+// engine's per-instance series as they are - a replica that exports nothing
+// shows nothing, not the deployment-wide gateway figure - so they take this
+// copy and slice it by instance instead of querying tsdb per replica.
+func fetchWindowSeries(store tsdb.Store, deploymentID uint, instances []InstanceRef, now, spanStart time.Time, stepMS int64) (resolved, engine WindowSeries, err error) {
 	depKey := depKeyString(deploymentID)
 	startMS := spanStart.UnixMilli()
 	endMS := now.UnixMilli()
 
 	running, uncovered, err := queryRunningWithCoverage(store, depKey, instances, startMS, endMS, stepMS)
 	if err != nil {
-		return WindowSeries{}, err
+		return WindowSeries{}, WindowSeries{}, err
 	}
 	query := func(metric string) ([]tsdb.Series, error) {
 		return queryDeploymentMetric(store, metric, depKey, uncovered, startMS, endMS, stepMS)
@@ -246,20 +257,23 @@ func FetchWindowSeries(store tsdb.Store, deploymentID uint, instances []Instance
 		}
 		s, err := query(metric)
 		if err != nil {
-			return WindowSeries{}, err
+			return WindowSeries{}, WindowSeries{}, err
 		}
 		*dst = s
 	}
 
 	if ws.ProxyRequestsTotal, ws.ProxyDurationSum, ws.ProxyDurationCount, ws.ProxyInflight, err =
 		queryProxyMetrics(store, depKey, startMS, endMS, stepMS); err != nil {
-		return WindowSeries{}, err
+		return WindowSeries{}, WindowSeries{}, err
 	}
 	if ws.Gateway, err = queryGatewaySeries(store, depKey, startMS, endMS, stepMS); err != nil {
-		return WindowSeries{}, err
+		return WindowSeries{}, WindowSeries{}, err
 	}
+	// resolveSources assigns whole replacement slices to the fields it fills,
+	// so this struct copy keeps the engine's series untouched.
+	engine = ws
 	ws.resolveSources()
-	return ws, nil
+	return ws, engine, nil
 }
 
 // FetchFleetWindowSeries queries every WindowSeries metric fleet-wide (no

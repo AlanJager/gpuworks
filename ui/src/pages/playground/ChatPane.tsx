@@ -1,11 +1,12 @@
 import UnsupportedModel from "./UnsupportedModel";
+import SleepNotice from "./SleepNotice";
 import {
   ClearOutlined,
   CodeOutlined,
   ControlOutlined,
   PauseCircleOutlined,
 } from "@ant-design/icons";
-import { Alert, Button, Empty, Select, Space, Tooltip, message } from "antd";
+import { Button, Empty, Select, Space, Tooltip, message } from "antd";
 import { memo, useMemo, useRef, useState } from "react";
 import { api as platformAPI } from "../../api";
 import { useFollowScroll } from "../../hooks/useFollowScroll";
@@ -126,9 +127,7 @@ const ChatPane = memo(function ChatPane({
           <Tooltip title={t("pane.clear")}><Button type="text" icon={<ClearOutlined />} onClick={() => store.clear(column.id)} aria-label={t("pane.clear")} /></Tooltip>
         </Space>
       </header>
-      {selectedModel?.sleeping && (
-        <Alert className="playground-sleep-alert" type="warning" showIcon message={t("pane.sleeping")} action={<Button size="small" loading={waking} onClick={wake}>{t("pane.wake")}</Button>} />
-      )}
+      <SleepNotice className="playground-sleep-alert" model={selectedModel} action={<Button size="small" loading={waking} onClick={wake}>{t("pane.wake")}</Button>} />
       <div className={`playground-pane-body${showParameters ? " has-parameters" : ""}`}>
         <div className="playground-message-list" ref={viewportRef}>
           {!messages.length && (

@@ -6,17 +6,39 @@ import "time"
 // nodes: for each GPU, which deployment's instance held it and in what state
 // over a window ending now, and the stats of the deployments that share cards.
 type SchedulingTimeline struct {
-	Window      TimelineWindow       `json:"window"`
-	Nodes       []TimelineNode       `json:"nodes"`
-	Deployments []TimelineDeployment `json:"deployments"`
+	// Scope says what the deployments' figures count: TimelineScopeNode,
+	// only their instances on the named nodes; TimelineScopeFleet, all of
+	// them. The UI says so from this and does not work it out.
+	Scope  string         `json:"scope"`
+	Window TimelineWindow `json:"window"`
+	// Windows are the windows the request may ask for, the default first:
+	// the UI offers these and no list of its own.
+	Windows     []TimelineWindowOption `json:"windows"`
+	Nodes       []TimelineNode         `json:"nodes"`
+	Deployments []TimelineDeployment   `json:"deployments"`
 }
 
-// TimelineWindow is the stretch of time the timeline covers: Hours long,
-// ending at To.
+// The scopes of a timeline's deployment figures.
+const (
+	TimelineScopeNode  = "node"
+	TimelineScopeFleet = "fleet"
+)
+
+// TimelineWindow is the stretch of time the timeline covers, ending at To:
+// Key names it (one of Windows), Seconds is its length and Hours its whole
+// hours (0 for a window under an hour).
 type TimelineWindow struct {
-	From  time.Time `json:"from"`
-	To    time.Time `json:"to"`
-	Hours int       `json:"hours"`
+	From    time.Time `json:"from"`
+	To      time.Time `json:"to"`
+	Hours   int       `json:"hours"`
+	Key     string    `json:"key"`
+	Seconds int64     `json:"seconds"`
+}
+
+// TimelineWindowOption is one window a timeline may be asked for.
+type TimelineWindowOption struct {
+	Key     string `json:"key"`
+	Seconds int64  `json:"seconds"`
 }
 
 // TimelineNode is one node and its GPUs' timelines.
@@ -47,28 +69,55 @@ type TimelineSegment struct {
 	To           time.Time `json:"to"`
 }
 
-// TimelineDeployment is what a deployment that shares GPUs (any service level
-// but resident) did on the listed nodes over the window. AwakeSeconds is the
-// time at least one of its instances there was awake and AwakeShare that over
-// the window (0 to 1). Yielded counts the times it was put to sleep for
-// another deployment, YieldedTo those another was put to sleep for it, Wakes
-// those the platform woke it, and Switches is Yielded plus Wakes.
-// HeldRequests counts the requests the gateway held while it woke; the waits
-// are approximated from the gateway's per-interval quantiles weighted by the
-// requests of each interval and are absent when no request was held or the
-// gateway's metrics are not kept.
+// TimelineDeployment is what a deployment that shares GPUs (any yield policy
+// but never, or a deleted one that gave its cards up or was given another's
+// in the window) did over the window, counted as the timeline's Scope says.
+// DeploymentDeleted marks a deleted one: Deployment is the name it left
+// behind and YieldPolicy is empty (not kept).
+// Over the fleet, PresentSeconds is the part of the window it existed in:
+// from its creation (or its first instance, when earlier or the creation is
+// not kept) or the window's start, to its deletion or the window's end; on
+// nodes, the part of the window at least one of its instances there held
+// cards. AwakeSeconds is the time at least one of its instances (there) was
+// awake and AwakeShare that over PresentSeconds (0 to 1; 0 when
+// PresentSeconds is). Yielded counts the times it was put to sleep for
+// another deployment, YieldedTo those another (existing or since deleted)
+// was put to sleep for it, Wakes those the platform woke it - on nodes, only
+// the events whose cards are there - and Switches is Yielded plus Wakes.
+// HeldRequests counts the requests the gateway held while it woke, the
+// deployment's in either scope (the gateway holds a request for the
+// deployment, not an instance); the waits are approximated from the
+// gateway's per-interval quantiles weighted by the requests of each interval
+// and are absent when no request was held or the gateway's metrics are not
+// kept.
 type TimelineDeployment struct {
-	DeploymentID uint   `json:"deployment_id"`
-	Deployment   string `json:"deployment"`
-	// YieldPolicy is its yield policy (never, idle, timeslice, anytime).
-	YieldPolicy  string   `json:"yield_policy"`
-	AwakeSeconds int64    `json:"awake_seconds"`
-	AwakeShare   float64  `json:"awake_share"`
-	Switches     int      `json:"switches"`
-	Yielded      int      `json:"yielded"`
-	YieldedTo    int      `json:"yielded_to"`
-	Wakes        int      `json:"wakes"`
-	HeldRequests int      `json:"held_requests"`
-	WaitP50Ms    *float64 `json:"wait_p50_ms,omitempty"`
-	WaitP95Ms    *float64 `json:"wait_p95_ms,omitempty"`
+	DeploymentID      uint   `json:"deployment_id"`
+	Deployment        string `json:"deployment"`
+	DeploymentDeleted bool   `json:"deployment_deleted,omitempty"`
+	// YieldPolicy is its yield policy (never, idle, timeslice, anytime);
+	// empty for a deleted deployment.
+	YieldPolicy    string   `json:"yield_policy"`
+	AwakeSeconds   int64    `json:"awake_seconds"`
+	AwakeShare     float64  `json:"awake_share"`
+	PresentSeconds int64    `json:"present_seconds"`
+	Switches       int      `json:"switches"`
+	Yielded        int      `json:"yielded"`
+	YieldedTo      int      `json:"yielded_to"`
+	Wakes          int      `json:"wakes"`
+	HeldRequests   int      `json:"held_requests"`
+	WaitP50Ms      *float64 `json:"wait_p50_ms,omitempty"`
+	WaitP95Ms      *float64 `json:"wait_p95_ms,omitempty"`
+	// Cards is where its live instances are now, by node; empty when none
+	// is placed.
+	Cards []TimelineCards `json:"cards"`
+}
+
+// TimelineCards is the GPUs a deployment's instances hold on one node now;
+// Node is empty for a node no longer known, and so is NodeUUID, by which
+// the UI opens the node.
+type TimelineCards struct {
+	NodeID   uint   `json:"node_id"`
+	NodeUUID string `json:"node_uuid,omitempty"`
+	Node     string `json:"node"`
+	GPUs     []int  `json:"gpus"`
 }

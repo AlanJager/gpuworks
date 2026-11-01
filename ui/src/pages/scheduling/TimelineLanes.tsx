@@ -3,7 +3,7 @@ import { Tag, Typography } from "antd";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
-import type { SchedulingTimeline, TimelineDeployment, TimelineGPU, TimelineNode, TimelineSegment } from "../../api";
+import type { SchedulingTimeline, TimelineDeployment, TimelineGPU, TimelineNode, TimelineSegment } from "../../schedulingApi";
 import { formatTime } from "../../i18n/datetime";
 import { colors } from "../../theme/tokens";
 import { CHART_WIDTH, blockOf, lanesOf, stateColor, stateOrder, ticksOf, windowSpan, type Lane, type Span } from "./timelineChart";
@@ -42,7 +42,7 @@ export function TimelineNodes({ timeline, gpuNames }: { timeline: SchedulingTime
   );
 }
 
-function TimelineNodeBlock({ node, span, hours, stats, gpuNames }: { node: TimelineNode; span: Span; hours: 6 | 24; stats: TimelineDeployment[]; gpuNames: Map<string, string> }) {
+function TimelineNodeBlock({ node, span, hours, stats, gpuNames }: { node: TimelineNode; span: Span; hours: number; stats: TimelineDeployment[]; gpuNames: Map<string, string> }) {
   const { t } = useTranslation("scheduling");
   const ticks = ticksOf(span, hours);
   return (
@@ -93,8 +93,14 @@ function LaneRow({ lane, span, ticks }: { lane: Lane; span: Span; ticks: number[
   return (
     <div className="timeline-lane">
       <div className="timeline-lane-label">
-        <Link to={`/deployments?deployment=${lane.deploymentID}`}>{lane.deployment}</Link>
-        <span className="timeline-level">{tDeploy(`yieldPolicy.policy.name.${lane.policy}`)}</span>
+        {lane.deleted ? (
+          <Typography.Text type="secondary">{t("history.deleted", { name: lane.deployment })}</Typography.Text>
+        ) : (
+          <>
+            <Link to={`/deployments?deployment=${lane.deploymentID}`}>{lane.deployment}</Link>
+            <span className="timeline-level">{tDeploy(`yieldPolicy.policy.name.${lane.policy}`)}</span>
+          </>
+        )}
       </div>
       <div className="timeline-track">
         <svg viewBox={`0 0 ${CHART_WIDTH} ${LANE_HEIGHT}`} preserveAspectRatio="none" role="group" aria-label={t("timeline.laneAria", { deployment: lane.deployment })}>

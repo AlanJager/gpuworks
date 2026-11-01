@@ -27,9 +27,9 @@ const (
 // classify says what a reply means. A response that arrived is final unless
 // it says the platform, not the request, was the problem: 408, 429, a 5xx
 // (503 is a model asleep past its wake hold, or no replica yet), or a 200
-// that a higher service level cut short (finish_reason "abort", what an
-// offline deployment's in-flight requests end with when a request of a
-// higher level takes its cards). A transport error is retried too.
+// that a yield cut short (finish_reason "abort", what the in-flight requests
+// of a deployment whose yield policy aborts unfinished work end with when
+// another deployment takes its cards). A transport error is retried too.
 func classify(r Reply) (v verdict, code, message string) {
 	switch {
 	case r.TooLarge:

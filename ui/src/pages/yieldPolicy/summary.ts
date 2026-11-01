@@ -1,15 +1,11 @@
 import type { TFunction } from "i18next";
 import type { Deployment } from "../../api";
+import { durationText } from "../durationText";
 import { type YieldParams, savedPolicy } from "./model";
 
-// spanText words a span of seconds the way the editor's fields count it:
-// whole days, hours or minutes when it divides evenly, else seconds.
-export function spanText(t: TFunction<"deployments">, seconds: number): string {
-  if (seconds >= 86400 && seconds % 86400 === 0) return t("automation.duration.days", { value: seconds / 86400 });
-  if (seconds >= 3600 && seconds % 3600 === 0) return t("automation.duration.hours", { value: seconds / 3600 });
-  if (seconds >= 60 && seconds % 60 === 0) return t("automation.duration.minutes", { value: seconds / 60 });
-  return t("automation.duration.seconds", { value: seconds });
-}
+// spanText words a parameter in seconds the way the editor's fields count it
+// (durationText's exact wording: nothing typed is rounded).
+const spanText = (t: TFunction<"deployments">, seconds: number) => durationText(t, seconds, "exact");
 
 // paramsSummary is the one line for a policy: its name and, for one that
 // yields, the idle time and (for timeslice) the longest turn. It reads the saved

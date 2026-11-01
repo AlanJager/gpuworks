@@ -12,7 +12,7 @@ export default function BatchFileModels({ fileModels, skipped, known, override }
   fileModels: string[] | null;
   /** The file is over the size the browser reads. */
   skipped: boolean;
-  /** Served names of the active deployments; null when they could not be listed. */
+  /** The served names the server lists (the batch dictionary); null until it is read. */
   known: Set<string> | null;
   override: string | undefined;
 }) {

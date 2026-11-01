@@ -146,6 +146,8 @@ func parseLogsFilter(q map[string][]string) (LogsFilter, bool) {
 const (
 	logsSearchDefaultLimit = 200
 	logsSearchMaxLimit     = 5000
+	// logsContextMaxLines caps each side of a context window.
+	logsContextMaxLines = 1000
 )
 
 // parseInstancesParam splits the "instances" query parameter (comma-
@@ -255,7 +257,7 @@ func (a *apiHandlers) logsSearch(w http.ResponseWriter, r *http.Request) {
 }
 
 // logsContext serves a grep-style window of lines around one match, within
-// the match's own instance. before/after are capped at 50 lines each.
+// the match's own instance. before/after are capped at logsContextMaxLines each.
 // GET /api/v1/logs/context?instance=..&ts=..&id=..&before=5&after=5
 func (a *apiHandlers) logsContext(w http.ResponseWriter, r *http.Request) {
 	if a.d.LogsContext == nil {
@@ -270,10 +272,11 @@ func (a *apiHandlers) logsContext(w http.ResponseWriter, r *http.Request) {
 	before, _ := strconv.Atoi(q.Get("before"))
 	after, _ := strconv.Atoi(q.Get("after"))
 	// Infrastructure rows (agent/server sources) carry no instance UUID: the
-	// window is then scoped to the node instead. The cap keeps a window in the
-	// same cost class as a full search page (2x500 indexed rows).
-	if (instance == "" && node == "") || ts <= 0 || id <= 0 || before < 0 || after < 0 || before > 500 || after > 500 {
-		writeProductError(w, http.StatusBadRequest, ErrorLogsContextInvalid, "context needs a row reference (instance or node), ts, id and a 0-500 before/after window", nil)
+	// window is then scoped to the node instead. Each side is one indexed
+	// range scan with a LIMIT, run only on an explicit click, so the cap is
+	// about response size, not query cost.
+	if (instance == "" && node == "") || ts <= 0 || id <= 0 || before < 0 || after < 0 || before > logsContextMaxLines || after > logsContextMaxLines {
+		writeProductError(w, http.StatusBadRequest, ErrorLogsContextInvalid, "context needs a row reference (instance or node), ts, id and a 0-1000 before/after window", nil)
 		return
 	}
 	window, err := a.d.LogsContext(instance, node, ts, id, before, after)

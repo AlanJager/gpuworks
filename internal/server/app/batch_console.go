@@ -4,6 +4,7 @@ import (
 	"errors"
 	"mime/multipart"
 	"net/http"
+	"time"
 
 	"gpuworks.ai/gpuworks/internal/server/api"
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
@@ -28,7 +29,7 @@ func (c batchConsole) List(caller api.BatchCaller, states []string, page, pageSi
 	}
 	items := make([]dto.Batch, 0, len(rows))
 	for _, b := range rows {
-		items = append(items, batchDTO(b, ""))
+		items = append(items, c.batchDTO(b, ""))
 	}
 	return dto.BatchPage{Items: items, Page: page, PageSize: pageSize, Total: total}, nil
 }
@@ -65,18 +66,47 @@ func (c batchConsole) Download(caller api.BatchCaller, id, kind string) (api.Bat
 	return api.BatchDownload{Filename: f.Filename, Size: f.Bytes, Body: fh}, nil
 }
 
+// Dictionary is the batch service's dictionary as the console reads it.
+func (c batchConsole) Dictionary() (dto.BatchDictionary, error) {
+	d, err := c.svc.Dictionary()
+	if err != nil {
+		return dto.BatchDictionary{}, err
+	}
+	out := dto.BatchDictionary{
+		Endpoints:             d.Endpoints,
+		CompletionWindowHours: dto.BatchWindowHours{Min: d.MinWindowHours, Max: d.MaxWindowHours, Default: d.DefaultWindowHours},
+		MaxFileBytes:          d.MaxFileBytes, MaxFileLines: d.MaxFileLines, Statuses: d.Statuses,
+		OutputRetentionDays: int(d.OutputRetention / (24 * time.Hour)),
+		Models:              make([]dto.BatchModel, 0, len(d.Models)),
+	}
+	for _, m := range d.Models {
+		if state, ok := batchModelStates[m.State]; ok {
+			out.Models = append(out.Models, dto.BatchModel{Name: m.Name, State: state})
+		}
+	}
+	return out, nil
+}
+
+// batchModelStates are the wire names of the states a batch can be sent to.
+var batchModelStates = map[batch.ModelState]string{
+	batch.ModelAvailable: dto.BatchModelServed,
+	batch.ModelAsleep:    dto.BatchModelAsleep,
+	batch.ModelSleepHeld: dto.BatchModelAsleepHeld,
+}
+
 // detail is a batch with the name of its input file, which a list row leaves out.
 func (c batchConsole) detail(b batch.Batch) dto.Batch {
 	name := ""
 	if f, err := c.svc.FileOf(b.InputFileID); err == nil {
 		name = f.Filename
 	}
-	return batchDTO(b, name)
+	return c.batchDTO(b, name)
 }
 
-func batchDTO(b batch.Batch, inputName string) dto.Batch {
+func (c batchConsole) batchDTO(b batch.Batch, inputName string) dto.Batch {
 	out := dto.Batch{
-		ID: b.ID, Endpoint: b.Endpoint, Status: b.Status, InputFileID: b.InputFileID, InputFilename: inputName,
+		ID: b.ID, Endpoint: b.Endpoint, Status: b.Status, Cancellable: batch.Cancellable(b.Status),
+		InputFileID: b.InputFileID, InputFilename: inputName, OutputExpiresAt: c.svc.OutputExpiresAt(b),
 		OutputFileID: b.OutputFileID, ErrorFileID: b.ErrorFileID, CompletionWindow: b.CompletionWindow,
 		RequestCounts: dto.BatchRequestCount{Total: b.Total, Completed: b.Completed, Failed: b.Failed},
 		Model:         b.Model, Metadata: map[string]string{}, UserID: b.UserID, APIKeyID: b.APIKeyID,
@@ -87,8 +117,12 @@ func batchDTO(b batch.Batch, inputName string) dto.Batch {
 		out.Metadata[k] = v
 	}
 	for _, w := range b.Warnings {
-		if w.Code == batch.WarningModelSleepHeld {
-			out.Warnings = append(out.Warnings, messages.Warning{Code: api.WarningBatchModelSleepHeld, Params: map[string]any{"model": b.Model}})
+		switch {
+		case w.Code != batch.WarningModelSleepHeld || len(w.Models) == 0:
+		case w.Param == batch.ParamInputFileID:
+			out.Warnings = append(out.Warnings, messages.Warning{Code: messages.WarningBatchFileModelsSleepHeld, Params: namedModelsParams(w.Models)})
+		default:
+			out.Warnings = append(out.Warnings, messages.Warning{Code: api.WarningBatchModelSleepHeld, Params: map[string]any{"model": w.Models[0]}})
 		}
 	}
 	if b.ErrorCode != "" {
@@ -109,15 +143,18 @@ func consoleBatchError(err error) error {
 	switch {
 	case be.Status == http.StatusNotFound:
 		out.Code = api.ErrorBatchNotFound
-	case be.Code == "model_not_found":
+	case be.Code == batch.CodeModelNotFound && len(be.Models) > 0:
+		out.Code = messages.ErrorBatchFileModelsUnknown
+		out.Params = namedModelsParams(be.Models)
+	case be.Code == batch.CodeModelNotFound:
 		out.Code = api.ErrorBatchModelUnknown
 		out.Params = map[string]any{"model": be.Model}
-	case be.Code == "batch_not_cancellable":
+	case be.Code == batch.CodeBatchNotCancellable:
 		out.Code = api.ErrorBatchNotCancellable
 	case be.Status == http.StatusRequestEntityTooLarge:
 		out.Code = api.ErrorBatchFileTooLarge
 		out.Params = map[string]any{"limit_mb": batch.MaxFileBytes >> 20}
-	case be.Line > 0 || be.Code == "empty_file" || be.Code == "too_many_requests" || be.Code == "invalid_file_extension":
+	case be.Line > 0 || be.Code == batch.CodeEmptyFile || be.Code == batch.CodeTooManyRequests || be.Code == batch.CodeInvalidFileExtension:
 		out.Code = api.ErrorBatchFileInvalid
 		out.Params = map[string]any{"line": be.Line, "reason": be.Code, "detail": be.Message}
 	default:
@@ -125,4 +162,12 @@ func consoleBatchError(err error) error {
 		out.Params = map[string]any{"field": be.Param, "reason": be.Code}
 	}
 	return out
+}
+
+// namedModelsParams are the params of a product message about the models of an
+// input file: the first few names as a list and how many more follow, for the
+// client to join in its own language.
+func namedModelsParams(models []string) map[string]any {
+	named, more := batch.NamedModels(models)
+	return map[string]any{"models": named, "more": more}
 }

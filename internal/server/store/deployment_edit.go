@@ -107,7 +107,7 @@ func (s *Store) EditDeployment(read *Deployment, readReqs nodelabel.Requirements
 			if err := tx.Where("deployment_id = ?", id).Find(&insts).Error; err != nil {
 				return err
 			}
-			if err := writeSleepIntent(tx, insts, 0, ""); err != nil {
+			if err := writeSleepIntent(tx, insts, 0, "", false); err != nil {
 				return err
 			}
 		}

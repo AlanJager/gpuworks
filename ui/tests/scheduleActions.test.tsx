@@ -2,41 +2,57 @@ import assert from "node:assert/strict";
 import { after, test } from "node:test";
 import "./helpers/dom.ts";
 import { trackMessageChannels } from "./helpers/trackedMessageChannels.ts";
+import * as shapes from "./helpers/deploymentCapabilities.ts";
 
-// Which orders a deployment's schedule offers: sleep and wake need a sleepable
-// deployment; a replica count needs a deployment whose new replicas get their
-// nodes picked - single-node, or multi-node or PD placed automatically.
+// Which orders a deployment's schedule offers is the server's answer
+// (schedule_capabilities): the page reads it, whatever sleepable, nnodes or pd
+// say, and takes each replica count's bounds from it.
 
 const closeChannels = trackMessageChannels();
-const { scheduleActions, scheduleRoles } = await import("../src/pages/DeploymentSchedule.tsx");
+const { scheduleActions, scheduleRefusals, scheduleRoles } = await import("../src/pages/DeploymentSchedule.tsx");
 type Dep = Parameters<typeof scheduleActions>[0];
 after(() => closeChannels());
 
-const dep = (fields: Record<string, unknown>) => fields as unknown as Dep;
+const dep = (fields: Record<string, unknown>) => ({ replicas: 1, ...fields }) as unknown as Dep;
 
-test("a single-node deployment can be scaled on a schedule, and slept when sleepable", () => {
-  assert.deepEqual(scheduleActions(dep({ nnodes: 1 })), ["replicas"]);
-  assert.deepEqual(scheduleActions(dep({ nnodes: 1, sleepable: true })), ["sleep", "wake", "replicas"]);
-  assert.deepEqual(scheduleActions(dep({})), ["replicas"]);
+test("the orders offered are the ones the server allows", () => {
+  assert.deepEqual(scheduleActions(dep(shapes.sleepableSingleNode)), ["sleep", "wake", "replicas"]);
+  assert.deepEqual(scheduleActions(dep(shapes.notSleepableSingleNode)), ["replicas"]);
+  assert.deepEqual(scheduleActions(dep(shapes.sleepableMultiNodeManual)), ["sleep", "wake"]);
+  assert.deepEqual(scheduleActions(dep(shapes.sleepableMultiNodeAuto)), ["sleep", "wake", "replicas"]);
+  assert.deepEqual(scheduleActions(dep(shapes.notSleepableMultiNodeManual)), []);
+  assert.deepEqual(scheduleActions(dep(shapes.sleepablePDAuto)), ["sleep", "wake", "replicas"]);
+  assert.deepEqual(scheduleActions(dep(shapes.sleepablePDManual)), ["sleep", "wake"]);
 });
 
-test("a multi-node deployment can be scaled only when the platform places it", () => {
-  assert.deepEqual(scheduleActions(dep({ nnodes: 2, placement_mode: "auto" })), ["replicas"]);
-  assert.deepEqual(scheduleActions(dep({ nnodes: 2, placement_mode: "manual" })), []);
-  assert.deepEqual(scheduleActions(dep({ nnodes: 2, sleepable: true })), ["sleep", "wake"]);
+test("the server decides even where the deployment's own fields say otherwise", () => {
+  // Sleepable, single-node, yet the server refuses sleep (its engine cannot):
+  // the page follows the server.
+  const refused = { ok: false, reason: "SLEEP_ENGINE_UNSUPPORTED" };
+  const engineCannotSleep = dep({
+    sleepable: true, nnodes: 1,
+    schedule_capabilities: { sleep: refused, wake: refused, replicas: [{ minimum: 1, maximum: 32, ok: true }] },
+  });
+  assert.deepEqual(scheduleActions(engineCannotSleep), ["replicas"]);
+  assert.deepEqual(scheduleRefusals(engineCannotSleep), ["SLEEP_ENGINE_UNSUPPORTED"]);
+  // With no capabilities the page offers nothing rather than guessing.
+  assert.deepEqual(scheduleActions(dep({ sleepable: true, nnodes: 1 })), []);
 });
 
-test("a PD deployment's role counts are scheduled only when the platform places it", () => {
-  assert.deepEqual(scheduleActions(dep({ pd: { mode: "vllm-nixl" }, placement_mode: "auto", sleepable: true })), ["sleep", "wake", "replicas"]);
-  assert.deepEqual(scheduleActions(dep({ pd: { mode: "vllm-nixl" }, placement_mode: "manual", sleepable: true })), ["sleep", "wake"]);
-  // A PD deployment reports no single-node shape that would stand in for auto.
-  assert.deepEqual(scheduleActions(dep({ pd: { mode: "vllm-nixl" }, nnodes: 1 })), []);
+test("the refusals are the server's codes, each once", () => {
+  assert.deepEqual(scheduleRefusals(dep(shapes.notSleepableMultiNodeManual)), ["SLEEP_NOT_ENABLED", "SCHEDULE_REPLICAS_MANUAL_PLACEMENT"]);
+  assert.deepEqual(scheduleRefusals(dep(shapes.notSleepablePDManual)), ["SLEEP_NOT_ENABLED", "SCHEDULE_REPLICAS_MANUAL_PLACEMENT"]);
+  assert.deepEqual(scheduleRefusals(dep(shapes.sleepableSingleNode)), []);
 });
 
-test("a PD deployment's roles come with the fewest replicas each may be given", () => {
-  assert.deepEqual(
-    scheduleRoles(dep({ pd: { roles: [{ role: "decode", desired: 2 }, { role: "prefill", desired: 1, may_be_empty: true }] } })),
-    [{ role: "decode", minimum: 1, desired: 2 }, { role: "prefill", minimum: 0, desired: 1 }],
-  );
-  assert.deepEqual(scheduleRoles(dep({})), []);
+test("each replica count comes with the server's bounds: a PD role's own, in the server's order", () => {
+  const pd = dep({ ...shapes.sleepablePDAuto, pd: { roles: [{ role: "prefill", desired: 1 }, { role: "decode", desired: 2 }] } });
+  assert.deepEqual(scheduleRoles(pd), [
+    { role: "decode", minimum: 1, maximum: 32, desired: 2 },
+    { role: "prefill", minimum: 0, maximum: 32, desired: 1 },
+  ]);
+  const single = dep({ ...shapes.sleepableSingleNode, replicas: 3, schedule_capabilities: { ...shapes.sleepableSingleNode.schedule_capabilities, replicas: [{ minimum: 1, maximum: 8, ok: true }] } });
+  assert.deepEqual(scheduleRoles(single), [{ role: "", minimum: 1, maximum: 8, desired: 3 }]);
+  // A count the server refuses is not offered.
+  assert.deepEqual(scheduleRoles(dep(shapes.sleepablePDManual)), []);
 });

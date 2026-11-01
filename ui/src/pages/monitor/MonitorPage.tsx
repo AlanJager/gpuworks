@@ -127,7 +127,7 @@ function MonitorPageContent() {
                 unit={SIGNAL_UNIT[signal.key]}
                 detail={signalDetail(signal, t)}
                 valueLabel={signal.key === "token_rate" ? t("signals.tokenRateInput") : undefined}
-                denominatorLabel={signal.key === "token_rate" ? t("signals.tokenRateOutput") : undefined}
+                denominatorLabel={signal.key === "token_rate" ? t("signals.tokenRateOutput") : signal.key === "request_rate" ? t("signals.inflightUnit") : undefined}
                 onClick={signal.collected ? () => setFilterIds(filterForSignal(signal.key, layoutData.services)) : undefined}
                 tooltip={signalTooltip(signal, t)}
               />

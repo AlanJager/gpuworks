@@ -1,7 +1,6 @@
 package planning
 
 import (
-	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -37,7 +36,7 @@ func occupantsOf(st *store.Store, node *store.Node, insts []store.Instance, resi
 	_, _, archFamily, _ := nodeGPUProfile(node)
 	for i := range insts {
 		in := &insts[i]
-		if in.State == proto.InstStopped || (in.State == proto.InstFailed && in.Phase != proto.PhaseSleep) {
+		if !holdsClaim(in) {
 			continue
 		}
 		claim := instanceClaim(st, in, archFamily)

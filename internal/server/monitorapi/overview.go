@@ -172,11 +172,16 @@ func signalsDTO(s monitor.ClusterSignals) []dto.MonitorSignal {
 		Spark: sparkFor(s.HasErrRate, s.ErrorRateSeries),
 	})
 
+	// request_rate's Denominator is the gateway's average requests in
+	// flight over the same window, the concurrency the rate was served at;
+	// a quiet fleet (ProxyNoRecent) reports the true zero beside its zero
+	// rate.
 	out = append(out, dto.MonitorSignal{
 		Key: "request_rate", Collected: s.HasRequestRate,
-		Value:  collectedFloatPtr(s.HasRequestRate, round1(s.RequestsPerSec)),
-		Detail: noRecentRequestsDetail(s.HasRequestRate && s.ProxyNoRecent),
-		Spark:  sparkFor(s.HasRequestRate, s.RequestsPerSecSeries),
+		Value:       collectedFloatPtr(s.HasRequestRate, round1(s.RequestsPerSec)),
+		Denominator: collectedFloatPtr(s.HasRequestRate && (s.HasInflight || s.ProxyNoRecent), round1(s.InflightAvg)),
+		Detail:      noRecentRequestsDetail(s.HasRequestRate && s.ProxyNoRecent),
+		Spark:       sparkFor(s.HasRequestRate, s.RequestsPerSecSeries),
 	})
 
 	out = append(out, dto.MonitorSignal{

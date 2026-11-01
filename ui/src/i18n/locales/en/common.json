@@ -116,13 +116,16 @@
     "PLATFORM_TOKEN_SCOPE_INVALID": "A token's scope is read or write, not \"{{scope}}\".",
     "PLATFORM_TOKEN_NAME_INVALID": "A token name must be 1 to {{max}} UTF-8 bytes after trimming spaces.",
     "API_KEY_NAME_REQUIRED": "API key name is required",
+    "API_KEY_SCOPE_INVALID": "Choose all model services, or at least one model service.",
+    "API_KEY_DEPLOYMENT_UNKNOWN": "The selected model services no longer exist (IDs {{ids}}). Refresh and choose again.",
+    "API_KEY_NOT_FOUND": "This API key does not exist or has been revoked.",
     "PLATFORM_TOKEN_EXPIRY_INVALID": "A token lasts 0 (never expires) to {{max}} days.",
     "PLATFORM_TOKEN_ID_INVALID": "That is not a token id.",
     "MCP_DISABLED": "The MCP service is turned off.",
     "METRIC_REQUIRED": "Select a metric.",
     "METRIC_UNKNOWN": "No metric is named \"{{metric}}\". Similar: {{similar}}.",
     "LOGS_FILTER_INVALID": "Unknown level or source in the log filter.",
-    "LOGS_CONTEXT_INVALID": "Context needs a line reference and a 0-50 line window.",
+    "LOGS_CONTEXT_INVALID": "Context needs a line reference and a 0-1000 line window.",
     "LOGS_FILTER_INSTANCES_CONFLICT": "The log filter cannot combine `instance` and `instances`; use only one at a time.",
     "LOGS_FILTER_INSTANCES_TOO_MANY": "The log filter's `instances` list has {{count}} entries, which exceeds the {{maximum}} limit.",
     "TERMINAL_TARGET_UNSUPPORTED": "Terminal target “{{target}}” is not supported.",
@@ -480,6 +483,7 @@
     "SCHEDULE_REPLICAS_MANUAL_PLACEMENT": "This multi-node or PD deployment's replicas are placed by hand, so a schedule cannot set their count; switch it to automatic placement first.",
     "YIELD_POLICY_INVALID": "The yield policy is not valid ({{field}}): {{reason}}.",
     "YIELD_POLICY_SHAPE": "Only a single-node deployment can yield its GPUs; a multi-node or PD deployment stays on never yield automatically.",
+    "YIELD_POLICY_NEEDS_SLEEP": "This deployment's yield policy is {{policy}}, and it yields its GPUs by sleeping, so sleep cannot be turned off. Set the yield policy to never yield automatically first, then turn sleep off.",
     "NODE_REPLACEMENT_INVALID": "The wait before node-loss rescheduling must be 0 (off) or between {{minimum}} and {{maximum}} seconds.",
     "WAKE_YIELD_BLOCKED": "Cannot make room: {{occupants}} cannot be put to sleep (not sleepable, the last awake role of a PD deployment, or a process outside the platform). Nothing was changed.",
     "REPLICAS_PLACE_ON_TOO_MANY": "{{count}} nodes were named for the first placement, but only {{maximum}} replicas are added.",
@@ -489,11 +493,12 @@
     "AUTO_PLACEMENT_PD_MULTI_NODE": "Automatic placement takes PD instances that fit one node, but the {{role}} role's instances span nodes. Switch to manual placement and name their nodes.",
     "PLACEMENT_MODE_SHAPE": "A single-node deployment states its placement in its node requirements; automatic and manual placement apply to multi-node and PD deployments.",
     "BATCH_NOT_FOUND": "The batch or file was not found, or its output has expired and was deleted.",
-    "BATCH_NOT_CANCELLABLE": "The batch has already finished and cannot be cancelled.",
+    "BATCH_NOT_CANCELLABLE": "The batch can no longer be cancelled: it has finished or is assembling its results.",
     "BATCH_FILE_INVALID": "The batch input file is not valid. {{detail}}",
     "BATCH_FILE_TOO_LARGE": "The batch input file is larger than {{limit_mb}} MB.",
     "BATCH_MODEL_UNKNOWN": "No active deployment serves the model {{model}}. Choose a deployment that exists on the platform.",
     "BATCH_REQUEST_INVALID": "The batch request is not valid ({{field}}): {{reason}}",
+    "BATCH_FILE_MODELS_UNKNOWN": "The file names models that no active deployment serves: {{models, list}}. Choose a model to send every request to, or deploy these models first.",
     "AGENT_UPGRADE_REFUSED": "Agent upgrade request could not proceed: {{detail}}"
   },
   "httpError": {
@@ -559,7 +564,7 @@
     "logs": "Logs",
     "settings": "Settings",
     "networks": "Networks",
-    "scheduling": "Scheduling",
+    "scheduling": "Scheduling analysis",
     "batches": "Batches"
   },
   "branding": {
@@ -728,6 +733,26 @@
         "label": "Driver init failed",
         "summary": "The card is bound to its vendor driver, but the driver could not bring it up, so nothing can use it and the vendor tool does not list it.",
         "action": "Check the driver errors in the node's dmesg (for NVIDIA: NVRM lines such as \"RmInitAdapter failed\"). The card usually needs a reset, and sometimes the host needs a reboot; where the card is not meant for this host, unbind it from the vendor driver."
+      },
+      "pcie_link_degraded": {
+        "label": "PCIe link degraded",
+        "summary": "A PCIe link between the card and its root port runs at fewer lanes (or, while the card is busy, a lower speed) than both of its ends support, report after report. The card still works but loads models and moves data more slowly, so it is used only when healthy cards run out.",
+        "action": "Use the command below to see what both ends of the link support and what they negotiated. It is usually a badly seated card, a riser or cable, or a slot set to a lower speed in the BIOS; check and reseat it while the host is idle."
+      },
+      "pcie_errors": {
+        "label": "PCIe errors",
+        "summary": "PCIe devices between the card and its root port reported new recovered errors. The card still works and recovers on its own after 15 minutes without new errors.",
+        "action": "Use the command below to see the error counters, and look for AER entries in dmesg. Errors that keep coming usually mean a signal problem in the link or slot."
+      },
+      "pcie_fatal_errors": {
+        "label": "PCIe fatal errors",
+        "summary": "PCIe devices between the card and its root port reported new fatal errors, after which the link has to be reset. The card is not given work until a runtime check passes on it again.",
+        "action": "Use the command below to see the error counters, and look for AER entries in dmesg. The card usually needs a reset or the host a reboot; if it keeps happening, contact the hardware vendor."
+      },
+      "nvlink_down": {
+        "label": "NVLink down",
+        "summary": "Fewer of this card's NVLinks are active than it has had, two checks in a row. The card still works, but work spread across cards is slower, and the scheduler no longer groups it with the cards it was linked to.",
+        "action": "Use the command below to see each link's state and error counters, and look for Xid 74 in dmesg. It usually needs a card reset or a host reboot; on NVSwitch systems also check the Fabric Manager."
       },
       "memory_repair_pending": {
         "label": "Reset pending",

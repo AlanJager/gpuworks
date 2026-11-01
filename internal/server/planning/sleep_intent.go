@@ -48,3 +48,24 @@ func ReportedSleepLevelAmong(insts []store.Instance, in *store.Instance) int {
 	}
 	return 0
 }
+
+// ReplicaWakesOnRequest says in is a replica the gateway refuses for sleep
+// (running, its leader if multi-node, asleep) and a request wakes it
+// (store.Deployment.WakesOnRequest: dep can sleep and in's sleep is not
+// held).
+func ReplicaWakesOnRequest(dep *store.Deployment, in *store.Instance) bool {
+	return in.State == proto.InstRunning && !in.Headless && InstanceAsleep(in) && dep.WakesOnRequest(in)
+}
+
+// RequestWakes says a request for dep that finds no awake replica wakes one
+// of insts (ReplicaWakesOnRequest), so it is held for that wake rather than
+// refused: what the gateway's route table, the playground and batches say
+// of a whole deployment.
+func RequestWakes(dep *store.Deployment, insts []store.Instance) bool {
+	for i := range insts {
+		if ReplicaWakesOnRequest(dep, &insts[i]) {
+			return true
+		}
+	}
+	return false
+}

@@ -79,7 +79,7 @@ type Deployment struct {
 	// another node; 0 never moves it.
 	NodeReplaceAfterSec int `gorm:"not null;default:600"`
 	// The deployment's yield policy and its parameters (package
-	// servicelevel, docs/explanation/service-levels.md): YieldPolicy is how
+	// yieldpolicy, docs/explanation/service-levels.md): YieldPolicy is how
 	// it shares GPUs with others (never, idle, timeslice, anytime); the
 	// others are normalized on write, so a parameter that does not apply to
 	// the policy is its zero value.
@@ -90,11 +90,6 @@ type Deployment struct {
 	Unfinished        string `gorm:"size:16;not null;default:''"`
 	UnfinishedWaitSec int    `gorm:"not null;default:0"`
 	HoldMaxSec        int    `gorm:"not null;default:0"`
-	// SleepHeld says the deployment's sleep was ordered by an operator or a
-	// schedule: a request through the gateway does not wake it. A sleep the
-	// platform chose (auto sleep, the arbiter) is not held and a request
-	// wakes it.
-	SleepHeld bool `gorm:"not null;default:false"`
 
 	// State is the internal Go name; the persisted column is desired_state.
 	// The column type is unchanged: DeploymentState is a string alias.
@@ -181,16 +176,31 @@ type Instance struct {
 	// card was shared, or the agent predates the measurement): the ledger
 	// then charges an estimate (sleep.ResidueBytes).
 	SleepResidueBytes int64
+	// L1HostBufferHeld says the instance's engine completed an L1 sleep since
+	// its process started, as its agent reports (proto.InstanceStatus): vLLM
+	// keeps the pinned host memory it copies the weights into for the life of
+	// the process, so a later L1 sleep takes no host memory the node has not
+	// already given it (planning.L1HostMemoryRefusal). It cannot be derived:
+	// an instance launched under an L2 order and woken since has none, and an
+	// older agent does not report it. A new process clears it.
+	L1HostBufferHeld bool `gorm:"not null;default:false"`
 	// WakeWaitingSince is when a wake that did not fit started waiting for
 	// room; nil when no wake waits. The controller wakes the instance once its
 	// GPUs can take it back, or gives up after the wait limit.
 	WakeWaitingSince *time.Time `gorm:"index"`
-	DistGroup        string     `gorm:"size:64;index"`
-	DistRole         string     `gorm:"size:16"` // leader | follower
-	NNodes           int
-	NodeRank         int
-	Headless         bool
-	DistAttempt      int
+	// SleepHeld says the instance's sleep was ordered by an operator or a
+	// schedule (a held sleep): a request through the gateway does not wake
+	// it. A held sleep marks exactly the instances it orders, a wake clears
+	// exactly the ones it wakes or leaves waiting, and a sleep the platform
+	// chose (the residency arbiter's) neither sets nor clears it
+	// (Deployment.WakesOnRequest).
+	SleepHeld   bool   `gorm:"not null;default:false"`
+	DistGroup   string `gorm:"size:64;index"`
+	DistRole    string `gorm:"size:16"` // leader | follower
+	NNodes      int
+	NodeRank    int
+	Headless    bool
+	DistAttempt int
 	// Role is the instance's role in a PD disaggregated deployment
 	// (pdmode.Role*); empty for every other deployment. It is independent of
 	// DistRole, which ranks a multi-node group.

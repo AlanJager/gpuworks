@@ -79,20 +79,10 @@ func (s *Store) SetUserPassword(username, password string) error {
 	return nil
 }
 
-// CreateAPIKey generates and stores a new API key, returning the full key once.
+// CreateAPIKey generates and stores a new API key that reaches every
+// deployment, returning the full key once.
 func (s *Store) CreateAPIKey(name string, userID uint) (fullKey string, err error) {
-	full, prefix := auth.NewAPIKey()
-	hash, err := auth.HashPassword(full)
-	if err != nil {
-		return "", err
-	}
-	k := &APIKey{Name: name, Prefix: prefix, Hash: hash, UserID: userID}
-	if err := s.db.Create(k).Error; err != nil {
-		return "", err
-	}
-	s.apiKeys.changed()
-	s.Bus.PublishChange("apikey", prefix, "created")
-	return full, nil
+	return s.CreateScopedAPIKey(name, userID, APIKeyScope{})
 }
 
 // ListAPIKeys returns key metadata (never the secret), revoked keys included.
@@ -117,10 +107,14 @@ func (s *Store) RevokeAPIKey(prefix string) error {
 	return result.Error
 }
 
-// APIKeyIdentity is who presented a valid API key: the key and its owner.
+// APIKeyIdentity is who presented a valid API key: the key, its owner and
+// the deployments it may call (see Allows). Deployments is shared with the
+// cache and must not be modified.
 type APIKeyIdentity struct {
-	KeyID  uint
-	UserID uint
+	KeyID       uint
+	UserID      uint
+	Restricted  bool
+	Deployments map[uint]struct{}
 }
 
 // VerifyAPIKey validates a presented key (prefix lookup + argon2id verify) and
@@ -135,16 +129,16 @@ func (s *Store) VerifyAPIKey(presented string) bool {
 func (s *Store) ResolveAPIKey(presented string) (APIKeyIdentity, bool) {
 	digest := sha256.Sum256([]byte(presented))
 	if cached, ok := s.apiKeys.lookup(digest); ok {
-		s.touchAPIKey(cached.id)
-		return APIKeyIdentity{KeyID: cached.id, UserID: cached.userID}, true
+		s.touchAPIKey(cached.identity.KeyID)
+		return cached.identity, true
 	}
 	call, leader := s.apiKeys.join(digest)
 	if !leader {
 		<-call.done
 		if call.ok {
-			s.touchAPIKey(call.id)
+			s.touchAPIKey(call.identity.KeyID)
 		}
-		return APIKeyIdentity{KeyID: call.id, UserID: call.userID}, call.ok
+		return call.identity, call.ok
 	}
 	defer s.apiKeys.finish(digest, call)
 	generation := s.apiKeys.snapshot()
@@ -156,10 +150,19 @@ func (s *Store) ResolveAPIKey(presented string) (APIKeyIdentity, bool) {
 	if !verifyAPIKeyHash(presented, k.Hash) {
 		return APIKeyIdentity{}, false
 	}
-	call.id, call.userID, call.ok = k.ID, k.UserID, true
-	s.apiKeys.remember(generation, digest, k.ID, k.UserID, k.Prefix)
+	identity := APIKeyIdentity{KeyID: k.ID, UserID: k.UserID, Restricted: k.Restricted}
+	if k.Restricted {
+		set, err := apiKeyDeploymentSet(s.db, k.ID)
+		if err != nil {
+			// Rejected and not cached, like a failed key read.
+			return APIKeyIdentity{}, false
+		}
+		identity.Deployments = set
+	}
+	call.identity, call.ok = identity, true
+	s.apiKeys.remember(generation, digest, identity, k.Prefix)
 	s.touchAPIKey(k.ID)
-	return APIKeyIdentity{KeyID: k.ID, UserID: k.UserID}, true
+	return identity, true
 }
 
 func (s *Store) touchAPIKey(id uint) {

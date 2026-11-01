@@ -18,9 +18,9 @@ var (
 	metricHoldWaitCount  = inferencemetrics.Gateway("wake_hold_wait_ms").Series() + "_count"
 )
 
-// holdWaitBoundsMS reach the longest hold a service level allows (offline
-// waits up to 30 minutes), so a request that ran out of time lands in a
-// bucket of its own rather than in +Inf.
+// holdWaitBoundsMS reach 30 minutes, so a request that ran out of a long
+// hold lands in a bucket of its own rather than in +Inf (a yield policy's
+// hold_max_sec allows up to an hour; only holds past 30 minutes reach +Inf).
 var holdWaitBoundsMS = []float64{500, 1000, 2500, 5000, 10000, 30000, 60000, 120000, 300000, 600000, 1800000}
 
 // RecordHoldWait counts one held request's wait. The deployment becomes dirty,

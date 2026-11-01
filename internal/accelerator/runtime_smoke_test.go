@@ -75,7 +75,7 @@ func TestRuntimeSmokeCommandsCarryTheCheckScripts(t *testing.T) {
 // The scripts are pasted inside single quotes, so a single quote in one would
 // end the quoting and hand the shell the rest of the script as commands.
 func TestRuntimeSmokeScriptsSurviveShellQuoting(t *testing.T) {
-	for name, script := range map[string]string{"ascend": AscendACLSmokeScript, "cuda": CUDASmokeScript} {
+	for name, script := range map[string]string{"ascend": AscendACLSmokeScript, "cuda": CUDASmokeScript, "hygon": HygonHIPSmokeScript} {
 		if strings.Contains(script, "'") {
 			t.Errorf("%s script contains a single quote; keep it to double quotes so the command can be pasted", name)
 		}
@@ -196,12 +196,57 @@ func TestRuntimeUnusableGuidePerVendor(t *testing.T) {
 		t.Errorf("Ascend guide for an unenumerated die = %+v, want none", g)
 	}
 
-	// Hygon and PPU have no host runtime check; their cards keep the verdict
+	// PPU and Apple have no host runtime check; their cards keep the verdict
 	// their CLI gave them, and inventing a command would send the reader
-	// after a check this platform never made.
-	for _, vendor := range []string{VendorHygon, VendorPPU} {
+	// after a check this platform never made. (Hygon's is in
+	// TestHygonRuntimeSmokeCommand.)
+	for _, vendor := range []string{VendorPPU, VendorApple} {
 		if g, ok := HealthGuideFor(HealthCard{Vendor: vendor, Code: HealthRuntimeUnusable, BDF: "0000:7e:00.0", Index: 0}, nil); ok {
 			t.Errorf("%s runtime_unusable guide = %+v, want none", vendor, g)
+		}
+	}
+}
+
+func TestHygonRuntimeSmokeCommand(t *testing.T) {
+	if HygonRuntimeSmokeCommand(" ") != "" {
+		t.Fatal("a card without an address got a command")
+	}
+	cmd := HygonRuntimeSmokeCommand("0000:67:00.0")
+	for _, want := range []string{"HYGON_SMOKE_BDF='0000:67:00.0'", "/opt/dtk/lib/libamdhip64.so", "LD_LIBRARY_PATH=/opt/dtk/lib:/opt/dtk/lib64:/opt/hyhal/lib", "python3 -c 'import ctypes"} {
+		if !strings.Contains(cmd, want) {
+			t.Fatalf("command lacks %q:\n%s", want, cmd)
+		}
+	}
+	g, ok := HealthGuideFor(HealthCard{Vendor: VendorHygon, Code: HealthRuntimeUnusable, BDF: "0000:67:00.0"}, nil)
+	if !ok || g.Probe != cmd || g.Recheck != "hy-smi --healthcheck" {
+		t.Fatalf("guide = %+v ok=%v", g, ok)
+	}
+}
+
+func TestRunnerTagFramework(t *testing.T) {
+	for ref, want := range map[string]string{
+		"swr.cn-north-4.myhuaweicloud.com/zs_wjl/gpuworks-runner:hggc13.0-sglang0.5.13-r6": "hggc",
+		"gpuworks/gpuworks-runner:cann9.0.0-910b-vllm0.27.1-r1":                            "cann",
+		"registry:5000/gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2@sha256:abc":       "cuda",
+		"gpuworks/gpuworks-runner:dtk26.04-vllm0.18.1-r1":                                  "dtk",
+		"registry:5000/cann":  "",
+		"my/custom:latest":    "",
+		"my/hggc-tools:hggcx": "",
+		"my/custom:cann":      "",
+	} {
+		if got := RunnerTagFramework(ref); got != want {
+			t.Errorf("RunnerTagFramework(%q) = %q, want %q", ref, got, want)
+		}
+	}
+	for vendor, want := range map[string]string{"ppu": "hggc", "ascend": "cann", "nvidia": "", "hygon": "", "apple": ""} {
+		got, ok := ContainerSmokeFramework(vendor)
+		if got != want || ok != (want != "") {
+			t.Errorf("ContainerSmokeFramework(%q) = %q %v", vendor, got, ok)
+		}
+	}
+	for name, script := range map[string]string{"cuda graded": CUDAGradedSmokeScript, "ascend container": ascendContainerPreamble} {
+		if strings.Contains(script, "'") {
+			t.Errorf("%s script contains a single quote", name)
 		}
 	}
 }

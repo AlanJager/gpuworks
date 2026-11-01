@@ -61,6 +61,17 @@ func NewestAttempt(attempts []store.Instance) store.Instance {
 	return newest
 }
 
+// Unfilled says some replica (or unit) has no instance filling it: one is
+// still to be placed.
+func (m UnitMatch) Unfilled() bool {
+	for i := range m.Slots {
+		if m.Slots[i].Inst == nil {
+			return true
+		}
+	}
+	return false
+}
+
 // SlotOf is the replica an instance currently fills, as matched: the slot
 // whose leader it is or whose generation it follows; nil for an instance that
 // fills none (failed, draining, on its way out, or no longer claimed).

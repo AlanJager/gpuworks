@@ -431,7 +431,8 @@ func (s *Store) SetDeploymentState(id uint, state DeploymentState) error {
 // removed together with the deployment; its names stay behind in
 // DeletedDeployment for the usage and statistics it leaves.
 func (s *Store) DeleteDeployment(id uint) error {
-	var deletedInstances []string
+	var deletedInstances, scopedKeys []string
+	var removals []InstanceEvent
 	err := s.db.Transaction(func(tx *gorm.DB) error {
 		var dep Deployment
 		if err := tx.Select("ID", "Name", "ServedName").First(&dep, id).Error; err != nil {
@@ -451,14 +452,20 @@ func (s *Store) DeleteDeployment(id uint) error {
 		}
 		for _, inst := range insts {
 			deletedInstances = append(deletedInstances, inst.UUID)
-			if err := deleteInstanceRecords(tx, &inst); err != nil {
+			removed, err := deleteInstanceRecords(tx, &inst)
+			if err != nil {
 				return err
 			}
+			removals = append(removals, removed...)
 		}
 		if err := tx.Where("deployment_id = ?", id).Delete(&DeploymentNodeRequirement{}).Error; err != nil {
 			return err
 		}
 		if err := tx.Where("deployment_id = ?", id).Delete(&LifecycleSchedule{}).Error; err != nil {
+			return err
+		}
+		var err error
+		if scopedKeys, err = dropDeploymentGrants(tx, id); err != nil {
 			return err
 		}
 		result := tx.Delete(&Deployment{}, id)
@@ -470,7 +477,13 @@ func (s *Store) DeleteDeployment(id uint) error {
 		}
 		return nil
 	})
+	for _, prefix := range scopedKeys {
+		s.apiKeys.forget(prefix)
+	}
 	if err == nil {
+		for _, ev := range removals {
+			s.observe(ev, nil)
+		}
 		for _, uuid := range deletedInstances {
 			s.Bus.PublishChange("instance", uuid, "deleted")
 		}
@@ -550,9 +563,15 @@ const (
 
 // CreateInstance persists a scheduled instance with its desired spec.
 func (s *Store) CreateInstance(i *Instance) (*Instance, error) {
-	if err := s.db.Transaction(func(tx *gorm.DB) error { return s.createInstance(tx, i) }); err != nil {
+	var created InstanceEvent
+	if err := s.db.Transaction(func(tx *gorm.DB) error {
+		var err error
+		created, err = s.createInstance(tx, i)
+		return err
+	}); err != nil {
 		return nil, err
 	}
+	s.observe(created, nil)
 	s.Bus.PublishChange("instance", i.UUID, "created")
 	return i, nil
 }
@@ -565,26 +584,30 @@ func (s *Store) CreateInstanceInTx(tx *gorm.DB, i *Instance) error {
 	if tx == nil {
 		return errors.New("nil transaction")
 	}
-	return s.createInstance(tx, i)
+	_, err := s.createInstance(tx, i)
+	return err
 }
 
-func (s *Store) createInstance(tx *gorm.DB, i *Instance) error {
+// createInstance writes the instance and its INSTANCE_CREATED event, which it
+// returns for the caller to observe once the transaction commits.
+func (s *Store) createInstance(tx *gorm.DB, i *Instance) (InstanceEvent, error) {
 	if i == nil {
-		return errors.New("nil instance")
+		return InstanceEvent{}, errors.New("nil instance")
 	}
 	if i.State == "" {
 		i.State = proto.InstPending
 	}
 	if err := stampDeploymentSleep(tx, i); err != nil {
-		return err
+		return InstanceEvent{}, err
 	}
 	if err := tx.Create(i).Error; err != nil {
-		return err
+		return InstanceEvent{}, err
 	}
-	if err := addEventTo(tx, &InstanceEvent{InstanceID: i.ID, InstanceUUID: i.UUID, DeploymentID: i.DeploymentID}, "state", instanceEventCreated, map[string]any{"state": i.State}); err != nil {
-		return err
+	ev := InstanceEvent{InstanceID: i.ID, InstanceUUID: i.UUID, DeploymentID: i.DeploymentID}
+	if err := addEventTo(tx, &ev, "state", instanceEventCreated, map[string]any{"state": i.State}); err != nil {
+		return InstanceEvent{}, err
 	}
-	return nil
+	return ev, nil
 }
 
 // InstanceByUUID loads an instance. Reads through the read pool (see
@@ -677,6 +700,16 @@ func (s *Store) updateInstanceStatus(inst *Instance, st proto.InstanceStatus) er
 		// without one (a later probe, an older agent) keeps it.
 		if st.SleepLevel > 0 && st.SleepResidueBytes > 0 {
 			updates["sleep_residue_bytes"] = st.SleepResidueBytes
+		}
+		// A new process holds no host buffer yet; once an L1 sleep pinned one,
+		// it stays until the process goes. An adopting agent (after its own
+		// restart) does not know and reports none, which must not clear it:
+		// only a report of a process starting does.
+		switch {
+		case st.State == proto.InstPending || st.State == proto.InstPulling || st.State == proto.InstStarting:
+			updates["l1_host_buffer_held"] = false
+		case st.L1HostBufferHeld && (st.State == proto.InstRunning || st.Phase == proto.PhaseSleep):
+			updates["l1_host_buffer_held"] = true
 		}
 	}
 	if len(st.Ports) > 0 {
@@ -870,10 +903,16 @@ func (s *Store) DeleteInstance(uuid string) error {
 	if err != nil {
 		return err
 	}
+	var removals []InstanceEvent
 	if err := s.db.Transaction(func(tx *gorm.DB) error {
-		return deleteInstanceRecords(tx, inst)
+		var err error
+		removals, err = deleteInstanceRecords(tx, inst)
+		return err
 	}); err != nil {
 		return err
+	}
+	for _, ev := range removals {
+		s.observe(ev, nil)
 	}
 	s.Bus.PublishChange("instance", uuid, "deleted")
 	return nil
@@ -887,14 +926,18 @@ func (s *Store) DeleteInstance(uuid string) error {
 // the log store already keeps its copy regardless, so erasing the events left
 // the logs of a failure without the events that explain it. Retention bounds
 // the table instead (see RetentionSweep).
-func deleteInstanceRecords(tx *gorm.DB, inst *Instance) error {
+//
+// It returns the INSTANCE_REMOVED event it wrote, if any, for the caller to
+// observe once the transaction commits.
+func deleteInstanceRecords(tx *gorm.DB, inst *Instance) ([]InstanceEvent, error) {
 	if err := tx.Where("instance_id = ?", inst.ID).Delete(&InstanceModelFile{}).Error; err != nil {
-		return err
+		return nil, err
 	}
-	if err := recordInstanceRemoved(tx, inst); err != nil {
-		return err
+	removed, err := recordInstanceRemoved(tx, inst)
+	if err != nil {
+		return nil, err
 	}
-	return tx.Delete(&Instance{}, inst.ID).Error
+	return removed, tx.Delete(&Instance{}, inst.ID).Error
 }
 
 // AddInstanceEvent appends a timeline entry.
@@ -933,7 +976,10 @@ func (s *Store) AddDeploymentEventCode(deploymentID uint, kind, code string, par
 }
 
 func (s *Store) addEvent(ev *InstanceEvent, kind, code string, params map[string]any) {
-	_ = addEventTo(s.db, ev, kind, code, params)
+	params, cards := s.schedulingPlacement(code, ev.InstanceUUID, params)
+	if addEventTo(s.db, ev, kind, code, params) == nil {
+		s.observe(*ev, cards)
+	}
 }
 
 func addEventTo(tx *gorm.DB, ev *InstanceEvent, kind, code string, params map[string]any) error {

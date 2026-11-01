@@ -4,6 +4,7 @@ import React from "react";
 import { I18nextProvider } from "react-i18next";
 import { createI18n } from "./helpers/dom.ts";
 import { trackMessageChannels } from "./helpers/trackedMessageChannels.ts";
+import * as shapes from "./helpers/deploymentCapabilities.ts";
 
 // A PD deployment's replica count is per role: the schedule editor asks for the
 // role, bounds the count by what the mode allows that role (prefill may be 0),
@@ -14,15 +15,17 @@ const { i18n, locale } = await createI18n(["deployments", "deploy"]);
 const { cleanup, fireEvent, render, screen, waitFor, within } = await import("@testing-library/react");
 const userEvent = (await import("@testing-library/user-event")).default;
 const { api } = await import("../src/api.ts");
+const { deploymentScheduleApi } = await import("../src/deploymentScheduleApi.ts");
 const { APIError } = await import("../src/apiError.ts");
 const { default: ScheduleSection, useSchedules } = await import("../src/pages/DeploymentSchedule.tsx");
 const { default: DeploymentSchedulingPolicy } = await import("../src/pages/DeploymentSchedulingPolicy.tsx");
 type Deployment = import("../src/api.ts").Deployment;
-type Schedule = import("../src/api.ts").LifecycleSchedule;
-type Request = import("../src/api.ts").LifecycleScheduleRequest;
+type Schedule = import("../src/deploymentScheduleApi.ts").LifecycleSchedule;
+type Request = import("../src/deploymentScheduleApi.ts").LifecycleScheduleRequest;
 
 const a = locale.deployments.automation;
 const original = { ...api };
+const originalDeploymentScheduleApi = { ...deploymentScheduleApi };
 
 function pdDeployment(overrides: Record<string, unknown> = {}): Deployment {
   return {
@@ -39,6 +42,7 @@ function pdDeployment(overrides: Record<string, unknown> = {}): Deployment {
     health: { status: "off", threshold_sec: 60, last: null, recent_mean_ms: null, recent_ok: 0, recent: [] },
     template_deviated: false, tokenize_enabled: false, created_at: "2026-10-01T00:00:00Z",
     node_replacement: { after_sec: 600 },
+    ...shapes.notSleepablePDAuto,
     ...overrides,
   } as unknown as Deployment;
 }
@@ -51,14 +55,14 @@ function stub() {
   schedules = [];
   created.length = updated.length = 0;
   api.me = async () => ({ id: 1, username: "u", role: "admin" }) as Awaited<ReturnType<typeof api.me>>;
-  api.deploymentSchedule = async () => ({ items: schedules, total: schedules.length });
-  api.createSchedule = async (_id, body) => {
+  deploymentScheduleApi.list = async () => ({ items: schedules, total: schedules.length });
+  deploymentScheduleApi.create = async (_id, body) => {
     created.push(body);
     const row = { ...body, id: 10 + created.length, enabled: body.enabled ?? true } as Schedule;
     schedules = [...schedules, row];
     return row;
   };
-  api.updateSchedule = async (_id, sid, body) => {
+  deploymentScheduleApi.update = async (_id, sid, body) => {
     updated.push([sid, body]);
     const row = { ...body, id: sid, enabled: body.enabled ?? true } as Schedule;
     schedules = schedules.map((item) => (item.id === sid ? row : item));
@@ -97,7 +101,7 @@ async function pickRole(modal: ReturnType<typeof dialog>, role: string) {
   fireEvent.click(option!);
 }
 
-afterEach(() => { cleanup(); Object.assign(api, original); });
+afterEach(() => { cleanup(); Object.assign(api, original); Object.assign(deploymentScheduleApi, originalDeploymentScheduleApi); });
 after(() => closeChannels());
 
 test("a PD deployment placed automatically offers a replica count, and asks for the role", async () => {
@@ -135,7 +139,7 @@ test("the role picked decides the fewest replicas: prefill may be scheduled to 0
 
 test("an order of a deployment that is not PD names no role", async () => {
   stub();
-  const plain = pdDeployment({ pd: undefined, placement_mode: undefined });
+  const plain = pdDeployment({ pd: undefined, placement_mode: undefined, ...shapes.notSleepableSingleNode });
   const user = mount(plain);
   const modal = await openNewReplicasOrder(user);
   assert.equal(modal.queryByRole("combobox", { name: a.schedule.field.role }), null);
@@ -147,9 +151,33 @@ test("an order of a deployment that is not PD names no role", async () => {
 
 test("a PD deployment placed by hand cannot be given a replica count", async () => {
   stub();
-  mount(pdDeployment({ placement_mode: "manual" }));
+  mount(pdDeployment({ placement_mode: "manual", ...shapes.notSleepablePDManual }));
   await within(section()).findByText(a.schedule.noActions);
   assert.equal((within(section()).getByRole("button", { name: a.schedule.add }) as HTMLButtonElement).disabled, true);
+});
+
+test("the count's bounds are the server's for the role picked, not the deployment's max_replicas", async () => {
+  stub();
+  const capabilities = {
+    ...shapes.notSleepablePDAuto.schedule_capabilities,
+    replicas: [{ role: "decode", minimum: 1, maximum: 6, ok: true }, { role: "prefill", minimum: 0, maximum: 3, ok: true }],
+  };
+  const user = mount(pdDeployment({ schedule_capabilities: capabilities }));
+  const modal = await openNewReplicasOrder(user);
+  const count = () => modal.getByLabelText(a.schedule.field.replicas);
+  assert.equal(count().getAttribute("aria-valuemin"), "1");
+  assert.equal(count().getAttribute("aria-valuemax"), "6");
+  await pickRole(modal, "prefill");
+  await waitFor(() => assert.equal(count().getAttribute("aria-valuemax"), "3"));
+  assert.equal(count().getAttribute("aria-valuemin"), "0");
+});
+
+test("a deployment the server lets order nothing says why, in the server's words", async () => {
+  stub();
+  mount(pdDeployment({ placement_mode: "manual", ...shapes.notSleepablePDManual }));
+  await within(section()).findByText(a.schedule.noActions);
+  assert.ok(within(section()).getByText(i18n.t("common:apiError.SLEEP_NOT_ENABLED")));
+  assert.ok(within(section()).getByText(i18n.t("common:apiError.SCHEDULE_REPLICAS_MANUAL_PLACEMENT")));
 });
 
 test("editing an order keeps its role, and the switch restates it", async () => {
@@ -173,7 +201,7 @@ test("the server's refusal of a role is worded by the role field's label", async
   const user = mount();
   const modal = await openNewReplicasOrder(user);
   fireEvent.change(modal.getByLabelText(a.schedule.field.time), { target: { value: "09:30" } });
-  api.createSchedule = async () => {
+  deploymentScheduleApi.create = async () => {
     throw new APIError("SCHEDULE_INVALID", { field: "role", reason: 'the vllm-nixl mode has no "encode" role' }, "schedule role: the vllm-nixl mode has no \"encode\" role", 400);
   };
   await user.click(modal.getByRole("button", { name: a.schedule.save }));
@@ -183,7 +211,7 @@ test("the server's refusal of a role is worded by the role field's label", async
 test("the scheduling policy summary names the role of the next order", async () => {
   stub();
   schedules = [{ id: 8, action: "replicas", weekdays: [1], time: "07:00", timezone: "", replicas: 0, role: "prefill", enabled: true, next_at: "2026-10-30T07:00:00Z" }];
-  api.deploymentSchedule = async () => ({ items: schedules, total: schedules.length });
+  deploymentScheduleApi.list = async () => ({ items: schedules, total: schedules.length });
   const dep = pdDeployment();
   render(<I18nextProvider i18n={i18n}><DeploymentSchedulingPolicy dep={dep} onChanged={() => {}} /></I18nextProvider>);
   const group = await screen.findByRole("region", { name: locale.deployments.schedulingPolicy.title });

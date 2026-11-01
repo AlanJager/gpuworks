@@ -2,7 +2,6 @@ package api
 
 import (
 	"encoding/json"
-	"errors"
 	"net/http"
 	"sort"
 
@@ -44,53 +43,6 @@ func (a *apiHandlers) pdDeployment(w http.ResponseWriter, r *http.Request) (*sto
 	return dep, placement, true
 }
 
-// applyPDUpdate applies a PD update to a running deployment and stores the
-// placement it moves to: the nodes of new units are filled in for a
-// deployment the platform places, the result is checked against the mode and
-// the nodes, and the placement is written. It is the one path PUT
-// /deployments/{id}/pd and a scheduled role count take. The status is the
-// HTTP status of a refusal.
-func (a *apiHandlers) applyPDUpdate(dep *store.Deployment, current *planning.PDPlacement, req *pdUpdateRequest) (*planning.PDPlacement, int, error) {
-	if dep.UnitsAuto && len(req.Roles) > 0 {
-		if status, err := a.autoPDRoles(dep, current, req.Roles); err != nil {
-			return nil, status, err
-		}
-	}
-	applied, err := planning.ApplyPDUpdate(current, dep.Engine, planning.PDUpdate{Mode: req.Mode, Roles: req.Roles, KVLoadFailure: req.KVLoadFailure, Fallback: req.Fallback})
-	if err != nil {
-		return nil, http.StatusBadRequest, err
-	}
-	next := applied.Placement
-	nodes := map[string]*store.Node{}
-	var nodeIDs []uint
-	for _, uuid := range next.NodeUUIDs(applied.Mode) {
-		node, err := a.d.Store.NodeWithGPUs(uuid)
-		if errors.Is(err, store.ErrNotFound) {
-			continue // ValidatePDNodes names the missing node
-		}
-		if err != nil {
-			return nil, http.StatusInternalServerError, err
-		}
-		nodes[uuid] = node
-		nodeIDs = append(nodeIDs, node.ID)
-	}
-	if _, err := planning.ValidatePDNodes(next, applied.Mode, nodes, false); err != nil {
-		return nil, http.StatusBadRequest, err
-	}
-	encoded, err := planning.WithPD(dep.Placement, next)
-	if err != nil {
-		return nil, http.StatusInternalServerError, err
-	}
-	primary := dep.NodeID
-	if len(nodeIDs) > 0 {
-		primary = nodeIDs[0]
-	}
-	if err := a.d.Store.SetDeploymentPlacement(dep.ID, encoded, jsonStr(nodeIDs), primary); err != nil {
-		return nil, http.StatusInternalServerError, err
-	}
-	return next, 0, nil
-}
-
 // updatePD scales a PD deployment's roles and sets its fallback (plan phase
 // 3). Removed units drain before their instances stop; a role the mode may
 // empty (prefill) may go to zero and come back. Scaling up waits while a
@@ -107,9 +59,9 @@ func (a *apiHandlers) updatePD(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err)
 		return
 	}
-	next, status, err := a.applyPDUpdate(dep, placement.PD, &req)
+	next, err := a.scaling().ApplyPDUpdate(dep, placement.PD, planning.PDUpdate{Mode: req.Mode, Roles: req.Roles, KVLoadFailure: req.KVLoadFailure, Fallback: req.Fallback})
 	if err != nil {
-		writeErr(w, status, err)
+		writeScaleErr(w, err)
 		return
 	}
 	roles := make([]string, 0, len(req.Roles))

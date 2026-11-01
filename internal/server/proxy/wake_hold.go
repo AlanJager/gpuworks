@@ -37,25 +37,24 @@ type wakeHold struct {
 	// holdMax is how long a request for the deployment waits: its policy's
 	// hold_max_sec.
 	holdMax func(dep *store.Deployment) time.Duration
-	// draining are deployments about to give their cards up: new requests
-	// for them are held as if they slept, while those in flight finish.
-	draining map[uint]bool
+	// wakes says, of each deployment last refused for sleep, whether a
+	// request wakes it (refuseAsleep), as read from its instance rows on that
+	// refusal; holdForWake reads it right after. One entry per deployment
+	// ever refused for sleep, so it is bounded by the deployments.
+	wakes map[uint]bool
+	// draining are the instances about to give their cards up, by
+	// deployment (drain.go). Each set is replaced, never changed in place,
+	// so a request reads the one it took under the lock after letting go.
+	draining map[uint]map[string]bool
 }
 
 type heldRequest struct{ since time.Time }
 
 func newWakeHold() *wakeHold {
 	return &wakeHold{
-		held: map[uint]map[*heldRequest]struct{}{}, changed: make(chan struct{}), now: time.Now, draining: map[uint]bool{},
+		held: map[uint]map[*heldRequest]struct{}{}, changed: make(chan struct{}), now: time.Now, draining: map[uint]map[string]bool{}, wakes: map[uint]bool{},
 		holdMax: func(dep *store.Deployment) time.Duration { return dep.Policy().HoldMax() },
 	}
-}
-
-// wakesOnRequest says a request for dep should be held while it wakes: it can
-// sleep, and its sleep is the platform's choice rather than an operator's or
-// a schedule's.
-func wakesOnRequest(dep *store.Deployment) bool {
-	return dep != nil && dep.Sleepable && !dep.SleepHeld
 }
 
 // signal wakes every held request to look at the routes again.
@@ -143,34 +142,29 @@ func (p *Proxy) HeldRequests(deploymentID uint) (int, time.Time) {
 	return p.hold.Held(deploymentID)
 }
 
-// SetDraining stops (on) or resumes routing new requests to the deployment:
-// while it drains they are held as if it slept, so the requests in flight can
-// finish before it gives its cards up.
-func (p *Proxy) SetDraining(deploymentID uint, on bool) {
-	p.hold.mu.Lock()
-	if on {
-		p.hold.draining[deploymentID] = true
-	} else {
-		delete(p.hold.draining, deploymentID)
-	}
-	p.hold.mu.Unlock()
-	if !on {
-		p.hold.signal()
-	}
-}
-
-func (h *wakeHold) isDraining(deploymentID uint) bool {
-	if h == nil {
-		return false
-	}
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	return h.draining[deploymentID]
-}
-
 // HeldDeployments are the deployments with a request held for their wake.
 func (p *Proxy) HeldDeployments() []uint {
 	return p.hold.HeldDeployments()
+}
+
+// noteAsleep records whether a request wakes the deployment, as its latest
+// refusal for sleep read it.
+func (h *wakeHold) noteAsleep(deploymentID uint, wakes bool) {
+	h.mu.Lock()
+	h.wakes[deploymentID] = wakes
+	h.mu.Unlock()
+}
+
+// wakesOnRequest says a request for dep, just refused for sleep, is held for
+// a wake: a sleeper of it wakes on request (store.Deployment.WakesOnRequest,
+// per instance), as that refusal read its instances (refuseAsleep).
+func (p *Proxy) wakesOnRequest(dep *store.Deployment) bool {
+	if p.hold == nil || dep == nil {
+		return false
+	}
+	p.hold.mu.Lock()
+	defer p.hold.mu.Unlock()
+	return p.hold.wakes[dep.ID]
 }
 
 // holdForWake holds a request for a sleeping deployment until the deployment
@@ -187,7 +181,7 @@ func (p *Proxy) holdForWake(ctx context.Context, w http.ResponseWriter, modelNam
 	p.hold.mu.Lock()
 	demand := p.hold.demand
 	p.hold.mu.Unlock()
-	if demand == nil || !wakesOnRequest(dep) {
+	if demand == nil || !p.wakesOnRequest(dep) {
 		return refuse()
 	}
 	req, changed, ok := p.hold.enter(dep.ID)
@@ -213,12 +207,13 @@ func (p *Proxy) holdForWake(ctx context.Context, w http.ResponseWriter, modelNam
 			changed = p.hold.next()
 		case <-recheck.C:
 		}
-		got, tgt, status, msg, asleep := p.selectDeploymentInstanceWithKey(modelName, affinity)
+		got, tgt, status, msg, asleep := p.selectForRequest(ctx, modelName, affinity)
 		if status == 0 || !asleep {
 			return got, tgt, status, msg, asleep
 		}
-		if got != nil && got.ID == dep.ID && !wakesOnRequest(got) {
-			// An operator or a schedule put it to sleep meanwhile.
+		if got != nil && got.ID == dep.ID && !p.wakesOnRequest(got) {
+			// An operator or a schedule put its sleepers to sleep, or the
+			// platform's sleepers were woken by hand, meanwhile.
 			return got, tgt, status, msg, asleep
 		}
 	}

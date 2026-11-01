@@ -253,9 +253,17 @@ server 等 doctor 最多 2 分钟，agent 自己把一次诊断限制在 100 秒
 
 会改驱动状态的命令（如昇腾 `npu-smi set`）和要求即时结果的调用不用旧结果：仍限时 10 秒，超时后被 kill
 仍不退出的（卡在驱动里的 D 状态进程）只等 3 秒就放手，日志 `gpu command did not exit after kill`；
-在它退出（日志 `stuck gpu command exited`）之前，同一个 CLI 的这类调用直接失败（`a previous call has not exited`）。
+在它退出（日志 `stuck gpu command exited`）之前，同一个 CLI 的这类调用直接失败（`an earlier call has not exited`），不再启动新进程。
+同一个 CLI 的这类调用一次只跑一个，两个同时到达也不会各起一个进程；超时时连同它启动的子进程一起 kill。
 
-持续出现时在节点上 `ps -eo pid,stat,etime,cmd | grep -- -smi` 看有没有 `D` 状态的进程，并查 `dmesg` 里的
+同样的规则也管着其他会进驱动的命令，所以无论调用多频繁，每一类最多只会有一个卡死的进程：
+- **运行时检查**：周期逐卡检查（所有厂商、主机上或容器里）、诊断里的逐卡检查和 NVIDIA 的 CUDA / peer access / NCCL 检查共用一个"运行时检查"名额，同一时刻只有一个在跑。
+  其中一个卡死后，新的检查都不启动：周期检查整轮跳过，诊断里显示为未检查或 `SKIP (an earlier runtime check on this node was killed and has not exited ...)`，都不判卡故障。
+- **容器里的检查**：容器删不掉（里面的进程卡在驱动里）时记下它，在它消失之前不再起新容器。
+- **昇腾 `hccn_tool`**（每分钟读加速卡网口）：按 die 各一个名额、每次限时 3 秒，某个 die 卡死只影响这个 die，节点状态上报不会被它拖住。
+- **诊断**：一个节点同一时刻只跑一次，第二次请求直接返回 `a diagnosis is already running on this node`。
+
+持续出现时在节点上 `ps -eo pid,stat,etime,cmd | grep -E -- '-smi|hccn_tool|python3'` 看有没有 `D` 状态的进程，并查 `dmesg` 里的
 Xid / NVRM 报错。
 
 ### 某张卡运行时不可用或驱动初始化失败
@@ -263,14 +271,21 @@ Xid / NVRM 报错。
 **`runtime_unusable`：加速卡运行时上下文创建失败**
 
 某张卡健康是「运行时无法使用」（`runtime_unusable`）：加速卡运行时冒烟每 15 分钟逐卡跑一轮，
-只点名这一张卡；正在跑实例的卡跳过，驱动不应答时整轮跳过，冒烟不改变节点连接状态。
+只点名这一张卡；正在跑实例的卡、被平台外进程占用的卡跳过，驱动不应答时整轮跳过，冒烟不改变节点连接状态。
 NVIDIA 需要 `python3` 和 `libcuda.so.1`，在这张卡上创建 CUDA 上下文；一张卡初始化失败常常让整机的
 `cuInit` 都失败，所以要连别的卡的结论一起看。昇腾在主机装有 CANN 时用 `python3` + `libascendcl.so`
 创建 ACL context 并分配 4 KiB，例如 `aclrtSetDevice=507033` 表示该 die 无法使用
 （直通给虚拟机的 die 也返回这个码，所以人工复查时要先确认这张 die 没被别的东西占着；
 冒烟本身只问本节点拥有的卡）。driver-only 昇腾节点没有 `libascendcl.so` 时跳过检查，不把缺工具算成卡故障。
+海光在主机装有 DTK 时用 `python3` + `libamdhip64.so`（`/opt/dtk/lib` 等）按 PCI 地址找到这张卡，`hipSetDevice` 后分配 4 KiB，
+例如 `hipMalloc=2` 表示这张卡无法使用；HIP 列不出这张卡或 `hipInit` 失败算主机的问题，不判卡故障；没装 DTK 时跳过检查。
+主机上没有厂商运行时的节点（PPU 主机通常只有管理库 `libhgml.so`；只装驱动、没装 CANN 的昇腾主机）改在容器里检查：
+借用节点上**已有**的同框架推理镜像（镜像 tag 以 `hggc` / `cann` 开头，优先用本节点实例正在用的镜像），按真实实例的方式只注入这一张卡，
+在里面跑同一段检查（PPU 实测每卡约 0.45 秒，含容器启动），用完即删。绝不为检查拉镜像：节点上没有这类镜像时跳过检查，沿用厂商工具的结论。
+只在 docker / nerdctl 节点这样做；udocker 节点建容器要把整个镜像解包或复制成一份 rootfs（ext4 上 17 GB 的镜像每次 27–61 秒、占 17 GB 磁盘），
+不在 udocker 上做。容器起不来、镜像里没有运行时或 python 都算主机的问题，不判卡故障。Apple 不做。
 
-**点「诊断」会立刻对昇腾做同一项逐 die 检查**：节点详情的「诊断」与 `gpuworks-agent doctor` 对本节点拥有的每张 die 按需跑一遍上面这项运行时检查
+**点「诊断」会立刻对昇腾、海光做同一项逐卡（昇腾逐 die）检查**：节点详情的「诊断」与 `gpuworks-agent doctor` 对本节点拥有的每张 die 按需跑一遍上面这项运行时检查
 （和周期检查是同一段代码，不另写一套），所以周期检查已经判为 `runtime_unusable` 的 die，诊断里一定看得到。
 失败的 die 在加速卡表里显示「运行时无法使用」，并在 **需要处理** 里按 die 列出一项 `runtime_unusable`（级别「错误」，依据与周期检查记录的相同）；
 表里已有更具体的厂商结论（如 `reset_required`）时，表中仍显示那一条，`runtime_unusable` 照样单独列出。
@@ -370,6 +385,24 @@ CLI 说不了话的那些（已直通、没驱动、驱动没带起来），不�
 平台按卡的硬件身份认出自己的实例；较早版本启动、期望状态里只记了设备序号的实例，
 升级 server 时迁移会补上身份，agent 也会按最近一次探测把序号对应到卡，同样算作平台自己的。
 
+这张卡同时不做周期运行时检查，实例启动失败后的补检也跳过它：别人的业务不该被打扰，
+卡的显存被别人占着也说明不了运行时能不能用它；卡保留上一次检查的结论，进程退出后恢复检查。
+
+运行时检查自己的进程（或容器）在卡上的那一小会儿，以及结束后 15 秒内，这张卡不做平台外占用判断、沿用上一轮结论，
+所以检查不会把卡报成「被平台外进程占用」。检查进行中如果这张卡被分给了实例、或出现了平台外进程，这次失败作废，
+不记到卡上、也不计入退避；实例启动前会先等卡上正在进行的检查结束（最多 10 秒），避免在只允许一个进程打开的卡上
+（未开 device-share 的昇腾 die）互相挤掉。诊断里的检查同样按这套规则。
+
+各厂商从哪里读卡上的进程：
+
+| 厂商 | 来源 | 复核命令 |
+|---|---|---|
+| NVIDIA | `nvidia-smi --query-compute-apps` | `nvidia-smi --query-compute-apps=pid,process_name,gpu_bus_id,used_gpu_memory --format=csv` |
+| PPU | `ppu-smi --query-compute-apps` | `ppu-smi --query-compute-apps=pid,process_name,pci.bus_id --format=csv` |
+| 昇腾 | `npu-smi info` 末尾的进程表（与探测共用一次调用），按 NPU/Chip 对到卡的 Bus-Id | `npu-smi info` |
+| 海光 | KFD 驱动的 sysfs（`/sys/class/kfd/kfd/proc/<pid>/queues/*/gpuid`），只把在这张卡上建了队列的进程算作占用 | `hy-smi --showpids` |
+| Apple | 不判定：一块统一内存的 GPU，系统进程（如 WindowServer）始终在用，进程级占用没有意义 | — |
+
 ### 诊断发现未识别的加速卡
 
 doctor 里出现「有未识别的加速卡设备」（`accelerator_unrecognized`）：本机有属于已支持厂商的
@@ -389,7 +422,7 @@ PCI 设备，但不符合该厂商任何一条识别规则——通常是我们�
 只有厂商工具本身给出恢复方式时，才提供 **处理** 命令，例如复位。
 
 检查项目包括加速卡健康（见下一节）、磁盘可用空间不足 10%（根分区、模型目录、容器数据目录、存储）、
-已选用的容器运行时无响应、加速卡工具执行失败，NVIDIA 的 CUDA 初始化失败和多卡通信检查失败，以及昇腾逐 die 运行时检查失败（`runtime_unusable`）。
+已选用的容器运行时无响应、加速卡工具执行失败，NVIDIA 的 CUDA 初始化失败和多卡通信检查失败，以及昇腾逐 die、海光逐卡运行时检查失败（`runtime_unusable`）。被平台外进程占用的卡不检查，列为未检查。
 
 运行时与文件系统方面另有五项（见[运行时初始化失败与容器节点的文件系统](#运行时初始化失败与容器节点的文件系统)）：
 `runtime_provision_failed`（运行时初始化失败）、`runtime_state_untraversable`（专用运行用户进不了 agent 目录）、`path_noexec`、`path_read_only`、`path_ephemeral`。
@@ -411,8 +444,8 @@ PCI 设备，但不符合该厂商任何一条识别规则——通常是我们�
 | 级别 | 调度 | 含义 |
 |---|---|---|
 | 正常 | 照常 | 无发现，或只有已处理的历史错误（`memory_error_history`） |
-| 告警 | 照常，但健康卡不够时才用（评估结果带 `degraded_gpus_used`） | `memory_repair_pending`（待复位）、`vendor_health_warning`（厂商工具 Warning） |
-| 故障 | 停止 | `memory_uncorrectable_errors`、`memory_remap_failed`、`reset_required`、`reboot_required`、`power_cycle_required`、`vendor_health_fault`、`runtime_unusable`（运行时用不了这张卡）、`driver_init_failed`（驱动没带起来）、`vendor_cli_unanswered`（厂商 CLI 没应答，读不到信息） |
+| 告警 | 照常，但健康卡不够时才用（评估结果带 `degraded_gpus_used`） | `memory_repair_pending`（待复位）、`vendor_health_warning`（厂商工具 Warning）、`pcie_link_degraded`（PCIe 链路降级）、`pcie_errors`（PCIe 可恢复错误）、`nvlink_down`（NVLink 掉线） |
+| 故障 | 停止 | `memory_uncorrectable_errors`、`memory_remap_failed`、`reset_required`、`reboot_required`、`power_cycle_required`、`vendor_health_fault`、`runtime_unusable`（运行时用不了这张卡）、`driver_init_failed`（驱动没带起来）、`vendor_cli_unanswered`（厂商 CLI 没应答，读不到信息）、`pcie_fatal_errors`（PCIe 致命错误） |
 
 「能不能用」是一个结论，由 server 在存卡时判定一次（健康等级、卡的归属、平台外占用三者合一），
 API 的 `schedulable` 字段就是它，界面与调度都读这一个字段，不各自再推一遍。**不要读 `healthy`**：
@@ -424,8 +457,10 @@ API 的 `schedulable` 字段就是它，界面与调度都读这一个字段，�
 | 厂商 | 命令 | 字段与判定 |
 |---|---|---|
 | PPU | `ppu-smi --query-ppu=...` | `remapped_rows.pending` / `retired_pages.pending` 为 Yes → 待复位；`ecc.errors.uncorrected.volatile.dram` > 0 → 显存故障；`remapped_rows.failure` 为 Yes → 显存故障；`xid.correctable.ppu_reset` / `os_reboot` / `cold_reboot` 有值 → 需要复位 / 重启主机 / 断电重启；`ecc.errors.uncorrected.aggregate.dram`、`retired_pages.double_bit.count`、`remapped_rows.uncorrectable` 是复位不清零的累计值，只作历史记录 |
-| NVIDIA | `nvidia-smi --query-gpu=...` | `ecc.errors.uncorrected.volatile.total` > 0 → 显存故障；`remapped_rows.pending` / `retired_pages.pending` 为 Yes → 待复位；`remapped_rows.failure` 为 Yes → 显存故障；`ecc.errors.uncorrected.aggregate.total` 只作历史记录；卡不支持的字段返回 `[N/A]`，不参与判定 |
+| NVIDIA | `nvidia-smi --query-gpu=...` | `ecc.errors.uncorrected.volatile.total` > 0 → 显存故障；`remapped_rows.pending` / `retired_pages.pending` 为 Yes → 待复位；`remapped_rows.failure` 为 Yes → 显存故障；`ecc.errors.uncorrected.aggregate.total` 只作历史记录；卡不支持的字段返回 `[N/A]`，不参与判定；驱动要求的恢复动作 `gpu_recovery_action`（R550 起）为 Reset → 需要复位、Reboot → 需要重启主机，驱动完成恢复后自己清掉。另读内核日志 `/dev/kmsg` 里的 Xid（需 root）：79（卡掉线）→ 需要重启主机；61、62、95、119、120、140 → 需要复位，二者都保持到之后这张卡的运行时检查通过（或主机重启）；13、31、43 等应用自身错误和 48、63、64 这类有状态字段的 Xid 只记日志。NVLink 每 5 分钟读一次 `nvidia-smi nvlink -s -e`（没有活动 NVLink 的主机每小时一次），活动链路少于这张卡曾有的数量、连续两次 → NVLink 掉线（告警），并立刻重新读拓扑，调度随之不再把它和原来互联的卡视为一组 |
 | 昇腾 | `npu-smi info`，非 OK 时再 `npu-smi info -t health -i <NPU> -c <Chip>` | Health 为 Warning → 告警；Alarm / Critical → 故障；错误码与错误信息原样展示，含义查华为文档 |
+| 海光 | 驱动 sysfs `/sys/bus/pci/devices/<BDF>/ras/`（与 `hy-smi --showrasinfo all`、`--showpagesinfo` 同源，不起进程） | `umc_err_count` 的 `ue` > 0 → 显存故障；其他模块（gfx、sdma 等）`ue` > 0 → 厂商故障；`gpu_vram_bad_pages` 有 P（待退役）→ 待复位，有 F（退役失败）→ 显存故障，只有 R（已退役）→ 历史记录；`ce`（可纠正）只作依据。驱动没有 RAS 文件时不判定 |
+| 所有厂商（PCIe） | 卡到根端口路径上各设备的 sysfs：`current/max_link_speed`、`current/max_link_width`、`aer_dev_{correctable,nonfatal,fatal}`（不起进程；判断端口类型要读配置空间，需 root） | 某段链路的通道数低于两端都支持的值 → PCIe 链路降级（告警）；速率低于两端都支持的值也算，但只在卡被本节点实例使用且不在休眠时判断（空闲卡和交换芯片上行口会主动降速，K100 的交换芯片上行口空闲时是 2.5/8 GT/s）；连续 3 次才判、连续 3 次正常才恢复；虚拟机里只看卡自己这一段。AER 计数以 agent 启动时为基准，只看增量：新的非致命错误 → PCIe 可恢复错误（告警，15 分钟无新错误自动恢复）；新的致命错误 → PCIe 致命错误（故障，直到之后这张卡的运行时检查通过）。固件接管错误处理（firmware-first）的平台计数恒为 0，看不出问题 |
 
 **怎么复核与处理**：使用健康状态说明中按该卡 PCI 地址生成的复核命令。以下以 PPU 待复位为例，
 `0000:7e:00.0` 要替换为自己的卡地址。
@@ -748,6 +783,9 @@ runveil（udocker）节点拉取镜像时，agent 日志（`<state>/agent.log`�
 | `insufficient_empty_gpus` / `insufficient_shared_gpus` | 空闲整卡 / 可共享的卡不够 |
 | `pinned_gpus_unavailable` | 手动放置的 PD 实例钉住的卡被其他部署占着；参数给出 `node`、`gpus`（钉住的卡号）和 `holders`（占卡的部署）。实例不会改用同节点的其他空卡，而是等钉住的卡空出来：停掉或迁走占卡的部署，或把这个部署切成自动放置（`PUT /deployments/{id}/placement-mode`），由平台改用空闲的卡。钉住的卡被平台外进程占着、不健康或空着仍放不下时，仍是对应的原因码 |
 | `waiting_for_yield` | 副本在共卡的部署按出让策略让出卡后放得下，正在等它们让卡；参数给出 `node`、`holders`（占卡的部署，各带 `at_once`，或 `idle_sec` 与按时自动出让的 `max_serve_sec`：它按什么条件把卡让给这个部署）和 `instances`。占卡者睡下后自行解决，见[新部署怎样放到共用的卡上](scheduling-center.md#新部署怎样放到共用的卡上)；不自动出让的占卡者从不被要求让卡 |
+| `reserved_for_sleepers` | 只因为休眠中的部署为请求唤醒留着卡，这个部署放不下；参数给出 `node`、`gpus`（它本来会用的卡）和 `sleepers`（休眠者，每项 `deployment` 与它的出让策略 `policy`）。共卡的休眠部署在请求能唤醒它时才留卡；你或定时计划下的休眠（保持休眠）不留卡。处理：换一张卡，为本部署开启可休眠并选能共卡的出让策略，或手动休眠占卡的部署，见[新部署怎样放到共用的卡上](scheduling-center.md#新部署怎样放到共用的卡上) |
+| `does_not_wait_for_yield` | 仅部署表单预览：占卡的部署都睡下就放得下，但本部署不自动出让，不等它们让卡；参数给出 `node`、`gpus`、`holders`（会让给共卡部署的占卡者）和 `blockers`（不自动出让的占卡者），每项 `deployment` 与出让策略 `policy`。处理：为本部署开启可休眠并选能共卡的出让策略；有 `blockers` 时还要换一张卡或为它们开启能共卡的出让策略 |
+| `held_by_non_yielding` | 仅部署表单预览：占卡的部署都睡下就放得下，但 `blockers` 里的部署不自动出让，不会把卡让给本部署；参数给出 `node`、`gpus`、`blockers`（每项 `deployment`、`policy`）和 `holders`（会让卡的占卡者，另带 `waiting_for_yield` 的让卡条件）。处理：换一张卡，或为 `blockers` 里的部署开启可休眠并选能共卡的出让策略 |
 | `no_free_gpu` | 没有空闲的 GPU |
 | `no_healthy_gpu` | 节点自己的卡都不在能服务的健康级别 |
 | `no_owned_gpu` | 节点没有归本机使用的卡：一张都没有，或全部直通给虚拟机、未绑定驱动、被其他驱动持有 |
@@ -861,7 +899,7 @@ agent 每 15 秒检查一次运行中实例的容器。被 `docker stop`、进�
 | 404 | `no deployment serves model <name>` | 模型名不是部署的 served name（`GET /v1/models` 可列出），或部署已停止 |
 | 404 | `deployment <name> does not expose <METHOD> <path>` | 只有试验场（`/api/v1/playground/v1/*`）会做 contract 检查并返回它：该部署的 API contract 不包含这个接口（比如对 Chat 模型调 `/v1/embeddings`）；`GET /api/v1/playground/openapi.json` 可查看它声明了哪些接口。公网 `/v1` 不做这项检查，请求原样转给引擎，由引擎自己返回 404 等 |
 | 404 | （`/v1` 整个路径 404） | 访问的监听地址不承载推理 API，检查 `listen.gateway` |
-| 503 | `model is asleep; wake it first (console, or POST /api/v1/deployments/<id>/wake; a schedule or a waiting wake may also wake it)` | 没有可服务的清醒副本；在控制台或调用 `POST /api/v1/deployments/{id}/wake` 唤醒，定时计划或等位中的唤醒也会唤醒它，见[调度中心](scheduling-center.md)。休眠意图发出后，所选实例即不再接收新请求 |
+| 503 | `model is asleep; wake it first (console, or POST /api/v1/deployments/<id>/wake; a schedule or a waiting wake may also wake it)` | 没有可服务的清醒副本；在控制台或调用 `POST /api/v1/deployments/{id}/wake` 唤醒，定时计划或等位中的唤醒也会唤醒它，见[调度分析](scheduling-center.md)。休眠意图发出后，所选实例即不再接收新请求 |
 | 503 | `no running instance for <name> (still starting?)` | 没有 running 副本：还在启动、失败、被停止或节点离线；看实例状态 |
 | 503 | `distributed model <name> is not ready: rank N is unavailable`、`distributed model leader is offline for <name>`、`distributed model leader is not ready for <name>`、`distributed deployment node set is incomplete for <name>` | 多机部署的 rank 或 leader 没就绪 |
 | 503 + `Retry-After: 2` | `upstream error: … data lane unavailable: … did not reattach within 5s` | 节点数据通道断开后 5 秒内没重连；**可重试**，不会回落到控制通道 |
@@ -926,6 +964,7 @@ agent 每 15 秒检查一次运行中实例的容器。被 `docker stop`、进�
 | `SCHEDULE_REPLICAS_MANUAL_PLACEMENT` | 400 | 手动放置的多机或 PD 部署不能定时改副本数；先用 `PUT /deployments/{id}/placement-mode` 切到自动放置。计划写好后才切到手动放置的，到点时计划失败并记 `SCHEDULE_ACTION_FAILED` |
 | `YIELD_POLICY_INVALID` | 400 | 出让策略请求不合法：`params.field` 是字段（`policy`、`sleep_level`、`unfinished`、`idle_sec`、`max_serve_sec`、`unfinished_wait_sec`、`hold_max_sec`），`params.reason` 为 `required`（没给 `policy`：请求体是 `{}`，或只带参数不带 `policy`）、`invalid_value`（不在允许的取值里）或 `out_of_range`（数值越界，另带 `minimum`、`maximum`；按时自动出让的闲置时间超过最长服务时间时，`idle_sec` 的 `maximum` 就是最长服务时间）；见[出让策略](scheduling-center.md#出让策略) |
 | `YIELD_POLICY_SHAPE` | 400 | 多机或 PD 部署只能是不自动出让 |
+| `YIELD_POLICY_NEEDS_SLEEP` | 400 | 编辑部署时要关掉可休眠，但它的出让策略（`params.policy`）不是不自动出让；先把出让策略改为不自动出让 |
 | `NODE_REPLACEMENT_INVALID` | 400 | 重调度等待时间要是 0（从不）或 60–604800 秒 |
 | `REPLICAS_PLACE_ON_TOO_MANY` | 400 | `place_on` 的节点数超过本次增加的副本数 |
 | `REPLICAS_PLACE_ON_REFUSED` | 409 | `place_on` 里的某个节点不能放新副本，`params.reason` 为 `unknown`（节点不存在）、`offline`、`cordoned`、`requirements`（不满足节点条件）或 `no_room`（试算放不下）；自动放置的多机部署还有 `no_group`（所写的节点凑不成一个放得下的副本：不同计算网络或架构，或卡不够） |
@@ -943,7 +982,7 @@ agent 每 15 秒检查一次运行中实例的容器。被 `docker stop`、进�
 
 **现象**：到点没有休眠 / 唤醒，或部署被意外睡下。
 
-**怎么确认与处理**：先看部署时间线里事件类型为 `automation` 的条目，或调度中心的**最近的自动动作**：
+**怎么确认与处理**：先看部署时间线里事件类型为 `automation` 的条目，或调度分析的**最近的自动动作**：
 
 | 事件 | 含义与处理 |
 |---|---|

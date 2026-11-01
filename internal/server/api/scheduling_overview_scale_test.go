@@ -9,14 +9,17 @@ import (
 	"net/http/httptest"
 	"runtime"
 	"sort"
+	"sync/atomic"
 	"testing"
 	"time"
+
+	"gorm.io/gorm"
 
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"gpuworks.ai/gpuworks/internal/server/auth"
-	"gpuworks.ai/gpuworks/internal/server/servicelevel"
 	"gpuworks.ai/gpuworks/internal/server/store"
+	"gpuworks.ai/gpuworks/internal/server/yieldpolicy"
 )
 
 // The fleet the scheduling center is sized for (CLAUDE.md): 1000 nodes of 8
@@ -37,6 +40,17 @@ type scaleFleet struct {
 	session string
 }
 
+// sharingStatementBudget is how many statements a cold read of the fleet's
+// sharing stats may run: a fixed set, never one per deployment or instance.
+const sharingStatementBudget = 100
+
+// overviewStatementBudget is how many statements a rebuild of the overview
+// may run: a fixed set, never one per node, card or instance.
+const overviewStatementBudget = 100
+
+// sessionStatements is how many statements a request's session check runs.
+const sessionStatements = 5
+
 func seedScaleFleet(t *testing.T) *scaleFleet {
 	t.Helper()
 	rig := newTokenRig(t)
@@ -50,7 +64,7 @@ func seedScaleFleet(t *testing.T) *scaleFleet {
 	if err := db.CreateInBatches(&models, 50).Error; err != nil {
 		t.Fatal(err)
 	}
-	levels := []string{servicelevel.Never, servicelevel.Idle, servicelevel.TimeSlice, servicelevel.Anytime}
+	levels := []string{yieldpolicy.Never, yieldpolicy.Idle, yieldpolicy.TimeSlice, yieldpolicy.Anytime}
 	deployments := make([]store.Deployment, scaleDeploys)
 	for i := range deployments {
 		deployments[i] = store.Deployment{
@@ -126,7 +140,7 @@ func seedScaleFleet(t *testing.T) *scaleFleet {
 	if err != nil {
 		t.Fatal(err)
 	}
-	deps := Deps{Store: rig.st, Bus: rig.st.Bus, AuthSigner: signer, AI: &fakeAI{available: true}, Online: func(uuid string) bool { return !offline[uuid] },
+	deps := Deps{Store: rig.st, Bus: rig.st.Bus, AuthSigner: signer, SchedulingActivity: replayActivity{rig.st}.service(), AI: &fakeAI{available: true}, Online: func(uuid string) bool { return !offline[uuid] },
 		WakeHeld: func() map[uint]int { return map[uint]int{deployments[4].ID: 2, deployments[8].ID: 5} }}
 	admin, _ := rig.st.VerifyUser("admin", "password")
 	session, err := managementSessionTestToken(t, rig.st, signer, auth.Claims{UserID: admin.ID, Username: admin.Username, Role: admin.Role})
@@ -159,8 +173,9 @@ func percentile(samples []time.Duration, q float64) time.Duration {
 func TestSchedulingOverviewAtFleetScale(t *testing.T) {
 	fleet := seedScaleFleet(t)
 	rebuildBudget, requestBudget := time.Second, 200*time.Millisecond
+	statements := countStatements(t, fleet)
 	if raceEnabled {
-		rebuildBudget, requestBudget = 8*time.Second, 2*time.Second
+		t.Log("race build: the times below are logged, not held to their budgets; the statement counts are")
 	}
 
 	// The first request builds the overview. The rebuild is timed on the test's
@@ -175,14 +190,15 @@ func TestSchedulingOverviewAtFleetScale(t *testing.T) {
 	}
 	var after runtime.MemStats
 	runtime.ReadMemStats(&after)
-	rebuild := time.Hour
+	rebuild, rebuildStatements := time.Hour, int64(0)
 	for i := 0; i < 3; i++ {
 		fleet.a.overview.snapshot = nil
+		statements.Store(0)
 		started := time.Now()
 		if _, err := fleet.a.currentOverview(); err != nil {
 			t.Fatal(err)
 		}
-		rebuild = min(rebuild, time.Since(started))
+		rebuild, rebuildStatements = min(rebuild, time.Since(started)), max(rebuildStatements, statements.Load())
 	}
 	zr, err := gzip.NewReader(bytes.NewReader(rec.Body.Bytes()))
 	if err != nil {
@@ -192,9 +208,12 @@ func TestSchedulingOverviewAtFleetScale(t *testing.T) {
 	if _, err := raw.ReadFrom(zr); err != nil {
 		t.Fatal(err)
 	}
-	t.Logf("rebuild + encode: %v (budget %v); %d bytes of JSON, %d gzipped; heap grew %d KiB", rebuild, rebuildBudget, raw.Len(), rec.Body.Len(), (int64(after.HeapAlloc)-int64(before.HeapAlloc))/1024)
-	if rebuild > rebuildBudget {
+	t.Logf("rebuild + encode: %v (budget %v); %d bytes of JSON, %d gzipped; heap grew %d KiB; %d statements", rebuild, rebuildBudget, raw.Len(), rec.Body.Len(), (int64(after.HeapAlloc)-int64(before.HeapAlloc))/1024, rebuildStatements)
+	if overBudget(rebuild, rebuildBudget) {
 		t.Errorf("the rebuild took %v, budget %v", rebuild, rebuildBudget)
+	}
+	if rebuildStatements > overviewStatementBudget {
+		t.Errorf("the rebuild ran %d statements, want at most %d whatever the fleet's size", rebuildStatements, overviewStatementBudget)
 	}
 	if raw.Len() > 1<<20 {
 		t.Errorf("the overview is %d bytes of JSON for %d cards, want under 1 MiB", raw.Len(), scaleNodes*scaleCards)
@@ -237,7 +256,7 @@ func TestSchedulingOverviewAtFleetScale(t *testing.T) {
 	}
 	p95 := percentile(samples, 0.95)
 	t.Logf("cached request p50 %v p95 %v max %v (budget p95 %v)", percentile(samples, 0.5), p95, percentile(samples, 1), requestBudget)
-	if p95 > requestBudget {
+	if overBudget(p95, requestBudget) {
 		t.Errorf("cached p95 = %v, budget %v", p95, requestBudget)
 	}
 
@@ -274,7 +293,6 @@ func TestSchedulingOverviewAtFleetScale(t *testing.T) {
 	for _, path := range []string{
 		"/api/v1/scheduling/board?node=node-0500",
 		"/api/v1/scheduling/timeline?node=node-0500&hours=6",
-		"/api/v1/scheduling/timeline?sharing=1&hours=24",
 	} {
 		started := time.Now()
 		if got := fleet.get(path); got.Code != http.StatusOK {
@@ -282,9 +300,91 @@ func TestSchedulingOverviewAtFleetScale(t *testing.T) {
 		}
 		took := time.Since(started)
 		t.Logf("%s: %v", path, took)
-		if took > 4*requestBudget {
+		if overBudget(took, 4*requestBudget) {
 			t.Errorf("%s took %v at fleet scale", path, took)
 		}
+	}
+
+	sharingAtFleetScale(t, fleet, statements, rebuildBudget, requestBudget)
+}
+
+// countStatements counts the statements run on the fleet's store from now on.
+func countStatements(t *testing.T, fleet *scaleFleet) *atomic.Int64 {
+	t.Helper()
+	var statements atomic.Int64
+	db := fleet.rig.st.DB()
+	count := func(*gorm.DB) { statements.Add(1) }
+	for _, err := range []error{
+		db.Callback().Query().After("gorm:query").Register("test:count_query", count),
+		db.Callback().Row().After("gorm:row").Register("test:count_row", count),
+	} {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Cleanup(func() {
+		_ = db.Callback().Query().Remove("test:count_query")
+		_ = db.Callback().Row().Remove("test:count_row")
+	})
+	return &statements
+}
+
+// overBudget reports whether took exceeds budget. A race build only logs
+// the times: the race detector slows the code by an amount that depends on
+// the host, so its times say nothing about the code, and the plain build
+// (make test, CI) holds the budgets; the statement counts hold in both.
+func overBudget(took, budget time.Duration) bool {
+	return !raceEnabled && took > budget
+}
+
+// sharingAtFleetScale checks the fleet's sharing stats, which read the
+// scheduling activity's rollups of every shared deployment over the window: a
+// rebuild, not a drawer's read.
+// The work is asserted - a fixed number of statements whatever the fleet's
+// size - and the time of a cold build is the best of three against the
+// rebuild budget, so a host busy with other tests does not fail a budget the
+// code meets; a repeat within the cache's lifetime is answered from it within
+// the request budget.
+func sharingAtFleetScale(t *testing.T, fleet *scaleFleet, statements *atomic.Int64, rebuildBudget, requestBudget time.Duration) {
+	t.Helper()
+	const path = "/api/v1/scheduling/timeline?sharing=1&window=24h"
+
+	// Cold: the stats built on the test's own handlers, nothing cached, as
+	// the best of three; every build runs a fixed set of statements.
+	cold, most := time.Hour, int64(0)
+	for i := 0; i < 3; i++ {
+		statements.Store(0)
+		started := time.Now()
+		if _, err := fleet.a.sharingTimeline(time.Now().UTC(), sharingWindows[len(sharingWindows)-1]); err != nil {
+			t.Fatal(err)
+		}
+		cold, most = min(cold, time.Since(started)), max(most, statements.Load())
+	}
+	t.Logf("%s cold: %v (best of 3, budget %v), %d statements", path, cold, rebuildBudget, most)
+	if overBudget(cold, rebuildBudget) {
+		t.Errorf("%s took %v cold, budget %v", path, cold, rebuildBudget)
+	}
+	if most > sharingStatementBudget {
+		t.Errorf("%s ran %d statements cold, want at most %d whatever the fleet's size", path, most, sharingStatementBudget)
+	}
+
+	// Through the router: the first request builds, a repeat within the
+	// cache's lifetime runs only the session's statements.
+	if got := fleet.get(path); got.Code != http.StatusOK {
+		t.Fatalf("%s = %d %s", path, got.Code, got.Body)
+	}
+	statements.Store(0)
+	started := time.Now()
+	if got := fleet.get(path); got.Code != http.StatusOK {
+		t.Fatalf("%s = %d %s", path, got.Code, got.Body)
+	}
+	cached := time.Since(started)
+	t.Logf("%s cached: %v (budget %v), %d statements", path, cached, requestBudget, statements.Load())
+	if overBudget(cached, requestBudget) {
+		t.Errorf("%s took %v from the cache, budget %v", path, cached, requestBudget)
+	}
+	if got := statements.Load(); got > sessionStatements {
+		t.Errorf("a repeat within %v ran %d statements, want the session's %d at most", sharingTTL, got, sessionStatements)
 	}
 }
 

@@ -13,6 +13,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/pdmode"
 	"gpuworks.ai/gpuworks/internal/server/planning"
 	"gpuworks.ai/gpuworks/internal/server/store"
+	"gpuworks.ai/gpuworks/internal/server/yieldpolicy"
 )
 
 // fieldPDPlacement is the deploy form control PD placement errors belong to.
@@ -352,7 +353,7 @@ func (a *apiHandlers) previewPDRank(env evaluatePDEnv, pd *planning.PDPlacement,
 		Selection: rankSelection, Quick: env.launch.Quick, ExtraArgs: env.launch.UserResidual,
 		Source:     planning.LaunchSourceFromRequest(env.response.Image, env.requestOverrides),
 		ModelMount: modelMount, ComponentMounts: componentMounts,
-		ServedName: env.servedName, Sleepable: req.Sleepable, YieldPolicy: requestYield(req.YieldPolicy),
+		ServedName: env.servedName, Sleepable: req.Sleepable, YieldPolicy: requestYield(req.YieldPolicy), ExplainHolders: true,
 		VRAMLimitBytes: int64(req.VRAMLimitGiB * (1 << 30)), PartitionBackend: req.PartitionBackend,
 		APIContract: rankSelection.APIContract,
 		ModelRules:  store.SourceRules{Pinned: store.StoragePins(req.NodeRequirements), SaveTo: a.previewSaveToStorageID(req.ModelSource, env.model, target)},
@@ -363,7 +364,7 @@ func (a *apiHandlers) previewPDRank(env evaluatePDEnv, pd *planning.PDPlacement,
 		return dto.EvaluatePDUnit{}, plan, err
 	}
 	res := plan.Resolved
-	fits := plan.Output.Result.OK && plan.Output.Result.Plan != nil
+	fits := plan.Output.Fits()
 	item := dto.EvaluatePDUnit{
 		NodeUUID: target.UUID, NodeName: nodeDisplayName(target), Address: topology.NodeAddress,
 		Fits: fits, Breakdown: plan.Output.Breakdown,
@@ -373,7 +374,7 @@ func (a *apiHandlers) previewPDRank(env evaluatePDEnv, pd *planning.PDPlacement,
 	if fits {
 		item.GPUs = plan.Output.Result.Plan.GPUIndexes
 	} else {
-		item.Reason = plan.Output.Result.Message
+		item.Reason = plan.Output.Refusal(target, yieldpolicy.Policy{Yield: requestYield(req.YieldPolicy)})
 	}
 	return item, plan, nil
 }

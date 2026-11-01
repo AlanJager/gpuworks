@@ -56,6 +56,7 @@
     "errorRateDetail": "5xx {{5xx}} · 429 {{429}} · 503 {{asleep_503}}",
     "tokenRateInput": "输入",
     "tokenRateOutput": "输出",
+    "inflightUnit": "conn",
     "upperBoundHint": "p95/p99 是保守上界（窗口内每个采样点自身分位数的最大值），不是整个窗口的单一分位数。"
   },
   "healthSummary": {

@@ -6,28 +6,28 @@ import (
 	"strings"
 	"testing"
 
-	"gpuworks.ai/gpuworks/internal/server/servicelevel"
+	"gpuworks.ai/gpuworks/internal/server/yieldpolicy"
 )
 
 // The wire form of a policy: a parameter that does not apply is absent
 // rather than zero.
 func TestYieldPolicyWire(t *testing.T) {
-	defaults := func(yield string) servicelevel.Policy {
-		p, _ := servicelevel.Parse(yield, servicelevel.Overrides{})
+	defaults := func(yield string) yieldpolicy.Policy {
+		p, _ := yieldpolicy.Parse(yield, yieldpolicy.Overrides{})
 		return p
 	}
 	for _, c := range []struct {
 		name string
-		p    servicelevel.Policy
+		p    yieldpolicy.Policy
 		wire string
 	}{
 		{"never", defaults("never"), `{"policy":"never"}`},
 		{"idle", defaults("idle"), `{"policy":"idle","idle_sec":60,"sleep_level":"auto","hold_max_sec":300}`},
 		{"timeslice", defaults("timeslice"), `{"policy":"timeslice","idle_sec":30,"sleep_level":"auto","max_serve_sec":120,"unfinished":"wait","unfinished_wait_sec":30,"hold_max_sec":600}`},
 		{"anytime", defaults("anytime"), `{"policy":"anytime","idle_sec":30,"sleep_level":"auto","unfinished":"abort","hold_max_sec":3600}`},
-		{"anytime waiting", servicelevel.Policy{Yield: "anytime", IdleSec: 15, SleepLevel: "l2", Unfinished: "wait", UnfinishedWaitSec: 45, HoldMaxSec: 10},
+		{"anytime waiting", yieldpolicy.Policy{Yield: "anytime", IdleSec: 15, SleepLevel: "l2", Unfinished: "wait", UnfinishedWaitSec: 45, HoldMaxSec: 10},
 			`{"policy":"anytime","idle_sec":15,"sleep_level":"l2","unfinished":"wait","unfinished_wait_sec":45,"hold_max_sec":10}`},
-		{"leftover parameters are dropped", servicelevel.Policy{Yield: "never", IdleSec: 99, SleepLevel: "l2", MaxServeSec: 5, HoldMaxSec: 50},
+		{"leftover parameters are dropped", yieldpolicy.Policy{Yield: "never", IdleSec: 99, SleepLevel: "l2", MaxServeSec: 5, HoldMaxSec: 50},
 			`{"policy":"never"}`},
 	} {
 		t.Run(c.name, func(t *testing.T) {
@@ -49,7 +49,7 @@ func TestYieldPolicyWire(t *testing.T) {
 }
 
 func TestYieldPolicyRequestParse(t *testing.T) {
-	parse := func(body string) (servicelevel.Policy, *servicelevel.Violation) {
+	parse := func(body string) (yieldpolicy.Policy, *yieldpolicy.Violation) {
 		t.Helper()
 		var req YieldPolicyRequest
 		dec := json.NewDecoder(strings.NewReader(body))
@@ -62,11 +62,11 @@ func TestYieldPolicyRequestParse(t *testing.T) {
 	// The full form, as the wire of a response sent back (its neighbours
 	// ignored).
 	p, v := parse(`{"policy":"idle","idle_sec":30,"sleep_level":"l1","hold_max_sec":120,"idle_neighbours":["x"]}`)
-	if v != nil || p != (servicelevel.Policy{Yield: "idle", IdleSec: 30, SleepLevel: "l1", HoldMaxSec: 120}) {
+	if v != nil || p != (yieldpolicy.Policy{Yield: "idle", IdleSec: 30, SleepLevel: "l1", HoldMaxSec: 120}) {
 		t.Errorf("full form = %+v %+v", p, v)
 	}
 	// A policy alone takes the policy's defaults.
-	want, _ := servicelevel.Parse(servicelevel.TimeSlice, servicelevel.Overrides{})
+	want, _ := yieldpolicy.Parse(yieldpolicy.TimeSlice, yieldpolicy.Overrides{})
 	if p, v = parse(`{"policy":"timeslice"}`); v != nil || p != want {
 		t.Errorf("policy alone = %+v %+v", p, v)
 	}
@@ -75,13 +75,13 @@ func TestYieldPolicyRequestParse(t *testing.T) {
 	}
 	for _, c := range []struct {
 		body string
-		want servicelevel.Violation
+		want yieldpolicy.Violation
 	}{
-		{`{}`, servicelevel.Violation{Field: "policy", Reason: "required"}},
-		{`{"idle_sec":60}`, servicelevel.Violation{Field: "policy", Reason: "required"}},
-		{`{"policy":"gold"}`, servicelevel.Violation{Field: "policy", Reason: "invalid_value"}},
-		{`{"policy":"idle","idle_sec":14}`, servicelevel.Violation{Field: "idle_sec", Reason: "out_of_range", Min: 15, Max: 604800}},
-		{`{"policy":"timeslice","max_serve_sec":29}`, servicelevel.Violation{Field: "max_serve_sec", Reason: "out_of_range", Min: 30, Max: 86400}},
+		{`{}`, yieldpolicy.Violation{Field: "policy", Reason: "required"}},
+		{`{"idle_sec":60}`, yieldpolicy.Violation{Field: "policy", Reason: "required"}},
+		{`{"policy":"gold"}`, yieldpolicy.Violation{Field: "policy", Reason: "invalid_value"}},
+		{`{"policy":"idle","idle_sec":14}`, yieldpolicy.Violation{Field: "idle_sec", Reason: "out_of_range", Min: 15, Max: 604800}},
+		{`{"policy":"timeslice","max_serve_sec":29}`, yieldpolicy.Violation{Field: "max_serve_sec", Reason: "out_of_range", Min: 30, Max: 86400}},
 	} {
 		if _, v := parse(c.body); v == nil || *v != c.want {
 			t.Errorf("%s = %+v, want %+v", c.body, v, c.want)
@@ -101,7 +101,7 @@ func TestYieldPolicyRequestParse(t *testing.T) {
 // takes it.
 func TestDeploymentYieldPolicyWire(t *testing.T) {
 	var m map[string]json.RawMessage
-	if err := json.Unmarshal([]byte(marshalString(t, Deployment{YieldPolicy: YieldPolicyOf(servicelevel.Policy{Yield: "never"})})), &m); err != nil {
+	if err := json.Unmarshal([]byte(marshalString(t, Deployment{YieldPolicy: YieldPolicyOf(yieldpolicy.Policy{Yield: "never"})})), &m); err != nil {
 		t.Fatal(err)
 	}
 	if string(m["yield_policy"]) != `{"policy":"never"}` {

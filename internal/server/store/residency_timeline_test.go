@@ -9,7 +9,7 @@ import (
 	"gorm.io/gorm"
 
 	"gpuworks.ai/gpuworks/internal/proto"
-	"gpuworks.ai/gpuworks/internal/server/servicelevel"
+	"gpuworks.ai/gpuworks/internal/server/yieldpolicy"
 )
 
 var residencyBase = time.Date(2026, 10, 28, 12, 0, 0, 0, time.UTC)
@@ -104,7 +104,7 @@ func seedResidency(t *testing.T) (*Store, *Node, map[string]uint) {
 	}
 	ids := map[string]uint{}
 	for _, name := range []string{"alpha", "beta"} {
-		dep, err := s.CreateDeployment(withPolicy(&Deployment{ModelID: 1, NodeID: node.ID, Name: name, ServedName: name, Engine: "vllm", Sleepable: true, State: DeployActive}, servicelevel.TimeSlice))
+		dep, err := s.CreateDeployment(withPolicy(&Deployment{ModelID: 1, NodeID: node.ID, Name: name, ServedName: name, Engine: "vllm", Sleepable: true, State: DeployActive}, yieldpolicy.TimeSlice))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -248,7 +248,10 @@ func TestResidencyFollowerTakesItsLeadersSleep(t *testing.T) {
 	}
 }
 
-func TestResidencySwitchCounts(t *testing.T) {
+// The replay of the scheduling activity hands over every yield and wake of
+// the window, deleted deployments' included; counted the way the activity
+// counts them they give each deployment's switches.
+func TestSchedulingActivityReplayCountsSwitches(t *testing.T) {
 	s, _, ids := seedResidency(t)
 	now := time.Now().UTC()
 	a, b := ids["alpha"], ids["beta"]
@@ -256,26 +259,84 @@ func TestResidencySwitchCounts(t *testing.T) {
 	// a schedule; one older sleep is outside the window; an idle sleep is not
 	// a yield.
 	old := now.Add(-48 * time.Hour)
-	putEvent(t, s, "", b, EventKindAutomation, residencyAutoSleep, old, fmt.Sprintf(`{"trigger":"preempt","for_deployment":%d}`, a))
-	putEvent(t, s, "", a, EventKindAutomation, residencyAutoWake, now.Add(-5*time.Hour), `{"trigger":"request"}`)
-	putEvent(t, s, "", b, EventKindAutomation, residencyAutoSleep, now.Add(-4*time.Hour), fmt.Sprintf(`{"trigger":"preempt","reason":"rank","for_deployment":%d}`, a))
-	putEvent(t, s, "", b, EventKindAutomation, residencyAutoSleep, now.Add(-3*time.Hour), `{"trigger":"idle"}`)
-	putEvent(t, s, "", a, EventKindAutomation, residencyAutoWake, now.Add(-2*time.Hour), `{"trigger":"schedule"}`)
-	putEvent(t, s, "", b, EventKindAutomation, residencyAutoSleep, now.Add(-time.Hour), fmt.Sprintf(`{"trigger":"preempt","reason":"turn","for_deployment":%d}`, a))
-	first, ok, err := s.ResidencyWindowStart(now.Add(-6 * time.Hour))
-	if err != nil || !ok {
-		t.Fatalf("window start: %v %v", ok, err)
-	}
-	got, err := s.ResidencySwitchCounts([]uint{a, b}, first)
+	putEvent(t, s, "", b, EventKindAutomation, "AUTO_SLEEP", old, fmt.Sprintf(`{"trigger":"preempt","for_deployment":%d}`, a))
+	putEvent(t, s, "", a, EventKindAutomation, "AUTO_WAKE", now.Add(-5*time.Hour), `{"trigger":"request"}`)
+	putEvent(t, s, "", b, EventKindAutomation, "AUTO_SLEEP", now.Add(-4*time.Hour), fmt.Sprintf(`{"trigger":"preempt","reason":"rank","for_deployment":%d}`, a))
+	putEvent(t, s, "", b, EventKindAutomation, "AUTO_SLEEP", now.Add(-3*time.Hour), `{"trigger":"idle"}`)
+	putEvent(t, s, "", a, EventKindAutomation, "AUTO_WAKE", now.Add(-2*time.Hour), `{"trigger":"schedule"}`)
+	putEvent(t, s, "", b, EventKindAutomation, "AUTO_SLEEP", now.Add(-time.Hour), fmt.Sprintf(`{"trigger":"preempt","reason":"turn","for_deployment":%d}`, a))
+	// An operator's yielding wake of alpha put beta to sleep: a yield too,
+	// recorded on beta with alpha's name (no id), so beta's count has it and
+	// no deployment is credited as yielded-to.
+	putEvent(t, s, "", b, EventKindAutomation, "YIELDED_FOR_WAKE", now.Add(-30*time.Minute), `{"deployment":"alpha","instances":["b-1"],"level":1}`)
+	// gamma, deleted since, yielded to alpha twice: alpha's yielded-to counts
+	// them though the one that gave way is gone, and gamma keeps its count.
+	gone, err := s.CreateDeployment(withPolicy(&Deployment{ModelID: 1, Name: "gamma", ServedName: "gamma", Engine: "vllm", Sleepable: true, State: DeployActive}, yieldpolicy.Anytime))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got[a] != (ResidencySwitches{YieldedTo: 2, Wakes: 2}) || got[b] != (ResidencySwitches{Yielded: 2}) {
+	g := gone.ID
+	putEvent(t, s, "", g, EventKindAutomation, "AUTO_SLEEP", now.Add(-50*time.Minute), fmt.Sprintf(`{"trigger":"preempt","reason":"rank","for_deployment":%d}`, a))
+	putEvent(t, s, "", g, EventKindAutomation, "AUTO_SLEEP", now.Add(-40*time.Minute), fmt.Sprintf(`{"trigger":"preempt","reason":"rank","for_deployment":%d}`, a))
+	if err := s.DeleteDeployment(g); err != nil {
+		t.Fatal(err)
+	}
+	// Another kind of event with a switch's code is not one.
+	putEvent(t, s, "", b, "state", "AUTO_WAKE", now.Add(-20*time.Minute), `{}`)
+	through, err := s.LastEventID()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[uint]ResidencySwitches{}
+	count := func(evs []ObservedEvent) {
+		for _, ev := range evs {
+			c := got[ev.DeploymentID]
+			switch {
+			case ev.Wake:
+				c.Wakes++
+			case ev.Yield:
+				c.Yielded++
+				if ev.ForDeployment != 0 && ev.ForDeployment != ev.DeploymentID {
+					to := got[ev.ForDeployment]
+					to.YieldedTo++
+					got[ev.ForDeployment] = to
+				}
+			default:
+				continue
+			}
+			got[ev.DeploymentID] = c
+		}
+	}
+	if err := s.ReplaySchedulingActivity(ActivityReplay{Since: now.Add(-6 * time.Hour), ThroughID: through, Scheduling: count}, now); err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 3 || got[a] != (ResidencySwitches{YieldedTo: 4, Wakes: 2}) || got[b] != (ResidencySwitches{Yielded: 3}) || got[g] != (ResidencySwitches{Yielded: 2}) {
 		t.Fatalf("counts = %+v", got)
 	}
-	names, err := s.ResidencyDeployments([]uint{a, 9999})
-	if err != nil || names[a].Name != "alpha" || names[a].Yield != servicelevel.TimeSlice {
+	if !got[a].TookPartInYields() || !got[g].TookPartInYields() || (ResidencySwitches{Wakes: 3}).TookPartInYields() {
+		t.Fatal("taking part in yields is giving cards up or being given them, not waking")
+	}
+	// The overview's count of the same window goes by the same definition.
+	events, err := s.YieldEvents(now.Add(-6 * time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	overview := 0
+	for _, ev := range events {
+		if IsYield(ev) {
+			overview++
+		}
+	}
+	if timeline := got[a].Yielded + got[b].Yielded + got[g].Yielded; overview != timeline {
+		t.Fatalf("the overview counts %d yields, the timeline %d", overview, timeline)
+	}
+	names, err := s.ResidencyDeployments([]uint{a, g, 9999})
+	if err != nil || names[a].Name != "alpha" || names[a].Yield != yieldpolicy.TimeSlice || names[a].Deleted || names[a].Since.IsZero() || !names[a].Until.IsZero() {
 		t.Fatalf("names = %+v, %v", names, err)
+	}
+	// A deleted one keeps its name and when it went; its policy is not kept.
+	if d := names[g]; d.Name != "gamma" || !d.Deleted || d.Yield != "" || !d.Since.IsZero() || d.Until.IsZero() {
+		t.Fatalf("deleted deployment = %+v", d)
 	}
 	if _, ok := names[9999]; ok {
 		t.Fatal("an unknown deployment has a name")
@@ -289,12 +350,22 @@ func TestResidencyQueryPlans(t *testing.T) {
 	s := newTestStore(t)
 	db := s.DB()
 	queries := map[string]*gorm.DB{
-		"window start":   residencyBoundaryQuery(db, residencyBase),
-		"removed":        residencyRemovedQuery(db, 100),
-		"window events":  residencyWindowQuery(db, []string{"a", "b"}, 100),
-		"prior state":    residencyPriorQuery(db, "a", 100, residencyStateCodes, 1),
-		"prior sleep":    residencyPriorQuery(db, "a", 100, []string{instanceEventSleepResult}, residencyPriorSleepResults),
-		"own automation": residencyOwnEventsQuery(db, []uint{1, 2}, 100),
+		"window start":    residencyBoundaryQuery(db, residencyBase),
+		"removed":         residencyRemovedQuery(db, 100),
+		"window events":   residencyWindowQuery(db, []string{"a", "b"}, 100),
+		"prior state":     residencyPriorQuery(db, []string{"a", "b"}, 100, residencyStateCodes, 1),
+		"prior sleep":     residencyPriorQuery(db, []string{"a", "b"}, 100, []string{instanceEventSleepResult}, residencyPriorSleepResults),
+		"activity replay": activityReplayQuery(db, EventKindAutomation, []string{codeAutoSleep, codeAutoWake}, 100, 200),
+	}
+	// The activity's replay is one range of the (kind, id) index over the
+	// window, whatever deployments there are.
+	stmt := activityReplayQuery(db, EventKindAutomation, []string{codeAutoSleep, codeAutoWake}, 100, 200).Session(&gorm.Session{DryRun: true}).Find(&[]InstanceEvent{}).Statement
+	var plan []struct{ Detail string }
+	if err := db.Raw("EXPLAIN QUERY PLAN "+stmt.SQL.String(), stmt.Vars...).Scan(&plan).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(plan) != 1 || !strings.Contains(plan[0].Detail, "idx_instance_events_kind_id (kind=? AND id>? AND id<?)") {
+		t.Errorf("activity replay plan = %+v, want one range of idx_instance_events_kind_id", plan)
 	}
 	for name, q := range queries {
 		stmt := q.Session(&gorm.Session{DryRun: true}).Find(&[]InstanceEvent{}).Statement
@@ -337,5 +408,45 @@ func TestResidencyPriorLevelSkipsARolledBackOrder(t *testing.T) {
 	segs := DeriveResidency(insts[0], events["napper"], from, now)
 	if len(segs) != 1 || segs[0].State != ResidencyAsleep || segs[0].Level != 1 || !segs[0].From.Equal(from) {
 		t.Fatalf("segments = %+v, want asleep L1 over the whole window", segs)
+	}
+}
+
+// The events before the window are read for many instances at once: each
+// instance, on either side of a batch's edge, still gets its own newest state
+// and its own newest sleep result that applied, never a neighbour's.
+func TestResidencyPriorEventsAcrossBatches(t *testing.T) {
+	s, node, ids := seedResidency(t)
+	now := time.Now().UTC()
+	n := residencyEventChunk + 7
+	for i := 0; i < n; i++ {
+		uuid := fmt.Sprintf("many-%03d", i)
+		if err := s.DB().Create(&Instance{UUID: uuid, DeploymentID: ids["alpha"], NodeID: node.ID, State: proto.InstRunning, GPUIndexes: "[0]", CreatedAt: now.Add(-30 * time.Hour)}).Error; err != nil {
+			t.Fatal(err)
+		}
+		putEvent(t, s, uuid, ids["alpha"], "state", instanceEventStatusUpdated, now.Add(-29*time.Hour), `{"state":"running","phase":""}`)
+		level := 1 + i%2
+		putEvent(t, s, uuid, ids["alpha"], "sleep", instanceEventSleepResult, now.Add(-12*time.Hour), fmt.Sprintf(`{"result":"applied","level":%d}`, level))
+		if i%3 == 0 {
+			putEvent(t, s, uuid, ids["alpha"], "sleep", instanceEventSleepResult, now.Add(-10*time.Hour), `{"result":"failed_rollback","target":0,"actual":1}`)
+		}
+	}
+	putEvent(t, s, "other", ids["beta"], "state", instanceEventStatusUpdated, now.Add(-time.Hour), `{"state":"running","phase":""}`) // something happened in the window
+	from := now.Add(-6 * time.Hour)
+	insts, events, err := s.ResidencyInputs([]uint{node.ID}, from)
+	if err != nil || len(insts) != n {
+		t.Fatalf("inputs = %d instances, %v; want %d", len(insts), err, n)
+	}
+	for _, inst := range insts {
+		var i int
+		if _, err := fmt.Sscanf(inst.UUID, "many-%03d", &i); err != nil {
+			t.Fatalf("unexpected instance %q", inst.UUID)
+		}
+		if got := len(events[inst.UUID]); got != 2 {
+			t.Fatalf("%s has %d events before the window, want its state and its applied sleep: %+v", inst.UUID, got, events[inst.UUID])
+		}
+		segs := DeriveResidency(inst, events[inst.UUID], from, now)
+		if len(segs) != 1 || segs[0].State != ResidencyAsleep || segs[0].Level != 1+i%2 {
+			t.Fatalf("%s segments = %+v, want asleep L%d over the whole window", inst.UUID, segs, 1+i%2)
+		}
 	}
 }

@@ -37,19 +37,7 @@ func (a *apiHandlers) sleepDeployment(w http.ResponseWriter, r *http.Request) {
 	}
 	role := r.URL.Query().Get("role")
 	if role == "" {
-		if level == proto.SleepLevelL1 {
-			insts, err := a.d.Store.InstancesForDeployment(dep.ID)
-			if err != nil {
-				writeErr(w, http.StatusInternalServerError, err)
-				return
-			}
-			if refusal := planning.L1HostMemoryRefusal(a.d.Store, dep, planning.Sleepers(insts), a.hostMemory); refusal != nil {
-				writeSleepRefusal(w, http.StatusConflict, refusal)
-				return
-			}
-		}
-		if err := a.d.Store.OrderDeploymentSleepHeld(dep.ID, level, mode, true); err != nil {
-			writeErr(w, http.StatusInternalServerError, err)
+		if !a.orderSleep(w, dep, planning.SleepOrder{Pref: planning.SleepPreference(level), Mode: mode, Held: true}, writeErr500) {
 			return
 		}
 		a.sleepOrdered(r, dep.ID, level, mode, "deployment", "", nil)
@@ -60,19 +48,31 @@ func (a *apiHandlers) sleepDeployment(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if level == proto.SleepLevelL1 {
-		if refusal := planning.L1HostMemoryRefusal(a.d.Store, dep, named, a.hostMemory); refusal != nil {
-			writeSleepRefusal(w, http.StatusConflict, refusal)
-			return
-		}
-	}
-	if err := a.d.Store.OrderInstancesSleepHeld(dep.ID, uuidsOf(named), level, mode, true); err != nil {
-		writeErr(w, http.StatusInternalServerError, err)
+	if !a.orderSleep(w, dep, planning.SleepOrder{Pref: planning.SleepPreference(level), Mode: mode, Held: true, Instances: uuidsOf(named)}, writeErr500) {
 		return
 	}
 	a.sleepOrdered(r, dep.ID, level, mode, "role", role, uuidsOf(named))
 	writeJSON(w, http.StatusOK, dto.SleepOrder{Status: "sleeping", Level: level, Mode: mode, Role: role, Instances: uuidsOf(named)})
 }
+
+// orderSleep writes an operator's sleep order (planning.OrderSleep), which
+// names its level explicitly: a refusal is 409 (the deployment's sleep
+// eligibility was checked before, as a 400), a store failure goes to
+// storeErr. It writes the response unless the order was written.
+func (a *apiHandlers) orderSleep(w http.ResponseWriter, dep *store.Deployment, order planning.SleepOrder, storeErr func(http.ResponseWriter, error)) bool {
+	_, refusal, err := planning.OrderSleep(a.d.Store, dep, order, a.hostMemory)
+	if err != nil {
+		storeErr(w, err)
+		return false
+	}
+	if refusal != nil {
+		writeSleepRefusal(w, http.StatusConflict, refusal)
+		return false
+	}
+	return true
+}
+
+func writeErr500(w http.ResponseWriter, err error) { writeErr(w, http.StatusInternalServerError, err) }
 
 // sleepOrderParams reads ?level= and ?mode=, writing the response when they
 // are invalid.
@@ -247,18 +247,28 @@ func appendUnique(values []string, more ...string) []string {
 	return values
 }
 
-// hostMemory is a node's host memory as its agent last reported it (within
-// two minutes).
+// hostMemory is a node's host memory as its agent recently reported it
+// (planning.RecentHostMemory).
 func (a *apiHandlers) hostMemory(nodeUUID string) (available, total int64, ok bool) {
-	if a.d.MetricsLatest == nil {
+	host := HostMemory(a.d.MetricsLatest)
+	if host == nil {
 		return 0, 0, false
 	}
-	since := time.Now().UTC().Add(-2 * time.Minute).UnixMilli()
-	return planning.HostMemoryFromMetrics(func(metric, node string) (float64, bool) {
-		rows, err := a.d.MetricsLatest(metric, map[string]string{"node": node}, since)
+	return host(nodeUUID)
+}
+
+// HostMemory is planning.RecentHostMemory over latest, the metrics store's
+// newest samples (Deps.MetricsLatest): the one reader of host memory for an
+// operator's L1 sleep and the automation's. Nil latest knows nothing.
+func HostMemory(latest func(metric string, matchers map[string]string, sinceMS int64, asOfMS ...int64) ([]MetricLatest, error)) planning.HostMemory {
+	if latest == nil {
+		return nil
+	}
+	return planning.RecentHostMemory(func(metric, node string, sinceMS int64) (float64, bool) {
+		rows, err := latest(metric, map[string]string{"node": node}, sinceMS)
 		if err != nil || len(rows) == 0 {
 			return 0, false
 		}
 		return rows[0].Value, true
-	})(nodeUUID)
+	}, time.Now)
 }

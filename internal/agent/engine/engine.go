@@ -53,6 +53,9 @@ type Engine struct {
 	pending         map[string]pendingEnsure
 	sleepLevel      map[string]int  // uuid → actual sleep level
 	prewarmed       map[string]bool // uuid → sleep prewarm done
+	// l1HostHeld names the instances whose engine completed an L1 sleep since
+	// its container started (holdsL1HostBuffer).
+	l1HostHeld map[string]bool
 	// sleepPIDs is, per sleeping instance, the process its engine keeps on
 	// each of its cards (by card identity), learned when its residue was
 	// measured: the card then held that one process only. It lets the node
@@ -93,6 +96,8 @@ type Engine struct {
 	// puller pulls images from an instance's candidate sources; the node's
 	// image.pull RPC shares it (see WithImagePuller).
 	puller *imagepull.Puller
+	// cardGate is what a start waits on before launching (SetCardGate).
+	cardGate func(ctx context.Context, idents []string, limit time.Duration) bool
 }
 
 // WithNetworkConfig injects the node's network configuration reader. Its URL
@@ -150,6 +155,7 @@ func NewWithProber(driver runtime.Driver, report Reporter, log *slog.Logger, sta
 		pending:               map[string]pendingEnsure{},
 		sleepLevel:            map[string]int{},
 		prewarmed:             map[string]bool{},
+		l1HostHeld:            map[string]bool{},
 		sleepPIDs:             map[string]map[string]int{},
 		runtimeEpoch:          map[string]uint64{},
 		servingEpoch:          map[string]uint64{},

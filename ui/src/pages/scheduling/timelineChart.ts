@@ -1,4 +1,5 @@
-import type { YieldPolicyName, TimelineDeployment, TimelineHours, TimelineSegment, TimelineState } from "../../api";
+import type { TimelineDeployment, TimelineSegment, TimelineState } from "../../schedulingApi";
+import type { YieldPolicyName } from "../../yieldPolicyApi";
 import { colors } from "../../theme/tokens";
 
 // Geometry of the residency timeline. Every x is a position on a track that is
@@ -36,9 +37,12 @@ export interface Tick {
   x: number;
 }
 
-/** Ticks at the local whole hours (every hour for 6 h, every 4 h for 24 h) inside the window. */
-export function ticksOf(span: Span, hours: TimelineHours): Tick[] {
-  const step = hours === 6 ? 1 : 4;
+/**
+ * Ticks at the local whole hours inside the window, about six of them: every
+ * hour for 6 h, every 4 h for 24 h.
+ */
+export function ticksOf(span: Span, hours: number): Tick[] {
+  const step = Math.max(1, Math.round(hours / 6));
   const first = new Date(span.fromMs);
   first.setMinutes(0, 0, 0);
   const out: Tick[] = [];
@@ -63,21 +67,25 @@ export interface Lane {
   deploymentID: number;
   deployment: string;
   policy: YieldPolicyName;
+  /** The deployment has been deleted since (the stats say so). */
+  deleted: boolean;
   segments: TimelineSegment[];
 }
 
 /**
  * One lane per deployment that held the card, in the order they first held it.
  * A deployment missing from the stats is a resident one: the stats list only
- * the deployments that share cards.
+ * the deployments that share cards. A deleted one is marked as its stats row
+ * marks it.
  */
 export function lanesOf(segments: TimelineSegment[], stats: TimelineDeployment[]): Lane[] {
-  const policies = new Map(stats.map((row) => [row.deployment_id, row.yield_policy]));
+  const rows = new Map(stats.map((row) => [row.deployment_id, row]));
   const lanes = new Map<number, Lane>();
   for (const segment of segments) {
     let lane = lanes.get(segment.deployment_id);
     if (!lane) {
-      lane = { deploymentID: segment.deployment_id, deployment: segment.deployment, policy: policies.get(segment.deployment_id) ?? "never", segments: [] };
+      const row = rows.get(segment.deployment_id);
+      lane = { deploymentID: segment.deployment_id, deployment: segment.deployment, policy: row?.yield_policy || "never", deleted: row?.deployment_deleted ?? false, segments: [] };
       lanes.set(segment.deployment_id, lane);
     }
     lane.segments.push(segment);

@@ -60,11 +60,14 @@ type Actions interface {
 	// Sleep puts the deployment's awake instances to sleep at level
 	// (LevelAuto: the platform's choice) and returns the level it ordered. A
 	// held sleep (a schedule's) is not woken by a request; one the platform
-	// chose (auto sleep) is.
+	// chose is.
 	Sleep(deploymentID uint, level int, held bool) (int, error)
 	// Wake wakes the deployment's sleepers that fit and leaves the rest
-	// waiting for room.
-	Wake(deploymentID uint) (WakeResult, error)
+	// waiting for room. A held wake (a schedule's) wakes every sleeper and
+	// lifts their holds; one a request or a resume drives wakes only the
+	// sleepers a request wakes (store.Deployment.WakesOnRequest), and an
+	// operator's or a schedule's sleepers stay asleep.
+	Wake(deploymentID uint, held bool) (WakeResult, error)
 	// WakeWaiting wakes the named waiting instances that fit now.
 	WakeWaiting(deploymentID uint, instances []string) ([]string, error)
 	// EndWaiting gives up the named instances' wait.
@@ -168,11 +171,7 @@ func (e *Evaluator) Run(ctx context.Context) {
 			e.Tick()
 			rearm()
 		case <-due.C:
-			now := e.now()
-			// A yield may have landed: the waiting wake it made room for
-			// goes first, as on a nudge, without the nudge's settle.
-			e.waitingWakes(now)
-			e.residency(now)
+			e.due(e.now())
 			rearm()
 		case <-e.wake:
 			if settled == nil {
@@ -208,13 +207,20 @@ func (e *Evaluator) Tick() {
 	e.schedules(now)
 }
 
-func (e *Evaluator) waitingWakes(now time.Time) {
+func (e *Evaluator) waitingWakes(now time.Time) { e.waitingWakesOf(now, nil) }
+
+// waitingWakesOf looks at the waiting wakes of the deployments only names,
+// or at every one when only is nil.
+func (e *Evaluator) waitingWakesOf(now time.Time, only map[uint]bool) {
 	waits, err := e.source.WaitingWakes()
 	if err != nil {
 		e.log.Warn("automation: read waiting wakes", "err", err)
 		return
 	}
 	for _, w := range waits {
+		if only != nil && !only[w.DeploymentID] {
+			continue
+		}
 		if now.Sub(w.Since) >= e.waitMax {
 			if err := e.actions.EndWaiting(w.DeploymentID, w.Instances); err != nil {
 				e.log.Warn("automation: end a wake's wait", "deployment", w.DeploymentID, "err", err)
@@ -291,7 +297,7 @@ func (e *Evaluator) fire(s Schedule, at time.Time) {
 		}
 	case "wake":
 		var result WakeResult
-		if result, err = e.actions.Wake(s.DeploymentID); err == nil {
+		if result, err = e.actions.Wake(s.DeploymentID, true); err == nil {
 			if len(result.Woken) > 0 {
 				woke := copyParams(params)
 				woke["instances"] = result.Woken

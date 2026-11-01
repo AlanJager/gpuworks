@@ -1,4 +1,4 @@
-package servicelevel
+package yieldpolicy
 
 import (
 	"testing"
@@ -263,11 +263,36 @@ func TestPolicyAccessors(t *testing.T) {
 	if never.IdleRelease() != 0 || idle.IdleRelease() != time.Minute || slice.IdleRelease() != 30*time.Second || anytime.IdleRelease() != 30*time.Second {
 		t.Fatal("idle release")
 	}
-	if (Policy{}).SleepLevelPref() != LevelAuto {
+	if (Policy{Yield: Idle}).Normalize().SleepLevel != LevelAuto {
 		t.Fatal("no sleep level reads as auto")
+	}
+	// Ranks follow Policies, highest first.
+	for i, yield := range Policies {
+		if got := (Policy{Yield: yield}).Rank(); got != len(Policies)-i {
+			t.Errorf("rank of %s = %d, want %d", yield, got, len(Policies)-i)
+		}
 	}
 	if ValidYield("") || ValidYield("gold") || !ValidYield(Anytime) {
 		t.Fatal("yield validity")
+	}
+}
+
+// Cards given up for a replica waiting to be placed stay its against a
+// sleeper that ranks no higher; one of higher rank takes them back.
+func TestKeepsCardsAgainst(t *testing.T) {
+	idle, slice, anytime := defaults(t, Idle), defaults(t, TimeSlice), defaults(t, Anytime)
+	for _, c := range []struct {
+		name            string
+		waiter, sleeper Policy
+		want            bool
+	}{
+		{"against a lower sleeper", idle, anytime, true},
+		{"against an equal", slice, slice, true},
+		{"not against a higher sleeper", anytime, idle, false},
+	} {
+		if got := KeepsCardsAgainst(c.waiter, c.sleeper); got != c.want {
+			t.Errorf("%s: %v, want %v", c.name, got, c.want)
+		}
 	}
 }
 

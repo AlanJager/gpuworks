@@ -100,7 +100,7 @@ func toWireBatch(b Batch) wireBatch {
 	}
 	w.Model = b.Model
 	for _, warning := range b.Warnings {
-		w.Warnings = append(w.Warnings, wireWarning{Code: warning.Code, Message: warning.Message, Param: "model"})
+		w.Warnings = append(w.Warnings, wireWarning{Code: warning.Code, Message: warning.Message, Param: warning.Param})
 	}
 	if b.ErrorCode != "" {
 		w.Errors = &wireBatchErrors{Object: "list", Data: []wireBatchError{{Code: b.ErrorCode, Message: b.ErrorMessage}}}

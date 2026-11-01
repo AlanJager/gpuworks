@@ -13,25 +13,24 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/internal/server/planning"
 	"gpuworks.ai/gpuworks/internal/server/store"
+	"gpuworks.ai/gpuworks/internal/server/yieldpolicy"
 )
-
-// automationEventKind is the timeline kind of the scheduling center's
-// events, the automation's own and an operator's waiting or yielding wake.
-const automationEventKind = store.EventKindAutomation
 
 // wakeWaitHow is how a wake that does not fit proceeds: wait waits for room
 // (the automation wakes the sleepers once their GPUs can take them back);
-// yield first puts the awake occupants of those GPUs to sleep at yieldLevel,
-// then waits.
+// yield first puts the awake occupants of those GPUs to sleep at yieldPref,
+// then waits. An operator's yield_level=1 is the platform's choice
+// (yieldpolicy.LevelAuto): an occupant whose host cannot hold its weights
+// gives way at L2, which needs no host memory, rather than refusing the wake.
 type wakeWaitHow struct {
 	wait, yield bool
-	yieldLevel  int
+	yieldPref   string
 }
 
 // wakeWaitParams reads ?wait=, ?yield= and ?yield_level= (1 or 2, default 1),
 // writing the response when they are invalid.
 func wakeWaitParams(w http.ResponseWriter, r *http.Request) (wakeWaitHow, bool) {
-	how := wakeWaitHow{yieldLevel: proto.SleepLevelL1}
+	how := wakeWaitHow{yieldPref: yieldpolicy.LevelAuto}
 	for name, into := range map[string]*bool{"wait": &how.wait, "yield": &how.yield} {
 		raw := r.URL.Query().Get(name)
 		if raw == "" {
@@ -47,7 +46,7 @@ func wakeWaitParams(w http.ResponseWriter, r *http.Request) (wakeWaitHow, bool) 
 	switch raw := r.URL.Query().Get("yield_level"); raw {
 	case "", "1":
 	case "2":
-		how.yieldLevel = proto.SleepLevelL2
+		how.yieldPref = yieldpolicy.LevelL2
 	default:
 		writeProductError(w, http.StatusBadRequest, ErrorSleepInvalidLevel, "sleep level must be 1 or 2", map[string]any{"level": raw})
 		return how, false
@@ -92,30 +91,19 @@ func (a *apiHandlers) wakeAndWait(w http.ResponseWriter, r *http.Request, dep *s
 			return
 		}
 		for _, target := range targets {
-			level := how.yieldLevel
-			members := []store.Instance{target.Instance}
-			if level == proto.SleepLevelL1 && planning.L1HostMemoryRefusal(a.d.Store, target.Deployment, members, a.hostMemory) != nil {
-				// The occupant's host cannot hold its weights: it gives way at
-				// L2, which needs no host memory.
-				level = proto.SleepLevelL2
-			}
-			targetInsts, err := a.d.Store.InstancesForDeployment(target.Deployment.ID)
+			level, refusal, err := planning.OrderSleep(a.d.Store, target.Deployment, planning.SleepOrder{
+				Pref: how.yieldPref, Mode: proto.SleepModeWait, Held: true, Instances: uuidsOf(target.Members),
+			}, a.hostMemory)
 			if err != nil {
-				writeErr(w, http.StatusInternalServerError, err)
-				return
-			}
-			targetMatch, err := planning.DeploymentMatch(a.d.Store, target.Deployment, targetInsts)
-			if err != nil {
-				writeErr(w, http.StatusInternalServerError, err)
-				return
-			}
-			replica := planning.ReplicaMembers(targetMatch.SlotOf(target.Instance.UUID))
-			if err := a.d.Store.OrderInstancesSleepHeld(target.Deployment.ID, uuidsOf(replica), level, proto.SleepModeWait, true); err != nil {
 				writeReplicaOrderErr(w, err)
 				return
 			}
-			a.d.Store.AddDeploymentEventCode(target.Deployment.ID, automationEventKind, automation.EventYieldedForWake, map[string]any{
-				"deployment": dep.Name, "instances": uuidsOf(replica), "level": level,
+			if refusal != nil {
+				writeSleepRefusal(w, http.StatusConflict, refusal)
+				return
+			}
+			a.d.Store.AddDeploymentEventCode(target.Deployment.ID, store.EventKindAutomation, automation.EventYieldedForWake, map[string]any{
+				"deployment": dep.Name, "for_deployment": dep.ID, "instances": uuidsOf(target.Members), "level": level,
 			})
 			result.Yielded = appendUnique(result.Yielded, target.Deployment.Name)
 		}
@@ -127,7 +115,7 @@ func (a *apiHandlers) wakeAndWait(w http.ResponseWriter, r *http.Request, dep *s
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
-	a.d.Store.AddDeploymentEventCode(dep.ID, automationEventKind, automation.EventWakeWaiting, map[string]any{"trigger": automation.TriggerOperator, "instances": result.Waiting, "yielded": result.Yielded})
+	a.d.Store.AddDeploymentEventCode(dep.ID, store.EventKindAutomation, automation.EventWakeWaiting, map[string]any{"trigger": automation.TriggerOperator, "instances": result.Waiting, "yielded": result.Yielded})
 	result.Status = "waiting"
 	writeJSON(w, http.StatusAccepted, result)
 }

@@ -27,8 +27,16 @@ type fakeBatches struct {
 	form     map[string]string
 	fileBody string
 
-	batch dto.Batch
-	err   error
+	batch      dto.Batch
+	dictionary dto.BatchDictionary
+	err        error
+}
+
+func (f *fakeBatches) Dictionary() (dto.BatchDictionary, error) {
+	if f.err != nil {
+		return dto.BatchDictionary{}, f.err
+	}
+	return f.dictionary, nil
 }
 
 func (f *fakeBatches) List(c BatchCaller, states []string, page, pageSize int) (dto.BatchPage, error) {
@@ -98,13 +106,13 @@ func newBatchRig(t *testing.T) *batchRig {
 func sampleBatch() dto.Batch {
 	created := time.Date(2026, 10, 28, 9, 0, 0, 0, time.UTC)
 	return dto.Batch{
-		ID: "batch_1", Endpoint: "/v1/chat/completions", Status: "validating", InputFileID: "file-in", CompletionWindow: "24h",
+		ID: "batch_1", Endpoint: "/v1/chat/completions", Status: "validating", Cancellable: true, InputFileID: "file-in", CompletionWindow: "24h",
 		RequestCounts: dto.BatchRequestCount{Total: 3}, Metadata: map[string]string{}, UserID: 1,
 		CreatedAt: created, ExpiresAt: created.Add(24 * time.Hour),
 	}
 }
 
-const sampleBatchJSON = `{"id":"batch_1","endpoint":"/v1/chat/completions","status":"validating","input_file_id":"file-in","completion_window":"24h","request_counts":{"total":3,"completed":0,"failed":0},"metadata":{},"user_id":1,"created_at":"2026-10-28T09:00:00Z","expires_at":"2026-10-29T09:00:00Z"}`
+const sampleBatchJSON = `{"id":"batch_1","endpoint":"/v1/chat/completions","status":"validating","cancellable":true,"input_file_id":"file-in","completion_window":"24h","request_counts":{"total":3,"completed":0,"failed":0},"metadata":{},"user_id":1,"created_at":"2026-10-28T09:00:00Z","expires_at":"2026-10-29T09:00:00Z"}`
 
 func (r *batchRig) upload(bearer string, fields map[string]string) *httptest.ResponseRecorder {
 	var buf bytes.Buffer
@@ -133,6 +141,7 @@ func TestBatchRoutesRequireAuthentication(t *testing.T) {
 	for _, route := range []struct{ method, path string }{
 		{"GET", "/api/v1/batches"}, {"POST", "/api/v1/batches"}, {"GET", "/api/v1/batches/batch_1"},
 		{"POST", "/api/v1/batches/batch_1/cancel"}, {"GET", "/api/v1/batches/batch_1/files/output"},
+		{"GET", "/api/v1/batches/dictionary"},
 	} {
 		rec := r.do("", route.method, route.path, "")
 		if rec.Code != http.StatusUnauthorized || !strings.Contains(rec.Body.String(), `"code":"AUTHENTICATION_REQUIRED"`) {
@@ -294,6 +303,7 @@ func TestBatchRoutesAnswerNotFoundWithoutAService(t *testing.T) {
 	for _, route := range []struct{ method, path string }{
 		{"GET", "/api/v1/batches"}, {"POST", "/api/v1/batches"}, {"GET", "/api/v1/batches/batch_1"},
 		{"POST", "/api/v1/batches/batch_1/cancel"}, {"GET", "/api/v1/batches/batch_1/files/output"},
+		{"GET", "/api/v1/batches/dictionary"},
 	} {
 		if rec := rig.do(rig.session, route.method, route.path, ""); rec.Code != http.StatusNotFound {
 			t.Errorf("%s %s = %d", route.method, route.path, rec.Code)
@@ -308,7 +318,7 @@ func TestBatchCreateWithAModelWireAndErrors(t *testing.T) {
 	r.fake.batch.Model = "held-model"
 	r.fake.batch.Warnings = []messages.Warning{{Code: WarningBatchModelSleepHeld, Params: map[string]any{"model": "held-model"}}}
 	rec := r.upload(r.session, map[string]string{"file": "x", "endpoint": "/v1/chat/completions", "model": "held-model"})
-	want := `{"id":"batch_1","endpoint":"/v1/chat/completions","status":"validating","input_file_id":"file-in","completion_window":"24h","model":"held-model","request_counts":{"total":3,"completed":0,"failed":0},"metadata":{},"warnings":[{"code":"BATCH_MODEL_SLEEP_HELD","params":{"model":"held-model"}}],"user_id":1,"created_at":"2026-10-28T09:00:00Z","expires_at":"2026-10-29T09:00:00Z"}`
+	want := `{"id":"batch_1","endpoint":"/v1/chat/completions","status":"validating","cancellable":true,"input_file_id":"file-in","completion_window":"24h","model":"held-model","request_counts":{"total":3,"completed":0,"failed":0},"metadata":{},"warnings":[{"code":"BATCH_MODEL_SLEEP_HELD","params":{"model":"held-model"}}],"user_id":1,"created_at":"2026-10-28T09:00:00Z","expires_at":"2026-10-29T09:00:00Z"}`
 	if rec.Code != http.StatusCreated || strings.TrimSpace(rec.Body.String()) != want {
 		t.Fatalf("create = %d\n got %s\nwant %s", rec.Code, rec.Body, want)
 	}
@@ -317,5 +327,83 @@ func TestBatchCreateWithAModelWireAndErrors(t *testing.T) {
 	rec = r.upload(r.session, map[string]string{"file": "x", "endpoint": "/v1/chat/completions", "model": "ghost"})
 	if wantErr := `{"code":"BATCH_MODEL_UNKNOWN","error":"No active deployment serves the model ghost","params":{"model":"ghost"}}`; rec.Code != http.StatusBadRequest || strings.TrimSpace(rec.Body.String()) != wantErr {
 		t.Fatalf("unknown model = %d %s", rec.Code, rec.Body)
+	}
+}
+
+// Without a model, the models of the input file go as a list with the number
+// of further ones, in the refusal and in the held warning alike; a finished
+// batch is not cancellable and says when its output goes.
+func TestBatchFileModelsAndFinishedBatchWire(t *testing.T) {
+	r := newBatchRig(t)
+	r.fake.err = &BatchError{Status: 400, Code: messages.ErrorBatchFileModelsUnknown, Fallback: "The input file names models that no active deployment serves: a, b",
+		Params: map[string]any{"models": []string{"a", "b"}, "more": 0}}
+	rec := r.upload(r.session, map[string]string{"file": "x", "endpoint": "/v1/chat/completions"})
+	if want := `{"code":"BATCH_FILE_MODELS_UNKNOWN","error":"The input file names models that no active deployment serves: a, b","params":{"models":["a","b"],"more":0}}`; rec.Code != http.StatusBadRequest || strings.TrimSpace(rec.Body.String()) != want {
+		t.Fatalf("unknown file models = %d %s", rec.Code, rec.Body)
+	}
+
+	r.fake.err = nil
+	r.fake.batch.Warnings = []messages.Warning{{Code: messages.WarningBatchFileModelsSleepHeld, Params: map[string]any{"models": []string{"m1", "m2", "m3", "m4", "m5"}, "more": 2}}}
+	rec = r.upload(r.session, map[string]string{"file": "x", "endpoint": "/v1/chat/completions"})
+	if want := `"warnings":[{"code":"BATCH_FILE_MODELS_SLEEP_HELD","params":{"models":["m1","m2","m3","m4","m5"],"more":2}}]`; rec.Code != http.StatusCreated || !strings.Contains(rec.Body.String(), want) {
+		t.Fatalf("held file models = %d %s", rec.Code, rec.Body)
+	}
+
+	done := time.Date(2026, 10, 28, 10, 0, 0, 0, time.UTC)
+	kept := done.Add(30 * 24 * time.Hour)
+	r.fake.batch = sampleBatch()
+	r.fake.batch.Status, r.fake.batch.Cancellable, r.fake.batch.OutputFileID, r.fake.batch.CompletedAt, r.fake.batch.OutputExpiresAt = "completed", false, "file-out", &done, &kept
+	rec = r.do(r.session, "GET", "/api/v1/batches/batch_1", "")
+	want := `{"id":"batch_1","endpoint":"/v1/chat/completions","status":"completed","cancellable":false,"input_file_id":"file-in","output_file_id":"file-out","completion_window":"24h","request_counts":{"total":3,"completed":0,"failed":0},"metadata":{},"output_expires_at":"2026-11-27T10:00:00Z","user_id":1,"created_at":"2026-10-28T09:00:00Z","expires_at":"2026-10-29T09:00:00Z","completed_at":"2026-10-28T10:00:00Z"}`
+	if rec.Code != http.StatusOK || strings.TrimSpace(rec.Body.String()) != want {
+		t.Fatalf("finished batch = %d\n got %s\nwant %s", rec.Code, rec.Body, want)
+	}
+}
+
+// The dictionary a create dialog is built from, in its exact wire shape: it
+// is the dictionary route, not a batch named "dictionary"; any signed-in user
+// reads it; and it only reads.
+func TestBatchDictionaryWire(t *testing.T) {
+	r := newBatchRig(t)
+	r.fake.dictionary = dto.BatchDictionary{
+		Endpoints:             []string{"/v1/chat/completions", "/v1/completions", "/v1/embeddings"},
+		CompletionWindowHours: dto.BatchWindowHours{Min: 1, Max: 72, Default: 24},
+		MaxFileBytes:          200 << 20, MaxFileLines: 50000,
+		Statuses:            []string{"validating", "in_progress", "finalizing", "cancelling", "completed", "failed", "expired", "cancelled"},
+		OutputRetentionDays: 30,
+		Models: []dto.BatchModel{
+			{Name: "qwen", State: dto.BatchModelServed}, {Name: "napping", State: dto.BatchModelAsleep}, {Name: "held", State: dto.BatchModelAsleepHeld},
+		},
+	}
+	want := `{"endpoints":["/v1/chat/completions","/v1/completions","/v1/embeddings"],"completion_window_hours":{"min":1,"max":72,"default":24},` +
+		`"max_file_bytes":209715200,"max_file_lines":50000,"statuses":["validating","in_progress","finalizing","cancelling","completed","failed","expired","cancelled"],` +
+		`"output_retention_days":30,"models":[{"name":"qwen","state":"served"},{"name":"napping","state":"asleep"},{"name":"held","state":"asleep_held"}]}`
+	for _, bearer := range []string{r.session, r.user, r.mint("read")} {
+		rec := r.do(bearer, "GET", "/api/v1/batches/dictionary", "")
+		if rec.Code != http.StatusOK || strings.TrimSpace(rec.Body.String()) != want {
+			t.Fatalf("dictionary = %d\n got %s\nwant %s", rec.Code, rec.Body, want)
+		}
+	}
+	if r.fake.id != "" {
+		t.Fatalf("the dictionary was read as the batch %q", r.fake.id)
+	}
+	var round dto.BatchDictionary
+	if err := jsonDecode([]byte(want), &round); err != nil || len(round.Models) != 3 || round.Models[2].State != dto.BatchModelAsleepHeld || round.CompletionWindowHours.Default != 24 {
+		t.Fatalf("round trip = %+v err=%v", round, err)
+	}
+
+	// No model served is an empty list, not null.
+	r.fake.dictionary.Models = []dto.BatchModel{}
+	if rec := r.do(r.session, "GET", "/api/v1/batches/dictionary", ""); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"models":[]`) {
+		t.Fatalf("no models = %d %s", rec.Code, rec.Body)
+	}
+	for _, method := range []string{"POST", "PUT", "DELETE"} {
+		if rec := r.do(r.session, method, "/api/v1/batches/dictionary", ""); rec.Code != http.StatusMethodNotAllowed {
+			t.Errorf("%s /batches/dictionary = %d %s", method, rec.Code, rec.Body)
+		}
+	}
+	r.fake.err = io.ErrUnexpectedEOF
+	if rec := r.do(r.session, "GET", "/api/v1/batches/dictionary", ""); rec.Code != http.StatusInternalServerError {
+		t.Errorf("a failed read = %d %s", rec.Code, rec.Body)
 	}
 }

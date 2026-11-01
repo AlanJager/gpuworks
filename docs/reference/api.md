@@ -549,7 +549,7 @@ macOS 忽略 `no_systemd`。
 | POST | `/api/v1/deployments/{id}/start` | 启动已停止的部署，按保留的配置重新调度（每个副本的重试次数重新计）；已在运行则不做任何事；删除中的部署 409 `DEPLOYMENT_DELETING` | JWT |
 | DELETE | `/api/v1/deployments/{id}` | 删除部署 | JWT |
 | POST | `/api/v1/deployments/{id}/sleep` | 休眠部署（`?level=1\|2`，默认 1；`?mode=wait\|abort`，默认 wait）：睡眠意图写进每个活跃实例的期望状态，网关立即不再派发给它们，部署记为"整体处于睡眠命令下"（此后新起的实例也按此睡眠）。`?role=prefill` 只睡 PD 部署该角色的实例（响应带 `role`、`instances`），部署整体不算在睡眠命令下；非 PD 400 `PD_NOT_PD`，不是该部署模式的角色 400 `PD_ROLE_UNKNOWN`，模式不允许为空的角色（如 decode）400 `SLEEP_ROLE_CANNOT_EMPTY`。`level=1` 时本节点主机内存放不下将卸载的权重（可用内存减去 max(总量 5%, 4 GiB) 余量）409 `SLEEP_HOST_MEMORY_INSUFFICIENT`（`params.node`、`need_gib`、`available_gib`），改用 L2；节点没有最近的主机内存观测时不拦 | JWT |
-| POST | `/api/v1/deployments/{id}/wake` | 唤醒部署：已睡着的实例须放得回原卡，否则 409 `WAKE_INSUFFICIENT_GPU_MEMORY`（全有或全无）。`?role=` 只唤醒 PD 该角色的实例。`?partial=true` 唤醒放得下的那部分，响应 `{"status":"waking","woken":[...],"refused":[{"instances","node","gpu_indexes","shortfall_gib","occupants"}]}`；一个也放不下时仍 409。409 的参数描述第一个被拒的节点，`refused` 列出全部被拒的副本；任何唤醒都会撤销部署整体的睡眠命令，要等位的唤醒（202 `waiting`）同时解除保持休眠。卡被平台外进程占着时 409 `WAKE_GPU_HELD_OUTSIDE`（参数同上，`refused[].held_outside` 为 true）。`?wait=true` 放得下的先醒、其余等位，`?yield=true`（可加 `&yield_level=1\|2`，默认 1，占用者主机放不下 L1 时自动改 2）先让占用者休眠再等位；响应见[唤醒等位与让位唤醒](#唤醒等位与让位唤醒) | JWT |
+| POST | `/api/v1/deployments/{id}/wake` | 唤醒部署：已睡着的实例须放得回原卡，否则 409 `WAKE_INSUFFICIENT_GPU_MEMORY`（全有或全无）。`?role=` 只唤醒 PD 该角色的实例。`?partial=true` 唤醒放得下的那部分，响应 `{"status":"waking","woken":[...],"refused":[{"instances","node","gpu_indexes","shortfall_gib","occupants"}]}`；一个也放不下时仍 409。409 的参数描述第一个被拒的节点，`refused` 列出全部被拒的副本；任何唤醒都会撤销部署整体的睡眠命令并解除被唤醒实例的保持休眠，要等位的唤醒（202 `waiting`）同时解除等位实例的保持。卡被平台外进程占着时 409 `WAKE_GPU_HELD_OUTSIDE`（参数同上，`refused[].held_outside` 为 true）。`?wait=true` 放得下的先醒、其余等位，`?yield=true`（可加 `&yield_level=1\|2`，默认 1，占用者主机放不下 L1 时自动改 2）先让占用者休眠再等位；响应见[唤醒等位与让位唤醒](#唤醒等位与让位唤醒) | JWT |
 | POST | `/api/v1/deployments/{id}/units/suggest` | 为多机部署推荐一个副本的节点；请求体 `{"units":[...]}` 为已选副本，返回推荐 `unit` 或无法放置的原因，不保存；见[推荐多机副本节点](#推荐多机副本节点) | JWT |
 | POST | `/api/v1/deployments/{id}/units/retry` | 让一个副本重新获得重试次数：请求体 `{"role","index"}`（普通部署 `role` 为空），该副本的失败尝试被移除（容器清理、时间线保留），控制器随后重建它，其他副本不受影响；没有该副本 404 `UNIT_UNKNOWN`，没有失败尝试或仍有实例 409 `UNIT_NOT_FAILED`，部署非运行中 409 `UNIT_RETRY_NOT_ACTIVE` | JWT |
 | PUT | `/api/v1/deployments/{id}/replicas` | 单机部署修改副本数（增加时可加 `place_on` 指定新副本首次启动的节点），手动放置的多机部署修改副本节点列表，自动放置的多机部署按副本数增减（`place_on` 为新副本各 rank 的节点）；完整字段与条件见[普通部署的副本调整](#普通部署的副本调整) | JWT |
@@ -561,16 +561,17 @@ macOS 忽略 `no_systemd`。
 | DELETE | `/api/v1/deployments/{id}/schedule/{sid}` | 删除一条计划，204；不存在 404 | JWT |
 | PUT | `/api/v1/deployments/{id}/yield-policy` | 设置出让策略与参数：请求体 `{"policy":"timeslice","idle_sec":30,"sleep_level":"auto","max_serve_sec":120,"unfinished":"wait","unfinished_wait_sec":30,"hold_max_sec":600}`，`policy`（`never` / `idle` / `timeslice` / `anytime`）必填，其余都可省略，省略的取该策略的默认值，不适用的被忽略。200 返回存下的策略，不适用的参数不出现；设为 `idle` 而卡上已有另一个 `idle` 部署时多一个 `idle_neighbours`。没有 `policy`（`{}`，或只带参数）、取值不合法或越界 400 `YIELD_POLICY_INVALID`（`params.field`、`reason`：`required` / `invalid_value` / `out_of_range`，越界另带 `minimum`、`maximum`）；策略不是 `never` 而部署不可休眠 400 `SLEEP_NOT_ENABLED` / `SLEEP_ENGINE_UNSUPPORTED`；多机或 PD 部署设 `never` 以外的策略 400 `YIELD_POLICY_SHAPE`；见[出让策略](#出让策略) | JWT |
 | PUT | `/api/v1/deployments/{id}/node-replacement` | 设置节点失联重调度的等待时间 `{"after_sec":600}`，0 为从不，否则 60–604800，200 返回同样的请求体；越界 400 `NODE_REPLACEMENT_INVALID`（`params.minimum`、`maximum`）；见[节点失联重调度](../how-to/node-failover.md) | JWT |
-| GET | `/api/v1/scheduling/board` | 调度看板：`?page=&page_size=&q=` 分页的节点（每张卡的醒着占用、休眠残留、可用量、占用者与外部进程）加全集群的 `pending`（最近 30 分钟被调度拒绝的部署）、`waiting_wakes`、`upcoming`（未来 24 小时的计划动作）、`recent`（最近 50 条自动化事件，为兼容保留，界面改读调度记录）；`?node=<uuid>` 只回答这一个节点（一行的 `nodes` 页，其余四项为空，不存在的节点 404），`?queues=1` 只回答后四项（`nodes` 为空页，不读任何节点）；见[调度看板](#调度看板) | JWT |
+| GET | `/api/v1/scheduling/board` | 调度看板：`?page=&page_size=&q=` 分页的节点（每张卡的醒着占用、休眠残留、可用量、占用者与外部进程）加全集群的 `pending`（最近 30 分钟被调度拒绝的部署）、`waiting_wakes`、`upcoming`（未来 24 小时的计划动作）；`q` 匹配节点名称、主机名或 UUID；每张卡带服务端算出的 `state` 与 `switching`；已不再有 `recent`（最近的自动化事件看调度记录）；`?node=<uuid>` 只回答这一个节点（一行的 `nodes` 页，其余三项为空，不存在的节点 404），`?queues=1` 只回答后三项（`nodes` 为空页，不读任何节点）；见[调度看板](#调度看板) | JWT |
 | GET | `/api/v1/scheduling/overview` | 调度总览：全集群每个节点、每张卡的紧凑状态与汇总，一次返回，供热力图使用；来自缓存（至多每 2 秒重建一次），带 `ETag`，`If-None-Match` 命中返回 304；见[调度总览](#调度总览) | JWT |
-| GET | `/api/v1/scheduling/history` | 调度记录：全集群的调度事件，最新优先、游标分页（`limit`、`before`，同部署时间线），可按 `deployment_id`、`category`（`auto` / `failure` / `manual`，逗号分隔）、`since` / `until`（RFC 3339）筛选；非法筛选 400 `FIELD_INVALID`（`params.field`），非法游标或页大小 400 `EVENT_CURSOR_INVALID` / `EVENT_LIMIT_INVALID`；见[调度记录](#调度记录) | JWT |
-| GET | `/api/v1/scheduling/timeline` | 驻留时间线：`?node=<uuid>`（可重复，至多 200 个，通常是被打开的节点）`&hours=6\|24`（默认 6）。每张卡过去 `hours` 小时里各部署实例占用它的分段（`awake` / `asleep` / `switching` / `starting`），以及出现过的非常驻部署的统计；`?sharing=1&hours=` 不带 `node`，只回答全集群出让策略不是 `never` 的部署的统计（`nodes` 为空，约 30 秒缓存）；缺少 `node`（且没有 `sharing`）、`sharing` 不是 1 或与 `node` 同用、`hours` 不是 6 / 24 时 400 `FIELD_INVALID`（`params.field`），不存在的节点被略过；见[驻留时间线](#驻留时间线) | JWT |
-| GET | `/api/v1/scheduling/yield-policies` | 出让策略字典：四个策略按等级从高到低，每个带 `defaults` 与适用的参数 `applies`，加各数值参数的范围 `bounds`（`at_most` 为不得超过的另一个参数）、`sleep_levels`、`unfinished`，客户端据此编辑，不另存默认值；见[出让策略](#出让策略) | JWT |
+| GET | `/api/v1/scheduling/history` | 调度记录：全集群的调度事件，最新优先、游标分页（`limit`、`before`，同部署时间线），可按 `deployment_id`、`category`（`auto` / `failure` / `manual`，逗号分隔）、`since` / `until`（RFC 3339）筛选；每条带它涉及的节点 `nodes`（`uuid`、`name`）；非法筛选 400 `FIELD_INVALID`（`params.field`），非法游标或页大小 400 `EVENT_CURSOR_INVALID` / `EVENT_LIMIT_INVALID`；见[调度记录](#调度记录) | JWT |
+| GET | `/api/v1/scheduling/timeline` | 驻留时间线：`?node=<uuid>`（可重复，至多 200 个，通常是被打开的节点）`&window=6h\|24h`（默认 6h）。每张卡窗口内各部署实例占用它的分段（`awake` / `asleep` / `switching` / `starting`），以及出现过的非常驻部署的统计；`?sharing=1&window=15m\|1h\|6h\|24h`（默认 6h）不带 `node`，只回答全集群出让策略不是 `never` 的部署（及窗口内参与过让位、已删除的部署）的统计（`nodes` 为空，约 30 秒缓存）；响应的 `windows` 列出这一读法可选的窗口；旧参数 `hours=6\|24` 仍可用，等同 `window=6h\|24h`；缺少 `node`（且没有 `sharing`）、`sharing` 不是 1 或与 `node` 同用、`window` 不在可选之列、`hours` 不是 6 / 24 时 400 `FIELD_INVALID`（`params.field`，消息如 `window is one of 15m, 1h, 6h, 24h`），不存在的节点被略过；见[驻留时间线](#驻留时间线) | JWT |
+| GET | `/api/v1/scheduling/activity` | 调度活动：`?window=15m\|1h\|6h\|24h\|7d`（默认 24h）或 `?since=&until=`（RFC 3339，`until` 缺省为现在）。按服务端选定的桶长（`bucket_seconds`）给出每桶各原因的调度事件数（`buckets[].counts` 与 `reasons` 同序）、各原因在范围内的合计 `reasons[]`（`key`、`count`）、范围内切换最频繁的至多 20 张卡 `top_cards[]`（`node_uuid`、`node`、`gpu_index`、`switches`），范围开头超出统计保留期时 `beyond_retention` 为 true；不读事件日志，约 30 秒缓存；`window` 不在可选之列、与 `since` / `until` 同用、只给 `until`、时间格式不对、`until` 不晚于 `since`、范围超过 1825 天时 400 `FIELD_INVALID`（`params.field`）；见[调度活动](#调度活动) | JWT |
+| GET | `/api/v1/scheduling/yield-policies` | 出让策略字典：四个策略按等级从高到低，每个带 `defaults` 与可能适用的参数 `applies`，加只在另一个参数取某些值时才适用的条件 `applies_when`，各数值参数的范围 `bounds`（`at_most` 为不得超过的另一个参数）、`sleep_levels`、`unfinished`，客户端据此编辑，不另存默认值；见[出让策略](#出让策略) | JWT |
 | PUT | `/api/v1/deployments/{id}/pd` | PD 部署调整各角色副本（`roles.<role>.units`）与 `fallback`；`mode`、角色的 `tp`/`pp`、`kv_load_failure` 不可变（`PD_IMMUTABLE`）；非 PD 部署 400 `PD_NOT_PD` | JWT |
 | POST | `/api/v1/deployments/{id}/restart` | 按当前配置重建部署，重置副本重试次数；请求体可选 `strategy`（默认 `rolling`，`all` 会中断服务）；见[重启策略](#重启策略) | JWT |
 | POST | `/api/v1/evaluate` | 显存估算、调度试算与获取预估（不创建部署）：响应的 `acquisition` 含 `present`（已持有模型、目标节点读得到的存储）、`targets`（节点取模型时可保存到的存储）、`providers`（模板的权重来源）、`image`，以及请求指定了节点时的 `nodes[]`（见「评估请求与获取预估」） | JWT |
 | GET | `/api/v1/instances` | 实例列表 | JWT |
-| GET | `/api/v1/instances/{uuid}` | 实例详情。服务端推导的字段：`replica`（该实例承担的副本 `{role,index}`，不承担时缺省）、`asleep`（因睡眠不接收请求：已下令睡眠或仍在睡）、`desired_sleep`（下令的级别）、`can_sleep_alone` / `can_wake_alone`（能否单独睡、单独醒）；多机副本的 follower 不上报自己的睡眠级别，`sleep_level` 给的是它所在代 leader 的级别；`dist_role` 对未记录角色的旧行按 headless 与 rank 推出。部署详情里的 `instances[]` 带同样的字段，PD 角色带 `may_be_empty` | JWT |
+| GET | `/api/v1/instances/{uuid}` | 实例详情。服务端推导的字段：`replica`（该实例承担的副本 `{role,index}`，不承担时缺省）、`asleep`（因睡眠不接收请求：已下令睡眠或仍在睡）、`desired_sleep`（下令的级别）、`sleep_held`（该实例的休眠由运维或定时计划下达，请求不唤醒它；保持按实例记录，唤醒只解除被唤醒实例的保持）、`can_sleep_alone` / `can_wake_alone`（能否单独睡、单独醒）；多机副本的 follower 不上报自己的睡眠级别，`sleep_level` 给的是它所在代 leader 的级别；`dist_role` 对未记录角色的旧行按 headless 与 rank 推出。部署详情里的 `instances[]` 带同样的字段，PD 角色带 `may_be_empty` | JWT |
 | GET | `/api/v1/instances/{uuid}/events` | 实例事件时间线（最新优先、游标分页、读取时折叠） | JWT |
 | GET | `/api/v1/instances/{uuid}/launch-facts` | 实例启动事实三层投影（intent/resolved/runtime observation，unknown 不降级，敏感文本脱敏） | JWT |
 | GET | `/api/v1/instances/{uuid}/logs` | 实例容器日志（SSE，经 agent logtail 隧道） | JWT |
@@ -672,15 +673,19 @@ macOS 忽略 `no_systemd`。
 | `pd`（可选） | 对象 | PD 部署的模式、各角色副本数和状态，见 [PD 分离部署](#pd-分离部署placementpd) |
 | `node_replacement` | 对象 | 节点失联重调度的等待时间 `{after_sec}`，默认 600，0 表示从不 |
 | `yield_policy` | 对象 | 出让策略与参数，形状同[出让策略](#出让策略)的响应：`policy` 与适用的参数；见[出让策略](../explanation/service-levels.md) |
-| `sleep_held` | 布尔 | 休眠是否由运维或定时计划下达（保持休眠）：为 `true` 时请求不唤醒部署 |
+| `sleep_hold`（可选） | 字符串 | 由各实例的 `sleep_held` 推导的休眠副本保持情况：`all`（全部被运维或定时计划保持，请求一个也不唤醒）、`some`（部分被保持，请求只唤醒其余的）、`none`（都是平台的休眠，请求会唤醒）；没有休眠副本时省略 |
+| `sleep_held` | 布尔 | 推导值：部署有休眠副本且全部被保持（`sleep_hold` 为 `all`）时为 `true`，此时请求不唤醒部署 |
 | `wake_waiting_since`（可选） | RFC3339 时间 | 该部署有唤醒在等位时出现，值为等位起点 |
+| `wake_wait_limit_sec` | 整数 | 等位唤醒放弃前最多等多久（秒），目前是 1800；界面的等位提示按它写，不自带数字 |
+| `yield_policy_eligible` | 对象 | 该部署能否设出让策略（`never` 以外）：`{ok}`，不行时多一个 `reason`：`SLEEP_NOT_ENABLED`（没打开可休眠）、`SLEEP_ENGINE_UNSUPPORTED`（引擎不支持休眠）或 `YIELD_POLICY_SHAPE`（多机或 PD 部署）。设置出让策略的接口就是按它拒绝的，界面据此禁用策略并显示原因 |
+| `schedule_capabilities` | 对象 | 该部署的定时计划能下什么动作：`sleep`、`wake`（各是 `{ok, reason?}`，`reason` 为 `SLEEP_NOT_ENABLED` 或 `SLEEP_ENGINE_UNSUPPORTED`，引擎不能休眠的部署两者都不行，界面也不显示休眠控件），以及 `replicas[]`：`{role?, minimum, maximum, ok, reason?}`，单机部署一项（无 `role`），PD 部署按模式的角色顺序每个角色一项；`minimum`/`maximum` 是定时副本数的范围（模式允许为空的 PD 角色 `minimum` 为 0），`ok` 为 `false` 时 `reason` 是不能定的原因（例如手动放置的多机或 PD 部署是 `SCHEDULE_REPLICAS_MANUAL_PLACEMENT`）。创建定时计划的接口按同一套规则校验。部署列表不带这三个字段 |
 
 `active` 表示期望运行，不代表已经能够服务；还需结合运行状态、就绪副本和健康检查判断。
 可选字段未返回时，不能一律按 `0` 或空数组处理。以下字段用于判断放置与重试状态：
 
 - `node_requirements` 总是出现，无条件时为 `{}`；固定节点存于 `gpuworks.ai/node`，已删除的节点仍保留在条件中，但无法匹配。
   详情额外返回 `node_requirement_labels[]`：`{key,value,display,display_code?,nodes}`。节点与网络显示名称；`nodes` 是当前匹配数量，0 不代表条件失效，而是当前没有节点匹配。列表不带这些显示字段。
-- `placement_strategy` 为 `spread` 或 `binpack`。普通单机副本尚无实例时，`placement_status{unscheduled,reason,at}` 给出等待数量与最近原因：`pool_empty`、`pool_no_fit` 或 `waiting_for_yield`（等共卡的部署按出让策略让卡，见[使用调度中心](../how-to/scheduling-center.md#新部署怎样放到共用的卡上)）。
+- `placement_strategy` 为 `spread` 或 `binpack`。普通单机副本尚无实例时，`placement_status{unscheduled,reason,at}` 给出等待数量与最近原因：`pool_empty`、`pool_no_fit` 或 `waiting_for_yield`（等共卡的部署按出让策略让卡，见[使用调度分析](../how-to/scheduling-center.md#新部署怎样放到共用的卡上)）。
   原因参数包含各类计数、最多 3 台最接近的候选及拒绝原因；每个等待超时窗口最多记录一次。
 - `placement_mode` 只在多机与 PD 部署出现：`auto` 表示节点由平台挑选（创建时按空闲卡挑，单元启动时放不下再换），`manual` 表示节点是运维写的；升级前已有的部署都是 `manual`。单机部署不带这个字段，它的放置写在节点条件里（`GET /deployments/{id}/draft` 的 `placement_mode` 与 `node_uuid`）。
 - `max_replicas` 是调整副本数的上限；`restart_requested_at` 只在滚动重启进行中出现。
@@ -747,7 +752,7 @@ macOS 忽略 `no_systemd`。
 {"deployment": {...}, "base_revision": "...", "apply": "rolling", "start": false, "wake": false}
 ```
 
-`deployment` 是改过的 draft。`locked` 字段写了就必须与 draft 一致（不写则保持），否则 400 `DEPLOYMENT_FIELD_NOT_EDITABLE`（`params.field`）。其余字段按创建的规则校验（参数字典、节点条件、健康检查、「永远放不下」检查 `DEPLOYMENT_NEVER_FITS` 等）。
+`deployment` 是改过的 draft。`locked` 字段写了就必须与 draft 一致（不写则保持），否则 400 `DEPLOYMENT_FIELD_NOT_EDITABLE`（`params.field`）。其余字段按创建的规则校验（参数字典、节点条件、健康检查、「永远放不下」检查 `DEPLOYMENT_NEVER_FITS` 等）。出让策略不是 `never` 时不能关掉 `sleepable`（出让就是休眠），400 `YIELD_POLICY_NEEDS_SLEEP`（`params.policy`）；先用 `PUT /deployments/{id}/yield-policy` 改回 `never`。
 
 启动配置从部署保存的配置出发，不重新套用模板：draft 里原样送回的值保持不变，只有改过的值才按参数字典的取值范围检查；模板在部署之后的修改不会经编辑带进部署，也不会补上部署原本没有的字典默认值。
 
@@ -846,8 +851,8 @@ macOS 忽略 `no_systemd`。
 
 `POST /api/v1/deployments/{id}/wake` 与 `POST /api/v1/instances/{uuid}/wake` 的 `?wait=true` 和 `?yield=true`：
 
-- `wait`：放得下的先醒，其余等卡腾出来，服务端容量释放后自动唤醒，等满 30 分钟放弃（时间线 `WAKE_WAIT_TIMEOUT`）。等位起点保存在实例上，部署详情的 `wake_waiting_since` 是其中最早的一个。应答 202 `waiting` 的同时，部署的保持休眠（`sleep_held`）就解除了：部署是要醒的，等位期间到达的请求由网关挂起、等这次唤醒（驻留仲裁也可以按出让策略为它腾地方），而不是回 503；以前保持要等唤醒落地才解除。
-- `yield`：先把占着所需卡的醒着的部署休眠（`yield_level` 为 1 或 2，默认 1；占用者的主机内存放不下 L1 时自动改 2），再等位。
+- `wait`：放得下的先醒，其余等卡腾出来，服务端容量释放后自动唤醒，等满 30 分钟放弃（时间线 `WAKE_WAIT_TIMEOUT`）。等位起点保存在实例上，部署详情的 `wake_waiting_since` 是其中最早的一个。应答 202 `waiting` 的同时，等位实例的保持休眠（实例的 `sleep_held`）就解除了：它们是要醒的，等位期间到达的请求由网关挂起、等这次唤醒（驻留仲裁也可以按出让策略为它腾地方），而不是回 503；以前保持要等唤醒落地才解除。
+- `yield`：先把占着所需卡的醒着的部署休眠（`yield_level` 为 1 或 2，默认 1；1 就是出让策略的 `auto`：占用者的主机内存放不下 L1 时自动改 2，不因此拒绝），再等位。占用者的休眠记 `YIELDED_FOR_WAKE`，带 `for_deployment`（为谁让位），按调度记录与统计里的「让位」计数。
 - 全部放得下时 200 `{"status":"waking","woken":[…],"waiting":[],"yielded":[]}`；有的要等时 202 `{"status":"waiting",…}`，`waiting` 是在等的实例 UUID，`yielded` 是被让位休眠的部署名。
 - 占用者不能休眠（部署不可休眠、PD 最后一个醒着的角色、平台外进程）时 409 `WAKE_YIELD_BLOCKED`（`params.occupants` 名字列表、`woken`），什么都不改；`yield_level` 不是 1 或 2 时 400 `SLEEP_INVALID_LEVEL`。
 
@@ -855,7 +860,7 @@ macOS 忽略 `no_systemd`。
 
 ### 出让策略
 
-`PUT /api/v1/deployments/{id}/yield-policy` 设置部署怎样与共用同一批卡的其他部署相处。出让策略是唯一要选的东西。规则见[出让策略：几个部署怎样共用一批 GPU](../explanation/service-levels.md)，操作见[使用调度中心](../how-to/scheduling-center.md#出让策略)。请求体：
+`PUT /api/v1/deployments/{id}/yield-policy` 设置部署怎样与共用同一批卡的其他部署相处。出让策略是唯一要选的东西。规则见[出让策略：几个部署怎样共用一批 GPU](../explanation/service-levels.md)，操作见[使用调度分析](../how-to/scheduling-center.md#出让策略)。请求体：
 
 ```json
 {"policy":"timeslice","idle_sec":30,"sleep_level":"auto","max_serve_sec":120,"unfinished":"wait","unfinished_wait_sec":30,"hold_max_sec":600}
@@ -915,6 +920,7 @@ macOS 忽略 `no_systemd`。
     {"policy": "timeslice", "defaults": {"policy": "timeslice", "idle_sec": 30, "sleep_level": "auto", "max_serve_sec": 120, "unfinished": "wait", "unfinished_wait_sec": 30, "hold_max_sec": 600}, "applies": ["idle_sec", "sleep_level", "max_serve_sec", "unfinished", "unfinished_wait_sec", "hold_max_sec"]},
     {"policy": "anytime", "defaults": {"policy": "anytime", "idle_sec": 30, "sleep_level": "auto", "unfinished": "abort", "unfinished_wait_sec": 30, "hold_max_sec": 3600}, "applies": ["idle_sec", "sleep_level", "unfinished", "unfinished_wait_sec", "hold_max_sec"]}
   ],
+  "applies_when": {"unfinished_wait_sec": {"unfinished": ["wait"]}},
   "bounds": {
     "hold_max_sec": {"minimum": 10, "maximum": 3600},
     "idle_sec": {"minimum": 15, "maximum": 604800, "at_most": "max_serve_sec"},
@@ -928,13 +934,14 @@ macOS 忽略 `no_systemd`。
 
 | 字段 | 含义 |
 |---|---|
-| `policies[]` | 按等级从高到低；`defaults` 是选这个策略时填入的值（凡适用 `unfinished` 的都带 `unfinished_wait_sec`，供打开等待的客户端使用）；`applies` 是适用的参数名，其中 `unfinished_wait_sec` 只在 `unfinished` 为 `wait` 时才有意义 |
+| `policies[]` | 按等级从高到低；`defaults` 是选这个策略时填入的值（凡适用 `unfinished` 的都带 `unfinished_wait_sec`，供打开等待的客户端使用）；`applies` 是可能适用的参数名，按编辑器列出的顺序 |
+| `applies_when` | 只在另一个参数取某些值时才适用的参数：`{参数: {另一个参数: [取值…]}}`，目前只有 `unfinished_wait_sec` 在 `unfinished` 为 `wait` 时适用；没有出现在这里的参数，凡在 `applies` 里就一律适用。编辑器读它，不自己写这条规则 |
 | `bounds` | 各数值参数的范围，单位秒；`at_most` 指出同时适用时不得超过的另一个参数 |
 | `sleep_levels`、`unfinished` | 两个枚举参数的取值 |
 
 没有令牌 401，`POST` 等其他方法 405。
 
-时间线事件 `AUTO_SLEEP` 的 `trigger` 为 `schedule`（定时计划）或 `preempt`（让卡，`reason` 为 `idle` / `rank` / `turn`）；`level` 总是平台实际选的级别（1 或 2）。事件码见[使用调度中心](../how-to/scheduling-center.md#时间线事件)。
+时间线事件 `AUTO_SLEEP` 的 `trigger` 为 `schedule`（定时计划）或 `preempt`（让卡，`reason` 为 `idle` / `rank` / `turn`）；`level` 总是平台实际选的级别（1 或 2）。事件码见[使用调度分析](../how-to/scheduling-center.md#时间线事件)。
 
 ### 定时计划
 
@@ -954,25 +961,24 @@ macOS 忽略 `no_systemd`。
 | `replicas` | `replicas` 必填，1 到 `max_replicas`（PD 角色为 1 到 32，模式允许为空的角色可为 0）；用于单机部署和自动放置的多机、PD 部署，其他动作不接受。响应里 `replicas` 动作的这个字段总会给出（包括 0），其他动作省略 |
 | `role` | `replicas` 动作的 PD 角色（模式里的角色，如 `prefill`、`decode`）：PD 部署必填，其他部署和其他动作不接受（400 `SCHEDULE_INVALID`，`params.field` 为 `role`）；响应里非 PD 的计划省略 |
 | `enabled` | 请求里可省略，默认 true |
-| `next_at` | 响应字段，下一次执行时间；停用时省略 |
+| `next_at` | 响应字段，下一次执行时间；停用时省略，时区 server 不认识（新建时会被拒绝，只会出现在 server 之后丢了该时区数据时）时也省略，评估器同样不执行这样的计划，两边一致 |
 
-每个时间点只执行一次；server 停机错过的只补最新的一次且不早于 12 小时；手动操作不被覆盖；新建或修改的计划从下一个时间点起生效。语义见[使用调度中心](../how-to/scheduling-center.md)。
+每个时间点只执行一次；server 停机错过的只补最新的一次且不早于 12 小时；手动操作不被覆盖；新建或修改的计划从下一个时间点起生效。语义见[使用调度分析](../how-to/scheduling-center.md)。
 
 ### 调度看板
 
-`GET /api/v1/scheduling/board?page=1&page_size=20&q=` 只读，响应：
+`GET /api/v1/scheduling/board?page=1&page_size=20&q=` 只读，响应（没有 `recent`；最近的自动化事件看[调度记录](#调度记录)）：
 
 | 字段 | 含义 |
 |---|---|
-| `nodes` | 分页对象（`items`、`page`、`page_size`、`total`），节点按名称排序，`q` 匹配名称或 UUID。每个节点含 `uuid`、`name`、`online`、`gpus[]`：`index`、`name`、`memory_bytes`、`awake_bytes`、`sleeping_bytes`、`free_bytes`、`held_outside` 与 `occupants[]`（`deployment_id`、`deployment`、`yield_policy`、`instance`、`state`：`awake` / `asleep`、`sleep_level`、`claim_bytes`、`residue_bytes`） |
+| `nodes` | 分页对象（`items`、`page`、`page_size`、`total`），节点按名称排序，`q` 匹配名称、主机名或 UUID 的一部分（不分大小写，与节点列表一致）。每个节点含 `uuid`、`name`、`online`、`gpus[]`：`index`、`name`、`memory_bytes`、`awake_bytes`、`sleeping_bytes`、`free_bytes`、`state`（卡的状态，取值同[调度总览](#调度总览)的 `states`：`offline`、`unhealthy`、`held_outside`、`awake`、`asleep`、`free`，服务端算出）、`held_outside`、`switching`（卡上有实例正在启动、休眠、唤醒或排空）与 `occupants[]`（`deployment_id`、`deployment`、`yield_policy`、`instance`、`state`：`awake` / `asleep`、`sleep_level`、`claim_bytes`、`residue_bytes`） |
 | `pending` | 最近 30 分钟被调度拒绝的 active 部署：`deployment_id`、`deployment`、`reason{code,params}`、`at` |
 | `waiting_wakes` | 等位中的唤醒：`deployment_id`、`deployment`、`instances`、`since` |
 | `upcoming` | 未来 24 小时的计划动作：`deployment_id`、`deployment`、`schedule_id`、`action`、`sleep_level`、`replicas`（`replicas` 动作才有，含 0）、`role`（PD 角色的 `replicas` 动作）、`at` |
-| `recent` | 最近 50 条自动化事件：`deployment_id`、`deployment`、`code`、`params`、`at` |
 
-`?node=<uuid>` 只读这一个节点：`nodes` 是只有它的一行页（`page` 与 `page_size` 为 1，`total` 为 1，忽略 `page`、`page_size`、`q`），`pending`、`waiting_wakes`、`upcoming`、`recent` 为空数组；节点不存在返回 404。控制台打开一个节点的抽屉时读它，开销与集群大小无关。`?queues=1` 相反，只回答 `pending`、`waiting_wakes`、`upcoming`、`recent`，`nodes` 为空页，不读任何节点。
+`?node=<uuid>` 只读这一个节点：`nodes` 是只有它的一行页（`page` 与 `page_size` 为 1，`total` 为 1，忽略 `page`、`page_size`、`q`），`pending`、`waiting_wakes`、`upcoming` 为空数组；节点不存在返回 404。控制台打开一个节点的抽屉时读它，开销与集群大小无关。`?queues=1` 相反，只回答 `pending`、`waiting_wakes`、`upcoming`，`nodes` 为空页，不读任何节点。
 
-时间线事件码见[使用调度中心](../how-to/scheduling-center.md#时间线事件)与[节点失联重调度](../how-to/node-failover.md#时间线事件)。
+时间线事件码见[使用调度分析](../how-to/scheduling-center.md#时间线事件)与[节点失联重调度](../how-to/node-failover.md#时间线事件)。
 
 ### 调度总览
 
@@ -983,37 +989,40 @@ macOS 忽略 `no_systemd`。
   "summary": {
     "nodes": 3, "online_nodes": 2, "cards": 6,
     "awake": 2, "asleep": 1, "free": 1, "held_outside": 1, "unhealthy": 0, "offline": 1,
-    "by_model": [{"model": "L20", "cards": 3, "awake": 2, "asleep": 0, "free": 0, "held_outside": 0, "unhealthy": 0, "offline": 1}],
     "contention": {"waiting_wakes": 1, "held_requests": 3, "yields_last_hour": 1}
   },
+  "states": ["offline", "unhealthy", "held_outside", "awake", "asleep", "free"],
   "models": ["L20", "H100"],
   "deployments": [{"id": 7, "name": "qwen", "yield_policy": "never"}, {"id": 9, "name": "night", "yield_policy": "idle"}],
   "nodes": [{
     "uuid": "…", "name": "gpu-a", "online": true, "labels": {"zone": "a"}, "contention": 5,
-    "cards": [[0, 0, 49152, 100, 0, 0, [0]], [1, 0, 49152, 25, 4, 2, [2, 5]]]
+    "cards": [[0, 0, 49152, 100, 0, 3, 0, [0]], [1, 0, 49152, 25, 4, 3, 1, [2, 1]]]
   }]
 }
 ```
 
 | 字段 | 含义 |
 |---|---|
-| `summary` | 全集群的卡数。每张卡只计入第一个成立的桶，顺序为：`offline`（节点不在线）、`unhealthy`（卡故障或因所有权、健康状态不可用）、`held_outside`（被平台外进程占用）、`awake`（有实例占着显存）、`asleep`（只有休眠者的残留）、`free`；六个桶之和等于 `cards`。`by_model` 是同样的计数按 GPU 型号（卡名）分开，卡数多的在前 |
-| `summary.contention` | `waiting_wakes`：有休眠实例在等位唤醒的部署数；`held_requests`：网关此刻为等唤醒而扣住的请求数；`yields_last_hour`：最近一小时为别的部署让位而休眠的次数（运维的让位唤醒与驻留仲裁的抢占） |
+| `summary` | 全集群的卡数。每张卡只计入第一个成立的桶，顺序为：`offline`（节点不在线）、`unhealthy`（卡故障或因所有权、健康状态不可用）、`held_outside`（被平台外进程占用）、`awake`（有实例占着显存）、`asleep`（只有休眠者的残留）、`free`；六个桶之和等于 `cards` |
+| `summary.contention` | `waiting_wakes`：有休眠实例在等位唤醒的部署数；`held_requests`：网关此刻挂起等唤醒的请求数；`yields_last_hour`：最近一小时为别的部署让位而休眠的次数。让位只有一个口径：驻留仲裁的抢占（`AUTO_SLEEP`，`trigger` 为 `preempt`）和运维的让位唤醒（`YIELDED_FOR_WAKE`）都算，时间线的 `yielded`、`yielded_to` 数的是同一批事件；让位唤醒同样记 `for_deployment` |
+| `states` | 卡的状态名，按上面互斥桶的先后：`offline`、`unhealthy`、`held_outside`、`awake`、`asleep`、`free`；卡用下标引用它。一张卡属于哪个状态由服务端判定（调度看板的 `gpus[].state` 是同一份结果），客户端只负责配色和措辞，不自己再推一遍 |
 | `models`、`deployments` | 卡引用的字典：GPU 型号名；占着卡的部署（`id`、`name`、`yield_policy`：`never`、`idle`、`timeslice` 或 `anytime`）。各按首次出现的顺序 |
-| `nodes[]` | 按名称排序。`labels` 是运维写的节点标签（没有则省略）；`contention` 是该节点上等位的休眠实例数，加上为在该节点上休眠的部署扣住的请求数，再加上该节点上有卡的部署的让位次数（没有则省略） |
-| `nodes[].cards[]` | 数组 `[index, model, memory_mib, awake_pct, sleeping_pct, flags, occupants]`：`index` 是卡在节点上的设备序号；`model` 是 `models` 的下标；`memory_mib` 是显存总量（MiB）；`awake_pct` / `sleeping_pct` 是醒着的实例占用、休眠者残留各占显存的百分比（0 到 100，非零不会舍入成 0，两者之和不超过 100）；`flags` 的位：1 被平台外进程占用、2 卡上有实例正在切换（启动、休眠、唤醒、排空中）、4 卡不可用（故障或所有权）；`occupants` 没有时整项省略，否则是 `下标 × 2 + 1（休眠时）` 的整数列表，下标指 `deployments` |
+| `nodes[]` | 按名称排序。`labels` 是运维写的节点标签（没有则省略）；`contention` 是该节点上等位的休眠实例数，加上为在该节点上休眠的部署挂起的请求数，再加上该节点上有卡的部署的让位次数（没有则省略） |
+| `nodes[].cards[]` | 数组 `[index, model, memory_mib, awake_pct, sleeping_pct, state, switching, occupants]`：`index` 是卡在节点上的设备序号；`model` 是 `models` 的下标；`memory_mib` 是显存总量（MiB）；`awake_pct` / `sleeping_pct` 是醒着的实例占用、休眠者残留各占显存的百分比（0 到 100，非零不会舍入成 0，两者之和不超过 100）；`state` 是 `states` 的下标；`switching` 为 1 表示卡上有实例正在切换（启动、休眠、唤醒、排空中），否则 0（取代旧的 `flags` 位）；`occupants` 没有时整项省略（此时数组只有 7 项），否则是 `下标 × 2 + 1（休眠时）` 的整数列表，下标指 `deployments` |
 
 只列节点自己拥有、设备序号有效的卡，与看板一致。
 
-响应来自 server 内存里的缓存，不为每个请求重算：节点、实例、部署的事件让缓存失效，但重建最多每 2 秒一次（节点的状态上报很频繁），没有事件时每 10 秒重建一次以带上网关扣住的请求和一小时的让位数。重建时只读一次节点、一次存活实例、一次部署，再按看板同样的账本算法一次算完，不按节点逐个读。响应带 `ETag`（内容的哈希），带 `If-None-Match` 且内容没变返回 304。
+响应来自 server 内存里的缓存，不为每个请求重算：节点、实例、部署的事件让缓存失效，但重建最多每 2 秒一次（节点的状态上报很频繁），没有事件时每 10 秒重建一次以带上网关挂起的请求和一小时的让位数。重建时只读一次节点、一次存活实例、一次部署，再按看板同样的账本算法一次算完，不按节点逐个读。响应带 `ETag`（内容的哈希），带 `If-None-Match` 且内容没变返回 304。
 
 ### 驻留时间线
 
-`GET /api/v1/scheduling/timeline?node=<uuid>&node=<uuid>&hours=6` 只读。它与看板分开，因为看板每隔几秒刷新，而时间线要读窗口内的事件日志；界面按被打开的节点和所选窗口读一次，约每分钟刷新。`?sharing=1&hours=6` 不带 `node`：只回答全集群出让策略不是 `never` 的部署的统计（`deployments[]`，`nodes` 为空数组），只读这些部署的实例与事件，并缓存约 30 秒；界面用它显示「共卡部署」表。响应：
+`GET /api/v1/scheduling/timeline?node=<uuid>&node=<uuid>&window=6h` 只读。它与看板分开，因为看板每隔几秒刷新，而泳道要读窗口内的事件日志；界面按被打开的节点和所选窗口读一次，约每分钟刷新。窗口可选 `6h`、`24h`（默认 `6h`）。`?sharing=1&window=6h` 不带 `node`：只回答全集群出让策略不是 `never` 的部署、以及窗口内参与过让位后已删除的部署的统计（`deployments[]`，`nodes` 为空数组），窗口可选 `15m`、`1h`、`6h`、`24h`（默认 `6h`），缓存约 30 秒；界面用它显示「共卡部署」表。两种读法的统计都不读事件日志：`sharing=1` 是各部署在整个集群里的值，带 `node` 只统计这些节点上的副本，响应的 `scope` 说明是哪一种；可选的窗口由响应的 `windows` 给出，界面据此显示，不另存一份。旧参数 `hours=6|24` 仍可用，等同 `window=6h|24h`。响应：
 
 ```json
 {
-  "window": {"from": "2026-10-28T06:00:00Z", "to": "2026-10-28T12:00:00Z", "hours": 6},
+  "scope": "node",
+  "window": {"from": "2026-10-28T06:00:00Z", "to": "2026-10-28T12:00:00Z", "hours": 6, "key": "6h", "seconds": 21600},
+  "windows": [{"key": "6h", "seconds": 21600}, {"key": "24h", "seconds": 86400}],
   "nodes": [{
     "uuid": "…", "name": "host2",
     "gpus": [{
@@ -1028,20 +1037,53 @@ macOS 忽略 `no_systemd`。
   }],
   "deployments": [{
     "deployment_id": 7, "deployment": "qwen", "yield_policy": "timeslice",
-    "awake_seconds": 10800, "awake_share": 0.5, "switches": 3, "yielded": 1, "yielded_to": 1, "wakes": 2,
-    "held_requests": 4, "wait_p50_ms": 4200, "wait_p95_ms": 31000
+    "awake_seconds": 10800, "awake_share": 0.5, "present_seconds": 21600,
+    "switches": 3, "yielded": 1, "yielded_to": 1, "wakes": 2,
+    "held_requests": 4, "wait_p50_ms": 4200, "wait_p95_ms": 31000,
+    "cards": [{"node_id": 3, "node_uuid": "5f0c…", "node": "gpu3", "gpus": [0]}]
   }]
 }
 ```
 
 | 字段 | 含义 |
 |---|---|
-| `window` | 窗口：`hours`（6 或 24）、`from`、`to`（现在） |
+| `scope` | `deployments[]` 里的数统计的范围：带 `node` 时为 `node`（只统计部署在这些节点上的副本），`sharing=1` 时为 `fleet`（部署的全部副本）；界面据此显示「只统计本节点上的副本」的提示，不自行推断 |
+| `window` | 窗口：`key`（`windows` 之一）、`seconds`（长度）、`hours`（整小时数，不足一小时的窗口为 0）、`from`、`to`（现在） |
+| `windows` | 这一读法可选的窗口（`key`、`seconds`），按界面显示的顺序：带 `node` 时 `6h`、`24h`，`sharing=1` 时 `15m`、`1h`、`6h`、`24h` |
 | `nodes[].gpus[]` | 与看板同样的卡（`index`），`segments[]` 从旧到新；`truncated` 为 true 表示只保留了最近 200 段 |
 | `segments[]` | 一个实例在一段时间里占着这张卡：`deployment_id`、`deployment`、`instance`、`state`（`awake` / `asleep` / `switching` / `starting`）、休眠时的 `level`（1 或 2）、`from`、`to`（都落在窗口内）；多卡实例在每张卡上各出现一次 |
-| `deployments[]` | 窗口内占过这些卡、出让策略不是 `never` 的部署（带各自的 `yield_policy`）：`awake_seconds`（至少一个副本醒着的时间）、`awake_share`（占窗口，0 到 1）、`switches`（`yielded` + `wakes`）、`yielded`（为别的部署让出卡而休眠）、`yielded_to`（别的部署为它让出）、`wakes`（平台唤醒它）、`held_requests`（网关为等它唤醒而扣住的请求数）、`wait_p50_ms` / `wait_p95_ms`（这些请求的等待，近似值，没有被扣住的请求或网关不保留指标时省略） |
+| `deployments[]` | 窗口内占过这些卡、出让策略不是 `never` 的部署（带各自的 `yield_policy`），以及窗口内让出过卡或被让过卡、此后已删除的部署（`deployment_deleted: true`，`deployment` 是它留下的名字，`yield_policy` 为空字符串，因为删除后不保留）：`awake_seconds`（至少一个副本醒着的时间）、`present_seconds`（`fleet`：部署在窗口内存在的时长，从 max(窗口起点, 部署创建时间与首个实例时间中较早者) 到 min(现在, 删除时间)，已删除的部署不保留创建时间，按它的实例在窗口内最早出现的时间算，删除时间未知时按最后一段的结束；`node`：窗口内至少一个副本在这些节点上占着卡的时长，即这些节点泳道上它各段的并集）、`awake_share`（`awake_seconds` / `present_seconds`，0 到 1，`present_seconds` 为 0 时为 0）、`switches`（`yielded` + `wakes`）、`yielded`（为别的部署让出卡而休眠，驻留仲裁的抢占与运维的让位唤醒都算，与总览的 `yields_last_hour` 同一口径）、`yielded_to`（别的部署为它让出，按事件的 `for_deployment` 计，让出者已删除也计）、`wakes`（平台唤醒它）、`held_requests`（网关为等它唤醒而挂起的请求数）、`wait_p50_ms` / `wait_p95_ms`（这些请求的等待，近似值，没有被挂起的请求或网关不保留指标时省略）、`cards`（各副本此刻所在的节点与卡，按节点：`node_id`、`node_uuid`（节点已不存在时省略）、`node`（节点显示名，节点已不存在时为空）、`gpus`；没有放置时为空数组）。`scope` 为 `fleet` 时这些数（切换计数、`awake_seconds`、`present_seconds`）是部署自身在整个集群里的值，来自[调度活动](#调度活动)的内存汇总；为 `node` 时只统计部署在这些节点上的副本：`awake_seconds` 与 `present_seconds` 由与泳道同一份分段算出，`yielded`、`yielded_to`、`wakes` 来自调度活动内存里按节点记下的计数（事件涉及的卡在这些节点上才计，同时涉及多个所列节点的事件只计一次；最近 24 小时都在内存里，不新增持久化）。带 `node` 时只列出在这些节点的卡上出现过的部署；`held_requests`、等待分位与 `cards` 两种范围相同：网关为部署而不是为某个副本挂起请求，`cards` 列出它所有副本此刻所在的节点与卡 |
 
-时间线由实例记录与事件日志推导，移除实例时记录的 `INSTANCE_REMOVED` 事件（`kind` 为 `residency`，参数 `node_id`、`gpus`）说明它占过的节点与卡。语义与限制见[使用调度中心](../how-to/scheduling-center.md#驻留时间线)。
+泳道由实例记录与事件日志推导，移除实例时记录的 `INSTANCE_REMOVED` 事件（`kind` 为 `residency`，参数 `node_id`、`gpus`）说明它占过的节点与卡。语义与限制见[使用调度分析](../how-to/scheduling-center.md#驻留时间线)。
+
+### 调度活动
+
+`GET /api/v1/scheduling/activity?window=24h` 只读，按原因堆叠的调度活动与切换最频繁的卡。`window` 可选 `15m`、`1h`、`6h`、`24h`（默认）、`7d`，桶长依次为 1 分钟、1 分钟、5 分钟、15 分钟、1 小时；也可以用 `since`、`until`（RFC 3339，`until` 缺省为现在，晚于现在按现在算，范围至多 1825 天）给出自定义范围，服务端取能让桶数不超过约 200 的最短桶长（1、5、15、30 分钟，1、3、6、12 小时，1 天），且不短于范围开头所在那段数据的粒度：最近 24 小时按分钟，统计按小时保留期以内按小时，更早按天。响应缓存约 30 秒。
+
+```json
+{
+  "from": "2026-10-30T12:00:00Z", "to": "2026-10-31T12:03:21Z", "bucket_seconds": 900,
+  "reasons": [
+    {"key": "idle_yield", "count": 120}, {"key": "rank_preemption", "count": 34},
+    {"key": "timeslice_turn", "count": 410}, {"key": "operator_yield", "count": 2},
+    {"key": "scheduled", "count": 8}, {"key": "placement", "count": 5}, {"key": "failure", "count": 3},
+    {"key": "queued", "count": 17}
+  ],
+  "buckets": [{"start": "2026-10-30T12:00:00Z", "counts": [1, 0, 5, 0, 0, 1, 0, 0]}],
+  "top_cards": [{"node_uuid": "5f0c…", "node": "gpu3", "gpu_index": 2, "switches": 61}],
+  "beyond_retention": false
+}
+```
+
+| 字段 | 含义 |
+|---|---|
+| `from`、`to`、`bucket_seconds` | 第一个桶的起点（按桶长对齐，可能略早于请求的起点；一天的桶按统计时区的日界对齐）、范围的终点、桶长（秒） |
+| `reasons[]` | 全部原因，按堆叠顺序，带范围内的合计：`idle_yield`（驻留仲裁让闲置的占卡者让卡）、`rank_preemption`（排位更高的部署抢占可抢占的占卡者；没有写明原因的抢占也算在这里）、`timeslice_turn`（同级部署轮流使用，占卡者用满了它的时间片）、`operator_yield`（运维的让位唤醒，`YIELDED_FOR_WAKE`）、`scheduled`（定时计划的休眠、唤醒与改副本数）、`placement`（放置与迁移：平台把新副本放到节点上 `UNIT_PLACED`、把副本从运维排空的节点迁出 `NODE_DRAIN_MOVED`）、`failure`（副本重建、节点失联迁移及其回退与无处可迁、重试预算用尽、滚动重启停住、唤醒等位超时、自动指令失败）、`queued`（部署放不下 `DEPLOYMENT_UNSCHEDULABLE`、唤醒开始等位 `WAKE_WAITING`）。请求或恢复触发的唤醒（让位的另一半，已在让出的一侧计过，仍计入卡的切换）与运维指令不计入任何原因；节点失联后的迁移 `NODE_REPLACED` 属于 `failure` |
+| `buckets[]` | 从 `from` 起每个桶一项（没有事件的桶也在），`counts` 与 `reasons` 同序 |
+| `top_cards[]` | 范围内切换最频繁的至多 20 张卡，多者在前：`node_uuid`、`node`（节点显示名，节点已不存在时为空）、`gpu_index`、`switches`（卡上的让卡次数加唤醒次数，按事件涉及的实例当时所占的卡计） |
+| `beyond_retention` | 范围开头早于统计按天保留期，那一段没有数据 |
+
+数据从哪来：事件写入时，store 把调度事件和实例的状态、休眠、移除事件交给内存汇总，每个事件只在它所在的那一分钟上加几个数（原因计数、所涉卡、部署的让出 / 被让 / 唤醒及其所在节点），实例状态的变化维护各部署至少一个副本醒着、以及有副本占卡的时间段，不为每个事件写库。内存保留最近约 25 小时；server 启动时按 `(kind, id)` 与实例索引回放一次窗口内的事件。每个整点过后，上一小时整小时写入 stats.db 的三张小时表（各原因的事件数、每张卡的切换数、每个共卡部署的醒着与存在秒数和让出 / 被让 / 唤醒），重写同一小时得到同样的行；server 停止时写入进行中的那一小时。小时表与天表按数据保留设置（`GET /api/v1/data-retention`）的 `stats_hourly_days` / `stats_daily_days` 保留（默认 31 天与 400 天），天表在一天结束后由小时表汇总。读取时最近 24 小时只读内存，更早的部分读小时表或天表（按卡汇总走主键范围），不随事件日志的增长变慢。
 
 ### 调度记录
 
@@ -1057,7 +1099,8 @@ curl --fail-with-body -sS \
 {"items":[
   {"id":812,"created_at":"2026-10-28T09:14:03Z","deployment_id":7,"deployment":"qwen","kind":"schedule",
    "code":"REPLICA_REBUILT","category":"failure",
-   "params":{"replica":1,"attempt":2,"reason":"CUDA out of memory","node":"gpu-3"}},
+   "params":{"replica":1,"attempt":2,"reason":"CUDA out of memory","node":"gpu-3","node_uuids":["5f0c…"]},
+   "nodes":[{"uuid":"5f0c…","name":"gpu-3"}]},
   {"id":810,"created_at":"2026-10-28T09:10:41Z","deployment_id":7,"deployment":"qwen","kind":"schedule",
    "code":"REPLICAS_CHANGED","category":"manual","params":{"from":1,"to":3,"actor":"alice"},"actor":"alice"}
 ]}
@@ -1079,6 +1122,8 @@ curl --fail-with-body -sS \
 | `category` | `auto`：平台按设置或计划自己动手；`failure`：出了问题，平台在应对或已放弃；`manual`：运维下的指令 |
 | `params` | 事件码的参数，同部署时间线 |
 | `actor` | 下指令的用户名；只有 `manual` 事件、且请求带身份时才有，也在 `params.actor` 里 |
+| `nodes` | 事件涉及的节点 `[{uuid?, name}]`，按顺序取第一个有结果的：事件参数里记下的节点（`node_uuids`；较早事件的 `node` 是节点 UUID 或名称，`nodes` 是名称），事件提到的实例（`instance`、`instances`，或事件所在的实例）现在所在的节点；都没有时省略整个字段。只有服务端仍认识的节点带 `uuid`（界面据此打开节点抽屉）；节点已不存在时 `name` 是 UUID 的前 8 位，较早事件只记了名称的就用这个名称。整页的节点一次查询得出 |
+| `target` | 事件为之动作的部署 `{id, name?, deleted?}`，即 `params.for_deployment`（例如让卡时让给的那个部署）；没有则省略整个字段。部署已删除时带 `deleted: true`，名称取自留下的记录，连名称都没有时省略 `name`。界面据此在部署名之外再显示一个可点击的让卡对象 |
 
 哪些事件码属于调度记录、各属哪一类，由 server 一处决定：
 
@@ -1108,6 +1153,9 @@ curl --fail-with-body -sS \
 | `attempt` | 这是第几次尝试 |
 | `reason` | 上一次尝试失败的消息，超过 200 个字符截断 |
 | `node` | 新一次尝试的 leader 所在节点名称 |
+| `node_uuids` | 同一节点的 UUID（列表） |
+
+调度记录收录的事件在写入时带 `node_uuids`（事件涉及的节点 UUID 列表）：提到实例的事件记这些实例当时所在的节点，控制器的节点事件记它涉及的节点（迁出与迁入、失联、前后两次放置、失败尝试所在）；`DEPLOYMENT_UNSCHEDULABLE` 用已有的 `node`（节点 UUID）。对整个部署下的指令（定时休眠、改副本数、滚动重启）不带。逐码说明见[使用调度分析](../how-to/scheduling-center.md#时间线事件)。
 
 读取走 `instance_events` 的 `(kind, id)` 索引，按事件类型各取一页再合并，不扫描整张时间线。
 
@@ -1136,7 +1184,7 @@ curl --fail-with-body -sS \
 
 - `place_on` 可选，仅增加副本时使用：节点 UUID 列表，新副本先在这些节点启动，只管第一次放置，提示保存在 server 内存里。个数多于新增的副本数 400 `REPLICAS_PLACE_ON_TOO_MANY`（`params.count`、`maximum`）；某节点不可用 409 `REPLICAS_PLACE_ON_REFUSED`（`params.node`、`reason`：`unknown`、`offline`、`cordoned`、`requirements`、`no_room`，视情况带 `detail` 或 `code` / `params`）。
 - `remove` 可选，指定缩容时移除哪些实例的副本。这些副本进入 `draining`，处理完请求后退役；不指定时由服务端选择，先选未就绪的，再选最新创建的。
-- 数量必须满足 1 ≤ N ≤ 部署的 `max_replicas`（当前 32），否则报 `REPLICAS_TOO_FEW` / `REPLICAS_TOO_MANY`。
+- 数量必须满足 1 ≤ N ≤ 部署的 `max_replicas`（当前 1024），否则报 `REPLICAS_TOO_FEW` / `REPLICAS_TOO_MANY`。
 - `remove` 多于减少的副本数时返回 400 `REPLICAS_REMOVE_TOO_MANY`；指定的实例没有在承担本部署的副本时返回 400 `REPLICAS_REMOVE_INVALID`。
 - 副本数或指定的实例在请求期间已被改动，例如并发扩缩或实例刚失败：409 `REPLICAS_CHANGED`，不写入任何改动。
 
@@ -1153,7 +1201,7 @@ curl --fail-with-body -sS \
 |---|---|
 | `quick_params` | 按 `/engines` 参数字典声明的类型提交值；显式 `false` 与省略不同 |
 | `quick_params_unset` | 本次明确不继承的参数 key 数组，阻止模板回填；不写入持久化配置 |
-| `placement_mode` | `auto` 由服务端选择节点，`manual` 使用显式节点；省略按 `manual`。单机：只是请求里的说法，部署不存这个字段，手动放置存为节点条件 `gpuworks.ai/node: [node_uuid]`。多机与 PD：`auto` 时服务端在创建时为请求没写的 rank 或单元挑节点（见[自动放置多机与 PD 部署](#自动放置多机与-pd-部署)），部署保存为自动放置，详情的 `placement_mode` 为 `auto` |
+| `placement_mode` | `auto` 由服务端选择节点，`manual` 使用显式节点；省略按 `manual`。单机：只是请求里的说法，部署不存这个字段，手动放置存为节点条件 `gpuworks.ai/node: [node_uuid]`；自动放置的创建可以不带 `node_uuid`，服务端先按评估同样的规则挑一台再照常创建，没有节点放得下时返回 409 `AUTOMATIC_PLACEMENT_UNAVAILABLE`（`params.candidates` 为候选节点数，`reasons` 为各候选的原因码），带了评估选中的 `node_uuid` 则照旧复核，资源变化时返回 `AUTOMATIC_PLACEMENT_STALE`。多机与 PD：`auto` 时服务端在创建时为请求没写的 rank 或单元挑节点（见[自动放置多机与 PD 部署](#自动放置多机与-pd-部署)），部署保存为自动放置，详情的 `placement_mode` 为 `auto` |
 | `target_vendor` | 评估与创建使用同一加速器厂商；存为节点条件 `gpuworks.ai/vendor`。未给时创建按落点节点的厂商补上 |
 | `node_requirements` | 节点条件：`{"<key>": ["<value>", …]}`，同一键的多个值是「其中之一」，不同键「同时满足」。键可以是节点标签，也可以是系统标签（见上「节点标签」）；保留域里不是这八个系统键的一律拒绝（拼错的键不会悄悄匹配 0 台），`gpuworks.ai/vendor` 只能有一个值，网络键的值是网络 ID 或 `management`。多机与 PD 部署逐 rank 列节点，不接受 `gpuworks.ai/node`。错误 `NODE_REQUIREMENTS_INVALID`；所选节点不满足 `NODE_REQUIREMENTS_UNMET`（`params.detail` 写明哪个键） |
 | `yield_policy` | 出让策略，对象，形状同 `PUT /deployments/{id}/yield-policy` 的请求体（`policy` 加参数）；省略按 `never`。`never` 以外的策略要求 `sleepable`，策略不是 `never` 还要求单机部署，否则 400 `YIELD_POLICY_INVALID` / `SLEEP_NOT_ENABLED` / `YIELD_POLICY_SHAPE`。评估按它计算放置：按出让策略共卡的部署睡着时，对不与它共卡的部署仍按全量占用 |
@@ -1281,7 +1329,9 @@ extra_args 解析（`EXTRA_ARGS_INVALID`）、挂载（`MOUNT_CONTAINER_PATH`/`M
 语义保持不变，不能用 `null` 替代明确清除。复合引擎参数只有在适配器能无损识别、
 且完整关闭对应配置时才能从模板移除；未知 connector 或混合配置返回冲突，避免误删其他能力。
 
-自动模式评估返回 `selected_node`、逐节点 `candidates` 与选中节点的 `plan`。
+自动模式评估返回 `selected_node`、逐节点 `candidates` 与选中节点的 `plan`。放不下时 `plan` 和各候选的 `reason` 说的与控制器一致：占卡者让卡后就能放下时是 `waiting_for_yield`，只因休眠者留着卡放不下时是 `reserved_for_sleepers`（按草稿的出让策略算），不再一律是放不下。占卡的部署都睡下就能放下、但出让策略让草稿等不到它们时，评估另外说明：草稿不自动出让时是 `does_not_wait_for_yield`，有占卡者不自动出让时是 `held_by_non_yielding`，参数 `node`、`gpus`、`holders`、`blockers`（见[新部署怎样放到共用的卡上](../how-to/scheduling-center.md#新部署怎样放到共用的卡上)）；这两个原因只出现在评估里。
+
+评估响应另有 `yield_policy_eligible`（`{ok, reason?}`，形状同部署详情的同名字段，`reason` 为 `SLEEP_NOT_ENABLED`、`SLEEP_ENGINE_UNSUPPORTED` 或 `YIELD_POLICY_SHAPE`），按草稿的可休眠、引擎、节点数与是否 PD 算出，就是创建时会做的那个检查，部署表单据此决定能不能选出让策略；草稿的引擎还未确定时不出现。创建部署时表单把选定的出让策略原样发来，不满足时由服务端拒绝（`SLEEP_NOT_ENABLED` / `SLEEP_ENGINE_UNSUPPORTED` / `YIELD_POLICY_SHAPE`）。
 创建时提交 `selected_node.uuid` 作为 `node_uuid`，同时提交 `plan.plan.gpus`
 和 `plan.plan.tp`，并保留标签等原约束。创建会重新校验，原节点、GPU 或约束失效时
 返回冲突，要求重新评估。这套「评估后提交所选节点」的确认只适用于单节点、单副本；多机与 PD 的自动放置
@@ -1393,8 +1443,9 @@ extra_args 解析（`EXTRA_ARGS_INVALID`）、挂载（`MOUNT_CONTAINER_PATH`/`M
 
 | Method | Path | 说明 | 鉴权 |
 |---|---|---|---|
-| GET | `/api/v1/apikeys` | API key 列表（不含明文），含已吊销的 key：已吊销的带 `revoked_at`（UTC 时间），未吊销的不出现该字段 | JWT |
-| POST | `/api/v1/apikeys` | 创建 API key；`name` 去除首尾空白后不能为空，否则返回 400 `API_KEY_NAME_REQUIRED`；明文仅创建响应中返回一次 | JWT |
+| GET | `/api/v1/apikeys` | API key 列表（不含明文），含已吊销的 key：已吊销的带 `revoked_at`（UTC 时间），未吊销的不出现该字段。`all_deployments` 为 true 时可调用全部模型服务；为 false 时只能调用 `deployments`（`[{id,name,served_name}]`）中的部署，这些部署全被删除后列表为空、key 什么都调用不了 | JWT |
+| POST | `/api/v1/apikeys` | 创建 API key；`name` 去除首尾空白后不能为空，否则返回 400 `API_KEY_NAME_REQUIRED`；明文仅创建响应中返回一次。可选 `all_deployments` 与 `deployment_ids` 限定可调用的部署：省略 `all_deployments` 时，`deployment_ids` 为空即全部部署、非空即仅这些部署；`all_deployments` 与 `deployment_ids` 矛盾（true 且非空，或 false 且为空）返回 400 `API_KEY_SCOPE_INVALID`，不存在的部署返回 400 `API_KEY_DEPLOYMENT_UNKNOWN`（`params.ids`） | JWT |
+| PUT | `/api/v1/apikeys/{prefix}/scope` | 修改未吊销 key 的可调用范围，`{"all_deployments":bool,"deployment_ids":[...]}`，`all_deployments` 必填，校验同创建；返回更新后的 key（同列表项）。下一次请求起生效；未知或已吊销的前缀返回 404 `API_KEY_NOT_FOUND` | JWT |
 | DELETE | `/api/v1/apikeys/{prefix}` | 按前缀吊销 API key：立即不能再认证，记录保留（名字留给它的历史用量），前缀不复用；返回 `{"status":"revoked"}`。吊销未知或已吊销的 key 不报错、不改动；所有 key 都吊销后网关回到匿名访问（与没有 key 时相同） | JWT |
 
 ## Platform Tokens（平台 API 令牌）
@@ -1606,7 +1657,7 @@ server 只有渠道版本更新时才标记 `update_available`。两份目录还
 |---|---|---|---|
 | GET | `/api/v1/metrics/query` | 时序指标查询（`metric`、`range`、`step`、`node`/`gpu`/`gpu_uuid`/`instance`/`benchmark`/`point`/`iface`/`hca`/`role` matcher）。返回 `{"items": [{"labels": {…}, "points": [[unix_ms, value], …]}], "total"}`，每个 label 组合一条序列。没有数据且指标名不在指标目录（`GET /api/v1/monitor/metrics`）里时回 400 `METRIC_UNKNOWN`，`params.similar` 给出最接近的已登记名；目录里有但窗口内没有数据时正常返回空 | JWT |
 | GET | `/api/v1/logs/search` | 日志检索/tail（`q`、`instance` 前缀、`instances`（逗号分隔 uuid 精确匹配集合，最多 64 个，与 `instance` 互斥）、`node`、`level`、`source`、`from`/`to`、`cursor_ts`/`cursor_id`、`limit`、`with_total`；按到达序倒序分页；未指定时间边界表示该方向不限制，均未指定时查询所有尚未清理的日志；列表与总数使用同一范围，页面默认显式传最近 24h）。返回 `{"items": [{"id", "instance", "node", "level", "source", "time_ms", "line"}], "total", "total_capped", "truncated"}`（后三项按需出现） | JWT |
-| GET | `/api/v1/logs/context` | 单条命中的上下文窗口（`instance`、`ts`、`id`、`before`/`after` 取值 0–500），等价 grep -C。返回 `{"items": [日志行], "match_index"}`；`match_index` 是锚点行在 `items` 中的下标，锚点行不在该分区时（已被保留策略清理，或 `ts` 与 `id` 不同天）为 `-1`，此时 `items` 仍是该位置附近真实存在的行，接口仍返回 200。调用方必须判 `match_index >= 0` 再取值，或只用它做比较 | JWT |
+| GET | `/api/v1/logs/context` | 单条命中的上下文窗口（`instance`、`ts`、`id`、`before`/`after` 取值 0–1000），等价 grep -C。返回 `{"items": [日志行], "match_index"}`；`match_index` 是锚点行在 `items` 中的下标，锚点行不在该分区时（已被保留策略清理，或 `ts` 与 `id` 不同天）为 `-1`，此时 `items` 仍是该位置附近真实存在的行，接口仍返回 200。调用方必须判 `match_index >= 0` 再取值，或只用它做比较 | JWT |
 | GET | `/api/v1/logs/histogram` | 时间桶 × 级别计数（同 search 过滤参数，含 `instances`，+ `bucket` 毫秒，1s–24h）。返回 `{"items": [{"start_ms", "counts": {"error": N, …}}], "total"}`；桶按 UTC 对齐 | JWT |
 | GET | `/api/v1/monitor/overview` | 监控中枢集群层快照（`range` ∈ `15m\|1h\|6h\|24h\|168h`，默认 `1h`，或自选时间段 `from`+`to`（见下文）；信号行（只报事实：数值、明细与近期走势，不带严重程度）、服务表（每行带该部署的 `health` 健康检查，按健康状况排序：失败、超时、无可用副本、检查中、正常、未开启，同档按名称）、显存条、集群 tok/s、容量事件） | JWT |
 | GET | `/api/v1/monitor/deployments/{id}` | 服务监控快照；`range` 为 `15m/1h/6h/24h/168h`（默认 `1h`），也可使用 `from`+`to`。含请求、延迟、副本、`health`、供日志查询的 `log_instances`、指标来源 `sources`（engine/gateway）；PD 另有 `pd` 的降级、Prefill 统计与 `kv_transfer`。未知部署 404；已删除的部署 404 `MONITOR_DEPLOYMENT_DELETED`，`params` 含 `deployment_id`、`name`、`served_name`。见[服务监控返回值](#服务监控返回值) | JWT |
@@ -1692,9 +1743,9 @@ trace id 为 32 位十六进制、不区分大小写，查询该 trace 的全部
 
 | Method | Path | 说明 | 鉴权 |
 |---|---|---|---|
-| GET | `/api/v1/data-retention` | 数据保留设置：`{value, limits, server_time_zone}`。`value` 的字段：`metrics_hours`、`logs_hours`（指标原始样本、容器日志）、`request_log_days`、`request_log_max_mb`（逐请求记录 ux.db，天数与容量哪个先到按哪个清理，当天不清）、`usage_hourly_days`、`usage_daily_days`（Token 用量，主库）、`stats_hourly_days`、`stats_daily_days`（服务质量、GPU 利用、卡时，stats.db）、开关 `quality`、`gpu`、`gpu_time`、统计时区 `time_zone`（IANA 名）。`limits` 是每个数值字段的 `{min, max}` | JWT |
+| GET | `/api/v1/data-retention` | 数据保留设置：`{value, limits, server_time_zone}`。`value` 的字段：`metrics_hours`、`logs_hours`（指标原始样本、容器日志）、`request_log_days`、`request_log_max_mb`（逐请求记录 ux.db，天数与容量哪个先到按哪个清理，当天不清）、`usage_hourly_days`、`usage_daily_days`（Token 用量，主库）、`stats_hourly_days`、`stats_daily_days`（服务质量、GPU 利用、卡时与调度活动，stats.db）、开关 `quality`、`gpu`、`gpu_time`（调度活动始终统计，没有开关）、统计时区 `time_zone`（IANA 名）。`limits` 是每个数值字段的 `{min, max}` | JWT |
 | PUT | `/api/v1/data-retention` | 整体替换设置并立即生效（ux.db 的上限立即改，清理与按天汇总立即跑一轮）。body 必须给全 `value` 的每个字段、不能有多余字段；超出 `limits`、按天保留短于按小时、时区不存在时 400 `FIELD_INVALID`（`field`、`detail`）且不写入。改短的部分在后台分批删除。返回同 GET。`PUT /settings/data_retention` 回 400 `SETTING_HAS_OWN_ROUTE`，`GET /settings` 不含它 | admin |
-| GET | `/api/v1/data-retention/status` | 各类数据现在的情况：`stores[]`（`kind` ∈ `metrics`/`logs`/`requests`/`usage`/`quality`/`gpu`/`gpu_time`，`file` 所在文件（`main` 是主库），`file_bytes` 文件大小（主库为 `null`；`quality`/`gpu`/`gpu_time` 同在 stats.db，报同一个数），`hourly_rows`/`daily_rows`（长期统计的行数，原始数据为 `null`），`earliest_ms` 最早还能查到的时间）、`live_since_ms`（开始实时累加的时间，之前的数据来自升级时的一次性补算）、`backfill`（`usage_done`/`usage_through_ms`/`quality_done`/`quality_through_ms`：补算进行到哪）、`retain`/`rollup`（最近一次清理、按天汇总的 `at_ms` 与 `error`）、`usage_flush`（最近一次 Token 用量写入的 `at_ms`、`rows`、`ms`、`error`） | JWT |
+| GET | `/api/v1/data-retention/status` | 各类数据现在的情况：`stores[]`（`kind` ∈ `metrics`/`logs`/`requests`/`usage`/`quality`/`gpu`/`gpu_time`/`scheduling`，`file` 所在文件（`main` 是主库），`file_bytes` 文件大小（主库为 `null`；`quality`/`gpu`/`gpu_time`/`scheduling` 同在 stats.db，报同一个数），`hourly_rows`/`daily_rows`（长期统计的行数，原始数据为 `null`），`earliest_ms` 最早还能查到的时间）、`live_since_ms`（开始实时累加的时间，之前的数据来自升级时的一次性补算）、`backfill`（`usage_done`/`usage_through_ms`/`quality_done`/`quality_through_ms`：补算进行到哪）、`retain`/`rollup`（最近一次清理、按天汇总的 `at_ms` 与 `error`）、`usage_flush`（最近一次 Token 用量写入的 `at_ms`、`rows`、`ms`、`error`） | JWT |
 
 统计查询（JWT）。以下时间范围参数与响应中的 `range` 字段适用于 `usage`、`quality`、`gpus`、`gpu-time`。`key-usage` 固定统计今天与近 7 天，无需 `from`、`to`，也不返回 `range`。上述四个按时间范围查询的接口使用以下公共参数：`from`、`to`（Unix 毫秒，必填）、`granularity`（`hour` / `day`，不填时跨度不超过 2 天按小时、否则按天；按小时最多 7 天，按天最多 1825 天）。按天时范围扩展到统计时区的整天；已汇总的天读按天数据，没汇总的天（今天，或 server 停机时跨过的天）由它的小时数据现算。这四个接口的响应都带 `range`：`from_ms`、`to_ms`、`granularity`、`time_zone`、`earliest_ms`（这一粒度最早还有数据的桶）、`live_since_ms`（之前的桶来自升级时的一次性补算：抽样行按权重计，当时网关不识别 usage 的 `/v1/messages`、`/v1/responses` 请求没有 token）、`buckets`（各桶起点，`series` 与它一一对应）。参数不合法 400 `ANALYTICS_RANGE_INVALID` / `ANALYTICS_RANGE_TOO_LONG` / `ANALYTICS_VALUE_INVALID`（`field`、`detail`）。
 
@@ -1778,7 +1829,7 @@ server 组装上下文后运行带只读工具的 agent 循环。工具以提问
 
 | Method | Path | 说明 | 鉴权 |
 |---|---|---|---|
-| GET | `/api/v1/playground/models` | 可在 Playground 调用的已部署模型列表，不包含全局设置中的 AI 助手外部模型；`html_preview.allow_network` 是 HTML 预览的网络策略（来自安全设置） | JWT |
+| GET | `/api/v1/playground/models` | 可在 Playground 调用的已部署模型列表，不包含全局设置中的 AI 助手外部模型；`html_preview.allow_network` 是 HTML 预览的网络策略（来自安全设置）；每项模型有 `sleeping`（布尔），休眠中且请求能唤醒它（部署可休眠、有一个休眠实例不是运维或定时计划下的保持休眠）时另有 `wakes_on_request: true`（否则省略）：这样的模型收到请求会由网关挂起、唤醒后放行，没有它的休眠模型请求回 503，须先唤醒；试验场据此提示 | JWT |
 | GET | `/api/v1/playground/openapi.json` | Playground 代理的 OpenAPI 描述 | JWT |
 | ANY | `/api/v1/playground/v1/*` | Playground 内部代理（管理 JWT 保护，非 `/v1` 网关 key） | JWT |
 
@@ -1799,10 +1850,11 @@ Playground 与 `/v1` 网关的边界、外部模型命名 `external:<config-id>:
 | Method | Path | 说明 | 鉴权 |
 |---|---|---|---|
 | GET | `/api/v1/batches` | 批处理任务列表，最新优先，返回分页结构 `{items,page,page_size,total}`。`state` 为 8 种状态之一，多个值以逗号分隔；非法值返回 400 `LIST_FILTER_INVALID`；不支持 `q`，带 `q` 同样返回 400 `LIST_FILTER_INVALID`。管理员看到所有用户的任务，其他用户只看到自己的。列表项不含 `input_filename` | JWT |
+| GET | `/api/v1/batches/dictionary` | 创建批处理任务可用的字典：`endpoints`、`completion_window_hours`（`min`/`max`/`default`）、`max_file_bytes`、`max_file_lines`、`statuses`（列表筛选顺序）、`output_retention_days`，以及 `models`：运行中部署的对外模型名及其状态 `{name, state}`，`state` 为 `served`（在服务）、`asleep`（休眠，请求会唤醒）、`asleep_held`（手动或定时休眠，请求不会唤醒），在服务的排在前面，其后按名称；与创建时的模型校验同一判定，同一个名字有多个部署时取其中最好的。控制台创建对话框的选项都来自这里，客户端不自行推断 | JWT |
 | GET | `/api/v1/batches/{id}` | 批处理任务详情，含 `input_filename`；不存在或不是自己的任务（管理员除外）返回 404 `BATCH_NOT_FOUND` | JWT |
 | GET | `/api/v1/batches/{id}/files/{kind}` | 下载任务的文件，`kind` 为 `input`、`output`、`error`，响应是 JSON Lines（`application/x-ndjson`，带附件文件名）；`kind` 非法返回 400 `BATCH_REQUEST_INVALID`，文件不存在或已删除返回 404 `BATCH_NOT_FOUND` | JWT |
-| POST | `/api/v1/batches` | 创建批处理任务：`multipart/form-data`，字段 `file`（JSONL）、`endpoint`，可选 `completion_window`（`1h` 到 `72h` 的整小时，默认 `24h`，不合法返回 400 `BATCH_REQUEST_INVALID`，`params.field` 为 `completion_window`）和 `model`（指定后每个请求的 `body.model` 都改成它，必须是某个运行中或休眠中的部署的对外模型名，否则 400 `BATCH_MODEL_UNKNOWN`）；上传时逐行校验，成功返回 201 和任务对象，所选模型的部署是手动休眠（请求不会唤醒）时响应带 `warnings`。任务属于当前登录用户 | JWT(admin) |
-| POST | `/api/v1/batches/{id}/cancel` | 取消任务，返回带 `cancelling` 状态的任务对象；已结束的任务返回 409 `BATCH_NOT_CANCELLABLE` | JWT(admin) |
+| POST | `/api/v1/batches` | 创建批处理任务：`multipart/form-data`，字段 `file`（JSONL），可选 `endpoint`（不传时取文件各行共同的 `url`；各行 `url` 不同则返回 400 `BATCH_FILE_INVALID`，`reason` 为 `mixed_endpoints`，`line` 是第一处与首行不同的行）、`completion_window`（`1h` 到 `72h` 的整小时，默认 `24h`，不合法返回 400 `BATCH_REQUEST_INVALID`，`params.field` 为 `completion_window`）和 `model`（指定后每个请求的 `body.model` 都改成它，必须是某个运行中或休眠中的部署的对外模型名，否则 400 `BATCH_MODEL_UNKNOWN`）；上传时逐行校验，成功返回 201 和任务对象，所选模型（未指定 `model` 时是文件里各行的模型）的部署是手动休眠（请求不会唤醒）时响应带 `warnings`（`BATCH_MODEL_SLEEP_HELD` 或 `BATCH_FILE_MODELS_SLEEP_HELD`）。未指定 `model` 时，文件里有模型没有运行中或休眠中的部署使用，返回 400 `BATCH_FILE_MODELS_UNKNOWN`（`params` 为 `{models, more}`），不创建任务。任务属于当前登录用户 | JWT(admin) |
+| POST | `/api/v1/batches/{id}/cancel` | 取消任务，返回带 `cancelling` 状态的任务对象；只有 `validating` 和 `in_progress` 的任务可以取消（对象的 `cancellable` 为 `true`），已结束的或正在 `finalizing`（写结果文件）的任务返回 409 `BATCH_NOT_CANCELLABLE` | JWT(admin) |
 
 读取（GET）使用只读平台令牌即可；写入需要管理员角色（否则 403 `ADMINISTRATOR_REQUIRED`）和读写范围的平台令牌（否则 403 `PLATFORM_TOKEN_READ_ONLY`）。
 
@@ -1812,6 +1864,7 @@ Playground 与 `/v1` 网关的边界、外部模型命名 `external:<config-id>:
 |---|---|
 | `id`、`endpoint`、`status` | 任务 ID、接口（`/v1/chat/completions`、`/v1/completions`、`/v1/embeddings` 之一）、状态 |
 | `status` | `validating`、`in_progress`、`finalizing`、`completed`、`failed`、`expired`、`cancelling`、`cancelled` |
+| `cancellable` | 取消接口此刻会不会接受：`validating` 或 `in_progress` 时为 `true`，由 server 判定，客户端据此显示取消按钮，不自己按状态推断 |
 | `input_file_id`、`input_filename` | 输入文件 ID；文件名只在详情、创建和取消的响应里出现 |
 | `output_file_id`、`error_file_id` | 输出、错误文件 ID，文件存在后才有 |
 | `completion_window` | 创建时选的完成时限，`1h` 到 `72h` 的整小时，默认 `24h` |
@@ -1819,7 +1872,8 @@ Playground 与 `/v1` 网关的边界、外部模型命名 `external:<config-id>:
 | `request_counts` | `{total, completed, failed}`，约每 5 秒更新一次；重试中的请求两者都不计 |
 | `metadata` | 字符串到字符串的对象，没有时为 `{}` |
 | `failure` | `{code, message}`，仅 `failed` 状态有 |
-| `warnings` | 创建时不阻止任务的提示，只在创建的响应里出现，形如 `[{"code":"BATCH_MODEL_SLEEP_HELD","params":{"model":"qwen3-offline"}}]`：指定的模型的部署被人工或定时计划休眠，请求不会唤醒它 |
+| `output_expires_at` | 输出文件和错误文件被删除的时间（任务结束时间加保留期，默认 30 天，保留天数见字典的 `output_retention_days`）；任务还在运行或没有写出这两个文件时不出现，早于现在表示文件已删除 |
+| `warnings` | 创建时不阻止任务的提示，只在创建的响应里出现，形如 `[{"code":"BATCH_MODEL_SLEEP_HELD","params":{"model":"qwen3-offline"}}]`：指定的模型的部署被人工或定时计划休眠，请求不会唤醒它；没有指定模型时，文件里有这样的模型则是 `BATCH_FILE_MODELS_SLEEP_HELD`，`params` 为 `{models, more}` |
 | `user_id`、`api_key_id` | 创建者；从控制台创建时没有 `api_key_id` |
 | `created_at`、`expires_at` | 创建时间与过期时间（创建时间加完成时限） |
 | `in_progress_at`、`finalizing_at`、`completed_at`、`failed_at`、`expired_at`、`cancelling_at`、`cancelled_at` | 各阶段到达的时间 |
@@ -1833,11 +1887,12 @@ Playground 与 `/v1` 网关的边界、外部模型命名 `external:<config-id>:
 | 错误码 | 状态 | 含义 |
 |---|---|---|
 | `BATCH_NOT_FOUND` | 404 | 任务或文件不存在，或不属于调用者 |
-| `BATCH_NOT_CANCELLABLE` | 409 | 任务已结束 |
+| `BATCH_NOT_CANCELLABLE` | 409 | 任务已结束，或正在 `finalizing` 写结果文件，不再接受取消 |
 | `BATCH_FILE_INVALID` | 400 | 输入文件无效；`params` 为 `{line, reason, detail}`，`line` 为 0 表示整个文件，`reason` 是下文的校验错误码 |
 | `BATCH_FILE_TOO_LARGE` | 413 | 文件超过上限；`params` 为 `{limit_mb}` |
-| `BATCH_MODEL_UNKNOWN` | 400 | 创建时指定的 `model` 没有运行中或休眠中的部署使用；`params` 为 `{model}`。已停止的部署不算 |
-| `BATCH_REQUEST_INVALID` | 400 | 请求的某个字段无效；`params` 为 `{field, reason}`，例如不是 multipart、缺少 `file`、`endpoint` 不被支持、`endpoint` 与文件内的 `url` 不一致 |
+| `BATCH_MODEL_UNKNOWN` | 400 | 创建时指定的 `model` 没有运行中或休眠中的部署使用，`params` 为 `{model}`。已停止、已删除的部署不算 |
+| `BATCH_FILE_MODELS_UNKNOWN` | 400 | 没有指定 `model` 时，输入文件各行的模型里有的没有运行中或休眠中的部署使用；`params` 为 `{models, more}`，`models` 是前 5 个模型名的列表，`more` 是还有几个（查找在发现几十个未知模型后停止，可能是下限），名字由客户端按界面语言拼接。对应的警告码是 `BATCH_FILE_MODELS_SLEEP_HELD`，`params` 同形 |
+| `BATCH_REQUEST_INVALID` | 400 | 请求的某个字段无效；`params` 为 `{field, reason}`，例如不是 multipart、缺少 `file`、`endpoint` 不被支持、传了的 `endpoint` 与文件内的 `url` 不一致 |
 
 文件保存在 server 数据目录的 `batch-files/` 下。
 
@@ -1875,7 +1930,7 @@ Playground 与 `/v1` 网关的边界、外部模型命名 `external:<config-id>:
 | `endpoint` | 必填，`/v1/chat/completions`、`/v1/completions`、`/v1/embeddings` 之一，且等于文件内每一行的 `url`，否则 400 `endpoint_mismatch` |
 | `completion_window` | 必填，`"24h"`（OpenAI 的取值）或 `"1h"` 到 `"72h"` 的整小时（gpuworks 扩展，不带前导零），否则 400 `invalid_completion_window`（`param` 为 `completion_window`）。`expires_at` 是 `created_at` 加这段时间 |
 | `metadata` | 可选，字符串到字符串的对象，最多 16 个键，键 1–64 个字符，值至多 512 个字符，否则 400 `invalid_metadata` |
-| `model` | gpuworks 扩展，可选。对外模型名，每个请求发往它，行里自己的 `body.model` 被替换；省略则各行用自己的模型。必须是某个运行中或休眠中的部署的对外模型名，否则 400 `model_not_found`（`param` 为 `model`）。该部署被人工或定时计划休眠（请求不会唤醒）时仍然接受，创建的响应带 `warnings` |
+| `model` | gpuworks 扩展，可选。对外模型名，每个请求发往它，行里自己的 `body.model` 被替换；省略则各行用自己的模型。必须是某个运行中或休眠中的部署的对外模型名，否则 400 `model_not_found`（`param` 为 `model`）。该部署被人工或定时计划休眠（请求不会唤醒）时仍然接受，创建的响应带 `warnings`。省略 `model` 时，平台在创建时读一遍输入文件，其中有模型没有运行中或休眠中的部署使用（已停止或已删除的不算），返回 400 `model_not_found`，`param` 为 `input_file_id`，不创建任务，文件保留可重用；错误体如下，模型名最多列 5 个，更多以 `, ...` 结尾：`{"error":{"message":"The input file names models that no active deployment serves: A, B. Set a model to send every request to, or deploy these models first","type":"invalid_request_error","param":"input_file_id","code":"model_not_found"}}`。指定了 `model` 时不检查文件里的模型（未知的 `model` 仍是 400 `model_not_found`，`param` 为 `model`）；创建之后才下线的模型在运行时逐个请求失败 |
 
 任务对象的时间都是 Unix 秒，还没到达的为 `null`：
 
@@ -1883,7 +1938,7 @@ Playground 与 `/v1` 网关的边界、外部模型命名 `external:<config-id>:
 {"id":"batch_5a1e9d03c7b24f6e8d2a4b19","object":"batch","endpoint":"/v1/chat/completions","errors":null,"input_file_id":"file-3f9c2a7e1b6d4c8a90e5d721","completion_window":"24h","status":"in_progress","output_file_id":null,"error_file_id":null,"created_at":1790000010,"in_progress_at":1790000012,"expires_at":1790086410,"finalizing_at":null,"completed_at":null,"failed_at":null,"expired_at":null,"cancelling_at":null,"cancelled_at":null,"request_counts":{"total":1000,"completed":410,"failed":3},"metadata":null}
 ```
 
-- 指定了 `model` 的任务对象多一个 `model` 字段（没指定时不出现）；创建的响应在需要时多一个 `warnings` 数组 `[{"code":"model_sleep_held","message":"…","param":"model"}]`，其他读取不带。这两个字段是 gpuworks 扩展，官方 SDK 会忽略它们。
+- 指定了 `model` 的任务对象多一个 `model` 字段（没指定时不出现）；创建的响应在需要时多一个 `warnings` 数组 `[{"code":"model_sleep_held","message":"…","param":"model"}]`（没有指定 `model`、文件里的模型被保持休眠时，`param` 为 `input_file_id`，消息列出这些模型），其他读取不带。这两个字段是 gpuworks 扩展，官方 SDK 会忽略它们。
 - `id` 是 `batch_` 加 24 位十六进制；没有 `metadata` 时为 `null`；`errors` 平时为 `null`，`failed` 状态下是 `{"object":"list","data":[{"code","message","param":null,"line":null}]}`。
 - `status` 取值：`validating`（排队等执行名额，全 server 同时最多执行 32 个任务）、`in_progress`、`finalizing`、`completed`、`failed`（只因平台故障，例如输入文件消失）、`expired`（超过完成时限，没有结果的请求写入错误文件，错误码 `batch_expired`）、`cancelling`、`cancelled`。
 - 取消：不再发送新请求，在途请求最多再等 2 分钟，之后任务以 `cancelled` 结束，已有结果留在输出文件和错误文件里。

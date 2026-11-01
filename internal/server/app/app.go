@@ -86,8 +86,9 @@ type App struct {
 	// notices the console's notice bell.
 	usage   *usageReporter
 	notices *noticeService
-	// scaleReplicas sets a deployment's replica count as the API does, for
-	// the scheduling automation's replica schedules.
+	// scaleReplicas sets a deployment's replica count as the API does
+	// (planning.Scaling, which the handlers share), for the scheduling
+	// automation's replica schedules.
 	scaleReplicas func(deploymentID uint, role string, replicas int) error
 }
 
@@ -374,6 +375,7 @@ func New(cfg Config, log *slog.Logger) (*App, error) {
 		Monitor:              monitorService{monSvc},
 		Telemetry:            telemetry,
 		Analytics:            newAnalyticsAPI(ops, st, obs, cfg.DataDir),
+		SchedulingActivity:   ops.sched,
 		Experience:           experienceLauncher(cfg, log),
 		UsageReport:          a.usage,
 		Notices:              a.notices,
@@ -384,7 +386,7 @@ func New(cfg Config, log *slog.Logger) (*App, error) {
 		Recovery:             recoverer,
 	}
 	handler := api.Router(apiDeps, auth.SessionPolicy{IdleTimeout: cfg.SessionIdleTimeout, MaxLifetime: cfg.SessionMaxLifetime, Proxies: proxies, Cookie: cfg.sessionCookie()})
-	a.scaleReplicas = api.ReplicaScaler(apiDeps)
+	a.scaleReplicas = planning.Scaling{Store: st, Resolve: networks.Resolve, Online: h.Online}.ScaleScheduled
 	handler = api.WithSecurityHeaders(proxies, accessLogHandler(log, a.routeByFunction(cfg.experienceGuard(handler))))
 
 	// No read/write timeouts: the agent WS and SSE are long-lived. The WS
@@ -462,7 +464,9 @@ func (a *App) Run(ctx context.Context) error {
 	goBG(func() { runPDVerifier(ctx, a.store, a.proxy, a.obs.tsdb) })
 	// Background: schedules, waiting wakes, residency.
 	waits := a.ctrl.PlacementWaits()
-	goBG(func() { runAutomation(ctx, a.store, a.proxy, a.proxyAcct, a.obs.tsdb, a.scaleReplicas, waits, a.log) })
+	goBG(func() {
+		runAutomation(ctx, a.store, a.proxy, a.proxyAcct, api.HostMemory(a.obs.latestMetrics), a.scaleReplicas, waits, a.log)
+	}) // Background: schedules, waiting wakes, residency.
 	goBG(func() { a.health.Run(ctx) }) // Background: the deployments' health checks.
 	// Background: the batches in progress, resumed from their checkpoints.
 	if err := a.batches.Start(ctx); err != nil {
@@ -497,6 +501,7 @@ func (a *App) Run(ctx context.Context) error {
 	if a.obs != nil {
 		goBG(func() { a.ops.run(ctx) })
 		goBG(func() { a.ops.backfill(ctx) })
+		goBG(func() { a.ops.replayScheduling(ctx) })
 		goBG(func() { a.obs.logIngestLoop(ctx) })
 		go func() {
 			defer close(metricsDone)

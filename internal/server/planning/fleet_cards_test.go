@@ -1,6 +1,7 @@
 package planning
 
 import (
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"sync/atomic"
@@ -39,12 +40,47 @@ func assertFleetMatchesPerNode(t *testing.T, st *store.Store, nodes ...*store.No
 			}
 			var want []FleetOccupant
 			for _, o := range occupants[card.Index] {
-				want = append(want, FleetOccupant{DeploymentID: o.Instance.DeploymentID, Asleep: o.Asleep})
+				want = append(want, FleetOccupant{
+					DeploymentID: o.Instance.DeploymentID, Asleep: o.Asleep, Instance: o.Instance.UUID,
+					SleepLevel: o.Instance.SleepLevel, ClaimBytes: o.ClaimBytes, ResidueBytes: o.ResidueBytes,
+				})
 			}
 			if !reflect.DeepEqual(card.Occupants, want) {
 				t.Errorf("node %s card %d: occupants %+v, want %+v", node.Name, card.Index, card.Occupants, want)
 			}
 		}
+		// One node read on its own gives the cards the fleet pass gives it.
+		alone, err := NodeCards(st, node)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(alone, cards) {
+			t.Errorf("node %s: NodeCards %+v, FleetCards %+v", node.Name, alone, cards)
+		}
+	}
+}
+
+// A card's state is the first that holds: offline, unhealthy, held outside,
+// awake, asleep, free.
+func TestFleetCardStatePrecedence(t *testing.T) {
+	for _, tc := range []struct {
+		card   FleetCard
+		online bool
+		want   CardState
+	}{
+		{FleetCard{Unhealthy: true, AwakeBytes: 1}, false, CardOffline},
+		{FleetCard{Unhealthy: true, HeldOutside: true, AwakeBytes: 1}, true, CardUnhealthy},
+		{FleetCard{HeldOutside: true, AwakeBytes: 1, SleepingBytes: 1}, true, CardHeldOutside},
+		{FleetCard{AwakeBytes: 1, SleepingBytes: 1}, true, CardAwake},
+		{FleetCard{SleepingBytes: 1}, true, CardAsleep},
+		{FleetCard{}, true, CardFree},
+	} {
+		if got := tc.card.State(tc.online); got != tc.want {
+			t.Errorf("%+v online=%v = %s, want %s", tc.card, tc.online, got, tc.want)
+		}
+	}
+	if len(CardStates) != 6 || CardStates[0] != CardOffline || CardStates[5] != CardFree {
+		t.Fatalf("CardStates = %v", CardStates)
 	}
 }
 
@@ -182,5 +218,46 @@ func TestFleetCardsReadsDoNotGrowWithTheNodes(t *testing.T) {
 	}
 	if many > 6 {
 		t.Fatalf("FleetCards ran %d statements, want a handful", many)
+	}
+}
+
+// A replica awake on two cards (TP=2) beside another deployment asleep on
+// one of them: both cards are awake, the replica is on each with its claim,
+// the sleeper only on its own card with its residue, as the per-node ledger
+// charges them.
+func TestFleetCardsOfAReplicaSpanningCardsBesideASleeper(t *testing.T) {
+	c := newYieldCards(t, 2)
+	a := c.deployment(t, "a", "anytime")
+	b := c.deployment(t, "b", "timeslice")
+	c.instance(t, a, "a-1", "[0,1]", 0)
+	c.instance(t, b, "b-1", "[1]", 1)
+	// The replica was admitted with 10 GiB of each card, which leaves room
+	// for the sleeper's residue beside it.
+	claim, _ := json.Marshal(proto.InstanceDesiredState{UUID: "a-1", DesiredState: "running", Sleepable: true, MemoryClaimBytes: 10 << 30})
+	if err := c.st.DB().Model(&store.Instance{}).Where("uuid = ?", "a-1").Select("DesiredStateJSON").Updates(&store.Instance{DesiredStateJSON: string(claim)}).Error; err != nil {
+		t.Fatal(err)
+	}
+	assertFleetMatchesPerNode(t, c.st, c.node)
+	fleet, err := FleetCards(c.st, []store.Node{*c.node})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, card := range fleet.Cards[c.node.ID] {
+		line := fmt.Sprintf("%d %s sleeping=%v", card.Index, card.State(true), card.SleepingBytes > 0)
+		for _, o := range card.Occupants {
+			line += fmt.Sprintf(" %s/asleep=%v/residue=%v", o.Instance, o.Asleep, o.ResidueBytes > 0)
+		}
+		got = append(got, line)
+	}
+	want := []string{
+		"0 awake sleeping=false a-1/asleep=false/residue=false",
+		"1 awake sleeping=true a-1/asleep=false/residue=false b-1/asleep=true/residue=true",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("cards =\n%v\nwant\n%v", got, want)
+	}
+	if cards := fleet.Cards[c.node.ID]; cards[0].AwakeBytes <= 0 || cards[0].AwakeBytes != cards[1].AwakeBytes {
+		t.Fatalf("the replica's claim is not the same on both its cards: %+v", cards)
 	}
 }

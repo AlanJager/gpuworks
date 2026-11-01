@@ -139,11 +139,22 @@ func ascendPort(ctx context.Context, run ascendCommandRunner, index int) *proto.
 	return &port
 }
 
+// runHCCN asks hccn_tool about one die, at most ascendPortsTimeout, under
+// that die's own key (RunTracked). A call stuck in the driver holds only its
+// die: that die's later calls fail at once instead of piling up behind it,
+// and the status report that reads the ports is never held past the bound.
 func runHCCN(ctx context.Context, args ...string) (string, error) {
-	ctx, cancel := context.WithTimeout(ctx, ascendPortsTimeout)
-	defer cancel()
-	out, err := exec.CommandContext(ctx, "hccn_tool", args...).CombinedOutput()
-	return string(out), err
+	return RunTracked(ctx, hccnKey(args), ascendPortsTimeout, func(ctx context.Context) *exec.Cmd {
+		return exec.CommandContext(ctx, "hccn_tool", args...)
+	})
+}
+
+// hccnKey is the die a hccn_tool call addresses ("-i <die>").
+func hccnKey(args []string) string {
+	if len(args) >= 2 && args[0] == "-i" {
+		return "hccn_tool -i " + args[1]
+	}
+	return "hccn_tool"
 }
 
 var (
@@ -277,11 +288,12 @@ func (p *AscendProber) cardLock(index int) *sync.Mutex {
 }
 
 // runHCCNUnlimited runs hccn_tool until the caller's context ends it.
+// It shares the die's key with runHCCN, so a ping stuck in the driver is not
+// joined by another.
 func runHCCNUnlimited(ctx context.Context, args ...string) (string, error) {
-	cmd := exec.CommandContext(ctx, "hccn_tool", args...)
-	cmd.WaitDelay = time.Second
-	out, err := cmd.CombinedOutput()
-	return string(out), err
+	return RunTracked(ctx, hccnKey(args), 0, func(ctx context.Context) *exec.Cmd {
+		return exec.CommandContext(ctx, "hccn_tool", args...)
+	})
 }
 
 var (

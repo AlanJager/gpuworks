@@ -3,10 +3,7 @@ import { Alert, Button, Descriptions, Drawer, Modal, Space, Spin, Tooltip, Typog
 import { DownloadOutlined } from "@ant-design/icons";
 import { useTranslation } from "react-i18next";
 import { usePolling } from "../../api";
-import {
-  BATCH_OUTPUT_RETENTION_DAYS, BATCH_POLL_MS, batchApi, batchEndedAt, batchFileURL, isBatchActive, isBatchCancellable,
-  type Batch, type BatchFileKind,
-} from "../../batchApi";
+import { BATCH_POLL_MS, batchApi, batchFileURL, isBatchActive, type Batch, type BatchFileKind } from "../../batchApi";
 import { formatTimeSec } from "../../i18n/datetime";
 import { batchErrorText } from "./batchErrors";
 import { BatchProgress, BatchStatusTag } from "./batchDisplay";
@@ -16,14 +13,12 @@ const TIME_FIELDS = [
   "created_at", "in_progress_at", "finalizing_at", "completed_at", "failed_at", "expired_at", "cancelling_at", "cancelled_at", "expires_at",
 ] as const;
 
-const DAY_MS = 86_400_000;
-
-/** The file ids by kind; a file that was never produced, or was deleted after its retention, has none to download. */
+/** The file ids by kind; a file that was never produced, or was deleted at the server's output_expires_at, has none to download. */
 function fileAvailable(batch: Batch, kind: BatchFileKind, now = Date.now()): { available: boolean; expired: boolean } {
   if (kind === "input") return { available: !!batch.input_file_id, expired: false };
   const id = kind === "output" ? batch.output_file_id : batch.error_file_id;
-  const ended = batchEndedAt(batch);
-  const expired = !!id && !!ended && now - new Date(ended).getTime() > BATCH_OUTPUT_RETENTION_DAYS * DAY_MS;
+  const expiresAt = batch.output_expires_at ? new Date(batch.output_expires_at).getTime() : Number.POSITIVE_INFINITY;
+  const expired = !!id && now >= expiresAt;
   return { available: !!id && !expired, expired };
 }
 
@@ -83,7 +78,7 @@ function BatchBody({ batch, canManage, onChanged }: { batch: Batch; canManage: b
           column={1}
           bordered
           title={t("detail.sections.summary")}
-          extra={canManage && isBatchCancellable(batch.status) && (
+          extra={canManage && batch.cancellable && (
             <Button danger onClick={() => setConfirming(true)}>{t("action.cancel")}</Button>
           )}
           items={[
@@ -143,9 +138,11 @@ function BatchBody({ batch, canManage, onChanged }: { batch: Batch; canManage: b
           <DownloadButton batch={batch} kind="output" />
           <DownloadButton batch={batch} kind="error" />
         </Space>
-        <Typography.Paragraph type="secondary" style={{ marginTop: 8 }}>
-          {t("detail.download.hint", { days: BATCH_OUTPUT_RETENTION_DAYS })}
-        </Typography.Paragraph>
+        {batch.output_expires_at && (
+          <Typography.Paragraph type="secondary" style={{ marginTop: 8 }}>
+            {t("detail.download.hint", { time: formatTimeSec(batch.output_expires_at) })}
+          </Typography.Paragraph>
+        )}
       </section>
       <Modal
         open={confirming}

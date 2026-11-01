@@ -78,6 +78,10 @@ func (c *Controller) reconcileUnits(ctx context.Context, dep *store.Deployment, 
 	}
 	deployment.insts = insts
 	match := planning.MatchUnits(units, insts, deployment.nodeUUIDs, dep.PlacementStrategy)
+	if !match.Unfilled() {
+		// Nothing left to place: the deployment waits for no one's cards.
+		c.waits.Done(dep.ID)
+	}
 	if moved, err := c.failoverNamedUnits(ctx, deployment, match); moved || err != nil {
 		return err
 	}
@@ -436,7 +440,8 @@ func (c *Controller) recordReplicaRebuilt(dep *store.Deployment, unit planning.U
 	if len(reason) > rebuildReasonRunes {
 		reason = append(reason[:rebuildReasonRunes], '…')
 	}
-	params := map[string]any{"replica": unit.Index + 1, "attempt": len(attempts) + 1, "reason": string(reason), "node": leader.DisplayName()}
+	params := map[string]any{"replica": unit.Index + 1, "attempt": len(attempts) + 1, "reason": string(reason), "node": leader.DisplayName(),
+		store.EventParamNodeUUIDs: []string{leader.UUID}}
 	if unit.Role != "" {
 		params["role"] = unit.Role
 	}

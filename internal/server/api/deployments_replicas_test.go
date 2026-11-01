@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"gpuworks.ai/gpuworks/internal/server/planning"
 	"net/http"
 	"strings"
 	"testing"
@@ -25,7 +26,7 @@ func TestScaleReplicasOfASingleNodeDeployment(t *testing.T) {
 	// The response carries the bound the count is checked against, so the
 	// UI's editor needs no copy of it.
 	var wire map[string]any
-	if err := json.Unmarshal(rec.Body.Bytes(), &wire); err != nil || wire["max_replicas"] != float64(32) {
+	if err := json.Unmarshal(rec.Body.Bytes(), &wire); err != nil || wire["max_replicas"] != float64(1024) {
 		t.Fatalf("max_replicas on the wire = %v (%v)", wire["max_replicas"], err)
 	}
 	// Shrinking by two, naming one: that one drains, the other is the
@@ -74,7 +75,7 @@ func TestScaleReplicasRefusals(t *testing.T) {
 		{name: "multi-node", id: multi.ID, body: `{"replicas":2}`, status: http.StatusBadRequest, code: ErrorReplicasBodyShape},
 		{name: "no count", id: plain.ID, body: `{}`, status: http.StatusBadRequest, code: ErrorReplicasTooFew},
 		{name: "zero", id: plain.ID, body: `{"replicas":0}`, status: http.StatusBadRequest, code: ErrorReplicasTooFew},
-		{name: "too many", id: plain.ID, body: `{"replicas":33}`, status: http.StatusBadRequest, code: ErrorReplicasTooMany},
+		{name: "too many", id: plain.ID, body: `{"replicas":1025}`, status: http.StatusBadRequest, code: ErrorReplicasTooMany},
 		{name: "remove while growing", id: plain.ID, body: `{"replicas":3,"remove":["plain-0"]}`, status: http.StatusBadRequest, code: ErrorReplicasRemoveTooMany},
 		{name: "remove more than shrunk", id: plain.ID, body: `{"replicas":1,"remove":["plain-0","plain-1"]}`, status: http.StatusBadRequest, code: ErrorReplicasRemoveTooMany},
 		{name: "remove a failed attempt", id: plain.ID, body: `{"replicas":1,"remove":["plain-failed"]}`, status: http.StatusBadRequest, code: ErrorReplicasRemoveInvalid},
@@ -137,7 +138,7 @@ func TestScaleReplicasOfAMultiNodeDeployment(t *testing.T) {
 		{"one node twice", `{"units":[{"node_uuid":"pd-a","followers":[{"node_uuid":"pd-a"}]}]}`, ErrorReplicaUnitNode},
 		{"pinned GPUs", `{"units":[{"node_uuid":"pd-a","gpus":[0],"followers":[{"node_uuid":"pd-b"}]}]}`, ErrorReplicaUnitGPUs},
 		{"a shared leader", `{"units":[{"node_uuid":"pd-a","followers":[{"node_uuid":"pd-b"}]},{"node_uuid":"pd-a","followers":[{"node_uuid":"pd-b"}]}]}`, ErrorReplicaLeaderShared},
-		{"too many replicas", `{"units":[` + strings.Repeat(`{"node_uuid":"pd-a","followers":[{"node_uuid":"pd-b"}]},`, 32) + `{"node_uuid":"pd-b","followers":[{"node_uuid":"pd-a"}]}]}`, ErrorReplicasTooMany},
+		{"too many replicas", `{"units":[` + strings.Repeat(`{"node_uuid":"pd-a","followers":[{"node_uuid":"pd-b"}]},`, planning.MaxReplicas) + `{"node_uuid":"pd-b","followers":[{"node_uuid":"pd-a"}]}]}`, ErrorReplicasTooMany},
 	}
 	for _, tc := range cases {
 		rec := pdOpsRequest(h.scaleReplicas, http.MethodPut, multi.ID, tc.body)

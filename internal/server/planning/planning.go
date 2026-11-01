@@ -19,6 +19,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/placement"
 	"gpuworks.ai/gpuworks/internal/server/scheduler"
 	"gpuworks.ai/gpuworks/internal/server/store"
+	"gpuworks.ai/gpuworks/internal/server/yieldpolicy"
 	pkgest "gpuworks.ai/gpuworks/pkg/estimate"
 	"gpuworks.ai/gpuworks/pkg/modelconfig"
 )
@@ -76,11 +77,18 @@ type Input struct {
 	// instances: an edit of the deployment replaces them, so what they hold
 	// now is not in the way of the launch being previewed. Zero excludes none.
 	ExcludeDeploymentID uint
-	// YieldPolicy is the launching deployment's (servicelevel.Never, Idle, ...):
+	// DeploymentID is the launching deployment's, zero for one not created
+	// yet: its own instances never give up their cards to it (launchYield).
+	DeploymentID uint
+	// YieldPolicy is the launching deployment's (yieldpolicy.Never, Idle, ...):
 	// a sleeping deployment that does not share its cards with that policy
-	// keeps its whole claim on them (servicelevel.SharesCardsWith), so the
+	// keeps its whole claim on them (yieldpolicy.SharesCardsWith), so the
 	// launch does not take cards it would want back. Empty reads as never.
 	YieldPolicy string
+	// ExplainHolders names, when the launch does not fit only because yield
+	// policy keeps it off awake holders' cards, those holders (launchHeld).
+	// The deploy form's evaluation asks for it; the controller does not.
+	ExplainHolders bool
 	// ModelRules are the deployment's model source rules (store.SourceRules).
 	ModelRules store.SourceRules
 }
@@ -106,7 +114,13 @@ type Output struct {
 	Eviction  []EvictSuggestion // when no fit but sleeping these would free room
 	// Yield is set when no fit but the deployments sharing the node's cards
 	// by yield policy would make room by giving them up (launchYield).
-	Yield          *LaunchYield
+	Yield *LaunchYield
+	// Reserved is set when no fit only because sleepers keep their cards for
+	// a request's wake against this launch (launchReserved).
+	Reserved *LaunchReserved
+	// Held is set when no fit only because yield policy keeps the launch off
+	// awake holders' cards, and only when Input.ExplainHolders asks (launchHeld).
+	Held           *LaunchHeld
 	Placement      placement.Result
 	PlacementError error
 }
@@ -298,8 +312,22 @@ func (in Input) Evaluate(st *store.Store) Output {
 	// the platform never sleeps silently).
 	if !out.Result.OK {
 		out.Eviction = suggestEviction(st, in.Node, req, in.ServingUnavailable, view)
-		if !in.Unloaded {
-			out.Yield = launchYield(st, in.Node, in.YieldPolicy, req, dtypeOK, dtypeReason, in.ServingUnavailable, view)
+		// Only a launch that shares cards by yield policy may wait for
+		// holders, and only one sleepers keep cards from may be refused by
+		// their name, or one whose evaluation asks who holds its cards
+		// (ExplainHolders): anything else reads nothing more. One read of
+		// the node's instances serves every re-plan.
+		shares := in.YieldPolicy != "" && in.YieldPolicy != yieldpolicy.Never
+		if !in.Unloaded && st != nil && (shares || view.reserved != nil || in.ExplainHolders) {
+			if insts, err := st.InstancesForNode(in.Node.ID); err == nil {
+				out.Yield = launchYield(st, in.Node, insts, in.DeploymentID, in.YieldPolicy, req, dtypeOK, dtypeReason, in.ServingUnavailable, view)
+				if out.Yield == nil {
+					out.Reserved = launchReserved(st, in.Node, insts, req, dtypeOK, dtypeReason, in.ServingUnavailable, view)
+				}
+				if out.Yield == nil && out.Reserved == nil && in.ExplainHolders {
+					out.Held = launchHeld(st, in.Node, insts, in.DeploymentID, in.YieldPolicy, req, dtypeOK, dtypeReason, in.ServingUnavailable, view)
+				}
+			}
 		}
 	}
 	if out.Result.OK && out.Breakdown.ContextExceedsKVPool() {

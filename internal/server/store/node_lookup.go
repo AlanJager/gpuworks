@@ -51,6 +51,20 @@ func (s *Store) NodesForLabels(withGPUs bool) ([]Node, error) {
 	return nodes, err
 }
 
+// NodeNamesByID is the display name (Node.DisplayName) of the nodes of ids,
+// one query of the columns it is made from; an unknown id is absent.
+func (s *Store) NodeNamesByID(ids []uint) (map[uint]string, error) {
+	refs, err := s.NodeRefsByID(ids)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[uint]string, len(refs))
+	for id, ref := range refs {
+		out[id] = ref.Name
+	}
+	return out, nil
+}
+
 // NodesForLabelsByID is NodesForLabels for the named nodes only, in id order:
 // one query however many there are, for a caller matching a handful of
 // candidates against selectors (sync groups, pull source rules). Unknown ids

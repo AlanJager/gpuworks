@@ -9,13 +9,13 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
-	"gpuworks.ai/gpuworks/internal/server/servicelevel"
 	"gpuworks.ai/gpuworks/internal/server/store"
+	"gpuworks.ai/gpuworks/internal/server/yieldpolicy"
 )
 
 // presetDeployment states the yield policy, with its defaults, on dep.
 func presetDeployment(dep *store.Deployment, yield string) *store.Deployment {
-	p, _ := servicelevel.Parse(yield, servicelevel.Overrides{})
+	p, _ := yieldpolicy.Parse(yield, yieldpolicy.Overrides{})
 	dep.SetPolicy(p)
 	return dep
 }
@@ -73,7 +73,7 @@ func TestYieldPolicyRouteAuthAndTarget(t *testing.T) {
 	if rec := rig.do(read, http.MethodPut, path, body); rec.Code != http.StatusForbidden || decodeBody(t, rec)["code"] != "PLATFORM_TOKEN_READ_ONLY" {
 		t.Fatalf("read token = %d %s, want 403", rec.Code, rec.Body)
 	}
-	if dep, _ := rig.st.GetDeployment(rig.sleepy.ID); dep.Policy().Yield != servicelevel.Never {
+	if dep, _ := rig.st.GetDeployment(rig.sleepy.ID); dep.Policy().Yield != yieldpolicy.Never {
 		t.Fatalf("a refused request changed the policy to %+v", dep.Policy())
 	}
 	if rec := rig.do(rig.mint("write"), http.MethodPut, path, body); rec.Code != http.StatusOK || strings.TrimSpace(rec.Body.String()) != answer {
@@ -102,7 +102,7 @@ func TestTheServiceLevelAndIdleSleepRoutesAreGone(t *testing.T) {
 			}
 		}
 	}
-	if dep, _ := rig.st.GetDeployment(rig.sleepy.ID); dep.Policy().Yield != servicelevel.Never {
+	if dep, _ := rig.st.GetDeployment(rig.sleepy.ID); dep.Policy().Yield != yieldpolicy.Never {
 		t.Fatalf("a removed route changed the policy: %+v", dep.Policy())
 	}
 }
@@ -207,7 +207,7 @@ func TestYieldPolicySetting(t *testing.T) {
 		}
 	}
 	// Every refusal left the last accepted policy: the upper bounds test's.
-	if dep, _ := rig.st.GetDeployment(rig.sleepy.ID); dep.Policy().IdleSec != 604800 || dep.Policy().HoldMaxSec != 3600 || dep.Policy().Yield != servicelevel.Idle {
+	if dep, _ := rig.st.GetDeployment(rig.sleepy.ID); dep.Policy().IdleSec != 604800 || dep.Policy().HoldMaxSec != 3600 || dep.Policy().Yield != yieldpolicy.Idle {
 		t.Fatalf("a refused request changed the policy: %+v", dep.Policy())
 	}
 }
@@ -229,7 +229,7 @@ func TestTwoIdleDeploymentsOnACardAreNamed(t *testing.T) {
 	if rec.Code != http.StatusOK || strings.TrimSpace(rec.Body.String()) != `{"policy":"idle","idle_sec":30,"sleep_level":"auto","hold_max_sec":300,"idle_neighbours":["other"]}` {
 		t.Fatalf("second idle on a shared card = %d %s, want 200 naming other", rec.Code, rec.Body)
 	}
-	if dep, _ := rig.st.GetDeployment(rig.sleepy.ID); dep.Policy().Yield != servicelevel.Idle {
+	if dep, _ := rig.st.GetDeployment(rig.sleepy.ID); dep.Policy().Yield != yieldpolicy.Idle {
 		t.Fatalf("the second idle policy was not stored: %+v", dep.Policy())
 	}
 	// The deployment itself does not carry the warning: only the answer.
@@ -251,11 +251,14 @@ func TestTwoIdleDeploymentsOnACardAreNamed(t *testing.T) {
 	}
 }
 
-// An operator's sleep is held (a request does not wake it) and a wake lifts
-// it; the deployment reads it as sleep_held.
+// An operator's sleep is held (a request does not wake it); the deployment,
+// all of whose replicas it holds, reads it as sleep_held.
 func TestAnOperatorsSleepIsHeld(t *testing.T) {
 	rig := newYieldPolicyRig(t)
-	rig.place(t, rig.sleepy, "sleepy-1", "[0]")
+	spec, _ := json.Marshal(proto.InstanceDesiredState{UUID: "sleepy-1", DesiredState: "running", Sleepable: true})
+	if _, err := rig.st.CreateInstance(&store.Instance{UUID: "sleepy-1", DeploymentID: rig.sleepy.ID, NodeID: rig.node.ID, State: proto.InstRunning, GPUIndexes: "[0]", DesiredStateJSON: string(spec)}); err != nil {
+		t.Fatal(err)
+	}
 	if rec := rig.do(rig.session, http.MethodPost, schedPath(rig.sleepy, "sleep?level=2"), ""); rec.Code != http.StatusOK {
 		t.Fatalf("sleep = %d %s", rec.Code, rec.Body)
 	}
@@ -312,7 +315,7 @@ func TestANewDeploymentsYieldPolicyIsCheckedLikeAChange(t *testing.T) {
 			}
 		})
 	}
-	if requestYield(policy(`{"policy":"gold"}`)) != servicelevel.Never {
+	if requestYield(policy(`{"policy":"gold"}`)) != yieldpolicy.Never {
 		t.Fatal("a malformed policy plans as never")
 	}
 }
@@ -330,6 +333,7 @@ func TestYieldPolicyDictionary(t *testing.T) {
 		`{"policy":"idle","defaults":{"policy":"idle","idle_sec":60,"sleep_level":"auto","hold_max_sec":300},"applies":["idle_sec","sleep_level","hold_max_sec"]},` +
 		`{"policy":"timeslice","defaults":{"policy":"timeslice","idle_sec":30,"sleep_level":"auto","max_serve_sec":120,"unfinished":"wait","unfinished_wait_sec":30,"hold_max_sec":600},"applies":["idle_sec","sleep_level","max_serve_sec","unfinished","unfinished_wait_sec","hold_max_sec"]},` +
 		`{"policy":"anytime","defaults":{"policy":"anytime","idle_sec":30,"sleep_level":"auto","unfinished":"abort","unfinished_wait_sec":30,"hold_max_sec":3600},"applies":["idle_sec","sleep_level","unfinished","unfinished_wait_sec","hold_max_sec"]}],` +
+		`"applies_when":{"unfinished_wait_sec":{"unfinished":["wait"]}},` +
 		`"bounds":{"hold_max_sec":{"minimum":10,"maximum":3600},"idle_sec":{"minimum":15,"maximum":604800,"at_most":"max_serve_sec"},"max_serve_sec":{"minimum":30,"maximum":86400},"unfinished_wait_sec":{"minimum":1,"maximum":600}},` +
 		`"sleep_levels":["auto","l1","l2"],"unfinished":["abort","wait"]}`
 	if rec.Code != http.StatusOK || strings.TrimSpace(rec.Body.String()) != want {
@@ -346,6 +350,36 @@ func TestYieldPolicyDictionary(t *testing.T) {
 		_ = json.Unmarshal(raw, &req)
 		if _, v := req.Parse(); v != nil {
 			t.Errorf("%s defaults refused: %+v", entry.Policy, v)
+		}
+	}
+	// What a client reads off applies and applies_when is the server's rule
+	// (yieldpolicy.Applies) for every choice of the selectors.
+	for _, entry := range dict.Policies {
+		for _, level := range dict.SleepLevels {
+			for _, mode := range dict.Unfinished {
+				chosen := map[string]string{"sleep_level": level, "unfinished": mode}
+				client := map[string]bool{}
+				for _, name := range entry.Applies {
+					client[name] = true
+					for selector, values := range dict.AppliesWhen[name] {
+						held := false
+						for _, v := range values {
+							held = held || v == chosen[selector]
+						}
+						client[name] = client[name] && held
+					}
+				}
+				rule := yieldpolicy.Policy{Yield: entry.Policy, SleepLevel: level, Unfinished: mode}.Normalize().Applies()
+				server := map[string]bool{
+					"idle_sec": rule.IdleSec, "sleep_level": rule.SleepLevel, "max_serve_sec": rule.MaxServeSec,
+					"unfinished": rule.Unfinished, "unfinished_wait_sec": rule.UnfinishedWaitSec, "hold_max_sec": rule.HoldMaxSec,
+				}
+				for name, applies := range server {
+					if client[name] != applies {
+						t.Errorf("%s with sleep_level=%s unfinished=%s: the dictionary says %s applies %v, the rule %v", entry.Policy, level, mode, name, client[name], applies)
+					}
+				}
+			}
 		}
 	}
 	if rec := rig.do(rig.session, http.MethodPost, "/api/v1/scheduling/yield-policies", "{}"); rec.Code != http.StatusMethodNotAllowed {

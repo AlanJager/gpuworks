@@ -14,6 +14,7 @@ import (
 	"log/slog"
 	"os"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/glebarez/sqlite"
@@ -72,6 +73,9 @@ type Store struct {
 	// cacheLifecycle bridges model readiness checks and persisted instance
 	// references with cache deletion on the same node.
 	cacheLifecycle cacheLifecycleGuard
+	// observer receives the events the scheduling activity counts
+	// (scheduling_activity.go).
+	observer atomic.Pointer[EventObserver]
 }
 
 func (s *Store) SetSecretbox(box *auth.Secretbox) { s.secretbox = box }
@@ -617,6 +621,7 @@ func (s *Store) SetNodeServerURL(uuid, serverURL string) error {
 // instances must be removed through the deployment/controller path first.
 func (s *Store) DeleteNode(uuid string) error {
 	var nodeID uint
+	var removals []InstanceEvent
 	err := s.db.Transaction(func(tx *gorm.DB) error {
 		var n Node
 		err := tx.Where("uuid = ?", uuid).First(&n).Error
@@ -642,9 +647,11 @@ func (s *Store) DeleteNode(uuid string) error {
 			return err
 		}
 		for i := range gone {
-			if err := deleteInstanceRecords(tx, &gone[i]); err != nil {
+			removed, err := deleteInstanceRecords(tx, &gone[i])
+			if err != nil {
 				return err
 			}
+			removals = append(removals, removed...)
 		}
 		if err := checkNoCacheDeletion(tx.Where("node_id = ?", n.ID)); err != nil {
 			return err
@@ -684,6 +691,9 @@ func (s *Store) DeleteNode(uuid string) error {
 	})
 	if err != nil {
 		return err
+	}
+	for _, ev := range removals {
+		s.observe(ev, nil)
 	}
 	s.Bus.PublishChange("node", uuid, fmt.Sprintf("deleted:%d", nodeID))
 	return nil

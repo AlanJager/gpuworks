@@ -15,6 +15,8 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5/middleware"
+
+	"gpuworks.ai/gpuworks/internal/server/serverconfig"
 )
 
 const maxAccessLogBody = 64 << 10
@@ -63,6 +65,13 @@ func accessLogParams(r *http.Request) string {
 	// An upload's body is file content, whatever type the browser labels it
 	// with: never read ahead of the handler, never logged.
 	if isStorageFileTransfer(r) {
+		return ""
+	}
+	// An inference body is the conversation itself: the platform does not keep
+	// prompts or replies (the gateway's request records carry no text, and
+	// the request ID in this record finds them), and reading it here would put
+	// a parse of every gateway request on the hot path.
+	if isInferenceRequest(r) {
 		return ""
 	}
 	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
@@ -131,6 +140,13 @@ func isStreamingRequest(r *http.Request) bool {
 // isStorageFileTransfer matches a storage-files upload or download (ADR
 // 0053): a transfer of arbitrary length, logged when it opens as well as when
 // it ends.
+// isInferenceRequest reports whether r is model traffic: the OpenAI-compatible
+// gateway or the Playground's proxy to it.
+func isInferenceRequest(r *http.Request) bool {
+	return serverconfig.FunctionOf(r.URL.Path) == serverconfig.FunctionGateway ||
+		strings.HasPrefix(r.URL.Path, "/api/v1/playground/v1/")
+}
+
 func isStorageFileTransfer(r *http.Request) bool {
 	p := r.URL.Path
 	return strings.HasPrefix(p, "/api/v1/storages/") &&

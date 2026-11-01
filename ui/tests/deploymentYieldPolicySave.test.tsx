@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { mock, test } from "node:test";
+import * as shapes from "./helpers/deploymentCapabilities.ts";
 import {
-  APIError, api, message, choosePolicy, cleanup, defaults, deployment, f, fireEvent, i18n, mount, openEditor, p, saveButton, screen, serverAnswer, spin, state, stub, summaryOf, summaryText, userEvent, waitFor, withPolicy, within, y,
+  APIError, api, yieldPolicyApi, message, choosePolicy, cleanup, defaults, deployment, f, fireEvent, i18n, mount, openEditor, p, saveButton, screen, serverAnswer, spin, state, stub, summaryOf, summaryText, userEvent, waitFor, withPolicy, within, y,
   type Editor, type YieldPolicyRequest,
 } from "./helpers/yieldPolicyHarness.tsx";
 
@@ -115,7 +116,7 @@ test("the answer's idle neighbours are warned about after the save, in the user'
 test("a save in flight locks the form and shows it is working", async () => {
   stub();
   let finish: () => void = () => {};
-  api.setYieldPolicy = (id, body) => new Promise((resolve) => {
+  yieldPolicyApi.set = (id, body) => new Promise((resolve) => {
     state.sent.push([id, body]);
     finish = () => { const answer = serverAnswer(body); state.current = { ...state.current, yield_policy: answer }; resolve(answer); };
   });
@@ -226,7 +227,7 @@ test("the server's refusals are shown in the user's language and nothing is mark
     [new APIError("SLEEP_NOT_ENABLED", {}, "sleep mode was not enabled", 400), i18n.t("common:apiError.SLEEP_NOT_ENABLED")],
   ];
   for (const [error, detail] of refusals) {
-    api.setYieldPolicy = async () => { throw error; };
+    yieldPolicyApi.set = async () => { throw error; };
     const user = mount();
     const editor = await openEditor(user);
     await choosePolicy(user, editor, "idle");
@@ -246,7 +247,7 @@ test("the server's refusals are shown in the user's language and nothing is mark
 
 test("a refusal of the server that the editor did not expect still reads in the user's language (YIELD_POLICY_INVALID, unknown field)", async () => {
   stub();
-  api.setYieldPolicy = async () => { throw new APIError("YIELD_POLICY_INVALID", { field: "something_new", reason: "unheard_of" }, "bad", 400); };
+  yieldPolicyApi.set = async () => { throw new APIError("YIELD_POLICY_INVALID", { field: "something_new", reason: "unheard_of" }, "bad", 400); };
   const user = mount();
   const editor = await openEditor(user);
   await choosePolicy(user, editor, "idle");
@@ -256,7 +257,7 @@ test("a refusal of the server that the editor did not expect still reads in the 
 
 test("a deployment that cannot sleep says so and offers only the way back to never", async () => {
   stub();
-  const user = mount(deployment({ sleepable: false, yield_policy: defaults.timeslice }));
+  const user = mount(deployment({ sleepable: false, yield_policy: defaults.timeslice, ...shapes.notSleepableSingleNode }));
   const editor = await openEditor(user);
   editor.getByText(y.notSleepable);
   assert.equal(spin(editor, f.max_serve_sec)?.value, "120", "what it kept is shown");
@@ -271,7 +272,7 @@ test("a deployment that cannot sleep says so and offers only the way back to nev
 
 test("a multi-node or PD deployment can only never yield automatically", async () => {
   stub();
-  for (const shape of [{ nnodes: 2 }, { pd: { mode: "ep", roles: [] } }]) {
+  for (const shape of [{ nnodes: 2, ...shapes.sleepableMultiNodeManual }, { pd: { mode: "ep", roles: [] }, ...shapes.sleepablePDManual }]) {
     const user = mount(deployment(shape));
     const editor = await openEditor(user);
     editor.getByText(y.singleNodeOnly);
@@ -287,6 +288,34 @@ test("a multi-node or PD deployment can only never yield automatically", async (
   const editor = await openEditor(user);
   assert.equal(editor.queryByText(y.singleNodeOnly), null);
   assert.equal(editor.queryByText(y.notSleepable), null);
+});
+
+test("the server's eligibility decides, whatever the deployment's own fields say: a refusal disables the policies with its reason", async () => {
+  stub();
+  // Sleepable and single-node, yet the server refuses: its engine cannot
+  // sleep. It kept a policy, so the editor shows, to go back to never.
+  const refused = { ok: false, reason: "SLEEP_ENGINE_UNSUPPORTED" };
+  const user = mount(deployment({
+    engine: "tgi",
+    yield_policy: defaults.idle,
+    yield_policy_eligible: refused,
+    schedule_capabilities: { ...shapes.sleepableSingleNode.schedule_capabilities, sleep: refused, wake: refused },
+  }));
+  const editor = await openEditor(user);
+  editor.getByText(i18n.t("common:apiError.SLEEP_ENGINE_UNSUPPORTED", { engine: "tgi" }));
+  await user.click(editor.getByRole("combobox", { name: y.policyLabel }));
+  for (const policy of ["idle", "timeslice", "anytime"] as const) {
+    const option = screen.getByText(`${y.policy.name[policy]} - ${y.policy.description[policy]}`).closest(".ant-select-item") as HTMLElement;
+    assert.ok(option.className.includes("ant-select-item-option-disabled"), policy);
+  }
+  cleanup();
+  // Eligible by the server's word: every policy is offered, no notice.
+  const user2 = mount(deployment({ yield_policy_eligible: { ok: true } }));
+  const editor2 = await openEditor(user2);
+  assert.equal(editor2.queryByText(y.notSleepable), null);
+  await user2.click(editor2.getByRole("combobox", { name: y.policyLabel }));
+  const idle = screen.getByText(`${y.policy.name.idle} - ${y.policy.description.idle}`).closest(".ant-select-item") as HTMLElement;
+  assert.ok(!idle.className.includes("ant-select-item-option-disabled"));
 });
 
 test("a read-only user sees the yield policy but cannot edit it", async () => {

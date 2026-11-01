@@ -2,6 +2,7 @@ package batch
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -13,23 +14,29 @@ import (
 // Upload saves and validates an input file (purpose "batch", the only one).
 // A refused file leaves nothing behind.
 func (s *Service) Upload(owner Owner, filename string, src io.Reader) (File, error) {
+	f, _, err := s.upload(owner, filename, src)
+	return f, err
+}
+
+// upload is Upload that also tells what validating the file found.
+func (s *Service) upload(owner Owner, filename string, src io.Reader) (File, inputStats, error) {
 	if !strings.EqualFold(filepath.Ext(cleanFilename(filename)), ".jsonl") {
-		return File{}, invalid("invalid_file_extension", "file", "a batch input file must be JSON Lines with the .jsonl extension")
+		return File{}, inputStats{}, invalid(CodeInvalidFileExtension, "file", "a batch input file must be JSON Lines with the .jsonl extension")
 	}
 	if err := os.MkdirAll(s.cfg.Dir, 0o750); err != nil {
-		return File{}, err
+		return File{}, inputStats{}, err
 	}
 	tmp, err := os.CreateTemp(s.cfg.Dir, "upload-*.tmp")
 	if err != nil {
-		return File{}, err
+		return File{}, inputStats{}, err
 	}
 	defer os.Remove(tmp.Name())
 	stats, verr := scanInput(src, tmp)
 	if cerr := tmp.Close(); verr == nil && cerr != nil {
-		return File{}, cerr
+		return File{}, inputStats{}, cerr
 	}
 	if verr != nil {
-		return File{}, verr
+		return File{}, inputStats{}, verr
 	}
 	f := File{
 		ID: randomID("file-"), UserID: owner.UserID, APIKeyID: owner.APIKeyID, Purpose: PurposeBatch,
@@ -38,13 +45,13 @@ func (s *Service) Upload(owner Owner, filename string, src io.Reader) (File, err
 	}
 	dst, _ := s.filePath(f.ID)
 	if err := os.Rename(tmp.Name(), dst); err != nil {
-		return File{}, err
+		return File{}, inputStats{}, err
 	}
 	if err := s.repo.CreateFile(f); err != nil {
 		_ = os.Remove(dst)
-		return File{}, err
+		return File{}, inputStats{}, err
 	}
-	return f, nil
+	return f, stats, nil
 }
 
 // cleanFilename keeps the base name of an uploaded file, within the column.
@@ -64,7 +71,7 @@ func cleanFilename(name string) string {
 func (s *Service) File(owner Owner, id string) (File, error) {
 	f, err := s.repo.GetFile(id)
 	if errors.Is(err, ErrNotFound) || (err == nil && !owner.Sees(f.UserID)) {
-		return File{}, notFound("file_not_found", "No such File object: "+id)
+		return File{}, notFound(CodeFileNotFound, "No such File object: "+id)
 	}
 	return f, err
 }
@@ -78,12 +85,12 @@ func (s *Service) OpenFile(owner Owner, id string) (File, *os.File, error) {
 	}
 	path, err := s.filePath(f.ID)
 	if err != nil {
-		return File{}, nil, notFound("file_not_found", "No such File object: "+id)
+		return File{}, nil, notFound(CodeFileNotFound, "No such File object: "+id)
 	}
 	fh, err := os.Open(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return File{}, nil, notFound("file_not_found", "The file's content is no longer available: "+id)
+			return File{}, nil, notFound(CodeFileNotFound, "The file's content is no longer available: "+id)
 		}
 		return File{}, nil, err
 	}
@@ -114,7 +121,7 @@ func (s *Service) DeleteFile(owner Owner, id string) error {
 	case errors.Is(err, ErrFileInUse):
 		return &Error{Status: 409, Type: "invalid_request_error", Code: "file_in_use", Message: "A batch that has not finished uses this file: " + id}
 	case errors.Is(err, ErrNotFound):
-		return notFound("file_not_found", "No such File object: "+id)
+		return notFound(CodeFileNotFound, "No such File object: "+id)
 	case err != nil:
 		return err
 	}
@@ -147,14 +154,15 @@ func (s *Service) CreateBatch(owner Owner, req CreateRequest) (Batch, error) {
 	}
 	window, ok := ParseWindow(req.CompletionWindow)
 	if !ok {
-		return Batch{}, invalid("invalid_completion_window", "completion_window", `completion_window must be a whole number of hours from 1h to 72h, such as "24h"`)
+		return Batch{}, invalid("invalid_completion_window", "completion_window",
+			fmt.Sprintf("completion_window must be a whole number of hours from %dh to %dh, such as %q", MinWindowHours, MaxWindowHours, CompletionWindow))
 	}
 	if err := checkMetadata(req.Metadata); err != nil {
 		return Batch{}, err
 	}
 	in, err := s.repo.GetFile(req.InputFileID)
 	if errors.Is(err, ErrNotFound) || (err == nil && !owner.Sees(in.UserID)) {
-		return Batch{}, invalid("file_not_found", "input_file_id", "No such File object: "+req.InputFileID)
+		return Batch{}, invalid(CodeFileNotFound, ParamInputFileID, "No such File object: "+req.InputFileID)
 	}
 	if err != nil {
 		return Batch{}, err
@@ -169,7 +177,14 @@ func (s *Service) CreateBatch(owner Owner, req CreateRequest) (Batch, error) {
 		}
 		return Batch{}, invalid("endpoint_mismatch", "endpoint", message)
 	}
-	warnings, err := s.checkModel(req.Model)
+	// An override replaces the model of every line, so the file's own models
+	// matter only without one.
+	var warnings []Warning
+	if req.Model != "" {
+		warnings, err = s.checkModel(req.Model)
+	} else {
+		warnings, err = s.checkFileModels(in)
+	}
 	if err != nil {
 		return Batch{}, err
 	}
@@ -193,19 +208,16 @@ func (s *Service) checkModel(model string) ([]Warning, error) {
 	if model == "" || s.cfg.Models == nil {
 		return nil, nil
 	}
-	state, err := s.cfg.Models.Lookup(model)
+	unknown, held, err := s.classify([]string{model})
 	if err != nil {
 		return nil, err
 	}
-	switch state {
-	case ModelAvailable:
-		return nil, nil
-	case ModelSleepHeld:
-		return []Warning{{Code: WarningModelSleepHeld, Message: "The deployment serving " + model + " sleeps by an operator's or a schedule's order, which requests do not wake; the batch's requests are retried until it is woken or the batch expires"}}, nil
+	if len(unknown) > 0 {
+		e := invalid(CodeModelNotFound, ParamModel, "No active deployment serves the model "+model)
+		e.Model = model
+		return nil, e
 	}
-	e := invalid("model_not_found", "model", "No active deployment serves the model "+model)
-	e.Model = model
-	return nil, e
+	return heldWarnings(ParamModel, held), nil
 }
 
 func checkMetadata(m map[string]string) error {
@@ -227,7 +239,7 @@ func checkMetadata(m map[string]string) error {
 func (s *Service) Batch(owner Owner, id string) (Batch, error) {
 	b, err := s.repo.GetBatch(id)
 	if errors.Is(err, ErrNotFound) || (err == nil && !owner.Sees(b.UserID)) {
-		return Batch{}, notFound("batch_not_found", "No such Batch object: "+id)
+		return Batch{}, notFound(CodeBatchNotFound, "No such Batch object: "+id)
 	}
 	return b, err
 }
@@ -259,15 +271,13 @@ func (s *Service) Cancel(owner Owner, id string) (Batch, error) {
 		return Batch{}, err
 	}
 	b, err := s.repo.RequestCancel(id, s.cfg.Clock.Now())
-	if errors.Is(err, ErrTerminal) {
-		return Batch{}, &Error{Status: 409, Type: "invalid_request_error", Code: "batch_not_cancellable", Message: "The batch is " + b.Status + " and cannot be cancelled: " + id}
-	}
-	if err != nil {
+	if err != nil && !errors.Is(err, ErrTerminal) {
 		return Batch{}, err
 	}
 	if b.Status != StatusCancelling {
-		// Finalizing: the results are being assembled and the batch ends as it is.
-		return Batch{}, &Error{Status: 409, Type: "invalid_request_error", Code: "batch_not_cancellable", Message: "The batch is " + b.Status + " and cannot be cancelled: " + id}
+		// Finished, or finalizing: the results are being assembled and the
+		// batch ends as it is (Cancellable says which statuses move).
+		return Batch{}, &Error{Status: 409, Type: "invalid_request_error", Code: CodeBatchNotCancellable, Message: "The batch is " + b.Status + " and cannot be cancelled: " + id}
 	}
 	s.signalCancel(b)
 	return b, nil

@@ -4,7 +4,7 @@ import React from "react";
 import { I18nextProvider } from "react-i18next";
 import { createI18n, dom } from "./helpers/dom.ts";
 import { trackMessageChannels } from "./helpers/trackedMessageChannels.ts";
-import { batch, page } from "./helpers/batchFixtures.ts";
+import { batch, dictionary, page } from "./helpers/batchFixtures.ts";
 
 // The completion window of a new batch: a number of hours from 1 to 72,
 // 24 by default, sent as completion_window, with the hint following it.
@@ -23,19 +23,18 @@ const { batchApi } = await import("../src/batchApi.ts");
 const { default: BatchesPage } = await import("../src/pages/BatchesPage.tsx");
 
 const b = locale.batches;
-const original = { list: batchApi.list, get: batchApi.get, create: batchApi.create, me: api.me, deployments: api.deployments };
+const original = { list: batchApi.list, get: batchApi.get, create: batchApi.create, dictionary: batchApi.dictionary, me: api.me };
 
 beforeEach(() => {
   localStorage.clear();
   api.me = (async () => ({ role: "admin" })) as never;
-  api.deployments = (async () => ({ items: [], total: 0 })) as never;
+  batchApi.dictionary = async () => dictionary();
   batchApi.list = (async () => page([])) as never;
 });
 afterEach(() => {
   cleanup();
-  Object.assign(batchApi, { list: original.list, get: original.get, create: original.create });
+  Object.assign(batchApi, { list: original.list, get: original.get, create: original.create, dictionary: original.dictionary });
   api.me = original.me;
-  api.deployments = original.deployments;
 });
 after(() => closeChannels());
 
@@ -63,7 +62,7 @@ const windowInput = (dialog: HTMLElement) => within(dialog).getByRole("spinbutto
 
 test("the window defaults to 24 hours, which is what is sent", async () => {
   const sent: Array<number | undefined> = [];
-  batchApi.create = (async (_file: File, _endpoint: string, options?: { completionWindowHours?: number }) => {
+  batchApi.create = (async (_file: File, options?: { completionWindowHours?: number }) => {
     sent.push(options?.completionWindowHours);
     return batch({ id: "batch_w", completion_window: "24h" });
   }) as never;
@@ -78,7 +77,7 @@ test("the window defaults to 24 hours, which is what is sent", async () => {
 
 test("a chosen window is sent in hours and the hint follows it", async () => {
   const sent: Array<number | undefined> = [];
-  batchApi.create = (async (_file: File, _endpoint: string, options?: { completionWindowHours?: number }) => {
+  batchApi.create = (async (_file: File, options?: { completionWindowHours?: number }) => {
     sent.push(options?.completionWindowHours);
     return batch({ id: "batch_w", completion_window: "72h" });
   }) as never;

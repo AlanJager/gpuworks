@@ -132,7 +132,7 @@ func BuildService(ctx context.Context, deps Deps, deploymentID uint, rng time.Du
 	}
 	nodeNames := nodeNameIndex(inv.Nodes)
 
-	series, err := FetchWindowSeries(deps.TSDB, deploymentID, instances, now, now.Add(-DiagnosisWindow), WindowStep.Milliseconds())
+	series, engineSeries, err := fetchWindowSeries(deps.TSDB, deploymentID, instances, now, now.Add(-DiagnosisWindow), WindowStep.Milliseconds())
 	if err != nil {
 		return ServiceSnapshot{}, err
 	}
@@ -165,15 +165,15 @@ func BuildService(ctx context.Context, deps Deps, deploymentID uint, rng time.Du
 	// endpoint of their own, not a unit of capacity the replica table
 	// presents (see InstanceRef.Headless's doc comment and ReadyReplicas,
 	// its cluster-layer sibling).
+	var replicas []InstanceRef
 	for _, inst := range instances {
-		if inst.Headless {
-			continue
+		if !inst.Headless {
+			replicas = append(replicas, inst)
 		}
-		row, err := buildReplicaRow(deps.TSDB, inst, nodeNames, now)
-		if err != nil {
-			return ServiceSnapshot{}, err
-		}
-		snap.Replicas = append(snap.Replicas, row)
+	}
+	snap.Replicas, err = buildReplicaRows(deps.TSDB, replicas, engineSeries, nodeNames, now)
+	if err != nil {
+		return ServiceSnapshot{}, err
 	}
 
 	var asOf time.Time
@@ -191,7 +191,7 @@ func BuildService(ctx context.Context, deps Deps, deploymentID uint, rng time.Du
 		noteAsOf(time.UnixMilli(p.TimeMS).UTC())
 	}
 	snap.AsOf = asOf
-	snap.Stale = asOf.IsZero() || now.Sub(asOf) > staleAfter
+	snap.Stale = StaleAt(asOf, now)
 	return snap, nil
 }
 
@@ -343,132 +343,6 @@ func flattenPoints(series []ChartSeries) []tsdb.Point {
 		out = append(out, s.Points...)
 	}
 	return out
-}
-
-func buildReplicaRow(store tsdb.Store, inst InstanceRef, nodeNames map[string]string, now time.Time) (ReplicaRow, error) {
-	row := ReplicaRow{
-		InstanceUUID: inst.UUID,
-		NodeUUID:     inst.NodeUUID,
-		NodeName:     nodeNameOrUUID(nodeNames, inst.NodeUUID),
-		State:        inst.State,
-		Role:         inst.Role,
-	}
-	if store == nil {
-		return row, nil
-	}
-
-	startMS := now.Add(-DiagnosisWindow).UnixMilli()
-	endMS := now.UnixMilli()
-	stepMS := WindowStep.Milliseconds()
-	matcher := map[string]string{"instance": inst.UUID}
-	query := func(metric string) ([]tsdb.Series, error) {
-		return store.QueryRange(metric, matcher, startMS, endMS, stepMS)
-	}
-
-	running, err := query("gpuworks_infer_requests_running")
-	if err != nil {
-		return row, err
-	}
-	if len(running) > 0 {
-		if combined := SumBy(running, ""); len(combined) > 0 && len(combined[0].Points) > 0 {
-			row.HasRunning, row.Running = true, Mean(Values(combined[0]))
-		}
-	}
-
-	waiting, err := query("gpuworks_infer_requests_waiting")
-	if err != nil {
-		return row, err
-	}
-	if len(waiting) > 0 {
-		if combined := SumBy(waiting, ""); len(combined) > 0 && len(combined[0].Points) > 0 {
-			row.HasWaiting, row.Waiting = true, Mean(Values(combined[0]))
-		}
-	}
-
-	kvUsage, err := query("gpuworks_infer_gpu_cache_usage_percent")
-	if err != nil {
-		return row, err
-	}
-	if len(kvUsage) > 0 {
-		if combined := MaxBy(kvUsage, ""); len(combined) > 0 && len(combined[0].Points) > 0 {
-			row.HasKVUsage, row.KVUsage = true, MaxOf(Values(combined[0]))
-		}
-	}
-
-	kvQueries, err := query("gpuworks_infer_kv_queries_total")
-	if err != nil {
-		return row, err
-	}
-	kvHits, err := query("gpuworks_infer_kv_hits_total")
-	if err != nil {
-		return row, err
-	}
-	kvInstant, err := query("gpuworks_infer_kv_hit_rate_instant")
-	if err != nil {
-		return row, err
-	}
-	var kv Window
-	computeKVHitRate(&kv, kvQueries, kvHits, kvInstant)
-	row.HasKVHitRate, row.KVHitRate = kv.HasKVHitRate, kv.KVHitRate
-
-	promptTokens, err := query("gpuworks_infer_prompt_tokens_total")
-	if err != nil {
-		return row, err
-	}
-	genTokens, err := query("gpuworks_infer_generation_tokens_total")
-	if err != nil {
-		return row, err
-	}
-	row.HasTokens = len(promptTokens) > 0 || len(genTokens) > 0
-	if combined := SumBy(Rate(promptTokens), ""); len(combined) > 0 && len(combined[0].Points) > 0 {
-		row.PromptTokensPerSec = Mean(Values(combined[0]))
-	}
-	if combined := SumBy(Rate(genTokens), ""); len(combined) > 0 && len(combined[0].Points) > 0 {
-		row.GenTokensPerSec = Mean(Values(combined[0]))
-	}
-
-	for _, idx := range inst.GPUIndexes {
-		gpu := ReplicaGPU{Index: idx}
-		gpuMatcher := map[string]string{"node": inst.NodeUUID, "gpu": fmt.Sprintf("%d", idx)}
-		if util, err := store.QueryRange("gpuworks_gpu_utilization", gpuMatcher, startMS, endMS, stepMS); err != nil {
-			return row, err
-		} else if len(util) > 0 {
-			if combined := AvgBy(util, ""); len(combined) > 0 && len(combined[0].Points) > 0 {
-				gpu.HasUtil, gpu.UtilPct = true, Mean(Values(combined[0]))
-			}
-		}
-		if memBW, err := store.QueryRange(metricGPUMemBW, gpuMatcher, startMS, endMS, stepMS); err != nil {
-			return row, err
-		} else if len(memBW) > 0 {
-			if combined := AvgBy(memBW, ""); len(combined) > 0 && len(combined[0].Points) > 0 {
-				gpu.HasMemBW, gpu.MemBWPct = true, Mean(Values(combined[0]))
-			}
-		}
-		if temp, err := store.QueryRange("gpuworks_gpu_temperature_celsius", gpuMatcher, startMS, endMS, stepMS); err != nil {
-			return row, err
-		} else if len(temp) > 0 {
-			if combined := MaxBy(temp, ""); len(combined) > 0 && len(combined[0].Points) > 0 {
-				gpu.HasTemp, gpu.TempC = true, MaxOf(Values(combined[0]))
-			}
-		}
-		// Power takes the mean, not temperature's max: watts is an
-		// instantaneous draw that swings with every idle gap and boost burst
-		// inside the diagnosis window, so the window's peak reports the one
-		// busiest instant rather than what the card is drawing. A missing
-		// series (a node whose collector or card does not export the metric)
-		// leaves HasPower false, so the wire carries null rather than a
-		// fabricated 0 W.
-		if power, err := store.QueryRange("gpuworks_gpu_power_watts", gpuMatcher, startMS, endMS, stepMS); err != nil {
-			return row, err
-		} else if len(power) > 0 {
-			if combined := AvgBy(power, ""); len(combined) > 0 && len(combined[0].Points) > 0 {
-				gpu.HasPower, gpu.PowerW = true, Mean(Values(combined[0]))
-			}
-		}
-		row.GPUs = append(row.GPUs, gpu)
-	}
-
-	return row, nil
 }
 
 func nodeNameOrUUID(nodeNames map[string]string, uuid string) string {

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AutoComplete, Button, Card, Input, InputNumber, Select, Space, Switch, Tooltip, Typography } from "antd";
+import { AutoComplete, Button, Card, Input, InputNumber, Select, Space, Switch, Typography } from "antd";
 import { DownloadOutlined } from "@ant-design/icons";
 import { useSearchParams } from "react-router-dom";
 import { api, type LogsBucket, type LogEntry, type LogsFilter } from "../api";
@@ -7,6 +7,7 @@ import NodePicker from "../nodes/NodePicker";
 import PageHeader from "../components/PageHeader";
 import { formatTimeSec } from "../i18n/datetime";
 import { useTranslation } from "react-i18next";
+import LogsHistogram from "./LogsHistogram";
 import LogsRangeControl from "./LogsRangeControl";
 import { RANGE_MS, histogramBucketMS, initialAbsoluteWindow, type AbsoluteWindow, type RangeKey } from "./logsPageRange";
 
@@ -135,47 +136,6 @@ export function toCsv(entries: LogEntry[]): string {
   return [head, ...rows].join("\n");
 }
 
-export function Histogram({ buckets, onPick }: { buckets: LogsBucket[]; onPick?: (startMS: number) => void }) {
-  const { t } = useTranslation("logs");
-  if (!buckets.length) return null;
-  const oldestFirst = [...buckets].sort((a, b) => a.start_ms - b.start_ms);
-  // Lines without a parsed level (old agents predate classification) count
-  // toward the blue volume: they are real traffic, just unstamped.
-  const levelTotal = (b: LogsBucket, keys: string[]) => keys.reduce((sum, k) => sum + (b.counts[k] ?? 0), 0);
-  const totals = oldestFirst.map((b) => {
-    const known = levelTotal(b, ["info", "warn", "debug", "error", "fatal"]);
-    const unknown = Object.entries(b.counts).reduce((sum, [k, n]) => (["info", "warn", "debug", "error", "fatal"].includes(k) ? sum : sum + n), 0);
-    return known + unknown;
-  });
-  const max = Math.max(...totals, 1);
-  return (
-    <div style={{ marginBottom: 12 }} data-testid="logs-histogram">
-      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-        {t("histogram.caption")}
-      </Typography.Text>
-      <div style={{ display: "flex", alignItems: "flex-end", gap: 2, height: 64, marginTop: 6 }}>
-        {oldestFirst.map((b, i) => {
-          const bad = (b.counts["error"] ?? 0) + (b.counts["fatal"] ?? 0); // unstamped lines are not "bad"
-          const good = totals[i] - bad;
-          return (
-            <Tooltip key={b.start_ms} title={`${formatTimeSec(b.start_ms)} · ${totals[i]}`}>
-              <div
-                role="img"
-                aria-label={`${formatTimeSec(b.start_ms)} ${totals[i]}`}
-                onClick={() => onPick?.(b.start_ms)}
-                style={{ flex: 1, height: `${Math.max((totals[i] / max) * 100, 3)}%`, display: "flex", flexDirection: "column", justifyContent: "flex-end", cursor: onPick ? "pointer" : "default", minWidth: 3 }}
-              >
-                <div style={{ background: "#cf1322", height: totals[i] ? `${(bad / totals[i]) * 100}%` : 0, borderRadius: 2 }} />
-                <div style={{ background: "#5b8ff0", height: totals[i] ? `${(good / totals[i]) * 100}%` : 0, borderRadius: 2 }} />
-              </div>
-            </Tooltip>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
 export default function LogsPage() {
   const { t } = useTranslation("logs");
   // Seeds the instance filter and, when both bounds are present, an absolute
@@ -297,6 +257,15 @@ export default function LogsPage() {
     URL.revokeObjectURL(url);
   };
 
+  // Clicking a histogram bar narrows the window to that bucket. The search's
+  // `to` is inclusive, so the window ends 1 ms before the next bucket and
+  // holds exactly the rows the bar counted; the narrower window then gets
+  // finer buckets, so repeated clicks drill down.
+  const pickBucket = (startMS: number) => {
+    setAbsoluteWindow({ from: startMS, to: startMS + histogramBucketMS(range, absoluteWindow) - 1 });
+    setRange("custom");
+  };
+
   const hasMore = entries.length > 0 && entries.length % PAGE_SIZE === 0;
 
   const blocks = useMemo(() => foldTracebacks(entries), [entries]);
@@ -366,7 +335,7 @@ export default function LogsPage() {
         }
       >
         <Space direction="vertical" style={{ width: "100%" }} size={12}>
-          <Histogram buckets={histogram} />
+          <LogsHistogram buckets={histogram} onPick={pickBucket} />
           <Input.Search
             placeholder={t("search.placeholder")}
             enterButton={t("search.button")}
@@ -473,7 +442,7 @@ export default function LogsPage() {
                 <InputNumber
                   size="small"
                   min={1}
-                  max={500}
+                  max={1000}
                   value={contextN}
                   onChange={(v) => {
                     const n = typeof v === "number" ? v : undefined;

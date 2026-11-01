@@ -20,4 +20,12 @@ const (
 	// placed from a pool ({shape}: multi_node or pd), so it has no node
 	// requirements to edit.
 	ErrorNodeRequirementsNotEditable = "NODE_REQUIREMENTS_NOT_EDITABLE"
+	// ErrorUnitPlacementNone: no group of nodes can take the deployment now;
+	// how many nodes there are ({nodes}) and how many each check left out
+	// ({unmet}, {cordoned}, {offline}, {busy}, {no_network}), and the largest
+	// group short of the ranks ({largest}).
+	ErrorUnitPlacementNone = "UNIT_PLACEMENT_NONE"
+	// ErrorAutoPlacementPDMultiNode: an automatic PD request has a role whose
+	// units span nodes ({role}); those name their nodes.
+	ErrorAutoPlacementPDMultiNode = "AUTO_PLACEMENT_PD_MULTI_NODE"
 )

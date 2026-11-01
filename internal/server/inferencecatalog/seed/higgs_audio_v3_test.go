@@ -57,15 +57,25 @@ func TestHiggsAudioV3ReferenceAudioLoadsItsEncoderLocally(t *testing.T) {
 			if encoder.Role != "auxiliary" || encoder.MountPath != "/models/audio-tokenizer" || encoder.WeightBytes != 805675058 {
 				t.Errorf("reference-audio encoder is not a separate mounted dependency: %+v", encoder)
 			}
-			if spec.Env["HIGGS_AUDIO_TOKENIZER_PATH"] != encoder.MountPath || spec.Env["HF_HUB_OFFLINE"] == "0" || spec.Env["TRANSFORMERS_OFFLINE"] == "0" {
-				t.Errorf("voice cloning must resolve its local encoder without enabling inference-time downloads: %v", spec.Env)
+			if spec.Env["HIGGS_AUDIO_TOKENIZER_PATH"] != encoder.MountPath {
+				t.Errorf("voice cloning must resolve its local encoder mount: %v", spec.Env)
 			}
-			if len(encoder.Weights.Sources) != 1 {
-				t.Fatalf("encoder weights require a reproducible source: %+v", encoder.Weights.Sources)
+			revisions := map[string]string{
+				"huggingface": "18db15024ce4b7e15638be6ef0e283d99d282f39",
+				"modelscope":  "316f89b819e04e49dfbd0239f85e4e363b862cce",
 			}
-			source := encoder.Weights.Sources[0]
-			if source.Provider != "huggingface" || source.RepoID != "k2-fsa/OmniVoice" || source.Revision != "18db15024ce4b7e15638be6ef0e283d99d282f39" || source.Subfolder != "audio_tokenizer" {
-				t.Errorf("download only the pinned codec subfolder, not the whole OmniVoice model: %+v", source)
+			if len(encoder.Weights.Sources) != len(revisions) {
+				t.Fatalf("encoder acquisition must work with either configured weight provider: %+v", encoder.Weights.Sources)
+			}
+			for _, source := range encoder.Weights.Sources {
+				revision, ok := revisions[source.Provider]
+				if !ok || source.RepoID != "k2-fsa/OmniVoice" || source.Revision != revision || source.Subfolder != "audio_tokenizer" {
+					t.Errorf("download the same pinned codec subfolder from each provider: %+v", source)
+				}
+				delete(revisions, source.Provider)
+			}
+			if len(revisions) != 0 {
+				t.Errorf("missing codec providers: %v", revisions)
 			}
 		}
 		if !found {

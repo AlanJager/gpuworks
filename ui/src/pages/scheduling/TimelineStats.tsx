@@ -1,17 +1,14 @@
-import { Tag } from "antd";
+import { Fragment } from "react";
+import { InfoCircleOutlined } from "@ant-design/icons";
+import { Tag, Tooltip, Typography } from "antd";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
-import type { TimelineDeployment } from "../../api";
+import type { TimelineCards, TimelineDeployment, TimelineScope } from "../../schedulingApi";
 import ResourceTable, { type ResourceColumn } from "../../components/resourceTable/ResourceTable";
-
-/** spanText words a number of seconds as hours and minutes. */
-export function spanText(t: TFunction<"scheduling">, seconds: number): string {
-  if (seconds < 60) return t("timeline.duration.seconds", { seconds: Math.round(seconds) });
-  const minutes = Math.round(seconds / 60);
-  if (minutes < 60) return t("timeline.duration.minutes", { minutes });
-  return t("timeline.duration.hours", { hours: Math.floor(minutes / 60), minutes: minutes % 60 });
-}
+import { colors } from "../../theme/tokens";
+import { durationText } from "../durationText";
+import { NodeLink } from "./NodeLink";
 
 /** waitText words a wait in milliseconds; none is a dash. */
 export function waitText(t: TFunction<"scheduling">, ms?: number): string {
@@ -31,13 +28,14 @@ export function SharingTable({ rows }: { rows: TimelineDeployment[] }) {
   const { t: tDeploy } = useTranslation("deployments");
   const num = (key: keyof TimelineDeployment) => (_: unknown, row: TimelineDeployment) => <span className="scheduling-num">{String(row[key])}</span>;
   const columns: ResourceColumn<TimelineDeployment>[] = [
-    { key: "deployment", title: t("timeline.columns.deployment"), width: 200, render: (_: unknown, row) => <Link to={`/deployments?deployment=${row.deployment_id}`}>{row.deployment}</Link> },
-    { key: "level", title: t("timeline.columns.level"), width: 90, render: (_: unknown, row) => <Tag>{tDeploy(`yieldPolicy.policy.name.${row.yield_policy}`)}</Tag> },
+    { key: "deployment", title: t("timeline.columns.deployment"), width: 200, render: (_: unknown, row) => <DeploymentName row={row} /> },
+    { key: "cards", title: t("timeline.columns.cards"), width: 180, render: (_: unknown, row) => <CardsCell cards={row.cards} /> },
+    { key: "level", title: t("timeline.columns.level"), width: 90, render: (_: unknown, row) => (row.yield_policy ? <Tag>{tDeploy(`yieldPolicy.policy.name.${row.yield_policy}`)}</Tag> : <span>—</span>) },
     {
       key: "awake",
       title: t("timeline.columns.awake"),
       width: 170,
-      render: (_: unknown, row) => <span className="scheduling-num">{t("timeline.awakeShare", { span: spanText(t, row.awake_seconds), share: Math.round(row.awake_share * 1000) / 10 })}</span>,
+      render: (_: unknown, row) => <span className="scheduling-num">{t("timeline.awakeShare", { span: durationText(t, row.awake_seconds, "elapsed"), present: durationText(t, row.present_seconds, "elapsed"), share: Math.round(row.awake_share * 1000) / 10 })}</span>,
     },
     { key: "switches", title: t("timeline.columns.switches"), width: 90, render: num("switches") },
     { key: "yielded", title: t("timeline.columns.yielded"), width: 90, render: num("yielded") },
@@ -56,5 +54,55 @@ export function SharingTable({ rows }: { rows: TimelineDeployment[] }) {
       columnSettings={false}
       emptyDescription={t("timeline.sharingEmpty")}
     />
+  );
+}
+
+/**
+ * ScopeHint is the info mark beside the stats' title when the server says
+ * the figures count only the replicas on the page's nodes, reachable by
+ * keyboard, its tooltip opening on focus as on hover. Over the fleet there is
+ * nothing to say.
+ */
+export function ScopeHint({ scope }: { scope: TimelineScope | undefined }) {
+  const { t } = useTranslation("scheduling");
+  if (scope !== "node") return null;
+  const text = t("timeline.scopeNode");
+  return (
+    <Tooltip title={text} trigger={["hover", "focus"]}>
+      <InfoCircleOutlined role="img" aria-label={text} tabIndex={0} style={{ color: colors.muted, fontSize: 13, marginLeft: 6, cursor: "help" }} />
+    </Tooltip>
+  );
+}
+
+// NODE_MARK is where the wording puts the node's name, rendered as its link.
+const NODE_MARK = "\u0000node\u0000";
+
+// DeploymentName links to a deployment, or - when it was deleted - names it,
+// greyed and marked, with no page to open, as the scheduling history does.
+function DeploymentName({ row }: { row: TimelineDeployment }) {
+  const { t } = useTranslation("scheduling");
+  if (row.deployment_deleted) return <Typography.Text type="secondary">{t("history.deleted", { name: row.deployment || `#${row.deployment_id}` })}</Typography.Text>;
+  return <Link to={`/deployments?deployment=${row.deployment_id}`}>{row.deployment}</Link>;
+}
+
+// CardsCell lists where a deployment is now, one node per line: its name (or
+// id when the node is gone), which opens its drawer, and the GPUs its
+// instances hold there.
+function CardsCell({ cards }: { cards: TimelineCards[] | undefined }) {
+  const { t } = useTranslation("scheduling");
+  if (!cards?.length) return <span>—</span>;
+  return (
+    <span className="scheduling-cards">
+      {cards.map((entry) => (
+        <span key={entry.node_id} style={{ display: "block" }}>
+          {t("timeline.cardsOnNode", { node: NODE_MARK, gpus: entry.gpus.join(", ") || "—" }).split(NODE_MARK).map((part, index) => (
+            <Fragment key={index}>
+              {index > 0 && <NodeLink uuid={entry.node_uuid} name={entry.node || `#${entry.node_id}`} />}
+              {part}
+            </Fragment>
+          ))}
+        </span>
+      ))}
+    </span>
   );
 }

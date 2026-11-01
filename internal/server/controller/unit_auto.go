@@ -102,7 +102,8 @@ func (c *Controller) autoPlaceUnit(ctx context.Context, deployment *unitDeployme
 		c.autoRepickFailed(dep.ID)
 		return false, nil
 	}
-	params := map[string]any{"unit": index + 1, "from": c.rankNames(deployment, unit), "to": c.rankNames(deployment, moved)}
+	params := map[string]any{"unit": index + 1, "from": c.rankNames(deployment, unit), "to": c.rankNames(deployment, moved),
+		store.EventParamNodeUUIDs: nodeUUIDList(append(rankUUIDs(unit), rankUUIDs(moved)...)...)}
 	if role != "" {
 		params["role"] = role
 	}

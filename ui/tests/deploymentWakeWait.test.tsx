@@ -4,6 +4,7 @@ import React from "react";
 import { I18nextProvider } from "react-i18next";
 import { createI18n } from "./helpers/dom.ts";
 import { trackMessageChannels } from "./helpers/trackedMessageChannels.ts";
+import * as shapes from "./helpers/deploymentCapabilities.ts";
 
 // A wake the cards cannot take: the refusal shows with its two ways on
 // (wait for room, or put the occupants to sleep and wake), a card held by a
@@ -39,6 +40,7 @@ function asleep(overrides: Record<string, unknown> = {}): Deployment {
     health: { status: "off", threshold_sec: 60, last: null, recent_mean_ms: null, recent_ok: 0, recent: [] },
     template_deviated: false, tokenize_enabled: false, created_at: "2026-10-01T00:00:00Z",
     instances: [instance("inst-a", 0)],
+    ...shapes.sleepableSingleNode,
     ...overrides,
   } as unknown as Deployment;
 }
@@ -78,6 +80,8 @@ test("a wake the cards cannot take shows the refusal with a way to wait and a wa
   assert.ok(within(alert).getByText(shortageText()));
   assert.ok(within(alert).getByText(sl.refused.wait));
   assert.ok(within(alert).getByText(i18n.t("deployments:sleep.refused.yield", { occupants: "other, third" })));
+  // How long waiting lasts is the server's limit (wake_wait_limit_sec 1800).
+  assert.ok(within(alert).getByText(i18n.t("deployments:sleep.refused.hint", { limit: "30 min" })));
   // The refusal is shown in place, not twice.
   assert.equal(screen.queryByText(i18n.t("deployments:sleep.wakeFailed", { detail: shortageText() })), null);
 });
@@ -101,17 +105,42 @@ test("Wait for room wakes with wait=true, says it waits and drops the refusal", 
 
 test("Put the occupants to sleep, then wake wakes with yield=true and names who was put to sleep", async () => {
   stub(async (opts) => {
-    if (opts.yield) return { status: "waiting", woken: [], waiting: ["inst-a"], yielded: ["other", "third"] };
+    // The server names who it put to sleep: here only one of the two the
+    // refusal named, and the result says that one.
+    if (opts.yield) return { status: "waiting", woken: [], waiting: ["inst-a"], yielded: ["other"] };
     throw shortage();
   });
   const user = mount();
   await user.click(screen.getByRole("button", { name: sl.wake }));
   await screen.findByText(sl.refused.title);
-  await user.click(button(i18n.t("deployments:sleep.refused.yield", { occupants: "other, third" })));
+  await confirmYield(user, "other, third");
   await waitFor(() => assert.deepEqual(wakes, [{ partial: false }, { yield: true }]));
-  await screen.findByText(i18n.t("deployments:sleep.yieldStarted", { names: "other, third" }));
+  await screen.findByText(i18n.t("deployments:sleep.yieldStarted", { names: "other" }));
   await waitFor(() => assert.equal(screen.queryByText(sl.refused.title), null));
 });
+
+test("putting the occupants to sleep is confirmed first, saying they stay asleep until woken by hand; cancelling changes nothing", async () => {
+  stub(async () => { throw shortage(); });
+  const user = mount();
+  await user.click(screen.getByRole("button", { name: sl.wake }));
+  await screen.findByText(sl.refused.title);
+  await user.click(button(i18n.t("deployments:sleep.refused.yield", { occupants: "other, third" })));
+  const confirm = (await screen.findByText(i18n.t("deployments:sleep.refused.yieldConfirm", { occupants: "other, third" }))).closest(".ant-popover") as HTMLElement;
+  assert.ok(within(confirm).getByText(i18n.t("deployments:sleep.refused.yieldHeld", { occupants: "other, third" })));
+  // Nothing is ordered until the operator confirms.
+  assert.deepEqual(wakes, [{ partial: false }]);
+  await user.click(within(confirm).getByRole("button", { name: sl.refused.yieldCancel }));
+  assert.deepEqual(wakes, [{ partial: false }]);
+  assert.ok(screen.getByText(sl.refused.title));
+});
+
+// confirmYield clicks the yield button for occupants and confirms it in its
+// popover.
+async function confirmYield(user: ReturnType<typeof mount>, occupants: string) {
+  await user.click(button(i18n.t("deployments:sleep.refused.yield", { occupants })));
+  const confirm = (await screen.findByText(i18n.t("deployments:sleep.refused.yieldConfirm", { occupants }))).closest(".ant-popover") as HTMLElement;
+  await user.click(within(confirm).getByRole("button", { name: sl.refused.yieldOk }));
+}
 
 test("a yield an occupant blocks is refused with the reason and the choice stays", async () => {
   stub(async (opts) => {
@@ -121,7 +150,7 @@ test("a yield an occupant blocks is refused with the reason and the choice stays
   const user = mount();
   await user.click(screen.getByRole("button", { name: sl.wake }));
   await screen.findByText(sl.refused.title);
-  await user.click(button(i18n.t("deployments:sleep.refused.yield", { occupants: "other, third" })));
+  await confirmYield(user, "other, third");
   await screen.findByText(i18n.t("deployments:sleep.wakeFailed", { detail: i18n.t("common:apiError.WAKE_YIELD_BLOCKED", { occupants: ["other"], woken: [] }) }));
   assert.ok(screen.getByText(sl.refused.title));
 });
@@ -139,6 +168,14 @@ test("a card held outside the platform shows its message only: no waiting, no yi
   assert.equal(screen.queryByText(/to sleep, then wake/), null);
 });
 
+test("how long a wake waits is the server's limit, in words", async () => {
+  stub(async () => ({ status: "waking" }));
+  mount(asleep({ wake_waiting_since: "2026-10-25T09:00:00Z", wake_wait_limit_sec: 7200 }));
+  const banner = screen.getByText(i18n.t("deployments:sleep.waiting.since", { time: formatTime("2026-10-25T09:00:00Z") })).closest(".ant-alert") as HTMLElement;
+  assert.ok(within(banner).getByText(i18n.t("deployments:sleep.waiting.hint", { limit: "2 h" })));
+  assert.equal(within(banner).queryByText(/30 min/), null);
+});
+
 test("a wake that is waiting shows since when and is cancelled from the keyboard", async () => {
   stub(async () => ({ status: "waking" }));
   const ended: number[] = [];
@@ -146,7 +183,7 @@ test("a wake that is waiting shows since when and is cancelled from the keyboard
   let done = 0;
   const user = mount(asleep({ wake_waiting_since: "2026-10-25T09:00:00Z" }), () => { done += 1; });
   const banner = screen.getByText(i18n.t("deployments:sleep.waiting.since", { time: formatTime("2026-10-25T09:00:00Z") })).closest(".ant-alert") as HTMLElement;
-  assert.ok(within(banner).getByText(sl.waiting.hint));
+  assert.ok(within(banner).getByText(i18n.t("deployments:sleep.waiting.hint", { limit: "30 min" })));
   const cancel = within(banner).getByRole("button", { name: sl.waiting.cancel });
   cancel.focus();
   assert.equal(document.activeElement, cancel);
@@ -173,12 +210,22 @@ test("without a waiting wake there is no banner", async () => {
 
 test("an asleep deployment says a request wakes it, unless the sleep was ordered by an operator or a schedule", async () => {
   stub(async () => ({ status: "woken", woken: ["inst-a"], waiting: [], yielded: [] }));
-  mount(asleep());
+  mount(asleep({ sleep_hold: "none" }));
   screen.getByText(sl.requestWakesHint);
   assert.equal(screen.queryByText(sl.heldHint), null);
   cleanup();
-  mount(asleep({ sleep_held: true }));
+  mount(asleep({ sleep_hold: "all", sleep_held: true }));
   screen.getByText(sl.heldHint);
+  assert.equal(screen.queryByText(sl.requestWakesHint), null);
+  cleanup();
+  // The server reads some replicas held and the others not: the hint says a
+  // request wakes only the others, and says neither of the plain hints.
+  mount(asleep({
+    sleep_hold: "some", sleep_held: false, replicas: 2,
+    instances: [{ ...instance("inst-a", 0), sleep_held: true }, { ...instance("inst-b", 1), sleep_held: false }],
+  }));
+  screen.getByText(sl.someHeldHint);
+  assert.equal(screen.queryByText(sl.heldHint), null);
   assert.equal(screen.queryByText(sl.requestWakesHint), null);
   cleanup();
   // An awake deployment has no sleep to explain.

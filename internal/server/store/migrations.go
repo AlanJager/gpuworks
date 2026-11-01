@@ -1293,6 +1293,9 @@ var migrations = []migration{
 	{Version: 188, Name: "lifecycle_schedule_role", Apply: addLifecycleScheduleRole},
 	{Version: 189, Name: "deployment_yield_policy", Apply: addDeploymentYieldPolicy},
 	{Version: 190, Name: "deployment_yield_policy_reshape", Apply: reshapeDeploymentYieldPolicy},
+	{Version: 191, Name: "instance_sleep_held", Apply: moveSleepHeldToInstances},
+	{Version: 192, Name: "instance_l1_host_buffer", Apply: addInstanceL1HostBuffer},
+	{Version: 193, Name: "api_key_scope", Apply: addAPIKeyScope},
 }
 
 // modelFileNetworkColumns are the columns migrations 76 and 77 added to
@@ -1597,7 +1600,7 @@ func applyMigration(db *gorm.DB, m migration) error {
 // AutoMigrateDev exposes the old schema convenience path for local development.
 func (s *Store) AutoMigrateDev() error {
 	return s.db.AutoMigrate(
-		&SchemaMigration{}, &Node{}, &GPU{}, &User{}, &APIKey{}, &ManagementSession{},
+		&SchemaMigration{}, &Node{}, &GPU{}, &User{}, &APIKey{}, &APIKeyDeployment{}, &ManagementSession{},
 		&Model{}, &ModelFile{}, &Deployment{}, &Instance{}, &InstanceEvent{},
 		&Provider{}, &ProviderInstance{}, &ProviderBootstrapToken{}, &NodeSSHCredential{}, &Setting{}, &AIConfig{}, &Profile{}, &ImageSeries{}, &Image{}, &ImageNode{}, &Storage{}, &StorageNode{}, &StorageNodeState{}, &TerminalSession{}, &BenchmarkRun{}, &BenchmarkPoint{}, &InferenceModel{}, &InferenceSpecRow{}, &Network{}, &NetworkAttachment{}, &NetworkTestRun{}, &DeploymentNodeRequirement{}, &InstanceModelFile{}, &PlatformSSHKey{}, &PlatformToken{},
 		&PullSourceRule{}, &PullSourceRuleEndpoint{}, &PullSourceRuleRequirement{}, &SyncGroup{}, &SyncGroupRequirement{}, &SourceCredential{}, &PullProxy{}, &PullProxyRequirement{},

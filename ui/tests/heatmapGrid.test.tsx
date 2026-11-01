@@ -18,7 +18,7 @@ const { default: Heatmap, cardsAcross } = await import("../src/pages/scheduling/
 const { arrange, buildModel, NO_FILTERS } = await import("../src/pages/scheduling/overviewModel.ts");
 type Filters = import("../src/pages/scheduling/overviewModel.ts").Filters;
 type GroupBy = import("../src/pages/scheduling/overviewModel.ts").GroupBy;
-type Overview = import("../src/api.ts").SchedulingOverview;
+type Overview = import("../src/schedulingApi.ts").SchedulingOverview;
 
 const s = locale.scheduling;
 afterEach(cleanup);
@@ -57,7 +57,7 @@ test("every card is a cell named in full, grouped under its node", () => {
   assert.ok(label.includes(i18n.t("scheduling:heatmap.detail.residue", { pct: 4 })));
   assert.ok(label.includes(i18n.t("scheduling:heatmap.detail.switching")));
   assert.ok(label.includes(i18n.t("scheduling:heatmap.holder", { name: "night", level: i18n.t("deployments:yieldPolicy.policy.name.idle"), state: s.heatmap.holderState.asleep })));
-  assert.ok(cellOf("gpu-c", 0).getAttribute("aria-label")?.includes(s.states.held));
+  assert.ok(cellOf("gpu-c", 0).getAttribute("aria-label")?.includes(s.states.held_outside));
   assert.ok(cellOf("gpu-b", 0).getAttribute("aria-label")?.includes(s.states.offline));
 });
 

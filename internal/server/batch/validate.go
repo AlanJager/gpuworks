@@ -24,6 +24,9 @@ type inputStats struct {
 	Lines int
 	// Endpoint is the url every request asks for, "" when they differ.
 	Endpoint string
+	// MixedLine is the first line whose url differs from the first request's,
+	// 0 when they all ask for the same one.
+	MixedLine int
 }
 
 // fileLimit is the size an input file may have; a test lowers it.
@@ -90,7 +93,7 @@ func scanInput(src io.Reader, w io.Writer) (inputStats, *Error) {
 			if trimmed := bytes.TrimSpace(buf); len(trimmed) > 0 {
 				requests++
 				if requests > MaxFileLines {
-					return st, &Error{Status: 400, Type: "invalid_request_error", Code: "too_many_requests", Line: lineNo, Message: fmt.Sprintf("the file has more than %d requests", MaxFileLines)}
+					return st, &Error{Status: 400, Type: "invalid_request_error", Code: CodeTooManyRequests, Line: lineNo, Message: fmt.Sprintf("the file has more than %d requests", MaxFileLines)}
 				}
 				url, lerr := checkLine(trimmed, lineNo, seen)
 				if lerr != nil {
@@ -99,8 +102,9 @@ func scanInput(src io.Reader, w io.Writer) (inputStats, *Error) {
 				switch {
 				case requests == 1:
 					st.Endpoint = url
-				case st.Endpoint != url:
+				case st.MixedLine == 0 && st.Endpoint != url:
 					st.Endpoint = ""
+					st.MixedLine = lineNo
 				}
 			}
 		}
@@ -109,7 +113,7 @@ func scanInput(src io.Reader, w io.Writer) (inputStats, *Error) {
 		}
 	}
 	if requests == 0 {
-		return st, &Error{Status: 400, Type: "invalid_request_error", Code: "empty_file", Message: "the file has no requests"}
+		return st, &Error{Status: 400, Type: "invalid_request_error", Code: CodeEmptyFile, Message: "the file has no requests"}
 	}
 	st.Bytes = counted.n
 	st.Lines = requests

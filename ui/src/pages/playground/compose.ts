@@ -10,7 +10,7 @@ export function composeRequest(operation: InferenceAPIOperation, model: string, 
   if (raw?.trim()) { const expert = JSON.parse(raw) as unknown; if (!expert || Array.isArray(expert) || typeof expert !== "object") throw new Error("Expert request must be a JSON object"); Object.assign(body, expert); }
   body.model = model; return body;
 }
-export function inputLabel(field: InputField, language: string, fallback = field.name): string { return localizedText(field.label, language) || fallback; }
+export function inputLabel(field: InputField, language: string): string { return localizedText(field.label, language) || field.name; }
 export function declaredValues(operation: InferenceAPIOperation, values: Record<string, unknown>): Record<string, unknown> {
   const declared = new Set((operation.inputs || []).map((field) => field.name));
   return Object.fromEntries(Object.entries(values).filter(([name]) => declared.has(name)));

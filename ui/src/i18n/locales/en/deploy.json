@@ -162,6 +162,9 @@
     "node_cordoned": "Node {{node}} is cordoned; the replica starts once scheduling resumes there, or pick another node under Adjust replicas.",
     "pool_no_fit": "None of the {{tried}} best of {{candidates}} candidate nodes has room for a replica. The best, {{node}}, refused: {{first}}. Free resources there, scale down another deployment, or add nodes.",
     "waiting_for_yield": "Waiting until {{holders}}; the replica then goes on {{node}}.",
+    "reserved_for_sleepers": "GPU {{gpus}} on {{node}} is kept for {{sleepers}}, asleep there until a request wakes it; a deployment that never yields is not placed on those cards. Choose another card, enable sleep for this deployment and pick a yield policy that shares cards, or put the deployment on the card to sleep by hand (a sleep ordered by hand keeps no card).",
+    "does_not_wait_for_yield": "GPU {{gpus}} on {{node}} is held by {{occupants}}; this deployment never yields, so it does not wait for them to give the cards up. Enable sleep for this deployment and pick a yield policy that shares cards, and it waits for {{yielders}} to give them up by yield policy.",
+    "held_by_non_yielding": "GPU {{gpus}} on {{node}} is held by {{occupants}}; {{blockers}} never yields and does not give its cards to this deployment. Choose another card, or enable sleep for {{blockers}} and pick a yield policy that shares cards.",
     "model_unavailable": "Model {{model}} could not be acquired on node {{node}}, or waits for a source to be chosen, so no replica starts there. Retry the sync for that node on the models page, or use the public download instead.",
     "image_delivery_waiting": "Waiting for image {{image}} to arrive on node {{node}}. Check its transfer progress on the images page; a stalled peer transfer is cancelled so it can be retried.",
     "image_delivery_failed": "Pre-pulling image {{image}} on node {{node}} failed, so the multi-node deployment cannot start. The platform keeps retrying; check the reason on the images page or review the pull settings.",
@@ -203,7 +206,9 @@
     "sleeping_residue": "keep {{sleeping_gib}} GiB resident for sleeping instances.",
     "image_delivery_detail": "Reported failure: {{detail}}",
     "model_unavailable_detail": "Reported failure: {{detail}}",
-    "plan_failed_detail": "Reported failure: {{detail}}"
+    "plan_failed_detail": "Reported failure: {{detail}}",
+    "blockers_keep_cards": "{{blockers}} never yields and keeps its cards: also choose another card, or enable sleep for {{blockers}} and pick a yield policy that shares cards.",
+    "holders_give_way": "The other holders give way: {{holders}}."
   },
   "shared": {
     "automatic": "Automatic",
@@ -1023,14 +1028,15 @@
       "partition_change": "Turning dGPU on or off, or changing its partition backend, retires every old instance before the new ones start: the replicas cannot be replaced one at a time, and the service is interrupted until they are ready."
     }
   },
+  "scheduleSleeper": "{{deployment}} ({{policy}})",
+  "scheduleHeld": {
+    "separator": ", "
+  },
   "scheduleHolder": {
     "atOnce": "{{deployment}} gives up its GPUs now",
     "idle": "{{deployment}} gives up its GPUs after {{idle}} idle",
     "idleOrTurn": "{{deployment}} gives up its GPUs after {{idle}} idle or {{turn}} of serving",
     "sleeping": "the deployments giving up their GPUs finish going to sleep",
-    "separator": "; ",
-    "seconds": "{{value}} s",
-    "minutes": "{{value}} min",
-    "hours": "{{value}} h"
+    "separator": "; "
   }
 }

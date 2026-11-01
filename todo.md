@@ -602,7 +602,7 @@ dockerd 进独立网络命名空间并启用回环；在命名空间内用与宿
 
 agent 正常以 `POST /sleep` 的返回作为完成信号，不受影响。只有两条路径读 `/is_sleeping` 并据此下结论：
 
-- `internal/agent/engine/sleep.go` 的 `reconcileSleep`：醒着的实例休眠时遇到非超时的传输错误（如连接被重置），探测读到 sleeping，就按"已生效"上报成功并立即测残留（`TestReconcileSleepReportsAppliedWhenSleepCompletedDespiteHTTPError` 守护的现行设计）。在 PPU 上卸载可能还没做完，残留偏大或偏小，调度会认为显存已释放。超时已单独按不确定处理，不在此列。
+- `internal/agent/engine/sleep.go` 的 `reconcileSleep`：醒着的实例休眠时遇到非超时的传输错误（如连接被重置），探测读到 sleeping，就按"已生效"上报成功并立即测残留（`TestReconcileSleepReportsAppliedWhenSleepCompletedDespiteATransportError` 守护的现行设计）。在 PPU 上卸载可能还没做完，残留偏大或偏小，调度会认为显存已释放。超时已单独按不确定处理，不在此列。
 - `adoptSleepLevel`：agent 在休眠请求途中重启，探测读到 sleeping，直接采用期望级别。
 
 ### 建议

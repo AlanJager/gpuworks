@@ -207,3 +207,19 @@ test("the tile is keyboard operable via Enter and Space", async () => {
   await userEvent.setup().keyboard("[Space]");
   assert.equal(clicks, 2);
 });
+
+test("request_rate shows the concurrency it was served at beside the rate, not as a ratio", () => {
+  const signal: MonitorSignal = { key: "request_rate", collected: true, value: 5, denominator: 20 };
+  renderTile(signal, undefined, "req/s", { denominatorLabel: "conn" });
+  const row = screen.getByTestId("signal-value-row");
+  assert.equal(row.textContent, "5req/s · 20conn");
+  assert.ok(!row.textContent?.includes("/ 20"));
+  assert.ok(screen.getByRole("button", { name: "Ready replicas: 5 req/s · 20 conn" }));
+});
+
+test("request_rate without an in-flight gauge shows the rate alone", () => {
+  const signal: MonitorSignal = { key: "request_rate", collected: true, value: 5 };
+  renderTile(signal, undefined, "req/s", { denominatorLabel: "conn" });
+  assert.equal(screen.getByTestId("signal-value-row").textContent, "5req/s");
+  assert.ok(screen.getByRole("button", { name: "Ready replicas: 5 req/s" }));
+});

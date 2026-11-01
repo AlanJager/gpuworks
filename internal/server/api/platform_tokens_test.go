@@ -43,7 +43,7 @@ func newTokenRig(t *testing.T) *tokenRig {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &tokenRig{t: t, h: Router(Deps{AuthSigner: signer, Store: st, AI: &fakeAI{available: true}}), st: st, session: session}
+	return &tokenRig{t: t, h: Router(Deps{AuthSigner: signer, Store: st, AI: &fakeAI{available: true}, SchedulingActivity: replayActivity{st}}), st: st, session: session}
 }
 
 func (r *tokenRig) do(bearer, method, path, body string) *httptest.ResponseRecorder {

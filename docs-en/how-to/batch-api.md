@@ -151,10 +151,10 @@ Cancel with `client.batches.cancel(batch.id)` and list with `client.batches.list
 
 The **Batches** page in the **Inference Services** group of the left menu runs a batch without code. **Call it through the API** at the top of the page expands to the curl and SDK calls above, for the address you opened the console from; the usage note on the **API Keys** page points to these endpoints too.
 
-1. Click **Create batch**, choose the `.jsonl` file and the endpoint (`endpoint`), and submit. The file is validated line by line on upload here too, and an error names the line and the reason. The **Model** drop-down sets the model every request uses (see [Choosing the Model](#指定模型)), and **Completion window** changes the batch's time limit (see [Completion Window](#完成时限)). Without a file at hand, pick a deployment under **Sample file** in the dialog (the sample uses the **Model** when one is chosen) and click **Download sample** for a 5-request `.jsonl` sample, or **Use sample** to create a batch with it as is.
+1. Click **Create batch**, choose the `.jsonl` file, and submit. The batch calls the endpoint the lines' `url` names, with nothing else to choose; when the lines' `url`s differ, the error names the first line that differs. The file is validated line by line on upload here too, and an error names the line and the reason. The **Model** drop-down sets the model every request uses (see [Choosing the Model](#指定模型)), and **Completion window** changes the batch's time limit (see [Completion Window](#完成时限)). The choices in the dialog all come from the server (`GET /api/v1/batches/dictionary`): the endpoints a sample can call, the range and default of the completion window, the file size and request limits, the order of the status filter, the output retention in days, and the models that can be chosen with the state of each; the console works none of them out itself, so what the dialog offers agrees with the server's check at creation. Without a file at hand, pick the sample type (chat, completions, or embeddings) and a deployment under **Sample file** in the dialog (the sample uses the **Model** when one is chosen) and click **Download sample** for a 1000-request `.jsonl` sample (10000 requests for embeddings, each input two prompts joined) (a mix of tasks such as math reasoning, translation, summarization, writing and code, in English and Chinese, with `max_tokens` 4096 for chat and completions, enough to keep a GPU busy for a while; the deployment's context length must hold it plus the prompt, or the inference engine refuses the requests; the same model gives the same content every time), or **Use sample** to create a batch with it as is.
 2. The list shows each batch's ID, status, endpoint, model (shown only when one was chosen, otherwise "Per file line"), progress (completed out of total, with the failure count), creation time, and expiry time; use **Filter by status** to narrow it.
-3. Click a row to open the detail drawer: summary, request counts, the timeline of stages, metadata, and **Download input**, **Download output**, and **Download errors**. A failed batch (`failed`) also shows the failure reason.
-4. While a batch has not ended, click **Cancel batch** and confirm in the page.
+3. Click a row to open the detail drawer: summary, request counts, the timeline of stages, metadata, and **Download input**, **Download output**, and **Download errors**. A failed batch (`failed`) also shows the failure reason; when it has an output or error file, the drawer says when those files are deleted, from the batch's `output_expires_at`.
+4. While a batch can be cancelled (its `cancellable` is `true`, that is, `validating` or `in_progress`), click **Cancel batch** and confirm in the page. A `finalizing` batch is writing its result files and cannot be cancelled, so the drawer shows no cancel button.
 
 A batch created in the console belongs to the signed-in user and, like one created with an API token, can be viewed through `/v1/batches` with any inference token of the same user. Administrators see every user's batches; other users see only their own.
 
@@ -176,10 +176,20 @@ With a model chosen, the platform sets the `body.model` of every request (retrie
 
 The chosen model must be the served model name of a running or sleeping deployment; a stopped or unknown one returns 400 (`BATCH_MODEL_UNKNOWN` in the console, `model_not_found` on `/v1`) and no batch is created. A sleeping deployment can be chosen:
 
-- One the platform put to sleep itself (yielding): when a request arrives, the gateway holds it, wakes the deployment, and lets it through once awake, as for any request.
-- One you or a schedule put to sleep (`sleep_held` is `true` in the deployment detail): a request does **not** wake it. The batch is still created, but the create response carries `warnings` (the console shows a notice), and the requests are retried until someone wakes the deployment or the batch expires. The console's drop-down marks such a deployment "Asleep (held, requests do not wake it)".
+- One the platform put to sleep itself (yielding), or any other sleep a request wakes: when a request arrives, the gateway holds it, wakes the deployment, and lets it through once awake, as for any request.
+- One you or a schedule put to sleep (`sleep_held` is `true` in the deployment detail): a request does **not** wake it. The batch is still created, but the create response carries `warnings` (the console shows a notice), and the requests are retried until someone wakes the deployment or the batch expires. The console's drop-down marks such a deployment "Asleep (held, requests do not wake it)"; the names and states in the drop-down (`served` serving, `asleep` asleep and woken by a request, `asleep_held` asleep by hand or by a schedule) come from `GET /api/v1/batches/dictionary` and follow the same rule as the check at creation. When several deployments share a served name, the best of them counts (serving before asleep, asleep before held).
 
-**Checking the models in the file**: after you choose a file in the console, the browser reads it (when it is at most 50 MB) and lists every model it uses. With no model chosen, if some model has no available deployment on the platform, a warning names those models, and their requests would get 404 into the error file; with a model chosen, the models in the file are replaced by it and only a notice is shown. The check never blocks submitting, and files over 50 MB are not checked.
+**Checking the models in the file when no model is chosen**: when the batch is created, the platform reads the stored input file once, takes the distinct `body.model` values of its lines, and looks each up by the rules above. If some model is served by no running or sleeping deployment (a stopped or deleted deployment does not count), the creation is refused with HTTP 400; no batch is created and the uploaded file stays, ready for the next creation:
+
+```json
+{"error":{"message":"The input file names models that no active deployment serves: A, B. Set a model to send every request to, or deploy these models first","type":"invalid_request_error","param":"input_file_id","code":"model_not_found"}}
+```
+
+The `/v1` message names at most 5 models and ends with `, ...` when there are more; the console has a code of its own, `BATCH_FILE_MODELS_UNKNOWN`, with `params` `{models, more}` (`models` is the list of the first few names and `more` how many further ones there are; the lookups stop after a few dozen unknown models, so `more` may be a lower bound), and the console joins the names in the interface language. To fix it, choose a model so that all requests go to it, or deploy the models in the file first. When some models in the file sleep by an operator's or a schedule's order (a held sleep) and the rest are served, the batch is still created and the create response carries a `warnings` entry `model_sleep_held` (`param` is `input_file_id` and it lists those models; with a model chosen, `param` is `model`); in the console's batch object these are `BATCH_FILE_MODELS_SLEEP_HELD` (`params` `{models, more}`), and with a model chosen `BATCH_MODEL_SLEEP_HELD` (`params` `{model}`). With a model chosen the models in the file are not checked (they are replaced), only the chosen one is.
+
+A deployment stopped or deleted after the batch was created is not covered by this check: its requests get a 404 one by one at run time and go to the error file.
+
+After you choose a file in the console, the browser also reads it (when it is at most 50 MB) and lists every model it uses, judging which have no deployment by the model names in the dictionary. With no model chosen, if some model has no available deployment, a warning names those models and says the batch cannot be created; with a model chosen, the models in the file are replaced by it and only a notice is shown. The check in the browser is an early hint; the server's check at creation decides, and files over 50 MB are not checked in the browser.
 
 ## Completion Window
 
@@ -189,7 +199,7 @@ The completion window decides how long a batch has from its creation: `expires_a
 - **`/v1/batches`**: `completion_window` in the request body is `"24h"` (OpenAI's value) or `"1h"` to `"72h"` (a gpuworks extension; with the official SDK you can override the parameter with `extra_body={"completion_window": "48h"}`).
 - Anything else (`0h`, `73h`, `1d`, `90m`, `24H`, leading zeros or fractions) returns 400 `invalid_completion_window` (`BATCH_REQUEST_INVALID` in the console, with `params.field` set to `completion_window`).
 
-The batch object and the console detail both show its `completion_window`. The 30-day retention of the output and error files counts from when the batch ends and does not depend on the window.
+The batch object and the console detail both show its `completion_window`; in the console the range and the default of this field come from the dictionary's `completion_window_hours` (`min`, `max`, `default`). The retention of the output and error files (30 days by default, the dictionary's `output_retention_days`) counts from when the batch ends and does not depend on the window.
 
 ## Statuses, Cancellation, and Expiry
 
@@ -204,7 +214,7 @@ The batch object and the console detail both show its `completion_window`. The 3
 | `cancelling` | Cancellation requested: no new requests are sent, and requests already in flight get up to 2 more minutes |
 | `cancelled` | Cancellation finished; the results so far are in the output and error files |
 
-Cancel with `POST /v1/batches/{id}/cancel` (in the console, **Cancel batch** in the detail drawer). Cancelling a batch that has already ended returns 409 `batch_not_cancellable`.
+Cancel with `POST /v1/batches/{id}/cancel` (in the console, **Cancel batch** in the detail drawer). Only `validating` and `in_progress` batches can be cancelled; a `finalizing` batch is writing its result files and ends as it is, and so does one that has already ended, and cancelling either returns 409 `batch_not_cancellable` (`BATCH_NOT_CANCELLABLE` in the console). The console's batch object carries `cancellable`, decided by the server, and the drawer shows the cancel button by it.
 
 A batch's `expires_at` is its creation time plus its completion window (24 hours by default). A server restart does not lose batches: unfinished ones resume from the latest progress checkpoint, and requests that already have a result are not sent again.
 
@@ -227,7 +237,7 @@ Each line of the error file is a request that failed for good:
 - When the model server answers 4xx, `response` keeps the full answer, and `error.code` and `error.message` come from the model server's error object. When that object has no `code`, `error.code` falls back to its `type`, then to `http_<status code>`.
 - Other error codes: `batch_expired` (no result before expiry) and `response_too_large` (the answer exceeds the size the gateway keeps for a batch).
 - The output file exists only if at least one request succeeded, and the error file only if at least one request failed.
-- Output and error files are deleted 30 days after the batch ends (the batch keeps its counts); reading one afterwards returns 404. Input files are kept until you delete them.
+- Output and error files are kept for 30 days after the batch ends and then deleted (the batch keeps its counts); reading one afterwards returns 404. The console's batch object gives the deletion time as `output_expires_at`; a time in the past means the files are gone, and it is absent while the batch is still running or when it wrote neither file. Input files are kept until you delete them.
 
 Delete an input file with `DELETE /v1/files/{id}`; while a batch that has not ended still reads it, the call returns 409 `file_in_use`.
 
@@ -241,7 +251,7 @@ The platform separates "the request itself is wrong" from "the platform cannot s
 | 503 (the deployment is asleep and did not wake within the hold, or has no replica yet), 429, 408, any other 5xx, or a connection error | Retried automatically; not a failure |
 | Any other 4xx: 400 invalid request, 404 model not found, 401, and so on | Final failure: written to the error file and counted in `failed` |
 
-Retries use exponential backoff from 2 seconds, doubling up to 60 seconds, honoring any `Retry-After` in the answer and adding jitter, until the batch expires. A batch with a misspelled model name gets a 404 for every line quickly and ends in the error file instead of waiting until expiry.
+Retries use exponential backoff from 2 seconds, doubling up to 60 seconds, honoring any `Retry-After` in the answer and adding jitter, until the batch expires. Without a chosen model, a file naming a model nothing serves is refused at creation; for a model that goes away after creation, every line gets a 404 quickly and ends in the error file instead of waiting until expiry.
 
 ## Batches in Usage and Request Records
 
@@ -274,11 +284,12 @@ How a batch interacts with a yield-anytime deployment:
 |---|---|
 | Upload returns 400 with `Line N` | Fix the file by the line number and error code, for example `duplicate_custom_id`, `streaming_not_supported`, `invalid_url` |
 | Creating a batch returns 400 `endpoint_mismatch` | `endpoint` must equal the `url` of every line in the file |
-| Creating a batch returns 400 `model_not_found` (`BATCH_MODEL_UNKNOWN` in the console) | No running or sleeping deployment serves the chosen `model`; check the served model name and whether the deployment was stopped |
+| Creating a batch returns 400 `model_not_found` (`BATCH_MODEL_UNKNOWN` in the console) with `param` `model` | No running or sleeping deployment serves the chosen `model`; check the served model name and whether the deployment was stopped |
+| Creating a batch returns 400 `model_not_found` (`BATCH_FILE_MODELS_UNKNOWN` in the console) with `param` `input_file_id` | With no `model` chosen, the models of the file (listed in the message) are served by no running or sleeping deployment; choose a `model` to receive every request, or deploy these models first; the file need not be uploaded again |
 | Creating a batch returns 400 `invalid_completion_window` | `completion_window` must be a whole number of hours from `1h` to `72h`, such as `"48h"` |
 | Creating a batch returns 400 `file_not_found` | The file ID is wrong, or the file is not a `purpose=batch` file of the same user |
 | The batch stays in `validating` | 32 batches are already executing across the server; it is waiting for a slot |
-| The batch stays in `in_progress` and the counts do not move | The deployment may be asleep or have yielded its cards; check the deployment timeline and the scheduling center. Requests are being retried and do not count as failures |
+| The batch stays in `in_progress` and the counts do not move | The deployment may be asleep or have yielded its cards; check the deployment timeline and the scheduling analysis. Requests are being retried and do not count as failures |
 | All requests land in the error file with status 404 | `model` does not match the deployment's served model name |
 | Reading the output file returns 404 | The batch ended more than 30 days ago and the file was deleted, or no request succeeded so the output file never existed |
 | 401 `invalid_api_key` | Check `Authorization: Bearer <key>` |

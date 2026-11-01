@@ -376,7 +376,8 @@ and share their scenario implementations with CompShare (`vmBackend`: the provid
 
 The golden image is built by `make prepare-aliyun-golden-image`: it starts a T4 instance from Alibaba Cloud's public image
 `ubuntu_22_04_x64_100G_with_gpu_driver_and_cuda_alibase_*` (driver and CUDA preinstalled),
-installs Docker 29 and the NVIDIA container toolkit (through `mirrors.aliyun.com`), pulls the vLLM runner image (the Huawei Cloud SWR mirror first,
+installs Docker 29 and the NVIDIA container toolkit (the Docker CE repository is tried at `mirrors.aliyun.com`, Tsinghua, USTC, and Huawei Cloud in turn,
+moving on when a mirror is mid-sync and fails the index check; a resumed build first drops the Docker repository the earlier attempt wrote), pulls the vLLM runner image (the Huawei Cloud SWR mirror first,
 then quay.io and Docker Hub; the final tag is `gpustack/runner:cuda12.8-vllm0.17.1`), downloads Qwen2-0.5B-Instruct to
 `/opt/gpuworks/test-fixtures/models/qwen2-0.5b` with checksums, stops Docker, syncs, and calls `CreateImage`, then `CopyImage`
 to every region in `-regions` (by default East China 1, North China 2, South China 1, and South China 3) and boots a new instance in the source region to validate it (validation comes before copying, so a broken image is not copied to four regions).
@@ -384,7 +385,11 @@ The image is about 50 GB (the runner image dominates); the first full snapshot o
 Custom images are isolated by region, so there is one ID per region; the printed `ALIYUN_IMAGE_CN_HANGZHOU=` and similar lines go into `secrets/cloud-providers.env`
 or the CI environment variables, and cases rent only in regions that have an image. The tool deletes no older image and changes no CI variable;
 with `GPUWORKS_CLOUD_KEEP_ON_FAILURE=1` a failed source instance is kept and a 0600 credentials file is written,
-and `-resume-credentials` continues from it. The image already carries Docker and the model, so the cases only verify them and neither install nor download
+and `-resume-credentials` continues from it.
+Both the model and the runner can be changed: `-model-repo`/`-model-rev` pick the ModelScope model, `-model-path` its path in the image,
+and `-docker-image`/`-pull-sources` the runner; the default image name follows the model (`gpuworks-golden-<model>-<UTC time>`).
+`-source-regions` limits where the source and validation instances are rented (by default the same as `-regions`); when copying to overseas and similar regions, use it to keep the source instance in a mainland region with stock.
+The L4 cases register the default Qwen2-0.5B and `gpustack/runner:cuda12.8-vllm0.17.1`, so an image with another model or runner cannot serve them as is. The image already carries Docker and the model, so the cases only verify them and neither install nor download
 (a missing piece means the image is broken and the case fails at once).
 
 Variables CI needs (scoped to `cloud-test/aliyun/*`): `ALIYUN_ACCESS_KEY_ID`, `ALIYUN_ACCESS_KEY_SECRET`

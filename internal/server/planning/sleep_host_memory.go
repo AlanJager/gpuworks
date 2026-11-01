@@ -2,6 +2,7 @@ package planning
 
 import (
 	"fmt"
+	"time"
 
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/sleep"
@@ -26,13 +27,33 @@ func HostMemoryFromMetrics(latest func(metric, nodeUUID string) (float64, bool))
 	}
 }
 
+// hostMemoryWindow is how recent a host memory sample must be to count: a
+// node that reported nothing since is not known.
+const hostMemoryWindow = 2 * time.Minute
+
+// RecentHostMemory reads a node's host memory from the samples its agent
+// reported within hostMemoryWindow of now: latest answers a node's newest
+// sample of a metric since sinceMS. Nil latest knows nothing.
+func RecentHostMemory(latest func(metric, nodeUUID string, sinceMS int64) (float64, bool), now func() time.Time) HostMemory {
+	if latest == nil {
+		return nil
+	}
+	return func(nodeUUID string) (int64, int64, bool) {
+		since := now().Add(-hostMemoryWindow).UnixMilli()
+		return HostMemoryFromMetrics(func(metric, node string) (float64, bool) {
+			return latest(metric, node, since)
+		})(nodeUUID)
+	}
+}
+
 // L1HostMemoryRefusal is why an L1 sleep of the named instances may not
 // proceed, nil when it may: on some node, the weights the awake instances
 // there would move into host memory exceed what the host has available less
-// its headroom (sleep.HostMemoryHeadroom). Each rank of a multi-node replica
-// moves its own share of the weights onto its own host. A node with no recent
-// host memory observation is not refused: the platform does not know, and
-// the operator still decides.
+// its headroom (sleep.HostMemoryHeadroom). An instance whose engine already
+// holds the host buffer of an earlier L1 sleep moves nothing new and is not
+// counted. Each rank of a multi-node replica moves its own share of the
+// weights onto its own host. A node with no recent host memory observation is
+// not refused: the platform does not know, and the operator still decides.
 func L1HostMemoryRefusal(st *store.Store, dep *store.Deployment, named []store.Instance, host HostMemory) *SleepRefusal {
 	if host == nil || len(named) == 0 {
 		return nil
@@ -45,7 +66,11 @@ func L1HostMemoryRefusal(st *store.Store, dep *store.Deployment, named []store.I
 	var order []uint
 	for i := range named {
 		in := &named[i]
-		if in.SleepLevel > 0 || !proto.InstanceFillsReplica(in.State) {
+		// An engine that already slept at L1 keeps that host memory pinned
+		// (store.Instance.L1HostBufferHeld): the node's available memory
+		// already excludes it, and counting it again refuses a sleep that
+		// takes nothing new.
+		if in.SleepLevel > 0 || !proto.InstanceFillsReplica(in.State) || in.L1HostBufferHeld {
 			continue
 		}
 		share := model.WeightBytes / int64(max(in.NNodes, 1))

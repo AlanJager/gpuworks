@@ -88,7 +88,10 @@ func TestSeedHistoryWritesAndRollsUp(t *testing.T) {
 	a := &App{ops: ops, store: st, obs: obs}
 	ctx := context.Background()
 	loc := ops.location()
-	yesterday := rollup.DayOf(now, loc) - 1
+	// The day before today's start: a Day is YYYYMMDD, so subtracting one
+	// from the 1st of a month names a day that does not exist.
+	todayStart, _ := rollup.DayOf(now, loc).Bounds(loc)
+	yesterday := rollup.DayOf(time.UnixMilli(todayStart-1), loc)
 	first, _ := yesterday.HoursOf(loc)
 	hour := time.UnixMilli(first).Add(10 * time.Hour)
 	key := rollup.GPUKey{HourMS: hour.UnixMilli(), NodeUUID: "n1", GPUIndex: 0, GPUUUID: "GPU-a"}

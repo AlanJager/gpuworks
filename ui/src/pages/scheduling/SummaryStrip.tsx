@@ -1,11 +1,11 @@
-import { Tag, Typography } from "antd";
+import { Typography } from "antd";
 import { useTranslation } from "react-i18next";
-import type { SchedulingOverview } from "../../api";
+import type { SchedulingOverview } from "../../schedulingApi";
 import { stateFill } from "./cellColor";
 import { CELL_STATES, type CellState } from "./overviewModel";
 
 const SUMMARY_KEY: Record<CellState, keyof SchedulingOverview["summary"]> = {
-  awake: "awake", asleep: "asleep", free: "free", held: "held_outside", unhealthy: "unhealthy", offline: "offline",
+  awake: "awake", asleep: "asleep", free: "free", held_outside: "held_outside", unhealthy: "unhealthy", offline: "offline",
 };
 
 export interface QueueCounts {
@@ -28,8 +28,7 @@ function Tile({ label, value, hint, swatch }: { label: string; value: number | s
 
 /**
  * SummaryStrip is the fleet at a glance: how many cards there are and in what
- * state, by GPU model, and how hard the deployments push on each other for
- * them. The figures are the server's, over the whole fleet whatever the
+ * state, and how hard the deployments push on each other for them. The figures are the server's, over the whole fleet whatever the
  * filters below it show.
  */
 export default function SummaryStrip({ summary, queues }: { summary: SchedulingOverview["summary"]; queues?: QueueCounts }) {
@@ -43,13 +42,6 @@ export default function SummaryStrip({ summary, queues }: { summary: SchedulingO
           <Tile key={state} label={t(`states.${state}`)} value={summary[SUMMARY_KEY[state]] as number} swatch={stateFill[state]} />
         ))}
       </div>
-      {summary.by_model.length > 0 && (
-        <ul className="hm-models" aria-label={t("summary.models")}>
-          {summary.by_model.map((row) => (
-            <li key={row.model}><Tag>{t("summary.modelLine", { model: row.model, cards: row.cards, free: row.free })}</Tag></li>
-          ))}
-        </ul>
-      )}
       <div className="hm-strip-tiles" role="group" aria-label={t("summary.contentionTitle")}>
         <Tile label={t("summary.waitingWakes")} value={contention.waiting_wakes} />
         <Tile label={t("summary.heldRequests")} value={contention.held_requests} />

@@ -20,14 +20,15 @@ func (a *apiHandlers) operatorEvent(r *http.Request, deploymentID uint, code str
 	a.d.Store.AddDeploymentEventCode(deploymentID, operatorEventKind(code), code, params)
 }
 
-// operatorEventKind keeps the orders recorded only for the scheduling history
-// (a replica count, sleep, wake) out of EventKindSchedule, whose newest entry
-// is what a deployment's placement status reports; the restarts and retries
-// that were recorded there before stay there.
+// operatorEventKind is the kind the scheduling history's catalogue writes an
+// order with (store.SchedulingEventKind): the orders recorded only for the
+// history (a replica count, sleep, wake) stay out of EventKindSchedule, whose
+// newest entry is what a deployment's placement status reports, while the
+// restarts and retries that were recorded there before stay there. A code the
+// catalogue does not list is a schedule entry.
 func operatorEventKind(code string) string {
-	switch code {
-	case store.EventReplicasChanged, store.EventSleepOrdered, store.EventWakeOrdered:
-		return store.EventKindLifecycle
+	if kind, ok := store.SchedulingEventKind(code); ok {
+		return kind
 	}
 	return store.EventKindSchedule
 }

@@ -253,9 +253,17 @@ The server waits for doctor for at most 2 minutes; the agent limits a diagnosis 
 
 Commands that change driver state (such as Ascend `npu-smi set`) and calls requiring immediate results do not use old results: they still have a 10-second timeout. If they do not exit after being killed
 (processes stuck in D state inside the driver), the agent waits only 3 seconds before giving up and logging `gpu command did not exit after kill`;
-until that process exits (logged as `stuck gpu command exited`), calls of this kind to the same CLI fail immediately (`a previous call has not exited`).
+until that process exits (logged as `stuck gpu command exited`), calls of this kind to the same CLI fail immediately (`an earlier call has not exited`) without starting a new process.
+Calls of this kind to one CLI run one at a time, so two arriving together do not start a process each; on timeout the command is killed together with the processes it started.
 
-If this persists, run `ps -eo pid,stat,etime,cmd | grep -- -smi` on the node to check for processes in `D` state, and check `dmesg` for
+The same rules govern the other commands that enter the driver, so however often they are called, each kind has at most one stuck process:
+- **Runtime checks**: the periodic per-card checks (every vendor, on the host or in a container), Diagnose's per-card checks and the NVIDIA CUDA / peer access / NCCL checks share one "runtime check" slot, so only one runs at a time.
+  Once one is stuck, no new check starts: the periodic round is skipped and Diagnose shows not checked or `SKIP (an earlier runtime check on this node was killed and has not exited ...)`; neither marks a card as failed.
+- **Checks in a container**: a container that cannot be removed (its process is stuck in the driver) is remembered, and no new container is started until it is gone.
+- **Ascend `hccn_tool`** (reading the accelerator NICs every minute): one slot per die and 3 seconds per call, so a stuck die affects only that die and never holds up the node's status report.
+- **Diagnose**: one at a time per node; a second request returns `a diagnosis is already running on this node`.
+
+If this persists, run `ps -eo pid,stat,etime,cmd | grep -E -- '-smi|hccn_tool|python3'` on the node to check for processes in `D` state, and check `dmesg` for
 Xid / NVRM errors.
 
 ### A Card Is Unusable by the Runtime or Fails Driver Initialization
@@ -263,14 +271,21 @@ Xid / NVRM errors.
 **`runtime_unusable`: accelerator runtime context creation failed**
 
 A card's health is “Runtime cannot use it” (`runtime_unusable`): accelerator runtime smoke checks target each card every 15 minutes.
-Cards running instances are skipped, the whole round is skipped if the driver does not respond, and the check does not change the node's connection status.
+Cards running instances and cards in use by processes outside the platform are skipped, the whole round is skipped if the driver does not respond, and the check does not change the node's connection status.
 NVIDIA requires `python3` and `libcuda.so.1` and creates a CUDA context on the selected card. One card failing to initialize often makes `cuInit`
 fail for the entire host, so examine findings for the other cards as well. On an Ascend host with CANN installed, the check uses `python3` and
 `libascendcl.so` to create an ACL context and allocate 4 KiB. For example, `aclrtSetDevice=507033` marks that die unusable
 (a die passed through to a VM can return the same code, so first confirm during manual review that nothing else occupies it;
 the smoke check itself only asks about cards owned by this node). A driver-only Ascend node without `libascendcl.so` skips the check rather than reporting a missing tool as a card failure.
+On a Hygon host with DTK installed, the check uses `python3` and `libamdhip64.so` (`/opt/dtk/lib` and similar) to find the card by its PCI address, `hipSetDevice` to it and allocate 4 KiB;
+for example, `hipMalloc=2` marks that card unusable. HIP not listing the card or `hipInit` failing is a host problem, not a card failure; without DTK the check is skipped.
+A node whose host has no vendor runtime (a PPU host usually has only the management library `libhgml.so`; an Ascend host with the driver but without CANN) is checked inside a container instead:
+it borrows an inference image of the same framework that is **already** on the node (a tag starting with `hggc` / `cann`, preferring images this node's instances use), injects only this card the way a real instance gets it,
+runs the same check inside (about 0.45 s per card on PPU, container start included), and removes the container. No image is ever pulled for the check: without such an image on the node the check is skipped and the vendor tool's verdict stands.
+This is done only on docker / nerdctl nodes; on udocker a container means unpacking or copying the whole image into a rootfs (27–61 s and 17 GB of disk each time for a 17 GB image on ext4),
+so udocker nodes are not checked this way. A container that does not start, or an image without the runtime or python, is a host problem, not a card failure. Apple has no check.
 
-**Diagnose now runs the same per-die check on Ascend, on demand.** Node details → Diagnose and `gpuworks-agent doctor` run the runtime check above once for each die this node owns
+**Diagnose now runs the same per-card check (per die on Ascend) on Ascend and Hygon, on demand.** Node details → Diagnose and `gpuworks-agent doctor` run the runtime check above once for each die this node owns
 (it is the same code as the periodic check, not a second implementation), so a die the periodic check has already marked `runtime_unusable` always shows up in the diagnosis.
 A failing die is shown as “Runtime cannot use it” in the accelerator table, and **Action required** lists a `runtime_unusable` item per die (level Error, with the same evidence the periodic check records).
 When the table already carries a more specific vendor verdict for the die (for example `reset_required`), the table keeps that one and `runtime_unusable` is still listed on its own.
@@ -369,6 +384,24 @@ if the vendor tool just failed to return the inventory, asking it for processes 
 The platform recognizes its own instances by each card's hardware identity. An instance started by an older version, whose desired state records only device indexes,
 gets its identities filled in by a migration when the server is upgraded, and the agent also maps those indexes to cards through the latest probe, so it still counts as the platform's own.
 
+Such a card is also left out of the periodic runtime check and of the recheck after an instance fails to start: someone else's workload should not be disturbed,
+and memory held by someone else says nothing about whether the runtime can use the card. The card keeps its last check result, and checking resumes once the processes exit.
+
+While the runtime check's own process (or container) is on a card, and for 15 seconds after it ends, the card is not judged for use outside the platform and keeps the previous round's answer,
+so the check never reports a card as “In use outside the platform”. If the card is given to an instance, or a process outside the platform appears, while it is being checked, a failure of that check is discarded:
+it is not recorded on the card and earns no backoff. An instance waits for a check in progress on its cards before starting (at most 10 seconds), so the two do not push each other out on a card
+only one process may open (an Ascend die without device-share). Diagnose's checks follow the same rules.
+
+Where each vendor's card processes are read from:
+
+| Vendor | Source | Command to verify |
+|---|---|---|
+| NVIDIA | `nvidia-smi --query-compute-apps` | `nvidia-smi --query-compute-apps=pid,process_name,gpu_bus_id,used_gpu_memory --format=csv` |
+| PPU | `ppu-smi --query-compute-apps` | `ppu-smi --query-compute-apps=pid,process_name,pci.bus_id --format=csv` |
+| Ascend | The process table at the end of `npu-smi info` (the same call as the probe), matched to the card's Bus-Id by NPU/Chip | `npu-smi info` |
+| Hygon | The KFD driver's sysfs (`/sys/class/kfd/kfd/proc/<pid>/queues/*/gpuid`); only a process that created queues on this card counts as using it | `hy-smi --showpids` |
+| Apple | Not determined: a single unified-memory GPU that system processes (such as WindowServer) always use, so per-process occupancy is meaningless | — |
+
 ### Diagnosis Finds an Unrecognized Accelerator
 
 Doctor reports “Unrecognized accelerator device” (`accelerator_unrecognized`): the host has
@@ -388,7 +421,7 @@ Each item in “Action required” provides **Evidence** (the command or call us
 An **Action** command, such as a reset command, is provided only when the vendor tool itself gives a recovery method.
 
 Checks include accelerator health (see the next section), disk space below 10% free (root partition, model directory, container data directory, and storage),
-an unresponsive selected container runtime, accelerator tool execution failures, NVIDIA CUDA initialization failures and multi-card communication check failures, and Ascend per-die runtime check failures (`runtime_unusable`).
+an unresponsive selected container runtime, accelerator tool execution failures, NVIDIA CUDA initialization failures and multi-card communication check failures, and Ascend per-die and Hygon per-card runtime check failures (`runtime_unusable`). Cards in use by processes outside the platform are not checked and are listed as not checked.
 
 There are five additional runtime and filesystem checks (see [Runtime Provisioning Failures and Filesystems on Container Nodes](#运行时初始化失败与容器节点的文件系统)):
 `runtime_provision_failed` (runtime provisioning failed), `runtime_state_untraversable` (the dedicated runtime user cannot reach the agent directory), `path_noexec`, `path_read_only`, and `path_ephemeral`.
@@ -410,8 +443,8 @@ There are five additional runtime and filesystem checks (see [Runtime Provisioni
 | Level | Scheduling | Meaning |
 |---|---|---|
 | OK | As usual | No findings, or only resolved historical errors (`memory_error_history`) |
-| Warning | As usual, but used only when there are not enough healthy cards (evaluation results include `degraded_gpus_used`) | `memory_repair_pending` (reset pending), `vendor_health_warning` (vendor tool Warning) |
-| Fault | Stopped | `memory_uncorrectable_errors`, `memory_remap_failed`, `reset_required`, `reboot_required`, `power_cycle_required`, `vendor_health_fault`, `runtime_unusable` (the runtime cannot use this card), `driver_init_failed` (the driver did not bring it up), `vendor_cli_unanswered` (the vendor CLI did not respond, so information is unreadable) |
+| Warning | As usual, but used only when there are not enough healthy cards (evaluation results include `degraded_gpus_used`) | `memory_repair_pending` (reset pending), `vendor_health_warning` (vendor tool Warning), `pcie_link_degraded` (PCIe link degraded), `pcie_errors` (recovered PCIe errors), `nvlink_down` (NVLink down) |
+| Fault | Stopped | `memory_uncorrectable_errors`, `memory_remap_failed`, `reset_required`, `reboot_required`, `power_cycle_required`, `vendor_health_fault`, `runtime_unusable` (the runtime cannot use this card), `driver_init_failed` (the driver did not bring it up), `vendor_cli_unanswered` (the vendor CLI did not respond, so information is unreadable), `pcie_fatal_errors` (fatal PCIe errors) |
 
 Whether a card is usable is a conclusion the server determines once when saving the card (combining health level, card ownership, and usage outside the platform).
 The API exposes this as `schedulable`. Both the UI and scheduling read this field instead of deriving it independently. **Do not read `healthy`**:
@@ -423,8 +456,10 @@ Evidence fields for each vendor:
 | Vendor | Command | Fields and interpretation |
 |---|---|---|
 | PPU | `ppu-smi --query-ppu=...` | `remapped_rows.pending` / `retired_pages.pending` is Yes → reset pending; `ecc.errors.uncorrected.volatile.dram` > 0 → GPU memory fault; `remapped_rows.failure` is Yes → GPU memory fault; `xid.correctable.ppu_reset` / `os_reboot` / `cold_reboot` has a value → reset / host reboot / power cycle required; `ecc.errors.uncorrected.aggregate.dram`, `retired_pages.double_bit.count`, and `remapped_rows.uncorrectable` are cumulative values that survive resets and serve only as historical records |
-| NVIDIA | `nvidia-smi --query-gpu=...` | `ecc.errors.uncorrected.volatile.total` > 0 → GPU memory fault; `remapped_rows.pending` / `retired_pages.pending` is Yes → reset pending; `remapped_rows.failure` is Yes → GPU memory fault; `ecc.errors.uncorrected.aggregate.total` serves only as a historical record; unsupported fields return `[N/A]` and do not affect the assessment |
+| NVIDIA | `nvidia-smi --query-gpu=...` | `ecc.errors.uncorrected.volatile.total` > 0 → GPU memory fault; `remapped_rows.pending` / `retired_pages.pending` is Yes → reset pending; `remapped_rows.failure` is Yes → GPU memory fault; `ecc.errors.uncorrected.aggregate.total` serves only as a historical record; unsupported fields return `[N/A]` and do not affect the assessment; the recovery the driver asks for, `gpu_recovery_action` (R550 and later): Reset → reset required, Reboot → host reboot required, cleared by the driver once done. Xid events are read from the kernel log `/dev/kmsg` (needs root): 79 (the card fell off the bus) → host reboot required; 61, 62, 95, 119, 120, 140 → reset required, both held until a runtime check passes on the card afterwards (or the host reboots); the application's own errors such as 13, 31, 43, and Xids with a state field such as 48, 63, 64, are only logged. NVLink is read every 5 minutes with `nvidia-smi nvlink -s -e` (hourly on hosts without active NVLink); fewer active links than the card has had, two readings in a row → NVLink down (warning), and the topology is read again at once, so the scheduler stops grouping the card with the cards it was linked to |
 | Ascend | `npu-smi info`, then `npu-smi info -t health -i <NPU> -c <Chip>` if the result is not OK | Health is Warning → warning; Alarm / Critical → fault; error codes and messages appear unchanged; consult Huawei documentation for their meanings |
+| Hygon | Driver sysfs `/sys/bus/pci/devices/<BDF>/ras/` (the same source as `hy-smi --showrasinfo all` and `--showpagesinfo`, no process started) | `ue` > 0 in `umc_err_count` → memory fault; `ue` > 0 in another block (gfx, sdma, …) → vendor fault; a P (pending retirement) row in `gpu_vram_bad_pages` → reset pending, an F (retirement failed) row → memory fault, only R (retired) rows → history; `ce` (correctable) is evidence only. No verdict when the driver has no RAS files |
+| All vendors (PCIe) | sysfs of each device between the card and its root port: `current/max_link_speed`, `current/max_link_width`, `aer_dev_{correctable,nonfatal,fatal}` (no process started; reading a port's type from config space needs root) | A link with fewer lanes than both ends support → PCIe link degraded (warning); a lower speed than both ends support counts too, but only on a card one of this node's instances uses and that is not asleep (idle cards and switch uplinks lower their speed on purpose: a K100's switch uplink idles at 2.5 of 8 GT/s); raised after 3 reports in a row and cleared after 3 good ones; on a virtual machine only the card's own link is judged. AER counters are counted from when the agent started: new non-fatal errors → recovered PCIe errors (warning, cleared after 15 minutes without new ones); new fatal errors → fatal PCIe errors (fault, until a runtime check passes on the card afterwards). On platforms with firmware-first error handling the counters stay at 0 and show nothing |
 
 **How to verify and resolve**: Use the verification command generated for the card's PCI address in the health status description. The following example uses a PPU pending reset;
 replace `0000:7e:00.0` with your card's address.
@@ -747,6 +782,9 @@ the `POST /api/v1/evaluate` response and in `DEPLOYMENT_UNSCHEDULABLE` deploymen
 | `insufficient_empty_gpus` / `insufficient_shared_gpus` | Not enough idle whole cards / shareable cards |
 | `pinned_gpus_unavailable` | The cards a manually placed PD instance is pinned to are held by other deployments; the parameters give `node`, `gpus` (the pinned card indexes), and `holders` (the deployments holding them). The instance does not switch to other free cards on the node but waits for the pinned cards: stop or move the deployments holding them, or switch this deployment to automatic placement (`PUT /deployments/{id}/placement-mode`) so the platform uses free cards. When a pinned card is held outside the platform, is not healthy, or is free but still does not fit, the corresponding reason code applies |
 | `waiting_for_yield` | The replica fits once deployments sharing its cards by yield policy give them up, and waits for them; the parameters give `node`, `holders` (each holding deployment with `at_once`, or `idle_sec` and for yield-on-a-turn `max_serve_sec`: the terms it gives way to this deployment on) and `instances`. It resolves by itself when the holders sleep; see [How a New Deployment Gets onto a Shared Card](scheduling-center.md#新部署怎样放到共用的卡上). A holder with never yield is never asked to give way |
+| `reserved_for_sleepers` | The deployment does not fit only because sleeping deployments keep their cards for a request's wake; the parameters give `node`, `gpus` (the cards it would have used) and `sleepers` (each sleeper with `deployment` and its yield policy `policy`). A sleeping deployment that shares cards keeps them only when a request can wake it; a sleep you or a schedule ordered (a held sleep) keeps none. Fix: pick another card, turn on sleep for this deployment with a yield policy that can share cards, or put the deployment holding the cards to sleep by hand; see [How a New Deployment Gets onto a Shared Card](scheduling-center.md#新部署怎样放到共用的卡上) |
+| `does_not_wait_for_yield` | Deployment form preview only: it fits once the deployments holding its cards sleep, but this deployment never yields and does not wait for them; the parameters give `node`, `gpus`, `holders` (holders that give way to a deployment sharing cards) and `blockers` (holders that never yield), each with `deployment` and its yield policy `policy`. Fix: turn on sleep for this deployment with a yield policy that can share cards; with `blockers`, also pick another card or give them a yield policy that can share cards |
+| `held_by_non_yielding` | Deployment form preview only: it fits once the deployments holding its cards sleep, but those in `blockers` never yield and do not give their cards to this deployment; the parameters give `node`, `gpus`, `blockers` (each with `deployment` and `policy`) and `holders` (holders that do give way, with the terms of `waiting_for_yield` as well). Fix: pick another card, or turn on sleep for the deployments in `blockers` with a yield policy that can share cards |
 | `no_free_gpu` | No idle GPUs |
 | `no_healthy_gpu` | None of the node's own cards has a health level that permits serving |
 | `no_owned_gpu` | The node has no cards available for its own use: it has none, or all are passed through to VMs, unbound from drivers, or held by other drivers |
@@ -860,7 +898,7 @@ The gateway error body differs from the management API: `{"error":{"message":"�
 | 404 | `no deployment serves model <name>` | The model name is not the deployment's served name (list names with `GET /v1/models`), or the deployment has stopped |
 | 404 | `deployment <name> does not expose <METHOD> <path>` | Only the playground (`/api/v1/playground/v1/*`) performs contract checks and returns this error: the deployment's API contract does not include this endpoint (for example, calling `/v1/embeddings` on a Chat model). Use `GET /api/v1/playground/openapi.json` to view its declared endpoints. The public `/v1` does not perform this check; it forwards the request unchanged to the engine, which returns its own 404 or other response |
 | 404 | (The entire `/v1` path returns 404) | The listener you accessed does not serve the inference API. Check `listen.gateway` |
-| 503 | `model is asleep; wake it first (console, or POST /api/v1/deployments/<id>/wake; a schedule or a waiting wake may also wake it)` | No awake replica is available to serve requests. Wake it in the console or call `POST /api/v1/deployments/{id}/wake`; a schedule or a waiting wake also wakes it, see the [Scheduling Center](scheduling-center.md). Once sleep intent is issued, selected instances stop accepting new requests |
+| 503 | `model is asleep; wake it first (console, or POST /api/v1/deployments/<id>/wake; a schedule or a waiting wake may also wake it)` | No awake replica is available to serve requests. Wake it in the console or call `POST /api/v1/deployments/{id}/wake`; a schedule or a waiting wake also wakes it, see the [Scheduling Analysis](scheduling-center.md). Once sleep intent is issued, selected instances stop accepting new requests |
 | 503 | `no running instance for <name> (still starting?)` | No running replica: it is still starting, has failed, has been stopped, or its node is offline. Check instance status |
 | 503 | `distributed model <name> is not ready: rank N is unavailable`, `distributed model leader is offline for <name>`, `distributed model leader is not ready for <name>`, `distributed deployment node set is incomplete for <name>` | A rank or the leader in a multi-node deployment is not ready |
 | 503 + `Retry-After: 2` | `upstream error: … data lane unavailable: … did not reattach within 5s` | The node data lane did not reconnect within 5 seconds of disconnecting. **Retryable**; there is no fallback to the control lane |
@@ -925,6 +963,7 @@ See [Sleep / Wake](sleep-wake.md).
 | `SCHEDULE_REPLICAS_MANUAL_PLACEMENT` | 400 | A multi-node or PD deployment placed by hand cannot have its replica count scheduled; switch it to automatic placement first with `PUT /deployments/{id}/placement-mode`. For an entry written before the deployment was switched to manual placement, the entry fails when due and records `SCHEDULE_ACTION_FAILED` |
 | `YIELD_POLICY_INVALID` | 400 | The yield policy request is invalid: `params.field` is the field (`policy`, `sleep_level`, `unfinished`, `idle_sec`, `max_serve_sec`, `unfinished_wait_sec`, `hold_max_sec`) and `params.reason` is `required` (no `policy` given: the body is `{}`, or has parameters but no `policy`), `invalid_value` (not one of the allowed values), or `out_of_range` (a number out of range, which also carries `minimum` and `maximum`; when the idle time of a yield-on-a-turn deployment exceeds the longest serving time, the `maximum` of `idle_sec` is the longest serving time); see [Yield policy](scheduling-center.md#出让策略) |
 | `YIELD_POLICY_SHAPE` | 400 | A multi-node or PD deployment can only use never yield automatically |
+| `YIELD_POLICY_NEEDS_SLEEP` | 400 | An edit turns sleep off while the deployment's yield policy (`params.policy`) is not never yield automatically; set the yield policy to never first |
 | `NODE_REPLACEMENT_INVALID` | 400 | The node-loss rescheduling wait must be 0 (never) or 60–604800 seconds |
 | `REPLICAS_PLACE_ON_TOO_MANY` | 400 | `place_on` names more nodes than the replicas being added |
 | `REPLICAS_PLACE_ON_REFUSED` | 409 | A node in `place_on` cannot take a new replica; `params.reason` is `unknown` (no such node), `offline`, `cordoned`, `requirements` (does not satisfy the node requirements), or `no_room` (the trial plan does not fit); an automatically placed multi-node deployment also has `no_group` (the named nodes cannot form a replica that fits: different compute networks or architectures, or not enough cards) |
@@ -942,7 +981,7 @@ See [Sleep / Wake](sleep-wake.md).
 
 **Symptom**: a sleep or wake did not happen at the scheduled time, or a deployment was put to sleep unexpectedly.
 
-**How to confirm and handle it**: First look at the entries of type `automation` in the deployment timeline, or at **Recent automatic actions** in the Scheduling Center:
+**How to confirm and handle it**: First look at the entries of type `automation` in the deployment timeline, or at **Recent automatic actions** in the Scheduling Analysis:
 
 | Event | Meaning and handling |
 |---|---|

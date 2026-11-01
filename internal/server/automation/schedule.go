@@ -1,8 +1,11 @@
 // Package automation is the scheduling center's hand: it carries out the
 // orders operators gave in advance - a deployment's schedule, its auto sleep,
 // a wake waiting for room - through the same sleep, wake and replica orders
-// an operator gives by hand. It decides nothing an operator did not ask for:
-// there is no preemption and no load-driven scaling.
+// an operator gives by hand. There is no load-driven scaling. What it decides
+// on its own is residency (residency.go): it puts a deployment to sleep for
+// another waiting for its cards only as the holder's yield policy, chosen by
+// an operator, says it must give way (yieldpolicy.Yields), which preempts a
+// deployment that yields when busy.
 //
 // It reads and acts through the Source and Actions interfaces, so the
 // decisions are tested with a fake clock and fakes, and the app wires them to
@@ -30,6 +33,16 @@ type Schedule struct {
 	Role string
 	// LastFiredAt is the scheduled time of the newest occurrence handled.
 	LastFiredAt time.Time
+}
+
+// ScheduleLocation is the time zone a schedule names: its IANA name, or the
+// server's own zone when it names none. A zone the server does not know is
+// an error; the order is not run in another zone instead.
+func ScheduleLocation(name string) (*time.Location, error) {
+	if name == "" {
+		return time.Local, nil
+	}
+	return time.LoadLocation(name)
 }
 
 // AllWeekdays is every day of the week.

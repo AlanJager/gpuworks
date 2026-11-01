@@ -47,6 +47,15 @@ type NodeRuntime struct {
 	// cardSmoke asks each card whether the runtime can use it, on its own
 	// schedule (see card_smoke.go). Nil where there is no check to run.
 	cardSmoke *cardsmoke.Runner
+	// doctorRunning lets one diagnosis run at a time. A second one would
+	// only queue more checks on a driver the first may be stuck in.
+	doctorRunning atomic.Bool
+	// pcie follows each card's PCIe links and error counters (card_pcie.go).
+	pcie pcieWatch
+	// nvlink follows each card's active NVLinks (card_nvlink.go).
+	nvlink nvlinkWatch
+	// xid follows the kernel log for NVIDIA Xid events; nil off NVIDIA.
+	xid atomic.Pointer[gpu.XidWatcher]
 	// cardSmokeCtx is the runner's own lifetime, so a check asked for
 	// outside the schedule ends when the agent does.
 	cardSmokeCtx context.Context

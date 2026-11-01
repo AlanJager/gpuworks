@@ -18,7 +18,8 @@ import (
 // UnitSuggestFacts is what a suggestion is decided from, read in bulk.
 type UnitSuggestFacts struct {
 	Nodes []store.Node
-	// Held is which GPUs awake instances hold, by node (store.AwakeGPUHolders).
+	// Held is which GPUs the deployment cannot take, by node: awake
+	// instances hold them, or sleepers keep them against it (HeldGPUs).
 	Held map[uint]map[int]bool
 	// Claimed is how many GPUs per node the replicas already listed - and
 	// not yet running - will take, by node UUID.

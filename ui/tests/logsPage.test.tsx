@@ -204,7 +204,7 @@ test("traceback head without frames on the page renders unfolded", async () => {
 // still render histogram volume — a store of mostly-old rows used to draw a
 // blank chart because only the five known level keys were summed.
 test("histogram renders bars for buckets whose rows have no level", async () => {
-	const { Histogram } = await import("../src/pages/LogsPage.tsx");
+	const { default: Histogram } = await import("../src/pages/LogsHistogram.tsx");
 	render(<I18nextProvider i18n={i18n}><Histogram buckets={[
 		{ start_ms: 1000, counts: { "": 40 } },
 		{ start_ms: 2000, counts: { info: 5, error: 2 } },
@@ -392,4 +392,23 @@ test("all log quick filters support Tab, Enter, Space and pointer toggling", asy
     assert.equal((input as HTMLInputElement).value, "marker", "toggling preserves free text");
     await user.tab();
   }
+});
+
+test("histogram bars are inert images without onPick and keyboard buttons with it", async () => {
+	const { default: Histogram } = await import("../src/pages/LogsHistogram.tsx");
+	const buckets = [{ start_ms: 2000, counts: { info: 1 } }, { start_ms: 1000, counts: { error: 1 } }];
+	const { unmount } = render(<I18nextProvider i18n={i18n}><Histogram buckets={buckets} /></I18nextProvider>);
+	assert.equal(document.querySelectorAll('[role="button"]').length, 0);
+	assert.equal(document.querySelectorAll('[role="img"]').length, 2);
+	unmount();
+	const picked: number[] = [];
+	render(<I18nextProvider i18n={i18n}><Histogram buckets={buckets} onPick={(ms) => picked.push(ms)} /></I18nextProvider>);
+	const bars = [...document.querySelectorAll('[role="button"]')] as HTMLElement[];
+	assert.equal(bars.length, 2);
+	assert.equal(bars[0].tabIndex, 0);
+	// Oldest first, whatever order the server sent.
+	fireEvent.click(bars[0]);
+	fireEvent.keyDown(bars[1], { key: " " });
+	fireEvent.keyDown(bars[1], { key: "a" });
+	assert.deepEqual(picked, [1000, 2000]);
 });

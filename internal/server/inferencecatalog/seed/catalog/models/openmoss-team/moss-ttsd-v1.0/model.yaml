@@ -37,10 +37,16 @@ specs:
       mode: sync
       inputs:
       - name: ref_audio
+        label:
+          en: Reference audio
+          zh: 参考音频
         kind: audio
         encoding: data_url
         required: true
       - name: ref_audio_2
+        label:
+          en: Reference audio 2
+          zh: 参考音频 2
         kind: audio
         encoding: data_url
 input_modalities: [text, audio]

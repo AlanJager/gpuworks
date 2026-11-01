@@ -4,7 +4,7 @@ import React from "react";
 import { I18nextProvider } from "react-i18next";
 import { createI18n, dom } from "./helpers/dom.ts";
 import { trackMessageChannels } from "./helpers/trackedMessageChannels.ts";
-import { batch, page } from "./helpers/batchFixtures.ts";
+import { batch, dictionary, page } from "./helpers/batchFixtures.ts";
 
 // The batches page: the list's loading / empty / error / success states, the
 // status filter, polling that stops once everything has ended, and the detail
@@ -24,6 +24,7 @@ const { MemoryRouter, Route, Routes, useLocation } = await import("react-router-
 const { api } = await import("../src/api.ts");
 const { APIError } = await import("../src/apiError.ts");
 const { batchApi } = await import("../src/batchApi.ts");
+const { formatTimeSec } = await import("../src/i18n/datetime.ts");
 const { default: BatchesPage } = await import("../src/pages/BatchesPage.tsx");
 type Batch = import("../src/batchApi.ts").Batch;
 
@@ -32,7 +33,7 @@ const escape = () => fireEvent.keyDown(document.activeElement ?? document.body, 
 
 const b = locale.batches;
 const c = locale.common;
-const original = { list: batchApi.list, get: batchApi.get, cancel: batchApi.cancel, create: batchApi.create, me: api.me };
+const original = { list: batchApi.list, get: batchApi.get, cancel: batchApi.cancel, create: batchApi.create, dictionary: batchApi.dictionary, me: api.me };
 
 let listCalls: Array<Record<string, unknown>> = [];
 let getCalls: string[] = [];
@@ -46,6 +47,7 @@ beforeEach(() => {
   listCalls = [];
   getCalls = [];
   stubAdmin();
+  batchApi.dictionary = async () => dictionary();
 });
 afterEach(() => {
   cleanup();
@@ -244,8 +246,9 @@ test("the detail of an unknown batch reports it and retries", async () => {
 });
 
 test("downloads are links for files that exist and disabled buttons for those that do not", async () => {
+  const keptUntil = "2099-01-02T03:04:05Z";
   serve([
-    batch({ id: "batch_ok", status: "completed", completed_at: new Date().toISOString(), output_file_id: "file-out" }),
+    batch({ id: "batch_ok", status: "completed", completed_at: new Date().toISOString(), output_file_id: "file-out", output_expires_at: keptUntil }),
   ]);
   mount("/batches?detail=batch_ok");
   const dialog = await screen.findByRole("dialog");
@@ -257,16 +260,40 @@ test("downloads are links for files that exist and disabled buttons for those th
   assert.ok(!within(dialog).queryByRole("link", { name: named(b.detail.download.error) }));
   const errors = within(dialog).getByRole("button", { name: named(b.detail.download.error) }) as HTMLButtonElement;
   assert.equal(errors.disabled, true);
-  assert.ok(within(dialog).getByText(b.detail.download.hint.replace("{{days}}", "30")));
+  // The server says when the files go; the page shows its time, not a retention of its own.
+  assert.ok(within(dialog).getByText(b.detail.download.hint.replace("{{time}}", formatTimeSec(keptUntil))));
 });
 
-test("output and error files older than their retention are not offered", async () => {
-  serve([batch({ id: "batch_old", status: "completed", completed_at: "2020-01-01T00:00:00Z", output_file_id: "file-out", error_file_id: "file-err" })]);
-  mount("/batches?detail=batch_old");
+test("output and error files past the server's output_expires_at are not offered", async () => {
+  // Ended long ago but kept until the server's time: still offered (the retention is the server's to set).
+  serve([
+    batch({ id: "batch_kept", status: "completed", completed_at: "2020-01-01T00:00:00Z", output_file_id: "file-out", output_expires_at: "2099-01-01T00:00:00Z" }),
+    batch({ id: "batch_old", status: "completed", completed_at: "2026-10-01T00:00:00Z", output_file_id: "file-out", error_file_id: "file-err", output_expires_at: "2026-10-02T00:00:00Z" }),
+  ]);
+  const user = mount("/batches?detail=batch_kept");
+  const kept = await screen.findByRole("dialog");
+  assert.ok(await within(kept).findByRole("link", { name: named(b.detail.download.output) }));
+  await closeDrawer(user);
+  await user.click(screen.getByRole("button", { name: b.action.open.replace("{{id}}", "batch_old") }));
   const dialog = await screen.findByRole("dialog");
   await within(dialog).findByRole("link", { name: named(b.detail.download.input) });
   assert.equal((within(dialog).getByRole("button", { name: named(b.detail.download.output) }) as HTMLButtonElement).disabled, true);
   assert.equal((within(dialog).getByRole("button", { name: named(b.detail.download.error) }) as HTMLButtonElement).disabled, true);
+});
+
+test("cancel is offered only when the server says the batch is cancellable", async () => {
+  serve([
+    batch({ id: "batch_fin", status: "finalizing", finalizing_at: "2026-10-28T09:10:00Z" }),
+    batch({ id: "batch_flag", status: "in_progress", cancellable: false }),
+  ]);
+  const user = mount();
+  for (const id of ["batch_fin", "batch_flag"]) {
+    await user.click(await screen.findByRole("button", { name: b.action.open.replace("{{id}}", id) }));
+    const dialog = await screen.findByRole("dialog");
+    await within(dialog).findByRole("link", { name: named(b.detail.download.input) });
+    assert.ok(!within(dialog).queryByRole("button", { name: b.action.cancel }), `${id} offers cancel`);
+    await closeDrawer(user);
+  }
 });
 
 test("cancel is only offered while the batch can still be stopped, and only to an admin", async () => {

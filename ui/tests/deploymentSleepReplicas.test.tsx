@@ -8,6 +8,7 @@ import { JSDOM } from "jsdom";
 import React from "react";
 import { createInstance } from "i18next";
 import { I18nextProvider, initReactI18next } from "react-i18next";
+import * as shapes from "./helpers/deploymentCapabilities.ts";
 
 // Sleep and wake below the whole deployment: one replica from its instance
 // panel, the drawer's all / partly / none summary with a wake of what fits
@@ -114,6 +115,7 @@ function deployment(overrides: Record<string, unknown> = {}) {
     engine: "vllm", node_uuid: "node-a", desired_state: "active", runtime_state: "running",
     sleepable: false, health: { status: "off", threshold_sec: 60, last: null, recent_mean_ms: null, recent_ok: 0, recent: [] }, replicas: 2, max_replicas: 32, template_deviated: false, created_at: "2026-09-30T00:00:00Z",
     operations: [], instances: [instance("inst-a", { replica: { index: 0 } }), instance("inst-b", { replica: { index: 1 } })],
+    ...shapes.notSleepableSingleNode,
     ...overrides,
   };
 }
@@ -139,6 +141,7 @@ const { APIError } = await import("../src/apiError.ts");
 function sleepable(overrides: Record<string, unknown> = {}) {
   return deployment({
     sleepable: true,
+    ...shapes.sleepableSingleNode,
     instances: [instance("inst-a", { replica: { index: 0 }, ...alone }), instance("inst-b", { replica: { index: 1 }, ...alone })],
     ...overrides,
   });
@@ -224,6 +227,22 @@ test("one replica asleep reads as partly asleep; its panel wakes it, the drawer 
   await waitFor(() => assert.deepEqual(wakes, [["instance", "inst-b"]]));
   fireEvent.click(within(drawer()).getByRole("button", { name: locale.sleep.wakeAll }));
   await waitFor(() => assert.deepEqual(wakes[1], ["deployment", 1, { partial: false }]));
+});
+
+test("each replica says its own hold, and the drawer says the mix the server read", async () => {
+  // inst-a is held asleep by an operator; inst-b was put to sleep by the
+  // platform, so a request wakes it.
+  const mixed = sleepable({ replicas: 2, sleep_hold: "some", sleep_held: false, instances: [
+    instance("inst-a", { sleep_level: 2, desired_sleep: 2, asleep: true, sleep_held: true, replica: { index: 0 }, ...alone }),
+    instance("inst-b", { sleep_level: 1, desired_sleep: 1, asleep: true, sleep_held: false, replica: { index: 1 }, ...alone }),
+  ] });
+  stub("deploymentsPage", async () => listPage([mixed]));
+  stub("deployment", async () => mixed);
+  await openDetail();
+  assert.ok(within(drawer()).getByText(locale.sleep.someHeldHint));
+  assert.equal(within(drawer()).queryByText(locale.sleep.heldHint), null);
+  assert.ok(within(document.getElementById("instance-inst-a") as HTMLElement).getByText(locale.instance.held));
+  assert.equal(within(document.getElementById("instance-inst-b") as HTMLElement).queryByText(locale.instance.held), null);
 });
 
 test("a wake the cards cannot take all at once offers to wake what fits", async () => {

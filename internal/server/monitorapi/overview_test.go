@@ -2,6 +2,7 @@ package monitorapi
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"gpuworks.ai/gpuworks/internal/server/healthcheck"
 	"strings"
@@ -733,4 +734,36 @@ func (b *blockingStore) QueryRange(metric string, matchers map[string]string, st
 		b.onFirstQuery()
 	}
 	return b.Store.QueryRange(metric, matchers, startMS, endMS, stepMS)
+}
+
+// request_rate's denominator is the fleet's average requests in flight; it
+// is absent when no deployment reports the gauge and a true zero for a
+// quiet fleet.
+func TestSignalsDTORequestRateCarriesInflight(t *testing.T) {
+	find := func(out []dto.MonitorSignal) dto.MonitorSignal {
+		for _, s := range out {
+			if s.Key == "request_rate" {
+				return s
+			}
+		}
+		t.Fatal("no request_rate signal")
+		return dto.MonitorSignal{}
+	}
+	got := find(signalsDTO(monitor.ClusterSignals{HasRequestRate: true, RequestsPerSec: 5.04, HasInflight: true, InflightAvg: 19.96}))
+	if got.Value == nil || *got.Value != 5 || got.Denominator == nil || *got.Denominator != 20 {
+		t.Fatalf("request_rate = %+v, want value 5 and denominator 20", got)
+	}
+	encoded, _ := json.Marshal(got)
+	if !strings.Contains(string(encoded), `"value":5,"denominator":20`) {
+		t.Fatalf("wire = %s", encoded)
+	}
+	if got := find(signalsDTO(monitor.ClusterSignals{HasRequestRate: true, RequestsPerSec: 3})); got.Denominator != nil {
+		t.Fatalf("no in-flight gauge: denominator = %v, want absent", *got.Denominator)
+	}
+	if got := find(signalsDTO(monitor.ClusterSignals{HasRequestRate: true, ProxyNoRecent: true})); got.Denominator == nil || *got.Denominator != 0 {
+		t.Fatalf("quiet fleet: denominator = %v, want 0", got.Denominator)
+	}
+	if got := find(signalsDTO(monitor.ClusterSignals{HasInflight: true, InflightAvg: 7})); got.Denominator != nil || got.Value != nil {
+		t.Fatalf("uncollected request_rate = %+v, want no value or denominator", got)
+	}
 }

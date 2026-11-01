@@ -43,6 +43,9 @@ type overviewCache struct {
 	rebuilds atomic.Int64
 	// sharing is the fleet's sharing stats (scheduling_timeline_sharing.go).
 	sharing sharingCache
+	// activity is the scheduling activity's answers per range
+	// (scheduling_activity.go).
+	activity activityCache
 }
 
 // schedulingOverview answers GET /scheduling/overview: every node and each

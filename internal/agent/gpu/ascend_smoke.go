@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
 
 	"gpuworks.ai/gpuworks/internal/accelerator"
 )
@@ -70,10 +69,7 @@ func AscendCLSmokePrerequisite() string {
 }
 
 func runAscendSmokeCommand(ctx context.Context, visible string, target ascendSmokeTarget) ([]byte, error) {
-	cmd := exec.CommandContext(ctx, "python3", "-c", accelerator.AscendACLSmokeScript)
-	cmd.Env = ascendSmokeEnv(os.Environ(), visible, target)
-	cmd.WaitDelay = 5 * time.Second
-	return cmd.CombinedOutput()
+	return runRuntimeCheck(ctx, ascendSmokeEnv(os.Environ(), visible, target), "python3", "-c", accelerator.AscendACLSmokeScript)
 }
 
 // ascendSmokeEnv is the environment the ACL check runs in. Only the one die
@@ -159,6 +155,9 @@ const (
 // failed. The success marker passes the die whatever the exit status. A host whose CANN cannot be loaded or initialized, a crash, or
 // output this agent does not recognize is not evidence about the card.
 func ascendSmokeVerdict(out []byte, err error) error {
+	if refused := stillRunning(err); refused != nil {
+		return refused
+	}
 	text := string(out)
 	if detail, ok := ascendSmokeMarkerDetail(text, ascendSmokeUnavailableMarker); ok {
 		return &HostRuntimeUnavailableError{Reason: "the Ascend ACL runtime could not be used on this host: " + detail}

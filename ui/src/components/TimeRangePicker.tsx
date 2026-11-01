@@ -15,13 +15,15 @@ interface Props {
   // When set, a first option with this label is offered and selecting it
   // emits null (e.g. 实时 for a running instance, 最近 for an exited one).
   liveLabel?: string;
+  // The quick ranges to offer, in QUICK_RANGES order; all of them when unset.
+  quickRanges?: readonly QuickRangeKey[];
   size?: "small";
 }
 
 const LIVE_OPTION = "live";
 const CUSTOM_OPTION = "custom";
 
-export default function TimeRangePicker({ value, onChange, liveLabel, size }: Props) {
+export default function TimeRangePicker({ value, onChange, liveLabel, quickRanges, size }: Props) {
   const { t } = useTranslation("deployments");
   // Picking 自定义 only reveals the range picker; the selection is emitted
   // once the user confirms concrete dates there.
@@ -31,7 +33,7 @@ export default function TimeRangePicker({ value, onChange, liveLabel, size }: Pr
 
   const options = [
     ...(liveLabel ? [{ value: LIVE_OPTION, label: liveLabel }] : []),
-    ...QUICK_RANGES.map((range) => ({ value: range.key, label: t(range.labelKey) })),
+    ...QUICK_RANGES.filter((range) => !quickRanges || quickRanges.includes(range.key)).map((range) => ({ value: range.key, label: t(range.labelKey) })),
     { value: CUSTOM_OPTION, label: t("timeRange.custom") },
   ];
 

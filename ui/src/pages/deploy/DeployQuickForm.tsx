@@ -395,7 +395,7 @@ export default function DeployQuickForm({
               </Form.Item>
             )}
           </div>
-          <DeployYieldPolicyField />
+          <DeployYieldPolicyField eligibility={result?.yield_policy_eligible} />
           <LockedHint controls={["replicas", "vram_limit"]} />
         </div>
       </div>

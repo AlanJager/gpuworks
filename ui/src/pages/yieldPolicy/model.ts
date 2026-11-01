@@ -1,22 +1,14 @@
 import type {
   Deployment,
-  YieldBound,
-  YieldParamName,
-  YieldPolicy,
-  YieldPolicyDictionary,
-  YieldPolicyEntry,
-  YieldPolicyName,
-  YieldPolicyRequest,
-  YieldSleepLevel,
-  YieldUnfinished,
 } from "../../api";
+import type { YieldBound, YieldParamName, YieldPolicy, YieldPolicyDictionary, YieldPolicyEntry, YieldPolicyName, YieldPolicyRequest, YieldSleepLevel, YieldUnfinished } from "../../yieldPolicyApi";
 
 // The pure side of the yield policy editor: the working copy of a policy, which
 // parameters apply to the chosen one, what differs from its defaults, the
 // bounds the server holds the numbers to, and the request that saves them.
-// Defaults, applicability and bounds are the server's own, from its dictionary
-// (GET /scheduling/yield-policies); the one rule kept here is that the wait
-// time of unfinished requests applies only while unfinished is "wait".
+// Defaults, applicability (with the conditions under which a parameter
+// applies), the parameter names and the bounds are the server's own, from its
+// dictionary (GET /scheduling/yield-policies); no rule is kept here.
 
 export type YieldParams = YieldPolicy;
 
@@ -34,9 +26,9 @@ export interface YieldDraft {
 
 export type NumericField = "idle_sec" | "max_serve_sec" | "unfinished_wait_sec" | "hold_max_sec";
 
-// The numeric parameters, in the order the editor lists them.
-export const numericFields: NumericField[] = ["idle_sec", "max_serve_sec", "unfinished_wait_sec", "hold_max_sec"];
-const paramNames: YieldParamName[] = ["idle_sec", "sleep_level", "max_serve_sec", "unfinished", "unfinished_wait_sec", "hold_max_sec"];
+// isNumericField is whether the dictionary bounds a parameter: the numeric
+// ones are those with a range.
+const isNumericField = (dictionary: YieldPolicyDictionary, name: YieldParamName): name is NumericField => dictionary.bounds[name] !== undefined;
 
 export const entryOf = (dictionary: YieldPolicyDictionary, policy: YieldPolicyName): YieldPolicyEntry | undefined =>
   dictionary.policies.find((entry) => entry.policy === policy);
@@ -51,11 +43,17 @@ export function draftOfPolicy(dictionary: YieldPolicyDictionary, policy: YieldPo
   return draftOfParams(entryOf(dictionary, policy)?.defaults ?? { policy });
 }
 
-// Which parameters apply to the draft's policy. unfinished_wait_sec applies
-// only while unfinished is "wait".
+// Which parameters apply to the draft's policy, in the dictionary's order: the
+// policy's applies, less a parameter whose applies_when condition the draft
+// does not meet (unfinished_wait_sec while unfinished is not "wait").
 export function applicable(dictionary: YieldPolicyDictionary, draft: YieldDraft): Set<YieldParamName> {
   const applies = new Set(entryOf(dictionary, draft.policy)?.applies ?? []);
-  if (draft.unfinished !== "wait") applies.delete("unfinished_wait_sec");
+  const held = draft as unknown as Record<string, unknown>;
+  for (const name of [...applies]) {
+    for (const [selector, values] of Object.entries(dictionary.applies_when?.[name] ?? {})) {
+      if (!(values ?? []).includes(held[selector] as string)) applies.delete(name);
+    }
+  }
   return applies;
 }
 
@@ -64,9 +62,9 @@ export function applicable(dictionary: YieldPolicyDictionary, draft: YieldDraft)
 export function paramsOfDraft(dictionary: YieldPolicyDictionary, draft: YieldDraft): YieldParams {
   const applies = applicable(dictionary, draft);
   const params: Record<string, unknown> = { policy: draft.policy };
-  for (const name of paramNames) {
+  for (const name of applies) {
     const value = draft[name];
-    if (applies.has(name) && value !== null && value !== undefined) params[name] = value;
+    if (value !== null && value !== undefined) params[name] = value;
   }
   return params as unknown as YieldParams;
 }
@@ -98,12 +96,16 @@ export function modifiedFields(dictionary: YieldPolicyDictionary, draft: YieldDr
   return modified;
 }
 
-// chooseUnfinished sets how unfinished requests are handled; turning to "wait"
-// brings the policy's default wait time when the draft holds none.
+// chooseUnfinished sets how unfinished requests are handled; a parameter the
+// choice makes apply (the wait time, on turning to "wait") takes the policy's
+// default when the draft holds none.
 export function chooseUnfinished(dictionary: YieldPolicyDictionary, draft: YieldDraft, unfinished: YieldUnfinished): YieldDraft {
+  const before = applicable(dictionary, draft);
   const next = { ...draft, unfinished };
-  if (unfinished === "wait" && (next.unfinished_wait_sec ?? null) === null) {
-    next.unfinished_wait_sec = entryOf(dictionary, draft.policy)?.defaults.unfinished_wait_sec ?? null;
+  const defaults = (entryOf(dictionary, draft.policy)?.defaults ?? {}) as Record<string, unknown>;
+  const filled = next as unknown as Record<string, unknown>;
+  for (const name of applicable(dictionary, next)) {
+    if (!before.has(name) && (filled[name] ?? null) === null) filled[name] = defaults[name] ?? null;
   }
   return next;
 }
@@ -135,8 +137,8 @@ export function boundOf(dictionary: YieldPolicyDictionary, draft: YieldDraft, fi
 export function draftErrors(dictionary: YieldPolicyDictionary, draft: YieldDraft): YieldFieldError[] {
   const applies = applicable(dictionary, draft);
   const errors: YieldFieldError[] = [];
-  for (const field of numericFields) {
-    if (!applies.has(field)) continue;
+  for (const field of applies) {
+    if (!isNumericField(dictionary, field)) continue;
     const bound = boundOf(dictionary, draft, field) ?? { minimum: 0, maximum: Number.MAX_SAFE_INTEGER };
     const value = draft[field];
     if (value === null || value === undefined || !Number.isFinite(value)) errors.push({ field, reason: "required", ...bound });
@@ -156,13 +158,10 @@ export function savedPolicy(dep: Deployment): YieldParams {
   return dep.yield_policy ?? { policy: "never" };
 }
 
-// canYield is whether the deployment may use a policy other than never: it has
-// to be able to sleep, and to be single-node and not PD (the server refuses the
-// rest).
-export function canYield(dep: Deployment): boolean {
-  return dep.sleepable && !dep.pd && (dep.nnodes ?? 1) <= 1;
-}
-
+// The names a policy value can hold, for paramsOfValue: it reads values (a
+// stored deploy draft, a form field) where no dictionary is at hand, so these
+// are the wire contract's enumerations (api.ts); the editor itself takes every
+// list from the dictionary.
 const policyNames: YieldPolicyName[] = ["never", "idle", "timeslice", "anytime"];
 const levels: YieldSleepLevel[] = ["auto", "l1", "l2"];
 const unfinishedModes: YieldUnfinished[] = ["abort", "wait"];

@@ -146,12 +146,12 @@ func (c *Controller) launchGeneration(ctx context.Context, deployment *unitDeplo
 		if index == 0 {
 			unit = &planning.UnitRecord{Key: slot.Key, Followers: slot.Unit.FollowersKey()}
 		}
-		launch, refusal, err := c.planRank(ctx, dep, node, model, group, rank, unit)
+		launch, refusal, yield, err := c.planRank(ctx, dep, node, model, group, rank, unit)
 		if err != nil {
 			return false, err
 		}
 		if launch == nil {
-			c.recordRankRefusal(dep, refusal, rank, node)
+			c.recordRankWait(dep, refusal, yield, rank, node)
 			return false, nil
 		}
 		launches = append(launches, *launch)
@@ -180,6 +180,12 @@ func (c *Controller) refuseSharedNode(dep *store.Deployment, nodes []*store.Node
 // recordRankRefusal records why a rank held its generation back. A nil
 // refusal is a rank whose model is still arriving, which says so elsewhere.
 func (c *Controller) recordRankRefusal(dep *store.Deployment, refusal *scheduler.Reason, rank planning.GroupRank, node *store.Node) {
+	c.recordRankWait(dep, refusal, nil, rank, node)
+}
+
+// recordRankWait is recordRankRefusal with what a refusal that waits for
+// holders to yield waits for (LaunchPlan.YieldWait).
+func (c *Controller) recordRankWait(dep *store.Deployment, refusal *scheduler.Reason, yield *planning.LaunchYield, rank planning.GroupRank, node *store.Node) {
 	if refusal == nil {
 		return
 	}
@@ -187,7 +193,7 @@ func (c *Controller) recordRankRefusal(dep *store.Deployment, refusal *scheduler
 	if rank.Ranks > 1 {
 		at = &rankPlace{Rank: rank.Rank, Node: node}
 	}
-	c.recordUnschedulableRank(dep, *refusal, at)
+	c.recordRefusal(dep, *refusal, yield, at)
 }
 
 // persistGeneration writes a planned generation's instances in one
@@ -251,19 +257,20 @@ func (c *Controller) persistGeneration(ctx context.Context, dep *store.Deploymen
 
 // planRank assembles and checks one rank of an ordinary or multi-node
 // deployment without writing it. A nil launch means the rank cannot start
-// now: refusal says why, or is nil while the rank's model is still arriving.
-func (c *Controller) planRank(ctx context.Context, dep *store.Deployment, node *store.Node, model *store.Model, group netplan.Group, rank planning.GroupRank, unit *planning.UnitRecord) (*rankLaunch, *scheduler.Reason, error) {
+// now: refusal says why, or is nil while the rank's model is still arriving;
+// yield is what a refusal that waits for holders to yield waits for.
+func (c *Controller) planRank(ctx context.Context, dep *store.Deployment, node *store.Node, model *store.Model, group netplan.Group, rank planning.GroupRank, unit *planning.UnitRecord) (*rankLaunch, *scheduler.Reason, *planning.LaunchYield, error) {
 	files, ready, err := c.ensureDeploymentModelsPresent(ctx, node, dep, model)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	if !ready {
 		refusal, err := c.modelUnavailable(dep, node, model)
-		return nil, refusal, err
+		return nil, refusal, nil, err
 	}
 	req, templateLayer, modelHostPath, err := c.launchRequest(dep, node, model, &files)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	if rank.Ranks > 1 {
 		// A multi-node generation rendezvous on its own replica's leader,
@@ -276,26 +283,26 @@ func (c *Controller) planRank(ctx context.Context, dep *store.Deployment, node *
 	}
 	topology, err := planning.RankTopology(node, compute, rank)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	port := 0
 	if !topology.Headless {
 		var rejected *scheduler.Reason
 		if port, rejected = c.pickPort(node); rejected != nil {
-			return nil, rejected, nil
+			return nil, rejected, nil, nil
 		}
 	}
 	req.Topology, req.APIPort = topology, port
 	plan, refusal, err := c.planInstanceLaunch(ctx, dep, node, req, templateLayer)
 	if err != nil || refusal != nil {
-		return nil, refusal, err
+		return nil, refusal, plan.YieldWait(refusal), err
 	}
 	ports := []int{}
 	if !topology.Headless {
 		ports = []int{port}
 	}
 	return &rankLaunch{node: node, plan: plan, port: port, modelHostPath: modelHostPath, reads: files.reads(),
-		extras: instanceExtras{Ports: ports, ExplainNetwork: topology.NNodes > 1, Unit: unit}}, nil, nil
+		extras: instanceExtras{Ports: ports, ExplainNetwork: topology.NNodes > 1, Unit: unit}}, nil, nil, nil
 }
 
 // replicaMaster is where a multi-node generation's ranks rendezvous: the

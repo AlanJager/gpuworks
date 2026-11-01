@@ -57,7 +57,7 @@ see the index in [`artifacts/README.md`](../artifacts/README.md)). Chinese origi
 - [PD Disaggregation Deployment](how-to/pd-disaggregation.md)
 - [Enable and Troubleshoot dGPU](how-to/dgpu.md)
 - [Put Instances to Sleep and Wake Them](how-to/sleep-wake.md)
-- [Use the Scheduling Center: Schedules, Yield Policies, and Waiting Wakes](how-to/scheduling-center.md)
+- [Use Scheduling Analysis: Schedules, Yield Policies, and Waiting Wakes](how-to/scheduling-center.md)
 - [Reschedule Replicas on Node Loss](how-to/node-failover.md)
 - [Run Batches: the Batch API and the Console](how-to/batch-api.md)
 

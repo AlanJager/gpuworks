@@ -84,11 +84,18 @@ func buildDoctorReportWith(ctx context.Context, p gpu.Prober, disks []proto.Path
 		doctorDeviceFacts(ctx, &r, p, driver, gpus)
 	}
 	if r.Accelerators != nil && strings.EqualFold(p.Vendor(), "nvidia") {
+		// The whole-node checks open every card at once.
+		idents := make([]string, 0, len(gpus))
+		for _, g := range gpus {
+			idents = append(idents, accelerator.CardIdent(g.UUID, g.PCIeBDF))
+		}
+		end := doctorBeginAttempt(ctx, idents...)
 		doctorNVIDIAChecks(ctx, &r, len(gpus))
+		end()
 	}
 	// Dies that exist only in a fixture say nothing about the host's CANN.
 	if r.Accelerators != nil && !gpu.IsSynthetic(p) {
-		doctorAscendChecks(ctx, &r, gpus)
+		doctorCardRuntimeChecks(ctx, &r, gpus)
 	}
 	if doctorOnMac {
 		doctorMacChecks(ctx, &r, gpus)
@@ -254,6 +261,9 @@ func doctorAccelerators(ctx context.Context, r *proto.DoctorReport, p gpu.Prober
 	// accelerator tool found (CPU-only node)".
 	vendor := p.Vendor()
 	gpus, err := p.Probe(ctx)
+	if held, ok := ctx.Value(doctorHeldFindingsKey{}).(func([]proto.GPUInfo)); ok && held != nil {
+		held(gpus)
+	}
 	doctorUnrecognizedFunctions(r)
 	if vendor == "" && len(gpus) == 0 && err == nil {
 		// Nothing here claims to be an accelerator host.

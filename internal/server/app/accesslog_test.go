@@ -124,3 +124,46 @@ func TestAccessLogHandlerLeavesStorageUploadsUnread(t *testing.T) {
 		t.Fatalf("a listing is not a stream: %q", logs.String())
 	}
 }
+
+// Model traffic is never read ahead or logged: the body is the conversation,
+// which the platform does not keep. The record itself, with the request ID
+// that finds the gateway's request record, is still written; a management
+// request on the same listener keeps its redacted params.
+func TestAccessLogHandlerLeavesInferenceBodiesUnread(t *testing.T) {
+	for _, path := range []string{"/v1/chat/completions", "/v1/completions", "/v1/embeddings", "/api/v1/playground/v1/chat/completions"} {
+		var logs strings.Builder
+		body := &readRecorder{r: strings.NewReader(`{"model":"m","messages":[{"role":"user","content":"prompt-text-918"}]}`)}
+		readBeforeHandler := -1
+		var received string
+		h := accessLogHandler(slog.New(slog.NewTextHandler(&logs, nil)), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			readBeforeHandler = body.read
+			data, _ := io.ReadAll(r.Body)
+			received = string(data)
+			w.WriteHeader(http.StatusOK)
+		}))
+		req := httptest.NewRequest(http.MethodPost, path, body)
+		req.Header.Set("Content-Type", "application/json")
+		h.ServeHTTP(httptest.NewRecorder(), req)
+		out := logs.String()
+		if readBeforeHandler != 0 || strings.Contains(out, "prompt-text-918") || strings.Contains(out, "params=") {
+			t.Fatalf("%s: read ahead %d bytes, logs = %q", path, readBeforeHandler, out)
+		}
+		if !strings.Contains(received, "prompt-text-918") {
+			t.Fatalf("%s: handler received %q, want the untouched body", path, received)
+		}
+		if !strings.Contains(out, `msg="http request"`) || !strings.Contains(out, "request_id=r") || !strings.Contains(out, "path="+path) {
+			t.Fatalf("%s: the completion record is still written: %q", path, out)
+		}
+	}
+	var logs strings.Builder
+	h := accessLogHandler(slog.New(slog.NewTextHandler(&logs, nil)), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.Copy(io.Discard, r.Body)
+		w.WriteHeader(http.StatusOK)
+	}))
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/playground/models-search", strings.NewReader(`{"query":"qwen","api_key":"k-123"}`))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(httptest.NewRecorder(), req)
+	if out := logs.String(); !strings.Contains(out, "qwen") || strings.Contains(out, "k-123") {
+		t.Fatalf("a management request keeps its redacted params: %q", out)
+	}
+}

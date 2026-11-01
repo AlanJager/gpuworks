@@ -9,7 +9,7 @@ import (
 	"gorm.io/gorm"
 
 	"gpuworks.ai/gpuworks/internal/proto"
-	"gpuworks.ai/gpuworks/internal/server/servicelevel"
+	"gpuworks.ai/gpuworks/internal/server/yieldpolicy"
 )
 
 // The fleet reads must each be a range of an index, or a pass over a small
@@ -87,7 +87,7 @@ func TestLedgerDeploymentsAndModels(t *testing.T) {
 		t.Fatalf("deployments = %d", len(deployments))
 	}
 	for _, d := range deployments {
-		if d.Name == "" || d.Policy().Yield != servicelevel.TimeSlice || d.ModelID != 1 || d.QuickParams != "" {
+		if d.Name == "" || d.Policy().Yield != yieldpolicy.TimeSlice || d.ModelID != 1 || d.QuickParams != "" {
 			t.Errorf("deployment row = %+v, want name, level and model only", d)
 		}
 	}
@@ -141,6 +141,24 @@ func TestYieldEventsAreTheSleepsMadeForAnother(t *testing.T) {
 	}
 	if events, err = s.YieldEvents(now.Add(time.Hour)); err != nil || len(events) != 0 {
 		t.Fatalf("events of a window nothing happened in = %v %v", events, err)
+	}
+}
+
+// for_deployment is read in one place: a positive id, or 0 for anything else.
+func TestEventForDeployment(t *testing.T) {
+	for data, want := range map[string]uint{
+		`{"trigger":"preempt","for_deployment":7}`: 7,
+		`{"trigger":"idle"}`:                       0,
+		``:                                         0,
+		`not json`:                                 0,
+		`{"for_deployment":-3}`:                    0,
+		`{"for_deployment":2.5}`:                   0,
+		`{"for_deployment":"7"}`:                   0,
+		`{"trigger":5,"for_deployment":9}`:         9,
+	} {
+		if got := EventForDeployment(data); got != want {
+			t.Errorf("EventForDeployment(%q) = %d, want %d", data, got, want)
+		}
 	}
 }
 

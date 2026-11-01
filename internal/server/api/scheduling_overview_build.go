@@ -36,10 +36,9 @@ func (a *apiHandlers) buildOverview(now time.Time) (*dto.SchedulingOverview, err
 	}
 	online := a.onlineOf(nodes)
 
-	out := &dto.SchedulingOverview{Models: []string{}, Deployments: []dto.OverviewDeployment{}, Nodes: make([]dto.OverviewNode, 0, len(nodes))}
+	out := &dto.SchedulingOverview{States: overviewStates, Models: []string{}, Deployments: []dto.OverviewDeployment{}, Nodes: make([]dto.OverviewNode, 0, len(nodes))}
 	modelAt := map[string]int{}
 	deploymentAt := map[uint]int{}
-	byModel := map[string]*dto.OverviewModelSummary{}
 	summary := &out.Summary
 	summary.Nodes = len(nodes)
 	for i := range nodes {
@@ -62,22 +61,13 @@ func (a *apiHandlers) buildOverview(now time.Time) (*dto.SchedulingOverview, err
 				model = len(out.Models)
 				modelAt[card.Name] = model
 				out.Models = append(out.Models, card.Name)
-				byModel[card.Name] = &dto.OverviewModelSummary{Model: card.Name}
 			}
+			state := card.State(isOnline)
 			wire := dto.OverviewCard{
 				Index: card.Index, Model: model, MemoryMiB: card.MemoryBytes >> 20,
-				AwakePct: percent(card.AwakeBytes, card.MemoryBytes),
+				AwakePct: percent(card.AwakeBytes, card.MemoryBytes), State: overviewStateAt[state], Switching: card.Switching,
 			}
 			wire.SleepingPct = min(percent(card.SleepingBytes, card.MemoryBytes), 100-wire.AwakePct)
-			if card.HeldOutside {
-				wire.Flags |= dto.OverviewHeldOutside
-			}
-			if card.Switching {
-				wire.Flags |= dto.OverviewSwitching
-			}
-			if card.Unhealthy {
-				wire.Flags |= dto.OverviewUnhealthy
-			}
 			for _, occupant := range card.Occupants {
 				at, ok := deploymentAt[occupant.DeploymentID]
 				if !ok {
@@ -95,7 +85,7 @@ func (a *apiHandlers) buildOverview(now time.Time) (*dto.SchedulingOverview, err
 				wire.Occupants = append(wire.Occupants, code)
 			}
 			item.Cards = append(item.Cards, wire)
-			count(summary, byModel[card.Name], isOnline, card, wire)
+			count(summary, state)
 		}
 		item.Contention = pressure.waitingOn[node.ID]
 		for id := range asleepOnNode {
@@ -107,11 +97,6 @@ func (a *apiHandlers) buildOverview(now time.Time) (*dto.SchedulingOverview, err
 		out.Nodes = append(out.Nodes, item)
 	}
 	out.Summary.Contention = dto.OverviewContention{WaitingWakes: len(pressure.waiting), HeldRequests: pressure.heldTotal, YieldsLastHour: pressure.yieldTotal}
-	out.Summary.ByModel = make([]dto.OverviewModelSummary, 0, len(byModel))
-	for _, model := range out.Models {
-		out.Summary.ByModel = append(out.Summary.ByModel, *byModel[model])
-	}
-	sort.SliceStable(out.Summary.ByModel, func(i, j int) bool { return out.Summary.ByModel[i].Cards > out.Summary.ByModel[j].Cards })
 	return out, nil
 }
 
@@ -127,30 +112,36 @@ func percent(bytes, total int64) int {
 	return min(max(int((bytes*100+total/2)/total), 1), 100)
 }
 
-// count adds one card to the fleet's and its model's summary, in the first
-// bucket that holds (dto.OverviewSummary).
-func count(summary *dto.OverviewSummary, model *dto.OverviewModelSummary, online bool, card planning.FleetCard, wire dto.OverviewCard) {
+// overviewStates name the card states the overview's cards refer to by
+// position (dto.SchedulingOverview.States), and overviewStateAt is a state's
+// position.
+var overviewStates, overviewStateAt = func() ([]string, map[planning.CardState]int) {
+	names := make([]string, 0, len(planning.CardStates))
+	at := make(map[planning.CardState]int, len(planning.CardStates))
+	for i, state := range planning.CardStates {
+		names = append(names, string(state))
+		at[state] = i
+	}
+	return names, at
+}()
+
+// count adds one card to the fleet's summary, in the bucket of its state
+// (planning.FleetCard.State).
+func count(summary *dto.OverviewSummary, state planning.CardState) {
 	summary.Cards++
-	model.Cards++
-	switch {
-	case !online:
+	switch state {
+	case planning.CardOffline:
 		summary.Offline++
-		model.Offline++
-	case card.Unhealthy:
+	case planning.CardUnhealthy:
 		summary.Unhealthy++
-		model.Unhealthy++
-	case card.HeldOutside:
+	case planning.CardHeldOutside:
 		summary.HeldOutside++
-		model.HeldOutside++
-	case card.AwakeBytes > 0:
+	case planning.CardAwake:
 		summary.Awake++
-		model.Awake++
-	case card.SleepingBytes > 0:
+	case planning.CardAsleep:
 		summary.Asleep++
-		model.Asleep++
 	default:
 		summary.Free++
-		model.Free++
 	}
 }
 

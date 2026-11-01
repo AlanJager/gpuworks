@@ -192,7 +192,7 @@ func (c *Controller) completeDrainSurge(deployment *unitDeployment, match planni
 		}
 		current[surge.Role][surge.Index] = surge.To
 		changed = true
-		params := map[string]any{"unit": surge.Index + 1}
+		params := map[string]any{"unit": surge.Index + 1, store.EventParamNodeUUIDs: nodeUUIDList(append(rankUUIDs(surge.From), rankUUIDs(surge.To)...)...)}
 		if surge.Role != "" {
 			params["role"] = surge.Role
 		}

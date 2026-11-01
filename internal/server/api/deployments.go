@@ -100,7 +100,7 @@ func (a *apiHandlers) cloneDeployment(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, a.deploymentDTO(created, true))
 }
 
-func (a *apiHandlers) createDeployment(w http.ResponseWriter, r *http.Request) {
+func (a *apiHandlers) createDeploymentOnce(w http.ResponseWriter, r *http.Request) {
 	var req dto.DeployRequest
 	if !decodeJSONBody(w, r, &req) {
 		return
@@ -136,6 +136,10 @@ func (a *apiHandlers) createDeployment(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	if err := a.pickAutomaticNode(r, &req); err != nil {
+		writeErr(w, http.StatusConflict, err)
 		return
 	}
 	reqs, strategy, status, err := a.requestPlacement(&req)

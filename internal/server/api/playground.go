@@ -69,7 +69,7 @@ func (a *apiHandlers) playgroundModels(w http.ResponseWriter, r *http.Request) {
 		// deployment some of whose replicas are awake is served by them, so it
 		// needs no wake.
 		sleeping := candidate.score == 1
-		contract := inferenceapi.ResolveDeploymentContract(a.d.Store, dep, candidate.instances)
+		contract := inferenceapi.ResolveDeploymentContract(a.d.Store, dep)
 		contract.Operations = omitUnservedTranscription(contract.Operations, candidate.instances)
 		if len(contract.Operations) == 0 {
 			// An explicitly empty or invalid model operation configuration has no
@@ -86,7 +86,7 @@ func (a *apiHandlers) playgroundModels(w http.ResponseWriter, r *http.Request) {
 		catalog.Models = append(catalog.Models, dto.PlaygroundModel{
 			ID: dep.ServedName, Label: dep.ServedName, Operations: playgroundOperations(contract, dep.ServedName),
 			InputModalities: modelView.InputModalities, ContextLength: model.ContextLength,
-			Sleeping: sleeping, DeploymentID: dep.ID, TemplateID: dep.TemplateID, TemplateSpecSource: dep.TemplateSpecSource, TemplateSpecName: dep.TemplateSpecName, PublicDataPlane: true,
+			Sleeping: sleeping, WakesOnRequest: sleeping && planning.RequestWakes(dep, candidate.instances), DeploymentID: dep.ID, TemplateID: dep.TemplateID, TemplateSpecSource: dep.TemplateSpecSource, TemplateSpecName: dep.TemplateSpecName, PublicDataPlane: true,
 			ExtraParameterPresets: playgroundPresets(playgroundThinkingSwitchFor(dep.Engine, dep.ServedName, model, hasChat)),
 		})
 	}

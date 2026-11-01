@@ -1,9 +1,9 @@
 {
   "page": {
-    "title": "Scheduling",
+    "title": "Scheduling analysis",
     "description": "Who holds each GPU, what waits to be placed or woken, and what schedules and automation do next",
-    "loading": "Loading the scheduling board…",
-    "loadFailed": "Could not load the scheduling board",
+    "loading": "Loading scheduling analysis…",
+    "loadFailed": "Could not load scheduling analysis",
     "refreshFailed": "Could not refresh the board: {{detail}}",
     "retry": "Retry"
   },
@@ -15,8 +15,6 @@
     "cardsTitle": "Cards by state",
     "total": "Total cards",
     "nodesOnline": "{{online}} of {{count}} nodes online",
-    "models": "Cards by GPU model",
-    "modelLine": "{{model}} ×{{cards}}, {{free}} free",
     "contentionTitle": "Contention and queues",
     "heldRequests": "Requests held for a wake now",
     "yields": "Yields in the last hour"
@@ -85,7 +83,7 @@
     "loading": "Loading the scheduling history…",
     "loadFailed": "Cannot load the scheduling history",
     "refreshFailed": "Refreshing the scheduling history failed: {{detail}}",
-    "empty": "Nothing has been scheduled yet.",
+    "empty": "Nothing was scheduled in the last 24 hours; choose a longer time range to see more.",
     "emptyFiltered": "No scheduling history matches the filters.",
     "pagination": "Scheduling history pages",
     "page": "Page {{page}}",
@@ -94,7 +92,6 @@
     "deleted": "{{name}} (deleted)",
     "filters": {
       "category": "Filter by category",
-      "range": "Filter by time range",
       "deployment": "Filter by deployment",
       "deploymentPlaceholder": "All deployments",
       "deploymentNone": "No matching deployment"
@@ -102,18 +99,14 @@
     "category": {
       "all": "All",
       "auto": "Automatic",
+      "placement": "Placement & moves",
       "failure": "Failure",
       "manual": "Manual"
-    },
-    "range": {
-      "all": "All time",
-      "1h": "Last hour",
-      "24h": "Last 24 hours",
-      "7d": "Last 7 days"
     },
     "columns": {
       "at": "Time",
       "deployment": "Deployment",
+      "node": "Node",
       "action": "Action",
       "details": "Reason and details",
       "category": "Category",
@@ -171,10 +164,12 @@
     "loading": "Loading the residency timeline…",
     "loadFailed": "Failed to load the residency timeline",
     "refreshFailed": "Failed to refresh the residency timeline: {{detail}}",
+    "scopeNode": "These figures count only this node's replicas",
     "sharingTitle": "Deployments sharing cards",
     "sharingEmpty": "No deployment that shares cards (any yield policy but never) held cards in this window.",
     "columns": {
       "deployment": "Deployment",
+      "cards": "Node and GPUs",
       "level": "Yield policy",
       "awake": "Serving time",
       "switches": "Switches",
@@ -184,23 +179,20 @@
       "waitP50": "Wait p50",
       "waitP95": "Wait p95"
     },
-    "awakeShare": "{{span}} ({{share}}%)",
-    "duration": {
-      "seconds": "{{seconds}} s",
-      "minutes": "{{minutes}} min",
-      "hours": "{{hours}} h {{minutes}} min"
-    },
+    "awakeShare": "{{span}} of {{present}} ({{share}}%)",
     "wait": {
       "ms": "{{value}} ms",
       "seconds": "{{value}} s",
       "minutes": "{{value}} min"
-    }
+    },
+    "cardsOnNode": "{{node}} · GPU {{gpus}}",
+    "minutes": "{{minutes}} min"
   },
   "states": {
     "awake": "Serving",
     "asleep": "Asleep",
     "free": "Free",
-    "held": "Held outside the platform",
+    "held_outside": "Held outside the platform",
     "unhealthy": "Faulty",
     "offline": "Node offline"
   },
@@ -219,7 +211,6 @@
     "detail": {
       "claimed": "{{pct}}% claimed by serving deployments",
       "residue": "{{pct}}% kept by sleepers",
-      "held": "A process outside the platform uses it",
       "switching": "changing state",
       "holders": "Held by {{list}}"
     },
@@ -280,5 +271,34 @@
   "queues": {
     "loading": "Loading what waits and what is scheduled…",
     "loadFailed": "Could not load what waits and what is scheduled"
+  },
+  "activity": {
+    "title": "Scheduling activity",
+    "loading": "Loading the scheduling activity…",
+    "loadFailed": "Could not load the scheduling activity",
+    "refreshFailed": "Could not refresh the scheduling activity: {{detail}}",
+    "empty": "No scheduling activity in this range.",
+    "chartAria": "Scheduling activity stacked by reason, {{bucket}} per bar",
+    "totals": "{{bucket}} per bar",
+    "beyondRetention": "Beyond the statistics retention: the start of the range has no figures.",
+    "topCards": "Cards that switched most",
+    "topCardsEmpty": "No card changed hands in this range.",
+    "gpu": "GPU {{index}}",
+    "switches": "{{count}} times",
+    "reason": {
+      "idle_yield": "Idle yield",
+      "rank_preemption": "Rank preemption",
+      "timeslice_turn": "Time-slice turn",
+      "operator_yield": "Operator yield",
+      "scheduled": "Schedule",
+      "failure": "Failure (rebuilt / replaced / timed out)",
+      "queued": "Unschedulable / queued"
+    },
+    "bucket": {
+      "seconds": "{{value}} s",
+      "minutes": "{{value}} min",
+      "hours": "{{value}} h",
+      "days": "{{value}} d"
+    }
   }
 }

@@ -282,12 +282,34 @@ func nvidiaHealth(values []string) (bool, string, string, string) {
 			evidence = append(evidence, accelerator.HealthField{Name: accelerator.NVIDIAHealthMemoryFields[i], Value: value(i)})
 		}
 	}
+	// The recovery the driver asks for follows the memory fields.
+	if recovery := nvidiaRecoveryCode(value(len(accelerator.NVIDIAHealthMemoryFields))); recovery != "" {
+		codes = append(codes, recovery)
+		evidence = append(evidence, accelerator.HealthField{Name: accelerator.NVIDIARecoveryField, Value: value(len(accelerator.NVIDIAHealthMemoryFields))})
+	}
 	code := accelerator.MostSevereHealth(codes...)
 	if code == "" {
 		return true, accelerator.HealthOK, "", ""
 	}
 	status := accelerator.HealthLevel(code)
 	return accelerator.HealthSchedulable(status), status, code, accelerator.FormatHealthEvidence(evidence)
+}
+
+// nvidiaRecoveryCode maps the driver's gpu_recovery_action to a finding:
+// "None" and "[N/A]" (or an empty field) are none; a reboot is a reboot; any
+// form of reset ("Reset", "Drain and Reset", "Drain P2P" which is followed by
+// one) is a reset. A value this agent does not know is still the driver
+// asking for something, so it reads as a reset rather than nothing.
+func nvidiaRecoveryCode(value string) string {
+	v := strings.ToLower(strings.TrimSpace(value))
+	switch {
+	case v == "", v == "none", strings.HasPrefix(v, "[n/a"), v == "n/a", strings.HasPrefix(v, "[unknown"):
+		return ""
+	case strings.Contains(v, "reboot"):
+		return accelerator.HealthRebootRequired
+	default:
+		return accelerator.HealthResetRequired
+	}
 }
 
 func splitCSV(line string) []string {

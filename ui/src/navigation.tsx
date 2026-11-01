@@ -12,6 +12,7 @@ export const navGroups = [
     { key: "/dashboard", icon: <DashboardOutlined />, labelKey: "navigation.dashboard" },
     { key: "/monitor", icon: <HeartOutlined />, labelKey: "navigation.monitor" },
     { key: "/analytics", icon: <BarChartOutlined />, labelKey: "navigation.analytics" },
+    { key: "/scheduling", icon: <ScheduleOutlined />, labelKey: "navigation.scheduling" },
   ] },
   { labelKey: "navigation.groups.resources", items: [
     { key: "/providers", icon: <CloudOutlined />, labelKey: "navigation.publicCloud" },
@@ -27,7 +28,6 @@ export const navGroups = [
   { labelKey: "navigation.groups.inference", items: [
     { key: "/deploy", icon: <RocketOutlined />, labelKey: "navigation.deploy" },
     { key: "/deployments", icon: <UnorderedListOutlined />, labelKey: "navigation.deployments" },
-    { key: "/scheduling", icon: <ScheduleOutlined />, labelKey: "navigation.scheduling" },
     { key: "/batches", icon: <InboxOutlined />, labelKey: "navigation.batches" },
     { key: "/playground/chat", icon: <ExperimentOutlined />, labelKey: "navigation.playground" },
     { key: "/evaluations", icon: <FileSearchOutlined />, labelKey: "navigation.evaluations" },

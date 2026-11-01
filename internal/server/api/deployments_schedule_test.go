@@ -152,6 +152,28 @@ func TestScheduleReplicasOrderOnASingleNodeDeployment(t *testing.T) {
 	}
 }
 
+// A stored order is read as the automation runs it: in its zone, or the
+// server's own when it names none; one in a zone the server lost since is
+// skipped by the automation, so the API shows no next run for it either.
+func TestAStoredOrderReadsAsTheAutomationRunsIt(t *testing.T) {
+	now := time.Date(2026, 10, 30, 12, 0, 0, 0, time.UTC)
+	row := store.LifecycleSchedule{ID: 4, DeploymentID: 9, Action: store.ScheduleActionSleep, Weekdays: 1<<7 - 1, Minute: 60, Timezone: "Asia/Shanghai", Enabled: true}
+	s, err := AutomationSchedule(row)
+	if err != nil || s.Location.String() != "Asia/Shanghai" || s.ID != 4 || s.DeploymentID != 9 || s.Minute != 60 {
+		t.Fatalf("schedule = %+v err=%v", s, err)
+	}
+	if out := scheduleDTO(row, now); out.NextAt == nil || !out.NextAt.Equal(time.Date(2026, 10, 30, 17, 0, 0, 0, time.UTC)) {
+		t.Fatalf("next run = %v, want 01:00 Shanghai", out.NextAt)
+	}
+	row.Timezone = "Nowhere/Never"
+	if _, err := AutomationSchedule(row); err == nil {
+		t.Fatal("an order in an unknown zone reads as runnable")
+	}
+	if out := scheduleDTO(row, now); out.NextAt != nil {
+		t.Fatalf("an order the automation skips shows a next run at %v", out.NextAt)
+	}
+}
+
 func TestScheduleValidation(t *testing.T) {
 	rig := newScheduleRig(t)
 	type refusal struct {
@@ -186,7 +208,7 @@ func TestScheduleValidation(t *testing.T) {
 		{name: "wake with replicas", body: `{"action":"wake","weekdays":[1],"time":"21:00","replicas":2}`, field: "replicas"},
 		{name: "replicas without count", body: `{"action":"replicas","weekdays":[1],"time":"21:00"}`, dep: rig.plain, field: "replicas"},
 		{name: "replicas 0", body: `{"action":"replicas","weekdays":[1],"time":"21:00","replicas":0}`, dep: rig.plain, field: "replicas"},
-		{name: "replicas 33", body: `{"action":"replicas","weekdays":[1],"time":"21:00","replicas":33}`, dep: rig.plain, field: "replicas"},
+		{name: "replicas 1025", body: `{"action":"replicas","weekdays":[1],"time":"21:00","replicas":1025}`, dep: rig.plain, field: "replicas"},
 		{name: "replicas negative", body: `{"action":"replicas","weekdays":[1],"time":"21:00","replicas":-1}`, dep: rig.plain, field: "replicas"},
 		{name: "unknown time zone", body: `{"action":"wake","weekdays":[1],"time":"21:00","timezone":"Mars/Base"}`, status: 400, code: "SCHEDULE_TIMEZONE_UNKNOWN"},
 		{name: "replicas of a multi-node deployment placed by hand", body: `{"action":"replicas","weekdays":[1],"time":"21:00","replicas":2}`, dep: rig.multi, status: 400, code: "SCHEDULE_REPLICAS_MANUAL_PLACEMENT"},

@@ -1,9 +1,8 @@
 package controller
 
 import (
-	"time"
-
 	"gpuworks.ai/gpuworks/internal/server/placewait"
+	"gpuworks.ai/gpuworks/internal/server/planning"
 	"gpuworks.ai/gpuworks/internal/server/scheduler"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
@@ -12,23 +11,28 @@ import (
 // them up waits for them (scheduler.ReasonWaitingForYield): the controller
 // notes the deployment in its placement waits, which the residency arbiter
 // serves like a request held for a sleeping deployment, and plans the replica
-// again every yieldRecheck until the holders have slept and it fits.
-
-// yieldRecheck is how often a replica waiting for holders to yield is planned
-// again: well within placewait.Fresh, so the note stays current.
-const yieldRecheck = 5 * time.Second
+// again every placewait.Recheck until the holders have slept and it fits. A
+// pool replica's recheck plans the node it waits on first and stops there
+// while that node still fits once its holders sleep (pickPoolNode).
+// What it waits for is the plan's typed planning.LaunchYield; the refusal's
+// params are for display only.
 
 // PlacementWaits are the deployments whose replica waits for others to give
 // up cards.
 func (c *Controller) PlacementWaits() *placewait.Registry { return c.waits }
 
-// noteYieldWait notes a refusal that waits for holders to yield, with the
-// instances it waits for, and looks again soon.
-func (c *Controller) noteYieldWait(dep *store.Deployment, reason scheduler.Reason) {
-	if reason.Code != scheduler.ReasonWaitingForYield {
+// noteYieldWait notes the outcome of planning dep's replica: a refusal that
+// waits for holders to yield (yield, set only with
+// scheduler.ReasonWaitingForYield) keeps the deployment waiting for those
+// cards and looks again soon; any other refusal ends its wait at once, so
+// the residency arbiter stops making room for a replica that no longer
+// waits for it.
+func (c *Controller) noteYieldWait(dep *store.Deployment, reason scheduler.Reason, yield *planning.LaunchYield) {
+	if reason.Code != scheduler.ReasonWaitingForYield || yield == nil {
+		c.waits.Done(dep.ID)
 		return
 	}
-	instances, _ := reason.Params["instances"].([]string)
-	c.waits.Wait(dep.ID, instances, c.now())
-	c.q.addAfter(depKey(dep.ID), yieldRecheck)
+	cards := placewait.Cards{NodeID: yield.NodeID, GPUIndexes: yield.GPUIndexes}
+	c.waits.Wait(dep.ID, cards, yield.HolderInstances(), c.now())
+	c.q.addAfter(depKey(dep.ID), placewait.Recheck)
 }

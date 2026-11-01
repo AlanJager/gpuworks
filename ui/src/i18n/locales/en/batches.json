@@ -90,7 +90,7 @@
       "output": "Download output",
       "error": "Download errors",
       "unavailable": "Not available",
-      "hint": "Output and error files are deleted {{days}} days after the batch ends.",
+      "hint": "The output and error files are deleted at {{time}}.",
       "expired": "This file has expired and was deleted."
     },
     "cancelPending": "Cancel requested. The batch stays cancelling until the requests in flight end, up to 2 minutes.",
@@ -106,7 +106,6 @@
     "fileHelp": "Choose a .jsonl file (JSON Lines), one request per line.",
     "fileSelected": "{{name}} ({{size}})",
     "fileRequired": "Choose a requests file first.",
-    "endpoint": "Endpoint",
     "window": {
       "label": "Completion window",
       "unit": "hours",
@@ -127,11 +126,12 @@
       "count": "Models in the file ({{count}}): {{models}}",
       "none": "No model name was found in the file.",
       "skipped": "The file is over 50 MB, so its models were not checked in the browser.",
-      "unknown": "These models in the file have no available deployment on the platform, so their requests would fail: {{models}}. Choose a model above to replace them.",
+      "unknown": "These models in the file have no available deployment on the platform, so the batch cannot be created: {{models}}. Choose a model above to replace them, or deploy these models first.",
       "replaced": "The models in the file ({{models}}) will all be replaced by {{model}}."
     },
     "warnings": {
-      "BATCH_MODEL_SLEEP_HELD": "{{model}} sleeps by an operator's or a schedule's order, which requests do not wake: the batch's requests are retried until someone wakes it or the batch expires."
+      "BATCH_MODEL_SLEEP_HELD": "{{model}} sleeps by an operator's or a schedule's order, which requests do not wake: the batch's requests are retried until someone wakes it or the batch expires.",
+      "BATCH_FILE_MODELS_SLEEP_HELD": "{{models, list}} in the file sleep by an operator's or a schedule's order, which requests do not wake: their requests are retried until someone wakes them or the batch expires."
     },
     "created": "Batch {{id}} created",
     "hintTitle": "Format and limits",
@@ -139,18 +139,29 @@
       "format": "JSON Lines, at most {{size}} MB and {{requests, number}} requests.",
       "line": "Each line is one request: {\"custom_id\", \"method\": \"POST\", \"url\", \"body\": {\"model\", ...}}.",
       "unique": "custom_id must be unique within the file.",
-      "sameUrl": "All lines use the same url, and it must equal the endpoint you choose.",
-      "noStream": "Streaming requests are not supported."
+      "sameUrl": "All lines use the same url; the batch calls that endpoint.",
+      "noStream": "Streaming requests are not supported.",
+      "retention": "The output and error files are kept for {{days}} days after the batch ends."
     },
     "tooLarge": "The file is larger than {{limit}} MB.",
     "failed": "Could not create the batch",
     "sample": {
       "title": "Sample file",
-      "help": "Builds a 5-request sample for the chosen endpoint and model: download it to edit, or use it as is to create a batch.",
+      "endpoint": "Sample type",
+      "endpoints": {
+        "chat": "Chat ({{endpoint}})",
+        "completions": "Completions ({{endpoint}})",
+        "embeddings": "Embeddings ({{endpoint}})"
+      },
       "model": "Model the sample uses",
       "noModel": "No active deployment",
       "download": "Download sample",
       "use": "Use sample"
+    },
+    "dictionary": {
+      "loading": "Reading what a batch can be created with...",
+      "failed": "Could not read what a batch can be created with",
+      "retry": "Retry"
     }
   },
   "errors": {
@@ -169,15 +180,17 @@
       "line_too_long": "the line is too long",
       "empty_file": "the file has no requests",
       "too_many_requests": "the file has more requests than a batch allows",
-      "upload_failed": "the upload could not be read"
+      "upload_failed": "the upload could not be read",
+      "mixed_endpoints": "the url differs from the first line's; a batch calls one endpoint"
     },
     "requestReasons": {
-      "endpoint_mismatch": "the requests in the file do not all use the chosen endpoint",
+      "endpoint_mismatch": "the requests in the file do not all use the given endpoint",
       "invalid_endpoint": "the endpoint is not supported",
       "missing_required_parameter": "a required field is missing",
       "invalid_multipart": "the upload is not a valid form"
     },
-    "requestInvalid": "The batch request is not valid ({{field}}): {{reason}}"
+    "requestInvalid": "The batch request is not valid ({{field}}): {{reason}}",
+    "moreModels": "{{count}} more"
   },
   "api": {
     "title": "Call it through the API (OpenAI-compatible /v1/files and /v1/batches)",

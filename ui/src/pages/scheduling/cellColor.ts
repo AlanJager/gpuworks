@@ -10,7 +10,7 @@ export const stateFill: Record<CellState, string> = {
   awake: colors.chartPrimary,
   asleep: colors.chartQuaternary,
   free: colors.successSoft,
-  held: colors.chartSecondary,
+  held_outside: colors.chartSecondary,
   unhealthy: colors.danger,
   offline: colors.controlBorder,
 };
@@ -47,6 +47,6 @@ export function fillOf(card: Pick<CardView, "state" | "awakePct">): string {
 export function tokenVars(): Record<string, string> {
   return {
     "--hm-free-border": freeBorder, "--hm-switching": colors.ink, "--hm-highlight": colors.danger, "--hm-offline-line": colors.weak, "--hm-tip-text": colors.white,
-    "--hm-border": colors.border, "--hm-held": stateFill.held, "--hm-unhealthy": stateFill.unhealthy, "--hm-offline": stateFill.offline,
+    "--hm-border": colors.border, "--hm-held": stateFill.held_outside, "--hm-unhealthy": stateFill.unhealthy, "--hm-offline": stateFill.offline,
   };
 }

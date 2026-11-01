@@ -297,5 +297,9 @@
     "${API_PORT}",
     "--adapter-threads",
     "4"
-  ]
+  ],
+  "yield_policy_eligible": {
+    "ok": false,
+    "reason": "SLEEP_NOT_ENABLED"
+  }
 }

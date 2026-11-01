@@ -129,7 +129,7 @@ func TestGatewayCountsTheWaitOfHeldRequests(t *testing.T) {
 	if err := p.store.DB().Model(&store.Instance{}).Where("uuid = ?", "omni-instance").Update("sleep_level", 1).Error; err != nil {
 		t.Fatal(err)
 	}
-	if err := p.store.DB().Model(&store.Deployment{}).Where("id = ?", depID).Update("sleep_held", true).Error; err != nil {
+	if err := p.store.DB().Model(&store.Instance{}).Where("uuid = ?", "omni-instance").Update("sleep_held", true).Error; err != nil {
 		t.Fatal(err)
 	}
 	if resp := postChat(t, front, key); resp.StatusCode != http.StatusServiceUnavailable {

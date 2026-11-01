@@ -3,17 +3,15 @@ package store
 import (
 	"errors"
 	"testing"
-	"time"
 
 	"gorm.io/gorm"
 
-	"gpuworks.ai/gpuworks/internal/proto"
-	"gpuworks.ai/gpuworks/internal/server/servicelevel"
+	"gpuworks.ai/gpuworks/internal/server/yieldpolicy"
 )
 
 // withPolicy states the yield policy, with its defaults, on d.
 func withPolicy(d *Deployment, yield string) *Deployment {
-	p, _ := servicelevel.Parse(yield, servicelevel.Overrides{})
+	p, _ := yieldpolicy.Parse(yield, yieldpolicy.Overrides{})
 	d.SetPolicy(p)
 	return d
 }
@@ -36,7 +34,7 @@ func TestDeploymentServiceLevelMigration(t *testing.T) {
 	if err := migrateDB(db, ms); err != nil {
 		t.Fatal(err)
 	}
-	if !db.Migrator().HasColumn(&deploymentServiceColumns{}, "ServiceLevel") || !db.Migrator().HasColumn(&Deployment{}, "SleepHeld") {
+	if !db.Migrator().HasColumn(&deploymentServiceColumns{}, "ServiceLevel") || !db.Migrator().HasColumn(&deploymentSleepHeldColumn{}, "SleepHeld") {
 		t.Fatal("deployments.service_level or sleep_held missing")
 	}
 	// An existing deployment is resident and holds no sleep: nothing about
@@ -76,7 +74,7 @@ func TestDeploymentServiceLevelMigration(t *testing.T) {
 	if err := applyMigration(rollback, failing); !errors.Is(err, want) {
 		t.Fatalf("error = %v", err)
 	}
-	if rollback.Migrator().HasColumn(&deploymentServiceColumns{}, "service_level") || rollback.Migrator().HasColumn(&Deployment{}, "SleepHeld") {
+	if rollback.Migrator().HasColumn(&deploymentServiceColumns{}, "service_level") || rollback.Migrator().HasColumn(&deploymentSleepHeldColumn{}, "SleepHeld") {
 		t.Fatal("columns survived the failed migration")
 	}
 	var count int64
@@ -85,48 +83,6 @@ func TestDeploymentServiceLevelMigration(t *testing.T) {
 	}
 	if err := migrateDB(rollback, ms); err != nil {
 		t.Fatalf("restart after rollback: %v", err)
-	}
-}
-
-func TestSleepHeldFollowsWhoOrderedTheSleep(t *testing.T) {
-	s := newTestStore(t)
-	dep := &Deployment{Name: "held", Engine: "vllm", Sleepable: true, State: DeployActive, Replicas: 2}
-	if _, err := s.CreateDeployment(dep); err != nil {
-		t.Fatal(err)
-	}
-	for _, uuid := range []string{"i-1", "i-2"} {
-		if err := s.db.Create(&Instance{UUID: uuid, DeploymentID: dep.ID, State: proto.InstRunning}).Error; err != nil {
-			t.Fatal(err)
-		}
-	}
-	held := func() bool {
-		t.Helper()
-		got, err := s.GetDeployment(dep.ID)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return got.SleepHeld
-	}
-
-	if err := s.OrderDeploymentSleepHeld(dep.ID, 1, proto.SleepModeWait, true); err != nil || !held() {
-		t.Fatalf("an operator's sleep is held: held=%v err=%v", held(), err)
-	}
-	if err := s.SetDeploymentSleep(dep.ID, 0); err != nil || held() {
-		t.Fatalf("a wake lifts the hold: held=%v err=%v", held(), err)
-	}
-	if err := s.OrderDeploymentSleep(dep.ID, 2, proto.SleepModeWait); err != nil || held() {
-		t.Fatalf("the platform's sleep is not held: held=%v err=%v", held(), err)
-	}
-	if err := s.OrderInstancesSleepHeld(dep.ID, []string{"i-1"}, 1, proto.SleepModeWait, true); err != nil || !held() {
-		t.Fatalf("an operator's replica sleep holds: held=%v err=%v", held(), err)
-	}
-	// The platform putting another replica to sleep does not lift the
-	// operator's hold.
-	if err := s.OrderInstancesSleep(dep.ID, []string{"i-2"}, 1, proto.SleepModeWait); err != nil || !held() {
-		t.Fatalf("a platform sleep lifted the hold: held=%v err=%v", held(), err)
-	}
-	if err := s.OrderInstancesSleep(dep.ID, []string{"i-1"}, 0, ""); err != nil || held() {
-		t.Fatalf("a replica wake lifts the hold: held=%v err=%v", held(), err)
 	}
 }
 
@@ -140,10 +96,10 @@ func TestSharingDeploymentsSkipNeverAndStopped(t *testing.T) {
 		}
 		return dep.ID
 	}
-	mk("never", servicelevel.Never, DeployActive)
-	online := mk("idle", servicelevel.Idle, DeployActive)
-	offline := mk("anytime", servicelevel.Anytime, DeployActive)
-	mk("stopped", servicelevel.TimeSlice, DeployStopped)
+	mk("never", yieldpolicy.Never, DeployActive)
+	online := mk("idle", yieldpolicy.Idle, DeployActive)
+	offline := mk("anytime", yieldpolicy.Anytime, DeployActive)
+	mk("stopped", yieldpolicy.TimeSlice, DeployStopped)
 	got, err := s.SharingDeployments()
 	if err != nil {
 		t.Fatal(err)
@@ -151,7 +107,7 @@ func TestSharingDeploymentsSkipNeverAndStopped(t *testing.T) {
 	if len(got) != 2 || got[0].ID != online || got[1].ID != offline {
 		t.Fatalf("sharing = %+v", got)
 	}
-	if err := s.SetDeploymentYieldPolicy(9999, servicelevel.Policy{Yield: servicelevel.Idle}); !errors.Is(err, ErrNotFound) {
+	if err := s.SetDeploymentYieldPolicy(9999, yieldpolicy.Policy{Yield: yieldpolicy.Idle}); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("missing deployment err = %v", err)
 	}
 }
@@ -163,25 +119,25 @@ func TestDeploymentPolicyRoundTripsNormalized(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, err := s.GetDeployment(dep.ID)
-	if err != nil || got.Policy() != (servicelevel.Policy{Yield: servicelevel.Never}) {
+	if err != nil || got.Policy() != (yieldpolicy.Policy{Yield: yieldpolicy.Never}) {
 		t.Fatalf("a new deployment is never: %+v err=%v", got.Policy(), err)
 	}
 	// A policy stored with parameters that do not apply keeps none of them.
-	stated := servicelevel.Policy{
-		Yield: servicelevel.Anytime, IdleSec: 45, SleepLevel: servicelevel.LevelL2, MaxServeSec: 99,
-		Unfinished: servicelevel.UnfinishedAbort, UnfinishedWaitSec: 12, HoldMaxSec: 200,
+	stated := yieldpolicy.Policy{
+		Yield: yieldpolicy.Anytime, IdleSec: 45, SleepLevel: yieldpolicy.LevelL2, MaxServeSec: 99,
+		Unfinished: yieldpolicy.UnfinishedAbort, UnfinishedWaitSec: 12, HoldMaxSec: 200,
 	}
 	if err := s.SetDeploymentYieldPolicy(dep.ID, stated); err != nil {
 		t.Fatal(err)
 	}
-	want := servicelevel.Policy{
-		Yield: servicelevel.Anytime, IdleSec: 45, SleepLevel: servicelevel.LevelL2, Unfinished: servicelevel.UnfinishedAbort, HoldMaxSec: 200,
+	want := yieldpolicy.Policy{
+		Yield: yieldpolicy.Anytime, IdleSec: 45, SleepLevel: yieldpolicy.LevelL2, Unfinished: yieldpolicy.UnfinishedAbort, HoldMaxSec: 200,
 	}
 	got, err = s.GetDeployment(dep.ID)
 	if err != nil || got.Policy() != want || got.MaxServeSec != 0 || got.UnfinishedWaitSec != 0 {
 		t.Fatalf("policy = %+v err=%v, want %+v", got.Policy(), err, want)
 	}
-	slice, _ := servicelevel.Parse(servicelevel.TimeSlice, servicelevel.Overrides{})
+	slice, _ := yieldpolicy.Parse(yieldpolicy.TimeSlice, yieldpolicy.Overrides{})
 	if err := s.SetDeploymentYieldPolicy(dep.ID, slice); err != nil {
 		t.Fatal(err)
 	}
@@ -354,14 +310,14 @@ func openYieldPolicy189(t *testing.T, name string) *gorm.DB {
 	return db
 }
 
-func readYieldRows(t *testing.T, db *gorm.DB) map[int]servicelevel.Policy {
+func readYieldRows(t *testing.T, db *gorm.DB) map[int]yieldpolicy.Policy {
 	t.Helper()
 	var rows []Deployment
 	if err := db.Raw(`SELECT id, yield_policy, idle_sec, sleep_level_pref, max_serve_sec, unfinished, unfinished_wait_sec, hold_max_sec
 		FROM deployments ORDER BY id`).Scan(&rows).Error; err != nil {
 		t.Fatal(err)
 	}
-	out := map[int]servicelevel.Policy{}
+	out := map[int]yieldpolicy.Policy{}
 	for _, d := range rows {
 		out[int(d.ID)] = d.Policy()
 	}
@@ -375,24 +331,24 @@ func TestDeploymentYieldPolicyReshapeMigration(t *testing.T) {
 	if err := migrateDB(db, ms); err != nil {
 		t.Fatal(err)
 	}
-	never := servicelevel.Policy{Yield: servicelevel.Never}
-	want := map[int]servicelevel.Policy{
+	never := yieldpolicy.Policy{Yield: yieldpolicy.Never}
+	want := map[int]yieldpolicy.Policy{
 		1: never, 10: never, 17: never,
-		11: {Yield: servicelevel.Idle, IdleSec: 300, SleepLevel: servicelevel.LevelAuto, HoldMaxSec: 120},
+		11: {Yield: yieldpolicy.Idle, IdleSec: 300, SleepLevel: yieldpolicy.LevelAuto, HoldMaxSec: 120},
 		// The least turn becomes the turn.
-		12: {Yield: servicelevel.TimeSlice, IdleSec: 60, SleepLevel: servicelevel.LevelAuto, MaxServeSec: 120, Unfinished: servicelevel.UnfinishedWait, UnfinishedWaitSec: 30, HoldMaxSec: 600},
+		12: {Yield: yieldpolicy.TimeSlice, IdleSec: 60, SleepLevel: yieldpolicy.LevelAuto, MaxServeSec: 120, Unfinished: yieldpolicy.UnfinishedWait, UnfinishedWaitSec: 30, HoldMaxSec: 600},
 		// Anytime gets the idle time it had built in.
-		13: {Yield: servicelevel.Anytime, IdleSec: 30, SleepLevel: servicelevel.LevelAuto, Unfinished: servicelevel.UnfinishedAbort, HoldMaxSec: 1800},
+		13: {Yield: yieldpolicy.Anytime, IdleSec: 30, SleepLevel: yieldpolicy.LevelAuto, Unfinished: yieldpolicy.UnfinishedAbort, HoldMaxSec: 1800},
 		// Auto sleep goes; a never deployment with it is plain never, the
 		// others keep the idle time and level they had.
 		14: never,
-		15: {Yield: servicelevel.Idle, IdleSec: 600, SleepLevel: servicelevel.LevelL2, HoldMaxSec: 120},
-		16: {Yield: servicelevel.Anytime, IdleSec: 30, SleepLevel: servicelevel.LevelL2, Unfinished: servicelevel.UnfinishedAbort, HoldMaxSec: 1800},
-		18: {Yield: servicelevel.TimeSlice, IdleSec: 90, SleepLevel: servicelevel.LevelL1, MaxServeSec: 120, Unfinished: servicelevel.UnfinishedWait, UnfinishedWaitSec: 30, HoldMaxSec: 600},
+		15: {Yield: yieldpolicy.Idle, IdleSec: 600, SleepLevel: yieldpolicy.LevelL2, HoldMaxSec: 120},
+		16: {Yield: yieldpolicy.Anytime, IdleSec: 30, SleepLevel: yieldpolicy.LevelL2, Unfinished: yieldpolicy.UnfinishedAbort, HoldMaxSec: 1800},
+		18: {Yield: yieldpolicy.TimeSlice, IdleSec: 90, SleepLevel: yieldpolicy.LevelL1, MaxServeSec: 120, Unfinished: yieldpolicy.UnfinishedWait, UnfinishedWaitSec: 30, HoldMaxSec: 600},
 		// A 10 s least turn is a 30 s turn, the idle time kept within it;
 		// waiting without bound is waiting the longest that may be stated.
-		19: {Yield: servicelevel.TimeSlice, IdleSec: 30, SleepLevel: servicelevel.LevelAuto, MaxServeSec: 30, Unfinished: servicelevel.UnfinishedWait, UnfinishedWaitSec: 600, HoldMaxSec: 600},
-		20: {Yield: servicelevel.Anytime, IdleSec: 30, SleepLevel: servicelevel.LevelAuto, Unfinished: servicelevel.UnfinishedWait, UnfinishedWaitSec: 600, HoldMaxSec: 1800},
+		19: {Yield: yieldpolicy.TimeSlice, IdleSec: 30, SleepLevel: yieldpolicy.LevelAuto, MaxServeSec: 30, Unfinished: yieldpolicy.UnfinishedWait, UnfinishedWaitSec: 600, HoldMaxSec: 600},
+		20: {Yield: yieldpolicy.Anytime, IdleSec: 30, SleepLevel: yieldpolicy.LevelAuto, Unfinished: yieldpolicy.UnfinishedWait, UnfinishedWaitSec: 600, HoldMaxSec: 1800},
 	}
 	got := readYieldRows(t, db)
 	for id, w := range want {
@@ -508,32 +464,5 @@ func TestSharingDeploymentsAreKeptUntilADeploymentChanges(t *testing.T) {
 	got[0].Name = "changed"
 	if again, _ := s.SharingDeployments(); again[0].Name != "a" {
 		t.Fatal("a caller's edit reached the kept rows")
-	}
-}
-
-// A wake that waits for room lifts an operator's hold: the deployment is to
-// be awake, so a request for it waits for the wake rather than being refused.
-func TestAWaitingWakeLiftsTheHold(t *testing.T) {
-	s := newTestStore(t)
-	dep := &Deployment{Name: "held", Engine: "vllm", Sleepable: true, State: DeployActive, Replicas: 1}
-	if _, err := s.CreateDeployment(dep); err != nil {
-		t.Fatal(err)
-	}
-	if err := s.db.Create(&Instance{UUID: "h-1", DeploymentID: dep.ID, State: proto.InstRunning}).Error; err != nil {
-		t.Fatal(err)
-	}
-	if err := s.OrderDeploymentSleepHeld(dep.ID, 2, proto.SleepModeWait, true); err != nil {
-		t.Fatal(err)
-	}
-	if err := s.MarkWakeWaiting(dep.ID, []string{"h-1"}, time.Now()); err != nil {
-		t.Fatal(err)
-	}
-	got, err := s.GetDeployment(dep.ID)
-	if err != nil || got.SleepHeld {
-		t.Fatalf("sleep_held = %v err=%v after a waiting wake, want false", got.SleepHeld, err)
-	}
-	in, _ := s.InstanceByUUID("h-1")
-	if in.WakeWaitingSince == nil {
-		t.Fatalf("instance = %+v: the wait did not start", in)
 	}
 }

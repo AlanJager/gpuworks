@@ -25,7 +25,7 @@ func (n *NodeRuntime) startCardSmoke(ctx context.Context) {
 	if n.prober == nil {
 		return
 	}
-	check, ok := gpu.HostRuntimeCheckFor(n.prober.Vendor())
+	check, ok := n.cardRuntimeCheck(n.prober.Vendor())
 	if !ok {
 		return
 	}
@@ -41,6 +41,7 @@ func (n *NodeRuntime) startCardSmoke(ctx context.Context) {
 			ours, _ := n.cardsInUse()
 			return ours[card.Ident]
 		},
+		Foreign: func(card cardsmoke.Card) bool { return n.occupancy.foreign(card.Ident) },
 		// Until the control plane says what this node runs, no card can be
 		// told apart from one that is serving, and creating a context on a
 		// card that is serving can disturb it. That is the whole round's
@@ -56,6 +57,9 @@ func (n *NodeRuntime) startCardSmoke(ctx context.Context) {
 		Unavailable: func() string { return smokeUnavailable(check) },
 		Timeout:     check.Timeout,
 	})
+	if n.engine != nil {
+		n.engine.SetCardGate(n.cardSmoke.WaitIdle)
+	}
 	n.cardSmokeCtx = ctx
 	go n.cardSmoke.Run(ctx)
 }
@@ -117,6 +121,12 @@ func (n *NodeRuntime) CardHealthFindings(ctx context.Context, gpus []proto.GPUIn
 		n.occupancy.learnCards(gpus)
 	}
 	n.applyForeignProcesses(ctx, gpus, probeOK)
+	// Cards that exist only in a fixture have no PCIe path on this host.
+	if !gpu.IsSynthetic(n.prober) {
+		n.applyPCIeFindings(gpus, n.cardsBusy(), n.runtimeCheckPassedSince)
+		n.applyXidFindings(gpus, n.runtimeCheckPassedSince)
+		n.applyNVLinkFindings(ctx, gpus)
+	}
 	if n.cardSmoke == nil {
 		return
 	}

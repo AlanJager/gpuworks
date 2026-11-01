@@ -1,6 +1,7 @@
 package store
 
 import (
+	"reflect"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -223,7 +224,7 @@ func TestAPIKeyCacheBoundsItsSize(t *testing.T) {
 	for i := 0; i < apiKeyCacheMaxEntries+10; i++ {
 		var digest [32]byte
 		digest[0], digest[1], digest[2] = byte(i), byte(i>>8), byte(i>>16)
-		c.remember(c.snapshot(), digest, uint(i), 0, "p")
+		c.remember(c.snapshot(), digest, APIKeyIdentity{KeyID: uint(i)}, "p")
 	}
 	if n := len(c.verified); n > apiKeyCacheMaxEntries {
 		t.Fatalf("cache holds %d entries, cap is %d", n, apiKeyCacheMaxEntries)
@@ -237,7 +238,7 @@ func TestAPIKeyCacheDropsReadsThatRacedAChange(t *testing.T) {
 	before := c.snapshot()
 	c.forget("gw-deleted")
 	var digest [32]byte
-	c.remember(before, digest, 1, 0, "gw-deleted")
+	c.remember(before, digest, APIKeyIdentity{KeyID: 1}, "gw-deleted")
 	if _, ok := c.lookup(digest); ok {
 		t.Fatal("a key deleted mid-verification was cached")
 	}
@@ -343,7 +344,7 @@ func TestResolveAPIKeyNamesTheKeyAndOwnerOnBothPaths(t *testing.T) {
 		t.Fatalf("slow path identity = %+v, %v", first, ok)
 	}
 	cached, ok := st.ResolveAPIKey(key)
-	if !ok || cached != first {
+	if !ok || !reflect.DeepEqual(cached, first) {
 		t.Fatalf("cached identity = %+v, want %+v", cached, first)
 	}
 	if calls.Load() != 1 {
@@ -353,7 +354,7 @@ func TestResolveAPIKeyNamesTheKeyAndOwnerOnBothPaths(t *testing.T) {
 	if !ok || second.UserID != 9 || second.KeyID == first.KeyID {
 		t.Fatalf("other key identity = %+v", second)
 	}
-	if bad, ok := st.ResolveAPIKey(key + "x"); ok || bad != (APIKeyIdentity{}) {
+	if bad, ok := st.ResolveAPIKey(key + "x"); ok || !reflect.DeepEqual(bad, APIKeyIdentity{}) {
 		t.Fatalf("a wrong secret must resolve to nothing, got %+v %v", bad, ok)
 	}
 }

@@ -4,14 +4,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
-	"gpuworks.ai/gpuworks/internal/server/servicelevel"
 	"gpuworks.ai/gpuworks/internal/server/store"
+	"gpuworks.ai/gpuworks/internal/server/yieldpolicy"
 )
 
 type timelineRig struct {
@@ -43,7 +44,7 @@ func newTimelineRig(t *testing.T) *timelineRig {
 		}
 		return dep
 	}
-	r := &timelineRig{scheduleRig: rig, node: node, t0: time.Now().UTC().Truncate(time.Second).Add(-3 * time.Hour), shared: mk("night-batch", servicelevel.TimeSlice), res: mk("always-on", servicelevel.Never)}
+	r := &timelineRig{scheduleRig: rig, node: node, t0: time.Now().UTC().Truncate(time.Second).Add(-3 * time.Hour), shared: mk("night-batch", yieldpolicy.TimeSlice), res: mk("always-on", yieldpolicy.Never)}
 	for _, in := range []store.Instance{
 		{UUID: "inst-shared", DeploymentID: r.shared.ID, NodeID: node.ID, State: proto.InstRunning, GPUIndexes: "[0]", CreatedAt: r.t0},
 		{UUID: "inst-plain", DeploymentID: r.plain.ID, NodeID: node.ID, State: proto.InstRunning, GPUIndexes: "[1]", CreatedAt: r.t0},
@@ -80,12 +81,14 @@ func TestSchedulingTimelineWire(t *testing.T) {
 	r.event("inst-shared", r.shared.ID, "state", "INSTANCE_STATUS_UPDATED", 2*time.Hour, `{"state":"running","phase":"sleep"}`)
 	r.event("inst-shared", r.shared.ID, "sleep", "INSTANCE_SLEEP_RESULT", 2*time.Hour+time.Minute, `{"result":"applied","level":0}`)
 	r.event("inst-shared", r.shared.ID, "state", "INSTANCE_STATUS_UPDATED", 2*time.Hour+time.Minute, `{"state":"running","phase":""}`)
-	// It yielded once to the deployment sharing card 1 and was woken twice.
-	r.st.AddDeploymentEventCode(r.shared.ID, store.EventKindAutomation, "AUTO_SLEEP", map[string]any{"trigger": "preempt", "reason": "rank", "for_deployment": r.plain.ID, "level": 2})
-	r.st.AddDeploymentEventCode(r.shared.ID, store.EventKindAutomation, "AUTO_WAKE", map[string]any{"trigger": "resume"})
-	r.st.AddDeploymentEventCode(r.shared.ID, store.EventKindAutomation, "AUTO_WAKE", map[string]any{"trigger": "schedule"})
+	// It yielded once to the deployment sharing card 1 and was woken twice,
+	// each event naming its instance on this node, as the automation writes
+	// them.
+	r.st.AddDeploymentEventCode(r.shared.ID, store.EventKindAutomation, "AUTO_SLEEP", map[string]any{"trigger": "preempt", "reason": "rank", "for_deployment": r.plain.ID, "level": 2, "instances": []string{"inst-shared"}})
+	r.st.AddDeploymentEventCode(r.shared.ID, store.EventKindAutomation, "AUTO_WAKE", map[string]any{"trigger": "resume", "instances": []string{"inst-shared"}})
+	r.st.AddDeploymentEventCode(r.shared.ID, store.EventKindAutomation, "AUTO_WAKE", map[string]any{"trigger": "schedule", "instances": []string{"inst-shared"}})
 	// A neighbour on the page put to sleep for the shared deployment counts as yielded-to.
-	r.st.AddDeploymentEventCode(r.plain.ID, store.EventKindAutomation, "AUTO_SLEEP", map[string]any{"trigger": "preempt", "reason": "turn", "for_deployment": r.shared.ID})
+	r.st.AddDeploymentEventCode(r.plain.ID, store.EventKindAutomation, "AUTO_SLEEP", map[string]any{"trigger": "preempt", "reason": "turn", "for_deployment": r.shared.ID, "instances": []string{"inst-plain"}})
 	// The resident one: nothing recorded at all, so its row says awake.
 
 	status, body := r.get("?node=" + r.node.UUID)
@@ -99,7 +102,10 @@ func TestSchedulingTimelineWire(t *testing.T) {
 	f := func(d time.Duration) string { return r.t0.Add(d).Format(time.RFC3339) }
 	to := got.Window.To.Format(time.RFC3339)
 	from := got.Window.From.Format(time.RFC3339)
-	if want := fmt.Sprintf(`"window":{"from":%q,"to":%q,"hours":6}`, from, to); !strings.Contains(body, want) {
+	if !strings.HasPrefix(body, `{"scope":"node","window":`) {
+		t.Fatalf("a node's timeline is not marked node-scoped: %s", body)
+	}
+	if want := fmt.Sprintf(`"window":{"from":%q,"to":%q,"hours":6,"key":"6h","seconds":21600},"windows":[{"key":"6h","seconds":21600},{"key":"24h","seconds":86400}]`, from, to); !strings.Contains(body, want) {
 		t.Fatalf("window\n got  %s\n want %s", body, want)
 	}
 	seg := func(dep uint, name, inst, state string, level int, a, b string) string {
@@ -132,13 +138,22 @@ func TestSchedulingTimelineWire(t *testing.T) {
 	if d.AwakeSeconds != wantAwake {
 		t.Fatalf("awake seconds = %d, want %d", d.AwakeSeconds, wantAwake)
 	}
-	d.AwakeSeconds, d.AwakeShare = 0, 0
-	line, _ := json.Marshal(d)
-	if want := fmt.Sprintf(`{"deployment_id":%d,"deployment":"night-batch","yield_policy":"timeslice","awake_seconds":0,"awake_share":0,"switches":3,"yielded":1,"yielded_to":1,"wakes":2,"held_requests":0}`, r.shared.ID); string(line) != want {
-		t.Fatalf("stats\n got  %s\n want %s", line, want)
+	// It has existed for the 3 hours since its instance was created (its row
+	// is newer, which a deployment's never is in life): the share is of
+	// those, not of the 6 h window.
+	present := int64(got.Window.To.Sub(r.t0).Seconds())
+	if d.PresentSeconds != present {
+		t.Fatalf("present seconds = %d, want %d", d.PresentSeconds, present)
 	}
-	if share := got.Deployments[0].AwakeShare; share <= 0.3 || share >= 0.6 {
-		t.Fatalf("awake share = %v, want about half of the 6 h window", share)
+	if want := float64(wantAwake) / float64(present); d.AwakeShare != want {
+		t.Fatalf("awake share = %v, want %v (awake over present)", d.AwakeShare, want)
+	}
+	// The row as it is on the wire, with the awake figures (which move with
+	// the clock) checked above.
+	wire := body[strings.Index(body, `"deployments":[`):]
+	if want := fmt.Sprintf(`"deployments":[{"deployment_id":%d,"deployment":"night-batch","yield_policy":"timeslice","awake_seconds":%d,"awake_share":%s,"present_seconds":%d,"switches":3,"yielded":1,"yielded_to":1,"wakes":2,"held_requests":0,"cards":[{"node_id":%d,"node_uuid":%q,"node":"tl-node","gpus":[0]}]}]}`,
+		r.shared.ID, wantAwake, strconv.FormatFloat(d.AwakeShare, 'g', -1, 64), present, r.node.ID, r.node.UUID); wire != want {
+		t.Fatalf("stats\n got  %s\n want %s", wire, want)
 	}
 }
 
@@ -283,5 +298,47 @@ func TestHoldWaitsReadTheGatewaysSeries(t *testing.T) {
 	}
 	if none := (&apiHandlers{}).holdWaits([]uint{5}, from, now); len(none) != 0 {
 		t.Fatalf("without metrics = %v", none)
+	}
+}
+
+// The sharing stats say where each deployment is now: its live instances'
+// cards by node, a TP replica's cards sorted, two replicas on one node merged,
+// a node no longer known kept by id, and a removed instance nowhere.
+func TestSharingStatsSayWhereEachDeploymentIs(t *testing.T) {
+	r := newTimelineRig(t)
+	other, err := r.st.RegisterNode("tl-other", store.HashToken("token-2"), "tl-other")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, in := range []store.Instance{
+		{UUID: "inst-shared-tp", DeploymentID: r.shared.ID, NodeID: other.ID, State: proto.InstRunning, GPUIndexes: "[3,2]", CreatedAt: r.t0},
+		{UUID: "inst-shared-2", DeploymentID: r.shared.ID, NodeID: r.node.ID, State: proto.InstRunning, GPUIndexes: "[1]", CreatedAt: r.t0},
+	} {
+		in := in
+		if err := r.st.DB().Create(&in).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	status, body := r.get("?sharing=1&hours=6")
+	if status != http.StatusOK {
+		t.Fatalf("sharing = %d %s", status, body)
+	}
+	want := fmt.Sprintf(`"cards":[{"node_id":%d,"node_uuid":%q,"node":"tl-node","gpus":[0,1]},{"node_id":%d,"node_uuid":%q,"node":"tl-other","gpus":[2,3]}]`, r.node.ID, r.node.UUID, other.ID, other.UUID)
+	if !strings.Contains(body, want) {
+		t.Fatalf("sharing cards\n got  %s\n want %s", body, want)
+	}
+
+	placed := placementsOf([]store.ResidencyInstance{
+		{UUID: "gone", DeploymentID: 7, NodeID: 5, GPUs: []int{0}, Live: false},
+		{UUID: "here", DeploymentID: 7, NodeID: 999, GPUs: []int{1, 1}, Live: true},
+		{UUID: "cpu", DeploymentID: 8, NodeID: 5, Live: true},
+	})
+	cards, err := (&apiHandlers{d: Deps{Store: r.st}}).cardsOf(placed, []uint{7, 8, 9})
+	if err != nil {
+		t.Fatal(err)
+	}
+	line, _ := json.Marshal(cards)
+	if string(line) != `{"7":[{"node_id":999,"node":"","gpus":[1]}],"8":[{"node_id":5,"node":"","gpus":[]}]}` {
+		t.Fatalf("cards = %s", line)
 	}
 }

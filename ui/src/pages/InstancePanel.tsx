@@ -117,6 +117,7 @@ export default function InstancePanel({ inst, params, rank, actions, imageDiffer
                     : t("instance.sleeping", { level: sleepLevel, storage: sleepLevel === 1 ? t("instance.memory") : t("instance.disk") })}
               </Tag>
             )}
+            {inst.asleep && inst.sleep_held && <Tag color="volcano">{t("instance.held")}</Tag>}
           </Space>
         </Descriptions.Item>
         <Descriptions.Item label={t("instance.field.gpu")}>

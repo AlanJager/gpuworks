@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"gpuworks.ai/gpuworks/internal/server/planning"
 	"net/http"
 	"slices"
 	"strings"
@@ -27,7 +28,7 @@ func (r *autoRig) deploymentNodes(t *testing.T, id uint) [][]string {
 // every refusal reaches the caller as a product error with its code.
 func TestReplicaScalerPlacesAnAutomaticMultiNodeDeployment(t *testing.T) {
 	r := newAutoRig(t, 4)
-	scale := ReplicaScaler(Deps{Store: r.st})
+	scale := (&apiHandlers{d: Deps{Store: r.st}}).scaling().ScaleScheduled
 	dep := r.mustCreate(t, r.multiBody("scaled", ""))
 
 	if err := scale(dep.ID, "", 2); err != nil {
@@ -78,18 +79,18 @@ func TestReplicaScalerPlacesAnAutomaticMultiNodeDeployment(t *testing.T) {
 
 func TestReplicaScalerSingleNodeAndPD(t *testing.T) {
 	rig := newScheduleRig(t)
-	scale := ReplicaScaler(Deps{Store: rig.st})
+	scale := (&apiHandlers{d: Deps{Store: rig.st}}).scaling().ScaleScheduled
 	if err := scale(rig.plain.ID, "", 3); err != nil {
 		t.Fatal(err)
 	}
 	if got, _ := rig.st.GetDeployment(rig.plain.ID); got.Replicas != 3 {
 		t.Fatalf("replicas = %d, want 3", got.Replicas)
 	}
-	if err := scale(rig.plain.ID, "", 99); err != nil {
+	if err := scale(rig.plain.ID, "", planning.MaxReplicas+67); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := rig.st.GetDeployment(rig.plain.ID); got.Replicas != 32 {
-		t.Fatalf("replicas = %d, want the limit 32", got.Replicas)
+	if got, _ := rig.st.GetDeployment(rig.plain.ID); got.Replicas != planning.MaxReplicas {
+		t.Fatalf("replicas = %d, want the limit %d", got.Replicas, planning.MaxReplicas)
 	}
 	if err := scale(rig.pd.ID, "", 2); err == nil || productErrorCode(t, err) != "SCHEDULE_INVALID" {
 		t.Fatalf("PD without a role: err = %v", err)
@@ -114,7 +115,7 @@ func TestReplicaScalerSingleNodeAndPD(t *testing.T) {
 // refusals are the update's own.
 func TestReplicaScalerScalesOnePDRole(t *testing.T) {
 	r := newAutoRig(t, 3)
-	scale := ReplicaScaler(Deps{Store: r.st})
+	scale := (&apiHandlers{d: Deps{Store: r.st}}).scaling().ScaleScheduled
 	pd := r.mustCreate(t, r.pdAutoBody("pd-sched", `{}`, `{}`, ""))
 	before := pdNodes(t, pd, "decode")
 

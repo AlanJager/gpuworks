@@ -22,4 +22,26 @@ type SchedulingHistoryEntry struct {
 	Category          string         `json:"category"`
 	Params            map[string]any `json:"params"`
 	Actor             string         `json:"actor,omitempty"`
+	// Target is the deployment the entry acted for (params.for_deployment:
+	// the one a yield gave the GPUs to), named; absent when there is none.
+	Target *SchedulingHistoryDeployment `json:"target,omitempty"`
+	// Nodes are the node or nodes the entry concerns; absent when the event
+	// names none and the instances it names are gone.
+	Nodes []SchedulingHistoryNode `json:"nodes,omitempty"`
+}
+
+// SchedulingHistoryNode names a node an entry concerns. UUID is set only for
+// a node the server still knows, so the UI can open it; Name is its display
+// name, or what the event kept of a node that is gone.
+type SchedulingHistoryNode struct {
+	UUID string `json:"uuid,omitempty"`
+	Name string `json:"name"`
+}
+
+// SchedulingHistoryDeployment names a deployment an entry refers to; Name is
+// empty when it is unknown, Deleted when it is gone.
+type SchedulingHistoryDeployment struct {
+	ID      uint   `json:"id"`
+	Name    string `json:"name,omitempty"`
+	Deleted bool   `json:"deleted,omitempty"`
 }

@@ -75,7 +75,7 @@ Hugging Face 与 ModelScope 的可用性采用 `pipeline/ledger/current/ppu-full
 | `Qwen/Qwen3Guard-Gen-4B` | template-generated | `vllm-0.23.0` | `6ec42827da0c1ff11e7a49dc269d2e810d27e108` | available | available | PPU vLLM/SGLang digest template |
 | `TinyLlama/TinyLlama-1.1B-Chat-v1.0` | template-generated | `vllm-0.23.0` | `fe8a4ea1ffedaf415f4da2f062534de366a451e6` | available | unavailable (404) | PPU vLLM/SGLang digest template |
 | `WeiboAI/VibeThinker-3B` | template-generated | `vllm-0.23.0` | `77bd2cced09193c8b9a59a32bd8577bbd1f3e01c` | available | available | PPU vLLM/SGLang digest template |
-| `bosonai/higgs-audio-v3-tts-4b` | gap | `asllm-2.0.0-vllm-0.23.0` | `7556c17e05201fccd9c8cc120bc216dcc7b5d561` | not recorded | not recorded | 原生/Omni 路径缺少现有引擎可执行契约；待 callable runtime/entrypoint/资产 |
+| `bosonai/higgs-audio-v3-tts-4b` | gap | `asllm-2.0.0-vllm-0.23.0` | `7556c17e05201fccd9c8cc120bc216dcc7b5d561` | not recorded | not recorded | 原生/Omni 路径缺少现有引擎可执行契约；待 callable runtime/entrypoint/资产；参考音频尚缺编码器组件与离线验证 |
 | `deepreinforce-ai/Ornith-1.0-9B` | template-generated | `vllm-0.23.0` | `83dc1f5e24ef8527af019a6b3bf66ac0f1c2c999` | available | available | metadata incomplete: current_weight_payload_first_published_at |
 | `deepseek-ai/DeepSeek-OCR` | template-generated | `vllm-0.23.0` | `9f30c71f441d010e5429c532364a86705536c53a` | available | available | PPU vLLM/SGLang digest template |
 | `deepseek-ai/DeepSeek-OCR-2` | template-generated | `vllm` | `aaa02f3811945a91062062994c5c4a3f4c0af2b0` | available | available | PPU vLLM/SGLang digest template |
@@ -174,7 +174,7 @@ engine 列是研究账本里的引擎标签，与上表的镜像一一对应。
 - `Qwen/Qwen3-ASR-0.6B-hf`：研究账本为 `transformers-native`；需要从原始运行记录补齐 callable/native entrypoint、运行时资产、API contract 和镜像 digest 后才能转成正式 gpuworks spec。
 - `Qwen/Qwen3-TTS-12Hz-0.6B-Base`：研究账本为 `qwen-tts-native`；需要从原始运行记录补齐 callable/native entrypoint、运行时资产、API contract 和镜像 digest 后才能转成正式 gpuworks spec。
 - `Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice`：研究账本为 `qwen-tts-native`；需要从原始运行记录补齐 callable/native entrypoint、运行时资产、API contract 和镜像 digest 后才能转成正式 gpuworks spec。
-- `bosonai/higgs-audio-v3-tts-4b`：研究账本为 `asllm-2.0.0-vllm-0.23.0`；需要从原始运行记录补齐 callable/native entrypoint、运行时资产、API contract 和镜像 digest 后才能转成正式 gpuworks spec。
+- `bosonai/higgs-audio-v3-tts-4b`：研究账本为 `asllm-2.0.0-vllm-0.23.0`；需要从原始运行记录补齐 callable/native entrypoint、运行时资产、API contract 和镜像 digest 后才能转成正式 gpuworks spec。 PPU 档位虽声明 `ref_audio`，但未声明 `audio-tokenizer` 辅助组件，也未验证本地编码器加载和真实参考音频请求；NVIDIA 档位的修复不代表 PPU 已通过。
 - `meituan-longcat/LongCat-Image-Edit`：研究账本为 `asllm-2.0.0-vllm-omni`；需要从原始运行记录补齐 callable/native entrypoint、运行时资产、API contract 和镜像 digest 后才能转成正式 gpuworks spec。
 - `mistralai/Voxtral-4B-TTS-2603`：研究账本为 `asllm-2.0.0-vllm-omni`；需要从原始运行记录补齐 callable/native entrypoint、运行时资产、API contract 和镜像 digest 后才能转成正式 gpuworks spec。
 - `nvidia/Cosmos3-Nano`：研究账本为 `asllm-2.0.0-vllm-omni`；需要从原始运行记录补齐 callable/native entrypoint、运行时资产、API contract 和镜像 digest 后才能转成正式 gpuworks spec。
