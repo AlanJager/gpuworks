@@ -105,7 +105,7 @@ func TestSchedulingTimelineWire(t *testing.T) {
 	if !strings.HasPrefix(body, `{"scope":"node","window":`) {
 		t.Fatalf("a node's timeline is not marked node-scoped: %s", body)
 	}
-	if want := fmt.Sprintf(`"window":{"from":%q,"to":%q,"hours":6,"key":"6h","seconds":21600},"windows":[{"key":"6h","seconds":21600},{"key":"24h","seconds":86400}]`, from, to); !strings.Contains(body, want) {
+	if want := fmt.Sprintf(`"window":{"from":%q,"to":%q,"hours":6,"key":"6h","seconds":21600,"custom":false},"windows":[{"key":"15m","seconds":900},{"key":"1h","seconds":3600},{"key":"6h","seconds":21600},{"key":"24h","seconds":86400}]`, from, to); !strings.Contains(body, want) {
 		t.Fatalf("window\n got  %s\n want %s", body, want)
 	}
 	seg := func(dep uint, name, inst, state string, level int, a, b string) string {
@@ -151,7 +151,7 @@ func TestSchedulingTimelineWire(t *testing.T) {
 	// The row as it is on the wire, with the awake figures (which move with
 	// the clock) checked above.
 	wire := body[strings.Index(body, `"deployments":[`):]
-	if want := fmt.Sprintf(`"deployments":[{"deployment_id":%d,"deployment":"night-batch","yield_policy":"timeslice","awake_seconds":%d,"awake_share":%s,"present_seconds":%d,"switches":3,"yielded":1,"yielded_to":1,"wakes":2,"held_requests":0,"cards":[{"node_id":%d,"node_uuid":%q,"node":"tl-node","gpus":[0]}]}]}`,
+	if want := fmt.Sprintf(`"deployments":[{"deployment_id":%d,"deployment":"night-batch","yield_policy":"timeslice","awake_seconds":%d,"awake_share":%s,"present_seconds":%d,"switches":3,"yielded":1,"yielded_to":1,"wakes":2,"held_requests":0,"cards":[{"node_id":%d,"node_uuid":%q,"node":"tl-node","gpus":[0]}]}],"switches_available":true}`,
 		r.shared.ID, wantAwake, strconv.FormatFloat(d.AwakeShare, 'g', -1, 64), present, r.node.ID, r.node.UUID); wire != want {
 		t.Fatalf("stats\n got  %s\n want %s", wire, want)
 	}

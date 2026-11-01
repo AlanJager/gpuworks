@@ -569,7 +569,7 @@ macOS 忽略 `no_systemd`。
 | GET | `/api/v1/scheduling/board` | 调度看板：`?page=&page_size=&q=` 分页的节点（每张卡的醒着占用、休眠残留、可用量、占用者与外部进程）加全集群的 `pending`（最近 30 分钟被调度拒绝的部署）、`waiting_wakes`、`upcoming`（未来 24 小时的计划动作）；`q` 匹配节点名称、主机名或 UUID；每张卡带服务端算出的 `state` 与 `switching`；已不再有 `recent`（最近的自动化事件看调度记录）；`?node=<uuid>` 只回答这一个节点（一行的 `nodes` 页，其余三项为空，不存在的节点 404），`?queues=1` 只回答后三项（`nodes` 为空页，不读任何节点）；见[调度看板](#调度看板) | JWT |
 | GET | `/api/v1/scheduling/overview` | 调度总览：全集群每个节点、每张卡的紧凑状态与汇总，一次返回，供热力图使用；来自缓存（至多每 2 秒重建一次），带 `ETag`，`If-None-Match` 命中返回 304；见[调度总览](#调度总览) | JWT |
 | GET | `/api/v1/scheduling/history` | 调度记录：全集群的调度事件，最新优先、游标分页（`limit`、`before`，同部署时间线），可按 `deployment_id`、`category`（`auto` / `failure` / `manual`，逗号分隔）、`since` / `until`（RFC 3339）筛选；每条带它涉及的节点 `nodes`（`uuid`、`name`）；非法筛选 400 `FIELD_INVALID`（`params.field`），非法游标或页大小 400 `EVENT_CURSOR_INVALID` / `EVENT_LIMIT_INVALID`；见[调度记录](#调度记录) | JWT |
-| GET | `/api/v1/scheduling/timeline` | 驻留时间线：`?node=<uuid>`（可重复，至多 200 个，通常是被打开的节点）`&window=6h\|24h`（默认 6h）。每张卡窗口内各部署实例占用它的分段（`awake` / `asleep` / `switching` / `starting`），以及出现过的非常驻部署的统计；`?sharing=1&window=15m\|1h\|6h\|24h`（默认 6h）不带 `node`，只回答全集群出让策略不是 `never` 的部署（及窗口内参与过让位、已删除的部署）的统计（`nodes` 为空，约 30 秒缓存）；响应的 `windows` 列出这一读法可选的窗口；旧参数 `hours=6\|24` 仍可用，等同 `window=6h\|24h`；缺少 `node`（且没有 `sharing`）、`sharing` 不是 1 或与 `node` 同用、`window` 不在可选之列、`hours` 不是 6 / 24 时 400 `FIELD_INVALID`（`params.field`，消息如 `window is one of 15m, 1h, 6h, 24h`），不存在的节点被略过；见[驻留时间线](#驻留时间线) | JWT |
+| GET | `/api/v1/scheduling/timeline` | 驻留时间线：`?node=<uuid>`（可重复，至多 200 个，通常是被打开的节点）`&window=15m\|1h\|6h\|24h`（默认 6h），或自定义范围 `&since=<RFC 3339>&until=<RFC 3339>`（`until` 缺省为现在；至多 7 天；`until` 不晚于现在，容许一分钟的时钟偏差；不与 `window`、`hours` 同用）。每张卡窗口内各部署实例占用它的分段（`awake` / `asleep` / `switching` / `starting`），以及出现过的非常驻部署的统计；`?sharing=1&window=15m\|1h\|6h\|24h`（默认 6h）不带 `node`，只回答全集群出让策略不是 `never` 的部署（及窗口内参与过让位、已删除的部署）的统计（`nodes` 为空，约 30 秒缓存）；响应的 `windows` 列出这一读法可选的窗口；旧参数 `hours=6\|24` 仍可用，等同 `window=6h\|24h`；缺少 `node`（且没有 `sharing`）、`sharing` 不是 1 或与 `node` 同用、`window` 不在可选之列、`hours` 不是 6 / 24、`since` / `until` 不是 RFC 3339 时间、只有 `until` 没有 `since`、`since` 不早于 `until`、`until` 晚于现在、范围超过 7 天、`since` / `until` 与 `window` / `hours` / `sharing` 同用时 400 `FIELD_INVALID`（`params.field`，消息如 `window is one of 15m, 1h, 6h, 24h`），不存在的节点被略过；见[驻留时间线](#驻留时间线) | JWT |
 | GET | `/api/v1/scheduling/activity` | 调度活动：`?window=15m\|1h\|6h\|24h\|7d`（默认 24h）或 `?since=&until=`（RFC 3339，`until` 缺省为现在）。按服务端选定的桶长（`bucket_seconds`）给出每桶各原因的调度事件数（`buckets[].counts` 与 `reasons` 同序）、各原因在范围内的合计 `reasons[]`（`key`、`count`）、范围内切换最频繁的至多 20 张卡 `top_cards[]`（`node_uuid`、`node`、`gpu_index`、`switches`），范围开头超出统计保留期时 `beyond_retention` 为 true；不读事件日志，约 30 秒缓存；`window` 不在可选之列、与 `since` / `until` 同用、只给 `until`、时间格式不对、`until` 不晚于 `since`、范围超过 1825 天时 400 `FIELD_INVALID`（`params.field`）；见[调度活动](#调度活动) | JWT |
 | GET | `/api/v1/scheduling/yield-policies` | 出让策略字典：四个策略按等级从高到低，每个带 `defaults` 与可能适用的参数 `applies`，加只在另一个参数取某些值时才适用的条件 `applies_when`，各数值参数的范围 `bounds`（`at_most` 为不得超过的另一个参数）、`sleep_levels`、`unfinished`，客户端据此编辑，不另存默认值；见[出让策略](#出让策略) | JWT |
 | PUT | `/api/v1/deployments/{id}/pd` | PD 部署调整各角色副本（`roles.<role>.units`）与 `fallback`；`mode`、角色的 `tp`/`pp`、`kv_load_failure` 不可变（`PD_IMMUTABLE`）；非 PD 部署 400 `PD_NOT_PD` | JWT |
@@ -1022,13 +1022,13 @@ macOS 忽略 `no_systemd`。
 
 ### 驻留时间线
 
-`GET /api/v1/scheduling/timeline?node=<uuid>&node=<uuid>&window=6h` 只读。它与看板分开，因为看板每隔几秒刷新，而泳道要读窗口内的事件日志；界面按被打开的节点和所选窗口读一次，约每分钟刷新。窗口可选 `6h`、`24h`（默认 `6h`）。`?sharing=1&window=6h` 不带 `node`：只回答全集群出让策略不是 `never` 的部署、以及窗口内参与过让位后已删除的部署的统计（`deployments[]`，`nodes` 为空数组），窗口可选 `15m`、`1h`、`6h`、`24h`（默认 `6h`），缓存约 30 秒；界面用它显示「共卡部署」表。两种读法的统计都不读事件日志：`sharing=1` 是各部署在整个集群里的值，带 `node` 只统计这些节点上的副本，响应的 `scope` 说明是哪一种；可选的窗口由响应的 `windows` 给出，界面据此显示，不另存一份。旧参数 `hours=6|24` 仍可用，等同 `window=6h|24h`。响应：
+`GET /api/v1/scheduling/timeline?node=<uuid>&node=<uuid>&window=6h` 只读。它与看板分开，因为看板每隔几秒刷新，而泳道要读窗口内的事件日志；界面按被打开的节点和所选窗口读一次，约每分钟刷新。带 `node` 时窗口可选 `15m`、`1h`、`6h`、`24h`（默认 `6h`），也可以用 `since`、`until`（RFC 3339，`until` 缺省为现在，至多 7 天）读一段自定义的范围；自定义范围固定，界面只读一次、不轮询，快捷窗口每分钟刷新。`?sharing=1&window=6h` 不带 `node`：只回答全集群出让策略不是 `never` 的部署、以及窗口内参与过让位后已删除的部署的统计（`deployments[]`，`nodes` 为空数组），窗口可选 `15m`、`1h`、`6h`、`24h`（默认 `6h`），缓存约 30 秒；界面用它显示「共卡部署」表。两种读法的统计都不读事件日志：`sharing=1` 是各部署在整个集群里的值，带 `node` 只统计这些节点上的副本，响应的 `scope` 说明是哪一种；可选的窗口由响应的 `windows` 给出，界面据此显示，不另存一份。旧参数 `hours=6|24` 仍可用，等同 `window=6h|24h`。响应：
 
 ```json
 {
   "scope": "node",
-  "window": {"from": "2026-10-28T06:00:00Z", "to": "2026-10-28T12:00:00Z", "hours": 6, "key": "6h", "seconds": 21600},
-  "windows": [{"key": "6h", "seconds": 21600}, {"key": "24h", "seconds": 86400}],
+  "window": {"from": "2026-10-28T06:00:00Z", "to": "2026-10-28T12:00:00Z", "hours": 6, "key": "6h", "seconds": 21600, "custom": false},
+  "windows": [{"key": "15m", "seconds": 900}, {"key": "1h", "seconds": 3600}, {"key": "6h", "seconds": 21600}, {"key": "24h", "seconds": 86400}],
   "nodes": [{
     "uuid": "…", "name": "host2",
     "gpus": [{
@@ -1047,18 +1047,24 @@ macOS 忽略 `no_systemd`。
     "switches": 3, "yielded": 1, "yielded_to": 1, "wakes": 2,
     "held_requests": 4, "wait_p50_ms": 4200, "wait_p95_ms": 31000,
     "cards": [{"node_id": 3, "node_uuid": "5f0c…", "node": "gpu3", "gpus": [0]}]
-  }]
+  }],
+  "switches_available": true
 }
 ```
+
+自定义范围的 `window` 是 `{"from": "2026-10-28T08:30:00Z", "to": "2026-10-28T10:00:00Z", "hours": 1, "key": "custom", "seconds": 5400, "custom": true}`。
 
 | 字段 | 含义 |
 |---|---|
 | `scope` | `deployments[]` 里的数统计的范围：带 `node` 时为 `node`（只统计部署在这些节点上的副本），`sharing=1` 时为 `fleet`（部署的全部副本）；界面据此显示「只统计本节点上的副本」的提示，不自行推断 |
-| `window` | 窗口：`key`（`windows` 之一）、`seconds`（长度）、`hours`（整小时数，不足一小时的窗口为 0）、`from`、`to`（现在） |
-| `windows` | 这一读法可选的窗口（`key`、`seconds`），按界面显示的顺序：带 `node` 时 `6h`、`24h`，`sharing=1` 时 `15m`、`1h`、`6h`、`24h` |
+| `window` | 实际回答的范围：`key`（`windows` 之一；自定义范围为 `custom`）、`custom`（是否自定义范围）、`seconds`（长度）、`hours`（整小时数，不足一小时为 0）、`from`、`to`（快捷窗口为现在，自定义范围为请求的 `until`） |
+| `windows` | 这一读法可选的窗口（`key`、`seconds`），按界面显示的顺序：两种读法都是 `15m`、`1h`、`6h`、`24h`；自定义范围不在其中 |
+| `switches_available` | `deployments[]` 里的 `switches`、`yielded`、`yielded_to`、`wakes` 是否已知。这四个数来自调度活动的内存，只保留最近 24 小时，所以带 `node` 的范围早于这个时间开始时为 `false`，这四个数是 0 而不是真的 0，界面显示 —；其余数不受影响。快捷窗口和 `sharing=1` 恒为 `true` |
 | `nodes[].gpus[]` | 与看板同样的卡（`index`），`segments[]` 从旧到新；`truncated` 为 true 表示只保留了最近 200 段 |
 | `segments[]` | 一个实例在一段时间里占着这张卡：`deployment_id`、`deployment`、`instance`、`state`（`awake` / `asleep` / `switching` / `starting`）、休眠时的 `level`（1 或 2）、`from`、`to`（都落在窗口内）；多卡实例在每张卡上各出现一次 |
 | `deployments[]` | 窗口内占过这些卡、出让策略不是 `never` 的部署（带各自的 `yield_policy`），以及窗口内让出过卡或被让过卡、此后已删除的部署（`deployment_deleted: true`，`deployment` 是它留下的名字，`yield_policy` 为空字符串，因为删除后不保留）：`awake_seconds`（至少一个副本醒着的时间）、`present_seconds`（`fleet`：部署在窗口内存在的时长，从 max(窗口起点, 部署创建时间与首个实例时间中较早者) 到 min(现在, 删除时间)，已删除的部署不保留创建时间，按它的实例在窗口内最早出现的时间算，删除时间未知时按最后一段的结束；`node`：窗口内至少一个副本在这些节点上占着卡的时长，即这些节点泳道上它各段的并集）、`awake_share`（`awake_seconds` / `present_seconds`，0 到 1，`present_seconds` 为 0 时为 0）、`switches`（`yielded` + `wakes`）、`yielded`（为别的部署让出卡而休眠，驻留仲裁的抢占与运维的让位唤醒都算，与总览的 `yields_last_hour` 同一口径）、`yielded_to`（别的部署为它让出，按事件的 `for_deployment` 计，让出者已删除也计）、`wakes`（平台唤醒它）、`held_requests`（网关为等它唤醒而挂起的请求数）、`wait_p50_ms` / `wait_p95_ms`（这些请求的等待，近似值，没有被挂起的请求或网关不保留指标时省略）、`cards`（各副本此刻所在的节点与卡，按节点：`node_id`、`node_uuid`（节点已不存在时省略）、`node`（节点显示名，节点已不存在时为空）、`gpus`；没有放置时为空数组）。`scope` 为 `fleet` 时这些数（切换计数、`awake_seconds`、`present_seconds`）是部署自身在整个集群里的值，来自[调度活动](#调度活动)的内存汇总；为 `node` 时只统计部署在这些节点上的副本：`awake_seconds` 与 `present_seconds` 由与泳道同一份分段算出，`yielded`、`yielded_to`、`wakes` 来自调度活动内存里按节点记下的计数（事件涉及的卡在这些节点上才计，同时涉及多个所列节点的事件只计一次；最近 24 小时都在内存里，不新增持久化）。带 `node` 时只列出在这些节点的卡上出现过的部署；`held_requests`、等待分位与 `cards` 两种范围相同：网关为部署而不是为某个副本挂起请求，`cards` 列出它所有副本此刻所在的节点与卡 |
+
+自定义范围 [`since`, `until`] 的泳道这样推导：窗口内的事件只读到 `until` 为止；`until` 之后才创建的实例不出现；`until` 之后才被移除的实例仍占着卡到 `until`；每个实例在 `since` 时的状态取 `since` 之前最近的事件，与快捷窗口相同。这一读法按节点页、范围各读一次：`until` 已经过去一分钟以上的范围，答案缓存约 5 分钟（最多 16 条，段数很多的不缓存），快捷窗口与刚结束的范围每次都读。读取都是索引范围，不排序、不扫表。保留期之外的事件已被清理，更早的范围里只剩现存实例行能说明它们当时的状态。
 
 泳道由实例记录与事件日志推导，移除实例时记录的 `INSTANCE_REMOVED` 事件（`kind` 为 `residency`，参数 `node_id`、`gpus`）说明它占过的节点与卡。语义与限制见[使用调度分析](../how-to/scheduling-center.md#驻留时间线)。
 

@@ -100,7 +100,11 @@ The **Residency timeline** in the node drawer draws a horizontal time axis for e
 | Switching | Between a sleep or wake order and its result |
 | Starting | Being created, pulling its image or loading; not serving yet |
 
-The time ticks are drawn to scale. Hover a block, or focus it with the keyboard, to see the deployment, the state and the start and end times. The window is 6 or 24 hours (6 hours by default). In both places the windows offered come from the server with the response (`windows`), and the console shows them; any other `window` in a request returns 400 `FIELD_INVALID`, with a message naming the windows offered.
+The time ticks are drawn to scale. Hover a block, or focus it with the keyboard, to see the deployment, the state and the start and end times. The window is chosen with the platform's time picker: the quick windows of 15 minutes, 1 hour, 6 hours (the default) and 1 day, or a custom start and end (at most 7 days, the end not after now). In both places the windows offered come from the server with the response (`windows`), and the console shows them; any other `window` in a request returns 400 `FIELD_INVALID`, with a message naming the windows offered. A quick window refreshes every minute; a custom range is a fixed stretch, read once and not refreshed.
+
+In a custom range, an instance created after the end of the range is not shown; one removed after the end still holds its card until the end; and each instance's state at the start comes from the newest event before it. The time axis picks its ticks from the length of the range: a few minutes for 15 minutes, 10 minutes for an hour, whole hours for several hours up to a day, with the date added beyond a day and one tick a day for a week. The answer for a range that has already ended is cached for about 5 minutes for the same page of nodes, so opening it again does not read the event log again.
+
+The switches, yielded and yielded-to figures in the "Deployments sharing cards" table come from the scheduling activity, which keeps the last 24 hours only: when a custom range begins earlier than that, those three columns show a dash and a line above the table says so; the other columns (serving time, held requests and so on) are unaffected.
 
 The **Deployments sharing cards** table on the page lists the deployments across the whole cluster that held cards in the window and whose yield policy is not never yield (the drawer shows the same table under its timeline, limited to the deployments that held that node's cards). Deployments deleted since that gave a card up or were given one in the window are listed too, their name followed by "(deleted)" and greyed, with no link and — for the level, as the [scheduling history](#调度记录) shows deleted deployments: they did share cards in the window, and deleting them should not make other deployments' "Yielded to" shrink.
 
@@ -117,6 +121,10 @@ The endpoint is separate so that it does not slow down the overview, which refre
 ```bash
 curl --fail-with-body -sS \
   "$API_URL/api/v1/scheduling/timeline?node=$NODE_UUID&window=6h" \
+  -H "Authorization: Bearer $TOKEN"
+
+curl --fail-with-body -sS \
+  "$API_URL/api/v1/scheduling/timeline?node=$NODE_UUID&since=2026-10-28T06:00:00Z&until=2026-10-28T09:00:00Z" \
   -H "Authorization: Bearer $TOKEN"
 
 curl --fail-with-body -sS \

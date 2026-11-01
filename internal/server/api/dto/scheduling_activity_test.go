@@ -42,10 +42,10 @@ func TestTimelineWindowWire(t *testing.T) {
 		Scope:   TimelineScopeFleet,
 		Window:  TimelineWindow{From: from, To: from.Add(15 * time.Minute), Hours: 0, Key: "15m", Seconds: 900},
 		Windows: []TimelineWindowOption{{Key: "15m", Seconds: 900}, {Key: "6h", Seconds: 21600}},
-		Nodes:   []TimelineNode{}, Deployments: []TimelineDeployment{},
+		Nodes:   []TimelineNode{}, Deployments: []TimelineDeployment{}, SwitchesAvailable: true,
 	}
-	want := `{"scope":"fleet","window":{"from":"2026-10-30T12:00:00Z","to":"2026-10-30T12:15:00Z","hours":0,"key":"15m","seconds":900},` +
-		`"windows":[{"key":"15m","seconds":900},{"key":"6h","seconds":21600}],"nodes":[],"deployments":[]}`
+	want := `{"scope":"fleet","window":{"from":"2026-10-30T12:00:00Z","to":"2026-10-30T12:15:00Z","hours":0,"key":"15m","seconds":900,"custom":false},` +
+		`"windows":[{"key":"15m","seconds":900},{"key":"6h","seconds":21600}],"nodes":[],"deployments":[],"switches_available":true}`
 	if got := marshalString(t, in); got != want {
 		t.Fatalf("marshal\n got %s\nwant %s", got, want)
 	}

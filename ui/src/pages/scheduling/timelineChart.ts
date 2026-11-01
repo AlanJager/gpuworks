@@ -37,20 +37,64 @@ export interface Tick {
   x: number;
 }
 
+type TickStep = { unit: "minute" | "hour" | "day"; every: number; ms: number };
+
+// The steps ticks may be spaced at, shortest first: whole minutes, whole
+// hours and whole days of the local clock, each dividing the unit it counts
+// in, so a tick sits where a clock would show it.
+const TICK_STEPS: TickStep[] = [
+  ...[1, 2, 3, 5, 10, 15, 30].map((every): TickStep => ({ unit: "minute", every, ms: every * 60_000 })),
+  ...[1, 2, 3, 4, 6, 12].map((every): TickStep => ({ unit: "hour", every, ms: every * 3_600_000 })),
+  { unit: "day", every: 1, ms: 86_400_000 },
+];
+// MAX_TICKS is the most ticks a range gets: it takes the shortest step that fits.
+const MAX_TICKS = 7;
+
+function tickStepOf(span: Span): TickStep {
+  const width = Math.max(span.toMs - span.fromMs, 1);
+  return TICK_STEPS.find((step) => width / step.ms <= MAX_TICKS) ?? TICK_STEPS[TICK_STEPS.length - 1];
+}
+
 /**
- * Ticks at the local whole hours inside the window, about six of them: every
- * hour for 6 h, every 4 h for 24 h.
+ * Ticks at the local clock's whole minutes, hours or days inside the range,
+ * about six of them: every 3 minutes for 15 minutes, every 10 for an hour,
+ * every hour for 6 h, every 4 h for 24 h, every day for a week.
  */
-export function ticksOf(span: Span, hours: number): Tick[] {
-  const step = Math.max(1, Math.round(hours / 6));
-  const first = new Date(span.fromMs);
-  first.setMinutes(0, 0, 0);
+export function ticksOf(span: Span): Tick[] {
+  const step = tickStepOf(span);
+  const at = new Date(span.fromMs);
+  at.setSeconds(0, 0);
+  if (step.unit === "minute") at.setMinutes(at.getMinutes() - (at.getMinutes() % step.every));
+  else {
+    at.setMinutes(0);
+    if (step.unit === "hour") at.setHours(at.getHours() - (at.getHours() % step.every));
+    else at.setHours(0);
+  }
   const out: Tick[] = [];
-  for (let at = new Date(first); at.getTime() <= span.toMs; at.setHours(at.getHours() + 1)) {
-    if (at.getTime() < span.fromMs || at.getHours() % step !== 0) continue;
-    out.push({ ms: at.getTime(), x: xOf(at.getTime(), span) });
+  for (; at.getTime() <= span.toMs; advance(at, step)) {
+    if (at.getTime() >= span.fromMs) out.push({ ms: at.getTime(), x: xOf(at.getTime(), span) });
   }
   return out;
+}
+
+function advance(at: Date, step: TickStep): void {
+  if (step.unit === "minute") at.setMinutes(at.getMinutes() + step.every);
+  else if (step.unit === "hour") at.setHours(at.getHours() + step.every);
+  else at.setDate(at.getDate() + step.every);
+}
+
+const pad = (n: number) => String(n).padStart(2, "0");
+
+/**
+ * The text of a tick: the clock time within a day, the date and time when the
+ * range is longer than a day, the date alone when the ticks are days apart.
+ */
+export function tickLabel(ms: number, span: Span): string {
+  const at = new Date(ms);
+  const date = pad(at.getMonth() + 1) + "-" + pad(at.getDate());
+  if (tickStepOf(span).unit === "day") return date;
+  const time = pad(at.getHours()) + ":" + pad(at.getMinutes());
+  return span.toMs - span.fromMs > 86_400_000 ? date + " " + time : time;
 }
 
 /** Fill of each state, from the theme's chart colours. */

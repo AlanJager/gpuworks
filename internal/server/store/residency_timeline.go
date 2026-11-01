@@ -53,6 +53,13 @@ func (s *Store) ResidencyWindowStart(since time.Time) (uint, bool, error) {
 	return rows[0].ID, true, nil
 }
 
+// ResidencyWindowEnd is the id of the first event at or after until, and
+// whether there is one: the events of a window that ended at until are those
+// before it. Like ResidencyWindowStart it is one seek of the created_at index.
+func (s *Store) ResidencyWindowEnd(until time.Time) (uint, bool, error) {
+	return s.ResidencyWindowStart(until)
+}
+
 // residencyBoundaryQuery reads the first event at or after since by the
 // created_at index. Normalize the bound to match UTC timestamps stored as text.
 func residencyBoundaryQuery(db *gorm.DB, since time.Time) *gorm.DB {
@@ -68,9 +75,14 @@ func residencyRemovedQuery(db *gorm.DB, firstID uint) *gorm.DB {
 }
 
 // residencyWindowQuery reads the state and sleep events of some instances
-// from firstID on: a range of the (instance_uuid, id) index per instance.
-func residencyWindowQuery(db *gorm.DB, uuids []string, firstID uint) *gorm.DB {
-	return db.Model(&InstanceEvent{}).Where("instance_uuid IN ? AND id >= ? AND code IN ?", uuids, firstID, residencyWindowCode)
+// from firstID up to, not including, endID (0: to the newest): a range of the
+// (instance_uuid, id) index per instance.
+func residencyWindowQuery(db *gorm.DB, uuids []string, firstID, endID uint) *gorm.DB {
+	q := db.Model(&InstanceEvent{}).Where("instance_uuid IN ? AND id >= ? AND code IN ?", uuids, firstID, residencyWindowCode)
+	if endID > 0 {
+		q = q.Where("id < ?", endID)
+	}
+	return q
 }
 
 // residencyPriorQuery reads the newest events before beforeID among the given
@@ -106,6 +118,17 @@ const residencyPriorSleepResults = 8
 // the timeline: the reads go by node (instances), by kind and id (removals) or
 // by instance and id (events).
 func (s *Store) ResidencyInputs(nodeIDs []uint, since time.Time) ([]ResidencyInstance, map[string][]ResidencyEvent, error) {
+	return s.ResidencyInputsBetween(nodeIDs, since, time.Time{})
+}
+
+// ResidencyInputsBetween is ResidencyInputs over [since, until]: a zero until
+// is now. The window's events are those from the first at or after since up
+// to the first at or after until; an instance created after until is left
+// out; one removed after until is kept, since it held its cards in the window
+// (its removal is not among the window's events, so it is still there at
+// until); and each instance's state at since is read from the newest events
+// before it, as for a window that ends now.
+func (s *Store) ResidencyInputsBetween(nodeIDs []uint, since, until time.Time) ([]ResidencyInstance, map[string][]ResidencyEvent, error) {
 	if len(nodeIDs) == 0 {
 		return nil, nil, nil
 	}
@@ -113,7 +136,7 @@ func (s *Store) ResidencyInputs(nodeIDs []uint, since time.Time) ([]ResidencyIns
 	for _, id := range nodeIDs {
 		onPage[id] = true
 	}
-	return s.residencyInputs(since, "node_id IN ?", nodeIDs, func(row InstanceEvent, ev ResidencyEvent) bool { return onPage[ev.NodeID] })
+	return s.residencyInputs(since, until, "node_id IN ?", nodeIDs, func(row InstanceEvent, ev ResidencyEvent) bool { return onPage[ev.NodeID] })
 }
 
 // ResidencyInputsOf is ResidencyInputs for the instances of some
@@ -127,13 +150,14 @@ func (s *Store) ResidencyInputsOf(deploymentIDs []uint, since time.Time) ([]Resi
 	for _, id := range deploymentIDs {
 		wanted[id] = true
 	}
-	return s.residencyInputs(since, "deployment_id IN ?", deploymentIDs, func(row InstanceEvent, ev ResidencyEvent) bool { return wanted[row.DeploymentID] })
+	return s.residencyInputs(since, time.Time{}, "deployment_id IN ?", deploymentIDs, func(row InstanceEvent, ev ResidencyEvent) bool { return wanted[row.DeploymentID] })
 }
 
 // residencyInputs is the read behind ResidencyInputs and ResidencyInputsOf:
 // the live instances matching where (an index on its column, with ids as its
-// argument) and the removals that keep says belong to the scope.
-func (s *Store) residencyInputs(since time.Time, where string, ids []uint, keep func(InstanceEvent, ResidencyEvent) bool) ([]ResidencyInstance, map[string][]ResidencyEvent, error) {
+// argument) and the removals that keep says belong to the scope. A zero until
+// is now.
+func (s *Store) residencyInputs(since, until time.Time, where string, ids []uint, keep func(InstanceEvent, ResidencyEvent) bool) ([]ResidencyInstance, map[string][]ResidencyEvent, error) {
 	db := s.reader()
 	firstID, haveWindow, err := s.ResidencyWindowStart(since)
 	if err != nil {
@@ -141,6 +165,14 @@ func (s *Store) residencyInputs(since time.Time, where string, ids []uint, keep 
 	}
 	if !haveWindow {
 		firstID = math.MaxInt32 // nothing happened in the window: every event is "before" it
+	}
+	var endID uint // events with an id from here on happened after the window
+	if haveWindow && !until.IsZero() {
+		if id, found, err := s.ResidencyWindowEnd(until); err != nil {
+			return nil, nil, err
+		} else if found {
+			endID = id
+		}
 	}
 	var rows []Instance
 	if err := db.Select("ID", "UUID", "DeploymentID", "NodeID", "State", "Phase", "SleepLevel", "GPUIndexes", "CreatedAt", "Headless", "DistGroup", "DistAttempt").
@@ -151,7 +183,7 @@ func (s *Store) residencyInputs(since time.Time, where string, ids []uint, keep 
 	for i := range rows {
 		row := &rows[i]
 		gpus := instanceGPUIndexes(row)
-		if len(gpus) == 0 {
+		if len(gpus) == 0 || (!until.IsZero() && row.CreatedAt.After(until)) {
 			continue
 		}
 		insts = append(insts, ResidencyInstance{
@@ -183,7 +215,7 @@ func (s *Store) residencyInputs(since time.Time, where string, ids []uint, keep 
 	for _, inst := range insts {
 		sources[inst.EventsOf()] = true
 	}
-	events, err := s.residencyEvents(sources, firstID, haveWindow)
+	events, err := s.residencyEvents(sources, firstID, endID, haveWindow)
 	return insts, events, err
 }
 
@@ -241,8 +273,9 @@ func (s *Store) residencyFollowers(rows []Instance, insts []ResidencyInstance) e
 }
 
 // residencyEvents reads each source instance's events: the newest before the
-// window (state and sleep level), then those inside it, in id order.
-func (s *Store) residencyEvents(sources map[string]bool, firstID uint, haveWindow bool) (map[string][]ResidencyEvent, error) {
+// window (state and sleep level), then those inside it (before endID, when
+// not 0), in id order.
+func (s *Store) residencyEvents(sources map[string]bool, firstID, endID uint, haveWindow bool) (map[string][]ResidencyEvent, error) {
 	db := s.reader()
 	out := map[string][]ResidencyEvent{}
 	uuids := make([]string, 0, len(sources))
@@ -280,7 +313,7 @@ func (s *Store) residencyEvents(sources map[string]bool, firstID uint, haveWindo
 		for start := 0; start < len(uuids); start += residencyEventChunk {
 			end := min(start+residencyEventChunk, len(uuids))
 			var rows []InstanceEvent
-			if err := residencyWindowQuery(db, uuids[start:end], firstID).Find(&rows).Error; err != nil {
+			if err := residencyWindowQuery(db, uuids[start:end], firstID, endID).Find(&rows).Error; err != nil {
 				return nil, err
 			}
 			for _, row := range rows {

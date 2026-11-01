@@ -352,7 +352,8 @@ func TestResidencyQueryPlans(t *testing.T) {
 	queries := map[string]*gorm.DB{
 		"window start":    residencyBoundaryQuery(db, residencyBase),
 		"removed":         residencyRemovedQuery(db, 100),
-		"window events":   residencyWindowQuery(db, []string{"a", "b"}, 100),
+		"window events":   residencyWindowQuery(db, []string{"a", "b"}, 100, 0),
+		"bounded events":  residencyWindowQuery(db, []string{"a", "b"}, 100, 200),
 		"prior state":     residencyPriorQuery(db, []string{"a", "b"}, 100, residencyStateCodes, 1),
 		"prior sleep":     residencyPriorQuery(db, []string{"a", "b"}, 100, []string{instanceEventSleepResult}, residencyPriorSleepResults),
 		"activity replay": activityReplayQuery(db, EventKindAutomation, []string{codeAutoSleep, codeAutoWake}, 100, 200),
