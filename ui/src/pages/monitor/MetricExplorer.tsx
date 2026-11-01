@@ -14,7 +14,15 @@ const DEFAULT_METRIC = "gpuworks_gpu_utilization";
 const BY_OPTIONS: NonNullable<MonitorSeriesParams["by"]>[] = ["node", "deployment", "instance", "gpu"];
 const FN_OPTIONS: NonNullable<MonitorSeriesParams["fn"]>[] = ["avg", "sum", "max", "rate"];
 
+// The panel starts collapsed and its body - the catalog and series requests
+// with it - mounts on first expand: a long range's series is the monitor
+// page's slowest read, and most visits never open the explorer.
 export default function MetricExplorer({ range }: { range: MonitorRange }) {
+  const { t } = useTranslation("monitoring");
+  return <Collapse items={[{ key: "explorer", label: t("metricExplorer.title"), children: <ExplorerBody range={range} /> }]} />;
+}
+
+function ExplorerBody({ range }: { range: MonitorRange }) {
   const { t } = useTranslation("monitoring");
   const [metric, setMetric] = useState(DEFAULT_METRIC);
   const [by, setBy] = useState<MonitorSeriesParams["by"]>(undefined);
@@ -57,66 +65,56 @@ export default function MetricExplorer({ range }: { range: MonitorRange }) {
   }, [vocabulary.data, t]);
 
   return (
-    <Collapse
-      items={[
-        {
-          key: "explorer",
-          label: t("metricExplorer.title"),
-          children: (
-            <div>
-              <Space wrap size={16} style={{ marginBottom: 12 }}>
-                <Field label={t("metricExplorer.metric")}>
-                  <Select
-                    aria-label={t("metricExplorer.metric")}
-                    style={{ width: 280 }}
-                    value={metric}
-                    onChange={handleMetricChange}
-                    options={metricOptions}
-                    showSearch
-                    optionFilterProp="label"
-                  />
-                </Field>
-                <Field label={t("metricExplorer.by")}>
-                  <Select
-                    aria-label={t("metricExplorer.by")}
-                    style={{ width: 160 }}
-                    value={by ?? ""}
-                    onChange={(value) => setBy((value || undefined) as MonitorSeriesParams["by"])}
-                    options={[
-                      { value: "", label: t("metricExplorer.byOptions.none") },
-                      ...BY_OPTIONS.map((value) => ({ value, label: t(`metricExplorer.byOptions.${value}`) })),
-                    ]}
-                  />
-                </Field>
-                <Field label={t("metricExplorer.fn")}>
-                  <Select
-                    aria-label={t("metricExplorer.fn")}
-                    style={{ width: 120 }}
-                    value={fn}
-                    onChange={setFn}
-                    options={FN_OPTIONS.map((value) => ({ value, label: t(`metricExplorer.fnOptions.${value}`) }))}
-                  />
-                </Field>
-              </Space>
-              <TimeSeriesChart series={series} height={220} seriesName={seriesName} />
-              {quantileFamilies.has(metric) && (
-                <Typography.Text type="secondary" style={{ fontSize: 12, display: "block", marginTop: 6 }}>
-                  {t("metricExplorer.quantileFamilyNote")}
-                </Typography.Text>
-              )}
-              {error && (
-                <Typography.Text type="danger" style={{ display: "block", marginTop: 6 }}>
-                  {error.message}
-                </Typography.Text>
-              )}
-              <Typography.Text type="secondary" style={{ fontSize: 12, display: "block", marginTop: 6, wordBreak: "break-all" }}>
-                {t("metricExplorer.requestUrl", { url })}
-              </Typography.Text>
-            </div>
-          ),
-        },
-      ]}
-    />
+    <div>
+      <Space wrap size={16} style={{ marginBottom: 12 }}>
+        <Field label={t("metricExplorer.metric")}>
+          <Select
+            aria-label={t("metricExplorer.metric")}
+            style={{ width: 280 }}
+            value={metric}
+            onChange={handleMetricChange}
+            options={metricOptions}
+            showSearch
+            optionFilterProp="label"
+          />
+        </Field>
+        <Field label={t("metricExplorer.by")}>
+          <Select
+            aria-label={t("metricExplorer.by")}
+            style={{ width: 160 }}
+            value={by ?? ""}
+            onChange={(value) => setBy((value || undefined) as MonitorSeriesParams["by"])}
+            options={[
+              { value: "", label: t("metricExplorer.byOptions.none") },
+              ...BY_OPTIONS.map((value) => ({ value, label: t(`metricExplorer.byOptions.${value}`) })),
+            ]}
+          />
+        </Field>
+        <Field label={t("metricExplorer.fn")}>
+          <Select
+            aria-label={t("metricExplorer.fn")}
+            style={{ width: 120 }}
+            value={fn}
+            onChange={setFn}
+            options={FN_OPTIONS.map((value) => ({ value, label: t(`metricExplorer.fnOptions.${value}`) }))}
+          />
+        </Field>
+      </Space>
+      <TimeSeriesChart series={series} height={220} seriesName={seriesName} />
+      {quantileFamilies.has(metric) && (
+        <Typography.Text type="secondary" style={{ fontSize: 12, display: "block", marginTop: 6 }}>
+          {t("metricExplorer.quantileFamilyNote")}
+        </Typography.Text>
+      )}
+      {error && (
+        <Typography.Text type="danger" style={{ display: "block", marginTop: 6 }}>
+          {error.message}
+        </Typography.Text>
+      )}
+      <Typography.Text type="secondary" style={{ fontSize: 12, display: "block", marginTop: 6, wordBreak: "break-all" }}>
+        {t("metricExplorer.requestUrl", { url })}
+      </Typography.Text>
+    </div>
   );
 }
 
