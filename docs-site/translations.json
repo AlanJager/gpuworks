@@ -128,7 +128,7 @@
   "adr/0058-scheduling-center-acts-through-operator-orders.md": "259f1ebc2bf47bb14efdb2a08f12fa9af495c33b764c56430115146bdbc8bda0",
   "how-to/batch-api.md": "949d867689a3cff3cdc77618a25eb355e7b5ca1a9508e3c22ac6da7531e7b17a",
   "how-to/scheduling-center.md": "ce7101b7a3f4712098f375e0ccd9dab2e922978e74bd2231c751cc66568017d6",
-  "adr/0059-service-levels-and-the-residency-arbiter.md": "9a5473d42661c8d13fd217aa45dd068e6d5a80062d804516cf2b16a9906fa1ff",
-  "explanation/service-levels.md": "32175df4500632102079ad84a38eb0fef2c6b808290ab259eb00bd58b568c97f",
+  "adr/0059-service-levels-and-the-residency-arbiter.md": "a6f17e715ff8cb8871aded7dc0f218f2f16dc2e2ecc7c0f13cc8f383151ac974",
+  "explanation/service-levels.md": "def61deea16661c350ebbfc411b19144e5ffe4cfec556a5d4c9efc80ab2d6d54",
   "adr/0060-card-health-from-hardware-facts.md": "8df92de8e08e009da35393c77eb14527a9dde33c27ba4efd48cd8bcca1afa48b"
 }
