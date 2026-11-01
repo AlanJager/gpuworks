@@ -1321,6 +1321,7 @@ var migrations = []migration{
 		}
 		return nil
 	}},
+	{Version: 196, Name: "card_health_episodes", Apply: createCardHealthEpisodes},
 }
 
 // modelFileNetworkColumns are the columns migrations 76 and 77 added to

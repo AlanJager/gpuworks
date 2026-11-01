@@ -210,6 +210,9 @@ type Deps struct {
 	// (scheduling_activity.go): the activity route, the sharing stats and
 	// the node timelines' counts read it. Nil answers those 404.
 	SchedulingActivity SchedulingActivity
+	// CardHealth is each card's checks and their failure records
+	// (card_health.go). Nil answers those routes 404.
+	CardHealth CardHealth
 	// Experience is the experience environment beside the server
 	// (experience.go). Nil answers 404: the environment's own console, or a
 	// harness.
@@ -327,6 +330,10 @@ func Router(d Deps, policies ...auth.SessionPolicy) http.Handler {
 			r.Put("/nodes/{uuid}/labels", a.updateNodeLabels)
 			r.Put("/nodes/{uuid}/scheduling", a.setNodeScheduling)
 			r.Put("/nodes/{uuid}/gpus/scheduling", a.setCardScheduling)
+			r.Post("/nodes/{uuid}/gpus/recheck", a.recheckCard)
+			r.Get("/nodes/{uuid}/health-checks", a.nodeHealthChecks)
+			r.Get("/nodes/{uuid}/health-checks/detail", a.nodeHealthCheckDetail)
+			r.Get("/nodes/{uuid}/health-records", a.nodeHealthRecords)
 			r.Get("/nodes/{uuid}/replicas", a.nodeReplicas)
 			r.Post("/nodes/{uuid}/evict", a.evictNode)
 			r.Patch("/nodes/{uuid}/name", a.renameNode)

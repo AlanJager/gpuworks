@@ -680,6 +680,9 @@ func (s *Store) DeleteNode(uuid string) error {
 		if err := tx.Where("node_id = ?", n.ID).Delete(&GPU{}).Error; err != nil {
 			return err
 		}
+		if err := tx.Where("node_id = ?", n.ID).Delete(&CardHealthEpisode{}).Error; err != nil {
+			return err
+		}
 		if err := rememberDeletedNode(tx, n, time.Now().UTC()); err != nil {
 			return err
 		}

@@ -196,6 +196,9 @@ GET /api/v1/nodes
 GET /api/v1/nodes/facets
 GET /api/v1/nodes/{uuid}
 GET /api/v1/nodes/{uuid}/fs
+GET /api/v1/nodes/{uuid}/health-checks
+GET /api/v1/nodes/{uuid}/health-checks/detail
+GET /api/v1/nodes/{uuid}/health-records
 GET /api/v1/nodes/{uuid}/network
 GET /api/v1/nodes/{uuid}/networks
 GET /api/v1/nodes/{uuid}/pull-proxy
@@ -332,6 +335,7 @@ POST /api/v1/nodes/install
 POST /api/v1/nodes/precheck
 POST /api/v1/nodes/{uuid}/doctor
 POST /api/v1/nodes/{uuid}/evict
+POST /api/v1/nodes/{uuid}/gpus/recheck
 POST /api/v1/nodes/{uuid}/recovery/probe
 POST /api/v1/nodes/{uuid}/runtime/restart
 POST /api/v1/nodes/{uuid}/token/regenerate

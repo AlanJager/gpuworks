@@ -54,6 +54,9 @@ type Hub struct {
 	onMetrics         func(nodeUUID string, samples []proto.MetricSample)
 	onLogs            func(nodeUUID string, lines []proto.LogLine)
 	onBenchmarkDetail func(nodeUUID string, status proto.BenchmarkStatus)
+	// onCardChecks and onNodeGone: card_checks.go.
+	onCardChecks func(nodeUUID string, nodeID uint, at time.Time, gpus []proto.GPUInfo)
+	onNodeGone   func(nodeUUID string)
 
 	// The node queues persist per-node reports (status, heartbeats, image
 	// presence) off the session read loops; see statusqueue.go for why those
@@ -549,6 +552,9 @@ func (h *Hub) deregister(s *Session) {
 		h.mu.Unlock()
 		h.statusQ.forget(s.NodeUUID) // a stale report would mark it online again
 		_ = h.store.SetNodeState(s.NodeUUID, store.NodeStateOffline)
+		if h.onNodeGone != nil {
+			h.onNodeGone(s.NodeUUID)
+		}
 		return
 	}
 	h.mu.Unlock()

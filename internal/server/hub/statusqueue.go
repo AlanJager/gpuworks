@@ -233,6 +233,11 @@ func (s *Session) handleStatusNode(raw json.RawMessage) {
 	if st.RuntimeProxy != nil {
 		s.runtimeProxy.Store(st.RuntimeProxy)
 	}
+	// Every report, in memory: the card checks are never queued behind the
+	// store, and a report the queue coalesces away still counts.
+	if s.hub.onCardChecks != nil {
+		s.hub.onCardChecks(s.NodeUUID, s.nodeID, s.hub.now(), st.GPUs)
+	}
 	s.hub.statusQ.submit(s.NodeUUID, queuedNodeStatus{
 		status: st, session: s, imageRevision: s.imageStatusRevision.Load(),
 	})
