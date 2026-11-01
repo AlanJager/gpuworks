@@ -6,7 +6,8 @@ import type { TFunction } from "i18next";
 import type { SchedulingTimeline, TimelineDeployment, TimelineGPU, TimelineNode, TimelineSegment } from "../../schedulingApi";
 import { formatTime } from "../../i18n/datetime";
 import { colors } from "../../theme/tokens";
-import { CHART_WIDTH, blockOf, lanesOf, stateColor, stateOrder, tickLabel, ticksOf, windowSpan, type Lane, type Span } from "./timelineChart";
+import { CHART_WIDTH, blockOf, lanesOf, stateColor, stateOrder, tickLabel, ticksOf, windowSpan, xOf, type Lane, type Span } from "./timelineChart";
+import { BoundaryLine, SummaryLane } from "./TimelineSummary";
 
 const LANE_HEIGHT = 18;
 
@@ -71,19 +72,24 @@ function TimelineNodeBlock({ node, span, stats, gpuNames }: { node: TimelineNode
 function GpuLanes({ node, gpu, gpuName, span, ticks, stats }: { node: TimelineNode; gpu: TimelineGPU; gpuName?: string; span: Span; ticks: number[]; stats: TimelineDeployment[] }) {
   const { t } = useTranslation("scheduling");
   const lanes = lanesOf(gpu.segments, stats);
+  // Where the earlier time is summarized up to, when it is: a line on every lane marks it.
+  const boundaryX = gpu.summarized_before && gpu.summary?.length ? xOf(Date.parse(gpu.summarized_before), span) : undefined;
   return (
     <div className="scheduling-gpu" role="group" aria-label={t("timeline.gpuAria", { node: node.name, index: gpu.index })}>
       <div className="scheduling-gpu-head">
         <Typography.Text>{gpuName ? t("nodes.gpuLabel", { index: gpu.index, name: gpuName }) : t("timeline.gpuPlain", { index: gpu.index })}</Typography.Text>
-        {gpu.truncated && <Tag color="gold">{t("timeline.truncated")}</Tag>}
+        {gpu.summarized_before ? (
+          <Tag color="gold">{t("timeline.summarized", { time: formatTime(gpu.summarized_before) })}</Tag>
+        ) : gpu.truncated && <Tag color="gold">{t("timeline.truncated")}</Tag>}
       </div>
-      {lanes.length === 0 && <Typography.Text type="secondary" className="timeline-none">{t("timeline.noneOnCard")}</Typography.Text>}
-      {lanes.map((lane) => <LaneRow key={lane.deploymentID} lane={lane} span={span} ticks={ticks} />)}
+      <SummaryLane gpu={gpu} span={span} ticks={ticks} />
+      {lanes.length === 0 && !gpu.summary?.length && <Typography.Text type="secondary" className="timeline-none">{t("timeline.noneOnCard")}</Typography.Text>}
+      {lanes.map((lane) => <LaneRow key={lane.deploymentID} lane={lane} span={span} ticks={ticks} boundaryX={boundaryX} />)}
     </div>
   );
 }
 
-function LaneRow({ lane, span, ticks }: { lane: Lane; span: Span; ticks: number[] }) {
+function LaneRow({ lane, span, ticks, boundaryX }: { lane: Lane; span: Span; ticks: number[]; boundaryX?: number }) {
   const { t } = useTranslation("scheduling");
   const { t: tDeploy } = useTranslation("deployments");
   const [active, setActive] = useState<TimelineSegment | null>(null);
@@ -129,6 +135,7 @@ function LaneRow({ lane, span, ticks }: { lane: Lane; span: Span; ticks: number[
               />
             );
           })}
+          {boundaryX !== undefined && <BoundaryLine x={boundaryX} />}
         </svg>
         {active && activeBlock && (
           <div role="tooltip" className="timeline-tooltip" style={{ left: `${((activeBlock.x + activeBlock.width / 2) / CHART_WIDTH) * 100}%` }}>

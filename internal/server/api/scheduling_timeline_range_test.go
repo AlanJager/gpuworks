@@ -259,8 +259,9 @@ func TestTimelineCustomRangeRefusals(t *testing.T) {
 }
 
 // The answer of a custom range in the past is read from the store once, per
-// range and page of nodes, and kept a while; a window that ends now, or a
-// range that ended a moment ago, is read every time; the cache is bounded.
+// range and page of nodes, and kept a while; a range that ended a moment ago
+// is read every time; the cache is bounded. (The quick windows are kept for
+// a shorter while: TestTimelineQuickWindowsAreKeptBriefly.)
 func TestTimelinePastRangesAreKept(t *testing.T) {
 	r := newTimelineRig(t)
 	r.seedRange()
@@ -304,17 +305,16 @@ func TestTimelinePastRangesAreKept(t *testing.T) {
 		t.Fatalf("three distinct requests read %d times, want 3", got)
 	}
 	// An old entry is read again.
-	key := past.from.Format(time.RFC3339) + "/" + past.to.Format(time.RFC3339) + "/" + r.node.UUID
+	key := past.cacheKey(uuids)
 	entry := a.overview.timeline.byKey[key]
 	entry.at = entry.at.Add(-timelinePastTTL)
 	a.overview.timeline.byKey[key] = entry
 	if _, err := a.cachedResidencyTimeline(uuids, past, now); err != nil || a.overview.timeline.reads.Load() != 4 {
 		t.Fatalf("an old entry was not read again: %v", err)
 	}
-	// Windows that end now, and ranges that ended a moment ago, are not kept.
+	// A range that ended a moment ago is not kept.
 	kept := len(a.overview.timeline.byKey)
 	for _, rng := range []timelineRange{
-		quickRange(nodeWindows[1], now),
 		{custom: true, from: now.Add(-time.Hour), to: now.Add(-10 * time.Second)},
 	} {
 		for i := 0; i < 2; i++ {

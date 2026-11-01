@@ -38,7 +38,34 @@ export interface TimelineSegment {
 export interface TimelineGPU {
   index: number;
   segments: TimelineSegment[];
+  /** Some of the card's history is not listed raw (set whenever summarized_before is). */
   truncated: boolean;
+  /** Where the summaries end and the raw segments begin; absent when nothing was summarized. */
+  summarized_before?: string;
+  /** The time before summarized_before in at most 50 equal slices the server computed. */
+  summary?: TimelineSummary[];
+}
+
+/** One slice of the time a card's raw segments no longer list. */
+export interface TimelineSummary {
+  kind: "summary";
+  from: string;
+  to: string;
+  /** Times the card changed hands (the awake deployment became another one) in the slice. */
+  switches: number;
+  /** The deployment awake longest in the slice, as the server decided; absent when none was awake. */
+  dominant_deployment_id?: number;
+  dominant_deployment?: string;
+  deployments: TimelineSummaryDeployment[];
+}
+
+export interface TimelineSummaryDeployment {
+  deployment_id: number;
+  deployment: string;
+  awake_seconds: number;
+  asleep_seconds: number;
+  switching_seconds: number;
+  starting_seconds: number;
 }
 
 export interface TimelineNode {

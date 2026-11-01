@@ -4,8 +4,6 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-	"sync"
-	"sync/atomic"
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
@@ -24,16 +22,6 @@ const (
 	// for its answer to be kept: events written a moment ago may still be
 	// landing in it.
 	timelineSettle = time.Minute
-	// timelinePastTTL is how long the answer of a range in the past is kept.
-	// The lanes of such a range do not change; the rest of the answer
-	// (deployments' policy, whether they still exist, where they run now)
-	// does, slowly.
-	timelinePastTTL = 5 * time.Minute
-	// timelineCacheSize bounds the answers kept; past it the cache starts
-	// over. An answer with more than timelineCacheSegments segments is not
-	// kept, which bounds what the cache holds.
-	timelineCacheSize     = 16
-	timelineCacheSegments = 20000
 )
 
 // timelineRange is what a request asked a timeline for: one of the quick
@@ -151,53 +139,6 @@ func timelineRangeOf(q url.Values, windows []timelineWindow, def timelineWindow,
 	return timelineRange{custom: true, from: from, to: to}, nil
 }
 
-// timelineCache keeps the answers of custom ranges that ended in the past,
-// per range and page of nodes: a viewer reading a past range once and
-// coming back to it, or several looking at the same incident, share one read
-// of the event log.
-type timelineCache struct {
-	mu    sync.Mutex
-	byKey map[string]timelineEntry
-	reads atomic.Int64
-}
-
-type timelineEntry struct {
-	out dto.SchedulingTimeline
-	at  time.Time
-}
-
-// cachedResidencyTimeline is residencyTimeline, kept for timelinePastTTL when
-// the range is a custom one in the past. A quick window slides with the clock
-// and is read every time.
-func (a *apiHandlers) cachedResidencyTimeline(uuids []string, rng timelineRange, now time.Time) (dto.SchedulingTimeline, error) {
-	if !rng.isPast(now) {
-		return a.residencyTimeline(uuids, rng, now)
-	}
-	c := &a.overview.timeline
-	key := rng.from.Format(time.RFC3339) + "/" + rng.to.Format(time.RFC3339) + "/" + strings.Join(uuids, ",")
-	c.mu.Lock()
-	if entry, ok := c.byKey[key]; ok && time.Since(entry.at) < timelinePastTTL {
-		c.mu.Unlock()
-		return entry.out, nil
-	}
-	c.mu.Unlock()
-	out, err := a.residencyTimeline(uuids, rng, now)
-	if err != nil {
-		return out, err
-	}
-	c.reads.Add(1)
-	if timelineSegments(out) > timelineCacheSegments {
-		return out, nil
-	}
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.byKey == nil || len(c.byKey) >= timelineCacheSize {
-		c.byKey = map[string]timelineEntry{}
-	}
-	c.byKey[key] = timelineEntry{out: out, at: time.Now().UTC()}
-	return out, nil
-}
-
 // hoursOf is the window key the older hours parameter names ("6" is "6h"),
 // and whether it is one of timelineHours.
 func hoursOf(raw string) (string, bool) {
@@ -206,15 +147,4 @@ func hoursOf(raw string) (string, bool) {
 		return "", false
 	}
 	return strconv.Itoa(n) + "h", true
-}
-
-// timelineSegments is how many segments an answer lists.
-func timelineSegments(out dto.SchedulingTimeline) int {
-	n := 0
-	for _, node := range out.Nodes {
-		for _, gpu := range node.GPUs {
-			n += len(gpu.Segments)
-		}
-	}
-	return n
 }
