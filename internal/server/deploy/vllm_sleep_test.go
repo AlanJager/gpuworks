@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"gpuworks.ai/gpuworks/internal/proto"
+	"gpuworks.ai/gpuworks/internal/server/messages"
 )
 
 func TestResolveVLLMAscendSleepAdditionalConfig(t *testing.T) {
@@ -104,13 +105,14 @@ func TestResolveVLLMSleepLeavesOtherVendorsAndAwakeAscendUntouched(t *testing.T)
 
 func TestResolveVLLMAscendSleepChecksEffectiveAllocatorConfig(t *testing.T) {
 	for name, test := range map[string]struct {
-		overrides ContainerOverrides
-		want      string
-		wantError bool
+		overrides   ContainerOverrides
+		want        string
+		wantWarning bool
+		wantError   bool
 	}{
 		// The template layer is the platform's: its setting is turned off and
 		// the other allocator settings are kept.
-		"template expandable segments": {want: "max_split_size_mb:256,expandable_segments:False"},
+		"template expandable segments": {want: "max_split_size_mb:256,expandable_segments:False", wantWarning: true},
 		"user disables template setting": {
 			overrides: ContainerOverrides{Env: map[string]string{"PYTORCH_NPU_ALLOC_CONF": "expandable_segments:False"}},
 			want:      "expandable_segments:False",
@@ -127,7 +129,7 @@ func TestResolveVLLMAscendSleepChecksEffectiveAllocatorConfig(t *testing.T) {
 			templateEnv := map[string]string{"PYTORCH_NPU_ALLOC_CONF": "max_split_size_mb:256,expandable_segments:True"}
 			input.Params.TemplateEnv = templateEnv
 			input.ContainerOverrides = test.overrides
-			launch, err := ResolveLaunch(input)
+			launch, warnings, err := ResolveLaunchWithWarnings(input)
 			if templateEnv["PYTORCH_NPU_ALLOC_CONF"] != "max_split_size_mb:256,expandable_segments:True" {
 				t.Fatalf("caller's template env was mutated: %#v", templateEnv)
 			}
@@ -137,6 +139,24 @@ func TestResolveVLLMAscendSleepChecksEffectiveAllocatorConfig(t *testing.T) {
 				}
 				if got := launch.Env["PYTORCH_NPU_ALLOC_CONF"]; got != test.want {
 					t.Fatalf("PYTORCH_NPU_ALLOC_CONF = %q, want %q", got, test.want)
+				}
+				var got []messages.Warning
+				for _, warning := range warnings {
+					if warning.Code == messages.WarningAscendSleepExpandableSegmentsDisabled {
+						got = append(got, warning)
+					}
+				}
+				if !test.wantWarning {
+					if len(got) != 0 {
+						t.Fatalf("unexpected warning %+v", got)
+					}
+					return
+				}
+				want := []messages.Warning{messages.NewWarning(messages.WarningAscendSleepExpandableSegmentsDisabled, map[string]any{
+					"variable": "PYTORCH_NPU_ALLOC_CONF", "template_value": "max_split_size_mb:256,expandable_segments:True", "value": test.want,
+				})}
+				if !reflect.DeepEqual(got, want) {
+					t.Fatalf("warnings = %#v, want %#v", got, want)
 				}
 				return
 			}

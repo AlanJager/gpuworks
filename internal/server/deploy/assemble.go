@@ -128,8 +128,9 @@ func ResolveLaunchWithWarnings(input ResolveLaunchInput) (ResolvedLaunch, []mess
 	if err != nil {
 		return ResolvedLaunch{}, nil, fmt.Errorf("resolve launch variables: %w", err)
 	}
+	var allocatorRewrite ascendAllocatorRewrite
 	if input.Engine.Name() == EngineVLLM {
-		if err := prepareVLLMSleepable(&params); err != nil {
+		if allocatorRewrite, err = prepareVLLMSleepable(&params); err != nil {
 			return ResolvedLaunch{}, nil, fmt.Errorf("resolve launch: %w", err)
 		}
 	}
@@ -309,7 +310,11 @@ func ResolveLaunchWithWarnings(input ResolveLaunchInput) (ResolvedLaunch, []mess
 			return ResolvedLaunch{}, nil, fmt.Errorf("resolve launch: %w", err)
 		}
 	}
-	return launch, launchWarnings(launch, params, input.Image, compat, engram), nil
+	warnings := launchWarnings(launch, params, input.Image, compat, engram)
+	if warning, ok := allocatorRewrite.warning(launch.Env); ok {
+		warnings = append(warnings, warning)
+	}
+	return launch, warnings, nil
 }
 
 var manualCommandPortPattern = regexp.MustCompile(`(?m)(^|[ \t])--port(?:[ \t]+|=)[^ \t\r\n;|&]+`)
