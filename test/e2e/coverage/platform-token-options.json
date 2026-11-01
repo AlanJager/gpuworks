@@ -251,7 +251,8 @@
     "12.5": "N/A: the create dialog has no nested child layer; the secret dialog opens only after create closes",
     "12.6": "covered: While the create POST is held the footer Create shows the loading state and a second click sends no further create request; the 502 keeps the name, read scope and no-expiry selection and shows the server reason; the later 201 matches the reloaded row and the independent token list",
     "12.7": "MISSING: revoke names the token; reference-block, allow-cleanup, and failed delete without a partial change are not exercised",
-    "12.8": "N/A: create and revoke have no delete preview, revision, or compare-and-swap"
+    "12.8": "N/A: create and revoke have no delete preview, revision, or compare-and-swap",
+    "7.2": "N/A: this component has no edit operation. The management API exposes only GET, POST and DELETE for these credentials, and the card offers create and revoke only, so there is no edit form whose blank field could mean either keep or clear. Replacing a credential means creating a new one and revoking the old, which is what the case already does."
   },
   "missing": [
     "actual expiry boundary and expired-token denial",
