@@ -192,7 +192,7 @@ export default function ProviderConfigModal({
               <Alert type="info" showIcon message={requirement} />
             </Form.Item>
           )}
-          <Form.Item label={t("config.name")} name="name" rules={[{ required: true, message: t("config.nameRequired") }]}>
+          <Form.Item label={t("config.name")} name="name" rules={[{ required: true, whitespace: true, message: t("config.nameRequired") }]}>
             <Input placeholder={t("config.namePlaceholder", { kind: selectedKindLabel })} />
           </Form.Item>
           <div className="provider-modal-section-title provider-modal-credential-title">{t("config.credentials")}</div>
