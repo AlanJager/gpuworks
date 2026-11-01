@@ -743,6 +743,7 @@ macOS 忽略 `no_systemd`。
 `GET /api/v1/deployments/{id}/draft` 返回 `{"deployment": {...}, "revision": "...", "locked": [...]}`：
 
 - `deployment` 与 `POST /api/v1/deployments` 的请求同形。`quick_params` 是部署保存的完整启动配置；单机部署的手动放置写成 `placement_mode: "manual"` 加 `node_uuid`，厂商写在 `target_vendor`，二者不出现在 `node_requirements` 里。
+- 模板部署的 `model_source.provider` 是部署挂载的权重来源，前提是模板规格声明了它。规格可以由任何就绪的同仓库副本满足，导入到存储里的模型来源是 `local`，这不是规格提供的选择：这时 draft 不写 `provider`，评估重新选出就绪副本（写了会被评估以 `ACQUISITION_CANDIDATE_STALE` 拒绝，而这个字段在编辑里不能改）。
 - `revision` 标识读出 draft 时的配置，编辑时作为 `base_revision` 送回。
 - `locked` 是该部署不能编辑的请求字段：模型、模板、引擎、厂商、名称与对外模型名、权重来源、节点数；多机与 PD 部署另有按 rank 给出的节点、副本数、dGPU 配额等（用[普通部署的副本调整](#普通部署的副本调整)与 PD 接口修改），PD 部署的 `placement` 也不可编辑。要改这些字段，克隆部署。
 

@@ -131,8 +131,8 @@ func (a *apiHandlers) deploymentDraft(dep *store.Deployment, reqs map[string][]s
 	if err != nil {
 		return dto.DeploymentDraft{}, err
 	}
-	if dep.SaveToStorageID != 0 || snapshot.WeightProvider != "" {
-		req.ModelSource = &dto.ModelSource{StorageID: dep.SaveToStorageID, Provider: snapshot.WeightProvider}
+	if provider := a.draftWeightProvider(snapshot); dep.SaveToStorageID != 0 || provider != "" {
+		req.ModelSource = &dto.ModelSource{StorageID: dep.SaveToStorageID, Provider: provider}
 	}
 	stated := planning.RequirementsOfDeployment(reqs, shape != deploymentShapeSingle)
 	req.TargetVendor = stated.TargetVendor
@@ -212,4 +212,37 @@ func storedLaunchConfig(dep *store.Deployment) (deploy.LaunchConfig, error) {
 	}
 	err := json.Unmarshal([]byte(dep.QuickParams), &quick)
 	return quick, err
+}
+
+// draftWeightProvider is the weight source a draft states as chosen: the
+// provider the snapshot mounted, when the template spec declares it. A spec
+// is satisfied by any ready copy of its repository, so the snapshot may name a
+// copy's own provider instead - a model imported into a storage reads "local"
+// - which is not a choice the spec offers: stating it would have the
+// evaluation of the draft refuse the deployment's own source
+// (ACQUISITION_CANDIDATE_STALE), and the field is locked in an edit. Such a
+// draft states none and the evaluation picks the ready copy again. A spec that
+// can no longer be read keeps the snapshot's provider.
+func (a *apiHandlers) draftWeightProvider(snapshot deploy.CatalogSelection) string {
+	provider := strings.TrimSpace(snapshot.WeightProvider)
+	if provider == "" || snapshot.TemplateID == 0 {
+		return provider
+	}
+	model, err := a.d.Store.InferenceModelByID(snapshot.TemplateID)
+	if err != nil {
+		return provider
+	}
+	for i := range model.Specs {
+		spec := &model.Specs[i]
+		if spec.Name != snapshot.SpecName || spec.Source != snapshot.SpecSource {
+			continue
+		}
+		for _, source := range specWeightSources(spec) {
+			if strings.EqualFold(source.Provider, provider) {
+				return provider
+			}
+		}
+		return ""
+	}
+	return provider
 }
