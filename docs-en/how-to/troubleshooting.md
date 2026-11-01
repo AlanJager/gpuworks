@@ -285,11 +285,12 @@ runs the same check inside (about 0.45 s per card on PPU, container start includ
 This is done only on docker / nerdctl nodes; on udocker a container means unpacking or copying the whole image into a rootfs (27–61 s and 17 GB of disk each time for a 17 GB image on ext4),
 so udocker nodes are not checked this way. A container that does not start, or an image without the runtime or python, is a host problem, not a card failure. Apple has no check.
 
-**Diagnose now runs the same per-card check (per die on Ascend) on Ascend and Hygon, on demand.** Node details → Diagnose and `gpuworks-agent doctor` run the runtime check above once for each die this node owns
+**Diagnose now runs the same per-card check (per die on Ascend) on NVIDIA, Ascend, Hygon and PPU, on demand.** Node details → Diagnose and `gpuworks-agent doctor` run the runtime check above once for each die this node owns
 (it is the same code as the periodic check, not a second implementation), so a die the periodic check has already marked `runtime_unusable` always shows up in the diagnosis.
 A failing die is shown as “Runtime cannot use it” in the accelerator table, and **Action required** lists a `runtime_unusable` item per die (level Error, with the same evidence the periodic check records).
 When the table already carries a more specific vendor verdict for the die (for example `reset_required`), the table keeps that one and `runtime_unusable` is still listed on its own.
 The **Per-card runtime check** entry (`card_runtime`) under Information summarizes how many dies passed, failed and were not checked.
+NVIDIA also has whole-node CUDA, P2P and NCCL checks: the whole-node CUDA check sees every card at once and only says whether the driver initialises and the first visible card takes a context; each card's verdict comes from the per-card check.
 
 **The evidence is a command you can paste, not a description of one.** Every finding's evidence is a whole command: copy it onto the node and it
 reaches the same verdict. The script the command carries is the very one the check runs (single source in `internal/accelerator`), so the two
@@ -321,7 +322,7 @@ the round stops without recording a fault on any card, and the “Per-card runti
 (`aclrtFree`, `aclrtResetDevice`, and so on) are logged but do not mark a fault, because the die has already answered whether it works.
 If `ASCEND_ACL_SMOKE_OK` has already been printed, a non-zero exit afterwards (for example CANN crashing during its exit cleanup) still counts as a pass; the exit status is only written to the agent log.
 Retry backoff doubles after consecutive failures (1, 2, 4 rounds, up to 4 rounds, about one hour by default) and resets as soon as the card responds.
-To recheck a repaired card right away, click “Diagnose” in node details: on Ascend, Hygon and PPU the diagnosis runs the same check on each card and records the result as the card's latest answer. A pass clears the fault and the backoff, and the card returns to normal at the next report (about a minute); a failure counts as one failure. A card the diagnosis did not ask, because its own time budget ran out or the runtime was unavailable on the host, records nothing. NVIDIA's diagnosis checks only the first visible card of the whole node and does not write back to individual cards; an NVIDIA card waits for the next round, or restart the agent. A check in flight when the agent shuts down is discarded: no failure is recorded and no backoff is started.
+To recheck a repaired card right away, click “Diagnose” in node details: the diagnosis runs the same check on each card and records the result as the card's latest answer. A pass clears the fault and the backoff, and the card returns to normal at the next report (about a minute); a failure counts as one failure. A card the diagnosis did not ask, because its own time budget ran out or the runtime was unavailable on the host, records nothing. A check in flight when the agent shuts down is discarded: no failure is recorded and no backoff is started.
 
 When a check hangs (for example stuck in the driver and not returning after 30 seconds), checks on the whole node pause until that process returns:
 the agent will not start a second check to queue behind the same driver lock. The stuck card is recorded as failed meanwhile, while the other cards keep their last result
@@ -437,7 +438,7 @@ Each item in “Action required” provides **Evidence** (the command or call us
 An **Action** command, such as a reset command, is provided only when the vendor tool itself gives a recovery method.
 
 Checks include accelerator health (see the next section), disk space below 10% free (root partition, model directory, container data directory, and storage),
-an unresponsive selected container runtime, accelerator tool execution failures, NVIDIA CUDA initialization failures and multi-card communication check failures, and Ascend per-die and Hygon per-card runtime check failures (`runtime_unusable`). Cards in use by processes outside the platform are not checked and are listed as not checked.
+an unresponsive selected container runtime, accelerator tool execution failures, NVIDIA CUDA initialization failures and multi-card communication check failures, and per-card (per-die on Ascend) runtime check failures (`runtime_unusable`). Cards in use by processes outside the platform are not checked and are listed as not checked.
 
 There are five additional runtime and filesystem checks (see [Runtime Provisioning Failures and Filesystems on Container Nodes](#运行时初始化失败与容器节点的文件系统)):
 `runtime_provision_failed` (runtime provisioning failed), `runtime_state_untraversable` (the dedicated runtime user cannot reach the agent directory), `path_noexec`, `path_read_only`, and `path_ephemeral`.

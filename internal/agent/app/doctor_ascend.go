@@ -72,13 +72,11 @@ func doctorCardRuntimeChecks(ctx context.Context, r *proto.DoctorReport, gpus []
 	if r.Accelerators == nil {
 		return
 	}
-	// NVIDIA has its own whole-node checks (doctorNVIDIAChecks); every
-	// other vendor whose runtime can be asked on the host is asked per card
-	// here, so the diagnosis covers what the periodic check does.
+	// Every vendor whose runtime can be asked on the host is asked per card
+	// here, so the diagnosis covers what the periodic check does. NVIDIA's
+	// whole-node checks (doctorNVIDIAChecks) do not: they see every card at
+	// once, so their CUDA check answers for the first visible card only.
 	vendor := accelerator.NormalizeVendor(r.Accelerators.Vendor)
-	if vendor == accelerator.VendorNVIDIA {
-		return
-	}
 	check, ok := doctorRuntimeCheck(ctx)(r.Accelerators.Vendor)
 	if !ok {
 		return
@@ -107,6 +105,8 @@ func doctorCardRuntimeChecks(ctx context.Context, r *proto.DoctorReport, gpus []
 
 	run := doctorDieRun{check: check, notChecked: unnamed, vendor: vendor, unit: "card", runtime: "HIP"}
 	switch vendor {
+	case accelerator.VendorNVIDIA:
+		run.runtime = "CUDA"
 	case accelerator.VendorAscend:
 		run.unit, run.runtime = "die", "ACL"
 	case accelerator.VendorPPU:

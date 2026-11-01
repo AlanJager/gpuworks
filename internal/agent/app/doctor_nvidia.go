@@ -19,8 +19,9 @@ import (
 
 // cudaInitProbe is the whole-node CUDA check as a command: the same script
 // the check itself runs (accelerator.CUDASmokeScript), with every card
-// visible to it, which is what makes it the node's answer rather than one
-// card's. cudaRecheck is the one-line version for a reader who only wants to
+// visible to it. It says whether the driver initialises and the first
+// visible card takes a context; each card is asked on its own afterwards
+// (doctorCardRuntimeChecks), the way the periodic check asks it. cudaRecheck is the one-line version for a reader who only wants to
 // see whether the driver initialises at all; it prints 0 when it does.
 var cudaInitProbe = "python3 -c " + accelerator.ShellSingleQuote(accelerator.CUDASmokeScript)
 

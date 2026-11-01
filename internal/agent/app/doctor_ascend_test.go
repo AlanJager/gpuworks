@@ -484,30 +484,57 @@ func TestDoctorRPCLeavesServingAscendDiesAlone(t *testing.T) {
 	}
 }
 
-// A node of another vendor is not asked the Ascend question.
-func TestDoctorAscendIgnoresOtherVendors(t *testing.T) {
+// An NVIDIA node keeps its whole-node checks and has every card asked on its
+// own as well, by UUID like the periodic check: the whole-node CUDA check sees
+// every card at once and answers for the first visible one only.
+func TestDoctorAsksEachNVIDIACardOnItsOwn(t *testing.T) {
 	withNoTools(t)
-	called := false
 	original := doctorHostRuntimeCheck
 	t.Cleanup(func() { doctorHostRuntimeCheck = original })
-	doctorHostRuntimeCheck = func(string) (gpu.HostRuntimeCheck, bool) { called = true; return gpu.HostRuntimeCheck{}, false }
+	var vendors, asked []string
+	doctorHostRuntimeCheck = func(vendor string) (gpu.HostRuntimeCheck, bool) {
+		vendors = append(vendors, vendor)
+		check, ok := gpu.HostRuntimeCheckFor(vendor)
+		check.Prerequisite = func() string { return "" }
+		check.CLI = ""
+		check.Try = func(_ context.Context, visible string) error {
+			asked = append(asked, visible)
+			if visible == "GPU-2" {
+				return errors.New("cuda runtime smoke failed: cuCtxCreate=999")
+			}
+			return nil
+		}
+		return check, ok
+	}
 	fakeDiagnosticTools(t)
 	stubCUDACheck(t, "PASS fake")
-	nvidia := []proto.GPUInfo{{Index: 0, UUID: "GPU-1", Vendor: "nvidia", PCIeBDF: "0000:3f:00.0", Healthy: true, HealthStatus: accelerator.HealthOK}}
-
-	r := buildDoctorReport(context.Background(), realAscendProber{&gpu.FixedProber{VendorName: "nvidia", GPUs: nvidia}}, nil)
-
-	if called {
-		t.Fatal("the Ascend check asked for a host runtime on an NVIDIA node")
+	nvidia := []proto.GPUInfo{
+		{Index: 0, UUID: "GPU-1", Vendor: "nvidia", PCIeBDF: "0000:3f:00.0", Healthy: true, HealthStatus: accelerator.HealthOK},
+		{Index: 1, UUID: "GPU-2", Vendor: "nvidia", PCIeBDF: "0000:40:00.0", Healthy: true, HealthStatus: accelerator.HealthOK},
 	}
-	if _, ok := factValue(r, proto.DoctorFactCardRuntime); ok {
-		t.Fatalf("an NVIDIA report carries the Ascend fact: %+v", r.Facts)
+	recorded := map[string]bool{}
+	ctx := withDoctorOutcomes(context.Background(), func(ident string, err error) { recorded[ident] = err == nil })
+
+	r := buildDoctorReport(ctx, realAscendProber{&gpu.FixedProber{VendorName: "nvidia", GPUs: nvidia}}, nil)
+
+	if fmt.Sprint(vendors) != "[nvidia]" || fmt.Sprint(asked) != "[GPU-1 GPU-2]" {
+		t.Fatalf("asked the %v runtime about %v, want each NVIDIA card by UUID", vendors, asked)
 	}
 	if _, ok := factValue(r, proto.DoctorFactCUDARuntime); !ok {
-		t.Fatalf("the NVIDIA check no longer runs: %+v", r.Facts)
+		t.Fatalf("the whole-node CUDA check no longer runs: %+v", r.Facts)
 	}
-	if rowFor(t, r, 0).HealthStatus != accelerator.HealthOK {
-		t.Fatalf("row = %+v", rowFor(t, r, 0))
+	if fact := cardRuntimeFact(r); !strings.Contains(fact, "per-card CUDA runtime check of the 2 cards") || !strings.Contains(fact, "1 passed, 1 failed") {
+		t.Fatalf("fact = %q", fact)
+	}
+	if row := rowFor(t, r, 1); row.HealthCode != accelerator.HealthRuntimeUnusable {
+		t.Fatalf("card 1 row = %+v, want runtime_unusable", row)
+	}
+	if row := rowFor(t, r, 0); row.HealthStatus != accelerator.HealthOK {
+		t.Fatalf("card 0 row = %+v", row)
+	}
+	want := map[string]bool{accelerator.CardIdent("GPU-1", "0000:3f:00.0"): true, accelerator.CardIdent("GPU-2", "0000:40:00.0"): false}
+	if fmt.Sprint(recorded) != fmt.Sprint(want) {
+		t.Fatalf("recorded %v, want %v", recorded, want)
 	}
 }
 
