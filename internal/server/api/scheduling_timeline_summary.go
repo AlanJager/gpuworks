@@ -55,6 +55,44 @@ type depAcc struct {
 	name string
 	ms   [4]int64
 	end  [4]int64
+	// asleep splits the asleep time by the sleep level the segments carry
+	// (those with none known are left out), counted like ms.
+	asleep map[int]*levelAcc
+}
+
+// levelAcc is the asleep time of one sleep level in a slice.
+type levelAcc struct{ ms, end int64 }
+
+// stateTieOrder is the order states win a tie of seconds in, as indexes of
+// depAcc: awake first (it is what the card is for), then the transitions
+// switching and starting (short by nature, so a slice that spent as long in
+// one as asleep is worth showing as the change it was), asleep last (the
+// resting state, which says the least).
+var stateTieOrder = [4]int{0, 2, 3, 1}
+
+// dominantState is the state the deployment spent the most time in during the
+// slice (counting milliseconds, before the wire rounds them to seconds), the
+// first of stateTieOrder on a tie, and, for asleep, the sleep level with most
+// asleep time among those the segments name (the shallower one on a tie), 0
+// when none is known. A deployment listed in a slice has time in some state.
+func (d *depAcc) dominantState() (string, int) {
+	best := stateTieOrder[0]
+	for _, i := range stateTieOrder[1:] {
+		if d.ms[i] > d.ms[best] {
+			best = i
+		}
+	}
+	state := [4]store.ResidencyState{store.ResidencyAwake, store.ResidencyAsleep, store.ResidencySwitching, store.ResidencyStarting}[best]
+	if best != 1 {
+		return string(state), 0
+	}
+	level := 0
+	for l, acc := range d.asleep {
+		if level == 0 || acc.ms > d.asleep[level].ms || (acc.ms == d.asleep[level].ms && l < level) {
+			level = l
+		}
+	}
+	return string(state), level
 }
 
 // bucketAcc is one slice being filled in.
@@ -74,6 +112,20 @@ func (b *bucketAcc) add(seg dto.TimelineSegment, from, to int64) {
 		d.ms[i] += to - start
 	}
 	d.end[i] = max(d.end[i], to)
+	if i == 1 && seg.Level > 0 {
+		if d.asleep == nil {
+			d.asleep = map[int]*levelAcc{}
+		}
+		l := d.asleep[seg.Level]
+		if l == nil {
+			l = &levelAcc{}
+			d.asleep[seg.Level] = l
+		}
+		if start := max(from, l.end); to > start {
+			l.ms += to - start
+		}
+		l.end = max(l.end, to)
+	}
 }
 
 // summarizeSegments keeps a card's newest timelineSegmentCap segments raw
@@ -202,8 +254,9 @@ func (b *bucketAcc) wire(from, to time.Time) dto.TimelineSummary {
 	out := dto.TimelineSummary{Kind: dto.TimelineSummaryKind, From: from, To: to, Switches: b.switches, Deployments: make([]dto.TimelineSummaryDeployment, len(ids))}
 	for i, id := range ids {
 		d := b.deps[id]
+		state, level := d.dominantState()
 		out.Deployments[i] = dto.TimelineSummaryDeployment{
-			DeploymentID: id, Deployment: d.name,
+			DeploymentID: id, Deployment: d.name, State: state, Level: level,
 			AwakeSeconds: roundedSeconds(d.ms[0]), AsleepSeconds: roundedSeconds(d.ms[1]),
 			SwitchingSeconds: roundedSeconds(d.ms[2]), StartingSeconds: roundedSeconds(d.ms[3]),
 		}

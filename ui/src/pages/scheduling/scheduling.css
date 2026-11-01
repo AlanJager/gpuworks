@@ -50,7 +50,5 @@
 .activity-top-list > li { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; border-bottom: 1px solid #f0f2f5; }
 .activity-top-card { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .activity-top-count { flex: none; color: #707275; font-variant-numeric: tabular-nums; }
-.timeline-summary-key { display: flex; flex-direction: column; gap: 2px; margin: 2px 0 0; padding: 0; list-style: none; font-size: 11px; color: #707275; }
-.timeline-summary-key li { display: flex; align-items: center; gap: 4px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.timeline-summary-swatch { flex: none; width: 8px; height: 8px; background-image: repeating-linear-gradient(45deg, rgba(255,255,255,.6) 0 2px, transparent 2px 4px); }
+.timeline-summary-swatch { background: #8a9099 repeating-linear-gradient(45deg, rgba(255,255,255,.6) 0 2px, transparent 2px 4px); }
 .timeline-summary-block { opacity: .9; }

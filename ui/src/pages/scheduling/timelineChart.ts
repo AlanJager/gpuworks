@@ -1,4 +1,4 @@
-import type { TimelineDeployment, TimelineSegment, TimelineState } from "../../schedulingApi";
+import type { TimelineDeployment, TimelineSegment, TimelineState, TimelineSummary, TimelineSummaryDeployment } from "../../schedulingApi";
 import type { YieldPolicyName } from "../../yieldPolicyApi";
 import { colors } from "../../theme/tokens";
 
@@ -6,6 +6,8 @@ import { colors } from "../../theme/tokens";
 // CHART_WIDTH units wide and spans the window exactly, so a block's width is
 // its share of the window and a tick sits where its hour does.
 export const CHART_WIDTH = 1000;
+// LANE_HEIGHT is the height of a lane's track in the same units.
+export const LANE_HEIGHT = 18;
 // MIN_BLOCK keeps a very short stretch (a one-minute switch in 24 h) visible;
 // it is the only place the drawing departs from the scale.
 const MIN_BLOCK = 1.5;
@@ -107,14 +109,10 @@ export const stateColor: Record<TimelineState, string> = {
 
 export const stateOrder: TimelineState[] = ["awake", "asleep", "switching", "starting"];
 
-// A summarized slice is hatched in the colour of the deployment the server
-// names as its dominant one. The palette is only a way to tell deployments
-// apart: a deployment keeps its colour (by id) wherever it is the dominant one.
-const DEPLOYMENT_COLORS = [colors.chartPrimary, colors.chartSecondary, colors.chartTertiary, colors.chartQuaternary, colors.chartTeal, colors.chartViolet, colors.chartSlate];
-
-/** deploymentColor is the fill of a deployment's summarized slices; a slice nobody served in is grey. */
-export function deploymentColor(deploymentID: number | undefined): string {
-  return deploymentID ? DEPLOYMENT_COLORS[deploymentID % DEPLOYMENT_COLORS.length] : colors.chartTick;
+/** A summarized slice as one deployment's lane draws it: the slice and what the server counted for the deployment in it. */
+export interface LaneSlice {
+  slice: TimelineSummary;
+  deployment: TimelineSummaryDeployment;
 }
 
 export interface Lane {
@@ -123,26 +121,34 @@ export interface Lane {
   policy: YieldPolicyName;
   /** The deployment has been deleted since (the stats say so). */
   deleted: boolean;
+  /** Its summarized slices, oldest first: the part of the lane before the card's summarized_before. */
+  summary: LaneSlice[];
   segments: TimelineSegment[];
 }
 
 /**
- * One lane per deployment that held the card, in the order they first held it.
- * A deployment missing from the stats is a resident one: the stats list only
- * the deployments that share cards. A deleted one is marked as its stats row
- * marks it.
+ * One lane per deployment that held the card, raw or summarized, in the order
+ * they first held it (the summarized time is the earlier). A deployment that
+ * held the card only in the summarized time still has its lane, with no
+ * segments. A deployment missing from the stats is a resident one: the stats
+ * list only the deployments that share cards. A deleted one is marked as its
+ * stats row marks it.
  */
-export function lanesOf(segments: TimelineSegment[], stats: TimelineDeployment[]): Lane[] {
+export function lanesOf(segments: TimelineSegment[], stats: TimelineDeployment[], summary: TimelineSummary[] = []): Lane[] {
   const rows = new Map(stats.map((row) => [row.deployment_id, row]));
   const lanes = new Map<number, Lane>();
-  for (const segment of segments) {
-    let lane = lanes.get(segment.deployment_id);
+  const laneOf = (deploymentID: number, name: string): Lane => {
+    let lane = lanes.get(deploymentID);
     if (!lane) {
-      const row = rows.get(segment.deployment_id);
-      lane = { deploymentID: segment.deployment_id, deployment: segment.deployment, policy: row?.yield_policy || "never", deleted: row?.deployment_deleted ?? false, segments: [] };
-      lanes.set(segment.deployment_id, lane);
+      const row = rows.get(deploymentID);
+      lane = { deploymentID, deployment: name, policy: row?.yield_policy || "never", deleted: row?.deployment_deleted ?? false, summary: [], segments: [] };
+      lanes.set(deploymentID, lane);
     }
-    lane.segments.push(segment);
+    return lane;
+  };
+  for (const slice of summary) {
+    for (const deployment of slice.deployments) laneOf(deployment.deployment_id, deployment.deployment).summary.push({ slice, deployment });
   }
+  for (const segment of segments) laneOf(segment.deployment_id, segment.deployment).segments.push(segment);
   return [...lanes.values()];
 }

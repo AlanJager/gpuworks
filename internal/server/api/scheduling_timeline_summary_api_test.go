@@ -73,8 +73,8 @@ func TestSchedulingTimelineSummaryWire(t *testing.T) {
 			switches = 7
 		}
 		slices = append(slices, fmt.Sprintf(`{"kind":"summary","from":%q,"to":%q,"switches":%d,"dominant_deployment_id":%d,"dominant_deployment":%q,"deployments":[`+
-			`{"deployment_id":%d,"deployment":%q,"awake_seconds":120,"asleep_seconds":0,"switching_seconds":0,"starting_seconds":0},`+
-			`{"deployment_id":%d,"deployment":%q,"awake_seconds":120,"asleep_seconds":0,"switching_seconds":0,"starting_seconds":0}]}`,
+			`{"deployment_id":%d,"deployment":%q,"awake_seconds":120,"asleep_seconds":0,"switching_seconds":0,"starting_seconds":0,"state":"awake"},`+
+			`{"deployment_id":%d,"deployment":%q,"awake_seconds":120,"asleep_seconds":0,"switching_seconds":0,"starting_seconds":0,"state":"awake"}]}`,
 			f(time.Duration(k)*4*time.Minute), f(time.Duration(k+1)*4*time.Minute), switches, lowID, lowName, lowID, lowName, highID, highName))
 	}
 	want := fmt.Sprintf(`"truncated":true,"summarized_before":%q,"summary":[%s]}`, f(20*time.Minute), strings.Join(slices, ","))
@@ -138,7 +138,7 @@ func TestSchedulingTimelineSummaryKeepsTheOldShape(t *testing.T) {
 	if err := json.Unmarshal(summary[len(summary)-1]["deployments"], &deps); err != nil || len(deps) != 2 {
 		t.Fatalf("summary deployments = %s (%v)", summary[len(summary)-1]["deployments"], err)
 	}
-	if got := keys(deps[0]); got != "asleep_seconds,awake_seconds,deployment,deployment_id,starting_seconds,switching_seconds" {
+	if got := keys(deps[0]); got != "asleep_seconds,awake_seconds,deployment,deployment_id,starting_seconds,state,switching_seconds" {
 		t.Fatalf("summary deployment keys = %s", got)
 	}
 	if string(summary[len(summary)-1]["kind"]) != `"summary"` {

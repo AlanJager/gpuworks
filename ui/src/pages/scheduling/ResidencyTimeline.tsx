@@ -23,6 +23,8 @@ interface Offered {
   key: string;
   seconds: number;
   custom: boolean;
+  /** Some card's earlier time is summarized, so the legend explains the hatch. */
+  summarized: boolean;
 }
 
 // ResidencyTimeline is the scheduling center's residency timeline for the
@@ -43,7 +45,7 @@ export default function ResidencyTimeline({ nodes }: { nodes: BoardNode[] }) {
   const ask = askOf(picked, offered?.windows ?? []);
   const extra = (
     <div className="scheduling-timeline-controls">
-      <TimelineLegend />
+      <TimelineLegend summarized={offered?.summarized ?? false} />
       {offered && value && (
         <TimeRangePicker
           size="small"
@@ -75,9 +77,10 @@ function TimelineBody({ uuids, ask, pollMs, gpuNames, onAnswer }: {
   const { t } = useTranslation("scheduling");
   const timeline = usePolling(() => schedulingApi.timeline({ nodes: uuids, ...ask }), pollMs, [uuids.join(","), JSON.stringify(ask)]);
   const data: SchedulingTimeline | null = timeline.data;
-  const offeredKey = data ? `${data.window.key}|${data.window.seconds}|${data.windows.map((w) => w.key).join(",")}` : "";
+  const summarized = data?.nodes.some((node) => node.gpus.some((gpu) => !!gpu.summary?.length)) ?? false;
+  const offeredKey = data ? `${data.window.key}|${data.window.seconds}|${data.windows.map((w) => w.key).join(",")}|${summarized}` : "";
   useEffect(() => {
-    if (data) onAnswer({ windows: data.windows, key: data.window.key, seconds: data.window.seconds, custom: data.window.custom });
+    if (data) onAnswer({ windows: data.windows, key: data.window.key, seconds: data.window.seconds, custom: data.window.custom, summarized });
     // The answer's windows change rarely; offeredKey says when they did.
   }, [offeredKey]);
   if (!data && timeline.error) {
@@ -95,7 +98,7 @@ function TimelineBody({ uuids, ask, pollMs, gpuNames, onAnswer }: {
     return <div role="status" className="scheduling-loading"><Spin /> <span>{t("timeline.loading")}</span></div>;
   }
   const cards = data.nodes.reduce((sum, node) => sum + node.gpus.length, 0);
-  const held = data.nodes.some((node) => node.gpus.some((gpu) => gpu.segments.length > 0));
+  const held = data.nodes.some((node) => node.gpus.some((gpu) => gpu.segments.length > 0 || !!gpu.summary?.length));
   return (
     <Spin spinning={timeline.loading}>
       {timeline.error && (
