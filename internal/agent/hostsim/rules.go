@@ -29,12 +29,16 @@ var rpcRules = map[string]rule{
 	proto.RPCModelEvict:      allow,
 	proto.RPCCacheEvict:      allow,
 	proto.RPCAcceleratorPing: allow,
-	proto.RPCBenchCancel:     allow,
-	proto.RPCImagePull:       allow, // answered without a registry (PullsImages)
-	proto.RPCImageCancel:     allow,
-	proto.RPCImageRemove:     allow,
-	proto.RPCImageInspect:    allow,
-	proto.RPCImageExists:     allow,
+	// Answered from the agent's memory; a simulated node has no runtime
+	// check, so a recheck says the host cannot be asked.
+	proto.RPCNodeCardCheckDetail: allow,
+	proto.RPCNodeCardRecheck:     allow,
+	proto.RPCBenchCancel:         allow,
+	proto.RPCImagePull:           allow, // answered without a registry (PullsImages)
+	proto.RPCImageCancel:         allow,
+	proto.RPCImageRemove:         allow,
+	proto.RPCImageInspect:        allow,
+	proto.RPCImageExists:         allow,
 
 	proto.RPCNodeDoctor:         refuse,
 	proto.RPCNodeSetRuntime:     refuse,

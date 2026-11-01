@@ -187,8 +187,16 @@ func TestARoundThatCannotFindOutRestatesTheLastAnswer(t *testing.T) {
 	}
 
 	// A round that does find out replaces the answer, including with
-	// "nobody": the process went away and the card is free again.
+	// "nobody": the process went away, and after occupancyReleaseRounds
+	// free readings in a row the card is free again.
 	prober.err, prober.procs = nil, nil
+	for i := 1; i < occupancyReleaseRounds; i++ {
+		cards = twoOwnedCards()
+		n.CardHealthFindings(context.Background(), cards, true)
+		if len(cards[1].ForeignProcesses) != 1 {
+			t.Fatalf("free reading %d let the card go early: %+v", i, cards[1].ForeignProcesses)
+		}
+	}
 	cards = twoOwnedCards()
 	n.CardHealthFindings(context.Background(), cards, true)
 	if len(cards[1].ForeignProcesses) != 0 {

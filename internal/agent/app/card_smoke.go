@@ -56,6 +56,7 @@ func (n *NodeRuntime) startCardSmoke(ctx context.Context) {
 		},
 		Unavailable: func() string { return smokeUnavailable(check) },
 		Timeout:     check.Timeout,
+		Interval:    accelerator.RuntimeCheckPeriod,
 	})
 	if n.engine != nil {
 		n.engine.SetCardGate(n.cardSmoke.WaitIdle)
@@ -115,18 +116,30 @@ func smokeUnavailable(check gpu.HostRuntimeCheck) string {
 // what the card carries (accelerator.MostSevereHealth), because a card the
 // tool calls healthy and the runtime cannot use is not healthy.
 func (n *NodeRuntime) CardHealthFindings(ctx context.Context, gpus []proto.GPUInfo, probeOK bool) {
+	now := n.checks.clock()
+	round := checkRound{}
+	n.vendorChecks(gpus, probeOK, now, round)
 	if probeOK {
 		// Every vendor's, whether or not it can list processes: the
 		// runtime check asks which cards are ours too (cardsInUse).
 		n.occupancy.learnCards(gpus)
 	}
 	n.applyForeignProcesses(ctx, gpus, probeOK)
+	n.occupancyChecks(gpus, now, round)
 	// Cards that exist only in a fixture have no PCIe path on this host.
 	if !gpu.IsSynthetic(n.prober) {
-		n.applyPCIeFindings(gpus, n.cardsBusy(), n.runtimeCheckPassedSince)
-		n.applyXidFindings(gpus, n.runtimeCheckPassedSince)
-		n.applyNVLinkFindings(ctx, gpus)
+		pcie := n.applyPCIeFindings(gpus, n.cardsBusy(), n.runtimeCheckPassedSince)
+		xid := n.applyXidFindings(gpus, n.runtimeCheckPassedSince)
+		nvlink := n.applyNVLinkFindings(ctx, gpus)
+		hardwareChecks(pcie, xid, nvlink, now, round)
 	}
+	n.applyRuntimeFindings(gpus)
+	n.runtimeChecks(gpus, now, round)
+	n.finishChecks(gpus, now, round, probeOK)
+}
+
+// applyRuntimeFindings marks the cards the runtime check last failed on.
+func (n *NodeRuntime) applyRuntimeFindings(gpus []proto.GPUInfo) {
 	if n.cardSmoke == nil {
 		return
 	}

@@ -29,12 +29,21 @@ type nvlinkWatch struct {
 	down      map[string][]accelerator.HealthField
 }
 
-func (n *NodeRuntime) applyNVLinkFindings(ctx context.Context, gpus []proto.GPUInfo) {
+// nvlinkFindings is a round's NVLink reading: each card's finding by identity
+// (known only for a card the reading listed links for), and when it was read.
+type nvlinkFindings struct {
+	cards map[string]finding
+	at    time.Time
+	read  bool
+}
+
+func (n *NodeRuntime) applyNVLinkFindings(ctx context.Context, gpus []proto.GPUInfo) nvlinkFindings {
 	reporter, ok := n.prober.(gpu.NVLinkReporter)
 	if !ok {
-		return
+		return nvlinkFindings{}
 	}
 	cards, at, ok := reporter.NVLinks(ctx)
+	found := nvlinkFindings{cards: map[string]finding{}, at: at, read: ok}
 	w := &n.nvlink
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -79,6 +88,13 @@ func (n *NodeRuntime) applyNVLinkFindings(ctx context.Context, gpus []proto.GPUI
 			}
 		}
 		evidence, down := w.down[ident]
+		if c, seen := cards[card.UUID]; ok && seen && c.Active+w.most[ident] > 0 {
+			f := finding{known: true, evidence: []accelerator.HealthField{{Name: "NVLink active links", Value: fmt.Sprintf("%d of %d", c.Active, w.most[ident])}}}
+			if down {
+				f.code, f.evidence = accelerator.HealthNVLinkDown, evidence
+			}
+			found.cards[ident] = f
+		}
 		if !down || accelerator.MostSevereHealth(card.HealthCode, accelerator.HealthNVLinkDown) != accelerator.HealthNVLinkDown {
 			continue
 		}
@@ -87,4 +103,5 @@ func (n *NodeRuntime) applyNVLinkFindings(ctx context.Context, gpus []proto.GPUI
 	if changed {
 		reporter.RefreshTopology()
 	}
+	return found
 }

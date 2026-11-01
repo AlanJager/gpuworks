@@ -59,10 +59,27 @@ func (w *pcieWatch) init() {
 	w.aerEvidence = map[string][]accelerator.HealthField{}
 }
 
-// applyPCIeFindings adds this round's PCIe findings to the cards. busy are
-// the cards whose link speed may be judged; passedSince reports whether a
-// runtime check has passed on a card after the given time.
-func (n *NodeRuntime) applyPCIeFindings(gpus []proto.GPUInfo, busy map[string]bool, passedSince func(ident string, t time.Time) bool) {
+// pcieCardFindings is what this round's PCIe reading found on one card, link
+// and error counters apart: each is a check of its own, and the card carries
+// only the more severe of the two. known is false when nothing could be read.
+type pcieCardFindings struct {
+	link, aer finding
+}
+
+// finding is one check's code and evidence; known is false when the check had
+// nothing to read.
+type finding struct {
+	code     string
+	evidence []accelerator.HealthField
+	known    bool
+}
+
+// applyPCIeFindings adds this round's PCIe findings to the cards and returns
+// them by card identity. busy are the cards whose link speed may be judged;
+// passedSince reports whether a runtime check has passed on a card after the
+// given time.
+func (n *NodeRuntime) applyPCIeFindings(gpus []proto.GPUInfo, busy map[string]bool, passedSince func(ident string, t time.Time) bool) map[string]pcieCardFindings {
+	found := map[string]pcieCardFindings{}
 	w := &n.pcie
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -78,26 +95,30 @@ func (n *NodeRuntime) applyPCIeFindings(gpus []proto.GPUInfo, busy map[string]bo
 			continue
 		}
 		bdf := accelerator.NormalizeBDF(card.PCIeBDF)
-		code, evidence := w.linkFinding(ident, bdf, busy[ident])
-		if c, e := w.aerFinding(ident, bdf, now, passedSince); c != "" && accelerator.MostSevereHealth(code, c) == c {
-			code, evidence = c, e
+		link := w.linkFinding(ident, bdf, busy[ident])
+		aer := w.aerFinding(ident, bdf, now, passedSince)
+		found[ident] = pcieCardFindings{link: link, aer: aer}
+		code, evidence := link.code, link.evidence
+		if aer.code != "" && accelerator.MostSevereHealth(code, aer.code) == aer.code {
+			code, evidence = aer.code, aer.evidence
 		}
 		if code == "" || accelerator.MostSevereHealth(card.HealthCode, code) != code {
 			continue
 		}
 		gpu.SetCardFinding(card, code, evidence)
 	}
+	return found
 }
 
 // linkFinding debounces this round's link reading into a finding.
-func (w *pcieWatch) linkFinding(ident, bdf string, judgeSpeed bool) (string, []accelerator.HealthField) {
+func (w *pcieWatch) linkFinding(ident, bdf string, judgeSpeed bool) finding {
 	links, err := w.reader.Links(bdf, w.virtual)
 	if err != nil || len(links) == 0 {
 		// Unknown is not degraded, and does not move the count either way.
 		if ev, ok := w.degraded[ident]; ok {
-			return accelerator.HealthPCIeLinkDegraded, ev
+			return finding{code: accelerator.HealthPCIeLinkDegraded, evidence: ev, known: true}
 		}
-		return "", nil
+		return finding{}
 	}
 	var evidence []accelerator.HealthField
 	for _, l := range links {
@@ -126,21 +147,36 @@ func (w *pcieWatch) linkFinding(ident, bdf string, judgeSpeed bool) (string, []a
 		}
 	}
 	if ev, ok := w.degraded[ident]; ok {
-		return accelerator.HealthPCIeLinkDegraded, ev
+		return finding{code: accelerator.HealthPCIeLinkDegraded, evidence: ev, known: true}
 	}
-	return "", nil
+	return finding{evidence: linkFacts(links), known: true}
+}
+
+// linkFacts are the links as read, for a link that is fine: what the check
+// looked at, shown when a person asks.
+func linkFacts(links []pcilink.Link) []accelerator.HealthField {
+	out := make([]accelerator.HealthField, 0, len(links))
+	for _, l := range links {
+		out = append(out, accelerator.HealthField{
+			Name:  accelerator.PCIeLinkField + l.BDF,
+			Value: fmt.Sprintf("x%d of x%d, %.1f of %.1f GT/s", l.Width, l.ExpectedWidth, l.Speed, l.ExpectedSpeed),
+		})
+	}
+	return out
 }
 
 // aerFinding compares the AER counters on the card's path with the last
 // reading and returns what the increases mean now.
-func (w *pcieWatch) aerFinding(ident, bdf string, now time.Time, passedSince func(string, time.Time) bool) (string, []accelerator.HealthField) {
+func (w *pcieWatch) aerFinding(ident, bdf string, now time.Time, passedSince func(string, time.Time) bool) finding {
 	chain, err := w.reader.Chain(bdf)
+	known := false
 	if err == nil {
 		for _, dev := range chain {
 			counts, ok := w.reader.AER(dev)
 			if !ok {
 				continue
 			}
+			known = true
 			base, seen := w.aerBase[dev]
 			w.aerBase[dev] = counts
 			if !seen {
@@ -163,18 +199,18 @@ func (w *pcieWatch) aerFinding(ident, bdf string, now time.Time, passedSince fun
 	}
 	if at, ok := w.fatalAt[ident]; ok {
 		if passedSince == nil || !passedSince(ident, at) {
-			return accelerator.HealthPCIeFatal, w.aerEvidence[ident]
+			return finding{code: accelerator.HealthPCIeFatal, evidence: w.aerEvidence[ident], known: true}
 		}
 		slog.Info("PCIe fatal errors cleared: a runtime check passed on the card since", "card", bdf)
 		delete(w.fatalAt, ident)
 	}
 	if at, ok := w.nonFatalAt[ident]; ok {
 		if now.Sub(at) < pcieErrorsWarnFor {
-			return accelerator.HealthPCIeErrors, w.aerEvidence[ident]
+			return finding{code: accelerator.HealthPCIeErrors, evidence: w.aerEvidence[ident], known: true}
 		}
 		delete(w.nonFatalAt, ident)
 	}
-	return "", nil
+	return finding{known: known}
 }
 
 // cardsBusy are the cards one of this node's instances uses and that are not

@@ -56,6 +56,8 @@ type NodeRuntime struct {
 	nvlink nvlinkWatch
 	// xid follows the kernel log for NVIDIA Xid events; nil off NVIDIA.
 	xid atomic.Pointer[gpu.XidWatcher]
+	// checks is each card's check states and last runs (card_checks.go).
+	checks cardCheckMemory
 	// cardSmokeCtx is the runner's own lifetime, so a check asked for
 	// outside the schedule ends when the agent does.
 	cardSmokeCtx context.Context
