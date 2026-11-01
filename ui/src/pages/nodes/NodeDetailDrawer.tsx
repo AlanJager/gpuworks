@@ -20,8 +20,9 @@ import { nodeDisplayName } from "../../nodeDisplay";
 import DetailDrawer from "../../components/detail/DetailDrawer";
 import NodeBasicTab from "./NodeBasicTab";
 import NodeGpuTab from "./NodeGpuTab";
+import NodeHealthTab from "../../components/cardHealth/NodeHealthTab";
 
-export type NodeDetailTab = "basic" | "accelerators" | "doctor";
+export type NodeDetailTab = "basic" | "accelerators" | "health" | "doctor";
 
 // NodeDetailDrawer shows one node in two tabs, an overview and its GPUs, plus
 // a diagnosis tab once a diagnosis has run. It opens on the overview unless
@@ -165,6 +166,9 @@ export default function NodeDetailDrawer({
                 countTitle: t("detail.tab.count", { count: shown.gpus.length }),
                 children: <NodeGpuTab node={shown} topology={full?.topology} highlight={highlight} onUpdated={merge} />,
               },
+              ...(shown.gpus.length
+                ? [{ key: "health", label: t("cardHealth.tab"), children: <NodeHealthTab nodeUUID={shown.uuid} /> }]
+                : []),
               ...(doctor ? [{ key: "doctor", label: t("detail.tab.doctor"), children: <NodeDoctorReport report={doctor} /> }] : []),
             ]
           : undefined

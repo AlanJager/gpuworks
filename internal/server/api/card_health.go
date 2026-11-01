@@ -27,6 +27,10 @@ type CardHealth interface {
 	ForgetNode(nodeUUID string, nodeID uint)
 }
 
+// ErrCardHealthUnavailable answers the card health routes of a server built
+// without the tracker (Deps.CardHealth nil).
+var ErrCardHealthUnavailable = errors.New("card health is not available")
+
 // cardFromQuery is the card a request names by pcie_bdf or uuid, or "" for
 // every card of the node.
 func cardFromQuery(r *http.Request) string {
@@ -38,7 +42,7 @@ func cardFromQuery(r *http.Request) string {
 // checks as the last report gave them, laid out as a table. Read from memory.
 func (a *apiHandlers) nodeHealthChecks(w http.ResponseWriter, r *http.Request) {
 	if a.d.CardHealth == nil {
-		writeErr(w, http.StatusNotFound, errors.New("card health is not available"))
+		writeErr(w, http.StatusNotFound, ErrCardHealthUnavailable)
 		return
 	}
 	node, err := a.d.Store.NodeWithGPUs(chi.URLParam(r, "uuid"))
@@ -97,7 +101,7 @@ func (a *apiHandlers) nodeHealthChecks(w http.ResponseWriter, r *http.Request) {
 // card's with pcie_bdf or uuid, one check's with check.
 func (a *apiHandlers) nodeHealthRecords(w http.ResponseWriter, r *http.Request) {
 	if a.d.CardHealth == nil {
-		writeErr(w, http.StatusNotFound, errors.New("card health is not available"))
+		writeErr(w, http.StatusNotFound, ErrCardHealthUnavailable)
 		return
 	}
 	node, err := a.d.Store.NodeWithGPUs(chi.URLParam(r, "uuid"))
@@ -186,7 +190,7 @@ func healthFields(text string) []dto.GPUHealthField {
 // memory and runs nothing.
 func (a *apiHandlers) nodeHealthCheckDetail(w http.ResponseWriter, r *http.Request) {
 	if a.d.CardHealth == nil {
-		writeErr(w, http.StatusNotFound, errors.New("card health is not available"))
+		writeErr(w, http.StatusNotFound, ErrCardHealthUnavailable)
 		return
 	}
 	node, err := a.d.Store.NodeByUUID(chi.URLParam(r, "uuid"))
