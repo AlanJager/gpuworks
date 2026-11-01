@@ -26,6 +26,8 @@ func hfFixture(t *testing.T, missing bool, requests *atomic.Int32) *httptest.Ser
 		switch r.URL.Path {
 		case "/api/models/acme/model":
 			_, _ = w.Write([]byte(`{"author":"acme","createdAt":"2025-01-02T03:04:05Z"}`))
+		case "/api/organizations/acme/avatar":
+			_, _ = w.Write([]byte(`{"avatarUrl":"http://` + r.Host + `/uploads/acme.png"}`))
 		case "/acme/model/resolve/main/config.json":
 			_, _ = w.Write([]byte(`{"model_type":"qwen3","architectures":["Qwen3ForCausalLM"]}`))
 		case "/acme/model/resolve/main/model.safetensors.index.json":
@@ -60,7 +62,7 @@ func TestFetchFromReadsTheFirstAddressThatServesTheRepository(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if meta.Endpoint != live.URL || meta.Arch != "Qwen3ForCausalLM" || meta.WeightBytes != 1234 || !strings.HasPrefix(meta.LogoURL, live.URL+"/avatars/") {
+	if meta.Endpoint != live.URL || meta.Arch != "Qwen3ForCausalLM" || meta.WeightBytes != 1234 || meta.LogoURL != live.URL+"/uploads/acme.png" {
 		t.Fatalf("meta = %+v, want everything from %s", meta, live.URL)
 	}
 	if missingRequests.Load() != 2 {
@@ -168,6 +170,10 @@ func gatedMirror(t *testing.T) *httptest.Server {
 			_, _ = w.Write([]byte(`{"author":"acme","gated":"manual"}`))
 			return
 		}
+		if r.URL.Path == "/api/organizations/acme/avatar" {
+			_, _ = w.Write([]byte(`{"avatarUrl":"http://` + r.Host + `/uploads/acme.png"}`))
+			return
+		}
 		http.Error(w, "Access to model acme/model is restricted", http.StatusForbidden)
 	}))
 	t.Cleanup(srv.Close)
@@ -197,7 +203,7 @@ func TestFetchFromReadsTheFirstRefusingAddressWhenAllRefuse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if meta.Endpoint != first.URL || meta.Config != nil || !strings.HasPrefix(meta.LogoURL, first.URL+"/avatars/") {
+	if meta.Endpoint != first.URL || meta.Config != nil || meta.LogoURL != first.URL+"/uploads/acme.png" {
 		t.Fatalf("meta = %+v, want the record of %s and no files", meta, first.URL)
 	}
 }

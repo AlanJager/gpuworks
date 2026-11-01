@@ -21,6 +21,8 @@ func TestFetchUsesConfiguredClientForEveryMetadataRequest(t *testing.T) {
 			w.Write([]byte(`{"sha":"pinned-commit"}`))
 		case "/api/models/acme/model":
 			w.Write([]byte(`{"author":"acme","createdAt":"2025-01-02T03:04:05Z"}`))
+		case "/api/organizations/acme/avatar":
+			w.Write([]byte(`{"avatarUrl":"https://cdn-avatars.example.test/uploads/acme.png"}`))
 		case "/acme/model/resolve/main/config.json":
 			w.Write([]byte(`{"model_type":"qwen3"}`))
 		case "/acme/model/resolve/main/README.md":
@@ -45,7 +47,7 @@ func TestFetchUsesConfiguredClientForEveryMetadataRequest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if meta.ResolvedRevision != "pinned-commit" || meta.OriginCreatedAt == nil || meta.Arch != "qwen3" || meta.README != "# Through proxy" || meta.WeightBytes != 1234 || meta.LogoURL != origin.URL+"/avatars/acme.png" {
+	if meta.ResolvedRevision != "pinned-commit" || meta.OriginCreatedAt == nil || meta.Arch != "qwen3" || meta.README != "# Through proxy" || meta.WeightBytes != 1234 || meta.LogoURL != "https://cdn-avatars.example.test/uploads/acme.png" {
 		t.Fatalf("metadata did not consistently use configured proxy: %+v", meta)
 	}
 }
