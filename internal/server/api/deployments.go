@@ -216,7 +216,7 @@ func (a *apiHandlers) createDeploymentOnce(w http.ResponseWriter, r *http.Reques
 		ModelPath: modelMount, ServedName: req.ServedName, APIPort: planning.PreviewAPIPort,
 		AssignedGPUs: perNode, TensorParallel: parallel.TP, PipelineParallel: parallel.PP, Sleepable: req.Sleepable, Quick: launch.Quick,
 		TemplateArgs: launch.TemplateResidual, TemplateEnv: selection.Env, ExtraArgs: launch.UserResidual,
-		NNodes: nnodes, MasterAddr: req.MasterAddr, MasterPort: req.MasterPort,
+		Vendor: targetVendor, NNodes: nnodes, MasterAddr: req.MasterAddr, MasterPort: req.MasterPort,
 	}
 	if profileNode != nil {
 		// The bind address the launch will use, so the preflight resolves the

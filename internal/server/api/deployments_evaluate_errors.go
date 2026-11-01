@@ -94,6 +94,8 @@ func launchErrorField(fallback string, productErr *messages.ProductError) string
 		return fieldContainerDocker
 	case deploy.ErrorShmSizeWithHostIPC, messages.ErrorShmBelowKVCPUTier:
 		return fieldContainerShm
+	case deploy.ErrorAscendSleepWeightNZConflict:
+		return fieldExtraArgs
 	}
 	return fallback
 }

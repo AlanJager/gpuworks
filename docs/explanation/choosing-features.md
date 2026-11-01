@@ -116,7 +116,13 @@
   部署不能声明可休眠（`PD_SLEEP_RDMA_UNSUPPORTED`，见 [sleep / wake](../how-to/sleep-wake.md)）。
 - 自定义镜像不做探测，镜像缺 sleep 端点时休眠会在实例事件里报错。
 
-**厂商边界**：sleep 同时受引擎和厂商支持限制。Apple 节点不支持引擎休眠（[ADR 0044](../adr/0044-mac-engines-as-host-processes.md)）。本文引用的证据验证了 NVIDIA 上的 sleep；昇腾、PPU、海光组合尚无验证结论，使用前请先在单卡上实测。
+**厂商边界**：sleep 同时受引擎、镜像、运行时和启动配置限制。Apple 节点不支持引擎休眠（[ADR 0044](../adr/0044-mac-engines-as-host-processes.md)）。除 NVIDIA 外，以下单卡组合已经过真机验证，但不能据此推断其他版本、模型或运行时：
+
+- **昇腾 910C**：vLLM-Ascend 0.26.0rc1 的 L1/L2 均通过。平台在声明"可休眠"时自动把 `weight_nz_mode` 合并为 `0`，保留其他 `additional-config` 键；模板环境里的 `PYTORCH_NPU_ALLOC_CONF` 若含 `expandable_segments:True`，平台把它改为 `expandable_segments:False`，其余分配器设置不变。用户在附加参数里显式指定非零 NZ（`ASCEND_SLEEP_WEIGHT_NZ_CONFLICT`），或在部署环境变量里开启 `expandable_segments:True`（`ASCEND_SLEEP_EXPANDABLE_SEGMENTS`），会在创建/预览阶段被拒绝。用命令编辑器完整覆盖启动命令时，平台不注入也不检查这两项。
+- **PPU ZW810E**：当前 hggc runner（vLLM 0.23.0）的 L1/L2 均通过，实际运行 V1。`/is_sleeping` 的逻辑状态可能先于实际操作完成切换，必须以 POST 完成、显存和醒后推理共同确认。
+- **海光 K100**：vLLM 0.18.1 在 Docker 和 nerdctl 下的 L1/L2 均通过。平台在声明"可休眠"时为 Hygon 注入 `VLLM_CUDART_SO_PATH`，已有模板或用户环境值仍可覆盖。udocker/PRoot 路径未通过基础 Torch kernel 验证，不能用于证明此组合可用。
+
+海光 ROCm sleep allocator 还需要宿主内存后备：在 62 GiB RAM、无 swap 的 K100 上，`gpu_memory_utilization=0.9` 曾导致 EngineCore 被 OOM killer 杀掉，降到 `0.25` 后通过。平台目前**没有针对该后备内存的专门准入**，创建前必须自行评估节点 RAM、其他实例和系统保留。以上结论均绑定所测镜像与配置；自定义镜像仍不做能力探测。
 
 **什么时候不该用**：
 

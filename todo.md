@@ -36,6 +36,7 @@
 | T82：PRoot 事件循环在上千线程下饿死旧线程，公平调度补丁在真机上让权重加载卡住 | SGLang TP8 在 runveil 下约 3100 个线程时旧线程长时间 tracing-stop；目前只靠限制 SGLang 线程池缓解，补丁未内嵌 | 按 `artifacts/work/2026-10-20-runveil-many-threads/plan.md` 的区分办法逐项隔离（先只留哈希表、再限批），真机验证后再决定是否重做 |
 | T83：内嵌 PRoot 没有 `proot-temp-noise.patch` 的效果，容器失败时 PRoot 的无害报错盖住引擎真正的错误 | 2026-10-20 本地用 `internal/assets/bin/proot-x86_64-static-nofd` 复现：以 root 在 `/root`（700）下降权运行、绑定到镜像里不存在的路径时，退出前打出 `can't chdir to '/root'`（退出码 0）；该补丁本应让它静默退回 `/`。Vast 上这句成了 stderr 最后一行，部署 26 的失败原因显示成它，真正的 `No accelerator` 被盖住 | 核对内嵌二进制的构建来源，用修好路径的 `build.sh` 重建并过门禁；agent 报容器失败原因时跳过 `proot error:`/`proot warning:` 行，取引擎自己的最后一条错误 |
 | T100：经来源规则拉取的镜像，从节点删除后仍留着替代地址的 tag 与内容 | nerdctl、docker、udocker（native）节点上都要手工删，大镜像占着磁盘 | 删除时一并删掉平台经来源规则留下的替代地址 tag |
+| T109：休眠探测 `/is_sleeping` 在 PPU 上可能先于实际操作完成切换 | 休眠请求遇到非超时传输错误、或 agent 在休眠途中重启时，agent 按探测结果把未完成的卸载当成已完成，过早测量残留并让调度认为显存已释放 | 待决策：无显存读数佐证时一律失败关闭，或对该类厂商轮询显存直到稳定 |
 
 ## T2. 目录镜像标签会漂移
 
@@ -594,3 +595,21 @@ dockerd 进独立网络命名空间并启用回环；在命名空间内用与宿
 
 - 删除一个 key 后，`GET /api/v1/apikeys` 的结果与所选语义一致（不再列出，或列出且明确标为已撤销）。
 - 覆盖重复删除同一 prefix 的幂等行为。
+
+## T109. 休眠探测 `/is_sleeping` 在 PPU 上可能先于实际操作完成切换
+
+**来源**：2026-11-01 评审 MR !820（昇腾 / 海光休眠支持）。该 MR 的 PPU ZW810E 真机验证（hggc runner，vLLM 0.23.0）观察到 `/is_sleeping` 的逻辑状态可能在底层卸载完成前就已切换。
+
+agent 正常以 `POST /sleep` 的返回作为完成信号，不受影响。只有两条路径读 `/is_sleeping` 并据此下结论：
+
+- `internal/agent/engine/sleep.go` 的 `reconcileSleep`：醒着的实例休眠时遇到非超时的传输错误（如连接被重置），探测读到 sleeping，就按"已生效"上报成功并立即测残留（`TestReconcileSleepReportsAppliedWhenSleepCompletedDespiteATransportError` 守护的现行设计）。在 PPU 上卸载可能还没做完，残留偏大或偏小，调度会认为显存已释放。超时已单独按不确定处理，不在此列。
+- `adoptSleepLevel`：agent 在休眠请求途中重启，探测读到 sleeping，直接采用期望级别。
+
+### 建议
+
+- 待决策：上述分支在没有显存读数佐证时一律走 `reportUncertainSleep` 失败关闭（改变 NVIDIA 现行行为，需同时改上面的测试）；或只对 PPU 这样做（agent 侧目前不知道实例的厂商，需要下发或从探测器取）；或在测残留前轮询显存直到读数稳定。
+
+### 验收条件
+
+- fake 引擎对 `/sleep` 返回连接重置、`/is_sleeping` 返回 true 时，结果符合所选语义，并有单测覆盖。
+- 在 PPU ZW810E 上复现一次传输错误下的休眠，确认显存读数与上报一致。

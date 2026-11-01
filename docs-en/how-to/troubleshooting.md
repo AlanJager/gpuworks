@@ -950,6 +950,9 @@ See [Sleep / Wake](sleep-wake.md).
 | `SLEEP_NOT_ENABLED` | 400 | Sleep was not enabled when the deployment was created |
 | `SLEEP_ENGINE_UNSUPPORTED` | 400 | The engine does not support sleep (only vLLM supports it) |
 | `PD_SLEEP_RDMA_UNSUPPORTED` | 400 | A sleep-enabled PD deployment cannot send KV traffic over the host RDMA network: disable sleep, or switch the nodes to an Ethernet compute network |
+| `ASCEND_SLEEP_WEIGHT_NZ_CONFLICT` | 400 | The extra arguments of a sleep-enabled Ascend deployment set `weight_nz_mode` to a nonzero value (`params`: `flag`, `value`): remove the key; the platform sets it to 0 |
+| `ASCEND_SLEEP_EXPANDABLE_SEGMENTS` | 400 | The environment of a sleep-enabled Ascend deployment enables `expandable_segments:True` (`params`: `variable`, `value`): remove it or set it to `False` |
+| `ASCEND_SLEEP_ADDITIONAL_CONFIG_INVALID` | 400 | The template's `--additional-config` is not a JSON object, so the platform cannot merge `weight_nz_mode` (`params`: `flag`, `value`): fix the template |
 | `SLEEP_INVALID_LEVEL` / `SLEEP_INVALID_MODE` | 400 | `level` must be `1` or `2`; `mode` must be `wait` or `abort` |
 | `WAKE_INSUFFICIENT_GPU_MEMORY` | 409 | The GPUs are occupied, so the sleeping instance cannot fit back on them. `params` contains `gpu_indexes`, `shortfall_gib`, and `occupants`; stop or put the occupants to sleep first, or use `?wait=true` to wait for room or `?yield=true` to put the occupants to sleep and then wake |
 | `WAKE_GPU_HELD_OUTSIDE` | 409 | A process outside the platform holds the card, so the platform cannot see its usage and does not allow the wake (waiting and yielding do not help either). `params` as above, and `refused[].held_outside` is true. Release that process on the node and retry; see [Card Is in Use by Processes Outside the Platform](#卡被平台外进程占用) |

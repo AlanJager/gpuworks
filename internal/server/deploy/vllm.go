@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"gpuworks.ai/gpuworks/internal/accelerator"
 	"gpuworks.ai/gpuworks/internal/proto"
 )
 
@@ -88,7 +89,6 @@ func BuildVLLM(p Params) ResolvedLaunch {
 	if p.TensorParallel <= 0 {
 		p.TensorParallel = 1
 	}
-
 	// Modern `vllm serve` owns the model as a positional argument. Catalogs may
 	// still carry an explicit identity flag copied from an older api_server or a
 	// source recipe; remove only the equivalent template-layer identity so a
@@ -136,6 +136,12 @@ func BuildVLLM(p Params) ResolvedLaunch {
 	if p.Sleepable {
 		b.injectFlag("--enable-sleep-mode")
 		env["VLLM_SERVER_DEV_MODE"] = "1"
+		switch accelerator.NormalizeVendor(p.Vendor) {
+		case accelerator.VendorAscend:
+			b.injectKV(vllmAdditionalConfigFlag, vllmAscendSleepConfig)
+		case accelerator.VendorHygon:
+			env["VLLM_CUDART_SO_PATH"] = vllmHygonCUDARTPath
+		}
 	}
 	// Multi-machine: mp backend + node coordination (plan §5). vllm gathers the
 	// leader + followers into one engine; only the leader exposes the endpoint.

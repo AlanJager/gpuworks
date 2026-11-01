@@ -116,7 +116,13 @@ They **never silently fall back to unlimited GPU memory**.
   deployments that transfer KV over a host RDMA network cannot declare sleep capability (`PD_SLEEP_RDMA_UNSUPPORTED`; see [sleep / wake](../how-to/sleep-wake.md)).
 - Custom images are not probed. If an image lacks the sleep endpoint, the sleep attempt reports an error in instance events.
 
-**Vendor boundaries**: Sleep requires both engine and vendor support. Apple nodes do not support engine sleep ([ADR 0044](../adr/0044-mac-engines-as-host-processes.md)). The evidence cited here validates sleep on NVIDIA; it provides no validation result for Ascend, PPU, or Hygon. Test those combinations on a single GPU before use.
+**Vendor boundaries**: Sleep depends on the engine, image, container runtime, and launch configuration. Apple nodes do not support engine sleep ([ADR 0044](../adr/0044-mac-engines-as-host-processes.md)). In addition to NVIDIA, the following single-GPU combinations have passed real-hardware validation, but these results do not generalize to other versions, models, or runtimes:
+
+- **Ascend 910C**: L1 and L2 both pass with vLLM-Ascend 0.26.0rc1. When Sleep Capable is declared, the platform merges `weight_nz_mode` as `0` while preserving other `additional-config` keys. If the template environment's `PYTORCH_NPU_ALLOC_CONF` contains `expandable_segments:True`, the platform changes it to `expandable_segments:False` and keeps the other allocator settings. A nonzero NZ value the user states in extra arguments (`ASCEND_SLEEP_WEIGHT_NZ_CONFLICT`), or `expandable_segments:True` set in the deployment's own environment (`ASCEND_SLEEP_EXPANDABLE_SEGMENTS`), is rejected during creation or preview. When the command editor replaces the whole launch command, the platform neither injects nor checks these two settings.
+- **PPU ZW810E**: L1 and L2 both pass with the current hggc runner (vLLM 0.23.0), which actually runs V1. The logical `/is_sleeping` state may change before the underlying operation completes, so confirm completion from the POST response, memory readings, and inference after waking.
+- **Hygon K100**: L1 and L2 pass with vLLM 0.18.1 under both Docker and nerdctl. The platform injects `VLLM_CUDART_SO_PATH` for Hygon when Sleep Capable is declared; template or user environment values can still override it. The udocker/PRoot path fails the basic Torch kernel check and must not be used as evidence that this combination works.
+
+The Hygon ROCm sleep allocator also requires host-memory backing. On a K100 with 62 GiB RAM and no swap, `gpu_memory_utilization=0.9` caused the OOM killer to terminate EngineCore; lowering it to `0.25` passed. The platform currently has **no dedicated admission check for this backing memory**, so before creation you must evaluate node RAM, other instances, and system reserves yourself. Every result above is tied to the tested image and configuration; custom images are still not probed for capability.
 
 **When not to use it**:
 

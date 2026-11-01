@@ -361,6 +361,12 @@ const (
 	// extra_args with a value that is not JSON ({flag}, {value}); it is
 	// produced by deploy.ValidateExtraArgsJSON.
 	ErrorExtraArgsJSONInvalid = "EXTRA_ARGS_JSON_INVALID"
+	// The Ascend sleep-mode codes are produced by deploy's vLLM launch
+	// preparation and spelled out here for the same inventory reason;
+	// TestAscendSleepCodesMatchTheirProducer asserts the pairs equal.
+	ErrorAscendSleepAdditionalConfigInvalid = "ASCEND_SLEEP_ADDITIONAL_CONFIG_INVALID"
+	ErrorAscendSleepWeightNZConflict        = "ASCEND_SLEEP_WEIGHT_NZ_CONFLICT"
+	ErrorAscendSleepExpandableSegments      = "ASCEND_SLEEP_EXPANDABLE_SEGMENTS"
 	// ErrorMountContainerPath and ErrorMountHostPath answer extra-mount rows
 	// whose path is not an absolute non-root directory; ErrorMountTargetNested
 	// answers two mount targets that contain each other.
