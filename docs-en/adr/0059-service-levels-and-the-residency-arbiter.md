@@ -36,7 +36,7 @@ Two online deployments cannot share a card: when both are busy neither yields, a
 - H can be preempted (shared or offline) and W has a higher level;
 - H and W are both shared, H has stayed for Q this turn (Q = max(2 minutes, 10 × the measured switch time)), and W's head request has waited 30 seconds.
 
-If the cards a waiter needs hold several awake replicas, they either all yield or none does: yielding only some would stop service without freeing any room. Waiters queue by level and then by how long the head request has waited, so peers are not starved.
+If the cards a waiter needs hold several awake replicas, they either all yield or none does: yielding only some would stop service without freeing any room. Waiters queue by level and then by how long the head request has waited, so peers are not starved. Within a level, a waiter that a request waits for (or a replica waits to be placed for) goes before a deployment that only waits to take its cards back from the pending-resume list (amended 2026-11-01: on an H20 node with three time-sliced deployments sharing the cards, a resume queued ahead of a request made the request wait for the resumer's idle time as well, stretching its first token from about 8 s to 67 s).
 
 **3. The gateway holds requests for a deployment the platform put to sleep.** When a request reaches a sleeping deployment whose sleep was made by the platform (idle sleep, an arbiter yield),
 the gateway holds the request, notifies the arbiter, and picks an instance again every time the routes are rebuilt; holding has limits on count (256 per deployment, 4096 in total) and on time (2 minutes for resident and online, 10 minutes for shared, 30 minutes for offline),

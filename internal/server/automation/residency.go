@@ -1,7 +1,6 @@
 package automation
 
 import (
-	"fmt"
 	"sort"
 	"time"
 
@@ -207,14 +206,6 @@ func (e *Evaluator) demandChan() <-chan struct{} {
 	return e.res.demand
 }
 
-type waiting struct {
-	id     uint
-	policy yieldpolicy.Policy
-	since  time.Time
-	resume bool
-	place  bool
-}
-
 // residency wakes the deployments requests wait for, and makes room for
 // them by putting holders to sleep when their yield policies say they must
 // give way (yieldpolicy.Yields). It notes when the next yield falls due.
@@ -250,13 +241,7 @@ func (e *Evaluator) residency(now time.Time) {
 		}
 		queue = append(queue, waiting{id: id, policy: policy, since: since, resume: true})
 	}
-	sort.SliceStable(queue, func(a, b int) bool {
-		ra, rb := queue[a].policy.Rank(), queue[b].policy.Rank()
-		if ra != rb {
-			return ra > rb
-		}
-		return queue[a].since.Before(queue[b].since)
-	})
+	sort.SliceStable(queue, func(a, b int) bool { return queueBefore(queue[a], queue[b]) })
 	if len(queue) > 0 {
 		e.log.Debug("automation: residency look", "queue", queueText(queue))
 	}
@@ -581,19 +566,4 @@ func (e *Evaluator) stillWakingFor(now time.Time, id uint) bool {
 	}
 	delete(r.yieldedFor, id)
 	return false
-}
-
-func queueText(queue []waiting) []string {
-	out := make([]string, len(queue))
-	for i, w := range queue {
-		kind := "request"
-		switch {
-		case w.place:
-			kind = "place"
-		case w.resume:
-			kind = "resume"
-		}
-		out[i] = fmt.Sprintf("%d:%s:%s", w.id, w.policy.Yield, kind)
-	}
-	return out
 }
