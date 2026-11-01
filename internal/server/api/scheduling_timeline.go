@@ -13,8 +13,10 @@ import (
 )
 
 const (
-	// timelineSegmentCap bounds the segments one GPU lists; a card that
-	// changed hands more often than that keeps the newest.
+	// timelineSegmentCap bounds the raw segments one GPU lists; a card that
+	// changed hands more often than that keeps the newest raw and summarizes
+	// the time before them (summarizeSegments), so a card lists at most
+	// timelineSegmentCap + timelineSummaryBuckets elements.
 	timelineSegmentCap = 200
 	// timelineMaxNodes bounds the nodes one request names (a board page).
 	timelineMaxNodes = 200
@@ -45,9 +47,12 @@ var timelineHours = []int{6, 24}
 // It is a separate read from the board so the board, which refreshes every few
 // seconds, stays one cheap read: the lanes are derived from the event log
 // over a range, once per page of nodes and range, by index ranges only
-// (store.ResidencyInputsBetween), and the answer of a custom range in the
-// past is kept (cachedResidencyTimeline); the stats come from the scheduling
-// activity's rollups. It only reads.
+// (store.ResidencyInputsBetween), and the answer is kept for a short while -
+// 30 s for a quick window, 5 minutes for a custom range in the past
+// (cachedResidencyTimeline); a card with more segments than the answer
+// holds lists the newest raw and summarizes the earlier time
+// (summarizeSegments) from the same segments, with no further read; the
+// stats come from the scheduling activity's rollups. It only reads.
 func (a *apiHandlers) schedulingTimeline(w http.ResponseWriter, r *http.Request) {
 	invalid := func(field, reason string) {
 		writeProductError(w, http.StatusBadRequest, ErrorFieldInvalid, field+" "+reason, map[string]any{"field": field})
@@ -226,12 +231,10 @@ func (a *apiHandlers) fillTimeline(out dto.SchedulingTimeline, nodeUUIDs []strin
 				}
 				return card.segs[i].Instance < card.segs[j].Instance
 			})
-			if len(card.segs) > timelineSegmentCap {
-				card.segs = card.segs[len(card.segs)-timelineSegmentCap:]
-				card.out.Truncated = true
-			}
-			if card.segs != nil {
-				card.out.Segments = card.segs
+			kept := summarizeSegments(card.segs, from)
+			card.out.Truncated, card.out.SummarizedBefore, card.out.Summary = kept.truncated, kept.before, kept.summary
+			if kept.segments != nil {
+				card.out.Segments = kept.segments
 			}
 		}
 	}

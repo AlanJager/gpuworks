@@ -62,12 +62,65 @@ type TimelineNode struct {
 	GPUs []TimelineGPU `json:"gpus"`
 }
 
-// TimelineGPU is one GPU's segments, oldest first. Truncated says older
-// segments were left out to keep the answer bounded.
+// TimelineGPU is one GPU's segments, oldest first. A card that changed hands
+// so often that its segments would not fit the answer lists the newest ones
+// raw (Segments) and the time before them as at most 50 summaries (Summary);
+// SummarizedBefore is where the two meet: Summary covers [window start,
+// SummarizedBefore) and Segments [SummarizedBefore, window end], and both are
+// absent when nothing was summarized. A segment that straddles
+// SummarizedBefore is split there. Truncated says some of the card's history
+// is not listed raw (it is true whenever SummarizedBefore is set); a client
+// that knows no Summary draws only Segments, which is what it did before
+// summaries existed.
 type TimelineGPU struct {
-	Index     int               `json:"index"`
-	Segments  []TimelineSegment `json:"segments"`
-	Truncated bool              `json:"truncated"`
+	Index            int               `json:"index"`
+	Segments         []TimelineSegment `json:"segments"`
+	Truncated        bool              `json:"truncated"`
+	SummarizedBefore *time.Time        `json:"summarized_before,omitempty"`
+	Summary          []TimelineSummary `json:"summary,omitempty"`
+}
+
+// TimelineSummaryKind is the Kind of a TimelineSummary.
+const TimelineSummaryKind = "summary"
+
+// TimelineSummary is one stretch of the time a card's raw segments no longer
+// list: the equal slice [From, To) of it, and what the card did in it. Raw
+// segments carry no kind; a summary says so with Kind.
+//
+// Switches counts the times the card changed hands in the slice: the
+// deployment awake on it became another one (a deployment going to sleep and
+// waking again is none), counted in the slice its new holder began in. A
+// slice is listed only when something held the card in it.
+//
+// Deployments are those that held the card in the slice, with the seconds
+// each spent in each state (an instance's segments of one state counted once
+// where they overlap). The seconds of different deployments overlap when
+// they share a card at the same time and may fall short of the slice where
+// nothing held the card, and each is rounded, so they do not add up to the
+// slice's length. DominantDeploymentID and Dominant name the deployment awake
+// longest in the slice (the lower id on a tie), absent when none was awake;
+// the server decides, the UI only draws it.
+type TimelineSummary struct {
+	Kind                 string                      `json:"kind"`
+	From                 time.Time                   `json:"from"`
+	To                   time.Time                   `json:"to"`
+	Switches             int                         `json:"switches"`
+	DominantDeploymentID uint                        `json:"dominant_deployment_id,omitempty"`
+	Dominant             string                      `json:"dominant_deployment,omitempty"`
+	Deployments          []TimelineSummaryDeployment `json:"deployments"`
+}
+
+// TimelineSummaryDeployment is what one deployment's instances did with a
+// card during a TimelineSummary, in seconds: awake (serving), asleep (any
+// level), switching (between a sleep or wake order and its result) and
+// starting.
+type TimelineSummaryDeployment struct {
+	DeploymentID     uint   `json:"deployment_id"`
+	Deployment       string `json:"deployment"`
+	AwakeSeconds     int64  `json:"awake_seconds"`
+	AsleepSeconds    int64  `json:"asleep_seconds"`
+	SwitchingSeconds int64  `json:"switching_seconds"`
+	StartingSeconds  int64  `json:"starting_seconds"`
 }
 
 // TimelineSegment is one stretch of an instance holding a GPU in one state:

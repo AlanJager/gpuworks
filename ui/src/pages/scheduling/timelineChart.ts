@@ -25,7 +25,7 @@ export function xOf(ms: number, span: Span): number {
   return Math.min(Math.max((ms - span.fromMs) / width, 0), 1) * CHART_WIDTH;
 }
 
-export function blockOf(segment: TimelineSegment, span: Span): { x: number; width: number } {
+export function blockOf(segment: Pick<TimelineSegment, "from" | "to">, span: Span): { x: number; width: number } {
   const x = xOf(Date.parse(segment.from), span);
   const end = xOf(Date.parse(segment.to), span);
   const width = Math.max(end - x, MIN_BLOCK);
@@ -106,6 +106,16 @@ export const stateColor: Record<TimelineState, string> = {
 };
 
 export const stateOrder: TimelineState[] = ["awake", "asleep", "switching", "starting"];
+
+// A summarized slice is hatched in the colour of the deployment the server
+// names as its dominant one. The palette is only a way to tell deployments
+// apart: a deployment keeps its colour (by id) wherever it is the dominant one.
+const DEPLOYMENT_COLORS = [colors.chartPrimary, colors.chartSecondary, colors.chartTertiary, colors.chartQuaternary, colors.chartTeal, colors.chartViolet, colors.chartSlate];
+
+/** deploymentColor is the fill of a deployment's summarized slices; a slice nobody served in is grey. */
+export function deploymentColor(deploymentID: number | undefined): string {
+  return deploymentID ? DEPLOYMENT_COLORS[deploymentID % DEPLOYMENT_COLORS.length] : colors.chartTick;
+}
 
 export interface Lane {
   deploymentID: number;
