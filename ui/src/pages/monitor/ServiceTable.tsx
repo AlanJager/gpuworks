@@ -7,6 +7,7 @@ import { HealthCheckHelp, HealthTag } from "../../components/DeploymentHealth";
 import ResourceTable, { type ResourceColumn } from "../../components/resourceTable/ResourceTable";
 import { colors } from "../../theme/tokens";
 import Dash, { renderNumber } from "./Dash";
+import { formatLatencyText } from "./signalFormat";
 
 const NARROW_BREAKPOINT = 768;
 
@@ -17,7 +18,7 @@ const HEALTH_COL_WIDTH = 150;
 
 // HEALTH_ORDER sorts the health column the way the server orders the rows:
 // failed and timed-out checks first, unchecked last.
-export const HEALTH_ORDER: HealthStatus[] = ["failed", "timeout", "no_replica", "pending", "ok", "off"];
+const HEALTH_ORDER: HealthStatus[] = ["failed", "timeout", "no_replica", "pending", "ok", "off"];
 
 // A small, dependency-free media query hook. antd's own column `responsive`
 // prop exists, but it is driven by a global matchMedia listener that is hard
@@ -45,7 +46,7 @@ function useNarrow(breakpointPx = NARROW_BREAKPOINT): boolean {
   return narrow;
 }
 
-const STATE_BADGE: Record<string, "success" | "processing" | "default" | "error" | "warning"> = {
+export const STATE_BADGE: Record<MonitorService["state"], "success" | "processing" | "default" | "error" | "warning"> = {
   running: "success",
   offline: "warning",
   starting: "processing",
@@ -53,6 +54,10 @@ const STATE_BADGE: Record<string, "success" | "processing" | "default" | "error"
   failed: "error",
   asleep: "warning",
 };
+
+// STATE_ORDER lists service states serving first, then the ones that
+// need a look, then the deliberately stopped.
+export const STATE_ORDER: MonitorService["state"][] = ["running", "starting", "asleep", "offline", "failed", "stopped"];
 
 function num(value: number | null, digits = 0): ReactNode {
   return value == null ? <Dash /> : value.toFixed(digits);
@@ -137,7 +142,7 @@ export default function ServiceTable({
     },
     { key: "replicas", title: t("table.replicas"), width: 90, sortValue: (row) => row.replicas.ready, render: (_: unknown, row: MonitorService) => `${row.replicas.ready}/${row.replicas.desired}` },
     { key: "request_rate", title: t("table.requestRate"), width: 100, sortValue: (row) => row.request_rate, render: (_: unknown, row: MonitorService) => num(row.request_rate, 1) },
-    { key: "ttft_p95_ms", title: t("table.ttftP95"), width: 100, sortValue: (row) => row.ttft_p95_ms, render: (_: unknown, row: MonitorService) => num(row.ttft_p95_ms, 0) },
+    { key: "ttft_p95_ms", title: t("table.ttftP95"), width: 100, sortValue: (row) => row.ttft_p95_ms, render: (_: unknown, row: MonitorService) => renderNumber(row.ttft_p95_ms, formatLatencyText) },
     {
       key: "concurrency",
       title: t("table.concurrency"),

@@ -120,13 +120,15 @@ test("shows an empty state when there are no services to monitor", async () => {
   await waitFor(() => assert.ok(screen.getByText("No deployments to monitor yet")));
 });
 
-test("renders signals, the health check counts and the service table on success", async () => {
+test("renders signals, the service state counts and the service table on success", async () => {
   api.monitorOverview = async () => overview;
   renderPage();
   await waitFor(() => assert.ok(screen.getByText("Qwen3-32B")));
   assert.ok(screen.getByRole("button", { name: /Ready replicas/ }));
-  // One link per status present, worst first.
-  const counts = ["Failed 1", "Timed out 1", "No replica 1", "Checking 1", "Healthy 6", "Off 1"];
+  assert.ok(screen.getByText("Service state"));
+  assert.equal(screen.queryByText("Health checks"), null);
+  // One link per state present, serving first.
+  const counts = ["Running 8", "Starting 1", "Asleep 1", "Failed 1"];
   const links = counts.map((name) => screen.getByRole("button", { name }));
   for (let i = 1; i < links.length; i++) {
     assert.ok(links[i - 1].compareDocumentPosition(links[i]) & dom.window.Node.DOCUMENT_POSITION_FOLLOWING, `${counts[i - 1]} before ${counts[i]}`);
@@ -170,13 +172,13 @@ test("clicking the ready replicas tile narrows the table to the services short o
   assert.equal(screen.queryByText("Qwen3-32B"), null);
 });
 
-test("clicking a health check count narrows the table to the services in that status", async () => {
+test("clicking a service state count narrows the table to the services in that state", async () => {
   api.monitorOverview = async () => overview;
   renderPage();
   await waitFor(() => assert.ok(screen.getByText("Qwen3-32B")));
-  screen.getByRole("button", { name: "Timed out 1" }).click();
+  screen.getByRole("button", { name: "Starting 1" }).click();
   await waitFor(() => assert.ok(screen.getByText("Clear filter")));
-  assert.ok(screen.getByText("Qwen2.5-7B-Instruct"));
+  assert.ok(screen.getByText("Llama-3.1-70B"));
   assert.equal(screen.queryByText("Qwen3-32B"), null);
   screen.getByText("Clear filter").click();
   await waitFor(() => assert.ok(screen.getByText("Qwen3-32B")));
@@ -186,20 +188,12 @@ test("a fleet total signal has no per-service verdict behind it: clicking it cle
   api.monitorOverview = async () => overview;
   renderPage();
   await waitFor(() => assert.ok(screen.getByText("Qwen3-32B")));
-  screen.getByRole("button", { name: "Timed out 1" }).click();
+  screen.getByRole("button", { name: "Starting 1" }).click();
   await waitFor(() => assert.ok(screen.getByText("Clear filter")));
   screen.getByRole("button", { name: /^Waiting p95/ }).click();
   await waitFor(() => assert.equal(screen.queryByText("Clear filter") === null, true));
   assert.ok(screen.getByText("Qwen3-32B"));
   assert.ok(screen.getByText("Qwen2.5-7B-Instruct"));
-});
-
-test("with no service checked the line says how to turn the check on", async () => {
-  api.monitorOverview = async () => ({ ...overview, services: overview.services.map((s) => ({ ...s, health: { ...s.health, status: "off" as const } })) });
-  renderPage();
-  await waitFor(() => assert.ok(screen.getByText("Qwen3-32B")));
-  assert.ok(screen.getByText(/No service has the health check on yet/));
-  assert.equal(screen.queryByRole("button", { name: /^Off/ }), null);
 });
 
 test("an uncollected signal tile is not clickable and is marked aria-disabled", async () => {
@@ -222,7 +216,7 @@ test("the request_rate signal is collected:false in the fixture and renders the 
   api.monitorOverview = async () => overview;
   renderPage();
   await waitFor(() => assert.ok(screen.getByText("Qwen3-32B")));
-  const requestRateTile = screen.getByRole("button", { name: /^Requests\/s/ });
+  const requestRateTile = screen.getByRole("button", { name: /^RPS \/ Concurrency/ });
   assert.equal(requestRateTile.getAttribute("aria-disabled"), "true");
   assert.ok(requestRateTile.textContent?.includes("Not collected"));
 });
@@ -345,10 +339,10 @@ test("changing range preserves the selected service filter", async () => {
   api.monitorOverview = async () => overview;
   renderPage();
   await waitFor(() => assert.ok(screen.getByText("Qwen3-32B")));
-  await userEvent.setup().click(screen.getByRole("button", { name: "Timed out 1" }));
+  await userEvent.setup().click(screen.getByRole("button", { name: "Starting 1" }));
   await userEvent.setup().click(screen.getByText("24h"));
   await waitFor(() => assert.ok(screen.getByText("Clear filter")));
-  assert.ok(screen.getByText("Qwen2.5-7B-Instruct"));
+  assert.ok(screen.getByText("Llama-3.1-70B"));
   assert.equal(screen.queryByText("Qwen3-32B"), null);
 });
 
