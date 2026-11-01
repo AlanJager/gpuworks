@@ -3,14 +3,12 @@ package deploy
 import (
 	"encoding/json"
 	"reflect"
-	"strings"
 	"testing"
 
 	"gpuworks.ai/gpuworks/internal/proto"
-	"gpuworks.ai/gpuworks/internal/server/messages"
 )
 
-func TestBuildVLLMAscendSleepAdditionalConfig(t *testing.T) {
+func TestResolveVLLMAscendSleepAdditionalConfig(t *testing.T) {
 	for name, test := range map[string]struct {
 		templateArgs []string
 		extraArgs    []string
@@ -29,10 +27,12 @@ func TestBuildVLLMAscendSleepAdditionalConfig(t *testing.T) {
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
-			launch := BuildVLLM(Params{
-				ModelPath: "/model", APIPort: 30000, TensorParallel: 1,
-				Sleepable: true, Vendor: "ascend", TemplateArgs: test.templateArgs, ExtraArgs: test.extraArgs,
-			})
+			input := vllmSleepLaunchInput("ascend")
+			input.Params.TemplateArgs, input.Params.ExtraArgs = test.templateArgs, test.extraArgs
+			launch, err := ResolveLaunch(input)
+			if err != nil {
+				t.Fatal(err)
+			}
 			values := allFlagValues(launch.Argv, "--additional-config")
 			if len(values) != 1 {
 				t.Fatalf("additional-config values = %#v, argv = %#v", values, launch.Argv)
@@ -52,39 +52,97 @@ func TestResolveVLLMAscendSleepRejectsNonzeroUserWeightNZ(t *testing.T) {
 	input := vllmSleepLaunchInput("ascend")
 	input.Params.ExtraArgs = []string{"--additional-config", `{"weight_nz_mode":2,"other":true}`}
 	_, err := ResolveLaunch(input)
-	product := requireLaunchProductError(t, err, messages.ErrorFieldInvalid)
-	if !strings.Contains(product.Error(), "weight_nz_mode=0") || product.Params()["key"] != "weight_nz_mode" {
-		t.Fatalf("error = %v, params = %#v", product, product.Params())
+	product := requireLaunchProductError(t, err, ErrorAscendSleepWeightNZConflict)
+	if want := map[string]any{"flag": "--additional-config", "value": "2"}; !reflect.DeepEqual(product.Params(), want) {
+		t.Fatalf("params = %#v, want %#v", product.Params(), want)
+	}
+}
+
+func TestResolveVLLMAscendSleepAcceptsZeroUserWeightNZ(t *testing.T) {
+	input := vllmSleepLaunchInput("ascend")
+	input.Params.ExtraArgs = []string{"--additional-config", `{"weight_nz_mode":0.0}`}
+	if _, err := ResolveLaunch(input); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestResolveVLLMAscendSleepRejectsNonObjectTemplateConfig(t *testing.T) {
+	input := vllmSleepLaunchInput("ascend")
+	input.Params.TemplateArgs = []string{"--additional-config", `[1]`}
+	_, err := ResolveLaunch(input)
+	product := requireLaunchProductError(t, err, ErrorAscendSleepAdditionalConfigInvalid)
+	if want := map[string]any{"flag": "--additional-config", "value": "[1]"}; !reflect.DeepEqual(product.Params(), want) {
+		t.Fatalf("params = %#v, want %#v", product.Params(), want)
+	}
+}
+
+func TestResolveVLLMSleepLeavesOtherVendorsAndAwakeAscendUntouched(t *testing.T) {
+	for name, input := range map[string]ResolveLaunchInput{
+		"nvidia sleepable": vllmSleepLaunchInput("nvidia"),
+		"ascend awake": func() ResolveLaunchInput {
+			input := vllmSleepLaunchInput("ascend")
+			input.Params.Sleepable = false
+			return input
+		}(),
+	} {
+		t.Run(name, func(t *testing.T) {
+			input.Params.TemplateArgs = []string{"--additional-config", `{"weight_nz_mode":2}`}
+			input.Params.TemplateEnv = map[string]string{"PYTORCH_NPU_ALLOC_CONF": "expandable_segments:True"}
+			launch, err := ResolveLaunch(input)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := allFlagValues(launch.Argv, "--additional-config"); !reflect.DeepEqual(got, []string{`{"weight_nz_mode":2}`}) {
+				t.Fatalf("additional-config = %#v", got)
+			}
+			if got := launch.Env["PYTORCH_NPU_ALLOC_CONF"]; got != "expandable_segments:True" {
+				t.Fatalf("PYTORCH_NPU_ALLOC_CONF = %q", got)
+			}
+		})
 	}
 }
 
 func TestResolveVLLMAscendSleepChecksEffectiveAllocatorConfig(t *testing.T) {
 	for name, test := range map[string]struct {
 		overrides ContainerOverrides
+		want      string
 		wantError bool
 	}{
-		"template expandable segments": {wantError: true},
+		// The template layer is the platform's: its setting is turned off and
+		// the other allocator settings are kept.
+		"template expandable segments": {want: "max_split_size_mb:256,expandable_segments:False"},
 		"user disables template setting": {
 			overrides: ContainerOverrides{Env: map[string]string{"PYTORCH_NPU_ALLOC_CONF": "expandable_segments:False"}},
+			want:      "expandable_segments:False",
+		},
+		"user unsets template setting": {
+			overrides: ContainerOverrides{EnvUnset: []string{"PYTORCH_NPU_ALLOC_CONF"}},
 		},
 		"user enables expandable segments": {
-			overrides: ContainerOverrides{Env: map[string]string{"PYTORCH_NPU_ALLOC_CONF": "expandable_segments:True"}}, wantError: true,
+			overrides: ContainerOverrides{Env: map[string]string{"PYTORCH_NPU_ALLOC_CONF": " Expandable_Segments : true "}}, wantError: true,
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			input := vllmSleepLaunchInput("ascend")
-			input.Params.TemplateEnv = map[string]string{"PYTORCH_NPU_ALLOC_CONF": "expandable_segments:True"}
+			templateEnv := map[string]string{"PYTORCH_NPU_ALLOC_CONF": "max_split_size_mb:256,expandable_segments:True"}
+			input.Params.TemplateEnv = templateEnv
 			input.ContainerOverrides = test.overrides
-			_, err := ResolveLaunch(input)
+			launch, err := ResolveLaunch(input)
+			if templateEnv["PYTORCH_NPU_ALLOC_CONF"] != "max_split_size_mb:256,expandable_segments:True" {
+				t.Fatalf("caller's template env was mutated: %#v", templateEnv)
+			}
 			if !test.wantError {
 				if err != nil {
 					t.Fatal(err)
 				}
+				if got := launch.Env["PYTORCH_NPU_ALLOC_CONF"]; got != test.want {
+					t.Fatalf("PYTORCH_NPU_ALLOC_CONF = %q, want %q", got, test.want)
+				}
 				return
 			}
-			product := requireLaunchProductError(t, err, messages.ErrorFieldInvalid)
-			if !strings.Contains(product.Error(), "expandable_segments") || product.Params()["variable"] != "PYTORCH_NPU_ALLOC_CONF" {
-				t.Fatalf("error = %v, params = %#v", product, product.Params())
+			product := requireLaunchProductError(t, err, ErrorAscendSleepExpandableSegments)
+			if want := map[string]any{"variable": "PYTORCH_NPU_ALLOC_CONF", "value": " Expandable_Segments : true "}; !reflect.DeepEqual(product.Params(), want) {
+				t.Fatalf("params = %#v, want %#v", product.Params(), want)
 			}
 		})
 	}

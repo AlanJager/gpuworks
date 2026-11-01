@@ -89,10 +89,6 @@ func BuildVLLM(p Params) ResolvedLaunch {
 	if p.TensorParallel <= 0 {
 		p.TensorParallel = 1
 	}
-	// ResolveLaunch reports preparation errors. Build's established signature has
-	// no error result, so a conflicting direct-build input stays untouched.
-	_ = prepareVLLMSleepable(&p)
-
 	// Modern `vllm serve` owns the model as a positional argument. Catalogs may
 	// still carry an explicit identity flag copied from an older api_server or a
 	// source recipe; remove only the equivalent template-layer identity so a

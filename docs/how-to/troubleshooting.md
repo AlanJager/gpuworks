@@ -913,6 +913,9 @@ agent 每 15 秒检查一次运行中实例的容器。被 `docker stop`、进�
 | `SLEEP_NOT_ENABLED` | 400 | 部署创建时没开可休眠 |
 | `SLEEP_ENGINE_UNSUPPORTED` | 400 | 引擎不支持（只有 vLLM 支持） |
 | `PD_SLEEP_RDMA_UNSUPPORTED` | 400 | 可休眠的 PD 部署不能让 KV 走主机 RDMA 网络：关闭可休眠，或让节点改用以太网参数网络 |
+| `ASCEND_SLEEP_WEIGHT_NZ_CONFLICT` | 400 | 昇腾可休眠部署的附加参数把 `weight_nz_mode` 设成了非零值（`params`：`flag`、`value`）：删掉该键，平台会自动设为 0 |
+| `ASCEND_SLEEP_EXPANDABLE_SEGMENTS` | 400 | 昇腾可休眠部署的环境变量开启了 `expandable_segments:True`（`params`：`variable`、`value`）：删掉或改为 `False` |
+| `ASCEND_SLEEP_ADDITIONAL_CONFIG_INVALID` | 400 | 模板的 `--additional-config` 不是 JSON 对象，平台无法合并 `weight_nz_mode`（`params`：`flag`、`value`）：修正模板 |
 | `SLEEP_INVALID_LEVEL` / `SLEEP_INVALID_MODE` | 400 | `level` 只能 `1` 或 `2`，`mode` 只能 `wait` 或 `abort` |
 | `WAKE_INSUFFICIENT_GPU_MEMORY` | 409 | 卡已被占用，放不回休眠实例；`params` 含 `gpu_indexes`、`shortfall_gib`、`occupants`，先停止或休眠占用者，或用 `?wait=true` 等位、`?yield=true` 让占用者休眠后唤醒 |
 | `WAKE_GPU_HELD_OUTSIDE` | 409 | 卡被平台外的进程占着，平台看不到占用量，不允许唤醒（等位和让位也不行）；`params` 同上，`refused[].held_outside` 为 true。在节点上释放该进程后重试，见[卡被平台外进程占用](#卡被平台外进程占用) |

@@ -90,6 +90,18 @@ func TestDockerArgCodesMatchTheirProducer(t *testing.T) {
 	}
 }
 
+func TestAscendSleepCodesMatchTheirProducer(t *testing.T) {
+	for api, producer := range map[string]string{
+		ErrorAscendSleepAdditionalConfigInvalid: deploy.ErrorAscendSleepAdditionalConfigInvalid,
+		ErrorAscendSleepWeightNZConflict:        deploy.ErrorAscendSleepWeightNZConflict,
+		ErrorAscendSleepExpandableSegments:      deploy.ErrorAscendSleepExpandableSegments,
+	} {
+		if api != producer {
+			t.Fatalf("api code %q, deploy code %q", api, producer)
+		}
+	}
+}
+
 func TestDataParallelCodesMatchTheirProducer(t *testing.T) {
 	for api, producer := range map[string]string{
 		ErrorDataParallelGPUCount:         deploy.ErrorDataParallelGPUCount,
