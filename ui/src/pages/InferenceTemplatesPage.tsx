@@ -64,6 +64,14 @@ function modelVendors(model: InferenceTemplate) {
   return [...new Set(model.specs.map((spec) => spec.gpus.vendor.trim().toLowerCase()).filter(Boolean))].sort(compareVendors);
 }
 
+// A published logo draws on its own: no tinted disc behind its transparent
+// pixels and no crop to a circle. Only the initials fallback gets a colour.
+function OrganizationAvatar({ group, size, shape = "circle" }: { group: { key: string; organization: string; label: string }; size: number; shape?: "circle" | "square" }) {
+  const icon = group.key === "my-templates" ? undefined : modelOrganizationIcon(`${group.organization}/model`);
+  if (icon) return <Avatar className="template-organization-logo" shape="square" size={size} src={icon} alt="" />;
+  return <Avatar shape={shape} size={size} style={{ background: avatarColor(group.key) }}>{initials(group.label)}</Avatar>;
+}
+
 function ModelVendorMarks({ model }: { model: InferenceTemplate }) {
   const { t } = useTranslation("inferenceTemplates");
   const vendors = modelVendors(model);
@@ -269,12 +277,12 @@ export default function InferenceTemplatesPage() {
       {!loading && !error && groups.length > 0 && <div className="template-organization-browser">
         <aside className="template-organization-sidebar"><header><Typography.Text strong>{t("organization.title")}</Typography.Text><span>{groups.length}</span></header><nav aria-label={t("organization.aria")}>
           {groups.map((group) => <button type="button" key={group.key} className={group.key === activeOrganization ? "is-active" : ""} onClick={() => setActiveOrganization(group.key)}>
-            <Avatar size={30} src={group.key === "my-templates" ? undefined : modelOrganizationIcon(`${group.organization}/model`)} style={{ background: avatarColor(group.key) }}>{initials(group.label)}</Avatar>
+            <OrganizationAvatar group={group} size={30} />
             <span><strong>{group.label}</strong><small>{t("models.count", { count: group.items.length })}</small></span><RightOutlined />
           </button>)}
         </nav></aside>
         <main className="template-organization-main">{activeGroup && <>
-          <header className="template-organization-heading"><Avatar shape="square" size={54} src={activeGroup.key === "my-templates" ? undefined : modelOrganizationIcon(`${activeGroup.organization}/model`)} style={{ background: avatarColor(activeGroup.key) }}>{initials(activeGroup.label)}</Avatar><div><Typography.Title level={3}>{activeGroup.label}</Typography.Title><Typography.Text type="secondary">{activeGroup.organization} · {t("models.count", { count: activeGroup.items.length })}</Typography.Text></div></header>
+          <header className="template-organization-heading"><OrganizationAvatar group={activeGroup} size={54} shape="square" /><div><Typography.Title level={3}>{activeGroup.label}</Typography.Title><Typography.Text type="secondary">{activeGroup.organization} · {t("models.count", { count: activeGroup.items.length })}</Typography.Text></div></header>
           <div className="template-model-list-head"><span>{t("columns.model")}</span><span>{t("columns.inputModalities")}</span><span>{t("columns.weightVariants")}</span><span>{t("columns.vendor")}</span><span>{t("columns.engine")}</span><span /></div>
           <div className="template-model-list">{activeGroup.items.map((model) => <ModelCatalogRow key={model.model_id} model={model} openDetail={openDetail} />)}</div>
         </>}</main>

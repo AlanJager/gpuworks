@@ -155,6 +155,10 @@ test("catalog starts unfiltered, keeps organization logos and cross-organization
   assert.equal((await screen.findByText("Qwen Model")).textContent, "Qwen Model");
   assert.equal(screen.getByText("GPTQ · quant-factory/Qwen-GPTQ").textContent, "GPTQ · quant-factory/Qwen-GPTQ");
   assert.ok(container.querySelector('img[src="/model-org-icons/qwen.webp"]'), "the reviewed organization logo is rendered");
+  for (const logo of container.querySelectorAll<HTMLElement>(".ant-avatar-image")) {
+    assert.equal(logo.style.background, "", "a published logo draws without a tinted disc behind it");
+    assert.ok(logo.classList.contains("template-organization-logo"));
+  }
 
   await userEvent.setup().click(screen.getByRole("button", { name: "H100" }));
   await waitFor(() => assert.equal(screen.queryByRole("button", { name: /Qwen/ }), null));

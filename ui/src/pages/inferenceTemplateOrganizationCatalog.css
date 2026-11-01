@@ -380,13 +380,20 @@
 
 .template-model-vendor {
   display: inline-grid;
-  width: 64px;
+  width: 52px;
   height: 28px;
   place-items: center;
-  padding: 4px 7px;
-  border: 1px solid #e4e7eb;
-  border-radius: 6px;
-  background: #fff;
+}
+
+.template-organization-logo.ant-avatar {
+  flex: none;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.template-organization-logo.ant-avatar img {
+  object-fit: contain;
 }
 
 .template-model-vendor img {
