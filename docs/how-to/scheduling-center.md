@@ -328,7 +328,7 @@ curl --fail-with-body -sS "$API_URL/api/v1/scheduling/yield-policies" \
 
 ### 怎样选出让策略
 
-典型用法是实时 + 批处理：实时模型设为闲置自动出让，批处理模型设为随时出让，部署在同一批卡上。实时闲置满它的闲置时间后让卡，批处理恢复；实时来了请求，批处理立即让卡，请求在网关等实时醒来（L1 切换约 2.5 秒）。批处理任务怎样指向随时出让的部署见[运行批处理任务](batch-api.md#与随时出让搭配)。
+典型用法是实时 + 批处理：实时模型设为闲置自动出让，批处理模型设为随时出让，部署在同一批卡上。批处理有请求在等（批处理任务被中断后会重试）而实时闲置满它的闲置时间，实时让卡；实时来了请求，批处理立即让卡，请求在网关等实时醒来（L1 切换约 2.5 秒）。批处理任务怎样指向随时出让的部署见[运行批处理任务](batch-api.md#与随时出让搭配)。
 
 - **几个模型轮流用一批卡**：都设为按时自动出让。谁有请求谁醒；占卡的一方服务满最长服务时间，或闲置满闲置时间，就让给等着的那个。
 - **核心服务常驻**：不自动出让，其他部署不会从它手里拿卡。
@@ -344,7 +344,7 @@ curl --fail-with-body -sS "$API_URL/api/v1/scheduling/yield-policies" \
 - 你或定时计划下的休眠是**保持休眠**：请求不唤醒，仍回 503。保持按实例算（实例的 `sleep_held`）：只保持这次休眠点名的实例，同一部署里平台让卡睡下的其他实例请求照样唤醒；部署详情的 `sleep_hold` 为 `all`（`sleep_held` 为 `true`）时请求唤醒不了任何一个，为 `some` 时只唤醒没被保持的。唤醒解除它唤醒的实例的保持，包括一次等位中的唤醒：你点**唤醒**并选了等位（`?wait=true`，应答 202 `waiting`）时，保持就解除了，部署是要醒的，之后到达的请求由网关挂起等这次唤醒，驻留仲裁也可以按各自的出让策略为它腾地方，而不是回 503；以前保持要到唤醒落地才解除。保持休眠也**不为自己留卡**：请求既然唤醒不了它，它的卡对任何新部署开放，之后你或定时计划的唤醒要么等位（`?wait=true`）、要么让占卡者休眠（`?yield=true`），见[操作 sleep / wake](sleep-wake.md#放不下时等位与让位)。
 - 放不下时按出让策略判断占卡者是否让卡；不该让时请求一直等到挂起时长用完。
 - 按时自动出让、随时出让的部署让卡时，进行中的请求按 `unfinished` 处理：`abort` 立即中断；`wait` 先停止接新请求（新请求挂起），等进行中的请求结束，到 `unfinished_wait_sec` 时仍有请求就中断。被中断的**非流式**请求由网关挂起，等部署恢复后重放（最多 3 次），客户端只拿到跑完的那次结果；**流式**请求已经开始输出，无法重放，客户端看到 HTTP 200、`finish_reason` 为 `"abort"`、内容被截断，需要自行重试。平台托管的[批处理任务](batch-api.md#与随时出让搭配)会自动重试被中断的请求。
-- 被让卡的部署按 `sleep_level` 休眠（`auto` 下先 L1，可休眠实例启动时已做过一次 L1 预热，钉住的主机内存早已占着；主机放不下时退回 L2）；按时自动出让、随时出让的部署在卡空出来后自动恢复。server 重启后，被让卡的部署要等有请求时才唤醒。
+- 被让卡的部署按 `sleep_level` 休眠（`auto` 下先 L1，可休眠实例启动时已做过一次 L1 预热，钉住的主机内存早已占着；主机放不下时退回 L2）；按时自动出让、随时出让的部署在卡没人占时自动恢复，不会让醒着的部署为恢复让卡。server 重启后，被让卡的部署要等有请求时才唤醒。
 
 ### 新部署怎样放到共用的卡上
 
@@ -414,7 +414,7 @@ curl --fail-with-body -sS "$API_URL/api/v1/scheduling/yield-policies" \
 | code | 含义 | 主要参数 |
 |---|---|---|
 | `AUTO_SLEEP` | 定时计划或让卡把部署休眠了 | `trigger`（`schedule` 定时计划 / `preempt` 让卡）、`schedule_id`、`scheduled_at`、`level`（平台实际选的级别，1 或 2）；让卡时另有 `reason`（`idle` 闲置满闲置时间 / `rank` 对方等级更高 / `turn` 按时自动出让轮到对方）、`for_deployment`（为哪个部署让卡）、`abort`（是否中断了进行中的请求）、`instances` |
-| `AUTO_WAKE` | 定时计划、唤醒等位、请求或恢复唤醒了实例 | `trigger`（`schedule` / `wake_waiting` / `request` 有请求在等 / `resume` 让卡后拿回）、`schedule_id`、`instances` |
+| `AUTO_WAKE` | 定时计划、唤醒等位、请求或恢复唤醒了实例 | `trigger`（`schedule` / `wake_waiting` / `request` 有请求在等 / `resume` 让卡后在卡没人占时拿回）、`schedule_id`、`instances` |
 | `AUTO_SCALE` | 定时计划改了副本数 | `trigger`、`schedule_id`、`replicas`、`role`（PD） |
 | `WAKE_WAITING` | 一次唤醒放不下，进入等位 | `trigger`（`schedule` / `operator`）、`instances`、`yielded` |
 | `WAKE_WAIT_TIMEOUT` | 等位满 30 分钟放弃 | `trigger`、`instances`、`waited_sec` |

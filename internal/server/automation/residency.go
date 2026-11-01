@@ -13,7 +13,7 @@ const (
 	// deployment.
 	TriggerRequest = "request"
 	// TriggerResume: the deployment was put to sleep for another and takes
-	// its cards back.
+	// its cards back once no one holds them.
 	TriggerResume = "resume"
 	// TriggerPreempt: the deployment gave its cards to one waiting for them.
 	TriggerPreempt = "preempt"
@@ -262,6 +262,11 @@ func (e *Evaluator) residency(now time.Time) {
 		// A holder that gave its cards to one still waking leaves them be,
 		// whether it waits to resume or has requests of its own waiting.
 		if !w.resume && e.stillWakingFor(now, w.id) {
+			continue
+		}
+		// A resume answers no one: it takes its cards back only once no one
+		// holds them, and puts no holder to sleep, busy or idle.
+		if w.resume && e.cardsHeld(w.id) {
 			continue
 		}
 		e.serveWaiter(now, w, ordered, yielding)
@@ -566,4 +571,16 @@ func (e *Evaluator) stillWakingFor(now time.Time, id uint) bool {
 	}
 	delete(r.yieldedFor, id)
 	return false
+}
+
+// cardsHeld says something awake, or something nothing can put to sleep, holds
+// the cards the deployment's sleepers need. A read that fails counts as held:
+// a resume waits for the next look rather than ordering a wake on a guess.
+func (e *Evaluator) cardsHeld(id uint) bool {
+	blocking, err := e.res.source.Blocking(id)
+	if err != nil {
+		e.log.Warn("automation: read what keeps a deployment asleep", "deployment", id, "err", err)
+		return true
+	}
+	return blocking.Blocked || len(blocking.Holders) > 0
 }

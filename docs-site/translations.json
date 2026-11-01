@@ -127,8 +127,8 @@
   "tutorials/trace-slow-request.md": "6e582ef2a8658da1057336f4ee79f5a41179dbae69773cd0b753431027acc065",
   "adr/0058-scheduling-center-acts-through-operator-orders.md": "259f1ebc2bf47bb14efdb2a08f12fa9af495c33b764c56430115146bdbc8bda0",
   "how-to/batch-api.md": "949d867689a3cff3cdc77618a25eb355e7b5ca1a9508e3c22ac6da7531e7b17a",
-  "how-to/scheduling-center.md": "ce7101b7a3f4712098f375e0ccd9dab2e922978e74bd2231c751cc66568017d6",
-  "adr/0059-service-levels-and-the-residency-arbiter.md": "a6f17e715ff8cb8871aded7dc0f218f2f16dc2e2ecc7c0f13cc8f383151ac974",
-  "explanation/service-levels.md": "def61deea16661c350ebbfc411b19144e5ffe4cfec556a5d4c9efc80ab2d6d54",
+  "how-to/scheduling-center.md": "68cfd5aa11abc05c9aac22376cd28df124d23acf0091b55249d7ef7f898f3662",
+  "adr/0059-service-levels-and-the-residency-arbiter.md": "e91775e7f6d02e0a46960794c136d904a8f929ea883bd4c5c201d2fac6c11421",
+  "explanation/service-levels.md": "a6ee81c5c90c08ef3bd2a53b8a0469de11d0e09c967c1aa9399e7bab79de8739",
   "adr/0060-card-health-from-hardware-facts.md": "8df92de8e08e009da35393c77eb14527a9dde33c27ba4efd48cd8bcca1afa48b"
 }
