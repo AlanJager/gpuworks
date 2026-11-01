@@ -21,12 +21,14 @@ export function waitText(t: TFunction<"scheduling">, ms?: number): string {
 /**
  * SharingTable is the deployments that share cards over the window: how long
  * they were awake, how often they changed places with others and how long the
- * requests held for their wake waited.
+ * requests held for their wake waited. When the server says the switch counts
+ * are not known for the range, those columns show a dash.
  */
-export function SharingTable({ rows }: { rows: TimelineDeployment[] }) {
+export function SharingTable({ rows, switchesAvailable = true }: { rows: TimelineDeployment[]; switchesAvailable?: boolean }) {
   const { t } = useTranslation("scheduling");
   const { t: tDeploy } = useTranslation("deployments");
   const num = (key: keyof TimelineDeployment) => (_: unknown, row: TimelineDeployment) => <span className="scheduling-num">{String(row[key])}</span>;
+  const switchNum = (key: keyof TimelineDeployment) => (switchesAvailable ? num(key) : () => <span className="scheduling-num">—</span>);
   const columns: ResourceColumn<TimelineDeployment>[] = [
     { key: "deployment", title: t("timeline.columns.deployment"), width: 200, render: (_: unknown, row) => <DeploymentName row={row} /> },
     { key: "cards", title: t("timeline.columns.cards"), width: 180, render: (_: unknown, row) => <CardsCell cards={row.cards} /> },
@@ -37,9 +39,9 @@ export function SharingTable({ rows }: { rows: TimelineDeployment[] }) {
       width: 170,
       render: (_: unknown, row) => <span className="scheduling-num">{t("timeline.awakeShare", { span: durationText(t, row.awake_seconds, "elapsed"), present: durationText(t, row.present_seconds, "elapsed"), share: Math.round(row.awake_share * 1000) / 10 })}</span>,
     },
-    { key: "switches", title: t("timeline.columns.switches"), width: 90, render: num("switches") },
-    { key: "yielded", title: t("timeline.columns.yielded"), width: 90, render: num("yielded") },
-    { key: "yielded_to", title: t("timeline.columns.yieldedTo"), width: 90, render: num("yielded_to") },
+    { key: "switches", title: t("timeline.columns.switches"), width: 90, render: switchNum("switches") },
+    { key: "yielded", title: t("timeline.columns.yielded"), width: 90, render: switchNum("yielded") },
+    { key: "yielded_to", title: t("timeline.columns.yieldedTo"), width: 90, render: switchNum("yielded_to") },
     { key: "held", title: t("timeline.columns.held"), width: 110, render: num("held_requests") },
     { key: "p50", title: t("timeline.columns.waitP50"), width: 100, render: (_: unknown, row) => <span className="scheduling-num">{waitText(t, row.wait_p50_ms)}</span> },
     { key: "p95", title: t("timeline.columns.waitP95"), width: 100, render: (_: unknown, row) => <span className="scheduling-num">{waitText(t, row.wait_p95_ms)}</span> },

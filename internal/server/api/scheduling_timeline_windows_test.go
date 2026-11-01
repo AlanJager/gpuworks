@@ -14,7 +14,7 @@ import (
 
 // The windows the sharing stats answer for are the server's, listed in the
 // answer: 15 minutes to 24 hours, 6 hours when none is asked for; a yield
-// counts in the windows it falls in. A node's lanes keep 6 and 24 hours.
+// counts in the windows it falls in. A node's lanes offer the same four.
 func TestSharingStatsWindowsAreTheServers(t *testing.T) {
 	r := newTimelineRig(t)
 	r.event("inst-shared", r.shared.ID, "state", "INSTANCE_STATUS_UPDATED", 0, `{"state":"running","phase":""}`)
@@ -22,7 +22,7 @@ func TestSharingStatsWindowsAreTheServers(t *testing.T) {
 	r.event("", r.plain.ID, store.EventKindAutomation, "AUTO_SLEEP", time.Hour, fmt.Sprintf(`{"trigger":"preempt","reason":"turn","for_deployment":%d}`, r.shared.ID))
 	r.st.AddDeploymentEventCode(r.plain.ID, store.EventKindAutomation, "AUTO_SLEEP", map[string]any{"trigger": "preempt", "reason": "turn", "for_deployment": r.shared.ID})
 	status, body := r.get("?sharing=1")
-	if status != http.StatusOK || !strings.Contains(body, `"key":"6h","seconds":21600},"windows":[{"key":"15m","seconds":900},{"key":"1h","seconds":3600},{"key":"6h","seconds":21600},{"key":"24h","seconds":86400}]`) {
+	if status != http.StatusOK || !strings.Contains(body, `"key":"6h","seconds":21600,"custom":false},"windows":[{"key":"15m","seconds":900},{"key":"1h","seconds":3600},{"key":"6h","seconds":21600},{"key":"24h","seconds":86400}]`) {
 		t.Fatalf("default = %d %s", status, body)
 	}
 	for window, want := range map[string]float64{"15m": 1, "1h": 1, "6h": 2, "24h": 2} {
@@ -38,9 +38,9 @@ func TestSharingStatsWindowsAreTheServers(t *testing.T) {
 		t.Fatalf("15m window = %+v %v", quarter.Window, err)
 	}
 	for query, field := range map[string]string{
-		"?sharing=1&window=2h":                 "window",
-		"?node=" + r.node.UUID + "&window=15m": "window",
-		"?sharing=1&hours=12":                  "hours",
+		"?sharing=1&window=2h":                "window",
+		"?node=" + r.node.UUID + "&window=2h": "window",
+		"?sharing=1&hours=12":                 "hours",
 	} {
 		status, body := r.get(query)
 		if status != http.StatusBadRequest || !strings.Contains(body, `"field":"`+field+`"`) {

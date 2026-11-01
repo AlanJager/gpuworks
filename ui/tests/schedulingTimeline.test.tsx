@@ -16,7 +16,8 @@ const userEvent = (await import("@testing-library/user-event")).default;
 const { MemoryRouter } = await import("react-router-dom");
 const { schedulingApi } = await import("../src/schedulingApi.ts");
 const { default: ResidencyTimeline } = await import("../src/pages/scheduling/ResidencyTimeline.tsx");
-const { blockOf, ticksOf, lanesOf, CHART_WIDTH } = await import("../src/pages/scheduling/timelineChart.ts");
+const { blockOf, ticksOf, tickLabel, lanesOf, CHART_WIDTH } = await import("../src/pages/scheduling/timelineChart.ts");
+const { formatTime } = await import("../src/i18n/datetime.ts");
 const { colors } = await import("../src/theme/tokens.ts");
 type Timeline = import("../src/schedulingApi.ts").SchedulingTimeline;
 type BoardNode = import("../src/schedulingApi.ts").BoardNode;
@@ -25,7 +26,7 @@ const s = locale.scheduling;
 const original = { ...schedulingApi };
 const FROM = "2026-10-28T06:00:00Z";
 const TO = "2026-10-28T12:00:00Z";
-const NODE_WINDOWS = [{ key: "6h", seconds: 21600 }, { key: "24h", seconds: 86400 }];
+const NODE_WINDOWS = [{ key: "15m", seconds: 900 }, { key: "1h", seconds: 3600 }, { key: "6h", seconds: 21600 }, { key: "24h", seconds: 86400 }];
 const at = (hoursAfterFrom: number) => new Date(Date.parse(FROM) + hoursAfterFrom * 3600_000).toISOString();
 
 const nodes: BoardNode[] = [{
@@ -39,7 +40,7 @@ const nodes: BoardNode[] = [{
 function timeline(overrides: Partial<Timeline> = {}): Timeline {
   return {
     scope: "node",
-    window: { from: FROM, to: TO, hours: 6, key: "6h", seconds: 21600 },
+    window: { from: FROM, to: TO, hours: 6, key: "6h", seconds: 21600, custom: false },
     windows: NODE_WINDOWS,
     nodes: [{
       uuid: "node-a", name: "gpu-a",
@@ -61,6 +62,7 @@ function timeline(overrides: Partial<Timeline> = {}): Timeline {
       { deployment_id: 8, deployment: "llama", yield_policy: "anytime", awake_seconds: 30, awake_share: 0.0014, present_seconds: 21600, switches: 0, yielded: 0, yielded_to: 0, wakes: 0, held_requests: 0, cards: [] },
       { deployment_id: 11, deployment: "old-batch", deployment_deleted: true, yield_policy: "", awake_seconds: 6900, awake_share: 0.9583, present_seconds: 7200, switches: 2, yielded: 2, yielded_to: 0, wakes: 0, held_requests: 0, cards: [] },
     ],
+    switches_available: true,
     ...overrides,
   };
 }
@@ -89,13 +91,13 @@ test("the chart geometry is to scale: a block's width is its share of the window
   assert.equal(blockOf({ deployment_id: 1, deployment: "d", instance: "i", state: "awake", from: at(-3), to: at(1) }, span).x, 0);
   assert.ok(blockOf({ deployment_id: 1, deployment: "d", instance: "i", state: "awake", from: at(3), to: at(3.0001) }, span).width >= 1);
   assert.equal(blockOf({ deployment_id: 1, deployment: "d", instance: "i", state: "awake", from: at(5.99), to: at(6) }, span).x + blockOf({ deployment_id: 1, deployment: "d", instance: "i", state: "awake", from: at(5.99), to: at(6) }, span).width, CHART_WIDTH);
-  const six = ticksOf(span, 6);
+  const six = ticksOf(span);
   assert.ok(six.length >= 5 && six.length <= 7, `${six.length} hourly ticks in 6 h`);
   for (const tick of six) {
     assert.equal(new Date(tick.ms).getMinutes(), 0);
     assert.equal(tick.x, ((tick.ms - span.fromMs) / (span.toMs - span.fromMs)) * CHART_WIDTH);
   }
-  const wide = ticksOf({ fromMs: Date.parse(FROM), toMs: Date.parse(FROM) + 24 * 3600_000 }, 24);
+  const wide = ticksOf({ fromMs: Date.parse(FROM), toMs: Date.parse(FROM) + 24 * 3600_000 });
   assert.ok(wide.length >= 5 && wide.length <= 7, `${wide.length} four-hour ticks in 24 h`);
   assert.ok(wide.every((tick) => new Date(tick.ms).getHours() % 4 === 0));
 });
@@ -150,7 +152,7 @@ test("a window nobody held a card in says so, and an empty sharing table says so
     deployments: [],
   });
   mount();
-  assert.ok(await screen.findByText(i18n.t("scheduling:timeline.noneInWindow", { hours: 6 })));
+  assert.ok(await screen.findByText(i18n.t("scheduling:timeline.noneInWindow", { span: i18n.t("scheduling:timeline.hours", { hours: 6 }) })));
   assert.ok(screen.getByText(s.timeline.noneOnCard));
   assert.ok(screen.getByText(s.timeline.sharingEmpty));
 });
@@ -209,24 +211,52 @@ test("a block names itself to assistive tech and shows a tooltip on hover and on
   assert.equal(screen.queryByRole("tooltip"), null);
 });
 
-test("the window selector offers the server's windows, asks for 24 hours and keeps showing the card meanwhile", async () => {
+const rangeBox = () => screen.getByRole("combobox", { name: i18n.t("deployments:timeRange.ariaLabel") });
+const timeRange = (key: string) => i18n.t("deployments:timeRange." + key);
+
+async function pickQuick(user: ReturnType<typeof userEvent.setup>, key: string) {
+  await user.click(await screen.findByRole("combobox", { name: i18n.t("deployments:timeRange.ariaLabel") }));
+  await user.click(await screen.findByTitle(timeRange(key)));
+}
+
+// Answers a quick window with the lanes of its length, as the server does.
+const answerWindow = (query: { window?: string }) => {
+  const seconds = ({ "15m": 900, "1h": 3600, "6h": 21600, "24h": 86400 } as Record<string, number>)[query.window ?? "6h"];
+  const key = query.window ?? "6h";
+  return timeline({ window: { from: FROM, to: new Date(Date.parse(FROM) + seconds * 1000).toISOString(), hours: Math.floor(seconds / 3600), key, seconds, custom: false } });
+};
+
+test("the range picker offers the server's windows and a custom range, asks for 15 minutes, 1 hour and 24 hours and keeps showing the card meanwhile", async () => {
   const asked: unknown[] = [];
   schedulingApi.timeline = async (query) => {
     asked.push(query);
-    const key = query.window ?? "6h";
-    const hours = key === "24h" ? 24 : 6;
-    return timeline({ window: { from: FROM, to: TO, hours, key, seconds: hours * 3600 } });
+    return answerWindow(query as { window?: string });
   };
   const user = mount();
   await screen.findByRole("group", { name: i18n.t("scheduling:timeline.gpuAria", { node: "gpu-a", index: 0 }) });
   // The first read leaves the window to the server, whose answer lists the choices.
   assert.deepEqual(asked, [{ nodes: ["node-a"], window: undefined }]);
-  const selector = await screen.findByRole("radiogroup", { name: s.timeline.window });
-  assert.equal(within(selector).getAllByRole("radio").length, NODE_WINDOWS.length);
-  assert.ok(within(selector).getByLabelText(i18n.t("scheduling:timeline.hours", { hours: 6 })));
-  await user.click(within(selector).getByText(i18n.t("scheduling:timeline.hours", { hours: 24 })));
-  await waitFor(() => assert.deepEqual(asked.at(-1), { nodes: ["node-a"], window: "24h" }));
+  const box = await waitFor(() => rangeBox());
+  assert.ok(within(box.closest(".ant-select") as HTMLElement).getByTitle(timeRange("6h")), "the picker shows the server's default window");
+  await user.click(box);
+  const offered = [...document.querySelectorAll(".ant-select-item-option")].map((el) => el.getAttribute("title"));
+  assert.deepEqual(offered, [timeRange("15m"), timeRange("1h"), timeRange("6h"), timeRange("1d"), timeRange("custom")]);
+  await user.click(await screen.findByTitle(timeRange("15m")));
+  await waitFor(() => assert.deepEqual(asked.at(-1), { nodes: ["node-a"], window: "15m" }));
   assert.ok(screen.getByRole("group", { name: i18n.t("scheduling:timeline.gpuAria", { node: "gpu-a", index: 0 }) }));
+  await pickQuick(user, "1h");
+  await waitFor(() => assert.deepEqual(asked.at(-1), { nodes: ["node-a"], window: "1h" }));
+  await pickQuick(user, "1d");
+  await waitFor(() => assert.deepEqual(asked.at(-1), { nodes: ["node-a"], window: "24h" }));
+  assert.ok(within(rangeBox().closest(".ant-select") as HTMLElement).getByTitle(timeRange("1d")));
+});
+
+test("only the windows the server lists are offered", async () => {
+  schedulingApi.timeline = async () => timeline({ windows: [{ key: "6h", seconds: 21600 }, { key: "24h", seconds: 86400 }] });
+  const user = mount();
+  await user.click(await waitFor(() => rangeBox()));
+  const offered = [...document.querySelectorAll(".ant-select-item-option")].map((el) => el.getAttribute("title"));
+  assert.deepEqual(offered, [timeRange("6h"), timeRange("1d"), timeRange("custom")]);
 });
 
 test("the sharing table lists the yield policy, awake time, switches, yields and the held requests' waits", async () => {
@@ -306,7 +336,176 @@ test("a failed refresh keeps the last timeline and warns", async () => {
   };
   const user = mount();
   await screen.findByRole("group", { name: i18n.t("scheduling:timeline.gpuAria", { node: "gpu-a", index: 0 }) });
-  await user.click(within(await screen.findByRole("radiogroup", { name: s.timeline.window })).getByText(i18n.t("scheduling:timeline.hours", { hours: 24 })));
+  await pickQuick(user, "1d");
   assert.ok(await screen.findByText(i18n.t("scheduling:timeline.refreshFailed", { detail: "boom" })));
   assert.ok(screen.getByRole("group", { name: i18n.t("scheduling:timeline.gpuAria", { node: "gpu-a", index: 0 }) }));
+});
+
+// Picks a custom range in the shared picker: the range option reveals the date
+// inputs, the typed dates are confirmed with OK.
+async function pickCustom(user: ReturnType<typeof userEvent.setup>, start: string, end: string) {
+  await user.click(await screen.findByRole("combobox", { name: i18n.t("deployments:timeRange.ariaLabel") }));
+  await user.click(await screen.findByTitle(timeRange("custom")));
+  const inputs = () => [...document.querySelectorAll<HTMLInputElement>(".ant-picker-input input")];
+  await waitFor(() => assert.equal(inputs().length, 2));
+  await user.click(inputs()[0]);
+  await user.type(inputs()[0], start + "{Enter}");
+  await user.type(inputs()[1], end + "{Enter}");
+  // The OK button animates in with pointer events off; a click event is what a press delivers.
+  fireEvent.click(document.querySelector(".ant-picker-ok button") as HTMLElement);
+}
+
+// The intervals the page set up, to tell a polled range from one read once.
+function watchIntervals() {
+  const seen: number[] = [];
+  const original = globalThis.setInterval;
+  globalThis.setInterval = ((handler: TimerHandler, ms?: number, ...args: unknown[]) => {
+    seen.push(ms ?? 0);
+    return original(handler, ms, ...args);
+  }) as typeof setInterval;
+  return { seen, restore: () => { globalThis.setInterval = original; } };
+}
+
+const CUSTOM_START = "2026-10-28 06:00:00";
+const CUSTOM_END = "2026-10-28 07:30:00";
+const local = (text: string) => new Date(text.replace(" ", "T")).getTime();
+const customWindow = () => ({
+  from: new Date(local(CUSTOM_START)).toISOString(), to: new Date(local(CUSTOM_END)).toISOString(), hours: 1, key: "custom", seconds: 5400, custom: true,
+});
+
+test("a custom range is asked for by since and until, is read once and is not polled; a quick window is polled", async () => {
+  const intervals = watchIntervals();
+  try {
+    const asked: unknown[] = [];
+    schedulingApi.timeline = async (query) => {
+      asked.push(query);
+      if ("since" in query) return timeline({ window: customWindow() });
+      return answerWindow(query as { window?: string });
+    };
+    const user = mount();
+    await screen.findByRole("group", { name: i18n.t("scheduling:timeline.gpuAria", { node: "gpu-a", index: 0 }) });
+    const polled = () => intervals.seen.filter((ms) => ms === 60_000).length;
+    assert.equal(polled(), 1, "the default window is polled once a minute");
+    await pickCustom(user, CUSTOM_START, CUSTOM_END);
+    await waitFor(() => assert.deepEqual(asked.at(-1), {
+      nodes: ["node-a"], since: new Date(local(CUSTOM_START)).toISOString().replace(".000Z", "Z"), until: new Date(local(CUSTOM_END)).toISOString().replace(".000Z", "Z"),
+    }));
+    // The answer is drawn, the picker shows the range, and nothing polls it.
+    await screen.findByRole("group", { name: i18n.t("scheduling:timeline.gpuAria", { node: "gpu-a", index: 0 }) });
+    assert.deepEqual([...document.querySelectorAll<HTMLInputElement>(".ant-picker-input input")].map((input) => input.value), [CUSTOM_START, CUSTOM_END]);
+    const polledAtCustom = polled();
+    const readsAtCustom = asked.length;
+    assert.equal(polledAtCustom, 1, "a custom range sets up no 1-minute poll");
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    assert.equal(asked.length, readsAtCustom, "and is not read again");
+    // Back to a quick window: polled again, and no custom bounds in the query.
+    await pickQuick(user, "1h");
+    await waitFor(() => assert.deepEqual(asked.at(-1), { nodes: ["node-a"], window: "1h" }));
+    assert.equal(polled(), 2);
+  } finally {
+    intervals.restore();
+  }
+});
+
+test("a range nobody held a card in says which: the last 15 minutes by length, a custom range by its ends", async () => {
+  const empty = { nodes: [{ uuid: "node-a", name: "gpu-a", gpus: [{ index: 0, truncated: false, segments: [] }] }], deployments: [] };
+  schedulingApi.timeline = async (query) => {
+    if ("since" in query) return timeline({ ...empty, window: customWindow() });
+    return { ...answerWindow(query as { window?: string }), ...empty };
+  };
+  const user = mount();
+  assert.ok(await screen.findByText(i18n.t("scheduling:timeline.noneInWindow", { span: i18n.t("scheduling:timeline.hours", { hours: 6 }) })));
+  await pickQuick(user, "15m");
+  assert.ok(await screen.findByText(i18n.t("scheduling:timeline.noneInWindow", { span: i18n.t("scheduling:timeline.minutes", { minutes: 15 }) })));
+  await pickCustom(user, CUSTOM_START, CUSTOM_END);
+  const w = customWindow();
+  assert.ok(await screen.findByText(i18n.t("scheduling:timeline.noneInRange", { from: formatTime(w.from), to: formatTime(w.to) })));
+  assert.equal(screen.queryByText(new RegExp(i18n.t("scheduling:timeline.noneInWindow", { span: "X" }).split("X")[0])), null);
+});
+
+test("a custom range the server refuses keeps the last timeline and says why; a refused first read says it too", async () => {
+  schedulingApi.timeline = async (query) => {
+    if ("since" in query) throw new Error("since is at most 7 days before until");
+    return answerWindow(query as { window?: string });
+  };
+  const user = mount();
+  await screen.findByRole("group", { name: i18n.t("scheduling:timeline.gpuAria", { node: "gpu-a", index: 0 }) });
+  await pickCustom(user, CUSTOM_START, CUSTOM_END);
+  assert.ok(await screen.findByText(i18n.t("scheduling:timeline.refreshFailed", { detail: "since is at most 7 days before until" })));
+  assert.ok(screen.getByRole("group", { name: i18n.t("scheduling:timeline.gpuAria", { node: "gpu-a", index: 0 }) }));
+  // Retrying asks again.
+  let calls = 0;
+  schedulingApi.timeline = async (query) => {
+    calls += 1;
+    if ("since" in query) return timeline({ window: customWindow() });
+    return answerWindow(query as { window?: string });
+  };
+  await user.click(screen.getByRole("button", { name: s.page.retry }));
+  await waitFor(() => assert.equal(calls, 1));
+  await waitFor(() => assert.equal(screen.queryByText(i18n.t("scheduling:timeline.refreshFailed", { detail: "since is at most 7 days before until" })), null));
+});
+
+test("when the server cannot give the switch counts for the range, the columns show dashes and a note says why", async () => {
+  schedulingApi.timeline = async (query) => {
+    if ("since" in query) return timeline({ window: customWindow(), switches_available: false });
+    return answerWindow(query as { window?: string });
+  };
+  const user = mount();
+  const qwenRow = () => within([...document.querySelectorAll<HTMLElement>(".ant-table-tbody tr")].find((tr) => tr.textContent?.includes("qwen")) as HTMLElement);
+  await screen.findByText(s.timeline.sharingTitle);
+  const qwen = qwenRow();
+  assert.ok(qwen.getByText("3"), "the counts are shown when the server has them");
+  assert.equal(screen.queryByText(s.timeline.switchesUnavailable), null);
+  await pickCustom(user, CUSTOM_START, CUSTOM_END);
+  assert.ok(await screen.findByText(s.timeline.switchesUnavailable));
+  const after = qwenRow();
+  assert.equal(after.queryByText("3"), null, "switches");
+  assert.equal(after.queryByText("2"), null, "yielded to");
+  // Switches, yielded and yielded-to are dashes; the held requests and the awake time are still figures.
+  assert.ok(after.getAllByText("—").length >= 3);
+  assert.ok(after.getByText("4"), "held requests");
+});
+
+test("ticks follow the range: minutes for a quarter hour, ten minutes for an hour, hours for a day, days for a week", () => {
+  const start = new Date(2026, 9, 28, 6, 7, 30).getTime();
+  const spanOf = (ms: number) => ({ fromMs: start, toMs: start + ms });
+  const clock = (ms: number) => new Date(ms);
+  const quarter = ticksOf(spanOf(15 * 60_000));
+  assert.ok(quarter.length >= 4 && quarter.length <= 7, String(quarter.length));
+  assert.ok(quarter.every((tick) => clock(tick.ms).getMinutes() % 3 === 0 && clock(tick.ms).getSeconds() === 0));
+  const hour = ticksOf(spanOf(3600_000));
+  assert.ok(hour.length >= 5 && hour.length <= 7 && hour.every((tick) => clock(tick.ms).getMinutes() % 10 === 0), hour.length + " ticks in an hour");
+  const day = ticksOf(spanOf(86_400_000));
+  assert.ok(day.length >= 5 && day.length <= 7 && day.every((tick) => clock(tick.ms).getHours() % 4 === 0 && clock(tick.ms).getMinutes() === 0));
+  const week = ticksOf(spanOf(7 * 86_400_000));
+  assert.ok(week.length >= 6 && week.length <= 8 && week.every((tick) => clock(tick.ms).getHours() === 0 && clock(tick.ms).getMinutes() === 0), week.length + " ticks in a week");
+  // Every tick is inside the range and sits where its time is on the track.
+  for (const [ms, ticks] of [[15 * 60_000, quarter], [7 * 86_400_000, week]] as const) {
+    for (const tick of ticks) {
+      assert.ok(tick.ms >= start && tick.ms <= start + ms);
+      assert.equal(tick.x, ((tick.ms - start) / ms) * CHART_WIDTH);
+    }
+  }
+  // Labels: the clock inside a day, date and time over a day, the date alone for day ticks.
+  const label = tickLabel(quarter[0].ms, spanOf(15 * 60_000));
+  assert.match(label, /^\d\d:\d\d$/);
+  assert.match(tickLabel(day[0].ms, spanOf(86_400_000)), /^\d\d:\d\d$/);
+  assert.match(tickLabel(new Date(2026, 9, 29, 12, 0).getTime(), spanOf(2 * 86_400_000)), /^10-29 12:00$/);
+  assert.match(tickLabel(week[0].ms, spanOf(7 * 86_400_000)), /^\d\d-\d\d$/);
+});
+
+test("the picker follows the answered window: 15 minutes, then a custom range, shows each", async () => {
+  schedulingApi.timeline = async (query) => {
+    if ("since" in query) return timeline({ window: customWindow() });
+    return answerWindow(query as { window?: string });
+  };
+  const user = mount();
+  await screen.findByRole("group", { name: i18n.t("scheduling:timeline.gpuAria", { node: "gpu-a", index: 0 }) });
+  await pickQuick(user, "15m");
+  await waitFor(() => assert.ok(within(rangeBox().closest(".ant-select") as HTMLElement).getByTitle(timeRange("15m"))));
+  // The lanes' axis is the 15 minute window: ticks at whole minutes.
+  const labels = [...document.querySelectorAll(".timeline-axis-ticks > span")].map((el) => el.textContent ?? "");
+  assert.ok(labels.length >= 4 && labels.every((text) => /^\d\d:\d\d$/.test(text)), labels.join(","));
+  await pickCustom(user, CUSTOM_START, CUSTOM_END);
+  await waitFor(() => assert.ok(within(rangeBox().closest(".ant-select") as HTMLElement).getByTitle(timeRange("custom"))));
 });

@@ -4,7 +4,8 @@ import "time"
 
 // SchedulingTimeline is the scheduling center's residency timeline for some
 // nodes: for each GPU, which deployment's instance held it and in what state
-// over a window ending now, and the stats of the deployments that share cards.
+// over a window (a quick one ending now, or a custom range), and the stats of
+// the deployments that share cards.
 type SchedulingTimeline struct {
 	// Scope says what the deployments' figures count: TimelineScopeNode,
 	// only their instances on the named nodes; TimelineScopeFleet, all of
@@ -16,6 +17,12 @@ type SchedulingTimeline struct {
 	Windows     []TimelineWindowOption `json:"windows"`
 	Nodes       []TimelineNode         `json:"nodes"`
 	Deployments []TimelineDeployment   `json:"deployments"`
+	// SwitchesAvailable says the deployments' counts of yields, yields to
+	// them and wakes (Yielded, YieldedTo, Wakes, Switches) are known for the
+	// window. They come from the scheduling activity's memory, which holds
+	// the last 24 hours, so a node's range that begins earlier has none: the
+	// four are then 0 and mean "not known", and the UI shows no figure.
+	SwitchesAvailable bool `json:"switches_available"`
 }
 
 // The scopes of a timeline's deployment figures.
@@ -24,16 +31,23 @@ const (
 	TimelineScopeFleet = "fleet"
 )
 
-// TimelineWindow is the stretch of time the timeline covers, ending at To:
-// Key names it (one of Windows), Seconds is its length and Hours its whole
-// hours (0 for a window under an hour).
+// TimelineWindow is the stretch of time the timeline covers: a quick window
+// ends at To, which is now, and Key names it (one of Windows); a custom range
+// (Custom true, Key TimelineWindowCustom) is the one asked for with since and
+// until. Seconds is its length and Hours its whole hours (0 for a range under
+// an hour).
 type TimelineWindow struct {
 	From    time.Time `json:"from"`
 	To      time.Time `json:"to"`
 	Hours   int       `json:"hours"`
 	Key     string    `json:"key"`
 	Seconds int64     `json:"seconds"`
+	Custom  bool      `json:"custom"`
 }
+
+// TimelineWindowCustom is the Key of a custom range, which is no entry of
+// the Windows a read lists.
+const TimelineWindowCustom = "custom"
 
 // TimelineWindowOption is one window a timeline may be asked for.
 type TimelineWindowOption struct {

@@ -6,7 +6,7 @@ import type { TFunction } from "i18next";
 import type { SchedulingTimeline, TimelineDeployment, TimelineGPU, TimelineNode, TimelineSegment } from "../../schedulingApi";
 import { formatTime } from "../../i18n/datetime";
 import { colors } from "../../theme/tokens";
-import { CHART_WIDTH, blockOf, lanesOf, stateColor, stateOrder, ticksOf, windowSpan, type Lane, type Span } from "./timelineChart";
+import { CHART_WIDTH, blockOf, lanesOf, stateColor, stateOrder, tickLabel, ticksOf, windowSpan, type Lane, type Span } from "./timelineChart";
 
 const LANE_HEIGHT = 18;
 
@@ -36,15 +36,15 @@ export function TimelineNodes({ timeline, gpuNames }: { timeline: SchedulingTime
   return (
     <div className="scheduling-timeline-nodes">
       {timeline.nodes.map((node) => (
-        <TimelineNodeBlock key={node.uuid} node={node} span={span} hours={timeline.window.hours} stats={timeline.deployments} gpuNames={gpuNames} />
+        <TimelineNodeBlock key={node.uuid} node={node} span={span} stats={timeline.deployments} gpuNames={gpuNames} />
       ))}
     </div>
   );
 }
 
-function TimelineNodeBlock({ node, span, hours, stats, gpuNames }: { node: TimelineNode; span: Span; hours: number; stats: TimelineDeployment[]; gpuNames: Map<string, string> }) {
+function TimelineNodeBlock({ node, span, stats, gpuNames }: { node: TimelineNode; span: Span; stats: TimelineDeployment[]; gpuNames: Map<string, string> }) {
   const { t } = useTranslation("scheduling");
-  const ticks = ticksOf(span, hours);
+  const ticks = ticksOf(span);
   return (
     <section className="scheduling-node" aria-label={t("timeline.nodeAria", { node: node.name })}>
       <Typography.Text strong>{node.name}</Typography.Text>
@@ -55,7 +55,7 @@ function TimelineNodeBlock({ node, span, hours, stats, gpuNames }: { node: Timel
           <div className="timeline-axis-ticks">
             {ticks.map((tick) => (
               <span key={tick.ms} style={{ left: `${(tick.x / CHART_WIDTH) * 100}%` }}>
-                {new Date(tick.ms).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}
+                {tickLabel(tick.ms, span)}
               </span>
             ))}
           </div>

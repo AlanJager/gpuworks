@@ -46,6 +46,9 @@ type overviewCache struct {
 	// activity is the scheduling activity's answers per range
 	// (scheduling_activity.go).
 	activity activityCache
+	// timeline is the answers of custom ranges in the past
+	// (scheduling_timeline_range.go).
+	timeline timelineCache
 }
 
 // schedulingOverview answers GET /scheduling/overview: every node and each

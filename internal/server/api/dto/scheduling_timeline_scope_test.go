@@ -13,7 +13,7 @@ import (
 func TestSchedulingTimelineScopeWire(t *testing.T) {
 	from := time.Date(2026, 10, 31, 6, 0, 0, 0, time.UTC)
 	window := TimelineWindow{From: from, To: from.Add(6 * time.Hour), Hours: 6, Key: "6h", Seconds: 21600}
-	const windowWire = `"window":{"from":"2026-10-31T06:00:00Z","to":"2026-10-31T12:00:00Z","hours":6,"key":"6h","seconds":21600},"windows":[{"key":"6h","seconds":21600}],"nodes":[],"deployments":[]}`
+	const windowWire = `"window":{"from":"2026-10-31T06:00:00Z","to":"2026-10-31T12:00:00Z","hours":6,"key":"6h","seconds":21600,"custom":false},"windows":[{"key":"6h","seconds":21600}],"nodes":[],"deployments":[],"switches_available":true}`
 	for _, tc := range []struct {
 		scope, wire string
 	}{
@@ -23,7 +23,7 @@ func TestSchedulingTimelineScopeWire(t *testing.T) {
 		t.Run(tc.scope, func(t *testing.T) {
 			in := SchedulingTimeline{
 				Scope: tc.scope, Window: window, Windows: []TimelineWindowOption{{Key: "6h", Seconds: 21600}},
-				Nodes: []TimelineNode{}, Deployments: []TimelineDeployment{},
+				Nodes: []TimelineNode{}, Deployments: []TimelineDeployment{}, SwitchesAvailable: true,
 			}
 			if got := marshalString(t, in); got != tc.wire {
 				t.Fatalf("marshal\n got %s\nwant %s", got, tc.wire)

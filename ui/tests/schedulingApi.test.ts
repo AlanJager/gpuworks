@@ -161,9 +161,12 @@ test("the residency timeline names every node and the window in the query", asyn
   await schedulingApi.timeline({ sharing: true, window: "15m" });
   // Without a window the server answers its default.
   await schedulingApi.timeline({ sharing: true });
+  // A custom range is asked for by since and until, and no window.
+  await schedulingApi.timeline({ nodes: ["n-1"], since: "2026-10-28T06:00:00Z", until: "2026-10-28T07:30:00Z" });
   assert.deepEqual(seen, [
     { url: "/api/v1/scheduling/timeline?node=n-1&node=n-2&window=24h", method: undefined, body: undefined },
     { url: "/api/v1/scheduling/timeline?sharing=1&window=15m", method: undefined, body: undefined },
     { url: "/api/v1/scheduling/timeline?sharing=1", method: undefined, body: undefined },
+    { url: "/api/v1/scheduling/timeline?node=n-1&since=2026-10-28T06%3A00%3A00Z&until=2026-10-28T07%3A30%3A00Z", method: undefined, body: undefined },
   ]);
 });

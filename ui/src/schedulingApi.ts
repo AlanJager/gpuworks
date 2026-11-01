@@ -21,8 +21,8 @@ export interface BoardOccupant {
 }
 
 // The residency timeline (GET /scheduling/timeline): for the nodes of a board
-// page, which deployment's instance held each GPU over the last `hours` and in
-// what state, and the stats of the deployments that share GPUs.
+// page, which deployment's instance held each GPU over a window or a custom
+// range and in what state, and the stats of the deployments that share GPUs.
 export type TimelineState = "awake" | "asleep" | "switching" | "starting";
 
 export interface TimelineSegment {
@@ -91,12 +91,14 @@ export type TimelineScope = "node" | "fleet";
 
 export interface SchedulingTimeline {
   scope: TimelineScope;
-  /** The window answered: hours is its whole hours (0 under an hour). */
-  window: { from: string; to: string; hours: number; key: string; seconds: number };
+  /** The range answered: hours is its whole hours (0 under an hour); a custom range has key "custom" and custom true. */
+  window: { from: string; to: string; hours: number; key: string; seconds: number; custom: boolean };
   /** The windows the picker offers, in order; the server's list, not the UI's. */
   windows: TimelineWindowOption[];
   nodes: TimelineNode[];
   deployments: TimelineDeployment[];
+  /** False when the deployments' yields, yields to them and wakes are not known for the range (the activity keeps 24 hours): those figures are 0 and mean unknown. */
+  switches_available: boolean;
 }
 
 /** One reason the scheduling activity counts, with the range's count. */
@@ -138,7 +140,7 @@ export interface SchedulingActivity {
 const ACTIVITY_WINDOW: Partial<Record<QuickRangeKey, string>> = { "15m": "15m", "1h": "1h", "6h": "6h", "1d": "24h", "1w": "7d" };
 
 // rfc3339 is an instant as the API's times are written, to the second.
-function rfc3339(ms: number): string {
+export function rfc3339(ms: number): string {
   return new Date(Math.floor(ms / 1000) * 1000).toISOString().replace(".000Z", "Z");
 }
 
@@ -316,12 +318,17 @@ export const schedulingApi = {
   // The residency timeline of some nodes, or (sharing) the stats of the
   // deployments that share cards across the fleet and no lanes.
   // window is one of the answer's windows; without it the server answers its
-  // default.
-  timeline: (query: { nodes: string[]; window?: string } | { sharing: true; window?: string }) => {
+  // default. A node's timeline may instead be asked for a custom range, since
+  // and until as RFC 3339 times.
+  timeline: (query: { nodes: string[]; window?: string } | { nodes: string[]; since: string; until: string } | { sharing: true; window?: string }) => {
     const params = new URLSearchParams();
     if ("sharing" in query) params.set("sharing", "1");
     else for (const node of query.nodes) params.append("node", node);
-    if (query.window) params.set("window", query.window);
+    if ("window" in query && query.window) params.set("window", query.window);
+    if ("since" in query) {
+      params.set("since", query.since);
+      params.set("until", query.until);
+    }
     return getJSON<SchedulingTimeline>(`/api/v1/scheduling/timeline?${params.toString()}`);
   },
   // The scheduling activity over a quick range or a custom one.
