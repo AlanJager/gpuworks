@@ -848,5 +848,99 @@
       "stopped": "已停止这张卡的调度",
       "schedulable": "这张卡已可调度"
     }
+  },
+  "cardHealth": {
+    "tab": "健康检查",
+    "check": {
+      "vendor_health": "厂商健康",
+      "vendor_cli": "厂商工具",
+      "occupancy": "平台外占用",
+      "pcie_link": "PCIe 链路",
+      "pcie_errors": "PCIe 错误",
+      "xid": "Xid",
+      "nvlink": "NVLink",
+      "runtime": "运行时"
+    },
+    "checkHelp": {
+      "vendor_health": "厂商工具对这张卡的结论：ECC、行重映射、npu-smi 健康、RAS 计数与坏页",
+      "vendor_cli": "厂商工具这一轮有没有应答",
+      "occupancy": "卡上有没有平台外启动的计算进程",
+      "pcie_link": "卡到根端口每一跳链路的宽度与速率",
+      "pcie_errors": "这条路径上新增的 AER 错误",
+      "xid": "NVIDIA 驱动报出的 Xid 事件",
+      "nvlink": "卡的 NVLink 是否都在",
+      "runtime": "厂商运行时能否在卡上建上下文、分配显存"
+    },
+    "period": {
+      "minute": "每分钟",
+      "minutes": "每 {{count}} 分钟"
+    },
+    "state": {
+      "pass": "通过",
+      "warn": "告警",
+      "fail": "失败",
+      "skip": "跳过",
+      "pending": "等待",
+      "na": "不适用",
+      "stale": "陈旧"
+    },
+    "skip": {
+      "busy": "卡正在服务",
+      "foreign": "被平台外进程占用",
+      "deferred": "平台还不知道节点在跑什么",
+      "unavailable": "宿主暂时不能检查",
+      "probe_failed": "厂商工具本轮没应答"
+    },
+    "reason": {
+      "foreign_processes": "有平台外进程"
+    },
+    "card": "卡 {{index}}",
+    "removed": "已移除",
+    "lastChecked": "{{ago}}检查",
+    "banner": {
+      "offline": "节点离线，下面是最后已知的结果，不代表现在。",
+      "stale": "超过两个上报周期没有新的上报，下面的结果可能已过时。",
+      "noReports": "该节点的 agent 版本过旧，不上报卡的健康检查。升级 agent 后可以看到全部检查。",
+      "waiting": "还没有收到该节点的上报。"
+    },
+    "summary": "{{cards}} 张卡 · {{fail}} 项失败 · {{warn}} 项告警",
+    "recheck": "重新检查这张卡",
+    "recheckDone": "运行时检查通过",
+    "recheckFailed": "运行时检查失败：{{reason}}",
+    "recheckSkipped": "没有检查：{{reason}}",
+    "detail": {
+      "title": "{{card}} · {{check}}",
+      "last": "最近一次",
+      "lastRan": "最近一次真正运行",
+      "lastProblem": "最近一次出问题",
+      "at": "时间",
+      "duration": "耗时",
+      "evidence": "依据",
+      "probe": "复核命令",
+      "noRuns": "agent 启动后这项检查还没做过。",
+      "agentSince": "agent 自 {{time}} 启动，只知道此后的结果。",
+      "noEvidence": "没有问题，未记录依据。"
+    },
+    "records": {
+      "title": "失败记录（最近 {{days}} 天）",
+      "empty": "最近 {{days}} 天没有发现失败。这表示期间没有检查报出问题；节点离线的时段没有检查。",
+      "ongoing": "持续中",
+      "flapping": "抖动",
+      "count": "共 {{count}} 次",
+      "lasted": "持续 {{duration}}",
+      "lasting": "已持续 {{duration}}",
+      "first": "首次依据",
+      "latest": "最近依据",
+      "filterCard": "全部卡",
+      "filterCheck": "全部检查",
+      "clear": "清除筛选",
+      "filteredBy": "已筛选：{{card}} · {{check}}"
+    },
+    "duration": {
+      "seconds": "{{count}} 秒",
+      "minutes": "{{count}} 分钟",
+      "hours": "{{count}} 小时",
+      "days": "{{count}} 天"
+    }
   }
 }

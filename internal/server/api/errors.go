@@ -23,7 +23,10 @@ const (
 	ErrorNodeAcceleratorNotOnHost = "NODE_ACCELERATOR_NOT_ON_HOST"
 	// ErrorCardNotOwned answers an operator making schedulable a card that is
 	// not the node's to use (lent to a virtual machine, without a driver).
-	ErrorCardNotOwned                           = "CARD_NOT_OWNED"
+	ErrorCardNotOwned = "CARD_NOT_OWNED"
+	// ErrorCardChecksUnsupported answers a request about a card's checks to a
+	// node whose agent predates them.
+	ErrorCardChecksUnsupported                  = "CARD_CHECKS_UNSUPPORTED"
 	ErrorNodeAcceleratorHasInstances            = "NODE_ACCELERATOR_HAS_INSTANCES"
 	ErrorNodeDeleteHasInstances                 = "NODE_DELETE_HAS_INSTANCES"
 	ErrorNodeDeleteCacheBusy                    = "NODE_DELETE_CACHE_BUSY"

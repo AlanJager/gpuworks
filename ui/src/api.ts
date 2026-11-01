@@ -405,6 +405,89 @@ export interface GPUHealthField {
   value: string;
 }
 
+// Card health checks: GET /nodes/{uuid}/health-checks lays a node's card
+// checks out as a table, the server deciding the columns, each cell's state
+// and staleness, the worst state per card and whether a recheck is offered.
+export type CardCheckState = "pass" | "warn" | "fail" | "skip" | "pending" | "na";
+export interface CardHealthColumn {
+  id: string;
+  period_seconds: number;
+}
+export interface CardHealthCell {
+  check: string;
+  state: CardCheckState;
+  reason?: string;
+  checked_at?: string;
+  duration_ms?: number;
+  stale: boolean;
+}
+export interface CardHealthCard {
+  ident: string;
+  uuid?: string;
+  pcie_bdf?: string;
+  name?: string;
+  index: number;
+  worst: "pass" | "warn" | "fail";
+  can_recheck: boolean;
+  cells: CardHealthCell[];
+}
+export interface CardHealthChecks {
+  node_uuid: string;
+  online: boolean;
+  reports: boolean;
+  stale: boolean;
+  received_at?: string;
+  checks: CardHealthColumn[];
+  cards: CardHealthCard[];
+  summary: Record<string, number>;
+}
+// A stretch in which a check warned or failed (GET /nodes/{uuid}/health-records).
+export interface CardHealthRecord {
+  id: number;
+  card_ident: string;
+  card_index?: number;
+  card_name?: string;
+  pcie_bdf?: string;
+  removed: boolean;
+  check: string;
+  level: "warn" | "fail";
+  reason?: string;
+  started_at: string;
+  ended_at?: string;
+  last_seen_at: string;
+  duration_seconds: number;
+  count: number;
+  flapping: boolean;
+  ongoing: boolean;
+  first_evidence: GPUHealthField[];
+  latest_evidence: GPUHealthField[];
+}
+export interface CardHealthRecords {
+  records: CardHealthRecord[];
+  total: number;
+  page: number;
+  page_size: number;
+  retention_days: number;
+}
+export interface CardCheckRun {
+  state: CardCheckState;
+  reason?: string;
+  at: string;
+  duration_ms?: number;
+  probe?: string;
+  evidence: GPUHealthField[];
+}
+export interface CardCheckDetail {
+  ident: string;
+  check: string;
+  last?: CardCheckRun;
+  last_ran?: CardCheckRun;
+  last_problem?: CardCheckRun;
+  agent_started_at?: string;
+}
+export type CardRef = { pcie_bdf?: string; uuid?: string };
+const cardQuery = (card?: CardRef) => (card?.pcie_bdf ? `pcie_bdf=${encodeURIComponent(card.pcie_bdf)}` : card?.uuid ? `uuid=${encodeURIComponent(card.uuid)}` : "");
+
 /** Vendor commands for a card's health finding, derived by the server. */
 export interface GPUHealthGuide {
   probe: string;
@@ -3899,6 +3982,18 @@ export const api = {
     ),
   setNodeScheduling: (uuid: string, scheduling: NodeScheduling) =>
     sendJSON<Node>("PUT", `/api/v1/nodes/${encodeURIComponent(uuid)}/scheduling`, { scheduling }),
+  nodeHealthChecks: (nodeUUID: string, card?: CardRef) => {
+    const q = cardQuery(card);
+    return getJSON<CardHealthChecks>(`/api/v1/nodes/${encodeURIComponent(nodeUUID)}/health-checks${q ? `?${q}` : ""}`);
+  },
+  nodeHealthRecords: (nodeUUID: string, opts: { card?: CardRef; check?: string; page: number; pageSize?: number }) => {
+    const parts = [cardQuery(opts.card), opts.check ? `check=${encodeURIComponent(opts.check)}` : "", `page=${opts.page}`, `page_size=${opts.pageSize ?? 50}`].filter(Boolean);
+    return getJSON<CardHealthRecords>(`/api/v1/nodes/${encodeURIComponent(nodeUUID)}/health-records?${parts.join("&")}`);
+  },
+  cardCheckDetail: (nodeUUID: string, card: CardRef, check: string) =>
+    getJSON<CardCheckDetail>(`/api/v1/nodes/${encodeURIComponent(nodeUUID)}/health-checks/detail?${cardQuery(card)}&check=${encodeURIComponent(check)}`),
+  recheckCard: (nodeUUID: string, card: CardRef) =>
+    sendJSON<CardCheckDetail>("POST", `/api/v1/nodes/${encodeURIComponent(nodeUUID)}/gpus/recheck`, card.pcie_bdf ? { pcie_bdf: card.pcie_bdf } : { uuid: card.uuid }),
   setCardScheduling: (nodeUUID: string, card: { pcie_bdf?: string; uuid?: string }, scheduling: CardScheduling) =>
     sendJSON<Node>("PUT", `/api/v1/nodes/${encodeURIComponent(nodeUUID)}/gpus/scheduling`, {
       ...(card.pcie_bdf ? { pcie_bdf: card.pcie_bdf } : { uuid: card.uuid }),

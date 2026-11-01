@@ -65,6 +65,7 @@ type App struct {
 	proxyAcct *proxy.Accountant
 	proxy     *proxy.Proxy
 	health    *healthcheck.Checker // the deployments' health checks
+	cards     *cardHealth          // each card's checks and their failure records
 	batches   *batch.Service       // the Batch API's executor and files
 	telemetry *telemetryService    // the request trace export
 	http      *http.Server
@@ -280,6 +281,9 @@ func New(cfg Config, log *slog.Logger) (*App, error) {
 	outside := outsideSources(st, cfg.OutboundAllowPrivateHosts...)
 	a.usage, a.notices = newImprovementProgram(st, obs.ux, a.settings, outside.Channel, log)
 	h.SetUsageCounters(a.usage.Counters())
+	if a.cards, err = newCardHealth(log, st, h); err != nil {
+		return nil, err
+	}
 
 	// Bootstrap an admin account and a default API key so /v1 is usable.
 	bootstrapAdminAccount(cfg, st, log)
@@ -376,6 +380,7 @@ func New(cfg Config, log *slog.Logger) (*App, error) {
 		Telemetry:            telemetry,
 		Analytics:            newAnalyticsAPI(ops, st, obs, cfg.DataDir),
 		SchedulingActivity:   ops.sched,
+		CardHealth:           a.cards,
 		Experience:           experienceLauncher(cfg, log),
 		UsageReport:          a.usage,
 		Notices:              a.notices,
@@ -468,6 +473,7 @@ func (a *App) Run(ctx context.Context) error {
 		runAutomation(ctx, a.store, a.proxy, a.proxyAcct, api.HostMemory(a.obs.latestMetrics), a.scaleReplicas, waits, a.log)
 	}) // Background: schedules, waiting wakes, residency.
 	goBG(func() { a.health.Run(ctx) }) // Background: the deployments' health checks.
+	goBG(func() { a.cards.run(ctx) })  // Background: the cards' failure records.
 	// Background: the batches in progress, resumed from their checkpoints.
 	if err := a.batches.Start(ctx); err != nil {
 		a.log.Error("batch executor not started", "err", err)

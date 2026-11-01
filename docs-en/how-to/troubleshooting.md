@@ -383,6 +383,31 @@ Verified example: when `npu-smi` on an Ascend host reports `dcmi module initiali
 **The agent does not read the PCI bus when running in a container**: a container can see the host's entire bus, and treating the host's other cards as belonging to this node
 would report nonexistent additional faulty cards, so inside a container it recognizes only cards listed by the vendor CLI.
 
+### Card Health Checks
+
+The upper half of the “Health checks” tab in node details is a table of cards by checks, and the lower half is the node's failure records; the “Health checks” tab of a GPU's details has the same two halves for that card alone.
+
+**The checks**: vendor health (the vendor tool's verdict), vendor tool answering, use outside the platform, PCIe link, PCIe errors, Xid (NVIDIA), NVLink (NVIDIA) and the runtime check.
+The first five and Xid run once with every report (about a minute), NVLink every 5 minutes and the runtime check every 15 minutes. A cell's state:
+
+| State | Meaning |
+|---|---|
+| Pass / Warning / Fail | What the check last found |
+| Skipped | It did not run last time, with the reason: the card is serving, used outside the platform, the platform does not yet know what the node runs, the host cannot be asked right now (the driver is not answering, the runtime is missing, an earlier check has not returned), or the vendor tool did not answer this round |
+| Pending | The check has not run since the agent started |
+| Stale | No report for more than two report periods (about 2.5 minutes), or the node is offline: the last known result is shown, not what holds now |
+
+A check that applies to none of the node's cards (no NVLink, say) is not shown as a column.
+
+Click a cell to see what the check last did: when, how long it took, the evidence it read, and a command to recheck it yourself; when the last run was skipped, the last run that did run is shown too,
+and when an earlier run found a problem, the last such run. The agent answers these from memory and runs nothing; after the agent restarts, each check has to run again before it has any.
+No detail is available while the node is offline. “Recheck this card” in the card row's menu runs the runtime check now and records the answer on the card (as Diagnose does).
+
+**Failure records**: one is kept when a check warns or fails, and a problem that persists stays one record (its count and latest evidence are written once an hour, a change of reason at once).
+It ends after 30 minutes of passing, and a failure within them continues the same record; one that recurs 10 or more times in 24 hours is marked flapping. Passing checks are not written, so a healthy fleet writes nothing.
+Records are kept for 30 days (ongoing ones are never removed), cards are told apart by identity after a replacement, and on the node page a card no longer there is marked removed.
+After a server restart, ongoing records continue; counts from up to an hour before the restart may be missing.
+
 ### Stopping or Temporarily Allowing a Card by Hand
 
 Expand a card in the accelerator table of node details; its “Scheduling” entry can:

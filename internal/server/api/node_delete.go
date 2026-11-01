@@ -90,6 +90,9 @@ func (a *apiHandlers) deleteNode(w http.ResponseWriter, r *http.Request) {
 		a.writeNodeDeleteError(w, err)
 		return
 	}
+	if a.d.CardHealth != nil {
+		a.d.CardHealth.ForgetNode(uuid, node.ID)
+	}
 	if a.d.KickNode != nil {
 		a.d.KickNode(uuid)
 	}

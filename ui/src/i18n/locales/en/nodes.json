@@ -848,5 +848,99 @@
       "stopped": "Scheduling stopped on this card",
       "schedulable": "This card is schedulable"
     }
+  },
+  "cardHealth": {
+    "tab": "Health checks",
+    "check": {
+      "vendor_health": "Vendor health",
+      "vendor_cli": "Vendor tool",
+      "occupancy": "Outside use",
+      "pcie_link": "PCIe link",
+      "pcie_errors": "PCIe errors",
+      "xid": "Xid",
+      "nvlink": "NVLink",
+      "runtime": "Runtime"
+    },
+    "checkHelp": {
+      "vendor_health": "The vendor tool's verdict on the card: ECC, row remapping, npu-smi health, RAS counters and bad pages",
+      "vendor_cli": "Whether the vendor tool answered this round",
+      "occupancy": "Whether compute processes started outside the platform use the card",
+      "pcie_link": "Width and speed of each link from the card to its root port",
+      "pcie_errors": "New AER errors on that path",
+      "xid": "Xid events the NVIDIA driver reported",
+      "nvlink": "Whether all of the card's NVLinks are up",
+      "runtime": "Whether the vendor runtime can create a context and allocate memory on the card"
+    },
+    "period": {
+      "minute": "Every minute",
+      "minutes": "Every {{count}} minutes"
+    },
+    "state": {
+      "pass": "Pass",
+      "warn": "Warning",
+      "fail": "Fail",
+      "skip": "Skipped",
+      "pending": "Pending",
+      "na": "Not applicable",
+      "stale": "Stale"
+    },
+    "skip": {
+      "busy": "The card is serving",
+      "foreign": "Used outside the platform",
+      "deferred": "The platform does not yet know what the node runs",
+      "unavailable": "The host cannot be asked right now",
+      "probe_failed": "The vendor tool did not answer this round"
+    },
+    "reason": {
+      "foreign_processes": "Processes outside the platform"
+    },
+    "card": "Card {{index}}",
+    "removed": "Removed",
+    "lastChecked": "Checked {{ago}}",
+    "banner": {
+      "offline": "The node is offline; below are the last known results, not what holds now.",
+      "stale": "No report for more than two report periods; the results below may be out of date.",
+      "noReports": "This node's agent is too old to report card health checks. Upgrade the agent to see them all.",
+      "waiting": "No report from this node yet."
+    },
+    "summary": "{{cards}} cards · {{fail}} failing · {{warn}} warnings",
+    "recheck": "Recheck this card",
+    "recheckDone": "The runtime check passed",
+    "recheckFailed": "The runtime check failed: {{reason}}",
+    "recheckSkipped": "Not checked: {{reason}}",
+    "detail": {
+      "title": "{{card}} · {{check}}",
+      "last": "Last run",
+      "lastRan": "Last run that ran",
+      "lastProblem": "Last problem",
+      "at": "Time",
+      "duration": "Took",
+      "evidence": "Evidence",
+      "probe": "Recheck command",
+      "noRuns": "This check has not run since the agent started.",
+      "agentSince": "The agent started at {{time}} and knows only what came after.",
+      "noEvidence": "No problem; no evidence recorded."
+    },
+    "records": {
+      "title": "Failure records (last {{days}} days)",
+      "empty": "No failures found in the last {{days}} days. That means no check reported a problem; nothing was checked while the node was offline.",
+      "ongoing": "Ongoing",
+      "flapping": "Flapping",
+      "count": "{{count}} times",
+      "lasted": "Lasted {{duration}}",
+      "lasting": "Lasting {{duration}}",
+      "first": "First evidence",
+      "latest": "Latest evidence",
+      "filterCard": "All cards",
+      "filterCheck": "All checks",
+      "clear": "Clear filter",
+      "filteredBy": "Filtered: {{card}} · {{check}}"
+    },
+    "duration": {
+      "seconds": "{{count}} s",
+      "minutes": "{{count}} min",
+      "hours": "{{count}} h",
+      "days": "{{count}} d"
+    }
   }
 }

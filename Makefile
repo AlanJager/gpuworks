@@ -279,6 +279,7 @@ test-e2e-local: ensure-bins
 ## test-fleet-perf-processes: the same control-plane load case with the server
 ## as its own process and the fleet as a second one, so each side's memory and
 ## CPU can be read separately. Node count is tunable: GPUWORKS_FLEET_NODES /
+## GPUWORKS_FLEET_GPUS (cards per node, default 1) /
 ## GPUWORKS_FLEET_CHURN_NODES / GPUWORKS_FLEET_ROUNDS.
 ## GPUWORKS_FLEET_SERVER_BIN / GPUWORKS_FLEET_HOST_BIN reuse prebuilt binaries,
 ## which is how it runs on a machine with no Go toolchain.
