@@ -608,3 +608,70 @@ func TestOnlyOneDiagnosisRunsAtATime(t *testing.T) {
 		t.Fatal("the diagnosis did not release its turn")
 	}
 }
+
+// Each die's answer goes to the periodic check, so the card's state follows
+// the diagnosis. A die the host could not be asked about, or that the
+// diagnosis's own budget cut off, has no verdict and records nothing.
+func TestDoctorRecordsEachDiesAnswerForThePeriodicCheck(t *testing.T) {
+	h := &ascendHost{timeout: time.Second, try: func(_ context.Context, die string) error {
+		switch die {
+		case "0":
+			return errors.New("Ascend ACL runtime smoke failed: aclrtSetDevice=507033")
+		case "3":
+			return &gpu.HostRuntimeUnavailableError{Reason: "aclInit failed"}
+		}
+		return nil
+	}}
+	h.install(t)
+	recorded := map[string]string{}
+	ctx := withDoctorOutcomes(context.Background(), func(ident string, err error) {
+		recorded[ident] = "pass"
+		if err != nil {
+			recorded[ident] = err.Error()
+		}
+	})
+	h.report(ctx, ascendDies(5))
+	dies := ascendDies(5)
+	ident := func(i int) string { return accelerator.CardIdent(dies[i].UUID, dies[i].PCIeBDF) }
+	want := map[string]string{
+		ident(0): "Ascend ACL runtime smoke failed: aclrtSetDevice=507033",
+		ident(1): "pass",
+		ident(2): "pass",
+	}
+	if fmt.Sprint(recorded) != fmt.Sprint(want) {
+		t.Fatalf("recorded %v, want %v", recorded, want)
+	}
+
+	cut := &ascendHost{timeout: time.Hour, try: func(ctx context.Context, _ string) error {
+		<-ctx.Done()
+		return ctx.Err()
+	}}
+	cut.install(t)
+	doctorAscendReserve, doctorAscendMinAttempt = 0, 10*time.Millisecond
+	budget, cancel := context.WithTimeout(ctx, 200*time.Millisecond)
+	defer cancel()
+	recorded = map[string]string{}
+	cut.report(budget, ascendDies(2))
+	if len(recorded) != 0 {
+		t.Fatalf("a die the budget cut off was recorded: %v", recorded)
+	}
+}
+
+// A die that does not answer within the check's own timeout is graded failed
+// by the diagnosis, and recorded as failed too.
+func TestDoctorRecordsADieThatDoesNotAnswerAsFailed(t *testing.T) {
+	h := &ascendHost{timeout: 50 * time.Millisecond, try: func(ctx context.Context, _ string) error {
+		<-ctx.Done()
+		return ctx.Err()
+	}}
+	h.install(t)
+	doctorAscendReserve, doctorAscendMinAttempt = 0, 10*time.Millisecond
+	var got []string
+	ctx := withDoctorOutcomes(context.Background(), func(_ string, err error) {
+		got = append(got, fmt.Sprint(err))
+	})
+	h.report(ctx, ascendDies(1))
+	if len(got) != 1 || !strings.Contains(got[0], "did not finish within") {
+		t.Fatalf("recorded %v, want one timeout failure", got)
+	}
+}

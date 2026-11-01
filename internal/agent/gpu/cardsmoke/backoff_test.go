@@ -355,3 +355,68 @@ func TestAFailureArrivingWithCancellationIsNotCountedAndNextRoundIsNotBackedOff(
 		t.Fatalf("outcome = %+v", outcome)
 	}
 }
+
+// A pass from a check made outside the runner (Doctor's) clears the card's
+// failure and its backoff at once: the next round asks it like any working
+// card instead of waiting out the backoff.
+func TestARecordedPassClearsTheFailureAndTheBackoff(t *testing.T) {
+	now, advance := clock(t)
+	r := &recorder{now: now, fail: map[string]error{"card": errors.New("no context")}}
+	runner := New(Config{
+		Cards:    func(context.Context) []Card { return cards("card") },
+		Try:      r.try,
+		Interval: 15 * time.Minute,
+		Now:      now,
+	})
+	for round := 0; round < 3; round++ {
+		if round > 0 {
+			advance(15 * time.Minute)
+		}
+		runner.RunOnce(context.Background())
+	}
+	if outcome := runner.Outcomes()["card"]; outcome.OK || outcome.Failures == 0 {
+		t.Fatalf("outcome before the diagnosis = %+v", outcome)
+	}
+
+	advance(time.Minute)
+	runner.Record("card", nil)
+	if outcome := runner.Outcomes()["card"]; !outcome.OK || outcome.Failures != 0 || !outcome.At.Equal(now()) {
+		t.Fatalf("outcome after a recorded pass = %+v, want a clean answer now", outcome)
+	}
+	r.mu.Lock()
+	r.fail = nil
+	r.mu.Unlock()
+	before := len(r.idents())
+	advance(14 * time.Minute)
+	runner.RunOnce(context.Background())
+	if got := len(r.idents()); got != before+1 {
+		t.Fatalf("the next round asked the card %d times, want it out of its backoff", got-before)
+	}
+}
+
+// A recorded failure counts like one of the runner's own, so the card backs
+// off instead of being asked again at once.
+func TestARecordedFailureCountsAndBacksOff(t *testing.T) {
+	now, advance := clock(t)
+	r := &recorder{now: now}
+	runner := New(Config{
+		Cards:    func(context.Context) []Card { return cards("card") },
+		Try:      r.try,
+		Interval: 15 * time.Minute,
+		Now:      now,
+	})
+	runner.Record("card", errors.New("aclrtSetDevice=507033"))
+	runner.Record("card", errors.New("aclrtSetDevice=507033"))
+	outcome := runner.Outcomes()["card"]
+	if outcome.OK || outcome.Failures != 2 || outcome.Detail != "aclrtSetDevice=507033" {
+		t.Fatalf("outcome = %+v, want two recorded failures", outcome)
+	}
+	advance(15 * time.Minute)
+	runner.RunOnce(context.Background())
+	if got := len(r.idents()); got != 0 {
+		t.Fatalf("a card inside its backoff was asked %d times", got)
+	}
+
+	var none *Runner
+	none.Record("card", nil) // a node without a runner records nothing
+}
