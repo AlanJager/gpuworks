@@ -284,6 +284,10 @@ type GPUInfo struct {
 	// A card owned elsewhere is reported so an operator sees the hardware
 	// that is physically there, and is never scheduled.
 	Ownership string `json:"ownership,omitempty"`
+	// Checks are the state of each card check on this card
+	// (CapCardChecks). They are reported, never stored with the card: the
+	// server keeps them in memory.
+	Checks []CardCheck `json:"checks,omitempty"`
 }
 
 // CardProcess is a compute process the vendor tool reports on a card.

@@ -10,6 +10,7 @@ import (
 	goruntime "runtime"
 	"strings"
 
+	"gpuworks.ai/gpuworks/internal/accelerator"
 	"gpuworks.ai/gpuworks/internal/agent/conn"
 	"gpuworks.ai/gpuworks/internal/agent/hostsim"
 	"gpuworks.ai/gpuworks/internal/agent/runtime"
@@ -327,6 +328,23 @@ func (n *NodeRuntime) OnRPC(ctx context.Context, method string, params json.RawM
 		ctx = withDoctorOutcomes(ctx, n.cardSmoke.Record)
 		ctx = withDoctorHeldFindings(ctx, n.applyHeldHardwareFindings)
 		return buildDoctorReport(ctx, n.prober, n.doctorPathUsage(), n.runtimeDriver()), nil
+	case proto.RPCNodeCardCheckDetail:
+		var req proto.CardCheckDetailRequest
+		if err := json.Unmarshal(params, &req); err != nil {
+			return nil, fmt.Errorf("decode card check request: %w", err)
+		}
+		if _, ok := accelerator.CardCheckFor(req.Check); !ok || req.Ident == "" {
+			return nil, fmt.Errorf("unknown card check %q on card %q", req.Check, req.Ident)
+		}
+		return n.checkDetail(req.Ident, req.Check), nil
+	case proto.RPCNodeCardRecheck:
+		var req proto.CardRecheckRequest
+		if err := json.Unmarshal(params, &req); err != nil {
+			return nil, fmt.Errorf("decode card recheck request: %w", err)
+		}
+		ctx, cancel := context.WithTimeout(ctx, doctorBudget)
+		defer cancel()
+		return n.recheckCard(ctx, req.Ident)
 	case proto.RPCNodeSetAccelerator:
 		return n.handleSetAcceleratorRPC(params)
 	case proto.RPCNodeSetRuntime:

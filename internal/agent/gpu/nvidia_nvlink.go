@@ -7,6 +7,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"gpuworks.ai/gpuworks/internal/accelerator"
 )
 
 // NVLink state, asked of nvidia-smi once every nvlinkInterval: one command
@@ -14,7 +16,7 @@ import (
 // error counters. A host whose cards have no active link at all (PCIe-only
 // cards, as on gpu3) is asked again only every nvlinkAbsentRecheck.
 const (
-	nvlinkInterval      = 5 * time.Minute
+	nvlinkInterval      = accelerator.NVLinkCheckPeriod
 	nvlinkAbsentRecheck = time.Hour
 )
 

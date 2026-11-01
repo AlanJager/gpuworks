@@ -13,11 +13,13 @@ import (
 // for (accelerator.XidFinding) until a runtime check has passed on it after
 // the latest such event. A card with no runtime check stays held until the
 // host reboots, which starts a new kernel log; an operator can still open it.
-func (n *NodeRuntime) applyXidFindings(gpus []proto.GPUInfo, passedSince func(ident string, t time.Time) bool) {
+// It returns each card's finding by identity, nil when there is no Xid watch.
+func (n *NodeRuntime) applyXidFindings(gpus []proto.GPUInfo, passedSince func(ident string, t time.Time) bool) map[string]finding {
 	xid := n.xid.Load()
 	if xid == nil {
-		return
+		return nil
 	}
+	found := map[string]finding{}
 	for i := range gpus {
 		card := &gpus[i]
 		ident := accelerator.CardIdent(card.UUID, card.PCIeBDF)
@@ -36,11 +38,13 @@ func (n *NodeRuntime) applyXidFindings(gpus []proto.GPUInfo, passedSince func(id
 			}
 			evidence = append(evidence, xidEvidence(ev))
 		}
+		found[ident] = finding{code: code, evidence: evidence, known: true}
 		if code == "" || accelerator.MostSevereHealth(card.HealthCode, code) != code {
 			continue
 		}
 		gpu.SetCardFinding(card, code, evidence)
 	}
+	return found
 }
 
 // xidEvidence names an Xid the way the kernel log does, with when it was.

@@ -395,7 +395,8 @@ A card passed through to a virtual machine or without a driver is not this node'
 ### Card Is in Use by Processes Outside the Platform
 
 A card marked “In use outside the platform” has compute processes that the platform did not start (such as a vLLM process started by a user).
-The card does not participate in scheduling until these processes exit; hover to see process names and GPU memory usage. The agent does not make this determination just after restarting, before it receives
+The card does not participate in scheduling until these processes exit; hover to see process names and GPU memory usage. After they exit, the card is released only once 3 readings in a row (about 3 minutes) find it free,
+and until then it still shows the processes last seen: a job somebody starts and stops every minute would otherwise move the card in and out of scheduling with every report. The agent does not make this determination just after restarting, before it receives
 which instances it should run—otherwise its own instances would be treated as external processes. It also skips this check if probing failed in the current round;
 if the vendor tool just failed to return the inventory, asking it for processes would only incur another timeout.
 The platform recognizes its own instances by each card's hardware identity. An instance started by an older version, whose desired state records only device indexes,
@@ -467,6 +468,10 @@ Whether a card is usable is a conclusion the server determines once when saving 
 The API exposes this as `schedulable`. Both the UI and scheduling read this field instead of deriving it independently. **Do not read `healthy`**:
 a card passed through to a VM has `healthy` set to false even though it has no fault, while a card occupied by external processes has `healthy` set to true but cannot be scheduled.
 The reasons a card is unavailable are in its own `health_status`/`health_code`/`ownership`/`foreign_processes` fields.
+
+A problem the vendor tool reports (those in the Warning and Fault rows above that come from the vendor tool) clears only after 3 clean readings in a row (about 3 minutes); until then the card keeps its level,
+and its evidence carries a `Recovery` field (such as `1 of 3 clean readings`) showing the progress: a card whose counters flip back and forth would otherwise move in and out of scheduling with every report.
+To use the card meanwhile, “Allow for now” on it.
 
 Evidence fields for each vendor:
 

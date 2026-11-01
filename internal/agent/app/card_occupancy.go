@@ -37,6 +37,11 @@ import (
 type cardOccupancy struct {
 	mu   sync.Mutex
 	last map[string][]proto.CardProcess
+	// freeRounds counts the readings in a row that found a card in last
+	// free again. A card is let go only after occupancyReleaseRounds of
+	// them: somebody's job that starts and stops every minute would
+	// otherwise flip the card in and out of scheduling with every report.
+	freeRounds map[string]int
 	// identOfIndex is each card's identity by the device index it carried
 	// in the last probe that listed the cards. It names the cards of an
 	// instance whose desired state binds none (see engine.HeldCards).
@@ -68,21 +73,48 @@ func (o *cardOccupancy) identOf(index int) (string, bool) {
 	return ident, ok
 }
 
+// occupancyReleaseRounds is how many readings in a row must find a card free
+// before it is let go: about three minutes.
+const occupancyReleaseRounds = 3
+
 // remember records a round that did find out, and reports which cards'
 // foreign use changed since the last one, so it is logged once rather than
-// every minute.
-func (o *cardOccupancy) remember(gpus []proto.GPUInfo) (changed []proto.GPUInfo) {
+// every minute. A card found free after being used outside the platform keeps
+// its last processes until occupancyReleaseRounds readings in a row have found
+// it free — unless it now holds one of this node's own instances (ours),
+// whose processes are not foreign.
+func (o *cardOccupancy) remember(gpus []proto.GPUInfo, ours map[string]bool) (changed []proto.GPUInfo) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
+	if o.freeRounds == nil {
+		o.freeRounds = map[string]int{}
+	}
 	next := map[string][]proto.CardProcess{}
-	for _, card := range gpus {
+	for i := range gpus {
+		card := &gpus[i]
 		ident := accelerator.CardIdent(card.UUID, card.PCIeBDF)
-		if ident == "" || len(card.ForeignProcesses) == 0 {
+		if ident == "" {
 			continue
 		}
+		if len(card.ForeignProcesses) == 0 {
+			held := o.last[ident]
+			if len(held) == 0 || ours[ident] || !accelerator.CardUsable(card.Ownership) {
+				delete(o.freeRounds, ident)
+				continue
+			}
+			if o.freeRounds[ident]++; o.freeRounds[ident] >= occupancyReleaseRounds {
+				delete(o.freeRounds, ident)
+				slog.Info("card no longer in use outside the platform", "card", card.PCIeBDF)
+				continue
+			}
+			card.ForeignProcesses = append([]proto.CardProcess(nil), held...)
+			next[ident] = held
+			continue
+		}
+		delete(o.freeRounds, ident)
 		next[ident] = card.ForeignProcesses
 		if !sameProcesses(o.last[ident], card.ForeignProcesses) {
-			changed = append(changed, card)
+			changed = append(changed, *card)
 		}
 	}
 	o.last = next
@@ -196,7 +228,7 @@ func (n *NodeRuntime) applyForeignProcesses(ctx context.Context, gpus []proto.GP
 			})
 		}
 	}
-	for _, card := range n.occupancy.remember(gpus) {
+	for _, card := range n.occupancy.remember(gpus, ours) {
 		slog.Info("card is in use outside the platform",
 			"card", card.PCIeBDF, "processes", len(card.ForeignProcesses))
 	}

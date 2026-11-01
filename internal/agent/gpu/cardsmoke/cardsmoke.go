@@ -92,6 +92,15 @@ type Outcome struct {
 	// Failures is how many times in a row this card has failed, which spaces
 	// out the next attempt. It is reset by a card that answers.
 	Failures int
+	// Duration is how long the attempt took, when the runner timed it.
+	Duration time.Duration
+}
+
+// Skip is why the card was last left unasked (one of the Skip* reasons), and
+// when.
+type Skip struct {
+	Reason string
+	At     time.Time
 }
 
 // Config is what a runner needs from its surroundings. Every function is
@@ -175,6 +184,11 @@ type Runner struct {
 	// attempts are the checks on each card now and a moment ago (Touched,
 	// WaitIdle).
 	attempts attemptLog
+	// skips is why each card was left unasked since its last answer.
+	skips map[string]Skip
+	// answers counts each card's recorded answers, so a caller can tell an
+	// attempt that decided something from one that did not.
+	answers map[string]uint64
 }
 
 func New(cfg Config) *Runner {
@@ -196,7 +210,7 @@ func New(cfg Config) *Runner {
 	if cfg.Now == nil {
 		cfg.Now = time.Now
 	}
-	return &Runner{cfg: cfg, outcomes: map[string]Outcome{}, stuck: map[string]bool{}, nextAttempt: map[string]time.Time{}}
+	return &Runner{cfg: cfg, outcomes: map[string]Outcome{}, stuck: map[string]bool{}, nextAttempt: map[string]time.Time{}, skips: map[string]Skip{}, answers: map[string]uint64{}}
 }
 
 // Run keeps running rounds until ctx ends.
@@ -275,15 +289,20 @@ func (r *Runner) RunOnce(ctx context.Context) {
 		}
 	}
 	if reason == "" {
-		for _, card := range cards {
+		for i, card := range cards {
 			if ctx.Err() != nil {
 				break
 			}
 			if stopped := r.try(ctx, card); stopped != "" {
 				reason = stopped
+				r.skipAll(cards[i+1:], SkipUnavailable)
 				break
 			}
 		}
+	} else if deferred {
+		r.skipAll(cards, SkipDeferred)
+	} else {
+		r.skipAll(cards, SkipUnavailable)
 	}
 	r.mu.Lock()
 	changed := reason != r.skipped
@@ -356,6 +375,9 @@ func (r *Runner) tryUnlessBusy(ctx context.Context, card Card, skipBusy bool) st
 	r.mu.Unlock()
 	if anyStuck {
 		detail := fmt.Sprintf("an earlier runtime check has not returned after more than %s; no new card can be checked", r.cfg.Timeout)
+		if !stuck {
+			r.skip(card.Ident, SkipUnavailable)
+		}
 		if stuck {
 			detail = fmt.Sprintf("the previous runtime check of this card has not returned after more than %s", r.cfg.Timeout)
 			r.record(card.Ident, Outcome{At: r.cfg.Now(), Failures: failures, Detail: detail})
@@ -364,14 +386,18 @@ func (r *Runner) tryUnlessBusy(ctx context.Context, card Card, skipBusy bool) st
 	}
 	if r.cfg.Foreign != nil && r.cfg.Foreign(card) {
 		// Like a serving card, the card keeps whatever it last said.
+		r.skip(card.Ident, SkipForeign)
 		return ""
 	}
 	if skipBusy && r.busy(card) {
 		// Serving work is itself the answer, so the card keeps whatever it
 		// last said rather than being recorded as untried.
+		r.skip(card.Ident, SkipBusy)
 		return ""
 	}
 	if skipBusy && r.backingOff(card.Ident) {
+		// Its last answer, a failure, stands until the backoff lets a
+		// round ask again; that is not a skip worth stating.
 		return ""
 	}
 	attempt, cancel := context.WithTimeout(ctx, r.cfg.Timeout)
@@ -385,6 +411,7 @@ func (r *Runner) tryUnlessBusy(ctx context.Context, card Card, skipBusy bool) st
 		finishedAt time.Time
 	}
 	done := make(chan attemptAnswer, 1)
+	started := time.Now()
 	end := r.Begin(card.Ident)
 	go func() {
 		err := r.cfg.Try(attempt, card)
@@ -408,9 +435,11 @@ func (r *Runner) tryUnlessBusy(ctx context.Context, card Card, skipBusy bool) st
 		return answer.err
 	}
 	var err error
+	took := r.cfg.Timeout
 	select {
 	case answer := <-done:
 		err = grade(answer)
+		took = answer.finishedAt.Sub(started)
 	case <-attempt.Done():
 		if ctx.Err() != nil {
 			// The round was cancelled (agent shutdown), not the card's
@@ -451,9 +480,10 @@ func (r *Runner) tryUnlessBusy(ctx context.Context, card Card, skipBusy bool) st
 	}
 	if inconclusive := inconclusiveReason(err); inconclusive != "" {
 		// A host failure cannot push a card into a backoff it did not earn.
+		r.skip(card.Ident, SkipUnavailable)
 		return inconclusive
 	}
-	outcome := Outcome{OK: err == nil, At: r.cfg.Now()}
+	outcome := Outcome{OK: err == nil, At: r.cfg.Now(), Duration: took}
 	if err != nil {
 		outcome.Detail = err.Error()
 		outcome.Failures = failures + 1
@@ -512,33 +542,6 @@ func (r *Runner) roundFrom(at time.Time) time.Time {
 	return r.roundStart
 }
 
-// Record takes an answer the card gave to a check made outside the runner
-// (Doctor's) as if a round had asked it: a pass clears the card's failure and
-// its backoff straight away, a failure counts and backs off like one of the
-// runner's own. Without it a card that failed would stay unusable until its
-// backoff — up to MaxBackoffRounds intervals — let a round ask it again,
-// however clearly a diagnosis had just shown it working.
-//
-// Only an answer about the card belongs here. A check that could not reach
-// the runtime, or was cut off by the caller's own budget, has no verdict and
-// is not recorded.
-func (r *Runner) Record(ident string, err error) {
-	if r == nil || ident == "" {
-		return
-	}
-	at := r.cfg.Now()
-	r.mu.Lock()
-	failures := r.outcomes[ident].Failures
-	r.mu.Unlock()
-	outcome := Outcome{OK: err == nil, At: at}
-	if err != nil {
-		outcome.Detail = err.Error()
-		outcome.Failures = failures + 1
-	}
-	r.record(ident, outcome)
-	r.scheduleNext(ident, outcome, at)
-}
-
 // Skipped is why the last round could not ask any card or stopped partway,
 // and "" when every card was asked. Doctor shows it: a check that has never
 // run says nothing, and an operator has to be told that rather than read the
@@ -563,6 +566,8 @@ func (r *Runner) Outcomes() map[string]Outcome {
 func (r *Runner) record(ident string, outcome Outcome) {
 	r.mu.Lock()
 	r.outcomes[ident] = outcome
+	r.answers[ident]++
+	delete(r.skips, ident)
 	r.mu.Unlock()
 }
 
