@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"gpuworks.ai/gpuworks/internal/server/deploy"
+	"gpuworks.ai/gpuworks/internal/server/messages"
 )
 
 // Every built-in Ascend vLLM template must launch with sleep enabled: the
@@ -29,11 +30,12 @@ func TestBuiltinAscendVLLMTemplatesLaunchSleepable(t *testing.T) {
 			}
 			where := model.ModelID + "/" + spec.Name
 			checked++
-			if strings.Contains(spec.Env["PYTORCH_NPU_ALLOC_CONF"], "expandable_segments:True") {
+			expandable := strings.Contains(spec.Env["PYTORCH_NPU_ALLOC_CONF"], "expandable_segments:True")
+			if expandable {
 				rewroteAllocator++
 			}
 			tp, pp, dp := statedParallelism(spec.Args, "--tensor-parallel-size"), statedParallelism(spec.Args, "--pipeline-parallel-size"), statedParallelism(spec.Args, "--data-parallel-size")
-			launch, err := deploy.ResolveLaunch(deploy.ResolveLaunchInput{
+			launch, warnings, err := deploy.ResolveLaunchWithWarnings(deploy.ResolveLaunchInput{
 				Engine: engine, Image: spec.Image, Entrypoint: spec.Entrypoint, APIContract: spec.API,
 				AllowUnresolved: true,
 				Params: deploy.Params{
@@ -48,6 +50,13 @@ func TestBuiltinAscendVLLMTemplatesLaunchSleepable(t *testing.T) {
 			}
 			if strings.Contains(launch.Env["PYTORCH_NPU_ALLOC_CONF"], "expandable_segments:True") {
 				t.Errorf("%s: PYTORCH_NPU_ALLOC_CONF=%q keeps expandable segments on", where, launch.Env["PYTORCH_NPU_ALLOC_CONF"])
+			}
+			warned := false
+			for _, warning := range warnings {
+				warned = warned || warning.Code == messages.WarningAscendSleepExpandableSegmentsDisabled
+			}
+			if warned != expandable {
+				t.Errorf("%s: expandable segments rewrite warning = %v, want %v", where, warned, expandable)
 			}
 			additional, found := deploy.LaunchFlag(launch.Argv, "--additional-config")
 			var config map[string]any

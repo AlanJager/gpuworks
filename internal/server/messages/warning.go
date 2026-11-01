@@ -65,6 +65,11 @@ const (
 	// cannot be read statically, so its shared-memory settings are not derived.
 	// Params: flag.
 	WarningEngramManualUnchecked = "ENGRAM_MANUAL_UNCHECKED"
+	// WarningAscendSleepExpandableSegmentsDisabled: the template's allocator
+	// setting turns expandable segments on, which Ascend sleep mode cannot
+	// run with, so the platform turned it off; NPU memory may fragment more.
+	// Params: variable, template_value, value.
+	WarningAscendSleepExpandableSegmentsDisabled = "ASCEND_SLEEP_EXPANDABLE_SEGMENTS_DISABLED"
 )
 
 // NewWarning constructs a warning while keeping empty parameter maps off the

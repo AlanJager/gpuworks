@@ -38,33 +38,56 @@ const (
 	vllmHygonCUDARTPath = "/opt/dtk/cuda/cuda-12/targets/x86_64-linux/lib/libcudart.so"
 )
 
+// ascendAllocatorRewrite records the template allocator setting a sleepable
+// Ascend launch turned off; the zero value means nothing was rewritten.
+type ascendAllocatorRewrite struct {
+	from, to string
+}
+
+// warning tells the user the template's allocator setting was changed, when
+// the rewritten value is what the container actually runs with: a deployment
+// that sets or unsets the variable itself was not changed by the platform.
+func (r ascendAllocatorRewrite) warning(env map[string]string) (messages.Warning, bool) {
+	if r.to == "" {
+		return messages.Warning{}, false
+	}
+	if value, ok := env[ascendAllocConfEnv]; !ok || value != r.to {
+		return messages.Warning{}, false
+	}
+	return messages.NewWarning(messages.WarningAscendSleepExpandableSegmentsDisabled,
+		map[string]any{"variable": ascendAllocConfEnv, "template_value": r.from, "value": r.to}), true
+}
+
 // prepareVLLMSleepable adapts the template and user layers of a sleepable
 // vLLM launch on Ascend. The platform owns the template layer, so a template
 // value sleep cannot run with (a nonzero weight_nz_mode, an expandable
 // segments allocator) is rewritten; the same value stated by the user is an
 // explicit choice and is refused instead (see validateVLLMSleepableEnv for the
-// environment).
-func prepareVLLMSleepable(p *Params) error {
+// environment). Turning expandable segments off can fragment NPU memory, so
+// that rewrite is returned for the evaluation to warn about.
+func prepareVLLMSleepable(p *Params) (ascendAllocatorRewrite, error) {
 	if !p.Sleepable || accelerator.NormalizeVendor(p.Vendor) != accelerator.VendorAscend {
-		return nil
+		return ascendAllocatorRewrite{}, nil
 	}
 	templateArgs, err := mergeAscendSleepAdditionalConfig(p.TemplateArgs, false)
 	if err != nil {
-		return err
+		return ascendAllocatorRewrite{}, err
 	}
 	extraArgs, err := mergeAscendSleepAdditionalConfig(p.ExtraArgs, true)
 	if err != nil {
-		return err
+		return ascendAllocatorRewrite{}, err
 	}
 	p.TemplateArgs, p.ExtraArgs = templateArgs, extraArgs
+	var rewrite ascendAllocatorRewrite
 	if value, ok := p.TemplateEnv[ascendAllocConfEnv]; ok {
 		if rewritten, changed := disableExpandableSegments(value); changed {
 			env := cloneEnv(p.TemplateEnv)
 			env[ascendAllocConfEnv] = rewritten
 			p.TemplateEnv = env
+			rewrite = ascendAllocatorRewrite{from: value, to: rewritten}
 		}
 	}
-	return nil
+	return rewrite, nil
 }
 
 func mergeAscendSleepAdditionalConfig(args []string, user bool) ([]string, error) {
