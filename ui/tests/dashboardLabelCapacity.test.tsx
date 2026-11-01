@@ -152,11 +152,11 @@ test("overview token total adds reported input and output once and opens the sam
 test("monitor summary uses current monitor signals and links to the monitor's matching range", async () => {
   stub(); renderPage();
   const monitor = document.querySelector(".dashboard-overview-monitor")!;
-  await waitFor(() => assert.deepEqual([...monitor.querySelectorAll(".dashboard-overview-metric strong")].map((value) => value.textContent), ["12.3 req/s · 20 conn", "1.2%", "345.6 ms", "2.4"]));
+  await waitFor(() => assert.deepEqual([...monitor.querySelectorAll(".dashboard-overview-metric strong")].map((value) => value.textContent), ["12.3 req/s", "20", "1.2%", "345.6 ms", "2.4"]));
   assert.equal(monitor.querySelector(".dashboard-overview-replica-count")?.textContent, "Ready replicas 2/3");
   assert.equal(monitor.querySelector(".dashboard-overview-count")?.textContent, "Last 5 minutes");
   assert.equal(monitor.querySelector("a.dashboard-overview-module-arrow")?.getAttribute("href"), "/monitor?range=6h");
-  assert.equal(monitor.querySelectorAll(".dashboard-overview-metric-tip").length, 4);
+  assert.equal(monitor.querySelectorAll(".dashboard-overview-metric-tip").length, 5);
   cleanup();
   api.monitorOverview = async () => ({ stale: false, services: [], signals: [
     { key: "ready_replicas", collected: true, value: 0, denominator: 0 },
@@ -169,7 +169,15 @@ test("monitor summary uses current monitor signals and links to the monitor's ma
   const idle = document.querySelector(".dashboard-overview-monitor")!;
   await waitFor(() => assert.equal(idle.querySelector(".dashboard-overview-count")?.textContent, "No gateway requests in 5 minutes"));
   assert.equal(idle.querySelector(".dashboard-overview-replica-count")?.textContent, "Ready replicas 0/0");
-  assert.deepEqual([...idle.querySelectorAll(".dashboard-overview-metric strong")].map((value) => value.textContent), ["0.0 req/s", "—", "—", "—"]);
+  assert.deepEqual([...idle.querySelectorAll(".dashboard-overview-metric strong")].map((value) => value.textContent), ["0.0 req/s", "—", "—", "—", "—"]);
+  cleanup();
+  api.monitorOverview = async () => ({ stale: false, services: [], signals: [
+    { key: "request_rate", collected: true, value: 0.4, denominator: 7.25 },
+    { key: "ttft", collected: true, value: 39000, detail: { upper_bound: true } },
+  ] }) as never;
+  renderPage();
+  const slow = document.querySelector(".dashboard-overview-monitor")!;
+  await waitFor(() => assert.deepEqual([...slow.querySelectorAll(".dashboard-overview-metric strong")].map((value) => value.textContent), ["0.4 req/s", "7.3", "—", "39s", "—"]));
   cleanup();
   api.monitorOverview = async () => ({ stale: false, services: [], signals: [] }) as never;
   renderPage();

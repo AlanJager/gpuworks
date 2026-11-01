@@ -44,7 +44,7 @@
   "signals": {
     "ready_replicas": "就绪副本",
     "error_rate": "错误率",
-    "request_rate": "请求数/秒",
+    "request_rate": "RPS / 并发",
     "token_rate": "Token 吞吐",
     "ttft": "TTFT p95 / p99",
     "tpot": "TPOT p95 / p99",
@@ -56,13 +56,12 @@
     "errorRateDetail": "5xx {{5xx}} · 429 {{429}} · 503 {{asleep_503}}",
     "tokenRateInput": "输入",
     "tokenRateOutput": "输出",
-    "inflightUnit": "conn",
+    "requestRateHint": "左：平均每秒请求数（RPS）；右：网关的平均在途请求数（并发）。",
     "upperBoundHint": "p95/p99 是保守上界（窗口内每个采样点自身分位数的最大值），不是整个窗口的单一分位数。"
   },
-  "healthSummary": {
-    "title": "健康检查",
-    "noneChecked": "还没有服务开启健康检查，可在部署详情里开启",
-    "count": "{{status}} {{count}}"
+  "stateSummary": {
+    "title": "服务状态",
+    "count": "{{state}} {{count}}"
   },
   "table": {
     "state": "状态",

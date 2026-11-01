@@ -186,3 +186,12 @@ test("the health column shows each service's health check, beside its state", ()
   assert.ok(cells("Qwen3-32B").includes("Healthy · 85 ms"), String(cells("Qwen3-32B")));
   assert.ok(cells("Qwen2.5-7B-Instruct").includes("Timed out"), String(cells("Qwen2.5-7B-Instruct")));
 });
+
+test("the TTFT p95 column carries its unit and reads seconds from 1 s", () => {
+  matchMediaMatches = true;
+  const slow = services.map((s, i) => (i === 0 ? { ...s, ttft_p95_ms: 39000 } : s));
+  renderTable({ services: slow });
+  const cells = (name: string) => within(screen.getByText(name).closest("tr")!).getAllByRole("cell").map((cell) => cell.textContent);
+  assert.ok(cells(slow[0].name).includes("39s"), String(cells(slow[0].name)));
+  assert.ok(cells(services[1].name).includes(`${services[1].ttft_p95_ms} ms`), String(cells(services[1].name)));
+});

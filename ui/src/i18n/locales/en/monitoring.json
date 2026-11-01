@@ -44,7 +44,7 @@
   "signals": {
     "ready_replicas": "Ready replicas",
     "error_rate": "Error rate",
-    "request_rate": "Requests/s",
+    "request_rate": "RPS / Concurrency",
     "token_rate": "Token throughput",
     "ttft": "TTFT p95 / p99",
     "tpot": "TPOT p95 / p99",
@@ -56,13 +56,12 @@
     "errorRateDetail": "5xx {{5xx}} · 429 {{429}} · 503 {{asleep_503}}",
     "tokenRateInput": "Input",
     "tokenRateOutput": "Output",
-    "inflightUnit": "conn",
+    "requestRateHint": "Left: average requests per second (RPS); right: the gateway's average requests in flight (concurrency).",
     "upperBoundHint": "p95/p99 is a conservative upper bound (the max of each tick's own quantile over the window), not a single quantile over the whole window."
   },
-  "healthSummary": {
-    "title": "Health checks",
-    "noneChecked": "No service has the health check on yet; turn it on in a deployment's detail",
-    "count": "{{status}} {{count}}"
+  "stateSummary": {
+    "title": "Service state",
+    "count": "{{state}} {{count}}"
   },
   "table": {
     "state": "State",

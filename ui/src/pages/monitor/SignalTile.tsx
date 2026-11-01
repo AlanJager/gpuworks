@@ -3,15 +3,9 @@ import { useTranslation } from "react-i18next";
 import type { MonitorSignal } from "../../api";
 import { colors } from "../../theme/tokens";
 import Sparkline from "./Sparkline";
+import { formatSignalValue } from "./signalFormat";
 
-// Values arrive already rounded server-side; this only enforces the display
-// contract (at most one decimal, never a trailing ".0") against
-// floating-point noise from client-side formatting - e.g. 2 stays "2", not
-// "2.0", and 2.35 becomes "2.4", not "2.35" or "2.3999999999999995".
-export function formatSignalValue(value: number): string {
-  const rounded = Math.round(value * 10) / 10;
-  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
-}
+export { formatSignalValue };
 
 // SignalTile is one of the eight cluster-layer signal cards (plan §3.1): a
 // big number, an optional denominator, a one-line detail and a sparkline.
@@ -76,14 +70,8 @@ export default function SignalTile({
   // token_rate is the only signal with a labeled value/denominator pair;
   // the labels move to the detail row's caption, never the value row.
   const isToken = signal.key === "token_rate" && !!valueLabel && !!denominatorLabel;
-  // request_rate's denominator is the concurrency the rate was served at:
-  // shown beside the rate with its own unit, never as a ratio.
-  const isConcurrency = signal.key === "request_rate" && signal.denominator != null && !!denominatorLabel;
-
   const plainValue = hasValue
-    ? isConcurrency
-      ? formatValue(signal.value!)
-      : signal.denominator != null
+    ? signal.denominator != null
       ? `${formatValue(signal.value!)} / ${formatValue(signal.denominator)}`
       : formatValue(signal.value!)
     : null;
@@ -109,9 +97,7 @@ export default function SignalTile({
       ? t("signals.noRecentRequests")
       : isToken
         ? `${valueLabel} ${formatValue(signal.value!)} / ${denominatorLabel} ${formatValue(signal.denominator!)}${unit ? ` ${unit}` : ""}`
-        : isConcurrency
-          ? `${plainValue}${unit ? ` ${unit}` : ""} · ${formatValue(signal.denominator!)} ${denominatorLabel}`
-          : `${plainValue}${unit ? ` ${unit}` : ""}`;
+        : `${plainValue}${unit ? ` ${unit}` : ""}`;
   const ariaAnnotation = noRecentRequests && hasValue ? ` (${t("signals.noRecentRequests")})` : "";
   const ariaLabel = `${label}: ${ariaValuePart}${ariaAnnotation}`;
 
@@ -146,15 +132,6 @@ export default function SignalTile({
               <Typography.Text type="secondary" className="monitor-signal-tile__unit">
                 {unit}
               </Typography.Text>
-            )}
-            {isConcurrency && (
-              <>
-                {" · "}
-                {formatValue(signal.denominator!)}
-                <Typography.Text type="secondary" className="monitor-signal-tile__unit">
-                  {denominatorLabel}
-                </Typography.Text>
-              </>
             )}
           </span>
         )}
