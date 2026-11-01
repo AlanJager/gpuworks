@@ -125,7 +125,7 @@ func TestARequestWakesADeploymentThatFits(t *testing.T) {
 	}
 }
 
-func TestOnlineTakesItsCardsFromOfflineAndOfflineResumesWhenOnlineIdles(t *testing.T) {
+func TestOnlineTakesItsCardsFromOfflineAndOfflineTakesThemBackOnARequest(t *testing.T) {
 	w := newResidencyWorld()
 	const online, offline = 1, 2
 	w.levels[online], w.levels[offline] = pol(yieldpolicy.Idle), pol(yieldpolicy.Anytime)
@@ -154,20 +154,20 @@ func TestOnlineTakesItsCardsFromOfflineAndOfflineResumesWhenOnlineIdles(t *testi
 	if len(w.yields) != 1 {
 		t.Fatalf("busy online was put to sleep for offline: %v", w.yields)
 	}
-	// Online idle, but not yet its minute.
+	// Online idles past its minute: a resume answers no one, so online
+	// keeps its cards.
 	w.activity[online] = Activity{LastRequest: c.t}
-	c.t = c.t.Add(59 * time.Second)
+	c.t = c.t.Add(10 * time.Minute)
 	e.residency(c.t)
 	if len(w.yields) != 1 {
-		t.Fatalf("online gave its cards up before its idle time: %v", w.yields)
+		t.Fatalf("idle online gave way to offline only resuming: %v", w.yields)
 	}
-	if after, ok := e.residencyDue(); !ok || after != time.Second {
-		t.Fatalf("next look in %v (%v), want at the end of online's idle time", after, ok)
-	}
-	c.t = c.t.Add(time.Second)
+	// A request for offline is held (its client retries the cut-off work):
+	// now someone waits for it, and idle online gives way.
+	w.waiters = []Waiter{{DeploymentID: offline, Policy: pol(yieldpolicy.Anytime), Since: c.t}}
 	e.residency(c.t)
 	if !slices.Equal(w.yields, []string{"2 abort=true", "1 abort=false"}) {
-		t.Fatalf("idle online did not give way to offline resuming: %v", w.yields)
+		t.Fatalf("idle online did not give way to a request for offline: %v", w.yields)
 	}
 	if got := w.eventsFor(online); !slices.Equal(got, []string{"1 AUTO_SLEEP preempt/idle"}) {
 		t.Fatalf("online events = %v", got)
@@ -518,22 +518,21 @@ func TestAReplicaWaitingToBePlacedHasTheHolderYield(t *testing.T) {
 	if len(w.yields) != 1 || len(w.wakeCalls) != 0 {
 		t.Fatalf("batch took the cards back while chat started: yields %v wakes %v", w.yields, w.wakeCalls)
 	}
-	// Chat serves: batch tries to resume, and chat gives way only after its
-	// own idle minute from now, not from when it was placed.
+	// Chat serves and then idles: batch only waits to resume, which puts no
+	// holder to sleep - it is not woken and chat keeps its cards.
 	w.settling[chat] = false
 	e.residency(c.t)
-	if len(w.wakeCalls) != 1 || len(w.yields) != 1 {
-		t.Fatalf("on chat serving: wakes %v yields %v", w.wakeCalls, w.yields)
-	}
-	c.t = c.t.Add(59 * time.Second)
+	c.t = c.t.Add(10 * time.Minute)
 	e.residency(c.t)
-	if len(w.yields) != 1 {
-		t.Fatalf("chat gave way before an idle minute of serving: %v", w.yields)
+	if len(w.wakeCalls) != 0 || len(w.yields) != 1 {
+		t.Fatalf("batch's resume took chat's cards: wakes %v yields %v", w.wakeCalls, w.yields)
 	}
-	c.t = c.t.Add(time.Second)
+	// Chat goes away: the cards are free and batch takes them back.
+	w.blocking[batch] = Blocking{}
+	c.t = c.t.Add(10 * time.Second)
 	e.residency(c.t)
-	if !slices.Equal(w.yields, []string{"1 abort=true", "2 abort=false"}) {
-		t.Fatalf("chat did not give way once idle: %v", w.yields)
+	if !slices.Equal(w.wakeCalls, []uint{batch}) || len(w.yields) != 1 {
+		t.Fatalf("batch did not resume on free cards: wakes %v yields %v", w.wakeCalls, w.yields)
 	}
 }
 

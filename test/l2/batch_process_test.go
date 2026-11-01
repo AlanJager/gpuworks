@@ -36,8 +36,9 @@ func TestProcessABatchOnAnOfflineDeploymentSurvivesPreemption(t *testing.T) {
 	}
 
 	// The online deployment, asleep, gives way to the offline one 15 seconds
-	// after the request that preempts the batch's deployment: the offline one
-	// waits to resume, and that is when it wakes again.
+	// after the request that preempts the batch's deployment: the batch's
+	// requests are held (or retried) for the offline one, and that is when it
+	// wakes again - a resume alone would put no holder to sleep.
 	online, onlineInst := create("batchapi-online", map[string]any{"yield_policy": map[string]any{"policy": "idle", "idle_sec": 15, "sleep_level": "l2"}})
 	sleepForTheTaking(t, base, token, online, onlineInst.UUID)
 
