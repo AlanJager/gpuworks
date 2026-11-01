@@ -53,12 +53,13 @@ export interface TimelineSummary {
   to: string;
   /** Times the card changed hands (the awake deployment became another one) in the slice. */
   switches: number;
-  /** The deployment awake longest in the slice, as the server decided; absent when none was awake. */
-  dominant_deployment_id?: number;
-  dominant_deployment?: string;
+  // The answer also carries dominant_deployment_id and dominant_deployment
+  // (the deployment awake longest); they are kept for older clients and the
+  // timeline does not read them.
   deployments: TimelineSummaryDeployment[];
 }
 
+/** What one deployment did with the card during a slice. */
 export interface TimelineSummaryDeployment {
   deployment_id: number;
   deployment: string;
@@ -66,6 +67,10 @@ export interface TimelineSummaryDeployment {
   asleep_seconds: number;
   switching_seconds: number;
   starting_seconds: number;
+  /** The state it spent the most time in during the slice, as the server decided; the slice is drawn in its colour. */
+  state: TimelineState;
+  /** The sleep level (1 or 2) when state is asleep and the server knows it. */
+  level?: number;
 }
 
 export interface TimelineNode {

@@ -99,7 +99,8 @@ const TimelineSummaryKind = "summary"
 // nothing held the card, and each is rounded, so they do not add up to the
 // slice's length. DominantDeploymentID and Dominant name the deployment awake
 // longest in the slice (the lower id on a tie), absent when none was awake;
-// the server decides, the UI only draws it.
+// they are kept for clients of the first summary shape, the UI draws each
+// deployment's own State instead.
 type TimelineSummary struct {
 	Kind                 string                      `json:"kind"`
 	From                 time.Time                   `json:"from"`
@@ -114,6 +115,14 @@ type TimelineSummary struct {
 // card during a TimelineSummary, in seconds: awake (serving), asleep (any
 // level), switching (between a sleep or wake order and its result) and
 // starting.
+//
+// State is the one of them the deployment spent the most time in during the
+// slice, in the words of TimelineSegment.State (awake, asleep, switching,
+// starting); on a tie of the unrounded times the first of awake, switching,
+// starting, asleep wins. Level is, as on a segment, the sleep level (1 or 2)
+// and only when State is asleep: the one with most asleep time in the slice
+// (the shallower on a tie), absent when no asleep stretch names a level. The
+// server decides, the UI only draws the slice in the colour of State.
 type TimelineSummaryDeployment struct {
 	DeploymentID     uint   `json:"deployment_id"`
 	Deployment       string `json:"deployment"`
@@ -121,6 +130,8 @@ type TimelineSummaryDeployment struct {
 	AsleepSeconds    int64  `json:"asleep_seconds"`
 	SwitchingSeconds int64  `json:"switching_seconds"`
 	StartingSeconds  int64  `json:"starting_seconds"`
+	State            string `json:"state"`
+	Level            int    `json:"level,omitempty"`
 }
 
 // TimelineSegment is one stretch of an instance holding a GPU in one state:
