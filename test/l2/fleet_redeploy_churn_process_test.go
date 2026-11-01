@@ -249,7 +249,10 @@ func startFleetGroup(t *testing.T, hostBin, base, workRoot, modelDir, nextRoster
 	rosterPath := filepath.Join(workRoot, "roster.json")
 	writeFleetRoster(t, rosterPath, roster)
 	readyPath := filepath.Join(workRoot, "fleet.ready")
-	host := exec.Command(hostBin, "--roster", rosterPath, "--next-roster", nextRosterPath, "--server", base, "--state-root", filepath.Join(workRoot, "agents"), "--model-dir", modelDir, "--ready", readyPath)
+	// GPUWORKS_FLEET_GPUS sets the cards each node reports (default 1): every
+	// card adds its checks to every status report.
+	gpus := strconv.Itoa(fleet.EnvInt("GPUWORKS_FLEET_GPUS", 1))
+	host := exec.Command(hostBin, "--roster", rosterPath, "--next-roster", nextRosterPath, "--server", base, "--state-root", filepath.Join(workRoot, "agents"), "--model-dir", modelDir, "--ready", readyPath, "--gpus", gpus)
 	host.Env = os.Environ()
 	host.Stdout, host.Stderr = fleetProcessLog(t, workRoot, "fleet-host.log")
 	if err := host.Start(); err != nil {
