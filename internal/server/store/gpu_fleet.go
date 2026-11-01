@@ -42,16 +42,20 @@ func (s *Store) OnlineGPUGroups() ([]OnlineGPUGroup, error) {
 		Ownership    string
 		HealthStatus string
 		Held         bool
+		Stopped      bool
+		Allowed      bool
 		Count        int
 	}
 	err := s.reader().Raw(`SELECT n.id AS node_id, n.framework AS framework, g.vendor AS vendor, g.name AS name,
 		g.arch_id AS arch_id, g.compute_capability AS compute_capability,
 		g.ownership AS ownership, g.health_status AS health_status, g.foreign_processes <> '' AS held,
+		g.scheduling_stopped AS stopped, g.scheduling_allowed_at IS NOT NULL AS allowed,
 		COUNT(*) AS count, MAX(g.memory_total) AS max_memory
 		FROM gpus g JOIN nodes n ON n.id = g.node_id
 		WHERE n.state = ?
 		GROUP BY n.id, n.framework, g.vendor, g.name, g.arch_id, g.compute_capability,
-			g.ownership, g.health_status, g.foreign_processes <> ''`, NodeStateOnline).Scan(&rows).Error
+			g.ownership, g.health_status, g.foreign_processes <> '',
+			g.scheduling_stopped, g.scheduling_allowed_at IS NOT NULL`, NodeStateOnline).Scan(&rows).Error
 	if err != nil {
 		return nil, err
 	}
@@ -74,7 +78,7 @@ func (s *Store) OnlineGPUGroups() ([]OnlineGPUGroup, error) {
 			group.Cards, group.Unusable, group.MaxMemory = 0, 0, 0
 			out = append(out, group)
 		}
-		if accelerator.CardSchedulable(row.Ownership, row.HealthStatus, row.Held) {
+		if cardTakesWork(row.Ownership, row.HealthStatus, row.Held, row.Stopped, row.Allowed) {
 			out[i].Cards += row.Count
 		} else {
 			out[i].Unusable += row.Count

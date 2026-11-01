@@ -171,7 +171,22 @@ func (g *GPU) BeforeSave(*gorm.DB) error {
 // Why not is told by Ownership, HealthStatus and HealthCode, each of which
 // names something an operator can act on; a boolean could not.
 func (g GPU) CanTakeWork() bool {
-	return accelerator.CardSchedulable(g.Ownership, g.HealthStatus, g.HeldOutsidePlatform())
+	return cardTakesWork(g.Ownership, g.HealthStatus, g.HeldOutsidePlatform(), g.SchedulingStopped, g.SchedulingAllowedAt != nil)
+}
+
+// cardTakesWork is CanTakeWork from the columns, for readers that aggregate
+// cards in SQL rather than load them. The operator's decision comes first
+// (card_scheduling.go): a card they stopped takes nothing, a card they
+// allowed takes work whatever the platform judged — but never one that is
+// not this node's, which no decision changes.
+func cardTakesWork(ownership, health string, held, stopped, allowed bool) bool {
+	switch {
+	case stopped:
+		return false
+	case allowed:
+		return accelerator.CardUsable(ownership)
+	}
+	return accelerator.CardSchedulable(ownership, health, held)
 }
 
 // HeldOutsidePlatform is whether a process outside the platform is using
@@ -326,6 +341,20 @@ type GPU struct {
 	HealthStatus  string `gorm:"size:32"`
 	HealthCode    string `gorm:"size:64"`
 	HealthMessage string `gorm:"type:text"` // the agent's health evidence: accelerator.FormatHealthEvidence lines; agents before the evidence format wrote one sentence (accelerator.ParseHealthEvidence reads both)
+
+	// The operator's say over this card (card_scheduling.go). Reports never
+	// write these: they are not facts of the card but decisions about it,
+	// kept on its row (keyed by the card's identity, so they cannot drift
+	// to another card) so that placing work reads no second table.
+	//
+	// SchedulingStopped: the operator took the card out of scheduling. It
+	// holds until they put it back; nothing the platform sees lifts it.
+	SchedulingStopped bool `gorm:"not null;default:false"`
+	// SchedulingAllowedAt: when the operator let work onto a card the
+	// platform had judged unusable (a fault, or a process outside the
+	// platform). It holds until the first report at least
+	// cardAllowanceWindow later, which judges the card afresh.
+	SchedulingAllowedAt *time.Time
 
 	CreatedAt time.Time
 	UpdatedAt time.Time

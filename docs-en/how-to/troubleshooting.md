@@ -382,6 +382,15 @@ Verified example: when `npu-smi` on an Ascend host reports `dcmi module initiali
 **The agent does not read the PCI bus when running in a container**: a container can see the host's entire bus, and treating the host's other cards as belonging to this node
 would report nonexistent additional faulty cards, so inside a container it recognizes only cards listed by the vendor CLI.
 
+### Stopping or Temporarily Allowing a Card by Hand
+
+Expand a card in the accelerator table of node details; its “Scheduling” entry can:
+
+- **Stop scheduling**: the card takes no new deployments; instances already on it are unaffected. It holds until lifted by hand, and the platform never lifts it. The card shows an orange “Scheduling stopped” tag next to its health tag.
+- **Allow for now**: for a card the platform judged unusable (a fault, or processes outside the platform) that you want to check yourself. Once allowed it takes new deployments as usual until the first report at least a minute later judges it again: if the problem remains it is stopped again, if it has recovered it stays usable. This is enough to deploy a model by hand and see whether the card really cannot serve. You are asked to confirm first, and the card shows a blue “Allowed for now” tag next to its health tag.
+
+A card passed through to a virtual machine or without a driver is not this node's to use and cannot be allowed (`CARD_NOT_OWNED`).
+
 ### Card Is in Use by Processes Outside the Platform
 
 A card marked “In use outside the platform” has compute processes that the platform did not start (such as a vLLM process started by a user).

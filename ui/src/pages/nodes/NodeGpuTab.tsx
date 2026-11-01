@@ -5,6 +5,7 @@ import type { TFunction } from "i18next";
 import type { GPU, Node, PartitionCapability as Capability, TopoHighlight, Topology } from "../../api";
 import AcceleratorChoice, { hasAcceleratorChoice } from "../../components/AcceleratorChoice";
 import GPUHealthTag from "../../components/GPUHealth";
+import { CardSchedulingControl, CardSchedulingTag } from "./CardScheduling";
 import PartitionCapability from "../../components/PartitionCapability";
 import TopologyGraph from "../../components/TopologyGraph";
 import { formatTime } from "../../i18n/datetime";
@@ -90,7 +91,7 @@ export default function NodeGpuTab({
               dataSource={gpus}
               columns={gpuColumns(t, telemetry.snapshotOf)}
               expandable={detailExpandable<GPU>(
-                (gpu) => <GpuExtra gpu={gpu} snapshot={telemetry.snapshotOf(gpu)} />,
+                (gpu) => <GpuExtra node={node} gpu={gpu} snapshot={telemetry.snapshotOf(gpu)} onUpdated={onUpdated} />,
                 { expand: t("accelerators.expand"), collapse: t("accelerators.collapse") },
               )}
             />
@@ -198,12 +199,17 @@ function gpuColumns(t: TFunction<"nodes">, snapshotOf: (gpu: GPU) => GpuSnapshot
       title: t("accelerators.column.health"),
       key: "health",
       width: 122,
-      render: (_: unknown, gpu: GPU) => <GPUHealthTag gpu={gpu} />,
+      render: (_: unknown, gpu: GPU) => (
+        <Space size={4} wrap>
+          <GPUHealthTag gpu={gpu} />
+          <CardSchedulingTag gpu={gpu} />
+        </Space>
+      ),
     },
   ];
 }
 
-function GpuExtra({ gpu, snapshot }: { gpu: GPU; snapshot: GpuSnapshot }) {
+function GpuExtra({ node, gpu, snapshot, onUpdated }: { node: Node; gpu: GPU; snapshot: GpuSnapshot; onUpdated: (node: Node) => void }) {
   const { t } = useTranslation("nodes");
   const arch = gpu.arch_id || gpu.arch_family || "—";
   const power = snapshot.powerWatts == null ? "—" : `${snapshot.powerWatts.toFixed(0)} W`;
@@ -247,6 +253,14 @@ function GpuExtra({ gpu, snapshot }: { gpu: GPU; snapshot: GpuSnapshot }) {
         <dt>{t("accelerators.field.updatedAt")}</dt>
         <dd>{formatTime(snapshot.updatedAtMS, t("telemetry.notReported"))}</dd>
       </div>
+      {gpu.scheduling_actions?.length ? (
+        <div style={{ gridColumn: "1 / -1" }}>
+          <dt>{t("accelerators.field.scheduling")}</dt>
+          <dd>
+            <CardSchedulingControl node={node} gpu={gpu} onUpdated={onUpdated} />
+          </dd>
+        </div>
+      ) : null}
       <div style={{ gridColumn: "1 / -1" }}>
         <dt>{t("accelerators.field.uuid")}</dt>
         <dd>{gpu.uuid ? <Typography.Text copyable style={{ fontSize: 12 }}>{gpu.uuid}</Typography.Text> : "—"}</dd>

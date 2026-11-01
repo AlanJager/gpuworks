@@ -1305,6 +1305,22 @@ var migrations = []migration{
 		// cannot prove is its own alone.
 		return db.Migrator().AddColumn(&Node{}, "SchedulingBy")
 	}},
+	{Version: 195, Name: "gpu_operator_scheduling", Apply: func(db *gorm.DB) error {
+		if !db.Migrator().HasTable(&GPU{}) {
+			return nil
+		}
+		// Both empty on existing cards: no operator has decided anything
+		// about them yet.
+		for _, column := range []string{"SchedulingStopped", "SchedulingAllowedAt"} {
+			if db.Migrator().HasColumn(&GPU{}, column) {
+				continue
+			}
+			if err := db.Migrator().AddColumn(&GPU{}, column); err != nil {
+				return err
+			}
+		}
+		return nil
+	}},
 }
 
 // modelFileNetworkColumns are the columns migrations 76 and 77 added to

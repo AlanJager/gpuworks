@@ -77,6 +77,7 @@
     "NODE_SCHEDULABLE": "请先停止调度或驱逐该节点，再强制撤下副本。",
     "NODE_RUNTIME_INVALID": "运行时必须是自动、Docker、nerdctl 或 runveil（API 值为 udocker）。",
     "NODE_ACCELERATOR_INVALID": "加速卡只能选自动，或这台机器上有卡的厂商。",
+    "CARD_NOT_OWNED": "这张卡不归本节点使用（已直通给虚拟机，或没有绑定驱动），不能设为可调度。",
     "NODE_ACCELERATOR_NOT_ON_HOST": "这台机器上没有 {{accelerator}} 的卡。",
     "NODE_ACCELERATOR_HAS_INSTANCES": "节点上还有 {{count}} 个实例，请先停止或迁走再切换加速卡。",
     "NODE_DELETE_FORCE_INVALID": "force 必须是单个布尔值。",

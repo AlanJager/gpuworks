@@ -291,7 +291,8 @@
     "field": {
       "pcie": "PCIe 地址",
       "uuid": "UUID",
-      "updatedAt": "指标时间"
+      "updatedAt": "指标时间",
+      "scheduling": "调度"
     }
   },
   "state": {
@@ -829,5 +830,23 @@
     "startedAt": "开始：{{at}}",
     "finishedAt": "结束：{{at}}",
     "verifiedAt": "后续已核实旧操作结束：{{at}}"
+  },
+  "cardScheduling": {
+    "stoppedTag": "停止调度",
+    "allowedTag": "临时放开",
+    "state": {
+      "stopped": "管理员停止调度，平台不会自动解除",
+      "allowed": "已临时放开：平台判定不可用，下一次上报（约 1 分钟后）重新判定",
+      "schedulable": "可调度",
+      "blocked": "平台判定不可用"
+    },
+    "stop": "停止调度",
+    "resume": "恢复调度",
+    "allow": "临时放开",
+    "allowConfirm": "平台判定这张卡不可用。放开后它会接受新部署，直到约 1 分钟后的下一次上报重新判定。确定放开？",
+    "done": {
+      "stopped": "已停止这张卡的调度",
+      "schedulable": "这张卡已可调度"
+    }
   }
 }

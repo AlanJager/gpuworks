@@ -277,7 +277,7 @@ func (s *Store) GPUTimeSnapshot() (GPUTimeSnapshot, error) {
 		out.NodeUUIDs[n.ID] = n.UUID
 	}
 	if len(online) > 0 {
-		if err := db.Select("ID", "NodeID", "Ident", "Index", "UUID", "Name", "MemoryTotal", "Ownership", "HealthStatus", "ForeignProcesses").
+		if err := db.Select("ID", "NodeID", "Ident", "Index", "UUID", "Name", "MemoryTotal", "Ownership", "HealthStatus", "ForeignProcesses", "SchedulingStopped", "SchedulingAllowedAt").
 			Where("node_id IN ?", online).Find(&out.Cards).Error; err != nil {
 			return out, err
 		}
