@@ -38,6 +38,9 @@ import {
 } from "./monitorRequestsApi";
 import type { TelemetryExport, TelemetryExportTest, TelemetryExportUpdate } from "./telemetryApi";
 
+/** What an operator sets one card to (PUT /nodes/{uuid}/gpus/scheduling). */
+export type CardScheduling = "stopped" | "schedulable";
+
 export interface GPU {
   /** The vendor CLI's device index, or -1 when it does not list the card. */
   index: number;
@@ -65,6 +68,12 @@ export interface GPU {
   schedulable: boolean;
   /** Compute processes on the card that the platform does not account for. */
   foreign_processes?: { pid: number; name: string; memory_bytes?: number }[];
+  /** An operator took the card out of scheduling; only they put it back. */
+  scheduling_stopped?: boolean;
+  /** An operator let work onto a card the platform judged unusable, until the next report judges it afresh. */
+  scheduling_allowed?: boolean;
+  /** What an operator may do to the card now, decided by the server. */
+  scheduling_actions?: CardScheduling[];
   health_status?: string;
   health_code?: string;
   health_message?: string;
@@ -158,6 +167,12 @@ export interface Node {
   // scheduling is whether the node takes new replicas: cordoned takes none,
   // draining also moves the replicas a pool placed there.
   scheduling?: NodeScheduling;
+  // scheduling_by is who set scheduling (absent when nobody holds the node,
+  // or the author was not recorded): the platform lifts only its own.
+  scheduling_by?: "operator" | "platform";
+  // cordon_reason is why the platform holds the node now; absent unless
+  // scheduling_by is platform.
+  cordon_reason?: "runtime_gpu_blocked" | "card_needs_host_reboot";
   name?: string;
   token?: string;
   /** Installs this node's agent; returned with the token, and the way back
@@ -3262,6 +3277,12 @@ export interface PhysicalGPU {
   ownership?: "" | "passthrough" | "no_driver" | "held_elsewhere";
   /** Compute processes on the card that no instance of ours accounts for. */
   foreign_processes?: { pid: number; name: string; memory_bytes?: number }[];
+  /** An operator took the card out of scheduling; only they put it back. */
+  scheduling_stopped?: boolean;
+  /** An operator let work onto a card the platform judged unusable, until the next report judges it afresh. */
+  scheduling_allowed?: boolean;
+  /** What an operator may do to the card now, decided by the server. */
+  scheduling_actions?: CardScheduling[];
   allocation_state: "available" | "partial" | "allocated" | "unusable" | "unknown";
   allocated_bytes: number;
   available_bytes: number;
@@ -3878,6 +3899,11 @@ export const api = {
     ),
   setNodeScheduling: (uuid: string, scheduling: NodeScheduling) =>
     sendJSON<Node>("PUT", `/api/v1/nodes/${encodeURIComponent(uuid)}/scheduling`, { scheduling }),
+  setCardScheduling: (nodeUUID: string, card: { pcie_bdf?: string; uuid?: string }, scheduling: CardScheduling) =>
+    sendJSON<Node>("PUT", `/api/v1/nodes/${encodeURIComponent(nodeUUID)}/gpus/scheduling`, {
+      ...(card.pcie_bdf ? { pcie_bdf: card.pcie_bdf } : { uuid: card.uuid }),
+      scheduling,
+    }),
   nodeReplicas: (uuid: string) =>
     getJSON<NodeReplicas>(`/api/v1/nodes/${encodeURIComponent(uuid)}/replicas`),
   // evictNode takes every replica off a cordoned or draining node at once,

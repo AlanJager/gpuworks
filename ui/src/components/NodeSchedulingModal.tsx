@@ -24,17 +24,30 @@ const kindColor: Record<NodeReplica["kind"], string> = {
 };
 
 // NodeSchedulingTag marks a node that takes no new replicas; a schedulable
-// node shows nothing. A cordon the platform applied because the runtime
-// cannot give containers their accelerators says so on hover.
+// node shows nothing. The tag is the same whoever set it; hovering says who:
+// the platform, with its reason and that it lifts the cordon itself once the
+// reason is gone, or an operator, whose cordon the platform never lifts.
 export function NodeSchedulingTag({ node }: { node: Node }) {
   const { t } = useTranslation("nodes");
   const scheduling = node.scheduling ?? "schedulable";
   if (scheduling === "schedulable") return null;
   const tag = <Tag color={schedulingColor[scheduling]}>{t(`scheduling.state.${scheduling}`)}</Tag>;
-  const reason = scheduling === "cordoned" ? runtimeGpuBlockedReason(t, node) : "";
   if (scheduling === "draining") return <Tooltip title={t("scheduling.drainHint")}>{tag}</Tooltip>;
+  const reason = cordonReasonText(t, node);
   if (!reason) return tag;
   return <Tooltip title={reason}>{tag}</Tooltip>;
+}
+
+function cordonReasonText(t: (key: string, options?: Record<string, unknown>) => string, node: Node): string {
+  if (node.scheduling_by === "operator") return t("scheduling.by.operator");
+  if (node.scheduling_by === "platform") {
+    const why = node.cordon_reason === "card_needs_host_reboot"
+      ? t("scheduling.cordonReason.card_needs_host_reboot")
+      : runtimeGpuBlockedReason(t, node);
+    return why ? `${why} ${t("scheduling.by.platformLifts")}` : t("scheduling.by.platformLifts");
+  }
+  // A cordon set before its author was recorded: say what is known.
+  return runtimeGpuBlockedReason(t, node);
 }
 
 // NodeSchedulingModal cordons, drains or uncordons a node and follows a

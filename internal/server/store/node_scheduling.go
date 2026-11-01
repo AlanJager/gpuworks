@@ -53,11 +53,20 @@ func (s *Store) DrainingNodeIDs() (map[uint]bool, error) {
 // NodeScheduling). A change is published like any node change other than a
 // routine status report, so every deployment is reconciled: one waiting for
 // room when a node is uncordoned, one with a replica to move when it drains.
+//
+// It is the operator's decision, so it is recorded as theirs: the platform
+// then leaves a cordon they set alone, and a node they turn back on stays
+// on until the platform's own reason is seen again on the next report.
 func (s *Store) SetNodeScheduling(uuid string, scheduling NodeScheduling) (*Node, error) {
 	if !scheduling.Valid() {
 		return nil, fmt.Errorf("node scheduling %q is not one of schedulable, cordoned, draining", scheduling)
 	}
-	res := s.db.Model(&Node{}).Where("uuid = ?", uuid).Update("scheduling", scheduling)
+	by := SchedulingByOperator
+	if scheduling == NodeSchedulable {
+		by = SchedulingBySelf
+	}
+	res := s.db.Model(&Node{}).Where("uuid = ?", uuid).
+		Updates(map[string]any{"scheduling": scheduling, "scheduling_by": by})
 	if res.Error != nil {
 		return nil, res.Error
 	}

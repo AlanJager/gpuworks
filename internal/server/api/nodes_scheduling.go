@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"gpuworks.ai/gpuworks/internal/accelerator"
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"gpuworks.ai/gpuworks/internal/server/planning"
@@ -56,6 +57,50 @@ func (a *apiHandlers) setNodeScheduling(w http.ResponseWriter, r *http.Request) 
 		writeErr(w, http.StatusNotFound, err)
 		return
 	}
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, toNodeDTO(node))
+}
+
+// setCardScheduling stops one card's scheduling, or makes it schedulable
+// again: an operator's stop holds until they lift it, and making a card the
+// platform judged unusable schedulable lets work onto it until the next
+// report judges it afresh (store.SetCardScheduling). The node comes back,
+// cards included, as GET /nodes/{uuid} returns it.
+func (a *apiHandlers) setCardScheduling(w http.ResponseWriter, r *http.Request) {
+	var req dto.CardSchedulingRequest
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	to := store.CardScheduling(req.Scheduling)
+	if !to.Valid() {
+		writeProductError(w, http.StatusBadRequest, ErrorFieldInvalid, "scheduling must be stopped or schedulable", map[string]any{"field": "scheduling", "detail": req.Scheduling})
+		return
+	}
+	ident := accelerator.CardIdent(req.UUID, req.PCIeBDF)
+	if ident == "" {
+		writeProductError(w, http.StatusBadRequest, ErrorFieldInvalid, "pcie_bdf or uuid names the card", map[string]any{"field": "pcie_bdf"})
+		return
+	}
+	uuid := chi.URLParam(r, "uuid")
+	_, err := a.d.Store.SetCardScheduling(uuid, ident, to)
+	switch {
+	case errors.Is(err, store.ErrNotFound):
+		writeErr(w, http.StatusNotFound, err)
+		return
+	case errors.Is(err, store.ErrCardNotOwned):
+		writeProductError(w, http.StatusConflict, ErrorCardNotOwned, "the card is not this node's to use", map[string]any{"pcie_bdf": req.PCIeBDF})
+		return
+	case err != nil:
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	node, err := a.d.Store.NodeWithGPUs(uuid)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err)
 		return

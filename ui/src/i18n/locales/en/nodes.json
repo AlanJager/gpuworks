@@ -291,7 +291,8 @@
     "field": {
       "pcie": "PCIe address",
       "uuid": "UUID",
-      "updatedAt": "Reported at"
+      "updatedAt": "Reported at",
+      "scheduling": "Scheduling"
     }
   },
   "state": {
@@ -511,7 +512,14 @@
     "lastFailedAttempt": "Latest failed attempt on another node: {{message}}",
     "awaitingReason": "Waiting for a replacement. No scheduling refusal has been reported yet; check the deployment’s instances and model/image preparation.",
     "offline": "The node is offline: retirement and container removal cannot be confirmed.",
-    "offlineHint": "Restore its agent connection and check its instances. You can stop the drain while keeping the node cordoned; the platform will not enable scheduling or claim that removal succeeded."
+    "offlineHint": "Restore its agent connection and check its instances. You can stop the drain while keeping the node cordoned; the platform will not enable scheduling or claim that removal succeeded.",
+    "by": {
+      "operator": "Stopped by an administrator; the platform never lifts it.",
+      "platformLifts": "The platform turns scheduling back on once the reason is gone."
+    },
+    "cordonReason": {
+      "card_needs_host_reboot": "Stopped by the platform: a card reports that only a host reboot or power cycle recovers it, and the other cards sit behind the same driver."
+    }
   },
   "systemLabels": {
     "title": "System labels",
@@ -822,5 +830,23 @@
     "startedAt": "Started: {{at}}",
     "finishedAt": "Finished: {{at}}",
     "verifiedAt": "The previous attempt was later verified to have ended: {{at}}"
+  },
+  "cardScheduling": {
+    "stoppedTag": "Scheduling stopped",
+    "allowedTag": "Allowed for now",
+    "state": {
+      "stopped": "Stopped by an administrator; the platform never lifts it",
+      "allowed": "Allowed for now: the platform judged it unusable and judges it again on the next report (about a minute)",
+      "schedulable": "Schedulable",
+      "blocked": "Judged unusable by the platform"
+    },
+    "stop": "Stop scheduling",
+    "resume": "Resume scheduling",
+    "allow": "Allow for now",
+    "allowConfirm": "The platform judged this card unusable. Once allowed it takes new deployments until the next report, about a minute later, judges it again. Allow it?",
+    "done": {
+      "stopped": "Scheduling stopped on this card",
+      "schedulable": "This card is schedulable"
+    }
   }
 }

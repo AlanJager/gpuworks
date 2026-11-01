@@ -326,6 +326,7 @@ func Router(d Deps, policies ...auth.SessionPolicy) http.Handler {
 			r.Post("/nodes/{uuid}/upgrade", a.upgradeNode)
 			r.Put("/nodes/{uuid}/labels", a.updateNodeLabels)
 			r.Put("/nodes/{uuid}/scheduling", a.setNodeScheduling)
+			r.Put("/nodes/{uuid}/gpus/scheduling", a.setCardScheduling)
 			r.Get("/nodes/{uuid}/replicas", a.nodeReplicas)
 			r.Post("/nodes/{uuid}/evict", a.evictNode)
 			r.Patch("/nodes/{uuid}/name", a.renameNode)
@@ -1079,6 +1080,8 @@ func nodeDTO(n *store.Node, includeToken bool) dto.Node {
 	d := dto.Node{
 		UUID:                  n.UUID,
 		Scheduling:            nodeSchedulingName(n.Scheduling),
+		SchedulingBy:          string(n.SchedulingBy),
+		CordonReason:          n.CordonReason(),
 		Name:                  n.Name,
 		State:                 n.ConnectionState(),
 		Hostname:              n.Hostname,
@@ -1169,6 +1172,9 @@ func nodeDTO(n *store.Node, includeToken bool) dto.Node {
 			MIGEnabled:            g.MIGEnabled,
 			Ownership:             g.Ownership,
 			ForeignProcesses:      g.ForeignUse(),
+			SchedulingStopped:     g.SchedulingStopped,
+			SchedulingAllowed:     g.SchedulingAllowedAt != nil,
+			SchedulingActions:     g.SchedulingActions(),
 			Schedulable:           g.CanTakeWork(),
 			HealthStatus:          g.HealthStatus,
 			HealthCode:            g.HealthCode,

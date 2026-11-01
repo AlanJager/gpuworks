@@ -52,11 +52,19 @@ type GPU struct {
 	// platform's instances account for, so it is not offered for work
 	// while they run.
 	ForeignProcesses []proto.CardProcess `json:"foreign_processes,omitempty"`
-	HealthStatus     string              `json:"health_status,omitempty"`
-	HealthCode       string              `json:"health_code,omitempty"`
-	HealthMessage    string              `json:"health_message,omitempty"`
-	HealthEvidence   []GPUHealthField    `json:"health_evidence,omitempty"`
-	HealthGuide      *GPUHealthGuide     `json:"health_guide,omitempty"`
+	// SchedulingStopped: an operator took the card out of scheduling; only
+	// they put it back. SchedulingAllowed: an operator let work onto it
+	// although the platform judged it unusable, until a report judges it
+	// afresh (about a minute). SchedulingActions are what an operator may do
+	// to it now (stopped, schedulable), decided by the server.
+	SchedulingStopped bool             `json:"scheduling_stopped,omitempty"`
+	SchedulingAllowed bool             `json:"scheduling_allowed,omitempty"`
+	SchedulingActions []string         `json:"scheduling_actions,omitempty"`
+	HealthStatus      string           `json:"health_status,omitempty"`
+	HealthCode        string           `json:"health_code,omitempty"`
+	HealthMessage     string           `json:"health_message,omitempty"`
+	HealthEvidence    []GPUHealthField `json:"health_evidence,omitempty"`
+	HealthGuide       *GPUHealthGuide  `json:"health_guide,omitempty"`
 }
 
 // Node is the API view of a store.Node.
@@ -64,8 +72,16 @@ type Node struct {
 	UUID string `json:"uuid"`
 	// Scheduling is schedulable, cordoned or draining.
 	Scheduling string `json:"scheduling"`
-	Name       string `json:"name,omitempty"`
-	Token      string `json:"token,omitempty"`
+	// SchedulingBy is who set Scheduling: operator or platform; absent on a
+	// schedulable node, or a cordon set before the author was recorded. The
+	// platform lifts only its own.
+	SchedulingBy string `json:"scheduling_by,omitempty"`
+	// CordonReason is why the platform holds the node out of scheduling
+	// now (runtime_gpu_blocked, card_needs_host_reboot); absent unless
+	// SchedulingBy is platform. A client renders the code in its language.
+	CordonReason string `json:"cordon_reason,omitempty"`
+	Name         string `json:"name,omitempty"`
+	Token        string `json:"token,omitempty"`
 	// InstallCommand installs this node's agent, and is also how a node
 	// whose agent the platform cannot restore itself is brought back. It
 	// carries the token, so it is returned only alongside it.
@@ -181,6 +197,15 @@ type Health struct {
 	Version  string `json:"version"`
 	Nodes    int    `json:"nodes"`
 	Sessions int    `json:"sessions"`
+}
+
+// CardSchedulingRequest sets whether one card of a node takes new work: the
+// card is named by its PCI address (pcie_bdf), or by its UUID when it has
+// none; scheduling is stopped or schedulable.
+type CardSchedulingRequest struct {
+	PCIeBDF    string `json:"pcie_bdf,omitempty"`
+	UUID       string `json:"uuid,omitempty"`
+	Scheduling string `json:"scheduling"`
 }
 
 // NodeSchedulingRequest sets whether a node takes new replicas

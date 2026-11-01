@@ -77,6 +77,7 @@
     "NODE_SCHEDULABLE": "Cordon or drain the node before evicting its replicas.",
     "NODE_RUNTIME_INVALID": "Runtime must be auto, Docker, nerdctl, or runveil (API value udocker).",
     "NODE_ACCELERATOR_INVALID": "Accelerator must be auto or a vendor whose cards this machine has.",
+    "CARD_NOT_OWNED": "This card is not this node's to use (passed through to a virtual machine, or without a driver), so it cannot be made schedulable.",
     "NODE_ACCELERATOR_NOT_ON_HOST": "This machine has no {{accelerator}} cards.",
     "NODE_ACCELERATOR_HAS_INSTANCES": "{{count}} instance(s) still run on this node; stop or move them before switching accelerators.",
     "NODE_DELETE_FORCE_INVALID": "Force must be a single boolean.",

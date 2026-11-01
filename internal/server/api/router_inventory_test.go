@@ -383,6 +383,7 @@ PUT /api/v1/experience/enabled
 PUT /api/v1/mcp/settings
 PUT /api/v1/networks/{id}
 PUT /api/v1/networks/{id}/attachments/{attachmentID}
+PUT /api/v1/nodes/{uuid}/gpus/scheduling
 PUT /api/v1/nodes/{uuid}/labels
 PUT /api/v1/nodes/{uuid}/management-roles
 PUT /api/v1/nodes/{uuid}/network

@@ -459,7 +459,7 @@ func (r *Runner) tryUnlessBusy(ctx context.Context, card Card, skipBusy bool) st
 		outcome.Failures = failures + 1
 	}
 	r.record(card.Ident, outcome)
-	r.scheduleNext(card.Ident, outcome)
+	r.scheduleNext(card.Ident, outcome, r.roundFrom(outcome.At))
 	if err == timeoutErr {
 		return timeoutErr.Error()
 	}
@@ -482,7 +482,8 @@ func (r *Runner) backingOff(ident string) bool {
 
 // scheduleNext doubles the wait after each consecutive failure up to
 // MaxBackoffRounds intervals. A successful answer clears it.
-func (r *Runner) scheduleNext(ident string, outcome Outcome) {
+// from is when the wait is measured from.
+func (r *Runner) scheduleNext(ident string, outcome Outcome, from time.Time) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if outcome.OK || outcome.Failures <= 0 {
@@ -496,13 +497,46 @@ func (r *Runner) scheduleNext(ident string, outcome Outcome) {
 	if rounds > r.cfg.MaxBackoffRounds {
 		rounds = r.cfg.MaxBackoffRounds
 	}
-	from := r.roundStart
-	if from.IsZero() {
-		from = outcome.At
-	}
 	// Half an interval of slack, measured from the round rather than the
 	// attempt, keeps a tick that arrives a little early from adding a round.
 	r.nextAttempt[ident] = from.Add(time.Duration(rounds)*r.cfg.Interval - r.cfg.Interval/2)
+}
+
+// roundFrom is when the round in flight began, or at when none has.
+func (r *Runner) roundFrom(at time.Time) time.Time {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.roundStart.IsZero() {
+		return at
+	}
+	return r.roundStart
+}
+
+// Record takes an answer the card gave to a check made outside the runner
+// (Doctor's) as if a round had asked it: a pass clears the card's failure and
+// its backoff straight away, a failure counts and backs off like one of the
+// runner's own. Without it a card that failed would stay unusable until its
+// backoff — up to MaxBackoffRounds intervals — let a round ask it again,
+// however clearly a diagnosis had just shown it working.
+//
+// Only an answer about the card belongs here. A check that could not reach
+// the runtime, or was cut off by the caller's own budget, has no verdict and
+// is not recorded.
+func (r *Runner) Record(ident string, err error) {
+	if r == nil || ident == "" {
+		return
+	}
+	at := r.cfg.Now()
+	r.mu.Lock()
+	failures := r.outcomes[ident].Failures
+	r.mu.Unlock()
+	outcome := Outcome{OK: err == nil, At: at}
+	if err != nil {
+		outcome.Detail = err.Error()
+		outcome.Failures = failures + 1
+	}
+	r.record(ident, outcome)
+	r.scheduleNext(ident, outcome, at)
 }
 
 // Skipped is why the last round could not ask any card or stopped partway,

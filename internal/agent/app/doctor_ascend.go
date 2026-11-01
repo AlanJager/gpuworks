@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -71,13 +72,11 @@ func doctorCardRuntimeChecks(ctx context.Context, r *proto.DoctorReport, gpus []
 	if r.Accelerators == nil {
 		return
 	}
-	// NVIDIA has its own whole-node checks (doctorNVIDIAChecks); every
-	// other vendor whose runtime can be asked on the host is asked per card
-	// here, so the diagnosis covers what the periodic check does.
+	// Every vendor whose runtime can be asked on the host is asked per card
+	// here, so the diagnosis covers what the periodic check does. NVIDIA's
+	// whole-node checks (doctorNVIDIAChecks) do not: they see every card at
+	// once, so their CUDA check answers for the first visible card only.
 	vendor := accelerator.NormalizeVendor(r.Accelerators.Vendor)
-	if vendor == accelerator.VendorNVIDIA {
-		return
-	}
 	check, ok := doctorRuntimeCheck(ctx)(r.Accelerators.Vendor)
 	if !ok {
 		return
@@ -106,6 +105,8 @@ func doctorCardRuntimeChecks(ctx context.Context, r *proto.DoctorReport, gpus []
 
 	run := doctorDieRun{check: check, notChecked: unnamed, vendor: vendor, unit: "card", runtime: "HIP"}
 	switch vendor {
+	case accelerator.VendorNVIDIA:
+		run.runtime = "CUDA"
 	case accelerator.VendorAscend:
 		run.unit, run.runtime = "die", "ACL"
 	case accelerator.VendorPPU:
@@ -209,14 +210,16 @@ func (run *doctorDieRun) ask(ctx context.Context, dies []doctorDie) {
 		case expired:
 			// The automatic check grades a die that does not answer within
 			// its timeout as failed, and so does this.
-			run.failed = append(run.failed, doctorDieFailed{die: die, at: at,
-				detail: fmt.Sprintf("the runtime check did not finish within %s", attemptTimeout)})
+			detail := fmt.Sprintf("the runtime check did not finish within %s", attemptTimeout)
+			run.failed = append(run.failed, doctorDieFailed{die: die, at: at, detail: detail})
+			doctorRecordOutcome(ctx, die, errors.New(detail))
 		default:
 			if reason := gpu.HostRuntimeUnavailable(err); reason != "" {
 				run.stopped = reason
 				run.notChecked = append(run.notChecked, notChecked(dies[i:], "the runtime could not be used on this host")...)
 				return
 			}
+			doctorRecordOutcome(ctx, die, err)
 			if err != nil {
 				run.failed = append(run.failed, doctorDieFailed{die: die, at: at, detail: err.Error()})
 				continue
@@ -254,6 +257,23 @@ func doctorBeginAttempt(ctx context.Context, idents ...string) func() {
 			end()
 		}
 	}
+}
+
+type doctorOutcomesKey struct{}
+
+// withDoctorOutcomes tells a doctor run where a card's answer goes
+// (cardsmoke.Runner.Record), so the card's state follows the diagnosis at the
+// next report instead of waiting out the periodic check's backoff.
+func withDoctorOutcomes(ctx context.Context, record func(ident string, err error)) context.Context {
+	return context.WithValue(ctx, doctorOutcomesKey{}, record)
+}
+
+func doctorRecordOutcome(ctx context.Context, die doctorDie, err error) {
+	record, ok := ctx.Value(doctorOutcomesKey{}).(func(string, error))
+	if !ok || record == nil {
+		return
+	}
+	record(accelerator.CardIdent(die.gpu.UUID, die.gpu.PCIeBDF), err)
 }
 
 type doctorHeldFindingsKey struct{}
