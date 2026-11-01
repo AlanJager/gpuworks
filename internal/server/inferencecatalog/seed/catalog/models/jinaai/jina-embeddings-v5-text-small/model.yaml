@@ -245,7 +245,7 @@ specs:
   - --dtype
   - bfloat16
   - --pooler-config
-  - '{pooling_type:LAST}'
+  - '{"pooling_type":"LAST"}'
   env:
     VLLM_WORKER_MULTIPROC_METHOD: spawn
   placement:
@@ -285,7 +285,7 @@ specs:
   - --dtype
   - bfloat16
   - --pooler-config
-  - '{pooling_type:LAST}'
+  - '{"pooling_type":"LAST"}'
   env:
     VLLM_WORKER_MULTIPROC_METHOD: spawn
   placement:
