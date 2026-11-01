@@ -191,6 +191,15 @@ def test_model_registration(page, context, server, fixture, artifacts, report, l
     expect(dialog.get_by_text(k["register"]["directoryURLRequired"], exact=True)).to_be_visible()
     expect(url).to_have_attribute("aria-invalid", "true")
     check(mutations == [], "empty directory sent a preview or mutation")
+    # 1.3: the required rule declares whitespace:true, so a directory of spaces is refused in the
+    # browser exactly like an empty one. Without that flag antd accepts it and a preview is posted.
+    url.fill("   ")
+    parse.click()
+    expect(dialog.get_by_text(k["register"]["directoryURLRequired"], exact=True)).to_be_visible()
+    expect(url).to_have_attribute("aria-invalid", "true")
+    expect(url).to_have_value("   ")
+    check(mutations == [], "a whitespace-only directory sent a preview or mutation")
+    report["directory_whitespace_refused"] = True
     url.fill(fixture.url + "/")
     url.press("Tab")
     page.keyboard.press("Shift+Tab")

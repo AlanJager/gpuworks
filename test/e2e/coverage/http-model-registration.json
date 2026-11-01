@@ -57,9 +57,9 @@
         "HTTP directory option selected"
       ],
       "missing": [
-    "MISSING: source URL A-to-B invalidates prior preview; parsed metadata and submitted source/name/size must all belong to B",
-    "MISSING: HTTP-to-other-source-to-HTTP transitions preserve/reset fields by contract and cannot submit stale preview values",
-    "MISSING: URL Enter-to-preview and form Enter-to-register paths, including exactly one mutation and explicit-button equivalence",
+        "MISSING: source URL A-to-B invalidates prior preview; parsed metadata and submitted source/name/size must all belong to B",
+        "MISSING: HTTP-to-other-source-to-HTTP transitions preserve/reset fields by contract and cannot submit stale preview values",
+        "MISSING: URL Enter-to-preview and form Enter-to-register paths, including exactly one mutation and explicit-button equivalence",
         "Hugging Face/ModelScope/local options"
       ]
     },
@@ -141,7 +141,7 @@
     ],
     "partial": {
       "1.2": "HTTP defaults only",
-      "1.3": "empty URL only; other field boundaries missing",
+      "1.3": "The directory URL is refused in the browser for both an empty value and a whitespace-only value - the required rule declares whitespace:true, so each shows the directoryURLRequired message, marks the field aria-invalid, keeps the typed value and posts no preview or registration. Name is deliberately not required here: the product accepts an empty name and defaults it, which the minimum-create stage asserts by posting name \"\" and reading back tiny-model. The remaining required text field in this mode is source_id, which the preview fills and the operator may overwrite; its empty and whitespace values are not asserted, so this stays a scoped claim.",
       "1.15": "Tab, focus border, named modal/footer viewport; other states missing",
       "5.2": "HTTP option only",
       "16.5": "no background task: registration fetches metadata synchronously"
