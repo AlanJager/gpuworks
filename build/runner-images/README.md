@@ -242,3 +242,26 @@ ssh gpu3 'cd /var/tmp/s7-publish && https_proxy=http://dev1.mytrix.me:7890 \
 skopeo 凭据走 0600 临时 authfile，结束即删；日志对凭据脱敏。SWR 自动加入 `no_proxy`（国内直连，
 实测走代理并不更快也不更慢）。退出码：0 成功，2 参数/配置，3 源读取失败，4 目标认证失败，5 skopeo
 重试后仍失败，6 发布后校验失败。`--dest-tag` 默认同源 tag；正式 `-r2` tag 须在真机验证通过后再发。
+
+## 同步阿里云盘（离线归档，发布后必做）
+
+离线部署文档（[`docs/how-to/deploy-offline.md`](../../docs/how-to/deploy-offline.md)）让用户从阿里云盘分享目录下载镜像归档。所以**每次新增 runner 档或升级 revision，在公网发布之后，都要把归档同步到云盘**，否则离线用户拿不到新档。云盘上每个系列只放当前版本。
+
+- 位置：企业云盘 drive 101 的 `/gpuworks-images/<引擎>-<框架>/`，目录名就是文档里列出的 `vllm-cuda/`、`sglang-dtk/` 等。文件名是 `gpuworks-runner_<tag>_linux-<架构>.tar.gz`；多架构的档，每个架构各传一份。
+- 导出：在构建机上从内网 registry 导出，归档里的引用要写成规范形式 `gpuworks/gpuworks-runner:<tag>`，用户导入后不用再打 tag：
+
+  ```bash
+  skopeo copy --override-arch amd64 \
+    docker://registry.zstack.ai/gpuworks/gpuworks-runner:<tag> \
+    docker-archive:/var/tmp/gpuworks-runner_<tag>_linux-amd64.tar:gpuworks/gpuworks-runner:<tag>
+  pigz -9 /var/tmp/gpuworks-runner_<tag>_linux-amd64.tar
+  ```
+
+- 上传：用 `pds-upload.py`。凭据（`PDS_DOMAIN_ID`、`PDS_API_KEY`）在维护者本地的 secrets 里。这把 key **只能上传、改名，不能删除**，传错了没法撤回，所以：先 `--dry-run` 核对目标目录和文件名；脚本拒绝覆盖已存在的文件；不要上传测试文件。
+
+  ```bash
+  env $(grep -v '^#' pds-ent-apikey.env | xargs) ./pds-upload.py gpuworks-runner_<tag>_linux-amd64.tar.gz vllm-dtk --dry-run
+  env $(grep -v '^#' pds-ent-apikey.env | xargs) ./pds-upload.py gpuworks-runner_<tag>_linux-amd64.tar.gz vllm-dtk
+  ```
+
+- 旧版本归档删不掉，需要有人在云盘网页上手动删除或移走，提交说明里写明这一项。
