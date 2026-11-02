@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	"gpuworks.ai/gpuworks/internal/agent/runtime"
 	"gpuworks.ai/gpuworks/internal/agent/runtime/procgroup"
@@ -205,25 +206,52 @@ func (d *Driver) ensureHostRootLoopback(canonicalRoot string) error {
 		return fmt.Errorf("canonical ROOT %q is outside %q or has an unexpected layout", canonicalRoot, containersDir)
 	}
 
-	guestLoopback := filepath.Join(canonicalRoot, strings.TrimPrefix(canonicalRoot, string(filepath.Separator)))
-	if err := os.MkdirAll(filepath.Dir(guestLoopback), 0o755); err != nil {
+	root, err := os.OpenRoot(canonicalRoot)
+	if err != nil {
 		return err
 	}
-	if info, err := os.Lstat(guestLoopback); err == nil {
+	defer root.Close()
+	relativeLoopback := strings.TrimPrefix(canonicalRoot, string(filepath.Separator))
+	guestLoopback := filepath.Join(canonicalRoot, relativeLoopback)
+	if err := root.MkdirAll(filepath.Dir(relativeLoopback), 0o755); err != nil {
+		return err
+	}
+	// MkdirAll honors umask, and a root agent may create these as 0700.
+	// Repair even an existing correct loopback before returning. Anchor all
+	// operations inside ROOT so image symlinks cannot reach host directories.
+	for parent := filepath.Dir(relativeLoopback); parent != "."; parent = filepath.Dir(parent) {
+		directory, err := root.OpenFile(parent, os.O_RDONLY|syscall.O_DIRECTORY, 0)
+		if err != nil {
+			return err
+		}
+		info, err := directory.Stat()
+		if err == nil && info.Mode().Perm()&0o111 != 0o111 {
+			// Add search only; preserve image read/write and special bits.
+			err = directory.Chmod(info.Mode() | 0o111)
+		}
+		closeErr := directory.Close()
+		if err != nil {
+			return err
+		}
+		if closeErr != nil {
+			return closeErr
+		}
+	}
+	if info, err := root.Lstat(relativeLoopback); err == nil {
 		if info.Mode()&os.ModeSymlink == 0 {
 			return fmt.Errorf("refusing to replace non-symlink loopback path %s", guestLoopback)
 		}
-		target, readErr := os.Readlink(guestLoopback)
+		target, readErr := root.Readlink(relativeLoopback)
 		if readErr == nil && filepath.Clean(target) == canonicalRoot {
 			return nil
 		}
-		if err := os.Remove(guestLoopback); err != nil {
+		if err := root.Remove(relativeLoopback); err != nil {
 			return err
 		}
 	} else if !os.IsNotExist(err) {
 		return err
 	}
-	return os.Symlink(canonicalRoot, guestLoopback)
+	return root.Symlink(canonicalRoot, relativeLoopback)
 }
 
 // containerRoot resolves the rootfs path for a named container.
