@@ -21,7 +21,8 @@ func (s *Store) NodesByUUID(uuids []string) ([]Node, error) {
 // at (or never have): after a server start, the ones still reconnecting.
 func (s *Store) CountNodesUnseenSince(at time.Time) (int, error) {
 	var n int64
-	err := s.reader().Model(&Node{}).Where("last_seen_at IS NULL OR last_seen_at < ?", at).Count(&n).Error
+	// Heartbeats are stored in UTC; SQLite compares their timestamp text.
+	err := s.reader().Model(&Node{}).Where("last_seen_at IS NULL OR last_seen_at < ?", at.UTC()).Count(&n).Error
 	return int(n), err
 }
 
