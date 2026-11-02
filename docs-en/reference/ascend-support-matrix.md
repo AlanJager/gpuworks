@@ -47,6 +47,7 @@ Having a catalog spec means that pinned weights, an image and launch arguments e
 | DeepSeek-V4-Flash-0731 | A3 DP4 × TP4, W8A8 + DSpark, 1M | Health, 1M `/v1/models` and real chat passed with native Docker |
 | MiniMax-M3 | A3 DP4 × TP4, 133K | All 16 workers, health and real chat passed with native Docker |
 | Qwen3.5-397B-A17B | A3 TP16/EP16, W8A8 + MTP, 133K, eager | Health, `/v1/models` and real chat passed with native Docker; eager mode avoids the currently missing `causal_conv1d_update_npu` graph path |
+| Qwen3-235B-A22B-W8A8 | A3 TP16, W8A8, vLLM 0.26, eager | Capturing the default ACL graphs concurrently on 16 ranks raised `EE1023 no notify resource`; `--enforce-eager` then passed health and real chat with `Qwen3-235B-910C-ok` |
 | Qwen3.8-Flash-Next | Experimental A3 TP8, W8A8-MTP, 135168 context | Health, `/v1/models`, real chat and automatic placement passed with Docker |
 | Qwen3.8-27B | 910B spec; inherited W8A8 A3 spec; measured BF16 A3 spec | W8A8 TP2 text requests passed; BF16 TP2 text and real-image requests both returned HTTP 200. Both used native Docker; this verifies the API and multimodal paths, not output quality |
 | Qwen3.6-35B-A3B-W8A8 | A3 TP2 W8A8; vLLM 0.30 eager and SGLang profiles | vLLM 0.26 lacked `linear_attn` during KV-cache initialization; the runner vLLM 0.30 profile with graph capture disabled started successfully and returned the exact chat marker. The SGLang profile also passed |
