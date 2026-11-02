@@ -166,6 +166,24 @@ def test_two_tab_logout_relogin(play, context, server, artifacts, report, locale
     expect(username).to_be_empty()
     expect(secret).to_be_empty()
     expect(secret).to_have_attribute("type", "password")
+    # 7.1: the mask is a state, not a styling choice, and the reveal toggle is a real control.
+    # The value is typed, required to stay masked while the toggle is untouched, required to become
+    # readable after one activation with the characters unchanged, and required to be masked again
+    # after a second - so a toggle that only redrew the icon, or one that lost the value, fails here.
+    probe = "e2e-probe-secret"
+    secret.fill(probe)
+    expect(secret).to_have_attribute("type", "password")
+    check(secret.get_attribute("type") != "text", "a typed password was readable without its toggle")
+    toggle = page.locator(".ant-input-password-icon")
+    expect(toggle).to_have_count(1, timeout=8000)
+    toggle.click()
+    expect(secret).to_have_attribute("type", "text")
+    check(secret.input_value() == probe, "revealing the password changed its value")
+    toggle.click()
+    expect(secret).to_have_attribute("type", "password")
+    check(secret.input_value() == probe, "re-masking the password changed its value")
+    secret.fill("")
+    report["credential_mask"] = {"masked_default": True, "reveal_round_trip": True}
     button(page, auth["submit"]).click()
     # 1.3: each message must be located at the field it belongs to, not merely somewhere on the page,
     # so the item is asserted by walking from the field to the message inside its own form item.
