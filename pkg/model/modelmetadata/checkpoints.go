@@ -39,10 +39,6 @@ func parseTransformers(ctx context.Context, in Input, files FileView) (RuleResul
 
 // Checkpoint indices are authoritative: an unrelated weight file cannot mask
 // a missing shard. Unindexed weights must be directly in this directory.
-func checkpoint(ctx context.Context, dir, format string, files FileView) (Entry, error) {
-	return checkpointWithNames(ctx, dir, format, files, []string{"model.safetensors", "pytorch_model.bin"})
-}
-
 func checkpointWithNames(ctx context.Context, dir, format string, files FileView, names []string) (Entry, error) {
 	e := Entry{Path: dir, Format: format}
 	items, err := files.ReadDir(ctx, dir)
