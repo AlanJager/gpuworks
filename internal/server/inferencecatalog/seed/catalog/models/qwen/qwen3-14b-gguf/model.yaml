@@ -33,8 +33,6 @@ specs:
   - npu
   - --attention-backend
   - ascend
-  env:
-    runtime_namespace: gpuworks-validation
   placement:
     language: starlark
     resolver: "def resolve(gpu):\n    if gpu.count < 2: return reject(\"at least 2\
@@ -77,8 +75,6 @@ specs:
   - npu
   - --attention-backend
   - ascend
-  env:
-    runtime_namespace: gpuworks-validation
   placement:
     language: starlark
     resolver: "def resolve(gpu):\n    if gpu.count < 2: return reject(\"at least 2\
