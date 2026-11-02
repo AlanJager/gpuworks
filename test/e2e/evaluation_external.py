@@ -111,6 +111,39 @@ def exercise_benchmark_target_keyboard(page, drawer, wizard, external):
 # Mainline: 独立 server/SQLite + 可审计 OpenAI fixture → UI 新建评测并选择参数扫描
 #           → 外部端点探测到模型 → 单并发单点小负载启动 → fixture 收到真实流式请求与 usage
 #           → 详情完成、刷新/独立 GET/CSV 回读一致 → 列表删除后 404 且 fixture 无新请求
+def upload_tokenizer(page, drawer, wizard, artifacts):
+    """Give the run a real tokenizer without reaching the network.
+
+    A generated token-length workload refuses to run without one, and pointing it at a public
+    repository would make this case depend on someone else's network. A small BPE vocabulary is
+    written locally and uploaded through the same route the UI uses, so the run measures with a real
+    tokenizer while staying offline.
+    """
+    tokenizer_path = Path(artifacts.directory) / "tokenizer.json"
+    tokenizer_path.write_text(json.dumps({"model": {"type": "BPE", "vocab": {
+        **{character: index for index, character in
+           enumerate("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 .,!?-_")},
+        **{word: 100 + index for index, word in
+           enumerate(("hello", "world", "the", "test", "data", "model", "run", "e2e"))}}}},
+        ensure_ascii=False), encoding="utf-8")
+    drawer.get_by_text(wizard["uploadFile"], exact=True).click()
+    drawer.locator('input[type="file"]').set_input_files(str(tokenizer_path))
+    # The server stores the upload under a generated name, so the reference that comes back is that
+    # name rather than the one the test wrote. What matters is that a real reference was accepted and
+    # carried into the form instead of the run falling back to a repository download.
+    uploaded_ref = drawer.locator('input[id$="tokenizer_ref"]')
+    for _ in range(80):
+        if uploaded_ref.input_value().strip():
+            break
+        page.wait_for_timeout(250)
+    reference = uploaded_ref.input_value().strip()
+    check(reference.startswith(str(tokenizer_path.parent)),
+          f"the uploaded tokenizer reference is not a server-local path: {reference}")
+    check(Path(reference).name.startswith("tokenizer-") and reference.endswith(".json"),
+          f"the uploaded tokenizer reference does not name a stored file: {reference}")
+    return reference
+
+
 def test_external_endpoint_sweep(page, context, server, artifacts, report, locale, fixture):
     ui, dictionary = strings(locale)
     wizard = ui["wizard"]
@@ -194,12 +227,10 @@ def test_external_endpoint_sweep(page, context, server, artifacts, report, local
     drawer.get_by_label(wizard["concurrencyList"], exact=True).fill("1")
     drawer.get_by_text(wizard["advanced"], exact=True).click()
     drawer.get_by_label(wizard["warmupRequests"], exact=True).fill("0")
-    drawer.get_by_role("radio", name=wizard["uploadFile"], exact=True).check()
-    drawer.locator('input[type="file"]').set_input_files({
-        "name": "tokenizer.json", "mimeType": "application/json",
-        "buffer": json.dumps({"model": {"vocab": {"hello": 0, " world": 1}}}).encode(),
-    })
-    expect(page.get_by_text(wizard["tokenizerUploaded"], exact=True)).to_be_visible()
+    report["last_step"] = "search-configured"
+
+    report["tokenizer_ref"] = upload_tokenizer(page, drawer, wizard, artifacts)
+    report["last_step"] = "tokenizer-uploaded"
 
     held_creates = []
 
@@ -447,6 +478,7 @@ def test_cancel_running_run(page, context, server, artifacts, report, locale, fi
     drawer.get_by_label(wizard["concurrencyList"], exact=True).fill("1")
     drawer.get_by_text(wizard["advanced"], exact=True).click()
     drawer.get_by_label(wizard["warmupRequests"], exact=True).fill("0")
+    report["tokenizer_ref"] = upload_tokenizer(page, drawer, wizard, artifacts)
     report["last_step"] = "endpoint-probed"
 
     # The fixture holds the first measured request after its first chunk; the
