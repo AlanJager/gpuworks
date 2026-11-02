@@ -82,6 +82,7 @@
 | Gemma-4-31B-IT | A3 TP4 BF16 vLLM | 使用 checkpoint 自带 chat template 后 runner 启动成功，文本及真实图像 chat 返回 HTTP 200 |
 | Gemma-4-26B-A4B-IT | A3 TP4 BF16 vLLM，eager | 使用 checkpoint 自带 chat template 并关闭 graph capture 后，权重、KV cache 和 health 通过；文本精确返回 `Gemma426B-910C-ok`，真实 448×448 图像 chat 返回 `White` 和 258 个 image tokens |
 | Gemma-3-4B-IT / Gemma-3-27B-IT | 4B 的 A3 SGLang / vLLM；27B 的 A3 SGLang | TP2 的 4B 两种引擎和 TP4 的 27B eager 档都完成了文本及真实图像 chat；SGLang 模板显式关闭 NPU graph capture，避免启动卡死 |
+| Kimi-K2.6-W4A8 | A3 TP4 × DP4，16 dies；W4A8 + DFlash15 | 147 文件、499.1 GiB 全量 SHA-256 校验通过；显式声明 TP4 后预检通过，deployment 进入 running，真实 chat 精确返回 `Kimi-K2.6-910C-ok` |
 | Kimi-K3 | 无 | 上游最小配方为 4 台 A3；当前没有目录档 |
 
 Qwen3-VL-8B-Instruct 的 A3 vLLM 档把默认 `--max-model-len` 固定为 **196608**，这是
