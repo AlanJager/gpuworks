@@ -114,35 +114,6 @@ specs:
     - type: openai.chat
       endpoint: /v1/chat/completions
       mode: stream
-- name: fp8-sglang-ppu-9a283b4a
-  display_profile: compatible
-  scenario: balanced
-  engine: sglang
-  image: gpuworks/gpuworks-runner:hggc13.0-sglang0.5.13-r2
-  weights:
-    quantization: fp8
-    sources:
-    - huggingface:
-        repo_id: Qwen/Qwen3-14B-FP8
-        revision: 9a283b4a5efbc09ce247e0ae5b02b744739e525a
-    - modelscope:
-        repo_id: Qwen/Qwen3-14B-FP8
-        revision: 67a1c54946f00f2a2061b234ce9b1b52b70566fd
-  weight_bytes: 16326253296
-  gpus:
-    vendor: ppu
-    name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
-    display_target: ppu
-  args:
-  - --enable-metrics
-  - --trust-remote-code
-  - --disable-piecewise-cuda-graph
-  api:
-    health_endpoint: /health
-    operations:
-    - type: openai.chat
-      endpoint: /v1/chat/completions
-      mode: stream
 - name: bf16-vllm-ppu-40c06982
   display_profile: general
   scenario: balanced
