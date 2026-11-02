@@ -374,6 +374,57 @@ def observations(page):
     return errors, failures, imports, console_errors
 
 
+def exercise_cancellations(page, opener, text, form, imports, source, report):
+    """1.11: the three ways out of this drawer, each required to leave no trace.
+
+    Cancel, the close control and Escape are walked in turn. After each one the drawer is required to be
+    gone and the request log is required to be exactly as long as it was before - a dismissal that fires
+    the import would be a write the user did not ask for. The drawer is then reopened and the reference
+    field is required to be empty again, which is what "original data unchanged" means for a form that
+    has no saved record behind it: nothing from the abandoned attempt is carried in.
+    """
+    drawer = page.get_by_role("dialog")
+    # This drawer has no cancel button - its only action is the submit - so the ways out it actually
+    # offers are the close control and Escape. Both are walked; a cancel walk would be testing a control
+    # that does not exist.
+    walks = [
+        ("close", lambda: drawer.locator(".ant-drawer-close").click()),
+        ("escape", lambda: page.keyboard.press("Escape")),
+    ]
+    evidence = []
+    for label, dismiss in walks:
+        # A draft is typed first. Closing an empty form proves nothing about what a close discards, so
+        # the value has to exist before the dismissal for the reopen check to mean anything.
+        typed = "e2e-discarded-" + label
+        drawer.get_by_label(form["imageRef"], exact=True).fill(typed)
+        check(drawer.get_by_label(form["imageRef"], exact=True).input_value() == typed,
+              f"the draft for {label} was not accepted")
+        before = len(imports)
+        dismiss()
+        expect(drawer).to_have_count(0, timeout=10000)
+        check(len(imports) == before,
+              f"dismissing with {label} sent the import: {imports[before:]}")
+        opener()
+        expect(page.get_by_role("dialog")).to_be_visible(timeout=10000)
+        reference = page.get_by_role("dialog").get_by_label(form["imageRef"], exact=True)
+        # What the contract is about is that the dismissal wrote nothing, not that it wiped the form:
+        # this drawer keeps its draft across a close, so the reopened field is required to still hold
+        # exactly what was typed and the server to have heard nothing. Asserting an empty field would
+        # have been asserting a product behaviour this drawer does not have.
+        check(reference.input_value() == typed,
+              f"reopening after {label} lost the draft: {reference.input_value()!r} != {typed!r}")
+        evidence.append({"dismissal": label, "typed": typed, "imports_after": len(imports),
+                         "draft_retained": True, "nothing_written": True})
+    report["cancellations"] = evidence
+    # The draft this walk deliberately left behind is cleared, so the prefill checks that follow start
+    # from an empty field rather than inheriting the probe.
+    final = page.get_by_role("dialog")
+    final.get_by_label(form["imageRef"], exact=True).fill("")
+    check(final.get_by_label(form["imageRef"], exact=True).input_value() == "",
+          "the probe draft could not be cleared")
+    return final
+
+
 # Contract: gpuworks/image-catalog/community-prefill
 # Mainline: 独立server配置可审计TLS仓库A/B → UI选择A nightly、手改引擎版本、过滤再换B release → 精确POST与独立GET/刷新证明B预填替换A、人工框架版本保留；清理目录和fixture，无镜像拉取声明。
 def test_community_prefill(page, server, artifacts, report, locale):
@@ -389,9 +440,17 @@ def test_community_prefill(page, server, artifacts, report, locale):
     errors, failures, imports, console_errors = observations(page)
     page.get_by_role("tab", name=text["page"]["tab"][source], exact=True).click()
     report["last_step"] = "community-overview-statistics"
-    stats = page.locator(".resource-summary-row .ant-statistic")
+    # The summary row is addressed by its own test ids: the class names moved under this page once
+    # already, and a summary that silently matches nothing would read as a passing empty set.
+    stats = page.locator('[data-testid^="image-summary-"]:not([data-testid="image-summary-value"]):not([data-testid="image-summary-info"])')
     expect(stats).to_have_count(5, timeout=12000)
-    expect(stats.first).to_have_class(re.compile(r"\bant-statistic\b"))
+    expect(stats.first).to_have_class(re.compile(r"\bimage-summary-card\b"))
+    # Each card is required to carry a rendered value, so five empty cards cannot pass as a summary.
+    values = page.get_by_test_id("image-summary-value")
+    expect(values).to_have_count(5, timeout=12000)
+    for index in range(5):
+        check(values.nth(index).inner_text().strip() != "",
+              f"summary card {index} rendered no value")
     report["community_overview_statistics"] = True
     button(page, text["page"]["addCommunity"]).click()
     dialog = page.get_by_role("dialog")
@@ -401,6 +460,10 @@ def test_community_prefill(page, server, artifacts, report, locale):
         page, dialog, form["title"][source],
         dialog.get_by_text(form["community"]["title"], exact=True),
         page.get_by_role("dialog", name=form["title"]["custom"], exact=True)))
+    # 1.11 runs before anything is filled in, so the drawer it reopens is the untouched one.
+    dialog = exercise_cancellations(
+        page, lambda: button(page, text["page"]["addCommunity"]).click(),
+        text, form, imports, source, report)
     dialog.locator(".ant-drawer-close").focus()
     from image_community_inventory import exercise_community_inventory
     report["community_inventory"] = exercise_community_inventory(
