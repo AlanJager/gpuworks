@@ -2,6 +2,7 @@ package udocker
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"gpuworks.ai/gpuworks/internal/agent/runtime"
 	"gpuworks.ai/gpuworks/internal/agent/runtime/procgroup"
@@ -140,6 +141,9 @@ func (d *Driver) procs() *procgroup.Tracker {
 // rather than decorative, and it is the reason a workload that never runs as
 // root cannot be torn down here.
 func (d *Driver) Remove(ctx context.Context, id string) error {
+	if id == "" || filepath.Base(id) != id || id == "." || id == ".." || strings.HasPrefix(id, "-") || strings.ContainsRune(id, 0) {
+		return fmt.Errorf("invalid container name %q", id)
+	}
 	if err := d.Stop(ctx, id); err != nil {
 		return err
 	}
@@ -155,7 +159,50 @@ func (d *Driver) Remove(ctx context.Context, id string) error {
 		d.forgetState(id)
 		return nil
 	}
-	_, rmErr := d.udoExpected(ctx, "rm", id)
+	containerDir := d.containerDir(id)
+	if parent, err := os.Lstat(filepath.Dir(containerDir)); err == nil && !parent.IsDir() {
+		return fmt.Errorf("udocker containers path is not a real directory")
+	} else if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("inspect udocker containers directory: %w", err)
+	}
+	before, statErr := removeContainerLstat(containerDir)
+	if statErr != nil && !os.IsNotExist(statErr) {
+		return fmt.Errorf("inspect udocker container %s: %w", id, statErr)
+	}
+	var aliasTarget, aliasRoot string
+	if statErr == nil && before.Mode()&os.ModeSymlink != 0 {
+		var err error
+		aliasTarget, err = os.Readlink(containerDir)
+		if err != nil {
+			return fmt.Errorf("read udocker container alias %s: %w", id, err)
+		}
+		containers, err := filepath.EvalSymlinks(filepath.Dir(containerDir))
+		if err != nil {
+			return fmt.Errorf("resolve udocker containers directory: %w", err)
+		}
+		target := aliasTarget
+		if !filepath.IsAbs(target) {
+			if filepath.Base(target) != target || target == "." || target == ".." {
+				return fmt.Errorf("udocker container alias %s does not name a direct managed container directory", id)
+			}
+			target = filepath.Join(filepath.Dir(containerDir), target)
+		} else if filepath.Clean(target) != target {
+			return fmt.Errorf("udocker container alias %s has an unsafe target", id)
+		}
+		targetParent, err := filepath.EvalSymlinks(filepath.Dir(target))
+		if err != nil || targetParent != containers {
+			return fmt.Errorf("udocker container alias %s does not name a direct managed container directory", id)
+		}
+		aliasRoot = filepath.Join(containers, filepath.Base(target))
+		root, rootErr := removeContainerLstat(aliasRoot)
+		if rootErr != nil && !os.IsNotExist(rootErr) {
+			return fmt.Errorf("inspect udocker alias target %s: %w", id, rootErr)
+		}
+		if rootErr == nil && !root.IsDir() {
+			return fmt.Errorf("udocker alias target %s is not a real directory; chained links are not followed", id)
+		}
+	}
+	output, rmErr := d.udoExpected(ctx, "rm", id)
 	if rmErr != nil {
 		slog.Info("udocker rm did not delete the container; falling back to a privileged rootfs removal", "container", id, "err", rmErr)
 	}
@@ -163,38 +210,85 @@ func (d *Driver) Remove(ctx context.Context, id string) error {
 	// materialized ROOT behind (and report "not found" when only metadata was
 	// lost). Reap the exact managed container directory as a bounded fallback;
 	// never broaden the target beyond UDOCKER_DIR/containers/<id>.
-	containerDir := filepath.Join(d.udockerDir, "containers", filepath.Base(id))
-	if filepath.Base(id) == id {
-		d.removeWorkloadTmp(id)
-		if info, statErr := os.Lstat(containerDir); statErr == nil {
-			slog.Info("removing udocker container rootfs", "container", id, "dir", containerDir)
-			if removeErr := os.RemoveAll(containerDir); removeErr != nil {
-				return fmt.Errorf("remove udocker container rootfs %s: %w", id, removeErr)
+	info, statErr := removeContainerLstat(containerDir)
+	if statErr != nil && !os.IsNotExist(statErr) {
+		return fmt.Errorf("inspect udocker container %s: %w", id, statErr)
+	}
+	if aliasRoot != "" {
+		_, rootErr := removeContainerLstat(aliasRoot)
+		if !os.IsNotExist(rootErr) {
+			// Some CLI failures unlink the name before removing its ROOT. Put
+			// back only that captured alias so the next retry cannot mistake the
+			// remaining rootfs for an already absent container. Never remove
+			// through the alias or overwrite a replacement name.
+			if os.IsNotExist(statErr) {
+				if err := os.Symlink(aliasTarget, containerDir); err != nil {
+					return fmt.Errorf("restore failed udocker container alias %s: %w", id, err)
+				}
 			}
-			// A name created by `udocker create --name=` is a symlink to the
-			// container's real directory, so this fallback reclaimed nothing and
-			// the CLI stays the only signal for the rootfs. Deleting through the
-			// link would widen the target beyond this container's directory, so
-			// the deletion is reported as failed instead of silently leaking it.
-			if info.Mode()&os.ModeSymlink == 0 {
-				// The rootfs is gone; the CLI error no longer says anything about
-				// the container's actual state.
-				rmErr = nil
+			if cause := errors.Join(rmErr, rootErr); cause != nil {
+				return fmt.Errorf("udocker container rootfs behind alias %s is not confirmed absent: %w", id, cause)
 			}
-		} else if !os.IsNotExist(statErr) {
-			return fmt.Errorf("inspect udocker container %s: %w", id, statErr)
+			return fmt.Errorf("udocker container rootfs behind alias %s remains after removal", id)
 		}
 	}
-	d.forgetState(id)
+	if statErr == nil {
+		if info.Mode()&os.ModeSymlink != 0 {
+			if aliasRoot == "" || !os.SameFile(before, info) {
+				return fmt.Errorf("udocker container alias %s changed during removal", id)
+			}
+			if target, err := os.Readlink(containerDir); err != nil || target != aliasTarget {
+				return fmt.Errorf("udocker container alias %s target changed during removal", id)
+			}
+			if rmErr != nil && !missingContainerOutput(output) {
+				return fmt.Errorf("remove udocker container %s: %w", id, rmErr)
+			}
+			// The direct managed target was confirmed absent above. Remove only
+			// this unchanged leftover link, never the path it used to reference.
+			if err := os.Remove(containerDir); err != nil {
+				return fmt.Errorf("remove verified dangling udocker alias %s: %w", id, err)
+			}
+			statErr = os.ErrNotExist
+		}
+	}
+	if statErr == nil {
+		if aliasRoot != "" {
+			return fmt.Errorf("udocker container alias %s was replaced during removal", id)
+		}
+		if before == nil || !os.SameFile(before, info) {
+			return fmt.Errorf("udocker container %s appeared or changed during removal", id)
+		}
+		slog.Info("removing udocker container rootfs", "container", id, "dir", containerDir)
+		if removeErr := os.RemoveAll(containerDir); removeErr != nil {
+			return fmt.Errorf("remove udocker container rootfs %s: %w", id, removeErr)
+		}
+		// The exact managed directory was reclaimed without following an
+		// alias, so its state no longer depends on the failed CLI removal.
+		rmErr = nil
+	}
 	if rmErr != nil {
 		// udocker reports an error for an already removed container. Treat that
 		// case as idempotent, but propagate real cleanup failures so reconcile
 		// does not report a healthy deletion when rootfs cleanup failed.
-		if !strings.Contains(strings.ToLower(rmErr.Error()), "not found") && !strings.Contains(strings.ToLower(rmErr.Error()), "no such") {
+		if !missingContainerOutput(output) {
 			return fmt.Errorf("remove udocker container %s: %w", id, rmErr)
 		}
 	}
+	d.removeWorkloadTmp(id)
+	d.forgetState(id)
 	return nil
+}
+
+// removeContainerLstat lets tests exercise permission errors even as root.
+var removeContainerLstat = os.Lstat
+
+func missingContainerOutput(output string) bool {
+	switch strings.ToLower(strings.TrimSpace(output)) {
+	case "error: invalid container id", "error: container not found", "error: no such container":
+		return true
+	default:
+		return false
+	}
 }
 
 // forgetState drops the tracking files of a removed container.
