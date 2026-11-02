@@ -126,15 +126,15 @@ func TestProbeIdentifiesTheNodeOnSharedHosts(t *testing.T) {
 		foreign    string
 		wantDetail string
 	}{
-		{name: "own-unit", host: &unitHost{unitServer: "http://172.30.8.122:8800", unitToken: "node-token", active: true}, serverURL: "http://172.30.8.122:8800/", running: true, wantDetail: "systemd"},
-		{name: "own-unit-stopped", host: &unitHost{unitServer: "http://172.30.8.122:8800", unitToken: "node-token"}, serverURL: "http://172.30.8.122:8800", wantDetail: "not-running"},
+		{name: "own-unit", host: &unitHost{unitServer: "http://198.51.100.122:8800", unitToken: "node-token", active: true}, serverURL: "http://198.51.100.122:8800/", running: true, wantDetail: "systemd"},
+		{name: "own-unit-stopped", host: &unitHost{unitServer: "http://198.51.100.122:8800", unitToken: "node-token"}, serverURL: "http://198.51.100.122:8800", wantDetail: "not-running"},
 		{name: "own-unit-wrong-server", host: &unitHost{unitServer: "http://other:8800", unitToken: "node-token", active: true}, serverURL: "http://gw:8800", foreign: "http://other:8800", wantDetail: "foreign-systemd http://other:8800"},
-		{name: "another-servers-unit", host: &unitHost{unitServer: "http://172.25.17.156:8800", active: true}, serverURL: "http://172.30.8.122:8800", wantDetail: "not-running"},
-		{name: "same-server-other-node", host: &unitHost{unitServer: "http://172.30.8.122:8800", active: true}, serverURL: "http://172.30.8.122:8800", wantDetail: "not-running"},
-		{name: "another-servers-unit-stopped", host: &unitHost{unitServer: "http://172.25.17.156:8800"}, serverURL: "http://172.30.8.122:8800", wantDetail: "not-running"},
-		{name: "no-unit", host: &unitHost{}, serverURL: "http://172.30.8.122:8800", wantDetail: "not-running"},
-		{name: "server-dial-other-unit", host: &unitHost{unitServer: "http://172.25.17.156:8800", active: true}, wantDetail: "not-running"},
-		{name: "server-dial-own-unit", host: &unitHost{unitServer: "http://172.25.17.156:8800", unitToken: "node-token", active: true}, running: true, wantDetail: "systemd"},
+		{name: "another-servers-unit", host: &unitHost{unitServer: "http://192.0.2.156:8800", active: true}, serverURL: "http://198.51.100.122:8800", wantDetail: "not-running"},
+		{name: "same-server-other-node", host: &unitHost{unitServer: "http://198.51.100.122:8800", active: true}, serverURL: "http://198.51.100.122:8800", wantDetail: "not-running"},
+		{name: "another-servers-unit-stopped", host: &unitHost{unitServer: "http://192.0.2.156:8800"}, serverURL: "http://198.51.100.122:8800", wantDetail: "not-running"},
+		{name: "no-unit", host: &unitHost{}, serverURL: "http://198.51.100.122:8800", wantDetail: "not-running"},
+		{name: "server-dial-other-unit", host: &unitHost{unitServer: "http://192.0.2.156:8800", active: true}, wantDetail: "not-running"},
+		{name: "server-dial-own-unit", host: &unitHost{unitServer: "http://192.0.2.156:8800", unitToken: "node-token", active: true}, running: true, wantDetail: "systemd"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			got := probeUnitHost(t, tc.host, tc.serverURL)
@@ -176,11 +176,11 @@ func TestProbeFindsNohupAgentBesideOtherUnits(t *testing.T) {
 }
 
 func TestRestartAgentDoesNotRestartAnotherServersUnit(t *testing.T) {
-	foreign := &unitHost{unitServer: "http://172.25.17.156:8800"}
+	foreign := &unitHost{unitServer: "http://192.0.2.156:8800"}
 	host, port := startFakeSSHServer(t, "root", "pw", foreign.handler(t))
 	req := SSHProbeRequest{
 		Host: host, Port: port, User: "root", SSHAuth: SSHAuth{Mode: AuthPassword, Password: "pw"},
-		ServerURL: "http://172.30.8.122:8800", Token: "node-token",
+		ServerURL: "http://198.51.100.122:8800", Token: "node-token",
 	}
 	// The unit is another agent's: the restart falls through to this node's
 	// own nohup agent, which this host does not have.
@@ -194,14 +194,14 @@ func TestRestartAgentDoesNotRestartAnotherServersUnit(t *testing.T) {
 
 	// A unit for this server but another node (a host running several
 	// agents) is not this node's either.
-	sibling := &unitHost{unitServer: "http://172.30.8.122:8800"}
+	sibling := &unitHost{unitServer: "http://198.51.100.122:8800"}
 	host, port = startFakeSSHServer(t, "root", "pw", sibling.handler(t))
 	req.Host, req.Port = host, port
 	if err := (&SSHInstaller{}).RestartAgent(t.Context(), req); err == nil || sibling.restarted() {
 		t.Fatalf("restarted another node's unit: err=%v %v", err, sibling.cmds)
 	}
 
-	own := &unitHost{unitServer: "http://172.30.8.122:8800"}
+	own := &unitHost{unitServer: "http://198.51.100.122:8800"}
 	host, port = startFakeSSHServer(t, "root", "pw", own.handler(t))
 	req.Host, req.Port = host, port
 	req.Token = unitHostToken

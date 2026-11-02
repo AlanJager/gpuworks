@@ -21,8 +21,8 @@ func TestNormalizeBaseURL(t *testing.T) {
 		{"https://api.deepseek.com/v1///", "https://api.deepseek.com/v1", true},
 		{"  https://api.deepseek.com/v1  ", "https://api.deepseek.com/v1", true},
 		// The case the bug reported: the whole call path pasted in.
-		{"http://172.30.8.122:8800/v1/chat/completions", "http://172.30.8.122:8800/v1", true},
-		{"http://172.30.8.122:8800/v1/chat/completions/", "http://172.30.8.122:8800/v1", true},
+		{"http://198.51.100.122:8800/v1/chat/completions", "http://198.51.100.122:8800/v1", true},
+		{"http://198.51.100.122:8800/v1/chat/completions/", "http://198.51.100.122:8800/v1", true},
 		{"https://api.deepseek.com/chat/completions", "https://api.deepseek.com", true},
 		{"https://api.openai.com/v1/chat/completions", "https://api.openai.com/v1", true},
 		// The suffix is matched case-insensitively, because a pasted address is

@@ -265,9 +265,9 @@ func TestScriptWarnsBeforeReplacingAnotherServersAgent(t *testing.T) {
 		name, server, want string
 		unit               bool
 	}{
-		{name: "configuration of another server", server: "http://172.25.17.156:8800", want: "replacing the gpuworks agent installed for another server (http://172.25.17.156:8800)"},
+		{name: "configuration of another server", server: "http://192.0.2.156:8800", want: "replacing the gpuworks agent installed for another server (http://192.0.2.156:8800)"},
 		{name: "configuration of this server", server: "http://gw:8800/"},
-		{name: "unit of another server", server: "http://172.25.17.156:8800", unit: true, want: "another server (http://172.25.17.156:8800)"},
+		{name: "unit of another server", server: "http://192.0.2.156:8800", unit: true, want: "another server (http://192.0.2.156:8800)"},
 		{name: "nothing installed"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

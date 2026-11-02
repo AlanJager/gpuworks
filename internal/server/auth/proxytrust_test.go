@@ -60,12 +60,12 @@ func TestProxyTrustPeer(t *testing.T) {
 		{"loopback without same-host rule", listedOnly, "127.0.0.1:1", "127.0.0.1:8800", true, false},
 		{"loopback while exposed", exposed, "127.0.0.1:1", "", true, true},
 		{"IPv6 loopback while exposed", exposed, "[::1]:1", "[::1]:8800", true, true},
-		{"own address while exposed", exposed, "172.25.17.156:1", "172.25.17.156:8800", true, true},
-		{"own address, entry point off", exposed, "172.25.17.156:1", "172.25.17.156:8800", false, false},
+		{"own address while exposed", exposed, "192.0.2.156:1", "192.0.2.156:8800", true, true},
+		{"own address, entry point off", exposed, "192.0.2.156:1", "192.0.2.156:8800", false, false},
 		{"loopback, entry point off", exposed, "[::1]:1", "[::1]:8800", false, false},
-		{"another host while exposed", exposed, "172.25.17.200:1", "172.25.17.156:8800", true, false},
-		{"no local address known", exposed, "172.25.17.156:1", "", true, false},
-		{"unparsable peer", exposed, "garbage", "172.25.17.156:8800", true, false},
+		{"another host while exposed", exposed, "192.0.2.200:1", "192.0.2.156:8800", true, false},
+		{"no local address known", exposed, "192.0.2.156:1", "", true, false},
+		{"unparsable peer", exposed, "garbage", "192.0.2.156:8800", true, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			enabled = tc.enabled

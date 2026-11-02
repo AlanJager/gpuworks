@@ -15,7 +15,7 @@ func TestLoadReadsEveryKeyAndRejectsUnknownOnes(t *testing.T) {
 	path := filepath.Join(dir, FileName)
 	content := `# operator note
 listen:
-  console: [172.25.17.156:8800]
+  console: [192.0.2.156:8800]
   gateway: ["10.20.0.5:443"]
 data_dir: /opt/gpuworks/data
 log:
@@ -36,7 +36,7 @@ session_max_lifetime: 72h
 		t.Fatal(err)
 	}
 	want := File{
-		Listen:         Listen{Console: []string{"172.25.17.156:8800"}, Gateway: []string{"10.20.0.5:443"}},
+		Listen:         Listen{Console: []string{"192.0.2.156:8800"}, Gateway: []string{"10.20.0.5:443"}},
 		DataDir:        "/opt/gpuworks/data",
 		Log:            Log{File: "/opt/gpuworks/logs/gpuworks-server.log", MaxSize: "10MB", Keep: 20, Level: "debug"},
 		TrustedProxies: []string{"127.0.0.1/32"}, MetricsRetention: "168h",
@@ -132,8 +132,8 @@ func TestWriteRendersAFileLoadReadsBack(t *testing.T) {
 
 func TestBindingsMergeAddressesAndAddLoopback(t *testing.T) {
 	l := Listen{
-		Console: []string{"172.25.17.156:8800"},
-		Agent:   []string{"172.25.17.156:8800", "10.100.10.1:8800"},
+		Console: []string{"192.0.2.156:8800"},
+		Agent:   []string{"192.0.2.156:8800", "10.100.10.1:8800"},
 		Gateway: []string{"10.20.0.5:8800", "10.20.0.5:443"},
 	}
 	if err := l.Validate(); err != nil {
@@ -141,7 +141,7 @@ func TestBindingsMergeAddressesAndAddLoopback(t *testing.T) {
 	}
 	got := Bindings(l)
 	want := []Binding{
-		{Addr: "172.25.17.156:8800", Functions: []string{FunctionConsole, FunctionAgent}},
+		{Addr: "192.0.2.156:8800", Functions: []string{FunctionConsole, FunctionAgent}},
 		{Addr: "10.100.10.1:8800", Functions: []string{FunctionAgent}},
 		{Addr: "10.20.0.5:8800", Functions: []string{FunctionGateway}},
 		{Addr: "10.20.0.5:443", Functions: []string{FunctionGateway}},
