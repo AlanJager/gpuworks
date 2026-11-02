@@ -110,11 +110,11 @@ specs:
     - type: openai.chat
       endpoint: /v1/chat/completions
       mode: stream
-- name: bf16-sglang-nvidia-cuda128
+- name: bf16-sglang-nvidia-cuda129
   display_profile: compatible
   scenario: balanced
   engine: sglang
-  image: quay.io/gpustack/runner:cuda12.8-sglang0.5.9
+  image: gpuworks/gpuworks-runner:cuda12.9-sglang0.5.18-r2
   args:
   - --enable-metrics
   weights:

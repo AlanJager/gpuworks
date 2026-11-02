@@ -106,7 +106,7 @@ specs:
     - type: openai.chat
       endpoint: /v1/chat/completions
       mode: stream
-- name: fp8-vllm-nvidia-dgx-spark-gb10
+- name: fp8-vllm-nvidia-gb10-rtx-pro-6000
   display_profile: optimized
   scenario: throughput
   engine: vllm
@@ -124,7 +124,7 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=10.0'
-    name: (?:DGX[ _-]?Spark|GB10)
+    name: (?:DGX[ _-]?Spark|GB10|RTX[ _-]?PRO[ _-]?6000)
     display_target: gb10
   args:
   - --trust-remote-code
@@ -171,43 +171,6 @@ specs:
   - qwen3
   - --mm-encoder-tp-mode
   - data
-  api:
-    health_endpoint: /health
-    operations:
-    - type: openai.chat
-      endpoint: /v1/chat/completions
-      mode: stream
-- name: fp8-vllm-nvidia-rtx-pro-6000
-  display_profile: compatible
-  scenario: throughput
-  engine: vllm
-  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
-  weights:
-    quantization: fp8
-    sources:
-    - huggingface:
-        repo_id: Qwen/Qwen3.6-27B-FP8
-        revision: e89b16ebf1988b3d6befa7de50abc2d76f26eb09
-    - modelscope:
-        repo_id: Qwen/Qwen3.6-27B-FP8
-        revision: 2585979d2934d3b55c58a5c570d3f180d793e56d
-  weight_bytes: 30890040900
-  gpus:
-    vendor: nvidia
-    cc: '>=10.0'
-    name: RTX[ _-]?PRO[ _-]?6000
-    display_target: rtx_pro_6000
-  args:
-  - --trust-remote-code
-  - --enable-auto-tool-choice
-  - --tool-call-parser
-  - qwen3_coder
-  - --reasoning-parser
-  - qwen3
-  - --mm-encoder-tp-mode
-  - data
-  env:
-    VLLM_USE_DEEP_GEMM: '0'
   api:
     health_endpoint: /health
     operations:
