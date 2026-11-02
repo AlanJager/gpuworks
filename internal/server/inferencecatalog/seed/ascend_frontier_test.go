@@ -4,6 +4,7 @@ import (
 	"context"
 	"regexp"
 	"slices"
+	"strings"
 	"testing"
 
 	"gpuworks.ai/gpuworks/internal/server/inferencecatalog"
@@ -77,6 +78,67 @@ func TestFrontierAscendProfilesKeepUpstreamValidatedRecipes(t *testing.T) {
 	}
 }
 
+func TestQwen38BF16A3KeepsMeasuredTwoDieRecipe(t *testing.T) {
+	catalog, err := Catalog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	const (
+		modelID = "qwen/qwen3.8-27b"
+		specID  = "bf16-vllm-ascend-a3-1d4bf0f2"
+	)
+	var got *inferencecatalog.InferenceSpec
+	for _, model := range catalog.Models {
+		if model.ModelID != modelID {
+			continue
+		}
+		for index := range model.Specs {
+			if model.Specs[index].Name == specID {
+				got = &model.Specs[index]
+				break
+			}
+		}
+	}
+	if got == nil || got.Placement == nil {
+		t.Fatalf("missing %s/%s", modelID, specID)
+	}
+	if got.Image != "gpuworks/gpuworks-runner:cann9.1-a3-vllm0.26.0rc1-r2" {
+		t.Errorf("image = %q", got.Image)
+	}
+	if got.WeightBytes != 55586114768 {
+		t.Errorf("weight_bytes = %d", got.WeightBytes)
+	}
+	if len(got.Weights.Sources) != 2 ||
+		got.Weights.Sources[0].Revision != "1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0" ||
+		got.Weights.Sources[1].Revision != "e823e888ae179eb3be02c1a48899c4f828371376" {
+		t.Errorf("weight sources = %+v", got.Weights.Sources)
+	}
+	for _, pair := range [][2]string{
+		{"--dtype", "bfloat16"},
+		{"--max-model-len", "131072"},
+		{"--mm-encoder-tp-mode", "data"},
+		{"--compilation-config", `{"cudagraph_mode":"FULL_DECODE_ONLY"}`},
+	} {
+		if !containsArgumentPair(got.Args, pair[0], pair[1]) {
+			t.Errorf("measured recipe lacks %s %s", pair[0], pair[1])
+		}
+	}
+	names := []string{"910C", "910C"}
+	memories := []float64{64, 64}
+	accepted, err := placement.Resolve(context.Background(), got.Placement.Resolver, placement.GPU{
+		Count: 2, Vendor: "ascend", Names: names, MemoriesGiB: memories, MinMemoryGiB: 64,
+	})
+	if err != nil || accepted.Reason != "" {
+		t.Fatalf("two-die placement rejected: %+v %v", accepted, err)
+	}
+	rejected, err := placement.Resolve(context.Background(), got.Placement.Resolver, placement.GPU{
+		Count: 1, Vendor: "ascend", Names: names[:1], MemoriesGiB: memories[:1], MinMemoryGiB: 64,
+	})
+	if err != nil || rejected.Reason == "" {
+		t.Fatalf("one-die placement was not rejected: %+v %v", rejected, err)
+	}
+}
+
 func TestDeepSeekV41A3ProfilesDeclareEngramSharedMemory(t *testing.T) {
 	catalog, err := Catalog()
 	if err != nil {
@@ -102,6 +164,31 @@ func TestDeepSeekV41A3ProfilesDeclareEngramSharedMemory(t *testing.T) {
 		if !found {
 			t.Errorf("%s has no int8-vllm-ascend-a3-tp4-dp4 profile", modelID)
 		}
+	}
+}
+
+func TestQwen3NextA3UsesMeasuredEagerPath(t *testing.T) {
+	catalog, err := Catalog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, model := range catalog.Models {
+		if model.ModelID != "qwen/qwen3-next-80b-a3b-instruct" {
+			continue
+		}
+		for _, spec := range model.Specs {
+			if spec.Name != "int8-sglang-ascend-a3-7d129784" {
+				continue
+			}
+			found = true
+			if !slices.Contains(spec.Args, "--disable-cuda-graph") {
+				t.Errorf("A3 profile must disable graph capture: %q", spec.Args)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("Qwen3-Next-80B A3 profile is missing")
 	}
 }
 
@@ -209,34 +296,48 @@ func TestGLM53NonFlashHasNoAscendSpecWithoutRuntimeEvidence(t *testing.T) {
 	}
 }
 
-func TestGemmaAscendProfileDoesNotClaim910C(t *testing.T) {
+func TestGemmaAscendProfilesUseTheMeasuredPaths(t *testing.T) {
 	catalog, err := Catalog()
 	if err != nil {
 		t.Fatal(err)
 	}
+	foundA3 := false
+	foundVLLM := false
 	for _, model := range catalog.Models {
-		if model.ModelID != "google/gemma-3-4b-it" {
+		if model.ModelID != "google/gemma-3-4b-it" && model.ModelID != "google/gemma-3-27b-it" {
 			continue
 		}
-		if !slices.Equal(model.InputModalities, []string{"text"}) {
-			t.Fatalf("Gemma input modalities = %v, want text only", model.InputModalities)
+		if !slices.Equal(model.InputModalities, []string{"text", "image"}) {
+			t.Errorf("%s input modalities = %v, want text and image", model.ModelID, model.InputModalities)
 		}
 		for _, spec := range model.Specs {
-			if spec.Name != "bf16-sglang-ascend-4cdeb491" {
+			if spec.GPUs.Vendor != "ascend" || !strings.Contains(spec.Name, "-a3-") {
 				continue
 			}
 			predicate, err := regexp.Compile(spec.GPUs.Name)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if predicate.MatchString("910C") {
-				t.Fatalf("Gemma Ascend profile still claims 910C: %q", spec.GPUs.Name)
+			if !predicate.MatchString("910C") {
+				t.Errorf("%s A3 profile no longer covers 910C: %q", model.ModelID, spec.GPUs.Name)
 			}
-			if !predicate.MatchString("910B2C") {
-				t.Fatalf("Gemma Ascend profile no longer covers 910B: %q", spec.GPUs.Name)
+			if spec.Engine == "sglang" && !slices.Contains(spec.Args, "--disable-cuda-graph") {
+				t.Errorf("%s A3 profile lost the eager-mode workaround", model.ModelID)
 			}
-			return
+			if model.ModelID == "google/gemma-3-4b-it" && spec.Engine == "vllm" {
+				foundVLLM = true
+				if spec.Image != "gpuworks/gpuworks-runner:cann9.1-a3-vllm0.26.0rc1-r2" ||
+					!containsArgumentPair(spec.Args, "--max-model-len", "32768") {
+					t.Errorf("Gemma 4B vLLM profile = %+v", spec)
+				}
+			}
+			foundA3 = true
 		}
 	}
-	t.Fatal("Gemma Ascend profile is missing")
+	if !foundA3 {
+		t.Fatal("Gemma A3 profiles are missing")
+	}
+	if !foundVLLM {
+		t.Fatal("Gemma 4B measured vLLM A3 profile is missing")
+	}
 }

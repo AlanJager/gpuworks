@@ -1,6 +1,6 @@
 # Ascend Support Matrix
 
-Updated: 2026-10-25. This document distinguishes three things that are easy to confuse:
+Updated: 2026-11-02. This document distinguishes three things that are easy to confuse:
 
 - **Outer CANN**: the toolkit provided by the node or rented cloud marketplace image. Self-owned bare-metal machines may have only a driver, recorded as `driver-only`; this does not mean that no container runtime is available.
 - **Inner CANN**: the CANN userspace application binary interface (userspace ABI) in the workload image launched by GPUWorks. It affects whether the workload image can run, but does not participate in `libvruntime.so` asset selection.
@@ -30,9 +30,9 @@ Updated: 2026-10-25. This document distinguishes three things that are easy to c
 
 Checks on 2026-10-22 confirmed that a runner image carries operators for only one chip family: running `cann9.0-910b-*` on a 910C die fails in `AclOpKernelInit`, while the corresponding `cann9.0-a3-*` build succeeds. A template's predicate and pinned image must therefore describe the same family. Generational inheritance ([ADR 0009](../adr/0009-flat-spec-catalog.md), item 10) still applies, but the successor has its own spec and image instead of merely broadening the original predicate.
 
-- The catalog currently contains **80 inherited A3 specs** and **87 specs whose predicates match 910C**. Contract tests check the arguments, weights and image relationship between each 910B original and its A3 successor, and verify that every 910C-claiming spec resolves to an A3 image. These are catalog contract counts, **not per-spec real-hardware pass counts**; hardware results are recorded only for the individual rows below.
+- The catalog currently contains **88 inherited A3 specs** and **105 specs whose predicates match 910C**. Contract tests check the arguments, weights and image relationship between each 910B original and its A3 successor, and verify that every 910C-claiming spec resolves to an A3 image. These are catalog contract counts, **not per-spec real-hardware pass counts**; hardware results are recorded only for the individual rows below.
 - The 950 family does not use this inheritance. The only current 950 spec is the single-card 950PR profile of `qwen/qwen3.8-27b`, using the corresponding 950 image and based on measurements from 2026-10-07. There is no tested 950DT profile.
-- MiniMax-H3's SGLang diffusion path still requires CUDA full-loop denoise, so it declares only 910B4 and does not claim 910C. The Gemma-3-4B-IT SGLang profile also withdrew its 910C claim after persistent health/warmup failures.
+- MiniMax-H3's SGLang diffusion path still requires CUDA full-loop denoise, so it declares only 910B4 and does not claim 910C. The Gemma-3-4B-IT and Gemma-3-27B-IT A3 SGLang profiles use `--disable-cuda-graph` to avoid an NPU graph-capture hang; the 4B model also has a working A3 vLLM profile. Both sizes have passed text and real-image chat.
 
 ### Frontier Model Catalog and Real-Hardware Status
 
@@ -48,7 +48,11 @@ Having a catalog spec means that pinned weights, an image and launch arguments e
 | MiniMax-M3 | A3 DP4 × TP4, 133K | All 16 workers, health and real chat passed with native Docker |
 | Qwen3.5-397B-A17B | A3 TP16/EP16, W8A8 + MTP, 133K, eager | Health, `/v1/models` and real chat passed with native Docker; eager mode avoids the currently missing `causal_conv1d_update_npu` graph path |
 | Qwen3.8-Flash-Next | Experimental A3 TP8, W8A8-MTP, 135168 context | Health, `/v1/models`, real chat and automatic placement passed with Docker |
-| Qwen3.8-27B | 910B spec and inherited A3 spec | TP2 requests passed on two 910C hosts; `910c_k8s` used Docker |
+| Qwen3.8-27B | 910B spec; inherited W8A8 A3 spec; measured BF16 A3 spec | W8A8 TP2 text requests passed; BF16 TP2 text and real-image requests both returned HTTP 200. Both used native Docker; this verifies the API and multimodal paths, not output quality |
+| Qwen3-1.7B | Newly measured A3 TP1 BF16 SGLang spec | Weights were downloaded on `.29` and peer-copied to `.30`; evaluation, runner startup and an exact-match chat request passed |
+| Qwen3-4B | Newly measured A3 TP1 BF16 SGLang spec | Evaluation, runner startup and an exact-match chat request passed; the catalog previously had only NVIDIA, PPU and Hygon profiles |
+| PaddleOCR-VL-1.6 | Measured A3 TP1 BF16 vLLM spec | An OCR request against a real 640×220 text image returned both lines verbatim; the template started and served with runner `cann9.1-a3-vllm0.26.0rc1-r2` |
+| Gemma-3-4B-IT / Gemma-3-27B-IT | A3 SGLang / vLLM for 4B; A3 SGLang for 27B | Both TP2 4B engines and the TP4 27B eager profile completed text and real-image chat; the SGLang templates disable NPU graph capture by default to avoid startup hangs |
 | Kimi-K3 | None | The upstream minimum recipe uses four A3 nodes; there is no catalog spec |
 
 The A3 profiles of DeepSeek-V4.1-Flash and its 1017 variant explicitly declare **512 GiB of `/dev/shm`** and `memlock_unlimited: true` for two approximately 103 GiB local DP shared Engram tables. Do not duplicate a Docker memlock argument in template `args`. Hardware checks confirmed that 128 GiB cannot register the second table and 256 GiB can; the catalog uses a 512 GiB isolated tmpfs as the common specification.
@@ -59,7 +63,7 @@ Preflight checks use the final effective command. They reject a launch only when
 - **Evaluate warnings (`warnings[]`, never blocking)**: the rc2 A3 V1 compatibility rendezvous is single-node only, so a multi-node deployment is advised to set `VLLM_USE_V2_MODEL_RUNNER=1`, use Docker/nerdctl, or deploy on one node; V1 combined with data parallelism above 1 has not been verified on real runveil hardware; a manual shell on a compat image (including `/bin/sh -c` inside JSON argv) cannot be matched to the actual runner; Engram `cpu_offload + dp_shared_memory` on udocker/runveil uses the host's `/dev/shm` and ulimits directly, which the platform cannot see, so it is advised to provide about 512 GiB of shared memory and unlimited memlock or use Docker/nerdctl; an Engram configuration that cannot be established is treated the same way.
 - **Passed silently**: manual commands that do not involve Engram (variables, `&&`, pipes, redirects, `["sh","-c",...]`) are neither checked nor warned about, on any vendor. When the command text mentions `engram` and can be parsed statically, shared memory and memlock are derived by the same rules as engine mode; when it mentions `engram` but cannot be parsed, only a warning is shown and nothing is derived.
 
-Some inherited specs also have individual hardware results: health/chat for GLM-4.6V-Flash, Qwen3.6-35B-A3B, Qwen3.5-122B-A10B and Qwen3-Next-80B-A3B-Instruct, plus A3 image selection, health and a speech request for Qwen3-TTS. These results cover only the named specs and must not be extended to every inherited spec.
+Some inherited specs also have individual hardware results: health/chat for GLM-4.6V-Flash, Qwen3.6-35B-A3B, Qwen3.6-27B-W8A8, Qwen3.5-122B-A10B and Qwen3-Next-80B-A3B-Instruct; target-plus-draft startup/chat for Qwen3-8B EAGLE3; and A3 image selection, health and a speech request for Qwen3-TTS. These results cover only the named specs and must not be extended to every inherited spec.
 
 Every new Ascend template must pin a complete immutable weight snapshot. A per-file `Revision` returned by the ModelScope file API is not necessarily a complete repository snapshot; one file's revision must not be presented as the snapshot of the entire model.
 

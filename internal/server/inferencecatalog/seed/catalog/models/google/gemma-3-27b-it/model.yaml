@@ -102,6 +102,9 @@ specs:
   - --dtype
   - bfloat16
   - --enable-multimodal
+  # NPU graph capture hangs on Gemma 3; the eager path completes text and image
+  # chat on four 910C dies with the A3 SGLang runner.
+  - --disable-cuda-graph
   env:
     GLOO_SOCKET_IFNAME: lo
     HCCL_SOCKET_IFNAME: lo

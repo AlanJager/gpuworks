@@ -8,6 +8,45 @@ kv_bytes_per_token:
   vllm: 28672
   sglang: 28672
 specs:
+# Measured on one 910C die with the A3 SGLang runner on 2026-11-01. The
+# OpenAI-compatible chat request returned successfully after a real model
+# download; output quality is not claimed.
+- name: bf16-sglang-ascend-a3
+  display_profile: general
+  scenario: balanced
+  engine: sglang
+  image: gpuworks/gpuworks-runner:cann9.0-a3-sglang0.5.18-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen2.5-1.5B
+        revision: 8faed761d45a263340a0528343f099c05c9a4323
+    - modelscope:
+        repo_id: Qwen/Qwen2.5-1.5B
+        revision: 8f8c715740f4d6e253f43b41939da5c5bb28e4c0
+  weight_bytes: 3087467144
+  gpus:
+    vendor: ascend
+    name: (^|[^A-Za-z0-9])910C[A-Za-z0-9]*([^A-Za-z0-9]|$)
+    display_target: ascend
+  args:
+  - --enable-metrics
+  - --device
+  - npu
+  - --attention-backend
+  - ascend
+  - --dtype
+  - bfloat16
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    if gpu.min_memory_gib < 32: return reject(\"each GPU requires at least 32 GiB\")\n    return {\"GPU_COUNT\": gpu.count, \"TP_SIZE\": gpu.count, \"SP_DEGREE\": 1}\n"
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
 - name: bf16-vllm-ppu-8faed761
   display_profile: general
   scenario: balanced

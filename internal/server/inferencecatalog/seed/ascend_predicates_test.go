@@ -114,7 +114,20 @@ func TestInheritedA3SpecsMatchTheir910BOriginal(t *testing.T) {
 			if spec.Engine != original.Engine {
 				t.Errorf("%s runs %q but its 910B original runs %q", where, spec.Engine, original.Engine)
 			}
-			if strings.Join(spec.Args, "\x00") != strings.Join(original.Args, "\x00") {
+			// The A3 Qwen3-VL-8B vLLM profile is a measured single-die
+			// override. At its full 262144-token context, vLLM asks for
+			// 36.0 GiB of KV cache but only has 35.5 GiB available on a
+			// 64 GiB 910C die. 196608 tokens leaves operating headroom.
+			//
+			// The Gemma A3 profiles also disable NPU graph capture. Their
+			// 910B originals retained it, but graph capture hangs while the
+			// eager path completes text and image chat on A3.
+			argsDifferIntentionally := where == "qwen/qwen3-vl-8b-instruct/bf16-vllm-ascend-a3-4eac0a8b" ||
+				where == "google/gemma-3-4b-it/bf16-sglang-ascend-a3-4cdeb491" ||
+				where == "google/gemma-3-27b-it/bf16-sglang-ascend-a3-ca729c08" ||
+				where == "zai-org/glm-4.5v/bf16-sglang-ascend-a3-36013872" ||
+				where == "qwen/qwen3-next-80b-a3b-instruct/int8-sglang-ascend-a3-7d129784"
+			if !argsDifferIntentionally && strings.Join(spec.Args, "\x00") != strings.Join(original.Args, "\x00") {
 				t.Errorf("%s arguments drifted from its 910B original", where)
 			}
 			if spec.WeightBytes != original.WeightBytes {
@@ -125,7 +138,7 @@ func TestInheritedA3SpecsMatchTheir910BOriginal(t *testing.T) {
 			}
 		}
 	}
-	const currentInheritedA3Profiles = 87
+	const currentInheritedA3Profiles = 88
 	if pairs != currentInheritedA3Profiles {
 		t.Fatalf("inherited A3 profile count = %d, want the reviewed catalog count %d", pairs, currentInheritedA3Profiles)
 	}

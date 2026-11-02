@@ -103,8 +103,8 @@ specs:
       - name: size
         kind: select
         options:
-        - 640x360
-        - 1280x720
+        - 640x352
+        - 1280x704
       - name: fps
         kind: number
       - name: num_frames
