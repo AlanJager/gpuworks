@@ -13,6 +13,7 @@ Artifacts and failed database: secrets/e2e/<runId>; remove within 7 days.
 """
 from __future__ import annotations
 
+import json
 import os
 import re
 from pathlib import Path
@@ -20,7 +21,7 @@ import tempfile
 from urllib.parse import parse_qs, urlsplit
 
 from playwright.sync_api import expect
-from dialog_checks import assert_drawer_shell
+from dialog_checks import assert_drawer_shell, regions_stacked
 from image_catalog import button, cleanup, read_detail, select, strings
 from image_catalog_runner import run
 from image_selection_fixture import ImageSelectionFixture
@@ -425,6 +426,52 @@ def exercise_cancellations(page, opener, text, form, imports, source, report):
     return final
 
 
+def exercise_viewport_layout(page, dialog, form, report, source):
+    """12.2: the drawer's parts are measured where they land at 1440x900.
+
+    The header, the scrolling body and the submit control are measured on the open drawer. The header
+    and body are required to sit inside the drawer and not to overlap each other. The submit is required
+    to be reachable rather than merely to start on screen - a tall body may scroll, but a control the
+    operator cannot get to is not reachable - so it is scrolled into view and measured again.
+    """
+    drawer_box = dialog.evaluate("""element => {
+        const rect = (node) => {
+            if (!node) return null;
+            const box = node.getBoundingClientRect();
+            return {top: box.top, left: box.left, right: box.right, bottom: box.bottom,
+                    width: box.width, height: box.height};
+        };
+        const wrapper = element.closest('.ant-drawer-content-wrapper');
+        return {header: rect(element.querySelector('.ant-drawer-header')),
+                body: rect(element.querySelector('.ant-drawer-body')),
+                submit: rect([...element.querySelectorAll('button')]
+                             .find(node => node.textContent.trim() === form['addImage'])),
+                box: rect(wrapper)};
+    }""".replace("form['addImage']", json.dumps(form["addImage"])))
+    check(all(drawer_box.get(k) for k in ("header", "body", "submit", "box")),
+          f"the drawer did not expose its parts: {drawer_box}")
+    check(regions_stacked([drawer_box["header"], drawer_box["body"]], drawer_box["box"]),
+          f"drawer header and body overlap or leave the drawer: {drawer_box}")
+    button(dialog, form["addImage"]).scroll_into_view_if_needed()
+    page.wait_for_timeout(300)
+    reachable = dialog.evaluate("""() => {
+        const node = [...document.querySelectorAll('button')]
+            .find(el => el.textContent.trim() === form['addImage']);
+        if (!node) return null;
+        const box = node.getBoundingClientRect();
+        return {top: box.top, bottom: box.bottom, left: box.left, right: box.right,
+                height: window.innerHeight, width: window.innerWidth};
+    }""".replace("form['addImage']", json.dumps(form["addImage"])))
+    check(reachable is not None, "the submit control vanished while measuring")
+    check(0 <= reachable["top"] and reachable["bottom"] <= reachable["height"] + 0.5,
+          f"the submit control is not reachable vertically after scrolling: {reachable}")
+    check(0 <= reachable["left"] and reachable["right"] <= reachable["width"] + 0.5,
+          f"the submit control is not reachable horizontally: {reachable}")
+    report[f"viewport_{source}"] = {"drawer": drawer_box, "submit_after_scroll": reachable,
+                                    "viewport": page.viewport_size, "header_body_stacked": True}
+    return True
+
+
 # Contract: gpuworks/image-catalog/community-prefill
 # Mainline: 独立server配置可审计TLS仓库A/B → UI选择A nightly、手改引擎版本、过滤再换B release → 精确POST与独立GET/刷新证明B预填替换A、人工框架版本保留；清理目录和fixture，无镜像拉取声明。
 def test_community_prefill(page, server, artifacts, report, locale):
@@ -460,6 +507,7 @@ def test_community_prefill(page, server, artifacts, report, locale):
         page, dialog, form["title"][source],
         dialog.get_by_text(form["community"]["title"], exact=True),
         page.get_by_role("dialog", name=form["title"]["custom"], exact=True)))
+    exercise_viewport_layout(page, dialog, form, report, source)
     # 1.11 runs before anything is filled in, so the drawer it reopens is the untouched one.
     dialog = exercise_cancellations(
         page, lambda: button(page, text["page"]["addCommunity"]).click(),
@@ -629,6 +677,7 @@ def test_archive_prefill(page, server, artifacts, report, locale):
         page, dialog, form["title"][source],
         dialog.get_by_text(form["url"]["title"], exact=True),
         dialog.get_by_text(form["community"]["title"], exact=True)))
+    exercise_viewport_layout(page, dialog, form, report, source)
     dialog.locator(".ant-drawer-close").focus()
     from image_archive_inventory import exercise_archive_inventory
     report["archive_inventory"] = exercise_archive_inventory(page, dialog, form, imports)
