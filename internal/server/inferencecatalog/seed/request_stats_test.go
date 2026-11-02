@@ -25,7 +25,7 @@ func TestCallableTemplatesDeclareRequestStatsTheirRepliesCarry(t *testing.T) {
 		{tensorfoldGLMModel, tensorfoldTP4Spec, "tensorfold-gb10-stream.sse", false},
 		{"ista-daslab/qwen3.8-flash-next-strata", "iq2xs-strata-nvidia-single-gpu", "strata-stream.sse", true},
 	} {
-		_, spec := ppuSpec(t, tc.model, tc.spec)
+		_, spec := catalogSpec(t, tc.model, tc.spec)
 		if spec.API == nil || len(spec.API.RequestStats) == 0 {
 			t.Fatalf("%s declares no request stats", tc.spec)
 		}

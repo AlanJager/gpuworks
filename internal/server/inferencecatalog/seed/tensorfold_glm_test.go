@@ -26,7 +26,7 @@ const (
 // 84 GB RTX 6000D (whose name carries no "PRO"); the Ada RTX 6000 shares the
 // name stem and is kept out by compute capability alone.
 func TestTensorFoldTP4ProfileMatchesBothBlackwell6000Cards(t *testing.T) {
-	_, spec := ppuSpec(t, tensorfoldGLMModel, tensorfoldTP4Spec)
+	_, spec := catalogSpec(t, tensorfoldGLMModel, tensorfoldTP4Spec)
 	predicate := chipmatch.Predicate{Vendor: spec.GPUs.Vendor, CC: spec.GPUs.CC, Name: spec.GPUs.Name}
 	for _, card := range []struct {
 		raw, cc string
@@ -49,7 +49,7 @@ func TestTensorFoldTP4ProfileMatchesBothBlackwell6000Cards(t *testing.T) {
 // weights alone take ~44 GB of each: the resolver admits four cards of 80 GiB
 // or more (the 6000D reports 83.6 GiB) and nothing else.
 func TestTensorFoldTP4ProfileAdmitsExactlyFourLargeCards(t *testing.T) {
-	_, spec := ppuSpec(t, tensorfoldGLMModel, tensorfoldTP4Spec)
+	_, spec := catalogSpec(t, tensorfoldGLMModel, tensorfoldTP4Spec)
 	resolve := func(count int, memoryGiB float64) placement.Result {
 		t.Helper()
 		names := make([]string, count)
@@ -88,7 +88,7 @@ func TestTensorFoldTP4ProfileAdmitsExactlyFourLargeCards(t *testing.T) {
 // on one node there is no master address and the launch is refused instead of
 // started; on two nodes rank 0 serves the API and rank 1 is headless.
 func TestTensorFoldGB10ProfileLaunchesOnlyAcrossTwoNodes(t *testing.T) {
-	_, spec := ppuSpec(t, tensorfoldGLMModel, tensorfoldGB10Spec)
+	_, spec := catalogSpec(t, tensorfoldGLMModel, tensorfoldGB10Spec)
 	contract, err := inferenceapi.EffectiveContract(spec.API, inferenceapi.DefaultsInput{Engine: spec.Engine})
 	if err != nil {
 		t.Fatal(err)
@@ -150,7 +150,7 @@ func TestTensorFoldProfilesMountTheCatalogDFlash2Draft(t *testing.T) {
 		models[model.ModelID] = model
 	}
 	for _, name := range []string{tensorfoldGB10Spec, tensorfoldTP4Spec} {
-		_, spec := ppuSpec(t, tensorfoldGLMModel, name)
+		_, spec := catalogSpec(t, tensorfoldGLMModel, name)
 		if !containsPair(spec.Args, "--drafter", "/draft") {
 			t.Errorf("%s argv %v does not name the draft mount", name, spec.Args)
 		}
@@ -209,7 +209,7 @@ func TestTensorFoldMetricsMapRealExpositionFamilies(t *testing.T) {
 		exposed[name] = true
 	}
 	for _, name := range []string{tensorfoldGB10Spec, tensorfoldTP4Spec} {
-		_, spec := ppuSpec(t, tensorfoldGLMModel, name)
+		_, spec := catalogSpec(t, tensorfoldGLMModel, name)
 		if spec.API == nil || spec.API.Metrics == nil || len(spec.API.Metrics.Map) == 0 {
 			t.Fatalf("%s declares no metrics", name)
 		}

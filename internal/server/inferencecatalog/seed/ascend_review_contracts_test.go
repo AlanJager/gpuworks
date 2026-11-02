@@ -25,7 +25,7 @@ func TestMeasuredSingleDieA3ProfilesRejectMultiDevicePlacement(t *testing.T) {
 	}
 	for _, profile := range profiles {
 		t.Run(profile.model, func(t *testing.T) {
-			_, spec := ppuSpec(t, profile.model, profile.spec)
+			_, spec := catalogSpec(t, profile.model, profile.spec)
 			accepted, err := placement.Resolve(context.Background(), spec.Placement.Resolver, placement.GPU{
 				Count: 1, Vendor: "ascend", MinMemoryGiB: 32,
 			})
@@ -43,7 +43,7 @@ func TestMeasuredSingleDieA3ProfilesRejectMultiDevicePlacement(t *testing.T) {
 }
 
 func TestGemma3VLLMTPDivisibility(t *testing.T) {
-	_, spec := ppuSpec(t, "google/gemma-3-4b-it", "bf16-vllm-ascend-a3-gemma3-4b")
+	_, spec := catalogSpec(t, "google/gemma-3-4b-it", "bf16-vllm-ascend-a3-gemma3-4b")
 	for _, count := range []int{1, 2, 4, 8} {
 		accepted, err := placement.Resolve(context.Background(), spec.Placement.Resolver, placement.GPU{
 			Count: count, Vendor: "ascend", MinMemoryGiB: 32,
@@ -63,8 +63,8 @@ func TestGemma3VLLMTPDivisibility(t *testing.T) {
 }
 
 func TestQwen3NextEagerWorkaroundStaysA3Only(t *testing.T) {
-	_, original := ppuSpec(t, "qwen/qwen3-next-80b-a3b-instruct", "int8-sglang-ascend-7d129784")
-	_, a3 := ppuSpec(t, "qwen/qwen3-next-80b-a3b-instruct", "int8-sglang-ascend-a3-7d129784")
+	_, original := catalogSpec(t, "qwen/qwen3-next-80b-a3b-instruct", "int8-sglang-ascend-7d129784")
+	_, a3 := catalogSpec(t, "qwen/qwen3-next-80b-a3b-instruct", "int8-sglang-ascend-a3-7d129784")
 	if slices.Contains(original.Args, "--disable-cuda-graph") {
 		t.Error("910B original contains the A3-only graph workaround")
 	}
@@ -75,7 +75,7 @@ func TestQwen3NextEagerWorkaroundStaysA3Only(t *testing.T) {
 
 func TestGemma431UsesCheckpointLocalChatTemplate(t *testing.T) {
 	for _, specName := range []string{"bf16-vllm-ascend-c7a493cd", "bf16-vllm-ascend-a3-c7a493cd"} {
-		_, spec := ppuSpec(t, "google/gemma-4-31b-it", specName)
+		_, spec := catalogSpec(t, "google/gemma-4-31b-it", specName)
 		if !containsArgumentPair(spec.Args, "--chat-template", "/model/chat_template.jinja") {
 			t.Errorf("%s does not use the checkpoint-local chat template", specName)
 		}
@@ -83,8 +83,8 @@ func TestGemma431UsesCheckpointLocalChatTemplate(t *testing.T) {
 }
 
 func TestMiniCPMV45SkipsAwayQuantizationForVisionTower(t *testing.T) {
-	_, original := ppuSpec(t, "openbmb/minicpm-v-4_5", "int4-sglang-ascend-8fe71b3c")
-	_, a3 := ppuSpec(t, "openbmb/minicpm-v-4_5", "int4-sglang-ascend-a3-8fe71b3c")
+	_, original := catalogSpec(t, "openbmb/minicpm-v-4_5", "int4-sglang-ascend-8fe71b3c")
+	_, a3 := catalogSpec(t, "openbmb/minicpm-v-4_5", "int4-sglang-ascend-a3-8fe71b3c")
 	if containsArgumentPair(original.Args, "--json-model-override-args", `{"quantization_config":{"bits":4,"group_size":128,"zero_point":true,"modules_to_not_convert":["vpm","resampler"]}}`) {
 		t.Error("910B original contains the A3-only AWQ vision skip")
 	}
@@ -101,13 +101,16 @@ func TestMiniCPMV45SkipsAwayQuantizationForVisionTower(t *testing.T) {
 }
 
 func TestQwQModelSlimCompatibilityPatchStaysA3Only(t *testing.T) {
-	_, original := ppuSpec(t, "qwen/qwq-32b", "int8-sglang-ascend-48738293")
-	_, a3 := ppuSpec(t, "qwen/qwq-32b", "int8-sglang-ascend-a3-48738293")
+	_, original := catalogSpec(t, "qwen/qwq-32b", "int8-sglang-ascend-48738293")
+	_, a3 := catalogSpec(t, "qwen/qwq-32b", "int8-sglang-ascend-a3-48738293")
 	if strings.TrimSpace(original.PreStartScript) != "" {
 		t.Error("910B original contains the A3-only ModelSlim compatibility patch")
 	}
 	if !strings.Contains(a3.PreStartScript, "quant_linear: Optional[nn.Module] = None") {
 		t.Error("A3 ModelSlim compatibility patch is missing")
+	}
+	if !strings.Contains(a3.PreStartScript, "exit 1") {
+		t.Error("A3 ModelSlim compatibility patch must fail when its anchor line is gone")
 	}
 	for _, count := range []int{1, 4} {
 		rejected, err := placement.Resolve(context.Background(), a3.Placement.Resolver, placement.GPU{

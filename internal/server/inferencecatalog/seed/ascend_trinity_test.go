@@ -3,7 +3,7 @@ package seed
 import "testing"
 
 func TestTrinityMiniA3PrefersTheValidatedModelScopeSnapshot(t *testing.T) {
-	_, spec := ppuSpec(t, "arcee-ai/trinity-mini", "bf16-sglang-ascend-a3-b30c5932")
+	_, spec := catalogSpec(t, "arcee-ai/trinity-mini", "bf16-sglang-ascend-a3-b30c5932")
 
 	if len(spec.Weights.Sources) < 2 {
 		t.Fatalf("A3 Trinity-Mini sources = %+v, want both repository providers", spec.Weights.Sources)

@@ -83,9 +83,11 @@ specs:
   - awq
   - --dtype
   - bfloat16
+  # The measured A3 run that completed text and image chat used eager mode
+  # together with the vision-tower skip below.
+  - --disable-cuda-graph
   # The AWQ checkpoint only quantizes llm.*. SGLang otherwise applies the AWQ
   # config to the FP16 vision tower and resampler as well.
-  - --disable-cuda-graph
   - --json-model-override-args
   - '{"quantization_config":{"bits":4,"group_size":128,"zero_point":true,"modules_to_not_convert":["vpm","resampler"]}}'
   placement:

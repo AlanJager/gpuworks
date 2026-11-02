@@ -22,7 +22,7 @@ func TestStrataMetricsMapRealDocumentNumbers(t *testing.T) {
 	if err := json.Unmarshal(raw, &document); err != nil {
 		t.Fatal(err)
 	}
-	_, spec := ppuSpec(t, "ista-daslab/qwen3.8-flash-next-strata", "iq2xs-strata-nvidia-single-gpu")
+	_, spec := catalogSpec(t, "ista-daslab/qwen3.8-flash-next-strata", "iq2xs-strata-nvidia-single-gpu")
 	if spec.API == nil || spec.API.Metrics == nil || spec.API.Metrics.Format != "json" || len(spec.API.Metrics.Map) == 0 {
 		t.Fatalf("strata metrics = %+v", spec.API)
 	}
