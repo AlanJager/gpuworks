@@ -559,6 +559,32 @@ def test_community_prefill(page, server, artifacts, report, locale):
     expect(dialog.get_by_text(labels[b["engine"]], exact=True)).to_be_visible()
     expect(dialog.get_by_role("switch", name=form["rollingTag"], exact=True)).not_to_be_checked()
     expect(dialog.get_by_label(form["frameworkVersion"], exact=True)).to_have_value("12.8")
+    # 5.5: switching back to the first source must not leave the second one's values behind. A and B
+    # disagree on the engine and on the rolling-tag flag, so a stale value is visible rather than
+    # indistinguishable - the engine is required to return to A's and the flag to A's, and the
+    # manually typed framework version is required to survive the round trip because the operator
+    # wrote it and no pick should silently replace it.
+    with page.expect_response(lambda r: "/images/community/browse" in r.url) as third:
+        button(dialog, fixture.repo_a).click()
+    check(third.value.status == 200, "return to the first community repository failed")
+    check(parse_qs(urlsplit(third.value.url).query) == {"repo": [fixture.repo_a]},
+          "the return visit asked for a different repository")
+    button(dialog, "nightly").click()
+    expect(dialog.get_by_label(form["imageRef"], exact=True)).to_have_value(fixture.repo_a + ":nightly")
+    expect(dialog.get_by_text(labels[a["engine"]], exact=True)).to_be_visible()
+    expect(dialog.get_by_text(labels[b["engine"]], exact=True)).to_have_count(0)
+    expect(dialog.get_by_role("switch", name=form["rollingTag"], exact=True)).to_be_checked()
+    expect(dialog.get_by_label(form["frameworkVersion"], exact=True)).to_have_value("12.8")
+    report["source_switch_back"] = {"from": fixture.repo_b, "to": fixture.repo_a,
+                                    "engine": a["engine"], "stale_engine_absent": b["engine"],
+                                    "rolling_tag_restored": True, "manual_value_kept": "12.8"}
+    # Back to B for the submit that this case is actually about.
+    with page.expect_response(lambda r: "/images/community/browse" in r.url) as fourth:
+        button(dialog, fixture.repo_b).click()
+    check(fourth.value.status == 200, "second return to the replacement repository failed")
+    button(dialog, chosen["tag"]).click()
+    expect(dialog.get_by_label(form["imageRef"], exact=True)).to_have_value(fixture.refs[1])
+    expect(dialog.get_by_label(form["engineVersion"], exact=True)).to_have_value(chosen["engine_version"])
     dialog.get_by_label(form["seriesName"], exact=True).fill(name)
     expected = {"series": [{"name": name, "engine": b["engine"], "framework": b["framework"], "source": source,
         "versions": [{"engine_version": chosen["engine_version"], "framework_version": "12.8", "arch": "multi",
