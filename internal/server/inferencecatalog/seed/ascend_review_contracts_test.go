@@ -85,6 +85,23 @@ func TestKimiK26A3DeclaresTP4ForSixteenDevices(t *testing.T) {
 	if err != nil || rejected.Reason == "" {
 		t.Fatalf("four-device placement was not rejected: %+v %v", rejected, err)
 	}
+	draftSources := map[string]string{}
+	for _, component := range spec.Components {
+		if component.Role != "speculative_draft" {
+			continue
+		}
+		for _, source := range component.Weights.Sources {
+			draftSources[source.Provider] = source.Revision
+		}
+	}
+	for provider, revision := range map[string]string{
+		"huggingface": "e2db14df8337367b5eae8a6c206ea0d7d01a42a8",
+		"modelscope":  "06383ea9693a58f9f18c82bdae807fb7d3c8fdfe",
+	} {
+		if draftSources[provider] != revision {
+			t.Errorf("draft %s revision = %q, want %q", provider, draftSources[provider], revision)
+		}
+	}
 }
 
 func TestQwen3NextEagerWorkaroundStaysA3Only(t *testing.T) {
