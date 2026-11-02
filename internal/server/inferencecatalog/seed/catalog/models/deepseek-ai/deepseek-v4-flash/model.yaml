@@ -238,9 +238,9 @@ specs:
     - type: openai.chat
       endpoint: /v1/chat/completions
       mode: stream
-- name: nvfp4-vllm-nvidia-blackwell
-  display_name_zh_cn: Blackwell · NVFP4 · FP4 索引缓存
-  display_name_en: Blackwell · NVFP4 · FP4 indexer cache
+- name: nvfp4-vllm-nvidia-sm100-fp4-indexer
+  display_name_zh_cn: B200 / B300 / GB200 / GB300 · NVFP4 · FP4 索引缓存
+  display_name_en: B200 / B300 / GB200 / GB300 · NVFP4 · FP4 indexer cache
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -256,11 +256,10 @@ specs:
   weight_bytes: 168305308121
   gpus:
     vendor: nvidia
-    cc: '>=10.0'
+    cc: '10.0..10.9'
   args:
   - --trust-remote-code
-  - --attention_config.use_fp4_indexer_cache
-  - 'True'
+  - --attention_config.indexer_kv_dtype=mxfp4
   - --tokenizer-mode
   - deepseek_v4
   - --tool-call-parser

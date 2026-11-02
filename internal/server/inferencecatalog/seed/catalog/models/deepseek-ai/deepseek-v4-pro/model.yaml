@@ -144,8 +144,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: nvfp4-vllm-nvidia-cc100
-  display_name_zh_cn: Blackwell · NVFP4
-  display_name_en: Blackwell · NVFP4
+  display_name_zh_cn: B200 / B300 / GB200 / GB300 · NVFP4
+  display_name_en: B200 / B300 / GB200 / GB300 · NVFP4
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -161,7 +161,7 @@ specs:
   weight_bytes: 913128322951
   gpus:
     vendor: nvidia
-    cc: '>=10.0'
+    cc: '10.0..10.9'
   args:
   - --trust-remote-code
   - --tokenizer-mode
@@ -175,7 +175,7 @@ specs:
   - fp8
   - --block-size
   - '256'
-  - --attention_config.use_fp4_indexer_cache=True
+  - --attention_config.indexer_kv_dtype=mxfp4
   api:
     health_endpoint: /health
     operations:
