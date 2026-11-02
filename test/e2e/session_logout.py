@@ -170,6 +170,20 @@ def test_two_tab_logout_relogin(play, context, server, artifacts, report, locale
     expect(page.get_by_text(auth["usernameRequired"], exact=True)).to_be_visible()
     expect(page.get_by_text(auth["passwordRequired"], exact=True)).to_be_visible()
     check(not login_requests, "empty login submitted a request")
+    # 1.8: a whitespace-only value is not a value. Both fields carry whitespace: true, so spaces
+    # alone must be refused in the form and must not reach the server, while a real value in the
+    # other field is kept.
+    before_blank = len(login_requests)
+    username.fill("   ")
+    secret.fill("   ")
+    button(page, auth["submit"]).click()
+    expect(page.get_by_text(auth["usernameRequired"], exact=True)).to_be_visible()
+    expect(page.get_by_text(auth["passwordRequired"], exact=True)).to_be_visible()
+    expect(username).to_have_value("   ")
+    expect(secret).to_have_value("   ")
+    check(len(login_requests) == before_blank, "a whitespace-only login submitted a request")
+    report["login_whitespace_only"] = {"refused": True, "requests": 0, "value_kept": True}
+
     invalid = "e2e-invalid-" + report["run_id"]
     artifacts.remember(invalid)
     username.fill("admin")
