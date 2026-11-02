@@ -62,8 +62,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: bf16-vllm-ppu-cdbee75f
-  display_name_zh_cn: PPU · BF16 (Qwen)
-  display_name_en: PPU · BF16 (Qwen)
+  display_name_zh_cn: PPU · BF16
+  display_name_en: PPU · BF16
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
@@ -110,31 +110,6 @@ specs:
     name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
   args:
   - --enable-metrics
-  api:
-    health_endpoint: /health
-    operations:
-    - type: openai.chat
-      endpoint: /v1/chat/completions
-      mode: stream
-- name: bf16-vllm-ppu-5298197a
-  display_name_zh_cn: PPU · BF16 (czcheung)
-  display_name_en: PPU · BF16 (czcheung)
-  scenario: balanced
-  engine: vllm
-  image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
-  weights:
-    quantization: bf16
-    sources:
-    - huggingface:
-        repo_id: czcheung/Qwen3-4B-Instruct-2507-uncensored-unslop-v2
-        revision: 5298197a234e36ba5d137869a76a77faa2d65947
-  weight_bytes: 8044981992
-  gpus:
-    vendor: ppu
-    name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
-  args:
-  - --trust-remote-code
-  - --skip-mm-profiling
   api:
     health_endpoint: /health
     operations:

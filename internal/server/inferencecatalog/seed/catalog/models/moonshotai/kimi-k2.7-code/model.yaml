@@ -80,42 +80,6 @@ specs:
     - type: openai.chat
       endpoint: /v1/chat/completions
       mode: stream
-- name: int4-vllm-nvidia-general
-  display_name_zh_cn: Ampere 及以上 · INT4 · 投机解码（在线拉取草稿）
-  display_name_en: Ampere+ · INT4 · Speculative (draft fetched online)
-  scenario: balanced
-  engine: vllm
-  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
-  weights:
-    quantization: int4
-    sources:
-    - huggingface:
-        repo_id: moonshotai/Kimi-K2.7-Code
-        revision: 74797c9c62378b951a1f6fcf5c4631024e9b8bef
-    - modelscope:
-        repo_id: moonshotai/Kimi-K2.7-Code
-        revision: 225320e77210469e1aaa0274306ca2bc6209d70a
-  weight_bytes: 595204984507
-  gpus:
-    vendor: nvidia
-    cc: '>=8.0'
-  args:
-  - --trust-remote-code
-  - --tool-call-parser
-  - kimi_k2
-  - --enable-auto-tool-choice
-  - --reasoning-parser
-  - kimi_k2
-  - --speculative-config
-  - '{"model":"lightseekorg/kimi-k2.7-coder-eagle3.1-mla","method":"eagle3","num_speculative_tokens":3}'
-  - --mm-encoder-tp-mode
-  - data
-  api:
-    health_endpoint: /health
-    operations:
-    - type: openai.chat
-      endpoint: /v1/chat/completions
-      mode: stream
 - name: int4-vllm-nvidia-general-eagle3-draft
   display_name_zh_cn: Ampere 及以上 · INT4 · 投机解码
   display_name_en: Ampere+ · INT4 · Speculative

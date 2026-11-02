@@ -298,8 +298,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: bf16-vllm-ppu-c1899de2
-  display_name_zh_cn: PPU · BF16 (Qwen)
-  display_name_en: PPU · BF16 (Qwen)
+  display_name_zh_cn: PPU · BF16
+  display_name_en: PPU · BF16
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
@@ -352,33 +352,6 @@ specs:
   - ascend
   - --dtype
   - bfloat16
-  api:
-    health_endpoint: /health
-    operations:
-    - type: openai.chat
-      endpoint: /v1/chat/completions
-      mode: stream
-- name: bf16-vllm-ppu-ff6dce2f
-  display_name_zh_cn: PPU · BF16 (dahye58)
-  display_name_en: PPU · BF16 (dahye58)
-  scenario: balanced
-  engine: vllm
-  image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
-  weights:
-    quantization: bf16
-    sources:
-    - huggingface:
-        repo_id: dahye58/Qwen3-0.6B-JSON-SFT
-        revision: ff6dce2fa26bf56030ee69454440490e51e1987e
-  weight_bytes: 1192135096
-  gpus:
-    vendor: ppu
-    name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
-  args:
-  - --dtype
-  - bfloat16
-  - --trust-remote-code
-  - --skip-mm-profiling
   api:
     health_endpoint: /health
     operations:

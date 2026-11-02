@@ -346,8 +346,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: bf16-vllm-ppu-1cfa9a72
-  display_name_zh_cn: PPU · BF16 (Qwen)
-  display_name_en: PPU · BF16 (Qwen)
+  display_name_zh_cn: PPU · BF16
+  display_name_en: PPU · BF16
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
@@ -372,73 +372,6 @@ specs:
   - --reasoning-parser
   - qwen3
   env: null
-  api:
-    health_endpoint: /health
-    operations:
-    - type: openai.chat
-      endpoint: /v1/chat/completions
-      mode: stream
-- name: bf16-vllm-ppu-def46411
-  display_name_zh_cn: PPU · BF16 (carlosqsw)
-  display_name_en: PPU · BF16 (carlosqsw)
-  scenario: balanced
-  engine: vllm
-  image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
-  weights:
-    quantization: bf16
-    sources:
-    - huggingface:
-        repo_id: carlosqsw/longpt_trace_qwen3_4b_sft_04
-        revision: def46411b3f52b16014f6be11d397e2c3615066e
-  weight_bytes: 8044982080
-  gpus:
-    vendor: ppu
-    name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
-  args:
-  - --dtype
-  - auto
-  - --trust-remote-code
-  - --enable-auto-tool-choice
-  - --tool-call-parser
-  - hermes
-  - --reasoning-parser
-  - qwen3
-  - --skip-mm-profiling
-  api:
-    health_endpoint: /health
-    operations:
-    - type: openai.chat
-      endpoint: /v1/chat/completions
-      mode: stream
-- name: bf16-vllm-ppu-d9553445
-  display_name_zh_cn: PPU · BF16 (ai9stars)
-  display_name_en: PPU · BF16 (ai9stars)
-  scenario: balanced
-  engine: vllm
-  image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
-  weights:
-    quantization: bf16
-    sources:
-    - huggingface:
-        repo_id: ai9stars/G9v3-3B
-        revision: d9553445ff92dbce667381954c9699fbcbc924f9
-    - modelscope:
-        repo_id: ai9stars/G9v3-3B
-        revision: 27452d6214d8bddfdaadc94ff15bbd24982e7fd6
-  weight_bytes: 5977367224
-  gpus:
-    vendor: ppu
-    name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
-  args:
-  - --dtype
-  - auto
-  - --trust-remote-code
-  - --enable-auto-tool-choice
-  - --tool-call-parser
-  - hermes
-  - --reasoning-parser
-  - qwen3
-  - --skip-mm-profiling
   api:
     health_endpoint: /health
     operations:

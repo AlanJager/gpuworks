@@ -48,8 +48,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: bf16-vllm-ppu-8faed761
-  display_name_zh_cn: PPU · BF16 (Qwen)
-  display_name_en: PPU · BF16 (Qwen)
+  display_name_zh_cn: PPU · BF16
+  display_name_en: PPU · BF16
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
@@ -94,31 +94,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.0'
-  api:
-    health_endpoint: /health
-    operations:
-    - type: openai.chat
-      endpoint: /v1/chat/completions
-      mode: stream
-- name: bf16-vllm-ppu-c3cc84e2
-  display_name_zh_cn: PPU · BF16 (avishaynaim)
-  display_name_en: PPU · BF16 (avishaynaim)
-  scenario: balanced
-  engine: vllm
-  image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
-  weights:
-    quantization: bf16
-    sources:
-    - huggingface:
-        repo_id: avishaynaim/sefaria-qwen-1.5b
-        revision: c3cc84e2b8b17725b70c8a8d3b58562064d86d62
-  weight_bytes: 3087467144
-  gpus:
-    vendor: ppu
-    name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
-  args:
-  - --trust-remote-code
-  - --skip-mm-profiling
   api:
     health_endpoint: /health
     operations:

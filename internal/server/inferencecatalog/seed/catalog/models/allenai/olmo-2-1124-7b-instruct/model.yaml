@@ -88,8 +88,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: bf16-vllm-ppu-470b1fba
-  display_name_zh_cn: PPU · BF16 (OLMo-2-1124-7B)
-  display_name_en: PPU · BF16 (OLMo-2-1124-7B)
+  display_name_zh_cn: PPU · BF16
+  display_name_en: PPU · BF16
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
@@ -109,35 +109,6 @@ specs:
   args:
   - --trust-remote-code
   - --skip-mm-profiling
-  api:
-    health_endpoint: /health
-    operations:
-    - type: openai.chat
-      endpoint: /v1/chat/completions
-      mode: stream
-- name: bf16-vllm-ppu-48d788ec
-  display_name_zh_cn: PPU · BF16 (OLMo-2-0425-1B)
-  display_name_en: PPU · BF16 (OLMo-2-0425-1B)
-  scenario: balanced
-  engine: vllm
-  image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
-  weights:
-    quantization: bf16
-    sources:
-    - huggingface:
-        repo_id: allenai/OLMo-2-0425-1B-Instruct
-        revision: 48d788eca847d4d7548f375ad03d3c9312f6139e
-    - modelscope:
-        repo_id: allenai/OLMo-2-0425-1B-Instruct
-        revision: 510f5cde5bd2ff97971465da731c04b998a4592f
-  weight_bytes: 2969854224
-  gpus:
-    vendor: ppu
-    name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
-  args:
-  - --trust-remote-code
-  - --skip-mm-profiling
-  - vllm
   api:
     health_endpoint: /health
     operations:
