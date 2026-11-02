@@ -406,6 +406,34 @@ def test_assistant_service_tools(page, context, server, artifacts, report, local
           "the edit replaced the AI config instead of updating it")
     report["edit_keeps_key"] = {"request_has_api_key": False, "dialog_closed": True}
 
+    # 1.12: an edit that changes one value has to move that value from A to B and leave the
+    # others alone. The name goes to a new one while the address and model stay as stored and
+    # the blank key keeps the stored secret, so the PATCH body carries only what changed.
+    renamed = config_name + "-renamed"
+    row.get_by_role("button", name=settings["common"]["edit"], exact=True).click()
+    rename_modal = page.get_by_role("dialog", name=settings["ai"]["editService"], exact=True)
+    expect(rename_modal).to_be_visible()
+    rename_name = rename_modal.get_by_label(settings["ai"]["name"], exact=True)
+    expect(rename_name).to_have_value(config_name)
+    rename_name.fill(renamed)
+    with page.expect_response(lambda r: r.request.method == "PATCH"
+                              and urlsplit(r.url).path.startswith(CONFIGS)) as renamed_resp:
+        button(rename_modal, settings["common"]["save"]).click()
+    check(renamed_resp.value.status == 200, f"AI config rename HTTP {renamed_resp.value.status}")
+    rename_body = renamed_resp.value.request.post_data_json
+    check(rename_body.get("name") == renamed and "api_key" not in rename_body,
+          f"the rename body differs or shipped the key: {sorted(rename_body)}")
+    expect(rename_modal).not_to_be_visible(timeout=8000)
+    renamed_rows = page.request.get(server.base + CONFIGS).json()["items"]
+    renamed_entry = next(item for item in renamed_rows if item["name"] == renamed)
+    check(renamed_entry["base_url"] == fixture.base and renamed_entry["model"] == fixture.model
+          and renamed_entry["id"] == kept["id"],
+          "a single-field edit disturbed the other stored values")
+    check(fixture.api_key not in json.dumps(renamed_rows), "the stored key leaked after the rename")
+    report["edit_single_field"] = {"from": config_name, "to": renamed,
+                                   "others_unchanged": True, "key_absent": True}
+    config_name = renamed
+
     node_name = f"e2e-{report['run_id']}-assistant-node"
     created_node = page.request.post(server.base + NODES,
                                      data={"name": node_name, "server_url": server.base})
