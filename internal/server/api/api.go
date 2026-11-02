@@ -688,6 +688,7 @@ type apiHandlers struct {
 	benchmarkMu         sync.Mutex
 	benchmarkExecutions map[uint]*benchmarkExecution
 	updates             distribution.CheckCache
+	templateUpdate      templateUpdateCheck
 	// mux is the router the handlers are mounted on, for the assistant's
 	// in-process reads (ai_reader.go).
 	mux *chi.Mux

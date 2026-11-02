@@ -245,6 +245,10 @@ func TestTemplateCheckForUpdatesRefusesAPackageThisServerCannotParse(t *testing.
 	channel := newTestChannel(t)
 	channel.publishTemplateCatalogAs(archive.Bytes(), strings.Repeat("ab", 32), inferencecatalog.PackageSchemaVersion, "2026-10-20.abababab")
 	run.useChannel(channel)
+	statusRun := &imageManifestRun{t: t, store: run.store, router: run.router, admin: run.admin}
+	if c := getUpdateStatus(t, statusRun).TemplateCatalog; c.Compatible || !c.UpdateAvailable || c.Latest != "2026-10-20.abababab" {
+		t.Fatalf("an unreadable catalog must be incompatible before sync: %+v", c)
+	}
 	rec := run.do(http.MethodPost, "/api/v1/inference-templates/sync", nil)
 	var body struct {
 		Code   string         `json:"code"`
