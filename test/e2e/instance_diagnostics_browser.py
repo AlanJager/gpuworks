@@ -318,6 +318,29 @@ def gauges(page, drawer, panel, server, data, report, text):
     report["evidence"].append({"layer": "request", "custom_range": report["metric_custom_range"],
         "ranges_before": [item["selection"] for item in before_custom]})
 
+    # 9.7: the window has one hard rule the server enforces rather than merely hinting at -
+    # start must be strictly before end. An inverted window is refused with a typed 400 and
+    # no samples, while the same length the right way round is served. The retention side is
+    # deliberately not claimed: this picker carries no disabledDate or retention hint, so the
+    # only illegal window the product defines here is the inverted one.
+    moment = int(time.time() * 1000)
+    inverted = page.request.get(server.base + "/api/v1/metrics/query", params={
+        "metric": "gpuworks_infer_requests_running", "instance": inst["uuid"],
+        "start": moment, "end": moment - 600000, "step": "10s"})
+    check(inverted.status == 400, f"an inverted metric window was not refused: {inverted.status}")
+    inverted_body = inverted.json()
+    check(inverted_body.get("code") == "QUERY_WINDOW_INVALID"
+          and inverted_body.get("error") == "start must be before end",
+          f"inverted metric window refusal differs: {inverted_body}")
+    forward = page.request.get(server.base + "/api/v1/metrics/query", params={
+        "metric": "gpuworks_infer_requests_running", "instance": inst["uuid"],
+        "start": moment - 600000, "end": moment, "step": "10s"})
+    check(forward.status == 200, f"the same window the right way round was refused: {forward.status}")
+    report["metric_window_rule"] = {"inverted_status": inverted.status,
+        "inverted_code": inverted_body.get("code"), "inverted_error": inverted_body.get("error"),
+        "forward_status": forward.status, "retention_hint_claim": False}
+    report["evidence"].append({"layer": "request", "metric_window_rule": report["metric_window_rule"]})
+
 
 def launch_facts(page, panel, server, data, report, text):
     inst, container = data["instance"], data["container"]
