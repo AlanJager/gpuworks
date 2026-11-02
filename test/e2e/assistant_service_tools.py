@@ -434,6 +434,38 @@ def test_assistant_service_tools(page, context, server, artifacts, report, local
                                    "others_unchanged": True, "key_absent": True}
     config_name = renamed
 
+    # 1.4: every stored text field has a bound the server states, and the bound is exact - a
+    # value of the stated length is accepted and one character more is refused with the field
+    # named. Each accepted configuration is deleted again, so the run leaves nothing behind.
+    bounds = [("name", 64), ("model", 64), ("preset", 32)]
+    bound_evidence = {}
+    for field_name, maximum in bounds:
+        payload = {"name": f"e2e-{report['run_id']}-bnd", "preset": "custom",
+                   "base_url": fixture.base, "api_key": fixture.api_key,
+                   "model": fixture.model}
+        payload[field_name] = ("x" * maximum) if field_name != "name" else ("e2e-" + "n" * (maximum - 4))
+        at_limit = page.request.post(server.base + CONFIGS, data=payload)
+        check(at_limit.status == 201,
+              f"{field_name} at its stated bound was refused: {at_limit.status} {at_limit.text()[:160]}")
+        created_id = at_limit.json()["id"]
+        over = dict(payload)
+        over[field_name] = payload[field_name] + "x"
+        refused = page.request.post(server.base + CONFIGS, data=over)
+        check(refused.status == 400, f"{field_name} past its bound was accepted: {refused.status}")
+        refused_body = refused.json()
+        check(refused_body.get("code") == "FIELD_INVALID"
+              and (refused_body.get("params") or {}).get("field") == field_name,
+              f"{field_name} past its bound was refused without naming the field: {refused_body}")
+        after = page.request.get(server.base + CONFIGS).json()["items"]
+        check(not any(item.get("name") == over[field_name] for item in after),
+              f"a {field_name} past its bound was stored anyway")
+        page.request.delete(server.base + CONFIGS + "/" + str(created_id))
+        bound_evidence[field_name] = {"max": maximum, "at_limit": 201, "over": 400}
+    report["field_bounds"] = bound_evidence
+    remaining = page.request.get(server.base + CONFIGS).json()["items"]
+    check([item["name"] for item in remaining] == [config_name],
+          f"the bound probes did not clean up after themselves: {[i['name'] for i in remaining]}")
+
     node_name = f"e2e-{report['run_id']}-assistant-node"
     created_node = page.request.post(server.base + NODES,
                                      data={"name": node_name, "server_url": server.base})
