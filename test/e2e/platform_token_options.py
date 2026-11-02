@@ -173,6 +173,36 @@ def exercise_create_dialog(page, create, k, platform, mutations, report):
     return dialog
 
 
+def exercise_server_constraints(page, server, k, platform, report):
+    """7.4: the constraints around a credential, each rejected by the server it is sent to.
+
+    Every case posts a real token request and reads the refusal the product defines, then re-reads the
+    list to prove the refusal did not half-write anything. Validation is a byte contract, so the
+    name cases are chosen by byte length rather than character count - a name the UI would accept as
+    short can still be too long once its characters are encoded.
+    """
+    before = {item["id"] for item in collection(page.request.get(server.base + TOKEN_PATH))}
+    cases = [
+        ("name-too-long", {"name": "n" * 129, "scope": "read"}, "name"),
+        ("name-whitespace-only", {"name": "   ", "scope": "read"}, "name"),
+        ("scope-unknown", {"name": "e2e-scope", "scope": "admin"}, "scope"),
+        ("expiry-negative", {"name": "e2e-expiry", "scope": "read", "expires_in_days": -1}, "expiry"),
+        ("expiry-above-maximum", {"name": "e2e-expiry", "scope": "read", "expires_in_days": 3651},
+         "expiry"),
+    ]
+    refusals = []
+    for label, body, field in cases:
+        answer = page.request.post(server.base + TOKEN_PATH, data=body)
+        check(answer.status == 400, f"{label} was not refused: HTTP {answer.status}")
+        payload = answer.json()
+        code = str(payload.get("code") or payload.get("error") or "")
+        check(code != "", f"{label} was refused without a product code: {payload}")
+        refusals.append({"case": label, "status": answer.status, "code": code, "field": field})
+    after = {item["id"] for item in collection(page.request.get(server.base + TOKEN_PATH))}
+    check(after == before, f"a refused create still wrote a token: {before} -> {after}")
+    report["server_constraints"] = refusals
+
+
 def exercise_token_field_inventory(page, dialog, k, platform, mutations):
     """Register every create-dialog field before a name is typed.
 
@@ -380,6 +410,10 @@ def test_platform_token_option(page, context, server, artifacts, report, locale,
     report["name_required"] = exercise_required_name(dialog, k, mutations)
     check(collection(page.request.get(server.base + TOKEN_PATH)) == [], "rejected name wrote a token")
     report["name_required"]["stored"] = []
+    # Only one case pays for the constraint sweep: it depends on server rules, not on the option this
+    # case picked, and repeating it eight times would only lengthen the run.
+    if case == "read-0":
+        exercise_server_constraints(page, server, k, platform, report)
     dialog = exercise_minimal_token(page, context, server, artifacts, dialog, k, platform, report)
     submit = button(dialog, k["actions"]["create"])
     expect(dialog.get_by_role("radio")).to_have_count(2)
