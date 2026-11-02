@@ -37,6 +37,7 @@ import {
   type MonitorRequestsQuery,
 } from "./monitorRequestsApi";
 import type { TelemetryExport, TelemetryExportTest, TelemetryExportUpdate } from "./telemetryApi";
+import type { DebugSessionStart, DebugSessionState, DiagnosticsBundle, DiagnosticsBundleStart, DiagnosticsBundles } from "./diagnosticsApi";
 
 /** What an operator sets one card to (PUT /nodes/{uuid}/gpus/scheduling). */
 export type CardScheduling = "stopped" | "schedulable";
@@ -4853,6 +4854,11 @@ export const api = {
   telemetryExport: () => getJSON<TelemetryExport>("/api/v1/telemetry/export"),
   updateTelemetryExport: (body: TelemetryExportUpdate) => sendJSON<TelemetryExport>("PUT", "/api/v1/telemetry/export", body),
   testTelemetryExport: (body: TelemetryExportUpdate) => sendJSON<TelemetryExportTest>("POST", "/api/v1/telemetry/export/test", body),
+  debugSession: () => getJSON<DebugSessionState>("/api/v1/diagnostics/debug-session"),
+  startDebugSession: (body: DebugSessionStart) => sendJSON<DebugSessionState>("POST", "/api/v1/diagnostics/debug-session", body),
+  stopDebugSession: () => sendJSON<DebugSessionState>("DELETE", "/api/v1/diagnostics/debug-session"),
+  diagnosticsBundles: () => getJSON<DiagnosticsBundles>("/api/v1/diagnostics/bundles"),
+  startDiagnosticsBundle: (body: DiagnosticsBundleStart) => sendJSON<DiagnosticsBundle>("POST", "/api/v1/diagnostics/bundles", body),
   monitorSeries: (params: MonitorSeriesParams) =>
     getJSON<List<MonitorSeries>>(monitorSeriesURL(params)),
 };

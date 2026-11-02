@@ -53,6 +53,8 @@ type Tunneler interface {
 
 // Proxy serves /v1/*.
 type Proxy struct {
+	// recorder keeps raw exchanges during a debug session (capture.go).
+	recorder     RequestRecorder
 	store        *store.Store
 	hub          Tunneler
 	log          *slog.Logger
@@ -272,6 +274,10 @@ func New(st *store.Store, networks Networks, hub Tunneler, log *slog.Logger, max
 			if ob.response != nil && ob.pdCachedKnown && len(ob.response.shape.Cached) > 0 {
 				cached := ob.response.shape.Cached
 				resp.Body = newCachedRewriter(resp.Body, cached[len(cached)-1], ob.pdCached)
+			}
+			if ob.capture != nil {
+				ob.capture.event(map[string]any{"t": "response", "status": resp.StatusCode, "headers": capturedHeaders(resp.Header)})
+				resp.Body = &captureBody{ReadCloser: resp.Body, capture: ob.capture}
 			}
 			counted := &countingBody{inner: resp.Body, obs: ob}
 			resp.Body = counted

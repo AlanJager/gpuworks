@@ -198,6 +198,7 @@ func (n *NodeRuntime) OnStateSync(ctx context.Context, ds proto.DesiredState) {
 	n.imageRefsMu.Lock()
 	n.imageRefs = append([]string(nil), ds.ImageRefs...)
 	n.imageRefsMu.Unlock()
+	n.imageSeen.forget(ds.ImageRefs)
 	if n.engine != nil {
 		n.engine.SetDesiredFull(ctx, ds.Instances)
 		// The orphan sweep is opt-in (server orphan_cleanup setting). Its
@@ -247,6 +248,7 @@ func (n *NodeRuntime) OnStateUpdate(ctx context.Context, su proto.StateUpdate) b
 			imageRefsChanged = true
 		}
 		n.imageRefsMu.Unlock()
+		n.imageSeen.forget(su.ImageRefs)
 	}
 	if n.engine != nil {
 		n.engine.ApplyUpdate(ctx, su.Instances, su.RemovedInstances)
@@ -282,9 +284,10 @@ func (n *NodeRuntime) StatusSnapshot(ctx context.Context, refs []string) ([]prot
 				present, err = d.ImageExists(ctx, ref)
 			}
 			if err != nil {
-				n.log.Warn("image presence inspection failed", "image", ref, "err", err)
+				n.log.Warn("image presence inspection failed", "image", ref, "runtime", d.Name(), "err", err)
 				continue
 			}
+			n.imageSeen.observe(ctx, n.log, d, ref, present)
 			images = append(images, proto.ImagePresence{ImageRef: ref, Present: present, RuntimeSizeBytes: size})
 		}
 	}
@@ -314,6 +317,10 @@ func (n *NodeRuntime) pathUsage() []proto.PathUsage {
 // OnRPC handles short-action RPCs.
 func (n *NodeRuntime) OnRPC(ctx context.Context, method string, params json.RawMessage) (any, error) {
 	switch method {
+	case proto.RPCDebugStart:
+		return n.rpcDebugStart(params)
+	case proto.RPCDebugStop:
+		return n.rpcDebugStop(params)
 	case proto.RPCNodeDoctor:
 		if !n.doctorRunning.CompareAndSwap(false, true) {
 			return nil, errors.New("a diagnosis is already running on this node; wait for it to finish")

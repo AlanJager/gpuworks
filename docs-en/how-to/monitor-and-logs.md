@@ -188,6 +188,18 @@ To search through the API, use `GET /api/v1/logs/search`. Add `with_total=1` to 
 For context, use `GET /api/v1/logs/context?instance=..&ts=..&id=..&before=..&after=..`. For logs without an instance UUID, such as agent and server logs, use `node` to restrict the scope instead.
 For the histogram, use `GET /api/v1/logs/histogram` with the same filters as the search. See the [API Reference](../reference/api.md) for all parameters.
 
+### The server's and agent's own logs
+
+- **What reaches the Logs page**: the server and the agent send only records at warn and above to the log center; info and below go only to their log files (the server's `logs/gpuworks-server.log`, the agent's `<state>/agent.log`).
+- **Repeated records are compressed**: at most 10 records of one kind are written per 30 seconds (debug records are suppressed only when identical, at most 50 per 30 seconds); the rest are counted. When the window ends, one
+  `suppressed similar log messages` record follows, carrying the suppressed message (`message`), the count (`suppressed`) and the window (`since`, `window`).
+  Records are of one kind when their level, message and the logger's own fields match; the server also tells them apart by error code, reason, request method, path and status, the agent by error code and reason. With more than 4096 kinds active at once, a new kind counts by its message alone.
+  A client retrying one path with bad credentials, or a vendor tool failing on every probe, thus leaves a few lines and a count.
+- **Why a request was refused is in the access log**: the server writes one `http request` line per request; when it returns a product error, the line carries `code` (the error code) and `error_params` (the error's parameters as JSON, such as a scheduling refusal's node, reason and memory figures), still there after the dialog is closed.
+- **Image checks**: the agent checks the catalog images every minute and writes info only when a conclusion changes: `image present` (with the `image_id` the runtime returned) or `image no longer present`.
+  An absent image is an ordinary answer and is not a warning; a failing check command writes the warning `image presence inspection failed`.
+- **Scheduling refusals**: `deployment not schedulable yet` is written with the scheduling event, once per waiting window (10 minutes by default) for the same reason.
+
 ## Set the Engine Log Level
 
 SGLang logs do not include levels by default, so the platform's level filters and histogram cannot identify actual errors. In single-GPU SGLang deployments with engine-managed startup, the platform automatically injects a logging configuration with levels where applicable. Logs still go to container stderr.

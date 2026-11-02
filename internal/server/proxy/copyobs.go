@@ -60,6 +60,8 @@ type copyObservation struct {
 	reading  replyReading
 	live     *liveRequest
 	injected bool
+	// capture records the raw exchange during a debug session; nil otherwise.
+	capture *exchangeCapture
 	// pdCached is the prefill instance's prompt-cache figure, which the
 	// decode reply reports instead of its own (cached_rewrite.go); only a
 	// PD request whose prefill instance stated one has it.
@@ -135,6 +137,16 @@ func (o *copyObservation) finish(readErr error) {
 	}
 	if o.onFinish != nil {
 		o.onFinish(o.status, duration, stats, outcome)
+	}
+	if o.capture != nil {
+		end := map[string]any{"status": o.status, "outcome": outcome.String(), "copied_bytes": written, "duration_ms": duration.Seconds() * 1000}
+		if copyErr != nil {
+			end["read_error"] = copyErr.Error()
+		}
+		if writeErr != nil {
+			end["write_error"] = writeErr.Error()
+		}
+		o.capture.end(end)
 	}
 
 	attrs := []any{

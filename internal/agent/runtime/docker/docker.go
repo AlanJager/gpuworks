@@ -510,7 +510,14 @@ func output(ctx context.Context, timeout time.Duration, args ...string) (string,
 		if len(msg) > 400 {
 			msg = msg[len(msg)-400:]
 		}
-		slog.Warn("runtime command failed", "runtime", "docker", "args", args, "err", err, "stderr_tail", msg)
+		// "No such image/object" answers a lookup; it is not a failure of
+		// the command (the image inventory asks this of every absent catalog
+		// image every minute).
+		level := slog.LevelWarn
+		if lower := strings.ToLower(msg); strings.Contains(lower, "no such image:") || strings.Contains(lower, "no such object") {
+			level = slog.LevelDebug
+		}
+		slog.Log(ctx, level, "runtime command failed", "runtime", "docker", "args", args, "err", err, "stderr_tail", msg)
 	}
 	return string(out), err
 }

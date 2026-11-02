@@ -262,6 +262,21 @@ gpuworks uninstall --dir /opt/gpuworks/server --purge --dry-run --json
 - 以操作员身份运行、不需要 `sudo`；数据库权限不足时按其自身的权限错误失败。
 - 密码和 key 不要写进 shell history 或日志。
 
+## gpuworks support-bundle
+
+不经过 server 收集诊断信息，用于 server 起不来或控制台打不开时；内容与控制台的[收集诊断信息](../how-to/troubleshooting.md#无法登录现场时调试采集与收集诊断信息)相同，但节点那部分收不到（manifest 里标为离线）。完成后打印压缩包路径。
+
+| flag | 默认值 | 说明 |
+|---|---|---|
+| `--data DIR` | 同 `reset-password` | 数据目录 |
+| `--db PATH` | `<data>/gpuworks.db` | SQLite 路径 |
+| `--log-file PATH` | `<data>/logs/gpuworks-server.log` | server 日志文件（连同轮转的各代） |
+| `--since DURATION` | `1h` | 收集最近这么久；给了 `--from`/`--to` 时忽略 |
+| `--from T`、`--to T` | 无 | 时间范围（RFC 3339），两者都要给 |
+| `--deployments IDS` | 无 | 逗号分隔的部署 ID：收集其记录与实例日志 |
+| `--instances UUIDS` | 无 | 逗号分隔的实例 UUID：收集其日志 |
+| `--out PATH` | `./gpuworks-diagnostics-<id>.tar.gz` | 压缩包路径 |
+
 ## gpuworks-agent configure
 
 把节点的启动配置写进 `<state>/gpuworks-agent.conf`（权限 `0600`，整份文件替换）。安装脚本在放好二进制后调用它；每次启动 agent 的方式（systemd 单元、nohup 与 `agent-restart.sh`、launchd 任务、手工升级后的重启）都只执行 `gpuworks-agent run --state DIR`，其余配置都从这份文件读。
@@ -305,7 +320,7 @@ gpuworks uninstall --dir /opt/gpuworks/server --purge --dry-run --json
 - `--driver udocker` 选择 runveil：`udocker` 是保留的 driver 名（节点记录与 API 沿用），实现是 native 镜像处理加直接调用内嵌 PRoot 的启动器，界面显示为 runveil。
 - `--driver host` 把引擎作为宿主机进程运行，用于 macOS（Apple silicon）节点：Linux 容器在 macOS 上跑在虚拟机里，拿不到 Metal GPU。镜像是 darwin/arm64 的环境包，解包后由 agent 直接启动。
 - 不指定 driver 时，macOS 上直接选 host（即使 Docker Desktop 可用）；其他系统按 docker（daemon 可用）> nerdctl > runveil 的顺序探测；都不可用则该节点禁用部署。`--driver` 给了未知值，或给了当前系统用不了的运行时（Linux 上的 `host`、macOS 上的 `udocker`），会记录错误并且不启用任何运行时。
-- 日志同时写 stderr 和 `<state>/agent.log`（10 MiB 轮转，保留上一代 `agent.log.1`）；告警及以上的记录会上送 server 的日志中心。日志级别只由环境变量 `GPUWORKS_LOG_LEVEL` 控制。
+- 日志同时写 stderr 和 `<state>/agent.log`（10 MiB 轮转，保留上一代 `agent.log.1`）；告警及以上的记录会上送 server 的日志中心。日志级别只由环境变量 `GPUWORKS_LOG_LEVEL` 控制，文件与 stderr 都按它过滤；重复的记录会被压缩，见[server 与 agent 自身的日志](../how-to/monitor-and-logs.md#server-与-agent-自身的日志)。
 - 合并后的配置按同一条规则校验，不通过时立即报错退出，并提示配置文件的路径：缺 token；`agent_dial` 缺 server；server URL 缺少协议头、带账号、查询串或片段；`server_dial` 的监听地址不是有效端口。`server_dial` 的 agent 只需要 token 和监听地址，从不连接 server，不需要也不使用 server 地址。
 
 ## gpuworks-agent smoke

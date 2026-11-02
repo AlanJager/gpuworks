@@ -3,7 +3,9 @@ package docker
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -57,6 +59,32 @@ test "$1 $2 $3 $4 $5" = 'image inspect --format {{json .}} image:v1' || exit 9
 			raw, err := os.ReadFile(calls)
 			if err != nil || string(raw) != "call\n" {
 				t.Fatalf("calls=%q err=%v", raw, err)
+			}
+		})
+	}
+}
+
+// The inventory asks about every absent catalog image every minute: Docker's
+// "No such image" is that question's answer and is logged at Debug, while a
+// command that really failed stays a warning.
+func TestImageInspectLogsAbsenceBelowWarn(t *testing.T) {
+	for _, tc := range []struct {
+		name, body string
+		warn       bool
+	}{
+		{"missing", `echo 'Error response from daemon: No such image: image:v1' >&2; exit 1`, false},
+		{"daemon error", `echo 'Cannot connect to the Docker daemon' >&2; exit 1`, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var logged strings.Builder
+			previous := slog.Default()
+			slog.SetDefault(slog.New(slog.NewTextHandler(&logged, &slog.HandlerOptions{Level: slog.LevelDebug})))
+			t.Cleanup(func() { slog.SetDefault(previous) })
+			installFakeDocker(t, tc.body)
+			_, _, _ = New().ImagePresence(context.Background(), "image:v1")
+			line := logged.String()
+			if !strings.Contains(line, `msg="runtime command failed"`) || strings.Contains(line, "level=WARN") != tc.warn {
+				t.Fatalf("logged:\n%s", line)
 			}
 		})
 	}

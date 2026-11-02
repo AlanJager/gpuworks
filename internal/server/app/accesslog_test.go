@@ -7,6 +7,9 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"gpuworks.ai/gpuworks/internal/server/api"
+	"gpuworks.ai/gpuworks/internal/server/messages"
 )
 
 func TestAccessLogHandlerLogsOneCompletionRecord(t *testing.T) {
@@ -167,3 +170,47 @@ func TestAccessLogHandlerLeavesInferenceBodiesUnread(t *testing.T) {
 		t.Fatalf("a management request keeps its redacted params: %q", out)
 	}
 }
+
+// A product error's code and parameters reach the request's access log line
+// through every writer the real router wraps around the response, so a
+// refusal's reason is in the server log after the client has dismissed it.
+func TestAccessLogCarriesTheProductErrorThroughTheRouter(t *testing.T) {
+	var logs strings.Builder
+	log := slog.New(slog.NewTextHandler(&logs, nil))
+	dir := t.TempDir()
+	application, err := New(Config{Addr: "127.0.0.1:0", DataDir: dir, DBPath: dir + "/gpuworks.db", AdminUser: "admin", AdminPassword: "password"}, log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { application.proxy.Close() })
+
+	logs.Reset()
+	rec := httptest.NewRecorder()
+	application.http.Handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/nodes", nil))
+	if rec.Code != http.StatusUnauthorized || !strings.Contains(rec.Body.String(), `"code":"AUTHENTICATION_REQUIRED"`) {
+		t.Fatalf("response %d %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(logs.String(), `msg="http request"`) || !strings.Contains(logs.String(), "path=/api/v1/nodes status=401") || !strings.Contains(logs.String(), "code=AUTHENTICATION_REQUIRED") {
+		t.Fatalf("access log:\n%s", logs.String())
+	}
+
+}
+
+// Parameters ride along as JSON, through a writer that wraps the access
+// log's own the way the router's middleware does.
+func TestAccessLogCarriesProductErrorParameters(t *testing.T) {
+	var logs strings.Builder
+	log := slog.New(slog.NewTextHandler(&logs, nil))
+	h := accessLogHandler(log, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		api.WriteError(&unwrappingWriter{w}, http.StatusConflict, messages.NewProductError("DEPLOYMENT_NEVER_FITS", "no node fits",
+			map[string]any{"pool": 3, "node": "gpu-01", "reason": "no_fit"}))
+	}))
+	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/api/v1/deployments", nil))
+	if !strings.Contains(logs.String(), `status=409`) || !strings.Contains(logs.String(), `code=DEPLOYMENT_NEVER_FITS error_params="{\"node\":\"gpu-01\",\"pool\":3,\"reason\":\"no_fit\"}"`) {
+		t.Fatalf("access log:\n%s", logs.String())
+	}
+}
+
+type unwrappingWriter struct{ http.ResponseWriter }
+
+func (w *unwrappingWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }

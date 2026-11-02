@@ -28,6 +28,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/agent/registryprobe"
 	"gpuworks.ai/gpuworks/internal/agent/runtime"
 	"gpuworks.ai/gpuworks/internal/assets"
+	"gpuworks.ai/gpuworks/internal/debuglog"
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/selflog"
 )
@@ -82,6 +83,9 @@ type NodeRuntime struct {
 	dcgmMode    string // "" (== off, the default) | "auto" (opt in) | "off"; see gpu.NewDCGMProbe
 	imageRefsMu sync.RWMutex
 	imageRefs   []string
+	// imageSeen is what the inventory last concluded per image, so only a
+	// change is logged (image_presence_log.go).
+	imageSeen   imagePresenceLog
 	imagePullMu sync.Mutex
 	imageOps    imageOperations
 	netBench    *netBenchManager
@@ -165,6 +169,12 @@ type NodeRuntime struct {
 	// node-log follower (non-systemd nodes, tests).
 	journal journalStreamer
 
+	// debugLog opens debug sessions (debug_session.go); nil answers them as
+	// unsupported.
+	debugLog *debuglog.Tee
+	// logDir is where agent.log is written (the configured state directory,
+	// which a separate models directory does not move).
+	logDir string
 	// selfLog captures the agent's own warn+ slog records; nil disables the
 	// self-log follower.
 	selfLog *selflog.Collector

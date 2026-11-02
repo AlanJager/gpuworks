@@ -2,6 +2,7 @@ package controller
 
 import (
 	"encoding/json"
+	"log/slog"
 	"slices"
 	"strings"
 	"testing"
@@ -83,11 +84,17 @@ func TestRecordUnschedulablePublishesTheSchedulerReason(t *testing.T) {
 // unschedulable" into noise.
 func TestRecordUnschedulableThrottlesWithinTheWindow(t *testing.T) {
 	c, st, dep := unschedulableFixture(t)
+	var logged strings.Builder
+	c.log = slog.New(slog.NewTextHandler(&logged, nil))
 	reason := scheduler.Reason{Code: scheduler.ReasonNoFit, Message: "no fit"}
 
 	c.recordUnschedulable(dep, reason)
 	c.recordUnschedulable(dep, reason)
 	c.recordUnschedulable(dep, reason)
+	// The log line goes with the event, not with every pass.
+	if n := strings.Count(logged.String(), `msg="deployment not schedulable yet"`); n != 1 {
+		t.Fatalf("logged %d times, want once:\n%s", n, logged.String())
+	}
 
 	events, err := st.DeploymentEvents(dep.ID, 0)
 	if err != nil {
