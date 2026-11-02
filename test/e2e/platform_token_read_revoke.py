@@ -470,6 +470,11 @@ def test_read_token_create_revoke(page, context, server, artifacts, report, loca
     check(collection(page.request.get(server.base + TOKEN_PATH)) == [], "revoked token still persisted")
     code, denied = http(server.base, "GET", "/api/v1/nodes", copied)
     check(code == 401 and denied["code"] == "AUTHENTICATION_REQUIRED", "revoked token remains authorized")
+    # 7.6: a refusal must refuse without quoting the credential back. The body is read as text so a
+    # secret echoed in any field - or in a debug string - is caught, not only one in a known key.
+    refusal_text = json.dumps(denied)
+    check(copied not in refusal_text, "the 401 body echoed the revoked credential")
+    check(copied[:16] not in refusal_text, "the 401 body echoed the revoked credential's prefix")
     # A second revoke of the same id must fail cleanly: the row is already gone,
     # so the answer is 404 and nothing else in the collection moves.
     again = page.request.delete(server.base + delete_path)
@@ -563,7 +568,17 @@ def main():
             report["status"] = "FAIL_TEST"
         server_log = artifacts.private / "server.log"
         if server_log.exists():
-            (artifacts.directory / "server.log").write_text(artifacts.redact(server_log.read_text()))
+            # 7.6: the log the server wrote is the surface, not the copy that was redacted on the way
+            # out. Reading the original is the only way to know the server did not write a credential
+            # down itself; scanning the sanitised copy would prove nothing about the product.
+            raw_log = server_log.read_text(errors="replace")
+            leaked = [value[:8] + "..." for value in artifacts.secrets
+                      if len(value) >= 16 and value in raw_log]
+            report["server_log_clean"] = not leaked
+            if leaked:
+                report["status"] = "FAIL_TEST"
+                report["server_log_leak"] = {"count": len(leaked), "prefixes": leaked}
+            (artifacts.directory / "server.log").write_text(artifacts.redact(raw_log))
         report["private_state"] = "private/ retains isolated DB/logs; no process kept; remove only this run directory after diagnosis (7 days)"
         artifacts.write_json("report.json", report)
         try:
