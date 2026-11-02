@@ -46,36 +46,6 @@ type HygonProber struct {
 
 func (p *HygonProber) Vendor() string { return accelerator.VendorHygon }
 
-// PartitionProbeLibraries supplies the host ABI dependencies needed when the
-// intentionally small probe image loads this node's DTK and HYHAL libraries.
-func (p *HygonProber) PartitionProbeLibraries(ctx context.Context) ([]ProbeLibrary, error) {
-	return hygonProbeLibraries(ctx, sharedLibraryPath)
-}
-
-func hygonProbeLibraries(ctx context.Context, resolve func(context.Context, string) (string, error)) ([]ProbeLibrary, error) {
-	names := []string{"libz.so.1", "libtinfo.so.5", "libtinfo.so.6", "libelf.so.1"}
-	libraries := make([]ProbeLibrary, 0, len(names))
-	for _, name := range names {
-		if err := ctx.Err(); err != nil {
-			return nil, err
-		}
-		path, err := resolve(ctx, name)
-		if ctxErr := ctx.Err(); ctxErr != nil {
-			return nil, ctxErr
-		}
-		if err != nil {
-			// DTK releases depend on different tinfo ABIs. Mount each installed
-			// SONAME as itself; the HIP probe rejects an incomplete closure.
-			if (name == "libtinfo.so.5" || name == "libtinfo.so.6") && errors.Is(err, os.ErrNotExist) {
-				continue
-			}
-			return nil, err
-		}
-		libraries = append(libraries, ProbeLibrary{Source: path, Name: name})
-	}
-	return libraries, nil
-}
-
 func (p *HygonProber) Available() bool {
 	if _, err := p.lookup("hy-smi"); err != nil {
 		return false

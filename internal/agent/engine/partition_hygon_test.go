@@ -211,7 +211,7 @@ func TestHygonCreatesVendorVdevAndCleansOnlyOwnedID(t *testing.T) {
 			}
 		}
 	}
-	if first.Mounts[0].Target != "/etc/vdev/vdev4.conf" || second.Mounts[0].Target != "/etc/vdev/vdev5.conf" || first.Mounts[0].Source != first.Mounts[1].Source || !first.Mounts[0].ReadOnly || !first.Mounts[1].ReadOnly || first.Mounts[1].Target != "/etc/vdev/docker/vdev0.conf" || second.Mounts[1].Target != "/etc/vdev/docker/vdev0.conf" || first.Mounts[1].Source == second.Mounts[1].Source {
+	if first.Mounts[0].Target != "/etc/vdev/vdev4.conf" || second.Mounts[0].Target != "/etc/vdev/vdev5.conf" || first.Mounts[0].Source != first.Mounts[1].Source || !first.Mounts[0].ReadOnly || !first.Mounts[1].ReadOnly || first.Mounts[1].Target != "/etc/vdev/docker/vdev4.conf" || second.Mounts[1].Target != "/etc/vdev/docker/vdev5.conf" || first.Mounts[1].Source == second.Mounts[1].Source {
 		t.Fatalf("instance vdev mounts = %+v / %+v", first.Mounts[:2], second.Mounts[:2])
 	}
 	if first.Mounts[2] != (agentruntime.Mount{Source: h.lockPath, Target: hygonVirtualLock}) || second.Mounts[2] != first.Mounts[2] {

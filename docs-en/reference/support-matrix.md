@@ -48,7 +48,7 @@ Each dGPU instance can use only one supported Hygon GPU. The requested memory qu
 
 The current compatibility profile lists DTK 26.04.x × x86_64, but the profile is not marked as fully verified on real hardware. Version information is advisory and cannot replace the per-GPU probe.
 
-K100_AI containers use `/etc/vdev/docker/vdev<ID>.conf` matching the native ID, without an additional fixed-ID alias. Z100 retains its validated `vdev0.conf` path. The small probe receives a private `/var/log/hylog` tmpfs and supplementary tinfo5/6 libraries under the SONAMEs actually installed on the host.
+Both Z100 and K100_AI containers use `/etc/vdev/docker/vdev<ID>.conf` matching the native ID, with exactly one Docker configuration mount. Current hardware checks on both models show that renaming a nonzero native ID to `vdev0.conf` prevents HIP initialization. The native filename has not been revalidated on older HYHAL 1.4 environments; they must still pass the per-GPU probe. The small probe receives a private `/var/log/hylog` tmpfs and supplementary tinfo5/6 libraries under the SONAMEs actually installed on the host.
 
 The per-GPU probe must confirm that HIP reports the requested memory quota, permits a 1 MiB allocation, and rejects an allocation exceeding the quota by 1 MiB. dGPU scheduling requires a passing probe. Inference containers use their own DTK; host DTK and supplementary ABI libraries are used only by the small probe. The built-in Qwen3-0.6B `bf16-vllm-hygon-z100` spec uses the SourceFind image tested on Z100.
 

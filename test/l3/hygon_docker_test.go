@@ -27,12 +27,6 @@ func TestHygonDockerPartitionMountsAndDevicesStayInstanceScoped(t *testing.T) {
 }
 
 func testHygonDockerPartitionMounts(t *testing.T, model string) {
-	dockerConfigName := func(nativeName string) string {
-		if model == "K100AI" {
-			return nativeName
-		}
-		return "vdev0.conf"
-	}
 	if err := exec.Command("docker", "info").Run(); err != nil {
 		skipDocker(t, err)
 	}
@@ -80,7 +74,7 @@ func testHygonDockerPartitionMounts(t *testing.T, model string) {
 		if info, err := os.Stat(snapshot); err != nil || info.Mode().Perm()&0o004 == 0 {
 			t.Fatalf("snapshot must be readable by a non-root container: %v, %v", info, err)
 		}
-		name := fmt.Sprintf("gpuworks-hygon-l3-%s-%d", filepath.Base(filepath.Dir(root)), item.id)
+		name := fmt.Sprintf("gpuworks-hygon-l3-%s-%s-%d", strings.ToLower(model), filepath.Base(filepath.Dir(root)), item.id)
 		spec := agentruntime.WorkloadSpec{
 			Name: name, Image: "gpuworks/fake-engine:test",
 			Env: map[string]string{
@@ -92,7 +86,7 @@ func testHygonDockerPartitionMounts(t *testing.T, model string) {
 			DockerArgs: []string{"--network", "none", "--device", "/dev/null:/dev/kfd:rwm", "--device", "/dev/zero:/dev/mkfd:rwm", "--device", "/dev/full:/dev/dri/renderD128:rwm", "--group-add", "0"},
 			Mounts: []agentruntime.Mount{
 				{Source: snapshot, Target: "/etc/vdev/" + configName, ReadOnly: true},
-				{Source: snapshot, Target: "/etc/vdev/docker/" + dockerConfigName(configName), ReadOnly: true},
+				{Source: snapshot, Target: "/etc/vdev/docker/" + configName, ReadOnly: true},
 				{Source: lock, Target: "/tmp/.dmi_virtual.lock"},
 				{Source: dtk, Target: "/opt/hygondriver", ReadOnly: true},
 				{Source: hyhal, Target: "/opt/hyhal", ReadOnly: true},
@@ -103,7 +97,7 @@ func testHygonDockerPartitionMounts(t *testing.T, model string) {
 			t.Fatal(err)
 		}
 		containers = append(containers, id)
-		inspectHygonDockerPartition(t, id, snapshot, configName, dockerConfigName(configName), config)
+		inspectHygonDockerPartition(t, id, snapshot, configName, configName, config)
 	}
 	for i, other := range []string{"vdev5.conf", "vdev4.conf"} {
 		if out, err := exec.Command("docker", "cp", containers[i]+":/etc/vdev/"+other, filepath.Join(t.TempDir(), other)).CombinedOutput(); err == nil {
@@ -121,7 +115,7 @@ func testHygonDockerPartitionMounts(t *testing.T, model string) {
 	if got, err := os.ReadFile(filepath.Join(root, "instance-5", "vdev5.conf")); err != nil || !strings.Contains(string(got), "mem: 2000 MiB") {
 		t.Fatalf("other instance snapshot changed: %q, %v", got, err)
 	}
-	inspectHygonDockerPartition(t, containers[1], filepath.Join(root, "instance-5", "vdev5.conf"), "vdev5.conf", dockerConfigName("vdev5.conf"), "mem: 2000 MiB")
+	inspectHygonDockerPartition(t, containers[1], filepath.Join(root, "instance-5", "vdev5.conf"), "vdev5.conf", "vdev5.conf", "mem: 2000 MiB")
 }
 
 func inspectHygonDockerPartition(t *testing.T, id, snapshot, configName, dockerConfigName, config string) {
@@ -222,7 +216,7 @@ func TestHygonDockerRunFailureKeepsSnapshotForRecovery(t *testing.T) {
 	spec := agentruntime.WorkloadSpec{
 		Name:       "gpuworks-hygon-l3-fail-" + filepath.Base(filepath.Dir(filepath.Dir(snapshot))),
 		Image:      "gpuworks/fake-engine:test",
-		Mounts:     []agentruntime.Mount{{Source: snapshot, Target: "/etc/vdev/docker/vdev0.conf", ReadOnly: true}},
+		Mounts:     []agentruntime.Mount{{Source: snapshot, Target: "/etc/vdev/docker/vdev7.conf", ReadOnly: true}},
 		DockerArgs: []string{"--network", "none", "--device", "/definitely-missing-hygon-device:/dev/kfd:rwm"},
 	}
 	driver := dockerdrv.New()

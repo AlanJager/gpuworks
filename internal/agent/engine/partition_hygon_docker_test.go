@@ -79,7 +79,7 @@ func TestHygonProbeAndDeploymentDockerBoundary(t *testing.T) {
 	for _, mount := range inspected[0].Mounts {
 		targets[mount.Destination] = true
 	}
-	for _, target := range []string{"/etc/vdev/vdev4.conf", "/etc/vdev/docker/vdev0.conf", "/opt/dtk", "/opt/hygondriver", "/tmp/.dmi_virtual.lock"} {
+	for _, target := range []string{"/etc/vdev/vdev4.conf", "/etc/vdev/docker/vdev4.conf", "/opt/dtk", "/opt/hygondriver", "/tmp/.dmi_virtual.lock"} {
 		if !targets[target] {
 			t.Fatalf("Docker omitted probe mount %s: %v", target, targets)
 		}
@@ -128,7 +128,7 @@ func hygonDockerMountsMatch(mounts []agentruntime.Mount, configName string, prob
 	for _, mount := range mounts {
 		targets[mount.Target] = mount
 	}
-	host, container := targets["/etc/vdev/"+configName], targets["/etc/vdev/docker/vdev0.conf"]
+	host, container := targets["/etc/vdev/"+configName], targets["/etc/vdev/docker/"+configName]
 	if host.Source == "" || host.Source != container.Source || !host.ReadOnly || !container.ReadOnly {
 		return false
 	}

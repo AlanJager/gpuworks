@@ -249,18 +249,14 @@ func (h hygonPartitionInjector) apply(e *Engine, ctx context.Context, ws *agentr
 	}
 	e.seedImageLibraryPath(ctx, ws)
 	snapshot := filepath.Join(instanceDir, filepath.Base(hostConfig))
-	dockerConfigName := filepath.Base(hostConfig)
-	if strings.EqualFold(strings.TrimSpace(selected.ArchID), "Z100") {
-		dockerConfigName = "vdev0.conf"
-	}
-	// HYHAL reads both paths and serializes access through the host lock. Z100
-	// uses the legacy Docker name; K100AI requires its native vdev filename.
-	// Mount exactly one Docker config: adding a legacy alias breaks K100AI.
+	// HYHAL reads both paths and serializes access through the host lock.
+	// Both filenames must match the verified native ID. Mount exactly one
+	// Docker config: a fixed-ID alias can prevent HIP initialization.
 	// Keep the image's /opt/dtk: replacing its toolkit with an older host DTK
 	// breaks images whose PyTorch requires newer shared-library versions.
 	ws.Mounts = append(ws.Mounts,
 		agentruntime.Mount{Source: snapshot, Target: filepath.Join("/etc/vdev", filepath.Base(hostConfig)), ReadOnly: true},
-		agentruntime.Mount{Source: snapshot, Target: filepath.Join("/etc/vdev/docker", dockerConfigName), ReadOnly: true},
+		agentruntime.Mount{Source: snapshot, Target: filepath.Join("/etc/vdev/docker", filepath.Base(hostConfig)), ReadOnly: true},
 		agentruntime.Mount{Source: lockPath, Target: hygonVirtualLock},
 		agentruntime.Mount{Source: dtkDir, Target: "/opt/hygondriver", ReadOnly: true},
 		agentruntime.Mount{Source: hyhalDir, Target: "/opt/hyhal", ReadOnly: true},

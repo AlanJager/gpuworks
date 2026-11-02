@@ -47,7 +47,7 @@ Z100 和明确识别为 `K100AI` 的 K100_AI 使用 `hygon-dgpu` 后端；`K100_
 
 当前兼容性配置列出 DTK 26.04.x × x86_64，但该配置尚未标记为整套真机验证通过，版本信息仅作兼容性提示，不能替代逐卡探针。
 
-K100_AI 的容器配置使用与原生 ID 一致的 `/etc/vdev/docker/vdev<ID>.conf`，不同时暴露固定编号别名；Z100 保留已验证的 `vdev0.conf` 路径。轻量探针使用私有 `/var/log/hylog` tmpfs，并按宿主实际存在的 SONAME 补挂 tinfo5/6。
+Z100 和 K100_AI 的容器配置均使用与原生 ID 一致的 `/etc/vdev/docker/vdev<ID>.conf`，且只挂载一份 Docker 配置。当前两种型号的真机验证表明，将非零原生 ID 改名为 `vdev0.conf` 会导致 HIP 初始化失败；旧版 HYHAL 1.4 环境尚未重新验证原生文件名，仍须通过逐卡探针。轻量探针使用私有 `/var/log/hylog` tmpfs，并按宿主实际存在的 SONAME 补挂 tinfo5/6。
 
 逐卡探针必须确认 HIP 看到请求的显存配额、可分配 1 MiB，并拒绝超额 1 MiB 的分配。探针通过后才能调度 dGPU 实例。推理容器使用自己的 DTK；宿主 DTK 与 ABI 补充库只供轻量探针使用。内置 Qwen3-0.6B 的 `bf16-vllm-hygon-z100` spec 使用经过 Z100 验证的 SourceFind 镜像。
 

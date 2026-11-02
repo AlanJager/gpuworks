@@ -11,9 +11,9 @@ import (
 	"gpuworks.ai/gpuworks/internal/proto"
 )
 
-func TestHygonUsesModelSpecificVdevConfigFilename(t *testing.T) {
+func TestHygonUsesNativeVdevConfigFilename(t *testing.T) {
 	for _, model := range []string{"Z100", "K100AI", "K100_AI", "K100 AI"} {
-		for _, vdevID := range []int{0, 4} {
+		for _, vdevID := range []int{0, 1, 4} {
 			t.Run(fmt.Sprintf("%s/vdev%d", model, vdevID), func(t *testing.T) {
 				e, h, helper := hygonTestEngine(t)
 				helper.nextID = vdevID
@@ -30,10 +30,6 @@ func TestHygonUsesModelSpecificVdevConfigFilename(t *testing.T) {
 					t.Fatal(reason)
 				}
 				nativeName := fmt.Sprintf("vdev%d.conf", vdevID)
-				wantDockerName := nativeName
-				if model == "Z100" {
-					wantDockerName = "vdev0.conf"
-				}
 				var snapshot string
 				var dockerMounts []agentruntime.Mount
 				for _, mount := range ws.Mounts {
@@ -50,7 +46,7 @@ func TestHygonUsesModelSpecificVdevConfigFilename(t *testing.T) {
 				if snapshot == "" || filepath.Base(snapshot) != nativeName {
 					t.Fatalf("native config snapshot = %q, want %s", snapshot, nativeName)
 				}
-				want := agentruntime.Mount{Source: snapshot, Target: filepath.Join("/etc/vdev/docker", wantDockerName), ReadOnly: true}
+				want := agentruntime.Mount{Source: snapshot, Target: filepath.Join("/etc/vdev/docker", nativeName), ReadOnly: true}
 				if len(dockerMounts) != 1 || dockerMounts[0] != want {
 					t.Fatalf("Docker configs = %+v, want exactly %+v", dockerMounts, want)
 				}
