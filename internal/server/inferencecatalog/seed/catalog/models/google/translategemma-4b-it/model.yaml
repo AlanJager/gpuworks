@@ -24,6 +24,8 @@ specs:
     display_target: ppu
   args:
   - --trust-remote-code
+  - --chat-template-content-format
+  - openai
   api:
     health_endpoint: /health
     operations:
@@ -49,6 +51,9 @@ specs:
     vendor: nvidia
     cc: '>=8.0'
     display_target: nvidia
+  args:
+  - --chat-template-content-format
+  - openai
   api:
     health_endpoint: /health
     operations:

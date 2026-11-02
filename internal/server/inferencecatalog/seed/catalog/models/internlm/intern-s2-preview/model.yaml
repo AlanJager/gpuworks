@@ -30,6 +30,7 @@ specs:
     cc: '>=8.0'
     display_target: nvidia
   args:
+  - --trust-remote-code
   - --enable-metrics
   - --reasoning-parser
   - qwen3

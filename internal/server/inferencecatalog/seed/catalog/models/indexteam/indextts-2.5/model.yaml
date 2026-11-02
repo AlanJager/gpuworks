@@ -26,14 +26,17 @@ specs:
     cc: '>=8.0'
     display_target: nvidia
   # IndexTTS 2.5 reads its Wav2Vec2-BERT, CAMPPlus and BigVGAN assets only from
-  # beside the model (vllm_omni/model_executor/models/indextts2/preprocess_utils.py)
-  # and otherwise fetches them from the Hugging Face Hub, which an offline node
-  # cannot reach. The platform mounts each repository on its own, so the
-  # preparation step links them into one directory and the engine serves that.
+  # beside the primary model (vllm_omni/model_executor/models/indextts2/
+  # preprocess_utils.py) and otherwise fetches them from the Hugging Face Hub,
+  # which an offline node cannot reach. The platform mounts each repository on
+  # its own, so preparation links the auxiliary assets beside the primary model.
   entrypoint:
-  - vllm
-  - serve
-  - /opt/gpuworks/indextts-2.5
+  - /bin/sh
+  - -c
+  - |
+    shift
+    exec vllm serve /opt/gpuworks/indextts-2.5 "$@"
+  - indextts
   pre_start_script: |-
     set -e
     d=/opt/gpuworks/indextts-2.5

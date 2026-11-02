@@ -31,7 +31,7 @@ specs:
   api:
     health_endpoint: /health
     operations:
-    - type: openai.chat
-      endpoint: /v1/chat/completions
+    - type: openai.completions
+      endpoint: /v1/completions
       mode: stream
 input_modalities: [text]

@@ -25,10 +25,55 @@ specs:
     vendor: nvidia
     cc: '>=8.0'
     display_target: nvidia
+  entrypoint:
+  - /bin/sh
+  - -c
+  - |
+    shift
+    exec vllm serve /tmp/MOSS-VoiceGenerator "$@"
+  - moss-voicegenerator
+  pre_start_script: |-
+    set -e
+    src=/models/MOSS-VoiceGenerator
+    dst=/tmp/MOSS-VoiceGenerator
+    mkdir -p "$dst"
+    for item in "$src"/*; do ln -sfn "$item" "$dst/$(basename "$item")"; done
+    cp "$src/processing_moss_tts.py" "$dst/processing_moss_tts.py"
+    sed -i 's#OpenMOSS-Team/MOSS-Audio-Tokenizer#/models/moss-audio-tokenizer#g' "$dst/processing_moss_tts.py"
+  components:
+  - name: moss-voicegenerator
+    role: primary
+    weights:
+      quantization: bf16
+      sources:
+      - huggingface:
+          repo_id: OpenMOSS-Team/MOSS-VoiceGenerator
+          revision: 97521ec2b6f3ec5026ac1f5751f8fc302d82c2d4
+      - modelscope:
+          repo_id: openmoss/MOSS-VoiceGenerator
+          revision: ede6f086ff30ae94c464b68951b5942fc7818fc7
+    weight_bytes: 4244249582
+    mount_path: /models/MOSS-VoiceGenerator
+  - name: moss-audio-tokenizer
+    role: auxiliary
+    weights:
+      quantization: fp32
+      sources:
+      - huggingface:
+          repo_id: OpenMOSS-Team/MOSS-Audio-Tokenizer
+          revision: 3cd226ba2947efa357ef453bcad111b6eafba782
+      - modelscope:
+          repo_id: openmoss/MOSS-Audio-Tokenizer
+          revision: 1b3b842480c8fc415f373642fe78d896edc8a76d
+    weight_bytes: 7101115998
+    mount_path: /models/moss-audio-tokenizer
   args:
   - --omni
+  - --trust-remote-code
   - --deploy-config
   - /usr/local/lib/python3.12/dist-packages/vllm_omni/deploy/moss_voice_generator.yaml
+  - --hf-overrides
+  - '{"codec_model_name_or_path":"/models/moss-audio-tokenizer"}'
   api:
     health_endpoint: /health
     operations:
@@ -42,4 +87,11 @@ specs:
         label:
           en: Voice instructions
           zh: 音色描述
-input_modalities: [text]
+      - name: ref_audio
+        label:
+          en: Reference audio
+          zh: 参考音频
+        kind: audio
+        encoding: data_url
+        required: true
+input_modalities: [text, audio]

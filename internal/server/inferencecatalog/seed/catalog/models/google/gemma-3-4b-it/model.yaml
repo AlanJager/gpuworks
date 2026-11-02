@@ -55,6 +55,8 @@ specs:
   image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
   args:
   - --enable-metrics
+  - --trust-remote-code
+  - --enable-multimodal
   weights:
     quantization: bf16
     sources:

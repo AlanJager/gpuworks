@@ -47,8 +47,6 @@ specs:
   - --enable-mamba-cache-stochastic-rounding
   - --mamba-cache-philox-rounds
   - '5'
-  env:
-    VLLM_USE_FASTOKENS: '1'
   api:
     health_endpoint: /health
     operations:
