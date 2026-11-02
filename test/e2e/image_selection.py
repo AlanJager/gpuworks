@@ -238,7 +238,50 @@ def exercise_archive_full(page, server, text, form, source, report):
     reopened.locator(".ant-drawer-close").click()
     expect(reopened).to_be_hidden()
     report["archive_full_create"] = True
+    exercise_registry_binding(page, server, series["id"], series["versions"][0]["id"], address, report)
     return series["id"]
+
+
+def exercise_registry_binding(page, server, series_id, version_id, bound, report):
+    """8.4: bind, rebind and clear a registry source, reading the relation back after each step.
+
+    The relation is only meaningful if every step is confirmed against a fresh read rather than against
+    the request that changed it. So each PATCH is followed by a detail read that requires the stored list
+    to be exactly the expected one - a rebind that appended instead of replacing, or a clear that left
+    the old entry behind, fails here. This surface has no reverse lookup (nothing answers "which images
+    point at this registry"), so the reverse half of the requirement has no subject and is recorded
+    rather than imitated.
+    """
+    path = f"/api/v1/images/versions/{version_id}"
+    first = "https://containerimages.example/binding-first.tar"
+    second = "https://containerimages.example/binding-second.tar"
+    steps = []
+
+    def stored():
+        detail = read_detail(page, server.base, series_id)
+        return detail["versions"][0].get("registry_sources")
+
+    def bind(value, label):
+        answer = page.request.patch(server.base + path, data={"registry_sources": value})
+        check(answer.status == 200, f"{label} registry source update failed: HTTP {answer.status}")
+        actual = stored()
+        # An emptied list round-trips as null on this surface, so the comparison treats the two empty
+        # forms as the same statement - that nothing is bound - rather than as a mismatch.
+        empty = not value and not actual
+        check(empty or actual == value, f"{label} did not persist: {actual!r} != {value!r}")
+        steps.append({"step": label, "sent": value, "stored": actual})
+
+    # The version was created with one source; replace it rather than assuming the create was the only
+    # write that matters.
+    bind([first], "bind-a")
+    bind([second], "rebind-b")
+    check(first not in (stored() or []), "rebinding kept the previous registry source")
+    bind([], "clear")
+    check(stored() in ([], None), f"clearing left a registry source behind: {stored()!r}")
+    bind([bound], "restore-created")
+    check(stored() == [bound], "restoring the created source failed")
+    report["registry_binding"] = {"steps": steps, "reverse_lookup": "not offered by this surface"}
+    return True
 
 
 def exercise_community_minimum(page, server, text, form, source, report):
