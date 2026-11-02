@@ -30,7 +30,7 @@ from urllib.parse import urlsplit
 import uuid
 
 from playwright.sync_api import expect, sync_playwright
-from assistant_fixture import TOOL_CALL_ID, AssistantEndpoint
+from assistant_fixture import HOSTILE_ANSWER, TOOL_CALL_ID, AssistantEndpoint
 from local_browser_fixture import Artifacts, LocalServer, ROOT, digest
 from platform_token_read_revoke import button, check
 
@@ -646,6 +646,37 @@ def test_assistant_service_tools(page, context, server, artifacts, report, local
     check(after_denied_nodes.json()["labels"] == {},
           "the assistant tool path changed node labels")
     report["last_step"] = "denied-route-rejected"
+
+    # 23.5: the answer is untrusted output. A model answer carrying markup, a script body, a
+    # javascript: link and a markdown image is asked through the panel and has to arrive as text:
+    # no element from it may appear in the transcript, no dialog may fire, and the payload must
+    # still be readable as the text it is rather than being silently dropped.
+    question.fill("Show me a hostile answer.")
+    send.click()
+    deadline = time.time() + 30
+    while time.time() < deadline:
+        if [item["kind"] for item in fixture.snapshot()["requests"]][-1:] == ["hostile"]:
+            break
+        page.wait_for_timeout(200)
+    check([item["kind"] for item in fixture.snapshot()["requests"]][-1:] == ["hostile"],
+          "the hostile question never reached the fixture as one request")
+    hostile_text = HOSTILE_ANSWER
+    transcript = panel.locator(".ant-drawer-body, .ant-modal-body").first
+    expect(transcript.get_by_text(re.compile(r"Cluster\s+looks\s+healthy")).first).to_be_visible(timeout=30000)
+    check(transcript.locator("script").count() == 0, "a script element from the answer reached the transcript")
+    check(transcript.locator("img[src='x']").count() == 0, "an image from the answer reached the transcript")
+    check(transcript.locator("b").filter(has_text="bold").count() == 0,
+          "markup from the answer was interpreted rather than shown as text")
+    check(panel.get_by_role("alertdialog").count() == 0, "a dialog from the answer fired")
+    hostile_links = transcript.locator("a[href^='javascript:']").count()
+    check(hostile_links == 0, "a javascript: link from the answer became a real link")
+    report["hostile_answer"] = {"rendered_as_text": True, "script_elements": 0,
+                                "img_elements": 0, "bold_elements": 0,
+                                "javascript_links": 0, "dialog_fired": False}
+    report["last_step"] = "hostile-answer-is-text"
+    # This question is not part of the tool-loop story the later assertions count, so it is dropped
+    # from the ledger the same way the panel is reset between phases.
+    asks[:] = [item for item in asks if item.get("question") != "Show me a hostile answer."]
 
     # A caller cannot make the assistant write. call_api's schema has no method
     # field and the tool only ever issues GET, so "DELETE this" arrives as a read
