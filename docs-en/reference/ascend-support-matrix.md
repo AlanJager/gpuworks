@@ -30,7 +30,7 @@ Updated: 2026-11-02. This document distinguishes three things that are easy to c
 
 Checks on 2026-10-22 confirmed that a runner image carries operators for only one chip family: running `cann9.0-910b-*` on a 910C die fails in `AclOpKernelInit`, while the corresponding `cann9.0-a3-*` build succeeds. A template's predicate and pinned image must therefore describe the same family. Generational inheritance ([ADR 0009](../adr/0009-flat-spec-catalog.md), item 10) still applies, but the successor has its own spec and image instead of merely broadening the original predicate.
 
-- The catalog currently contains **88 inherited A3 specs** and **105 specs whose predicates match 910C**. Contract tests check the arguments, weights and image relationship between each 910B original and its A3 successor, and verify that every 910C-claiming spec resolves to an A3 image. These are catalog contract counts, **not per-spec real-hardware pass counts**; hardware results are recorded only for the individual rows below.
+- The catalog currently contains **88 inherited A3 specs** and **111 specs whose predicates match 910C**. Contract tests check the arguments, weights and image relationship between each 910B original and its A3 successor, and verify that every 910C-claiming spec resolves to an A3 image. These are catalog contract counts, **not per-spec real-hardware pass counts**; hardware results are recorded only for the individual rows below.
 - The 950 family does not use this inheritance. The only current 950 spec is the single-card 950PR profile of `qwen/qwen3.8-27b`, using the corresponding 950 image and based on measurements from 2026-10-07. There is no tested 950DT profile.
 - MiniMax-H3's SGLang diffusion path still requires CUDA full-loop denoise, so it declares only 910B4 and does not claim 910C. The Gemma-3-4B-IT and Gemma-3-27B-IT A3 SGLang profiles use `--disable-cuda-graph` to avoid an NPU graph-capture hang; the 4B model also has a working A3 vLLM profile. Both sizes have passed text and real-image chat.
 
@@ -49,9 +49,24 @@ Having a catalog spec means that pinned weights, an image and launch arguments e
 | Qwen3.5-397B-A17B | A3 TP16/EP16, W8A8 + MTP, 133K, eager | Health, `/v1/models` and real chat passed with native Docker; eager mode avoids the currently missing `causal_conv1d_update_npu` graph path |
 | Qwen3.8-Flash-Next | Experimental A3 TP8, W8A8-MTP, 135168 context | Health, `/v1/models`, real chat and automatic placement passed with Docker |
 | Qwen3.8-27B | 910B spec; inherited W8A8 A3 spec; measured BF16 A3 spec | W8A8 TP2 text requests passed; BF16 TP2 text and real-image requests both returned HTTP 200. Both used native Docker; this verifies the API and multimodal paths, not output quality |
+| Qwen3.6-35B-A3B-W8A8 | A3 TP2 W8A8; vLLM 0.30 eager and SGLang profiles | vLLM 0.26 lacked `linear_attn` during KV-cache initialization; the runner vLLM 0.30 profile with graph capture disabled started successfully and returned the exact chat marker. The SGLang profile also passed |
+| QwQ-32B-W8A8 | Original A3 SGLang profile; new A3 TP2 vLLM 0.30 eager profile | The original SGLang path still fails on `quant_linear`; the new vLLM profile started and returned the exact `QwQ32B-VLLM-A3-910C-ok` marker |
 | Qwen3-1.7B | Newly measured A3 TP1 BF16 SGLang spec | Weights were downloaded on `.29` and peer-copied to `.30`; evaluation, runner startup and an exact-match chat request passed |
 | Qwen3-4B | Newly measured A3 TP1 BF16 SGLang spec | Evaluation, runner startup and an exact-match chat request passed; the catalog previously had only NVIDIA, PPU and Hygon profiles |
 | PaddleOCR-VL-1.6 | Measured A3 TP1 BF16 vLLM spec | An OCR request against a real 640×220 text image returned both lines verbatim; the template started and served with runner `cann9.1-a3-vllm0.26.0rc1-r2` |
+| Qwen2.5-Coder-0.5B-Instruct | Newly measured A3 TP1 BF16 SGLang spec | Evaluation, runner startup and an exact-match chat request passed; the catalog previously had only NVIDIA and PPU profiles |
+| Qwen2.5-Coder-1.5B-Instruct | Newly measured A3 TP1 BF16 SGLang spec | Both the API and the Chrome template page completed evaluation, deployment, running state and an exact-match Playground response; the catalog previously had only a PPU profile |
+| SmolLM2-360M-Instruct | Newly measured A3 TP1 BF16 SGLang spec | Evaluation, runner startup and a chat request returning HTTP 200 passed; the tiny model followed the fixed-token prompt poorly |
+| GPT-OSS-20B | Newly measured A3 TP2 BF16 vLLM spec | Both the API and the Chrome template page completed evaluation, deployment, running state and exact-match chat; eager mode avoids the NPU graph path, and the template points at the runner's vendored tiktoken vocabulary for offline Harmony tokenization |
+| Janus-Pro-7B | A3 TP1 BF16 SGLang | Exact-match text chat passed; an image request produced 576 image tokens and returned HTTP 200, but the model did not describe the 1×1 placeholder meaningfully, so this is not a visual-quality pass |
+| Phi-4-multimodal-instruct | A3 TP1 BF16 SGLang | After declaring the image modality, a real 448×448 image request returned HTTP 200 and `White` |
+| MiniCPM3-4B | A3 TP1 BF16 SGLang, eager | The original graph path killed its child with SIGQUIT; with `--disable-cuda-graph`, evaluation, runner startup and text chat passed |
+| Qwen3-Omni-30B-A3B-Instruct | A3 TP4 BF16 SGLang, eager | The original graph path stayed in health check; with `--disable-cuda-graph`, the runner started and text chat returned `Qwen3Omni30B-910C-ok` |
+| Qwen3-30B-A3B-Instruct-2507 | A3 TP4 BF16 SGLang, eager | The original graph path did not become healthy in the observation window; with `--disable-cuda-graph`, startup and exact-match chat passed |
+| Qwen3-TTS-12Hz-1.7B-CustomVoice | A3 TP1 BF16 vLLM-Omni r3 | With an explicit deploy config, it generated a non-silent 24 kHz WAV; Qwen3-ASR loopback returned `GPUWorks 910c Speech Validation.` |
+| Qwen3-TTS-12Hz-0.6B-CustomVoice | Newly measured A3 TP1 BF16 vLLM-Omni r3 | It generated a non-silent 24 kHz WAV; Qwen3-ASR recognized the substance of the sentence |
+| Ming-omni-tts-0.5B | A3 TP1 BF16 vLLM-Omni r3 | It generated a non-silent 44.1 kHz WAV; Qwen3-ASR recognized the substance of the sentence |
+| Gemma-4-31B-IT | A3 TP4 BF16 vLLM | With the checkpoint's own chat template, the runner started and text plus real-image chat returned HTTP 200 |
 | Gemma-3-4B-IT / Gemma-3-27B-IT | A3 SGLang / vLLM for 4B; A3 SGLang for 27B | Both TP2 4B engines and the TP4 27B eager profile completed text and real-image chat; the SGLang templates disable NPU graph capture by default to avoid startup hangs |
 | Kimi-K3 | None | The upstream minimum recipe uses four A3 nodes; there is no catalog spec |
 

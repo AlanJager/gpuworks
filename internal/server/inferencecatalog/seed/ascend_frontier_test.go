@@ -341,3 +341,210 @@ func TestGemmaAscendProfilesUseTheMeasuredPaths(t *testing.T) {
 		t.Fatal("Gemma 4B measured vLLM A3 profile is missing")
 	}
 }
+
+func TestA3EagerProfilesKeepMeasuredGraphWorkarounds(t *testing.T) {
+	catalog, err := Catalog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{
+		"openbmb/minicpm3-4b":              "bf16-sglang-ascend-a3-25156446",
+		"qwen/qwen3-30b-a3b-instruct-2507": "bf16-sglang-ascend-a3-04996b03",
+		"qwen/qwen3.6-35b-a3b":             "bf16-sglang-ascend-a3-67436760",
+		"qwen/qwen3-omni-30b-a3b-instruct": "bf16-sglang-ascend-a3-68c174cb",
+	}
+	seen := make(map[string]bool, len(want))
+	for _, model := range catalog.Models {
+		specName, ok := want[model.ModelID]
+		if !ok {
+			continue
+		}
+		for _, spec := range model.Specs {
+			if spec.Name != specName {
+				continue
+			}
+			seen[model.ModelID] = true
+			if !slices.Contains(spec.Args, "--disable-cuda-graph") {
+				t.Errorf("%s/%s lost the measured eager-mode workaround", model.ModelID, spec.Name)
+			}
+		}
+	}
+	for model := range want {
+		if !seen[model] {
+			t.Errorf("%s eager A3 profile is missing", model)
+		}
+	}
+}
+
+func TestQwen36W8A8VLLMUsesMeasuredEagerRecipe(t *testing.T) {
+	catalog, err := Catalog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	const (
+		modelID = "qwen/qwen3.6-35b-a3b"
+		specID  = "int8-vllm-ascend-a3-1a118d71"
+	)
+	found := false
+	for _, model := range catalog.Models {
+		if model.ModelID != modelID {
+			continue
+		}
+		for _, spec := range model.Specs {
+			if spec.Name != specID {
+				continue
+			}
+			found = true
+			if spec.Image != "gpuworks/gpuworks-runner:cann9.2-a3-vllm0.30.0rc2-r1" {
+				t.Errorf("image = %q", spec.Image)
+			}
+			if !slices.Contains(spec.Args, "--enforce-eager") {
+				t.Error("measured --enforce-eager workaround is missing")
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("missing %s/%s", modelID, specID)
+	}
+}
+
+func TestA3OmniSpeechProfilesUseTheValidatedRunner(t *testing.T) {
+	catalog, err := Catalog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{
+		"qwen/qwen3-tts-12hz-0.6b-customvoice": "bf16-vllm-ascend-a3-tts06",
+		"qwen/qwen3-tts-12hz-1.7b-customvoice": "bf16-vllm-ascend-a3-760501dc",
+		"inclusionai/ming-omni-tts-0.5b":       "bf16-vllm-ascend-a3-6b2e03a6",
+	}
+	seen := make(map[string]bool, len(want))
+	for _, model := range catalog.Models {
+		specName, ok := want[model.ModelID]
+		if !ok {
+			continue
+		}
+		for _, spec := range model.Specs {
+			if spec.Name != specName {
+				continue
+			}
+			seen[model.ModelID] = true
+			if spec.Image != "gpuworks/gpuworks-runner:cann9.1-a3-vllm-omni0.30.0-r3" {
+				t.Errorf("%s/%s image = %q", model.ModelID, spec.Name, spec.Image)
+			}
+			if !containsArgumentPair(spec.Args, "--deploy-config", "/vllm-workspace/vllm-omni/vllm_omni/deploy/"+map[string]string{
+				"qwen/qwen3-tts-12hz-0.6b-customvoice": "qwen3_tts.yaml",
+				"qwen/qwen3-tts-12hz-1.7b-customvoice": "qwen3_tts.yaml",
+				"inclusionai/ming-omni-tts-0.5b":       "ming_tts.yaml",
+			}[model.ModelID]) {
+				t.Errorf("%s/%s lost its Omni deploy config", model.ModelID, spec.Name)
+			}
+		}
+	}
+	for model := range want {
+		if !seen[model] {
+			t.Errorf("%s A3 Omni speech profile is missing", model)
+		}
+	}
+}
+
+func TestSmallTextModelsHaveMeasuredA3Profiles(t *testing.T) {
+	catalog, err := Catalog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{
+		"qwen/qwen2.5-coder-0.5b-instruct":    "bf16-sglang-ascend-a3-qwen25-coder-05b",
+		"qwen/qwen2.5-coder-1.5b-instruct":    "bf16-sglang-ascend-a3-qwen25-coder-15b",
+		"huggingfacetb/smollm2-360m-instruct": "bf16-sglang-ascend-a3-smollm2-360m",
+	}
+	seen := make(map[string]bool, len(want))
+	for _, model := range catalog.Models {
+		specName, ok := want[model.ModelID]
+		if !ok {
+			continue
+		}
+		for _, spec := range model.Specs {
+			if spec.Name == specName {
+				seen[model.ModelID] = true
+				if spec.Image != "gpuworks/gpuworks-runner:cann9.0-a3-sglang0.5.18-r2" {
+					t.Errorf("%s A3 image = %q", model.ModelID, spec.Image)
+				}
+			}
+		}
+	}
+	for model := range want {
+		if !seen[model] {
+			t.Errorf("%s A3 profile is missing", model)
+		}
+	}
+}
+
+func TestGPTOSSA3ProfileUsesMeasuredOfflineRecipe(t *testing.T) {
+	catalog, err := Catalog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	const (
+		modelID = "openai/gpt-oss-20b"
+		specID  = "bf16-vllm-ascend-a3-gptoss20"
+	)
+	found := false
+	for _, model := range catalog.Models {
+		if model.ModelID != modelID {
+			continue
+		}
+		for _, spec := range model.Specs {
+			if spec.Name != specID {
+				continue
+			}
+			found = true
+			if spec.Image != "gpuworks/gpuworks-runner:cann9.2-a3-vllm0.30.0rc2-r1" {
+				t.Errorf("image = %q", spec.Image)
+			}
+			if !slices.Contains(spec.Args, "--enforce-eager") {
+				t.Error("measured eager-mode workaround is missing")
+			}
+			if spec.Env["TIKTOKEN_ENCODINGS_BASE"] != "/root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tiktoken-rs-0.9.1/assets" {
+				t.Errorf("offline tiktoken vocabulary path = %q", spec.Env["TIKTOKEN_ENCODINGS_BASE"])
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("missing %s/%s", modelID, specID)
+	}
+}
+
+func TestQwQ32BW8A8UsesMeasuredVLLMRecipe(t *testing.T) {
+	catalog, err := Catalog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	const (
+		modelID = "qwen/qwq-32b"
+		specID  = "int8-vllm-ascend-a3-qwq32b"
+	)
+	found := false
+	for _, model := range catalog.Models {
+		if model.ModelID != modelID {
+			continue
+		}
+		for _, spec := range model.Specs {
+			if spec.Name != specID {
+				continue
+			}
+			found = true
+			if spec.Image != "gpuworks/gpuworks-runner:cann9.2-a3-vllm0.30.0rc2-r1" {
+				t.Errorf("image = %q", spec.Image)
+			}
+			for _, flag := range []string{"--enforce-eager", "--quantization"} {
+				if !slices.Contains(spec.Args, flag) {
+					t.Errorf("measured %s workaround is missing", flag)
+				}
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("missing %s/%s", modelID, specID)
+	}
+}

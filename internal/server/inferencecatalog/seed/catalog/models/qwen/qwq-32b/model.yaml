@@ -92,4 +92,41 @@ specs:
     - type: openai.chat
       endpoint: /v1/chat/completions
       mode: stream
+- name: int8-vllm-ascend-a3-qwq32b
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cann9.2-a3-vllm0.30.0rc2-r1
+  weights:
+    quantization: int8
+    sources:
+    - modelscope:
+        repo_id: sgl-npu/QwQ-32B-W8A8
+        revision: 28ad6fabf7ab80385155c45ef035df5e24a44550
+  weight_bytes: 43443975837
+  gpus:
+    vendor: ascend
+    name: (^|[^A-Za-z0-9])910C[A-Za-z0-9]*([^A-Za-z0-9]|$)
+    display_target: ascend
+  args:
+  - --trust-remote-code
+  - --enforce-eager
+  - --quantization
+  - ascend
+  - --dtype
+  - bfloat16
+  - --max-model-len
+  - '40960'
+  env:
+    PYTORCH_NPU_ALLOC_CONF: expandable_segments:True
+    VLLM_USE_V2_MODEL_RUNNER: '1'
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    if gpu.count != 2: return reject(\"the validated recipe runs two devices\")\n    if gpu.min_memory_gib < 32: return reject(\"each device requires at least 32 GiB\")\n    return {\"GPU_COUNT\": 2, \"TP_SIZE\": 2, \"SP_DEGREE\": 1}\n"
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
 input_modalities: [text]

@@ -126,7 +126,14 @@ func TestInheritedA3SpecsMatchTheir910BOriginal(t *testing.T) {
 				where == "google/gemma-3-4b-it/bf16-sglang-ascend-a3-4cdeb491" ||
 				where == "google/gemma-3-27b-it/bf16-sglang-ascend-a3-ca729c08" ||
 				where == "zai-org/glm-4.5v/bf16-sglang-ascend-a3-36013872" ||
-				where == "qwen/qwen3-next-80b-a3b-instruct/int8-sglang-ascend-a3-7d129784"
+				where == "qwen/qwen3-next-80b-a3b-instruct/int8-sglang-ascend-a3-7d129784" ||
+				where == "qwen/qwen3.6-35b-a3b/bf16-sglang-ascend-a3-67436760" ||
+				where == "openbmb/minicpm3-4b/bf16-sglang-ascend-a3-25156446" ||
+				where == "qwen/qwen3-30b-a3b-instruct-2507/bf16-sglang-ascend-a3-04996b03" ||
+				where == "qwen/qwen3-omni-30b-a3b-instruct/bf16-sglang-ascend-a3-68c174cb" ||
+				where == "google/gemma-4-31b-it/bf16-vllm-ascend-a3-c7a493cd" ||
+				where == "qwen/qwen3-tts-12hz-1.7b-customvoice/bf16-vllm-ascend-a3-760501dc" ||
+				where == "qwen/qwen3.6-35b-a3b/int8-vllm-ascend-a3-1a118d71"
 			if !argsDifferIntentionally && strings.Join(spec.Args, "\x00") != strings.Join(original.Args, "\x00") {
 				t.Errorf("%s arguments drifted from its 910B original", where)
 			}
