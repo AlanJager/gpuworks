@@ -316,8 +316,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: int8-vllm-ascend-a3-tp16
-  display_name_zh_cn: 910C (A3) · INT8 W8A8 · 16 卡
-  display_name_en: 910C (A3) · INT8 W8A8 · 16 NPUs
+  display_name_zh_cn: 910C (A3) · INT8 W8A8 · 16 卡 · 1M 上下文
+  display_name_en: 910C (A3) · INT8 W8A8 · 16 NPUs · 1M context
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cann9.2-a3-vllm0.30.0rc2-r1
@@ -384,5 +384,304 @@ specs:
     - type: openai.chat
       endpoint: /v1/chat/completions
       mode: stream
+# Ascend 910C recipes tuned on hardware on 2026-10-25 (decode graph, W8A8
+# weights with an INT8 KV cache, 128K context, pinned official vLLM Ascend
+# image). They run as callable specs whose command line is the measured
+# one; the DFlash spec unpacks the source overlay in assets/runtime.tar.gz.
+# The model README's 910C section has the topologies and measurements.
+- name: w8a8-vllm-910c-stock-graph-16npu
+  display_name_zh_cn: 910C (A3) · INT8 W8A8 · 16 卡 · 128K 上下文
+  display_name_en: 910C (A3) · INT8 W8A8 · 16 NPUs · 128K context
+  scenario: throughput
+  engine: callable
+  image: quay.io/ascend/vllm-ascend@sha256:4909659565f15e94ec70c3f8523d9f2ea3dd8a2a04c59b238fbe87f5eacdae36
+  weights: &id001
+    quantization: w8a8
+    sources:
+    - modelscope:
+        repo_id: Eco-Tech/GLM-5.3-Flash-w8a8
+        revision: fce3173cef79062469745b520c6742883e60a166
+  weight_bytes: 331764803315
+  gpus:
+    vendor: ascend
+    name: (^|[^A-Za-z0-9])910C[A-Za-z0-9]*([^A-Za-z0-9]|$)
+  shm_bytes: 137438953472
+  args:
+  - vllm
+  - serve
+  - ${MODEL_PATH}
+  - --host
+  - ${API_HOST}
+  - --port
+  - ${API_PORT}
+  - --served-model-name
+  - ${SERVED_MODEL_NAME}
+  - --tensor-parallel-size
+  - ${TP_SIZE}
+  - --enable-expert-parallel
+  - --seed
+  - '1024'
+  - --safetensors-load-strategy
+  - prefetch
+  - --max-model-len
+  - '139264'
+  - --max-num-seqs
+  - '4'
+  - --enable-prompt-tokens-details
+  - --max-num-batched-tokens
+  - '2048'
+  - --trust-remote-code
+  - --quantization
+  - ascend
+  - --kv-cache-dtype
+  - int8
+  - --limit-mm-per-prompt
+  - '{"image":1,"video":0}'
+  - --gpu-memory-utilization
+  - '0.88'
+  - --compilation-config
+  - '{"cudagraph_mode":"FULL_DECODE_ONLY","cudagraph_capture_sizes":[2,4]}'
+  - --additional-config
+  - '{"enable_prefill_mc2":true,"enable_fused_mc2":1,"enable_shared_expert_dp":true,"enable_flashcomm1":true,"enable_dsa_cp":false,"ascend_compilation_config":{"fuse_qknorm_rope":false}}'
+  - --language-model-only
+  - --data-parallel-size
+  - '8'
+  - --data-parallel-size-local
+  - '8'
+  - --long-prefill-token-threshold
+  - '512'
+  env:
+    VLLM_USE_V2_MODEL_RUNNER: '0'
+    HCCL_OP_EXPANSION_MODE: AIV
+    HCCL_BUFFSIZE: '1024'
+    PYTORCH_NPU_ALLOC_CONF: expandable_segments:True
+    OMP_NUM_THREADS: '1'
+    HF_HUB_OFFLINE: '1'
+    TRANSFORMERS_OFFLINE: '1'
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    if gpu.count != 16:\n        return reject(\"requires exactly 16 logical 910C devices on one node\")\n    if gpu.min_memory_gib < 64:\n        return reject(\"requires at least 64 GiB per logical device\")\n    return accept(gpu_memory_mib_per_device=57672, prefer=80, variables={\"GPU_COUNT\": 16, \"TP_SIZE\": 2, \"SP_DEGREE\": 1})\n"
+  components:
+  - name: primary
+    role: primary
+    weights: *id001
+    weight_bytes: 331764803315
+    mount_path: /model
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+    metrics:
+      endpoint: /metrics
+      inherit: vllm
+  entrypoint:
+  - /bin/bash
+  - -c
+  - source /usr/local/Ascend/ascend-toolkit/set_env.sh && source /usr/local/Ascend/cann-9.2.0/share/info/ascendnpu-ir/bin/set_env.sh && source /usr/local/Ascend/nnal/atb/set_env.sh --cxx_abi=1 && exec "$@"
+  - --
+- name: w8a8-vllm-910c-stock-graph-8npu
+  display_name_zh_cn: 910C (A3) · INT8 W8A8 · 8 卡 · 128K 上下文
+  display_name_en: 910C (A3) · INT8 W8A8 · 8 NPUs · 128K context
+  scenario: balanced
+  engine: callable
+  image: quay.io/ascend/vllm-ascend@sha256:4909659565f15e94ec70c3f8523d9f2ea3dd8a2a04c59b238fbe87f5eacdae36
+  weights: &id002
+    quantization: w8a8
+    sources:
+    - modelscope:
+        repo_id: Eco-Tech/GLM-5.3-Flash-w8a8
+        revision: fce3173cef79062469745b520c6742883e60a166
+  weight_bytes: 331764803315
+  gpus:
+    vendor: ascend
+    name: (^|[^A-Za-z0-9])910C[A-Za-z0-9]*([^A-Za-z0-9]|$)
+  shm_bytes: 137438953472
+  args:
+  - vllm
+  - serve
+  - ${MODEL_PATH}
+  - --host
+  - ${API_HOST}
+  - --port
+  - ${API_PORT}
+  - --served-model-name
+  - ${SERVED_MODEL_NAME}
+  - --tensor-parallel-size
+  - ${TP_SIZE}
+  - --enable-expert-parallel
+  - --seed
+  - '1024'
+  - --safetensors-load-strategy
+  - prefetch
+  - --max-model-len
+  - '139264'
+  - --max-num-seqs
+  - '4'
+  - --enable-prompt-tokens-details
+  - --max-num-batched-tokens
+  - '2048'
+  - --trust-remote-code
+  - --quantization
+  - ascend
+  - --kv-cache-dtype
+  - int8
+  - --limit-mm-per-prompt
+  - '{"image":1,"video":0}'
+  - --gpu-memory-utilization
+  - '0.88'
+  - --compilation-config
+  - '{"cudagraph_mode":"FULL_DECODE_ONLY","cudagraph_capture_sizes":[4]}'
+  - --additional-config
+  - '{"enable_prefill_mc2":true,"enable_fused_mc2":1,"enable_shared_expert_dp":true,"enable_flashcomm1":true,"enable_dsa_cp":false,"ascend_compilation_config":{"fuse_qknorm_rope":false}}'
+  - --language-model-only
+  - --data-parallel-size
+  - '2'
+  - --data-parallel-size-local
+  - '2'
+  - --long-prefill-token-threshold
+  - '512'
+  env:
+    VLLM_USE_V2_MODEL_RUNNER: '0'
+    HCCL_OP_EXPANSION_MODE: AIV
+    HCCL_BUFFSIZE: '1024'
+    PYTORCH_NPU_ALLOC_CONF: expandable_segments:True
+    OMP_NUM_THREADS: '1'
+    HF_HUB_OFFLINE: '1'
+    TRANSFORMERS_OFFLINE: '1'
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    if gpu.count != 8:\n        return reject(\"requires exactly 8 logical 910C devices on one node\")\n    if gpu.min_memory_gib < 64:\n        return reject(\"requires at least 64 GiB per logical device\")\n    return accept(gpu_memory_mib_per_device=57672, variables={\"GPU_COUNT\": 8, \"TP_SIZE\": 4, \"SP_DEGREE\": 1})\n"
+  components:
+  - name: primary
+    role: primary
+    weights: *id002
+    weight_bytes: 331764803315
+    mount_path: /model
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+    metrics:
+      endpoint: /metrics
+      inherit: vllm
+  entrypoint:
+  - /bin/bash
+  - -c
+  - source /usr/local/Ascend/ascend-toolkit/set_env.sh && source /usr/local/Ascend/cann-9.2.0/share/info/ascendnpu-ir/bin/set_env.sh && source /usr/local/Ascend/nnal/atb/set_env.sh --cxx_abi=1 && exec "$@"
+  - --
+- name: w8a8-vllm-910c-dflash5-16npu
+  display_name_zh_cn: 910C (A3) · INT8 W8A8 · 16 卡 · 128K 上下文 · DFlash 投机解码
+  display_name_en: 910C (A3) · INT8 W8A8 · 16 NPUs · 128K context · DFlash speculative
+  scenario: throughput
+  engine: callable
+  image: quay.io/ascend/vllm-ascend@sha256:4909659565f15e94ec70c3f8523d9f2ea3dd8a2a04c59b238fbe87f5eacdae36
+  weights: &id003
+    quantization: w8a8
+    sources:
+    - modelscope:
+        repo_id: Eco-Tech/GLM-5.3-Flash-w8a8
+        revision: fce3173cef79062469745b520c6742883e60a166
+  weight_bytes: 331764803315
+  gpus:
+    vendor: ascend
+    name: (^|[^A-Za-z0-9])910C[A-Za-z0-9]*([^A-Za-z0-9]|$)
+  shm_bytes: 137438953472
+  args:
+  - ${NNODES}
+  - ${GPU_COUNT}
+  - ${TP_SIZE}
+  - serve
+  - ${MODEL_PATH}
+  - --host
+  - ${API_HOST}
+  - --port
+  - ${API_PORT}
+  - --served-model-name
+  - ${SERVED_MODEL_NAME}
+  - --tensor-parallel-size
+  - ${TP_SIZE}
+  - --enable-expert-parallel
+  - --seed
+  - '1024'
+  - --safetensors-load-strategy
+  - prefetch
+  - --max-model-len
+  - '139264'
+  - --max-num-seqs
+  - '4'
+  - --enable-prompt-tokens-details
+  - --max-num-batched-tokens
+  - '2048'
+  - --trust-remote-code
+  - --quantization
+  - ascend
+  - --kv-cache-dtype
+  - int8
+  - --limit-mm-per-prompt
+  - '{"image":1,"video":0}'
+  - --gpu-memory-utilization
+  - '0.88'
+  - --compilation-config
+  - '{"cudagraph_mode":"FULL_DECODE_ONLY","cudagraph_capture_sizes":[6,12,24]}'
+  - --additional-config
+  - '{"enable_prefill_mc2":true,"enable_fused_mc2":1,"enable_shared_expert_dp":true,"enable_flashcomm1":true,"enable_dsa_cp":true,"draft_window_size":4096,"ascend_compilation_config":{"fuse_qknorm_rope":false}}'
+  - --language-model-only
+  - --data-parallel-size
+  - '8'
+  - --data-parallel-size-local
+  - '8'
+  - --long-prefill-token-threshold
+  - '512'
+  - --speculative-config
+  - '{"method":"dflash","model":"/draft","num_speculative_tokens":5,"enforce_eager":false,"kv_cache_dtype":"auto"}'
+  env:
+    VLLM_USE_V2_MODEL_RUNNER: '0'
+    HCCL_OP_EXPANSION_MODE: AIV
+    HCCL_BUFFSIZE: '1024'
+    PYTORCH_NPU_ALLOC_CONF: expandable_segments:True
+    OMP_NUM_THREADS: '1'
+    HF_HUB_OFFLINE: '1'
+    TRANSFORMERS_OFFLINE: '1'
+  assets:
+  - file: assets/runtime.tar.gz
+    sha256: c4a24740774bb86dac9ef3ad0921718e0d4cf3bf875971a44a8fe0dfa20d9cb4
+    size_bytes: 179489
+    unpack_to: /opt/gpuworks/glm53-910c
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    if gpu.count != 16:\n        return reject(\"requires exactly 16 logical 910C devices on one node\")\n    if gpu.min_memory_gib < 64:\n        return reject(\"requires at least 64 GiB per logical device\")\n    return accept(gpu_memory_mib_per_device=57672, prefer=100, variables={\"GPU_COUNT\": 16, \"TP_SIZE\": 2, \"SP_DEGREE\": 1})\n"
+  components:
+  - name: primary
+    role: primary
+    weights: *id003
+    weight_bytes: 331764803315
+    mount_path: /model
+  - name: modal-dflash
+    role: speculative_draft
+    model_id: modal-labs/glm-5.3-flash-dflash
+    weights:
+      quantization: bf16
+      sources:
+      - huggingface:
+          repo_id: modal-labs/GLM-5.3-Flash-DFlash
+          revision: dae6d319510889a7f1ac5242d5b7fb2d5d95eb05
+    weight_bytes: 2778465789
+    mount_path: /draft
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+    metrics:
+      endpoint: /metrics
+      inherit: vllm
+  entrypoint:
+  - bash
+  - /opt/gpuworks/glm53-910c/serve.sh
 readme_zh_cn: README.zh-CN.md
 readme_en: README.en.md
