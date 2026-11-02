@@ -97,9 +97,27 @@ int cuCtxDestroy_v2(void *c) { return 0; }
 	if reason := HostRuntimeUnavailable(grade("STUB_INIT_RC=100")); !strings.Contains(reason, "cuInit=100") {
 		t.Fatalf("init failure: %q, want host-level", reason)
 	}
-	out, code := runPython(t, accelerator.CUDAGradedSmokeScript, "LD_LIBRARY_PATH="+t.TempDir())
-	if reason := HostRuntimeUnavailable(ContainerSmokeVerdict("ppu", out, code)); !strings.Contains(reason, "did not load") {
-		t.Fatalf("no library: %q", reason)
+}
+
+func TestCUDAGradedSmokeScriptReportsMissingLibrary(t *testing.T) {
+	script := `import ctypes
+
+original_cdll = ctypes.CDLL
+
+def load_without_cuda(name, *args, **kwargs):
+    if name == "libcuda.so.1":
+        raise OSError("test CUDA library unavailable")
+    return original_cdll(name, *args, **kwargs)
+
+ctypes.CDLL = load_without_cuda
+` + accelerator.CUDAGradedSmokeScript
+	out, code := runPython(t, script)
+	if code != 10 {
+		t.Fatalf("missing library: exit %d, want 10; output: %s", code, out)
+	}
+	want := "the runtime in the image could not be used: libcuda.so.1 did not load: test CUDA library unavailable"
+	if reason := HostRuntimeUnavailable(ContainerSmokeVerdict("ppu", out, code)); reason != want {
+		t.Fatalf("missing library: %q, want %q; output: %s", reason, want, out)
 	}
 }
 
