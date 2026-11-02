@@ -80,12 +80,20 @@ specs:
   - modelslim
   - --reasoning-parser
   - deepseek-r1
+  env:
+    HF_HUB_OFFLINE: '1'
+    TRANSFORMERS_OFFLINE: '1'
+  pre_start_script: |
+    f=/sgl-workspace/sglang/python/sglang/srt/layers/quantization/modelslim/modelslim.py
+    if ! grep -Fq 'quant_linear: Optional[nn.Module] = None,' "$f"; then
+      sed -i '/post_residual_addition: Optional\[torch.Tensor\] = None,/a\        quant_linear: Optional[nn.Module] = None,' "$f"
+    fi
   placement:
     language: starlark
-    resolver: "def resolve(gpu):\n    if gpu.count < 2: return reject(\"at least 2\
-      \ GPUs are required\")\n    if gpu.min_memory_gib < 32: return reject(\"each\
-      \ GPU requires at least 32 GiB\")\n    return {\"GPU_COUNT\": gpu.count, \"\
-      TP_SIZE\": gpu.count, \"SP_DEGREE\": 1}\n"
+    resolver: "def resolve(gpu):\n    if gpu.count != 2: return reject(\"the validated\
+      \ recipe runs two devices\")\n    if gpu.min_memory_gib < 32: return reject(\"\
+      each GPU requires at least 32 GiB\")\n    return {\"GPU_COUNT\": 2, \"TP_SIZE\"\
+      : 2, \"SP_DEGREE\": 1}\n"
   api:
     health_endpoint: /health
     operations:

@@ -83,11 +83,17 @@ specs:
   - awq
   - --dtype
   - bfloat16
+  # The AWQ checkpoint only quantizes llm.*. SGLang otherwise applies the AWQ
+  # config to the FP16 vision tower and resampler as well.
+  - --disable-cuda-graph
+  - --json-model-override-args
+  - '{"quantization_config":{"bits":4,"group_size":128,"zero_point":true,"modules_to_not_convert":["vpm","resampler"]}}'
   placement:
     language: starlark
-    resolver: "def resolve(gpu):\n    if gpu.min_memory_gib < 32: return reject(\"\
-      each GPU requires at least 32 GiB\")\n    return {\"GPU_COUNT\": gpu.count,\
-      \ \"TP_SIZE\": gpu.count, \"SP_DEGREE\": 1}\n"
+    resolver: "def resolve(gpu):\n    if gpu.count != 1: return reject(\"the validated\
+      \ recipe runs one device\")\n    if gpu.min_memory_gib < 32: return reject(\"\
+      each GPU requires at least 32 GiB\")\n    return {\"GPU_COUNT\": 1, \"TP_SIZE\"\
+      : 1, \"SP_DEGREE\": 1}\n"
   api:
     health_endpoint: /health
     operations:

@@ -3,6 +3,7 @@ package seed
 import (
 	"context"
 	"slices"
+	"strings"
 	"testing"
 
 	"gpuworks.ai/gpuworks/internal/server/placement"
@@ -77,6 +78,43 @@ func TestGemma431UsesCheckpointLocalChatTemplate(t *testing.T) {
 		_, spec := ppuSpec(t, "google/gemma-4-31b-it", specName)
 		if !containsArgumentPair(spec.Args, "--chat-template", "/model/chat_template.jinja") {
 			t.Errorf("%s does not use the checkpoint-local chat template", specName)
+		}
+	}
+}
+
+func TestMiniCPMV45SkipsAwayQuantizationForVisionTower(t *testing.T) {
+	_, original := ppuSpec(t, "openbmb/minicpm-v-4_5", "int4-sglang-ascend-8fe71b3c")
+	_, a3 := ppuSpec(t, "openbmb/minicpm-v-4_5", "int4-sglang-ascend-a3-8fe71b3c")
+	if containsArgumentPair(original.Args, "--json-model-override-args", `{"quantization_config":{"bits":4,"group_size":128,"zero_point":true,"modules_to_not_convert":["vpm","resampler"]}}`) {
+		t.Error("910B original contains the A3-only AWQ vision skip")
+	}
+	if !containsArgumentPair(a3.Args, "--json-model-override-args", `{"quantization_config":{"bits":4,"group_size":128,"zero_point":true,"modules_to_not_convert":["vpm","resampler"]}}`) ||
+		!slices.Contains(a3.Args, "--disable-cuda-graph") {
+		t.Errorf("A3 AWQ vision-skip/eager workaround is incomplete: %q", a3.Args)
+	}
+	rejected, err := placement.Resolve(context.Background(), a3.Placement.Resolver, placement.GPU{
+		Count: 2, Vendor: "ascend", MinMemoryGiB: 32,
+	})
+	if err != nil || rejected.Reason == "" {
+		t.Fatalf("multi-device MiniCPM-V-4.5 placement was not rejected: %+v %v", rejected, err)
+	}
+}
+
+func TestQwQModelSlimCompatibilityPatchStaysA3Only(t *testing.T) {
+	_, original := ppuSpec(t, "qwen/qwq-32b", "int8-sglang-ascend-48738293")
+	_, a3 := ppuSpec(t, "qwen/qwq-32b", "int8-sglang-ascend-a3-48738293")
+	if strings.TrimSpace(original.PreStartScript) != "" {
+		t.Error("910B original contains the A3-only ModelSlim compatibility patch")
+	}
+	if !strings.Contains(a3.PreStartScript, "quant_linear: Optional[nn.Module] = None") {
+		t.Error("A3 ModelSlim compatibility patch is missing")
+	}
+	for _, count := range []int{1, 4} {
+		rejected, err := placement.Resolve(context.Background(), a3.Placement.Resolver, placement.GPU{
+			Count: count, Vendor: "ascend", MinMemoryGiB: 32,
+		})
+		if err != nil || rejected.Reason == "" {
+			t.Errorf("TP%d QwQ SGLang placement was not rejected: %+v %v", count, rejected, err)
 		}
 	}
 }

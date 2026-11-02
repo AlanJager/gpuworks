@@ -41,7 +41,7 @@ Having a catalog spec means that pinned weights, an image and launch arguments e
 | Model | Current Ascend Catalog | 910C Results and Boundaries |
 |---|---|---|
 | GLM-5.3 (non-Flash) | **No Ascend spec** | Upstream has an A3 recipe, but this profile lacks real-hardware evidence, so no A3 spec is published |
-| GLM-5.3-Flash | A3 TP16/EP16, W8A8, INT8 KV, 1M | Health, `/v1/models` and real chat passed with native Docker; runveil/PRoot has not passed |
+| GLM-5.3-Flash | A3 TP16/EP16, W8A8, INT8 KV, 1M; standard plus graph-16, graph-8 and DFlash16 custom profiles | Health, `/v1/models` and real chat passed with native Docker; all three custom profiles also reached running and returned HTTP 200 for chat; runveil/PRoot has not passed |
 | DeepSeek-V4.1-Flash | A3 DP4 × TP4, W8A8, 150K | Health, model discovery and real chat passed with native Docker |
 | DeepSeek-V4.1-Flash-1017 | Independent 1017 W8A8 weights, A3 DP4 × TP4, 150K | Health, model discovery and real chat passed with native Docker; does not share the original version's weight snapshot |
 | DeepSeek-V4-Flash-0731 | A3 DP4 × TP4, W8A8 + DSpark, 1M | Health, 1M `/v1/models` and real chat passed with native Docker |
@@ -50,7 +50,8 @@ Having a catalog spec means that pinned weights, an image and launch arguments e
 | Qwen3.8-Flash-Next | Experimental A3 TP8, W8A8-MTP, 135168 context | Health, `/v1/models`, real chat and automatic placement passed with Docker |
 | Qwen3.8-27B | 910B spec; inherited W8A8 A3 spec; measured BF16 A3 spec | W8A8 TP2 text requests passed; BF16 TP2 text and real-image requests both returned HTTP 200. Both used native Docker; this verifies the API and multimodal paths, not output quality |
 | Qwen3.6-35B-A3B-W8A8 | A3 TP2 W8A8; vLLM 0.30 eager and SGLang profiles | vLLM 0.26 lacked `linear_attn` during KV-cache initialization; the runner vLLM 0.30 profile with graph capture disabled started successfully and returned the exact chat marker. The SGLang profile also passed |
-| QwQ-32B-W8A8 | Original A3 SGLang profile; new A3 TP2 vLLM 0.30 eager profile | The original SGLang path still fails on `quant_linear`; the new vLLM profile started and returned the exact `QwQ32B-VLLM-A3-910C-ok` marker |
+| QwQ-32B-W8A8 | Original A3 SGLang profile; A3 TP2 vLLM 0.30 eager profile | The original SGLang runner omitted the `quant_linear` keyword; with an idempotent template patch, TP2 startup, graph capture and real chat all passed. The vLLM profile also returned the exact `QwQ32B-VLLM-A3-910C-ok` marker |
+| Qwen3-14B-GGUF | A3 TP2 SGLang with an explicit Q4_K_M checkpoint and eager mode | Health, weight loading, KV cache and chat HTTP 200 passed; the fixed-token prompt still filled the 64 to 96 token budget with reasoning text, so this is an engine and API pass only |
 | Qwen3-1.7B | Newly measured A3 TP1 BF16 SGLang spec | Weights were downloaded on `.29` and peer-copied to `.30`; evaluation, runner startup and an exact-match chat request passed |
 | Qwen3-4B | Newly measured A3 TP1 BF16 SGLang spec | Evaluation, runner startup and an exact-match chat request passed; the catalog previously had only NVIDIA, PPU and Hygon profiles |
 | PaddleOCR-VL-1.6 | Measured A3 TP1 BF16 vLLM spec | An OCR request against a real 640×220 text image returned both lines verbatim; the template started and served with runner `cann9.1-a3-vllm0.26.0rc1-r2` |
@@ -61,6 +62,8 @@ Having a catalog spec means that pinned weights, an image and launch arguments e
 | Janus-Pro-7B | A3 TP1 BF16 SGLang | Exact-match text chat passed. Both an API 1×1 placeholder and a real 640×220 PNG in Chrome produced 576 image tokens and returned HTTP 200, but the model did not describe either image meaningfully. This confirms the multimodal transport path, not visual quality |
 | Phi-4-multimodal-instruct | A3 TP1 BF16 SGLang | After declaring the image modality, a real 448×448 image request returned HTTP 200 and `White` |
 | MiniCPM3-4B | A3 TP1 BF16 SGLang, eager | The original graph path killed its child with SIGQUIT; with `--disable-cuda-graph`, evaluation, runner startup and text chat passed |
+| MiniCPM-V-4.5-AWQ | A3 TP1 INT4 SGLang, eager | With AWQ explicitly skipping the unquantized `vpm` and `resampler`, weight loading, KV cache, health, exact-match text chat and a real 448×448 image request all passed |
+| Trinity-Mini | A3 TP2 BF16 SGLang with a pinned ModelScope revision | The Hugging Face file listing timed out; after switching to the complete ModelScope snapshot, evaluation, deployment, running state and chat passed, with the model returning `TrinityMini-910C-ok` |
 | Qwen3-Omni-30B-A3B-Instruct | A3 TP4 BF16 SGLang, eager | The original graph path stayed in health check; with `--disable-cuda-graph`, the runner started and text chat returned `Qwen3Omni30B-910C-ok` |
 | Qwen3-30B-A3B-Instruct-2507 | A3 TP4 BF16 SGLang, eager | The original graph path did not become healthy in the observation window; with `--disable-cuda-graph`, startup and exact-match chat passed |
 | Qwen3-TTS-12Hz-1.7B-CustomVoice | A3 TP1 BF16 vLLM-Omni r3 | With an explicit deploy config, it generated a non-silent 24 kHz WAV; Qwen3-ASR loopback returned `GPUWorks 910c Speech Validation.` |

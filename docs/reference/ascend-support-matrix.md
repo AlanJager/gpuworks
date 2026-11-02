@@ -50,7 +50,7 @@
 | 模型 | 当前 Ascend 目录 | 910C 实测结论与边界 |
 |---|---|---|
 | GLM-5.3（非 Flash） | **无 Ascend 档** | 上游虽有 A3 配方，但尚缺本档真机依据，因此未发布 A3 spec |
-| GLM-5.3-Flash | A3 TP16/EP16、W8A8、INT8 KV、1M | 原生 Docker 的 health、`/v1/models` 和真实 chat 已通过；runveil/PRoot 未通过 |
+| GLM-5.3-Flash | A3 TP16/EP16、W8A8、INT8 KV、1M；标准档及 graph-16、graph-8、DFlash16 自定义档 | 原生 Docker 的 health、`/v1/models` 和真实 chat 已通过；三个自定义档也分别进入 running 并返回 chat HTTP 200；runveil/PRoot 未通过 |
 | DeepSeek-V4.1-Flash | A3 DP4 × TP4、W8A8、150K | 原生 Docker 的 health、模型发现和真实 chat 已通过 |
 | DeepSeek-V4.1-Flash-1017 | 独立 1017 W8A8 权重，A3 DP4 × TP4、150K | 原生 Docker 的 health、模型发现和真实 chat 已通过；不与原版共用权重快照 |
 | DeepSeek-V4-Flash-0731 | A3 DP4 × TP4、W8A8 + DSpark、1M | 原生 Docker 的 health、1M `/v1/models` 和真实 chat 已通过 |
@@ -59,7 +59,8 @@
 | Qwen3.8-Flash-Next | 实验性 A3 TP8、W8A8-MTP、135168 上下文 | Docker 的 health、`/v1/models`、真实 chat 和自动选卡已通过 |
 | Qwen3.8-27B | 910B 档；继承的 W8A8 A3 档；实测 BF16 A3 档 | W8A8 TP2 的文本请求已通过；BF16 TP2 的文本和真实图像请求均返回 HTTP 200。两者都使用原生 Docker；这只是接口与多模态路径验证，不是输出质量评测 |
 | Qwen3.6-35B-A3B-W8A8 | A3 TP2 W8A8；vLLM 0.30 eager 与 SGLang 档 | vLLM 0.26 在 KV cache 初始化时缺少 `linear_attn`；改用 runner vLLM 0.30 并关闭 graph 后，runner 启动和精确复述 chat 均通过。SGLang 档也已通过 |
-| QwQ-32B-W8A8 | 原 A3 SGLang 档；新增 A3 TP2 vLLM 0.30 eager 档 | 原 SGLang 路径仍因 `quant_linear` 不兼容失败；新增 vLLM 档启动并精确返回 `QwQ32B-VLLM-A3-910C-ok` |
+| QwQ-32B-W8A8 | 原 A3 SGLang 档；A3 TP2 vLLM 0.30 eager 档 | 原 SGLang runner 缺少 `quant_linear` 关键字；通过模板内幂等兼容补丁后 TP2 启动、graph capture、真实 chat 均通过。新增 vLLM 档也精确返回 `QwQ32B-VLLM-A3-910C-ok` |
+| Qwen3-14B-GGUF | A3 TP2 SGLang，显式 Q4_K_M，eager | health、权重加载、KV cache 和 chat HTTP 200 均通过；固定复述提示仍在 64 至 96 token 预算内被推理文本占满，因此只记为引擎和接口通过 |
 | Qwen3-1.7B | 新增实测 A3 TP1 BF16 SGLang 档 | 权重先下载到 `.29` 再 peer-copy 到 `.30`；evaluate、runner 启动和精确复述 chat 均通过 |
 | Qwen3-4B | 新增实测 A3 TP1 BF16 SGLang 档 | evaluate、runner 启动和精确复述 chat 均通过；原目录只有 NVIDIA、PPU 和 Hygon 配方 |
 | PaddleOCR-VL-1.6 | 实测 A3 TP1 BF16 vLLM 档 | 640×220 的真实文字图经 OCR 请求返回了图中两行原文；模板在 runner `cann9.1-a3-vllm0.26.0rc1-r2` 上启动和请求均通过 |
@@ -70,6 +71,8 @@
 | Janus-Pro-7B | A3 TP1 BF16 SGLang | 文本 chat 精确复述通过；API 的 1×1 占位图和后续 Chrome 中真实的 640×220 PNG 都生成了 576 个 image tokens 并返回 HTTP 200，但模型没有给出有效视觉描述，因此只确认多模态链路，不作为视觉质量通过 |
 | Phi-4-multimodal-instruct | A3 TP1 BF16 SGLang | 模型声明补充 image modality 后，真实 448×448 图像 chat 返回 HTTP 200 与 `White` |
 | MiniCPM3-4B | A3 TP1 BF16 SGLang，eager | 原 graph 路径在子进程 SIGQUIT；`--disable-cuda-graph` 后 evaluate、runner 启动和文本 chat 均通过 |
+| MiniCPM-V-4.5-AWQ | A3 TP1 INT4 SGLang，eager | AWQ 配置显式跳过未量化的 `vpm` 和 `resampler` 后，权重、KV cache、health、精确文本复述和真实 448×448 图像请求均通过 |
+| Trinity-Mini | A3 TP2 BF16 SGLang，ModelScope 固定 revision | Hugging Face 文件列表超时；改走 ModelScope 完整快照后 evaluate、部署、running 和 chat 均通过，模型返回 `TrinityMini-910C-ok` |
 | Qwen3-Omni-30B-A3B-Instruct | A3 TP4 BF16 SGLang，eager | 原 graph 路径停在 health check；`--disable-cuda-graph` 后 runner 启动和文本 chat 返回 `Qwen3Omni30B-910C-ok` |
 | Qwen3-30B-A3B-Instruct-2507 | A3 TP4 BF16 SGLang，eager | 原 graph 路径未在观察窗口内 healthy；`--disable-cuda-graph` 后启动和精确复述 chat 均通过 |
 | Qwen3-TTS-12Hz-1.7B-CustomVoice | A3 TP1 BF16 vLLM-Omni r3 | 显式 deploy config 后生成 24 kHz 非静音 WAV；Qwen3-ASR 回环识别为 `GPUWorks 910c Speech Validation.` |
