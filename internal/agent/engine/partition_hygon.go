@@ -164,6 +164,11 @@ func (h hygonPartitionInjector) apply(e *Engine, ctx context.Context, ws *agentr
 		return false, err.Error()
 	}
 	instanceDir := hygonInstanceDir(e, spec.UUID)
+	if e.driver.Name() == "udocker" {
+		if err := prepareHygonUdockerParents(e.stateDir); err != nil {
+			return false, "prepare Hygon udocker state: " + err.Error()
+		}
+	}
 	if err := checkHygonCreatePending(instanceDir); err != nil {
 		return false, err.Error()
 	}
