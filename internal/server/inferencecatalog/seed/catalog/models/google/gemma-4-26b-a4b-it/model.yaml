@@ -2151,9 +2151,10 @@ specs:
   - --reasoning-parser
   - gemma4
   - --chat-template
-  - examples/tool_chat_template_gemma4.jinja
+  - /model/chat_template.jinja
   - --compilation-config
   - '{"cudagraph_mode":"FULL_DECODE_ONLY"}'
+  - --enforce-eager
   placement:
     language: starlark
     resolver: "def resolve(gpu):\n    if gpu.count != 4: return reject(\"the published recipe runs four devices\")\n    if gpu.min_memory_gib < 32: return reject(\"each device requires at least 32 GiB\")\n    return {\"GPU_COUNT\": 4, \"TP_SIZE\": 4, \"SP_DEGREE\": 1}\n"
