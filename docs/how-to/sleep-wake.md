@@ -161,6 +161,7 @@ curl --fail-with-body -sS -X DELETE \
 ## 限制
 
 - 只支持 vLLM；SGLang 不能休眠（创建时就会拒绝声明可休眠）。
+- 除 NVIDIA 外，昇腾 910C、PPU ZW810E、海光 K100 已真机验证；Apple 节点不支持引擎休眠。各组合所测的镜像版本与额外限制见[厂商边界](../explanation/choosing-features.md#sleepwake多个模型轮流用一张卡)。
 - PD 部署的 KV 走主机 RDMA 网络时不能声明可休眠（`PD_SLEEP_RDMA_UNSUPPORTED`）：NIXL 把 KV cache 显存注册给 RDMA 网卡，
   引擎休眠释放这块显存后唤醒时申请不回来（实测报 CUDA out of memory）。KV 走以太网的 PD 部署、经 RDMA 走集合通信的普通多机部署都可以休眠。
 - 自定义镜像不做探测：以引擎能力声明为准，镜像缺 sleep 端点时休眠会在实例事件里报错。
