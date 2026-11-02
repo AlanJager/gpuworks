@@ -174,13 +174,13 @@ test("the node networks card lists the ports its accelerator cards own", async (
   stub("nodeNetworks", async () => ({
     ...base,
     accelerator_ports: [
-      { name: "npu3", index: 3, ip: "172.20.9.59", netmask: "255.255.0.0", state: "UP", speed_gbps: 200 },
+      { name: "npu3", index: 3, ip: "203.0.113.59", netmask: "255.255.0.0", state: "UP", speed_gbps: 200 },
       { name: "npu6", index: 6, ip: "", netmask: "", state: "DOWN", speed_gbps: 0 },
     ],
   }));
   const { unmount } = wrap(<NodeNetworksCard nodeUUID="uuid-npu" />);
   const up = (await screen.findByText("npu3")).closest("tr") as HTMLElement;
-  assert.ok(within(up).getByText("172.20.9.59 / 255.255.0.0"));
+  assert.ok(within(up).getByText("203.0.113.59 / 255.255.0.0"));
   assert.ok(within(up).getByText("UP"));
   assert.ok(within(up).getByText("200G"));
   const down = screen.getByText("npu6").closest("tr") as HTMLElement;

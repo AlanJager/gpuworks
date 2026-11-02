@@ -134,7 +134,7 @@ export default function ServerListenCard() {
             extra={t("listen.consoleHelp")}
             rules={[{ required: true, whitespace: true, message: t("listen.consoleRequired") }]}
           >
-            <Input placeholder="172.25.17.156:8800" />
+            <Input placeholder="192.0.2.156:8800" />
           </Form.Item>
           <Collapse
             ghost

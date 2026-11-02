@@ -288,10 +288,10 @@ test("an accelerator network carries compute traffic only and asks for a bootstr
   assert.equal(within(dialog).queryByLabelText(n.form.interface), null);
   await user.click(within(dialog).getByText(n.form.advanced));
   assert.ok(within(dialog).getByText(n.form.acceleratorBootstrapCidrHint));
-  await user.type(within(dialog).getByLabelText(n.form.bootstrapCidr), "172.30.0.0/16");
+  await user.type(within(dialog).getByLabelText(n.form.bootstrapCidr), "198.51.100.0/24");
   await user.click(within(dialog).getByRole("button", { name: n.actions.save }));
   await waitFor(() => assert.equal(bodies.length, 1));
-  assert.deepEqual(bodies[0], { name: "npu", description: "", roles: ["compute"], type: "accelerator_rdma", cidr: "172.30.0.0/16", interface: "" });
+  assert.deepEqual(bodies[0], { name: "npu", description: "", roles: ["compute"], type: "accelerator_rdma", cidr: "198.51.100.0/24", interface: "" });
 });
 
 test("an accelerator network's rails are picked from the node's cards", async () => {
@@ -300,7 +300,7 @@ test("an accelerator network's rails are picked from the node's cards", async ()
     ...detailFixture, type: "accelerator_rdma",
     nodes: detailFixture.nodes.map((node: { node_name: string }, i: number) => ({
       ...node, link_layer: "roce",
-      hcas: [{ name: "npu3", ip: i === 0 ? "172.20.9.59" : "172.20.9.82", netdev: "", link_layer: "roce", state: "UP", speed_gbps: 200 }],
+      hcas: [{ name: "npu3", ip: i === 0 ? "203.0.113.59" : "203.0.113.82", netdev: "", link_layer: "roce", state: "UP", speed_gbps: 200 }],
     })),
   };
   stub("network", async () => npu);
@@ -308,9 +308,9 @@ test("an accelerator network's rails are picked from the node's cards", async ()
     networks: [], inventory_reported: true, interfaces: [], serving_forward: null, management: { interface: "", ip: "", roles_off: [], behind_nat: false },
     rdma_ports: [{ device: "mlx5_0", port: 1, state: "ACTIVE", link_layer: "InfiniBand", rate_gbps: 400, netdev: "", ip: "" }],
     accelerator_ports: [
-      { name: "npu3", index: 3, ip: "172.20.9.59", netmask: "255.255.0.0", state: "UP", speed_gbps: 200 },
-      { name: "npu4", index: 4, ip: "172.20.9.60", netmask: "255.255.0.0", state: "UP", speed_gbps: 200 },
-      { name: "npu6", index: 6, ip: "172.20.9.62", netmask: "255.255.0.0", state: "DOWN", speed_gbps: 0, gap: "inactive" },
+      { name: "npu3", index: 3, ip: "203.0.113.59", netmask: "255.255.0.0", state: "UP", speed_gbps: 200 },
+      { name: "npu4", index: 4, ip: "203.0.113.60", netmask: "255.255.0.0", state: "UP", speed_gbps: 200 },
+      { name: "npu6", index: 6, ip: "203.0.113.62", netmask: "255.255.0.0", state: "DOWN", speed_gbps: 0, gap: "inactive" },
       { name: "npu7", index: 7, ip: "", netmask: "", state: "UP", speed_gbps: 200, gap: "no_ipv4" },
     ],
   }));
@@ -321,16 +321,16 @@ test("an accelerator network's rails are picked from the node's cards", async ()
   assert.ok(screen.getByText(n.detail.acceleratorInferred));
   assert.ok(screen.getAllByText(n.type.accelerator_rdma).length > 0);
   await expandNodeRows();
-  const row = screen.getByText("172.20.9.59").closest("tr") as HTMLElement;
+  const row = screen.getByText("203.0.113.59").closest("tr") as HTMLElement;
   await user.click(within(row).getByRole("button", { name: new RegExp(n.rail.add) }));
   // Cards are offered, not the host's RDMA ports; the one in use is left out
   // and a card that cannot work says why.
-  assert.ok(await screen.findByText("npu4 · 172.20.9.60"));
-  assert.ok(screen.getByText(`npu6 · 172.20.9.62 · ${n.rail.gap.inactive}`));
+  assert.ok(await screen.findByText("npu4 · 203.0.113.60"));
+  assert.ok(screen.getByText(`npu6 · 203.0.113.62 · ${n.rail.gap.inactive}`));
   assert.ok(screen.getByText(`npu7 · — · ${n.rail.gap.no_ipv4}`));
   assert.equal(screen.queryByText(/^npu3 ·/), null);
   assert.equal(screen.queryByText(/^mlx5_0:1/), null);
-  await user.click(screen.getByText("npu4 · 172.20.9.60"));
+  await user.click(screen.getByText("npu4 · 203.0.113.60"));
   await waitFor(() => assert.equal(calls.length, 1));
   assert.deepEqual((calls[0] as [number, { op: string; hca: string }])[1].hca, "npu4");
 });

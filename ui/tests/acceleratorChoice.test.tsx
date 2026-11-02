@@ -16,7 +16,7 @@ afterEach(() => {
   api.updateNodeAccelerator = realUpdate;
 });
 
-// The host 172.25.115.0: an Atlas 310P3 the node manages, and an RTX 4090.
+// The host 192.0.2.115: an Atlas 310P3 the node manages, and an RTX 4090.
 const mixed = {
   uuid: "mixed-node",
   gpu_vendor: "ascend",
