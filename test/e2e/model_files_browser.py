@@ -588,8 +588,19 @@ def exercise_interrupted_recovery(page, context, server, artifacts, report, loca
     # behaviour the product does not offer. The moving numbers are asserted against
     # the API below, which is where this product actually reports them.
     held_bar = dialog.locator('#model-files tr.ant-table-row').get_by_role('progressbar')
-    report['held_bar'] = {'count': held_bar.count(),
-                          'aria_valuenow': int(held_bar.get_attribute('aria-valuenow')) if held_bar.count() == 1 else None}
+    held_value = int(held_bar.get_attribute('aria-valuenow')) if held_bar.count() == 1 else None
+    api_percent = 100.0 * moving['downloaded'] / moving['size_bytes']
+    report['held_bar'] = {'count': held_bar.count(), 'aria_valuenow': held_value,
+                          'api_percent': round(api_percent, 3)}
+    # 16.3: the progress the operator sees has to be the transfer's actual progress, not a placeholder.
+    # The record is held mid-file with 65536 bytes of a larger payload in, and the bar the detail panel
+    # rendered for that record is required to agree with the numbers the API reports for the same
+    # instant - the panel truncates, so the bar must be the truncation of the API percentage and
+    # strictly below 100. A bar pinned to 100 everywhere passes the completion assertion and fails here.
+    checked(held_value is not None, 'the in-flight record rendered no progress bar')
+    checked(held_value == int(api_percent),
+            f'the in-flight bar disagrees with the reported progress: {held_value} vs {api_percent}')
+    checked(0 < held_value < 100, f'the in-flight bar claims a finished transfer: {held_value}')
     hub.release()
     assert_ready(page, server, token, labels, data, target, report)
     source = wire_proof(data, start)

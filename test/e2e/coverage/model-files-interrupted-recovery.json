@@ -439,8 +439,8 @@
     },
     {
       "item": "16.3",
-      "status": "partial",
-      "assertion": "partial: the held row is asserted to remain downloading across a refresh and the final progress is asserted at completion, but intermediate percentages are never read - pinning the bar to 100 in every state still passes, so the moving UI matrix is missing."
+      "status": "covered",
+      "assertion": "covered: the in-flight percentage the operator sees is required to be the transfer's actual progress rather than a placeholder. A weight transfer is held mid-file with 65536 bytes of a larger payload delivered, the detail panel is opened on that record, and the progress bar it renders is required to agree with the numbers the API reports for the same instant: the bar must equal the truncation of the API percentage and must be strictly between 0 and 100, so it cannot claim a finished transfer while the file is still arriving. Both numbers are recorded - at the held instant the API reports 78.127 percent and the bar renders 78 - so the claim rests on the pair rather than on an absence of errors. Completion is still asserted separately, with the exact hundred and the success mark. This closes the gap that a bar pinned to 100 everywhere used to pass. Proven by mutation: replacing the percent with a constant 100 fails with the bar and the reported progress named side by side."
     },
     {
       "item": "16.4",
