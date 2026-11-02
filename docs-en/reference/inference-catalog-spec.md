@@ -133,9 +133,10 @@ At deployment time (ADR 0020), this list is split using the parameter dictionary
 - Unrecognized tokens retain their original order and enter the engine command line verbatim as the template's remaining arguments.
 
 A flag shared by multiple keys (vLLM's `--speculative-config` and `--kv-transfer-config`) also
-stays in the template's remaining arguments; it is not guessed to belong to a particular field. Conversely, if a flag owned by only one key has a value the dictionary cannot decode
-(a type mismatch, a value outside the enumeration, or invalid JSON), the spec is rejected at import. The error identifies the model,
-spec, flag, and reason, rather than continuing to pass it through as an unknown argument.
+stays in the template's remaining arguments; it is not guessed to belong to a particular field. A flag owned by only one key that has a value the dictionary cannot decode
+(a type mismatch, a value outside the enumeration, or invalid JSON) does not block the import either: the flag and its value stay in the remaining arguments and reach the engine verbatim,
+and the import raises a `CATALOG_ARG_PASSED_THROUGH` warning naming the model, spec, flag and value. When the dictionary lags behind the engines
+(a new parser, a new KV precision), the template still works; only the deploy form and the memory estimate do not see the value. Such a warning on the built-in catalog means the dictionary needs refreshing.
 
 Case differences and aliases do not count as decoding failures: `--dtype half`
 and `--speculative-algorithm eagle3` are both accepted and normalized to the dictionary's spelling (`float16` and `EAGLE3`) before storage.
@@ -519,6 +520,7 @@ Warnings do not block import. A successful import response includes the same `wa
 |---|---|---|
 | `CATALOG_CALLABLE_METRICS_UNDECLARED` | `engine: callable` without `api.metrics` | Monitoring has no engine metrics for this spec unless the engine's `/metrics` happens to use vLLM / SGLang metric names (see [Declare Engine Metrics for an Inference Template](../how-to/declare-engine-metrics.md)) |
 | `CATALOG_HEALTH_ENDPOINT_UNDECLARED` | `engine: callable` without `api.health_endpoint` | Readiness probes use the default `/health`; no warning is shown for `vllm` / `sglang`, whose engines provide `/health` natively |
+| `CATALOG_ARG_PASSED_THROUGH` | A dictionary parameter in `args` carries a value the dictionary cannot read (`params.flag` / `value` / `key`) | Passed to the engine verbatim; the deploy form and the memory estimate do not see the value |
 | `CATALOG_DISPLAY_PROFILE_RETIRED` | The spec still sets `display_profile` or `gpus.display_target` | Both are ignored; the UI shows `display_name_zh_cn` / `display_name_en` (or `name` when there is neither) |
 | `CATALOG_CALLABLE_SERVED_NAME_FIXED` | In an `engine: callable` spec, the `--served-model-name` value in `args` / `entrypoint` does not use `${SERVED_MODEL_NAME}` (`params.name` is the literal) | An engine that checks the model accepts only that literal, so requests and health checks return 404 whenever the deployment's served name differs; ignore it if the adapter ignores the model or the name is pinned on purpose |
 

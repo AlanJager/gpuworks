@@ -23,7 +23,7 @@
 | [0017](0017-embedded-catalog-image-tag-only.md) | 内置目录镜像引用改为纯 tag，不再要求 digest 不可变引用 | 2026-09-07 | 已接受 |
 | [0018](0018-explicit-deployment-acquisition.md) | 部署来源显式化，服务端只校验不替换用户选择 | 2026-09-07 | 已接受；部署显式获取方式由 0048 取代 |
 | [0019](0019-image-catalog-runtime-compatibility.md) | 镜像目录只维护运行时事实，兼容性采用排序告警 | 2026-09-14 | 已接受 |
-| [0020](0020-launch-config-single-source.md) | 启动配置单一事实源：一套字典化参数，命令模式是唯一特殊通道 | 2026-09-15 | 已接受 |
+| [0020](0020-launch-config-single-source.md) | 启动配置单一事实源：一套字典化参数，命令模式是唯一特殊通道 | 2026-09-15 | 已接受；2026-11-02 修订：字典解不出的模板参数透传并告警，不再拒绝导入 |
 | [0021](0021-platform-params-copyable-command.md) | 平台参数与引擎参数分离，展示的命令必须复制即用 | 2026-09-16 | 已接受 |
 | [0022](0022-template-owned-deployment-launch.md) | 部署启动配置归模板与显式选择，镜像不再提供可编辑默认层 | 2026-09-19 | 已接受；存量兼容与 `launch_contract` 标记被 0031 取代 |
 | [0023](0023-inference-routing.md) | 多副本推理网关默认负载均衡，连接级失败重试 | 2026-09-23 | 已接受 |

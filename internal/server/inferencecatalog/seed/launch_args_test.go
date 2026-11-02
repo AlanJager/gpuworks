@@ -2,7 +2,6 @@ package seed
 
 import (
 	"slices"
-	"strings"
 	"testing"
 
 	"gpuworks.ai/gpuworks/internal/engines"
@@ -11,11 +10,10 @@ import (
 )
 
 // TestEveryEmbeddedSpecArgvDecodesAgainstTheDictionary sweeps the whole
-// built-in catalog through the same lint the importer runs. Catalog() already
-// refuses a package that fails it, so a regression would surface as a load
-// error; sweeping here names every offending model, spec and flag instead of
-// stopping at the first, which is what a catalog author needs in order to fix
-// them.
+// built-in catalog through the lint behind CATALOG_ARG_PASSED_THROUGH. An
+// import only warns, but a built-in spec the dictionary cannot read means the
+// dictionary has fallen behind the engines the platform ships: refresh it
+// (internal/server/deploy/param_specs.go) rather than change the recipe.
 func TestEveryEmbeddedSpecArgvDecodesAgainstTheDictionary(t *testing.T) {
 	catalog, err := Catalog()
 	if err != nil {
@@ -41,23 +39,28 @@ func TestEveryEmbeddedSpecArgvDecodesAgainstTheDictionary(t *testing.T) {
 	}
 }
 
-// TestEmbeddedCatalogRejectsAnUndecodableSpecArgv proves the sweep above is not
-// green because the lint is inert: the same catalog, with one spec's
-// --max-model-len corrupted, fails validation.
-func TestEmbeddedCatalogRejectsAnUndecodableSpecArgv(t *testing.T) {
+// TestEmbeddedCatalogWarnsAboutAnUndecodableSpecArgv proves the sweep above
+// is not green because the lint is inert: the same catalog, with one spec's
+// --max-model-len corrupted, still validates (a template is never blocked by
+// the dictionary) but reports the flag as passed through.
+func TestEmbeddedCatalogWarnsAboutAnUndecodableSpecArgv(t *testing.T) {
 	catalog, err := Catalog()
 	if err != nil {
 		t.Fatal(err)
 	}
 	modelID, specName := corruptFirstVLLMSpec(t, &catalog)
-	err = inferencecatalog.ValidateFlatCatalog(&catalog)
-	if err == nil {
-		t.Fatal("catalog with --max-model-len abc validated")
+	if err := inferencecatalog.ValidateFlatCatalog(&catalog); err != nil {
+		t.Fatalf("catalog with --max-model-len abc was refused: %v", err)
 	}
-	for _, want := range []string{modelID, specName, "--max-model-len", `"abc"`, "is not an integer"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Fatalf("error %q does not mention %q", err, want)
+	found := false
+	for _, warning := range inferencecatalog.CatalogWarnings(catalog) {
+		params := warning.Params()
+		if warning.Code() == "CATALOG_ARG_PASSED_THROUGH" && params["model_id"] == modelID && params["spec"] == specName && params["flag"] == "--max-model-len" {
+			found = true
 		}
+	}
+	if !found {
+		t.Fatalf("no CATALOG_ARG_PASSED_THROUGH warning for %s/%s", modelID, specName)
 	}
 }
 

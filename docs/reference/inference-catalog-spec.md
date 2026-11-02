@@ -133,9 +133,11 @@ models:                       # FlatCatalog：顶层只有一个 models 列表
 - 字典不认识的 token 按原顺序保留，作为模板剩余参数逐字进入引擎命令行。
 
 一个 flag 被多个 key 共用（vLLM 的 `--speculative-config`、`--kv-transfer-config`）时同样
-留在模板剩余参数里，不会被猜成某个字段。反过来，只有一个 key 拥有的 flag 若带着字典解不出来的值
-（类型不符、枚举里没有的取值、非法 JSON），这个 spec 在导入时就被拒绝，错误点名 model、
-spec、flag 与原因，不会把它当作未知参数继续透传。
+留在模板剩余参数里，不会被猜成某个字段。只有一个 key 拥有的 flag 若带着字典解不出来的值
+（类型不符、枚举里没有的取值、非法 JSON），也不阻止导入：flag 和值原样留在剩余参数里交给引擎，
+导入给出 `CATALOG_ARG_PASSED_THROUGH` 警告，点名 model、spec、flag 与值。字典落后于引擎时
+（新的 parser、KV 精度等），模板照样能用，只是部署表单和显存估算看不到这个值；内置目录出现这种
+警告说明字典该更新了。
 
 大小写与别名不算解不出来：`--dtype half`
 与 `--speculative-algorithm eagle3` 都接受，入库时归一成字典的写法（`float16`、`EAGLE3`）。
@@ -519,6 +521,7 @@ pre_start / env）引用，否则校验失败——挂了不用或拼错路径�
 |---|---|---|
 | `CATALOG_CALLABLE_METRICS_UNDECLARED` | `engine: callable` 且没有 `api.metrics` | 监控中心没有该档位的引擎指标，除非引擎的 `/metrics` 恰好用 vLLM / SGLang 的指标名（见[为推理模板声明引擎指标](../how-to/declare-engine-metrics.md)） |
 | `CATALOG_HEALTH_ENDPOINT_UNDECLARED` | `engine: callable` 且没有 `api.health_endpoint` | 就绪探测用默认的 `/health`；`vllm` / `sglang` 的 `/health` 是引擎自带的，不提示 |
+| `CATALOG_ARG_PASSED_THROUGH` | `args` 里某个字典参数的值字典读不出来（`params.flag` / `value` / `key`） | 原样传给引擎；部署表单和显存估算看不到这个值 |
 | `CATALOG_DISPLAY_PROFILE_RETIRED` | spec 还写着 `display_profile` 或 `gpus.display_target` | 这两个字段已被忽略，界面显示的是 `display_name_zh_cn` / `display_name_en`（都没有时显示 `name`） |
 | `CATALOG_CALLABLE_SERVED_NAME_FIXED` | `engine: callable` 的 `args` / `entrypoint` 里 `--served-model-name` 的值没有用 `${SERVED_MODEL_NAME}`（`params.name` 是写死的值） | 会校验模型名的引擎只认这个写死的名字，部署的服务名与它不同时请求和健康检查都会 404；adapter 不看模型名或作者有意固定时可以忽略 |
 

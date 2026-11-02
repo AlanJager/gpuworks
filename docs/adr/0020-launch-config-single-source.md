@@ -26,3 +26,7 @@ ADR 0007 决策 3 已经规定"导入时能映射参数字典的拆成 key-value
 - 正面：估算器与引擎读同一份值，不再靠手工同步；升级不会改变存量部署的启动参数；新增一个普通参数只改字典一行；删除的重复包括五处 0.9、SGLang 手写映射（19 项，字典同列另有 2 项手写表遗漏，正是漂移的实例）、62 行三层合并、131 行模板偏差比对、前端 46 个 key 与 16 条规则副本、`templatePrefillValues` 的 args 解析、`diskKVTransferConfig` 的 16 线程默认。
 - 负面与约束：extra_args 对 API 直接调用方的语义变化（非冲突自动搬入并回显，冲突返回 400）；经界面新建的 SGLang 部署从"引擎自算 mem-fraction"变为显式 0.88，需真机验证，存量部署不受影响；界面上的布尔开关总是显式提交，新建部署的 argv 因此含 `--enable-prefix-caching`、`--enable-prompt-tokens-details` 等 flag，而 API 调用方省略的 key 保持引擎默认；目录作者需要知道 args 里的字典内 flag 会被拆进字段。
 - 被否方案：运行时 resolver（每次构造估算输入时读四个来源合并，把双表示固化成制度）；argv 作为真源、估算器反解（调度器先定 TP、argv 依赖 TP、估算又要读 argv，成环）。
+
+## 修订（2026-11-02）
+
+决策 7 的「解码不了即拒绝导入」改为不阻止导入：只有一个 key 拥有的 flag 若带着字典解不出来的值，flag 和值原样留在残余 args 里交给引擎，导入给出 `CATALOG_ARG_PASSED_THROUGH` 警告。原因是字典总落后于引擎（新的 tool call / reasoning parser、KV 精度不断加入），拒绝导入等于让平台的词表决定模板能不能用，作者被迫绕道（例如为了用 Ascend 的 int8 KV cache 把整个档位改成 callable 引擎）。代价是这样的值不进入类型化配置，部署表单和显存估算看不到它；内置目录出现该警告时更新字典。
