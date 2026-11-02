@@ -33,8 +33,6 @@ specs:
   - --enable-auto-tool-choice
   - --tool-call-parser
   - seed_oss
-  - --max-model-len
-  - '131072'
   api:
     health_endpoint: /health
     operations:

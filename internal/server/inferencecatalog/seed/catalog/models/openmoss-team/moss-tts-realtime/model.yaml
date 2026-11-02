@@ -25,38 +25,8 @@ specs:
     vendor: nvidia
     cc: '>=8.0'
     display_target: nvidia
-  components:
-  - name: moss-tts-realtime
-    role: primary
-    weights:
-      quantization: bf16
-      sources:
-      - huggingface:
-          repo_id: OpenMOSS-Team/MOSS-TTS-Realtime
-          revision: 75682787d8e2fcc73faca37ba2931453ca9c4022
-      - modelscope:
-          repo_id: openmoss/MOSS-TTS-Realtime
-          revision: 5928e072811e9fcbe605ac2e74c4b28f2f465bf9
-    weight_bytes: 4679903798
-    mount_path: /models/MOSS-TTS-Realtime
-  - name: moss-audio-tokenizer
-    role: auxiliary
-    weights:
-      quantization: fp32
-      sources:
-      - huggingface:
-          repo_id: OpenMOSS-Team/MOSS-Audio-Tokenizer
-          revision: 3cd226ba2947efa357ef453bcad111b6eafba782
-      - modelscope:
-          repo_id: openmoss/MOSS-Audio-Tokenizer
-          revision: 1b3b842480c8fc415f373642fe78d896edc8a76d
-    weight_bytes: 7101115998
-    mount_path: /models/moss-audio-tokenizer
   args:
   - --omni
-  - --trust-remote-code
-  - --hf-overrides
-  - '{"codec_model_name_or_path":"/models/moss-audio-tokenizer"}'
   api:
     health_endpoint: /health
     operations:

@@ -93,6 +93,7 @@ const catalog: PlaygroundCatalog = {
     model("vector-model", [operation("openai.embeddings", "/v1/embeddings", "vector", "json"), operation("openai.rerank", "/v1/rerank", "rerank", "json")]),
     model("audio-model", [operation("openai.audio.transcribe", "/v1/audio/transcriptions", "audio", "json"), operation("openai.audio.speech", "/v1/audio/speech", "audio", "audio")]),
     model("image-model", [operation("openai.image.generate", "/v1/images/generations", "image", "image")]),
+    model("image-dual-model", [operation("openai.image.generate", "/v1/images/generations", "image", "image"), { ...operation("openai.image.edit", "/v1/images/edits", "image", "image"), request_encoding: "multipart", request_encodings: ["multipart"] }]),
     model("image-edit-model", [{ ...operation("openai.image.edit", "/v1/images/edits", "image", "image"), request_encoding: "multipart", request_encodings: ["multipart"] }]),
     model("video-model", [{ ...operation("openai.video.generate", "/v1/videos", "video", "video", "async"), async: asyncVideo }]),
     model("realtime-model", [{ ...operation("openai.realtime", "/v1/realtime", "realtime", "websocket", "realtime"), request_encodings: ["websocket"] }]),
@@ -241,6 +242,31 @@ test("Image editing uploads the source image through the declared multipart rout
   assert.equal(request!.body.get("prompt"), "A sunrise over mountains");
   assert.ok(request!.body.get("image") instanceof dom.window.Blob);
   await waitFor(() => assert.ok(page.container.querySelector('img[src^="data:image/png;base64"]')));
+});
+
+test("A model declaring both image operations switches from generation to editing", async () => {
+  const urls: string[] = [];
+  globalThis.fetch = (async (input) => {
+    urls.push(String(input));
+    return jsonResponse({ data: [{ b64_json: "iVBORw0KGgo=" }] });
+  }) as typeof fetch;
+
+  const page = renderAt(<ImagePage catalog={catalog} />, "/playground/image?model=image-dual-model");
+  const user = userEvent.setup();
+  assert.equal(screen.queryByLabelText("Input image"), null);
+  await user.click(screen.getByRole("button", { name: "Generate Image" }));
+  await waitFor(() => assert.deepEqual(urls, ["/api/v1/playground/v1/images/generations"]));
+  await waitFor(() => assert.ok(page.container.querySelector('img[src^="data:image/png;base64"]')));
+
+  await user.click(screen.getByText("Image editing"));
+  // jsdom never ends antd's loading-icon exit motion, so the previous
+  // generation leaves "loading" in the button's accessible name.
+  const edit = await screen.findByRole("button", { name: /Edit Image$/ });
+  assert.equal((edit as HTMLButtonElement).disabled, true);
+  await user.upload(screen.getByLabelText("Input image"), new File([Uint8Array.from([137, 80, 78, 71])], "source.png", { type: "image/png" }));
+  await waitFor(() => assert.equal((edit as HTMLButtonElement).disabled, false));
+  await user.click(edit);
+  await waitFor(() => assert.equal(urls[1], "/api/v1/playground/v1/images/edits"));
 });
 
 test("Async video exposes cancellation while the first status poll is pending", async () => {

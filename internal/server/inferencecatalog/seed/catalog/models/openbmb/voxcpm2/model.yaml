@@ -27,7 +27,6 @@ specs:
     display_target: nvidia
   args:
   - --omni
-  - --trust-remote-code
   api:
     health_endpoint: /health
     operations:

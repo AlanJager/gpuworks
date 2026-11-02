@@ -30,6 +30,9 @@ specs:
   # preprocess_utils.py) and otherwise fetches them from the Hugging Face Hub,
   # which an offline node cannot reach. The platform mounts each repository on
   # its own, so preparation links the auxiliary assets beside the primary model.
+  # The engine adapter passes the model path first and the engine arguments
+  # after it; the wrapper drops that path (`shift`) and serves the prepared
+  # directory with the remaining arguments.
   entrypoint:
   - /bin/sh
   - -c

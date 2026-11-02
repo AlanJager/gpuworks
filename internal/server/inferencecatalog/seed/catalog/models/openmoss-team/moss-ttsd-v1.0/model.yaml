@@ -25,55 +25,10 @@ specs:
     vendor: nvidia
     cc: '>=8.0'
     display_target: nvidia
-  entrypoint:
-  - /bin/sh
-  - -c
-  - |
-    shift
-    exec vllm serve /tmp/MOSS-TTSD-v1.0 "$@"
-  - moss-ttsd
-  pre_start_script: |-
-    set -e
-    src=/models/MOSS-TTSD-v1.0
-    dst=/tmp/MOSS-TTSD-v1.0
-    mkdir -p "$dst"
-    for item in "$src"/*; do ln -sfn "$item" "$dst/$(basename "$item")"; done
-    cp "$src/processing_moss_tts.py" "$dst/processing_moss_tts.py"
-    sed -i 's#OpenMOSS-Team/MOSS-Audio-Tokenizer#/models/moss-audio-tokenizer#g' "$dst/processing_moss_tts.py"
-  components:
-  - name: moss-ttsd
-    role: primary
-    weights:
-      quantization: bf16
-      sources:
-      - huggingface:
-          repo_id: OpenMOSS-Team/MOSS-TTSD-v1.0
-          revision: c7cd852d87aff71cab5bd2b9b05509cedc0ef1ba
-      - modelscope:
-          repo_id: openmoss/MOSS-TTSD-v1.0
-          revision: 64fd6fb06a6d7c4211a1c9477c6038aff538970a
-    weight_bytes: 16727055254
-    mount_path: /models/MOSS-TTSD-v1.0
-  - name: moss-audio-tokenizer
-    role: auxiliary
-    weights:
-      quantization: fp32
-      sources:
-      - huggingface:
-          repo_id: OpenMOSS-Team/MOSS-Audio-Tokenizer
-          revision: 3cd226ba2947efa357ef453bcad111b6eafba782
-      - modelscope:
-          repo_id: openmoss/MOSS-Audio-Tokenizer
-          revision: 1b3b842480c8fc415f373642fe78d896edc8a76d
-    weight_bytes: 7101115998
-    mount_path: /models/moss-audio-tokenizer
   args:
   - --omni
-  - --trust-remote-code
   - --deploy-config
   - /usr/local/lib/python3.12/dist-packages/vllm_omni/deploy/moss_ttsd.yaml
-  - --hf-overrides
-  - '{"codec_model_name_or_path":"/models/moss-audio-tokenizer"}'
   api:
     health_endpoint: /health
     operations:

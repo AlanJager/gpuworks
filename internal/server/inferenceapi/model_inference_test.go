@@ -26,6 +26,8 @@ func TestMetadataToOperations(t *testing.T) {
 		{"README prose is not a declaration", `{}`, "# Reranker\nExample:\n---\npipeline_tag: text-ranking\n---\n", ""},
 		{"truncated card", `{}`, "---\npipeline_tag: text-ranking\n", ""},
 		{"malformed card", `{}`, "---\ntags: [broken\n---\n", ""},
+		{"text to image", `{}`, "---\npipeline_tag: text-to-image\n---\n", OperationImageGenerate},
+		{"image to image edits a source image", `{}`, "---\npipeline_tag: image-to-image\n---\n", OperationImageEdit},
 		{"ordinary chat", `{"architectures":["Qwen2ForCausalLM"]}`, "# Chat", OperationChat},
 		{"no metadata", "", "", ""},
 	}

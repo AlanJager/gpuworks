@@ -4,7 +4,7 @@ display_title: GLM-TTS
 parameter_count: 3B
 architecture: dense
 release_date: '2025-12-10'
-model_config: {model_type: glm_tts, num_hidden_layers: 28, hidden_size: 2048, num_attention_heads: 16, num_key_value_heads: 4, head_dim: 128, max_position_embeddings: 8192}
+model_config: {model_type: llama, num_hidden_layers: 28, hidden_size: 2048, num_attention_heads: 16, num_key_value_heads: 4, head_dim: 128, max_position_embeddings: 8192}
 specs:
 - name: bf16-vllm-nvidia-general
   display_profile: general
@@ -25,31 +25,9 @@ specs:
     vendor: nvidia
     cc: '>=8.0'
     display_target: nvidia
-  # The checkpoint keeps its language backbone under llm/ and has no root
-  # config.json. vLLM-Omni's pipeline needs the root marker before it can
-  # resolve the nested Llama weights and the stage-specific assets.
-  pre_start_script: |-
-    python3 - <<'PY'
-    import json
-    import os
-    source = "/model/llm/config.json"
-    target = "/tmp/glm-tts/config.json"
-    os.makedirs(os.path.dirname(target), exist_ok=True)
-    with open(source, encoding="utf-8") as stream:
-        config = json.load(stream)
-    config["architectures"] = ["GLMTTSForConditionalGeneration"]
-    config["model_type"] = "glm_tts"
-    config["torch_dtype"] = "bfloat16"
-    with open(target, "w", encoding="utf-8") as stream:
-        json.dump(config, stream, separators=(",", ":"))
-    PY
   args:
   - --omni
-  - --deploy-config
-  - /usr/local/lib/python3.12/dist-packages/vllm_omni/deploy/glm_tts.yaml
   - --trust-remote-code
-  - --hf-config-path
-  - /tmp/glm-tts/config.json
   api:
     health_endpoint: /health
     operations:

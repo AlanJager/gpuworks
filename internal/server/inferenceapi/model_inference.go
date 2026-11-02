@@ -18,8 +18,12 @@ func OperationsForTasks(tasks []string) []Operation {
 			operation = OperationAudioTranscribe
 		case "text-to-speech", "text-to-audio":
 			operation = OperationAudioSpeech
-		case "text-to-image", "image-to-image":
+		case "text-to-image":
 			operation = OperationImageGenerate
+		case "image-to-image":
+			// Image-to-image checkpoints take a source image, which only the
+			// multipart edit route carries.
+			operation = OperationImageEdit
 		case "text-to-video", "image-to-video", "image-text-to-video":
 			operation = OperationVideoGenerate
 		}

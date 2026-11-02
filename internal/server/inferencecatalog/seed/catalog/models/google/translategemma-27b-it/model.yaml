@@ -26,7 +26,7 @@ specs:
         revision: 749380b7771ca7417933a6dd8fa3d3b54c673180
   weight_bytes: 54864980440
   gpus: {vendor: ppu, name: '(?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)', display_target: ppu}
-  args: [--trust-remote-code, --skip-mm-profiling, --chat-template-content-format, openai]
+  args: [--trust-remote-code, --skip-mm-profiling]
   api:
     health_endpoint: /health
     operations: [{type: openai.chat, endpoint: /v1/chat/completions, mode: stream}]
@@ -49,9 +49,6 @@ specs:
     vendor: nvidia
     cc: '>=8.0'
     display_target: nvidia
-  args:
-  - --chat-template-content-format
-  - openai
   api:
     health_endpoint: /health
     operations:
@@ -77,9 +74,6 @@ specs:
     vendor: nvidia
     cc: '>=8.0'
     display_target: nvidia
-  args:
-  - --chat-template-content-format
-  - openai
   api:
     health_endpoint: /health
     operations:
