@@ -1,6 +1,6 @@
 // Package nerdctl implements runtime.Driver over the nerdctl CLI (containerd).
 // Nodes without a Docker daemon but with containerd/nerdctl (observed on
-// 172.30.8.32) select this driver. Every command is namespace-scoped: nerdctl
+// 198.51.100.32) select this driver. Every command is namespace-scoped: nerdctl
 // defaults to the "k8s.io" namespace, which is not usable for GPUWorks
 // containers, so every invocation is pinned to Namespace explicitly — this is
 // the single most important difference from the docker driver and the one
@@ -414,7 +414,7 @@ func (d *Driver) Remove(ctx context.Context, id string) error {
 
 // Status inspects a container. Unlike docker's inspect output, nerdctl's
 // .State has no OOMKilled or Health fields at all (confirmed against real
-// nerdctl 1.7.6 on 172.30.8.32: `{"Status":"running","Running":true,
+// nerdctl 1.7.6 on 198.51.100.32: `{"Status":"running","Running":true,
 // "Paused":false,"Restarting":false,"Pid":...,"ExitCode":0,"Error":"",
 // "FinishedAt":...}`) — requesting them errors the template ("map has no
 // entry for key ...") instead of leaving them empty like docker does. Both

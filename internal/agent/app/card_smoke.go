@@ -192,7 +192,7 @@ func runtimeUnusableEvidence(at time.Time, detail string) []accelerator.HealthFi
 // serving, and the card it failed on would otherwise keep the vendor tool's
 // verdict and stay schedulable — so the next attempt is placed on it again,
 // fails the same way, and holds it for as long as it keeps retrying. Measured
-// on 192.168.200.29: a deployment placed on the one die whose ACL runtime
+// on 192.0.2.129: a deployment placed on the one die whose ACL runtime
 // cannot create a context (aclrtSetDevice=507033) failed, restarted, and kept
 // that die marked healthy.
 //

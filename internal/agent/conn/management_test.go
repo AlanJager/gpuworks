@@ -30,7 +30,7 @@ func TestLocalAddrClientRemembersTheDialedSocket(t *testing.T) {
 }
 
 func TestManagementComesFromTheConnection(t *testing.T) {
-	c := &Conn{creds: Credentials{ServerURL: "http://172.25.17.156:8800"}}
+	c := &Conn{creds: Credentials{ServerURL: "http://192.0.2.156:8800"}}
 	inv := proto.NetInventory{Interfaces: []proto.NetInterface{{Name: "eth1", Addrs: []string{"10.100.10.12/24"}}}}
 	c.setLocal(&net.TCPAddr{IP: net.ParseIP("10.100.10.12"), Port: 40000}, false)
 	if got := c.management(inv); got == nil || got.IP != "10.100.10.12" || got.Interface != "eth1" {

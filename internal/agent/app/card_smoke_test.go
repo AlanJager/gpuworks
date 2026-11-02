@@ -262,7 +262,7 @@ func TestAscendHostRuntimeFailureDoesNotBlameTheFirstDie(t *testing.T) {
 // An instance that could not start makes its cards answer, even though the
 // agent still holds them for it: a failed start is not serving work, and
 // without this the card it failed on stays schedulable and takes the next
-// attempt. 192.168.200.29 looped this way on its one unusable die.
+// attempt. 192.0.2.129 looped this way on its one unusable die.
 func TestAFailedInstanceMakesItsCardsAnswer(t *testing.T) {
 	cards := cardsOfOneHealthyNode()
 	n := newNodeRuntime(slog.New(slog.DiscardHandler), nil, t.TempDir(), "none",
