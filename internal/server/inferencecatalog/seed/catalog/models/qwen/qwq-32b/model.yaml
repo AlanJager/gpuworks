@@ -11,8 +11,8 @@ kv_bytes_per_token:
   sglang: 262144
 specs:
 - name: int8-sglang-ascend-48738293
-  display_name_zh_cn: 910B (A2) · INT8 W8A8 · ≥2 卡
-  display_name_en: 910B (A2) · INT8 W8A8 · 2+ NPUs
+  display_name_zh_cn: 910B (A2) · INT8 W8A8
+  display_name_en: 910B (A2) · INT8 W8A8
   scenario: balanced
   engine: sglang
   image: gpuworks/gpuworks-runner:cann9.0-910b-sglang0.5.18-r2
@@ -41,10 +41,16 @@ specs:
   - deepseek-r1
   placement:
     language: starlark
-    resolver: "def resolve(gpu):\n    if gpu.count < 2: return reject(\"at least 2\
-      \ GPUs are required\")\n    if gpu.min_memory_gib < 32: return reject(\"each\
-      \ GPU requires at least 32 GiB\")\n    return {\"GPU_COUNT\": gpu.count, \"\
-      TP_SIZE\": gpu.count, \"SP_DEGREE\": 1}\n"
+    resolver: |-
+      def resolve(gpu):
+          # Any card count whose memory holds the weights (40.5 GiB) and a KV pool
+          # of 4.0 GiB, within the engine's 0.85 share less about 2 GiB of runtime
+          # overhead per card. The scheduler takes the fewest such cards and keeps
+          # the tensor-parallel size a divisor of the attention heads.
+          if gpu.count * (gpu.min_memory_gib * 0.85 - 2) < 45:
+              return reject("the weights and a minimal KV pool need 45 GiB; these cards offer less")
+          if gpu.min_memory_gib < 32: return reject("each GPU requires at least 32 GiB")
+          return {"GPU_COUNT": gpu.count, "TP_SIZE": gpu.count, "SP_DEGREE": 1}
   api:
     health_endpoint: /health
     operations:

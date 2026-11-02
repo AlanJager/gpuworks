@@ -11,8 +11,8 @@ kv_bytes_per_token:
   sglang: 31104
 specs:
 - name: bf16-sglang-ascend-d91024fa
-  display_name_zh_cn: 910B (A2) · BF16 · ≥2 卡
-  display_name_en: 910B (A2) · BF16 · 2+ NPUs
+  display_name_zh_cn: 910B (A2) · BF16
+  display_name_en: 910B (A2) · BF16
   scenario: balanced
   engine: sglang
   image: gpuworks/gpuworks-runner:cann9.0-910b-sglang0.5.18-r2
@@ -38,10 +38,16 @@ specs:
   - --trust-remote-code
   placement:
     language: starlark
-    resolver: "def resolve(gpu):\n    if gpu.count < 2: return reject(\"at least 2\
-      \ GPUs are required\")\n    if gpu.min_memory_gib < 32: return reject(\"each\
-      \ GPU requires at least 32 GiB\")\n    return {\"GPU_COUNT\": gpu.count, \"\
-      TP_SIZE\": gpu.count, \"SP_DEGREE\": 1}\n"
+    resolver: |-
+      def resolve(gpu):
+          # Any card count whose memory holds the weights (29.3 GiB) and a KV pool
+          # of 4.0 GiB, within the engine's 0.85 share less about 2 GiB of runtime
+          # overhead per card. The scheduler takes the fewest such cards and keeps
+          # the tensor-parallel size a divisor of the attention heads.
+          if gpu.count * (gpu.min_memory_gib * 0.85 - 2) < 34:
+              return reject("the weights and a minimal KV pool need 34 GiB; these cards offer less")
+          if gpu.min_memory_gib < 32: return reject("each GPU requires at least 32 GiB")
+          return {"GPU_COUNT": gpu.count, "TP_SIZE": gpu.count, "SP_DEGREE": 1}
   api:
     health_endpoint: /health
     operations:
@@ -49,8 +55,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: bf16-sglang-ascend-a3-d91024fa
-  display_name_zh_cn: 910C (A3) · BF16 · ≥1 卡（≥2 NPU）
-  display_name_en: 910C (A3) · BF16 · 1+ card (2+ NPUs)
+  display_name_zh_cn: 910C (A3) · BF16
+  display_name_en: 910C (A3) · BF16
   scenario: balanced
   engine: sglang
   image: gpuworks/gpuworks-runner:cann9.0-a3-sglang0.5.18-r2
@@ -76,10 +82,16 @@ specs:
   - --trust-remote-code
   placement:
     language: starlark
-    resolver: "def resolve(gpu):\n    if gpu.count < 2: return reject(\"at least 2\
-      \ GPUs are required\")\n    if gpu.min_memory_gib < 32: return reject(\"each\
-      \ GPU requires at least 32 GiB\")\n    return {\"GPU_COUNT\": gpu.count, \"\
-      TP_SIZE\": gpu.count, \"SP_DEGREE\": 1}\n"
+    resolver: |-
+      def resolve(gpu):
+          # Any card count whose memory holds the weights (29.3 GiB) and a KV pool
+          # of 4.0 GiB, within the engine's 0.85 share less about 2 GiB of runtime
+          # overhead per card. The scheduler takes the fewest such cards and keeps
+          # the tensor-parallel size a divisor of the attention heads.
+          if gpu.count * (gpu.min_memory_gib * 0.85 - 2) < 34:
+              return reject("the weights and a minimal KV pool need 34 GiB; these cards offer less")
+          if gpu.min_memory_gib < 32: return reject("each GPU requires at least 32 GiB")
+          return {"GPU_COUNT": gpu.count, "TP_SIZE": gpu.count, "SP_DEGREE": 1}
   api:
     health_endpoint: /health
     operations:

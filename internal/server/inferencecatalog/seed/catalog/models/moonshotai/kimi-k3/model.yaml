@@ -13,8 +13,8 @@ kv_bytes_per_token:
   sglang: 107136
 specs:
 - name: mxfp4-vllm-amd-mi355x-tp8
-  display_name_zh_cn: MI355X · MXFP4 · 8 卡
-  display_name_en: MI355X · MXFP4 · 8 GPUs
+  display_name_zh_cn: MI355X · MXFP4
+  display_name_en: MI355X · MXFP4
   scenario: balanced
   engine: vllm
   image: vllm/vllm-openai-rocm:nightly-rocm100
@@ -51,11 +51,16 @@ specs:
   - '{"cudagraph_mode":"FULL_DECODE_ONLY","custom_ops":["+fused_rms_norm_gated"]}'
   placement:
     language: starlark
-    resolver: |
+    resolver: |-
       def resolve(gpu):
-          if gpu.count != 8:
-              return reject("this recipe requires exactly 8 GPUs per node")
-          return {"TP_SIZE": 8, "SP_DEGREE": 1}
+          # Any card count whose memory holds the weights (1453.7 GiB) and the KV
+          # cache of one 128K-token request (13.1 GiB), which vLLM checks at
+          # start, within the engine's 0.95 share less about 2 GiB of runtime
+          # overhead per card. The scheduler takes the fewest such cards and keeps
+          # the tensor-parallel size a divisor of the attention heads.
+          if gpu.count * (gpu.min_memory_gib * 0.95 - 2) < 1467:
+              return reject("the weights and one 128K-token request need 1467 GiB; these cards offer less")
+          return {"GPU_COUNT": gpu.count, "TP_SIZE": gpu.count, "SP_DEGREE": 1}
   env:
     VLLM_ROCM_USE_AITER: '1'
     SAFETENSORS_FAST_GPU: '1'

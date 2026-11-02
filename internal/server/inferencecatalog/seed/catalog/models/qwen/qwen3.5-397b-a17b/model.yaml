@@ -329,8 +329,8 @@ specs:
 # stand in for the other. No 950DT hardware was available, so these arguments
 # are the published recipe, not a measured one.
 - name: mxfp4-vllm-ascend-950dt-446ef8e9
-  display_name_zh_cn: 950DT · MXFP4 · 8 卡 · 投机解码
-  display_name_en: 950DT · MXFP4 · 8 NPUs · Speculative
+  display_name_zh_cn: 950DT · MXFP4 · 投机解码
+  display_name_en: 950DT · MXFP4 · Speculative
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cann9.2-950-vllm0.30.0rc2-r1
@@ -384,7 +384,17 @@ specs:
     VLLM_USE_V2_MODEL_RUNNER: '0'
   placement:
     language: starlark
-    resolver: "def resolve(gpu):\n    if gpu.count != 8: return reject(\"the published 950DT recipe runs exactly 8 devices\")\n    if gpu.min_memory_gib < 96: return reject(\"each device requires at least 96 GiB\")\n    return {\"GPU_COUNT\": 8, \"TP_SIZE\": 8, \"SP_DEGREE\": 1}\n"
+    resolver: |-
+      def resolve(gpu):
+          # Any card count whose memory holds the weights (215.9 GiB) and the KV
+          # cache of one 133000-token request (3.8 GiB), which vLLM checks at
+          # start, within the engine's 0.9 share less about 2 GiB of runtime
+          # overhead per card. The scheduler takes the fewest such cards and keeps
+          # the tensor-parallel size a divisor of the attention heads.
+          if gpu.count * (gpu.min_memory_gib * 0.9 - 2) < 220:
+              return reject("the weights and one 133000-token request need 220 GiB; these cards offer less")
+          if gpu.min_memory_gib < 96: return reject("each device requires at least 96 GiB")
+          return {"GPU_COUNT": gpu.count, "TP_SIZE": gpu.count, "SP_DEGREE": 1}
   api:
     health_endpoint: /health
     operations:

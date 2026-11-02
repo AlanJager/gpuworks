@@ -416,8 +416,8 @@ specs:
 # Ascend hardware was available here, so these arguments are the published
 # recipe rather than a measured one.
 - name: bf16-vllm-ascend-c7a493cd
-  display_name_zh_cn: 910B (A2) · BF16 · 4 卡
-  display_name_en: 910B (A2) · BF16 · 4 NPUs
+  display_name_zh_cn: 910B (A2) · BF16
+  display_name_en: 910B (A2) · BF16
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cann9.1-910b-vllm0.26.0rc1-r2
@@ -448,7 +448,17 @@ specs:
   - '{"cudagraph_mode":"FULL_DECODE_ONLY"}'
   placement:
     language: starlark
-    resolver: "def resolve(gpu):\n    if gpu.count != 4: return reject(\"the published recipe runs four devices\")\n    if gpu.min_memory_gib < 32: return reject(\"each device requires at least 32 GiB\")\n    return {\"GPU_COUNT\": 4, \"TP_SIZE\": 4, \"SP_DEGREE\": 1}\n"
+    resolver: |-
+      def resolve(gpu):
+          # Any card count whose memory holds the weights (58.3 GiB) and the KV
+          # cache of one 32K-token request (30.0 GiB), which vLLM checks at start,
+          # within the engine's 0.9 share less about 2 GiB of runtime overhead per
+          # card. The scheduler takes the fewest such cards and keeps the tensor-
+          # parallel size a divisor of the attention heads.
+          if gpu.count * (gpu.min_memory_gib * 0.9 - 2) < 89:
+              return reject("the weights and one 32K-token request need 89 GiB; these cards offer less")
+          if gpu.min_memory_gib < 32: return reject("each device requires at least 32 GiB")
+          return {"GPU_COUNT": gpu.count, "TP_SIZE": gpu.count, "SP_DEGREE": 1}
   api:
     health_endpoint: /health
     operations:
@@ -456,8 +466,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: bf16-vllm-ascend-a3-c7a493cd
-  display_name_zh_cn: 910C (A3) · BF16 · 2 卡（4 NPU）
-  display_name_en: 910C (A3) · BF16 · 2 cards (4 NPUs)
+  display_name_zh_cn: 910C (A3) · BF16
+  display_name_en: 910C (A3) · BF16
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cann9.1-a3-vllm0.26.0rc1-r2
@@ -488,7 +498,17 @@ specs:
   - '{"cudagraph_mode":"FULL_DECODE_ONLY"}'
   placement:
     language: starlark
-    resolver: "def resolve(gpu):\n    if gpu.count != 4: return reject(\"the published recipe runs four devices\")\n    if gpu.min_memory_gib < 32: return reject(\"each device requires at least 32 GiB\")\n    return {\"GPU_COUNT\": 4, \"TP_SIZE\": 4, \"SP_DEGREE\": 1}\n"
+    resolver: |-
+      def resolve(gpu):
+          # Any card count whose memory holds the weights (58.3 GiB) and the KV
+          # cache of one 32K-token request (30.0 GiB), which vLLM checks at start,
+          # within the engine's 0.9 share less about 2 GiB of runtime overhead per
+          # card. The scheduler takes the fewest such cards and keeps the tensor-
+          # parallel size a divisor of the attention heads.
+          if gpu.count * (gpu.min_memory_gib * 0.9 - 2) < 89:
+              return reject("the weights and one 32K-token request need 89 GiB; these cards offer less")
+          if gpu.min_memory_gib < 32: return reject("each device requires at least 32 GiB")
+          return {"GPU_COUNT": gpu.count, "TP_SIZE": gpu.count, "SP_DEGREE": 1}
   api:
     health_endpoint: /health
     operations:

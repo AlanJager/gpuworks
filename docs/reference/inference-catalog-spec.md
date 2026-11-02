@@ -316,6 +316,8 @@ placement:
 - resolver 返回的变量进入 `${VAR}` 展开上下文；变量名必须匹配
   `^[A-Z][A-Z0-9_]*$`。
 
+只靠张量并行、没有专家/数据/流水线并行的文本档位，resolver 不写死卡数，而是写显存条件：卡数 × （每卡显存 × 引擎显存比例 − 约 2 GiB 运行开销）不小于「权重 + 启动所需 KV cache」。vLLM 启动时要放下一个最大长度请求的 KV cache，按 `--max-model-len`（没写时用模型的 `context_length`）乘 `kv_bytes_per_token` 计算；SGLang 只要求有 KV 池，按 4 GiB 计。满足条件的卡数里，调度器取最少的，并保证张量并行度能整除注意力头数。厂商实测过、只在特定卡数上通过的档位，仍然写死卡数并注明依据。
+
 ### 变量展开
 
 `args` / `env` / `entrypoint` / `pre_start_*` 中的 `${NAME}` 在每次部署时展开，与有没有 placement

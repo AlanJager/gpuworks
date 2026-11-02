@@ -315,6 +315,8 @@ placement:
 - Variables returned by the resolver enter the `${VAR}` expansion context; variable names must match
   `^[A-Z][A-Z0-9_]*$`.
 
+A text spec that relies on tensor parallelism alone, with no expert, data or pipeline parallelism, does not pin a card count in its resolver. It states a memory condition instead: card count × (memory per card × the engine's memory share − about 2 GiB of runtime overhead) must be at least the weights plus the KV cache needed at start. vLLM refuses to start unless one maximum-length request's KV cache fits, computed as `--max-model-len` (or the model's `context_length` when absent) × `kv_bytes_per_token`; SGLang only needs a KV pool, counted as 4 GiB. Among the counts that qualify, the scheduler takes the fewest and keeps the tensor-parallel size a divisor of the attention heads. A spec measured to pass only at a particular card count keeps that count pinned and says why.
+
 ### Variable Expansion
 
 `${NAME}` in `args` / `env` / `entrypoint` / `pre_start_*` is expanded on every deployment, regardless of whether placement

@@ -175,8 +175,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: int8-vllm-ascend-631c173c
-  display_name_zh_cn: 910B (A2) · INT8 W8A8 · ≥8 卡
-  display_name_en: 910B (A2) · INT8 W8A8 · 8+ NPUs
+  display_name_zh_cn: 910B (A2) · INT8 W8A8
+  display_name_en: 910B (A2) · INT8 W8A8
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cann9.1-910b-vllm0.26.0rc1-r2
@@ -212,10 +212,17 @@ specs:
     TP_SOCKET_IFNAME: lo
   placement:
     language: starlark
-    resolver: "def resolve(gpu):\n    if gpu.count < 8: return reject(\"at least 8\
-      \ GPUs are required\")\n    if gpu.min_memory_gib < 32: return reject(\"each\
-      \ GPU requires at least 32 GiB\")\n    return {\"GPU_COUNT\": gpu.count, \"\
-      TP_SIZE\": gpu.count, \"SP_DEGREE\": 1}\n"
+    resolver: |-
+      def resolve(gpu):
+          # Any card count whose memory holds the weights (124.9 GiB) and the KV
+          # cache of one 256K-token request (6.0 GiB), which vLLM checks at start,
+          # within the engine's 0.9 share less about 2 GiB of runtime overhead per
+          # card. The scheduler takes the fewest such cards and keeps the tensor-
+          # parallel size a divisor of the attention heads.
+          if gpu.count * (gpu.min_memory_gib * 0.9 - 2) < 131:
+              return reject("the weights and one 256K-token request need 131 GiB; these cards offer less")
+          if gpu.min_memory_gib < 32: return reject("each GPU requires at least 32 GiB")
+          return {"GPU_COUNT": gpu.count, "TP_SIZE": gpu.count, "SP_DEGREE": 1}
   api:
     health_endpoint: /health
     operations:
@@ -223,8 +230,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: int8-vllm-ascend-a3-631c173c
-  display_name_zh_cn: 910C (A3) · INT8 W8A8 · ≥4 卡（≥8 NPU）
-  display_name_en: 910C (A3) · INT8 W8A8 · 4+ cards (8+ NPUs)
+  display_name_zh_cn: 910C (A3) · INT8 W8A8
+  display_name_en: 910C (A3) · INT8 W8A8
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cann9.1-a3-vllm0.26.0rc1-r2
@@ -260,10 +267,17 @@ specs:
     TP_SOCKET_IFNAME: lo
   placement:
     language: starlark
-    resolver: "def resolve(gpu):\n    if gpu.count < 8: return reject(\"at least 8\
-      \ GPUs are required\")\n    if gpu.min_memory_gib < 32: return reject(\"each\
-      \ GPU requires at least 32 GiB\")\n    return {\"GPU_COUNT\": gpu.count, \"\
-      TP_SIZE\": gpu.count, \"SP_DEGREE\": 1}\n"
+    resolver: |-
+      def resolve(gpu):
+          # Any card count whose memory holds the weights (124.9 GiB) and the KV
+          # cache of one 256K-token request (6.0 GiB), which vLLM checks at start,
+          # within the engine's 0.9 share less about 2 GiB of runtime overhead per
+          # card. The scheduler takes the fewest such cards and keeps the tensor-
+          # parallel size a divisor of the attention heads.
+          if gpu.count * (gpu.min_memory_gib * 0.9 - 2) < 131:
+              return reject("the weights and one 256K-token request need 131 GiB; these cards offer less")
+          if gpu.min_memory_gib < 32: return reject("each GPU requires at least 32 GiB")
+          return {"GPU_COUNT": gpu.count, "TP_SIZE": gpu.count, "SP_DEGREE": 1}
   api:
     health_endpoint: /health
     operations:
