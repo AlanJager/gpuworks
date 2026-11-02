@@ -107,10 +107,12 @@ func TestOptionalCapabilitiesAreBackendScoped(t *testing.T) {
 	if why := RuntimeConstraint(ppu, "udocker"); why == "" {
 		t.Fatal("PPU under udocker must report a runtime constraint")
 	}
-	if why := RuntimeConstraint(hygon, "docker"); why != "" {
-		t.Fatalf("Hygon under docker constrained: %q", why)
+	for _, driver := range []string{"docker", "udocker"} {
+		if why := RuntimeConstraint(hygon, driver); why != "" {
+			t.Fatalf("Hygon under %s constrained: %q", driver, why)
+		}
 	}
-	for _, driver := range []string{"", "udocker", "nerdctl"} {
+	for _, driver := range []string{"", "nerdctl", "runveil"} {
 		if why := RuntimeConstraint(hygon, driver); why == "" {
 			t.Errorf("Hygon under %q must report a runtime constraint", driver)
 		}
@@ -165,6 +167,9 @@ func TestHygonBackendMatchesOnlyKnownModels(t *testing.T) {
 		{VendorHygon, "K100", false},
 		{VendorHygon, "K100_FAMILY_AMBIGUOUS", false},
 		{VendorHygon, "K100AI2", false},
+		{VendorHygon, "BW", true},
+		{VendorHygon, " bw ", true},
+		{VendorHygon, "BW1000", false},
 		{VendorAMD, "Z100", false},
 	} {
 		if got := hygon.Matches(tc.vendor, tc.arch); got != tc.want {
@@ -175,7 +180,7 @@ func TestHygonBackendMatchesOnlyKnownModels(t *testing.T) {
 	if err != nil || profile.Verified {
 		t.Fatalf("Hygon Z100 profile = %+v, %v; want unverified advisory profile", profile, err)
 	}
-	if got := strings.Join(profile.ChipFamilies, ","); got != "Z100,K100AI" {
+	if got := strings.Join(profile.ChipFamilies, ","); got != "Z100,K100AI,BW" {
 		t.Fatalf("Hygon supported chip families = %q", got)
 	}
 }

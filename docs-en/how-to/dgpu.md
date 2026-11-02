@@ -10,7 +10,7 @@ This guide explains how to check a GPU's available dGPU capabilities, create a d
 - NVIDIA: x86_64, glibc ≥ 2.17, and shared libraries provided by the host driver (`libcuda.so.1`, `libnvidia-ml.so.1`).
 - Ascend: host device-share permissions meet vCANN requirements, and the selected inference image provides glibc ≥ 2.33. Being able to connect the node and run on a whole card does not mean the host permits dGPU device sharing.
 - PPU: quotas combine a GPU memory limit with weighted QoS under contention. A 20/80 configuration specifies relative throughput weights under contention, not hard SM partitions.
-- Hygon Z100 / K100_AI: experimental, x86_64 + Docker only, with one GPU per instance. Install the native helper and host DTK/HYHAL/DCGM libraries, and pass the per-GPU probe. CUs follow the memory ratio; there is no independent compute quota. A report containing only the K100 family, or another unsupported model, remains full-GPU only. See [Hygon Z100 / K100_AI dGPU](../reference/support-matrix.md#海光-z100--k100_ai-dgpu).
+- Hygon Z100 / K100_AI / BW: experimental, with Docker or runveil/udocker on x86_64 and one GPU per instance. Install the native helper and host DTK/HYHAL/DCGM libraries, and pass the per-GPU probe. CUs follow the memory ratio; there is no independent compute quota. A report containing only the K100 family, or another unsupported model, remains full-GPU only. PRoot provides neither a separate cgroup nor kernel-enforced read-only mounts, so it does not establish security isolation against hostile programs. See [Hygon Z100 / K100_AI / BW dGPU](../reference/support-matrix.md#海光-z100--k100_ai--bw-dgpu).
 - For a complete walkthrough first, see [Run Two Models on One GPU](../tutorials/one-gpu-two-models.md); for semantics and boundaries, see [What dGPU Is and Is Not](../explanation/dgpu.md).
 
 For each vendor's supported scope, see the [Support Matrix](../reference/support-matrix.md).
@@ -18,7 +18,7 @@ For each vendor's supported scope, see the [Support Matrix](../reference/support
 ## Check Capabilities and Deploy
 
 1. Open **GPU Devices** and check the **dGPU** capability and reason in the target GPU's details. Only GPUs with a status of `ready` can run newly created instances with quotas.
-2. When [deploying a model](deploy-models.md), enter the **dGPU Memory (GiB)** limit, check the candidate nodes and GPU memory estimate, and submit. The platform selects a ready backend based on the node hardware: HAMi-core for NVIDIA, vCANN for Ascend, HGGC for PPU, and native vdev for Hygon Z100 / K100_AI. You do not need to specify one manually.
+2. When [deploying a model](deploy-models.md), enter the **dGPU Memory (GiB)** limit, check the candidate nodes and GPU memory estimate, and submit. The platform selects a ready backend based on the node hardware: HAMi-core for NVIDIA, vCANN for Ascend, HGGC for PPU, and native vdev for Hygon Z100 / K100_AI / BW. You do not need to specify one manually.
 3. After the instance starts, return to **GPU Devices → dGPU** and confirm the slice's deployment, node, and GPU memory limit. To verify that two models share one card, follow the request checks in [Run Two Models on One GPU](../tutorials/one-gpu-two-models.md).
 
 The `status` and `reason` returned on the page determine capability:

@@ -72,6 +72,7 @@ func TestGPUArch(t *testing.T) {
 		{name: "ambiguous K100", vendor: "hygon", archID: "K100", want: Arch{ID: "K100", Family: "k100"}},
 		{name: "Z100", vendor: "hygon", archID: "Z100L", want: Arch{ID: "Z100L", Family: "z100"}},
 		{name: "BW1000", vendor: "hygon", archID: "BW1000", want: Arch{ID: "BW1000", Family: "bw1000"}},
+		{name: "BW", vendor: "hygon", archID: "BW", want: Arch{ID: "BW", Family: "bw"}},
 		{name: "BW1100", vendor: "hygon", archID: "BW1100", want: Arch{ID: "BW1100", Family: "bw1100"}},
 		{name: "unknown hygon", vendor: "hygon", want: Arch{}},
 		{name: "ZW810E", vendor: "ppu", archID: "ZW810E", want: Arch{ID: "ZW810E", Family: "beethoven"}},

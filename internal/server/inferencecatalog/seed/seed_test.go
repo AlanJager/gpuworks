@@ -130,7 +130,7 @@ func TestEmbeddedCatalogSeparatesMistralRuntimeAndRepositoryWeights(t *testing.T
 	}
 }
 
-func TestEmbeddedCatalogMatchesRawHygonK100AIName(t *testing.T) {
+func TestEmbeddedCatalogMatchesReportedHygonNames(t *testing.T) {
 	catalog, err := Catalog()
 	if err != nil {
 		t.Fatal(err)
@@ -152,12 +152,16 @@ func TestEmbeddedCatalogMatchesRawHygonK100AIName(t *testing.T) {
 			})
 		}
 	}
-	selection := chipmatch.Select(chipmatch.GPU{Vendor: "hygon", Name: "K100_AI"}, specs, nil)
-	if !selection.Matched || selection.SpecIndex < 0 || specs[selection.SpecIndex].GPUs.Vendor != "hygon" {
-		t.Fatalf("selection=%+v specs=%+v", selection, specs)
+	for _, name := range []string{"K100AI", "K100_AI", "BW"} {
+		selection := chipmatch.Select(chipmatch.GPU{Vendor: "hygon", Name: name}, specs, nil)
+		if !selection.Matched || selection.SpecIndex < 0 || specs[selection.SpecIndex].GPUs.Vendor != "hygon" {
+			t.Fatalf("%s selection=%+v specs=%+v", name, selection, specs)
+		}
 	}
-	if chipmatch.Select(chipmatch.GPU{Vendor: "hygon", Name: "K500"}, specs, nil).Matched {
-		t.Fatal("K100-family spec must not match K500")
+	for _, name := range []string{"K500", "BW1234"} {
+		if chipmatch.Select(chipmatch.GPU{Vendor: "hygon", Name: name}, specs, nil).Matched {
+			t.Fatalf("unqualified Hygon model %s matched", name)
+		}
 	}
 }
 

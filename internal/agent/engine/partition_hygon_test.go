@@ -77,7 +77,16 @@ func (f *fakeHygonVdevHelper) Create(_ context.Context, index, cus, memoryMiB in
 	if err := os.WriteFile(filepath.Join(f.vdevDir, name), []byte(config), 0o644); err != nil {
 		return 0, err
 	}
-	if err := os.WriteFile(filepath.Join(filepath.Dir(recordPath), name), []byte(config), 0o644); err != nil {
+	// The native helper explicitly normalizes its snapshot directory/file
+	// after creation, independently of the agent's umask.
+	if err := os.Chmod(filepath.Dir(recordPath), 0o755); err != nil {
+		return 0, err
+	}
+	snapshot := filepath.Join(filepath.Dir(recordPath), name)
+	if err := os.WriteFile(snapshot, []byte(config), 0o644); err != nil {
+		return 0, err
+	}
+	if err := os.Chmod(snapshot, 0o644); err != nil {
 		return 0, err
 	}
 	ledger, err := json.Marshal(hygonOwnedVdev{ID: id, OwnerToken: f.ownerTokens[id], hygonVdevInfo: f.identities[id]})

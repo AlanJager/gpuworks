@@ -17,9 +17,9 @@ import (
 
 // TestHygonUnavailableSurvivesAgentReconnect exercises the real server/agent
 // wire. A fake GPU is an inventory fixture, not evidence that native vdev
-// assets and a Docker behavior probe succeeded on this host.
+// assets and a supported runtime behavior probe succeeded on this host.
 func TestHygonUnavailableSurvivesAgentReconnect(t *testing.T) {
-	for _, sku := range []string{"Z100", "K100AI"} {
+	for _, sku := range []string{"Z100", "K100AI", "BW"} {
 		t.Run(sku, func(t *testing.T) { testHygonUnavailableReconnect(t, sku) })
 	}
 }
@@ -84,7 +84,7 @@ func testHygonUnavailableReconnect(t *testing.T, sku string) {
 		for _, cap := range node.GPUs[0].PartitionCapabilities {
 			if cap.Backend == "hygon-dgpu" {
 				found = true
-				if cap.DisplayName != "Hygon dGPU" || !strings.Contains(cap.Reason, "Docker runtime") {
+				if cap.DisplayName != "Hygon dGPU" || !strings.Contains(cap.Reason, "requires the Docker or udocker runtime") {
 					t.Fatalf("Hygon capability = %+v, want runtime-unavailable with server display name", cap)
 				}
 			}

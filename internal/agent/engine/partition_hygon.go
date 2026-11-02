@@ -97,8 +97,8 @@ func hygonInstanceDir(e *Engine, uuid string) string {
 }
 
 func (h hygonPartitionInjector) apply(e *Engine, ctx context.Context, ws *agentruntime.WorkloadSpec, spec proto.InstanceDesiredState) (bool, string) {
-	if e.driver == nil || e.driver.Name() != "docker" {
-		return false, "Hygon dGPU requires the Docker runtime"
+	if e.driver == nil || e.driver.Name() != "docker" && e.driver.Name() != "udocker" {
+		return false, "Hygon dGPU requires the Docker or udocker runtime"
 	}
 	if e.prober == nil || accelerator.NormalizeVendor(e.prober.Vendor()) != accelerator.VendorHygon || len(spec.GPUIndexes) != 1 {
 		return false, "Hygon dGPU requires exactly one supported Hygon GPU per instance"
@@ -119,7 +119,7 @@ func (h hygonPartitionInjector) apply(e *Engine, ctx context.Context, ws *agentr
 	}
 	backend, _ := accelerator.Lookup(accelerator.BackendHygonLogical)
 	if selected == nil || !backend.Matches(selected.Vendor, selected.ArchID) || selected.PCIeBDF == "" {
-		return false, "selected GPU is not a supported Hygon Z100 or K100AI with a PCI address"
+		return false, "selected GPU is not a supported Hygon Z100, K100AI or BW with a PCI address"
 	}
 	if spec.VRAMLimitBytes <= 0 {
 		return false, "Hygon vdev memory quota must be positive and below physical VRAM"
@@ -159,20 +159,16 @@ func (h hygonPartitionInjector) apply(e *Engine, ctx context.Context, ws *agentr
 	if remainder != 0 {
 		cuCount++
 	}
-	vdevDir, dtkDir, hyhalDir, helperPath := h.paths()
-	for _, path := range []string{
-		filepath.Join(dtkDir, "lib", "libamdhip64.so"),
-		filepath.Join(dtkDir, "lib", "librocm_smi64.so"),
-		filepath.Join(hyhalDir, "lib", "libhydmi.so"),
-		filepath.Join(hyhalDir, "lib", "libhydmi_mig.so"),
-		helperPath,
-	} {
-		info, err := os.Stat(path)
-		if err != nil || !info.Mode().IsRegular() || path == helperPath && info.Mode().Perm()&0o111 == 0 {
-			return false, "Hygon runtime asset unavailable: " + path
-		}
+	vdevDir, dtkDir, hyhalDir, _ := h.paths()
+	if _, err := h.runtimeFiles(); err != nil {
+		return false, err.Error()
 	}
 	instanceDir := hygonInstanceDir(e, spec.UUID)
+	if e.driver.Name() == "udocker" {
+		if err := prepareHygonUdockerParents(e.stateDir); err != nil {
+			return false, "prepare Hygon udocker state: " + err.Error()
+		}
+	}
 	if err := checkHygonCreatePending(instanceDir); err != nil {
 		return false, err.Error()
 	}
@@ -249,24 +245,37 @@ func (h hygonPartitionInjector) apply(e *Engine, ctx context.Context, ws *agentr
 	}
 	e.seedImageLibraryPath(ctx, ws)
 	snapshot := filepath.Join(instanceDir, filepath.Base(hostConfig))
+	var mounts []agentruntime.Mount
+	if e.driver.Name() == "udocker" {
+		mounts, err = hygonUdockerMounts(instanceDir, snapshot, data)
+		if err != nil {
+			return false, "prepare Hygon udocker view: " + err.Error()
+		}
+	} else {
+		mounts = []agentruntime.Mount{
+			{Source: snapshot, Target: filepath.Join("/etc/vdev", filepath.Base(hostConfig)), ReadOnly: true},
+			{Source: snapshot, Target: filepath.Join("/etc/vdev/docker", filepath.Base(hostConfig)), ReadOnly: true},
+		}
+	}
 	// HYHAL reads both paths and serializes access through the host lock.
 	// Both filenames must match the verified native ID. Mount exactly one
 	// Docker config: a fixed-ID alias can prevent HIP initialization.
 	// Keep the image's /opt/dtk: replacing its toolkit with an older host DTK
 	// breaks images whose PyTorch requires newer shared-library versions.
-	ws.Mounts = append(ws.Mounts,
-		agentruntime.Mount{Source: snapshot, Target: filepath.Join("/etc/vdev", filepath.Base(hostConfig)), ReadOnly: true},
-		agentruntime.Mount{Source: snapshot, Target: filepath.Join("/etc/vdev/docker", filepath.Base(hostConfig)), ReadOnly: true},
+	mounts = append(mounts,
 		agentruntime.Mount{Source: lockPath, Target: hygonVirtualLock},
 		agentruntime.Mount{Source: dtkDir, Target: "/opt/hygondriver", ReadOnly: true},
 		agentruntime.Mount{Source: hyhalDir, Target: "/opt/hyhal", ReadOnly: true},
 	)
+	ws.Mounts = append(ws.Mounts, mounts...)
 	if ws.Image == assets.PartitionProbeImage {
 		// The embedded probe image has no DTK of its own.
 		ws.Mounts = append(ws.Mounts, agentruntime.Mount{Source: dtkDir, Target: "/opt/dtk", ReadOnly: true})
 		// HYHAL opens its log directory during HIP initialization. Keep probe
 		// logs ephemeral and writable when the container runs as a non-root UID.
-		ws.DockerArgs = append(ws.DockerArgs, "--tmpfs", "/var/log/hylog:rw,nosuid,nodev,mode=1777")
+		if e.driver.Name() == "docker" {
+			ws.DockerArgs = append(ws.DockerArgs, "--tmpfs", "/var/log/hylog:rw,nosuid,nodev,mode=1777")
+		}
 	}
 	if ws.Env == nil {
 		ws.Env = map[string]string{}
@@ -279,7 +288,7 @@ func (h hygonPartitionInjector) apply(e *Engine, ctx context.Context, ws *agentr
 	return true, ""
 }
 
-func (h hygonPartitionInjector) assetReports(*Engine) []proto.AssetReport {
+func (h hygonPartitionInjector) runtimeFiles() (map[string]string, error) {
 	_, dtk, hyhal, helper := h.paths()
 	files := map[string]string{
 		"libamdhip64.so":             filepath.Join(dtk, "lib", "libamdhip64.so"),
@@ -288,11 +297,23 @@ func (h hygonPartitionInjector) assetReports(*Engine) []proto.AssetReport {
 		"librocm_smi64.so":           filepath.Join(dtk, "lib", "librocm_smi64.so"),
 		"gpuworks-hygon-vdev-helper": helper,
 	}
+	// DTK 26 installations can keep RSMI beside HYHAL instead of DTK.
+	if info, err := os.Stat(files["librocm_smi64.so"]); err != nil || !info.Mode().IsRegular() {
+		files["librocm_smi64.so"] = filepath.Join(hyhal, "lib", "librocm_smi64.so")
+	}
 	for name, path := range files {
 		info, err := os.Stat(path)
 		if err != nil || !info.Mode().IsRegular() || name == "gpuworks-hygon-vdev-helper" && info.Mode().Perm()&0o111 == 0 {
-			return nil
+			return nil, fmt.Errorf("Hygon runtime asset unavailable: %s", path)
 		}
+	}
+	return files, nil
+}
+
+func (h hygonPartitionInjector) assetReports(*Engine) []proto.AssetReport {
+	files, err := h.runtimeFiles()
+	if err != nil {
+		return nil
 	}
 	return []proto.AssetReport{assetReport(accelerator.BackendHygonLogical, partitionAsset{Root: "/opt", Files: files})}
 }

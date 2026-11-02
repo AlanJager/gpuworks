@@ -1314,6 +1314,7 @@ exit 1`, "")
 }
 
 func TestRemoveTreatsAMissingContainerAsAlreadyRemoved(t *testing.T) {
+	t.Setenv(launcherEnv, "udocker") // the missing-container error comes from the legacy CLI
 	base := t.TempDir()
 	d := New(base)
 	d.provisioned = true

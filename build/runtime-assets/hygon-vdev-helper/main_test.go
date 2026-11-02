@@ -15,6 +15,8 @@ import (
 type fakeAPI struct {
 	initialized bool
 	shutdown    bool
+	initErr     error
+	shutdownErr error
 	ids         []int
 	createErr   error
 	createFn    func()
@@ -28,12 +30,13 @@ type fakeAPI struct {
 	stopped     int
 	destroyed   int
 	destroyErr  error
+	destroyFn   func(int) error
 	stopErr     error
 	calls       []string
 }
 
-func (f *fakeAPI) Init() error     { f.initialized = true; return nil }
-func (f *fakeAPI) ShutDown() error { f.shutdown = true; return nil }
+func (f *fakeAPI) Init() error     { f.initialized = true; return f.initErr }
+func (f *fakeAPI) ShutDown() error { f.shutdown = true; return f.shutdownErr }
 func (f *fakeAPI) PhysicalPCIBDF(int) (string, error) {
 	f.calls = append(f.calls, "physical-pci")
 	return f.physicalPCI, f.physicalErr
@@ -53,6 +56,9 @@ func (f *fakeAPI) Stop(id int) error {
 func (f *fakeAPI) Destroy(id int) error {
 	f.destroyed = id
 	f.calls = append(f.calls, "destroy")
+	if f.destroyFn != nil {
+		return f.destroyFn(id)
+	}
 	return f.destroyErr
 }
 func (f *fakeAPI) Inspect(id int) (deviceInfo, bool, error) {

@@ -19,6 +19,8 @@ var errSkipEntry = errors.New("skip entry")
 // concurrent layer workers do not add up to a meaningful resident set.
 const copyBufferSize = 512 << 10
 
+var openRegularFile = os.OpenFile
+
 // writeEntry materializes one tar entry below root. The caller has already
 // claimed the path, so this function owns it for the duration.
 //
@@ -61,7 +63,9 @@ func (u *Unpacker) writeRegular(target string, header *tar.Header, reader io.Rea
 	if err := removeExisting(target); err != nil {
 		return err
 	}
-	file, err := os.OpenFile(target, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, mode)
+	// Restricted hosts can reject special bits at creation. Restore them only
+	// after writing and chown, which can clear setuid/setgid bits themselves.
+	file, err := openRegularFile(target, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, mode.Perm())
 	if err != nil {
 		return err
 	}
@@ -73,8 +77,7 @@ func (u *Unpacker) writeRegular(target string, header *tar.Header, reader io.Rea
 	if u.Owner != nil {
 		_ = file.Chown(u.Owner.UID, u.Owner.GID)
 	}
-	// Modes are set at open time, but an existing umask-masked create does not
-	// carry setuid/setgid/sticky bits; apply them explicitly when present.
+	// Retain the image's special flags when the host permits them.
 	if mode&os.ModeSetuid|mode&os.ModeSetgid|mode&os.ModeSticky != 0 {
 		_ = file.Chmod(mode)
 	}

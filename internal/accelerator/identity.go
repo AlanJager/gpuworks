@@ -169,6 +169,8 @@ func hygonFamily(archID string) string {
 		return "k100"
 	case strings.HasPrefix(id, "Z100"):
 		return "z100"
+	case id == "BW":
+		return "bw"
 	case id == "BW1000":
 		return "bw1000"
 	case id == "BW1100" || id == "BW1101":
