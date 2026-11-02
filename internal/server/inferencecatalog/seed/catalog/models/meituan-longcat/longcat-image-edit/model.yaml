@@ -30,9 +30,10 @@ specs:
   api:
     health_endpoint: /health
     operations:
-    - type: openai.image.generate
-      endpoint: /v1/images/generations
+    - type: openai.image.edit
+      endpoint: /v1/images/edits
       mode: sync
+      request_encoding: multipart
       inputs:
       - name: size
         kind: select
@@ -69,9 +70,10 @@ specs:
   api:
     health_endpoint: /health
     operations:
-    - type: openai.image.generate
-      endpoint: /v1/images/generations
+    - type: openai.image.edit
+      endpoint: /v1/images/edits
       mode: sync
+      request_encoding: multipart
       inputs:
       - name: size
         kind: select

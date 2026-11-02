@@ -52,6 +52,8 @@ specs:
     vendor: nvidia
     cc: '>=8.0'
     display_target: nvidia
+  args:
+  - --trust-remote-code
   api:
     health_endpoint: /health
     operations:

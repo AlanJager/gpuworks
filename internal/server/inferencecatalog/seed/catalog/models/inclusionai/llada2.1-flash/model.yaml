@@ -26,6 +26,10 @@ specs:
     vendor: nvidia
     cc: '>=8.0'
     display_target: nvidia
+  env:
+    # FlashInfer's DeepSeek fused-top-k kernel starts at compute capability 9.0.
+    # A100 uses SGLang's bit-exact JIT router instead.
+    SGLANG_OPT_USE_JIT_KERNEL_GROUPED_TOPK: '1'
   args:
   - --enable-metrics
   - --dllm-algorithm
@@ -33,6 +37,7 @@ specs:
   - --trust-remote-code
   - --attention-backend
   - flashinfer
+  - --disable-cuda-graph
   api:
     health_endpoint: /health
     operations:

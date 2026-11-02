@@ -34,7 +34,7 @@ func TestSGLangCatalogDeclaresMetricsOnlyForNonDiffusionEntries(t *testing.T) {
 			diffusion := false
 			if spec.API != nil {
 				for _, op := range spec.API.Operations {
-					diffusion = diffusion || op.Type == inferenceapi.OperationVideoGenerate || op.Type == inferenceapi.OperationImageGenerate
+					diffusion = diffusion || op.Type == inferenceapi.OperationVideoGenerate || op.Type == inferenceapi.OperationImageGenerate || op.Type == inferenceapi.OperationImageEdit
 				}
 			}
 			if enabled == diffusion {

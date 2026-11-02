@@ -29,6 +29,11 @@ specs:
     vendor: nvidia
     cc: '>=8.0'
     display_target: nvidia
+  args:
+  - --limit-mm-per-prompt
+  - '{"image":1,"video":0}'
+  - --trust-remote-code
+  - --enforce-eager
   api:
     health_endpoint: /health
     operations:
@@ -57,6 +62,10 @@ specs:
   args:
   - --dtype
   - half
+  - --limit-mm-per-prompt
+  - '{"image":1,"video":0}'
+  - --trust-remote-code
+  - --enforce-eager
   api:
     health_endpoint: /health
     operations:

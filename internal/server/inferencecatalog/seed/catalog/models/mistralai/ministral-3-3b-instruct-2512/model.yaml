@@ -11,7 +11,7 @@ specs:
   display_profile: compatible
   scenario: balanced
   engine: vllm
-  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  image: gpuworks/gpuworks-runner:cuda12.9-vllm0.31.0-r2
   weights:
     quantization: fp8
     sources:
@@ -31,6 +31,7 @@ specs:
     cc: '>=8.0'
     display_target: nvidia
   args:
+  - --trust-remote-code
   - --tokenizer-mode
   - mistral
   - --config-format

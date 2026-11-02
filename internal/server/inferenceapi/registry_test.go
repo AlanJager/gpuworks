@@ -6,10 +6,10 @@ import (
 	"testing"
 )
 
-func TestRegistryCoversNineExecutableOperations(t *testing.T) {
+func TestRegistryCoversTenExecutableOperations(t *testing.T) {
 	definitions := Definitions()
-	if len(definitions) != 9 {
-		t.Fatalf("definitions=%d, want 9", len(definitions))
+	if len(definitions) != 10 {
+		t.Fatalf("definitions=%d, want 10", len(definitions))
 	}
 	for _, definition := range definitions {
 		if definition.Type == "" || definition.DefaultEndpoint == "" || len(definition.AllowedEndpoints) == 0 || len(definition.RequestEncodings) == 0 || len(definition.Modes) == 0 || definition.Renderer == "" || definition.Response == "" {
@@ -100,6 +100,25 @@ func TestSpeechOperationAcceptsAudioGenerationRoute(t *testing.T) {
 	}
 }
 
+func TestImageEditRequiresItsMultipartRoute(t *testing.T) {
+	contract, err := NormalizeContract(Contract{Operations: []Operation{{Type: OperationImageEdit}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	operation := contract.Operations[0]
+	if operation.Endpoint != "/v1/images/edits" || operation.RequestEncoding != EncodingMultipart {
+		t.Fatalf("operation=%+v", operation)
+	}
+	if !AllowsRequest(operation, "POST", "/v1/images/edits") {
+		t.Fatal("image edit route should be allowed")
+	}
+	for _, request := range [][2]string{{"POST", "/v1/images/generations"}, {"GET", "/v1/images/edits"}} {
+		if AllowsRequest(operation, request[0], request[1]) {
+			t.Fatalf("accepted %s %s", request[0], request[1])
+		}
+	}
+}
+
 func TestEffectiveContractWithoutDeclarationHasNoOperations(t *testing.T) {
 	contract, err := EffectiveContract(nil, DefaultsInput{Engine: "vllm"})
 	if err != nil {
@@ -174,7 +193,7 @@ func TestExamplesAreGeneratedFromStructuredRequestsForEveryOperation(t *testing.
 			if example.Request.ContentType != "" || example.Request.Body != nil || example.Request.Form != nil {
 				t.Fatalf("%s request=%+v, want bodyless WebSocket handshake", definition.Type, example.Request)
 			}
-		} else if example.Request.Form["model"] != "served-model" || example.Request.Form["file"] != "@audio.wav" {
+		} else if example.Request.Form["model"] != "served-model" || (definition.Type == OperationAudioTranscribe && example.Request.Form["file"] != "@audio.wav") || (definition.Type == OperationImageEdit && example.Request.Form["image"] != "@input.png") {
 			t.Fatalf("%s form=%v", definition.Type, example.Request.Form)
 		}
 	}

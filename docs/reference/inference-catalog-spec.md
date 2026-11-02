@@ -398,7 +398,7 @@ api:
 
 操作词表（`internal/server/inferenceapi` 唯一产地）：`openai.chat`、
 `openai.completions`（`/v1/completions`，原样续写提示词，不套聊天模板）、`openai.embeddings`、`openai.rerank`、`openai.audio.transcribe`、
-`openai.audio.speech`、`openai.image.generate`、`openai.video.generate`、
+`openai.audio.speech`、`openai.image.generate`、`openai.image.edit`、`openai.video.generate`、
 `openai.realtime`。同一契约内操作类型不可重复。
 
 特例：
