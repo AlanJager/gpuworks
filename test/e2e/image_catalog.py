@@ -225,11 +225,58 @@ def test_image_registration(page, server, artifacts, report, locale):
     check(collection(page.request.get(server.base + "/api/v1/images?source=custom")) == [], "custom fixture must start empty")
     create = button(page, text["page"]["addCustom"])
     report["active_evidence_layer"] = "ui"
-    with page.expect_response(lambda r: urlsplit(r.url).path == "/api/v1/images/engines") as engines_response:
-        create.click()
-    engines = collection(engines_response.value)
+    # 1.2: the engine list is loaded asynchronously, and a submit that races it must not carry an
+    # incomplete record. The request is held before the drawer opens, so the drawer is genuinely in
+    # its loading state; a submit is then attempted and is required to send nothing at all while the
+    # missing engine is reported at its own field. The request is then released and the same submit
+    # is required to work, which is what proves the first half was the loading state and not a
+    # broken form.
+    engines_held = []
+
+    def hold_engines(route):
+        engines_held.append(route)
+        return
+
+    page.route("**/api/v1/images/engines", hold_engines)
+    create.click()
+    for _ in range(60):
+        if engines_held:
+            break
+        page.wait_for_timeout(100)
+    check(len(engines_held) == 1, "the engine catalogue was not requested when the drawer opened")
+    early = page.get_by_role("dialog")
+    expect(early).to_be_visible()
+    before_early = list(mutations)
+    button(early, form["addImage"]).click()
+    page.wait_for_timeout(600)
+    check(list(mutations) == before_early,
+          "a submit during engine loading sent an incomplete image record")
+    expect(early.get_by_text(form["engineRequired"], exact=True)).to_be_visible(timeout=8000)
+    engines_held[0].continue_()
+    engines_held.clear()
+    page.unroute("**/api/v1/images/engines", hold_engines)
+    report["register_submit_blocked_while_loading"] = True
+    # Once the catalogue arrives the field becomes selectable again; the error text stays until the
+    # next validation, which is the form library's behaviour and is not asserted here. What matters is
+    # that the control is usable, which the rest of this case depends on anyway.
+    engine_select = early.get_by_label(form["engine"], exact=True)
+    expect(engine_select).to_be_visible(timeout=12000)
+    # The blocked submit left its own required-field error behind, which shifts the drawer contents.
+    # The drawer is closed and reopened once so the rest of this case starts from a clean form rather
+    # than inheriting a layout that belongs to an earlier attempt.
+    # The drawer keeps its form state when it is closed, so the error from that attempt would follow
+    # the rest of the case. The page is reloaded instead, which is also what a second visit looks
+    # like, and the rest of the case then runs against a form that has nothing left over.
+    page.reload()
+    open_custom(page, text)
+    create = button(page, text["page"]["addCustom"])
+    create.click()
+    early = page.get_by_role("dialog")
+    expect(early).to_be_visible()
+    expect(early.get_by_text(form["engineRequired"], exact=True)).to_have_count(0, timeout=8000)
+    engines = collection(page.request.get(server.base + "/api/v1/images/engines"))
     engine = next(item for item in engines if item["name"] == "vllm")
-    dialog = page.get_by_role("dialog")
+    dialog = early
     expect(dialog).to_be_in_viewport(ratio=1)
     report["last_step"] = "register-engine-column"
     engine_field = dialog.get_by_label(form["engine"], exact=True)
