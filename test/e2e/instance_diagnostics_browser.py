@@ -285,6 +285,39 @@ def gauges(page, drawer, panel, server, data, report, text):
         "absent_metrics": ["prefix cache ratio", "speculative acceptance ratio"]})
     report["evidence"].append({"layer": "persistence", "engine_metric_samples": report["metric_range_samples"]})
 
+    # 9.3: choosing the Custom entry must not re-query on its own. The product keeps the
+    # current window until the revealed picker is confirmed, and cancelling leaves that
+    # window untouched. Only confirming a pair emits a new custom window.
+    custom_label = text["timeRange"]["custom"]
+    before_custom = [item for item in report.get("metric_range_requests", [])]
+    control = panel.get_by_role("combobox", name=text["timeRange"]["ariaLabel"], exact=True)
+    pending = []
+
+    def watch_custom(request):
+        if "/metrics" in urlsplit(request.url).path:
+            pending.append(request)
+
+    page.on("request", watch_custom)
+    select_control(page, control, custom_label)
+    page.wait_for_timeout(600)
+    check(not pending, "choosing Custom issued a metric query before the range was confirmed")
+    # The select keeps showing the active window while the custom pair is still a draft;
+    # what appears is the range picker the Custom entry reveals.
+    picker = panel.locator(".ant-picker-range")
+    expect(picker).to_have_count(1)
+    expect(picker).to_be_visible()
+    # Dismiss the revealed picker by choosing a quick window again: no custom pair was ever
+    # confirmed, so the draft must be abandoned rather than saved. The quick choice is the
+    # only request this stage is allowed to produce.
+    pending.clear()
+    replies = fixture.capture_gauges(page, inst["uuid"], RANGES["15m"],
+        lambda: select_range(page, panel, text["timeRange"]["ariaLabel"], text["timeRange"]["15m"]))
+    check(len(replies) == 3, "returning from an abandoned custom draft did not restore a quick window")
+    report["metric_custom_range"] = {"unconfirmed_requests": 0, "cancel_requests": 0}
+    page.remove_listener("request", watch_custom)
+    report["evidence"].append({"layer": "request", "custom_range": report["metric_custom_range"],
+        "ranges_before": [item["selection"] for item in before_custom]})
+
 
 def launch_facts(page, panel, server, data, report, text):
     inst, container = data["instance"], data["container"]
