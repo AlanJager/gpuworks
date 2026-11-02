@@ -163,6 +163,72 @@ def test_two_tab_logout_relogin(play, context, server, artifacts, report, locale
         page, auth, locale, common["language"]["switch"])
     report["login_inventory"] = exercise_login_inventory(page, auth)
     secret = page.get_by_label(auth["password"], exact=True)
+    # 22.6: the focus and disabled states are read from the browser's computed style rather than from
+    # the presence of a class. This runs before any submit, so the field is in its normal state - a
+    # reading taken after a refused submit would be reading the error variant's ring, which is a
+    # different colour and would have made the assertion pass for the wrong reason.
+    def computed(target, prop):
+        return target.evaluate("(el, name) => getComputedStyle(el).getPropertyValue(name)", prop)
+
+    props = ("outline-style", "outline-color", "border-color", "box-shadow")
+    wrapper_js = "(el, name) => getComputedStyle(el.closest('.ant-input-affix-wrapper') || el).getPropertyValue(name)"
+    # Reached by keyboard, not by .focus(): :focus-visible is what the theme paints, and a programmatic
+    # focus would be measuring the non-visible variant.
+    page.keyboard.press("Tab")
+    if not username.evaluate("el => el === document.activeElement"):
+        username.focus()
+        page.keyboard.press("Tab")
+        page.keyboard.press("Shift+Tab")
+    expect(username).to_be_focused()
+    focused = {prop: computed(username, prop) for prop in props}
+    focused_wrapper = {prop: username.evaluate(wrapper_js, prop) for prop in props}
+    secret.focus()
+    expect(secret).to_be_focused()
+    blurred = {prop: computed(username, prop) for prop in props}
+    blurred_wrapper = {prop: username.evaluate(wrapper_js, prop) for prop in props}
+    # The ring this theme paints on focus lives on the input's wrapper rather than on the input itself,
+    # so the wrapper is what has to change. The assertion is on the measurable difference rather than on
+    # a particular colour, so a theme change is allowed but a focus state that paints nothing is not.
+    check(focused != blurred or focused_wrapper != blurred_wrapper,
+          f"focusing the username field changed no painted state: field={focused} wrapper={focused_wrapper}")
+    report["login_computed_styles"] = {"field_focused": focused, "field_blurred": blurred,
+                                       "wrapper_focused": focused_wrapper,
+                                       "wrapper_blurred": blurred_wrapper}
+    distinguishable = {prop for prop in props if focused_wrapper[prop] != blurred_wrapper[prop]}
+    check(bool(distinguishable),
+          f"a keyboard-focused field is painted identically to a blurred one: {focused_wrapper}")
+
+    def ring_strength(shadow):
+        """The alpha and spread of the first shadow, which is the ring this theme paints."""
+        alpha = re.search(r"rgba?\(([^)]*)\)", shadow)
+        width = re.search(r"0px 0px 0px ([0-9.]+)px", shadow)
+        parts = [float(v) for v in alpha.group(1).split(",")] if alpha else []
+        return (parts[3] if len(parts) == 4 else 1.0, float(width.group(1)) if width else 0.0)
+
+    # The ring is required to be stronger when focused, not merely different: this theme animates it in
+    # from a faint trace, so a comparison that only asked for a difference would be satisfied by the
+    # residue the transition leaves behind. Both the alpha and the spread have to grow.
+    focused_ring, blurred_ring = ring_strength(focused_wrapper["box-shadow"]), ring_strength(blurred_wrapper["box-shadow"])
+    check(focused_ring[0] > blurred_ring[0] and focused_ring[1] > blurred_ring[1],
+          f"the focus ring is not stronger than the blurred trace: focused={focused_ring} blurred={blurred_ring}")
+    report.setdefault("login_focus_ring", {})["strength"] = {"focused": focused_ring, "blurred": blurred_ring}
+    findings = report.setdefault("findings", [])
+    if "box-shadow" not in distinguishable:
+        findings.append({"kind": "focus-ring", "detail":
+            "a keyboard-focused login field paints no focus ring: box-shadow is identical focused and "
+            "blurred, so the only visual cue this form gives for keyboard focus is the border colour",
+            "focused": focused_wrapper, "blurred": blurred_wrapper})
+    submit_button = button(page, auth["submit"])
+    # This submit is deliberately never disabled - an empty form is refused by validation instead - so
+    # the state it actually carries is recorded, and the disabled variant is recorded as not present on
+    # this screen rather than claimed.
+    disabled_style = {prop: computed(submit_button, prop) for prop in
+                      ("color", "cursor", "background-color")}
+    disabled_style["submit_is_disabled"] = submit_button.is_disabled()
+    report["login_computed_styles"] = {"field_focused": focused, "field_blurred": blurred,
+                                       "wrapper_focused": focused_wrapper,
+                                       "wrapper_blurred": blurred_wrapper,
+                                       "disabled_submit": disabled_style}
     expect(username).to_be_empty()
     expect(secret).to_be_empty()
     expect(secret).to_have_attribute("type", "password")
