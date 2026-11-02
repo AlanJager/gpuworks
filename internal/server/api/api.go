@@ -121,11 +121,14 @@ type Deps struct {
 	AgentConnect  http.HandlerFunc // hub.ServeWS
 	InstallSh     http.HandlerFunc // install script
 	RecentRejects func() []dto.AgentReject
-	UpgradeErrors func() map[string]string
+	AgentUpgrades AgentUpgradeHooks
 	UIHandler     http.Handler // embedded SPA (may be nil in dev)
 
 	// Hub integration.
-	Online          func(uuid string) bool
+	Online func(uuid string) bool
+	// WakeHeld counts the requests the gateway holds for each deployment's
+	// wake right now (the scheduling overview's contention); nil reads none.
+	WakeHeld        func() map[uint]int
 	KickNode        func(uuid string)
 	NodeSync        NodeSync
 	CallNode        func(ctx context.Context, uuid, method string, params any) (json.RawMessage, error)
@@ -153,12 +156,13 @@ type Deps struct {
 	// stays unaware of hub and yamux. Terminal owns admission and audit;
 	// NodeCaps lets the handler refuse agents that predate webterm with a clear
 	// message.
-	OpenTerminal  func(nodeUUID, target, ref string, rows, cols uint16, graceSec int) (net.Conn, error)
-	NodeCaps      func(nodeUUID string) []string
-	Terminal      *webterm.Manager
-	ProxyV1       http.Handler // /v1/* data plane
-	ProxyModels   http.Handler // /v1/models
-	PlaygroundV1  http.Handler // authenticated internal proxy, no platform API key
+	OpenTerminal func(nodeUUID, target, ref string, rows, cols uint16, graceSec int) (net.Conn, error)
+	NodeCaps     func(nodeUUID string) []string
+	Terminal     *webterm.Manager
+	ProxyV1      http.Handler // /v1/* data plane: models, the OpenAI-compatible files and batches, and the model requests
+	PlaygroundV1 http.Handler // authenticated internal proxy, no platform API key
+	// Batches is the Batch API's console side (batches.go); nil answers 404.
+	Batches       BatchService
 	NodePrecheck  provision.Prechecker
 	NodeInstaller provision.Installer
 	Recovery      interface {
@@ -202,6 +206,17 @@ type Deps struct {
 	// Analytics is usage analytics: the data retention every store is
 	// kept under (analytics.go). Nil answers 404.
 	Analytics Analytics
+	// SchedulingActivity is the scheduling activity's rollups
+	// (scheduling_activity.go): the activity route, the sharing stats and
+	// the node timelines' counts read it. Nil answers those 404.
+	SchedulingActivity SchedulingActivity
+	// CardHealth is each card's checks and their failure records
+	// (card_health.go). Nil answers those routes 404.
+	CardHealth CardHealth
+	// Experience is the experience environment beside the server
+	// (experience.go). Nil answers 404: the environment's own console, or a
+	// harness.
+	Experience Experience
 
 	// AI serves /ai/available, /ai/ask and the LLM-free findings and fit
 	// reads. Nil means no AI service is wired: available reports false.
@@ -261,11 +276,8 @@ func Router(d Deps, policies ...auth.SessionPolicy) http.Handler {
 	}
 
 	// Data plane: OpenAI-compatible /v1. ProxyV1 owns API-key auth for every
-	// endpoint, including /v1/models.
+	// endpoint, including /v1/models and the batch files.
 	if d.ProxyV1 != nil {
-		if d.ProxyModels != nil {
-			r.Handle("/v1/models", d.ProxyModels)
-		}
 		r.Handle("/v1/*", d.ProxyV1)
 	}
 
@@ -299,6 +311,14 @@ func Router(d Deps, policies ...auth.SessionPolicy) http.Handler {
 			r.With(a.managementAdmin).Post("/nodes", a.createNode)
 			r.Get("/agent/rejects", a.listRejects)
 			r.Get("/agent/upgrade-errors", a.listUpgradeErrors)
+			r.With(a.managementAdmin).Post("/agent-upgrades/preview", a.previewAgentUpgrade)
+			r.With(a.managementAdmin).Post("/agent-upgrades", a.createAgentUpgrade)
+			r.Get("/agent-upgrades", a.listAgentUpgrades)
+			r.Get("/agent-upgrades/{id}", a.getAgentUpgrade)
+			r.Get("/agent-upgrades/{id}/items", a.agentUpgradeItems)
+			r.With(a.managementAdmin).Post("/agent-upgrades/{id}/stop", a.stopAgentUpgrade)
+			r.With(a.managementAdmin).Post("/agent-upgrades/{id}/continue-preview", a.continueAgentUpgradePreview)
+			r.With(a.managementAdmin).Post("/agent-upgrades/{id}/items/{uuid}/release", a.releaseAgentUpgrade)
 			r.With(a.managementAdmin).Post("/nodes/precheck", a.precheckNode)
 			r.With(a.managementAdmin).Post("/nodes/install", a.installNode)
 			r.Get("/nodes/{uuid}", a.getNode)
@@ -309,6 +329,11 @@ func Router(d Deps, policies ...auth.SessionPolicy) http.Handler {
 			r.Post("/nodes/{uuid}/upgrade", a.upgradeNode)
 			r.Put("/nodes/{uuid}/labels", a.updateNodeLabels)
 			r.Put("/nodes/{uuid}/scheduling", a.setNodeScheduling)
+			r.Put("/nodes/{uuid}/gpus/scheduling", a.setCardScheduling)
+			r.Post("/nodes/{uuid}/gpus/recheck", a.recheckCard)
+			r.Get("/nodes/{uuid}/health-checks", a.nodeHealthChecks)
+			r.Get("/nodes/{uuid}/health-checks/detail", a.nodeHealthCheckDetail)
+			r.Get("/nodes/{uuid}/health-records", a.nodeHealthRecords)
 			r.Get("/nodes/{uuid}/replicas", a.nodeReplicas)
 			r.Post("/nodes/{uuid}/evict", a.evictNode)
 			r.Patch("/nodes/{uuid}/name", a.renameNode)
@@ -344,6 +369,7 @@ func Router(d Deps, policies ...auth.SessionPolicy) http.Handler {
 			r.Patch("/models/{id}/inference-config", a.updateModelInferenceConfig)
 			r.Post("/models/{id}/metadata/refresh", a.refreshModelMetadata)
 			r.Post("/models/{id}/download", a.downloadModel)
+			r.Post("/models/{id}/download/cancel", a.cancelModelDownload)
 			r.Post("/models/{id}/copy", a.copyModel)
 			r.Post("/models/{id}/nodes/{uuid}/cache/retry", a.retryModelCache)
 			r.With(a.managementAdmin).Delete("/models/{id}/storages/{storage_id}", a.deleteModelInStorage)
@@ -420,6 +446,8 @@ func Router(d Deps, policies ...auth.SessionPolicy) http.Handler {
 			r.Post("/deployments", a.createDeployment)
 			r.Get("/deployments/{id}", a.getDeployment)
 			r.Get("/deployments/{id}/candidates", a.deploymentCandidates)
+			r.Get("/deployments/{id}/draft", a.getDeploymentDraft)
+			r.Put("/deployments/{id}", a.editDeployment)
 			r.Put("/deployments/{id}/requirements", a.setDeploymentRequirements)
 			r.Put("/deployments/{id}/routing", a.setRoutingPolicy)
 			r.Put("/deployments/{id}/health-check", a.setHealthCheck)
@@ -436,6 +464,14 @@ func Router(d Deps, policies ...auth.SessionPolicy) http.Handler {
 			r.Delete("/deployments/{id}", a.deleteDeployment)
 			r.Post("/deployments/{id}/sleep", a.sleepDeployment)
 			r.Post("/deployments/{id}/wake", a.wakeDeployment)
+			r.Delete("/deployments/{id}/wake-waiting", a.endWakeWaiting)
+			r.Get("/deployments/{id}/schedule", a.listSchedule)
+			r.Post("/deployments/{id}/schedule", a.createSchedule)
+			r.Put("/deployments/{id}/schedule/{sid}", a.updateSchedule)
+			r.Delete("/deployments/{id}/schedule/{sid}", a.deleteSchedule)
+			r.Put("/deployments/{id}/node-replacement", a.setNodeReplacement)
+			r.Put("/deployments/{id}/yield-policy", a.setYieldPolicy)
+			r.Put("/deployments/{id}/placement-mode", a.setPlacementMode)
 			// A deployment's own timeline, including scheduling outcomes
 			// recorded before any instance existed.
 			r.Get("/deployments/{id}/events", a.deploymentEvents)
@@ -468,6 +504,7 @@ func Router(d Deps, policies ...auth.SessionPolicy) http.Handler {
 			r.Get("/apikeys", a.listAPIKeys)
 			r.Post("/apikeys", a.createAPIKey)
 			r.Delete("/apikeys/{prefix}", a.deleteAPIKey)
+			r.Put("/apikeys/{prefix}/scope", a.setAPIKeyScope)
 			r.Get("/mcp/status", a.mcpStatus)
 			r.With(a.managementAdmin).Put("/mcp/settings", a.putMCPSettings)
 
@@ -560,6 +597,10 @@ func Router(d Deps, policies ...auth.SessionPolicy) http.Handler {
 			r.With(a.managementAdmin).Get("/usage-report", a.getUsageReport)
 			r.With(a.managementAdmin).Put("/usage-report/enabled", a.putUsageReportEnabled)
 			r.With(a.managementAdmin).Get("/usage-report/preview", a.getUsageReportPreview)
+			r.With(a.managementAdmin).Get("/experience", a.getExperience)
+			r.With(a.managementAdmin).Put("/experience/enabled", a.putExperienceEnabled)
+			r.With(a.managementAdmin).Post("/experience/reset", a.postExperienceReset)
+			r.With(a.managementAdmin).Post("/experience/password", a.postExperiencePassword)
 			r.Get("/notices", a.getNotices)
 			r.Post("/notices/read", a.postNoticesRead)
 			r.With(a.managementAdmin).Get("/server/listen", a.getServerListen)
@@ -572,6 +613,12 @@ func Router(d Deps, policies ...auth.SessionPolicy) http.Handler {
 			r.Get("/logs/context", a.logsContext)
 			r.Get("/logs/histogram", a.logsHistogram)
 			r.Get("/monitor/overview", a.monitorOverview)
+			r.Get("/scheduling/board", a.schedulingBoard)
+			r.Get("/scheduling/overview", a.schedulingOverview)
+			r.Get("/scheduling/history", a.schedulingHistory)
+			r.Get("/scheduling/timeline", a.schedulingTimeline)
+			r.Get("/scheduling/activity", a.schedulingActivity)
+			r.Get("/scheduling/yield-policies", a.yieldPolicyDictionary)
 			r.Get("/monitor/deployments/{id}", a.monitorDeployment)
 			r.Get("/monitor/deployments/{id}/requests", a.monitorRequests)
 			r.Get("/monitor/requests/lookup", a.monitorRequestLookup)
@@ -585,6 +632,10 @@ func Router(d Deps, policies ...auth.SessionPolicy) http.Handler {
 			// AI helper.
 			r.Get("/ai/configs", a.listAIConfigs)
 			r.Post("/ai/configs", a.createAIConfig)
+			// The connection test changes nothing, so it is a POST to a verb
+			// path rather than a resource write under {id}.
+			r.Post("/ai/configs/test", a.testAIConfig)
+			r.Patch("/ai/configs/{id}", a.updateAIConfig)
 			r.Delete("/ai/configs/{id}", a.deleteAIConfig)
 			r.Get("/ai/available", a.aiAvailable)
 			r.Post("/ai/ask", a.aiAsk)
@@ -604,6 +655,15 @@ func Router(d Deps, policies ...auth.SessionPolicy) http.Handler {
 			if d.PlaygroundV1 != nil {
 				r.Handle("/playground/v1/*", a.withClaims(d.PlaygroundV1))
 			}
+
+			// Batches: the console's side of the Batch API. Anyone signed in reads
+			// (an administrator sees every user's), an administrator writes.
+			r.Get("/batches", a.listBatches)
+			r.With(a.managementAdmin).Post("/batches", a.createBatch)
+			r.Get("/batches/dictionary", a.batchDictionary)
+			r.Get("/batches/{id}", a.getBatch)
+			r.With(a.managementAdmin).Post("/batches/{id}/cancel", a.cancelBatch)
+			r.Get("/batches/{id}/files/{kind}", a.downloadBatchFile)
 		})
 	})
 	r.Get("/healthz", a.health)
@@ -620,11 +680,11 @@ type apiHandlers struct {
 	sessionPolicy       auth.SessionPolicy
 	loginThrottle       loginThrottle
 	d                   Deps
-	sleepMu             sync.Mutex // serializes sleep and wake orders: admission and role checks read what they then write
 	gpuCacheMu          sync.Mutex
 	gpuCacheAt          time.Time
 	gpuCache            *gpuInventoryCache
 	gpuCacheGeneration  uint64
+	overview            overviewCache // the scheduling overview (scheduling_overview.go)
 	benchmarkMu         sync.Mutex
 	benchmarkExecutions map[uint]*benchmarkExecution
 	updates             distribution.CheckCache
@@ -798,11 +858,11 @@ func (a *apiHandlers) listRejects(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *apiHandlers) listUpgradeErrors(w http.ResponseWriter, r *http.Request) {
-	if a.d.UpgradeErrors == nil {
+	if a.d.AgentUpgrades.Errors == nil {
 		writeJSON(w, http.StatusOK, map[string]string{})
 		return
 	}
-	writeJSON(w, http.StatusOK, a.d.UpgradeErrors())
+	writeJSON(w, http.StatusOK, a.d.AgentUpgrades.Errors())
 }
 
 func (a *apiHandlers) getNode(w http.ResponseWriter, r *http.Request) {
@@ -898,6 +958,15 @@ func (a *apiHandlers) updateNodeRuntime(w http.ResponseWriter, r *http.Request) 
 }
 
 func (a *apiHandlers) upgradeNode(w http.ResponseWriter, r *http.Request) {
+	if a.d.AgentUpgrades.Service != nil {
+		run, err := a.d.AgentUpgrades.Service.UpgradeNode(r.Context(), chi.URLParam(r, "uuid"), a.agentUpgradeActor(r))
+		if err != nil {
+			writeAgentUpgradeError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusAccepted, map[string]any{"status": "upgrading", "run_id": run.ID})
+		return
+	}
 	if a.d.CallNode == nil {
 		writeProductError(w, http.StatusServiceUnavailable, ErrorNodeRPCUnavailable, "node RPC is not configured", nil)
 		return
@@ -985,6 +1054,12 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
+// WriteError answers err as the API does: a product error with its stable
+// code and params, any other error with its text. It is for a handler in
+// front of the router (the experience environment's guard), so a refusal
+// there reads like one from the API.
+func WriteError(w http.ResponseWriter, status int, err error) { writeErr(w, status, err) }
+
 func writeErr(w http.ResponseWriter, code int, err error) {
 	response := map[string]any{"error": err.Error()}
 	var productErr *messages.ProductError
@@ -1012,6 +1087,8 @@ func nodeDTO(n *store.Node, includeToken bool) dto.Node {
 	d := dto.Node{
 		UUID:                  n.UUID,
 		Scheduling:            nodeSchedulingName(n.Scheduling),
+		SchedulingBy:          string(n.SchedulingBy),
+		CordonReason:          n.CordonReason(),
 		Name:                  n.Name,
 		State:                 n.ConnectionState(),
 		Hostname:              n.Hostname,
@@ -1102,6 +1179,9 @@ func nodeDTO(n *store.Node, includeToken bool) dto.Node {
 			MIGEnabled:            g.MIGEnabled,
 			Ownership:             g.Ownership,
 			ForeignProcesses:      g.ForeignUse(),
+			SchedulingStopped:     g.SchedulingStopped,
+			SchedulingAllowed:     g.SchedulingAllowedAt != nil,
+			SchedulingActions:     g.SchedulingActions(),
 			Schedulable:           g.CanTakeWork(),
 			HealthStatus:          g.HealthStatus,
 			HealthCode:            g.HealthCode,

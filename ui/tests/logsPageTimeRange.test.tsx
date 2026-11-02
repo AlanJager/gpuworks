@@ -115,7 +115,7 @@ test("the console defaults to 24h; seven days and all share bounds with totals a
   await expectRange(null, null);
   assert.equal(screen.getAllByTestId("log-row").length, 3);
   assert.ok(screen.getAllByTestId("log-row").some((row) => row.textContent?.includes("Traceback old")));
-  await waitFor(() => assert.equal(within(screen.getByTestId("logs-histogram")).getAllByRole("img").length, 3));
+  await waitFor(() => assert.equal(within(screen.getByTestId("logs-histogram")).getAllByRole("button").length, 3));
 
   await pickRange("最近 24 小时");
   await screen.findByText("命中 1 条");
@@ -192,4 +192,32 @@ test("a deep-linked window shows in the picker as the custom range", async () =>
   assert.ok(within(screen.getByTestId("range-select")).getByText("自定义"));
   const inputs = ["logs-range-start", "logs-range-end"].map((id) => document.getElementById(id) as HTMLInputElement);
   assert.deepEqual(inputs.map((i) => i.value), ["2026-10-18 10:00:00", "2026-10-18 11:00:00"]);
+});
+
+test("clicking a histogram bar narrows the window to exactly that bucket and drills down", async () => {
+  const halfHour = 1_800_000;
+  const bucketStart = Math.floor((Date.now() - 3 * 3_600_000) / halfHour) * halfHour;
+  entries = [entry(1, bucketStart + 60_000, "in bucket"), entry(2, bucketStart + halfHour, "next bucket"), entry(3, Date.now() - 60_000, "recent")];
+  mount();
+  await screen.findByText("命中 3 条");
+  const bars = await waitFor(() => {
+    const found = within(screen.getByTestId("logs-histogram")).getAllByRole("button");
+    assert.equal(found.length, 3);
+    return found;
+  });
+  fireEvent.click(bars[0]);
+  // `to` is inclusive: one ms short of the next bucket, which must not leak in.
+  await expectRange(String(bucketStart), String(bucketStart + halfHour - 1));
+  await screen.findByText("命中 1 条");
+  assert.equal(screen.queryByText("next bucket"), null);
+  assert.ok(within(screen.getByTestId("range-select")).getByText("自定义"));
+  // The 30 min window now buckets per minute; a keyboard pick drills further.
+  await waitFor(() => assert.equal(requests.filter((r) => r.pathname.endsWith("histogram")).at(-1)!.searchParams.get("bucket"), "60000"));
+  const minuteBar = await waitFor(() => {
+    const found = within(screen.getByTestId("logs-histogram")).getAllByRole("button");
+    assert.equal(found.length, 1);
+    return found[0];
+  });
+  fireEvent.keyDown(minuteBar, { key: "Enter" });
+  await expectRange(String(bucketStart + 60_000), String(bucketStart + 120_000 - 1));
 });

@@ -8,12 +8,11 @@ import (
 )
 
 // ResolveDeploymentContract resolves the operation contract from the model's
-// current editable configuration. The deployment and instance arguments are
-// retained for API compatibility with callers that also need deployment
-// state, but operation changes intentionally take effect immediately for
-// proxy, Playground, and deployment views.
-func ResolveDeploymentContract(st *store.Store, deployment *store.Deployment, instances []store.Instance) Contract {
-	_ = instances
+// current editable configuration, so operation changes take effect
+// immediately for proxy, Playground, and deployment views. It reads only the
+// deployment's model: the Playground calls it once per request, which must
+// not read the deployment's instances.
+func ResolveDeploymentContract(st *store.Store, deployment *store.Deployment) Contract {
 	if st == nil || deployment == nil || deployment.ModelID == 0 {
 		return emptyModelContract()
 	}

@@ -18,6 +18,23 @@ func (e *Env) CreatePendingNode(t testing.TB, name string) (uuid, token string) 
 	return node.UUID, token
 }
 
+// NodeOnlineUUID reports whether the node is online right now. A server_dial
+// node can come online without the caller's own dial: the hub redials every
+// registered server_dial address on its reconnect interval, and an agent serves
+// one server connection at a time.
+func (e *Env) NodeOnlineUUID(uuid string) bool {
+	nodes, err := e.Store().ListNodes()
+	if err != nil {
+		return false
+	}
+	for _, node := range nodes {
+		if node.UUID == uuid {
+			return node.State == store.NodeStateOnline
+		}
+	}
+	return false
+}
+
 func (e *Env) WaitNodeOnlineUUID(t testing.TB, uuid string) {
 	e.WaitNodeStateUUID(t, uuid, store.NodeStateOnline, 3*time.Minute)
 }

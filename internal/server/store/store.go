@@ -14,6 +14,7 @@ import (
 	"log/slog"
 	"os"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/glebarez/sqlite"
@@ -30,6 +31,8 @@ import (
 type Store struct {
 	db  *gorm.DB
 	Bus *bus.Bus
+	// sharing keeps SharingDeployments' rows between deployment changes.
+	sharing sharingCache
 	// readDB is a second connection pool (same database file) dedicated to
 	// hot, pure-read paths (ListNodes, ListDeployments, ListInstances, the
 	// timeline reads, InstanceByUUID — see reader()): under WAL, readers do
@@ -70,6 +73,9 @@ type Store struct {
 	// cacheLifecycle bridges model readiness checks and persisted instance
 	// references with cache deletion on the same node.
 	cacheLifecycle cacheLifecycleGuard
+	// observer receives the events the scheduling activity counts
+	// (scheduling_activity.go).
+	observer atomic.Pointer[EventObserver]
 }
 
 func (s *Store) SetSecretbox(box *auth.Secretbox) { s.secretbox = box }
@@ -615,6 +621,7 @@ func (s *Store) SetNodeServerURL(uuid, serverURL string) error {
 // instances must be removed through the deployment/controller path first.
 func (s *Store) DeleteNode(uuid string) error {
 	var nodeID uint
+	var removals []InstanceEvent
 	err := s.db.Transaction(func(tx *gorm.DB) error {
 		var n Node
 		err := tx.Where("uuid = ?", uuid).First(&n).Error
@@ -624,12 +631,27 @@ func (s *Store) DeleteNode(uuid string) error {
 		if err != nil {
 			return err
 		}
+		// Rows only waiting to be removed from the node (a replica moved
+		// away while it was offline keeps its row until the node confirms)
+		// go with it; any other instance means a deployment still runs here.
+		leaving := []string{proto.InstRemoving, proto.InstPendingRemoval}
 		var instanceCount int64
-		if err := tx.Model(&Instance{}).Where("node_id = ?", n.ID).Count(&instanceCount).Error; err != nil {
+		if err := tx.Model(&Instance{}).Where("node_id = ? AND state NOT IN ?", n.ID, leaving).Count(&instanceCount).Error; err != nil {
 			return err
 		}
 		if instanceCount > 0 {
 			return fmt.Errorf("node %s has %d instance(s); stop deployments before deleting the node", uuid, instanceCount)
+		}
+		var gone []Instance
+		if err := tx.Where("node_id = ? AND state IN ?", n.ID, leaving).Find(&gone).Error; err != nil {
+			return err
+		}
+		for i := range gone {
+			removed, err := deleteInstanceRecords(tx, &gone[i])
+			if err != nil {
+				return err
+			}
+			removals = append(removals, removed...)
 		}
 		if err := checkNoCacheDeletion(tx.Where("node_id = ?", n.ID)); err != nil {
 			return err
@@ -658,6 +680,9 @@ func (s *Store) DeleteNode(uuid string) error {
 		if err := tx.Where("node_id = ?", n.ID).Delete(&GPU{}).Error; err != nil {
 			return err
 		}
+		if err := tx.Where("node_id = ?", n.ID).Delete(&CardHealthEpisode{}).Error; err != nil {
+			return err
+		}
 		if err := rememberDeletedNode(tx, n, time.Now().UTC()); err != nil {
 			return err
 		}
@@ -670,6 +695,9 @@ func (s *Store) DeleteNode(uuid string) error {
 	if err != nil {
 		return err
 	}
+	for _, ev := range removals {
+		s.observe(ev, nil)
+	}
 	s.Bus.PublishChange("node", uuid, fmt.Sprintf("deleted:%d", nodeID))
 	return nil
 }
@@ -678,6 +706,7 @@ func (s *Store) DeleteNode(uuid string) error {
 // GPUs are reconciled (upsert by node+index, delete missing) in one transaction.
 func (s *Store) UpdateNodeStatus(uuid string, st proto.NodeStatus) error {
 	cordoned, uncordoned := false, false
+	cordonedFor := ""
 	err := s.db.Transaction(func(tx *gorm.DB) error {
 		var n Node
 		if err := tx.Where("uuid = ?", uuid).First(&n).Error; err != nil {
@@ -725,22 +754,17 @@ func (s *Store) UpdateNodeStatus(uuid string, st proto.NodeStatus) error {
 		updates["runtime_fallback_from"] = truncate(st.Sys.RuntimeFallbackFrom, 16)
 		updates["runtime_fallback_reason"] = truncate(st.Sys.RuntimeFallbackReason, 64)
 		updates["accelerator_vendors"] = encodeAcceleratorVendors(st.Sys.AcceleratorVendors)
-		switch {
-		case st.Sys.RuntimeGPUBlocked != "" && n.Scheduling == NodeSchedulable:
-			// The cards are fine and nothing can be given them, so every
-			// deployment placed here would fail at container start. The
-			// operator is shown why and may turn scheduling back on; this
-			// cordons it again while the cause remains.
-			updates["scheduling"] = NodeCordoned
-			cordoned = true
-		case n.RuntimeGPUBlocked != "" && st.Sys.RuntimeGPUBlocked == "" && st.Sys.RuntimeDriver != "" && n.Scheduling == NodeCordoned:
-			// The cause the platform cordoned for is gone: the plugin was
-			// installed, or the agent moved to a runtime that needs none.
-			// Who cordoned is not recorded, so a cordon an operator added
-			// on top of the platform's is lifted with it: rare, and the
-			// price of nodes that come back on their own.
-			updates["scheduling"] = NodeSchedulable
-			uncordoned = true
+		// The platform's half of NodeScheduling: it cordons a schedulable
+		// node while it has a reason of its own, and lifts only the cordons
+		// it set (node_cordon.go). A node whose runtime cannot be asked at
+		// all keeps whatever it has: an agent that cannot say is not a
+		// reason to let work onto the node, nor to take it off.
+		runtimeKnown := st.Sys.RuntimeDriver != "" || st.Sys.RuntimeGPUBlocked != ""
+		cordonReason := PlatformCordonReason(st.Sys.RuntimeGPUBlocked, st.GPUs)
+		if d := decideCordon(n.Scheduling, n.SchedulingBy, cordonReason); d.changed && (runtimeKnown || cordonReason != "") {
+			updates["scheduling"] = d.scheduling
+			updates["scheduling_by"] = d.source
+			cordoned, uncordoned, cordonedFor = d.scheduling == NodeCordoned, d.scheduling == NodeSchedulable, d.reason
 		}
 		if len(st.Sys.Runtimes) > 0 {
 			if b, err := json.Marshal(st.Sys.Runtimes); err == nil {
@@ -789,12 +813,12 @@ func (s *Store) UpdateNodeStatus(uuid string, st proto.NodeStatus) error {
 		// The platform, not an operator, took the node out of scheduling:
 		// say so where an operator looks, and to every reader of
 		// scheduling changes.
-		slog.Warn("node cordoned: its container runtime cannot give a container its accelerators",
-			"node", uuid, "reason", st.Sys.RuntimeGPUBlocked)
+		slog.Warn("node cordoned by the platform", "node", uuid, "reason", cordonedFor,
+			"runtime_gpu_blocked", st.Sys.RuntimeGPUBlocked)
 		s.publishNode(uuid, NodeChangeScheduling)
 	}
 	if uncordoned {
-		slog.Info("node schedulable again: its container runtime can give a container its accelerators",
+		slog.Info("node schedulable again: the platform's reason for cordoning it is gone",
 			"node", uuid, "runtime", st.Sys.RuntimeDriver)
 		s.publishNode(uuid, NodeChangeScheduling)
 	}

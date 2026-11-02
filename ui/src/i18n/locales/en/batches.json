@@ -1,0 +1,207 @@
+{
+  "page": {
+    "title": "Batches",
+    "description": "Run large sets of requests offline at batch priority: upload a JSONL file, follow the progress and download the results",
+    "loadFailed": "Could not load the batches",
+    "detailLoadFailed": "Could not load this batch"
+  },
+  "action": {
+    "create": "Create batch",
+    "createAdminOnly": "Only administrators can create batches",
+    "refresh": "Refresh",
+    "retry": "Retry",
+    "open": "View details of batch {{id}}",
+    "cancel": "Cancel batch",
+    "cancelTitle": "Cancel this batch?",
+    "cancelBody": "Requests that have not started will not run. Requests already in flight may finish for up to 2 minutes before the batch is cancelled.",
+    "cancelOk": "Yes, cancel it",
+    "cancelKeep": "Keep running"
+  },
+  "filter": {
+    "status": "Filter by status"
+  },
+  "status": {
+    "validating": "Validating",
+    "in_progress": "In progress",
+    "finalizing": "Finalizing",
+    "cancelling": "Cancelling",
+    "completed": "Completed",
+    "failed": "Failed",
+    "expired": "Expired",
+    "cancelled": "Cancelled"
+  },
+  "columns": {
+    "id": "Batch",
+    "status": "Status",
+    "endpoint": "Endpoint",
+    "model": "Model",
+    "modelPerLine": "Per file line",
+    "progress": "Progress",
+    "createdAt": "Created",
+    "expiresAt": "Expires"
+  },
+  "progress": {
+    "summary": "{{done}} / {{total}} done",
+    "failed": "{{count}} failed",
+    "aria": "{{done}} of {{total}} requests finished, {{failed}} failed"
+  },
+  "empty": {
+    "all": "No batches yet. Create one by uploading a JSONL file of requests.",
+    "filtered": "No batch matches the selected status."
+  },
+  "detail": {
+    "title": "Batch {{id}}",
+    "sections": {
+      "summary": "Summary",
+      "counts": "Requests",
+      "times": "Timeline",
+      "metadata": "Metadata",
+      "files": "Files",
+      "failure": "Failure"
+    },
+    "id": "ID",
+    "status": "Status",
+    "endpoint": "Endpoint",
+    "model": "Model override",
+    "completionWindow": "Completion window",
+    "inputFilename": "Input file name",
+    "owner": "Owner (user ID)",
+    "apiKey": "API key ID",
+    "total": "Total requests",
+    "completed": "Completed",
+    "failed": "Failed",
+    "pending": "Not finished (waiting or being retried)",
+    "pendingHint": "Requests the platform is retrying, for example while a deployment wakes, after a preemption by a higher-ranked deployment, or after a 429 or 5xx answer, are counted as not finished.",
+    "times": {
+      "created_at": "Created at",
+      "expires_at": "Expires at",
+      "in_progress_at": "Started at",
+      "finalizing_at": "Finalizing since",
+      "completed_at": "Completed at",
+      "failed_at": "Failed at",
+      "expired_at": "Expired at",
+      "cancelling_at": "Cancel requested at",
+      "cancelled_at": "Cancelled at"
+    },
+    "noMetadata": "No metadata.",
+    "failureCode": "Reason code",
+    "download": {
+      "input": "Download input",
+      "output": "Download output",
+      "error": "Download errors",
+      "unavailable": "Not available",
+      "hint": "The output and error files are deleted at {{time}}.",
+      "expired": "This file has expired and was deleted."
+    },
+    "cancelPending": "Cancel requested. The batch stays cancelling until the requests in flight end, up to 2 minutes.",
+    "cancelled": "Cancel requested for batch {{id}}",
+    "cancelFailed": "Could not cancel the batch: {{detail}}"
+  },
+  "create": {
+    "title": "Create batch",
+    "submit": "Create batch",
+    "submitting": "Uploading...",
+    "cancel": "Cancel",
+    "file": "Requests file (JSONL)",
+    "fileHelp": "Choose a .jsonl file (JSON Lines), one request per line.",
+    "fileSelected": "{{name}} ({{size}})",
+    "fileRequired": "Choose a requests file first.",
+    "window": {
+      "label": "Completion window",
+      "unit": "hours",
+      "help": "A whole number of hours from {{min}} to {{max}}, {{default}} by default. Requests without a result by then are treated as expired."
+    },
+    "model": {
+      "label": "Model",
+      "placeholder": "Use the model on each line of the file",
+      "help": "Optional. When set, the body.model of every request in the file is replaced by it; when empty, each line keeps its own model. A sleeping deployment can be chosen too: the gateway wakes it when a request arrives.",
+      "state": {
+        "serving": "Serving",
+        "asleep": "Asleep",
+        "asleepHeld": "Asleep (held, requests do not wake it)"
+      },
+      "heldWarning": "{{model}} sleeps by an operator's or a schedule's order, which requests do not wake: the batch's requests are retried until someone wakes it or the batch expires."
+    },
+    "fileModels": {
+      "count": "Models in the file ({{count}}): {{models}}",
+      "none": "No model name was found in the file.",
+      "skipped": "The file is over 50 MB, so its models were not checked in the browser.",
+      "unknown": "These models in the file have no available deployment on the platform, so the batch cannot be created: {{models}}. Choose a model above to replace them, or deploy these models first.",
+      "replaced": "The models in the file ({{models}}) will all be replaced by {{model}}."
+    },
+    "warnings": {
+      "BATCH_MODEL_SLEEP_HELD": "{{model}} sleeps by an operator's or a schedule's order, which requests do not wake: the batch's requests are retried until someone wakes it or the batch expires.",
+      "BATCH_FILE_MODELS_SLEEP_HELD": "{{models, list}} in the file sleep by an operator's or a schedule's order, which requests do not wake: their requests are retried until someone wakes them or the batch expires."
+    },
+    "created": "Batch {{id}} created",
+    "hintTitle": "Format and limits",
+    "hint": {
+      "format": "JSON Lines, at most {{size}} MB and {{requests, number}} requests.",
+      "line": "Each line is one request: {\"custom_id\", \"method\": \"POST\", \"url\", \"body\": {\"model\", ...}}.",
+      "unique": "custom_id must be unique within the file.",
+      "sameUrl": "All lines use the same url; the batch calls that endpoint.",
+      "noStream": "Streaming requests are not supported.",
+      "retention": "The output and error files are kept for {{days}} days after the batch ends."
+    },
+    "tooLarge": "The file is larger than {{limit}} MB.",
+    "failed": "Could not create the batch",
+    "sample": {
+      "title": "Sample file",
+      "endpoint": "Sample type",
+      "endpoints": {
+        "chat": "Chat ({{endpoint}})",
+        "completions": "Completions ({{endpoint}})",
+        "embeddings": "Embeddings ({{endpoint}})"
+      },
+      "model": "Model the sample uses",
+      "noModel": "No active deployment",
+      "download": "Download sample",
+      "use": "Use sample"
+    },
+    "dictionary": {
+      "loading": "Reading what a batch can be created with...",
+      "failed": "Could not read what a batch can be created with",
+      "retry": "Retry"
+    }
+  },
+  "errors": {
+    "detail": "Detail: {{detail}}",
+    "fileLine": "Line {{line}} of the file is not valid: {{reason}}",
+    "fileWhole": "The file is not valid: {{reason}}",
+    "fileReasons": {
+      "invalid_json_line": "the line is not valid JSON",
+      "missing_custom_id": "custom_id is missing",
+      "duplicate_custom_id": "custom_id repeats an earlier line",
+      "invalid_method": "method must be POST",
+      "invalid_url": "url is missing or not a supported endpoint",
+      "missing_body": "body is missing",
+      "missing_model": "body.model is missing",
+      "streaming_not_supported": "streaming is not supported in a batch",
+      "line_too_long": "the line is too long",
+      "empty_file": "the file has no requests",
+      "too_many_requests": "the file has more requests than a batch allows",
+      "upload_failed": "the upload could not be read",
+      "mixed_endpoints": "the url differs from the first line's; a batch calls one endpoint"
+    },
+    "requestReasons": {
+      "endpoint_mismatch": "the requests in the file do not all use the given endpoint",
+      "invalid_endpoint": "the endpoint is not supported",
+      "missing_required_parameter": "a required field is missing",
+      "invalid_multipart": "the upload is not a valid form"
+    },
+    "requestInvalid": "The batch request is not valid ({{field}}): {{reason}}",
+    "moreModels": "{{count}} more"
+  },
+  "api": {
+    "title": "Call it through the API (OpenAI-compatible /v1/files and /v1/batches)",
+    "description": "Batches are the platform's OpenAI Batch API: call the gateway directly with an API key, and the official OpenAI SDK only needs its base_url pointed here. This page is a management view of the same batches.",
+    "keys": "Create an API key",
+    "steps": {
+      "upload": "1. Upload the requests file (.jsonl)",
+      "create": "2. Create the batch",
+      "poll": "3. Check its progress and status",
+      "download": "4. Download the results",
+      "sdk": "Or with the OpenAI Python SDK"
+    }
+  }
+}

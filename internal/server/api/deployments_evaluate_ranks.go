@@ -18,6 +18,7 @@ type evaluateRankEnv struct {
 	ctx                context.Context
 	writer             http.ResponseWriter
 	request            *dto.DeployRequest
+	excludeDeployment  uint
 	response           *dto.EvaluateResponse
 	engine             deploy.Engine
 	model              *store.Model
@@ -74,12 +75,12 @@ func (a *apiHandlers) evaluateRanks(env evaluateRankEnv) bool {
 			rankImage = resp.Image
 		}
 		plan, planErr := planning.PlanLaunch(ctx, a.d.Store, a.networks(), planning.LaunchRequest{
-			Preview: true, Engine: eng.Name(), Model: model, Node: rankNode,
+			Preview: true, ExcludeDeploymentID: env.excludeDeployment, Engine: eng.Name(), Model: model, Node: rankNode,
 			Selection: rankSelection, Placement: placement, Quick: quick, ExtraArgs: userExtraArgs,
 			Topology:   topology,
 			Source:     planning.LaunchSourceFromRequest(rankImage, requestOverrides),
 			ModelMount: modelMount, ComponentMounts: componentMounts,
-			ServedName: servedName, Sleepable: req.Sleepable,
+			ServedName: servedName, Sleepable: req.Sleepable, YieldPolicy: requestYield(req.YieldPolicy),
 			MasterAddr: req.MasterAddr, MasterPort: req.MasterPort,
 			VRAMLimitBytes: int64(req.VRAMLimitGiB * (1 << 30)), PartitionBackend: req.PartitionBackend,
 			RuntimeImageCached: nodeImageCached, APIContract: rankSelection.APIContract,
@@ -92,6 +93,7 @@ func (a *apiHandlers) evaluateRanks(env evaluateRankEnv) bool {
 		}
 		res := plan.Resolved
 		resp.Warnings = append(resp.Warnings, plan.Warnings...)
+		resp.Warnings = append(resp.Warnings, plan.Output.Warnings...)
 		if dynamicTPPreview {
 			// No GPU has been chosen yet: the engine builder's single-GPU
 			// default is a placeholder, and the rank that validates the

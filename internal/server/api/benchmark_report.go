@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"gpuworks.ai/gpuworks/internal/server/store"
+	"gpuworks.ai/gpuworks/pkg/bench/loadgen"
 	benchreport "gpuworks.ai/gpuworks/pkg/bench/report"
 )
 
@@ -27,11 +28,16 @@ func (a *apiHandlers) downloadBenchmarkReport(w http.ResponseWriter, r *http.Req
 		return
 	}
 	input := benchreport.Run{
-		ID: run.ID, Name: run.Name, EvaluationURL: "/evaluations/" + chi.URLParam(r, "id"), State: run.State, Mode: run.Mode, Model: run.Model,
+		Error: run.Error, ID: run.ID, Name: run.Name, EvaluationURL: a.managementRequestOrigin(r) + "/evaluations/" + chi.URLParam(r, "id"), State: run.State, Mode: run.Mode, Model: run.Model,
 		TokenizerRef: run.TokenizerRef, Dataset: json.RawMessage(run.Dataset), Search: json.RawMessage(run.Search),
 		TargetSnapshot: json.RawMessage(run.TargetSnapshot), CreatedAt: run.CreatedAt, StartedAt: run.StartedAt, EndedAt: run.EndedAt,
 		Verdict: json.RawMessage(run.Verdict), KeepDetail: run.KeepDetail, DetailCapMB: run.DetailCapMB,
 	}
+	var progress struct {
+		Warmup []loadgen.DetailRecord `json:"warmup"`
+	}
+	_ = json.Unmarshal([]byte(run.Progress), &progress)
+	input.Warmup = progress.Warmup
 	if run.Warnings != "" {
 		_ = json.Unmarshal([]byte(run.Warnings), &input.Warnings)
 	}

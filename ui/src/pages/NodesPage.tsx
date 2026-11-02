@@ -32,6 +32,8 @@ import { nodeDisplayName } from "../nodeDisplay";
 import NodeLabelsModal from "../components/NodeLabelsModal";
 import { NodeSchedulingModal } from "../components/NodeSchedulingModal";
 import { labelPair } from "../nodeLabels";
+import { useIsAdmin } from "../components/useIsAdmin";
+import AgentUpgradeManager from "../components/agentUpgrades/AgentUpgradeManager";
 import {
   useAgentUpgrades,
   type UpgradeEvent,
@@ -41,6 +43,9 @@ const NODE_PAGE_SIZE = 20;
 
 export default function NodesPage() {
   const { t } = useTranslation("nodes");
+  const isAdmin = useIsAdmin();
+  const [selectedNodeUUIDs, setSelectedNodeUUIDs] = useState<string[]>([]);
+  const [upgradeRunID, setUpgradeRunID] = useState<number>();
   const location = useLocation();
   const incoming = location.state as {
     nodeUUID?: string;
@@ -54,7 +59,7 @@ export default function NodesPage() {
   const [labelFilter, setLabelFilter] = useState<string[]>([]);
   const [states, setStates] = useState<string[]>([]);
   const [sort, setSort] = useState<ServerSort | null>(null);
-  const { data, refetch, loading, error, updatedAt, pagination } = usePagedList(api.nodesPage, {
+  const { data, refetch, refresh, loading, error, updatedAt, pagination } = usePagedList(api.nodesPage, {
     filters: { q: search, label: labelFilter, state: states, ...(sort ? { sort: `${sort.order === "desc" ? "-" : ""}${sort.key}` } : {}) },
     pageSize: storedPageSize(NODE_TABLE_ID, NODE_PAGE_SIZE),
     intervalMs: 8000,
@@ -65,7 +70,9 @@ export default function NodesPage() {
   // Engine profiles are static server configuration; one load feeds the detail
   // drawer's kernel check, which is why they are fetched here and not per node.
   const engines = usePolling<List<EngineProfile>>(api.engines, 0);
-  useEvents("node", refetch);
+  // Node events refresh in the background: with a fleet reporting status
+  // every minute a foreground reload would keep the table spinning.
+  useEvents("node", refresh);
   const [detail, setDetail] = useState<Node | null>(null);
   const [scheduling, setScheduling] = useState<Node | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState<Node | null>(null);
@@ -76,6 +83,13 @@ export default function NodesPage() {
   const onUpgradeEvent = (event: UpgradeEvent) => {
     const name = event.name;
     switch (event.kind) {
+      case "serverTracked":
+        setUpgradeRunID(event.runID);
+        break;
+      case "serverSettled":
+        if (event.node) setDetail((current) => current?.uuid === event.uuid ? event.node! : current);
+        refresh();
+        break;
       case "dispatched":
         message.success(t("upgrade.dispatched"));
         break;
@@ -141,6 +155,7 @@ export default function NodesPage() {
       await api.deleteNode(node.uuid, forceDelete);
       message.success(t(forceDelete ? "message.forceDeleted" : "message.deleted"));
       setConfirmingDelete(null);
+      setSelectedNodeUUIDs((current) => current.filter((uuid) => uuid !== node.uuid));
       if (detail?.uuid === node.uuid) setDetail(null);
       refetch();
     } catch (e) {
@@ -206,6 +221,18 @@ export default function NodesPage() {
           onRefresh={refetch}
           updatedAt={updatedAt}
           pagination={pagination}
+          rowSelection={isAdmin ? {
+            selectedRowKeys: selectedNodeUUIDs,
+            preserveSelectedRowKeys: true,
+            onChange: (keys) => setSelectedNodeUUIDs(keys.map(String)),
+          } : undefined}
+          toolbarExtra={<>
+            {isAdmin && selectedNodeUUIDs.length > 0 && <Space>
+              <Typography.Text>{t("batchUpgrade.selectedCount", { count: selectedNodeUUIDs.length })}</Typography.Text>
+              <Button type="link" onClick={() => setSelectedNodeUUIDs([])}>{t("batchUpgrade.clearSelection")}</Button>
+            </Space>}
+            <AgentUpgradeManager isAdmin={isAdmin} requestedRunID={upgradeRunID} selectedNodeUUIDs={selectedNodeUUIDs} onStarted={() => setSelectedNodeUUIDs([])} />
+          </>}
           sort={sort}
           onSortChange={setSort}
           onFiltersChange={(filters) => setStates(filters.state ?? [])}

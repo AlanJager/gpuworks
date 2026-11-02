@@ -67,8 +67,10 @@ func (Image) TableName() string { return "image_versions" }
 
 // ImageNode is the node-local presence and transfer state for a catalog image.
 type ImageNode struct {
-	ID             uint `gorm:"primaryKey"`
-	ImageVersionID uint `gorm:"index:idx_image_node,unique,priority:1"`
+	// RuntimeSizeBytes is a nullable runtime observation, separate from transfer SizeBytes.
+	RuntimeSizeBytes *int64
+	ID               uint `gorm:"primaryKey"`
+	ImageVersionID   uint `gorm:"index:idx_image_node,unique,priority:1"`
 	// ImageID is a source-compatibility field for old callers. Store methods
 	// mirror it to ImageVersionID; it is not persisted in the new schema.
 	ImageID          uint   `gorm:"-" json:"-"`

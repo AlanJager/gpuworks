@@ -90,32 +90,39 @@
 ## sleep/wake：多个模型轮流用一张卡
 
 **解决什么**：让暂时不用的实例通过引擎的 sleep mode 释放显存，容器继续运行、实例状态仍是
-`running`，需要时再唤醒。休眠实例在调度账本里只占约 1.5 GiB 残留，其余显存可以部署给别的模型。
+`running`，需要时再唤醒。休眠实例在调度账本里只占它自己的残留（实测，读不到时按模型估算，约 0.75–4 GiB），其余显存可以部署给别的模型。
 
 **与 dGPU 的区别**：
 
 | | dGPU | sleep/wake |
 |---|---|---|
 | 同时在线 | 是，各自固定配额 | 否，休眠的实例不服务请求 |
-| 显存占用 | 配额常驻 | 休眠时只占约 1.5 GiB 残留 |
+| 显存占用 | 配额常驻 | 休眠时只占残留（每实例实测或估算） |
 | 切换成本 | 无 | 唤醒需要时间（见下） |
 | 依赖 | 各厂商的 dGPU 后端 | vLLM 的 sleep mode |
 
 **代价与限制**：
 
-- 唤醒耗时：L1（权重挪到主机内存）一步、秒级，但要占与权重等量的主机 RAM；L2（权重直接丢弃）
-  唤醒时从模型目录重新加载，十几秒到几分钟，不占主机 RAM。两级都会丢弃 KV cache。
-- 休眠实例收到请求，网关返回 HTTP 503（`model is asleep; wake it first`），**不会自动唤醒**。
-  需要按请求自动切换的场景目前做不到。
+- 唤醒耗时：L1（权重挪到主机内存）一步、秒级，但实测要钉住约 1.9 倍权重大小的主机 RAM，唤醒后也不释放；L2（权重直接丢弃）
+  唤醒时从模型目录重新加载，模型文件在页缓存里时几秒，要读盘时十几秒到几分钟，不占主机 RAM。两级都会丢弃 KV cache。
+- 你手动下的休眠，收到请求时网关返回 HTTP 503（`model is asleep; wake it first`）；平台自己让它睡下的（
+  按[出让策略](service-levels.md)让卡）有请求时网关挂起请求、自动唤醒。按请求切换和事先约定的切换都在[调度分析](../how-to/scheduling-center.md)：
+  定时计划按周几和时刻休眠、唤醒，出让策略（不自动出让、闲置自动出让、按时自动出让、随时出让）让共卡的部署按请求轮流，唤醒放不下时可以等位。
 - 唤醒要先过准入：这张卡已被新部署占用时返回 409 `WAKE_INSUFFICIENT_GPU_MEMORY`，要先停止或
-  休眠占用者。
+  休眠占用者，或选择等位、让占用者休眠后唤醒；卡被平台外进程占着时直接拒绝（`WAKE_GPU_HELD_OUTSIDE`）。
 - 休眠时可选"等待完成"（默认，先跑完在途请求）或"立即中止"。
 - 只支持 **vLLM**；SGLang 部署不能声明可休眠（创建时即被拒绝：`SLEEP_ENGINE_UNSUPPORTED`）。必须在创建部署时
   打开"可休眠"。多机部署可以休眠：指令发给 leader，由它的引擎带着 follower 一起睡醒。KV 走主机 RDMA 网络的 PD
   部署不能声明可休眠（`PD_SLEEP_RDMA_UNSUPPORTED`，见 [sleep / wake](../how-to/sleep-wake.md)）。
 - 自定义镜像不做探测，镜像缺 sleep 端点时休眠会在实例事件里报错。
 
-**厂商边界**：sleep 同时受引擎和厂商支持限制。Apple 节点不支持引擎休眠（[ADR 0044](../adr/0044-mac-engines-as-host-processes.md)）。本文引用的证据验证了 NVIDIA 上的 sleep；昇腾、PPU、海光组合尚无验证结论，使用前请先在单卡上实测。
+**厂商边界**：sleep 同时受引擎、镜像、运行时和启动配置限制。Apple 节点不支持引擎休眠（[ADR 0044](../adr/0044-mac-engines-as-host-processes.md)）。除 NVIDIA 外，以下单卡组合已经过真机验证，但不能据此推断其他版本、模型或运行时：
+
+- **昇腾 910C**：vLLM-Ascend 0.26.0rc1 的 L1/L2 均通过。平台在声明"可休眠"时自动把 `weight_nz_mode` 合并为 `0`，保留其他 `additional-config` 键；模板环境里的 `PYTORCH_NPU_ALLOC_CONF` 若含 `expandable_segments:True`，平台把它改为 `expandable_segments:False`，其余分配器设置不变，并在评估/预览里给出警告 `ASCEND_SLEEP_EXPANDABLE_SEGMENTS_DISABLED`（`params`：`variable`、`template_value`、`value`）。关闭 expandable segments 可能增加 NPU 显存碎片，KV cache 可能变小，显存余量紧的配置（例如大模型配 `gpu_memory_utilization` 0.9 以上）可能在启动或高负载时显存不足；出现时调低 `gpu_memory_utilization` 或 `max_model_len`，或关闭"可休眠"。这些大模型模板开启休眠后尚未经过真机验证。用户在附加参数里显式指定非零 NZ（`ASCEND_SLEEP_WEIGHT_NZ_CONFLICT`），或在部署环境变量里开启 `expandable_segments:True`（`ASCEND_SLEEP_EXPANDABLE_SEGMENTS`），会在创建/预览阶段被拒绝。用命令编辑器完整覆盖启动命令时，平台不注入也不检查这两项。
+- **PPU ZW810E**：当前 hggc runner（vLLM 0.23.0）的 L1/L2 均通过，实际运行 V1。`/is_sleeping` 的逻辑状态可能先于实际操作完成切换，必须以 POST 完成、显存和醒后推理共同确认。
+- **海光 K100**：vLLM 0.18.1 在 Docker 和 nerdctl 下的 L1/L2 均通过。平台在声明"可休眠"时为 Hygon 注入 `VLLM_CUDART_SO_PATH`，已有模板或用户环境值仍可覆盖。udocker/PRoot 路径未通过基础 Torch kernel 验证，不能用于证明此组合可用。
+
+海光 ROCm sleep allocator 还需要宿主内存后备：在 62 GiB RAM、无 swap 的 K100 上，`gpu_memory_utilization=0.9` 曾导致 EngineCore 被 OOM killer 杀掉，降到 `0.25` 后通过。平台目前**没有针对该后备内存的专门准入**，创建前必须自行评估节点 RAM、其他实例和系统保留。以上结论均绑定所测镜像与配置；自定义镜像仍不做能力探测。
 
 **什么时候不该用**：
 
@@ -144,10 +151,10 @@
   （`PUT /api/v1/deployments/{id}/replicas`）按副本列出各自的节点，扩到多个多机副本。可以休眠。
 - RDMA 参数网络强制走 IB 传输：容器看不到 verbs 设备时启动直接失败，而不是静默退回 TCP（退回 TCP
   会让吞吐腰斩，这是设计成"大声失败"的原因，见 [ADR 0030](../adr/0030-network-objects.md)）。
-- **厂商边界**：参数网络分三种类型——主机以太网、主机 RDMA（NVIDIA，NCCL/UCX）、加速器 RDMA（昇腾，HCCL）；
-  昇腾多机必须共用一个加速器 RDMA 网络（`COMPUTE_NETWORK_ACCELERATOR_REQUIRED`）。主机 RDMA 参数网络不能用在 runveil
+- **厂商边界**：参数网络分四种类型——主机以太网、主机 RDMA（NVIDIA，NCCL/UCX）、加速器 RDMA（昇腾 RoCE）和加速器 HCCS（昇腾 A3/910C 灵衢）；
+  昇腾多机必须共用一个加速器 RDMA 或加速器 HCCS 网络（`COMPUTE_NETWORK_ACCELERATOR_REQUIRED`）。主机 RDMA 参数网络不能用在 runveil
   （`udocker` driver）节点上（`COMPUTE_NETWORK_RUNTIME`）。其他厂商的多机推理没有验证结论。
-- 一个 rank 所在节点离线会让整组失败并重建，跨机越多故障面越大。
+- 一个 rank 所在节点离线会让整组失败并重建，跨机越多故障面越大。节点离线超过部署的重调度等待时间（默认 10 分钟）后，平台会只换掉失联的 rank、不消耗重试次数，见[节点失联重调度](../how-to/node-failover.md)。
 
 **什么时候不该用多机**：单机放得下。跨机只应在显存或算力确实不够时使用。
 

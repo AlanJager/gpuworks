@@ -11,7 +11,7 @@ import { createI18n, dom } from "./helpers/dom.ts";
 const { i18n, locale } = await createI18n(["deploy"], "zh");
 const { cleanup, render, screen, waitFor, act } = await import("@testing-library/react");
 const { default: userEvent } = await import("@testing-library/user-event");
-const { Form, message } = await import("antd");
+const { Form, Input, message } = await import("antd");
 const DeployServedNameField = (await import("../src/pages/deploy/DeployServedNameField.tsx")).default;
 const { default: useDeploymentIdentity, servedNameSuffix } = await import("../src/pages/deploy/useDeploymentIdentity.ts");
 const { default: useDeploySubmit } = await import("../src/pages/deploy/useDeploySubmit.ts");
@@ -124,4 +124,42 @@ test("any other create failure leaves the served name field alone", async () => 
   await act(async () => { screen.getByRole("button", { name: "deploy" }).click(); });
   await waitFor(() => assert.ok(document.querySelector(".ant-message-notice")));
   assert.equal(document.querySelector(".ant-form-item-explain-error"), null);
+});
+
+function NameIdentity({ model }: { model: never }) {
+  const form = Form.useFormInstance();
+  useDeploymentIdentity(form, model);
+  return (
+    <Form.Item name="name" label="name">
+      <Input />
+    </Form.Item>
+  );
+}
+
+const nameView = (model: unknown) => (
+  <I18nextProvider i18n={i18n}>
+    <Form>
+      <NameIdentity model={model as never} />
+    </Form>
+  </I18nextProvider>
+);
+
+test("a deployment name the deployer cleared is never refilled by a proposal", async () => {
+  const qwen = { id: 1, name: "Qwen/Qwen3-0.6B", source_id: "Qwen/Qwen3-0.6B" };
+  const rendered = render(nameView(qwen));
+  const input = screen.getByRole("textbox", { name: "name" }) as HTMLInputElement;
+  // An untouched empty field still gets the proposal.
+  await waitFor(() => assert.equal(input.value, "qwen3-0-6b"));
+  const user = userEvent.setup({ document: dom.window.document });
+  await user.clear(input);
+  assert.equal(input.value, "");
+  // The model list polling returns a new object for the same model: the
+  // cleared field must stay empty, so a blank submit still fails validation.
+  rendered.rerender(nameView({ ...qwen }));
+  await act(async () => {});
+  assert.equal(input.value, "");
+  // Switching models does not refill it either: clearing was deliberate.
+  rendered.rerender(nameView({ id: 2, name: "org/other", source_id: "org/other" }));
+  await act(async () => {});
+  assert.equal(input.value, "");
 });

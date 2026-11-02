@@ -393,7 +393,7 @@ func TestInstallWithoutPrivilegesExplainsTheUserLevelFallback(t *testing.T) {
 	if err == nil {
 		t.Fatal("install succeeded without root and without a writable directory")
 	}
-	if !strings.Contains(err.Error(), "--dir ~/gpuworks-server") {
+	if !strings.Contains(err.Error(), "--dir ~/gpuworks/server") {
 		t.Fatalf("the error does not point at the user-level fallback: %v", err)
 	}
 }

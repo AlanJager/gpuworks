@@ -173,12 +173,16 @@ def test_image_series_filters(page, server, artifacts, report, locale):
     check(page.evaluate("document.documentElement.scrollWidth <= innerWidth"), "page horizontal overflow")
     check(not errors and not failures, "browser errors or unexpected HTTP failures")
     artifacts.write_json("browser-observations.json", {"errors": errors, "failures": failures, "mutations": mutations})
+    from metadata_table_checks import exercise as table_pilot
+    table_pilot(page, server, artifacts, report, locale, text, engines, frameworks, select_filter, reset_filter)
     report["active_evidence_layer"] = "cleanup"
     for row in reversed(owned):
         cleanup(page, server.base, row["id"], report)
 
 
 if __name__ == "__main__":
-    raise SystemExit(run({"filters": test_image_series_filters}, entry_path=Path(__file__), product_sources=[
+    raise SystemExit(run({"filters": test_image_series_filters}, entry_path=Path(__file__), metadata_offline=True, product_sources=[
+        "test/e2e/metadata_table_checks.py", "test/e2e/metadata_table_fixture.py",
         "test/e2e/image_catalog.py", "ui/src/pages/ImagesPage.tsx", "ui/src/pages/images/ImageSeriesTable.tsx",
-        "ui/src/pages/images/ImagesPageOverview.tsx", "ui/src/components/resourceTable/ResourceTable.tsx"]))
+        "ui/src/pages/images/ImagesPageOverview.tsx", "ui/src/components/resourceTable/ResourceTable.tsx",
+        "ui/src/components/resourceTable/columnPrefs.ts", "ui/src/components/resourceTable/ResizableHeaderCell.tsx"]))

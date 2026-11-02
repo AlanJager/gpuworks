@@ -8,7 +8,6 @@ import (
 	"github.com/go-chi/chi/v5"
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
-	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
 // reconcileStorageCache persists a fixed set of requests before returning.
@@ -21,10 +20,6 @@ func (a *apiHandlers) reconcileStorageCache(w http.ResponseWriter, r *http.Reque
 	}
 	if storage.Type != proto.StorageNFSCache {
 		writeProductError(w, http.StatusBadRequest, ErrorStorageTypeInvalid, "only an nfs_cache storage has node caches", nil)
-		return
-	}
-	if !storage.Enabled {
-		writeStoreErr(w, store.ErrStorageDisabled)
 		return
 	}
 	var req dto.StorageCacheReconcileRequest

@@ -377,7 +377,7 @@ specs:
         revision: b968826d9c46dd6066d109eabc6255188de91218
     - modelscope:
         repo_id: Qwen/Qwen3-8B
-        revision: b968826d9c46dd6066d109eabc6255188de91218
+        revision: 26028140be3ee69b82b1d1450179ab71bb1121b9
   weight_bytes: 16381516776
   gpus:
     vendor: ppu

@@ -56,7 +56,9 @@ of 32 per role, and rank partitioning). Evaluation, creation, scaling, and the c
 `VLLM_NIXL_SIDE_CHANNEL_HOST` is the node's address on the compute network, and `VLLM_NIXL_SIDE_CHANNEL_PORT` is the allocated port.
 `UCX_NET_DEVICES` uses the first HCA on an RDMA network, or the compute network interface on an Ethernet network, with
 `UCX_TCP_BRIDGE_ENABLE=y` also set (UCX filters bridges by default, so specifying a bridge causes NIXL backend creation to fail). Container arguments injected for an RDMA network match those for multi-node
-inference, and `UCX_TLS` is restricted to RDMA and CUDA transports so misconfiguration causes startup to fail. All PD instances use host networking.
+inference, and `UCX_TLS` is restricted to RDMA and CUDA transports so misconfiguration causes startup to fail. `vllm-nixl` instances also get
+`VLLM_SSM_CONV_STATE_LAYOUT=DS`: NixlConnector transfers the conv state of Mamba-style layers (gated delta net, KDA, short conv) only in the dim-first
+layout and refuses to start otherwise, while the variable has no effect on models without such layers; a value the template or deployment sets wins. All PD instances use host networking.
 
 **Allocate all ports once and persist them all.** The controller allocates an instance's API port and side-channel port block together and writes all of them to
 `Instance.Ports`; subsequent allocations avoid those ports.

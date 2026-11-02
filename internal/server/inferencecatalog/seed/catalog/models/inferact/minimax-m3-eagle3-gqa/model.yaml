@@ -1,0 +1,9 @@
+kv_bytes_per_token:
+  vllm: 32768
+  sglang: 32768
+model_id: inferact/minimax-m3-eagle3-gqa
+source: upstream
+display_title: MiniMax-M3-EAGLE3-GQA
+release_date: '2026-06-02'
+specs: []
+input_modalities: [text]

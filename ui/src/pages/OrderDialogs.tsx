@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from "react";
-import { Alert, Button, Modal } from "antd";
+import { Alert, Button, Modal, Space } from "antd";
+import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useOrder } from "./useOrder";
 
@@ -59,8 +60,11 @@ export function ConfirmOrderModal({ open, title, okText, danger, failKey, order,
 // UnitRetryAlert is a replica's give-up notice: what gave up and why, and a
 // Retry that gives it its budget back without touching the other replicas
 // (ADR 0029). A refused retry is shown on the notice itself.
-export function UnitRetryAlert({ message, retry, onDone }: { message: string; retry: () => Promise<unknown>; onDone: () => void }) {
+// With editHref it also offers to fix the cause: the deployment's edit page,
+// where the launch parameters can be changed and the retry follows from saving.
+export function UnitRetryAlert({ message, retry, onDone, editHref }: { message: string; retry: () => Promise<unknown>; onDone: () => void; editHref?: string }) {
   const { t } = useTranslation("deployments");
+  const navigate = useNavigate();
   const { busy, run } = useOrder();
   const [failure, setFailure] = useState<string | null>(null);
   const onRetry = async () => {
@@ -77,9 +81,16 @@ export function UnitRetryAlert({ message, retry, onDone }: { message: string; re
       message={message}
       description={failure ? t("detail.retry.failed", { detail: failure }) : undefined}
       action={
-        <Button size="small" loading={busy} onClick={() => void onRetry()}>
-          {t("detail.retry.action")}
-        </Button>
+        <Space>
+          {editHref && (
+            <Button size="small" onClick={() => navigate(editHref)}>
+              {t("detail.retry.editAndRetry")}
+            </Button>
+          )}
+          <Button size="small" loading={busy} onClick={() => void onRetry()}>
+            {t("detail.retry.action")}
+          </Button>
+        </Space>
       }
     />
   );

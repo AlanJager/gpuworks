@@ -1,5 +1,8 @@
 {
-  "noOperations": {"title": "This deployment will expose no inference API", "description": "The model declares no inference operation (chat, text completion, embeddings and so on): the deployment will not appear in the Playground and cannot be health checked. Set its operations on the Models page before deploying."},
+  "noOperations": {
+    "title": "This deployment will expose no inference API",
+    "description": "The model declares no inference operation (chat, text completion, embeddings and so on): the deployment will not appear in the Playground and cannot be health checked. Set its operations on the Models page before deploying."
+  },
   "catalog": {
     "myModels": "My models",
     "catalogModels": "Built-in catalog",
@@ -97,7 +100,7 @@
     "W9": "W9: The engine disables chunked prefill and prefix caching for encoder-decoder models.",
     "W10": "W10: {{cpu_cores}} physical CPU cores are available, but API server, DP, and GPU workers require at least {{required_cores}}.",
     "MODEL_NOT_FOUND": "The selected model was not found.",
-    "IMAGE_OVERRIDE_INCOMPATIBLE": "The selected image {{image}} is incompatible with the node vendor, framework, or host architecture. Choose a different image or node.",
+    "IMAGE_OVERRIDE_INCOMPATIBLE": "The selected image {{image}} is incompatible with the node vendor, framework, operating system, or host architecture. Choose a different image or node.",
     "IMAGE_ENGINE_DEFAULT_INCOMPATIBLE": "The default engine image {{image}} supports NVIDIA CUDA nodes only and is incompatible with the selected node. Choose a different image or node.",
     "IMAGE_OVERRIDE_UNVERIFIED": "The selected image {{image}} is not in the Image Catalog, so its compatibility with this node cannot be verified automatically.",
     "COMPUTE_NETWORK_FALLBACK": "Some of the selected nodes are on a compute network, but not all of them are on the same one, so this deployment runs over the management network. To avoid it, put every node on one compute network, or turn off compute traffic on the management network for those nodes.",
@@ -110,6 +113,7 @@
     "PLANNING_ENGINE_UNAVAILABLE": "Configuration for inference engine {{engine}} is unavailable: {{detail}}. Select another engine.",
     "PLANNING_GPU_ARCH_CAUTION": "GPU architecture note: {{detail}}. Verify the selected precision and image version.",
     "PLANNING_MODEL_WEIGHT_UNKNOWN": "The model weight size is unknown, so the current VRAM estimate is incomplete. Refresh the model metadata and try again.",
+    "PLANNING_KV_BELOW_CONTEXT": "The estimated KV cache capacity is {{kv_tokens}} tokens, below the maximum context of {{max_model_len}}. Actual capacity depends on the attention architecture and inference engine, so the estimate may be inaccurate. You can lower the maximum context or continue with the current settings; the engine may fail to start.",
     "IMAGE_PARTITION_PROFILE_UNBUILT": "Image CANN {{framework_version}} × {{arch}} is not in the built dGPU asset matrix; the probe only verifies the node execution path, the image itself may still be incompatible.",
     "IMAGE_PARTITION_PROFILE_UNVERIFIED": "The dGPU assets for image CANN {{framework_version}} × {{arch}} have not been verified on real hardware yet.",
     "PD_UNVERIFIED_COMBINATION": "PD combined with {{feature}} is allowed but has not been verified on real hardware yet.",
@@ -121,7 +125,8 @@
     "ASCEND_COMPAT_MANUAL_SHELL": "The vLLM-Ascend compatibility script for {{image}} on {{runtime}} patches the model runner it expects, and a manual shell command cannot be checked against it. The deployment can still be created; make sure the command starts the runner you intend (VLLM_USE_V2_MODEL_RUNNER).",
     "ENGRAM_SHARED_MEMORY_RUNTIME": "Engram cpu_offload with dp_shared_memory ({{flag}}) needs about {{shm_gib}} GiB of shared memory and unlimited locked memory. {{runtime}} uses the host's /dev/shm and limits directly, which the platform cannot see. The deployment can still be created; check the host, or use Docker or nerdctl.",
     "ENGRAM_CONFIG_UNCERTAIN": "The Engram configuration ({{flag}}) cannot be read, so the platform cannot tell whether it shares memory. If it does, it needs about {{shm_gib}} GiB of shared memory and unlimited locked memory, and {{runtime}} uses the host's /dev/shm and limits directly. The deployment can still be created; check the configuration and the host.",
-    "ENGRAM_MANUAL_UNCHECKED": "The manual command mentions Engram ({{flag}}) but is too dynamic to read, so the platform did not derive shared-memory and locked-memory settings from it. Make sure the shared memory and memlock are sufficient, or use engine mode."
+    "ENGRAM_MANUAL_UNCHECKED": "The manual command mentions Engram ({{flag}}) but is too dynamic to read, so the platform did not derive shared-memory and locked-memory settings from it. Make sure the shared memory and memlock are sufficient, or use engine mode.",
+    "ASCEND_SLEEP_EXPANDABLE_SEGMENTS_DISABLED": "Sleep mode on Ascend cannot run with expandable segments, so the platform changed the template's {{variable}} from {{template_value}} to {{value}}. NPU memory may fragment more: the KV cache can be smaller, and a configuration with little memory headroom may run out of memory at startup or under load. If it does, lower gpu_memory_utilization or max_model_len, or turn sleep off."
   },
   "warningFeature": {
     "dgpu": "dynamic GPU (dGPU)",
@@ -157,17 +162,22 @@
     "pool_empty": "No node can take a replica now: of {{nodes}} nodes, {{unmet}} do not satisfy the deployment's node requirements, {{cordoned}} are cordoned and {{offline}} are offline. Bring a node online or uncordon it, add one that satisfies the requirements, or widen them.",
     "node_cordoned": "Node {{node}} is cordoned; the replica starts once scheduling resumes there, or pick another node under Adjust replicas.",
     "pool_no_fit": "None of the {{tried}} best of {{candidates}} candidate nodes has room for a replica. The best, {{node}}, refused: {{first}}. Free resources there, scale down another deployment, or add nodes.",
+    "waiting_for_yield": "Waiting until {{holders}}; the replica then goes on {{node}}.",
+    "reserved_for_sleepers": "GPU {{gpus}} on {{node}} is kept for {{sleepers}}, asleep there until a request wakes it; a deployment that never yields is not placed on those cards. Choose another card, enable sleep for this deployment and pick a yield policy that shares cards, or put the deployment on the card to sleep by hand (a sleep ordered by hand keeps no card).",
+    "does_not_wait_for_yield": "GPU {{gpus}} on {{node}} is held by {{occupants}}; this deployment never yields, so it does not wait for them to give the cards up. Enable sleep for this deployment and pick a yield policy that shares cards, and it waits for {{yielders}} to give them up by yield policy.",
+    "held_by_non_yielding": "GPU {{gpus}} on {{node}} is held by {{occupants}}; {{blockers}} never yields and does not give its cards to this deployment. Choose another card, or enable sleep for {{blockers}} and pick a yield policy that shares cards.",
     "model_unavailable": "Model {{model}} could not be acquired on node {{node}}, or waits for a source to be chosen, so no replica starts there. Retry the sync for that node on the models page, or use the public download instead.",
+    "image_delivery_waiting": "Waiting for image {{image}} to arrive on node {{node}}. Check its transfer progress on the images page; a stalled peer transfer is cancelled so it can be retried.",
     "image_delivery_failed": "Pre-pulling image {{image}} on node {{node}} failed, so the multi-node deployment cannot start. The platform keeps retrying; check the reason on the images page or review the pull settings.",
     "image_source_forbidden": "The pull source rules that apply to node {{node}} forbid every source of image {{image}} (no endpoint and pulling from its own registry is off), so the replica cannot start. Adjust them under Settings → Pull settings → Source rules.",
     "weights_fetch_forbidden": "The pull source rules that apply to node {{node}} forbid every address model {{model}} could be downloaded from (no endpoint and downloading from its own site is off), and no peer or storage can provide it, so the replica cannot start. Adjust them under Settings → Pull settings → Source rules, or register the model's path on a node that has it, or put it on a shared storage.",
     "filters_passed": "The node passed the runtime, precision compatibility, and disk checks.",
     "no_fit": "Startup fixed requirement does not fit: this node needs {{gpus}} GPU(s) (TP {{tp}} × PP {{pp}}), {{gpu_count}} candidate GPU(s), {{required_gib}} GiB required per GPU versus {{available_gib}} GiB available at the selected utilization.",
-    "kv_context_exceeds_pool": "The KV cache is estimated at about {{kv_tokens}} tokens, below the maximum context of {{max_model_len}}, so one request does not fit and the engine will not start. Lower the maximum context length to {{suggested_max_model_len}} or less, or raise the dGPU memory or memory utilization.",
     "sleep_residue_blocks_startup": "The engine cannot start while sleeping residue remains: startup reservation is {{startup_gib}} GiB, but only {{available_gib}} GiB is free after keeping {{sleeping_gib}} GiB resident.",
     "tp_head_count_not_divisible": "Tensor parallelism tp={{tp}} cannot divide {{head_count}} attention heads. Choose a divisible parallelism value.",
     "insufficient_shared_gpus": "This node needs {{gpus}} GPU(s) (TP {{tp}} × PP {{pp}}) with {{required_gib}} GiB each, but only {{available}} GPUs are available. Reduce the VRAM requirement or release GPUs.",
     "insufficient_empty_gpus": "This node needs {{gpus}} free GPU(s) (TP {{tp}} × PP {{pp}}), but only {{available}} meet the requirements ({{required_gib}} GiB per GPU). Release GPUs or adjust the parallelism.",
+    "pinned_gpus_unavailable": "GPU {{gpus}} on {{node}}, which this unit is pinned to, is held by {{holders}}. The unit waits for it; switch the deployment to automatic placement to let the platform use free GPUs instead.",
     "topology_nvlink": "These {{gpus}} GPUs are all high-speed interconnected.",
     "topology_numa": "These {{gpus}} GPUs are within the same NUMA node.",
     "topology_cross": "These {{gpus}} GPUs span NUMA nodes with PCIe-only interconnects, which may reduce performance.",
@@ -186,13 +196,20 @@
     "node_requirements_invalid": "The deployment's node requirements could not be read: {{detail}}",
     "vendor_mismatch": "The node has no {{vendor}} GPU, which this deployment needs.",
     "chip_mismatch": "No GPU on the node matches the inference template chip ({{predicate}}).",
-    "plan_failed": "The node could not be planned for this deployment. Check the node or select another one."
+    "plan_failed": "The node could not be planned for this deployment. Check the node or select another one.",
+    "gpuUnknown": "unknown",
+    "gpuCC": "CC {{value}}",
+    "gpuNamePattern": "name pattern {{value}}",
+    "noReportedGPU": "no reported GPUs",
+    "hardwareDifference": "Required: {{required}}. Reported: {{actual}}. No GPU passed the deployment hardware checks."
   },
   "scheduleNote": {
     "sleeping_residue": "keep {{sleeping_gib}} GiB resident for sleeping instances.",
     "image_delivery_detail": "Reported failure: {{detail}}",
     "model_unavailable_detail": "Reported failure: {{detail}}",
-    "plan_failed_detail": "Reported failure: {{detail}}"
+    "plan_failed_detail": "Reported failure: {{detail}}",
+    "blockers_keep_cards": "{{blockers}} never yields and keeps its cards: also choose another card, or enable sleep for {{blockers}} and pick a yield policy that shares cards.",
+    "holders_give_way": "The other holders give way: {{holders}}."
   },
   "shared": {
     "automatic": "Automatic",
@@ -241,7 +258,9 @@
     "onNodes": "{{count}} node(s)",
     "onStorages": "{{count}} shared storage(s)",
     "noFiles": "No model files in place yet",
-    "locationUnknown": "File location unknown"
+    "locationUnknown": "File location unknown",
+    "revision": "Revision: {{revision}}",
+    "revisionUnknown": "Revision unknown"
   },
   "action": {
     "autoImage": "Will use {{image}} {{version}} ({{framework}} {{frameworkVersion}}) — node {{nodeFramework}} {{nodeVersion}}",
@@ -306,6 +325,11 @@
     "dictionaryDescription": "Parameter names, values, and help come from the server engine dictionary",
     "paramCount": "{{count}} parameters"
   },
+  "yieldPolicy": {
+    "label": "Yield policy",
+    "help": "When several sleepable deployments share GPUs, this decides who gives way to whom; a request wakes the deployment if it is asleep. After creating it, tune the parameters on the scheduling policy card.",
+    "loadFailed": "Failed to load the yield policy options: {{detail}}"
+  },
   "resource": {
     "title": "Resource Configuration",
     "targetNode": "Target Node",
@@ -329,6 +353,7 @@
     "experimentalBackendTitle": "Using an experimental dGPU backend",
     "experimentalBackendDescription": "This backend has passed asset and compatibility checks, but validating it on non-critical workloads first is still recommended. No additional confirmation is required to submit.",
     "distributedNodes": "Multi-node Compute Nodes",
+    "groupPlacement": "Placement",
     "distributedNodesRequired": "Select {{count}} compute nodes",
     "addressMissing": "No interconnect address",
     "masterAddress": "Master Address",
@@ -652,6 +677,11 @@
       "singleDescription": "Each replica runs on one node; replicas spread over the candidate nodes",
       "autoPoolDescription": "Each replica starts on whichever candidate node has room, chosen anew every time it starts",
       "manualPoolDescription": "Pin the deployment to one node: every replica runs there",
+      "autoUnitsDescription": "The platform picks each unit's nodes and cards whenever it starts, keeping the nodes it ran on last while they still fit. The list below is only a preview from the current free resources.",
+      "manualUnitsDescription": "The nodes you name are fixed: a unit is not moved to other nodes automatically (only a node that stays offline is replaced, after the node-loss rescheduling wait).",
+      "previewTitle": "Preview (the actual scheduling decides)",
+      "multiAutoTitle": "Nodes picked automatically",
+      "autoGroupNoPreview": "No group of nodes fits yet; see the message above.",
       "systemConditions": "Hardware and network",
       "systemConditionsHelp": "Only nodes carrying one of the chosen values for each kind are candidates. Values of one kind are alternatives; different kinds must all hold.",
       "systemConditionsPlaceholder": "Any hardware, any network",
@@ -696,7 +726,14 @@
       "preflightFailed": "Preflight Failed",
       "chooseModelFirst": "Choose a model and a target accelerator to see which node the scheduler picks.",
       "noRankAddress": "no interconnect address",
-      "noRankAddressHint": "The node has neither a management address (reported by an up-to-date agent) nor a compute network (Resources → Networks), so other ranks cannot reach it."
+      "noRankAddressHint": "The node has neither a management address (reported by an up-to-date agent) nor a compute network (Resources → Networks), so other ranks cannot reach it.",
+      "planningFunnel": "Resource planning: {{passed}} passed / {{tried}} evaluated; {{untried}} not evaluated",
+      "conditionFunnel": "Cluster: {{total}} → Node conditions: {{matched}} → Hardware and scheduling conditions: {{eligible}}",
+      "conditionsEmpty": "No nodes matched the node conditions. Check the labels, networks and selected nodes.",
+      "conditionsHardwareRejected": "Node conditions matched; hardware requirements rejected the matching nodes.",
+      "conditionsFurtherRejected": "Node conditions matched. The evaluated nodes failed subsequent checks or resource planning; see the reasons below.",
+      "otherRefused": "Expand {{count}} other rejected nodes",
+      "evaluating": "Evaluating the current node conditions…"
     },
     "nodeAcquisition": {
       "title": "Fetching",
@@ -785,6 +822,7 @@
       "total": "{{gpus}} GPUs in all",
       "fromNodes": "Once nodes are picked: one pipeline stage per node, TP over the fewest GPUs a node has",
       "tpAutomatic": "Leave empty to size from the memory estimate and topology",
+      "tpRequiredAuto": "Automatic placement needs a TP: the platform has to know how many GPUs each node gives a rank",
       "tensor": "Tensor Parallel",
       "expert": "Expert Parallel",
       "moeOnly": "MoE only",
@@ -832,6 +870,11 @@
     "autoGpus": "Automatic",
     "gpusAutomatic": "Automatic",
     "unitNodeRequired": "Select a node for this instance",
+    "autoUnit": "{{role}} instance {{index}}",
+    "autoScheduled": "Scheduled automatically",
+    "nodeNamed": "Specified",
+    "preferNodePlaceholder": "Prefer a node… (optional; left empty it is scheduled automatically)",
+    "previewAutoTitle": "PD preview (the actual scheduling decides)",
     "unitNodeAria": "{{role}} instance {{index}} node",
     "unitGpuAria": "{{role}} instance {{index}} GPUs",
     "addUnit": "Add {{role}} instance",
@@ -879,7 +922,7 @@
   "launchConfig": {
     "moved": "Moved into parameter fields: {{keys}}",
     "movedDismiss": "Dismiss",
-    "extraArgsHelp": "Arguments outside the parameter dictionary, passed to the engine as written. A dictionary flag typed here moves into its own field.",
+    "extraArgsHelp": "Arguments outside the parameter dictionary. The text is split like a shell command line, so wrap a value containing double quotes, such as JSON, in single quotes: --compilation-config '{\"cudagraph_mode\":\"FULL_DECODE_ONLY\"}'. A dictionary flag typed here moves into its own field.",
     "templateArgs": "Template arguments",
     "templateArgsHint": "Carried by the inference template and sent with the deployment. An argument you add above with the same flag takes precedence.",
     "manualEstimate": "Manual command, estimate not applicable",
@@ -909,9 +952,92 @@
     "hostPathPlaceholder": "Host path, for example /srv/cache",
     "volumePlaceholder": "Volume name",
     "containerPathPlaceholder": "Container path, for example /cache",
-    "purpose": { "label": "Purpose", "models": "Models", "data": "Data", "scratch": "Scratch" },
+    "purpose": {
+      "label": "Purpose",
+      "models": "Models",
+      "data": "Data",
+      "scratch": "Scratch"
+    },
     "readOnly": "Read-only",
     "deleteMountAria": "Delete mount",
     "addMount": "Add Mount"
+  },
+  "edit": {
+    "loading": "Loading the deployment...",
+    "loadFailed": "The deployment could not be opened",
+    "notFound": "This deployment no longer exists",
+    "backToList": "Back to deployments",
+    "title": "Edit deployment: {{name}}",
+    "cloneTitle": "Clone deployment: {{name}}",
+    "description": {
+      "edit": "Change the launch parameters of this deployment. What it is (model, engine, template, names) stays fixed.",
+      "from": "A copy of the deployment's configuration. Change what you need, then create it as a new deployment."
+    },
+    "back": "Back to deployment",
+    "backSource": "Back to the source deployment",
+    "locked": "Cannot change in an edit.",
+    "lockedClone": "Clone and modify",
+    "review": "Review changes",
+    "changeCount_one": "{{count}} change",
+    "changeCount_other": "{{count}} changes",
+    "reviewFailed": "The changes could not be checked: {{detail}}",
+    "saved": "Deployment saved",
+    "layer": {
+      "live": "Takes effect now",
+      "restart": "Replaces instances"
+    },
+    "apply": {
+      "rolling": {
+        "label": "Rolling update",
+        "help": "Replaces one replica at a time while the others keep serving."
+      },
+      "all": {
+        "label": "Restart all",
+        "help": "Replaces every instance at once; the service is interrupted until they are ready."
+      },
+      "none": {
+        "label": "Save only",
+        "help": "Takes effect at the next restart; running instances keep the old values."
+      },
+      "wake": {
+        "label": "Wake and apply",
+        "help": "Wakes the deployment and replaces all its instances with the new configuration."
+      }
+    },
+    "ok": {
+      "rolling": "Save and roll out",
+      "all": "Save and restart all",
+      "wake": "Save and wake",
+      "save": "Save",
+      "startSave": "Save and start"
+    },
+    "confirm": {
+      "title": "Review changes",
+      "cancel": "Cancel",
+      "field": "Field",
+      "from": "Was",
+      "to": "Now",
+      "layer": "Takes effect",
+      "apply": "How to apply",
+      "noChanges": "Nothing changes.",
+      "startAfter": "Start the deployment after saving",
+      "conflict": "The deployment was changed by someone else",
+      "conflictHelp": "Reload it to see the current configuration. Your own changes are kept.",
+      "reload": "Reload"
+    },
+    "applyNote": {
+      "partition_change": "Turning dGPU on or off, or changing its partition backend, retires every old instance before the new ones start: the replicas cannot be replaced one at a time, and the service is interrupted until they are ready."
+    }
+  },
+  "scheduleSleeper": "{{deployment}} ({{policy}})",
+  "scheduleHeld": {
+    "separator": ", "
+  },
+  "scheduleHolder": {
+    "atOnce": "{{deployment}} gives up its GPUs now",
+    "idle": "{{deployment}} gives up its GPUs after {{idle}} idle",
+    "idleOrTurn": "{{deployment}} gives up its GPUs after {{idle}} idle or {{turn}} of serving",
+    "sleeping": "the deployments giving up their GPUs finish going to sleep",
+    "separator": "; "
   }
 }

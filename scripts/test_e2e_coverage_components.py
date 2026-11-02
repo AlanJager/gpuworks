@@ -213,7 +213,7 @@ class ComponentsTest(unittest.TestCase):
         metrics = {row["name"]: row for row in rows if row["dimension"] in {"enum", "combination"}}
         expected = {"image.architecture 可选值": 3, "image.framework 可选值": 6,
                     "host_ethernet 非空角色组合": 7, "host_rdma 非空角色组合": 7,
-                    "accelerator_rdma 非空角色组合": 1,
+                    "accelerator_rdma 非空角色组合": 1, "accelerator_hccs 非空角色组合": 1,
                     "平台令牌 scope × expiry 组合": 8, "平台令牌 scope 可选值": 2, "平台令牌 expiry 可选值": 4}
         for name, count in expected.items():
             with self.subTest(name=name):

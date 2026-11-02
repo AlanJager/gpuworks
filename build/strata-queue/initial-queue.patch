@@ -1,0 +1,52 @@
+--- a/serve/server.py
++++ b/serve/server.py
+@@ -1106,6 +1106,8 @@
+         waiting = time.perf_counter()
+         with self.fifo:
+             loading = time.perf_counter()
++            if hasattr(self.request_trace, "queue_wait_s") and not self.request_trace.queue_admitted:
++                self.request_trace.queue_wait_s += loading - waiting
+             if trace is not None:
+                 with self.status_lock:
+                     trace["queue_s"] += round(loading - waiting, 3)
+@@ -1448,6 +1450,10 @@
+             self.status["queued"] += 1
+         try:
+             with self.fifo:
++                admitted = time.perf_counter()
++                if hasattr(self.request_trace, "queue_wait_s") and not self.request_trace.queue_admitted:
++                    self.request_trace.queue_wait_s += admitted - waiting
++                    self.request_trace.queue_admitted = True
+                 try:
+                     with self.status_lock:
+                         if trace is not None:
+@@ -1606,6 +1612,11 @@
+                 Path(emb).unlink(missing_ok=True)
+         for ev in parser.finish():
+             yield "event", ev
++        # Initial admission waits only; later MCP rounds occur after first content.
++        # Model loading and prefill are separate.
++        # Keep this scalar without enabling the optional body-retaining monitor.
++        if getattr(self.request_trace, "queue_admitted", False):
++            timings = dict(timings or {}, queue_ms=round(self.request_trace.queue_wait_s * 1000, 3))
+         yield "done", {"finish": finish, "completion_tokens": n, "reused": (timings or {}).get("cache_n", 0),
+                        "timings": timings}
+ 
+@@ -2273,6 +2284,8 @@
+                     self._json(200, {"status": result, **svc.v1_status()})
+                     return
+                 if path in ("/v1/chat/completions", "/v1/messages"):
++                    svc.request_trace.queue_wait_s = 0.0
++                    svc.request_trace.queue_admitted = False
+                     self.record = svc.begin_request(path, req)
+                 if path == "/v1/chat/completions":
+                     self._openai(req)
+@@ -2302,6 +2315,8 @@
+             finally:
+                 if self.watch_done is not None:
+                     self.watch_done.set()
++                if hasattr(svc.request_trace, "queue_wait_s"):
++                    del svc.request_trace.queue_wait_s, svc.request_trace.queue_admitted
+                 record = self.record
+                 if record is not None:
+                     with svc.status_lock:

@@ -36,13 +36,14 @@ function PdSummary({ pd, onScale }: { pd: DeploymentPd; onScale: () => void }) {
       </Space>
       <Space wrap style={{ marginTop: 8 }}>
         {pd.roles.map((role) => (
-          <Tag key={role.role}>
+          <Tag key={role.role} color={(role.asleep ?? 0) > 0 ? "orange" : undefined}>
             {t("detail.pd.roleSummary", {
               role: t(`detail.pd.role.${role.role}`),
               tp: role.tp,
               ready: role.ready,
               desired: role.desired,
             })}
+            {!!role.asleep && ` · ${t("detail.pd.roleAsleep", { count: role.asleep })}`}
           </Tag>
         ))}
       </Space>
@@ -73,6 +74,7 @@ function PdExhaustedUnits({ dep, onChanged }: { dep: Deployment; onChanged: () =
           })}
           retry={() => api.retryDeploymentUnit(dep.id, { role, index })}
           onDone={onChanged}
+          editHref={`/deploy?edit=${dep.id}`}
         />
       ))}
     </>

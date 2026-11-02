@@ -29,4 +29,19 @@ const (
 	// ErrorSleepRoleCannotEmpty: a sleep order would leave a PD role the mode
 	// cannot run without with no awake instance ({role}).
 	ErrorSleepRoleCannotEmpty = "SLEEP_ROLE_CANNOT_EMPTY"
+	// ErrorReplicasTooFew: a replica count below 1 ({minimum}); stopping
+	// the deployment runs none.
+	ErrorReplicasTooFew = "REPLICAS_TOO_FEW"
+	// ErrorReplicasRemoveInvalid: a named instance does not fill a replica of
+	// the deployment ({instance}).
+	ErrorReplicasRemoveInvalid = "REPLICAS_REMOVE_INVALID"
+	// ErrorReplicasRemoveTooMany: more instances named than replicas removed
+	// ({count}, {maximum}).
+	ErrorReplicasRemoveTooMany = "REPLICAS_REMOVE_TOO_MANY"
+	// ErrorReplicasPlaceOnTooMany: more nodes named than the new replicas
+	// have ranks ({count}, {maximum}).
+	ErrorReplicasPlaceOnTooMany = "REPLICAS_PLACE_ON_TOO_MANY"
+	// ErrorReplicasPlaceOnRefused: a node named for a new replica cannot
+	// carry it now ({node}, {reason}, {detail}).
+	ErrorReplicasPlaceOnRefused = "REPLICAS_PLACE_ON_REFUSED"
 )

@@ -14,7 +14,7 @@ import {
   Typography,
   message,
 } from "antd";
-import { StopOutlined } from "@ant-design/icons";
+import { EditOutlined, StopOutlined } from "@ant-design/icons";
 import { Link } from "react-router-dom";
 import { api, usePolling, type ApiKey, type List } from "../api";
 import { analyticsApi, type KeyUsageList, type UsageCounts } from "../analyticsApi";
@@ -24,6 +24,7 @@ import { formatTime } from "../i18n/datetime";
 import { useTranslation } from "react-i18next";
 import { fmtCompact, fmtInt } from "./analytics/format";
 import PlatformTokensCard from "./apikeys/PlatformTokensCard";
+import { ALL_DEPLOYMENTS, KeyScopeCell, KeyScopeInput, KeyScopeModal, scopeRequest, scopeRule } from "./apikeys/KeyScope";
 import SecretModal from "./apikeys/SecretModal";
 
 const { Paragraph, Text } = Typography;
@@ -35,6 +36,7 @@ export default function APIKeysPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [secret, setSecret] = useState<string | null>(null);
   const [showRevoked, setShowRevoked] = useState(false);
+  const [editing, setEditing] = useState<ApiKey | null>(null);
   // Token usage is a convenience beside the keys: while it loads, or if it
   // fails, its columns read as a dash and the table is unaffected.
   const usage = usePolling<KeyUsageList>(() => analyticsApi.keyUsage(), 60000);
@@ -76,6 +78,7 @@ export default function APIKeysPage() {
           <Tag color="green">{t("status.active")}</Tag>
         ),
     },
+    { key: "scope", title: t("table.scope"), width: 240, render: (_: unknown, k: ApiKey) => <KeyScopeCell apiKey={k} /> },
     {
       key: "tokens_today",
       title: t("table.tokensToday"),
@@ -95,28 +98,33 @@ export default function APIKeysPage() {
     {
       key: "action",
       role: "actions",
-      width: 90,
+      width: 110,
       render: (_: unknown, k: ApiKey) =>
         k.revoked_at ? null : (
-          <Popconfirm
-            title={t("revoke.confirm", { name: k.name })}
-            onConfirm={async () => {
-              try {
-                await api.revokeApiKey(k.prefix);
-                message.success(t("revoke.success"));
-                refetch();
-              } catch (e) {
-                message.error(t("revoke.failed", { detail: (e as Error).message }));
-              }
-            }}
-            okText={t("actions.revoke")}
-            cancelText={t("actions.cancel")}
-            okButtonProps={{ danger: true }}
-          >
-            <Tooltip title={t("actions.revoke")}>
-              <Button type="text" size="small" danger icon={<StopOutlined />} aria-label={t("actions.revoke")} />
+          <Space size={0}>
+            <Tooltip title={t("scope.edit")}>
+              <Button type="text" size="small" icon={<EditOutlined />} aria-label={t("scope.editAria", { name: k.name })} onClick={() => setEditing(k)} />
             </Tooltip>
-          </Popconfirm>
+            <Popconfirm
+              title={t("revoke.confirm", { name: k.name })}
+              onConfirm={async () => {
+                try {
+                  await api.revokeApiKey(k.prefix);
+                  message.success(t("revoke.success"));
+                  refetch();
+                } catch (e) {
+                  message.error(t("revoke.failed", { detail: (e as Error).message }));
+                }
+              }}
+              okText={t("actions.revoke")}
+              cancelText={t("actions.cancel")}
+              okButtonProps={{ danger: true }}
+            >
+              <Tooltip title={t("actions.revoke")}>
+                <Button type="text" size="small" danger icon={<StopOutlined />} aria-label={t("actions.revoke")} />
+              </Tooltip>
+            </Popconfirm>
+          </Space>
         ),
     },
   ];
@@ -167,9 +175,11 @@ export default function APIKeysPage() {
           <Paragraph style={{ margin: 0 }}>
             <pre className="code-block">
               {`curl ${gateway}/v1/chat/completions \\
+  -H "Content-Type: application/json" \\
   -H "Authorization: Bearer <key>" \\
   -d '{"model":"<served_name>","messages":[{"role":"user","content":"hi"}]}'`}
             </pre>
+            {t("usageBatches")} <Link to="/batches">{t("usageBatchesLink")}</Link>
           </Paragraph>
         }
       />
@@ -184,6 +194,14 @@ export default function APIKeysPage() {
         }}
       />
       <SecretModal secret={secret} onClose={() => setSecret(null)} />
+      <KeyScopeModal
+        apiKey={editing}
+        onClose={() => setEditing(null)}
+        onSaved={() => {
+          setEditing(null);
+          refetch();
+        }}
+      />
       </Card>
       <PlatformTokensCard />
     </>
@@ -216,7 +234,7 @@ function CreateModal({
         return;
       }
       setSubmitting(true);
-      const res = await api.createApiKey(v.name);
+      const res = await api.createApiKey(v.name, scopeRequest(v.scope));
       form.resetFields();
       onCreated(res.key);
     } catch (e) {
@@ -241,6 +259,9 @@ function CreateModal({
       <Form form={form} layout="vertical">
         <Form.Item label={t("table.name")} name="name" rules={[{ required: true, whitespace: true, message: t("create.nameRequired") }]}>
           <Input placeholder={t("create.namePlaceholder")} onPressEnter={() => void submit()} />
+        </Form.Item>
+        <Form.Item label={t("scope.label")} name="scope" initialValue={ALL_DEPLOYMENTS} rules={[scopeRule(t)]}>
+          <KeyScopeInput />
         </Form.Item>
       </Form>
     </Modal>

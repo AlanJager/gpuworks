@@ -86,6 +86,14 @@ func (a *apiHandlers) evaluate(w http.ResponseWriter, r *http.Request) {
 	// with 400: evaluation is the interactive endpoint, and the form keeps the
 	// draft while it shows each error beside its control. Create keeps the 400.
 	errs := &evaluateFieldErrors{}
+	// An automatic multi-node or PD request is previewed on the nodes the
+	// server would pick now; the create picks again.
+	autoPlaced, autoErr := a.autoPlaceRequest(req)
+	if autoErr != nil {
+		errs.add("placement_mode", autoErr)
+		writeEvaluateFieldErrors(w, &dto.EvaluateResponse{SchemaVersion: evaluateSchemaVersion, Replicas: req.Replicas, AutoPlaced: true}, errs)
+		return
+	}
 	if err := validateReplicaShape(req); err != nil {
 		errs.add("replicas", err)
 	}
@@ -146,7 +154,7 @@ func (a *apiHandlers) evaluate(w http.ResponseWriter, r *http.Request) {
 	// multi-replica group, so the scope is always per-replica. The response
 	// exists from here on so every field-error exit carries the template facts
 	// it already resolved.
-	resp := dto.EvaluateResponse{SchemaVersion: evaluateSchemaVersion, OK: true, Replicas: req.Replicas, PlanScope: "per_replica", TemplateMatch: selection.Match, MatchedBy: selection.MatchedBy, TemplateDeviated: selection.Deviated}
+	resp := dto.EvaluateResponse{SchemaVersion: evaluateSchemaVersion, OK: true, Replicas: req.Replicas, AutoPlaced: autoPlaced, PlanScope: "per_replica", TemplateMatch: selection.Match, MatchedBy: selection.MatchedBy, TemplateDeviated: selection.Deviated}
 	if selection.Spec != nil {
 		resp.TemplateSpecSource = selection.Spec.Source
 		resp.TemplateSpecName = selection.Spec.Name
@@ -167,6 +175,10 @@ func (a *apiHandlers) evaluate(w http.ResponseWriter, r *http.Request) {
 		writeEvaluateFieldErrors(w, &resp, errs)
 		return
 	}
+	// Whether the form may offer a yield policy other than never: the create's
+	// own check, answered even when a field error stops the preview below.
+	yieldEligible := dto.EligibilityOf(planning.DraftYieldPolicyRefusal(req.Sleepable, eng.Name(), req.NNodes, placementPD(req) != nil))
+	resp.YieldPolicyEligible = &yieldEligible
 	if !errs.empty() {
 		// A draft with an early field error is what the form must fix before a
 		// preview means anything; continuing would only re-report the same
@@ -185,10 +197,8 @@ func (a *apiHandlers) evaluate(w http.ResponseWriter, r *http.Request) {
 	}
 	model, err := a.resolveDeploymentModelFromTemplate(r.Context(), req.ModelID, &selection, req.TemplateID)
 	if err != nil {
-		resp.OK = false
-		resp.Warnings = append(resp.Warnings, messages.NewWarning(messages.WarningModelNotFound, nil))
-		resp.Errors = errs.items
-		writeJSON(w, http.StatusOK, resp)
+		errs.add("model_id", err)
+		writeEvaluateFieldErrors(w, &resp, errs)
 		return
 	}
 	// A quick registration may not have metadata yet. Keep evaluation and
@@ -228,7 +238,7 @@ func (a *apiHandlers) evaluate(w http.ResponseWriter, r *http.Request) {
 	resp.TemplateResidualArgs = launch.TemplateResidual
 	if placement.PD != nil {
 		requestOverrides, _ := requestContainerOverrides(req.ContainerOverrides)
-		a.evaluatePD(evaluatePDEnv{ctx: r.Context(), writer: w, request: req, response: &resp, engine: eng, model: model,
+		a.evaluatePD(evaluatePDEnv{ctx: r.Context(), writer: w, request: req, excludeDeployment: evaluateReq.DeploymentID, response: &resp, engine: eng, model: model,
 			selection: selection, launch: launch, requestOverrides: requestOverrides, servedName: servedName, errs: errs,
 			targetVendor: targetVendor, profileNode: profileNode})
 		return
@@ -308,7 +318,7 @@ func (a *apiHandlers) evaluate(w http.ResponseWriter, r *http.Request) {
 	if isAutomaticPlacement(req) && req.NNodes <= 1 {
 		requestOverrides, overrideErr := requestContainerOverrides(req.ContainerOverrides)
 		if overrideErr == nil {
-			selected, candidates := a.evaluateAutomaticPlacement(r.Context(), req, eng, model, selection, placement, quick, userExtraArgs, servedName, resp.Image, requestOverrides, resp.EligibleNodes)
+			selected, candidates := a.evaluateAutomaticPlacement(r.Context(), req, eng, model, selection, placement, quick, userExtraArgs, servedName, resp.Image, requestOverrides, resp.EligibleNodes, evaluateReq.DeploymentID)
 			resp.SelectedNode = selected
 			resp.Candidates = candidates
 			if selected != nil {
@@ -389,7 +399,7 @@ func (a *apiHandlers) evaluate(w http.ResponseWriter, r *http.Request) {
 	}
 	previewModelMount, previewMounts := previewComponentMounts(a.d.Store, selection.Components, node)
 	plan, ok := a.evaluatePlan(evaluatePlanEnv{
-		ctx: r.Context(), writer: w, request: req, response: &resp, engine: eng, model: model,
+		ctx: r.Context(), writer: w, request: req, excludeDeployment: evaluateReq.DeploymentID, response: &resp, engine: eng, model: model,
 		node: node, nodeFound: nodeFound, profileNode: profileNode, imageCached: imageCached,
 		nodeImageCached: nodeImageCached, selection: selection, placement: placement, quick: quick,
 		userExtraArgs: userExtraArgs, servedName: servedName, requestOverrides: requestOverrides,
@@ -412,7 +422,7 @@ func (a *apiHandlers) evaluate(w http.ResponseWriter, r *http.Request) {
 	// happens to name one is what the stored row no longer carries either.
 	rankSelection.ExtraArgs = launch.TemplateResidual
 	if !a.evaluateRanks(evaluateRankEnv{
-		ctx: r.Context(), writer: w, request: req, response: &resp, engine: eng, model: model, launch: launch,
+		ctx: r.Context(), writer: w, request: req, excludeDeployment: evaluateReq.DeploymentID, response: &resp, engine: eng, model: model, launch: launch,
 		selection: selection, rankSelection: rankSelection, rankNodes: rankNodes, placement: placement,
 		quick: quick, userExtraArgs: userExtraArgs, dynamicTPPreview: dynamicTPPreview,
 		nodeImageCached: nodeImageCached, requestOverrides: requestOverrides,

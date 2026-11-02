@@ -9,7 +9,7 @@ import { api, useEvents, usePolling, type BenchmarkRun, type List } from "../api
 import EmptyState from "../components/EmptyState";
 import PageHeader from "../components/PageHeader";
 import BenchmarkWizard, { type WizardPreset } from "./evaluations/BenchmarkWizard";
-import { bestPoint, format, targetLabel } from "./evaluations/evaluationUtils";
+import { bestPoint, deletedTargetLabelKeys, format, targetLabel } from "./evaluations/evaluationUtils";
 import { createRefreshCoalescer } from "./evaluations/evaluationRefresh";
 import { formatTime } from "../i18n/datetime";
 import { localizedText } from "../i18n/localizedText";
@@ -60,7 +60,7 @@ export default function EvaluationsPage() {
 	const statusLabel = (state: string) => localizedText(meta?.statuses.find((status) => status.value === state)?.label, language) || state;
 	const columns: ResourceColumn<BenchmarkRun>[] = [
 		{ key: "name", role: "name", title: t("list.column.name"), width: 280, sortValue: (run) => run.name || `Run #${run.id}`, render: (_, run) => <Button type="link" onClick={() => navigate(`/evaluations/${run.id}`)}>{run.name || `Run #${run.id}`}</Button> },
-		{ key: "target", title: t("list.column.target"), width: 220, sortValue: (run) => targetLabel(run, run.target_snapshot?.deployment_name, t), render: (_, run) => <Space size={6}>{targetLabel(run, run.target_snapshot?.deployment_name, t)}{(run.deployment_deleted || run.instance_deleted) && <Tag>{t("detail.target.deleted")}</Tag>}</Space> },
+		{ key: "target", title: t("list.column.target"), width: 220, sortValue: (run) => targetLabel(run, run.target_snapshot?.deployment_name, t), render: (_, run) => <Space size={6}>{targetLabel(run, run.target_snapshot?.deployment_name, t)}{deletedTargetLabelKeys(run).map((key) => <Tag key={key}>{t(key)}</Tag>)}</Space> },
 		{ key: "mode", title: t("list.column.mode"), width: 150, sortValue: (run) => modeLabel(run.mode), filters: (meta?.modes ?? []).map((mode) => ({ value: mode.value, text: localizedText(mode.label, language) })), onFilter: (value, run) => run.mode === value, render: (_, run) => modeLabel(run.mode) },
 		{ key: "state", title: t("list.column.status"), width: 120, sortValue: (run) => statusLabel(run.state), filters: (meta?.statuses ?? []).map((status) => ({ value: status.value, text: localizedText(status.label, language) })), onFilter: (value, run) => run.state === value, render: (_, run) => { const item = meta?.statuses.find((status) => status.value === run.state); return <Tag color={item?.color || "default"}>{statusLabel(run.state)}</Tag>; } },
 		{ key: "verdict", title: t("list.column.verdict"), width: 260, render: (_, run) => verdictSummary(run, t) },

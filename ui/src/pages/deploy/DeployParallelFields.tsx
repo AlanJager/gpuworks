@@ -11,6 +11,8 @@ interface Props {
   /** Wraps each field, e.g. in a grid column; fields render bare by default. */
   wrap?: (field: ReactNode, key: string) => ReactNode;
   disabled?: boolean;
+  /** The platform picks the nodes: it needs the TP to know how many GPUs each rank takes. */
+  autoPlaced?: boolean;
 }
 
 /**
@@ -19,16 +21,20 @@ interface Props {
  * multi-node draft starts from, come from the server's evaluation (its
  * form_values and parallelism summary), never from arithmetic here.
  */
-export default function DeployParallelFields({ result, multi, tpLabel, ppLabel, wrap = (field) => field, disabled }: Props) {
+export default function DeployParallelFields({ result, multi, tpLabel, ppLabel, wrap = (field) => field, disabled, autoPlaced }: Props) {
   const { t } = useTranslation("deploy");
+  const form = Form.useFormInstance();
+  const tp = Form.useWatch("tp", { form, preserve: true });
   const split = result?.parallelism;
   const hint = split
     ? multi
       ? t("workbench.parallel.split", { tp: split.tp, pp: split.pp, perNode: split.gpus_per_node })
       : t("workbench.parallel.total", { gpus: split.gpus_per_node })
-    : multi
-      ? t("workbench.parallel.fromNodes")
-      : t("workbench.parallel.tpAutomatic");
+    : autoPlaced && (tp == null || tp === "")
+      ? t("workbench.parallel.tpRequiredAuto")
+      : multi
+        ? t("workbench.parallel.fromNodes")
+        : t("workbench.parallel.tpAutomatic");
   return (
     <>
       {wrap(
@@ -52,7 +58,7 @@ export default function DeployParallelFields({ result, multi, tpLabel, ppLabel, 
  * multi-node form shows it as its own row with the nodes, above the image and
  * the weights.
  */
-export function DeployParallelRow({ result, disabled }: { result: EvaluateResponse | null; disabled?: boolean }) {
+export function DeployParallelRow({ result, disabled, autoPlaced }: { result: EvaluateResponse | null; disabled?: boolean; autoPlaced?: boolean }) {
   const { t } = useTranslation("deploy");
   return (
     <div className="deploy-workbench-row">
@@ -65,6 +71,7 @@ export function DeployParallelRow({ result, disabled }: { result: EvaluateRespon
             tpLabel={t("workbench.resource.tp")}
             ppLabel={t("workbench.resource.pp")}
             disabled={disabled}
+            autoPlaced={autoPlaced}
           />
         </div>
       </div>

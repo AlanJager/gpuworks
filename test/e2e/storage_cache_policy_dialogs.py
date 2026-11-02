@@ -2,11 +2,12 @@
 from __future__ import annotations
 
 import json
+import re
 from urllib.parse import urlsplit
 
 from playwright.sync_api import expect
 
-from network_storage_lifecycle import read
+from network_storage_lifecycle import locale_strings, read
 from platform_token_read_revoke import button, check
 
 GIB = 1024 ** 3
@@ -29,10 +30,14 @@ def mutate(page, action, method, path, body, status, evidence):
     observation.update(status=response.status, query=urlsplit(response.url).query,
                        raw_body=response.request.post_data, response_text=response.text())
     observation['body'] = response.request.post_data_json if response.request.post_data is not None else None
+    # Canonical JSON keeps false distinct from 0 and 0.0 from integer bytes;
+    # ordinary Python equality would accept both as the same capacity.
+    observation['wire_json_exact'] = (json.dumps(observation['body'], sort_keys=True)
+                                      == json.dumps(body, sort_keys=True))
+    check(observation['wire_json_exact'],
+          f'{method} {path}: expected body {body!r}, received {observation["body"]!r}')
     check(response.status == status, f'{method} {path}: expected {status}, received {response.status}')
     check(not observation['query'], f'{method} {path}: unexpected query {observation["query"]!r}')
-    check(observation['body'] == body,
-          f'{method} {path}: expected body {body!r}, received {observation["body"]!r}')
     result = response.json() if status != 204 else None
     observation['response'] = result
     return result
@@ -58,7 +63,8 @@ def exercise_editor_dismissals(page, dialog, reopen, close_selector, cancel_labe
             nonlocal current
             action(current)
             expect(current).to_be_hidden()
-            expect(page.get_by_role('dialog')).to_be_hidden()
+            # The storage detail is itself a drawer and stays open.
+            expect(page.get_by_role('dialog')).to_have_count(1)
             check(len(writes) == baseline, f'{label} {action_name} sent a storage write')
             check(snapshot() == before, f'{label} {action_name} changed the saved cache policy')
             current = reopen()
@@ -192,9 +198,8 @@ def exercise_defaults_dialog(page, trigger, title, parent, field_label, save_lab
     return dialog
 
 
-def exercise_defaults_inflight(page, dialog, cm, cp, path_value, api_path, body, errors, evidence):
-    """One held defaults PATCH. Save is disabled, a forced second click sends nothing, and a 502 keeps the draft."""
-    reason = 'upstream fixture is unreachable'
+def exercise_defaults_inflight(page, dialog, cm, api_path, body, evidence):
+    """Hold a real stale PATCH: duplicate actions stay blocked until its 409."""
     held = []
 
     def hold_patch(route):
@@ -204,39 +209,60 @@ def exercise_defaults_inflight(page, dialog, cm, cp, path_value, api_path, body,
         held.append(route)
 
     page.route('**' + api_path, hold_patch)
-    button(dialog, cm['save']).click()
-    inflight = dialog.locator('.ant-modal-footer button.ant-btn-primary')
-    expect(inflight).to_be_disabled()
-    inflight.click(force=True)
-    page.keyboard.press('Enter')
-    check(len(held) == 1, 'duplicate defaults save from a second click or Enter while the first request is held')
-    check(held[0].request.post_data_json == body, 'held defaults body differs')
-    with page.expect_response(lambda r: urlsplit(r.url).path == api_path and r.request.method == 'PATCH') as failed:
-        held[0].fulfill(status=502, content_type='application/json', body=json.dumps({'message': reason}))
-    page.unroute('**' + api_path, hold_patch)
-    check(failed.value.status == 502, 'forced defaults failure did not surface')
-    expect(dialog).to_be_visible()
-    expect(dialog.get_by_role('radio', name=cp['unlimited'], exact=True)).to_be_checked()
-    expect(dialog.get_by_label(cm['pathValue'], exact=True)).to_have_value(path_value)
-    expect(page.get_by_text(reason)).to_be_visible()
-    expect(button(dialog, cm['save'])).to_be_enabled()
-    check(any(item.get('path') == api_path and item.get('status') == 502 for item in errors['http']), '502 was not recorded')
-    check(any('502' in item.get('text', '') for item in errors['console']), '502 console line absent')
-    errors['http'][:] = [item for item in errors['http'] if item.get('status') != 502]
-    errors['console'][:] = [item for item in errors['console'] if '502' not in item.get('text', '')]
+    try:
+        button(dialog, cm['save']).click()
+        inflight = dialog.locator('.ant-modal-footer button.ant-btn-primary')
+        expect(inflight).to_be_disabled()
+        inflight.click(force=True)
+        page.keyboard.press('Enter')
+        check(len(held) == 1, 'duplicate defaults save while the first request is held')
+        check(held[0].request.post_data_json == body, 'held defaults body differs')
+        pending = held.pop()
+        result = mutate(page, pending.continue_, 'PATCH', api_path, body, 409, evidence)
+    finally:
+        for pending in held:
+            pending.continue_()
+        page.unroute('**' + api_path, hold_patch)
     evidence.append({'layer': 'ui', 'inflight_posts': 1, 'save_disabled': True,
-                     'failure_status': 502, 'draft_retained': True, 'failure_reason_visible': True})
+                     'failure_status': 409, 'response_source': 'real server revision conflict'})
+    return result
 
 
-def exercise_defaults_conflict(page, base, dialog, cm, cp, path_value, api_path, stale, conflict_text, errors, evidence):
+def exercise_defaults_conflict(page, base, dialog, cm, cp, path_value, api_path, stale, conflict_text, errors, evidence, locale):
     """Another writer advances the revision. The open dialog still sends the previewed expected_updated_at."""
-    moved = page.request.fetch(base + api_path, method='PATCH', headers={'content-type': 'application/json'},
-                               data=json.dumps({'expected_updated_at': stale}))
-    preview = moved.json()
-    check(moved.status == 200 and preview.get('updated_at') not in (None, stale),
-          f'revision move HTTP {moved.status} {preview!r}')
-    result = mutate(page, button(dialog, cm['save']).click, 'PATCH', api_path,
-                    {'cache_max_bytes': 0, 'expected_updated_at': stale}, 409, evidence)
+    # A separate browser context changes the real resource while the original
+    # editor retains its frozen baseline. Both saves run through the UI.
+    writer_context = page.context.browser.new_context(
+        storage_state=page.context.storage_state(), viewport=page.viewport_size,
+        locale='zh-CN' if locale == 'zh' else 'en-US', timezone_id='UTC')
+    try:
+        writer = writer_context.new_page()
+        writer_errors = []
+        writer.on('pageerror', lambda error: writer_errors.append(str(error)))
+        writer.goto(base + '/storage/' + api_path.rsplit('/', 1)[-1])
+        storage_texts = locale_strings(locale, 'storage')
+        writer.get_by_role('tab', name=re.compile(
+            '^' + re.escape(storage_texts['detail']['tab']['nodes']) + r'\s*25$')).click()
+        for gib in (96, 128):
+            baseline = read(writer, base, api_path)
+            button(writer, cm['defaults']).click()
+            editor = writer.get_by_role('dialog', name=cm['defaults'], exact=True)
+            editor.get_by_role('radio', name=cp['custom'], exact=True).check()
+            editor.get_by_role('spinbutton').fill(str(gib))
+            mutate(writer, button(editor, cm['save']).click, 'PATCH', api_path,
+                   {'cache_max_bytes': gib * GIB, 'expected_updated_at': baseline['updated_at']},
+                   200, evidence)
+            expect(editor).to_be_hidden()
+            preview = read(writer, base, api_path)
+            check(preview['cache_max_bytes'] == gib * GIB, 'other session limit did not persist')
+        check(preview.get('updated_at') not in (None, stale), 'other session did not advance revision')
+        check(not writer_errors, f'other session browser errors: {writer_errors!r}')
+        evidence.append({'layer': 'ui', 'concurrent_writer': 'separate browser context',
+                         'limit_cycle_gib': [128, 96, 128], 'revision_changed': True})
+    finally:
+        writer_context.close()
+    result = exercise_defaults_inflight(page, dialog, cm, api_path,
+                    {'cache_max_bytes': 0, 'expected_updated_at': stale}, evidence)
     check(result.get('code') == 'STORAGE_CONFIG_CHANGED', f'conflict code {result!r}')
     expect(dialog).to_be_visible()
     expect(dialog.get_by_role('radio', name=cp['unlimited'], exact=True)).to_be_checked()
@@ -343,7 +369,7 @@ def exercise_cache_limit_bounds(page, dialog, limit_input, save_name, invalid_te
             'above_maximum': '8388608', 'persisted': 0, 'patches': 0}
 
 
-def exercise_cache_limit_steps(page, dialog, limit_input, unit_name, persisted):
+def exercise_cache_limit_steps(page, dialog, limit_input, unit_name, persisted, *, precision=True):
     """Keyboard and step buttons change the custom GiB limit. The unit select shows the same bytes."""
     writes = []
 
@@ -377,13 +403,28 @@ def exercise_cache_limit_steps(page, dialog, limit_input, unit_name, persisted):
     check(dialog.get_by_role('spinbutton').count() == 1, 'the cache limit has a second spinbutton')
     selector = dialog.locator('.ant-select-selector')
     expect(selector).to_have_count(1)
+    # Keep the existing exact conversion alongside a sub-TiB precision check.
+    limit_input.fill('1024')
+    limit_input.blur()
+    expect(limit_input).to_have_value('1024')
     # The role=option node is a hidden accessibility mirror. The visible item carries title.
     selector.click()
     page.get_by_title('TiB', exact=True).click()
-    expect(limit_input).to_have_value('0.001953125')
+    expect(limit_input).to_have_value('1')
     selector.click()
     page.get_by_title('GiB', exact=True).click()
-    expect(limit_input).to_have_value('2')
+    expect(limit_input).to_have_value('1024')
+    if precision:
+        limit_input.fill('2')
+        limit_input.blur()
+        selector.click()
+        page.get_by_title('TiB', exact=True).click()
+        expect(limit_input).to_have_value('0.001953125')
+        limit_input.blur()
+        expect(limit_input).to_have_value('0.001953125')
+        selector.click()
+        page.get_by_title('GiB', exact=True).click()
+        expect(limit_input).to_have_value('2')
     limit_input.fill('1')
     limit_input.blur()
     expect(limit_input).to_have_value('1')
@@ -393,7 +434,36 @@ def exercise_cache_limit_steps(page, dialog, limit_input, unit_name, persisted):
     check(len(writes) == baseline, 'stepping the limit sent a node override')
     page.remove_listener('request', on_request)
     return {'from': 2, 'keyboard': 3, 'button': 3, 'at_one_step_down': '',
-            'tib_from_2gib': '0.001953125', 'restored_gib': '2',
+            'tib_from_1024gib': '1', 'restored_gib': '1024',
+            'tib_from_2gib': '0.001953125' if precision else None,
             'slider': False, 'spinbuttons': 1, 'patches': 0}
 
 
+
+
+def exercise_server_limit_range(page, base, path, targets, evidence):
+    """The server enforces the same lower bound the control shows, on its own.
+
+    The form refuses a negative capacity before sending anything, so the UI can
+    never reach the server's guard. It is still the server's rule to keep: a
+    client that skips the form must be refused, and the refusal must not disturb
+    the value already stored.
+    """
+    before = targets()['cache-node-01']['cache_max_bytes']
+    attempts = []
+    for label, body in (('negative', {'node_uuids': ['cache-node-01'], 'cache_max_bytes': -1}),
+                        ('negative-gib', {'node_uuids': ['cache-node-01'], 'cache_max_bytes': -1 * GIB})):
+        response = page.request.patch(base + path + '/node-overrides', data=body)
+        detail = response.json() if response.text() else None
+        attempts.append({'case': label, 'sent': body, 'status': response.status,
+                         'code': (detail or {}).get('code')})
+        check(response.status == 400,
+              f'the server accepted a {label} cache limit: HTTP {response.status}')
+        check((detail or {}).get('code') == 'STORAGE_PATH_INVALID',
+              f'the {label} refusal used an unexpected code: {(detail or {}).get("code")}')
+    after = targets()['cache-node-01']['cache_max_bytes']
+    check(after == before,
+          f'a refused cache limit changed the stored value: {before} then {after}')
+    evidence.append({'layer': 'request', 'server_limit_range': attempts,
+                     'stored_before': before, 'stored_after': after})
+    return {'attempts': attempts, 'stored_before': before, 'stored_after': after}

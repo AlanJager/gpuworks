@@ -19,9 +19,16 @@ type DeploymentRef struct {
 	Name            string
 	Engine          string
 	ReplicasDesired int
-	NodeNames       []string
-	ServedName      string
-	SleepDesired    int
+	// ReplicasReady is the domain-derived count when readiness needs facts
+	// absent from InstanceRef (PD distributed-group completeness).
+	// Nil keeps ordinary deployments counted from their running leaders.
+	ReplicasReady *int
+	NodeNames     []string
+	ServedName    string
+	SleepDesired  int
+	// RuntimeState is derived by the deployment read policy before adapting
+	// the inventory, including preparation failures and scheduling timeouts.
+	RuntimeState string
 	// PD marks a PD disaggregated deployment (window_pd.go);
 	// PDTransferMetrics says its PD mode's engine exports KV transfer
 	// metrics (pdmode.Mode.TransferBytesMetric: NIXL does, vllm-ascend's
@@ -50,7 +57,14 @@ type InstanceRef struct {
 	State        string
 	GPUIndexes   []int
 	SleepLevel   int
-	Headless     bool
+	// Asleep is whether the gateway refuses this instance for sleep
+	// (planning.InstanceAsleep): it reports a sleep level, or it is under a
+	// sleep order its engine has not carried out yet. The level alone is not
+	// the answer — an instance ordered to sleep is refused before its engine
+	// reports the level — so the monitor reads this, not SleepLevel, to decide
+	// whether an instance can serve. SleepLevel stays for display.
+	Asleep   bool
+	Headless bool
 	// Role is the instance's PD role, empty outside PD deployments.
 	Role string
 }

@@ -4,14 +4,16 @@ import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import { api, usePolling, type ModelCore } from "../../api";
 import { ModelSourceTag } from "../ModelsPageParts";
+import ModelRegistrationDetails from "./ModelRegistrationDetails";
 
 /** How many models one search offers; typing narrows the list on the server. */
 export const MODEL_PICKER_PAGE_SIZE = 50;
 
 const modelLabel = (model: ModelCore): ReactNode => (
-  <Space size={6}>
+  <Space size={6} wrap>
     <span>{model.name || model.source_id}</span>
     <ModelSourceTag source={model.source} />
+    <ModelRegistrationDetails model={model} />
   </Space>
 );
 
@@ -43,12 +45,29 @@ export default function ModelPicker({
   );
   const items = page.data?.items;
   const options = useMemo(() => {
-    const out = (items ?? []).map((model) => ({ value: model.id, label: modelLabel(model) }));
+    const modelOption = (model: ModelCore) => {
+      const name = model.name || model.source_id;
+      const revision = model.revision
+        ? t("weightSourceModal.revision", { revision: model.revision })
+        : t("weightSourceModal.revisionUnknown");
+      return {
+        value: model.id,
+        label: (
+          <span title={`${name} · ${model.source} · ${revision}`}>
+            <span>{name}</span>{" "}
+            <ModelSourceTag source={model.source} />
+            <Typography.Text type="secondary">{revision}</Typography.Text>
+          </span>
+        ),
+        model,
+      };
+    };
+    const out = (items ?? []).map(modelOption);
     if (selected && selected.id === value && !out.some((option) => option.value === value)) {
-      out.unshift({ value: selected.id, label: modelLabel(selected) });
+      out.unshift(modelOption(selected));
     }
     return out;
-  }, [items, selected, value]);
+  }, [items, selected, value, t]);
   // No model at all, rather than none matching what was typed.
   const noModels = !search && page.data?.total === 0;
   return (
@@ -61,6 +80,7 @@ export default function ModelPicker({
       value={value}
       onChange={onChange}
       options={options}
+      optionRender={(option) => modelLabel(option.data.model)}
       loading={page.loading}
       placeholder={t("basic.modelPlaceholder")}
       notFoundContent={

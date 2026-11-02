@@ -3,7 +3,6 @@ stages:
   - core
   - release
   - publish
-  - l4-smoke
   - l4-acceptance
 
 default:
@@ -199,6 +198,7 @@ core-ui-test:
   script:
     # The macOS serve adapters' tests need only the image's python3.
     - make test-host-env-adapters
+    - make test-strata-queue-assets
     - cd ui
     # See core-ui: registry.npmmirror.com occasionally stalls mid-transfer and
     # resets the connection instead of failing fast, so retry the install.
@@ -315,9 +315,11 @@ core-vet:
           docker rm -f -v "$c" >/dev/null 2>&1 || true
         fi
       done
+    # The host agent reclaims gpuworks-* names as managed workloads.
+    # CI infrastructure must live outside that container namespace.
     - >
       docker run -d --privileged
-      --name "gpuworks-docker-core-dind-$CI_JOB_ID"
+      --name "ci-gpuworks-docker-core-dind-$CI_JOB_ID"
       --label gpuworks-ci-docker-core
       -e DOCKER_TLS_CERTDIR=
       -v "$CI_PROJECT_DIR:$CI_PROJECT_DIR"
@@ -330,18 +332,18 @@ core-vet:
     - |
       ready=0
       for attempt in $(seq 1 60); do
-        if docker exec "gpuworks-docker-core-dind-$CI_JOB_ID" docker --host unix:///run/gpuworks-e2e/docker.sock info >/dev/null 2>&1; then
+        if docker exec "ci-gpuworks-docker-core-dind-$CI_JOB_ID" docker --host unix:///run/gpuworks-e2e/docker.sock info >/dev/null 2>&1; then
           ready=1
           break
         fi
         sleep 1
       done
       if [ "$ready" != 1 ]; then
-        docker logs "gpuworks-docker-core-dind-$CI_JOB_ID" || true
+        docker logs "ci-gpuworks-docker-core-dind-$CI_JOB_ID" || true
         echo "isolated Docker test daemon did not become ready" >&2
         exit 1
       fi
-      docker exec "gpuworks-docker-core-dind-$CI_JOB_ID" chown "$(id -u):$(id -g)" /run/gpuworks-e2e/docker.sock
+      docker exec "ci-gpuworks-docker-core-dind-$CI_JOB_ID" chown "$(id -u):$(id -g)" /run/gpuworks-e2e/docker.sock
     # Every job starts a brand-new, empty DinD daemon, so without this it
     # re-pulls the L3 fixture base images from the network on every run. Seed
     # the fresh daemon from a host-side tar cache first; only pull (and then
@@ -351,7 +353,7 @@ core-vet:
     # tmp-file-plus-rename keeps a concurrent writer (e.g. a parallel core-l2
     # run) from exposing a half-written tar.
     - |
-      dind="gpuworks-docker-core-dind-$CI_JOB_ID"
+      dind="ci-gpuworks-docker-core-dind-$CI_JOB_ID"
       for image in "$GPUWORKS_L3_SHELL_BASE_IMAGE" "$GPUWORKS_L3_RUNTIME_BASE_IMAGE" "$GPUWORKS_L3_NO_PYTHON_IMAGE" "$GPUWORKS_L3_REGISTRY_IMAGE"; do
         [ -n "$image" ] || continue
         cache_file="$DOCKER_HOST_CACHE/images/$(echo "$image" | tr -c 'A-Za-z0-9._-' '_').tar"
@@ -391,9 +393,9 @@ core-vet:
       done
     - >
       docker run --rm
-      --name "gpuworks-docker-core-go-$CI_JOB_ID"
+      --name "ci-gpuworks-docker-core-go-$CI_JOB_ID"
       --label gpuworks-ci-docker-core
-      --network "container:gpuworks-docker-core-dind-$CI_JOB_ID"
+      --network "container:ci-gpuworks-docker-core-dind-$CI_JOB_ID"
       --user "$(id -u):$(id -g)"
       -v /usr/bin/docker:/usr/bin/docker:ro
       -v "$CI_PROJECT_DIR:$CI_PROJECT_DIR"
@@ -427,12 +429,12 @@ core-vet:
         echo "== host load at job end: $(cat /proc/loadavg 2>/dev/null)"
         for p in cpu io memory; do echo "== /proc/pressure/$p: $(cat /proc/pressure/$p 2>/dev/null | tr '\n' ' ')"; done
         echo "== inner dockerd log (last 300 lines)"
-        docker logs --timestamps --tail 300 "gpuworks-docker-core-dind-$CI_JOB_ID" 2>&1 || true
+        docker logs --timestamps --tail 300 "ci-gpuworks-docker-core-dind-$CI_JOB_ID" 2>&1 || true
       fi
     # -v: the DinD image declares /var/lib/docker as an anonymous volume;
     # without it every job leaked ~1.6 GB and filled the runner's root disk.
-    - docker rm -f -v "gpuworks-docker-core-go-$CI_JOB_ID" >/dev/null 2>&1 || true
-    - docker rm -f -v "gpuworks-docker-core-dind-$CI_JOB_ID" >/dev/null 2>&1 || true
+    - docker rm -f -v "ci-gpuworks-docker-core-go-$CI_JOB_ID" >/dev/null 2>&1 || true
+    - docker rm -f -v "ci-gpuworks-docker-core-dind-$CI_JOB_ID" >/dev/null 2>&1 || true
     # Engine containers write root-owned files into TMPDIR (.tmp, kept inside
     # the workspace for DinD-visible bind mounts); a crashed-container test
     # cannot clean them itself. Prune as root via a container so the next
@@ -468,19 +470,20 @@ core-l3:
       - coverage-l3.out
     expire_in: 14 days
 
-# Control-plane scale cases, both gated by FLEET_REDEPLOY_CHURN=1 from a
+# Control-plane scale cases, all gated by FLEET_REDEPLOY_CHURN=1 from a
 # nightly schedule (or an operator via web/api), never on merge requests: the
 # redeploy churn (real server binary as one process, 1000 real agents in a
 # second one, half of them redeploying) and the log-center read budget case
 # (every instance streaming at the target aggregate ~2000 lines/s while half
 # the fleet redeploys; asserts the p95 budgets from
-# artifacts/archive/2026-09-19-log-center/plan.md). Both are measurements of a loaded
-# host and need no Docker and no GPU. Strict mode turns a too-low descriptor
+# artifacts/archive/2026-09-19-log-center/plan.md), plus a server-origin
+# saturation evaluation under the server's RSS budget. All are measurements of
+# a loaded host and need no Docker and no GPU. Strict mode turns a too-low descriptor
 # limit into a failure instead of a skip that would read as green.
 l2-fleet-redeploy-churn:
   extends: .go-core
   stage: core
-  timeout: 55m
+  timeout: 75m
   variables:
     GPUWORKS_TEST_STRICT: "1"
     GPUWORKS_FLEET_PROCESS_LOGS: "1"
@@ -496,13 +499,28 @@ l2-fleet-redeploy-churn:
     - cat fleet-redeploy-churn.log
     - make test-fleet-log-scale-processes > fleet-log-scale.log 2>&1 || status=$?
     - cat fleet-log-scale.log
+    - make test-fleet-benchmark-processes > fleet-benchmark.log 2>&1 || status=$?
+    - cat fleet-benchmark.log
     - exit "$status"
+  # The per-process logs are 40 files and the upload failed with 413 Request
+  # Entity Too Large even on green runs, so they ship as one compressed
+  # archive. after_script runs whatever the script's outcome and must not turn
+  # a missing log directory into a failure.
+  after_script:
+    - |
+      if [ -d "$GPUWORKS_FLEET_WORK_DIR" ] && [ -n "$(find "$GPUWORKS_FLEET_WORK_DIR" -name '*.log' -print -quit)" ]; then
+        find "$GPUWORKS_FLEET_WORK_DIR" -name '*.log' -print0 | tar --null -T - -czf fleet-process-logs.tar.gz || true
+        rm -rf "$GPUWORKS_FLEET_WORK_DIR"
+      fi
+      gzip -f fleet-redeploy-churn.log fleet-log-scale.log fleet-benchmark.log 2>/dev/null || true
+      true
   artifacts:
     when: always
     paths:
-      - fleet-redeploy-churn.log
-      - fleet-log-scale.log
-      - .tmp/fleet/**/*.log
+      - fleet-redeploy-churn.log.gz
+      - fleet-log-scale.log.gz
+      - fleet-benchmark.log.gz
+      - fleet-process-logs.tar.gz
     expire_in: 14 days
   rules:
     - if: '$FLEET_REDEPLOY_CHURN == "1" && ($CI_PIPELINE_SOURCE == "schedule" || $CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api")'
@@ -638,6 +656,18 @@ release-publish:
     - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
     - when: never
 
+# Every job below that has an `environment:` uses `action: prepare`. This
+# project has "Skip outdated deployment jobs" (ci_forward_deployment_enabled)
+# on: when a deployment starts running, GitLab drops every older running
+# deployment of the same environment, which fails that job mid-run with a
+# trace that just stops ("403 Job is not running"). Nightly master job 261712
+# (l4-aliyun-provisioning-matrix) was killed that way the moment an MR
+# pipeline's manual run of the same job started. `action: prepare` keeps the
+# environment-scoped CI variables (cloud-test/<provider>/*, the credentials)
+# but creates no deployment, so there is nothing to supersede; the older-job
+# drop is driven by deployments only. GitLab 14.0 has only `prepare` (`verify`
+# and `access` came later). Mutual exclusion is the resource_group's job, not
+# the environment's, so a new L4 job needs `action: prepare` too.
 .l4-cloud:
   image:
     name: golang:1.26@sha256:d7722066f0b60ceccb6c0643cbed1f5f9e15506ac237146c95333504d7805d89
@@ -707,44 +737,6 @@ release-publish:
       allow_failure: true
     - when: never
 
-l4-runpod-node-onboarding:
-# The runner egress to RunPod/HuggingFace sags during business hours (TLS
-# handshake timeouts against api.runpod.io were part of the 2026-09-20
-# incident); routing the provider HTTPS through the internal proxy measured
-# 20-50% faster cold connections. The provider HTTP client uses the default
-# transport, so it honors these without code changes; loopback and the
-# domestic module/GitLab hosts stay direct.
-  variables:
-    HTTPS_PROXY: "http://zstack.one:7890"
-    HTTP_PROXY: "http://zstack.one:7890"
-    NO_PROXY: "localhost,127.0.0.1,::1,dev.zstack.io,goproxy.cn"
-    # The HTTP proxy refuses CONNECT to port 22, but the SOCKS listener on
-    # 7891 tunnels arbitrary TCP (verified from the runners), so the SSH
-    # agent upload rides it: the in-process test server passes this into its ssh_proxy setting.
-    GPUWORKS_SSH_PROXY: "socks5://zstack.one:7891"
-  extends: .l4-acceptance
-  stage: l4-smoke
-  timeout: 30m
-  environment:
-    name: cloud-test/runpod/smoke
-  allow_failure: true
-  script:
-    - make test-l4-runpod-node-onboarding
-  rules:
-    - if: '$CI_PIPELINE_SOURCE == "schedule" && $CLOUD_SMOKE == "1"'
-      when: on_success
-      allow_failure: false
-    - if: '$CI_PIPELINE_SOURCE == "web" && $CLOUD_SMOKE == "1"'
-      when: on_success
-      allow_failure: false
-    - if: '$CI_PIPELINE_SOURCE == "api" && $CLOUD_SMOKE == "1"'
-      when: on_success
-      allow_failure: false
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
-      when: manual
-      allow_failure: true
-    - when: never
-
 # Public download verification is isolated from the stable provider smoke and
 # only runs when an operator/schedule explicitly enables the low-rate lane.
 l4-runpod-huggingface-public-download:
@@ -768,6 +760,7 @@ l4-runpod-huggingface-public-download:
     # Keep provider credentials scoped under cloud-test/runpod/* while making
     # the low-frequency download lane distinguishable in GitLab environments.
     name: cloud-test/runpod/download-huggingface
+    action: prepare
   script:
     - make test-l4-runpod-huggingface-public-download
   rules:
@@ -797,14 +790,18 @@ l4-runpod-vllm-sglang-lifecycle:
   extends: .l4-acceptance
   environment:
     name: cloud-test/runpod/full
+    action: prepare
   script:
     - make test-l4-runpod-vllm-sglang-lifecycle
 
 l4-autodl-node-onboarding:
   extends: .l4-acceptance
-  timeout: 65m
+  # go test -timeout is 85m: up to 30m (AUTODL_STOCK_WAIT) waiting out a
+  # sold-out Pro spec list, plus the 55m a rented node needs.
+  timeout: 95m
   environment:
     name: cloud-test/autodl/full
+    action: prepare
   script:
     - make test-l4-autodl-node-onboarding
 
@@ -813,9 +810,13 @@ l4-autodl-node-onboarding:
 # covered by l4-ascend-pool-partition-inference; see the dated limitation artifact.
 l4-gitee-ascend-partition-capability:
   extends: .l4-acceptance
-  timeout: 110m
+  # go test -timeout is 55m, of which up to 30m (GITEE_STOCK_WAIT) is spent
+  # retrying while every profile reports no available host; the rest of the
+  # 140m is runner queueing and job setup headroom as before.
+  timeout: 140m
   environment:
     name: cloud-test/gitee-capability
+    action: prepare
   script:
     # Nightly capability-only check: no business image, model download, or chat.
     - make test-l4-gitee-ascend-partition-capability
@@ -828,6 +829,7 @@ l4-gitee-ascend-deploy-chat:
   timeout: 135m
   environment:
     name: cloud-test/gitee-deploy-chat
+    action: prepare
   script:
     - make test-l4-gitee-ascend-deploy-chat
   rules:
@@ -862,6 +864,7 @@ l4-ascend-pool-partition-inference:
     - job: core-compshare-offline-contracts
   environment:
     name: cloud-test/ascend-primary
+    action: prepare
   rules:
     - if: '$CI_PIPELINE_SOURCE == "schedule" && $CLOUD_FULL == "1"'
       when: on_success
@@ -940,25 +943,24 @@ l4-vast-node-onboarding:
   timeout: 65m
   environment:
     name: cloud-test/vast/full
+    action: prepare
   script:
     - make test-l4-vast-node-onboarding
 
 # The in-process server dials the agent at the public address Vast maps to
 # its port.
 #
-# Its own environment: this project skips outdated deployment jobs
-# (ci_forward_deployment_enabled), so when two jobs of one pipeline deploy to
-# the same environment the one that starts later fails the one still running
-# ("403 Job is not running", then exit code 128 in the runner's git step, a
-# few seconds in with a trace that stops at "Preparing environment"). Sharing
-# cloud-test/vast/full made l4-vast-node-onboarding fail every night from
-# 2026-10-21, the day this job was added. Keep it under cloud-test/vast/* so
-# the VAST_API_KEY scope still applies, and give every job its own name.
+# Kept under cloud-test/vast/* so the VAST_API_KEY scope applies. Sharing
+# cloud-test/vast/full while jobs still created deployments made
+# l4-vast-node-onboarding fail every night from 2026-10-21 (the later job
+# dropped the running one, see the note above .l4-cloud); `action: prepare`
+# removes the cause, and the separate name just keeps the jobs distinguishable.
 l4-vast-server-dial-node-onboarding:
   extends: .l4-acceptance
   timeout: 65m
   environment:
     name: cloud-test/vast/server-dial
+    action: prepare
   script:
     - make test-l4-vast-server-dial-node-onboarding
 
@@ -969,30 +971,40 @@ l4-runpod-server-dial-node-onboarding:
     GPUWORKS_SSH_PROXY: "socks5://zstack.one:7891"
   extends: .l4-acceptance
   timeout: 65m
-  # Not cloud-test/runpod/smoke, which l4-runpod-node-onboarding deploys to:
-  # see l4-vast-server-dial-node-onboarding on jobs sharing an environment.
   environment:
     name: cloud-test/runpod/server-dial
+    action: prepare
   script:
     - make test-l4-runpod-server-dial-node-onboarding
 
-l4-compshare-modelscope-public-download:
+# CompShare VM jobs (everything that allocates a VM; the container job
+# l4-compshare-server-dial-node-onboarding-container is not one of them) are
+# off the nightly schedules: the pool almost never has capacity for them, and
+# the Aliyun spot cases replace them there. They stay runnable on demand from
+# a web/api pipeline with COMPSHARE_VM=1, or as an MR manual action. Each job
+# still extends this template for its own timeout, resource_group and
+# environment.
+.l4-compshare-vm:
   extends: .l4-acceptance
-  timeout: 30m
-  resource_group: gpuworks-cloud-compshare-single-vm-$CI_PIPELINE_IID
-  environment:
-    # CompShare credentials are environment-scoped to cloud-test/compshare/*.
-    name: cloud-test/compshare/download-modelscope
-  script:
-    - make test-l4-compshare-modelscope-public-download
   rules:
-    - if: '$CLOUD_DOWNLOAD == "1" && ($CI_PIPELINE_SOURCE == "schedule" || $CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api")'
+    - if: '$COMPSHARE_VM == "1" && ($CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api")'
       when: on_success
       allow_failure: false
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
       when: manual
       allow_failure: true
     - when: never
+
+l4-compshare-modelscope-public-download:
+  extends: .l4-compshare-vm
+  timeout: 30m
+  resource_group: gpuworks-cloud-compshare-single-vm-$CI_PIPELINE_IID
+  environment:
+    # CompShare credentials are environment-scoped to cloud-test/compshare/*.
+    name: cloud-test/compshare/download-modelscope
+    action: prepare
+  script:
+    - make test-l4-compshare-modelscope-public-download
 
 # CompShare allows 20 VMs and normal development has at most three concurrent
 # pipelines. Use two per-pipeline lanes: a pipeline occupies at most three VMs
@@ -1002,64 +1014,170 @@ l4-compshare-modelscope-public-download:
 # exact cleanup; the pipeline IID suffix prevents unrelated pipelines from
 # serializing each other.
 l4-compshare-single-vm-tp2-dgpu:
-  extends: .l4-acceptance
+  extends: .l4-compshare-vm
   timeout: 180m
   resource_group: gpuworks-cloud-compshare-single-vm-$CI_PIPELINE_IID
   environment:
     name: cloud-test/compshare/suite
+    action: prepare
   script:
     - make test-l4-compshare-single-vm-tp2-dgpu
 
 l4-compshare-provisioning-matrix:
-  extends: .l4-acceptance
+  extends: .l4-compshare-vm
   timeout: 180m
   resource_group: gpuworks-cloud-compshare-single-vm-$CI_PIPELINE_IID
   environment:
     name: cloud-test/compshare/provider
+    action: prepare
   script:
     - make test-l4-compshare-provisioning-matrix
 
 # A server-dialed agent on a CompShare container instance: the server dials
-# the TCP port the driver opened and forwarded. Its own environment, under
-# cloud-test/compshare/* for the credential scope, for the reason given at
-# l4-vast-server-dial-node-onboarding. The VM counterpart runs inside
+# the TCP port the driver opened and forwarded. Under cloud-test/compshare/*
+# for the credential scope. The VM counterpart runs inside
 # l4-compshare-provisioning-matrix. Same single-instance lane as the other
 # one-VM compshare jobs.
 l4-compshare-server-dial-node-onboarding-container:
   extends: .l4-acceptance
-  timeout: 65m
+  # go test -timeout is 85m: up to 30m (COMPSHARE_STOCK_WAIT) waiting out a
+  # container walk where every card type is refused for lack of supply, plus
+  # the 55m a rented container needs.
+  timeout: 95m
   resource_group: gpuworks-cloud-compshare-single-vm-$CI_PIPELINE_IID
   environment:
     name: cloud-test/compshare/server-dial-container
+    action: prepare
   script:
     - make test-l4-compshare-server-dial-node-onboarding-container
 
 l4-compshare-one-vm-two-logical-nodes:
-  extends: .l4-acceptance
+  extends: .l4-compshare-vm
   timeout: 180m
   resource_group: gpuworks-cloud-compshare-single-vm-$CI_PIPELINE_IID
   environment:
     name: cloud-test/compshare/onevm-nnode2
+    action: prepare
   script:
     - make test-l4-compshare-one-vm-two-logical-nodes
 
 l4-compshare-two-vm-docker-distributed:
-  extends: .l4-acceptance
+  extends: .l4-compshare-vm
   timeout: 180m
   resource_group: gpuworks-cloud-compshare-two-vm-$CI_PIPELINE_IID
   environment:
     name: cloud-test/compshare/docker-nnode2
+    action: prepare
   script:
     - make test-l4-compshare-two-vm-docker-distributed
 
 l4-compshare-pd-deploy-chat-two-vm-docker:
-  extends: .l4-acceptance
+  extends: .l4-compshare-vm
   timeout: 180m
   resource_group: gpuworks-cloud-compshare-two-vm-$CI_PIPELINE_IID
   environment:
     name: cloud-test/compshare/pd-two-vm
+    action: prepare
   script:
     - make test-l4-compshare-pd-deploy-chat-two-vm-docker
+
+# Aliyun ECS: spot-first VMs with an on-demand fallback, booted from the golden
+# image (driver, Docker 29, NVIDIA toolkit, vLLM runner image and test model
+# preloaded; see make prepare-aliyun-golden-image). The jobs need these CI
+# variables, scoped to cloud-test/aliyun/*:
+#   ALIYUN_ACCESS_KEY_ID, ALIYUN_ACCESS_KEY_SECRET  a RAM user limited to ECS and VPC
+#   ALIYUN_IMAGE_<REGION>                            golden image ID per region
+#                                                    (ALIYUN_IMAGE_CN_HANGZHOU, ...)
+# Optional: ALIYUN_REGIONS (narrow leak scans), GPUWORKS_SSH_PROXY (SOCKS5 for
+# the cases' SSH when the runner cannot reach the VMs directly), ALIYUN_INGRESS_CIDR (who may
+# reach SSH and the agent port; default anywhere), ALIYUN_NO_SPOT=1,
+# ALIYUN_NO_ON_DEMAND=1.
+# Same per-pipeline lanes as CompShare: at most one single-VM case and the
+# two-VM case run at once per pipeline. Jobs create no deployment (see the
+# note above .l4-cloud), so MR and nightly runs of one job no longer kill each
+# other.
+l4-aliyun-provisioning-matrix:
+  extends: .l4-acceptance
+  timeout: 180m
+  resource_group: gpuworks-cloud-aliyun-single-vm-$CI_PIPELINE_IID
+  environment:
+    name: cloud-test/aliyun/provisioning
+    action: prepare
+  script:
+    - make test-l4-aliyun-provisioning-matrix
+
+# One 8 MiB shard from ModelScope over the VM's public egress; same rules as
+# l4-compshare-modelscope-public-download.
+l4-aliyun-modelscope-public-download:
+  extends: .l4-acceptance
+  timeout: 40m
+  resource_group: gpuworks-cloud-aliyun-single-vm-$CI_PIPELINE_IID
+  environment:
+    name: cloud-test/aliyun/download-modelscope
+    action: prepare
+  script:
+    - make test-l4-aliyun-modelscope-public-download
+  rules:
+    - if: '$CLOUD_DOWNLOAD == "1" && ($CI_PIPELINE_SOURCE == "schedule" || $CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api")'
+      when: on_success
+      allow_failure: false
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      when: manual
+      allow_failure: true
+    - when: never
+
+l4-aliyun-single-vm-tp2-dgpu:
+  extends: .l4-acceptance
+  timeout: 180m
+  resource_group: gpuworks-cloud-aliyun-single-vm-$CI_PIPELINE_IID
+  environment:
+    name: cloud-test/aliyun/suite
+    action: prepare
+  script:
+    - make test-l4-aliyun-single-vm-tp2-dgpu
+
+l4-aliyun-one-vm-two-logical-nodes:
+  extends: .l4-acceptance
+  timeout: 180m
+  resource_group: gpuworks-cloud-aliyun-single-vm-$CI_PIPELINE_IID
+  environment:
+    name: cloud-test/aliyun/onevm-nnode2
+    action: prepare
+  script:
+    - make test-l4-aliyun-one-vm-two-logical-nodes
+
+l4-aliyun-two-vm-docker-distributed:
+  extends: .l4-acceptance
+  timeout: 180m
+  resource_group: gpuworks-cloud-aliyun-two-vm-$CI_PIPELINE_IID
+  environment:
+    name: cloud-test/aliyun/docker-nnode2
+    action: prepare
+  script:
+    - make test-l4-aliyun-two-vm-docker-distributed
+
+l4-aliyun-pd-deploy-chat-two-vm-docker:
+  extends: .l4-acceptance
+  timeout: 180m
+  resource_group: gpuworks-cloud-aliyun-two-vm-$CI_PIPELINE_IID
+  environment:
+    name: cloud-test/aliyun/pd-two-vm
+    action: prepare
+  script:
+    - make test-l4-aliyun-pd-deploy-chat-two-vm-docker
+
+# The udocker runtime variant of the two-VM case. It runs about half an hour to
+# an hour on on-demand VMs with a 300 GiB disk (each rank pulls the runner image
+# into udocker's own store); see docs/dev/testing.md.
+l4-aliyun-two-vm-udocker-distributed:
+  extends: .l4-acceptance
+  timeout: 180m
+  resource_group: gpuworks-cloud-aliyun-two-vm-$CI_PIPELINE_IID
+  environment:
+    name: cloud-test/aliyun/udocker-nnode2
+    action: prepare
+  script:
+    - make test-l4-aliyun-two-vm-udocker-distributed
 
 # The runner must expose an explicitly provisioned read-only NFS fixture.
 # Never points at a production export by default; no network disruption.

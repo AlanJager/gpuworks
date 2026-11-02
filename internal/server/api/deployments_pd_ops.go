@@ -2,8 +2,8 @@ package api
 
 import (
 	"encoding/json"
-	"errors"
 	"net/http"
+	"sort"
 
 	"github.com/go-chi/chi/v5"
 
@@ -59,42 +59,20 @@ func (a *apiHandlers) updatePD(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err)
 		return
 	}
-	applied, err := planning.ApplyPDUpdate(placement.PD, dep.Engine, planning.PDUpdate{Mode: req.Mode, Roles: req.Roles, KVLoadFailure: req.KVLoadFailure, Fallback: req.Fallback})
+	next, err := a.scaling().ApplyPDUpdate(dep, placement.PD, planning.PDUpdate{Mode: req.Mode, Roles: req.Roles, KVLoadFailure: req.KVLoadFailure, Fallback: req.Fallback})
 	if err != nil {
-		writeErr(w, http.StatusBadRequest, err)
+		writeScaleErr(w, err)
 		return
 	}
-	next := applied.Placement
-	nodes := map[string]*store.Node{}
-	var nodeIDs []uint
-	for _, uuid := range next.NodeUUIDs(applied.Mode) {
-		node, err := a.d.Store.NodeWithGPUs(uuid)
-		if errors.Is(err, store.ErrNotFound) {
-			continue // ValidatePDNodes names the missing node
+	roles := make([]string, 0, len(req.Roles))
+	for role := range req.Roles {
+		roles = append(roles, role)
+	}
+	sort.Strings(roles)
+	for _, role := range roles {
+		if from, to := len(placement.PD.Units(role)), len(next.Units(role)); from != to {
+			a.operatorEvent(r, dep.ID, store.EventReplicasChanged, map[string]any{"role": role, "from": from, "to": to})
 		}
-		if err != nil {
-			writeErr(w, http.StatusInternalServerError, err)
-			return
-		}
-		nodes[uuid] = node
-		nodeIDs = append(nodeIDs, node.ID)
-	}
-	if _, err := planning.ValidatePDNodes(next, applied.Mode, nodes, false); err != nil {
-		writeErr(w, http.StatusBadRequest, err)
-		return
-	}
-	encoded, err := planning.WithPD(dep.Placement, next)
-	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err)
-		return
-	}
-	primary := dep.NodeID
-	if len(nodeIDs) > 0 {
-		primary = nodeIDs[0]
-	}
-	if err := a.d.Store.SetDeploymentPlacement(dep.ID, encoded, jsonStr(nodeIDs), primary); err != nil {
-		writeErr(w, http.StatusInternalServerError, err)
-		return
 	}
 	updated, err := a.d.Store.GetDeployment(dep.ID)
 	if err != nil {

@@ -4,12 +4,21 @@
 # build` depends on `make ui`. All Go binaries are static (CGO_ENABLED=0).
 
 GO        ?= go
+# A caller may export GO with no value (GO= make build). `?=` only fills an
+# undefined variable, so an exported-but-empty GO would reach the shell as an
+# empty command and every build step would fail with "/bin/sh: N: build: not
+# found" - a message that names the subcommand, never GO. Fall back instead.
+ifeq ($(strip $(GO)),)
+GO        := go
+endif
 GO_TEST_FLAGS ?=
 COVERPROFILE ?=
 GOBIN     := $(HOME)/.local/go/bin
 export PATH := $(GOBIN):$(HOME)/go/bin:$(PATH)
 
 VERSION   ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+# Resolve once: link flags and the Agent manifest must name the same build.
+VERSION   := $(VERSION)
 COMMIT    ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo none)
 # DATE is the build time the binary reports. Release builds pass the pipeline's
 # creation time, the same value the distribution index records, so a server
@@ -29,7 +38,7 @@ BIN       := bin
 TEST_LOG_DIR ?= .testlogs
 PLATFORMS := linux/amd64 linux/arm64 darwin/arm64
 
-.PHONY: all build test-host-env-adapters server server-linux-amd64 server-linux-amd64-prebuilt-ui server-linux-arm64 server-linux-arm64-prebuilt-ui server-darwin-amd64-prebuilt-ui server-darwin-arm64-prebuilt-ui agent ui test test-unit test-ui test-integration test-fleet-perf-processes test-fleet-log-scale-processes test-coverage-report test-l2 test-l3 test-l4 test-l4-runpod-node-onboarding test-l4-runpod-server-dial-node-onboarding test-l4-runpod-huggingface-public-download test-l4-runpod-vllm-sglang-lifecycle test-l4-autodl-node-onboarding test-l4-vast-node-onboarding test-l4-vast-server-dial-node-onboarding test-l4-gitee-ascend-partition-capability test-l4-gitee-ascend-deploy-chat test-l4-ascend-pool-partition-inference test-l4-ascend-primary test-l4-ascend-preflight test-l4-ascend-nerdctl-devinject test-l4-compshare-modelscope-public-download test-l4-compshare-offline-contracts test-l4-compshare-single-vm-tp2-dgpu test-l4-compshare-provisioning-matrix test-l4-compshare-server-dial-node-onboarding-container test-l4-compshare-two-vm-udocker-distributed test-l4-compshare-two-vm-docker-distributed test-l4-compshare-one-vm-two-logical-nodes test-l4-compshare-pd-deploy-chat-two-vm-docker prepare-compshare-golden-image test-l4-runpod test-l4-compshare test-l4-cleanup-leaked vet check-assets check-libvgpu check-perftest check-time-policy check-architecture check-tagged-build check-api-conventions check-ci-yaml check-artifacts check-doc-links check-translations i18n-check i18n-translate i18n-review runtime-assets runtime-assets-probe runtime-assets-verify image-manifest image-manifest-verify image-manifest-publish fake-engine fake-engine-image fake-model clean demo run-server tidy cross release-packages dist-publish
+.PHONY: all build test-host-env-adapters server server-linux-amd64 server-linux-amd64-prebuilt-ui server-linux-arm64 server-linux-arm64-prebuilt-ui server-darwin-amd64-prebuilt-ui server-darwin-arm64-prebuilt-ui agent ui test test-unit test-ui test-integration test-fleet-perf-processes test-fleet-log-scale-processes test-fleet-benchmark-processes test-coverage-report test-l2 test-l3 test-l4 test-l4-runpod-server-dial-node-onboarding test-l4-runpod-huggingface-public-download test-l4-runpod-vllm-sglang-lifecycle test-l4-autodl-node-onboarding test-l4-vast-node-onboarding test-l4-vast-server-dial-node-onboarding test-l4-gitee-ascend-partition-capability test-l4-gitee-ascend-deploy-chat test-l4-ascend-pool-partition-inference test-l4-ascend-primary test-l4-ascend-preflight test-l4-ascend-nerdctl-devinject test-l4-compshare-modelscope-public-download test-l4-compshare-offline-contracts test-l4-compshare-single-vm-tp2-dgpu test-l4-compshare-provisioning-matrix test-l4-compshare-server-dial-node-onboarding-container test-l4-compshare-two-vm-udocker-distributed test-l4-compshare-two-vm-docker-distributed test-l4-compshare-one-vm-two-logical-nodes test-l4-compshare-pd-deploy-chat-two-vm-docker prepare-compshare-golden-image test-l4-runpod test-l4-compshare test-l4-cleanup-leaked vet check-assets check-libvgpu check-perftest check-time-policy check-architecture check-tagged-build check-api-conventions check-ci-yaml check-artifacts githooks check-doc-links check-translations i18n-check i18n-translate i18n-review runtime-assets runtime-assets-probe runtime-assets-verify image-manifest image-manifest-verify image-manifest-publish fake-engine fake-engine-image fake-model clean demo run-server tidy cross release-packages dist-publish test-l4-runpod-node-onboarding test-l4-aliyun test-l4-aliyun-provisioning-matrix test-l4-aliyun-modelscope-public-download test-l4-aliyun-single-vm-tp2-dgpu test-l4-aliyun-one-vm-two-logical-nodes test-l4-aliyun-two-vm-docker-distributed test-l4-aliyun-two-vm-udocker-distributed test-l4-aliyun-pd-deploy-chat-two-vm-docker prepare-aliyun-golden-image
 
 all: build
 
@@ -92,7 +101,7 @@ AGENTBIN := internal/server/agentbin/dl
 ## the server reads either.
 cross-agents: check-libvgpu
 	@mkdir -p $(AGENTBIN) $(BIN)/dl
-	@rm -f $(AGENTBIN)/gpuworks-agent-*
+	@rm -f $(AGENTBIN)/gpuworks-agent-* $(AGENTBIN)/agent-manifest.json
 	@for p in $(PLATFORMS); do \
 		os=$${p%/*}; arch=$${p#*/}; name=gpuworks-agent-$$os-$$arch; \
 		echo "  embed agent $$os/$$arch"; \
@@ -104,6 +113,7 @@ cross-agents: check-libvgpu
 			CGO_ENABLED=0 $(GO) run ./scripts/zstdpack -o $(AGENTBIN)/$$name.zst $(BIN)/dl/$$name || exit 1; \
 		fi; \
 	done
+	CGO_ENABLED=0 $(GO) run ./scripts/agentmanifest -version "$(VERSION)" -o $(AGENTBIN)/agent-manifest.json $(addprefix $(BIN)/dl/gpuworks-agent-,$(subst /,-,$(PLATFORMS)))
 
 ## cross: alias kept for the demo (the plain agents are in $(BIN)/dl)
 cross: cross-agents
@@ -137,7 +147,7 @@ UNIT_TIMEOUT ?= 30m
 
 ## test-unit: build the embedded UI first, then run the untagged Go suite.
 ## `go test ./...` cannot compile webui without the generated embed tree.
-test-unit: ui check-time-policy check-architecture check-api-conventions check-ci-yaml check-artifacts check-doc-links check-translations test-host-env-adapters test-e2e-coverage-check test-inference-template-assets
+test-unit: ui check-time-policy check-architecture check-api-conventions check-ci-yaml check-artifacts githooks check-doc-links check-translations test-host-env-adapters test-e2e-coverage-check test-inference-template-assets test-strata-queue-assets
 	CGO_ENABLED=0 $(GO) test -timeout $(UNIT_TIMEOUT) $(GO_TEST_FLAGS) ./...
 	cd build/runtime-assets/hygon-vdev-helper && CGO_ENABLED=0 $(GO) test $(GO_TEST_FLAGS) ./...
 	$(MAKE) check-tagged-build
@@ -151,6 +161,11 @@ test-host-env-adapters:
 test-inference-template-assets:
 	python3 -B -m unittest discover -s build/inference-templates/glm53-910c -p 'test_*.py'
 
+.PHONY: test-strata-queue-assets
+test-strata-queue-assets:
+	python3 -B build/strata-queue/test_strata_queue.py
+	python3 -B build/strata-queue/build.py --check
+
 ## check-tagged-build: compile every build-tag suite without running it, so a
 ## refactor cannot break an opt-in lane while the untagged suite stays green
 ## (core-test runs this too)
@@ -159,6 +174,7 @@ check-tagged-build:
 	CGO_ENABLED=0 $(GO) test -tags='docker' ./test/l3 -run '^$$'
 	CGO_ENABLED=0 $(GO) test -tags='cloudgpu,runpod' ./test/l4 -run '^$$'
 	CGO_ENABLED=0 $(GO) test -tags='cloudgpu,compshare' ./test/l4 -run '^$$'
+	CGO_ENABLED=0 $(GO) test -tags='cloudgpu,aliyun' ./test/l4 -run '^$$'
 	CGO_ENABLED=0 $(GO) test -tags='cloudgpu,autodl' ./test/l4 -run '^$$'
 	CGO_ENABLED=0 $(GO) test -tags='cloudgpu,vast' ./test/l4 -run '^$$'
 	CGO_ENABLED=0 $(GO) test -tags='cloudgpu,partition' ./test/l4 -run '^$$'
@@ -171,24 +187,85 @@ test-ui:
 test-ui-motion:
 	python3 ui/tests/browser/reduced_motion.py
 
+.PHONY: test-ui-playground-layout
+## Real Chromium component geometry; no live server or GPU required.
+test-ui-playground-layout:
+	python3 -B ui/tests/browser/playground_layout.py
+
+.PHONY: test-ui-agent-upgrade-results-layout
+## Real Chromium result-column geometry; requires no management server or GPU.
+test-ui-agent-upgrade-results-layout:
+	python3 -B ui/tests/browser/agent_upgrade_results_layout.py
+
+.PHONY: ensure-bins
+## ensure-bins: the E2E entry points need bin/gpuworks and bin/gpuworks-agent,
+## but a full `make build` (UI bundle plus every cross-compiled agent) takes
+## minutes even when nothing changed. Build only when a binary is missing, so
+## re-running one case does not pay for a rebuild it does not need.
+ensure-bins:
+	@if [ -x bin/gpuworks ] && [ -x bin/gpuworks-agent ]; then \
+		echo "  reusing existing bin/gpuworks and bin/gpuworks-agent"; \
+	else \
+		echo "  binaries missing; running make build"; \
+		$(MAKE) build || exit 1; \
+	fi
+
+.PHONY: test-e2e-setup-check
+## test-e2e-setup-check: report which E2E prerequisites this machine is missing.
+## Runs no test and never fails on a missing dependency; it only tells you what
+## to install next. See test/e2e/RUNNING.md for the four dependency layers.
+test-e2e-setup-check:
+	@missing=0; \
+	command -v python3 >/dev/null || { echo "MISSING python3"; missing=1; }; \
+	python3 -c "import playwright" 2>/dev/null || { echo "MISSING playwright  -> python3 -m pip install -r requirements-e2e.txt"; missing=1; }; \
+	{ google-chrome --version || chromium --version; } >/dev/null 2>&1 || { echo "MISSING Google Chrome (E2E uses channel=\"chrome\")"; missing=1; }; \
+	command -v objdump >/dev/null || { echo "MISSING objdump  -> apt install binutils (needed by make check-libvgpu)"; missing=1; }; \
+	test -f bin/gpuworks || { echo "MISSING bin/gpuworks  -> run make build"; missing=1; }; \
+	test -f bin/gpuworks-agent || { echo "MISSING bin/gpuworks-agent  -> run make build"; missing=1; }; \
+	docker info >/dev/null 2>&1 || echo "NOTE no reachable Docker daemon: only the Docker-class cases need it"; \
+	if [ $$missing -eq 0 ]; then echo "E2E prerequisites look complete: make test-e2e-smoke"; else echo "Fix the MISSING lines above, then run make test-e2e-smoke"; fi
+
+.PHONY: test-e2e-docker-check
+## test-e2e-docker-check: report whether the Docker-class cases can run here.
+## Like test-e2e-setup-check this runs no test; it names the fix for each gap.
+test-e2e-docker-check:
+	@ok=0; \
+	if docker info >/dev/null 2>&1; then echo "docker daemon: reachable"; else echo "MISSING docker daemon  -> start Docker, or set DOCKER_HOST to a reachable socket"; ok=1; fi; \
+	if docker image inspect gpuworks/fake-engine:test >/dev/null 2>&1; then echo "engine image: gpuworks/fake-engine:test present"; else echo "MISSING engine image  -> make fake-engine-image"; ok=1; fi; \
+	if [ $$ok -eq 0 ]; then echo "Docker-class cases can run: make test-e2e-playground-chat"; else echo "Fix the MISSING lines above; see test/e2e/RUNNING.md"; fi
+
+.PHONY: test-e2e-playground-chat
+## test-e2e-playground-chat: playground streaming, conversations, preview and
+## compare. Needs the Docker daemon and the fake-engine image (make fake-engine-image).
+test-e2e-playground-chat: ensure-bins
+	NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost python3 test/e2e/playground_chat_gateway.py --locale en
+
+.PHONY: test-e2e-smoke
+## test-e2e-smoke: the shortest real E2E path - Chrome, an isolated server and
+## SQLite, no Docker and no GPU. Use this to prove the setup works before
+## running narrower cases.
+test-e2e-smoke: ensure-bins
+	NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost python3 test/e2e/platform_token_read_revoke.py
+	NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost python3 test/e2e/session_logout.py
+
 .PHONY: test-e2e-platform-token
 ## test-e2e-platform-token: real Chrome + isolated server/SQLite; no GPU required
-test-e2e-platform-token: build
+test-e2e-platform-token: ensure-bins
 	NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost python3 test/e2e/platform_token_read_revoke.py
 
 .PHONY: test-e2e-inference-key test-e2e-network-storage test-e2e-mcp-settings test-e2e-local
 ## Local browser closures: isolated real server/SQLite and Chrome, no GPU.
-test-e2e-inference-key: build
+test-e2e-inference-key: ensure-bins
 	NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost python3 test/e2e/inference_key_lifecycle.py
 
-test-e2e-network-storage: build
+test-e2e-network-storage: ensure-bins
 	NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost python3 test/e2e/network_storage_lifecycle.py
 
-test-e2e-mcp-settings: build
+test-e2e-mcp-settings: ensure-bins
 	NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost python3 test/e2e/mcp_settings_lifecycle.py
 
 ## Build once, then execute each independent case; any failure stops this target.
-test-e2e-local: build
+test-e2e-local: ensure-bins
 	NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost python3 test/e2e/provider_endpoint_defaults.py
 	NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost python3 test/e2e/image_catalog.py --case register
 	NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost python3 test/e2e/image_catalog.py --case delete-version
@@ -202,6 +279,7 @@ test-e2e-local: build
 ## test-fleet-perf-processes: the same control-plane load case with the server
 ## as its own process and the fleet as a second one, so each side's memory and
 ## CPU can be read separately. Node count is tunable: GPUWORKS_FLEET_NODES /
+## GPUWORKS_FLEET_GPUS (cards per node, default 1) /
 ## GPUWORKS_FLEET_CHURN_NODES / GPUWORKS_FLEET_ROUNDS.
 ## GPUWORKS_FLEET_SERVER_BIN / GPUWORKS_FLEET_HOST_BIN reuse prebuilt binaries,
 ## which is how it runs on a machine with no Go toolchain.
@@ -215,6 +293,14 @@ test-fleet-perf-processes:
 ## (default 2) and GPUWORKS_LOG_SAMPLE_SECONDS (default 90).
 test-fleet-log-scale-processes:
 	GPUWORKS_TEST_PERF=1 CGO_ENABLED=0 $(GO) test -count=1 -v -tags=multiproc -timeout 60m ./test/l2/ -run 'TestFleetLogCenterScaleAcrossProcesses'
+
+## test-fleet-benchmark-processes: a server-origin saturation evaluation
+## (300 sessions of 1024 streamed tokens through the gateway) with the server
+## as its own process and the fleet as a second one; asserts the server's RSS
+## budget and operator list reads while the server drives the load. Shape and
+## budgets: GPUWORKS_BENCH_* (see the test's doc comment).
+test-fleet-benchmark-processes:
+	GPUWORKS_TEST_PERF=1 CGO_ENABLED=0 $(GO) test -count=1 -v -tags=multiproc -timeout 60m ./test/l2/ -run '^TestFleetServerOriginBenchmarkAcrossProcesses$$'
 
 ## test-integration: fast product-level tests that use fake agents/runtimes.
 test-integration: ui
@@ -251,10 +337,20 @@ check-ci-yaml:
 ## the required entry file with the right status, that artifacts/README.md,
 ## artifacts/.ignore and plan.md's generated block match it, and that every
 ## artifacts/... reference in the repo resolves to a real path.
-check-artifacts:
+check-artifacts: githooks
 	CGO_ENABLED=0 $(GO) run ./scripts/artifactsindex
 
-## check-doc-links: verify relative Markdown links (and #anchors) in docs/, README.md,
+## githooks: point git at scripts/githooks (new worktrees then get the plans
+## checkout too). Leaves an existing core.hooksPath alone, and skips a clone
+## whose .git/hooks holds hooks of its own, which the setting would disable;
+## silent when there is nothing to do (CI, a tarball, no git).
+githooks:
+	@[ -z "$$CI" ] && git rev-parse --git-dir >/dev/null 2>&1 \
+	  && [ -z "$$(git config --get core.hooksPath)" ] \
+	  && ! ls "$$(git rev-parse --git-common-dir)/hooks" 2>/dev/null | grep -v -e '\.sample$$' -e '^post-checkout$$' | grep -q . \
+	  && git config core.hooksPath scripts/githooks || true
+
+## check-doc-links: verify relative Markdown links (and #anchors) in docs/, README*.md,
 ## CONTEXT.md and CLAUDE.md, and reject [[wiki]] references under docs/.
 check-doc-links:
 	CGO_ENABLED=0 $(GO) run ./scripts/doclinks
@@ -379,9 +475,6 @@ test-l3:
 		if [ "$$status" != 0 ]; then echo "l3 failed (status $$status); full output: $$log"; exit "$$status"; fi; \
 	fi
 
-test-l4-runpod-node-onboarding: cross-agents
-	GPUWORKS_TEST_STRICT=1 CGO_ENABLED=0 $(GO) test $(GO_TEST_FLAGS) -v -tags=cloudgpu,runpod -run '^TestRunpodNodeOnboarding$$' -timeout=25m ./test/l4
-
 ## Server-dialed agent on a pod, then a pod edit that renumbers its ports.
 test-l4-runpod-server-dial-node-onboarding: cross-agents
 	GPUWORKS_TEST_STRICT=1 CGO_ENABLED=0 $(GO) test $(GO_TEST_FLAGS) -v -tags=cloudgpu,runpod -run '^TestRunpodServerDialNodeOnboarding$$' -timeout=55m ./test/l4
@@ -395,7 +488,7 @@ test-l4-runpod-vllm-sglang-lifecycle: cross-agents
 	GPUWORKS_TEST_STRICT=1 CGO_ENABLED=0 $(GO) test $(GO_TEST_FLAGS) -v -tags=cloudgpu,runpod -run '^TestRunpodVLLMSGLangLifecycle$$' -timeout=110m ./test/l4
 
 test-l4-autodl-node-onboarding: cross-agents
-	GPUWORKS_TEST_STRICT=1 CGO_ENABLED=0 $(GO) test $(GO_TEST_FLAGS) -v -tags=cloudgpu,autodl -run '^TestAutoDLNodeOnboarding$$' -timeout=55m ./test/l4
+	GPUWORKS_TEST_STRICT=1 CGO_ENABLED=0 $(GO) test $(GO_TEST_FLAGS) -v -tags=cloudgpu,autodl -run '^TestAutoDLNodeOnboarding$$' -timeout=85m ./test/l4
 
 test-l4-vast-node-onboarding: cross-agents
 	GPUWORKS_TEST_STRICT=1 CGO_ENABLED=0 $(GO) test $(GO_TEST_FLAGS) -v -tags=cloudgpu,vast -run '^TestVastNodeOnboarding$$' -timeout=55m ./test/l4
@@ -404,7 +497,7 @@ test-l4-vast-server-dial-node-onboarding: cross-agents
 	GPUWORKS_TEST_STRICT=1 CGO_ENABLED=0 $(GO) test $(GO_TEST_FLAGS) -v -tags=cloudgpu,vast -run '^TestVastServerDialNodeOnboarding$$' -timeout=55m ./test/l4
 
 test-l4-gitee-ascend-partition-capability: cross-agents
-	GPUWORKS_TEST_STRICT=1 CGO_ENABLED=0 $(GO) test $(GO_TEST_FLAGS) -v -tags=cloudgpu,partition -run '^TestGiteeAscendPartitionCapability$$' -timeout=25m ./test/l4
+	GPUWORKS_TEST_STRICT=1 CGO_ENABLED=0 $(GO) test $(GO_TEST_FLAGS) -v -tags=cloudgpu,partition -run '^TestGiteeAscendPartitionCapability$$' -timeout=55m ./test/l4
 
 ## test-l4-gitee-ascend-deploy-chat: real server+agent on rented x86_64 and
 ## arm64 Gitee Ascend instances, driven through the GPUWorks platform API.
@@ -417,7 +510,12 @@ test-l4-gitee-ascend-deploy-chat: cross-agents
 ## capability-selected fixture pool. The platform test uploads the checked
 ## current arm64 agent, starts it under an isolated /tmp state directory, then
 ## verifies two same-card partition replicas + real chat + quota denial and a
-## whole-GPU deployment through the public platform APIs. The nerdctl checks
+## whole-GPU deployment through the public platform APIs. Runtime is chosen per
+## member: docker/nerdctl when it holds the image, else runveil (udocker driver)
+## when the member has a prepared image cache at
+## GPUWORKS_ASCEND_L4_RUNVEIL_CACHE (default /opt/gpuworks-l4-runveil-cache,
+## udocker store layout: repos/ + layers/); its run directories go to
+## <cache>-run so they stay on disk and hard-link the cache. The nerdctl checks
 ## independently select any pool member with nerdctl + the cached CANN image:
 ## one verifies raw device injection and one runs the embedded 2.5 MiB
 ## behavioral probe against a real 4 GiB vCANN slice (no serving image/model).
@@ -478,7 +576,7 @@ test-l4-compshare-provisioning-matrix: cross-agents
 ## TCP port the driver opens and forwards. Needs COMPSHARE_CONTAINER_IMAGE_ID;
 ## the VM counterpart is TestCompshareDirectServerDialOnboarding in the matrix.
 test-l4-compshare-server-dial-node-onboarding-container: cross-agents
-	GPUWORKS_TEST_STRICT=1 CGO_ENABLED=0 $(GO) test $(GO_TEST_FLAGS) -v -count=1 -tags=cloudgpu,compshare -run '^TestCompshareServerDialNodeOnboardingContainer$$' -timeout=55m ./test/l4
+	GPUWORKS_TEST_STRICT=1 CGO_ENABLED=0 $(GO) test $(GO_TEST_FLAGS) -v -count=1 -tags=cloudgpu,compshare -run '^TestCompshareServerDialNodeOnboardingContainer$$' -timeout=85m ./test/l4
 
 test-l4-compshare-two-vm-udocker-distributed: server-linux-amd64-prebuilt-ui
 	GPUWORKS_TEST_STRICT=1 CGO_ENABLED=0 $(GO) test $(GO_TEST_FLAGS) -v -count=1 -tags=cloudgpu,compshare -run '^TestCompshareTwoVMUdockerDistributedInference$$' -timeout=180m ./test/l4
@@ -492,9 +590,47 @@ test-l4-compshare-pd-deploy-chat-two-vm-docker: server-linux-amd64-prebuilt-ui
 test-l4-compshare-one-vm-two-logical-nodes: server-linux-amd64-prebuilt-ui
 	GPUWORKS_TEST_STRICT=1 CGO_ENABLED=0 $(GO) test $(GO_TEST_FLAGS) -v -count=1 -tags=cloudgpu,compshare -run '^TestCompshareOneVMTwoLogicalNodeDistributedInference$$' -timeout=180m ./test/l4
 
+## Aliyun ECS L4. VMs are rented spot-first, falling back to on-demand when
+## spot has no stock or is refused, from a golden custom image (NVIDIA driver,
+## Docker 29, NVIDIA toolkit, vLLM runner image, test model) that
+## prepare-aliyun-golden-image builds and copies to every region; cases
+## install and download nothing. See docs/dev/testing.md.
+## Cross-VM udocker and public download stay explicit low-frequency targets, as for CompShare.
+test-l4-aliyun: test-l4-aliyun-provisioning-matrix test-l4-aliyun-single-vm-tp2-dgpu test-l4-aliyun-one-vm-two-logical-nodes test-l4-aliyun-two-vm-docker-distributed test-l4-aliyun-pd-deploy-chat-two-vm-docker
+
+## Explicit, mutating maintenance operation: builds a new golden image in the
+## cheapest region with stock, copies it to the other regions and validates it
+## from a fresh VM. It prints the ALIYUN_IMAGE_<REGION> lines, changes no CI
+## variable and deletes no older image.
+prepare-aliyun-golden-image:
+	CGO_ENABLED=0 $(GO) run ./test/l4/cmd/prepare-aliyun-golden
+
+test-l4-aliyun-provisioning-matrix: cross-agents
+	GPUWORKS_TEST_STRICT=1 CGO_ENABLED=0 $(GO) test $(GO_TEST_FLAGS) -v -count=1 -tags=cloudgpu,aliyun -run '^(TestAliyunNodeOnboarding|TestAliyunDirectServerDialOnboarding|TestAliyunCapacityShapes|TestAliyunTwoGPUProvisioning)$$' -timeout=180m ./test/l4
+
+## Explicit low-frequency public download acceptance (the only Aliyun case that
+## downloads a model; the others use the golden image's preloaded one).
+test-l4-aliyun-modelscope-public-download: cross-agents
+	GPUWORKS_TEST_STRICT=1 CGO_ENABLED=0 $(GO) test $(GO_TEST_FLAGS) -v -count=1 -tags=cloudgpu,aliyun -run '^TestAliyunModelScopePublicDownload$$' -timeout=40m ./test/l4
+
+test-l4-aliyun-single-vm-tp2-dgpu: cross-agents
+	GPUWORKS_TEST_STRICT=1 CGO_ENABLED=0 $(GO) test $(GO_TEST_FLAGS) -v -count=1 -tags=cloudgpu,aliyun -run '^TestAliyunSingleVMTensorParallelAndDGPU$$' -timeout=180m ./test/l4
+
+test-l4-aliyun-one-vm-two-logical-nodes: server-linux-amd64-prebuilt-ui
+	GPUWORKS_TEST_STRICT=1 CGO_ENABLED=0 $(GO) test $(GO_TEST_FLAGS) -v -count=1 -tags=cloudgpu,aliyun -run '^TestAliyunOneVMTwoLogicalNodeDistributedInference$$' -timeout=180m ./test/l4
+
+test-l4-aliyun-two-vm-docker-distributed: server-linux-amd64-prebuilt-ui
+	GPUWORKS_TEST_STRICT=1 CGO_ENABLED=0 $(GO) test $(GO_TEST_FLAGS) -v -count=1 -tags=cloudgpu,aliyun -run '^TestAliyunTwoVMDockerDistributedInference$$' -timeout=180m ./test/l4
+
+test-l4-aliyun-two-vm-udocker-distributed: server-linux-amd64-prebuilt-ui
+	GPUWORKS_TEST_STRICT=1 CGO_ENABLED=0 $(GO) test $(GO_TEST_FLAGS) -v -count=1 -tags=cloudgpu,aliyun -run '^TestAliyunTwoVMUdockerDistributedInference$$' -timeout=180m ./test/l4
+
+test-l4-aliyun-pd-deploy-chat-two-vm-docker: server-linux-amd64-prebuilt-ui
+	GPUWORKS_TEST_STRICT=1 CGO_ENABLED=0 $(GO) test $(GO_TEST_FLAGS) -v -count=1 -tags=cloudgpu,aliyun -run '^TestAliyunPDDeployChatTwoVMDocker$$' -timeout=180m ./test/l4
+
 test-l4-runpod: test-l4-runpod-vllm-sglang-lifecycle
 
-test-l4: test-l4-runpod test-l4-autodl-node-onboarding test-l4-vast-node-onboarding test-l4-compshare
+test-l4: test-l4-runpod test-l4-autodl-node-onboarding test-l4-vast-node-onboarding test-l4-compshare test-l4-aliyun
 
 test-l4-cleanup-leaked:
 	@test -n "$(GPUWORKS_CLOUD_TEST_RUN_ID)" || (echo "GPUWORKS_CLOUD_TEST_RUN_ID is required for scoped cleanup" >&2; exit 2)
@@ -530,7 +666,7 @@ clean:
 
 .PHONY: test-e2e-log-filter-export
 ## test-e2e-log-filter-export: real local server WARN collection, browser filters and exact CSV bytes
-test-e2e-log-filter-export: build
+test-e2e-log-filter-export: ensure-bins
 	NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost python3 test/e2e/log_filter_export.py --locale en
 	NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost python3 test/e2e/log_filter_export.py --locale zh
 

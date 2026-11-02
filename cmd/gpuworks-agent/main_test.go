@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"io"
 	"log/slog"
 	"net/http"
@@ -9,6 +10,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"testing"
 )
 
@@ -31,15 +33,36 @@ func TestRunRejectsMissingServerURL(t *testing.T) {
 }
 
 func TestBenchSmokeAgainstHTTPFixture(t *testing.T) {
+	tokenizer := filepath.Join(t.TempDir(), "tokenizer.json")
+	if err := os.WriteFile(tokenizer, []byte(`{"model":{"vocab":{"a":0,"b":1}}}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	var requests atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Model     string                           `json:"model"`
+			Messages  []struct{ Role, Content string } `json:"messages"`
+			Stream    bool                             `json:"stream"`
+			MaxTokens int                              `json:"max_tokens"`
+			IgnoreEOS bool                             `json:"ignore_eos"`
+		}
+		if r.Method != http.MethodPost || r.URL.Path != "/v1/chat/completions" || json.NewDecoder(r.Body).Decode(&body) != nil || body.Model != "fixture" || len(body.Messages) != 1 || body.Messages[0].Role != "user" || body.Messages[0].Content == "" || !body.Stream || body.MaxTokens != 1 || !body.IgnoreEOS {
+			t.Error("CLI sent an invalid streaming completion request")
+			http.Error(w, "invalid request", http.StatusBadRequest)
+			return
+		}
+		requests.Add(1)
 		w.Header().Set("Content-Type", "text/event-stream")
 		_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\n"))
 		_, _ = w.Write([]byte("data: {\"choices\":[],\"usage\":{\"prompt_tokens\":2,\"completion_tokens\":1}}\n\n"))
 		_, _ = w.Write([]byte("data: [DONE]\n\n"))
 	}))
 	defer srv.Close()
-	if err := bench([]string{"--url", srv.URL, "--model", "fixture", "--requests", "1"}); err != nil {
+	if err := bench([]string{"--url", srv.URL, "--model", "fixture", "--requests", "1", "--isl", "2", "--osl", "1", "--warmup-requests", "0", "--tokenizer", tokenizer}); err != nil {
 		t.Fatal(err)
+	}
+	if requests.Load() != 1 {
+		t.Fatalf("inference requests=%d, want one measured request", requests.Load())
 	}
 }
 

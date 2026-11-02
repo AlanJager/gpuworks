@@ -58,13 +58,20 @@ type Deployment struct {
 	Image                    string                `json:"image,omitempty"`
 	ModelID                  uint                  `json:"model_id"`
 	ModelName                string                `json:"model_name"`
-	NodeUUID                 string                `json:"node_uuid"`
+	// NodeUUID/NodeName/NodeUUIDs/NodeNames are the placement target - what was
+	// asked for, not where the replicas are. Read RuntimeNodes for the location.
+	NodeUUID string `json:"node_uuid"`
 	// NodeName is what a person calls the node. The uuid stays authoritative
 	// for addressing; this exists so clients never have to show a raw uuid.
 	NodeName  string   `json:"node_name,omitempty"`
 	NodeUUIDs []string `json:"node_uuids,omitempty"`
 	// NodeNames name NodeUUIDs, rank by rank.
 	NodeNames []string `json:"node_names,omitempty"`
+	// RuntimeNodes are the nodes the instances are on now, with how many each
+	// holds, from the instance rows the GPU page attributes cards from.
+	RuntimeNodes []DeploymentRuntimeNode `json:"runtime_nodes,omitempty"`
+	// RuntimeNodeNames name RuntimeNodes in the same order.
+	RuntimeNodeNames []string `json:"runtime_node_names,omitempty"`
 	// NodeRequirements is where the deployment may run, as DeployRequest
 	// states it: always present, {} when it names nothing. A deployment
 	// pinned to nodes names them under gpuworks.ai/node.
@@ -81,44 +88,112 @@ type Deployment struct {
 	// (deploy.LaunchConfig) and ExtraArgs the arguments the parameter dictionary
 	// does not describe. They are what the instance is started from, so read
 	// APIs expose them.
-	QuickParams      map[string]any `json:"quick_params,omitempty"`
-	ExtraArgs        string         `json:"extra_args,omitempty"`
-	DesiredState     string         `json:"desired_state"`
-	RuntimeState     string         `json:"runtime_state"`
-	Sleepable        bool           `json:"sleepable"`
-	PartitionBackend string         `json:"partition_backend,omitempty"`
+	QuickParams  map[string]any `json:"quick_params,omitempty"`
+	ExtraArgs    string         `json:"extra_args,omitempty"`
+	DesiredState string         `json:"desired_state"`
+	RuntimeState string         `json:"runtime_state"`
+	// State is the one state to show for the deployment: RuntimeState, except
+	// that a deployment the gateway refuses every request of because the
+	// replicas it needs sleep reads asleep (awake again once it is woken), and
+	// one whose sleep order is still being carried out reads sleeping.
+	// RuntimeState keeps what the runtime reports, so a sleeping deployment is
+	// still "running" there: the engine runs, the gateway refuses the request.
+	//
+	// The judgement is the gateway's own (internal/server/proxy/route_select.go
+	// and pd_route.go): a replica is asleep when planning.InstanceAsleep says so,
+	// and a deployment is asleep only when every role the gateway needs has
+	// none awake. A partly slept deployment therefore keeps its running state
+	// and says how many of its replicas sleep in AsleepReplicas.
+	State string `json:"state"`
+	// AsleepReplicas counts the replicas the gateway refuses because they
+	// sleep, over every role: with ReadyReplicas it accounts for the replicas
+	// the gateway reaches at all. Against Replicas it says how much of the
+	// deployment sleeps, so a partly slept one shows its running replicas
+	// instead of reading as a broken replica.
+	AsleepReplicas int `json:"asleep_replicas,omitempty"`
+	// SleepLevel is the deepest sleep level an engine of the deployment
+	// reports: 0 while every replica is awake, and while a sleep order is
+	// still being carried out (the intent is there, the engine has not slept
+	// yet).
+	SleepLevel       int    `json:"sleep_level,omitempty"`
+	Sleepable        bool   `json:"sleepable"`
+	PartitionBackend string `json:"partition_backend,omitempty"`
 	// VRAMLimitBytes is the dGPU memory limit each replica runs under per
 	// card; absent for a deployment on whole cards. A change replaces the
 	// instances, so an instance's own vram_limit_bytes may trail it.
 	VRAMLimitBytes int64 `json:"vram_limit_bytes,omitempty"`
-	Replicas       int   `json:"replicas"`
+	// Replicas is how many replicas the deployment has, and it is the
+	// denominator of the sleep count: AsleepReplicas never exceeds it. A PD
+	// deployment has one replica per role unit, so this totals the roles the
+	// way the list row does rather than echoing the stored field, which PD
+	// creation forces to 1 and which would print "2/1 replicas".
+	Replicas int `json:"replicas"`
 	// MaxReplicas is how many replicas the deployment may be scaled to.
 	MaxReplicas   int    `json:"max_replicas"`
 	RoutingPolicy string `json:"routing_policy"`
 	// StartTimeoutSec is the deployment's own instance health budget; absent
 	// when it states none and its launches take the cluster default.
 	StartTimeoutSec int `json:"start_timeout_sec,omitempty"`
-	// ReadyReplicas counts the replicas running now (every rank of a
-	// multi-node one); absent for a PD deployment, whose roles count their
-	// own (PD).
+	// ReadyReplicas counts the replicas the gateway would serve a request from
+	// now: running, on an online node, every rank of a multi-node one up, and
+	// awake. A PD deployment counts the same replicas the list row does, one
+	// per role, so it totals pd.roles[].ready rather than omitting the field:
+	// the drawer prints it beside AsleepReplicas, and a missing half of that
+	// pair left the sleep count without the count it adds to.
+	//
+	// ReadyReplicas and AsleepReplicas are two counts of one set of replicas,
+	// judged the way the gateway judges them, so they never contradict each
+	// other; what they do not count is a replica the gateway cannot reach for
+	// another reason (stopped, failed, its node gone).
 	ReadyReplicas *int `json:"ready_replicas,omitempty"`
 	// Health is the deployment's health check: on or off, its threshold and
 	// what the recent checks found.
 	Health DeploymentHealth `json:"health"`
 	// TokenizeEnabled says whether the gateway forwards /v1/tokenize and
 	// /v1/detokenize to the deployment's engine.
-	TokenizeEnabled bool                `json:"tokenize_enabled"`
-	DistGroup       string              `json:"dist_group,omitempty"`
-	DistRole        string              `json:"dist_role,omitempty"`
-	NNodes          int                 `json:"nnodes,omitempty"`
-	NodeRank        int                 `json:"node_rank"`
-	MasterAddr      string              `json:"master_addr,omitempty"`
-	MasterPort      int                 `json:"master_port,omitempty"`
-	CreatedAt       time.Time           `json:"created_at"`
-	ModelProgress   []ModelNodePresence `json:"model_progress,omitempty"`
-	Instances       []Instance          `json:"instances,omitempty"`
+	TokenizeEnabled bool `json:"tokenize_enabled"`
+	// NodeReplacement is how long a node may stay offline before its
+	// replicas move (after_sec 0 never moves them).
+	NodeReplacement NodeReplacement `json:"node_replacement"`
+	// YieldPolicy is how the deployment shares GPUs with others and the
+	// parameters that go with it.
+	YieldPolicy YieldPolicy `json:"yield_policy"`
+	// SleepHold says how its asleep replicas are held, derived from each
+	// replica's own hold (Instance.SleepHeld): SleepHoldAll when an
+	// operator's or a schedule's sleep holds every one (a request wakes
+	// none), SleepHoldSome when it holds some (a request wakes the others),
+	// SleepHoldNone when the platform put them all to sleep (a request
+	// wakes them); absent with none asleep. SleepHeld is SleepHoldAll: the
+	// deployment has replicas asleep and a request wakes none of them.
+	SleepHold string `json:"sleep_hold,omitempty"`
+	SleepHeld bool   `json:"sleep_held"`
+	// WakeWaitingSince is when the oldest wake of the deployment that waits
+	// for room started waiting; absent when none waits. A waiting wake gives
+	// up after WakeWaitLimitSec.
+	WakeWaitingSince *time.Time `json:"wake_waiting_since,omitempty"`
+	WakeWaitLimitSec int        `json:"wake_wait_limit_sec"`
+	// YieldPolicyEligible says whether the deployment may hold a yield policy
+	// other than never (planning.YieldPolicyRefusal), and
+	// ScheduleCapabilities what its schedule may order.
+	YieldPolicyEligible  Eligibility          `json:"yield_policy_eligible"`
+	ScheduleCapabilities ScheduleCapabilities `json:"schedule_capabilities"`
+	// PlacementMode is "auto" when the platform picks a multi-node or PD
+	// deployment's nodes whenever a unit starts, "manual" when they are the
+	// operator's; absent for a single-node deployment, whose draft says it.
+	PlacementMode string              `json:"placement_mode,omitempty"`
+	DistGroup     string              `json:"dist_group,omitempty"`
+	DistRole      string              `json:"dist_role,omitempty"`
+	NNodes        int                 `json:"nnodes,omitempty"`
+	NodeRank      int                 `json:"node_rank"`
+	MasterAddr    string              `json:"master_addr,omitempty"`
+	MasterPort    int                 `json:"master_port,omitempty"`
+	CreatedAt     time.Time           `json:"created_at"`
+	ModelProgress []ModelNodePresence `json:"model_progress,omitempty"`
+	Instances     []Instance          `json:"instances,omitempty"`
 	// PD is set on a PD disaggregated deployment: its mode, policies and each
-	// role's desired and ready counts, with the state derived from them.
+	// role's desired, ready and asleep counts, with the state derived from them
+	// and from which roles the gateway needs (a prefill role its mode serves
+	// without does not make the deployment unready or asleep when empty).
 	PD *DeploymentPD `json:"pd,omitempty"`
 	// RetryExhausted is set on an ordinary deployment one of whose replicas
 	// has no instance because the controller gave up rebuilding it. A PD
@@ -182,7 +257,13 @@ type DeploymentPDRole struct {
 	TP      int    `json:"tp"`
 	PP      int    `json:"pp,omitempty"`
 	Desired int    `json:"desired"`
-	Ready   int    `json:"ready"`
+	// Ready counts the role's units the gateway would route to now: running,
+	// on online nodes, every rank of a multi-node unit up, and awake.
+	Ready int `json:"ready"`
+	// Asleep counts the role's units the gateway refuses for sleep, which is
+	// why Ready can be short of Desired with nothing down. It is the
+	// deployment's asleep_replicas split by role.
+	Asleep int `json:"asleep,omitempty"`
 	// MayBeEmpty says the mode runs with no instance of the role: it may be
 	// scaled to zero and sleep on its own.
 	MayBeEmpty bool               `json:"may_be_empty"`
@@ -225,6 +306,13 @@ type RoutingPolicyOption struct {
 	Description localization.Text `json:"description"`
 }
 
+// A deployment's SleepHold: how its asleep replicas are held.
+const (
+	SleepHoldAll  = "all"
+	SleepHoldSome = "some"
+	SleepHoldNone = "none"
+)
+
 // Instance is the API view of a running replica.
 type Instance struct {
 	PreStartArgv   []string `json:"pre_start_argv,omitempty"`
@@ -256,6 +344,10 @@ type Instance struct {
 	// Asleep says the gateway sends the instance nothing because of sleep:
 	// ordered to sleep, or still reporting a sleep level.
 	Asleep bool `json:"asleep"`
+	// SleepHeld says an operator's or a schedule's sleep holds the
+	// instance: a request does not wake it. Its deployment's other
+	// instances may be held or not on their own.
+	SleepHeld bool `json:"sleep_held"`
 	// Replica is the replica the instance fills (as its leader or a
 	// follower of its generation); absent when it fills none.
 	Replica *InstanceReplica `json:"replica,omitempty"`
@@ -320,6 +412,17 @@ type APIKey struct {
 	// Revoked is when the key was revoked; a revoked key never authenticates
 	// and is listed so its past usage keeps a name.
 	Revoked *time.Time `json:"revoked_at,omitempty"`
+	// AllDeployments: the key may call every deployment. Otherwise only
+	// Deployments, which may have become empty when they were all deleted.
+	AllDeployments bool               `json:"all_deployments"`
+	Deployments    []APIKeyDeployment `json:"deployments"`
+}
+
+// APIKeyDeployment is a deployment a restricted API key may call.
+type APIKeyDeployment struct {
+	ID         uint   `json:"id"`
+	Name       string `json:"name"`
+	ServedName string `json:"served_name"`
 }
 
 // DeployRequest is the create-deployment body.
@@ -352,13 +455,15 @@ type DeployRequest struct {
 	// QuickParamsUnset is a request-only tombstone. It removes named engine
 	// dictionary keys from template/user launch layers without persisting a
 	// second launch configuration.
-	QuickParamsUnset []string       `json:"quick_params_unset,omitempty"`
-	ExtraArgs        string         `json:"extra_args"`
-	Sleepable        bool           `json:"sleepable"`
-	Replicas         int            `json:"replicas,omitempty"`
-	RoutingPolicy    string         `json:"routing_policy,omitempty"`
-	Placement        map[string]any `json:"placement"`
-	VRAMLimitGiB     float64        `json:"vram_limit_gib"` // >0 = dGPU memory limit (shareable GPU)
+	QuickParamsUnset []string `json:"quick_params_unset,omitempty"`
+	ExtraArgs        string   `json:"extra_args"`
+	Sleepable        bool     `json:"sleepable"`
+	// YieldPolicy: the never policy when absent (PUT .../yield-policy checks).
+	YieldPolicy   *YieldPolicyRequest `json:"yield_policy,omitempty"`
+	Replicas      int                 `json:"replicas,omitempty"`
+	RoutingPolicy string              `json:"routing_policy,omitempty"`
+	Placement     map[string]any      `json:"placement"`
+	VRAMLimitGiB  float64             `json:"vram_limit_gib"` // >0 = dGPU memory limit (shareable GPU)
 	// StartTimeoutSec is how long a started instance may take to answer its
 	// health check before the start counts as failed. Zero (or absent) states
 	// none: each launch takes the cluster default then.
@@ -399,6 +504,10 @@ type ModelSource struct {
 // can never go missing from the preview.
 type EvaluateRequest struct {
 	DeployRequest
+	// DeploymentID previews the draft as an edit of that deployment: the GPU
+	// memory its own instances hold now is left out of the plan, since the
+	// edit replaces them. Zero previews a new deployment.
+	DeploymentID uint `json:"deployment_id,omitempty"`
 }
 
 // DeploymentCandidates is GET /deployments/{id}/candidates: every node of
@@ -455,77 +564,4 @@ type DeploymentRequirementsRequest struct {
 	NodeRequirements map[string][]string `json:"node_requirements"`
 	// PlacementStrategy is spread or binpack; unstated keeps the current one.
 	PlacementStrategy string `json:"placement_strategy,omitempty"`
-}
-
-// DeploymentDGPUQuotaRequest is the body of PUT /deployments/{id}/dgpu: the
-// dGPU memory limit each replica is to run under per card, from now on.
-type DeploymentDGPUQuotaRequest struct {
-	VRAMLimitGiB float64 `json:"vram_limit_gib"`
-}
-
-// DGPUQuotaResult answers a dGPU quota change: the deployment under its new
-// limit, the instances held to it in place (Live, by UUID), and the ones that
-// keep their own limit until their next restart (Pending).
-type DGPUQuotaResult struct {
-	Deployment Deployment         `json:"deployment"`
-	Live       []string           `json:"live"`
-	Pending    []DGPUQuotaPending `json:"pending"`
-}
-
-// DGPUQuotaPending is an instance a quota change leaves at its limit until
-// it restarts. Reason is backend (its partition backend reads the limit only
-// at start), asleep, starting, in_use (it holds UsedBytes, more than the new
-// limit) or no_usage (what it holds is not known); the last four only for a
-// lower limit.
-type DGPUQuotaPending struct {
-	InstanceUUID string `json:"instance_uuid"`
-	Reason       string `json:"reason"`
-	UsedBytes    int64  `json:"used_bytes,omitempty"`
-}
-
-// UnitSuggestRequest asks for the nodes of one more multi-node replica
-// (POST /deployments/{id}/units/suggest), given the replicas listed so far
-// in the editor: their leaders cannot lead it, and the cards of the ones not
-// yet running are counted as taken.
-type UnitSuggestRequest struct {
-	Units []UnitInput `json:"units"`
-}
-
-// UnitInput is one listed multi-node replica: its leader node, then its
-// followers' nodes rank by rank.
-type UnitInput struct {
-	NodeUUID  string          `json:"node_uuid"`
-	Followers []UnitRankInput `json:"followers,omitempty"`
-}
-
-// UnitRankInput is one follower rank's node.
-type UnitRankInput struct {
-	NodeUUID string `json:"node_uuid"`
-}
-
-// UnitSuggestion is a proposed replica for the operator to confirm: Unit is
-// its leader then followers, on nodes that share Network and one GPU
-// architecture (Arch, vendor/family), each rank trial-planned. Unit is nil
-// when no group fits; Reason then says why (unit_none with the counts of
-// nodes each check left out, or unit_no_fit with the first refusal).
-type UnitSuggestion struct {
-	Unit    *UnitInput              `json:"unit"`
-	Network *DeploymentNetworkBrief `json:"network,omitempty"`
-	Arch    string                  `json:"arch,omitempty"`
-	Nodes   []UnitSuggestedNode     `json:"nodes,omitempty"`
-	Reason  *ScheduleReason         `json:"reason,omitempty"`
-}
-
-// DeploymentNetworkBrief names a network.
-type DeploymentNetworkBrief struct {
-	ID   uint   `json:"id"`
-	Name string `json:"name"`
-}
-
-// UnitSuggestedNode is one rank's node in a suggestion, rank order.
-type UnitSuggestedNode struct {
-	UUID     string `json:"uuid"`
-	Name     string `json:"name"`
-	FreeGPUs int    `json:"free_gpus"`
-	Model    string `json:"model"`
 }

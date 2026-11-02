@@ -84,7 +84,6 @@ export function chatCatalog(overrides: Partial<PlaygroundCatalog> = {}): Playgro
       operations: [{ type: "openai.chat", endpoint: "/v1/chat/completions", renderer: "chat", response: "sse", mode: "stream", request_encodings: ["json"] }],
     }],
     parameters: [],
-    extra_parameter_presets: [],
     // As GET /api/v1/playground/models serves them.
     stream_options: [
       { name: "include_usage", label: { en: "Report usage (include_usage)", zh: "返回用量（include_usage）" }, description: { en: "Return prompt and completion token counts in the last chunk.", zh: "在流的最后一个块返回 token 数。" }, default: true },

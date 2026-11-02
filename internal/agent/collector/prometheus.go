@@ -199,6 +199,21 @@ func (t metricTarget) factor() float64 {
 // instance from a server that predates observations keeps the legacy map.
 func mappingFor(in RunningInstance, lines []expositionLine) map[string]metricTarget {
 	if in.Observation == nil {
+		prefix := in.MetricPrefix
+		if prefix == "" {
+			prefix = in.Engine
+		}
+		if len(in.MetricMap) == 0 && prefix == engines.SGLang {
+			// Older desired states may carry only the engine/prefix. SGLang
+			// uses different family names from vLLM; read the shared rules.
+			out := make(map[string]metricTarget)
+			for _, rule := range inferencemetrics.EngineRules(engines.SGLang) {
+				if definition, ok := inferencemetrics.Lookup(rule.Metric); ok {
+					out[rule.Source] = metricTarget{series: definition.Series(), scale: rule.Scale}
+				}
+			}
+			return out
+		}
 		legacy := normalizedMetricMap(in)
 		out := make(map[string]metricTarget, len(legacy))
 		for source, series := range legacy {
@@ -206,6 +221,7 @@ func mappingFor(in RunningInstance, lines []expositionLine) map[string]metricTar
 		}
 		return out
 	}
+
 	rules := in.Observation.MetricRules
 	if len(rules) == 0 {
 		rules = detectRules(in.Observation.MetricDetect, lines)

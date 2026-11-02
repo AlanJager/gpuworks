@@ -59,6 +59,11 @@ type SSHInstallRequest struct {
 	// installs onto hosts they created leave it off.
 	GuardExistingAgent   bool `json:"-"`
 	ReplaceExistingAgent bool `json:"replace_existing_agent,omitempty"`
+	// KeepUntraversableInstallDir reinstalls an agent that already runs from
+	// the install directory even when a directory above it is closed to the
+	// dedicated runtime user: out-of-band recovery must bring the agent back
+	// online, where a new install would stop and say how to fix the path.
+	KeepUntraversableInstallDir bool `json:"-"`
 	// OnPhase is used by out-of-band recovery to persist installation progress.
 	// API callers leave it nil; it is never serialized or exposed to clients.
 	OnPhase func(string) error `json:"-"`
@@ -251,11 +256,15 @@ func (i *SSHInstaller) InstallSSH(ctx context.Context, req SSHInstallRequest) (S
 		}
 	}
 
-	dirOutcome := ProbeInstallDir(ctx, client, report.InstallDir, req.InstanceKind, req.ProviderKind)
+	dirOutcome := ProbeInstallDirForRuntime(ctx, client, report.InstallDir, req.InstanceKind, req.ProviderKind, req.RuntimeDriver)
+	if req.KeepUntraversableInstallDir {
+		dirOutcome = dirOutcome.keepUntraversable()
+	}
 	report.Checks = mergeChecks(report.Checks, dirOutcome.Checks)
-	if dirOutcome.Noexec {
-		// Nothing uploaded there could run: stop before sending the binary.
-		return report, noexecInstallError(dirOutcome)
+	if err := dirOutcome.blockingError(); err != nil {
+		// Nothing uploaded there could run (noexec), or the runtime could not
+		// reach it (a closed ancestor): stop before sending the binary.
+		return report, err
 	}
 
 	archOut, goarch, err := detectGOARCH(func(cmd string) (string, error) {
@@ -296,10 +305,13 @@ func (i *SSHInstaller) InstallSSH(ctx context.Context, req SSHInstallRequest) (S
 			useSudo = false
 			// The fallback directory has its own filesystem; replace the
 			// verdicts about the directory that was just abandoned.
-			fallbackOutcome := ProbeInstallDir(ctx, client, fallbackDir, req.InstanceKind, req.ProviderKind)
+			fallbackOutcome := ProbeInstallDirForRuntime(ctx, client, fallbackDir, req.InstanceKind, req.ProviderKind, req.RuntimeDriver)
+			if req.KeepUntraversableInstallDir {
+				fallbackOutcome = fallbackOutcome.keepUntraversable()
+			}
 			report.Checks = mergeChecks(report.Checks, fallbackOutcome.Checks)
-			if fallbackOutcome.Noexec {
-				return report, noexecInstallError(fallbackOutcome)
+			if err := fallbackOutcome.blockingError(); err != nil {
+				return report, err
 			}
 			binPath = report.InstallDir + "/gpuworks-agent"
 			stagedBinPath = fmt.Sprintf("%s.new.%d", binPath, time.Now().UnixNano())

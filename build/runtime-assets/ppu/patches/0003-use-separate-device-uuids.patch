@@ -1,0 +1,37 @@
+--- a/hgml/hgml_dlsym_hook.c
++++ b/hgml/hgml_dlsym_hook.c
+@@ -101,14 +101,19 @@
+ static hgmlReturn_t (*real_get_index)(hgmlDevice_t device, unsigned int *index);
+ static hgmlReturn_t (*real_get_uuid)(hgmlDevice_t device, char *uuid, unsigned int length);
+ 
+-/* New agents select full UUIDs for both OCI and PRoot. HGGC compacts this
+- * ordered list to compute ordinals; HGML retains its own inventory indexes.
+- * Map by identity so reporting and allocation use the same quota/ledger slot.
+- * Numeric visibility is retained only for agents using the older ABI. */
++/* Device identity and compute selectors are separate inputs. Older agents
++ * carried UUIDs in CUDA_VISIBLE_DEVICES; keep that ABI when the new list is absent. */
++static const char *selected_device_ids(void)
++{
++    const char *uuids = getenv("GPUWORKS_PPU_DEVICE_UUIDS");
++    return uuids != NULL ? uuids : getenv("CUDA_VISIBLE_DEVICES");
++}
++
+ static bool uuid_visibility(void)
+ {
+-    const char *visible = getenv("CUDA_VISIBLE_DEVICES");
+-    return visible != NULL && !(visible[0] >= '0' && visible[0] <= '9');
++    const char *visible = selected_device_ids();
++    return getenv("GPUWORKS_PPU_DEVICE_UUIDS") != NULL ||
++        (visible != NULL && !(visible[0] >= '0' && visible[0] <= '9'));
+ }
+ 
+ static bool valid_uuid(const char *uuid)
+@@ -127,7 +132,7 @@
+     char uuid[96] = {0};
+     if (real_get_uuid == NULL || real_get_uuid(device, uuid, sizeof(uuid)) != HGML_SUCCESS ||
+         memchr(uuid, 0, sizeof(uuid)) == NULL || !valid_uuid(uuid)) return -1;
+-    const char *cursor = getenv("CUDA_VISIBLE_DEVICES");
++    const char *cursor = selected_device_ids();
+     char ids[VPPU_MAX_DEVICES][41];
+     int count = 0, selected = -1;
+     while (cursor != NULL) {

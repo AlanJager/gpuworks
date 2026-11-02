@@ -3,12 +3,12 @@ package gpu
 import (
 	"context"
 	"fmt"
-	"gpuworks.ai/gpuworks/internal/accelerator"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"gpuworks.ai/gpuworks/internal/accelerator"
 	"gpuworks.ai/gpuworks/internal/proto"
 )
 
@@ -142,7 +142,7 @@ func TestPPURuntimeInjectionFailsClosed(t *testing.T) {
 	}
 }
 
-func TestPPURuntimeInjectionSelectsUUIDsInRequestedOrder(t *testing.T) {
+func TestPPURuntimeInjectionSelectsDevicesInRequestedOrder(t *testing.T) {
 	const first = "GPU-011ef111-c280-0918-0000-000020462378"
 	const second = "GPU-019ec20c-0692-0214-0000-0000c0e5b553"
 	p := &PPUProber{lastSeen: map[int]ppuIdentity{8: {uuid: first}, 9: {uuid: second}}}
@@ -158,15 +158,15 @@ func TestPPURuntimeInjectionSelectsUUIDsInRequestedOrder(t *testing.T) {
 		indexes                  []int
 		inventory, want, failure string
 	}{
-		{"nonzero device", []int{8}, rows, first, ""},
-		{"reverse order", []int{9, 8}, rows, second + "," + first, ""},
+		{"nonzero device", []int{8}, rows, "0", ""},
+		{"reverse order", []int{9, 8}, rows, "1,0", ""},
 		{"absent device", []int{0}, rows, "", "not present"},
 		{"renumbered", []int{8}, "8, " + second, "", "changed"},
 		{"invalid UUID", []int{8}, "8, GPU-bad", "", "invalid"},
 		{"duplicate device", []int{8, 8}, rows, "", "duplicate"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			inj := p.runtimeInjection(tc.indexes, tc.inventory, resolve)
+			inj := p.runtimeInjection(tc.indexes, tc.inventory, resolve, "docker")
 			if tc.failure != "" {
 				if !strings.Contains(inj.UnsupportedReason, tc.failure) || len(inj.Env) != 0 || len(inj.DockerArgs) != 0 {
 					t.Fatalf("injection=%+v", inj)
@@ -176,7 +176,14 @@ func TestPPURuntimeInjectionSelectsUUIDsInRequestedOrder(t *testing.T) {
 			if inj.UnsupportedReason != "" || inj.Env[accelerator.EnvCUDAVisibleDevices] != tc.want || inj.Env[accelerator.EnvNVIDIAVisibleDevices] != "void" {
 				t.Fatalf("injection=%+v", inj)
 			}
-			for _, index := range tc.indexes {
+			identities := strings.Split(inj.Env[accelerator.PPUEnvDeviceUUIDs], ",")
+			if len(identities) != len(tc.indexes) {
+				t.Fatalf("missing verified identities: %+v", inj)
+			}
+			for i, index := range tc.indexes {
+				if identities[i] != p.lastSeen[index].uuid {
+					t.Fatalf("identity order differs from selected devices: %+v", inj)
+				}
 				path := fmt.Sprintf("/dev/alixpu_ppu%d", index+1)
 				if !strings.Contains(strings.Join(inj.DockerArgs, " "), path+":"+path+":rwm") {
 					t.Fatalf("wrong device mapping: %+v", inj)
@@ -184,9 +191,62 @@ func TestPPURuntimeInjectionSelectsUUIDsInRequestedOrder(t *testing.T) {
 			}
 		})
 	}
-	inj := p.runtimeInjection([]int{8}, rows, func(int, string) (string, error) { return "", fmt.Errorf("device UUID/minor mismatch") })
+	unknown := p.runtimeInjection([]int{8}, rows, resolve, "unknown")
+	if unknown.UnsupportedReason == "" || len(unknown.Env) != 0 || len(unknown.DockerArgs) != 0 {
+		t.Fatalf("unsupported runtime injection=%+v", unknown)
+	}
+
+	inj := p.runtimeInjection([]int{8}, rows, func(int, string) (string, error) { return "", fmt.Errorf("device UUID/minor mismatch") }, "docker")
 	if !strings.Contains(inj.UnsupportedReason, "mismatch") || len(inj.Env) != 0 {
 		t.Fatalf("injection=%+v", inj)
+	}
+}
+
+func TestPPURuntimeInjectionUsesDriverInventory(t *testing.T) {
+	const first = "GPU-00000000-0000-0000-0000-000000000008"
+	const second = "GPU-00000000-0000-0000-0000-000000000012"
+	p := &PPUProber{lastSeen: map[int]ppuIdentity{8: {uuid: first}, 12: {uuid: second}}}
+	rows := "8, " + first + "\n12, " + second
+	resolve := func(index int, _ string) (string, error) {
+		return fmt.Sprintf("/dev/alixpu_ppu%d", index+1), nil
+	}
+	for _, tc := range []struct {
+		driver  string
+		indexes []int
+		want    string
+	}{
+		{"", []int{12, 8}, second + "," + first},
+		{"docker", []int{8}, "0"},
+		{"docker", []int{8, 12}, "0,1"},
+		{"docker", []int{12, 8}, "1,0"},
+		{"nerdctl", []int{12, 8}, "1,0"},
+		{"udocker", []int{8}, "8"},
+		{"udocker", []int{12, 8}, "12,8"},
+	} {
+		t.Run(tc.driver+"/"+tc.want, func(t *testing.T) {
+			inj := p.runtimeInjection(tc.indexes, rows, resolve, tc.driver)
+			if inj.UnsupportedReason != "" || inj.Env[accelerator.EnvCUDAVisibleDevices] != tc.want {
+				t.Fatalf("injection=%+v, want visible=%q", inj, tc.want)
+			}
+			identities := strings.Split(inj.Env[accelerator.PPUEnvDeviceUUIDs], ",")
+			if len(identities) != len(tc.indexes) {
+				t.Fatalf("missing verified identities: %+v", inj)
+			}
+			for i, index := range tc.indexes {
+				if identities[i] != p.lastSeen[index].uuid {
+					t.Fatalf("identity must be independent of the runtime view: %+v", inj)
+				}
+				path := fmt.Sprintf("/dev/alixpu_ppu%d", index+1)
+				if !strings.Contains(strings.Join(inj.DockerArgs, " "), path+":"+path+":rwm") {
+					t.Fatalf("wrong device mapping: %+v", inj)
+				}
+			}
+		})
+	}
+	t.Setenv("PATH", t.TempDir())
+	inj := p.RuntimeInjectionForDriver(nil, "docker")
+	if inj.UnsupportedReason != "" || len(inj.Env) != 0 || len(inj.DockerArgs) != 0 {
+		t.Fatalf("empty selection must not query or inject devices: %+v", inj)
 	}
 }
 

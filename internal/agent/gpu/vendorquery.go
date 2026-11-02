@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -66,7 +67,7 @@ func VendorCLISlow(name string) bool {
 }
 
 func vendorCLISlowLocked(name string) bool {
-	b := vendorQueries.binaries[name]
+	b := vendorQueries.binaries[binaryKey(name)]
 	if b == nil {
 		return false
 	}
@@ -105,10 +106,10 @@ func queryVendorCLI(ctx context.Context, name string, args ...string) (string, t
 		q = &vendorQuery{}
 		vendorQueries.byKey[key] = q
 	}
-	b := vendorQueries.binaries[name]
+	b := vendorQueries.binaries[binaryKey(name)]
 	if b == nil {
 		b = &vendorBinary{slot: make(chan struct{}, 1)}
-		vendorQueries.binaries[name] = b
+		vendorQueries.binaries[binaryKey(name)] = b
 	}
 	if q.running == nil {
 		q.running = make(chan struct{})
@@ -158,6 +159,7 @@ func runVendorQuery(q *vendorQuery, b *vendorBinary, done chan struct{}, name st
 	defer cancel()
 	var buf bytes.Buffer
 	cmd := exec.CommandContext(ctx, name, args...)
+	killGroupOnCancel(cmd)
 	cmd.Stdout = &buf
 	cmd.Stderr = &buf
 	cmd.WaitDelay = time.Second
@@ -223,3 +225,8 @@ func RecordResultTime(ctx context.Context, at time.Time) {
 	}
 	rt.mu.Unlock()
 }
+
+// binaryKey is the name a CLI's health is tracked under: its base name, so a
+// tool run by its full path (hy-smi under /opt/dtk/bin when it is not on
+// PATH) is the same binary to VendorCLISlow("hy-smi") as one found on PATH.
+func binaryKey(name string) string { return filepath.Base(name) }

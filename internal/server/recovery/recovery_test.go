@@ -100,6 +100,22 @@ type fakeProviders struct {
 	// provider.ErrUnsupported.
 	address    string
 	addressErr error
+	// detail is the provider's description of the instance; nil answers
+	// provider.ErrUnsupported, as a provider whose listing is complete does.
+	detail    *provider.Instance
+	detailErr error
+	details   int
+}
+
+func (f *fakeProviders) InstanceDetail(context.Context, uint, string) (provider.Instance, error) {
+	f.details++
+	if f.detailErr != nil {
+		return provider.Instance{}, f.detailErr
+	}
+	if f.detail == nil {
+		return provider.Instance{}, provider.ErrUnsupported
+	}
+	return *f.detail, nil
 }
 
 func (f *fakeProviders) ServerDialAddress(context.Context, uint, string, string) (string, error) {
@@ -250,6 +266,11 @@ func TestRestartWithoutReconnectEscalatesToIdentityPreservingReinstall(t *testin
 	// The node's install chose systemd or nohup; recovery must not flip it.
 	if !fake.installReq.KeepSupervisor {
 		t.Fatalf("reinstall does not keep the host's supervisor: %+v", fake.installReq)
+	}
+	// The agent already runs from there: a path the runtime user cannot reach
+	// must not keep a recovering node offline.
+	if !fake.installReq.KeepUntraversableInstallDir {
+		t.Fatalf("reinstall would stop on an untraversable install directory: %+v", fake.installReq)
 	}
 	// A host may run several agents: every step reaches this node's own.
 	if fake.probeReq.InstallDir != "/data/agent2" || fake.restartReq.InstallDir != "/data/agent2" || fake.installReq.InstallDir != "/data/agent2" {

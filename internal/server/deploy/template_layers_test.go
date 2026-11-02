@@ -113,8 +113,8 @@ func TestParseArgsTextPreservesQuotedAndJSONValues(t *testing.T) {
 
 func TestTemplateEnvironmentIsAnExplicitPriorityLayer(t *testing.T) {
 	built := ResolvedLaunch{
-		Env:       map[string]string{"SYSTEM_ONLY": "system", "ORDER": "system"},
-		EnvLayers: EnvLayers{Template: map[string]string{"TEMPLATE_ONLY": "template", "ORDER": "template"}},
+		Env:       map[string]string{"SYSTEM_ONLY": "system", "ORDER": "system", "HF_HUB_OFFLINE": "1", "TRANSFORMERS_OFFLINE": "1"},
+		EnvLayers: EnvLayers{Template: map[string]string{"TEMPLATE_ONLY": "template", "ORDER": "template", "HF_HUB_OFFLINE": "0", "TRANSFORMERS_OFFLINE": "0"}},
 	}
 	launch, err := ResolveLaunch(ResolveLaunchInput{
 		Engine:             launchTestEngine{launch: built},
@@ -123,7 +123,7 @@ func TestTemplateEnvironmentIsAnExplicitPriorityLayer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if launch.Env["ORDER"] != "user" || launch.Env["SYSTEM_ONLY"] != "system" || launch.Env["TEMPLATE_ONLY"] != "template" || launch.Env["USER_ONLY"] != "user" {
+	if launch.Env["ORDER"] != "user" || launch.Env["SYSTEM_ONLY"] != "system" || launch.Env["TEMPLATE_ONLY"] != "template" || launch.Env["USER_ONLY"] != "user" || launch.Env["HF_HUB_OFFLINE"] != "0" || launch.Env["TRANSFORMERS_OFFLINE"] != "0" {
 		t.Fatalf("effective env=%#v", launch.Env)
 	}
 	if launch.EnvLayers.System["ORDER"] != "system" || launch.EnvLayers.Template["ORDER"] != "template" || launch.EnvLayers.User["ORDER"] != "user" {

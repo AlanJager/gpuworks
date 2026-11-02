@@ -34,6 +34,10 @@ export const QUICK_RANGES: QuickRangeSpec[] = [
   { key: "1y", labelKey: "timeRange.1y", ms: 365 * 24 * 60 * 60 * 1000, stepMS: 24 * 60 * 60 * 1000, pollMs: 30 * 60 * 1000 },
 ];
 
+// The quick ranges the scheduling page offers (its history and its activity
+// chart): the one list both pickers show.
+export const SCHEDULING_QUICK_RANGES: readonly QuickRangeKey[] = ["15m", "1h", "6h", "1d", "1w"];
+
 export function quickRange(key: QuickRangeKey): QuickRangeSpec {
   const spec = QUICK_RANGES.find((entry) => entry.key === key);
   if (!spec) throw new Error(`unknown quick range: ${key}`);

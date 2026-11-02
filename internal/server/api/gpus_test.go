@@ -87,7 +87,7 @@ func TestGPUInventoryDerivesPhysicalAndVGPUAllocation(t *testing.T) {
 	if len(inventory.dgpu.Items) != 1 || inventory.dgpu.Items[0].MemoryUsed == nil || *inventory.dgpu.Items[0].MemoryUsed != 7<<30 {
 		t.Fatalf("vgpus = %+v", inventory.dgpu.Items)
 	}
-	if inventory.physical.Overview.Total != 1 || inventory.physical.Overview.Health.OK != 1 || inventory.physical.Overview.Allocation.Allocated != 1 {
+	if inventory.physical.Overview.Total != 1 || inventory.physical.Overview.Health.OK != 1 || inventory.physical.Overview.Allocation.Allocated != 0 || inventory.physical.Overview.Allocation.Allocatable != 1 {
 		t.Fatalf("overview = %+v", inventory.physical.Overview)
 	}
 	if physical.AllocationState != "partial" {
@@ -390,9 +390,9 @@ func TestGPUInventoryMatchesUIFixtures(t *testing.T) {
 		case "gpuworks_gpu_utilization":
 			return []MetricLatest{card("0", 0), card("1", 100)}, nil
 		case "gpuworks_gpu_memory_used_bytes":
-			return []MetricLatest{card("0", 40775 << 20), card("1", 15021 << 20)}, nil
+			return []MetricLatest{card("0", 40775<<20), card("1", 15021<<20)}, nil
 		case "gpuworks_dgpu_memory_used_bytes":
-			return []MetricLatest{slice("inst-slice-a", 7192 << 20), slice("inst-slice-b", 7064 << 20)}, nil
+			return []MetricLatest{slice("inst-slice-a", 7192<<20), slice("inst-slice-b", 7064<<20)}, nil
 		case "gpuworks_dgpu_sm_util":
 			return []MetricLatest{slice("inst-slice-a", 99), slice("inst-slice-b", 0)}, nil
 		}

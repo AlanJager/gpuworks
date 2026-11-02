@@ -1,5 +1,7 @@
 package store
 
+import "time"
+
 // NodesByUUID reads the named nodes as ListNodes reads every node: with their
 // GPUs and credential flags, newest first. A UUID with no node is skipped.
 func (s *Store) NodesByUUID(uuids []string) ([]Node, error) {
@@ -15,6 +17,14 @@ func (s *Store) NodesByUUID(uuids []string) ([]Node, error) {
 }
 
 // CountNodes counts every node, whatever its state.
+// CountNodesUnseenSince counts the nodes whose agents have not reported since
+// at (or never have): after a server start, the ones still reconnecting.
+func (s *Store) CountNodesUnseenSince(at time.Time) (int, error) {
+	var n int64
+	err := s.reader().Model(&Node{}).Where("last_seen_at IS NULL OR last_seen_at < ?", at).Count(&n).Error
+	return int(n), err
+}
+
 func (s *Store) CountNodes() (int, error) {
 	var n int64
 	err := s.reader().Model(&Node{}).Count(&n).Error
@@ -39,6 +49,20 @@ func (s *Store) NodesForLabels(withGPUs bool) ([]Node, error) {
 	}
 	err := q.Find(&nodes).Error
 	return nodes, err
+}
+
+// NodeNamesByID is the display name (Node.DisplayName) of the nodes of ids,
+// one query of the columns it is made from; an unknown id is absent.
+func (s *Store) NodeNamesByID(ids []uint) (map[uint]string, error) {
+	refs, err := s.NodeRefsByID(ids)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[uint]string, len(refs))
+	for id, ref := range refs {
+		out[id] = ref.Name
+	}
+	return out, nil
 }
 
 // NodesForLabelsByID is NodesForLabels for the named nodes only, in id order:

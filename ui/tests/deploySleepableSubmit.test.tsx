@@ -69,6 +69,16 @@ const deployLocale = JSON.parse(
     "utf8",
   ),
 );
+const deploymentsLocale = JSON.parse(
+  fs.readFileSync(
+    new URL("../src/i18n/locales/en/deployments.json", import.meta.url),
+    "utf8",
+  ),
+);
+// The yield policy dictionary, as GET /scheduling/yield-policies answers it.
+const yieldDictionary = JSON.parse(
+  fs.readFileSync(new URL("./fixtures/yield-policies.json", import.meta.url), "utf8"),
+);
 const commonLocale = JSON.parse(
   fs.readFileSync(
     new URL("../src/i18n/locales/en/common.json", import.meta.url),
@@ -79,7 +89,7 @@ const i18n = createInstance();
 await i18n.use(initReactI18next).init({
   lng: "en",
   fallbackLng: "en",
-  resources: { en: { deploy: deployLocale, common: commonLocale } },
+  resources: { en: { deploy: deployLocale, deployments: deploymentsLocale, common: commonLocale } },
   defaultNS: "common",
   interpolation: { escapeValue: false },
 });
@@ -88,6 +98,7 @@ const { cleanup, fireEvent, render, screen, waitFor } =
 const { MemoryRouter } = await import("react-router-dom");
 const { default: userEvent } = await import("@testing-library/user-event");
 const { api } = await import("../src/api.ts");
+const { yieldPolicyApi } = await import("../src/yieldPolicyApi.ts");
 
 const gpuMemSpec = {
   key: "gpu_memory_utilization",
@@ -186,6 +197,11 @@ stub("engines", async () => list([engineProfile]));
 stub("inferenceTemplateIndex", async () => ({ items: [] }));
 stub("imageVersions", async () => list([]));
 stub("images", async () => list([]));
+let yieldPoliciesFail = false;
+yieldPolicyApi.dictionary = async () => {
+  if (yieldPoliciesFail) throw new Error("dictionary unavailable");
+  return structuredClone(yieldDictionary);
+};
 afterEach(() => {
   cleanup();
   // Later cases in this file override individual stubs; restore the shared
@@ -199,6 +215,7 @@ afterEach(() => {
   calls.evaluate.length = 0;
   calls.create.length = 0;
   evaluateOverride = {};
+  yieldPoliciesFail = false;
 });
 
 async function openDeployPage() {
@@ -256,7 +273,12 @@ const evaluateAnswer = {
 let evaluateOverride: Record<string, unknown> = {};
 stub("evaluate", async (payload: unknown) => {
   calls.evaluate.push(payload);
-  return { ...structuredClone(evaluateAnswer), ...structuredClone(evaluateOverride) };
+  // The server says whether the draft may hold a yield policy other than
+  // never; for the single-node vllm drafts these cases send, that is whether
+  // it asks to sleep (internal/server/api's evaluate test asserts the same).
+  const sleepable = (payload as Record<string, unknown>).sleepable === true;
+  const yield_policy_eligible = sleepable ? { ok: true } : { ok: false, reason: "SLEEP_NOT_ENABLED" };
+  return { ...structuredClone(evaluateAnswer), yield_policy_eligible, ...structuredClone(evaluateOverride) };
 });
 stub("createDeployment", async (body: unknown) => {
   calls.create.push(body);
@@ -341,6 +363,96 @@ test("the automatic mode renders the server's selection and the create confirms 
   assert.equal(create.model_id, 3);
   assert.ok(modelsFake.reads.includes(3));
   assert.equal(modelsFake.listedAll, 0);
+});
+
+const policyOptionText = (policy: "never" | "idle" | "timeslice" | "anytime") =>
+  `${deploymentsLocale.yieldPolicy.policy.name[policy]} - ${deploymentsLocale.yieldPolicy.policy.description[policy]}`;
+
+test("the yield policy is chosen only for a sleepable single-node deployment, takes the dictionary's defaults, and reaches the preview and the create", async () => {
+  const label = deployLocale.yieldPolicy.label;
+  const { user } = await openDeployPage();
+  await pickVendorAndName(user, "tiered");
+  await waitFor(() => assert.ok(screen.getByText(deployLocale.workbench.node.schedulerSelected)));
+  assert.ok(screen.queryByRole("combobox", { name: label }) === null, "a deployment that cannot sleep has no policy to choose");
+
+  await user.click(screen.getByText(deployLocale.workbench.resource.sleepable));
+  const select = await screen.findByRole("combobox", { name: label });
+  // The default is never, and never states nothing.
+  assert.ok(screen.getAllByText(deploymentsLocale.yieldPolicy.policy.name.never).length > 0);
+  await waitFor(() => assert.equal((calls.evaluate.at(-1) as Record<string, unknown>).sleepable, true));
+  assert.equal("yield_policy" in (calls.evaluate.at(-1) as Record<string, unknown>), false);
+  await screen.findByText(deployLocale.yieldPolicy.help);
+
+  await user.click(select);
+  await user.click(await screen.findByText(policyOptionText("timeslice")));
+  const timeslice = { policy: "timeslice", idle_sec: 30, sleep_level: "auto", max_serve_sec: 120, unfinished: "wait", unfinished_wait_sec: 30, hold_max_sec: 600 };
+  await waitFor(() => assert.deepEqual((calls.evaluate.at(-1) as Record<string, unknown>).yield_policy, timeslice), { timeout: 4000 });
+
+  await user.click(screen.getByRole("button", { name: deployLocale.action.deploy || "Deploy" }));
+  await waitFor(() => assert.ok(calls.create.length > 0));
+  assert.deepEqual((calls.create[0] as Record<string, unknown>).yield_policy, timeslice);
+  assert.equal("service_level" in (calls.create[0] as Record<string, unknown>), false);
+  assert.equal((calls.create[0] as Record<string, unknown>).sleepable, true);
+});
+
+test("the policy field follows the server's answer, not the form's own fields: a sleepable draft the server refuses offers none", async () => {
+  evaluateOverride = { yield_policy_eligible: { ok: false, reason: "YIELD_POLICY_SHAPE" } };
+  const label = deployLocale.yieldPolicy.label;
+  const { user } = await openDeployPage();
+  await pickVendorAndName(user, "refused-shape");
+  await waitFor(() => assert.ok(screen.getByText(deployLocale.workbench.node.schedulerSelected)));
+  await user.click(screen.getByText(deployLocale.workbench.resource.sleepable));
+  await waitFor(() => assert.equal((calls.evaluate.at(-1) as Record<string, unknown>).sleepable, true));
+  // The stub answers at once: let that answer render, then look. (Without the
+  // override the same steps show the field - the case above.)
+  for (let tick = 0; tick < 5; tick++) await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(screen.queryByRole("combobox", { name: label }), null);
+});
+
+test("choosing never again states no yield policy, and a dictionary that cannot be read leaves only never", async () => {
+  yieldPoliciesFail = true;
+  const label = deployLocale.yieldPolicy.label;
+  const { user } = await openDeployPage();
+  await pickVendorAndName(user, "no-dictionary");
+  await waitFor(() => assert.ok(screen.getByText(deployLocale.workbench.node.schedulerSelected)));
+  await user.click(screen.getByText(deployLocale.workbench.resource.sleepable));
+  await screen.findByRole("combobox", { name: label });
+  await screen.findByText(deployLocale.yieldPolicy.loadFailed.replace("{{detail}}", "dictionary unavailable"));
+  await user.click(screen.getByRole("combobox", { name: label }));
+  assert.ok(screen.queryByText(policyOptionText("idle")) === null, "no options without a dictionary");
+  await user.keyboard("{Escape}");
+  await user.click(screen.getByRole("button", { name: deployLocale.action.deploy || "Deploy" }));
+  await waitFor(() => assert.ok(calls.create.length > 0));
+  assert.equal("yield_policy" in (calls.create[0] as Record<string, unknown>), false);
+});
+
+test("turning sleep off keeps the chosen policy with the server's reason, until it is set back to never", async () => {
+  const label = deployLocale.yieldPolicy.label;
+  const { user } = await openDeployPage();
+  await pickVendorAndName(user, "untiered");
+  await waitFor(() => assert.ok(screen.getByText(deployLocale.workbench.node.schedulerSelected)));
+  const card = screen.getByText(deployLocale.workbench.resource.sleepable);
+  await user.click(card);
+  await user.click(await screen.findByRole("combobox", { name: label }));
+  await user.click(await screen.findByText(policyOptionText("anytime")));
+  const anytime = { policy: "anytime", idle_sec: 30, sleep_level: "auto", unfinished: "abort", unfinished_wait_sec: 30, hold_max_sec: 3600 };
+  await waitFor(() => assert.deepEqual((calls.evaluate.at(-1) as Record<string, unknown>).yield_policy, anytime), { timeout: 4000 });
+
+  // Sleep off: the form sends what was chosen and shows why the server will
+  // not take it; only never is left to choose.
+  await user.click(card);
+  await screen.findByText(commonLocale.apiError.SLEEP_NOT_ENABLED, {}, { timeout: 4000 });
+  assert.deepEqual((calls.evaluate.at(-1) as Record<string, unknown>).yield_policy, anytime);
+  await user.click(screen.getByRole("combobox", { name: label }));
+  const option = (policy: "never" | "idle") => screen.getByText(policyOptionText(policy)).closest(".ant-select-item") as HTMLElement;
+  assert.ok(option("idle").className.includes("ant-select-item-option-disabled"));
+  await user.click(option("never"));
+  await waitFor(() => assert.ok(screen.queryByRole("combobox", { name: label }) === null));
+  await waitFor(() => assert.equal("yield_policy" in (calls.evaluate.at(-1) as Record<string, unknown>), false), { timeout: 4000 });
+  await user.click(screen.getByRole("button", { name: deployLocale.action.deploy || "Deploy" }));
+  await waitFor(() => assert.ok(calls.create.length > 0));
+  assert.equal("yield_policy" in (calls.create[0] as Record<string, unknown>), false);
+  assert.equal("sleepable" in (calls.create[0] as Record<string, unknown>), false);
 });
 
 test("TP and PP typed in automatic mode reach evaluate, and the create confirms the effective TP", async () => {

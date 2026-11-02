@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"os"
+	"path/filepath"
 	"reflect"
 	"slices"
 	"strings"
@@ -189,5 +190,36 @@ func TestScanGGUFRepositoryWithFourVariants(t *testing.T) {
 	res, err = Scan(context.Background(), root, Options{})
 	if err != nil || skippedMap(res)["mixed"] != proto.ScanSkipMultipleEntries {
 		t.Fatalf("ambiguous entries=%+v %v", res, err)
+	}
+}
+
+// TestIdentityRecognizesEverySourceMarker pins the shared vocabulary:
+// modelmetadata.SourceMarkers owns the names, identity.go recognizes a
+// ModelScope download by them, and internal/agent/app/modelcopy.go skips them
+// when it copies. Each name must be sufficient on its own, so a copy that skips
+// one of them can never leave behind a directory this scan would no longer
+// call a ModelScope repository.
+func TestIdentityRecognizesEverySourceMarker(t *testing.T) {
+	for _, marker := range modelmetadata.SourceMarkers {
+		t.Run(marker, func(t *testing.T) {
+			dir := t.TempDir()
+			write(t, filepath.Join(dir, "config.json"), `{"architectures":["ExampleForCausalLM"]}`)
+			write(t, filepath.Join(dir, "model.safetensors"), "weights")
+			write(t, filepath.Join(dir, marker), "Revision:master,CreatedAt:1756691498")
+			var c Candidate
+			identify(dir, "org/model", &c)
+			if c.Source != SourceModelScope || c.Basis != BasisModelScope {
+				t.Fatalf("%s alone was not recognized: %+v", marker, c)
+			}
+			// Only the version marker carries a revision; the plain marker is
+			// an empty flag, so it names no revision and none is invented.
+			want := ""
+			if marker == modelmetadata.ModelScopeVersionMarker {
+				want = "master"
+			}
+			if c.Revision != want {
+				t.Fatalf("%s left revision %q, want %q", marker, c.Revision, want)
+			}
+		})
 	}
 }

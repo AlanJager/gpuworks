@@ -20,7 +20,7 @@
   "tag": {
     "default": "Default",
     "readOnly": "Read-only",
-    "readOnlyHelp": "Disabled: nothing can be downloaded, copied or deleted in it. Model files already there still deploy."
+    "readOnlyHelp": "Disabled: files cannot be downloaded or copied into this storage, or deleted from it. Existing models can still be deployed. For NFS with local cache, node caches can still be filled and cleared."
   },
   "list": {
     "mountedAt": "Mounted at {{path}}",
@@ -241,8 +241,8 @@
     "switched": "{{name}} is now {{type}}",
     "deleteDefaultBlocked": "The default storage cannot be deleted. Set another storage as the default first.",
     "deleteConfirm": "Remove storage {{name}}?",
-    "deleteHelp": "Model files stay on the nodes; only the storage record is removed. A storage a deployment uses cannot be removed.",
-    "deleteSharedHelp": "Files on the shared storage are not deleted; only this storage record and its heartbeat are removed. A storage a deployment uses cannot be removed.",
+    "deleteHelp": "Model files stay on the nodes. Models stored only in this storage are removed from the model list. A storage a deployment uses cannot be removed.",
+    "deleteSharedHelp": "Files on the shared storage are not deleted; this storage record and its heartbeat are removed. Models stored only in this storage are removed from the model list. A storage a deployment uses cannot be removed.",
     "deleted": "Storage {{name}} removed"
   },
   "form": {
@@ -463,7 +463,7 @@
     "saved": "Configuration saved. Check each node for cleanup progress.",
     "invalidLimit": "Enter a positive finite capacity within the safe integer byte range, or explicitly choose no limit.",
     "invalidPath": "Enter an absolute directory path without parent-directory traversal.",
-    "budgetHelp": "Limits are cache budgets, not reserved disk space. Disk free space and the reserve still apply, including when several caches share a disk.",
+    "budgetHelp": "Limits are cache budgets, not reserved disk space. Disk free space and the reserve still apply, including when several caches share a disk. Disabling the storage only prevents writes to the NFS model library; node caches can still be filled and cleared.",
     "used": "Cached",
     "protected": "Protected caches",
     "reclaimable": "Reclaimable",

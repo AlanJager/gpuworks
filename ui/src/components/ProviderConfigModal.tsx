@@ -164,7 +164,7 @@ export default function ProviderConfigModal({
           <div className="provider-modal-section-title">{t("config.basic")}</div>
           {provider ? (
             <Form.Item label={t("config.type")}>
-              <Input value={t(`kind.${provider.kind}`, { defaultValue: provider.kind })} disabled />
+              <Input aria-label={t("config.type")} value={t(`kind.${provider.kind}`, { defaultValue: provider.kind })} disabled />
             </Form.Item>
           ) : (
             <Form.Item label={t("config.type")} name="kind" rules={[{ required: true, message: t("config.typeRequired") }]}>

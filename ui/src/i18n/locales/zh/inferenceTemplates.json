@@ -35,7 +35,8 @@
     "title_one": "已导入，有 {{count}} 项需要确认",
     "title_other": "已导入，有 {{count}} 项需要确认",
     "CATALOG_CALLABLE_METRICS_UNDECLARED": "{{model_id}} 的档位“{{spec}}”使用 callable 引擎但没有声明 api.metrics：除非引擎的 /metrics 恰好使用 vLLM 或 SGLang 的指标名，监控中心不会有它的引擎指标。",
-    "CATALOG_HEALTH_ENDPOINT_UNDECLARED": "{{model_id}} 的档位“{{spec}}”使用 callable 引擎但没有声明 api.health_endpoint：就绪探测会使用默认的 /health。"
+    "CATALOG_HEALTH_ENDPOINT_UNDECLARED": "{{model_id}} 的档位“{{spec}}”使用 callable 引擎但没有声明 api.health_endpoint：就绪探测会使用默认的 /health。",
+    "CATALOG_CALLABLE_SERVED_NAME_FIXED": "{{model_id}} 的档位“{{spec}}”使用 callable 引擎，但 --served-model-name 写死为 {{name}}，没有用 ${SERVED_MODEL_NAME}：网关与健康检查发送的是部署的服务名，会校验模型名的引擎（如 vLLM）会拒绝请求，除非部署时服务名恰好填成这个值。"
   },
   "detail": {
     "operations": "推理能力", "inputModalities": "输入模态",

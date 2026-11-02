@@ -29,8 +29,11 @@ specs:
   - --deploy-config
   - /vllm-workspace/vllm-omni/vllm_omni/deploy/ming_tts.yaml
   - --omni
+  # Reference-audio handling fetches a separate tokenizer snapshot lazily.
   env:
     VLLM_WORKER_MULTIPROC_METHOD: spawn
+    HF_HUB_OFFLINE: '0'
+    TRANSFORMERS_OFFLINE: '0'
   placement:
     language: starlark
     resolver: "def resolve(gpu):\n    if gpu.min_memory_gib < 32: return reject(\"\
@@ -44,6 +47,9 @@ specs:
       mode: sync
       inputs:
       - name: ref_audio
+        label:
+          en: Reference audio
+          zh: 参考音频
         kind: audio
         encoding: data_url
       - name: ref_text
@@ -73,8 +79,11 @@ specs:
   - --deploy-config
   - /vllm-workspace/vllm-omni/vllm_omni/deploy/ming_tts.yaml
   - --omni
+  # Reference-audio handling fetches a separate tokenizer snapshot lazily.
   env:
     VLLM_WORKER_MULTIPROC_METHOD: spawn
+    HF_HUB_OFFLINE: '0'
+    TRANSFORMERS_OFFLINE: '0'
   placement:
     language: starlark
     resolver: "def resolve(gpu):\n    if gpu.min_memory_gib < 32: return reject(\"\
@@ -88,6 +97,9 @@ specs:
       mode: sync
       inputs:
       - name: ref_audio
+        label:
+          en: Reference audio
+          zh: 参考音频
         kind: audio
         encoding: data_url
       - name: ref_text
@@ -115,6 +127,9 @@ specs:
     display_target: nvidia
   args:
   - --omni
+  env:
+    HF_HUB_OFFLINE: '0'
+    TRANSFORMERS_OFFLINE: '0'
   api:
     health_endpoint: /health
     operations:
@@ -123,6 +138,9 @@ specs:
       mode: sync
       inputs:
       - name: ref_audio
+        label:
+          en: Reference audio
+          zh: 参考音频
         kind: audio
         encoding: data_url
       - name: ref_text

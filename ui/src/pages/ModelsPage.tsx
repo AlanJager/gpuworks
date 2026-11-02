@@ -91,7 +91,7 @@ export default function ModelsPage() {
     if (modelfileRefreshTimer.current != null) clearTimeout(modelfileRefreshTimer.current);
   }, []);
   useEvents("node", () => {
-    refetch();
+    void refresh();
   });
 
   const [registerOpen, setRegisterOpen] = useState(false);
@@ -105,7 +105,13 @@ export default function ModelsPage() {
 		try {
 			await api.deleteModel(model.id);
 			message.success(t("message.deleted"));
-			refetch();
+			// Deleting the page's last row empties it; step back one page instead
+			// of refetching an empty page above a non-empty list.
+			if (rows.length === 1 && pagination.current > 1) {
+				pagination.onChange(pagination.current - 1, pagination.pageSize);
+			} else {
+				refetch();
+			}
 		} catch (e) {
 			message.error(t("message.deleteFailed", { detail: (e as Error).message }));
 		}

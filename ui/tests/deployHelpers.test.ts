@@ -980,3 +980,24 @@ test("removed variables travel as env_unset, trimmed and de-duplicated", () => {
     },
   );
 });
+
+test("the yield policy chosen is stated, with its parameters, whenever it left never: the server judges whether the draft may hold it", () => {
+  const base = { model_id: 7, engine: "vllm", sleepable: true, nnodes: 1 };
+  const policy = (values: Record<string, unknown>) => (buildPayload({ ...base, ...values }).payload as Record<string, unknown>).yield_policy;
+  const idle = { policy: "idle", idle_sec: 60, sleep_level: "auto", hold_max_sec: 300 };
+  const timeslice = { policy: "timeslice", idle_sec: 30, sleep_level: "auto", max_serve_sec: 120, unfinished: "wait", unfinished_wait_sec: 30, hold_max_sec: 600 };
+  assert.deepEqual(policy({ yield_policy: idle }), idle);
+  assert.deepEqual(policy({ yield_policy: timeslice }), timeslice);
+  assert.deepEqual(policy({ yield_policy: { policy: "anytime", unfinished: "abort" } }), { policy: "anytime", unfinished: "abort" });
+  assert.equal(policy({ yield_policy: { policy: "never" } }), undefined, "never is what an absent policy means");
+  assert.equal(policy({}), undefined);
+  // Only the known parameters go out.
+  assert.deepEqual(policy({ yield_policy: { ...idle, auto_sleep: true, preset: "online", min_serve_sec: 3 } }), idle);
+  // A policy left in the form after the draft became one the server refuses is still sent: the create refuses it with the reason the form shows.
+  assert.deepEqual(policy({ yield_policy: idle, sleepable: false }), idle);
+  assert.deepEqual(policy({ yield_policy: idle, nnodes: 2 }), idle);
+  assert.deepEqual(policy({ yield_policy: idle, node_selection_mode: "pd", pd_mode: "pd_disagg" }), idle);
+  // The old preset form is no longer a request field.
+  assert.equal(policy({ yield_preset: "online" }), undefined);
+  assert.equal((buildPayload({ ...base, yield_policy: idle }).payload as Record<string, unknown>).service_level, undefined);
+});

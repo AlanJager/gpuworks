@@ -22,8 +22,10 @@ import (
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/selflog"
 	"gpuworks.ai/gpuworks/internal/server/agentbin"
+	"gpuworks.ai/gpuworks/internal/server/agentupgrade"
 	"gpuworks.ai/gpuworks/internal/server/api"
 	"gpuworks.ai/gpuworks/internal/server/auth"
+	"gpuworks.ai/gpuworks/internal/server/batch"
 	"gpuworks.ai/gpuworks/internal/server/bus"
 	"gpuworks.ai/gpuworks/internal/server/controller"
 	"gpuworks.ai/gpuworks/internal/server/deploy"
@@ -48,20 +50,23 @@ import (
 
 // App holds the assembled server.
 type App struct {
-	cfg      Config
-	log      *slog.Logger
-	store    *store.Store
-	bus      *bus.Bus
-	hub      *hub.Hub
-	ctrl     *controller.Controller
-	obs      *observability
-	ops      *opsStats // usage analytics' long-term statistics
-	recovery *recovery.Recoverer
+	cfg           Config
+	log           *slog.Logger
+	store         *store.Store
+	bus           *bus.Bus
+	hub           *hub.Hub
+	ctrl          *controller.Controller
+	agentUpgrades *agentupgrade.Service
+	obs           *observability
+	ops           *opsStats // usage analytics' long-term statistics
+	recovery      *recovery.Recoverer
 	// proxyAcct is proxy request accounting (see accounting.go in the proxy
 	// package).
 	proxyAcct *proxy.Accountant
 	proxy     *proxy.Proxy
 	health    *healthcheck.Checker // the deployments' health checks
+	cards     *cardHealth          // each card's checks and their failure records
+	batches   *batch.Service       // the Batch API's executor and files
 	telemetry *telemetryService    // the request trace export
 	http      *http.Server
 	// ln is created by Run instead of http.Server.ListenAndServe so tests can
@@ -82,6 +87,10 @@ type App struct {
 	// notices the console's notice bell.
 	usage   *usageReporter
 	notices *noticeService
+	// scaleReplicas sets a deployment's replica count as the API does
+	// (planning.Scaling, which the handlers share), for the scheduling
+	// automation's replica schedules.
+	scaleReplicas func(deploymentID uint, role string, replicas int) error
 }
 
 // proxyMetricsSink adapts an Accountant flush batch to observability's tsdb
@@ -259,9 +268,10 @@ func New(cfg Config, log *slog.Logger) (*App, error) {
 	ai.log = log
 	ai.outboundAllowPrivateHosts = append([]string(nil), cfg.OutboundAllowPrivateHosts...)
 	health := healthcheck.New(healthSource{store: st}, healthSender{proxy: px})
-	monSvc := newMonitorAPIService(st, obs.tsdb, nil, newRequestSource(st, px.LiveRequests, obs.ux), health.Health)
+	batches := batch.New(batchRepo{st}, batchSender{px}, batch.Config{Dir: filepath.Join(cfg.DataDir, "batch-files"), Models: batchModels{st}, Log: log})
+	monSvc := newMonitorAPIService(st, obs.tsdb, nil, newRequestSource(st, px.LiveRequests, obs.ux), health.Health, modelPreparation{h, ctrl})
 
-	a := &App{cfg: cfg, log: log, store: st, bus: b, hub: h, ctrl: ctrl, obs: obs, ops: ops, selfLog: cfg.SelfLog, proxyAcct: acct, proxy: px, health: health, telemetry: telemetry}
+	a := &App{cfg: cfg, log: log, store: st, bus: b, hub: h, ctrl: ctrl, obs: obs, ops: ops, selfLog: cfg.SelfLog, proxyAcct: acct, proxy: px, health: health, batches: batches, telemetry: telemetry}
 	var restart func()
 	if cfg.SelfRestart {
 		restart = a.requestRestart
@@ -271,21 +281,30 @@ func New(cfg Config, log *slog.Logger) (*App, error) {
 	outside := outsideSources(st, cfg.OutboundAllowPrivateHosts...)
 	a.usage, a.notices = newImprovementProgram(st, obs.ux, a.settings, outside.Channel, log)
 	h.SetUsageCounters(a.usage.Counters())
+	if a.cards, err = newCardHealth(log, st, h); err != nil {
+		return nil, err
+	}
 
 	// Bootstrap an admin account and a default API key so /v1 is usable.
 	bootstrapAdminAccount(cfg, st, log)
 
 	dlDir := filepath.Join(cfg.DataDir, "dl")
 	_ = os.MkdirAll(dlDir, 0o755)
-	provSvc.SetAgentBinaryReader(func(name string) ([]byte, error) { return agentbin.Read(dlDir, name) })
-	h.SetAgentBinaryReader(func(name string) ([]byte, error) { return agentbin.Read(dlDir, name) })
+	readAgent := func(name string) ([]byte, error) { return agentbin.Read(dlDir, name) }
+	provSvc.SetAgentBinaryReader(readAgent)
+	h.SetAgentBinaryReader(readAgent)
+	a.agentUpgrades, err = newAgentUpgrades(st, h, cfg.DataDir, log)
+	if err != nil {
+		return nil, err
+	}
+
 	sshHostKeys, err := provision.NewFileHostKeyStore(filepath.Join(cfg.DataDir, "ssh-hostkeys.json"))
 	if err != nil {
 		return nil, err
 	}
 	nodePrechecker := provision.NewSSHPrechecker()
 	nodePrechecker.HostKeys = sshHostKeys
-	nodeInstaller := provision.NewSSHInstaller(func(name string) ([]byte, error) { return agentbin.Read(dlDir, name) })
+	nodeInstaller := provision.NewSSHInstaller(readAgent)
 	nodeInstaller.HostKeys = sshHostKeys
 	nodeInstaller.UdockerBundleSource = cfg.UdockerBundleSource
 	provision.SetSSHProxy(cfg.SSHProxy)
@@ -298,7 +317,7 @@ func New(cfg Config, log *slog.Logger) (*App, error) {
 	a.recovery = recoverer
 
 	metadataClient := &http.Client{Transport: outbound.Transport(func() (proto.NetworkConfig, error) { return planning.ControlPlaneNetwork(st) }, cfg.OutboundAllowPrivateHosts...)}
-	handler := api.Router(api.Deps{
+	apiDeps := api.Deps{
 		Store:         st,
 		Bus:           b,
 		Log:           log,
@@ -306,8 +325,8 @@ func New(cfg Config, log *slog.Logger) (*App, error) {
 		AgentConnect:  h.ServeWS,
 		InstallSh:     a.installHandler(),
 		RecentRejects: func() []dto.AgentReject { return agentRejectDTOs(h.RecentRejects()) },
-		UpgradeErrors: h.UpgradeErrors,
-		UIHandler:     withDL(dlDir, offlinepkg.NewServer(filepath.Join(cfg.DataDir, "offline"), version.String(), func(name string) ([]byte, error) { return agentbin.Read(dlDir, name) }), webui.Handler()),
+		AgentUpgrades: api.AgentUpgradeHooks{Service: agentUpgradeAPI{service: a.agentUpgrades}, Errors: h.UpgradeErrors},
+		UIHandler:     withDL(dlDir, offlinepkg.NewServer(filepath.Join(cfg.DataDir, "offline"), version.String(), readAgent), webui.Handler(), a.agentUpgrades.DownloadBinary),
 		Online:        h.Online,
 		KickNode:      h.Kick,
 		NodeSync:      h,
@@ -342,8 +361,9 @@ func New(cfg Config, log *slog.Logger) (*App, error) {
 		OpenTerminal:         h.OpenTerminal,
 		NodeCaps:             h.NodeCaps,
 		Terminal:             webterm.New(st),
-		ProxyV1:              px.Handler(),
-		ProxyModels:          px.ModelsHandler(),
+		WakeHeld:             wakeHeldBy(px),
+		ProxyV1:              dataPlane(px.ModelsHandler(), batches.V1Handler(batchAuth(px)), px.Handler()),
+		Batches:              batchConsole{batches},
 		PlaygroundV1:         px.PlaygroundHandler(box),
 		NodePrecheck:         nodePrechecker,
 		NodeInstaller:        nodeInstaller,
@@ -359,6 +379,9 @@ func New(cfg Config, log *slog.Logger) (*App, error) {
 		Monitor:              monitorService{monSvc},
 		Telemetry:            telemetry,
 		Analytics:            newAnalyticsAPI(ops, st, obs, cfg.DataDir),
+		SchedulingActivity:   ops.sched,
+		CardHealth:           a.cards,
+		Experience:           experienceLauncher(cfg, log),
 		UsageReport:          a.usage,
 		Notices:              a.notices,
 		AI:                   ai,
@@ -366,14 +389,14 @@ func New(cfg Config, log *slog.Logger) (*App, error) {
 		AISecretbox:          box,
 		BenchmarkArtifactDir: filepath.Join(cfg.DataDir, "benchmark-artifacts"),
 		Recovery:             recoverer,
-	}, auth.SessionPolicy{IdleTimeout: cfg.SessionIdleTimeout, MaxLifetime: cfg.SessionMaxLifetime, Proxies: proxies})
-	handler = api.WithSecurityHeaders(proxies, accessLogHandler(log, a.routeByFunction(handler)))
-
-	a.http = &http.Server{
-		Handler: handler,
-		// No read/write timeouts: the agent WS and SSE are long-lived. The WS
-		// route bypasses these via hijacking; SSE flushes keepalives.
 	}
+	handler := api.Router(apiDeps, auth.SessionPolicy{IdleTimeout: cfg.SessionIdleTimeout, MaxLifetime: cfg.SessionMaxLifetime, Proxies: proxies, Cookie: cfg.sessionCookie()})
+	a.scaleReplicas = planning.Scaling{Store: st, Resolve: networks.Resolve, Online: h.Online}.ScaleScheduled
+	handler = api.WithSecurityHeaders(proxies, accessLogHandler(log, a.routeByFunction(cfg.experienceGuard(handler))))
+
+	// No read/write timeouts: the agent WS and SSE are long-lived. The WS
+	// route bypasses these via hijacking; SSE flushes keepalives.
+	a.http = &http.Server{Handler: handler}
 	return a, nil
 }
 
@@ -441,9 +464,22 @@ func (a *App) Run(ctx context.Context) error {
 	}
 	// Background: reconcile deployments → instances.
 	goBG(func() { a.ctrl.Run(ctx) })
+	goBG(func() { a.agentUpgrades.Run(ctx) })
 	// Background: verify each PD prefill instance's KV handoff once.
 	goBG(func() { runPDVerifier(ctx, a.store, a.proxy, a.obs.tsdb) })
-	goBG(func() { a.health.Run(ctx) })  // Background: the deployments' health checks.
+	// Background: schedules, waiting wakes, residency.
+	waits := a.ctrl.PlacementWaits()
+	goBG(func() {
+		runAutomation(ctx, a.store, a.proxy, a.proxyAcct, api.HostMemory(a.obs.latestMetrics), a.scaleReplicas, waits, a.log)
+	}) // Background: schedules, waiting wakes, residency.
+	goBG(func() { a.health.Run(ctx) }) // Background: the deployments' health checks.
+	goBG(func() { a.cards.run(ctx) })  // Background: the cards' failure records.
+	// Background: the batches in progress, resumed from their checkpoints.
+	if err := a.batches.Start(ctx); err != nil {
+		a.log.Error("batch executor not started", "err", err)
+	} else {
+		goBG(func() { <-ctx.Done(); a.batches.Wait() })
+	}
 	goBG(func() { a.usage.Run(ctx) })   // Background: the daily usage report.
 	goBG(func() { a.notices.Run(ctx) }) // Background: the notices' refresh.
 	// Background: prune metrics/logs beyond the retention window
@@ -471,6 +507,7 @@ func (a *App) Run(ctx context.Context) error {
 	if a.obs != nil {
 		goBG(func() { a.ops.run(ctx) })
 		goBG(func() { a.ops.backfill(ctx) })
+		goBG(func() { a.ops.replayScheduling(ctx) })
 		goBG(func() { a.obs.logIngestLoop(ctx) })
 		go func() {
 			defer close(metricsDone)
@@ -553,48 +590,5 @@ func (a *App) Run(ctx context.Context) error {
 		a.stopMetricsIngest(metricsCancel, metricsDone)
 		bg.wait()
 		return err
-	}
-}
-
-// eventRetentionLoop bounds the deployment event timeline. Events are history
-// and are deliberately kept when their deployment is deleted, so this is what
-// stops the table growing for the life of the installation. The bounds (180
-// days / 50 GiB by default) are operator-tunable in settings.
-func (a *App) eventRetentionLoop(ctx context.Context) {
-	const interval = 6 * time.Hour
-	sweep := func() {
-		n, err := a.store.SweepEventRetention(time.Now())
-		if err != nil {
-			a.log.Warn("event retention sweep failed", "err", err)
-			return
-		}
-		if n > 0 {
-			a.log.Info("event retention sweep", "removed", n)
-		}
-	}
-	sweep()
-	t := time.NewTicker(interval)
-	defer t.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-t.C:
-			sweep()
-		}
-	}
-}
-
-func (a *App) staleLoop(ctx context.Context) {
-	t := time.NewTicker(a.cfg.StaleCheckInterval)
-	defer t.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-t.C:
-			// Nodes with a live session heartbeat within 90s stay online.
-			_ = a.store.MarkStaleOffline(ctx, a.cfg.StaleAfter)
-		}
 	}
 }

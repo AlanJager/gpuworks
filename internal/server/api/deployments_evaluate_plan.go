@@ -10,33 +10,35 @@ import (
 	placementeval "gpuworks.ai/gpuworks/internal/server/placement"
 	"gpuworks.ai/gpuworks/internal/server/planning"
 	"gpuworks.ai/gpuworks/internal/server/store"
+	"gpuworks.ai/gpuworks/internal/server/yieldpolicy"
 )
 
 // evaluatePlanEnv is the state the preview's single plan call reads.
 type evaluatePlanEnv struct {
-	ctx              context.Context
-	writer           http.ResponseWriter
-	request          *dto.DeployRequest
-	response         *dto.EvaluateResponse
-	engine           deploy.Engine
-	model            *store.Model
-	node             *store.Node
-	nodeFound        bool
-	profileNode      *store.Node
-	imageCached      *bool
-	nodeImageCached  *bool
-	selection        templateSelection
-	placement        planning.Placement
-	quick            deploy.LaunchConfig
-	userExtraArgs    []string
-	servedName       string
-	requestOverrides deploy.ContainerOverrides
-	modelMount       string
-	componentMounts  []proto.MountSpec
-	gpuCount         int
-	resolver         string
-	templateResidual []string
-	errs             *evaluateFieldErrors
+	ctx               context.Context
+	writer            http.ResponseWriter
+	request           *dto.DeployRequest
+	excludeDeployment uint
+	response          *dto.EvaluateResponse
+	engine            deploy.Engine
+	model             *store.Model
+	node              *store.Node
+	nodeFound         bool
+	profileNode       *store.Node
+	imageCached       *bool
+	nodeImageCached   *bool
+	selection         templateSelection
+	placement         planning.Placement
+	quick             deploy.LaunchConfig
+	userExtraArgs     []string
+	servedName        string
+	requestOverrides  deploy.ContainerOverrides
+	modelMount        string
+	componentMounts   []proto.MountSpec
+	gpuCount          int
+	resolver          string
+	templateResidual  []string
+	errs              *evaluateFieldErrors
 }
 
 // evaluatePlanResult is what the plan leaves behind: the pieces of handler
@@ -73,14 +75,14 @@ func (a *apiHandlers) evaluatePlan(env evaluatePlanEnv) (evaluatePlanResult, boo
 		previewSelection := snapshotTemplateSelection(env.selection, resp.Image)
 		previewSelection.ExtraArgs = env.templateResidual
 		previewPlan, planErr := planning.PlanLaunch(env.ctx, a.d.Store, a.networks(), planning.LaunchRequest{
-			Preview: true, Engine: env.engine.Name(), Model: env.model, Node: node,
+			Preview: true, ExcludeDeploymentID: env.excludeDeployment, Engine: env.engine.Name(), Model: env.model, Node: node,
 			Selection: previewSelection, Placement: env.placement, Quick: env.quick, ExtraArgs: env.userExtraArgs,
 			// Rank zero's share of a multi-node group: the node count decides
 			// how many of the TP×PP GPUs land here.
 			Topology:   planning.DistTopology{NNodes: max(req.NNodes, 1), Role: "standalone"},
 			Source:     planning.LaunchSourceFromRequest(resp.Image, env.requestOverrides),
 			ModelMount: env.modelMount, ComponentMounts: env.componentMounts,
-			ServedName: env.servedName, Sleepable: req.Sleepable,
+			ServedName: env.servedName, Sleepable: req.Sleepable, YieldPolicy: requestYield(req.YieldPolicy), ExplainHolders: true,
 			MasterAddr: req.MasterAddr, MasterPort: req.MasterPort,
 			VRAMLimitBytes: int64(req.VRAMLimitGiB * (1 << 30)), PartitionBackend: req.PartitionBackend,
 			RuntimeImageCached: out.nodeImageCached, APIContract: previewSelection.APIContract,
@@ -103,7 +105,13 @@ func (a *apiHandlers) evaluatePlan(env evaluatePlanEnv) (evaluatePlanResult, boo
 		out.placement = previewPlan.Output.Placement
 		out.modelWeightBytes = previewPlan.Output.Breakdown.WeightBytes
 		resp.Breakdown = previewPlan.Output.Breakdown
-		resp.Plan = previewPlan.Output.Result
+		result := previewPlan.Output.Result
+		if !previewPlan.Output.Fits() {
+			// Why it does not fit, as the controller would say it: waiting for
+			// holders to yield, or for sleepers' cards, reads as such.
+			result.Message = previewPlan.Output.Refusal(node, yieldpolicy.Policy{Yield: requestYield(req.YieldPolicy)})
+		}
+		resp.Plan = result
 		if len(previewPlan.Output.Eviction) > 0 {
 			resp.Eviction = make([]dto.EvictionSuggestion, 0, len(previewPlan.Output.Eviction))
 			for _, suggestion := range previewPlan.Output.Eviction {

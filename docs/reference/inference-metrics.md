@@ -80,6 +80,7 @@
 | `tpot_ms` | histogram | milliseconds | 网关口径的 TPOT：每个流式回复从第一个到最后一个生成 token 的时间，除以第一个之后的输出 token 数，兜底用 |
 | `ttft_ms` | histogram | milliseconds | 请求交给实例到流式回复第一个生成 token 的耗时 |
 | `usage_missing_total` | counter | requests | 完整收到、但没有带 `usage` 的回复数；token 计数少算的就是这些请求 |
+| `wake_hold_wait_ms` | histogram | milliseconds | 网关为正在唤醒的部署挂起的请求，从被挂起到被放行、被拒绝或客户端离开的等待时间；每个被挂起的请求都计一次 |
 
 ### token 用量的读取与计数
 
@@ -152,3 +153,18 @@ agent 每次抓取后，对没有被引擎直接报告的指标按下表计算�
 | 目标 | 输入 | 计算 |
 |---|---|---|
 | `gpu_cache_usage_percent` | `kv_capacity_tokens`、`kv_free_tokens` | `(capacity − free) / capacity`；容量 ≤ 0 或空闲量不在 `[0, capacity]` 时不出值 |
+
+### 排队请求数与逐请求排队耗时
+
+`requests_waiting`（例如 Strata `/metrics` 的 `live.queued`）是采样时刻的排队请求数，
+不是毫秒数，也不能用它或服务级直方图给某一个请求补写 `engine_queue_ms`。
+请求记录里的该字段只来自同一个回复的 `queue_seconds`；未上报或显式 `null` 均为未知，
+显式 `0` 才表示已测得零排队。只有排队耗时而没有 Prefill 耗时时，时间条保留已知的排队，
+剩余时间继续标为未拆分的等待。
+
+未经适配的 Strata 0.1.38 标准回复只有 `timings.prompt_ms` 和 `timings.predicted_ms`，因此排队耗时未知，
+等待中还可能包含预处理及网络耗时，不能直接把全部等待改名为引擎排队。
+更新后的内置 Strata 目录携带经源码哈希校验的运行时补丁，在同一回复中提供首次生成准入前的
+`timings.queue_ms`；它不包含模型加载及后续 MCP 轮次排队，也不启用正文监控。
+旧实例需更新部署并重建后才会输出该字段。具体源码证据及接入边界见
+[逐请求引擎排队耗时的观测边界](../dev/engine-queue-observation.md)。

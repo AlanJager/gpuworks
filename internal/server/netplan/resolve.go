@@ -199,7 +199,7 @@ func findOverride(inv *proto.NetInventory, iface, ip string) (string, string, bo
 // findHCA accepts "mlx5_0" (its first port) or "mlx5_0:1" on a host RDMA
 // network, and a card's name ("npu3") on an accelerator one.
 func findHCA(inv *proto.NetInventory, networkType, hca string) (string, bool) {
-	if networkType == TypeAcceleratorRDMA {
+	if IsAccelerator(networkType) {
 		for _, p := range inv.AcceleratorPorts {
 			if p.Name == hca {
 				return p.Name, true
@@ -220,8 +220,9 @@ func findHCA(inv *proto.NetInventory, networkType, hca string) (string, bool) {
 }
 
 // portsLinkLayer names the link layer of the selected ports, "" when unknown
-// or when the selection mixes both kinds. Accelerator ports are RoCE.
-func portsLinkLayer(inv *proto.NetInventory, hcas []string) string {
+// or when the selection mixes both kinds. Accelerator HCCS ports report their
+// own fabric layer separately from the card's RoCE port.
+func portsLinkLayer(inv *proto.NetInventory, hcas []string, networkType string) string {
 	if inv == nil {
 		return ""
 	}
@@ -229,7 +230,11 @@ func portsLinkLayer(inv *proto.NetInventory, hcas []string) string {
 	for _, hca := range hcas {
 		for _, p := range inv.AcceleratorPorts {
 			if p.Name == hca {
-				layers[LinkLayerRoCE] = true
+				if networkType == TypeAcceleratorHCCS {
+					layers[LinkLayerHCCS] = true
+				} else {
+					layers[LinkLayerRoCE] = true
+				}
 			}
 		}
 		for _, p := range inv.RDMAPorts {

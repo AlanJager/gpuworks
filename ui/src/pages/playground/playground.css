@@ -61,19 +61,24 @@
   border-bottom: 0;
   background: #fff;
 }
-.playground-chat-grid { display: grid; width: 100%; flex: 1; min-height: 420px; grid-template-rows: minmax(0, 1fr); gap: 10px; }
+/* At very short heights the page grows instead of clipping the message list. */
+.playground-chat-grid { display: grid; width: 100%; flex: 1; min-height: 180px; grid-template-rows: minmax(0, 1fr); gap: 10px; }
 .playground-chat-grid.columns-1 { grid-template-columns: minmax(0, 1fr); }
 .playground-chat-grid.columns-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .playground-chat-grid.columns-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .playground-chat-pane {
   position: relative;
+  display: flex;
+  flex-direction: column;
   min-width: 0;
+  min-height: 0;
   overflow: hidden;
   border: 1px solid #dbdde0;
   background: #fff;
 }
 .playground-pane-toolbar {
   display: flex;
+  flex: none;
   height: 48px;
   align-items: center;
   gap: 8px;
@@ -94,10 +99,9 @@
   font-weight: 600;
 }
 .playground-model-select { min-width: 0; flex: 1; }
-.playground-sleep-alert { border-radius: 0; border-width: 0 0 1px; }
-.playground-pane-body { display: grid; height: calc(100% - 48px); grid-template-columns: minmax(0, 1fr); }
+.playground-sleep-alert { flex: none; border-radius: 0; border-width: 0 0 1px; }
+.playground-pane-body { display: grid; flex: 1; min-height: 0; grid-template-rows: minmax(0, 1fr); grid-template-columns: minmax(0, 1fr); }
 .playground-pane-body.has-parameters { grid-template-columns: minmax(260px, 1fr) minmax(220px, 280px); }
-.playground-sleep-alert + .playground-pane-body { height: calc(100% - 92px); }
 .playground-message-list { min-width: 0; overflow: auto; padding: 16px; }
 .playground-message-list > .ant-empty { margin-top: 100px; }
 .playground-message { max-width: 88%; margin-bottom: 18px; padding: 10px 12px; background: #fff; }
@@ -192,12 +196,9 @@
 .playground-preset:hover { border-color: #005bd4; color: #005bd4; }
 .playground-json-input textarea { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .playground-stop-button { position: absolute; bottom: 12px; left: 50%; z-index: 3; transform: translateX(-50%); box-shadow: 0 2px 8px rgba(0,0,0,.15); }
-/* In flow at the bottom of the chat column; sticky only kicks in on the
-   short-viewport fallback where the column overflows and the window scrolls,
-   keeping the composer pinned above the viewport bottom. */
+/* Reserve the composer's height in the column; only the message list scrolls. */
 .playground-composer {
-  position: sticky;
-  bottom: 12px;
+  position: relative;
   z-index: 5;
   flex: none;
   margin-top: 10px;
@@ -253,8 +254,6 @@
   .playground-mode .ant-segmented-group { display: grid; grid-template-columns: repeat(2, 1fr); }
   .playground-chat-grid.columns-2, .playground-chat-grid.columns-3 { grid-template-columns: repeat(var(--playground-columns, 2), minmax(320px, 1fr)); overflow-x: auto; }
   .playground-chat-grid.columns-3 { --playground-columns: 3; }
-  .playground-chat-grid { min-height: 560px; }
-  .playground-composer { bottom: 8px; }
   .playground-audio-page { grid-template-columns: 1fr; }
   .playground-audio-workbench, .playground-transcript { min-height: 420px; }
   .playground-audio-input { min-height: 350px; padding: 16px; }

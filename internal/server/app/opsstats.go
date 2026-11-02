@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/server/rollup"
+	"gpuworks.ai/gpuworks/internal/server/schedactivity"
 	"gpuworks.ai/gpuworks/internal/server/statsdb"
 	"gpuworks.ai/gpuworks/internal/server/store"
 	"gpuworks.ai/gpuworks/internal/server/tsdb"
@@ -33,6 +34,8 @@ type opsStats struct {
 	requests *rollup.Requests
 	gpus     *rollup.GPUs
 	gpuTimes *rollup.GPUTimes
+	// sched is the scheduling activity (schedactivity.go).
+	sched *schedactivity.Service
 	// cardModels names each card's model as the inventory last did, for the
 	// GPU rows a flush writes; refreshed with every card-time sample.
 	cardModels atomic.Pointer[map[rollup.GPUKey]string]
@@ -113,6 +116,7 @@ func newOpsStats(dataDir string, metricsRetention time.Duration, st *store.Store
 	o.liveSinceMS = state.LiveSinceMS
 	o.applyRequestLogLimits(current)
 	obs.onSamples = o.observeSamples
+	o.newSchedulingActivity()
 	return o, nil
 }
 
@@ -371,6 +375,7 @@ func (o *opsStats) run(ctx context.Context) {
 			if err := o.flushStats(ctx); err != nil {
 				o.log.Warn("statistics flush failed; kept for the next one", "err", err)
 			}
+			o.flushScheduling(ctx, false)
 		case at := <-gpuTick.C:
 			if err := o.sampleGPUTime(at, gpuTimeEvery); err != nil {
 				o.log.Warn("card time sample failed", "err", err)
@@ -393,6 +398,7 @@ func (o *opsStats) finalFlush() {
 	if err := o.flushStats(ctx); err != nil {
 		o.log.Warn("final statistics flush failed", "err", err)
 	}
+	o.flushScheduling(ctx, true)
 }
 
 // rollupDays rolls up every finished day still within the hour retention
@@ -460,6 +466,7 @@ func (o *opsStats) rollupDay(ctx context.Context, day rollup.Day, loc *time.Loca
 		if err := o.flushStats(ctx); err != nil {
 			return err
 		}
+		o.flushScheduling(ctx, false)
 		return o.stats.RollupDay(ctx, day, loc)
 	}
 	return nil

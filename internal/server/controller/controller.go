@@ -18,6 +18,7 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/network"
+	"gpuworks.ai/gpuworks/internal/server/placewait"
 	"gpuworks.ai/gpuworks/internal/server/planning"
 	"gpuworks.ai/gpuworks/internal/server/prepobs"
 	"gpuworks.ai/gpuworks/internal/server/provider"
@@ -37,7 +38,8 @@ type HubPusher interface {
 
 // Controller reconciles deployments and instances.
 type Controller struct {
-	cacheCopies cacheCopyClaims
+	cacheCopies   cacheCopyClaims
+	downloadUsers downloadDependencyCache
 	// placements and evictions are what the deployment view shows of
 	// preparation the controller itself drives (preparation_view.go).
 	placements preparationPlacements
@@ -48,12 +50,20 @@ type Controller struct {
 	log        *slog.Logger
 	// servingDial reaches serving forwarders (checkServingPath); nil dials
 	// with the default dialer. Tests replace it.
-	servingDial  servingdial.DialFunc
-	q            *workq
-	cacheQ       *workq
+	servingDial servingdial.DialFunc
+	q           *workq
+	cacheQ      *workq
+	// waits are the deployments whose replica waits for others to give up
+	// cards (placement_wait.go), read by the residency arbiter.
+	waits        *placewait.Registry
 	retryBackoff time.Duration
 	offlineGrace time.Duration
-	maxAttempts  int
+	// watchingSince is when this server began watching its nodes (Run). A
+	// node last seen before then counts as seen then: how long it was gone
+	// while the server itself was down is unknown, and its agent has not had
+	// the chance to reconnect yet.
+	watchingSince time.Time
+	maxAttempts   int
 	// enginePorts is the host-port range engine instances are allocated
 	// from. The hub reads it through EnginePorts to tell agents which
 	// listeners to report, so it is atomic.
@@ -96,6 +106,8 @@ type Controller struct {
 	// (image_acquisition.go).
 	peerCool   pairCooldown
 	imageWaits imageWaits
+	// failover is node replacement's memory (node_failover.go).
+	failover nodeFailover
 }
 
 func (c *Controller) SetInferenceNodeLifecycleHandler(handler provider.InferenceNodeLifecycleHandler) {
@@ -133,6 +145,10 @@ type modelSyncRun struct {
 
 const modelSyncConfirmationTimeout = 2 * time.Minute
 
+// quotaChangeRemovalPending is what an instance retired for a partition
+// change says while it waits for its node to confirm the teardown.
+const quotaChangeRemovalPending = "quota change removal pending"
+
 // New builds a Controller.
 func New(st *store.Store, hub HubPusher, log *slog.Logger) *Controller {
 	if log == nil {
@@ -143,6 +159,7 @@ func New(st *store.Store, hub HubPusher, log *slog.Logger) *Controller {
 		retryBackoff: 15 * time.Second, offlineGrace: 2 * time.Minute,
 		maxAttempts: 3, modelSyncs: map[string]*modelSyncRun{}, sleepPushed: map[uint]map[string]sleepOrder{},
 		now: time.Now, observation: newObservationRefresh(), evictions: prepobs.NewPhases[store.FileRef](),
+		waits: placewait.New(),
 	}
 	c.SetEnginePorts(defaultEnginePorts.Start, defaultEnginePorts.End)
 	return c
@@ -177,6 +194,7 @@ func (c *Controller) SetStartTimeout(seconds int) {
 // Run subscribes to change events and processes the reconcile queue until ctx
 // is cancelled.
 func (c *Controller) Run(ctx context.Context) {
+	c.watchingSince = c.now()
 	// A server App may be stopped and started again in-process (and embedders
 	// commonly do this during graceful restarts). The previous worker closes its
 	// queue on shutdown; replace that closed queue before priming persisted
@@ -316,6 +334,9 @@ func (c *Controller) reconcileDeployment(ctx context.Context, id uint) error {
 		if !errors.Is(err, store.ErrNotFound) {
 			return err
 		}
+		if err := c.withdrawDeploymentDownloads(ctx, id); err != nil {
+			return err
+		}
 		if err := c.withdrawCacheCopies(ctx, id); err != nil {
 			return err
 		}
@@ -368,8 +389,13 @@ func (c *Controller) reconcileDeployment(ctx context.Context, id uint) error {
 				c.q.add(depKey(id))
 				return nil
 			}
-			for _, uuid := range waiting {
-				if err := c.store.SetInstanceState(uuid, proto.InstRemoving, "quota change removal pending"); err != nil {
+			for _, inst := range insts {
+				// Each retry while the old generation exits finds it already
+				// marked; writing it again only repeats the same timeline entry.
+				if !slices.Contains(waiting, inst.UUID) || (inst.State == proto.InstRemoving && inst.Message == quotaChangeRemovalPending) {
+					continue
+				}
+				if err := c.store.SetInstanceState(inst.UUID, proto.InstRemoving, quotaChangeRemovalPending); err != nil {
 					return err
 				}
 			}
@@ -385,6 +411,9 @@ func (c *Controller) reconcileDeployment(ctx context.Context, id uint) error {
 	// Stopped/deleting deployments: tear down all their instances. A deleting
 	// deployment is removed only after the agent confirms the teardown.
 	if dep.State == store.DeployStopped || dep.State == store.DeployDeleting {
+		if err := c.withdrawDeploymentDownloads(ctx, dep.ID); err != nil {
+			return err
+		}
 		if err := c.withdrawCacheCopies(ctx, dep.ID); err != nil {
 			return err
 		}

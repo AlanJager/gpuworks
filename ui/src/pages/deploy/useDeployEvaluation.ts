@@ -14,6 +14,9 @@ import { applyEvaluateFormValues } from "./deployHelpers";
 // and the form name differ only where noted here.
 const formFieldName: Record<string, string> = {
   node_uuids: "distributed_nodes",
+  // The automatic placement of a multi-node or PD request: nothing to place
+  // on, a missing TP, units that span nodes - beside the auto / manual switch.
+  placement_mode: "units_placement",
   node_requirements: "node_labels",
   "placement.tp": "tp",
   "placement.pp": "pp",
@@ -55,12 +58,17 @@ export default function useDeployEvaluation({
   signal,
   buildPayload,
   translate,
+  applyFormValues = () => true,
 }: {
   form: FormInstance;
   // The watched form values: one identity per draft, driving the debounce.
   signal: unknown;
   buildPayload: () => Record<string, unknown> | null;
   translate: APIErrorTranslator;
+  // Whether the answer's form_values may be written onto the form. A form
+  // opened from a deployment's draft already holds the deployment's values,
+  // and an answer built from dictionary defaults must not replace them.
+  applyFormValues?: () => boolean;
 }) {
   const [result, setResult] = useState<EvaluateResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -159,8 +167,16 @@ export default function useDeployEvaluation({
           flaggedFieldsRef.current = [...flagged];
           if (fields.length) form.setFields(fields);
           if (unattributed.length) setError(unattributed.join(" · "));
-          applyEvaluateFormValues(form, response, previousKeys);
-          appliedKeysRef.current = Object.keys(response.form_values ?? {});
+          // A manual command owns its launch. Its evaluated defaults describe
+          // that command, not the structured draft restored by explicit discard.
+          // Keep the last structured keys so its next answer can clear stale ones.
+          const overrides = payload.container_overrides as
+            | { command_mode?: string }
+            | undefined;
+          if (overrides?.command_mode !== "manual" && applyFormValues()) {
+            applyEvaluateFormValues(form, response, previousKeys);
+            appliedKeysRef.current = Object.keys(response.form_values ?? {});
+          }
         })
         .catch((reason: Error) => {
           if (

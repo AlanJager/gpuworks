@@ -70,7 +70,49 @@ test("a fractional TiB limit displays the typed number", async () => {
   await user.type(input, "1.2");
   assert.equal(input.value, "1.2");
   assert.equal(value, Math.round(1.2 * 1024 ** 4));
+  await user.tab();
+  assert.equal(input.value, "1.2", "integer-byte conversion keeps the entered decimal readable after blur");
 });
+
+test("switching a small cache limit to TiB preserves its displayed capacity and byte value", async () => {
+  const updates: (number | undefined)[] = [];
+  function Harness() {
+    const [value, setValue] = useState<number | undefined>(2 * GIB);
+    return <PolicyFields value={value} onChange={(next) => { updates.push(next); setValue(next); }} />;
+  }
+  render(<I18nextProvider i18n={i18n}><Harness /></I18nextProvider>);
+  const user = userEvent.setup({ document: dom.window.document });
+  const input = screen.getByRole("spinbutton", { name: s.cachePolicy.limit }) as HTMLInputElement;
+  assert.equal(input.value, "2");
+  for (let repeat = 0; repeat < 2; repeat++) {
+    await user.click(screen.getByRole("combobox", { name: s.cachePolicy.unit }));
+    await user.click((await screen.findAllByText("TiB")).at(-1)!);
+    assert.equal(input.value, "0.001953125");
+    await user.click(screen.getByRole("radio", { name: s.cachePolicy.custom }));
+    assert.equal(input.value, "0.001953125", "blur must not round the converted value to zero");
+    await user.click(screen.getByRole("combobox", { name: s.cachePolicy.unit }));
+    await user.click((await screen.findAllByText("GiB")).at(-1)!);
+    assert.equal(input.value, "2");
+  }
+  assert.deepEqual(updates, [], "unit switches change display only, not the byte draft");
+});
+
+for (const bytes of [1, 2 * GIB + 1, 2 * 1024 ** 4 - 1]) {
+  test(`cache unit conversion retains all ${bytes} bytes without changing the draft`, async () => {
+    const updates: (number | undefined)[] = [];
+    render(<I18nextProvider i18n={i18n}><PolicyFields value={bytes} onChange={(next) => updates.push(next)} /></I18nextProvider>);
+    const user = userEvent.setup({ document: dom.window.document });
+    const input = screen.getByRole("spinbutton", { name: s.cachePolicy.limit }) as HTMLInputElement;
+    for (const [name, factor] of [["TiB", 1024 ** 4], ["GiB", GIB]] as const) {
+      await user.click(screen.getByRole("combobox", { name: s.cachePolicy.unit }));
+      await user.click((await screen.findAllByText(name)).at(-1)!);
+      await user.click(screen.getByRole("radio", { name: s.cachePolicy.custom }));
+      assert.equal(Math.round(Number(input.value) * factor), bytes, "display must round-trip to exactly the saved integer bytes");
+      assert.ok(Number(input.value) > 0, "a positive byte limit must never display as unlimited or zero");
+    }
+    assert.deepEqual(updates, []);
+  });
+}
 
 test("batch selection spans pages and modifies only the chosen field while preserving membership", async () => {
   const nodes = Array.from({ length: 26 }, (_, i) => node(`n${i}`, `gpu-${i.toString().padStart(2, "0")}`)) as Node[];

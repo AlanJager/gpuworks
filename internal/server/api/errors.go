@@ -11,15 +11,22 @@ import (
 // old clients receive an actionable error string; the UI translates the stable
 // code and params from common.json.
 const (
-	ErrorModelCacheRetryBlocked                 = "MODEL_CACHE_RETRY_BLOCKED"
-	ErrorNodeLabelsInvalid                      = "NODE_LABELS_INVALID"
-	ErrorNodeRPCUnavailable                     = "NODE_RPC_UNAVAILABLE"
-	ErrorNodeOffline                            = "NODE_OFFLINE"
-	ErrorNodeSchedulable                        = "NODE_SCHEDULABLE"
-	ErrorNodeRuntimeInvalid                     = "NODE_RUNTIME_INVALID"
-	ErrorNodeDeleteForceInvalid                 = "NODE_DELETE_FORCE_INVALID"
-	ErrorNodeAcceleratorInvalid                 = "NODE_ACCELERATOR_INVALID"
-	ErrorNodeAcceleratorNotOnHost               = "NODE_ACCELERATOR_NOT_ON_HOST"
+	ErrorAgentUpgradeRefused      = "AGENT_UPGRADE_REFUSED"
+	ErrorModelCacheRetryBlocked   = "MODEL_CACHE_RETRY_BLOCKED"
+	ErrorNodeLabelsInvalid        = "NODE_LABELS_INVALID"
+	ErrorNodeRPCUnavailable       = "NODE_RPC_UNAVAILABLE"
+	ErrorNodeOffline              = "NODE_OFFLINE"
+	ErrorNodeSchedulable          = "NODE_SCHEDULABLE"
+	ErrorNodeRuntimeInvalid       = "NODE_RUNTIME_INVALID"
+	ErrorNodeDeleteForceInvalid   = "NODE_DELETE_FORCE_INVALID"
+	ErrorNodeAcceleratorInvalid   = "NODE_ACCELERATOR_INVALID"
+	ErrorNodeAcceleratorNotOnHost = "NODE_ACCELERATOR_NOT_ON_HOST"
+	// ErrorCardNotOwned answers an operator making schedulable a card that is
+	// not the node's to use (lent to a virtual machine, without a driver).
+	ErrorCardNotOwned = "CARD_NOT_OWNED"
+	// ErrorCardChecksUnsupported answers a request about a card's checks to a
+	// node whose agent predates them.
+	ErrorCardChecksUnsupported                  = "CARD_CHECKS_UNSUPPORTED"
 	ErrorNodeAcceleratorHasInstances            = "NODE_ACCELERATOR_HAS_INSTANCES"
 	ErrorNodeDeleteHasInstances                 = "NODE_DELETE_HAS_INSTANCES"
 	ErrorNodeDeleteCacheBusy                    = "NODE_DELETE_CACHE_BUSY"
@@ -45,6 +52,7 @@ const (
 	ErrorNodeInstallExistingAgentUnknown        = "NODE_INSTALL_EXISTING_AGENT_UNKNOWN"
 	ErrorNodeInstallExistingAgentSelf           = "NODE_INSTALL_EXISTING_AGENT_SELF"
 	ErrorNodeInstallExistingAgentSameDir        = "NODE_INSTALL_EXISTING_AGENT_SAME_DIR"
+	ErrorNodeInstallDirUntraversable            = "NODE_INSTALL_DIR_UNTRAVERSABLE"
 	ErrorNodeStoreUnavailable                   = "NODE_STORE_UNAVAILABLE"
 	ErrorNodeRecoveryUnavailable                = "NODE_RECOVERY_UNAVAILABLE"
 	ErrorPlatformSSHKeyMissing                  = "PLATFORM_SSH_KEY_MISSING"
@@ -57,6 +65,9 @@ const (
 	ErrorPlatformTokenScopeInvalid              = "PLATFORM_TOKEN_SCOPE_INVALID"
 	ErrorPlatformTokenNameInvalid               = "PLATFORM_TOKEN_NAME_INVALID"
 	ErrorAPIKeyNameRequired                     = "API_KEY_NAME_REQUIRED"
+	ErrorAPIKeyScopeInvalid                     = "API_KEY_SCOPE_INVALID"
+	ErrorAPIKeyDeploymentUnknown                = "API_KEY_DEPLOYMENT_UNKNOWN"
+	ErrorAPIKeyNotFound                         = "API_KEY_NOT_FOUND"
 	ErrorPlatformTokenExpiryInvalid             = "PLATFORM_TOKEN_EXPIRY_INVALID"
 	ErrorPlatformTokenIDInvalid                 = "PLATFORM_TOKEN_ID_INVALID"
 	ErrorMCPDisabled                            = "MCP_DISABLED"
@@ -74,11 +85,11 @@ const (
 	ErrorDeploymentDeleting                     = "DEPLOYMENT_DELETING"
 	ErrorServedNameInUse                        = "SERVED_NAME_IN_USE"
 	ErrorRestartStrategyInvalid                 = "RESTART_STRATEGY_INVALID"
-	ErrorReplicasTooFew                         = "REPLICAS_TOO_FEW"
+	ErrorReplicasTooFew                         = messages.ErrorReplicasTooFew
 	ErrorReplicasBodyShape                      = "REPLICAS_BODY_SHAPE"
-	ErrorReplicasRemoveInvalid                  = "REPLICAS_REMOVE_INVALID"
+	ErrorReplicasRemoveInvalid                  = messages.ErrorReplicasRemoveInvalid
 	ErrorReplicasChanged                        = "REPLICAS_CHANGED"
-	ErrorReplicasRemoveTooMany                  = "REPLICAS_REMOVE_TOO_MANY"
+	ErrorReplicasRemoveTooMany                  = messages.ErrorReplicasRemoveTooMany
 	ErrorUnitUnknown                            = "UNIT_UNKNOWN"
 	ErrorUnitNotFailed                          = "UNIT_NOT_FAILED"
 	ErrorUnitRetryNotActive                     = "UNIT_RETRY_NOT_ACTIVE"
@@ -90,6 +101,11 @@ const (
 	ErrorSleepInvalidLevel                      = "SLEEP_INVALID_LEVEL"
 	ErrorSleepInvalidMode                       = "SLEEP_INVALID_MODE"
 	ErrorWakeInsufficientGPUMemory              = "WAKE_INSUFFICIENT_GPU_MEMORY"
+	ErrorWakeGPUHeldOutside                     = "WAKE_GPU_HELD_OUTSIDE"
+	ErrorSleepHostMemoryInsufficient            = "SLEEP_HOST_MEMORY_INSUFFICIENT"
+	ErrorNodeReplacementInvalid                 = "NODE_REPLACEMENT_INVALID"
+	ErrorReplicasPlaceOnTooMany                 = messages.ErrorReplicasPlaceOnTooMany
+	ErrorReplicasPlaceOnRefused                 = messages.ErrorReplicasPlaceOnRefused
 	ErrorDistributedNodeCount                   = "DISTRIBUTED_NODE_COUNT"
 	ErrorDistributedTPRequired                  = "DISTRIBUTED_TP_REQUIRED"
 	ErrorMasterPortInvalid                      = "MASTER_PORT_INVALID"
@@ -176,6 +192,7 @@ const (
 	ErrorLocalStorageDisabled             = "LOCAL_STORAGE_DISABLED"
 	ErrorLocalModelFieldsRequired         = "LOCAL_MODEL_FIELDS_REQUIRED"
 	ErrorModelPathRequired                = "MODEL_PATH_REQUIRED"
+	ErrorModelFilePathOccupied            = "MODEL_FILE_PATH_OCCUPIED"
 	ErrorLocalModelMetadataRefresh        = "LOCAL_MODEL_METADATA_REFRESH"
 	ErrorModelMetadataUnavailable         = "MODEL_METADATA_UNAVAILABLE"
 	// ErrorModelMetadataUnreachable: the management node reached none of
@@ -232,6 +249,9 @@ const (
 	ErrorUsageReportReadOnly                    = "USAGE_REPORT_READ_ONLY"
 	ErrorUsageReportInvalid                     = "USAGE_REPORT_INVALID"
 	ErrorUsageReportUnavailable                 = "USAGE_REPORT_UNAVAILABLE"
+	ErrorExperienceUnavailable                  = "EXPERIENCE_UNAVAILABLE"
+	ErrorExperienceInvalid                      = "EXPERIENCE_INVALID"
+	ErrorExperienceFailed                       = "EXPERIENCE_FAILED"
 	ErrorNoticeIDsInvalid                       = "NOTICE_IDS_INVALID"
 	ErrorImageRefRequired                       = "IMAGE_REF_REQUIRED"
 	ErrorImageTagRequired                       = "IMAGE_TAG_REQUIRED"
@@ -259,6 +279,7 @@ const (
 	ErrorBenchmarkGPUCountNegative              = "BENCHMARK_GPU_COUNT_NEGATIVE"
 	ErrorBenchmarkDetailCapTooLarge             = "BENCHMARK_DETAIL_CAP_TOO_LARGE"
 	ErrorBenchmarkTargetInactive                = "BENCHMARK_TARGET_INACTIVE"
+	ErrorBenchmarkChatRequired                  = "BENCHMARK_CHAT_REQUIRED"
 	ErrorBenchmarkLeaderNotRunning              = "BENCHMARK_LEADER_NOT_RUNNING"
 	ErrorBenchmarkInstanceOrigin                = "BENCHMARK_INSTANCE_ORIGIN"
 	ErrorBenchmarkExternalURLRequired           = "BENCHMARK_EXTERNAL_URL_REQUIRED"
@@ -342,6 +363,16 @@ const (
 	ErrorEngineInvalid = "ENGINE_INVALID"
 	// ErrorExtraArgsInvalid answers extra-args text the parser cannot read.
 	ErrorExtraArgsInvalid = "EXTRA_ARGS_INVALID"
+	// ErrorExtraArgsJSONInvalid answers a JSON-valued engine flag typed into
+	// extra_args with a value that is not JSON ({flag}, {value}); it is
+	// produced by deploy.ValidateExtraArgsJSON.
+	ErrorExtraArgsJSONInvalid = "EXTRA_ARGS_JSON_INVALID"
+	// The Ascend sleep-mode codes are produced by deploy's vLLM launch
+	// preparation and spelled out here for the same inventory reason;
+	// TestAscendSleepCodesMatchTheirProducer asserts the pairs equal.
+	ErrorAscendSleepAdditionalConfigInvalid = "ASCEND_SLEEP_ADDITIONAL_CONFIG_INVALID"
+	ErrorAscendSleepWeightNZConflict        = "ASCEND_SLEEP_WEIGHT_NZ_CONFLICT"
+	ErrorAscendSleepExpandableSegments      = "ASCEND_SLEEP_EXPANDABLE_SEGMENTS"
 	// ErrorMountContainerPath and ErrorMountHostPath answer extra-mount rows
 	// whose path is not an absolute non-root directory; ErrorMountTargetNested
 	// answers two mount targets that contain each other.
@@ -354,6 +385,13 @@ const (
 	ErrorQuickParamPath = "QUICK_PARAM_PATH_INVALID"
 )
 
+// ErrorAIDefaultRequired answers a patch that would clear the default mark on
+// the only stored AI service. The console shows the switch on every row, and
+// clearing the last mark would leave the assistant with services stored and none
+// of them in use - a state the console cannot show and the operator cannot
+// repair except by marking another row first.
+const ErrorAIDefaultRequired = "AI_DEFAULT_REQUIRED"
+
 func productError(code, fallback string, params map[string]any) error {
 	return messages.NewProductError(code, fallback, params)
 }
@@ -365,6 +403,33 @@ func wrapProductError(code, fallback string, params map[string]any, cause error)
 func writeProductError(w http.ResponseWriter, status int, code, fallback string, params map[string]any) {
 	writeErr(w, status, productError(code, fallback, params))
 }
+
+// Automatic placement of multi-node and PD deployments (placement_mode
+// "auto"; deployments_auto_units.go).
+const (
+	ErrorUnitPlacementNone = messages.ErrorUnitPlacementNone
+	// ErrorAutoPlacementTPRequired: an automatic multi-node request states no
+	// placement.tp, so how many free GPUs each node needs is unknown.
+	ErrorAutoPlacementTPRequired  = "AUTO_PLACEMENT_TP_REQUIRED"
+	ErrorAutoPlacementPDMultiNode = messages.ErrorAutoPlacementPDMultiNode
+	// ErrorPlacementModeShape: PUT /deployments/{id}/placement-mode on a
+	// single-node deployment, which states its placement in its node
+	// requirements.
+	ErrorPlacementModeShape = "PLACEMENT_MODE_SHAPE"
+)
+
+// Deployment edit codes (GET /deployments/{id}/draft, PUT /deployments/{id}).
+const (
+	// ErrorDeploymentFieldNotEditable: an edit changes a field an existing
+	// deployment cannot change ({field}); cloning the deployment changes it.
+	ErrorDeploymentFieldNotEditable = "DEPLOYMENT_FIELD_NOT_EDITABLE"
+	// ErrorDeploymentChanged: the deployment's configuration changed since
+	// the draft the edit was made on was read.
+	ErrorDeploymentChanged = "DEPLOYMENT_CHANGED"
+	// ErrorDeploymentEditApplyInvalid: the edit asks to reach the instances
+	// in a way ({apply}) its plan does not offer ({options}).
+	ErrorDeploymentEditApplyInvalid = "DEPLOYMENT_EDIT_APPLY_INVALID"
+)
 
 // dGPU quota codes: why a deployment's dGPU quota could not be changed
 // (PUT /deployments/{id}/dgpu).
@@ -436,3 +501,28 @@ const (
 	// without a code of its own, or the transfer broke.
 	ErrorStorageFileOperationFailed = "STORAGE_FILE_OPERATION_FAILED"
 )
+
+// Batch codes (GET /batches, POST /batches, the Batch API's console side).
+const (
+	// ErrorBatchNotFound: no such batch, file or output file for the caller.
+	ErrorBatchNotFound = "BATCH_NOT_FOUND"
+	// ErrorBatchNotCancellable: the batch has finished or is assembling its
+	// results ({status}).
+	ErrorBatchNotCancellable = "BATCH_NOT_CANCELLABLE"
+	// ErrorBatchFileInvalid: the uploaded file is not a valid batch input:
+	// {line} of it (0 for the file as a whole), {reason} the check that failed
+	// and {detail} its English text.
+	ErrorBatchFileInvalid = "BATCH_FILE_INVALID"
+	// ErrorBatchFileTooLarge: the file is over the {limit_mb} megabytes allowed.
+	ErrorBatchFileTooLarge = "BATCH_FILE_TOO_LARGE"
+	// ErrorBatchRequestInvalid: a field of the request ({field}) is not valid.
+	ErrorBatchRequestInvalid = "BATCH_REQUEST_INVALID"
+	// ErrorBatchModelUnknown: no active deployment serves the {model} the batch
+	// was asked to send its requests to. Models a file's requests name are
+	// refused with messages.ErrorBatchFileModelsUnknown instead.
+	ErrorBatchModelUnknown = "BATCH_MODEL_UNKNOWN"
+)
+
+// WarningBatchModelSleepHeld is the warning on a created batch whose {model}
+// sleeps by an operator's or a schedule's order, which requests do not wake.
+const WarningBatchModelSleepHeld = "BATCH_MODEL_SLEEP_HELD"

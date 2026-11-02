@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -64,17 +65,19 @@ type doctorDieFailed struct {
 	at     time.Time
 }
 
-// doctorAscendChecks asks the host runtime about each of this node's dies in
+// doctorCardRuntimeChecks asks the host runtime about each of this node's dies in
 // turn and records the answer in the inventory table, as a finding per failing
 // die and as one summary fact.
-func doctorAscendChecks(ctx context.Context, r *proto.DoctorReport, gpus []proto.GPUInfo) {
+func doctorCardRuntimeChecks(ctx context.Context, r *proto.DoctorReport, gpus []proto.GPUInfo) {
 	if r.Accelerators == nil {
 		return
 	}
-	if accelerator.NormalizeVendor(r.Accelerators.Vendor) != accelerator.VendorAscend {
-		return
-	}
-	check, ok := doctorHostRuntimeCheck(r.Accelerators.Vendor)
+	// Every vendor whose runtime can be asked on the host is asked per card
+	// here, so the diagnosis covers what the periodic check does. NVIDIA's
+	// whole-node checks (doctorNVIDIAChecks) do not: they see every card at
+	// once, so their CUDA check answers for the first visible card only.
+	vendor := accelerator.NormalizeVendor(r.Accelerators.Vendor)
+	check, ok := doctorRuntimeCheck(ctx)(r.Accelerators.Vendor)
 	if !ok {
 		return
 	}
@@ -100,7 +103,15 @@ func doctorAscendChecks(ctx context.Context, r *proto.DoctorReport, gpus []proto
 		return
 	}
 
-	run := doctorDieRun{check: check, notChecked: unnamed}
+	run := doctorDieRun{check: check, notChecked: unnamed, vendor: vendor, unit: "card", runtime: "HIP"}
+	switch vendor {
+	case accelerator.VendorNVIDIA:
+		run.runtime = "CUDA"
+	case accelerator.VendorAscend:
+		run.unit, run.runtime = "die", "ACL"
+	case accelerator.VendorPPU:
+		run.runtime = "HGGC"
+	}
 	if reason := smokeUnavailable(check); reason != "" {
 		run.stopped = reason
 		run.notChecked = append(run.notChecked, notChecked(dies, "the run did not start")...)
@@ -129,10 +140,13 @@ func dieLabel(g proto.GPUInfo) string {
 
 // doctorDieRun is the outcome of one pass over the dies.
 type doctorDieRun struct {
-	check      gpu.HostRuntimeCheck
-	answered   []doctorDie
-	failed     []doctorDieFailed
-	notChecked []doctorDieNotChecked
+	check gpu.HostRuntimeCheck
+	// vendor, unit and runtime word the report: Ascend checks dies through
+	// ACL, Hygon cards through HIP.
+	vendor, unit, runtime string
+	answered              []doctorDie
+	failed                []doctorDieFailed
+	notChecked            []doctorDieNotChecked
 	// stopped is why the run could not go on, said once as a fact about the
 	// host. Nothing in it is a verdict about a die.
 	stopped string
@@ -150,6 +164,7 @@ func (run *doctorDieRun) ask(ctx context.Context, dies []doctorDie) {
 		deadline = time.Now().Add(doctorBudget)
 	}
 	held, holdersKnown := doctorHeldCards(ctx)
+	foreign := doctorForeignCard(ctx)
 	timeout := run.check.Timeout
 	if timeout <= 0 {
 		timeout = 30 * time.Second
@@ -160,11 +175,15 @@ func (run *doctorDieRun) ask(ctx context.Context, dies []doctorDie) {
 			return
 		}
 		if !holdersKnown {
-			run.notChecked = append(run.notChecked, doctorDieNotChecked{die: die, reason: "which instances hold this die is not known yet; a context on a serving die can disturb it"})
+			run.notChecked = append(run.notChecked, doctorDieNotChecked{die: die, reason: "which instances hold this " + run.unit + " is not known yet; a context on a serving " + run.unit + " can disturb it"})
 			continue
 		}
 		if held[accelerator.CardIdent(die.gpu.UUID, die.gpu.PCIeBDF)] {
-			run.notChecked = append(run.notChecked, doctorDieNotChecked{die: die, reason: "an instance is serving on it; a context on a serving die can disturb it"})
+			run.notChecked = append(run.notChecked, doctorDieNotChecked{die: die, reason: "an instance is serving on it; a context on a serving " + run.unit + " can disturb it"})
+			continue
+		}
+		if foreign(accelerator.CardIdent(die.gpu.UUID, die.gpu.PCIeBDF)) {
+			run.notChecked = append(run.notChecked, doctorDieNotChecked{die: die, reason: "a process outside the platform is using it"})
 			continue
 		}
 		remaining := time.Until(deadline) - doctorAscendReserve
@@ -175,7 +194,9 @@ func (run *doctorDieRun) ask(ctx context.Context, dies []doctorDie) {
 		budgetCut := remaining < timeout
 		attemptTimeout := min(timeout, remaining)
 		attempt, cancel := context.WithTimeout(ctx, attemptTimeout)
+		end := doctorBeginAttempt(ctx, accelerator.CardIdent(die.gpu.UUID, die.gpu.PCIeBDF))
 		err := run.check.Try(attempt, die.visible)
+		end()
 		expired := attempt.Err() != nil
 		cancel()
 		at := time.Now()
@@ -183,20 +204,22 @@ func (run *doctorDieRun) ask(ctx context.Context, dies []doctorDie) {
 		case expired && (budgetCut || ctx.Err() != nil):
 			// Our own cut-off, not the die: it had less time than the
 			// automatic check gives it, so it has no verdict.
-			run.notChecked = append(run.notChecked, doctorDieNotChecked{die: die, reason: "the diagnosis time budget ran out while this die was being checked"})
+			run.notChecked = append(run.notChecked, doctorDieNotChecked{die: die, reason: "the diagnosis time budget ran out while this " + run.unit + " was being checked"})
 			run.notChecked = append(run.notChecked, notChecked(dies[i+1:], "the diagnosis time budget ran out")...)
 			return
 		case expired:
 			// The automatic check grades a die that does not answer within
 			// its timeout as failed, and so does this.
-			run.failed = append(run.failed, doctorDieFailed{die: die, at: at,
-				detail: fmt.Sprintf("the runtime check did not finish within %s", attemptTimeout)})
+			detail := fmt.Sprintf("the runtime check did not finish within %s", attemptTimeout)
+			run.failed = append(run.failed, doctorDieFailed{die: die, at: at, detail: detail})
+			doctorRecordOutcome(ctx, die, errors.New(detail))
 		default:
 			if reason := gpu.HostRuntimeUnavailable(err); reason != "" {
 				run.stopped = reason
 				run.notChecked = append(run.notChecked, notChecked(dies[i:], "the runtime could not be used on this host")...)
 				return
 			}
+			doctorRecordOutcome(ctx, die, err)
 			if err != nil {
 				run.failed = append(run.failed, doctorDieFailed{die: die, at: at, detail: err.Error()})
 				continue
@@ -209,6 +232,91 @@ func (run *doctorDieRun) ask(ctx context.Context, dies []doctorDie) {
 // doctorHeldCards is the dies held by serving instances, and whether that is
 // known. A run with no source for it (the standalone CLI, which runs beside
 // whatever the agent is serving) asks every die.
+type doctorAttemptsKey struct{}
+
+// withDoctorAttempts tells a doctor run how to mark a check as on a card
+// (cardsmoke.Runner.Begin), so the occupancy report and an instance starting
+// on the card see it the way they see the periodic check.
+func withDoctorAttempts(ctx context.Context, begin func(ident string) func()) context.Context {
+	return context.WithValue(ctx, doctorAttemptsKey{}, begin)
+}
+
+func doctorBeginAttempt(ctx context.Context, idents ...string) func() {
+	begin, ok := ctx.Value(doctorAttemptsKey{}).(func(string) func())
+	if !ok || begin == nil {
+		return func() {}
+	}
+	ends := make([]func(), 0, len(idents))
+	for _, ident := range idents {
+		if ident != "" {
+			ends = append(ends, begin(ident))
+		}
+	}
+	return func() {
+		for _, end := range ends {
+			end()
+		}
+	}
+}
+
+type doctorOutcomesKey struct{}
+
+// withDoctorOutcomes tells a doctor run where a card's answer goes
+// (cardsmoke.Runner.Record), so the card's state follows the diagnosis at the
+// next report instead of waiting out the periodic check's backoff.
+func withDoctorOutcomes(ctx context.Context, record func(ident string, err error)) context.Context {
+	return context.WithValue(ctx, doctorOutcomesKey{}, record)
+}
+
+func doctorRecordOutcome(ctx context.Context, die doctorDie, err error) {
+	record, ok := ctx.Value(doctorOutcomesKey{}).(func(string, error))
+	if !ok || record == nil {
+		return
+	}
+	record(accelerator.CardIdent(die.gpu.UUID, die.gpu.PCIeBDF), err)
+}
+
+type doctorHeldFindingsKey struct{}
+
+// withDoctorHeldFindings has a doctor run add what this agent's hardware
+// watches hold (PCIe, NVLink, Xid) to the cards the vendor tool describes:
+// the diagnosis must see everything the reports do.
+func withDoctorHeldFindings(ctx context.Context, held func([]proto.GPUInfo)) context.Context {
+	return context.WithValue(ctx, doctorHeldFindingsKey{}, held)
+}
+
+type doctorRuntimeCheckKey struct{}
+
+// withDoctorRuntimeCheck tells a doctor run how this node asks its cards, so
+// it asks them the way the periodic check does (from inside a runner image
+// where the host has no runtime).
+func withDoctorRuntimeCheck(ctx context.Context, check func(vendor string) (gpu.HostRuntimeCheck, bool)) context.Context {
+	return context.WithValue(ctx, doctorRuntimeCheckKey{}, check)
+}
+
+func doctorRuntimeCheck(ctx context.Context) func(string) (gpu.HostRuntimeCheck, bool) {
+	if check, ok := ctx.Value(doctorRuntimeCheckKey{}).(func(string) (gpu.HostRuntimeCheck, bool)); ok && check != nil {
+		return check
+	}
+	return doctorHostRuntimeCheck
+}
+
+type doctorForeignCardsKey struct{}
+
+// withDoctorForeignCards tells a doctor run which cards the last occupancy
+// round found used outside the platform; they are left alone like the
+// periodic check leaves them.
+func withDoctorForeignCards(ctx context.Context, foreign func(ident string) bool) context.Context {
+	return context.WithValue(ctx, doctorForeignCardsKey{}, foreign)
+}
+
+func doctorForeignCard(ctx context.Context) func(string) bool {
+	if foreign, ok := ctx.Value(doctorForeignCardsKey{}).(func(string) bool); ok && foreign != nil {
+		return foreign
+	}
+	return func(string) bool { return false }
+}
+
 func doctorHeldCards(ctx context.Context) (map[string]bool, bool) {
 	held, ok := ctx.Value(doctorCardsInUseKey{}).(func() (map[string]bool, bool))
 	if !ok || held == nil {
@@ -225,9 +333,15 @@ func (run *doctorDieRun) findings() []proto.DoctorFinding {
 	}
 	finding := proto.DoctorFinding{Code: accelerator.HealthRuntimeUnusable, Level: proto.DoctorLevelError}
 	for _, f := range run.failed {
-		target := proto.DoctorTarget{
-			Index: f.die.gpu.Index, PCIeBDF: f.die.gpu.PCIeBDF,
-			Probe: "python3 + libascendcl.so: aclrtSetDevice, aclrtCreateContext, aclrtMalloc 4 KiB on this die only (ASCEND_RT_VISIBLE_DEVICES=" + f.die.visible + ")",
+		target := proto.DoctorTarget{Index: f.die.gpu.Index, PCIeBDF: f.die.gpu.PCIeBDF}
+		// The same guide the card carries when the periodic check failed it,
+		// so Diagnose and the card's own detail name one command rather than
+		// two spellings of it.
+		if guide, ok := accelerator.HealthGuideFor(accelerator.HealthCard{
+			Vendor: run.vendor, Code: accelerator.HealthRuntimeUnusable,
+			BDF: f.die.gpu.PCIeBDF, Index: f.die.gpu.Index,
+		}, nil); ok {
+			target.Probe, target.Recheck, target.Actions = guide.Probe, guide.Recheck, guide.Actions
 		}
 		for _, field := range runtimeUnusableEvidence(f.at, f.detail) {
 			target.Evidence = append(target.Evidence, proto.DoctorField{Name: field.Name, Value: field.Value})
@@ -262,10 +376,10 @@ func (run *doctorDieRun) markInventory(a *proto.DoctorAccelerators) {
 func (run *doctorDieRun) summary(total int) string {
 	checked := len(run.answered) + len(run.failed)
 	if run.stopped != "" && checked == 0 {
-		return fmt.Sprintf("not run: %s. None of the %d dies was checked and no die is blamed; the periodic per-die runtime check does not run under this condition either", run.stopped, total)
+		return fmt.Sprintf("not run: %s. None of the %d %ss was checked and no %s is blamed; the periodic per-%s runtime check does not run under this condition either", run.stopped, total, run.unit, run.unit, run.unit)
 	}
-	lines := []string{fmt.Sprintf("per-die ACL runtime check of the %d dies this node owns: %d passed, %d failed, %d not checked",
-		total, len(run.answered), len(run.failed), len(run.notChecked))}
+	lines := []string{fmt.Sprintf("per-%s %s runtime check of the %d %ss this node owns: %d passed, %d failed, %d not checked",
+		run.unit, run.runtime, total, run.unit, len(run.answered), len(run.failed), len(run.notChecked))}
 	if len(run.failed) > 0 {
 		labels := make([]string, len(run.failed))
 		for i, f := range run.failed {
@@ -274,7 +388,7 @@ func (run *doctorDieRun) summary(total int) string {
 		lines = append(lines, "failed: "+strings.Join(labels, ", "))
 	}
 	if run.stopped != "" {
-		lines = append(lines, "stopped: "+run.stopped+"; no die is blamed for it")
+		lines = append(lines, "stopped: "+run.stopped+"; no "+run.unit+" is blamed for it")
 	}
 	byReason := map[string][]string{}
 	var order []string

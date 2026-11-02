@@ -2,11 +2,14 @@ package controller
 
 import (
 	"encoding/json"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/server/bus"
+	"gpuworks.ai/gpuworks/internal/server/placewait"
+	"gpuworks.ai/gpuworks/internal/server/planning"
 	"gpuworks.ai/gpuworks/internal/server/scheduler"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
@@ -170,5 +173,109 @@ func TestRecordUnschedulableWritesAChangedReasonAtOnce(t *testing.T) {
 	latest, _, _ = st.LatestScheduleEvent(dep.ID)
 	if events, _ := st.DeploymentEvents(dep.ID, 0); len(events) != 5 || !strings.Contains(latest.Data, `"unmet":1`) {
 		t.Fatalf("events = %d, latest %s: want the narrowed pool written", len(events), latest.Data)
+	}
+}
+
+// Just after the server starts, nodes read offline until their agents
+// reconnect. A refusal that names offline nodes in that window is not
+// recorded (the deployment is looked at again soon); after it, or with no
+// offline node named, it is.
+func TestARefusalForOfflineNodesWhileAgentsReconnectIsNotRecorded(t *testing.T) {
+	c, st, dep := unschedulableFixture(t)
+	start := time.Date(2026, 10, 29, 14, 16, 52, 0, time.UTC)
+	clock := start.Add(time.Second)
+	c.now = func() time.Time { return clock }
+	c.watchingSince = start
+	offline := scheduler.Reason{Code: scheduler.ReasonPoolEmpty, Params: map[string]any{"nodes": 1, "offline": 1}}
+	// A node that has not reported since the server started: its agent is
+	// reconnecting.
+	node, err := st.RegisterNode("reconnecting", store.HashToken("t"), "reconnecting")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.DB().Model(&store.Node{}).Where("id = ?", node.ID).Update("last_seen_at", start.Add(-time.Hour)).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	c.recordUnschedulable(dep, offline)
+	if _, found, err := st.FirstScheduleEvent(dep.ID); err != nil || found {
+		t.Fatalf("a refusal while the agents reconnect was recorded (found=%v err=%v)", found, err)
+	}
+	c.q.mu.Lock()
+	_, queued := c.q.pending[depKey(dep.ID)]
+	c.q.mu.Unlock()
+	if !queued {
+		t.Fatal("the deployment is not looked at again")
+	}
+
+	// Once every node has reported since the start, an offline node went
+	// offline for real and the refusal stands even within the grace.
+	seen := start.Add(time.Second)
+	if err := st.DB().Model(&store.Node{}).Where("id = ?", node.ID).Update("last_seen_at", seen).Error; err != nil {
+		t.Fatal(err)
+	}
+	c.recordUnschedulable(dep, offline)
+	if _, found, _ := st.FirstScheduleEvent(dep.ID); !found {
+		t.Fatal("a refusal for a node that went offline after reconnecting was held back")
+	}
+
+	// A refusal that names no offline node is recorded at once.
+	c.recordUnschedulable(dep, scheduler.Reason{Code: scheduler.ReasonNoFreeGPU, Params: map[string]any{"free": 0}})
+	if _, found, _ := st.FirstScheduleEvent(dep.ID); !found {
+		t.Fatal("a refusal unrelated to reconnecting agents was held back")
+	}
+
+	// Past the grace the offline refusal stands.
+	c2, st2, dep2 := unschedulableFixture(t)
+	c2.now = func() time.Time { return start.Add(c2.offlineGrace) }
+	c2.watchingSince = start
+	c2.recordUnschedulable(dep2, offline)
+	if _, found, _ := st2.FirstScheduleEvent(dep2.ID); !found {
+		t.Fatal("an offline refusal after the grace was not recorded")
+	}
+}
+
+// A replica that waits for holders to yield is noted in the placement waits,
+// with the cards and the holders the plan's typed yield names, and planned
+// again soon; a refusal that waits for no one notes nothing, and ends a wait
+// at once rather than leaving the arbiter making room until it goes stale.
+func TestARefusalThatWaitsForAYieldIsNoted(t *testing.T) {
+	c, _, dep := unschedulableFixture(t)
+	now := time.Date(2026, 10, 29, 9, 0, 0, 0, time.UTC)
+	c.now = func() time.Time { return now }
+	c.recordUnschedulable(dep, scheduler.Reason{Code: scheduler.ReasonNoFreeGPU, Params: map[string]any{"free": 0}})
+	if _, ok := c.PlacementWaits().Get(dep.ID, now); ok {
+		t.Fatal("a refusal that waits for no one was noted")
+	}
+	waiting := scheduler.Reason{Code: scheduler.ReasonWaitingForYield, Params: map[string]any{
+		"node": "gpu-1", "holders": []map[string]any{{"deployment": "batch", "at_once": true}},
+	}}
+	// The display params alone say nothing the controller acts on.
+	c.recordRefusal(dep, waiting, nil, nil)
+	if _, ok := c.PlacementWaits().Get(dep.ID, now); ok {
+		t.Fatal("a wait was noted from a refusal's display params")
+	}
+	yield := &planning.LaunchYield{NodeID: 7, GPUIndexes: []int{1}, Holders: []planning.YieldHolder{{DeploymentID: 9, Deployment: "batch", Instance: "batch-1"}}}
+	c.recordRefusal(dep, waiting, yield, nil)
+	w, ok := c.PlacementWaits().Get(dep.ID, now)
+	if !ok || !slices.Equal(w.Holders, []string{"batch-1"}) || !w.Cards.Takes(7, 1) || !w.Since.Equal(now) {
+		t.Fatalf("placement wait = %+v %v", w, ok)
+	}
+	c.q.mu.Lock()
+	at, queued := c.q.pending[depKey(dep.ID)]
+	c.q.mu.Unlock()
+	if !queued || time.Until(at) > placewait.Recheck {
+		t.Fatalf("not planned again within %v (queued=%v at %v)", placewait.Recheck, queued, at)
+	}
+	// Once batch's sleep is ordered the plan waits for no holder; the cards
+	// are still the replica's.
+	c.recordRefusal(dep, waiting, &planning.LaunchYield{NodeID: 7, GPUIndexes: []int{1}}, nil)
+	if w, ok := c.PlacementWaits().Get(dep.ID, now); !ok || len(w.Holders) != 0 || !w.Cards.Takes(7, 1) {
+		t.Fatalf("placement wait for an ordered sleep = %+v %v", w, ok)
+	}
+	// The refusal changes: the replica no longer waits for anyone's cards.
+	c.recordUnschedulable(dep, scheduler.Reason{Code: scheduler.ReasonNoFreeGPU, Params: map[string]any{"free": 0}})
+	if w, ok := c.PlacementWaits().Get(dep.ID, now); ok {
+		t.Fatalf("a stale wait stands after the refusal changed: %+v", w)
 	}
 }

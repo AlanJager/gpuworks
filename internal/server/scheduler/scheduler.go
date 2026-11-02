@@ -232,27 +232,26 @@ const (
 	// no card of its own (none at all, or all lent to virtual machines or
 	// held by another driver), its cards are held by processes outside the
 	// platform, or none is at a health level that serves.
-	ReasonNoOwnedGPU              = "no_owned_gpu"
-	ReasonGPUsHeldOutsidePlatform = "gpus_held_outside_platform"
-	ReasonNoHealthyGPU            = "no_healthy_gpu"
-	ReasonNoFreeGPU               = "no_free_gpu"
-	ReasonFiltersPassed           = "filters_passed"
-	ReasonNoFit                   = "no_fit"
-	// ReasonKVContextExceedsPool: startup memory fits, but one request of the
-	// configured maximum context needs more KV cache than the pool holds, so
-	// the engine will not start. Params: kv_tokens, max_model_len,
-	// suggested_max_model_len.
-	ReasonKVContextExceedsPool      = "kv_context_exceeds_pool"
+	ReasonNoOwnedGPU                = "no_owned_gpu"
+	ReasonGPUsHeldOutsidePlatform   = "gpus_held_outside_platform"
+	ReasonNoHealthyGPU              = "no_healthy_gpu"
+	ReasonNoFreeGPU                 = "no_free_gpu"
+	ReasonFiltersPassed             = "filters_passed"
+	ReasonNoFit                     = "no_fit"
 	ReasonSleepResidueBlocksStartup = "sleep_residue_blocks_startup"
 	ReasonTPHeadCountNotDivisible   = "tp_head_count_not_divisible"
 	ReasonInsufficientSharedGPUs    = "insufficient_shared_gpus"
 	ReasonInsufficientEmptyGPUs     = "insufficient_empty_gpus"
-	ReasonTopologyNVLink            = "topology_nvlink"
-	ReasonTopologyNUMA              = "topology_numa"
-	ReasonTopologyCross             = "topology_cross"
-	ReasonTopologySingle            = "topology_single"
-	ReasonPacking                   = "packing"
-	ReasonTightFit                  = "tight_fit"
+	// ReasonPinnedGPUsUnavailable: other deployments ({holders}) hold the
+	// GPUs an operator pinned a rank to on the node ({node}, {gpus}); the
+	// deployment waits for them.
+	ReasonPinnedGPUsUnavailable = "pinned_gpus_unavailable"
+	ReasonTopologyNVLink        = "topology_nvlink"
+	ReasonTopologyNUMA          = "topology_numa"
+	ReasonTopologyCross         = "topology_cross"
+	ReasonTopologySingle        = "topology_single"
+	ReasonPacking               = "packing"
+	ReasonTightFit              = "tight_fit"
 	// ReasonPlacementPreference: the catalog's placement contract ranked this
 	// candidate above the others it accepted ({preference}, {count}). Emitted
 	// only when the contract stated a non-zero preference.
@@ -264,6 +263,7 @@ const (
 	ReasonPlacementRejected    = "placement_rejected"
 	ReasonEnginePortsExhausted = "engine_ports_exhausted"
 	ReasonImageDeliveryFailed  = "image_delivery_failed"
+	ReasonImageDeliveryWaiting = "image_delivery_waiting"
 	// ReasonImageSourceForbidden: the pull source rules that apply to the
 	// node ({node}) leave it nothing to pull the image ({image}) from.
 	ReasonImageSourceForbidden = "image_source_forbidden"
@@ -284,6 +284,30 @@ const (
 	// were each planned and none had room; {node} and {first} are the best
 	// one and why it refused.
 	ReasonPoolNoFit = "pool_no_fit"
+	// ReasonWaitingForYield: the replica fits on {node} once deployments
+	// sharing its cards by yield policy give them up ({holders}: each one's
+	// {deployment} and the terms it gives way on: {at_once}, or once idle
+	// {idle_sec} or, taking turns, at the end of {max_serve_sec}); the
+	// residency arbiter puts them to sleep by those terms.
+	ReasonWaitingForYield = "waiting_for_yield"
+	// ReasonReservedForSleepers: the replica would fit on {node}'s cards
+	// {gpus} but deployments asleep there ({sleepers}: each one's {deployment}
+	// and yield {policy}) keep them for a request's wake, and the replica's
+	// deployment does not share cards with them (its policy is never).
+	ReasonReservedForSleepers = "reserved_for_sleepers"
+	// ReasonDoesNotWaitForYield: the replica would fit on {node}'s cards
+	// {gpus} were the awake deployments there asleep, but its deployment
+	// never yields, so it waits for none of them: {holders} would give way
+	// to one that shares cards, {blockers} never yield (each one's
+	// {deployment} and yield {policy}). Only the deploy form's evaluation
+	// states it.
+	ReasonDoesNotWaitForYield = "does_not_wait_for_yield"
+	// ReasonHeldByNonYielding: the replica would fit on {node}'s cards {gpus}
+	// were the awake deployments there asleep, but {blockers} do not yield to
+	// its deployment (each one's {deployment} and yield {policy}); {holders}
+	// would, each with its {policy} and the terms of waiting_for_yield. Only
+	// the deploy form's evaluation states it.
+	ReasonHeldByNonYielding = "held_by_non_yielding"
 	// ReasonModelUnavailable: a model the replica reads ({model}) is stuck on
 	// its node ({node}) - its acquisition failed or waits for an operator to
 	// choose a source ({state}, {detail}).

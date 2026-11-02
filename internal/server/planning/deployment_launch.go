@@ -19,6 +19,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/inferenceapi"
 	"gpuworks.ai/gpuworks/internal/server/scheduler"
 	"gpuworks.ai/gpuworks/internal/server/store"
+	"gpuworks.ai/gpuworks/internal/server/yieldpolicy"
 )
 
 // DeploymentAPIContract returns the contract used by the runtime launch.
@@ -192,10 +193,42 @@ func DeploymentLaunch(dep *store.Deployment, reqs map[string][]string, node *sto
 		Source: LaunchSourceFromDeployment(dep), Quick: quick, ExtraArgs: extra,
 		ModelMount: modelMount, ModelHostPath: modelHostPath, ComponentMounts: componentMounts,
 		ServedName: served, Sleepable: dep.Sleepable, MasterAddr: dep.MasterAddr, MasterPort: dep.MasterPort,
+		YieldPolicy:    dep.YieldPolicy,
 		VRAMLimitBytes: dep.VRAMLimitBytes, PartitionBackend: dep.PartitionBackend,
 		APIContract: DeploymentAPIContract(model, templateLayer.APIContract),
 		ModelRules:  store.SourceRules{Pinned: store.StoragePins(reqs), SaveTo: dep.SaveToStorageID},
 	}, templateLayer, modelHostPath, nil
+}
+
+// Fits says the plan places the launch.
+func (o Output) Fits() bool { return o.Result.OK && o.Result.Plan != nil }
+
+// Refusal is why a plan that does not fit cannot be placed on node, for a
+// deployment of policy: a launch that waits for holders to yield
+// (YieldRefusal), only for sleepers' cards (ReservedRefusal), or that yield
+// policy keeps off awake holders' cards (HeldRefusal) says so; any
+// other is the scheduler's own reason. The controller and every preview
+// that shows a refusal read it here, so they say the same.
+func (o Output) Refusal(node *store.Node, policy yieldpolicy.Policy) scheduler.Reason {
+	switch {
+	case o.Yield != nil:
+		return YieldRefusal(node, policy, o.Yield)
+	case o.Reserved != nil:
+		return ReservedRefusal(node, o.Reserved)
+	case o.Held != nil:
+		return HeldRefusal(node, policy, o.Held)
+	}
+	return o.Result.Message
+}
+
+// YieldWait is what a launch refused for waiting on holders to yield waits
+// for, nil for any other refusal: the typed facts the controller acts on,
+// where the refusal's params are for display.
+func (p LaunchPlan) YieldWait(refusal *scheduler.Reason) *LaunchYield {
+	if refusal == nil || refusal.Code != scheduler.ReasonWaitingForYield {
+		return nil
+	}
+	return p.Output.Yield
 }
 
 // PlanTemplateLaunch plans req on node and checks the cards it chose against
@@ -206,8 +239,8 @@ func PlanTemplateLaunch(ctx context.Context, st *store.Store, networks Networks,
 	if err != nil {
 		return plan, nil, err
 	}
-	if !plan.Output.Result.OK || plan.Output.Result.Plan == nil {
-		reason := plan.Output.Result.Message
+	if !plan.Output.Fits() {
+		reason := plan.Output.Refusal(node, yieldpolicy.Policy{Yield: req.YieldPolicy})
 		return plan, &reason, nil
 	}
 	validateGPU, err := TemplateGPUValidator(templateLayer)

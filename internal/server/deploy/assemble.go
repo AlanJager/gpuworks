@@ -128,6 +128,12 @@ func ResolveLaunchWithWarnings(input ResolveLaunchInput) (ResolvedLaunch, []mess
 	if err != nil {
 		return ResolvedLaunch{}, nil, fmt.Errorf("resolve launch variables: %w", err)
 	}
+	var allocatorRewrite ascendAllocatorRewrite
+	if input.Engine.Name() == EngineVLLM {
+		if allocatorRewrite, err = prepareVLLMSleepable(&params); err != nil {
+			return ResolvedLaunch{}, nil, fmt.Errorf("resolve launch: %w", err)
+		}
+	}
 
 	built := input.Engine.Build(params)
 	for _, extra := range []map[string]string{computeNetworkEnv(params), runveilEnv(input.Engine.Name(), params)} {
@@ -181,6 +187,9 @@ func ResolveLaunchWithWarnings(input ResolveLaunchInput) (ResolvedLaunch, []mess
 	}
 	for key, value := range overrides.Env {
 		launch.Env[key] = value
+	}
+	if err := validateVLLMSleepableEnv(input.Engine.Name(), params, launch.Env); err != nil {
+		return ResolvedLaunch{}, nil, fmt.Errorf("resolve launch: %w", err)
 	}
 	if overrides.CmdDisplay != "" {
 		launch.Argv = append([]string(nil), commandArgv...)
@@ -301,7 +310,11 @@ func ResolveLaunchWithWarnings(input ResolveLaunchInput) (ResolvedLaunch, []mess
 			return ResolvedLaunch{}, nil, fmt.Errorf("resolve launch: %w", err)
 		}
 	}
-	return launch, launchWarnings(launch, params, input.Image, compat, engram), nil
+	warnings := launchWarnings(launch, params, input.Image, compat, engram)
+	if warning, ok := allocatorRewrite.warning(launch.Env); ok {
+		warnings = append(warnings, warning)
+	}
+	return launch, warnings, nil
 }
 
 var manualCommandPortPattern = regexp.MustCompile(`(?m)(^|[ \t])--port(?:[ \t]+|=)[^ \t\r\n;|&]+`)

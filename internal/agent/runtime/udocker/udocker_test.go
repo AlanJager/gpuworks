@@ -112,10 +112,11 @@ func TestHygonDeviceArgsBecomeUdockerVolumesWithoutNVIDIAEnvironment(t *testing.
 			"--device", "/dev/kfd:/dev/kfd:rwm",
 			"--device=/dev/dri/renderD128:/dev/dri/renderD128:rwm",
 		},
-		Env: map[string]string{"HYGON_VISIBLE_DEVICES": "1"},
+		Env:    map[string]string{"HYGON_VISIBLE_DEVICES": "1"},
+		Mounts: []runtime.Mount{{Source: "/opt/hyhal", Target: "/opt/hyhal", ReadOnly: true}},
 	}
 	joined := strings.Join(d.containerRunArgs(spec), " ")
-	for _, want := range []string{"--volume=/dev/kfd:/dev/kfd", "--volume=/dev/dri/renderD128:/dev/dri/renderD128"} {
+	for _, want := range []string{"--volume=/dev/kfd:/dev/kfd", "--volume=/dev/dri/renderD128:/dev/dri/renderD128", "--volume=/opt/hyhal:/opt/hyhal"} {
 		if !strings.Contains(joined, want) {
 			t.Fatalf("Hygon args missing %q: %s", want, joined)
 		}

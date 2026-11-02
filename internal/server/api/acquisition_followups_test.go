@@ -253,7 +253,10 @@ func TestExplicitProviderConstrainsPublicDownloadIdentity(t *testing.T) {
 	if err := h.selectExplicitWeight(&selection, &dto.ModelSource{Provider: "modelscope"}); err != nil {
 		t.Fatal(err)
 	}
-	model, err := h.resolveDeploymentModelFromTemplate(context.Background(), hf.ID, &selection, 1)
+	if _, err := h.resolveDeploymentModelFromTemplate(context.Background(), hf.ID, &selection, 1); err == nil {
+		t.Fatal("conflicting model_id and provider accepted")
+	}
+	model, err := h.resolveDeploymentModelFromTemplate(context.Background(), 0, &selection, 1)
 	if err != nil || model.Source != "modelscope" || model.Revision != "ms" {
 		t.Fatalf("model=%+v %v", model, err)
 	}

@@ -1,11 +1,12 @@
 import UnsupportedModel from "./UnsupportedModel";
+import SleepNotice from "./SleepNotice";
 import {
   ClearOutlined,
   CodeOutlined,
   ControlOutlined,
   PauseCircleOutlined,
 } from "@ant-design/icons";
-import { Alert, Button, Empty, Select, Space, Tooltip, message } from "antd";
+import { Button, Empty, Select, Space, Tooltip, message } from "antd";
 import { memo, useMemo, useRef, useState } from "react";
 import { api as platformAPI } from "../../api";
 import { useFollowScroll } from "../../hooks/useFollowScroll";
@@ -17,7 +18,6 @@ import MessageBubble from "./MessageBubble";
 import ParametersPanel from "./ParametersPanel";
 import type {
   ChatMessage,
-  ExtraParameterPreset,
   ParameterDefinition,
   PlaygroundModel,
   StreamOptionDefinition,
@@ -30,7 +30,6 @@ interface ChatPaneProps {
   column: ConversationColumn;
   models: PlaygroundModel[];
   definitions: ParameterDefinition[];
-  presets: ExtraParameterPreset[];
   streamOptions: StreamOptionDefinition[];
   /** The column number in a compare conversation. */
   number?: number;
@@ -67,7 +66,6 @@ const ChatPane = memo(function ChatPane({
   column,
   models,
   definitions,
-  presets,
   streamOptions,
   number,
   onCatalogChanged,
@@ -84,6 +82,9 @@ const ChatPane = memo(function ChatPane({
   useFollowScroll(viewportRef, follow, onScrollAway, messages);
 
   const selectedModel = chatModels.find((model) => model.id === column.model);
+  const unavailableOption = column.model && !selectedModel
+    ? [{ value: column.model, label: t(models.some((model) => model.id === column.model) ? "pane.unsupportedSelection" : "pane.unavailableSelection", { model: column.model }), disabled: true }]
+    : [];
   const codeBody = useMemo(() => {
     const history = historyMessages(column);
     try {
@@ -116,7 +117,7 @@ const ChatPane = memo(function ChatPane({
           value={column.model || undefined}
           placeholder={t("pane.modelPlaceholder")}
           onChange={(value) => store.setModel(column.id, value)}
-          options={chatModels.map((model) => ({ value: model.id, label: model.label }))}
+          options={[...unavailableOption, ...chatModels.map((model) => ({ value: model.id, label: model.label }))]}
           showSearch
           optionFilterProp="label"
         />
@@ -126,9 +127,7 @@ const ChatPane = memo(function ChatPane({
           <Tooltip title={t("pane.clear")}><Button type="text" icon={<ClearOutlined />} onClick={() => store.clear(column.id)} aria-label={t("pane.clear")} /></Tooltip>
         </Space>
       </header>
-      {selectedModel?.sleeping && (
-        <Alert className="playground-sleep-alert" type="warning" showIcon message={t("pane.sleeping")} action={<Button size="small" loading={waking} onClick={wake}>{t("pane.wake")}</Button>} />
-      )}
+      <SleepNotice className="playground-sleep-alert" model={selectedModel} action={<Button size="small" loading={waking} onClick={wake}>{t("pane.wake")}</Button>} />
       <div className={`playground-pane-body${showParameters ? " has-parameters" : ""}`}>
         <div className="playground-message-list" ref={viewportRef}>
           {!messages.length && (
@@ -141,7 +140,7 @@ const ChatPane = memo(function ChatPane({
         {showParameters && (
           <aside className="playground-parameter-aside">
             {number && <Button size="small" block onClick={() => { store.applyParameters(column.id); message.success(t("chat.appliedAll")); }}>{t("pane.applyAll")}</Button>}
-            <ParametersPanel definitions={definitions} presets={presets} streamOptions={streamOptions} thinkingToggle={!!selectedModel?.thinking_toggle} value={column.parameters} onChange={(value) => store.setParameters(column.id, value)} />
+            <ParametersPanel definitions={definitions} presets={selectedModel?.extra_parameter_presets ?? []} streamOptions={streamOptions} value={column.parameters} onChange={(value) => store.setParameters(column.id, value)} />
           </aside>
         )}
       </div>

@@ -258,12 +258,12 @@ test("the catalog list carries counts only: version coverage and the summary rea
   renderPage();
   await screen.findByRole("button", { name: systemSeries.name });
   // Distributed: the official tab's versions hold 1 + 0 present copies; the
-  // local size is present copies times the image size.
+  // local size is the reported runtime subtotal, independent of archive size.
   const stat = (title: string) =>
     [...document.querySelectorAll(".ant-statistic")].find((node) => node.querySelector(".ant-statistic-title")?.textContent === title)
       ?.querySelector(".ant-statistic-content")?.textContent;
   await waitFor(() => assert.equal(stat(z.page.summary.distributed), "1"));
-  assert.equal(stat(z.page.summary.localSize), "1.0 GiB");
+  assert.equal(stat(z.page.summary.localSize), "2.0 GiB");
 
   // Hold the detail so the drawer lists the series' versions from the catalog
   // list: the coverage column still reads the counts.

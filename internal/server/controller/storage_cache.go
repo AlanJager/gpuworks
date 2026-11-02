@@ -104,7 +104,7 @@ func (c *Controller) cacheWork(ctx context.Context, key string) error {
 			return err
 		}
 		for _, eff := range storages {
-			if eff.Storage.Type == proto.StorageNFSCache && eff.Storage.Enabled {
+			if eff.Storage.Type == proto.StorageNFSCache {
 				c.cacheQ.add("refresh/" + cacheKey(eff.Storage.ID, node.ID))
 			}
 		}
@@ -117,7 +117,7 @@ func (c *Controller) cacheWork(ctx context.Context, key string) error {
 		if err != nil {
 			return err
 		}
-		if !storage.Enabled || storage.Type != proto.StorageNFSCache {
+		if storage.Type != proto.StorageNFSCache {
 			return nil
 		}
 		nodes, err := c.store.NodesForStorage(storage)
@@ -147,7 +147,7 @@ func (c *Controller) cacheWork(ctx context.Context, key string) error {
 		if err != nil {
 			return err
 		}
-		if storage.Type != proto.StorageNFSCache || !storage.Enabled {
+		if storage.Type != proto.StorageNFSCache {
 			return nil
 		}
 		return c.store.RequestCacheOperations(uint(sid), []uint{uint(nid)}, "trim", false)
@@ -201,7 +201,7 @@ func (c *Controller) reconcileStorageCache(ctx context.Context, storageID, nodeI
 	if err != nil {
 		return finish("failed", err)
 	}
-	if !storage.Enabled || storage.Type != proto.StorageNFSCache || !applies {
+	if storage.Type != proto.StorageNFSCache || !applies {
 		return finish("waiting", errors.New("cache storage is unavailable for this node"))
 	}
 	if !c.hub.Online(node.UUID) {

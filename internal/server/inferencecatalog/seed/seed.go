@@ -7,7 +7,6 @@ import (
 	"io/fs"
 
 	"gpuworks.ai/gpuworks/internal/server/inferencecatalog"
-	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
 //go:embed catalog
@@ -81,38 +80,20 @@ func embeddedPackageFS() (fs.FS, error) {
 	return root, nil
 }
 
-// Seed reconciles only upstream catalog rows. Store reconciliation preserves
-// every source=user spec created by cloning or import, including user specs
-// attached to an original model that also has upstream specs.
-func Seed(st *store.Store) error {
-	if st == nil {
-		return fmt.Errorf("seed inference catalog: store is nil")
-	}
+// CatalogWithDigest returns the built-in catalog and its immutable package
+// identity. Persistence belongs to the caller's catalog projection boundary.
+func CatalogWithDigest() (inferencecatalog.FlatCatalog, string, error) {
 	pkg, err := embeddedPackage()
 	if err != nil {
-		return err
+		return inferencecatalog.FlatCatalog{}, "", err
 	}
 	root, err := embeddedPackageFS()
 	if err != nil {
-		return err
+		return inferencecatalog.FlatCatalog{}, "", err
 	}
 	digest, err := inferencecatalog.PackageDigest(root)
 	if err != nil {
-		return fmt.Errorf("digest embedded inference catalog: %w", err)
+		return inferencecatalog.FlatCatalog{}, "", fmt.Errorf("digest embedded inference catalog: %w", err)
 	}
-	models, err := inferencecatalog.ToFlatStoreModels(pkg.Catalog)
-	if err != nil {
-		return fmt.Errorf("convert embedded inference catalog: %w", err)
-	}
-	for index := range models {
-		models[index].PackageDigest = digest
-		for specIndex := range models[index].Specs {
-			models[index].Specs[specIndex].Source = "upstream"
-			models[index].Specs[specIndex].PackageDigest = digest
-		}
-	}
-	if err := st.ReconcileInferenceCatalog(models); err != nil {
-		return fmt.Errorf("reconcile embedded inference catalog: %w", err)
-	}
-	return nil
+	return pkg.Catalog, digest, nil
 }

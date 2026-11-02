@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { Alert, Button, Card, Col, Row, Skeleton, Space, Tabs, Typography } from "antd";
 import { useTranslation } from "react-i18next";
 import { Link, useNavigate, useParams } from "react-router-dom";
@@ -68,6 +68,10 @@ function ServiceMonitorPageContent() {
   // ever depending on what an out-of-range id would have fetched.
   const { data, error, loading, refetch } = useMonitorDeployment(deploymentId, range);
   const distributions = useMonitorDistributions(range, validId ? deploymentId : -1);
+  const lastData = useRef(data);
+  if (data) lastData.current = data;
+  const layoutData = data ?? lastData.current;
+
 
   if (!validId) {
     return <Alert type="error" showIcon message={t("deployment.notFound")} />;
@@ -79,9 +83,9 @@ function ServiceMonitorPageContent() {
   const title = data?.deployment.name ?? (deletedName || `#${deploymentId}`);
 
   const renderChart = (key: keyof MonitorDeploymentCharts) => {
-    if (!data) return null;
-    const engineOnly = engineReportsNoMetrics(data.sources);
-    const series = data.charts[key] ?? [];
+    if (!layoutData) return null;
+    const engineOnly = engineReportsNoMetrics(layoutData.sources);
+    const series = layoutData.charts[key] ?? [];
     const hasData = series.some((entry) => entry.points?.length > 0);
     return (
       <Col key={key} xs={24} md={12} xl={8}>
@@ -165,22 +169,32 @@ function ServiceMonitorPageContent() {
       )}
       {loading && !data && <Skeleton active paragraph={{ rows: 8 }} />}
 
-      {data && (
-        <>
-          <AsOfCaption asOf={data.as_of} stale={data.stale} />
+      {layoutData && (
+        <div hidden={!data}>
+          <AsOfCaption asOf={layoutData.as_of} stale={layoutData.stale} />
           <PickedRangeNote />
 
-          {data.pd && <PdCard pd={data.pd} />}
+          {layoutData.deployment.replicas.ready === 0 && layoutData.deployment.replicas.desired > 0 &&
+            (layoutData.replicas.length === 0 || layoutData.replicas.some((replica) => replica.state !== "asleep" && replica.state !== "stopped")) && (
+            <Alert
+              type="warning"
+              showIcon
+              style={{ marginBottom: 16 }}
+              message={t("deployment.noReadyReplicas")}
+              description={t("deployment.noReadyReplicasDetail")}
+            />
+          )}
+          {layoutData.pd && <PdCard pd={layoutData.pd} />}
 
           <div className="monitor-service-top">
             <Card size="small">
-              <LatencyBreakdown deploymentId={deploymentId} range={range} pd={data.pd != null} />
+              <LatencyBreakdown deploymentId={deploymentId} range={range} pd={layoutData.pd != null} />
             </Card>
             <Card size="small">
-              <ServiceHealthCard data={data} />
+              <ServiceHealthCard data={layoutData} />
             </Card>
           </div>
-          <LiveRequestsOverview deploymentId={deploymentId} replicas={data.replicas} />
+          <LiveRequestsOverview deploymentId={deploymentId} replicas={layoutData.replicas} />
 
           <Tabs
             activeKey={tab}
@@ -193,26 +207,26 @@ function ServiceMonitorPageContent() {
           />
           {tab !== "overview" && (
             <Card title={<InfoTitle title={t("requests.title")} help={t("requests.help")} />}>
-              <RequestView view={tab} deploymentId={deploymentId} range={range} replicas={data.replicas} pd={data.pd != null} />
+              <RequestView view={tab} deploymentId={deploymentId} range={range} replicas={layoutData.replicas} pd={layoutData.pd != null} />
             </Card>
           )}
           {tab === "overview" && (
             <>
-              {data.alignment && (
+              {layoutData.alignment && (
                 <Card size="small" style={{ marginBottom: 16 }} title={<InfoTitle title={t("deployment.alignment")} help={t("deployment.help.alignment")} />}>
                   <Space size={16} wrap>
-                    <Typography.Text>{t("deployment.alignmentProxy")}: {data.alignment.proxy_requests}</Typography.Text>
-                    <Typography.Text>{t("deployment.alignmentEngine")}: {data.alignment.engine_completed}</Typography.Text>
-                    <Typography.Text>{t("deployment.alignmentErrors")}: {data.alignment.client_errors}</Typography.Text>
-                    <Typography.Text>{t("deployment.alignmentServerErrors")}: {data.alignment.server_errors}</Typography.Text>
-                    <Typography.Text>{t("deployment.alignmentInFlight")}: {data.alignment.in_flight}</Typography.Text>
+                    <Typography.Text>{t("deployment.alignmentProxy")}: {layoutData.alignment.proxy_requests}</Typography.Text>
+                    <Typography.Text>{t("deployment.alignmentEngine")}: {layoutData.alignment.engine_completed}</Typography.Text>
+                    <Typography.Text>{t("deployment.alignmentErrors")}: {layoutData.alignment.client_errors}</Typography.Text>
+                    <Typography.Text>{t("deployment.alignmentServerErrors")}: {layoutData.alignment.server_errors}</Typography.Text>
+                    <Typography.Text>{t("deployment.alignmentInFlight")}: {layoutData.alignment.in_flight}</Typography.Text>
                   </Space>
                   {/* A transient gap (requests still in flight, counters
                       sampled mid-window) is not a loss; only a discrepancy the
                       server has seen persist gets the red sentence. */}
-                  {data.alignment.discrepancy_persistent && (
+                  {layoutData.alignment.discrepancy_persistent && (
                     <Typography.Text type="danger" style={{ display: "block", marginTop: 6 }}>
-                      {t("deployment.alignmentLost", { count: data.alignment.lost })}
+                      {t("deployment.alignmentLost", { count: layoutData.alignment.lost })}
                     </Typography.Text>
                   )}
                 </Card>
@@ -240,15 +254,15 @@ function ServiceMonitorPageContent() {
                 style={{ marginTop: 16 }}
                 title={<InfoTitle title={t("deployment.replicas")} help={t("deployment.help.replicas")} />}
               >
-                <ReplicaTable replicas={data.replicas} deploymentId={deploymentId} loading={loading} />
+                <ReplicaTable replicas={layoutData.replicas} deploymentId={deploymentId} loading={loading && !data} />
               </Card>
 
               <Card style={{ marginTop: 16 }} title={t("deployment.logs.title")}>
-                <ServiceLogStream logInstances={data.log_instances ?? []} range={range} />
+                <ServiceLogStream logInstances={layoutData.log_instances ?? []} range={range} />
               </Card>
             </>
           )}
-        </>
+        </div>
       )}
     </div>
   );

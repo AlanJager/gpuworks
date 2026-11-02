@@ -25,6 +25,8 @@ def case_parser(description, cases=None):
     parser.add_argument('--artifact-dir', type=Path)
     parser.add_argument('--locale', choices=('en', 'zh'), default='en')
     parser.add_argument('--mutation', help='Label an actual product mutation; not a failure injector')
+    parser.add_argument('--target-ref', default='wei/master', help='Git target ref recorded in the report')
+    parser.add_argument('--browser-channel', choices=('chrome', 'chromium'), default='chrome')
     if cases:
         parser.add_argument('--case', choices=cases, required=True)
     return parser
@@ -59,7 +61,7 @@ def source_path(path):
     return path
 
 
-def source_identity(manifest_path, driver, exercise, helpers):
+def source_identity(manifest_path, driver, exercise, helpers, target_ref='wei/master'):
     manifest_path, driver = source_path(manifest_path), source_path(driver)
     manifest = json.loads(manifest_path.read_text())
     browser_file = source_path(manifest['test_file'])
@@ -72,7 +74,7 @@ def source_identity(manifest_path, driver, exercise, helpers):
     hashes = {str(path.relative_to(ROOT)): digest(path) for path in paths}
     git = lambda *args: subprocess.check_output(['git', *args], cwd=ROOT, text=True).strip()
     return manifest, {'source_sha': git('rev-parse', 'HEAD'),
-        'target_sha': git('rev-parse', 'wei/master'),
+        'target_sha': git('rev-parse', target_ref),
         'working_tree': 'dirty' if git('status', '--porcelain') else 'clean',
         'coverage_manifest_sha256': digest(manifest_path), 'test_sha256': digest(browser_file),
         'source_hashes': hashes}
@@ -105,7 +107,8 @@ def final_status(report, required):
 
 
 def run_case(args, *, contract_id, manifest, test_file, prepare, exercise, cleanup,
-             helpers=(), docker_required=True, image='gpuworks/fake-engine:test'):
+             helpers=(), docker_required=True, image='gpuworks/fake-engine:test',
+             check_family=None, server_options=None, post_exercise=None):
     """test_file names the CLI driver; manifest test_file binds exercise itself.
 
     prepare(server, token, run_id, report, holder, agent_bin, artifacts) -> data
@@ -113,7 +116,8 @@ def run_case(args, *, contract_id, manifest, test_file, prepare, exercise, clean
     cleanup(server, token, report, holder) -> bool, recording observed residuals.
     """
     os.umask(0o077)
-    manifest, identity = source_identity(manifest, test_file, exercise, helpers)
+    manifest, identity = source_identity(manifest, test_file, exercise, helpers,
+                                         getattr(args, 'target_ref', 'wei/master'))
     checked(manifest['contract_id'] == contract_id, 'manifest contract differs')
     required = manifest['required_evidence']
     checked(isinstance(required, list) and required and 'cleanup' in required, 'missing required evidence contract')
@@ -127,7 +131,11 @@ def run_case(args, *, contract_id, manifest, test_file, prepare, exercise, clean
         'not_covered': manifest.get('missing', []),
         'command': [sys.executable, str(test_file), *sys.argv[1:]],
         'browser_close_ok': False, 'environment_cleanup_ok': False}
-    server = LocalServer(args.server_bin, artifacts.private)
+    if check_family is not None:
+        report['check_family'] = check_family
+    if server_options is not None:
+        report['server_options'] = server_options
+    server = LocalServer(args.server_bin, artifacts.private, **(server_options or {}))
     holder = {'agent': None, 'log': None}
     token = None
 
@@ -175,13 +183,15 @@ def run_case(args, *, contract_id, manifest, test_file, prepare, exercise, clean
         with sync_playwright() as play:
             browser = context = page = None
             try:
-                browser = play.chromium.launch(channel='chrome', headless=True)
+                browser = play.chromium.launch(channel=getattr(args, 'browser_channel', 'chrome'), headless=True)
                 context = browser.new_context(viewport=report['viewport'], timezone_id='UTC',
                     locale='zh-CN' if args.locale == 'zh' else 'en-US')
                 report['browser_version'] = browser.version
                 page = context.new_page()
                 page.set_default_timeout(10000)
                 exercise(page, context, server, artifacts, report, args.locale, data, token, holder)
+                if post_exercise is not None:
+                    post_exercise(page, context, server, artifacts, report, args.locale, data, token, holder)
                 checked(set(required) - {'cleanup'} <= {e['layer'] for e in report['evidence']},
                         'browser did not record required evidence layers')
                 report['case_completed'] = True

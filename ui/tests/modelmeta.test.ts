@@ -16,7 +16,8 @@ test("Hugging Face metadata falls back to the next address the server gave", asy
     if (url.endsWith("/config.json")) return new Response(`{"architectures":["Qwen3ForCausalLM"]}`);
     if (url.endsWith("/model.safetensors.index.json")) return new Response(`{"metadata":{"total_size":1234}}`);
     if (url.includes("/api/models/")) return new Response(`{"author":"Qwen","siblings":[{"rfilename":"model.safetensors","size":9999}]}`);
-    if (url.endsWith("/avatars/Qwen.svg")) return new Response(`<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>`);
+    if (url.endsWith("/api/organizations/Qwen/avatar")) return new Response(`{"avatarUrl":"https://cdn.hf-mirror.com/uploads/qwen.png"}`);
+    if (url === "https://cdn.hf-mirror.com/uploads/qwen.png") return new Response(new Uint8Array([0x89, 0x50, 0x4e, 0x47]), { headers: { "content-type": "image/png" } });
     return new Response("not found", { status: 404 });
   }) as typeof fetch;
 
@@ -24,10 +25,10 @@ test("Hugging Face metadata falls back to the next address the server gave", asy
   assert.equal(metadata.readme, "# Browser README");
   assert.match(metadata.config_raw, /Qwen3ForCausalLM/);
   assert.equal(metadata.weight_bytes, 1234);
-  assert.equal(metadata.logo_data, "");
+  assert.equal(metadata.logo_data, "data:image/png;base64,iVBORw==");
   assert.ok(requests.some((url) => url === "https://hf-mirror.com/Qwen/Qwen3-8B/raw/main/README.md"));
   assert.ok(requests.some((url) => url === "https://hf-mirror.com/api/models/Qwen/Qwen3-8B?blobs=true"));
-  assert.ok(requests.some((url) => url === "https://hf-mirror.com/avatars/Qwen.svg"));
+  assert.ok(requests.some((url) => url === "https://hf-mirror.com/api/organizations/Qwen/avatar"));
 });
 
 test("Hugging Face metadata sums single-file weights when no index exists", async () => {
@@ -123,4 +124,55 @@ test("the commit the repository record reports is returned only when it is a ful
   }) as typeof fetch;
   assert.equal((await fetchHuggingFaceMetadata("a/b", "main", fetcherFor(sha), bases)).sha, sha);
   assert.equal((await fetchHuggingFaceMetadata("a/b", "main", fetcherFor("main"), bases)).sha, undefined);
+});
+
+function avatarFetcher(answers: Record<string, () => Response>, requests: string[] = []) {
+  return (async (input: string | URL | Request) => {
+    const url = String(input);
+    requests.push(url);
+    if (url.endsWith("/README.md")) return new Response("# Model");
+    if (url.endsWith("/config.json")) return new Response(`{"model_type":"qwen3"}`);
+    if (url.includes("/api/models/")) return new Response(`{"author":"someone"}`);
+    // The hub's generated gradient answers any name.
+    if (url.includes("/avatars/")) return new Response(`<svg width="120" height="120"/>`, { headers: { "content-type": "image/svg+xml" } });
+    const answer = answers[url];
+    return answer ? answer() : new Response(`{"error":"Sorry, we can't find the page you are looking for."}`, { status: 404 });
+  }) as typeof fetch;
+}
+
+const hubOnly = async () => ["https://huggingface.co"];
+const png = () => new Response(new Uint8Array([1, 2, 3]), { headers: { "content-type": "image/png" } });
+
+test("a Hugging Face logo is the author's uploaded avatar, as an organization or else as a user", async () => {
+  const upload = "https://cdn-avatars.huggingface.co/v1/production/uploads/x/someone.png";
+  const asOrganization = await fetchHuggingFaceMetadata("someone/model", "main", avatarFetcher({
+    "https://huggingface.co/api/organizations/someone/avatar": () => new Response(JSON.stringify({ avatarUrl: upload })),
+    [upload]: png,
+  }), hubOnly);
+  assert.equal(asOrganization.logo_data, "data:image/png;base64,AQID");
+
+  const asUser = await fetchHuggingFaceMetadata("someone/model", "main", avatarFetcher({
+    "https://huggingface.co/api/users/someone/avatar": () => new Response(JSON.stringify({ avatarUrl: upload })),
+    [upload]: png,
+  }), hubOnly);
+  assert.equal(asUser.logo_data, "data:image/png;base64,AQID");
+});
+
+test("a generated placeholder, a foreign host or a non-image is no Hugging Face logo", async () => {
+  for (const [name, avatarUrl, image] of [
+    ["placeholder", "https://huggingface.co/avatars/0ad7d56ed9cf77c1049363a953d93883.svg", png],
+    ["host the server did not allow", "https://images.example.com/someone.png", png],
+    ["html instead of an image", "https://cdn-avatars.huggingface.co/someone.png", () => new Response("<!doctype html>", { headers: { "content-type": "text/html" } })],
+    ["missing picture", "https://cdn-avatars.huggingface.co/someone.png", () => new Response("", { status: 404 })],
+  ] as const) {
+    const requests: string[] = [];
+    const metadata = await fetchHuggingFaceMetadata("someone/model", "main", avatarFetcher({
+      "https://huggingface.co/api/organizations/someone/avatar": () => new Response(JSON.stringify({ avatarUrl })),
+      [avatarUrl]: image,
+    }, requests), hubOnly);
+    assert.equal(metadata.logo_data, "", name);
+    assert.ok(!requests.some((url) => url.includes("/avatars/")), `${name}: the generated /avatars/ gradient is never read`);
+  }
+  const unknown = await fetchHuggingFaceMetadata("someone/model", "main", avatarFetcher({}), hubOnly);
+  assert.equal(unknown.logo_data, "", "an author the hub does not know has no logo");
 });

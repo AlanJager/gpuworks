@@ -28,26 +28,36 @@
     "curlCopied": "curl 已复制",
     "column": {
       "name": "名称",
+      "servedName": "调用名",
       "model": "模型",
       "runtime": "引擎 / 镜像",
       "node": "计算节点",
+      "targetNode": "目标节点",
       "state": "状态",
       "health": "健康",
-      "instances": "副本",
+      "instances": "就绪 / 期望副本",
       "createdAt": "创建时间"
     },
     "autoImage": "自动解析",
     "openPlayground": "打开试验场",
     "copyCurl": "复制 curl",
     "runtimeUnavailable": "运行时就绪后才能使用",
+    "asleepUnavailable": "已休眠：唤醒前请求会被拒绝",
     "more": "更多操作",
     "clone": "克隆部署",
+    "edit": "编辑参数",
+    "cloneModify": "克隆并修改",
     "benchmark": "发起压测",
     "saveInferenceTemplate": "存为推理模板",
     "empty": "暂无部署，请先创建一个推理服务",
     "create": "创建部署",
     "emptyFiltered": "没有符合搜索或状态筛选的部署",
-    "search": "按名称或模型搜索"
+    "search": "按名称或模型搜索",
+    "runtimeNodes": {
+      "none": "无实例",
+      "others": "等 {{total}} 台",
+      "replicas": "{{count}} 个实例"
+    }
   },
   "sleep": {
     "quick": "快速/内存",
@@ -64,8 +74,32 @@
     "deepAction": "深度休眠（L2）",
     "partial": "部分休眠 · {{asleep}}/{{total}} 个副本",
     "wakeAll": "全部唤醒",
+    "heldHint": "手动休眠，请求不会唤醒",
+    "requestWakesHint": "有请求时会自动唤醒",
+    "someHeldHint": "部分副本手动休眠，请求只唤醒其余副本",
     "wakeWhatFits": "唤醒放得下的副本",
     "partialWoken": "已唤醒 {{woken}} 个；{{refused}} 个放不回原卡",
+    "waitStarted": "已开始等位：GPU 腾出空间后自动唤醒",
+    "yieldStarted": "正在让 {{names}} 休眠，腾出空间后唤醒。{{names}} 将保持休眠，请求不会唤醒，需手动唤醒",
+    "refused": {
+      "title": "显存不足，无法唤醒",
+      "wait": "等位唤醒",
+      "yield": "让 {{occupants}} 休眠后唤醒",
+      "yieldConfirm": "让 {{occupants}} 休眠后唤醒？",
+      "yieldHeld": "{{occupants}} 会保持休眠：请求不会唤醒，需要有人手动唤醒（或由定时计划唤醒）。",
+      "yieldOk": "让位唤醒",
+      "yieldCancel": "取消",
+      "theOccupants": "占用者",
+      "hint": "等位会先唤醒放得下的副本，其余在 GPU 腾出空间后自动唤醒（{{limit}}后放弃）。让位唤醒会先让占用者休眠；占用者无法休眠时不做任何改动。",
+      "heldOutside": "平台外的进程占用着 GPU"
+    },
+    "waiting": {
+      "since": "自 {{time}} 起等位唤醒中",
+      "hint": "GPU 能放下休眠副本时服务器会自动唤醒，等待 {{limit}}后放弃。",
+      "cancel": "取消等位",
+      "cancelled": "已取消等位",
+      "cancelFailed": "取消等位失败：{{detail}}"
+    },
     "role": {
       "summary": "{{role}}：{{asleep}}/{{total}} 在休眠",
       "sleep": "休眠 {{role}}（L1）",
@@ -98,6 +132,9 @@
   },
   "detail": {
     "title": "部署详情",
+    "edit": "编辑",
+    "editHint": "编辑该部署的启动参数",
+    "cloneModify": "克隆并修改",
     "stopConfirm": "确认停止该部署？",
     "stop": "停止",
     "cancel": "取消",
@@ -122,10 +159,12 @@
     "retry": {
       "exhausted": "有一个副本连续失败 {{attempts}} 次，已停止重建：{{reason}}",
       "action": "重试",
+      "editAndRetry": "修改参数并重试",
       "failed": "重试失败：{{detail}}"
     },
     "placement": {
       "preparingModel": "正在准备模型，{{count}} 个副本尚未启动",
+      "preparationFailed": "模型准备失败，{{count}} 个副本尚未启动",
       "waiting": "{{count}} 个副本正在等待节点",
       "candidates": "候选节点",
       "requirements": "节点条件",
@@ -185,6 +224,8 @@
     "model": "模型",
     "servedName": "对外模型名",
     "node": "计算节点",
+    "targetNode": "目标节点",
+    "scheduledElsewhere": "已调度到其它节点：实际运行于 {{nodes}}，目标节点为 {{target}}。",
     "state": "状态",
     "sleepable": "可休眠",
     "yes": "是",
@@ -218,6 +259,7 @@
         "prefill": "Prefill"
       },
       "roleSummary": "{{role}} · TP {{tp}} · 就绪 {{ready}}/{{desired}}",
+      "roleAsleep": "{{count}} 个休眠",
       "scale": {
         "action": "调整角色实例",
         "title": "调整 PD 角色实例",
@@ -244,6 +286,8 @@
     "wakeStarted": "已发起副本唤醒",
     "editUnits": "调整副本",
     "unitsTitle": "多机副本",
+    "autoTitle": "调整副本数",
+    "autoHint": "每个副本的 {{nnodes}} 个节点由平台挑选。设置副本数；新增的副本可以指定先放在哪些节点，其余的自动调度。缩容时先移除最新的副本。",
     "unitsHint": "每个副本占 {{nnodes}} 台节点：leader 对外服务，其余是 follower。不同副本的 leader 不能在同一台节点。",
     "unitLabel": "副本 {{index}}",
     "leaderNode": "leader 节点",
@@ -273,7 +317,20 @@
     "followerHint": "这是 follower rank：随所在副本的 leader 一起重启、移除、休眠和唤醒。",
     "apply": "应用",
     "scaled": "副本数已改为 {{count}}",
-    "scaleFailed": "修改副本数失败：{{detail}}"
+    "scaleFailed": "修改副本数失败：{{detail}}",
+    "placeOn": {
+      "label": "首次放置节点",
+      "placeholder": "首次放置节点（可选，最多 {{count}} 个）",
+      "hint": "可选：新增副本先放在这些节点上，之后重启不再受限。",
+      "refused": {
+        "unknown": "节点 {{node}} 不存在。",
+        "offline": "节点 {{node}} 离线。",
+        "cordoned": "节点 {{node}} 已停止调度，不接收新副本。",
+        "requirements": "节点 {{node}} 不满足部署的节点要求：{{detail}}",
+        "no_room": "节点 {{node}} 放不下新副本：{{detail}}",
+        "no_group": "节点 {{node}} 凑不出能放下新副本的节点组。"
+      }
+    }
   },
   "instance": {
     "field": {
@@ -296,6 +353,7 @@
     "sleeping": "休眠中 L{{level}}（{{storage}}）",
     "fallingAsleep": "正在进入休眠 · L{{level}}",
     "waking": "正在唤醒",
+    "held": "手动休眠，请求不会唤醒",
     "rank": {
       "leader": "leader · rank {{rank}}",
       "follower": "follower · rank {{rank}}",
@@ -323,6 +381,7 @@
       "default": "准备中"
     },
     "event": {
+      "INSTANCE_REMOVED": "实例已移除（释放所占的卡）",
       "INSTANCE_CREATED": "实例已创建（{{state}}）",
       "INSTANCE_STATE_CHANGED": "状态已变更为{{state}}",
       "INSTANCE_STATUS_UPDATED": "状态上报为{{state}}",
@@ -335,12 +394,32 @@
       "DEPLOYMENT_ROLLING_RESTARTED": "已请求滚动重启，共 {{replicas}} 个副本",
       "DEPLOYMENT_ROLLING_STALLED": "滚动重启暂停：副本 {{replica}} 连续失败 {{attempts}} 次已放弃，重试该副本后继续",
       "DEPLOYMENT_DGPU_QUOTA_CHANGED": "dGPU 显存上限 {{from}} → {{to}}：{{live}} 个实例立即生效，{{pending}} 个重启后生效",
+      "DEPLOYMENT_EDITED": "配置已修改（{{count}} 项：{{fields}}）；生效方式：{{apply}}",
       "REPLICA_RESTARTED": "已请求重启实例 {{instance}} 所在的副本",
       "UNIT_RETRY_EXHAUSTED": "已放弃重试：连续失败 {{attempts}} 次（{{reason}}）",
       "UNIT_RETRIED": "已请求重试：清除了 {{attempts}} 次失败记录",
+      "REPLICA_REBUILT": "副本 {{replica}} 失败后已自动重建（第 {{attempt}} 次尝试，放在 {{node}}）{{reasonNote}}",
+      "REPLICAS_CHANGED": "副本数 {{from}} → {{to}}{{roleNote}}",
+      "SLEEP_ORDERED": "已下达休眠（L{{level}}）：{{scope}}{{modeNote}}",
+      "WAKE_ORDERED": "已下达唤醒：实例 {{instances}}",
       "STORAGE_UNAVAILABLE": "存储 {{storage}} 在节点 {{node}} 上不可用（{{state}}）：运行中的实例继续用显存里的权重服务，正在加载的实例会等它恢复",
-      "STORAGE_RECOVERED": "存储 {{storage}} 在节点 {{node}} 上已恢复"
+      "STORAGE_RECOVERED": "存储 {{storage}} 在节点 {{node}} 上已恢复",
+      "AUTO_SLEEP": "已休眠（L{{level}}）{{cause}}",
+      "AUTO_WAKE": "已唤醒实例 {{instances}}{{cause}}",
+      "AUTO_SCALE": "副本数已设为 {{replicas}}{{roleNote}}{{cause}}",
+      "WAKE_WAITING": "实例 {{instances}} 等位唤醒中{{yielded}}",
+      "WAKE_WAIT_TIMEOUT": "等位 {{waited}} 仍未腾出空间，已放弃唤醒实例 {{instances}}",
+      "SCHEDULE_ACTION_FAILED": "定时{{action}}失败：{{reason}}",
+      "SCHEDULE_ACTION_FAILED_preempt": "让出 GPU 时{{action}}失败：{{reason}}",
+      "YIELDED_FOR_WAKE": "已休眠（L{{level}}），为 {{deployment}} 的唤醒让位",
+      "NODE_REPLACED": "节点失联重调度：节点 {{from}} 离线超过 {{after}}，{{what}} {{target}}",
+      "NODE_REPLACE_REVERTED": "{{what}} 在 {{from}} 上跑起来前节点 {{to}} 已恢复，重调度已撤回",
+      "NODE_REPLACE_NO_CANDIDATE": "节点 {{nodes}} 持续离线，但没有别的节点能接收它们的副本",
+      "NODE_DRAIN_MOVED": "{{what}} 已从排空中的节点迁走",
+      "UNIT_PLACED": "自动放置：{{what}} 已放到 {{to}}{{from}}{{cause}}"
     },
+    "actorNote": "（操作人：{{actor}}）",
+    "reasonNote": "；上次失败：{{reason}}",
     "pdTransport": {
       "rdma": "RDMA",
       "tcp": "TCP",
@@ -465,6 +544,11 @@
     "phaseSummary": {
       "done": "{{phase}}用时 {{duration}}",
       "transfer": "{{bytes}}，{{rate}}/s"
+    },
+    "editApply": {
+      "none": "仅保存，下次重启时生效",
+      "rolling": "滚动替换",
+      "all": "全部立即重建"
     }
   },
   "instanceMetrics": {
@@ -605,6 +689,262 @@
     "eta": "预计剩余 {{seconds}} 秒",
     "idle": "已 {{seconds}} 秒无进展",
     "waitForIO": "当前 I/O 返回前不能启动另一个写入任务。恢复存储连接后可安全续传。",
-    "retry": "重试缓存复制"
+    "retry": "重试缓存复制",
+    "noAutoRetry": "系统不会自动重试这次复制；请排除原因后手动重试。",
+    "retryUnavailable": "这里不能重试这次失败：只有复制到节点缓存失败的任务可以重试。请修复来源或存储后重新部署。",
+    "retryUnavailableShort": "此处不可重试"
+  },
+  "unitsPlacement": {
+    "label": "放置方式",
+    "auto": "自动",
+    "manual": "手动",
+    "autoHint": "平台在单元启动时挑节点和卡，优先沿用上次的节点。",
+    "manualHint": "节点已固定：平台不会为单元另挑节点。",
+    "toAuto": "切换为自动",
+    "toManual": "切换为手动",
+    "confirmTitleAuto": "切换为自动放置？",
+    "confirmTitleManual": "切换为手动放置？",
+    "confirmAuto": "此后由平台在单元启动时挑节点和卡；PD 单元钉住的卡会被清除。现在不会重启任何实例。",
+    "confirmManual": "每个单元现在所在的节点被固定，平台不再自动重挑。现在不会重启任何实例。",
+    "switchFailed": "无法修改放置方式：{{detail}}",
+    "switchedAuto": "已切换为自动放置",
+    "switchedManual": "已切换为手动放置",
+    "scale": {
+      "autoNote": "未指定的节点将自动调度。",
+      "specified": "指定",
+      "automatic": "自动调度",
+      "newReplica": "新副本 {{index}}",
+      "rankSlot": "Rank {{rank}} 的节点",
+      "rankSlotAria": "新副本 {{index}} 的 rank {{rank}} 节点",
+      "preferPlaceholder": "优先放在（可留空）",
+      "prefixHint": "请从第一个 rank 起依次指定：前面的 rank 指定后才能指定后面的。"
+    }
+  },
+  "operator": {
+    "roleNote": "（{{role}}）",
+    "abortNote": "；立即中止在途请求",
+    "scope": {
+      "deployment": "整个部署",
+      "role": "{{role}}角色",
+      "replica": "实例 {{instances}} 所在的副本"
+    }
+  },
+  "automation": {
+    "minutes": "分钟",
+    "save": "保存",
+    "retry": "重新加载定时计划",
+    "cause": {
+      "schedule": "，由定时计划触发",
+      "idle": "，无抢占时自动休眠（{{idle}}内没有请求）",
+      "wake_waiting": "，GPU 已腾出空间",
+      "operator": "，按操作员指令",
+      "request": "，因请求到达",
+      "resume": "，让出的 GPU 已空出，恢复运行"
+    },
+    "yieldedNote": "，已先让 {{names}} 休眠",
+    "preempt": {
+      "idle": "，已闲置达到闲置时间，按出让策略为 {{who}} 让出 GPU",
+      "rank": "，按出让策略，为排位更高的 {{who}} 让出 GPU",
+      "turn": "，时间片轮到 {{who}}，为其让出 GPU",
+      "other": "，为 {{who}} 让出 GPU",
+      "who": "部署 #{{id}}",
+      "someone": "其他部署",
+      "abort": "，中断了进行中的请求"
+    },
+    "action": {
+      "sleep": "休眠",
+      "wake": "唤醒",
+      "replicas": "副本数"
+    },
+    "level": {
+      "1": "L1 · 内存（快速）",
+      "2": "L2 · 深度"
+    },
+    "schedule": {
+      "title": "定时计划",
+      "hint": "到点自动执行的常驻指令。每次只执行一次；期间手动下的指令不会被覆盖。新增或修改的指令从下一次触发时间起生效。",
+      "add": "添加指令",
+      "addTitle": "添加定时指令",
+      "editTitle": "编辑定时指令",
+      "edit": "编辑",
+      "delete": "删除",
+      "deleteConfirm": "删除这条定时指令？",
+      "deleted": "已删除定时指令",
+      "empty": "暂无定时指令。",
+      "noActions": "该部署无法按计划休眠或调整副本数：",
+      "loadFailed": "加载定时计划失败：{{detail}}",
+      "saveFailed": "保存指令失败：{{detail}}",
+      "deleteFailed": "删除指令失败：{{detail}}",
+      "saved": "已保存定时指令",
+      "save": "保存",
+      "serverZone": "服务器时区",
+      "timezoneHint": "留空则使用服务器时区，也可填 IANA 名称，如 Asia/Shanghai。",
+      "everyDay": "每天",
+      "enabledOf": "启用 {{time}} 的{{order}}",
+      "columns": {
+        "order": "指令",
+        "days": "星期",
+        "time": "时间",
+        "next": "下次执行",
+        "enabled": "启用"
+      },
+      "actionText": {
+        "sleep": "休眠（L{{level}}）",
+        "wake": "唤醒",
+        "replicas": "副本数设为 {{count}}",
+        "roleReplicas": "{{role}}副本数设为 {{count}}"
+      },
+      "actionName": {
+        "sleep": "休眠",
+        "wake": "唤醒",
+        "replicas": "调整副本数"
+      },
+      "field": {
+        "action": "指令",
+        "weekdays": "星期",
+        "time": "时间",
+        "timezone": "时区",
+        "sleep_level": "休眠级别",
+        "replicas": "副本数",
+        "role": "角色",
+        "enabled": "启用"
+      },
+      "roleHint": "PD 部署的每个角色各有自己的副本数；这条指令设置所选角色的副本数。",
+      "errors": {
+        "weekdays": "请至少选择一天。",
+        "time": "时间请按 HH:MM 填写。",
+        "replicas": "副本数需在 {{minimum}} 到 {{maximum}} 之间。"
+      },
+      "weekday": {
+        "0": "周日",
+        "1": "周一",
+        "2": "周二",
+        "3": "周三",
+        "4": "周四",
+        "5": "周五",
+        "6": "周六"
+      }
+    }
+  },
+  "schedulingPolicy": {
+    "title": "调度策略",
+    "edit": "编辑",
+    "close": "完成",
+    "helpLabel": "调度策略说明",
+    "help": "详细说明见文档《使用调度分析》（定时计划、出让策略）和《节点失联重调度》。",
+    "item": "{{label}}：{{value}}",
+    "separator": " · ",
+    "off": "关闭",
+    "none": "无",
+    "loading": "加载中…",
+    "loadFailed": "加载失败",
+    "scheduleCount_one": "{{count}} 条",
+    "scheduleCount_other": "{{count}} 条",
+    "scheduleNext": "，下次 {{time}} {{order}}",
+    "scheduleAllOff": "，均未启用"
+  },
+  "yieldPolicy": {
+    "title": "出让策略",
+    "summaryLabel": "出让策略",
+    "hint": "同一批 GPU 上有多个可休眠部署时，出让策略决定谁让给谁；被平台休眠的部署收到请求会挂起等待唤醒，而不是直接返回 503。",
+    "notSleepable": "该部署没有启用休眠模式，只能不自动出让。",
+    "singleNodeOnly": "多机与 PD 部署只能不自动出让。",
+    "saved": "已保存出让策略",
+    "saveFailed": "保存出让策略失败：{{detail}}",
+    "idleNeighbours": "与 {{names}} 共用 GPU，且都是闲置自动出让：两者都忙时互不让出，对方的请求会挂起直到超时。需要轮流使用请改为按时自动出让。",
+    "nameSeparator": "、",
+    "policyLabel": "出让策略",
+    "policy": {
+      "name": {
+        "never": "不自动出让",
+        "idle": "闲置自动出让",
+        "timeslice": "按时自动出让",
+        "anytime": "随时出让"
+      },
+      "description": {
+        "never": "不自动出让显存与算力，适合常驻服务",
+        "idle": "闲置且共卡模型需要显存和算力时自动出让，适合在线任务",
+        "timeslice": "闲置或服务达到时间片后，共卡模型需要显存和算力时自动出让，适合多模型分时复用",
+        "anytime": "有更高优先级部署需要显存和算力时立刻出让，适合批处理、离线任务"
+      }
+    },
+    "field": {
+      "policy": "出让策略",
+      "idle_sec": "闲置时间",
+      "max_serve_sec": "最长服务时间",
+      "unfinished": "出让时未完成请求的处理策略",
+      "unfinished_wait_sec": "最多等待",
+      "sleep_level": "休眠级别",
+      "hold_max_sec": "请求最长挂起时间"
+    },
+    "help": {
+      "idle_sec": "持续这么久没有用户请求（健康检查不算），且有其他部署在等 GPU 时让出。",
+      "max_serve_sec": "与其他按时自动出让的部署共用 GPU 时，每轮最多服务这么久就让出。",
+      "hold_max_sec": "部署休眠或被让出期间，请求最多被挂起这么久等待唤醒，超时返回错误。"
+    },
+    "sleepLevel": {
+      "auto": "自动（优先 L1，主机内存放不下权重时用 L2）",
+      "l1": "L1 · 内存（快速）",
+      "l2": "L2 · 深度"
+    },
+    "unfinished": {
+      "abort": "立即中断",
+      "wait": "等待完成"
+    },
+    "unit": "秒",
+    "range": "范围 {{minimum}} 到 {{maximum}} 秒",
+    "modified": "已修改",
+    "restoreDefaults": "恢复默认",
+    "dictionary": {
+      "loading": "加载出让策略选项",
+      "failed": "加载出让策略选项失败：{{detail}}",
+      "retry": "重试"
+    },
+    "error": {
+      "invalid_value": "“{{field}}”的取值不合法。",
+      "out_of_range": "“{{field}}”必须在 {{minimum}} 到 {{maximum}} 秒之间。",
+      "required": "“{{field}}”不能为空。"
+    },
+    "summary": {
+      "line": "{{policy}} · {{digest}}",
+      "idle": "闲置 {{value}}",
+      "idleYield": "闲置 {{value}}后让出",
+      "turn": "每轮最长 {{value}}",
+      "separator": " / "
+    }
+  },
+  "nodeReplacement": {
+    "title": "节点失联重调度",
+    "after": "等待",
+    "minutes": "节点离线多少分钟后重调度",
+    "unit": "分钟",
+    "zeroNever": "0 表示从不重调度",
+    "save": "保存",
+    "saved": "已保存节点失联重调度",
+    "saveFailed": "保存节点失联重调度失败：{{detail}}",
+    "movedTo": "已重调度到 {{node}}",
+    "movedElsewhere": "正在别的节点重建",
+    "placedFrom": "（原在 {{from}}）",
+    "placedCause": "：{{reason}}",
+    "placedReason": {
+      "node_cordoned": "它所在的节点已停止调度",
+      "placement_rejected": "它所在的节点已不满足部署的节点条件",
+      "pinned_gpus_unavailable": "它钉住的卡被其他部署占用",
+      "insufficient_empty_gpus": "它所在的节点没有空闲的卡",
+      "no_free_gpu": "它所在的节点没有空闲的卡",
+      "no_fit": "它所在的节点放不下它",
+      "other": "它原来的节点放不下它"
+    },
+    "what": {
+      "replica": "一个副本",
+      "unit": "副本 {{label}}"
+    }
+  },
+  "duration": {
+    "seconds": "{{value}} 秒",
+    "minutes": "{{value}} 分钟",
+    "hours": "{{value}} 小时",
+    "days": "{{value}} 天",
+    "hoursMinutes": "{{hours}} 小时 {{minutes}} 分钟"
   }
 }

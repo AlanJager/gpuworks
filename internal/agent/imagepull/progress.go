@@ -163,6 +163,21 @@ func (p *Progress) Snapshot(now time.Time) (message, phase string, done, total, 
 	return p.lastLine, p.phase, done, total, rate, progress
 }
 
+// Coarse reports whether a layer still downloading is shown only in coarse
+// steps (runtime.PullLineDownloadingInSteps), which makes its byte count
+// useless for judging how fast the pull goes.
+func (p *Progress) Coarse() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for key, l := range p.layers {
+		if key == pullGlobalLayer || l.step <= 0 || l.phase == "complete" || (l.total > 0 && l.done >= l.total) {
+			continue
+		}
+		return true
+	}
+	return false
+}
+
 func parsePullBytes(value, unit string) int64 {
 	v, err := strconv.ParseFloat(value, 64)
 	if err != nil {

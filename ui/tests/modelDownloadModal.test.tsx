@@ -44,7 +44,7 @@ async function pick(name: string, option: string | RegExp) {
   fireEvent.click(await screen.findByText(option));
 }
 
-beforeEach(() => { installFleet(api as never, nodes as never); });
+beforeEach(() => { installFleet(api as never, nodes.map((n) => ({ ...(n as object), system_labels: [{key:"gpuworks.ai/storage",value:"3"}] })) as never); });
 
 test("with a single writable local storage only the nodes are asked, and several nodes download one file each", async () => {
   stubStorages([storage({})]);
@@ -88,16 +88,17 @@ test("the storage list only offers writable enabled storages and preselects the 
   }
 });
 
-test("a shared storage needs no node: one download for everyone, payload has no node_uuids", async () => {
+test("a shared storage requires one chosen writer and sends that exact node", async () => {
   stubStorages([storage({ id: 1 }), storage({ id: 3, name: "archive", type: "nfs", is_default: false })]);
   const calls = stubDownload();
   renderModal();
   await pick(models.download.storage, /archive/);
   assert.ok(await screen.findByText(models.download.sharedHint));
-  assert.equal(screen.queryByRole("combobox", { name: models.download.nodes }), null);
+  assert.equal((screen.getByRole("button", { name: models.download.action }) as HTMLButtonElement).disabled, true);
+  await pick(models.download.writer, /node-01/);
   fireEvent.click(screen.getByRole("button", { name: models.download.action }));
   await waitFor(() => assert.equal(calls.length, 1));
-  assert.deepEqual(calls[0], [9, { storage_id: 3 }]);
+  assert.deepEqual(calls[0], [9, { storage_id: 3, node_uuids: ["n2"] }]);
 });
 
 test("the storage can be chosen from the keyboard", async () => {
@@ -110,11 +111,15 @@ test("the storage can be chosen from the keyboard", async () => {
   fireEvent.keyDown(combo, { key: "ArrowDown", code: "ArrowDown", keyCode: 40 });
   fireEvent.keyDown(combo, { key: "Enter", code: "Enter", keyCode: 13 });
   assert.ok(await screen.findByText(models.download.sharedHint), "Enter on the highlighted option picked the NFS storage");
+  const writer = await screen.findByRole("combobox", { name: models.download.writer });
+  writer.focus();
+  fireEvent.keyDown(writer, { key: "ArrowDown", code: "ArrowDown", keyCode: 40 });
+  fireEvent.keyDown(writer, { key: "Enter", code: "Enter", keyCode: 13 });
   const ok = screen.getByRole("button", { name: models.download.action });
   ok.focus();
   fireEvent.click(ok);
   await waitFor(() => assert.equal(calls.length, 1));
-  assert.deepEqual(calls[0], [9, { storage_id: 3 }]);
+  assert.deepEqual(calls[0], [9, { storage_id: 3, node_uuids: ["n1"] }]);
 });
 
 test("loading, load failure with retry, and the no-writable-storage case", async () => {
@@ -175,9 +180,10 @@ test("where the model already is cannot be chosen again, and a no-op answer says
   // A storage without it downloads; if the server finds it there after all, the
   // user is told it is already present.
   await pick(models.download.storage, /^scratch-nfs/);
+  await pick(models.download.writer, /node-01/);
   fireEvent.click(screen.getByRole("button", { name: models.download.action }));
   await waitFor(() => assert.equal(calls.length, 1));
-  assert.deepEqual(calls[0], [9, { storage_id: 3 }]);
+  assert.deepEqual(calls[0], [9, { storage_id: 3, node_uuids: ["n2"] }]);
   assert.ok(await screen.findByText(models.download.alreadyPresent.replace("{{storage}}", "scratch-nfs")));
 });
 

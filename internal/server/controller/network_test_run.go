@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"time"
 
+	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/netplan"
 	"gpuworks.ai/gpuworks/internal/server/nettest"
 	"gpuworks.ai/gpuworks/internal/server/network"
@@ -52,11 +53,15 @@ func (c *Controller) runNetworkTest(id uint) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Hour)
 	defer cancel()
+	protocol := ""
+	if tested, getErr := c.store.GetNetwork(run.NetworkID); getErr == nil && tested.Type == netplan.TypeAcceleratorHCCS {
+		protocol = proto.AcceleratorPingProtocolHCCS
+	}
 	mode := nettest.ModeTCP
 	if run.Kind == nettest.ModeRDMATool || nettest.CardMode(run.Kind) {
 		mode = run.Kind
 	}
-	pairs := nettest.Run(ctx, caller.CallNode, endpoints, nettest.Options{Mode: mode, Pattern: run.Pattern, Bandwidth: run.Bandwidth, Seconds: run.Seconds})
+	pairs := nettest.Run(ctx, caller.CallNode, endpoints, nettest.Options{Mode: mode, Pattern: run.Pattern, Protocol: protocol, Bandwidth: run.Bandwidth, Seconds: run.Seconds})
 	passed := 0
 	for _, p := range pairs {
 		if nettest.PairStatus(mode, p, run.Bandwidth) == nettest.StatusPassed {

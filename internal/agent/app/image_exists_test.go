@@ -82,3 +82,28 @@ func TestStatusSnapshotDoesNotReportFailedInspectionAsAbsent(t *testing.T) {
 		})
 	}
 }
+
+type measuredPresenceDriver struct {
+	presenceDriver
+	size  *int64
+	calls int
+}
+
+func (d *measuredPresenceDriver) ImagePresence(_ context.Context, ref string) (bool, *int64, error) {
+	d.calls++
+	return d.exists, d.size, d.err
+}
+func TestStatusSnapshotReportsRuntimeSizeWithoutDuplicateProbe(t *testing.T) {
+	size := int64(8192)
+	d := &measuredPresenceDriver{presenceDriver: presenceDriver{exists: true}, size: &size}
+	n := NewNodeRuntime(slog.Default(), d, t.TempDir())
+	images, _ := n.StatusSnapshot(context.Background(), []string{"image:v1"})
+	if d.calls != 1 || d.ref != "" || len(images) != 1 || images[0].RuntimeSizeBytes == nil || *images[0].RuntimeSizeBytes != size || images[0].SizeBytes != 0 {
+		t.Fatalf("calls=%d legacy=%s images=%+v", d.calls, d.ref, images)
+	}
+	d.err = errors.New("daemon unavailable")
+	images, _ = n.StatusSnapshot(context.Background(), []string{"image:v1"})
+	if len(images) != 0 {
+		t.Fatalf("failed probe invented fact: %+v", images)
+	}
+}

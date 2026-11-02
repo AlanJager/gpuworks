@@ -493,3 +493,117 @@ func TestPodPowerStoppedOnlyWhenExited(t *testing.T) {
 		}
 	}
 }
+
+// Endpoint queries belong to every provider request, after its operation path.
+// Keep their raw encoding/order and escaped proxy prefix rather than composing
+// a different query or decoding a slash that belongs inside one path segment.
+func TestEndpointQueryAppliesToPodAndAccountKeyPaths(t *testing.T) {
+	const rawQuery = "tenant=e2e-query&label=one%2Ftwo%2Bthree&tail=value/"
+	for _, prefix := range []string{"/proxy-a/v2", "/proxy%2Ftenant/v2"} {
+		t.Run(prefix, func(t *testing.T) {
+			observed := make(chan string, 3)
+			keys := []string{"ssh-ed25519 AAAAfixture existing@example"}
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				observed <- r.Method + " " + r.RequestURI
+				if r.URL.RawQuery != rawQuery || r.Header.Get("Authorization") != "Bearer query-key" {
+					t.Errorf("query/auth differs: target=%q auth=%q", r.RequestURI, r.Header.Get("Authorization"))
+					http.Error(w, "query or authentication mismatch", http.StatusForbidden)
+					return
+				}
+				w.Header().Set("Content-Type", "application/json")
+				switch r.Method + " " + r.URL.EscapedPath() {
+				case "GET " + prefix + "/pods":
+					io.WriteString(w, `{"pods":[],"pagination":{"nextCursor":null,"hasNextPage":false}}`)
+				case "GET " + prefix + "/account/ssh-keys":
+					json.NewEncoder(w).Encode(map[string]any{"keys": keys})
+				case "PUT " + prefix + "/account/ssh-keys":
+					var body struct {
+						Keys []string `json:"keys"`
+					}
+					if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+						t.Errorf("decode SSH key replacement: %v", err)
+						http.Error(w, "invalid JSON", http.StatusBadRequest)
+						return
+					}
+					if len(body.Keys) != 1 || body.Keys[0] != "ssh-ed25519 AAAAfixture replacement@example" {
+						t.Errorf("SSH key replacement body = %#v", body)
+					}
+					keys = body.Keys
+					json.NewEncoder(w).Encode(map[string]any{"keys": keys})
+				default:
+					t.Errorf("unexpected endpoint path: %s %s", r.Method, r.RequestURI)
+					http.NotFound(w, r)
+				}
+			}))
+			defer srv.Close()
+			d := New()
+			d.http = srv.Client()
+			creds := provider.Credentials{APIKey: "query-key", Endpoint: "  " + srv.URL + prefix + "///?" + rawQuery + "  "}
+			if instances, err := d.ListInstances(t.Context(), creds); err != nil || len(instances) != 0 {
+				t.Errorf("ListInstances = %#v, %v", instances, err)
+			}
+			if got, err := d.ListSSHKeys(t.Context(), creds); err != nil || len(got) != 1 || got[0] != keys[0] {
+				t.Errorf("ListSSHKeys = %#v, %v", got, err)
+			}
+			if err := d.ReplaceSSHKeys(t.Context(), creds, []string{"ssh-ed25519 AAAAfixture replacement@example"}); err != nil {
+				t.Errorf("ReplaceSSHKeys: %v", err)
+			}
+			want := []string{"GET " + prefix + "/pods?" + rawQuery,
+				"GET " + prefix + "/account/ssh-keys?" + rawQuery,
+				"PUT " + prefix + "/account/ssh-keys?" + rawQuery}
+			var requests []string
+			for len(observed) > 0 {
+				requests = append(requests, <-observed)
+			}
+			if strings.Join(requests, "\n") != strings.Join(want, "\n") {
+				t.Errorf("outbound calls = %#v, want %#v", requests, want)
+			}
+		})
+	}
+}
+
+// A pod's keys are the PUBLIC_KEY it was created with (an edit keeps it); a key
+// the install appends to authorized_keys sits on the container disk the edit
+// clears (observed 2026-10-26: the platform key added at install was gone
+// after a ports edit, the rented key in PUBLIC_KEY still logged in).
+func TestPlatformKeyVolatileUnlessThePodEnvCarriesIt(t *testing.T) {
+	const platform = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPlatformKeyMaterial gpuworks@server"
+	const rented = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIRentedKeyMaterial rent@test"
+	for _, tc := range []struct {
+		name       string
+		env        string
+		status     int
+		authorized bool
+		noKey      bool
+		want       bool
+	}{
+		{name: "key appended to authorized_keys only", env: rented, status: 200, authorized: true, want: true},
+		{name: "key in PUBLIC_KEY", env: rented + "\n" + platform, status: 200, authorized: true, want: false},
+		{name: "same key with another comment", env: strings.Replace(platform, "gpuworks@server", "other", 1), status: 200, authorized: true, want: false},
+		{name: "pod unreadable", status: 500, authorized: true, want: true},
+		{name: "platform key not authorized", env: rented, status: 200, authorized: false, want: false},
+		{name: "no platform key", env: rented, status: 200, authorized: true, noKey: true, want: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			d := newTestDriver(t, func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path != "/pods/pod-1" {
+					t.Errorf("path = %q", r.URL.Path)
+				}
+				if tc.status != 200 {
+					w.WriteHeader(tc.status)
+					return
+				}
+				body, _ := json.Marshal(map[string]any{"id": "pod-1", "status": "RUNNING", "env": map[string]string{"PUBLIC_KEY": tc.env, "GPUWORKS_TEST": "1"}})
+				_, _ = w.Write(body)
+			})
+			req := provider.InstallRequest{Instance: provider.Instance{ExternalID: "pod-1"}}
+			if !tc.noKey {
+				req.PlatformKey = &provider.PlatformKey{PublicKey: platform}
+			}
+			got := d.platformKeyVolatile(context.Background(), provider.Credentials{APIKey: "k"}, req, provider.InstallReport{PlatformKeyAuthorized: tc.authorized})
+			if got != tc.want {
+				t.Fatalf("platformKeyVolatile = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}

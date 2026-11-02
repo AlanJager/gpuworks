@@ -88,22 +88,34 @@ func (e *Engine) reconcileSleep(ctx context.Context, spec proto.InstanceDesiredS
 			return
 		}
 		if cur == 0 && actual > 0 {
-			// The sleep took effect despite an HTTP failure. The target level is
-			// the only depth the boolean endpoint lets us infer; report it as a
-			// successful transition so the UI does not show a false failure.
+			// The engine answered the sleep with an error yet says it sleeps:
+			// vLLM pauses its scheduler before it offloads, so /is_sleeping
+			// reads true while the weights may be only partly moved out. Such
+			// an engine wakes into a no-op and crashes on the next request
+			// (an illegal memory access), so fail closed and rebuild it.
+			var refused *engineStatusError
+			if errors.As(err, &refused) {
+				e.reportUncertainSleep(spec, err, errors.New("the engine refused the sleep but reports sleeping; its weights may be partly offloaded"))
+				return
+			}
+			// The sleep took effect despite a transport failure. The target
+			// level is the only depth the boolean endpoint lets us infer; report
+			// it as a successful transition so the UI does not show a false
+			// failure.
 			e.mu.Lock()
 			e.sleepLevel[spec.UUID] = target
 			e.mu.Unlock()
 			e.report(proto.InstanceStatus{
 				UUID: spec.UUID, State: proto.InstRunning, ContainerID: containerName(spec.UUID),
 				Ports: spec.Ports, DirectAddr: fmt.Sprintf("127.0.0.1:%d", spec.APIPort), SleepLevel: target, SleepTarget: &target,
+				SleepResidueBytes: e.measureSleepResidue(ctx, spec), L1HostBufferHeld: e.holdsL1HostBuffer(spec.UUID),
 			})
 			return
 		}
 		e.report(proto.InstanceStatus{
 			UUID: spec.UUID, State: proto.InstRunning, ContainerID: containerName(spec.UUID),
 			Ports: spec.Ports, DirectAddr: fmt.Sprintf("127.0.0.1:%d", spec.APIPort),
-			SleepLevel: cur, SleepTarget: &target, Phase: proto.PhaseSleep,
+			SleepLevel: cur, SleepTarget: &target, Phase: proto.PhaseSleep, L1HostBufferHeld: e.holdsL1HostBuffer(spec.UUID),
 			Message: fmt.Sprintf("sleep level %d → %d failed: %v", cur, spec.DesiredSleep, err),
 		})
 		return
@@ -111,13 +123,25 @@ func (e *Engine) reconcileSleep(ctx context.Context, spec proto.InstanceDesiredS
 
 	e.mu.Lock()
 	e.sleepLevel[spec.UUID] = spec.DesiredSleep
+	if spec.DesiredSleep == 0 {
+		delete(e.sleepPIDs, spec.UUID)
+	}
+	if spec.DesiredSleep == proto.SleepLevelL1 {
+		e.l1HostHeld[spec.UUID] = true
+	}
 	e.mu.Unlock()
 	target := spec.DesiredSleep
 
+	// Only a completed sleep has a residue; a wake or a failed order reports none.
+	var residue int64
+	if target > 0 {
+		residue = e.measureSleepResidue(ctx, spec)
+	}
 	e.report(proto.InstanceStatus{
 		UUID: spec.UUID, State: proto.InstRunning, ContainerID: containerName(spec.UUID),
 		Ports: spec.Ports, DirectAddr: fmt.Sprintf("127.0.0.1:%d", spec.APIPort),
-		SleepLevel: spec.DesiredSleep, SleepTarget: &target,
+		SleepLevel: spec.DesiredSleep, SleepTarget: &target, SleepResidueBytes: residue,
+		L1HostBufferHeld: e.holdsL1HostBuffer(spec.UUID),
 	})
 	e.log.Info("instance sleep level applied", "uuid", spec.UUID, "level", spec.DesiredSleep)
 }
@@ -197,6 +221,7 @@ func (e *Engine) prewarmSleep(ctx context.Context, spec proto.InstanceDesiredSta
 	}
 	e.mu.Lock()
 	e.sleepLevel[spec.UUID] = 1
+	e.l1HostHeld[spec.UUID] = true
 	e.mu.Unlock()
 	if err := e.vllmPost(ctx, base+"/wake_up", nil); err != nil {
 		e.log.Debug("prewarm wake failed", "uuid", spec.UUID, "err", err)
@@ -251,7 +276,21 @@ func (e *Engine) forgetSleepState(uuid string) {
 	e.mu.Lock()
 	delete(e.sleepLevel, uuid)
 	delete(e.prewarmed, uuid)
+	delete(e.sleepPIDs, uuid)
+	delete(e.l1HostHeld, uuid)
 	e.mu.Unlock()
+}
+
+// holdsL1HostBuffer says the engine of uuid completed an L1 sleep since its
+// container started, here (its prewarm or an order). vLLM copies the weights
+// into pinned host memory on an L1 sleep and keeps that memory for the life of
+// the process, awake or asleep, so its next L1 sleep takes no host memory it
+// does not already hold. A container adopted after an agent restart is not
+// known to, though it may.
+func (e *Engine) holdsL1HostBuffer(uuid string) bool {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.l1HostHeld[uuid]
 }
 
 func (e *Engine) vllmPost(ctx context.Context, url string, body []byte) error {
@@ -274,7 +313,17 @@ func (e *Engine) vllmPost(ctx context.Context, url string, body []byte) error {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 300 {
-		return fmt.Errorf("%s: http %d", url, resp.StatusCode)
+		return &engineStatusError{url: url, status: resp.StatusCode}
 	}
 	return nil
 }
+
+// engineStatusError is an order the engine answered with an error status: it
+// says the order failed, unlike a transport error, after which the order may
+// still have run to the end.
+type engineStatusError struct {
+	url    string
+	status int
+}
+
+func (e *engineStatusError) Error() string { return fmt.Sprintf("%s: http %d", e.url, e.status) }

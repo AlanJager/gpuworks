@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/proto"
@@ -46,7 +47,8 @@ type Hooks struct {
 	// reported; it returns the stored per-request detail, if any.
 	DetailPath func(seq int) string
 	// PointReported is called after point seq's result has been reported,
-	// with that point's requests.
+	// with that point's requests. Without it the point keeps no results: each
+	// one only passes through Result.
 	PointReported func(seq int, results []loadgen.Result)
 }
 
@@ -56,7 +58,7 @@ type Hooks struct {
 func Execute(ctx context.Context, run Run, hooks Hooks) {
 	e := &execution{run: run, hooks: hooks}
 	if err := e.execute(ctx); err != nil && ctx.Err() == nil {
-		hooks.Report(proto.BenchmarkStatus{ID: run.ID, State: "failed", Message: err.Error(), StopReason: proto.BenchmarkStopFatal})
+		e.report(proto.BenchmarkStatus{ID: run.ID, State: "failed", Message: err.Error(), StopReason: proto.BenchmarkStopFatal})
 	}
 }
 
@@ -67,6 +69,7 @@ type execution struct {
 	dc              dataset.Config
 	tok             *tokenizer.Tokenizer
 	warmupSucceeded int
+	warmupRecords   []loadgen.DetailRecord
 }
 
 func (e *execution) execute(ctx context.Context) error {
@@ -81,17 +84,8 @@ func (e *execution) execute(ctx context.Context) error {
 		return fmt.Errorf("invalid search config: %w", err)
 	}
 	e.doc = doc
-	e.dc.Mode = "estimate"
-	if e.run.TokenizerRef != "" {
-		if loaded, loadErr := tokenizer.LoadRef(ctx, e.run.TokenizerRef); loadErr == nil {
-			e.tok = loaded
-			e.dc.Mode = "exact"
-		} else {
-			e.hooks.Warn(proto.BenchmarkWarningTokenizerLoad)
-		}
-	}
-	if e.dc.Kind == "agentic" && e.tok == nil {
-		return errors.New("agentic workload requires an exact tokenizer")
+	if err := e.loadTokenizer(ctx); err != nil {
+		return err
 	}
 
 	var points []search.Point
@@ -131,7 +125,7 @@ func (e *execution) execute(ctx context.Context) error {
 	if adaptive != nil {
 		stopReason = adaptive.StopReason()
 	}
-	e.hooks.Report(proto.BenchmarkStatus{ID: e.run.ID, State: "done", PointIndex: len(points), PointTotal: len(points), PointCount: len(points), StopReason: stopReason})
+	e.report(proto.BenchmarkStatus{ID: e.run.ID, State: "done", PointIndex: len(points), PointTotal: len(points), PointCount: len(points), StopReason: stopReason})
 	return nil
 }
 
@@ -184,7 +178,7 @@ func (e *execution) requests(dc dataset.Config, n int) ([]loadgen.Request, error
 // closed loop at the point's concurrency. The resolved point seed must match
 // the dataset and evidence, including when the run requested a random seed.
 func (e *execution) runner(point search.Point, seed int64) loadgen.Runner {
-	r := loadgen.Runner{Client: e.run.Client, Concurrency: max(1, point.Concurrency)}
+	r := loadgen.Runner{Client: e.run.Client, Concurrency: max(1, point.Concurrency), DiscardResults: e.hooks.PointReported == nil}
 	if e.tok != nil {
 		r.CountTokens = e.tok.Count
 	}
@@ -193,56 +187,6 @@ func (e *execution) runner(point search.Point, seed int64) loadgen.Runner {
 		r.MaxInFlight = point.Concurrency
 	}
 	return r
-}
-
-// warmup sends the configured warmup requests at the first point's load and
-// discards them. Only the first turn of a multi-turn sample is sent: warmup
-// exists to take the cold start out of the first point, not to replay whole
-// sessions. If every warmup request fails the run fails, so a broken endpoint
-// or configuration surfaces before any point is measured.
-func (e *execution) warmup(ctx context.Context, first search.Point) error {
-	n := e.doc.WarmupRequests
-	if n <= 0 {
-		return nil
-	}
-	dc := e.dc
-	if dc.Kind != "agentic" {
-		dc.InputTokens, dc.OutputTokens = first.ISL, first.OSL
-	}
-	// A distinct seed keeps warmup prompts from priming the prefix cache with
-	// the first point's own prompts.
-	dc.Seed += 7_919
-	reqs, err := e.requests(dc, n)
-	if err != nil {
-		return err
-	}
-	for i := range reqs {
-		reqs[i].FollowUps, reqs[i].DelayBefore = nil, 0
-	}
-	concurrency := n
-	if first.Concurrency > 0 && first.Concurrency < concurrency {
-		concurrency = first.Concurrency
-	}
-	current := &proto.BenchmarkCurrentPoint{Concurrency: concurrency, TargetISL: first.ISL, TargetOSL: first.OSL, RequestTotal: n, Warmup: true}
-	e.hooks.Report(proto.BenchmarkStatus{ID: e.run.ID, State: "running", CurrentPoint: current})
-	results := loadgen.Runner{Client: e.run.Client, Concurrency: concurrency}.Run(ctx, reqs)
-	if ctx.Err() != nil {
-		return ctx.Err()
-	}
-	var firstErr error
-	for _, r := range results {
-		if r.Metrics.Error == nil {
-			e.warmupSucceeded++
-			continue
-		}
-		if firstErr == nil {
-			firstErr = r.Metrics.Error
-		}
-	}
-	if e.warmupSucceeded > 0 {
-		return nil
-	}
-	return fmt.Errorf("all %d warmup requests failed: %w", n, firstErr)
 }
 
 func (e *execution) point(ctx context.Context, index int, point *search.Point, planned int) (search.Observation, error) {
@@ -263,7 +207,7 @@ func (e *execution) point(ctx context.Context, index int, point *search.Point, p
 	requestTotal := loadgen.TotalRequests(reqs)
 	current := &proto.BenchmarkCurrentPoint{Seq: seq, Concurrency: point.Concurrency, TargetISL: point.ISL, TargetOSL: point.OSL, RequestTotal: requestTotal, RequestRate: point.RequestRate}
 	sample := func() json.RawMessage {
-		snapshot := acc.Snapshot(time.Now().UTC())
+		snapshot := acc.ProgressSnapshot(time.Now().UTC())
 		if snapshot.AggregationError != "" {
 			return nil
 		}
@@ -273,7 +217,7 @@ func (e *execution) point(ctx context.Context, index int, point *search.Point, p
 	status := func(completed int, sample json.RawMessage) proto.BenchmarkStatus {
 		return proto.BenchmarkStatus{ID: e.run.ID, State: "running", PointIndex: seq, PointTotal: planned, PointCount: planned, Completed: completed, CurrentPoint: current, Sample: sample}
 	}
-	e.hooks.Report(status(0, sample()))
+	e.report(status(0, sample()))
 	runner := e.runner(*point, dc.Seed)
 	runner.OnResult = func(r loadgen.Result) {
 		acc.Add(r.Metrics)
@@ -281,10 +225,15 @@ func (e *execution) point(ctx context.Context, index int, point *search.Point, p
 			e.hooks.Result(seq, r)
 		}
 	}
-	runner.OnProgress = func(done, _ int) { e.hooks.Report(status(done, sample())) }
+	var completed atomic.Int64
+	runner.OnProgress = func(done, _ int) { completed.Store(int64(done)) }
+	stopProgress := e.reportProgress(func() {
+		e.report(status(int(completed.Load()), sample()))
+	}, func() int64 { return completed.Load() })
 	started := time.Now().UTC()
 	results := runner.Run(ctx, reqs)
 	ended := time.Now().UTC()
+	stopProgress()
 	snapshot := acc.Snapshot(ended)
 	requests := acc.Requests()
 	peak := metrics.RollingPeakThroughput(requests, ended, 10*time.Second)
@@ -324,7 +273,7 @@ func (e *execution) point(ctx context.Context, index int, point *search.Point, p
 	})
 	done := status(snapshot.Count, final)
 	done.Result, done.Point = result, pointJSON
-	e.hooks.Report(done)
+	e.report(done)
 	if e.hooks.PointReported != nil {
 		e.hooks.PointReported(seq, results)
 	}
@@ -341,6 +290,39 @@ func (e *execution) point(ctx context.Context, index int, point *search.Point, p
 		AvgTPOT: averages.TPOT, P50TPOT: ms(snapshot.TPOT[50]), P99TPOT: ms(snapshot.TPOT[99]),
 		AvgLatency: averages.Latency, P99Latency: ms(snapshot.Latency[99]),
 	}, longTail), nil
+}
+
+// progressInterval paces a point's running statuses. A request's completion
+// only records the count; one reporter publishes the count and a live sample
+// at most this often. Sampling on every completion summarizes every request
+// so far each time: at hundreds of completions a second that outgrows the
+// host's cores, and the samples piling up in the request goroutines exhausted
+// the server's memory.
+var progressInterval = time.Second
+
+// reportProgress runs report every progressInterval while done has moved
+// since the last report, until the returned stop is called; stop waits for a
+// report in flight so none lands after the point's own result.
+func (e *execution) reportProgress(report func(), done func() int64) (stop func()) {
+	quit, exited := make(chan struct{}), make(chan struct{})
+	go func() {
+		defer close(exited)
+		ticker := time.NewTicker(progressInterval)
+		defer ticker.Stop()
+		var last int64
+		for {
+			select {
+			case <-quit:
+				return
+			case <-ticker.C:
+				if n := done(); n != last {
+					last = n
+					report()
+				}
+			}
+		}
+	}()
+	return func() { close(quit); <-exited }
 }
 
 // LongTailDoc is a benchmark point's long_tail document as stored in

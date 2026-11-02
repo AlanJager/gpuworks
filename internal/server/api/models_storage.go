@@ -102,7 +102,19 @@ func (a *apiHandlers) downloadModel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if proto.StorageShared(storage.Type) {
-		a.downloadIntoShared(w, m, storage)
+		if len(uuids) > 1 {
+			writeProductError(w, http.StatusBadRequest, ErrorFieldInvalid, "choose exactly one writer for a shared storage", map[string]any{"field": "node_uuids", "detail": "choose exactly one writer for a shared storage"})
+			return
+		}
+		writerUUID := ""
+		if len(uuids) == 1 {
+			writerUUID = strings.TrimSpace(uuids[0])
+			if writerUUID == "" {
+				writeProductError(w, http.StatusBadRequest, ErrorFieldInvalid, "writer node cannot be empty", map[string]any{"field": "node_uuids", "detail": "writer node cannot be empty"})
+				return
+			}
+		}
+		a.downloadIntoShared(w, m, storage, writerUUID)
 		return
 	}
 	if len(uuids) == 0 {
@@ -136,6 +148,10 @@ func (a *apiHandlers) downloadModel(w http.ResponseWriter, r *http.Request) {
 		// Every preparation names a new transfer, which would restart a
 		// download already under way; asking again leaves that one running.
 		if err == nil && current.Acquisition == proto.ModelAcquireDownload && store.TransferUnderWay(current) {
+			if err := a.d.Store.SetDownloadDeployment(current.ID, current.TransferID, 0); err != nil {
+				writeStoreErr(w, err)
+				return
+			}
 			continue
 		}
 		if _, err := a.d.Store.PrepareModelDownload(ref, relPath(m)); err != nil {
@@ -153,9 +169,9 @@ func (a *apiHandlers) downloadModel(w http.ResponseWriter, r *http.Request) {
 }
 
 // downloadIntoShared downloads a model once into a shared storage through the
-// first online node that can write to it.
-func (a *apiHandlers) downloadIntoShared(w http.ResponseWriter, m *store.Model, storage *store.Storage) {
-	started, status, err := a.startSharedDownload(m, storage)
+// selected node, or the first online writer for older clients.
+func (a *apiHandlers) downloadIntoShared(w http.ResponseWriter, m *store.Model, storage *store.Storage, writerUUID string) {
+	started, status, err := a.startSharedDownloadOn(m, storage, writerUUID)
 	if err != nil {
 		writeErr(w, status, err)
 		return
@@ -175,30 +191,75 @@ func (a *apiHandlers) downloadIntoShared(w http.ResponseWriter, m *store.Model, 
 // running and returns its writer. A node that misses the push gets the task
 // with its next desired state.
 func (a *apiHandlers) startSharedDownload(m *store.Model, storage *store.Storage) (*store.Node, int, error) {
+	return a.startSharedDownloadOn(m, storage, "")
+}
+
+func (a *apiHandlers) startSharedDownloadOn(m *store.Model, storage *store.Storage, writerUUID string, owner ...uint) (*store.Node, int, error) {
+	deploymentID := uint(0)
+	if len(owner) > 0 {
+		deploymentID = owner[0]
+	}
 	ref := store.FileRef{ModelID: m.ID, StorageID: storage.ID}
-	if current, err := a.d.Store.ModelFileAt(ref); err == nil {
+	current, readErr := a.d.Store.ModelFileAt(ref)
+	if readErr != nil && !errors.Is(readErr, store.ErrNotFound) {
+		return nil, http.StatusInternalServerError, readErr
+	}
+	if readErr == nil {
 		if current.Ready() {
 			return nil, http.StatusOK, nil
+		}
+		if current.State == proto.MFCanceled && current.WriterNodeID != 0 {
+			oldWriter, err := a.d.Store.NodeByID(current.WriterNodeID)
+			if err != nil {
+				return nil, http.StatusConflict, err
+			}
+			if a.d.CallNode == nil {
+				return nil, http.StatusConflict, errors.New("the previous download writer must acknowledge cancellation before retry")
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			_, err = a.d.CallNode(ctx, oldWriter.UUID, proto.RPCModelDownloadStop, proto.ModelCopyStopParams{Key: store.ModelFileKey(current.ID), TransferID: current.TransferID})
+			cancel()
+			if err != nil {
+				return nil, http.StatusConflict, err
+			}
 		}
 		if store.TransferUnderWay(current) {
 			writer, err := a.d.Store.NodeByID(current.WriterNodeID)
 			if err == nil {
+				if writerUUID != "" && writer.UUID != writerUUID {
+					return nil, http.StatusConflict, productError(ErrorFieldInvalid, "cancel the running transfer before choosing another writer", map[string]any{"field": "node_uuids", "detail": "cancel the running transfer before choosing another writer"})
+				}
+				if deploymentID == 0 {
+					if err := a.d.Store.SetDownloadDeployment(current.ID, current.TransferID, 0); err != nil {
+						return nil, http.StatusInternalServerError, err
+					}
+				}
 				return writer, http.StatusAccepted, nil
 			}
 		}
 	}
-	writer, err := a.sharedWriter(storage, m)
+	var writer *store.Node
+	var err error
+	if writerUUID == "" {
+		writer, err = a.sharedWriter(storage, m)
+	} else {
+		writer, err = a.selectedSharedWriter(storage, m, writerUUID)
+	}
 	if err != nil {
 		return nil, http.StatusConflict, err
 	}
 	if _, err := planning.ModelWeightsFetch(a.d.Store, a.networks().Resolve, writer, m); err != nil {
 		return nil, http.StatusConflict, err
 	}
-	row, err := a.d.Store.PrepareModelDownload(ref, store.SharedModelRelPath(m))
+	_, err = a.d.Store.PrepareSharedModelDownload(ref, store.SharedModelRelPath(m), writer.ID, deploymentID, current)
 	if err != nil {
-		return nil, http.StatusInternalServerError, err
-	}
-	if err := a.d.Store.SetModelFileWriter(row.ID, writer.ID); err != nil {
+		if errors.Is(err, store.ErrModelDownloadInactive) {
+			return nil, http.StatusConflict, productError(ErrorFieldInvalid, "the download changed; refresh before retrying", map[string]any{"field": "node_uuids", "detail": "the download changed; refresh before retrying"})
+		}
+		var occupied *store.ModelFilePathOccupiedError
+		if errors.As(err, &occupied) {
+			return nil, http.StatusConflict, modelFilePathProductError(err)
+		}
 		return nil, http.StatusInternalServerError, err
 	}
 	if a.d.NodeSync != nil {
@@ -279,6 +340,7 @@ func (a *apiHandlers) copyModel(w http.ResponseWriter, r *http.Request) {
 	}
 	mf, err := a.d.PeerSync.CopyModel(r.Context(), modelID, src, dst, rate)
 	if err != nil {
+		err = modelFilePathProductError(err)
 		if errors.Is(err, store.ErrStorageDisabled) || errors.Is(err, store.ErrStorageNotWritable) || errors.Is(err, store.ErrNotFound) {
 			writeStoreErr(w, err)
 			return

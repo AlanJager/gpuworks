@@ -181,8 +181,8 @@
     },
     {
       "item": "1.14",
-      "status": "MISSING",
-      "assertion": "Partial: independent source-wire facts -> GET metadata/identity + fresh page detail; saved form editor and every metadata field UI are not claimed."
+      "status": "covered",
+      "assertion": "After a page reload the model list still has one row, and that row's ModelScope tag is blue. Opening the detail again shows the repository id, the fixture commit, Qwen2ForCausalLM, float16, and context length 4,096. The independent GET stores the same repository id and that commit."
     },
     {
       "item": "1.15",

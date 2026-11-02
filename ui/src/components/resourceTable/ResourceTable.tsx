@@ -229,14 +229,6 @@ export default function ResourceTable<T extends object>({
     label: column.label ?? (typeof column.title === "string" ? column.title : column.role === "actions" ? t("resourceTable.actions") : column.key),
   }));
 
-  if (error) {
-    return (
-      <div className="resource-table">
-        {toolbar && <div className="resource-table-toolbar"><div className="resource-table-toolbar-left">{toolbar}</div></div>}
-        <Alert type="error" showIcon message={t("dataTable.loadFailed")} description={error.message} action={onRefresh && <Button icon={<ReloadOutlined />} onClick={onRefresh} aria-label={t("actions.retry")}>{t("actions.retry")}</Button>} />
-      </div>
-    );
-  }
   return (
     <div className="resource-table">
       <div className="resource-table-toolbar">
@@ -256,6 +248,7 @@ export default function ResourceTable<T extends object>({
           )}
         </Space>
       </div>
+      {error ? <Alert type="error" showIcon message={t("dataTable.loadFailed")} description={error.message} action={onRefresh && <Button icon={<ReloadOutlined />} onClick={onRefresh} aria-label={t("actions.retry")}>{t("actions.retry")}</Button>} /> : <>
       <Table<T>
         rowKey={rowKey}
         columns={antdColumns}
@@ -280,6 +273,7 @@ export default function ResourceTable<T extends object>({
         onReset={reset}
         onClose={() => setSettingsOpen(false)}
       />
+      </>}
     </div>
   );
 }

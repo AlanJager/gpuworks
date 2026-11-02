@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"slices"
 	"strconv"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -25,8 +26,7 @@ import (
 // agent. ?role= orders only a PD deployment's instances of that role; the
 // deployment as a whole is then not under the order.
 func (a *apiHandlers) sleepDeployment(w http.ResponseWriter, r *http.Request) {
-	a.sleepMu.Lock()
-	defer a.sleepMu.Unlock()
+	defer planning.LockLifecycle()()
 	level, mode, ok := sleepOrderParams(w, r)
 	if !ok {
 		return
@@ -37,10 +37,10 @@ func (a *apiHandlers) sleepDeployment(w http.ResponseWriter, r *http.Request) {
 	}
 	role := r.URL.Query().Get("role")
 	if role == "" {
-		if err := a.d.Store.OrderDeploymentSleep(dep.ID, level, mode); err != nil {
-			writeErr(w, http.StatusInternalServerError, err)
+		if !a.orderSleep(w, dep, planning.SleepOrder{Pref: planning.SleepPreference(level), Mode: mode, Held: true}, writeErr500) {
 			return
 		}
+		a.sleepOrdered(r, dep.ID, level, mode, "deployment", "", nil)
 		writeJSON(w, http.StatusOK, dto.SleepOrder{Status: "sleeping", Level: level, Mode: mode})
 		return
 	}
@@ -48,12 +48,31 @@ func (a *apiHandlers) sleepDeployment(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if err := a.d.Store.OrderInstancesSleep(dep.ID, uuidsOf(named), level, mode); err != nil {
-		writeErr(w, http.StatusInternalServerError, err)
+	if !a.orderSleep(w, dep, planning.SleepOrder{Pref: planning.SleepPreference(level), Mode: mode, Held: true, Instances: uuidsOf(named)}, writeErr500) {
 		return
 	}
+	a.sleepOrdered(r, dep.ID, level, mode, "role", role, uuidsOf(named))
 	writeJSON(w, http.StatusOK, dto.SleepOrder{Status: "sleeping", Level: level, Mode: mode, Role: role, Instances: uuidsOf(named)})
 }
+
+// orderSleep writes an operator's sleep order (planning.OrderSleep), which
+// names its level explicitly: a refusal is 409 (the deployment's sleep
+// eligibility was checked before, as a 400), a store failure goes to
+// storeErr. It writes the response unless the order was written.
+func (a *apiHandlers) orderSleep(w http.ResponseWriter, dep *store.Deployment, order planning.SleepOrder, storeErr func(http.ResponseWriter, error)) bool {
+	_, refusal, err := planning.OrderSleep(a.d.Store, dep, order, a.hostMemory)
+	if err != nil {
+		storeErr(w, err)
+		return false
+	}
+	if refusal != nil {
+		writeSleepRefusal(w, http.StatusConflict, refusal)
+		return false
+	}
+	return true
+}
+
+func writeErr500(w http.ResponseWriter, err error) { writeErr(w, http.StatusInternalServerError, err) }
 
 // sleepOrderParams reads ?level= and ?mode=, writing the response when they
 // are invalid.
@@ -101,8 +120,7 @@ func parseSleepOrder(rawLevel, rawMode string) (level int, mode string, code str
 // shortfall instead of refusing them all. Any wake withdraws a deployment-wide
 // sleep order.
 func (a *apiHandlers) wakeDeployment(w http.ResponseWriter, r *http.Request) {
-	a.sleepMu.Lock()
-	defer a.sleepMu.Unlock()
+	defer planning.LockLifecycle()()
 	partial := false
 	if raw := r.URL.Query().Get("partial"); raw != "" {
 		parsed, err := strconv.ParseBool(raw)
@@ -117,41 +135,40 @@ func (a *apiHandlers) wakeDeployment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	role := r.URL.Query().Get("role")
-	var named []store.Instance
+	insts, err := a.d.Store.InstancesForDeployment(dep.ID)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	named := planning.Sleepers(insts)
 	if role != "" {
 		if named, ok = a.roleSleepTargets(w, dep, role, false); !ok {
 			return
 		}
-	} else {
-		insts, err := a.d.Store.InstancesForDeployment(dep.ID)
-		if err != nil {
-			writeErr(w, http.StatusInternalServerError, err)
-			return
-		}
-		for i := range insts {
-			if store.HoldsSleepIntent(&insts[i]) {
-				named = append(named, insts[i])
-			}
-		}
 	}
-	woken, refused, err := a.admitWake(dep, named, partial)
+	match, err := a.deploymentUnitMatch(dep, insts)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
-	if len(refused) > 0 && (!partial || len(woken) == 0) {
+	how, ok := wakeWaitParams(w, r)
+	if !ok {
+		return
+	}
+	if how.wait || how.yield {
+		a.wakeAndWait(w, r, dep, match, named, role == "", how)
+		return
+	}
+	woken, refused, err := planning.OrderWake(a.d.Store, dep, match, named, partial, role == "")
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	if len(woken) == 0 && len(refused) > 0 {
 		writeWakeRefusal(w, refused)
 		return
 	}
-	if role == "" && len(refused) == 0 {
-		err = a.d.Store.SetDeploymentSleep(dep.ID, 0)
-	} else {
-		err = a.d.Store.OrderInstancesSleep(dep.ID, uuidsOf(woken), 0, "")
-	}
-	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err)
-		return
-	}
+	a.wakeOrdered(r, dep.ID, uuidsOf(woken))
 	result := dto.WakeResult{Status: "waking"}
 	if partial {
 		result.Woken = uuidsOf(woken)
@@ -211,6 +228,8 @@ func sleepRefusalFallback(code string) string {
 		return "the instance fills no replica: it failed, is draining or is being removed"
 	case ErrorSleepRoleCannotEmpty:
 		return "the role cannot be left without an awake instance; sleep the whole deployment instead"
+	case ErrorSleepHostMemoryInsufficient:
+		return "the node's host memory cannot hold the weights an L1 sleep moves there; sleep at L2 instead"
 	case messages.ErrorPDNotPD:
 		return "deployment is not PD disaggregated"
 	case messages.ErrorPDRoleUnknown:
@@ -226,4 +245,30 @@ func appendUnique(values []string, more ...string) []string {
 		}
 	}
 	return values
+}
+
+// hostMemory is a node's host memory as its agent recently reported it
+// (planning.RecentHostMemory).
+func (a *apiHandlers) hostMemory(nodeUUID string) (available, total int64, ok bool) {
+	host := HostMemory(a.d.MetricsLatest)
+	if host == nil {
+		return 0, 0, false
+	}
+	return host(nodeUUID)
+}
+
+// HostMemory is planning.RecentHostMemory over latest, the metrics store's
+// newest samples (Deps.MetricsLatest): the one reader of host memory for an
+// operator's L1 sleep and the automation's. Nil latest knows nothing.
+func HostMemory(latest func(metric string, matchers map[string]string, sinceMS int64, asOfMS ...int64) ([]MetricLatest, error)) planning.HostMemory {
+	if latest == nil {
+		return nil
+	}
+	return planning.RecentHostMemory(func(metric, node string, sinceMS int64) (float64, bool) {
+		rows, err := latest(metric, map[string]string{"node": node}, sinceMS)
+		if err != nil || len(rows) == 0 {
+			return 0, false
+		}
+		return rows[0].Value, true
+	}, time.Now)
 }

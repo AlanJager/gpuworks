@@ -83,7 +83,7 @@ specs:
   weight_bytes: 185523317458
   gpus:
     vendor: nvidia
-    name: (^|[^A-Za-z0-9])(?:H200)([^A-Za-z0-9]|$)
+    name: (^|[^A-Za-z0-9])(?:H200|H20)([^A-Za-z0-9]|$)
     display_target: nvidia
   args:
   - --ep
@@ -120,6 +120,53 @@ specs:
           if gpu.count != 4:
               return reject("this recipe requires exactly 4 GPUs per node")
           return {"TP_SIZE": 4, "SP_DEGREE": 1}
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+# vLLM on 8 Hopper cards (H200, H20 96/141 GB, H100 80 GB). This loads the BF16
+# checkpoint, the one that was run on hardware (TP8, no expert parallelism):
+# 41.9 GiB per card, so it fits an 80 GB card too. The FP8 repo needs
+# --enable-expert-parallel at TP8 (its 128-wide quantization blocks do not split
+# 8 ways) and was not run, so it is not offered here. --disable-custom-all-reduce
+# is required: with sleep mode on, H20 CUDA graph capture fails in
+# custom_all_reduce.cuh without it. Context is the model's native 256K.
+- name: bf16-vllm-nvidia-hopper-tp8
+  display_profile: compatible
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen3.8-Flash-Next
+        revision: de4b8e4d43b917e7706784d8bb445c9af86a3540
+  weight_bytes: 360000192888
+  gpus:
+    vendor: nvidia
+    name: (^|[^A-Za-z0-9])(?:H200|H20|H100)([^A-Za-z0-9]|$)
+    display_target: nvidia
+  args:
+  - --max-num-seqs
+  - '256'
+  - --disable-custom-all-reduce
+  - --tool-call-parser
+  - qwen3_coder
+  - --reasoning-parser
+  - qwen3
+  - --enable-auto-tool-choice
+  env:
+    VLLM_ENGINE_READY_TIMEOUT_S: '1800'
+  placement:
+    language: starlark
+    resolver: |
+      def resolve(gpu):
+          if gpu.count != 8:
+              return reject("this recipe requires exactly 8 GPUs per node")
+          return {"TP_SIZE": 8, "SP_DEGREE": 1}
   api:
     health_endpoint: /health
     operations:

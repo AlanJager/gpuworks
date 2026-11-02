@@ -41,7 +41,7 @@ func (c *Controller) rollRestart(dep *store.Deployment, insts []store.Instance, 
 	}
 	if unavailable > 0 {
 		if stalled != nil {
-			c.recordRollStalled(dep, since, *stalled, len(match.Failed[stalled.Key]))
+			c.recordRollStalled(dep, since, *stalled, match.Failed[stalled.Key])
 		}
 		c.q.addAfter(depKey(dep.ID), c.retryBackoff)
 		return nil
@@ -59,11 +59,20 @@ func (c *Controller) rollRestart(dep *store.Deployment, insts []store.Instance, 
 
 // recordRollStalled notes, once per restart request, that the roll waits on a
 // replica that spent its retry budget.
-func (c *Controller) recordRollStalled(dep *store.Deployment, since time.Time, slot planning.UnitSlot, attempts int) {
+func (c *Controller) recordRollStalled(dep *store.Deployment, since time.Time, slot planning.UnitSlot, failed []store.Instance) {
 	noted, err := c.store.HasDeploymentEventSince(dep.ID, store.EventDeploymentRollingStalled, since)
 	if err != nil || noted {
 		return
 	}
-	c.log.Warn("rolling restart waits on a replica that gave up", "dep", dep.ID, "role", slot.Unit.Role, "unit", slot.Unit.Index, "failed", attempts)
-	c.store.AddDeploymentEventCode(dep.ID, store.EventKindSchedule, store.EventDeploymentRollingStalled, map[string]any{"role": slot.Unit.Role, "replica": slot.Unit.Index + 1, "attempts": attempts})
+	c.log.Warn("rolling restart waits on a replica that gave up", "dep", dep.ID, "role", slot.Unit.Role, "unit", slot.Unit.Index, "failed", len(failed))
+	params := map[string]any{"role": slot.Unit.Role, "replica": slot.Unit.Index + 1, "attempts": len(failed)}
+	// Where the failed attempts ran, read while they are still there.
+	uuids := make([]string, 0, len(failed))
+	for _, inst := range failed {
+		uuids = append(uuids, inst.UUID)
+	}
+	if nodes, err := c.store.NodeUUIDsOfInstances(uuids); err == nil && len(nodes) > 0 {
+		params[store.EventParamNodeUUIDs] = nodes
+	}
+	c.store.AddDeploymentEventCode(dep.ID, store.EventKindSchedule, store.EventDeploymentRollingStalled, params)
 }

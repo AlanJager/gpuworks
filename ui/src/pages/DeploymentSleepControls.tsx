@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
-import { Alert, Button, Space, Tag, message } from "antd";
+import { Alert, Button, Space, Tag, Typography, message } from "antd";
 import { useTranslation } from "react-i18next";
-import { api, type Deployment, type WakeResult } from "../api";
-import { APIError } from "../apiError";
+import { api, type Deployment, type SleepHold, type WakeOptions, type WakeResult } from "../api";
+import { APIError, apiErrorText } from "../apiError";
 import SleepModeDialog, { type SleepMode } from "../components/SleepModeDialog";
 import { latestSleepFailure } from "./instanceEvents";
 import { sleepSummary } from "./instanceGroups";
 import { useOrder } from "./useOrder";
+import { WakeRefusalAlert, WakeWaitingBanner, occupantNames, type WakeRefusalState } from "./DeploymentWakeWait";
 
 // SleepControls are the drawer's sleep and wake orders for the whole
 // deployment. The summary counts replicas: all asleep, some asleep (after an
@@ -15,7 +16,10 @@ import { useOrder } from "./useOrder";
 // sleeps and wakes the roles its mode runs without.
 export default function SleepControls({ dep, onDone }: { dep: Deployment; onDone: () => void }) {
   const { t } = useTranslation("deployments");
+  const { t: tCommon } = useTranslation("common");
   const { busy, run } = useOrder();
+  const cancelling = useOrder();
+  const [refusal, setRefusal] = useState<WakeRefusalState | null>(null);
   const [pendingLevel, setPendingLevel] = useState<1 | 2 | null>(null);
   const [sleepFailure, setSleepFailure] = useState<string>();
   const [failureAfterID, setFailureAfterID] = useState(0);
@@ -39,7 +43,7 @@ export default function SleepControls({ dep, onDone }: { dep: Deployment; onDone
       });
     return () => { active = false; };
   }, [dep.id, eventsRefresh, failureAfterID, sleepStatusKey]);
-  const show = dep.sleepable || summary.asleep > 0;
+  const show = dep.schedule_capabilities?.sleep.ok === true || summary.asleep > 0;
   if (!show) return null;
 
   const levelName = (lv: number) => (lv === 1 ? t("sleep.quick") : lv === 2 ? t("sleep.deep") : `L${lv}`);
@@ -47,7 +51,7 @@ export default function SleepControls({ dep, onDone }: { dep: Deployment; onDone
   // ordered sends an order and reports whether the server took it. A taken
   // order hides the failures recorded before it; a refused one leaves the
   // last failure shown.
-  const ordered = async (send: () => Promise<unknown>, failKey: string): Promise<boolean> => {
+  const ordered = async (send: () => Promise<unknown>, failKey: string, quiet: () => boolean = () => false): Promise<boolean> => {
     let baseline = 0;
     const refused = await run(async () => {
       const before = await api.deploymentEvents(dep.id, { limit: 1 }).then((page) => page.items, () => []);
@@ -55,7 +59,7 @@ export default function SleepControls({ dep, onDone }: { dep: Deployment; onDone
       await send();
     });
     if (refused !== null) {
-      message.error(t(failKey, { detail: refused }));
+      if (!quiet()) message.error(t(failKey, { detail: refused }));
       return false;
     }
     setFailureAfterID(baseline);
@@ -70,30 +74,62 @@ export default function SleepControls({ dep, onDone }: { dep: Deployment; onDone
     message.success(level === 1 ? t("sleep.quickStarted") : t("sleep.deepStarted"));
     setPendingLevel(null);
     setWakeRefused(false);
+    setRefusal(null);
   };
 
   const doWake = async (partial: boolean) => {
     let result: WakeResult | undefined;
-    let code: string | undefined;
+    let failure: APIError | undefined;
     const woke = await ordered(async () => {
       try {
         result = await api.wakeDeployment(dep.id, { partial });
       } catch (e) {
-        code = e instanceof APIError ? e.code : undefined;
+        failure = e instanceof APIError ? e : undefined;
         throw e;
       }
-    }, "sleep.wakeFailed");
+    }, "sleep.wakeFailed", () => failure?.code === "WAKE_INSUFFICIENT_GPU_MEMORY" || failure?.code === "WAKE_GPU_HELD_OUTSIDE");
     if (!woke) {
-      // Cards that cannot take every sleeper back may still take some.
-      setWakeRefused(!partial && summary.asleep > 1 && code === "WAKE_INSUFFICIENT_GPU_MEMORY");
+      const code = failure?.code;
+      // Cards that cannot take every sleeper back (or one a process outside
+      // the platform holds) may still leave room for the others.
+      setWakeRefused(!partial && summary.asleep > 1 && (code === "WAKE_INSUFFICIENT_GPU_MEMORY" || code === "WAKE_GPU_HELD_OUTSIDE"));
+      setRefusal(failure && (code === "WAKE_INSUFFICIENT_GPU_MEMORY" || code === "WAKE_GPU_HELD_OUTSIDE")
+        ? { code, text: apiErrorText(tCommon, failure), occupants: occupantNames(failure.params?.occupants) }
+        : null);
       return;
     }
+    setRefusal(null);
     // Counted in replicas, as the summary is: the server lists every rank of
     // a woken multi-node replica, and refuses each replica whole (one entry).
     const refused = result?.refused?.length ?? 0;
     const woken = replicaCount(instances, result?.woken ?? []);
     message.success(partial ? t("sleep.partialWoken", { woken, refused }) : t("sleep.wakeStarted"));
     setWakeRefused(partial && refused > 0);
+  };
+
+  // doWaitWake wakes what fits now and leaves the rest waiting for room; with
+  // yield it first puts the awake occupants of the needed cards to sleep.
+  const doWaitWake = async (how: Pick<WakeOptions, "wait" | "yield">) => {
+    let result: WakeResult | undefined;
+    if (!(await ordered(async () => { result = await api.wakeDeployment(dep.id, how); }, "sleep.wakeFailed"))) return;
+    setRefusal(null);
+    setWakeRefused(false);
+    const yielded = result?.yielded ?? [];
+    message.success(
+      yielded.length > 0
+        ? t("sleep.yieldStarted", { names: yielded.join(", ") })
+        : result?.status === "waiting" ? t("sleep.waitStarted") : t("sleep.wakeStarted"),
+    );
+  };
+
+  const cancelWaiting = async () => {
+    const refused = await cancelling.run(() => api.endWakeWaiting(dep.id));
+    if (refused !== null) {
+      message.error(t("sleep.waiting.cancelFailed", { detail: refused }));
+      return;
+    }
+    message.success(t("sleep.waiting.cancelled"));
+    onDone();
   };
 
   const all = summary.total > 0 && summary.asleep === summary.total;
@@ -108,8 +144,15 @@ export default function SleepControls({ dep, onDone }: { dep: Deployment; onDone
           style={{ flexBasis: "100%" }}
         />
       )}
+      {dep.wake_waiting_since && <WakeWaitingBanner since={dep.wake_waiting_since} limitSec={dep.wake_wait_limit_sec} busy={cancelling.busy} onCancel={() => void cancelWaiting()} />}
+      {refusal && <WakeRefusalAlert refusal={refusal} limitSec={dep.wake_wait_limit_sec} busy={busy} onWait={() => void doWaitWake({ wait: true })} onYield={() => void doWaitWake({ yield: true })} />}
       {all && <Tag color="orange">{t("sleep.sleeping", { level: summary.level, name: levelName(summary.level) })}</Tag>}
       {summary.asleep > 0 && !all && <Tag color="orange">{t("sleep.partial", { asleep: summary.asleep, total: summary.total })}</Tag>}
+      {dep.sleep_hold && (
+        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+          {t(holdHint[dep.sleep_hold])}
+        </Typography.Text>
+      )}
       {summary.asleep > 0 && (
         <Button size="small" type="primary" loading={busy} onClick={() => void doWake(false)}>
           {all ? t("sleep.wake") : t("sleep.wakeAll")}
@@ -130,7 +173,7 @@ export default function SleepControls({ dep, onDone }: { dep: Deployment; onDone
           </Button>
         </>
       )}
-      {dep.pd && dep.sleepable && <RoleSleepActions dep={dep} onDone={onDone} />}
+      {dep.pd && dep.schedule_capabilities?.sleep.ok && <RoleSleepActions dep={dep} onDone={onDone} />}
       <SleepModeDialog
         open={pendingLevel !== null}
         level={pendingLevel ?? 1}
@@ -141,6 +184,14 @@ export default function SleepControls({ dep, onDone }: { dep: Deployment; onDone
     </Space>
   );
 }
+
+// holdHint is what the server's reading of the asleep replicas' holds tells
+// an operator: whether a request wakes them.
+const holdHint: Record<SleepHold, "sleep.heldHint" | "sleep.someHeldHint" | "sleep.requestWakesHint"> = {
+  all: "sleep.heldHint",
+  some: "sleep.someHeldHint",
+  none: "sleep.requestWakesHint",
+};
 
 // RoleSleepActions sleep (memory / L1) or wake one role of a PD deployment:
 // the roles the server says its mode runs without (may_be_empty). With every

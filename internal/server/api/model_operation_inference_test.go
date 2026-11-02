@@ -15,6 +15,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/bus"
 	"gpuworks.ai/gpuworks/internal/server/inferenceapi"
 	"gpuworks.ai/gpuworks/internal/server/store"
+	"gpuworks.ai/gpuworks/pkg/model/modelmetadata"
 )
 
 // Configs and model-card headers captured from the reported NFS library.
@@ -46,7 +47,8 @@ func TestDirectoryModelOperationInference(t *testing.T) {
 				}
 				switch method {
 				case proto.RPCRegisterPath:
-					return json.RawMessage(`{"path":"/models/artifact","size_bytes":123}`), nil
+					tasks := modelmetadata.InferTasks(modelmetadata.Documents{Config: fixture.Config, README: fixture.README})
+					return json.Marshal(registerPathResponse{Path: "/models/artifact", SizeBytes: 123, Metadata: &modelmetadata.Report{Entries: []modelmetadata.Entry{{Path: ".", Format: "transformers"}}, ConfigRaw: fixture.Config, README: fixture.README, Tasks: tasks.Tasks}})
 				case proto.RPCFSReadFile:
 					path := params.(map[string]any)["path"].(string)
 					var content string

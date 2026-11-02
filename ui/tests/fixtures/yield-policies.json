@@ -1,0 +1,31 @@
+{
+  "policies": [
+    { "policy": "never", "defaults": { "policy": "never" }, "applies": [] },
+    {
+      "policy": "idle",
+      "defaults": { "policy": "idle", "idle_sec": 60, "sleep_level": "auto", "hold_max_sec": 300 },
+      "applies": ["idle_sec", "sleep_level", "hold_max_sec"]
+    },
+    {
+      "policy": "timeslice",
+      "defaults": { "policy": "timeslice", "idle_sec": 30, "sleep_level": "auto", "max_serve_sec": 120, "unfinished": "wait", "unfinished_wait_sec": 30, "hold_max_sec": 600 },
+      "applies": ["idle_sec", "sleep_level", "max_serve_sec", "unfinished", "unfinished_wait_sec", "hold_max_sec"]
+    },
+    {
+      "policy": "anytime",
+      "defaults": { "policy": "anytime", "idle_sec": 30, "sleep_level": "auto", "unfinished": "abort", "unfinished_wait_sec": 30, "hold_max_sec": 3600 },
+      "applies": ["idle_sec", "sleep_level", "unfinished", "unfinished_wait_sec", "hold_max_sec"]
+    }
+  ],
+  "applies_when": {
+    "unfinished_wait_sec": { "unfinished": ["wait"] }
+  },
+  "bounds": {
+    "hold_max_sec": { "minimum": 10, "maximum": 3600 },
+    "idle_sec": { "minimum": 15, "maximum": 604800, "at_most": "max_serve_sec" },
+    "max_serve_sec": { "minimum": 30, "maximum": 86400 },
+    "unfinished_wait_sec": { "minimum": 1, "maximum": 600 }
+  },
+  "sleep_levels": ["auto", "l1", "l2"],
+  "unfinished": ["abort", "wait"]
+}

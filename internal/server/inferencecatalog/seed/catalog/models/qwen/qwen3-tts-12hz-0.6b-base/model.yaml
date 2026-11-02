@@ -41,13 +41,13 @@ specs:
         required: true
         label:
           en: Reference audio
-          zh-CN: 参考音频
+          zh: 参考音频
       - name: ref_text
         kind: text
         required: true
         label:
           en: Reference transcript
-          zh-CN: 参考音频的文字
+          zh: 参考音频的文字
       - name: language
         kind: select
         options:
@@ -65,7 +65,7 @@ specs:
         default: Auto
         label:
           en: Language
-          zh-CN: 语言
+          zh: 语言
 - name: bf16-base-0-6b-vllm-nvidia-turing
   display_profile: compatible
   scenario: balanced
@@ -107,13 +107,13 @@ specs:
         required: true
         label:
           en: Reference audio
-          zh-CN: 参考音频
+          zh: 参考音频
       - name: ref_text
         kind: text
         required: true
         label:
           en: Reference transcript
-          zh-CN: 参考音频的文字
+          zh: 参考音频的文字
       - name: language
         kind: select
         options:
@@ -131,5 +131,5 @@ specs:
         default: Auto
         label:
           en: Language
-          zh-CN: 语言
+          zh: 语言
 input_modalities: [text, audio]

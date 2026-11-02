@@ -8,6 +8,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/deploy"
 	"gpuworks.ai/gpuworks/internal/server/planning"
 	"gpuworks.ai/gpuworks/internal/server/store"
+	"gpuworks.ai/gpuworks/internal/server/yieldpolicy"
 )
 
 // evaluateAutomaticPlacement answers placement_mode=auto for a single-node,
@@ -22,7 +23,7 @@ import (
 // create repeating the draft re-validates the selection and answers
 // AUTOMATIC_PLACEMENT_STALE when the world moved - nothing is silently
 // re-placed.
-func (a *apiHandlers) evaluateAutomaticPlacement(ctx context.Context, req *dto.DeployRequest, engine deploy.Engine, model *store.Model, selection templateSelection, placement planning.Placement, quick deploy.LaunchConfig, userExtraArgs []string, servedName, image string, requestOverrides deploy.ContainerOverrides, eligible []dto.EligibleNode) (*dto.PlacementNode, []dto.PlacementCandidate) {
+func (a *apiHandlers) evaluateAutomaticPlacement(ctx context.Context, req *dto.DeployRequest, engine deploy.Engine, model *store.Model, selection templateSelection, placement planning.Placement, quick deploy.LaunchConfig, userExtraArgs []string, servedName, image string, requestOverrides deploy.ContainerOverrides, eligible []dto.EligibleNode, excludeDeployment uint) (*dto.PlacementNode, []dto.PlacementCandidate) {
 	if len(eligible) == 0 {
 		return nil, nil
 	}
@@ -59,12 +60,12 @@ func (a *apiHandlers) evaluateAutomaticPlacement(ctx context.Context, req *dto.D
 			continue
 		}
 		plan, planErr := planning.PlanLaunch(ctx, a.d.Store, a.networks(), planning.LaunchRequest{
-			Preview: true, Engine: engine.Name(), Model: model, Node: node,
+			Preview: true, ExcludeDeploymentID: excludeDeployment, Engine: engine.Name(), Model: model, Node: node,
 			Selection: previewSelection, Placement: placement, Quick: quick, ExtraArgs: userExtraArgs,
 			Topology:   planning.DistTopology{NNodes: 1, Role: "standalone"},
 			Source:     planning.LaunchSourceFromRequest(image, requestOverrides),
 			ModelMount: modelMount, ComponentMounts: componentMounts,
-			ServedName: servedName, Sleepable: req.Sleepable,
+			ServedName: servedName, Sleepable: req.Sleepable, YieldPolicy: requestYield(req.YieldPolicy), ExplainHolders: true,
 			MasterAddr: req.MasterAddr, MasterPort: req.MasterPort,
 			VRAMLimitBytes: int64(req.VRAMLimitGiB * (1 << 30)), PartitionBackend: backend,
 			APIContract: previewSelection.APIContract,
@@ -81,7 +82,7 @@ func (a *apiHandlers) evaluateAutomaticPlacement(ctx context.Context, req *dto.D
 			continue
 		}
 		entry.Plan = plan.Output.Result
-		entry.Reason = scheduleReasonOf(plan.Output.Result)
+		entry.Reason = scheduleReasonOf(plan.Output, node, requestYield(req.YieldPolicy))
 		if plan.Output.Result.OK && plan.Output.Result.Plan != nil {
 			entry.OK = true
 			selected = &dto.PlacementNode{UUID: node.UUID, Name: names[node.UUID], Reasons: selectedReasons(plan.Output.Result)}
@@ -99,7 +100,7 @@ func (a *apiHandlers) rankEligible(eligible []dto.EligibleNode, model *store.Mod
 	if err != nil {
 		return nil, err
 	}
-	held, err := a.d.Store.AwakeGPUHolders()
+	held, err := planning.HeldGPUs(a.d.Store, requestYield(req.YieldPolicy))
 	if err != nil {
 		return nil, err
 	}
@@ -132,10 +133,16 @@ func (a *apiHandlers) rankEligible(eligible []dto.EligibleNode, model *store.Mod
 	return planning.RankPool(candidates, strategy, need), nil
 }
 
-// scheduleReasonOf renders a scheduler result's explanation in the wire shape
-// the manual preview publishes.
-func scheduleReasonOf(result planning.ScheduleResult) dto.ScheduleReason {
-	return dto.ScheduleReason{Code: result.Message.Code, Params: result.Message.Params, Message: result.Message.Message, Score: result.Message.Score}
+// scheduleReasonOf renders a plan's explanation on node in the wire shape the
+// manual preview publishes: a plan that does not fit says why as the
+// controller would (planning.Output.Refusal), so a launch that waits for
+// holders to yield, or only for sleepers' cards, says so here too.
+func scheduleReasonOf(out planning.Output, node *store.Node, yield string) dto.ScheduleReason {
+	reason := out.Result.Message
+	if !out.Fits() {
+		reason = out.Refusal(node, yieldpolicy.Policy{Yield: yield})
+	}
+	return dto.ScheduleReason{Code: reason.Code, Params: reason.Params, Message: reason.Message, Score: reason.Score}
 }
 
 // selectedReasons explains the automatic choice with the chosen plan's own
@@ -165,7 +172,7 @@ func (a *apiHandlers) revalidateAutomaticPlacement(ctx context.Context, req *dto
 		Topology:   planning.DistTopology{NNodes: 1, Role: "standalone"},
 		Source:     planning.LaunchSourceFromRequest(req.Image, requestOverrides),
 		ModelMount: modelMount, ComponentMounts: componentMounts,
-		ServedName: servedName, Sleepable: req.Sleepable,
+		ServedName: servedName, Sleepable: req.Sleepable, YieldPolicy: requestYield(req.YieldPolicy),
 		MasterAddr: req.MasterAddr, MasterPort: req.MasterPort,
 		VRAMLimitBytes: int64(req.VRAMLimitGiB * (1 << 30)), PartitionBackend: req.PartitionBackend,
 		APIContract: previewSelection.APIContract,
@@ -176,12 +183,12 @@ func (a *apiHandlers) revalidateAutomaticPlacement(ctx context.Context, req *dto
 		detail = planErr.Error()
 	} else if plan.Output.PlacementError != nil {
 		detail = plan.Output.PlacementError.Error()
-	} else if plan.Output.Result.OK && plan.Output.Result.Plan != nil {
+	} else if plan.Output.Fits() {
 		return nil
-	} else if plan.Output.Result.Message.Code != "" {
-		detail = plan.Output.Result.Message.Message
+	} else if refusal := plan.Output.Refusal(node, yieldpolicy.Policy{Yield: requestYield(req.YieldPolicy)}); refusal.Code != "" {
+		detail = refusal.Message
 		if detail == "" {
-			detail = plan.Output.Result.Message.Code
+			detail = refusal.Code
 		}
 	}
 	return wrapProductError(ErrorAutomaticPlacementStale,

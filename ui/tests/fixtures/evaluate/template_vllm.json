@@ -325,7 +325,17 @@
         {
           "code": "chip_mismatch",
           "params": {
-            "predicate": "{\"vendor\":\"nvidia\",\"cc\":\"\u003e=8.9\"}"
+            "actual_gpus": [
+              {
+                "cc": "8.0",
+                "name": "A100",
+                "vendor": "nvidia"
+              }
+            ],
+            "predicate": "{\"vendor\":\"nvidia\",\"cc\":\"\u003e=8.9\"}",
+            "required_cc": "\u003e=8.9",
+            "required_name": "",
+            "required_vendor": "nvidia"
           }
         }
       ]
@@ -365,5 +375,9 @@
   },
   "engine_decides_param_keys": [
     "enable_request_metrics"
-  ]
+  ],
+  "yield_policy_eligible": {
+    "ok": false,
+    "reason": "SLEEP_NOT_ENABLED"
+  }
 }

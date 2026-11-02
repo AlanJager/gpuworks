@@ -443,6 +443,22 @@ func TestPDRetryBackoffFollowsTheControllerClock(t *testing.T) {
 	if rebuilt != 1 {
 		t.Fatalf("decode rebuilds after the backoff = %d, want 1", rebuilt)
 	}
+	events, err := f.st.DeploymentEvents(f.dep.ID, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	count := 0
+	for _, ev := range events {
+		if ev.Code == store.EventReplicaRebuilt {
+			count++
+			if !strings.Contains(ev.Data, `"role":"decode"`) || !strings.Contains(ev.Data, `"attempt":2`) || !strings.Contains(ev.Data, `"reason":"boom"`) {
+				t.Fatalf("rebuild event = %s, want the decode unit's second attempt after boom", ev.Data)
+			}
+		}
+	}
+	if count != 1 {
+		t.Fatalf("REPLICA_REBUILT events = %d, want 1", count)
+	}
 }
 
 // A unit that spent its budget says so once on its newest attempt, however

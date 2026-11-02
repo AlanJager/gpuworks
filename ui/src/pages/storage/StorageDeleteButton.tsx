@@ -16,7 +16,7 @@ export function storageDeleteConfirmText(t: TFunction<"storage">, storage: Stora
   };
 }
 
-/** Delete with a confirmation that says what stays: model files are never deleted, only the storage record. */
+/** Delete with a confirmation that says what goes: model files are never deleted, but models stored only here leave the model list. */
 export default function StorageDeleteButton({ storage, loading, link = false, onConfirm }: {
   storage: Storage;
   loading?: boolean;

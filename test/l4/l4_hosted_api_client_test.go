@@ -1,4 +1,4 @@
-//go:build cloudgpu && compshare
+//go:build cloudgpu && (compshare || aliyun)
 
 package l4
 
@@ -73,6 +73,41 @@ func (c *hostedAPIClient) PutJSON(ctx context.Context, path string, input, outpu
 	return c.doJSON(ctx, http.MethodPut, path, input, output, false)
 }
 
+func (c *hostedAPIClient) PatchJSON(ctx context.Context, path string, input, output any) error {
+	return c.doJSON(ctx, http.MethodPatch, path, input, output, false)
+}
+
+// hostedAPIError is a non-2xx answer of the management API. Its message is the
+// one the client always reported; Code is the stable product error code
+// ({"code": "IMAGE_ARCHIVE_URL_UNREACHABLE", ...}) a case branches on.
+type hostedAPIError struct {
+	Method, Path string
+	Status       int
+	Body         string
+}
+
+func (e *hostedAPIError) Error() string {
+	return fmt.Sprintf("hosted API %s %s returned HTTP %d: %s", e.Method, e.Path, e.Status, e.Body)
+}
+
+// Code is the product error code in the response body, or "".
+func (e *hostedAPIError) Code() string {
+	var body struct {
+		Code string `json:"code"`
+	}
+	_ = json.Unmarshal([]byte(e.Body), &body)
+	return body.Code
+}
+
+// hostedAPIErrorCode reports the product error code err carries, or "".
+func hostedAPIErrorCode(err error) string {
+	var apiErr *hostedAPIError
+	if errors.As(err, &apiErr) {
+		return apiErr.Code()
+	}
+	return ""
+}
+
 func (c *hostedAPIClient) doJSON(ctx context.Context, method, requestPath string, input, output any, retryForward bool) error {
 	if !strings.HasPrefix(requestPath, "/") || strings.HasPrefix(requestPath, "//") {
 		return errors.New("hosted API path must be absolute-path relative")
@@ -127,7 +162,7 @@ func (c *hostedAPIClient) doJSON(ctx context.Context, method, requestPath string
 			continue
 		}
 		if response.StatusCode < 200 || response.StatusCode >= 300 {
-			return fmt.Errorf("hosted API %s %s returned HTTP %d: %s", method, requestPath, response.StatusCode, strings.TrimSpace(string(data)))
+			return &hostedAPIError{Method: method, Path: requestPath, Status: response.StatusCode, Body: strings.TrimSpace(string(data))}
 		}
 		if output == nil || len(bytes.TrimSpace(data)) == 0 {
 			return nil

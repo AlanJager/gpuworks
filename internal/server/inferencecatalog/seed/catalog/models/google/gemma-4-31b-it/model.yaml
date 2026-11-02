@@ -404,4 +404,141 @@ specs:
     - type: openai.chat
       endpoint: /v1/chat/completions
       mode: stream
+# Gemma 4 is the one model upstream declares for every Ascend generation at
+# once - A2, A3 and the 950 series - and it has no W8A8 quantization: the BF16
+# checkpoint is what runs on 910B and 910C. The published recipe is four
+# devices with tensor parallelism and the ACLGraph decode mode; upstream also
+# gives an eager variant (drop --compilation-config, add --enforce-eager) for
+# hosts where graph capture misbehaves. BF16 weights must NOT be served with
+# `--quantization ascend` - only the MXFP4 checkpoints carry the quantization
+# description the flag reads. Upstream marks this model experimental and its
+# own numbers "for reference only", and names no minimum engine version; no
+# Ascend hardware was available here, so these arguments are the published
+# recipe rather than a measured one.
+- name: bf16-vllm-ascend-c7a493cd
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cann9.1-910b-vllm0.26.0rc1-r2
+  weights:
+    quantization: bf16
+    sources:
+    - modelscope:
+        repo_id: google/gemma-4-31B-it
+        revision: c7a493cd69771548e767c0273cc19fe1c15d7513
+  weight_bytes: 62578686659
+  gpus:
+    vendor: ascend
+    name: (^|[^A-Za-z0-9])910B[A-Za-z0-9]*([^A-Za-z0-9]|$)
+    display_target: ascend
+  args:
+  - --dtype
+  - bfloat16
+  - --max-model-len
+  - '32768'
+  - --trust-remote-code
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - gemma4
+  - --reasoning-parser
+  - gemma4
+  - --chat-template
+  - examples/tool_chat_template_gemma4.jinja
+  - --compilation-config
+  - '{"cudagraph_mode":"FULL_DECODE_ONLY"}'
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    if gpu.count != 4: return reject(\"the published recipe runs four devices\")\n    if gpu.min_memory_gib < 32: return reject(\"each device requires at least 32 GiB\")\n    return {\"GPU_COUNT\": 4, \"TP_SIZE\": 4, \"SP_DEGREE\": 1}\n"
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-vllm-ascend-a3-c7a493cd
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cann9.1-a3-vllm0.26.0rc1-r2
+  weights:
+    quantization: bf16
+    sources:
+    - modelscope:
+        repo_id: google/gemma-4-31B-it
+        revision: c7a493cd69771548e767c0273cc19fe1c15d7513
+  weight_bytes: 62578686659
+  gpus:
+    vendor: ascend
+    name: (^|[^A-Za-z0-9])910C[A-Za-z0-9]*([^A-Za-z0-9]|$)
+    display_target: ascend
+  args:
+  - --dtype
+  - bfloat16
+  - --max-model-len
+  - '32768'
+  - --trust-remote-code
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - gemma4
+  - --reasoning-parser
+  - gemma4
+  - --chat-template
+  - examples/tool_chat_template_gemma4.jinja
+  - --compilation-config
+  - '{"cudagraph_mode":"FULL_DECODE_ONLY"}'
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    if gpu.count != 4: return reject(\"the published recipe runs four devices\")\n    if gpu.min_memory_gib < 32: return reject(\"each device requires at least 32 GiB\")\n    return {\"GPU_COUNT\": 4, \"TP_SIZE\": 4, \"SP_DEGREE\": 1}\n"
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+# The 950 series takes the MXFP4 checkpoint instead, and that one does need
+# `--quantization ascend`. Eight devices, TP4 x DP2. Upstream's hardware row
+# for this model is the only one that names 950PR beside 950DT, so both are
+# claimed here. No 950 hardware was available.
+- name: mxfp4-vllm-ascend-950-fc4f81e4
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cann9.2-950-vllm0.30.0rc2-r1
+  weights:
+    quantization: mxfp4
+    sources:
+    - modelscope:
+        repo_id: Eco-Tech/gemma-4-31B-it-w4a4-mxfp4
+        revision: fc4f81e494c30dea7a486db76276e67f431eeac7
+  weight_bytes: 33313500145
+  gpus:
+    vendor: ascend
+    name: (^|[^A-Za-z0-9])950(?:DT|PR)([^A-Za-z0-9]|$)
+    display_target: ascend
+  args:
+  - --max-model-len
+  - '32768'
+  - --quantization
+  - ascend
+  - --data-parallel-size
+  - '2'
+  - --trust-remote-code
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - gemma4
+  - --reasoning-parser
+  - gemma4
+  - --chat-template
+  - examples/tool_chat_template_gemma4.jinja
+  - --compilation-config
+  - '{"cudagraph_mode":"FULL_DECODE_ONLY"}'
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    if gpu.count != 8: return reject(\"the published 950 recipe runs exactly 8 devices\")\n    if gpu.min_memory_gib < 96: return reject(\"each device requires at least 96 GiB\")\n    return {\"GPU_COUNT\": 8, \"TP_SIZE\": 4, \"SP_DEGREE\": 1}\n"
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
 input_modalities: [text, image]

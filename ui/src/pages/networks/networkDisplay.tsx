@@ -17,7 +17,7 @@ export function RoleTags({ roles }: { roles: NetworkRole[] }) {
 
 export function TypeTag({ type }: { type: NetworkType }) {
   const { t } = useTranslation("networks");
-  const color = type === "host_ethernet" ? "default" : type === "accelerator_rdma" ? "volcano" : "gold";
+  const color = type === "host_ethernet" ? "default" : type === "host_rdma" ? "gold" : "volcano";
   return <Tag color={color}>{t(`type.${type}`, { defaultValue: type })}</Tag>;
 }
 
@@ -28,7 +28,7 @@ export function isHostRDMA(type: NetworkType) {
 
 /** The accelerator cards' own ports carry the traffic. */
 export function isAcceleratorRDMA(type: NetworkType) {
-  return type === "accelerator_rdma";
+  return type === "accelerator_rdma" || type === "accelerator_hccs";
 }
 
 /** The network carries traffic on rails (RDMA ports or cards), apart from its bootstrap address. */

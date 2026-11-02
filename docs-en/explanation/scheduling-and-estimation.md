@@ -34,7 +34,7 @@ clears its rejection history for the old pool and selects nodes from the new poo
 
 If no node fits, the replica waits without being persisted or reserving GPUs. The `DEPLOYMENT_UNSCHEDULABLE` event explains why: an empty pool produces
 `pool_empty`, with the total node count, counts of nodes that fail the requirements or are offline, and one specific requirement mismatch. If no node in the pool fits, it produces `pool_no_fit`,
-with the candidate count, number of nodes tried, best-fitting node, and that node's full rejection reason.
+with the candidate count, number of nodes tried, best-fitting node, and that node's full rejection reason. If no node in the pool fits outright but some node would fit once deployments sharing its cards give them up, the reason is `waiting_for_yield`; see [How a New Deployment Gets onto a Shared Card](../how-to/scheduling-center.md#新部署怎样放到共用的卡上).
 
 Replicas waiting for a node retry when nodes change: a node coming online, label changes, and similar events immediately trigger rescheduling for all deployments. Each agent's routine status report,
 sent once per minute with free GPUs, disk, images, and GPU health, is coalesced by the controller every 2 seconds. Only deployments that have not settled are rescheduled: those with replicas waiting for nodes, starting,
@@ -46,18 +46,19 @@ With 1,000 nodes, these reports arrive about 17 times per second. Fully reschedu
 continuously reordering the entire cluster.
 
 **Stopping scheduling and draining.** Before maintaining a node, such as upgrading its driver, replacing a GPU, or taking it out of service, stop scheduling through Scheduling and drain on the node page. The candidate pool lists it separately as
-Cordoned and no longer starts new replicas on it. Multi-node and PD ranks assigned to it also wait with the reason `node_cordoned`. Existing replicas continue serving normally.
+Cordoned and no longer starts new replicas on it. Manually placed multi-node and PD ranks assigned to it also wait with the reason `node_cordoned`; automatically placed ones move to other nodes when the replica is about to start (see [Multi-Node Inference](../how-to/multi-node-inference.md#自动放置与手动放置)). Existing replicas continue serving normally.
 
 Draining also
 moves replicas placed there by the candidate pool. For each deployment, it moves one replica at a time: first it starts a replacement replica on another node, temporarily adding one replica in the pool. Only after the replacement is running does the original replica begin draining,
 finish in-flight requests, and retire. The number of serving replicas therefore never falls below the count before draining. If the pool cannot fit a replacement, the original replica stays and continues serving, with the reason displayed as usual.
 
-Deployments pinned to this node,
-multi-node ranks, and PD ranks are not migrated by draining. You can change their nodes, or use Evict now to remove them immediately. They are recreated wherever they fit, without counting toward retries. Resuming scheduling
+Multi-node and PD replicas also move replacement-first: the replacement goes on a node with the same compute network, the same GPU architecture, and free cards, and the placement is rewritten onto it only once it runs, after which the old replica drains;
+with no node to move to, the replica stays and keeps serving. Single-node deployments pinned to this node are not migrated by draining. You can change their node requirements, or use Evict now to remove them immediately
+(without waiting for replacements, recreated wherever they fit, without counting toward retries). Resuming scheduling
 immediately retries waiting replicas.
 
 Later changes do not retroactively affect replica placement: node labels, GPU replacements, and network changes only affect replicas started afterward; running replicas do not move.
-If a replica's node goes offline or the replica fails, it is recreated in the pool using the rules above, which also provides failover. When scaling down, `spread` first removes
+If a replica fails, it is recreated in the pool using the rules above. If a replica's node stays offline longer than the deployment's node-loss rescheduling wait (default 10 minutes), single-node replicas are replaced by the pool, while multi-node and PD replicas move only the lost rank; neither spends retries (see [Reschedule Replicas on Node Loss](../how-to/node-failover.md)). When scaling down, `spread` first removes
 replicas from nodes with the most replicas, while `binpack` first removes replicas from nodes with the fewest. Replicas that are not ready are always removed first.
 Fixed GPU indices (`placement.gpus`) take effect only when the deployment is pinned to exactly one node. Otherwise, the scheduler selects GPUs on the destination node.
 

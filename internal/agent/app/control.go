@@ -10,7 +10,9 @@ import (
 	goruntime "runtime"
 	"strings"
 
+	"gpuworks.ai/gpuworks/internal/accelerator"
 	"gpuworks.ai/gpuworks/internal/agent/conn"
+	"gpuworks.ai/gpuworks/internal/agent/hostsim"
 	"gpuworks.ai/gpuworks/internal/agent/runtime"
 	"gpuworks.ai/gpuworks/internal/agent/runtime/hostproc"
 	"gpuworks.ai/gpuworks/internal/commandlog"
@@ -179,6 +181,7 @@ func (n *NodeRuntime) queueBenchmarkStatusLocked(st proto.BenchmarkStatus) {
 
 // OnStateSync applies a full desired state (server replayed on connect).
 func (n *NodeRuntime) OnStateSync(ctx context.Context, ds proto.DesiredState) {
+	n.refuseModelFiles(n.host.ConfineState(&ds))
 	n.log.Info("desired state sync", "instances", len(ds.Instances), "model_files", len(ds.ModelFiles))
 	if strings.TrimSpace(ds.RuntimePreference) != "" {
 		if err := n.applyRuntimePreference(ctx, ds.RuntimePreference, true); err != nil {
@@ -219,6 +222,7 @@ func (n *NodeRuntime) OnStateSync(ctx context.Context, ds proto.DesiredState) {
 	n.applyAcceleratorPreference(ds.AcceleratorPreference)
 	// A full state lists every model file the node should have; a task parked
 	// for its storage that is not among them was withdrawn.
+	n.withdrawUnlistedDownloads(ds.ModelFiles)
 	n.pruneWaiting(ds.ModelFiles)
 	for _, mf := range ds.ModelFiles {
 		n.reconcileModelFile(ctx, mf)
@@ -227,6 +231,7 @@ func (n *NodeRuntime) OnStateSync(ctx context.Context, ds proto.DesiredState) {
 
 // OnStateUpdate applies an incremental update.
 func (n *NodeRuntime) OnStateUpdate(ctx context.Context, su proto.StateUpdate) bool {
+	n.refuseModelFiles(n.host.ConfineUpdate(&su))
 	imageRefsChanged := false
 	if su.Network != nil {
 		n.setNetwork(*su.Network)
@@ -268,12 +273,19 @@ func (n *NodeRuntime) StatusSnapshot(ctx context.Context, refs []string) ([]prot
 	}
 	if d := n.runtimeDriver(); d != nil {
 		for _, ref := range refs {
-			present, err := d.ImageExists(ctx, ref)
+			var present bool
+			var size *int64
+			var err error
+			if reporter, ok := d.(runtime.ImagePresenceReporter); ok {
+				present, size, err = reporter.ImagePresence(ctx, ref)
+			} else {
+				present, err = d.ImageExists(ctx, ref)
+			}
 			if err != nil {
 				n.log.Warn("image presence inspection failed", "image", ref, "err", err)
 				continue
 			}
-			images = append(images, proto.ImagePresence{ImageRef: ref, Present: present})
+			images = append(images, proto.ImagePresence{ImageRef: ref, Present: present, RuntimeSizeBytes: size})
 		}
 	}
 	return images, n.pathUsage()
@@ -303,10 +315,36 @@ func (n *NodeRuntime) pathUsage() []proto.PathUsage {
 func (n *NodeRuntime) OnRPC(ctx context.Context, method string, params json.RawMessage) (any, error) {
 	switch method {
 	case proto.RPCNodeDoctor:
+		if !n.doctorRunning.CompareAndSwap(false, true) {
+			return nil, errors.New("a diagnosis is already running on this node; wait for it to finish")
+		}
+		defer n.doctorRunning.Store(false)
 		ctx, cancel := context.WithTimeout(ctx, doctorBudget)
 		defer cancel()
 		ctx = withDoctorCardsInUse(ctx, n.cardsInUse)
+		ctx = withDoctorForeignCards(ctx, n.occupancy.foreign)
+		ctx = withDoctorRuntimeCheck(ctx, n.cardRuntimeCheck)
+		ctx = withDoctorAttempts(ctx, n.cardSmoke.Begin)
+		ctx = withDoctorOutcomes(ctx, n.cardSmoke.Record)
+		ctx = withDoctorHeldFindings(ctx, n.applyHeldHardwareFindings)
 		return buildDoctorReport(ctx, n.prober, n.doctorPathUsage(), n.runtimeDriver()), nil
+	case proto.RPCNodeCardCheckDetail:
+		var req proto.CardCheckDetailRequest
+		if err := json.Unmarshal(params, &req); err != nil {
+			return nil, fmt.Errorf("decode card check request: %w", err)
+		}
+		if _, ok := accelerator.CardCheckFor(req.Check); !ok || req.Ident == "" {
+			return nil, fmt.Errorf("unknown card check %q on card %q", req.Check, req.Ident)
+		}
+		return n.checkDetail(req.Ident, req.Check), nil
+	case proto.RPCNodeCardRecheck:
+		var req proto.CardRecheckRequest
+		if err := json.Unmarshal(params, &req); err != nil {
+			return nil, fmt.Errorf("decode card recheck request: %w", err)
+		}
+		ctx, cancel := context.WithTimeout(ctx, doctorBudget)
+		defer cancel()
+		return n.recheckCard(ctx, req.Ident)
 	case proto.RPCNodeSetAccelerator:
 		return n.handleSetAcceleratorRPC(params)
 	case proto.RPCNodeSetRuntime:
@@ -343,6 +381,8 @@ func (n *NodeRuntime) OnRPC(ctx context.Context, method string, params json.RawM
 		return n.rpcRegisterPath(ctx, params)
 	case proto.RPCSourceProbe:
 		return n.rpcSourceProbe(ctx, params)
+	case proto.RPCModelDownloadStop:
+		return n.stopModelTransfer(ctx, params, false)
 	case proto.RPCModelCopyStop:
 		return n.stopModelCopy(ctx, params)
 	case proto.RPCModelEvict:
@@ -494,6 +534,12 @@ func (n *NodeRuntime) rpcImagePull(ctx context.Context, raw json.RawMessage) (an
 		n.lockImageOperation(p.CanonicalRef, "pulling")
 		defer n.imagePullMu.Unlock()
 		n.reportImageNode(proto.ImageNodeStatus{ImageRef: p.CanonicalRef, State: "pulling", TransferID: p.TransferID, Message: "pulling " + p.EffectiveRef})
+		if !n.host.PullsImages() {
+			// Every image is on a simulated node; asking a registry would
+			// reach the network from the real host.
+			n.reportImageNode(proto.ImageNodeStatus{ImageRef: p.CanonicalRef, State: "present", TransferID: p.TransferID, Message: "image present"})
+			return
+		}
 		d := n.runtimeDriver()
 		if d == nil {
 			n.reportImageNode(proto.ImageNodeStatus{ImageRef: p.CanonicalRef, State: "failed", TransferID: p.TransferID, Message: "runtime driver is unavailable"})
@@ -534,3 +580,11 @@ func (n *NodeRuntime) rpcImagePull(ctx context.Context, raw json.RawMessage) (an
 }
 
 // StreamLogs streams an instance's container logs into w (logtail data plane).
+
+// refuseModelFiles fails the model downloads a simulated node refuses
+// (hostsim.Host.ConfineState); a real node refuses none.
+func (n *NodeRuntime) refuseModelFiles(tasks []proto.ModelFileTask) {
+	for _, mf := range tasks {
+		n.failModelFile(mf, hostsim.ErrRefused)
+	}
+}

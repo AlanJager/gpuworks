@@ -57,6 +57,10 @@ type Point [2]float64
 // {"upper_bound": true} on those two signals for exactly this reason, so
 // the UI can label the number instead of presenting it as an exact
 // statistic.
+//
+// For "request_rate", Denominator is the gateway's average requests in
+// flight over the same window (the concurrency the rate was served at),
+// absent when no deployment reports the in-flight gauge.
 type MonitorSignal struct {
 	Key         string         `json:"key"`
 	Collected   bool           `json:"collected"`
@@ -270,9 +274,15 @@ type MonitorCharts struct {
 	Preemptions []MonitorSeries `json:"preemptions"`
 }
 
-// MonitorReplicaGPU is one GPU row within a service layer replica.
-// MemBWPct and PowerW are always nil at this stage: neither is collected yet
-// (plan §8 second phase).
+// MonitorReplicaGPU is one GPU row within a service layer replica. Every
+// value comes from the node's collector under the {node, gpu} labels, and a
+// null means that card did not report the metric (an old agent, a card
+// without the sensor) - never "0": a card drawing no power and a card whose
+// power is unknown are different facts.
+//
+// Utilization, memory bandwidth and power are each the card's mean over the
+// diagnosis window; TemperatureC is the window's maximum, since a transient
+// hot reading is the thing worth surfacing.
 type MonitorReplicaGPU struct {
 	Index        int      `json:"index"`
 	UtilPct      *float64 `json:"util_pct"`

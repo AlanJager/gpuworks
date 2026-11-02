@@ -67,7 +67,22 @@
       "reason": {
         "code": "chip_mismatch",
         "params": {
-          "predicate": "{\"vendor\":\"nvidia\",\"cc\":\"\u003e=10.0\"}"
+          "actual_gpus": [
+            {
+              "cc": "9.0",
+              "name": "H100",
+              "vendor": "nvidia"
+            },
+            {
+              "cc": "9.0",
+              "name": "H100",
+              "vendor": "nvidia"
+            }
+          ],
+          "predicate": "{\"vendor\":\"nvidia\",\"cc\":\"\u003e=10.0\"}",
+          "required_cc": "\u003e=10.0",
+          "required_name": "",
+          "required_vendor": "nvidia"
         }
       }
     },
@@ -78,7 +93,17 @@
       "reason": {
         "code": "chip_mismatch",
         "params": {
-          "predicate": "{\"vendor\":\"nvidia\",\"cc\":\"\u003e=10.0\"}"
+          "actual_gpus": [
+            {
+              "cc": "8.0",
+              "name": "A100",
+              "vendor": "nvidia"
+            }
+          ],
+          "predicate": "{\"vendor\":\"nvidia\",\"cc\":\"\u003e=10.0\"}",
+          "required_cc": "\u003e=10.0",
+          "required_name": "",
+          "required_vendor": "nvidia"
         }
       }
     },
@@ -89,7 +114,22 @@
       "reason": {
         "code": "chip_mismatch",
         "params": {
-          "predicate": "{\"vendor\":\"nvidia\",\"cc\":\"\u003e=10.0\"}"
+          "actual_gpus": [
+            {
+              "cc": "9.0",
+              "name": "H100",
+              "vendor": "nvidia"
+            },
+            {
+              "cc": "9.0",
+              "name": "H100",
+              "vendor": "nvidia"
+            }
+          ],
+          "predicate": "{\"vendor\":\"nvidia\",\"cc\":\"\u003e=10.0\"}",
+          "required_cc": "\u003e=10.0",
+          "required_name": "",
+          "required_vendor": "nvidia"
         }
       }
     }
@@ -153,6 +193,26 @@
           "compatible": true
         },
         {
+          "image": "gpuworks/gpuworks-runner:cann9.2-310p-vllm0.30.0rc2-r1",
+          "reason": "catalog_match",
+          "compatible": true
+        },
+        {
+          "image": "gpuworks/gpuworks-runner:cann9.2-910b-vllm0.30.0rc2-r1",
+          "reason": "catalog_match",
+          "compatible": true
+        },
+        {
+          "image": "gpuworks/gpuworks-runner:cann9.2-950-vllm0.30.0rc2-r1",
+          "reason": "catalog_match",
+          "compatible": true
+        },
+        {
+          "image": "gpuworks/gpuworks-runner:cann9.2-a3-vllm0.30.0rc2-r1",
+          "reason": "catalog_match",
+          "compatible": true
+        },
+        {
           "image": "gpuworks/gpuworks-runner:cuda12.9-vllm0.31.0-r2",
           "reason": "catalog_match",
           "compatible": true
@@ -192,7 +252,22 @@
         {
           "code": "chip_mismatch",
           "params": {
-            "predicate": "{\"vendor\":\"nvidia\",\"cc\":\"\u003e=10.0\"}"
+            "actual_gpus": [
+              {
+                "cc": "9.0",
+                "name": "H100",
+                "vendor": "nvidia"
+              },
+              {
+                "cc": "9.0",
+                "name": "H100",
+                "vendor": "nvidia"
+              }
+            ],
+            "predicate": "{\"vendor\":\"nvidia\",\"cc\":\"\u003e=10.0\"}",
+            "required_cc": "\u003e=10.0",
+            "required_name": "",
+            "required_vendor": "nvidia"
           }
         }
       ]
@@ -205,7 +280,17 @@
         {
           "code": "chip_mismatch",
           "params": {
-            "predicate": "{\"vendor\":\"nvidia\",\"cc\":\"\u003e=10.0\"}"
+            "actual_gpus": [
+              {
+                "cc": "8.0",
+                "name": "A100",
+                "vendor": "nvidia"
+              }
+            ],
+            "predicate": "{\"vendor\":\"nvidia\",\"cc\":\"\u003e=10.0\"}",
+            "required_cc": "\u003e=10.0",
+            "required_name": "",
+            "required_vendor": "nvidia"
           }
         }
       ]
@@ -218,7 +303,22 @@
         {
           "code": "chip_mismatch",
           "params": {
-            "predicate": "{\"vendor\":\"nvidia\",\"cc\":\"\u003e=10.0\"}"
+            "actual_gpus": [
+              {
+                "cc": "9.0",
+                "name": "H100",
+                "vendor": "nvidia"
+              },
+              {
+                "cc": "9.0",
+                "name": "H100",
+                "vendor": "nvidia"
+              }
+            ],
+            "predicate": "{\"vendor\":\"nvidia\",\"cc\":\"\u003e=10.0\"}",
+            "required_cc": "\u003e=10.0",
+            "required_name": "",
+            "required_vendor": "nvidia"
           }
         }
       ]
@@ -248,5 +348,9 @@
   },
   "engine_decides_param_keys": [
     "enable_request_metrics"
-  ]
+  ],
+  "yield_policy_eligible": {
+    "ok": false,
+    "reason": "SLEEP_NOT_ENABLED"
+  }
 }

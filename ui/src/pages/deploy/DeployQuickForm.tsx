@@ -18,6 +18,7 @@ import DeployAdvancedSection from "./DeployAdvancedSection";
 import DeployImageRow from "./DeployImageRow";
 import DeployKvOffloadSection from "./DeployKvOffloadSection";
 import DeployNodeAcquisition from "./DeployNodeAcquisition";
+import DeployYieldPolicyField from "./DeployYieldPolicyField";
 import DeployParamField from "./DeployParamField";
 import DeployParallelFields, { DeployParallelRow } from "./DeployParallelFields";
 import FeatureChoice from "./DeployFeatureChoice";
@@ -31,6 +32,7 @@ import {
   quickParamSpecs,
 } from "./deployHelpers";
 import { capabilityAllowsPartition } from "../../components/partitionCapabilities";
+import { LockedGroup, LockedHint, useControlLocked } from "./DeployEditContext";
 import { defaultPdMode, defaultPdRoles, pdModeOf, pdPolicyValue } from "./deployPd";
 
 type Props = {
@@ -87,6 +89,9 @@ export default function DeployQuickForm({
     Form.useWatch("node_selection_mode", { form, preserve: true }) || "auto",
   );
   const pdMode = nodeMode === "pd";
+  const unitsPlacement = Form.useWatch("units_placement", { form, preserve: true });
+  const replicasLocked = useControlLocked("replicas");
+  const vramLocked = useControlLocked("vram_limit");
   const selectedTemplate = templates.find(
     (template) => template.id === templateID,
   );
@@ -196,6 +201,25 @@ export default function DeployQuickForm({
   const templateArgs = result?.template_residual_args ?? [];
 
   const setNodeMode = (mode: "auto" | "manual" | "multi" | "pd") => {
+    // Multi-node and PD groups are placed by the platform by default (the
+    // same auto / manual switch as a single node's), and pack by default
+    // where a single node spreads. A strategy the deployer picked is kept.
+    const grouped = (m: string) => m === "multi" || m === "pd";
+    const crossing = grouped(String(form.getFieldValue("node_selection_mode") || "auto")) !== grouped(mode);
+    const strategy = form.getFieldValue("placement_strategy");
+    const placement = {
+      ...(grouped(mode)
+        ? { units_placement: form.getFieldValue("units_placement") ?? "auto" }
+        : {}),
+      ...(crossing
+        ? {
+            placement_strategy:
+              form.getFieldValue("placement_strategy_chosen") && strategy
+                ? strategy
+                : grouped(mode) ? "binpack" : "spread",
+          }
+        : {}),
+    };
     if (mode === "pd") {
       // PD names its own nodes per role unit (DeployPdSection); the ordinary
       // single/multi-node fields do not apply and stay at their rest values.
@@ -204,6 +228,7 @@ export default function DeployQuickForm({
         defaultPdMode(profile, form.getFieldValue("target_vendor"));
       const mode = pdModeOf(profile, pdMode);
       form.setFieldsValue({
+        ...placement,
         node_selection_mode: "pd",
         nnodes: 1,
         replicas: 1,
@@ -224,6 +249,7 @@ export default function DeployQuickForm({
         ? Math.max(2, Number(form.getFieldValue("nnodes") || 2))
         : 1;
     form.setFieldsValue({
+      ...placement,
       node_selection_mode: mode,
       nnodes: nodesCount,
       distributed_nodes:
@@ -246,7 +272,11 @@ export default function DeployQuickForm({
         onNodeMode={setNodeMode}
       />
       {nodeMode === "multi" && (
-        <DeployParallelRow result={result} disabled={!selectedModel} />
+        <DeployParallelRow
+          result={result}
+          disabled={!selectedModel}
+          autoPlaced={unitsPlacement !== "manual"}
+        />
       )}
       <DeployImageRow
         acquisition={result?.acquisition}
@@ -254,11 +284,13 @@ export default function DeployQuickForm({
         images={images}
         warnings={result?.warnings}
       />
-      <DeployWeightSourceFields
-        acquisition={result?.acquisition}
-        modelSource={selectedModel?.source}
-        evaluating={loading}
-      />
+      <LockedGroup controls={["model_source"]} hint={false}>
+        <DeployWeightSourceFields
+          acquisition={result?.acquisition}
+          modelSource={selectedModel?.source}
+          evaluating={loading}
+        />
+      </LockedGroup>
       <DeployNodeAcquisition
         acquisition={result?.acquisition}
         automatic={nodeMode === "auto"}
@@ -293,7 +325,7 @@ export default function DeployQuickForm({
               <InputNumber
                 min={1}
                 max={nodeMode === "multi" || pdMode ? 1 : 32}
-                disabled={pdMode}
+                disabled={pdMode || replicasLocked}
               />
             </Form.Item>
             {nodeMode !== "multi" && !pdMode && (
@@ -352,17 +384,19 @@ export default function DeployQuickForm({
                     ? t("workbench.resource.dgpuUnavailablePool")
                     : t("workbench.resource.dgpuUnavailable")
               }
-              disabled={!capabilityAllowsPartition(partitionCapability)}
+              disabled={!capabilityAllowsPartition(partitionCapability) || vramLocked}
               onClick={() =>
                 form.setFieldValue("vram_limit_gib", partition ? undefined : 16)
               }
             />
             {partition && (
               <Form.Item name="vram_limit_gib" noStyle>
-                <InputNumber min={1} addonAfter="GiB" />
+                <InputNumber min={1} addonAfter="GiB" disabled={vramLocked} />
               </Form.Item>
             )}
           </div>
+          <DeployYieldPolicyField eligibility={result?.yield_policy_eligible} />
+          <LockedHint controls={["replicas", "vram_limit"]} />
         </div>
       </div>
 
@@ -468,9 +502,11 @@ export default function DeployQuickForm({
       <Form.Item name="node_selection_mode" hidden>
         <Input />
       </Form.Item>
-      <Form.Item name="nnodes" hidden={nodeMode !== "multi"}>
-        <InputNumber />
-      </Form.Item>
+      {nodeMode !== "multi" && (
+        <Form.Item name="nnodes" hidden>
+          <InputNumber />
+        </Form.Item>
+      )}
     </section>
   );
 }

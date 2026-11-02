@@ -309,4 +309,105 @@ specs:
     - type: openai.chat
       endpoint: /v1/chat/completions
       mode: stream
+# This model only had sglang profiles on Ascend. Upstream's Qwen3-Dense page
+# publishes a vLLM recipe for the W8A8 checkpoint on four devices, shared
+# between A2 and A3, and this is it, minus its `--max-model-len 5500`. That
+# figure is a throughput-run setting, not the model's capability: this model's
+# sglang profiles pin nothing and serve its full 40960, and a vLLM profile that
+# served an eighth of that would be the worse choice for no stated reason. The
+# Qwen3-Dense page states it passes no tool or
+# reasoning parser at all; the parsers are carried here anyway because they
+# state this model's API surface rather than anything about the card, and every
+# vendor's profile of a model has to agree on them
+# (TestNonNVIDIAChatSpecsInheritModelFunctionalArgs).
+- name: int8-vllm-ascend-9ecdf711
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cann9.1-910b-vllm0.26.0rc1-r2
+  weights:
+    quantization: int8
+    sources:
+    - modelscope:
+        repo_id: vllm-ascend/Qwen3-32B-W8A8
+        revision: 9ecdf711a9629fbf2385b17b47359c8a604e39ed
+  weight_bytes: 42773389808
+  gpus:
+    vendor: ascend
+    name: (^|[^A-Za-z0-9])910B[A-Za-z0-9]*([^A-Za-z0-9]|$)
+    display_target: ascend
+  args:
+  - --quantization
+  - ascend
+  - --trust-remote-code
+  - --distributed-executor-backend
+  - mp
+  - --max-num-batched-tokens
+  - '40960'
+  - --gpu-memory-utilization
+  - '0.9'
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - hermes
+  - --reasoning-parser
+  - qwen3
+  - --compilation-config
+  - '{"cudagraph_mode":"FULL_DECODE_ONLY"}'
+  env:
+    HCCL_OP_EXPANSION_MODE: AIV
+    PYTORCH_NPU_ALLOC_CONF: expandable_segments:True
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    if gpu.count != 4: return reject(\"the published recipe runs exactly 4 devices\")\n    if gpu.min_memory_gib < 32: return reject(\"each device requires at least 32 GiB\")\n    return {\"GPU_COUNT\": 4, \"TP_SIZE\": 4, \"SP_DEGREE\": 1}\n"
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: int8-vllm-ascend-a3-9ecdf711
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cann9.1-a3-vllm0.26.0rc1-r2
+  weights:
+    quantization: int8
+    sources:
+    - modelscope:
+        repo_id: vllm-ascend/Qwen3-32B-W8A8
+        revision: 9ecdf711a9629fbf2385b17b47359c8a604e39ed
+  weight_bytes: 42773389808
+  gpus:
+    vendor: ascend
+    name: (^|[^A-Za-z0-9])910C[A-Za-z0-9]*([^A-Za-z0-9]|$)
+    display_target: ascend
+  args:
+  - --quantization
+  - ascend
+  - --trust-remote-code
+  - --distributed-executor-backend
+  - mp
+  - --max-num-batched-tokens
+  - '40960'
+  - --gpu-memory-utilization
+  - '0.9'
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - hermes
+  - --reasoning-parser
+  - qwen3
+  - --compilation-config
+  - '{"cudagraph_mode":"FULL_DECODE_ONLY"}'
+  env:
+    HCCL_OP_EXPANSION_MODE: AIV
+    PYTORCH_NPU_ALLOC_CONF: expandable_segments:True
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    if gpu.count != 4: return reject(\"the published recipe runs exactly 4 devices\")\n    if gpu.min_memory_gib < 32: return reject(\"each device requires at least 32 GiB\")\n    return {\"GPU_COUNT\": 4, \"TP_SIZE\": 4, \"SP_DEGREE\": 1}\n"
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
 input_modalities: [text]

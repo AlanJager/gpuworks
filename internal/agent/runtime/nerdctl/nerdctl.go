@@ -19,6 +19,7 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -89,9 +90,20 @@ func (d *Driver) RemoveImage(ctx context.Context, image string) error {
 }
 
 func (d *Driver) InspectImage(ctx context.Context, image string) (runtime.ImageInspection, error) {
-	out, err := output(ctx, 10*time.Second, "image", "inspect", "--format", "{{json .}}", image)
+	inspection, _, err := d.inspectImage(ctx, image)
+	return inspection, err
+}
+
+// inspectImage keeps the config identity separate from nerdctl's lookup digest.
+// No --platform is passed: nerdctl/containerd selects the host's default platform.
+// For a multi-platform index, ImageConfigDesc and ImageConfig describe that
+// selected platform; Image.Target can still identify the whole index. nerdctl's
+// dockercompat mode converts this same selected config, so native mode does not
+// change the platform selection. A Run --platform override is not applied here.
+func (d *Driver) inspectImage(ctx context.Context, image string) (runtime.ImageInspection, string, error) {
+	out, err := output(ctx, 10*time.Second, "image", "inspect", "--mode=native", "--format", "{{json .}}", image)
 	if err != nil {
-		return runtime.ImageInspection{}, err
+		return runtime.ImageInspection{}, "", err
 	}
 	// nerdctl's `image inspect --format {{json .}}` prints one JSON object per
 	// matching image on its own line (not a JSON array like `docker image
@@ -101,28 +113,46 @@ func (d *Driver) InspectImage(ctx context.Context, image string) (runtime.ImageI
 		line = line[:i]
 	}
 	var raw struct {
-		ID     string `json:"Id"`
-		Config struct {
-			Entrypoint []string       `json:"Entrypoint"`
-			Cmd        []string       `json:"Cmd"`
-			Env        []string       `json:"Env"`
-			Volumes    map[string]any `json:"Volumes"`
-		} `json:"Config"`
+		Image struct {
+			Target struct {
+				Digest string `json:"digest"`
+			} `json:"target"`
+		} `json:"Image"`
+		ImageConfigDesc struct {
+			Digest string `json:"digest"`
+		} `json:"ImageConfigDesc"`
+		ImageConfig *struct {
+			Config struct {
+				Entrypoint []string       `json:"Entrypoint"`
+				Cmd        []string       `json:"Cmd"`
+				Env        []string       `json:"Env"`
+				Volumes    map[string]any `json:"Volumes"`
+			} `json:"config"`
+		} `json:"ImageConfig"`
 	}
 	if err := json.Unmarshal([]byte(line), &raw); err != nil {
-		return runtime.ImageInspection{}, err
+		return runtime.ImageInspection{}, "", err
 	}
+	// nerdctl resolves image IDs against the target (manifest/index) digest.
+	// Its dockercompat Id is a config digest and cannot be used for that lookup.
+	if !imageDigestPattern.MatchString(raw.Image.Target.Digest) || !imageDigestPattern.MatchString(raw.ImageConfigDesc.Digest) || raw.ImageConfig == nil {
+		return runtime.ImageInspection{}, "", fmt.Errorf("nerdctl image inspect missing target digest, config digest or image config")
+	}
+	if imageDigestPattern.MatchString(image) && raw.Image.Target.Digest != image {
+		return runtime.ImageInspection{}, "", fmt.Errorf("nerdctl image inspect returned a different target digest")
+	}
+	config := raw.ImageConfig.Config
 	env := map[string]string{}
-	for _, kv := range raw.Config.Env {
+	for _, kv := range config.Env {
 		if i := strings.IndexByte(kv, '='); i > 0 {
 			env[kv[:i]] = kv[i+1:]
 		}
 	}
-	vols := make([]string, 0, len(raw.Config.Volumes))
-	for v := range raw.Config.Volumes {
+	vols := make([]string, 0, len(config.Volumes))
+	for v := range config.Volumes {
 		vols = append(vols, v)
 	}
-	return runtime.ImageInspection{ID: raw.ID, Entrypoint: raw.Config.Entrypoint, Cmd: raw.Config.Cmd, Env: env, Volumes: vols}, nil
+	return runtime.ImageInspection{ID: raw.ImageConfigDesc.Digest, Entrypoint: config.Entrypoint, Cmd: config.Cmd, Env: env, Volumes: vols}, raw.Image.Target.Digest, nil
 }
 
 // PullImage pulls an image, streaming its progress to onLine in the shared pull
@@ -298,6 +328,14 @@ func (d *Driver) RunningContainers(ctx context.Context) ([]string, error) {
 // runtime.DefaultRunTimeout fails the launch; its container is removed once the
 // CLI returns (see runtime.RunDetached).
 func (d *Driver) Run(ctx context.Context, spec runtime.WorkloadSpec) (string, error) {
+	_, target, err := d.inspectImage(ctx, spec.Image)
+	if err != nil {
+		// Observation is optional; a failed read must not prevent nerdctl from
+		// following its normal image lookup/pull and launch behavior.
+		slog.Warn("cannot record container image identity", "runtime", "nerdctl", "image", spec.Image, "err", err)
+	} else {
+		spec.DockerArgs = append(slices.Clone(spec.DockerArgs), "--label", imageTargetLabel+"="+target)
+	}
 	return runtime.RunDetached(ctx, runtime.DetachedRun{
 		CLI: "nerdctl", Args: buildRunArgs(spec), Name: spec.Name, Remove: d.Remove,
 		Timeout: runTimeout, AbandonGrace: abandonGrace,

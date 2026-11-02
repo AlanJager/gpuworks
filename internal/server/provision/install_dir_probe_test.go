@@ -30,6 +30,20 @@ type dirScenario struct {
 	findmnt   string // when set, findmnt exists and prints this line
 	container bool   // a /.dockerenv-style marker file exists
 	docker    bool   // docker is installed and its daemon answers `docker info`
+	// modes maps a directory to what `stat -c '%a %u %g'` prints for it
+	// ("700 0 0"); every other directory reads as "755 0 0". runtimeID is the
+	// uid and gid of the dedicated udocker account, "" while it does not exist.
+	modes     map[string]string
+	runtimeID string
+	// nerdctl: containerd answers `nerdctl -n gpuworks ps`. useradd: the tool
+	// that creates the udocker account is on PATH. arch is `uname -m` ("" =
+	// this host's).
+	nerdctl, useradd bool
+	arch             string
+	// groups is what `id -G udocker` prints ("1001 44 109": primary group
+	// first); "" = just the primary group. aclDir is a directory `ls -ld`
+	// shows with the trailing + of an ACL.
+	groups, aclDir string
 	// macOS: no /proc/mounts; BSD stat, and `mount` prints macMount. dfMount
 	// is the "Mounted on" column df prints.
 	mac      bool
@@ -105,9 +119,17 @@ func scenarioHandler(t *testing.T, sc dirScenario, dir string) fakeSSHHandler {
 			t.Fatal(err)
 		}
 	}
+	// id for the dedicated account prints its ids when it exists and fails the
+	// way GNU id does when it does not.
 	writeExecutable(t, filepath.Join(bin, "id"), `case "$*" in
   -u) echo "$FAKE_UID" ;;
   -un) echo "$FAKE_USER" ;;
+  "-u udocker"|"-g udocker")
+    if [ -z "$FAKE_RUNTIME_ID" ]; then echo "id: 'udocker': no such user" >&2; exit 1; fi
+    echo "$FAKE_RUNTIME_ID" ;;
+  "-G udocker")
+    if [ -z "$FAKE_RUNTIME_ID" ]; then echo "id: 'udocker': no such user" >&2; exit 1; fi
+    echo "${FAKE_RUNTIME_GROUPS:-$FAKE_RUNTIME_ID}" ;;
   *) exit 1 ;;
 esac
 `)
@@ -121,9 +143,35 @@ exit 1
 		writeExecutable(t, filepath.Join(bin, "mount"), `printf '%s\n' "$FAKE_MAC_MOUNT"
 `)
 	} else {
-		writeExecutable(t, filepath.Join(bin, "stat"), `[ "$1 $2 $3" = "-f -c %T" ] || exit 1
-echo "$FAKE_STATFS"
+		// GNU stat: -f -c %T is the filesystem type; -c '%a %u %g' prints
+		// "<octal mode> <uid> <gid>", e.g. "700 0 0" for a private home. A
+		// path the scenario does not list is a stock 0755 root directory.
+		writeExecutable(t, filepath.Join(bin, "stat"), `if [ "$1 $2 $3" = "-f -c %T" ]; then
+  echo "$FAKE_STATFS"
+  exit 0
+fi
+if [ "$1" = -c ] && [ "$2" = '%a %u %g' ]; then
+  shift 2
+  [ "$1" = -- ] && shift
+  while read -r path mode uid gid; do
+    if [ "$path" = "$1" ]; then
+      if [ "$mode" = unreadable ]; then echo "stat: cannot statx '$1': Permission denied" >&2; exit 1; fi
+      echo "$mode $uid $gid"
+      exit 0
+    fi
+  done < "$FAKE_MODES"
+  echo "755 0 0"
+  exit 0
+fi
+exit 1
 `)
+		var modes strings.Builder
+		for path, perm := range sc.modes {
+			modes.WriteString(path + " " + perm + "\n")
+		}
+		if err := os.WriteFile(filepath.Join(root, "modes"), []byte(modes.String()), 0o644); err != nil {
+			t.Fatal(err)
+		}
 	}
 	writeExecutable(t, filepath.Join(bin, "df"), `[ "$1" = "-Pk" ] || exit 1
 echo "Filesystem     1024-blocks      Used Available Capacity Mounted on"
@@ -174,6 +222,10 @@ exit 1
 		"FAKE_UID=" + sc.uid,
 		"FAKE_USER=" + sc.user,
 		"FAKE_STATFS=" + sc.statfs,
+		"FAKE_MODES=" + filepath.Join(root, "modes"),
+		"FAKE_RUNTIME_ID=" + sc.runtimeID,
+		"FAKE_RUNTIME_GROUPS=" + sc.groups,
+		"FAKE_ACL_DIR=" + sc.aclDir,
 		"FAKE_TOTAL=" + strconv.FormatInt(sc.totalKiB, 10),
 		"FAKE_AVAIL=" + strconv.FormatInt(sc.availKiB, 10),
 		"FAKE_DF_SOURCE=" + sc.dfSource,
@@ -183,6 +235,29 @@ exit 1
 		"FAKE_FINDMNT=" + strings.ReplaceAll(sc.findmnt, "%DIR%", dir),
 		"FAKE_MAC_MOUNT=" + strings.ReplaceAll(sc.macMount, "%DIR%", dir),
 		"FAKE_DF_MOUNT=" + strings.ReplaceAll(sc.dfMount, "%DIR%", dir),
+	}
+	if sc.nerdctl {
+		writeExecutable(t, filepath.Join(bin, "nerdctl"), `[ "$1 $2 $3" = "-n gpuworks ps" ] || exit 1
+echo "CONTAINER ID    IMAGE    COMMAND    CREATED    STATUS    PORTS    NAMES"
+`)
+	}
+	if sc.useradd {
+		writeExecutable(t, filepath.Join(bin, "useradd"), "exit 0\n")
+	}
+	// GNU ls -ld marks a directory with an ACL by a + after the mode string.
+	writeExecutable(t, filepath.Join(bin, "ls"), `[ "$1" = -ld ] || exit 1
+shift
+[ "$1" = -- ] && shift
+plus=""
+[ "$1" = "$FAKE_ACL_DIR" ] && plus="+"
+echo "drwx------$plus 5 root root 4096 Mar  3 10:11 $1"
+`)
+	if sc.arch != "" {
+		// uname is a link to the host's tool; replace the link, not its target.
+		_ = os.Remove(filepath.Join(bin, "uname"))
+		writeExecutable(t, filepath.Join(bin, "uname"), `[ "$1" = -m ] || exit 1
+echo "`+sc.arch+`"
+`)
 	}
 	if sc.docker {
 		writeExecutable(t, filepath.Join(bin, "docker"), `[ "$1" = info ] || exit 1
@@ -248,10 +323,16 @@ func unwritableDir(t *testing.T) string {
 
 func probeScenario(t *testing.T, sc dirScenario, dir, requested, kind string) InstallDirOutcome {
 	t.Helper()
+	return probeScenarioRuntime(t, sc, dir, requested, kind, "")
+}
+
+// probeScenarioRuntime is probeScenario for an install that names its runtime.
+func probeScenarioRuntime(t *testing.T, sc dirScenario, dir, requested, kind, runtimeDriver string) InstallDirOutcome {
+	t.Helper()
 	handler := scenarioHandler(t, sc, dir)
 	host, port := startFakeSSHServer(t, "root", "pw", handler)
 	client := dialFakeSSH(t, host, port, "root", "pw")
-	return ProbeInstallDir(t.Context(), client, requested, kind, "")
+	return ProbeInstallDirForRuntime(t.Context(), client, requested, kind, "", runtimeDriver)
 }
 
 func checkByName(t *testing.T, checks []CheckResult, name string) CheckResult {
@@ -309,9 +390,12 @@ func TestInstallDirProbeRunPodWorkspaceNFS(t *testing.T) {
 	wantCheck(t, out.Checks, checkInstallDirNames, "error",
 		"does not allow ':' in file names", "dpkg/info", "cannot run deployments from here", "choose an install directory on a local filesystem",
 		"touch: cannot touch '"+dir+"/.gpuworks-probe.", "/name:probe': Invalid argument")
-	if len(out.Checks) != 6 {
+	if len(out.Checks) != 7 {
 		t.Fatalf("checks = %+v", out.Checks)
 	}
+	// Root and the dedicated user would otherwise be judged on a chown that
+	// workloads never get: they run as root, so no ancestor matters.
+	wantCheck(t, out.Checks, checkInstallDirTraversal, "ok", "not needed", "agent's own user")
 }
 
 func TestInstallDirProbeLeavesNothingBehind(t *testing.T) {
@@ -567,7 +651,7 @@ func TestInstallDirProbeRunsWithTheHostsRealTools(t *testing.T) {
 		t.Fatalf("facts = %+v\n%s", facts, out)
 	}
 	checks, _ := installDirChecks(facts, "vm", "")
-	if len(checks) != 6 {
+	if len(checks) != 7 {
 		t.Fatalf("checks = %+v", checks)
 	}
 	if entries, _ := os.ReadDir(dir); len(entries) != 0 {
@@ -648,6 +732,13 @@ type installProbeRun struct {
 // the agent binary read, so nothing is uploaded or started on the test host.
 func runInstallUntilBinaryRead(t *testing.T, sc dirScenario, dir string) installProbeRun {
 	t.Helper()
+	return runInstallNamingRuntime(t, sc, dir, "")
+}
+
+// runInstallNamingRuntime is runInstallUntilBinaryRead for an install that
+// names its runtime driver.
+func runInstallNamingRuntime(t *testing.T, sc dirScenario, dir, runtimeDriver string) installProbeRun {
+	t.Helper()
 	inner := scenarioHandler(t, sc, dir)
 	var run installProbeRun
 	handler := func(cmd string, stdin io.Reader) (string, string, uint32) {
@@ -658,7 +749,7 @@ func runInstallUntilBinaryRead(t *testing.T, sc dirScenario, dir string) install
 	installer := NewSSHInstaller(func(string) ([]byte, error) { return nil, errors.New("agent binary is not available in this test") })
 	run.report, run.err = installer.InstallSSH(t.Context(), SSHInstallRequest{
 		Target: "root@" + host, Port: port, ServerURL: "https://server.example", Token: "tok", InstallDir: dir,
-		InstanceKind: "container", SSHAuth: SSHAuth{Mode: AuthPassword, Password: "pw"},
+		InstanceKind: "container", RuntimeDriver: runtimeDriver, SSHAuth: SSHAuth{Mode: AuthPassword, Password: "pw"},
 	})
 	return run
 }
@@ -683,9 +774,19 @@ func TestInstallSSHStopsBeforeUploadOnNoexecDirectory(t *testing.T) {
 		t.Fatalf("install error = %v", run.err)
 	}
 	wantCheck(t, run.report.Checks, checkInstallDir, "error", "mounted noexec")
+	assertStoppedAtTheProbe(t, run)
+}
+
+// assertStoppedAtTheProbe fails when the install ran anything after the
+// install-directory probe (the probe itself reads `uname -m`, so it is skipped).
+func assertStoppedAtTheProbe(t *testing.T, run installProbeRun) {
+	t.Helper()
 	for _, cmd := range run.cmds {
+		if strings.Contains(cmd, "probed=%s") {
+			continue
+		}
 		if strings.Contains(cmd, "uname -m") || strings.Contains(cmd, ".new.") {
-			t.Fatalf("install went on after the noexec verdict: %q", cmd)
+			t.Fatalf("install went on after the blocking verdict: %q", cmd)
 		}
 	}
 }
@@ -840,7 +941,7 @@ func TestInstallDirProbeMacDirectoryTheInstallerCreatesWithSudo(t *testing.T) {
 	}
 
 	out = probeMacScenario(t, sc, "/proc/gpuworks", false)
-	wantCheck(t, out.Checks, checkInstallDir, "error", "/proc is not writable by huangsheng", "leave the directory empty to install in ~/.gpuworks", "account password")
+	wantCheck(t, out.Checks, checkInstallDir, "error", "/proc is not writable by huangsheng", "leave the directory empty to install in ~/gpuworks", "account password")
 }
 
 func TestExpandRemoteHome(t *testing.T) {

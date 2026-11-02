@@ -13,9 +13,13 @@ export function servedNameSuffix(random: () => number = Math.random): string {
   return `-${suffix}`;
 }
 
+// useDeploymentIdentity proposes the name and served name of a new
+// deployment from its model. A form opened from a draft already has its names
+// (an edit cannot change them), so `enabled` is false there.
 export default function useDeploymentIdentity(
   form: FormInstance,
   model?: Model,
+  enabled = true,
 ) {
   const generatedName = useRef("");
   const generatedServedName = useRef("");
@@ -24,7 +28,7 @@ export default function useDeploymentIdentity(
   const suffix = useRef("");
 
   useEffect(() => {
-    if (!model) return;
+    if (!model || !enabled) return;
     const nextName =
       (model.name || model.source_id)
         .split("/")
@@ -37,7 +41,7 @@ export default function useDeploymentIdentity(
     const currentName = String(form.getFieldValue("name") || "");
     const currentServedName = String(form.getFieldValue("served_name") || "");
     const updates: Record<string, unknown> = {};
-    if (!currentName || currentName === generatedName.current) {
+    if ((!currentName && !form.isFieldTouched("name")) || currentName === generatedName.current) {
       updates.name = nextName;
       generatedName.current = nextName;
     }
@@ -50,5 +54,5 @@ export default function useDeploymentIdentity(
       generatedServedName.current = nextServedName;
     }
     if (Object.keys(updates).length) form.setFieldsValue(updates);
-  }, [form, model]);
+  }, [form, model, enabled]);
 }

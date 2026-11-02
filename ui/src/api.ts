@@ -1,6 +1,9 @@
+import type { ServerBuildInfo } from "./serverBuildInfo";
 import type { BenchmarkPointEvidence } from "./benchmarkEvidenceTypes";
 export type * from "./benchmarkEvidenceTypes";
 // API client + shared types. Types mirror internal/server/api/dto.
+import type { Eligibility, ScheduleCapabilities } from "./deploymentCapabilities";
+import type { YieldPolicy } from "./yieldPolicyApi";
 import { useEffect, useRef, useState } from "react";
 import type {
   NetworkAttachBatchResult, NetworkAttachmentRequest, NetworkDetail, NetworkHCARequest, NetworkList,
@@ -13,6 +16,8 @@ import type {
   StorageDownloadFormat, StorageFileList,
 } from "./storageTypes";
 export type * from "./storageTypes";
+import type { AgentUpgradeCreate, AgentUpgradeItem, AgentUpgradePage, AgentUpgradePreview, AgentUpgradeRun } from "./agentUpgradesTypes";
+export type * from "./agentUpgradesTypes";
 import i18n from "./i18n";
 import { APIError, apiErrorText, apiResponseError, ProxyErrorPage, type ProductMessage } from "./apiError";
 import { readSSE } from "./sse";
@@ -32,6 +37,9 @@ import {
   type MonitorRequestsQuery,
 } from "./monitorRequestsApi";
 import type { TelemetryExport, TelemetryExportTest, TelemetryExportUpdate } from "./telemetryApi";
+
+/** What an operator sets one card to (PUT /nodes/{uuid}/gpus/scheduling). */
+export type CardScheduling = "stopped" | "schedulable";
 
 export interface GPU {
   /** The vendor CLI's device index, or -1 when it does not list the card. */
@@ -60,6 +68,12 @@ export interface GPU {
   schedulable: boolean;
   /** Compute processes on the card that the platform does not account for. */
   foreign_processes?: { pid: number; name: string; memory_bytes?: number }[];
+  /** An operator took the card out of scheduling; only they put it back. */
+  scheduling_stopped?: boolean;
+  /** An operator let work onto a card the platform judged unusable, until the next report judges it afresh. */
+  scheduling_allowed?: boolean;
+  /** What an operator may do to the card now, decided by the server. */
+  scheduling_actions?: CardScheduling[];
   health_status?: string;
   health_code?: string;
   health_message?: string;
@@ -130,9 +144,13 @@ export interface NodeReplica {
   deployment: string;
   state: string;
   kind: "pool" | "pinned" | "named";
+  drain_reason?: ScheduleMessage;
+  drain_reason_at?: string;
+  drain_message?: string;
 }
 
 export interface NodeReplicas {
+  drain_offline?: boolean;
   scheduling: NodeScheduling;
   items: NodeReplica[];
 }
@@ -149,6 +167,12 @@ export interface Node {
   // scheduling is whether the node takes new replicas: cordoned takes none,
   // draining also moves the replicas a pool placed there.
   scheduling?: NodeScheduling;
+  // scheduling_by is who set scheduling (absent when nobody holds the node,
+  // or the author was not recorded): the platform lifts only its own.
+  scheduling_by?: "operator" | "platform";
+  // cordon_reason is why the platform holds the node now; absent unless
+  // scheduling_by is platform.
+  cordon_reason?: "runtime_gpu_blocked" | "card_needs_host_reboot";
   name?: string;
   token?: string;
   /** Installs this node's agent; returned with the token, and the way back
@@ -381,6 +405,89 @@ export interface GPUHealthField {
   value: string;
 }
 
+// Card health checks: GET /nodes/{uuid}/health-checks lays a node's card
+// checks out as a table, the server deciding the columns, each cell's state
+// and staleness, the worst state per card and whether a recheck is offered.
+export type CardCheckState = "pass" | "warn" | "fail" | "skip" | "pending" | "na";
+export interface CardHealthColumn {
+  id: string;
+  period_seconds: number;
+}
+export interface CardHealthCell {
+  check: string;
+  state: CardCheckState;
+  reason?: string;
+  checked_at?: string;
+  duration_ms?: number;
+  stale: boolean;
+}
+export interface CardHealthCard {
+  ident: string;
+  uuid?: string;
+  pcie_bdf?: string;
+  name?: string;
+  index: number;
+  worst: "pass" | "warn" | "fail";
+  can_recheck: boolean;
+  cells: CardHealthCell[];
+}
+export interface CardHealthChecks {
+  node_uuid: string;
+  online: boolean;
+  reports: boolean;
+  stale: boolean;
+  received_at?: string;
+  checks: CardHealthColumn[];
+  cards: CardHealthCard[];
+  summary: Record<string, number>;
+}
+// A stretch in which a check warned or failed (GET /nodes/{uuid}/health-records).
+export interface CardHealthRecord {
+  id: number;
+  card_ident: string;
+  card_index?: number;
+  card_name?: string;
+  pcie_bdf?: string;
+  removed: boolean;
+  check: string;
+  level: "warn" | "fail";
+  reason?: string;
+  started_at: string;
+  ended_at?: string;
+  last_seen_at: string;
+  duration_seconds: number;
+  count: number;
+  flapping: boolean;
+  ongoing: boolean;
+  first_evidence: GPUHealthField[];
+  latest_evidence: GPUHealthField[];
+}
+export interface CardHealthRecords {
+  records: CardHealthRecord[];
+  total: number;
+  page: number;
+  page_size: number;
+  retention_days: number;
+}
+export interface CardCheckRun {
+  state: CardCheckState;
+  reason?: string;
+  at: string;
+  duration_ms?: number;
+  probe?: string;
+  evidence: GPUHealthField[];
+}
+export interface CardCheckDetail {
+  ident: string;
+  check: string;
+  last?: CardCheckRun;
+  last_ran?: CardCheckRun;
+  last_problem?: CardCheckRun;
+  agent_started_at?: string;
+}
+export type CardRef = { pcie_bdf?: string; uuid?: string };
+const cardQuery = (card?: CardRef) => (card?.pcie_bdf ? `pcie_bdf=${encodeURIComponent(card.pcie_bdf)}` : card?.uuid ? `uuid=${encodeURIComponent(card.uuid)}` : "");
+
 /** Vendor commands for a card's health finding, derived by the server. */
 export interface GPUHealthGuide {
   probe: string;
@@ -580,12 +687,42 @@ export interface EngineProfile {
   pd_modes?: PdModeProfile[];
 }
 
+// WakeRefusal is one group of sleepers a wake could not put back: the cards
+// that cannot take them, how far short they are and who holds the memory.
+// held_outside says a process outside the platform holds a card, which no
+// sleep order of ours can free.
+export interface WakeRefusal {
+  instances: string[];
+  node?: string;
+  gpu_indexes?: number[];
+  occupants?: string[];
+  shortfall_gib?: string;
+  held_outside?: boolean;
+}
+
 // WakeResult is a wake order's answer; a partial wake lists what it woke and
-// the sleepers whose cards could not take them back.
+// the sleepers whose cards could not take them back. A wake that waits for
+// room (wait or yield) answers 202 with status "waiting", what it woke at
+// once, what waits (waiting) and the deployments put to sleep to make room
+// (yielded); 200 "waking" when everything fit.
 export interface WakeResult {
   status: string;
   woken?: string[];
-  refused?: Array<{ instances: string[]; node?: string; gpu_indexes?: number[]; occupants?: string[]; shortfall_gib?: string }>;
+  refused?: WakeRefusal[];
+  waiting?: string[];
+  yielded?: string[];
+}
+
+// WakeOptions are the ways a wake order may proceed: role limits it to one
+// PD role, partial wakes what fits, wait leaves the rest waiting for room,
+// yield first puts the occupants of the needed cards to sleep (at yieldLevel,
+// 1 unless the server must fall back to 2).
+export interface WakeOptions {
+  role?: string;
+  partial?: boolean;
+  wait?: boolean;
+  yield?: boolean;
+  yieldLevel?: 1 | 2;
 }
 
 // PdModeProfile is one PD mode as the server's catalog states it.
@@ -743,6 +880,8 @@ export interface ImageCatalogEntry {
   enabled: boolean;
   notes?: string;
   size_bytes?: number;
+  local_runtime_size_bytes?: number;
+  local_size_known_nodes?: number;
   /** Deployments, live instances and models that name this image; a deprecated system image stays while this is above zero. */
   reference_count: number;
   /** Nodes holding this version and nodes in the fleet: every response carries them. */
@@ -955,8 +1094,13 @@ export type DeploymentListItem = Pick<
   | "node_uuid"
   | "node_name"
   | "node_names"
+  | "runtime_nodes"
+  | "runtime_node_names"
   | "desired_state"
   | "runtime_state"
+  | "state"
+  | "asleep_replicas"
+  | "sleep_level"
   | "sleepable"
   | "replicas"
   | "ready_replicas"
@@ -970,6 +1114,7 @@ export type DeploymentListItem = Pick<
 };
 
 export type DeploymentPage = ListPage<DeploymentListItem>;
+
 
 /** A node page row omits topology and path usage (GET /nodes/{uuid} has them). */
 export interface NodePage extends ListPage<Node> {
@@ -1239,6 +1384,7 @@ export interface UpdateStatus {
   source?: string;
   sources: UpdateSourceStatus[];
   server: {
+    current_build?: ServerBuildInfo;
     current: string;
     latest?: string;
     built_at?: string;
@@ -1335,10 +1481,10 @@ export interface StorageNodeUsage {
 export interface InstanceComputeNetwork {
   name: string;
   management: boolean;
-  type: "host_ethernet" | "host_rdma" | "accelerator_rdma";
+  type: "host_ethernet" | "host_rdma" | "accelerator_rdma" | "accelerator_hccs";
   interface: string;
   ip: string;
-  link_layer?: "infiniband" | "roce";
+  link_layer?: "infiniband" | "roce" | "hccs";
 }
 
 // --- VRAM breakdown -------------------------------------------------------
@@ -1427,6 +1573,9 @@ export interface Instance {
   // fills (absent when it fills none), and whether it takes a sleep or wake
   // order of its own.
   asleep?: boolean;
+  // sleep_held: an operator's or a schedule's sleep holds this instance, so
+  // a request does not wake it.
+  sleep_held?: boolean;
   replica?: { role?: string; index: number };
   can_sleep_alone?: boolean;
   can_wake_alone?: boolean;
@@ -1574,6 +1723,21 @@ export interface InstanceLaunchFacts {
   runtime_observation_received_at?: string;
 }
 
+/**
+ * One node a deployment's instances are on now: where a replica actually runs,
+ * which is the placement target only until something moves it.
+ */
+export interface DeploymentRuntimeNode {
+  node_uuid: string;
+  node_name?: string;
+  /**
+   * How many of the deployment's instance rows are on the node, of any state. A
+   * spread deployment has one node per replica here; the count is what a table
+   * folds into "N nodes" and expands again.
+   */
+  instances: number;
+}
+
 export interface Deployment {
   operations?: Array<
     Pick<
@@ -1597,12 +1761,38 @@ export interface Deployment {
   node_uuids?: string[];
   /** Display names of node_uuids, rank by rank. */
   node_names?: string[];
+  /**
+   * Where the deployment's instances run now, one entry per node, read from the
+   * instance rows. node_name/node_names above are the placement target — the
+   * node, or rank by rank the nodes, the deployment was *asked* to run on — so
+   * the two differ whenever automatic placement picks the node later, a retried
+   * replica is relaunched elsewhere, or a spread deployment runs on several
+   * nodes at once. Empty before anything is placed.
+   */
+  runtime_nodes?: DeploymentRuntimeNode[];
+  /**
+   * Names of runtime_nodes, in the same order. Prefer runtime_nodes where the
+   * uuid or the per-node instance count is needed.
+   */
+  runtime_node_names?: string[];
   partition_backend?: string;
   /** The dGPU memory limit each replica runs under per card; absent on whole cards. */
   vram_limit_bytes?: number;
   served_name: string;
   desired_state: string;
   runtime_state: string;
+  /** The state to show: runtime_state, except that a deployment the gateway
+   *  refuses every request of because the replicas it needs sleep reads
+   *  asleep, and one whose sleep order its engines have not carried out yet
+   *  reads sleeping. A partly slept deployment keeps running and says so in
+   *  asleep_replicas. */
+  state?: string;
+  /** Replicas the gateway refuses because they sleep, over every role: with
+   *  ready_replicas it accounts for the replicas the gateway reaches at all. */
+  asleep_replicas?: number;
+  /** The deepest sleep level an engine reports: 0 awake, and while a sleep
+   *  order is still being carried out. */
+  sleep_level?: number;
   sleepable: boolean;
   replicas: number;
   // How many replicas the deployment may be scaled to.
@@ -1613,8 +1803,12 @@ export interface Deployment {
   // start_timeout_sec is the deployment's own instance health budget; absent
   // when it follows the cluster default (settings, deployment group).
   start_timeout_sec?: number;
-  // ready_replicas counts the replicas running now (every rank); absent for a
-  // PD deployment, whose roles count their own.
+  // ready_replicas counts the replicas the gateway would serve a request from
+  // now (running, on an online node, every rank up, awake). A PD deployment
+  // totals its roles' ready units, the same replicas its replicas field
+  // totals, so the pair means one thing on both. With asleep_replicas it is
+  // two counts of one set of replicas, so the two can never contradict each
+  // other.
   ready_replicas?: number;
   // health is the deployment's health check (dto/deployment_health.go).
   health: DeploymentHealth;
@@ -1650,10 +1844,103 @@ export interface Deployment {
   // network, a label nothing has). Only a single deployment's read has them.
   node_requirement_labels?: RequirementLabel[];
   placement_strategy?: "spread" | "binpack" | string;
+  // placement_mode says who picks a multi-node or PD deployment's nodes: the
+  // platform ("auto", whenever a unit starts) or the operator ("manual").
+  // Absent for a single-node deployment, whose requirements say it.
+  placement_mode?: UnitsPlacementMode;
   // placement_status is set while replicas of an ordinary deployment wait
   // for a node: how many, and the controller's latest reason.
   placement_status?: DeploymentPlacementStatus;
+  // node_replacement moves a replica off a node that stays offline for
+  // after_sec (0 never moves it). wake_waiting_since is set while some wake
+  // of the deployment waits for room.
+  node_replacement?: NodeReplacement;
+  wake_waiting_since?: string;
+  // wake_wait_limit_sec is how long a wake waits for room before it gives up.
+  wake_wait_limit_sec: number;
+  // yield_policy is how the deployment shares its GPUs with the others on
+  // them; absent counts as never.
+  yield_policy?: YieldPolicy;
+  // sleep_hold is how the server reads its asleep replicas: every one held
+  // by an operator's or a schedule's sleep (all, a request wakes none), some
+  // (a request wakes the others), or none; absent with none asleep.
+  // sleep_held is sleep_hold all.
+  sleep_hold?: SleepHold;
+  sleep_held?: boolean;
+  // yield_policy_eligible says whether the deployment may hold a policy other
+  // than never, and schedule_capabilities what its schedule may order: the
+  // server's decisions, which the pages render and do not re-derive.
+  yield_policy_eligible: Eligibility;
+  schedule_capabilities: ScheduleCapabilities;
 }
+
+
+
+export type SleepHold = "all" | "some" | "none";
+
+export interface NodeReplacement {
+  after_sec: number;
+}
+
+/** Who places a multi-node or PD deployment's units (PUT /deployments/{id}/placement-mode). */
+export type UnitsPlacementMode = "auto" | "manual";
+
+// DeploymentDraft is GET /deployments/{id}/draft: the deployment read back as
+// the create request that would make it (the deploy form fills itself from
+// it), the revision an edit sends back, and the request fields an edit cannot
+// change for this deployment's shape (the server's list, never a literal here).
+export interface DeploymentDraft {
+  deployment: Record<string, unknown>;
+  revision: string;
+  locked: string[];
+}
+
+// live applies to the deployment at once; restart is read by a launch, so a
+// running instance keeps the old value until it is replaced.
+export type DeploymentChangeLayer = "live" | "restart";
+
+export interface DeploymentChange {
+  field: string;
+  layer: DeploymentChangeLayer;
+  // from and to are always present: a string value as itself, any other value
+  // as its JSON text, an absent value as "".
+  from: string;
+  to: string;
+  // masked: the value is withheld (an environment variable's value); from and
+  // to are "" then.
+  masked?: boolean;
+}
+
+export type DeploymentEditApply = "rolling" | "all" | "none";
+
+// DeploymentEditPlan is what an edit does: PUT /deployments/{id}?dry_run=1
+// answers it without writing, and the edit itself returns it.
+export interface DeploymentEditPlan {
+  changes: DeploymentChange[];
+  restart: boolean;
+  apply_options: DeploymentEditApply[];
+  default_apply: DeploymentEditApply;
+  can_start: boolean;
+  can_wake: boolean;
+  // apply_note names why the apply options are narrower than the state
+  // alone allows: "partition_change" (dGPU on/off or another backend).
+  apply_note?: "partition_change";
+  revision: string;
+}
+
+export interface DeploymentEditBody {
+  deployment: Record<string, unknown>;
+  base_revision: string;
+  apply?: DeploymentEditApply;
+  start?: boolean;
+  wake?: boolean;
+}
+
+export interface DeploymentEditResult {
+  plan: DeploymentEditPlan;
+  deployment: Deployment;
+}
+
 
 export interface DeploymentPlacementStatus {
   unscheduled: number;
@@ -1719,7 +2006,11 @@ export interface DeploymentPdRole {
   // multi-node unit has needed a wire value yet).
   pp?: number;
   desired: number;
+  // ready counts the role's units the gateway would route to now: running, on
+  // online nodes, every rank up, and awake. asleep says why ready may be short
+  // of desired with nothing down — those units sleep.
   ready: number;
+  asleep?: number;
   // The mode runs with no instance of the role: it may scale to zero and
   // sleep on its own.
   may_be_empty?: boolean;
@@ -1731,7 +2022,8 @@ export interface DeploymentPd {
   fallback: string;
   kv_load_failure: string;
   // not_ready: no role has a ready instance yet; partial: some but not every
-  // role is at its desired count; running: every role is.
+  // role the gateway needs has one (a role the mode serves without does not
+  // count); running: every one of them does.
   state: "not_ready" | "partial" | "running";
   // short: some role has fewer ready instances than desired.
   short: boolean;
@@ -1770,8 +2062,13 @@ export interface PdScaleUnitInput {
   followers?: PdScaleFollowerInput[];
 }
 
+// PdScaleRoleUnit is a unit of PUT /deployments/{id}/pd. On an automatically
+// placed deployment a new unit may leave node_uuid out (the platform picks its
+// node; a stated node is its first placement) and states no gpus.
+export type PdScaleRoleUnit = Omit<PdScaleUnitInput, "node_uuid"> & { node_uuid?: string };
+
 export interface PdScaleRequest {
-  roles?: Partial<Record<PdRoleName, { units: PdScaleUnitInput[] }>>;
+  roles?: Partial<Record<PdRoleName, { units: PdScaleRoleUnit[] }>>;
   fallback?: string;
 }
 
@@ -1812,6 +2109,23 @@ export interface ApiKey {
   created_at: string;
   /** When the key was revoked; a revoked key no longer authenticates. */
   revoked_at?: string;
+  /** The key may call every deployment; otherwise only `deployments`. */
+  all_deployments: boolean;
+  /** Empty when all_deployments, or when every granted deployment is gone. */
+  deployments: ApiKeyDeployment[];
+}
+
+/** A deployment a restricted API key may call. */
+export interface ApiKeyDeployment {
+  id: number;
+  name: string;
+  served_name: string;
+}
+
+/** Which deployments an API key may call (POST /apikeys, PUT /apikeys/{prefix}/scope). */
+export interface ApiKeyScope {
+  all_deployments: boolean;
+  deployment_ids: number[];
 }
 
 /** How long each kind of data is kept (GET/PUT /api/v1/data-retention). */
@@ -1830,6 +2144,16 @@ export interface DataRetention {
   time_zone: string;
 }
 
+/** The experience environment beside this server: a separate console holding only simulated data. */
+export interface ExperienceStatus {
+  enabled: boolean;
+  ready: boolean;
+  port: number;
+  user: string;
+  password?: string;
+  error?: string;
+}
+
 export interface DataRetentionView {
   value: DataRetention;
   /** Bounds of every numeric value, by field name. */
@@ -1838,7 +2162,7 @@ export interface DataRetentionView {
 }
 
 export interface DataRetentionStore {
-  kind: "metrics" | "logs" | "requests" | "usage" | "quality" | "gpu" | "gpu_time";
+  kind: "metrics" | "logs" | "requests" | "usage" | "quality" | "gpu" | "gpu_time" | "scheduling";
   file: string;
   file_bytes: number | null;
   hourly_rows: number | null;
@@ -1996,6 +2320,55 @@ export interface AIConfigInput {
   api_key: string;
   model: string;
   is_default: boolean;
+}
+/**
+ * AIConfigPatch changes a stored service in place. Only the fields present
+ * change; api_key is left out to keep the stored key, which the API never
+ * sends back.
+ */
+export interface AIConfigPatch {
+  name?: string;
+  preset?: AIPreset;
+  base_url?: string;
+  api_key?: string;
+  model?: string;
+  is_default?: boolean;
+}
+/**
+ * AIConfigDeleteResult answers a delete. promoted_id names the service that took
+ * over as the default when the deleted one was in use, and is absent when
+ * nothing changed hands: the console says which service the assistant moved to
+ * instead of letting the data-egress notice change host unannounced.
+ */
+export interface AIConfigDeleteResult {
+  status: string;
+  promoted_id?: number;
+}
+/**
+ * AIConfigTest asks whether an endpoint answers before it is saved. id names
+ * the stored service an edit started from; with an empty api_key its stored
+ * key is used, while base_url still matches the stored address.
+ */
+export interface AIConfigTest {
+  id?: number;
+  base_url: string;
+  api_key?: string;
+  model: string;
+}
+/**
+ * AIConfigTestResult is what a connection test established. outcome is a
+ * stable code the console words itself: ok, connection (DNS, dial or
+ * timeout), blocked (refused by the outbound policy), auth (401/403), path (a
+ * 404 that names no model: the wrong address), model (the endpoint does not
+ * serve that model) or http (any other answer). detail is the endpoint's own
+ * words, shortened and with the key removed.
+ */
+export interface AIConfigTestResult {
+  outcome: "ok" | "connection" | "blocked" | "auth" | "path" | "model" | "http";
+  status?: number;
+  detail?: string;
+  base_url: string;
+  latency_ms: number;
 }
 /**
  * One assistant task about a subject named by reference (instance_uuid,
@@ -2707,6 +3080,8 @@ export interface EvictionSuggestion {
 }
 
 export interface EligibleNode {
+  // Explicit node conditions, independently of vendor/chip/state checks.
+  requirements_match?: boolean;
   uuid: string;
   name: string;
   eligible: boolean;
@@ -2759,6 +3134,10 @@ export interface EvaluateResponse {
   pre_start_script?: string;
   acquisition?: AcquisitionResult;
   ok: boolean;
+  // The server picked the nodes of this multi-node or PD request
+  // (placement_mode "auto"): the nodes shown are where it would go now, and the
+  // create picks again.
+  auto_placed?: boolean;
   // The complete launch configuration after materialization: every dictionary
   // key the deployment will start with, defaults included.
   effective_params: Record<string, unknown>;
@@ -2824,6 +3203,9 @@ export interface EvaluateResponse {
   // PD previews a PD disaggregated draft instance by instance (ADR 0028); the
   // command fields above then describe the first decode instance.
   pd?: EvaluatePd;
+  // Whether the draft may be created with a yield policy other than never,
+  // the create's own check; absent until the draft's engine is known.
+  yield_policy_eligible?: Eligibility;
 }
 
 // PdRoleName is the fixed pair every PD mode declares today (ADR 0028); the
@@ -2978,6 +3360,12 @@ export interface PhysicalGPU {
   ownership?: "" | "passthrough" | "no_driver" | "held_elsewhere";
   /** Compute processes on the card that no instance of ours accounts for. */
   foreign_processes?: { pid: number; name: string; memory_bytes?: number }[];
+  /** An operator took the card out of scheduling; only they put it back. */
+  scheduling_stopped?: boolean;
+  /** An operator let work onto a card the platform judged unusable, until the next report judges it afresh. */
+  scheduling_allowed?: boolean;
+  /** What an operator may do to the card now, decided by the server. */
+  scheduling_actions?: CardScheduling[];
   allocation_state: "available" | "partial" | "allocated" | "unusable" | "unknown";
   allocated_bytes: number;
   available_bytes: number;
@@ -3082,6 +3470,10 @@ export interface LogsBucket {
 
 export interface LogsWindow {
   items: LogEntry[];
+  // Index of the anchor row in items, or -1 when the anchor is gone from
+  // that partition (pruned by retention, or ts from another day). The
+  // surrounding rows are still real, so compare against the index for
+  // highlighting and never use it to index items without a >= 0 check.
   match_index: number;
 }
 
@@ -3123,7 +3515,7 @@ export interface MonitorService {
   engine: string;
   placement: string;
   replicas: MonitorReplicaCount;
-  state: "running" | "starting" | "stopped" | "failed" | "asleep";
+  state: "running" | "starting" | "stopped" | "failed" | "asleep" | "offline";
   request_rate: number | null;
   ttft_p95_ms: number | null;
   running: number | null;
@@ -3388,7 +3780,20 @@ export function storageFileUploadURL(id: number, node: string | undefined, path:
   return `/api/v1/storages/${id}/files/upload?${storageFilesQuery({ node_uuid: node, path, extract, overwrite: overwrite ? "true" : undefined })}`;
 }
 
-async function sendJSON<T>(
+function wakeQuery(opts: WakeOptions): string {
+  const query = new URLSearchParams();
+  if (opts.role) query.set("role", opts.role);
+  if (opts.partial) query.set("partial", "true");
+  if (opts.wait) query.set("wait", "true");
+  if (opts.yield) {
+    query.set("yield", "true");
+    if (opts.yieldLevel) query.set("yield_level", String(opts.yieldLevel));
+  }
+  const qs = query.toString();
+  return qs ? `?${qs}` : "";
+}
+
+export async function sendJSON<T>(
   method: string,
   path: string,
   body?: unknown,
@@ -3407,6 +3812,16 @@ async function sendJSON<T>(
   }
   const text = await res.text();
   return text ? (JSON.parse(text) as T) : (undefined as T);
+}
+
+// editDeployment saves a draft edit; with dryRun it answers the plan (changes
+// with their layers, the ways to apply) and writes nothing.
+function editDeployment(id: number, body: DeploymentEditBody, opts: { dryRun: true }): Promise<DeploymentEditPlan>;
+function editDeployment(id: number, body: DeploymentEditBody, opts?: { dryRun?: false }): Promise<DeploymentEditResult>;
+function editDeployment(id: number, body: DeploymentEditBody, opts: { dryRun?: boolean } = {}) {
+  return opts.dryRun
+    ? sendJSON<DeploymentEditPlan>("PUT", `/api/v1/deployments/${id}?dry_run=1`, body)
+    : sendJSON<DeploymentEditResult>("PUT", `/api/v1/deployments/${id}`, body);
 }
 
 // The inference catalog import and the remote sync take the same two shapes: a
@@ -3431,6 +3846,7 @@ async function sendFile<T>(path: string, file: File): Promise<T> {
   }
   return res.json() as Promise<T>;
 }
+
 
 function eventPageQuery(page?: { limit?: number; before?: number }): string {
   const params = new URLSearchParams();
@@ -3515,6 +3931,19 @@ export const api = {
   agentRejects: () => getJSON<List<AgentRejectEvent>>("/api/v1/agent/rejects"),
   agentUpgradeErrors: () =>
     getJSON<Record<string, string>>("/api/v1/agent/upgrade-errors"),
+  agentUpgradePreview: (body: { scope: "all" } | { node_uuids: string[] }) =>
+    sendJSON<AgentUpgradePreview>("POST", "/api/v1/agent-upgrades/preview", body),
+  createAgentUpgrade: (body: AgentUpgradeCreate) =>
+    sendJSON<AgentUpgradeRun>("POST", "/api/v1/agent-upgrades", body),
+  agentUpgradeRuns: (page = 1, pageSize = 20) =>
+    getJSON<AgentUpgradePage<AgentUpgradeRun>>(`/api/v1/agent-upgrades?page=${page}&page_size=${pageSize}`),
+  agentUpgradeRun: (id: number) => getJSON<AgentUpgradeRun>(`/api/v1/agent-upgrades/${id}`),
+  agentUpgradeItems: (id: number, page = 1, pageSize = 20, state = "") =>
+    getJSON<AgentUpgradePage<AgentUpgradeItem>>(`/api/v1/agent-upgrades/${id}/items?page=${page}&page_size=${pageSize}${state ? `&state=${encodeURIComponent(state)}` : ""}`),
+  stopAgentUpgrade: (id: number) => sendJSON<AgentUpgradeRun>("POST", `/api/v1/agent-upgrades/${id}/stop`),
+  continueAgentUpgradePreview: (id: number) => sendJSON<AgentUpgradePreview>("POST", `/api/v1/agent-upgrades/${id}/continue-preview`),
+  releaseAgentUpgrade: (id: number, uuid: string, note: string) =>
+    sendJSON<void>("POST", `/api/v1/agent-upgrades/${id}/items/${encodeURIComponent(uuid)}/release`, { note }),
   createNode: (
     input?:
       | string
@@ -3553,6 +3982,23 @@ export const api = {
     ),
   setNodeScheduling: (uuid: string, scheduling: NodeScheduling) =>
     sendJSON<Node>("PUT", `/api/v1/nodes/${encodeURIComponent(uuid)}/scheduling`, { scheduling }),
+  nodeHealthChecks: (nodeUUID: string, card?: CardRef) => {
+    const q = cardQuery(card);
+    return getJSON<CardHealthChecks>(`/api/v1/nodes/${encodeURIComponent(nodeUUID)}/health-checks${q ? `?${q}` : ""}`);
+  },
+  nodeHealthRecords: (nodeUUID: string, opts: { card?: CardRef; check?: string; page: number; pageSize?: number }) => {
+    const parts = [cardQuery(opts.card), opts.check ? `check=${encodeURIComponent(opts.check)}` : "", `page=${opts.page}`, `page_size=${opts.pageSize ?? 50}`].filter(Boolean);
+    return getJSON<CardHealthRecords>(`/api/v1/nodes/${encodeURIComponent(nodeUUID)}/health-records?${parts.join("&")}`);
+  },
+  cardCheckDetail: (nodeUUID: string, card: CardRef, check: string) =>
+    getJSON<CardCheckDetail>(`/api/v1/nodes/${encodeURIComponent(nodeUUID)}/health-checks/detail?${cardQuery(card)}&check=${encodeURIComponent(check)}`),
+  recheckCard: (nodeUUID: string, card: CardRef) =>
+    sendJSON<CardCheckDetail>("POST", `/api/v1/nodes/${encodeURIComponent(nodeUUID)}/gpus/recheck`, card.pcie_bdf ? { pcie_bdf: card.pcie_bdf } : { uuid: card.uuid }),
+  setCardScheduling: (nodeUUID: string, card: { pcie_bdf?: string; uuid?: string }, scheduling: CardScheduling) =>
+    sendJSON<Node>("PUT", `/api/v1/nodes/${encodeURIComponent(nodeUUID)}/gpus/scheduling`, {
+      ...(card.pcie_bdf ? { pcie_bdf: card.pcie_bdf } : { uuid: card.uuid }),
+      scheduling,
+    }),
   nodeReplicas: (uuid: string) =>
     getJSON<NodeReplicas>(`/api/v1/nodes/${encodeURIComponent(uuid)}/replicas`),
   // evictNode takes every replica off a cordoned or draining node at once,
@@ -3566,7 +4012,7 @@ export const api = {
   deleteNode: (uuid: string, force = false) =>
     sendJSON<void>("DELETE", `/api/v1/nodes/${encodeURIComponent(uuid)}${force ? "?force=true" : ""}`),
   upgradeNode: (uuid: string) =>
-    sendJSON<{ status: string }>("POST", `/api/v1/nodes/${uuid}/upgrade`),
+    sendJSON<{ status: string; run_id?: number }>("POST", `/api/v1/nodes/${uuid}/upgrade`),
   precheckNode: (body: SSHPrecheckRequest) =>
     sendJSON<SSHPrecheckReport>("POST", "/api/v1/nodes/precheck", body),
   installNode: (body: SSHInstallRequest) =>
@@ -3829,6 +4275,8 @@ export const api = {
   /** status is "present" when the storage (or every chosen node) already has the model. */
   downloadModelToStorage: (id: number, body: { storage_id: number; node_uuids?: string[] }) =>
     sendJSON<{ status?: string; writer?: string } | undefined>("POST", `/api/v1/models/${id}/download`, body),
+  cancelModelDownload: (id: number, body: { storage_id?: number; node_uuid?: string }) =>
+    sendJSON<{ state: string; message: string }>("POST", `/api/v1/models/${id}/download/cancel`, body),
   copyModel: (id: number, body: { source: ModelLocationRef; target: ModelLocationRef; rate_limit_kib_s?: number }) =>
     sendJSON<{ state?: string; transfer_id?: string; message?: string }>("POST", `/api/v1/models/${id}/copy`, body),
   /** Delete a model's copy in a shared storage; force overrides other gpuworks using it. */
@@ -4002,6 +4450,9 @@ export const api = {
     sendJSON<Deployment>("PUT", `/api/v1/deployments/${id}/health-check`, { enabled, threshold_sec }),
   setDeploymentTokenize: (id: number, enabled: boolean) =>
     sendJSON<Deployment>("PUT", `/api/v1/deployments/${id}/tokenize`, { enabled }),
+  deploymentDraft: (id: number) =>
+    getJSON<DeploymentDraft>(`/api/v1/deployments/${id}/draft`),
+  editDeployment,
   cloneDeployment: (id: number, name?: string) =>
     sendJSON<Deployment>(
       "POST",
@@ -4027,25 +4478,33 @@ export const api = {
     sendJSON<void>("POST", `/api/v1/deployments/${id}/sleep?level=${level}&mode=${mode}${role ? `&role=${encodeURIComponent(role)}` : ""}`),
   // wakeDeployment wakes the deployment (or one PD role) all or nothing;
   // partial wakes the sleepers whose cards can take them back and lists the
-  // rest.
-  wakeDeployment: (id: number, opts: { role?: string; partial?: boolean } = {}) => {
-    const query = new URLSearchParams();
-    if (opts.role) query.set("role", opts.role);
-    if (opts.partial) query.set("partial", "true");
-    const qs = query.toString();
-    return sendJSON<WakeResult>("POST", `/api/v1/deployments/${id}/wake${qs ? `?${qs}` : ""}`);
-  },
+  // rest; wait leaves the rest waiting for room, and yield first puts the
+  // occupants of the needed cards to sleep.
+  wakeDeployment: (id: number, opts: WakeOptions = {}) =>
+    sendJSON<WakeResult>("POST", `/api/v1/deployments/${id}/wake${wakeQuery(opts)}`),
+  // endWakeWaiting cancels the deployment's waiting wakes; it answers with
+  // the instances no longer waiting.
+  endWakeWaiting: (id: number) =>
+    sendJSON<List<string>>("DELETE", `/api/v1/deployments/${id}/wake-waiting`),
   // sleepInstance and wakeInstance order the single-node replica an instance
   // leads; the deployment's other replicas keep serving.
   sleepInstance: (uuid: string, level: number, mode: "wait" | "abort" = "wait") =>
     sendJSON<void>("POST", `/api/v1/instances/${encodeURIComponent(uuid)}/sleep?level=${level}&mode=${mode}`),
-  wakeInstance: (uuid: string) =>
-    sendJSON<void>("POST", `/api/v1/instances/${encodeURIComponent(uuid)}/wake`),
+  wakeInstance: (uuid: string, opts: WakeOptions = {}) =>
+    sendJSON<WakeResult | void>("POST", `/api/v1/instances/${encodeURIComponent(uuid)}/wake${wakeQuery(opts)}`),
+  // The wait before a lost node's replica moves.
+  setNodeReplacement: (id: number, body: NodeReplacement) =>
+    sendJSON<NodeReplacement>("PUT", `/api/v1/deployments/${id}/node-replacement`, body),
   // updateDeploymentPd rescales a PD deployment's role units and/or fallback
   // policy (ADR 0028); mode, TP and kv_load_failure are fixed once instances
   // start, so the request never carries them.
   updateDeploymentPd: (id: number, body: PdScaleRequest) =>
     sendJSON<Deployment>("PUT", `/api/v1/deployments/${id}/pd`, body),
+  // setPlacementMode hands a multi-node or PD deployment's node choice to the
+  // platform ("auto": a PD unit's pinned cards are dropped) or back to the
+  // operator ("manual": the nodes it has stay). Nothing restarts.
+  setPlacementMode: (id: number, mode: UnitsPlacementMode) =>
+    sendJSON<Deployment>("PUT", `/api/v1/deployments/${id}/placement-mode`, { mode }),
   // restartDeployment replaces every replica of a deployment, whatever its
   // shape: "rolling" (the server's default) one at a time, each draining
   // while its replacement starts; "all" stops every instance at once. Every
@@ -4082,9 +4541,10 @@ export const api = {
   suggestUnit: (id: number, units: PdScaleUnitInput[]) =>
     sendJSON<UnitSuggestion>("POST", `/api/v1/deployments/${id}/units/suggest`, { units }),
   // scaleReplicas sets an ordinary single-node deployment's replica count
-  // (remove names the instances whose replicas go when it shrinks), or lists
-  // a multi-node deployment's replicas.
-  scaleReplicas: (id: number, body: { replicas: number; remove?: string[] } | { units: PdScaleUnitInput[] }) =>
+  // (remove names the instances whose replicas go when it shrinks; place_on
+  // names nodes the added replicas start on first, at most as many as are
+  // added), or lists a multi-node deployment's replicas.
+  scaleReplicas: (id: number, body: { replicas: number; remove?: string[]; place_on?: string[] } | { units: PdScaleUnitInput[] }) =>
     sendJSON<Deployment>("PUT", `/api/v1/deployments/${id}/replicas`, body),
   // restartInstance replaces the replica an instance fills (a follower names
   // its whole generation); drain lets it finish its requests first.
@@ -4168,8 +4628,10 @@ export const api = {
     ),
 
   apiKeys: () => getJSON<List<ApiKey>>("/api/v1/apikeys"),
-  createApiKey: (name: string) =>
-    sendJSON<{ key: string } & ApiKey>("POST", "/api/v1/apikeys", { name }),
+  createApiKey: (name: string, scope?: ApiKeyScope) =>
+    sendJSON<{ key: string; name: string }>("POST", "/api/v1/apikeys", { name, ...scope }),
+  setApiKeyScope: (prefix: string, scope: ApiKeyScope) =>
+    sendJSON<ApiKey>("PUT", `/api/v1/apikeys/${prefix}/scope`, scope),
   revokeApiKey: (prefix: string) =>
     sendJSON<void>("DELETE", `/api/v1/apikeys/${prefix}`),
   platformTokens: () => getJSON<List<PlatformToken>>("/api/v1/platform-tokens"),
@@ -4315,6 +4777,10 @@ export const api = {
 
   settings: () => getJSON<Record<string, any>>("/api/v1/settings"),
   dataRetention: () => getJSON<DataRetentionView>("/api/v1/data-retention"),
+  experience: () => getJSON<ExperienceStatus>("/api/v1/experience"),
+  setExperienceEnabled: (enabled: boolean) => sendJSON<ExperienceStatus>("PUT", "/api/v1/experience/enabled", { enabled }),
+  resetExperience: () => sendJSON<ExperienceStatus>("POST", "/api/v1/experience/reset"),
+  rotateExperiencePassword: () => sendJSON<ExperienceStatus>("POST", "/api/v1/experience/password"),
   putDataRetention: (value: DataRetention) => sendJSON<DataRetentionView>("PUT", "/api/v1/data-retention", value),
   dataRetentionStatus: () => getJSON<DataRetentionStatus>("/api/v1/data-retention/status"),
   putSetting: (key: string, value: unknown) =>
@@ -4325,8 +4791,12 @@ export const api = {
     getJSON<List<AIConfig>>("/api/v1/ai/configs"),
   createAIConfig: (body: AIConfigInput) =>
     sendJSON<AIConfig>("POST", "/api/v1/ai/configs", body),
+  updateAIConfig: (id: number, body: AIConfigPatch) =>
+    sendJSON<AIConfig>("PATCH", `/api/v1/ai/configs/${id}`, body),
+  testAIConfig: (body: AIConfigTest) =>
+    sendJSON<AIConfigTestResult>("POST", "/api/v1/ai/configs/test", body),
   deleteAIConfig: (id: number) =>
-    sendJSON<void>("DELETE", `/api/v1/ai/configs/${id}`),
+    sendJSON<AIConfigDeleteResult>("DELETE", `/api/v1/ai/configs/${id}`),
   aiAsk: (body: AIAskRequest, signal?: AbortSignal) =>
     sendJSON<AIAnswer>("POST", "/api/v1/ai/ask", body, signal),
   /**

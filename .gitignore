@@ -11,6 +11,7 @@ identity.json
 internal/server/webui/dist/*
 !internal/server/webui/dist/.gitkeep
 *.log
+__pycache__/
 /secrets/*
 !/secrets/cloud-providers.env.example
 !/secrets/i18n-llm.env.example
@@ -49,3 +50,6 @@ base-mirrors.local
 
 # Private artifacts repository, checked out here (see CLAUDE.md「文档与计划」)
 /artifacts/
+
+# Claude Code user-local overrides; keep them out of shared branches.
+.claude/settings.local.json

@@ -21,7 +21,7 @@ specs:
         revision: 4d14e384a4b037942bb3f3016665157c8bcb70ea
     - modelscope:
         repo_id: Qwen/Qwen1.5-0.5B-Chat
-        revision: 4d14e384a4b037942bb3f3016665157c8bcb70ea
+        revision: c31b505140cbc58830e0cb52d150df41a0fee22a
   weight_bytes: 1239173352
   gpus:
     vendor: ppu

@@ -42,11 +42,12 @@ const meta = {
 	load_defaults: { warmup_requests: 1, max_warmup_requests: 1000, burstiness: 1, point_duration_s: 60, min_point_duration_s: 5, max_point_duration_s: 3600, min_open_loop_requests: 20, max_request_rate: 10000, max_request_rates: 32, max_burstiness: 100, max_in_flight: 100000, ignore_eos: true, ignore_eos_datasets: ["random", "agentic"] },
 } as unknown as BenchmarkMeta;
 
-const deployment = { id: 7, name: "托管部署", node_uuid: "node-1", model_id: 1, served_name: "served", engine: "vllm", desired_state: "active", runtime_state: "running", sleepable: false, replicas: 1, template_deviated: false, created_at: "2026-09-01T00:00:00Z", operations: [] } as unknown as import("../src/api.ts").Deployment;
+const deployment = { id: 7, name: "托管部署", node_uuid: "node-1", model_id: 1, served_name: "served", engine: "vllm", desired_state: "active", runtime_state: "running", sleepable: false, replicas: 1, template_deviated: false, created_at: "2026-09-01T00:00:00Z", operations: [{ type: "openai.chat", endpoint: "/v1/chat/completions", renderer: "chat" }] } as unknown as import("../src/api.ts").Deployment;
 const nodes = [{ uuid: "node-1", name: "节点一", hostname: "node-1", state: "online", caps: ["bench", "bench.arrival"] }] as unknown as import("../src/api.ts").Node[];
 
 const calls: Array<Record<string, any>> = [];
 const apiModule = await import("../src/api.ts");
+apiModule.api.deployment = async () => ({ ...deployment, instances: [{ uuid: "leader-1", deployment_id: deployment.id, node_uuid: "node-1", state: "running", sleep_level: 0, node_rank: 0, api_port: 8000 } as import("../src/api.ts").Instance] });
 apiModule.api.createBenchmark = (async (body: unknown) => {
 	calls.push(body as Record<string, any>);
 	return { id: 1, name: "created", load_origin: "server" } as BenchmarkRun;

@@ -152,7 +152,7 @@ export default function DeployPerformanceStep({
                   </Typography.Text>
                   <br />
                   <Typography.Text type="secondary">
-                    {t("performance.diskTierHelp")}
+                    {t(memoryEnabled ? "performance.diskTierHelp" : "workbench.kv.memoryRequired")}
                   </Typography.Text>
                 </div>
                 <Switch

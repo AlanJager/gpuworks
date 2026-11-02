@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Alert, Button, Form, Modal, Select, Space, message } from "antd";
 import { useTranslation } from "react-i18next";
-import { api, type Deployment, type PdModeProfile, type PdRoleName, type PdScaleFollowerInput, type PdScaleUnitInput } from "../api";
+import { api, type Deployment, type PdModeProfile, type PdRoleName, type PdScaleFollowerInput, type PdScaleRoleUnit } from "../api";
 import { PD_ROLE_ORDER, pdModeOf, pdRoleRemovable } from "./deploy/deployPd";
 import PdUnitRow, { type PdNodeChoice } from "./deploy/PdUnitFields";
 import { apiErrorText } from "../apiError";
@@ -15,6 +15,8 @@ interface UnitDraft {
   node_uuid?: string;
   gpus?: number[];
   followers?: FollowerDraft[];
+  // A unit added in this dialog (not yet on the deployment).
+  added?: boolean;
 }
 
 type RolesDraft = Partial<Record<PdRoleName, { units: UnitDraft[] }>>;
@@ -42,7 +44,10 @@ function initialRoles(dep: Deployment): RolesDraft {
 }
 
 // DeploymentPdScaleModal edits a PD deployment's per-role unit list and
-// fallback policy via PUT /deployments/{id}/pd (ADR 0028). Mode, TP and the
+// fallback policy via PUT /deployments/{id}/pd (ADR 0028). On a deployment the
+// platform places (placement_mode "auto") a new unit may name a node to start
+// on first or leave it to the platform, and no unit pins cards; the row says
+// which. Mode, TP and the
 // KV load failure policy are fixed once instances start (PD_IMMUTABLE) - the
 // form never renders or sends them, only `roles.<role>.units` and
 // `fallback`. Which roles may lose their last unit, the unit ceiling and the
@@ -97,6 +102,7 @@ export default function DeploymentPdScaleModal({
     };
   }, [open, dep.engine, dep.pd?.mode]);
 
+  const auto = dep.placement_mode === "auto";
   const fallbackOptions = mode?.fallbacks ?? (dep.pd?.fallback ? [dep.pd.fallback] : []);
 
   const roleTP = (role: PdRoleName) => dep.pd?.roles.find((item) => item.role === role)?.tp ?? 1;
@@ -108,20 +114,23 @@ export default function DeploymentPdScaleModal({
     } catch {
       return;
     }
-    const roles: Partial<Record<PdRoleName, { units: PdScaleUnitInput[] }>> = {};
+    const roles: Partial<Record<PdRoleName, { units: PdScaleRoleUnit[] }>> = {};
     for (const role of PD_ROLE_ORDER) {
       const draft = values.roles?.[role];
       if (!draft) continue;
       roles[role] = {
+        // A manual deployment names every unit's node (a unit without one is
+        // incomplete and left out); an automatic one lets a new unit go
+        // without, and pins no cards.
         units: (draft.units ?? [])
-          .filter((unit): unit is UnitDraft & { node_uuid: string } => Boolean(unit.node_uuid))
+          .filter((unit) => auto || Boolean(unit.node_uuid))
           .map((unit) => {
-            const out: PdScaleUnitInput = { node_uuid: unit.node_uuid };
-            if (unit.gpus?.length) out.gpus = unit.gpus;
+            const out: PdScaleRoleUnit = unit.node_uuid ? { node_uuid: unit.node_uuid } : {};
+            if (!auto && unit.gpus?.length) out.gpus = unit.gpus;
             const followers = (unit.followers ?? [])
               .filter((follower): follower is FollowerDraft & { node_uuid: string } => Boolean(follower.node_uuid))
               .map((follower): PdScaleFollowerInput =>
-                follower.gpus?.length ? { node_uuid: follower.node_uuid, gpus: follower.gpus } : { node_uuid: follower.node_uuid },
+                !auto && follower.gpus?.length ? { node_uuid: follower.node_uuid, gpus: follower.gpus } : { node_uuid: follower.node_uuid },
               );
             if (followers.length) out.followers = followers;
             return out;
@@ -156,6 +165,7 @@ export default function DeploymentPdScaleModal({
       destroyOnClose
     >
       {error && <Alert type="error" showIcon message={error} style={{ marginBottom: 12 }} />}
+      {auto && <Alert type="info" showIcon message={t("unitsPlacement.scale.autoNote")} style={{ marginBottom: 12 }} />}
       <Form form={form} layout="vertical">
         {PD_ROLE_ORDER.map((role) => (
           <div key={role} className="deploy-node-card" style={{ marginBottom: 12 }}>
@@ -176,13 +186,15 @@ export default function DeploymentPdScaleModal({
                       choice={choice}
                       removable={pdRoleRemovable(mode, role, fields.length)}
                       onRemove={() => remove(field.name)}
+                      placed={auto ? "auto" : "manual"}
+                      isNew={Boolean(form.getFieldValue(["roles", role, "units", field.name, "added"]))}
                     />
                   ))}
                   <Button
                     type="dashed"
                     size="small"
                     disabled={mode != null && fields.length >= mode.max_units_per_role}
-                    onClick={() => add({})}
+                    onClick={() => add(auto ? { added: true } : {})}
                   >
                     {t("detail.pd.scale.addUnit", { role: tDeploy(`pd.role.${role}`) })}
                   </Button>

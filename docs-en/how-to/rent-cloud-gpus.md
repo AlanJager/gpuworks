@@ -170,12 +170,13 @@ If the SSH endpoint is unreachable, the username/password/private key is incorre
 
 **Installation directory failures or warnings**
 
-Cloud one-click installation defaults to `/opt/gpuworks`. Change it under **Advanced Settings** in the installation page. Both precheck and installation check its underlying filesystem. For the six checks, see [Installation Directory Checks](connect-nodes.md#安装目录检查). Address the items in the report:
+Cloud one-click installation defaults to `/opt/gpuworks`. Change it under **Advanced Settings** in the installation page. Both precheck and installation check its underlying filesystem. For the seven checks, see [Installation Directory Checks](connect-nodes.md#安装目录检查). Address the items in the report:
 
 - **Install directory persistence warning**: the default directory on a container instance may be on the container's writable layer. Deleting or recreating the instance loses the agent and cache, requiring reinstallation. When renting an instance, reserve enough container disk capacity for images.
 - **ownership / filesystem warning**: persistent volumes such as `/workspace` are often network filesystems that do not allow ownership changes. Determine suitability from directory permissions and filesystem restrictions.
 - **file names failure**: RunPod's `/workspace` does not allow colons in filenames, so runveil cannot run deployments there. Install the agent on the container disk; persistence alone is not a reason to choose a directory.
 - **Failure caused by noexec**: programs cannot execute in the directory, so installation fails immediately.
+- **Install directory path access failure**: the installation directory is under `/root`, a private home, or another ancestor that the dedicated runtime user `udocker` cannot enter, and the probe establishes that the agent runs as root and will use runveil (no usable docker or nerdctl on the instance) and the dedicated user, so every later launch would fail with `permission denied`. Installation therefore stops before uploading the agent (400 `NODE_INSTALL_DIR_UNTRAVERSABLE`), and the error names the blocked directory. Run `chmod o+x <directory>` or choose another installation directory, then retry. When it is not certain that runveil will be used, for example docker or nerdctl is present on the instance, only a warning is shown and installation continues.
 
 To install the agent on a compatible persistent volume or data disk, enter the installation directory under **Advanced Settings** in the installation page. Installation fails without fallback if an explicitly specified directory is not writable. Fix the directory issue first, then retry.
 

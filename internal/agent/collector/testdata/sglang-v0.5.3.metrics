@@ -1,0 +1,15 @@
+# Source-shaped offline fixture, not a live scrape.
+# https://github.com/sgl-project/sglang/blob/v0.5.3/python/sglang/srt/metrics/collector.py
+# https://github.com/sgl-project/sglang/blob/v0.5.3/python/sglang/srt/managers/scheduler_metrics_mixin.py
+# SchedulerMetricsCollector defines these three gauges (multiprocess_mode="mostrecent").
+# SchedulerMetricsMixin adds model_name, engine_type, tp_rank and pp_rank labels.
+# token_usage is used KV tokens / token capacity, a fraction, not a percentage.
+# HELP sglang:num_running_reqs The number of running requests.
+# TYPE sglang:num_running_reqs gauge
+sglang:num_running_reqs{model_name="qwen",engine_type="unified",tp_rank="0",pp_rank="0"} 4
+# HELP sglang:num_queue_reqs The number of requests in the waiting queue.
+# TYPE sglang:num_queue_reqs gauge
+sglang:num_queue_reqs{model_name="qwen",engine_type="unified",tp_rank="0",pp_rank="0"} 2
+# HELP sglang:token_usage The token usage.
+# TYPE sglang:token_usage gauge
+sglang:token_usage{model_name="qwen",engine_type="unified",tp_rank="0",pp_rank="0"} 0.75

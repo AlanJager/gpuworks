@@ -100,7 +100,7 @@ func (a *apiHandlers) cloneDeployment(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, a.deploymentDTO(created, true))
 }
 
-func (a *apiHandlers) createDeployment(w http.ResponseWriter, r *http.Request) {
+func (a *apiHandlers) createDeploymentOnce(w http.ResponseWriter, r *http.Request) {
 	var req dto.DeployRequest
 	if !decodeJSONBody(w, r, &req) {
 		return
@@ -112,6 +112,12 @@ func (a *apiHandlers) createDeployment(w http.ResponseWriter, r *http.Request) {
 		writeProductError(w, http.StatusBadRequest, ErrorTargetVendorInvalid, "target_vendor is not supported", map[string]any{"vendor": req.TargetVendor})
 		return
 	}
+	unitsAuto, err := a.autoPlaceRequest(&req)
+	if err != nil {
+		writeErr(w, unitPlacementStatus(err), err)
+		return
+	}
+	defaultUnitStrategy(&req)
 	if err := validateReplicaShape(&req); err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return
@@ -130,6 +136,10 @@ func (a *apiHandlers) createDeployment(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	if err := a.pickAutomaticNode(r, &req); err != nil {
+		writeErr(w, http.StatusConflict, err)
 		return
 	}
 	reqs, strategy, status, err := a.requestPlacement(&req)
@@ -162,7 +172,7 @@ func (a *apiHandlers) createDeployment(w http.ResponseWriter, r *http.Request) {
 	if targetVendor == "" {
 		targetVendor = planning.RequirementVendor(reqs)
 	}
-	launch, err := materializeDeployRequest(eng.Name(), &req, selection, deployTargetCards(profileNode, req.Placement), a.requestEngineVersion(eng.Name(), &req, selection, targetVendor, profileNode))
+	launch, err := a.materializeCreateLaunch(eng.Name(), &req, selection, deployTargetCards(profileNode, req.Placement), a.requestEngineVersion(eng.Name(), &req, selection, targetVendor, profileNode))
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return
@@ -173,8 +183,6 @@ func (a *apiHandlers) createDeployment(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	quick := launch.Quick
-	userExtraArgs := deploy.FormatArgsText(launch.UserResidual)
 	// Resolve request-owned command, environment and mounts before template
 	// model registration or image acquisition can mutate persistent state.
 	modelMount, componentMounts := previewComponentMounts(a.d.Store, selection.Components, profileNode)
@@ -206,9 +214,9 @@ func (a *apiHandlers) createDeployment(w http.ResponseWriter, r *http.Request) {
 	}
 	preflightParams := deploy.Params{
 		ModelPath: modelMount, ServedName: req.ServedName, APIPort: planning.PreviewAPIPort,
-		AssignedGPUs: perNode, TensorParallel: parallel.TP, PipelineParallel: parallel.PP, Sleepable: req.Sleepable, Quick: quick,
+		AssignedGPUs: perNode, TensorParallel: parallel.TP, PipelineParallel: parallel.PP, Sleepable: req.Sleepable, Quick: launch.Quick,
 		TemplateArgs: launch.TemplateResidual, TemplateEnv: selection.Env, ExtraArgs: launch.UserResidual,
-		NNodes: nnodes, MasterAddr: req.MasterAddr, MasterPort: req.MasterPort,
+		Vendor: targetVendor, NNodes: nnodes, MasterAddr: req.MasterAddr, MasterPort: req.MasterPort,
 	}
 	if profileNode != nil {
 		// The bind address the launch will use, so the preflight resolves the
@@ -225,6 +233,14 @@ func (a *apiHandlers) createDeployment(w http.ResponseWriter, r *http.Request) {
 		TemplateShmBytes: selection.shmBytes(), TemplateMemlockUnlimited: selection.memlockUnlimited(),
 		AllowUnresolved: true,
 	}
+	imageNodes := append([]*store.Node{profileNode}, distNodes...)
+	if pdReq != nil {
+		imageNodes = append(imageNodes, pdReq.nodes...)
+	}
+	if err := a.admitImagePlatforms(eng.Name(), selection, req.Image, imageNodes); err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
 	imageFor := func(node *store.Node) string {
 		return a.rankImage(eng.Name(), selection, req.Image, node).Image
 	}
@@ -232,14 +248,18 @@ func (a *apiHandlers) createDeployment(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err)
 		return
 	}
-	// The snapshot carries what the template contributed that the dictionary
-	// does not describe; its dictionary values now live in the configuration.
-	selection.ExtraArgs = launch.TemplateResidual
 	model, err := a.resolveDeploymentModelFromTemplate(r.Context(), req.ModelID, &selection, req.TemplateID)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return
 	}
+	launch, err = materializeDeployRequest(eng.Name(), &req, selection, deployTargetCards(profileNode, req.Placement), a.requestEngineVersion(eng.Name(), &req, selection, targetVendor, profileNode))
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	selection.ExtraArgs = launch.TemplateResidual
+	quick, userExtraArgs := launch.Quick, deploy.FormatArgsText(launch.UserResidual)
 	served := req.ServedName
 	if served == "" {
 		served = model.Name
@@ -273,6 +293,10 @@ func (a *apiHandlers) createDeployment(w http.ResponseWriter, r *http.Request) {
 		writeProductError(w, http.StatusBadRequest, code, sleepRefusalFallback(code), map[string]any{"engine": eng.Name()})
 		return
 	}
+	yieldPolicy, ok := createYieldPolicy(w, req, eng.Name(), pdReq != nil)
+	if !ok {
+		return
+	}
 	if req.NNodes > 1 && pdReq == nil {
 		node, err = a.d.Store.NodeWithGPUs(distNodes[0].UUID)
 		if err != nil {
@@ -298,6 +322,10 @@ func (a *apiHandlers) createDeployment(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if err := a.admitImagePlatforms(eng.Name(), selection, req.Image, append([]*store.Node{node}, distNodes...)); err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
 	weightStorage, err := a.resolveSaveToStorage(req.ModelSource, model, append([]*store.Node{node}, distNodes...))
 	if err != nil {
 		writeErr(w, http.StatusConflict, err)
@@ -309,10 +337,6 @@ func (a *apiHandlers) createDeployment(w http.ResponseWriter, r *http.Request) {
 	rules := store.SourceRules{Pinned: store.StoragePins(reqs), SaveTo: saveTo}
 	if err := a.admitDeploymentModel(r.Context(), model, rules, append([]*store.Node{node}, distNodes...)); err != nil {
 		writeErr(w, http.StatusConflict, err)
-		return
-	}
-	if status, err := a.startSharedModelDownload(model, weightStorage, append([]*store.Node{node}, distNodes...)); err != nil {
-		writeErr(w, status, err)
 		return
 	}
 	imageResolution := a.rankImage(eng.Name(), selection, req.Image, node)
@@ -364,6 +388,7 @@ func (a *apiHandlers) createDeployment(w http.ResponseWriter, r *http.Request) {
 		ContainerOverrides:       jsonStr(req.ContainerOverrides),
 		Placement:                jsonStr(storedPlacement(req.Placement, isAutomaticPlacement(&req) && req.NNodes <= 1 && pdReq == nil)),
 		PlacementStrategy:        strategy,
+		UnitsAuto:                unitsAuto,
 		DistGroup:                req.DistGroup,
 		DistRole:                 req.DistRole,
 		NNodes:                   req.NNodes,
@@ -391,6 +416,7 @@ func (a *apiHandlers) createDeployment(w http.ResponseWriter, r *http.Request) {
 		RoutingPolicy:           req.RoutingPolicy,
 		State:                   store.DeployActive,
 	}
+	dep.SetPolicy(yieldPolicy)
 	var created *store.Deployment
 	if templateConfig.modelID == 0 {
 		created, err = a.d.Store.CreateDeploymentWithRequirements(dep, reqs)
@@ -401,99 +427,14 @@ func (a *apiHandlers) createDeployment(w http.ResponseWriter, r *http.Request) {
 		writeDeploymentCreateErr(w, err)
 		return
 	}
+	// Start the download only after validation and persistence: a rejected
+	// create must not leave an unowned transfer running.
+	if status, err := a.startSharedModelDownload(model, weightStorage, append([]*store.Node{node}, distNodes...), created.ID); err != nil {
+		_ = a.d.Store.DeleteDeployment(created.ID)
+		writeErr(w, status, err)
+		return
+	}
 	writeJSON(w, http.StatusCreated, a.deploymentDTO(created, true))
-}
-
-func (a *apiHandlers) prepareDistributedDeployRequest(req *dto.DeployRequest) ([]*store.Node, error) {
-	if len(req.NodeUUIDs) != req.NNodes {
-		return nil, productError(ErrorDistributedNodeCount, "node_uuids count must equal nnodes", map[string]any{"actual": len(req.NodeUUIDs), "required": req.NNodes})
-	}
-	placement, err := planning.ParsePlacement(req.Placement)
-	if err != nil {
-		return nil, err
-	}
-	if req.MasterPort == 0 {
-		req.MasterPort = deploy.DefaultMasterPort
-	}
-	if req.MasterPort < 1024 || req.MasterPort > 65535 {
-		return nil, productError(ErrorMasterPortInvalid, "master_port must be between 1024 and 65535", map[string]any{"minimum": 1024, "maximum": 65535})
-	}
-	seen := map[string]bool{}
-	nodes := make([]*store.Node, 0, len(req.NodeUUIDs))
-	gpuCounts := make([]int, 0, len(req.NodeUUIDs))
-	for _, uuid := range req.NodeUUIDs {
-		if seen[uuid] {
-			return nil, productError(ErrorDistributedDuplicateNode, "distributed node list contains duplicates", map[string]any{"node": uuid})
-		}
-		seen[uuid] = true
-		n, err := a.d.Store.NodeByUUID(uuid)
-		if err != nil {
-			return nil, fmt.Errorf("node %s: %w", uuid, err)
-		}
-		if n.State != store.NodeStateOnline {
-			return nil, productError(ErrorDistributedNodeOffline, fmt.Sprintf("node %s is not online", uuid), map[string]any{"node": uuid})
-		}
-		nodes = append(nodes, n)
-		gpuCounts = append(gpuCounts, n.GPUCount)
-	}
-	// An unstated TP and PP default from the nodes; what takes effect is
-	// written back, so the stored deployment always states its parallelism.
-	parallel := placement.ParallelismOn(gpuCounts)
-	perNode, err := parallelGPUsPerNode(parallel)
-	if err != nil {
-		return nil, err
-	}
-	for _, n := range nodes {
-		if n.GPUCount < perNode {
-			return nil, productError(ErrorDistributedGPUCount, fmt.Sprintf("node %s has %d GPUs, the parallelism needs %d per node", n.UUID, n.GPUCount, perNode), map[string]any{"node": n.UUID, "available": n.GPUCount, "required": perNode})
-		}
-	}
-	if req.Placement == nil {
-		req.Placement = map[string]any{}
-	}
-	req.Placement["tp"], req.Placement["pp"] = parallel.TP, parallel.PP
-	group, err := a.computeGroup(nodes)
-	if err != nil {
-		return nil, err
-	}
-	if req.MasterAddr == "" {
-		req.MasterAddr = group.Ranks[nodes[0].ID].IP
-	} else {
-		host, err := masterHost(req.MasterAddr)
-		if err != nil {
-			return nil, err
-		}
-		req.MasterAddr = host
-	}
-	// The ordered node list defines ranks; the deployment row itself represents
-	// the group and always points at rank zero.
-	req.NodeUUID = req.NodeUUIDs[0]
-	req.NodeRank = 0
-	req.DistRole = "leader"
-	return nodes, nil
-}
-
-// parallelGPUsPerNode is how many GPUs each node runs for a deployment's
-// parallelism, with the failures as the product errors the form shows on the
-// TP and PP fields.
-func parallelGPUsPerNode(parallel planning.ParallelismSpec) (int, error) {
-	perNode, err := parallel.GPUsPerNode()
-	switch {
-	case errors.Is(err, planning.ErrParallelismTPRequired):
-		return 0, productError(ErrorDistributedTPRequired, "distributed deployments require placement.tp", nil)
-	case errors.Is(err, planning.ErrParallelismIndivisible):
-		return 0, productError(ErrorDistributedParallelIndivisible, err.Error(),
-			map[string]any{"tp": parallel.TP, "pp": parallel.PP, "nodes": parallel.NNodes})
-	}
-	return perNode, err
-}
-
-func masterHost(addr string) (string, error) {
-	host, err := planning.PeerHost(addr)
-	if err != nil {
-		return "", fmt.Errorf("invalid master_addr: %w", err)
-	}
-	return host, nil
 }
 
 func (a *apiHandlers) getDeployment(w http.ResponseWriter, r *http.Request) {

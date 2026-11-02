@@ -108,30 +108,63 @@ function repositoryWeightBytes(metadata: RepositoryMetadata): number {
   return total;
 }
 
-async function svgToPNG(svg: string): Promise<string> {
-  if (typeof document === "undefined") return "";
-  const objectURL = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }));
+const LOGO_LIMIT = 2 * 1024 * 1024;
+
+// The picture an avatar answer points at is read only from a site the server
+// allowed, or one of its subdomains (the hub keeps uploads on cdn-avatars.*).
+function allowedLogoURL(raw: unknown, sourceBases: string[]): string {
+  if (typeof raw !== "string" || !raw.trim()) return "";
+  let target: URL;
   try {
-    const image = new Image();
-    image.src = objectURL;
-    await image.decode();
-    const canvas = document.createElement("canvas");
-    canvas.width = image.naturalWidth || 120;
-    canvas.height = image.naturalHeight || 120;
-    const context = canvas.getContext("2d");
-    if (!context) return "";
-    context.drawImage(image, 0, 0, canvas.width, canvas.height);
-    return canvas.toDataURL("image/png");
+    target = new URL(raw.trim(), sourceBases[0]);
+  } catch {
+    return "";
+  }
+  // An account without an upload points at a generated gradient (.svg), as
+  // /avatars/<name>.svg does for any name: neither is a logo.
+  if (target.pathname.toLowerCase().endsWith(".svg")) return "";
+  const allowed = sourceBases.some((base) => {
+    const host = new URL(base).hostname;
+    return target.protocol === new URL(base).protocol && (target.hostname === host || target.hostname.endsWith(`.${host}`));
+  });
+  return allowed ? target.href : "";
+}
+
+async function fetchDataURL(url: string, fetcher: typeof fetch): Promise<string> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
+  try {
+    const response = await fetcher(url, { signal: controller.signal, credentials: "omit" });
+    const type = (response.headers.get("content-type") || "").split(";")[0].trim().toLowerCase();
+    if (!response.ok || !/^image\/(png|jpeg|webp|gif)$/.test(type)) return "";
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    if (bytes.length === 0 || bytes.length > LOGO_LIMIT) return "";
+    let binary = "";
+    for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    return `data:${type};base64,${btoa(binary)}`;
   } finally {
-    URL.revokeObjectURL(objectURL);
+    clearTimeout(timer);
   }
 }
 
+// The author's uploaded picture, asked of the hub as an organization and then
+// as a user.
 async function fetchLogo(sourceBases: string[], author: unknown, fetcher: typeof fetch): Promise<string> {
   if (typeof author !== "string" || !author.trim()) return "";
   const name = encodeURIComponent(author.trim());
-  const svg = await fetchFirst(sourceBases.map((base) => `${base}/avatars/${name}.svg`), CONFIG_LIMIT, fetcher);
-  return svgToPNG(svg);
+  for (const kind of ["organizations", "users"]) {
+    const raw = await fetchFirst(sourceBases.map((base) => `${base}/api/${kind}/${name}/avatar`), CONFIG_LIMIT, fetcher).catch(() => "");
+    if (!raw) continue;
+    let avatarURL: unknown;
+    try {
+      avatarURL = (JSON.parse(raw) as { avatarUrl?: unknown }).avatarUrl;
+    } catch {
+      continue;
+    }
+    const url = allowedLogoURL(avatarURL, sourceBases);
+    return url ? fetchDataURL(url, fetcher) : "";
+  }
+  return "";
 }
 
 export async function fetchHuggingFaceMetadata(

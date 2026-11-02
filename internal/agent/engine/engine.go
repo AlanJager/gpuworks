@@ -53,6 +53,14 @@ type Engine struct {
 	pending         map[string]pendingEnsure
 	sleepLevel      map[string]int  // uuid → actual sleep level
 	prewarmed       map[string]bool // uuid → sleep prewarm done
+	// l1HostHeld names the instances whose engine completed an L1 sleep since
+	// its container started (holdsL1HostBuffer).
+	l1HostHeld map[string]bool
+	// sleepPIDs is, per sleeping instance, the process its engine keeps on
+	// each of its cards (by card identity), learned when its residue was
+	// measured: the card then held that one process only. It lets the node
+	// report a process somebody else starts on a sleeper's card.
+	sleepPIDs map[string]map[string]int
 	// runtimeEpoch identifies the one serialized start/adopt attempt allowed to
 	// publish a runtime observation for an instance. Removal invalidates it
 	// before teardown, so a slow inspect cannot publish after replacement.
@@ -67,6 +75,10 @@ type Engine struct {
 	// epoch again without holding Engine.mu before doing any network I/O.
 	captureObservationConnection func() uint64
 	reportRuntimeObservation     func(uint64, proto.InstanceStatus) bool
+
+	// residueSettle is the wait between a sleep order and the card memory
+	// reading taken as the instance's residue; 0 reads at once.
+	residueSettle time.Duration
 
 	headlessProbeInterval time.Duration
 	headlessStableChecks  int
@@ -84,6 +96,8 @@ type Engine struct {
 	// puller pulls images from an instance's candidate sources; the node's
 	// image.pull RPC shares it (see WithImagePuller).
 	puller *imagepull.Puller
+	// cardGate is what a start waits on before launching (SetCardGate).
+	cardGate func(ctx context.Context, idents []string, limit time.Duration) bool
 }
 
 // WithNetworkConfig injects the node's network configuration reader. Its URL
@@ -92,6 +106,15 @@ type Engine struct {
 func WithNetworkConfig(read func() proto.NetworkConfig) EngineOption {
 	return func(engine *Engine) {
 		engine.networkConfig = read
+	}
+}
+
+// WithLibvgpuExtractor replaces where the NVIDIA dGPU library comes from
+// (the agent's embedded copy by default): a simulated node writes a stand-in
+// its runtime mounts but never loads.
+func WithLibvgpuExtractor(extract func(path string) (string, error)) EngineOption {
+	return func(engine *Engine) {
+		engine.extractLibvgpu = extract
 	}
 }
 
@@ -132,8 +155,11 @@ func NewWithProber(driver runtime.Driver, report Reporter, log *slog.Logger, sta
 		pending:               map[string]pendingEnsure{},
 		sleepLevel:            map[string]int{},
 		prewarmed:             map[string]bool{},
+		l1HostHeld:            map[string]bool{},
+		sleepPIDs:             map[string]map[string]int{},
 		runtimeEpoch:          map[string]uint64{},
 		servingEpoch:          map[string]uint64{},
+		residueSettle:         defaultResidueSettle,
 		headlessProbeInterval: time.Second,
 		headlessStableChecks:  3,
 		livenessInterval:      defaultLivenessInterval,

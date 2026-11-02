@@ -102,6 +102,7 @@ export default function DeployExpertTabs({
             label: t("page.step.resource"),
             children: (
               <DeployResourceStep
+                profile={engineProfile}
                 eligibleNodes={evalResult?.eligible_nodes}
                 selectedNode={selectedNode}
                 capability={selectedPartitionCapability}

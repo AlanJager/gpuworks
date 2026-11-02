@@ -1,0 +1,54 @@
+.scheduling-tile { display: flex; flex-direction: column; gap: 4px; padding: 12px 16px; background: #ffffff; border: 1px solid #dbdde0; border-radius: 8px; }
+.scheduling-tile strong { font-size: 24px; line-height: 1.2; color: #181a1d; }
+.scheduling-num { font-variant-numeric: tabular-nums; }
+.scheduling-card { margin-bottom: 16px; }
+.scheduling-loading { display: flex; align-items: center; gap: 8px; padding: 48px 0; justify-content: center; color: #707275; }
+.scheduling-legend { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 0; padding: 0; list-style: none; font-size: 12px; }
+.scheduling-legend li { display: flex; align-items: center; gap: 6px; }
+.scheduling-swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; }
+.scheduling-swatch.is-awake, .scheduling-bar > span.is-awake { background: #0076f7; }
+.scheduling-swatch.is-sleeping, .scheduling-bar > span.is-sleeping { background: #9a45e4 repeating-linear-gradient(45deg, rgba(255,255,255,.55) 0 3px, transparent 3px 6px); }
+.scheduling-swatch.is-free, .scheduling-bar > span.is-free { background: #f0f2f5; }
+.scheduling-nodes { display: grid; gap: 12px; }
+.scheduling-node { padding: 12px 16px; border: 1px solid #f0f2f5; border-radius: 8px; }
+.scheduling-gpu { margin-top: 12px; }
+.scheduling-gpu-head { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 4px; font-size: 13px; }
+.scheduling-bar { display: flex; height: 18px; overflow: hidden; border: 1px solid #dbdde0; border-radius: 4px; background: #f0f2f5; }
+.scheduling-bar > span { height: 100%; min-width: 0; border-right: 1px solid #ffffff; }
+.scheduling-bar > span:last-child { border-right: 0; }
+.scheduling-occupants { margin-top: 6px; }
+.scheduling-occupant { margin-inline-end: 0; }
+.scheduling-held { margin-top: 6px; }
+.scheduling-pagination { margin-top: 12px; text-align: right; }
+.scheduling-filters { margin-bottom: 12px; }
+.scheduling-level { margin-inline: 2px; opacity: .85; }
+.scheduling-timeline-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
+.scheduling-timeline-nodes { display: grid; gap: 12px; }
+.timeline-axis, .timeline-lane { display: grid; grid-template-columns: minmax(96px, 168px) 1fr; gap: 8px; align-items: center; }
+.timeline-axis { margin-top: 8px; font-size: 11px; color: #707275; }
+.timeline-axis-ticks { position: relative; height: 14px; }
+.timeline-axis-ticks > span { position: absolute; transform: translateX(-50%); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.timeline-lane { margin-top: 4px; }
+.timeline-lane-label { display: flex; flex-direction: column; min-width: 0; font-size: 12px; line-height: 1.25; }
+.timeline-lane-label a { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.timeline-level { color: #707275; }
+.timeline-track { position: relative; height: 18px; }
+.timeline-track svg { display: block; width: 100%; height: 18px; }
+.timeline-block { cursor: pointer; outline: none; }
+.timeline-block:hover, .timeline-block:focus { stroke: #181a1d; stroke-width: 2px; vector-effect: non-scaling-stroke; }
+.timeline-tooltip { position: absolute; bottom: calc(100% + 6px); z-index: 2; transform: translateX(-50%); padding: 4px 8px; border-radius: 4px; background: #181a1d; color: #ffffff; font-size: 12px; white-space: nowrap; pointer-events: none; }
+.timeline-none { display: block; margin-top: 4px; font-size: 12px; }
+.timeline-sharing-title { margin: 16px 0 8px; }
+.activity-body { display: flex; flex-wrap: wrap; gap: 16px; }
+.activity-chart { flex: 1 1 420px; min-width: 0; }
+.activity-empty { display: flex; align-items: center; justify-content: center; }
+.activity-totals { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 4px; font-size: 12px; }
+.activity-total { font-variant-numeric: tabular-nums; }
+.activity-top { flex: 0 1 280px; min-width: 200px; overflow: hidden; }
+.activity-top-title { display: block; height: 32px; line-height: 32px; }
+.activity-top-list { margin: 0; padding: 0; list-style: none; }
+.activity-top-list > li { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; border-bottom: 1px solid #f0f2f5; }
+.activity-top-card { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.activity-top-count { flex: none; color: #707275; font-variant-numeric: tabular-nums; }
+.timeline-summary-swatch { background: #8a9099 repeating-linear-gradient(45deg, rgba(255,255,255,.6) 0 2px, transparent 2px 4px); }
+.timeline-summary-block { opacity: .9; }

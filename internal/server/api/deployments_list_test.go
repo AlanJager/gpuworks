@@ -41,7 +41,7 @@ func TestDeploymentPageWireJSON(t *testing.T) {
 	page := dto.DeploymentPage{Page: 2, PageSize: 1, Total: 3, Items: []dto.DeploymentListItem{{
 		ID: 7, Name: "qwen", TemplateID: 3, TemplateDeviated: true, Engine: "vllm", Image: "vllm/vllm-openai:v0.10.1",
 		ModelID: 2, ModelName: "Qwen/Qwen3-8B", ServedName: "qwen3", NodeUUID: "n-1", NodeName: "gpu3", NodeNames: []string{"gpu3", "gpu2"},
-		DesiredState: "active", RuntimeState: "running", Sleepable: true, Replicas: 2, ReadyReplicas: &ready,
+		DesiredState: "active", RuntimeState: "running", State: "running", Sleepable: true, Replicas: 2, ReadyReplicas: &ready,
 		Health:     dto.DeploymentHealth{Status: "timeout", ThresholdSec: 60, Last: &dto.HealthProbe{AtMS: 9, Status: "timeout", LatencyMS: 60000}, Recent: []dto.HealthProbe{{AtMS: 9, Status: "timeout", LatencyMS: 60000}}},
 		Operations: []dto.DeploymentOperation{{Type: "openai.chat", Endpoint: "/v1/chat/completions", Renderer: "chat"}},
 		CreatedAt:  time.Date(2026, 10, 3, 1, 2, 3, 0, time.UTC),
@@ -50,7 +50,7 @@ func TestDeploymentPageWireJSON(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	const want = `{"items":[{"id":7,"name":"qwen","template_id":3,"template_deviated":true,"engine":"vllm","image":"vllm/vllm-openai:v0.10.1","model_id":2,"model_name":"Qwen/Qwen3-8B","served_name":"qwen3","node_uuid":"n-1","node_name":"gpu3","node_names":["gpu3","gpu2"],"desired_state":"active","runtime_state":"running","sleepable":true,"replicas":2,"ready_replicas":1,"health":{"status":"timeout","threshold_sec":60,"last":{"at_ms":9,"status":"timeout","latency_ms":60000},"recent_mean_ms":null,"recent_ok":0,"recent":[{"at_ms":9,"status":"timeout","latency_ms":60000}]},"operations":[{"type":"openai.chat","endpoint":"/v1/chat/completions","renderer":"chat"}],"created_at":"2026-10-03T01:02:03Z"}],"page":2,"page_size":1,"total":3}`
+	const want = `{"items":[{"id":7,"name":"qwen","template_id":3,"template_deviated":true,"engine":"vllm","image":"vllm/vllm-openai:v0.10.1","model_id":2,"model_name":"Qwen/Qwen3-8B","served_name":"qwen3","node_uuid":"n-1","node_name":"gpu3","node_names":["gpu3","gpu2"],"desired_state":"active","runtime_state":"running","state":"running","sleepable":true,"replicas":2,"ready_replicas":1,"health":{"status":"timeout","threshold_sec":60,"last":{"at_ms":9,"status":"timeout","latency_ms":60000},"recent_mean_ms":null,"recent_ok":0,"recent":[{"at_ms":9,"status":"timeout","latency_ms":60000}]},"operations":[{"type":"openai.chat","endpoint":"/v1/chat/completions","renderer":"chat"}],"created_at":"2026-10-03T01:02:03Z"}],"page":2,"page_size":1,"total":3}`
 	if string(got) != want {
 		t.Fatalf("wire JSON\n got: %s\nwant: %s", got, want)
 	}
@@ -58,7 +58,7 @@ func TestDeploymentPageWireJSON(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	const wantMinimal = `{"id":1,"name":"bare","template_deviated":false,"engine":"","model_id":0,"model_name":"","served_name":"","node_uuid":"","desired_state":"","runtime_state":"","sleepable":false,"replicas":0,"health":{"status":"","threshold_sec":0,"last":null,"recent_mean_ms":null,"recent_ok":0,"recent":null},"operations":[],"created_at":"0001-01-01T00:00:00Z"}`
+	const wantMinimal = `{"id":1,"name":"bare","template_deviated":false,"engine":"","model_id":0,"model_name":"","served_name":"","node_uuid":"","desired_state":"","runtime_state":"","state":"","sleepable":false,"replicas":0,"health":{"status":"","threshold_sec":0,"last":null,"recent_mean_ms":null,"recent_ok":0,"recent":null},"operations":[],"created_at":"0001-01-01T00:00:00Z"}`
 	if string(minimal) != wantMinimal {
 		t.Fatalf("optional fields\n got: %s\nwant: %s", minimal, wantMinimal)
 	}
@@ -76,13 +76,13 @@ func TestDeploymentPageSlicesTheListNewestFirst(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(deps) != 9 {
-		t.Fatalf("fixture seeds %d deployments, want 9", len(deps))
+	if len(deps) != 10 {
+		t.Fatalf("fixture seeds %d deployments, want 10", len(deps))
 	}
 	body := f.get(t, f.handler.listDeployments, "/api/v1/deployments?page=2&page_size=4")
 	page := decodeDeploymentPage(t, body)
-	if page.Page != 2 || page.PageSize != 4 || page.Total != 9 || len(page.Items) != 4 {
-		t.Fatalf("page = page %d size %d total %d items %d, want 2/4/9/4", page.Page, page.PageSize, page.Total, len(page.Items))
+	if page.Page != 2 || page.PageSize != 4 || page.Total != 10 || len(page.Items) != 4 {
+		t.Fatalf("page = page %d size %d total %d items %d, want 2/4/10/4", page.Page, page.PageSize, page.Total, len(page.Items))
 	}
 	for i, item := range page.Items {
 		full := f.handler.deploymentDTO(&deps[4+i], false)
@@ -106,15 +106,15 @@ func TestDeploymentPageSlicesTheListNewestFirst(t *testing.T) {
 	}
 
 	last := decodeDeploymentPage(t, f.get(t, f.handler.listDeployments, "/api/v1/deployments?page=3&page_size=4"))
-	if last.Total != 9 || len(last.Items) != 1 || last.Items[0].ID != deps[8].ID {
-		t.Fatalf("last page = %+v, want the oldest deployment alone", pageNames(last))
+	if last.Total != 10 || len(last.Items) != 2 || last.Items[1].ID != deps[9].ID {
+		t.Fatalf("last page = %+v, want the oldest deployments on the last page", pageNames(last))
 	}
 	past := decodeDeploymentPage(t, f.get(t, f.handler.listDeployments, "/api/v1/deployments?page=9&page_size=4"))
-	if past.Total != 9 || past.Items == nil || len(past.Items) != 0 {
+	if past.Total != 10 || past.Items == nil || len(past.Items) != 0 {
 		t.Fatalf("a page past the end = %+v, want no rows and the total", past)
 	}
 	defaults := decodeDeploymentPage(t, f.get(t, f.handler.listDeployments, "/api/v1/deployments?page=1"))
-	if defaults.PageSize != listDefaultPageSize || len(defaults.Items) != 9 {
+	if defaults.PageSize != listDefaultPageSize || len(defaults.Items) != 10 {
 		t.Fatalf("page without a size = size %d, %d rows", defaults.PageSize, len(defaults.Items))
 	}
 }
@@ -140,8 +140,8 @@ func TestDeploymentPageSearch(t *testing.T) {
 		}
 	}
 	served := decodeDeploymentPage(t, f.get(t, f.handler.listDeployments, "/api/v1/deployments?page=1&page_size=200&q=org/list"))
-	if served.Total != 16 {
-		t.Errorf("q=org/list (model name) matched %d, want the 16 deployments of that model", served.Total)
+	if served.Total != 17 {
+		t.Errorf("q=org/list (model name) matched %d, want the 17 deployments of that model", served.Total)
 	}
 }
 
@@ -277,7 +277,7 @@ func TestListQueryRejectsMalformedPagesAndFilters(t *testing.T) {
 		{f.handler.listDeployments, "page=two", ErrorListPageInvalid},
 		{f.handler.listDeployments, "page=1&page_size=0", ErrorListPageInvalid},
 		{f.handler.listDeployments, "page=1&page_size=201", ErrorListPageInvalid},
-		{f.handler.listDeployments, "page=1&state=asleep", ErrorListFilterInvalid},
+		{f.handler.listDeployments, "page=1&state=waking", ErrorListFilterInvalid},
 		{f.handler.listDeployments, "page=1&state=running,", ErrorListFilterInvalid},
 		{f.handler.listDeployments, "page=1&sort=gpu_count", ErrorListFilterInvalid},
 		{f.handler.listDeployments, "page=1&sort=--name", ErrorListFilterInvalid},
@@ -327,7 +327,7 @@ func TestDeploymentPageQueryCountDoesNotGrowWithTheFleet(t *testing.T) {
 	}
 	small, large := count(0), count(200)
 	if small == 0 || small != large {
-		t.Fatalf("paged GET /deployments: %d queries for 6 rows, %d for 206", small, large)
+		t.Fatalf("paged GET /deployments: %d queries for 7 rows, %d for 207", small, large)
 	}
 }
 

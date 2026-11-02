@@ -44,7 +44,7 @@ The official guide uses a different TP16/DP1 topology and describes MTP. Our hig
 - [Official compatibility matrix](https://docs.vllm.ai/projects/ascend/en/latest/community/versioning_policy.html)
 - [Upstream graph-padding fix](https://github.com/vllm-project/vllm-ascend/pull/18878)
 
-The callable engine passes Ascend-specific INT8 KV options to vLLM. Profiles expose `/health`, streaming OpenAI chat and `/metrics`. Served names are `glm53-flash-910c-stock-graph` and `glm53-flash-910c-dflash`.
+The callable engine passes Ascend-specific INT8 KV options to vLLM. Profiles expose `/health`, streaming OpenAI chat and `/metrics`. vLLM answers under the deployment's served name (`${SERVED_MODEL_NAME}`).
 
 ## Historical DFlash results
 

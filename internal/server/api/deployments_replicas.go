@@ -20,11 +20,15 @@ import (
 // controller's pick: not yet ready first, then the newest). A multi-node
 // deployment lists every replica it wants, each a leader node and its
 // follower nodes in rank order; a replica left out drains and goes. PD scales
-// its roles with PUT /deployments/{id}/pd instead.
+// its roles with PUT /deployments/{id}/pd instead. A single-node deployment
+// that grows may name in PlaceOn the nodes its new replicas start on first
+// (planning.HintPlacement): only where they first start, afterwards they are
+// ordinary replicas.
 type replicasRequest struct {
 	Replicas *int              `json:"replicas,omitempty"`
 	Remove   []string          `json:"remove,omitempty"`
 	Units    []planning.PDUnit `json:"units,omitempty"`
+	PlaceOn  []string          `json:"place_on,omitempty"`
 }
 
 func (a *apiHandlers) scaleReplicas(w http.ResponseWriter, r *http.Request) {
@@ -54,15 +58,30 @@ func (a *apiHandlers) scaleReplicas(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if dep.NNodes > 1 {
+		if dep.UnitsAuto && len(req.Units) == 0 && req.Replicas != nil {
+			// The platform places this deployment: a count, with nodes
+			// optionally named for the new replicas' first placement.
+			units, err := a.scaling().AutoReplicaUnits(dep, *req.Replicas, req.PlaceOn, req.Remove)
+			if err != nil {
+				writeScaleErr(w, err)
+				return
+			}
+			a.setReplicaUnits(w, r, dep, units)
+			return
+		}
 		if req.Replicas != nil || len(req.Remove) > 0 || len(req.Units) == 0 {
 			writeProductError(w, http.StatusBadRequest, ErrorReplicasBodyShape, "a multi-node deployment's replicas are listed as units", map[string]any{"want": "units"})
 			return
 		}
-		a.setReplicaUnits(w, dep, req.Units)
+		a.setReplicaUnits(w, r, dep, req.Units)
 		return
 	}
 	if len(req.Units) > 0 {
 		writeProductError(w, http.StatusBadRequest, ErrorReplicasBodyShape, "a single-node deployment's replicas are a count", map[string]any{"want": "replicas"})
+		return
+	}
+	if len(req.PlaceOn) > 0 && dep.NNodes > 1 {
+		writeProductError(w, http.StatusBadRequest, ErrorReplicasBodyShape, "a multi-node deployment lists its replicas' nodes as units", map[string]any{"want": "units"})
 		return
 	}
 	if req.Replicas == nil || *req.Replicas < 1 {
@@ -98,6 +117,18 @@ func (a *apiHandlers) scaleReplicas(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	if len(req.PlaceOn) > 0 {
+		if grow := replicas - current; len(req.PlaceOn) > max(grow, 0) {
+			writeProductError(w, http.StatusBadRequest, ErrorReplicasPlaceOnTooMany, "more nodes named than replicas added", map[string]any{"count": len(req.PlaceOn), "maximum": max(grow, 0)})
+			return
+		}
+		if !a.checkPlaceOn(w, r, dep, req.PlaceOn) {
+			return
+		}
+	}
+	// This records desired state, including for stopped deployments. Capacity
+	// is checked by the controller for each launch: pinned cards remain pinned,
+	// and a replica waiting for them is explained by placement_status/events.
 	err = a.d.Store.ScaleDeploymentReplicas(dep.ID, dep.Replicas, replicas, req.Remove)
 	if errors.Is(err, store.ErrStateChanged) {
 		writeProductError(w, http.StatusConflict, ErrorReplicasChanged, "the replicas changed since the request was read; read them again", nil)
@@ -112,6 +143,10 @@ func (a *apiHandlers) scaleReplicas(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
+	if len(req.PlaceOn) > 0 {
+		planning.HintPlacement(dep.ID, req.PlaceOn)
+	}
+	a.recordReplicasChanged(r, dep.ID, current, replicas)
 	updated, err := a.d.Store.GetDeployment(dep.ID)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err)
@@ -120,40 +155,11 @@ func (a *apiHandlers) scaleReplicas(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, a.deploymentDTO(updated, true))
 }
 
-// setReplicaUnits writes a multi-node deployment's listed replicas, as
-// planning.PlanReplicaUnits checks and derives them.
-func (a *apiHandlers) setReplicaUnits(w http.ResponseWriter, dep *store.Deployment, units []planning.PDUnit) {
-	nodes := map[string]*store.Node{}
-	var named []*store.Node
-	for _, uuid := range planning.ReplicaUnitNodes(units) {
-		node, err := a.d.Store.NodeWithGPUs(uuid)
-		if errors.Is(err, store.ErrNotFound) {
-			continue // PlanReplicaUnits names the unknown node
-		}
-		if err != nil {
-			writeErr(w, http.StatusInternalServerError, err)
-			return
-		}
-		nodes[uuid] = node
-		named = append(named, node)
-	}
-	reqs, err := a.d.Store.DeploymentRequirements(dep.ID)
-	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err)
-		return
-	}
-	patch, err := planning.PlanReplicaUnits(dep, reqs, a.resolveForRequirements(named, reqs), units, nodes)
-	if err != nil {
-		writeErr(w, http.StatusBadRequest, err)
-		return
-	}
-	if err := a.d.Store.SetDeploymentReplicaUnits(dep.ID, patch); err != nil {
-		status := http.StatusInternalServerError
-		if errors.Is(err, store.ErrNotFound) {
-			// Deleted while the request was read.
-			status = http.StatusNotFound
-		}
-		writeErr(w, status, err)
+// setReplicaUnits writes a multi-node deployment's listed replicas and
+// answers with the deployment.
+func (a *apiHandlers) setReplicaUnits(w http.ResponseWriter, r *http.Request, dep *store.Deployment, units []planning.PDUnit) {
+	if err := a.scaling().ApplyReplicaUnits(dep, units); err != nil {
+		writeScaleErr(w, err)
 		return
 	}
 	updated, err := a.d.Store.GetDeployment(dep.ID)
@@ -161,7 +167,84 @@ func (a *apiHandlers) setReplicaUnits(w http.ResponseWriter, dep *store.Deployme
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
+	a.recordReplicasChanged(r, dep.ID, max(dep.Replicas, 1), max(updated.Replicas, 1))
 	writeJSON(w, http.StatusOK, a.deploymentDTO(updated, true))
+}
+
+// recordReplicasChanged puts an operator's change of the replica count on the
+// deployment's timeline; an order that changes nothing leaves no entry.
+func (a *apiHandlers) recordReplicasChanged(r *http.Request, id uint, from, to int) {
+	if from != to {
+		a.operatorEvent(r, id, store.EventReplicasChanged, map[string]any{"from": from, "to": to})
+	}
+}
+
+// checkPlaceOn checks the nodes a growing single-node deployment names for
+// its new replicas: each is known, online, takes replicas, satisfies the
+// deployment's node requirements, and has room for a replica now (the same
+// trial plan the candidate pool runs, counting a node named twice twice). It
+// writes the response on refusal.
+func (a *apiHandlers) checkPlaceOn(w http.ResponseWriter, r *http.Request, dep *store.Deployment, uuids []string) bool {
+	reqs, err := a.d.Store.DeploymentRequirements(dep.ID)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return false
+	}
+	var model *store.Model
+	refuse := func(node, reason string, params map[string]any) bool {
+		if params == nil {
+			params = map[string]any{}
+		}
+		params["node"], params["reason"] = node, reason
+		writeProductError(w, http.StatusConflict, ErrorReplicasPlaceOnRefused, fmt.Sprintf("node %s cannot take a new replica: %s", node, reason), params)
+		return false
+	}
+	seen := map[string]bool{}
+	for _, uuid := range uuids {
+		node, err := a.d.Store.NodeWithGPUs(uuid)
+		if errors.Is(err, store.ErrNotFound) {
+			return refuse(uuid, "unknown", nil)
+		}
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, err)
+			return false
+		}
+		name := node.DisplayName()
+		switch {
+		case !a.onlineOf([]store.Node{*node})(node.UUID):
+			return refuse(name, "offline", nil)
+		case !node.Scheduling.TakesReplicas():
+			return refuse(name, "cordoned", nil)
+		}
+		if err := planning.MatchRequirements(node, a.resolveForRequirements([]*store.Node{node}, reqs), reqs); err != nil {
+			return refuse(name, "requirements", map[string]any{"detail": err.Error()})
+		}
+		if seen[uuid] {
+			continue // a second replica on the same node: the controller's pool counts it
+		}
+		seen[uuid] = true
+		if model == nil {
+			if model, err = a.d.Store.GetModel(dep.ModelID); err != nil {
+				writeErr(w, http.StatusInternalServerError, err)
+				return false
+			}
+		}
+		launch, layer, _, err := planning.DeploymentLaunch(dep, reqs, node, model, nil)
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, err)
+			return false
+		}
+		launch.Preview = true
+		_, refusal, err := planning.PlanTemplateLaunch(r.Context(), a.d.Store, a.networks(), node, launch, layer)
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, err)
+			return false
+		}
+		if refusal != nil {
+			return refuse(name, "no_room", map[string]any{"code": refusal.Code, "params": refusal.Params})
+		}
+	}
+	return true
 }
 
 // replicaUnitsDTO is a multi-node deployment's replicas as the response lists

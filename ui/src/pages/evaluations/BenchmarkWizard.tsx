@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { QuestionCircleOutlined, SearchOutlined, UploadOutlined } from "@ant-design/icons";
 import { Alert, Button, Card, Checkbox, Col, Collapse, Drawer, Form, Input, InputNumber, Modal, Radio, Row, Select, Space, Steps, Tooltip, Typography, Upload, message } from "antd";
-import type { BenchmarkMeta, BenchmarkRun, DeploymentListItem, Node } from "../../api";
+import type { BenchmarkMeta, BenchmarkRun, Deployment, DeploymentListItem, Node } from "../../api";
 import { api } from "../../api";
 import { APIError } from "../../apiError";
 import { estimateOpenLoop, estimateRequests, initialBenchmarkDataset, modeFormReset, normalizeEndpointURL, parseNumbers, parseRates } from "./evaluationUtils";
@@ -12,6 +12,8 @@ import {
 	agenticSessionsPerPoint,
 	summarizeAgenticLoad,
 } from "./agenticWorkload";
+import { hasOperation } from "../../modelInference";
+import { benchmarkOriginNodes } from "./benchmarkOrigins";
 import AgenticLoadSummary from "./AgenticLoadSummary";
 import TokenizerSourceFields from "./TokenizerSourceFields";
 import type { TokenizerSource } from "./tokenizerSource";
@@ -99,6 +101,7 @@ export default function BenchmarkWizard({ open, meta, deployments, nodes, onSear
 	const mode = Form.useWatch("mode", form) || "saturation";
 	const targetKind = Form.useWatch("target_kind", form) || "instance";
 	const deploymentID = Form.useWatch("deployment_id", form);
+	const loadOrigin = Form.useWatch("load_origin", form);
 	const keepDetail = Form.useWatch("keep_detail", form);
 	const dataset = Form.useWatch("dataset", form) || "random";
 	const concurrencyRaw = Form.useWatch("concurrency", form) || "1";
@@ -136,7 +139,7 @@ export default function BenchmarkWizard({ open, meta, deployments, nodes, onSear
 		// a rerun restores it from the reference the previous run resolved to,
 		// and a fresh managed run starts on the automatic source.
 		const sourceTokenizer = tokenizerFormState(source?.tokenizer_ref, managedTarget);
-		const initialTokenizerSource = tokenizerSourceOrDefault(managedTarget, initialDataset === "agentic", source?.tokenizer_ref, !!source);
+		const initialTokenizerSource = tokenizerSourceOrDefault(managedTarget, (initialDataset === "agentic" || initialDataset === "random"), source?.tokenizer_ref, !!source);
 		const initialMode = preset?.mode || source?.mode || "saturation";
 		const defaults = modeFormReset(meta, initialMode);
 		const sourceSearch = { ...(source?.search || {}) };
@@ -200,28 +203,64 @@ export default function BenchmarkWizard({ open, meta, deployments, nodes, onSear
 		if (nodes.length) setKnownNodes((known) => new Map([...known, ...nodes.map((item) => [item.uuid, item] as const)]));
 	}, [nodes]);
 	const selectedDeployment = deploymentID ? knownDeployments.get(deploymentID) : undefined;
+	const listedDeployment = deployments.find((item) => item.id === deploymentID);
+	const [deploymentDetail, setDeploymentDetail] = useState<Deployment>();
+	const [originLoading, setOriginLoading] = useState(false);
+	const [originError, setOriginError] = useState(false);
 	useEffect(() => {
-		if (!open || !deploymentID || knownDeployments.has(deploymentID)) return;
+		setDeploymentDetail(undefined);
+		setOriginError(false);
+		if (!open || targetKind !== "instance" || !deploymentID) {
+			setOriginLoading(false);
+			return;
+		}
 		let alive = true;
-		api.deployment(deploymentID).then((deployment) => {
-			if (alive) setKnownDeployments((known) => new Map(known).set(deployment.id, deployment));
-		}).catch(() => {});
-		return () => { alive = false; };
-	}, [open, deploymentID, knownDeployments]);
-	const targetNodeUUID = selectedDeployment?.node_uuid;
+		let request = 0;
+		const refresh = async () => {
+			const current = ++request;
+			setOriginLoading(true);
+			try {
+				const deployment = await api.deployment(deploymentID);
+				if (!alive || current !== request) return;
+				setDeploymentDetail(deployment);
+				setKnownDeployments((known) => new Map(known).set(deployment.id, deployment));
+				setOriginError(false);
+			} catch {
+				if (!alive || current !== request) return;
+				setDeploymentDetail(undefined);
+				setOriginError(true);
+			} finally {
+				if (alive && current === request) setOriginLoading(false);
+			}
+		};
+		void refresh();
+		// Only the selected deployment is refreshed, including instance changes
+		// that leave its list-row summary unchanged.
+		const timer = setInterval(() => { void refresh(); }, 10000);
+		return () => { alive = false; clearInterval(timer); };
+	}, [open, targetKind, deploymentID, listedDeployment]);
+	const targetNodeUUIDs = useMemo(() => deploymentDetail && deploymentDetail.id === deploymentID
+		? benchmarkOriginNodes(deploymentDetail.instances || []) : [], [deploymentDetail, deploymentID]);
+	const targetNodeUUID = targetNodeUUIDs.includes(loadOrigin) ? loadOrigin : targetNodeUUIDs[0];
 	useEffect(() => {
-		if (!open || !targetNodeUUID || knownNodes.has(targetNodeUUID)) return;
+		if (!open || targetKind !== "instance") return;
 		let alive = true;
-		api.node(targetNodeUUID).then((node) => {
-			if (alive) setKnownNodes((known) => new Map(known).set(node.uuid, node));
-		}).catch(() => {});
+		for (const uuid of targetNodeUUIDs) {
+			// Current search results already carry fresh metadata. Refresh pinned
+			// runtime nodes too, so a cached online state cannot outlive a disconnect.
+			if (nodes.some((node) => node.uuid === uuid)) continue;
+			api.node(uuid).then((node) => {
+				if (alive) setKnownNodes((known) => new Map(known).set(node.uuid, node));
+			}).catch(() => {
+				if (alive && form.getFieldValue("load_origin") === uuid) form.setFieldValue("load_origin", "server");
+			});
+		}
 		return () => { alive = false; };
-	}, [open, targetNodeUUID, knownNodes]);
+	}, [open, targetKind, targetNodeUUIDs, nodes, form]);
 	const deploymentOptions = useMemo(() => {
 		const shown = selectedDeployment && !deployments.some((item) => item.id === selectedDeployment.id) ? [selectedDeployment, ...deployments] : deployments;
-		return shown.map((deployment) => ({ value: deployment.id, label: deployment.name }));
+		return shown.map((deployment) => ({ value: deployment.id, label: deployment.name, disabled: !hasOperation(deployment.operations, "openai.chat") }));
 	}, [deployments, selectedDeployment]);
-	const loadOrigin = Form.useWatch("load_origin", form);
 	const originOptions = useMemo(() => {
 		// The server is the default origin for both target kinds: a managed
 		// deployment is measured through the gateway the way clients reach it,
@@ -230,15 +269,26 @@ export default function BenchmarkWizard({ open, meta, deployments, nodes, onSear
 		const options: Array<{ value: string; label: string; disabled?: boolean }> = [{ value: "server", label: "Server" }];
 		// The target's own node and the chosen origin lead, whether or not the
 		// current search page holds them.
-		const pinned = [targetNodeUUID, loadOrigin].map((uuid) => (uuid ? knownNodes.get(uuid) : undefined)).filter((node): node is Node => !!node);
+		const pinned = [...targetNodeUUIDs, loadOrigin].map((uuid) => (uuid ? knownNodes.get(uuid) : undefined)).filter((node): node is Node => !!node);
 		const listed = new Set<string>();
 		for (const node of [...pinned, ...nodes].filter((item) => item.state === "online")) {
-			if (listed.has(node.uuid)) continue;
+			if (listed.has(node.uuid) || (targetKind === "instance" && !targetNodeUUIDs.includes(node.uuid))) continue;
 			listed.add(node.uuid);
-			options.push({ value: node.uuid, label: `${t(node.uuid === targetNodeUUID ? "wizard.targetNode" : "wizard.computeNode")} · ${node.name || node.hostname || node.uuid}`, disabled: !node.caps?.includes("bench") });
+			options.push({ value: node.uuid, label: `${t(targetNodeUUIDs.includes(node.uuid) ? "wizard.targetNode" : "wizard.computeNode")} · ${node.name || node.hostname || node.uuid}`, disabled: !node.caps?.includes("bench") });
 		}
 		return options;
-	}, [nodes, knownNodes, targetNodeUUID, loadOrigin, t]);
+	}, [nodes, knownNodes, targetNodeUUIDs, targetKind, loadOrigin, t]);
+
+	useEffect(() => {
+		if (!open || targetKind !== "instance" || originLoading || (!originError && (!deploymentDetail || deploymentDetail.id !== deploymentID))) return;
+		if (!loadOrigin || loadOrigin === "server") return;
+		const node = knownNodes.get(loadOrigin);
+		// A valid leader may be absent from the searched node page. Keep the
+		// selection while its metadata loads rather than silently changing paths.
+		if (!targetNodeUUIDs.includes(loadOrigin) || (node && (node.state !== "online" || !node.caps?.includes("bench")))) {
+			form.setFieldValue("load_origin", "server");
+		}
+	}, [open, targetKind, originLoading, originError, deploymentDetail, deploymentID, targetNodeUUIDs, knownNodes, loadOrigin, form]);
 
 	const estimate = estimateRequests(mode, parseNumbers(concurrencyRaw), multiplier, maxConcurrency, dataset === "random" ? parseNumbers(islRaw).length : 1, dataset === "random" || dataset === "multiturn" ? parseNumbers(oslRaw).length : 1);
 	const openEstimate = openLoop ? estimateOpenLoop(parseRates(ratesRaw), pointDuration, meta.load_defaults.min_open_loop_requests, dataset === "random" ? parseNumbers(islRaw).length : 1, dataset === "random" || dataset === "multiturn" ? parseNumbers(oslRaw).length : 1) : undefined;
@@ -290,7 +340,7 @@ export default function BenchmarkWizard({ open, meta, deployments, nodes, onSear
 					{t(`wizard.conflictKind.${kind}`, {
 						origin: originLabel || form.getFieldValue("load_origin"),
 						deployment: selectedDeployment?.name || `#${form.getFieldValue("deployment_id")}`,
-						node: targetNode?.name || targetNode?.hostname || selectedDeployment?.node_uuid || "",
+						node: targetNode?.name || targetNode?.hostname || targetNodeUUID || "",
 					})}
 				</Typography.Text>
 				<Typography.Text type="secondary">{t("wizard.conflictRun", { id: params.run_id, name: String(params.run_name || "").trim() || t("wizard.unnamedRun") })}</Typography.Text>
@@ -351,7 +401,7 @@ export default function BenchmarkWizard({ open, meta, deployments, nodes, onSear
 	};
 
 	return (
-			<Drawer title={t("wizard.title")} width={760} open={open} onClose={onClose} destroyOnClose={false} footer={<Space style={{ width: "100%", justifyContent: "space-between" }}><Typography.Text type="secondary">{estimateText}</Typography.Text><Space><Button disabled={step === 0} onClick={() => setStep(step - 1)}>{t("wizard.previous")}</Button>{step < 2 ? <Button type="primary" onClick={async () => { try { if (step === 1) await form.validateFields(targetKind === "instance" ? ["deployment_id"] : ["base_url", "model"]); setStep(step + 1); } catch { /* form renders errors */ } }}>{t("wizard.next")}</Button> : <Button type="primary" loading={submitting} onClick={() => { void submit(); }}>{t("wizard.start")}</Button>}</Space></Space>}>
+			<Drawer title={t("wizard.title")} width={760} open={open} onClose={onClose} destroyOnClose={false} footer={<Space style={{ width: "100%", justifyContent: "space-between" }}><Typography.Text type="secondary">{estimateText}</Typography.Text><Space><Button disabled={step === 0} onClick={() => setStep(step - 1)}>{t("wizard.previous")}</Button>{step < 2 ? <Button type="primary" onClick={async () => { try { if (step === 1) await form.validateFields(targetKind === "instance" ? ["deployment_id", "load_origin"] : ["base_url", "model", "load_origin"]); setStep(step + 1); } catch { /* form renders errors */ } }}>{t("wizard.next")}</Button> : <Button type="primary" loading={submitting} onClick={() => { void submit(); }}>{t("wizard.start")}</Button>}</Space></Space>}>
 			<Steps current={step} items={[{ title: t("wizard.step.question") }, { title: t("wizard.step.target") }, { title: t("wizard.step.load") }]} style={{ marginBottom: 24 }} />
 			<Form form={form} layout="vertical">
 				<Form.Item name="mode" hidden><Input /></Form.Item>
@@ -361,18 +411,22 @@ export default function BenchmarkWizard({ open, meta, deployments, nodes, onSear
 				<div hidden={step !== 1}>
 					<Form.Item name="name" label={t("wizard.name")}><Input placeholder={t("wizard.autoGenerated")} /></Form.Item>
 					<Form.Item name="target_kind" label={t("wizard.target")}><Radio.Group optionType="button" buttonStyle="solid" options={[{ label: t("wizard.managedInstance"), value: "instance" }, { label: t("wizard.externalEndpoint"), value: "external" }]} onChange={(event) => {
-						// An external endpoint has no node to generate load, so the
-						// origin can only be the server.
+						// Start a newly selected external target from the default origin.
 						if (event.target.value === "external") form.setFieldValue("load_origin", "server");
 						// The automatic tokenizer source reads the target machine, which an
 						// external endpoint does not have.
-						if (event.target.value === "external" && form.getFieldValue("tokenizer_source") === "auto") form.setFieldValue("tokenizer_source", "estimate");
+						if (event.target.value === "external" && form.getFieldValue("tokenizer_source") === "auto") form.setFieldValue("tokenizer_source", dataset === "random" || dataset === "agentic" ? "huggingface" : "estimate");
 					}} /></Form.Item>
-					{targetKind === "instance" ? <Form.Item name="deployment_id" label={t("wizard.service")} rules={[{ required: true, message: t("wizard.serviceRequired") }]}><Select showSearch {...(onSearchDeployments ? { filterOption: false, onSearch: onSearchDeployments } : { optionFilterProp: "label" })} options={deploymentOptions} /></Form.Item> : <>
+					{targetKind === "instance" ? <Form.Item name="deployment_id" label={t("wizard.service")} rules={[{ required: true, message: t("wizard.serviceRequired") }, { validator: async (_, id) => {
+						const selected = knownDeployments.get(id) || deployments.find((item) => item.id === id);
+						if (selected && !hasOperation(selected.operations, "openai.chat")) throw new Error(t("wizard.chatRequired"));
+					} }]} extra={t("wizard.chatRequired")}><Select showSearch {...(onSearchDeployments ? { filterOption: false, onSearch: onSearchDeployments } : { optionFilterProp: "label" })} options={deploymentOptions} /></Form.Item> : <>
 						<Form.Item name="base_url" label={t("wizard.baseUrl")} rules={[{ required: true }]} extra={t("wizard.baseUrlHelp")}><Input placeholder={t("wizard.baseUrlPlaceholder")} /></Form.Item>
 						<Form.Item name="api_key" label="API Key"><Input.Password /></Form.Item>
 					</>}
-					<Form.Item name="load_origin" label={t("wizard.loadOrigin")} rules={[{ required: true }]}><Select showSearch {...(onSearchNodes ? { filterOption: false, onSearch: onSearchNodes } : { optionFilterProp: "label" })} options={originOptions} /></Form.Item>
+					<Form.Item name="load_origin" label={t("wizard.loadOrigin")} extra={targetKind === "instance" && originError ? t("wizard.originLoadFailed") : undefined} rules={[{ required: true }, { validator: async (_, value) => {
+						if (targetKind === "instance" && value !== "server" && (originLoading || !originOptions.some((option) => option.value === value && !option.disabled))) throw new Error(t("wizard.originUnavailable"));
+					} }]}><Select loading={targetKind === "instance" && originLoading} showSearch {...(onSearchNodes ? { filterOption: false, onSearch: onSearchNodes } : { optionFilterProp: "label" })} options={originOptions} /></Form.Item>
 					{targetKind === "external" && <Form.Item label={t("wizard.model")} required><Space.Compact style={{ width: "100%" }}><Form.Item name="model" noStyle rules={[{ required: true, message: t("wizard.modelProbeRequired") }]}><Select showSearch options={models.map((model) => ({ value: model, label: model }))} /></Form.Item><Button icon={<SearchOutlined />} loading={probing} onClick={probe}>{t("wizard.probe")}</Button></Space.Compact></Form.Item>}
 					{probeNotice && <Alert showIcon type="success" message={probeNotice} />}
 				</div>
@@ -385,7 +439,7 @@ export default function BenchmarkWizard({ open, meta, deployments, nodes, onSear
 							form.setFieldsValue({ agentic_preset: meta.agentic_defaults.preset, agentic_mean_input: selected?.mean_input_tokens, agentic_turns: meta.agentic_defaults.turns, concurrency: meta.agentic_defaults.concurrency.join(", "), max_concurrency: Math.max(...meta.agentic_defaults.concurrency), tokenizer_source: tokenizerSource === "estimate" ? (targetKind === "instance" ? "auto" : "huggingface") : tokenizerSource });
 						} else if (value === "random") {
 							const defaults = modeFormReset(meta, mode);
-							form.setFieldsValue({ concurrency: defaults.concurrency, max_concurrency: defaults.max_concurrency, isl: defaults.isl, osl: defaults.osl });
+							form.setFieldsValue({ concurrency: defaults.concurrency, max_concurrency: defaults.max_concurrency, isl: defaults.isl, osl: defaults.osl, tokenizer_source: tokenizerSource === "estimate" ? (targetKind === "instance" ? "auto" : "huggingface") : tokenizerSource });
 						}
 					}} options={meta.datasets.map((item) => ({ ...item, label: localizedText(item.label, language) }))} /></Form.Item>
 					{dataset === "agentic" && <AgenticLoadSummary summary={agenticSummary} meta={meta} onPresetChange={(value) => {

@@ -53,6 +53,12 @@ func rollbackSleepIntent(tx *gorm.DB, inst *Instance, st proto.InstanceStatus) (
 			}); err != nil {
 				return false, err
 			}
+			// Rolled back awake, it is no longer asleep, held or not.
+			if st.SleepLevel == 0 && ranks[i].SleepHeld {
+				if err := tx.Model(&Instance{}).Where("id = ?", ranks[i].ID).Update("sleep_held", false).Error; err != nil {
+					return false, err
+				}
+			}
 		}
 		rolled = true
 	}
@@ -79,8 +85,26 @@ func HoldsSleepIntent(in *Instance) bool {
 }
 
 // writeSleepIntent rewrites the sleep intent of the instances that hold one,
-// inside a transaction.
-func writeSleepIntent(tx *gorm.DB, insts []Instance, level int, mode string) error {
+// inside a transaction. A new order supersedes a wake that was waiting for
+// room: a wake has been admitted, or the instance is told to sleep again. A
+// wake (level 0) lifts the hold of every instance it names, a held sleep
+// holds the ones it puts to sleep, and a sleep that is not held leaves each
+// instance's hold as it was (Instance.SleepHeld).
+func writeSleepIntent(tx *gorm.DB, insts []Instance, level int, mode string, held bool) error {
+	if err := writeSleepHeld(tx, insts, level, held); err != nil {
+		return err
+	}
+	var waiting []uint
+	for i := range insts {
+		if insts[i].WakeWaitingSince != nil {
+			waiting = append(waiting, insts[i].ID)
+		}
+	}
+	if len(waiting) > 0 {
+		if err := tx.Model(&Instance{}).Where("id IN ?", waiting).Update("wake_waiting_since", nil).Error; err != nil {
+			return err
+		}
+	}
 	for i := range insts {
 		if !HoldsSleepIntent(&insts[i]) {
 			continue
@@ -101,13 +125,35 @@ func writeSleepIntent(tx *gorm.DB, insts []Instance, level int, mode string) err
 	return nil
 }
 
+// writeSleepHeld is writeSleepIntent's change to the instances' holds.
+func writeSleepHeld(tx *gorm.DB, insts []Instance, level int, held bool) error {
+	if level > 0 && !held {
+		return nil
+	}
+	hold := level > 0
+	var ids []uint
+	for i := range insts {
+		if insts[i].SleepHeld == hold || hold && !HoldsSleepIntent(&insts[i]) {
+			continue
+		}
+		ids = append(ids, insts[i].ID)
+		insts[i].SleepHeld = hold
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	return tx.Model(&Instance{}).Where("id IN ?", ids).Update("sleep_held", hold).Error
+}
+
 // stampDeploymentSleep starts a new instance under its deployment's standing
 // sleep order: the level the deployment as a whole is ordered to, read in the
 // transaction that inserts the row. An order committed after the caller built
 // the desired state therefore still reaches the instance, and one committed
 // after the insert rewrites it with the others. That includes a wake: a
 // deployment no longer under a sleep order starts its new instances awake,
-// whatever level the caller read before the wake was committed.
+// whatever level the caller read before the wake was committed. A
+// deployment-wide sleep is held, so an instance started under one is held
+// too, and one started awake is not.
 func stampDeploymentSleep(tx *gorm.DB, in *Instance) error {
 	if in.DeploymentID == 0 || in.DesiredStateJSON == "" {
 		return nil
@@ -119,6 +165,7 @@ func stampDeploymentSleep(tx *gorm.DB, in *Instance) error {
 		}
 		return err
 	}
+	in.SleepHeld = dep.DesiredSleep > 0
 	if in.SleepIntent() == dep.DesiredSleep {
 		return nil
 	}
@@ -144,7 +191,10 @@ func (s *Store) SetDeploymentSleep(id uint, level int) error {
 
 // OrderDeploymentSleep records a deployment-wide sleep order: the level on the
 // deployment and, on every live instance, the level and pause mode (an empty
-// mode keeps each instance's), atomically.
+// mode keeps each instance's), atomically. Only an operator or a schedule
+// orders a whole deployment to sleep, so the sleep holds every instance it
+// puts to sleep, and a deployment-wide wake lifts every instance's hold
+// (Instance.SleepHeld).
 func (s *Store) OrderDeploymentSleep(id uint, level int, mode string) error {
 	err := s.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Model(&Deployment{}).Where("id = ?", id).Update("desired_sleep", level).Error; err != nil {
@@ -154,7 +204,7 @@ func (s *Store) OrderDeploymentSleep(id uint, level int, mode string) error {
 		if err := tx.Where("deployment_id = ?", id).Find(&insts).Error; err != nil {
 			return err
 		}
-		return writeSleepIntent(tx, insts, level, mode)
+		return writeSleepIntent(tx, insts, level, mode, true)
 	})
 	if err == nil {
 		s.Bus.PublishChange("deployment", uintKey(id), "sleep")
@@ -163,11 +213,21 @@ func (s *Store) OrderDeploymentSleep(id uint, level int, mode string) error {
 }
 
 // OrderInstancesSleep records a sleep (level > 0) or wake (level 0) order for
-// some of a deployment's instances. A sleep leaves the deployment-wide level
-// alone: the deployment as a whole is not under that order. A wake withdraws a
-// deployment-wide sleep order, since the deployment is no longer wholly under
-// it; its other sleepers keep their own intent.
+// some of a deployment's instances that is not held: the platform's sleep, or
+// a wake. A sleep leaves the deployment-wide level alone: the deployment as a
+// whole is not under that order. A wake withdraws a deployment-wide sleep
+// order, since the deployment is no longer wholly under it; its other
+// sleepers keep their own intent and hold.
 func (s *Store) OrderInstancesSleep(depID uint, uuids []string, level int, mode string) error {
+	return s.OrderInstancesSleepHeld(depID, uuids, level, mode, false)
+}
+
+// OrderInstancesSleepHeld is OrderInstancesSleep that also says whether the
+// sleep is held (an operator's or a schedule's): a held sleep holds exactly
+// the instances named, a wake lifts exactly their holds, and a sleep that is
+// not held leaves every hold as it was, so the platform putting a replica to
+// sleep neither lifts nor sets an operator's hold (Instance.SleepHeld).
+func (s *Store) OrderInstancesSleepHeld(depID uint, uuids []string, level int, mode string, held bool) error {
 	err := s.db.Transaction(func(tx *gorm.DB) error {
 		if level == 0 {
 			if err := tx.Model(&Deployment{}).Where("id = ?", depID).Update("desired_sleep", 0).Error; err != nil {
@@ -181,7 +241,7 @@ func (s *Store) OrderInstancesSleep(depID uint, uuids []string, level int, mode 
 		if len(insts) != len(uuids) {
 			return ErrNotFound
 		}
-		return writeSleepIntent(tx, insts, level, mode)
+		return writeSleepIntent(tx, insts, level, mode, held)
 	})
 	if err == nil {
 		for _, uuid := range uuids {

@@ -118,8 +118,8 @@
     },
     {
       "item": "1.10",
-      "status": "covered",
-      "reason": "The real 409 DEPLOYMENT_DELETING keeps the replica drawer and the draft of 2, shows the deleting reason, and the independent GET stays at 1 replica. The retry 200 matches the independent ready set"
+      "status": "partial",
+      "reason": "Partial: refusal/retry observations rely on direct SQLite desired_state UPDATE in deployment_replica_browser.flip_desired, bypassing the real control-plane lifecycle. Existing hold/continue and runtime observations are retained; complete error recovery needs a real API state transition, product-mutation FAIL and restored en/zh PASS."
     },
     {
       "item": "1.11",
@@ -298,8 +298,8 @@
     },
     {
       "item": "12.6",
-      "status": "covered",
-      "reason": "While the replica Apply PUT is held the Apply button shows the loading state and a second click sends no further replica write; the real 409 keeps the replica draft and shows the deleting reason, and the stored replica count stays unchanged; the later 200 matches the independent detail GET and the reloaded count"
+      "status": "partial",
+      "reason": "Partial: refusal/retry observations rely on direct SQLite desired_state UPDATE in deployment_replica_browser.flip_desired, bypassing the real control-plane lifecycle. Existing hold/continue and runtime observations are retained; complete error recovery needs a real API state transition, product-mutation FAIL and restored en/zh PASS."
     },
     {
       "item": "12.7",

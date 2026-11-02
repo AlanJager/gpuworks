@@ -1,6 +1,33 @@
 # GLM-5.3-Flash
 
-Original FP8 weights (~328.3 GB). The NVIDIA profiles follow the [SGLang recipe](https://docs.sglang.io/cookbook/autoregressive/GLM/GLM-5.3-Flash): H200 uses TileLang DSA with a BF16 KV cache, B200/B300 use TRT-LLM DSA with an FP8 KV cache; both accept 4 or 8 GPUs on one node (TP = EP = GPU count). Upstream publishes 8-GPU commands only; the 4-GPU variant follows its GB300 TP4 recipe. 4 MI355X GPUs use the [vLLM ROCm recipe](https://recipes.vllm.ai/zai-org/GLM-5.3-Flash) with the ROCm 10 nightly image.
+Original FP8 weights (~328.3 GB). The NVIDIA profiles follow the [SGLang recipe](https://docs.sglang.io/cookbook/autoregressive/GLM/GLM-5.3-Flash): H200/H20 use TileLang DSA with a BF16 KV cache, B200/B300 use TRT-LLM DSA with an FP8 KV cache; both accept 4 or 8 GPUs on one node (TP = EP = GPU count). Upstream publishes 8-GPU commands only; the 4-GPU variant follows its GB300 TP4 recipe. 4 MI355X GPUs use the [vLLM ROCm recipe](https://recipes.vllm.ai/zai-org/GLM-5.3-Flash) with the ROCm 10 nightly image.
+
+H20 shares the Hopper profile. With the default parameters, the 96 GB variant needs 8 GPUs; 4 GPUs fail memory admission. The 141 GB variant can be evaluated with 4 or 8 GPUs. Admission uses the capacity reported by the node. This describes the SGLang profile; H20 inference with SGLang has not been validated on hardware.
+
+## vLLM profiles (Hopper × 8, TP8)
+
+vLLM is the only engine on this platform that supports sleep/wake, so Hopper also has two single-node, 8-GPU, TP8 vLLM profiles. Arguments follow the [vLLM recipe](https://recipes.vllm.ai/zai-org/GLM-5.3-Flash) (FlashInfer autotune off, the `glm47` tool and reasoning parsers, `VLLM_ENGINE_READY_TIMEOUT_S=3600`), rewritten for vLLM 0.30.0: the recipe's `--tokenizer-mode glm5_next` does not exist in 0.30.0 (it is not among the allowed values) and is left out, and `--disable-flashinfer-autotune` is spelled `--no-enable-flashinfer-autotune` there. The image is the platform's own `gpuworks-runner:cuda13.0-vllm0.30.0-r2` (vLLM 0.30.0), not the upstream nightly: it registers `Glm5NextForConditionalGeneration` and ran on 8 × H20 141 GB. Both profiles require exactly 8 GPUs; other counts are rejected. The FP8 weights are the same checkpoint as the SGLang profiles above.
+
+| Profile | Cards | Context |
+| --- | --- | --- |
+| `fp8-vllm-nvidia-hopper-141g-tp8` | H200, H20 141 GB (each card >= 120 GiB) | the model's native 1M; no `--max-model-len` |
+| `fp8-vllm-nvidia-hopper-80-96g-tp8` | H100 80 GB, H20 96 GB | capped at 256K (`--max-model-len 262144`) |
+
+Memory per card (TP8, `gpu_memory_utilization` at the deployment default 0.9; the 38.96 GiB of weights per card is measured, the other columns are derived from card capacity at 0.9 and are not measured):
+
+| Card | Capacity | 0.9 budget | Weights | Budget minus weights (activations, CUDA graphs, KV) | Platform admission requirement |
+| --- | --- | --- | --- | --- | --- |
+| H200 / H20 141 GB | ~140 GiB | ~126 GiB | 38.96 GiB | ~87 GiB | ~43 GiB |
+| H20 96 GB | ~95.6 GiB | ~86 GiB | 38.96 GiB | ~47 GiB | ~43 GiB |
+| H100 80 GB | ~79.6 GiB | ~71.6 GiB | 38.96 GiB | ~33 GiB | ~43 GiB |
+
+The KV cache is small: in the config only 11 of the 45 layers (`full_attn_layers`) keep a per-token KV cache; the other 34 are linear attention with a length-independent state. On the 80 GB profile the constraint is therefore the activation and CUDA-graph headroom, not KV; the 256K cap leaves room for that rather than reflecting a KV shortfall. H100 80 GB has the least headroom; if start-up runs out of memory, lower `gpu_memory_utilization` first.
+
+Upstream options that are not enabled: MTP speculative decoding (`--speculative-config`), FP8 KV (`--kv-cache-dtype fp8`) and `VLLM_USE_RUST_FRONTEND` (whether the Rust frontend serves the sleep development endpoints has not been checked). Add them through the deployment form's extra arguments if needed.
+
+## Measured (vLLM, 8× H20 141 GB, TP8, 2026-10-31)
+
+Docker runtime, `gpuworks-runner:cuda13.0-vllm0.30.0-r2`, model on NFS (~830 MB/s), sleep mode on. Chat output was correct. Weights loaded in 501 s; cold start to ready took ~17 minutes, including the TileLang kernel compile on first start. Sleep/wake (L1, engine-reported): sleep 1.9-2.1 s, wake 2.9-3.8 s. L2 wake reloads the weights and takes over 10 minutes, so it is not practical. The H200 and H100 / H20 96 GB profiles were only checked offline (catalog and admission); they have not been run on hardware, and the headroom figures above are derived.
 
 The Ascend profile follows the vLLM-Ascend v0.30.0rc2 A3 recipe: one 16-die
 910C node, TP16/EP16, W8A8 weights, INT8 KV cache and 1M context. It pins the

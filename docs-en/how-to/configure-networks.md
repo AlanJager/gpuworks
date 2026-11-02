@@ -23,7 +23,7 @@ If these address concepts are unfamiliar, start with this diagram.
 
 ## Networks
 
-1. Open **Resources → Networks**, click **New network**, enter a name, select the roles and type, and configure selectors as described below. A network can carry multiple roles; Accelerator RDMA can only carry the Compute role.
+1. Open **Resources → Networks**, click **New network**, enter a name, select the roles and type, and configure selectors as described below. A network can carry multiple roles; Accelerator RDMA and Accelerator HCCS can only carry the Compute role.
 2. Click **Save** to open the new network's details page. Attach it to the target nodes as described in [Attach to Nodes or Labels](#加载到节点或标签).
 3. In the node list on the details page, check the actual IP addresses and interfaces; for RDMA networks, also check the bootstrap addresses and HCAs. An orange exclamation mark indicates configuration that is not in effect or is unavailable. Check the reason and correct it first.
 4. To verify paths between nodes, run an [internal test](#内部测试). Successfully saving a network declaration does not mean the physical links work. Running instances continue to use the network they started with; changes apply the next time they start.
@@ -31,9 +31,9 @@ If these address concepts are unfamiliar, start with this diagram.
 Fields used when creating a network:
 
 - **Roles** (multiple selections allowed): **Storage sync** (synchronizes models and images between nodes), **Compute** (NCCL/Gloo for multi-node inference and KV transfer for PD disaggregation), and **Serving** (gateway access to inference instances). Select all three for an all-in-one network.
-- **Type**: **Host Ethernet** (`host_ethernet`), **Host RDMA** (`host_rdma`), or **Accelerator RDMA** (`accelerator_rdma`). Host RDMA covers both InfiniBand and RoCE. Each node's type is detected automatically from the link layer of its RDMA ports and shown on its row; an orange exclamation mark appears if different link layers are detected within the same network. Accelerator RDMA uses the RoCE ports built into accelerator cards (Ascend NPUs); see [below](#加速器-rdma-网络加速卡自带的网口). The type determines the NCCL/UCX/HCCL settings and device injection for the compute network. Only nodes on the same network object are considered mutually reachable.
+- **Type**: **Host Ethernet** (`host_ethernet`), **Host RDMA** (`host_rdma`), **Accelerator RDMA** (`accelerator_rdma`), or **Accelerator HCCS** (`accelerator_hccs`). Host RDMA covers both InfiniBand and RoCE. Each node's type is detected automatically from the link layer of its RDMA ports and shown on its row; an orange exclamation mark appears if different link layers are detected within the same network. Accelerator RDMA uses the RoCE ports built into accelerator cards (Ascend NPUs); Accelerator HCCS uses the HCCS/HIXL fabric on A3/910C; see [the sections below](#加速器-hccs-网络a3910c-灵衢链路). The type determines the NCCL/UCX/HCCL settings and device injection for the compute network. Only nodes on the same network object are considered mutually reachable.
 - **Default selector** (required only for Host Ethernet): Enter a **Default CIDR**. Traffic uses an interface whose address falls within it. An interface name (supports the `*`, `?`, and `[...]` wildcards) is needed only when the subnet alone cannot distinguish interfaces.
-- Host RDMA and Accelerator RDMA networks **require no selectors**; see the next two sections. **Advanced** contains only an optional bootstrap CIDR.
+- Host RDMA, Accelerator RDMA, and Accelerator HCCS networks **require no selectors**; see the next three sections. **Advanced** contains only an optional bootstrap CIDR.
 
 ### RDMA Networks: Automatic Bootstrap and HCA Inference
 
@@ -77,6 +77,21 @@ This type **can only carry the Compute role**: storage sync and serving run as h
 
 The network only declares that these nodes' accelerator ports are connected. It does not determine which cards an instance uses: the instance uses the cards selected by scheduling, and reachability between any two cards depends on the wiring. If two machines are connected directly by matching card numbers, only cards with the same number can reach each other. Addresses do not reveal this (cards on both machines can be on the same subnet).
 
+### Accelerator HCCS Networks: A3/910C LingQu Fabric
+
+An A3/910C node exposes its LingQu HCCS/HIXL fabric through the accelerator
+cards' vNICs. The agent reads each card's vNIC address and link state with
+`hccn_tool -vnic -g`, and validates a peer with
+`hccn_tool -i <card-index> -hccs_ping -g address <peer IP>`. The cards are
+still represented as accelerator rails, but an HCCS network selects the HCCS
+protocol rather than the RoCE `-ping` command.
+
+Each node uses the same card rail and host bootstrap concepts as Accelerator
+RDMA. The network type is the fabric declaration; it does not require editing
+`/etc/hccn.conf`, and the agent refreshes the observed card addresses and link
+state automatically. HCCS networks can carry only Compute and are selected
+automatically by deployment and card tests once the network is attached.
+
 ### Attach to Nodes or Labels
 
 On the network details page, click **Attach**, select multiple nodes or switch to a node label and enter `key=value`, then click **Save**. Check the attachment results and node list. If individual nodes fail, address only those failures; you do not need to repeat successful attachments.
@@ -88,7 +103,7 @@ A network can be attached to any number of nodes and node labels. Each node ulti
 
 **Attach** lets you select multiple nodes at once. Failure for an individual node (for example, a deleted node) does not affect the others. Results are listed for each node, and nodes that are already attached count as successful.
 
-When attaching a Host Ethernet network to a node, you can override the default selector by specifying an interface or IP. For Host RDMA and Accelerator RDMA networks, you can specify a bootstrap interface or IP on the node (see the previous two sections) and add or remove HCAs in the node list. Overrides are validated against the agent's reported network inventory; values absent from the inventory also show an orange exclamation mark. You can save even when the node is offline.
+When attaching a Host Ethernet network to a node, you can override the default selector by specifying an interface or IP. For Host RDMA, Accelerator RDMA, and Accelerator HCCS networks, you can specify a bootstrap interface or IP on the node (see the previous sections) and add or remove rails in the node list. Overrides are validated against the agent's reported network inventory; values absent from the inventory also show an orange exclamation mark. You can save even when the node is offline.
 
 **Loaded networks** on the node details page lists the network, interface, IP, and HCAs actually used by this node for each role. **Network inventory** contains the interfaces, addresses, speeds, and RDMA ports the agent reads from sysfs, plus the accelerator ports read with `hccn_tool` on Ascend nodes. Only physical interfaces and virtual interfaces with addresses (bridges, bonds, and VLANs) are reported.
 
@@ -126,10 +141,11 @@ Behavior and restrictions by type:
 - **Host Ethernet**: Sets `NCCL_IB_DISABLE=1` and uses TCP.
 - **Host RDMA**: Sets `NCCL_NET=IB`, provides all HCAs to NCCL and the first HCA to UCX, and exposes `/dev/infiniband` and the required locked-memory permissions to the container. Startup fails if the container cannot see the verbs devices; it does not silently fall back to TCP. Environment variables of the same name set by a template or user still take precedence. runveil (runtime identifier `udocker`) cannot expose RDMA devices to containers and cannot use this type of compute network (`COMPUTE_NETWORK_RUNTIME`).
 - **Accelerator RDMA**: Provides HCCL with the bootstrap IP and interface, and mounts the host's `/etc/hccn.conf` read-only. It uses accelerator ports and does not inject `/dev/infiniband`. Ascend multi-node deployments must share this type of network (`COMPUTE_NETWORK_ACCELERATOR_REQUIRED`), with at least one usable card on each node (`COMPUTE_NETWORK_NO_CARDS`).
+- **Accelerator HCCS**: Selects Mooncake/HIXL's `hccs:device` path for A3/910C, and automatically sets the HCCS initialization and Fabric Memory parameters. It still mounts `/etc/hccn.conf` read-only for the Ascend runtime, while the KV path uses HCCS rather than RoCE.
 
 PD disaggregation also checks the KV transfer network according to the mode:
 
-- Cross-machine `vllm-ascend-mooncake` requires an Accelerator RDMA network (`PD_NETWORK_ACCELERATOR_REQUIRED`).
+- Cross-machine `vllm-ascend-mooncake` requires an Accelerator RDMA or Accelerator HCCS network (`PD_NETWORK_ACCELERATOR_REQUIRED`).
 - Modes that use UCX cannot use an Accelerator RDMA network (`PD_NETWORK_HOST_REQUIRED`).
 - PD deployments that support sleep cannot use a Host RDMA network for KV transfer (`PD_SLEEP_RDMA_UNSUPPORTED`); creation is rejected. If an RDMA network is attached after creation, the deployment remains unschedulable with the same reason. Ordinary multi-node deployments that use RDMA for collective communication are not subject to this restriction; see the limitations in [sleep / wake](sleep-wake.md).
 
@@ -199,7 +215,11 @@ TCP and RDMA bandwidth tests run on the agent host, covering the actual paths fo
 - **Card reachability · same-named cards** (`card_ping`, default) has cards with matching numbers on two nodes ping each other, such as `npu3` to `npu3`. It is suitable for routine checks.
 - **Card reachability · full card matrix** (`card_matrix`) has every card on one node ping every card on another node. Use it to verify wiring when setting up the network. You cannot determine reachability between different card numbers from addresses alone.
 
-The agent runs `hccn_tool -i <card-index> -ping` on the host to test reachability, not bandwidth. A reply proves bidirectional reachability, so each pair of nodes is tested only once: N×(N−1)÷2 pairs for All pairs and N pairs for Ring.
+The agent runs `hccn_tool -i <card-index> -ping` for Accelerator RDMA or
+`hccn_tool -i <card-index> -hccs_ping` for Accelerator HCCS to test
+reachability, not bandwidth. A reply proves bidirectional reachability, so
+each pair of nodes is tested only once: N×(N−1)÷2 pairs for All pairs and N
+pairs for Ring.
 
 Tests stagger nodes and cards across rounds, with each card sending only one ping at a time. An unreachable probe waits up to 3 seconds per round. Estimated duration is based on the number of rounds, not the sum of all individual probes. Use the following table to choose the scope:
 

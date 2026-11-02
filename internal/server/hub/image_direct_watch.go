@@ -37,7 +37,34 @@ func (h *Hub) watchDirectImageTransfer(imageID, nodeID uint) {
 	// this call and restore them in cleanup, and the watcher, which outlives
 	// the caller, must not read them after that point.
 	checkEvery, silentAfter := imageDirectStallCheck, imageDirectStallAfter
+	initial, err := h.store.ImageNode(imageID, nodeID)
+	if err != nil || initial.State != store.ImageStateSyncing {
+		return
+	}
+	key, transferID := [2]uint{imageID, nodeID}, initial.TransferID
+	h.mu.Lock()
+	if _, exists := h.imageWatches[key][transferID]; exists {
+		h.mu.Unlock()
+		return
+	}
+	if h.imageWatches == nil {
+		h.imageWatches = make(map[[2]uint]map[string]struct{})
+	}
+	if h.imageWatches[key] == nil {
+		h.imageWatches[key] = make(map[string]struct{})
+	}
+	h.imageWatches[key][transferID] = struct{}{}
+	h.mu.Unlock()
+	h.log.Info("watching image transfer progress", "image_id", imageID, "node_id", nodeID, "transfer", transferID)
 	go func() {
+		defer func() {
+			h.mu.Lock()
+			delete(h.imageWatches[key], transferID)
+			if len(h.imageWatches[key]) == 0 {
+				delete(h.imageWatches, key)
+			}
+			h.mu.Unlock()
+		}()
 		ticker := time.NewTicker(checkEvery)
 		defer ticker.Stop()
 		for range ticker.C {
@@ -45,14 +72,13 @@ func (h *Hub) watchDirectImageTransfer(imageID, nodeID uint) {
 			if err != nil {
 				return
 			}
-			if row.State != store.ImageStateSyncing {
+			if row.State != store.ImageStateSyncing || row.TransferID != transferID {
 				return // finished, or something else already moved it on
 			}
 			if time.Since(row.UpdatedAt) < silentAfter {
 				continue
 			}
 			h.abandonDirectImageTransfer(imageID, nodeID, row)
-			return
 		}
 	}()
 }
@@ -86,7 +112,7 @@ func (h *Hub) abandonDirectImageTransfer(imageID, nodeID uint, row *store.ImageN
 			defer cancel()
 			if exists, existsErr := h.ImageExists(ctx, image.ImageRef, node.UUID); existsErr == nil && exists {
 				_ = h.store.ApplyImageNodeStatus(imageID, nodeID, proto.ImageNodeStatus{
-					ImageRef: image.ImageRef, State: store.ImageStatePresent,
+					ImageRef: image.ImageRef, State: store.ImageStatePresent, TransferID: row.TransferID,
 					SizeBytes: row.SizeBytes, TransferredBytes: row.SizeBytes,
 					Message: "the image was found on the node after this transfer stopped reporting",
 				})
@@ -94,13 +120,21 @@ func (h *Hub) abandonDirectImageTransfer(imageID, nodeID uint, row *store.ImageN
 			}
 		}
 	}
+	const message = "this transfer stopped reporting progress, so it was cancelled (agent restart, lost connection, or a runtime that never returned). Retry it."
+	changed, err := h.store.FailImageNodeIfUnchanged(imageID, nodeID, row.TransferID, row.UpdatedAt, message)
+	if err != nil || !changed {
+		return
+	}
+	h.log.Warn("image transfer stopped reporting progress; cancelling attempt", "image_id", imageID, "node_id", nodeID, "source_node_id", row.SourceNodeID, "transfer", row.TransferID, "transferred_bytes", row.TransferredBytes, "last_progress", row.UpdatedAt)
 	image, imageErr := h.store.GetImage(imageID)
 	node, nodeErr := h.store.NodeByID(nodeID)
 	if imageErr == nil && nodeErr == nil {
-		const message = "this transfer stopped reporting progress, so it was cancelled (agent restart, lost connection, or a runtime that never returned). Retry it."
-		_, _ = h.cancelImageTransferRow(context.Background(), image, node, row, message)
-		return
+		h.stopImageTransfer(context.Background(), image, node, row)
 	}
-	const message = "the node stopped reporting progress, so the transfer was abandoned (agent restart, lost connection, or a runtime that never returned). Retry it."
-	_, _ = h.store.FailImageNodeIfUnchanged(imageID, nodeID, row.UpdatedAt, message)
+}
+
+// WatchImageTransfer restores monitoring for a persisted transfer after a
+// server restart. Repeated reconciles share one watcher for the same attempt.
+func (h *Hub) WatchImageTransfer(imageID, nodeID uint) {
+	h.watchDirectImageTransfer(imageID, nodeID)
 }

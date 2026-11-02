@@ -10,7 +10,20 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
+// sighted is a node as the offline clocks read it: last seen no earlier than
+// the moment this server began watching (Controller.watchingSince).
+func (c *Controller) sighted(node *store.Node) *store.Node {
+	if node == nil || node.LastSeenAt == nil || c.watchingSince.IsZero() || !node.LastSeenAt.Before(c.watchingSince) {
+		return node
+	}
+	seen := *node
+	at := c.watchingSince
+	seen.LastSeenAt = &at
+	return &seen
+}
+
 func (c *Controller) offlineGraceRemaining(node *store.Node, now time.Time) time.Duration {
+	node = c.sighted(node)
 	if c.offlineGrace <= 0 || node == nil || node.LastSeenAt == nil {
 		return 0
 	}
@@ -22,10 +35,8 @@ func (c *Controller) offlineGraceRemaining(node *store.Node, now time.Time) time
 }
 
 // pushRemoveOnline asks the online nodes to remove these instances and skips
-// the offline ones: an offline node cannot acknowledge a removal, and
-// settleRetiring drops its rows instead. That is safe: on reconnect the agent
-// receives a full desired-state sync and CleanupOrphans removes the
-// now-absent container before a replacement is scheduled.
+// the offline ones: an offline node cannot acknowledge a removal, so its rows
+// stay removing (settleRetiring) and are pushed again once it reconnects.
 func (c *Controller) pushRemoveOnline(insts []store.Instance, removed []string) error {
 	byNode := map[string][]string{}
 	for _, uuid := range removed {

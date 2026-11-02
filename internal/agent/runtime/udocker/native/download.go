@@ -8,36 +8,93 @@ import (
 	"fmt"
 	"hash"
 	"io"
-	"net/http"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
+
+	"gpuworks.ai/gpuworks/internal/agent/connbudget"
 )
 
-const (
-	blobAttempts = 3
+// Timing of a blob transfer; variables so tests can shrink them.
+var (
 	// idleTimeout fires when a connection delivers nothing for this long. The
 	// HTTP client has no overall deadline (multi-gigabyte blobs on throttled
 	// links legitimately take many minutes), so this is what distinguishes a
 	// slow transfer from a dead one.
 	idleTimeout = 2 * time.Minute
+	// slowWindow and slowMinRate recycle a connection that is alive but
+	// crawling. A CDN connection that degrades to tens of KB/s rarely recovers
+	// on its own, while a fresh one usually runs at line rate again, so waiting
+	// for the idle timeout (which a trickle never trips) is the wrong call. The
+	// transfer resumes where it stopped (see fetchSpan), so recycling loses
+	// nothing.
+	//
+	// The judgement is made by the connection budget (connbudget.Lease.Observe)
+	// against the other connections of the same pull: a connection that moved
+	// under slowMinRate bytes per second on average over slowWindow, or far
+	// under the median of its siblings, or collapsed from its own peak while
+	// they held up. slowMinRate is the absolute floor and sits far below a slow
+	// link's share of a pull's connections (16 KiB/s each is still under
+	// 400 KiB/s across the default 16): mainland to an overseas CDN at peak is
+	// tens to hundreds of KB/s in total, and a node that is merely slow must
+	// not lose every connection every window. The budget also never recycles
+	// more than half of a pull's open connections in one window.
+	slowWindow  = 30 * time.Second
+	slowMinRate = int64(16 << 10)
+	// retryPause is the unit of the pause before a reconnect that follows a
+	// failure which delivered nothing; it grows with consecutive such failures.
+	retryPause = time.Second
 )
 
-var errIdle = errors.New("registry download stalled")
+const (
+	// blobAttempts bounds consecutive failures that make no headway, both for
+	// one connection's resumes and for a whole blob.
+	blobAttempts = 3
+	// throttleAttempts bounds consecutive "slow down" answers (429/503) one
+	// span waits out. The pauses in between come from the connection budget
+	// (the server's Retry-After, or a doubling default), so this is minutes of
+	// patience, not a retry storm; past it the registry is not going to serve
+	// this pull and the caller may try another source.
+	throttleAttempts = 5
+)
+
+var (
+	errIdle = errors.New("registry download stalled")
+	// errSlow marks a connection recycled for crawling (see slowMinRate).
+	errSlow = errors.New("registry download too slow")
+	// errRangeIgnored marks a registry that answered a range request with the
+	// whole blob.
+	errRangeIgnored = errors.New("registry ignored range request")
+)
 
 // Downloader fetches blobs into a content-addressed directory. Layers are
 // fetched concurrently and a single large layer is additionally split into
 // byte ranges, because one TCP stream rarely saturates the link on the
 // throttled nodes this driver targets.
+//
+// How many connections that really opens is not Workers x RangeParts: every
+// request holds a token from the connection budget of the registry host (see
+// Budget), which starts low, climbs while more connections still raise the
+// pull's throughput, and backs off when the registry or a proxy pushes back.
 type Downloader struct {
 	Client     *Client
 	Dir        string // layer store; files are named "sha256:<hex>"
-	Workers    int    // concurrent layers
-	RangeParts int    // parts a large blob is split into
+	Workers    int    // layers in flight at once (each one's connections are budgeted)
+	RangeParts int    // fewest parts a large blob is split into (more for very large ones)
 	RangeMin   int64  // blobs at least this large are split
 	Chown      *Owner // when set, blobs are handed to this uid/gid
+
+	// Budget is the per-registry-host connection budget shared by every pull
+	// on the node. Nil gives each FetchAll a private, fixed budget of
+	// Workers x RangeParts connections (the behaviour before the budget existed).
+	Budget *connbudget.Hosts
+
+	// Tune, when set, may adjust the budget session a FetchAll opens (tests
+	// inject a clock and shrink the windows through it).
+	Tune func(*connbudget.SessionConfig)
 
 	// Stream, when set, is invoked concurrently with each blob's download and
 	// receives that blob's bytes in order as they arrive. It exists so the CPU
@@ -98,6 +155,8 @@ func (d *Downloader) FetchAll(ctx context.Context, ref Ref, descs []Descriptor, 
 	if err := os.MkdirAll(d.Dir, 0o755); err != nil {
 		return err
 	}
+	sess := d.openSession(ctx, ref)
+	defer sess.Close()
 	workers := d.Workers
 	if workers <= 0 {
 		workers = 4
@@ -122,7 +181,7 @@ func (d *Downloader) FetchAll(ctx context.Context, ref Ref, descs []Descriptor, 
 		go func(desc Descriptor) {
 			defer wg.Done()
 			defer func() { <-sem }()
-			err := d.fetch(ctx, ref, desc, progress, restart)
+			err := d.fetch(ctx, sess, ref, desc, progress, restart)
 			if err == nil && d.Fetched != nil {
 				d.Fetched(desc)
 			}
@@ -147,28 +206,46 @@ func (d *Downloader) FetchAll(ctx context.Context, ref Ref, descs []Descriptor, 
 	return ctx.Err()
 }
 
-func (d *Downloader) fetch(ctx context.Context, ref Ref, desc Descriptor, progress func(string, int64), restart func(string)) error {
+func (d *Downloader) fetch(ctx context.Context, sess *connbudget.Session, ref Ref, desc Descriptor, progress func(string, int64), restart func(string)) error {
 	var lastErr error
+	// whole is set once this blob's registry answered a range request with the
+	// whole blob: this blob is then read over one plain connection. It is the
+	// blob that is learned about, not the pull: a registry that serves some
+	// content through a Range-less path need not serve all of it that way.
+	whole := false
 	for attempt := 1; attempt <= blobAttempts; attempt++ {
 		if attempt > 1 {
 			if restart != nil {
 				restart(desc.Digest)
 			}
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case <-time.After(time.Duration(attempt-1) * time.Second):
+			// A registry that does not do ranges needs no pause, only another
+			// way of asking; anything else gets a growing one.
+			if !errors.Is(lastErr, errRangeIgnored) {
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case <-time.After(time.Duration(attempt-1) * time.Second):
+				}
 			}
 		}
-		lastErr = d.fetchOnce(ctx, ref, desc, progress)
+		lastErr = d.fetchOnce(ctx, sess, ref, desc, whole, progress)
 		if lastErr == nil || ctx.Err() != nil || !retryable(lastErr) {
+			return lastErr
+		}
+		if errors.Is(lastErr, errRangeIgnored) && !whole {
+			whole = true
+			slog.Info("registry ignores Range: reading the layer whole", "layer", shortDigest(desc.Digest), "registry", ref.Registry)
+		}
+		if isThrottled(lastErr) {
+			// The spans already waited out the registry's pauses; starting the
+			// blob over would only ask again sooner than it said.
 			return lastErr
 		}
 	}
 	return lastErr
 }
 
-func (d *Downloader) fetchOnce(ctx context.Context, ref Ref, desc Descriptor, progress func(string, int64)) error {
+func (d *Downloader) fetchOnce(ctx context.Context, sess *connbudget.Session, ref Ref, desc Descriptor, whole bool, progress func(string, int64)) error {
 	tmp, err := os.CreateTemp(d.Dir, ".blob-*")
 	if err != nil {
 		return err
@@ -185,10 +262,11 @@ func (d *Downloader) fetchOnce(ctx context.Context, ref Ref, desc Descriptor, pr
 			progress(desc.Digest, n)
 		}
 	}
-	ranged := d.RangeMin > 0 && desc.Size >= d.RangeMin && d.RangeParts > 1
+	// A registry found to ignore Range is read whole, over one connection.
+	ranged := d.RangeMin > 0 && desc.Size >= d.RangeMin && d.RangeParts > 1 && !whole
 	parts, chunk := 1, desc.Size
 	if ranged {
-		parts = d.RangeParts
+		parts = d.partsFor(desc.Size)
 		chunk = (desc.Size + int64(parts) - 1) / int64(parts)
 	}
 
@@ -208,9 +286,9 @@ func (d *Downloader) fetchOnce(ctx context.Context, ref Ref, desc Descriptor, pr
 		}
 	}
 	if ranged {
-		err = d.fetchRanged(ctx, ref, url, desc, tmp, chunk, report, advance)
+		err = d.fetchRanged(ctx, sess, ref, url, desc, tmp, parts, chunk, report, advance)
 	} else {
-		err = d.fetchWhole(ctx, ref, url, tmp, report, advance)
+		err = d.fetchWhole(ctx, sess, ref, url, desc.Size, tmp, report, advance)
 	}
 	if growth != nil {
 		growth.finish(err)
@@ -244,20 +322,8 @@ func (d *Downloader) fetchOnce(ctx context.Context, ref Ref, desc Descriptor, pr
 	return nil
 }
 
-func (d *Downloader) fetchWhole(ctx context.Context, ref Ref, url string, dst *os.File, report func(int64), advance func(int, int64)) error {
-	resp, err := d.Client.get(ctx, ref, url, nil)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("blob: %s", resp.Status)
-	}
-	// The write must be recorded after it lands, not when the bytes arrive, so
-	// a streaming consumer never reads past what is on disk.
-	writer := &advanceWriter{w: dst, part: 0, advance: advance}
-	_, err = io.Copy(writer, newIdleReader(ctx, resp.Body, report))
-	return err
+func (d *Downloader) fetchWhole(ctx context.Context, sess *connbudget.Session, ref Ref, url string, size int64, dst *os.File, report func(int64), advance func(int, int64)) error {
+	return d.fetchSpan(ctx, sess, ref, url, dst, 0, size-1, false, report, func(n int64) { advance(0, n) })
 }
 
 // advanceWriter reports each completed write so a growingFile's contiguous
@@ -272,124 +338,6 @@ func (w *advanceWriter) Write(p []byte) (int, error) {
 	n, err := w.w.Write(p)
 	if n > 0 && w.advance != nil {
 		w.advance(w.part, int64(n))
-	}
-	return n, err
-}
-
-// fetchRanged splits one blob across RangeParts connections, each writing at
-// its own offset in the preallocated temp file, so no concatenation pass
-// touches the disk afterwards.
-func (d *Downloader) fetchRanged(ctx context.Context, ref Ref, url string, desc Descriptor, dst *os.File, chunk int64, report func(int64), advance func(int, int64)) error {
-	if err := dst.Truncate(desc.Size); err != nil {
-		return err
-	}
-	parts := int64(d.RangeParts)
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	var wg sync.WaitGroup
-	var mu sync.Mutex
-	var firstErr error
-	for index := int64(0); index < parts; index++ {
-		start := index * chunk
-		if start >= desc.Size {
-			break
-		}
-		end := start + chunk - 1
-		if end >= desc.Size {
-			end = desc.Size - 1
-		}
-		wg.Add(1)
-		go func(part int, start, end int64) {
-			defer wg.Done()
-			err := d.fetchRange(ctx, ref, url, dst, start, end, report, func(n int64) { advance(part, n) })
-			if err != nil {
-				mu.Lock()
-				if firstErr == nil {
-					firstErr = err
-					cancel() // abandon sibling parts; the whole blob is retried
-				}
-				mu.Unlock()
-			}
-		}(int(index), start, end)
-	}
-	wg.Wait()
-	return firstErr
-}
-
-func (d *Downloader) fetchRange(ctx context.Context, ref Ref, url string, dst *os.File, start, end int64, report func(int64), advance func(int64)) error {
-	resp, err := d.Client.get(ctx, ref, url, map[string]string{
-		"Range": fmt.Sprintf("bytes=%d-%d", start, end),
-	})
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	switch resp.StatusCode {
-	case http.StatusPartialContent:
-	case http.StatusOK:
-		// The registry ignored the range header and is sending the whole blob.
-		// Only the part that starts at zero can use it; the others would
-		// duplicate the transfer, so fail and let the retry fall back.
-		if start != 0 {
-			return fmt.Errorf("registry ignored range request")
-		}
-	default:
-		return fmt.Errorf("blob range %d-%d: %s", start, end, resp.Status)
-	}
-	writer := &advanceWriter{w: &sectionWriter{file: dst, offset: start}, advance: func(_ int, n int64) { advance(n) }}
-	_, err = io.Copy(writer, newIdleReader(ctx, resp.Body, report))
-	return err
-}
-
-// sectionWriter writes sequentially into a file at a fixed starting offset via
-// pwrite, so concurrent range parts share one file handle without seeking.
-type sectionWriter struct {
-	file   *os.File
-	offset int64
-}
-
-func (w *sectionWriter) Write(p []byte) (int, error) {
-	n, err := w.file.WriteAt(p, w.offset)
-	w.offset += int64(n)
-	return n, err
-}
-
-// idleReader aborts a transfer that delivers nothing for idleTimeout, and
-// reports bytes as they arrive so progress reflects the network rather than
-// the writer.
-type idleReader struct {
-	inner  io.Reader
-	ctx    context.Context
-	report func(int64)
-	timer  *time.Timer
-	cancel context.CancelFunc
-}
-
-func newIdleReader(ctx context.Context, inner io.Reader, report func(int64)) io.Reader {
-	ctx, cancel := context.WithCancel(ctx)
-	r := &idleReader{inner: inner, ctx: ctx, report: report, cancel: cancel}
-	r.timer = time.AfterFunc(idleTimeout, cancel)
-	return r
-}
-
-func (r *idleReader) Read(p []byte) (int, error) {
-	n, err := r.inner.Read(p)
-	if n > 0 {
-		r.timer.Reset(idleTimeout)
-		if r.report != nil {
-			r.report(int64(n))
-		}
-	}
-	if err == nil && r.ctx.Err() != nil {
-		err = errIdle
-	}
-	if err != nil {
-		r.timer.Stop()
-		r.cancel()
-		if errors.Is(r.ctx.Err(), context.Canceled) && err == io.ErrUnexpectedEOF {
-			err = errIdle
-		}
 	}
 	return n, err
 }
@@ -418,14 +366,14 @@ func retryable(err error) bool {
 	if err == nil {
 		return false
 	}
-	if errors.Is(err, errIdle) || errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, io.EOF) {
+	if errors.Is(err, errIdle) || errors.Is(err, errSlow) || errors.Is(err, errRangeIgnored) || isThrottled(err) || errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, io.EOF) {
 		return true
 	}
 	text := err.Error()
 	for _, marker := range []string{
 		"connection reset", "unexpected EOF", "broken pipe", "TLS handshake",
 		"timeout", "temporary failure", "no such host", "EOF",
-		"size mismatch", "digest mismatch", "ignored range request",
+		"size mismatch", "digest mismatch",
 		": 429", ": 500", ": 502", ": 503", ": 504",
 	} {
 		if strings.Contains(text, marker) {

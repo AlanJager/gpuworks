@@ -115,6 +115,9 @@ func TestTemplateModelSelectionStorageAvailability(t *testing.T) {
 				f.file(t, f.hf, f.h.d.Store.DefaultLocalStorageID())
 			}
 			req := f.request()
+			if !tc.requestShared && !(tc.localHF && tc.pin == "") && !tc.explicitHF {
+				req.ModelID = 0
+			}
 			if tc.requestShared {
 				req.ModelID = f.shared.ID
 			}
@@ -160,7 +163,7 @@ func TestTemplateModelResolutionPrefersNFSWithOnlyHFDeclared(t *testing.T) {
 	f := newTemplateStorageFixture(t, proto.StorageNFS, true, true, true, false)
 	selection := &templateSelection{NodeID: f.node.ID, Model: f.template,
 		Spec: &store.InferenceSpecRow{Engine: "vllm"}, Weight: weightSource{Provider: f.hf.Source, RepoID: f.hf.SourceID, Revision: f.hf.Revision}}
-	model, err := f.h.resolveDeploymentModelFromTemplate(context.Background(), f.hf.ID, selection, f.template.ID)
+	model, err := f.h.resolveDeploymentModelFromTemplate(context.Background(), 0, selection, f.template.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -191,7 +194,7 @@ func TestTemplateModelAvailabilityPropagatesQueryFailure(t *testing.T) {
 	}
 	selection := &templateSelection{NodeID: f.node.ID, Model: f.template,
 		Spec: &store.InferenceSpecRow{Engine: "vllm"}, Weight: weightSource{Provider: f.hf.Source, RepoID: f.hf.SourceID, Revision: f.hf.Revision}}
-	if _, err := f.h.resolveDeploymentModelFromTemplate(context.Background(), req.ModelID, selection, req.TemplateID); !errors.Is(err, failure) {
+	if _, err := f.h.resolveDeploymentModelFromTemplate(context.Background(), 0, selection, req.TemplateID); !errors.Is(err, failure) {
 		t.Fatalf("model resolution swallowed query failure: %v", err)
 	}
 }
@@ -218,7 +221,7 @@ func TestEvaluateTemplateUsesNFSInsteadOfPublicDownload(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.h.d.Online = func(uuid string) bool { return uuid == f.node.UUID }
-	body := fmt.Sprintf(`{"template_id":%d,"template_spec_source":"upstream","template_spec_name":"fp8-balanced","node_uuid":%q,"model_id":%d,"quick_params":{},"placement":{}}`, f.template.ID, f.node.UUID, f.hf.ID)
+	body := fmt.Sprintf(`{"template_id":%d,"template_spec_source":"upstream","template_spec_name":"fp8-balanced","node_uuid":%q,"model_id":%d,"quick_params":{},"placement":{}}`, f.template.ID, f.node.UUID, uint(0))
 	rec := httptest.NewRecorder()
 	f.h.evaluate(rec, httptest.NewRequest(http.MethodPost, "/api/v1/evaluate", strings.NewReader(body)))
 	if rec.Code != http.StatusOK {

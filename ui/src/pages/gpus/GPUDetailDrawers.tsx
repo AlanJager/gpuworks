@@ -8,6 +8,7 @@ import { useTranslation } from "react-i18next";
 import { api, type DGPU, type MetricSeries, type PhysicalGPU } from "../../api";
 import DetailDrawer from "../../components/detail/DetailDrawer";
 import DetailSection from "../../components/detail/DetailSection";
+import CardHealthTab from "../../components/cardHealth/CardHealthTab";
 import GPUHealthTag from "../../components/GPUHealth";
 import GPUMemoryComposition from "../../components/GPUMemoryComposition";
 import PartitionCapability from "../../components/PartitionCapability";
@@ -19,6 +20,7 @@ import { GIB, allocationLabels, dash, fmtGiB, fmtRate, gpuHeading, optionalPerce
 // how it is doing now and over time.
 export function PhysicalGPUDetail({ gpu, onClose }: { gpu: PhysicalGPU | null; onClose: () => void }) {
   const { t } = useTranslation("gpus");
+  const { t: tNodes } = useTranslation("nodes");
   const [tab, setTab] = useState("basic");
   useEffect(() => setTab("basic"), [gpu?.uuid, gpu?.node_uuid, gpu?.index]);
   return (
@@ -93,6 +95,13 @@ export function PhysicalGPUDetail({ gpu, onClose }: { gpu: PhysicalGPU | null; o
                   </>
                 ),
               },
+              ...(gpu.node_uuid && (gpu.pcie_bdf || gpu.uuid)
+                ? [{
+                    key: "health",
+                    label: tNodes("cardHealth.tab"),
+                    children: <CardHealthTab nodeUUID={gpu.node_uuid} card={{ pcie_bdf: gpu.pcie_bdf, uuid: gpu.uuid }} cardLabel={gpuHeading(gpu)} />,
+                  }]
+                : []),
             ]
           : undefined
       }

@@ -29,10 +29,42 @@ var (
 	// CandidateTimeout bounds one source's whole pull, unpacking included;
 	// a download that stops is caught by the stall watch long before it.
 	CandidateTimeout = 60 * time.Minute
+	// CrawlWindow and CrawlMinRate give up on a source that does deliver
+	// bytes, so never trips the stall watch, but averages under CrawlMinRate
+	// bytes per second over a whole CrawlWindow. That is only done while
+	// another source is left to try; the last one is let run (CandidateTimeout
+	// still bounds it). A runtime that shows a layer's bytes only in coarse
+	// steps is not judged this way: its counter cannot tell a crawl from the
+	// gap between two steps (see StallMinRate).
+	// The floor is the whole pull's rate: 64 KiB/s keeps a node whose link to
+	// the source is merely slow from abandoning a source that works.
+	CrawlWindow        = 5 * time.Minute
+	CrawlMinRate int64 = 64 << 10
 )
 
-// ErrStalled marks a source that stopped downloading.
-var ErrStalled = errors.New("no download progress")
+var (
+	// ErrStalled marks a source that stopped downloading.
+	ErrStalled = errors.New("no download progress")
+	// ErrCrawling marks a source that downloads too slowly to be worth
+	// waiting for while another source remains.
+	ErrCrawling = errors.New("download too slow")
+)
+
+// DiskSpaceError marks a pull failure caused by local storage exhaustion.
+// Trying another registry cannot help because every source is unpacked onto
+// the same node filesystem.
+type DiskSpaceError struct{ Err error }
+
+func (e *DiskSpaceError) Error() string { return "insufficient disk space: " + e.Err.Error() }
+func (e *DiskSpaceError) Unwrap() error { return e.Err }
+
+func diskSpaceFailure(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "no space left on device") || strings.Contains(message, "insufficient disk space")
+}
 
 // Config wires a Puller to the node. Every field is optional.
 type Config struct {
@@ -171,12 +203,20 @@ func (p *Puller) Walk(ctx context.Context, driver runtime.Driver, cands []proto.
 			h.Failed(ref, err)
 		}
 	}
-	for _, c := range cands {
+	for i, c := range cands {
 		if ctx.Err() != nil {
 			break
 		}
-		err := p.pullOne(ctx, driver, c.Ref, opts, h)
+		err := p.pullOne(ctx, driver, c.Ref, opts, h, i < len(cands)-1)
 		if err != nil {
+			if diskSpaceFailure(err) {
+				if h.Recovered != nil {
+					if ref, ok := h.Recovered(ctx); ok {
+						return Result{Ref: ref, Recovered: true}, nil
+					}
+				}
+				return Result{}, &DiskSpaceError{Err: err}
+			}
 			if errors.Is(err, runtime.ErrRuntimeUnavailable) {
 				// The other sources fail the same way, and blaming this
 				// registry would send the reader to the wrong place.
@@ -232,8 +272,9 @@ func hasRankRun(cands []proto.ImagePullCandidate) bool {
 }
 
 // pullOne pulls one source, reporting through h while it runs and giving up on
-// it if the download stops making headway.
-func (p *Puller) pullOne(ctx context.Context, driver runtime.Driver, ref string, opts Options, h Hooks) error {
+// it if the download stops making headway, or, when another source remains
+// (hasNext), crawls.
+func (p *Puller) pullOne(ctx context.Context, driver runtime.Driver, ref string, opts Options, h Hooks, hasNext bool) error {
 	if h.Attempt != nil {
 		h.Attempt(ref)
 	}
@@ -248,12 +289,15 @@ func (p *Puller) pullOne(ctx context.Context, driver runtime.Driver, ref string,
 	// stalledAfter is the window the watch gave up after; read only once
 	// watcherStopped is closed.
 	var stalledAfter time.Duration
+	// crawlRate is the average rate the watch gave up on a crawl at.
+	var crawlRate int64
 	go func() {
 		defer close(watcherStopped)
 		ticker := time.NewTicker(HeartbeatInterval)
 		defer ticker.Stop()
 		last, _ := progress.Fingerprint()
 		lastChange := p.cfg.Now()
+		crawl := crawlWatch{window: CrawlWindow, minRate: CrawlMinRate}
 		for {
 			select {
 			case <-done:
@@ -265,6 +309,13 @@ func (p *Puller) pullOne(ctx context.Context, driver runtime.Driver, ref string,
 				h.Heartbeat(ref, snapshotOf(progress, now))
 			}
 			fp, downloading := progress.Fingerprint()
+			if hasNext {
+				if rate, crawling := crawl.observe(now, fp.Done, downloading && !progress.Coarse()); crawling {
+					crawlRate = rate
+					cancel(ErrCrawling)
+					return
+				}
+			}
 			if !downloading || fp != last {
 				last, lastChange = fp, now
 				continue
@@ -287,8 +338,13 @@ func (p *Puller) pullOne(ctx context.Context, driver runtime.Driver, ref string,
 	})
 	close(done)
 	<-watcherStopped
-	if err != nil && errors.Is(context.Cause(cctx), ErrStalled) && ctx.Err() == nil {
-		return fmt.Errorf("%w for %s", ErrStalled, stalledAfter)
+	if err != nil && ctx.Err() == nil {
+		switch cause := context.Cause(cctx); {
+		case errors.Is(cause, ErrCrawling):
+			return fmt.Errorf("%w: averaged %d KiB/s over %s, below %d KiB/s", ErrCrawling, crawlRate>>10, CrawlWindow, CrawlMinRate>>10)
+		case errors.Is(cause, ErrStalled):
+			return fmt.Errorf("%w for %s", ErrStalled, stalledAfter)
+		}
 	}
 	return err
 }

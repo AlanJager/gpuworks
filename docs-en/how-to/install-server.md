@@ -12,7 +12,20 @@ This guide explains how to install, verify, upgrade, and uninstall the GPUWorks 
 
 ## Installation
 
-Run the following steps in a terminal on the target Linux host.
+### One-Line Install
+
+Run the following in a terminal on the target host (Linux or an Apple silicon Mac):
+
+```bash
+bash <(curl -fsSL https://dl.gpuworks.ai/get.sh)
+```
+
+The script picks the source that responds fastest (in mainland China usually Alibaba Cloud OSS or Huawei Cloud OBS), downloads the release package for the local platform, verifies it against `SHA256SUMS`, and then runs `./gpuworks install`; the interactive prompts that follow are the same as steps 3 and 4 below. If no `release` build exists yet, it installs `nightly` instead.
+Arguments after the script are passed to `gpuworks install` unchanged, for example `bash <(curl -fsSL https://dl.gpuworks.ai/get.sh) --quiet`. Set `GPUWORKS_CHANNEL=nightly` to choose the channel and `GPUWORKS_SOURCE=<source URL>` to choose the source. The script source is `scripts/get.sh` in the repository.
+
+### Manual Install
+
+To check each step yourself, or when the host can only receive a copied release package, run the following steps in a terminal on the target Linux host.
 
 1. **Download and verify the release package.**
 
@@ -75,10 +88,10 @@ For the password change in this section and subsequent maintenance commands, use
 3. Change the initial password from the actual installation directory on the control plane host. For a systemd installation, first run `newgrp gpuworks` as instructed in the summary, or log in again to obtain the new group permissions, then run:
 
    ```bash
-   ./gpuworks reset-password --password '<new-password>' --data '<data-directory>'
+   ./gpuworks reset-password --password '<new-password>'
    ```
 
-   Replace the password and data directory. This command does not automatically read `server.yaml`; do not omit `--data`. Do not leave the actual password in command history or logs.
+   Replace the password. The command reads the data directory from the `server.yaml` next to the binary; you can also specify it explicitly with `--data`. Do not leave the actual password in command history or logs.
 
 4. Log in again with the new password and confirm that login succeeds.
 5. Delete the `initial-credentials` file in the actual data directory. This file stores the initial credentials in plain text. Deleting it does not change the account password. See [Control Plane Installation Layout](../reference/install-layout.md#凭证文件) for credential details.
@@ -92,7 +105,7 @@ If root/sudo is available and systemd is running, the installer configures a sys
 - **Without sudo**: From the extracted release package directory, install to a writable user directory:
 
   ```bash
-  ./gpuworks install --dir ~/gpuworks-server --no-systemd
+  ./gpuworks install --dir ~/gpuworks/server --no-systemd
   ```
 
 - **After a host restart with a nohup installation**: The service does not recover automatically. Run the following in the actual installation directory:
@@ -111,14 +124,14 @@ For service configuration and permissions, see [Installation Layout](../referenc
 2. In a Mac terminal, use `shasum -a 256` to check the archive's SHA-256. Extract it only after confirming that the value matches `SHA256SUMS`.
 3. Enter the extracted directory, run `./gpuworks install`, complete the prompts described above, and then finish [Verification and First Login](#验证与首次登录).
 
-When you install using an account with sudo permission, the service runs as the installing user and starts at system boot. The default installation directory is `/opt/gpuworks/server`; an agent on the same machine resides in `/opt/gpuworks`, so neither overwrites the other. Run the following as needed from the actual control plane installation directory:
+On a Mac, the default installation directory is `~/gpuworks/server` (the installing user's home directory), and the server runs as a nohup background process without startup at boot; the automatic-startup prompt defaults to `no`. An agent on the same machine resides in `~/gpuworks` by default, so neither overwrites the other. Run the following as needed from the actual control plane installation directory:
 
 ```bash
 ./gpuworks restart            # Restart the service
 ./gpuworks stop               # Stop the service; launchd installations start again at the next boot
 ```
 
-Using `--no-systemd` selects nohup instead and does not configure startup at boot. For launchd configuration, see [Installation Layout](../reference/install-layout.md#launchd-plistmacos).
+To start at system boot, run `./gpuworks install --autostart` from an account with sudo permission (or answer `yes` to the automatic-startup prompt): this installs a launch daemon, and the service runs as the installing user. Reinstalling over an installation that has a launch daemon keeps the launch daemon by default. For launchd configuration, see [Installation Layout](../reference/install-layout.md#launchd-plistmacos).
 
 ### Run in a Container
 
@@ -270,8 +283,8 @@ Run `./gpuworks` in the table from the actual installation directory. Confirm `<
 |---|---|
 | Cannot access the service after installation or upgrade | Check `<installation-directory>/logs/gpuworks-server.log`, resolve errors, and retry; call `/healthz` again and verify the version. If the log location is customized, use the actual configuration |
 | `cannot listen on :8800` | Another process occupies the port. First use `systemctl status gpuworks` to check whether it is the old service; do not simply install again |
-| `create /opt/gpuworks/server needs root` | Use an account with sudo permission, or use `--dir ~/gpuworks-server --no-systemd` |
-| Change the initial password or reset a forgotten password | Run `./gpuworks reset-password --password '<new-password>' --data '<data-directory>'`, replacing the password and data directory. Do not leave the actual password in command history or logs. The command does not automatically read `server.yaml`; do not omit the data directory. Log in again after the change to verify |
+| `create /opt/gpuworks/server needs root` | Use an account with sudo permission, or use `--dir ~/gpuworks/server --no-systemd` |
+| Change the initial password or reset a forgotten password | Run `./gpuworks reset-password --password '<new-password>'`, replacing the password; the data directory is read from the `server.yaml` next to the binary (or specify it with `--data`). Do not leave the actual password in command history or logs. Log in again after the change to verify |
 | Permission error when upgrading or resetting a password | The current terminal may not yet have `gpuworks` group permissions. Run `newgrp gpuworks` or log in again, then retry. If the data directory is still not writable, check its permissions |
 | The console reports that the channel has no version yet | Switch to a channel with a published release, or wait for a release on this channel and check again |
 | Release index signature verification fails | Check the server's outbound proxy, gateway, or login interception. As a temporary alternative, use a matching local upgrade package |

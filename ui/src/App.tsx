@@ -20,6 +20,8 @@ import InferenceTemplatesPage from "./pages/InferenceTemplatesPage";
 import InferenceTemplateDetailPage from "./pages/InferenceTemplateDetailPage";
 import DeployPage from "./pages/DeployPage";
 import DeploymentsPage from "./pages/DeploymentsPage";
+import SchedulingPage from "./pages/SchedulingPage";
+import BatchesPage from "./pages/BatchesPage";
 import EvaluationsPage from "./pages/EvaluationsPage";
 import EvaluationDetailPage from "./pages/evaluations/EvaluationDetailPage";
 import EvaluationComparePage from "./pages/evaluations/EvaluationComparePage";
@@ -48,6 +50,9 @@ import "./pages/inferenceTemplateOrganizationCatalog.css";
 import "./components/detail/detailDrawer.css";
 import "./pages/nodes/nodeDetail.css";
 import "./pages/dashboard.css";
+import "./pages/scheduling/scheduling.css";
+import "./pages/batches/batches.css";
+import "./pages/scheduling/heatmap.css";
 import "./pages/playground/playground.css";
 
 const { Header, Sider, Content } = Layout;
@@ -154,6 +159,8 @@ function AuthenticatedShell({ onLogout }: { onLogout: () => Promise<void> }) {
             <Route path="/ai-store/ai-model" element={<ModelsAlias />} />
             <Route path="/deploy" element={<DeployPage />} />
             <Route path="/deployments" element={<DeploymentsPage />} />
+            <Route path="/scheduling" element={<SchedulingPage />} />
+            <Route path="/batches" element={<BatchesPage />} />
             <Route path="/playground/*" element={<PlaygroundPage />} />
             <Route path="/evaluations" element={<EvaluationsPage />} />
 			<Route path="/evaluations/compare" element={<EvaluationComparePage />} />

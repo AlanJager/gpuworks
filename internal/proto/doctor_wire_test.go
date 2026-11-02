@@ -80,6 +80,28 @@ func TestDoctorDiskWithoutMountKeepsItsOldWireForm(t *testing.T) {
 	}
 }
 
+// The untraversable-ancestor finding keeps its code string and evidence keys
+// on the wire: the node page interpolates its sentence from them by name.
+func TestDoctorRuntimeStateUntraversableWireForm(t *testing.T) {
+	if DoctorRuntimeStateUntraversable != "runtime_state_untraversable" {
+		t.Fatalf("code = %q", DoctorRuntimeStateUntraversable)
+	}
+	const wire = `{"code":"runtime_state_untraversable","level":"error","probe":"search permission on every directory above /root/gpuworks for udocker (uid 1001, gid 1001)",` +
+		`"evidence":[{"name":"directory","value":"/root"},{"name":"mode","value":"0700"},{"name":"owner","value":"0:0"},{"name":"user","value":"udocker"},` +
+		`{"name":"state_dir","value":"/root/gpuworks"},{"name":"fix","value":"chmod o+x /root"}],"recheck":"namei -m /root/gpuworks"}`
+	var f DoctorFinding
+	if err := json.Unmarshal([]byte(wire), &f); err != nil {
+		t.Fatal(err)
+	}
+	if f.Code != DoctorRuntimeStateUntraversable || f.Level != DoctorLevelError || len(f.Evidence) != 6 || f.Evidence[5] != (DoctorField{Name: "fix", Value: "chmod o+x /root"}) {
+		t.Fatalf("finding = %+v", f)
+	}
+	out, err := json.Marshal(f)
+	if err != nil || string(out) != wire {
+		t.Fatalf("encoded = %s err=%v, want %s", out, err, wire)
+	}
+}
+
 // A pending runtime and an agent-own identity keep their wire form: pending
 // only when set, uid always (0 is root), no user for the agent's own.
 func TestDoctorRunIdentityWireForm(t *testing.T) {

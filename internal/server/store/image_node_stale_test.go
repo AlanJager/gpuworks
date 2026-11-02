@@ -35,7 +35,7 @@ func TestFailImageNodeIfUnchangedLeavesFinishedRowsAlone(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	changed, err := st.FailImageNodeIfUnchanged(image.ID, node.ID, time.Now(), "abandoned")
+	changed, err := st.FailImageNodeIfUnchanged(image.ID, node.ID, "", time.Now(), "abandoned")
 	if err != nil {
 		t.Fatal(err)
 	}

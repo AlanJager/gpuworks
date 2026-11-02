@@ -173,6 +173,10 @@ func (a *apiHandlers) installNode(w http.ResponseWriter, r *http.Request) {
 			}
 			return
 		}
+		if blocked, ok := untraversableInstallDirError(err); ok {
+			writeErr(w, http.StatusBadRequest, blocked)
+			return
+		}
 		writeErr(w, http.StatusBadRequest, err)
 		return
 	}
@@ -210,6 +214,20 @@ func (a *apiHandlers) installNode(w http.ResponseWriter, r *http.Request) {
 		provision.SSHInstallReport
 		NodeUUID string `json:"node_uuid"`
 	}{SSHInstallReport: report, NodeUUID: pending.UUID})
+}
+
+// untraversableInstallDirError is the stable error for an install the
+// installer stopped because a directory above the install directory is closed
+// to the dedicated runtime user ({dir}: that directory, {mode}, {install_dir},
+// {fix}: the command that opens it).
+// Its text is the check's own, with the repair.
+func untraversableInstallDirError(err error) (error, bool) {
+	var blocked *provision.InstallDirUntraversableError
+	if !errors.As(err, &blocked) {
+		return nil, false
+	}
+	return wrapProductError(ErrorNodeInstallDirUntraversable, blocked.Error(),
+		map[string]any{"dir": blocked.Ancestor, "mode": blocked.Mode, "install_dir": blocked.InstallDir, "fix": blocked.FixCommand()}, err), true
 }
 
 // installedSSHSecrets is what out-of-band recovery keeps after an install:

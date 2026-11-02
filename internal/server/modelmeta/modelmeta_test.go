@@ -64,12 +64,12 @@ func TestFetchReadsRepositoryDatesAndLogoHints(t *testing.T) {
 		{name: "huggingface", source: "huggingface", check: func(meta *Meta) bool {
 			return meta.OriginCreatedAt != nil && meta.OriginCreatedAt.Equal(time.Date(2025, 1, 2, 3, 4, 5, 0, time.UTC)) &&
 				meta.OriginUpdatedAt != nil && meta.OriginUpdatedAt.Equal(time.Date(2025, 2, 3, 4, 5, 6, 0, time.UTC)) &&
-				strings.HasSuffix(meta.LogoURL, "/avatars/acme.png")
+				meta.LogoURL == "https://cdn-avatars.example.test/uploads/acme.png"
 		}},
 		{name: "modelscope", source: "modelscope", check: func(meta *Meta) bool {
 			return meta.OriginCreatedAt != nil && meta.OriginCreatedAt.Equal(time.Unix(1746153600, 0).UTC()) &&
 				meta.OriginUpdatedAt != nil && meta.OriginUpdatedAt.Equal(time.Unix(1754006400, 0).UTC()) &&
-				strings.HasSuffix(meta.LogoURL, "/avatar.png")
+				meta.LogoURL == "http://example.test/avatar/acme-org.jpg"
 		}},
 	}
 	for _, tt := range testCases {
@@ -79,8 +79,12 @@ func TestFetchReadsRepositoryDatesAndLogoHints(t *testing.T) {
 				switch {
 				case r.URL.Path == "/api/models/acme/model":
 					_, _ = w.Write([]byte(`{"author":"acme","createdAt":"2025-01-02T03:04:05Z","lastModified":"2025-02-03T04:05:06Z"}`))
+				case r.URL.Path == "/api/organizations/acme/avatar":
+					_, _ = w.Write([]byte(`{"avatarUrl":"https://cdn-avatars.example.test/uploads/acme.png"}`))
 				case r.URL.Path == "/api/v1/models/acme/model":
-					_, _ = w.Write([]byte(`{"Code":200,"Data":{"Avatar":"http://example.test/avatar.png","CreatedTime":1746153600,"LastUpdatedTime":1754006400}}`))
+					// The model's own Avatar is the uploader's (often ModelScope's
+					// shared placeholder); the organization's is the logo.
+					_, _ = w.Write([]byte(`{"Code":200,"Data":{"Avatar":"http://example.test/avatar/placeholder.png","Organization":{"Avatar":"http://example.test/avatar/acme-org.jpg","Name":"acme","FullName":"Acme"},"CreatedTime":1746153600,"LastUpdatedTime":1754006400}}`))
 				case r.URL.Path == "/acme/model/resolve/main/config.json" || r.URL.Path == "/models/acme/model/resolve/main/config.json":
 					_, _ = w.Write([]byte(`{"model_type":"qwen3","architectures":["Qwen3ForCausalLM"],"torch_dtype":"bfloat16","max_position_embeddings":32768}`))
 				case r.URL.Path == "/acme/model/resolve/main/README.md" || r.URL.Path == "/models/acme/model/resolve/main/README.md":
@@ -165,5 +169,77 @@ func TestSafeMetadataURLRemovesCredentialsAndQuery(t *testing.T) {
 	got := safeMetadataURL("https://user:secret@example.test/model?token=secret#fragment")
 	if got != "https://example.test/model" {
 		t.Fatalf("safeMetadataURL = %q", got)
+	}
+}
+
+func TestModelScopeLogoFallsBackToTheModelAvatarWithoutAnOrganization(t *testing.T) {
+	for _, tt := range []struct{ name, body, want string }{
+		{name: "personal namespace", body: `{"Code":200,"Data":{"Avatar":"http://example.test/avatar/user.png","Organization":null}}`, want: "http://example.test/avatar/user.png"},
+		{name: "organization without avatar", body: `{"Code":200,"Data":{"Avatar":"http://example.test/avatar/user.png","Organization":{"Avatar":""}}}`, want: "http://example.test/avatar/user.png"},
+		{name: "neither", body: `{"Code":200,"Data":{"Avatar":""}}`, want: ""},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(tt.body))
+			}))
+			defer srv.Close()
+			meta, err := fetchRepositoryMeta(context.Background(), "modelscope", "someone/model", srv.URL, srv.Client())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if meta.LogoURL != tt.want {
+				t.Fatalf("LogoURL = %q, want %q", meta.LogoURL, tt.want)
+			}
+		})
+	}
+}
+
+func TestHuggingFaceLogoIsTheUploadedAvatarNeverTheGeneratedPlaceholder(t *testing.T) {
+	const upload = "https://cdn-avatars.example.test/uploads/someone.jpeg"
+	for _, tt := range []struct {
+		name         string
+		organization string // body of /api/organizations/someone/avatar; "" answers 404
+		user         string // body of /api/users/someone/avatar; "" answers 404
+		want         string
+	}{
+		{name: "organization upload", organization: `{"avatarUrl":"` + upload + `"}`, want: upload},
+		{name: "user upload", user: `{"avatarUrl":"` + upload + `"}`, want: upload},
+		{name: "user without an upload", user: `{"avatarUrl":"https://huggingface.co/avatars/0ad7d56ed9cf77c1049363a953d93883.svg"}`, want: ""},
+		{name: "relative upload", organization: `{"avatarUrl":"/uploads/someone.png"}`, want: "/uploads/someone.png"},
+		{name: "unknown author", want: ""},
+		{name: "malformed answer", organization: `{"avatarUrl":`, want: ""},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				switch {
+				case r.URL.Path == "/api/models/someone/model":
+					_, _ = w.Write([]byte(`{"author":"someone"}`))
+				case r.URL.Path == "/api/organizations/someone/avatar" && tt.organization != "":
+					_, _ = w.Write([]byte(tt.organization))
+				case r.URL.Path == "/api/users/someone/avatar" && tt.user != "":
+					_, _ = w.Write([]byte(tt.user))
+				case strings.HasPrefix(r.URL.Path, "/avatars/"):
+					// The hub's generated gradient, served for any name.
+					w.Header().Set("Content-Type", "image/svg+xml")
+					_, _ = w.Write([]byte(`<svg width="120" height="120"/>`))
+				default:
+					http.Error(w, `{"error":"Sorry, we can't find the page you are looking for."}`, http.StatusNotFound)
+				}
+			}))
+			defer srv.Close()
+			meta, err := fetchRepositoryMeta(context.Background(), "huggingface", "someone/model", srv.URL, srv.Client())
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := tt.want
+			if strings.HasPrefix(want, "/") {
+				want = srv.URL + want
+			}
+			if meta.LogoURL != want {
+				t.Fatalf("LogoURL = %q, want %q", meta.LogoURL, want)
+			}
+		})
 	}
 }

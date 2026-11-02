@@ -122,11 +122,11 @@ func numberAt(object map[string]json.RawMessage, path []string) (float64, bool) 
 		}
 		return numberAt(nested, path[1:])
 	}
-	var value float64
-	if json.Unmarshal(raw, &value) != nil {
+	var value *float64
+	if json.Unmarshal(raw, &value) != nil || value == nil {
 		return 0, false
 	}
-	return value, true
+	return *value, true
 }
 
 // jsonObject returns the JSON object b starts with, or false when b does not

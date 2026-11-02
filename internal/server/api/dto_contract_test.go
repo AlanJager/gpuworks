@@ -105,6 +105,7 @@ func TestFrontendDTOContractAcceptsLiteralDeploymentPayload(t *testing.T) {
 		"served_name": "qwen",
 		"desired_state": "active",
 		"runtime_state": "running",
+		"state": "running",
 		"sleepable": false,
 		"replicas": 1,
 		"nnodes": 2,
@@ -132,12 +133,13 @@ func TestFrontendDTOContractAcceptsLiteralDeploymentPayload(t *testing.T) {
 		"node_uuid":            "node-1",
 		"runtime_state":        "running",
 		"desired_state":        "active",
+		"state":                "running",
 		"nnodes":               float64(2),
 		"master_addr":          "10.0.0.1",
 		"master_port":          float64(29500),
 		"template_deviated":    false,
 	})
-	assertJSONKeysAbsent(t, object, "blueprint_deviated", "template_profile_key", "state")
+	assertJSONKeysAbsent(t, object, "blueprint_deviated", "template_profile_key")
 	assertJSONKeysAbsent(t, object, "ModelID", "NodeUUID", "NodeUUIDs", "DesiredState", "RuntimeState", "MasterAddr", "MasterPort")
 }
 
@@ -179,14 +181,20 @@ func TestEvaluateRequestSharesTheCreateBodyWireContract(t *testing.T) {
 
 func TestAPIKeyDTOContractCannotExposeSecret(t *testing.T) {
 	created := time.Date(2026, 8, 29, 8, 0, 0, 0, time.UTC)
-	object := marshalJSONObject(t, dto.APIKey{Name: "automation", Prefix: "gw_abcd", Created: created})
+	object := marshalJSONObject(t, dto.APIKey{Name: "automation", Prefix: "gw_abcd", Created: created, AllDeployments: true, Deployments: []dto.APIKeyDeployment{}})
 	want := map[string]any{
-		"name":       "automation",
-		"prefix":     "gw_abcd",
-		"created_at": "2026-08-29T08:00:00Z",
+		"name":            "automation",
+		"prefix":          "gw_abcd",
+		"created_at":      "2026-08-29T08:00:00Z",
+		"all_deployments": true,
+		"deployments":     []any{},
 	}
 	if !reflect.DeepEqual(object, want) {
 		t.Fatalf("API key response contract=%#v, want exactly %#v", object, want)
+	}
+	scoped := marshalJSONObject(t, dto.APIKey{Name: "a", Prefix: "gw_a", Created: created, Deployments: []dto.APIKeyDeployment{{ID: 3, Name: "qwen", ServedName: "qwen-chat"}}})
+	if !reflect.DeepEqual(scoped["deployments"], []any{map[string]any{"id": float64(3), "name": "qwen", "served_name": "qwen-chat"}}) || scoped["all_deployments"] != false {
+		t.Fatalf("scoped key contract=%#v", scoped)
 	}
 }
 
@@ -334,4 +342,54 @@ func TestNodeWireCarriesTheRuntimePassedOver(t *testing.T) {
 	}
 	assertJSONKeysAbsent(t, marshalJSONObject(t, dto.Node{UUID: "node-1"}),
 		"runtime_fallback_from", "runtime_fallback_reason", "runtime_fallback_plugin")
+}
+
+// The sleep keys answer "is this deployment asleep?", which is the question
+// this contract exists for, so their wire shape is pinned rather than left to
+// whichever fixture happens to run. `state` is always present and never empty
+// — a client reading it must not fall back to runtime_state for a deployment
+// the server already classified. `asleep_replicas` and `sleep_level` are
+// omitted when there is no sleep to report, so a zero on the wire always means
+// a counted zero and never "the server forgot the field".
+func TestDeploymentSleepKeysWireContract(t *testing.T) {
+	awake := marshalJSONObject(t, dto.Deployment{RuntimeState: "running", State: "running"})
+	if got, ok := awake["state"]; !ok || got != "running" {
+		t.Fatalf("state = %#v (present %v), want the literal \"running\"", got, ok)
+	}
+	assertJSONKeysAbsent(t, awake, "asleep_replicas", "sleep_level")
+
+	// A deployment that is asleep carries both, and asleep_replicas counts
+	// replicas rather than being a flag.
+	asleep := marshalJSONObject(t, dto.Deployment{RuntimeState: "running", State: "asleep", AsleepReplicas: 2, SleepLevel: 1})
+	if got := asleep["state"]; got != "asleep" {
+		t.Fatalf("state = %#v, want \"asleep\"", got)
+	}
+	if got := asleep["asleep_replicas"]; got != float64(2) {
+		t.Fatalf("asleep_replicas = %#v, want 2", got)
+	}
+	if got := asleep["sleep_level"]; got != float64(1) {
+		t.Fatalf("sleep_level = %#v, want 1", got)
+	}
+
+	// A partly-asleep deployment keeps state "running" and still reports the
+	// number that sleeps, which is the case the whole ticket is about: the row
+	// reads running while some replicas sleep behind it.
+	partial := marshalJSONObject(t, dto.Deployment{RuntimeState: "running", State: "running", AsleepReplicas: 1})
+	if got := partial["asleep_replicas"]; got != float64(1) {
+		t.Fatalf("asleep_replicas = %#v, want 1 on a partly asleep deployment", got)
+	}
+
+	// The list row carries the same three keys: the row is where the operator
+	// reads the state, and a list-only shape that dropped them would leave the
+	// table falling back to runtime_state.
+	row := marshalJSONObject(t, dto.DeploymentListItem{RuntimeState: "running", State: "asleep", AsleepReplicas: 1, SleepLevel: 1})
+	if got := row["state"]; got != "asleep" {
+		t.Fatalf("list row state = %#v, want \"asleep\"", got)
+	}
+	if got := row["asleep_replicas"]; got != float64(1) {
+		t.Fatalf("list row asleep_replicas = %#v, want 1", got)
+	}
+	if got := row["sleep_level"]; got != float64(1) {
+		t.Fatalf("list row sleep_level = %#v, want 1", got)
+	}
 }

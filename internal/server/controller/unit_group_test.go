@@ -264,9 +264,10 @@ func TestMultiNodeOfflineRankGetsGraceThenFailsItsGeneration(t *testing.T) {
 	}
 
 	// With the push through, the leader is the spent attempt and its
-	// container is removed; the offline rank gets no push, and its row is
-	// dropped (its agent removes the container on reconnect), so nothing
-	// waits on an acknowledgement that cannot come.
+	// container is removed; the offline rank gets no push. Its row waits,
+	// removing, for its node without holding anything up: an agent that
+	// restarted meanwhile no longer knows the container, so the removal is
+	// pushed when the node is back.
 	hub.pushErr = nil
 	for pass := 0; pass < 2; pass++ {
 		if err := c.reconcileDeployment(context.Background(), dep.ID); err != nil {
@@ -274,7 +275,17 @@ func TestMultiNodeOfflineRankGetsGraceThenFailsItsGeneration(t *testing.T) {
 		}
 	}
 	rows, _ := st.InstancesForDeployment(dep.ID)
-	if len(rows) != 1 || rows[0].NodeID != nodes[0].ID || rows[0].State != proto.InstFailed || !strings.Contains(rows[0].Message, "offline") {
+	var leader, offline *store.Instance
+	for i := range rows {
+		switch rows[i].NodeID {
+		case nodes[0].ID:
+			leader = &rows[i]
+		case nodes[1].ID:
+			offline = &rows[i]
+		}
+	}
+	if len(rows) != 2 || leader == nil || leader.State != proto.InstFailed || !strings.Contains(leader.Message, "offline") ||
+		offline == nil || offline.State != proto.InstRemoving {
 		t.Fatalf("after grace = %+v", rows)
 	}
 	for _, inst := range initial {
@@ -284,6 +295,25 @@ func TestMultiNodeOfflineRankGetsGraceThenFailsItsGeneration(t *testing.T) {
 		if inst.NodeID == nodes[1].ID && removedByHub(hub, nodes[1].UUID, inst.UUID) {
 			t.Fatalf("offline rank %s unexpectedly received a push", inst.UUID)
 		}
+	}
+
+	// The node comes back: the removal is pushed to it, and its confirmation
+	// ends the row.
+	hub.online[nodes[1].UUID] = true
+	if err := c.reconcileDeployment(context.Background(), dep.ID); err != nil {
+		t.Fatal(err)
+	}
+	if !removedByHub(hub, nodes[1].UUID, offline.UUID) {
+		t.Fatalf("the returning node was not asked to remove %s", offline.UUID)
+	}
+	if err := st.UpdateInstanceStatus(proto.InstanceStatus{UUID: offline.UUID, State: proto.InstStopped}); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.reconcileDeployment(context.Background(), dep.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.InstanceByUUID(offline.UUID); err == nil {
+		t.Fatalf("the confirmed removal %s kept its row", offline.UUID)
 	}
 }
 

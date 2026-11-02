@@ -26,10 +26,16 @@ For external endpoints, prepare the address, model name, and required API key. S
    Multi-node followers are not independent service entry points, and a direct connection to a single PD instance does not prove that P and D work together correctly.
 3. In **Configure Load**, select a **Dataset** and enter the applicable input / output lengths, concurrency list or arrival rates, and requests per point.
    To import a dataset, first upload JSONL. Multi-turn conversations send requests in session order, and the output length is an upper limit.
-   The Agentic dataset requires a tokenizer. For managed models, select **Automatic**, specify a model repository, or upload `tokenizer.json`.
+   Random token-length and Agentic datasets require a loadable tokenizer. For managed models, select **Automatic**, specify a model repository, or upload `tokenizer.json`.
    External endpoints cannot automatically read the tokenizer on the target machine, so you must specify a source.
 4. Review warmup, output policy, experience thresholds, and per-request details in **Advanced Settings**. To view individual timelines in the report, enable **Keep per-request details** and set the capacity.
-   `estimate` generates approximate lengths. With a tokenizer, `exact` samples from the vocabulary but still does not guarantee that server-reported usage matches local counts; the chat template also adds input.
+   If every warmup request fails transiently (network interruption, 408/429, or recoverable 5xx),
+   recovery waits up to 6 minutes, sending one probe every 5 seconds. Authentication and parameter errors stop immediately.
+   Cancellation stops both waiting and in-flight requests. Warmup attempts and retries never count as measured points,
+   throughput, or latency. Reports retain attempt counts, HTTP statuses, stages, and diagnostics even before any measured
+   point exists; warmup diagnostics do not retain request or reply bodies.
+
+   Random token-length and Agentic workloads fail before warmup or measured inference if their tokenizer is missing or cannot be loaded; they no longer fall back to character estimates. Natural corpus and imported datasets can omit the tokenizer, with estimated local counts. `exact` means sampling from the tokenizer vocabulary and still does not guarantee that server-reported usage matches local counts; the chat template also adds input. Endpoint-reported usage and local estimates are retained separately.
 5. Click **Start Evaluation** and view progress, errors, and results for each point in the details. If a warning says that an evaluation is already running on the target or load origin, assess whether resource contention affects the comparison before deciding to wait or continue.
    You can cancel long-running tasks; completed points are retained. A node can take over a task after reconnecting. Successful creation or a finished Run does not mean that every request succeeded.
 6. When the run ends, first check counts, failure reasons, and actual lengths in **Request and session evidence**, then review latency, throughput, and qualifying points as described below, and finally export the report.

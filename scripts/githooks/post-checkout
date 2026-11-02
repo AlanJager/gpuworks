@@ -1,0 +1,26 @@
+#!/bin/sh
+# When `git worktree add` creates a linked worktree and the main checkout has
+# the private plans repository checked out next to the code, check it out in
+# the new worktree too, as a detached worktree of that checkout (objects are
+# shared). Detached, not a symlink: parallel worktrees sharing one checkout
+# would switch each other's branches. Anything missing - no plans checkout, no
+# network, an existing directory - is skipped silently; the hook never fails
+# the checkout. Installed by `make githooks`.
+
+[ "$1" = "0000000000000000000000000000000000000000" ] || exit 0
+
+git_dir=$(git rev-parse --absolute-git-dir 2>/dev/null) || exit 0
+common_dir=$(cd "$(git rev-parse --git-common-dir 2>/dev/null)" 2>/dev/null && pwd) || exit 0
+[ "$git_dir" != "$common_dir" ] || exit 0 # a clone, not a linked worktree
+
+plans="$(dirname "$common_dir")/artifacts"
+top=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+[ -e "$plans/.git" ] || exit 0
+[ -e "$top/artifacts" ] && exit 0
+
+(
+  unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE
+  timeout 20 git -C "$plans" fetch -q origin >/dev/null 2>&1
+  git -C "$plans" worktree add -q --detach "$top/artifacts" origin/master >/dev/null 2>&1
+) || true
+exit 0

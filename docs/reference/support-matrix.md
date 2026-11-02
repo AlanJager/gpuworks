@@ -17,15 +17,35 @@ dGPU 不可用时，节点仍可使用整卡部署；平台不会把不满足 dG
 昇腾实测组合、CANN 和 runtime 细节见[昇腾矩阵](ascend-support-matrix.md)；PPU 未完成项见[开发台账](../dev/ledgers/ppu-support-gaps.md)。
 
 
+## dGPU 能力对比
+
+| 后端 | 显存限制 | 算力语义 | 修改显存配额 | 行为探针 |
+|---|---|---|---|---|
+| NVIDIA HAMi-core | 硬显存上限 | 平台不开放算力上限；CUDA graph、cuBLAS 不受 HAMi 发射限流约束 | 支持安全在线调整；引擎可能仍需重启才能利用新额度 | 依赖内嵌资产校验与准入检查，豁免行为探针 |
+| 昇腾 vCANN | 显存配额，依赖宿主 device-share 权限 | 受 vCANN 与宿主组合影响，不据此承诺固定吞吐比例 | 重启实例生效 | 必须逐卡通过 |
+| PPU HGGC | 显存配额 | 繁忙时加权 QoS，空闲时可借用余量；非硬 SM 分区 | 重启实例生效 | 必须逐卡通过；当前仅 Docker |
+| 海光 Z100 / K100_AI 原生 vdev（实验性） | 原生 vdev 显存配额；每实例一张卡 | CU 随显存比例分配，不支持独立设置算力配额 | 重启实例生效，并按新显存配额重建 vdev | 必须逐卡通过；仅 x86_64 + Docker |
+
+在线调整的安全条件与待重启原因见[调整 dGPU 配额](../how-to/dgpu.md#调整-dgpu-配额)。
+表中能力不代表任意推理镜像均已验证；节点是否可用仍以该卡的 `status` / `reason` 为准。
+
 ## PPU 设备身份与 dGPU 探针
 
-PPU 注入使用 `ppu-smi` 返回并经设备节点核对的完整 UUID，按调度顺序写入 `CUDA_VISIBLE_DEVICES`。HGGC 将这些 UUID 映射为计算设备 `0..N-1`；Docker 的可见设备列表与 runveil 的宿主设备列表不必有相同编号。HGML 配额查询按同一 UUID 顺序定位配额与显存账本，不把 HGML 的宿主编号直接当作计算设备编号。
+PPU 使用 `ppu-smi` 查询并经设备节点校验的身份，按选卡顺序分别注入两份数据：`CUDA_VISIBLE_DEVICES` 为计算程序使用的数字设备编号，`GPUWORKS_PPU_DEVICE_UUIDS` 为探针和 HGML 配额库使用的完整 UUID 列表。Docker/nerdctl 的数字编号来自过滤后的设备视图，udocker/runveil 使用宿主编号；两份列表的顺序一致。vLLM 和 SGLang 共用数字选择，不增加引擎判断。HGML 复用 UUID 顺序定位配额与显存账本；新 UUID 变量缺省时兼容旧 Agent 的设备选择变量。
 
 内嵌探针 `gpuworks/partition-probe:v4` 同时检查目标 UUID 和显存配额。缺失、无效、重复或不可查询的身份，以及只有其他卡显示配额的情况都不能通过。升级 agent 后需重新创建已有工作负载，新的设备选择与切分库才会生效；runveil 的设备可见性仍不等于内核设备隔离。
+
+## 海光整卡驱动库
+
+海光整卡工作负载通过结构化挂载将宿主 `/opt/hyhal` 传入容器，Docker、nerdctl 与 udocker/runveil 共用该挂载；例如 DTK 26.04 的 PyTorch 需要其中的 `librocm_smi64.so.2`。节点缺少该目录时，设备注入会提前报错。容器继续使用镜像自带的 DTK 与库搜索路径，升级 Agent 后需重新创建工作负载以应用挂载修复。挂载声明为只读；PRoot 的绑定沿用宿主运行账户权限，不提供内核级只读隔离。
 
 ## 海光 Z100 / K100_AI dGPU
 
 Z100 和明确识别为 `K100AI` 的 K100_AI 使用 `hygon-dgpu` 后端；`K100_AI`、`K100 AI` 是同一 SKU 的别名。只报告系列 `K100` 时仍不能据此启用 dGPU。agent 通过 `hy-smi virtual -d N --show-device-info` 读取所选物理卡的 CU 总数，再按显存比例向上取整分配 CU；查询失败或结果不完整时拒绝创建 vdev，不回退到固定 CU 数。启用前，在节点构建并安装可选的 `gpuworks-hygon-vdev-helper`（构建步骤见源码的 `build/runtime-assets/hygon-vdev-helper/README.md`），并提供宿主 DTK、HYHAL 和 DCGM 库。agent 本身仍是静态二进制。仅 x86_64 + Docker 路径受支持；其他型号不会自动获得此能力。
+
+每个 dGPU 实例只能使用一张受支持的海光卡。请求显存向上取整到 MiB 后必须大于零且严格小于该卡物理显存；CU 数按 `ceil(配额 MiB × 物理卡 CU 总数 / 物理显存 MiB)` 分配，不提供独立算力配额，也不承诺同等比例的推理吞吐。修改配额后需重启实例，释放旧 vdev 后按新配额重新创建。
+
+当前兼容性配置列出 DTK 26.04.x × x86_64，但该配置尚未标记为整套真机验证通过，版本信息仅作兼容性提示，不能替代逐卡探针。
 
 K100_AI 的容器配置使用与原生 ID 一致的 `/etc/vdev/docker/vdev<ID>.conf`，不同时暴露固定编号别名；Z100 保留已验证的 `vdev0.conf` 路径。轻量探针使用私有 `/var/log/hylog` tmpfs，并按宿主实际存在的 SONAME 补挂 tinfo5/6。
 

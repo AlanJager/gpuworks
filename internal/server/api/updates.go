@@ -92,7 +92,7 @@ func (a *apiHandlers) getUpdates(w http.ResponseWriter, r *http.Request) {
 		ChannelEditable: editable,
 		AutoCheck:       auto,
 		Sources:         []dto.UpdateSourceStatus{},
-		Server:          dto.ServerUpdate{Current: version.Version},
+		Server:          dto.ServerUpdate{Current: version.Version, CurrentBuild: serverBuildInfo(version.Version, nil)},
 	}
 	blocker := a.serverSettings().SelfUpgradeBlocker()
 	status.Server.SelfUpgrade, status.Server.SelfUpgradeBlocker = blocker == "", blocker
@@ -160,6 +160,7 @@ func (a *apiHandlers) getUpdates(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, status)
 		return
 	}
+	status.Server.CurrentBuild = serverBuildInfo(version.Version, fetched)
 	index := fetched.Index
 	status.Available, status.Source = true, fetched.Source
 	status.Server.Latest, status.Server.BuiltAt = index.Server.ReleaseID, index.Server.BuiltAt
@@ -317,6 +318,21 @@ func (a *apiHandlers) upgradeServerFromUpload(w http.ResponseWriter, r *http.Req
 }
 
 func (a *apiHandlers) upgradeServer(w http.ResponseWriter, r *http.Request, archive io.Reader) {
+	if a.d.AgentUpgrades.Service != nil {
+		finish, err := a.d.AgentUpgrades.Service.BeginServerUpgrade()
+		if err != nil {
+			writeAgentUpgradeError(w, err)
+			return
+		}
+		accepted := false
+		defer func() { finish(accepted) }()
+		a.upgradeServerWithAgentGuard(w, r, archive, &accepted)
+		return
+	}
+	a.upgradeServerWithAgentGuard(w, r, archive, nil)
+}
+
+func (a *apiHandlers) upgradeServerWithAgentGuard(w http.ResponseWriter, r *http.Request, archive io.Reader, accepted *bool) {
 	by := ""
 	if claims, ok := a.claimsFromRequest(r); ok {
 		by = claims.Username
@@ -325,6 +341,9 @@ func (a *apiHandlers) upgradeServer(w http.ResponseWriter, r *http.Request, arch
 	if err != nil {
 		writeServerSettingsError(w, err)
 		return
+	}
+	if accepted != nil {
+		*accepted = true
 	}
 	writeJSON(w, http.StatusAccepted, started)
 }

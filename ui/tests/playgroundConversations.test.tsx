@@ -114,7 +114,7 @@ test("over HTTP/1.1 a send beyond four replies is refused and explained", async 
   await screen.findByText(fill(chat.generatingCount, { running: 3, limit: 4 }));
   await user.click(within(sidebar()).getByRole("button", { name: new RegExp(list.new) }));
   await sendPrompt(user, "three more");
-  const alert = await screen.findByRole("alert");
+  const alert = (await screen.findByText(fill(chat.limitTitle, { limit: 4 }))).closest('[role="alert"]')!;
   assert.match(alert.textContent ?? "", new RegExp(fill(chat.limitTitle, { limit: 4 }).replace(/[()]/g, "\\$&")));
   assert.match(alert.textContent ?? "", new RegExp(fill(chat.limitHttp1, { limit: 4, multiplexed: 12 }).replace(/[()]/g, "\\$&")));
   assert.equal(bodies.length, 3);
@@ -130,7 +130,7 @@ test("over HTTP/2 the refusal only asks to wait", async () => {
   await sendPrompt(user, "one");
   await user.click(within(sidebar()).getByRole("button", { name: new RegExp(list.new) }));
   await sendPrompt(user, "two");
-  const alert = await screen.findByRole("alert");
+  const alert = (await screen.findByText(fill(chat.limitTitle, { limit: 1 }))).closest('[role="alert"]')!;
   assert.match(alert.textContent ?? "", new RegExp(chat.limitWait));
   stream.end();
 });

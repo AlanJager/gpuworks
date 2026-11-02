@@ -93,6 +93,32 @@ func TestAcceleratorNetworkInfersCardsAndAHostBootstrap(t *testing.T) {
 	}
 }
 
+func TestAcceleratorHCCSNetworkUsesHCCSVNICRails(t *testing.T) {
+	inv := decodeInventory(t, huawei31Inventory)
+	for i := range inv.AcceleratorPorts {
+		inv.AcceleratorPorts[i].HCCSIP = "192.9.2." + strconv.Itoa(199-i*2)
+		inv.AcceleratorPorts[i].HCCSNetmask = "255.0.0.0"
+		inv.AcceleratorPorts[i].HCCSState = "UP"
+	}
+	network := Network{ID: 7, Name: "hccs", Type: TypeAcceleratorHCCS, Roles: []string{RoleCompute}}
+	out := Resolve(Inputs{
+		Nodes:       []Node{{ID: 1, Name: "a3", Inventory: inv}},
+		Networks:    []Network{network},
+		Attachments: []Attachment{{ID: 1, NetworkID: 7, NodeID: 1}},
+	})
+	r, ok := out.For(1, RoleCompute)
+	if !ok || !reflect.DeepEqual(r.HCAs, []string{"npu3", "npu4"}) {
+		t.Fatalf("resolved = %#v, ok %v", r, ok)
+	}
+	if r.LinkLayer != LinkLayerHCCS || r.Interface != "br_ens3_36" || r.IP == "" {
+		t.Fatalf("resolved network = %#v", r)
+	}
+	rails := Rails(inv, TypeAcceleratorHCCS, r.HCAs)
+	if rails[0].IP() != "192.9.2.199" || rails[0].LinkLayer != LinkLayerHCCS {
+		t.Fatalf("HCCS rails = %#v", rails)
+	}
+}
+
 func TestAcceleratorNetworkBootstrapFollowsTheCIDROrAPin(t *testing.T) {
 	// A CIDR picks the bootstrap among the host's interfaces.
 	a, b := acceleratorResolve(t, Network{CIDR: "100.64.29.208/29"})
@@ -196,13 +222,14 @@ func TestAcceleratorRailsDescribeTheCard(t *testing.T) {
 }
 
 func TestTypeRoles(t *testing.T) {
-	if !reflect.DeepEqual(Types, []string{"host_ethernet", "host_rdma", "accelerator_rdma"}) {
+	if !reflect.DeepEqual(Types, []string{"host_ethernet", "host_rdma", "accelerator_rdma", "accelerator_hccs"}) {
 		t.Fatalf("types = %v", Types)
 	}
 	for typ, want := range map[string][]string{
 		TypeHostEthernet:    {RoleStorageSync, RoleCompute, RoleServing},
 		TypeHostRDMA:        {RoleStorageSync, RoleCompute, RoleServing},
 		TypeAcceleratorRDMA: {RoleCompute},
+		TypeAcceleratorHCCS: {RoleCompute},
 	} {
 		if got := TypeRoles(typ); !reflect.DeepEqual(got, want) {
 			t.Fatalf("%s roles = %v, want %v", typ, got, want)

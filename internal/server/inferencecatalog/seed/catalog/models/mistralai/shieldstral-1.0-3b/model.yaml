@@ -21,7 +21,7 @@ specs:
         revision: 003ec7e2b0bab5f0e6307edbaf186fa5822b76f5
     - modelscope:
         repo_id: mistralai/Shieldstral-1.0-3B
-        revision: 003ec7e2b0bab5f0e6307edbaf186fa5822b76f5
+        revision: 97ce4caee72d064e5bc25437cd223c15234e1baa
   weight_bytes: 15396476056
   gpus:
     vendor: ppu

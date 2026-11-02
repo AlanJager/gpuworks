@@ -5,20 +5,23 @@ package l4
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 	"testing"
 	"time"
 )
 
-// The same pool acceptance case can explicitly select runveil. Its fixture is
-// an already-loaded private udocker cache; copying only repos/layers avoids
-// importing old containers, credentials, runtime assets or diagnostic hooks.
+// A pool member without docker/nerdctl runs the same acceptance case under
+// runveil (see ascendPoolRuntimeProbe). Its fixture is an already-loaded
+// private udocker store: the host's ascendRunveilCachePath. Linking only
+// repos/layers into the temporary agent's state avoids importing old
+// containers, credentials, runtime assets or diagnostic hooks, and costs no
+// disk for the multi-gigabyte layers. The run root shares the cache's
+// filesystem (ascendPoolRemoteRoot), so the links never cross devices.
 func stageAscendRunveilCache(t *testing.T, node *ascendPoolNode) {
 	t.Helper()
-	source := os.Getenv("GPUWORKS_ASCEND_L4_RUNVEIL_CACHE")
-	if !strings.HasPrefix(source, "/tmp/gpuworks-") || strings.Contains(source, "..") {
-		t.Fatal("runveil cache fixture must be an isolated /tmp/gpuworks-* directory")
+	source := ascendRunveilCachePath()
+	if err := validateAscendRunveilCache(source); err != nil {
+		t.Fatal(err)
 	}
 	destination := node.remoteDir + "/state/udocker"
 	command := fmt.Sprintf("mkdir -p %s; cp -al %s/repos %s/layers %s/", shellQuoteL4(destination), shellQuoteL4(source), shellQuoteL4(source), shellQuoteL4(destination))

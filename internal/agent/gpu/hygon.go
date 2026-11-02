@@ -101,6 +101,8 @@ func (p *HygonProber) Probe(ctx context.Context) ([]proto.GPUInfo, error) {
 	})
 	for i := range gpus {
 		gpus[i].DriverVersion = driver
+		code, evidence := hygonHealth(gpus[i].PCIeBDF, p.read)
+		SetCardFinding(&gpus[i], code, evidence)
 	}
 
 	p.mu.Lock()
@@ -164,15 +166,22 @@ func (p *HygonProber) Topology(ctx context.Context) string {
 
 func (p *HygonProber) Metrics(ctx context.Context) ([]Metric, error) {
 	out, err := p.run(ctx, "--showuse", "--showmeminfo", "vram", "--showtemp", "--showpower")
-	if err != nil {
-		// Memory fields are present in every real K100 capture and remain useful
-		// on hy-smi releases that do not implement the combined usage query.
-		out, err = p.run(ctx, "--showmeminfo", "vram")
-		if err != nil {
-			return nil, err
-		}
+	if err == nil {
+		return p.parseMetrics(out, ""), nil
 	}
-	return p.parseMetrics(out), nil
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, ctxErr
+	}
+	// K100_AI hy-smi releases reject the combined query, so utilization,
+	// temperature and power would otherwise never be sampled. Memory fields
+	// stay on the proven --showmeminfo vram query; the rest come from the
+	// bare overview table every hy-smi prints.
+	memOut, memErr := p.run(ctx, "--showmeminfo", "vram")
+	overview, overviewErr := p.run(ctx)
+	if memErr != nil && overviewErr != nil {
+		return nil, errors.Join(err, memErr, overviewErr)
+	}
+	return p.parseMetrics(memOut, overview), nil
 }
 
 func (p *HygonProber) RuntimeInjection(indexes []int) RuntimeInjection {
@@ -229,7 +238,6 @@ func (p *HygonProber) RuntimeInjection(indexes []int) RuntimeInjection {
 			devices = append(devices, path)
 		}
 	}
-	args = append(args, "--volume", "/opt/hyhal:/opt/hyhal:ro")
 	// Docker resolves named supplementary groups inside the image. Minimal
 	// probe images have no group database, so pass host device GIDs as numbers.
 	groups := map[uint32]bool{}
@@ -261,12 +269,22 @@ func (p *HygonProber) RuntimeInjection(indexes []int) RuntimeInjection {
 			"HIP_VISIBLE_DEVICES":   visible,
 		},
 		DockerArgs: args,
+		// Driver libraries are required by every runtime. PRoot launchers do
+		// not interpret Docker volume flags; structured mounts reach them too.
+		Mounts: []RuntimeMount{{Source: "/opt/hyhal", Target: "/opt/hyhal", ReadOnly: true}},
 	}
 }
 
-func (p *HygonProber) parseMetrics(out string) []Metric {
-	records := parseHygonFields(out)
+func (p *HygonProber) parseMetrics(fieldsOut, overview string) []Metric {
+	records := parseHygonFields(fieldsOut)
+	overviewRows := parseHygonOverview(overview)
 	indexes := sortedHygonIndexes(records)
+	for index := range overviewRows {
+		if _, ok := records[index]; !ok {
+			indexes = append(indexes, index)
+		}
+	}
+	sort.Ints(indexes)
 	metrics := make([]Metric, 0, len(indexes))
 	for _, index := range indexes {
 		fields := records[index]
@@ -284,12 +302,21 @@ func (p *HygonProber) parseMetrics(out string) []Metric {
 				addHygonMetric(m.Values, "gpuworks_gpu_memory_used_bytes", value, 1024*1024)
 			case strings.Contains(key, "vram total memory"):
 				addHygonMetric(m.Values, "gpuworks_gpu_memory_total_bytes", value, 1024*1024)
-			case strings.Contains(key, "gpu use") || strings.Contains(key, "gpu utilization"):
+			case strings.Contains(key, "gpu use") || strings.Contains(key, "hcu use") || strings.Contains(key, "gpu utilization"):
 				addHygonMetric(m.Values, "gpuworks_gpu_utilization", value, 1)
 			case strings.Contains(key, "temperature"):
 				addHygonMetric(m.Values, "gpuworks_gpu_temperature_celsius", value, 1)
 			case strings.Contains(key, "average graphics package power") || key == "power":
 				addHygonMetric(m.Values, "gpuworks_gpu_power_watts", value, 1)
+			}
+		}
+		// The detailed query's fields win; the overview only fills what the
+		// meminfo-only fallback cannot answer. Cells hy-smi reported as N/A
+		// never reach this map, so unsupported telemetry stays unknown
+		// instead of reading as zero.
+		for name, value := range overviewRows[index] {
+			if _, ok := m.Values[name]; !ok {
+				m.Values[name] = value
 			}
 		}
 		if len(m.Values) > 0 {

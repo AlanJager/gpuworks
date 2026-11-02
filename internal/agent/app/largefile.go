@@ -21,6 +21,10 @@ func (n *NodeRuntime) StreamLargeFile(ctx context.Context, path string, w io.Wri
 	if !filepath.IsAbs(path) {
 		return fmt.Errorf("large file read requires an absolute path: %s", path)
 	}
+	path, err := n.host.File(path)
+	if err != nil {
+		return err
+	}
 	info, err := os.Stat(path)
 	if err != nil {
 		return err

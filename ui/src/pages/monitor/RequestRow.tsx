@@ -33,6 +33,7 @@ export function segmentLabel(kind: SegmentKind, pd: boolean, t: TFunction): stri
 export function callerName(r: MonitorRequest, t: TFunction): string {
   if (r.api_key_name) return r.api_key_name;
   if (r.source === "playground") return t("requests.playground");
+  if (r.source === "batch" && !r.api_key_id) return t("requests.batch");
   return r.api_key_id ? t("requests.deletedKey", { id: r.api_key_id }) : t("requests.noKey");
 }
 
@@ -121,23 +122,25 @@ export function RequestDetailLines({ r, replica }: { r: MonitorRequest; replica:
   }
   if (r.pd?.fallback) lines.push(t("requests.detail.pdFallback", { reason: r.pd.fallback }));
   if (at("preprocess") > 0) lines.push(t("requests.detail.preprocess", { time: formatMS(at("preprocess")) }));
-  if (at("queue") > 0 || at("prefill") > 0) {
-    if (r.pd) {
-      // The decode instance's queue holds the wait for the KV; its prefill
-      // recomputes the last token, so no prefill speed.
-      lines.push(t("requests.detail.queuePD", { time: formatMS(r.engine_queue_ms ?? 0) }));
-      lines.push(t("requests.detail.prefillPD", { time: formatMS(r.engine_prefill_ms ?? 0) }));
-    } else {
-      lines.push(t("requests.detail.queue", { time: formatMS(r.engine_queue_ms ?? 0) }));
-      lines.push(
-        speeds.prefillTokS != null
-          ? t("requests.detail.prefillSpeed", { time: formatMS(r.engine_prefill_ms ?? 0), speed: Math.round(speeds.prefillTokS) })
-          : t("requests.detail.prefill", { time: formatMS(r.engine_prefill_ms ?? 0) }),
-      );
+  if (r.engine_queue_ms != null || r.engine_prefill_ms != null) {
+    if (r.engine_queue_ms != null) {
+      lines.push(t(r.pd ? "requests.detail.queuePD" : "requests.detail.queue", { time: formatMS(r.engine_queue_ms) }));
+    }
+    if (r.engine_prefill_ms != null) {
+      if (r.pd) {
+        lines.push(t("requests.detail.prefillPD", { time: formatMS(r.engine_prefill_ms) }));
+      } else {
+        lines.push(
+          speeds.prefillTokS != null
+            ? t("requests.detail.prefillSpeed", { time: formatMS(r.engine_prefill_ms), speed: Math.round(speeds.prefillTokS) })
+            : t("requests.detail.prefill", { time: formatMS(r.engine_prefill_ms) }),
+        );
+      }
     }
   } else if (phases.firstTokenMS != null || r.phase === "waiting") {
     lines.push(t(r.phase === "waiting" ? "requests.detail.waitingNow" : "requests.detail.firstToken", { time: formatMS(r.phase === "waiting" ? phases.totalMS : (phases.firstTokenMS ?? 0)) }));
   }
+  if (r.phase === "done" && r.engine_queue_ms == null) lines.push(t("requests.detail.queueUnavailable"));
   if (at("thinking") > 0) lines.push(t("requests.detail.thinking", { time: formatMS(at("thinking")) }));
   if (at("answering") > 0) lines.push(t("requests.detail.answering", { time: formatMS(at("answering")) }));
   if (r.phase === "done") {

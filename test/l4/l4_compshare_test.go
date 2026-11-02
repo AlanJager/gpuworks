@@ -16,11 +16,6 @@ import (
 	"gpuworks.ai/gpuworks/internal/testenv/cloudprovider"
 )
 
-// The externally maintained golden image currently requires a system disk
-// larger than 100 GiB. Keep every CompShare acceptance shape compatible with
-// both that image and the ordinary fallback image.
-const compshareAcceptanceDiskGB = 160
-
 // TestCompshareNodeOnboarding proves a live one-GPU VM can be rented,
 // connected and observed accurately. Selection walks compshareGPUOrder,
 // cheapest first; exact request spelling for all models is covered offline.
@@ -125,7 +120,11 @@ func TestCompshareDirectServerDialOnboarding(t *testing.T) {
 // forwarded address, not at the SSH entrance. A VM, which has a public
 // address, is covered by TestCompshareDirectServerDialOnboarding.
 //
-// go test -tags=cloudgpu,compshare -run '^TestCompshareServerDialNodeOnboardingContainer$' -timeout=55m ./test/l4
+// Stock-out handling: when every card type is refused for lack of supply the
+// whole walk is retried every 5 minutes for COMPSHARE_STOCK_WAIT (default 30m,
+// "0" disables); nothing is rented while waiting.
+//
+// go test -tags=cloudgpu,compshare -run '^TestCompshareServerDialNodeOnboardingContainer$' -timeout=85m ./test/l4
 func TestCompshareServerDialNodeOnboardingContainer(t *testing.T) {
 	p := compshareContainerProvider(t)
 	instance, checked := rentCompshareContainer(t, p, cloudprovider.GPUSpec{GPUCount: 1, DiskGB: compshareAcceptanceDiskGB, Container: true})
@@ -249,25 +248,4 @@ func TestCompshareTwoGPUProvisioning(t *testing.T) {
 	if err != nil || countGPUCards(out, cloudprovider.CompshareGPUDisplayName(model)) != count {
 		t.Fatalf("compshare %s x%d SSH check output=%q err=%v", model, count, strings.TrimSpace(out), err)
 	}
-}
-
-// countGPUCards counts nvidia-smi rows naming the card. CompShare's GpuType
-// (e.g. 4090_48G) is not what nvidia-smi prints (NVIDIA GeForce RTX 4090), so
-// callers pass the display name and spacing differences are ignored.
-func countGPUCards(nvidiaSMI, displayName string) int {
-	count := 0
-	for _, line := range strings.Split(nvidiaSMI, "\n") {
-		name, _, _ := strings.Cut(line, ",")
-		if strings.TrimSpace(name) != "" && compactGPUStringContains(name, displayName) {
-			count++
-		}
-	}
-	return count
-}
-
-func compactGPUStringContains(output, model string) bool {
-	compact := func(value string) string {
-		return strings.ToUpper(strings.NewReplacer(" ", "", "-", "", "_", "", "\n", "", "\r", "").Replace(value))
-	}
-	return strings.Contains(compact(output), compact(model))
 }

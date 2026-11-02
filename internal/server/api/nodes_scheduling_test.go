@@ -215,3 +215,69 @@ func TestEvaluateSkipsACordonedNode(t *testing.T) {
 	}
 	t.Fatal("auto-big missing from eligible_nodes")
 }
+
+// An operator stops one card's scheduling, or makes it schedulable again; the
+// node comes back with the card's state and what may be done to it next.
+func TestSetCardScheduling(t *testing.T) {
+	a, st, _ := schedulingFixture(t)
+	ok := true
+	cards := []proto.GPUInfo{
+		{Index: 0, UUID: "GPU-a", Vendor: "nvidia", PCIeBDF: "0000:3f:00.0", MemoryTotalBytes: 24 << 30, Healthy: true},
+		{Index: 1, UUID: "GPU-b", Vendor: "nvidia", PCIeBDF: "0000:40:00.0", MemoryTotalBytes: 24 << 30, Ownership: "passthrough"},
+	}
+	if err := st.UpdateNodeStatus("drain-a", proto.NodeStatus{GPUProbeOK: &ok, GPUs: cards, Sys: proto.SysInfo{RuntimeDriver: "docker"}}); err != nil {
+		t.Fatal(err)
+	}
+	put := func(uuid, body string) (int, map[string]any) {
+		code, out := callNode(t, a.setCardScheduling, http.MethodPut, uuid, "/gpus/scheduling", body)
+		var parsed map[string]any
+		_ = json.Unmarshal([]byte(out), &parsed)
+		return code, parsed
+	}
+	card := func(node map[string]any, bdf string) map[string]any {
+		for _, g := range node["gpus"].([]any) {
+			if m := g.(map[string]any); m["pcie_bdf"] == bdf {
+				return m
+			}
+		}
+		t.Fatalf("no card %s in %v", bdf, node)
+		return nil
+	}
+
+	code, node := put("drain-a", `{"pcie_bdf":"0000:3f:00.0","scheduling":"stopped"}`)
+	if code != http.StatusOK {
+		t.Fatalf("stop = %d %v", code, node)
+	}
+	c := card(node, "0000:3f:00.0")
+	if c["scheduling_stopped"] != true || c["schedulable"] != false || fmt.Sprint(c["scheduling_actions"]) != "[schedulable]" {
+		t.Fatalf("stopped card = %v", c)
+	}
+	if _, present := c["scheduling_allowed"]; present {
+		t.Fatalf("stopped card says allowed: %v", c)
+	}
+	code, node = put("drain-a", `{"pcie_bdf":"0000:3F:00.0","scheduling":"schedulable"}`)
+	if c := card(node, "0000:3f:00.0"); code != http.StatusOK || c["schedulable"] != true || fmt.Sprint(c["scheduling_actions"]) != "[stopped]" {
+		t.Fatalf("schedulable again = %d %v", code, c)
+	}
+	if _, present := card(node, "0000:3f:00.0")["scheduling_stopped"]; present {
+		t.Fatal("scheduling_stopped present on a card that is not stopped")
+	}
+
+	for _, tc := range []struct {
+		uuid, body string
+		code       int
+		errCode    string
+	}{
+		{"drain-a", `{"pcie_bdf":"0000:3f:00.0","scheduling":"paused"}`, http.StatusBadRequest, "FIELD_INVALID"},
+		{"drain-a", `{"scheduling":"stopped"}`, http.StatusBadRequest, "FIELD_INVALID"},
+		{"drain-a", `{"pcie_bdf":"0000:3f:00.0","scheduling":"stopped","extra":1}`, http.StatusBadRequest, ""},
+		{"drain-a", `{"pcie_bdf":"0000:99:00.0","scheduling":"stopped"}`, http.StatusNotFound, ""},
+		{"missing", `{"pcie_bdf":"0000:3f:00.0","scheduling":"stopped"}`, http.StatusNotFound, ""},
+		{"drain-a", `{"pcie_bdf":"0000:40:00.0","scheduling":"schedulable"}`, http.StatusConflict, "CARD_NOT_OWNED"},
+	} {
+		code, out := callNode(t, a.setCardScheduling, http.MethodPut, tc.uuid, "/gpus/scheduling", tc.body)
+		if code != tc.code || (tc.errCode != "" && !strings.Contains(out, `"`+tc.errCode+`"`)) {
+			t.Errorf("%s %s = %d %s, want %d %s", tc.uuid, tc.body, code, out, tc.code, tc.errCode)
+		}
+	}
+}

@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"gpuworks.ai/gpuworks/internal/accelerator"
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"gpuworks.ai/gpuworks/internal/server/planning"
@@ -63,6 +64,50 @@ func (a *apiHandlers) setNodeScheduling(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, http.StatusOK, toNodeDTO(node))
 }
 
+// setCardScheduling stops one card's scheduling, or makes it schedulable
+// again: an operator's stop holds until they lift it, and making a card the
+// platform judged unusable schedulable lets work onto it until the next
+// report judges it afresh (store.SetCardScheduling). The node comes back,
+// cards included, as GET /nodes/{uuid} returns it.
+func (a *apiHandlers) setCardScheduling(w http.ResponseWriter, r *http.Request) {
+	var req dto.CardSchedulingRequest
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	to := store.CardScheduling(req.Scheduling)
+	if !to.Valid() {
+		writeProductError(w, http.StatusBadRequest, ErrorFieldInvalid, "scheduling must be stopped or schedulable", map[string]any{"field": "scheduling", "detail": req.Scheduling})
+		return
+	}
+	ident := accelerator.CardIdent(req.UUID, req.PCIeBDF)
+	if ident == "" {
+		writeProductError(w, http.StatusBadRequest, ErrorFieldInvalid, "pcie_bdf or uuid names the card", map[string]any{"field": "pcie_bdf"})
+		return
+	}
+	uuid := chi.URLParam(r, "uuid")
+	_, err := a.d.Store.SetCardScheduling(uuid, ident, to)
+	switch {
+	case errors.Is(err, store.ErrNotFound):
+		writeErr(w, http.StatusNotFound, err)
+		return
+	case errors.Is(err, store.ErrCardNotOwned):
+		writeProductError(w, http.StatusConflict, ErrorCardNotOwned, "the card is not this node's to use", map[string]any{"pcie_bdf": req.PCIeBDF})
+		return
+	case err != nil:
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	node, err := a.d.Store.NodeWithGPUs(uuid)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, toNodeDTO(node))
+}
+
 // nodeReplicas lists what still runs on a node and whether a drain moves it
 // (dto.NodeReplica), so a drain can be followed to empty.
 func (a *apiHandlers) nodeReplicas(w http.ResponseWriter, r *http.Request) {
@@ -77,8 +122,10 @@ func (a *apiHandlers) nodeReplicas(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	out := dto.NodeReplicas{Scheduling: nodeSchedulingName(node.Scheduling), Items: []dto.NodeReplica{}}
+	out.DrainOffline = node.Scheduling == store.NodeDraining && a.d.Online != nil && !a.d.Online(node.UUID)
 	kinds := map[uint]string{}
 	names := map[uint]string{}
+	feedback := map[uint]dto.NodeReplica{}
 	for _, inst := range insts {
 		if inst.State == proto.InstStopped || inst.State == proto.InstFailed {
 			continue
@@ -94,11 +141,20 @@ func (a *apiHandlers) nodeReplicas(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			kinds[dep.ID], names[dep.ID] = kind, dep.Name
+			if node.Scheduling == store.NodeDraining && kind != "pinned" {
+				detail, err := a.nodeDrainFeedback(dep.ID, node.ID, inst)
+				if err != nil {
+					writeErr(w, http.StatusInternalServerError, err)
+					return
+				}
+				feedback[dep.ID] = detail
+			}
 		}
-		out.Items = append(out.Items, dto.NodeReplica{
-			Instance: inst.UUID, DeploymentID: inst.DeploymentID, Deployment: names[inst.DeploymentID],
-			State: inst.State, Kind: kind,
-		})
+		item := dto.NodeReplica{Instance: inst.UUID, DeploymentID: inst.DeploymentID, Deployment: names[inst.DeploymentID], State: inst.State, Kind: kind}
+		if inst.State != proto.InstDraining && inst.State != proto.InstRemoving {
+			item.DrainReason, item.DrainReasonAt, item.DrainMessage = feedback[inst.DeploymentID].DrainReason, feedback[inst.DeploymentID].DrainReasonAt, feedback[inst.DeploymentID].DrainMessage
+		}
+		out.Items = append(out.Items, item)
 	}
 	writeJSON(w, http.StatusOK, out)
 }
@@ -184,7 +240,7 @@ func (a *apiHandlers) evictNode(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			out.Evicted = append(out.Evicted, leader)
-			a.d.Store.AddDeploymentEventCode(dep.ID, store.EventKindSchedule, store.EventReplicaRestarted, map[string]any{"instance": leader, "drain": true, "evicted_from": node.UUID})
+			a.operatorEvent(r, dep.ID, store.EventReplicaRestarted, map[string]any{"instance": leader, "drain": true, "evicted_from": node.UUID})
 		}
 	}
 	sort.Strings(out.Evicted)

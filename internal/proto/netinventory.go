@@ -24,17 +24,22 @@ type RDMAPort struct {
 	NetDev    string  `json:"netdev,omitempty"`
 }
 
-// AcceleratorPort is one network port an accelerator card owns. Ascend 910
-// puts a RoCE port on the card itself; the host kernel never sees it, so it is
-// neither an interface nor an RDMA port and is reached only through the
-// vendor tool. Name is the rail name internal/accelerator gives the card.
+// AcceleratorPort is one network port an accelerator card owns. Ascend cards
+// put accelerator fabric ports on the card itself; the host kernel never sees
+// them, so they are neither interfaces nor RDMA ports and are reached only
+// through the vendor tool. IP/State describe RoCE; HCCSIP/HCCSState describe
+// the HCCS vNIC when present. Name is the rail name internal/accelerator gives
+// the card.
 type AcceleratorPort struct {
-	Name      string  `json:"name"`
-	Index     int     `json:"index"` // the card index the vendor tool uses
-	IP        string  `json:"ip,omitempty"`
-	Netmask   string  `json:"netmask,omitempty"`
-	State     string  `json:"state,omitempty"` // UP | DOWN
-	SpeedGbps float64 `json:"speed_gbps,omitempty"`
+	Name        string  `json:"name"`
+	Index       int     `json:"index"` // the card index the vendor tool uses
+	IP          string  `json:"ip,omitempty"`
+	Netmask     string  `json:"netmask,omitempty"`
+	State       string  `json:"state,omitempty"` // UP | DOWN (RoCE)
+	SpeedGbps   float64 `json:"speed_gbps,omitempty"`
+	HCCSIP      string  `json:"hccs_ip,omitempty"`
+	HCCSNetmask string  `json:"hccs_netmask,omitempty"`
+	HCCSState   string  `json:"hccs_state,omitempty"` // UP | DOWN (HCCS vNIC)
 }
 
 // NetInventory is the node's network inventory reported with NodeStatus.
@@ -110,6 +115,10 @@ const (
 type AcceleratorPingParams struct {
 	Probes    []AcceleratorPingProbe `json:"probes"`
 	TimeoutMS int                    `json:"timeout_ms"`
+	// Protocol selects the accelerator fabric command. Empty and "roce"
+	// preserve the original hccn_tool -ping behavior; "hccs" uses
+	// hccn_tool -hccs_ping.
+	Protocol string `json:"protocol,omitempty"`
 }
 
 // AcceleratorPingProbe is one ping: from the port of Card (an
@@ -132,6 +141,11 @@ type AcceleratorPingResult struct {
 
 // Why an accelerator ping did not get an answer.
 const (
+	// AcceleratorPingProtocolRoCE selects the accelerator card's RoCE port.
+	AcceleratorPingProtocolRoCE = "roce"
+	// AcceleratorPingProtocolHCCS selects the Ascend HCCS/HIXL fabric.
+	AcceleratorPingProtocolHCCS = "hccs"
+
 	// AcceleratorPingUnreachable: nothing answered within the time limit.
 	AcceleratorPingUnreachable = "unreachable"
 	// AcceleratorPingNoCard: the node has no such card, or its accelerators

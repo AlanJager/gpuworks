@@ -62,6 +62,29 @@ func fleetFixture(t *testing.T) (*fixture, []string) {
 	return f, uuids
 }
 
+// A card with no utilization samples over the range is unknown, never zero:
+// only a card that was sampled at zero reports a real 0. The analytics UI
+// counts the idle among the sampled and shows "—" when none were; this wire
+// shape (util_avg null, not 0) is what lets it tell the two apart.
+func TestGPUFiguresKeepUnsampledMetricsUnknown(t *testing.T) {
+	unsampled := gpuFigures(rollup.GPU{MemTotal: 80e9})
+	if unsampled.UtilAvg != nil || unsampled.UtilMax != nil || unsampled.MemUsedAvg != nil ||
+		unsampled.PowerAvg != nil || unsampled.TempAvg != nil || unsampled.TempMax != nil {
+		t.Fatalf("unsampled figures = %+v", unsampled)
+	}
+	raw, err := json.Marshal(unsampled)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), `"util_avg":null`) {
+		t.Fatalf("an unsampled card must answer util_avg null on the wire: %s", raw)
+	}
+	sampled := gpuFigures(rollup.GPU{UtilN: 2})
+	if sampled.UtilAvg == nil || *sampled.UtilAvg != 0 {
+		t.Fatalf("a card sampled at zero must report a real 0, got %+v", sampled.UtilAvg)
+	}
+}
+
 func TestGPUsOfAFleetAnswerGroupsNotCards(t *testing.T) {
 	f, _ := fleetFixture(t)
 	ctx := context.Background()

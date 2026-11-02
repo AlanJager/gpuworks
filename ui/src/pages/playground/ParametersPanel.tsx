@@ -22,15 +22,12 @@ export default function ParametersPanel({
   streamOptions = [],
   value,
   onChange,
-  thinkingToggle = false,
 }: {
   definitions: ParameterDefinition[];
   presets: ExtraParameterPreset[];
   streamOptions?: StreamOptionDefinition[];
   value: ParameterState;
   onChange: (value: ParameterState) => void;
-  /** The selected model honors the Qwen3 disable-thinking preset. */
-  thinkingToggle?: boolean;
 }) {
   const { t, i18n } = useTranslation("playground");
   const language = i18n.resolvedLanguage || i18n.language;
@@ -49,6 +46,7 @@ export default function ParametersPanel({
     streamOptions: { ...Object.fromEntries(streamOptions.map((option) => [option.name, streamOptionOn(option)])), [name]: checked },
   });
   const applyPreset = (preset: ExtraParameterPreset) => {
+    if (!preset.value) return;
     try {
       const extraJSON = mergedExtraJSON(value.extraJSON, preset.value);
       setPresetError("");
@@ -137,7 +135,10 @@ export default function ParametersPanel({
         <Space size={[4, 4]} wrap>
           {presets.map((preset) => {
             const label = localizedText(preset.label, language);
-            const blocked = preset.applies_when === "qwen3" && !thinkingToggle;
+            // The server only serves a value when it knows the deployment
+            // honors it, so a preset without one cannot be applied: the
+            // button stays visible and explains what to add by hand.
+            const blocked = !preset.value;
             const reason = blocked ? localizedText(preset.unavailable, language) : "";
             const button = (
               <button
@@ -152,7 +153,7 @@ export default function ParametersPanel({
               </button>
             );
             return (
-              <span key={preset.key || JSON.stringify(preset.value)}>
+              <span key={preset.key || label}>
                 {blocked ? <Tooltip title={reason}><span>{button}</span></Tooltip> : button}
               </span>
             );

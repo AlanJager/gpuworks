@@ -1,0 +1,985 @@
+{
+  "provenance": "GWKS-153: provider revisions independently checked against origin APIs on 2026-10-29. HF returned its requested sha; ModelScope returned its requested commit and a nonempty manifest. The two revisions have equal weight file names, SHA-256 hashes and sizes. Refresh this evidence from the origins when repinning; do not derive expectations from model.yaml. This offline fixture does not establish present-day network availability or inference compatibility.",
+  "models": [
+    {
+      "model_id": "deepreinforce-ai/ornith-1.0-9b",
+      "spec_name": "bf16-vllm-ppu-83dc1f5e",
+      "sources": [
+        {
+          "provider": "huggingface",
+          "repo_id": "deepreinforce-ai/Ornith-1.0-9B",
+          "revision": "83dc1f5e24ef8527af019a6b3bf66ac0f1c2c999",
+          "verified_url": "https://huggingface.co/api/models/deepreinforce-ai/Ornith-1.0-9B/revision/83dc1f5e24ef8527af019a6b3bf66ac0f1c2c999?blobs=true",
+          "checked_at": "2026-10-29T06:24:35.722819+00:00"
+        },
+        {
+          "provider": "modelscope",
+          "repo_id": "deepreinforce-ai/Ornith-1.0-9B",
+          "revision": "83c1442b5cf2df318017ff0f9d6bc2b93bc9586c",
+          "verified_url": "https://modelscope.cn/api/v1/models/deepreinforce-ai/Ornith-1.0-9B/repo/files?Recursive=true&Revision=83c1442b5cf2df318017ff0f9d6bc2b93bc9586c",
+          "checked_at": "2026-10-29T06:24:41.829967+00:00"
+        }
+      ]
+    },
+    {
+      "model_id": "deepseek-ai/deepseek-ocr-2",
+      "spec_name": "bf16-vllm-ppu-aaa02f38",
+      "sources": [
+        {
+          "provider": "huggingface",
+          "repo_id": "deepseek-ai/DeepSeek-OCR-2",
+          "revision": "aaa02f3811945a91062062994c5c4a3f4c0af2b0",
+          "verified_url": "https://huggingface.co/api/models/deepseek-ai/DeepSeek-OCR-2/revision/aaa02f3811945a91062062994c5c4a3f4c0af2b0?blobs=true",
+          "checked_at": "2026-10-29T06:24:35.412890+00:00"
+        },
+        {
+          "provider": "modelscope",
+          "repo_id": "deepseek-ai/DeepSeek-OCR-2",
+          "revision": "d9362d8032017d261ef40fd7b18cd70db16cdbe7",
+          "verified_url": "https://modelscope.cn/api/v1/models/deepseek-ai/DeepSeek-OCR-2/repo/files?Recursive=true&Revision=d9362d8032017d261ef40fd7b18cd70db16cdbe7",
+          "checked_at": "2026-10-29T06:24:36.250303+00:00"
+        }
+      ]
+    },
+    {
+      "model_id": "deepseek-ai/deepseek-ocr",
+      "spec_name": "bf16-vllm-ppu-9f30c71f",
+      "sources": [
+        {
+          "provider": "huggingface",
+          "repo_id": "deepseek-ai/DeepSeek-OCR",
+          "revision": "9f30c71f441d010e5429c532364a86705536c53a",
+          "verified_url": "https://huggingface.co/api/models/deepseek-ai/DeepSeek-OCR/revision/9f30c71f441d010e5429c532364a86705536c53a?blobs=true",
+          "checked_at": "2026-10-29T06:24:35.204230+00:00"
+        },
+        {
+          "provider": "modelscope",
+          "repo_id": "deepseek-ai/DeepSeek-OCR",
+          "revision": "99e7e2063f5efd86e50e69c41d37f53b1438caad",
+          "verified_url": "https://modelscope.cn/api/v1/models/deepseek-ai/DeepSeek-OCR/repo/files?Recursive=true&Revision=99e7e2063f5efd86e50e69c41d37f53b1438caad",
+          "checked_at": "2026-10-29T06:24:37.956803+00:00"
+        }
+      ]
+    },
+    {
+      "model_id": "google/embeddinggemma-300m",
+      "spec_name": "bf16-vllm-ppu-57c266a7",
+      "sources": [
+        {
+          "provider": "huggingface",
+          "repo_id": "google/embeddinggemma-300m",
+          "revision": "57c266a740f537b4dc058e1b0cda161fd15afa75",
+          "verified_url": "https://huggingface.co/api/models/google/embeddinggemma-300m/revision/57c266a740f537b4dc058e1b0cda161fd15afa75?blobs=true",
+          "checked_at": "2026-10-29T06:24:37.414440+00:00"
+        },
+        {
+          "provider": "modelscope",
+          "repo_id": "google/embeddinggemma-300m",
+          "revision": "480ee9b0e4761c35cf4f8295236b7b01b256b8cf",
+          "verified_url": "https://modelscope.cn/api/v1/models/google/embeddinggemma-300m/repo/files?Recursive=true&Revision=480ee9b0e4761c35cf4f8295236b7b01b256b8cf",
+          "checked_at": "2026-10-29T06:24:39.068122+00:00"
+        }
+      ]
+    },
+    {
+      "model_id": "google/gemma-4-e2b-it-qat-w4a16-ct",
+      "spec_name": "bf16-vllm-ppu-971342c0",
+      "sources": [
+        {
+          "provider": "huggingface",
+          "repo_id": "google/gemma-4-E2B-it-qat-w4a16-ct",
+          "revision": "971342c08f607aa7779983f6b5289778b5d271a7",
+          "verified_url": "https://huggingface.co/api/models/google/gemma-4-E2B-it-qat-w4a16-ct/revision/971342c08f607aa7779983f6b5289778b5d271a7?blobs=true",
+          "checked_at": "2026-10-29T06:24:38.469058+00:00"
+        },
+        {
+          "provider": "modelscope",
+          "repo_id": "google/gemma-4-E2B-it-qat-w4a16-ct",
+          "revision": "5bdbf89b944c027915fd322913a00f6be6476309",
+          "verified_url": "https://modelscope.cn/api/v1/models/google/gemma-4-E2B-it-qat-w4a16-ct/repo/files?Recursive=true&Revision=5bdbf89b944c027915fd322913a00f6be6476309",
+          "checked_at": "2026-10-29T06:24:40.832706+00:00"
+        }
+      ]
+    },
+    {
+      "model_id": "google/gemma-4-e4b-it-qat-w4a16-ct",
+      "spec_name": "int4-vllm-ppu-6cd26aaa",
+      "sources": [
+        {
+          "provider": "huggingface",
+          "repo_id": "google/gemma-4-E4B-it-qat-w4a16-ct",
+          "revision": "6cd26aaa2357fb2bad8c51699a7558a4d1a965bb",
+          "verified_url": "https://huggingface.co/api/models/google/gemma-4-E4B-it-qat-w4a16-ct/revision/6cd26aaa2357fb2bad8c51699a7558a4d1a965bb?blobs=true",
+          "checked_at": "2026-10-29T06:24:35.632662+00:00"
+        },
+        {
+          "provider": "modelscope",
+          "repo_id": "google/gemma-4-E4B-it-qat-w4a16-ct",
+          "revision": "4a93d35ec686fe0261b99fcb100262df79c8af20",
+          "verified_url": "https://modelscope.cn/api/v1/models/google/gemma-4-E4B-it-qat-w4a16-ct/repo/files?Recursive=true&Revision=4a93d35ec686fe0261b99fcb100262df79c8af20",
+          "checked_at": "2026-10-29T06:24:39.192343+00:00"
+        }
+      ]
+    },
+    {
+      "model_id": "huggingfacetb/smollm-135m-instruct",
+      "spec_name": "bf16-vllm-ppu-fcc320f4",
+      "sources": [
+        {
+          "provider": "huggingface",
+          "repo_id": "HuggingFaceTB/SmolLM-135M-Instruct",
+          "revision": "fcc320f490e08fdb4b99d935b2c58d40bf35b0d0",
+          "verified_url": "https://huggingface.co/api/models/HuggingFaceTB/SmolLM-135M-Instruct/revision/fcc320f490e08fdb4b99d935b2c58d40bf35b0d0?blobs=true",
+          "checked_at": "2026-10-29T06:24:39.641426+00:00"
+        },
+        {
+          "provider": "modelscope",
+          "repo_id": "HuggingFaceTB/SmolLM-135M-Instruct",
+          "revision": "89e86e700a070e77373fb7bda7b02ddded846b41",
+          "verified_url": "https://modelscope.cn/api/v1/models/HuggingFaceTB/SmolLM-135M-Instruct/repo/files?Recursive=true&Revision=89e86e700a070e77373fb7bda7b02ddded846b41",
+          "checked_at": "2026-10-29T06:24:43.465859+00:00"
+        }
+      ]
+    },
+    {
+      "model_id": "huggingfacetb/smollm2-1.7b-instruct",
+      "spec_name": "bf16-vllm-ppu-31b70e2e",
+      "sources": [
+        {
+          "provider": "huggingface",
+          "repo_id": "HuggingFaceTB/SmolLM2-1.7B-Instruct",
+          "revision": "31b70e2e869a7173562077fd711b654946d38674",
+          "verified_url": "https://huggingface.co/api/models/HuggingFaceTB/SmolLM2-1.7B-Instruct/revision/31b70e2e869a7173562077fd711b654946d38674?blobs=true",
+          "checked_at": "2026-10-29T06:24:41.580158+00:00"
+        },
+        {
+          "provider": "modelscope",
+          "repo_id": "HuggingFaceTB/SmolLM2-1.7B-Instruct",
+          "revision": "f53636d9e1fe68433c9f910d3cab51c1b5783610",
+          "verified_url": "https://modelscope.cn/api/v1/models/HuggingFaceTB/SmolLM2-1.7B-Instruct/repo/files?Recursive=true&Revision=f53636d9e1fe68433c9f910d3cab51c1b5783610",
+          "checked_at": "2026-10-29T06:24:46.367447+00:00"
+        }
+      ]
+    },
+    {
+      "model_id": "huggingfacetb/smollm2-135m-instruct",
+      "spec_name": "bf16-vllm-ppu-12fd25f7",
+      "sources": [
+        {
+          "provider": "huggingface",
+          "repo_id": "HuggingFaceTB/SmolLM2-135M-Instruct",
+          "revision": "12fd25f77366fa6b3b4b768ec3050bf629380bac",
+          "verified_url": "https://huggingface.co/api/models/HuggingFaceTB/SmolLM2-135M-Instruct/revision/12fd25f77366fa6b3b4b768ec3050bf629380bac?blobs=true",
+          "checked_at": "2026-10-29T06:24:40.001876+00:00"
+        },
+        {
+          "provider": "modelscope",
+          "repo_id": "HuggingFaceTB/SmolLM2-135M-Instruct",
+          "revision": "c134cb42e51e0d1f29041149173377c623c99b25",
+          "verified_url": "https://modelscope.cn/api/v1/models/HuggingFaceTB/SmolLM2-135M-Instruct/repo/files?Recursive=true&Revision=c134cb42e51e0d1f29041149173377c623c99b25",
+          "checked_at": "2026-10-29T06:24:45.732200+00:00"
+        }
+      ]
+    },
+    {
+      "model_id": "huggingfacetb/smollm2-360m-instruct",
+      "spec_name": "bf16-vllm-ppu-a10cc151",
+      "sources": [
+        {
+          "provider": "huggingface",
+          "repo_id": "HuggingFaceTB/SmolLM2-360M-Instruct",
+          "revision": "a10cc1512eabd3dde888204e902eca88bddb4951",
+          "verified_url": "https://huggingface.co/api/models/HuggingFaceTB/SmolLM2-360M-Instruct/revision/a10cc1512eabd3dde888204e902eca88bddb4951?blobs=true",
+          "checked_at": "2026-10-29T06:24:42.025951+00:00"
+        },
+        {
+          "provider": "modelscope",
+          "repo_id": "HuggingFaceTB/SmolLM2-360M-Instruct",
+          "revision": "41afc025e05a12e7348c12b49cf1896a4a44722f",
+          "verified_url": "https://modelscope.cn/api/v1/models/HuggingFaceTB/SmolLM2-360M-Instruct/repo/files?Recursive=true&Revision=41afc025e05a12e7348c12b49cf1896a4a44722f",
+          "checked_at": "2026-10-29T06:24:47.451310+00:00"
+        }
+      ]
+    },
+    {
+      "model_id": "ibm-granite/granite-4.1-3b",
+      "spec_name": "bf16-vllm-ppu-c0650403",
+      "sources": [
+        {
+          "provider": "huggingface",
+          "repo_id": "ibm-granite/granite-4.1-3b",
+          "revision": "c0650403e44e78ec0262dab1c90914c65b196c4e",
+          "verified_url": "https://huggingface.co/api/models/ibm-granite/granite-4.1-3b/revision/c0650403e44e78ec0262dab1c90914c65b196c4e?blobs=true",
+          "checked_at": "2026-10-29T06:24:42.066584+00:00"
+        },
+        {
+          "provider": "modelscope",
+          "repo_id": "ibm-granite/granite-4.1-3b",
+          "revision": "4352bf8648e5deeeb23321792b6deca341e55bb2",
+          "verified_url": "https://modelscope.cn/api/v1/models/ibm-granite/granite-4.1-3b/repo/files?Recursive=true&Revision=4352bf8648e5deeeb23321792b6deca341e55bb2",
+          "checked_at": "2026-10-29T06:24:44.784954+00:00"
+        }
+      ]
+    },
+    {
+      "model_id": "ibm-granite/granite-4.2-3b",
+      "spec_name": "bf16-vllm-ppu-b7e94730",
+      "sources": [
+        {
+          "provider": "huggingface",
+          "repo_id": "ibm-granite/granite-4.2-3b",
+          "revision": "b7e947307dd2efb3ad3b853b0e8a7e75f8ad4ac2",
+          "verified_url": "https://huggingface.co/api/models/ibm-granite/granite-4.2-3b/revision/b7e947307dd2efb3ad3b853b0e8a7e75f8ad4ac2?blobs=true",
+          "checked_at": "2026-10-29T06:24:43.628254+00:00"
+        },
+        {
+          "provider": "modelscope",
+          "repo_id": "ibm-granite/granite-4.2-3b",
+          "revision": "4d3e9a45c12dbee99f24a7cbb02e46a865979a0a",
+          "verified_url": "https://modelscope.cn/api/v1/models/ibm-granite/granite-4.2-3b/repo/files?Recursive=true&Revision=4d3e9a45c12dbee99f24a7cbb02e46a865979a0a",
+          "checked_at": "2026-10-29T06:24:46.730369+00:00"
+        }
+      ]
+    },
+    {
+      "model_id": "jinaai/jina-embeddings-v5-text-small-clustering",
+      "spec_name": "bf16-vllm-ppu-4ab9d9d3",
+      "sources": [
+        {
+          "provider": "huggingface",
+          "repo_id": "jinaai/jina-embeddings-v5-text-small-clustering",
+          "revision": "4ab9d9d3c5cca288d9ab38c1dc5228124fdf3271",
+          "verified_url": "https://huggingface.co/api/models/jinaai/jina-embeddings-v5-text-small-clustering/revision/4ab9d9d3c5cca288d9ab38c1dc5228124fdf3271?blobs=true",
+          "checked_at": "2026-10-29T06:25:10.746057+00:00"
+        },
+        {
+          "provider": "modelscope",
+          "repo_id": "jinaai/jina-embeddings-v5-text-small-clustering",
+          "revision": "c5d44078ac5945f35450d3aa36f410e86542f793",
+          "verified_url": "https://modelscope.cn/api/v1/models/jinaai/jina-embeddings-v5-text-small-clustering/repo/files?Recursive=true&Revision=c5d44078ac5945f35450d3aa36f410e86542f793",
+          "checked_at": "2026-10-29T06:25:12.680155+00:00"
+        }
+      ]
+    },
+    {
+      "model_id": "jinaai/jina-embeddings-v5-text-small",
+      "spec_name": "bf16-vllm-ppu-dd76d535",
+      "sources": [
+        {
+          "provider": "huggingface",
+          "repo_id": "jinaai/jina-embeddings-v5-text-small",
+          "revision": "dd76d535f5447ca3897a9c893fb1e612ead98192",
+          "verified_url": "https://huggingface.co/api/models/jinaai/jina-embeddings-v5-text-small/revision/dd76d535f5447ca3897a9c893fb1e612ead98192?blobs=true",
+          "checked_at": "2026-10-29T06:24:46.236731+00:00"
+        },
+        {
+          "provider": "modelscope",
+          "repo_id": "jinaai/jina-embeddings-v5-text-small",
+          "revision": "b615e0e4b00aef9b9f84f7858731ce6f8379247c",
+          "verified_url": "https://modelscope.cn/api/v1/models/jinaai/jina-embeddings-v5-text-small/repo/files?Recursive=true&Revision=b615e0e4b00aef9b9f84f7858731ce6f8379247c",
+          "checked_at": "2026-10-29T06:24:47.892980+00:00"
+        }
+      ]
+    },
+    {
+      "model_id": "liquidai/lfm2.5-1.2b-instruct",
+      "spec_name": "bf16-vllm-ppu-0f604ada",
+      "sources": [
+        {
+          "provider": "huggingface",
+          "repo_id": "LiquidAI/LFM2.5-1.2B-Instruct",
+          "revision": "0f604ada3f766f9f257460c4c9f0b5d6f69d431b",
+          "verified_url": "https://huggingface.co/api/models/LiquidAI/LFM2.5-1.2B-Instruct/revision/0f604ada3f766f9f257460c4c9f0b5d6f69d431b?blobs=true",
+          "checked_at": "2026-10-29T06:24:46.772491+00:00"
+        },
+        {
+          "provider": "modelscope",
+          "repo_id": "LiquidAI/LFM2.5-1.2B-Instruct",
+          "revision": "13b4e4e7ea44c4b052d7ebeec7dd3f959bd00a5b",
+          "verified_url": "https://modelscope.cn/api/v1/models/LiquidAI/LFM2.5-1.2B-Instruct/repo/files?Recursive=true&Revision=13b4e4e7ea44c4b052d7ebeec7dd3f959bd00a5b",
+          "checked_at": "2026-10-29T06:24:48.707667+00:00"
+        }
+      ]
+    },
+    {
+      "model_id": "liquidai/lfm2.5-230m",
+      "spec_name": "bf16-vllm-ppu-40cb2ad3",
+      "sources": [
+        {
+          "provider": "huggingface",
+          "repo_id": "LiquidAI/LFM2.5-230M",
+          "revision": "40cb2ad3b3044d5a41eee083a6103c8b523afa45",
+          "verified_url": "https://huggingface.co/api/models/LiquidAI/LFM2.5-230M/revision/40cb2ad3b3044d5a41eee083a6103c8b523afa45?blobs=true",
+          "checked_at": "2026-10-29T06:24:47.598581+00:00"
+        },
+        {
+          "provider": "modelscope",
+          "repo_id": "LiquidAI/LFM2.5-230M",
+          "revision": "0f47b78615315693c4f56644aac9cb3d7698180e",
+          "verified_url": "https://modelscope.cn/api/v1/models/LiquidAI/LFM2.5-230M/repo/files?Recursive=true&Revision=0f47b78615315693c4f56644aac9cb3d7698180e",
+          "checked_at": "2026-10-29T06:24:49.150389+00:00"
+        }
+      ]
+    },
+    {
+      "model_id": "liquidai/lfm2.5-350m",
+      "spec_name": "bf16-vllm-ppu-9e6c6ccf",
+      "sources": [
+        {
+          "provider": "huggingface",
+          "repo_id": "LiquidAI/LFM2.5-350M",
+          "revision": "9e6c6ccf47cd318696e137d381a7ded8fe4df09f",
+          "verified_url": "https://huggingface.co/api/models/LiquidAI/LFM2.5-350M/revision/9e6c6ccf47cd318696e137d381a7ded8fe4df09f?blobs=true",
+          "checked_at": "2026-10-29T06:24:48.749043+00:00"
+        },
+        {
+          "provider": "modelscope",
+          "repo_id": "LiquidAI/LFM2.5-350M",
+          "revision": "20a19d21e6ae39f71e17a106a97c63a4dffdb8da",
+          "verified_url": "https://modelscope.cn/api/v1/models/LiquidAI/LFM2.5-350M/repo/files?Recursive=true&Revision=20a19d21e6ae39f71e17a106a97c63a4dffdb8da",
+          "checked_at": "2026-10-29T06:24:50.221271+00:00"
+        }
+      ]
+    },
+    {
+      "model_id": "liquidai/lfm2.5-vl-450m",
+      "spec_name": "bf16-vllm-ppu-fc6221ca",
+      "sources": [
+        {
+          "provider": "huggingface",
+          "repo_id": "LiquidAI/LFM2.5-VL-450M",
+          "revision": "fc6221ca597f3315e4f82fc2df606783267b34ba",
+          "verified_url": "https://huggingface.co/api/models/LiquidAI/LFM2.5-VL-450M/revision/fc6221ca597f3315e4f82fc2df606783267b34ba?blobs=true",
+          "checked_at": "2026-10-29T06:24:48.680066+00:00"
+        },
+        {
+          "provider": "modelscope",
+          "repo_id": "LiquidAI/LFM2.5-VL-450M",
+          "revision": "202f132a5de2679249ee84096a9ae6443e116dec",
+          "verified_url": "https://modelscope.cn/api/v1/models/LiquidAI/LFM2.5-VL-450M/repo/files?Recursive=true&Revision=202f132a5de2679249ee84096a9ae6443e116dec",
+          "checked_at": "2026-10-29T06:24:50.141364+00:00"
+        }
+      ]
+    },
+    {
+      "model_id": "microsoft/phi-4-mini-instruct",
+      "spec_name": "bf16-vllm-ppu-cfbefacb",
+      "sources": [
+        {
+          "provider": "huggingface",
+          "repo_id": "microsoft/Phi-4-mini-instruct",
+          "revision": "cfbefacb99257ffa30c83adab238a50856ac3083",
+          "verified_url": "https://huggingface.co/api/models/microsoft/Phi-4-mini-instruct/revision/cfbefacb99257ffa30c83adab238a50856ac3083?blobs=true",
+          "checked_at": "2026-10-29T06:24:48.935079+00:00"
+        },
+        {
+          "provider": "modelscope",
+          "repo_id": "microsoft/Phi-4-mini-instruct",
+          "revision": "8499918ca3a6c058b44def91b3322d857ce57ed3",
+          "verified_url": "https://modelscope.cn/api/v1/models/microsoft/Phi-4-mini-instruct/repo/files?Recursive=true&Revision=8499918ca3a6c058b44def91b3322d857ce57ed3",
+          "checked_at": "2026-10-29T06:24:53.071025+00:00"
+        }
+      ]
+    },
+    {
+      "model_id": "mistralai/shieldstral-1.0-3b",
+      "spec_name": "bf16-vllm-ppu-003ec7e2",
+      "sources": [
+        {
+          "provider": "huggingface",
+          "repo_id": "mistralai/Shieldstral-1.0-3B",
+          "revision": "003ec7e2b0bab5f0e6307edbaf186fa5822b76f5",
+          "verified_url": "https://huggingface.co/api/models/mistralai/Shieldstral-1.0-3B/revision/003ec7e2b0bab5f0e6307edbaf186fa5822b76f5?blobs=true",
+          "checked_at": "2026-10-29T06:25:15.830331+00:00"
+        },
+        {
+          "provider": "modelscope",
+          "repo_id": "mistralai/Shieldstral-1.0-3B",
+          "revision": "97ce4caee72d064e5bc25437cd223c15234e1baa",
+          "verified_url": "https://modelscope.cn/api/v1/models/mistralai/Shieldstral-1.0-3B/repo/files?Recursive=true&Revision=97ce4caee72d064e5bc25437cd223c15234e1baa",
+          "checked_at": "2026-10-29T06:25:19.848599+00:00"
+        }
+      ]
+    },
+    {
+      "model_id": "openbmb/minicpm5-1b",
+      "spec_name": "bf16-vllm-ppu-87179e5c",
+      "sources": [
+        {
+          "provider": "huggingface",
+          "repo_id": "openbmb/MiniCPM5-1B",
+          "revision": "87179e5c1f455ef22e6223592d2d61351b525bfc",
+          "verified_url": "https://huggingface.co/api/models/openbmb/MiniCPM5-1B/revision/87179e5c1f455ef22e6223592d2d61351b525bfc?blobs=true",
+          "checked_at": "2026-10-29T06:24:51.237717+00:00"
+        },
+        {
+          "provider": "modelscope",
+          "repo_id": "openbmb/MiniCPM5-1B",
+          "revision": "fc2e73f63bbf2cce5739929c2bebbb046fbfae8d",
+          "verified_url": "https://modelscope.cn/api/v1/models/openbmb/MiniCPM5-1B/repo/files?Recursive=true&Revision=fc2e73f63bbf2cce5739929c2bebbb046fbfae8d",
+          "checked_at": "2026-10-29T06:24:55.282732+00:00"
+        }
+      ]
+    },
+    {
+      "model_id": "openonerec/onerec-1.7b",
+      "spec_name": "bf16-vllm-ppu-cc4d0b5b",
+      "sources": [
+        {
+          "provider": "huggingface",
+          "repo_id": "OpenOneRec/OneRec-1.7B",
+          "revision": "cc4d0b5b7294ecf75e40be1c77fa6b7d284bb84b",
+          "verified_url": "https://huggingface.co/api/models/OpenOneRec/OneRec-1.7B/revision/cc4d0b5b7294ecf75e40be1c77fa6b7d284bb84b?blobs=true",
+          "checked_at": "2026-10-29T06:25:17.507663+00:00"
+        },
+        {
+          "provider": "modelscope",
+          "repo_id": "OpenOneRec/OneRec-1.7B",
+          "revision": "96ded8b50e52c2f0ad0f8b6555ac632636792496",
+          "verified_url": "https://modelscope.cn/api/v1/models/OpenOneRec/OneRec-1.7B/repo/files?Recursive=true&Revision=96ded8b50e52c2f0ad0f8b6555ac632636792496",
+          "checked_at": "2026-10-29T06:25:19.862053+00:00"
+        }
+      ]
+    },
+    {
+      "model_id": "paddlepaddle/paddleocr-vl-1.6",
+      "spec_name": "bf16-vllm-ppu-c5630aba",
+      "sources": [
+        {
+          "provider": "huggingface",
+          "repo_id": "PaddlePaddle/PaddleOCR-VL-1.6",
+          "revision": "c5630abae1d940eafe0697512a0325494b02ab42",
+          "verified_url": "https://huggingface.co/api/models/PaddlePaddle/PaddleOCR-VL-1.6/revision/c5630abae1d940eafe0697512a0325494b02ab42?blobs=true",
+          "checked_at": "2026-10-29T06:24:53.057157+00:00"
+        },
+        {
+          "provider": "modelscope",
+          "repo_id": "PaddlePaddle/PaddleOCR-VL-1.6",
+          "revision": "9164b4090ec1aab1855a40ab24adc0e731d247e4",
+          "verified_url": "https://modelscope.cn/api/v1/models/PaddlePaddle/PaddleOCR-VL-1.6/repo/files?Recursive=true&Revision=9164b4090ec1aab1855a40ab24adc0e731d247e4",
+          "checked_at": "2026-10-29T06:24:54.202838+00:00"
+        }
+      ]
+    },
+    {
+      "model_id": "qwen/qwen1.5-0.5b-chat",
+      "spec_name": "bf16-vllm-ppu-4d14e384",
+      "sources": [
+        {
+          "provider": "huggingface",
+          "repo_id": "Qwen/Qwen1.5-0.5B-Chat",
+          "revision": "4d14e384a4b037942bb3f3016665157c8bcb70ea",
+          "verified_url": "https://huggingface.co/api/models/Qwen/Qwen1.5-0.5B-Chat/revision/4d14e384a4b037942bb3f3016665157c8bcb70ea?blobs=true",
+          "checked_at": "2026-10-29T06:24:56.331626+00:00"
+        },
+        {
+          "provider": "modelscope",
+          "repo_id": "Qwen/Qwen1.5-0.5B-Chat",
+          "revision": "c31b505140cbc58830e0cb52d150df41a0fee22a",
+          "verified_url": "https://modelscope.cn/api/v1/models/Qwen/Qwen1.5-0.5B-Chat/repo/files?Recursive=true&Revision=c31b505140cbc58830e0cb52d150df41a0fee22a",
+          "checked_at": "2026-10-29T06:24:57.377377+00:00"
+        }
+      ]
+    },
+    {
+      "model_id": "qwen/qwen2-0.5b-instruct",
+      "spec_name": "bf16-vllm-ppu-c540970f",
+      "sources": [
+        {
+          "provider": "huggingface",
+          "repo_id": "Qwen/Qwen2-0.5B-Instruct",
+          "revision": "c540970f9e29518b1d8f06ab8b24cba66ad77b6d",
+          "verified_url": "https://huggingface.co/api/models/Qwen/Qwen2-0.5B-Instruct/revision/c540970f9e29518b1d8f06ab8b24cba66ad77b6d?blobs=true",
+          "checked_at": "2026-10-29T06:24:55.662999+00:00"
+        },
+        {
+          "provider": "modelscope",
+          "repo_id": "Qwen/Qwen2-0.5B-Instruct",
+          "revision": "c94da76a2f73a969a507a92bf54fac783524df4d",
+          "verified_url": "https://modelscope.cn/api/v1/models/Qwen/Qwen2-0.5B-Instruct/repo/files?Recursive=true&Revision=c94da76a2f73a969a507a92bf54fac783524df4d",
+          "checked_at": "2026-10-29T06:24:56.885950+00:00"
+        }
+      ]
+    },
+    {
+      "model_id": "qwen/qwen2-0.5b",
+      "spec_name": "bf16-vllm-ppu-91d2aff3",
+      "sources": [
+        {
+          "provider": "huggingface",
+          "repo_id": "Qwen/Qwen2-0.5B",
+          "revision": "91d2aff3f957f99e4c74c962f2f408dcc88a18d8",
+          "verified_url": "https://huggingface.co/api/models/Qwen/Qwen2-0.5B/revision/91d2aff3f957f99e4c74c962f2f408dcc88a18d8?blobs=true",
+          "checked_at": "2026-10-29T06:24:58.601603+00:00"
+        },
+        {
+          "provider": "modelscope",
+          "repo_id": "Qwen/Qwen2-0.5B",
+          "revision": "64c24a46f4b9bed1f6b918e328cd1e4554784ce7",
+          "verified_url": "https://modelscope.cn/api/v1/models/Qwen/Qwen2-0.5B/repo/files?Recursive=true&Revision=64c24a46f4b9bed1f6b918e328cd1e4554784ce7",
+          "checked_at": "2026-10-29T06:24:59.773497+00:00"
+        }
+      ]
+    },
+    {
+      "model_id": "qwen/qwen2-1.5b-instruct",
+      "spec_name": "bf16-vllm-ppu-ba1cf184",
+      "sources": [
+        {
+          "provider": "huggingface",
+          "repo_id": "Qwen/Qwen2-1.5B-Instruct",
+          "revision": "ba1cf1846d7df0a0591d6c00649f57e798519da8",
+          "verified_url": "https://huggingface.co/api/models/Qwen/Qwen2-1.5B-Instruct/revision/ba1cf1846d7df0a0591d6c00649f57e798519da8?blobs=true",
+          "checked_at": "2026-10-29T06:24:59.619981+00:00"
+        },
+        {
+          "provider": "modelscope",
+          "repo_id": "Qwen/Qwen2-1.5B-Instruct",
+          "revision": "61a82dc36296ad54589051679de0b6fd45ed4f41",
+          "verified_url": "https://modelscope.cn/api/v1/models/Qwen/Qwen2-1.5B-Instruct/repo/files?Recursive=true&Revision=61a82dc36296ad54589051679de0b6fd45ed4f41",
+          "checked_at": "2026-10-29T06:25:00.955303+00:00"
+        }
+      ]
+    },
+    {
+      "model_id": "qwen/qwen2.5-0.5b-instruct",
+      "spec_name": "bf16-vllm-ppu-7ae55760",
+      "sources": [
+        {
+          "provider": "huggingface",
+          "repo_id": "Qwen/Qwen2.5-0.5B-Instruct",
+          "revision": "7ae557604adf67be50417f59c2c2f167def9a775",
+          "verified_url": "https://huggingface.co/api/models/Qwen/Qwen2.5-0.5B-Instruct/revision/7ae557604adf67be50417f59c2c2f167def9a775?blobs=true",
+          "checked_at": "2026-10-29T06:24:59.392340+00:00"
+        },
+        {
+          "provider": "modelscope",
+          "repo_id": "Qwen/Qwen2.5-0.5B-Instruct",
+          "revision": "186d8559ad54c32cf47dc3a8225f993742c507b8",
+          "verified_url": "https://modelscope.cn/api/v1/models/Qwen/Qwen2.5-0.5B-Instruct/repo/files?Recursive=true&Revision=186d8559ad54c32cf47dc3a8225f993742c507b8",
+          "checked_at": "2026-10-29T06:25:00.372432+00:00"
+        }
+      ]
+    },
+    {
+      "model_id": "qwen/qwen2.5-1.5b-instruct",
+      "spec_name": "bf16-vllm-ppu-989aa798",
+      "sources": [
+        {
+          "provider": "huggingface",
+          "repo_id": "Qwen/Qwen2.5-1.5B-Instruct",
+          "revision": "989aa7980e4cf806f80c7fef2b1adb7bc71aa306",
+          "verified_url": "https://huggingface.co/api/models/Qwen/Qwen2.5-1.5B-Instruct/revision/989aa7980e4cf806f80c7fef2b1adb7bc71aa306?blobs=true",
+          "checked_at": "2026-10-29T06:25:02.503474+00:00"
+        },
+        {
+          "provider": "modelscope",
+          "repo_id": "Qwen/Qwen2.5-1.5B-Instruct",
+          "revision": "3c3787b7c81927cc64ad45dc32ff1c9ce2a5de34",
+          "verified_url": "https://modelscope.cn/api/v1/models/Qwen/Qwen2.5-1.5B-Instruct/repo/files?Recursive=true&Revision=3c3787b7c81927cc64ad45dc32ff1c9ce2a5de34",
+          "checked_at": "2026-10-29T06:25:03.868283+00:00"
+        }
+      ]
+    },
+    {
+      "model_id": "qwen/qwen2.5-1.5b",
+      "spec_name": "bf16-vllm-ppu-8faed761",
+      "sources": [
+        {
+          "provider": "huggingface",
+          "repo_id": "Qwen/Qwen2.5-1.5B",
+          "revision": "8faed761d45a263340a0528343f099c05c9a4323",
+          "verified_url": "https://huggingface.co/api/models/Qwen/Qwen2.5-1.5B/revision/8faed761d45a263340a0528343f099c05c9a4323?blobs=true",
+          "checked_at": "2026-10-29T06:25:27.619598+00:00"
+        },
+        {
+          "provider": "modelscope",
+          "repo_id": "Qwen/Qwen2.5-1.5B",
+          "revision": "8f8c715740f4d6e253f43b41939da5c5bb28e4c0",
+          "verified_url": "https://modelscope.cn/api/v1/models/Qwen/Qwen2.5-1.5B/repo/files?Recursive=true&Revision=8f8c715740f4d6e253f43b41939da5c5bb28e4c0",
+          "checked_at": "2026-10-29T06:25:29.270178+00:00"
+        }
+      ]
+    },
+    {
+      "model_id": "qwen/qwen2.5-coder-0.5b-instruct",
+      "spec_name": "bf16-vllm-ppu-ea3f2471",
+      "sources": [
+        {
+          "provider": "huggingface",
+          "repo_id": "Qwen/Qwen2.5-Coder-0.5B-Instruct",
+          "revision": "ea3f2471cf1b1f0db85067f1ef93848e38e88c25",
+          "verified_url": "https://huggingface.co/api/models/Qwen/Qwen2.5-Coder-0.5B-Instruct/revision/ea3f2471cf1b1f0db85067f1ef93848e38e88c25?blobs=true",
+          "checked_at": "2026-10-29T06:25:03.628326+00:00"
+        },
+        {
+          "provider": "modelscope",
+          "repo_id": "Qwen/Qwen2.5-Coder-0.5B-Instruct",
+          "revision": "62789576f47d1d43f192fe05a95773ab3ab9e9c6",
+          "verified_url": "https://modelscope.cn/api/v1/models/Qwen/Qwen2.5-Coder-0.5B-Instruct/repo/files?Recursive=true&Revision=62789576f47d1d43f192fe05a95773ab3ab9e9c6",
+          "checked_at": "2026-10-29T06:25:04.828391+00:00"
+        }
+      ]
+    },
+    {
+      "model_id": "qwen/qwen2.5-coder-1.5b-instruct",
+      "spec_name": "bf16-vllm-ppu-2e1fd397",
+      "sources": [
+        {
+          "provider": "huggingface",
+          "repo_id": "Qwen/Qwen2.5-Coder-1.5B-Instruct",
+          "revision": "2e1fd397ee46e1388853d2af2c993145b0f1098a",
+          "verified_url": "https://huggingface.co/api/models/Qwen/Qwen2.5-Coder-1.5B-Instruct/revision/2e1fd397ee46e1388853d2af2c993145b0f1098a?blobs=true",
+          "checked_at": "2026-10-29T06:25:05.088353+00:00"
+        },
+        {
+          "provider": "modelscope",
+          "repo_id": "Qwen/Qwen2.5-Coder-1.5B-Instruct",
+          "revision": "de689ce6d8c48de3453cdcc8c3851588ba149468",
+          "verified_url": "https://modelscope.cn/api/v1/models/Qwen/Qwen2.5-Coder-1.5B-Instruct/repo/files?Recursive=true&Revision=de689ce6d8c48de3453cdcc8c3851588ba149468",
+          "checked_at": "2026-10-29T06:25:06.446530+00:00"
+        }
+      ]
+    },
+    {
+      "model_id": "qwen/qwen3-0.6b",
+      "spec_name": "bf16-vllm-ppu-c1899de2",
+      "sources": [
+        {
+          "provider": "huggingface",
+          "repo_id": "Qwen/Qwen3-0.6B",
+          "revision": "c1899de289a04d12100db370d81485cdf75e47ca",
+          "verified_url": "https://huggingface.co/api/models/Qwen/Qwen3-0.6B/revision/c1899de289a04d12100db370d81485cdf75e47ca?blobs=true",
+          "checked_at": "2026-10-29T06:25:05.840048+00:00"
+        },
+        {
+          "provider": "modelscope",
+          "repo_id": "Qwen/Qwen3-0.6B",
+          "revision": "09b42cad3d112e832108974449ccb5e8e0f5b5d1",
+          "verified_url": "https://modelscope.cn/api/v1/models/Qwen/Qwen3-0.6B/repo/files?Recursive=true&Revision=09b42cad3d112e832108974449ccb5e8e0f5b5d1",
+          "checked_at": "2026-10-29T06:25:06.546686+00:00"
+        }
+      ]
+    },
+    {
+      "model_id": "qwen/qwen3-1.7b-base",
+      "spec_name": "bf16-vllm-ppu-ea980cb0",
+      "sources": [
+        {
+          "provider": "huggingface",
+          "repo_id": "Qwen/Qwen3-1.7B-Base",
+          "revision": "ea980cb0a6c2ae4b936e82123acc929f1cec04c1",
+          "verified_url": "https://huggingface.co/api/models/Qwen/Qwen3-1.7B-Base/revision/ea980cb0a6c2ae4b936e82123acc929f1cec04c1?blobs=true",
+          "checked_at": "2026-10-29T06:25:08.293621+00:00"
+        },
+        {
+          "provider": "modelscope",
+          "repo_id": "Qwen/Qwen3-1.7B-Base",
+          "revision": "b0786a09cd6ee101cd8c90e30a5727beb8230544",
+          "verified_url": "https://modelscope.cn/api/v1/models/Qwen/Qwen3-1.7B-Base/repo/files?Recursive=true&Revision=b0786a09cd6ee101cd8c90e30a5727beb8230544",
+          "checked_at": "2026-10-29T06:25:09.320671+00:00"
+        }
+      ]
+    },
+    {
+      "model_id": "qwen/qwen3-1.7b",
+      "spec_name": "bf16-vllm-ppu-70d244cc",
+      "sources": [
+        {
+          "provider": "huggingface",
+          "repo_id": "Qwen/Qwen3-1.7B",
+          "revision": "70d244cc86ccca08cf5af4e1e306ecf908b1ad5e",
+          "verified_url": "https://huggingface.co/api/models/Qwen/Qwen3-1.7B/revision/70d244cc86ccca08cf5af4e1e306ecf908b1ad5e?blobs=true",
+          "checked_at": "2026-10-29T06:25:09.243052+00:00"
+        },
+        {
+          "provider": "modelscope",
+          "repo_id": "Qwen/Qwen3-1.7B",
+          "revision": "4855588ea1a12789f2e965e5f52a9e4a24c94b2a",
+          "verified_url": "https://modelscope.cn/api/v1/models/Qwen/Qwen3-1.7B/repo/files?Recursive=true&Revision=4855588ea1a12789f2e965e5f52a9e4a24c94b2a",
+          "checked_at": "2026-10-29T06:25:10.369217+00:00"
+        }
+      ]
+    },
+    {
+      "model_id": "qwen/qwen3-32b-awq",
+      "spec_name": "awq-vllm-ppu-0499c3ac",
+      "sources": [
+        {
+          "provider": "huggingface",
+          "repo_id": "Qwen/Qwen3-32B-AWQ",
+          "revision": "0499c3ac83fdef8810b907a23894ba91e95eddd8",
+          "verified_url": "https://huggingface.co/api/models/Qwen/Qwen3-32B-AWQ/revision/0499c3ac83fdef8810b907a23894ba91e95eddd8?blobs=true",
+          "checked_at": "2026-10-29T06:25:10.563083+00:00"
+        },
+        {
+          "provider": "modelscope",
+          "repo_id": "Qwen/Qwen3-32B-AWQ",
+          "revision": "c14568581d436715d61d40f471dee3cac433d1d9",
+          "verified_url": "https://modelscope.cn/api/v1/models/Qwen/Qwen3-32B-AWQ/repo/files?Recursive=true&Revision=c14568581d436715d61d40f471dee3cac433d1d9",
+          "checked_at": "2026-10-29T06:25:12.015147+00:00"
+        }
+      ]
+    },
+    {
+      "model_id": "qwen/qwen3-4b-instruct-2507",
+      "spec_name": "bf16-vllm-ppu-cdbee75f",
+      "sources": [
+        {
+          "provider": "huggingface",
+          "repo_id": "Qwen/Qwen3-4B-Instruct-2507",
+          "revision": "cdbee75f17c01a7cc42f958dc650907174af0554",
+          "verified_url": "https://huggingface.co/api/models/Qwen/Qwen3-4B-Instruct-2507/revision/cdbee75f17c01a7cc42f958dc650907174af0554?blobs=true",
+          "checked_at": "2026-10-29T06:25:11.783460+00:00"
+        },
+        {
+          "provider": "modelscope",
+          "repo_id": "Qwen/Qwen3-4B-Instruct-2507",
+          "revision": "2de2439ea21be1dc5cb21f22f88af07e43393cbb",
+          "verified_url": "https://modelscope.cn/api/v1/models/Qwen/Qwen3-4B-Instruct-2507/repo/files?Recursive=true&Revision=2de2439ea21be1dc5cb21f22f88af07e43393cbb",
+          "checked_at": "2026-10-29T06:25:13.225630+00:00"
+        }
+      ]
+    },
+    {
+      "model_id": "qwen/qwen3-4b",
+      "spec_name": "bf16-vllm-ppu-1cfa9a72",
+      "sources": [
+        {
+          "provider": "huggingface",
+          "repo_id": "Qwen/Qwen3-4B",
+          "revision": "1cfa9a7208912126459214e8b04321603b3df60c",
+          "verified_url": "https://huggingface.co/api/models/Qwen/Qwen3-4B/revision/1cfa9a7208912126459214e8b04321603b3df60c?blobs=true",
+          "checked_at": "2026-10-29T06:25:13.404337+00:00"
+        },
+        {
+          "provider": "modelscope",
+          "repo_id": "Qwen/Qwen3-4B",
+          "revision": "2c54d5a09e7e92d4f5126b92a5a457448c9593e6",
+          "verified_url": "https://modelscope.cn/api/v1/models/Qwen/Qwen3-4B/repo/files?Recursive=true&Revision=2c54d5a09e7e92d4f5126b92a5a457448c9593e6",
+          "checked_at": "2026-10-29T06:25:14.363230+00:00"
+        }
+      ]
+    },
+    {
+      "model_id": "qwen/qwen3-8b",
+      "spec_name": "bf16-vllm-ppu-b968826d",
+      "sources": [
+        {
+          "provider": "huggingface",
+          "repo_id": "Qwen/Qwen3-8B",
+          "revision": "b968826d9c46dd6066d109eabc6255188de91218",
+          "verified_url": "https://huggingface.co/api/models/Qwen/Qwen3-8B/revision/b968826d9c46dd6066d109eabc6255188de91218?blobs=true",
+          "checked_at": "2026-10-29T06:25:15.569428+00:00"
+        },
+        {
+          "provider": "modelscope",
+          "repo_id": "Qwen/Qwen3-8B",
+          "revision": "26028140be3ee69b82b1d1450179ab71bb1121b9",
+          "verified_url": "https://modelscope.cn/api/v1/models/Qwen/Qwen3-8B/repo/files?Recursive=true&Revision=26028140be3ee69b82b1d1450179ab71bb1121b9",
+          "checked_at": "2026-10-29T06:25:17.402532+00:00"
+        }
+      ]
+    },
+    {
+      "model_id": "qwen/qwen3-vl-embedding-2b",
+      "spec_name": "bf16-vllm-ppu-9f2f7e71",
+      "sources": [
+        {
+          "provider": "huggingface",
+          "repo_id": "Qwen/Qwen3-VL-Embedding-2B",
+          "revision": "9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda",
+          "verified_url": "https://huggingface.co/api/models/Qwen/Qwen3-VL-Embedding-2B/revision/9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda?blobs=true",
+          "checked_at": "2026-10-29T06:25:14.463876+00:00"
+        },
+        {
+          "provider": "modelscope",
+          "repo_id": "Qwen/Qwen3-VL-Embedding-2B",
+          "revision": "c35dddf20620fe32745cb3d01f87ba64ae316313",
+          "verified_url": "https://modelscope.cn/api/v1/models/Qwen/Qwen3-VL-Embedding-2B/repo/files?Recursive=true&Revision=c35dddf20620fe32745cb3d01f87ba64ae316313",
+          "checked_at": "2026-10-29T06:25:15.823878+00:00"
+        }
+      ]
+    },
+    {
+      "model_id": "qwen/qwen3.5-0.8b",
+      "spec_name": "bf16-vllm-ppu-2fc06364",
+      "sources": [
+        {
+          "provider": "huggingface",
+          "repo_id": "Qwen/Qwen3.5-0.8B",
+          "revision": "2fc06364715b967f1860aea9cf38778875588b17",
+          "verified_url": "https://huggingface.co/api/models/Qwen/Qwen3.5-0.8B/revision/2fc06364715b967f1860aea9cf38778875588b17?blobs=true",
+          "checked_at": "2026-10-29T06:25:15.963491+00:00"
+        },
+        {
+          "provider": "modelscope",
+          "repo_id": "Qwen/Qwen3.5-0.8B",
+          "revision": "4d58a7b524cd33ed843d5125be8cd8f0a452d9bf",
+          "verified_url": "https://modelscope.cn/api/v1/models/Qwen/Qwen3.5-0.8B/repo/files?Recursive=true&Revision=4d58a7b524cd33ed843d5125be8cd8f0a452d9bf",
+          "checked_at": "2026-10-29T06:25:17.374272+00:00"
+        }
+      ]
+    },
+    {
+      "model_id": "qwen/qwen3.5-122b-a10b-gptq-int4",
+      "spec_name": "int4-vllm-ppu-30cd92cb",
+      "sources": [
+        {
+          "provider": "huggingface",
+          "repo_id": "Qwen/Qwen3.5-122B-A10B-GPTQ-Int4",
+          "revision": "30cd92cba9707a9aba09d1e490ed4b66b78e9606",
+          "verified_url": "https://huggingface.co/api/models/Qwen/Qwen3.5-122B-A10B-GPTQ-Int4/revision/30cd92cba9707a9aba09d1e490ed4b66b78e9606?blobs=true",
+          "checked_at": "2026-10-29T06:25:18.445274+00:00"
+        },
+        {
+          "provider": "modelscope",
+          "repo_id": "Qwen/Qwen3.5-122B-A10B-GPTQ-Int4",
+          "revision": "ab2d478962e7317a45f6cad4f8eaa4a7dc5f52fe",
+          "verified_url": "https://modelscope.cn/api/v1/models/Qwen/Qwen3.5-122B-A10B-GPTQ-Int4/repo/files?Recursive=true&Revision=ab2d478962e7317a45f6cad4f8eaa4a7dc5f52fe",
+          "checked_at": "2026-10-29T06:25:19.496183+00:00"
+        }
+      ]
+    },
+    {
+      "model_id": "qwen/qwen3.5-2b",
+      "spec_name": "bf16-vllm-ppu-15852e8c",
+      "sources": [
+        {
+          "provider": "huggingface",
+          "repo_id": "Qwen/Qwen3.5-2B",
+          "revision": "15852e8c16360a2fea060d615a32b45270f8a8fc",
+          "verified_url": "https://huggingface.co/api/models/Qwen/Qwen3.5-2B/revision/15852e8c16360a2fea060d615a32b45270f8a8fc?blobs=true",
+          "checked_at": "2026-10-29T06:25:19.856614+00:00"
+        },
+        {
+          "provider": "modelscope",
+          "repo_id": "Qwen/Qwen3.5-2B",
+          "revision": "c00cc5fd7803c60b7788e053dcce33d0d26b11ef",
+          "verified_url": "https://modelscope.cn/api/v1/models/Qwen/Qwen3.5-2B/repo/files?Recursive=true&Revision=c00cc5fd7803c60b7788e053dcce33d0d26b11ef",
+          "checked_at": "2026-10-29T06:25:20.850306+00:00"
+        }
+      ]
+    },
+    {
+      "model_id": "qwen/qwen3.5-4b",
+      "spec_name": "bf16-vllm-ppu-851bf6e8",
+      "sources": [
+        {
+          "provider": "huggingface",
+          "repo_id": "Qwen/Qwen3.5-4B",
+          "revision": "851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a",
+          "verified_url": "https://huggingface.co/api/models/Qwen/Qwen3.5-4B/revision/851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a?blobs=true",
+          "checked_at": "2026-10-29T06:25:19.635143+00:00"
+        },
+        {
+          "provider": "modelscope",
+          "repo_id": "Qwen/Qwen3.5-4B",
+          "revision": "ed182e32090db791077e12e0f58d22f3daafa173",
+          "verified_url": "https://modelscope.cn/api/v1/models/Qwen/Qwen3.5-4B/repo/files?Recursive=true&Revision=ed182e32090db791077e12e0f58d22f3daafa173",
+          "checked_at": "2026-10-29T06:25:20.825137+00:00"
+        }
+      ]
+    },
+    {
+      "model_id": "qwen/qwen3.5-9b",
+      "spec_name": "bf16-vllm-ppu-c2022362",
+      "sources": [
+        {
+          "provider": "huggingface",
+          "repo_id": "Qwen/Qwen3.5-9B",
+          "revision": "c202236235762e1c871ad0ccb60c8ee5ba337b9a",
+          "verified_url": "https://huggingface.co/api/models/Qwen/Qwen3.5-9B/revision/c202236235762e1c871ad0ccb60c8ee5ba337b9a?blobs=true",
+          "checked_at": "2026-10-29T06:25:21.976425+00:00"
+        },
+        {
+          "provider": "modelscope",
+          "repo_id": "Qwen/Qwen3.5-9B",
+          "revision": "460979c3d11864dd16408d860ac930a360a2fac2",
+          "verified_url": "https://modelscope.cn/api/v1/models/Qwen/Qwen3.5-9B/repo/files?Recursive=true&Revision=460979c3d11864dd16408d860ac930a360a2fac2",
+          "checked_at": "2026-10-29T06:25:22.982243+00:00"
+        }
+      ]
+    },
+    {
+      "model_id": "qwen/qwen3.8-27b",
+      "spec_name": "bf16-vllm-ppu-1d4bf0f2",
+      "sources": [
+        {
+          "provider": "huggingface",
+          "repo_id": "Qwen/Qwen3.8-27B",
+          "revision": "1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0",
+          "verified_url": "https://huggingface.co/api/models/Qwen/Qwen3.8-27B/revision/1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0?blobs=true",
+          "checked_at": "2026-10-29T06:25:21.226781+00:00"
+        },
+        {
+          "provider": "modelscope",
+          "repo_id": "Qwen/Qwen3.8-27B",
+          "revision": "e823e888ae179eb3be02c1a48899c4f828371376",
+          "verified_url": "https://modelscope.cn/api/v1/models/Qwen/Qwen3.8-27B/repo/files?Recursive=true&Revision=e823e888ae179eb3be02c1a48899c4f828371376",
+          "checked_at": "2026-10-29T06:25:22.178080+00:00"
+        }
+      ]
+    },
+    {
+      "model_id": "qwen/qwen3guard-gen-0.6b",
+      "spec_name": "bf16-vllm-ppu-fada3b2f",
+      "sources": [
+        {
+          "provider": "huggingface",
+          "repo_id": "Qwen/Qwen3Guard-Gen-0.6B",
+          "revision": "fada3b2f655b89601929198343c94cd2f64d93cc",
+          "verified_url": "https://huggingface.co/api/models/Qwen/Qwen3Guard-Gen-0.6B/revision/fada3b2f655b89601929198343c94cd2f64d93cc?blobs=true",
+          "checked_at": "2026-10-29T06:25:20.887293+00:00"
+        },
+        {
+          "provider": "modelscope",
+          "repo_id": "Qwen/Qwen3Guard-Gen-0.6B",
+          "revision": "9812ecb552e9f6e857110575e5cdb5738083a3d0",
+          "verified_url": "https://modelscope.cn/api/v1/models/Qwen/Qwen3Guard-Gen-0.6B/repo/files?Recursive=true&Revision=9812ecb552e9f6e857110575e5cdb5738083a3d0",
+          "checked_at": "2026-10-29T06:25:22.091618+00:00"
+        }
+      ]
+    },
+    {
+      "model_id": "qwen/qwen3guard-gen-4b",
+      "spec_name": "bf16-vllm-ppu-6ec42827",
+      "sources": [
+        {
+          "provider": "huggingface",
+          "repo_id": "Qwen/Qwen3Guard-Gen-4B",
+          "revision": "6ec42827da0c1ff11e7a49dc269d2e810d27e108",
+          "verified_url": "https://huggingface.co/api/models/Qwen/Qwen3Guard-Gen-4B/revision/6ec42827da0c1ff11e7a49dc269d2e810d27e108?blobs=true",
+          "checked_at": "2026-10-29T06:25:22.240993+00:00"
+        },
+        {
+          "provider": "modelscope",
+          "repo_id": "Qwen/Qwen3Guard-Gen-4B",
+          "revision": "107171c041a049622f8f1787911367ac16462c6e",
+          "verified_url": "https://modelscope.cn/api/v1/models/Qwen/Qwen3Guard-Gen-4B/repo/files?Recursive=true&Revision=107171c041a049622f8f1787911367ac16462c6e",
+          "checked_at": "2026-10-29T06:25:23.192835+00:00"
+        }
+      ]
+    },
+    {
+      "model_id": "weiboai/vibethinker-3b",
+      "spec_name": "bf16-vllm-ppu-77bd2cce",
+      "sources": [
+        {
+          "provider": "huggingface",
+          "repo_id": "WeiboAI/VibeThinker-3B",
+          "revision": "77bd2cced09193c8b9a59a32bd8577bbd1f3e01c",
+          "verified_url": "https://huggingface.co/api/models/WeiboAI/VibeThinker-3B/revision/77bd2cced09193c8b9a59a32bd8577bbd1f3e01c?blobs=true",
+          "checked_at": "2026-10-29T06:25:24.130698+00:00"
+        },
+        {
+          "provider": "modelscope",
+          "repo_id": "WeiboAI/VibeThinker-3B",
+          "revision": "fd738379de73e4ac7aea26e8dbbb6573aac00713",
+          "verified_url": "https://modelscope.cn/api/v1/models/WeiboAI/VibeThinker-3B/repo/files?Recursive=true&Revision=fd738379de73e4ac7aea26e8dbbb6573aac00713",
+          "checked_at": "2026-10-29T06:27:29.296012+00:00"
+        }
+      ]
+    }
+  ]
+}

@@ -50,6 +50,7 @@
     "autoCheckOffHelp": "Off: the server does not check by itself. \"Check for updates\" still reads the version index when you ask.",
     "notChecked": "Not checked yet",
     "notCheckedHelp": "Automatic checks are off. Use \"Check for updates\" at the top right, or upload files here.",
+    "currentBuild": "Current control-plane build",
     "checkedAt": "Checked {{time}}"
   },
   "usageReport": {
@@ -92,7 +93,7 @@
       "tooLarge": "The image is still larger than {{max}} KiB after compression; choose a simpler image"
     }
   },
-  "common": { "save": "Save", "saved": "Saved", "delete": "Delete", "add": "Add", "cancel": "Cancel" },
+  "common": { "save": "Save", "saved": "Saved", "delete": "Delete", "add": "Add", "edit": "Edit", "cancel": "Cancel" },
   "error": { "save": "Failed to save: {{detail}}", "update": "Failed to update: {{detail}}", "import": "Failed to import: {{detail}}", "delete": "Failed to delete: {{detail}}", "add": "Failed to add: {{detail}}" },
   "pull": {
     "title": "Pull settings",
@@ -344,7 +345,7 @@
       "gateway": "inference API"
     }
   },
-  "ai": { "empty": "No AI service configured", "service": "AI Services", "notice": "The platform is fully usable without AI configuration. Configure a service to enable deployment advice, error diagnosis, and model Q&A.", "egressNotice": "The assistant reads the platform data the asking user can see - nodes, deployments, models, logs and metrics - and sends what it reads to the AI service in use ({{host}}). To keep it inside the platform, use a model served by this platform.", "name": "Name", "preset": "Preset", "model": "Model", "default": "Default", "deleteConfirm": "Delete this configuration?", "deleted": "Configuration deleted", "addService": "Add AI Service", "added": "AI service added", "baseUrl": "Base URL", "upstreamKey": "Upstream API Key", "setDefault": "Set as Default", "nameRequired": "Enter a name", "namePlaceholder": "For example, deepseek-primary", "baseUrlRequired": "Enter the base URL", "modelRequired": "Enter a model name", "keyRequired": "Enter the upstream API key", "presetName": { "deepseek": "DeepSeek (default)", "bailian": "Alibaba Cloud Model Studio", "siliconflow": "SiliconFlow", "openrouter": "OpenRouter", "poe": "Poe", "custom": "Custom" } },
+  "ai": { "empty": "No AI service configured", "service": "AI Services", "notice": "The platform is fully usable without AI configuration. Configure a service to enable deployment advice, error diagnosis, and model Q&A.", "egressNotice": "The assistant reads the platform data the asking user can see - nodes, deployments, models, logs and metrics - and sends what it reads to the AI service in use ({{host}}). To keep it inside the platform, use a model served by this platform.", "name": "Name", "preset": "Preset", "model": "Model", "default": "Default", "deleteConfirm": "Delete this configuration?", "deleted": "Configuration deleted", "deletedPromoted": "Configuration deleted. The assistant now uses “{{name}}”.", "addService": "Add AI Service", "added": "AI service added", "baseUrl": "Base URL", "upstreamKey": "Upstream API Key", "setDefault": "Set as Default", "defaultLocked": "This is the service the assistant uses. Mark another service as the default to move it.", "nameRequired": "Enter a name", "namePlaceholder": "For example, deepseek-primary", "baseUrlRequired": "Enter the base URL", "modelRequired": "Enter a model name", "keyRequired": "Enter the upstream API key", "editService": "Edit AI Service", "updated": "AI service updated", "baseUrlHint": "Fill the address up to /v1. Do not include /chat/completions: the platform appends it.", "keyKeep": "Leave blank to keep the stored key", "test": "Test connection", "testOk": "The service answered", "testConnection": "Cannot reach the address: check the host, the port and the network", "testBlocked": "The platform's outbound policy refuses this address; an administrator must allow the host", "testAuth": "The API key was rejected: check the upstream key", "testPath": "The address answered 404 but named no model, so the path is wrong. Fill it up to /v1, without /chat/completions", "testModel": "The service does not serve this model: check the model name", "testHttp": "The service answered with an unexpected status", "testAddress": "Address tested: {{url}}", "testLatency": "{{ms}} ms", "presetName": { "deepseek": "DeepSeek (default)", "bailian": "Alibaba Cloud Model Studio", "siliconflow": "SiliconFlow", "openrouter": "OpenRouter", "poe": "Poe", "custom": "Custom" } },
   "dataRetention": {
     "title": "Data retention",
     "description": "How long each kind of data is kept, how much space it may take, and the time zone daily statistics are counted in. Saving applies at once; what a shorter retention no longer keeps is deleted in the background.",
@@ -388,6 +389,9 @@
       "gpu": "GPU utilization: utilization, memory, power, temperature",
       "gpu_time": "GPU hours: cards each deployment held × hours"
     },
+    "alwaysOn": {
+      "scheduling": "Scheduling activity: scheduling events by reason, card switches, sharing deployments' awake time (always counted)"
+    },
     "groups": {
       "metrics": {
         "title": "Raw metric samples",
@@ -406,13 +410,26 @@
         "description": "Tokens every API key used on every deployment, by hour and by day, never sampled; usage analytics and billing read it."
       },
       "stats": {
-        "title": "Service quality / GPU utilization / GPU hours",
-        "description": "The long-term statistics of usage analytics share one retention and can be switched off one by one; a statistic switched off stops counting and what it has ages out."
+        "title": "Service quality / GPU utilization / GPU hours / scheduling activity",
+        "description": "The long-term statistics of usage analytics and scheduling analysis share one retention; the first three can be switched off one by one, and a statistic switched off stops counting and what it has ages out."
       },
       "zone": {
         "title": "Statistics time zone",
         "description": "Where days start for daily statistics. A change applies to days rolled up after it; days already rolled up stay."
       }
     }
+  },
+  "experience": {
+    "title": "Feature experience mode",
+    "starting": "Starting…",
+    "exited": "Exited: {{error}}",
+    "address": "Entry",
+    "user": "User",
+    "password": "Password",
+    "portHint": "Uses port {{port}}; open it in the firewall to reach it from other computers. Each time it is turned on, the initial data is restored and a new password is generated.",
+    "reset": "Restore initial data",
+    "resetConfirm": "Discard what was done in the experience environment and restore the initial data?",
+    "changePassword": "Change password",
+    "passwordConfirm": "Generate a new password? Signed-in sessions in the experience environment end and must sign in again with the new password."
   }
 }

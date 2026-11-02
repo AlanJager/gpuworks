@@ -9,7 +9,7 @@ import type { PlaygroundCatalog, PlaygroundModel } from "../src/pages/playground
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>", { url: "http://localhost/" });
 const nativeBlob = globalThis.Blob;
-for (const name of ["window", "document", "navigator", "HTMLElement", "SVGElement", "Element", "Node", "MutationObserver", "ShadowRoot", "File", "Blob", "FormData", "DOMException"] as const) {
+for (const name of ["window", "document", "navigator", "HTMLElement", "SVGElement", "Element", "Node", "MutationObserver", "ShadowRoot", "File", "FileReader", "Blob", "FormData", "DOMException"] as const) {
   Object.defineProperty(globalThis, name, { value: dom.window[name], configurable: true });
 }
 Object.defineProperty(globalThis, "sessionStorage", { value: dom.window.sessionStorage, configurable: true });
@@ -54,13 +54,16 @@ await i18n.use(initReactI18next).init({
   resources: { en: {
     playground: JSON.parse(fs.readFileSync(new URL("../src/i18n/locales/en/playground.json", import.meta.url), "utf8")),
     common: JSON.parse(fs.readFileSync(new URL("../src/i18n/locales/en/common.json", import.meta.url), "utf8")),
+  }, zh: {
+    playground: JSON.parse(fs.readFileSync(new URL("../src/i18n/locales/zh/playground.json", import.meta.url), "utf8")),
+    common: JSON.parse(fs.readFileSync(new URL("../src/i18n/locales/zh/common.json", import.meta.url), "utf8")),
   } },
   defaultNS: "playground",
   interpolation: { escapeValue: false },
 });
 
 const { MemoryRouter, Route, Routes, useLocation } = await import("react-router-dom");
-const { cleanup, render, screen, waitFor } = await import("@testing-library/react");
+const { act, cleanup, render, screen, waitFor } = await import("@testing-library/react");
 const userEvent = (await import("@testing-library/user-event")).default;
 const { default: PlaygroundPage } = await import("../src/pages/playground/PlaygroundPage.tsx");
 const { default: ChatPage } = await import("../src/pages/playground/ChatPage.tsx");
@@ -95,7 +98,6 @@ const catalog: PlaygroundCatalog = {
     model("translate-model", [{ ...operation("openai.completions", "/v1/completions", "completion", "sse", "stream"), request_defaults: { stop: ["<|plamo:op|>"], temperature: 0 } }]),
   ],
   parameters: [],
-  extra_parameter_presets: [],
   html_preview: { allow_network: false },
 };
 
@@ -463,4 +465,128 @@ test("A completion model that declares a working prompt starts with it, so Gener
   // A model without a declared prompt starts from the generic one.
   renderAt(<CompletionPage catalog={models} />, "/playground/completion?model=base-model");
   assert.equal((await screen.findByRole("textbox", { name: "Prompt" }) as HTMLTextAreaElement).value, "The capital of France is");
+});
+
+for (const declaresVoice of [false, true]) {
+  test(`Audio speech ${declaresVoice ? "preserves a selected declared voice" : "does not inject an undeclared discovered voice"}`, async () => {
+    const id = declaresVoice ? "declared-voice-model" : "reference-audio-model";
+    const audioCatalog: PlaygroundCatalog = { ...catalog, models: [model(id, [{
+      ...operation("openai.audio.speech", "/v1/audio/speech", "audio", "audio"),
+      discovery: [{ name: "voices", endpoint: "/v1/audio/voices" }],
+      inputs: declaresVoice ? [{ name: "voice", kind: "select", label: "Voice", required: true }] : [{ name: "ref_audio", kind: "audio", encoding: "data_url" }],
+    }])] };
+    let resolveVoices!: (response: Response) => void;
+    const voices = new Promise<Response>((resolve) => { resolveVoices = resolve; });
+    const requests: Record<string, unknown>[] = [];
+    globalThis.fetch = (async (input, init) => {
+      if (String(input).includes("/v1/audio/voices?")) return voices;
+      if (String(input).endsWith("/v1/audio/speech") && init?.method === "POST") {
+        requests.push(JSON.parse(String(init.body)) as Record<string, unknown>);
+        return new Response(new nativeBlob(["RIFF-audio"]), { headers: { "Content-Type": "audio/wav" } });
+      }
+      return jsonResponse({ error: "unexpected request" }, 500);
+    }) as typeof fetch;
+    const view = renderAt(<AudioPage catalog={audioCatalog} />, `/playground/audio?operation=openai.audio.speech&model=${id}`);
+    await act(async () => { resolveVoices(jsonResponse({ voices: ["default", "ryan"], uploaded_voices: [] })); });
+    const user = userEvent.setup();
+    if (declaresVoice) {
+      assert.ok(screen.getByText("default", { selector: ".ant-select-selection-item" }));
+      await user.click(await screen.findByRole("combobox", { name: "Voice" }));
+      await user.click(screen.getByText("ryan", { selector: ".ant-select-item-option-content" }));
+    }
+    await user.click(screen.getByRole("button", { name: "Generate Speech" }));
+    await waitFor(() => assert.ok(view.container.querySelector('audio[src="blob:playground-result"]')));
+    assert.deepEqual(requests, [{ model: id, input: "Hello from GPUWorks", ...(declaresVoice ? { voice: "ryan" } : {}) }]);
+  });
+}
+
+test("Switching to a reference-audio model drops the previous model's voice", async () => {
+  const audioCatalog: PlaygroundCatalog = { ...catalog, models: [
+    model("switch-voice-model", [{ ...operation("openai.audio.speech", "/v1/audio/speech", "audio", "audio"), discovery: [{ name: "voices", endpoint: "/v1/audio/voices" }], inputs: [{ name: "voice", kind: "select", label: "Voice", required: true }] }]),
+    model("switch-reference-model", [{ ...operation("openai.audio.speech", "/v1/audio/speech", "audio", "audio"), discovery: [{ name: "voices", endpoint: "/v1/audio/voices" }], inputs: [{ name: "ref_audio", kind: "audio", encoding: "data_url" }] }]),
+  ] };
+  const requests: Record<string, unknown>[] = [];
+  globalThis.fetch = (async (input, init) => {
+    if (String(input).includes("/v1/audio/voices?")) return jsonResponse({ voices: ["vivian"], uploaded_voices: [] });
+    if (String(input).endsWith("/v1/audio/speech") && init?.method === "POST") {
+      requests.push(JSON.parse(String(init.body)) as Record<string, unknown>);
+      return new Response(new nativeBlob(["RIFF-audio"]), { headers: { "Content-Type": "audio/wav" } });
+    }
+    return jsonResponse({ error: "unexpected request" }, 500);
+  }) as typeof fetch;
+  const view = renderAt(<AudioPage catalog={audioCatalog} />, "/playground/audio?operation=openai.audio.speech&model=switch-voice-model");
+  await screen.findByRole("combobox", { name: "Voice" });
+  const user = userEvent.setup();
+  await user.click(screen.getAllByRole("combobox").find((element) => !element.getAttribute("aria-label"))!);
+  await user.click(await screen.findByText("switch-reference-model", { selector: ".ant-select-item-option-content" }));
+  await waitFor(() => assert.ok(screen.getByTestId("location").textContent?.includes("model=switch-reference-model")));
+  await user.click(screen.getByRole("button", { name: "Request", exact: true }));
+  const draft = JSON.parse((screen.getByRole("textbox", { name: "Raw request body" }) as HTMLTextAreaElement).value);
+  assert.deepEqual(draft, { model: "switch-reference-model", input: "Hello from GPUWorks" });
+  await user.click(screen.getByRole("button", { name: "Close", exact: true }));
+  await user.click(screen.getByRole("button", { name: "Generate Speech" }));
+  await waitFor(() => assert.ok(view.container.querySelector('audio[src="blob:playground-result"]')));
+  assert.deepEqual(requests, [{ model: "switch-reference-model", input: "Hello from GPUWorks" }]);
+});
+
+test("Reference audio uses template translations and keeps its API input name", async () => {
+  const previousLanguage = i18n.language;
+  await act(async () => { await i18n.changeLanguage("zh"); });
+  try {
+    const audioCatalog: PlaygroundCatalog = { ...catalog, models: [model("localized-reference-model", [{
+      ...operation("openai.audio.speech", "/v1/audio/speech", "audio", "audio"),
+      inputs: [{ name: "ref_audio", kind: "audio", encoding: "data_url", label: { en: "Reference audio", zh: "参考音频" } }],
+    }])] };
+    const requests: Record<string, unknown>[] = [];
+    globalThis.fetch = (async (input, init) => {
+      if (String(input).endsWith("/v1/audio/speech") && init?.method === "POST") {
+        requests.push(JSON.parse(String(init.body)) as Record<string, unknown>);
+        return new Response(new nativeBlob(["RIFF-audio"]), { headers: { "Content-Type": "audio/wav" } });
+      }
+      return jsonResponse({ error: "unexpected request" }, 500);
+    }) as typeof fetch;
+    const view = renderAt(<AudioPage catalog={audioCatalog} />, "/playground/audio?operation=openai.audio.speech&model=localized-reference-model");
+    const user = userEvent.setup();
+    await user.upload(screen.getByLabelText("参考音频"), new File(["reference audio"], "reference.wav", { type: "audio/wav" }));
+    await user.click(screen.getByRole("button", { name: "Request", exact: true }));
+    await waitFor(() => {
+      const draft = JSON.parse((screen.getByRole("textbox", { name: "Raw request body" }) as HTMLTextAreaElement).value);
+      assert.match(String(draft.ref_audio), /^data:audio\/wav;base64,/);
+    });
+    await user.click(screen.getByRole("button", { name: "Close", exact: true }));
+    await user.click(screen.getByRole("button", { name: "生成语音" }));
+    await waitFor(() => assert.ok(view.container.querySelector('audio[src="blob:playground-result"]')));
+    assert.equal(requests.length, 1);
+    assert.deepEqual(Object.keys(requests[0]).sort(), ["input", "model", "ref_audio"]);
+    assert.match(String(requests[0].ref_audio), /^data:audio\/wav;base64,/);
+    await act(async () => { await i18n.changeLanguage("en"); });
+    assert.ok(screen.getByLabelText("Reference audio"));
+  } finally {
+    await act(async () => { await i18n.changeLanguage(previousLanguage); });
+  }
+});
+
+test("Template labels own translated names and unlabeled inputs keep their API names", async () => {
+  const { default: InputsForm } = await import("../src/pages/playground/InputsForm.tsx");
+  const previousLanguage = i18n.language;
+  await act(async () => { await i18n.changeLanguage("zh"); });
+  try {
+    render(<I18nextProvider i18n={i18n}><InputsForm fields={[
+      { name: "ref_audio", kind: "audio", encoding: "data_url", label: { zh: "音色样本", en: "Voice sample" } },
+      { name: "custom_note", kind: "text" },
+    ]} values={{}} onChange={() => undefined} /></I18nextProvider>);
+    assert.ok(screen.getByLabelText("音色样本"));
+    assert.equal(screen.queryByLabelText("参考音频"), null);
+    assert.ok(screen.getByLabelText("custom_note"));
+    await act(async () => { await i18n.changeLanguage("en"); });
+    assert.ok(screen.getByLabelText("Voice sample"));
+    cleanup();
+    render(<I18nextProvider i18n={i18n}><InputsForm fields={[
+      { name: "ref_audio", kind: "audio", encoding: "data_url" },
+    ]} values={{}} onChange={() => undefined} /></I18nextProvider>);
+    assert.ok(screen.getByLabelText("ref_audio"));
+    assert.equal(screen.queryByLabelText("Reference audio"), null);
+  } finally {
+    await act(async () => { await i18n.changeLanguage(previousLanguage); });
+  }
 });

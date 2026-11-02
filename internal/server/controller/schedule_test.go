@@ -249,6 +249,31 @@ func TestDeploymentRetryRemovesPriorContainersAndKeepsTerminalFailure(t *testing
 			t.Fatalf("retry %d did not push one replacement: %+v", attempt+1, updates)
 		}
 	}
+	// Each rebuild is one timeline event on the deployment; the first launch
+	// and the exhausted third failure are not rebuilds.
+	events, err := st.DeploymentEvents(dep.ID, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rebuilt []store.InstanceEvent
+	for _, ev := range events {
+		if ev.Code == store.EventReplicaRebuilt {
+			rebuilt = append(rebuilt, ev)
+		}
+	}
+	if len(rebuilt) != 2 {
+		t.Fatalf("REPLICA_REBUILT events = %+v, want one per rebuild (2)", rebuilt)
+	}
+	for i, ev := range rebuilt {
+		var params map[string]any
+		if err := json.Unmarshal([]byte(ev.Data), &params); err != nil {
+			t.Fatal(err)
+		}
+		want := map[string]any{"replica": float64(1), "attempt": float64(i + 2), "reason": "fixture failure", "node": node.DisplayName(), store.EventParamNodeUUIDs: []any{node.UUID}}
+		if !reflect.DeepEqual(params, want) || ev.Kind != store.EventKindLifecycle {
+			t.Fatalf("rebuild %d = kind %q %v, want %v", i, ev.Kind, params, want)
+		}
+	}
 }
 
 func TestVendorAndArchIDOfGPUFallback(t *testing.T) {

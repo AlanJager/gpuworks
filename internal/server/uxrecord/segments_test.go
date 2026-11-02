@@ -44,6 +44,20 @@ func TestSegmentsOfAFinishedRequest(t *testing.T) {
 			[]Segment{{SegmentGateway, 1}, {SegmentWaiting, 42}, {SegmentPrefill, 56}, {SegmentAnswering, 200}, {SegmentTail, 2}},
 		},
 		{
+			"a reported queue without prefill remains queue plus an unsplit wait",
+			done(func(r *Request) {
+				r.DispatchMS, r.FirstAnswerMS, r.LastChunkMS, r.EndMS, r.EngineQueueMS = 2, 20302, 21302, 21302, 20000
+			}),
+			[]Segment{{SegmentGateway, 2}, {SegmentQueue, 20000}, {SegmentWaiting, 300}, {SegmentAnswering, 1000}},
+		},
+		{
+			"a queue-only account cannot exceed the observed wait",
+			done(func(r *Request) {
+				r.DispatchMS, r.FirstAnswerMS, r.LastChunkMS, r.EndMS, r.EngineQueueMS = 2, 302, 1302, 1302, 20000
+			}),
+			[]Segment{{SegmentGateway, 2}, {SegmentQueue, 300}, {SegmentAnswering, 1000}},
+		},
+		{
 			"an engine account longer than the gateway's wait keeps its proportions inside the wait",
 			done(func(r *Request) {
 				r.DispatchMS, r.FirstAnswerMS, r.LastChunkMS, r.EndMS, r.EngineQueueMS, r.EnginePrefillMS = 0, 100, 200, 200, 100, 100

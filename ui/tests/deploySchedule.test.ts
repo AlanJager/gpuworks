@@ -3,15 +3,18 @@ import fs from "node:fs";
 import test from "node:test";
 import { createInstance } from "i18next";
 
-import { scheduleText } from "../src/pages/deploy/deploySchedule.ts";
+import { placementRefusalText, scheduleText } from "../src/pages/deploy/deploySchedule.ts";
 
-const locale = (lng: string) =>
-  JSON.parse(fs.readFileSync(new URL(`../src/i18n/locales/${lng}/deploy.json`, import.meta.url), "utf8"));
+const locale = (lng: string, ns = "deploy") =>
+  JSON.parse(fs.readFileSync(new URL(`../src/i18n/locales/${lng}/${ns}.json`, import.meta.url), "utf8"));
 const i18n = createInstance();
 await i18n.init({
   lng: "en",
   fallbackLng: "en",
-  resources: { en: { deploy: locale("en") }, zh: { deploy: locale("zh") } },
+  resources: {
+    en: { deploy: locale("en"), deployments: locale("en", "deployments") },
+    zh: { deploy: locale("zh"), deployments: locale("zh", "deployments") },
+  },
   defaultNS: "deploy",
   interpolation: { escapeValue: false },
 });
@@ -122,3 +125,106 @@ test("a source rule that forbids every image source names the node and the image
   assert.match(zh, /节点 gpu-b-02 适用的来源规则禁止了镜像 docker\.io\/lmsysorg\/sglang:v0\.5\.21/);
   assert.doesNotMatch(en + zh, /\{\{/);
 });
+
+test("a pinned PD unit waiting on cards other deployments hold names the node, the cards and the holders in both languages", () => {
+  const reason = { code: "pinned_gpus_unavailable", params: { node: "gpu-a", gpus: "0, 1", holders: "chat, embed" } };
+  const en = i18n.getFixedT("en", "deploy") as never;
+  const zh = i18n.getFixedT("zh", "deploy") as never;
+  assert.equal(
+    scheduleText(en, reason),
+    "GPU 0, 1 on gpu-a, which this unit is pinned to, is held by chat, embed. The unit waits for it; switch the deployment to automatic placement to let the platform use free GPUs instead.",
+  );
+  assert.equal(
+    scheduleText(zh, reason),
+    "该单元钉住的 gpu-a 上的 GPU 0, 1 正被 chat, embed 占用，单元会一直等待；把部署的放置方式改为自动，平台就会改用空闲的卡。",
+  );
+});
+
+test("a replica waiting for holders to yield names each one and its terms", async () => {
+  const reason = {
+    code: "waiting_for_yield",
+    params: {
+      node: "gpu-1",
+      instances: ["b-1", "s-1", "o-1"],
+      holders: [
+        { deployment: "batch", at_once: true },
+        { deployment: "shared", at_once: false, idle_sec: 30, max_serve_sec: 120 },
+        { deployment: "chat", at_once: false, idle_sec: 60 },
+      ],
+    },
+  };
+  await i18n.changeLanguage("zh");
+  assert.equal(
+    scheduleText(i18n.getFixedT("zh", "deploy") as never, reason),
+    "等待：batch 立即让出 GPU；shared 闲置 30 秒或本轮服务满 2 分钟后让出 GPU；chat 闲置 1 分钟后让出 GPU。之后在 gpu-1 上放置副本。",
+  );
+  assert.equal(
+    scheduleText(i18n.getFixedT("en", "deploy") as never, reason),
+    "Waiting until batch gives up its GPUs now; shared gives up its GPUs after 30 s idle or 2 min of serving; chat gives up its GPUs after 1 min idle; the replica then goes on gpu-1.",
+  );
+  // With no holder left to put to sleep, it waits for the sleeps ordered.
+  assert.equal(
+    scheduleText(i18n.getFixedT("zh", "deploy") as never, { code: "waiting_for_yield", params: { node: "gpu-1", holders: [], instances: [] } }),
+    "等待：已让出 GPU 的部署完成休眠。之后在 gpu-1 上放置副本。",
+  );
+});
+
+test("a replica kept off a sleeper's card names the sleeper, its policy and what to do", () => {
+  const reason = { code: "reserved_for_sleepers", params: { node: "gpu3", gpus: [0], sleepers: [{ deployment: "qwen3-asr", policy: "idle" }] } };
+  assert.equal(
+    scheduleText(i18n.getFixedT("zh", "deploy") as never, reason),
+    "gpu3 的 GPU 0 为休眠中的 qwen3-asr（闲置自动出让）保留，供请求到达时唤醒；不自动出让的部署不会放到这些卡上。可以换一张卡，为本部署开启休眠并选择能共卡的出让策略，或手动休眠占卡的部署（手动休眠的部署不保留卡）。",
+  );
+  assert.match(scheduleText(i18n.getFixedT("en", "deploy") as never, reason), /^GPU 0 on gpu3 is kept for qwen3-asr \(Yield when idle\), asleep there/);
+});
+
+// Yield policy keeps a draft off cards awake deployments hold: the reason
+// names the node, the cards, each holder with its policy, and what to change.
+const heldCases: Array<{ name: string; reason: { code: string; params: Record<string, unknown> }; zh: string; en: string }> = [
+  {
+    name: "a never draft on a sharer's card",
+    reason: { code: "does_not_wait_for_yield", params: { node: "gpu3", gpus: [0], holders: [{ deployment: "qwen3-asr", policy: "idle" }], blockers: [] } },
+    zh: "gpu3 的 GPU 0 被 qwen3-asr（闲置自动出让）占用；本部署不自动出让，不会等占卡的部署让卡。为本部署开启休眠并选择能共卡的出让策略，即可等 qwen3-asr 按出让策略让卡。",
+    en: "GPU 0 on gpu3 is held by qwen3-asr (Yield when idle); this deployment never yields, so it does not wait for them to give the cards up. Enable sleep for this deployment and pick a yield policy that shares cards, and it waits for qwen3-asr to give them up by yield policy.",
+  },
+  {
+    name: "a sharing draft on a never holder's card",
+    reason: { code: "held_by_non_yielding", params: { node: "gpu3", gpus: [0], holders: [], blockers: [{ deployment: "batch", policy: "never" }] } },
+    zh: "gpu3 的 GPU 0 被 batch（不自动出让）占用；batch 不自动出让，不会把卡让给本部署。可以换一张卡，或为 batch 开启休眠并选择能共卡的出让策略。",
+    en: "GPU 0 on gpu3 is held by batch (Never yield automatically); batch never yields and does not give its cards to this deployment. Choose another card, or enable sleep for batch and pick a yield policy that shares cards.",
+  },
+  {
+    name: "a sharing draft over a sharer and a never holder",
+    reason: {
+      code: "held_by_non_yielding",
+      params: {
+        node: "gpu3", gpus: [0, 1],
+        holders: [{ deployment: "shared", policy: "timeslice", at_once: false, idle_sec: 30, max_serve_sec: 120 }],
+        blockers: [{ deployment: "batch", policy: "never" }],
+      },
+    },
+    zh: "gpu3 的 GPU 0, 1 被 shared（按时自动出让）、batch（不自动出让）占用；batch 不自动出让，不会把卡让给本部署。可以换一张卡，或为 batch 开启休眠并选择能共卡的出让策略。 其余占卡的部署会让卡：shared 闲置 30 秒或本轮服务满 2 分钟后让出 GPU。",
+    en: "GPU 0, 1 on gpu3 is held by shared (Yield on a turn), batch (Never yield automatically); batch never yields and does not give its cards to this deployment. Choose another card, or enable sleep for batch and pick a yield policy that shares cards. The other holders give way: shared gives up its GPUs after 30 s idle or 2 min of serving.",
+  },
+  {
+    name: "a never draft over a sharer and a never holder",
+    reason: {
+      code: "does_not_wait_for_yield",
+      params: { node: "gpu3", gpus: [0, 1], holders: [{ deployment: "shared", policy: "timeslice" }], blockers: [{ deployment: "batch", policy: "never" }] },
+    },
+    zh: "gpu3 的 GPU 0, 1 被 shared（按时自动出让）、batch（不自动出让）占用；本部署不自动出让，不会等占卡的部署让卡。为本部署开启休眠并选择能共卡的出让策略，即可等 shared 按出让策略让卡。 batch 不自动出让，不会让卡：还要换一张卡，或为 batch 开启休眠并选择能共卡的出让策略。",
+    en: "GPU 0, 1 on gpu3 is held by shared (Yield on a turn), batch (Never yield automatically); this deployment never yields, so it does not wait for them to give the cards up. Enable sleep for this deployment and pick a yield policy that shares cards, and it waits for shared to give them up by yield policy. batch never yields and keeps its cards: also choose another card, or enable sleep for batch and pick a yield policy that shares cards.",
+  },
+];
+
+for (const { name, reason, zh, en } of heldCases) {
+  test(`${name} names the cards, each holder with its policy and what to change`, () => {
+    const zhText = placementRefusalText(i18n.getFixedT("zh", "deploy") as never, reason);
+    const enText = placementRefusalText(i18n.getFixedT("en", "deploy") as never, reason);
+    assert.equal(zhText, zh);
+    assert.equal(enText, en);
+    // The evaluation's wording is the scheduler's own.
+    assert.equal(scheduleText(i18n.getFixedT("zh", "deploy") as never, reason), zh);
+    assert.doesNotMatch(zhText + enText, /\{\{|undefined/);
+  });
+}

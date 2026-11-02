@@ -210,3 +210,30 @@ func TestBuildPoolClassifiesEveryNodeOnce(t *testing.T) {
 		t.Fatal("no detail for the unmet nodes")
 	}
 }
+
+func TestBuildPoolCountsOnlySelectableFreeGPUs(t *testing.T) {
+	node := store.Node{ID: 1, UUID: "pinned", GPUs: []store.GPU{{Index: 3}, {Index: 7}, {Index: 9, HealthStatus: accelerator.HealthError}}}
+	for _, tc := range []struct {
+		name       string
+		selected   []int
+		held       map[int]bool
+		need, free int
+		status     PoolStatus
+	}{
+		{name: "occupied pin ignores spare card", selected: []int{3}, held: map[int]bool{3: true}, need: 1, free: 0, status: PoolBusy},
+		{name: "free sparse index", selected: []int{7}, held: map[int]bool{3: true}, need: 1, free: 1, status: PoolRoom},
+		{name: "missing selected card", selected: []int{4}, need: 1, free: 0, status: PoolBusy},
+		{name: "unhealthy selected card", selected: []int{9}, need: 1, free: 0, status: PoolBusy},
+		{name: "partial parallel group", selected: []int{3, 7}, held: map[int]bool{3: true}, need: 2, free: 1, status: PoolBusy},
+		{name: "unpinned replica can use spare card", held: map[int]bool{3: true}, need: 1, free: 1, status: PoolRoom},
+		{name: "released sleeping card", selected: []int{3}, need: 1, free: 1, status: PoolRoom},
+		{name: "shared card requires full memory trial", selected: []int{3}, held: map[int]bool{3: true}, need: 0, free: 0, status: PoolRoom},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			pool := BuildPool(PoolFacts{Nodes: []store.Node{node}, Held: map[uint]map[int]bool{1: tc.held}, Need: tc.need, Placement: Placement{GPUIndexes: tc.selected}})
+			if len(pool.Ranked) != 1 || len(pool.Entries) != 1 || pool.Entries[0].FreeGPUs != tc.free || pool.Entries[0].Status != tc.status || pool.Counts[tc.status] != 1 {
+				t.Fatalf("pool=%+v entries=%+v", pool, pool.Entries)
+			}
+		})
+	}
+}

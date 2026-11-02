@@ -306,11 +306,19 @@ async function openDeployPage() {
   fireEvent.click(await screen.findByTitle(deployLocale.basic.vendor.nvidia));
 }
 
-async function choosePdTopology() {
+// A PD draft is placed by the platform until the deployer switches the same
+// auto / manual control a single node has; the form opens on automatic, and
+// most tests here are about naming the units' nodes, so they switch to manual.
+async function choosePdTopology(placement: "auto" | "manual" = "manual") {
   const pdCard = await screen.findByText(deployLocale.workbench.node.pd);
   await waitFor(() => assert.ok(!pdCard.closest("button")?.hasAttribute("disabled")));
   fireEvent.click(pdCard);
   await screen.findByText(deployLocale.pd.mode);
+  if (placement === "manual") {
+    const pool = document.querySelector(".deploy-node-pool") as HTMLElement;
+    fireEvent.click(within(pool).getByText(deployLocale.workbench.node.manual));
+    await screen.findByText(deployLocale.workbench.node.manualUnitsDescription);
+  }
 }
 
 function selectOption(combobox: HTMLElement, label: string) {

@@ -8,7 +8,7 @@
 
 平台 API Token 继续按所属用户权限、令牌范围与独立有效期保护管理 API 和 MCP，不参与登录会话续期或改密撤销。
 
-API key 保护 /v1 数据面。per-node token 只证明某个 agent 的连接身份；
+API key 保护 /v1 数据面，可限定只调用指定的模型服务（部署）：范围外的模型返回 403，`/v1/models` 也只列出范围内的模型，批处理请求按 key 当前的范围执行。per-node token 只证明某个 agent 的连接身份；
 server_dial 通过 HMAC challenge 防止未持 token 的拨入。
 
 preflight、peer sync 和模型/镜像流使用

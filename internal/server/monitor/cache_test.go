@@ -51,7 +51,7 @@ func TestCachedReturnsFreshValueWithoutRecomputing(t *testing.T) {
 	}
 }
 
-func TestCachedRecomputesAfterTTLExpires(t *testing.T) {
+func TestCachedRefreshesAfterTTLExpires(t *testing.T) {
 	clock := newManualClock(baseTime)
 	cache := NewCached[int](clock.Now, 10*time.Second)
 	var calls int32
@@ -61,10 +61,12 @@ func TestCachedRecomputesAfterTTLExpires(t *testing.T) {
 
 	v1, _ := cache.Get(context.Background(), "cluster", "", "1h", compute)
 	clock.Advance(11 * time.Second)
-	v2, _ := cache.Get(context.Background(), "cluster", "", "1h", compute)
+	v2, _ := cache.Get(context.Background(), "cluster", "", "1h", compute) // stale: the old value at once, a refresh started
+	cache.awaitRefresh(t, cacheKey{kind: "cluster", rng: "1h"})
+	v3, _ := cache.Get(context.Background(), "cluster", "", "1h", compute)
 
-	if v1 != 1 || v2 != 2 {
-		t.Fatalf("v1=%d v2=%d, want 1 then 2 (recomputed after TTL)", v1, v2)
+	if v1 != 1 || v2 != 1 || v3 != 2 {
+		t.Fatalf("v1=%d v2=%d v3=%d, want 1, 1 (stale, served at once), then 2 (refreshed)", v1, v2, v3)
 	}
 }
 
@@ -139,8 +141,8 @@ func TestCachedPropagatesComputeError(t *testing.T) {
 
 // TestCachedSweepsExpiredEntries is F11's regression case: a key that stops
 // being requested (a deleted deployment, say) must not sit in the cache
-// forever. Every Get call sweeps other completed, expired entries out of the
-// map.
+// forever. Every Get call sweeps the entries that can no longer be served
+// out of the map.
 func TestCachedSweepsExpiredEntries(t *testing.T) {
 	clock := newManualClock(baseTime)
 	cache := NewCached[int](clock.Now, 10*time.Second)
@@ -155,7 +157,7 @@ func TestCachedSweepsExpiredEntries(t *testing.T) {
 		t.Fatalf("entries = %d, want 3 before expiry", got)
 	}
 
-	clock.Advance(11 * time.Second) // past the 10s TTL
+	clock.Advance(retainTTLs*10*time.Second + time.Second) // too old to be served any more
 	if _, err := cache.Get(context.Background(), "service", "4", "1h", compute); err != nil {
 		t.Fatalf("Get(4): %v", err)
 	}

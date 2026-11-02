@@ -22,6 +22,14 @@ const DiagnosisWindow = 5 * time.Minute
 // rather than silently going quiet).
 const staleAfter = 30 * time.Second
 
+// StaleAt reports whether a snapshot whose newest sample is from asOf (zero:
+// it has none) counts as stale at now. A snapshot served from the cache after
+// it was built is judged again at the time it is served, not when it was
+// built.
+func StaleAt(asOf, now time.Time) bool {
+	return asOf.IsZero() || now.Sub(asOf) > staleAfter
+}
+
 // ClusterSnapshot is the /monitor cluster-layer view (plan §3.1).
 type ClusterSnapshot struct {
 	AsOf    time.Time
@@ -99,6 +107,13 @@ type ClusterSignals struct {
 	// (every class summed), DiagnosisWindow-at-WindowStep bucketed, from the
 	// same fleet-wide proxy series - no separate query.
 	RequestsPerSecSeries []tsdb.Point
+	// HasInflight/InflightAvg are the gateway's requests in flight across
+	// the fleet, averaged over DiagnosisWindow: the sum of every
+	// deployment's Window.InflightAvg, which over the same buckets is the
+	// mean of the combined gauge - the concurrency RequestsPerSec was
+	// served at.
+	HasInflight bool
+	InflightAvg float64
 
 	// ProxyNoRecent is true when gpuworks_proxy_requests_total (the family
 	// behind both request_rate and error_rate) has no sample anywhere in
@@ -361,7 +376,7 @@ func BuildCluster(ctx context.Context, deps Deps, rng time.Duration) (ClusterSna
 			Name:            dep.Name,
 			Engine:          dep.Engine,
 			NodeNames:       resolveNodeNames(dep, instances, nodeNames),
-			ReplicasReady:   countRunning(instances),
+			ReplicasReady:   ReadyReplicas(dep, instances),
 			ReplicasDesired: dep.ReplicasDesired,
 
 			HasRunning: w.HasRunning,
@@ -404,6 +419,10 @@ func BuildCluster(ctx context.Context, deps Deps, rng time.Duration) (ClusterSna
 		if reqW.HasRequestRate {
 			snap.Signals.HasRequestRate = true
 			snap.Signals.RequestsPerSec += reqW.RequestsPerSec
+		}
+		if w.HasInflight {
+			snap.Signals.HasInflight = true
+			snap.Signals.InflightAvg += w.InflightAvg
 		}
 		if reqW.HasErrRate {
 			snap.Signals.HasErrRate = true
@@ -500,6 +519,6 @@ func BuildCluster(ctx context.Context, deps Deps, rng time.Duration) (ClusterSna
 	}
 
 	snap.AsOf = asOf
-	snap.Stale = asOf.IsZero() || now.Sub(asOf) > staleAfter
+	snap.Stale = StaleAt(asOf, now)
 	return snap, nil
 }

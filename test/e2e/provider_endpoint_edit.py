@@ -10,6 +10,7 @@ PYTHONPATH=test/e2e python3 -m unittest test_provider_endpoint_cleanup -v
 """
 from __future__ import annotations
 
+from collections import Counter
 import json
 import re
 import time
@@ -20,6 +21,17 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeout, expect
 from local_browser_fixture import ROOT
 from platform_token_read_revoke import button, check, collection
 from provider_endpoint_fixture import RunPodFixture
+from provider_default_endpoint_fixture import ProviderDefaultEndpointFixture
+from provider_default_endpoint_checks import EXISTING_KEY, exercise_default_endpoint
+from provider_conditional_checks import exercise_conditional_fields
+from provider_text_value_checks import exercise_text_values
+from provider_key_rotation_checks import exercise_key_rotation
+from provider_secret_error_checks import exercise_provider_secret_errors
+from provider_boundary_checks import exercise_name_boundaries, with_boundary_calls, boundary_http_errors
+from provider_url_checks import exercise_provider_urls, needs_default_fixture
+from provider_form_checks import (
+    NAME_SUFFIX, form_action, observe_mutations, text_contract, clipboard_editing, secret_create,
+    literal_name, concurrent_names, CHECK_FAMILIES, family_enabled, expected_upstream)
 
 CONTRACT = "gpuworks/providers/endpoint-edit-roundtrip"
 
@@ -76,7 +88,7 @@ def exercise_provider_label_keyboard(page, dialog, copy, label):
     expect(key_input).to_be_focused()
     key_input.press("Tab")
     expect(endpoint_input).to_be_focused()
-    add = button(dialog, copy["config"]["add"])
+    add = form_action(dialog, copy["config"]["add"])
     cancel = button(dialog, copy["config"]["cancel"])
     add.focus()
     expect(add).to_be_focused()
@@ -155,7 +167,7 @@ def exercise_provider_no_colon_dismiss(page, dialog, copy, label, locale, edit, 
 # Mainline: UI新建自定义代理账号 → 刷新/独立GET → 编辑回显且密钥空白 → 仅改名称仍用原代理与密钥
 #           → 修改代理遇到真实上游401不落盘 → 原草稿重试成功 → 刷新再编辑回显新代理 → UI删除
 # Contract: gpuworks/providers/endpoint-edit-roundtrip
-def test_provider_endpoint_edit(page, context, server, artifacts, report, locale):
+def test_provider_endpoint_edit(page, context, server, artifacts, report, locale, default_fixture=None):
     texts = ROOT / "ui/src/i18n/locales" / locale
     auth = json.loads((texts / "auth.json").read_text())
     copy = json.loads((texts / "providers.json").read_text())
@@ -179,19 +191,27 @@ def test_provider_endpoint_edit(page, context, server, artifacts, report, locale
     check(fields["endpoint"]["secret"] is False and fields["api_key"]["secret"] is True, "RunPod credential contract changed")
     label = lambda name: fields[name]["label"][locale]
     name = "e2e-" + report["run_id"] + "-proxy"
+    if family_enabled(report, "literal-name"):
+        name += NAME_SUFFIX
     secret = "e2e-runpod-" + report["run_id"]
     artifacts.remember(secret)
+    writes = report["provider_mutations"] = observe_mutations(page)
     # Existing account keys belong to the user; platform registration must keep them.
-    existing_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILXGDN/SclOozk1xsDztpmhGiKkkrfQB9SKoO8dSIQQZ existing@example.com"
+    existing_key = EXISTING_KEY
     platform_key = page.request.get(server.base + "/api/v1/ssh-key")
     check(platform_key.status == 200, "platform SSH key is unavailable")
     expected_keys = [existing_key, platform_key.json()["public_key"]]
+    if family_enabled(report, "default-endpoint"):
+        exercise_default_endpoint(page, server, artifacts, report, copy, label, fields, default_fixture, expected_keys)
     with RunPodFixture(secret, keys=[existing_key]) as fixture:
+        report["provider_upstream_requests"] = fixture.requests
         endpoints = [fixture.base + "/proxy-a/v2", fixture.base + "/proxy-b/v2"]
         add = copy["page"]["addKind"].replace("{{kind}}", copy["kind"]["runpod"])
         button(page, add).click()
         dialog = page.get_by_role("dialog")
         endpoint_default = fields["endpoint"]["default_value"]
+        if family_enabled(report, 'conditional-fields'):
+            exercise_conditional_fields(page, dialog, copy, kinds, locale, report, artifacts)
         report["provider_label_keyboard"] = exercise_provider_label_keyboard(
             page, dialog, copy, label)
         from provider_create_inventory import exercise_provider_create_inventory
@@ -204,6 +224,9 @@ def test_provider_endpoint_edit(page, context, server, artifacts, report, locale
         expect(dialog.get_by_label(label("api_key"), exact=True)).to_have_value("")
         report["evidence"].append({"layer": "ui", "first_open": {"kind": "runpod", "name_empty": True,
             "endpoint_default": endpoint_default, "api_key_empty": True}})
+        text_contract(dialog, copy, label, fields, report, editing=False)
+        secret_create(page, server, dialog, copy, label, name, endpoints[0], secret, writes, errors, report)
+        clipboard_editing(page, context, server, dialog, copy, label, name, endpoints[0], secret, writes, report)
         dialog.get_by_label(copy["config"]["name"], exact=True).fill(name)
         dialog.get_by_label(label("endpoint"), exact=True).fill(endpoints[0])
         dialog.get_by_label(label("api_key"), exact=True).fill(secret)
@@ -217,7 +240,7 @@ def test_provider_endpoint_edit(page, context, server, artifacts, report, locale
             held.append(route)
 
         page.route("**/api/v1/providers", hold_post)
-        button(dialog, copy["config"]["add"]).click()
+        form_action(dialog, copy["config"]["add"]).click()
         inflight = dialog.locator(".ant-modal-footer button.ant-btn-primary")
         expect(inflight).to_have_class(re.compile(r"\bant-btn-loading\b"))
         inflight.click()
@@ -234,9 +257,14 @@ def test_provider_endpoint_edit(page, context, server, artifacts, report, locale
                                          "reclaim": "discard only this run directory after diagnosis"}]
         create_body = created.value.request.post_data_json
         check(create_body == {"name": name, "kind": "runpod", "endpoint": endpoints[0], "api_key": secret}, "create wire mismatch")
+        if 'provider_conditional_fields' in report:
+            conditional = report['provider_conditional_fields']['final_post_contract']
+            check(not set(conditional['must_omit_roots']).intersection(create_body),
+                  'provider create retained a hidden credential from another kind')
+            conditional.update(observed_wire_keys=sorted(create_body), hidden_roots_omitted=True,
+                               proof='actual UI POST checked against the full independent RunPod wire object')
         path = f"/api/v1/providers/{provider_id}"
         expect(dialog).not_to_be_visible()
-        artifacts.start_trace(context)
         report["evidence"].append({"layer": "request", "method": "POST", "path": "/api/v1/providers", "body": create_body, "status": 201})
 
         def read(endpoint, expected_name):
@@ -268,6 +296,7 @@ def test_provider_endpoint_edit(page, context, server, artifacts, report, locale
                 expect(dialog.get_by_label(label("api_key"), exact=True)).to_have_value("")
                 held_save = dialog.locator(".ant-modal-footer button.ant-btn-primary")
                 expect(held_save).to_be_disabled()
+                text_contract(dialog, copy, label, fields, report, editing=True, ready=False)
                 with page.expect_response(lambda r: urlsplit(r.url).path == path and r.request.method == "GET") as loaded:
                     gate["held"].continue_()
                     gate["held"] = None
@@ -275,7 +304,9 @@ def test_provider_endpoint_edit(page, context, server, artifacts, report, locale
                 expect(dialog.get_by_label(label("endpoint"), exact=True)).to_have_value(endpoint)
                 expect(dialog.get_by_label(label("api_key"), exact=True)).to_have_value("")
                 expect(dialog.get_by_label(copy["config"]["name"], exact=True)).to_have_value(expected_name)
-                expect(button(dialog, copy["config"]["save"])).to_be_enabled()
+                expect(form_action(dialog, copy["config"]["save"])).to_be_enabled()
+                text_contract(dialog, copy, label, fields, report, editing=True)
+                literal_name(page, dialog, copy, expected_name, report)
                 report["evidence"].append({"layer": "ui", "reload_edit_endpoint": endpoint, "secret_empty": True,
                                            "save_disabled_until_edit_get": True})
             finally:
@@ -283,15 +314,16 @@ def test_provider_endpoint_edit(page, context, server, artifacts, report, locale
                     gate["held"].continue_()
                 page.unroute("**/api/v1/providers/*", hold_get)
 
-        def save(endpoint, expected_name, status):
+        def save(endpoint, expected_name, status, *, credentials=None):
             with page.expect_response(lambda r: urlsplit(r.url).path == path and r.request.method == "PUT") as updated:
-                button(dialog, copy["config"]["save"]).click()
+                form_action(dialog, copy["config"]["save"]).click()
             response = updated.value
             report["last_request"] = {"method": "PUT", "path": path, "status": response.status,
                                       "expected_status": status, "body": response.request.post_data_json,
                                       "response_text": response.text()}
             check(response.status == status, f"PUT {path}: expected {status}, received {response.status}")
-            check(response.request.post_data_json == {"name": expected_name, "endpoint": endpoint}, "edit must keep blank secret omitted")
+            expected_body = {"name": expected_name, "endpoint": endpoint, **(credentials or {})}
+            check(response.request.post_data_json == expected_body, "edit credential wire differs")
             report["evidence"].append({"layer": "request", "method": "PUT", "path": path, "body": response.request.post_data_json, "status": status})
             if status == 200:
                 expect(dialog).not_to_be_visible()
@@ -312,12 +344,29 @@ def test_provider_endpoint_edit(page, context, server, artifacts, report, locale
                                            "localized_operation_error": message, "draft_endpoint": endpoint})
 
         read(endpoints[0], name)
+        exercise_name_boundaries(page, context, server, fixture, copy, label, path, name,
+                                 endpoints[0], writes, errors, report)
+        artifacts.start_trace(context)
+        literal_name(page, None, copy, name, report)
         edit(endpoints[0], name)
         renamed = name + "-renamed"
         dialog.get_by_label(copy["config"]["name"], exact=True).fill(renamed)
         save(endpoints[0], renamed, 200)
         read(endpoints[0], renamed)
         edit(endpoints[0], renamed)
+        if family_enabled(report, "secret"):
+            report["last_step"] = "provider-secret-whitespace-edit-retained"
+            dialog.get_by_label(label("api_key"), exact=True).fill("   ")
+            save(endpoints[0], renamed, 200, credentials={"api_key": "   "})
+            read(endpoints[0], renamed)
+            report["secret_edit_whitespace_retained"] = True
+            edit(endpoints[0], renamed)
+            report["last_step"] = "provider-endpoint-clear-retained"
+            dialog.get_by_label(label("endpoint"), exact=True).fill("")
+            save("", renamed, 200)
+            read(endpoints[0], renamed)
+            report["endpoint_clear_retained"] = True
+            edit(endpoints[0], renamed)
         dialog.get_by_label(label("endpoint"), exact=True).fill(endpoints[1])
         fixture.reject = True
         save(endpoints[1], renamed, 400)
@@ -326,32 +375,45 @@ def test_provider_endpoint_edit(page, context, server, artifacts, report, locale
         save(endpoints[1], renamed, 200)
         read(endpoints[1], renamed)
         edit(endpoints[1], renamed)
+        renamed = concurrent_names(page, context, server, dialog, copy, label, renamed,
+                                   endpoints[1], path, read, save, report)
+        edit(endpoints[1], renamed)
         report["provider_dismiss"] = exercise_provider_no_colon_dismiss(
             page, dialog, copy, label, locale, edit, read, endpoints[1], renamed)
         report["provider_no_colon"] = True
+        literal_name(page, None, copy, renamed, report)
         row = page.get_by_role("row").filter(has=page.get_by_text(renamed, exact=True))
         button(row, copy["table"]["delete"]).click()
         with page.expect_response(lambda r: urlsplit(r.url).path == path and r.request.method == "DELETE") as deleted:
             button(page.get_by_role("tooltip"), copy["table"]["delete"]).click()
         check(deleted.value.status == 200, "provider cleanup failed")
         check(not any(p["id"] == provider_id for p in collection(page.request.get(server.base + "/api/v1/providers"))), "fixture account leaked")
-        check(all(r["authorized"] for r in fixture.requests), "updates failed to retain the stored API key")
-        check([(r["method"], r["path"], r["status"]) for r in fixture.requests] == [
-            ("GET", "/proxy-a/v2/pods", 200),
-            ("GET", "/proxy-a/v2/account/ssh-keys", 200),
-            ("PUT", "/proxy-a/v2/account/ssh-keys", 200),
-            ("GET", "/proxy-a/v2/pods", 200), ("GET", "/proxy-b/v2/pods", 401),
-            ("GET", "/proxy-b/v2/pods", 200)], f"unexpected cloud API requests: {fixture.requests}")
-        check(fixture.requests[2]["body"] == {"keys": expected_keys} and fixture.keys == expected_keys,
+        check([(r["method"], r["path"], r["status"], r["authorized"]) for r in fixture.requests]
+              == with_boundary_calls(report, expected_upstream(report)), f"unexpected cloud API requests: {fixture.requests}")
+        key_write_index = 3 if family_enabled(report, "secret") else 2
+        check(fixture.requests[key_write_index]["body"] == {"keys": expected_keys} and fixture.keys == expected_keys,
               "platform key registration replaced or lost existing account keys")
         report["evidence"].append({"layer": "runtime", "requests": fixture.requests, "boundary": "local RunPod REST fixture, real server credentials decrypt/validate"})
         report["evidence"].append({"layer": "cleanup", "provider_id": provider_id, "deleted": True})
         report["remaining_resources"] = []
     report["external_fixture_stopped"] = not fixture.thread.is_alive()
+    url_http = exercise_provider_urls(page, context, server, artifacts, report, copy, label, default_fixture, expected_keys)
+    text_http = exercise_text_values(page, context, server, artifacts, report, copy, label, default_fixture, expected_keys)
+    rotation_http = exercise_key_rotation(page, context, server, artifacts, report, copy, label, default_fixture, expected_keys)
+    secret_http = exercise_provider_secret_errors(page, context, server, artifacts, report, copy, label, expected_keys)
     check(not errors, f"browser page errors: {errors}")
-    check(bad_http == [{"path": path, "status": 400, "method": "PUT"}], "unexpected browser HTTP failures")
-    check(len(console_errors) == 1 and "400" in console_errors[0], "unexpected console errors")
-    report["browser_errors"] = {"page": errors, "console": console_errors, "http": bad_http, "expected": "one PUT 400 from the deliberately rejected upstream validation"}
+    expected_http = boundary_http_errors(report, path) + [{"path": path, "status": 400, "method": "PUT"}]
+    if family_enabled(report, "secret"):
+        expected_http.insert(0, {"path": "/api/v1/providers", "status": 400, "method": "POST"})
+    expected_http.extend(url_http + text_http + rotation_http + secret_http)
+    check(bad_http == expected_http, "unexpected browser HTTP failures")
+    console_statuses = [re.fullmatch(
+        r'Failed to load resource: the server responded with a status of (\d{3}) \([^\r\n]*\)', error)
+        for error in console_errors]
+    check(all(console_statuses) and Counter(int(match.group(1)) for match in console_statuses)
+          == Counter(error['status'] for error in expected_http), 'unexpected console errors')
+    report["browser_errors"] = {"page": errors, "console": console_errors, "http": bad_http,
+                                "expected": expected_http}
 
 def main():
     import argparse
@@ -368,18 +430,42 @@ def main():
     parser.add_argument("--server-bin", type=Path, default=ROOT / "bin/gpuworks")
     parser.add_argument("--artifact-dir", type=Path)
     parser.add_argument("--locale", choices=["en", "zh"], default="en")
+    parser.add_argument("--check-family", choices=(*CHECK_FAMILIES, "boundaries"), default="all",
+                        help="diagnostic subset of new checks; formal runs require all")
     args = parser.parse_args()
     os.umask(0o077)
     run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + uuid.uuid4().hex[:8]
     artifacts = Artifacts(args.artifact_dir or ROOT / "secrets/e2e" / run_id)
-    server = LocalServer(args.server_bin, artifacts.private)
+    # This account form does not exercise update distribution or daily usage
+    # reporting. Use their real per-installation switches so only the declared
+    # RunPod boundary is contacted; the CONNECT fixture remains fail-closed.
+    server = LocalServer(args.server_bin, artifacts.private, auto_check_updates=False,
+                         env_overrides={"GPUWORKS_USAGE_REPORT": "off"})
     manifest_path = ROOT / "test/e2e/coverage/provider-endpoint-edit.json"
     manifest = json.loads(manifest_path.read_text())
     if manifest["contract_id"] != CONTRACT or manifest["test_function"] != test_provider_endpoint_edit.__name__:
         raise AssertionError("manifest function binding drift")
+    source_paths = {
+        "test_sha256": Path(__file__),
+        "fixture_sha256": ROOT / "test/e2e/local_browser_fixture.py",
+        "helper_sha256": ROOT / "test/e2e/platform_token_read_revoke.py",
+        "provider_fixture_sha256": ROOT / "test/e2e/provider_endpoint_fixture.py",
+        "provider_inventory_sha256": ROOT / "test/e2e/provider_create_inventory.py",
+        "provider_form_checks_sha256": ROOT / "test/e2e/provider_form_checks.py",
+        "provider_default_checks_sha256": ROOT / "test/e2e/provider_default_endpoint_checks.py",
+        "provider_default_fixture_sha256": ROOT / "test/e2e/provider_default_endpoint_fixture.py",
+        "provider_boundary_checks_sha256": ROOT / "test/e2e/provider_boundary_checks.py",
+        "provider_url_checks_sha256": ROOT / "test/e2e/provider_url_checks.py",
+        "provider_conditional_checks_sha256": ROOT / "test/e2e/provider_conditional_checks.py",
+        "provider_text_value_checks_sha256": ROOT / "test/e2e/provider_text_value_checks.py",
+        "provider_key_rotation_checks_sha256": ROOT / "test/e2e/provider_key_rotation_checks.py",
+        "provider_secret_error_checks_sha256": ROOT / "test/e2e/provider_secret_error_checks.py",
+        "provider_secret_error_fixture_sha256": ROOT / "test/e2e/provider_secret_error_fixture.py",
+    }
     report = {
         "contract": manifest["contract_id"], "case": manifest["name"],
         "status": "NOT_RUN", "run_id": run_id,
+        "check_family": args.check_family, "probe_only": args.check_family != "all",
         "source_sha": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
         "working_tree": "dirty" if subprocess.check_output(["git", "status", "--porcelain"], cwd=ROOT) else "clean",
         "target_branch": "wei/master",
@@ -387,15 +473,21 @@ def main():
         "lane": "local-real-server-sqlite", "identity": "admin browser",
         "locale": args.locale, "viewport": {"width": 1440, "height": 900},
         "timezone": "UTC", "selection": [manifest["contract_id"]], "retries": 0, "evidence": [],
-        "test_sha256": digest(Path(__file__)),
-        "fixture_sha256": digest(ROOT / "test/e2e/local_browser_fixture.py"),
-        "helper_sha256": digest(ROOT / "test/e2e/platform_token_read_revoke.py"),
-        "provider_fixture_sha256": digest(ROOT / "test/e2e/provider_endpoint_fixture.py"),
-        "provider_inventory_sha256": digest(ROOT / "test/e2e/provider_create_inventory.py"),
+        **{key: digest(path) for key, path in source_paths.items()},
+        "product_sha256": {name: digest(ROOT / name) for name in manifest.get("product_contracts", [])},
         "coverage_manifest_sha256": digest(manifest_path),
         "command": ["python3", "test/e2e/provider_endpoint_edit.py", *sys.argv[1:]],
     }
+    default_fixture = None
     try:
+        if (family_enabled(report, "default-endpoint") or needs_default_fixture(report)
+                or family_enabled(report, "text-values")):
+            default_secret = "e2e-runpod-default-" + run_id
+            artifacts.remember(default_secret)
+            default_fixture = ProviderDefaultEndpointFixture(artifacts.private / "default-runpod-tls",
+                default_secret, keys=[EXISTING_KEY])
+            default_fixture.__enter__()
+            server.env_overrides.update(default_fixture.child_environment())
         report["binary_sha256"] = digest(args.server_bin)
         report["health"] = server.start()
         report["base_url"], report["owned_server_pid"] = server.base, server.process.pid
@@ -407,13 +499,22 @@ def main():
             page = context.new_page()
             page.set_default_timeout(10000)
             try:
-                test_provider_endpoint_edit(page, context, server, artifacts, report, args.locale)
+                test_provider_endpoint_edit(page, context, server, artifacts, report, args.locale, default_fixture)
                 layers = {item["layer"] for item in report["evidence"]}
                 if not set(manifest["required_evidence"]) <= layers:
                     raise AssertionError("missing required evidence")
                 report["business_complete"] = True
             except Exception:
                 report["status"], report["failure"] = "FAIL_TEST", traceback.format_exc()
+                # Capture only action labels/state, never credential inputs.
+                try:
+                    report["failure_dialog_actions"] = page.locator(
+                        '[role="dialog"] .ant-modal-footer button').evaluate_all(
+                        '(buttons) => buttons.map(b => ({text: b.textContent, '
+                        'aria: b.getAttribute("aria-label"), disabled: b.disabled, '
+                        'classes: b.className, tree: b.outerHTML}))')
+                except Exception as diagnostic_error:
+                    report["failure_actions_capture_error"] = type(diagnostic_error).__name__
             finally:
                 cleanup_stage(report, "trace", lambda: artifacts.stop_trace(context))
                 cleanup_stage(report, "context", context.close)
@@ -427,6 +528,23 @@ def main():
             report.setdefault("remaining_resources", []).append({"kind": "process",
                 "pid": server.process.pid if server.process else None,
                 "reclaim": f"kill {server.process.pid}" if server.process else "server never started"})
+        if default_fixture is not None:
+            report["default_fixture_stopped"] = cleanup_stage(report, "default-provider-fixture", default_fixture.stop)
+            report["default_endpoint_tls_events"] = list(default_fixture.events)
+            report["default_endpoint_upstream_requests"] = list(default_fixture.requests)
+            if not report["default_fixture_stopped"]:
+                report.setdefault("remaining_resources", []).append({"kind": "fixture",
+                    "scope": "this run default RunPod CONNECT/TLS fixture",
+                    "proxy": default_fixture.proxy_url, "reclaim": "stop this scoped runner process"})
+        def frozen_sources():
+            check(all(digest(path) == report[key] for key, path in source_paths.items()),
+                  "runner or helper source changed during the browser run")
+            check(report["product_sha256"] == {name: digest(ROOT / name)
+                  for name in manifest.get("product_contracts", [])}, "product source changed during execution")
+            if "binary_sha256" in report:
+                check(digest(args.server_bin) == report["binary_sha256"], "server binary changed during execution")
+            report["source_hashes_unchanged"] = True
+        cleanup_stage(report, "frozen-sources", frozen_sources)
         cleanup_stage(report, "server-log", lambda: copy_server_log(artifacts))
         report["private_state"] = "isolated DB/logs retained for diagnosis; remove only this run directory within 7 days"
         cleanup_stage(report, "report-before-scan", lambda: artifacts.write_json("report.json", report))

@@ -32,7 +32,7 @@ export default function UsageTab(props: TabProps) {
   const language = i18n.resolvedLanguage ?? "en";
   const key = search.get("key") ?? "";
   const keyPrefix = search.get("keyPrefix") ?? "";
-  const source = (["api", "playground"].includes(search.get("source") ?? "") ? search.get("source") : undefined) as UsageSource | undefined;
+  const source = (["api", "playground", "batch"].includes(search.get("source") ?? "") ? search.get("source") : undefined) as UsageSource | undefined;
   const group = groupParam(search.get("group"));
   const [mode, setMode] = useState<"in" | "out">("in");
   const [options, setOptions] = useState<KeyOption[]>([]);
@@ -80,7 +80,7 @@ export default function UsageTab(props: TabProps) {
       ],
       rows: [
         ...data.rows.map((r) => {
-          const info = { id: r.api_key_id, name: r.api_key_name, prefix: r.api_key_prefix, revoked: r.api_key_revoked, deleted: r.api_key_deleted, playground: !r.api_key_id && r.source === "playground", userName: r.user_name };
+          const info = { id: r.api_key_id, name: r.api_key_name, prefix: r.api_key_prefix, revoked: r.api_key_revoked, deleted: r.api_key_deleted, playground: !r.api_key_id && r.source === "playground", batch: !r.api_key_id && r.source === "batch", userName: r.user_name };
           return [
             keyTitle(t, info).title, r.api_key_prefix, r.api_key_revoked ? t("names.revoked") : "", r.deployment_name || t("names.deploymentId", { id: r.deployment_id }), r.served_name, t(`usage.source.${r.source}`),
             ...cs(r), fullTime(r.first_ms, tz), fullTime(r.last_ms, tz),
@@ -169,6 +169,7 @@ export default function UsageTab(props: TabProps) {
               { value: "", label: t("usage.filters.allSources") },
               { value: "api", label: t("usage.source.api") },
               { value: "playground", label: t("usage.source.playground") },
+              { value: "batch", label: t("usage.source.batch") },
             ]}
             onChange={(v) => setSearch({ source: v || undefined })}
           />

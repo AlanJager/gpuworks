@@ -295,6 +295,9 @@ func reconcileGPUs(tx *gorm.DB, nodeID uint, gpus []proto.GPUInfo, adopt cardAdo
 			}
 		}
 	}
+	if err := expireCardAllowances(tx, current, time.Now().UTC()); err != nil {
+		return false, err
+	}
 	return renumbered, nil
 }
 
@@ -303,6 +306,7 @@ func reconcileGPUs(tx *gorm.DB, nodeID uint, gpus []proto.GPUInfo, adopt cardAdo
 // of the card and are taken from old.
 func sameCardRow(old, row GPU) bool {
 	row.ID, row.CreatedAt, row.UpdatedAt = old.ID, old.CreatedAt, old.UpdatedAt
+	row.SchedulingStopped, row.SchedulingAllowedAt = old.SchedulingStopped, old.SchedulingAllowedAt
 	return row == old
 }
 

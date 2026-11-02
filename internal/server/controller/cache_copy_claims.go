@@ -178,7 +178,14 @@ func (c *Controller) primeCacheCopyClaims(ctx context.Context) bool {
 		if err == nil {
 			err = c.seedCacheCopyClaims(deps)
 		}
+		var downloadOwners []uint
 		if err == nil {
+			downloadOwners, err = c.store.DownloadDeploymentIDs()
+		}
+		if err == nil {
+			for _, id := range downloadOwners {
+				c.q.add(depKey(id))
+			}
 			for _, dep := range deps {
 				c.q.add(depKey(dep.ID))
 			}

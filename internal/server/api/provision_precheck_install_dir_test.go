@@ -19,6 +19,7 @@ func (p *installDirPrechecker) PrecheckSSH(_ context.Context, req provision.SSHP
 	return provision.SSHPrecheckReport{Target: req.Target, User: "root", Host: "203.0.113.7", Port: 51223, Checks: []provision.CheckResult{
 		{Name: "Install directory", Status: "ok", Detail: "/workspace/gpuworks: filesystem nfs4"},
 		{Name: "Install directory ownership", Status: "warn", Detail: "udocker workloads will run as the agent's own user"},
+		{Name: "Install directory path access", Status: "error", Detail: "/root (mode 700, owner 0:0) cannot be searched by the dedicated runtime user (udocker, uid 1001)"},
 		{Name: "Install directory persistence", Status: "error"},
 	}}, nil
 }
@@ -38,6 +39,7 @@ func TestPrecheckNodeAcceptsInstallDirAndReportsItsChecks(t *testing.T) {
 	want := `{"target":"root@203.0.113.7:51223","user":"root","host":"203.0.113.7","port":51223,"checks":[` +
 		`{"name":"Install directory","status":"ok","detail":"/workspace/gpuworks: filesystem nfs4"},` +
 		`{"name":"Install directory ownership","status":"warn","detail":"udocker workloads will run as the agent's own user"},` +
+		`{"name":"Install directory path access","status":"error","detail":"/root (mode 700, owner 0:0) cannot be searched by the dedicated runtime user (udocker, uid 1001)"},` +
 		`{"name":"Install directory persistence","status":"error"}]}`
 	if got := bytes.TrimSpace(rec.Body.Bytes()); string(got) != want {
 		t.Fatalf("wire JSON =\n%s\nwant\n%s", got, want)

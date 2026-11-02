@@ -17,7 +17,8 @@ func gpuHealthDetail(g *store.GPU) ([]dto.GPUHealthField, *dto.GPUHealthGuide) {
 	for _, f := range evidence {
 		fields = append(fields, dto.GPUHealthField{Name: f.Name, Value: f.Value})
 	}
-	guide, ok := accelerator.HealthGuideFor(g.Vendor, g.HealthCode, accelerator.HealthTarget(g.PCIeBDF, g.Index), evidence)
+	card := accelerator.HealthCard{Vendor: g.Vendor, Code: g.HealthCode, BDF: g.PCIeBDF, Index: g.Index, UUID: g.UUID}
+	guide, ok := accelerator.HealthGuideFor(card, evidence)
 	if !ok {
 		return fields, nil
 	}

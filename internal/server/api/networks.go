@@ -55,8 +55,9 @@ func (st networkState) nodeByID() map[uint]store.Node {
 	return out
 }
 
-func (st networkState) networkDTO(n store.Network) dto.Network {
-	nodes := st.nodeByID()
+// networkDTO takes the state's nodes by ID (nodeByID) from the caller, which
+// builds them once for every network it lists.
+func (st networkState) networkDTO(n store.Network, nodes map[uint]store.Node) dto.Network {
 	out := dto.Network{
 		ID: n.ID, Name: n.Name, Description: n.Description, Roles: nonNilStrings(network.Network(n).Roles),
 		Type: n.Type, CIDR: n.CIDR, Interface: n.Interface,
@@ -110,8 +111,9 @@ func (a *apiHandlers) listNetworks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	out := dto.NetworkList{Items: []dto.Network{st.managementNetworkDTO()}, Roles: netplan.Roles, Types: netplan.Types, TypeRoles: typeRoles()}
+	nodes := st.nodeByID()
 	for _, n := range st.Networks {
-		out.Items = append(out.Items, st.networkDTO(n))
+		out.Items = append(out.Items, st.networkDTO(n, nodes))
 	}
 	writeJSON(w, http.StatusOK, out)
 }
@@ -139,9 +141,9 @@ func (a *apiHandlers) getNetwork(w http.ResponseWriter, r *http.Request) {
 // networkDetail is one network with the nodes it resolved to and its latest
 // test run, nil when it has none.
 func (st networkState) networkDetail(n store.Network, latest *store.NetworkTestRun) dto.NetworkDetail {
-	out := dto.NetworkDetail{Network: st.networkDTO(n), Nodes: []dto.NetworkNode{}, Roles: netplan.Roles, Types: netplan.Types, TypeRoles: typeRoles(), TestSupported: networkTestable(n)}
-	out.LatestTest = networkTestDTO(latest, st.nodeByID())
 	nodes := st.nodeByID()
+	out := dto.NetworkDetail{Network: st.networkDTO(n, nodes), Nodes: []dto.NetworkNode{}, Roles: netplan.Roles, Types: netplan.Types, TypeRoles: typeRoles(), TestSupported: networkTestable(n)}
+	out.LatestTest = networkTestDTO(latest, nodes)
 	index := map[uint]int{}
 	for _, r := range st.Resolved {
 		if r.Network.ID != n.ID {
@@ -276,7 +278,7 @@ func writeNetworkInvalid(w http.ResponseWriter, e *network.InvalidError) {
 	case network.InvalidRole:
 		writeProductError(w, http.StatusBadRequest, ErrorNetworkRoleInvalid, "network roles must be one or more of storage_sync, compute, serving", map[string]any{"role": e.Value})
 	case network.InvalidType:
-		writeProductError(w, http.StatusBadRequest, ErrorNetworkTypeInvalid, "network type must be host_ethernet, host_rdma or accelerator_rdma", map[string]any{"type": e.Value})
+		writeProductError(w, http.StatusBadRequest, ErrorNetworkTypeInvalid, "network type must be host_ethernet, host_rdma, accelerator_rdma or accelerator_hccs", map[string]any{"type": e.Value})
 	case network.InvalidTypeRole:
 		writeProductError(w, http.StatusBadRequest, ErrorNetworkTypeRoleInvalid, "a network of type "+e.Field+" cannot carry role "+e.Value, map[string]any{"type": e.Field, "role": e.Value})
 	case network.InvalidSelector:

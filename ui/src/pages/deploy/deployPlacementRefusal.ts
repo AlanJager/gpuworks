@@ -41,13 +41,37 @@ export function nodeRefusals(
   result: EvaluateResponse | null | undefined,
 ): NodeRefusal[] {
   if (!result || result.selected_node) return [];
+  const eligibility = new Map(result.eligible_nodes?.map((node) => [node.uuid, node]));
   return (result.candidates ?? [])
     .filter((candidate) => !candidate.ok)
     .map((candidate, index) => ({ candidate, index }))
-    .sort((a, b) => Number(eligibilityOnly(a.candidate)) - Number(eligibilityOnly(b.candidate)) || a.index - b.index)
+    .sort((a, b) => Number(eligibility.get(b.candidate.node_uuid)?.requirements_match === true) - Number(eligibility.get(a.candidate.node_uuid)?.requirements_match === true)
+      || Number(eligibilityOnly(a.candidate)) - Number(eligibilityOnly(b.candidate)) || a.index - b.index)
     .map(({ candidate }) => ({
       uuid: candidate.node_uuid,
       name: candidate.node_name || candidate.node_uuid,
-      reason: placementRefusalText(t, candidate.reason) || placementRefusalText(t, candidate.plan?.message),
+      reason: [...new Set([
+        placementRefusalText(t, candidate.reason) || placementRefusalText(t, candidate.plan?.message),
+        ...(eligibility.get(candidate.node_uuid)?.reasons ?? []).map((reason) => placementRefusalText(t, reason)),
+      ].filter(Boolean))].join(" "),
     }));
+}
+
+// No diagnostic means an older server, invalid conditions, or no explicit
+// conditions. Never infer matching from the first refusal (vendor can mask it).
+export function nodeConditionSummary(result: EvaluateResponse | null | undefined) {
+  const nodes = result?.eligible_nodes;
+  if (!nodes?.length || nodes.some((node) => typeof node.requirements_match !== "boolean")) return null;
+  const matched = nodes.filter((node) => node.requirements_match);
+  const hardwareOnly = matched.length > 0 && matched.every((node) => !node.eligible && node.reasons?.length && node.reasons.every((reason) =>
+    typeof reason !== "string" && (reason.code === "chip_mismatch" || reason.code === "vendor_mismatch")));
+  const eligible = new Set(matched.filter((node) => node.eligible).map((node) => node.uuid));
+  // Placement can stop at its trial budget or first success. An absent
+  // candidate was not evaluated, so it cannot count as a failed plan.
+  const planned = new Map((result?.candidates ?? []).filter((node) => eligible.has(node.node_uuid)).map((node) => [node.node_uuid, node]));
+  return {
+    total: nodes.length, matched, eligible: eligible.size, hardwareOnly,
+    tried: planned.size, passed: [...planned.values()].filter((node) => node.ok).length,
+    untried: eligible.size - planned.size,
+  };
 }

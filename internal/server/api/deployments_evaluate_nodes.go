@@ -63,6 +63,15 @@ func (a *apiHandlers) evaluateEligibleNodes(selection templateSelection, reqs ma
 		all = append(all, &nodes[index])
 	}
 	resolved := a.resolveForRequirements(all, reqs)
+	// The default target vendor is a hardware constraint, not evidence that a
+	// user's label selection worked. Match the remaining conditions independently
+	// so a vendor failure cannot mask a later label mismatch.
+	explicit := make(map[string][]string, len(reqs))
+	for key, values := range reqs {
+		if !planning.IsVendorRequirement(&planning.UnmetRequirement{Key: key}) {
+			explicit[key] = values
+		}
+	}
 	out := make([]dto.EligibleNode, 0, len(nodes))
 	var poolPartition *proto.PartitionCapability
 	for _, node := range all {
@@ -71,6 +80,10 @@ func (a *apiHandlers) evaluateEligibleNodes(selection templateSelection, reqs ma
 			name = node.Hostname
 		}
 		entry := dto.EligibleNode{UUID: node.UUID, Name: name, Eligible: true}
+		if reqsErr == nil && len(explicit) > 0 {
+			matches := planning.MatchRequirements(node, resolved, explicit) == nil
+			entry.RequirementsMatch = &matches
+		}
 		reason := func(code string, params map[string]any) {
 			entry.Eligible = false
 			entry.Reasons = append(entry.Reasons, dto.ScheduleReason{Code: code, Params: params})
@@ -87,13 +100,13 @@ func (a *apiHandlers) evaluateEligibleNodes(selection templateSelection, reqs ma
 			var unmet *planning.UnmetRequirement
 			switch {
 			case errors.As(err, &unmet) && planning.IsVendorRequirement(unmet):
-				reason(reasonVendorMismatch, map[string]any{"vendor": planning.RequirementVendor(reqs)})
+				reason(reasonVendorMismatch, map[string]any{"vendor": planning.RequirementVendor(reqs), "actual_gpus": reportedGPUFacts(node)})
 			default:
 				reason(reasonRequirementsUnmet, map[string]any{"detail": err.Error()})
 			}
 		}
 		if predicate != nil && !nodeMatchesChipPredicate(node, *predicate, unsupported) {
-			reason(reasonChipMismatch, map[string]any{"predicate": strings.TrimSpace(selection.Spec.GPUs)})
+			reason(reasonChipMismatch, map[string]any{"predicate": strings.TrimSpace(selection.Spec.GPUs), "required_vendor": predicate.Vendor, "required_cc": predicate.CC, "required_name": predicate.Name, "actual_gpus": reportedGPUFacts(node)})
 		}
 		if automatic && entry.Eligible && poolPartition == nil {
 			if capability, ok := partitioncap.Preferred(node); ok {
@@ -116,4 +129,15 @@ func nodeMatchesChipPredicate(node *store.Node, predicate chipmatch.Predicate, u
 		}
 	}
 	return false
+}
+
+// Report facts, not a second predicate implementation. Empty CC stays unknown;
+// mixed cards retain their own capabilities instead of inventing a node-wide CC.
+func reportedGPUFacts(node *store.Node) []map[string]string {
+	out := make([]map[string]string, 0, len(node.OwnedGPUs()))
+	for _, gpu := range node.OwnedGPUs() {
+		reported := chipmatch.ReportedGPU(gpu.Name, gpu.Vendor, gpu.ArchID, gpu.ComputeCapability)
+		out = append(out, map[string]string{"name": reported.Name, "vendor": reported.Vendor, "cc": strings.TrimSpace(gpu.ComputeCapability)})
+	}
+	return out
 }

@@ -57,6 +57,9 @@ see the index in [`artifacts/README.md`](../artifacts/README.md)). Chinese origi
 - [PD Disaggregation Deployment](how-to/pd-disaggregation.md)
 - [Enable and Troubleshoot dGPU](how-to/dgpu.md)
 - [Put Instances to Sleep and Wake Them](how-to/sleep-wake.md)
+- [Use Scheduling Analysis: Schedules, Yield Policies, and Waiting Wakes](how-to/scheduling-center.md)
+- [Reschedule Replicas on Node Loss](how-to/node-failover.md)
+- [Run Batches: the Batch API and the Console](how-to/batch-api.md)
 
 **Operations and Benchmarking**
 
@@ -98,6 +101,7 @@ see the index in [`artifacts/README.md`](../artifacts/README.md)). Chinese origi
 - [Typical Deployment Topologies](explanation/topologies.md)
 - [Choosing Between dGPU, Sleep/Wake, Multi-Node Inference, Replicas, and PD](explanation/choosing-features.md)
 - [Scheduling and GPU Memory Estimation](explanation/scheduling-and-estimation.md)
+- [Yield Policy: How Deployments Share a Set of GPUs](explanation/service-levels.md)
 - [Deployment Launch Configuration Semantics](explanation/launch-config.md)
 - [SGLang Log Injection: Behavior and Boundaries](explanation/sglang-logging.md)
 - [dGPU Semantics and Boundaries](explanation/dgpu.md)
@@ -111,6 +115,7 @@ see the index in [`artifacts/README.md`](../artifacts/README.md)). Chinese origi
 - [Local Setup](dev/setup.md)
 - [Testing Guide and Cloud Test Tiers](dev/testing.md)
 - [Benchmark Information and Reporting Standards](dev/benchmark-reporting-standard.md)
+- [Observability Limits of Per-Request Engine Queue Time](dev/engine-queue-observation.md)
 - [Browser E2E Testing Standards](../test/e2e/browser-e2e-testing-standard.md)
 - [Releases and Embedded Assets](dev/release.md)
 - [Contributing and Document Placement](dev/contributing.md)

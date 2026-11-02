@@ -32,9 +32,11 @@ type PDStatus struct {
 }
 
 // pdInstanceReady is whether an instance can take requests: running and
-// awake.
+// awake. Sleep is judged as the gateway judges it (InstanceAsleep), so an
+// instance under a sleep order it has not carried out yet is not counted ready
+// before its engine reports the level: the router already refuses it.
 func pdInstanceReady(inst store.Instance) bool {
-	return inst.State == proto.InstRunning && inst.SleepLevel == 0
+	return inst.State == proto.InstRunning && !InstanceAsleep(&inst)
 }
 
 // PDStatusOf derives the state from the placement and the instance rows.

@@ -1,3 +1,5 @@
+import { forwardRef, type ComponentPropsWithoutRef } from "react";
+import type { RefSelectProps } from "antd";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import type { EligibleNode, Node } from "../../api";
@@ -19,6 +21,20 @@ function eligibility(t: TFunction<"deploy">, eligibleNodes: EligibleNode[] | und
   return { eligible: judged ? judged.eligible : true, reasons };
 }
 
+type Props = {
+  eligibleNodes?: EligibleNode[];
+  rankAddress?: { suffix: string; hint?: string };
+  value?: string | string[];
+  onChange?: (value: string | string[] | undefined) => void;
+  mode?: "multiple";
+  maxCount?: number;
+  disabled?: boolean;
+  allowClear?: boolean;
+  placeholder?: string;
+  style?: React.CSSProperties;
+  "aria-label"?: string;
+} & Pick<ComponentPropsWithoutRef<typeof NodePicker>, "id" | "aria-invalid" | "aria-describedby" | "aria-required">;
+
 /**
  * EligibleNodePicker picks online nodes for a deployment draft, searched on
  * the server, rendering evaluate's eligibility answer: an ineligible node is
@@ -28,26 +44,16 @@ function eligibility(t: TFunction<"deploy">, eligibleNodes: EligibleNode[] | und
  *
  * It works as an antd Form control.
  */
-export default function EligibleNodePicker({
+const EligibleNodePicker = forwardRef<RefSelectProps, Props>(function EligibleNodePicker({
   eligibleNodes,
   rankAddress,
   ...control
-}: {
-  eligibleNodes?: EligibleNode[];
-  rankAddress?: { suffix: string; hint?: string };
-  value?: string | string[];
-  onChange?: (value: string | string[] | undefined) => void;
-  mode?: "multiple";
-  maxCount?: number;
-  disabled?: boolean;
-  placeholder?: string;
-  style?: React.CSSProperties;
-  "aria-label"?: string;
-}) {
+}, ref) {
   const { t } = useTranslation("deploy");
   const reachable = (node: Node) => !rankAddress || Boolean(nodeRankAddress(node));
   return (
     <NodePicker
+      ref={ref}
       {...control}
       onChange={(value) => control.onChange?.(value)}
       filter={ONLINE}
@@ -63,4 +69,6 @@ export default function EligibleNodePicker({
       }}
     />
   );
-}
+});
+
+export default EligibleNodePicker;

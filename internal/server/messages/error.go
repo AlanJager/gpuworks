@@ -13,6 +13,15 @@ type ProductError struct {
 const (
 	ErrorAgentUpgradeRequired = "AGENT_UPGRADE_REQUIRED"
 
+	// The experience environment's console (internal/experience) refuses
+	// what would act on the host or leave the environment, and deployments
+	// of any but its preloaded models ({models}).
+	ErrorExperienceUnsupported       = "EXPERIENCE_UNSUPPORTED"
+	ErrorExperienceModelNotPreloaded = "EXPERIENCE_MODEL_NOT_PRELOADED"
+	// ErrorExperiencePortInUse: the experience environment's console port
+	// ({port}) is held by another program.
+	ErrorExperiencePortInUse = "EXPERIENCE_PORT_IN_USE"
+
 	// Usage analytics queries (internal/server/analytics); params name
 	// the field and say why.
 	ErrorAnalyticsRangeInvalid = "ANALYTICS_RANGE_INVALID"
@@ -93,7 +102,7 @@ const (
 	// their collectives across hosts on the cards' own ports, and the group
 	// shares a network of another type.
 	ErrorComputeNetworkAcceleratorRequired = "COMPUTE_NETWORK_ACCELERATOR_REQUIRED"
-	// ErrorComputeNetworkNoCards: a node is on an accelerator RDMA network
+	// ErrorComputeNetworkNoCards: a node is on an accelerator network
 	// without a usable card on it.
 	ErrorComputeNetworkNoCards = "COMPUTE_NETWORK_NO_CARDS"
 	// ErrorComputeNetworkRuntime: a node's container runtime cannot give a
@@ -111,6 +120,11 @@ const (
 	// WarningCatalogHealthEndpointUndeclared: a callable spec declares no
 	// api.health_endpoint, so readiness is probed on the default /health.
 	WarningCatalogHealthEndpointUndeclared = "CATALOG_HEALTH_ENDPOINT_UNDECLARED"
+	// WarningCatalogCallableServedNameFixed: a callable spec passes a literal
+	// --served-model-name instead of ${SERVED_MODEL_NAME}, so an engine that
+	// checks the request's model rejects the deployment's served name. Params
+	// also carry name, the literal it passes.
+	WarningCatalogCallableServedNameFixed = "CATALOG_CALLABLE_SERVED_NAME_FIXED"
 )
 
 // NewProductError constructs a structured product error while keeping empty

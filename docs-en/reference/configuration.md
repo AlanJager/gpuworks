@@ -282,7 +282,7 @@ and udocker-bundle are only needed to temporarily override values in the file.
 |---|---|---|---|
 | `GPUWORKS_SERVER` | None | Server base URL, used as the default for `--server`; overrides `SERVER` in the configuration file. Agents using `server_dial` do not use it | `agent run`, `smoke`, `upgrade` |
 | `GPUWORKS_TOKEN` | None | Per-node token, used as the default for `--token`; overrides `TOKEN` in the configuration file | Same as above |
-| `GPUWORKS_STATE_DIR` | `/opt/gpuworks` (if the directory exists), then `~/.gpuworks` on macOS (if the directory exists), otherwise `<user-config-dir>/gpuworks`, then `./gpuworks-state` as the final fallback | Directory for state, logs, and models, used as the default for `--state` | `agent run`, `upgrade`, `uninstall`, `runveil`, `grant-device-access`; `install.sh` |
+| `GPUWORKS_STATE_DIR` | `/opt/gpuworks` (if the directory exists), then on macOS `~/gpuworks` (if it contains `gpuworks-agent.conf`) and `~/.gpuworks` (if the directory exists), otherwise `<user-config-dir>/gpuworks`, then `./gpuworks-state` as the final fallback | Directory for state, logs, and models, used as the default for `--state` | `agent run`, `upgrade`, `uninstall`, `runveil`, `grant-device-access`; `install.sh` |
 | `GPUWORKS_RUNTIME_DRIVER` | Empty (automatic detection: docker > nerdctl > runveil) | Force a runtime: `docker`, `udocker`, `nerdctl`, or `none`; `udocker` is runveil (the UI display name), and the name is retained for compatibility with existing nodes; an unknown value leaves the node with no runtime enabled | `agent run`, `upgrade`; `install.sh` |
 | `GPUWORKS_CONNECT_MODE` | `agent_dial` | `agent_dial` (the agent connects outbound) or `server_dial` (the server connects directly to the agent's `--listen` port) | `agent run`, `upgrade`; `install.sh` |
 | `GPUWORKS_SERVER_DIAL_LISTEN` | `0.0.0.0:18800` | Agent listen address in `server_dial` mode (`host:port` or `:port`); only relevant in `server_dial` mode. Existing nodes retain their recorded listen addresses when the default changes | Same as above |
@@ -297,7 +297,7 @@ and udocker-bundle are only needed to temporarily override values in the file.
 | `GPUWORKS_UDOCKER_DISABLE_TAR_CACHE` (boolean) | Off | When enabled, stops pre-extracting large layers (≥512 MiB) into a tar cache during image pulls (`<state>/udocker/tarcache`, capped at 48 GiB while reserving 20 GiB of free space on the node); useful for nodes with limited disk space | runveil driver |
 | `GPUWORKS_UDOCKER_UNPACK_DEBUG` (boolean) | Off | When enabled, logs the unpacking time for each layer to help troubleshoot slow image creation | runveil driver |
 | `GPUWORKS_PARTITION_ASSETS` | Empty | Additional search root for dGPU backend runtime assets (such as NVIDIA's `libvgpu.so` and Ascend's `libvruntime.so`), taking precedence over the default locations `<state>/dgpu-runtime`, `<state>/partition-assets`, and `/opt/gpuworks/dgpu-runtime` | dGPU injection and asset reporting; see [Enable and Troubleshoot dGPU](../how-to/dgpu.md) |
-| `GPUWORKS_INSTALL_DIR` | `/opt/gpuworks` | Installation directory for the agent binary (the default for `--install-dir`) | `install.sh` |
+| `GPUWORKS_INSTALL_DIR` | `/opt/gpuworks`; `~/gpuworks` on macOS (or the agent directory of an earlier installation) | Installation directory for the agent binary (the default for `--install-dir`) | `install.sh` |
 | `GPUWORKS_NO_SYSTEMD` | `0` | Set to `1` to force the nohup/foreground fallback without modifying systemd units | `install.sh` |
 
 ### Other General-Purpose Variables Read

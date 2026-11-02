@@ -74,15 +74,20 @@ func reconcileImagePresence(tx *gorm.DB, nodeID uint, reports []proto.ImagePrese
 		if row.State == ImageStateSyncing || (!report.Present && row.State == ImageStateFailed) {
 			state = row.State
 		}
+		runtimeSize := report.RuntimeSizeBytes
+		if !report.Present || inImageTransfer(row.State) || runtimeSize != nil && *runtimeSize < 0 {
+			runtimeSize = nil
+		}
+		runtimeSizeChanged := (runtimeSize == nil) != (row.RuntimeSizeBytes == nil) || runtimeSize != nil && row.RuntimeSizeBytes != nil && *runtimeSize != *row.RuntimeSizeBytes
 		sizeChanged := report.SizeBytes > 0 && report.SizeBytes != row.SizeBytes
 		// A settled row the report leaves as it is needs no write. A transfer
 		// in flight still takes one: its updated_at is how the stall watch
 		// (hub image_direct_watch.go) tells a live transfer from a dead one.
 		inFlight := row.State == ImageStateSyncing || row.State == ImageStatePulling
-		if state == row.State && !sizeChanged && !inFlight {
+		if state == row.State && !sizeChanged && !runtimeSizeChanged && !inFlight {
 			continue
 		}
-		updates := map[string]any{"state": state}
+		updates := map[string]any{"state": state, "runtime_size_bytes": runtimeSize}
 		if row.State == ImageStateFailed && state == ImageStatePresent {
 			// The failed transfer's source and reason describe an attempt that
 			// did not bring the image: it arrived another way, typically a
@@ -96,10 +101,15 @@ func reconcileImagePresence(tx *gorm.DB, nodeID uint, reports []proto.ImagePrese
 			return err
 		}
 		row.State = state
+		row.RuntimeSizeBytes = runtimeSize
 		if report.SizeBytes > 0 {
 			row.SizeBytes = report.SizeBytes
 		}
 		rows[image.ID] = row
 	}
 	return nil
+}
+
+func inImageTransfer(state string) bool {
+	return state == ImageStateSyncing || state == ImageStatePulling
 }

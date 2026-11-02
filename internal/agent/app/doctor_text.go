@@ -135,6 +135,7 @@ var findingSummary = map[string]string{
 	accelerator.HealthRuntimeUnusable:     "the card is listed, but the accelerator runtime could not create a context on it; the platform does not schedule it",
 	proto.DoctorDiskLow:                   "less than 10% of the filesystem is free",
 	proto.DoctorRuntimeProvisionFailed:    "the selected runtime could not be set up on this node; every deployment fails until it is",
+	proto.DoctorRuntimeStateUntraversable: "a directory above the agent's state directory is closed to the user workloads run as, so every launch fails with permission denied; run the fix command or move the state directory",
 	proto.DoctorPathNoExec:                "the runtime executes programs from a filesystem mounted noexec",
 	proto.DoctorPathReadOnly:              "the agent writes to a filesystem mounted read-only",
 	proto.DoctorPathEphemeral:             "the path is on the container's own layer and is lost when the container is recreated; keep it on a persistent volume",
@@ -168,24 +169,24 @@ func renderFinding(b *strings.Builder, f proto.DoctorFinding) {
 		line("  %s", summary)
 	}
 	if f.Probe != "" {
-		line("  evidence  %s", f.Probe)
+		line("  evidence  %s", indentCommand(f.Probe, "            "))
 	}
 	for _, e := range f.Evidence {
 		line("            %s", fieldText(e))
 	}
 	if f.Recheck != "" {
-		line("  recheck   %s", f.Recheck)
+		line("  recheck   %s", indentCommand(f.Recheck, "            "))
 	}
 	for _, t := range f.Targets {
 		line("  accelerator %d  %s", t.Index, t.PCIeBDF)
 		if t.Probe != "" {
-			line("    evidence  %s", t.Probe)
+			line("    evidence  %s", indentCommand(t.Probe, "              "))
 		}
 		for _, e := range t.Evidence {
 			line("              %s", fieldText(e))
 		}
 		if t.Recheck != "" {
-			line("    recheck   %s", t.Recheck)
+			line("    recheck   %s", indentCommand(t.Recheck, "              "))
 		}
 		for _, action := range t.Actions {
 			line("    action    %s  (when the card is idle)", action)
@@ -194,6 +195,13 @@ func renderFinding(b *strings.Builder, f proto.DoctorFinding) {
 			line("    running   pid %d %s: stop it before the action", proc.PID, proc.Name)
 		}
 	}
+}
+
+// indentCommand lines a multi-line command up under its label. A runtime
+// check's command carries the script it runs, and left unindented its lines
+// read as further findings rather than as one command the reader can copy.
+func indentCommand(command, indent string) string {
+	return strings.ReplaceAll(command, "\n", "\n"+indent)
 }
 
 func fieldText(f proto.DoctorField) string {

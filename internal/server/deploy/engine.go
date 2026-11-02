@@ -259,12 +259,32 @@ var (
 	enginesMu     sync.RWMutex
 	engines       = map[string]Engine{}
 	defaultImages = map[string]string{}
+	// sleepCaps is each registered engine's declared sleep capability, read
+	// once at registration: it is a constant of the engine, and the hot reads
+	// (every deployment DTO asks whether it may sleep) must not rebuild the
+	// whole profile for one field.
+	sleepCaps = map[string]SleepCaps{}
 )
 
 func RegisterEngine(e Engine) {
+	caps := e.Profile().Sleep
 	enginesMu.Lock()
 	defer enginesMu.Unlock()
 	engines[e.Name()] = e
+	sleepCaps[e.Name()] = caps
+}
+
+// SleepCapsForEngine is the sleep capability ProfileForEngine(name).Sleep
+// declares, without building the profile; the zero value for an unknown
+// engine, as an unknown engine's profile has none. An empty name is the
+// default engine.
+func SleepCapsForEngine(name string) SleepCaps {
+	if name == "" {
+		name = DefaultEngine
+	}
+	enginesMu.RLock()
+	defer enginesMu.RUnlock()
+	return sleepCaps[name]
 }
 
 func EngineByName(name string) (Engine, bool) {

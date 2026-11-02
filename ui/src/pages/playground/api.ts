@@ -1,3 +1,5 @@
+import { playgroundErrorText, readErrorBody, safeErrorText } from "./errors";
+export { playgroundErrorText } from "./errors";
 import { notifySessionExpired } from "../../session";
 import type {
   Attachment,
@@ -10,6 +12,7 @@ import type {
 } from "./types";
 
 const ROOT = "/api/v1/playground";
+export const STREAM_INTERRUPTED_ERROR = "__playground_stream_interrupted__";
 
 export async function getPlaygroundCatalog(signal?: AbortSignal): Promise<PlaygroundCatalog> {
   const response = await fetch(`${ROOT}/models`, { credentials: "include", signal });
@@ -133,16 +136,17 @@ export async function streamChat(
       .filter((line) => line.startsWith("data:"))
       .map((line) => line.slice(5).trimStart())
       .join("\n");
-    if (!data || data === "[DONE]") return;
+    if (!data) return false;
+    if (data === "[DONE]") return true;
     let frame: Record<string, unknown>;
     try {
       frame = JSON.parse(data) as Record<string, unknown>;
     } catch {
-      return;
+      return false;
     }
     if (frame.error) {
       const error = frame.error as { message?: string };
-      throw new Error(error.message || "The upstream service returned a streaming error");
+      throw new Error(safeErrorText(typeof error.message === "string" ? error.message : "The upstream service returned a streaming error"));
     }
     const choice = Array.isArray(frame.choices) ? frame.choices[0] as Record<string, unknown> | undefined : undefined;
     const delta = choice?.delta as Record<string, unknown> | undefined;
@@ -157,22 +161,37 @@ export async function streamChat(
       usage = frame.usage as Usage;
       callbacks.onUsage(usage);
     }
+    return false;
   };
 
-  while (true) {
-    const { done, value } = await reader.read();
-    buffer += decoder.decode(value, { stream: !done }).replace(/\r\n/g, "\n");
-    let boundary = buffer.indexOf("\n\n");
-    while (boundary >= 0) {
-      const event = buffer.slice(0, boundary);
-      buffer = buffer.slice(boundary + 2);
-      consumeEvent(event);
-      boundary = buffer.indexOf("\n\n");
+  let failed = false;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      // Normalize after joining: CR and LF may arrive in different reads.
+      buffer = (buffer + decoder.decode(value, { stream: !done })).replace(/\r\n/g, "\n");
+      let boundary = buffer.indexOf("\n\n");
+      while (boundary >= 0) {
+        const event = buffer.slice(0, boundary);
+        buffer = buffer.slice(boundary + 2);
+        if (consumeEvent(event)) return { usage };
+        boundary = buffer.indexOf("\n\n");
+      }
+      if (done) {
+        if (buffer.trim() && consumeEvent(buffer)) return { usage };
+        throw new Error(STREAM_INTERRUPTED_ERROR);
+      }
     }
-    if (done) break;
+  } catch (error) {
+    failed = true;
+    throw error;
+  } finally {
+    let cleanupError: unknown;
+    try { await reader.cancel(); } catch (error) { cleanupError = error; }
+    try { reader.releaseLock(); } catch (error) { cleanupError ??= error; }
+    // A reader cleanup failure must not replace the upstream/abort error.
+    if (cleanupError && !failed) throw cleanupError;
   }
-  if (buffer.trim()) consumeEvent(buffer);
-  return { usage };
 }
 
 
@@ -212,7 +231,7 @@ export async function streamCompletion(
     }
     if (frame.error) {
       const error = frame.error as { message?: string };
-      throw new Error(error.message || "The upstream service returned a streaming error");
+      throw new Error(safeErrorText(typeof error.message === "string" ? error.message : "The upstream service returned a streaming error"));
     }
     const choice = Array.isArray(frame.choices) ? frame.choices[0] as Record<string, unknown> | undefined : undefined;
     if (typeof choice?.text === "string" && choice.text) onText(choice.text);
@@ -297,14 +316,14 @@ function operationURL(endpoint: string): string {
 }
 
 async function responseError(response: Response): Promise<string> {
-  const fallback = `Request failed (${response.status})`;
-  try {
-    const raw = await response.text();
-    const parsed = JSON.parse(raw) as { error?: { message?: string } | string; message?: string; code?: string };
-    if (response.status === 401 && parsed.code === "AUTHENTICATION_REQUIRED") notifySessionExpired();
-    if (typeof parsed.error === "string") return parsed.error;
-    return parsed.error?.message || parsed.message || raw || fallback;
-  } catch {
-    return fallback;
+  const raw = await readErrorBody(response);
+  if (response.status === 401 && raw !== undefined) {
+    try {
+      const parsed = JSON.parse(raw) as { code?: string };
+      if (parsed.code === "AUTHENTICATION_REQUIRED") notifySessionExpired();
+    } catch {
+      // A non-JSON 401 still uses the fallback text below.
+    }
   }
+  return playgroundErrorText(response.status, raw);
 }

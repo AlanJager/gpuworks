@@ -314,3 +314,91 @@ test("a cleared engine falls back to the server default again", async () => {
   act(() => form!.setFieldsValue({ engine: undefined }));
   await waitFor(() => assert.equal(form!.getFieldValue("engine"), "vllm"));
 });
+
+test("same-name registrations expose full revision and ready file locations before keyboard selection", async () => {
+  const downloadedRevision = "release-b-1234567890abcdef1234567890abcdef12345678";
+  fake.models.splice(0, fake.models.length,
+    { id: 901, name: "Same registered name", source: "huggingface", source_id: "org/same", revision: "release-a", presence: { ready_nodes: 0, ready_storages: 0 } } as never,
+    { id: 902, name: "Same registered name", source: "huggingface", source_id: "org/same", revision: downloadedRevision, presence: { ready_nodes: 2, ready_storages: 1 } } as never,
+  );
+  const form = mount({ target_vendor: "nvidia" });
+  fireEvent.mouseDown(modelSelect());
+  await screen.findAllByText("Same registered name");
+  const dropdown = document.querySelector(".ant-select-dropdown") as HTMLElement;
+  assert.ok(within(dropdown).queryByText(`Revision: ${downloadedRevision}`), "full revision must distinguish otherwise identical options");
+  assert.ok(within(dropdown).getByText("2 node(s) · 1 shared storage(s)"));
+  assert.ok(within(dropdown).getByText(deployLocale.weightSourceModal.noFiles));
+  assert.ok(dropdown.querySelector(`[title="${downloadedRevision}"]`), "long revision remains available as a full title");
+  const user = userEvent.setup({ document: dom.window.document });
+  await user.type(modelSelect(), downloadedRevision);
+  await waitFor(() => assert.equal(fake.pages.at(-1)?.q, downloadedRevision));
+  await waitFor(() => assert.equal(within(dropdown).queryAllByText("Revision: release-a").length, 0));
+  await within(dropdown).findByText(`Revision: ${downloadedRevision}`);
+  // rc-select reads the browser's numeric key codes as well as key names.
+  fireEvent.keyDown(modelSelect(), { key: "ArrowDown", code: "ArrowDown", keyCode: 40, which: 40 });
+  fireEvent.keyDown(modelSelect(), { key: "Enter", code: "Enter", keyCode: 13, which: 13 });
+  await waitFor(() => assert.equal(form().getFieldValue("model_id"), 902));
+  const selection = modelSelect().closest(".ant-select")!.querySelector(".ant-select-selection-item") as HTMLElement;
+  assert.ok(within(selection).getByText("Same registered name"));
+  assert.ok(within(selection).getByText(`Revision: ${downloadedRevision}`));
+  assert.ok(selection.querySelector("[title]")!.getAttribute("title")!.includes("Same registered name"));
+  assert.ok(selection.querySelector("[title]")!.getAttribute("title")!.includes(downloadedRevision), "the full revision remains available when the summary is ellipsized");
+  assert.equal(within(selection).queryAllByText("2 node(s) · 1 shared storage(s)").length, 0, "file locations belong in the dropdown, not the single-line selection");
+  assert.equal(fake.listedAll, 0);
+  assert.deepEqual(fake.reads, [], "no per-option detail queries");
+  assert.ok(fake.pages.every((query) => query.page_size === 50));
+});
+
+test("an off-page selected model without a summary reports unknown file location", async () => {
+  mount({ model_id: 7, target_vendor: "nvidia" });
+  await waitFor(() => assert.ok(fake.pages.length));
+  const selection = modelSelect().closest(".ant-select")!.querySelector(".ant-select-selection-item") as HTMLElement;
+  assert.ok(within(selection).getByText("Quantized A"));
+  assert.ok(within(selection).getByText(deployLocale.weightSourceModal.revisionUnknown));
+  assert.equal(within(selection).queryAllByText(deployLocale.weightSourceModal.locationUnknown).length, 0);
+  fireEvent.mouseDown(modelSelect());
+  const dropdown = document.querySelector(".ant-select-dropdown") as HTMLElement;
+  assert.ok(within(dropdown).getByText(deployLocale.weightSourceModal.locationUnknown), "selected ModelCore fallback must not invent zero ready files");
+  const selectedOption = within(dropdown).getByText("Quantized A").closest(".ant-select-item-option") as HTMLElement;
+  assert.equal(within(selectedOption).queryAllByText(deployLocale.weightSourceModal.noFiles).length, 0);
+});
+
+test("selected fallback keeps unknown location while the page loads or fails", async () => {
+  let rejectPage: (error: Error) => void = () => {};
+  api.modelsPage = () => new Promise((_resolve, reject) => { rejectPage = reject; });
+  mount({ model_id: 7, target_vendor: "nvidia" });
+  fireEvent.mouseDown(modelSelect());
+  const dropdown = document.querySelector(".ant-select-dropdown") as HTMLElement;
+  assert.ok(within(dropdown).getByText(deployLocale.weightSourceModal.locationUnknown));
+  await waitFor(() => assert.ok(modelSelect().closest(".ant-select-loading")));
+  await act(async () => rejectPage(new Error("synthetic registry unavailable")));
+  await waitFor(() => assert.equal(modelSelect().closest(".ant-select-loading"), null));
+  const selection = modelSelect().closest(".ant-select")!.querySelector(".ant-select-selection-item") as HTMLElement;
+  assert.ok(within(selection).getByText("Quantized A"));
+  assert.ok(within(dropdown).getByText(deployLocale.weightSourceModal.locationUnknown));
+  assert.equal(within(dropdown).queryAllByText(deployLocale.weightSourceModal.noFiles).length, 0);
+  assert.deepEqual(fake.reads, []);
+});
+
+test("a selected registration keeps its full identity when a later search omits it", async () => {
+  const revision = "release-1234567890abcdef1234567890abcdef12345678";
+  fake.models[0] = { id: 100, name: "", source: "huggingface", source_id: "org/long-model-name", revision, presence: { ready_nodes: 1, ready_storages: 2 } } as never;
+  const form = mount({ model_id: 100, target_vendor: "nvidia" });
+  const select = modelSelect().closest(".ant-select")!;
+  await waitFor(() => assert.ok(within(select as HTMLElement).getByText(`Revision: ${revision}`)));
+  const selection = select.querySelector(".ant-select-selection-item") as HTMLElement;
+  assert.ok(within(selection).getByText("org/long-model-name"));
+  assert.ok(selection.querySelector("[title]")!.getAttribute("title")!.includes("org/long-model-name"));
+  assert.ok(selection.querySelector("[title]")!.getAttribute("title")!.includes(revision));
+  assert.equal(within(selection).queryAllByText("1 node(s) · 2 shared storage(s)").length, 0);
+  fireEvent.mouseDown(modelSelect());
+  fireEvent.change(modelSelect(), { target: { value: "listed-5" } });
+  await waitFor(() => assert.equal(fake.pages.at(-1)?.q, "listed-5"));
+  const dropdown = document.querySelector(".ant-select-dropdown") as HTMLElement;
+  await within(dropdown).findByText("listed-50");
+  assert.equal(within(dropdown).queryAllByText("org/long-model-name").length, 0);
+  assert.ok(within(selection).getByText("org/long-model-name"));
+  assert.ok(within(selection).getByText(`Revision: ${revision}`));
+  assert.ok(selection.querySelector("[title]")!.getAttribute("title")!.includes(revision));
+  assert.equal(form().getFieldValue("model_id"), 100);
+});

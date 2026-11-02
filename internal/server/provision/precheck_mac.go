@@ -7,7 +7,7 @@ import (
 
 	"golang.org/x/crypto/ssh"
 	"gpuworks.ai/gpuworks/internal/accelerator"
-	"gpuworks.ai/gpuworks/internal/launchd"
+	"gpuworks.ai/gpuworks/internal/server/installscript"
 )
 
 // macPrecheckCommands are the checks for an Apple silicon Mac: the vendor GPU
@@ -34,16 +34,19 @@ func macPrivilegeCheck(ctx context.Context, client *ssh.Client, auth SSHAuth) Ch
 }
 
 // macInstallDir is where the installer puts the agent when the request names
-// no directory: /opt/gpuworks with administrator rights, ~/.gpuworks without.
-func macInstallDir(ctx context.Context, client *ssh.Client, requested string, admin bool) string {
-	if strings.TrimSpace(requested) != "" || admin {
+// no directory: where an earlier install left one, else ~/gpuworks, with or
+// without administrator rights. The rule is the install script's own
+// (installscript.MacInstallDirFuncs), so what the precheck reports is where
+// the agent goes.
+func macInstallDir(ctx context.Context, client *ssh.Client, requested string) string {
+	if strings.TrimSpace(requested) != "" {
 		return installDir(requested)
 	}
-	home, err := run(ctx, client, `printf '%s' "$HOME"`)
-	if home = strings.TrimSpace(home); err != nil || home == "" {
-		return installDir(requested)
+	out, err := run(ctx, client, installscript.MacInstallDirFuncs+"\n"+`gw_mac_install_dir "$HOME"`)
+	if dir := strings.TrimSpace(out); err == nil && strings.HasPrefix(dir, "/") {
+		return dir
 	}
-	return home + "/" + launchd.HomeInstallDir
+	return installDir(requested)
 }
 
 // expandRemoteHome resolves a leading ~ in an install directory against the

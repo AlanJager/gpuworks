@@ -7,6 +7,7 @@
     "starting": "Starting",
     "stopped": "Stopped",
     "failed": "Failed",
+    "offline": "Offline",
     "asleep": "Asleep"
   },
   "range": {
@@ -43,7 +44,7 @@
   "signals": {
     "ready_replicas": "Ready replicas",
     "error_rate": "Error rate",
-    "request_rate": "Requests/s",
+    "request_rate": "RPS / Concurrency",
     "token_rate": "Token throughput",
     "ttft": "TTFT p95 / p99",
     "tpot": "TPOT p95 / p99",
@@ -55,12 +56,12 @@
     "errorRateDetail": "5xx {{5xx}} · 429 {{429}} · 503 {{asleep_503}}",
     "tokenRateInput": "Input",
     "tokenRateOutput": "Output",
+    "requestRateHint": "Left: average requests per second (RPS); right: the gateway's average requests in flight (concurrency).",
     "upperBoundHint": "p95/p99 is a conservative upper bound (the max of each tick's own quantile over the window), not a single quantile over the whole window."
   },
-  "healthSummary": {
-    "title": "Health checks",
-    "noneChecked": "No service has the health check on yet; turn it on in a deployment's detail",
-    "count": "{{status}} {{count}}"
+  "stateSummary": {
+    "title": "Service state",
+    "count": "{{state}} {{count}}"
   },
   "table": {
     "state": "State",
@@ -111,6 +112,8 @@
     "quantileFamilyNote": "This metric carries p50/p95/p99 as a \"quantile\" label - /monitor/series has no per-label filter yet, so \"by\"/\"aggregation\" combine every quantile together rather than isolating one."
   },
   "deployment": {
+    "noReadyReplicas": "No replica is ready to serve requests",
+    "noReadyReplicasDetail": "Replicas may be starting or recovering, or may have failed. Check their states and logs below, or open the deployment for the failure reason. Requests cannot be served until a replica is ready.",
     "backToMonitor": "Back to Monitor Center",
     "goToDeployment": "Go to deployment",
     "subtitle": "{{engine}} · {{placement}} · {{ready}}/{{desired}} replicas · deployment #{{id}}",
@@ -301,6 +304,7 @@
       "gateway": "Gateway {{time}}",
       "preprocess": "Engine preprocessing {{time}} (not in the engine's account: tokenizing, waiting for the current step, the first token's trip back)",
       "queue": "Queue {{time}}",
+      "queueUnavailable": "Engine queue time unavailable: this reply did not report a per-request duration. Waiting includes unreported queue, preprocessing and network time; a queued-request count cannot separate them.",
       "prefill": "Prefill {{time}}",
       "prefillSpeed": "Prefill {{time}} · {{speed}} tok/s",
       "firstToken": "First token after {{time}}",
@@ -374,7 +378,8 @@
       "prefill_no_kv_params": "Prefill instance returned no KV handoff",
       "prefill_failed": "Prefill call failed"
     },
-    "deletedName": "{{name}} (deleted)"
+    "deletedName": "{{name}} (deleted)",
+    "batch": "Batch"
   },
   "latency": {
     "title": "End-to-end latency breakdown",

@@ -214,6 +214,207 @@ specs:
     - type: openai.chat
       endpoint: /v1/chat/completions
       mode: stream
+# Qwen3.6-27B's W8A8 quantization is published by the vendor with a
+# best-practice file that marks it verified for Atlas A2 inference (910B) and
+# Atlas A3 inference (910C), and its model card records the accuracy run on an
+# Atlas 800T A3 under vllm-ascend (GPQA 85.415 against 85.4175 in float). The
+# arguments below are the vendor's published single-node recipe for those two
+# cards, minus what the platform supplies itself (host, port, served name,
+# parallel degrees) and minus `--allowed-local-media-path /`, which would widen
+# the container's file access beyond the mounted model. `--enable-auto-tool-choice`
+# and `--tool-call-parser` are not in the published Ascend command; they are
+# carried because they state this model's API surface rather than anything about
+# the card, and every vendor's profile of a model has to agree on those
+# (TestNonNVIDIAChatSpecsInheritModelFunctionalArgs).
+#
+# The weight revisions are pinned to commits whose file listing matches the
+# repository head. This matters for this model: an intermediate commit of the
+# W8A8 repository carries an 8-shard and a 9-shard set side by side under one
+# index, 68 GiB of which only half is ever loaded, and pinning that commit makes
+# the platform download all of it.
+- name: int8-vllm-ascend-07abcfc8
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cann9.1-910b-vllm0.26.0rc1-r2
+  weights:
+    quantization: int8
+    sources:
+    - modelscope:
+        repo_id: Eco-Tech/Qwen3.6-27B-w8a8
+        revision: 07abcfc8473691b3aa614006aa52a014b88565ef
+  weight_bytes: 32152073342
+  gpus:
+    vendor: ascend
+    name: (^|[^A-Za-z0-9])910B[A-Za-z0-9]*([^A-Za-z0-9]|$)
+    display_target: ascend
+  args:
+  - --quantization
+  - ascend
+  - --dtype
+  - bfloat16
+  - --max-num-seqs
+  - '32'
+  - --max-model-len
+  - '133120'
+  - --max-num-batched-tokens
+  - '16384'
+  - --trust-remote-code
+  - --gpu-memory-utilization
+  - '0.85'
+  - --mm-processor-cache-gb
+  - '0'
+  - --mm-processor-cache-type
+  - shm
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - qwen3_coder
+  - --reasoning-parser
+  - qwen3
+  - --mm-encoder-tp-mode
+  - data
+  - --speculative-config
+  - '{"method":"qwen3_5_mtp","num_speculative_tokens":3}'
+  - --compilation-config
+  - '{"cudagraph_capture_sizes":[1,4,8,12,16,20,24,28,32,36,40,44,48,52,56,60,64,68,72,76,80,84,88,92,96,100,104,108,112,116,120,124,128],"cudagraph_mode":"FULL_DECODE_ONLY"}'
+  - --additional-config
+  - '{"enable_cpu_binding":true}'
+  env:
+    HCCL_BUFFSIZE: '512'
+    PYTORCH_NPU_ALLOC_CONF: expandable_segments:True
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    if gpu.count != 2: return reject(\"the published recipe runs on exactly 2 devices\")\n    if gpu.min_memory_gib < 32: return reject(\"each device requires at least 32 GiB\")\n    return {\"GPU_COUNT\": 2, \"TP_SIZE\": 2, \"SP_DEGREE\": 1}\n"
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: int8-vllm-ascend-a3-07abcfc8
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cann9.1-a3-vllm0.26.0rc1-r2
+  weights:
+    quantization: int8
+    sources:
+    - modelscope:
+        repo_id: Eco-Tech/Qwen3.6-27B-w8a8
+        revision: 07abcfc8473691b3aa614006aa52a014b88565ef
+  weight_bytes: 32152073342
+  gpus:
+    vendor: ascend
+    name: (^|[^A-Za-z0-9])910C[A-Za-z0-9]*([^A-Za-z0-9]|$)
+    display_target: ascend
+  args:
+  - --quantization
+  - ascend
+  - --dtype
+  - bfloat16
+  - --max-num-seqs
+  - '32'
+  - --max-model-len
+  - '133120'
+  - --max-num-batched-tokens
+  - '16384'
+  - --trust-remote-code
+  - --gpu-memory-utilization
+  - '0.85'
+  - --mm-processor-cache-gb
+  - '0'
+  - --mm-processor-cache-type
+  - shm
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - qwen3_coder
+  - --reasoning-parser
+  - qwen3
+  - --mm-encoder-tp-mode
+  - data
+  - --speculative-config
+  - '{"method":"qwen3_5_mtp","num_speculative_tokens":3}'
+  - --compilation-config
+  - '{"cudagraph_capture_sizes":[1,4,8,12,16,20,24,28,32,36,40,44,48,52,56,60,64,68,72,76,80,84,88,92,96,100,104,108,112,116,120,124,128],"cudagraph_mode":"FULL_DECODE_ONLY"}'
+  - --additional-config
+  - '{"enable_cpu_binding":true}'
+  env:
+    HCCL_BUFFSIZE: '512'
+    PYTORCH_NPU_ALLOC_CONF: expandable_segments:True
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    if gpu.count != 2: return reject(\"the published recipe runs on exactly 2 devices\")\n    if gpu.min_memory_gib < 32: return reject(\"each device requires at least 32 GiB\")\n    return {\"GPU_COUNT\": 2, \"TP_SIZE\": 2, \"SP_DEGREE\": 1}\n"
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+# 950DT takes different weights, not the same ones behind a widened predicate:
+# the vendor publishes W8A8C8-MXFP8 for that card and the published recipe runs
+# one device with an MXFP8 KV cache, a longer context and flashcomm1. The W8A8
+# weights above are published for A2 and A3 only. No 950 hardware was available
+# to run this, so these arguments are the published recipe rather than a
+# measured one.
+- name: int8-vllm-ascend-950dt-ca064820
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cann9.2-950-vllm0.30.0rc2-r1
+  weights:
+    quantization: int8
+    sources:
+    - modelscope:
+        repo_id: Eco-Tech/Qwen3.6-27B-w8a8c8-mxfp8
+        revision: ca064820f26741f241091405a77a685c8dfd75ff
+  weight_bytes: 31585339375
+  gpus:
+    vendor: ascend
+    name: (^|[^A-Za-z0-9])950DT([^A-Za-z0-9]|$)
+    display_target: ascend
+  args:
+  - --quantization
+  - ascend
+  - --kv-cache-dtype
+  - mxfp8
+  - --max-num-seqs
+  - '32'
+  - --max-model-len
+  - '153600'
+  - --max-num-batched-tokens
+  - '16384'
+  - --trust-remote-code
+  - --gpu-memory-utilization
+  - '0.90'
+  - --mm-processor-cache-gb
+  - '0'
+  - --mm-processor-cache-type
+  - shm
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - qwen3_coder
+  - --reasoning-parser
+  - qwen3
+  - --mm-encoder-tp-mode
+  - data
+  - --speculative-config
+  - '{"method":"qwen3_5_mtp","num_speculative_tokens":3}'
+  - --compilation-config
+  - '{"cudagraph_capture_sizes":[1,4,8,12,16,20,24,28,32,36,40,44,48,52,56,60,64,68,72,76,80,84,88,92,96,100,104,108,112,116,120,124,128],"cudagraph_mode":"FULL_DECODE_ONLY"}'
+  - --additional-config
+  - '{"enable_cpu_binding":true,"enable_flashcomm1":true}'
+  env:
+    HCCL_BUFFSIZE: '1024'
+    PYTORCH_NPU_ALLOC_CONF: expandable_segments:True
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    if gpu.count != 1: return reject(\"the published 950DT recipe runs on a single device\")\n    if gpu.min_memory_gib < 96: return reject(\"the device requires at least 96 GiB\")\n    return {\"GPU_COUNT\": 1, \"TP_SIZE\": 1, \"SP_DEGREE\": 1}\n"
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
 - name: int8-vllm-hygon-8a4d174e
   display_profile: general
   scenario: balanced

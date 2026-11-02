@@ -126,9 +126,11 @@ test("the payload states labels and hardware as node requirements, and the strat
   });
   assert.deepEqual(payload.node_requirements, { "gpuworks.ai/gpu-model": ["A100", "H100"], pool: ["inference"] });
   assert.equal(payload.placement_strategy, "binpack");
-  const multi = buildPayload({ model_id: 1, engine: "vllm", nnodes: 2, distributed_nodes: ["a", "b"], placement_strategy: "binpack" }).payload;
-  assert.equal(multi.placement_strategy, undefined, "a multi-node draft names its nodes; there is nothing to spread");
+  const multi = buildPayload({ model_id: 1, engine: "vllm", nnodes: 2, distributed_nodes: ["a", "b"], placement_strategy: "binpack", units_placement: "manual" }).payload;
+  assert.equal(multi.placement_strategy, undefined, "a multi-node draft that names its nodes has nothing to spread");
   assert.equal(multi.node_requirements, undefined);
+  const placed = buildPayload({ model_id: 1, engine: "vllm", nnodes: 2, placement_strategy: "binpack" }).payload;
+  assert.equal(placed.placement_strategy, "binpack", "a multi-node draft the platform places packs or spreads its nodes");
 });
 
 test("automatic candidates can be limited to listed nodes of the target vendor; a pinned draft cannot", async () => {

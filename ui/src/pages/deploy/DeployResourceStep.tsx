@@ -14,6 +14,7 @@ import {
 } from "antd";
 import type {
   EligibleNode,
+  EngineProfile,
   EvaluateResponse,
   Node,
   PartitionCapability as Capability,
@@ -26,6 +27,9 @@ import NodePlacementLabels from "../../components/NodePlacementLabels";
 import EligibleNodePicker from "./EligibleNodePicker";
 import DeployParallelFields from "./DeployParallelFields";
 import { gpuSelectOptions } from "./gpuOptions";
+import { LockedHint, useControlLocked } from "./DeployEditContext";
+import DeployYieldPolicyField from "./DeployYieldPolicyField";
+import AutoGroupPreview from "./DeployAutoGroupPreview";
 
 const ONLINE = { state: ["online"] };
 
@@ -33,12 +37,14 @@ const ONLINE = { state: ["online"] };
 // eligibility answer (EligibleNodePicker): ineligible ones carry their
 // reasons. Before the first evaluation every online node is optionable.
 export default function DeployResourceStep({
+  profile,
   eligibleNodes,
   selectedNode,
   capability,
   preflight,
   result,
 }: {
+  profile?: EngineProfile;
   eligibleNodes?: EligibleNode[];
   selectedNode?: Node;
   capability?: Capability;
@@ -52,8 +58,19 @@ export default function DeployResourceStep({
   const nodeMode =
     Form.useWatch("node_selection_mode", watchOptions) || "manual";
   const nnodes = Number(Form.useWatch("nnodes", watchOptions) || 1);
+  // A multi-node group is placed by the platform unless the deployer names
+  // its nodes (the quick form's switch, here as a form control).
+  const groupAuto = Form.useWatch("units_placement", watchOptions) !== "manual";
   const vramLimit = Number(Form.useWatch("vram_limit_gib", watchOptions) || 0);
   const supportsPartition = capability?.status === "ready";
+  // What an edit of the deployment cannot change (see DeployEditContext).
+  const modeLocked = useControlLocked("placement_mode");
+  const nodeLocked = useControlLocked("node");
+  const nodesLocked = useControlLocked("nodes");
+  const topologyLocked = useControlLocked("topology");
+  const replicasLocked = useControlLocked("replicas");
+  const vramLocked = useControlLocked("vram_limit");
+  const rankLocked = useControlLocked("rank_address");
   return (
     <div>
       <Typography.Title level={4}>{t("resource.title")}</Typography.Title>
@@ -66,6 +83,7 @@ export default function DeployResourceStep({
           >
             <Segmented
               block
+              disabled={modeLocked}
               options={[
                 { value: "auto", label: t("resource.autoSelect") },
                 { value: "manual", label: t("resource.manualSelect") },
@@ -80,7 +98,7 @@ export default function DeployResourceStep({
               name="node_uuid"
               rules={[{ required: true, message: t("resource.nodeRequired") }]}
             >
-              <EligibleNodePicker eligibleNodes={eligibleNodes} />
+              <EligibleNodePicker eligibleNodes={eligibleNodes} disabled={nodeLocked} />
             </Form.Item>
           ) : (
             <Form.Item label={t("resource.autoResult")}>
@@ -122,7 +140,7 @@ export default function DeployResourceStep({
         />
         <Col xs={24} md={12}>
           <Form.Item label={t("resource.nodeCount")} name="nnodes">
-            <InputNumber style={{ width: "100%" }} min={1} max={16} />
+            <InputNumber style={{ width: "100%" }} min={1} max={16} disabled={topologyLocked} />
           </Form.Item>
         </Col>
         <Col xs={24} md={12}>
@@ -145,6 +163,7 @@ export default function DeployResourceStep({
               style={{ width: "100%" }}
               min={1}
               max={nnodes > 1 ? 1 : 32}
+              disabled={replicasLocked}
             />
           </Form.Item>
         </Col>
@@ -153,9 +172,13 @@ export default function DeployResourceStep({
             label={t("resource.sleepable")}
             name="sleepable"
             valuePropName="checked"
+            extra={!profile?.sleep.supported ? t("workbench.engineUnsupported") : undefined}
           >
-            <Switch />
+            <Switch disabled={!profile?.sleep.supported} />
           </Form.Item>
+        </Col>
+        <Col xs={24} md={12}>
+          <DeployYieldPolicyField eligibility={result?.yield_policy_eligible} />
         </Col>
         <Form.Item name="partition_backend" hidden>
           <Input />
@@ -174,6 +197,7 @@ export default function DeployResourceStep({
                 style={{ width: "100%" }}
                 min={1}
                 placeholder={t("resource.fullGpu")}
+                disabled={vramLocked}
               />
             </Form.Item>
           </Col>
@@ -204,6 +228,28 @@ export default function DeployResourceStep({
           )}
         {nnodes > 1 && (
           <>
+            <Col xs={24} md={12}>
+              <Form.Item
+                label={t("resource.groupPlacement")}
+                name="units_placement"
+                getValueProps={(value) => ({ value: value ?? "auto" })}
+              >
+                <Segmented
+                  block
+                  disabled={modeLocked}
+                  options={[
+                    { value: "auto", label: t("resource.autoSelect") },
+                    { value: "manual", label: t("resource.manualSelect") },
+                  ]}
+                />
+              </Form.Item>
+            </Col>
+            {groupAuto ? (
+              <Col span={24}>
+                <AutoGroupPreview result={result} loading={false} ready />
+              </Col>
+            ) : (
+              <>
             <Col span={24}>
               <Form.Item
                 label={t("resource.distributedNodes")}
@@ -220,6 +266,7 @@ export default function DeployResourceStep({
                 <EligibleNodePicker
                   mode="multiple"
                   maxCount={nnodes}
+                  disabled={nodesLocked}
                   eligibleNodes={eligibleNodes}
                   rankAddress={{ suffix: t("resource.addressMissing") }}
                 />
@@ -227,17 +274,19 @@ export default function DeployResourceStep({
             </Col>
             <Col xs={24} md={8}>
               <Form.Item label={t("resource.masterAddress")} name="master_addr">
-                <Input placeholder={t("resource.masterAddressPlaceholder")} />
+                <Input placeholder={t("resource.masterAddressPlaceholder")} disabled={rankLocked} />
               </Form.Item>
             </Col>
+              </>
+            )}
             <Col xs={24} md={8}>
               <Form.Item label={t("resource.masterPort")} name="master_port">
-                <InputNumber style={{ width: "100%" }} min={1024} max={65535} />
+                <InputNumber style={{ width: "100%" }} min={1024} max={65535} disabled={rankLocked} />
               </Form.Item>
             </Col>
             <Col xs={24} md={8}>
               <Form.Item label={t("resource.group")} name="dist_group">
-                <Input placeholder="qwen-prod" />
+                <Input placeholder="qwen-prod" disabled={rankLocked} />
               </Form.Item>
             </Col>
             <Col span={24}>
@@ -261,6 +310,7 @@ export default function DeployResourceStep({
           </>
         )}
       </Row>
+      <LockedHint controls={["placement_mode", "node", "nodes", "topology", "replicas", "vram_limit", "rank_address"]} />
     </div>
   );
 }

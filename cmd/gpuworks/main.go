@@ -32,7 +32,8 @@ import (
 	"gpuworks.ai/gpuworks/internal/selflog"
 	"gpuworks.ai/gpuworks/internal/server/app"
 	"gpuworks.ai/gpuworks/internal/server/bus"
-	"gpuworks.ai/gpuworks/internal/server/inferencecatalog/seed"
+	"gpuworks.ai/gpuworks/internal/server/experiencelaunch"
+	"gpuworks.ai/gpuworks/internal/server/expose"
 	"gpuworks.ai/gpuworks/internal/server/selfinstall"
 	"gpuworks.ai/gpuworks/internal/server/serverconfig"
 	"gpuworks.ai/gpuworks/internal/server/store"
@@ -105,6 +106,11 @@ func run(log *slog.Logger, args []string, stderr io.Writer) int {
 	case "expose":
 		if err := exposeCommand(cmdContext(), rest); err != nil && !errors.Is(err, flag.ErrHelp) {
 			log.Error("expose failed", "err", err)
+			return 1
+		}
+	case experiencelaunch.Command:
+		if err := experienceCommand(rest); err != nil && !errors.Is(err, flag.ErrHelp) {
+			log.Error("experience environment exited", "err", err)
 			return 1
 		}
 	case "help", "-h", "--help":
@@ -271,7 +277,7 @@ func migrate(log *slog.Logger, args []string) error {
 		return err
 	}
 	if applyEmbedded {
-		if err := seed.Seed(st); err != nil {
+		if err := app.SyncInferenceCatalog(st); err != nil {
 			return err
 		}
 		if err := app.SyncImageCatalog(st, log); err != nil {
@@ -293,8 +299,8 @@ func resetPassword(log *slog.Logger, args []string) error {
 	cfg := app.DefaultConfig()
 	fs := flag.NewFlagSet("reset-password", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
-	var username, password string
-	fs.StringVar(&cfg.DataDir, "data", cfg.DataDir, "data directory")
+	var username, password, dataDir string
+	fs.StringVar(&dataDir, "data", "", "data directory (default: data_dir of server.yaml next to the binary, then of the default installation, then ./data)")
 	fs.StringVar(&cfg.DBPath, "db", cfg.DBPath, "sqlite database path")
 	fs.StringVar(&username, "user", cfg.AdminUser, "username")
 	fs.StringVar(&password, "password", "", "new password")
@@ -304,21 +310,47 @@ func resetPassword(log *slog.Logger, args []string) error {
 	if password == "" {
 		return fmt.Errorf("-password is required")
 	}
+	dbPath, err := resetPasswordDB(dataDir, cfg.DBPath)
+	if err != nil {
+		return err
+	}
 	// The database is world-writable by design (see store.Open), so the reset
 	// runs as the operator; a database left tight by an older installation
 	// fails here with its own permission error.
-	if cfg.DBPath == "" {
-		cfg.DBPath = filepath.Join(cfg.DataDir, "gpuworks.db")
-	}
-	st, err := store.Open(cfg.DBPath, bus.New())
+	st, err := store.Open(dbPath, bus.New())
 	if err != nil {
 		return err
 	}
 	if err := st.SetUserPassword(username, password); err != nil {
 		return err
 	}
-	log.Info("password reset", "user", username)
+	log.Info("password reset", "user", username, "db", dbPath)
 	return nil
+}
+
+// resetPasswordDB is the database reset-password changes: --db when given,
+// otherwise gpuworks.db in the data dir resolved the way expose resolves it,
+// so `/opt/gpuworks/server/gpuworks reset-password` run from any directory
+// finds the installation's database. The database must already exist: SQLite
+// would otherwise create an empty one, or fail on a missing directory with a
+// misleading "out of memory (14)", and neither is what the operator meant.
+func resetPasswordDB(dataDir, dbPath string) (string, error) {
+	source := "--db"
+	if dbPath == "" {
+		var dir string
+		dir, source = expose.ResolveDataDir(dataDir)
+		dbPath = filepath.Join(dir, "gpuworks.db")
+	}
+	if abs, err := filepath.Abs(dbPath); err == nil {
+		dbPath = abs
+	}
+	if _, err := os.Stat(dbPath); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return "", fmt.Errorf("database %s (from %s) does not exist; pass --data with the server's data directory or --db with its gpuworks.db", dbPath, source)
+		}
+		return "", err
+	}
+	return dbPath, nil
 }
 
 // defaultLogFile keeps the server log next to the data dir it belongs to, so
@@ -374,7 +406,7 @@ usage:
   gpuworks serve [--config server.yaml] [--addr :8800] [--data ./data]
                  [--trusted-proxies CIDRS] [--log-file PATH] [--log-max-size 10MB] [--log-keep 20]
                  [--log-level info] [--supervise]
-  gpuworks reset-password --user admin --password NEW_PASSWORD [--data ./data] [--db PATH]
+  gpuworks reset-password --user admin --password NEW_PASSWORD [--data DIR] [--db PATH]
   gpuworks migrate [--data ./data] [--db PATH]
   gpuworks version
 

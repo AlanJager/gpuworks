@@ -32,12 +32,18 @@ const (
 	SourceAPI Source = 0
 	// SourcePlayground is the management console's playground.
 	SourcePlayground Source = 1
+	// SourceBatch is a batch's request, sent by the batch executor for a
+	// batch created through /v1/batches or the console.
+	SourceBatch Source = 2
 )
 
-// String is the source's wire name: api or playground.
+// String is the source's wire name: api, playground or batch.
 func (s Source) String() string {
-	if s == SourcePlayground {
+	switch s {
+	case SourcePlayground:
 		return "playground"
+	case SourceBatch:
+		return "batch"
 	}
 	return "api"
 }

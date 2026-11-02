@@ -13,16 +13,21 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/inferenceapi"
 )
 
-func TestRouterUsesDedicatedModelsHandler(t *testing.T) {
+// Every /v1 path, the model list and the batch files included, goes to the one
+// data-plane handler, which authenticates by API key itself.
+func TestRouterHandsEveryV1PathToTheDataPlane(t *testing.T) {
 	r := Router(Deps{
-		ProxyV1:     http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { http.Error(w, "wrong", http.StatusBadRequest) }),
-		ProxyModels: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) }),
+		ProxyV1: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("X-Seen", r.URL.Path)
+			w.WriteHeader(http.StatusNoContent)
+		}),
 	})
-	req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
-	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, req)
-	if rec.Code != http.StatusNoContent {
-		t.Fatalf("models route status = %d body=%s", rec.Code, rec.Body.String())
+	for _, path := range []string{"/v1/models", "/v1/chat/completions", "/v1/files", "/v1/files/file-1/content", "/v1/batches", "/v1/batches/batch_1/cancel"} {
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+		if rec.Code != http.StatusNoContent || rec.Header().Get("X-Seen") != path {
+			t.Errorf("%s = %d seen %q", path, rec.Code, rec.Header().Get("X-Seen"))
+		}
 	}
 }
 

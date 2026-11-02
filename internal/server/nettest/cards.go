@@ -11,7 +11,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/proto"
 )
 
-// An accelerator RDMA network's rails are the cards' own ports, which only
+// An accelerator network's rails are the cards' own ports, which only
 // the node's vendor tool can ping. Which card reaches which is a wiring fact
 // the addresses do not show (two hosts cabled card to card keep every card in
 // one subnet), so it is measured: a card of one node pings a card of the
@@ -207,7 +207,7 @@ func runCards(ctx context.Context, call Caller, endpoints []Endpoint, opts Optio
 				defer wg.Done()
 				// Every step of a round is another pair, so these
 				// appends never touch the same Pair.
-				pairs[step.pair].Rails = append(pairs[step.pair].Rails, cardPing(ctx, call, step.source, step.probes)...)
+				pairs[step.pair].Rails = append(pairs[step.pair].Rails, cardPing(ctx, call, step.source, opts.Protocol, step.probes)...)
 			}()
 		}
 		wg.Wait()
@@ -228,9 +228,9 @@ func runCards(ctx context.Context, call Caller, endpoints []Endpoint, opts Optio
 
 // cardPing sends one shift's pings from a node and turns the answers into
 // rail results. A probe whose target card has no address is not sent.
-func cardPing(ctx context.Context, call Caller, sourceUUID string, probes []cardProbe) []RailResult {
+func cardPing(ctx context.Context, call Caller, sourceUUID, protocol string, probes []cardProbe) []RailResult {
 	results := make([]RailResult, len(probes))
-	params := proto.AcceleratorPingParams{TimeoutMS: int(CardProbeTimeout / time.Millisecond)}
+	params := proto.AcceleratorPingParams{TimeoutMS: int(CardProbeTimeout / time.Millisecond), Protocol: protocol}
 	var sent []int
 	for i, p := range probes {
 		results[i] = RailResult{Rail: p.source.Name, SourceIP: p.source.ip(), TargetRail: p.target.Name, TargetIP: p.target.ip()}

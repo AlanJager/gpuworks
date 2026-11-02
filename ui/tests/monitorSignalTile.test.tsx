@@ -24,6 +24,7 @@ await i18n.use(initReactI18next).init({
 const { cleanup, render, screen } = await import("@testing-library/react");
 const userEvent = (await import("@testing-library/user-event")).default;
 const { default: SignalTile, formatSignalValue } = await import("../src/pages/monitor/SignalTile.tsx");
+const { formatLatency, formatLatencyText, latencyUnit } = await import("../src/pages/monitor/signalFormat.ts");
 import type { MonitorSignal } from "../src/api";
 
 afterEach(() => cleanup());
@@ -206,4 +207,41 @@ test("the tile is keyboard operable via Enter and Space", async () => {
   assert.equal(clicks, 1);
   await userEvent.setup().keyboard("[Space]");
   assert.equal(clicks, 2);
+});
+
+test("request_rate shows the rate and the in-flight concurrency as a bare pair, with no units to crowd the tile", () => {
+  const signal: MonitorSignal = { key: "request_rate", collected: true, value: 5, denominator: 20 };
+  renderTile(signal);
+  assert.equal(screen.getByTestId("signal-value-row").textContent, "5 / 20");
+  assert.ok(screen.getByRole("button", { name: "Ready replicas: 5 / 20" }));
+});
+
+test("request_rate without an in-flight gauge shows the rate alone", () => {
+  const signal: MonitorSignal = { key: "request_rate", collected: true, value: 5 };
+  renderTile(signal);
+  assert.equal(screen.getByTestId("signal-value-row").textContent, "5");
+});
+
+test("latencies switch to seconds from 1 s, and a pair shares the unit of its larger value", () => {
+  assert.equal(latencyUnit(999), "ms");
+  assert.equal(latencyUnit(1000), "s");
+  assert.equal(latencyUnit(800, 1200), "s");
+  assert.equal(latencyUnit(null, undefined), "ms");
+  assert.equal(formatLatency(39000, "s"), "39");
+  assert.equal(formatLatency(800, "s"), "0.8");
+  assert.equal(formatLatency(13.34, "ms"), "13.3");
+  assert.equal(formatLatencyText(39000), "39s");
+  assert.equal(formatLatencyText(1530), "1.5s");
+  assert.equal(formatLatencyText(345.6), "345.6 ms");
+});
+
+test("a latency pair in seconds renders without five-digit millisecond counts", () => {
+  const signal: MonitorSignal = { key: "ttft", collected: true, value: 38000, denominator: 39500 };
+  render(
+    <I18nextProvider i18n={i18n}>
+      <SignalTile signal={signal} label="TTFT p95 / p99" unit="s" formatValue={(v) => formatLatency(v, "s")} />
+    </I18nextProvider>,
+  );
+  assert.equal(screen.getByTestId("signal-value-row").textContent, "38 / 39.5s");
+  assert.ok(screen.getByRole("button", { name: "TTFT p95 / p99: 38 / 39.5 s" }));
 });

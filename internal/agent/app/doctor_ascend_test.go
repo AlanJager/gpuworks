@@ -79,7 +79,7 @@ func (h *ascendHost) report(ctx context.Context, dies []proto.GPUInfo) proto.Doc
 			HealthStatus: g.HealthStatus, HealthCode: g.HealthCode,
 		})
 	}
-	doctorAscendChecks(ctx, &r, dies)
+	doctorCardRuntimeChecks(ctx, &r, dies)
 	return r
 }
 
@@ -154,6 +154,20 @@ func TestDoctorAscendReportsTheDieTheRuntimeCannotUse(t *testing.T) {
 	}
 	if evidence["Runtime Check"] != "failed" || !strings.Contains(evidence["Detail"], "aclrtSetDevice=507033") || evidence["Checked At"] == "" {
 		t.Fatalf("evidence = %+v, want what the agent records for the same failure", target.Evidence)
+	}
+	// The evidence is a command, not a description of one: the reader has to
+	// be able to paste it and watch the same die fail. Measured on
+	// 192.168.200.29, where npu-smi calls die 0 healthy and dmesg says
+	// nothing about it, so running the check by hand is the only way to see
+	// the failure.
+	if !strings.Contains(target.Probe, accelerator.AscendACLSmokeScript) {
+		t.Errorf("probe does not carry the script the check ran: %q", target.Probe)
+	}
+	if !strings.Contains(target.Probe, "die='0'") {
+		t.Errorf("probe does not name the die it failed on: %q", target.Probe)
+	}
+	if target.Recheck == "" {
+		t.Error("no command for the vendor tool's view of the same die")
 	}
 	fact := cardRuntimeFact(r)
 	for _, want := range []string{"14 dies", "13 passed", "1 failed", "0 not checked", "failed: 0"} {
@@ -470,30 +484,57 @@ func TestDoctorRPCLeavesServingAscendDiesAlone(t *testing.T) {
 	}
 }
 
-// A node of another vendor is not asked the Ascend question.
-func TestDoctorAscendIgnoresOtherVendors(t *testing.T) {
+// An NVIDIA node keeps its whole-node checks and has every card asked on its
+// own as well, by UUID like the periodic check: the whole-node CUDA check sees
+// every card at once and answers for the first visible one only.
+func TestDoctorAsksEachNVIDIACardOnItsOwn(t *testing.T) {
 	withNoTools(t)
-	called := false
 	original := doctorHostRuntimeCheck
 	t.Cleanup(func() { doctorHostRuntimeCheck = original })
-	doctorHostRuntimeCheck = func(string) (gpu.HostRuntimeCheck, bool) { called = true; return gpu.HostRuntimeCheck{}, false }
+	var vendors, asked []string
+	doctorHostRuntimeCheck = func(vendor string) (gpu.HostRuntimeCheck, bool) {
+		vendors = append(vendors, vendor)
+		check, ok := gpu.HostRuntimeCheckFor(vendor)
+		check.Prerequisite = func() string { return "" }
+		check.CLI = ""
+		check.Try = func(_ context.Context, visible string) error {
+			asked = append(asked, visible)
+			if visible == "GPU-2" {
+				return errors.New("cuda runtime smoke failed: cuCtxCreate=999")
+			}
+			return nil
+		}
+		return check, ok
+	}
 	fakeDiagnosticTools(t)
 	stubCUDACheck(t, "PASS fake")
-	nvidia := []proto.GPUInfo{{Index: 0, UUID: "GPU-1", Vendor: "nvidia", PCIeBDF: "0000:3f:00.0", Healthy: true, HealthStatus: accelerator.HealthOK}}
-
-	r := buildDoctorReport(context.Background(), realAscendProber{&gpu.FixedProber{VendorName: "nvidia", GPUs: nvidia}}, nil)
-
-	if called {
-		t.Fatal("the Ascend check asked for a host runtime on an NVIDIA node")
+	nvidia := []proto.GPUInfo{
+		{Index: 0, UUID: "GPU-1", Vendor: "nvidia", PCIeBDF: "0000:3f:00.0", Healthy: true, HealthStatus: accelerator.HealthOK},
+		{Index: 1, UUID: "GPU-2", Vendor: "nvidia", PCIeBDF: "0000:40:00.0", Healthy: true, HealthStatus: accelerator.HealthOK},
 	}
-	if _, ok := factValue(r, proto.DoctorFactCardRuntime); ok {
-		t.Fatalf("an NVIDIA report carries the Ascend fact: %+v", r.Facts)
+	recorded := map[string]bool{}
+	ctx := withDoctorOutcomes(context.Background(), func(ident string, err error) { recorded[ident] = err == nil })
+
+	r := buildDoctorReport(ctx, realAscendProber{&gpu.FixedProber{VendorName: "nvidia", GPUs: nvidia}}, nil)
+
+	if fmt.Sprint(vendors) != "[nvidia]" || fmt.Sprint(asked) != "[GPU-1 GPU-2]" {
+		t.Fatalf("asked the %v runtime about %v, want each NVIDIA card by UUID", vendors, asked)
 	}
 	if _, ok := factValue(r, proto.DoctorFactCUDARuntime); !ok {
-		t.Fatalf("the NVIDIA check no longer runs: %+v", r.Facts)
+		t.Fatalf("the whole-node CUDA check no longer runs: %+v", r.Facts)
 	}
-	if rowFor(t, r, 0).HealthStatus != accelerator.HealthOK {
-		t.Fatalf("row = %+v", rowFor(t, r, 0))
+	if fact := cardRuntimeFact(r); !strings.Contains(fact, "per-card CUDA runtime check of the 2 cards") || !strings.Contains(fact, "1 passed, 1 failed") {
+		t.Fatalf("fact = %q", fact)
+	}
+	if row := rowFor(t, r, 1); row.HealthCode != accelerator.HealthRuntimeUnusable {
+		t.Fatalf("card 1 row = %+v, want runtime_unusable", row)
+	}
+	if row := rowFor(t, r, 0); row.HealthStatus != accelerator.HealthOK {
+		t.Fatalf("card 0 row = %+v", row)
+	}
+	want := map[string]bool{accelerator.CardIdent("GPU-1", "0000:3f:00.0"): true, accelerator.CardIdent("GPU-2", "0000:40:00.0"): false}
+	if fmt.Sprint(recorded) != fmt.Sprint(want) {
+		t.Fatalf("recorded %v, want %v", recorded, want)
 	}
 }
 
@@ -506,5 +547,158 @@ func TestDoctorAscendWithoutOwnedDiesAddsNothing(t *testing.T) {
 	r := h.report(context.Background(), dies)
 	if len(r.Facts) != 0 || len(r.Findings) != 0 || len(h.asked) != 0 {
 		t.Fatalf("facts %+v findings %+v asked %v", r.Facts, r.Findings, h.asked)
+	}
+}
+
+// Hygon cards are asked through HIP, one by one by address, like Ascend dies;
+// a card someone outside the platform is using is left alone, as the
+// periodic check leaves it.
+func TestDoctorAsksEachHygonCardAndSkipsForeignOnes(t *testing.T) {
+	real, ok := gpu.HostRuntimeCheckFor("hygon")
+	if !ok {
+		t.Fatal("hygon has no host runtime check")
+	}
+	original := doctorHostRuntimeCheck
+	t.Cleanup(func() { doctorHostRuntimeCheck = original })
+	var asked []string
+	doctorHostRuntimeCheck = func(vendor string) (gpu.HostRuntimeCheck, bool) {
+		check := real
+		check.Prerequisite = func() string { return "" }
+		check.Try = func(_ context.Context, bdf string) error {
+			asked = append(asked, bdf)
+			if bdf == "0000:68:00.0" {
+				return errors.New("hygon hip runtime smoke failed: hipMalloc=2")
+			}
+			return nil
+		}
+		return check, true
+	}
+	cards := []proto.GPUInfo{
+		{Index: 0, UUID: "hygon-a", Vendor: "hygon", PCIeBDF: "0000:67:00.0", HealthStatus: accelerator.HealthOK},
+		{Index: 1, UUID: "hygon-b", Vendor: "hygon", PCIeBDF: "0000:68:00.0", HealthStatus: accelerator.HealthOK},
+		{Index: 2, UUID: "hygon-c", Vendor: "hygon", PCIeBDF: "0000:69:00.0", HealthStatus: accelerator.HealthOK},
+	}
+	var r proto.DoctorReport
+	r.Accelerators = &proto.DoctorAccelerators{Vendor: "hygon"}
+	for _, g := range cards {
+		r.Accelerators.GPUs = append(r.Accelerators.GPUs, proto.DoctorGPU{Index: g.Index, PCIeBDF: g.PCIeBDF, HealthStatus: g.HealthStatus})
+	}
+	ctx := withDoctorCardsInUse(t.Context(), func() (map[string]bool, bool) { return map[string]bool{}, true })
+	foreign := accelerator.CardIdent("hygon-c", "0000:69:00.0")
+	ctx = withDoctorForeignCards(ctx, func(ident string) bool { return ident == foreign })
+	inFlight := map[string]int{}
+	var began []string
+	ctx = withDoctorAttempts(ctx, func(ident string) func() {
+		inFlight[ident]++
+		began = append(began, ident)
+		return func() { inFlight[ident]-- }
+	})
+	doctorCardRuntimeChecks(ctx, &r, cards)
+	if len(began) != 2 || inFlight[began[0]] != 0 || inFlight[began[1]] != 0 {
+		t.Fatalf("attempts begun %v, in flight after %v: want each checked card marked and released", began, inFlight)
+	}
+
+	if strings.Join(asked, ",") != "0000:67:00.0,0000:68:00.0" {
+		t.Fatalf("asked %v, want the two cards nobody else uses", asked)
+	}
+	fact := cardRuntimeFact(r)
+	for _, want := range []string{"per-card HIP runtime check of the 3 cards", "1 passed, 1 failed, 1 not checked", "not checked (a process outside the platform is using it): 2"} {
+		if !strings.Contains(fact, want) {
+			t.Fatalf("fact lacks %q:\n%s", want, fact)
+		}
+	}
+	if row := rowFor(t, r, 1); row.HealthCode != accelerator.HealthRuntimeUnusable {
+		t.Fatalf("failed card row = %+v", row)
+	}
+	if len(r.Findings) != 1 || r.Findings[0].Targets[0].PCIeBDF != "0000:68:00.0" {
+		t.Fatalf("findings = %+v", r.Findings)
+	}
+}
+
+// A second diagnosis while one is running is refused rather than queued: it
+// would only add checks on a driver the first may be stuck in.
+func TestOnlyOneDiagnosisRunsAtATime(t *testing.T) {
+	withNoTools(t)
+	n := newNodeRuntime(slog.New(slog.DiscardHandler), nil, t.TempDir(), "none",
+		realAscendProber{&gpu.FixedProber{VendorName: "ascend", GPUs: ascendDies(1)}}, nil)
+	n.doctorRunning.Store(true)
+	if _, err := n.OnRPC(context.Background(), proto.RPCNodeDoctor, nil); err == nil || !strings.Contains(err.Error(), "already running") {
+		t.Fatalf("err = %v, want the second diagnosis refused", err)
+	}
+	n.doctorRunning.Store(false)
+	h := &ascendHost{timeout: time.Second, try: func(context.Context, string) error { return nil }}
+	h.install(t)
+	if _, err := n.OnRPC(context.Background(), proto.RPCNodeDoctor, nil); err != nil {
+		t.Fatal(err)
+	}
+	if n.doctorRunning.Load() {
+		t.Fatal("the diagnosis did not release its turn")
+	}
+}
+
+// Each die's answer goes to the periodic check, so the card's state follows
+// the diagnosis. A die the host could not be asked about, or that the
+// diagnosis's own budget cut off, has no verdict and records nothing.
+func TestDoctorRecordsEachDiesAnswerForThePeriodicCheck(t *testing.T) {
+	h := &ascendHost{timeout: time.Second, try: func(_ context.Context, die string) error {
+		switch die {
+		case "0":
+			return errors.New("Ascend ACL runtime smoke failed: aclrtSetDevice=507033")
+		case "3":
+			return &gpu.HostRuntimeUnavailableError{Reason: "aclInit failed"}
+		}
+		return nil
+	}}
+	h.install(t)
+	recorded := map[string]string{}
+	ctx := withDoctorOutcomes(context.Background(), func(ident string, err error) {
+		recorded[ident] = "pass"
+		if err != nil {
+			recorded[ident] = err.Error()
+		}
+	})
+	h.report(ctx, ascendDies(5))
+	dies := ascendDies(5)
+	ident := func(i int) string { return accelerator.CardIdent(dies[i].UUID, dies[i].PCIeBDF) }
+	want := map[string]string{
+		ident(0): "Ascend ACL runtime smoke failed: aclrtSetDevice=507033",
+		ident(1): "pass",
+		ident(2): "pass",
+	}
+	if fmt.Sprint(recorded) != fmt.Sprint(want) {
+		t.Fatalf("recorded %v, want %v", recorded, want)
+	}
+
+	cut := &ascendHost{timeout: time.Hour, try: func(ctx context.Context, _ string) error {
+		<-ctx.Done()
+		return ctx.Err()
+	}}
+	cut.install(t)
+	doctorAscendReserve, doctorAscendMinAttempt = 0, 10*time.Millisecond
+	budget, cancel := context.WithTimeout(ctx, 200*time.Millisecond)
+	defer cancel()
+	recorded = map[string]string{}
+	cut.report(budget, ascendDies(2))
+	if len(recorded) != 0 {
+		t.Fatalf("a die the budget cut off was recorded: %v", recorded)
+	}
+}
+
+// A die that does not answer within the check's own timeout is graded failed
+// by the diagnosis, and recorded as failed too.
+func TestDoctorRecordsADieThatDoesNotAnswerAsFailed(t *testing.T) {
+	h := &ascendHost{timeout: 50 * time.Millisecond, try: func(ctx context.Context, _ string) error {
+		<-ctx.Done()
+		return ctx.Err()
+	}}
+	h.install(t)
+	doctorAscendReserve, doctorAscendMinAttempt = 0, 10*time.Millisecond
+	var got []string
+	ctx := withDoctorOutcomes(context.Background(), func(_ string, err error) {
+		got = append(got, fmt.Sprint(err))
+	})
+	h.report(ctx, ascendDies(1))
+	if len(got) != 1 || !strings.Contains(got[0], "did not finish within") {
+		t.Fatalf("recorded %v, want one timeout failure", got)
 	}
 }

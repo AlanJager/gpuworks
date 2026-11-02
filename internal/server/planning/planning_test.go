@@ -10,6 +10,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/bus"
 	"gpuworks.ai/gpuworks/internal/server/deploy"
+	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/internal/server/parallelism"
 	"gpuworks.ai/gpuworks/internal/server/scheduler"
 	"gpuworks.ai/gpuworks/internal/server/sleep"
@@ -87,11 +88,9 @@ func TestLedgerChargesADGPUInstanceItsBackendOverhead(t *testing.T) {
 	}
 }
 
-// A slice sized for the weights with the model's default context used to be
-// admitted and then fail in the engine: one request of that context does not
-// fit in the KV pool. Evaluation refuses that launch, names a shorter context,
-// and stays quiet once the context fits. A weight shortfall keeps its own reason.
-func TestEvaluateRefusesWhenTheKVPoolCannotHoldTheContext(t *testing.T) {
+// KV capacity is advisory even if the estimate says no full-context request
+// fits. Startup weights and resource admission still have their own refusals.
+func TestEvaluateWarnsWhenEstimatedKVPoolCannotHoldContext(t *testing.T) {
 	st, err := store.Open("file:planning_kv_below_context?mode=memory&cache=shared", bus.New())
 	if err != nil {
 		t.Fatal(err)
@@ -111,35 +110,36 @@ func TestEvaluateRefusesWhenTheKVPoolCannotHoldTheContext(t *testing.T) {
 	// 262144 is the context Qwen3-VL-Embedding-2B launches with when the form
 	// leaves max model len unset. Startup memory fits on 24 GiB; one request does not.
 	long := evaluate(1<<30, 262144)
-	if long.Result.OK || long.Result.Plan != nil || long.Breakdown.Fits {
-		t.Fatalf("262144 context was admitted: ok=%v plan=%v fits=%v", long.Result.OK, long.Result.Plan != nil, long.Breakdown.Fits)
+	if !long.Result.OK || long.Result.Plan == nil || !long.Breakdown.Fits {
+		t.Fatalf("estimated KV shortfall blocked startup: ok=%v plan=%v fits=%v", long.Result.OK, long.Result.Plan != nil, long.Breakdown.Fits)
 	}
-	if long.Result.Message.Code != scheduler.ReasonKVContextExceedsPool {
-		t.Fatalf("reason = %+v, want %s", long.Result.Message, scheduler.ReasonKVContextExceedsPool)
+	if long.Breakdown.MaxModelLen != 262144 || long.Breakdown.MaxConcurrency == nil || *long.Breakdown.MaxConcurrency != 0 {
+		t.Fatalf("context was clamped or estimated zero hidden: %+v", long.Breakdown)
 	}
-	if long.Result.Message.Params["kv_tokens"] != long.Breakdown.EstimatedKVTokens || long.Result.Message.Params["max_model_len"] != 262144 {
-		t.Fatalf("params = %+v, breakdown = %+v", long.Result.Message.Params, long.Breakdown)
-	}
-	if got := long.Result.Message.Params["suggested_max_model_len"]; got != suggestedContextLen(long.Breakdown.EstimatedKVTokens) || suggestedContextLen(long.Breakdown.EstimatedKVTokens) > long.Breakdown.EstimatedKVTokens {
-		t.Fatalf("suggested = %v, tokens = %d", got, long.Breakdown.EstimatedKVTokens)
-	}
+	var kvWarnings int
 	for _, warning := range long.Warnings {
-		if warning.Code == "PLANNING_KV_BELOW_CONTEXT" {
-			t.Fatalf("context refusal is still a warning: %+v", warning)
+		if warning.Code == messages.WarningPlanningKVBelowContext {
+			kvWarnings++
+			if warning.Params["kv_tokens"] != long.Breakdown.EstimatedKVTokens || warning.Params["max_model_len"] != 262144 {
+				t.Fatalf("warning = %+v, breakdown = %+v", warning, long.Breakdown)
+			}
 		}
 	}
+	if kvWarnings != 1 {
+		t.Fatalf("want exactly one KV warning: %+v", long.Warnings)
+	}
 	short := evaluate(1<<30, 1024)
-	if !short.Result.OK || !short.Breakdown.Fits || short.Result.Message.Code == scheduler.ReasonKVContextExceedsPool {
+	if !short.Result.OK || !short.Breakdown.Fits {
 		t.Fatalf("a context the pool holds was refused: %+v fits=%v", short.Result.Message, short.Breakdown.Fits)
+	}
+	for _, warning := range short.Warnings {
+		if warning.Code == messages.WarningPlanningKVBelowContext {
+			t.Fatalf("short context should not warn: %+v", warning)
+		}
 	}
 	heavy := evaluate(40<<30, 40960)
 	if heavy.Result.OK || heavy.Result.Message.Code != scheduler.ReasonNoFit {
 		t.Fatalf("weight shortfall = %+v, want %s", heavy.Result.Message, scheduler.ReasonNoFit)
-	}
-	// The two reported shapes: 146340 tokens suggests 131072, and a pool that
-	// holds about 31750 of a 40960 context suggests 16384.
-	if suggestedContextLen(146340) != 131072 || suggestedContextLen(31750) != 16384 || suggestedContextLen(0) != 0 {
-		t.Fatalf("suggested = %d %d", suggestedContextLen(146340), suggestedContextLen(31750))
 	}
 }
 
@@ -506,9 +506,9 @@ func TestEvaluateSuggestsSleepingInstanceWhenMemoryIsInsufficient(t *testing.T) 
 		t.Fatal(err)
 	}
 	req := scheduler.Request{WeightBytes: 8 << 30, HeadCount: 8, GPUMemUtil: deploy.DefaultGPUMemUtil("vllm")}
-	suggestions := suggestEviction(st, node, req, false)
+	suggestions := suggestEviction(st, node, req, false, ledgerView{})
 	// Sleeping releases the whole card down to the residue the sleeper keeps.
-	wantFrees := float64((16<<30)-sleep.ResidentBytes) / (1 << 30)
+	wantFrees := float64((16<<30)-sleep.UnknownResidueBytes) / (1 << 30)
 	if len(suggestions) != 1 || suggestions[0].InstanceUUID != "sleep-a" || suggestions[0].Deployment != "sleepable-a" || suggestions[0].FreesGiB != wantFrees {
 		t.Fatalf("eviction suggestions = %+v, want frees %.1f", suggestions, wantFrees)
 	}
@@ -524,18 +524,18 @@ func TestEvaluateSuggestsSleepingInstanceWhenMemoryIsInsufficient(t *testing.T) 
 	if err := st.SetDeploymentSleep(dep.ID, 1); err != nil {
 		t.Fatal(err)
 	}
-	if got := suggestEviction(st, node, req, false); got != nil {
+	if got := suggestEviction(st, node, req, false, ledgerView{}); got != nil {
 		t.Fatalf("already-sleeping instance suggested again: %+v", got)
 	}
 	snap := NodeSnapshot(st, node, true, "")
-	if snap.GPUs[0].AllocatedBytes != 0 || snap.GPUs[0].SleepingBytes != sleep.ResidentBytes {
+	if snap.GPUs[0].AllocatedBytes != 0 || snap.GPUs[0].SleepingBytes != sleep.UnknownResidueBytes {
 		t.Fatalf("ledger for a sleeping whole-GPU instance = %+v, want residue only", snap.GPUs[0])
 	}
 	if res := scheduler.Schedule(req, snap); !res.OK {
 		t.Fatalf("request no longer fits after the sleeper released the card: %+v", res.Message)
 	}
 	allocation := GPUAllocations(st, node)[0]
-	if allocation.SleepingBytes != sleep.ResidentBytes || len(allocation.Instances) != 1 {
+	if allocation.SleepingBytes != sleep.UnknownResidueBytes || len(allocation.Instances) != 1 {
 		t.Fatalf("GPUAllocations = %+v", allocation)
 	}
 }
@@ -575,7 +575,7 @@ func TestWakingInstanceIsChargedItsFullClaimBeforeItReportsAwake(t *testing.T) {
 	}
 	_ = inst
 	allocation = GPUAllocations(st, node)[0]
-	if allocation.AllocatedBytes != 0 || allocation.SleepingBytes != sleep.ResidentBytes {
+	if allocation.AllocatedBytes != 0 || allocation.SleepingBytes != sleep.UnknownResidueBytes {
 		t.Fatalf("sleeping allocation = %+v, want residue only", allocation)
 	}
 }
@@ -750,14 +750,14 @@ func TestAReplicaSleepingAloneIsChargedItsResidue(t *testing.T) {
 		t.Fatal(err)
 	}
 	allocations := GPUAllocations(st, node)
-	if allocations[0].AllocatedBytes != 0 || allocations[0].SleepingBytes != sleep.ResidentBytes {
+	if allocations[0].AllocatedBytes != 0 || allocations[0].SleepingBytes != sleep.UnknownResidueBytes {
 		t.Fatalf("sleeping replica's card = %+v, want residue only", allocations[0])
 	}
 	if allocations[1].AllocatedBytes != 16<<30 {
 		t.Fatalf("awake replica's card = %+v, want its full claim", allocations[1])
 	}
 	req := scheduler.Request{WeightBytes: 30 << 30, HeadCount: 8, GPUMemUtil: deploy.DefaultGPUMemUtil("vllm")}
-	for _, suggestion := range suggestEviction(st, node, req, false) {
+	for _, suggestion := range suggestEviction(st, node, req, false, ledgerView{}) {
 		if suggestion.InstanceUUID == "replica-0" {
 			t.Fatalf("the sleeping replica was suggested for eviction: %+v", suggestion)
 		}
@@ -903,5 +903,55 @@ func TestAMacHostsSeveralInstancesByTheirMemoryClaims(t *testing.T) {
 	out = (Input{Model: model, Node: mac, Engine: deploy.EngineCallable, Quick: launchConfig(t, deploy.EngineCallable)}).Evaluate(st)
 	if !out.Result.OK || out.Result.Plan.ClaimBytes <= 0 || out.Result.Plan.ClaimBytes > 16<<30 {
 		t.Fatalf("callable beside a 40 GiB claim: %+v", out.Result.Plan)
+	}
+}
+
+// An edit of a deployment is previewed as the launch that replaces its
+// instances: their claims leave the ledger, and so do they as sleep
+// candidates. Every other deployment's claims stay.
+func TestLedgerViewExcludesTheEditedDeployment(t *testing.T) {
+	st, err := store.Open("file:planning_exclude_deployment?mode=memory&cache=shared", bus.New())
+	if err != nil {
+		t.Fatal(err)
+	}
+	node, err := st.RegisterNode("exclude-dep", store.HashToken("token"), "exclude-dep")
+	if err != nil {
+		t.Fatal(err)
+	}
+	node.GPUs = []store.GPU{
+		{Index: 0, UUID: "gpu-0", NodeID: node.ID, Vendor: "nvidia", ArchID: "sm_80", ComputeCapability: "8.0", MemoryTotal: 16 << 30},
+		{Index: 1, UUID: "gpu-1", NodeID: node.ID, Vendor: "nvidia", ArchID: "sm_80", ComputeCapability: "8.0", MemoryTotal: 16 << 30},
+	}
+	edited, err := st.CreateDeployment(&store.Deployment{Name: "edited", NodeID: node.ID, Engine: "vllm", Sleepable: true, State: "active"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := st.CreateDeployment(&store.Deployment{Name: "other", NodeID: node.ID, Engine: "vllm", State: "active"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, inst := range []store.Instance{
+		{UUID: "edited-0", DeploymentID: edited.ID, NodeID: node.ID, State: proto.InstRunning, GPUIndexes: "[0]", DesiredStateJSON: sleepSpec("edited-0", 0)},
+		{UUID: "other-0", DeploymentID: other.ID, NodeID: node.ID, State: proto.InstRunning, GPUIndexes: "[1]", DesiredStateJSON: `{"engine":"vllm"}`},
+	} {
+		if _, err := st.CreateInstance(&inst); err != nil {
+			t.Fatal(err)
+		}
+	}
+	plain := nodeSnapshot(st, node, true, "", ledgerView{})
+	if plain.GPUs[0].AllocatedBytes == 0 || plain.GPUs[1].AllocatedBytes == 0 {
+		t.Fatalf("plain ledger = %+v, want both cards claimed", plain.GPUs)
+	}
+	view := ledgerView{excludeDeployment: edited.ID}
+	snap := nodeSnapshot(st, node, true, "", view)
+	if snap.GPUs[0].AllocatedBytes != 0 || snap.GPUs[0].SleepingBytes != 0 {
+		t.Fatalf("edited deployment's card = %+v, want free", snap.GPUs[0])
+	}
+	if snap.GPUs[1].AllocatedBytes != plain.GPUs[1].AllocatedBytes {
+		t.Fatalf("another deployment's claim changed: %+v", snap.GPUs[1])
+	}
+	req := scheduler.Request{WeightBytes: 30 << 30, HeadCount: 8, GPUMemUtil: deploy.DefaultGPUMemUtil("vllm")}
+	if got := suggestEviction(st, node, req, false, view); got != nil {
+		t.Fatalf("the edited deployment's own instance suggested for sleep: %+v", got)
 	}
 }

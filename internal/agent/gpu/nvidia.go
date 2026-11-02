@@ -39,6 +39,14 @@ type SMIProber struct {
 	frameworkTTL    time.Duration
 
 	layout nvidiaLayout
+	nvlink nvlinkState
+
+	// inventoryTier is the first of nvidiaInventoryQueries this driver
+	// answered, found by a search that started at the top at
+	// inventoryFullAt.
+	inventoryMu     sync.Mutex
+	inventoryTier   int
+	inventoryFullAt time.Time
 
 	// metricsTierMu/metricsTier/lastFullProbeAt cache which --query-gpu tier
 	// (see metricsQueryTiers) this driver actually accepts, the same pattern
@@ -285,8 +293,12 @@ func (p *SMIProber) Probe(ctx context.Context) ([]proto.GPUInfo, error) {
 	// drivers that reject a field name outright; a field a card does not
 	// support comes back as [N/A] and is simply not judged.
 	out, err := "", error(nil)
-	for _, query := range nvidiaInventoryQueries {
-		if out, err = p.query(ctx, query, "--format=csv,noheader,nounits"); err == nil || IsCLIUnresponsive(err) || ctx.Err() != nil {
+	start := p.inventoryStart()
+	for tier := start; tier < len(nvidiaInventoryQueries); tier++ {
+		if out, err = p.query(ctx, nvidiaInventoryQueries[tier], "--format=csv,noheader,nounits"); err == nil || IsCLIUnresponsive(err) || ctx.Err() != nil {
+			if err == nil {
+				p.rememberInventoryTier(start, tier)
+			}
 			break
 		}
 	}
@@ -326,14 +338,42 @@ func (p *SMIProber) Probe(ctx context.Context) ([]proto.GPUInfo, error) {
 
 // nvidiaInventoryQueries are tried in order. The first seven fields are the
 // inventory every driver answers; power.limit follows, then the health fields
-// of accelerator.NVIDIAHealthMemoryFields in that order (see nvidiaHealth).
+// of accelerator.NVIDIAHealthMemoryFields in that order, then the recovery
+// the driver asks for (see nvidiaHealth). The first one the driver answers is
+// remembered (inventoryTier), so an older driver pays for the fields it does
+// not know once, not every minute.
 var nvidiaInventoryQueries = []string{
+	"--query-gpu=" + nvidiaInventoryFields + ",power.limit," + strings.Join(accelerator.NVIDIAHealthMemoryFields, ",") + "," + accelerator.NVIDIARecoveryField,
 	"--query-gpu=" + nvidiaInventoryFields + ",power.limit," + strings.Join(accelerator.NVIDIAHealthMemoryFields, ","),
 	"--query-gpu=" + nvidiaInventoryFields + ",power.limit," + strings.Join(accelerator.NVIDIAHealthMemoryFields[:2], ","),
 	"--query-gpu=" + nvidiaInventoryFields,
 }
 
 const nvidiaInventoryFields = "index,uuid,name,memory.total,compute_cap,pci.bus_id,driver_version"
+
+// nvidiaInventoryRecheck is how long the inventory query this driver
+// answered is trusted before the fullest one is tried again (a driver
+// upgraded under a running agent).
+const nvidiaInventoryRecheck = time.Hour
+
+// inventoryStart is the first inventory query worth trying.
+func (p *SMIProber) inventoryStart() int {
+	p.inventoryMu.Lock()
+	defer p.inventoryMu.Unlock()
+	if p.inventoryFullAt.IsZero() || time.Since(p.inventoryFullAt) > nvidiaInventoryRecheck {
+		return 0
+	}
+	return p.inventoryTier
+}
+
+func (p *SMIProber) rememberInventoryTier(start, tier int) {
+	p.inventoryMu.Lock()
+	defer p.inventoryMu.Unlock()
+	p.inventoryTier = tier
+	if start == 0 {
+		p.inventoryFullAt = time.Now()
+	}
+}
 
 func (p *SMIProber) rememberDriver(version string) {
 	if strings.TrimSpace(version) == "" {

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Alert, Button, Checkbox, Collapse, Modal, Space, Switch, Table, Tag, Tooltip, Typography, message } from "antd";
 import { useTranslation } from "react-i18next";
 import { api } from "../../api";
+import { productMessageText } from "../../apiError";
 import type { Storage, StorageImportItem, StorageImportResult, StorageScanCandidate, StorageScanSkipped } from "../../storageTypes";
 import { storageErrorText } from "../../storageDisplay";
 import { formatBytes } from "../../format";
@@ -37,6 +38,7 @@ export default function StorageScanModal({ storage, onClose, onImported }: {
   onImported: () => void;
 }) {
   const { t } = useTranslation("storage");
+  const { t: tCommon } = useTranslation("common");
   const [candidates, setCandidates] = useState<StorageScanCandidate[]>([]);
   const [skipped, setSkipped] = useState<StorageScanSkipped[]>([]);
   const [cursor, setCursor] = useState<string | undefined>();
@@ -152,7 +154,7 @@ export default function StorageScanModal({ storage, onClose, onImported }: {
             type={result.failed.length > 0 ? "warning" : "success"}
             showIcon
             message={t("scan.result", { imported: result.imported.length, created: result.imported.filter((i) => i.created).length, failed: result.failed.length })}
-            description={result.failed.length > 0 ? <ul style={{ margin: 0, paddingLeft: 18 }}>{result.failed.map((f) => <li key={f.rel_path}><Typography.Text code>{f.rel_path}</Typography.Text> {f.error}</li>)}</ul> : undefined}
+            description={result.failed.length > 0 ? <ul style={{ margin: 0, paddingLeft: 18 }}>{result.failed.map((f) => <li key={f.rel_path}><Typography.Text code>{f.rel_path}</Typography.Text> {f.error_detail ? productMessageText(tCommon, f.error_detail) : f.error}</li>)}</ul> : undefined}
           />
         )}
         <Space wrap align="center">

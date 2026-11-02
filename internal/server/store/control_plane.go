@@ -3,6 +3,7 @@ package store
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 
@@ -33,6 +34,30 @@ func (s *Store) ControlPlaneIdentity() ControlPlaneIdentity {
 		_ = s.SetSetting(SettingControlPlane, string(b))
 	}
 	return identity
+}
+
+// EnsureControlPlaneIdentity returns an identity only after it is persisted.
+func (s *Store) EnsureControlPlaneIdentity() (ControlPlaneIdentity, error) {
+	controlPlaneMu.Lock()
+	defer controlPlaneMu.Unlock()
+	var identity ControlPlaneIdentity
+	raw, err := s.LookupSetting(SettingControlPlane)
+	if err != nil {
+		return identity, fmt.Errorf("read control plane identity: %w", err)
+	}
+	if raw != "" && json.Unmarshal([]byte(raw), &identity) == nil && identity.ID != "" {
+		return identity, nil
+	}
+	identity.ID = auth.NewUUID()
+	identity.Name = "gpuworks-" + identity.ID[:8]
+	b, err := json.Marshal(identity)
+	if err != nil {
+		return identity, err
+	}
+	if err := s.SetSetting(SettingControlPlane, string(b)); err != nil {
+		return identity, fmt.Errorf("save control plane identity: %w", err)
+	}
+	return identity, nil
 }
 
 // SetControlPlaneName renames this installation as other control planes see it.

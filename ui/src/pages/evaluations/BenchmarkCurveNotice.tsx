@@ -2,7 +2,8 @@ import { Alert, Button, Space, Spin, Typography } from "antd";
 import { useTranslation } from "react-i18next";
 import { benchmarkErrorText } from "./evaluationUtils";
 
-export default function BenchmarkCurveNotice({ active, loading, hasResponse, hasSamples, runState, completed, runError, error, onRetry }: {
+export default function BenchmarkCurveNotice({ active, loading, hasResponse, hasSamples, runState, completed, runError, error, onRetry, warmup }: {
+	warmup?: boolean;
 	active: boolean;
 	loading: boolean;
 	hasResponse: boolean;
@@ -14,6 +15,7 @@ export default function BenchmarkCurveNotice({ active, loading, hasResponse, has
 	onRetry: () => void;
 }) {
 	const { t } = useTranslation("evaluations");
+	if (active && warmup) { return <Alert style={{ marginBottom: 12 }} type="info" showIcon message={t("detail.warmupRecovery")} description={runError} />; }
 	if (loading && !hasResponse) {
 		return <Space role="status" style={{ marginBottom: 12 }}><Spin size="small" /><Typography.Text type="secondary">{t("detail.curveLoading")}</Typography.Text></Space>;
 	}

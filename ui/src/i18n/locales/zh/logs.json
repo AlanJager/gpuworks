@@ -4,7 +4,7 @@
   },
   "description": "按关键字、实例、级别与时间检索容器及基础设施日志",
   "histogram": {
-    "caption": "所选时间范围内的日志量（红=error，蓝=info/warn）"
+    "caption": "所选时间范围内的日志量（红=error，蓝=info/warn），点击柱子可缩小到该时间段"
   },
   "range": {
     "30m": "最近 30 分钟",

@@ -8,6 +8,7 @@ import { JSDOM } from "jsdom";
 import React from "react";
 import { createInstance } from "i18next";
 import { I18nextProvider, initReactI18next } from "react-i18next";
+import * as shapes from "./helpers/deploymentCapabilities.ts";
 
 // Sleep and wake below the whole deployment: one replica from its instance
 // panel, the drawer's all / partly / none summary with a wake of what fits
@@ -114,6 +115,7 @@ function deployment(overrides: Record<string, unknown> = {}) {
     engine: "vllm", node_uuid: "node-a", desired_state: "active", runtime_state: "running",
     sleepable: false, health: { status: "off", threshold_sec: 60, last: null, recent_mean_ms: null, recent_ok: 0, recent: [] }, replicas: 2, max_replicas: 32, template_deviated: false, created_at: "2026-09-30T00:00:00Z",
     operations: [], instances: [instance("inst-a", { replica: { index: 0 } }), instance("inst-b", { replica: { index: 1 } })],
+    ...shapes.notSleepableSingleNode,
     ...overrides,
   };
 }
@@ -139,6 +141,7 @@ const { APIError } = await import("../src/apiError.ts");
 function sleepable(overrides: Record<string, unknown> = {}) {
   return deployment({
     sleepable: true,
+    ...shapes.sleepableSingleNode,
     instances: [instance("inst-a", { replica: { index: 0 }, ...alone }), instance("inst-b", { replica: { index: 1 }, ...alone })],
     ...overrides,
   });
@@ -226,6 +229,22 @@ test("one replica asleep reads as partly asleep; its panel wakes it, the drawer 
   await waitFor(() => assert.deepEqual(wakes[1], ["deployment", 1, { partial: false }]));
 });
 
+test("each replica says its own hold, and the drawer says the mix the server read", async () => {
+  // inst-a is held asleep by an operator; inst-b was put to sleep by the
+  // platform, so a request wakes it.
+  const mixed = sleepable({ replicas: 2, sleep_hold: "some", sleep_held: false, instances: [
+    instance("inst-a", { sleep_level: 2, desired_sleep: 2, asleep: true, sleep_held: true, replica: { index: 0 }, ...alone }),
+    instance("inst-b", { sleep_level: 1, desired_sleep: 1, asleep: true, sleep_held: false, replica: { index: 1 }, ...alone }),
+  ] });
+  stub("deploymentsPage", async () => listPage([mixed]));
+  stub("deployment", async () => mixed);
+  await openDetail();
+  assert.ok(within(drawer()).getByText(locale.sleep.someHeldHint));
+  assert.equal(within(drawer()).queryByText(locale.sleep.heldHint), null);
+  assert.ok(within(document.getElementById("instance-inst-a") as HTMLElement).getByText(locale.instance.held));
+  assert.equal(within(document.getElementById("instance-inst-b") as HTMLElement).queryByText(locale.instance.held), null);
+});
+
 test("a wake the cards cannot take all at once offers to wake what fits", async () => {
   const asleep = sleepable({ instances: [
     instance("inst-a", { sleep_level: 1, desired_sleep: 1, asleep: true, replica: { index: 0 }, ...alone }),
@@ -247,6 +266,29 @@ test("a wake the cards cannot take all at once offers to wake what fits", async 
   fireEvent.click(fits);
   await waitFor(() => assert.deepEqual(wakes, [{ partial: false }, { partial: true }]));
   await screen.findByText(i18n.t("sleep.partialWoken", { woken: 1, refused: 1 }));
+});
+
+test("a GPU held by a process outside the platform is named, and waking what fits stays on offer", async () => {
+  const asleep = sleepable({ instances: [
+    instance("inst-a", { sleep_level: 1, desired_sleep: 1, asleep: true, replica: { index: 0 }, ...alone }),
+    instance("inst-b", { sleep_level: 1, desired_sleep: 1, asleep: true, replica: { index: 1 }, ...alone }),
+    instance("inst-c", { sleep_level: 1, desired_sleep: 1, asleep: true, replica: { index: 2 }, ...alone }),
+  ] });
+  stub("deploymentsPage", async () => listPage([asleep]));
+  stub("deployment", async () => asleep);
+  const wakes: unknown[] = [];
+  stub("wakeDeployment", async (_id: number, opts: { partial?: boolean }) => {
+    wakes.push(opts);
+    if (!opts.partial) throw new APIError("WAKE_GPU_HELD_OUTSIDE", { node: "n1", gpu_indexes: [1], shortfall_gib: "0.0", occupants: [] }, "GPU [1] is held outside", 409);
+    return { status: "waking", woken: ["inst-a"], refused: [{ instances: ["inst-b"], node: "n1", gpu_indexes: [1], occupants: [], shortfall_gib: "0.0", held_outside: true }, { instances: ["inst-c"], node: "n1", gpu_indexes: [1], occupants: [], shortfall_gib: "0.0", held_outside: true }] };
+  });
+  await openDetail();
+  fireEvent.click(within(drawer()).getByRole("button", { name: locale.sleep.wake }));
+  const reason = i18n.t("apiError.WAKE_GPU_HELD_OUTSIDE", { ns: "common", node: "n1", gpu_indexes: [1] });
+  await screen.findByText((text) => text.includes(reason));
+  fireEvent.click(await within(drawer()).findByRole("button", { name: locale.sleep.wakeWhatFits }));
+  await waitFor(() => assert.deepEqual(wakes, [{ partial: false }, { partial: true }]));
+  await screen.findByText(i18n.t("sleep.partialWoken", { woken: 1, refused: 2 }));
 });
 
 test("waking what fits counts replicas: a multi-node replica's ranks count once", async () => {
@@ -298,6 +340,47 @@ test("a PD deployment sleeps the role its mode runs without, and only that one",
   fireEvent.click(sleepPrefill);
   await confirmSleepMode();
   await waitFor(() => assert.deepEqual(orders, [[1, 1, "wait", "prefill"]]));
+});
+
+// The drawer's own replica pair comes from the server, not from counting the
+// instances client-side: a PD deployment's replicas are its role units, so the
+// denominator is 3 while the stored replicas field is 1. The bug this pins
+// printed a unit-counted numerator over the stored 1 ("Partly asleep · 2/1
+// replicas"), which told the operator the deployment had more sleeping
+// replicas than it had.
+test("a partly asleep PD deployment shows the server's pair, not the stored count", async () => {
+  // The server rewrites a PD deployment's replicas to its role units (the
+  // stored field only configures an ordinary deployment and PD creation forces
+  // it to 1), so the detail response this fixture stands in for carries 3.
+  const pd = sleepable({
+    replicas: 3,
+    ready_replicas: 1,
+    asleep_replicas: 2,
+    state: "running",
+    pd: { mode: "vllm-nixl", fallback: "decode", kv_load_failure: "fail", state: "running", short: false, roles: [
+      { role: "decode", tp: 1, desired: 1, ready: 1, asleep: 0, may_be_empty: false, units: [] },
+      { role: "prefill", tp: 1, desired: 2, ready: 0, asleep: 2, may_be_empty: true, units: [] },
+    ] },
+    // The prefill role's units are the sleepers; decode keeps serving, so the
+    // deployment is still running rather than asleep.
+    instances: [
+      instance("decode-0", { role: "decode", replica: { role: "decode", index: 0 }, ...alone }),
+      instance("prefill-0", { role: "prefill", sleep_level: 1, desired_sleep: 1, asleep: true, replica: { role: "prefill", index: 0 }, ...alone }),
+      instance("prefill-1", { role: "prefill", sleep_level: 1, desired_sleep: 1, asleep: true, replica: { role: "prefill", index: 1 }, ...alone }),
+    ],
+  });
+  stub("deploymentsPage", async () => listPage([pd]));
+  stub("deployment", async () => pd);
+  await openDetail();
+  // The drawer's status row prints the server's pair; the sleep controls print
+  // their own summary from the same replicas, so both read 2 of 3.
+  assert.ok(within(drawer()).getAllByText(i18n.t("sleep.partial", { asleep: 2, total: 3 })).length >= 1);
+  // A denominator smaller than the numerator is the defect: never render the
+  // stored 1 beside a count of 2 sleepers.
+  assert.equal(within(drawer()).queryAllByText(i18n.t("sleep.partial", { asleep: 2, total: 1 })).length, 0);
+  // ready_replicas is filled for a PD deployment now, so the drawer prints the
+  // ready count beside the same denominator instead of hiding the row.
+  assert.ok(within(drawer()).getByText(i18n.t("detail.readyReplicas", { ready: 1, desired: 3 })));
 });
 
 test("a refused sleep order leaves the last sleep failure shown", async () => {

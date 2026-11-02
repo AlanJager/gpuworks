@@ -13,6 +13,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/pdmode"
 	"gpuworks.ai/gpuworks/internal/server/planning"
 	"gpuworks.ai/gpuworks/internal/server/store"
+	"gpuworks.ai/gpuworks/internal/server/yieldpolicy"
 )
 
 // fieldPDPlacement is the deploy form control PD placement errors belong to.
@@ -47,7 +48,7 @@ func (a *apiHandlers) preparePDDeployRequest(req *dto.DeployRequest, engine stri
 		return nil, nil
 	}
 	if req.NNodes > 1 || len(req.NodeUUIDs) > 0 || req.Replicas > 1 || isAutomaticPlacement(req) {
-		return nil, productError(messages.ErrorPDShapeConflict, "a PD deployment states its instances per role; nnodes, node_uuids, replicas and automatic placement do not apply", nil)
+		return nil, productError(messages.ErrorPDShapeConflict, "a PD deployment states its instances per role; nnodes, node_uuids and replicas do not apply", nil)
 	}
 	mode, err := planning.ValidatePD(pd, engine)
 	if err != nil {
@@ -132,8 +133,13 @@ func (p *pdRequest) otherNodes() []*store.Node {
 	return p.nodes[1:]
 }
 
-// deploymentPDDTO is the PD section of a deployment response.
-func deploymentPDDTO(rows dtoLookup, d *store.Deployment, insts []store.Instance, view replicaView) *dto.DeploymentPD {
+// deploymentPDDTO is the PD section of a deployment response. Its role counts
+// are the ready and asleep counts of the same walk the response's own
+// ready_replicas and asleep_replicas come from (deploymentFactsOf), so a role
+// never reads ready in one field and asleep in another, and the sleep state of
+// the deployment is read against the roles the gateway needs (a prefill role
+// its mode serves without does not make the deployment asleep when empty).
+func deploymentPDDTO(rows dtoLookup, d *store.Deployment, insts []store.Instance, view replicaView, facts deploymentFacts) *dto.DeploymentPD {
 	pd, err := planning.PDOf(d.Placement)
 	if err != nil || pd == nil {
 		return nil
@@ -144,14 +150,19 @@ func deploymentPDDTO(rows dtoLookup, d *store.Deployment, insts []store.Instance
 	for _, slot := range match.Slots {
 		slots[fmt.Sprintf("%s/%d", slot.Unit.Role, slot.Unit.Index)] = slot
 	}
-	status := planning.PDStatusOf(pd, insts)
-	out := &dto.DeploymentPD{Mode: pd.Mode, Fallback: pd.EffectiveFallback(), KVLoadFailure: pd.EffectiveKVLoadFailure(), State: status.State, Short: status.Short,
-		Roles: []dto.DeploymentPDRole{}}
-	for _, role := range status.Roles {
-		row := dto.DeploymentPDRole{Role: role.Role, TP: role.TP, PP: pd.Roles[role.Role].PP, Desired: role.Desired, Ready: role.Ready, MayBeEmpty: mode.MayBeEmpty(role.Role), Units: []dto.DeploymentPDUnit{}}
-		for index, unit := range pd.Units(role.Role) {
+	out := &dto.DeploymentPD{Mode: pd.Mode, Fallback: pd.EffectiveFallback(), KVLoadFailure: pd.EffectiveKVLoadFailure(),
+		State: pdStateOf(view, facts), Roles: []dto.DeploymentPDRole{}}
+	for _, role := range view.roles() {
+		counts := facts.Roles[role]
+		unitCount := len(pd.Units(role))
+		row := dto.DeploymentPDRole{Role: role, TP: pd.TP(role), PP: pd.Roles[role].PP, Desired: unitCount, Ready: counts.Awake,
+			Asleep: counts.Asleep, MayBeEmpty: mode.MayBeEmpty(role), Units: []dto.DeploymentPDUnit{}}
+		if row.Ready < row.Desired {
+			out.Short = true
+		}
+		for index, unit := range pd.Units(role) {
 			item := dto.DeploymentPDUnit{NodeUUID: unit.NodeUUID, NodeName: names[unit.NodeUUID], GPUs: unit.GPUIndexes}
-			if slot, ok := slots[fmt.Sprintf("%s/%d", role.Role, index)]; ok {
+			if slot, ok := slots[fmt.Sprintf("%s/%d", role, index)]; ok {
 				unitAttempts(rows, &item, slot, match.Failed[slot.Key])
 			}
 			for _, rank := range unit.Followers {
@@ -164,6 +175,32 @@ func deploymentPDDTO(rows dtoLookup, d *store.Deployment, insts []store.Instance
 	return out
 }
 
+// pdStateOf is a PD deployment's state from the gateway's own reading of its
+// roles, not from a separate count: running when every role the gateway needs
+// has an awake replica, partial when one of them has none, not_ready when
+// nothing is awake and the roles are asleep (or absent), and the same states
+// distinguish a role asleep from a role down the way the deployment's own
+// state does.
+func pdStateOf(view replicaView, facts deploymentFacts) string {
+	anyAwake := false
+	for _, role := range view.roles() {
+		if facts.Roles[role].Awake > 0 {
+			anyAwake = true
+		}
+	}
+	if !anyAwake {
+		return planning.PDStateNotReady
+	}
+	for _, role := range view.roles() {
+		counts := facts.Roles[role]
+		if counts.Awake > 0 || !view.roleRequired(role, counts) {
+			continue
+		}
+		return planning.PDStatePartial
+	}
+	return planning.PDStateRunning
+}
+
 // unitAttempts fills a unit's spent retry budget: how many launches failed,
 // the newest failure, and whether the controller gave up on it.
 func unitAttempts(rows dtoLookup, item *dto.DeploymentPDUnit, slot planning.UnitSlot, attempts []store.Instance) {
@@ -173,17 +210,18 @@ func unitAttempts(rows dtoLookup, item *dto.DeploymentPDUnit, slot planning.Unit
 
 // evaluatePDEnv is what the PD preview needs from the evaluate handler.
 type evaluatePDEnv struct {
-	ctx              context.Context
-	writer           http.ResponseWriter
-	request          *dto.DeployRequest
-	response         *dto.EvaluateResponse
-	engine           deploy.Engine
-	model            *store.Model
-	selection        templateSelection
-	launch           deploy.Materialized
-	requestOverrides deploy.ContainerOverrides
-	servedName       string
-	errs             *evaluateFieldErrors
+	ctx               context.Context
+	writer            http.ResponseWriter
+	request           *dto.DeployRequest
+	excludeDeployment uint
+	response          *dto.EvaluateResponse
+	engine            deploy.Engine
+	model             *store.Model
+	selection         templateSelection
+	launch            deploy.Materialized
+	requestOverrides  deploy.ContainerOverrides
+	servedName        string
+	errs              *evaluateFieldErrors
 	// targetVendor and profileNode feed the image and acquisition facts, as
 	// on the ordinary path; the profile node is the placement's first node.
 	targetVendor string
@@ -265,6 +303,7 @@ func (a *apiHandlers) evaluatePD(env evaluatePDEnv) {
 					return
 				}
 				resp.Warnings = append(resp.Warnings, plan.Warnings...)
+				resp.Warnings = append(resp.Warnings, plan.Output.Warnings...)
 				if !preview.Fits {
 					resp.OK = false
 				}
@@ -310,11 +349,11 @@ func (a *apiHandlers) previewPDRank(env evaluatePDEnv, pd *planning.PDPlacement,
 	}
 	modelMount, componentMounts := previewComponentMounts(a.d.Store, env.selection.Components, target)
 	launch := planning.LaunchRequest{
-		Preview: true, Engine: env.engine.Name(), Model: env.model, Node: target,
+		Preview: true, ExcludeDeploymentID: env.excludeDeployment, Engine: env.engine.Name(), Model: env.model, Node: target,
 		Selection: rankSelection, Quick: env.launch.Quick, ExtraArgs: env.launch.UserResidual,
 		Source:     planning.LaunchSourceFromRequest(env.response.Image, env.requestOverrides),
 		ModelMount: modelMount, ComponentMounts: componentMounts,
-		ServedName: env.servedName, Sleepable: req.Sleepable,
+		ServedName: env.servedName, Sleepable: req.Sleepable, YieldPolicy: requestYield(req.YieldPolicy), ExplainHolders: true,
 		VRAMLimitBytes: int64(req.VRAMLimitGiB * (1 << 30)), PartitionBackend: req.PartitionBackend,
 		APIContract: rankSelection.APIContract,
 		ModelRules:  store.SourceRules{Pinned: store.StoragePins(req.NodeRequirements), SaveTo: a.previewSaveToStorageID(req.ModelSource, env.model, target)},
@@ -325,7 +364,7 @@ func (a *apiHandlers) previewPDRank(env evaluatePDEnv, pd *planning.PDPlacement,
 		return dto.EvaluatePDUnit{}, plan, err
 	}
 	res := plan.Resolved
-	fits := plan.Output.Result.OK && plan.Output.Result.Plan != nil
+	fits := plan.Output.Fits()
 	item := dto.EvaluatePDUnit{
 		NodeUUID: target.UUID, NodeName: nodeDisplayName(target), Address: topology.NodeAddress,
 		Fits: fits, Breakdown: plan.Output.Breakdown,
@@ -335,7 +374,7 @@ func (a *apiHandlers) previewPDRank(env evaluatePDEnv, pd *planning.PDPlacement,
 	if fits {
 		item.GPUs = plan.Output.Result.Plan.GPUIndexes
 	} else {
-		item.Reason = plan.Output.Result.Message
+		item.Reason = plan.Output.Refusal(target, yieldpolicy.Policy{Yield: requestYield(req.YieldPolicy)})
 	}
 	return item, plan, nil
 }

@@ -86,7 +86,7 @@ func (a *apiHandlers) restartInstance(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
-	a.d.Store.AddDeploymentEventCode(dep.ID, store.EventKindSchedule, store.EventReplicaRestarted, map[string]any{"instance": leader.UUID, "drain": drain})
+	a.operatorEvent(r, dep.ID, store.EventReplicaRestarted, map[string]any{"instance": leader.UUID, "drain": drain})
 	updated, err := a.d.Store.GetDeployment(dep.ID)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err)

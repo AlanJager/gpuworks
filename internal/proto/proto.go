@@ -284,6 +284,10 @@ type GPUInfo struct {
 	// A card owned elsewhere is reported so an operator sees the hardware
 	// that is physically there, and is never scheduled.
 	Ownership string `json:"ownership,omitempty"`
+	// Checks are the state of each card check on this card
+	// (CapCardChecks). They are reported, never stored with the card: the
+	// server keeps them in memory.
+	Checks []CardCheck `json:"checks,omitempty"`
 }
 
 // CardProcess is a compute process the vendor tool reports on a card.
@@ -393,12 +397,15 @@ type SysInfo struct {
 }
 
 // ImagePresence is the directory-driven image catalog report from an agent.
-// SizeBytes is best-effort because runtimes expose compressed and unpacked
-// sizes differently; zero means the runtime did not provide one.
+// SizeBytes is retained for legacy reports and transfer bookkeeping; it does
+// not establish a runtime measurement. Zero means the legacy value is unknown.
 type ImagePresence struct {
-	ImageRef  string `json:"image_ref"`
-	Present   bool   `json:"present"`
-	SizeBytes int64  `json:"size_bytes,omitempty"`
+	// RuntimeSizeBytes is a separate runtime observation, never archive/progress bytes.
+	// Nil means unknown; zero is a measured empty image.
+	RuntimeSizeBytes *int64 `json:"runtime_size_bytes,omitempty"`
+	ImageRef         string `json:"image_ref"`
+	Present          bool   `json:"present"`
+	SizeBytes        int64  `json:"size_bytes,omitempty"`
 }
 
 // ImageNodeStatus is an explicit image distribution progress update.

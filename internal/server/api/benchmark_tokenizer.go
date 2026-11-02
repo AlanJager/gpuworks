@@ -71,7 +71,11 @@ func (a *apiHandlers) resolveBenchmarkTokenizer(ctx context.Context, req benchma
 		// estimating — and would send the node to the network for it.
 		return "", nil
 	case benchmarkTokenizerSourceHuggingFace, benchmarkTokenizerSourceModelScope, benchmarkTokenizerSourceUpload:
-		return strings.TrimSpace(req.Reference), nil
+		reference := strings.TrimSpace(req.Reference)
+		if reference == "" {
+			return "", benchmarkParameterError("tokenizer_ref", "the selected tokenizer source requires a repository or uploaded tokenizer reference")
+		}
+		return reference, nil
 	case benchmarkTokenizerSourceAuto:
 		if req.TargetKind != "instance" {
 			return "", productError(ErrorBenchmarkTokenizerSourceInvalid,
@@ -88,8 +92,8 @@ func (a *apiHandlers) resolveBenchmarkTokenizer(ctx context.Context, req benchma
 // a copy that is already on the machine that will read it is neither a download
 // nor a guess about which repository this model came from, and the model
 // repository is the fallback when there is no such copy. An empty result means
-// neither exists, which the caller turns into estimate mode or, for agentic, a
-// refusal.
+// neither exists. Token-length workloads refuse execution without a tokenizer;
+// natural text workloads may use estimated local counts.
 func (a *apiHandlers) autoBenchmarkTokenizer(ctx context.Context, req benchmarkTokenizerRequest) string {
 	repository := ""
 	if req.Deployment != nil {
@@ -152,7 +156,7 @@ func (a *apiHandlers) nodeModelTokenizerPath(deployment *store.Deployment, node 
 // node. An agent that predates fs.stat cannot answer at all; that silence is
 // not evidence against the path, which the platform itself assigned, so the
 // candidate is adopted — and a run that cannot load it still reports the
-// tokenizer warning the estimate-mode fallback is built on.
+// tokenizer failure before sending any inference requests.
 func (a *apiHandlers) nodeTokenizerFileExists(ctx context.Context, nodeUUID, path string) bool {
 	if a.d.CallNode == nil {
 		return true

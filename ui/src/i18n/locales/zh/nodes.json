@@ -126,7 +126,8 @@
     "targetHelp": "填 user@host[:port]，或直接粘贴 ssh 命令，例如 ssh -p 2222 root@192.0.2.10",
     "advanced": "高级",
     "installDir": "安装目录",
-    "installDirHelp": "存放 agent、模型和运行时数据",
+    "installDirHelp": "存放 agent、模型和运行时数据；留空时 Linux 为 /opt/gpuworks，Mac 为 ~/gpuworks（已有 agent 时沿用其目录）",
+    "installDirPlaceholder": "留空使用默认目录（/opt/gpuworks 或 ~/gpuworks）",
     "installDirTooltip": "没有 docker 的节点使用 runveil 运行时，镜像和容器根文件系统也放在这里，所以要选本地文件系统；不允许文件名带冒号的网络卷（例如 RunPod 的 /workspace）不能用。",
     "useSystemd": "通过 systemd 启动",
     "useSystemdTooltip": "开启时把 agent 注册为 systemd 服务 gpuworks-agent：开机自启、崩溃自动拉起。关闭时 agent 以 nohup 后台运行，安装目录里的 agent-restart.sh 用于手动重启；主机上已有的 gpuworks-agent 服务和其他目录里的 agent 都不受影响，换一个安装目录即可在同一台主机上再加一个 agent。主机没有 systemd 或没有 root/免密 sudo 时总是 nohup；macOS 节点使用 launchd，不受此项影响。",
@@ -290,7 +291,8 @@
     "field": {
       "pcie": "PCIe 地址",
       "uuid": "UUID",
-      "updatedAt": "指标时间"
+      "updatedAt": "指标时间",
+      "scheduling": "调度"
     }
   },
   "state": {
@@ -418,6 +420,16 @@
       "open": "已连接",
       "exited": "已结束",
       "error": "不可用"
+    },
+    "preflight": {
+      "unavailable": "终端服务不可用。",
+      "disabled": "平台设置已禁用 Web 终端。",
+      "nodeOffline": "节点未连接。",
+      "agentUnsupported": "此节点的代理不支持终端，请升级代理。",
+      "nodeLimit": "此节点的终端会话数已达上限。",
+      "globalLimit": "平台终端会话数已达上限。",
+      "containerUnsupported": "此节点的代理不支持容器终端。",
+      "runveilUnavailable": "此节点的代理无法使用 runveil 容器 Shell。"
     }
   },
   "labels": {
@@ -458,7 +470,7 @@
     "help": {
       "schedulable": "节点接收新副本。停止调度后不再往这里放新副本，已有副本照常服务；驱逐还会把从候选池放过来的副本迁到别的节点。",
       "cordoned": "不再往这里启动新副本，已有副本照常服务。可以继续驱逐，把从候选池放过来的副本迁走，或恢复调度。",
-      "draining": "不再往这里启动新副本；从候选池放过来的副本逐个先在别的节点起好替代、再退役，每个部署一次迁一个，服务副本数不低于驱逐前。钉在本节点的副本和多机、PD 的 rank 留在原处，直到强制驱逐。"
+      "draining": "不在此节点启动新副本。先在其他节点启动替代副本，就绪后才退役现有副本，以维持服务容量。钉在本节点的副本需修改节点条件；多机和 PD 单元会等待满足条件的替代节点。"
     },
     "action": {
       "cordon": "停止调度",
@@ -466,7 +478,8 @@
       "uncordon": "恢复调度",
       "uncordonAnyway": "仍然恢复调度",
       "evict": "强制驱逐",
-      "evictConfirm": "不等替代副本就绪，立即把本节点上的所有副本撤下？钉在本节点的副本和多机、PD 的 rank 会等节点恢复调度，或其部署换到别的节点后再启动。"
+      "evictConfirm": "不等替代副本就绪，立即把本节点上的所有副本撤下？钉在本节点的副本和多机、PD 的 rank 会等节点恢复调度，或其部署换到别的节点后再启动。",
+      "stopDrain": "停止驱逐"
     },
     "done": {
       "schedulable": "节点已恢复调度",
@@ -474,19 +487,38 @@
       "draining": "节点正在驱逐"
     },
     "evicted": "已撤下 {{count}} 个副本",
-    "stuck": "这里有 {{count}} 个副本不会被驱逐迁走：钉在本节点，或是多机、PD 的 rank。改它们部署的节点，或强制驱逐。",
+    "stuck": "有 {{count}} 个副本钉在此节点。请修改部署的节点条件，或明确执行立即驱逐。",
     "replicas": "本节点上的副本（{{count}}）",
     "empty": "本节点上没有运行的副本",
     "columns": {
       "deployment": "部署",
       "instance": "实例",
       "state": "状态",
-      "drain": "驱逐时"
+      "drain": "驱逐时",
+      "feedback": "进度与反馈"
     },
     "kind": {
-      "pool": "迁到别的节点",
+      "pool": "等待其他节点上的替代副本",
       "pinned": "钉在本节点：等待",
-      "named": "指定了本节点：需强制驱逐"
+      "named": "替代就绪后迁移整个单元"
+    },
+    "drainHint": "打开“调度与驱逐”可查看等待中的副本、调度反馈，或停止驱逐并保持节点停止调度。",
+    "waiting": "仍有 {{count}} 个副本等待离开：替代副本就绪后才会退役现有服务。",
+    "stopHint": "请查看各部署的最新反馈。可停止后续驱逐并保持节点停止调度，已经开始的操作可能继续完成。平台不会自动恢复调度，也不会强制撤下现有副本。",
+    "completed": "已无活动副本。节点仍不接收新副本，可停止驱逐以保持停止调度状态。",
+    "retiring": "正在排空并退役此实例，等待在途请求结束及移除确认。",
+    "pinnedReason": "部署钉在此节点。请修改节点条件，或明确执行立即驱逐。",
+    "lastFeedback": "最近一次调度反馈：{{reason}}",
+    "lastFailedAttempt": "其他节点上最近一次失败尝试：{{message}}",
+    "awaitingReason": "正在等待替代副本，控制器尚未报告调度拒绝原因；请查看部署实例及模型、镜像准备进度。",
+    "offline": "节点已离线，无法确认实例退役和容器移除。",
+    "offlineHint": "请恢复 agent 连接并检查实例。可以停止驱逐并保持节点停止调度；平台不会自动恢复调度，也不会把未确认的移除记为成功。",
+    "by": {
+      "operator": "管理员手动停止调度，平台不会自动解除。",
+      "platformLifts": "原因消失后平台会自动恢复调度。"
+    },
+    "cordonReason": {
+      "card_needs_host_reboot": "平台停止调度：有卡报告需要重启主机或断电重启才能恢复，同一驱动下的其他卡也可能受影响。"
     }
   },
   "systemLabels": {
@@ -580,6 +612,11 @@
         "summary": "本节点的容器运行时无法完成初始化，最近一次尝试失败，错误见下。",
         "impact": "在问题修复前，本节点上的所有部署都会失败。代理会自动重试：首次失败后等待 30 秒，之后最长间隔 5 分钟。"
       },
+      "runtime_state_untraversable": {
+        "label": "运行时用户无法访问代理目录",
+        "summary": "{{directory}} 不允许工作负载的运行用户 {{user}} 进入，因此它无法访问代理目录 {{stateDir}}。",
+        "impact": "本节点上每次启动工作负载都会因运行时自身文件“权限不足”而失败。请执行 `{{fix}}` 开放该目录（只授予进入权限，不能列目录或写入），或把代理重装到不在该目录之下的安装目录。"
+      },
       "path_noexec": {
         "label": "路径挂载为 noexec",
         "summary": "{{path}} 位于 {{point}}（{{fstype}}），该挂载带有 noexec。",
@@ -669,6 +706,241 @@
       "noexec": "noexec",
       "readOnly": "只读",
       "ephemeral": "容器层"
+    }
+  },
+  "batchUpgrade": {
+    "targetHeading": "本次目标",
+    "targetSource": "由当前控制面提供。更新后，Agent 版本将与控制面一致。",
+    "versionDetails": "查看版本与更新",
+    "selected": "批量升级 Agent",
+    "selectedCount": "已选 {{count}} 个节点",
+    "clearSelection": "清空选择",
+    "scope": "本次范围固定为下表所列节点；重新预览只更新这些节点的状态，不会加入其他节点。",
+    "previewTitle": "确认 Agent 升级范围",
+    "target": "目标版本：{{version}}",
+    "previewCounts": "共 {{total}} 个节点，可执行 {{eligible}} 个，跳过 {{skipped}} 个。",
+    "disruption": "Agent 将逐台重启，连接可能短暂中断。",
+    "versionWarning": "更新会将 Agent 替换为所示目标版本，也可能降级。多机及 PD 推理在节点持续离线时可能失败。",
+    "acknowledge": "我已安排维护窗口，或确认受影响的业务允许中断。",
+    "start": "更新到此版本",
+    "refreshPreview": "重新预览",
+    "close": "关闭",
+    "refresh": "刷新升级记录",
+    "loadingPreview": "正在加载升级预览",
+    "loadingRun": "正在加载升级结果",
+    "loadingRuns": "正在加载 Agent 升级记录",
+    "noEligible": "本次预览没有可执行的节点，请查看原因。",
+    "empty": "暂无 Agent 升级批次。",
+    "details": "查看升级详情",
+    "history": "最近 Agent 升级",
+    "historyItem": "批次 {{id}} · {{version}}",
+    "runTitle": "Agent 升级批次 {{id}}",
+    "processed": "已处理 {{processed}} / {{total}} 个节点",
+    "results": "成功 {{succeeded}} · 失败 {{failed}} · 跳过 {{skipped}} · 已取消 {{cancelled}} · 已中断 {{interrupted}} · 未确认 {{unconfirmed}} · 等待 {{queued}} · 执行中 {{active}}",
+    "processingNotSuccess": "处理进度包含失败和跳过的节点；100% 不表示全部升级成功。",
+    "blocked": "{{name}} 的上次升级仍待核实，后续升级已阻止。",
+    "unconfirmedHelp": "未确认的旧操作仍可能替换 Agent。请先检查节点及日志，再核实释放占用；新建其他批次不能绕过。",
+    "stop": "停止后续升级",
+    "stopConfirm": "停止尚未开始的节点升级？",
+    "stopHelp": "正在传输、替换或等待重连的 Agent 仍会继续观察；此操作不会将其回滚。",
+    "continue": "预览重试／剩余节点",
+    "filter": "筛选升级结果",
+    "allResults": "全部结果",
+    "noItems": "暂无符合条件的升级项。",
+    "release": "核实旧操作已结束",
+    "releaseTitle": "核实 {{name}} 的旧升级",
+    "releaseHelp": "请确认上次升级操作已经结束后再释放占用。此操作不表示升级成功，也不会自动重试。",
+    "releaseNote": "通过哪些检查确认旧操作已经结束？",
+    "noteRequired": "请记录核实过程后再释放占用。",
+    "verified": "后续核实：{{note}}",
+    "columns": {
+      "node": "节点",
+      "from": "原版本",
+      "current": "观测版本",
+      "platform": "平台",
+      "result": "可执行性",
+      "reason": "详情",
+      "phase": "阶段",
+      "time": "开始／结束时间",
+      "action": "操作"
+    },
+    "runState": {
+      "running": "执行中",
+      "stopping": "停止后续升级中",
+      "paused": "暂停，等待核实",
+      "finished": "已结束",
+      "interrupted": "已中断",
+      "unknown": "状态暂不可用"
+    },
+    "phase": {
+      "queued": "等待执行",
+      "transferring": "传输／下载中",
+      "waiting_registration": "等待重新连接",
+      "observing_recovery": "观察恢复",
+      "succeeded": "目标版本已确认",
+      "failed": "失败",
+      "skipped": "已跳过",
+      "cancelled": "开始前已取消",
+      "interrupted": "已中断",
+      "unconfirmed": "未确认",
+      "unknown": "状态暂不可用"
+    },
+    "eligibility": {
+      "eligible": "可执行",
+      "already_current": "已是目标版本",
+      "offline": "离线",
+      "unsupported": "平台或制品不支持",
+      "legacy_unverified": "旧版下载条件待核实",
+      "unknown_version": "版本未知",
+      "busy": "已有升级占用",
+      "unavailable": "暂不可执行"
+    },
+    "reason": {
+      "already_current": "已经运行目标版本。",
+      "offline": "节点已离线。",
+      "unsupported": "平台或升级方式不支持。",
+      "unsupported_platform": "平台不支持。",
+      "artifact_missing": "目标 Agent 制品不可用。",
+      "artifact_untrusted": "无法确认目标制品的版本或校验摘要。",
+      "legacy_unverified": "无法确认旧 Agent 的下载条件，请单独处理此节点。",
+      "unknown_version": "无法识别 Agent 版本。",
+      "busy": "上一次升级仍占用此节点。",
+      "target_changed": "目标或制品已经变化，请重新预览。",
+      "server_restarted": "执行期间服务端重启。",
+      "server_changed": "控制面目标已变化。",
+      "transfer_failed": "制品传输失败。",
+      "agent_rejected": "Agent 拒绝升级。",
+      "rolled_back": "Agent 报告已回滚。",
+      "timeout": "观察窗口内未确认目标版本。",
+      "unconfirmed": "尚未确认上次操作已经结束。",
+      "superseded": "剩余工作已交接到新的已确认批次。",
+      "stopped": "下发前已停止。",
+      "node_deleted": "下发前节点已被删除。",
+      "unavailable": "请查看具体错误或检查节点日志。",
+      "capabilities_changed": "预览后节点能力已变化。",
+      "transport_uncertain": "传输结果不确定，需要核实旧操作。",
+      "server_stopped": "执行期间控制面已停止。",
+      "agent_failed": "Agent 报告升级失败。",
+      "artifact_unavailable": "固定的目标制品不可用。",
+      "confirmation_timeout": "观察窗口内未确认目标版本。",
+      "target_registered": "新的 Agent 会话已确认目标版本。"
+    },
+    "activeBlock": "{{name}} 所在升级批次尚未结束，请等待完成或查看进度。",
+    "activeHelp": "当前尝试确认结束前会保留执行名额，其他批次不能并行启动。",
+    "startedAt": "开始：{{at}}",
+    "finishedAt": "结束：{{at}}",
+    "verifiedAt": "后续已核实旧操作结束：{{at}}"
+  },
+  "cardScheduling": {
+    "stoppedTag": "停止调度",
+    "allowedTag": "临时放开",
+    "state": {
+      "stopped": "管理员停止调度，平台不会自动解除",
+      "allowed": "已临时放开：平台判定不可用，下一次上报（约 1 分钟后）重新判定",
+      "schedulable": "可调度",
+      "blocked": "平台判定不可用"
+    },
+    "stop": "停止调度",
+    "resume": "恢复调度",
+    "allow": "临时放开",
+    "allowConfirm": "平台判定这张卡不可用。放开后它会接受新部署，直到约 1 分钟后的下一次上报重新判定。确定放开？",
+    "done": {
+      "stopped": "已停止这张卡的调度",
+      "schedulable": "这张卡已可调度"
+    }
+  },
+  "cardHealth": {
+    "tab": "健康检查",
+    "check": {
+      "vendor_health": "厂商健康",
+      "vendor_cli": "厂商工具",
+      "occupancy": "平台外占用",
+      "pcie_link": "PCIe 链路",
+      "pcie_errors": "PCIe 错误",
+      "xid": "Xid",
+      "nvlink": "NVLink",
+      "runtime": "运行时"
+    },
+    "checkHelp": {
+      "vendor_health": "厂商工具对这张卡的结论：ECC、行重映射、npu-smi 健康、RAS 计数与坏页",
+      "vendor_cli": "厂商工具这一轮有没有应答",
+      "occupancy": "卡上有没有平台外启动的计算进程",
+      "pcie_link": "卡到根端口每一跳链路的宽度与速率",
+      "pcie_errors": "这条路径上新增的 AER 错误",
+      "xid": "NVIDIA 驱动报出的 Xid 事件",
+      "nvlink": "卡的 NVLink 是否都在",
+      "runtime": "厂商运行时能否在卡上建上下文、分配显存"
+    },
+    "period": {
+      "minute": "每分钟",
+      "minutes": "每 {{count}} 分钟"
+    },
+    "state": {
+      "pass": "通过",
+      "warn": "告警",
+      "fail": "失败",
+      "skip": "跳过",
+      "pending": "等待",
+      "na": "不适用",
+      "stale": "陈旧"
+    },
+    "skip": {
+      "busy": "卡正在服务",
+      "foreign": "被平台外进程占用",
+      "deferred": "平台还不知道节点在跑什么",
+      "unavailable": "宿主暂时不能检查",
+      "probe_failed": "厂商工具本轮没应答"
+    },
+    "reason": {
+      "foreign_processes": "有平台外进程"
+    },
+    "card": "卡 {{index}}",
+    "removed": "已移除",
+    "lastChecked": "{{ago}}检查",
+    "banner": {
+      "offline": "节点离线，下面是最后已知的结果，不代表现在。",
+      "stale": "超过两个上报周期没有新的上报，下面的结果可能已过时。",
+      "noReports": "该节点的 agent 版本过旧，不上报卡的健康检查。升级 agent 后可以看到全部检查。",
+      "waiting": "还没有收到该节点的上报。"
+    },
+    "summary": "{{cards}} 张卡 · {{fail}} 项失败 · {{warn}} 项告警",
+    "recheck": "重新检查这张卡",
+    "recheckDone": "运行时检查通过",
+    "recheckFailed": "运行时检查失败：{{reason}}",
+    "recheckSkipped": "没有检查：{{reason}}",
+    "detail": {
+      "title": "{{card}} · {{check}}",
+      "last": "最近一次",
+      "lastRan": "最近一次真正运行",
+      "lastProblem": "最近一次出问题",
+      "at": "时间",
+      "duration": "耗时",
+      "evidence": "依据",
+      "probe": "复核命令",
+      "noRuns": "agent 启动后这项检查还没做过。",
+      "agentSince": "agent 自 {{time}} 启动，只知道此后的结果。",
+      "noEvidence": "没有问题，未记录依据。"
+    },
+    "records": {
+      "title": "失败记录（最近 {{days}} 天）",
+      "empty": "最近 {{days}} 天没有发现失败。这表示期间没有检查报出问题；节点离线的时段没有检查。",
+      "ongoing": "持续中",
+      "flapping": "抖动",
+      "count": "共 {{count}} 次",
+      "lasted": "持续 {{duration}}",
+      "lasting": "已持续 {{duration}}",
+      "first": "首次依据",
+      "latest": "最近依据",
+      "filterCard": "全部卡",
+      "filterCheck": "全部检查",
+      "clear": "清除筛选",
+      "filteredBy": "已筛选：{{card}} · {{check}}"
+    },
+    "duration": {
+      "seconds": "{{count}} 秒",
+      "minutes": "{{count}} 分钟",
+      "hours": "{{count}} 小时",
+      "days": "{{count}} 天"
     }
   }
 }

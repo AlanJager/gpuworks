@@ -90,32 +90,39 @@ They **never silently fall back to unlimited GPU memory**.
 ## Sleep/Wake: Models Take Turns on One GPU
 
 **What it solves**: An instance you do not currently need releases GPU memory through the engine's sleep mode, while its container keeps running and its state remains
-`running`. Wake it when needed. A sleeping instance retains only about 1.5 GiB in the scheduling ledger; the rest of the GPU memory can be used to deploy other models.
+`running`. Wake it when needed. A sleeping instance retains only its own residue in the scheduling ledger (measured, or estimated from the model when it cannot be read; roughly 0.75–4 GiB); the rest of the GPU memory can be used to deploy other models.
 
 **How it differs from dGPU**:
 
 | | dGPU | sleep/wake |
 |---|---|---|
 | Online simultaneously | Yes, each with a fixed quota | No; sleeping instances do not serve requests |
-| GPU memory usage | Quota remains allocated | Only about 1.5 GiB of residual memory while sleeping |
+| GPU memory usage | Quota remains allocated | Only the residue while sleeping (measured or estimated per instance) |
 | Switching cost | None | Waking takes time (see below) |
 | Dependency | Each vendor's dGPU backend | vLLM sleep mode |
 
 **Costs and limitations**:
 
-- Wake time: L1 (moves weights to host memory) takes one step and a few seconds, but consumes host RAM equal to the weight size. L2 (discards weights)
-  reloads them from the model directory on wake, taking tens of seconds to several minutes, without consuming host RAM. Both levels discard the KV cache.
-- If a sleeping instance receives a request, the gateway returns HTTP 503 (`model is asleep; wake it first`) and **does not wake it automatically**.
-  Automatic switching on demand is currently unavailable.
+- Wake time: L1 (moves weights to host memory) takes one step and a few seconds, but measured it pins about 1.9 times the weight size in host RAM, and keeps it pinned after the wake. L2 (discards weights)
+  reloads them from the model directory on wake: a few seconds while the model files are in page cache, tens of seconds to several minutes when they are read from disk, without consuming host RAM. Both levels discard the KV cache.
+- If a sleep you ordered receives a request, the gateway returns HTTP 503 (`model is asleep; wake it first`); a deployment the platform put to sleep (
+  yielding by [yield policy](service-levels.md)) is woken on demand: the gateway holds the request while it wakes. Both on-demand and agreed switches belong to the [Scheduling Analysis](../how-to/scheduling-center.md):
+  schedules sleep and wake on chosen weekdays and times, the yield policy (never yield automatically, yield when idle, yield on a turn, yield anytime) lets deployments sharing GPUs take turns by request, and a wake that does not fit can wait for room.
 - Waking requires admission first: if a new deployment occupies the GPU, it returns 409 `WAKE_INSUFFICIENT_GPU_MEMORY`. Stop or
-  sleep the occupying instance first.
+  sleep the occupying instance first, or choose to wait for room or to put the occupant to sleep and then wake; a GPU held by a process outside the platform is refused outright (`WAKE_GPU_HELD_OUTSIDE`).
 - When putting an instance to sleep, choose "Finish in-flight requests first (recommended)" (default; finishes in-flight requests first) or "Abort in-flight requests now."
 - Only **vLLM** is supported. SGLang deployments cannot declare sleep capability (rejected at creation with `SLEEP_ENGINE_UNSUPPORTED`). Enable
   "Sleep Capable" when creating the deployment. Multi-node deployments can sleep: the command goes to the leader, whose engine puts followers to sleep and wakes them together. PD
   deployments that transfer KV over a host RDMA network cannot declare sleep capability (`PD_SLEEP_RDMA_UNSUPPORTED`; see [sleep / wake](../how-to/sleep-wake.md)).
 - Custom images are not probed. If an image lacks the sleep endpoint, the sleep attempt reports an error in instance events.
 
-**Vendor boundaries**: Sleep requires both engine and vendor support. Apple nodes do not support engine sleep ([ADR 0044](../adr/0044-mac-engines-as-host-processes.md)). The evidence cited here validates sleep on NVIDIA; it provides no validation result for Ascend, PPU, or Hygon. Test those combinations on a single GPU before use.
+**Vendor boundaries**: Sleep depends on the engine, image, container runtime, and launch configuration. Apple nodes do not support engine sleep ([ADR 0044](../adr/0044-mac-engines-as-host-processes.md)). In addition to NVIDIA, the following single-GPU combinations have passed real-hardware validation, but these results do not generalize to other versions, models, or runtimes:
+
+- **Ascend 910C**: L1 and L2 both pass with vLLM-Ascend 0.26.0rc1. When Sleep Capable is declared, the platform merges `weight_nz_mode` as `0` while preserving other `additional-config` keys. If the template environment's `PYTORCH_NPU_ALLOC_CONF` contains `expandable_segments:True`, the platform changes it to `expandable_segments:False`, keeps the other allocator settings, and evaluation/preview reports the warning `ASCEND_SLEEP_EXPANDABLE_SEGMENTS_DISABLED` (`params`: `variable`, `template_value`, `value`). Turning expandable segments off can fragment NPU memory more: the KV cache can be smaller, and a configuration with little memory headroom (for example a large model with `gpu_memory_utilization` 0.9 or higher) may run out of memory at startup or under load. If it does, lower `gpu_memory_utilization` or `max_model_len`, or turn sleep off. These large-model templates have not been validated on real hardware with sleep enabled. A nonzero NZ value the user states in extra arguments (`ASCEND_SLEEP_WEIGHT_NZ_CONFLICT`), or `expandable_segments:True` set in the deployment's own environment (`ASCEND_SLEEP_EXPANDABLE_SEGMENTS`), is rejected during creation or preview. When the command editor replaces the whole launch command, the platform neither injects nor checks these two settings.
+- **PPU ZW810E**: L1 and L2 both pass with the current hggc runner (vLLM 0.23.0), which actually runs V1. The logical `/is_sleeping` state may change before the underlying operation completes, so confirm completion from the POST response, memory readings, and inference after waking.
+- **Hygon K100**: L1 and L2 pass with vLLM 0.18.1 under both Docker and nerdctl. The platform injects `VLLM_CUDART_SO_PATH` for Hygon when Sleep Capable is declared; template or user environment values can still override it. The udocker/PRoot path fails the basic Torch kernel check and must not be used as evidence that this combination works.
+
+The Hygon ROCm sleep allocator also requires host-memory backing. On a K100 with 62 GiB RAM and no swap, `gpu_memory_utilization=0.9` caused the OOM killer to terminate EngineCore; lowering it to `0.25` passed. The platform currently has **no dedicated admission check for this backing memory**, so before creation you must evaluate node RAM, other instances, and system reserves yourself. Every result above is tied to the tested image and configuration; custom images are still not probed for capability.
 
 **When not to use it**:
 
@@ -144,10 +151,10 @@ GPU interconnect bandwidth depends on hardware (such as NVLink), which is the ma
   (`PUT /api/v1/deployments/{id}/replicas`), listing the nodes for each replica, to scale to multiple multi-node replicas. Sleep is supported.
 - RDMA compute networks enforce IB transport. If the container cannot see verbs devices, startup fails immediately instead of silently falling back to TCP (a TCP fallback
   can halve throughput, which is why this is designed to fail loudly; see [ADR 0030](../adr/0030-network-objects.md)).
-- **Vendor boundaries**: Compute networks come in three types: host Ethernet, host RDMA (NVIDIA, NCCL/UCX), and accelerator RDMA (Ascend, HCCL).
-  Ascend multi-node deployments must share one accelerator RDMA network (`COMPUTE_NETWORK_ACCELERATOR_REQUIRED`). Host RDMA compute networks cannot be used on runveil
+- **Vendor boundaries**: Compute networks come in four types: host Ethernet, host RDMA (NVIDIA, NCCL/UCX), accelerator RDMA (Ascend RoCE), and accelerator HCCS (Ascend A3/910C LingQu).
+  Ascend multi-node deployments must share one accelerator RDMA or accelerator HCCS network (`COMPUTE_NETWORK_ACCELERATOR_REQUIRED`). Host RDMA compute networks cannot be used on runveil
   (`udocker` driver) nodes (`COMPUTE_NETWORK_RUNTIME`). Multi-node inference on other vendors has no validation result.
-- If a node hosting one rank goes offline, the whole group fails and is rebuilt. Spanning more machines adds failure points.
+- If a node hosting one rank goes offline, the whole group fails and is rebuilt. Spanning more machines adds failure points. Once the node has been offline longer than the deployment's node-loss rescheduling wait (default 10 minutes), the platform replaces only the lost rank without spending retries; see [Reschedule Replicas on Node Loss](../how-to/node-failover.md).
 
 **When not to use multiple nodes**: The model fits on one machine. Cross-machine deployment is appropriate only when GPU memory or compute capacity is genuinely insufficient.
 

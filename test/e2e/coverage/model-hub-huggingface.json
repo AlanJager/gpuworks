@@ -281,23 +281,23 @@
     },
     {
       "item": "10.5",
-      "status": "MISSING",
-      "assertion": "Not fully exercised: 独立切换全部实际 page-size；ResourceTable 默认 20，可选 10/20/50/100，以页面配置为准。"
+      "status": "covered",
+      "assertion": "The table starts at the ResourceTable default page-size 20 and the size changer offers exactly 10/20/50/100; each size is really selected at every 10/30/100 corpus with exact per-page wire/DOM ID slices verified against the independent corpus, the selected size survives a reload through the persisted preference, and the default is restored at the end."
     },
     {
       "item": "10.6",
-      "status": "MISSING",
-      "assertion": "Not fully exercised: 验证首页、上一页、下一页、末页及边界禁用；逐页收集稳定 ID，无重复无遗漏，返回顺序一致。"
+      "status": "covered",
+      "assertion": "Every page is walked forward and backward through the real pager (numbered items plus prev/next with exact boundary disabled states) at each size and corpus; collected row IDs equal the declared corpus slice order without duplicates or omissions and the active-page attribute matches the settled page."
     },
     {
       "item": "10.7",
-      "status": "MISSING",
-      "assertion": "Not fully exercised: 搜索、筛选、page-size 或数据变化后保持合法页；删除末页最后一条后总数、页码和行集合正确。"
+      "status": "covered",
+      "assertion": "Filter/search/size changes land on a legal page: new filters read page 1, while returning to the filters under which page 5 was chosen restores page 5 (the usePagedList page-ownership contract, readiness-04 evidence). After the UI deletion of the last row of page 10 (91 to 90), the product steps back to page 9 itself (the MR740 clamp), the wire shows total 90 with exact IDs 081..090, and an independent GET confirms the deleted row is 404."
     },
     {
       "item": "10.8",
-      "status": "MISSING",
-      "assertion": "Not fully exercised: 分别准备总量 10、30、100 的真实归属数据，验证跨页查询与操作；page-size 选项不能代替总量证据。"
+      "status": "covered",
+      "assertion": "Real owned corpora of exactly 10, 30 and 100 registrations pass the strict ownership gate (independent paged listing: exact count, repository set, ID set and per-row identity/name) before the table is exercised; the 100-row corpus is then walked at all four page sizes with all six row-operation types on both source branches."
     },
     {
       "item": "10.9",
@@ -316,8 +316,8 @@
     },
     {
       "item": "10.12",
-      "status": "MISSING",
-      "assertion": "Not fully exercised: 允许的表格内部横向滚动与页面整体溢出分开检查，固定操作列仍可达。"
+      "status": "covered",
+      "assertion": "At 1440x900 the table content overflows internally while document and body stay within the viewport; native wheel scrolling reaches both internal endpoints; the fixed actions column stays sticky inside the clip area and its row operations remain hittable at both endpoints; the keyboard-widened column is restored afterwards."
     },
     {
       "item": "10.13",
@@ -474,5 +474,93 @@
     "23": "No assistant operation.",
     "14": "No multi-step deployment form; registration modal only."
   },
-  "result": "NOT_RUN until a matching report proves required evidence, source/build identity and observed scoped cleanup; fixture tests are not browser execution evidence."
+  "result": "NOT_RUN until a matching report proves required evidence, source/build identity and observed scoped cleanup; fixture tests are not browser execution evidence.",
+  "models_table_evidence": {
+    "items": [
+      "10.12",
+      "10.5",
+      "10.6",
+      "10.7",
+      "10.8"
+    ],
+    "authority": "model-hub-huggingface (sole ModelsPage list-table authority; MS and quick share the page without duplicate table credit)",
+    "normal_binary_sha256": "607839573e79e129d66af1d2f0200ad4cd037c0f88bf9d0dbfc00f6af779fba2",
+    "normal_binary_basis": "secrets/recovery-20261027/mutation-cohort/binaries/normal-delete-clamp/identity.json (dd3 tree + the MR740 clamp only)",
+    "product_fix": "http://dev.zstack.io:9080/wei.wang/gpuworks/-/merge_requests/740 (deleting a page's last row left an empty page; found by readiness-06, fixed and covered by RTL)",
+    "normal_runs": [
+      {
+        "locale": "en",
+        "run_id": "20261027T082956Z-e6ee1aa4",
+        "report": "secrets/e2e/models-table-v3-readiness-en-20261027-07/report.json",
+        "report_sha256": "2199801bcddc8f84242b1a9a8c53d2ee72b97545d8d1d84eb34e7cb8f8a40ebb"
+      },
+      {
+        "locale": "zh",
+        "run_id": "20261027T084125Z-9aa0a6ce",
+        "report": "secrets/e2e/models-table-v3-readiness-zh-20261027-07/report.json",
+        "report_sha256": "e4a1bc789ca871173c00f7a57a716de47aa39fc464dbc7328e831e5d5e794931"
+      }
+    ],
+    "fault_runs": [
+      {
+        "item": "10.5",
+        "name": "models-default-size-10",
+        "cohort": "models-fault-cohort-v2",
+        "run_id": "20261027T091131Z-f2cdc6d7",
+        "report_sha256": "d1f88fdd283ccc417ec00fe9805cad657ccebb3d56aee419b64278a512cc06e4",
+        "archive_sha256": "b0109f3c71bd147b9bbd04e82a945d4b44da588b1b179cd186b46c850d846047",
+        "binary_sha256": "9b9cc2e26c898f475969940c5d6536402f03784aa8c1781a7ac33c5e3b4107fc",
+        "review_note": "verified: mutant binary carries the default-size change; FAIL at checkpoint-10 open with exact assertion text \"Locator expected to contain text '20', Actual value: 10 / page\"; cleanup ok, no source drift"
+      },
+      {
+        "item": "10.6",
+        "name": "models-prev-page-substituted",
+        "cohort": "models-fault-cohort-v5",
+        "run_id": "20261027T095054Z-ec0b61db",
+        "report_sha256": "e5bd5dc71552ae04b20a7a4004a84c7a3f9e66a982753549f54681808bda133d",
+        "archive_sha256": "1c44c890974f520f9d3cbf542e4db1311f44696ee21214ff21c512cba7345e56",
+        "binary_sha256": "1ffc401c4315db76d8a5574c7e478a89791d57f90c6c92383f184f1a0d5159ab",
+        "review_note": "verified: list-view onChange page+1 warp; FAIL at count-30 walk — the page=3 request never matches the page=2 waiter predicate (timeout is the intrinsic failure shape for wrong-page navigation); pinned by checkpoints [10,30] and the settled page=1/total=30 query; cleanup ok, no source drift"
+      },
+      {
+        "item": "10.7",
+        "name": "models-delete-no-clamp",
+        "cohort": "models-fault-cohort-v8",
+        "run_id": "20261027T103429Z-f712727b",
+        "report_sha256": "e33d37c0a301eec8e1668c3845cf2220cf5c8bb7266e08643ab2db66e62efc80",
+        "archive_sha256": "ebc1a0ff491950a969723b66ef256aa2ffcb22ea3fd40f44837ee0cd1890fcdb",
+        "binary_sha256": "512d5355893d090116f7cb0a07dd7c2f78098daef67472a498d0ad543f5e255c",
+        "review_note": "verified: clamp reverted binary stays on the emptied page10 (aria: \"90 matching models\" + empty-table text, identical to the pre-fix product), no page9 request; the MR740 clamp assertion kills the regression; page10/total91 settled before the delete; cleanup ok, no drift"
+      },
+      {
+        "item": "10.8",
+        "name": "models-list-capped-50",
+        "cohort": "models-fault-cohort-v6",
+        "run_id": "20261027T100924Z-16c4258c",
+        "report_sha256": "b93699108b2bf848965b7be424017c8afc4a776123089061f0516307be3ab1bf",
+        "archive_sha256": "8a53d98de420730f1fbd771e27e5bd18d085654744a59544f80fdb13ec685d4f",
+        "binary_sha256": "9cc4f060e1ed2b397569e0f00455b197ad50f8b16dfbd0bad13219ddb04d25cd",
+        "review_note": "expected wire-total mismatch at the table; actual kill is earlier and stronger: the strict owner corpus listing gate at the 100 registration checkpoint (cap50 -> 46 corpus + 4 mainline listed vs 100 declared). Same layer precedent as images import-capped-50. Original report unchanged."
+      },
+      {
+        "item": "10.12",
+        "name": "models-actions-not-fixed",
+        "cohort": "models-fault-cohort-v7",
+        "run_id": "20261027T102341Z-ad6e529b",
+        "report_sha256": "bcdf2d90db56a37799a2e55fe8b66a332b4442e4ac85f812feb423b0baf0229c",
+        "archive_sha256": "87dd6dc2672166c6db35a004333e4b45931c90c1ae2a7e318bf7e970b2285e2f",
+        "binary_sha256": "af530c6278eaf565940a74bf848f09f043c48681178032f65f45f3a204df69b0",
+        "review_note": "expected the geometry-stage cell evaluation; actual kill is earlier and at least as strong: without role=actions the column is not fixed, the action scrolls out of the clip area, and the hit-target gate fails during the checkpoint-10 operations walk. Original report unchanged."
+      }
+    ],
+    "readiness_iterations": "01/02 locator, 03 activity false positive, 04 search-restore page ownership, 05 covered combobox input, 06 real product gap; each archived under secrets/recovery-20261027/models-table-integration-v3 with original reports unchanged",
+    "controls": [
+      "ineffective grid-view mutations PASS recorded as negative controls (cohort v1/v2/v3 notes), never counted as fault evidence",
+      "contaminated v5 job2 run discarded (stale embedded dist), documented in models-fault-cohort-v5/contamination-finding.json"
+    ],
+    "limits": [
+      "only the Hugging Face authority carries table credit; no registry bytes, model download or GPU inference claimed",
+      "10.1-10.4, 10.9-10.11, 10.13 remain MISSING"
+    ]
+  }
 }

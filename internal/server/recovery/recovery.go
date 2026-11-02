@@ -49,6 +49,10 @@ type ProviderSyncer interface {
 	// listen port now; provider.ErrUnsupported for providers that do not
 	// map ports.
 	ServerDialAddress(ctx context.Context, providerID uint, externalID, listen string) (string, error)
+	// InstanceDetail is the provider's description of one instance, which
+	// carries the connection data some providers leave out of their listing;
+	// provider.ErrUnsupported for providers whose listing is complete.
+	InstanceDetail(ctx context.Context, providerID uint, externalID string) (provider.Instance, error)
 }
 
 type Outcome struct {
@@ -340,7 +344,7 @@ func (r *Recoverer) recoverNode(ctx context.Context, node *store.Node, force boo
 		ServerURL: node.ServerURL, Token: node.Token, ConnectMode: node.ConnectMode,
 		ServerDialListen: node.ServerDialListen, HostAddress: credential.Host, InstallDir: node.InstallDir,
 		RuntimeDriver:  restartRuntimeDriver(node),
-		KeepSupervisor: true,
+		KeepSupervisor: true, KeepUntraversableInstallDir: true,
 		OnPhase: func(phase string) error {
 			installPhase = phase
 			out.Phase = phase

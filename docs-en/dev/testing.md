@@ -74,7 +74,7 @@ All code from “all nodes online” to “churn complete” lives in `internal/
 and its measurements are more stable. The single-process configuration remains available for quick, small-scale trial runs. Neither is part of default CI. In GitLab,
 the `l2-fleet-redeploy-churn` job runs the multi-process configuration and appears only in schedule / web / api
 pipelines with `FLEET_REDEPLOY_CHURN=1` (the nightly schedule includes this variable). The job runs with `GPUWORKS_TEST_STRICT=1`, so an insufficient file descriptor limit
-causes a failure rather than a skip. Logs from both processes are retained as artifacts for 14 days. Disconnect/reconnect counts and endpoint p99 are currently reported without assertions;
+causes a failure rather than a skip. Logs from both processes are compressed into a single tar.gz (the 40 separate per-process log files were once rejected by the gateway with 413 on upload) and retained as artifacts for 14 days. Disconnect/reconnect counts and endpoint p99 are currently reported without assertions;
 thresholds will be set after enough nightly runs have accumulated to establish trends.
 
 The multi-process configuration can run with prebuilt binaries. **This is the only way to run it on machines without the Go toolchain**:
@@ -226,8 +226,42 @@ and CI jobs. Verifiable behaviors use `node-onboarding`, `public-download`,
 `deploy-chat`, `provisioning-matrix`, `one-vm-two-logical-nodes`, or
 `two-vm-docker-distributed`; `nightly` and `manual` describe only trigger policies.
 
-The repository currently provides explicit `make test-l4-*` targets for RunPod, AutoDL, Vast, CompShare, and Ascend resource pools.
+The repository currently provides explicit `make test-l4-*` targets for RunPod, AutoDL, Vast, CompShare, Alibaba Cloud ECS, and Ascend resource pools.
 Confirm the targets with `make help`/Makefile first, then run only the required test lanes.
+
+Trigger policy for the schedules (`CLOUD_FULL=1`, twice a day at 03:00 and 15:00 Asia/Shanghai):
+
+- The CompShare VM cases (`l4-compshare-provisioning-matrix`, `single-vm-tp2-dgpu`,
+  `one-vm-two-logical-nodes`, `two-vm-docker-distributed`, `pd-deploy-chat-two-vm-docker`, and
+  `modelscope-public-download`) are **not scheduled**: that pool almost never has capacity, and the
+  Aliyun cases replace them. Start them on demand from a web/api pipeline with `COMPSHARE_VM=1`, or as an
+  MR manual action. The CompShare container case (`l4-compshare-server-dial-node-onboarding-container`)
+  and the offline contracts (`core-compshare-offline-contracts`) run as before.
+
+The cloud L4 CI jobs all carry `environment: {name: cloud-test/<provider>/<lane>, action: prepare}`:
+environment-scoped variables (the credentials under `cloud-test/<provider>/*`) are injected as usual, but
+`action: prepare` creates no deployment. The project has "Skip outdated deployment jobs"
+(`ci_forward_deployment_enabled`) on; once a job creates a deployment, the job that starts later in the same
+environment fails the earlier one that is still running (truncated trace, `403 Job is not running`), so the
+scheduled master pipeline and an MR manual run of the same job would kill each other. A new cloud L4 job must
+use `action: prepare` too; mutual exclusion comes from `resource_group`, not from the environment.
+
+## GitHub Actions Mirror Gates
+
+`.github/workflows/ci.yml` runs the same checks as GitLab's core stage on GitHub-hosted runners: the UI
+build and tests, the untagged Go suite with the check scripts, `go vet`, the CompShare offline contracts,
+and strict L2/L3. GitLab remains the authoritative pipeline; the GitHub mirror only receives master, so this
+workflow runs on pull requests, on manual dispatch, and nightly at 03:07 (Asia/Shanghai, just after GitLab's
+nightly) on master, for comparison with GitLab's result for the same commit. L4, releases and the docs build
+do not run here, and no secret or self-hosted runner is used.
+
+- L2/L3 take the shape of GitLab's `.docker-core`: one DinD daemon per job, exposed on a dedicated
+  `gpuworks-e2e` socket, with the suite in a golang container. The runner VM's own Docker does not work: the
+  VM has systemd, which the console upgrade cases take for a service manager, and the real terminal case
+  accepts only a dedicated daemon. The fixture base images are pulled into DinD before the suite.
+- On a 2-core runner the UI suite runs one test file at a time and takes over an hour unsplit; it runs as 4
+  parallel shards, with `npm run test:coverage` passing an optional `TEST_SHARD` (such as `2/4`) to
+  `--test-shard`. Unset, the command is the original one.
 
 ## Cost and Caching
 
@@ -237,6 +271,20 @@ Confirm the targets with `make help`/Makefile first, then run only the required 
 - Public downloads are verified only by explicit, low-frequency `public-download` cases such as
   `test-l4-runpod-huggingface-public-download` and `test-l4-compshare-modelscope-public-download`,
   to avoid downloading images and models again for every rental.
+- AutoDL Pro, Gitee Ascend and CompShare containers have limited stock and are often sold out at the nightly peak (15:00
+  Asia/Shanghai). All three wait and retry only when every candidate reports no stock: for AutoDL every candidate spec
+  returns "暂无库存", for Gitee every profile's create returns "没有找到符合条件的可用主机" (it has no stock API; only a
+  create reveals supply), and for CompShare containers every card type (4090 / 4090_48G / 5090, ...) is refused in every
+  container zone with a supply error (capacity unavailable, `RetCode 226604` out of resources, `8433` service blip,
+  `230` machine type not configured for the zone, `226641` / `226603` image not supported). Retries re-walk the whole
+  candidate list every 5 minutes with a default total wait of 30 minutes, overridden by `AUTODL_STOCK_WAIT` /
+  `GITEE_STOCK_WAIT` / `COMPSHARE_STOCK_WAIT` (a Go duration such as `45m`; `0` disables). Nothing is created while
+  waiting, and other errors (insufficient balance, authentication, price cap exceeded, a card type skipped for a
+  non-supply reason such as a missing SSH endpoint, and so on) are not retried; when AutoDL is asked for a specific
+  card it neither swaps nor waits. The wait is added on top of the case's setup budget (a CompShare container is rented
+  before setup, so it adds the wait too), so the `go test -timeout` and CI `timeout` of `test-l4-autodl-node-onboarding`,
+  `test-l4-gitee-ascend-partition-capability` and `test-l4-compshare-server-dial-node-onboarding-container` each grew by
+  30 minutes. The AutoDL hourly price cap defaults to 10 CNY (`AUTODL_MAX_HOURLY_PRICE`).
 - CompShare can reuse a prewarmed VM template through `COMPSHARE_GOLDEN_IMAGE_ID`, specify an image archive visible inside the VM through
   `COMPSHARE_DOCKER_IMAGE_TAR`, and register a complete model directory already present on each node through
   `COMPSHARE_PRELOADED_MODEL_PATH`.
@@ -270,6 +318,83 @@ and perform scoped cleanup limited to this run only after completing the investi
 `GPUWORKS_CLOUD_KEEP_ON_FAILURE=1`. Afterward, invoke
 `test-l4-cleanup-leaked` or the corresponding cleanup entry point using only this run's scoped run-id. Account-wide cleanup without a scope is prohibited. After cloud L4 tests, use the run-id
 to confirm that no instances, forwarding resources, or temporary files remain. For the product's rental workflow, see [Rent Cloud GPUs](../how-to/rent-cloud-gpus.md).
+
+### Alibaba Cloud ECS
+
+The Aliyun cases cover every CompShare VM scenario: `l4-aliyun-provisioning-matrix` (agent_dial onboarding, direct server_dial onboarding,
+capacity shapes, two-GPU shape), `l4-aliyun-single-vm-tp2-dgpu`, `l4-aliyun-one-vm-two-logical-nodes`,
+`l4-aliyun-two-vm-docker-distributed`, `l4-aliyun-pd-deploy-chat-two-vm-docker`,
+`l4-aliyun-two-vm-udocker-distributed`, and the low-frequency `l4-aliyun-modelscope-public-download` (runs only with `CLOUD_DOWNLOAD=1`).
+They rent ECS GPU instances
+and share their scenario implementations with CompShare (`vmBackend`: the provider supplies renting, card-type selection, Docker and image, and where the model comes from).
+
+- **Spot first, on-demand when there is no stock**: a spot instance (`SpotAsPriceGo`) is requested first. If the stock snapshot goes stale before the create,
+  or the request is refused (`OperationDenied.NoStock`, `QuotaExceed.*`, `InvalidResourceType.NotSupported`, and so on), the same case
+  requests a pay-as-you-go (PostPaid) instance instead, and then moves on to the next zone or card type if there is still no stock. Account or
+  fixture problems such as an insufficient balance, an invalid AccessKey, or a missing image are not swallowed and fail the case at once. Every attempt and its reason are written to the case log (`rental attempt:`),
+  as are the billing mode, zone, and instance type of the instance. `ALIYUN_NO_SPOT=1` / `ALIYUN_NO_ON_DEMAND=1` remove one billing mode.
+- **Candidates come from live stock**: `DescribeAvailableResource` is queried per region for spot and for on-demand stock; card types go from cheapest to most expensive (T4, A10, L20)
+  and the GPU count must match exactly (`internal/testenv/cloudprovider/aliyun_shapes.go`); spot comes first across card types too: cards whose best placement is spot are tried first,
+  and cards with only on-demand stock (such as 2xA10) come after. V100 is excluded: the PyTorch in the cuda12.8 runner
+  has no sm_70 kernels. 2xT4 (gn6i) is not used for tensor-parallel cases: vLLM 0.17.1 measurably fails TP=2 there (CUDA graph capture reports `CUDA error: out of memory`,
+  and with the agent's `CUDA_VISIBLE_DEVICES=0,1` the workers cannot initialise NVML); the shape remains usable for onboarding and provisioning cases.
+- **Two-VM cases stay in one zone**: once the first VM is bought, later rentals of the same card type and GPU count stay in the same region, zone, and instance type (the same billing mode is tried first, then the other if it is refused),
+  so both VMs reach each other over the private network of one VPC. Instances in one normal security group reach each other by default, so no self-referencing rule is needed (the API rejects one).
+- **The network is long-lived**: each region gets one VPC `gpuworks-test-infra` (172.30.0.0/16), one vSwitch per zone, and one security group,
+  each created only if missing and reused afterward; the security group opens 22 and the agent port 18800 (source `ALIYUN_INGRESS_CIDR`, anywhere by default).
+  This network belongs to no single run, run-scoped cleanup never deletes it, and VPCs that already exist in the account are never touched.
+- **Product path**: the agent is installed through the product's own Aliyun provider driver. `DirectServerDialOnboarding` uses `server_dial` (an ECS instance has a public IP,
+  so the server dials the agent directly); the product dials an ECS instance's private address by default, so the case passes the public `host_address` explicitly); the other three cases use `agent_dial` over an SSH reverse forward,
+  where Cloud Assistant is online and installs the agent as root without opening an SSH session, so no platform SSH key is written
+  (the cases do not require a `Platform key` on that path). If the runner's direct path to the cloud addresses is tampered with by a network device (locally some public IPs answered any port with
+  `HTTP 403`), set `GPUWORKS_SSH_PROXY=socks5://host:port` and the cases' SSH goes through that proxy (the TCP of `server_dial` does not). The product driver still does not create or release instances;
+  creating and releasing exist only in the test ECS client (`aliyun.RPC` reuses the driver's V3 signing, retries, and STS).
+- **Cleanup**: instances are named `gpuworks-test-<run-id>` and tagged `gpuworks-test-run`; `DeleteInstance` uses `Force`,
+  and the instance counts as released only once it disappears from the listing. The system disk goes with the instance, and `cleanup-leaked --run-id` also finds and deletes leftover disks by tag.
+  The leak scan lists instances region by region: over `ALIYUN_REGIONS`, or if unset over the regions that have a golden image (`ALIYUN_IMAGE_<REGION>`),
+  and a failure to list one of those regions is an error; with neither it scans every region the account can see and skips the ones the key cannot list (stating so on stderr).
+  When a spot instance is reclaimed, the log of the failed case contains `SPOT INTERRUPTION`, which says the failure is most likely a consequence and the case can simply be rerun.
+
+- **First container on a fresh VM, and retries**: on a newly booted A10 VM the first vLLM container sometimes fails to start (`torch._C._cuda_init()` reports
+  `No CUDA GPUs are available`; `NVMLError_Unknown` was seen once), and the platform's retry of the identical container then succeeds; the failed row stays in the deployment's instance list.
+  The multi-VM cases therefore warm up in `EnsureDocker` first: they run a CUDA check on every card the way the agent does (`--gpus "device=N"`), with retries,
+  and log `GPUs ready for containers after N warm-up tries`. While waiting for a deployment to run they count live ranks only (failed, stopped and removing rows do not count),
+  and every failed attempt writes its engine log to the case log at once. Before this, the PD case counted the failed row as a rank and kept waiting until the timeout even though the deployment was already running 2/2.
+
+- **udocker case**: it needs three things. Agent state must not live under `/tmp` (so the Aliyun backend's `HostedRoot` is `/opt`): udocker binds a private directory over the guest's `/tmp`,
+  which hides the loopback link `ensureHostRootLoopback` puts under `ROOT/tmp/...`, so an engine that dlopens `libcudart` by the host path `/proc/self/maps` shows cannot find it (measured: the file is in ROOT, unresolvable in the guest).
+  A root login's agent runs workloads as the dedicated `udocker` user, so `$root` is `chmod 711`; without it PRoot fails with `fork/exec .../proot-x86_64: permission denied`.
+  udocker has its own image store and cannot use the runner image the golden image keeps in Docker. The case does not pull it from a registry (a pull takes 25 to 40 minutes per rank and now and then restarts from another source near the end).
+  It goes through the platform's "import from URL" instead: each VM runs `docker save` to an uncompressed archive (about 14 GiB, about 4 minutes) and publishes it with a small file server that answers HEAD and Range (a `python3` script bound only to the private address, port 18881, serving that one file);
+  the server allows both VMs' private addresses through `outbound_allow_private_hosts`; and the case then calls the management API the way an operator does: `POST /images/preview-archive-url` to read the archive,
+  record both archive URLs on the runner image's fetch addresses (a custom image is created from the console's form when the catalog lacks it), and `POST /images/{id}/nodes/{uuid}/sync` (`source=url`) per node so the node downloads directly from **its own VM** and loads it.
+  The deployment is created only once the node image row is `present`, and after it the case checks the row is still `present` from `url`. The archives and file servers are deleted/stopped as soon as the import finishes.
+  The case log records each rank's `save`, `download`, `load` and total times (the download/load boundary is read from the image row's message, so it is as fine as the polling interval); measured on 2026-10-27: save about 4 minutes, download about 1 minute, load about 15 seconds, the whole case about 11 minutes.
+  The system disk stays 300 GiB: during the import the same disk holds the Docker store, the archive being served, the archive the node downloaded and udocker's layers (both archives are deleted after the load), and the container still has to be unpacked afterwards.
+  The case rents on-demand instead of spot (`GPUSpec.OnDemand`) so a reclaim cannot end it.
+  On failure `GPUWORKS_CLOUD_KEEP_ON_FAILURE=1` now works for the multi-VM cases too: the failed VM is kept and a credentials file written.
+
+The golden image is built by `make prepare-aliyun-golden-image`: it starts a T4 instance from Alibaba Cloud's public image
+`ubuntu_22_04_x64_100G_with_gpu_driver_and_cuda_alibase_*` (driver and CUDA preinstalled),
+installs Docker 29 and the NVIDIA container toolkit (the Docker CE repository is tried at `mirrors.aliyun.com`, Tsinghua, USTC, and Huawei Cloud in turn,
+moving on when a mirror is mid-sync and fails the index check; a resumed build first drops the Docker repository the earlier attempt wrote), pulls the vLLM runner image (the Huawei Cloud SWR mirror first,
+then quay.io and Docker Hub; the final tag is `gpustack/runner:cuda12.8-vllm0.17.1`), downloads Qwen2-0.5B-Instruct to
+`/opt/gpuworks/test-fixtures/models/qwen2-0.5b` with checksums, stops Docker, syncs, and calls `CreateImage`, then `CopyImage`
+to every region in `-regions` (by default East China 1, North China 2, South China 1, and South China 3) and boots a new instance in the source region to validate it (validation comes before copying, so a broken image is not copied to four regions).
+The image is about 50 GB (the runner image dominates); the first full snapshot of the 150 GiB system disk takes about 90 minutes and the cross-region copies about another hour, so plan for two to three hours.
+Custom images are isolated by region, so there is one ID per region; the printed `ALIYUN_IMAGE_CN_HANGZHOU=` and similar lines go into `secrets/cloud-providers.env`
+or the CI environment variables, and cases rent only in regions that have an image. The tool deletes no older image and changes no CI variable;
+with `GPUWORKS_CLOUD_KEEP_ON_FAILURE=1` a failed source instance is kept and a 0600 credentials file is written,
+and `-resume-credentials` continues from it.
+Both the model and the runner can be changed: `-model-repo`/`-model-rev` pick the ModelScope model, `-model-path` its path in the image,
+and `-docker-image`/`-pull-sources` the runner; the default image name follows the model (`gpuworks-golden-<model>-<UTC time>`).
+`-source-regions` limits where the source and validation instances are rented (by default the same as `-regions`); when copying to overseas and similar regions, use it to keep the source instance in a mainland region with stock.
+The L4 cases register the default Qwen2-0.5B and `gpustack/runner:cuda12.8-vllm0.17.1`, so an image with another model or runner cannot serve them as is. The image already carries Docker and the model, so the cases only verify them and neither install nor download
+(a missing piece means the image is broken and the case fails at once).
+
+Variables CI needs (scoped to `cloud-test/aliyun/*`): `ALIYUN_ACCESS_KEY_ID`, `ALIYUN_ACCESS_KEY_SECRET`
+(preferably a RAM user limited to ECS and VPC), and one `ALIYUN_IMAGE_<REGION>` per region; optionally `ALIYUN_REGIONS`,
+`ALIYUN_INGRESS_CIDR`, `ALIYUN_NO_SPOT`, and `ALIYUN_NO_ON_DEMAND`.
 
 ## Evidence
 

@@ -4,9 +4,9 @@ import type { InputField } from "../../inferenceApi";
 import { inputLabel } from "./compose";
 
 export default function InputsForm({ fields, values, onChange }: { fields: InputField[]; values: Record<string, unknown>; onChange: (name: string, value: unknown) => void }) {
-  const { t } = useTranslation("playground");
+  const { t, i18n } = useTranslation("playground");
   return <Space direction="vertical" style={{ width: "100%" }}>{fields.map((field) => {
-    const label = inputLabel(field);
+    const label = inputLabel(field, i18n.language);
     const value = values[field.name];
     let control;
     if (field.kind === "number") {

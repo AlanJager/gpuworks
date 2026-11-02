@@ -55,7 +55,8 @@
 .dashboard-overview-gpu-metrics .dashboard-overview-metric strong { font-size: 20px; }
 .dashboard-overview-inference { grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 12px 0 16px; }
 .dashboard-overview-usage .dashboard-overview-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; padding: 2px 17px 16px; }
-.dashboard-overview-monitor .dashboard-overview-metrics { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; padding: 2px 17px 16px; }
+/* Rate, concurrency, error rate, TTFT, queue: the two short percent/count columns take less room. */
+.dashboard-overview-monitor .dashboard-overview-metrics { grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr) minmax(0, 0.8fr) minmax(0, 1.1fr) minmax(0, 0.8fr); gap: 8px; padding: 2px 17px 16px; }
 .dashboard-overview-replica-count { color: #65758c; white-space: nowrap; }
 .dashboard-overview-replica-count strong { color: #202d40; font-weight: 600; }
 .dashboard-overview-metrics { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); }

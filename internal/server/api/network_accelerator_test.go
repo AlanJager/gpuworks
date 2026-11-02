@@ -55,8 +55,9 @@ func TestAcceleratorNetworkAPI(t *testing.T) {
 		"host_ethernet":    []any{"storage_sync", "compute", "serving"},
 		"host_rdma":        []any{"storage_sync", "compute", "serving"},
 		"accelerator_rdma": []any{"compute"},
+		"accelerator_hccs": []any{"compute"},
 	}
-	if !reflect.DeepEqual(list["type_roles"], wantTypeRoles) || !reflect.DeepEqual(list["types"], []any{"host_ethernet", "host_rdma", "accelerator_rdma"}) {
+	if !reflect.DeepEqual(list["type_roles"], wantTypeRoles) || !reflect.DeepEqual(list["types"], []any{"host_ethernet", "host_rdma", "accelerator_rdma", "accelerator_hccs"}) {
 		t.Fatalf("list dictionary = %v / %v", list["types"], list["type_roles"])
 	}
 	if builtin := list["items"].([]any)[0].(map[string]any); builtin["type"] != "host_ethernet" {

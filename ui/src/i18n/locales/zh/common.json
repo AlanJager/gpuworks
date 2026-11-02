@@ -71,12 +71,14 @@
     "DGPU_QUOTA_NO_ROOM": "{{node}} 的 GPU {{gpu}} 放不下：扣掉该部署自己的占用后可用 {{free_gib}} GiB，新配额需要 {{need_gib}} GiB。",
     "AUTOMATIC_PLACEMENT_UNAVAILABLE": "没有节点满足自动放置要求。请查看候选节点原因，或改为手动选择节点。",
     "AUTOMATIC_PLACEMENT_STALE": "评估后的节点或 GPU 方案已发生变化，请重新评估部署。",
-    "AGENT_UPGRADE_REQUIRED": "目标节点的 agent 版本过旧；请先升级 agent，再拉取镜像。",
+    "AGENT_UPGRADE_REQUIRED": "目标节点的 agent 版本过旧；请先升级 agent，再继续操作。",
     "NODE_RPC_UNAVAILABLE": "节点 RPC 尚未配置。",
     "NODE_OFFLINE": "计算节点已离线。",
     "NODE_SCHEDULABLE": "请先停止调度或驱逐该节点，再强制撤下副本。",
     "NODE_RUNTIME_INVALID": "运行时必须是自动、Docker、nerdctl 或 runveil（API 值为 udocker）。",
     "NODE_ACCELERATOR_INVALID": "加速卡只能选自动，或这台机器上有卡的厂商。",
+    "CARD_CHECKS_UNSUPPORTED": "该节点的 agent 版本过旧，不支持卡的健康检查，请先升级 agent。",
+    "CARD_NOT_OWNED": "这张卡不归本节点使用（已直通给虚拟机，或没有绑定驱动），不能设为可调度。",
     "NODE_ACCELERATOR_NOT_ON_HOST": "这台机器上没有 {{accelerator}} 的卡。",
     "NODE_ACCELERATOR_HAS_INSTANCES": "节点上还有 {{count}} 个实例，请先停止或迁走再切换加速卡。",
     "NODE_DELETE_FORCE_INVALID": "force 必须是单个布尔值。",
@@ -103,24 +105,29 @@
     "NODE_INSTALL_EXISTING_AGENT_UNKNOWN": "主机上已有 gpuworks-agent 服务，但读不出它所属的 server。",
     "NODE_INSTALL_EXISTING_AGENT_SELF": "主机上已经有本 server 的 gpuworks agent 在运行。",
     "NODE_INSTALL_EXISTING_AGENT_SAME_DIR": "主机上已有 gpuworks agent 从安装目录 {{dir}} 运行，继续安装会替换它；换一个安装目录可以与它并存。",
+    "NODE_INSTALL_DIR_UNTRAVERSABLE": "安装已停止：{{dir}}（权限 {{mode}}）对本节点运行工作负载的专用运行时用户（udocker）关闭，部署启动时都会报 permission denied。在主机上执行 `{{fix}}`（只开放搜索，不开放列目录和写入），或把 agent 装到它之外的目录，例如 /opt/gpuworks。",
     "NODE_STORE_UNAVAILABLE": "节点存储尚未配置。",
     "NODE_RECOVERY_UNAVAILABLE": "节点恢复功能尚未配置。",
     "AI_ENDPOINT_NOT_CONFIGURED": "尚未配置 AI 服务端点。",
     "AI_TASK_INVALID": "未知的助手任务“{{task}}”。",
     "AI_TARGET_REQUIRED": "助手需要指定这个任务针对的一个实例、模型、部署、节点或问题。",
     "AI_ASK_BUSY": "你已有 {{limit}} 个问题在处理中，请等其中一个完成。",
+    "AI_DEFAULT_REQUIRED": "这是助手正在使用的 AI 服务。请先把另一个服务设为默认，或直接删除这个服务。",
     "PLATFORM_TOKEN_READ_ONLY": "该令牌只读。",
     "PLATFORM_TOKEN_NOT_ALLOWED": "平台令牌只能在登录状态下管理。",
     "PLATFORM_TOKEN_SCOPE_INVALID": "令牌范围只能是 read 或 write，不能是“{{scope}}”。",
     "PLATFORM_TOKEN_NAME_INVALID": "令牌名称去除首尾空白后须为 1 到 {{max}} 个 UTF-8 字节。",
     "API_KEY_NAME_REQUIRED": "请填写 API Key 名称",
+    "API_KEY_SCOPE_INVALID": "请选择“全部模型服务”，或至少选择一个模型服务。",
+    "API_KEY_DEPLOYMENT_UNKNOWN": "所选的模型服务已不存在（ID {{ids}}），请刷新后重新选择。",
+    "API_KEY_NOT_FOUND": "该 API Key 不存在或已吊销。",
     "PLATFORM_TOKEN_EXPIRY_INVALID": "令牌有效期须为 0（永不过期）到 {{max}} 天。",
     "PLATFORM_TOKEN_ID_INVALID": "令牌 ID 无效。",
     "MCP_DISABLED": "MCP 服务未开启。",
     "METRIC_REQUIRED": "请选择指标。",
     "METRIC_UNKNOWN": "没有名为“{{metric}}”的指标。相近的有：{{similar}}。",
     "LOGS_FILTER_INVALID": "日志筛选中的级别或来源无效。",
-    "LOGS_CONTEXT_INVALID": "上下文需要行定位且窗口为 0-50 行。",
+    "LOGS_CONTEXT_INVALID": "上下文需要行定位且窗口为 0-1000 行。",
     "LOGS_FILTER_INSTANCES_CONFLICT": "日志筛选不能同时指定 instance 和 instances，两者只能二选一。",
     "LOGS_FILTER_INSTANCES_TOO_MANY": "日志筛选的 instances 列表有 {{count}} 个，超过上限 {{maximum}} 个。",
     "TERMINAL_TARGET_UNSUPPORTED": "不支持终端目标“{{target}}”。",
@@ -171,6 +178,7 @@
     "LOCAL_STORAGE_DISABLED": "本地存储已停用，不能开始新的下载或同步。",
     "LOCAL_MODEL_FIELDS_REQUIRED": "请选择节点并填写模型路径。",
     "MODEL_PATH_REQUIRED": "请输入模型路径。",
+    "MODEL_FILE_PATH_OCCUPIED": "存储 #{{storage_id}} 中的路径「{{path}}」已被模型 #{{model_id}} 占用，请选择其他存储。",
     "LOCAL_MODEL_METADATA_REFRESH": "本地模型请通过节点路径重新登记，以更新元数据。",
     "MODEL_METADATA_UNAVAILABLE": "模型源未返回可用元数据。",
     "MODEL_METADATA_UNREACHABLE": "管理节点连不上 {{hosts}}，模型已登记但还没有元数据（config、权重大小、README）。如果管理节点要经镜像站或代理才能访问，请在 设置 → 拉取设置 → 来源规则 中给相应的模型站点规则勾选「用于管理节点获取模型元数据」；离线导入的模型会在登记本地路径后补齐元数据。",
@@ -221,6 +229,12 @@
     "USAGE_REPORT_READ_ONLY": "服务端没有 server.yaml，不能在这里开关用户体验改进计划。",
     "USAGE_REPORT_INVALID": "用户体验改进计划只能设为开启或关闭。",
     "USAGE_REPORT_UNAVAILABLE": "这个服务端没有使用报告。",
+    "EXPERIENCE_UNSUPPORTED": "体验模式仅用于展示，不支持此操作。",
+    "EXPERIENCE_MODEL_NOT_PRELOADED": "体验模式只能部署预置模型：{{models}}。",
+    "EXPERIENCE_UNAVAILABLE": "当前服务端不提供功能体验模式。",
+    "EXPERIENCE_INVALID": "功能体验模式只能设为开启或关闭。",
+    "EXPERIENCE_FAILED": "功能体验模式操作失败：{{reason}}",
+    "EXPERIENCE_PORT_IN_USE": "端口 {{port}} 已被其他程序占用：请释放该端口，或调整本服务的控制台端口（体验环境使用控制台端口 +10）。",
     "NOTICE_IDS_INVALID": "请指定 1 到 128 条要标为已读的通知。",
     "IMAGE_MANIFEST_INVALID": "镜像 manifest 无效：{{detail}}",
     "IMAGE_IMPORT_CONFLICT": "manifest 与已有的社区或自定义镜像冲突：{{detail}}",
@@ -257,6 +271,7 @@
     "STORAGE_FILE_OPERATION_FAILED": "在节点 {{node}} 上操作失败：{{detail}}",
     "BENCHMARK_GPU_COUNT_NEGATIVE": "压测 GPU 数不能为负数。",
     "BENCHMARK_DETAIL_CAP_TOO_LARGE": "压测详情上限不能超过 {{maximum}} MiB。",
+    "BENCHMARK_CHAT_REQUIRED": "性能评测需要模型声明 Chat Completions 接口，请选择支持聊天接口的推理服务。",
     "BENCHMARK_TARGET_INACTIVE": "目标部署未处于活跃状态。",
     "BENCHMARK_LEADER_NOT_RUNNING": "目标部署的 leader 尚未唤醒并运行。",
     "BENCHMARK_EXTERNAL_URL_REQUIRED": "请输入外部压测目标 URL。",
@@ -341,6 +356,10 @@
     "FIELD_INVALID": "无效的值：{{detail}}",
     "ENGINE_INVALID": "未知引擎“{{engine}}”。",
     "EXTRA_ARGS_INVALID": "额外参数无法解析：{{detail}}",
+    "EXTRA_ARGS_JSON_INVALID": "{{flag}} 的值必须是合法 JSON，但收到的是 {{value}}。此文本框按 shell 命令行拆分，JSON 请用单引号包起来，例如 {{flag}} '{\"key\":\"value\"}'。",
+    "ASCEND_SLEEP_ADDITIONAL_CONFIG_INVALID": "昇腾上开启休眠需要模板的 {{flag}} 是 JSON 对象，平台才能把 weight_nz_mode 设为 0，但它的值是 {{value}}。请修正模板，或关闭“可休眠”。",
+    "ASCEND_SLEEP_WEIGHT_NZ_CONFLICT": "昇腾上开启休眠要求 weight_nz_mode=0，但附加参数里的 {{flag}} 把它设成了 {{value}}。请删掉 weight_nz_mode（平台会自动设为 0），或关闭“可休眠”。",
+    "ASCEND_SLEEP_EXPANDABLE_SEGMENTS": "昇腾上开启休眠不能使用 {{variable}}={{value}}。请删掉 expandable_segments:True 或改为 expandable_segments:False，或关闭“可休眠”。",
     "MOUNT_CONTAINER_PATH": "挂载的容器路径必须是非根目录的绝对路径（{{target}}）。",
     "MOUNT_HOST_PATH": "挂载的宿主机路径必须是非根目录的绝对路径（{{source}}）。",
     "MOUNT_TARGET_NESTED": "挂载的容器目标路径不能互相嵌套：{{parent}} 与 {{child}}。",
@@ -454,7 +473,35 @@
     "ZSTACK_PORT_UNREACHABLE": "ZStack IP 有响应，但目标端口无法连接，请检查端口、服务及防火墙。",
     "ZSTACK_NETWORK_UNCONFIRMED": "ZStack IP 探测无响应，目标端口也无法连接，请检查地址、端口及防火墙；目前无法确定具体原因。",
     "ZSTACK_NETWORK_DIAGNOSTIC_UNAVAILABLE": "ZStack 连接失败，且 IP 探测无法执行，请检查地址、端口及防火墙。",
-    "ZSTACK_REQUEST_TIMEOUT": "ZStack API 请求超时，请检查网络连通性及服务响应。"
+    "ZSTACK_REQUEST_TIMEOUT": "ZStack API 请求超时，请检查网络连通性及服务响应。",
+    "MODEL_INPUT_MODALITY_UNSUPPORTED": "该模型不支持 {{modality}} 输入（支持：{{supported}}）。请移除附件或选择兼容的模型。",
+    "DEPLOYMENT_FIELD_NOT_EDITABLE": "已有部署不能修改 {{field}}，请克隆部署后修改。",
+    "DEPLOYMENT_CHANGED": "部署在你打开之后已被修改，请重新载入后再核对变更。",
+    "DEPLOYMENT_EDIT_APPLY_INVALID": "这次变更不能以 {{apply}} 方式生效，可选：{{options}}。",
+    "WAKE_GPU_HELD_OUTSIDE": "节点 {{node}} 的 GPU {{gpu_indexes}} 被平台外的进程占用，休眠实例无法唤醒。请先停掉该进程。",
+    "SLEEP_HOST_MEMORY_INSUFFICIENT": "节点 {{node}} 的空闲主机内存只有 {{available_gib}} GiB，而 L1 休眠需要 {{need_gib}} GiB。请改用深度休眠（L2）。",
+    "SCHEDULE_INVALID": "定时指令不合法（{{field}}）：{{reason}}",
+    "SCHEDULE_TIMEZONE_UNKNOWN": "服务器不认识时区“{{timezone}}”。请使用 IANA 名称，如 Asia/Shanghai。",
+    "SCHEDULE_REPLICAS_MANUAL_PLACEMENT": "多机或 PD 部署的副本由运维手动放置，不能按副本数定时调整；先把它切换为自动放置。",
+    "YIELD_POLICY_INVALID": "出让策略不合法（{{field}}）：{{reason}}。",
+    "YIELD_POLICY_SHAPE": "只有单机部署能出让 GPU；多机与 PD 部署的出让策略只能是不自动出让。",
+    "YIELD_POLICY_NEEDS_SLEEP": "该部署的出让策略是 {{policy}}，出让 GPU 就是休眠，不能关闭可休眠。请先在调度策略里把出让策略改为不自动出让，再关闭可休眠。",
+    "NODE_REPLACEMENT_INVALID": "节点失联重调度的等待时间只能是 0（关闭）或 {{minimum}} 到 {{maximum}} 秒。",
+    "WAKE_YIELD_BLOCKED": "无法让位：{{occupants}} 不能休眠（未启用休眠、PD 部署最后一个清醒的角色，或是平台外的进程）。未做任何改动。",
+    "REPLICAS_PLACE_ON_TOO_MANY": "首次放置指定了 {{count}} 个节点，但只新增了 {{maximum}} 个副本。",
+    "REPLICAS_PLACE_ON_REFUSED": "节点 {{node}} 不能接收新副本（{{reason}}）。{{detail}}",
+    "UNIT_PLACEMENT_NONE": "目前凑不出能放下该部署的节点组：共 {{nodes}} 个节点，{{unmet}} 个不满足条件，{{cordoned}} 个已停止调度，{{offline}} 个离线，{{busy}} 个空闲 GPU 不够，{{no_network}} 个没有参数网络；同一网络、同一 GPU 架构下最大的一组只有 {{largest}} 个节点。",
+    "AUTO_PLACEMENT_TP_REQUIRED": "多机部署的自动放置必须设置张量并行（TP），平台才知道每个节点给每个 rank 几张卡。",
+    "AUTO_PLACEMENT_PD_MULTI_NODE": "自动放置只处理一台节点放得下的 PD 实例，但 {{role}} 角色的实例跨了多个节点。请改为手动放置并指定它们的节点。",
+    "PLACEMENT_MODE_SHAPE": "单机部署的放置写在节点条件里；自动 / 手动放置只适用于多机和 PD 部署。",
+    "BATCH_NOT_FOUND": "找不到该批处理任务或文件，或其输出文件已过期并被删除。",
+    "BATCH_NOT_CANCELLABLE": "该批处理任务已无法取消：它已结束，或正在汇总结果。",
+    "BATCH_FILE_INVALID": "批处理输入文件无效。{{detail}}",
+    "BATCH_FILE_TOO_LARGE": "批处理输入文件超过 {{limit_mb}} MB。",
+    "BATCH_MODEL_UNKNOWN": "没有运行中的部署使用模型名 {{model}}，请选择平台上已有的部署。",
+    "BATCH_REQUEST_INVALID": "批处理请求无效（{{field}}）：{{reason}}",
+    "BATCH_FILE_MODELS_UNKNOWN": "文件里的这些模型没有运行中的部署：{{models, list}}。请选一个模型来接收全部请求，或先部署这些模型。",
+    "AGENT_UPGRADE_REFUSED": "Agent 升级请求无法执行：{{detail}}"
   },
   "httpError": {
     "proxyPage": "HTTP {{status}}：浏览器与 gpuworks 之间的反向代理或隧道返回了它自己的错误页，server 给出的原因丢失了。直接通过 server 自身地址访问并重试，可以看到原因。"
@@ -518,7 +565,9 @@
     "apiKeys": "API 令牌",
     "logs": "日志",
     "settings": "设置",
-    "networks": "网络"
+    "networks": "网络",
+    "scheduling": "调度分析",
+    "batches": "批处理任务"
   },
   "branding": {
     "defaultLoginDescription": "集中管理异构 GPU 计算节点、模型部署、推理服务与运行状态。"
@@ -551,6 +600,7 @@
     }
   },
   "states": {
+    "offline": "离线",
     "active": "准备中",
     "deleting": "删除中",
     "failed": "失败",
@@ -561,6 +611,8 @@
     "draining": "排空中",
     "removing": "清理中",
     "running": "运行中",
+    "sleeping": "休眠中",
+    "asleep": "已休眠",
     "starting": "启动中",
     "stopped": "已停止"
   },
@@ -648,6 +700,8 @@
     "recheck": "复核",
     "abnormal": "异常值",
     "copyCommand": "复制命令",
+    "expandCommand": "展开全部 {{count}} 行",
+    "collapseCommand": "收起",
     "copied": "命令已复制",
     "legacyEvidence": "原始信息",
     "unknownSummary": "代理报告了该状态，详见原始信息。",
@@ -681,6 +735,26 @@
         "label": "驱动初始化失败",
         "summary": "卡已绑定厂商驱动，但驱动没能把它带起来，因此厂商工具不会列出它，任何程序也用不了。",
         "action": "在节点上用 dmesg 查看驱动报错（NVIDIA 看 NVRM 行，如 \"RmInitAdapter failed\"）。通常需要复位这张卡，有时需要重启主机；如果这张卡本不该归本机使用，把它从厂商驱动解绑。"
+      },
+      "pcie_link_degraded": {
+        "label": "PCIe 链路降级",
+        "summary": "卡到根端口之间有一段 PCIe 链路的通道数（或卡在忙时的速率）低于两端都支持的值，连续多次上报都如此。卡还能用，但加载模型和传数据更慢，健康卡不够时才会用它。",
+        "action": "用下面的命令看这段链路两端的能力和当前协商值。通常是卡没插好、转接卡或线缆问题，或 BIOS 把插槽设成了低速；在主机空闲时检查并重新插拔。"
+      },
+      "pcie_errors": {
+        "label": "PCIe 报错",
+        "summary": "卡到根端口之间的 PCIe 设备新报告了可恢复的错误。卡还能用，15 分钟内没有新错误就自动恢复。",
+        "action": "用下面的命令看错误计数，并在 dmesg 里查 AER 记录。反复出现通常是链路或插槽的信号问题。"
+      },
+      "pcie_fatal_errors": {
+        "label": "PCIe 致命错误",
+        "summary": "卡到根端口之间的 PCIe 设备新报告了致命错误，链路需要重置。在这张卡的运行时检查重新通过之前，它不会被分配。",
+        "action": "用下面的命令看错误计数，并在 dmesg 里查 AER 记录。通常需要复位这张卡或重启主机；反复出现请联系硬件厂商。"
+      },
+      "nvlink_down": {
+        "label": "NVLink 掉线",
+        "summary": "这张卡当前活动的 NVLink 少于它曾经有过的数量，连续两次检查都如此。卡还能用，但跨卡的计算会变慢，调度时不再把它和原来互联的卡视为一组。",
+        "action": "用下面的命令看每条链路的状态与错误计数，并在 dmesg 里查 Xid 74。通常需要复位卡或重启主机；NVSwitch 机型还要检查 Fabric Manager。"
       },
       "memory_repair_pending": {
         "label": "待复位",
@@ -784,5 +858,26 @@
       "release": "版本",
       "event": "活动"
     }
+  },
+  "buildInfo": {
+    "kind": {
+      "stable": "稳定版",
+      "prerelease": "预发布版",
+      "development": "开发测试版",
+      "unknown": "发布类型未知"
+    },
+    "description": {
+      "stable": "此构建已匹配到经过校验的稳定发布记录。",
+      "prerelease": "此构建已匹配到已发布的预览或测试版本。",
+      "development": "此构建来自开发／测试渠道，未标记为稳定发布。",
+      "unknown": "目前发布信息不足，无法确认此构建是否为稳定版。"
+    },
+    "builtAt": "构建时间：{{time}}",
+    "publishedAt": "发布时间：{{time}}",
+    "matched": "匹配发布版本：{{version}}",
+    "unmatched": "目前没有可匹配的发布记录。",
+    "details": "构建详情",
+    "commit": "Commit：{{commit}}",
+    "channel": "构建渠道：{{channel}}"
   }
 }

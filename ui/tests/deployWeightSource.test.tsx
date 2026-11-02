@@ -354,3 +354,21 @@ test("selecting a running spec preserves an explicit provider it still declares"
   await waitFor(() => assert.equal(text("modal-state"), "open"));
   assert.deepEqual(JSON.parse(text("source-choice")!), { provider: "huggingface", storage_id: 9 });
 });
+
+test("same-name matches distinguish revisions and select the registration already on shared storage", async () => {
+  const revision = "release-ready-1234567890abcdef1234567890abcdef12345678";
+  const { registered, fake } = serve([
+    { id: 71, name: "Identical name", source: "huggingface", source_id: "org/model", revision: "release-missing", presence: { ready_nodes: 0, ready_storages: 0 } },
+    { id: 72, name: "Identical name", source: "huggingface", source_id: "org/model", revision, presence: { ready_nodes: 0, ready_storages: 1 } },
+  ]);
+  mount(twoSources);
+  await waitFor(() => assert.equal(text("modal-state"), "open"));
+  assert.ok(screen.queryByText(`Revision: ${revision}`), "full revisions identify the intended registration");
+  assert.ok(document.querySelector(`[title="${revision}"]`));
+  fireEvent.click(screen.getByRole("radio", { name: new RegExp(revision) }));
+  fireEvent.click(okButton(useModelLabel));
+  await waitFor(() => assert.equal(text("model-id"), "72"));
+  assert.equal(registered.length, 0, "existing shared-storage registration is reused");
+  assert.equal(fake.listedAll, 0);
+  assert.ok(fake.pages.every((query) => query.page_size === 50));
+});

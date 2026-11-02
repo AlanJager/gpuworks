@@ -23,7 +23,7 @@ type ClosestNode = { node?: string; name?: string; reason?: ScheduleMessage };
 
 // The controller's reason with the refusal it names already rendered: the
 // translation interpolates {{first}}, which the server sends as a code.
-function reasonWithFirst(reason: ScheduleMessage, render: (value: ScheduleMessage) => string): ScheduleMessage {
+export function reasonWithFirst(reason: ScheduleMessage, render: (value: ScheduleMessage) => string): ScheduleMessage {
   const first = reason.params?.first_reason as ScheduleMessage | undefined;
   if (!first) return reason;
   return { ...reason, params: { ...reason.params, first: render(first) } };
@@ -60,6 +60,13 @@ export function RequirementTags({ dep }: { dep: Deployment }) {
   );
 }
 
+// A failed model preparation is the known cause of the replicas not starting,
+// exactly as a copy still running is: the scheduler's reason describes a
+// launch it refused BEFORE the copy failed, so presenting it as the
+// explanation points the operator at the wrong thing (a full GPU is not why a
+// copy hit "permission denied").
+const preparationFailedReason = "MODEL_PREPARATION_FAILED";
+
 // PlacementStatusAlert says how many of an ordinary deployment's replicas
 // wait for a node, why (the controller's latest reason and the closest
 // nodes), and opens the live candidate table.
@@ -70,20 +77,30 @@ export function PlacementStatusAlert({ dep }: { dep: Deployment }) {
   const status = dep.placement_status;
   if (!status || status.unscheduled <= 0 || dep.pd) return null;
   const preparing = dep.model_progress?.find((item) => !isModelFileReady(item.state) && item.preparation && ["downloading", "syncing", "checking", "copying", "verifying", "installing", "evicting"].includes(item.preparation.phase));
+  // A preparation that FAILED reports phase "waiting" with a reason, so it is
+  // not "preparing" any more - but it is still the reason no replica starts.
+  const failed = preparing ? undefined : dep.model_progress?.find((item) => !isModelFileReady(item.state) && item.preparation?.reason === preparationFailedReason);
   const render = (value: ScheduleMessage) => scheduleText(tDeploy, value);
-  const reason = !preparing && status.reason ? render(reasonWithFirst(status.reason, render)) : "";
-  const closest = preparing ? [] : (status.reason?.params?.closest as ClosestNode[] | undefined) ?? [];
-  const at = !preparing && status.at ? new Date(status.at).toLocaleString(i18n.language) : "";
+  const reason = !preparing && !failed && status.reason ? render(reasonWithFirst(status.reason, render)) : "";
+  const closest = preparing || failed ? [] : (status.reason?.params?.closest as ClosestNode[] | undefined) ?? [];
+  const at = !preparing && !failed && status.at ? new Date(status.at).toLocaleString(i18n.language) : "";
+  const headline = failed
+    ? t("detail.placement.preparationFailed", { count: status.unscheduled })
+    : t(preparing ? "detail.placement.preparingModel" : "detail.placement.waiting", { count: status.unscheduled });
   return (
     <>
       <Alert
-        type={preparing && !preparing.preparation?.reason ? "info" : "warning"}
+        type={failed ? "error" : preparing && !preparing.preparation?.reason ? "info" : "warning"}
         showIcon
         style={{ marginTop: 16 }}
-        message={t(preparing ? "detail.placement.preparingModel" : "detail.placement.waiting", { count: status.unscheduled })}
+        message={headline}
         description={
           <Space direction="vertical" size={4} style={{ width: "100%" }}>
             {preparing && <Typography.Text><PreparationLabel item={preparing} /></Typography.Text>}
+            {failed && <Typography.Text><PreparationLabel item={failed} /></Typography.Text>}
+            {/* The agent's own words: the part that says whether a retry can work. */}
+            {failed?.message && <Typography.Text code>{failed.message}</Typography.Text>}
+            {failed && <Typography.Text type="secondary">{t("preparation.noAutoRetry")}</Typography.Text>}
             {reason && <Typography.Text>{reason}</Typography.Text>}
             {closest.length > 0 && (
               <div>

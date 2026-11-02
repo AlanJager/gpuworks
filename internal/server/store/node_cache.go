@@ -100,8 +100,9 @@ func (s *Store) CacheEvictionFile(storageID, nodeID, id uint, expectedPath strin
 	if err != nil {
 		return nil, err
 	}
-	if !storage.Enabled || storage.Type != proto.StorageNFSCache {
-		return nil, errors.New("cache storage is disabled or changed type")
+	// A read-only shared library does not make its node caches read-only.
+	if storage.Type != proto.StorageNFSCache {
+		return nil, errors.New("cache storage changed type")
 	}
 	node, err := s.NodeByID(nodeID)
 	if err != nil {

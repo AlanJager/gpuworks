@@ -58,7 +58,7 @@ func (a *benchmarkAdmission) managedTarget(t *testing.T, name string) (*store.De
 	if err != nil {
 		t.Fatal(err)
 	}
-	dep, err := a.store.CreateDeployment(&store.Deployment{Name: name, ServedName: name + "-served", State: "active"})
+	dep, err := a.store.CreateDeployment(&store.Deployment{Name: name, ModelID: benchmarkChatModel(t, a.store, name).ID, ServedName: name + "-served", State: "active"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,7 +103,7 @@ func TestBenchmarkAdmissionFlagsEachKindOfOverlap(t *testing.T) {
 	firstDeployment, sharedNode := a.managedTarget(t, "node-a")
 	// A second deployment on the same node is the gap the older checks had:
 	// nothing about the load origin or the target deployment matches.
-	secondDeployment, err := a.store.CreateDeployment(&store.Deployment{Name: "second", ServedName: "second-served", State: "active"})
+	secondDeployment, err := a.store.CreateDeployment(&store.Deployment{Name: "second", ModelID: firstDeployment.ModelID, ServedName: "second-served", State: "active"})
 	if err != nil {
 		t.Fatal(err)
 	}

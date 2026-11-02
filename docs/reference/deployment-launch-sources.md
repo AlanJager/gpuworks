@@ -226,8 +226,8 @@ udocker 运行时（runveil 与 udocker CLI 两种启动器）在非国产卡上
 ## 变量展开
 
 每次启动都展开，作用于模板的 args、env、entrypoint 与准备脚本；用户输入**从不展开**。
-可用变量：解析器输出，加上平台给出的 `GPU_COUNT`、`TP_SIZE`、`MODEL_PATH`、`API_HOST`、`API_PORT`、`NNODES`、
-`NODE_RANK`、`HEADLESS`，多机时另有 `MASTER_ADDR`、`MASTER_PORT`；`PP_SIZE` 没有默认值。
+可用变量：解析器输出，加上平台给出的 `GPU_COUNT`、`TP_SIZE`、`MODEL_PATH`、`SERVED_MODEL_NAME`、`API_HOST`、`API_PORT`、
+`NNODES`、`NODE_RANK`、`HEADLESS`，多机时另有 `NODE_ADDR`、`MASTER_ADDR`、`MASTER_PORT`；`PP_SIZE` 没有默认值。
 写法 `${NAME}`，名称为大写字母、数字与下划线。完整词表、出现条件与报错规则见
 [推理目录语法](inference-catalog-spec.md#变量展开)。
 

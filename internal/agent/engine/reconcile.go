@@ -422,6 +422,7 @@ func (e *Engine) startOrAdoptEpoch(ctx context.Context, spec proto.InstanceDesir
 	if tracked && (!desired || current.DesiredState == "stopped" || !currentEpoch) {
 		return // The in-flight goroutine will acknowledge teardown after it exits.
 	}
+	e.waitForCardChecks(ctx, spec.UUID, spec.GPUIdents)
 	for _, note := range ws.PreparationNotes {
 		e.reportStateProgress(spec, proto.InstStarting, name, "", note, proto.PhaseContainerPrepare, 0, 0, 0, 0)
 	}

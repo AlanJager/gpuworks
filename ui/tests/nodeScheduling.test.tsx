@@ -24,12 +24,12 @@ Object.defineProperty(globalThis, "ResizeObserver", { value: ResizeObserverStub,
 const read = (ns: string) => JSON.parse(fs.readFileSync(new URL(`../src/i18n/locales/en/${ns}.json`, import.meta.url), "utf8"));
 const i18n = createInstance();
 await i18n.use(initReactI18next).init({
-  lng: "en", fallbackLng: "en", resources: { en: { nodes: read("nodes"), common: read("common") } },
+  lng: "en", fallbackLng: "en", resources: { en: { nodes: read("nodes"), common: read("common"), deploy: read("deploy") } },
   defaultNS: "nodes", interpolation: { escapeValue: false },
 });
 const sched = i18n.getResourceBundle("en", "nodes").scheduling;
 
-const { cleanup, render, screen, waitFor, within } = await import("@testing-library/react");
+const { act, cleanup, render, screen, waitFor, within } = await import("@testing-library/react");
 const userEvent = (await import("@testing-library/user-event")).default;
 const { api } = await import("../src/api.ts");
 const { APIError } = await import("../src/apiError.ts");
@@ -81,6 +81,29 @@ test("a cordon the operator chose has no tooltip, and a cause the client does no
   assert.ok((await screen.findByRole("tooltip")).textContent?.includes("gpu_from_the_future"));
 });
 
+// Who stopped scheduling is said where the tag is: an operator's stop is
+// theirs to lift, the platform's names its reason and that it lifts itself.
+test("the tag says who stopped scheduling and, for the platform, why and that it will lift it", async () => {
+  const user = userEvent.setup({ document: dom.window.document });
+  const hoverText = async (n: object) => {
+    render(<I18nextProvider i18n={i18n}><NodeSchedulingTag node={{ ...(node as object), scheduling: "cordoned", ...n } as never} /></I18nextProvider>);
+    await user.hover(screen.getByText(sched.state.cordoned));
+    const text = (await screen.findByRole("tooltip")).textContent ?? "";
+    cleanup();
+    return text;
+  };
+  assert.equal(await hoverText({ scheduling_by: "operator" }), sched.by.operator);
+
+  const reboot = await hoverText({ scheduling_by: "platform", cordon_reason: "card_needs_host_reboot" });
+  assert.ok(reboot.includes(sched.cordonReason.card_needs_host_reboot), reboot);
+  assert.ok(reboot.includes(sched.by.platformLifts), reboot);
+  assert.ok(!reboot.includes("card_needs_host_reboot"), "the raw code is not shown");
+
+  const runtime = await hoverText({ scheduling_by: "platform", cordon_reason: "runtime_gpu_blocked", runtime_driver: "docker",
+    runtime_gpu_blocked: "gpu_plugin_missing", runtime_gpu_plugin: "NVIDIA Container Toolkit" });
+  assert.ok(runtime.includes("NVIDIA Container Toolkit") && runtime.includes(sched.by.platformLifts), runtime);
+});
+
 test("draining lists what a drain moves and warns about what it leaves; evicting asks first", async () => {
   let scheduling = "schedulable";
   const set: string[] = [];
@@ -101,7 +124,7 @@ test("draining lists what a drain moves and warns about what it leaves; evicting
   assert.equal(screen.queryByRole("button", { name: sched.action.evict }), null, "a schedulable node cannot be evicted");
 
   await user.click(screen.getByRole("button", { name: sched.action.drain }));
-  await screen.findByText(i18n.t("scheduling.stuck", { count: 2 }));
+  await screen.findByText(i18n.t("scheduling.stuck", { count: 1 }));
   assert.deepEqual(set, ["draining"]);
   assert.equal(changed.length, 1);
 
@@ -171,4 +194,42 @@ test("a reason this client does not know is shown as the code", async () => {
   await user.click(await screen.findByRole("button", { name: new RegExp(`${sched.action.uncordon}$`) }));
   const title = await screen.findByText(sched.blocked.title);
   assert.ok((title.closest(".ant-popover") as HTMLElement).textContent?.includes("gpu_from_the_future"));
+});
+
+test("a waiting pool drain exposes scheduler feedback and stops without enabling scheduling", async () => {
+  let scheduling = "draining";
+  const set: string[] = [];
+  apiAny.nodeReplicas = async () => ({ scheduling, items: [{ ...items[0], drain_reason: { code: "no_free_gpu", message: "No free GPU on replacement-node" }, drain_message: "replacement image pull was denied" }] });
+  apiAny.setNodeScheduling = async (_uuid: string, next: string) => { set.push(next); scheduling = next; return { ...(node as object), scheduling: next }; };
+  const user = userEvent.setup({ document: dom.window.document });
+  show();
+  await screen.findByText("chat");
+  assert.ok(await screen.findByText(/replacement image pull was denied/));
+  assert.ok(screen.getByText(/Waiting for.*replacement/i));
+  screen.getByRole("button", { name: "Stop drain" }).focus();
+  await user.keyboard("{Enter}");
+  await screen.findByText(sched.state.cordoned);
+  assert.deepEqual(set, ["cordoned"], "stopping a drain keeps maintenance protection");
+});
+
+
+test("offline removal warning refreshes and clears after agent reconnection", async () => {
+  let offline = true;
+  let refresh: (() => void) | undefined;
+  const originalInterval = window.setInterval;
+  window.setInterval = ((callback: () => void) => { refresh = callback; return 12345; }) as typeof window.setInterval;
+  try {
+    apiAny.nodeReplicas = async () => ({ scheduling: "draining", drain_offline: offline, items: [{ ...items[0], state: "removing" }] });
+    show();
+    await screen.findByText(sched.offline);
+    assert.ok(screen.getByText(sched.offlineHint));
+    assert.ok(screen.getByRole("button", { name: "Stop drain" }));
+    offline = false;
+    await act(async () => { refresh?.(); });
+    await waitFor(() => assert.equal(screen.queryByText(sched.offline), null));
+    assert.ok(screen.getByText("chat"), "removal still awaits confirmation");
+  } finally {
+    cleanup();
+    window.setInterval = originalInterval;
+  }
 });

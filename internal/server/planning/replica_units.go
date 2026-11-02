@@ -11,7 +11,7 @@ import (
 )
 
 // MaxReplicas is how many replicas a deployment may run.
-const MaxReplicas = 32
+const MaxReplicas = 1024
 
 // parseReplicaUnits reads the "units" list of a placement document: an
 // ordinary multi-node deployment's replicas, each a leader node and its

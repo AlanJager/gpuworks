@@ -24,6 +24,7 @@
   `planning.PullCandidatesFor` 是启动、期望状态重放、镜像页拉取、多机预拉取共用的唯一镜像候选入口；`planning.PullSettingsFor` 取一台节点适用的规则与代理，模型文件任务的候选（`PlanModelFileTasks`，hub 重放与 controller 推送共用）和 server 自己读元数据的候选（`ServerFetchCandidates`）也由 `planning` 一处算出；`controller/image_acquisition.go` 决定节点缺镜像时是否从同组节点复制，并在内存里记节点对的 3 小时冷却。
 - `store`：GORM entity + 版本化迁移（`schema_migrations`），SQLite（glebarez 驱动，全仓统一，勿混用 modernc）。
 - `controller`：每资源一个 reconcile 文件，手写 workqueue（`workq.go`，不引 client-go）。部署不分形态走同一套 unit 对账（`units.go` / `unit_launch.go`，ADR 0029），PD 专属的启动与漂移检查在 `pd*.go`。
+- 多机与 PD 的自动放置（[ADR 0057](../adr/0057-units-placed-by-writing-the-pick-back.md)）：`planning/unit_choice.go` 挑节点（`ChooseReplicaNodes`、`ChoosePDUnits`，建立在 `SuggestUnitGroups` 的分组上），`planning/unit_trial.go` 是 API 与 controller 共用的单元试算；`api/deployments_auto_units.go`（创建与评估时补节点）与 `deployments_auto_scale.go`（按副本数扩缩、PD 增加单元、`PUT /placement-mode`）；`controller/unit_auto.go` 在单元要启动时只换放不下的 rank（复用换节点的候选与写回），`controller/pd_pinned.go` 给手动钉卡被占的 PD 单元写 `pinned_gpus_unavailable`；`store/units_auto.go` 是 `deployments.units_auto` 列的迁移与写入。
 - `netplan`：纯叶子包（只依赖 `proto`），节点网络的唯一决策处：角色 / 类型词表、按挂载与网卡清单解析每个节点每个角色走哪张网（RDMA 网络的 HCA 与 bootstrap 推断在 `rdma.go`）、管理网兜底、多机组共享的参数网络、两节点间的存储同步路径、能否承载服务、服务转发地址。
 - `network`：网络服务，核心流程询问“某角色走哪张网、哪个地址”的唯一入口；store 行 → netplan 模型的唯一转换（`convert.go`）；网络、挂载与管理网角色的校验和变更。
 
@@ -33,8 +34,10 @@
 - `pdmode`：叶子包，PD 分离模式目录（引擎、角色、连接器、线协议、TP 规则、端口、传输），PD 规则的唯一产地；`planning/pd*.go` 据此校验 `placement.pd`、给出 PD 的 unit 与部署状态（实例与 unit 的对应由所有形态共用的 `planning.MatchUnits` 推导），`deploy/pd.go` 按角色注入连接器与环境，`controller/pd*.go` 提供 PD 的启动参数与漂移检查，`proxy/pd*.go` 做两阶段路由与降级。
 - `healthcheck`：部署的健康检查，每分钟给开启的部署经网关发一个最小请求（`proxy.Proxy.Probe`，不记账），最近 10 次结果只在内存里；由 `app` 接线与提供部署列表。
 - `pdverify`：PD 交接自检，逐个 prefill 实例经网关做一次内部交接并判定传输方式，结果写实例时间线；由 `app` 接线。
-- `scheduler` / `planning` / `estimate`：调度管道（filters → GPU planner → scorers）+ schedule_explain；显存估算：`pkg/estimate` 只放模型侧硬件事实（dtype 每元素开销、多模态 tower 运行时缓存），server 侧 `estimate` 是其门面，把 model config + 参数算成 VRAM breakdown（部署表单/详情）与 scheduler 请求输入，另含 dtype 硬件矩阵；模型 config.json 解析在 `pkg/modelconfig`。
-- `sleep`：sleep/wake 策略叶子包（睡眠后显存残留量的常量、资格判断、唤醒准入），不读 store；调度账本和 API 只负责提供快照、持久化与错误映射。
+- `scheduler` / `planning` / `estimate`：调度管道（filters → GPU planner → scorers）+ schedule_explain；显存估算：`pkg/estimate` 只放模型侧硬件事实（dtype 每元素开销、多模态 tower 运行时缓存），server 侧 `estimate` 是其门面，把 model config + 参数算成 VRAM breakdown（部署表单/详情）与 scheduler 请求输入，另含 dtype 硬件矩阵；模型 config.json 解析在 `pkg/modelconfig`。休眠、让卡与定时副本数的规则在 `planning` 里各有唯一实现，API、自动化与驻留仲裁共用，客户端不重复：`sleep_level.go`（`ResolveSleepLevel` 定一次休眠落在 L1 还是 L2，`OrderSleep` 检查资格、定级别并写休眠指令，运维休眠、定时计划、自动休眠、让卡与让位唤醒都经它）、`replica_schedule.go`（定时副本数的范围与拒绝原因 `ReplicaBounds` / `ScheduledReplicasRefusal`，以及汇总成部署 DTO 的 `schedule_capabilities` 的 `ScheduleCapabilitiesOf`）、`replica_scaling.go` / `replica_scaling_units.go`（`Scaling`：多机与 PD 副本的增减，处理器和自动化的定时副本数都走它）、`yield_eligibility.go`（部署能否设出让策略的唯一判定，设置接口、创建和部署 DTO 的 `yield_policy_eligible` 共用）。
+- `sleep`：sleep/wake 策略叶子包（按模型参数量与卡数估算每实例的睡眠残留、L1 主机内存余量、资格判断、唤醒准入），不读 store；调度账本和 API 只负责提供快照、持久化与错误映射。agent 在实例独占卡时实测残留（`internal/agent/engine/sleep_residue.go`），测不到则回退估算。
+- `automation`：调度分析的执行者，评估器按 10 秒 tick 执行定时计划与唤醒等位，驻留仲裁在让卡到期时（闲置时间满、一轮服务结束、等待完成的上限到）由一个定时器触发，只通过 `Source` / `Actions` 接口读写，动作经与 API 相同的生命周期锁；由 `app` 接线（`automation_adapter.go`）。
+- `yieldpolicy`：叶子包（仅标准库），部署的出让策略（`never` / `idle` / `timeslice` / `anytime`）及其参数的唯一产地：取值范围、默认值与归一、让卡规则 `Yields` 与让卡条件 `TermsOf`；store（列值）、网关（唤醒时请求最多等多久）、放置与驻留仲裁（谁可以让谁休眠）共用，见 [出让策略](../explanation/service-levels.md)。
 - `deploy`：引擎参数组装、instance 状态机（含 `optimizing`、sleep/wake；状态枚举定义在 `internal/proto`）。
 - `proxy`：`/v1` OpenAI 兼容反代 + API key；睡眠实例返回 503。PD 交接在 `pd_sequential.go` / `pd_concurrent.go`，请求的 prefill 阶段（实例、等待、prefill 实例自报的排队与 Prefill、降级原因、`pd.prefill` span）由 `pd_stage.go` 记下，进请求记录与在途表。
 - `inferenceapi`：稳定的推理操作词表与 Contract（openai.chat/embeddings/rerank 等），被目录、部署快照、proxy、Playground 共享。
@@ -59,6 +62,7 @@
 - `uxrecord` / `uxstore`：网关逐请求记录（叶子包，网关、请求存储与监控 API 共用）与它的存储：独立 `ux.db`，单写协程按 UTC 日分区写请求日志（`req_`，超出每秒预算时异常请求全留、正常请求抽样并记权重）、分布网格（`grid_`）与覆盖计数（`cnt_`，后两者按全部请求统计），保留按整日删表；请求表带 `trace_id`（不建索引，按时间窗经部署索引查找，见 `lookup.go`）。
 - `tracecontext`：叶子包，W3C Trace Context：解析 `traceparent`/`tracestate`、网关新起 trace 的时间有序 trace id、span id、按 trace id 低 56 位的比例采样；网关在 `proxy/request_identity.go` 为每个转发请求确立网关 span 并透传给引擎（ADR 0046）。
 - `rollup` / `statsdb`：用量分析的长期统计（[ADR 0055](../adr/0055-long-term-statistics.md)）。`rollup` 是累加器：网关结束的每个请求（Token 用量、服务质量）、指标入库的每个 GPU 样本、每分钟一次的持有 GPU 快照（卡时）在内存里按小时累加，取出的是增量，写失败还回去。`statsdb` 是数据目录下独立的 `stats.db`：服务质量、GPU 利用、卡时的按小时与按天表、日汇总、按保留期分批删除、补算进度。Token 用量在主库（`store/usage_stats.go`）。`app/opsstats.go` 把三者串起来：定时写出、按天汇总、按数据保留设置（`store/data_retention.go`）清理全部存储，升级时从 ux.db 补一次历史（`opsstats_backfill.go`），并实现 `api.Analytics`。
+- `schedactivity`：调度分析的调度活动（`docs/reference/api.md` 的「调度活动」）。store 在事件写入后把调度事件与实例的状态、休眠、移除事件交给它（`store.SetEventObserver`；哪个事件算哪个原因、涉及哪些卡由 `store/scheduling_activity.go` 一处定义），它按分钟累加最近约 25 小时：各原因的次数、每张卡的切换、每个部署的让出 / 被让 / 唤醒，以及每个部署至少一个副本醒着、有副本占卡的时间段。启动时从事件日志回放一次（`store.ReplaySchedulingActivity`），每个整点后整小时写进 stats.db 的三张小时表。`Service` 实现 `api.SchedulingActivity`：调度活动接口、共卡部署统计与节点时间线的统计都读它，不读事件日志；`app/schedactivity.go` 把它接进统计循环。
 - `traceexport`：叶子包，把网关逐请求记录（`uxrecord.Request`）事后构造成 OTLP span，以 OTLP/HTTP JSON + gzip 批量推给 Collector；有界队列、重试、状态计数、测试 span。配置只来自平台设置 `telemetry_export`（`store/telemetry_export.go`，header 值加密），由 `app/telemetry_export.go` 应用并实现 `api.TelemetryService`。
 - `imagecatalog`：镜像目录与分发（含 commandmode、社区目录）。各部分职责如下：
   - `imagecatalog/manifest`：镜像域 schema 与系统目录导入规则 `ImportOfficial`。
@@ -83,6 +87,7 @@
 - `distribution`：发布通道客户端（ADR 0040）：签名信封与索引 schema、同时请求所有发布源取第一个验签通过的索引、文件按 sha256 校验并换源续传；发布方通知 `notices.json` 的 schema、校验、本地匹配与拉取（`notices.go`，ADR 0054）；默认源与信任公钥是包内常量。只依赖标准库（`check-architecture` 守护），selfinstall 与 api 共用。
 - `usagereport`：用户体验改进计划（ADR 0054，字段见 `docs/reference/usage-report.md`）：叶子包，日报结构与裁剪、进程内计数器（API 路由/错误码/panic、登录、agent 连接问题，由 `api.countUsage` 中间件与 hub 写入）、SLS WebTracking 与 Cloudflare 收集端的发送、每日发送时刻，以及检查更新附带的装机规模 `FleetReport`；库侧日汇总是 `store/usage_report.go`，调度与组装在 `app/usage_report.go`，通知铃铛服务在 `app/notices.go`。
 - `bus`：事件发布。**不用 ORM 钩子**，写操作收敛进 `store` 显式方法，事务提交后 publish。
+- `experiencelaunch`：设置页「功能体验模式」开关背后的启动器：在控制台端口 +10 起停独立的 `gpuworks experience` 进程（自己的数据目录与密码），`gpuworks experience` 的命令行契约（子命令与 flag 名）只定义在这里。
 
 ## agent 侧（`internal/agent/`）
 
@@ -90,11 +95,13 @@
 - `conn`：外连 + yamux 流；断线重连。
 - `gpu`：多厂商探测器。**不用 NVML cgo**，走 `nvidia-smi` + `/proc` + sysfs；ascend `npu-smi`、ppu `ppu-smi`、hygon `hy-smi`、Apple silicon `sysctl` + `ioreg`。`gpu.Prober` 可注入以做 hermetic 测试。
 - `runtime`：docker / udocker / nerdctl（containerd，全命令固定 namespace；`pull_output.go` 把 nerdctl 重画的进度表换算成逐层字节行与解包行）driver，另有测试用 recording driver（shell out 到 CLI，不用 Go SDK）；`runtime.Driver` 可注入。
+  - `runtime/nerdctl` 的容器身份标签：`gpuworks.image-target` 保存启动前查询到的 manifest/index digest。`Run` 只追加这一个 `--label`，保留原镜像引用。观测通过内部 `WorkloadInspection.ImageLookupRef` 按 target 查询镜像，核对返回的 target 后，将 config digest 作为容器和镜像的对外 ImageID，与 Docker 及原有镜像上报保持一致；不另外保存 config ID 标签。查询失败时不猜测 ImageID。标签缺失、无效或与不可变的 `Image` 冲突时只有镜像身份未知，容器本身照常观测，不自动补标或重建。标签可跨 agent 重启、容器创建后改 tag 保留，但不能消除 inspect 到创建之间并发改 tag 的窗口；启动前查询失败仍按原参数启动且不写标签。不要手工写入这个保留标签。
   - `runtime/hostproc`：macOS 的 `host` driver（ADR 0044）。镜像是 darwin 环境包（OCI 镜像，用 `runtime/udocker/native` 的镜像库拉取与解包），引擎作为宿主进程组运行，`launch.go` 把容器形态的 spec（挂载、包内路径）翻译成宿主路径；`SupportedOn` 是它只在 macOS 可用的唯一判定。环境包由 `build/host-envs` 构建。
   - `runtime/procgroup`：不经守护进程管理的工作负载（hostproc 引擎、runveil 的 PRoot）的 pid/退出码记录、回收与整组停止，agent 重启后仍能找到它们。
   - `runtime/runveil`：udocker CLI 的薄替代（叶子包）。按 udocker P1 语义从 `UDOCKER_DIR/containers/<name>` 构造 patched PRoot 的 argv/env、生成 passwd/group、移植 `setup --nvidia`；udocker driver 默认用它启动/exec/终端/删除容器（`GPUWORKS_UDOCKER_LAUNCHER=udocker` 恢复 CLI 启动器）。udocker CLI 的供给与调用集中在 `runtime/udocker/cli.go`，runveil 下按需才供给；镜像拉取/导入/导出/创建/元数据在 `runtime/udocker/native`。`runveilcli` 是 `gpuworks-agent runveil ps/images/exec/logs`，直接读 driver 的磁盘状态，不经过 agent。
 - `engine` / `collector` / `dgpucache` / `sysinfo`：引擎生命周期（含 per-backend dGPU 注入器 `partition_{nvidia,ascend,ppu}.go`，按 backend ID 注册分发；进入 running 后的容器存活检查 `liveness.go`）、指标采集、libvgpu 共享区 cache 解析（dGPU 利用率上报）、系统信息（linux build tag + darwin stub）。
-- `imagepull`：按 server 下发的整条候选依次拉取（`image.pull.candidates` 能力），下载阶段 3 分钟无新增字节判定卡住并换下一个（只认带层 key 的字节计数；只按粗步长显示字节的层按 `StallMinRate` 放宽时限；解包阶段不判），driver 读不懂运行时的进度输出时发 `runtime.PullLineUnreadable`，这次拉取不再判卡住；driver 自造的进度行一律用 `runtime.PullLine*` 构造（`pull_lines.go`，与解析器的契约测试见 `imagepull/pull_lines_contract_test.go`），单候选含解包最多 60 分钟，拉到后在本地 tag 回原名；镜像仓库凭据写临时 `DOCKER_CONFIG`，拉完删除。
+- `imagepull`：按 server 下发的整条候选依次拉取（`image.pull.candidates` 能力），下载阶段 3 分钟无新增字节判定卡住并换下一个（只认带层 key 的字节计数；只按粗步长显示字节的层按 `StallMinRate` 放宽时限；解包阶段不判；下载持续低于 `CrawlMinRate` 满 `CrawlWindow` 且后面还有候选时同样换下一个，最后一个候选与粗步长层不判），driver 读不懂运行时的进度输出时发 `runtime.PullLineUnreadable`，这次拉取不再判卡住；driver 自造的进度行一律用 `runtime.PullLine*` 构造（`pull_lines.go`，与解析器的契约测试见 `imagepull/pull_lines_contract_test.go`），单候选含解包最多 60 分钟，拉到后在本地 tag 回原名；镜像仓库凭据写临时 `DOCKER_CONFIG`，拉完删除。
+- `connbudget`：叶子包（仅标准库），连接预算（[ADR 0056](../adr/0056-image-pull-connection-budget.md)）。`Hosts` 按上游地址（仓库 host、代理）各给一个 `Pool`，一次下载是 `Session`，每个请求先取 `Lease`；session 按自己的吞吐自适应连接数（从起点加倍、收益不足退回），429/503、拒绝连接与连续重置时减半，遵守 `Retry-After`（上游级暂停，所有 session 共同等待）；`Lease.Observe` 按同一 session 内兄弟连接的中位数与自身峰值判断「爬行连接」，每窗口最多换一半。当前只有 `runtime/udocker/native` 的镜像层下载使用（`budget.go`），模型下载可复用。
 - `modelfetch`：按 server 下发的候选逐个下载模型文件（ADR 0050）：任何错误状态与连接错误使地址冷却 30 分钟（与镜像共用）、5 分钟无数据为卡住且连续 2 次换下一个、有后续候选的地址最多重试 6 次（最后一个 16 次）、版本固定为 commit 时换地址续传；站点凭据只在 https 同 host 发送。
 - `registryprobe`：探测仓库 `https://<host>/v2/`（5 秒超时、缓存 30 分钟，走拉取同一代理），对镜像自己的副本按可达性和延迟排序，并记失败 / 卡住端点的 30 分钟冷却。
 - `dockerproxy`：docker 节点的代理管理，把节点代理写进 `docker.service.d/zz-gpuworks-proxy.conf` 并 `daemon-reload`（不重启），上报 dockerd 实际代理、权限与是否生效。
@@ -104,6 +111,7 @@
 - `modelscan`：叶子包，"已完成的模型目录"校验的唯一产地（`ValidateModelDir`：可读、有非空文件、无未完成下载，不认任何布局——布局归推理模板所选引擎；完成标记名），以及共享存储的扫描（发现期按 config.json/Mistral 布局启发式识别、身份判定、未下载完痕迹、跳过原因、分页）。
 - `download` / `modelsync`：可续传多连接限速 HTTP 下载（HF/ModelScope）与节点间认证直传（server 只协调端点与一次性凭据，不中转模型字节）。
 - `netinfo` / `perftest`：网卡清单（sysfs，只读不起进程）、引擎端口范围内的主机 TCP listener（netlink sock_diag，内核只回 LISTEN socket，供调度避让）与 RDMA 带宽测试：`perftest` 运行 `ib_write_bw`，先用宿主机的，没有时解出 `assets` 内置的一份（`locate.go`），按 rail 返回带原因码的结果。
+- `hostsim` / `simulate`：体验环境的模拟节点。`hostsim` 是叶子包，是「代表另一台机器的节点」的唯一策略：替代真实主机上报的主机信息、主机指标与引擎端口占用，拒绝会碰到真实主机的一切（终端、节点目录外的文件、非本节点引擎的端口、存储、镜像与模型传输、升级、评测发压、模型下载）；每个 RPC 与流类型都在 `rules.go` 显式分类，proto 新增一种而未分类时测试失败、运行时默认拒绝。真实节点的 `*hostsim.Host` 为 nil，所有方法原样放行，主线路径各只有一次调用、不感知模拟。`simulate` 提供模拟的卡、运行时（不起容器，向体验环境的引擎宿主认领端口）与该机器的 `hostsim.Host`，只由 `GPUWORKS_SIMULATED_NODE` 且父进程为写入它的体验环境时启用。
 
 ## 共享库（`pkg/` 与 `internal/` 顶层）
 
@@ -134,7 +142,9 @@
 - `platformmetrics`（平台自身序列的词表：GPU、dGPU、节点、网络、KV 缓存盘、评测与网关运营指标的名字、单位、label 与含义，与推理词表 `inferencemetrics` 并列，共同构成 `GET /api/v1/monitor/metrics` 的指标目录；纯叶子，agent 与 server 共用；`TestEveryMetricLiteralIsRegistered` 扫描 agent、server 与 UI 源码，要求出现的每个指标名都已登记）、
 - `agentconf`（agent 启动配置的唯一定义，叶子包：`<state>/gpuworks-agent.conf` 的字段、校验、读写、默认监听地址 `DefaultListen`，以及供所有脚本读取主机上 agent 配置的 shell 函数 `ShellFuncs`，同时识别较早安装的命令行形式；agent 的 `configure`/`run`/`smoke`/`upgrade` 与 server 的安装、预检查、卸载、带外恢复共用，见 [ADR 0051](../adr/0051-agent-launch-configuration-file.md)）、
 - `launchd`（Mac agent 的 launchd 任务唯一产地：label、plist 位置、plist 编解码，以及 `install-service`/`uninstall` 用的安装与移除序列；纯叶子，agent 安装、server 查找已有 agent 共用）、
-- `version`（server 与 agent 共用的构建版本、提交、构建时间与发布渠道）。
+- `version`（server 与 agent 共用的构建版本、提交、构建时间与发布渠道）、
+- `experience`（`gpuworks experience` 进程：一个带 guard 的控制台、模拟节点 fleet、为所有模拟实例应答的引擎宿主、离线 HF 仓库、种子数据与持续的轻量流量；guard 按路由器自己的路由模式判断请求，写默认拒绝，读默认放行但沿用 `aihelper` 不可读的路由一律拒绝）、
+- `parentwatch`（父进程消失即结束子进程的工作，体验环境与其模拟节点共用）。
 
 ## 辅助 cmd
 
@@ -147,7 +157,7 @@
 
 - `l2/`（`-tags=multiproc`，真实 server/agent 二进制多进程）、
 - `l3/`（`-tags=docker`，容器级）、
-- `l4/`（`-tags=cloudgpu,<provider>`，云/真机；`l4/cmd/` 含 `cleanup-leaked`、`prepare-compshare-golden`、`ascend-nerdctl-verify`）、
+- `l4/`（`-tags=cloudgpu,<provider>`，云/真机；`l4/cmd/` 含 `cleanup-leaked`、`prepare-compshare-golden`、`prepare-aliyun-golden`、`ascend-nerdctl-verify`）、
 - `fake-engine/` / `fake-model/`（fake 引擎镜像与 tiny 模型）、
 - `ocifixture`（确定性合成 OCI 镜像，覆盖硬链接/软链接/whiteout/opaque dir/大 layer 等 Dockerfile 表达不了的边界）、
 - `runtime-wrapper-*`（runtime 包装镜像）、

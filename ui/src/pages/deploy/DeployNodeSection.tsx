@@ -1,5 +1,5 @@
-import { useMemo } from "react";
-import { Alert, Collapse, Form, InputNumber, Radio, Segmented, Space, Tag, Typography } from "antd";
+import { useContext, useMemo } from "react";
+import { Alert, Collapse, Form, Input, InputNumber, Radio, Segmented, Space, Tag, Typography } from "antd";
 import type { EligibleNode, EngineProfile, EvaluateResponse, Node, NodeFacets } from "../../api";
 import NodePlacementLabels from "../../components/NodePlacementLabels";
 import SystemLabelConditions from "../../components/SystemLabelConditions";
@@ -12,13 +12,48 @@ import { nodeDisplayName } from "../../nodeDisplay";
 import NodePicker from "../../nodes/NodePicker";
 import { gpuModelSummary } from "../../nodes/cardIdentity";
 import EligibleNodePicker from "./EligibleNodePicker";
-import { nodeRefusals } from "./deployPlacementRefusal";
-
-// How many refused nodes the scheduler card spells out; a fleet can turn
-// down hundreds, and the first few say what to fix.
-const REFUSALS_SHOWN = 5;
+import { nodeRefusals, nodeConditionSummary } from "./deployPlacementRefusal";
+import DeployNodeRefusals from "./DeployNodeRefusals";
+import AutoGroupPreview from "./DeployAutoGroupPreview";
+import { DeployEditContext, LockedGroup } from "./DeployEditContext";
 
 const ONLINE = { state: ["online"] };
+
+// StrategyField is the placement strategy of an automatic placement: single
+// nodes default to spreading replicas, multi-node and PD groups to packing
+// (the form seeds the default of the topology it opens; this field only
+// records an explicit pick so a later topology switch leaves it alone).
+function StrategyField({ initialValue }: { initialValue?: "spread" | "binpack" }) {
+  const { t } = useTranslation("deploy");
+  const form = Form.useFormInstance();
+  return (
+    <LockedGroup controls={["placement_strategy"]} hint={false}>
+      <Collapse
+        ghost
+        size="small"
+        items={[{
+          key: "placement",
+          label: t("workbench.node.placementOptions"),
+          forceRender: true,
+          children: (
+            <Form.Item name="placement_strategy" label={t("workbench.node.strategy")} initialValue={initialValue}>
+              <Radio.Group onChange={() => form.setFieldValue("placement_strategy_chosen", true)}>
+                <Radio value="spread">
+                  {t("workbench.node.strategySpread")}
+                  <Typography.Text type="secondary"> — {t("workbench.node.strategySpreadHelp")}</Typography.Text>
+                </Radio>
+                <Radio value="binpack">
+                  {t("workbench.node.strategyBinpack")}
+                  <Typography.Text type="secondary"> — {t("workbench.node.strategyBinpackHelp")}</Typography.Text>
+                </Radio>
+              </Radio.Group>
+            </Form.Item>
+          ),
+        }]}
+      />
+    </LockedGroup>
+  );
+}
 
 // The pickers search online nodes on the server and render its eligibility
 // answer (EligibleNodePicker). fleet is what the online nodes carry (GET
@@ -46,12 +81,19 @@ export default function NodeSection({
   onNodeMode: (mode: "auto" | "manual" | "multi" | "pd") => void;
 }) {
   const { t } = useTranslation("deploy");
+  // A form opened from a draft already holds the deployment's strategy.
+  const fromDraft = useContext(DeployEditContext).mode !== "create";
   const form = Form.useFormInstance();
   const mode = (Form.useWatch("node_selection_mode", {
     form,
     preserve: true,
   }) || "auto") as "auto" | "manual" | "multi" | "pd";
   const single = mode === "auto" || mode === "manual";
+  // A multi-node or PD deployment is placed by the platform unless the
+  // deployer chose to name its nodes: the same auto / manual switch as a
+  // single node's, defaulting to auto.
+  const unitsPlacement = Form.useWatch("units_placement", { form, preserve: true });
+  const unitsAuto = !single && unitsPlacement !== "manual";
   const nnodes = Number(Form.useWatch("nnodes", { form, preserve: true }) || 1);
   const distributed = (Form.useWatch("distributed_nodes", {
     form,
@@ -73,6 +115,7 @@ export default function NodeSection({
   // Nodes the scheduler judged and turned down: with them, "nothing
   // matches" would hide the reasons the deployer can act on.
   const refusals = autoSelected ? [] : nodeRefusals(t, result);
+  const conditions = !loading ? nodeConditionSummary(result) : null;
   const vendorPool = useMemo(
     () => ({ ...ONLINE, label: targetVendor ? [`gpuworks.ai/vendor=${targetVendor}`] : [] }),
     [targetVendor],
@@ -81,8 +124,11 @@ export default function NodeSection({
     <div className="deploy-workbench-row">
       <div className="deploy-workbench-label">{t("workbench.node.title")}</div>
       <div className="deploy-workbench-body">
-        <NodePlacementLabels scope={ONLINE} />
-        <SystemLabelConditions facets={fleet?.system_labels} />
+        <LockedGroup controls={["node_requirements"]} hint={false}>
+          <NodePlacementLabels scope={ONLINE} />
+          <SystemLabelConditions facets={fleet?.system_labels} />
+        </LockedGroup>
+        <LockedGroup controls={["topology"]}>
         <div className="deploy-choice-strip">
           <ChoiceCard
             active={single}
@@ -118,26 +164,57 @@ export default function NodeSection({
             onClick={() => onNodeMode("pd")}
           />
         </div>
-        {single && (
-          <div className="deploy-node-pool">
+        </LockedGroup>
+        <div className="deploy-node-pool">
+          <LockedGroup controls={["placement_mode"]} hint={false}>
             <Segmented
               disabled={!ready}
-              value={mode}
-              onChange={(value) => onNodeMode(value as "auto" | "manual")}
+              value={single ? mode : unitsAuto ? "auto" : "manual"}
+              onChange={(value) =>
+                single
+                  ? onNodeMode(value as "auto" | "manual")
+                  : form.setFieldValue("units_placement", value)
+              }
               options={[
                 { value: "auto", label: t("workbench.node.auto") },
                 { value: "manual", label: t("workbench.node.manual") },
               ]}
             />
-            <Typography.Paragraph type="secondary" style={{ margin: "6px 0 0" }}>
-              {mode === "auto" ? t("workbench.node.autoPoolDescription") : t("workbench.node.manualPoolDescription")}
+          </LockedGroup>
+          <Typography.Paragraph type="secondary" style={{ margin: "6px 0 0" }}>
+            {single
+              ? mode === "auto"
+                ? t("workbench.node.autoPoolDescription")
+                : t("workbench.node.manualPoolDescription")
+              : unitsAuto
+                ? t("workbench.node.autoUnitsDescription")
+                : t("workbench.node.manualUnitsDescription")}
+          </Typography.Paragraph>
+          {/* What the server attributes to the placement choice itself:
+              nothing to place on (UNIT_PLACEMENT_NONE), a missing TP, a
+              request shape automatic placement cannot take. The field has no
+              control of its own (the switch above is not a form field for a
+              multi-node or PD draft), so it is a hidden input whose error the
+              form item shows as it does for any field. */}
+          {!single && (
+            <Form.Item name="units_placement" className="deploy-units-placement-error" style={{ margin: "8px 0 0" }}>
+              <Input type="hidden" />
+            </Form.Item>
+          )}
+          {single && eligibleNodes && !loading && (
+            <Typography.Paragraph type="secondary" style={{ margin: 0 }}>
+              {conditions
+                ? t("workbench.node.conditionFunnel", { total: conditions.total, matched: conditions.matched.length, eligible: conditions.eligible })
+                : t("workbench.node.poolMatches", { count: eligibleNodes.filter((node) => node.eligible).length, total: fleet?.total ?? 0 })}
             </Typography.Paragraph>
-            {eligibleNodes && (
-              <Typography.Paragraph type="secondary" style={{ margin: 0 }}>
-                {t("workbench.node.poolMatches", { count: eligibleNodes.filter((node) => node.eligible).length, total: fleet?.total ?? 0 })}
-              </Typography.Paragraph>
-            )}
-            {mode === "auto" && (
+          )}
+          {single && conditions && conditions.eligible > 0 && mode === "auto" && (
+            <Typography.Paragraph type="secondary" style={{ margin: 0 }}>
+              {t("workbench.node.planningFunnel", { passed: conditions.passed, tried: conditions.tried, untried: conditions.untried })}
+            </Typography.Paragraph>
+          )}
+          {single && mode === "auto" && (
+            <LockedGroup controls={["node_requirements"]} hint={false}>
               <Form.Item name="pool_nodes" label={t("workbench.node.poolNodes")} extra={t("workbench.node.poolNodesHelp")} style={{ margin: "8px 0 0" }}>
                 <NodePicker
                   mode="multiple"
@@ -148,34 +225,11 @@ export default function NodeSection({
                   aria-label={t("workbench.node.poolNodes")}
                 />
               </Form.Item>
-            )}
-            {mode === "auto" && (
-              <Collapse
-                ghost
-                size="small"
-                items={[{
-                  key: "placement",
-                  label: t("workbench.node.placementOptions"),
-                  forceRender: true,
-                  children: (
-                    <Form.Item name="placement_strategy" label={t("workbench.node.strategy")} initialValue="spread">
-                      <Radio.Group>
-                        <Radio value="spread">
-                          {t("workbench.node.strategySpread")}
-                          <Typography.Text type="secondary"> — {t("workbench.node.strategySpreadHelp")}</Typography.Text>
-                        </Radio>
-                        <Radio value="binpack">
-                          {t("workbench.node.strategyBinpack")}
-                          <Typography.Text type="secondary"> — {t("workbench.node.strategyBinpackHelp")}</Typography.Text>
-                        </Radio>
-                      </Radio.Group>
-                    </Form.Item>
-                  ),
-                }]}
-              />
-            )}
-          </div>
-        )}
+            </LockedGroup>
+          )}
+          {single && mode === "auto" && <StrategyField initialValue={fromDraft ? undefined : "spread"} />}
+          {unitsAuto && <StrategyField initialValue={fromDraft ? undefined : "binpack"} />}
+        </div>
         {mode === "auto" && (
           <div className="deploy-node-card is-selected">
             <div className="deploy-node-card-head">
@@ -201,30 +255,13 @@ export default function NodeSection({
                 />
               </div>
             ) : (
-              ready && refusals.length > 0 ? (
-                <Alert
-                  type="warning"
-                  showIcon
-                  message={t("workbench.node.noNodeFits")}
-                  description={
-                    <ul className="deploy-node-refusals" style={{ margin: 0, paddingInlineStart: 18 }}>
-                      {refusals.slice(0, REFUSALS_SHOWN).map((refusal) => (
-                        <li key={refusal.uuid}>
-                          <strong>{refusal.name}</strong>
-                          {refusal.reason ? `: ${refusal.reason}` : ""}
-                        </li>
-                      ))}
-                      {refusals.length > REFUSALS_SHOWN && (
-                        <li>{t("workbench.node.moreRefused", { count: refusals.length - REFUSALS_SHOWN })}</li>
-                      )}
-                    </ul>
-                  }
-                />
+              ready && !loading && refusals.length > 0 ? (
+                <DeployNodeRefusals refusals={refusals} conditions={conditions} />
               ) : (
                 <Alert
                   type="info"
                   showIcon
-                  message={ready ? t("workbench.node.noCompatibleOnline") : t("workbench.node.chooseModelFirst")}
+                  message={loading ? t("workbench.node.evaluating") : ready ? t("workbench.node.noCompatibleOnline") : t("workbench.node.chooseModelFirst")}
                 />
               )
             )}
@@ -263,16 +300,21 @@ export default function NodeSection({
           </div>
         )}
         {mode === "multi" && (
+          <LockedGroup controls={["nodes", "topology"]}>
           <div className="deploy-node-card">
             <div className="deploy-node-card-head">
-              <strong>{t("workbench.node.selectMulti")}</strong>
+              <strong>{unitsAuto ? t("workbench.node.multiAutoTitle") : t("workbench.node.selectMulti")}</strong>
               <Space size={8}>
                 <span>{t("workbench.node.nodeCount")}</span>
                 <Form.Item name="nnodes" noStyle>
-                  <InputNumber min={2} max={16} size="small" />
+                  <InputNumber min={2} max={16} size="small" aria-label={t("workbench.node.nodeCount")} />
                 </Form.Item>
               </Space>
             </div>
+            {unitsAuto ? (
+              <AutoGroupPreview result={result} loading={loading} ready={ready} knownNodes={knownNodes} />
+            ) : (
+              <>
             <Form.Item
               name="distributed_nodes"
               rules={[
@@ -316,15 +358,21 @@ export default function NodeSection({
                 </Tag>
               )}
             </Space>
+              </>
+            )}
           </div>
+          </LockedGroup>
         )}
         {mode === "pd" && (
-          <DeployPdSection
-            eligibleNodes={eligibleNodes}
-            result={result}
-            loading={loading}
-            profile={profile}
-          />
+          <LockedGroup controls={["pd_placement"]}>
+            <DeployPdSection
+              eligibleNodes={eligibleNodes}
+              result={result}
+              loading={loading}
+              profile={profile}
+              auto={unitsAuto}
+            />
+          </LockedGroup>
         )}
       </div>
     </div>

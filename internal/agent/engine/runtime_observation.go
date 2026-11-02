@@ -102,14 +102,25 @@ func (e *Engine) collectRuntimeObservation(ctx context.Context, driver runtime.D
 		observation.Image.Reason = proto.ObservationReasonUnsupported
 		return observation
 	}
-	image, err := imageInspector.InspectImage(ctx, workload.ImageID)
+	imageRef := workload.ImageLookupRef
+	if imageRef == "" {
+		imageRef = workload.ImageID
+	}
+	if imageRef == "" {
+		observation.Image.Reason = proto.ObservationReasonInspectFailed
+		return observation
+	}
+	image, err := imageInspector.InspectImage(ctx, imageRef)
 	if err != nil {
 		observation.Image.Reason = observationReason(err)
 		return observation
 	}
-	if image.ID == "" || !sameImageIdentity(workload.ImageID, image.ID) {
+	if image.ID == "" || (workload.ImageID != "" && !sameImageIdentity(workload.ImageID, image.ID)) {
 		observation.Image.Reason = proto.ObservationReasonInspectFailed
 		return observation
+	}
+	if workload.ImageID == "" {
+		observation.Container.ImageID = image.ID
 	}
 	observation.Image = proto.RuntimeImageObservation{
 		Status: proto.ObservationObserved, ObservedAtUnixMS: time.Now().UnixMilli(), ImageID: image.ID,

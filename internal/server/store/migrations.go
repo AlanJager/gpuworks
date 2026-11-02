@@ -1276,6 +1276,52 @@ var migrations = []migration{
 	{Version: 171, Name: "deleted_nodes", Apply: createDeletedNodes},
 	{Version: 172, Name: "legacy_template_model_operations", Apply: repairLegacyTemplateModelOperations},
 	{Version: 173, Name: "instance_spec_gpu_idents", Apply: copyInstanceGPUIdentsIntoSpec},
+	{Version: 174, Name: "instance_transcription_served", Apply: addInstanceTranscriptionServed},
+	{Version: 175, Name: "image_node_runtime_size", Apply: addImageNodeRuntimeSize},
+	{Version: 176, Name: "instance_sleep_residue", Apply: addInstanceSleepResidue},
+	{Version: 177, Name: "deployment_node_replace_after", Apply: addDeploymentNodeReplaceAfter},
+	{Version: 178, Name: "deployment_units_auto", Apply: addDeploymentUnitsAuto},
+	{Version: 179, Name: "ai_config_single_default", Apply: addAIConfigSingleDefault},
+	{Version: 180, Name: "model_download_deployment", Apply: addModelDownloadDeployment},
+	{Version: 181, Name: "agent_upgrade_runs", Apply: createAgentUpgradeTables},
+	{Version: 182, Name: "deployment_idle_sleep", Apply: addDeploymentIdleSleep},
+	{Version: 183, Name: "instance_wake_waiting", Apply: addInstanceWakeWaiting},
+	{Version: 184, Name: "lifecycle_schedules", Apply: createLifecycleSchedules},
+	{Version: 185, Name: "instance_event_kind_index", Apply: indexInstanceEventKind},
+	{Version: 186, Name: "deployment_service_level", Apply: addDeploymentServiceLevel},
+	{Version: 187, Name: "batch_tables", Apply: createBatchTables},
+	{Version: 188, Name: "lifecycle_schedule_role", Apply: addLifecycleScheduleRole},
+	{Version: 189, Name: "deployment_yield_policy", Apply: addDeploymentYieldPolicy},
+	{Version: 190, Name: "deployment_yield_policy_reshape", Apply: reshapeDeploymentYieldPolicy},
+	{Version: 191, Name: "instance_sleep_held", Apply: moveSleepHeldToInstances},
+	{Version: 192, Name: "instance_l1_host_buffer", Apply: addInstanceL1HostBuffer},
+	{Version: 193, Name: "api_key_scope", Apply: addAPIKeyScope},
+	{Version: 194, Name: "node_scheduling_source", Apply: func(db *gorm.DB) error {
+		if !db.Migrator().HasTable(&Node{}) || db.Migrator().HasColumn(&Node{}, "SchedulingBy") {
+			return nil
+		}
+		// Empty on every existing row: a cordon set before this was
+		// recorded has no known author, and the platform leaves one it
+		// cannot prove is its own alone.
+		return db.Migrator().AddColumn(&Node{}, "SchedulingBy")
+	}},
+	{Version: 195, Name: "gpu_operator_scheduling", Apply: func(db *gorm.DB) error {
+		if !db.Migrator().HasTable(&GPU{}) {
+			return nil
+		}
+		// Both empty on existing cards: no operator has decided anything
+		// about them yet.
+		for _, column := range []string{"SchedulingStopped", "SchedulingAllowedAt"} {
+			if db.Migrator().HasColumn(&GPU{}, column) {
+				continue
+			}
+			if err := db.Migrator().AddColumn(&GPU{}, column); err != nil {
+				return err
+			}
+		}
+		return nil
+	}},
+	{Version: 196, Name: "card_health_episodes", Apply: createCardHealthEpisodes},
 }
 
 // modelFileNetworkColumns are the columns migrations 76 and 77 added to
@@ -1580,11 +1626,11 @@ func applyMigration(db *gorm.DB, m migration) error {
 // AutoMigrateDev exposes the old schema convenience path for local development.
 func (s *Store) AutoMigrateDev() error {
 	return s.db.AutoMigrate(
-		&SchemaMigration{}, &Node{}, &GPU{}, &User{}, &APIKey{}, &ManagementSession{},
+		&SchemaMigration{}, &Node{}, &GPU{}, &User{}, &APIKey{}, &APIKeyDeployment{}, &ManagementSession{},
 		&Model{}, &ModelFile{}, &Deployment{}, &Instance{}, &InstanceEvent{},
 		&Provider{}, &ProviderInstance{}, &ProviderBootstrapToken{}, &NodeSSHCredential{}, &Setting{}, &AIConfig{}, &Profile{}, &ImageSeries{}, &Image{}, &ImageNode{}, &Storage{}, &StorageNode{}, &StorageNodeState{}, &TerminalSession{}, &BenchmarkRun{}, &BenchmarkPoint{}, &InferenceModel{}, &InferenceSpecRow{}, &Network{}, &NetworkAttachment{}, &NetworkTestRun{}, &DeploymentNodeRequirement{}, &InstanceModelFile{}, &PlatformSSHKey{}, &PlatformToken{},
 		&PullSourceRule{}, &PullSourceRuleEndpoint{}, &PullSourceRuleRequirement{}, &SyncGroup{}, &SyncGroupRequirement{}, &SourceCredential{}, &PullProxy{}, &PullProxyRequirement{},
-		&NoticeRead{},
+		&NoticeRead{}, &LifecycleSchedule{}, &BatchFile{}, &Batch{}, &BatchMetadata{},
 		&UsageHourly{}, &UsageDaily{}, &UsageRolledDay{}, &UsageRollupState{}, &DeletedDeployment{}, &DeletedNode{},
 	)
 }

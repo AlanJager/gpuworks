@@ -1,0 +1,45 @@
+{
+  "contract_id": "gpuworks/image-catalog/summary-layout",
+  "name": "镜像统计 / 等宽等高与统计口径 / 双语响应式布局",
+  "test_file": "test/e2e/image_summary_layout.py",
+  "test_function": "test_image_summary_layout",
+  "command": "make test-e2e-image-summary-layout",
+  "page_id": "images",
+  "lane": "local-real-server-sqlite",
+  "identity": "admin",
+  "priority": "P1",
+  "required_evidence": ["ui", "request", "persistence", "cleanup"],
+  "runtime_evidence": {"status": "N/A", "reason": "Catalog metadata and browser layout only; no agent, pull, container or disk measurement claim."},
+  "crud": {"create": "MISSING: metadata setup uses API", "read": "PARTIAL: custom-source summary and tooltip", "update": "N/A: summary is read-only", "delete": "MISSING: scoped API teardown only"},
+  "components": [
+    {"id": "image-summary.cards", "type": "Statistic", "dimensions": ["five equal widths and heights", "desktop/tablet/mobile", "unknown archive versus zero local copies", "empty source"], "request": "GET /images and /images/versions", "persistence": "independent detail GET after setup and reload"},
+    {"id": "image-summary.info", "type": "Tooltip", "dimensions": ["catalog/local descriptions", "hover/focus/click", "Escape/outside click", "viewport bounds", "two-line auxiliary area"], "request": "N/A: presentation only", "persistence": "N/A: transient popup"},
+    {"id": "image-source.tabs", "type": "Tabs", "dimensions": ["custom projection after reload"], "request": "N/A: client-side source projection", "persistence": "N/A: ephemeral"},
+    {"id": "image-page.other-controls", "type": "Page", "dimensions": ["refresh", "official sync/upload", "community/custom import", "series table filters/sort/pagination/settings", "series details/enable/delete"], "request": "MISSING: separate existing catalog cases", "persistence": "MISSING: outside this layout regression"}
+  ],
+  "checklist_items": {
+    "13.1": "covered: both named help buttons open through hover, focus and click; Escape and outside click close them.",
+    "13.2": "partial: both help popups stay inside desktop/mobile viewport and Escape retains trigger focus; no long-list menu claim.",
+    "13.3": "N/A: informational help has no privileged action or disabled menu entry.",
+    "13.4": "covered: unknown version count remains visible with popup closed; keyboard focus opens the full statistical definition.",
+    "13.5": "N/A: no notification in this summary flow.",
+    "13.6": "N/A: help only opens on user interaction, with no notification producer.",
+    "17.1": "partial: empty and unknown archive versus real zero-copy total; loading/error/stale and positive local runtime totals remain RTL or separate runtime coverage.",
+    "17.2": "partial: independently declared one-series/three-version custom fixture produces exact counts, unknown archive and zero bytes; no time-range or measured runtime aggregation claim.",
+    "17.3": "partial: real help interaction and exact definitions; there are no legend/time controls.",
+    "17.4": "partial: reload then custom-source selection retains exact values; delayed response races remain MISSING.",
+    "17.5": "N/A: no GPU utilization, engine throughput or gateway metric.",
+    "17.6": "N/A: no timeline.",
+    "17.7": "partial: exact card geometry, footer line budget, full visible labels/values and popup viewport at three widths in en/zh; very large values and backend errors remain MISSING.",
+    "22.5": "partial: explicit en/zh runs verify five localized titles, help and status; no global language-switch claim."
+  },
+  "failure_oracles": [
+    "Unequal spans or intrinsic-height cards fail assert_layout geometry before any tooltip assertion.",
+    "Long inline help instead of bounded footer fails auxiliary height/text visibility or missing help button.",
+    "Unknown archive shown as zero fails exact rendered value against omitted fixture size_bytes.",
+    "Partial or incorrect help text fails the independent literal description assertion.",
+    "Stuck or inaccessible popup fails Escape/focus/click checks."
+  ],
+  "missing": ["positive/partial/unknown local runtime measurements: targeted RTL only; no agent in this case", "known/partial archive totals: targeted RTL only", "loading/error/stale response races", "large values", "non-admin permissions", "other image-page controls listed in component inventory"],
+  "product_contracts": ["ui/src/pages/ImagesPage.tsx", "ui/src/pages/images/ImagesPageOverview.tsx", "ui/src/pages/images/ImageSummaryCards.tsx", "ui/src/pages/images/imageSummary.css"]
+}

@@ -140,53 +140,6 @@ func instanceEventDTOs(evs []store.InstanceEvent) []dto.InstanceEvent {
 	return out
 }
 
-// ---- api keys ----
-
-func (a *apiHandlers) listAPIKeys(w http.ResponseWriter, r *http.Request) {
-	keys, err := a.d.Store.ListAPIKeys()
-	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err)
-		return
-	}
-	out := make([]dto.APIKey, 0, len(keys))
-	for _, k := range keys {
-		out = append(out, dto.APIKey{Name: k.Name, Prefix: k.Prefix, LastUsed: utcTimePtr(k.LastUsed), Created: utcTime(k.CreatedAt), Revoked: utcTimePtr(k.RevokedAt)})
-	}
-	writeJSON(w, http.StatusOK, dto.NewList(out))
-}
-
-func (a *apiHandlers) createAPIKey(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		Name string `json:"name"`
-	}
-	if !decodeJSONBody(w, r, &req) {
-		return
-	}
-	req.Name = strings.TrimSpace(req.Name)
-	if req.Name == "" {
-		writeProductError(w, http.StatusBadRequest, ErrorAPIKeyNameRequired, "API key name is required", nil)
-		return
-	}
-	if !validateName(w, req.Name) {
-		return
-	}
-	full, err := a.d.Store.CreateAPIKey(req.Name, 0)
-	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err)
-		return
-	}
-	// The full key is returned exactly once.
-	writeJSON(w, http.StatusCreated, map[string]string{"name": req.Name, "key": full})
-}
-
-func (a *apiHandlers) deleteAPIKey(w http.ResponseWriter, r *http.Request) {
-	if err := a.d.Store.RevokeAPIKey(chi.URLParam(r, "prefix")); err != nil {
-		writeErr(w, http.StatusInternalServerError, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]string{"status": "revoked"})
-}
-
 // ---- helpers ----
 
 func parseUint(s string) uint {

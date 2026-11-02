@@ -31,7 +31,9 @@
     "monitorStale": "监控数据已延迟",
     "monitorUnavailable": "监控数据暂不可用",
     "requestRate": "请求速率",
-    "requestRateTip": "最近 5 分钟的平均请求数，每秒请求数；未采集显示 —。",
+    "requestRateTip": "最近 5 分钟的平均请求速率（每秒请求数）；未采集显示 —。",
+    "concurrency": "并发会话",
+    "concurrencyTip": "最近 5 分钟网关的平均在途请求数；未采集显示 —。",
     "errorRate": "错误率",
     "errorRateTip": "最近 5 分钟的请求错误占比，包含 5xx、429 和休眠服务的 503；未采集显示 —。",
     "ttftP95": "TTFT p95",
@@ -114,7 +116,8 @@
     "attention": "需要关注",
     "issueNode": "计算节点",
     "issueService": "推理服务",
-    "unknownGpu": "未识别"
+    "unknownGpu": "未识别",
+    "gpuAllocationHint": "部分分配的 GPU 计入可分配数量。"
   },
   "health": {
     "attention": "平台有 {{count}} 项需要关注",

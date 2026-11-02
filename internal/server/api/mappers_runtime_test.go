@@ -26,6 +26,15 @@ func TestDeriveRuntimeStateAggregatesInstanceTruth(t *testing.T) {
 		{"active", []string{proto.InstPulling, proto.InstFailed}, nil, false, "pulling"},
 		{"active", []string{proto.InstStopped, proto.InstFailed}, nil, false, "failed"},
 		{"stopped", []string{proto.InstRunning}, nil, false, "stopped"},
+		// A replica moved off an offline node stays removing until the node
+		// returns: the running replacement is what the deployment is.
+		{"active", []string{proto.InstRunning, proto.InstRunning, proto.InstRemoving}, nil, false, "running"},
+		{"active", []string{proto.InstStarting, proto.InstRemoving}, nil, false, "starting"},
+		{"active", []string{proto.InstRemoving}, nil, false, "starting"},
+		// An earlier failure beside a replica being removed is history, as
+		// beside any other live row.
+		{"active", []string{proto.InstRemoving, proto.InstFailed}, nil, false, "starting"},
+		{"active", []string{proto.InstDraining}, nil, false, "running"},
 		// No instance can exist until every required model file is present.
 		// A model file that failed, or one that is stuck awaiting an
 		// operator-triggered download, must not read the same as "pending"

@@ -132,6 +132,7 @@ func (n *NodeRuntime) rpcImageSyncSend(ctx context.Context, params json.RawMessa
 	if err := json.Unmarshal(params, &p); err != nil {
 		return nil, err
 	}
+	p.TransferID = strings.TrimSpace(p.TransferID)
 	p.ImageRef, p.Token, p.Fingerprint = strings.TrimSpace(p.ImageRef), strings.TrimSpace(p.Token), strings.TrimSpace(p.Fingerprint)
 	if p.ImageRef == "" || p.Token == "" || p.Fingerprint == "" || len(p.Endpoints) == 0 {
 		return nil, errors.New("image sync send parameters are incomplete")
@@ -139,6 +140,27 @@ func (n *NodeRuntime) rpcImageSyncSend(ctx context.Context, params json.RawMessa
 	if p.RateLimitKBs < 0 {
 		return nil, errors.New("image sync rate limit must be non-negative")
 	}
+	if p.TransferID == "" {
+		return nil, errors.New("image sync send requires transfer_id")
+	}
+	ctx, cancel := context.WithCancel(ctx)
+	n.imageSyncMu.Lock()
+	if n.imageSyncSends == nil {
+		n.imageSyncSends = make(map[string]context.CancelFunc)
+	}
+	if _, exists := n.imageSyncSends[p.TransferID]; exists {
+		n.imageSyncMu.Unlock()
+		cancel()
+		return nil, errors.New("image sync sender already owns this transfer_id")
+	}
+	n.imageSyncSends[p.TransferID] = cancel
+	n.imageSyncMu.Unlock()
+	defer func() {
+		cancel()
+		n.imageSyncMu.Lock()
+		delete(n.imageSyncSends, p.TransferID)
+		n.imageSyncMu.Unlock()
+	}()
 	d, ok := n.runtimeDriver().(runtime.ImageArchiver)
 	if !ok {
 		return nil, fmt.Errorf("runtime %s does not support direct image save/load", n.RuntimeDriverName())
@@ -183,6 +205,11 @@ func (n *NodeRuntime) rpcImageSyncStop(_ context.Context, params json.RawMessage
 		return nil, errors.New("image sync stop requires transfer_id")
 	}
 	n.imageSyncMu.Lock()
+	if cancel := n.imageSyncSends[p.TransferID]; cancel != nil {
+		n.imageSyncMu.Unlock()
+		cancel()
+		return map[string]string{"status": "stopping"}, nil
+	}
 	var active *activeImageSync
 	for _, candidate := range n.imageSyncs {
 		if p.TransferID == "" || candidate.transferID == p.TransferID {

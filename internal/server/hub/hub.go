@@ -23,6 +23,7 @@ import (
 	"github.com/libp2p/go-yamux/v5"
 
 	"gpuworks.ai/gpuworks/internal/proto"
+	"gpuworks.ai/gpuworks/internal/server/agentupgrade"
 	"gpuworks.ai/gpuworks/internal/server/auth"
 	"gpuworks.ai/gpuworks/internal/server/network"
 	"gpuworks.ai/gpuworks/internal/server/prepobs"
@@ -53,6 +54,9 @@ type Hub struct {
 	onMetrics         func(nodeUUID string, samples []proto.MetricSample)
 	onLogs            func(nodeUUID string, lines []proto.LogLine)
 	onBenchmarkDetail func(nodeUUID string, status proto.BenchmarkStatus)
+	// onCardChecks and onNodeGone: card_checks.go.
+	onCardChecks func(nodeUUID string, nodeID uint, at time.Time, gpus []proto.GPUInfo)
+	onNodeGone   func(nodeUUID string)
 
 	// The node queues persist per-node reports (status, heartbeats, image
 	// presence) off the session read loops; see statusqueue.go for why those
@@ -68,14 +72,16 @@ type Hub struct {
 	// not yet reported.
 	pushLimiter chan struct{}
 
-	mu            sync.RWMutex
-	sessions      map[string]*Session // keyed by node UUID
-	rejectMu      sync.Mutex
-	rejects       []RejectEvent
-	upgradeMu     sync.RWMutex
-	upgradeErrors map[string]string
-	reconnectMu   sync.Mutex
-	reconnect     map[string]reconnectState
+	mu              sync.RWMutex
+	sessions        map[string]*Session             // keyed by node UUID
+	imageWatches    map[[2]uint]map[string]struct{} // active image/node watchers, owned by transfer id
+	rejectMu        sync.Mutex
+	rejects         []RejectEvent
+	upgradeMu       sync.RWMutex
+	upgradeErrors   map[string]string
+	upgradeObserver func(agentupgrade.Observation)
+	reconnectMu     sync.Mutex
+	reconnect       map[string]reconnectState
 	// usage counts agent-link failures for the usage report; nil counts
 	// nothing.
 	usage *usagereport.Counters
@@ -546,6 +552,9 @@ func (h *Hub) deregister(s *Session) {
 		h.mu.Unlock()
 		h.statusQ.forget(s.NodeUUID) // a stale report would mark it online again
 		_ = h.store.SetNodeState(s.NodeUUID, store.NodeStateOffline)
+		if h.onNodeGone != nil {
+			h.onNodeGone(s.NodeUUID)
+		}
 		return
 	}
 	h.mu.Unlock()

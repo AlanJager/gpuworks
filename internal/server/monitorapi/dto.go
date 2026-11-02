@@ -15,7 +15,7 @@ import (
 // This file holds the small monitor.* -> dto.* conversion helpers shared by
 // overview.go and deployment.go: null-vs-value pointer helpers,
 // timestamp/point conversion, and the derived-display-field functions
-// (deploymentPlacement, deploymentState/replicaState, countReadyReplicas)
+// (deploymentPlacement, deploymentState/replicaState)
 // that need the raw Inventory neither monitor.ClusterSnapshot nor
 // ServiceSnapshot carries in full.
 
@@ -126,25 +126,6 @@ func mergeDetail(maps ...map[string]any) map[string]any {
 	return out
 }
 
-// countReadyReplicas counts running, non-headless instances - the same rule
-// monitor.countRunning applies for ServiceRow.ReplicasReady: a headless
-// distributed worker is a process-group participant with no API endpoint of
-// its own, not a replica, so buildDeployment's own deployment-summary ready
-// count has to apply the same exclusion monitor already applies for the
-// cluster-layer one.
-func countReadyReplicas(instances []monitor.InstanceRef) int {
-	n := 0
-	for _, inst := range instances {
-		if inst.Headless {
-			continue
-		}
-		if inst.State == proto.InstRunning {
-			n++
-		}
-	}
-	return n
-}
-
 // deploymentPlacement renders the "TP4 · gpu3, gpu4" summary the wire
 // contract's services[].placement and deployment.placement fields carry. TP
 // is the widest per-instance GPU count seen among the deployment's replicas
@@ -187,23 +168,33 @@ func deploymentPlacement(dep monitor.DeploymentRef, instances []monitor.Instance
 }
 
 // deploymentState rolls a deployment's instances up into the single
-// running|starting|stopped|failed|asleep state the wire contract's
+// running|starting|stopped|failed|asleep|offline state the wire contract's
 // services[].state carries (replicaState below is its per-instance
-// sibling for replicas[].state). Failed outranks everything else (a
-// service with any failed replica needs attention regardless of how many
-// others are healthy); running outranks starting/stopped; a deployment
-// whose only running replicas are all asleep (SleepLevel > 0) reports
-// asleep rather than running, since "asleep" is the operationally relevant
-// fact there.
-func deploymentState(instances []monitor.InstanceRef) string {
+// sibling for replicas[].state). Serving replicas outrank retired failures
+// and warming replacements; deployment policy supplies the state before an
+// instance exists. An explicitly stopped deployment stays stopped while its
+// containers are being reclaimed.
+//
+// Sleep is read as instanceRef.Asleep, the gateway's own judgement
+// (planning.InstanceAsleep), and not from the reported level: an instance
+// already under a sleep order its engine has not carried out is refused by the
+// gateway, so a deployment whose every instance is so ordered is asleep here
+// too rather than reading running while the gateway 503s.
+func deploymentState(deployment monitor.DeploymentRef, instances []monitor.InstanceRef) string {
+	if deployment.RuntimeState == "stopped" || deployment.RuntimeState == "offline" {
+		return deployment.RuntimeState
+	}
 	hasFailed, hasStarting, running, awake := false, false, 0, 0
 	for _, inst := range instances {
+		if inst.Headless {
+			continue
+		}
 		switch inst.State {
 		case proto.InstFailed:
 			hasFailed = true
 		case proto.InstRunning:
 			running++
-			if inst.SleepLevel == 0 {
+			if !inst.Asleep {
 				awake++
 			}
 		case proto.InstPending, proto.InstPulling, proto.InstStarting, proto.InstOptimizing:
@@ -211,13 +202,15 @@ func deploymentState(instances []monitor.InstanceRef) string {
 		}
 	}
 	switch {
-	case hasFailed:
-		return "failed"
 	case running > 0 && awake == 0:
 		return "asleep"
 	case running > 0:
 		return "running"
 	case hasStarting:
+		return "starting"
+	case deployment.RuntimeState == "failed" || hasFailed:
+		return "failed"
+	case deployment.RuntimeState == "pending", deployment.RuntimeState == "pulling", deployment.RuntimeState == "starting", deployment.RuntimeState == "running":
 		return "starting"
 	default:
 		return "stopped"
@@ -230,7 +223,7 @@ func replicaState(inst monitor.InstanceRef) string {
 	switch {
 	case inst.State == proto.InstFailed:
 		return "failed"
-	case inst.State == proto.InstRunning && inst.SleepLevel > 0:
+	case inst.State == proto.InstRunning && inst.Asleep:
 		return "asleep"
 	case inst.State == proto.InstRunning:
 		return "running"

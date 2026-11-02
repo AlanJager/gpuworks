@@ -1,6 +1,8 @@
 package proxy
 
 import (
+	"gpuworks.ai/gpuworks/internal/server/uxrecord"
+	"strings"
 	"testing"
 	"time"
 
@@ -185,5 +187,21 @@ func TestObserverReadsSGLangUsage(t *testing.T) {
 				t.Fatalf("%s: usage %+v", tc.fixture, stats)
 			}
 		}
+	}
+}
+
+func TestRequestTimingNullIsUnknownAndExplicitZeroIsMeasured(t *testing.T) {
+	for _, queue := range []string{"null", "0", "20300"} {
+		t.Run(queue, func(t *testing.T) {
+			body := strings.Replace(readFixture(t, "vllm-0.30-plain.json"), `"queue_time_ms":0.00895373523235321`, `"queue_time_ms":`+queue, 1)
+			o := newResponseObserver(chatPath, 200, jsonHeader(), time.Unix(0, 0))
+			o.reading.rules = inferenceapi.ResolveRequestStats("vllm", nil)
+			feed(t, o, body, 4)
+			got := buildRecord(requestFacts{}, "instance", 200, time.Second, o.stats(true), uxrecord.OutcomeOK, time.Time{})
+			want := map[string]int32{"null": uxrecord.Unknown, "0": 0, "20300": 20300}[queue]
+			if got.EngineQueueMS != want {
+				t.Fatalf("queue %s: got %d, want %d", queue, got.EngineQueueMS, want)
+			}
+		})
 	}
 }

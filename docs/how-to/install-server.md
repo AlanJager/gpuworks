@@ -12,7 +12,22 @@
 
 ## 安装
 
-以下步骤在 Linux 目标主机的终端执行。
+### 一键安装
+
+在目标主机（Linux 或 Apple 芯片 Mac）的终端执行：
+
+```bash
+bash <(curl -fsSL https://dl.gpuworks.ai/get.sh)
+```
+
+脚本挑选响应最快的发布源（中国大陆通常是阿里云 OSS 或华为云 OBS），下载本机平台的发布包并按 `SHA256SUMS` 校验，
+再运行 `./gpuworks install`，之后的交互提问与下文第 3、4 步相同。还没有 `release` 版本时自动改装 `nightly`。
+脚本后面的参数原样传给 `gpuworks install`，例如 `bash <(curl -fsSL https://dl.gpuworks.ai/get.sh) --quiet`；
+用环境变量 `GPUWORKS_CHANNEL=nightly` 指定渠道，`GPUWORKS_SOURCE=<源地址>` 指定发布源。脚本源码见仓库 `scripts/get.sh`。
+
+### 手动安装
+
+需要自己核对每一步，或主机只能离线拷入发布包时，按以下步骤在 Linux 目标主机的终端执行。
 
 1. **下载并校验发布包。**
 
@@ -75,10 +90,10 @@
 3. 在控制面主机的实际安装目录修改初始密码。systemd 安装先按摘要提示执行 `newgrp gpuworks` 或重新登录，取得新组权限，再执行：
 
    ```bash
-   ./gpuworks reset-password --password '<新密码>' --data '<data目录>'
+   ./gpuworks reset-password --password '<新密码>'
    ```
 
-   替换密码和数据目录；该命令不自动读取 `server.yaml`，不要省略 `--data`。不要将真实密码留在命令历史或日志中。
+   替换密码；该命令从二进制同目录的 `server.yaml` 读取数据目录，也可用 `--data` 显式指定。不要将真实密码留在命令历史或日志中。
 
 4. 使用新密码重新登录，确认登录成功。
 5. 删除实际数据目录中的 `initial-credentials` 文件。该文件保存明文初始凭据，删除它不会修改账户密码。凭证说明见[控制面安装布局](../reference/install-layout.md#凭证文件)。
@@ -92,7 +107,7 @@
 - **没有 sudo 时**：在解压后的发布包目录中安装到可写的用户目录：
 
   ```bash
-  ./gpuworks install --dir ~/gpuworks-server --no-systemd
+  ./gpuworks install --dir ~/gpuworks/server --no-systemd
   ```
 
 - **nohup 安装后重启了主机**：服务不会自动恢复。在实际安装目录中执行：
@@ -111,14 +126,14 @@
 2. 在 Mac 终端用 `shasum -a 256` 核对压缩包的 SHA-256；与 `SHA256SUMS` 中的值一致后，再解压。
 3. 进入解压目录，执行 `./gpuworks install`，按上面的提示填写，然后完成[验证与首次登录](#验证与首次登录)。
 
-使用有 sudo 权限的账户安装时，服务以安装用户运行并随系统启动。安装默认位于 `/opt/gpuworks/server`；同机 agent 位于 `/opt/gpuworks`，两者互不覆盖。在实际控制面安装目录中按需执行：
+Mac 上默认安装到 `~/gpuworks/server`（安装用户的主目录），以 nohup 后台进程运行，不配置开机自启；自启提问默认 `no`。同机 agent 默认位于 `~/gpuworks`，两者互不覆盖。在实际控制面安装目录中按需执行：
 
 ```bash
 ./gpuworks restart            # 重启服务
 ./gpuworks stop               # 停服；launchd 安装会在下次开机时再次启动
 ```
 
-使用 `--no-systemd` 时改为 nohup，不配置开机自启。launchd 配置见[安装布局](../reference/install-layout.md#launchd-plistmacos)。
+需要随系统启动时，使用有 sudo 权限的账户执行 `./gpuworks install --autostart`（或在自启提问回答 `yes`）：安装为 launch daemon，服务以安装用户运行。重装已有 launch daemon 的安装时默认保留 launch daemon。launchd 配置见[安装布局](../reference/install-layout.md#launchd-plistmacos)。
 
 ### 在容器里运行
 
@@ -270,8 +285,8 @@ sudo ./gpuworks uninstall --purge --yes --json   # 清理数据并输出报告
 |---|---|
 | 安装或升级后无法访问 | 查看 `<安装目录>/logs/gpuworks-server.log`，修复错误后重试；再次调用 `/healthz` 并核对版本。日志位置自定义时以实际配置为准 |
 | `cannot listen on :8800` | 端口被其他进程占用；先用 `systemctl status gpuworks` 确认是否为旧服务，不要直接重复安装 |
-| `create /opt/gpuworks/server needs root` | 使用有 sudo 权限的账户，或改为 `--dir ~/gpuworks-server --no-systemd` |
-| 修改初始密码或忘记密码 | 执行 `./gpuworks reset-password --password '<新密码>' --data '<data目录>'`，替换密码和数据目录；不要将真实密码留在命令历史或日志中。该命令不自动读取 `server.yaml`，不要省略数据目录。改密后重新登录验证 |
+| `create /opt/gpuworks/server needs root` | 使用有 sudo 权限的账户，或改为 `--dir ~/gpuworks/server --no-systemd` |
+| 修改初始密码或忘记密码 | 执行 `./gpuworks reset-password --password '<新密码>'`，替换密码，数据目录从二进制同目录的 `server.yaml` 读取（也可用 `--data` 指定）；不要将真实密码留在命令历史或日志中。改密后重新登录验证 |
 | 升级或重置密码报权限错误 | 当前终端可能还没取得 `gpuworks` 组权限，执行 `newgrp gpuworks` 或重新登录后重试；数据目录仍不可写时检查其权限 |
 | 控制台提示渠道尚无版本 | 切换到已有发布的渠道，或等待该渠道发布后重新检查 |
 | 发布索引签名校验失败 | 检查服务端出网代理、网关或登录拦截；暂时可用匹配的本地升级包 |

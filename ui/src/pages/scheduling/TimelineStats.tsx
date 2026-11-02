@@ -1,0 +1,110 @@
+import { Fragment } from "react";
+import { InfoCircleOutlined } from "@ant-design/icons";
+import { Tag, Tooltip, Typography } from "antd";
+import { Link } from "react-router-dom";
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
+import type { TimelineCards, TimelineDeployment, TimelineScope } from "../../schedulingApi";
+import ResourceTable, { type ResourceColumn } from "../../components/resourceTable/ResourceTable";
+import { colors } from "../../theme/tokens";
+import { durationText } from "../durationText";
+import { NodeLink } from "./NodeLink";
+
+/** waitText words a wait in milliseconds; none is a dash. */
+export function waitText(t: TFunction<"scheduling">, ms?: number): string {
+  if (ms == null) return "—";
+  if (ms < 1000) return t("timeline.wait.ms", { value: Math.round(ms) });
+  if (ms < 120_000) return t("timeline.wait.seconds", { value: (ms / 1000).toFixed(ms < 10_000 ? 1 : 0) });
+  return t("timeline.wait.minutes", { value: Math.round(ms / 60_000) });
+}
+
+/**
+ * SharingTable is the deployments that share cards over the window: how long
+ * they were awake, how often they changed places with others and how long the
+ * requests held for their wake waited. When the server says the switch counts
+ * are not known for the range, those columns show a dash.
+ */
+export function SharingTable({ rows, switchesAvailable = true }: { rows: TimelineDeployment[]; switchesAvailable?: boolean }) {
+  const { t } = useTranslation("scheduling");
+  const { t: tDeploy } = useTranslation("deployments");
+  const num = (key: keyof TimelineDeployment) => (_: unknown, row: TimelineDeployment) => <span className="scheduling-num">{String(row[key])}</span>;
+  const switchNum = (key: keyof TimelineDeployment) => (switchesAvailable ? num(key) : () => <span className="scheduling-num">—</span>);
+  const columns: ResourceColumn<TimelineDeployment>[] = [
+    { key: "deployment", title: t("timeline.columns.deployment"), width: 200, render: (_: unknown, row) => <DeploymentName row={row} /> },
+    { key: "cards", title: t("timeline.columns.cards"), width: 180, render: (_: unknown, row) => <CardsCell cards={row.cards} /> },
+    { key: "level", title: t("timeline.columns.level"), width: 90, render: (_: unknown, row) => (row.yield_policy ? <Tag>{tDeploy(`yieldPolicy.policy.name.${row.yield_policy}`)}</Tag> : <span>—</span>) },
+    {
+      key: "awake",
+      title: t("timeline.columns.awake"),
+      width: 170,
+      render: (_: unknown, row) => <span className="scheduling-num">{t("timeline.awakeShare", { span: durationText(t, row.awake_seconds, "elapsed"), present: durationText(t, row.present_seconds, "elapsed"), share: Math.round(row.awake_share * 1000) / 10 })}</span>,
+    },
+    { key: "switches", title: t("timeline.columns.switches"), width: 90, render: switchNum("switches") },
+    { key: "yielded", title: t("timeline.columns.yielded"), width: 90, render: switchNum("yielded") },
+    { key: "yielded_to", title: t("timeline.columns.yieldedTo"), width: 90, render: switchNum("yielded_to") },
+    { key: "held", title: t("timeline.columns.held"), width: 110, render: num("held_requests") },
+    { key: "p50", title: t("timeline.columns.waitP50"), width: 100, render: (_: unknown, row) => <span className="scheduling-num">{waitText(t, row.wait_p50_ms)}</span> },
+    { key: "p95", title: t("timeline.columns.waitP95"), width: 100, render: (_: unknown, row) => <span className="scheduling-num">{waitText(t, row.wait_p95_ms)}</span> },
+  ];
+  return (
+    <ResourceTable<TimelineDeployment>
+      tableId="scheduling-sharing"
+      columns={columns}
+      data={rows}
+      rowKey={(row) => String(row.deployment_id)}
+      pagination={false}
+      columnSettings={false}
+      emptyDescription={t("timeline.sharingEmpty")}
+    />
+  );
+}
+
+/**
+ * ScopeHint is the info mark beside the stats' title when the server says
+ * the figures count only the replicas on the page's nodes, reachable by
+ * keyboard, its tooltip opening on focus as on hover. Over the fleet there is
+ * nothing to say.
+ */
+export function ScopeHint({ scope }: { scope: TimelineScope | undefined }) {
+  const { t } = useTranslation("scheduling");
+  if (scope !== "node") return null;
+  const text = t("timeline.scopeNode");
+  return (
+    <Tooltip title={text} trigger={["hover", "focus"]}>
+      <InfoCircleOutlined role="img" aria-label={text} tabIndex={0} style={{ color: colors.muted, fontSize: 13, marginLeft: 6, cursor: "help" }} />
+    </Tooltip>
+  );
+}
+
+// NODE_MARK is where the wording puts the node's name, rendered as its link.
+const NODE_MARK = "\u0000node\u0000";
+
+// DeploymentName links to a deployment, or - when it was deleted - names it,
+// greyed and marked, with no page to open, as the scheduling history does.
+function DeploymentName({ row }: { row: TimelineDeployment }) {
+  const { t } = useTranslation("scheduling");
+  if (row.deployment_deleted) return <Typography.Text type="secondary">{t("history.deleted", { name: row.deployment || `#${row.deployment_id}` })}</Typography.Text>;
+  return <Link to={`/deployments?deployment=${row.deployment_id}`}>{row.deployment}</Link>;
+}
+
+// CardsCell lists where a deployment is now, one node per line: its name (or
+// id when the node is gone), which opens its drawer, and the GPUs its
+// instances hold there.
+function CardsCell({ cards }: { cards: TimelineCards[] | undefined }) {
+  const { t } = useTranslation("scheduling");
+  if (!cards?.length) return <span>—</span>;
+  return (
+    <span className="scheduling-cards">
+      {cards.map((entry) => (
+        <span key={entry.node_id} style={{ display: "block" }}>
+          {t("timeline.cardsOnNode", { node: NODE_MARK, gpus: entry.gpus.join(", ") || "—" }).split(NODE_MARK).map((part, index) => (
+            <Fragment key={index}>
+              {index > 0 && <NodeLink uuid={entry.node_uuid} name={entry.node || `#${entry.node_id}`} />}
+              {part}
+            </Fragment>
+          ))}
+        </span>
+      ))}
+    </span>
+  );
+}

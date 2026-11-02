@@ -18,6 +18,29 @@ A local server started with `make run-server` listens on `:8800` by default and 
 `make demo` uses a separate `127.0.0.1:8099` address and a temporary directory, and generates an administrator password for the current run.
 When the script exits, it cleans up the processes and temporary directory it created.
 
+## Browser E2E
+
+E2E needs more than a build, in four layers: Playwright with system Chrome only,
+then adding `bin/gpuworks`, then `bin/gpuworks-agent`, then a Docker daemon. Most
+development work lands in the first two and needs no GPU. The full list, how many
+scripts each layer covers, and how to diagnose a missing dependency are in
+[test/e2e/RUNNING.md](../../test/e2e/RUNNING.md).
+
+```bash
+# Python dependencies (add --user outside a virtualenv)
+python3 -m pip install -r requirements-e2e.txt
+google-chrome --version          # the tests use channel="chrome" and never download chromium
+
+make build                       # produces bin/gpuworks and bin/gpuworks-agent
+make test-e2e-smoke              # shortest path: real Chrome, isolated server, SQLite
+make test-e2e-docker-check       # whether the Docker-class cases can run here
+```
+
+`check-libvgpu` needs `objdump` (`apt install binutils`). **Do not export `GO`, `CGO_ENABLED`,
+`GOTOOLCHAIN` or `GOMAXPROCS`**: they break the `$(GO)` expansion inside the `cross-agents`
+loop, whose symptom is `/bin/sh: 4: build: not found` and has nothing to do with a real
+compile error. To pick a toolchain, pass `make ... GO=<absolute path>`.
+
 ## Start the Backend and Frontend Separately
 
 Open a terminal at the repository root, start the backend, and leave it running:

@@ -26,14 +26,15 @@ import (
 // /gpus - and deliberately reuses that same allocation ledger, so a
 // deployment's VRAM claim agrees between the two endpoints.
 type monitorInventoryAdapter struct {
-	store *store.Store
+	store       *store.Store
+	preparation api.ModelPreparation
 }
 
 // newMonitorAPIService builds the monitorapi.Service app.go wires into
 // api.Deps.Monitor. now defaults to time.Now (nil is only ever passed by
 // tests that want a fixed clock).
-func newMonitorAPIService(st *store.Store, ts tsdb.Store, now func() time.Time, requests monitorapi.RequestSource, health func(uint) healthcheck.Health) *monitorapi.Service {
-	a := &monitorInventoryAdapter{store: st}
+func newMonitorAPIService(st *store.Store, ts tsdb.Store, now func() time.Time, requests monitorapi.RequestSource, health func(uint) healthcheck.Health, preparation api.ModelPreparation) *monitorapi.Service {
+	a := &monitorInventoryAdapter{store: st, preparation: preparation}
 	return monitorapi.New(monitorapi.Deps{
 		TSDB:             ts,
 		Inventory:        a.inventory,
@@ -53,10 +54,12 @@ func newMonitorAPIService(st *store.Store, ts tsdb.Store, now func() time.Time, 
 }
 
 // inventory reads the current deployments/instances/nodes/GPUs from the
-// store into monitor's read-only snapshot shape. GPU allocation uses
-// planning.GPUAllocations - the same ledger internal/server/api/gpus.go
-// reads for /gpus - so a deployment's VRAM claim agrees between the two
-// endpoints.
+// store into monitor's read-only snapshot shape. GPU allocation uses the
+// planning ledger - the same arithmetic as planning.GPUAllocations, which
+// internal/server/api/gpus.go reads for /gpus, here charged for the whole
+// fleet in one pass (planning.FleetAllocations) - so a deployment's VRAM
+// claim agrees between the two endpoints and the number of reads does not
+// grow with the node count.
 func (a *monitorInventoryAdapter) inventory(ctx context.Context) (monitor.Inventory, error) {
 	if err := ctx.Err(); err != nil {
 		return monitor.Inventory{}, err
@@ -73,14 +76,28 @@ func (a *monitorInventoryAdapter) inventory(ctx context.Context) (monitor.Invent
 	if err != nil {
 		return monitor.Inventory{}, err
 	}
+	states, err := api.DeploymentRuntimeStates(a.store, a.preparation, deployments, instances)
+	if err != nil {
+		return monitor.Inventory{}, err
+	}
 
 	inv := monitor.Inventory{
 		Deployments: make([]monitor.DeploymentRef, 0, len(deployments)),
 		Instances:   make([]monitor.InstanceRef, 0, len(instances)),
 		Nodes:       make([]monitor.NodeRef, 0, len(nodes)),
 	}
+	online := make(map[uint]bool, len(nodes))
+	for _, node := range nodes {
+		online[node.ID] = node.State == store.NodeStateOnline
+	}
+	instancesByDeployment := make(map[uint][]store.Instance)
+	for _, inst := range planning.OnlineInstances(instances, func(id uint) bool { return online[id] }) {
+		instancesByDeployment[inst.DeploymentID] = append(instancesByDeployment[inst.DeploymentID], inst)
+	}
 	for i := range deployments {
-		inv.Deployments = append(inv.Deployments, deploymentRef(&deployments[i]))
+		ref := deploymentRef(&deployments[i], instancesByDeployment[deployments[i].ID])
+		ref.RuntimeState = states[ref.ID]
+		inv.Deployments = append(inv.Deployments, ref)
 	}
 
 	nodeUUIDByID := make(map[uint]string, len(nodes))
@@ -90,12 +107,17 @@ func (a *monitorInventoryAdapter) inventory(ctx context.Context) (monitor.Invent
 	for i := range instances {
 		inv.Instances = append(inv.Instances, instanceRef(&instances[i], nodeUUIDByID))
 	}
+	// One pass charges every node from the instances and deployments read
+	// above, instead of one instance read per node (planning.GPUAllocations).
+	allocations, err := planning.FleetAllocations(a.store, nodes, instances, deployments)
+	if err != nil {
+		return monitor.Inventory{}, err
+	}
 	for i := range nodes {
 		n := &nodes[i]
 		inv.Nodes = append(inv.Nodes, nodeRef(n))
-		allocations := planning.GPUAllocations(a.store, n)
 		for _, gpu := range n.OwnedGPUs() {
-			alloc := allocations[gpu.Index]
+			alloc := allocations[n.ID][gpu.Index]
 			inv.GPUs = append(inv.GPUs, monitor.GPURef{
 				NodeUUID: n.UUID, Index: gpu.Index, UUID: gpu.UUID,
 				MemoryTotalBytes: gpu.MemoryTotal, AllocatedBytes: alloc.AllocatedBytes, Healthy: gpu.Healthy(),
@@ -123,16 +145,33 @@ func (a *monitorInventoryAdapter) deploymentEvents(_ context.Context, deployment
 	return out, nil
 }
 
-func deploymentRef(d *store.Deployment) monitor.DeploymentRef {
+func deploymentRef(d *store.Deployment, instances []store.Instance) monitor.DeploymentRef {
+	count := 0
+	incomplete := planning.GroupsIncomplete(instances)
+	for _, inst := range instances {
+		headless := inst.Headless
+		if spec, ok := desiredState(inst.DesiredStateJSON); ok {
+			headless = headless || spec.Headless
+		}
+		if inst.State == proto.InstRunning && !planning.InstanceAsleep(&inst) && !headless && !incomplete[inst.UUID] {
+			count++
+		}
+	}
+	ready := &count
 	desired, pd, transfer := d.Replicas, false, false
 	if placement := pdPlacement(d.Placement); placement != nil {
 		// A PD deployment's desired instances are its units, every role.
 		desired, pd = placement.InstanceCount(), true
+		count = 0
+		for _, role := range planning.PDStatusOf(placement, instances).Roles {
+			count += role.Ready
+		}
+		ready = &count
 		mode, _ := pdmode.Lookup(placement.Mode)
 		transfer = mode.TransferBytesMetric != ""
 	}
 	return monitor.DeploymentRef{
-		ID: d.ID, Name: d.Name, Engine: d.Engine, ReplicasDesired: desired,
+		ID: d.ID, Name: d.Name, Engine: d.Engine, ReplicasDesired: desired, ReplicasReady: ready,
 		ServedName: d.ServedName, SleepDesired: d.DesiredSleep,
 		PD: pd, PDTransferMetrics: transfer, HealthCheck: d.HealthCheck, HealthCheckThresholdSec: d.HealthCheckThresholdSec,
 		// NodeNames is left empty: DeploymentRef.NodeNames is only a
@@ -154,6 +193,9 @@ func instanceRef(i *store.Instance, nodeUUIDByID map[uint]string) monitor.Instan
 	return monitor.InstanceRef{
 		UUID: i.UUID, DeploymentID: i.DeploymentID, NodeUUID: nodeUUIDByID[i.NodeID],
 		State: i.State, GPUIndexes: parseIntSliceJSON(i.GPUIndexes), SleepLevel: i.SleepLevel,
+		// Asleep is the gateway's judgement, not the reported level: an
+		// instance under a sleep order it has not carried out is refused too.
+		Asleep:   planning.InstanceAsleep(i),
 		Headless: headless,
 		Role:     i.Role,
 	}

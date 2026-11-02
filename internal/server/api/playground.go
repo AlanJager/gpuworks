@@ -7,17 +7,16 @@ import (
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"gpuworks.ai/gpuworks/internal/server/inferenceapi"
+	"gpuworks.ai/gpuworks/internal/server/planning"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
 func (a *apiHandlers) playgroundModels(w http.ResponseWriter, r *http.Request) {
-	parameters, extraParameterPresets := playgroundDictionary()
 	catalog := dto.PlaygroundCatalog{
-		Models:                []dto.PlaygroundModel{},
-		Parameters:            parameters,
-		ExtraParameterPresets: extraParameterPresets,
-		StreamOptions:         playgroundStreamOptions(),
-		HTMLPreview:           dto.PlaygroundHTMLPreview{AllowNetwork: a.d.Store.SecurityPolicy().PlaygroundPreviewNetwork},
+		Models:        []dto.PlaygroundModel{},
+		Parameters:    playgroundParameters(),
+		StreamOptions: playgroundStreamOptions(),
+		HTMLPreview:   dto.PlaygroundHTMLPreview{AllowNetwork: a.d.Store.SecurityPolicy().PlaygroundPreviewNetwork},
 	}
 
 	deps, err := a.d.Store.ListDeployments()
@@ -64,14 +63,14 @@ func (a *apiHandlers) playgroundModels(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		modelView := a.modelDTO(model, false)
-		sleeping := false
-		for _, instance := range candidate.instances {
-			if instance.SleepLevel > 0 {
-				sleeping = true
-				break
-			}
-		}
-		contract := inferenceapi.ResolveDeploymentContract(a.d.Store, dep, candidate.instances)
+		// The page offers a wake exactly when the gateway refuses every request
+		// of the deployment for sleep, which is what score 1 means: at least one
+		// instance fills a replica, and every one of them is asleep. A
+		// deployment some of whose replicas are awake is served by them, so it
+		// needs no wake.
+		sleeping := candidate.score == 1
+		contract := inferenceapi.ResolveDeploymentContract(a.d.Store, dep)
+		contract.Operations = omitUnservedTranscription(contract.Operations, candidate.instances)
 		if len(contract.Operations) == 0 {
 			// An explicitly empty or invalid model operation configuration has no
 			// callable Playground entry. Do not synthesize Chat as a fallback.
@@ -87,21 +86,27 @@ func (a *apiHandlers) playgroundModels(w http.ResponseWriter, r *http.Request) {
 		catalog.Models = append(catalog.Models, dto.PlaygroundModel{
 			ID: dep.ServedName, Label: dep.ServedName, Operations: playgroundOperations(contract, dep.ServedName),
 			InputModalities: modelView.InputModalities, ContextLength: model.ContextLength,
-			Sleeping: sleeping, DeploymentID: dep.ID, TemplateID: dep.TemplateID, TemplateSpecSource: dep.TemplateSpecSource, TemplateSpecName: dep.TemplateSpecName, PublicDataPlane: true,
-			ThinkingToggle: playgroundThinkingToggleEnabled(dep.Engine, dep.ServedName, model, hasChat),
+			Sleeping: sleeping, WakesOnRequest: sleeping && planning.RequestWakes(dep, candidate.instances), DeploymentID: dep.ID, TemplateID: dep.TemplateID, TemplateSpecSource: dep.TemplateSpecSource, TemplateSpecName: dep.TemplateSpecName, PublicDataPlane: true,
+			ExtraParameterPresets: playgroundPresets(playgroundThinkingSwitchFor(dep.Engine, dep.ServedName, model, hasChat)),
 		})
 	}
 
 	writeJSON(w, http.StatusOK, catalog)
 }
 
+// playgroundDeploymentScore ranks a deployment's instances for the catalog: 2
+// when one of them can answer now, 1 when they all sleep (the page offers a
+// wake), 0 when none could serve whatever happens (a failed or starting
+// deployment is not a model the page lists). Sleep here is the gateway's
+// judgement, so a replica under a sleep order it has not carried out yet is
+// not counted as able to answer.
 func playgroundDeploymentScore(instances []store.Instance) int {
 	score := 0
 	for _, instance := range instances {
 		if instance.State != proto.InstRunning || instance.Headless || instance.APIPort <= 0 {
 			continue
 		}
-		if instance.SleepLevel == 0 {
+		if !planning.InstanceAsleep(&instance) {
 			return 2
 		}
 		score = 1
@@ -131,4 +136,30 @@ func playgroundOperations(contract inferenceapi.Contract, model string) []dto.Pl
 		result = append(result, operationView)
 	}
 	return result
+}
+
+// omitUnservedTranscription drops openai.audio.transcribe when a running
+// replica has published an OpenAPI document that does not list
+// /v1/audio/transcriptions. An unknown observation leaves the declared
+// contract unchanged.
+func omitUnservedTranscription(operations []inferenceapi.Operation, instances []store.Instance) []inferenceapi.Operation {
+	known, present := false, false
+	for _, instance := range instances {
+		if instance.Headless || instance.State != proto.InstRunning || instance.TranscriptionServed == nil {
+			continue
+		}
+		known = true
+		present = present || *instance.TranscriptionServed
+	}
+	if !known || present {
+		return operations
+	}
+	kept := make([]inferenceapi.Operation, 0, len(operations))
+	for _, operation := range operations {
+		if operation.Type == inferenceapi.OperationAudioTranscribe {
+			continue
+		}
+		kept = append(kept, operation)
+	}
+	return kept
 }

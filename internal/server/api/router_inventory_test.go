@@ -72,6 +72,8 @@ func TestAPIKeyCreationRouteRequiresAuthenticationAndPost(t *testing.T) {
 		{http.MethodPost, "/api/v1/apikeys", "", http.StatusUnauthorized},
 		{http.MethodPatch, "/api/v1/apikeys", rig.session, http.StatusMethodNotAllowed},
 		{http.MethodPost, "/api/v1/apikeys/not-a-route/unknown", rig.session, http.StatusNotFound},
+		{http.MethodPut, "/api/v1/apikeys/gw-x/scope", "", http.StatusUnauthorized},
+		{http.MethodPost, "/api/v1/apikeys/gw-x/scope", rig.session, http.StatusMethodNotAllowed},
 	} {
 		if rec := rig.do(tc.token, tc.method, tc.path, `{"name":"client"}`); rec.Code != tc.status {
 			t.Errorf("%s %s: %d, want %d", tc.method, tc.path, rec.Code, tc.status)
@@ -84,6 +86,8 @@ DELETE /api/v1/ai/configs/{id}
 DELETE /api/v1/apikeys/{prefix}
 DELETE /api/v1/benchmarks/{id}
 DELETE /api/v1/deployments/{id}
+DELETE /api/v1/deployments/{id}/schedule/{sid}
+DELETE /api/v1/deployments/{id}/wake-waiting
 DELETE /api/v1/image-series/{id}
 DELETE /api/v1/images/{id}
 DELETE /api/v1/images/{id}/nodes/{uuid}
@@ -106,6 +110,9 @@ DELETE /api/v1/pull/sync-groups/{id}
 DELETE /api/v1/storages/{id}
 DELETE /api/v1/storages/{id}/cache
 DELETE /api/v1/storages/{id}/files
+GET /api/v1/agent-upgrades
+GET /api/v1/agent-upgrades/{id}
+GET /api/v1/agent-upgrades/{id}/items
 GET /api/v1/agent/connect
 GET /api/v1/agent/rejects
 GET /api/v1/agent/upgrade-errors
@@ -120,6 +127,10 @@ GET /api/v1/analytics/quality
 GET /api/v1/analytics/usage
 GET /api/v1/apikeys
 GET /api/v1/auth/me
+GET /api/v1/batches
+GET /api/v1/batches/dictionary
+GET /api/v1/batches/{id}
+GET /api/v1/batches/{id}/files/{kind}
 GET /api/v1/benchmarks
 GET /api/v1/benchmarks/meta
 GET /api/v1/benchmarks/{id}
@@ -133,10 +144,13 @@ GET /api/v1/data-retention/status
 GET /api/v1/deployments
 GET /api/v1/deployments/{id}
 GET /api/v1/deployments/{id}/candidates
+GET /api/v1/deployments/{id}/draft
 GET /api/v1/deployments/{id}/events
+GET /api/v1/deployments/{id}/schedule
 GET /api/v1/dgpus
 GET /api/v1/engines
 GET /api/v1/events
+GET /api/v1/experience
 GET /api/v1/gpus
 GET /api/v1/healthz
 GET /api/v1/images
@@ -182,6 +196,9 @@ GET /api/v1/nodes
 GET /api/v1/nodes/facets
 GET /api/v1/nodes/{uuid}
 GET /api/v1/nodes/{uuid}/fs
+GET /api/v1/nodes/{uuid}/health-checks
+GET /api/v1/nodes/{uuid}/health-checks/detail
+GET /api/v1/nodes/{uuid}/health-records
 GET /api/v1/nodes/{uuid}/network
 GET /api/v1/nodes/{uuid}/networks
 GET /api/v1/nodes/{uuid}/pull-proxy
@@ -204,6 +221,12 @@ GET /api/v1/pull/registry-credentials
 GET /api/v1/pull/source-rules
 GET /api/v1/pull/sync-groups
 GET /api/v1/routing-policies
+GET /api/v1/scheduling/activity
+GET /api/v1/scheduling/board
+GET /api/v1/scheduling/history
+GET /api/v1/scheduling/overview
+GET /api/v1/scheduling/timeline
+GET /api/v1/scheduling/yield-policies
 GET /api/v1/security/settings
 GET /api/v1/server/listen
 GET /api/v1/settings
@@ -222,6 +245,7 @@ GET /api/v1/updates
 GET /api/v1/usage-report
 GET /api/v1/usage-report/preview
 GET /healthz
+PATCH /api/v1/ai/configs/{id}
 PATCH /api/v1/branding
 PATCH /api/v1/images/versions/{id}
 PATCH /api/v1/images/{id}
@@ -234,12 +258,20 @@ PATCH /api/v1/security/settings
 PATCH /api/v1/storages/settings
 PATCH /api/v1/storages/{id}
 PATCH /api/v1/storages/{id}/node-overrides
+POST /api/v1/agent-upgrades
+POST /api/v1/agent-upgrades/preview
+POST /api/v1/agent-upgrades/{id}/continue-preview
+POST /api/v1/agent-upgrades/{id}/items/{uuid}/release
+POST /api/v1/agent-upgrades/{id}/stop
 POST /api/v1/ai/ask
 POST /api/v1/ai/configs
+POST /api/v1/ai/configs/test
 POST /api/v1/apikeys
 POST /api/v1/auth/activity
 POST /api/v1/auth/login
 POST /api/v1/auth/logout
+POST /api/v1/batches
+POST /api/v1/batches/{id}/cancel
 POST /api/v1/benchmarks
 POST /api/v1/benchmarks/datasets/import
 POST /api/v1/benchmarks/models
@@ -250,6 +282,7 @@ POST /api/v1/deployments
 POST /api/v1/deployments/preflight
 POST /api/v1/deployments/{id}/clone
 POST /api/v1/deployments/{id}/restart
+POST /api/v1/deployments/{id}/schedule
 POST /api/v1/deployments/{id}/sleep
 POST /api/v1/deployments/{id}/start
 POST /api/v1/deployments/{id}/stop
@@ -257,6 +290,8 @@ POST /api/v1/deployments/{id}/units/retry
 POST /api/v1/deployments/{id}/units/suggest
 POST /api/v1/deployments/{id}/wake
 POST /api/v1/evaluate
+POST /api/v1/experience/password
+POST /api/v1/experience/reset
 POST /api/v1/images/import
 POST /api/v1/images/preview-archive-url
 POST /api/v1/images/sync
@@ -282,6 +317,7 @@ POST /api/v1/models/quick-register
 POST /api/v1/models/register-url
 POST /api/v1/models/{id}/copy
 POST /api/v1/models/{id}/download
+POST /api/v1/models/{id}/download/cancel
 POST /api/v1/models/{id}/metadata/refresh
 POST /api/v1/models/{id}/nodes/{uuid}/cache/retry
 POST /api/v1/models/{id}/nodes/{uuid}/sync
@@ -299,6 +335,7 @@ POST /api/v1/nodes/install
 POST /api/v1/nodes/precheck
 POST /api/v1/nodes/{uuid}/doctor
 POST /api/v1/nodes/{uuid}/evict
+POST /api/v1/nodes/{uuid}/gpus/recheck
 POST /api/v1/nodes/{uuid}/recovery/probe
 POST /api/v1/nodes/{uuid}/runtime/restart
 POST /api/v1/nodes/{uuid}/token/regenerate
@@ -332,17 +369,25 @@ POST /api/v1/telemetry/export/test
 POST /api/v1/updates/prefetch
 POST /api/v1/updates/server
 POST /api/v1/updates/server/upload
+PUT /api/v1/apikeys/{prefix}/scope
 PUT /api/v1/data-retention
+PUT /api/v1/deployments/{id}
 PUT /api/v1/deployments/{id}/dgpu
 PUT /api/v1/deployments/{id}/health-check
+PUT /api/v1/deployments/{id}/node-replacement
 PUT /api/v1/deployments/{id}/pd
+PUT /api/v1/deployments/{id}/placement-mode
 PUT /api/v1/deployments/{id}/replicas
 PUT /api/v1/deployments/{id}/requirements
 PUT /api/v1/deployments/{id}/routing
+PUT /api/v1/deployments/{id}/schedule/{sid}
 PUT /api/v1/deployments/{id}/tokenize
+PUT /api/v1/deployments/{id}/yield-policy
+PUT /api/v1/experience/enabled
 PUT /api/v1/mcp/settings
 PUT /api/v1/networks/{id}
 PUT /api/v1/networks/{id}/attachments/{attachmentID}
+PUT /api/v1/nodes/{uuid}/gpus/scheduling
 PUT /api/v1/nodes/{uuid}/labels
 PUT /api/v1/nodes/{uuid}/management-roles
 PUT /api/v1/nodes/{uuid}/network

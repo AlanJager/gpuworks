@@ -146,6 +146,9 @@ func (m *RuntimeMountManager) ensureRoot(owner agentruntime.MountOwner) error {
 		return errors.New("runtime mount root is empty")
 	}
 	parent := filepath.Dir(m.root)
+	if err := agentruntime.PrepareAutoDLTraversal(parent, owner); err != nil {
+		return fmt.Errorf("prepare AutoDL runtime mount access: %w", err)
+	}
 	if m.legacy {
 		if err := m.preflight(m.root, owner, true); err != nil {
 			return err

@@ -171,7 +171,14 @@ func setupCloudNodeWithInstance(t *testing.T, env *testenv.Env, p cloudprovider.
 	}
 	lifetimeCtx, lifetimeCancel := context.WithTimeout(context.Background(), cloudTestLifetime)
 	t.Cleanup(lifetimeCancel)
-	setupCtx, setupCancel := context.WithTimeout(lifetimeCtx, cloudSetupTimeout)
+	// A provider that waits out a stock-out inside Rent (nothing is rented
+	// meanwhile) gets that wait on top of the setup budget, so waiting for
+	// capacity never eats the time the rented machine needs to come up.
+	setupBudget := cloudSetupTimeout
+	if waiter, ok := p.(cloudprovider.StockWaiter); ok && rented == nil {
+		setupBudget += waiter.StockWait()
+	}
+	setupCtx, setupCancel := context.WithTimeout(lifetimeCtx, setupBudget)
 	defer setupCancel()
 	instance := rented
 	if instance == nil {
@@ -187,6 +194,7 @@ func setupCloudNodeWithInstance(t *testing.T, env *testenv.Env, p cloudprovider.
 	}
 	state := &cloudTestEnv{Control: env, Provider: p, Instance: instance}
 	t.Cleanup(func() {
+		reportInterruption(t, p, instance)
 		if t.Failed() && os.Getenv("GPUWORKS_CLOUD_KEEP_ON_FAILURE") == "1" {
 			credentialPath, credentialErr := saveCloudDebugCredential(p, instance)
 			if credentialErr != nil {
@@ -225,9 +233,34 @@ func setupCloudNodeWithInstance(t *testing.T, env *testenv.Env, p cloudprovider.
 			t.Fatalf("a server-dialed install goes through the %s provider API, which has no credentials here", p.Name())
 		}
 		var err error
-		state.NodeUUID, err = installCloudAgentViaProviderAPI(setupCtx, t, env, p, instance, "")
+		var report providerInstallReport
+		state.NodeUUID, err = installCloudAgentViaProviderAPI(setupCtx, t, env, p, instance, "", &report)
 		if err != nil {
 			t.Fatalf("install server-dialed cloud agent: %v", err)
+		}
+		if report.QueuedDial != "" {
+			// The install's own dial missed and the server's redial loop owns
+			// the node now. Require it to get through in bounded time, so an
+			// address that never works fails here with the dial error rather
+			// than as a generic "not online" later.
+			t.Logf("server_dial install queued for reconnection (%s); waiting up to %s for the server to reach the node", report.QueuedDial, serverDialQueuedOnlineTimeout)
+			nodeState := func() (string, error) {
+				node, err := env.Store().NodeByUUID(state.NodeUUID)
+				if err != nil {
+					return "", err
+				}
+				return node.State, nil
+			}
+			probe := func() string {
+				node, err := env.Store().NodeByUUID(state.NodeUUID)
+				if err != nil {
+					return "node unreadable: " + err.Error()
+				}
+				return probeServerDialAddress(node.ServerDialAddress)
+			}
+			if err := waitQueuedDialNodeOnline(setupCtx, serverDialQueuedOnlineTimeout, time.Second, nodeState, probe, report.QueuedDial); err != nil {
+				t.Fatal(err)
+			}
 		}
 	} else if hasManagement && hasProviderCredentials(management) {
 		var err error
@@ -238,7 +271,7 @@ func setupCloudNodeWithInstance(t *testing.T, env *testenv.Env, p cloudprovider.
 		if err := verifyCloudServerForward(setupCtx, instance, state.Forward.URL()); err != nil {
 			t.Fatalf("verify cloud server forward: %v", err)
 		}
-		state.NodeUUID, err = installCloudAgentViaProviderAPI(setupCtx, t, env, p, instance, state.Forward.URL())
+		state.NodeUUID, err = installCloudAgentViaProviderAPI(setupCtx, t, env, p, instance, state.Forward.URL(), nil)
 		if err != nil {
 			if topologyCloudTest(t) && isCloudCapacityError(err) {
 				skipOrFailExternal(t, "cloud SSH session unavailable during agent install: %v", err)

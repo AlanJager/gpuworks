@@ -161,6 +161,11 @@ go list -e -f '{{.ImportPath}}{{"\t"}}{{join .Imports " "}}' ./... \
 子包读取节点/GPU 并管理资源占用；实际持久化职责未扩大，但包级直接导入数从 19 增加到 20，
 相应调整上限。公共 provider/controller 的接口和依赖不变。
 
+2026-10-31：调度活动（`docs/reference/api.md` 的「调度活动」）。新包 `internal/server/schedactivity` 按 store 交出的事件
+（`store.ObservedEvent`，事件写入后由 `store.SetEventObserver` 回调）在内存里累加最近 24 小时，并从 store 回放与读取部署名，
+`store_concrete_importers` 21→22；`api_deps_fields` 56→57（`Deps.SchedulingActivity`，调度活动路由、共卡部署统计与节点时间线
+共读的这份内存汇总，没有对应的 store 行）。
+
 ### api_fanout（初值 36）
 
 意图：`api` 包扇出全仓最高（计划 B1）。计数为 `api` 直接 import 的**本仓库**包数。
@@ -196,6 +201,11 @@ go list -e -f '{{join .Imports "\n"}}' ./internal/server/api \
 ```sh
 CGO_ENABLED=0 go run ./scripts/apiconv -opaque      # 加 -v 列出字段
 ```
+
+2026-10-26：编辑部署（`docs/reference/api.md#编辑部署`）40→43：`GET /deployments/{id}/draft` 把部署读回成创建请求
+`dto.DeployRequest` 本身，创建请求里原有的三个开放字段（按服务端参数字典取键的 `quick_params`、`placement`、
+`container_overrides`）因此也出现在响应里。它们是同一个请求契约，不是新加的不透明字段；编辑计划里逐字段的变化
+（`DeploymentChange.from/to`）用字符串而不是 `any`。
 
 排除：带 `MarshalJSON`/`MarshalText` 的类型自己决定编码，不计入。初值来自 API 规范统一时的实测：
 统一前 42，把节点拓扑、benchmark `long_tail`、agent 拒绝记录、终端会话改为具名 DTO 后为 40。

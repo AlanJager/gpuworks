@@ -3,12 +3,13 @@ package api
 import (
 	"encoding/json"
 	"math"
-	"net/url"
+	"sort"
 	"strings"
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
+	"gpuworks.ai/gpuworks/internal/server/automation"
 	"gpuworks.ai/gpuworks/internal/server/deploy"
 	"gpuworks.ai/gpuworks/internal/server/inferenceapi"
 	"gpuworks.ai/gpuworks/internal/server/planning"
@@ -72,6 +73,12 @@ func (a *apiHandlers) deploymentDTOFrom(rows dtoLookup, d *store.Deployment, wit
 	out.ExtraArgs = d.ExtraArgs
 	out.Health = a.deploymentHealth(d)
 	out.TokenizeEnabled = !d.TokenizeDisabled
+	out.YieldPolicy = dto.YieldPolicyOf(d.Policy())
+	out.WakeWaitLimitSec = int(automation.DefaultWakeWaitLimit / time.Second)
+	out.YieldPolicyEligible = dto.EligibilityOf(planning.YieldPolicyRefusal(d))
+	out.ScheduleCapabilities = scheduleCapabilitiesDTO(planning.ScheduleCapabilitiesOf(d))
+	out.NodeReplacement = dto.NodeReplacement{AfterSec: d.NodeReplaceAfterSec}
+	out.PlacementMode = unitsPlacementMode(d)
 	if strings.TrimSpace(d.QuickParams) != "" {
 		_ = json.Unmarshal([]byte(d.QuickParams), &out.QuickParams)
 	}
@@ -96,13 +103,39 @@ func (a *apiHandlers) deploymentDTOFrom(rows dtoLookup, d *store.Deployment, wit
 		redactAcquisitionSecrets(out.CatalogSelectionSnapshot)
 	}
 	insts := rows.instances(d.ID)
-	// One match serves every replica field of the response.
+	for i := range insts {
+		if since := insts[i].WakeWaitingSince; since != nil && (out.WakeWaitingSince == nil || since.Before(*out.WakeWaitingSince)) {
+			out.WakeWaitingSince = utcTimePtr(since)
+		}
+	}
+	// One match and one walk serve every replica field of the response:
+	// ready_replicas and asleep_replicas are two counts of the same replicas,
+	// judged by the predicate the gateway routes on, so no field of a row can
+	// disagree with another or with what the gateway answers.
 	view, viewErr := newReplicaView(rows, d, insts)
+	var facts deploymentFacts
 	if viewErr == nil {
-		out.PD = deploymentPDDTO(rows, d, insts, view)
+		facts = deploymentFactsOf(rows, view, insts)
+		out.PD = deploymentPDDTO(rows, d, insts, view, facts)
+		// ready_replicas answers the same question for a PD deployment as for
+		// an ordinary one, and the drawer pairs it with asleep_replicas, so it
+		// is filled from the same walk either way. Leaving it off a PD response
+		// was what made the drawer show a numerator with no denominator.
+		ready := facts.Ready
+		out.ReadyReplicas = &ready
+		if out.PD != nil {
+			// The stored Replicas only configures an ordinary deployment (PD
+			// creation forces it to 1), while asleep_replicas counts PD units
+			// across roles. Rewriting it to the role total here is the same
+			// rewrite the list row makes, so the drawer's denominator and the
+			// table's describe the same replicas instead of printing "2/1".
+			desired := 0
+			for _, role := range out.PD.Roles {
+				desired += role.Desired
+			}
+			out.Replicas = desired
+		}
 		if out.PD == nil {
-			ready := readyReplicas(view)
-			out.ReadyReplicas = &ready
 			out.RetryExhausted = ordinaryRetryExhausted(rows, view)
 			out.PlacementStatus = placementStatus(rows, d, view)
 			// Listed only while the stored node list reads: an unreadable
@@ -114,7 +147,7 @@ func (a *apiHandlers) deploymentDTOFrom(rows dtoLookup, d *store.Deployment, wit
 	}
 	out.Operations = []dto.DeploymentOperation{}
 	model := rows.model(d.ModelID)
-	contract := inferenceapi.ResolveDeploymentContract(nil, d, insts) // no operations
+	contract := inferenceapi.ResolveDeploymentContract(nil, d) // no operations
 	if model != nil && d.ModelID != 0 {
 		contract = inferenceapi.ModelContract(model)
 	}
@@ -150,7 +183,13 @@ func (a *apiHandlers) deploymentDTOFrom(rows dtoLookup, d *store.Deployment, wit
 	if primaryNode != nil {
 		out.NodeName = nodeDisplayName(primaryNode)
 	}
+	out.RuntimeNodes, out.RuntimeNodeNames = deploymentRuntimeNodes(rows, insts)
 	out.RuntimeState = deploymentRuntimeState(rows, d, insts, recorded)
+	out.SleepLevel = facts.Level
+	out.AsleepReplicas = facts.AsleepReplicas
+	out.SleepHold = facts.SleepHold()
+	out.SleepHeld = out.SleepHold == dto.SleepHoldAll
+	out.State = effectiveDeploymentState(d, out.RuntimeState, facts)
 	if withInstances {
 		out.NodeRequirementLabels = a.requirementLabels(out.NodeRequirements)
 		for i := range insts {
@@ -164,17 +203,111 @@ func (a *apiHandlers) deploymentDTOFrom(rows dtoLookup, d *store.Deployment, wit
 	return out
 }
 
+// instanceRecordsPresence reports whether an instance row still means the
+// deployment is on that node. Every state but stopped does: a stopped row
+// records that its container is gone and only waits to be deleted, so a
+// replica that moved away must not keep its old node on the list.
+//
+// Failed counts, and it is the case that matters most: a replica that failed
+// on a node ran there, holds that node's GPUs until the controller retires it,
+// and is where an operator goes for its logs. Reporting only the node the
+// deployment was still targeting at the time is what sent operators to the
+// wrong machine.
+func instanceRecordsPresence(state string) bool {
+	return state != proto.InstStopped
+}
+
+// deploymentRuntimeNodes is where the deployment's instances are, node by
+// node: one entry per node with how many instance rows it holds, and the same
+// names in the same order. The rows are the authority - the deployment's
+// placement target says where it was asked to run, and automatic placement,
+// retries and spreading all move instances away from it.
+//
+// An instance whose node row is missing is left out: it names no node a client
+// could show. Deleting a node requires that no instance still runs on it
+// (store.DeleteNode), so a listed instance nearly always resolves.
+//
+// The order is stable and independent of the instance order in the store, so
+// the same fleet answers the same bytes whatever order the rows came back in.
+func deploymentRuntimeNodes(rows dtoLookup, insts []store.Instance) ([]dto.DeploymentRuntimeNode, []string) {
+	if len(insts) == 0 {
+		return nil, nil
+	}
+	counts := map[uint]int{}
+	var order []uint
+	for _, instance := range insts {
+		if !instanceRecordsPresence(instance.State) {
+			continue
+		}
+		if _, seen := counts[instance.NodeID]; !seen {
+			order = append(order, instance.NodeID)
+		}
+		counts[instance.NodeID]++
+	}
+	out := make([]dto.DeploymentRuntimeNode, 0, len(order))
+	for _, nodeID := range order {
+		node := rows.node(nodeID)
+		if node == nil {
+			continue
+		}
+		out = append(out, dto.DeploymentRuntimeNode{
+			NodeUUID: node.UUID, NodeName: nodeDisplayName(node), Instances: counts[nodeID],
+		})
+	}
+	sort.SliceStable(out, func(a, b int) bool {
+		if out[a].NodeName != out[b].NodeName {
+			return out[a].NodeName < out[b].NodeName
+		}
+		return out[a].NodeUUID < out[b].NodeUUID
+	})
+	if len(out) == 0 {
+		return nil, nil
+	}
+	names := make([]string, 0, len(out))
+	for _, node := range out {
+		names = append(names, node.NodeName)
+	}
+	return out, names
+}
+
 // deploymentRuntimeState is the runtime_state the deployment DTO reports.
 func deploymentRuntimeState(rows dtoLookup, d *store.Deployment, insts []store.Instance, progress []dto.ModelNodePresence) string {
-	return deriveRuntimeState(d.State, insts, progress, scheduleStalled(rows, d.ID, len(insts)))
+	state := deriveRuntimeState(d.State, insts, progress, scheduleStalled(rows, d.ID, len(insts)))
+	if state != "running" {
+		return state
+	}
+	connected := onlineInstances(rows, insts)
+	incomplete := planning.GroupsIncomplete(connected)
+	for _, inst := range connected {
+		// Sleeping engines retain their runtime state; sleep is presented separately.
+		if inst.State == proto.InstRunning && !inst.Headless && !incomplete[inst.UUID] {
+			return state
+		}
+	}
+	for _, inst := range insts {
+		if inst.State == proto.InstRunning && !instanceNodeOnline(rows, inst.NodeID) {
+			return "offline"
+		}
+	}
+	return state
 }
 
 // effectiveDeploymentState is the one state a list shows for a deployment: a
 // delete in flight outranks whatever the runtime reports, as in the UI's
-// effectiveDeploymentState.
-func effectiveDeploymentState(d *store.Deployment, runtimeState string) string {
+// effectiveDeploymentState, and a deployment the gateway refuses every request
+// of because the replicas it needs sleep is asleep (or sleeping, while the
+// order is still being carried out) rather than the running state its engines
+// keep reporting.
+//
+// A partly slept deployment keeps the runtime state: its awake replicas serve,
+// and asleep_replicas says how many do not, so the row shows both instead of
+// passing itself off as entirely well or entirely asleep.
+func effectiveDeploymentState(d *store.Deployment, runtimeState string, facts deploymentFacts) string {
 	if d.State == store.DeployDeleting {
 		return deploymentStateDeleting
+	}
+	if runtimeState == "running" && facts.Asleep() {
+		return facts.State()
 	}
 	return runtimeState
 }
@@ -182,39 +315,7 @@ func effectiveDeploymentState(d *store.Deployment, runtimeState string) string {
 const deploymentStateDeleting = "deleting"
 
 // deploymentListStates are the states a deployment list can be filtered by.
-var deploymentListStates = []string{"pending", "pulling", "starting", "running", "failed", "stopped", deploymentStateDeleting}
-
-// redactAcquisitionSecrets prevents credentials embedded in an explicit proxy
-// URL from being returned by deployment read APIs or persisted snapshots.
-func redactAcquisitionSecrets(v any) {
-	switch x := v.(type) {
-	case map[string]any:
-		for k, value := range x {
-			if strings.EqualFold(k, "proxy") {
-				x[k] = redactProxy(value)
-				continue
-			}
-			redactAcquisitionSecrets(value)
-		}
-	case []any:
-		for _, value := range x {
-			redactAcquisitionSecrets(value)
-		}
-	}
-}
-
-func redactProxy(v any) any {
-	s, ok := v.(string)
-	if !ok || s == "" {
-		return v
-	}
-	u, err := url.Parse(s)
-	if err != nil || u.User == nil {
-		return s
-	}
-	u.User = url.User("REDACTED")
-	return u.String()
-}
+var deploymentListStates = []string{"pending", "pulling", "starting", "running", "offline", "failed", "stopped", deploymentStateDeleting, deploymentStateSleeping, deploymentStateAsleep}
 
 // scheduleStalled reports whether a deployment with no instance has been
 // refused a placement for longer than the configured timeout.
@@ -264,15 +365,14 @@ func deriveRuntimeState(desired store.DeploymentState, instances []store.Instanc
 	}
 	if len(instances) == 0 {
 		// No instance can exist yet until every required model file is
-		// present on the target node. MFFailed and MFDownloadRequired are
-		// both states that will never resolve on their own — the former is a
-		// definitive download/sync failure, the latter awaits an explicit
-		// operator action (start a public download or retry peer sync,
+		// present on the target node. Failed downloads, insufficient disk,
+		// and required downloads need operator action before they can proceed
+		// (free disk space, start a public download or retry peer sync,
 		// internal/server/controller/modelsync.go) — so without this check a
 		// permanently-blocked deployment looks identical to one that is
 		// merely queued and about to schedule normally.
 		for _, mp := range modelProgress {
-			if mp.State == proto.MFFailed || mp.State == proto.MFDownloadRequired {
+			if mp.State == proto.MFFailed || mp.State == proto.MFDownloadRequired || mp.State == proto.MFInsufficientDisk {
 				return "failed"
 			}
 		}
@@ -319,14 +419,17 @@ func deriveRuntimeState(desired store.DeploymentState, instances []store.Instanc
 		}
 	}
 	for _, instance := range instances {
-		// A draining instance is leaving while the rest serve; it does not
-		// make a running deployment read as starting.
-		if instance.State != proto.InstRunning && instance.State != proto.InstDraining && instance.State != proto.InstFailed && instance.State != proto.InstStopped && instance.State != proto.InstPendingRemoval {
+		// A draining or removing instance is leaving while the rest serve; it
+		// does not make a running deployment read as starting. A replica
+		// moved off an offline node stays removing until the node returns.
+		if instance.State != proto.InstRunning && instance.State != proto.InstDraining && instance.State != proto.InstRemoving && instance.State != proto.InstFailed && instance.State != proto.InstStopped && instance.State != proto.InstPendingRemoval {
 			return "starting"
 		}
 	}
-	if hasLive {
-		return "running"
+	for _, instance := range instances {
+		if instance.State == proto.InstRunning || instance.State == proto.InstDraining {
+			return "running"
+		}
 	}
 	return "starting"
 }
@@ -377,7 +480,7 @@ func (a *apiHandlers) instanceDTOFrom(rows dtoLookup, in *store.Instance) dto.In
 		UUID: in.UUID, DeploymentID: in.DeploymentID, State: in.State, ImageDigestID: in.ImageDigestID,
 		APIPort: in.APIPort, Image: in.Image, Message: in.Message, ContainerID: in.ContainerID,
 		Phase: in.Phase, Progress: in.Progress, BytesDone: in.BytesDone, BytesTotal: in.BytesTotal, RateBPS: in.RateBPS,
-		SleepLevel: in.SleepLevel, DesiredSleep: in.SleepIntent(), Asleep: planning.InstanceAsleep(in),
+		SleepLevel: in.SleepLevel, DesiredSleep: in.SleepIntent(), Asleep: planning.InstanceAsleep(in), SleepHeld: in.SleepHeld,
 		DistGroup: in.DistGroup, DistRole: instanceDistRole(in), NNodes: in.NNodes, NodeRank: in.NodeRank, Headless: in.Headless, DistAttempt: in.DistAttempt,
 		GPUIndexes: parseIntSlice(in.GPUIndexes), Ports: parseIntSlice(in.Ports), Role: in.Role,
 	}

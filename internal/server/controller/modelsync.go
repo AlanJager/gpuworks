@@ -30,10 +30,6 @@ type peerSource struct {
 	rateLimitKiB int64
 }
 
-func refOf(mf *store.ModelFile) store.FileRef {
-	return store.FileRef{ModelID: mf.ModelID, StorageID: mf.StorageID, NodeID: mf.NodeID}
-}
-
 // trySyncModelFromPeer starts getting a model into a node's local storage
 // from wherever it is cheapest: a shared storage mounted on the node, else a
 // peer. Any shared storage may serve; see syncModelWithin.
@@ -50,6 +46,9 @@ func (c *Controller) trySyncModelFromPeer(ctx context.Context, dstNode *store.No
 func (c *Controller) syncModelWithin(ctx context.Context, dstNode *store.Node, model *store.Model, dstMF *store.ModelFile, pinned []uint) (bool, error) {
 	if dstMF == nil {
 		return false, nil
+	}
+	if dstMF.State == proto.MFCanceled {
+		return true, nil
 	}
 	if dstMF.TransferSourceNodeID != 0 && (dstMF.State == proto.MFFailed || dstMF.State == proto.MFDownloadRequired) {
 		return true, nil // Only an explicit retry may restart a failed selected-source task.
@@ -279,6 +278,9 @@ func (c *Controller) automaticSyncFallback(node *store.Node, dstMF *store.ModelF
 		c.log.Warn("public download after failed peer sync", "model", model.ID, "node", node.UUID, "err", err)
 		return false
 	}
+	if err := c.store.SetDownloadDeployment(mf.ID, mf.TransferID, current.DownloadDeploymentID); err != nil {
+		return false
+	}
 	c.log.Info("peer sync failed, falling back to public download", "model", model.ID, "node", node.UUID)
 	_ = c.pushModelFile(node, mf, model)
 	return true
@@ -310,6 +312,11 @@ func (c *Controller) fallbackModelDownload(model *store.Model, node *store.Node,
 		}
 		mf, err := c.store.PrepareModelDownload(ref, path)
 		if err == nil {
+			if current != nil {
+				if err := c.store.SetDownloadDeployment(mf.ID, mf.TransferID, current.DownloadDeploymentID); err != nil {
+					return true, err
+				}
+			}
 			return true, c.pushModelFile(node, mf, model)
 		}
 		_ = c.store.SetModelSyncDownloadRequired(ref, "", "public model download unavailable: "+err.Error())
@@ -530,12 +537,8 @@ func (c *Controller) runModelSync(ctx context.Context, key string, run *modelSyn
 		return
 	}
 	if result.InProgress {
-		if result.TransferID != "" && result.TransferID != run.transferID {
-			run.transferID = result.TransferID
-			if err := c.store.BeginModelSync(refOf(dstMF), src.node.ID, result.TransferID, src.sizeBytes); err != nil {
-				c.log.Warn("adopt active target model sync failed", "model_file", key, "transfer", result.TransferID, "err", err)
-				return
-			}
+		if !c.adoptActiveModelSync(key, run, src, dstMF, result.TransferID) {
+			return
 		}
 		c.log.Info("model sync already active on target", "model_file", key, "transfer", result.TransferID)
 	} else {

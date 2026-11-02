@@ -17,6 +17,9 @@ type GPUHealthOverview struct {
 	Error   int `json:"error"`
 }
 
+// GPUAllocationOverview partitions physical devices by AllocationState.
+// Allocatable includes available and partial devices; Allocated includes only
+// allocated devices, never partial, unusable, or unreachable reservations.
 type GPUAllocationOverview struct {
 	Allocated   int `json:"allocated"`
 	Allocatable int `json:"allocatable"`
@@ -83,6 +86,14 @@ type PhysicalGPU struct {
 	// platform's instances account for. The other reason Schedulable can
 	// be false without anything ailing the card.
 	ForeignProcesses []proto.CardProcess `json:"foreign_processes,omitempty"`
+	// SchedulingStopped: an operator took the card out of scheduling; only
+	// they put it back. SchedulingAllowed: an operator let work onto it
+	// although the platform judged it unusable, until a report judges it
+	// afresh (about a minute). SchedulingActions are what an operator may do
+	// to it now (stopped, schedulable), decided by the server.
+	SchedulingStopped bool     `json:"scheduling_stopped,omitempty"`
+	SchedulingAllowed bool     `json:"scheduling_allowed,omitempty"`
+	SchedulingActions []string `json:"scheduling_actions,omitempty"`
 	// HealthStatus is the level, normalized when the card was stored, so
 	// it is always one of OK, Warning or Error.
 	HealthStatus   string           `json:"health_status,omitempty"`

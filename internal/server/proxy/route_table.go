@@ -38,7 +38,6 @@ type routeDeployment struct {
 	nnodes     int
 	policy     string
 	candidates []candidate
-	anyAsleep  bool
 	nodes      map[uint]string
 	// pd is set on a PD deployment: candidates then holds its decode
 	// instances and pd its prefill ones.
@@ -58,14 +57,15 @@ type routeTable struct {
 	dirty    chan struct{}
 	// urgent is dirty for a change that may alter which instances route
 	// (urgentOn): it rebuilds without waiting out routeEventRebuildGap.
-	urgent      chan struct{}
-	lastRebuild atomic.Int64
-	onRebuild   func(map[string]bool)
-	callbackMu  sync.RWMutex
-	mu          sync.Mutex
-	stop        chan struct{}
-	done        chan struct{}
-	running     bool
+	urgent           chan struct{}
+	lastRebuild      atomic.Int64
+	onRebuild        func(map[string]bool)
+	onInstanceChange func(string)
+	callbackMu       sync.RWMutex
+	mu               sync.Mutex
+	stop             chan struct{}
+	done             chan struct{}
+	running          bool
 }
 
 func newRouteTable(st *store.Store, networks Networks, hub Tunneler, log *slog.Logger) *routeTable {
@@ -134,6 +134,14 @@ func (r *routeTable) run(sub *bus.Subscription, stop <-chan struct{}, done chan<
 	for {
 		select {
 		case e := <-sub.C():
+			if e.Topic == "instance" && e.Reason != bus.ReasonProgress {
+				r.callbackMu.RLock()
+				callback := r.onInstanceChange
+				r.callbackMu.RUnlock()
+				if callback != nil {
+					callback(e.Key)
+				}
+			}
 			switch {
 			case !rebuildsOn(e):
 			case r.urgentOn(e):
@@ -308,13 +316,13 @@ func (r *routeTable) build() (*routeSnapshot, error) {
 		// leader's intent and level say whether the replica is asleep, and a
 		// follower is never skipped for its own.
 		if rd.nnodes > 1 {
-			if !in.Headless && planning.InstanceAsleep(in) {
-				rd.anyAsleep = true
-			}
 			continue
 		}
 		if !in.Headless && planning.InstanceAsleep(in) {
-			rd.anyAsleep = true
+			// The router decides whether the deployment is asleep from the
+			// instances it reads per request (selectDeploymentInstances), so the
+			// snapshot only records a PD deployment's asleep prefill counts,
+			// which wantsPrefill reads.
 			if rd.pd != nil {
 				rd.pd.noteAsleep(in)
 			}
@@ -447,4 +455,10 @@ func (r *routeTable) needsAffinity(name string) bool {
 		}
 	}
 	return false
+}
+
+func (r *routeTable) setOnInstanceChange(fn func(string)) {
+	r.callbackMu.Lock()
+	r.onInstanceChange = fn
+	r.callbackMu.Unlock()
 }

@@ -23,8 +23,7 @@ import (
 // sleepInstance orders the replica an instance fills to sleep (?level=1|2,
 // ?mode=wait|abort, as for the deployment).
 func (a *apiHandlers) sleepInstance(w http.ResponseWriter, r *http.Request) {
-	a.sleepMu.Lock()
-	defer a.sleepMu.Unlock()
+	defer planning.LockLifecycle()()
 	level, mode, ok := sleepOrderParams(w, r)
 	if !ok {
 		return
@@ -33,35 +32,49 @@ func (a *apiHandlers) sleepInstance(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if err := a.d.Store.OrderInstancesSleep(dep.ID, uuidsOf(members), level, mode); err != nil {
-		writeReplicaOrderErr(w, err)
+	if !a.orderSleep(w, dep, planning.SleepOrder{Pref: planning.SleepPreference(level), Mode: mode, Held: true, Instances: uuidsOf(members)}, writeReplicaOrderErr) {
 		return
 	}
+	a.sleepOrdered(r, dep.ID, level, mode, "replica", "", uuidsOf(members))
 	writeJSON(w, http.StatusOK, dto.SleepOrder{Status: "sleeping", Level: level, Mode: mode, Instances: uuidsOf(members)})
 }
 
 // wakeInstance wakes the replica an instance fills once its GPUs can take it
 // back, the same admission as for the deployment, for this replica alone.
 func (a *apiHandlers) wakeInstance(w http.ResponseWriter, r *http.Request) {
-	a.sleepMu.Lock()
-	defer a.sleepMu.Unlock()
+	defer planning.LockLifecycle()()
 	dep, members, ok := a.instanceSleepTarget(w, r, false)
 	if !ok {
 		return
 	}
-	_, refused, err := a.admitWake(dep, members, false)
+	insts, err := a.d.Store.InstancesForDeployment(dep.ID)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	match, err := a.deploymentUnitMatch(dep, insts)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	how, ok := wakeWaitParams(w, r)
+	if !ok {
+		return
+	}
+	if how.wait || how.yield {
+		a.wakeAndWait(w, r, dep, match, members, false, how)
+		return
+	}
+	woken, refused, err := planning.OrderWake(a.d.Store, dep, match, members, false, false)
+	if err != nil {
+		writeReplicaOrderErr(w, err)
 		return
 	}
 	if len(refused) > 0 {
 		writeWakeRefusal(w, refused)
 		return
 	}
-	if err := a.d.Store.OrderInstancesSleep(dep.ID, uuidsOf(members), 0, ""); err != nil {
-		writeReplicaOrderErr(w, err)
-		return
-	}
+	a.wakeOrdered(r, dep.ID, uuidsOf(woken))
 	writeJSON(w, http.StatusOK, dto.WakeResult{Status: "waking", Instances: uuidsOf(members)})
 }
 
@@ -114,49 +127,18 @@ func uuidsOf(insts []store.Instance) []string {
 	return out
 }
 
-// admitWake checks a wake of the named instances of a deployment
-// (planning.AdmitWake), grouped by the replica each fills so a partial wake
-// brings a multi-node replica back whole.
-func (a *apiHandlers) admitWake(dep *store.Deployment, named []store.Instance, partial bool) ([]store.Instance, []planning.WakeRefusal, error) {
-	insts, err := a.d.Store.InstancesForDeployment(dep.ID)
-	if err != nil {
-		return nil, nil, err
-	}
-	match, err := a.deploymentUnitMatch(dep, insts)
-	if err != nil {
-		return nil, nil, err
-	}
-	return planning.AdmitWake(a.d.Store, wakeGroups(match, named), partial)
-}
-
-// wakeGroups splits named instances by the replica they fill, in the order
-// they are named; an instance no replica claims is a group of its own.
-func wakeGroups(match planning.UnitMatch, named []store.Instance) [][]store.Instance {
-	var groups [][]store.Instance
-	at := map[*planning.UnitSlot]int{}
-	for _, in := range named {
-		slot := match.SlotOf(in.UUID)
-		if slot == nil {
-			groups = append(groups, []store.Instance{in})
-			continue
-		}
-		if index, seen := at[slot]; seen {
-			groups[index] = append(groups[index], in)
-			continue
-		}
-		at[slot] = len(groups)
-		groups = append(groups, []store.Instance{in})
-	}
-	return groups
-}
-
-// wakeRefusalDTO is a refusal as the wire lists it.
+// wakeRefusalDTO is a refusal as the wire lists it. A GPU held outside the
+// platform has no shortfall to add: how much it lacks is unknown.
 func wakeRefusalDTO(r planning.WakeRefusal) dto.WakeRefusal {
-	out := dto.WakeRefusal{Instances: uuidsOf(r.Instances), Node: displayNodeName(r.Node), GPUIndexes: []int{}, Occupants: []string{}}
+	out := dto.WakeRefusal{Instances: uuidsOf(r.Instances), Node: nodeDisplayName(r.Node), GPUIndexes: []int{}, Occupants: []string{}}
 	var shortfallBytes int64
 	for _, s := range r.Verdict.Shortfalls {
 		out.GPUIndexes = append(out.GPUIndexes, s.GPUIndex)
 		out.Occupants = appendUnique(out.Occupants, s.Occupants...)
+		if s.HeldOutside {
+			out.HeldOutside = true
+			continue
+		}
 		shortfallBytes += s.NeedBytes - s.FreeBytes
 	}
 	out.ShortfallGiB = fmt.Sprintf("%.1f", float64(shortfallBytes)/(1<<30))
@@ -164,25 +146,33 @@ func wakeRefusalDTO(r planning.WakeRefusal) dto.WakeRefusal {
 }
 
 // writeWakeRefusal answers a wake the GPUs cannot take with 409: the message
-// and params describe the first refusal, "refused" lists every one.
+// and params describe the first refusal, "refused" lists every one. A GPU a
+// process outside the platform holds is its own code: freeing it is not a
+// matter of stopping a deployment.
 func writeWakeRefusal(w http.ResponseWriter, refusals []planning.WakeRefusal) {
 	first := wakeRefusalDTO(refusals[0])
 	shortfalls := make([]map[string]any, 0, len(refusals[0].Verdict.Shortfalls))
 	for _, s := range refusals[0].Verdict.Shortfalls {
 		shortfalls = append(shortfalls, map[string]any{
-			"gpu_index": s.GPUIndex, "need_bytes": s.NeedBytes, "free_bytes": s.FreeBytes, "occupants": s.Occupants,
+			"gpu_index": s.GPUIndex, "need_bytes": s.NeedBytes, "free_bytes": s.FreeBytes, "occupants": s.Occupants, "held_outside": s.HeldOutside,
 		})
 	}
 	all := make([]dto.WakeRefusal, 0, len(refusals))
 	for _, r := range refusals {
 		all = append(all, wakeRefusalDTO(r))
 	}
+	params := map[string]any{
+		"node": first.Node, "gpu_indexes": first.GPUIndexes, "shortfall_gib": first.ShortfallGiB,
+		"occupants": first.Occupants, "shortfalls": shortfalls, "refused": all,
+	}
+	if first.HeldOutside {
+		writeProductError(w, http.StatusConflict, ErrorWakeGPUHeldOutside,
+			fmt.Sprintf("GPU %v on node %s is held by a process outside the platform; the sleeping instance stays asleep until it is gone", first.GPUIndexes, first.Node), params)
+		return
+	}
 	writeProductError(w, http.StatusConflict, ErrorWakeInsufficientGPUMemory,
 		fmt.Sprintf("GPU %v on node %s cannot take the sleeping instance back: %s GiB short; stop or sleep %s first", first.GPUIndexes, first.Node, first.ShortfallGiB, strings.Join(first.Occupants, ", ")),
-		map[string]any{
-			"node": first.Node, "gpu_indexes": first.GPUIndexes, "shortfall_gib": first.ShortfallGiB,
-			"occupants": first.Occupants, "shortfalls": shortfalls, "refused": all,
-		})
+		params)
 }
 
 // writeReplicaOrderErr answers an order that could not be written to a

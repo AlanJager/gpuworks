@@ -8,6 +8,7 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
+	"gpuworks.ai/gpuworks/internal/server/pdmode"
 	"gpuworks.ai/gpuworks/internal/server/planning"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
@@ -29,6 +30,11 @@ type replicaView struct {
 	// node UUIDs in the deployment's stored order.
 	names   map[string]string
 	ordered []string
+	// pd and mode are the deployment's roles: nil pd for an ordinary
+	// deployment, and mode as the placement names it (its zero value when the
+	// gateway does not know the name, which reads as no role being optional).
+	pd   *planning.PDPlacement
+	mode pdmode.Mode
 }
 
 func newReplicaView(rows dtoLookup, d *store.Deployment, insts []store.Instance) (replicaView, error) {
@@ -44,6 +50,10 @@ func newReplicaView(rows dtoLookup, d *store.Deployment, insts []store.Instance)
 	pd, err := planning.PDOf(d.Placement)
 	if err != nil {
 		return view, err
+	}
+	view.pd = pd
+	if pd != nil {
+		view.mode, _ = pdmode.Lookup(pd.Mode)
 	}
 	view.match = planning.MatchUnits(planning.UnitsOfDeployment(d, pd, uuids), insts, uuids, d.PlacementStrategy)
 	return view, nil
@@ -108,7 +118,12 @@ func (a *apiHandlers) retryUnit(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	a.d.Store.AddDeploymentEventCode(dep.ID, store.EventKindSchedule, store.EventUnitRetried, map[string]any{"role": req.Role, "unit": req.Index, "attempts": len(attempts)})
+	params := map[string]any{"role": req.Role, "unit": req.Index, "attempts": len(attempts)}
+	// Where the attempts given up on ran: they are removed after this.
+	if nodes, err := a.d.Store.NodeUUIDsOfInstances(uuidsOf(attempts)); err == nil && len(nodes) > 0 {
+		params[store.EventParamNodeUUIDs] = nodes
+	}
+	a.operatorEvent(r, dep.ID, store.EventUnitRetried, params)
 	updated, err := a.d.Store.GetDeployment(dep.ID)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err)
@@ -150,24 +165,12 @@ func ordinaryRetryExhausted(rows dtoLookup, view replicaView) *dto.DeploymentRet
 	return nil
 }
 
-// readyReplicas counts the replicas whose leader and every follower rank
-// are running.
-func readyReplicas(view replicaView) int {
-	n := 0
-	for _, slot := range view.match.Slots {
-		if slot.Inst == nil || slot.Inst.State != proto.InstRunning {
-			continue
-		}
-		ready := true
-		for _, f := range slot.Followers {
-			if f == nil || f.State != proto.InstRunning {
-				ready = false
-				break
-			}
-		}
-		if ready {
-			n++
-		}
-	}
-	return n
+// Read connection facts separately from the agent's last runtime observation.
+func instanceNodeOnline(rows dtoLookup, nodeID uint) bool {
+	n := rows.node(nodeID)
+	return n != nil && n.State == store.NodeStateOnline
+}
+
+func onlineInstances(rows dtoLookup, instances []store.Instance) []store.Instance {
+	return planning.OnlineInstances(instances, func(id uint) bool { return instanceNodeOnline(rows, id) })
 }

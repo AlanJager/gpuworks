@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -37,6 +38,7 @@ func main() {
 	}
 	autodlToken := envOrFile(root, "AUTODL_TOKEN")
 	giteeToken := envOrFile(root, "GITEE_API_TOKEN")
+	aliyunKeyID, aliyunKeySecret := envOrFile(root, "ALIYUN_ACCESS_KEY_ID"), envOrFile(root, "ALIYUN_ACCESS_KEY_SECRET")
 	var providers []cloudprovider.CloudProvider
 	if runpodKey != "" {
 		p, err := cloudprovider.NewRunpod(runpodKey, "cleanup")
@@ -61,6 +63,21 @@ func main() {
 	}
 	if autodlToken != "" {
 		p, err := cloudprovider.NewAutoDL(autodlToken, "cleanup")
+		if err != nil {
+			fatal(err)
+		}
+		providers = append(providers, p)
+	}
+	if aliyunKeyID != "" && aliyunKeySecret != "" {
+		// Aliyun instances are found by their gpuworks-test-<run-id> name in
+		// every region the key can list (ALIYUN_REGIONS narrows it), then
+		// released with their system disk; a disk that outlived its instance
+		// is reported and deleted by its run tag. The shared test network
+		// (VPC, vSwitches, security group) is long-lived and never touched.
+		p, err := cloudprovider.NewAliyun(cloudprovider.AliyunConfig{
+			AccessKeyID: aliyunKeyID, AccessKeySecret: aliyunKeySecret,
+			Regions: aliyunRegions(root),
+		}, "cleanup")
 		if err != nil {
 			fatal(err)
 		}
@@ -141,6 +158,36 @@ func main() {
 		if len(leaked) == 0 {
 			fmt.Printf("no leaked %s test instances found\n", provider.Name())
 		}
+		if disks, ok := provider.(orphanDiskCleaner); ok && !*allRuns {
+			cleanOrphanDisks(ctx, disks, strings.TrimSpace(*runID), *listOnly)
+		}
+	}
+}
+
+// orphanDiskCleaner is implemented by providers whose disks can outlive their
+// instance (Aliyun): the run tag still attributes them.
+type orphanDiskCleaner interface {
+	ListOrphanDisksForRunID(context.Context, string) ([]string, error)
+	DeleteOrphanDisk(context.Context, string) error
+}
+
+func cleanOrphanDisks(ctx context.Context, disks orphanDiskCleaner, runID string, listOnly bool) {
+	var found []string
+	if err := retry(ctx, func() (err error) { found, err = disks.ListOrphanDisksForRunID(ctx, runID); return }); err != nil {
+		fatal(fmt.Errorf("list leaked disks of run %s: %w", runID, err))
+	}
+	for _, id := range found {
+		if listOnly {
+			fmt.Printf("leaked aliyun disk %s\n", id)
+			continue
+		}
+		if err := retry(ctx, func() error { return disks.DeleteOrphanDisk(ctx, id) }); err != nil {
+			fatal(fmt.Errorf("delete leaked aliyun disk %s: %w", id, err))
+		}
+		fmt.Printf("deleted leaked aliyun disk %s\n", id)
+	}
+	if len(found) == 0 {
+		fmt.Println("no leaked aliyun disks found")
 	}
 }
 
@@ -167,6 +214,52 @@ func retry(ctx context.Context, call func() error) error {
 		}
 	}
 	return err
+}
+
+// aliyunRegions are the regions an Aliyun leak scan must cover without
+// exception: ALIYUN_REGIONS, else the regions that have a golden image
+// (ALIYUN_IMAGE_<REGION>, from the environment or the secrets files), which are
+// the only places a case rents in. With neither, the scan covers every region
+// the key can list and tolerates the ones it cannot.
+func aliyunRegions(root string) []string {
+	split := func(value string) []string {
+		return strings.FieldsFunc(value, func(r rune) bool { return r == ',' || r == ' ' })
+	}
+	if regions := split(envOrFile(root, "ALIYUN_REGIONS")); len(regions) > 0 {
+		return regions
+	}
+	const prefix = "ALIYUN_IMAGE_"
+	seen := map[string]bool{}
+	var regions []string
+	add := func(name, value string) {
+		region, ok := strings.CutPrefix(strings.TrimSpace(name), prefix)
+		if !ok || strings.TrimSpace(strings.Trim(strings.TrimSpace(value), "\"'")) == "" {
+			return
+		}
+		region = strings.ToLower(strings.ReplaceAll(region, "_", "-"))
+		if !seen[region] {
+			seen[region] = true
+			regions = append(regions, region)
+		}
+	}
+	for _, kv := range os.Environ() {
+		if name, value, ok := strings.Cut(kv, "="); ok {
+			add(name, value)
+		}
+	}
+	for _, filename := range []string{"cloud-providers.env", "cloud.env"} {
+		data, err := os.ReadFile(filepath.Join(root, "secrets", filename))
+		if err != nil {
+			continue
+		}
+		for _, line := range strings.Split(string(data), "\n") {
+			if name, value, ok := strings.Cut(strings.TrimSpace(line), "="); ok && !strings.HasPrefix(name, "#") {
+				add(name, value)
+			}
+		}
+	}
+	sort.Strings(regions)
+	return regions
 }
 
 func readPrivateKey(value string) []byte {

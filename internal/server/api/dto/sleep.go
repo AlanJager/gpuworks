@@ -22,12 +22,14 @@ type WakeResult struct {
 }
 
 // WakeRefusal is sleepers a node's GPUs cannot take back: the GPUs short, by
-// how much in total, and who is awake on them. A refused wake carries the same
-// fields as its error params.
+// how much in total, and who is awake on them. HeldOutside says a process
+// outside the platform holds one of the GPUs, whose use the platform cannot
+// see. A refused wake carries the same fields as its error params.
 type WakeRefusal struct {
 	Instances    []string `json:"instances"`
 	Node         string   `json:"node"`
 	GPUIndexes   []int    `json:"gpu_indexes"`
 	ShortfallGiB string   `json:"shortfall_gib"`
 	Occupants    []string `json:"occupants"`
+	HeldOutside  bool     `json:"held_outside,omitempty"`
 }

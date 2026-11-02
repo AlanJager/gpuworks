@@ -234,10 +234,7 @@ func (s *Service) Usage(ctx context.Context, q Query, f UsageFilter) (dto.UsageA
 }
 
 func sourceName(source uint8) string {
-	if uxrecord.Source(source) == uxrecord.SourcePlayground {
-		return "playground"
-	}
-	return "api"
+	return uxrecord.Source(source).String()
 }
 
 // KeyUsage is every key's tokens today and over the last 7 days.

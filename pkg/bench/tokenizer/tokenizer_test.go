@@ -48,6 +48,7 @@ func TestSampleJoinsByteLevelMultibyteSequenceBeforeUTF8Decode(t *testing.T) {
 }
 
 func TestLoadRefHTTPAndFallbackErrors(t *testing.T) {
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/tokenizer.json" {
 			http.NotFound(w, r)

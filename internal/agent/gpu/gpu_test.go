@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"gpuworks.ai/gpuworks/internal/accelerator"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -506,11 +507,45 @@ func TestNVIDIAProbeFallsBackWhenDriverRejectsHealthFields(t *testing.T) {
 	if err != nil || len(gpus) != 1 {
 		t.Fatalf("Probe = %+v, %v", gpus, err)
 	}
-	if len(queries) != 2 || strings.Contains(queries[1], "remapped_rows") || !strings.Contains(queries[1], "ecc.errors.uncorrected.aggregate.total") {
+	if len(queries) != 3 || strings.Contains(queries[2], "remapped_rows") || !strings.Contains(queries[2], "ecc.errors.uncorrected.aggregate.total") {
 		t.Fatalf("queries = %q", queries)
 	}
 	if gpus[0].Healthy || gpus[0].HealthCode != "memory_uncorrectable_errors" {
 		t.Fatalf("gpu = %+v", gpus[0])
+	}
+	// The next probe starts where this driver answered: the fields it does
+	// not know are not paid for every minute.
+	queries = nil
+	if _, err := p.Probe(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if len(queries) != 1 || strings.Contains(queries[0], "remapped_rows") {
+		t.Fatalf("second probe queries = %q, want only the one the driver answers", queries)
+	}
+}
+
+// The recovery the driver asks for (gpu_recovery_action, R550 and later)
+// follows the memory fields; "None" as read on gpu3 (driver 580) is no
+// finding.
+func TestNVIDIARecoveryAction(t *testing.T) {
+	for value, want := range map[string]string{
+		"None": "", "[N/A]": "", "": "",
+		"Reset": accelerator.HealthResetRequired, "Drain and Reset": accelerator.HealthResetRequired,
+		"Drain P2P": accelerator.HealthResetRequired, "Reboot": accelerator.HealthRebootRequired,
+		"Node Reboot": accelerator.HealthRebootRequired, "Something New": accelerator.HealthResetRequired,
+	} {
+		if got := nvidiaRecoveryCode(value); got != want {
+			t.Errorf("nvidiaRecoveryCode(%q) = %q, want %q", value, got, want)
+		}
+	}
+	gpus := parseNVIDIAInfo("0, GPU-a, NVIDIA H100, 81559, 9.0, 00000000:17:00.0, 580.126.09, 700, 0, 0, No, No, No, Reboot\n")
+	if len(gpus) != 1 || gpus[0].HealthCode != accelerator.HealthRebootRequired || gpus[0].Healthy ||
+		gpus[0].HealthMessage != "gpu_recovery_action=Reboot" {
+		t.Fatalf("gpu = %+v", gpus)
+	}
+	gpus = parseNVIDIAInfo("0, GPU-a, Quadro RTX 8000, 46080, 7.5, 00000000:17:00.0, 580.126.09, 260, 0, 0, No, No, No, None\n")
+	if len(gpus) != 1 || gpus[0].HealthCode != "" || !gpus[0].Healthy {
+		t.Fatalf("gpu = %+v", gpus)
 	}
 }
 

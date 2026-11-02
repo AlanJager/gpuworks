@@ -6,10 +6,12 @@ import (
 	"log/slog"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"gpuworks.ai/gpuworks/internal/accelerator"
 	"gpuworks.ai/gpuworks/internal/agent/engine"
 	"gpuworks.ai/gpuworks/internal/agent/gpu"
+	"gpuworks.ai/gpuworks/internal/agent/gpu/cardsmoke"
 	"gpuworks.ai/gpuworks/internal/agent/runtime/recording"
 	"gpuworks.ai/gpuworks/internal/proto"
 )
@@ -185,8 +187,16 @@ func TestARoundThatCannotFindOutRestatesTheLastAnswer(t *testing.T) {
 	}
 
 	// A round that does find out replaces the answer, including with
-	// "nobody": the process went away and the card is free again.
+	// "nobody": the process went away, and after occupancyReleaseRounds
+	// free readings in a row the card is free again.
 	prober.err, prober.procs = nil, nil
+	for i := 1; i < occupancyReleaseRounds; i++ {
+		cards = twoOwnedCards()
+		n.CardHealthFindings(context.Background(), cards, true)
+		if len(cards[1].ForeignProcesses) != 1 {
+			t.Fatalf("free reading %d let the card go early: %+v", i, cards[1].ForeignProcesses)
+		}
+	}
 	cards = twoOwnedCards()
 	n.CardHealthFindings(context.Background(), cards, true)
 	if len(cards[1].ForeignProcesses) != 0 {
@@ -298,13 +308,21 @@ func TestAReplayedSpecWithoutIdentitiesKeepsItsCardThroughTheEngine(t *testing.T
 			if len(cards[1].ForeignProcesses) != 0 {
 				t.Fatalf("the instance's own card = %+v, want it not called foreign", cards[1].ForeignProcesses)
 			}
-			// Withdrawn by the control plane: the same process is now
-			// somebody else's.
+			// Withdrawn by the control plane: once its teardown is over, a
+			// process still on the card is somebody else's. (While the
+			// teardown runs the card stays ours - engine.HeldCards.)
 			n.engine.SetDesiredFull(context.Background(), nil)
+			deadline := time.Now().Add(10 * time.Second)
+			for held := n.engine.HeldCards(); len(held.Idents)+len(held.Indexes) > 0; held = n.engine.HeldCards() {
+				if time.Now().After(deadline) {
+					t.Fatalf("the withdrawn instance's teardown never finished: %+v", held)
+				}
+				time.Sleep(10 * time.Millisecond)
+			}
 			cards = twoOwnedCards()
 			n.CardHealthFindings(context.Background(), cards, true)
 			if p := cards[1].ForeignProcesses; len(p) != 1 || p[0].PID != 1750 {
-				t.Fatalf("after the instance was withdrawn = %+v, want the process named", p)
+				t.Fatalf("after the instance was withdrawn and torn down = %+v, want the process named", p)
 			}
 		})
 	}
@@ -320,5 +338,73 @@ func TestCardsAreNamedEvenWhenTheProberCannotListProcesses(t *testing.T) {
 	n.CardHealthFindings(context.Background(), twoOwnedCards(), true)
 	if ours, known := n.cardsInUse(); !known || !ours[accelerator.CardIdent("GPU-40", "0000:40:00.0")] {
 		t.Fatalf("cardsInUse = %v known=%v, want device 1's card", ours, known)
+	}
+}
+
+// A card whose only instances of ours all sleep is examined after all: the
+// sleeping engine's own process is known, and anything else there is
+// somebody else's — a wake onto the card would run out of memory. Without a
+// known process for the sleeper the card is left alone, as before.
+func TestASleepersCardReportsAProcessThatIsNotItsEngine(t *testing.T) {
+	ident := accelerator.CardIdent("", "0000:3f:00.0")
+	n := occupancyNode(t, twoOwnedCards(), []gpu.ComputeProcess{
+		{PID: 7001, Name: "vllm", PCIeBDF: "0000:3f:00.0", MemoryBytes: 600 << 20},
+		{PID: 4242, Name: "python3", PCIeBDF: "00000000:3f:00.0", MemoryBytes: 4 << 30},
+	}, nil)
+	n.heldCards = func() engine.HeldCards { return engine.HeldCards{Idents: []string{ident}} }
+	n.sleepingCards = func() map[string]map[int]bool { return map[string]map[int]bool{ident: {7001: true}} }
+
+	cards := twoOwnedCards()
+	n.CardHealthFindings(context.Background(), cards, true)
+	if got := cards[0].ForeignProcesses; len(got) != 1 || got[0].PID != 4242 || got[0].MemoryBytes != 4<<30 {
+		t.Fatalf("the sleeper's card = %+v, want only the process that is not its engine", got)
+	}
+
+	// The sleeper's process unknown (its residue was not measured): the card
+	// is not examined.
+	n.sleepingCards = func() map[string]map[int]bool { return nil }
+	cards = twoOwnedCards()
+	n.CardHealthFindings(context.Background(), cards, true)
+	if len(cards[0].ForeignProcesses) != 0 {
+		t.Fatalf("a card of ours with unknown processes = %+v, want it left alone", cards[0].ForeignProcesses)
+	}
+}
+
+// The runtime check's own process on a card nobody uses is not somebody
+// outside the platform: while it runs, and for a moment after (the vendor
+// listing can be a few seconds old), the card keeps its last answer.
+func TestTheRuntimeChecksOwnProcessIsNotForeign(t *testing.T) {
+	now := time.Date(2026, 10, 31, 12, 0, 0, 0, time.UTC)
+	n := occupancyNode(t, twoOwnedCards(), []gpu.ComputeProcess{
+		{PID: 9001, Name: "python3", PCIeBDF: "0000:3f:00.0", MemoryBytes: 300 << 20},
+		{PID: 4242, Name: "python3", PCIeBDF: "0000:40:00.0", MemoryBytes: 8 << 30},
+	}, nil)
+	n.cardSmoke = cardsmoke.New(cardsmoke.Config{Now: func() time.Time { return now }})
+	checked := accelerator.CardIdent("GPU-3f", "0000:3f:00.0")
+
+	end := n.cardSmoke.Begin(checked)
+	cards := twoOwnedCards()
+	n.CardHealthFindings(context.Background(), cards, true)
+	if len(cards[0].ForeignProcesses) != 0 {
+		t.Fatalf("the card being checked = %+v, want the check's process left out", cards[0].ForeignProcesses)
+	}
+	if len(cards[1].ForeignProcesses) != 1 {
+		t.Fatalf("the other card = %+v, want its foreign process still named", cards[1].ForeignProcesses)
+	}
+
+	end()
+	now = now.Add(10 * time.Second)
+	cards = twoOwnedCards()
+	n.CardHealthFindings(context.Background(), cards, true)
+	if len(cards[0].ForeignProcesses) != 0 {
+		t.Fatal("a listing taken just after the check still blamed its process")
+	}
+
+	// Past the grace period a process there is somebody's.
+	now = now.Add(time.Minute)
+	cards = twoOwnedCards()
+	n.CardHealthFindings(context.Background(), cards, true)
+	if len(cards[0].ForeignProcesses) != 1 {
+		t.Fatalf("card = %+v, want the process reported once the check is long over", cards[0].ForeignProcesses)
 	}
 }

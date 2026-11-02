@@ -73,7 +73,7 @@ await i18n.use(initReactI18next).init({
 });
 
 const { MemoryRouter } = await import("react-router-dom");
-const { cleanup, fireEvent, render, screen, waitFor, within } = await import("@testing-library/react");
+const { act, cleanup, fireEvent, render, screen, waitFor, within } = await import("@testing-library/react");
 const { default: userEvent } = await import("@testing-library/user-event");
 const { api } = await import("../src/api.ts");
 const { default: NodesPage } = await import("../src/pages/NodesPage.tsx");
@@ -118,6 +118,10 @@ function gpuInfo(index: number): Node["gpus"][number] {
 }
 
 const originals = {
+  me: api.me,
+  agentUpgradeRuns: api.agentUpgradeRuns,
+  agentUpgradePreview: api.agentUpgradePreview,
+  createAgentUpgrade: api.createAgentUpgrade,
   nodes: api.nodes,
   nodesPage: api.nodesPage,
   health: api.health,
@@ -163,6 +167,8 @@ function nodesServer(nodes: Node[]) {
 
 function stubApi(nodes: Node[]) {
   pageQueries = [];
+  api.me = async () => ({ role: "admin" }) as never;
+  api.agentUpgradeRuns = async () => ({ items: [], total: 0, page: 1, page_size: 20 });
   api.nodes = async () => { throw new Error("the node page fetched every node"); };
   api.nodesPage = nodesServer(nodes);
   api.node = async (uuid: string) => {
@@ -223,13 +229,13 @@ test("the table uses a fixed layout with explicit widths; the name leads frozen 
   const table = container.querySelector(".ant-table-content table") as HTMLTableElement;
   assert.equal(table.style.tableLayout, "fixed");
   const cols = Array.from(table.querySelectorAll("colgroup col"));
-  // 10 shown columns; the agent version and creation time are offered but hidden by default.
-  assert.equal(cols.length, 10);
-  assert.equal((cols[0] as HTMLElement).style.width, "220px");
+  // A selection column plus 10 shown columns; the agent version and creation time are offered but hidden by default.
+  assert.equal(cols.length, 11);
+  assert.equal((cols[1] as HTMLElement).style.width, "220px");
   assert.equal((cols[cols.length - 1] as HTMLElement).style.width, "110px");
   const headers = screen.getAllByRole("columnheader");
-  assert.equal(headers[0].textContent, "Name");
-  assert.ok(headers[0].className.includes("ant-table-cell-fix-left"), "the name column is frozen left");
+  assert.equal(headers[1].textContent, "Name");
+  assert.ok(headers[1].className.includes("ant-table-cell-fix-left"), "the name column is frozen left");
   assert.equal(headers.at(-1)?.textContent, "Actions");
   assert.ok(headers.at(-1)?.className.includes("ant-table-cell-fix-right"), "the actions column is frozen right");
 });
@@ -705,4 +711,109 @@ test("a diagnosis opens its own tab", async () => {
   assert.equal(drawer.queryByRole("tab", { name: "Diagnosis" }), null);
   fireEvent.click(drawer.getByRole("button", { name: "Diagnose" }));
   await waitFor(() => assert.equal(drawer.getByRole("tab", { name: "Diagnosis" }).getAttribute("aria-selected"), "true"));
+});
+
+test("a node event reloads the list in the background, without the table's loading spinner", async () => {
+  stubApi([onlineNode]);
+  // The page keeps the fetcher it rendered with, so the stub decides per call.
+  let serve = nodesServer([onlineNode]);
+  api.nodesPage = (query) => serve(query);
+  renderPage();
+  await waitFor(() => assert.ok(screen.getByText("gpu-a100-node-01")));
+  await waitFor(() => assert.equal(document.querySelector(".ant-spin-spinning"), null));
+  const grown = nodesServer([onlineNode, offlineNode]);
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => { release = resolve; });
+  let reloads = 0;
+  serve = async (query) => { reloads++; await held; return grown(query); };
+
+  // Watch the whole reload, not one moment of it: a spinner that comes and
+  // goes between two checks is still the flicker this guards against.
+  let spun = false;
+  const watcher = new dom.window.MutationObserver(() => {
+    if (document.querySelector(".ant-spin-spinning")) spun = true;
+  });
+  watcher.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ["class"] });
+  // Every agent's once-a-minute status report reaches the page as one of these.
+  for (const listener of Events.listeners.get("node") ?? []) {
+    listener(new dom.window.MessageEvent("node", { data: JSON.stringify({ key: onlineNode.uuid, reason: "status" }) }) as unknown as Event);
+  }
+  await waitFor(() => assert.equal(reloads, 1, "the event did not reload the list"));
+  await act(async () => {}); // commit whatever the event's reload rendered
+  assert.ok(screen.getByText("gpu-a100-node-01"), "the current rows stay while the reload runs");
+
+  release();
+  await waitFor(() => assert.ok(screen.getByText("k8s-3-910c-host")));
+  watcher.disconnect();
+  assert.equal(spun, false, "the background reload spun the table");
+});
+
+
+test("batch upgrade retains checked nodes across pages and previews only those nodes", async (context) => {
+  const fleet = Array.from({ length: 12 }, (_, i) => ({ ...onlineNode, uuid: `batch-${i}`, name: `batch-node-${i}`, hostname: `10.1.0.${i}` }));
+  const { saveStoredPageSize, storageKey } = await import("../src/components/resourceTable/columnPrefs.ts");
+  const key = storageKey("nodes");
+  const previous = dom.window.localStorage.getItem(key);
+  context.after(() => { if (previous === null) dom.window.localStorage.removeItem(key); else dom.window.localStorage.setItem(key, previous); });
+  saveStoredPageSize("nodes", 10);
+  stubApi(fleet);
+  const requests: unknown[] = [];
+  api.agentUpgradePreview = async (body) => {
+    requests.push(body);
+    const nodes = [fleet[0], fleet[11]].map((node) => ({ node_uuid: node.uuid, name: node.name!, from_version: node.agent_version, os: node.os, arch: node.arch, transport: "push", eligibility: "eligible" }));
+    return { target_version: "0.9.8", manifest_fingerprint: "sealed", node_uuids: nodes.map((node) => node.node_uuid), nodes, counts: { eligible: 2 } };
+  };
+  renderPage(); await screen.findByText("batch-node-0");
+  const batch = screen.getByRole("button", { name: "Upgrade selected Agents" }) as HTMLButtonElement;
+  assert.equal(batch.disabled, true);
+  fireEvent.click(rowOf("batch-node-0").getByRole("checkbox"));
+  await screen.findByText("1 nodes selected");
+  fireEvent.click(screen.getByTitle("2")); await screen.findByText("batch-node-11");
+  fireEvent.click(rowOf("batch-node-11").getByRole("checkbox")); await screen.findByText("2 nodes selected");
+  fireEvent.click(screen.getByTitle("1")); await screen.findByText("batch-node-0");
+  assert.equal((rowOf("batch-node-0").getByRole("checkbox") as HTMLInputElement).checked, true);
+  fireEvent.click(batch); await screen.findByRole("dialog", { name: "Review Agent upgrade" });
+  assert.deepEqual(requests, [{ node_uuids: ["batch-0", "batch-11"] }]);
+});
+
+test("clear selection unchecks selected rows and disables batch upgrade", async () => {
+  stubApi([onlineNode, offlineNode]); renderPage();
+  await screen.findByText(onlineNode.name!);
+  fireEvent.click(rowOf(onlineNode.name!).getByRole("checkbox"));
+  fireEvent.click(rowOf(offlineNode.name!).getByRole("checkbox"));
+  await screen.findByText("2 nodes selected");
+  fireEvent.click(screen.getByRole("button", { name: "Clear selection" }));
+  assert.equal((rowOf(onlineNode.name!).getByRole("checkbox") as HTMLInputElement).checked, false);
+  assert.equal((rowOf(offlineNode.name!).getByRole("checkbox") as HTMLInputElement).checked, false);
+  assert.equal((screen.getByRole("button", { name: "Upgrade selected Agents" }) as HTMLButtonElement).disabled, true);
+  assert.ok(!screen.queryByText("2 nodes selected"));
+});
+
+test("a node-list refresh failure preserves an open upgrade preview and its retry identity", async () => {
+  stubApi([onlineNode]);
+  let failList = false;
+  const serve = nodesServer([onlineNode]);
+  api.nodesPage = async (query) => { if (failList) throw new Error("node list temporarily unavailable"); return serve(query); };
+  const submitted: Array<{ idempotency_key: string; node_uuids: string[] }> = [];
+  api.agentUpgradePreview = async () => ({ target_version: "0.9.8", manifest_fingerprint: "sealed", node_uuids: [onlineNode.uuid], nodes: [{ node_uuid: onlineNode.uuid, name: onlineNode.name!, from_version: "0.9.7", os: "linux", arch: "amd64", transport: "push", eligibility: "eligible" }], counts: { eligible: 1 } });
+  api.createAgentUpgrade = async (body) => { submitted.push(body); throw new Error("create response lost"); };
+  renderPage(); await screen.findByText(onlineNode.name!);
+  fireEvent.click(rowOf(onlineNode.name!).getByRole("checkbox"));
+  fireEvent.click(screen.getByRole("button", { name: "Upgrade selected Agents" }));
+  const modal = await screen.findByRole("dialog", { name: "Review Agent upgrade" });
+  await within(modal).findByText("0.9.7");
+  fireEvent.click(within(modal).getByRole("checkbox"));
+  fireEvent.click(within(modal).getByRole("button", { name: "Update to this version" }));
+  await within(modal).findByText("create response lost");
+  failList = true;
+  await act(async () => {
+    for (const listener of Events.listeners.get("node") ?? []) listener(new dom.window.MessageEvent("node", { data: JSON.stringify({ key: onlineNode.uuid, reason: "status" }) }) as unknown as Event);
+  });
+  await screen.findByText("node list temporarily unavailable");
+  assert.ok(screen.getByRole("dialog", { name: "Review Agent upgrade" }) === modal);
+  fireEvent.click(within(modal).getByRole("button", { name: "Update to this version" }));
+  await waitFor(() => assert.equal(submitted.length, 2));
+  assert.equal(submitted[0].idempotency_key, submitted[1].idempotency_key);
+  assert.deepEqual(submitted[1].node_uuids, [onlineNode.uuid]);
+  assert.ok(screen.getByRole("button", { name: "Recent Agent upgrades" }));
 });

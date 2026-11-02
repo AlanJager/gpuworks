@@ -50,7 +50,7 @@ specs:
         default: 体现撒娇稚嫩的萝莉女声，音调偏高
         label:
           en: Voice description
-          zh-CN: 音色描述
+          zh: 音色描述
       - name: language
         kind: select
         options:
@@ -68,7 +68,7 @@ specs:
         default: Auto
         label:
           en: Language
-          zh-CN: 语言
+          zh: 语言
 - name: bf16-voicedesign-1-7b-vllm-nvidia-general
   display_profile: general
   scenario: balanced
@@ -106,7 +106,7 @@ specs:
         default: 体现撒娇稚嫩的萝莉女声，音调偏高
         label:
           en: Voice description
-          zh-CN: 音色描述
+          zh: 音色描述
       - name: language
         kind: select
         options:
@@ -124,7 +124,7 @@ specs:
         default: Auto
         label:
           en: Language
-          zh-CN: 语言
+          zh: 语言
 - name: bf16-vllm-ppu-5ecdb673
   display_profile: general
   scenario: balanced
@@ -164,7 +164,7 @@ specs:
         default: 体现撒娇稚嫩的萝莉女声，音调偏高
         label:
           en: Voice description
-          zh-CN: 音色描述
+          zh: 音色描述
       - name: language
         kind: select
         options:
@@ -182,5 +182,5 @@ specs:
         default: Auto
         label:
           en: Language
-          zh-CN: 语言
+          zh: 语言
 input_modalities: [text]

@@ -39,7 +39,7 @@ flowchart LR
 | agent → server | 同一个端口，走 `127.0.0.1` | 节点接入（本机回路，无需对外放行） |
 
 只在本机使用时，防火墙不必开放任何端口；需要从别的机器访问控制台或 `/v1` 时开放监听地址上的端口。
-控制面与 agent 的默认安装目录互不覆盖（`/opt/gpuworks/server` 与 `/opt/gpuworks`），同机共存没有问题。经
+控制面与 agent 的默认安装目录互不覆盖（`/opt/gpuworks/server` 与 `/opt/gpuworks`，macOS 上 `~/gpuworks/server` 与 `~/gpuworks`），同机共存没有问题。经
 `127.0.0.1` 连接时，节点的"管理网地址"取默认路由所在网卡的地址。
 
 **怎么配置**：[安装和升级控制面](../how-to/install-server.md)，然后在节点页创建节点，把安装命令里的
@@ -248,7 +248,7 @@ flowchart LR
 - **推理请求**：客户端只访问同一个服务名，网关对 PD 部署先选 decode（沿用部署的路由策略），再选 prefill，两阶段
   交接由网关完成，引擎端口不对外暴露；网关到实例沿用 e 里的服务网或 agent 隧道。
 - **KV 传输**：NVIDIA 模式由 decode 从 prefill 拉取 KV，走**参数网络**——RDMA 网络最快，以太网可用但每个请求多一次
-  KV 拷贝；同节点的 P、D 走本机 TCP，适合验证。昇腾模式的 KV 走 NPU 自带的 RoCE 口，跨机时必须在加速器 RDMA 网络上
+  KV 拷贝；同节点的 P、D 走本机 TCP，适合验证。昇腾模式的 KV 走所选加速器 fabric：910B/910 的 RoCE 口或 A3/910C 的 HCCS，跨机时必须在加速器 RDMA 或加速器 HCCS 网络上
   （`PD_NETWORK_ACCELERATOR_REQUIRED`），prefill 与 decode 所在的 NPU 必须在 NPU 网络上互通。
 - **集合通信**：多机实例各 rank 之间（NCCL / Gloo）也走参数网络。
 

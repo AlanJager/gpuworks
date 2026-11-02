@@ -99,13 +99,13 @@ func (a *apiHandlers) restartDeployment(w http.ResponseWriter, r *http.Request) 
 		if a.restartRefused(w, dep, err) {
 			return
 		}
-		a.d.Store.AddDeploymentEventCode(dep.ID, store.EventKindSchedule, store.EventDeploymentRollingRestarted, map[string]any{"replicas": len(match.Slots)})
+		a.operatorEvent(r, dep.ID, store.EventDeploymentRollingRestarted, map[string]any{"replicas": len(match.Slots)})
 	} else {
 		restarted, err := a.d.Store.RestartDeploymentNow(dep.ID)
 		if a.restartRefused(w, dep, err) {
 			return
 		}
-		a.d.Store.AddDeploymentEventCode(dep.ID, store.EventKindSchedule, store.EventDeploymentRestarted, map[string]any{"instances": restarted})
+		a.operatorEvent(r, dep.ID, store.EventDeploymentRestarted, map[string]any{"instances": restarted})
 	}
 	updated, err := a.d.Store.GetDeployment(dep.ID)
 	if err != nil {

@@ -130,7 +130,7 @@ func TestParseHygonZ100Inventory(t *testing.T) {
 
 func TestHygonMetricsUseRealMemoryCapture(t *testing.T) {
 	p := &HygonProber{lastSeen: map[int]hygonIdentity{0: {uuid: "GPU-stable-zero"}}}
-	metrics := p.parseMetrics(readHygonFixture(t))
+	metrics := p.parseMetrics(readHygonFixture(t), "")
 	if len(metrics) != 2 {
 		t.Fatalf("metrics = %+v", metrics)
 	}
@@ -149,17 +149,24 @@ func TestHygonMetricsFallBackToProvenMemoryQuery(t *testing.T) {
 	var calls [][]string
 	p := &HygonProber{command: func(_ context.Context, args ...string) (string, error) {
 		calls = append(calls, append([]string(nil), args...))
-		if len(calls) == 1 {
+		switch strings.Join(args, " ") {
+		case "--showuse --showmeminfo vram --showtemp --showpower":
 			return "unsupported option", errors.New("exit status 2")
+		case "--showmeminfo vram":
+			return readHygonFixture(t), nil
+		case "":
+			return readHygonOverviewFixture(t), nil
+		default:
+			t.Fatalf("unexpected hy-smi arguments: %q", args)
+			return "", nil
 		}
-		return readHygonFixture(t), nil
 	}}
 	metrics, err := p.Metrics(t.Context())
 	if err != nil || len(metrics) != 2 {
 		t.Fatalf("Metrics() = %+v, %v", metrics, err)
 	}
-	wantFallback := []string{"--showmeminfo", "vram"}
-	if len(calls) != 2 || !reflect.DeepEqual(calls[1], wantFallback) {
+	wantFallback := [][]string{{"--showmeminfo", "vram"}, nil}
+	if len(calls) != 3 || !reflect.DeepEqual(calls[1:], wantFallback) {
 		t.Fatalf("calls = %+v, fallback want %+v", calls, wantFallback)
 	}
 }
@@ -186,12 +193,15 @@ func TestHygonRuntimeInjectionResolvesDRMFromPCI(t *testing.T) {
 		"--device", "/dev/mkfd:/dev/mkfd:rwm",
 		"--device", "/dev/dri/card2:/dev/dri/card2:rwm",
 		"--device", "/dev/dri/renderD129:/dev/dri/renderD129:rwm",
-		"--volume", "/opt/hyhal:/opt/hyhal:ro",
 		"--group-add", "39",
 		"--group-add", "998",
 	}
 	if !reflect.DeepEqual(inj.DockerArgs, wantArgs) {
 		t.Fatalf("docker args = %#v, want %#v", inj.DockerArgs, wantArgs)
+	}
+	wantMounts := []RuntimeMount{{Source: "/opt/hyhal", Target: "/opt/hyhal", ReadOnly: true}}
+	if !reflect.DeepEqual(inj.Mounts, wantMounts) {
+		t.Fatalf("driver library mounts = %#v, want %#v", inj.Mounts, wantMounts)
 	}
 }
 

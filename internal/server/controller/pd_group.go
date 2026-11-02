@@ -34,6 +34,9 @@ func (c *Controller) launchPDGeneration(ctx context.Context, deployment *unitDep
 	dep, pd := deployment.dep, deployment.pd
 	role := slot.Unit.Role
 	units := pd.placement.Units(role)
+	if surges := deployment.surgeUnits[role]; len(surges) > 0 {
+		units = append(append([]planning.PDUnit(nil), units...), surges...)
+	}
 	if slot.Unit.Index >= len(units) {
 		return false, fmt.Errorf("deployment %d: %s unit %d is not in the placement", dep.ID, role, slot.Unit.Index)
 	}
@@ -138,6 +141,9 @@ func (c *Controller) planPDRank(ctx context.Context, deployment *unitDeployment,
 	pd.placement.RankLaunch(pd.mode, launch.role, launch.unit, launch.rank.Rank, topology, launch.ports).Apply(&req)
 	plan, refusal, err := c.planInstanceLaunch(ctx, dep, node, req, templateLayer)
 	if err != nil || refusal != nil {
+		if refusal != nil {
+			refusal = c.pinnedGPUsRefusal(dep, node, req.Placement.GPUIndexes, refusal)
+		}
 		return nil, planning.PDRecord{}, refusal, err
 	}
 	record := launch.pd

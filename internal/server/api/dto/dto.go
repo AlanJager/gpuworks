@@ -52,11 +52,19 @@ type GPU struct {
 	// platform's instances account for, so it is not offered for work
 	// while they run.
 	ForeignProcesses []proto.CardProcess `json:"foreign_processes,omitempty"`
-	HealthStatus     string              `json:"health_status,omitempty"`
-	HealthCode       string              `json:"health_code,omitempty"`
-	HealthMessage    string              `json:"health_message,omitempty"`
-	HealthEvidence   []GPUHealthField    `json:"health_evidence,omitempty"`
-	HealthGuide      *GPUHealthGuide     `json:"health_guide,omitempty"`
+	// SchedulingStopped: an operator took the card out of scheduling; only
+	// they put it back. SchedulingAllowed: an operator let work onto it
+	// although the platform judged it unusable, until a report judges it
+	// afresh (about a minute). SchedulingActions are what an operator may do
+	// to it now (stopped, schedulable), decided by the server.
+	SchedulingStopped bool             `json:"scheduling_stopped,omitempty"`
+	SchedulingAllowed bool             `json:"scheduling_allowed,omitempty"`
+	SchedulingActions []string         `json:"scheduling_actions,omitempty"`
+	HealthStatus      string           `json:"health_status,omitempty"`
+	HealthCode        string           `json:"health_code,omitempty"`
+	HealthMessage     string           `json:"health_message,omitempty"`
+	HealthEvidence    []GPUHealthField `json:"health_evidence,omitempty"`
+	HealthGuide       *GPUHealthGuide  `json:"health_guide,omitempty"`
 }
 
 // Node is the API view of a store.Node.
@@ -64,8 +72,16 @@ type Node struct {
 	UUID string `json:"uuid"`
 	// Scheduling is schedulable, cordoned or draining.
 	Scheduling string `json:"scheduling"`
-	Name       string `json:"name,omitempty"`
-	Token      string `json:"token,omitempty"`
+	// SchedulingBy is who set Scheduling: operator or platform; absent on a
+	// schedulable node, or a cordon set before the author was recorded. The
+	// platform lifts only its own.
+	SchedulingBy string `json:"scheduling_by,omitempty"`
+	// CordonReason is why the platform holds the node out of scheduling
+	// now (runtime_gpu_blocked, card_needs_host_reboot); absent unless
+	// SchedulingBy is platform. A client renders the code in its language.
+	CordonReason string `json:"cordon_reason,omitempty"`
+	Name         string `json:"name,omitempty"`
+	Token        string `json:"token,omitempty"`
 	// InstallCommand installs this node's agent, and is also how a node
 	// whose agent the platform cannot restore itself is brought back. It
 	// carries the token, so it is returned only alongside it.
@@ -183,6 +199,15 @@ type Health struct {
 	Sessions int    `json:"sessions"`
 }
 
+// CardSchedulingRequest sets whether one card of a node takes new work: the
+// card is named by its PCI address (pcie_bdf), or by its UUID when it has
+// none; scheduling is stopped or schedulable.
+type CardSchedulingRequest struct {
+	PCIeBDF    string `json:"pcie_bdf,omitempty"`
+	UUID       string `json:"uuid,omitempty"`
+	Scheduling string `json:"scheduling"`
+}
+
 // NodeSchedulingRequest sets whether a node takes new replicas
 // (PUT /nodes/{uuid}/scheduling): schedulable, cordoned (nothing new is
 // launched there) or draining (cordoned, and the replicas a pool placed
@@ -194,21 +219,28 @@ type NodeSchedulingRequest struct {
 // NodeReplicas is what still runs on a node, for following a drain
 // (GET /nodes/{uuid}/replicas).
 type NodeReplicas struct {
-	Scheduling string        `json:"scheduling"`
-	Items      []NodeReplica `json:"items"`
+	DrainOffline bool          `json:"drain_offline,omitempty"`
+	Scheduling   string        `json:"scheduling"`
+	Items        []NodeReplica `json:"items"`
 }
 
 // NodeReplica is one instance on a node and whether a drain moves it: "pool"
 // replicas are replaced on another node; a "pinned" deployment names only
 // this node, so its replica waits until the node is schedulable or the
 // deployment's node requirements change; a "named" one is a multi-node or PD
-// rank that names its node and moves only when evicted.
+// rank that names its node: a drain starts its unit on other nodes first and
+// moves it once that runs, or it waits when no node fits.
 type NodeReplica struct {
 	Instance     string `json:"instance"`
 	DeploymentID uint   `json:"deployment_id"`
 	Deployment   string `json:"deployment"`
 	State        string `json:"state"`
 	Kind         string `json:"kind"`
+	// Latest scheduler feedback and failed attempt are observations, not a
+	// separate persisted drain state. Only populated while awaiting replacement.
+	DrainReason   *ScheduleReason `json:"drain_reason,omitempty"`
+	DrainReasonAt *time.Time      `json:"drain_reason_at,omitempty"`
+	DrainMessage  string          `json:"drain_message,omitempty"`
 }
 
 // NodeEviction is what POST /nodes/{uuid}/evict took off the node: the

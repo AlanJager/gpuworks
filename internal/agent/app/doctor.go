@@ -51,6 +51,13 @@ const diskLowPercent = 10
 // the node depends on (models root, container data, storages); the CLI has
 // none to offer.
 func buildDoctorReport(ctx context.Context, p gpu.Prober, disks []proto.PathUsage, drivers ...runtime.Driver) proto.DoctorReport {
+	return buildDoctorReportWith(ctx, p, disks, nil, drivers...)
+}
+
+// buildDoctorReportWith is buildDoctorReport with an explicit source for the
+// state-directory access check, for callers that have no running driver (the
+// CLI): nil means the selected driver is asked.
+func buildDoctorReportWith(ctx context.Context, p gpu.Prober, disks []proto.PathUsage, access runtime.StateAccessReporter, drivers ...runtime.Driver) proto.DoctorReport {
 	var r proto.DoctorReport
 	var driver runtime.Driver
 	if len(drivers) > 0 {
@@ -63,6 +70,10 @@ func buildDoctorReport(ctx context.Context, p gpu.Prober, disks []proto.PathUsag
 	doctorHost(&r, disks, runtimeName)
 	doctorRuntimes(ctx, &r, driver)
 	doctorProvision(&r, driver)
+	if access == nil {
+		access, _ = driver.(runtime.StateAccessReporter)
+	}
+	doctorStateAccess(&r, access)
 	if p == nil {
 		p = gpu.New()
 	}
@@ -73,11 +84,18 @@ func buildDoctorReport(ctx context.Context, p gpu.Prober, disks []proto.PathUsag
 		doctorDeviceFacts(ctx, &r, p, driver, gpus)
 	}
 	if r.Accelerators != nil && strings.EqualFold(p.Vendor(), "nvidia") {
+		// The whole-node checks open every card at once.
+		idents := make([]string, 0, len(gpus))
+		for _, g := range gpus {
+			idents = append(idents, accelerator.CardIdent(g.UUID, g.PCIeBDF))
+		}
+		end := doctorBeginAttempt(ctx, idents...)
 		doctorNVIDIAChecks(ctx, &r, len(gpus))
+		end()
 	}
 	// Dies that exist only in a fixture say nothing about the host's CANN.
 	if r.Accelerators != nil && !gpu.IsSynthetic(p) {
-		doctorAscendChecks(ctx, &r, gpus)
+		doctorCardRuntimeChecks(ctx, &r, gpus)
 	}
 	if doctorOnMac {
 		doctorMacChecks(ctx, &r, gpus)
@@ -243,6 +261,9 @@ func doctorAccelerators(ctx context.Context, r *proto.DoctorReport, p gpu.Prober
 	// accelerator tool found (CPU-only node)".
 	vendor := p.Vendor()
 	gpus, err := p.Probe(ctx)
+	if held, ok := ctx.Value(doctorHeldFindingsKey{}).(func([]proto.GPUInfo)); ok && held != nil {
+		held(gpus)
+	}
 	doctorUnrecognizedFunctions(r)
 	if vendor == "" && len(gpus) == 0 && err == nil {
 		// Nothing here claims to be an accelerator host.
@@ -290,7 +311,8 @@ func doctorAccelerators(ctx context.Context, r *proto.DoctorReport, p gpu.Prober
 		for _, f := range evidence {
 			target.Evidence = append(target.Evidence, proto.DoctorField{Name: f.Name, Value: f.Value})
 		}
-		if guide, ok := accelerator.HealthGuideFor(vendor, g.HealthCode, accelerator.HealthTarget(g.PCIeBDF, g.Index), evidence); ok {
+		card := accelerator.HealthCard{Vendor: vendor, Code: g.HealthCode, BDF: g.PCIeBDF, Index: g.Index, UUID: g.UUID}
+		if guide, ok := accelerator.HealthGuideFor(card, evidence); ok {
 			target.Probe, target.Recheck, target.Actions = guide.Probe, guide.Recheck, guide.Actions
 		}
 		finding.Targets = append(finding.Targets, target)

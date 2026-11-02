@@ -50,11 +50,17 @@ export default function useTemplateWeightSource({
   template,
   selection,
   engineProfile,
+  adoptedKey,
 }: {
   form: FormInstance;
   template?: InferenceTemplate;
   selection?: { spec: import("../../api").InferenceSpec };
   engineProfile?: EngineProfile;
+  // The template spec (template id, spec source and name, as `key` below
+  // spells them) a form opened from a deployment's draft already carries:
+  // its model, image and environment are the deployment's, not the spec's,
+  // so choosing it again is not asked for.
+  adoptedKey?: string;
 }) {
   const { t } = useTranslation("deploy");
   const [modalOpen, setModalOpen] = useState(false);
@@ -66,7 +72,7 @@ export default function useTemplateWeightSource({
   const [lookup, setLookup] = useState<{ key: string; models: WeightModel[] }>();
   // A failed lookup is retried at the pace the model list used to poll.
   const [lookupRetry, setLookupRetry] = useState(0);
-  const stateRef = useRef({ applied: "", prompted: "", registering: "" });
+  const stateRef = useRef({ applied: adoptedKey ?? "", prompted: "", registering: "" });
   // What the user settled on for this spec: a registered model or a declared
   // source (whose model, registered now or already there, is then applied).
   const pickedRef = useRef<{ key: string; model?: WeightModel; source?: WeightSource }>();
@@ -83,7 +89,7 @@ export default function useTemplateWeightSource({
   const sources: WeightSource[] = selection?.spec.weight_sources || [];
 
   useEffect(() => {
-    if (!key) return;
+    if (!key || key === adoptedKey) return;
     const provider = form.getFieldValue(["model_source", "provider"]);
     // A model-only default belongs to the previous scope. On a new spec,
     // retain a provider only when that spec declares it; storage is independent.
@@ -95,7 +101,7 @@ export default function useTemplateWeightSource({
 
 
   useEffect(() => {
-    if (!key || !sources.length || !sources[0]?.repo_id) return;
+    if (!key || key === adoptedKey || !sources.length || !sources[0]?.repo_id) return;
     let alive = true;
     let retry: ReturnType<typeof setTimeout> | undefined;
     findWeightSourceModels(sources).then(

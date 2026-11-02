@@ -48,6 +48,7 @@ func TestVLLMPDRoleArgvAndEnv(t *testing.T) {
 		wantEnv := map[string]string{
 			"VLLM_NIXL_SIDE_CHANNEL_HOST": "10.0.0.5", "VLLM_NIXL_SIDE_CHANNEL_PORT": "30001",
 			"UCX_NET_DEVICES": "br_bond0_31", "UCX_TCP_BRIDGE_ENABLE": "y",
+			"VLLM_SSM_CONV_STATE_LAYOUT": "DS",
 		}
 		for key, value := range wantEnv {
 			if launch.Env[key] != value {
@@ -61,6 +62,46 @@ func TestVLLMPDRoleArgvAndEnv(t *testing.T) {
 		if launch.Env["NCCL_SOCKET_IFNAME"] != "lo" {
 			t.Fatalf("NCCL_SOCKET_IFNAME = %q", launch.Env["NCCL_SOCKET_IFNAME"])
 		}
+	}
+	hccs := pdParams("decode", LaunchConfig{}, ComputeNetwork{Type: netplan.TypeAcceleratorHCCS, Interface: "br0"})
+	hccs.PD.Mode = "vllm-ascend-mooncake"
+	launch := BuildVLLM(hccs)
+	for key, want := range map[string]string{
+		"ASCEND_GLOBAL_RESOURCE_CONFIG": `{"comm_resource_config.protocol_desc":["hccs:device"]}`,
+		"ACL_OP_INIT_MODE":              "1",
+		"ASCEND_ENABLE_USE_FABRIC_MEM":  "1",
+	} {
+		if launch.Env[key] != want {
+			t.Fatalf("HCCS env %s = %q, want %q", key, launch.Env[key], want)
+		}
+	}
+}
+
+// NixlConnector refuses a hybrid model (Qwen3.5 gated delta net, Kimi KDA,
+// Mamba) unless its conv state is dim-first, so every vllm-nixl instance gets
+// the layout; a template or the deployment that names one still wins.
+func TestVLLMNixlConvStateLayout(t *testing.T) {
+	engine, _ := SelectEngine("vllm")
+	for name, tc := range map[string]struct {
+		template, user map[string]string
+		want           string
+	}{
+		"mode default":             {want: "DS"},
+		"template value":           {template: map[string]string{"VLLM_SSM_CONV_STATE_LAYOUT": "SD"}, want: "SD"},
+		"deployment over template": {template: map[string]string{"VLLM_SSM_CONV_STATE_LAYOUT": "SD"}, user: map[string]string{"VLLM_SSM_CONV_STATE_LAYOUT": "DS"}, want: "DS"},
+		"deployment over mode":     {user: map[string]string{"VLLM_SSM_CONV_STATE_LAYOUT": "SD"}, want: "SD"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			p := pdParams("prefill", LaunchConfig{}, ComputeNetwork{})
+			p.TemplateEnv = tc.template
+			resolved, err := ResolveLaunch(ResolveLaunchInput{Engine: engine, Params: p, ContainerOverrides: ContainerOverrides{Env: tc.user}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := resolved.Env["VLLM_SSM_CONV_STATE_LAYOUT"]; got != tc.want {
+				t.Fatalf("VLLM_SSM_CONV_STATE_LAYOUT = %q, want %q", got, tc.want)
+			}
+		})
 	}
 }
 
@@ -140,7 +181,7 @@ func TestVLLMWithoutPDKeepsDiskTierShape(t *testing.T) {
 	if got, want := argValue(t, launch.Argv, "--kv-transfer-config"), diskKVTransferConfig(q); got != want {
 		t.Fatalf("disk tier = %s want %s", got, want)
 	}
-	for _, key := range []string{"VLLM_NIXL_SIDE_CHANNEL_HOST", "UCX_NET_DEVICES"} {
+	for _, key := range []string{"VLLM_NIXL_SIDE_CHANNEL_HOST", "UCX_NET_DEVICES", "VLLM_SSM_CONV_STATE_LAYOUT"} {
 		if _, ok := launch.Env[key]; ok {
 			t.Fatalf("non-PD launch has %s", key)
 		}
@@ -194,7 +235,7 @@ func TestVLLMAscendMooncakeLaunch(t *testing.T) {
 			t.Fatalf("env %s = %q, want %q", key, launch.Env[key], want)
 		}
 	}
-	for _, key := range []string{"VLLM_NIXL_SIDE_CHANNEL_HOST", "UCX_NET_DEVICES"} {
+	for _, key := range []string{"VLLM_NIXL_SIDE_CHANNEL_HOST", "UCX_NET_DEVICES", "VLLM_SSM_CONV_STATE_LAYOUT"} {
 		if _, ok := launch.Env[key]; ok {
 			t.Fatalf("Mooncake launch carries %s", key)
 		}

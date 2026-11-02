@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"gpuworks.ai/gpuworks/internal/server/planning"
 	"net/http"
 	"strings"
 	"testing"
@@ -25,7 +26,7 @@ func TestScaleReplicasOfASingleNodeDeployment(t *testing.T) {
 	// The response carries the bound the count is checked against, so the
 	// UI's editor needs no copy of it.
 	var wire map[string]any
-	if err := json.Unmarshal(rec.Body.Bytes(), &wire); err != nil || wire["max_replicas"] != float64(32) {
+	if err := json.Unmarshal(rec.Body.Bytes(), &wire); err != nil || wire["max_replicas"] != float64(1024) {
 		t.Fatalf("max_replicas on the wire = %v (%v)", wire["max_replicas"], err)
 	}
 	// Shrinking by two, naming one: that one drains, the other is the
@@ -74,7 +75,7 @@ func TestScaleReplicasRefusals(t *testing.T) {
 		{name: "multi-node", id: multi.ID, body: `{"replicas":2}`, status: http.StatusBadRequest, code: ErrorReplicasBodyShape},
 		{name: "no count", id: plain.ID, body: `{}`, status: http.StatusBadRequest, code: ErrorReplicasTooFew},
 		{name: "zero", id: plain.ID, body: `{"replicas":0}`, status: http.StatusBadRequest, code: ErrorReplicasTooFew},
-		{name: "too many", id: plain.ID, body: `{"replicas":33}`, status: http.StatusBadRequest, code: ErrorReplicasTooMany},
+		{name: "too many", id: plain.ID, body: `{"replicas":1025}`, status: http.StatusBadRequest, code: ErrorReplicasTooMany},
 		{name: "remove while growing", id: plain.ID, body: `{"replicas":3,"remove":["plain-0"]}`, status: http.StatusBadRequest, code: ErrorReplicasRemoveTooMany},
 		{name: "remove more than shrunk", id: plain.ID, body: `{"replicas":1,"remove":["plain-0","plain-1"]}`, status: http.StatusBadRequest, code: ErrorReplicasRemoveTooMany},
 		{name: "remove a failed attempt", id: plain.ID, body: `{"replicas":1,"remove":["plain-failed"]}`, status: http.StatusBadRequest, code: ErrorReplicasRemoveInvalid},
@@ -137,7 +138,7 @@ func TestScaleReplicasOfAMultiNodeDeployment(t *testing.T) {
 		{"one node twice", `{"units":[{"node_uuid":"pd-a","followers":[{"node_uuid":"pd-a"}]}]}`, ErrorReplicaUnitNode},
 		{"pinned GPUs", `{"units":[{"node_uuid":"pd-a","gpus":[0],"followers":[{"node_uuid":"pd-b"}]}]}`, ErrorReplicaUnitGPUs},
 		{"a shared leader", `{"units":[{"node_uuid":"pd-a","followers":[{"node_uuid":"pd-b"}]},{"node_uuid":"pd-a","followers":[{"node_uuid":"pd-b"}]}]}`, ErrorReplicaLeaderShared},
-		{"too many replicas", `{"units":[` + strings.Repeat(`{"node_uuid":"pd-a","followers":[{"node_uuid":"pd-b"}]},`, 32) + `{"node_uuid":"pd-b","followers":[{"node_uuid":"pd-a"}]}]}`, ErrorReplicasTooMany},
+		{"too many replicas", `{"units":[` + strings.Repeat(`{"node_uuid":"pd-a","followers":[{"node_uuid":"pd-b"}]},`, planning.MaxReplicas) + `{"node_uuid":"pd-b","followers":[{"node_uuid":"pd-a"}]}]}`, ErrorReplicasTooMany},
 	}
 	for _, tc := range cases {
 		rec := pdOpsRequest(h.scaleReplicas, http.MethodPut, multi.ID, tc.body)
@@ -188,5 +189,47 @@ func TestScaleReplicasChecksTheNodesTheListNames(t *testing.T) {
 		if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), `"code":"`+ErrorReplicaUnitNodeOffline+`"`) {
 			t.Fatalf("a %s replica on an offline node = %d %s", name, rec.Code, rec.Body.String())
 		}
+	}
+}
+
+// A growing single-node deployment may name where its new replicas first
+// start; the names are checked before anything is written.
+func TestScaleReplicasPlaceOnRefusals(t *testing.T) {
+	h, st, plain, multi := replicaFixture(t)
+	for _, tc := range []struct {
+		name, body string
+		depID      uint
+		status     int
+		code       string
+	}{
+		{"more nodes than replicas added", `{"replicas":3,"place_on":["pd-a","pd-b"]}`, plain.ID, http.StatusBadRequest, ErrorReplicasPlaceOnTooMany},
+		{"naming nodes while shrinking", `{"replicas":1,"place_on":["pd-a"]}`, plain.ID, http.StatusBadRequest, ErrorReplicasPlaceOnTooMany},
+		{"a multi-node deployment", `{"replicas":2,"place_on":["pd-a"]}`, multi.ID, http.StatusBadRequest, ErrorReplicasBodyShape},
+		{"an unknown node", `{"replicas":3,"place_on":["no-such-node"]}`, plain.ID, http.StatusConflict, ErrorReplicasPlaceOnRefused},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := pdOpsRequest(h.scaleReplicas, http.MethodPut, tc.depID, tc.body)
+			var body map[string]any
+			_ = json.Unmarshal(rec.Body.Bytes(), &body)
+			if rec.Code != tc.status || body["code"] != tc.code {
+				t.Fatalf("PUT %s = %d %s, want %d %s", tc.body, rec.Code, rec.Body.String(), tc.status, tc.code)
+			}
+			if dep := mustDeployment(t, st, plain.ID); dep.Replicas != 2 {
+				t.Fatalf("a refused request changed the count to %d", dep.Replicas)
+			}
+		})
+	}
+	// An offline node is named in the refusal with its reason.
+	if err := st.SetNodeState("pd-b", store.NodeStateOffline); err != nil {
+		t.Fatal(err)
+	}
+	rec := pdOpsRequest(h.scaleReplicas, http.MethodPut, plain.ID, `{"replicas":3,"place_on":["pd-b"]}`)
+	var body struct {
+		Code   string         `json:"code"`
+		Params map[string]any `json:"params"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &body)
+	if rec.Code != http.StatusConflict || body.Code != ErrorReplicasPlaceOnRefused || body.Params["reason"] != "offline" {
+		t.Fatalf("offline node = %d %s", rec.Code, rec.Body.String())
 	}
 }

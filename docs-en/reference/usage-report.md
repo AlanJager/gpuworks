@@ -19,10 +19,6 @@ Participating installations send the publisher one anonymous report each day des
 - **Failure**: no retries, no alerts, and no effect on any operations; that day's in-process counters are included in the next day's report. An offline environment cannot send reports and experiences no side effects. The Settings page displays the result of the latest delivery.
 - **New persisted data**: only one setting, `usage_report_last_day` (the day covered by the most recently delivered report).
 
-## Source Address Recorded by Collectors
-
-The report body contains no addresses, but the collectors record the **public source IP of the report request**: the server's outbound internet address (usually the data center's NAT egress address, not a node's or the server's private IP). This is used to aggregate distributions by country and province and identify forged reports. SLS stores it with the report for 180 days. The Cloudflare collector stores it in the report object's metadata, together with the country and region determined by Cloudflare.
-
 ## Never Sent
 
 Hostnames, private IP and MAC addresses, node or deployment names, usernames, labels, local paths, private image registry addresses, cloud accounts and regions, original error messages and error parameters, logs, prompts and responses, and your own model names (non-public repositories and local models are always recorded as `custom`). Version numbers retain only the numeric portion (kernel `6.8.0-138-generic` is recorded as `6.8`) to avoid exposing custom host build names.

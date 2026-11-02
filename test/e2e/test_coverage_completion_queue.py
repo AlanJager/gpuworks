@@ -275,20 +275,35 @@ from coverage_completion_queue import summary
 # model-hub-modelscope 1.7 covered.
 # model-hub-modelscope 1.10 covered.
 # model-hub-huggingface 1.14 covered.
+# model-hub-modelscope 1.14 covered.
+# model-hub-quick 1.14 covered.
+# settings-deployment-policy 1.12 covered.
+# storage-nfs-cache-policy 1.10/1.13 covered; 3.3 downgraded for fractional unit display.
+# deployment wizard/overrides/acquisition 2.7/13.5; acquisition 1.13; row entry stays partial.
+# Replica refusal recovery1.10/12.6 downgraded: SQLite state injection bypasses controlplane.
+# Logs2.2/2.6/9.4/18.8 verified by frozen mutantFAIL and en/zh allPASS.
+# Sixdeployment selector8.1 consumers verified independently in bothlocales.
+# Provider1.7/1.13/2.3/2.6/2.7/7.1 verified;2.1 stays partial; residual section now7.
+# Provider nine new RunPod/conditional/URL/secret items and storage3.3/3.4 verified all en/zh; providers24/30.
+# Six deployment contracts14.3/14.7/15.4/15.6 verified by same-helper mutation FAIL and all en/zh PASS.
+# Six deployment editor15.1/tri-state6.3 contracts verified by12 targeted faults and12 restored all en/zh runs.
+# Six complete current-fixture boolean6.1 inventories verified against unfixed Expert baseline and restored all en/zh.
 # These counts move only when a manifest declaration changes.
 BASELINE = {
-    "1": 137, "2": 300, "3": 267, "4": 309, "5": 194, "6": 156,
-    "7": 111, "8": 107, "9": 89, "10": 119, "11": 105, "out": 408,
+    "1": 138, "2": 291, "3": 267, "4": 299, "5": 197, "6": 137,
+    "7": 105, "8": 102, "9": 76, "10": 110, "11": 84, "out": 379,
 }
 
 
 class QueueTest(unittest.TestCase):
     def test_every_open_checklist_gap_has_one_phase(self):
         extra, counts, total = summary()
-        self.assertEqual(extra, "4")
+        # No provider section after 1-10 still has a residual, so there is no
+        # "smallest" one left to name.
+        self.assertIsNone(extra)
         self.assertEqual(dict(counts), BASELINE)
         self.assertEqual(total, sum(BASELINE.values()))
-        self.assertEqual(total, 2302)
+        self.assertEqual(total, 2185)
 
 
 if __name__ == "__main__":

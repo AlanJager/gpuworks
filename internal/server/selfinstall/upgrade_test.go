@@ -10,8 +10,10 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 // upgradeReq is what the command line builds for `gpuworks upgrade`.
@@ -432,6 +434,49 @@ func TestUpgradeKeepsOnlyTheNewestBackups(t *testing.T) {
 	}
 }
 
+// GWKS-146: `--keep N` deleted the newest snapshot first when the release id
+// sorted it first. The upgrade path is what the operator runs, so the guarantee
+// is asserted here end to end, with the three release ids the ticket measured:
+// `aaa-keep20000` sorts before `dev-…` and `sit-…`, and it is the newest.
+func TestUpgradePrunesByTimeNotReleaseID(t *testing.T) {
+	h := newHarness(t, t.TempDir())
+	// The snapshot this run takes lands a few seconds after the two already on
+	// disk, and it carries the release id that sorts first of all three.
+	h.now = time.Date(2026, 10, 24, 9, 24, 15, 0, time.UTC)
+	// The installation upgraded away from aaa-keep20000 first, so the two older
+	// snapshots are already there when this run takes its own.
+	h.writeExistingInstall("aaa-keep20000")
+	for _, name := range []string{
+		"dev-0b0801dfd-20261024T092315Z.tar.gz",
+		"sit-zkeep1000-20261024T092327Z.tar.gz",
+	} {
+		writeFile(t, filepath.Join(h.layout.BackupsDir, name), "old snapshot", 0o600)
+	}
+	h.useSite("zzz-next-release", []byte("new binary"))
+	req := h.upgradeReq()
+	req.Keep = 2
+
+	report, err := h.installer.Upgrade(context.Background(), req)
+	if err != nil {
+		t.Fatalf("upgrade: %v", err)
+	}
+	if got := filepath.Base(report.Backup); got != "aaa-keep20000-20261024T092415Z.tar.gz" {
+		t.Fatalf("snapshot = %q, want it named by the release it replaced and the time it was taken", got)
+	}
+	got, want := backupNames(t, h.layout.BackupsDir), []string{
+		"aaa-keep20000-20261024T092415Z.tar.gz",
+		"sit-zkeep1000-20261024T092327Z.tar.gz",
+	}
+	slices.Sort(got)
+	slices.Sort(want)
+	if !slices.Equal(got, want) {
+		t.Fatalf("survivors = %v, want the newest two %v", got, want)
+	}
+	if _, err := os.Stat(filepath.Join(h.layout.BackupsDir, "dev-0b0801dfd-20261024T092315Z.tar.gz")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("the oldest snapshot survived pruning")
+	}
+}
+
 func TestUpgradeRefusesToRunTwiceAtOnce(t *testing.T) {
 	h := newHarness(t, t.TempDir())
 	h.writeExistingInstall("v1.0.0")
@@ -537,6 +582,16 @@ func countCommands(h *harness, command string) int {
 	return n
 }
 
+// snapshotsIfAny is backupNames for a directory that may not exist at all,
+// which is the state a refused upgrade leaves behind.
+func snapshotsIfAny(t *testing.T, dir string) []string {
+	t.Helper()
+	if _, err := os.Stat(dir); errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	return backupNames(t, dir)
+}
+
 // backupNames lists the snapshots in a backup directory, oldest first.
 func backupNames(t *testing.T, dir string) []string {
 	t.Helper()
@@ -586,4 +641,122 @@ func readArchive(t *testing.T, path string) map[string]string {
 		members[header.Name] = string(body)
 	}
 	return members
+}
+
+// GWKS-148: the master key is what makes a snapshot restorable. Without it the
+// backup holds a database whose encrypted credentials can never be decrypted
+// again, and the new version would generate a fresh key on its next start. An
+// upgrade therefore has to refuse — while nothing has been changed — instead of
+// taking that snapshot and carrying on.
+func TestUpgradeRefusesWhenTheMasterKeyIsMissing(t *testing.T) {
+	h := newHarness(t, t.TempDir())
+	h.writeExistingInstall("v1.0.0")
+	h.useSite("v2.0.0", []byte("new binary"))
+	keyPath := filepath.Join(h.layout.DataDir, "master.key")
+	if err := os.Remove(keyPath); err != nil {
+		t.Fatalf("remove master.key: %v", err)
+	}
+
+	report, err := h.installer.Upgrade(context.Background(), h.upgradeReq())
+	if err == nil {
+		t.Fatal("upgrade succeeded although the master key is gone and no restorable backup can be taken")
+	}
+	// The operator gets the platform's normal refusal message, which says why
+	// and states that the host was left alone.
+	if !strings.Contains(err.Error(), "nothing was changed") {
+		t.Fatalf("the refusal does not use the nothing-was-changed idiom: %v", err)
+	}
+	if !strings.Contains(err.Error(), keyPath) || !strings.Contains(err.Error(), "master.key") {
+		t.Fatalf("the refusal does not name the missing file: %v", err)
+	}
+	if report.Backup != "" || report.RolledBack {
+		t.Fatalf("report = %+v, want no backup reported", report)
+	}
+
+	// Nothing was changed: the binary is the old one, no service command ran,
+	// and no snapshot (of any kind) was left behind.
+	if got := readFile(t, h.layout.Binary()); got != "old binary" {
+		t.Fatalf("binary = %q", got)
+	}
+	if h.run.ran("sudo systemctl stop gpuworks") {
+		t.Fatalf("the service was stopped for an upgrade that was refused: %v", h.run.executed())
+	}
+	if h.run.ran("sudo systemctl restart gpuworks") {
+		t.Fatalf("the service was restarted for an upgrade that was refused: %v", h.run.executed())
+	}
+	if names := snapshotsIfAny(t, h.layout.BackupsDir); len(names) != 0 {
+		t.Fatalf("a snapshot was left behind: %v", names)
+	}
+	// The key is not regenerated by the refusing side either: that is what
+	// would silently strand the credentials.
+	if _, err := os.Stat(keyPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("the refused upgrade wrote a master key: %v", err)
+	}
+	if entries, err := ReadHistory(h.layout.HistoryPath()); err == nil && len(entries) > 0 {
+		t.Fatalf("a refused upgrade was recorded as one: %+v", entries)
+	}
+}
+
+// The same refusal covers the console's in-service upgrade, which writes the
+// snapshot through the same archive writer but names the key itself.
+func TestStageInServiceRefusesWhenTheMasterKeyIsMissing(t *testing.T) {
+	h := newHarness(t, t.TempDir())
+	h.writeExistingInstall("v1.0.0")
+	archive := h.writeArchive("v2.0.0", []byte("new binary"))
+	if err := os.Remove(filepath.Join(h.layout.DataDir, "master.key")); err != nil {
+		t.Fatalf("remove master.key: %v", err)
+	}
+
+	_, err := h.installer.StageInService(context.Background(), "v1.0.0", openArchive(t, archive), writeSnapshot("live"), "admin")
+	if err == nil {
+		t.Fatal("an in-service upgrade staged a snapshot that cannot restore the credentials")
+	}
+	if !strings.Contains(err.Error(), "master.key") {
+		t.Fatalf("err = %v", err)
+	}
+	if got := readFile(t, h.layout.Binary()); got != "old binary" {
+		t.Fatalf("the binary was replaced anyway: %q", got)
+	}
+	if pending := pendingOf(t, h.layout); pending != nil {
+		t.Fatalf("an upgrade was left waiting for a restart: %+v", pending)
+	}
+	if names := snapshotsIfAny(t, h.layout.BackupsDir); len(names) != 0 {
+		t.Fatalf("an unrestorable snapshot was written: %v", names)
+	}
+}
+
+// The fix must not over-refuse: the members that may legitimately be absent
+// still let an upgrade run. A database that was never checkpointed has no
+// write-ahead log, and one that was never created is not required either.
+func TestUpgradeStillRunsWithoutTheOptionalDatabaseFiles(t *testing.T) {
+	h := newHarness(t, t.TempDir())
+	existing := h.writeExistingInstall("v1.0.0")
+	h.useSite("v2.0.0", []byte("new binary"))
+	// A freshly installed tree: the server has not created its database yet.
+	for _, name := range []string{"gpuworks.db", "gpuworks.db-wal", "gpuworks.db-shm"} {
+		if err := os.Remove(filepath.Join(h.layout.DataDir, name)); err != nil && !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("remove %s: %v", name, err)
+		}
+	}
+
+	report, err := h.installer.Upgrade(context.Background(), h.upgradeReq())
+	if err != nil {
+		t.Fatalf("upgrade: %v (stderr: %s)", err, h.errOut.String())
+	}
+	if report.Backup == "" {
+		t.Fatal("no backup was reported")
+	}
+	if got := readFile(t, h.layout.Binary()); got != "new binary" {
+		t.Fatalf("binary = %q", got)
+	}
+	members := readArchive(t, report.Backup)
+	if got := members["data/master.key"]; got != "old key" {
+		t.Fatalf("backup master key = %q", got)
+	}
+	if _, ok := members["data/gpuworks.db"]; ok {
+		t.Fatalf("a database that does not exist was archived: %v", members)
+	}
+	if got := members["server.yaml"]; !strings.Contains(got, existing.Addr) {
+		t.Fatalf("the snapshot lost server.yaml: %q", got)
+	}
 }

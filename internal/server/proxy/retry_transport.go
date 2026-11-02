@@ -33,18 +33,20 @@ type retryTransport struct {
 	// awake reports whether a leased instance may still take the request
 	// (Proxy.awake); nil takes every lease.
 	awake func(*lease) bool
+	guard *instanceGuard
 }
 
 func (t *retryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	a, _ := req.Context().Value(attemptKey).(*routeAttempt)
 	if a == nil || a.current == nil {
-		return t.base.RoundTrip(req)
+		tgt, _ := req.Context().Value(targetKey).(target)
+		return t.guard.roundTrip(t.base, req, candidate{instanceUUID: tgt.instanceUUID, port: tgt.port})
 	}
 	if a.started.IsZero() {
 		a.started = time.Now()
 	}
 	for {
-		resp, err := t.base.RoundTrip(req)
+		resp, err := t.guard.roundTrip(t.base, req, a.current.c)
 		if err == nil {
 			return resp, nil
 		}

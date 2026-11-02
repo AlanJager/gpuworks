@@ -116,6 +116,11 @@ specs:
     - type: openai.chat
       endpoint: /v1/chat/completions
       mode: stream
+# The arguments are the vendor's published A2/A3 recipe, with one deliberate
+# omission: that recipe pins `--max-model-len 133120`, and pinning it here would
+# halve what this profile served before - without it the engine takes the
+# model's own 262144, which is what ran on a 910C under this image. A deployment
+# that needs the published figure can set it.
 - name: int8-vllm-ascend-0a447e8a
   display_profile: general
   scenario: balanced
@@ -140,6 +145,18 @@ specs:
   - bfloat16
   - --quantization
   - ascend
+  - --max-num-seqs
+  - '32'
+  - --max-num-batched-tokens
+  - '16384'
+  - --trust-remote-code
+  - --enable-prefix-caching
+  - --gpu-memory-utilization
+  - '0.85'
+  - --mm-processor-cache-gb
+  - '0'
+  - --mm-processor-cache-type
+  - shm
   - --enable-auto-tool-choice
   - --tool-call-parser
   - qwen3_coder
@@ -147,6 +164,15 @@ specs:
   - qwen3
   - --mm-encoder-tp-mode
   - data
+  - --speculative-config
+  - '{"method":"qwen3_5_mtp","num_speculative_tokens":3}'
+  - --compilation-config
+  - '{"cudagraph_capture_sizes":[1,4,8,12,16,20,24,28,32,36,40,44,48,52,56,60,64,68,72,76,80,84,88,92,96,100,104,108,112,116,120,124,128],"cudagraph_mode":"FULL_DECODE_ONLY"}'
+  - --additional-config
+  - '{"enable_cpu_binding":true}'
+  env:
+    HCCL_BUFFSIZE: '512'
+    PYTORCH_NPU_ALLOC_CONF: expandable_segments:True
   placement:
     language: starlark
     resolver: "def resolve(gpu):\n    if gpu.count < 2: return reject(\"at least 2\
@@ -183,6 +209,18 @@ specs:
   - bfloat16
   - --quantization
   - ascend
+  - --max-num-seqs
+  - '32'
+  - --max-num-batched-tokens
+  - '16384'
+  - --trust-remote-code
+  - --enable-prefix-caching
+  - --gpu-memory-utilization
+  - '0.85'
+  - --mm-processor-cache-gb
+  - '0'
+  - --mm-processor-cache-type
+  - shm
   - --enable-auto-tool-choice
   - --tool-call-parser
   - qwen3_coder
@@ -190,12 +228,87 @@ specs:
   - qwen3
   - --mm-encoder-tp-mode
   - data
+  - --speculative-config
+  - '{"method":"qwen3_5_mtp","num_speculative_tokens":3}'
+  - --compilation-config
+  - '{"cudagraph_capture_sizes":[1,4,8,12,16,20,24,28,32,36,40,44,48,52,56,60,64,68,72,76,80,84,88,92,96,100,104,108,112,116,120,124,128],"cudagraph_mode":"FULL_DECODE_ONLY"}'
+  - --additional-config
+  - '{"enable_cpu_binding":true}'
+  env:
+    HCCL_BUFFSIZE: '512'
+    PYTORCH_NPU_ALLOC_CONF: expandable_segments:True
   placement:
     language: starlark
     resolver: "def resolve(gpu):\n    if gpu.count < 2: return reject(\"at least 2\
       \ GPUs are required\")\n    if gpu.min_memory_gib < 32: return reject(\"each\
       \ GPU requires at least 32 GiB\")\n    return {\"GPU_COUNT\": gpu.count, \"\
       TP_SIZE\": gpu.count, \"SP_DEGREE\": 1}\n"
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+# 950DT runs this model from different weights than the cards above: the vendor
+# publishes W8A8C8-MXFP8 for it, and the published recipe serves it on one
+# device with an MXFP8 KV cache. The C8 / MXFP8 KV cache exists only on the 950
+# series. No 950DT hardware was available, so these arguments are the published
+# recipe, not a measured one; the 950PR profile below is the measured one and
+# uses the plain W8A8 weights.
+- name: mxfp8-vllm-ascend-950-9754c9eb
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cann9.2-950-vllm0.30.0rc2-r1
+  weights:
+    quantization: mxfp8
+    sources:
+    - modelscope:
+        repo_id: Eco-Tech/Qwen3.8-27B-w8a8c8-mxfp8
+        revision: 9754c9eb516cec6211997e8b978cc509bc7ee86e
+  weight_bytes: 31585344616
+  gpus:
+    vendor: ascend
+    name: (^|[^A-Za-z0-9])950(?:DT|PR)([^A-Za-z0-9]|$)
+    display_target: ascend
+  args:
+  - --quantization
+  - ascend
+  - --kv-cache-dtype
+  - mxfp8
+  - --max-num-seqs
+  - '32'
+  - --max-model-len
+  - '133120'
+  - --max-num-batched-tokens
+  - '16384'
+  - --trust-remote-code
+  - --enable-prefix-caching
+  - --gpu-memory-utilization
+  - '0.85'
+  - --mm-processor-cache-gb
+  - '0'
+  - --mm-processor-cache-type
+  - shm
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - qwen3_coder
+  - --reasoning-parser
+  - qwen3
+  - --mm-encoder-tp-mode
+  - data
+  - --speculative-config
+  - '{"method":"qwen3_5_mtp","num_speculative_tokens":3}'
+  - --compilation-config
+  - '{"cudagraph_capture_sizes":[1,4,8,12,16,20,24,28,32,36,40,44,48,52,56,60,64,68,72,76,80,84,88,92,96,100,104,108,112,116,120,124,128],"cudagraph_mode":"FULL_DECODE_ONLY"}'
+  - --additional-config
+  - '{"enable_cpu_binding":true,"enable_flashcomm1":true}'
+  env:
+    HCCL_BUFFSIZE: '512'
+    PYTORCH_NPU_ALLOC_CONF: expandable_segments:True
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    if gpu.count != 1: return reject(\"the published 950DT recipe runs a single device\")\n    if gpu.min_memory_gib < 96: return reject(\"each device requires at least 96 GiB\")\n    return {\"GPU_COUNT\": 1, \"TP_SIZE\": 1, \"SP_DEGREE\": 1}\n"
   api:
     health_endpoint: /health
     operations:
@@ -359,7 +472,7 @@ specs:
         revision: 1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0
     - modelscope:
         repo_id: Qwen/Qwen3.8-27B
-        revision: 1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0
+        revision: e823e888ae179eb3be02c1a48899c4f828371376
   weight_bytes: 55563006776
   gpus:
     vendor: ppu

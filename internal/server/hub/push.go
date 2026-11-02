@@ -269,7 +269,7 @@ func (s *Session) call(ctx context.Context, method string, params any) (json.Raw
 			return nil, err
 		}
 		if resp.Error != "" {
-			return nil, errors.New(resp.Error)
+			return nil, &rpcRemoteError{detail: resp.Error}
 		}
 		return resp.Result, nil
 	}

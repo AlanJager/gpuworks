@@ -228,7 +228,7 @@ func (s *Store) inTx(ctx context.Context, fn func(*sql.Tx) error) error {
 func (s *Store) RollupDay(ctx context.Context, day rollup.Day, loc *time.Location) error {
 	from, to := day.HoursOf(loc)
 	return s.inTx(ctx, func(tx *sql.Tx) error {
-		for _, stmt := range []string{
+		for _, stmt := range append([]string{
 			`DELETE FROM gpu_daily WHERE day = ?1`,
 			`INSERT INTO gpu_daily SELECT ?1, node_uuid, gpu_index, gpu_uuid, MAX(gpu_model),
 				SUM(util_sum), SUM(util_n), MAX(util_max), SUM(mem_used_sum), SUM(mem_used_n), MAX(mem_used_max), MAX(mem_total),
@@ -248,7 +248,7 @@ func (s *Store) RollupDay(ctx context.Context, day rollup.Day, loc *time.Locatio
 			`INSERT INTO gpu_capacity_daily SELECT ?1, gpu_model, SUM(total_gpu_seconds), SUM(schedulable_gpu_seconds)
 				FROM gpu_capacity_hourly WHERE hour_ms >= ?2 AND hour_ms < ?3 GROUP BY gpu_model`,
 			`DELETE FROM quality_daily WHERE day = ?1`,
-		} {
+		}, schedulingDayRollups...) {
 			if _, err := tx.ExecContext(ctx, stmt, int64(day), from, to); err != nil {
 				return fmt.Errorf("roll up %d: %w", day, err)
 			}
@@ -342,6 +342,10 @@ func (s *Store) Retain(ctx context.Context, hourCutoffMS int64, dayCutoff rollup
 		{"quality_daily", "day", int64(dayCutoff)}, {"gpu_daily", "day", int64(dayCutoff)},
 		{"gpu_node_daily", "day", int64(dayCutoff)}, {"gpu_model_daily", "day", int64(dayCutoff)},
 		{"gpu_time_daily", "day", int64(dayCutoff)}, {"gpu_capacity_daily", "day", int64(dayCutoff)},
+		{"sched_reason_hourly", "hour_ms", hourCutoffMS}, {"sched_card_hourly", "hour_ms", hourCutoffMS},
+		{"sched_deployment_hourly", "hour_ms", hourCutoffMS},
+		{"sched_reason_daily", "day", int64(dayCutoff)}, {"sched_card_daily", "day", int64(dayCutoff)},
+		{"sched_deployment_daily", "day", int64(dayCutoff)},
 		{"rolled_days", "day", int64(dayCutoff)},
 	} {
 		for {

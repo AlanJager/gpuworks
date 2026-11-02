@@ -23,6 +23,9 @@
         }
       ],
       "schedulable": true,
+      "scheduling_actions": [
+        "stopped"
+      ],
       "health_status": "OK",
       "node_uuid": "node-fixture",
       "node_name": "gpu3",
@@ -68,6 +71,9 @@
         }
       ],
       "schedulable": true,
+      "scheduling_actions": [
+        "stopped"
+      ],
       "health_status": "OK",
       "node_uuid": "node-fixture",
       "node_name": "gpu3",
@@ -148,7 +154,7 @@
       "error": 0
     },
     "allocation": {
-      "allocated": 2,
+      "allocated": 1,
       "allocatable": 1,
       "unusable": 1,
       "unknown": 0

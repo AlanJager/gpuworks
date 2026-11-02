@@ -73,7 +73,7 @@ function stub() {
   api.nodesPage = async () => ({ items: [], total: 0 }) as never;
   api.monitorOverview = async () => ({ as_of: 1000, stale: false, services: [], signals: [
     { key: "ready_replicas", collected: true, value: 2, denominator: 3 },
-    { key: "request_rate", collected: true, value: 12.3 },
+    { key: "request_rate", collected: true, value: 12.3, denominator: 19.96 },
     { key: "error_rate", collected: true, value: 1.2 },
     { key: "ttft", collected: true, value: 345.6, detail: { upper_bound: true } },
     { key: "waiting", collected: true, value: 2.4 },
@@ -152,11 +152,11 @@ test("overview token total adds reported input and output once and opens the sam
 test("monitor summary uses current monitor signals and links to the monitor's matching range", async () => {
   stub(); renderPage();
   const monitor = document.querySelector(".dashboard-overview-monitor")!;
-  await waitFor(() => assert.deepEqual([...monitor.querySelectorAll(".dashboard-overview-metric strong")].map((value) => value.textContent), ["12.3 req/s", "1.2%", "345.6 ms", "2.4"]));
+  await waitFor(() => assert.deepEqual([...monitor.querySelectorAll(".dashboard-overview-metric strong")].map((value) => value.textContent), ["12.3 req/s", "20", "1.2%", "345.6 ms", "2.4"]));
   assert.equal(monitor.querySelector(".dashboard-overview-replica-count")?.textContent, "Ready replicas 2/3");
   assert.equal(monitor.querySelector(".dashboard-overview-count")?.textContent, "Last 5 minutes");
   assert.equal(monitor.querySelector("a.dashboard-overview-module-arrow")?.getAttribute("href"), "/monitor?range=6h");
-  assert.equal(monitor.querySelectorAll(".dashboard-overview-metric-tip").length, 4);
+  assert.equal(monitor.querySelectorAll(".dashboard-overview-metric-tip").length, 5);
   cleanup();
   api.monitorOverview = async () => ({ stale: false, services: [], signals: [
     { key: "ready_replicas", collected: true, value: 0, denominator: 0 },
@@ -169,7 +169,15 @@ test("monitor summary uses current monitor signals and links to the monitor's ma
   const idle = document.querySelector(".dashboard-overview-monitor")!;
   await waitFor(() => assert.equal(idle.querySelector(".dashboard-overview-count")?.textContent, "No gateway requests in 5 minutes"));
   assert.equal(idle.querySelector(".dashboard-overview-replica-count")?.textContent, "Ready replicas 0/0");
-  assert.deepEqual([...idle.querySelectorAll(".dashboard-overview-metric strong")].map((value) => value.textContent), ["0.0 req/s", "—", "—", "—"]);
+  assert.deepEqual([...idle.querySelectorAll(".dashboard-overview-metric strong")].map((value) => value.textContent), ["0.0 req/s", "—", "—", "—", "—"]);
+  cleanup();
+  api.monitorOverview = async () => ({ stale: false, services: [], signals: [
+    { key: "request_rate", collected: true, value: 0.4, denominator: 7.25 },
+    { key: "ttft", collected: true, value: 39000, detail: { upper_bound: true } },
+  ] }) as never;
+  renderPage();
+  const slow = document.querySelector(".dashboard-overview-monitor")!;
+  await waitFor(() => assert.deepEqual([...slow.querySelectorAll(".dashboard-overview-metric strong")].map((value) => value.textContent), ["0.4 req/s", "7.3", "—", "39s", "—"]));
   cleanup();
   api.monitorOverview = async () => ({ stale: false, services: [], signals: [] }) as never;
   renderPage();
@@ -277,7 +285,7 @@ test("mixed vendors and models retain every capacity group and each GPU allocati
     { uuid: "n2", name: "L40", vendor: "nvidia", memory_total_bytes: 40 * 1024 ** 3, allocation_state: "allocated" },
     { uuid: "a1", name: "Ascend 910B", vendor: "ascend", memory_total_bytes: 64 * 1024 ** 3, allocation_state: "unusable" },
     { uuid: "m1", name: "MI210", vendor: "amd", memory_total_bytes: 16 * 1024 ** 3, allocation_state: "unknown" },
-  ], overview: { total: 4 } }) as never;
+  ], overview: { total: 4, allocation: { allocated: 1, allocatable: 1, unusable: 1, unknown: 1 } } }) as never;
   renderPage();
   await waitFor(() => assert.ok(document.querySelector(".dashboard-overview-composition-grid")?.textContent?.includes("Ascend 910B")));
   const vendorRows = document.querySelectorAll(".dashboard-overview-composition-grid > .dashboard-overview-distribution:first-child .dashboard-overview-distribution-row");
@@ -623,4 +631,19 @@ test("GPU status counts remain independent of missing telemetry readings", async
   await waitFor(() => assert.ok(gpu.textContent?.includes("Allocatable 1")));
   assert.ok(!gpu.textContent?.includes("Utilization"));
   assert.ok(!document.querySelector(".dashboard-overview-posture")?.textContent?.includes("Utilization"));
+});
+
+
+test("GPU resource counts use the shared fleet overview with partial devices counted only as allocatable", async () => {
+  stub();
+  const items = Array.from({ length: 71 }, (_, index) => ({
+    uuid: `allocation-${index}`, name: "H100", vendor: "nvidia", memory_total_bytes: 80 * 1024 ** 3,
+    allocation_state: index < 5 ? "allocated" : index < 7 ? "partial" : index < 30 ? "unusable" : "available",
+  }));
+  api.gpus = async () => ({ items, overview: { total: 71, allocation: { allocated: 5, allocatable: 43, unusable: 23, unknown: 0 } } }) as never;
+  renderPage();
+  await screen.findByText("Allocatable 43");
+  const gpu = document.querySelectorAll(".dashboard-overview-resource")[1];
+  assert.deepEqual([...gpu.querySelectorAll(".dashboard-overview-status")].map((status) => status.textContent), ["Allocatable 43", "Allocated 5", "Unavailable 23"]);
+  assert.ok(gpu.textContent?.includes("Allocatable includes partially allocated GPUs."));
 });

@@ -72,7 +72,7 @@ func (s *Service) buildDeployment(ctx context.Context, id uint, rng time.Duratio
 		Stale: snap.Stale,
 		Deployment: dto.MonitorDeploymentSummary{
 			ID: dep.ID, Name: dep.Name, Engine: dep.Engine, Placement: deploymentPlacement(dep, instances, nodeNames),
-			Replicas: dto.MonitorReplicaCount{Ready: countReadyReplicas(instances), Desired: dep.ReplicasDesired},
+			Replicas: dto.MonitorReplicaCount{Ready: monitor.ReadyReplicas(dep, instances), Desired: dep.ReplicasDesired},
 		},
 		Alignment:     alignment,
 		TTFTBreakdown: ttftBreakdownDTO(snap.Window),
@@ -394,8 +394,7 @@ func replicaRowsDTO(rows []monitor.ReplicaRow, instanceState map[string]string) 
 			gpus = append(gpus, dto.MonitorReplicaGPU{
 				Index: g.Index, UtilPct: collectedFloatPtr(g.HasUtil, round1(g.UtilPct)), TemperatureC: collectedFloatPtr(g.HasTemp, round1(g.TempC)),
 				MemBWPct: collectedFloatPtr(g.HasMemBW, round1(g.MemBWPct)),
-				// PowerW is not collected yet.
-				PowerW: nil,
+				PowerW:   collectedFloatPtr(g.HasPower, round1(g.PowerW)),
 			})
 		}
 		out = append(out, dto.MonitorReplicaRow{

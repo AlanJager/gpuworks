@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
 )
 
@@ -23,12 +24,15 @@ import (
 //     to the runtime: others gain x instead (0750 -> 0751).
 //
 // dir must belong to the agent and not be writable by group or others;
-// anything else is reported, not repaired. Ancestors are the operator's and are
-// left to CheckAncestorTraversal: whether an untraversable one is fatal depends
+// anything else is reported, not repaired. Except for AutoDL's /root search
+// permission, ancestors are left to CheckAncestorTraversal: whether one is fatal depends
 // on what the caller is about to do. Callers run this before each use so that a
 // state directory reset after provisioning is repaired again; the traversable
 // case costs a stat.
 func PrepareTraversal(dir string, owner MountOwner) error {
+	if err := PrepareAutoDLTraversal(dir, owner); err != nil {
+		return err
+	}
 	// The state path is agent configuration and may itself be a symlink:
 	// resolve it, then change only the opened directory.
 	resolved, err := filepath.EvalSymlinks(dir)
@@ -80,8 +84,44 @@ func grantTraversal(dir string, owner MountOwner) error {
 	return nil
 }
 
+// TraversalError is a directory the runtime identity cannot search, with the
+// facts that decide it. CheckAncestorTraversal returns it for that case (and
+// plain errors for a path it could not stat), so every caller that reports the
+// condition -- the launch-time warning, the node's doctor -- reads one
+// verdict.
+type TraversalError struct {
+	// Dir is the blocking directory.
+	Dir string
+	// Reason is why it blocks, in the words of Error.
+	Reason string
+	// Owner is the runtime identity that cannot pass.
+	Owner MountOwner
+	// DirUID, DirGID and Mode are Dir's owner and permission bits.
+	DirUID, DirGID int
+	Mode           os.FileMode
+}
+
+func (e *TraversalError) Error() string {
+	return fmt.Sprintf("%s %s (run_uid=%d run_gid=%d owner_uid=%d owner_gid=%d mode=%04o)", e.Dir, e.Reason, e.Owner.UID, e.Owner.GID, e.DirUID, e.DirGID, e.Mode)
+}
+
+// FixCommand is the narrowest repair for an operator directory that blocks
+// the runtime: search for others, which opens no listing and no write.
+func (e *TraversalError) FixCommand() string {
+	return "chmod o+x " + shellQuote(e.Dir)
+}
+
+// shellQuote leaves a plain path as it is and single-quotes anything a shell
+// would split or expand.
+func shellQuote(s string) string {
+	if s != "" && strings.Trim(s, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789/._-+=:@%") == "" {
+		return s
+	}
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
 // CheckAncestorTraversal reports the first directory from name up to / that
-// owner cannot traverse. It never changes anything.
+// owner cannot traverse, as a *TraversalError. It never changes anything.
 func CheckAncestorTraversal(name string, owner MountOwner) error {
 	for current := filepath.Clean(name); ; current = filepath.Dir(current) {
 		info, err := os.Stat(current)
@@ -132,5 +172,5 @@ func FileOwner(info os.FileInfo) (int, int, bool) {
 
 func traversalError(name string, info os.FileInfo, owner MountOwner, reason string) error {
 	uid, gid, _ := FileOwner(info)
-	return fmt.Errorf("%s %s (run_uid=%d run_gid=%d owner_uid=%d owner_gid=%d mode=%04o)", name, reason, owner.UID, owner.GID, uid, gid, info.Mode().Perm())
+	return &TraversalError{Dir: name, Reason: reason, Owner: owner, DirUID: uid, DirGID: gid, Mode: info.Mode().Perm()}
 }

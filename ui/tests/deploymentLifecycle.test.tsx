@@ -405,6 +405,17 @@ test("the replica count is edited in place and applied once changed", async () =
   assert.deepEqual(scales[1], { id: 1, body: { replicas: 3 } });
 });
 
+test("the node conditions sit on the row just above the replica count", async () => {
+  stub("deploymentsPage", async () => listPage([deployment()]));
+  stub("deployment", async () => deployment());
+  await openDetail();
+  const labels = [...document.querySelectorAll(".ant-drawer .ant-descriptions-item-label")].map((el) => el.textContent);
+  const conditions = labels.indexOf(locale.detail.placement.requirements);
+  assert.ok(conditions >= 0, `no node conditions among ${labels.join(", ")}`);
+  assert.equal(labels[conditions + 1], locale.detail.replicas);
+  assert.equal(labels[conditions - 1], locale.detail.sleepable);
+});
+
 test("a PD or multi-node deployment shows its replica count read-only", async () => {
   const multi = deployment({ nnodes: 2, replicas: 1 });
   stub("deploymentsPage", async () => listPage([multi]));
@@ -572,4 +583,16 @@ test("a suggested multi-node replica is appended for the operator to check, and 
   fireEvent.click(within(again).getByRole("button", { name: locale.replica.suggestUnit }));
   await within(again).findByText(i18n.t("replica.suggest.noFit", { node: "Node C", reason: i18n.t("deploy:schedule.no_free_gpu") }));
   assert.equal(within(again).queryByText("Replica 2"), null, "nothing is appended when nothing fits");
+});
+
+
+test("an offline deployment shows no ready replicas and disables inference", async () => {
+  const offline = deployment({ runtime_state: "offline", ready_replicas: 0, replicas: 1 });
+  stub("deploymentsPage", async () => listPage([offline]));
+  stub("deployment", async () => offline);
+  await openDetail();
+  assert.ok(screen.getAllByText(i18n.t("common:states.offline")).length > 0);
+  assert.ok(screen.getAllByText("0/1").length > 0);
+  const playground = screen.getAllByRole("button", { name: locale.page.openPlayground });
+  assert.ok(playground.every((button) => (button as HTMLButtonElement).disabled));
 });

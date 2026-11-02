@@ -12,14 +12,20 @@ export interface PlaygroundModel {
   input_modalities?: string[];
   context_length?: number;
   sleeping: boolean;
+  /** Set on a sleeping model whose sleep a request ends: sending wakes it. */
+  wakes_on_request?: boolean;
   deployment_id?: number;
   template_id?: number;
   template_spec_source?: string;
   template_spec_name?: string;
   external?: boolean;
   public_data_plane: boolean;
-  /** Qwen3 chat on vLLM or SGLang, where Disable Thinking is a reliable switch. */
-  thinking_toggle?: boolean;
+  /**
+   * The extra-parameter buttons for this deployment. Which chat-template field
+   * stops thinking depends on the model family and the engine, so the server
+   * resolves the values here rather than the page guessing a family.
+   */
+  extra_parameter_presets?: ExtraParameterPreset[];
 }
 
 export interface ParameterDefinition {
@@ -46,16 +52,17 @@ export interface StreamOptionDefinition {
 export interface ExtraParameterPreset {
   key?: string;
   label: LocalizedText;
-  value: Record<string, unknown>;
-  /** Capability that makes this preset a reliable switch. Empty means it is only an example. */
+  /** The patch to merge into Extra Parameters; absent means the preset cannot be honored here. */
+  value?: Record<string, unknown>;
+  /** The declared capability that makes value effective; empty means value is only an example. */
   applies_when?: string;
+  /** Why the preset is unavailable, and what to add by hand instead. Set only when value is absent. */
   unavailable?: LocalizedText;
 }
 
 export interface PlaygroundCatalog {
   models: PlaygroundModel[];
   parameters: ParameterDefinition[];
-  extra_parameter_presets: ExtraParameterPreset[];
   stream_options?: StreamOptionDefinition[];
   /** The policy HTML previews of replies run under (platform security settings). */
   html_preview: { allow_network: boolean };

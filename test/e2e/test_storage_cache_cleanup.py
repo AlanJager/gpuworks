@@ -265,6 +265,25 @@ class MutationDiagnosticTest(unittest.TestCase):
         page.remove_listener.assert_called_once()
 
 
+class MutationScalarTypeTest(unittest.TestCase):
+    # JSON booleans and fractional tokens must not compare equal to integer capacities.
+    def test_integer_wire_is_not_boolean_or_float(self):
+        for actual in (False, 0.0):
+            with self.subTest(actual=actual, kind=type(actual).__name__):
+                page = mock.MagicMock()
+                response = mock.Mock(status=200, url='http://localhost/api/v1/storages/7')
+                response.request.post_data = json.dumps({'cache_max_bytes': actual})
+                response.request.post_data_json = {'cache_max_bytes': actual}
+                response.text.return_value = '{}'
+                page.expect_response.return_value.__enter__.return_value.value = response
+                evidence = []
+                with self.assertRaisesRegex(AssertionError, 'expected body.*received'):
+                    policy.mutate(page, lambda: None, 'PATCH', '/api/v1/storages/7',
+                                  {'cache_max_bytes': 0}, 200, evidence)
+                self.assertIs(type(evidence[0]['body']['cache_max_bytes']), type(actual))
+                page.remove_listener.assert_called_once()
+
+
 class EntryCloseFailureTest(unittest.TestCase):
     # Mainline: the actual entry reaches business success, then context/browser close fails;
     # exit is nonzero, the report stays FAIL, and the server is still stopped.

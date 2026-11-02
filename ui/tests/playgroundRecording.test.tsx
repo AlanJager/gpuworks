@@ -28,7 +28,7 @@ const { default: AudioPage } = await import("../src/pages/playground/AudioPage.t
 const catalog: PlaygroundCatalog = { models: [{ id: "audio-model", label: "audio-model", capability: "chat", sleeping: false, operations: [
   { type: "openai.audio.transcribe", endpoint: "/v1/audio/transcriptions", renderer: "audio", response: "json", mode: "sync", request_encodings: ["multipart"] },
   { type: "openai.audio.speech", endpoint: "/v1/audio/speech", renderer: "audio", response: "audio", mode: "sync", request_encodings: ["json"] },
-] }], parameters: [], extra_parameter_presets: [], html_preview: { allow_network: false } };
+] }], parameters: [], html_preview: { allow_network: false } };
 const originalFetch = globalThis.fetch;
 let stops = 0;
 let permissionRequests = 0;

@@ -33,7 +33,6 @@ CONTRACT = "gpuworks/terminal/host-pty-lifecycle"
 CASE = "终端 / 宿主机 PTY / 真实命令回显、退出结束、管理员开关禁用与恢复"
 NODES = "/api/v1/nodes"
 SETTINGS_TERMINAL = "/api/v1/settings/terminal"
-DISABLED_REASON = "web terminal is disabled in platform settings"
 
 
 def strings(locale):
@@ -181,7 +180,9 @@ def test_terminal_host(page, context, server, artifacts, report, locale, node,
     page.goto(server.base + "/nodes")
     terminal = open_terminal(page, terminal_row(page, node["name"]), nodes)
     expect(terminal.get_by_text(nodes["terminalView"]["status"]["error"], exact=True)).to_be_visible(timeout=20000)
-    expect(terminal.get_by_text(DISABLED_REASON, exact=False)).to_be_visible()
+    # The server sends the reason in English, and the UI is expected to
+    # localize it, so assert the translated sentence rather than the raw string.
+    expect(terminal.get_by_text(nodes["terminalView"]["preflight"]["disabled"], exact=False)).to_be_visible()
     terminal.close()
 
     page.goto(server.base + "/settings")
@@ -326,6 +327,12 @@ def main():
                         "non-admin access and zh/en navigation text",
                         "the other locale (each run covers one --locale)"],
         "command": ["python3", "test/e2e/terminal_host.py", *sys.argv[1:]]}
+    host_gate_inputs = ('test/e2e/terminal_host.py', 'test/e2e/local_browser_fixture.py',
+        'test/e2e/platform_token_read_revoke.py', *('test/e2e/' + name for name in (
+            'terminal_host_oracles.py', 'terminal_host_owner.py',
+            'terminal_host_sessions.py', 'terminal_host_gates.py')))
+    report['host_gate_source_hashes'] = {name: digest(ROOT / name) for name in host_gate_inputs}
+    report['host_agent_driver'] = 'none'
     server = LocalServer(args.server_bin, artifacts.private)
     agent = None
     agent_log = None
@@ -352,7 +359,7 @@ def main():
         state.mkdir()
         agent_log = (artifacts.private / "agent.log").open("w")
         agent = subprocess.Popen([str(args.agent_bin), "run", "--server", server.base,
-                                  "--token", node_token, "--state", str(state)],
+                                  "--token", node_token, "--state", str(state), "--driver", "none"],
                                  stdout=agent_log, stderr=subprocess.STDOUT, text=True)
         wait_online(server.base, admin_token, node["uuid"], agent)
         report["agent_pid"] = agent.pid
@@ -367,12 +374,24 @@ def main():
             try:
                 test_terminal_host(page, context, server, artifacts, report,
                                    args.locale, node, agent, agent_log, admin_token)
+                check(report['host_gate_source_hashes'] == {name: digest(ROOT / name) for name in host_gate_inputs},
+                      'host gate source changed before post-mainline slice')
+                from terminal_host_gates import exercise as host_gates
+                host_gates(context, server, artifacts, report, args.locale, node,
+                           agent, args.agent_bin, admin_token)
+                check(report['host_gate_source_hashes'] == {name: digest(ROOT / name) for name in host_gate_inputs},
+                      'host gate source changed during post-mainline slice')
                 report["case_completed"] = True
             except Exception:
                 report["status"] = "FAIL_TEST"
                 report["failure"] = artifacts.redact(traceback.format_exc())
                 artifacts.write_json("report.json", report)
-                page.screenshot(path=artifacts.directory / "failure.png")
+                try:
+                    # This parent may still contain login input; the host slice
+                    # captures its own non-secret terminal page separately.
+                    artifacts.capture_failure(page, True)
+                except Exception as capture_error:
+                    report['capture_error'] = artifacts.redact(str(capture_error))
             finally:
                 artifacts.write_json("report.json", report)
                 close_ok = True
@@ -396,7 +415,7 @@ def main():
                     report.setdefault("failure", "the browser did not close cleanly")
     except Exception:
         report["status"] = "FAIL_TEST" if report.get("preflight") == "PASS" else "BLOCKED_INFRA"
-        report["failure"] = artifacts.redact(traceback.format_exc())
+        report.setdefault("failure", artifacts.redact(traceback.format_exc()))
     finally:
         cleanup_ok = False
         try:

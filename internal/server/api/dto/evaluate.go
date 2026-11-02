@@ -52,6 +52,10 @@ type EvaluateResponse struct {
 	// endpoint, and the form keeps the draft while showing each error beside
 	// its control. Codes match the 400 path create would answer with.
 	Errors []FieldError `json:"errors,omitempty"`
+	// AutoPlaced says the server picked the nodes of this multi-node or PD
+	// request (placement_mode "auto"): the nodes the preview shows are where
+	// it would go now, and the create picks again.
+	AutoPlaced bool `json:"auto_placed,omitempty"`
 	// One breakdown/plan describes one replica. Repeated replicas compete for
 	// shared capacity and are admitted separately at scheduling time.
 	Replicas           int                   `json:"replicas"`
@@ -129,6 +133,10 @@ type EvaluateResponse struct {
 	// PD previews a PD disaggregated draft instance by instance; the command
 	// fields above then describe the first decode instance.
 	PD *EvaluatePD `json:"pd,omitempty"`
+	// YieldPolicyEligible says whether the draft may be created with a yield
+	// policy other than never (planning.DraftYieldPolicyRefusal), the check
+	// the create makes; absent until the draft's engine is known.
+	YieldPolicyEligible *Eligibility `json:"yield_policy_eligible,omitempty"`
 }
 
 // EvaluatePD is the preview of a PD draft (ADR 0028).
@@ -220,10 +228,14 @@ type PreflightSummary struct {
 // same schedule-reason vocabulary the plan explains itself with. The node
 // dropdown renders this list instead of running predicates of its own.
 type EligibleNode struct {
-	UUID     string           `json:"uuid"`
-	Name     string           `json:"name"`
-	Eligible bool             `json:"eligible"`
-	Reasons  []ScheduleReason `json:"reasons,omitempty"`
+	// RequirementsMatch is the independent result of explicit node conditions
+	// (labels, networks and node selections), before vendor/chip/state checks.
+	// Omitted when none were stated or the requirements could not be decoded.
+	RequirementsMatch *bool            `json:"requirements_match,omitempty"`
+	UUID              string           `json:"uuid"`
+	Name              string           `json:"name"`
+	Eligible          bool             `json:"eligible"`
+	Reasons           []ScheduleReason `json:"reasons,omitempty"`
 }
 
 // ScheduleReason is the wire form of one scheduler explanation: the stable code

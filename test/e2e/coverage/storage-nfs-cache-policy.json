@@ -60,13 +60,14 @@
       "covered": [
         "-1 shows the invalid-limit alert and persistence stays 0",
         "32 GiB is sent as 32×1024³ bytes, shown as 32.0 GiB after reload and prefilled 32 on reopen",
-        "16 GiB batch value"
+        "16 GiB batch value",
+        "real keyboard/step-button2-to3-to2 and exact1024GiB/1TiB plus2GiB/0.001953125TiB unit roundtrips without PATCH",
+        "canonical JSON whole-body comparison distinguishes integer bytes, float/string/bool/null/zero/omission"
       ],
       "missing": [
         "decimal, empty and non-numeric input",
         "upper bounds and values above node capacity",
-        "proof that the rejected -1 sent no request (only persistence is checked)",
-        "strict JSON type of cache_max_bytes (the body comparison accepts false/0.0 as 0)"
+        "proof that the rejected -1 sent no request (only persistence is checked)"
       ]
     },
     {
@@ -141,14 +142,16 @@
     "1.2": "PARTIAL: single-node dialog prefill (unlimited, then 32 GiB) and the edit dialog after reload (unlimited default, node 02 at 64.0 GiB); MISSING: no submission before async load",
     "1.3": "On the Cache node 01 cache settings drawer, choosing Use another directory enables the cache directory value, which still shows an absolute path. Saving that directory empty shows the localized invalid-directory sentence, sends no node-overrides PATCH, leaves the node target at cache_max_bytes 0 with no cache_path field, and leaves the storage default directory unchanged. Saving a whitespace-only directory does the same. After both rejections the custom-directory radio stays selected, Keep current configuration and Follow default directory stay unchecked, and the cache-limit radios stay on Unlimited with Follow default and Custom unchecked.",
     "1.9": "covered: While the defaults PATCH is held a forced second click and Enter send no further save, and the later 200 is the only stored default",
+    "1.10": "A real second browser context saves the default limit 128→96→128 GiB while the first defaults editor retains its unlimited draft and old revision. The first save returns real HTTP 409 STORAGE_CONFIG_CHANGED; the localized conflict alert, unlimited draft and original directory remain. Independent GET keeps the other writer revision and the complete original policy. Reopening loads custom 128 GiB and the saved directory with no stale error. Saving unlimited with the current expected_updated_at returns 200 and advances the revision; independent GET and reloaded node details show unlimited inheritance while the 64 GiB exception and all unrelated identity/path/target fields remain unchanged.",
     "1.11": "The single-node cache drawer shows one close button. Cancel, that close button, and Escape each close the drawer, send no storage write, and show no unsaved-changes prompt. The batch dialog and the defaults dialog each do the same for Cancel, the close button, and Escape. After every one of those dismissals the independent GET keeps the same default limit, default directory, and the same Cache node 01 and Cache node 02 limits and directories that were saved before that dismissal.",
     "1.12": "Node 01 changes unlimited→custom 32→unlimited 0→batch 16→inherit; node 02 keeps 64 GiB through every other edit",
+    "1.13": "While the defaults editor is open, a separate browser context changes the default limit from 128 to 96 and back to 128 GiB through two real UI PATCH requests and independently reads both values. Its new revision makes the first editor stale. That editor sends the frozen expected_updated_at, gets 409 STORAGE_CONFIG_CHANGED, retains its draft and localized recovery notice, and leaves every saved field unchanged. Reloading the page and reopening the defaults editor loads the saved policy and current revision; a subsequent UI save returns 200, independently persists unlimited and is rendered after reload.",
     "1.14": "PARTIAL: every mutation is read back by an independent GET; the table is reloaded after the 32 GiB, unlimited-0, inherit-null and defaults changes. The batch-16 change is GET-only; agent effect is N/A (no agent)",
     "1.15": "The five cache metric controls are block buttons. In the Cache node 01 cache settings drawer, Tab from the close button reaches the selected directory policy, then the selected limit, then Cancel. Enter in the directory field sends no storage write and leaves the directory unchanged. Saving an empty directory shows the localized invalid-directory alert and sends no storage write. At 1440x900 the directory field, Cancel, and Save are each inside the viewport, and the directory field does not overlap Cancel or Save. After that check the independent GET keeps the same default limit, default directory, and the same Cache node 01 and Cache node 02 limits and directories.",
     "3.1": "Switching a node to a custom cache limit shows an empty amount. The unit shown is GiB, and the choices are GiB and TiB, so this field is a byte capacity. The spinbutton step is 1 and its minimum is 0. The control has no maximum, no percent suffix and no slider. Closing the unit list leaves GiB selected. None of that sends a request, and the independent read stays at 0 bytes",
     "3.2": "0, an empty value and a non-numeric entry blur to an empty custom limit, and -1 does the same. Save on each shows the invalid-limit alert, sends no node-overrides request, and the independent read stays at 0 bytes. 1 GiB is the smallest whole GiB that stays displayed, and 1.5 GiB stays displayed. 8388607 GiB is the largest whole GiB whose byte count is a safe integer and it stays displayed. 8388608 GiB stays displayed and Save rejects it, with the stored limit still at 0 bytes",
-    "3.3": "From 2, ArrowUp shows 3 and ArrowDown returns to 2. Increase Value shows 3 and Decrease Value returns to 2. This control has no slider and one spinbutton. Switching the unit from GiB to TiB shows 0.001953125, the same 2 GiB, and switching back shows 2. From 1, ArrowDown clears the control because 0 is not kept as a custom limit. None of those steps sends a request, and the independent read stays at 0 bytes",
-    "3.4": "PARTIAL: null (inherit), 0 (unlimited) and a byte count are sent and persisted as distinct values; strict JSON type checks are MISSING",
+    "3.3": "The custom cache limit changes2-to3-to2 through actual ArrowUp/ArrowDown and visible Increase/Decrease buttons. The single unit selector changes1024GiB-to1TiB-to1024GiB and2GiB-to0.001953125TiB-to2GiB, including blur without fractional truncation. Decrementing1 follows the actual empty invalid-input state. Exactly one spinbutton and no slider are present; no node-overrides PATCH occurs and the independent saved byte value remains unchanged. This is a control/step/unit check, not a claim that the fractional draft was saved or executed.",
+    "3.4": "Whole browser request bodies are compared as canonical JSON, preserving distinctions among integer bytes, floats, strings, empty strings, booleans, null,0 and omitted fields. Saving32GiB requires integer34359738368; unlimited sends integer0, restore-to-inherit sends explicit null, and unchanged limit fields are omitted for applicable path-only updates. Independent GET and reopened controls confirm the applicable saved meanings. Ordinary Python equality cannot accept false or0.0 in place of integer0.",
     "3.5": "GiB input is sent in bytes and rendered back as 32.0 GiB / 64.0 GiB / 128.0 GiB",
     "5.1": "PARTIAL: the mode filter lists exactly its three options (read by their title: AntD's role=option list is a windowed a11y mirror that cannot prove which options exist); default and selected state rendering is MISSING",
     "5.3": "Full, partial (first word / first character) and no-match terms narrow the mode filter to the matching options; clearing the term restores all three",
@@ -162,22 +165,20 @@
     "12.3": "covered: Default focus is inside the defaults dialog. Tab and Shift+Tab each cycle across at least two controls and never leave the dialog",
     "12.4": "MISSING: Cancel, Escape, close and mask send no storage write, but focus does not return to Edit default policy because the editor unmounts on close",
     "12.5": "N/A: the defaults dialog has no nested child layer",
-    "12.6": "covered: While the defaults PATCH is held the footer Save is disabled and a forced second click sends no further save; the 502 keeps the unlimited limit and cache path and shows the server reason; the later 200 matches the independent GET and the refreshed effective limit",
+    "12.6": "While the real stale defaults PATCH is held before sending, Save is disabled and a forced second click plus Enter send no duplicate. Releasing that request reaches the real server and returns 409 STORAGE_CONFIG_CHANGED; the unlimited limit and directory draft remain with the localized conflict reason. Reopening with the fresh revision and saving returns 200, matches independent GET and the refreshed effective limit. No management API response is mocked.",
     "12.7": "MISSING: clear-cache confirmation is not exercised; every seeded node is offline",
     "12.8": "The defaults dialog sends the previewed expected_updated_at. After another writer advances the revision, Save returns 409 STORAGE_CONFIG_CHANGED, the unlimited draft and cache path stay in the open dialog, and the independent GET keeps the previous default limit and the other writer's revision. Teardown is not the assertion",
-    "13.3": "The role=user session sees no configure, batch, restore, retry, defaults, clear or edit-scope control and no checkbox; its PATCH node-overrides, PATCH storage, POST cache/reconcile and DELETE cache are each refused with 403 ADMINISTRATOR_REQUIRED, and targets, updated_at and the default are unchanged"
+    "13.3": "The role=user session sees no configure, batch, restore, retry, defaults, clear or edit-scope control and no checkbox; its PATCH node-overrides, PATCH storage, POST cache/reconcile and DELETE cache are each refused with 403 ADMINISTRATOR_REQUIRED, and targets, updated_at and the default are unchanged",
+    "3.6": "The control and the server refuse the same lower bound. The form blurs -1 to empty and shows the invalid-limit alert without sending anything, and a PATCH written straight to /api/v1/storages/{id}/node-overrides with cache_max_bytes -1 and then -1073741824 is refused with HTTP 400 and code STORAGE_PATH_INVALID. Independent readback after both refusals still shows the stored limit at 0 bytes, so a rejected capacity left the configuration untouched."
   },
   "missing": [
     "MISSING: 1.1 full field inventory of the policy dialogs (cache path mode is not exercised)",
     "MISSING: 1.3 required-field validation (the policy dialogs have no free-text required field besides the limit)",
     "N/A: 1.4-1.8 creation — the storage is a fixture fact; creation is storage-nfs-cache-create.json",
     "MISSING: 1.9 duplicate submit of the override dialog",
-    "MISSING: 1.10 server-side rejection and recovery (the -1 case is a client-side rejection)",
     "MISSING: 1.11 Esc/close of the single-node and batch dialogs and proof that cancel sends no mutation",
-    "MISSING: 1.13 expected_updated_at conflict on the defaults dialog",
     "MISSING: 1.15 keyboard reachability and layout of the whole dialog at 1440×900 (only the batch trigger's Tab/Shift+Tab/Enter is exercised)",
-    "MISSING: 3.1 and 3.3 limit units and step text, stepper buttons",
-    "MISSING: 3.6 server-provided limit ranges",
+    "MISSING: 3.1 complete limit-unit, default and step-text inventory outside the new3.3 control roundtrip",
     "MISSING: 5.2 selecting and persisting each mode filter value on its own",
     "N/A: 5.4 the mode filter has allowClear; clearing it is covered only through Clear filters",
     "MISSING: 5.5 and 5.7 conditional fields after a mode switch and failed option loads",
@@ -192,7 +193,6 @@
     "MISSING: 11.6 batches mixing nodes that cannot be changed",
     "MISSING: 12.2-12.6 dialog viewport, focus containment, close variants, nested dialogs and submit state",
     "MISSING: 12.7 the destructive Clear cache action and its confirmation (it is enabled only for active rows; every seeded node is offline)",
-    "N/A: 12.8 no delete preview or revision exists",
     "MISSING: the state filter combobox, the select-filtered action and the summary state cards",
     "MISSING: online node capacity, eviction and trim execution (needs a connected agent and a real cache)",
     "MISSING: 13.1-13.6 menus, popovers at list edges, tooltips and notifications (the row retry button fitting its label is a page-specific check, not 13.2)",
@@ -201,8 +201,34 @@
     "MISSING: the cache-path mode of the single-node and batch dialogs"
   ],
   "artifact": "secrets/e2e/<runId>/report.json with source SHA/working-tree state, server binary, test, helper and manifest digests, locale, browser version, exact PATCH/POST bodies, independent GETs, the non-admin 403, screenshots, redacted trace and server log; browser page/console/HTTP errors are recorded and unexpected errors fail the case; the non-admin UpdateNotice shell GET /updates 403 and its exact Chrome console line are explicitly accounted for (ui/src/components/UpdateNotice.tsx); target branch and SHA are recorded",
-  "result": "NOT_RUN until a matching report.json records PASS with all required evidence, source and binary identity, and observed cleanup stages",
+  "result": "PASS: both all-family locales, exact source/binary identity and observed cleanup; see batch_c_evidence. Historical failure records are retained.",
   "page_checks": [
     "The row retry action is in the viewport and its label is not clipped inside the button"
-  ]
+  ],
+  "batch_c_evidence": {
+    "items": [
+      "3.3",
+      "3.4"
+    ],
+    "normal_binary_sha256": "671e93a1b3783695f799ffd494ca2e2d0801c374f69374f5413236e177125e1b",
+    "input_manifest_sha256": "a31ab8c59d7fe2cf74761388ac2ee22e5201b54b4b3084c5fe3938b65e4c8bde",
+    "restored_all": [
+      {
+        "locale": "en",
+        "run_id": "20261026T154338Z-781eea82",
+        "report": "secrets/e2e/20261026T154338Z-781eea82/report.json",
+        "report_sha256": "eeb136c732154ab524154f3d8bc431b54e4c4e19fca9b98fe3818d81e2e9ba5f"
+      },
+      {
+        "locale": "zh",
+        "run_id": "20261026T154341Z-ef7adaf7",
+        "report": "secrets/e2e/20261026T154341Z-ef7adaf7/report.json",
+        "report_sha256": "6bd5c07485a40f5095873840fcd9590ba335eae795454a38038cc4263620be00"
+      }
+    ],
+    "mutant_index": "secrets/mr-validation-20261026/batch-c-mutants-persisted.json",
+    "restored_index": "secrets/mr-validation-20261026/batch-c-provider-storage-restored-persisted.json",
+    "source_guard": "All consumed test helpers unchanged; only unrelated deployment_launch_checks.py changed after these completed runs. Compiled production source matches the recorded normal build exactly.",
+    "note": "Supersedes earlier partial claims only for these listed items; historical batch_evidence remains historical and is not rewritten."
+  }
 }

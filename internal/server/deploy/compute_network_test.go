@@ -30,6 +30,9 @@ func TestComputeNetworkEnvByType(t *testing.T) {
 			"HCCL_IF_IP": "172.30.8.31", "HCCL_SOCKET_IFNAME": "br_ens3_36", "GLOO_SOCKET_IFNAME": "br_ens3_36",
 		}},
 		{"accelerator cards without a bootstrap", Params{NNodes: 2, Vendor: "ascend", ComputeNetwork: ComputeNetwork{Type: netplan.TypeAcceleratorRDMA, HCAs: []string{"npu3"}}}, map[string]string{}},
+		{"accelerator HCCS", Params{NNodes: 2, Vendor: "ascend", NodeAddress: "172.30.8.31", ComputeNetwork: ComputeNetwork{Type: netplan.TypeAcceleratorHCCS, Interface: "br_ens3_36", HCAs: []string{"npu3", "npu4"}}}, map[string]string{
+			"GLOO_SOCKET_IFNAME": "br_ens3_36", "HCCL_SOCKET_IFNAME": "br_ens3_36", "ASCEND_GLOBAL_RESOURCE_CONFIG": `{"comm_resource_config.protocol_desc":["hccs:device"]}`, "ACL_OP_INIT_MODE": "1", "ASCEND_ENABLE_USE_FABRIC_MEM": "1",
+		}},
 		// Which variables say it is the vendor's business: a vendor whose
 		// cards own no ports has none, and gets only the rendezvous interface.
 		{"accelerator network, vendor without card ports", Params{NNodes: 2, Vendor: "nvidia", NodeAddress: "10.0.0.1", ComputeNetwork: ComputeNetwork{Type: netplan.TypeAcceleratorRDMA, Interface: "eth0"}}, map[string]string{"GLOO_SOCKET_IFNAME": "eth0"}},
@@ -120,6 +123,7 @@ func TestComputeNetworkMounts(t *testing.T) {
 		"multi-node rank on host Ethernet": {Params{NNodes: 2, ComputeNetwork: ComputeNetwork{Type: netplan.TypeHostEthernet}}, nil},
 		"multi-node rank without network":  {Params{NNodes: 2}, nil},
 		"PD instance on cards":             {Params{NNodes: 1, Vendor: "ascend", PD: &PDLaunch{Mode: "vllm-ascend-mooncake", Role: "decode"}, ComputeNetwork: accelerator}, want},
+		"PD instance on HCCS":              {Params{NNodes: 1, Vendor: "ascend", PD: &PDLaunch{Mode: "vllm-ascend-mooncake", Role: "decode"}, ComputeNetwork: ComputeNetwork{Type: netplan.TypeAcceleratorHCCS}}, want},
 		// One host has no network to be on, and HCCL still reads the file.
 		"HCCL PD instance on one host": {Params{NNodes: 1, Vendor: "ascend", PD: &PDLaunch{Mode: "vllm-ascend-mooncake", Role: "decode"}}, want},
 		"UCX PD instance on host RDMA": {Params{NNodes: 1, PD: &PDLaunch{Mode: "vllm-nixl", Role: "decode"}, ComputeNetwork: ComputeNetwork{Type: netplan.TypeHostRDMA}}, nil},

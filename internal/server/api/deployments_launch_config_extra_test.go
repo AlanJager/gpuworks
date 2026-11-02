@@ -82,6 +82,19 @@ func TestDockerArgCodesMatchTheirProducer(t *testing.T) {
 		ErrorDockerArgUseMountField:      deploy.ErrorDockerArgUseMountField,
 		ErrorDockerArgUseEntrypointField: deploy.ErrorDockerArgUseEntrypointField,
 		ErrorShmSizeWithHostIPC:          deploy.ErrorShmSizeWithHostIPC,
+		ErrorExtraArgsJSONInvalid:        deploy.ErrorExtraArgsJSONInvalid,
+	} {
+		if api != producer {
+			t.Fatalf("api code %q, deploy code %q", api, producer)
+		}
+	}
+}
+
+func TestAscendSleepCodesMatchTheirProducer(t *testing.T) {
+	for api, producer := range map[string]string{
+		ErrorAscendSleepAdditionalConfigInvalid: deploy.ErrorAscendSleepAdditionalConfigInvalid,
+		ErrorAscendSleepWeightNZConflict:        deploy.ErrorAscendSleepWeightNZConflict,
+		ErrorAscendSleepExpandableSegments:      deploy.ErrorAscendSleepExpandableSegments,
 	} {
 		if api != producer {
 			t.Fatalf("api code %q, deploy code %q", api, producer)

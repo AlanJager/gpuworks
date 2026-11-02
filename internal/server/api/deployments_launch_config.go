@@ -26,12 +26,30 @@ func materializeDeployRequest(engine string, req *dto.DeployRequest, selection t
 	if err != nil {
 		return deploy.Materialized{}, wrapProductError(ErrorExtraArgsInvalid, "extra_args cannot be parsed", map[string]any{"detail": err.Error()}, err)
 	}
+	if err := deploy.ValidateExtraArgsJSON(extra); err != nil {
+		return deploy.Materialized{}, err
+	}
 	command, err := effectiveRequestCommand(req, selection)
 	if err != nil {
 		return deploy.Materialized{}, err
 	}
+	templateArgs := selection.ExtraArgs
+	// Task intent comes from the current explicit API contract, never a model
+	// name or an architecture guess. A full command/entrypoint remains owned
+	// by its author; only the ordinary engine-generated command gets defaults.
+	cmdDisplay, _ := req.ContainerOverrides["cmd_display"].(string)
+	if command.InterpretEngineDialect && len(command.Entrypoint) == 0 && strings.TrimSpace(cmdDisplay) == "" {
+		defaults := deploy.PoolingTaskArgs(engine, engineVersion, selection.APIContract, templateArgs, extra)
+		if selection.Spec != nil {
+			templateArgs = append(append([]string(nil), templateArgs...), defaults...)
+		} else {
+			// Raw-model deployments have no catalog snapshot: keep the derived
+			// tokens in their existing persisted extra_args launch column.
+			extra = append(extra, defaults...)
+		}
+	}
 	out, err := deploy.Materialize(deploy.MaterializeInput{
-		Engine: engine, Command: &command, Raw: req.QuickParams, Unset: req.QuickParamsUnset, TemplateArgs: selection.ExtraArgs, ExtraArgs: extra, Cards: cards,
+		Engine: engine, Command: &command, Raw: req.QuickParams, Unset: req.QuickParamsUnset, TemplateArgs: templateArgs, ExtraArgs: extra, Cards: cards,
 		EngineVersion: engineVersion,
 	})
 	if err != nil {

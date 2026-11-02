@@ -3,6 +3,8 @@ package app
 import (
 	"context"
 
+	"gpuworks.ai/gpuworks/internal/accelerator"
+
 	"gpuworks.ai/gpuworks/internal/agent/collector"
 	"gpuworks.ai/gpuworks/internal/agent/engine"
 	"gpuworks.ai/gpuworks/internal/agent/gpu"
@@ -19,6 +21,7 @@ func (n *NodeRuntime) StartBackground(ctx context.Context, nodeUUID string) {
 	}, n.log)
 	col.SetModelsRoot(n.ModelsRoot())
 	col.SetDCGMProbe(gpu.NewDCGMProbe(n.dcgmMode))
+	col.SetSimulatedHost(n.host)
 	runCollector := n.collectorRunner
 	if runCollector == nil {
 		runCollector = func(ctx context.Context, col *collector.Collector) { col.Run(ctx) }
@@ -26,10 +29,19 @@ func (n *NodeRuntime) StartBackground(ctx context.Context, nodeUUID string) {
 	go runCollector(ctx, col)
 	go n.runStorages(ctx)
 	n.startCardSmoke(ctx)
+	if n.prober != nil && accelerator.NormalizeVendor(n.prober.Vendor()) == accelerator.VendorNVIDIA && !gpu.IsSynthetic(n.prober) {
+		xid := &gpu.XidWatcher{}
+		n.xid.Store(xid)
+		go xid.Run(ctx)
+	}
 	if n.journal == nil {
 		n.journal = journald{}
 	}
-	go n.shipNodeLogs(ctx)
+	// A simulated node's host is not the machine it stands for: its logs
+	// are not that machine's to ship.
+	if n.host.ShipsHostLogs() {
+		go n.shipNodeLogs(ctx)
+	}
 	go n.shipSelfLogs(ctx)
 	if n.engine != nil {
 		go n.shipLogs(ctx)

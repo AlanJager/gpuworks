@@ -26,12 +26,12 @@ class RunPodFixtureTest(unittest.TestCase):
         self.assertFalse(self.fixture.thread.is_alive())
 
     def request(self, path="/proxy-a/v2/account/ssh-keys", method="GET", body=None,
-                authorization="Bearer fixture-api-key", raw=None):
+                authorization="Bearer fixture-api-key", raw=None, fixture=None):
         headers = {"Content-Type": "application/json"}
         if authorization is not None:
             headers["Authorization"] = authorization
         data = raw if raw is not None else json.dumps(body).encode() if body is not None else None
-        request = urllib.request.Request(self.fixture.base + path, method=method, data=data, headers=headers)
+        request = urllib.request.Request((fixture or self.fixture).base + path, method=method, data=data, headers=headers)
         try:
             response = self.client.open(request, timeout=5)
         except urllib.error.HTTPError as error:
@@ -94,6 +94,57 @@ class RunPodFixtureTest(unittest.TestCase):
         for method in ("POST", "DELETE", "PATCH"):
             self.assertEqual(self.request(method=method)[0], 405)
         self.assertEqual([r["status"] for r in self.fixture.requests], [404, 404, 404, 405, 405, 405])
+
+    def test_default_routes_still_reject_every_query_including_empty(self):
+        for suffix in ('?', '?tenant=e2e', '?tenant=e2e&tenant=e2e', '?unknown=1'):
+            self.assertEqual(self.request('/proxy-a/v2/pods' + suffix)[0], 404)
+        self.assertEqual(self.fixture.keys, [])
+
+    def test_declared_proxy_query_preserves_auth_keys_and_exact_request_targets(self):
+        query = 'tenant=e2e-query&label=one%2Ftwo%2Bthree'
+        with RunPodFixture('fixture-api-key', keys=[KEY_A], query=query) as fixture:
+            pods = '/proxy-a/v2/pods?' + query
+            keys = '/proxy-a/v2/account/ssh-keys?' + query
+            self.assertEqual(self.request(pods, fixture=fixture)[2],
+                             {'pods': [], 'pagination': {'nextCursor': None, 'hasNextPage': False}})
+            self.assertEqual(self.request(keys, fixture=fixture)[2], {'keys': [KEY_A]})
+            self.assertEqual(self.request(keys, method='PUT', body={'keys': [KEY_A, KEY_B]}, fixture=fixture),
+                             (200, 'application/json', {'keys': [KEY_A, KEY_B]}))
+            self.assertEqual(self.request('/proxy-b/v2/account/ssh-keys?' + query, fixture=fixture)[2],
+                             {'keys': [KEY_A, KEY_B]})
+            self.assertEqual([record['path'] for record in fixture.requests],
+                             [pods, keys, keys, '/proxy-b/v2/account/ssh-keys?' + query])
+            for authorization in (None, 'fixture-api-key', 'Bearer wrong-key'):
+                self.assertEqual(self.request(keys, method='PUT', body={'keys': []},
+                    authorization=authorization, fixture=fixture)[0:2], (401, 'application/problem+json'))
+            self.assertEqual(fixture.keys, [KEY_A, KEY_B])
+            fixture.forbidden = True
+            self.assertEqual(self.request(keys, fixture=fixture)[0], 403)
+            fixture.forbidden = False
+            for bad in ({'keys': None}, {'keys': ['not-a-key']}, {'keys': [], 'extra': True}):
+                self.assertEqual(self.request(keys, method='PUT', body=bad, fixture=fixture)[0], 422)
+            self.assertEqual(self.request(keys, method='PUT', raw=b'{', fixture=fixture)[0], 400)
+            self.assertEqual(self.request(keys, method='POST', fixture=fixture)[0], 405)
+            self.assertEqual(fixture.keys, [KEY_A, KEY_B])
+        self.assertFalse(fixture.thread.is_alive())
+
+    def test_declared_proxy_query_rejects_missing_different_reordered_and_duplicate_values(self):
+        query = 'tenant=e2e-query&label=one%2Ftwo%2Bthree'
+        with RunPodFixture('fixture-api-key', keys=[KEY_A], query=query) as fixture:
+            for suffix in ('', '?', '?tenant=wrong&label=one%2Ftwo%2Bthree',
+                           '?label=one%2Ftwo%2Bthree&tenant=e2e-query',
+                           '?' + query + '&tenant=e2e-query', '?' + query + '&other=1',
+                           '?tenant=e2e-query&label=one%2ftwo%2Bthree'):
+                with self.subTest(suffix=suffix):
+                    self.assertEqual(self.request('/proxy-a/v2/account/ssh-keys' + suffix,
+                        method='PUT', body={'keys': []}, fixture=fixture)[0:2], (404, 'application/problem+json'))
+            self.assertEqual(fixture.keys, [KEY_A])
+        self.assertFalse(fixture.thread.is_alive())
+
+    def test_declared_query_rejects_invalid_configuration_before_listening(self):
+        for query in ('', False, {}, '?tenant=e2e', 'tenant=e2e#fragment', 'tenant=e2e\r\n'):
+            with self.subTest(query=query), self.assertRaisesRegex(ValueError, 'query must be'):
+                RunPodFixture('fixture-api-key', query=query)
 
 
 if __name__ == "__main__":

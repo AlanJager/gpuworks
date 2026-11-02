@@ -12,7 +12,7 @@ import json
 from pathlib import Path
 import re
 import time
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, quote, urlsplit
 
 from playwright.sync_api import expect
 from dialog_checks import (
@@ -21,7 +21,11 @@ from local_browser_fixture import ROOT, http
 from local_business_runner import unattributed_console_errors
 from platform_token_read_revoke import button, check
 from deploy_submit_hold import hold_deploy_create
+from deployment_batch_checks import created_notice, rejected_notice, open_deployment_row, delete_name_preview
+from deployment_selector_checks import (
+    assert_template_sources, choose_destination_storage, assert_storage_evaluation)
 from deployment_wizard_create import select
+import deployment_launch_checks as launch_checks
 import deployment_container_fixture as containers
 from deployment_acquisition_fixture import IMAGE, SPEC, TEMPLATES
 from model_download_fixture import REVISION
@@ -126,13 +130,32 @@ def exercise(page, context, server, artifacts, report, locale, data, token, hold
     templates = login(page, context, server, artifacts, report, locale)
     session['authenticated'] = True
     report['step'] = 'template real provider selector and registration'
-    page.goto(server.base + '/inference-templates/' + data['template_model_id'])
+    template_path = '/api/v1/inference-templates/model/' + data['template_model_id']
+    with page.expect_response(lambda response: response.request.method == 'GET'
+                              and urlsplit(response.url).path == template_path) as loaded_template:
+        page.goto(server.base + '/inference-templates/' + data['template_model_id'])
+    assert_template_sources(loaded_template.value, data, report)
     expect(page.get_by_role('heading', name=data['template']['display_title'], exact=True)).to_be_visible()
     # The owned template has one spec; the detail action preserves its real
     # template/spec URL identity instead of manufacturing form internals.
     deploy_text = templates['detail']['deploy']
     deploy_pattern = r'\s*'.join(deploy_text) if re.fullmatch(r'[\u3400-\u9fff]{2}', deploy_text) else re.escape(deploy_text)
-    page.get_by_role('button').filter(has_text=re.compile('^' + deploy_pattern + '$')).click()
+    # The source chooser depends on this lookup. Capture its real response
+    # before checking the dialog, rather than spending the render assertion's
+    # budget while the template/spec and source lookup are still loading.
+    report['last_step'] = 'template-source-lookup-ready'
+    source_query = {'page': ['1'], 'page_size': ['50'], 'source_id': [data['repo']]}
+    with page.expect_response(lambda response: response.request.method == 'GET'
+                              and urlsplit(response.url).path == '/api/v1/models'
+                              and parse_qs(urlsplit(response.url).query) == source_query) as source_lookup:
+        page.get_by_role('button').filter(has_text=re.compile('^' + deploy_pattern + '$')).click()
+    response = source_lookup.value
+    body = response.json()
+    check(response.status == 200 and body['items'] == [] and body['total'] == 0
+          and body['page'] == 1 and body['page_size'] == 50,
+          'template source lookup must return the independently unregistered fixture repository')
+    report['selector_requests'].append({'method': 'GET', 'path': '/api/v1/models',
+        'query': source_query, 'status': response.status, 'candidates': []})
     modal = page.get_by_role('dialog', name=labels['action']['selectWeightSource'], exact=True)
     choice = modal.get_by_role('combobox', name=labels['action']['selectSourcePlaceholder'], exact=True)
     expect(choice).to_have_value('')
@@ -176,14 +199,7 @@ def exercise(page, context, server, artifacts, report, locale, data, token, hold
     expect(gpu).to_have_class(re.compile('is-picked'))
     expect(gpu).to_be_disabled()
     storage = page.get_by_role('combobox', name=labels['workbench']['acquisition']['saveTo'], exact=True)
-    storage.focus()
-    storage.press('ArrowDown')
-    popup_id = storage.get_attribute('aria-controls')
-    check(bool(popup_id), 'storage selector has no controlled popup')
-    storage_popup = page.locator('[id=' + json.dumps(popup_id) + ']').locator('..')
-    for item in data['storages']:
-        expect(storage_popup.get_by_text(re.compile(re.escape(item['name']))).filter(visible=True)).to_have_count(1)
-    storage_popup.get_by_text(re.compile(re.escape(data['storages'][1]['name']))).filter(visible=True).click()
+    choose_destination_storage(page, storage, evaluations, data, labels, locale, report)
     name = page.get_by_role('textbox', name=re.compile(re.escape(labels['basic']['name']) + '$'))
     route = page.get_by_role('textbox', name=labels['basic']['servedName'], exact=True)
     name.fill(data['name'])
@@ -199,7 +215,7 @@ def exercise(page, context, server, artifacts, report, locale, data, token, hold
                 return response
         return None
     evaluated = until(page, final_evaluation, 'page selected-storage evaluation')
-    evaluation = evaluated.json()
+    evaluation = assert_storage_evaluation(evaluated, data, report, selected=True)
     same(evaluation['selected_node']['uuid'], data['node']['uuid'], 'auto independent unique eligible node')
     same(evaluation['plan']['plan']['gpus'], [0], 'auto independent GPU zero')
     same(evaluation['plan']['plan']['tp'], 1, 'auto independent single GPU plan')
@@ -224,33 +240,40 @@ def exercise(page, context, server, artifacts, report, locale, data, token, hold
         labels['workbench']['nodeAcquisition']['downloadHost'].replace('{{hosts}}', source_host))
     report['evaluate_observations'].append({'status': evaluated.status,
         'request': evaluated.request.post_data_json, 'response': evaluation})
+    launch_preview = launch_checks.draft_checks(page, labels, expected_body(data), report, token=token)
+    launch_checks.boolean_rejection.seed(page, labels, expected_body(data), report, token,
+        launch_checks.boolean_rejection.declared_mount(str(server.storage_root / 'store-b')), data['storages'][1]['id'])
     # A real second session removes the selected provider from this owned
     # spec after evaluation. Browser retains its original valid draft.
     report['step'] = 'real selected provider expires before create'
     changed = copy.deepcopy(data['import_model'])
     changed['specs'][0]['weights']['sources'] = [source for source in changed['specs'][0]['weights']['sources']
                                                if data['provider'] not in source]
-    replace_owned_template(server, token, data, changed)
-    try:
-        stale = hold_deploy_create(page, report)
-        same(stale.status, 400, 'expired selected provider HTTP')
-        rejected = stale.json()
-        same(rejected['code'], 'ACQUISITION_CANDIDATE_STALE', 'expired provider error code')
-        same(rejected['params'], {'provider': data['provider']}, 'expired provider error parameters')
-        same(stale.request.post_data_json, expected_body(data), 'expired provider original full draft')
-        expect(name).to_have_value(data['name'])
-        expect(route).to_have_value(data['served_name'])
-        error = labels['action']['createFailed'].replace('{{detail}}', common['apiError']['ACQUISITION_CANDIDATE_STALE'])
-        expect(page.get_by_text(error, exact=True)).to_be_visible()
-        status, listed = http(server.base, 'GET', containers.DEPLOYMENTS + '?q=' + data['name'], token)
-        check(status == 200 and listed['items'] == [] and listed['total'] == 0, 'rejected expiry wrote a deployment')
-    finally:
-        replace_owned_template(server, token, data, data['import_model'])
+    with launch_checks.boolean_rejection.expiry_guard(page, report):
+        replace_owned_template(server, token, data, changed)
+        try:
+            stale = hold_deploy_create(page, report)
+            same(stale.status, 400, 'expired selected provider HTTP')
+            rejected = stale.json()
+            same(rejected['code'], 'ACQUISITION_CANDIDATE_STALE', 'expired provider error code')
+            same(rejected['params'], {'provider': data['provider']}, 'expired provider error parameters')
+            same(stale.request.post_data_json, launch_checks.boolean_rejection.expected_bad_body(expected_body(data), report), 'expired provider original full draft')
+            expect(name).to_have_value(data['name'])
+            expect(route).to_have_value(data['served_name'])
+            error = labels['action']['createFailed'].replace('{{detail}}', common['apiError']['ACQUISITION_CANDIDATE_STALE'])
+            rejected_notice(page, error, labels, report)
+            status, listed = http(server.base, 'GET', containers.DEPLOYMENTS + '?q=' + quote(data['name'], safe=''), token)
+            check(status == 200 and listed['items'] == [] and listed['total'] == 0, 'rejected expiry wrote a deployment')
+            launch_checks.boolean_rejection.retained(page, labels, expected_body(data), report, token, stale, 'provider')
+        finally:
+            replace_owned_template(server, token, data, data['import_model'])
+    launch_checks.boolean_rejection.restore(page, labels, expected_body(data), report, token)
     report['step'] = 'restore selected provider and create exactly one deployment'
     with page.expect_response(lambda r: urlsplit(r.url).path == containers.DEPLOYMENTS
                               and r.request.method == 'POST') as created:
         deploy.click()
     check(created.value.status == 201, f'acquisition create HTTP {created.value.status}: {created.value.text()}')
+    created_notice(page, labels, report)
     dep_id = report['owned_deployment_id'] = created.value.json()['id']
     same(created.value.request.post_data_json, expected_body(data), 'complete automatic acquisition create wire')
     report['step'] = 'real acquisition reaches running container'
@@ -295,6 +318,8 @@ def exercise(page, context, server, artifacts, report, locale, data, token, hold
     check(len(current) == 1 and current[0]['state'] == 'running', 'expected one running current replica')
     same(current[0]['node_uuid'], data['node']['uuid'], 'actual instance independent eligible node')
     same(current[0]['gpu_indexes'], [0], 'actual instance GPU zero')
+    launch_checks.snapshot_checks(saved, expected_body(data), report)
+    launch_checks.runtime_checks(current[0], expected_body(data), launch_preview, str(root), report)
     runtime = execution(current[0]['container_id'], current[0], str(root), data, report)
     check(data['hub'].wait_idle(), 'source handlers still active after acquired files completed')
     transfer = source_transfer(data['hub'].audit(), data)
@@ -307,8 +332,7 @@ def exercise(page, context, server, artifacts, report, locale, data, token, hold
     page.reload()
     row = page.get_by_role('row').filter(has_text=data['name'])
     expect(row).to_have_count(1)
-    row.get_by_role('button', name=data['name'], exact=True).click()
-    drawer = page.get_by_role('dialog').last
+    drawer = open_deployment_row(page, row, data['name'], dep_id, report)
     expect(drawer.get_by_text(data['served_name'], exact=True)).to_be_visible()
     expect(drawer.get_by_text(IMAGE, exact=True).first).to_be_visible()
     listings = texts(locale, 'deployments')
@@ -331,6 +355,7 @@ def exercise(page, context, server, artifacts, report, locale, data, token, hold
         remove.click()
         dialog = page.get_by_role('dialog', name=delete_title, exact=True)
         expect(dialog).to_be_visible()
+        delete_name_preview(dialog, delete_title, report)
         return dialog
 
     dialog = assert_nested_dismissals(
@@ -350,8 +375,11 @@ def exercise(page, context, server, artifacts, report, locale, data, token, hold
         'dismissals': ['cancel', 'escape', 'close', 'mask'],
         'focus_returned': True, 'delete_requests': 0, 'stored_name': data['name']})
     same(requests, [{'method': 'POST', 'path': path, 'query': '', 'body': expected_register},
-                   *[{'method': 'POST', 'path': containers.DEPLOYMENTS, 'query': '', 'body': expected_body(data)}] * 2],
+                   {'method': 'POST', 'path': containers.DEPLOYMENTS, 'query': '',
+                    'body': launch_checks.boolean_rejection.expected_bad_body(expected_body(data), report)},
+                   {'method': 'POST', 'path': containers.DEPLOYMENTS, 'query': '', 'body': expected_body(data)}],
          'browser mutation full bodies/count/order')
+    launch_checks.frozen(report)
     conclude(report)
     report['last_step'] = 'acquisition-runtime-and-refresh-proven'
     report['evidence'].extend([

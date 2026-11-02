@@ -432,9 +432,11 @@ def _network_enums(root, group):
         return [constants.get(value.strip()) for value in match[1].split(",")] if match else []
     roles, types = go_array("Roles"), go_array("Types")
     # This adapter intentionally recognizes only the current pure dictionary shape.
-    restriction = re.search(r"if t == (\w+) \{\s*return \[\]string\{(\w+)\}\s*\}\s*return append\(\[\]string\(nil\), Roles\.\.\.\)", product)
-    product_roles = {kind: ([constants.get(restriction[2])] if kind == constants.get(restriction[1]) else roles)
-                     for kind in types} if restriction else {}
+    restriction = re.search(r"if IsAccelerator\(t\) \{\s*return \[\]string\{(\w+)\}\s*\}\s*return append\(\[\]string\(nil\), Roles\.\.\.\)", product)
+    accelerator = re.search(r"func IsAccelerator\(t string\) bool \{\s*return ([^\n]+)\n\}", product)
+    restricted = {constants.get(name) for name in re.findall(r"\b(Type\w+)\b", accelerator[1])} if accelerator else set()
+    product_roles = {kind: ([constants.get(restriction[1])] if kind in restricted else roles)
+                     for kind in types} if restriction and accelerator else {}
     literals = _literal_assignments(test)
     role_assignment = _assignment(_parse(test), "TYPE_ROLES")
     test_roles = {}

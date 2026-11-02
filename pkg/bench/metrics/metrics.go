@@ -237,19 +237,37 @@ func (a *Accumulator) Snapshot(now time.Time) Snapshot {
 	a.mu.Lock()
 	rs := append([]Request(nil), a.requests...)
 	a.mu.Unlock()
-	return summarize(rs, now, time.Time{})
+	return summarize(rs, now, time.Time{}, true)
+}
+
+// ProgressSnapshot is Snapshot without the ITL percentiles, which are the one
+// statistic over every streamed chunk rather than every request: at a few
+// thousand 1k-token requests that is millions of values to copy and sort, so
+// a live progress sample must not pay for it. ProcessSample is unaffected.
+func (a *Accumulator) ProgressSnapshot(now time.Time) Snapshot {
+	a.mu.Lock()
+	rs := append([]Request(nil), a.requests...)
+	a.mu.Unlock()
+	return summarize(rs, now, time.Time{}, false)
 }
 func (a *Accumulator) WindowSnapshot(now time.Time) Snapshot {
 	a.mu.Lock()
 	rs := append([]Request(nil), a.requests...)
 	a.mu.Unlock()
 	cutoff := now.Add(-a.window)
-	return summarize(rs, now, cutoff)
+	return summarize(rs, now, cutoff, true)
 }
 
-func summarize(rs []Request, now, cutoff time.Time) Snapshot {
+func summarize(rs []Request, now, cutoff time.Time, withITL bool) Snapshot {
 	s := Snapshot{TTFT: map[int]time.Duration{}, TPOT: map[int]time.Duration{}, Latency: map[int]time.Duration{}, ITL: map[int]time.Duration{}}
 	var ttft, tpott, lat, itl []float64
+	if withITL {
+		n := 0
+		for _, r := range rs {
+			n += len(r.ITL)
+		}
+		itl = make([]float64, 0, n)
+	}
 	var in, out int64
 	var cached, cacheTotal int64
 	var cacheReports int
@@ -295,8 +313,10 @@ func summarize(rs []Request, now, cutoff time.Time) Snapshot {
 		if perToken, ok := r.TimePerOutputToken(); ok {
 			tpott = append(tpott, float64(perToken))
 		}
-		for _, d := range r.ITL {
-			itl = append(itl, float64(d))
+		if withITL {
+			for _, d := range r.ITL {
+				itl = append(itl, float64(d))
+			}
 		}
 		add(&chunks, r.Chunks, &speculativeValid)
 		add(&tokens, r.OutputTokens, &speculativeValid)

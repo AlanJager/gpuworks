@@ -108,6 +108,9 @@ specs:
     - type: openai.chat
       endpoint: /v1/chat/completions
       mode: stream
+# Upstream's shared A2/A3 recipe for this model, minus its `--max-model-len
+# 32768`: this profile served the model's full context before the rest of the
+# tuning was added, and pinning upstream's figure would take that away.
 - name: bf16-vllm-ascend-4eac0a8b
   display_profile: general
   scenario: balanced
@@ -130,8 +133,23 @@ specs:
   args:
   - --dtype
   - bfloat16
+  - --trust-remote-code
+  - --no-enable-prefix-caching
+  - --max-num-seqs
+  - '128'
+  - --max-num-batched-tokens
+  - '16384'
+  - --gpu-memory-utilization
+  - '0.91'
+  - --async-scheduling
+  - --mm-processor-cache-gb
+  - '0'
+  - --compilation-config
+  - '{"cudagraph_capture_sizes":[1,2,4,8,16,32],"cudagraph_mode":"FULL_DECODE_ONLY"}'
   env:
     VLLM_WORKER_MULTIPROC_METHOD: spawn
+    HCCL_OP_EXPANSION_MODE: AIV
+    PYTORCH_NPU_ALLOC_CONF: expandable_segments:True
   placement:
     language: starlark
     resolver: "def resolve(gpu):\n    if gpu.min_memory_gib < 32: return reject(\"\
@@ -165,8 +183,23 @@ specs:
   args:
   - --dtype
   - bfloat16
+  - --trust-remote-code
+  - --no-enable-prefix-caching
+  - --max-num-seqs
+  - '128'
+  - --max-num-batched-tokens
+  - '16384'
+  - --gpu-memory-utilization
+  - '0.91'
+  - --async-scheduling
+  - --mm-processor-cache-gb
+  - '0'
+  - --compilation-config
+  - '{"cudagraph_capture_sizes":[1,2,4,8,16,32],"cudagraph_mode":"FULL_DECODE_ONLY"}'
   env:
     VLLM_WORKER_MULTIPROC_METHOD: spawn
+    HCCL_OP_EXPANSION_MODE: AIV
+    PYTORCH_NPU_ALLOC_CONF: expandable_segments:True
   placement:
     language: starlark
     resolver: "def resolve(gpu):\n    if gpu.min_memory_gib < 32: return reject(\"\

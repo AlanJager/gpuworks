@@ -26,7 +26,8 @@ const i18n = createInstance();
 await i18n.use(initReactI18next).init({ lng: "en", fallbackLng: "en", resources: { en: { models, common: read("common") } }, defaultNS: "models", interpolation: { escapeValue: false } });
 
 const { MemoryRouter } = await import("react-router-dom");
-const { cleanup, fireEvent, render, screen, waitFor, within } = await import("@testing-library/react");
+const { act, cleanup, fireEvent, render, screen, waitFor, within } = await import("@testing-library/react");
+const { message } = await import("antd");
 const userEvent = (await import("@testing-library/user-event")).default;
 const { api } = await import("../src/api.ts");
 const { default: ModelsPage } = await import("../src/pages/ModelsPage.tsx");
@@ -61,7 +62,10 @@ beforeEach(() => {
     return { items: matched.slice(start, start + query.page_size), page: query.page, page_size: query.page_size, total: matched.length, summary: { registered: 45, ready_files: 135, sources: 2, weight_gib: 45 } };
   };
 });
-afterEach(() => { cleanup(); Object.assign(api, originals); });
+afterEach(async () => {
+  await act(async () => { message.destroy(); cleanup(); });
+  Object.assign(api, originals);
+});
 after(() => { closeChannels(); dom.window.close(); });
 
 function renderPage(view: "grid" | "list", path = "/models") {
@@ -124,4 +128,37 @@ test("the page reads no node: the assistant's fleet fit is computed on the serve
   await new Promise((done) => setTimeout(done, 50));
   assert.deepEqual(nodeFleet.facetCalls, [], "the page no longer sums the fleet for a client-side prompt");
   assert.equal(nodeFleet.pages.length, 0, "no dialog is open, so no node is searched");
+});
+
+test("deleting the last row of a page steps back to the previous page instead of showing an empty one", async () => {
+  // A 41-model fleet at page size 20 leaves exactly one row on page 3.
+  const local = Array.from({ length: 41 }, (_, i) => ({ ...fleet[i], id: 41 - i, name: `model-${41 - i}`, source_id: `org/model-${41 - i}` }));
+  const deleted: number[] = [];
+  const originalDelete = api.deleteModel;
+  api.modelsPage = async (query: ListQuery): Promise<ModelPage> => {
+    queries.push(query);
+    const live = local.filter((m) => !deleted.includes(m.id));
+    const start = (query.page - 1) * query.page_size;
+    return { items: live.slice(start, start + query.page_size), page: query.page, page_size: query.page_size, total: live.length, summary: { registered: live.length, ready_files: 0, sources: 2, weight_gib: 1 } };
+  };
+  api.deleteModel = (async (id: number) => { deleted.push(id); }) as never;
+  try {
+    renderPage("list");
+    await screen.findByText("model-41");
+    fireEvent.click(screen.getByTitle("3"));
+    await screen.findByText("model-1");
+    assert.equal(document.querySelectorAll("tr[data-row-key]").length, 1, "page 3 holds exactly one row");
+    const row = screen.getByText("model-1").closest("tr")!;
+    fireEvent.click(within(row).getByRole("button", { name: models.action.more }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: /Delete model/ }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
+    await screen.findByText("model-2");
+    await screen.findByText(models.message.deleted);
+    assert.equal(queries.at(-1)?.page, 2, "the emptied page 3 must not be refetched; the previous page loads");
+    assert.equal(screen.queryByText("model-1"), null);
+    assert.deepEqual(deleted, [1]);
+  } finally {
+    api.deleteModel = originalDelete;
+  }
 });

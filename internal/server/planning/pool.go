@@ -3,6 +3,7 @@ package planning
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -71,8 +72,8 @@ type PoolCandidate struct {
 	Node *store.Node
 	// Replicas is how many of the deployment's replicas already run on it.
 	Replicas int
-	// FreeGPUs is how many of its healthy GPUs no awake instance holds: an
-	// approximation for ordering, never a placement decision.
+	// FreeGPUs is how many selectable healthy GPUs no awake instance holds:
+	// an approximation for ordering, never a placement decision.
 	FreeGPUs int
 	Model    ModelLocality
 	// Sticky marks a node the deployment has run on before (an instance of
@@ -122,9 +123,13 @@ func RankPool(candidates []PoolCandidate, strategy store.PlacementStrategy, need
 
 // FreeHealthyGPUs counts a node's healthy GPUs that holders does not list.
 func FreeHealthyGPUs(node *store.Node, held map[int]bool) int {
+	return freeHealthyGPUs(node, held, nil)
+}
+
+func freeHealthyGPUs(node *store.Node, held map[int]bool, allowed []int) int {
 	free := 0
 	for _, gpu := range node.OwnedGPUs() {
-		if gpu.CanTakeWork() && !held[gpu.Index] {
+		if gpu.CanTakeWork() && !held[gpu.Index] && (len(allowed) == 0 || slices.Contains(allowed, gpu.Index)) {
 			free++
 		}
 	}
@@ -184,7 +189,8 @@ type PoolEntry struct {
 // PoolFacts is everything a pool is built from, each read in bulk.
 type PoolFacts struct {
 	Nodes []store.Node
-	// Held is which GPUs awake instances hold, by node (store.AwakeGPUHolders).
+	// Held is which GPUs the deployment cannot take, by node: awake
+	// instances hold them, or sleepers keep them against it (HeldGPUs).
 	Held map[uint]map[int]bool
 	// Files are the model's file rows on every node.
 	Files []store.ModelFile
@@ -198,6 +204,9 @@ type PoolFacts struct {
 	Strategy     store.PlacementStrategy
 	// Need is the whole GPUs one replica takes (0 when it shares cards).
 	Need int
+	// Placement restricts the free-card approximation to the GPUs a replica
+	// may actually use, just as the full scheduler trial does.
+	Placement Placement
 }
 
 // Pool is a deployment's candidate pool: every node classified, and the
@@ -234,7 +243,7 @@ func BuildPool(f PoolFacts) *Pool {
 	for i := range f.Nodes {
 		node := &f.Nodes[i]
 		entry := PoolEntry{PoolCandidate: PoolCandidate{
-			Node: node, Replicas: replicas[node.ID], FreeGPUs: FreeHealthyGPUs(node, f.Held[node.ID]),
+			Node: node, Replicas: replicas[node.ID], FreeGPUs: freeHealthyGPUs(node, f.Held[node.ID], f.Placement.GPUIndexes),
 			Model: ModelLocalityOf(fileOn[node.ID]), Sticky: sticky[node.ID],
 		}}
 		switch err := MatchRequirements(node, f.Facts, f.Requirements); {

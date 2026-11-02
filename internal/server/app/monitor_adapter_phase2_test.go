@@ -108,7 +108,7 @@ func withClass(base map[string]string, class string) map[string]string {
 // populated alignment row (proxy traffic exists).
 func TestMonitorServiceDeploymentPhase2FieldsEndToEnd(t *testing.T) {
 	fx := buildPhase2Fixture(t)
-	svc := newMonitorAPIService(fx.st, fx.ts, func() time.Time { return fx.now }, nil, nil)
+	svc := newMonitorAPIService(fx.st, fx.ts, func() time.Time { return fx.now }, nil, nil, nil)
 
 	out, err := svc.Deployment(context.Background(), fx.dep.ID, time.Hour)
 	if err != nil {
@@ -144,7 +144,7 @@ func TestMonitorServiceDeploymentPhase2FieldsEndToEnd(t *testing.T) {
 // request_rate and ttft all collected with real values.
 func TestMonitorServiceOverviewPhase2SignalsEndToEnd(t *testing.T) {
 	fx := buildPhase2Fixture(t)
-	svc := newMonitorAPIService(fx.st, fx.ts, func() time.Time { return fx.now }, nil, nil)
+	svc := newMonitorAPIService(fx.st, fx.ts, func() time.Time { return fx.now }, nil, nil, nil)
 
 	out, err := svc.Overview(context.Background(), time.Hour)
 	if err != nil {
@@ -190,7 +190,7 @@ func TestMonitorServiceOverviewPhase2SignalsEndToEnd(t *testing.T) {
 // TTFTNoRecent/TPOTNoRecent's doc comments).
 func TestMonitorServiceOverviewPhase2SignalsIdleWindowEndToEnd(t *testing.T) {
 	fx := buildPhase2IdleWindowFixture(t)
-	svc := newMonitorAPIService(fx.st, fx.ts, func() time.Time { return fx.now }, nil, nil)
+	svc := newMonitorAPIService(fx.st, fx.ts, func() time.Time { return fx.now }, nil, nil, nil)
 
 	out, err := svc.Overview(context.Background(), time.Hour)
 	if err != nil {

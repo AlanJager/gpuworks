@@ -71,12 +71,14 @@
     "DGPU_QUOTA_NO_ROOM": "GPU {{gpu}} of {{node}} cannot hold it: {{free_gib}} GiB is free once the deployment's own claim is handed back, and the new quota needs {{need_gib}} GiB.",
     "AUTOMATIC_PLACEMENT_UNAVAILABLE": "No node can satisfy automatic placement. Review the candidate reasons or choose a node manually.",
     "AUTOMATIC_PLACEMENT_STALE": "The evaluated node or GPU plan has changed. Evaluate the deployment again.",
-    "AGENT_UPGRADE_REQUIRED": "The target node is running an older agent. Upgrade the agent before pulling images.",
+    "AGENT_UPGRADE_REQUIRED": "The target node is running an older agent. Upgrade the agent before continuing.",
     "NODE_RPC_UNAVAILABLE": "Node RPC is not configured.",
     "NODE_OFFLINE": "The node is offline.",
     "NODE_SCHEDULABLE": "Cordon or drain the node before evicting its replicas.",
     "NODE_RUNTIME_INVALID": "Runtime must be auto, Docker, nerdctl, or runveil (API value udocker).",
     "NODE_ACCELERATOR_INVALID": "Accelerator must be auto or a vendor whose cards this machine has.",
+    "CARD_CHECKS_UNSUPPORTED": "This node's agent predates card health checks; upgrade the agent first.",
+    "CARD_NOT_OWNED": "This card is not this node's to use (passed through to a virtual machine, or without a driver), so it cannot be made schedulable.",
     "NODE_ACCELERATOR_NOT_ON_HOST": "This machine has no {{accelerator}} cards.",
     "NODE_ACCELERATOR_HAS_INSTANCES": "{{count}} instance(s) still run on this node; stop or move them before switching accelerators.",
     "NODE_DELETE_FORCE_INVALID": "Force must be a single boolean.",
@@ -103,24 +105,29 @@
     "NODE_INSTALL_EXISTING_AGENT_UNKNOWN": "The host already has a gpuworks-agent service whose server could not be read.",
     "NODE_INSTALL_EXISTING_AGENT_SELF": "An agent for this server already runs on the host.",
     "NODE_INSTALL_EXISTING_AGENT_SAME_DIR": "A gpuworks agent already runs from {{dir}} on the host; installing there replaces it. Choose another install directory to run beside it.",
+    "NODE_INSTALL_DIR_UNTRAVERSABLE": "The install was stopped: {{dir}} (mode {{mode}}) is closed to the dedicated runtime user (udocker) that runs workloads on this node, so every deployment would fail to launch with permission denied. Run `{{fix}}` on the host (search only: no listing, no writing), or install into a directory outside it such as /opt/gpuworks.",
     "NODE_STORE_UNAVAILABLE": "The node store is not configured.",
     "NODE_RECOVERY_UNAVAILABLE": "Node recovery is not configured.",
     "AI_ENDPOINT_NOT_CONFIGURED": "No AI endpoint is configured.",
     "AI_TASK_INVALID": "Unknown assistant task \"{{task}}\".",
     "AI_TARGET_REQUIRED": "The assistant needs the one instance, model, deployment, node or question this task is about.",
     "AI_ASK_BUSY": "You already have {{limit}} questions running; wait for one to finish.",
+    "AI_DEFAULT_REQUIRED": "This is the AI service the assistant uses. Make another service the default first, or delete this one.",
     "PLATFORM_TOKEN_READ_ONLY": "This token is read-only.",
     "PLATFORM_TOKEN_NOT_ALLOWED": "Platform tokens are managed from a signed-in session.",
     "PLATFORM_TOKEN_SCOPE_INVALID": "A token's scope is read or write, not \"{{scope}}\".",
     "PLATFORM_TOKEN_NAME_INVALID": "A token name must be 1 to {{max}} UTF-8 bytes after trimming spaces.",
     "API_KEY_NAME_REQUIRED": "API key name is required",
+    "API_KEY_SCOPE_INVALID": "Choose all model services, or at least one model service.",
+    "API_KEY_DEPLOYMENT_UNKNOWN": "The selected model services no longer exist (IDs {{ids}}). Refresh and choose again.",
+    "API_KEY_NOT_FOUND": "This API key does not exist or has been revoked.",
     "PLATFORM_TOKEN_EXPIRY_INVALID": "A token lasts 0 (never expires) to {{max}} days.",
     "PLATFORM_TOKEN_ID_INVALID": "That is not a token id.",
     "MCP_DISABLED": "The MCP service is turned off.",
     "METRIC_REQUIRED": "Select a metric.",
     "METRIC_UNKNOWN": "No metric is named \"{{metric}}\". Similar: {{similar}}.",
     "LOGS_FILTER_INVALID": "Unknown level or source in the log filter.",
-    "LOGS_CONTEXT_INVALID": "Context needs a line reference and a 0-50 line window.",
+    "LOGS_CONTEXT_INVALID": "Context needs a line reference and a 0-1000 line window.",
     "LOGS_FILTER_INSTANCES_CONFLICT": "The log filter cannot combine `instance` and `instances`; use only one at a time.",
     "LOGS_FILTER_INSTANCES_TOO_MANY": "The log filter's `instances` list has {{count}} entries, which exceeds the {{maximum}} limit.",
     "TERMINAL_TARGET_UNSUPPORTED": "Terminal target “{{target}}” is not supported.",
@@ -171,6 +178,7 @@
     "LOCAL_STORAGE_DISABLED": "Local storage is disabled, so new downloads or synchronization cannot start.",
     "LOCAL_MODEL_FIELDS_REQUIRED": "Select a node and enter a model path.",
     "MODEL_PATH_REQUIRED": "Enter a model path.",
+    "MODEL_FILE_PATH_OCCUPIED": "Path \"{{path}}\" in storage #{{storage_id}} is already used by model #{{model_id}}. Choose another storage.",
     "LOCAL_MODEL_METADATA_REFRESH": "Refresh local model metadata by registering its node path again.",
     "MODEL_METADATA_UNAVAILABLE": "The model source returned no usable metadata.",
     "MODEL_METADATA_UNREACHABLE": "The management node reached none of {{hosts}}, so the model is registered without metadata (config, weight size, README). If the management node reaches the site through a mirror or proxy, choose the matching site rule for it under Settings → Pull settings → Source rules (\"Use for the management node's model metadata\"); a model imported offline gets its metadata when its local path is registered.",
@@ -221,6 +229,12 @@
     "USAGE_REPORT_READ_ONLY": "The server has no server.yaml, so the user experience improvement program cannot be switched here.",
     "USAGE_REPORT_INVALID": "The user experience improvement program must be set to true or false.",
     "USAGE_REPORT_UNAVAILABLE": "This server has no usage report.",
+    "EXPERIENCE_UNSUPPORTED": "The experience mode is for showing the product and does not support this operation.",
+    "EXPERIENCE_MODEL_NOT_PRELOADED": "The experience mode deploys only its preloaded models: {{models}}.",
+    "EXPERIENCE_UNAVAILABLE": "This server has no experience mode.",
+    "EXPERIENCE_INVALID": "The experience mode can only be turned on or off.",
+    "EXPERIENCE_FAILED": "Experience mode operation failed: {{reason}}",
+    "EXPERIENCE_PORT_IN_USE": "Port {{port}} is held by another program: free it, or move this server's console port (the experience environment uses the console port + 10).",
     "NOTICE_IDS_INVALID": "Name between 1 and 128 notices to mark as read.",
     "IMAGE_MANIFEST_INVALID": "The image manifest is invalid: {{detail}}",
     "IMAGE_IMPORT_CONFLICT": "The manifest conflicts with a community or custom image: {{detail}}",
@@ -257,6 +271,7 @@
     "STORAGE_FILE_OPERATION_FAILED": "The operation failed on {{node}}: {{detail}}",
     "BENCHMARK_GPU_COUNT_NEGATIVE": "The benchmark GPU count cannot be negative.",
     "BENCHMARK_DETAIL_CAP_TOO_LARGE": "The benchmark detail limit cannot exceed {{maximum}} MiB.",
+    "BENCHMARK_CHAT_REQUIRED": "Performance evaluation requires a model that declares Chat Completions. Select a compatible inference service.",
     "BENCHMARK_TARGET_INACTIVE": "The target deployment is not active.",
     "BENCHMARK_LEADER_NOT_RUNNING": "The target deployment leader is not awake and running.",
     "BENCHMARK_EXTERNAL_URL_REQUIRED": "Enter the external benchmark target URL.",
@@ -341,6 +356,10 @@
     "FIELD_INVALID": "Invalid value: {{detail}}",
     "ENGINE_INVALID": "Unknown engine “{{engine}}”.",
     "EXTRA_ARGS_INVALID": "The extra arguments cannot be parsed: {{detail}}",
+    "EXTRA_ARGS_JSON_INVALID": "The value of {{flag}} must be valid JSON, but got {{value}}. The text box is split like a shell command line, so wrap JSON in single quotes, e.g. {{flag}} '{\"key\":\"value\"}'.",
+    "ASCEND_SLEEP_ADDITIONAL_CONFIG_INVALID": "Sleep mode on Ascend needs the template's {{flag}} to be a JSON object so the platform can set weight_nz_mode to 0, but it is {{value}}. Fix the template, or turn sleep off.",
+    "ASCEND_SLEEP_WEIGHT_NZ_CONFLICT": "Sleep mode on Ascend requires weight_nz_mode=0, but {{flag}} in the extra arguments sets it to {{value}}. Remove weight_nz_mode (the platform sets it to 0), or turn sleep off.",
+    "ASCEND_SLEEP_EXPANDABLE_SEGMENTS": "Sleep mode on Ascend cannot run with {{variable}}={{value}}. Remove expandable_segments:True or set expandable_segments:False, or turn sleep off.",
     "MOUNT_CONTAINER_PATH": "A mount's container path must be an absolute non-root path ({{target}}).",
     "MOUNT_HOST_PATH": "A mount's host path must be an absolute non-root path ({{source}}).",
     "MOUNT_TARGET_NESTED": "Nested mount targets overlap: {{parent}} and {{child}}.",
@@ -454,7 +473,35 @@
     "ZSTACK_PORT_UNREACHABLE": "The ZStack IP responded, but the port could not be connected. Check the port, service and firewall.",
     "ZSTACK_NETWORK_UNCONFIRMED": "The ZStack IP probe received no reply and the port could not be connected. Check the address, port and firewall; the cause is not yet determined.",
     "ZSTACK_NETWORK_DIAGNOSTIC_UNAVAILABLE": "The ZStack connection failed and the IP probe could not run. Check the address, port and firewall.",
-    "ZSTACK_REQUEST_TIMEOUT": "The ZStack API request timed out. Check network connectivity and the service response."
+    "ZSTACK_REQUEST_TIMEOUT": "The ZStack API request timed out. Check network connectivity and the service response.",
+    "MODEL_INPUT_MODALITY_UNSUPPORTED": "This model does not support {{modality}} input (supported: {{supported}}). Remove the attachment or select a compatible model.",
+    "DEPLOYMENT_FIELD_NOT_EDITABLE": "{{field}} cannot change on an existing deployment. Clone the deployment to change it.",
+    "DEPLOYMENT_CHANGED": "The deployment changed since you opened it. Reload it and check your changes again.",
+    "DEPLOYMENT_EDIT_APPLY_INVALID": "This change cannot be applied as {{apply}}; choose one of: {{options}}.",
+    "WAKE_GPU_HELD_OUTSIDE": "GPU {{gpu_indexes}} on {{node}} is held by a process outside the platform, so the sleeping instance cannot take it back. Stop that process first.",
+    "SLEEP_HOST_MEMORY_INSUFFICIENT": "{{node}} has {{available_gib}} GiB of host memory free, but L1 sleep needs {{need_gib}} GiB. Use deep sleep (L2) instead.",
+    "SCHEDULE_INVALID": "The scheduled order is not valid ({{field}}): {{reason}}",
+    "SCHEDULE_TIMEZONE_UNKNOWN": "The server does not know the time zone \"{{timezone}}\". Use an IANA name such as Asia/Shanghai.",
+    "SCHEDULE_REPLICAS_MANUAL_PLACEMENT": "This multi-node or PD deployment's replicas are placed by hand, so a schedule cannot set their count; switch it to automatic placement first.",
+    "YIELD_POLICY_INVALID": "The yield policy is not valid ({{field}}): {{reason}}.",
+    "YIELD_POLICY_SHAPE": "Only a single-node deployment can yield its GPUs; a multi-node or PD deployment stays on never yield automatically.",
+    "YIELD_POLICY_NEEDS_SLEEP": "This deployment's yield policy is {{policy}}, and it yields its GPUs by sleeping, so sleep cannot be turned off. Set the yield policy to never yield automatically first, then turn sleep off.",
+    "NODE_REPLACEMENT_INVALID": "The wait before node-loss rescheduling must be 0 (off) or between {{minimum}} and {{maximum}} seconds.",
+    "WAKE_YIELD_BLOCKED": "Cannot make room: {{occupants}} cannot be put to sleep (not sleepable, the last awake role of a PD deployment, or a process outside the platform). Nothing was changed.",
+    "REPLICAS_PLACE_ON_TOO_MANY": "{{count}} nodes were named for the first placement, but only {{maximum}} replicas are added.",
+    "REPLICAS_PLACE_ON_REFUSED": "Node {{node}} cannot take a new replica ({{reason}}). {{detail}}",
+    "UNIT_PLACEMENT_NONE": "No group of nodes can take this deployment now: of {{nodes}} nodes, {{unmet}} do not satisfy the requirements, {{cordoned}} are cordoned, {{offline}} are offline, {{busy}} lack free GPUs, {{no_network}} have no compute network; the largest group sharing a network and GPU architecture has {{largest}} nodes.",
+    "AUTO_PLACEMENT_TP_REQUIRED": "Automatic placement of a multi-node deployment needs a tensor parallel (TP) degree, so the platform knows how many GPUs each node gives a rank.",
+    "AUTO_PLACEMENT_PD_MULTI_NODE": "Automatic placement takes PD instances that fit one node, but the {{role}} role's instances span nodes. Switch to manual placement and name their nodes.",
+    "PLACEMENT_MODE_SHAPE": "A single-node deployment states its placement in its node requirements; automatic and manual placement apply to multi-node and PD deployments.",
+    "BATCH_NOT_FOUND": "The batch or file was not found, or its output has expired and was deleted.",
+    "BATCH_NOT_CANCELLABLE": "The batch can no longer be cancelled: it has finished or is assembling its results.",
+    "BATCH_FILE_INVALID": "The batch input file is not valid. {{detail}}",
+    "BATCH_FILE_TOO_LARGE": "The batch input file is larger than {{limit_mb}} MB.",
+    "BATCH_MODEL_UNKNOWN": "No active deployment serves the model {{model}}. Choose a deployment that exists on the platform.",
+    "BATCH_REQUEST_INVALID": "The batch request is not valid ({{field}}): {{reason}}",
+    "BATCH_FILE_MODELS_UNKNOWN": "The file names models that no active deployment serves: {{models, list}}. Choose a model to send every request to, or deploy these models first.",
+    "AGENT_UPGRADE_REFUSED": "Agent upgrade request could not proceed: {{detail}}"
   },
   "httpError": {
     "proxyPage": "HTTP {{status}}: a reverse proxy or tunnel between the browser and gpuworks answered with its own error page, so the server's reason was lost. Retry from the server's own address to see it."
@@ -518,7 +565,9 @@
     "apiKeys": "API Tokens",
     "logs": "Logs",
     "settings": "Settings",
-    "networks": "Networks"
+    "networks": "Networks",
+    "scheduling": "Scheduling analysis",
+    "batches": "Batches"
   },
   "branding": {
     "defaultLoginDescription": "Manage heterogeneous GPU nodes, model deployments, inference services, and runtime status in one place."
@@ -551,6 +600,7 @@
     }
   },
   "states": {
+    "offline": "Offline",
     "active": "Preparing",
     "deleting": "Deleting",
     "failed": "Failed",
@@ -561,6 +611,8 @@
     "draining": "Draining",
     "removing": "Removing",
     "running": "Running",
+    "sleeping": "Sleeping",
+    "asleep": "Asleep",
     "starting": "Starting",
     "stopped": "Stopped"
   },
@@ -648,6 +700,8 @@
     "recheck": "Recheck",
     "abnormal": "abnormal",
     "copyCommand": "Copy command",
+    "expandCommand": "Show all {{count}} lines",
+    "collapseCommand": "Collapse",
     "copied": "Command copied",
     "legacyEvidence": "Raw message",
     "unknownSummary": "The agent reported this state; see the raw message.",
@@ -681,6 +735,26 @@
         "label": "Driver init failed",
         "summary": "The card is bound to its vendor driver, but the driver could not bring it up, so nothing can use it and the vendor tool does not list it.",
         "action": "Check the driver errors in the node's dmesg (for NVIDIA: NVRM lines such as \"RmInitAdapter failed\"). The card usually needs a reset, and sometimes the host needs a reboot; where the card is not meant for this host, unbind it from the vendor driver."
+      },
+      "pcie_link_degraded": {
+        "label": "PCIe link degraded",
+        "summary": "A PCIe link between the card and its root port runs at fewer lanes (or, while the card is busy, a lower speed) than both of its ends support, report after report. The card still works but loads models and moves data more slowly, so it is used only when healthy cards run out.",
+        "action": "Use the command below to see what both ends of the link support and what they negotiated. It is usually a badly seated card, a riser or cable, or a slot set to a lower speed in the BIOS; check and reseat it while the host is idle."
+      },
+      "pcie_errors": {
+        "label": "PCIe errors",
+        "summary": "PCIe devices between the card and its root port reported new recovered errors. The card still works and recovers on its own after 15 minutes without new errors.",
+        "action": "Use the command below to see the error counters, and look for AER entries in dmesg. Errors that keep coming usually mean a signal problem in the link or slot."
+      },
+      "pcie_fatal_errors": {
+        "label": "PCIe fatal errors",
+        "summary": "PCIe devices between the card and its root port reported new fatal errors, after which the link has to be reset. The card is not given work until a runtime check passes on it again.",
+        "action": "Use the command below to see the error counters, and look for AER entries in dmesg. The card usually needs a reset or the host a reboot; if it keeps happening, contact the hardware vendor."
+      },
+      "nvlink_down": {
+        "label": "NVLink down",
+        "summary": "Fewer of this card's NVLinks are active than it has had, two checks in a row. The card still works, but work spread across cards is slower, and the scheduler no longer groups it with the cards it was linked to.",
+        "action": "Use the command below to see each link's state and error counters, and look for Xid 74 in dmesg. It usually needs a card reset or a host reboot; on NVSwitch systems also check the Fabric Manager."
       },
       "memory_repair_pending": {
         "label": "Reset pending",
@@ -784,5 +858,26 @@
       "release": "Release",
       "event": "Event"
     }
+  },
+  "buildInfo": {
+    "kind": {
+      "stable": "Stable release",
+      "prerelease": "Pre-release",
+      "development": "Development / test build",
+      "unknown": "Release type unknown"
+    },
+    "description": {
+      "stable": "This build matches a verified stable release record.",
+      "prerelease": "This build matches a published preview or test release.",
+      "development": "Built for the development / test channel; it is not labelled as a stable release.",
+      "unknown": "There is not enough release information to confirm whether this is a stable build."
+    },
+    "builtAt": "Built: {{time}}",
+    "publishedAt": "Published: {{time}}",
+    "matched": "Matching release: {{version}}",
+    "unmatched": "No matching release record is currently available.",
+    "details": "Build details",
+    "commit": "Commit: {{commit}}",
+    "channel": "Build channel: {{channel}}"
   }
 }

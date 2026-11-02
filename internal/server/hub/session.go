@@ -88,6 +88,12 @@ type Session struct {
 	// id to attach; it is empty for legacy/single-lane and server_dial sessions,
 	// which never open a data lane. Set once during handshake before register.
 	sessionID string
+	// Upgrade identity is also present for legacy and server_dial sessions;
+	// the data-lane sessionID deliberately stays empty for those transports.
+	upgradeSessionID         string
+	upgradeVersion           string
+	upgradeHandshakeComplete atomic.Bool
+	upgradeReady             atomic.Bool
 
 	// data is the optional dedicated high-throughput lane (a second yamux session
 	// over its own WebSocket). It carries the data-plane stream kinds
@@ -111,27 +117,6 @@ type Session struct {
 	// ctrl-fallback design exists to guarantee, and tests assert it directly
 	// through CtrlDataPlaneStreamCount rather than inferring it from timing.
 	ctrlDataPlaneStreams atomic.Int64
-}
-
-// Caps returns the capabilities the agent advertised, as a copy so callers
-// cannot mutate session state.
-func (s *Session) Caps() []string {
-	if len(s.caps) == 0 {
-		return nil
-	}
-	out := make([]string, len(s.caps))
-	copy(out, s.caps)
-	return out
-}
-
-// HasCap reports whether the agent advertised a capability.
-func (s *Session) HasCap(name string) bool {
-	for _, c := range s.caps {
-		if c == name {
-			return true
-		}
-	}
-	return false
 }
 
 func newSession(h *Hub, ys *yamux.Session, ctrl io.ReadWriteCloser, remoteOpt ...string) *Session {
@@ -217,6 +202,15 @@ func (s *Session) handshake() error {
 		}
 		return errSmokeHandshake
 	}
+	s.upgradeSessionID = s.sessionID
+	if s.upgradeSessionID == "" {
+		var err error
+		s.upgradeSessionID, err = newSessionID()
+		if err != nil {
+			return fmt.Errorf("create upgrade session identity: %w", err)
+		}
+	}
+	s.upgradeVersion = strings.TrimSpace(hello.Version)
 	// Register before announcing the identity: the agent may open a data lane the
 	// instant it reads Registered, and that lane matches its DataHello.SessionID
 	// against this session's id via the hub session table. Registering here (with
@@ -235,6 +229,7 @@ func (s *Session) handshake() error {
 		return err
 	}
 	s.lastSeen.Store(time.Now().UnixMilli())
+	s.upgradeHandshakeComplete.Store(true)
 	return nil
 }
 
@@ -254,6 +249,7 @@ func (s *Session) ctrlLoop() {
 }
 
 func (s *Session) handle(env proto.Envelope) {
+	s.observeUpgradeControl(env)
 	switch env.T {
 	case proto.THeartbeat:
 		s.handleHeartbeat()
@@ -348,6 +344,7 @@ func (s *Session) handle(env proto.Envelope) {
 		}
 		if status.State == "failed" {
 			s.hub.setUpgradeError(s.NodeUUID, status.Error)
+			s.observeUpgradeFailure(status.Error)
 			s.hub.log.Error("agent self-upgrade failed", "node", s.NodeUUID, "err", status.Error)
 		} else {
 			s.hub.log.Warn("unknown agent upgrade status", "node", s.NodeUUID, "state", status.State, "err", status.Error)

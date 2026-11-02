@@ -21,6 +21,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/agent/engine"
 	"gpuworks.ai/gpuworks/internal/agent/gpu"
 	"gpuworks.ai/gpuworks/internal/agent/gpu/cardsmoke"
+	"gpuworks.ai/gpuworks/internal/agent/hostsim"
 	"gpuworks.ai/gpuworks/internal/agent/imagepull"
 	"gpuworks.ai/gpuworks/internal/agent/perftest"
 	partitionprobe "gpuworks.ai/gpuworks/internal/agent/probe"
@@ -46,6 +47,17 @@ type NodeRuntime struct {
 	// cardSmoke asks each card whether the runtime can use it, on its own
 	// schedule (see card_smoke.go). Nil where there is no check to run.
 	cardSmoke *cardsmoke.Runner
+	// doctorRunning lets one diagnosis run at a time. A second one would
+	// only queue more checks on a driver the first may be stuck in.
+	doctorRunning atomic.Bool
+	// pcie follows each card's PCIe links and error counters (card_pcie.go).
+	pcie pcieWatch
+	// nvlink follows each card's active NVLinks (card_nvlink.go).
+	nvlink nvlinkWatch
+	// xid follows the kernel log for NVIDIA Xid events; nil off NVIDIA.
+	xid atomic.Pointer[gpu.XidWatcher]
+	// checks is each card's check states and last runs (card_checks.go).
+	checks cardCheckMemory
 	// cardSmokeCtx is the runner's own lifetime, so a check asked for
 	// outside the schedule ends when the agent does.
 	cardSmokeCtx context.Context
@@ -55,7 +67,10 @@ type NodeRuntime struct {
 	// heldCards overrides where cardsInUse reads this agent's own
 	// placements, so the card occupancy rules can be tested without an
 	// engine starting containers. Nil means ask the engine.
-	heldCards                     func() engine.HeldCards
+	heldCards func() engine.HeldCards
+	// sleepingCards overrides where sleepingCardPIDs reads the cards of ours
+	// whose instances all sleep, for the same tests. Nil means ask the engine.
+	sleepingCards                 func() map[string]map[int]bool
 	partitionProbeStateMu         sync.Mutex
 	partitionProbeInputsSeen      bool
 	partitionProbeFingerprintSeen string
@@ -87,10 +102,13 @@ type NodeRuntime struct {
 	dlMu          sync.Mutex
 	downloading   map[string]*modelDownload
 	stoppedCopies map[string]string
-	syncMu        sync.Mutex
-	modelSyncs    map[string]*activeModelSync
-	imageSyncs    map[string]*activeImageSync
-	imageSyncMu   sync.Mutex
+	// stoppedDownloads fences canceled attempts across retries and stale replays.
+	stoppedDownloads map[string]map[string]bool
+	syncMu           sync.Mutex
+	modelSyncs       map[string]*activeModelSync
+	imageSyncs       map[string]*activeImageSync
+	imageSyncMu      sync.Mutex
+	imageSyncSends   map[string]context.CancelFunc // source runtime calls, keyed by transfer id
 
 	// netcfg is the effective network/accelerator configuration from the
 	// server. The node owns it - downloads, model sync and image pulls all read
@@ -157,6 +175,10 @@ type NodeRuntime struct {
 	nodeToken      atomic.Value // string
 	servingForward *servingForwarder
 	perftest       perftest.Runner
+
+	// host is the machine a simulated node stands for (hostsim); nil on a
+	// real node.
+	host *hostsim.Host
 
 	// stateDir is the agent's own state directory (udocker, runtime assets,
 	// caches). It is fixed for the process: the models root can move with a
@@ -379,7 +401,7 @@ func (n *NodeRuntime) PartitionAssets(ctx context.Context) []proto.AssetReport {
 	}
 	vendor := accelerator.NormalizeVendor(n.prober.Vendor())
 	if vendor == accelerator.VendorNVIDIA {
-		if assets.LibvgpuAvailable() {
+		if assets.LibvgpuAvailable() || n.host.LibvgpuExtractor() != nil {
 			return []proto.AssetReport{{Backend: accelerator.BackendNVIDIALogical, Root: "embedded://dgpu", Files: []string{"libvgpu.so"}}}
 		}
 		return []proto.AssetReport{}

@@ -6,6 +6,7 @@ import type {
   ProductWarning,
 } from "../../api";
 import { warningText } from "./deployWarnings";
+import { useControlLocked } from "./DeployEditContext";
 
 // `evaluated` separates "the server has not answered yet" from "the server
 // answered and could not resolve an image". Without it a failed evaluation —
@@ -24,6 +25,7 @@ export default function DeployImageRow({
 }) {
   const { t } = useTranslation("deploy");
   const form = Form.useFormInstance();
+  const engineLocked = useControlLocked("engine");
   const selectedImage = Form.useWatch("image", { form, preserve: true }) as
     string | undefined;
   const templateID = Form.useWatch("template_id", { form, preserve: true });
@@ -60,7 +62,8 @@ export default function DeployImageRow({
               (candidate) =>
                 candidate.image_ref.toLowerCase() === value.toLowerCase(),
             );
-            if (!templateID && catalogImage?.engine) {
+            // The image follows the engine; an edit cannot change the engine.
+            if (!templateID && catalogImage?.engine && !engineLocked) {
               form.setFieldsValue({
                 image: value,
                 engine: catalogImage.engine,

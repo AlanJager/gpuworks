@@ -66,6 +66,22 @@ const (
 	// this says only that we could not ask. The node carries the probe
 	// error that explains why.
 	HealthCLIUnanswered = "vendor_cli_unanswered"
+	// HealthPCIeLinkDegraded: a PCIe link between the card and its root
+	// port runs at fewer lanes, or (while the card is busy) a lower speed,
+	// than both of its ends support. The card works, slower to load and to
+	// move data, so it stays schedulable after the healthy ones.
+	HealthPCIeLinkDegraded = "pcie_link_degraded"
+	// HealthPCIeErrors: the PCIe devices between the card and its root port
+	// reported new non-fatal (recovered) errors.
+	HealthPCIeErrors = "pcie_errors"
+	// HealthPCIeFatal: they reported new fatal errors, after which the link
+	// has to be reset; the card cannot be relied on until it has been, and a
+	// runtime check has passed on it since.
+	HealthPCIeFatal = "pcie_fatal_errors"
+	// HealthNVLinkDown: fewer of the card's NVLinks are active than it has
+	// had. The card works; work spread over it and its peers is slower, and
+	// the topology the scheduler reads no longer groups it with them.
+	HealthNVLinkDown = "nvlink_down"
 )
 
 // HealthLevel is the level a code puts a card at. An unknown code is treated as an
@@ -74,7 +90,7 @@ func HealthLevel(code string) string {
 	switch code {
 	case "", HealthMemoryErrorHistory:
 		return HealthOK
-	case HealthMemoryRepairPending, HealthVendorWarning:
+	case HealthMemoryRepairPending, HealthVendorWarning, HealthPCIeLinkDegraded, HealthPCIeErrors, HealthNVLinkDown:
 		return HealthWarning
 	default:
 		return HealthError
@@ -99,25 +115,29 @@ func HealthDegraded(status string) bool { return status == HealthWarning }
 var healthSeverity = map[string]int{
 	// Leaves the card schedulable.
 	HealthMemoryErrorHistory:  1,
-	HealthVendorWarning:       2,
-	HealthMemoryRepairPending: 3,
+	HealthPCIeLinkDegraded:    2,
+	HealthPCIeErrors:          3,
+	HealthNVLinkDown:          4,
+	HealthVendorWarning:       5,
+	HealthMemoryRepairPending: 6,
 	// The runtime cannot use the card. It has to outrank every finding
 	// above, which would otherwise leave the card looking schedulable, and
 	// to yield to every finding below, which names why rather than that.
-	HealthRuntimeUnusable: 4,
+	HealthRuntimeUnusable: 7,
 	// Causes the vendor tool names, each more specific than the symptom.
-	HealthMemoryUncorrectable: 5,
-	HealthMemoryRemapFailed:   6,
-	HealthVendorFault:         7,
-	HealthResetRequired:       8,
-	HealthRebootRequired:      9,
-	HealthPowerCycleRequired:  10,
+	HealthPCIeFatal:           8,
+	HealthMemoryUncorrectable: 9,
+	HealthMemoryRemapFailed:   10,
+	HealthVendorFault:         11,
+	HealthResetRequired:       12,
+	HealthRebootRequired:      13,
+	HealthPowerCycleRequired:  14,
 	// Nothing is known about the card: the tool did not answer, so it has
 	// no finding to give. It yields to the one below, which names a cause.
-	HealthCLIUnanswered: 11,
+	HealthCLIUnanswered: 15,
 	// The vendor tool does not list the card at all, so none of its
 	// findings about it can exist.
-	HealthDriverInitFailed: 12,
+	HealthDriverInitFailed: 16,
 }
 
 // MostSevereHealth returns the most severe of the codes, or "" when there are none.

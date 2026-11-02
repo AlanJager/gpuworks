@@ -34,7 +34,7 @@ func (p *Proxy) serveAuxiliary(w http.ResponseWriter, r *http.Request, route inf
 		writeErr(w, http.StatusBadRequest, "request body must specify a model")
 		return
 	}
-	dep, tgt, status, msg, _ := p.selectDeploymentInstanceWithKey(modelName, p.affinityKey(modelName, r))
+	dep, tgt, status, msg, _ := p.selectForRequest(r.Context(), modelName, p.affinityKey(modelName, r))
 	if status != 0 {
 		writeErr(w, status, msg)
 		return

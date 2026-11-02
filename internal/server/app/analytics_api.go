@@ -41,6 +41,8 @@ func (a *analyticsAPI) Usage(ctx context.Context, q api.AnalyticsQuery) (dto.Usa
 		f.Source = 1 + uint8(uxrecord.SourceAPI)
 	case "playground":
 		f.Source = 1 + uint8(uxrecord.SourcePlayground)
+	case "batch":
+		f.Source = 1 + uint8(uxrecord.SourceBatch)
 	}
 	return a.queries.Usage(ctx, analyticsQuery(q), f)
 }

@@ -53,6 +53,7 @@ func (h *Hub) syncImageDirect(ctx context.Context, imageID uint, targetNodeUUID,
 			return existing, nil
 		}
 		if existing.State == store.ImageStateSyncing && !force {
+			h.watchDirectImageTransfer(image.ID, target.ID)
 			sourceNode, sourceErr := h.store.NodeByID(existing.SourceNodeID)
 			if sourceErr != nil || sourceNode.UUID != requestedSourceNodeUUID {
 				return nil, errors.New("target is already syncing this image from a different source node")

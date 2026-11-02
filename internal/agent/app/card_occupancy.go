@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"sync"
+	"time"
 
 	"gpuworks.ai/gpuworks/internal/accelerator"
 	"gpuworks.ai/gpuworks/internal/agent/engine"
@@ -36,6 +37,11 @@ import (
 type cardOccupancy struct {
 	mu   sync.Mutex
 	last map[string][]proto.CardProcess
+	// freeRounds counts the readings in a row that found a card in last
+	// free again. A card is let go only after occupancyReleaseRounds of
+	// them: somebody's job that starts and stops every minute would
+	// otherwise flip the card in and out of scheduling with every report.
+	freeRounds map[string]int
 	// identOfIndex is each card's identity by the device index it carried
 	// in the last probe that listed the cards. It names the cards of an
 	// instance whose desired state binds none (see engine.HeldCards).
@@ -67,25 +73,72 @@ func (o *cardOccupancy) identOf(index int) (string, bool) {
 	return ident, ok
 }
 
+// occupancyReleaseRounds is how many readings in a row must find a card free
+// before it is let go: about three minutes.
+const occupancyReleaseRounds = 3
+
 // remember records a round that did find out, and reports which cards'
 // foreign use changed since the last one, so it is logged once rather than
-// every minute.
-func (o *cardOccupancy) remember(gpus []proto.GPUInfo) (changed []proto.GPUInfo) {
+// every minute. A card found free after being used outside the platform keeps
+// its last processes until occupancyReleaseRounds readings in a row have found
+// it free — unless it now holds one of this node's own instances (ours),
+// whose processes are not foreign.
+func (o *cardOccupancy) remember(gpus []proto.GPUInfo, ours map[string]bool) (changed []proto.GPUInfo) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
+	if o.freeRounds == nil {
+		o.freeRounds = map[string]int{}
+	}
 	next := map[string][]proto.CardProcess{}
-	for _, card := range gpus {
+	for i := range gpus {
+		card := &gpus[i]
 		ident := accelerator.CardIdent(card.UUID, card.PCIeBDF)
-		if ident == "" || len(card.ForeignProcesses) == 0 {
+		if ident == "" {
 			continue
 		}
+		if len(card.ForeignProcesses) == 0 {
+			held := o.last[ident]
+			if len(held) == 0 || ours[ident] || !accelerator.CardUsable(card.Ownership) {
+				delete(o.freeRounds, ident)
+				continue
+			}
+			if o.freeRounds[ident]++; o.freeRounds[ident] >= occupancyReleaseRounds {
+				delete(o.freeRounds, ident)
+				slog.Info("card no longer in use outside the platform", "card", card.PCIeBDF)
+				continue
+			}
+			card.ForeignProcesses = append([]proto.CardProcess(nil), held...)
+			next[ident] = held
+			continue
+		}
+		delete(o.freeRounds, ident)
 		next[ident] = card.ForeignProcesses
 		if !sameProcesses(o.last[ident], card.ForeignProcesses) {
-			changed = append(changed, card)
+			changed = append(changed, *card)
 		}
 	}
 	o.last = next
 	return changed
+}
+
+// foreign reports whether the last answer found somebody outside the
+// platform using the card.
+func (o *cardOccupancy) foreign(ident string) bool {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return len(o.last[ident]) > 0
+}
+
+// smokeOccupancyGrace is how long after a runtime check a listing may still
+// show its process: npu-smi's table is reused for five seconds, and the
+// listing is read a moment after the probe that fetched it.
+const smokeOccupancyGrace = 15 * time.Second
+
+// restateCard lays the last answer over one card this round did not examine.
+func (o *cardOccupancy) restateCard(card *proto.GPUInfo) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	card.ForeignProcesses = append([]proto.CardProcess(nil), o.last[accelerator.CardIdent(card.UUID, card.PCIeBDF)]...)
 }
 
 // restate lays the last answer over cards this round could not examine.
@@ -145,13 +198,29 @@ func (n *NodeRuntime) applyForeignProcesses(ctx context.Context, gpus []proto.GP
 		n.occupancy.restate(gpus)
 		return
 	}
+	sleeping := n.sleepingCardPIDs()
 	for i := range gpus {
 		card := &gpus[i]
-		if !accelerator.CardUsable(card.Ownership) || ours[accelerator.CardIdent(card.UUID, card.PCIeBDF)] {
+		ident := accelerator.CardIdent(card.UUID, card.PCIeBDF)
+		if !accelerator.CardUsable(card.Ownership) {
+			continue
+		}
+		if n.cardSmoke.Touched(ident, smokeOccupancyGrace) {
+			// The runtime check's own process is on the card, or was when
+			// the vendor tool listed it. The check only asks cards nobody
+			// uses, so the last answer stands for this round.
+			n.occupancy.restateCard(card)
+			continue
+		}
+		// A card of ours is examined only when every instance on it sleeps
+		// and its engines' own processes are known: any other process there
+		// is somebody else's, and the server must refuse a wake onto it.
+		own, examine := sleeping[ident]
+		if ours[ident] && !examine {
 			continue
 		}
 		for _, proc := range procs {
-			if !gpu.SameBDF(proc.PCIeBDF, card.PCIeBDF) {
+			if !gpu.SameBDF(proc.PCIeBDF, card.PCIeBDF) || own[proc.PID] {
 				continue
 			}
 			card.ForeignProcesses = append(card.ForeignProcesses, proto.CardProcess{
@@ -159,10 +228,23 @@ func (n *NodeRuntime) applyForeignProcesses(ctx context.Context, gpus []proto.GP
 			})
 		}
 	}
-	for _, card := range n.occupancy.remember(gpus) {
+	for _, card := range n.occupancy.remember(gpus, ours) {
 		slog.Info("card is in use outside the platform",
 			"card", card.PCIeBDF, "processes", len(card.ForeignProcesses))
 	}
+}
+
+// sleepingCardPIDs are the cards of ours on which every instance sleeps and
+// its engine's process is known (engine.SleepingCardPIDs), with those
+// processes. sleepingCards is the seam tests use.
+func (n *NodeRuntime) sleepingCardPIDs() map[string]map[int]bool {
+	if n.sleepingCards != nil {
+		return n.sleepingCards()
+	}
+	if n.engine == nil {
+		return nil
+	}
+	return n.engine.SleepingCardPIDs()
 }
 
 // cardsInUse are the hardware identities this agent's own instances

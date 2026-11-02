@@ -21,6 +21,10 @@ const (
 	// EventReplicaRestarted: an operator restarted one replica through one of
 	// its instances. Params: instance (the replica's leader), drain.
 	EventReplicaRestarted = "REPLICA_RESTARTED"
+	// EventDeploymentEdited: an operator edited the deployment's
+	// configuration. Params: fields (the changed request fields, comma
+	// separated), count, apply (none, rolling or all).
+	EventDeploymentEdited = "DEPLOYMENT_EDITED"
 )
 
 // HasDeploymentEventSince reports whether the deployment's timeline carries

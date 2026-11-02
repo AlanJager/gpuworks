@@ -7,6 +7,7 @@
     "starting": "启动中",
     "stopped": "已停止",
     "failed": "失败",
+    "offline": "离线",
     "asleep": "睡眠中"
   },
   "range": {
@@ -43,7 +44,7 @@
   "signals": {
     "ready_replicas": "就绪副本",
     "error_rate": "错误率",
-    "request_rate": "请求数/秒",
+    "request_rate": "RPS / 并发",
     "token_rate": "Token 吞吐",
     "ttft": "TTFT p95 / p99",
     "tpot": "TPOT p95 / p99",
@@ -55,12 +56,12 @@
     "errorRateDetail": "5xx {{5xx}} · 429 {{429}} · 503 {{asleep_503}}",
     "tokenRateInput": "输入",
     "tokenRateOutput": "输出",
+    "requestRateHint": "左：平均每秒请求数（RPS）；右：网关的平均在途请求数（并发）。",
     "upperBoundHint": "p95/p99 是保守上界（窗口内每个采样点自身分位数的最大值），不是整个窗口的单一分位数。"
   },
-  "healthSummary": {
-    "title": "健康检查",
-    "noneChecked": "还没有服务开启健康检查，可在部署详情里开启",
-    "count": "{{status}} {{count}}"
+  "stateSummary": {
+    "title": "服务状态",
+    "count": "{{state}} {{count}}"
   },
   "table": {
     "state": "状态",
@@ -111,6 +112,8 @@
     "quantileFamilyNote": "该指标以“quantile”标签区分 p50/p95/p99——/monitor/series 目前不支持按额外标签过滤，所选“分组”/“聚合方式”会把各分位数合并在一起，而不是只取某一个。"
   },
   "deployment": {
+    "noReadyReplicas": "当前没有可接收请求的就绪副本",
+    "noReadyReplicasDetail": "副本可能正在启动、恢复或已经失败。请查看下方副本状态和日志，或打开部署查看失败原因。副本就绪前服务无法接收请求。",
     "backToMonitor": "返回监控中心",
     "goToDeployment": "去部署",
     "subtitle": "{{engine}} · {{placement}} · {{ready}}/{{desired}} 副本 · 部署 #{{id}}",
@@ -301,6 +304,7 @@
       "gateway": "网关 {{time}}",
       "preprocess": "引擎预处理 {{time}}（引擎未计入：分词、等当前步结束、首字回传）",
       "queue": "排队 {{time}}",
+      "queueUnavailable": "引擎排队耗时未知：该回复未上报逐请求耗时。等待仍包含未拆分的排队、预处理及网络耗时；排队请求数不能换算成此请求的排队时间。",
       "prefill": "Prefill {{time}}",
       "prefillSpeed": "Prefill {{time}} · {{speed}} tok/s",
       "firstToken": "{{time}} 后出首个 token",
@@ -374,7 +378,8 @@
       "prefill_no_kv_params": "prefill 实例没有返回 KV 交接参数",
       "prefill_failed": "prefill 调用失败"
     },
-    "deletedName": "{{name}}（已删除）"
+    "deletedName": "{{name}}（已删除）",
+    "batch": "批处理"
   },
   "latency": {
     "title": "端到端延迟拆解",

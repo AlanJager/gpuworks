@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from "react";
-import { Form, Segmented, Select, Space } from "antd";
+import { Button, Form, Result, Segmented, Select, Skeleton, Space, Typography } from "antd";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
@@ -13,6 +13,7 @@ import {
   type Node,
 } from "../api";
 import PageHeader from "../components/PageHeader";
+import { APIError, apiErrorText } from "../apiError";
 import RoutingPolicyHelp from "../components/RoutingPolicyHelp";
 import DeployBasicStep from "./deploy/DeployBasicStep";
 import DeployMovedFlagsNotice from "./deploy/DeployMovedFlagsNotice";
@@ -22,13 +23,20 @@ import DeployStepSummary from "./deploy/DeployStepSummary";
 import DeployTemplateBar from "./deploy/DeployTemplateBar";
 import DeployWeightSourceModal from "./deploy/DeployWeightSourceModal";
 import {
-  deployDraftPayload,
   deploymentQuery,
+  draftToFormValues,
   EngineDecidesContext,
   effectiveEngineDecidesParamKeys,
   draftPartitionCapability,
   type ImageSelectionMode,
 } from "./deploy/deployHelpers";
+import DeployEditConfirmModal from "./deploy/DeployEditConfirmModal";
+import { DeployEditContext } from "./deploy/DeployEditContext";
+import { cloneIdentity, templateSpecKey } from "./deploy/deployDraftValues";
+import { DeployEditBack, DeployEditTitle } from "./deploy/DeployEditTitle";
+import useDeployDraftSetup from "./deploy/useDeployDraftSetup";
+import useDeployEditMode, { type OpenedDeployment } from "./deploy/useDeployEditMode";
+import useDeploymentDraft from "./deploy/useDeploymentDraft";
 import useDeployEvaluation from "./deploy/useDeployEvaluation";
 import useDeploySubmit from "./deploy/useDeploySubmit";
 import useDeployPrefill from "./deploy/useDeployPrefill";
@@ -52,16 +60,100 @@ import "./deploy/deployWizardResponsive.css";
 
 const ONLINE = { state: ["online"] };
 import "./deploy/deployLayout.css";
+import "./deploy/deployEdit.css";
 
+// DeployPage is the create page. Opened with edit=<id> (edit that deployment)
+// or from=<id> (clone it and modify the copy) it first reads the deployment's
+// draft, and fills the same form from it.
 export default function DeployPage() {
+  const { t } = useTranslation("deploy");
+  const { t: tCommon } = useTranslation("common");
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { queryEditID, queryFromID } = useMemo(
+    () => deploymentQuery(location.search),
+    [location.search],
+  );
+  const openID = queryEditID ?? queryFromID;
+  const { state, reload } = useDeploymentDraft(openID);
+  if (!openID) return <DeployForm />;
+  if (state.status === "error") {
+    const missing = state.error instanceof APIError && state.error.status === 404;
+    return (
+      <div className="deploy-page">
+        <Result
+          status={missing ? "404" : "error"}
+          title={t(missing ? "edit.notFound" : "edit.loadFailed")}
+          subTitle={apiErrorText(tCommon, state.error)}
+          extra={
+            <Button type="primary" onClick={() => navigate("/deployments")}>
+              {t("edit.backToList")}
+            </Button>
+          }
+        />
+      </div>
+    );
+  }
+  if (state.status !== "ready" || state.id !== openID) {
+    return (
+      <div className="deploy-page" aria-busy="true">
+        <Typography.Text type="secondary" role="status">
+          {t("edit.loading")}
+        </Typography.Text>
+        <Skeleton active paragraph={{ rows: 10 }} />
+      </div>
+    );
+  }
+  return (
+    <DeployForm
+      key={`${queryEditID ? "edit" : "from"}-${openID}`}
+      opened={{
+        mode: queryEditID ? "edit" : "from",
+        id: openID,
+        draft: state.draft,
+        deployment: state.deployment,
+        reload,
+      }}
+    />
+  );
+}
+
+function DeployForm({ opened }: { opened?: OpenedDeployment }) {
   const { t, i18n } = useTranslation("deploy");
   const [form] = Form.useForm();
   const watchOptions = { form, preserve: true } as const;
   const [deployMode, setDeployMode] = useState<"quick" | "expert">("quick");
   const navigate = useNavigate();
   const location = useLocation();
-  const { queryTemplateID, querySpecName, querySpecSource, queryModelID } =
+  const { queryTemplateID, querySpecName, querySpecSource, queryModelID, queryFocus } =
     useMemo(() => deploymentQuery(location.search), [location.search]);
+  // The form of a deployment's draft starts from the draft (a clone starts
+  // from a copy with its own names); the dictionary keys the deployment leaves
+  // unstated are filled in once the engine profile is known.
+  const [initialValues] = useState<Record<string, unknown>>(() => {
+    if (!opened) {
+      return {
+        model_id: queryModelID,
+        template_id: queryTemplateID,
+        template_spec_source: querySpecSource,
+        template_spec_name: querySpecName,
+        image_mode: "auto",
+        command_mode: "engine",
+        // Automatic placement is the server's answer (selected_node with
+        // its candidates); the manual option stays one click away.
+        node_selection_mode: "auto",
+        nnodes: 1,
+        replicas: 1,
+      };
+    }
+    const values = draftToFormValues(opened.draft.deployment);
+    // A multi-node or PD draft reads as the operator's placement; the
+    // deployment itself says when the platform places it.
+    if (opened.deployment?.placement_mode === "auto" && values.units_placement)
+      values.units_placement = "auto";
+    return opened.mode === "from" ? cloneIdentity(values) : values;
+  });
+  const touchedRef = useRef(false);
   // The form never lists the fleet: what the online nodes carry comes from
   // the server's facets, and the few nodes the draft names are read one by
   // one (knownNodes, below).
@@ -128,19 +220,39 @@ export default function DeployPage() {
     selectedModelRead.data && selectedModelRead.data.id === selectedModelID
       ? selectedModelRead.data
       : undefined;
+  // A form opened from a draft is complete once the profile and the model are
+  // in (see useDeployDraftSetup); nothing is evaluated before.
+  const draftReady = useDeployDraftSetup({
+    form,
+    request: opened?.draft.deployment ?? {},
+    revision: opened?.draft.revision ?? "",
+    profile: engineProfile,
+    modalities: selectedModel?.input_modalities ?? [],
+    settled: Boolean(opened) && !engines.loading && !selectedModelRead.loading,
+  });
+  const bodyOfRef = useRef<(values: Record<string, unknown>) => Record<string, unknown> | null>();
+  const evaluationSignal = useMemo(
+    () => ({ values: formValues, ready: !opened || draftReady }),
+    [formValues, opened, draftReady],
+  );
   const evaluation = useDeployEvaluation({
     form,
-    signal: formValues,
+    signal: evaluationSignal,
     // Without a target accelerator the scheduler would pick any vendor's
     // node, and that answer would linger on screen once one is chosen.
-    buildPayload: () =>
-      !form.getFieldValue("target_vendor") ? null : deployDraftPayload(
-        form.getFieldsValue(true),
-        knownNodesRef.current,
-        engineProfile,
-        selectedModel?.input_modalities,
-      ),
+    buildPayload: () => {
+      if (!form.getFieldValue("target_vendor")) return null;
+      if (opened && !draftReady) return null;
+      const body = bodyOfRef.current?.(form.getFieldsValue(true));
+      // An edit's preview leaves the deployment's own GPU use out of the plan.
+      return body && opened?.mode === "edit"
+        ? { ...body, deployment_id: opened.id }
+        : body ?? null;
+    },
     translate: (key, options) => i18n.t(key, options),
+    // An edit keeps the deployment's own values; a clone takes the answer's
+    // once the deployer has changed something, as a new deployment would.
+    applyFormValues: () => !opened || (opened.mode === "from" && touchedRef.current),
   });
   const { result: evalResult, error: evalErr, evaluating } = evaluation;
   // The node whose facts the page renders: the form's pick in manual mode,
@@ -154,6 +266,18 @@ export default function DeployPage() {
   ]);
   const knownList = useMemo(() => [...knownNodes.values()], [knownNodes]);
   knownNodesRef.current = knownList;
+  const editMode = useDeployEditMode({
+    form,
+    opened,
+    formValues,
+    engineProfile,
+    selectedModel,
+    nodes: knownList,
+    ready: draftReady,
+    focus: queryFocus,
+    onSaved: () => navigate(`/deployments?deployment=${opened?.id}`),
+  });
+  bodyOfRef.current = editMode.bodyOf;
   const selectedNode = knownNodes.get(
     (nodeSelectionMode === "manual"
       ? selectedNodeUUID
@@ -176,6 +300,7 @@ export default function DeployPage() {
     template: selectedTemplate ?? undefined,
     selection: selectedTemplateSpec,
     engineProfile,
+    adoptedKey: opened ? templateSpecKey(opened.draft.deployment) : undefined,
   });
   const { runtimeSeries, autoResolutionText, inferenceSeries } =
     useDeployImageState({
@@ -193,6 +318,7 @@ export default function DeployPage() {
     nodes: knownList,
     nnodes: Form.useWatch("nnodes", watchOptions),
     distributedNodes,
+    enabled: opened?.mode !== "edit",
   });
   const onValuesChange = useDeployFormChanges({
     form,
@@ -200,10 +326,11 @@ export default function DeployPage() {
     images: images.data?.items ?? [],
   });
   const handleValuesChange = (changed: Record<string, unknown>) => {
+    touchedRef.current = true;
     evaluation.noteDraftChanged();
     onValuesChange(changed);
   };
-  useDeploymentIdentity(form, selectedModel);
+  useDeploymentIdentity(form, selectedModel, opened?.mode !== "edit");
 
   useDeployPrefill({
     form,
@@ -215,6 +342,7 @@ export default function DeployPage() {
     selectedTemplateSpec,
     nodeSelectionMode,
     defaultsEngine: evalResult?.defaults?.engine,
+    fromDraft: Boolean(opened),
   });
 
   const { submit, submitting } = useDeploySubmit({
@@ -232,42 +360,37 @@ export default function DeployPage() {
     <div className="deploy-page">
       <PageHeader
         title={
-          selectedTemplate
-            ? t("page.deployTemplate", {
-                name:
-                  selectedTemplate.display_title || selectedTemplate.model_id,
-              })
-            : t("page.title")
+          opened ? (
+            <DeployEditTitle opened={opened} />
+          ) : selectedTemplate ? (
+            t("page.deployTemplate", {
+              name: selectedTemplate.display_title || selectedTemplate.model_id,
+            })
+          ) : (
+            t("page.title")
+          )
         }
-        description={t("page.description")}
+        description={opened ? t(`edit.description.${opened.mode}`) : t("page.description")}
         extra={
-          <Segmented
-            value={deployMode}
-            onChange={(value) => setDeployMode(value as "quick" | "expert")}
-            options={[
-              { value: "quick", label: t("page.mode.quick") },
-              { value: "expert", label: t("page.mode.expert") },
-            ]}
-          />
+          <Space size={16}>
+            {opened && <DeployEditBack opened={opened} />}
+            <Segmented
+              value={deployMode}
+              onChange={(value) => setDeployMode(value as "quick" | "expert")}
+              options={[
+                { value: "quick", label: t("page.mode.quick") },
+                { value: "expert", label: t("page.mode.expert") },
+              ]}
+            />
+          </Space>
         }
       />
+      <DeployEditContext.Provider value={editMode.context}>
       <EngineDecidesContext.Provider value={engineDecidesParamKeys}>
       <Form
         form={form}
         layout="vertical"
-        initialValues={{
-          model_id: queryModelID,
-          template_id: queryTemplateID,
-          template_spec_source: querySpecSource,
-          template_spec_name: querySpecName,
-          image_mode: "auto",
-          command_mode: "engine",
-          // Automatic placement is the server's answer (selected_node with
-          // its candidates); the manual option stays one click away.
-          node_selection_mode: "auto",
-          nnodes: 1,
-          replicas: 1,
-        }}
+        initialValues={initialValues}
         onValuesChange={handleValuesChange}
       >
         {selectedTemplate && selectedTemplateSpec && (
@@ -366,12 +489,24 @@ export default function DeployPage() {
         />
         <DeploySubmitBar
           selectedTemplate={selectedTemplate}
-          submit={submit}
-          submitting={submitting}
+          submit={editMode.editing ? editMode.submit.open : submit}
+          submitting={editMode.editing ? editMode.submit.reviewing : submitting}
           disabled={evaluating || !!evalErr || !evalResult || !selectedModelID || !form.getFieldValue("target_vendor")}
+          edit={editMode.editing ? { changes: editMode.changes.length } : undefined}
         />
       </Form>
       </EngineDecidesContext.Provider>
+      </DeployEditContext.Provider>
+      {editMode.submit.review && (
+        <DeployEditConfirmModal
+          review={editMode.submit.review}
+          saving={editMode.submit.saving}
+          reloading={editMode.submit.reloading}
+          onCancel={editMode.submit.close}
+          onSave={(choice) => void editMode.submit.save(choice)}
+          onReload={() => void editMode.submit.reloadDraft()}
+        />
+      )}
       <DeployWeightSourceModal
         open={weightSource.modalOpen}
         loading={weightSource.registering}

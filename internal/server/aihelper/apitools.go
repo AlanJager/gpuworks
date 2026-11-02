@@ -425,9 +425,9 @@ func clusterOverview(ctx context.Context, api APIReader) (string, error) {
 		{"nodes_needing_attention", "/api/v1/nodes", url.Values{"page": {"1"}, "page_size": {"30"}, "state": {"offline,connecting"}},
 			`{total, items: [.items[] | {name, state, scheduling, gpus: ([.gpus[]?.name] | group_by(.) | map("\(.[0]) x\(length)")), last_seen_at}]}`},
 		{"deployments_needing_attention", "/api/v1/deployments", url.Values{"page": {"1"}, "page_size": {"30"}, "state": {"failed,pending"}},
-			`{total, items: [.items[] | {id, name, model_name, runtime_state, replicas, node_names}]}`},
+			`{total, items: [.items[] | {id, name, model_name, state, runtime_state, replicas, ready_replicas, node_names}]}`},
 		{"newest_deployments", "/api/v1/deployments", url.Values{"page": {"1"}, "page_size": {"20"}},
-			`{total, items: [.items[] | {id, name, model_name, runtime_state, replicas, node_names}]}`},
+			`{total, items: [.items[] | {id, name, model_name, state, runtime_state, replicas, ready_replicas, node_names}]}`},
 	}
 	out := map[string]any{}
 	for _, r := range reads {

@@ -1,6 +1,6 @@
 import { InfoCircleOutlined } from "@ant-design/icons";
 import { Button, Popover, Space, Tag, Tooltip, Typography } from "antd";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import type { GPU, GPUHealthField, GPUHealthGuide } from "../api";
@@ -21,6 +21,10 @@ const knownCodes = new Set([
   "vendor_cli_unanswered",
   "runtime_unusable",
   "memory_repair_pending",
+  "pcie_link_degraded",
+  "pcie_errors",
+  "pcie_fatal_errors",
+  "nvlink_down",
   "memory_uncorrectable_errors",
   "memory_remap_failed",
   "reset_required",
@@ -90,13 +94,39 @@ export function gpuHealthLabel(t: TFunction, status: string, code?: string): str
 
 const tagColor = { OK: "green", Warning: "orange", Error: "red" } as const;
 
-/** A command a person runs, with a copy button. */
+/**
+ * How much of a command is shown before it is collapsed. A runtime check's
+ * command carries the script it runs, which is dozens of lines: shown in full
+ * it buries the evidence underneath it, and the reader copies it rather than
+ * reads it. Short commands — the vendor tool queries — are unaffected.
+ */
+const COMMAND_PREVIEW_LINES = 4;
+
+/**
+ * A command a person runs, with a copy button. A long one is collapsed to its
+ * first lines, and what is copied is always the whole command: a truncated
+ * command that looked complete would be pasted and fail.
+ */
 export function HealthCommand({ command }: { command: string }) {
   const { t } = useTranslation("common");
+  const [expanded, setExpanded] = useState(false);
+  const lines = command.split("\n");
+  const long = lines.length > COMMAND_PREVIEW_LINES;
+  const shown = long && !expanded ? lines.slice(0, COMMAND_PREVIEW_LINES).join("\n") : command;
   return (
     <div className="gpu-health-command">
-      <Typography.Text code style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{command}</Typography.Text>
-      <CopyButton size="small" text={command} label={t("gpuHealth.copyCommand")} success={t("gpuHealth.copied")} />
+      <Typography.Text code style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
+        {shown}
+        {long && !expanded && "\n…"}
+      </Typography.Text>
+      <Space direction="vertical" size={0} align="start">
+        <CopyButton size="small" text={command} label={t("gpuHealth.copyCommand")} success={t("gpuHealth.copied")} />
+        {long && (
+          <Button type="link" size="small" style={{ paddingInline: 0 }} onClick={() => setExpanded(!expanded)}>
+            {expanded ? t("gpuHealth.collapseCommand") : t("gpuHealth.expandCommand", { count: lines.length })}
+          </Button>
+        )}
+      </Space>
     </div>
   );
 }

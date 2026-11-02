@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"reflect"
 	"testing"
+	"time"
 
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
@@ -115,6 +116,70 @@ func TestDeploymentPreparationFollowsSharedStorageDownload(t *testing.T) {
 				}
 			} else {
 				assertProgress(proto.MFPresent, "ready", false)
+			}
+		})
+	}
+}
+
+// An inactive shared row is not a transfer to wait for. The scheduler's
+// expired refusal must still fail the deployment, as it did before shared
+// transfer progress was exposed.
+func TestSharedModelStatesPreserveSchedulingAndFailurePriority(t *testing.T) {
+	for _, state := range []string{proto.MFAbsent, proto.MFMissing, proto.MFFailed, proto.MFDownloadRequired, proto.MFInsufficientDisk} {
+		t.Run(state, func(t *testing.T) {
+			st := modelEvictionStore(t, "inactive-shared")
+			model, node := modelEvictionFixture(t, st)
+			storage, err := st.CreateStorage(&store.Storage{Name: "shared", Type: proto.StorageNFS, Enabled: true, AllNodes: true, Path: "/shared", Export: "fixture:/models"}, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			file, err := st.UpsertModelFile(&store.ModelFile{ModelID: model.ID, StorageID: storage.ID, WriterNodeID: node.ID, Path: "model", State: proto.MFRegistered, Acquisition: proto.ModelAcquireRegistered})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if state == proto.MFAbsent {
+				err = st.UpdateModelFileStatus(node.ID, proto.ModelFileStatus{Key: store.ModelFileKey(file.ID), State: proto.MFAbsent, Acquisition: proto.ModelAcquireRegistered})
+			} else if state == proto.MFMissing {
+				if err := st.SetModelFileState(file.ID, proto.MFPresent, ""); err != nil {
+					t.Fatal(err)
+				}
+				_, err = st.ApplyStorageScan(storage.ID, store.ScanSighting{Covers: func(string) bool { return true }, Gone: func(string) bool { return true }})
+			} else {
+				err = st.SetModelFileState(file.ID, state, "shared transfer failed")
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			persisted, err := st.ModelFileByID(file.ID)
+			if err != nil || persisted.State != state {
+				t.Fatalf("fixture state=%+v err=%v", persisted, err)
+			}
+			dep, err := st.CreateDeployment(&store.Deployment{Name: "inactive-shared", ModelID: model.ID, NodeID: node.ID, SaveToStorageID: storage.ID})
+			if err != nil {
+				t.Fatal(err)
+			}
+			st.AddDeploymentEventCode(dep.ID, store.EventKindSchedule, "DEPLOYMENT_UNSCHEDULABLE", map[string]any{"reason": "missing_model"})
+			if err := st.DB().Model(&store.InstanceEvent{}).Where("deployment_id = ?", dep.ID).Update("created_at", time.Now().Add(-48*time.Hour)).Error; err != nil {
+				t.Fatal(err)
+			}
+			prep := newTestPreparation()
+			handler := &apiHandlers{d: Deps{Store: st, Preparation: prep}}
+			list, err := newListLookup(st, prep, []store.Deployment{*dep}, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, recorded := deploymentModelProgress(list, dep)
+			if state == proto.MFAbsent || state == proto.MFMissing {
+				if len(recorded) != 0 {
+					t.Errorf("inactive shared row is counted as a transfer: %+v", recorded)
+				}
+			} else if len(recorded) != 1 || recorded[0].State != state || deriveRuntimeState(store.DeployActive, nil, recorded, false) != "failed" {
+				t.Errorf("shared transfer failure lost priority: %+v", recorded)
+			}
+			for _, response := range []dto.Deployment{handler.deploymentDTO(dep, false), handler.deploymentDTOFrom(list, dep, false)} {
+				if response.RuntimeState != "failed" {
+					t.Errorf("inactive shared %s hides expired scheduling refusal: runtime=%s progress=%+v", state, response.RuntimeState, response.ModelProgress)
+				}
 			}
 		})
 	}

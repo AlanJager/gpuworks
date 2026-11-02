@@ -19,6 +19,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/placement"
 	"gpuworks.ai/gpuworks/internal/server/scheduler"
 	"gpuworks.ai/gpuworks/internal/server/store"
+	"gpuworks.ai/gpuworks/internal/server/yieldpolicy"
 	pkgest "gpuworks.ai/gpuworks/pkg/estimate"
 	"gpuworks.ai/gpuworks/pkg/modelconfig"
 )
@@ -72,6 +73,22 @@ type Input struct {
 	// is - its cards, their memory, the dtypes they run, whether it may serve
 	// - so a refusal here is one no amount of waiting fixes (CanEverFit).
 	Unloaded bool
+	// ExcludeDeploymentID previews the node without that deployment's
+	// instances: an edit of the deployment replaces them, so what they hold
+	// now is not in the way of the launch being previewed. Zero excludes none.
+	ExcludeDeploymentID uint
+	// DeploymentID is the launching deployment's, zero for one not created
+	// yet: its own instances never give up their cards to it (launchYield).
+	DeploymentID uint
+	// YieldPolicy is the launching deployment's (yieldpolicy.Never, Idle, ...):
+	// a sleeping deployment that does not share its cards with that policy
+	// keeps its whole claim on them (yieldpolicy.SharesCardsWith), so the
+	// launch does not take cards it would want back. Empty reads as never.
+	YieldPolicy string
+	// ExplainHolders names, when the launch does not fit only because yield
+	// policy keeps it off awake holders' cards, those holders (launchHeld).
+	// The deploy form's evaluation asks for it; the controller does not.
+	ExplainHolders bool
 	// ModelRules are the deployment's model source rules (store.SourceRules).
 	ModelRules store.SourceRules
 }
@@ -90,11 +107,20 @@ type ScheduleResult = scheduler.Result
 type ScheduleReason = scheduler.Reason
 
 type Output struct {
-	Result         scheduler.Result
-	Breakdown      estimate.Breakdown
-	Config         *modelconfig.Config
-	Warnings       []messages.Warning
-	Eviction       []EvictSuggestion // when no fit but sleeping these would free room
+	Result    scheduler.Result
+	Breakdown estimate.Breakdown
+	Config    *modelconfig.Config
+	Warnings  []messages.Warning
+	Eviction  []EvictSuggestion // when no fit but sleeping these would free room
+	// Yield is set when no fit but the deployments sharing the node's cards
+	// by yield policy would make room by giving them up (launchYield).
+	Yield *LaunchYield
+	// Reserved is set when no fit only because sleepers keep their cards for
+	// a request's wake against this launch (launchReserved).
+	Reserved *LaunchReserved
+	// Held is set when no fit only because yield policy keeps the launch off
+	// awake holders' cards, and only when Input.ExplainHolders asks (launchHeld).
+	Held           *LaunchHeld
 	Placement      placement.Result
 	PlacementError error
 }
@@ -136,6 +162,8 @@ func (in Input) Evaluate(st *store.Store) Output {
 
 	maxLen := in.Quick.MaxModelLen
 	if maxLen <= 0 && cfg != nil {
+		// Estimate an unset context from the model limit; the engine's effective
+		// default may differ. This is not a node-sized context recommendation.
 		maxLen = cfg.MaxPositionEmbeddings
 	}
 	kvDtype := in.Quick.KVCacheDtype
@@ -170,7 +198,8 @@ func (in Input) Evaluate(st *store.Store) Output {
 		out.Warnings = append(out.Warnings, messages.NewWarning(messages.WarningPlanningGPUArchCaution, map[string]any{"detail": q}))
 	}
 
-	snap := NodeSnapshot(st, in.Node, dtypeOK, dtypeReason)
+	view := ledgerView{excludeDeployment: in.ExcludeDeploymentID, reserved: reservedAgainst(st, in.YieldPolicy)}
+	snap := nodeSnapshot(st, in.Node, dtypeOK, dtypeReason, view)
 	snap.ServingUnavailable = in.ServingUnavailable
 	if in.Unloaded {
 		// A card that is busy or unhealthy now is a reason to wait, not to
@@ -280,33 +309,40 @@ func (in Input) Evaluate(st *store.Store) Output {
 		out.Warnings = append(out.Warnings, messages.NewWarning(messages.WarningPlanningModelWeightUnknown, nil))
 	}
 	// No fit → suggest sleeping sleepable instances to free room (confirm-based;
-	// the platform never sleeps silently). A context the pool cannot hold is
-	// applied after this: sleeping another deployment does not grow the card.
+	// the platform never sleeps silently).
 	if !out.Result.OK {
-		out.Eviction = suggestEviction(st, in.Node, req, in.ServingUnavailable)
+		out.Eviction = suggestEviction(st, in.Node, req, in.ServingUnavailable, view)
+		// Only a launch that shares cards by yield policy may wait for
+		// holders, and only one sleepers keep cards from may be refused by
+		// their name, or one whose evaluation asks who holds its cards
+		// (ExplainHolders): anything else reads nothing more. One read of
+		// the node's instances serves every re-plan.
+		shares := in.YieldPolicy != "" && in.YieldPolicy != yieldpolicy.Never
+		if !in.Unloaded && st != nil && (shares || view.reserved != nil || in.ExplainHolders) {
+			if insts, err := st.InstancesForNode(in.Node.ID); err == nil {
+				out.Yield = launchYield(st, in.Node, insts, in.DeploymentID, in.YieldPolicy, req, dtypeOK, dtypeReason, in.ServingUnavailable, view)
+				if out.Yield == nil {
+					out.Reserved = launchReserved(st, in.Node, insts, req, dtypeOK, dtypeReason, in.ServingUnavailable, view)
+				}
+				if out.Yield == nil && out.Reserved == nil && in.ExplainHolders {
+					out.Held = launchHeld(st, in.Node, insts, in.DeploymentID, in.YieldPolicy, req, dtypeOK, dtypeReason, in.ServingUnavailable, view)
+				}
+			}
+		}
 	}
 	if out.Result.OK && out.Breakdown.ContextExceedsKVPool() {
-		out.Breakdown.Fits = false
-		out.Result.OK = false
-		out.Result.Plan = nil
+		// Deliberately non-blocking (GWKS-79): new attention layouts and engine
+		// versions can make the KV estimate wrong. Keep Fits, OK and the plan
+		// from startup/resource admission so evaluate, create and controller
+		// retries all allow the same operator-selected configuration. Do not
+		// turn this warning back into a rejection or silently clamp max_model_len;
+		// only the actual engine launch can settle the KV capacity question.
 		b := out.Breakdown
-		out.Result.Message = scheduler.ReasonContextExceedsKV(b.EstimatedKVTokens, b.MaxModelLen, suggestedContextLen(b.EstimatedKVTokens))
+		out.Warnings = append(out.Warnings, messages.NewWarning(messages.WarningPlanningKVBelowContext, map[string]any{
+			"kv_tokens": b.EstimatedKVTokens, "max_model_len": b.MaxModelLen,
+		}))
 	}
 	return out
-}
-
-// suggestedContextLen is the longest power of two that does not exceed the
-// estimated token pool. The launch is not clamped to it: the estimate runs a
-// little ahead of the engine, so the operator picks the length.
-func suggestedContextLen(tokens int) int {
-	if tokens <= 0 {
-		return 0
-	}
-	n := 1
-	for n<<1 > 0 && n<<1 <= tokens {
-		n <<= 1
-	}
-	return n
 }
 
 // modelDiskNeed returns only the bytes that still have to arrive on the

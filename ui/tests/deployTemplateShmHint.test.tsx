@@ -232,32 +232,44 @@ for (const [stated, size] of [
   [undefined, "16"],
 ] as const) {
   test(`Expert form: template shm_bytes ${stated ?? "absent"} shows ${size} GiB`, async () => {
-    render(
-      <I18nextProvider i18n={i18n}>
-        <Form initialValues={{ engine: "vllm", image_mode: "auto", command_mode: "engine" }}>
-          {/* The page registers the engine field; the runtime block watches it. */}
-          <Form.Item name="engine" hidden>
-            <input />
-          </Form.Item>
+    let form: FormInstance | undefined;
+    function Host() {
+      const [instance] = Form.useForm();
+      form = instance;
+      return (
+        <Form form={instance} initialValues={{ engine: "vllm", image_mode: "auto", command_mode: "engine",
+          served_name: "keep-this-name", replicas: 2 }}>
           <DeployImageFields
-            runtimeOnly
             engines={{ data: [vllm], loading: false }}
             templateShmBytes={stated}
-            models={{ data: [model] }}
             imageMode="auto"
             inferenceSeries={[]}
             imageSeriesLoading={false}
             catalogVersions={[]}
             autoResolutionText="automatic"
-            selectedModel={model}
             compatibilityWarnings={[]}
-            onlineNodes={[]}
           />
         </Form>
-      </I18nextProvider>,
-    );
-    // The form's engine value reaches the watcher after the first render.
+      );
+    }
+    render(<I18nextProvider i18n={i18n}><Host /></I18nextProvider>);
+    // The real page retains engine in Form's store without mounting a field.
+    assert.equal(document.querySelector('[id="engine"]'), null);
+    assert.equal(form!.getFieldValue("engine"), "vllm");
+    assert.equal(form!.getFieldValue("container_shm_gib"), undefined);
+    assert.equal(shmField().value, "");
     await waitFor(() => assert.equal(shmField().placeholder, size));
     assert.ok(screen.getByText(helpFor(size)));
+    const user = userEvent.setup({ document: dom.window.document });
+    await user.type(shmField(), "3.5");
+    assert.equal(form!.getFieldValue("container_shm_gib"), 3.5);
+    const values = form!.getFieldsValue(true);
+    assert.equal(values.engine, "vllm");
+    assert.equal(values.served_name, "keep-this-name");
+    assert.equal(values.replicas, 2);
+    const payload = buildPayload(values).payload;
+    const shmBytes = payload.container_overrides!.shm_bytes;
+    assert.equal(typeof shmBytes, "number");
+    assert.equal(shmBytes, 3.5 * gib);
   });
 }

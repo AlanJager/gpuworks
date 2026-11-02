@@ -32,6 +32,8 @@
     "monitorUnavailable": "Monitor data unavailable",
     "requestRate": "Request rate",
     "requestRateTip": "Average requests per second over the last 5 minutes; — means not collected.",
+    "concurrency": "Concurrency",
+    "concurrencyTip": "The gateway's average requests in flight over the last 5 minutes; — means not collected.",
     "errorRate": "Error rate",
     "errorRateTip": "Share of requests with errors in the last 5 minutes, including 5xx, 429 and sleeping-service 503; — means not collected.",
     "ttftP95": "TTFT p95",
@@ -114,7 +116,8 @@
     "attention": "Needs attention",
     "issueNode": "Compute node",
     "issueService": "Inference service",
-    "unknownGpu": "Unidentified"
+    "unknownGpu": "Unidentified",
+    "gpuAllocationHint": "Allocatable includes partially allocated GPUs."
   },
   "health": {
     "attention": "The platform has {{count}} item requiring attention",

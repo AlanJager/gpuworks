@@ -79,6 +79,27 @@ async function renderExplorer() {
   return result;
 }
 
+// A long range's series is the monitor page's slowest read: the collapsed
+// panel asks for nothing, and opening it asks for the catalog and the series.
+test("the collapsed explorer sends no request until it is opened", async () => {
+  const requested: string[] = [];
+  const answer = seriesFetch(EMPTY_SERIES);
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    requested.push(typeof input === "string" ? input : input instanceof URL ? input.href : input.url);
+    return answer(input, init);
+  }) as typeof fetch;
+  render(
+    <I18nextProvider i18n={i18n}>
+      <MetricExplorer range="168h" />
+    </I18nextProvider>,
+  );
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  assert.deepEqual(requested, []);
+  await userEvent.setup().click(screen.getByText("Metric explorer"));
+  await waitFor(() => assert.ok(requested.some((url) => url.includes("/api/v1/monitor/series?") && url.includes("range=168h"))));
+  assert.ok(requested.some((url) => url.includes("/api/v1/monitor/metrics")));
+});
+
 // The metric list is long enough that antd's Select virtualizes its
 // dropdown (only a windowed subset of options actually exists in the DOM at
 // once); typing the exact name into the search box (showSearch,

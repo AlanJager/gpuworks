@@ -35,7 +35,9 @@ import (
 	"gpuworks.ai/gpuworks/internal/agent/gpu"
 	recordingruntime "gpuworks.ai/gpuworks/internal/agent/runtime/recording"
 	udockerruntime "gpuworks.ai/gpuworks/internal/agent/runtime/udocker"
+	udockernative "gpuworks.ai/gpuworks/internal/agent/runtime/udocker/native"
 	"gpuworks.ai/gpuworks/internal/agent/runveilcli"
+	"gpuworks.ai/gpuworks/internal/agent/simulate"
 	"gpuworks.ai/gpuworks/internal/agentconf"
 	"gpuworks.ai/gpuworks/internal/benchrun"
 	"gpuworks.ai/gpuworks/internal/launchd"
@@ -79,12 +81,13 @@ func main() {
 		}
 	case "doctor":
 		fs := flag.NewFlagSet("doctor", flag.ExitOnError)
+		stateDir := fs.String("state", defaultStateDir(), "agent state directory")
 		_ = fs.Parse(os.Args[2:])
 		if fs.NArg() != 0 {
 			fmt.Fprintf(os.Stderr, "doctor: unexpected argument %q\n", fs.Arg(0))
 			os.Exit(2)
 		}
-		agentapp.Doctor(context.Background(), os.Stdout)
+		agentapp.DoctorForState(context.Background(), os.Stdout, *stateDir)
 	case "grant-device-access":
 		if err := grantDeviceAccess(os.Args[2:]); err != nil && !errors.Is(err, flag.ErrHelp) {
 			fmt.Fprintf(os.Stderr, "gpuworks-agent grant-device-access: %v\n", err)
@@ -185,7 +188,15 @@ func run(log *slog.Logger, args []string) error {
 	launch := newLaunchFlags(fs)
 	fs.BoolVar(&cfg.DataLane, "data-lane", true, "open a dedicated high-throughput data lane (disable for single-connection proxies)")
 	fs.StringVar(&cfg.DCGM, "dcgm", cfg.DCGM, "optional DCGM SM-occupancy probe: off (default) | auto (opt in; enables only when dcgmi is on PATH)")
+	imagePullMaxConns := fs.Int("image-pull-max-connections", 0, "most simultaneous connections a runveil (udocker) image pull may open to one registry host (0 = automatic, up to "+strconv.Itoa(udockernative.DefaultMaxConnections)+"; 1 = one connection; at most "+strconv.Itoa(udockernative.MaxConnectionsLimit)+")")
 	_ = fs.Parse(args)
+	if *imagePullMaxConns < 0 || *imagePullMaxConns > udockernative.MaxConnectionsLimit {
+		return fmt.Errorf("--image-pull-max-connections must be between 0 (automatic) and %d, got %d", udockernative.MaxConnectionsLimit, *imagePullMaxConns)
+	}
+	if *imagePullMaxConns > 0 {
+		// The native image puller reads it where it builds its connection budget.
+		_ = os.Setenv(udockernative.MaxConnectionsEnv, strconv.Itoa(*imagePullMaxConns))
+	}
 
 	conf, stateDir, _, err := launch.resolve(os.Getenv)
 	if err != nil {
@@ -216,6 +227,12 @@ func run(log *slog.Logger, args []string) error {
 		cfg.Driver = driver
 		cfg.ForceDriver = "recording"
 		log.Warn("recording runtime enabled for process test", "path", record)
+	}
+	if path := strings.TrimSpace(os.Getenv(simulate.EnvSpec)); path != "" {
+		if err := applySimulation(&cfg, path); err != nil {
+			return err
+		}
+		log.Warn("simulated node: cards, runtime and host are simulated", "spec", path)
 	}
 	fileLog, closeLog, _ := agentLogger(log, cfg.StateDir)
 	defer closeLog()
@@ -345,17 +362,25 @@ func agentLogger(base *slog.Logger, stateDir string) (*slog.Logger, func(), erro
 	return log, closeLog, nil
 }
 
+// systemStateDir is the state directory of a root install; tests point it
+// elsewhere so the host's own does not decide.
+var systemStateDir = "/opt/gpuworks"
+
 func defaultStateDir() string {
 	if d := os.Getenv("GPUWORKS_STATE_DIR"); d != "" {
 		return d
 	}
 	// Prefer a system path when writable (root install), else user config.
-	if _, err := os.Stat("/opt/gpuworks"); err == nil {
-		return "/opt/gpuworks"
+	if _, err := os.Stat(systemStateDir); err == nil {
+		return systemStateDir
 	}
 	if home, err := os.UserHomeDir(); err == nil && goruntime.GOOS == "darwin" {
-		// A Mac install without administrator rights lives in the home.
-		if dir := filepath.Join(home, launchd.HomeInstallDir); dirExists(dir) {
+		// A Mac install lives in the home. ~/gpuworks counts only with an
+		// agent configuration in it: the control plane installs there too.
+		if dir := filepath.Join(home, launchd.HomeInstallDir); fileExists(agentconf.Path(dir)) {
+			return dir
+		}
+		if dir := filepath.Join(home, launchd.LegacyHomeInstallDir); dirExists(dir) {
 			return dir
 		}
 	}
@@ -370,6 +395,11 @@ func dirExists(path string) bool {
 	return err == nil && info.IsDir()
 }
 
+func fileExists(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && !info.IsDir()
+}
+
 func usage() {
 	fmt.Fprintln(os.Stderr, `gpuworks-agent — compute node agent
 
@@ -378,7 +408,7 @@ usage:
   gpuworks-agent run [--state DIR]   (flags --server, --token, ... override DIR/gpuworks-agent.conf)
   gpuworks-agent smoke [--state DIR] [--server URL --token TOKEN]
   gpuworks-agent upgrade [--state DIR] [--server URL --token TOKEN]
-  gpuworks-agent doctor
+  gpuworks-agent doctor [--state DIR]
   gpuworks-agent grant-device-access --user USER [--create-user] [--state DIR]
   gpuworks-agent runveil [--state DIR] ps|images|exec|logs ...
   gpuworks-agent bench --url http://127.0.0.1:8000 --model MODEL [--concurrency 1] [--isl 128] [--osl 32]

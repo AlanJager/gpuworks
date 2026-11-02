@@ -119,66 +119,74 @@ func TestNFSStorageLaunchesFromTheMountWithoutANodeRow(t *testing.T) {
 }
 
 func TestNFSCacheEvictsLeastRecentlyUsedBeforeFilling(t *testing.T) {
-	f := newStorageControllerFixture(t)
-	small, err := f.st.UpsertModel(&store.Model{Source: "modelscope", SourceID: "Qwen/Qwen3-0.6B", Name: "small", WeightBytes: 10 << 30})
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, m := range []*store.Model{f.model, small} {
-		if _, err := f.st.UpsertModelFile(&store.ModelFile{ModelID: m.ID, StorageID: f.cached.ID, Path: m.SourceID, State: proto.MFPresent, SizeBytes: m.WeightBytes}); err != nil {
-			t.Fatal(err)
-		}
-	}
-	f.ready(t, f.node, proto.StorageStatus{ID: f.cached.ID, State: proto.StorageStateReady, Path: "/mnt/gpuworks/archive-cache", Writable: true, CachePath: "/var/cache/gw"})
-	old := time.Now().Add(-48 * time.Hour)
-	evictable, err := f.st.UpsertModelFile(&store.ModelFile{ModelID: small.ID, StorageID: f.cached.ID, NodeID: f.node.ID, Path: "/var/cache/gw/small", State: proto.MFPresent, SizeBytes: 10 << 30, LastUsedAt: &old})
-	if err != nil {
-		t.Fatal(err)
-	}
-	dep := f.deployment(t, f.cached)
-	// A rank may discover a newly absent model while its generation owns a
-	// launch pin. Admission must defer instead of waiting on its own pin;
-	// generationReady can make room on the next pass before launch pins it.
-	release, pinned := f.st.TryPinNodeCaches([]uint{f.node.ID})
-	if !pinned {
-		t.Fatal("pin launch")
-	}
-	defer release()
-	if _, ready, err := f.c.ensureModelReady(context.Background(), f.node, dep, f.model, store.SourceRules{SaveTo: dep.SaveToStorageID}); err != nil || ready {
-		t.Fatalf("busy admission: ready=%v err=%v", ready, err)
-	}
-	if len(f.hub.calls) != 0 {
-		t.Fatal("busy admission called eviction RPC")
-	}
-	f.c.q.mu.Lock()
-	_, retry := f.c.q.pending[depKey(dep.ID)]
-	f.c.q.mu.Unlock()
-	if !retry {
-		t.Fatal("busy admission was not requeued")
-	}
-	release()
-	// 10 GiB cached + 15 GiB to add exceeds the 20 GiB cap: the unused small
-	// model goes first, then the copy is pushed.
-	if _, ready, err := f.c.ensureModelReady(context.Background(), f.node, dep, f.model, store.SourceRules{SaveTo: dep.SaveToStorageID}); err != nil || ready {
-		t.Fatalf("ready=%v err=%v", ready, err)
-	}
-	if _, err := f.st.ModelFileByID(evictable.ID); err == nil {
-		t.Fatal("the least recently used cache entry was not evicted")
-	}
-	if len(f.hub.calls) != 1 || !strings.HasPrefix(f.hub.calls[0], f.node.UUID+" "+proto.RPCCacheEvict+` {"eviction_id":"`) || !strings.HasSuffix(f.hub.calls[0], `","path":"/var/cache/gw/small"}`) {
-		t.Fatalf("node calls = %v", f.hub.calls)
-	}
-	row, err := f.st.ModelFileAt(store.FileRef{ModelID: f.model.ID, StorageID: f.cached.ID, NodeID: f.node.ID})
-	if err != nil || row.Acquisition != proto.ModelAcquireCopy || row.State != proto.MFPending {
-		t.Fatalf("cache row = %+v err=%v", row, err)
-	}
-	pushed := f.hub.updates[f.node.UUID]
-	if len(pushed) != 1 || len(pushed[0].ModelFiles) != 1 || !pushed[0].ModelFiles[0].Cache ||
-		pushed[0].ModelFiles[0].SourcePath != "/mnt/gpuworks/archive-cache/Qwen/Qwen3-8B" {
-		t.Fatalf("pushed = %+v", pushed)
+	for _, enabled := range []bool{true, false} {
+		t.Run(fmt.Sprintf("enabled=%t", enabled), func(t *testing.T) {
+			f := newStorageControllerFixture(t)
+			var err error
+			f.cached, err = f.st.UpdateStorage(f.cached.ID, store.StoragePatch{Enabled: &enabled})
+			if err != nil {
+				t.Fatal(err)
+			}
+			small, err := f.st.UpsertModel(&store.Model{Source: "modelscope", SourceID: "Qwen/Qwen3-0.6B", Name: "small", WeightBytes: 10 << 30})
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, m := range []*store.Model{f.model, small} {
+				if _, err := f.st.UpsertModelFile(&store.ModelFile{ModelID: m.ID, StorageID: f.cached.ID, Path: m.SourceID, State: proto.MFPresent, SizeBytes: m.WeightBytes}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			f.ready(t, f.node, proto.StorageStatus{ID: f.cached.ID, State: proto.StorageStateReady, Path: "/mnt/gpuworks/archive-cache", Writable: enabled, CachePath: "/var/cache/gw"})
+			old := time.Now().Add(-48 * time.Hour)
+			evictable, err := f.st.UpsertModelFile(&store.ModelFile{ModelID: small.ID, StorageID: f.cached.ID, NodeID: f.node.ID, Path: "/var/cache/gw/small", State: proto.MFPresent, SizeBytes: 10 << 30, LastUsedAt: &old})
+			if err != nil {
+				t.Fatal(err)
+			}
+			dep := f.deployment(t, f.cached)
+			// A rank may discover a newly absent model while its generation owns a
+			// launch pin. Admission must defer instead of waiting on its own pin;
+			// generationReady can make room on the next pass before launch pins it.
+			release, pinned := f.st.TryPinNodeCaches([]uint{f.node.ID})
+			if !pinned {
+				t.Fatal("pin launch")
+			}
+			defer release()
+			if _, ready, err := f.c.ensureModelReady(context.Background(), f.node, dep, f.model, store.SourceRules{SaveTo: dep.SaveToStorageID}); err != nil || ready {
+				t.Fatalf("busy admission: ready=%v err=%v", ready, err)
+			}
+			if len(f.hub.calls) != 0 {
+				t.Fatal("busy admission called eviction RPC")
+			}
+			f.c.q.mu.Lock()
+			_, retry := f.c.q.pending[depKey(dep.ID)]
+			f.c.q.mu.Unlock()
+			if !retry {
+				t.Fatal("busy admission was not requeued")
+			}
+			release()
+			// 10 GiB cached + 15 GiB to add exceeds the 20 GiB cap: the unused small
+			// model goes first, then the copy is pushed.
+			if _, ready, err := f.c.ensureModelReady(context.Background(), f.node, dep, f.model, store.SourceRules{SaveTo: dep.SaveToStorageID}); err != nil || ready {
+				t.Fatalf("ready=%v err=%v", ready, err)
+			}
+			if _, err := f.st.ModelFileByID(evictable.ID); err == nil {
+				t.Fatal("the least recently used cache entry was not evicted")
+			}
+			if len(f.hub.calls) != 1 || !strings.HasPrefix(f.hub.calls[0], f.node.UUID+" "+proto.RPCCacheEvict+` {"eviction_id":"`) || !strings.HasSuffix(f.hub.calls[0], `","path":"/var/cache/gw/small"}`) {
+				t.Fatalf("node calls = %v", f.hub.calls)
+			}
+			row, err := f.st.ModelFileAt(store.FileRef{ModelID: f.model.ID, StorageID: f.cached.ID, NodeID: f.node.ID})
+			if err != nil || row.Acquisition != proto.ModelAcquireCopy || row.State != proto.MFPending {
+				t.Fatalf("cache row = %+v err=%v", row, err)
+			}
+			pushed := f.hub.updates[f.node.UUID]
+			if len(pushed) != 1 || len(pushed[0].ModelFiles) != 1 || !pushed[0].ModelFiles[0].Cache ||
+				pushed[0].ModelFiles[0].SourcePath != "/mnt/gpuworks/archive-cache/Qwen/Qwen3-8B" {
+				t.Fatalf("pushed = %+v", pushed)
+			}
+		})
 	}
 }
-
 func TestNFSCacheRefusesAModelLargerThanTheCap(t *testing.T) {
 	f := newStorageControllerFixture(t)
 	huge, err := f.st.UpsertModel(&store.Model{Source: "modelscope", SourceID: "Qwen/Qwen3-235B-A22B", Name: "huge", WeightBytes: 438 << 30})

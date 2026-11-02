@@ -22,6 +22,7 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/auth"
+
 	// Aliased: New's own "hub" parameter (the Tunneler) shadows the package
 	// name for the rest of this file, so the sentinel below is only reachable
 	// through this alias.
@@ -72,7 +73,11 @@ type Proxy struct {
 	transport http.RoundTripper
 	// live is the in-flight table (inflight.go); sink, when set, receives
 	// each forwarded request's record as its reply ends (ADR 0042).
-	live liveTable
+	live  liveTable
+	guard *instanceGuard
+	// hold keeps requests for deployments the platform put to sleep while
+	// they wake.
+	hold *wakeHold
 	sink func(uxrecord.Request)
 	// sampleRoot decides whether a trace the gateway starts is sampled
 	// (request_identity.go); nil samples none.
@@ -174,7 +179,14 @@ func New(st *store.Store, networks Networks, hub Tunneler, log *slog.Logger, max
 			log.Warn("record serving forward status", "node", nodeUUID, "err", err)
 		}
 	})
-	p.routes.setOnRebuild(p.balancer.gc)
+	p.guard = &instanceGuard{store: st}
+	p.hold = newWakeHold()
+	p.routes.setOnRebuild(func(active map[string]bool) {
+		p.hold.signal()
+		p.balancer.gc(active)
+		p.guard.checkMissing(active)
+	})
+	p.routes.setOnInstanceChange(p.guard.check)
 	transport := &http.Transport{
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 			t, ok := ctx.Value(targetKey).(target)
@@ -221,7 +233,7 @@ func New(st *store.Store, networks Networks, hub Tunneler, log *slog.Logger, max
 			setTraceHeaders(r.Context(), r.Header)
 		},
 		FlushInterval: -1,
-		Transport:     &retryTransport{base: transport, balancer: p.balancer, hub: p.hub, awake: p.awake},
+		Transport:     &retryTransport{base: transport, balancer: p.balancer, hub: p.hub, awake: p.awake, guard: p.guard},
 		BufferPool:    nil,
 		// ModifyResponse runs after the upstream status/headers arrive but before
 		// the body is copied. It records the declared framing and wraps the body
@@ -230,11 +242,15 @@ func New(st *store.Store, networks Networks, hub Tunneler, log *slog.Logger, max
 		// gap ErrorHandler cannot cover because it only fires before headers.
 		ModifyResponse: func(resp *http.Response) error {
 			ob, _ := resp.Request.Context().Value(obsKey).(*copyObservation)
+			if ob != nil {
+				ob.status, ob.declaredLen = resp.StatusCode, resp.ContentLength
+			}
+			if err := boundUpstreamError(resp); err != nil {
+				return err
+			}
 			if ob == nil {
 				return nil
 			}
-			ob.status = resp.StatusCode
-			ob.declaredLen = resp.ContentLength
 			// A 101 upgrade hands the raw connection to handleUpgradeResponse,
 			// which type-asserts the body to io.ReadWriteCloser. Never wrap it,
 			// or WebSocket/h2c upgrades break. There is no later hook for an
@@ -281,7 +297,7 @@ func New(st *store.Store, networks Networks, hub Tunneler, log *slog.Logger, max
 			// (which already treats every tunnelOpenError as retryable) still gets
 			// first chance to switch to another instance when one exists.
 			status := http.StatusBadGateway
-			if errors.Is(err, hubpkg.ErrDataLaneUnavailable) {
+			if errors.Is(err, hubpkg.ErrDataLaneUnavailable) || errors.Is(err, errInstanceUnavailable) {
 				status = http.StatusServiceUnavailable
 				w.Header().Set("Retry-After", strconv.Itoa(dataLaneUnavailableRetryAfterSeconds))
 			}
@@ -307,11 +323,11 @@ func New(st *store.Store, networks Networks, hub Tunneler, log *slog.Logger, max
 // Handler returns the /v1 handler with API-key auth.
 func (p *Proxy) Handler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		caller, ok := p.authenticate(w, r)
+		caller, identity, ok := p.authenticate(w, r)
 		if !ok {
 			return
 		}
-		r = r.WithContext(uxrecord.WithCaller(r.Context(), caller))
+		r = r.WithContext(withKeyScope(uxrecord.WithCaller(r.Context(), caller), identity))
 		r.Header.Del(instanceHeader) // pinning is an internal-entry feature
 		p.serveAuthenticated(w, r)
 	}
@@ -347,18 +363,22 @@ func (p *Proxy) PlaygroundHandler(box *auth.Secretbox) http.HandlerFunc {
 			return
 		}
 		r.URL.Path = strings.TrimPrefix(r.URL.Path, "/api/v1/playground")
-		deployment, tgt, pinned, status, message := p.pinnedTarget(r, modelName)
-		asleep := false
+		// A pinned refusal for sleep is the same event the load balancing path
+		// accounts as asleep_503, not a generic 5xx.
+		deployment, tgt, pinned, status, message, asleep := p.pinnedTarget(r, modelName)
 		if !pinned {
-			deployment, tgt, status, message, asleep = p.selectDeploymentInstanceWithKey(modelName, p.affinityKey(modelName, r))
+			affinity := p.affinityKey(modelName, r)
+			deployment, tgt, status, message, asleep = p.selectForRequest(r.Context(), modelName, affinity)
+			if status != 0 && asleep {
+				deployment, tgt, status, message, asleep = p.holdForWake(r.Context(), w, modelName, affinity, deployment)
+			}
 		}
 		if status != 0 {
 			p.acct.RecordImmediate(deploymentIDOrZero(deployment), status, asleep)
 			writeErr(w, status, message)
 			return
 		}
-		instances, _ := p.store.InstancesForDeployment(deployment.ID)
-		contract := inferenceapi.ResolveDeploymentContract(p.store, deployment, instances)
+		contract := inferenceapi.ResolveDeploymentContract(p.store, deployment)
 		if !inferenceapi.AllowsContractRequest(contract, r.Method, r.URL.Path) {
 			p.acct.RecordImmediate(deployment.ID, http.StatusNotFound, false)
 			writeErr(w, http.StatusNotFound, fmt.Sprintf("deployment %s does not expose %s %s", modelName, r.Method, r.URL.Path))
@@ -443,7 +463,8 @@ func (p *Proxy) serveExternal(w http.ResponseWriter, r *http.Request, selected s
 			out.Header.Set("Authorization", "Bearer "+key)
 			out.Header.Set("Content-Type", "application/json")
 		},
-		FlushInterval: -1,
+		FlushInterval:  -1,
+		ModifyResponse: boundUpstreamError,
 		ErrorHandler: func(w http.ResponseWriter, _ *http.Request, err error) {
 			p.log.Warn("external playground upstream error", "err", err)
 			writeErr(w, http.StatusBadGateway, "external upstream error: "+err.Error())
@@ -472,26 +493,17 @@ func (p *Proxy) serveAuthenticated(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *Proxy) serveModel(w http.ResponseWriter, r *http.Request, modelName string) {
-	dep, tgt, status, msg, asleep := p.selectDeploymentInstanceWithKey(modelName, p.affinityKey(modelName, r))
+	affinity := p.affinityKey(modelName, r)
+	dep, tgt, status, msg, asleep := p.selectForRequest(r.Context(), modelName, affinity)
+	if status != 0 && asleep {
+		dep, tgt, status, msg, asleep = p.holdForWake(r.Context(), w, modelName, affinity, dep)
+	}
 	if status != 0 {
 		p.acct.RecordImmediate(deploymentIDOrZero(dep), status, asleep)
 		writeErr(w, status, msg)
 		return
 	}
-
-	p.serveSelectedTarget(w, r, modelName, tgt, dep.ID)
-}
-
-func (p *Proxy) affinityKey(modelName string, r *http.Request) string {
-	// The explicit header is cheap to inspect and must always be stripped, even
-	// when the selected deployment does not use prefix affinity.
-	if strings.TrimSpace(r.Header.Get("X-GPUWorks-Affinity-Key")) != "" {
-		return affinityKey(r)
-	}
-	if p.routes == nil || !p.routes.needsAffinity(modelName) {
-		return ""
-	}
-	return affinityKey(r)
+	p.serveResolved(w, r, modelName, affinity, dep, tgt)
 }
 
 // serveSelectedTarget dispatches to the resolved target, rewriting the
@@ -506,6 +518,9 @@ func (p *Proxy) serveSelectedTarget(w http.ResponseWriter, r *http.Request, publ
 		status := statusForExtractError(err)
 		p.acctFor(r.Context()).RecordImmediate(deploymentID, status, false)
 		writeErr(w, status, err.Error())
+	}
+	if p.rejectChatInput(w, r, tgt, deploymentID) {
+		return
 	}
 	if tgt.modelName != "" && tgt.modelName != publicName {
 		cleanup, err := rewriteModel(r, tgt.modelName, p.maxBodyBytes)
@@ -536,21 +551,12 @@ func (p *Proxy) serveSelectedTarget(w http.ResponseWriter, r *http.Request, publ
 // authenticate checks the platform API key and names the caller: the key
 // and its owner, received now. With no keys configured yet every request is
 // allowed (dev) and the caller is anonymous.
-func (p *Proxy) authenticate(w http.ResponseWriter, r *http.Request) (uxrecord.Caller, bool) {
-	caller := uxrecord.Caller{Source: uxrecord.SourceAPI, ReceivedMS: time.Now().UnixMilli()}
-	if p.store.HasAnyAPIKey() {
-		key := auth.BearerToken(r.Header.Get("Authorization"))
-		identity, ok := store.APIKeyIdentity{}, false
-		if key != "" {
-			identity, ok = p.store.ResolveAPIKey(key)
-		}
-		if !ok {
-			writeErr(w, http.StatusUnauthorized, "invalid or missing API key")
-			return caller, false
-		}
-		caller.APIKeyID, caller.UserID = identity.KeyID, identity.UserID
+func (p *Proxy) authenticate(w http.ResponseWriter, r *http.Request) (uxrecord.Caller, store.APIKeyIdentity, bool) {
+	caller, identity, ok := p.identifyKey(r)
+	if !ok {
+		writeErr(w, http.StatusUnauthorized, "invalid or missing API key")
 	}
-	return caller, true
+	return caller, identity, ok
 }
 
 func writeErr(w http.ResponseWriter, code int, msg string) {
@@ -559,27 +565,4 @@ func writeErr(w http.ResponseWriter, code int, msg string) {
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"error": map[string]string{"message": msg, "type": "gpuworks_proxy"},
 	})
-}
-
-// modelsHandler serves GET /v1/models listing deployed served-names (OpenAI shape).
-func (p *Proxy) ModelsHandler() http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if _, ok := p.authenticate(w, r); !ok {
-			return
-		}
-		deps, _ := p.store.ListDeployments()
-		type model struct {
-			ID      string `json:"id"`
-			Object  string `json:"object"`
-			OwnedBy string `json:"owned_by"`
-		}
-		out := []model{}
-		for _, d := range deps {
-			if d.State == store.DeployActive && d.ServedName != "" {
-				out = append(out, model{ID: d.ServedName, Object: "model", OwnedBy: "gpuworks"})
-			}
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"object": "list", "data": out})
-	}
 }

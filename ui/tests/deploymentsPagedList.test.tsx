@@ -66,9 +66,11 @@ function fakeServer(rows: DeploymentListItem[]) {
   const serve = async (query: ListQuery): Promise<DeploymentPage> => {
     queries.push(query);
     const q = query.q?.trim().toLowerCase() ?? "";
+    // The server filters by the state a row shows, which follows sleep; a row
+    // with no state of its own shows its runtime state.
     const matched = rows.filter((row) =>
       (!q || [row.name, row.served_name, row.model_name].some((name) => name.toLowerCase().includes(q))) &&
-      (!query.state?.length || query.state.includes(row.runtime_state)));
+      (!query.state?.length || query.state.includes(row.state ?? row.runtime_state)));
     const start = (query.page - 1) * query.page_size;
     return { items: matched.slice(start, start + query.page_size), page: query.page, page_size: query.page_size, total: matched.length };
   };
@@ -88,6 +90,58 @@ function renderPage(serve: (query: ListQuery) => Promise<DeploymentPage>) {
 }
 
 const rowNames = () => screen.getAllByRole("row").slice(1).map((row) => within(row).getAllByRole("cell")[0].textContent);
+
+test("a legacy empty served name stays empty rather than copying the model name", async () => {
+  const server = fakeServer([{ ...fleet[0], served_name: "" }]);
+  renderPage(server.serve);
+  const name = await screen.findByText("svc-45");
+  const headers = screen.getAllByRole("columnheader");
+  const index = headers.indexOf(screen.getByRole("columnheader", { name: "Served name" }));
+  const cell = within(name.closest("tr")!).getAllByRole("cell")[index];
+  assert.equal(cell.textContent, "—");
+  assert.equal(within(cell).queryByRole("button"), null);
+});
+
+test("a long served name keeps its copy button clickable", async () => {
+  // GWKS-145: the cell was ellipsized as a whole, so a long external model
+  // name pushed the copy button past the column edge and it could not be
+  // clicked at all. jsdom does no layout, so this pins the cause instead of
+  // the pixels: the served name column must opt out of the table's cell-wide
+  // ellipsis, the name must be truncated on its own, and the copy button must
+  // be its sibling — never its child, where clipping the name would hide it.
+  const long = "Qwen/Qwen2.5-72B-Instruct-AWQ-very-long-served-name-abcdefghijklmnop";
+  const server = fakeServer([{ ...fleet[0], served_name: long }]);
+  renderPage(server.serve);
+  const name = await screen.findByText("svc-45");
+  const headers = screen.getAllByRole("columnheader");
+  const index = headers.indexOf(screen.getByRole("columnheader", { name: "Served name" }));
+  const cell = within(name.closest("tr")!).getAllByRole("cell")[index];
+
+  assert.equal(cell.classList.contains("ant-table-cell-ellipsis"), false, "the cell clips nothing, so the button stays inside the column");
+  const text = within(cell).getByText(long);
+  assert.ok(text.classList.contains("ant-typography-ellipsis"), "the name truncates on its own");
+  assert.equal(text.querySelector("button"), null, "truncating the name cannot clip the button");
+  assert.ok(cell.textContent?.includes(long), "the full name stays in the DOM, not a JS-sliced prefix");
+
+  const button = within(cell).getByRole("button", { name: "Copy" });
+  assert.equal(button.textContent, "", "the button is the icon-only copy affordance");
+  assert.equal(button.hasAttribute("disabled"), false);
+
+  // And it copies what the cell shows, not the truncated prefix.
+  const originalExecCommand = document.execCommand;
+  let copied = "";
+  document.execCommand = (command) => {
+    assert.equal(command, "copy");
+    copied = window.getSelection()?.toString() || "";
+    return true;
+  };
+  try {
+    await userEvent.setup({ document: dom.window.document }).click(button);
+  } finally {
+    document.execCommand = originalExecCommand;
+  }
+  assert.equal(copied, long);
+});
 
 test("the list asks the server for one page and shows the total", async () => {
   const server = fakeServer(fleet);
@@ -176,4 +230,122 @@ test("a failed page load shows the error and retries on request", async () => {
   await screen.findByText("list unavailable");
   fireEvent.click(screen.getByRole("button", { name: commonLocale.actions.retry }));
   await screen.findByText("svc-45");
+});
+
+
+// The reported "界面无重试入口": a list row that reads 模型准备失败 carried no
+// action at all, so the retry existed only inside the drawer behind it.
+test("a list row whose model preparation failed offers the retry there and then", async () => {
+  const asked: unknown[] = [];
+  const retryOriginal = api.retryModelCache;
+  api.retryModelCache = (async (id: number, node: string, storage: number) => {
+    asked.push([id, node, storage]);
+    return { status: "pending" };
+  }) as never;
+  try {
+    renderPage(fakeServer([
+      { ...fleet[0], id: 201, name: "broken-copy", model_id: 131, runtime_state: "failed", preparation: {
+        model_id: 131, model_name: "org/m", node_uuid: "793bf494", node_name: "gpu-1", storage_id: 3, storage_name: "cache",
+        state: "failed", path: "/cache/m", progress: 0, size_bytes: 0, downloaded: 0, transferred_bytes: 0, rate_bps: 0,
+        acquisition: "copy", message: "copy .msc: open /cache/m/.msc: permission denied",
+        preparation: { phase: "waiting", reason: "MODEL_PREPARATION_FAILED", total_known: false, idle_seconds: 0, retryable: true },
+      } },
+    ]).serve);
+    await screen.findByText("broken-copy");
+    const row = screen.getByText("broken-copy").closest("tr")!;
+    assert.ok(within(row).getByText(deploymentsLocale.preparation.reason.MODEL_PREPARATION_FAILED));
+    const user = userEvent.setup({ document: dom.window.document });
+    // The row's own storage and node, not a guess.
+    await user.click(within(row).getByRole("button", { name: deploymentsLocale.preparation.retry }));
+    await waitFor(() => assert.deepEqual(asked, [[131, "793bf494", 3]]));
+  } finally {
+    api.retryModelCache = retryOriginal;
+  }
+});
+
+test("a list row failed from a download says it cannot be retried instead of nothing", async () => {
+  renderPage(fakeServer([
+    { ...fleet[0], id: 202, name: "download-broken", model_id: 9, runtime_state: "failed", preparation: {
+      model_id: 9, node_uuid: "n-1", node_name: "gpu-1", storage_id: 4, state: "failed", path: "/models/m", progress: 0,
+      size_bytes: 0, downloaded: 0, transferred_bytes: 0, rate_bps: 0, acquisition: "download",
+      preparation: { phase: "waiting", reason: "MODEL_PREPARATION_FAILED", total_known: false, idle_seconds: 0 },
+    } },
+  ]).serve);
+  await screen.findByText("download-broken");
+  const row = screen.getByText("download-broken").closest("tr")!;
+  assert.equal(within(row).queryByRole("button", { name: deploymentsLocale.preparation.retry }), null);
+  assert.ok(within(row).getByText(deploymentsLocale.preparation.retryUnavailableShort));
+});
+
+test("replica column labels ready versus desired for PD and ordinary rows, preserving unknown readiness", async () => {
+  renderPage(fakeServer([
+    { ...fleet[0], id: 101, name: "pd-ready", replicas: 2, ready_replicas: 2 },
+    { ...fleet[0], id: 102, name: "pd-partial", replicas: 3, ready_replicas: 1 },
+    { ...fleet[0], id: 103, name: "ordinary-pending", replicas: 1, ready_replicas: 0 },
+    { ...fleet[0], id: 104, name: "unknown-readiness", replicas: 2, ready_replicas: undefined },
+  ]).serve);
+  await screen.findByText("pd-ready");
+  assert.ok(screen.getByRole("columnheader", { name: /Ready \/ desired replicas/ }));
+  for (const [name, count] of [["pd-ready", "2/2"], ["pd-partial", "1/3"], ["ordinary-pending", "0/1"], ["unknown-readiness", "—/2"]]) {
+    assert.ok(within(screen.getByText(name).closest("tr")!).getByRole("cell", { name: count }));
+  }
+});
+
+// A sleeping deployment is not green, and the actions that would only get a
+// 503 say why they are unavailable. A partly slept one still serves, so it
+// keeps the running badge but carries the count of what is asleep.
+test("a sleeping deployment is not shown as running and refuses to open the Playground", async () => {
+  const operations = [{ type: "openai.chat", endpoint: "/v1/chat/completions", renderer: "chat" }];
+  renderPage(fakeServer([
+    { ...fleet[0], id: 201, name: "awake", runtime_state: "running", state: "running", replicas: 1, ready_replicas: 1, operations },
+    { ...fleet[0], id: 202, name: "draining", runtime_state: "running", state: "sleeping", replicas: 1, ready_replicas: 0, operations },
+    { ...fleet[0], id: 203, name: "slept", runtime_state: "running", state: "asleep", sleep_level: 1, asleep_replicas: 1, replicas: 1, ready_replicas: 0, operations },
+    { ...fleet[0], id: 204, name: "half-slept", runtime_state: "running", state: "running", sleep_level: 1, asleep_replicas: 1, replicas: 4, ready_replicas: 3, operations },
+  ]).serve);
+  await screen.findByText("awake");
+
+  const row = (name: string) => within(screen.getByText(name).closest("tr")!);
+  // The badge text is the state, and only the awake row is green: antd marks
+  // the status on the dot beside the text.
+  const badgeStatus = (name: string, text: string) => {
+    const badge = row(name).getByText(text).closest(".ant-badge")!;
+    return [...badge.querySelector(".ant-badge-status-dot")!.classList]
+      .map((cls) => cls.match(/^ant-badge-status-(success|warning|processing|default|error)$/)?.[1])
+      .find(Boolean);
+  };
+  assert.equal(badgeStatus("awake", commonLocale.states.running), "success");
+  assert.equal(badgeStatus("draining", commonLocale.states.sleeping), "processing");
+  assert.equal(badgeStatus("slept", commonLocale.states.asleep), "warning");
+  // A partly slept deployment still serves, so it keeps the running text —
+  // but not the green badge, which would hide the replicas answering nothing.
+  assert.equal(badgeStatus("half-slept", commonLocale.states.running), "processing");
+  assert.ok(row("half-slept").getByText("Partly asleep · 1/4 replicas"));
+
+  // An asleep deployment cannot take requests; a partly slept one can, so its
+  // actions stay open.
+  assert.equal(row("awake").getByRole("button", { name: deploymentsLocale.page.openPlayground }).hasAttribute("disabled"), false);
+  assert.equal(row("awake").getByRole("button", { name: deploymentsLocale.page.copyCurl }).hasAttribute("disabled"), false);
+  assert.equal(row("half-slept").getByRole("button", { name: deploymentsLocale.page.openPlayground }).hasAttribute("disabled"), false);
+  for (const name of ["draining", "slept"]) {
+    assert.ok(row(name).getByRole("button", { name: deploymentsLocale.page.openPlayground }).hasAttribute("disabled"), name);
+    assert.ok(row(name).getByRole("button", { name: deploymentsLocale.page.copyCurl }).hasAttribute("disabled"), name);
+  }
+});
+
+// The filter offers the sleep states and the server is asked for them.
+test("the state filter offers sleeping and asleep", async () => {
+  const server = fakeServer([
+    { ...fleet[0], id: 301, name: "awake", state: "running" },
+    { ...fleet[0], id: 302, name: "slept", runtime_state: "running", state: "asleep", sleep_level: 1, asleep_replicas: 1, ready_replicas: 0 },
+  ]);
+  renderPage(server.serve);
+  await screen.findByText("awake");
+  const header = screen.getByRole("columnheader", { name: /State/ });
+  fireEvent.click(header.querySelector(".ant-table-filter-trigger")!);
+  assert.ok(await screen.findByRole("menuitem", { name: new RegExp(commonLocale.states.sleeping) }));
+  fireEvent.click(screen.getByRole("menuitem", { name: new RegExp(commonLocale.states.asleep) }));
+  fireEvent.click(screen.getByRole("button", { name: "OK" }));
+  await waitFor(() => assert.deepEqual(server.queries.at(-1)?.state, ["asleep"]));
+  await waitFor(() => assert.equal(screen.queryByText("awake"), null));
+  assert.ok(screen.getByText("slept"));
 });

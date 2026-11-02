@@ -13,6 +13,7 @@ import {
   resolveSaveTo,
   weightStorageInvalid,
 } from "./deployWeightChoices";
+import { useControlLocked } from "./DeployEditContext";
 
 const PROVIDER_FIELD = ["model_source", "provider"];
 const STORAGE_FIELD = ["model_source", "storage_id"];
@@ -46,6 +47,7 @@ export default function DeployWeightSourceFields({
 }) {
   const { t } = useTranslation("deploy");
   const form = Form.useFormInstance();
+  const sourceLocked = useControlLocked("model_source");
   const provider = Form.useWatch(PROVIDER_FIELD, { form, preserve: true }) as
     | string
     | undefined;
@@ -62,16 +64,22 @@ export default function DeployWeightSourceFields({
   // longer offers. A storage the person picked stays, flagged as unavailable,
   // until they choose again; once nothing is asked, the answer is forgotten.
   useEffect(() => {
-    if (!acquisition || evaluating) return;
-    const wantedProvider = resolveProvider(acquisition, modelSource, provider);
-    if (wantedProvider !== provider)
+    // An edit cannot change where the weights come from.
+    if (!acquisition || evaluating || sourceLocked) return;
+    // Watchers notify changes, but start undefined when the quick form mounts
+    // again. Resolve against the preserved form store before writing defaults.
+    const currentProvider = form.getFieldValue(PROVIDER_FIELD);
+    const currentStorageId = form.getFieldValue(STORAGE_FIELD);
+    const currentStoragePicked = form.getFieldValue(STORAGE_PICKED) === true;
+    const wantedProvider = resolveProvider(acquisition, modelSource, currentProvider);
+    if (wantedProvider !== currentProvider)
       form.setFieldValue(PROVIDER_FIELD, wantedProvider);
-    const wantedStorage = resolveSaveTo(acquisition, storageId, storagePicked);
-    if (wantedStorage !== storageId)
+    const wantedStorage = resolveSaveTo(acquisition, currentStorageId, currentStoragePicked);
+    if (wantedStorage !== currentStorageId)
       form.setFieldValue(STORAGE_FIELD, wantedStorage);
-    if (wantedStorage === undefined && storagePicked)
+    if (wantedStorage === undefined && currentStoragePicked)
       form.setFieldValue(STORAGE_PICKED, false);
-  }, [acquisition, evaluating, form, modelSource, provider, storageId, storagePicked]);
+  }, [acquisition, evaluating, form, modelSource, provider, sourceLocked, storageId, storagePicked]);
 
   if (!acquisition) return null;
   const providers = acquisition.providers || [];

@@ -65,11 +65,16 @@ type Breakdown struct {
 	EstimatedKVTokens        int     `json:"estimated_kv_tokens,omitempty"`
 	KVEstimateConfidence     string  `json:"kv_estimate_confidence,omitempty"`
 	KVEstimateReason         string  `json:"kv_estimate_reason,omitempty"`
-	Fits                     bool    `json:"fits"`
-	// MaxConcurrency is how many requests of MaxModelLen fit in the KV pool.
+	// Fits compares estimated startup memory with the per-GPU budget. It is
+	// guidance, not an observed deployment outcome. KV layouts and engine
+	// optimizations can invalidate the KV estimate, even a catalog measurement.
+	// Keep KV shortfalls advisory: planning warns while allowing the operator
+	// to try the unchanged launch configuration (GWKS-79).
+	Fits bool `json:"fits"`
+	// MaxConcurrency estimates how many requests of MaxModelLen fit in the KV pool.
 	// Nil was not computed (no measured KV cost, or no context length). A
-	// pointer to zero is a real zero and has to stay on the wire: omitempty
-	// on a plain int hid the deployments that cannot serve even one request.
+	// pointer to zero is a computed estimate and has to stay on the wire:
+	// omitempty on a plain int hid the risk that no full-context request fits.
 	MaxConcurrency *int `json:"max_concurrency,omitempty"`
 }
 
@@ -274,17 +279,13 @@ func Finalize(b *Breakdown) {
 	} else if b.KVEstimateReason == "" {
 		b.KVEstimateReason = KVReasonNoMeasurement
 	}
-	// Startup memory fitting is not enough to start: the engine refuses when
-	// one request of the configured maximum context does not fit in the pool.
-	if b.ContextExceedsKVPool() {
-		b.Fits = false
-	}
 }
 
 // ContextExceedsKVPool reports that one request of the configured maximum
-// context needs more KV cache than the pool holds. An unknown KV cost, an
-// unknown capacity, and a startup that already does not fit are other
-// failures and keep their own reasons.
+// context is estimated to need more KV cache than the pool holds. This is a
+// warning predicate, never an admission gate; Fits only covers startup memory.
+// An unknown KV cost, an unknown capacity, and a startup that already does
+// not fit keep their own reasons.
 func (b Breakdown) ContextExceedsKVPool() bool {
 	if b.KVBytesPerToken <= 0 || b.MaxModelLen <= 0 || b.CapacityBytes <= 0 {
 		return false
