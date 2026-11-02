@@ -103,8 +103,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: fp8-vllm-nvidia-general
-  display_name_zh_cn: Hopper 及以上 · FP8
-  display_name_en: Hopper+ · FP8
+  display_name_zh_cn: Ada 及以上 · FP8
+  display_name_en: Ada+ · FP8
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -120,7 +120,7 @@ specs:
   weight_bytes: 249095335563
   gpus:
     vendor: nvidia
-    cc: '>=9.0'
+    cc: '>=8.9'
   args:
   - --trust-remote-code
   - --enable-auto-tool-choice
