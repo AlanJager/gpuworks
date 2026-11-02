@@ -11,6 +11,7 @@ from playwright.sync_api import expect
 from platform_token_read_revoke import check
 import instance_diagnostics_browser as diagnostics
 import instance_diagnostics_fixture as runtime
+from local_browser_fixture import http
 import container_terminal_fixture as fixture
 
 
@@ -237,6 +238,48 @@ def test_container_terminal(page, context, server, artifacts, report, locale, da
     check(released["active_node"] == 0 and released["can_open"] is True,
           f"closing the held terminals did not release the node: {released}")
     report["last_step"] = "concurrency-limit-refused-and-released"
+
+    # 19.1: the kill switch is real and it is a kill switch, not a label. The terminal policy is
+    # switched off through the settings route, and the preflight is required to say it cannot open
+    # with the disabled reason while a socket attempt is refused. The policy is then restored and the
+    # preflight is required to allow again, so a value that only decorated the preflight would fail.
+    report["step"] = "kill switch refuses and restores"
+    settings_key = "/api/v1/settings/terminal"
+    original_status, original_policy = http(server.base, "GET", "/api/v1/nodes/" + node_uuid
+                                            + "/terminal/settings", token=token)
+    check(original_status == 200, "terminal preflight is unreadable before the kill switch")
+    settings_status, current_settings = http(server.base, "GET", "/api/v1/settings", token=token)
+    check(settings_status == 200, "settings are unreadable")
+    seeded = current_settings.get("terminal")
+    check(isinstance(seeded, dict), f"the terminal policy is not readable from settings: {seeded}")
+    disabled = dict(seeded)
+    disabled["enabled"] = False
+    off_status, off_body = http(server.base, "PUT", settings_key, token=token, body=disabled)
+    check(off_status == 200, f"the terminal kill switch was refused: {off_status} {off_body}")
+    try:
+        off = fixture.admission(server, token, node_uuid)
+        check(off["enabled"] is False, f"the kill switch did not take effect: {json.dumps(off)}")
+        check(off["can_open"] is False and off["reason"] != "",
+              f"a disabled terminal still allowed a session: {json.dumps(off)}")
+        check(off["reason"] == "web terminal is disabled in platform settings", f"the disabled reason differs: {off['reason']}")
+        blocked = page.evaluate(
+            """async ([path]) => await new Promise((resolve) => {
+                const ws = new WebSocket((location.protocol === "https:" ? "wss:" : "ws:")
+                    + "//" + location.host + path);
+                ws.onopen = () => { ws.close(); resolve({ opened: true }); };
+                ws.onerror = () => resolve({ opened: false });
+                setTimeout(() => { try { ws.close(); } catch (e) {} resolve({ opened: false }); }, 8000);
+            })""", [stream_path])
+        check(blocked["opened"] is False, "a disabled terminal accepted a socket")
+        report["kill_switch"] = {"can_open": off["can_open"], "reason": off["reason"],
+                                 "socket_refused": True}
+    finally:
+        on_status, on_body = http(server.base, "PUT", settings_key, token=token, body=disabled | {"enabled": True})
+        check(on_status == 200, f"the terminal kill switch could not be restored: {on_body}")
+    restored = fixture.admission(server, token, node_uuid)
+    check(restored["enabled"] is True and restored["can_open"] is True,
+          f"the terminal did not come back after the kill switch: {json.dumps(restored)}")
+    report["last_step"] = "kill-switch-refused-and-restored"
 
     report["step"] = "read-only principal rejected before WS"
     prior = fixture.audits(server, token)
