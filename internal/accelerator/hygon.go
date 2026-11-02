@@ -13,7 +13,7 @@ func (hygonLogicalBackend) Matches(vendor, arch string) bool {
 		return false
 	}
 	switch strings.ToUpper(strings.TrimSpace(arch)) {
-	case "Z100", "K100AI", "K100_AI", "K100 AI":
+	case "Z100", "K100AI", "K100_AI", "K100 AI", "BW":
 		return true
 	default:
 		return false
@@ -24,21 +24,23 @@ func (hygonLogicalBackend) RequiredAssets() []string {
 	return []string{"libamdhip64.so", "libhydmi.so", "libhydmi_mig.so", "librocm_smi64.so", "gpuworks-hygon-vdev-helper"}
 }
 func (hygonLogicalBackend) Metadata() Metadata {
-	return Metadata{Vendor: VendorHygon, DisplayName: "Hygon dGPU", Compatibility: "Z100 / K100AI × x86_64 · Docker · memory-proportional CUs (experimental)"}
+	return Metadata{Vendor: VendorHygon, DisplayName: "Hygon dGPU", Compatibility: "Z100 / K100AI / BW × x86_64 · Docker / udocker · memory-proportional CUs (experimental)"}
 }
 func (hygonLogicalBackend) NeedsInstanceTeardown() bool { return true }
 
-// The vdev configuration and device mapping are currently supported by the
-// Docker injector only; other runtime paths require their own validation.
+// Native configuration is injected through structured mounts shared by Docker
+// and udocker/runveil. Other runtime paths require their own validation.
 func (hygonLogicalBackend) RuntimeConstraint(driver string) string {
-	if strings.EqualFold(strings.TrimSpace(driver), "docker") {
+	switch strings.ToLower(strings.TrimSpace(driver)) {
+	case "docker", "udocker":
 		return ""
+	default:
+		return "Hygon dGPU currently requires the Docker or udocker runtime"
 	}
-	return "Hygon dGPU currently requires the Docker runtime"
 }
 
 var hygonProfiles = []PartitionProfile{
-	{Backend: BackendHygonLogical, Vendor: VendorHygon, Framework: "dtk", VersionPrefix: "26.04", VersionOptional: true, Architectures: []string{"x86_64"}, DisplayCompatibility: "Z100 / K100AI × DTK 26.04.x × x86_64", ChipFamilies: []string{"Z100", "K100AI"}},
+	{Backend: BackendHygonLogical, Vendor: VendorHygon, Framework: "dtk", VersionPrefix: "26.04", VersionOptional: true, Architectures: []string{"x86_64"}, DisplayCompatibility: "Z100 / K100AI / BW × DTK 26.04.x × x86_64", ChipFamilies: []string{"Z100", "K100AI", "BW"}},
 }
 
 func (hygonLogicalBackend) Profiles() []PartitionProfile {

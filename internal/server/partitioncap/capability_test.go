@@ -209,8 +209,8 @@ func TestUnprobedCapabilityHasNoCheckTime(t *testing.T) {
 	}
 }
 
-func TestHygonSupportedModelsRequireDockerAssetsAndPerGPUProbe(t *testing.T) {
-	for _, model := range []string{"Z100", "K100AI"} {
+func TestHygonSupportedModelsRequireAssetsAndPerGPUProbe(t *testing.T) {
+	for _, model := range []string{"Z100", "K100AI", "BW"} {
 		t.Run(model, func(t *testing.T) { testHygonCapabilityPrerequisites(t, model) })
 	}
 }
@@ -229,6 +229,15 @@ func testHygonCapabilityPrerequisites(t *testing.T, model string) {
 	if got := ForGPU(node, &node.GPUs[1]); len(got) != 0 {
 		t.Fatalf("unverified K100 capability = %+v", got)
 	}
+	node.RuntimeDriver = "udocker"
+	if got := ForGPU(node, &node.GPUs[0]); len(got) != 1 || got[0].Status != StatusReady {
+		t.Fatalf("udocker with a passed native quota probe = %+v", got)
+	}
+	node.PartitionProbes = `[{"backend":"hygon-dgpu","gpu_index":0,"status":"failed","detail":"permission denied"}]`
+	if got := ForGPU(node, &node.GPUs[0]); len(got) != 1 || got[0].Status != StatusUnavailable || !strings.Contains(got[0].Reason, "permission denied") {
+		t.Fatalf("udocker with a failed quota probe = %+v", got)
+	}
+	node.PartitionProbes = `[{"backend":"hygon-dgpu","gpu_index":0,"status":"passed"}]`
 	node.RuntimeDriver = "nerdctl"
 	if got := ForGPU(node, &node.GPUs[0]); len(got) != 1 || got[0].Status != StatusUnavailable || !strings.Contains(got[0].Reason, "Docker") {
 		t.Fatalf("nerdctl capability = %+v", got)

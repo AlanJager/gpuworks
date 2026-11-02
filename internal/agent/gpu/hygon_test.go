@@ -108,6 +108,7 @@ func TestNormalizeHygonSKUUsesExactAliasesOnly(t *testing.T) {
 		"Z100":    "Z100",
 		"Z-100":   "Z100",
 		"BW1000":  "BW1000",
+		"BW":      "BW",
 		"BW1101":  "BW1101",
 		"K100":    "K100_FAMILY_AMBIGUOUS",
 		"Hygon":   "UNKNOWN_HYGON_SKU",
@@ -125,6 +126,14 @@ func TestParseHygonZ100Inventory(t *testing.T) {
 	gpus := parseHygonInventory(raw, nil)
 	if len(gpus) != 1 || gpus[0].ArchID != "Z100" || gpus[0].MemoryTotalBytes != 32752*1024*1024 {
 		t.Fatalf("Z100 inventory = %+v", gpus)
+	}
+}
+
+func TestParseHygonBWInventory(t *testing.T) {
+	raw := "HCU[0]: Card Series: BW\nHCU[0]: PCI Bus: 0000:85:00.0 --> SN: fixture-serial\nHCU[0]: vram Total Memory (MiB): 65520\n"
+	gpus := parseHygonInventory(raw, nil)
+	if len(gpus) != 1 || gpus[0].Name != "BW" || gpus[0].ArchID != "BW" || gpus[0].PCIeBDF != "0000:85:00.0" || gpus[0].MemoryTotalBytes != 65520<<20 {
+		t.Fatalf("BW inventory = %+v", gpus)
 	}
 }
 

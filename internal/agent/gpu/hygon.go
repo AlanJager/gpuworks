@@ -258,7 +258,7 @@ func (p *HygonProber) parseMetrics(fieldsOut, overview string) []Metric {
 	metrics := make([]Metric, 0, len(indexes))
 	for _, index := range indexes {
 		fields := records[index]
-		bdf := accelerator.NormalizeBDF(fields["pci bus"])
+		bdf := hygonPCIBDF(fields["pci bus"])
 		uuid := p.hygonUUID(index, bdf, fields)
 		p.mu.RLock()
 		if identity, ok := p.lastSeen[index]; ok && identity.uuid != "" {
@@ -350,7 +350,7 @@ func parseHygonInventory(out string, readFile func(string) ([]byte, error)) []pr
 	for _, index := range indexes {
 		fields := records[index]
 		name := strings.TrimSpace(fields["card series"])
-		bdf := accelerator.NormalizeBDF(fields["pci bus"])
+		bdf := hygonPCIBDF(fields["pci bus"])
 		memMiB := parseFirstHygonFloat(fields["vram total memory (mib)"])
 		if name == "" && bdf == "" && memMiB == 0 {
 			continue
@@ -406,6 +406,15 @@ func parseHygonInventory(out string, readFile func(string) ([]byte, error)) []pr
 var hygonFieldRE = regexp.MustCompile(`(?i)^(?:HCU|DCU)\[([0-9]+)]\s*:\s*([^:]+):\s*(.*?)\s*$`)
 var hygonNumberRE = regexp.MustCompile(`[-+]?[0-9]+(?:\.[0-9]+)?`)
 
+// Newer hy-smi releases append "--> SN: ..." after the PCI address.
+func hygonPCIBDF(raw string) string {
+	fields := strings.Fields(raw)
+	if len(fields) == 0 {
+		return ""
+	}
+	return accelerator.NormalizeBDF(fields[0])
+}
+
 func parseHygonFields(out string) map[int]map[string]string {
 	records := make(map[int]map[string]string)
 	for _, line := range strings.Split(out, "\n") {
@@ -438,6 +447,8 @@ func normalizeHygonSKU(raw string) string {
 		return "K100AI"
 	case "Z100":
 		return "Z100"
+	case "BW":
+		return "BW"
 	case "BW1101":
 		return "BW1101"
 	case "BW150":

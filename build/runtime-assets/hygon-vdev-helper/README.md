@@ -2,7 +2,9 @@
 
 This optional Linux executable is the only CGO component in the Hygon dGPU path. The main `gpuworks-agent` stays `CGO_ENABLED=0`. The helper uses the [HYGON-AI hcu-dcgm/v3](https://github.com/HYGON-AI/hcu-dcgm) Go binding at the revision pinned in this directory's `go.mod`; it is not part of the default build.
 
-Build on a Linux host with GCC and Hygon driver libraries `librocm_smi64.so`, `libhydmi.so`, and `libhydmi_mig.so` available to the linker. The upstream binding embeds its headers and searches `/opt/hyhal/lib` by default; Z100 installations can place `librocm_smi64.so` in `/opt/dtk/lib`, so include both paths. The helper must run on the same host as `/dev/kfd`, `/dev/mkfd`, and `/etc/vdev`:
+Build on a Linux host with GCC, the Hygon ROCm SMI development header `rocm_smi_v2.h` (or `rocm_smi.h` on older SDKs), and driver libraries `librocm_smi64.so`, `libhydmi.so`, and `libhydmi_mig.so` available to the linker. The direct initialization bridge searches both `/opt/hyhal/include` and `/opt/hyhal/include/rocm_smi`, plus `/opt/dtk/include` and `/opt/dtk/include/rocm_smi`. Both the SDK include root and its `rocm_smi` subdirectory are needed when `rocm_smi.h` includes `rocm_smi/rocm_smi_v2.h`. Another SDK layout can supply both paths through `CGO_CFLAGS`. The upstream binding embeds the other headers and searches `/opt/hyhal/lib` by default; Z100 installations can place `librocm_smi64.so` in `/opt/dtk/lib`, so include both library paths. The helper must run where `/dev/kfd`, `/dev/mkfd`, and `/etc/vdev` are accessible:
+
+When the installed SDK supplies `rocm_smi_v2.h`, the bridge includes that primary header directly. Some newer `rocm_smi.h` compatibility wrappers contain unrelated GPU-metrics aliases that do not compile as C. Older SDKs, or compilers without `__has_include`, use `rocm_smi.h`. Both paths use SDK declarations for `rsmi_init` and `rsmi_status_string`; the helper does not redeclare their ABI.
 
 ```bash
 LIBRARY_PATH=/opt/dtk/lib:/opt/hyhal/lib CGO_ENABLED=1 go build -o gpuworks-hygon-vdev-helper .
@@ -10,7 +12,11 @@ LIBRARY_PATH=/opt/dtk/lib:/opt/hyhal/lib CGO_ENABLED=1 go build -o gpuworks-hygo
 
 Build against a glibc version no newer than the target host's. For example, the Z100 test host uses glibc 2.32; a binary linked on a newer development host may fail before reaching `main`. Install the resulting executable as `/opt/gpuworks/bin/gpuworks-hygon-vdev-helper` on the agent host. At runtime it also needs the host's `librocm_smi64.so.2`, `libhydmi.so.1`, and `libhydmi_mig.so.1` (typically under `/opt/dtk/lib` and `/opt/hyhal/lib`). The executable is intentionally not linked into the static agent binary.
 
-The command contract is one JSON object on stdout on success; diagnostics and upstream DCGM output go to stderr. Errors return nonzero and do not emit success JSON.
+The helper initializes RSMI directly with `rsmi_init(0)` and reuses the pinned DCGM binding for individual-device operations. It does not call DCGM's host-wide sysfs/count-matching initializer: a notebook can expose one GPU while its sysfs still describes every GPU in the host. The selected physical index is still checked against the requested PCI address before creation. Runtime initialization errors retain their numeric status and status text; no failure is treated as an empty device list.
+
+The command contract is one JSON object on stdout on success; diagnostics and upstream DCGM output go to stderr. Errors return nonzero. Callers must accept JSON only after a zero exit status, since shutdown can fail after the command has already emitted its result.
+
+A valid `create` creates `/etc/vdev` with mode 0755 when it is absent, before taking the lock or initializing the native runtime. Invalid arguments do not create the directory. Failure to create it stops before native calls or a managed-create intent; the other commands do not bootstrap a missing directory.
 
 ```text
 create --gpu-index N --cu-count C --memory-mib M [--record-path PATH --pci-bdf BDF] -> {"vdev_id":ID}
@@ -29,4 +35,4 @@ A Z100 create–destroy–recreate test confirmed that an identical request can 
 
 `make test` runs the helper's offline CLI tests with `CGO_ENABLED=0` alongside the main module. A native build and create/release integration test require the Hygon libraries and a suitable test card; never run the integration steps on a host with live workloads.
 
-K100AI HYHAL 1.5 permits non-root HIP workloads to use a root-created vdev, but native creation returns `DMI_STATUS_PERMISSION` for an ordinary user. The container image must provide a passwd entry for its workload UID, readable DTK/HYHAL libraries and configuration, device access, and a writable HYHAL log directory. The minimal probe runs as root and receives a private `/var/log/hylog` tmpfs. Running its root-only scratch filesystem with an arbitrary numeric non-root UID is not a representative inference-user environment.
+K100AI HYHAL 1.5 permits non-root HIP workloads to use a root-created vdev, but native creation returns `DMI_STATUS_PERMISSION` for an ordinary user. The container image must provide a passwd entry for its workload UID, readable DTK/HYHAL libraries and configuration, device access, and a writable HYHAL log directory. Docker probes receive a private `/var/log/hylog` tmpfs. The udocker/runveil path binds each instance's own writable log directory and complete vdev directory view, containing only the native filename and its Docker counterpart; the ownership ledger remains outside that view. PRoot bindings use the host runtime account's permissions and do not enforce Docker read-only mounts or independent cgroups. Running a root-only scratch filesystem with an arbitrary numeric non-root UID is not a representative inference-user environment.

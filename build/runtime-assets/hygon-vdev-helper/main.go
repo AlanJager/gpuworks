@@ -128,6 +128,11 @@ func runWithConfig(args []string, api deviceAPI, out io.Writer, removeConfig fun
 	if (cmd == "release" || cmd == "prune") && ownerToken == "" {
 		return fmt.Errorf("%s requires --owner-token", cmd)
 	}
+	if cmd == "create" {
+		if err := os.MkdirAll(filepath.Dir(sourceConfigPath(0)), 0o755); err != nil {
+			return fmt.Errorf("create vdev configuration directory: %w", err)
+		}
+	}
 	if cmd == "create" || cmd == "release" || cmd == "prune" || cmd == "inspect" && ownerToken != "" {
 		lock, lockErr := lockVdevDir(filepath.Dir(sourceConfigPath(0)))
 		if lockErr != nil {
