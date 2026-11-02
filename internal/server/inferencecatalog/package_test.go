@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"crypto/sha256"
+	"fmt"
 	"io"
 	"io/fs"
 	"os"
@@ -247,5 +248,29 @@ func TestReadPackageArchiveRoundTripsAndRejectsLinks(t *testing.T) {
 	}
 	if _, err := ReadPackageArchive(bytes.NewReader(malicious.Bytes())); err == nil || !strings.Contains(err.Error(), "not a regular file") {
 		t.Fatalf("symlink archive error=%v", err)
+	}
+}
+
+// Packages written before display names (schema 1) still load; one newer
+// than this server's format is refused rather than half-read. A server that
+// only knows schema 1 sees the current packages as newer and skips them,
+// instead of failing on display_name_zh_cn in the strict model.yaml parser.
+func TestLoadPackageAcceptsOlderSchemaAndRefusesNewer(t *testing.T) {
+	for _, version := range []int{oldestPackageSchemaVersion, PackageSchemaVersion} {
+		pkg := packageFixture(t)
+		pkg["manifest.yaml"] = &fstest.MapFile{Data: []byte(fmt.Sprintf("schema_version: %d\npublished_at: 2026-08-31T00:00:00Z\nmodels: 1\nspecs: 1\n", version))}
+		if _, err := LoadPackage(pkg); err != nil {
+			t.Fatalf("schema_version %d: %v", version, err)
+		}
+	}
+	for _, version := range []int{0, PackageSchemaVersion + 1} {
+		pkg := packageFixture(t)
+		pkg["manifest.yaml"] = &fstest.MapFile{Data: []byte(fmt.Sprintf("schema_version: %d\npublished_at: 2026-08-31T00:00:00Z\nmodels: 1\nspecs: 1\n", version))}
+		if _, err := LoadPackage(pkg); err == nil || !strings.Contains(err.Error(), "unsupported inference catalog package schema_version") {
+			t.Fatalf("schema_version %d: err = %v", version, err)
+		}
+	}
+	if PackageSchemaVersion < 2 {
+		t.Fatal("display names need package schema 2 so schema-1 servers skip these packages")
 	}
 }

@@ -25,6 +25,8 @@ models/<model-id>/assets/<small-file>
 **assets 只用于轻量文件。** 镜像、权重、框架库、venv 和共享运行时不能放入 assets，必须通过镜像、权重源或节点资产交付。
 
 目录包按内容摘要（digest）标识。server 校验包内路径安全、schema（文件结构和字段约束），并计算内容摘要；同一 digest 的包可以复用。缓存损坏后，不能继续以旧 digest 提供服务。
+
+`manifest.yaml` 的 `schema_version` 是包格式版本，当前为 2（档位新增 `display_name_zh_cn` / `display_name_en`）。server 读取不高于自己的版本、拒绝更高的版本；只认 1 的旧 server 在发布渠道里看到 2 时会把目录更新标为不兼容，不去下载，因为它逐字段严格解析 `model.yaml`，遇到新字段会报错。
 数据库保存 digest 和从包中提取的结构化记录，包的文件内容保存在包仓库中。
 
 ### model.yaml 与 spec 的关系
