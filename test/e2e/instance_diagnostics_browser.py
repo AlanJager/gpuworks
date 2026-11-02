@@ -395,6 +395,49 @@ def test_instance_diagnostics(page, context, server, artifacts, report, locale, 
     page.on("pageerror", lambda error: errors.append(str(error)))
     login(page, context, server, artifacts, report, locale)
     drawer, panel = open_instance(page, server, data, report)
+    # 18.5: a refused live stream must say so and offer a way back, and the stream must be released
+    # when the drawer closes. The stream is answered with a 403 on a fresh open, and the panel is
+    # required to show the refusal with a retry control rather than sit on "waiting for logs", with
+    # no unhandled page error. The route is then released and the retry is required to take the
+    # message away and bring the panel back to its normal state.
+    stream_path = "/api/v1/instances/" + data["instance"]["uuid"] + "/logs"
+    refused = []
+
+    def refuse_stream(route):
+        refused.append(route.request.url)
+        route.fulfill(status=403, content_type="application/json",
+                      body='{"code":"FORBIDDEN","error":"injected stream refusal"}')
+
+    drawer.locator(".ant-drawer-close").click()
+    expect(page.get_by_role("dialog", name=data["name"], exact=True)).to_have_count(0)
+    report["last_step"] = "stream-drawer-closed"
+    page.route("**" + stream_path, refuse_stream)
+    try:
+        # Opened without the 200 stream contract this helper normally asserts: the point of this
+        # step is a refused stream, so only the drawer and its panel are located.
+        row = page.get_by_role("row").filter(has_text=data["name"])
+        expect(row).to_have_count(1)
+        row.get_by_role("button", name=data["name"], exact=True).click()
+        drawer = page.get_by_role("dialog", name=data["name"], exact=True)
+        expect(drawer).to_be_in_viewport(ratio=1)
+        panel = drawer.locator('[id="instance-' + data["instance"]["uuid"] + '"]')
+        expect(panel).to_be_visible()
+        expect(panel).to_contain_text(text["instance"]["log"]["streamFailed"], timeout=12000)
+        expect(panel.get_by_role("button", name=text["instance"]["log"]["retry"], exact=True)).to_be_visible()
+        check(len(refused) > 0, "the injected stream refusal was never requested")
+        report["last_step"] = "refused-stream-reported"
+    finally:
+        page.unroute("**" + stream_path, refuse_stream)
+    panel.get_by_role("button", name=text["instance"]["log"]["retry"], exact=True).click()
+    expect(panel).not_to_contain_text(text["instance"]["log"]["streamFailed"], timeout=12000)
+    expect(panel.get_by_role("button", name=text["instance"]["log"]["retry"], exact=True)).to_have_count(0)
+    report["stream_refusal"] = {"reported": True, "retry_visible": True, "recovered": True,
+                                "injected": len(refused)}
+    report["last_step"] = "refused-stream-recovered"
+    drawer.locator(".ant-drawer-close").click()
+    expect(page.get_by_role("dialog", name=data["name"], exact=True)).to_have_count(0)
+    drawer, panel = open_instance(page, server, data, report)
+
     report["step"] = "delete dialog over the detail drawer"
     exercise_delete_dialog(page, drawer, server, data, text, report)
     inst = data["instance"]

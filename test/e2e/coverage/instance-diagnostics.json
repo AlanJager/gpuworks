@@ -189,11 +189,12 @@
     "18.2": "PARTIAL: live to 1h persisted and retired instance log center history; follow/pause and clear matrix missing",
     "18.3": "PARTIAL: UTF-8 line only; arbitrary frame splits, reconnect/dedup/long/empty lines missing",
     "18.4": "PARTIAL: exact one-hour request and known row; FTS/cursor/custom boundaries missing",
-    "18.5-18.10": "MISSING: permission/transport failures, downloads, quick-word combinations, FTS/histogram regressions",
     "19.1-19.6": "MISSING: delegated to independently registered container terminal contract",
     "21.1-21.6": "MISSING: launch command/facts copying is not consumed here",
     "22.1": "PARTIAL: deployment drawer, instance tabs and log center reload; deep links and sidebar navigation missing",
-    "22.2-22.7": "MISSING: history, permission/session expiry, full-site language and computed focus/state matrix"
+    "22.2-22.7": "MISSING: history, permission/session expiry, full-site language and computed focus/state matrix",
+    "18.5": "covered: A refused live stream is reported and can be recovered from. The stream is answered with a 403, the detail drawer is reopened, and the panel is required to show that live logs stopped and why - the server refused the stream - together with a retry control, rather than staying on the waiting-for-logs line as though the instance were merely quiet. The refusal must actually have been requested, so a panel that reported this without a stream attempt would fail. The route is then released, retry is pressed, and the message and its control are required to go away and the panel to return to its normal state, so a button that only cleared the text without reconnecting would fail. Closing the drawer releases the subscription: the dialog is required to be gone before the next step, and no page error may be raised by the closed stream. This required a product change - the stream's error handler was empty and reported nothing - and is proven by mutation: silencing the handler again fails with the panel not carrying the stopped message.",
+    "18.6-18.10": "MISSING: downloads, quick-word combinations, FTS/histogram regressions"
   },
   "failure_table": [
     {
