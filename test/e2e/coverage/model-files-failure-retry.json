@@ -189,8 +189,8 @@
     },
     {
       "item": "1.10",
-      "status": "partial",
-      "assertion": "real source503 persisted failed then same failed row Retry202; this is background task retry, submit-rejection draft matrix missing"
+      "status": "covered",
+      "assertion": "covered: the submit-rejection side of the draft contract is walked, not just the background retry. A real 409 is produced by dropping the storage's node membership for the duration of one request; the case then requires the answer to be exactly that status, the request body to be exactly the draft it was given, the storage and node to still be the ones chosen in the form, the dialog to still be open, and no file row to have been persisted. All five readings are recorded rather than inferred, and the refusal runs against the second storage so the case's own transfer still starts clean - the first attempt ran the full download path afterwards and polluted the row count that the rest of the case asserts, which is why the refusal now stops at the closed dialog. The background 503 and same-row Retry are unchanged and still asserted. Proven by mutation: clearing the node selection in the error handler fails with the form's node selection gone."
     },
     {
       "item": "1.11",

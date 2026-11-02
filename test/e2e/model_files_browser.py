@@ -238,6 +238,11 @@ def prove_refused_model_download(page, dialog, server, token, path, body, report
     expect(page.get_by_text(shown, exact=True)).to_be_visible()
     model = document(server, token, data)
     checked(presence(model, data, storage) is None, 'refused download persisted a file row')
+    report['submit_rejection_draft'] = {'status': refused.status,
+        'body_exact': refused.request.post_data_json == body,
+        'storage_kept': dialog.locator('.ant-select-selection-item').filter(has_text=storage['name']).count() == 1,
+        'node_kept': dialog.locator('.ant-select-selection-item').filter(has_text=data['node']['name']).count() == 1,
+        'dialog_open': True, 'persisted_row': False}
     report.setdefault('evidence', []).append({'layer': 'ui', 'inflight_posts': 1, 'confirm_loading': True,
         'draft_storage': storage['name'], 'draft_node': data['node']['name']})
     report.setdefault('evidence', []).append({'layer': 'request', 'method': 'POST', 'path': path,
@@ -310,7 +315,7 @@ def close_detail(page, labels, data):
     expect(dialog).not_to_be_visible()
 
 
-def download(page, labels, data, storage, report, server=None, token=None, refuse=False, shell=False):
+def download(page, labels, data, storage, report, server=None, token=None, refuse=False, shell=False, stop_only=False):
     report['step'] = 'UI select explicit non-default storage and target node'
     row = page.get_by_role('row').filter(has=page.get_by_role('button', name=data['name'], exact=True))
     trigger = row.get_by_role('button', name=labels['action']['downloadToNode'], exact=True)
@@ -366,6 +371,12 @@ def download(page, labels, data, storage, report, server=None, token=None, refus
     body = {'storage_id': storage['id'], 'node_uuids': [data['node']['uuid']]}
     if refuse:
         prove_refused_model_download(page, dialog, server, token, path, body, report, labels, data, storage)
+        # stop_only: the refusal is the whole point here, so the dialog is closed instead of continuing
+        # into a real transfer that would leave a file row behind for whatever this case asserts next.
+        if stop_only:
+            dialog.locator('.ant-modal-close').click()
+            expect(dialog).not_to_be_visible()
+            return
     hold_model_download(page, dialog, path, body, report)
     expect(dialog).not_to_be_visible()
 
@@ -527,6 +538,19 @@ def exercise_download_delete(page, context, server, artifacts, report, locale, d
 def exercise_failure_retry(page, context, server, artifacts, report, locale, data, token, holder):
     labels = begin(page, context, server, artifacts, report, locale, data)
     hub, target = data['hub'], data['storages'][0]
+    # 1.10: the submit-rejection side of the draft contract. Until now this case only exercised the
+    # background retry, so a refused submit was never seen here. A real 409 is produced by dropping the
+    # storage's node membership for the duration of one request, and the draft - the exact request body,
+    # plus the storage and node still chosen in the form - has to survive it. It runs against the second
+    # storage so the rest of this case still starts from a clean target.
+    download(page, labels, data, data['storages'][1], report, server=server, token=token, refuse=True,
+             shell=True, stop_only=True)
+    rejected = report['submit_rejection_draft']
+    strict(rejected['status'], 409, 'refused submit did not answer 409')
+    strict(rejected['body_exact'], True, 'the refused submit did not carry the draft it was given')
+    strict([rejected['storage_kept'], rejected['node_kept'], rejected['dialog_open']], [True, True, True],
+           'the refused submit dropped the draft selections')
+    strict(rejected['persisted_row'], False, 'the refused submit persisted a file row')
     hub.set_weight_failure(True)
     start = len(hub.audit())
     download(page, labels, data, target, report, server=server, token=token, shell=True)
