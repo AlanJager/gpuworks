@@ -2,6 +2,7 @@ package accelerator
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -145,7 +146,7 @@ func TestSupportsFrameworkFollowsBackendProfiles(t *testing.T) {
 	}
 }
 
-func TestHygonBackendMatchesOnlyKnownZ100(t *testing.T) {
+func TestHygonBackendMatchesOnlyKnownModels(t *testing.T) {
 	hygon, ok := Lookup(BackendHygonLogical)
 	if !ok {
 		t.Fatal("Hygon backend is not registered")
@@ -158,7 +159,12 @@ func TestHygonBackendMatchesOnlyKnownZ100(t *testing.T) {
 		{" DCU ", " z100 ", true},
 		{VendorHygon, "", false},
 		{VendorHygon, "UNKNOWN_HYGON_SKU", false},
-		{VendorHygon, "K100AI", false},
+		{VendorHygon, "K100AI", true},
+		{VendorHygon, " K100_AI ", true},
+		{VendorHygon, "k100 ai", true},
+		{VendorHygon, "K100", false},
+		{VendorHygon, "K100_FAMILY_AMBIGUOUS", false},
+		{VendorHygon, "K100AI2", false},
 		{VendorAMD, "Z100", false},
 	} {
 		if got := hygon.Matches(tc.vendor, tc.arch); got != tc.want {
@@ -168,5 +174,8 @@ func TestHygonBackendMatchesOnlyKnownZ100(t *testing.T) {
 	profile, err := MatchProfile(BackendHygonLogical, "dtk", "26.04.1", "amd64")
 	if err != nil || profile.Verified {
 		t.Fatalf("Hygon Z100 profile = %+v, %v; want unverified advisory profile", profile, err)
+	}
+	if got := strings.Join(profile.ChipFamilies, ","); got != "Z100,K100AI" {
+		t.Fatalf("Hygon supported chip families = %q", got)
 	}
 }

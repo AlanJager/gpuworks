@@ -5,7 +5,7 @@
 | NVIDIA / CUDA | nvidia-smi, sysfs | Docker, runveil, nerdctl | HAMi libvgpu.so (x86_64, glibc ≥ 2.17) | Supports CUDA/NCCL topology; driver libraries are supplied by the host |
 | Ascend / CANN | npu-smi, driver and CANN facts | Docker + Ascend runtime; runveil in some environments | vCANN; capability depends on host device-share permissions | Host and container CANN versions must not be conflated into one conclusion |
 | PPU / HGGC | ppu-smi | Depends on provider/runtime | HGGC GPU memory and weighted QoS | Sustained 20/80 workloads have demonstrated throughput weighting under load, not hard SM partitioning |
-| Hygon / DTK | hy-smi | Determined by the catalog spec and runtime | Native Z100 vdev (experimental, x86_64 + Docker) | Requires the optional native helper, host libraries and a per-GPU behavioral probe; other models remain full-GPU only |
+| Hygon / DTK | hy-smi | Determined by the catalog spec and runtime | Native Z100 / K100_AI vdev (experimental, x86_64 + Docker) | Requires the optional native helper, host libraries and a per-GPU behavioral probe; other models remain full-GPU only |
 | Apple / Metal | sysctl, ioreg (macOS 15+, Apple silicon) | host (the engine is a host process; the image is a darwin environment package) | None; a Mac runs multiple instances concurrently using unified memory | One unified-memory card; GPU memory is the Metal working set; engine sleep, multi-node operation, and the KV disk tier are unsupported; see [ADR 0044](../adr/0044-mac-engines-as-host-processes.md) |
 
 The dGPU capability status in the table above is derived from the server's partition capability assessment:
@@ -24,11 +24,15 @@ PPU injection uses full UUIDs returned by `ppu-smi` and verified against device 
 The embedded `gpuworks/partition-probe:v4` verifies both the selected UUID and its memory quota. Missing, invalid, duplicate or unqueryable identities fail, as does a quota applied only to another card. Recreate existing workloads after upgrading the agent to activate the new selection and slicing libraries. Device visibility under runveil still does not provide kernel device isolation.
 
 
-## Hygon Z100 dGPU
+## Hygon Z100 / K100_AI dGPU
 
-Z100 uses the `hygon-dgpu` backend, assigning CUs in proportion to the memory quota. Build and install the optional `gpuworks-hygon-vdev-helper` on the node (see `build/runtime-assets/hygon-vdev-helper/README.md` in the source tree), and provide the host DTK, HYHAL and DCGM libraries. The agent itself remains a static binary. Only x86_64 + Docker is supported; other models, including K100, do not receive this capability.
+Z100 and K100_AI devices identified precisely as `K100AI` use the `hygon-dgpu` backend; `K100_AI` and `K100 AI` are aliases of the same SKU. A report containing only the `K100` family does not enable dGPU. The agent reads the selected physical card's CU count through `hy-smi virtual -d N --show-device-info`, then assigns CUs in proportion to the memory quota, rounding up. Failed or incomplete queries reject vdev creation without falling back to a fixed CU count. Build and install the optional `gpuworks-hygon-vdev-helper` on the node (see `build/runtime-assets/hygon-vdev-helper/README.md` in the source tree), and provide the host DTK, HYHAL and DCGM libraries. The agent itself remains a static binary. Only x86_64 + Docker is supported; other models do not receive this capability automatically.
+
+K100_AI containers use `/etc/vdev/docker/vdev<ID>.conf` matching the native ID, without an additional fixed-ID alias. Z100 retains its validated `vdev0.conf` path. The small probe receives a private `/var/log/hylog` tmpfs and supplementary tinfo5/6 libraries under the SONAMEs actually installed on the host.
 
 The per-GPU probe must confirm that HIP reports the requested memory quota, permits a 1 MiB allocation, and rejects an allocation exceeding the quota by 1 MiB. dGPU scheduling requires a passing probe. Inference containers use their own DTK; host DTK and supplementary ABI libraries are used only by the small probe. The built-in Qwen3-0.6B `bf16-vllm-hygon-z100` spec uses the SourceFind image tested on Z100.
+
+Non-root users can use a vdev created beforehand by root. The image must provide a passwd entry for the workload UID and a writable HYHAL log directory. The workload must be able to read the configuration snapshot and DTK/HYHAL libraries and access `/dev/kfd`, `/dev/mkfd`, and the selected DRM devices. A host DTK symlink into `/root` can still block a non-root user through directory permissions. The K100_AI HYHAL 1.5.0 CLI requires root to create and delete vdevs, so non-root workloads do not imply that the agent's entire vdev lifecycle can run without root. Inference containers do not need root to satisfy host lifecycle permissions.
 
 Under a host lock, the helper creates a vdev and saves a configuration snapshot and owner token, preventing stale requests from releasing a later gpuworks allocation that reuses the same ID. The vdev is released only after its container has been removed. Failed cleanup retains the record and the instance stays `removing`; no replacement container starts for that instance. After an agent restart, orphaned records require manual inspection and are not scanned automatically. Other vdev managers that bypass the helper lock and tokens are outside this ownership protection.
 

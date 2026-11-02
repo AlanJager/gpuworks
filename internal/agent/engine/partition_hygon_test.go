@@ -25,6 +25,22 @@ type hygonTestDriver struct {
 
 func (d hygonTestDriver) Name() string { return d.name }
 
+type hygonTestProber struct {
+	*gpu.FixedProber
+	computeUnits int
+	computeErr   error
+}
+
+func (p *hygonTestProber) ComputeUnits(ctx context.Context, index int) (int, error) {
+	if err := ctx.Err(); err != nil {
+		return 0, err
+	}
+	if len(p.GPUs) != 1 || p.GPUs[0].Index != index {
+		return 0, errors.New("physical device is absent")
+	}
+	return p.computeUnits, p.computeErr
+}
+
 type fakeHygonVdevHelper struct {
 	vdevDir                                                    string
 	nextID                                                     int
@@ -162,10 +178,10 @@ func hygonTestEngine(t *testing.T) (*Engine, hygonPartitionInjector, *fakeHygonV
 	}
 	fake := &fakeHygonVdevHelper{vdevDir: h.vdevDir, nextID: 4}
 	h.helper = fake
-	e := &Engine{stateDir: root, driver: hygonTestDriver{name: "docker"}, prober: &gpu.FixedProber{
+	e := &Engine{stateDir: root, driver: hygonTestDriver{name: "docker"}, prober: &hygonTestProber{FixedProber: &gpu.FixedProber{
 		VendorName: accelerator.VendorHygon,
 		GPUs:       []proto.GPUInfo{{Index: 0, Vendor: accelerator.VendorHygon, ArchID: "Z100", PCIeBDF: "0000:07:00.0", MemoryTotalBytes: 32752 << 20}},
-	}}
+	}, computeUnits: 60}}
 	return e, h, fake
 }
 
@@ -187,6 +203,13 @@ func TestHygonCreatesVendorVdevAndCleansOnlyOwnedID(t *testing.T) {
 	}
 	if len(first.Mounts) != 5 || len(second.Mounts) != 5 {
 		t.Fatalf("mounts = %+v / %+v", first.Mounts, second.Mounts)
+	}
+	for _, ws := range []*agentruntime.WorkloadSpec{first, second} {
+		for _, arg := range ws.DockerArgs {
+			if arg == "--tmpfs" || strings.Contains(arg, "/var/log/hylog") {
+				t.Fatalf("inference image received a probe-only log tmpfs: %v", ws.DockerArgs)
+			}
+		}
 	}
 	if first.Mounts[0].Target != "/etc/vdev/vdev4.conf" || second.Mounts[0].Target != "/etc/vdev/vdev5.conf" || first.Mounts[0].Source != first.Mounts[1].Source || !first.Mounts[0].ReadOnly || !first.Mounts[1].ReadOnly || first.Mounts[1].Target != "/etc/vdev/docker/vdev0.conf" || second.Mounts[1].Target != "/etc/vdev/docker/vdev0.conf" || first.Mounts[1].Source == second.Mounts[1].Source {
 		t.Fatalf("instance vdev mounts = %+v / %+v", first.Mounts[:2], second.Mounts[:2])
@@ -240,6 +263,9 @@ func TestHygonProbeMountsHostDTK(t *testing.T) {
 	if got, want := ws.Mounts[len(ws.Mounts)-1], (agentruntime.Mount{Source: h.dtkDir, Target: "/opt/dtk", ReadOnly: true}); got != want {
 		t.Fatalf("probe DTK mount = %+v, want %+v", got, want)
 	}
+	if len(ws.DockerArgs) != 2 || ws.DockerArgs[0] != "--tmpfs" || ws.DockerArgs[1] != "/var/log/hylog:rw,nosuid,nodev,mode=1777" {
+		t.Fatalf("probe needs an ephemeral log directory writable by non-root: %v", ws.DockerArgs)
+	}
 }
 
 func TestHygonFailsClosedAndPreservesLedgerOnReleaseFailure(t *testing.T) {
@@ -251,7 +277,7 @@ func TestHygonFailsClosedAndPreservesLedgerOnReleaseFailure(t *testing.T) {
 		t.Fatalf("runtime: %v/%s", ok, reason)
 	}
 	e.driver = hygonTestDriver{name: "docker"}
-	prober := e.prober.(*gpu.FixedProber)
+	prober := e.prober.(*hygonTestProber)
 	prober.GPUs[0].ArchID = "K100"
 	if ok, reason := h.apply(e, context.Background(), ws, spec); ok || !strings.Contains(reason, "Z100") {
 		t.Fatalf("model: %v/%s", ok, reason)

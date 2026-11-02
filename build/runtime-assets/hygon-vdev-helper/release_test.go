@@ -138,10 +138,10 @@ func TestReleaseAbsentDeviceIsIdempotent(t *testing.T) {
 func TestRecreatedIdenticalIDRejectsPreviousOwner(t *testing.T) {
 	dir := t.TempDir()
 	config := filepath.Join(dir, "vdev9.conf")
-	api := &fakeAPI{ids: []int{9}, info: expectedInfo}
+	api := &fakeAPI{physicalPCI: expectedInfo.PCIBDF, ids: []int{9}, info: expectedInfo}
 	api.createFn = func() {
 		api.exists = true
-		if err := os.WriteFile(config, []byte("identical vendor config\n"), 0o644); err != nil {
+		if err := os.WriteFile(config, []byte(vendorConfig(9, expectedInfo)), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}

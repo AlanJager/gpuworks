@@ -19,6 +19,12 @@ import (
 // wire. A fake GPU is an inventory fixture, not evidence that native vdev
 // assets and a Docker behavior probe succeeded on this host.
 func TestHygonUnavailableSurvivesAgentReconnect(t *testing.T) {
+	for _, sku := range []string{"Z100", "K100AI"} {
+		t.Run(sku, func(t *testing.T) { testHygonUnavailableReconnect(t, sku) })
+	}
+}
+
+func testHygonUnavailableReconnect(t *testing.T, sku string) {
 	ensureEmbeddedAgentFor(t, runtime.GOARCH)
 	serverBin := buildBinary(t, "./cmd/gpuworks")
 	agentBin := buildBinary(t, "./cmd/gpuworks-agent")
@@ -44,9 +50,9 @@ func TestHygonUnavailableSurvivesAgentReconnect(t *testing.T) {
 	startAgent := func() *exec.Cmd {
 		cmd := exec.Command(agentBin, "run", "--server", base, "--token", nodeToken, "--state", stateDir)
 		cmd.Env = append(os.Environ(),
-			"GPUWORKS_FAKE_GPU=Z100x1,65536",
+			"GPUWORKS_FAKE_GPU="+sku+"x1,65536",
 			"GPUWORKS_FAKE_GPU_VENDOR=hygon",
-			"GPUWORKS_FAKE_GPU_ARCH=Z100",
+			"GPUWORKS_FAKE_GPU_ARCH="+sku,
 			"GPUWORKS_FAKE_GPU_FRAMEWORK=dtk",
 			"GPUWORKS_FAKE_GPU_FRAMEWORK_VERSION=25.04",
 			"GPUWORKS_FAKE_GPU_NO_INJECT=1",

@@ -15,7 +15,7 @@ import (
 
 func TestHygonProbeLibrariesResolveHostDTKClosure(t *testing.T) {
 	dir := t.TempDir()
-	names := []string{"libz.so.1", "libtinfo.so.5", "libelf.so.1"}
+	names := []string{"libz.so.1", "libtinfo.so.5", "libtinfo.so.6", "libelf.so.1"}
 	var listing strings.Builder
 	for _, name := range names {
 		path := filepath.Join(dir, name)

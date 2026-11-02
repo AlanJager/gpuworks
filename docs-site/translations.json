@@ -116,7 +116,7 @@
   "reference/openai-gateway.md": "475df11f503418d88f26a3549d1acea209460f3ed964abf31b3d048a6c7344c7",
   "reference/request-timeline.md": "c088d069727f75baf7a252d85a9c4382021df3c97c410a95a8c5dd0db7ad4dbb",
   "reference/security.md": "227d0c0e904ca58f7bdc1127a7582809a6972ad7613111a0ee2e3a5ebce581b6",
-  "reference/support-matrix.md": "b14c13ac9c502615a94fc27357b012496f3bfb9fd77ac09329cd60c0877d0044",
+  "reference/support-matrix.md": "a4c7d4e4b53d5a097b53e0b52fcc31faa10b1c76e4a4c1347563c491f4fe2d63",
   "reference/usage-report.md": "29abfa9c5380c8d30616101198ea1fb1433858d84a34c67f500caa960f388a9c",
   "reference/web-ui-tour.md": "bf34ea8cef25ebf1d72872b2670c695616ae60eb91fe6390d98d79c239685a02",
   "adr/0055-long-term-statistics.md": "93c7c3918efd24fdee0dbcc8d7fa4ca52e507f75a3d4469a732acab10c85288f",

@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"math/bits"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -19,10 +21,11 @@ import (
 )
 
 const (
-	hygonZ100CUs        = 60
 	hygonHelperPath     = "/opt/gpuworks/bin/gpuworks-hygon-vdev-helper"
 	hygonVdevLedgerName = "vdev-id"
-	hygonVirtualLock    = "/tmp/.dmi_virtual.lock"
+	// Shared filesystem protocol with the optional native helper.
+	hygonVdevCreatePendingName = "vdev-create-pending"
+	hygonVirtualLock           = "/tmp/.dmi_virtual.lock"
 )
 
 // hygonVdevHelper is implemented by an optional native helper. The static
@@ -98,7 +101,7 @@ func (h hygonPartitionInjector) apply(e *Engine, ctx context.Context, ws *agentr
 		return false, "Hygon dGPU requires the Docker runtime"
 	}
 	if e.prober == nil || accelerator.NormalizeVendor(e.prober.Vendor()) != accelerator.VendorHygon || len(spec.GPUIndexes) != 1 {
-		return false, "Hygon dGPU requires exactly one Hygon Z100 per instance"
+		return false, "Hygon dGPU requires exactly one supported Hygon GPU per instance"
 	}
 	if spec.SMLimitPct != 0 {
 		return false, "Hygon compute quota is not supported by the deployment API"
@@ -116,7 +119,7 @@ func (h hygonPartitionInjector) apply(e *Engine, ctx context.Context, ws *agentr
 	}
 	backend, _ := accelerator.Lookup(accelerator.BackendHygonLogical)
 	if selected == nil || !backend.Matches(selected.Vendor, selected.ArchID) || selected.PCIeBDF == "" {
-		return false, "selected GPU is not a supported Hygon Z100 with a PCI address"
+		return false, "selected GPU is not a supported Hygon Z100 or K100AI with a PCI address"
 	}
 	if spec.VRAMLimitBytes <= 0 {
 		return false, "Hygon vdev memory quota must be positive and below physical VRAM"
@@ -126,12 +129,35 @@ func (h hygonPartitionInjector) apply(e *Engine, ctx context.Context, ws *agentr
 	if quota >= physicalMiB {
 		return false, "Hygon vdev memory quota must be positive and below physical VRAM"
 	}
+	physical, ok := e.prober.(interface {
+		ComputeUnits(context.Context, int) (int, error)
+	})
+	if !ok {
+		return false, "Hygon physical compute-unit query is unavailable"
+	}
+	// Fresh vendor queries share the native allocation boundary. Concurrent
+	// starts must not accumulate CLI processes waiting on the same driver.
+	e.partitionMu.Lock()
+	defer e.partitionMu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return false, "Hygon physical compute units: " + err.Error()
+	}
+	totalCUs, err := physical.ComputeUnits(ctx, selected.Index)
+	if err != nil {
+		return false, "Hygon physical compute units: " + err.Error()
+	}
+	if totalCUs <= 0 {
+		return false, "Hygon physical compute-unit count must be positive"
+	}
 	// The current deployment API has no compute-share input. Reserve CUs in
 	// proportion to memory so multiple slices can coexist without claiming an
 	// independently configurable compute quota.
-	cuCount := int((quota*hygonZ100CUs + physicalMiB - 1) / physicalMiB)
-	if cuCount < 1 {
-		cuCount = 1
+	// Use full-width arithmetic so even an oversized CLI count cannot wrap.
+	hi, lo := bits.Mul64(uint64(quota), uint64(totalCUs))
+	quotient, remainder := bits.Div64(hi, lo, uint64(physicalMiB))
+	cuCount := int(quotient)
+	if remainder != 0 {
+		cuCount++
 	}
 	vdevDir, dtkDir, hyhalDir, helperPath := h.paths()
 	for _, path := range []string{
@@ -146,9 +172,10 @@ func (h hygonPartitionInjector) apply(e *Engine, ctx context.Context, ws *agentr
 			return false, "Hygon runtime asset unavailable: " + path
 		}
 	}
-	e.partitionMu.Lock()
-	defer e.partitionMu.Unlock()
 	instanceDir := hygonInstanceDir(e, spec.UUID)
+	if err := checkHygonCreatePending(instanceDir); err != nil {
+		return false, err.Error()
+	}
 	helper := h.vdevHelper()
 	owned, found, err := readHygonOwnedVdev(instanceDir)
 	if err != nil {
@@ -222,13 +249,18 @@ func (h hygonPartitionInjector) apply(e *Engine, ctx context.Context, ws *agentr
 	}
 	e.seedImageLibraryPath(ctx, ws)
 	snapshot := filepath.Join(instanceDir, filepath.Base(hostConfig))
-	// HYHAL reads both paths and serializes access through the host lock. The
-	// Docker-side name is always vdev0.conf even when the native ID is not zero.
+	dockerConfigName := filepath.Base(hostConfig)
+	if strings.EqualFold(strings.TrimSpace(selected.ArchID), "Z100") {
+		dockerConfigName = "vdev0.conf"
+	}
+	// HYHAL reads both paths and serializes access through the host lock. Z100
+	// uses the legacy Docker name; K100AI requires its native vdev filename.
+	// Mount exactly one Docker config: adding a legacy alias breaks K100AI.
 	// Keep the image's /opt/dtk: replacing its toolkit with an older host DTK
 	// breaks images whose PyTorch requires newer shared-library versions.
 	ws.Mounts = append(ws.Mounts,
 		agentruntime.Mount{Source: snapshot, Target: filepath.Join("/etc/vdev", filepath.Base(hostConfig)), ReadOnly: true},
-		agentruntime.Mount{Source: snapshot, Target: "/etc/vdev/docker/vdev0.conf", ReadOnly: true},
+		agentruntime.Mount{Source: snapshot, Target: filepath.Join("/etc/vdev/docker", dockerConfigName), ReadOnly: true},
 		agentruntime.Mount{Source: lockPath, Target: hygonVirtualLock},
 		agentruntime.Mount{Source: dtkDir, Target: "/opt/hygondriver", ReadOnly: true},
 		agentruntime.Mount{Source: hyhalDir, Target: "/opt/hyhal", ReadOnly: true},
@@ -236,6 +268,9 @@ func (h hygonPartitionInjector) apply(e *Engine, ctx context.Context, ws *agentr
 	if ws.Image == assets.PartitionProbeImage {
 		// The embedded probe image has no DTK of its own.
 		ws.Mounts = append(ws.Mounts, agentruntime.Mount{Source: dtkDir, Target: "/opt/dtk", ReadOnly: true})
+		// HYHAL opens its log directory during HIP initialization. Keep probe
+		// logs ephemeral and writable when the container runs as a non-root UID.
+		ws.DockerArgs = append(ws.DockerArgs, "--tmpfs", "/var/log/hylog:rw,nosuid,nodev,mode=1777")
 	}
 	if ws.Env == nil {
 		ws.Env = map[string]string{}
@@ -275,11 +310,21 @@ func (h hygonPartitionInjector) cleanupInstance(e *Engine, uuid string) error {
 	e.partitionMu.Lock()
 	defer e.partitionMu.Unlock()
 	dir := hygonInstanceDir(e, uuid)
+	if err := checkHygonCreatePending(dir); err != nil {
+		return err
+	}
 	owned, found, err := readHygonOwnedVdev(dir)
 	if err != nil {
 		return err
 	}
 	if !found {
+		entries, err := os.ReadDir(dir)
+		if err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("inspect unclaimed Hygon vdev state before cleanup: %w", err)
+		}
+		if len(entries) != 0 {
+			return errors.New("unclaimed Hygon vdev state requires manual recovery before cleanup")
+		}
 		return nil
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -317,6 +362,17 @@ func (h hygonPartitionInjector) cleanupInstance(e *Engine, uuid string) error {
 		}
 	}
 	return os.RemoveAll(dir)
+}
+
+func checkHygonCreatePending(dir string) error {
+	_, err := os.Lstat(filepath.Join(dir, hygonVdevCreatePendingName))
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("inspect pending Hygon vdev creation: %w", err)
+	}
+	return errors.New("unclaimed Hygon vdev creation requires manual recovery")
 }
 
 func verifyHygonConfigSnapshot(instanceDir, hostConfig string, hostData []byte) error {

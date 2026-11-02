@@ -63,12 +63,16 @@ func TestImagePartitionCompatibilityWarningIsBackendDriven(t *testing.T) {
 
 func TestImagePartitionCompatibilityWarningRequiresSupportedHygonSKU(t *testing.T) {
 	image := &store.Image{Framework: "dtk", FrameworkVersion: "26.04.1"}
-	node := &store.Node{GPUVendor: "hygon", Arch: "x86_64", GPUs: []store.GPU{{Vendor: "hygon", ArchID: "Z100"}}}
-	warnings := imagePartitionCompatibilityWarnings(image, node)
-	if len(warnings) != 1 || warnings[0].Code != messages.WarningImagePartitionProfileUnverified {
-		t.Fatalf("Z100 warnings = %+v", warnings)
+	for _, model := range []string{"Z100", "K100AI", "K100_AI", "K100 AI"} {
+		t.Run(model, func(t *testing.T) {
+			node := &store.Node{GPUVendor: "hygon", Arch: "x86_64", GPUs: []store.GPU{{Vendor: "hygon", ArchID: model}}}
+			warnings := imagePartitionCompatibilityWarnings(image, node)
+			if len(warnings) != 1 || warnings[0].Code != messages.WarningImagePartitionProfileUnverified {
+				t.Fatalf("%s warnings = %+v", model, warnings)
+			}
+		})
 	}
-	node.GPUs[0].ArchID = "K100AI"
+	node := &store.Node{GPUVendor: "hygon", Arch: "x86_64", GPUs: []store.GPU{{Vendor: "hygon", ArchID: "K100"}}}
 	if warnings := imagePartitionCompatibilityWarnings(image, node); len(warnings) != 0 {
 		t.Fatalf("unsupported Hygon SKU warnings = %+v", warnings)
 	}
