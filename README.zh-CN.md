@@ -40,10 +40,11 @@ NVIDIA、华为昇腾、平头哥 PPU、海光 DCU 和 Apple Silicon 可以在�
   一键安装 agent，和自有服务器放在同一个资源池里调度。
 - **超轻量。** server 和 agent 各是一个静态二进制（`CGO_ENABLED=0`），server 内嵌 Web 界面（中文 / English）和各平台的 agent，
   状态存在一个 SQLite 文件里。agent 通过 WebSocket 主动外连，节点不用开入站端口（出不去的节点也可以由 server 反向直连）。
-  调度器和 API 用 1,000 个模拟节点、3,000 个实例做过压测。
+  在阿里云的一次演练中，一个 server 纳管了 7 个地域租来的 1,003 台 GPU 机器：500 多个副本在 4 分钟内放置并全部跑起来，
+  网关承接 2,000 并发，server 峰值只用了 9 个 CPU 核、1.6 GB 内存。
 - **先估算显存，再解释放置。** 启动前就能看到权重、KV cache 和引擎开销各要多少显存，调度器选了哪些卡、其他卡为什么没选。
-- **一张卡跑多个模型。** dGPU 给每个实例加显存硬限额，让多个模型共用一张卡（NVIDIA 基于 HAMi-core；昇腾、PPU 为实验特性）。
-  sleep/wake 让多个 vLLM 模型轮流使用同一张卡。
+- **一张卡跑多个模型。** dGPU 给每个实例加显存硬限额，让多个模型共用一张卡（NVIDIA 基于 HAMi-core，昇腾基于 vCANN，PPU 基于 HGGC；海光为实验特性）。
+  sleep/wake 让多个 vLLM 模型轮流使用同一批卡，支持 NVIDIA、昇腾、PPU 和海光。
 - **横向扩展。** 跨节点多副本、多机张量 / 流水线并行，以及 PD 分离（NVIDIA 上 vLLM + NIXL，昇腾上 vLLM-Ascend + Mooncake）。
 - **OpenAI 兼容网关。** `/v1` 下提供 chat、completions、embeddings、rerank、音频、图像、视频和 realtime；
   `/v1/messages`、`/v1/responses` 透传。支持最少请求、前缀亲和、故障转移三种路由，API 令牌和按令牌的 token 用量统计。
@@ -100,12 +101,13 @@ curl http://<server>:8800/v1/chat/completions \
 | 加速器 | 整卡部署 | dGPU（共享一张卡） | sleep/wake | 多机 | PD 分离 |
 |---|---|---|---|---|---|
 | **NVIDIA**（CUDA） | ✅ Docker、Containerd 或 runveil（内置免 root 运行时） | ✅ 显存 MiB 级限额 | ✅ vLLM | ✅ | ✅ vLLM + NIXL |
-| **华为昇腾**（CANN） | ✅ Docker、Containerd 或 runveil（内置免 root 运行时） | ✅ 显存 MiB 级限额 | — | ✅ | ✅ vLLM-Ascend + Mooncake |
-| **平头哥 PPU**（HGGC） | ✅ Docker、Containerd 或 runveil（内置免 root 运行时） | ✅ 显存 MiB 级限额 | — | — | — |
-| **海光 DCU**（DTK） | ✅ Docker、Containerd 或 runveil（内置免 root 运行时） | ✅ 显存 MiB 级限额 | — | — | — |
+| **华为昇腾**（CANN） | ✅ Docker、Containerd 或 runveil（内置免 root 运行时） | ✅ 显存 MiB 级限额 | ✅ vLLM-Ascend | ✅ | ✅ vLLM-Ascend + Mooncake |
+| **平头哥 PPU**（HGGC） | ✅ Docker、Containerd 或 runveil（内置免 root 运行时） | ✅ 显存 MiB 级限额 | ✅ vLLM | — | — |
+| **海光 DCU**（DTK） | ✅ Docker、Containerd 或 runveil（内置免 root 运行时） | 🧪 显存 MiB 级限额 | ✅ vLLM | — | — |
 | **Apple Silicon**（M1–M5，macOS 15+） | ✅ vllm-metal、MLX、llama.cpp 以本机进程运行 | — | — | — | — |
 
-✅ 真机验证 · 🧪 实验特性 · — 不支持或未验证。
+✅ 真机验证 · 🧪 实验特性 · — 不支持或未验证。NVIDIA 以外的 sleep/wake 已在昇腾 910C、PPU ZW810E、海光 K100 上真机验证，
+所测版本与限制见[如何选择功能](docs/explanation/choosing-features.md#sleepwake多个模型轮流用一张卡)。
 GPU 通过厂商命令行工具探测（`nvidia-smi`、`npu-smi`、`ppu-smi`、`hy-smi`），不依赖 NVML，也不需要 cgo。
 各组合的详细状态见[厂商支持矩阵](docs/reference/support-matrix.md)和[昇腾 CANN 矩阵](docs/reference/ascend-support-matrix.md)。
 
