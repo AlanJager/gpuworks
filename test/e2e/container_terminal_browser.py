@@ -176,11 +176,11 @@ def test_container_terminal(page, context, server, artifacts, report, locale, da
     _, panel = diagnostics.open_instance(page, server, data, report)
     node_uuid, ref = data["node"]["uuid"], data["container"]
     evidence, completed = [], []
-    for mode in ("exit", "close", "disconnect"):
+    for mode in ("exit", "close", "disconnect", "network"):
         report["step"] = "container PTY " + mode
         prior = {row["id"] for row in fixture.audits(server, token)}
         child = None
-        if mode == "disconnect":
+        if mode in ("disconnect", "network"):
             child = new_context(context, holder, locale)
             target = child.new_page()
             record = observe(target, holder)
@@ -203,12 +203,24 @@ def test_container_terminal(page, context, server, artifacts, report, locale, da
             target.close()
         elif mode == "close":
             target.close()
+        elif mode == "network":
+            # A real network break rather than a tidy close: the browser loses the network, so the
+            # socket dies without a close handshake and the page cannot clean up after itself. The
+            # server must still end the session and reap the pty, which is the half of 19.4 that a
+            # deliberate tab close never exercises.
+            child.set_offline(True)
+            for _ in range(80):
+                if fixture.admission(server, token, node_uuid)["active_node"] == 0:
+                    break
+                target.wait_for_timeout(250)
+            child.set_offline(False)
+            child.close()
         else:
             child.close()
         check(target.is_closed(), "terminal page did not close")
         ended = fixture.wait_released(page, server, token, node_uuid, ref, identity, audit["id"])
         check(ended["close_reason"] == ("shell_exited" if mode == "exit" else "client_closed"),
-              "terminal audit close cause differs")
+              f"terminal audit close cause differs in {mode}: {ended['close_reason']}")
         check(record["errors"] == [], "container terminal page JS errors")
         evidence.append({"mode": mode, "audit_id": audit["id"], "close_reason": ended["close_reason"],
             "target": "container", "ref": ref, "ws_query": params, "process_released": list(identity)})
