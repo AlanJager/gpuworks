@@ -58,7 +58,7 @@ Having a catalog spec means that pinned weights, an image and launch arguments e
 | Qwen2.5-Coder-1.5B-Instruct | Newly measured A3 TP1 BF16 SGLang spec | Both the API and the Chrome template page completed evaluation, deployment, running state and an exact-match Playground response; the catalog previously had only a PPU profile |
 | SmolLM2-360M-Instruct | Newly measured A3 TP1 BF16 SGLang spec | Evaluation, runner startup and a chat request returning HTTP 200 passed; the tiny model followed the fixed-token prompt poorly |
 | GPT-OSS-20B | Newly measured A3 TP2 BF16 vLLM spec | Both the API and the Chrome template page completed evaluation, deployment, running state and exact-match chat; eager mode avoids the NPU graph path, and the template points at the runner's vendored tiktoken vocabulary for offline Harmony tokenization |
-| Janus-Pro-7B | A3 TP1 BF16 SGLang | Exact-match text chat passed; an image request produced 576 image tokens and returned HTTP 200, but the model did not describe the 1×1 placeholder meaningfully, so this is not a visual-quality pass |
+| Janus-Pro-7B | A3 TP1 BF16 SGLang | Exact-match text chat passed. Both an API 1×1 placeholder and a real 640×220 PNG in Chrome produced 576 image tokens and returned HTTP 200, but the model did not describe either image meaningfully. This confirms the multimodal transport path, not visual quality |
 | Phi-4-multimodal-instruct | A3 TP1 BF16 SGLang | After declaring the image modality, a real 448×448 image request returned HTTP 200 and `White` |
 | MiniCPM3-4B | A3 TP1 BF16 SGLang, eager | The original graph path killed its child with SIGQUIT; with `--disable-cuda-graph`, evaluation, runner startup and text chat passed |
 | Qwen3-Omni-30B-A3B-Instruct | A3 TP4 BF16 SGLang, eager | The original graph path stayed in health check; with `--disable-cuda-graph`, the runner started and text chat returned `Qwen3Omni30B-910C-ok` |
@@ -69,6 +69,14 @@ Having a catalog spec means that pinned weights, an image and launch arguments e
 | Gemma-4-31B-IT | A3 TP4 BF16 vLLM | With the checkpoint's own chat template, the runner started and text plus real-image chat returned HTTP 200 |
 | Gemma-3-4B-IT / Gemma-3-27B-IT | A3 SGLang / vLLM for 4B; A3 SGLang for 27B | Both TP2 4B engines and the TP4 27B eager profile completed text and real-image chat; the SGLang templates disable NPU graph capture by default to avoid startup hangs |
 | Kimi-K3 | None | The upstream minimum recipe uses four A3 nodes; there is no catalog spec |
+
+The A3 vLLM profile for Qwen3-VL-8B-Instruct pins `--max-model-len` to
+**196608**, the measured safe value for one 64 GiB 910C die. TP2 and larger
+deployments have passed with the full 262144-token context, but vLLM's
+`max_model_len` is a structured integer launch parameter that a template
+cannot vary by device count. Multi-device deployments must set
+`max_model_len=262144` in the deployment quick parameters. The template keeps
+the TP1-safe default rather than exposing a default that can exhaust one die.
 
 The A3 profiles of DeepSeek-V4.1-Flash and its 1017 variant explicitly declare **512 GiB of `/dev/shm`** and `memlock_unlimited: true` for two approximately 103 GiB local DP shared Engram tables. Do not duplicate a Docker memlock argument in template `args`. Hardware checks confirmed that 128 GiB cannot register the second table and 256 GiB can; the catalog uses a 512 GiB isolated tmpfs as the common specification.
 

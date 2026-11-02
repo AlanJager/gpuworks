@@ -13,7 +13,7 @@ func TestQwen25OnePointFiveBHasValidatedA3Profile(t *testing.T) {
 			continue
 		}
 		for _, spec := range model.Specs {
-			if spec.Name != "bf16-sglang-ascend-a3" {
+			if spec.Name != "bf16-sglang-ascend-a3-qwen25-1p5b" {
 				continue
 			}
 			found = true
@@ -27,6 +27,6 @@ func TestQwen25OnePointFiveBHasValidatedA3Profile(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Fatal("qwen/qwen2.5-1.5b has no validated bf16-sglang-ascend-a3 profile")
+		t.Fatal("qwen/qwen2.5-1.5b has no validated bf16-sglang-ascend-a3-qwen25-1p5b profile")
 	}
 }

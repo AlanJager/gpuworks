@@ -67,7 +67,7 @@
 | Qwen2.5-Coder-1.5B-Instruct | 新增实测 A3 TP1 BF16 SGLang 档 | API 与 Chrome 模板页均完成 evaluate、部署、running 和 Playground 精确复述；原目录只有 PPU 配方 |
 | SmolLM2-360M-Instruct | 新增实测 A3 TP1 BF16 SGLang 档 | evaluate、runner 启动和 chat HTTP 200 均通过；小模型的固定复述提示遵循性较弱 |
 | GPT-OSS-20B | 新增实测 A3 TP2 BF16 vLLM 档 | API 与 Chrome 模板页均完成 evaluate、部署、running 和精确复述；eager 避开 NPU graph 路径，模板指向 runner 内已公证的 tiktoken 词表以支持离线 Harmony tokenizer |
-| Janus-Pro-7B | A3 TP1 BF16 SGLang | 文本 chat 精确复述通过；图像请求实际生成 576 个 image tokens 并返回 HTTP 200，但对 1×1 占位图未给出有效视觉描述，不作为视觉质量通过 |
+| Janus-Pro-7B | A3 TP1 BF16 SGLang | 文本 chat 精确复述通过；API 的 1×1 占位图和后续 Chrome 中真实的 640×220 PNG 都生成了 576 个 image tokens 并返回 HTTP 200，但模型没有给出有效视觉描述，因此只确认多模态链路，不作为视觉质量通过 |
 | Phi-4-multimodal-instruct | A3 TP1 BF16 SGLang | 模型声明补充 image modality 后，真实 448×448 图像 chat 返回 HTTP 200 与 `White` |
 | MiniCPM3-4B | A3 TP1 BF16 SGLang，eager | 原 graph 路径在子进程 SIGQUIT；`--disable-cuda-graph` 后 evaluate、runner 启动和文本 chat 均通过 |
 | Qwen3-Omni-30B-A3B-Instruct | A3 TP4 BF16 SGLang，eager | 原 graph 路径停在 health check；`--disable-cuda-graph` 后 runner 启动和文本 chat 返回 `Qwen3Omni30B-910C-ok` |
@@ -78,6 +78,12 @@
 | Gemma-4-31B-IT | A3 TP4 BF16 vLLM | 使用 checkpoint 自带 chat template 后 runner 启动成功，文本及真实图像 chat 返回 HTTP 200 |
 | Gemma-3-4B-IT / Gemma-3-27B-IT | 4B 的 A3 SGLang / vLLM；27B 的 A3 SGLang | TP2 的 4B 两种引擎和 TP4 的 27B eager 档都完成了文本及真实图像 chat；SGLang 模板显式关闭 NPU graph capture，避免启动卡死 |
 | Kimi-K3 | 无 | 上游最小配方为 4 台 A3；当前没有目录档 |
+
+Qwen3-VL-8B-Instruct 的 A3 vLLM 档把默认 `--max-model-len` 固定为 **196608**，这是
+单张 64 GiB 910C die 的实测安全值。TP2 及以上部署已经实测覆盖完整 262144 上下文，
+但 vLLM 的 `max_model_len` 是结构化的整型启动参数，模板不能按卡数动态替换；使用
+多卡时需要在部署的快速参数中把 `max_model_len` 显式改为 `262144`。默认值保留
+TP1 安全上限，不把 TP1 部署暴露给会超显存的 262144 默认值。
 
 DeepSeek-V4.1-Flash 原版与 1017 的 A3 档都显式声明 **512 GiB `/dev/shm`** 和
 `memlock_unlimited: true`，用于两张约 103 GiB 的 Engram 本地 DP 共享表；不要在模板

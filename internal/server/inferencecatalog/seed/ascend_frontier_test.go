@@ -350,6 +350,8 @@ func TestA3EagerProfilesKeepMeasuredGraphWorkarounds(t *testing.T) {
 	want := map[string]string{
 		"openbmb/minicpm3-4b":              "bf16-sglang-ascend-a3-25156446",
 		"qwen/qwen3-30b-a3b-instruct-2507": "bf16-sglang-ascend-a3-04996b03",
+		"qwen/qwen3-next-80b-a3b-instruct": "int8-sglang-ascend-a3-7d129784",
+		"qwen/qwen3-vl-30b-a3b-instruct":   "bf16-sglang-ascend-a3-8659b2c8",
 		"qwen/qwen3.6-35b-a3b":             "bf16-sglang-ascend-a3-67436760",
 		"qwen/qwen3-omni-30b-a3b-instruct": "bf16-sglang-ascend-a3-68c174cb",
 	}

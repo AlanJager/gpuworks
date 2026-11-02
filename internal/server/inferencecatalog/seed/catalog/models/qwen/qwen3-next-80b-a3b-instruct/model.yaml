@@ -182,9 +182,6 @@ specs:
   - npu
   - --quantization
   - modelslim
-  # NPU graph capture stalled beyond ten minutes in the earlier run; eager mode
-  # completed startup and a real chat request on four 910C dies.
-  - --disable-cuda-graph
   env:
     GDN_ATTN_BACKEND_TRITON: '1'
   placement:

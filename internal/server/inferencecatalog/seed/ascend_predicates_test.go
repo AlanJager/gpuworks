@@ -94,6 +94,22 @@ func TestInheritedA3SpecsMatchTheir910BOriginal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	intentionalArgDifferences := map[string]string{
+		"qwen/qwen3-vl-8b-instruct/bf16-vllm-ascend-a3-4eac0a8b":            "TP1 needs the measured 196608-token cap",
+		"google/gemma-3-4b-it/bf16-sglang-ascend-a3-4cdeb491":               "A3 graph capture hangs; eager mode passed text and image chat",
+		"google/gemma-3-27b-it/bf16-sglang-ascend-a3-ca729c08":              "A3 graph capture hangs; eager mode passed text and image chat",
+		"zai-org/glm-4.5v/bf16-sglang-ascend-a3-36013872":                   "A3 graph capture stalls across ranks; eager mode passed image chat",
+		"qwen/qwen3-next-80b-a3b-instruct/int8-sglang-ascend-a3-7d129784":   "A3 NCCL graph capture stalls; eager mode passed chat",
+		"qwen/qwen3-vl-30b-a3b-instruct/bf16-sglang-ascend-a3-8659b2c8":     "A3 graph capture stalls; eager mode passed text and image chat",
+		"qwen/qwen3.6-35b-a3b/bf16-sglang-ascend-a3-67436760":               "A3 graph capture stalls; eager mode passed text and image chat",
+		"openbmb/minicpm3-4b/bf16-sglang-ascend-a3-25156446":                "A3 graph capture aborts the child; eager mode passed chat",
+		"qwen/qwen3-30b-a3b-instruct-2507/bf16-sglang-ascend-a3-04996b03":   "A3 graph capture did not become healthy; eager mode passed chat",
+		"qwen/qwen3-omni-30b-a3b-instruct/bf16-sglang-ascend-a3-68c174cb":   "A3 graph capture did not become healthy; eager mode passed chat",
+		"qwen/qwen3-14b-gguf/fp16-sglang-ascend-a3-41226ec8":                "the repository contains five GGUF files; Q4_K_M loads eagerly on A3",
+		"qwen/qwen3-tts-12hz-1.7b-customvoice/bf16-vllm-ascend-a3-760501dc": "the 0.30 Omni runner requires an explicit deploy config",
+		"qwen/qwen3.6-35b-a3b/int8-vllm-ascend-a3-1a118d71":                 "vLLM 0.30 with eager mode avoids the missing linear_attn graph path",
+	}
+	argsDiffSeen := map[string]bool{}
 	pairs := 0
 	for _, model := range catalog.Models {
 		byName := map[string]int{}
@@ -114,28 +130,16 @@ func TestInheritedA3SpecsMatchTheir910BOriginal(t *testing.T) {
 			if spec.Engine != original.Engine {
 				t.Errorf("%s runs %q but its 910B original runs %q", where, spec.Engine, original.Engine)
 			}
-			// The A3 Qwen3-VL-8B vLLM profile is a measured single-die
-			// override. At its full 262144-token context, vLLM asks for
-			// 36.0 GiB of KV cache but only has 35.5 GiB available on a
-			// 64 GiB 910C die. 196608 tokens leaves operating headroom.
-			//
-			// The Gemma A3 profiles also disable NPU graph capture. Their
-			// 910B originals retained it, but graph capture hangs while the
-			// eager path completes text and image chat on A3.
-			argsDifferIntentionally := where == "qwen/qwen3-vl-8b-instruct/bf16-vllm-ascend-a3-4eac0a8b" ||
-				where == "google/gemma-3-4b-it/bf16-sglang-ascend-a3-4cdeb491" ||
-				where == "google/gemma-3-27b-it/bf16-sglang-ascend-a3-ca729c08" ||
-				where == "zai-org/glm-4.5v/bf16-sglang-ascend-a3-36013872" ||
-				where == "qwen/qwen3-next-80b-a3b-instruct/int8-sglang-ascend-a3-7d129784" ||
-				where == "qwen/qwen3.6-35b-a3b/bf16-sglang-ascend-a3-67436760" ||
-				where == "openbmb/minicpm3-4b/bf16-sglang-ascend-a3-25156446" ||
-				where == "qwen/qwen3-30b-a3b-instruct-2507/bf16-sglang-ascend-a3-04996b03" ||
-				where == "qwen/qwen3-omni-30b-a3b-instruct/bf16-sglang-ascend-a3-68c174cb" ||
-				where == "google/gemma-4-31b-it/bf16-vllm-ascend-a3-c7a493cd" ||
-				where == "qwen/qwen3-tts-12hz-1.7b-customvoice/bf16-vllm-ascend-a3-760501dc" ||
-				where == "qwen/qwen3.6-35b-a3b/int8-vllm-ascend-a3-1a118d71"
-			if !argsDifferIntentionally && strings.Join(spec.Args, "\x00") != strings.Join(original.Args, "\x00") {
+			argsDiffer := strings.Join(spec.Args, "\x00") != strings.Join(original.Args, "\x00")
+			reason, intentional := intentionalArgDifferences[where]
+			if argsDiffer && !intentional {
 				t.Errorf("%s arguments drifted from its 910B original", where)
+			}
+			if argsDiffer && intentional {
+				argsDiffSeen[where] = true
+				if strings.TrimSpace(reason) == "" {
+					t.Errorf("%s has an empty intentional-difference reason", where)
+				}
 			}
 			if spec.WeightBytes != original.WeightBytes {
 				t.Errorf("%s weighs %d bytes, its 910B original %d", where, spec.WeightBytes, original.WeightBytes)
@@ -143,6 +147,11 @@ func TestInheritedA3SpecsMatchTheir910BOriginal(t *testing.T) {
 			if spec.Image == original.Image {
 				t.Errorf("%s runs the same image as its 910B original (%s)", where, spec.Image)
 			}
+		}
+	}
+	for where, reason := range intentionalArgDifferences {
+		if !argsDiffSeen[where] {
+			t.Errorf("%s arguments now match its 910B original; remove the stale exemption (%s)", where, reason)
 		}
 	}
 	const currentInheritedA3Profiles = 88
