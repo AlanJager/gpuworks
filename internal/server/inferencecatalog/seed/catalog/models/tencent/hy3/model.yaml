@@ -41,39 +41,6 @@ specs:
     - type: openai.chat
       endpoint: /v1/chat/completions
       mode: stream
-- name: bf16-vllm-nvidia-blackwell
-  display_profile: compatible
-  scenario: throughput
-  engine: vllm
-  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
-  weights:
-    quantization: bf16
-    sources:
-    - huggingface:
-        repo_id: tencent/Hy3
-        revision: a960ebc3da325ba167f069f76c41eb62c9280d22
-    - modelscope:
-        repo_id: Tencent-Hunyuan/Hy3
-        revision: 9fb66f1eef8e5471de49923e9c3c820dd666b804
-  weight_bytes: 597598708525
-  gpus:
-    vendor: nvidia
-    cc: '>=10.0'
-    display_target: blackwell
-  env:
-    VLLM_FLASHINFER_ALLREDUCE_BACKEND: trtllm
-  args:
-  - --tool-call-parser
-  - hy_v3
-  - --enable-auto-tool-choice
-  - --reasoning-parser
-  - hy_v3
-  api:
-    health_endpoint: /health
-    operations:
-    - type: openai.chat
-      endpoint: /v1/chat/completions
-      mode: stream
 - name: bf16-vllm-nvidia-general
   display_profile: general
   scenario: balanced
@@ -105,7 +72,7 @@ specs:
     - type: openai.chat
       endpoint: /v1/chat/completions
       mode: stream
-- name: bf16-vllm-nvidia-hopper
+- name: bf16-vllm-nvidia-hopper-blackwell
   display_profile: compatible
   scenario: throughput
   engine: vllm
@@ -122,7 +89,7 @@ specs:
   weight_bytes: 597598708525
   gpus:
     vendor: nvidia
-    cc: '9.0'
+    cc: '>=9.0'
     display_target: hopper
   env:
     VLLM_FLASHINFER_ALLREDUCE_BACKEND: trtllm
@@ -169,39 +136,6 @@ specs:
     - type: openai.chat
       endpoint: /v1/chat/completions
       mode: stream
-- name: fp8-vllm-nvidia-blackwell
-  display_profile: compatible
-  scenario: throughput
-  engine: vllm
-  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
-  weights:
-    quantization: fp8
-    sources:
-    - huggingface:
-        repo_id: tencent/Hy3-FP8
-        revision: ecc1d8e194e093f33177f2f0ef7ce8f397b2d68b
-    - modelscope:
-        repo_id: Tencent-Hunyuan/Hy3-FP8
-        revision: c5625dc1ce664986f663b3381a63cbabaa5d8383
-  weight_bytes: 299918936567
-  gpus:
-    vendor: nvidia
-    cc: '>=10.0'
-    display_target: blackwell
-  env:
-    VLLM_FLASHINFER_ALLREDUCE_BACKEND: trtllm
-  args:
-  - --tool-call-parser
-  - hy_v3
-  - --enable-auto-tool-choice
-  - --reasoning-parser
-  - hy_v3
-  api:
-    health_endpoint: /health
-    operations:
-    - type: openai.chat
-      endpoint: /v1/chat/completions
-      mode: stream
 - name: fp8-vllm-nvidia-general
   display_profile: compatible
   scenario: balanced
@@ -233,7 +167,7 @@ specs:
     - type: openai.chat
       endpoint: /v1/chat/completions
       mode: stream
-- name: fp8-vllm-nvidia-hopper
+- name: fp8-vllm-nvidia-hopper-blackwell
   display_profile: compatible
   scenario: throughput
   engine: vllm
@@ -250,7 +184,7 @@ specs:
   weight_bytes: 299918936567
   gpus:
     vendor: nvidia
-    cc: '9.0'
+    cc: '>=9.0'
     display_target: hopper
   env:
     VLLM_FLASHINFER_ALLREDUCE_BACKEND: trtllm

@@ -170,39 +170,6 @@ specs:
     - type: openai.chat
       endpoint: /v1/chat/completions
       mode: stream
-- name: mxfp8-vllm-nvidia-cc100
-  display_profile: compatible
-  scenario: throughput
-  engine: vllm
-  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
-  weights:
-    quantization: mxfp8
-    sources:
-    - huggingface:
-        repo_id: MiniMaxAI/MiniMax-M3-MXFP8
-        revision: c5454eb03678d8710e54a4e0fc681b9f3b4a3dba
-    - modelscope:
-        repo_id: MiniMax/MiniMax-M3-MXFP8
-        revision: bfda9553334175c28dae8d3fedf4a428b5169776
-  weight_bytes: 443776005285
-  gpus:
-    vendor: nvidia
-    cc: '>=10.0'
-    display_target: blackwell
-  args:
-  - --attention_config.indexer_kv_dtype
-  - fp8
-  - --tool-call-parser
-  - minimax_m3
-  - --enable-auto-tool-choice
-  - --reasoning-parser
-  - minimax_m3
-  api:
-    health_endpoint: /health
-    operations:
-    - type: openai.chat
-      endpoint: /v1/chat/completions
-      mode: stream
 - name: mxfp8-vllm-nvidia-cc100-eagle3-draft
   display_profile: compatible
   scenario: throughput
