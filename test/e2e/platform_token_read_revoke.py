@@ -406,6 +406,33 @@ def test_read_token_create_revoke(page, context, server, artifacts, report, loca
     # credential stops being presented - the two are separate channels, which is why the
     # session-revocation half of this item is a CLI action rather than something a browser can
     # trigger, and no attempt is made to claim it here.
+    # 7.5: the three credential kinds are told apart by what they are, not by what a caller claims.
+    # An inference key is a different family from a platform token: presented as a bearer it is not
+    # treated as a platform token, so it cannot reach the token routes, and it is not a management
+    # session either, so it cannot read management data. The product carries no expiry field on any
+    # of the three, so no expiry control is invented and none is asserted.
+    created_key = page.request.post(server.base + "/api/v1/apikeys", data={"name": resource_name + "-gw"})
+    check(created_key.status in {200, 201}, f"inference key create HTTP {created_key.status}")
+    inference_secret = created_key.json().get("key")
+    check(isinstance(inference_secret, str) and inference_secret.startswith("gw-"),
+          "the inference key does not carry its own prefix")
+    check(not inference_secret.startswith("gwp_"),
+          "an inference key was issued in the platform token family")
+    inference_headers = {"Authorization": "Bearer " + inference_secret}
+    code, refused_read = http(server.base, "GET", "/api/v1/nodes", inference_headers)
+    check(code in {401, 403},
+          f"an inference key read management inventory: {code}")
+    check(refused_read.get("code") != "PLATFORM_TOKEN_NOT_ALLOWED",
+          "an inference key was mistaken for a platform token")
+    code, refused_token_route = http(server.base, "GET", TOKEN_PATH, inference_headers)
+    check(code in {401, 403}, f"an inference key reached the platform token routes: {code}")
+    report["evidence"].append({"layer": "runtime", "credential_families": {
+        "inference_prefix": "gw-", "platform_prefix": "gwp_", "management": "session cookie",
+        "inference_refused_management": True, "inference_not_platform_token": True,
+        "expiry_fields": "none on any of the three"}})
+    prefix = created_key.json()["key"][:12]
+    page.request.delete(server.base + "/api/v1/apikeys/" + prefix)
+
     page.evaluate("() => { localStorage.clear(); sessionStorage.clear(); }")
     code, still = http(server.base, "GET", "/api/v1/nodes", copied)
     check(code == 200 and still == {"items": [], "total": 0},
