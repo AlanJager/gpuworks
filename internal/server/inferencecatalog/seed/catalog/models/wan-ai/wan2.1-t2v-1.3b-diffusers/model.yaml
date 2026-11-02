@@ -44,6 +44,7 @@ specs:
     - type: openai.video.generate
       endpoint: /v1/videos
       mode: async
+      request_encoding: multipart
       inputs:
       - name: seconds
         kind: number
@@ -97,6 +98,7 @@ specs:
     - type: openai.video.generate
       endpoint: /v1/videos
       mode: async
+      request_encoding: multipart
       inputs:
       - name: seconds
         kind: number
@@ -157,6 +159,7 @@ specs:
     - type: openai.video.generate
       endpoint: /v1/videos
       mode: async
+      request_encoding: multipart
       inputs:
       - name: seconds
         kind: number

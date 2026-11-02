@@ -154,6 +154,31 @@ func TestLLaDAA100UsesTheCompatibleMoERouter(t *testing.T) {
 	}
 }
 
+func TestVideoGenerationTemplatesUseMultipart(t *testing.T) {
+	catalog, err := Catalog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, model := range catalog.Models {
+		for _, spec := range model.Specs {
+			if spec.API == nil {
+				continue
+			}
+			for _, operation := range spec.API.Operations {
+				if operation.Type == inferenceapi.OperationVideoGenerate &&
+					operation.RequestEncoding != inferenceapi.EncodingMultipart {
+					t.Errorf("%s %s sends %s through %q",
+						model.ModelID,
+						spec.Name,
+						operation.Type,
+						operation.RequestEncoding,
+					)
+				}
+			}
+		}
+	}
+}
+
 func TestCosmosSyncVideoUsesItsMultipartRequestBody(t *testing.T) {
 	catalog, err := Catalog()
 	if err != nil {

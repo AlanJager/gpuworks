@@ -40,6 +40,7 @@ specs:
     - type: openai.video.generate
       endpoint: /v1/videos/sync
       mode: sync
+      request_encoding: multipart
       inputs:
       - name: seconds
         kind: number
@@ -89,6 +90,7 @@ specs:
     - type: openai.video.generate
       endpoint: /v1/videos/sync
       mode: sync
+      request_encoding: multipart
       inputs:
       - name: seconds
         kind: number
@@ -138,6 +140,7 @@ specs:
     - type: openai.video.generate
       endpoint: /v1/videos/sync
       mode: sync
+      request_encoding: multipart
       inputs:
       - name: seconds
         kind: number
@@ -187,6 +190,7 @@ specs:
     - type: openai.video.generate
       endpoint: /v1/videos/sync
       mode: sync
+      request_encoding: multipart
       inputs:
       - name: seconds
         kind: number
@@ -233,6 +237,7 @@ specs:
     - type: openai.video.generate
       endpoint: /v1/videos/sync
       mode: sync
+      request_encoding: multipart
       inputs:
       - name: seconds
         kind: number
@@ -282,6 +287,7 @@ specs:
     - type: openai.video.generate
       endpoint: /v1/videos/sync
       mode: sync
+      request_encoding: multipart
       inputs:
       - name: seconds
         kind: number
@@ -331,6 +337,7 @@ specs:
     - type: openai.video.generate
       endpoint: /v1/videos/sync
       mode: sync
+      request_encoding: multipart
       inputs:
       - name: seconds
         kind: number
@@ -380,6 +387,7 @@ specs:
     - type: openai.video.generate
       endpoint: /v1/videos/sync
       mode: sync
+      request_encoding: multipart
       inputs:
       - name: seconds
         kind: number
@@ -429,6 +437,7 @@ specs:
     - type: openai.video.generate
       endpoint: /v1/videos/sync
       mode: sync
+      request_encoding: multipart
       inputs:
       - name: seconds
         kind: number
@@ -475,6 +484,7 @@ specs:
     - type: openai.video.generate
       endpoint: /v1/videos/sync
       mode: sync
+      request_encoding: multipart
       inputs:
       - name: seconds
         kind: number
