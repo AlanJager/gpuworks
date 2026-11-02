@@ -15,7 +15,7 @@ var HygonHIPLibraryDirs = []string{"/opt/dtk/lib", "/opt/dtk/lib64", "/opt/hyhal
 
 // HygonHIPSmokeScript asks DTK's HIP runtime to take the card at
 // HYGON_SMOKE_BDF and allocate 4 KiB on it, the Hygon counterpart of the CUDA
-// and ACL checks (0.2 s on a K100, measured on 172.25.17.133).
+// and ACL checks (0.2 s on a K100, measured on 192.0.2.133).
 //
 // The card is found by its PCI address rather than made the only visible one:
 // HIP's device order is the runtime's own and need not match hy-smi's, and a
