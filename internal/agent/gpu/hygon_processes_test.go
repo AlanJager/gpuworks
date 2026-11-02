@@ -9,7 +9,7 @@ import (
 
 // writeKFDTree lays out the KFD sysfs of a two-card K100 host. The CPU node
 // and the first card's properties are as read on the Hygon host
-// (172.25.17.133, 2026-10-30): gpu_id 50234 at location_id 26368, which is
+// (192.0.2.133, 2026-10-30): gpu_id 50234 at location_id 26368, which is
 // 0000:67:00.0.
 func writeKFDTree(t *testing.T) string {
 	t.Helper()

@@ -19,7 +19,7 @@ func readGPUFixture(t *testing.T, name string) string {
 	return string(b)
 }
 
-// An HGX H20 (172.30.8.111, driver 580.126.09): eight cards, 18 links each.
+// An HGX H20 (198.51.100.111, driver 580.126.09): eight cards, 18 links each.
 func TestParseNVLinksOnAnH20(t *testing.T) {
 	cards := parseNVLinks(readGPUFixture(t, "nvidia-smi-nvlink-se-h20.txt"))
 	if len(cards) != 8 {
