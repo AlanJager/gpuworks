@@ -69,7 +69,6 @@ Having a catalog spec means that pinned weights, an image and launch arguments e
 | Qwen3-TTS-12Hz-1.7B-CustomVoice | A3 TP1 BF16 vLLM-Omni r3 | With an explicit deploy config, it generated a non-silent 24 kHz WAV; Qwen3-ASR loopback returned `GPUWorks 910c Speech Validation.` |
 | Qwen3-TTS-12Hz-0.6B-CustomVoice | Newly measured A3 TP1 BF16 vLLM-Omni r3 | It generated a non-silent 24 kHz WAV; Qwen3-ASR recognized the substance of the sentence |
 | Ming-omni-tts-0.5B | A3 TP1 BF16 vLLM-Omni r3 | It generated a non-silent 44.1 kHz WAV; Qwen3-ASR recognized the substance of the sentence |
-| Gemma-4-26B-A4B-IT | A3 TP4 BF16 vLLM, eager | With the checkpoint's own chat template and graph capture disabled, runner startup, exact-match text chat and a real 448×448 image request passed; the image answer was `White` |
 | Gemma-4-31B-IT | A3 TP4 BF16 vLLM | With the checkpoint's own chat template, the runner started and text plus real-image chat returned HTTP 200 |
 | Gemma-4-26B-A4B-IT | A3 TP4 BF16 vLLM, eager | With the checkpoint's own chat template and graph capture disabled, weight loading, KV cache and health passed. Text returned `Gemma426B-910C-ok`; a real 448×448 image request returned `White` with 258 image tokens |
 | Gemma-3-4B-IT / Gemma-3-27B-IT | A3 SGLang / vLLM for 4B; A3 SGLang for 27B | Both TP2 4B engines and the TP4 27B eager profile completed text and real-image chat; the SGLang templates disable NPU graph capture by default to avoid startup hangs |

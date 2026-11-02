@@ -78,7 +78,6 @@
 | Qwen3-TTS-12Hz-1.7B-CustomVoice | A3 TP1 BF16 vLLM-Omni r3 | 显式 deploy config 后生成 24 kHz 非静音 WAV；Qwen3-ASR 回环识别为 `GPUWorks 910c Speech Validation.` |
 | Qwen3-TTS-12Hz-0.6B-CustomVoice | 新增实测 A3 TP1 BF16 vLLM-Omni r3 | 生成 24 kHz 非静音 WAV；Qwen3-ASR 回环识别出句子主体 |
 | Ming-omni-tts-0.5B | A3 TP1 BF16 vLLM-Omni r3 | 生成 44.1 kHz 非静音 WAV；Qwen3-ASR 回环识别出句子主体 |
-| Gemma-4-26B-A4B-IT | A3 TP4 BF16 vLLM，eager | 改用 checkpoint 自带 chat template 并关闭 graph 后，runner 启动、精确文本复述和真实 448×448 图像请求均通过；图像返回 `White` |
 | Gemma-4-31B-IT | A3 TP4 BF16 vLLM | 使用 checkpoint 自带 chat template 后 runner 启动成功，文本及真实图像 chat 返回 HTTP 200 |
 | Gemma-4-26B-A4B-IT | A3 TP4 BF16 vLLM，eager | 使用 checkpoint 自带 chat template 并关闭 graph capture 后，权重、KV cache 和 health 通过；文本精确返回 `Gemma426B-910C-ok`，真实 448×448 图像 chat 返回 `White` 和 258 个 image tokens |
 | Gemma-3-4B-IT / Gemma-3-27B-IT | 4B 的 A3 SGLang / vLLM；27B 的 A3 SGLang | TP2 的 4B 两种引擎和 TP4 的 27B eager 档都完成了文本及真实图像 chat；SGLang 模板显式关闭 NPU graph capture，避免启动卡死 |
