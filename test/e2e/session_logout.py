@@ -273,11 +273,13 @@ def test_two_tab_logout_relogin(play, context, server, artifacts, report, locale
             break
         page.wait_for_timeout(50)
     check(len(held_logins) == 1, "sign-in did not stay in flight")
-    expect(submit).to_have_class(re.compile(r"\bant-btn-loading\b"), timeout=12000)
+    # The duplicate attempts are checked before the visual busy state, so the case fails on the
+    # contract - one sign-in, one request - rather than on the class that happens to enforce it.
     submit.click(timeout=12000)
     secret.press("Enter")
     page.wait_for_timeout(500)
     check(len(held_logins) == 1, "duplicate login while the first request is held")
+    expect(submit).to_have_class(re.compile(r"\bant-btn-loading\b"), timeout=12000)
     try:
         with page.expect_response(lambda r: urlsplit(r.url).path == LOGIN and r.request.method == "POST") as accepted:
             held_logins[0].continue_()
