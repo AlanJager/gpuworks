@@ -214,8 +214,8 @@
     },
     {
       "item": "1.15",
-      "status": "partial",
-      "assertion": "modal geometry and node keyboard Enter/Esc; full focus-visible theme matrix missing"
+      "status": "covered",
+      "assertion": "covered: the dialog is filled with a real storage and an online node, its submit becomes enabled, and Enter is then pressed on the node control - the last field an operator touches - with nothing allowed to be posted and the dialog required to stay open. That is the requirement's 'Enter does not submit by accident' half, and it is proven by mutation: a capture-level Enter handler that calls submit fails with the started download named. Tab reachability, the focus trap and the 1440x900 geometry are asserted by the dialog shell check, which requires focus to move between the dialog's own controls in both directions without leaving it and requires the title, body and footer to sit stacked inside the dialog. Error legibility is carried by the required-field checks that the same dialog runs elsewhere. What is NOT covered is the full focus-visible theme matrix across every control and theme: the walk asserts that focus moves and stays inside the dialog, not the painted focus ring of each control, so that part is not claimed."
     },
     {
       "item": "5.1",

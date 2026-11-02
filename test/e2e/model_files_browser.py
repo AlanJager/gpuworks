@@ -352,6 +352,17 @@ def download(page, labels, data, storage, report, server=None, token=None, refus
         report.setdefault('evidence', []).append({'layer': 'ui', 'dialog_shell': title, 'viewport': '1440x900'})
     else:
         modal_geometry(dialog, submit)
+    # 1.15: Enter inside the form must not submit. The dialog is fully filled and its submit is enabled
+    # at this point, so a key that reached the form's submit path would start a real download here. This
+    # runs after the shell and geometry checks so the focus position it leaves behind cannot disturb
+    # their Tab cycle, and nothing may be posted while the dialog stays open.
+    before_enter = len(posts)
+    dialog.get_by_role('combobox', name=labels['download']['nodes'], exact=True).press('Enter')
+    page.wait_for_timeout(400)
+    checked(len(posts) == before_enter, f'Enter in the download form started a download: {posts[before_enter:]}')
+    expect(dialog).to_be_visible()
+    report.setdefault('enter_does_not_submit', []).append(
+        {'field': 'nodes', 'posts_after': len(posts), 'dialog_open': True})
     body = {'storage_id': storage['id'], 'node_uuids': [data['node']['uuid']]}
     if refuse:
         prove_refused_model_download(page, dialog, server, token, path, body, report, labels, data, storage)
