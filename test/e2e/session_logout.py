@@ -167,8 +167,16 @@ def test_two_tab_logout_relogin(play, context, server, artifacts, report, locale
     expect(secret).to_be_empty()
     expect(secret).to_have_attribute("type", "password")
     button(page, auth["submit"]).click()
-    expect(page.get_by_text(auth["usernameRequired"], exact=True)).to_be_visible()
-    expect(page.get_by_text(auth["passwordRequired"], exact=True)).to_be_visible()
+    # 1.3: each message must be located at the field it belongs to, not merely somewhere on the page,
+    # so the item is asserted by walking from the field to the message inside its own form item.
+    for field, message in ((username, auth["usernameRequired"]), (secret, auth["passwordRequired"])):
+        item = page.locator(".ant-form-item").filter(
+            has=page.locator("label").filter(has_text=re.compile("^" + re.escape(
+                auth["username"] if field is username else auth["password"]) + "$")))
+        expect(item).to_have_count(1, timeout=8000)
+        expect(item.get_by_text(message, exact=True)).to_be_visible()
+        expect(item.locator(".ant-form-item-explain-error")).to_have_count(1, timeout=8000)
+    expect(page.get_by_role("alert")).to_have_count(0)
     check(not login_requests, "empty login submitted a request")
     # 1.15: the keyboard order and the layout this form is used in. Tab is required to reach both
     # fields in reading order with no stop skipped and no hidden control in between, Enter in the
