@@ -17,6 +17,10 @@ func newDeviceAPI() deviceAPI { return nativeAPI{} }
 func (nativeAPI) Init() error     { return dcgm.Init() }
 func (nativeAPI) ShutDown() error { return dcgm.ShutDown() }
 
+func (nativeAPI) PhysicalPCIBDF(gpuIndex int) (string, error) {
+	return dcgm.PicBusInfo(gpuIndex)
+}
+
 func (nativeAPI) Create(gpuIndex, cuCount, memoryMiB int) ([]int, error) {
 	// The upstream CreateVDevices API prints its file scan to stdout. Keep
 	// stdout reserved for the helper's one-line JSON protocol.

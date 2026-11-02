@@ -3,6 +3,7 @@ package gpu
 import (
 	"context"
 	"encoding/csv"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -119,30 +120,49 @@ func (p *PPUProber) PartitionProbeLibraries(ctx context.Context) ([]ProbeLibrary
 }
 
 func sharedLibraryPath(ctx context.Context, name string) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	if filepath.Base(name) != name || name == "." || name == "" {
 		return "", fmt.Errorf("invalid shared library name %q", name)
 	}
+	var candidates []string
 	if path, err := exec.LookPath("ldconfig"); err == nil {
 		if out, runErr := exec.CommandContext(ctx, path, "-p").Output(); runErr == nil {
-			if candidate := parseLdconfigLibraryPath(string(out), name); candidate != "" {
-				if resolved, resolveErr := filepath.EvalSymlinks(candidate); resolveErr == nil {
-					return resolved, nil
+			for _, line := range strings.Split(string(out), "\n") {
+				if candidate := parseLdconfigLibraryPath(line, name); candidate != "" {
+					candidates = append(candidates, candidate)
 				}
-				return candidate, nil
 			}
 		}
 	}
 	for _, dir := range []string{"/usr/lib64", "/lib64", "/usr/lib", "/lib"} {
-		candidate := filepath.Join(dir, name)
-		if _, err := os.Stat(candidate); err != nil {
+		candidates = append(candidates, filepath.Join(dir, name))
+	}
+	for _, candidate := range candidates {
+		if err := ctx.Err(); err != nil {
+			return "", err
+		}
+		resolved, err := filepath.EvalSymlinks(candidate)
+		if errors.Is(err, os.ErrNotExist) {
 			continue
 		}
-		if resolved, err := filepath.EvalSymlinks(candidate); err == nil {
-			return resolved, nil
+		if err != nil {
+			return "", fmt.Errorf("resolve probe dependency %s at %s: %w", name, candidate, err)
 		}
-		return candidate, nil
+		info, err := os.Stat(resolved)
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return "", fmt.Errorf("inspect probe dependency %s at %s: %w", name, resolved, err)
+		}
+		if !info.Mode().IsRegular() {
+			return "", fmt.Errorf("probe dependency %s at %s is not a regular file", name, resolved)
+		}
+		return resolved, nil
 	}
-	return "", fmt.Errorf("probe dependency %s was not found on the host", name)
+	return "", fmt.Errorf("probe dependency %s was not found on the host: %w", name, os.ErrNotExist)
 }
 
 func parseLdconfigLibraryPath(output, name string) string {

@@ -1,0 +1,5 @@
+Device 0:
+	Physical Device: 0
+	Compute units: 128
+	Global memory: 68702699520 bytes
+	Usage memory: 12582912 bytes (0.02%)
