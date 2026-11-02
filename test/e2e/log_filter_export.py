@@ -246,6 +246,22 @@ def test_log_filter_export(page, context, server, artifacts, report, locale):
     absent = '"e2e-' + report['run_id'] + '-absent"'
     result(lambda: search.fill(absent), {**selected_query, 'q': absent}, [], 'nonexistent keyword')
     loaded = result(lambda: search.fill(query), selected_query, [target], 'restore target keyword')
+    # 2.4: the keyword control is required to carry the characters a log line actually contains, and
+    # what it sends is asserted rather than what it displays. Each shape is typed and the query that
+    # reaches the server is compared exactly, so a control that accepted the text but mangled,
+    # dropped or silently stripped part of it fails here instead of only looking fine in the box.
+    for label, value, sent in (
+            ('chinese', '错误 警告', '错误 警告'),
+            ('punctuation', 'ERROR: "quoted" (paren) [bracket] {brace}',
+             'ERROR: "quoted" (paren) [bracket] {brace}'),
+            ('percent-and-ampersand', 'a%b&c=d', 'a%b&c=d'),
+            ('single-line-newline-collapsed', 'first line\nsecond line', 'first line second line')):
+        result(lambda v=value: search.fill(v), {**selected_query, 'q': sent}, [], f'keyword characters: {label}')
+        report['evidence'].append({'layer': 'request', 'scenario': f'keyword-{label}',
+                                   'typed': value, 'sent': sent})
+    # Back to a query that matches, so the export below is not disabled by the last probe.
+    loaded = result(lambda: search.fill(query), selected_query, [target], 'restore target after characters')
+
     # Consume the real download bytes, including Chinese and CSV escaping, not just its name.
     with page.expect_download() as download_event:
         export.click()
