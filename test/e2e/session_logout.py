@@ -170,6 +170,45 @@ def test_two_tab_logout_relogin(play, context, server, artifacts, report, locale
     expect(page.get_by_text(auth["usernameRequired"], exact=True)).to_be_visible()
     expect(page.get_by_text(auth["passwordRequired"], exact=True)).to_be_visible()
     check(not login_requests, "empty login submitted a request")
+    # 1.15: the keyboard order and the layout this form is used in. Tab is required to reach both
+    # fields in reading order with no stop skipped and no hidden control in between, Enter in the
+    # username field must not submit before a password exists, and at 1440x900 the fields and the
+    # submit button are required to be on screen and not overlapping.
+    page.set_viewport_size({"width": 1440, "height": 900})
+    username.focus()
+    expect(username).to_be_focused()
+    page.keyboard.press("Tab")
+    expect(secret).to_be_focused()
+    page.keyboard.press("Shift+Tab")
+    expect(username).to_be_focused()
+    before_tab_enter = len(login_requests)
+    username.fill("admin")
+    button(page, auth["submit"]).click()
+    check(len(login_requests) == before_tab_enter,
+          "clicking submit on an incomplete form sent a request")
+    page.keyboard.press("Enter")
+    check(len(login_requests) == before_tab_enter,
+          "Enter in the username field submitted an incomplete form")
+    expect(page.get_by_text(auth["passwordRequired"], exact=True)).to_be_visible()
+    username.fill("")
+    for target in (username, secret, button(page, auth["submit"])):
+        box = target.bounding_box()
+        check(box is not None and box["width"] > 0 and box["height"] > 0,
+              f"a control is not rendered at 1440x900: {box}")
+        check(box["y"] >= 0 and box["y"] + box["height"] <= 900,
+              f"a control falls outside the 1440x900 viewport: {box}")
+    user_box, secret_box, submit_box = (username.bounding_box(), secret.bounding_box(),
+                                        button(page, auth["submit"]).bounding_box())
+    check(user_box["y"] + user_box["height"] <= secret_box["y"] + 1,
+          "the two fields overlap")
+    check(secret_box["y"] + secret_box["height"] <= submit_box["y"] + 1,
+          "the submit button overlaps the field above it")
+    report["login_keyboard_and_layout"] = {"tab_order": ["username", "password"],
+        "enter_incomplete_no_post": True, "viewport": "1440x900",
+        "controls_visible": True, "overlap": False,
+        "boxes": {"username_y": round(user_box["y"]), "password_y": round(secret_box["y"]),
+                  "submit_y": round(submit_box["y"])}}
+
     # 1.8: a whitespace-only value is not a value. Both fields carry whitespace: true, so spaces
     # alone must be refused in the form and must not reach the server, while a real value in the
     # other field is kept.

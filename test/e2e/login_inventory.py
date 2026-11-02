@@ -24,6 +24,26 @@ def exercise_language_switcher(page, auth, locale, switch_label):
     trigger = page.locator(".auth-language-switcher button")
     expect(trigger).to_have_count(1)
     expect(trigger).to_have_attribute("aria-label", re.compile(r".+"))
+    # 1.11: dismissing the chooser leaves everything as it was. The popup is opened, Escape is
+    # pressed, and the popup is required to close with the current language unchanged and no
+    # request on the wire - a dismiss is not a choice.
+    before_dismiss = trigger.inner_text().strip()
+    mutations = []
+    def watch_dismiss(request):
+        if request.method in {"POST", "PUT", "PATCH", "DELETE"}:
+            mutations.append(request.url)
+    page.on("request", watch_dismiss)
+    try:
+        trigger.click()
+        opened = page.locator(".ant-dropdown:visible").last
+        expect(opened.get_by_role("menuitem").first).to_be_visible()
+        page.keyboard.press("Escape")
+        expect(page.locator(".ant-dropdown:visible")).to_have_count(0, timeout=8000)
+        check(trigger.inner_text().strip() == before_dismiss,
+              "dismissing the chooser changed the language")
+        check(mutations == [], f"dismissing the chooser sent a request: {mutations}")
+    finally:
+        page.remove_listener("request", watch_dismiss)
     seen = {}
     for target, compact, native in (("en", "EN", "English"), ("zh", "\u4e2d\u6587", "\u7b80\u4f53\u4e2d\u6587")):
         trigger.click()
@@ -52,7 +72,8 @@ def exercise_language_switcher(page, auth, locale, switch_label):
         menu.get_by_role("menuitem", name=native, exact=True).click()
         expect(page.locator(".auth-language-switcher button")).to_have_text(
             re.compile(re.escape(wanted)), timeout=12000)
-    return {"selected": seen, "persisted_after_reload": True, "page_errors": []}
+    return {"selected": seen, "persisted_after_reload": True, "page_errors": [],
+            "dismissed_without_choice": {"language_unchanged": True, "requests": 0}}
 
 
 def exercise_login_inventory(page, auth):
