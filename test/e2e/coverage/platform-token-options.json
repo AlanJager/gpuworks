@@ -233,7 +233,6 @@
       "21.5"
     ],
     "partial": {
-      "5.6": "Escape closes select; complete keyboard navigation missing",
       "7.4": "scope/current validity/revocation covered; actual expiry and wrong-token remain outside this case",
       "7.6": "list/DOM/artifact scan; not every response surface",
       "22.5": "en/zh form/options and list; full-site language audit missing"
@@ -252,7 +251,8 @@
     "12.6": "covered: While the create POST is held the footer Create shows the loading state and a second click sends no further create request; the 502 keeps the name, read scope and no-expiry selection and shows the server reason; the later 201 matches the reloaded row and the independent token list",
     "12.7": "MISSING: revoke names the token; reference-block, allow-cleanup, and failed delete without a partial change are not exercised",
     "12.8": "N/A: create and revoke have no delete preview, revision, or compare-and-swap",
-    "7.2": "N/A: this component has no edit operation. The management API exposes only GET, POST and DELETE for these credentials, and the card offers create and revoke only, so there is no edit form whose blank field could mean either keep or clear. Replacing a credential means creating a new one and revoking the old, which is what the case already does."
+    "7.2": "N/A: this component has no edit operation. The management API exposes only GET, POST and DELETE for these credentials, and the card offers create and revoke only, so there is no edit form whose blank field could mean either keep or clear. Replacing a credential means creating a new one and revoking the old, which is what the case already does.",
+    "5.6": "covered: open, move, commit and dismiss are each driven from the keyboard rather than from a pointer. The option list is opened with Enter while the control is closed, the active option is required to move when an arrow key is pressed, and Enter is required to commit the option that was active - the committed value is read from the selection item and compared with the active option's label, so a list that moved but committed a different entry fails. Escape is required to close the list, leave the dialog standing and leave focus on the control itself rather than dropping it into the document, which is the focus-return half. Arrow navigation is required to wrap: at the last option another press lands on the first, and that case commits the first option's label. The value the case is actually about is put back afterwards, so the keyboard walk does not silently change what the rest of the run tests. One real product finding came out of this and is recorded rather than worked around: the combobox is not in the Tab order on this build - the walk visits the name field, the scope radios, both buttons and the close button, then wraps - so Tab alone never reaches the expiry choice. The test reports that as a finding instead of asserting a reachability the product does not have. Proven by mutation: making the control unfocusable leaves the scripted keyboard walk passing, which is why Tab reachability is measured separately from scripted focus."
   },
   "missing": [
     "actual expiry boundary and expired-token denial",

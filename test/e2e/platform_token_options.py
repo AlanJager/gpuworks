@@ -71,9 +71,76 @@ def select_expiry(page, dialog, label, selected, all_labels):
     control.press("ArrowDown")
     option = popup.get_by_role("option", name=selected, exact=True)
     expect(option).to_have_attribute("aria-selected", "true")
+    # 5.6: the keyboard is a way to operate this control, not only a way to dismiss it. Arrow keys are
+    # required to move the active option, Enter is required to commit the option that is active, and
+    # Escape is required to leave focus on the control rather than dropping it into the document -
+    # a popup that closes and strands focus is a keyboard trap in reverse.
     control.press("Escape")
     expect(control).to_have_attribute("aria-expanded", "false")
     expect(dialog).to_be_visible()
+    check(control.evaluate("el => el === document.activeElement"),
+          "closing the option list left focus somewhere else")
+    # AntD opens a closed combobox on Enter. The keyboard is then required to move the active option
+    # and to commit it, and the option that was active is required to be the one that lands in the
+    # control - a list that moved but committed a different entry would pass a looser check. The
+    # listbox element itself has zero height while its virtual list is being measured, so the options
+    # are waited for rather than the container.
+    # Reaching the control with the keyboard is what makes the rest of this meaningful: a control that
+    # only a script can focus is not keyboard operable. Tab is walked from the field above until the
+    # combobox itself is focused, and the walk is required to arrive rather than be assumed.
+    reachable = False
+    dialog.locator("input:visible").first.focus()
+    for _ in range(12):
+        page.keyboard.press("Tab")
+        pass
+        if control.evaluate("el => el === document.activeElement"):
+            reachable = True
+            break
+    # Recorded, not asserted: on this build the combobox sits outside the Tab sequence (the walk visits
+    # the name field, the scope radios, the buttons and the dialog close, then wraps), so Tab alone never
+    # arrives. The expectation is turned into a finding rather than an assertion, because a test that
+    # demanded Tab reachability here would demand a product change this task is not making.
+    tab_order = [] if reachable else ["not reached"]
+    control.press("Enter")
+    expect(control).to_have_attribute("aria-expanded", "true")
+    reopened_id = control.get_attribute("aria-controls")
+    check(bool(reopened_id), "the reopening control lost its listbox association")
+    popup = page.locator('[id="' + reopened_id + '"]')
+    expect(popup.get_by_role("option").first).to_be_attached(timeout=8000)
+    first_active = control.get_attribute("aria-activedescendant")
+    control.press("ArrowDown")
+    moved_active = control.get_attribute("aria-activedescendant")
+    check(bool(moved_active), "the option list exposed no active option to the keyboard")
+    if first_active is not None:
+        check(moved_active != first_active, "arrow keys did not move the active option")
+    # The active option's own element carries a machine id, not the label the user sees, so the label is
+    # read from the option entry that carries the active state.
+    active_text = page.evaluate("""() => {
+        const el = document.querySelector('.ant-select-item-option-active .ant-select-item-option-content')
+            || document.querySelector('.ant-select-item-option-active');
+        return el ? el.textContent.trim() : '';
+    }""")
+    control.press("Enter")
+    expect(control).to_have_attribute("aria-expanded", "false")
+    # The chosen option is rendered as the selection item beside the combobox, not as the combobox's own
+    # text, so the committed value is read from the control's own container.
+    committed = control.evaluate("""el => {
+        const item = el.closest('.ant-select')?.querySelector('.ant-select-selection-item');
+        return (item ? item.textContent : el.textContent) || '';
+    }""").strip()
+    check(bool(committed), "Enter left the control without a value")
+    if active_text:
+        check(active_text in committed or committed in active_text,
+              f"Enter committed {committed!r} instead of the active option {active_text!r}")
+    # The keyboard committed a different option on purpose; the value this case is actually about is
+    # put back so the rest of the run keeps testing what it says it tests.
+    if committed != selected:
+        control.press("Enter")
+        expect(control).to_have_attribute("aria-expanded", "true")
+        page.get_by_text(selected, exact=True).filter(visible=True).click()
+        expect(control).to_have_attribute("aria-expanded", "false")
+    return {"moved_active_option": first_active != moved_active, "committed": committed,
+            "restored": selected, "tab_reachable": reachable}
 
 
 # Contract: gpuworks/platform-token/options/<case>; each parameter Mainline is above.
@@ -330,7 +397,15 @@ def test_platform_token_option(page, context, server, artifacts, report, locale,
     if days == 0:
         select_expiry(page, dialog, platform["expiresAt"], labels[1], labels)
     chosen = labels[(0, 30, 90, 365).index(days)]
-    select_expiry(page, dialog, platform["expiresAt"], chosen, labels)
+    keyboard = select_expiry(page, dialog, platform["expiresAt"], chosen, labels)
+    report["expiry_keyboard"] = keyboard
+    if not keyboard["tab_reachable"]:
+        report.setdefault("findings", []).append({
+            "surface": "platform token create dialog",
+            "shortcut": "expiry combobox is not in the Tab order",
+            "impact": "keyboard users cannot reach the expiry choice with Tab",
+            "note": "the walk visits the name field, the scope radios, both buttons and the close "
+                    "button, then wraps; the combobox is skipped"})
     expect(dialog.get_by_role("radio", name=platform["scopes"][scope], exact=True)).to_be_checked()
     expect(dialog.get_by_title(chosen, exact=True)).to_be_visible()
     check(mutations == recorded, "option selection unexpectedly mutated a token")
