@@ -75,7 +75,10 @@ export function RegisterModal({ open, onClose, onDone }: { open: boolean; onClos
     }
   };
   const submit = async () => {
-    const v = await form.validateFields();
+    // A rejected validation leaves the dialog open on the fields it marked; it is not a failed
+    // registration, so it returns without a message and without a request.
+    const v = await form.validateFields().catch(() => null);
+    if (!v) return;
     if (v.source === "local" && !preview) { await previewLocal(); return; }
     if (v.source === "url" && !urlPreview) { await previewURL(); return; }
     setSubmitting(true);
