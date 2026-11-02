@@ -86,6 +86,9 @@ specs:
   - ascend_attn
   - --dtype
   - bfloat16
+  # NPU graph capture stalled in the earlier BF16 run. The eager path
+  # completed startup plus text and real-image chat on four 910C dies.
+  - --disable-cuda-graph
   - --reasoning-parser
   - qwen3
   - --tool-call-parser
@@ -631,7 +634,7 @@ specs:
   display_profile: general
   scenario: balanced
   engine: vllm
-  image: gpuworks/gpuworks-runner:cann9.1-a3-vllm0.26.0rc1-r2
+  image: gpuworks/gpuworks-runner:cann9.2-a3-vllm0.30.0rc2-r1
   weights:
     quantization: int8
     sources:
@@ -666,6 +669,9 @@ specs:
   - qwen3_coder
   - --reasoning-parser
   - qwen3
+  # vLLM 0.30 NPU graph compilation did not reach health within the
+  # validation window; eager mode completed startup and inference on 910C.
+  - --enforce-eager
   - --mm-encoder-tp-mode
   - data
   - --speculative-config

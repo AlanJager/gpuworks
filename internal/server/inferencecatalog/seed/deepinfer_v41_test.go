@@ -40,7 +40,7 @@ func TestDeepInferMetricsMapRealExpositionFamilies(t *testing.T) {
 		exposed[name] = true
 	}
 	for _, name := range []string{deepinferSingleNodeSpec, deepinferMultiNodeSpec} {
-		_, spec := ppuSpec(t, deepinferV41Model, name)
+		_, spec := catalogSpec(t, deepinferV41Model, name)
 		if spec.API == nil || spec.API.Metrics == nil || len(spec.API.Metrics.Map) == 0 {
 			t.Fatalf("%s declares no metrics", name)
 		}
@@ -70,7 +70,7 @@ func TestDeepInferMetricsMapRealExpositionFamilies(t *testing.T) {
 // only references the rendezvous address a multi-node launch provides.
 func TestDeepInferSpecsPlaceOnFourOrEightBlackwellGPUs(t *testing.T) {
 	for _, name := range []string{deepinferSingleNodeSpec, deepinferMultiNodeSpec} {
-		_, spec := ppuSpec(t, deepinferV41Model, name)
+		_, spec := catalogSpec(t, deepinferV41Model, name)
 		for count, wantAccept := range map[int]bool{2: false, 4: true, 8: true, 16: false} {
 			memories, names := make([]float64, count), make([]string, count)
 			for index := range memories {
@@ -97,14 +97,14 @@ func TestDeepInferSpecsPlaceOnFourOrEightBlackwellGPUs(t *testing.T) {
 			t.Fatalf("%s references MASTER_ADDR=%v", name, multi)
 		}
 	}
-	_, single := ppuSpec(t, deepinferV41Model, deepinferSingleNodeSpec)
+	_, single := catalogSpec(t, deepinferV41Model, deepinferSingleNodeSpec)
 	if single.ShmBytes != deepinferSingleNodeShmByte {
 		t.Fatalf("single-node shm_bytes = %d, want %d", single.ShmBytes, deepinferSingleNodeShmByte)
 	}
 	// The single-node spec pins its Engram tables with cudaHostRegister, so its
 	// container needs an unlimited memlock; a multi-node launch gets one from
 	// the host-RDMA network it requires.
-	_, multi := ppuSpec(t, deepinferV41Model, deepinferMultiNodeSpec)
+	_, multi := catalogSpec(t, deepinferV41Model, deepinferMultiNodeSpec)
 	if !single.MemlockUnlimited || multi.MemlockUnlimited {
 		t.Fatalf("memlock_unlimited single=%v multi=%v, want true/false", single.MemlockUnlimited, multi.MemlockUnlimited)
 	}

@@ -73,6 +73,9 @@ specs:
   - ascend
   - --dtype
   - bfloat16
+  # BF16 graph capture did not reach healthy; the eager path completed
+  # startup and a real chat request on four 910C dies.
+  - --disable-cuda-graph
   placement:
     language: starlark
     resolver: "def resolve(gpu):\n    if gpu.count < 4: return reject(\"at least 4\

@@ -115,4 +115,4 @@ specs:
     - type: openai.chat
       endpoint: /v1/chat/completions
       mode: stream
-input_modalities: [text]
+input_modalities: [text, image]

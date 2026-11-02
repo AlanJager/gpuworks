@@ -79,6 +79,9 @@ specs:
   - ascend_attn
   - --dtype
   - bfloat16
+  # NPU graph capture stalled in the measured run; eager mode completed text
+  # and real-image chat at TP4 on four 910C dies.
+  - --disable-cuda-graph
   placement:
     language: starlark
     resolver: "def resolve(gpu):\n    if gpu.count < 4: return reject(\"at least 4\

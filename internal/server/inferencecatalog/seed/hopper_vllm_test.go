@@ -35,7 +35,7 @@ var hopperVLLMProfiles = []struct {
 func TestHopperVLLMProfilesUseTheVerifiedRunnerAndMatchHopperCards(t *testing.T) {
 	for _, profile := range hopperVLLMProfiles {
 		t.Run(profile.model+"/"+profile.spec, func(t *testing.T) {
-			_, spec := ppuSpec(t, profile.model, profile.spec)
+			_, spec := catalogSpec(t, profile.model, profile.spec)
 			if spec.Engine != "vllm" || spec.Image != hopperVLLMImage || spec.Weights.Quantization != profile.quantization {
 				t.Fatalf("runtime = %s / %s / %s", spec.Engine, spec.Image, spec.Weights.Quantization)
 			}
@@ -75,7 +75,7 @@ func TestHopperVLLMProfilesUseTheVerifiedRunnerAndMatchHopperCards(t *testing.T)
 func TestHopperVLLMProfilesKeepTheirLaunchContract(t *testing.T) {
 	for _, profile := range hopperVLLMProfiles {
 		t.Run(profile.model+"/"+profile.spec, func(t *testing.T) {
-			_, spec := ppuSpec(t, profile.model, profile.spec)
+			_, spec := catalogSpec(t, profile.model, profile.spec)
 			has := func(flag string) bool { return slices.Contains(spec.Args, flag) }
 			value := func(flag string) string {
 				if i := slices.Index(spec.Args, flag); i >= 0 && i+1 < len(spec.Args) {
@@ -115,7 +115,7 @@ func TestHopperVLLMProfilesAdmitOnlyEightCardsOfTheirCapacity(t *testing.T) {
 	t.Cleanup(func() { _ = st.Close() })
 	for _, profile := range hopperVLLMProfiles {
 		t.Run(profile.model+"/"+profile.spec, func(t *testing.T) {
-			model, spec := ppuSpec(t, profile.model, profile.spec)
+			model, spec := catalogSpec(t, profile.model, profile.spec)
 			meta, err := json.Marshal(model.ModelConfig)
 			if err != nil {
 				t.Fatal(err)

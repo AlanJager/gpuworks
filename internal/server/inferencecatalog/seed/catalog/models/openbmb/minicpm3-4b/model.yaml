@@ -73,6 +73,9 @@ specs:
   - --attention-backend
   - ascend
   - --trust-remote-code
+  # MiniCPM3's graph capture aborts the SGLang child process on 910C.
+  # The eager path completed model startup and a real chat request.
+  - --disable-cuda-graph
   placement:
     language: starlark
     resolver: "def resolve(gpu):\n    if gpu.min_memory_gib < 32: return reject(\"\

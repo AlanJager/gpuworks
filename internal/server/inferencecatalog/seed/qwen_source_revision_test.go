@@ -11,7 +11,7 @@ import (
 )
 
 func TestQwen3PPUWeightSourcesUseProviderScopedRevisions(t *testing.T) {
-	_, spec := ppuSpec(t, "qwen/qwen3-0.6b", "bf16-vllm-ppu-c1899de2")
+	_, spec := catalogSpec(t, "qwen/qwen3-0.6b", "bf16-vllm-ppu-c1899de2")
 	const hfRevision = "c1899de289a04d12100db370d81485cdf75e47ca"
 	const msRevision = "09b42cad3d112e832108974449ccb5e8e0f5b5d1"
 	// The public ModelScope endpoint returns HTTP 404 / Code 10990101004 for

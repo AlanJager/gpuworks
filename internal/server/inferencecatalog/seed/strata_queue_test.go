@@ -12,7 +12,7 @@ import (
 )
 
 func TestStrataQueueAssetKeepsOriginalModelArguments(t *testing.T) {
-	_, spec := ppuSpec(t, "ista-daslab/qwen3.8-flash-next-strata", "iq2xs-strata-nvidia-single-gpu")
+	_, spec := catalogSpec(t, "ista-daslab/qwen3.8-flash-next-strata", "iq2xs-strata-nvidia-single-gpu")
 	if len(spec.Assets) != 1 || spec.Assets[0].UnpackTo != "/opt/gpuworks/strata-queue" {
 		t.Fatalf("queue runtime assets = %+v", spec.Assets)
 	}

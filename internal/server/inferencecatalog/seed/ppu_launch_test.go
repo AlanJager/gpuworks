@@ -41,7 +41,7 @@ var ppuFixedTopologyProfiles = []ppuTopologyExpectation{
 	{model: "deepseek-ai/deepseek-v4-flash", spec: "fp8-vllm-ppu-pp4-60d8d707", count: 4, reject: []int{1, 2, 8}, tp: 1, pp: 4, ppInArg: true},
 }
 
-func ppuSpec(t *testing.T, modelID, specName string) (inferencecatalog.InferenceModel, inferencecatalog.InferenceSpec) {
+func catalogSpec(t *testing.T, modelID, specName string) (inferencecatalog.InferenceModel, inferencecatalog.InferenceSpec) {
 	t.Helper()
 	catalog, err := Catalog()
 	if err != nil {
@@ -84,7 +84,7 @@ func ppuResolve(t *testing.T, spec inferencecatalog.InferenceSpec, count int) pl
 func TestPPUFixedTopologyProfilesAcceptOnlyTheirProvedCardCount(t *testing.T) {
 	for _, expected := range ppuFixedTopologyProfiles {
 		t.Run(expected.model, func(t *testing.T) {
-			_, spec := ppuSpec(t, expected.model, expected.spec)
+			_, spec := catalogSpec(t, expected.model, expected.spec)
 			accepted := ppuResolve(t, spec, expected.count)
 			if accepted.Reason != "" {
 				t.Fatalf("%s rejects its proved %d-GPU topology: %s", spec.Name, expected.count, accepted.Reason)
@@ -111,7 +111,7 @@ func TestPPUFixedTopologyProfilesAcceptOnlyTheirProvedCardCount(t *testing.T) {
 func TestPPUFixedTopologyProfilesLaunchTheProvedTopology(t *testing.T) {
 	for _, expected := range ppuFixedTopologyProfiles {
 		t.Run(expected.model, func(t *testing.T) {
-			_, spec := ppuSpec(t, expected.model, expected.spec)
+			_, spec := catalogSpec(t, expected.model, expected.spec)
 			accepted := ppuResolve(t, spec, expected.count)
 			engine, err := deploy.SelectEngine(spec.Engine)
 			if err != nil {
@@ -164,7 +164,7 @@ func TestPPUFixedTopologyProfilesLaunchTheProvedTopology(t *testing.T) {
 // would publish a PP4-proved checkpoint as a single-stage launch: the launch
 // has to stop rather than quietly consume fewer GPUs than placement assigned.
 func TestPPUPipelineProfileRefusesToLaunchWithoutPipelineParallelism(t *testing.T) {
-	_, spec := ppuSpec(t, "deepseek-ai/deepseek-v4-flash", "fp8-vllm-ppu-pp4-60d8d707")
+	_, spec := catalogSpec(t, "deepseek-ai/deepseek-v4-flash", "fp8-vllm-ppu-pp4-60d8d707")
 	if !containsArgumentPair(spec.Args, "--tensor-parallel-size", "${TP_SIZE}") ||
 		!containsArgumentPair(spec.Args, "--pipeline-parallel-size", "${PP_SIZE}") {
 		t.Fatalf("pipeline profile must reference both topology placeholders: %v", spec.Args)
@@ -208,7 +208,7 @@ func TestPPUPipelineProfileRefusesToLaunchWithoutPipelineParallelism(t *testing.
 // describe eight GPUs while the profile's own argv still describes four. That
 // has to be refused rather than silently sized for the wrong world.
 func TestPPUPipelineProfileRejectsAMultiNodeLaunch(t *testing.T) {
-	_, spec := ppuSpec(t, "deepseek-ai/deepseek-v4-flash", "fp8-vllm-ppu-pp4-60d8d707")
+	_, spec := catalogSpec(t, "deepseek-ai/deepseek-v4-flash", "fp8-vllm-ppu-pp4-60d8d707")
 	accepted := ppuResolve(t, spec, 4)
 	engine, err := deploy.SelectEngine(spec.Engine)
 	if err != nil {

@@ -185,6 +185,69 @@ specs:
     - type: openai.chat
       endpoint: /v1/chat/completions
       mode: stream
+# Measured on two 910C dies with vLLM Ascend 0.26.0rc1 on 2026-11-01. The
+# unquantized weights fit at TP2; text and one-image chat both completed. Keep
+# this separate from the W8A8 profile because it uses different weights and
+# does not rely on the quantized MTP path.
+- name: bf16-vllm-ascend-a3-1d4bf0f2
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cann9.1-a3-vllm0.26.0rc1-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen3.8-27B
+        revision: 1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0
+    - modelscope:
+        repo_id: Qwen/Qwen3.8-27B
+        revision: e823e888ae179eb3be02c1a48899c4f828371376
+  weight_bytes: 55586114768
+  gpus:
+    vendor: ascend
+    name: (^|[^A-Za-z0-9])910C[A-Za-z0-9]*([^A-Za-z0-9]|$)
+    display_target: ascend
+  args:
+  - --dtype
+  - bfloat16
+  - --max-model-len
+  - '131072'
+  - --max-num-seqs
+  - '32'
+  - --max-num-batched-tokens
+  - '16384'
+  - --trust-remote-code
+  - --enable-prefix-caching
+  - --gpu-memory-utilization
+  - '0.85'
+  - --mm-processor-cache-gb
+  - '0'
+  - --mm-processor-cache-type
+  - shm
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - qwen3_coder
+  - --reasoning-parser
+  - qwen3
+  - --mm-encoder-tp-mode
+  - data
+  - --compilation-config
+  - '{"cudagraph_mode":"FULL_DECODE_ONLY"}'
+  - --additional-config
+  - '{"enable_cpu_binding":true}'
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    if gpu.count < 2: return reject(\"at\
+      \ least 2 GPUs are required\")\n    if gpu.min_memory_gib < 64: return reject(\"\
+      each GPU requires at least 64 GiB\")\n    return {\"GPU_COUNT\": gpu.count,\
+      \ \"TP_SIZE\": gpu.count, \"SP_DEGREE\": 1}\n"
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
 - name: int8-vllm-ascend-a3-0a447e8a
   display_profile: general
   scenario: balanced

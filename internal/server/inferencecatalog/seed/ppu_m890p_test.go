@@ -26,7 +26,7 @@ var m890pModelSources = map[string]string{
 func TestM890PProfilesKeepDistinctWeightSourcesAndRuntime(t *testing.T) {
 	for modelID, repoID := range m890pModelSources {
 		t.Run(modelID, func(t *testing.T) {
-			_, spec := ppuSpec(t, modelID, m890pSpecName)
+			_, spec := catalogSpec(t, modelID, m890pSpecName)
 			if spec.Engine != "sglang" || spec.Image != m890pASLLMImage {
 				t.Fatalf("runtime = %s / %s", spec.Engine, spec.Image)
 			}
@@ -64,7 +64,7 @@ func TestM890PProfilesKeepDistinctWeightSourcesAndRuntime(t *testing.T) {
 func TestM890PProfilesMatchOnlyTheDeclaredCardFamily(t *testing.T) {
 	for modelID := range m890pModelSources {
 		t.Run(modelID, func(t *testing.T) {
-			_, spec := ppuSpec(t, modelID, m890pSpecName)
+			_, spec := catalogSpec(t, modelID, m890pSpecName)
 			predicate := chipmatch.Predicate{Vendor: spec.GPUs.Vendor, Name: spec.GPUs.Name, CC: spec.GPUs.CC}
 			for _, test := range []struct {
 				name, vendor string
@@ -91,7 +91,7 @@ func TestM890PProfilesMatchOnlyTheDeclaredCardFamily(t *testing.T) {
 func TestM890PProfilesResolveEightCardsAndLaunch256KOnce(t *testing.T) {
 	for modelID := range m890pModelSources {
 		t.Run(modelID, func(t *testing.T) {
-			_, spec := ppuSpec(t, modelID, m890pSpecName)
+			_, spec := catalogSpec(t, modelID, m890pSpecName)
 			if spec.Placement == nil {
 				t.Fatal("missing placement contract")
 			}

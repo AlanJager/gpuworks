@@ -74,7 +74,7 @@ var ppuWorkaroundProfiles = []ppuWorkaroundProfile{
 func TestPPUProfilesKeepTheirEvidenceBoundArguments(t *testing.T) {
 	for _, expected := range ppuWorkaroundProfiles {
 		t.Run(expected.model, func(t *testing.T) {
-			_, spec := ppuSpec(t, expected.model, expected.spec)
+			_, spec := catalogSpec(t, expected.model, expected.spec)
 			for _, pair := range expected.flags {
 				if !containsArgumentPair(spec.Args, pair[0], pair[1]) {
 					t.Errorf("%s no longer passes %s %s: %v", spec.Name, pair[0], pair[1], spec.Args)
@@ -140,7 +140,7 @@ func TestVisionModelsDeclareImageInputsAndAChatContract(t *testing.T) {
 		{"qwen/qwen3-vl-32b-instruct", "fp8-sglang-ppu-4bf2c2f3"},
 	} {
 		t.Run(expected.model, func(t *testing.T) {
-			model, spec := ppuSpec(t, expected.model, expected.spec)
+			model, spec := catalogSpec(t, expected.model, expected.spec)
 			if !slices.Contains(model.InputModalities, "image") {
 				t.Errorf("%s does not declare image input: %v", model.ModelID, model.InputModalities)
 			}

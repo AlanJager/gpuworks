@@ -34,6 +34,10 @@ specs:
   - npu
   - --dtype
   - bfloat16
+  # This checkpoint declares top_k=0 in generation_config.json. SGLang rejects
+  # that value during sampling, so use its valid OpenAI defaults instead.
+  - --sampling-defaults
+  - openai
   - --trust-remote-code
   placement:
     language: starlark
@@ -73,6 +77,9 @@ specs:
   - npu
   - --dtype
   - bfloat16
+  # Same checkpoint-level top_k=0 compatibility fix as the 910B profile.
+  - --sampling-defaults
+  - openai
   - --trust-remote-code
   placement:
     language: starlark

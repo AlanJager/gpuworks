@@ -2110,8 +2110,10 @@ specs:
   - gemma4
   - --reasoning-parser
   - gemma4
+  # The vLLM Ascend 0.26 runner has no examples/ tree; the checkpoint ships
+  # its own template, as on the A3 profile.
   - --chat-template
-  - examples/tool_chat_template_gemma4.jinja
+  - /model/chat_template.jinja
   - --compilation-config
   - '{"cudagraph_mode":"FULL_DECODE_ONLY"}'
   placement:
@@ -2151,9 +2153,12 @@ specs:
   - --reasoning-parser
   - gemma4
   - --chat-template
-  - examples/tool_chat_template_gemma4.jinja
+  - /model/chat_template.jinja
   - --compilation-config
   - '{"cudagraph_mode":"FULL_DECODE_ONLY"}'
+  # Graph capture fails on A3. --enforce-eager overrides the cudagraph mode
+  # above; both flags are kept exactly as in the measured run.
+  - --enforce-eager
   placement:
     language: starlark
     resolver: "def resolve(gpu):\n    if gpu.count != 4: return reject(\"the published recipe runs four devices\")\n    if gpu.min_memory_gib < 32: return reject(\"each device requires at least 32 GiB\")\n    return {\"GPU_COUNT\": 4, \"TP_SIZE\": 4, \"SP_DEGREE\": 1}\n"

@@ -1,6 +1,6 @@
 # 昇腾支持矩阵
 
-更新日期：2026-10-25。这里把三件容易混淆的东西分开写：
+更新日期：2026-11-02。这里把三件容易混淆的东西分开写：
 
 - **外层 CANN**：节点或云市场租用镜像提供的 toolkit。自有裸机可能只有驱动，记为 `driver-only`，不等于没有容器 runtime。
 - **内层 CANN**：GPUWorks 启动的业务镜像内的 CANN 用户态二进制接口（userspace ABI）；它影响业务镜像能否运行，但不参与 `libvruntime.so` 资产选择。
@@ -33,13 +33,15 @@
 因此模板谓词和固定镜像必须描述同一芯片族。代际继承（[ADR 0009](../adr/0009-flat-spec-catalog.md)
 第 10 条）仍然保留，但后继卡使用独立档位和自己的镜像，不再只扩大旧档谓词。
 
-- 当前目录有 **80 个代际继承 A3 档**，共有 **87 个谓词匹配 910C 的档**。契约测试逐档检查
+- 当前目录有 **88 个代际继承 A3 档**，共有 **111 个谓词匹配 910C 的档**。契约测试逐档检查
   910B 原档与 A3 档的参数、权重和镜像关系，以及 910C 档能否解析到 A3 镜像。
   这些数字只是目录契约计数，**不是逐档真机通过数**；真机结论只按下表逐项记录。
 - 950 不套用这套继承：目前只有 `qwen/qwen3.8-27b` 的单卡 950PR 档使用对应 950 镜像，
   依据 2026-10-07 的真机测量；没有 950DT 实测档。
 - MiniMax-H3 的 SGLang diffusion 仍受 CUDA full-loop denoise 限制，只声明 910B4，不声称
-  支持 910C。Gemma-3-4B-IT 的 SGLang 档也因 health/warmup 持续失败而撤回了 910C 声明。
+  支持 910C。Gemma-3-4B-IT 和 Gemma-3-27B-IT 的 A3 SGLang 档使用
+  `--disable-cuda-graph` 绕过 NPU graph capture 卡死；4B 另有可用的 A3 vLLM 档。
+  两种尺寸都已完成文本和真实图像 chat。
 
 ### 前沿模型目录与真机状态
 
@@ -48,15 +50,44 @@
 | 模型 | 当前 Ascend 目录 | 910C 实测结论与边界 |
 |---|---|---|
 | GLM-5.3（非 Flash） | **无 Ascend 档** | 上游虽有 A3 配方，但尚缺本档真机依据，因此未发布 A3 spec |
-| GLM-5.3-Flash | A3 TP16/EP16、W8A8、INT8 KV、1M | 原生 Docker 的 health、`/v1/models` 和真实 chat 已通过；runveil/PRoot 未通过 |
+| GLM-5.3-Flash | A3 TP16/EP16、W8A8、INT8 KV、1M；标准档及 graph-16、graph-8、DFlash16 自定义档 | 原生 Docker 的 health、`/v1/models` 和真实 chat 已通过；三个自定义档也分别进入 running 并返回 chat HTTP 200；runveil/PRoot 未通过 |
 | DeepSeek-V4.1-Flash | A3 DP4 × TP4、W8A8、150K | 原生 Docker 的 health、模型发现和真实 chat 已通过 |
 | DeepSeek-V4.1-Flash-1017 | 独立 1017 W8A8 权重，A3 DP4 × TP4、150K | 原生 Docker 的 health、模型发现和真实 chat 已通过；不与原版共用权重快照 |
 | DeepSeek-V4-Flash-0731 | A3 DP4 × TP4、W8A8 + DSpark、1M | 原生 Docker 的 health、1M `/v1/models` 和真实 chat 已通过 |
 | MiniMax-M3 | A3 DP4 × TP4、133K | 原生 Docker 的 16/16 worker、health 和真实 chat 已通过 |
 | Qwen3.5-397B-A17B | A3 TP16/EP16、W8A8 + MTP、133K，eager | 原生 Docker 的 health、`/v1/models` 和真实 chat 已通过；eager 避开当前缺失的 `causal_conv1d_update_npu` graph 路径 |
 | Qwen3.8-Flash-Next | 实验性 A3 TP8、W8A8-MTP、135168 上下文 | Docker 的 health、`/v1/models`、真实 chat 和自动选卡已通过 |
-| Qwen3.8-27B | 910B 档与继承的 A3 档 | 两台 910C 的 TP2 真机请求已通过，其中 `910c_k8s` 使用 Docker |
+| Qwen3.8-27B | 910B 档；继承的 W8A8 A3 档；实测 BF16 A3 档 | W8A8 TP2 的文本请求已通过；BF16 TP2 的文本和真实图像请求均返回 HTTP 200。两者都使用原生 Docker；这只是接口与多模态路径验证，不是输出质量评测 |
+| Qwen3.6-35B-A3B-W8A8 | A3 TP2 W8A8；vLLM 0.30 eager 与 SGLang 档 | vLLM 0.26 在 KV cache 初始化时缺少 `linear_attn`；改用 runner vLLM 0.30 并关闭 graph 后，runner 启动和精确复述 chat 均通过。SGLang 档也已通过 |
+| QwQ-32B-W8A8 | 原 A3 SGLang 档；A3 TP2 vLLM 0.30 eager 档 | 原 SGLang runner 缺少 `quant_linear` 关键字；通过模板内幂等兼容补丁后 TP2 启动、graph capture、真实 chat 均通过。新增 vLLM 档也精确返回 `QwQ32B-VLLM-A3-910C-ok` |
+| Qwen3-14B-GGUF | A3 TP2 SGLang，显式 Q4_K_M，eager | health、权重加载、KV cache 和 chat HTTP 200 均通过；固定复述提示仍在 64 至 96 token 预算内被推理文本占满，因此只记为引擎和接口通过 |
+| Qwen3-1.7B | 新增实测 A3 TP1 BF16 SGLang 档 | 权重先下载到 `.29` 再 peer-copy 到 `.30`；evaluate、runner 启动和精确复述 chat 均通过 |
+| Qwen3-4B | 新增实测 A3 TP1 BF16 SGLang 档 | evaluate、runner 启动和精确复述 chat 均通过；原目录只有 NVIDIA、PPU 和 Hygon 配方 |
+| PaddleOCR-VL-1.6 | 实测 A3 TP1 BF16 vLLM 档 | 640×220 的真实文字图经 OCR 请求返回了图中两行原文；模板在 runner `cann9.1-a3-vllm0.26.0rc1-r2` 上启动和请求均通过 |
+| Qwen2.5-Coder-0.5B-Instruct | 新增实测 A3 TP1 BF16 SGLang 档 | evaluate、runner 启动和精确复述 chat 均通过；原目录只有 NVIDIA、PPU 配方 |
+| Qwen2.5-Coder-1.5B-Instruct | 新增实测 A3 TP1 BF16 SGLang 档 | API 与 Chrome 模板页均完成 evaluate、部署、running 和 Playground 精确复述；原目录只有 PPU 配方 |
+| SmolLM2-360M-Instruct | 新增实测 A3 TP1 BF16 SGLang 档 | evaluate、runner 启动和 chat HTTP 200 均通过；小模型的固定复述提示遵循性较弱 |
+| GPT-OSS-20B | 新增实测 A3 TP2 BF16 vLLM 档 | API 与 Chrome 模板页均完成 evaluate、部署、running 和精确复述；eager 避开 NPU graph 路径，模板指向 runner 内已公证的 tiktoken 词表以支持离线 Harmony tokenizer |
+| Janus-Pro-7B | A3 TP1 BF16 SGLang | 文本 chat 精确复述通过；API 的 1×1 占位图和后续 Chrome 中真实的 640×220 PNG 都生成了 576 个 image tokens 并返回 HTTP 200，但模型没有给出有效视觉描述，因此只确认多模态链路，不作为视觉质量通过 |
+| Phi-4-multimodal-instruct | A3 TP1 BF16 SGLang | 模型声明补充 image modality 后，真实 448×448 图像 chat 返回 HTTP 200 与 `White` |
+| MiniCPM3-4B | A3 TP1 BF16 SGLang，eager | 原 graph 路径在子进程 SIGQUIT；`--disable-cuda-graph` 后 evaluate、runner 启动和文本 chat 均通过 |
+| MiniCPM-V-4.5-AWQ | A3 TP1 INT4 SGLang，eager | AWQ 配置显式跳过未量化的 `vpm` 和 `resampler` 后，权重、KV cache、health、精确文本复述和真实 448×448 图像请求均通过 |
+| Trinity-Mini | A3 TP2 BF16 SGLang，ModelScope 固定 revision | Hugging Face 文件列表超时；改走 ModelScope 完整快照后 evaluate、部署、running 和 chat 均通过，模型返回 `TrinityMini-910C-ok` |
+| Qwen3-Omni-30B-A3B-Instruct | A3 TP4 BF16 SGLang，eager | 原 graph 路径停在 health check；`--disable-cuda-graph` 后 runner 启动和文本 chat 返回 `Qwen3Omni30B-910C-ok` |
+| Qwen3-30B-A3B-Instruct-2507 | A3 TP4 BF16 SGLang，eager | 原 graph 路径未在观察窗口内 healthy；`--disable-cuda-graph` 后启动和精确复述 chat 均通过 |
+| Qwen3-TTS-12Hz-1.7B-CustomVoice | A3 TP1 BF16 vLLM-Omni r3 | 显式 deploy config 后生成 24 kHz 非静音 WAV；Qwen3-ASR 回环识别为 `GPUWorks 910c Speech Validation.` |
+| Qwen3-TTS-12Hz-0.6B-CustomVoice | 新增实测 A3 TP1 BF16 vLLM-Omni r3 | 生成 24 kHz 非静音 WAV；Qwen3-ASR 回环识别出句子主体 |
+| Ming-omni-tts-0.5B | A3 TP1 BF16 vLLM-Omni r3 | 生成 44.1 kHz 非静音 WAV；Qwen3-ASR 回环识别出句子主体 |
+| Gemma-4-31B-IT | A3 TP4 BF16 vLLM | 使用 checkpoint 自带 chat template 后 runner 启动成功，文本及真实图像 chat 返回 HTTP 200 |
+| Gemma-4-26B-A4B-IT | A3 TP4 BF16 vLLM，eager | 使用 checkpoint 自带 chat template 并关闭 graph capture 后，权重、KV cache 和 health 通过；文本精确返回 `Gemma426B-910C-ok`，真实 448×448 图像 chat 返回 `White` 和 258 个 image tokens |
+| Gemma-3-4B-IT / Gemma-3-27B-IT | 4B 的 A3 SGLang / vLLM；27B 的 A3 SGLang | TP2 的 4B 两种引擎和 TP4 的 27B eager 档都完成了文本及真实图像 chat；SGLang 模板显式关闭 NPU graph capture，避免启动卡死 |
 | Kimi-K3 | 无 | 上游最小配方为 4 台 A3；当前没有目录档 |
+
+Qwen3-VL-8B-Instruct 的 A3 vLLM 档把默认 `--max-model-len` 固定为 **196608**，这是
+单张 64 GiB 910C die 的实测安全值。TP2 及以上部署已经实测覆盖完整 262144 上下文，
+但 vLLM 的 `max_model_len` 是结构化的整型启动参数，模板不能按卡数动态替换；使用
+多卡时需要在部署的快速参数中把 `max_model_len` 显式改为 `262144`。默认值保留
+TP1 安全上限，不把 TP1 部署暴露给会超显存的 262144 默认值。
 
 DeepSeek-V4.1-Flash 原版与 1017 的 A3 档都显式声明 **512 GiB `/dev/shm`** 和
 `memlock_unlimited: true`，用于两张约 103 GiB 的 Engram 本地 DP 共享表；不要在模板
@@ -70,7 +101,8 @@ DeepSeek-V4.1-Flash 原版与 1017 的 A3 档都显式声明 **512 GiB `/dev/shm
 - **静默放行**：与 Engram 无关的手写命令（含变量、`&&`、管道、重定向、`["sh","-c",...]`），在任何厂商上都不检查也不提示。命令文本含 `engram` 且能静态解析时，按与引擎模式相同的规则推导共享内存与 memlock；含 `engram` 却无法解析时只提示，不推导。
 
 另有部分继承档完成了单项真机验证：GLM-4.6V-Flash、Qwen3.6-35B-A3B、
-Qwen3.5-122B-A10B、Qwen3-Next-80B-A3B-Instruct 的 health/chat，以及 Qwen3-TTS 的
+Qwen3.6-27B-W8A8、Qwen3.5-122B-A10B、Qwen3-Next-80B-A3B-Instruct 的 health/chat，
+Qwen3-8B EAGLE3 的 target+draft 启动/chat，以及 Qwen3-TTS 的
 A3 镜像选择、health 和语音请求。这些记录只覆盖对应档位，不能把其余继承档一并写成
 真机通过。
 

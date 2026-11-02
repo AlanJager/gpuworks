@@ -124,6 +124,47 @@ specs:
     - type: openai.chat
       endpoint: /v1/chat/completions
       mode: stream
+- name: bf16-vllm-ascend-a3-gptoss20
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cann9.2-a3-vllm0.30.0rc2-r1
+  args:
+  - --trust-remote-code
+  - --enforce-eager
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - openai
+  env:
+    PYTORCH_NPU_ALLOC_CONF: expandable_segments:True
+    TIKTOKEN_ENCODINGS_BASE: /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tiktoken-rs-0.9.1/assets
+    VLLM_USE_V2_MODEL_RUNNER: '1'
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    if gpu.count != 2: return reject(\"the validated\
+      \ recipe runs two devices\")\n    if gpu.min_memory_gib < 32: return reject(\"\
+      each device requires at least 32 GiB\")\n    return {\"GPU_COUNT\": 2, \"\
+      TP_SIZE\": 2, \"SP_DEGREE\": 1}\n"
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: lmsys/gpt-oss-20b-bf16
+        revision: 8de8d3dfa4da071323322a4a3049612203a3b1eb
+    - modelscope:
+        repo_id: lmsys/gpt-oss-20b-bf16
+        revision: 9eb1fede6200de47bc131cff5c831d5aad4d539a
+  weight_bytes: 22747190684
+  gpus:
+    vendor: ascend
+    name: (^|[^A-Za-z0-9])910C[A-Za-z0-9]*([^A-Za-z0-9]|$)
+    display_target: ascend
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
 - name: bf16-vllm-ppu-6cee5e81
   display_profile: general
   scenario: balanced

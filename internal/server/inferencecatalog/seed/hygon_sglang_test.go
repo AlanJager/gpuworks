@@ -74,7 +74,7 @@ func TestEveryHygonSGLangSpecPinsTheDTKPageSize(t *testing.T) {
 // green because the guard is inert: dropping the flag, or pinning another
 // value, is reported.
 func TestHygonSGLangPageSizeGuardRejectsAViolation(t *testing.T) {
-	_, spec := ppuSpec(t, "qwen/qwen3-4b", "bf16-sglang-hygon-7a8f6f7b")
+	_, spec := catalogSpec(t, "qwen/qwen3-4b", "bf16-sglang-hygon-7a8f6f7b")
 	if !isHygonSGLangSpec(spec) {
 		t.Fatal("the reference Hygon SGLang spec is not recognised as one")
 	}
@@ -96,7 +96,7 @@ func TestHygonSGLangPageSizeGuardRejectsAViolation(t *testing.T) {
 // through the argv assembly the deployment uses, so the assertion is on the
 // command line the container gets rather than on the YAML.
 func TestHygonSGLangSpecLaunchesWithThePageSizeOnce(t *testing.T) {
-	_, spec := ppuSpec(t, "qwen/qwen3-4b", "bf16-sglang-hygon-7a8f6f7b")
+	_, spec := catalogSpec(t, "qwen/qwen3-4b", "bf16-sglang-hygon-7a8f6f7b")
 	engine, err := deploy.SelectEngine(spec.Engine)
 	if err != nil {
 		t.Fatal(err)

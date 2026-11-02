@@ -84,6 +84,9 @@ specs:
   - --dtype
   - bfloat16
   - --enable-multimodal
+  # Graph capture stayed in health-check until timeout. The eager path
+  # completed startup and a real text chat request on four 910C dies.
+  - --disable-cuda-graph
   placement:
     language: starlark
     resolver: "def resolve(gpu):\n    if gpu.count < 4: return reject(\"at least 4\

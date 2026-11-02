@@ -166,6 +166,9 @@ specs:
   - glm45
   - --tool-call-parser
   - glm45
+  # NPU graph capture stalls across all eight ranks on the current A3 runner.
+  # The eager path completed a real-image chat request at TP8.
+  - --disable-cuda-graph
   placement:
     language: starlark
     resolver: "def resolve(gpu):\n    if gpu.count < 8: return reject(\"at least 8\

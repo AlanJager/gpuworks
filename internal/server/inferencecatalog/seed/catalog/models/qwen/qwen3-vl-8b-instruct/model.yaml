@@ -189,6 +189,12 @@ specs:
   - '128'
   - --max-num-batched-tokens
   - '16384'
+  # 262144 tokens leaves too little working memory for graph capture on one
+  # 64 GiB 910C die; 196608 passed text and real-image chat at TP1.
+  # The structured max_model_len field requires an integer, so TP2 users must
+  # override it to the measured full-context value through quick parameters.
+  - --max-model-len
+  - '196608'
   - --gpu-memory-utilization
   - '0.91'
   - --async-scheduling

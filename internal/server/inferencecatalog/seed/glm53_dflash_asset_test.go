@@ -13,7 +13,7 @@ import (
 
 // A recipe must not silently move to an image that its source overlay rejects.
 func TestGLM53DFlashAssetPinsItsRecipeImage(t *testing.T) {
-	_, spec := ppuSpec(t, "gpuworks/glm-5.3-flash-910c", "w8a8-vllm-910c-dflash5-16npu")
+	_, spec := catalogSpec(t, "gpuworks/glm-5.3-flash-910c", "w8a8-vllm-910c-dflash5-16npu")
 	data, err := embeddedCatalog.ReadFile("catalog/models/gpuworks/glm-5.3-flash-910c/" + spec.Assets[0].File)
 	if err != nil {
 		t.Fatal(err)
