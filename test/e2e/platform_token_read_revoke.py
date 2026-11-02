@@ -401,6 +401,22 @@ def test_read_token_create_revoke(page, context, server, artifacts, report, loca
     used = collection(page.request.get(server.base + TOKEN_PATH))[0]
     check(used["id"] == item["id"] and used["last_used_at"] is not None, "successful bearer use was not persisted")
 
+    # 7.7: a platform token has its own lifecycle and is not a management session, so dropping
+    # the browser session must not touch it. The token keeps reading while the console's own
+    # credential stops being presented - the two are separate channels, which is why the
+    # session-revocation half of this item is a CLI action rather than something a browser can
+    # trigger, and no attempt is made to claim it here.
+    page.evaluate("() => { localStorage.clear(); sessionStorage.clear(); }")
+    code, still = http(server.base, "GET", "/api/v1/nodes", copied)
+    check(code == 200 and still == {"items": [], "total": 0},
+          f"a platform token stopped working when the browser session was dropped: {code}")
+    code, untouched = http(server.base, "GET", TOKEN_PATH, copied)
+    check(code == 403 and untouched["code"] == "PLATFORM_TOKEN_NOT_ALLOWED",
+          "the token gained session-only management access after the console session was dropped")
+    report["evidence"].append({"layer": "runtime", "token_survives_session_drop": True,
+        "session_only_still_denied": True,
+        "note": "password change revokes sessions through the store but is reached by the reset CLI, not by a browser route, so no UI path is invented for it"})
+
     revoke = button(row, platform["revoke"])
     revoke.click()
     confirmation = platform["revokeConfirm"].replace("{{name}}", resource_name)
