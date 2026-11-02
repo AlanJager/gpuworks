@@ -370,10 +370,10 @@ func TestManagementOriginTrustsEntryPointConnectorOnThisHost(t *testing.T) {
 		want              int
 	}{
 		{"loopback origin", "[::1]:51000", "[::1]:8816", true, http.StatusOK},
-		{"host address origin", "172.25.17.156:51000", "172.25.17.156:8816", true, http.StatusOK},
-		{"IPv4 on a dual-stack socket", "172.25.17.156:51000", "[::ffff:172.25.17.156]:8816", true, http.StatusOK},
+		{"host address origin", "192.0.2.156:51000", "192.0.2.156:8816", true, http.StatusOK},
+		{"IPv4 on a dual-stack socket", "192.0.2.156:51000", "[::ffff:192.0.2.156]:8816", true, http.StatusOK},
 		{"entry point disabled", "[::1]:51000", "[::1]:8816", false, http.StatusForbidden},
-		{"another host", "172.25.17.200:51000", "172.25.17.156:8816", true, http.StatusForbidden},
+		{"another host", "192.0.2.200:51000", "192.0.2.156:8816", true, http.StatusForbidden},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			enabled := tc.enabled

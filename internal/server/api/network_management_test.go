@@ -270,7 +270,7 @@ func TestNodeNetworksListAcceleratorPorts(t *testing.T) {
 	}
 	var reported proto.NodeStatus
 	wire := `{"network":{"interfaces":[],"rdma_ports":[],"accelerator_ports":[` +
-		`{"name":"npu3","index":3,"ip":"172.20.9.59","netmask":"255.255.0.0","state":"UP","speed_gbps":200},` +
+		`{"name":"npu3","index":3,"ip":"203.0.113.59","netmask":"255.255.0.0","state":"UP","speed_gbps":200},` +
 		`{"name":"npu6","index":6,"state":"DOWN"}]}}`
 	if err := json.Unmarshal([]byte(wire), &reported); err != nil {
 		t.Fatal(err)
@@ -289,7 +289,7 @@ func TestNodeNetworksListAcceleratorPorts(t *testing.T) {
 		return rec.Code, rec.Body.String()
 	}
 	want := `"accelerator_ports":[` +
-		`{"name":"npu3","index":3,"ip":"172.20.9.59","netmask":"255.255.0.0","state":"UP","speed_gbps":200},` +
+		`{"name":"npu3","index":3,"ip":"203.0.113.59","netmask":"255.255.0.0","state":"UP","speed_gbps":200},` +
 		`{"name":"npu6","index":6,"ip":"","netmask":"","state":"DOWN","speed_gbps":0,"gap":"inactive"}]`
 	if code, body := raw("npu"); code != http.StatusOK || !strings.Contains(body, want) {
 		t.Fatalf("status %d, body %s\nwant it to contain %s", code, body, want)

@@ -22,15 +22,15 @@ import (
 func acceleratorNodes(t *testing.T, n *networkAPI) {
 	t.Helper()
 	for uuid, wire := range map[string]string{
-		"npu-1": `{"network":{"interfaces":[{"name":"br0","state":"up","addrs":["172.30.8.31/16"]}],"rdma_ports":[],
-			"accelerator_ports":[{"name":"npu3","index":3,"ip":"172.20.9.59","netmask":"255.255.0.0","state":"UP","speed_gbps":200},
-			{"name":"npu4","index":4,"ip":"172.20.9.60","netmask":"255.255.0.0","state":"UP","speed_gbps":200}],
-			"management":{"interface":"br0","ip":"172.30.8.31"}}}`,
-		"npu-2": `{"network":{"interfaces":[{"name":"br0","state":"up","addrs":["172.30.8.32/16"]}],"rdma_ports":[],
-			"accelerator_ports":[{"name":"npu3","index":3,"ip":"172.20.9.82","netmask":"255.255.0.0","state":"UP","speed_gbps":200},
-			{"name":"npu4","index":4,"ip":"172.20.9.83","netmask":"255.255.0.0","state":"UP","speed_gbps":200},
-			{"name":"npu6","index":6,"ip":"172.20.9.85","netmask":"255.255.0.0","state":"DOWN"}],
-			"management":{"interface":"br0","ip":"172.30.8.32"}}}`,
+		"npu-1": `{"network":{"interfaces":[{"name":"br0","state":"up","addrs":["198.51.100.31/16"]}],"rdma_ports":[],
+			"accelerator_ports":[{"name":"npu3","index":3,"ip":"203.0.113.59","netmask":"255.255.0.0","state":"UP","speed_gbps":200},
+			{"name":"npu4","index":4,"ip":"203.0.113.60","netmask":"255.255.0.0","state":"UP","speed_gbps":200}],
+			"management":{"interface":"br0","ip":"198.51.100.31"}}}`,
+		"npu-2": `{"network":{"interfaces":[{"name":"br0","state":"up","addrs":["198.51.100.32/16"]}],"rdma_ports":[],
+			"accelerator_ports":[{"name":"npu3","index":3,"ip":"203.0.113.82","netmask":"255.255.0.0","state":"UP","speed_gbps":200},
+			{"name":"npu4","index":4,"ip":"203.0.113.83","netmask":"255.255.0.0","state":"UP","speed_gbps":200},
+			{"name":"npu6","index":6,"ip":"203.0.113.85","netmask":"255.255.0.0","state":"DOWN"}],
+			"management":{"interface":"br0","ip":"198.51.100.32"}}}`,
 	} {
 		if _, err := n.store.RegisterNode(uuid, store.HashToken(uuid), uuid); err != nil {
 			t.Fatal(err)
@@ -79,13 +79,13 @@ func TestAcceleratorNetworkAPI(t *testing.T) {
 	// The node's rails are its cards, and its address is a host address.
 	one := nodeOf(t, detail, "npu-1")
 	wantRails := []any{
-		map[string]any{"name": "npu3", "ip": "172.20.9.59", "netdev": "", "link_layer": "roce", "state": "UP", "speed_gbps": float64(200)},
-		map[string]any{"name": "npu4", "ip": "172.20.9.60", "netdev": "", "link_layer": "roce", "state": "UP", "speed_gbps": float64(200)},
+		map[string]any{"name": "npu3", "ip": "203.0.113.59", "netdev": "", "link_layer": "roce", "state": "UP", "speed_gbps": float64(200)},
+		map[string]any{"name": "npu4", "ip": "203.0.113.60", "netdev": "", "link_layer": "roce", "state": "UP", "speed_gbps": float64(200)},
 	}
 	if !reflect.DeepEqual(one["hcas"], wantRails) {
 		t.Fatalf("npu-1 rails = %v\nwant %v", one["hcas"], wantRails)
 	}
-	if one["interface"] != "br0" || one["ip"] != "172.30.8.31" || one["link_layer"] != "roce" || one["hca_source"] != "auto" || one["bootstrap_source"] != "auto" {
+	if one["interface"] != "br0" || one["ip"] != "198.51.100.31" || one["link_layer"] != "roce" || one["hca_source"] != "auto" || one["bootstrap_source"] != "auto" {
 		t.Fatalf("npu-1 = %v", one)
 	}
 	if !reflect.DeepEqual(one["warnings"], []any{}) {
@@ -120,7 +120,7 @@ func TestAcceleratorNetworkAPI(t *testing.T) {
 	body := rec.Body.String()
 	for _, want := range []string{
 		`"role":"compute","network_id":1,"network_name":"npu","network_type":"accelerator_rdma"`,
-		`"interface":"br0","ip":"172.30.8.31","hcas":[{"name":"npu3","ip":"172.20.9.59","netdev":"","link_layer":"roce","state":"UP","speed_gbps":200},`,
+		`"interface":"br0","ip":"198.51.100.31","hcas":[{"name":"npu3","ip":"203.0.113.59","netdev":"","link_layer":"roce","state":"UP","speed_gbps":200},`,
 	} {
 		if rec.Code != http.StatusOK || !strings.Contains(body, want) {
 			t.Fatalf("status %d, body %s\nwant it to contain %s", rec.Code, body, want)
@@ -292,20 +292,20 @@ func TestDistributedDeployOnAscendNeedsAnAcceleratorNetwork(t *testing.T) {
 	n := newNetworkAPI(t)
 	for uuid, wire := range map[string]string{
 		"npu-1": `{"sys":{"hostname":"npu-1","gpu_vendor":"ascend","runtime_driver":"docker"},"gpus":[{"index":3,"name":"Ascend 910B4","vendor":"ascend"},{"index":4,"name":"Ascend 910B4","vendor":"ascend"}],
-			"network":{"interfaces":[{"name":"br0","state":"up","addrs":["172.30.8.31/16"]}],"rdma_ports":[],
-			"accelerator_ports":[{"name":"npu3","index":3,"ip":"172.20.9.59","netmask":"255.255.0.0","state":"UP","speed_gbps":200},
-			{"name":"npu4","index":4,"ip":"172.20.9.60","netmask":"255.255.0.0","state":"UP","speed_gbps":200}],
-			"management":{"interface":"br0","ip":"172.30.8.31"}}}`,
+			"network":{"interfaces":[{"name":"br0","state":"up","addrs":["198.51.100.31/16"]}],"rdma_ports":[],
+			"accelerator_ports":[{"name":"npu3","index":3,"ip":"203.0.113.59","netmask":"255.255.0.0","state":"UP","speed_gbps":200},
+			{"name":"npu4","index":4,"ip":"203.0.113.60","netmask":"255.255.0.0","state":"UP","speed_gbps":200}],
+			"management":{"interface":"br0","ip":"198.51.100.31"}}}`,
 		"npu-2": `{"sys":{"hostname":"npu-2","gpu_vendor":"ascend","runtime_driver":"docker"},"gpus":[{"index":3,"name":"Ascend 910B4","vendor":"ascend"},{"index":4,"name":"Ascend 910B4","vendor":"ascend"}],
-			"network":{"interfaces":[{"name":"br0","state":"up","addrs":["172.30.8.32/16"]}],"rdma_ports":[],
-			"accelerator_ports":[{"name":"npu3","index":3,"ip":"172.20.9.82","netmask":"255.255.0.0","state":"UP","speed_gbps":200},
-			{"name":"npu4","index":4,"ip":"172.20.9.83","netmask":"255.255.0.0","state":"UP","speed_gbps":200}],
-			"management":{"interface":"br0","ip":"172.30.8.32"}}}`,
+			"network":{"interfaces":[{"name":"br0","state":"up","addrs":["198.51.100.32/16"]}],"rdma_ports":[],
+			"accelerator_ports":[{"name":"npu3","index":3,"ip":"203.0.113.82","netmask":"255.255.0.0","state":"UP","speed_gbps":200},
+			{"name":"npu4","index":4,"ip":"203.0.113.83","netmask":"255.255.0.0","state":"UP","speed_gbps":200}],
+			"management":{"interface":"br0","ip":"198.51.100.32"}}}`,
 		// Its cards' ports are all down, so it has no rail to offer.
 		"npu-3": `{"sys":{"hostname":"npu-3","gpu_vendor":"ascend","runtime_driver":"docker"},"gpus":[{"index":0,"name":"Ascend 910B4","vendor":"ascend"},{"index":1,"name":"Ascend 910B4","vendor":"ascend"}],
-			"network":{"interfaces":[{"name":"br0","state":"up","addrs":["172.30.8.33/16"]}],"rdma_ports":[],
-			"accelerator_ports":[{"name":"npu0","index":0,"ip":"172.20.9.90","netmask":"255.255.0.0","state":"DOWN"}],
-			"management":{"interface":"br0","ip":"172.30.8.33"}}}`,
+			"network":{"interfaces":[{"name":"br0","state":"up","addrs":["198.51.100.33/16"]}],"rdma_ports":[],
+			"accelerator_ports":[{"name":"npu0","index":0,"ip":"203.0.113.90","netmask":"255.255.0.0","state":"DOWN"}],
+			"management":{"interface":"br0","ip":"198.51.100.33"}}}`,
 	} {
 		if _, err := n.store.RegisterNode(uuid, store.HashToken(uuid), uuid); err != nil {
 			t.Fatal(err)
@@ -346,7 +346,7 @@ func TestDistributedDeployOnAscendNeedsAnAcceleratorNetwork(t *testing.T) {
 		t.Fatalf("on the accelerator network: %s %v", code, params)
 	}
 	// The leader is dialed on its host address, never on a card's.
-	if req.MasterAddr != "172.30.8.31" {
+	if req.MasterAddr != "198.51.100.31" {
 		t.Fatalf("master address = %q", req.MasterAddr)
 	}
 	_, code, params = prepare("npu-1", "npu-3")

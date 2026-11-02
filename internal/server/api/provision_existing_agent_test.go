@@ -112,14 +112,14 @@ func TestInstallOntoAHostWithItsOwnOrAnUnreadableUnitAsksForConfirmation(t *test
 	}{
 		{name: "unreadable-unit", found: provision.ExistingAgent{Unit: true},
 			want: `{"code":"NODE_INSTALL_EXISTING_AGENT_UNKNOWN","error":"a gpuworks-agent service whose server cannot be read is on the host; installing replaces it"}`},
-		{name: "own-unit", found: provision.ExistingAgent{Unit: true, UnitServer: "http://172.30.8.122:8800", ProcessServers: []string{"http://172.30.8.122:8800"}},
+		{name: "own-unit", found: provision.ExistingAgent{Unit: true, UnitServer: "http://198.51.100.122:8800", ProcessServers: []string{"http://198.51.100.122:8800"}},
 			want: `{"code":"NODE_INSTALL_EXISTING_AGENT_SELF","error":"the gpuworks-agent service on the host already runs for this server; installing replaces it and the node it belongs to goes offline"}`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			h := apiHandlers{d: Deps{NodeInstaller: &existingAgentInstaller{found: tc.found}, Store: existingNodeStore(t, "", "")}}
 			rec := httptest.NewRecorder()
 			h.installNode(rec, httptest.NewRequest(http.MethodPost, "/api/v1/nodes/install", strings.NewReader(
-				`{"target":"root@example.com","password":"secret","server_url":"http://172.30.8.122:8800","connect_mode":"agent_dial"}`)))
+				`{"target":"root@example.com","password":"secret","server_url":"http://198.51.100.122:8800","connect_mode":"agent_dial"}`)))
 			if rec.Code != http.StatusConflict || rec.Body.String() != tc.want+"\n" {
 				t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
 			}
@@ -128,12 +128,12 @@ func TestInstallOntoAHostWithItsOwnOrAnUnreadableUnitAsksForConfirmation(t *test
 }
 
 func TestInstallOntoAHostWithAnotherServersAgentAsksForConfirmation(t *testing.T) {
-	fake := &existingAgentInstaller{found: provision.ExistingAgent{Unit: true, UnitServer: "http://172.25.17.156:8800", ProcessServers: []string{"http://172.25.17.156:8800"}}}
+	fake := &existingAgentInstaller{found: provision.ExistingAgent{Unit: true, UnitServer: "http://192.0.2.156:8800", ProcessServers: []string{"http://192.0.2.156:8800"}}}
 	st := existingNodeStore(t, "", "")
 	h := apiHandlers{d: Deps{NodeInstaller: fake, Store: st}}
 	rec := httptest.NewRecorder()
 	h.installNode(rec, httptest.NewRequest(http.MethodPost, "/api/v1/nodes/install", bytes.NewReader([]byte(
-		`{"target":"root@example.com","password":"secret","server_url":"http://172.30.8.122:8800","connect_mode":"agent_dial"}`))))
+		`{"target":"root@example.com","password":"secret","server_url":"http://198.51.100.122:8800","connect_mode":"agent_dial"}`))))
 	var payload struct {
 		Code   string         `json:"code"`
 		Error  string         `json:"error"`
@@ -142,8 +142,8 @@ func TestInstallOntoAHostWithAnotherServersAgentAsksForConfirmation(t *testing.T
 	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
 		t.Fatal(err)
 	}
-	if rec.Code != http.StatusConflict || payload.Code != ErrorNodeInstallExistingAgent || payload.Params["server"] != "http://172.25.17.156:8800" ||
-		!strings.Contains(payload.Error, "belongs to another server (http://172.25.17.156:8800)") {
+	if rec.Code != http.StatusConflict || payload.Code != ErrorNodeInstallExistingAgent || payload.Params["server"] != "http://192.0.2.156:8800" ||
+		!strings.Contains(payload.Error, "belongs to another server (http://192.0.2.156:8800)") {
 		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
 	}
 	if !fake.req.GuardExistingAgent || fake.req.ReplaceExistingAgent {
@@ -185,7 +185,7 @@ type sameDirInstaller struct{}
 
 func (sameDirInstaller) InstallSSH(_ context.Context, req provision.SSHInstallRequest) (provision.SSHInstallReport, error) {
 	return provision.SSHInstallReport{}, &provision.ExistingAgentError{
-		Found:      provision.ExistingAgent{Unit: true, UnitServer: "http://172.25.17.156:8800", ProcessStates: []string{"/opt/gpuworks"}},
+		Found:      provision.ExistingAgent{Unit: true, UnitServer: "http://192.0.2.156:8800", ProcessStates: []string{"/opt/gpuworks"}},
 		ServerURL:  req.ServerURL,
 		InstallDir: "/opt/gpuworks",
 	}
@@ -196,7 +196,7 @@ func TestInstallWithoutSystemdIntoAnAgentsDirectoryAsksForConfirmation(t *testin
 	h := apiHandlers{d: Deps{NodeInstaller: sameDirInstaller{}, Store: st}}
 	rec := httptest.NewRecorder()
 	h.installNode(rec, httptest.NewRequest(http.MethodPost, "/api/v1/nodes/install", strings.NewReader(
-		`{"target":"root@example.com","password":"secret","server_url":"http://172.30.8.122:8800","no_systemd":true}`)))
+		`{"target":"root@example.com","password":"secret","server_url":"http://198.51.100.122:8800","no_systemd":true}`)))
 	want := `{"code":"NODE_INSTALL_EXISTING_AGENT_SAME_DIR","error":"a gpuworks agent already runs from /opt/gpuworks; installing there replaces it","params":{"dir":"/opt/gpuworks"}}` + "\n"
 	if rec.Code != http.StatusConflict || rec.Body.String() != want {
 		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
