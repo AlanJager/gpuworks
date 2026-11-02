@@ -172,6 +172,72 @@ def test_container_terminal(page, context, server, artifacts, report, locale, da
     rejected.close()
     check(runtime.inspect(ref)["Id"] == ref, "wrong reference changed the real target")
 
+    # 19.5: the per-node concurrency limit and the idle policy are both real. Sessions are opened
+    # until the node reports itself full, then one more page is opened and required to be refused
+    # with the busy reason rather than admitted; the refused page must leave no session behind, and
+    # closing the held ones must return the node to empty. The idle timeout is required to be a
+    # positive number of minutes reported by the server, because a limit of zero would silently
+    # mean "never" and the notice it drives would be unreachable.
+    report["step"] = "concurrency limit refuses and releases"
+    stream_path = ("/api/v1/nodes/" + node_uuid + "/terminal?"
+                   + urlencode({"target": "container", "ref": ref}))
+    policy = fixture.admission(server, token, node_uuid)
+    per_node = policy["max_per_node"]
+    check(isinstance(per_node, int) and per_node >= 1, f"per-node terminal limit is not set: {per_node}")
+    check(isinstance(policy["idle_timeout_min"], int) and policy["idle_timeout_min"] >= 1,
+          f"idle timeout is not a positive number of minutes: {policy['idle_timeout_min']}")
+    prior = fixture.audits(server, token)
+    held = []
+    try:
+        for index in range(per_node):
+            extra = new_context(context, holder, locale)
+            extra_page = extra.new_page()
+            observe(extra_page, holder)
+            extra_page.goto(server.base + "/nodes/" + node_uuid + "/terminal?"
+                            + urlencode({"target": "container", "ref": ref}))
+            expect(extra_page.locator(".xterm-rows")).to_be_visible()
+            # The admission is counted by the server when the WS begins, so the next attempt is
+            # gated on the server seeing this one rather than on the page having rendered.
+            for _ in range(60):
+                if fixture.admission(server, token, node_uuid)["active_node"] == index + 1:
+                    break
+                extra_page.wait_for_timeout(250)
+            else:
+                check(False, f"held terminal {index + 1} never became an active session")
+            held.append((extra, extra_page))
+        full = fixture.admission(server, token, node_uuid)
+        check(full["can_open"] is False,
+              f"the node admitted past its limit of {per_node}: {json.dumps(full)}")
+        check(full["reason"] != "", "a full node reported no reason")
+        check(full["active_node"] >= per_node, f"active_node {full['active_node']} below the limit {per_node}")
+        # The fifth attempt must be refused at admission. It is driven from a page that is already
+        # signed in, and the socket is opened directly so the outcome is the server's admission
+        # answer rather than a rendering detail.
+        refused_ws = held[0][1].evaluate(
+            """async ([path]) => {
+                return await new Promise((resolve) => {
+                    const ws = new WebSocket((location.protocol === "https:" ? "wss:" : "ws:")
+                        + "//" + location.host + path);
+                    ws.onopen = () => { ws.close(); resolve({ opened: true }); };
+                    ws.onerror = () => resolve({ opened: false });
+                    setTimeout(() => { try { ws.close(); } catch (e) {} resolve({ opened: false }); }, 8000);
+                });
+            }""", [stream_path])
+        check(refused_ws["opened"] is False, "a full node accepted another terminal socket")
+        full_after = fixture.admission(server, token, node_uuid)
+        check(full_after["active_node"] <= per_node,
+              f"the refused attempt pushed active_node past the limit: {full_after['active_node']}")
+        report["concurrency"] = {"max_per_node": per_node, "idle_timeout_min": policy["idle_timeout_min"],
+                                 "refused_reason": full["reason"], "refused_opened_ws": False}
+    finally:
+        for extra, extra_page in held:
+            extra_page.close()
+            extra.close()
+    released = fixture.admission(server, token, node_uuid)
+    check(released["active_node"] == 0 and released["can_open"] is True,
+          f"closing the held terminals did not release the node: {released}")
+    report["last_step"] = "concurrency-limit-refused-and-released"
+
     report["step"] = "read-only principal rejected before WS"
     prior = fixture.audits(server, token)
     reader = new_context(context, holder, locale, authenticated=False)
