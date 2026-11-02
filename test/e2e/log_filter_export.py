@@ -292,6 +292,56 @@ def test_log_filter_export(page, context, server, artifacts, report, locale):
     absent = '"e2e-' + report['run_id'] + '-absent"'
     result(lambda: search.fill(absent), {**selected_query, 'q': absent}, [], 'nonexistent keyword')
     loaded = result(lambda: search.fill(query), selected_query, [target], 'restore target keyword')
+    # 2.3: the page size is the field with a length contract here, and its boundary behaviour is
+    # asserted rather than its happy path. The store clamps a request to a default below the floor and
+    # to a ceiling above it, so the four values around those thresholds are sent and the number of rows
+    # that comes back is compared with what the contract says - not with what a caller might prefer.
+    # Counting is in whole rows, which is the unit the API documents.
+    boundary_warning = 'e2e-' + report['run_id'] + '-boundary'
+    for _ in range(3):
+        emit_warning(server, boundary_warning)
+    # The collector is asynchronous, so the fixture is required to be visible before the boundaries
+    # are probed - otherwise a page size would be judged against an empty match set.
+    settle = time.monotonic() + 20
+    while time.monotonic() < settle:
+        seen = page.request.get(server.base + SEARCH + '?' + urlencode(
+            {'source': 'server', 'q': boundary_warning, 'limit': '10', 'with_total': '1'}))
+        if seen.status == 200 and len((seen.json().get('items') or [])) >= 3:
+            break
+        time.sleep(0.25)
+    else:
+        raise AssertionError('the boundary warnings never became searchable')
+    # A page size is a ceiling, not a promise: a request below the match count returns everything
+    # there is. So the floor case asserts the whole match set rather than the default's numeric value,
+    # and the two ceiling cases assert that a page far above the match count still returns all of it.
+    matched = 3
+    limit_cases = [
+        ('below-floor', '0', matched, 'clamped up to the default, which exceeds the match count'),
+        ('floor', '1', 1, 'one row, and the page reports itself truncated'),
+        ('ceiling', '5000', matched, 'accepted as sent; the match count fits inside it'),
+        ('above-ceiling', '5001', matched, 'clamped down to the ceiling, no error'),
+    ]
+    limit_evidence = []
+    for label, value, expected_rows, note in limit_cases:
+        probe = {'source': 'server', 'q': boundary_warning, 'limit': value, 'with_total': '1'}
+        answer = page.request.get(server.base + SEARCH + '?' + urlencode(probe))
+        check(answer.status == 200, f'limit {value} was rejected: {answer.status}')
+        body = answer.json()
+        rows = len(body.get('items') or [])
+        check(rows == expected_rows,
+              f'limit {value} returned {rows} rows, the contract says {expected_rows}: {note}')
+        # Only a page that came back full while more matches wait behind it is truncated. The ceiling
+        # cases return everything there is, so requiring the marker there would be requiring a lie.
+        if expected_rows is not None and rows < matched:
+            check(answer.headers.get('x-logs-truncated') == '1',
+                  f'limit {value} returned a full page without marking it truncated')
+        else:
+            check(answer.headers.get('x-logs-truncated') is None,
+                  f'limit {value} marked a complete page as truncated')
+        limit_evidence.append({'value': value, 'rows': rows, 'note': note,
+                               'truncated': answer.headers.get('x-logs-truncated')})
+    report['evidence'].append({'layer': 'request', 'scenario': 'page-size-boundaries',
+                               'unit': 'rows', 'cases': limit_evidence})
     # 2.4: the keyword control is required to carry the characters a log line actually contains, and
     # what it sends is asserted rather than what it displays. Each shape is typed and the query that
     # reaches the server is compared exactly, so a control that accepted the text but mangled,
