@@ -250,8 +250,8 @@ specs:
 # multi-node decode role, not to this one. No Ascend hardware was available, so
 # these arguments are the published recipe rather than a measured one.
 - name: w4a8-vllm-ascend-a3-2de1ec2b
-  display_name_zh_cn: 910C (A3) · INT4 W4A8 · 16 卡 · 投机解码
-  display_name_en: 910C (A3) · INT4 W4A8 · 16 NPUs · Speculative
+  display_name_zh_cn: 910C (A3) · INT4 W4A8 · 8 卡（16 NPU） · 投机解码
+  display_name_en: 910C (A3) · INT4 W4A8 · 8 cards (16 NPUs) · Speculative
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cann9.1-a3-vllm0.26.0rc1-r2

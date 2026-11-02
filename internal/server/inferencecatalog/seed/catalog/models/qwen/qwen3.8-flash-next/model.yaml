@@ -224,8 +224,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: int8-vllm-ascend-a3-tp8
-  display_name_zh_cn: 910C (A3) · INT8 W8A8 · 8 卡 · 投机解码
-  display_name_en: 910C (A3) · INT8 W8A8 · 8 NPUs · Speculative
+  display_name_zh_cn: 910C (A3) · INT8 W8A8 · 4 卡（8 NPU） · 投机解码
+  display_name_en: 910C (A3) · INT8 W8A8 · 4 cards (8 NPUs) · Speculative
   scenario: balanced
   engine: vllm
   # vLLM-Ascend's own image for this recipe; the runner matrix carries no CANN

@@ -37,7 +37,7 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: bf16-sglang-ascend-a3-smollm2-360m
-  display_name_zh_cn: 910C (A3) · BF16 · 单卡
+  display_name_zh_cn: 910C (A3) · BF16 · 1 NPU
   display_name_en: 910C (A3) · BF16 · 1 NPU
   scenario: balanced
   engine: sglang

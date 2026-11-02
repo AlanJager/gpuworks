@@ -65,7 +65,7 @@ specs:
           en: Language
           zh: 语言
 - name: bf16-vllm-ascend-a3-tts06
-  display_name_zh_cn: 910C (A3) · BF16 · 单卡
+  display_name_zh_cn: 910C (A3) · BF16 · 1 NPU
   display_name_en: 910C (A3) · BF16 · 1 NPU
   scenario: balanced
   engine: vllm

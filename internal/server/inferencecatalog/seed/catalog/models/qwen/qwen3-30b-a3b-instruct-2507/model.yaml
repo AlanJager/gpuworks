@@ -47,8 +47,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: bf16-sglang-ascend-a3-04996b03
-  display_name_zh_cn: 910C (A3) · BF16 · ≥4 卡
-  display_name_en: 910C (A3) · BF16 · 4+ NPUs
+  display_name_zh_cn: 910C (A3) · BF16 · ≥2 卡（≥4 NPU）
+  display_name_en: 910C (A3) · BF16 · 2+ cards (4+ NPUs)
   scenario: balanced
   engine: sglang
   image: gpuworks/gpuworks-runner:cann9.0-a3-sglang0.5.18-r2

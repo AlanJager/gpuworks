@@ -11,7 +11,7 @@ kv_bytes_per_token:
   sglang: 147456
 specs:
 - name: bf16-sglang-ascend-a3-qwen3-4b
-  display_name_zh_cn: 910C (A3) · BF16 · 单卡
+  display_name_zh_cn: 910C (A3) · BF16 · 1 NPU
   display_name_en: 910C (A3) · BF16 · 1 NPU
   scenario: balanced
   engine: sglang

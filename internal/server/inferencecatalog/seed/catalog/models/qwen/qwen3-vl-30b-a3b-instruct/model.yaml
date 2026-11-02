@@ -50,8 +50,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: bf16-sglang-ascend-a3-8659b2c8
-  display_name_zh_cn: 910C (A3) · BF16 · ≥4 卡
-  display_name_en: 910C (A3) · BF16 · 4+ NPUs
+  display_name_zh_cn: 910C (A3) · BF16 · ≥2 卡（≥4 NPU）
+  display_name_en: 910C (A3) · BF16 · 2+ cards (4+ NPUs)
   scenario: balanced
   engine: sglang
   image: gpuworks/gpuworks-runner:cann9.0-a3-sglang0.5.18-r2
@@ -211,8 +211,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: bf16-vllm-ascend-a3-0639f696
-  display_name_zh_cn: 910C (A3) · BF16 · 2 卡
-  display_name_en: 910C (A3) · BF16 · 2 NPUs
+  display_name_zh_cn: 910C (A3) · BF16 · 1 卡（2 NPU）
+  display_name_en: 910C (A3) · BF16 · 1 card (2 NPUs)
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cann9.1-a3-vllm0.26.0rc1-r2

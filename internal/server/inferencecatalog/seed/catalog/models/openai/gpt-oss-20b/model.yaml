@@ -125,8 +125,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: bf16-vllm-ascend-a3-gptoss20
-  display_name_zh_cn: 910C (A3) · BF16 · 2 卡
-  display_name_en: 910C (A3) · BF16 · 2 NPUs
+  display_name_zh_cn: 910C (A3) · BF16 · 1 卡（2 NPU）
+  display_name_en: 910C (A3) · BF16 · 1 card (2 NPUs)
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cann9.2-a3-vllm0.30.0rc2-r1

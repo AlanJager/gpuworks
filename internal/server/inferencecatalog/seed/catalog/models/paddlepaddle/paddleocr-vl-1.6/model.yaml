@@ -11,7 +11,7 @@ kv_bytes_per_token:
   sglang: 18432
 specs:
 - name: bf16-vllm-ascend-a3-paddleocr16
-  display_name_zh_cn: 910C (A3) · BF16 · 单卡
+  display_name_zh_cn: 910C (A3) · BF16 · 1 NPU
   display_name_en: 910C (A3) · BF16 · 1 NPU
   scenario: balanced
   engine: vllm

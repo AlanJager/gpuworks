@@ -90,8 +90,8 @@ specs:
     weight_bytes: 799472175
     mount_path: /draft
 - name: bf16-sglang-ascend-a3-1cdb4053
-  display_name_zh_cn: 910C (A3) · BF16 · ≥2 卡 · 投机解码
-  display_name_en: 910C (A3) · BF16 · 2+ NPUs · Speculative
+  display_name_zh_cn: 910C (A3) · BF16 · ≥1 卡（≥2 NPU） · 投机解码
+  display_name_en: 910C (A3) · BF16 · 1+ card (2+ NPUs) · Speculative
   scenario: balanced
   engine: sglang
   image: gpuworks/gpuworks-runner:cann9.0-a3-sglang0.5.18-r2

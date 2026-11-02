@@ -190,8 +190,8 @@ specs:
 # this separate from the W8A8 profile because it uses different weights and
 # does not rely on the quantized MTP path.
 - name: bf16-vllm-ascend-a3-1d4bf0f2
-  display_name_zh_cn: 910C (A3) · BF16 · ≥2 卡
-  display_name_en: 910C (A3) · BF16 · 2+ NPUs
+  display_name_zh_cn: 910C (A3) · BF16 · ≥1 卡（≥2 NPU）
+  display_name_en: 910C (A3) · BF16 · 1+ card (2+ NPUs)
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cann9.1-a3-vllm0.26.0rc1-r2
@@ -249,8 +249,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: int8-vllm-ascend-a3-0a447e8a
-  display_name_zh_cn: 910C (A3) · INT8 W8A8 · ≥2 卡 · 投机解码
-  display_name_en: 910C (A3) · INT8 W8A8 · 2+ NPUs · Speculative
+  display_name_zh_cn: 910C (A3) · INT8 W8A8 · ≥1 卡（≥2 NPU） · 投机解码
+  display_name_en: 910C (A3) · INT8 W8A8 · 1+ card (2+ NPUs) · Speculative
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cann9.1-a3-vllm0.26.0rc1-r2

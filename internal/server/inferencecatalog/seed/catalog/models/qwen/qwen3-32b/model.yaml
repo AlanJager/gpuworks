@@ -50,8 +50,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: bf16-sglang-ascend-a3-dc06cd27
-  display_name_zh_cn: 910C (A3) · BF16 · ≥4 卡
-  display_name_en: 910C (A3) · BF16 · 4+ NPUs
+  display_name_zh_cn: 910C (A3) · BF16 · ≥2 卡（≥4 NPU）
+  display_name_en: 910C (A3) · BF16 · 2+ cards (4+ NPUs)
   scenario: balanced
   engine: sglang
   image: gpuworks/gpuworks-runner:cann9.0-a3-sglang0.5.18-r2
@@ -274,8 +274,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: int8-sglang-ascend-a3-09210aa2
-  display_name_zh_cn: 910C (A3) · INT8 W8A8 · ≥2 卡
-  display_name_en: 910C (A3) · INT8 W8A8 · 2+ NPUs
+  display_name_zh_cn: 910C (A3) · INT8 W8A8 · ≥1 卡（≥2 NPU）
+  display_name_en: 910C (A3) · INT8 W8A8 · 1+ card (2+ NPUs)
   scenario: balanced
   engine: sglang
   image: gpuworks/gpuworks-runner:cann9.0-a3-sglang0.5.18-r2
@@ -366,8 +366,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: int8-vllm-ascend-a3-9ecdf711
-  display_name_zh_cn: 910C (A3) · INT8 W8A8 · 4 卡
-  display_name_en: 910C (A3) · INT8 W8A8 · 4 NPUs
+  display_name_zh_cn: 910C (A3) · INT8 W8A8 · 2 卡（4 NPU）
+  display_name_en: 910C (A3) · INT8 W8A8 · 2 cards (4 NPUs)
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cann9.1-a3-vllm0.26.0rc1-r2

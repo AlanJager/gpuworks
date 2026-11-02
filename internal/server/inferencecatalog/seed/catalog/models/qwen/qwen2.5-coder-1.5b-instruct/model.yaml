@@ -24,7 +24,7 @@ specs:
     health_endpoint: /health
     operations: [{type: openai.chat, endpoint: /v1/chat/completions, mode: stream}]
 - name: bf16-sglang-ascend-a3-qwen25-coder-15b
-  display_name_zh_cn: 910C (A3) · BF16 · 单卡
+  display_name_zh_cn: 910C (A3) · BF16 · 1 NPU
   display_name_en: 910C (A3) · BF16 · 1 NPU
   scenario: balanced
   engine: sglang

@@ -46,8 +46,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: fp16-sglang-ascend-a3-41226ec8
-  display_name_zh_cn: 910C (A3) · GGUF Q4_K_M · ≥2 卡
-  display_name_en: 910C (A3) · GGUF Q4_K_M · 2+ NPUs
+  display_name_zh_cn: 910C (A3) · GGUF Q4_K_M · ≥1 卡（≥2 NPU）
+  display_name_en: 910C (A3) · GGUF Q4_K_M · 1+ card (2+ NPUs)
   scenario: balanced
   engine: sglang
   image: gpuworks/gpuworks-runner:cann9.0-a3-sglang0.5.18-r2

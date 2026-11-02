@@ -12,7 +12,7 @@ specs:
 # OpenAI-compatible chat request returned successfully after a real model
 # download; output quality is not claimed.
 - name: bf16-sglang-ascend-a3-qwen25-1p5b
-  display_name_zh_cn: 910C (A3) · BF16 · 单卡
+  display_name_zh_cn: 910C (A3) · BF16 · 1 NPU
   display_name_en: 910C (A3) · BF16 · 1 NPU
   scenario: balanced
   engine: sglang

@@ -53,7 +53,7 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: int4-sglang-ascend-a3-8fe71b3c
-  display_name_zh_cn: 910C (A3) · INT4 AWQ · 单卡
+  display_name_zh_cn: 910C (A3) · INT4 AWQ · 1 NPU
   display_name_en: 910C (A3) · INT4 AWQ · 1 NPU
   scenario: balanced
   engine: sglang
