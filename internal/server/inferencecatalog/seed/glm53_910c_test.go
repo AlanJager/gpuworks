@@ -25,7 +25,7 @@ func TestGLM53AscendRecipesPlaceAndLaunchTheirOwnParallelism(t *testing.T) {
 		{"w8a8-vllm-910c-dflash5-16npu", 16, 2, 8, 4, 5},
 	} {
 		t.Run(recipe.name, func(t *testing.T) {
-			_, spec := ppuSpec(t, "gpuworks/glm-5.3-flash-910c", recipe.name)
+			_, spec := catalogSpec(t, "gpuworks/glm-5.3-flash-910c", recipe.name)
 			predicate := chipmatch.Predicate{Vendor: spec.GPUs.Vendor, Name: spec.GPUs.Name}
 			for _, name := range []string{"Ascend 910C", "Ascend 910C3", "Ascend 910B1", "Ascend 910B2C", "Ascend 310P"} {
 				want := strings.Contains(name, "910C")

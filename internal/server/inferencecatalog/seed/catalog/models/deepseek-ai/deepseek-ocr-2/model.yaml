@@ -145,6 +145,8 @@ specs:
   - --trust-remote-code
   - --logits-processors
   - vllm.model_executor.models.deepseek_ocr:NGramPerReqLogitsProcessor
+  env:
+    TRITON_ALLOW_NON_CONSTEXPR_GLOBALS: '1'
   api:
     health_endpoint: /health
     operations:
@@ -176,6 +178,8 @@ specs:
   - vllm.model_executor.models.deepseek_ocr:NGramPerReqLogitsProcessor
   - --dtype
   - half
+  env:
+    TRITON_ALLOW_NON_CONSTEXPR_GLOBALS: '1'
   api:
     health_endpoint: /health
     operations:

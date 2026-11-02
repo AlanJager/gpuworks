@@ -2,6 +2,23 @@
 
 package main
 
+/*
+#cgo CFLAGS: -I/opt/hyhal/include -I/opt/hyhal/include/rocm_smi -I/opt/dtk/include -I/opt/dtk/include/rocm_smi
+#include <stdint.h>
+#include <stddef.h>
+#include <stdbool.h>
+#if defined(__has_include)
+#if __has_include(<rocm_smi_v2.h>)
+#include <rocm_smi_v2.h>
+#else
+#include <rocm_smi.h>
+#endif
+#else
+#include <rocm_smi.h>
+#endif
+*/
+import "C"
+
 import (
 	"fmt"
 	"strings"
@@ -14,8 +31,27 @@ type nativeAPI struct{}
 
 func newDeviceAPI() deviceAPI { return nativeAPI{} }
 
-func (nativeAPI) Init() error     { return dcgm.Init() }
+func (nativeAPI) Init() error {
+	// DCGM Init compares host-wide sysfs and runtime device counts.
+	// A notebook may expose one card while retaining the host's full sysfs.
+	// Initialize only the runtime needed by the single-device operations below.
+	status := C.rsmi_init(0)
+	if status == C.RSMI_STATUS_SUCCESS {
+		return nil
+	}
+	var message *C.char
+	messageStatus := C.rsmi_status_string(status, &message)
+	if messageStatus != C.RSMI_STATUS_SUCCESS || message == nil {
+		return fmt.Errorf("rsmi_init(0) failed: status=%d (status text lookup returned %d)", int(status), int(messageStatus))
+	}
+	return fmt.Errorf("rsmi_init(0) failed: status=%d (%s)", int(status), C.GoString(message))
+}
+
 func (nativeAPI) ShutDown() error { return dcgm.ShutDown() }
+
+func (nativeAPI) PhysicalPCIBDF(gpuIndex int) (string, error) {
+	return dcgm.PicBusInfo(gpuIndex)
+}
 
 func (nativeAPI) Create(gpuIndex, cuCount, memoryMiB int) ([]int, error) {
 	// The upstream CreateVDevices API prints its file scan to stdout. Keep

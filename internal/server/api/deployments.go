@@ -477,7 +477,14 @@ func (a *apiHandlers) setRoutingPolicy(w http.ResponseWriter, r *http.Request) {
 func (a *apiHandlers) stopDeployment(w http.ResponseWriter, r *http.Request) {
 	id := parseUint(chi.URLParam(r, "id"))
 	if err := a.d.Store.SetDeploymentState(id, store.DeployStopped); err != nil {
-		writeErr(w, http.StatusInternalServerError, err)
+		switch {
+		case errors.Is(err, store.ErrStateChanged):
+			writeProductError(w, http.StatusConflict, ErrorDeploymentDeleting, "the deployment is being deleted", nil)
+		case errors.Is(err, store.ErrNotFound):
+			writeErr(w, http.StatusNotFound, err)
+		default:
+			writeErr(w, http.StatusInternalServerError, err)
+		}
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "stopping"})
@@ -528,7 +535,11 @@ func (a *apiHandlers) deleteDeployment(w http.ResponseWriter, r *http.Request) {
 	}
 	if dep.State != store.DeployDeleting {
 		if err := a.d.Store.SetDeploymentState(id, store.DeployDeleting); err != nil {
-			writeErr(w, http.StatusInternalServerError, err)
+			if errors.Is(err, store.ErrNotFound) {
+				writeErr(w, http.StatusNotFound, err)
+			} else {
+				writeErr(w, http.StatusInternalServerError, err)
+			}
 			return
 		}
 	}

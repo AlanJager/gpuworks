@@ -79,13 +79,17 @@ type ServerUpgradeStarted struct {
 }
 
 // CatalogUpdate compares an official catalog in force with the published one.
-// Versions are for display; UpdateAvailable compares identities. Compatible is
-// false when the published catalog needs a newer server.
+// Versions are for display; UpdateAvailable compares identities. Compatible
+// requires a catalog this server can read; CheckError distinguishes a failed
+// check from a package requiring a newer server.
 type CatalogUpdate struct {
 	Current         string `json:"current"`
 	Latest          string `json:"latest,omitempty"`
 	UpdateAvailable bool   `json:"update_available"`
 	Compatible      bool   `json:"compatible"`
+	// CheckError means compatibility could not be checked, rather than that
+	// the package requires a newer server. Other update offers remain usable.
+	CheckError *ProductMessage `json:"check_error,omitempty"`
 }
 
 // OfficialInferenceCatalogResult is the answer to applying an official

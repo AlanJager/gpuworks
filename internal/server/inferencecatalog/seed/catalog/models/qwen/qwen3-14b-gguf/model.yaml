@@ -33,8 +33,6 @@ specs:
   - npu
   - --attention-backend
   - ascend
-  env:
-    runtime_namespace: gpuworks-validation
   placement:
     language: starlark
     resolver: "def resolve(gpu):\n    if gpu.count < 2: return reject(\"at least 2\
@@ -68,15 +66,15 @@ specs:
     display_target: ascend
   args:
   - --enable-metrics
+  # The repository holds five GGUF quantizations; select the measured
+  # Q4_K_M file relative to the mount so a custom mount path still resolves.
   - --model-path
-  - /model/Qwen3-14B-Q4_K_M.gguf
+  - ${MODEL_PATH}/Qwen3-14B-Q4_K_M.gguf
   - --disable-cuda-graph
   - --device
   - npu
   - --attention-backend
   - ascend
-  env:
-    runtime_namespace: gpuworks-validation
   placement:
     language: starlark
     resolver: "def resolve(gpu):\n    if gpu.count < 2: return reject(\"at least 2\

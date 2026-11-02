@@ -181,6 +181,16 @@ func (a *apiHandlers) getUpdates(w http.ResponseWriter, r *http.Request) {
 		status.TemplateCatalog.Latest = catalog.Version
 		status.TemplateCatalog.UpdateAvailable = catalog.PackageDigest != currentDigest && !catalogsBehind
 		status.TemplateCatalog.Compatible = catalog.SchemaVersion <= inferencecatalog.PackageSchemaVersion
+		if status.TemplateCatalog.Compatible {
+			compatible, err := a.templateUpdate.check(ctx, a.d.Outside.channel(), fetched, auto || refresh)
+			if err != nil {
+				status.TemplateCatalog.CheckError = &dto.ProductMessage{
+					Code: ErrorUpdateDownloadFailed, Message: "the published inference template catalog could not be checked: " + err.Error(),
+					Params: map[string]any{"file": catalog.Path, "detail": err.Error()},
+				}
+			}
+			status.TemplateCatalog.Compatible = compatible
+		}
 	}
 	writeJSON(w, http.StatusOK, status)
 }

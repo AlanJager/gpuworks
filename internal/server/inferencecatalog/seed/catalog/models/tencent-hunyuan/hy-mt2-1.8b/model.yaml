@@ -59,6 +59,11 @@ specs:
     vendor: nvidia
     cc: '>=8.0'
     display_target: nvidia
+  args:
+  - --trust-remote-code
+  - --dtype
+  - bfloat16
+  - --enforce-eager
   api:
     health_endpoint: /health
     operations:

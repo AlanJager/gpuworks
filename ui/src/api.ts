@@ -1358,8 +1358,10 @@ export interface CatalogUpdate {
   current: string;
   latest?: string;
   update_available: boolean;
-  /** False when the published catalog needs a newer server. */
+  /** True when this server can read the catalog; check_error explains a failed check. */
   compatible: boolean;
+  /** Present when the catalog could not be checked; other updates remain usable. */
+  check_error?: ProductMessage;
 }
 
 /** GET /api/v1/updates: what the distribution channel offers next to what this server runs. */

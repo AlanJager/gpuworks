@@ -209,20 +209,35 @@ func TestUnprobedCapabilityHasNoCheckTime(t *testing.T) {
 	}
 }
 
-func TestHygonZ100RequiresDockerAssetsAndPerGPUProbe(t *testing.T) {
+func TestHygonSupportedModelsRequireAssetsAndPerGPUProbe(t *testing.T) {
+	for _, model := range []string{"Z100", "K100AI", "BW"} {
+		t.Run(model, func(t *testing.T) { testHygonCapabilityPrerequisites(t, model) })
+	}
+}
+
+func testHygonCapabilityPrerequisites(t *testing.T, model string) {
 	node := &store.Node{
 		PartitionSafetyProtocol: 1, GPUVendor: "hygon", Arch: "amd64", Framework: "dtk", FrameworkVersion: "26.04", RuntimeDriver: "docker",
 		PartitionAssets: `[ {"backend":"hygon-dgpu","root":"/opt","files":["libamdhip64.so","libhydmi.so","libhydmi_mig.so","librocm_smi64.so","gpuworks-hygon-vdev-helper"]} ]`,
 		PartitionProbes: `[ {"backend":"hygon-dgpu","gpu_index":0,"status":"passed"} ]`,
 	}
-	node.GPUs = []store.GPU{{Index: 0, Vendor: "hygon", ArchID: "Z100"}, {Index: 1, Vendor: "hygon", ArchID: "K100"}}
+	node.GPUs = []store.GPU{{Index: 0, Vendor: "hygon", ArchID: model}, {Index: 1, Vendor: "hygon", ArchID: "K100"}}
 	ready := ForGPU(node, &node.GPUs[0])
 	if len(ready) != 1 || ready[0].Backend != accelerator.BackendHygonLogical || ready[0].Status != StatusReady {
-		t.Fatalf("Z100 capability = %+v", ready)
+		t.Fatalf("%s capability = %+v", model, ready)
 	}
 	if got := ForGPU(node, &node.GPUs[1]); len(got) != 0 {
 		t.Fatalf("unverified K100 capability = %+v", got)
 	}
+	node.RuntimeDriver = "udocker"
+	if got := ForGPU(node, &node.GPUs[0]); len(got) != 1 || got[0].Status != StatusReady {
+		t.Fatalf("udocker with a passed native quota probe = %+v", got)
+	}
+	node.PartitionProbes = `[{"backend":"hygon-dgpu","gpu_index":0,"status":"failed","detail":"permission denied"}]`
+	if got := ForGPU(node, &node.GPUs[0]); len(got) != 1 || got[0].Status != StatusUnavailable || !strings.Contains(got[0].Reason, "permission denied") {
+		t.Fatalf("udocker with a failed quota probe = %+v", got)
+	}
+	node.PartitionProbes = `[{"backend":"hygon-dgpu","gpu_index":0,"status":"passed"}]`
 	node.RuntimeDriver = "nerdctl"
 	if got := ForGPU(node, &node.GPUs[0]); len(got) != 1 || got[0].Status != StatusUnavailable || !strings.Contains(got[0].Reason, "Docker") {
 		t.Fatalf("nerdctl capability = %+v", got)

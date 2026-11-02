@@ -98,7 +98,7 @@ func TestInheritedA3SpecsMatchTheir910BOriginal(t *testing.T) {
 		"qwen/qwen3-vl-8b-instruct/bf16-vllm-ascend-a3-4eac0a8b":            "TP1 needs the measured 196608-token cap",
 		"google/gemma-3-4b-it/bf16-sglang-ascend-a3-4cdeb491":               "A3 graph capture hangs; eager mode passed text and image chat",
 		"google/gemma-3-27b-it/bf16-sglang-ascend-a3-ca729c08":              "A3 graph capture hangs; eager mode passed text and image chat",
-		"google/gemma-4-26b-a4b-it/bf16-vllm-ascend-a3-d8ff96c2":           "the checkpoint supplies its chat template, and eager mode passed image chat",
+		"google/gemma-4-26b-a4b-it/bf16-vllm-ascend-a3-d8ff96c2":            "A3 graph capture fails; eager mode passed text and image chat",
 		"zai-org/glm-4.5v/bf16-sglang-ascend-a3-36013872":                   "A3 graph capture stalls across ranks; eager mode passed image chat",
 		"qwen/qwen3-next-80b-a3b-instruct/int8-sglang-ascend-a3-7d129784":   "A3 NCCL graph capture stalls; eager mode passed chat",
 		"qwen/qwen3-vl-30b-a3b-instruct/bf16-sglang-ascend-a3-8659b2c8":     "A3 graph capture stalls; eager mode passed text and image chat",

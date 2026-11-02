@@ -413,17 +413,29 @@ func (s *Store) UpdateInstanceDesiredState(uuid, desiredStateJSON string) error 
 
 // SetDeploymentState flips active/stopped/deleting. Taking the typed state
 // keeps new string literals from reaching the column. Leaving active ends a
-// rolling restart in progress: its instances are removed anyway.
+// rolling restart in progress: its instances are removed anyway. A deletion
+// cannot be withdrawn by a later state write (ErrStateChanged).
 func (s *Store) SetDeploymentState(id uint, state DeploymentState) error {
 	updates := map[string]any{"desired_state": string(state)}
 	if state != DeployActive {
 		updates["restart_requested_at"] = nil
 	}
-	err := s.db.Model(&Deployment{}).Where("id = ?", id).Updates(updates).Error
-	if err == nil {
-		s.Bus.PublishChange("deployment", uintKey(id), "state:"+string(state))
+	query := s.db.Model(&Deployment{}).Where("id = ?", id)
+	if state != DeployDeleting {
+		query = query.Where("desired_state <> ?", string(DeployDeleting))
 	}
-	return err
+	result := query.Updates(updates)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		if _, err := s.GetDeployment(id); err != nil {
+			return err
+		}
+		return ErrStateChanged
+	}
+	s.Bus.PublishChange("deployment", uintKey(id), "state:"+string(state))
+	return nil
 }
 
 // DeleteDeployment removes a deployment after its instances have been torn

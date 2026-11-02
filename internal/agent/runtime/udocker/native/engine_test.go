@@ -419,16 +419,17 @@ func TestSidecarPlanRespectsCumulativeBudget(t *testing.T) {
 	}
 
 	// Small layers are not worth the disk regardless of budget.
-	store.Reserve = 0
 	planned = store.Plan([]Descriptor{layer("d", 1<<20), layer("e", 700<<20)})
 	if len(planned) != 1 || planned[0].Size != 700<<20 {
 		t.Errorf("planned %v, want only the 700 MiB layer", planned)
 	}
 
-	// Largest first, so a partial budget buys the most time.
+	// Largest first, so a partial budget buys the most time. Set the budget
+	// explicitly instead of assuming this filesystem has 9 GiB available.
+	store.Reserve = free - (3*gib*inflatedSizeFactor + gib/2)
 	planned = store.Plan([]Descriptor{layer("f", 600<<20), layer("g", 2*gib), layer("h", gib)})
-	if len(planned) < 2 || planned[0].Size != 2*gib {
-		t.Errorf("planned %v, want the 2 GiB layer first", planned)
+	if len(planned) != 2 || planned[0].Digest != layer("g", 2*gib).Digest || planned[1].Digest != layer("h", gib).Digest {
+		t.Errorf("planned %v, want the 2 GiB layer followed by the 1 GiB layer", planned)
 	}
 
 	// A layer already inflated by an earlier pull is not redone.

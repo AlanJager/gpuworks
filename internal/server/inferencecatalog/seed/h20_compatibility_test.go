@@ -37,7 +37,7 @@ var h20CatalogProfiles = []struct {
 func TestH20CatalogProfilesMatchSupportedNames(t *testing.T) {
 	for _, profile := range h20CatalogProfiles {
 		t.Run(profile.model+"/"+profile.spec, func(t *testing.T) {
-			_, spec := ppuSpec(t, profile.model, profile.spec)
+			_, spec := catalogSpec(t, profile.model, profile.spec)
 			predicate := chipmatch.Predicate{Vendor: spec.GPUs.Vendor, CC: spec.GPUs.CC, Name: spec.GPUs.Name}
 			for _, card := range []struct {
 				name, vendor, cc string
@@ -76,7 +76,7 @@ func TestH20CatalogProfilesRespectCapacityAndCardCount(t *testing.T) {
 	t.Cleanup(func() { _ = st.Close() })
 	for _, profile := range h20CatalogProfiles {
 		t.Run(profile.model+"/"+profile.spec, func(t *testing.T) {
-			model, spec := ppuSpec(t, profile.model, profile.spec)
+			model, spec := catalogSpec(t, profile.model, profile.spec)
 			meta, err := json.Marshal(model.ModelConfig)
 			if err != nil {
 				t.Fatal(err)

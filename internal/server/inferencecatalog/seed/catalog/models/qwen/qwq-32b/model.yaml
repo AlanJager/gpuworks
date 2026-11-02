@@ -80,13 +80,22 @@ specs:
   - modelslim
   - --reasoning-parser
   - deepseek-r1
+  # The validated run kept the mounted checkpoint offline.
   env:
     HF_HUB_OFFLINE: '1'
     TRANSFORMERS_OFFLINE: '1'
+  # SGLang 0.5.18's ModelSlim RMSNorm wrapper lacks the optional quant_linear
+  # keyword that Qwen2 passes, so model construction raises TypeError. Add
+  # the keyword idempotently, and stop with a clear error if the runner source
+  # no longer has the anchor line instead of failing later inside SGLang.
   pre_start_script: |
     f=/sgl-workspace/sglang/python/sglang/srt/layers/quantization/modelslim/modelslim.py
     if ! grep -Fq 'quant_linear: Optional[nn.Module] = None,' "$f"; then
       sed -i '/post_residual_addition: Optional\[torch.Tensor\] = None,/a\        quant_linear: Optional[nn.Module] = None,' "$f"
+    fi
+    if ! grep -Fq 'quant_linear: Optional[nn.Module] = None,' "$f"; then
+      echo "ModelSlim quant_linear compatibility patch did not apply to $f" >&2
+      exit 1
     fi
   placement:
     language: starlark

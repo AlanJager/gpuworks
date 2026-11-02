@@ -12,7 +12,7 @@ import (
 // or degree of its own, so a deployment that selects two cards gets two
 // (the entrypoint passes them on as --gpus).
 func TestStrataProfileRunsOnTheAssignedCards(t *testing.T) {
-	_, spec := ppuSpec(t, "ista-daslab/qwen3.8-flash-next-strata", "iq2xs-strata-nvidia-single-gpu")
+	_, spec := catalogSpec(t, "ista-daslab/qwen3.8-flash-next-strata", "iq2xs-strata-nvidia-single-gpu")
 	resolve := func(count int, memoryGiB float64) placement.Result {
 		t.Helper()
 		names := make([]string, count)

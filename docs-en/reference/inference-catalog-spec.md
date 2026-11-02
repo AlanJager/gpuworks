@@ -398,7 +398,7 @@ api:
 
 Operation vocabulary (`internal/server/inferenceapi` is the single source): `openai.chat`,
 `openai.completions` (`/v1/completions`, continues the prompt as-is without applying a chat template), `openai.embeddings`, `openai.rerank`, `openai.audio.transcribe`,
-`openai.audio.speech`, `openai.image.generate`, `openai.video.generate`,
+`openai.audio.speech`, `openai.image.generate`, `openai.image.edit`, `openai.video.generate`,
 and `openai.realtime`. Operation types must not repeat within a contract.
 
 Special cases:

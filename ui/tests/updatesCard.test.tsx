@@ -160,6 +160,28 @@ test("a catalog that needs a newer server cannot be applied", async () => {
   }
 });
 
+test("a template download failure preserves server and image updates", async () => {
+  const s = stub([statusFixture({
+    server: { current: "old", latest: "new", update_available: true, installable: true, self_upgrade: true },
+    image_catalog: { current: "old", latest: "new", update_available: true, compatible: true },
+    template_catalog: {
+      current: "old", latest: "new", update_available: true, compatible: false,
+      check_error: { code: "UPDATE_DOWNLOAD_FAILED", params: { file: "templates.tar.gz", detail: "HTTP 404" }, message: "fallback" },
+    },
+  })]);
+  try {
+    renderCard();
+    const expected = commonLocale.apiError.UPDATE_DOWNLOAD_FAILED.replace("{{file}}", "templates.tar.gz").replace("{{detail}}", "HTTP 404");
+    await waitFor(() => assert.ok(within(row(u.templates)).getByText(expected)));
+    assert.equal(within(row(u.templates)).queryByText(u.needsServer), null);
+    assert.ok((within(row(u.templates)).getByRole("button", { name: u.apply }) as HTMLButtonElement).disabled);
+    assert.equal((within(row(u.images)).getByRole("button", { name: u.apply }) as HTMLButtonElement).disabled, false);
+    assert.equal((within(row(u.server)).getByRole("button", { name: u.upgrade }) as HTMLButtonElement).disabled, false);
+  } finally {
+    s.restore();
+  }
+});
+
 test("a failed check is shown in the reader's words", async () => {
   const s = stub([new APIError("ADMINISTRATOR_REQUIRED", {}, "administrator role required", 403)]);
   try {

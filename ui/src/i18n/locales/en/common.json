@@ -21,6 +21,7 @@
     "audioTranscribe": "Audio transcription",
     "audioSpeech": "Speech synthesis",
     "imageGenerate": "Image generation",
+    "imageEdit": "Image editing",
     "videoGenerate": "Video generation",
     "realtime": "Realtime"
   },

@@ -67,11 +67,8 @@ func (n *NodeRuntime) rpcRegisterPath(ctx context.Context, params json.RawMessag
 		if err != nil {
 			return err
 		}
-		if len(report.Entries) != 1 {
-			return fmt.Errorf("selected directory must identify exactly one model entry through its metadata; select the model directory rather than its parent (found %d entries)", len(report.Entries))
-		}
-		if report.Entries[0].Incomplete {
-			return fmt.Errorf("selected model directory has missing or unresolved files: %s", strings.Join(report.Entries[0].Missing, ", "))
+		if err := report.ValidateSingleEntry(); err != nil {
+			return err
 		}
 		if p.ParseMetadata {
 			result.Metadata = &report

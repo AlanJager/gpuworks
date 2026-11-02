@@ -3,9 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"strings"
 
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/messages"
@@ -36,20 +34,5 @@ func validateModelMetadata(report *modelmetadata.Report) error {
 	if report == nil {
 		return messages.NewProductError(messages.ErrorAgentUpgradeRequired, "upgrade the agent to validate model directory metadata before registration", nil)
 	}
-	if report.Component && len(report.Entries) == 0 {
-		return errors.New("directory is a model component")
-	}
-	if len(report.Entries) != 1 {
-		return errors.New("directory does not identify exactly one model entry")
-	}
-	if len(report.Entries) == 1 && report.Entries[0].Incomplete {
-		details := append([]string(nil), report.Entries[0].Missing...)
-		for _, issue := range report.Issues {
-			if issue.Code != "unknown_task" {
-				details = append(details, issue.Path+": "+issue.Code+" "+issue.Detail)
-			}
-		}
-		return fmt.Errorf("model entry has missing or unresolved files: %s", strings.Join(details, "; "))
-	}
-	return nil
+	return report.ValidateSingleEntry()
 }

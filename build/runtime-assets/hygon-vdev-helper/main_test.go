@@ -15,22 +15,32 @@ import (
 type fakeAPI struct {
 	initialized bool
 	shutdown    bool
+	initErr     error
+	shutdownErr error
 	ids         []int
 	createErr   error
 	createFn    func()
 	created     bool
+	physicalPCI string
+	physicalErr error
 	info        deviceInfo
 	exists      bool
 	inspectErr  error
+	inspectFn   func(int) (deviceInfo, bool, error)
 	stopped     int
 	destroyed   int
 	destroyErr  error
+	destroyFn   func(int) error
 	stopErr     error
 	calls       []string
 }
 
-func (f *fakeAPI) Init() error     { f.initialized = true; return nil }
-func (f *fakeAPI) ShutDown() error { f.shutdown = true; return nil }
+func (f *fakeAPI) Init() error     { f.initialized = true; return f.initErr }
+func (f *fakeAPI) ShutDown() error { f.shutdown = true; return f.shutdownErr }
+func (f *fakeAPI) PhysicalPCIBDF(int) (string, error) {
+	f.calls = append(f.calls, "physical-pci")
+	return f.physicalPCI, f.physicalErr
+}
 func (f *fakeAPI) Create(_, _, _ int) ([]int, error) {
 	f.created = true
 	if f.createFn != nil {
@@ -46,10 +56,16 @@ func (f *fakeAPI) Stop(id int) error {
 func (f *fakeAPI) Destroy(id int) error {
 	f.destroyed = id
 	f.calls = append(f.calls, "destroy")
+	if f.destroyFn != nil {
+		return f.destroyFn(id)
+	}
 	return f.destroyErr
 }
-func (f *fakeAPI) Inspect(int) (deviceInfo, bool, error) {
+func (f *fakeAPI) Inspect(id int) (deviceInfo, bool, error) {
 	f.calls = append(f.calls, "inspect")
+	if f.inspectFn != nil {
+		return f.inspectFn(id)
+	}
 	return f.info, f.exists, f.inspectErr
 }
 
@@ -74,19 +90,24 @@ func runRelease(t *testing.T, args []string, api deviceAPI, out *bytes.Buffer, r
 	return runWithConfig(append(append([]string{}, args...), "--snapshot-path", snapshotPath), api, out, removeConfig, func(int) string { return hostPath })
 }
 
-func configFixture(t *testing.T) func(int) string {
+func configFixture(t *testing.T, api *fakeAPI) func(int) string {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "generated.conf")
-	if err := os.WriteFile(path, []byte("vendor config\n"), 0o600); err != nil {
-		t.Fatal(err)
+	dir := t.TempDir()
+	path := func(id int) string { return filepath.Join(dir, "vdev"+strconv.Itoa(id)+".conf") }
+	api.createFn = func() {
+		for _, id := range api.ids {
+			if err := os.WriteFile(path(id), []byte(vendorConfig(id, expectedInfo)), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
 	}
-	return func(int) string { return path }
+	return path
 }
 
 func TestCreateContract(t *testing.T) {
-	api := &fakeAPI{ids: []int{17}}
+	api := &fakeAPI{physicalPCI: expectedInfo.PCIBDF, ids: []int{17}, info: expectedInfo, exists: true}
 	var out bytes.Buffer
-	if err := runWithConfig([]string{"create", "--gpu-index", "0", "--cu-count", "15", "--memory-mib", "1536"}, api, &out, os.Remove, configFixture(t)); err != nil {
+	if err := runWithConfig([]string{"create", "--gpu-index", "0", "--cu-count", "15", "--memory-mib", "1536"}, api, &out, os.Remove, configFixture(t, api)); err != nil {
 		t.Fatal(err)
 	}
 	if out.String() != "{\"vdev_id\":17}\n" || !api.initialized || !api.shutdown {
@@ -96,9 +117,9 @@ func TestCreateContract(t *testing.T) {
 
 func TestCreateRejectsAmbiguousIDs(t *testing.T) {
 	for _, ids := range [][]int{{}, {17, 18}} {
-		api := &fakeAPI{ids: ids}
+		api := &fakeAPI{physicalPCI: expectedInfo.PCIBDF, ids: ids}
 		var out bytes.Buffer
-		err := runWithConfig([]string{"create", "--gpu-index", "0", "--cu-count", "15", "--memory-mib", "1536"}, api, &out, os.Remove, configFixture(t))
+		err := runWithConfig([]string{"create", "--gpu-index", "0", "--cu-count", "15", "--memory-mib", "1536"}, api, &out, os.Remove, configFixture(t, api))
 		if err == nil || !strings.Contains(err.Error(), "manual inspection") || out.Len() != 0 || !api.shutdown {
 			t.Fatalf("ids=%v error=%v output=%q shutdown=%t", ids, err, out.String(), api.shutdown)
 		}
@@ -128,7 +149,7 @@ func TestCreateRecoversOnlyOneVerifiedNewVdev(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			configDir, stateDir := t.TempDir(), t.TempDir()
-			api := &fakeAPI{ids: tc.ids, createErr: tc.createErr, info: tc.info, exists: tc.exists}
+			api := &fakeAPI{physicalPCI: expectedInfo.PCIBDF, ids: tc.ids, createErr: tc.createErr, info: tc.info, exists: tc.exists}
 			api.createFn = func() {
 				for name, data := range tc.configs {
 					if err := os.WriteFile(filepath.Join(configDir, name), []byte(data), 0o644); err != nil {
@@ -158,9 +179,9 @@ func TestCreateRecoversOnlyOneVerifiedNewVdev(t *testing.T) {
 	}
 }
 
-func TestCreateWithoutPCIIdentityDoesNotAdoptUnreportedID(t *testing.T) {
+func TestStandaloneCreateDerivesPCIAndVerifiesUnreportedID(t *testing.T) {
 	dir := t.TempDir()
-	api := &fakeAPI{exists: true, info: expectedInfo}
+	api := &fakeAPI{physicalPCI: expectedInfo.PCIBDF, exists: true, info: expectedInfo}
 	api.createFn = func() {
 		if err := os.WriteFile(filepath.Join(dir, "vdev17.conf"), []byte("vdev_id: 17\ncu_count: 15\nmem: 1536 MiB\npcibusid: 0000:01:00.0\n"), 0o644); err != nil {
 			t.Fatal(err)
@@ -168,7 +189,7 @@ func TestCreateWithoutPCIIdentityDoesNotAdoptUnreportedID(t *testing.T) {
 	}
 	var out bytes.Buffer
 	err := runWithConfig([]string{"create", "--gpu-index", "0", "--cu-count", "15", "--memory-mib", "1536"}, api, &out, os.Remove, func(id int) string { return filepath.Join(dir, "vdev"+strconv.Itoa(id)+".conf") })
-	if err == nil || !strings.Contains(err.Error(), "PCI address is required") || out.Len() != 0 || api.destroyed != 0 {
+	if err != nil || out.String() != "{\"vdev_id\":17}\n" || api.destroyed != 0 || strings.Join(api.calls, ",") != "physical-pci,inspect" {
 		t.Fatalf("error=%v output=%q destroyed=%d", err, out.String(), api.destroyed)
 	}
 }
@@ -179,7 +200,7 @@ func TestCreateDoesNotAdoptSymlinkedConfig(t *testing.T) {
 	if err := os.WriteFile(target, []byte("vdev_id: 17\ncu_count: 15\nmem: 1536 MiB\npcibusid: 0000:01:00.0\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	api := &fakeAPI{exists: true, info: expectedInfo}
+	api := &fakeAPI{physicalPCI: expectedInfo.PCIBDF, exists: true, info: expectedInfo}
 	api.createFn = func() {
 		if err := os.Symlink(target, filepath.Join(configDir, "vdev17.conf")); err != nil {
 			t.Fatal(err)
@@ -210,7 +231,7 @@ func TestCreateRefusesStaleOrUnverifiableConfigBeforeNativeCall(t *testing.T) {
 			if err := os.WriteFile(filepath.Join(dir, tc.file), []byte("stale"), 0o644); err != nil {
 				t.Fatal(err)
 			}
-			api := &fakeAPI{ids: []int{17}, inspectErr: tc.inspectErr}
+			api := &fakeAPI{physicalPCI: expectedInfo.PCIBDF, ids: []int{17}, inspectErr: tc.inspectErr}
 			var out bytes.Buffer
 			args := []string{"create", "--gpu-index", "0", "--cu-count", "15", "--memory-mib", "1536"}
 			err := runWithConfig(args, api, &out, os.Remove, func(int) string { return filepath.Join(dir, "vdev17.conf") })
@@ -226,7 +247,12 @@ func TestCreateAllowsConfigForLiveDevice(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "vdev42.conf"), []byte("live"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	api := &fakeAPI{ids: []int{17}, exists: true}
+	api := &fakeAPI{physicalPCI: expectedInfo.PCIBDF, ids: []int{17}, exists: true, info: expectedInfo}
+	api.createFn = func() {
+		if err := os.WriteFile(filepath.Join(dir, "vdev17.conf"), []byte(vendorConfig(17, expectedInfo)), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
 	var out bytes.Buffer
 	args := []string{"create", "--gpu-index", "0", "--cu-count", "15", "--memory-mib", "1536"}
 	if err := runWithConfig(args, api, &out, os.Remove, func(int) string { return filepath.Join(dir, "vdev17.conf") }); err != nil || !api.created || out.String() != "{\"vdev_id\":17}\n" {
@@ -274,15 +300,15 @@ func TestVdevLockSerializesOperations(t *testing.T) {
 
 func TestCreateRecordsIdentityBeforeReturningID(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "vdev-id")
-	api := &fakeAPI{ids: []int{17}}
+	api := &fakeAPI{physicalPCI: expectedInfo.PCIBDF, ids: []int{17}, info: expectedInfo, exists: true}
 	var out bytes.Buffer
 	args := []string{"create", "--gpu-index", "0", "--cu-count", "15", "--memory-mib", "1536", "--record-path", path, "--pci-bdf", "0000:01:00.0"}
-	config := configFixture(t)
+	config := configFixture(t, api)
 	if err := runWithConfig(args, api, &out, os.Remove, config); err != nil {
 		t.Fatal(err)
 	}
 	snapshot, err := os.ReadFile(filepath.Join(filepath.Dir(path), "vdev17.conf"))
-	if err != nil || string(snapshot) != "vendor config\n" {
+	if err != nil || string(snapshot) != vendorConfig(17, expectedInfo) {
 		t.Fatalf("snapshot=%q error=%v", snapshot, err)
 	}
 	data, err := os.ReadFile(path)
@@ -315,10 +341,10 @@ func TestCreateDoesNotReplaceExistingSnapshot(t *testing.T) {
 	if err := os.WriteFile(snapshotPath, []byte("prior owner\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	api := &fakeAPI{ids: []int{17}, exists: true, info: expectedInfo}
+	api := &fakeAPI{physicalPCI: expectedInfo.PCIBDF, ids: []int{17}, exists: true, info: expectedInfo}
 	var out bytes.Buffer
 	args := []string{"create", "--gpu-index", "0", "--cu-count", "15", "--memory-mib", "1536", "--record-path", path, "--pci-bdf", "0000:01:00.0"}
-	err := runWithConfig(args, api, &out, func(string) error { return os.ErrNotExist }, configFixture(t))
+	err := runWithConfig(args, api, &out, func(string) error { return os.ErrNotExist }, configFixture(t, api))
 	data, readErr := os.ReadFile(snapshotPath)
 	if err == nil || !strings.Contains(err.Error(), "snapshot vdev 17 config") || readErr != nil || string(data) != "prior owner\n" || out.Len() != 0 || api.destroyed != 17 {
 		t.Fatalf("error=%v snapshot=%q read error=%v output=%q calls=%v", err, data, readErr, out.String(), api.calls)
@@ -334,45 +360,68 @@ func TestCreateDoesNotReplaceExistingRecord(t *testing.T) {
 	if err := os.WriteFile(path, []byte("prior owner\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	api := &fakeAPI{ids: []int{17}, exists: true, info: expectedInfo, stopErr: errors.New("already stopped")}
+	api := &fakeAPI{physicalPCI: expectedInfo.PCIBDF, ids: []int{17}, exists: true, info: expectedInfo}
 	var out bytes.Buffer
 	args := []string{"create", "--gpu-index", "0", "--cu-count", "15", "--memory-mib", "1536", "--record-path", path, "--pci-bdf", "0000:01:00.0"}
-	err := runWithConfig(args, api, &out, func(string) error { return os.ErrNotExist }, configFixture(t))
+	err := runWithConfig(args, api, &out, func(string) error { return os.ErrNotExist }, configFixture(t, api))
 	data, readErr := os.ReadFile(path)
 	_, snapshotErr := os.Stat(filepath.Join(dir, "vdev17.conf"))
-	if err == nil || !strings.Contains(err.Error(), "record vdev 17 ownership") || !strings.Contains(err.Error(), "already stopped") || readErr != nil || string(data) != "prior owner\n" || !errors.Is(snapshotErr, os.ErrNotExist) || out.Len() != 0 || api.destroyed != 17 {
+	if err == nil || !strings.Contains(err.Error(), "ownership record already exists") || readErr != nil || string(data) != "prior owner\n" || !errors.Is(snapshotErr, os.ErrNotExist) || out.Len() != 0 || api.created || api.destroyed != 0 {
 		t.Fatalf("error=%v record=%q read error=%v snapshot error=%v output=%q calls=%v", err, data, readErr, snapshotErr, out.String(), api.calls)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "vdev-create-pending")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("existing-record preflight wrote create intent: %v", err)
 	}
 }
 
 func TestCreateRecordFailureRollsBackVerifiedDevice(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "missing", "vdev-id")
-	api := &fakeAPI{ids: []int{17}, exists: true, info: expectedInfo}
+	dir := t.TempDir()
+	path := filepath.Join(dir, "vdev-id")
+	if err := os.WriteFile(filepath.Join(dir, "vdev17.conf"), []byte("prior snapshot\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	api := &fakeAPI{physicalPCI: expectedInfo.PCIBDF, ids: []int{17}, exists: true, info: expectedInfo}
 	var out bytes.Buffer
 	args := []string{"create", "--gpu-index", "0", "--cu-count", "15", "--memory-mib", "1536", "--record-path", path, "--pci-bdf", "0000:01:00.0"}
-	err := runWithConfig(args, api, &out, func(string) error { return os.ErrNotExist }, configFixture(t))
-	if err == nil || !strings.Contains(err.Error(), "snapshot vdev 17 config") || out.Len() != 0 || api.stopped != 17 || api.destroyed != 17 || strings.Join(api.calls, ",") != "inspect,stop,destroy" {
+	err := runWithConfig(args, api, &out, func(string) error { return os.ErrNotExist }, configFixture(t, api))
+	if err == nil || !strings.Contains(err.Error(), "snapshot vdev 17 config") || out.Len() != 0 || api.stopped != 17 || api.destroyed != 17 || strings.Join(api.calls, ",") != "physical-pci,inspect,inspect,stop,destroy" {
 		t.Fatalf("error=%v output=%q calls=%v", err, out.String(), api.calls)
 	}
 }
 
 func TestCreateRecordFailureReportsUnsafeRollback(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "missing", "vdev-id")
-	api := &fakeAPI{ids: []int{17}, exists: true, info: deviceInfo{GPUIndex: 1, CUCount: 15, MemoryMiB: 1536, PCIBDF: "0000:01:00.0"}}
+	dir := t.TempDir()
+	path := filepath.Join(dir, "vdev-id")
+	if err := os.WriteFile(filepath.Join(dir, "vdev17.conf"), []byte("prior snapshot\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	api := &fakeAPI{physicalPCI: expectedInfo.PCIBDF, ids: []int{17}, exists: true, info: deviceInfo{GPUIndex: 1, CUCount: 15, MemoryMiB: 1536, PCIBDF: "0000:01:00.0"}}
+	inspections := 0
+	api.inspectFn = func(int) (deviceInfo, bool, error) {
+		inspections++
+		if inspections == 1 {
+			return expectedInfo, true, nil
+		}
+		return api.info, true, nil
+	}
 	var out bytes.Buffer
 	args := []string{"create", "--gpu-index", "0", "--cu-count", "15", "--memory-mib", "1536", "--record-path", path, "--pci-bdf", "0000:01:00.0"}
-	err := runWithConfig(args, api, &out, func(string) error { return os.ErrNotExist }, configFixture(t))
+	err := runWithConfig(args, api, &out, func(string) error { return os.ErrNotExist }, configFixture(t, api))
 	if err == nil || !strings.Contains(err.Error(), "identity mismatch") || !strings.Contains(err.Error(), "vdev 17") || api.stopped != 0 || api.destroyed != 0 || out.Len() != 0 {
 		t.Fatalf("error=%v calls=%v output=%q", err, api.calls, out.String())
 	}
 }
 
 func TestCreateRecordFailureReportsDestroyError(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "missing", "vdev-id")
-	api := &fakeAPI{ids: []int{17}, exists: true, info: expectedInfo, destroyErr: errors.New("device busy")}
+	dir := t.TempDir()
+	path := filepath.Join(dir, "vdev-id")
+	if err := os.WriteFile(filepath.Join(dir, "vdev17.conf"), []byte("prior snapshot\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	api := &fakeAPI{physicalPCI: expectedInfo.PCIBDF, ids: []int{17}, exists: true, info: expectedInfo, destroyErr: errors.New("device busy")}
 	var out bytes.Buffer
 	args := []string{"create", "--gpu-index", "0", "--cu-count", "15", "--memory-mib", "1536", "--record-path", path, "--pci-bdf", "0000:01:00.0"}
-	err := runWithConfig(args, api, &out, func(string) error { return os.ErrNotExist }, configFixture(t))
+	err := runWithConfig(args, api, &out, func(string) error { return os.ErrNotExist }, configFixture(t, api))
 	if err == nil || !strings.Contains(err.Error(), "snapshot vdev 17 config") || !strings.Contains(err.Error(), "device busy") || out.Len() != 0 {
 		t.Fatalf("error=%v calls=%v output=%q", err, api.calls, out.String())
 	}

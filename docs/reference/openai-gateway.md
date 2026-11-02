@@ -13,6 +13,7 @@ server 的 `/v1/*` 使用 API key 鉴权。请求体中的 `model` 指定对外�
 | audio transcription | /v1/audio/transcriptions | multipart |
 | audio speech | /v1/audio/speech | JSON |
 | image generation | /v1/images/generations | JSON 或 multipart |
+| image editing | /v1/images/edits | multipart；必须以源图作为 `image` 文件字段 |
 | video generation | /v1/videos | JSON 或 multipart；可 async |
 | realtime | /v1/realtime | WebSocket |
 | batch（Files 与 Batches） | /v1/files、/v1/batches | JSON；上传文件为 multipart。异步批处理，见[批处理](#批处理files-与-batches) |

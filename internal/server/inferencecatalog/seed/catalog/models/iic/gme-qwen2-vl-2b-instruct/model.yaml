@@ -109,6 +109,13 @@ specs:
   image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
   args:
   - --enable-metrics
+  - --is-embedding
+  - --chat-template
+  - gme-qwen2-vl
+  - --dtype
+  - float16
+  env:
+    GLOO_SOCKET_IFNAME: lo
   weights:
     quantization: fp32
     sources:

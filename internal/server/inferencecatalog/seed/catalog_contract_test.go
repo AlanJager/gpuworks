@@ -322,6 +322,7 @@ func TestNVIDIASourceRemediationAPIsAndH3Recipes(t *testing.T) {
 var functionalArgsExempt = map[string]string{
 	"qwen/qwen3.8-flash-next/int8-vllm-ascend-a3-tp8":        "vLLM-Ascend's W8A8-MTP recipe uses --tool-call-parser qwen3_xml; the vLLM recipe for NVIDIA uses qwen3_coder",
 	"zai-org/glm-5.3-flash/int8-vllm-ascend-a3-tp16":         "the Ascend profile ran without tool/reasoning parsers; adding them needs a re-run on 910C",
+	"google/gemma-4-26b-a4b-it/bf16-vllm-ascend-d8ff96c2":    "both Ascend profiles use the checkpoint's own chat template; the NVIDIA recipe references an example template",
 	"google/gemma-4-26b-a4b-it/bf16-vllm-ascend-a3-d8ff96c2": "the A3 run uses the checkpoint's own chat template and eager mode; the NVIDIA recipe references an example template",
 	"google/gemma-4-31b-it/bf16-vllm-ascend-c7a493cd":        "both Ascend profiles use the checkpoint's own chat template; the NVIDIA recipe references an example template",
 	"google/gemma-4-31b-it/bf16-vllm-ascend-a3-c7a493cd":     "the A3 run uses the checkpoint's own chat template; the NVIDIA recipe references an example template",
