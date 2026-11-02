@@ -271,12 +271,39 @@
         "group": "model",
         "enum": [
           "apertus2509",
+          "cohere_command4",
           "deepseek-r1",
           "deepseek-v3",
+          "deepseek-v4",
+          "deepseek-v41",
+          "dots",
+          "gemma4",
+          "gigachat35",
+          "glm45",
+          "gpt-oss",
+          "granite_thinking_parser",
+          "hunyuan",
+          "inkling",
+          "interns1",
+          "iquest_q1",
+          "k2_horizon",
+          "kimi",
+          "kimi_k2",
+          "kimi_k3",
+          "ling3",
+          "mimo",
+          "minimax",
+          "minimax-append-think",
+          "minimax-m3",
+          "mistral",
+          "muse",
+          "nanbeige",
+          "nemotron_3",
+          "poolside_v1",
           "qwen3",
           "qwen3-thinking",
-          "kimi_k2",
-          "gpt-oss"
+          "step3",
+          "step3p5"
         ],
         "options": [
           {
@@ -284,6 +311,13 @@
             "label": {
               "en": "apertus2509",
               "zh": "apertus2509"
+            }
+          },
+          {
+            "value": "cohere_command4",
+            "label": {
+              "en": "cohere_command4",
+              "zh": "cohere_command4"
             }
           },
           {
@@ -301,6 +335,188 @@
             }
           },
           {
+            "value": "deepseek-v4",
+            "label": {
+              "en": "deepseek-v4",
+              "zh": "deepseek-v4"
+            }
+          },
+          {
+            "value": "deepseek-v41",
+            "label": {
+              "en": "deepseek-v41",
+              "zh": "deepseek-v41"
+            }
+          },
+          {
+            "value": "dots",
+            "label": {
+              "en": "dots",
+              "zh": "dots"
+            }
+          },
+          {
+            "value": "gemma4",
+            "label": {
+              "en": "gemma4",
+              "zh": "gemma4"
+            }
+          },
+          {
+            "value": "gigachat35",
+            "label": {
+              "en": "gigachat35",
+              "zh": "gigachat35"
+            }
+          },
+          {
+            "value": "glm45",
+            "label": {
+              "en": "glm45",
+              "zh": "glm45"
+            }
+          },
+          {
+            "value": "gpt-oss",
+            "label": {
+              "en": "gpt-oss",
+              "zh": "gpt-oss"
+            }
+          },
+          {
+            "value": "granite_thinking_parser",
+            "label": {
+              "en": "granite_thinking_parser",
+              "zh": "granite_thinking_parser"
+            }
+          },
+          {
+            "value": "hunyuan",
+            "label": {
+              "en": "hunyuan",
+              "zh": "hunyuan"
+            }
+          },
+          {
+            "value": "inkling",
+            "label": {
+              "en": "inkling",
+              "zh": "inkling"
+            }
+          },
+          {
+            "value": "interns1",
+            "label": {
+              "en": "interns1",
+              "zh": "interns1"
+            }
+          },
+          {
+            "value": "iquest_q1",
+            "label": {
+              "en": "iquest_q1",
+              "zh": "iquest_q1"
+            }
+          },
+          {
+            "value": "k2_horizon",
+            "label": {
+              "en": "k2_horizon",
+              "zh": "k2_horizon"
+            }
+          },
+          {
+            "value": "kimi",
+            "label": {
+              "en": "kimi",
+              "zh": "kimi"
+            }
+          },
+          {
+            "value": "kimi_k2",
+            "label": {
+              "en": "kimi_k2",
+              "zh": "kimi_k2"
+            }
+          },
+          {
+            "value": "kimi_k3",
+            "label": {
+              "en": "kimi_k3",
+              "zh": "kimi_k3"
+            }
+          },
+          {
+            "value": "ling3",
+            "label": {
+              "en": "ling3",
+              "zh": "ling3"
+            }
+          },
+          {
+            "value": "mimo",
+            "label": {
+              "en": "mimo",
+              "zh": "mimo"
+            }
+          },
+          {
+            "value": "minimax",
+            "label": {
+              "en": "minimax",
+              "zh": "minimax"
+            }
+          },
+          {
+            "value": "minimax-append-think",
+            "label": {
+              "en": "minimax-append-think",
+              "zh": "minimax-append-think"
+            }
+          },
+          {
+            "value": "minimax-m3",
+            "label": {
+              "en": "minimax-m3",
+              "zh": "minimax-m3"
+            }
+          },
+          {
+            "value": "mistral",
+            "label": {
+              "en": "mistral",
+              "zh": "mistral"
+            }
+          },
+          {
+            "value": "muse",
+            "label": {
+              "en": "muse",
+              "zh": "muse"
+            }
+          },
+          {
+            "value": "nanbeige",
+            "label": {
+              "en": "nanbeige",
+              "zh": "nanbeige"
+            }
+          },
+          {
+            "value": "nemotron_3",
+            "label": {
+              "en": "nemotron_3",
+              "zh": "nemotron_3"
+            }
+          },
+          {
+            "value": "poolside_v1",
+            "label": {
+              "en": "poolside_v1",
+              "zh": "poolside_v1"
+            }
+          },
+          {
             "value": "qwen3",
             "label": {
               "en": "qwen3",
@@ -315,17 +531,17 @@
             }
           },
           {
-            "value": "kimi_k2",
+            "value": "step3",
             "label": {
-              "en": "kimi_k2",
-              "zh": "kimi_k2"
+              "en": "step3",
+              "zh": "step3"
             }
           },
           {
-            "value": "gpt-oss",
+            "value": "step3p5",
             "label": {
-              "en": "gpt-oss",
-              "zh": "gpt-oss"
+              "en": "step3p5",
+              "zh": "step3p5"
             }
           }
         ],
@@ -347,20 +563,47 @@
         "group": "model",
         "enum": [
           "apertus2509",
+          "cohere_command4",
           "deepseekv3",
           "deepseekv31",
           "deepseekv32",
+          "deepseekv4",
+          "deepseekv41",
+          "dots",
+          "gemma4",
+          "gigachat3",
+          "gigachat35",
           "glm",
+          "glm45",
+          "glm47",
           "gpt-oss",
+          "hermes",
+          "hunyuan",
+          "inkling",
+          "interns1",
+          "iquest_q1",
+          "k2_horizon",
           "kimi_k2",
+          "kimi_k3",
+          "lfm2",
+          "ling3",
           "llama3",
-          "llama4",
+          "mimo",
+          "minicpm5",
+          "minimax-m2",
+          "minimax-m3",
           "mistral",
+          "muse",
+          "nanbeige",
+          "poolside_v1",
           "pythonic",
           "qwen",
           "qwen25",
           "qwen3_coder",
-          "step3"
+          "spark25",
+          "step3",
+          "step3p5",
+          "trinity"
         ],
         "options": [
           {
@@ -368,6 +611,13 @@
             "label": {
               "en": "apertus2509",
               "zh": "apertus2509"
+            }
+          },
+          {
+            "value": "cohere_command4",
+            "label": {
+              "en": "cohere_command4",
+              "zh": "cohere_command4"
             }
           },
           {
@@ -392,10 +642,66 @@
             }
           },
           {
+            "value": "deepseekv4",
+            "label": {
+              "en": "deepseekv4",
+              "zh": "deepseekv4"
+            }
+          },
+          {
+            "value": "deepseekv41",
+            "label": {
+              "en": "deepseekv41",
+              "zh": "deepseekv41"
+            }
+          },
+          {
+            "value": "dots",
+            "label": {
+              "en": "dots",
+              "zh": "dots"
+            }
+          },
+          {
+            "value": "gemma4",
+            "label": {
+              "en": "gemma4",
+              "zh": "gemma4"
+            }
+          },
+          {
+            "value": "gigachat3",
+            "label": {
+              "en": "gigachat3",
+              "zh": "gigachat3"
+            }
+          },
+          {
+            "value": "gigachat35",
+            "label": {
+              "en": "gigachat35",
+              "zh": "gigachat35"
+            }
+          },
+          {
             "value": "glm",
             "label": {
               "en": "glm",
               "zh": "glm"
+            }
+          },
+          {
+            "value": "glm45",
+            "label": {
+              "en": "glm45",
+              "zh": "glm45"
+            }
+          },
+          {
+            "value": "glm47",
+            "label": {
+              "en": "glm47",
+              "zh": "glm47"
             }
           },
           {
@@ -406,10 +712,73 @@
             }
           },
           {
+            "value": "hermes",
+            "label": {
+              "en": "hermes",
+              "zh": "hermes"
+            }
+          },
+          {
+            "value": "hunyuan",
+            "label": {
+              "en": "hunyuan",
+              "zh": "hunyuan"
+            }
+          },
+          {
+            "value": "inkling",
+            "label": {
+              "en": "inkling",
+              "zh": "inkling"
+            }
+          },
+          {
+            "value": "interns1",
+            "label": {
+              "en": "interns1",
+              "zh": "interns1"
+            }
+          },
+          {
+            "value": "iquest_q1",
+            "label": {
+              "en": "iquest_q1",
+              "zh": "iquest_q1"
+            }
+          },
+          {
+            "value": "k2_horizon",
+            "label": {
+              "en": "k2_horizon",
+              "zh": "k2_horizon"
+            }
+          },
+          {
             "value": "kimi_k2",
             "label": {
               "en": "kimi_k2",
               "zh": "kimi_k2"
+            }
+          },
+          {
+            "value": "kimi_k3",
+            "label": {
+              "en": "kimi_k3",
+              "zh": "kimi_k3"
+            }
+          },
+          {
+            "value": "lfm2",
+            "label": {
+              "en": "lfm2",
+              "zh": "lfm2"
+            }
+          },
+          {
+            "value": "ling3",
+            "label": {
+              "en": "ling3",
+              "zh": "ling3"
             }
           },
           {
@@ -420,10 +789,31 @@
             }
           },
           {
-            "value": "llama4",
+            "value": "mimo",
             "label": {
-              "en": "llama4",
-              "zh": "llama4"
+              "en": "mimo",
+              "zh": "mimo"
+            }
+          },
+          {
+            "value": "minicpm5",
+            "label": {
+              "en": "minicpm5",
+              "zh": "minicpm5"
+            }
+          },
+          {
+            "value": "minimax-m2",
+            "label": {
+              "en": "minimax-m2",
+              "zh": "minimax-m2"
+            }
+          },
+          {
+            "value": "minimax-m3",
+            "label": {
+              "en": "minimax-m3",
+              "zh": "minimax-m3"
             }
           },
           {
@@ -431,6 +821,27 @@
             "label": {
               "en": "mistral",
               "zh": "mistral"
+            }
+          },
+          {
+            "value": "muse",
+            "label": {
+              "en": "muse",
+              "zh": "muse"
+            }
+          },
+          {
+            "value": "nanbeige",
+            "label": {
+              "en": "nanbeige",
+              "zh": "nanbeige"
+            }
+          },
+          {
+            "value": "poolside_v1",
+            "label": {
+              "en": "poolside_v1",
+              "zh": "poolside_v1"
             }
           },
           {
@@ -462,10 +873,31 @@
             }
           },
           {
+            "value": "spark25",
+            "label": {
+              "en": "spark25",
+              "zh": "spark25"
+            }
+          },
+          {
             "value": "step3",
             "label": {
               "en": "step3",
               "zh": "step3"
+            }
+          },
+          {
+            "value": "step3p5",
+            "label": {
+              "en": "step3p5",
+              "zh": "step3p5"
+            }
+          },
+          {
+            "value": "trinity",
+            "label": {
+              "en": "trinity",
+              "zh": "trinity"
             }
           }
         ],
@@ -1121,18 +1553,111 @@
         "control": "combobox",
         "group": "model",
         "enum": [
+          "cohere_command3",
+          "cohere_command4",
           "deepseek_r1",
+          "deepseek_v3",
+          "deepseek_v4",
+          "deepseek_v41",
+          "ernie45",
+          "gemma4",
+          "glm45",
+          "glm47",
           "granite",
+          "granite_thinking_parser",
+          "holo2",
+          "hunyuan_a13b",
+          "hy_v3",
+          "hy_v4",
+          "inkling",
+          "k2_horizon",
+          "kimi_k2",
+          "kimi_k3",
+          "ling3",
+          "mimo",
+          "minimax_m2",
+          "minimax_m2_append_think",
+          "minimax_m3",
           "mistral",
+          "muse_glimmer",
+          "nemotron_v3",
+          "olmo3",
+          "openai_gptoss",
+          "poolside_v1",
           "qwen3",
-          "step3"
+          "seed_oss",
+          "step3",
+          "step3p5"
         ],
         "options": [
+          {
+            "value": "cohere_command3",
+            "label": {
+              "en": "cohere_command3",
+              "zh": "cohere_command3"
+            }
+          },
+          {
+            "value": "cohere_command4",
+            "label": {
+              "en": "cohere_command4",
+              "zh": "cohere_command4"
+            }
+          },
           {
             "value": "deepseek_r1",
             "label": {
               "en": "DeepSeek R1",
               "zh": "DeepSeek R1"
+            }
+          },
+          {
+            "value": "deepseek_v3",
+            "label": {
+              "en": "deepseek_v3",
+              "zh": "deepseek_v3"
+            }
+          },
+          {
+            "value": "deepseek_v4",
+            "label": {
+              "en": "deepseek_v4",
+              "zh": "deepseek_v4"
+            }
+          },
+          {
+            "value": "deepseek_v41",
+            "label": {
+              "en": "deepseek_v41",
+              "zh": "deepseek_v41"
+            }
+          },
+          {
+            "value": "ernie45",
+            "label": {
+              "en": "ernie45",
+              "zh": "ernie45"
+            }
+          },
+          {
+            "value": "gemma4",
+            "label": {
+              "en": "gemma4",
+              "zh": "gemma4"
+            }
+          },
+          {
+            "value": "glm45",
+            "label": {
+              "en": "glm45",
+              "zh": "glm45"
+            }
+          },
+          {
+            "value": "glm47",
+            "label": {
+              "en": "glm47",
+              "zh": "glm47"
             }
           },
           {
@@ -1143,10 +1668,143 @@
             }
           },
           {
+            "value": "granite_thinking_parser",
+            "label": {
+              "en": "granite_thinking_parser",
+              "zh": "granite_thinking_parser"
+            }
+          },
+          {
+            "value": "holo2",
+            "label": {
+              "en": "holo2",
+              "zh": "holo2"
+            }
+          },
+          {
+            "value": "hunyuan_a13b",
+            "label": {
+              "en": "hunyuan_a13b",
+              "zh": "hunyuan_a13b"
+            }
+          },
+          {
+            "value": "hy_v3",
+            "label": {
+              "en": "hy_v3",
+              "zh": "hy_v3"
+            }
+          },
+          {
+            "value": "hy_v4",
+            "label": {
+              "en": "hy_v4",
+              "zh": "hy_v4"
+            }
+          },
+          {
+            "value": "inkling",
+            "label": {
+              "en": "inkling",
+              "zh": "inkling"
+            }
+          },
+          {
+            "value": "k2_horizon",
+            "label": {
+              "en": "k2_horizon",
+              "zh": "k2_horizon"
+            }
+          },
+          {
+            "value": "kimi_k2",
+            "label": {
+              "en": "kimi_k2",
+              "zh": "kimi_k2"
+            }
+          },
+          {
+            "value": "kimi_k3",
+            "label": {
+              "en": "kimi_k3",
+              "zh": "kimi_k3"
+            }
+          },
+          {
+            "value": "ling3",
+            "label": {
+              "en": "ling3",
+              "zh": "ling3"
+            }
+          },
+          {
+            "value": "mimo",
+            "label": {
+              "en": "mimo",
+              "zh": "mimo"
+            }
+          },
+          {
+            "value": "minimax_m2",
+            "label": {
+              "en": "minimax_m2",
+              "zh": "minimax_m2"
+            }
+          },
+          {
+            "value": "minimax_m2_append_think",
+            "label": {
+              "en": "minimax_m2_append_think",
+              "zh": "minimax_m2_append_think"
+            }
+          },
+          {
+            "value": "minimax_m3",
+            "label": {
+              "en": "minimax_m3",
+              "zh": "minimax_m3"
+            }
+          },
+          {
             "value": "mistral",
             "label": {
               "en": "Mistral",
               "zh": "Mistral"
+            }
+          },
+          {
+            "value": "muse_glimmer",
+            "label": {
+              "en": "muse_glimmer",
+              "zh": "muse_glimmer"
+            }
+          },
+          {
+            "value": "nemotron_v3",
+            "label": {
+              "en": "nemotron_v3",
+              "zh": "nemotron_v3"
+            }
+          },
+          {
+            "value": "olmo3",
+            "label": {
+              "en": "olmo3",
+              "zh": "olmo3"
+            }
+          },
+          {
+            "value": "openai_gptoss",
+            "label": {
+              "en": "openai_gptoss",
+              "zh": "openai_gptoss"
+            }
+          },
+          {
+            "value": "poolside_v1",
+            "label": {
+              "en": "poolside_v1",
+              "zh": "poolside_v1"
             }
           },
           {
@@ -1157,10 +1815,24 @@
             }
           },
           {
+            "value": "seed_oss",
+            "label": {
+              "en": "seed_oss",
+              "zh": "seed_oss"
+            }
+          },
+          {
             "value": "step3",
             "label": {
               "en": "Step3",
               "zh": "Step3"
+            }
+          },
+          {
+            "value": "step3p5",
+            "label": {
+              "en": "step3p5",
+              "zh": "step3p5"
             }
           }
         ],
@@ -1181,20 +1853,162 @@
         "control": "combobox",
         "group": "model",
         "enum": [
+          "apertus",
+          "cohere_command3",
+          "cohere_command4",
           "deepseek_v3",
+          "deepseek_v31",
+          "deepseek_v32",
+          "deepseek_v4",
+          "deepseek_v41",
+          "dots",
+          "ernie45",
+          "functiongemma",
+          "gemma4",
+          "gigachat3",
+          "glm45",
+          "glm47",
           "granite",
+          "granite-20b-fc",
+          "granite4",
           "hermes",
+          "hunyuan_a13b",
+          "hy_v3",
+          "hy_v4",
+          "inkling",
+          "internlm",
+          "jamba",
+          "k2_horizon",
+          "kimi_k2",
+          "kimi_k3",
+          "lfm2",
+          "ling3",
           "llama3_json",
+          "llama4_json",
+          "llama4_pythonic",
+          "longcat",
+          "mimo",
+          "minicpm5",
+          "minimax_m2",
+          "minimax_m3",
           "mistral",
-          "qwen3",
-          "qwen3_coder"
+          "muse_glimmer",
+          "olmo3",
+          "openai",
+          "phi4_mini_json",
+          "poolside_v1",
+          "pythonic",
+          "qwen3_coder",
+          "qwen3_xml",
+          "seed_oss",
+          "step3",
+          "step3p5",
+          "xlam"
         ],
         "options": [
+          {
+            "value": "apertus",
+            "label": {
+              "en": "apertus",
+              "zh": "apertus"
+            }
+          },
+          {
+            "value": "cohere_command3",
+            "label": {
+              "en": "cohere_command3",
+              "zh": "cohere_command3"
+            }
+          },
+          {
+            "value": "cohere_command4",
+            "label": {
+              "en": "cohere_command4",
+              "zh": "cohere_command4"
+            }
+          },
           {
             "value": "deepseek_v3",
             "label": {
               "en": "DeepSeek V3",
               "zh": "DeepSeek V3"
+            }
+          },
+          {
+            "value": "deepseek_v31",
+            "label": {
+              "en": "deepseek_v31",
+              "zh": "deepseek_v31"
+            }
+          },
+          {
+            "value": "deepseek_v32",
+            "label": {
+              "en": "deepseek_v32",
+              "zh": "deepseek_v32"
+            }
+          },
+          {
+            "value": "deepseek_v4",
+            "label": {
+              "en": "deepseek_v4",
+              "zh": "deepseek_v4"
+            }
+          },
+          {
+            "value": "deepseek_v41",
+            "label": {
+              "en": "deepseek_v41",
+              "zh": "deepseek_v41"
+            }
+          },
+          {
+            "value": "dots",
+            "label": {
+              "en": "dots",
+              "zh": "dots"
+            }
+          },
+          {
+            "value": "ernie45",
+            "label": {
+              "en": "ernie45",
+              "zh": "ernie45"
+            }
+          },
+          {
+            "value": "functiongemma",
+            "label": {
+              "en": "functiongemma",
+              "zh": "functiongemma"
+            }
+          },
+          {
+            "value": "gemma4",
+            "label": {
+              "en": "gemma4",
+              "zh": "gemma4"
+            }
+          },
+          {
+            "value": "gigachat3",
+            "label": {
+              "en": "gigachat3",
+              "zh": "gigachat3"
+            }
+          },
+          {
+            "value": "glm45",
+            "label": {
+              "en": "glm45",
+              "zh": "glm45"
+            }
+          },
+          {
+            "value": "glm47",
+            "label": {
+              "en": "glm47",
+              "zh": "glm47"
             }
           },
           {
@@ -1205,10 +2019,101 @@
             }
           },
           {
+            "value": "granite-20b-fc",
+            "label": {
+              "en": "granite-20b-fc",
+              "zh": "granite-20b-fc"
+            }
+          },
+          {
+            "value": "granite4",
+            "label": {
+              "en": "granite4",
+              "zh": "granite4"
+            }
+          },
+          {
             "value": "hermes",
             "label": {
               "en": "Hermes",
               "zh": "Hermes"
+            }
+          },
+          {
+            "value": "hunyuan_a13b",
+            "label": {
+              "en": "hunyuan_a13b",
+              "zh": "hunyuan_a13b"
+            }
+          },
+          {
+            "value": "hy_v3",
+            "label": {
+              "en": "hy_v3",
+              "zh": "hy_v3"
+            }
+          },
+          {
+            "value": "hy_v4",
+            "label": {
+              "en": "hy_v4",
+              "zh": "hy_v4"
+            }
+          },
+          {
+            "value": "inkling",
+            "label": {
+              "en": "inkling",
+              "zh": "inkling"
+            }
+          },
+          {
+            "value": "internlm",
+            "label": {
+              "en": "internlm",
+              "zh": "internlm"
+            }
+          },
+          {
+            "value": "jamba",
+            "label": {
+              "en": "jamba",
+              "zh": "jamba"
+            }
+          },
+          {
+            "value": "k2_horizon",
+            "label": {
+              "en": "k2_horizon",
+              "zh": "k2_horizon"
+            }
+          },
+          {
+            "value": "kimi_k2",
+            "label": {
+              "en": "kimi_k2",
+              "zh": "kimi_k2"
+            }
+          },
+          {
+            "value": "kimi_k3",
+            "label": {
+              "en": "kimi_k3",
+              "zh": "kimi_k3"
+            }
+          },
+          {
+            "value": "lfm2",
+            "label": {
+              "en": "lfm2",
+              "zh": "lfm2"
+            }
+          },
+          {
+            "value": "ling3",
+            "label": {
+              "en": "ling3",
+              "zh": "ling3"
             }
           },
           {
@@ -1219,6 +2124,55 @@
             }
           },
           {
+            "value": "llama4_json",
+            "label": {
+              "en": "llama4_json",
+              "zh": "llama4_json"
+            }
+          },
+          {
+            "value": "llama4_pythonic",
+            "label": {
+              "en": "llama4_pythonic",
+              "zh": "llama4_pythonic"
+            }
+          },
+          {
+            "value": "longcat",
+            "label": {
+              "en": "longcat",
+              "zh": "longcat"
+            }
+          },
+          {
+            "value": "mimo",
+            "label": {
+              "en": "mimo",
+              "zh": "mimo"
+            }
+          },
+          {
+            "value": "minicpm5",
+            "label": {
+              "en": "minicpm5",
+              "zh": "minicpm5"
+            }
+          },
+          {
+            "value": "minimax_m2",
+            "label": {
+              "en": "minimax_m2",
+              "zh": "minimax_m2"
+            }
+          },
+          {
+            "value": "minimax_m3",
+            "label": {
+              "en": "minimax_m3",
+              "zh": "minimax_m3"
+            }
+          },
+          {
             "value": "mistral",
             "label": {
               "en": "Mistral",
@@ -1226,10 +2180,45 @@
             }
           },
           {
-            "value": "qwen3",
+            "value": "muse_glimmer",
             "label": {
-              "en": "Qwen3",
-              "zh": "Qwen3"
+              "en": "muse_glimmer",
+              "zh": "muse_glimmer"
+            }
+          },
+          {
+            "value": "olmo3",
+            "label": {
+              "en": "olmo3",
+              "zh": "olmo3"
+            }
+          },
+          {
+            "value": "openai",
+            "label": {
+              "en": "openai",
+              "zh": "openai"
+            }
+          },
+          {
+            "value": "phi4_mini_json",
+            "label": {
+              "en": "phi4_mini_json",
+              "zh": "phi4_mini_json"
+            }
+          },
+          {
+            "value": "poolside_v1",
+            "label": {
+              "en": "poolside_v1",
+              "zh": "poolside_v1"
+            }
+          },
+          {
+            "value": "pythonic",
+            "label": {
+              "en": "pythonic",
+              "zh": "pythonic"
             }
           },
           {
@@ -1237,6 +2226,41 @@
             "label": {
               "en": "Qwen3 Coder",
               "zh": "Qwen3 Coder"
+            }
+          },
+          {
+            "value": "qwen3_xml",
+            "label": {
+              "en": "qwen3_xml",
+              "zh": "qwen3_xml"
+            }
+          },
+          {
+            "value": "seed_oss",
+            "label": {
+              "en": "seed_oss",
+              "zh": "seed_oss"
+            }
+          },
+          {
+            "value": "step3",
+            "label": {
+              "en": "step3",
+              "zh": "step3"
+            }
+          },
+          {
+            "value": "step3p5",
+            "label": {
+              "en": "step3p5",
+              "zh": "step3p5"
+            }
+          },
+          {
+            "value": "xlam",
+            "label": {
+              "en": "xlam",
+              "zh": "xlam"
             }
           }
         ],
