@@ -4,7 +4,7 @@ import { ReloadOutlined, UploadOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import { useTranslation } from "react-i18next";
 import { api, type CatalogUpdate, type ServerUpgradeStarted, type UpdateStatus } from "../../api";
-import { apiErrorText } from "../../apiError";
+import { apiErrorText, productMessageText, type ProductMessage } from "../../apiError";
 import { formatTime } from "../../i18n/datetime";
 import { publishUpdateStatus } from "../../components/UpdateNotice";
 import ServerBuildSummary from "../../components/ServerBuildSummary";
@@ -44,6 +44,7 @@ interface Row {
   latest?: string;
   updateAvailable: boolean;
   compatible: boolean;
+  checkError?: ProductMessage;
 }
 
 // What each official item looks like next to the channel: the server release,
@@ -52,6 +53,7 @@ function rowsOf(status: UpdateStatus, names: Record<Row["key"], string>): Row[] 
   const catalog = (key: "images" | "templates", value: CatalogUpdate): Row => ({
     key, name: names[key], current: value.current, latest: value.latest,
     updateAvailable: value.update_available, compatible: value.compatible,
+    checkError: value.check_error,
   });
   return [
     { key: "server", name: names.server, current: status.server.current, latest: status.server.latest, updateAvailable: status.server.update_available, compatible: true },
@@ -186,6 +188,7 @@ export default function UpdatesCard() {
 
   const stateOf = (row: Row) => {
     if (!status?.available) return <Text type="secondary">{t("updates.unknown")}</Text>;
+    if (row.checkError) return <Text type="danger">{productMessageText(tCommon, row.checkError)}</Text>;
     if (!row.latest) return <Text type="secondary">{t("updates.notPublished")}</Text>;
     if (!row.updateAvailable) return <Tag color="success">{t("updates.upToDate")}</Tag>;
     if (!row.compatible) return <Tag color="error">{t("updates.needsServer")}</Tag>;
