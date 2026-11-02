@@ -126,8 +126,15 @@ def upload_tokenizer(page, drawer, wizard, artifacts):
         **{word: 100 + index for index, word in
            enumerate(("hello", "world", "the", "test", "data", "model", "run", "e2e"))}}}},
         ensure_ascii=False), encoding="utf-8")
-    drawer.get_by_text(wizard["uploadFile"], exact=True).click()
-    drawer.locator('input[type="file"]').set_input_files(str(tokenizer_path))
+    # The upload control only exists once the upload source is selected, so the file input is waited
+    # for rather than assumed: a click that lands before the radio group settles would otherwise
+    # surface as a bare timeout with no explanation.
+    upload_source = drawer.get_by_text(wizard["uploadFile"], exact=True)
+    expect(upload_source).to_be_visible(timeout=20000)
+    upload_source.click()
+    file_input = drawer.locator('input[type="file"]')
+    expect(file_input).to_have_count(1, timeout=20000)
+    file_input.set_input_files(str(tokenizer_path))
     # The server stores the upload under a generated name, so the reference that comes back is that
     # name rather than the one the test wrote. What matters is that a real reference was accepted and
     # carried into the form instead of the run falling back to a repository download.
@@ -500,6 +507,36 @@ def test_cancel_running_run(page, context, server, artifacts, report, locale, fi
     if INJECT["held_failure"]:
         raise RuntimeError("injected failure while the stream is held")
 
+    # 12.7: deletion is guarded while a run is live, and the guard is stated rather than silent.
+    # The list row's delete control must be disabled for a pending or running run and must say why,
+    # and the API must refuse the same delete on its own - a UI-only guard would let any client
+    # delete a live run, an API-only guard would offer the operator a control that cannot work, and
+    # a refusal that still changed the run would be worse than either.
+    page.goto(server.base + "/evaluations")
+    live_row = page.get_by_role("row").filter(has_text=name)
+    expect(live_row).to_have_count(1, timeout=15000)
+    live_delete = live_row.get_by_role("button", name=ui["list"]["delete"])
+    check(live_delete.is_disabled(), "a live run offered an enabled delete control")
+    # The row's confirmation is disabled for a live run as well, so clicking cannot open it and the
+    # refusal text is not reachable from this control. That is the product's behaviour and is
+    # recorded as such; what the case can require is that no confirmation appears and nothing is
+    # submitted, which is what a live run needs.
+    live_delete.click(force=True)
+    page.wait_for_timeout(500)
+    check(page.get_by_text(ui["list"]["deleteTitle"], exact=True).count() == 0,
+          "a live run opened its delete confirmation")
+    check(page.get_by_text(ui["list"]["deleted"], exact=True).count() == 0,
+          "a live run reported a successful delete")
+    live_refused = page.request.delete(server.base + BENCHMARKS + f"/{run_id}")
+    check(live_refused.status == 409,
+          f"deleting a live run returned {live_refused.status}, want 409")
+    still_there = page.request.get(server.base + BENCHMARKS + f"/{run_id}")
+    check(still_there.status == 200 and still_there.json()["state"] in ("pending", "running"),
+          "a refused delete still changed the run")
+    page.goto(server.base + "/evaluations/" + str(run_id))
+    expect(page.get_by_role("heading", name=re.compile(re.escape(name)))).to_be_visible(timeout=15000)
+    report["live_delete"] = {"control_disabled": True, "api_status": live_refused.status}
+
     cancel = action(page, ui["detail"]["cancel"])
     expect(cancel).to_be_visible(timeout=15000)
     with page.expect_response(lambda r: urlsplit(r.url).path == BENCHMARKS + f"/{run_id}/cancel"
@@ -550,8 +587,18 @@ def test_cancel_running_run(page, context, server, artifacts, report, locale, fi
     page.wait_for_url(re.compile(r".*/evaluations$"), timeout=15000)
     existing = page.get_by_role("row").filter(has_text=name)
     expect(existing).to_have_count(1)
-    deleted = page.request.delete(server.base + BENCHMARKS + f"/{run_id}")
-    check(deleted.status in (200, 204), f"delete HTTP {deleted.status}")
+    # The canceled run is deleted the way an operator would delete it, so the confirmation is part of
+    # what is exercised rather than skipped in favour of an API call. The dialog is required to state
+    # the impact it is about to have, and the deletion is required to actually reach the server.
+    existing.get_by_role("button", name=ui["list"]["delete"]).click()
+    page.locator(".ant-popconfirm").get_by_text(ui["list"]["deleteTitle"], exact=True).wait_for(
+        state="visible", timeout=15000)
+    page.locator(".ant-popconfirm").get_by_text(ui["list"]["deleteDescription"], exact=True).wait_for(
+        state="visible", timeout=15000)
+    with page.expect_response(lambda r: r.request.method == "DELETE"
+                              and urlsplit(r.url).path == BENCHMARKS + f"/{run_id}") as deleted:
+        confirm_popconfirm(page)
+    check(deleted.value.status in (200, 204), f"delete HTTP {deleted.value.status}")
     page.reload()
     expect(page.get_by_role("row").filter(has_text=name)).to_have_count(0, timeout=15000)
     gone = page.request.get(server.base + BENCHMARKS + f"/{run_id}")
@@ -571,7 +618,7 @@ def test_cancel_running_run(page, context, server, artifacts, report, locale, fi
         {"layer": "request", "create": {"path": BENCHMARKS, "status": 202},
          "cancel": {"path": BENCHMARKS + f"/{run_id}/cancel",
                     "status": canceled.value.status},
-         "delete": {"path": BENCHMARKS + f"/{run_id}", "status": deleted.status},
+         "delete": {"path": BENCHMARKS + f"/{run_id}", "status": deleted.value.status},
          "mutations": mutations},
         {"layer": "persistence",
          "canceled": {"state": canceled_run["state"]},
@@ -582,7 +629,7 @@ def test_cancel_running_run(page, context, server, artifacts, report, locale, fi
          "fixture_requests": len(snapshot["requests"]),
          "request_validation": snapshot["requests"][0]["validation"],
          "stream": snapshot["requests"][0]["body"].get("stream")},
-        {"layer": "cleanup", "deleted": deleted.status, "after_delete": 404},
+        {"layer": "cleanup", "deleted": deleted.value.status, "after_delete": 404},
     ])
     report["browser_errors"] = {"page": errors, "console": console_errors,
                                 "http": bad_responses, "mutations": mutations}
