@@ -28,7 +28,13 @@ def observe(target, holder):
         def received(payload):
             if isinstance(payload, str):
                 record["controls"].append(json.loads(payload))
+        def sent(payload):
+            # The browser's own frames: keystrokes and resize reports. A resize the UI never sends
+            # would leave the agent's pty at its original geometry.
+            if isinstance(payload, str):
+                record.setdefault("sent", []).append(json.loads(payload))
         socket.on("framereceived", received)
+        socket.on("framesent", sent)
     target.on("websocket", socket_seen)
     return record
 
@@ -114,6 +120,52 @@ def execute(target, data, report, mode, params):
     return identity
 
 
+def verify_resize(target, record, data, report, stem, params):
+    """19.3: a viewport change must be reported to the pty, and the pty must adopt it.
+
+    The browser is resized, the UI is required to send a resize frame carrying new geometry, and the
+    container's own shell is then asked for its size again - so a UI that resized only its canvas, or
+    a frame that the server dropped, would leave the pty at the old geometry and fail here.
+    """
+    before = (int(params["rows"][0]), int(params["cols"][0]))
+    record.setdefault("sent", []).clear()
+    target.set_viewport_size({"width": 1000, "height": 620})
+    resized = None
+    for _ in range(80):
+        for frame in record.get("sent", []):
+            if frame.get("type") == "resize":
+                resized = frame
+                break
+        if resized:
+            break
+        target.wait_for_timeout(250)
+    check(resized is not None, "the browser never reported its new geometry to the terminal")
+    after = (int(resized["rows"]), int(resized["cols"]))
+    check(after != before, f"the resize frame repeated the old geometry {before} -> {after}")
+    check(all(isinstance(v, int) and 1 <= v <= 1000 for v in after),
+          f"the resize frame carries an invalid geometry: {after}")
+    state = "/tmp/e2e-" + report["run_id"] + "-resize.size"
+    target.locator(".xterm").click()
+    target.keyboard.insert_text("stty size > " + shlex.quote(state))
+    target.keyboard.press("Enter")
+    observed = None
+    for _ in range(40):
+        try:
+            observed = runtime.docker("exec", data["container"], "cat", state).decode().split()
+        except Exception:
+            observed = None
+        if observed and len(observed) == 2:
+            break
+        target.wait_for_timeout(250)
+    check(observed is not None, "the pty size was not readable after the resize")
+    check((int(observed[0]), int(observed[1])) == after,
+          f"the pty did not adopt the reported geometry: frame {after}, stty {observed}")
+    target.set_viewport_size({"width": 1440, "height": 900})
+    report.setdefault("resize", []).append({"from": list(before), "to": list(after),
+                                            "pty": observed})
+    return after
+
+
 # Mainline: instance's container shell button → exact container WS/real PTY
 # → independently read marker file and shell identity → exit / tab close /
 # context disconnect → audit ended, process gone and concurrency zero; wrong
@@ -138,6 +190,10 @@ def test_container_terminal(page, context, server, artifacts, report, locale, da
         params = verify_connected(target, record, server, node_uuid, ref, nodes)
         audit = fixture.wait_audit(page, server, token, node_uuid, ref, prior, True)
         identity = execute(target, data, report, mode, params)
+        if mode == "exit":
+            report["step"] = "container PTY resize reaches the pty"
+            verify_resize(target, record, data, report,
+                          "/tmp/e2e-" + report["run_id"] + "-exit", params)
         if mode == "exit":
             target.keyboard.type("exit")
             target.keyboard.press("Enter")
