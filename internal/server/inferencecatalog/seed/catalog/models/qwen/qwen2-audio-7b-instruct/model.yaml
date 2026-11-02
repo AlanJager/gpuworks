@@ -7,47 +7,12 @@ kv_bytes_per_token:
   vllm: 524288
   sglang: 524288
 specs:
-- name: bf16-vllm-hygon-357dc371
-  display_name_zh_cn: K100 / BW · BF16 · vLLM 0.18
-  display_name_en: K100 / BW · BF16 · vLLM 0.18
-  scenario: balanced
-  engine: vllm
-  image: gpuworks/gpuworks-runner:dtk26.04-vllm0.18.1-r2
-  weights:
-    quantization: bf16
-    sources:
-    - huggingface:
-        repo_id: Qwen/Qwen2-Audio-7B-Instruct
-        revision: 0a095220c30b7b31434169c3086508ef3ea5bf0a
-    - modelscope:
-        repo_id: Qwen/Qwen2-Audio-7B-Instruct
-        revision: 96cacd1ebda59dba34044b837fd4cac3a2c1265f
-  weight_bytes: 16806502061
-  gpus:
-    vendor: hygon
-    name: (^|[^A-Za-z0-9])(?:K100(?:[_ -]?AI)?|BW[_ -]?1000|BW[_ -]?1100)([^A-Za-z0-9_-]|$)
-  args:
-  - --dtype
-  - bfloat16
-  - --trust-remote-code
-  pre_start_argv:
-  - vllm-hcu-apply-patches
-  placement:
-    language: starlark
-    resolver: "def resolve(gpu):\n    return {\"GPU_COUNT\": gpu.count, \"TP_SIZE\"\
-      : gpu.count, \"SP_DEGREE\": 1}\n"
-  api:
-    health_endpoint: /health
-    operations:
-    - type: openai.chat
-      endpoint: /v1/chat/completions
-      mode: stream
 - name: bf16-vllm-hygon-cf217d0d
-  display_name_zh_cn: K100 / BW · BF16 · vLLM 0.21
-  display_name_en: K100 / BW · BF16 · vLLM 0.21
+  display_name_zh_cn: K100 / BW · BF16
+  display_name_en: K100 / BW · BF16
   scenario: balanced
   engine: vllm
-  image: harbor.sourcefind.cn:5443/dcu/admin/base/custom:vllm0210-ubuntu26.04-dtk26.04-py3.10-20260528
+  image: gpuworks/gpuworks-runner:dtk26.04-vllm0.21.0-r1
   weights:
     quantization: bf16
     sources:

@@ -66,7 +66,7 @@ specs:
   display_name_en: K100 / BW · INT8 W8A8
   scenario: balanced
   engine: vllm
-  image: harbor.sourcefind.cn:5443/dcu/admin/base/custom:vllm0210-ubuntu26.04-dtk26.04-py3.10-20260528
+  image: gpuworks/gpuworks-runner:dtk26.04-vllm0.21.0-r1
   weights:
     quantization: int8
     sources:
@@ -89,6 +89,7 @@ specs:
     HF_HUB_OFFLINE: '1'
     TOKENIZERS_PARALLELISM: 'false'
     TRANSFORMERS_OFFLINE: '1'
+    VLLM_HCU_USE_CUSTOM_QUANTIZATION_GEMM: '0'
   placement:
     language: starlark
     resolver: "def resolve(gpu):\n    return {\"GPU_COUNT\": gpu.count, \"TP_SIZE\"\

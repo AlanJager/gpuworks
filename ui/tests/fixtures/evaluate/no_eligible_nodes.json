@@ -153,7 +153,7 @@
           "compatible": true
         },
         {
-          "image": "gpuworks/gpuworks-runner:dtk26.04-vllm0.18.1-r2",
+          "image": "gpuworks/gpuworks-runner:dtk26.04-vllm0.21.0-r1",
           "reason": "catalog_match",
           "compatible": true
         },
@@ -219,6 +219,11 @@
         },
         {
           "image": "gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2",
+          "reason": "catalog_match",
+          "compatible": true
+        },
+        {
+          "image": "gpuworks/gpuworks-runner:dtk26.04-vllm0.18.1-r2",
           "reason": "catalog_match",
           "compatible": true
         },
