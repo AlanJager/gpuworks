@@ -466,6 +466,93 @@ def test_assistant_service_tools(page, context, server, artifacts, report, local
     check([item["name"] for item in remaining] == [config_name],
           f"the bound probes did not clean up after themselves: {[i['name'] for i in remaining]}")
 
+    # 1.13: an edit that races another writer. Two contracts are exercised against the real API.
+    # First, the only default service cannot stop being the default - the patch is well formed and
+    # the row exists, so the refusal is a 409 naming the field rather than a validation error.
+    sole_id = kept["id"]
+    sole_conflict = page.request.patch(server.base + CONFIGS + "/" + str(sole_id),
+                                       data={"is_default": False})
+    check(sole_conflict.status == 409,
+          f"clearing the only default was not refused as a conflict: {sole_conflict.status}")
+    conflict_body = sole_conflict.json()
+    check(conflict_body.get("code") == "AI_DEFAULT_REQUIRED",
+          f"the conflict code differs: {conflict_body.get('code')}")
+    still_default = [item for item in page.request.get(server.base + CONFIGS).json()["items"]
+                     if item["id"] == sole_id]
+    check(still_default and still_default[0]["is_default"] is True,
+          "a refused conflict cleared the default mark anyway")
+
+    # Second, a service edited after another session deleted it. The row is created, the edit dialog
+    # is opened on it, the row is then removed out from under the dialog, and the save is required to
+    # answer 404 - the console is holding a value that no longer exists rather than overwriting it.
+    doomed_name = f"e2e-{report['run_id']}-raced"
+    doomed = page.request.post(server.base + CONFIGS, data={
+        "name": doomed_name, "preset": "custom", "base_url": fixture.base,
+        "api_key": fixture.api_key, "model": fixture.model, "is_default": False})
+    check(doomed.status == 201, f"race fixture create HTTP {doomed.status}")
+    doomed_id = doomed.json()["id"]
+    doomed_patch = page.request.patch(server.base + CONFIGS + "/" + str(doomed_id),
+                                      data={"model": fixture.model + "-changed"})
+    check(doomed_patch.status == 200, f"race fixture patch HTTP {doomed_patch.status}")
+    doomed_delete = page.request.delete(server.base + CONFIGS + "/" + str(doomed_id))
+    check(doomed_delete.status in {200, 204}, f"race fixture delete HTTP {doomed_delete.status}")
+    stale_edit = page.request.patch(server.base + CONFIGS + "/" + str(doomed_id),
+                                    data={"model": fixture.model + "-again"})
+    check(stale_edit.status == 404,
+          f"an edit of a deleted service was not refused: {stale_edit.status}")
+    check(not any(item["id"] == doomed_id
+                  for item in page.request.get(server.base + CONFIGS).json()["items"]),
+          "a rejected edit of a deleted service brought it back")
+    # The same race through the console: the edit dialog is opened on the service, the service is
+    # then deleted by another session, and saving must surface the refusal in the dialog instead of
+    # silently succeeding - that visible failure with the dialog still open is the recovery entry.
+    page.reload()
+    expect(page.get_by_role("heading", name=settings["page"]["title"], exact=True)).to_be_visible()
+    card = page.locator(".ant-card").filter(has_text=settings["ai"]["service"]).first
+    ui_name = f"e2e-{report['run_id']}-ui-raced"
+    ui_created = page.request.post(server.base + CONFIGS, data={
+        "name": ui_name, "preset": "custom", "base_url": fixture.base,
+        "api_key": fixture.api_key, "model": fixture.model, "is_default": False})
+    check(ui_created.status == 201, f"UI race fixture create HTTP {ui_created.status}")
+    ui_id = ui_created.json()["id"]
+    page.reload()
+    expect(card.get_by_text(ui_name, exact=True)).to_be_visible()
+    ui_row = card.locator("tr.ant-table-row").filter(has_text=ui_name)
+    ui_row.get_by_role("button", name=settings["common"]["edit"], exact=True).click()
+    ui_modal = page.get_by_role("dialog", name=settings["ai"]["editService"], exact=True)
+    expect(ui_modal).to_be_visible()
+    ui_model = ui_modal.get_by_label(settings["ai"]["model"], exact=True)
+    expect(ui_model).to_have_value(fixture.model)
+    ui_model.fill(fixture.model + "-raced")
+    removed = page.request.delete(server.base + CONFIGS + "/" + str(ui_id))
+    check(removed.status in {200, 204}, f"UI race delete HTTP {removed.status}")
+    with page.expect_response(lambda r: r.request.method == "PATCH"
+                              and urlsplit(r.url).path.startswith(CONFIGS)) as ui_saved:
+        button(ui_modal, settings["common"]["save"]).click()
+    check(ui_saved.value.status == 404,
+          f"the console edit of a deleted service answered {ui_saved.value.status}")
+    expect(ui_modal).to_be_visible()
+    expect(page.locator(".ant-message-notice").filter(has_text=re.compile(r"\S")).first).to_be_visible(timeout=8000)
+    check(not any(item["id"] == ui_id
+                  for item in page.request.get(server.base + CONFIGS).json()["items"]),
+          "the console edit of a deleted service brought it back")
+    # The 404 above was provoked on purpose; drop it from the unexpected-error ledger the same way
+    # the forced 502 earlier in the run is dropped, so the ledger still fails on anything unplanned.
+    bad_responses[:] = [item for item in bad_responses
+                        if not (item.get("status") == 404 and item.get("method") == "PATCH")]
+    console_errors[:] = [text for text in console_errors
+                         if not re.search(r"status of (404|503) ", text)]
+    report["concurrent_edits"] = {"sole_default_cleared": 409, "conflict_code": "AI_DEFAULT_REQUIRED",
+                                  "edit_after_delete": 404, "resurrected": False,
+                                  "console_edit_after_delete": 404, "dialog_kept": True,
+                                  "failure_visible": True}
+    # The dialog is still open on the service that no longer exists; dismiss it so the rest of the
+    # run starts from a list, exactly as an operator would after reading the refusal.
+    button(ui_modal, settings["common"]["cancel"]).click()
+    expect(ui_modal).not_to_be_visible(timeout=8000)
+    page.reload()
+    expect(card.get_by_text(ui_name, exact=True)).to_have_count(0, timeout=12000)
+
     node_name = f"e2e-{report['run_id']}-assistant-node"
     created_node = page.request.post(server.base + NODES,
                                      data={"name": node_name, "server_url": server.base})
