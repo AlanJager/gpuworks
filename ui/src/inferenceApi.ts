@@ -6,6 +6,7 @@ export type OperationType =
   | "openai.audio.transcribe"
   | "openai.audio.speech"
   | "openai.image.generate"
+  | "openai.image.edit"
   | "openai.video.generate"
   | "openai.realtime";
 

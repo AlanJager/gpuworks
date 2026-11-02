@@ -13,6 +13,7 @@ The server's `/v1/*` endpoints use API key authentication. The `model` field in 
 | audio transcription | /v1/audio/transcriptions | multipart |
 | audio speech | /v1/audio/speech | JSON |
 | image generation | /v1/images/generations | JSON or multipart |
+| image editing | /v1/images/edits | multipart; the source image must be uploaded as the `image` file field |
 | video generation | /v1/videos | JSON or multipart; supports async |
 | realtime | /v1/realtime | WebSocket |
 | batch (Files and Batches) | /v1/files, /v1/batches | JSON; file upload is multipart. Asynchronous batches, see [Batches](#批处理files-与-batches) |

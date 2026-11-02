@@ -8,6 +8,7 @@ export const operationTypes: readonly OperationType[] = [
   "openai.audio.transcribe",
   "openai.audio.speech",
   "openai.image.generate",
+  "openai.image.edit",
   "openai.video.generate",
   "openai.realtime",
 ];
@@ -20,6 +21,7 @@ export const operationLabelKey: Record<OperationType, string> = {
   "openai.audio.transcribe": "common:operation.audioTranscribe",
   "openai.audio.speech": "common:operation.audioSpeech",
   "openai.image.generate": "common:operation.imageGenerate",
+  "openai.image.edit": "common:operation.imageEdit",
   "openai.video.generate": "common:operation.videoGenerate",
   "openai.realtime": "common:operation.realtime",
 };

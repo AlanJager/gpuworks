@@ -21,6 +21,7 @@
     "audioTranscribe": "语音转写",
     "audioSpeech": "语音合成",
     "imageGenerate": "图片生成",
+    "imageEdit": "图片编辑",
     "videoGenerate": "视频生成",
     "realtime": "实时对话"
   },

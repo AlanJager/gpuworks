@@ -15,6 +15,7 @@ const (
 	OperationAudioTranscribe = "openai.audio.transcribe"
 	OperationAudioSpeech     = "openai.audio.speech"
 	OperationImageGenerate   = "openai.image.generate"
+	OperationImageEdit       = "openai.image.edit"
 	OperationVideoGenerate   = "openai.video.generate"
 	OperationRealtime        = "openai.realtime"
 )
@@ -39,6 +40,7 @@ var operationOrder = []string{
 	OperationAudioTranscribe,
 	OperationAudioSpeech,
 	OperationImageGenerate,
+	OperationImageEdit,
 	OperationVideoGenerate,
 	OperationRealtime,
 }
@@ -125,6 +127,12 @@ var definitions = map[string]Definition{
 		PrimaryInputs: []string{"prompt"},
 		Type:          OperationImageGenerate, DefaultEndpoint: "/v1/images/generations",
 		AllowedEndpoints: []string{"/v1/images/generations"}, RequestEncodings: []string{EncodingJSON, EncodingMultipart},
+		Modes: []string{"sync"}, Renderer: "image", Response: ResponseImage,
+	},
+	OperationImageEdit: {
+		PrimaryInputs: []string{"prompt", "image"},
+		Type:          OperationImageEdit, DefaultEndpoint: "/v1/images/edits",
+		AllowedEndpoints: []string{"/v1/images/edits"}, RequestEncodings: []string{EncodingMultipart},
 		Modes: []string{"sync"}, Renderer: "image", Response: ResponseImage,
 	},
 	OperationVideoGenerate: {

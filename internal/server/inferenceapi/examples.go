@@ -74,6 +74,13 @@ func BuildExample(operation Operation, model string) (Example, error) {
 			return Example{}, composeErr
 		}
 		request.Body = body
+	case OperationImageEdit:
+		request.ContentType = "multipart/form-data"
+		request.Form = map[string]string{
+			"model":  model,
+			"prompt": exampleText(operation, "prompt", "Make the background blue"),
+			"image":  "@input.png",
+		}
 	case OperationVideoGenerate:
 		body, composeErr := ComposeRequest(operation, model, map[string]any{"prompt": exampleText(operation, "prompt", "A sunrise over mountains")}, exampleInputs(operation), nil)
 		if composeErr != nil {
