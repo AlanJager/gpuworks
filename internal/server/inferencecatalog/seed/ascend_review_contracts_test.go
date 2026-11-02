@@ -63,7 +63,7 @@ func TestGemma3VLLMTPDivisibility(t *testing.T) {
 }
 
 func TestKimiK26A3DeclaresTP4ForSixteenDevices(t *testing.T) {
-	_, spec := ppuSpec(t, "moonshotai/kimi-k2.6", "w4a8-vllm-ascend-a3-2de1ec2b")
+	_, spec := catalogSpec(t, "moonshotai/kimi-k2.6", "w4a8-vllm-ascend-a3-2de1ec2b")
 	if !containsArgumentPair(spec.Args, "--tensor-parallel-size", "4") {
 		t.Error("Kimi-K2.6 must spell out TP4 instead of treating all 16 devices as TP")
 	}
