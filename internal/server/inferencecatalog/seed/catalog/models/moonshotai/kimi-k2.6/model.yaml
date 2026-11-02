@@ -489,6 +489,11 @@ specs:
   - --quantization
   - ascend
   - --trust-remote-code
+  # A 16-device replica is TP4 x DP4. Spell out TP here: the vLLM data-parallel
+  # preflight otherwise interprets placement.tp=16 as the model TP and asks for
+  # 16 x 4 = 64 devices.
+  - --tensor-parallel-size
+  - '4'
   - --data-parallel-size
   - '4'
   - --enable-expert-parallel

@@ -62,6 +62,31 @@ func TestGemma3VLLMTPDivisibility(t *testing.T) {
 	}
 }
 
+func TestKimiK26A3DeclaresTP4ForSixteenDevices(t *testing.T) {
+	_, spec := ppuSpec(t, "moonshotai/kimi-k2.6", "w4a8-vllm-ascend-a3-2de1ec2b")
+	if !containsArgumentPair(spec.Args, "--tensor-parallel-size", "4") {
+		t.Error("Kimi-K2.6 must spell out TP4 instead of treating all 16 devices as TP")
+	}
+	if !containsArgumentPair(spec.Args, "--data-parallel-size", "4") {
+		t.Error("Kimi-K2.6 A3 recipe is DP4")
+	}
+	accepted, err := placement.Resolve(context.Background(), spec.Placement.Resolver, placement.GPU{
+		Count: 16, Vendor: "ascend", MinMemoryGiB: 64,
+	})
+	if err != nil || accepted.Reason != "" {
+		t.Fatalf("16-device placement rejected: %+v %v", accepted, err)
+	}
+	if got := accepted.Variables["TP_SIZE"]; got != int64(4) {
+		t.Errorf("TP_SIZE = %v, want 4", got)
+	}
+	rejected, err := placement.Resolve(context.Background(), spec.Placement.Resolver, placement.GPU{
+		Count: 4, Vendor: "ascend", MinMemoryGiB: 64,
+	})
+	if err != nil || rejected.Reason == "" {
+		t.Fatalf("four-device placement was not rejected: %+v %v", rejected, err)
+	}
+}
+
 func TestQwen3NextEagerWorkaroundStaysA3Only(t *testing.T) {
 	_, original := ppuSpec(t, "qwen/qwen3-next-80b-a3b-instruct", "int8-sglang-ascend-7d129784")
 	_, a3 := ppuSpec(t, "qwen/qwen3-next-80b-a3b-instruct", "int8-sglang-ascend-a3-7d129784")
