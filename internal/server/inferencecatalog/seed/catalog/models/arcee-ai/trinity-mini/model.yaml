@@ -60,12 +60,12 @@ specs:
   weights:
     quantization: bf16
     sources:
-    - huggingface:
-        repo_id: arcee-ai/Trinity-Mini
-        revision: cdb81e8130815fec299cccc8f8700004b8366e1e
     - modelscope:
         repo_id: arcee-ai/Trinity-Mini
         revision: 45ffa21d8c0a9ddc64b751c455d87847cc96baad
+    - huggingface:
+        repo_id: arcee-ai/Trinity-Mini
+        revision: cdb81e8130815fec299cccc8f8700004b8366e1e
   weight_bytes: 52265200181
   gpus:
     vendor: ascend
