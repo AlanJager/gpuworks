@@ -141,7 +141,6 @@
     ],
     "partial": {
       "1.2": "HTTP defaults only",
-      "1.3": "The directory URL is refused in the browser for both an empty value and a whitespace-only value - the required rule declares whitespace:true, so each shows the directoryURLRequired message, marks the field aria-invalid, keeps the typed value and posts no preview or registration. Name is deliberately not required here: the product accepts an empty name and defaults it, which the minimum-create stage asserts by posting name \"\" and reading back tiny-model. The remaining required text field in this mode is source_id, which the preview fills and the operator may overwrite; its empty and whitespace values are not asserted, so this stays a scoped claim.",
       "1.15": "Tab, focus border, named modal/footer viewport; other states missing",
       "5.2": "HTTP option only",
       "16.5": "no background task: registration fetches metadata synchronously"
@@ -154,7 +153,8 @@
     "12.5": "N/A: the register dialog has no nested child layer",
     "12.6": "covered: While the register POST is held the footer confirm shows the loading state and a second click sends no further register request; the 502 keeps the URL, source ID and name and shows the unreachable reason; the later 201 matches the independent detail GET and the reloaded row",
     "12.7": "Delete confirmation names the model and says node copy records are removed and a deployment reference blocks deletion. A deployment row blocks deletion with 409 MODEL_IN_USE and the model and deployment stay. A model file whose state is deleting keeps the model on 409 and the file stays. After both rows are cleared, delete returns 204, the independent GET is 404, and the reloaded list is empty",
-    "12.8": "MISSING: the revision field is not exercised by this register dialog"
+    "12.8": "MISSING: the revision field is not exercised by this register dialog",
+    "1.3": "Every required text field this mode renders is checked for both an empty and a whitespace-only value, and each is refused in the browser with no request on the wire. The directory URL and the source id both declare whitespace:true, so three spaces are refused exactly like an empty value: the field is left aria-invalid, the typed value stays in place, and neither a preview nor a registration is posted. The source id rule carries no message, so its antd default wording is locale dependent and is deliberately not asserted - the contract that is asserted is the refusal and the absence of a request. Name is not a required field in this form: the minimum-create stage posts an empty name and reads back the defaulted tiny-model, so there is no empty-name refusal to claim. Proven by mutation twice - dropping whitespace:true from the directory URL rule removes the expected message, and dropping the validation guard makes a refused submit raise an uncaught page error."
   },
   "missing": [
     "download to node, content verification on agent and real GPU inference",

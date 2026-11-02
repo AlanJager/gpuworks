@@ -250,6 +250,23 @@ def test_model_registration(page, context, server, fixture, artifacts, report, l
     target_source = f"e2e-{report['run_id']}/operator-model"
     name.fill(target_name)
     source_id.fill(target_source)
+    # 1.3: source_id is required with whitespace:true and declares no message, so the antd default
+    # wording is locale-dependent and is not asserted. What is asserted is the contract: an empty
+    # and a whitespace-only value each leave the dialog open with the field marked aria-invalid and
+    # put nothing on the wire.
+    early_submit = dialog.get_by_role("button").filter(
+        has_text=re.compile("^" + re.escape(k["register"]["confirm"]) + "$"))
+    for blank in ("", "   "):
+        source_id.fill(blank)
+        before_blank = len(mutations)
+        early_submit.click()
+        expect(source_id).to_have_attribute("aria-invalid", "true")
+        expect(source_id).to_have_value(blank)
+        expect(dialog).to_be_visible()
+        check(len(mutations) == before_blank, f"a source id of {blank!r} posted a registration")
+    report["source_id_blank_refused"] = {"empty": True, "whitespace": True}
+    source_id.fill(target_source)
+    expect(source_id).to_have_value(target_source)
     submitted = {"source_url": fixture.url, "source_id": target_source, "name": target_name}
     # AntD may retain a decorative loading image during its leave transition;
     # anchor the button to its exact visible label, independent of the icon name.
