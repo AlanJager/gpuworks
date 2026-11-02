@@ -251,45 +251,6 @@ specs:
     - type: openai.chat
       endpoint: /v1/chat/completions
       mode: stream
-- name: int4-vllm-ppu-df333de3
-  display_name_zh_cn: PPU · INT4 GPTQ · 4 卡 · 跳过多模态探测
-  display_name_en: PPU · INT4 GPTQ · 4 GPUs · Skip MM profiling
-  scenario: balanced
-  engine: vllm
-  image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
-  weights:
-    quantization: int4
-    sources:
-    - huggingface:
-        repo_id: Qwen/Qwen3.5-397B-A17B-GPTQ-Int4
-        revision: df333de344e06b492063d1ca04e2d4ee878f7595
-    - modelscope:
-        repo_id: Qwen/Qwen3.5-397B-A17B-GPTQ-Int4
-        revision: ff0ea7b12c6367b392e3a963ac8ba7b1071e82fc
-  weight_bytes: 235708083992
-  gpus:
-    vendor: ppu
-    name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
-  args:
-  - --trust-remote-code
-  - --enable-auto-tool-choice
-  - --tool-call-parser
-  - qwen3_coder
-  - --reasoning-parser
-  - qwen3
-  - --mm-encoder-tp-mode
-  - data
-  - --skip-mm-profiling
-  api:
-    health_endpoint: /health
-    operations:
-    - type: openai.chat
-      endpoint: /v1/chat/completions
-      mode: stream
-  placement:
-    language: starlark
-    resolver: "def resolve(gpu):\n    if gpu.count != 4: return reject(\"PPU profile requires exactly 4 GPUs\")\n    return\
-      \ {\"GPU_COUNT\": 4, \"TP_SIZE\": 4, \"PP_SIZE\": 1, \"SP_DEGREE\": 1}"
 - name: int8-vllm-ascend-a3-w8a8-mtp-99f2a045
   display_name_zh_cn: 910C (A3) · INT8 W8A8 · 16 卡 · 投机解码
   display_name_en: 910C (A3) · INT8 W8A8 · 16 NPUs · Speculative
