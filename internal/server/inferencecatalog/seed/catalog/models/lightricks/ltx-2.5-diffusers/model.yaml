@@ -7,7 +7,8 @@ release_date: '2026-07-26'
 model_config: {kv_cache: false}
 specs:
 - name: bf16-vllm-nvidia-b200-b300-gb200-gb300
-  display_profile: compatible
+  display_name_zh_cn: B200 / B300 / GB200 / GB300 · BF16
+  display_name_en: B200 / B300 / GB200 / GB300 · BF16
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm-omni0.30.0-r3
@@ -25,7 +26,6 @@ specs:
     vendor: nvidia
     cc: '>=10.0'
     name: (^|[^A-Za-z0-9])(?:B200|B300|GB200|GB300)([^A-Za-z0-9]|$)
-    display_target: blackwell
   args:
   - --omni
   - --model-class-name
@@ -57,7 +57,8 @@ specs:
         kind: image
         encoding: data_url
 - name: bf16-vllm-nvidia-general
-  display_profile: general
+  display_name_zh_cn: Ampere 及以上 · BF16
+  display_name_en: Ampere+ · BF16
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm-omni0.30.0-r3
@@ -74,7 +75,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.0'
-    display_target: nvidia
   args:
   - --omni
   - --model-class-name
@@ -104,7 +104,8 @@ specs:
         kind: image
         encoding: data_url
 - name: fp8-vllm-nvidia-b200-b300-gb200-gb300
-  display_profile: compatible
+  display_name_zh_cn: B200 / B300 / GB200 / GB300 · FP8
+  display_name_en: B200 / B300 / GB200 / GB300 · FP8
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm-omni0.30.0-r3
@@ -122,7 +123,6 @@ specs:
     vendor: nvidia
     cc: '>=10.0'
     name: (^|[^A-Za-z0-9])(?:B200|B300|GB200|GB300)([^A-Za-z0-9]|$)
-    display_target: blackwell
   args:
   - --omni
   - --model-class-name
@@ -154,7 +154,8 @@ specs:
         kind: image
         encoding: data_url
 - name: fp8-vllm-nvidia-general
-  display_profile: compatible
+  display_name_zh_cn: Hopper 及以上 · FP8
+  display_name_en: Hopper+ · FP8
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm-omni0.30.0-r3
@@ -171,7 +172,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=9.0'
-    display_target: hopper
   args:
   - --omni
   - --model-class-name

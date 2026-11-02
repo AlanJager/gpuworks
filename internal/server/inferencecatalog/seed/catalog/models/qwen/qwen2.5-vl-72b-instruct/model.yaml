@@ -11,7 +11,8 @@ kv_bytes_per_token:
   sglang: 327680
 specs:
 - name: int4-vllm-ppu-vision-c8b87d4b
-  display_profile: general
+  display_name_zh_cn: PPU · INT4 AWQ
+  display_name_en: PPU · INT4 AWQ
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
@@ -21,13 +22,14 @@ specs:
     - huggingface: {repo_id: Qwen/Qwen2.5-VL-72B-Instruct-AWQ, revision: c8b87d4b81f34b6a147577a310d7e75f0698f6c2}
     - modelscope: {repo_id: Qwen/Qwen2.5-VL-72B-Instruct-AWQ, revision: 69b62150c99438b7d8a4c19ca956d85c66913fcb}
   weight_bytes: 43004946024
-  gpus: {vendor: ppu, name: '(?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)', display_target: ppu}
+  gpus: {vendor: ppu, name: '(?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)'}
   args: [--trust-remote-code, --dtype, float16, --quantization, awq, --mm-encoder-tp-mode, data]
   api:
     health_endpoint: /health
     operations: [{type: openai.chat, endpoint: /v1/chat/completions, mode: stream}]
 - name: bf16-vllm-nvidia-general
-  display_profile: general
+  display_name_zh_cn: Ampere 及以上 · BF16
+  display_name_en: Ampere+ · BF16
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -44,7 +46,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.0'
-    display_target: nvidia
   args:
   - --mm-encoder-tp-mode
   - data
@@ -55,7 +56,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: int4-vllm-nvidia-general
-  display_profile: general
+  display_name_zh_cn: Ampere 及以上 · INT4 AWQ
+  display_name_en: Ampere+ · INT4 AWQ
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -72,7 +74,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.0'
-    display_target: nvidia
   args:
   - --quantization
   - awq
@@ -85,7 +86,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: int4-vllm-ppu-c8b87d4b
-  display_profile: compatible
+  display_name_zh_cn: PPU · INT4 AWQ · 单图无视频
+  display_name_en: PPU · INT4 AWQ · 1 image, no video
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
@@ -102,7 +104,6 @@ specs:
   gpus:
     vendor: ppu
     name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
-    display_target: ppu
   args:
   - --trust-remote-code
   - --dtype
@@ -120,7 +121,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: bf16-vllm-ppu-89c86200
-  display_profile: compatible
+  display_name_zh_cn: PPU · BF16 · 4 卡
+  display_name_en: PPU · BF16 · 4 GPUs
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
@@ -137,7 +139,6 @@ specs:
   gpus:
     vendor: ppu
     name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
-    display_target: ppu
   args:
   - --max-model-len
   - '1024'

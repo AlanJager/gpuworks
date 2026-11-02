@@ -25,7 +25,8 @@ context_length: 1048576
 release_date: '2026-10-04'
 specs:
 - name: glm-5.3-flash-tensorfold-exl3-gb10-tp2
-  display_profile: optimized
+  display_name_zh_cn: DGX Spark (GB10) · EXL3 4bpw · 多机 · 投机解码
+  display_name_en: DGX Spark (GB10) · EXL3 4bpw · Multi-node · Speculative
   scenario: throughput
   engine: callable
   # Upstream MiaAI-Lab image, pinned by digest (upstream tag v0.6.0-ae8d1c789b47;
@@ -56,7 +57,6 @@ specs:
     vendor: nvidia
     cc: '>=10.0'
     name: (^|[^A-Za-z0-9])(?:DGX[ _-]?Spark|GB10)([^A-Za-z0-9]|$)
-    display_target: gb10
   # The callable engine appends nothing: the template places the platform's
   # launch facts itself and the adapter reshapes them into TensorFold's CLI.
   # TensorFold's tensor-parallel degree is the node count - one rank per
@@ -192,7 +192,8 @@ specs:
 # Blackwell cards (github.com/Aevonix/GLM-5.3-Flash-EXL3-4x-RTX-PRO-6000-TensorFold
 # at a19078566298f8c51d9dbb317f20efd51fe564df), also run on the 84 GB RTX 6000D.
 - name: glm-5.3-flash-tensorfold-exl3-rtx-pro-6000-tp4
-  display_profile: optimized
+  display_name_zh_cn: RTX PRO 6000 / 6000D · EXL3 4bpw · 4 卡 · 投机解码
+  display_name_en: RTX PRO 6000 / 6000D · EXL3 4bpw · 4 GPUs · Speculative
   scenario: throughput
   engine: callable
   # Built by image/build.sh of the work directory; the same manifest
@@ -223,7 +224,6 @@ specs:
     # RTX PRO 6000 Blackwell (Workstation / Max-Q / Server) and the RTX 6000D,
     # whose name carries no "PRO". cc >= 12.0 keeps the Ada RTX 6000 out.
     name: (^|[^A-Za-z0-9])RTX[ _-]?(?:PRO[ _-]?)?6000D?([^A-Za-z0-9]|$)
-    display_target: rtx_pro_6000
   # The callable engine appends nothing: the template places the platform's
   # launch facts and the adapter turns them into one TensorFold rank per GPU.
   args:

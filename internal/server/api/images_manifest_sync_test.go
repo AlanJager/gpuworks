@@ -88,9 +88,9 @@ func TestCheckForUpdatesReadsTheChannel(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil {
 		t.Fatal(err)
 	}
-	// The embedded seed has 33 rows; the published catalog keeps one and adds
-	// one, so 32 unreferenced system rows are removed.
-	if result["catalog_version"] != "2026-10-09.abcdef12" || result["created"] != float64(1) || result["updated"] != float64(1) || result["deleted"] != float64(32) || result["deprecated"] != float64(0) {
+	// The embedded seed has 34 rows; the published catalog keeps one and adds
+	// one, so 33 unreferenced system rows are removed.
+	if result["catalog_version"] != "2026-10-09.abcdef12" || result["created"] != float64(1) || result["updated"] != float64(1) || result["deleted"] != float64(33) || result["deprecated"] != float64(0) {
 		t.Fatalf("result = %v", result)
 	}
 	if skipped, ok := result["skipped"].([]any); !ok || len(skipped) != 0 {

@@ -11,7 +11,8 @@ kv_bytes_per_token:
   sglang: 61440
 specs:
 - name: bf16-sglang-ascend-0b42c731
-  display_profile: general
+  display_name_zh_cn: 910B (A2) · BF16
+  display_name_en: 910B (A2) · BF16
   scenario: balanced
   engine: sglang
   image: gpuworks/gpuworks-runner:cann9.0-910b-sglang0.5.18-r2
@@ -28,7 +29,6 @@ specs:
   gpus:
     vendor: ascend
     name: (^|[^A-Za-z0-9])910B[A-Za-z0-9]*([^A-Za-z0-9]|$)
-    display_target: ascend
   args:
   - --enable-metrics
   - --attention-backend
@@ -53,7 +53,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: bf16-sglang-ascend-a3-0b42c731
-  display_profile: general
+  display_name_zh_cn: 910C (A3) · BF16
+  display_name_en: 910C (A3) · BF16
   scenario: balanced
   engine: sglang
   image: gpuworks/gpuworks-runner:cann9.0-a3-sglang0.5.18-r2
@@ -70,7 +71,6 @@ specs:
   gpus:
     vendor: ascend
     name: (^|[^A-Za-z0-9])910C[A-Za-z0-9]*([^A-Za-z0-9]|$)
-    display_target: ascend
   args:
   - --enable-metrics
   - --attention-backend
@@ -95,7 +95,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: fp16-sglang-nvidia-general
-  display_profile: general
+  display_name_zh_cn: Ampere 及以上 · FP16
+  display_name_en: Ampere+ · FP16
   scenario: balanced
   engine: sglang
   image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
@@ -112,7 +113,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.0'
-    display_target: nvidia
   args:
   - --enable-metrics
   - --enable-multimodal
@@ -123,7 +123,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: bf16-vllm-nvidia-general
-  display_profile: general
+  display_name_zh_cn: Ampere 及以上 · BF16
+  display_name_en: Ampere+ · BF16
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -140,7 +141,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.0'
-    display_target: nvidia
   args:
   - --trust-remote-code
   - --logits-processors
@@ -154,7 +154,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: bf16-vllm-nvidia-turing
-  display_profile: compatible
+  display_name_zh_cn: Turing · BF16
+  display_name_en: Turing · BF16
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda12.9-vllm0.31.0-r2
@@ -171,7 +172,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: 7.5..7.9
-    display_target: turing
   args:
   - --trust-remote-code
   - --logits-processors
@@ -187,7 +187,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: bf16-vllm-ppu-aaa02f38
-  display_profile: general
+  display_name_zh_cn: PPU · BF16
+  display_name_en: PPU · BF16
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
@@ -204,7 +205,6 @@ specs:
   gpus:
     vendor: ppu
     name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
-    display_target: ppu
   args:
   - --trust-remote-code
   - --logits-processors

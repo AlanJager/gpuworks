@@ -8,7 +8,8 @@ kv_bytes_per_token:
   sglang: 44032
 specs:
 - name: fp8-default-vllm-nvidia-dgx-spark-gb10
-  display_profile: optimized
+  display_name_zh_cn: DGX Spark (GB10) · FP8 · 投机解码
+  display_name_en: DGX Spark (GB10) · FP8 · Speculative
   scenario: throughput
   engine: vllm
   image: eugr/spark-vllm-b12x:latest
@@ -26,7 +27,6 @@ specs:
     vendor: nvidia
     cc: '>=10.0'
     name: (?:DGX[ _-]?Spark|GB10)
-    display_target: gb10
   args:
   - --trust-remote-code
   - --speculative-config
@@ -67,7 +67,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: fp8-default-vllm-nvidia-general
-  display_profile: compatible
+  display_name_zh_cn: Hopper 及以上 · FP8 · 投机解码
+  display_name_en: Hopper+ · FP8 · Speculative
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -84,7 +85,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=9.0'
-    display_target: hopper
   args:
   - --trust-remote-code
   - --speculative-config
@@ -105,7 +105,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: int8-vllm-ascend-3d81f2ba
-  display_profile: general
+  display_name_zh_cn: 910B (A2) · INT8 W8A8 · ≥16 卡
+  display_name_en: 910B (A2) · INT8 W8A8 · 16+ NPUs
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cann9.1-910b-vllm0.26.0rc1-r2
@@ -122,7 +123,6 @@ specs:
   gpus:
     vendor: ascend
     name: (^|[^A-Za-z0-9])910B[A-Za-z0-9]*([^A-Za-z0-9]|$)
-    display_target: ascend
   args:
   - --quantization
   - ascend
@@ -153,7 +153,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: int8-vllm-ascend-a3-3d81f2ba
-  display_profile: general
+  display_name_zh_cn: 910C (A3) · INT8 W8A8 · ≥8 卡（≥16 NPU）
+  display_name_en: 910C (A3) · INT8 W8A8 · 8+ cards (16+ NPUs)
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cann9.1-a3-vllm0.26.0rc1-r2
@@ -170,7 +171,6 @@ specs:
   gpus:
     vendor: ascend
     name: (^|[^A-Za-z0-9])910C[A-Za-z0-9]*([^A-Za-z0-9]|$)
-    display_target: ascend
   args:
   - --quantization
   - ascend
@@ -201,7 +201,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: int8-vllm-ascend-a3-dspark-3977f56e
-  display_profile: optimized
+  display_name_zh_cn: 910C (A3) · INT8 W8A8 · 8 卡（16 NPU） · 投机解码
+  display_name_en: 910C (A3) · INT8 W8A8 · 8 cards (16 NPUs) · Speculative
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cann9.2-a3-vllm0.30.0rc2-r1
@@ -217,7 +218,6 @@ specs:
   gpus:
     vendor: ascend
     name: (^|[^A-Za-z0-9])910C([^A-Za-z0-9]|$)
-    display_target: ascend
   args:
   - --trust-remote-code
   - --quantization
@@ -281,7 +281,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: fp8-sglang-ppu-m890p-tp8-256k
-  display_profile: compatible
+  display_name_zh_cn: PPU M890P · FP8 · 8 卡
+  display_name_en: PPU M890P · FP8 · 8 GPUs
   scenario: balanced
   engine: sglang
   image: reg.docker.alibaba-inc.com/ai_container/asllm:1.10.16-890P-pytorch2.10.0-ubuntu24.04-sail2.1.0-cuda13.0-sglang0.5.13-vllm0.23.0-py312
@@ -298,7 +299,6 @@ specs:
   gpus:
     vendor: ppu
     name: (^|[^A-Za-z0-9])(?:ZW[ _-]?)?M890P([^A-Za-z0-9]|$)
-    display_target: ppu
   args:
   - --trust-remote-code
   - --tp-size
@@ -341,7 +341,8 @@ specs:
 # profile of a model has to agree on the parsers
 # (TestNonNVIDIAChatSpecsInheritModelFunctionalArgs).
 - name: bf16-vllm-ascend-950dt-f981a343
-  display_profile: general
+  display_name_zh_cn: 950DT · BF16 · 8 卡 · 投机解码
+  display_name_en: 950DT · BF16 · 8 NPUs · Speculative
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cann9.2-950-vllm0.30.0rc2-r1
@@ -355,7 +356,6 @@ specs:
   gpus:
     vendor: ascend
     name: (^|[^A-Za-z0-9])950DT([^A-Za-z0-9]|$)
-    display_target: ascend
   args:
   - --data-parallel-size
   - '8'

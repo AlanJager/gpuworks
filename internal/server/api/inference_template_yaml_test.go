@@ -65,7 +65,7 @@ func fullTemplateCatalog(asset []byte) inferencecatalog.FlatCatalog {
 			{Provider: "modelscope", RepoID: repo},
 		}}
 	}
-	gpus := inferencecatalog.GPUSelector{Vendor: "nvidia", CC: ">=8.0", Name: "H100", DisplayTarget: "nvidia"}
+	gpus := inferencecatalog.GPUSelector{Vendor: "nvidia", CC: ">=8.0", Name: "H100"}
 	primary := inferencecatalog.Component{Name: "main", Role: "primary", Weights: weights(fullTemplateID), WeightBytes: 4_000_000_000, MountPath: "/models/main"}
 	draft := inferencecatalog.Component{Name: "draft", Role: "speculative_draft", ModelID: fullDraftID, Weights: weights(fullDraftID), WeightBytes: 1_000_000_000, MountPath: fullDraftMount}
 	prometheus := &inferenceapi.Metrics{Endpoint: "/stats", Inherit: "sglang", Map: inferenceapi.MetricMap{
@@ -88,7 +88,7 @@ func fullTemplateCatalog(asset []byte) inferencecatalog.FlatCatalog {
 		ExampleInput:    map[string]string{"prompt": "<|plamo:op|>input lang=English\nHello\n<|plamo:op|>output lang=Japanese\n"},
 	}
 	accelerated := inferencecatalog.InferenceSpec{
-		Name: "optimized-h100", DisplayProfile: "optimized", Scenario: "latency", Engine: "vllm",
+		Name: "optimized-h100", DisplayNameZHCN: "H100 · BF16 · 投机解码", DisplayNameEN: "H100 · BF16 · Speculative", Scenario: "latency", Engine: "vllm",
 		Image: "gpuworks/vllm:test", ImageSources: []string{"quay.io/gpuworks/vllm:test", "registry.example/gpuworks/vllm:test"},
 		Weights: weights(fullTemplateID), WeightBytes: 140_000_000_000, RuntimeWeightBytes: 70_000_000_000,
 		GPUs: gpus, Args: []string{"--max-model-len", "32768"}, Env: map[string]string{"VLLM_TEST": "1", "DRAFT_PATH": fullDraftMount},
@@ -179,9 +179,12 @@ func TestFullTemplateFixtureStatesEveryCatalogField(t *testing.T) {
 	catalogFieldNames(reflect.TypeOf(inferencecatalog.FlatCatalog{}), all, map[reflect.Type]bool{})
 	stated := map[string]bool{}
 	statedFieldNames(reflect.ValueOf(fullTemplateCatalog([]byte("print('ready')\n"))), stated)
+	// Retired keys are read on import and dropped, so no round trip can
+	// carry them (TestImportInferenceTemplatesAcceptsRetiredDisplayProfileWithWarning).
+	retired := map[string]bool{"GPUSelector.RetiredDisplayTarget": true, "InferenceSpec.RetiredDisplayProfile": true}
 	var missing []string
 	for name := range all {
-		if !stated[name] {
+		if !stated[name] && !retired[name] {
 			missing = append(missing, name)
 		}
 	}

@@ -26,8 +26,6 @@ func TestFrontierAscendProfilesKeepUpstreamValidatedRecipes(t *testing.T) {
 		{"qwen/qwen3.8-flash-next", "int8-vllm-ascend-a3-tp8", "--quantization", "ascend"},
 		{"qwen/qwen3.8-flash-next", "int8-vllm-ascend-a3-tp8", "--compilation-config", `{"cudagraph_capture_sizes":[4,8,12,16,20,24,28,32],"cudagraph_mode":"FULL_DECODE_ONLY"}`},
 		{"qwen/qwen3.8-flash-next", "int8-vllm-ascend-a3-tp8", "--speculative-config", `{"method":"qwen3_5_mtp","num_speculative_tokens":3,"enforce_eager":true}`},
-		{"zai-org/glm-5.3-flash", "int8-vllm-ascend-a3-tp16", "--max-model-len", "1048576"},
-		{"zai-org/glm-5.3-flash", "int8-vllm-ascend-a3-tp16", "--kv-cache-dtype", "int8"},
 		{"deepseek-ai/deepseek-v4.1-flash", "int8-vllm-ascend-a3-tp4-dp4", "--data-parallel-size", "4"},
 		{"deepseek-ai/deepseek-v4.1-flash", "int8-vllm-ascend-a3-tp4-dp4", "--engram-config", `{"cpu_offload":true,"dp_shared_memory":true}`},
 		{"deepseek-ai/deepseek-v4.1-flash-1017", "int8-vllm-ascend-a3-tp4-dp4", "--data-parallel-size", "4"},
@@ -39,25 +37,12 @@ func TestFrontierAscendProfilesKeepUpstreamValidatedRecipes(t *testing.T) {
 		{"qwen/qwen3.5-397b-a17b", "int8-vllm-ascend-a3-w8a8-mtp-99f2a045", "--speculative-config", `{"method":"qwen3_5_mtp","num_speculative_tokens":3,"enforce_eager":true}`},
 	}
 	seen := make([]bool, len(cases))
-	glmSeen := false
 	minimaxSeen := false
 	for _, model := range catalog.Models {
 		for _, spec := range model.Specs {
 			for index, want := range cases {
 				if model.ModelID == want.model && spec.Name == want.spec && containsArgumentPair(spec.Args, want.flag, want.value) {
 					seen[index] = true
-				}
-			}
-			if model.ModelID == "zai-org/glm-5.3-flash" && spec.Name == "int8-vllm-ascend-a3-tp16" {
-				glmSeen = true
-				if slices.Contains(spec.Args, "--speculative-config") {
-					t.Error("GLM-5.3-Flash 910C profile re-enabled MTP, which fails on the current A3 runtime")
-				}
-				if slices.Contains(spec.Args, "--compilation-config") {
-					t.Error("GLM-5.3-Flash 910C profile re-enabled graph compilation, which is unstable on the current A3 runtime")
-				}
-				if !slices.Contains(spec.Args, "--enforce-eager") {
-					t.Error("GLM-5.3-Flash 910C profile must start in eager mode")
 				}
 			}
 			if model.ModelID == "minimaxai/minimax-m3" && spec.Name == "int8-vllm-ascend-a3-tp4-dp4" {
@@ -69,9 +54,6 @@ func TestFrontierAscendProfilesKeepUpstreamValidatedRecipes(t *testing.T) {
 		if !seen[index] {
 			t.Errorf("%s/%s lacks upstream-validated %s %s", want.model, want.spec, want.flag, want.value)
 		}
-	}
-	if !glmSeen {
-		t.Fatal("GLM-5.3-Flash 910C profile is missing")
 	}
 	if !minimaxSeen {
 		t.Fatal("MiniMax-M3 910C profile is missing")

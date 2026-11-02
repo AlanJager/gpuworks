@@ -11,7 +11,8 @@ kv_bytes_per_token:
   sglang: 29696
 specs:
 - name: bf16-vllm-nvidia-general
-  display_profile: general
+  display_name_zh_cn: Ampere 及以上 · BF16
+  display_name_en: Ampere+ · BF16
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -28,7 +29,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.0'
-    display_target: nvidia
   args:
   - --mamba-backend
   - flashinfer
@@ -56,7 +56,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: nvfp4-vllm-nvidia-cc100
-  display_profile: compatible
+  display_name_zh_cn: Blackwell · NVFP4
+  display_name_en: Blackwell · NVFP4
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -73,7 +74,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=10.0'
-    display_target: blackwell
   args:
   - --mamba-backend
   - flashinfer
@@ -99,7 +99,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: nvfp4-vllm-nvidia-cc100-dflash-draft
-  display_profile: compatible
+  display_name_zh_cn: Blackwell · NVFP4 · DFlash 投机解码
+  display_name_en: Blackwell · NVFP4 · DFlash speculative
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -116,7 +117,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=10.0'
-    display_target: blackwell
   args:
   - --mamba-backend
   - flashinfer
@@ -172,7 +172,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: nvfp4-vllm-nvidia-cc100-dspark-draft
-  display_profile: compatible
+  display_name_zh_cn: Blackwell · NVFP4 · DSpark 投机解码
+  display_name_en: Blackwell · NVFP4 · DSpark speculative
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -189,7 +190,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=10.0'
-    display_target: blackwell
   args:
   - --mamba-backend
   - flashinfer
@@ -245,7 +245,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: nvfp4-vllm-nvidia-dgx-spark-gb10
-  display_profile: optimized
+  display_name_zh_cn: DGX Spark (GB10) · NVFP4
+  display_name_en: DGX Spark (GB10) · NVFP4
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -263,7 +264,6 @@ specs:
     vendor: nvidia
     cc: '>=10.0'
     name: (?:DGX[ _-]?Spark|GB10)
-    display_target: gb10
   args:
   - --mamba-backend
   - flashinfer
@@ -291,7 +291,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: nvfp4-vllm-nvidia-dgx-spark-gb10-dflash-draft
-  display_profile: optimized
+  display_name_zh_cn: DGX Spark (GB10) · NVFP4 · DFlash 投机解码
+  display_name_en: DGX Spark (GB10) · NVFP4 · DFlash speculative
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -309,7 +310,6 @@ specs:
     vendor: nvidia
     cc: '>=10.0'
     name: (?:DGX[ _-]?Spark|GB10)
-    display_target: gb10
   args:
   - --mamba-backend
   - flashinfer
@@ -367,7 +367,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: nvfp4-vllm-nvidia-dgx-spark-gb10-dspark-draft
-  display_profile: optimized
+  display_name_zh_cn: DGX Spark (GB10) · NVFP4 · DSpark 投机解码
+  display_name_en: DGX Spark (GB10) · NVFP4 · DSpark speculative
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -385,7 +386,6 @@ specs:
     vendor: nvidia
     cc: '>=10.0'
     name: (?:DGX[ _-]?Spark|GB10)
-    display_target: gb10
   args:
   - --mamba-backend
   - flashinfer
@@ -443,7 +443,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: nvfp4-vllm-nvidia-dgx-station-gb300
-  display_profile: compatible
+  display_name_zh_cn: DGX Station (GB300) · NVFP4
+  display_name_en: DGX Station (GB300) · NVFP4
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -461,7 +462,6 @@ specs:
     vendor: nvidia
     cc: '>=10.0'
     name: (?:DGX[ _-]?Station|GB300)
-    display_target: gb300
   args:
   - --mamba-backend
   - flashinfer
@@ -489,7 +489,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: nvfp4-vllm-nvidia-dgx-station-gb300-dflash-draft
-  display_profile: compatible
+  display_name_zh_cn: DGX Station (GB300) · NVFP4 · DFlash 投机解码
+  display_name_en: DGX Station (GB300) · NVFP4 · DFlash speculative
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -507,7 +508,6 @@ specs:
     vendor: nvidia
     cc: '>=10.0'
     name: (?:DGX[ _-]?Station|GB300)
-    display_target: gb300
   args:
   - --mamba-backend
   - flashinfer
@@ -565,7 +565,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: nvfp4-vllm-nvidia-dgx-station-gb300-dspark-draft
-  display_profile: compatible
+  display_name_zh_cn: DGX Station (GB300) · NVFP4 · DSpark 投机解码
+  display_name_en: DGX Station (GB300) · NVFP4 · DSpark speculative
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -583,7 +584,6 @@ specs:
     vendor: nvidia
     cc: '>=10.0'
     name: (?:DGX[ _-]?Station|GB300)
-    display_target: gb300
   args:
   - --mamba-backend
   - flashinfer

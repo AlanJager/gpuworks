@@ -11,7 +11,8 @@ kv_bytes_per_token:
   sglang: 57344
 specs:
 - name: bf16-default-vllm-nvidia-general
-  display_profile: general
+  display_name_zh_cn: Ampere 及以上 · BF16
+  display_name_en: Ampere+ · BF16
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -28,7 +29,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.0'
-    display_target: nvidia
   args:
   - --trust-remote-code
   - --mm-encoder-tp-mode

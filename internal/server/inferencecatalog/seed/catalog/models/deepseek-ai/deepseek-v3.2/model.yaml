@@ -11,7 +11,8 @@ kv_bytes_per_token:
   sglang: 70272
 specs:
 - name: bf16-sglang-nvidia-general
-  display_profile: general
+  display_name_zh_cn: Ampere 及以上 · BF16
+  display_name_en: Ampere+ · BF16
   scenario: balanced
   engine: sglang
   image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
@@ -30,7 +31,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.0'
-    display_target: nvidia
   api:
     health_endpoint: /health
     operations:
@@ -38,7 +38,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: fp8-vllm-nvidia-general
-  display_profile: compatible
+  display_name_zh_cn: Hopper 及以上 · FP8
+  display_name_en: Hopper+ · FP8
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -55,7 +56,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=9.0'
-    display_target: hopper
   args:
   - --trust-remote-code
   - --kernel-config.enable_flashinfer_autotune
@@ -74,7 +74,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: nvfp4-vllm-nvidia-cc100
-  display_profile: compatible
+  display_name_zh_cn: Blackwell · NVFP4
+  display_name_en: Blackwell · NVFP4
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -91,7 +92,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=10.0'
-    display_target: blackwell
   args:
   - --trust-remote-code
   - --kernel-config.enable_flashinfer_autotune

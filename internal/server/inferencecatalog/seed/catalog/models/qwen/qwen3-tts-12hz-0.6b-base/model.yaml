@@ -5,7 +5,8 @@ release_date: '2026-01-21'
 model_config: {model_type: qwen3_tts, num_hidden_layers: 28, hidden_size: 1024, num_attention_heads: 16, num_key_value_heads: 8, head_dim: 128, max_position_embeddings: 32768}
 specs:
 - name: bf16-base-0-6b-vllm-nvidia-general
-  display_profile: general
+  display_name_zh_cn: Ampere 及以上 · BF16
+  display_name_en: Ampere+ · BF16
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm-omni0.30.0-r3
@@ -22,7 +23,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.0'
-    display_target: nvidia
   args:
   - --omni
   api:
@@ -67,7 +67,8 @@ specs:
           en: Language
           zh: 语言
 - name: bf16-base-0-6b-vllm-nvidia-turing
-  display_profile: compatible
+  display_name_zh_cn: Turing · BF16
+  display_name_en: Turing · BF16
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm-omni0.30.0-r3
@@ -84,7 +85,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: 7.5..7.9
-    display_target: turing
   args:
   - --omni
   - --dtype

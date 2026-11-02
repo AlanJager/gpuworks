@@ -58,13 +58,13 @@ const original = {
 };
 
 const h100Spec = {
-  id: 1, source: "upstream", name: "h100-fp8", display_profile: "compatible", scenario: "balanced", engine: "vllm", image: "vllm/image:latest", quantization: "fp8",
-  weight_sources: [{ provider: "huggingface", repo_id: "deepseek-ai/model" }], gpus: { vendor: "nvidia", cc: "9.0", name: "H100", display_target: "hopper" }, args: ["--kv-cache-dtype", "fp8"],
+  id: 1, source: "upstream", name: "h100-fp8", display_name_zh_cn: "H100 · FP8", display_name_en: "H100 · FP8 spec", scenario: "balanced", engine: "vllm", image: "vllm/image:latest", quantization: "fp8",
+  weight_sources: [{ provider: "huggingface", repo_id: "deepseek-ai/model" }], gpus: { vendor: "nvidia", cc: "9.0", name: "H100" }, args: ["--kv-cache-dtype", "fp8"],
   api: { operations: [{ type: "openai.chat", endpoint: "/v1/chat/completions", mode: "sync", request_encodings: ["json"], renderer: "chat", response: "json" }] },
 };
 const ascendSpec = {
-  id: 2, source: "upstream", name: "ascend-w8a8", display_profile: "general", scenario: "throughput", engine: "sglang", image: "ascend/image@sha256:abc", quantization: "w8a8",
-  weight_sources: [{ provider: "modelscope", repo_id: "deepseek-ai/model" }], gpus: { vendor: "ascend", name: "910B4", display_target: "ascend" }, pre_start_argv: ["apply-patches"],
+  id: 2, source: "upstream", name: "ascend-w8a8", display_name_zh_cn: "910B (A2) · INT8 W8A8", display_name_en: "910B (A2) · INT8 W8A8 spec", scenario: "throughput", engine: "sglang", image: "ascend/image@sha256:abc", quantization: "w8a8",
+  weight_sources: [{ provider: "modelscope", repo_id: "deepseek-ai/model" }], gpus: { vendor: "ascend", name: "910B4" }, pre_start_argv: ["apply-patches"],
 };
 const upstreamModel = { id: 7, model_id: "deepseek-ai/model", display_title: "DeepSeek Model", source: "upstream", specs: [h100Spec, ascendSpec] };
 
@@ -437,15 +437,15 @@ test("detail prioritizes vLLM, groups specs by GPU vendor, and keyboard-opens a 
   stubFleet([{ uuid: "ascend", state: "online", gpus: [{ vendor: "ascend", name: "Ascend 910B4", cc: "", model: "910B4" }] }]);
   api.evaluate = (async () => ({ ok: true, command: ["vllm", "serve", "/model"], argv: [], image: "vllm/image" })) as never;
   renderDetail();
-  assert.equal((await screen.findByText("Hopper compatible spec")).textContent, "Hopper compatible spec");
+  assert.equal((await screen.findByText("H100 · FP8 spec")).textContent, "H100 · FP8 spec");
   assert.ok(screen.getByText("NVIDIA · 1 specs"));
-  assert.equal(screen.queryByText("Ascend general spec"), null);
+  assert.equal(screen.queryByText("910B (A2) · INT8 W8A8 spec"), null);
   const details = screen.getByRole("button", { name: "Details" });
   details.focus();
   await userEvent.setup().keyboard("{Enter}");
   await waitFor(() => assert.match(document.querySelector(".template-command-preview")?.textContent || "", /vllm/));
   await userEvent.setup().click(screen.getByText("SGLang · sglang"));
-  assert.equal((await screen.findByText("Ascend general spec")).textContent, "Ascend general spec");
+  assert.equal((await screen.findByText("910B (A2) · INT8 W8A8 spec")).textContent, "910B (A2) · INT8 W8A8 spec");
   assert.ok(screen.getByText("Ascend · 1 specs"));
 });
 
@@ -457,7 +457,7 @@ test("the spec drawer lists the template's image sources in declared order, and 
   stubFleet([]);
   api.evaluate = (async () => ({ ok: true, command: ["vllm", "serve", "/model"], argv: [], image: "vllm/image:latest" })) as never;
   renderDetail();
-  await screen.findAllByText("Hopper compatible spec");
+  await screen.findAllByText("H100 · FP8 spec");
   await userEvent.setup().click(screen.getByRole("button", { name: "Details" }));
   assert.ok(await screen.findByText("Image sources"));
   const shown = sources.map((source) => screen.getByText(source));
@@ -466,10 +466,11 @@ test("the spec drawer lists the template's image sources in declared order, and 
   cleanup();
   api.inferenceTemplate = (async () => upstreamModel) as never;
   renderDetail();
-  await screen.findAllByText("Hopper compatible spec");
+  await screen.findAllByText("H100 · FP8 spec");
   await userEvent.setup().click(screen.getByRole("button", { name: "Details" }));
   await screen.findByText("Weight sources");
   assert.equal(screen.queryByText("Image sources"), null, "a spec without sources has no such row");
+  assert.ok(screen.getByText("NVIDIA · CC 9.0 · H100"), "the GPU row shows the predicate the spec really matches, not its name");
 });
 
 test("detail previews an explicit spec without an online matching node", async () => {
@@ -482,7 +483,7 @@ test("detail previews an explicit spec without an online matching node", async (
     return { ok: true, command: ["vllm", "serve", "/model", "--tensor-parallel-size", "$TP_SIZE"], argv: [], image: "vllm/image:latest" };
   }) as never;
   renderDetail();
-  await screen.findAllByText("Hopper compatible spec");
+  await screen.findAllByText("H100 · FP8 spec");
   await userEvent.setup().click(screen.getByRole("button", { name: "Details" }));
   assert.ok((await screen.findByText(/\$TP_SIZE/)).textContent);
   assert.equal(evaluatedNode, "");
@@ -500,7 +501,7 @@ test("detail previews on an online node that has a card the spec names", async (
   ]);
   api.evaluate = (async (request) => { evaluatedNode = request.node_uuid; return { ok: true, command: ["vllm"], argv: [], image: "vllm/image" }; }) as never;
   renderDetail();
-  await screen.findAllByText("Hopper compatible spec");
+  await screen.findAllByText("H100 · FP8 spec");
   await userEvent.setup().click(screen.getByRole("button", { name: "Details" }));
   await waitFor(() => assert.equal(evaluatedNode, "online-h100"));
 });
@@ -524,7 +525,7 @@ test("detail usage opens the declared operation in Playground with template and 
   api.evaluate = (async () => ({ ok: true, command: ["python", "video.py"], argv: [], image: "video/image" })) as never;
   renderDetail();
 
-  await screen.findByText("Hopper compatible spec");
+  await screen.findByText("H100 · FP8 spec");
   await userEvent.setup().click(screen.getByRole("button", { name: "Details" }));
   await userEvent.setup().click(await screen.findByText("Usage"));
   assert.ok(await screen.findByText("/v1/videos"));
@@ -543,7 +544,7 @@ test("mixed original model editor exposes only user-owned specs", async () => {
     return serverYAML(modelID).replace("name: h100-fp8", "name: my-tuned");
   }) as never;
   renderDetail();
-  await screen.findAllByText("Hopper compatible spec");
+  await screen.findAllByText("H100 · FP8 spec");
   assert.deepEqual(requests, [], "the detail page does not fetch the editor text until the editor opens");
   await userEvent.setup().click(screen.getByRole("button", { name: /Edit$/ }));
   const editor = await screen.findByRole("textbox", { name: "Edit flat YAML" });
@@ -697,7 +698,7 @@ test("user specs expose an in-place delete that removes the spec or the whole te
     return { deleted: true, model_deleted: false };
   }) as never;
   renderDetail();
-  await screen.findAllByText("Hopper compatible spec");
+  await screen.findAllByText("H100 · FP8 spec");
   await userEvent.setup().click(await screen.findByRole("button", { name: "Delete user spec my-tuned" }));
   await userEvent.setup().click(await screen.findByRole("button", { name: "Delete", exact: true }));
   await waitFor(() => assert.deepEqual(deleted, [["deepseek-ai/model", "my-tuned"]]));
@@ -705,7 +706,7 @@ test("user specs expose an in-place delete that removes the spec or the whole te
 
   // deleting the last user spec of a user-only template removes the template and returns to the list.
   // The first page must be gone before the second renders: left mounted, its
-  // "Hopper compatible spec" text satisfies the wait below while the second page
+  // "H100 · FP8 spec" text satisfies the wait below while the second page
   // is still loading, and the delete button is looked up before it exists.
   cleanup();
   let modelOnly = { ...upstreamModel, source: "user", model_id: "custom/model", specs: [userSpec] };
@@ -713,7 +714,7 @@ test("user specs expose an in-place delete that removes the spec or the whole te
   api.deleteInferenceTemplateSpec = (async () => { modelOnly = { ...modelOnly, specs: [] }; return { deleted: true, model_deleted: true }; }) as never;
   api.inferenceTemplates = (async () => ({ items: [], page: 1, page_size: 200, total: 0 })) as never;
   renderDetail("/inference-templates/custom/model");
-  await screen.findAllByText("Hopper compatible spec");
+  await screen.findAllByText("H100 · FP8 spec");
   await userEvent.setup().click(await screen.findByRole("button", { name: "Delete user spec my-tuned" }));
   await userEvent.setup().click(await screen.findByRole("button", { name: "Delete", exact: true }));
   await waitFor(() => assert.ok(screen.getByText("Last user spec deleted; template custom/model removed")));
@@ -725,7 +726,7 @@ test("clone opens the editor without a remount via edit=1", async () => {
   api.detectedInferenceTemplateChips = (async () => list([])) as never;
   api.cloneInferenceTemplate = (async () => copy) as never;
   renderCatalogFlow("/inference-templates/deepseek-ai/model");
-  await screen.findAllByText("Hopper compatible spec");
+  await screen.findAllByText("H100 · FP8 spec");
   await userEvent.setup().click(screen.getByRole("button", { name: /Clone/ }));
   const editor = await screen.findByRole("textbox", { name: "Edit flat YAML" });
   assert.match((editor as HTMLTextAreaElement).value, /model_id: deepseek-ai\/model-copy/);

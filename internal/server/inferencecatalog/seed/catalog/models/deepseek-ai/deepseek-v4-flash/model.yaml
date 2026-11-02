@@ -11,7 +11,8 @@ kv_bytes_per_token:
   sglang: 44032
 specs:
 - name: fp8-vllm-ppu-pp4-60d8d707
-  display_profile: compatible
+  display_name_zh_cn: PPU · FP8 · 4 卡
+  display_name_en: PPU · FP8 · 4 GPUs
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
@@ -21,7 +22,7 @@ specs:
     - huggingface: {repo_id: deepseek-ai/DeepSeek-V4-Flash, revision: 60d8d70770c6776ff598c94bb586a859a38244f1}
     - modelscope: {repo_id: deepseek-ai/DeepSeek-V4-Flash, revision: 4e9bb2457e147f6ebfe2a46f3df047dc9869e224}
   weight_bytes: 159617149040
-  gpus: {vendor: ppu, name: '(?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)', display_target: ppu}
+  gpus: {vendor: ppu, name: '(?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)'}
   args:
   - --trust-remote-code
   - --tokenizer-mode
@@ -51,7 +52,8 @@ specs:
     health_endpoint: /health
     operations: [{type: openai.chat, endpoint: /v1/chat/completions, mode: stream}]
 - name: fp4-sglang-nvidia-cc100
-  display_profile: compatible
+  display_name_zh_cn: Blackwell · FP4
+  display_name_en: Blackwell · FP4
   scenario: balanced
   engine: sglang
   image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
@@ -68,7 +70,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=10.0'
-    display_target: blackwell
   args:
   - --enable-metrics
   - --trust-remote-code
@@ -79,7 +80,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: fp8-fp8-vllm-nvidia-dgx-spark-gb10
-  display_profile: optimized
+  display_name_zh_cn: DGX Spark (GB10) · FP8
+  display_name_en: DGX Spark (GB10) · FP8
   scenario: throughput
   engine: vllm
   image: eugr/spark-vllm-b12x:latest
@@ -97,7 +99,6 @@ specs:
     vendor: nvidia
     cc: '>=10.0'
     name: (?:DGX[ _-]?Spark|GB10)
-    display_target: gb10
   args:
   - --trust-remote-code
   - --default-chat-template-kwargs.thinking=true
@@ -140,7 +141,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: fp8-fp8-vllm-nvidia-general
-  display_profile: compatible
+  display_name_zh_cn: Hopper 及以上 · FP8
+  display_name_en: Hopper+ · FP8
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -157,7 +159,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=9.0'
-    display_target: hopper
   args:
   - --trust-remote-code
   - --tokenizer-mode
@@ -180,7 +181,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: fp8-sglang-nvidia-general
-  display_profile: compatible
+  display_name_zh_cn: Hopper 及以上 · FP8
+  display_name_en: Hopper+ · FP8
   scenario: balanced
   engine: sglang
   image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
@@ -197,7 +199,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=9.0'
-    display_target: hopper
   args:
   - --enable-metrics
   - --trust-remote-code
@@ -208,7 +209,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: nvfp4-sglang-nvidia-cc100
-  display_profile: compatible
+  display_name_zh_cn: Blackwell · NVFP4
+  display_name_en: Blackwell · NVFP4
   scenario: throughput
   engine: sglang
   image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
@@ -225,7 +227,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=10.0'
-    display_target: blackwell
   args:
   - --enable-metrics
   - --moe-runner-backend
@@ -237,8 +238,9 @@ specs:
     - type: openai.chat
       endpoint: /v1/chat/completions
       mode: stream
-- name: nvfp4-vllm-nvidia-blackwell
-  display_profile: compatible
+- name: nvfp4-vllm-nvidia-sm100-fp4-indexer
+  display_name_zh_cn: B200 / B300 / GB200 / GB300 · NVFP4 · FP4 索引缓存
+  display_name_en: B200 / B300 / GB200 / GB300 · NVFP4 · FP4 indexer cache
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -254,12 +256,10 @@ specs:
   weight_bytes: 168305308121
   gpus:
     vendor: nvidia
-    cc: '>=10.0'
-    display_target: blackwell
+    cc: '10.0..10.9'
   args:
   - --trust-remote-code
-  - --attention_config.use_fp4_indexer_cache
-  - 'True'
+  - --attention_config.indexer_kv_dtype=mxfp4
   - --tokenizer-mode
   - deepseek_v4
   - --tool-call-parser
@@ -280,7 +280,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: nvfp4-vllm-nvidia-cc100
-  display_profile: compatible
+  display_name_zh_cn: Blackwell · NVFP4
+  display_name_en: Blackwell · NVFP4
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -297,7 +298,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=10.0'
-    display_target: blackwell
   args:
   - --trust-remote-code
   - --tokenizer-mode

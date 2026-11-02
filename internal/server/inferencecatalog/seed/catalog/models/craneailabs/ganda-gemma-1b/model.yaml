@@ -10,7 +10,8 @@ kv_bytes_per_token:
   sglang: 26624
 specs:
 - name: bf16-vllm-ppu-d4695535
-  display_profile: general
+  display_name_zh_cn: PPU · BF16
+  display_name_en: PPU · BF16
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
@@ -21,7 +22,7 @@ specs:
         repo_id: CraneAILabs/ganda-gemma-1b
         revision: d4695535bc805c8a98b43ff10e76d443de21dd25
   weight_bytes: 1999811208
-  gpus: {vendor: ppu, name: '(?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)', display_target: ppu}
+  gpus: {vendor: ppu, name: '(?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)'}
   args: [--trust-remote-code, --skip-mm-profiling]
   api:
     health_endpoint: /health

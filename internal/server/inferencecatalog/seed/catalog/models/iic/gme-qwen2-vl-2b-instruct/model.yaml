@@ -11,7 +11,8 @@ kv_bytes_per_token:
   sglang: 28672
 specs:
 - name: fp32-sglang-ascend-8b73223f
-  display_profile: general
+  display_name_zh_cn: 910B (A2) · FP32
+  display_name_en: 910B (A2) · FP32
   scenario: balanced
   engine: sglang
   image: gpuworks/gpuworks-runner:cann9.0-910b-sglang0.5.18-r2
@@ -28,7 +29,6 @@ specs:
   gpus:
     vendor: ascend
     name: (^|[^A-Za-z0-9])910B[A-Za-z0-9]*([^A-Za-z0-9]|$)
-    display_target: ascend
   args:
   - --enable-metrics
   - --is-embedding
@@ -57,7 +57,8 @@ specs:
       endpoint: /v1/embeddings
       mode: sync
 - name: fp32-sglang-ascend-a3-8b73223f
-  display_profile: general
+  display_name_zh_cn: 910C (A3) · FP32
+  display_name_en: 910C (A3) · FP32
   scenario: balanced
   engine: sglang
   image: gpuworks/gpuworks-runner:cann9.0-a3-sglang0.5.18-r2
@@ -74,7 +75,6 @@ specs:
   gpus:
     vendor: ascend
     name: (^|[^A-Za-z0-9])910C[A-Za-z0-9]*([^A-Za-z0-9]|$)
-    display_target: ascend
   args:
   - --enable-metrics
   - --is-embedding
@@ -103,7 +103,8 @@ specs:
       endpoint: /v1/embeddings
       mode: sync
 - name: fp32-sglang-nvidia-general
-  display_profile: general
+  display_name_zh_cn: Ampere 及以上 · FP32
+  display_name_en: Ampere+ · FP32
   scenario: balanced
   engine: sglang
   image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
@@ -129,7 +130,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.0'
-    display_target: nvidia
   api:
     health_endpoint: /health
     operations:

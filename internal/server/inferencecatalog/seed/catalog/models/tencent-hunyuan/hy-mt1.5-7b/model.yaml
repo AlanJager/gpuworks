@@ -8,7 +8,8 @@ kv_bytes_per_token:
   sglang: 131072
 specs:
 - name: bf16-callable-hygon-a5ad616f
-  display_profile: general
+  display_name_zh_cn: K100 / BW · BF16
+  display_name_en: K100 / BW · BF16
   scenario: balanced
   engine: callable
   image: harbor.sourcefind.cn:5443/dcu/admin/base/custom:vllm-ubuntu22.04-dtk26.04-hunyuan-v3-0507
@@ -25,7 +26,6 @@ specs:
   gpus:
     vendor: hygon
     name: (^|[^A-Za-z0-9])(?:K100(?:[_ -]?AI)?|BW[_ -]?1000|BW[_ -]?1100)([^A-Za-z0-9_-]|$)
-    display_target: hygon
   args:
   - --model
   - ${MODEL_PATH}

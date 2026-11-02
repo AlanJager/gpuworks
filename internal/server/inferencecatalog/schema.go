@@ -147,10 +147,20 @@ func specSchema(operationTypes, engineNames []any) map[string]any {
 				"minLength":   1,
 				"description": "Spec identity within the model; same name + user source = replacement on import.",
 			},
+			"display_name_zh_cn": map[string]any{
+				"type":        "string",
+				"maxLength":   maxDisplayNameZHCN,
+				"description": "Chinese display name: cards · quantization · what tells the spec from its siblings. Unique within the model and engine.",
+			},
+			"display_name_en": map[string]any{
+				"type":        "string",
+				"maxLength":   maxDisplayNameEN,
+				"description": "English display name, same rules as display_name_zh_cn.",
+			},
 			"display_profile": map[string]any{
 				"type":        "string",
-				"enum":        []any{"general", "compatible", "optimized"},
-				"description": "Catalog presentation profile; must appear together with gpus.display_target.",
+				"deprecated":  true,
+				"description": "Retired; ignored on import. Use display_name_zh_cn and display_name_en.",
 			},
 			"scenario": map[string]any{
 				"type":        "string",
@@ -382,8 +392,8 @@ func gpuSelectorSchema() map[string]any {
 			},
 			"display_target": map[string]any{
 				"type":        "string",
-				"pattern":     "^[a-z0-9]+(?:_[a-z0-9]+)*$",
-				"description": "Presentation grouping key, e.g. hopper; pairs with display_profile.",
+				"deprecated":  true,
+				"description": "Retired; ignored on import. The spec's display names say which cards it is for.",
 			},
 		},
 	}

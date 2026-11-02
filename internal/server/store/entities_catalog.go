@@ -45,7 +45,8 @@ type InferenceSpecRow struct {
 	Source             string `gorm:"size:16;not null;default:upstream;index;uniqueIndex:idx_inference_spec_identity,priority:2"` // upstream | user; part of spec identity
 	Name               string `gorm:"size:160;not null;uniqueIndex:idx_inference_spec_identity,priority:3"`
 	PackageDigest      string `gorm:"size:64;index"`
-	DisplayProfile     string `gorm:"size:16"`
+	DisplayNameZHCN    string `gorm:"column:display_name_zh_cn;size:192"`
+	DisplayNameEN      string `gorm:"column:display_name_en;size:256"`
 	Scenario           string `gorm:"size:32;index"`
 	Engine             string `gorm:"size:32;index"`
 	Image              string `gorm:"size:512;not null"`

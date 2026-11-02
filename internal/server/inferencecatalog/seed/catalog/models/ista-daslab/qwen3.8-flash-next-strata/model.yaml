@@ -28,7 +28,8 @@ release_date: '2026-09-29'
 # 即报 no_measurement,不发明数字。
 specs:
 - name: iq2xs-strata-nvidia-single-gpu
-  display_profile: general
+  display_name_zh_cn: Turing 及以上 · GGUF IQ2_XS
+  display_name_en: Turing+ · GGUF IQ2_XS
   scenario: balanced
   engine: callable
   image: gpuworks/strata:0.1-gw6
@@ -56,7 +57,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=7.5'
-    display_target: nvidia
   # The callable engine appends nothing (ADR 0036): the template places the
   # platform facts the image's entrypoint translates into Strata arguments.
   # No --context here: Strata's setup recommends one for the cards it sees;

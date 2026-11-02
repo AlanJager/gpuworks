@@ -39,7 +39,10 @@ func TestFlatInferenceCatalogMigrationDropsRetiredGraph(t *testing.T) {
 	if st.DB().Migrator().HasColumn(&InferenceModel{}, "kinds") {
 		t.Fatal("retired inference_models.kinds column survived cutover")
 	}
-	for _, column := range []string{"model_id", "source", "name", "package_digest", "display_profile", "weight_sources", "gpus", "pre_start_argv", "pre_start_script", "assets", "entrypoint", "placement", "api_contract", "components", "image_sources"} {
+	if st.DB().Migrator().HasColumn(&InferenceSpecRow{}, "display_profile") {
+		t.Fatal("retired inference_specs.display_profile column survived")
+	}
+	for _, column := range []string{"model_id", "source", "name", "package_digest", "display_name_zh_cn", "display_name_en", "weight_sources", "gpus", "pre_start_argv", "pre_start_script", "assets", "entrypoint", "placement", "api_contract", "components", "image_sources"} {
 		if !st.DB().Migrator().HasColumn(&InferenceSpecRow{}, column) {
 			t.Fatalf("inference_specs missing column %q", column)
 		}
@@ -124,7 +127,7 @@ func TestInferenceSpecDisplayProfileMigrationRollsBackColumnAndMarker(t *testing
 	}
 	want := errors.New("injected failure after display profile column")
 	err = applyMigration(db, migration{Version: 9068, Name: "display-profile-failure", Apply: func(tx *gorm.DB) error {
-		if err := tx.Migrator().AddColumn(&InferenceSpecRow{}, "DisplayProfile"); err != nil {
+		if err := tx.Migrator().AddColumn(&inferenceSpecDisplayProfileColumn{}, "DisplayProfile"); err != nil {
 			return err
 		}
 		return want
@@ -132,7 +135,7 @@ func TestInferenceSpecDisplayProfileMigrationRollsBackColumnAndMarker(t *testing
 	if !errors.Is(err, want) {
 		t.Fatalf("migration error=%v, want %v", err, want)
 	}
-	if db.Migrator().HasColumn(&InferenceSpecRow{}, "DisplayProfile") {
+	if db.Migrator().HasColumn(&inferenceSpecDisplayProfileColumn{}, "DisplayProfile") {
 		t.Fatal("display_profile column survived rollback")
 	}
 	var markers int64
@@ -187,7 +190,7 @@ func TestReconcileFlatInferenceCatalogReplacesSpecs(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = st.Close() })
 	model := InferenceModel{ModelID: "Org/Model", DisplayTitle: "Model", Source: "upstream", Unsupported: `[]`, Specs: []InferenceSpecRow{
-		{Name: "balanced", DisplayProfile: "General", Engine: "VLLM", Image: "vllm:test", Quantization: "bf16", WeightSources: `[{"provider":"huggingface","repo_id":"Org/Model"}]`, GPUs: `{"vendor":"nvidia","cc":">=8.9","display_target":"nvidia"}`, Args: `[]`, Env: `{}`},
+		{Name: "balanced", DisplayNameZHCN: " Ada 及以上 · BF16 ", DisplayNameEN: "Ada+ · BF16", Engine: "VLLM", Image: "vllm:test", Quantization: "bf16", WeightSources: `[{"provider":"huggingface","repo_id":"Org/Model"}]`, GPUs: `{"vendor":"nvidia","cc":">=8.9","display_target":"nvidia"}`, Args: `[]`, Env: `{}`},
 		{Name: "throughput", Engine: "vLLM", Image: "vllm:test", Quantization: "bf16", WeightSources: `[{"provider":"modelscope","repo_id":"Org/Model"}]`, GPUs: `{"vendor":"nvidia"}`, Args: `[]`, Env: `{}`},
 	}}
 	if err := st.ReconcileInferenceCatalog([]InferenceModel{model}); err != nil {
@@ -202,7 +205,7 @@ func TestReconcileFlatInferenceCatalogReplacesSpecs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got.Specs) != 1 || got.Specs[0].Name != "balanced" || got.Specs[0].Image != "vllm:new" || got.Specs[0].DisplayProfile != "general" {
+	if len(got.Specs) != 1 || got.Specs[0].Name != "balanced" || got.Specs[0].Image != "vllm:new" || got.Specs[0].DisplayNameZHCN != "Ada 及以上 · BF16" || got.Specs[0].DisplayNameEN != "Ada+ · BF16" {
 		t.Fatalf("reconciled model = %+v", got)
 	}
 }

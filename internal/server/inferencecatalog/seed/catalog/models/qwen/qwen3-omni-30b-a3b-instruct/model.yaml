@@ -11,7 +11,8 @@ kv_bytes_per_token:
   sglang: 98304
 specs:
 - name: bf16-sglang-ascend-68c174cb
-  display_profile: general
+  display_name_zh_cn: 910B (A2) · BF16
+  display_name_en: 910B (A2) · BF16
   scenario: balanced
   engine: sglang
   image: gpuworks/gpuworks-runner:cann9.0-910b-sglang0.5.18-r2
@@ -28,7 +29,6 @@ specs:
   gpus:
     vendor: ascend
     name: (^|[^A-Za-z0-9])910B[A-Za-z0-9]*([^A-Za-z0-9]|$)
-    display_target: ascend
   args:
   - --enable-metrics
   - --trust-remote-code
@@ -43,10 +43,16 @@ specs:
   - --enable-multimodal
   placement:
     language: starlark
-    resolver: "def resolve(gpu):\n    if gpu.count < 4: return reject(\"at least 4\
-      \ GPUs are required\")\n    if gpu.min_memory_gib < 32: return reject(\"each\
-      \ GPU requires at least 32 GiB\")\n    return {\"GPU_COUNT\": gpu.count, \"\
-      TP_SIZE\": gpu.count, \"SP_DEGREE\": 1}\n"
+    resolver: |-
+      def resolve(gpu):
+          # Any card count whose memory holds the weights (65.7 GiB) and a KV pool
+          # of 4.0 GiB, within the engine's 0.85 share less about 2 GiB of runtime
+          # overhead per card. The scheduler takes the fewest such cards and keeps
+          # the tensor-parallel size a divisor of the attention heads.
+          if gpu.count * (gpu.min_memory_gib * 0.85 - 2) < 70:
+              return reject("the weights and a minimal KV pool need 70 GiB; these cards offer less")
+          if gpu.min_memory_gib < 32: return reject("each GPU requires at least 32 GiB")
+          return {"GPU_COUNT": gpu.count, "TP_SIZE": gpu.count, "SP_DEGREE": 1}
   api:
     health_endpoint: /health
     operations:
@@ -54,7 +60,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: bf16-sglang-ascend-a3-68c174cb
-  display_profile: general
+  display_name_zh_cn: 910C (A3) · BF16
+  display_name_en: 910C (A3) · BF16
   scenario: balanced
   engine: sglang
   image: gpuworks/gpuworks-runner:cann9.0-a3-sglang0.5.18-r2
@@ -71,7 +78,6 @@ specs:
   gpus:
     vendor: ascend
     name: (^|[^A-Za-z0-9])910C[A-Za-z0-9]*([^A-Za-z0-9]|$)
-    display_target: ascend
   args:
   - --enable-metrics
   - --trust-remote-code
@@ -89,10 +95,16 @@ specs:
   - --disable-cuda-graph
   placement:
     language: starlark
-    resolver: "def resolve(gpu):\n    if gpu.count < 4: return reject(\"at least 4\
-      \ GPUs are required\")\n    if gpu.min_memory_gib < 32: return reject(\"each\
-      \ GPU requires at least 32 GiB\")\n    return {\"GPU_COUNT\": gpu.count, \"\
-      TP_SIZE\": gpu.count, \"SP_DEGREE\": 1}\n"
+    resolver: |-
+      def resolve(gpu):
+          # Any card count whose memory holds the weights (65.7 GiB) and a KV pool
+          # of 4.0 GiB, within the engine's 0.85 share less about 2 GiB of runtime
+          # overhead per card. The scheduler takes the fewest such cards and keeps
+          # the tensor-parallel size a divisor of the attention heads.
+          if gpu.count * (gpu.min_memory_gib * 0.85 - 2) < 70:
+              return reject("the weights and a minimal KV pool need 70 GiB; these cards offer less")
+          if gpu.min_memory_gib < 32: return reject("each GPU requires at least 32 GiB")
+          return {"GPU_COUNT": gpu.count, "TP_SIZE": gpu.count, "SP_DEGREE": 1}
   api:
     health_endpoint: /health
     operations:

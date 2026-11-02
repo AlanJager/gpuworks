@@ -114,9 +114,9 @@ func TestTemplateMatchingFindsADirectoryModelByRepositoryID(t *testing.T) {
 	if err := st.ReconcileInferenceCatalog([]store.InferenceModel{{
 		ModelID: "qwen/qwen3-0.6b", DisplayTitle: "Qwen3 0.6B", ReleaseDate: "2025-04-03", Source: "upstream", Unsupported: `[]`,
 		Specs: []store.InferenceSpecRow{{
-			Name: "qwen3-0.6b-vllm", DisplayProfile: "general", Scenario: "balanced", Engine: "vllm", Image: "vllm/vllm-openai:v0.11.0", Quantization: "bf16",
+			Name: "qwen3-0.6b-vllm", Scenario: "balanced", Engine: "vllm", Image: "vllm/vllm-openai:v0.11.0", Quantization: "bf16",
 			WeightSources: `[{"provider":"huggingface","repo_id":"Qwen/Qwen3-0.6B"}]`,
-			GPUs:          `{"vendor":"nvidia","cc":">=7.5","display_target":"nvidia"}`, Args: `[]`, Env: `{}`, PreStartArgv: `[]`,
+			GPUs:          `{"vendor":"nvidia","cc":">=7.5"}`, Args: `[]`, Env: `{}`, PreStartArgv: `[]`,
 		}},
 	}}); err != nil {
 		t.Fatal(err)

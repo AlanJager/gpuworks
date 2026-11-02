@@ -7,7 +7,8 @@ release_date: '2025-08-02'
 model_config: {kv_cache: false}
 specs:
 - name: bf16-vllm-nvidia-general
-  display_profile: general
+  display_name_zh_cn: Ampere 及以上 · BF16
+  display_name_en: Ampere+ · BF16
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm-omni0.30.0-r3
@@ -24,7 +25,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.0'
-    display_target: nvidia
   args:
   - --omni
   api:
@@ -46,7 +46,8 @@ specs:
       - name: guidance_scale
         kind: number
 - name: fp8-vllm-nvidia-general
-  display_profile: compatible
+  display_name_zh_cn: Ada 及以上 · FP8
+  display_name_en: Ada+ · FP8
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm-omni0.30.0-r3
@@ -63,7 +64,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.9'
-    display_target: nvidia
   args:
   - --omni
   - --diffusion-quantization-config
@@ -87,7 +87,8 @@ specs:
       - name: guidance_scale
         kind: number
 - name: int8-vllm-nvidia-general
-  display_profile: general
+  display_name_zh_cn: Ampere 及以上 · INT8
+  display_name_en: Ampere+ · INT8
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm-omni0.30.0-r3
@@ -104,7 +105,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.0'
-    display_target: nvidia
   args:
   - --omni
   - --quantization
@@ -128,7 +128,8 @@ specs:
       - name: guidance_scale
         kind: number
 - name: bf16-vllm-ppu-75e0b4be
-  display_profile: compatible
+  display_name_zh_cn: PPU · BF16
+  display_name_en: PPU · BF16
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
@@ -145,7 +146,6 @@ specs:
   gpus:
     vendor: ppu
     name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
-    display_target: ppu
   args:
   - --omni
   api:

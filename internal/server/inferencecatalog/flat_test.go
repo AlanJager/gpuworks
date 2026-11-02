@@ -20,10 +20,10 @@ func flatFixture() FlatCatalog {
 			LayerTypes:   []string{"full_attention", "linear_attention"},
 			VisionConfig: &modelconfig.TowerConfig{ImageSize: 896, PatchSize: 14},
 		},
-		Specs: []InferenceSpec{{Name: "bf16-balanced", DisplayProfile: "General", Scenario: "balanced", Engine: "vLLM", Image: "vllm/vllm-openai:latest",
+		Specs: []InferenceSpec{{Name: "bf16-balanced", DisplayNameZHCN: " Ampere 及以上 · BF16 ", DisplayNameEN: "Ampere+ · BF16", Scenario: "balanced", Engine: "vLLM", Image: "vllm/vllm-openai:latest",
 			Weights:     Weights{Quantization: "BF16", Sources: []WeightSource{{Provider: "modelscope", RepoID: "Org/Model"}, {Provider: "huggingface", RepoID: "Org/Model"}}},
 			WeightBytes: 140_000_000_000, RuntimeWeightBytes: 70_000_000_000,
-			GPUs: GPUSelector{Vendor: "NVIDIA", CC: ">=8.9", DisplayTarget: "NVIDIA"}, Args: []string{"--max-model-len", "32768"},
+			GPUs: GPUSelector{Vendor: "NVIDIA", CC: ">=8.9"}, Args: []string{"--max-model-len", "32768"},
 			Env: map[string]string{"VLLM_TEST": "1"}, PreStartArgv: []string{"apply", "--patch"},
 		}},
 	}}}
@@ -36,7 +36,8 @@ func TestFlatCatalogYAMLParseAndCompactSourceRoundTrip(t *testing.T) {
     release_date: "2026-08-13"
     specs:
       - name: bf16-balanced
-        display_profile: general
+        display_name_zh_cn: Ada 及以上 · BF16
+        display_name_en: Ada+ · BF16
         scenario: balanced
         engine: vllm
         image: vllm/vllm-openai:latest
@@ -48,7 +49,7 @@ func TestFlatCatalogYAMLParseAndCompactSourceRoundTrip(t *testing.T) {
                 repo_id: Org/Model
                 revision: 0123456789abcdef
                 subfolder: FL2VA
-        gpus: {vendor: nvidia, cc: ">=8.9", display_target: nvidia}
+        gpus: {vendor: nvidia, cc: ">=8.9"}
 `)
 	catalog, err := ParseYAML(raw)
 	if err != nil {
@@ -73,6 +74,9 @@ func TestFlatCatalogYAMLParseAndCompactSourceRoundTrip(t *testing.T) {
 	if !strings.Contains(string(encoded), "revision: 0123456789abcdef") || !strings.Contains(string(encoded), "subfolder: FL2VA") {
 		t.Fatalf("revision or subfolder disappeared from compact YAML:\n%s", encoded)
 	}
+	if !strings.Contains(string(encoded), "display_name_zh_cn: Ada 及以上 · BF16") || !strings.Contains(string(encoded), "display_name_en: Ada+ · BF16") {
+		t.Fatalf("display names disappeared from YAML:\n%s", encoded)
+	}
 }
 
 func TestFlatCatalogRejectsUnknownRevisionedWeightSourceField(t *testing.T) {
@@ -89,10 +93,9 @@ func TestFlatCatalogValidationRejectsRetiredAndUnsafeShapes(t *testing.T) {
 	}{
 		{"duplicate spec", func(c *FlatCatalog) { c.Models[0].Specs = append(c.Models[0].Specs, c.Models[0].Specs[0]) }},
 		{"invalid cc", func(c *FlatCatalog) { c.Models[0].Specs[0].GPUs.CC = "sm90" }},
-		{"invalid display profile", func(c *FlatCatalog) { c.Models[0].Specs[0].DisplayProfile = "fast" }},
-		{"display profile without target", func(c *FlatCatalog) { c.Models[0].Specs[0].GPUs.DisplayTarget = "" }},
-		{"display target without profile", func(c *FlatCatalog) { c.Models[0].Specs[0].DisplayProfile = "" }},
-		{"invalid display target", func(c *FlatCatalog) { c.Models[0].Specs[0].GPUs.DisplayTarget = "NVIDIA Blackwell" }},
+		{"multi-line display name", func(c *FlatCatalog) { c.Models[0].Specs[0].DisplayNameEN = "Ampere+\nBF16" }},
+		{"overlong zh display name", func(c *FlatCatalog) { c.Models[0].Specs[0].DisplayNameZHCN = strings.Repeat("卡", 57) }},
+		{"overlong en display name", func(c *FlatCatalog) { c.Models[0].Specs[0].DisplayNameEN = strings.Repeat("x", 73) }},
 		{"missing weight source", func(c *FlatCatalog) { c.Models[0].Specs[0].Weights.Sources = nil }},
 		{"negative runtime weight", func(c *FlatCatalog) { c.Models[0].Specs[0].RuntimeWeightBytes = -1 }},
 		{"runtime weight exceeds storage", func(c *FlatCatalog) { c.Models[0].Specs[0].RuntimeWeightBytes = c.Models[0].Specs[0].WeightBytes + 1 }},
@@ -156,7 +159,7 @@ func TestFlatCatalogConvertsToTwoStoreRows(t *testing.T) {
 	if len(rows) != 1 || len(rows[0].Specs) != 1 {
 		t.Fatalf("rows = %+v", rows)
 	}
-	if rows[0].ModelID != "org/model" || rows[0].Specs[0].ModelID != 0 || rows[0].Specs[0].Engine != "vllm" || rows[0].Specs[0].DisplayProfile != "general" {
+	if rows[0].ModelID != "org/model" || rows[0].Specs[0].ModelID != 0 || rows[0].Specs[0].Engine != "vllm" || rows[0].Specs[0].DisplayNameZHCN != "Ampere 及以上 · BF16" || rows[0].Specs[0].DisplayNameEN != "Ampere+ · BF16" {
 		t.Fatalf("unexpected row identity: %+v", rows[0])
 	}
 	if rows[0].Specs[0].WeightSources == "" || rows[0].Specs[0].GPUs == "" || rows[0].Specs[0].WeightBytes != 140_000_000_000 || rows[0].Specs[0].RuntimeWeightBytes != 70_000_000_000 {
@@ -181,7 +184,7 @@ func TestFlatCatalogStoreProjectionCanBecomePortableAgain(t *testing.T) {
 		t.Fatalf("restored model = %+v", restored)
 	}
 	spec := restored.Specs[0]
-	if spec.DisplayProfile != "general" || spec.GPUs.DisplayTarget != "nvidia" || len(spec.Weights.Sources) != 2 || spec.Env["VLLM_TEST"] != "1" || len(spec.PreStartArgv) != 2 {
+	if spec.DisplayNameZHCN != "Ampere 及以上 · BF16" || spec.DisplayNameEN != "Ampere+ · BF16" || len(spec.Weights.Sources) != 2 || spec.Env["VLLM_TEST"] != "1" || len(spec.PreStartArgv) != 2 {
 		t.Fatalf("restored spec = %+v", spec)
 	}
 	if restored.ModelConfig == nil || restored.ModelConfig.NumHiddenLayers != 64 || restored.ModelConfig.VisionConfig == nil ||

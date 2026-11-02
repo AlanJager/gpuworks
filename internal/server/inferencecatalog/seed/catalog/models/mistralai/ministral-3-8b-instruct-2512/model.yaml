@@ -8,7 +8,8 @@ kv_bytes_per_token:
   sglang: 139264
 specs:
 - name: fp8-8b-vllm-nvidia-general
-  display_profile: compatible
+  display_name_zh_cn: Hopper 及以上 · FP8
+  display_name_en: Hopper+ · FP8
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda12.9-vllm0.31.0-r2
@@ -25,7 +26,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=9.0'
-    display_target: hopper
   args:
   - --trust-remote-code
   - --tokenizer-mode

@@ -8,7 +8,8 @@ kv_bytes_per_token:
   sglang: 62464
 specs:
 - name: fp8-default-vllm-nvidia-general
-  display_profile: compatible
+  display_name_zh_cn: Hopper 及以上 · FP8 · 投机解码
+  display_name_en: Hopper+ · FP8 · Speculative
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -25,7 +26,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=9.0'
-    display_target: hopper
   args:
   - --trust-remote-code
   - --speculative-config
@@ -44,7 +44,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: fp8-sglang-ppu-m890p-tp8-256k
-  display_profile: compatible
+  display_name_zh_cn: PPU M890P · FP8 · 8 卡
+  display_name_en: PPU M890P · FP8 · 8 GPUs
   scenario: balanced
   engine: sglang
   image: reg.docker.alibaba-inc.com/ai_container/asllm:1.10.16-890P-pytorch2.10.0-ubuntu24.04-sail2.1.0-cuda13.0-sglang0.5.13-vllm0.23.0-py312
@@ -61,7 +62,6 @@ specs:
   gpus:
     vendor: ppu
     name: (^|[^A-Za-z0-9])(?:ZW[ _-]?)?M890P([^A-Za-z0-9]|$)
-    display_target: ppu
   args:
   - --trust-remote-code
   - --tp-size

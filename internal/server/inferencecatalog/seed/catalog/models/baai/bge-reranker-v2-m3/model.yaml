@@ -11,7 +11,8 @@ kv_bytes_per_token:
   sglang: 98304
 specs:
 - name: bf16-callable-hygon-6764e369
-  display_profile: general
+  display_name_zh_cn: K100 / BW · BF16
+  display_name_en: K100 / BW · BF16
   scenario: balanced
   engine: callable
   image: gpuworks/gpuworks-runner:dtk26.04-vllm0.18.1-r2
@@ -28,7 +29,6 @@ specs:
   gpus:
     vendor: hygon
     name: (^|[^A-Za-z0-9])(?:K100(?:[_ -]?AI)?|BW[_ -]?1000|BW[_ -]?1100)([^A-Za-z0-9_-]|$)
-    display_target: hygon
   args:
   - --model
   - ${MODEL_PATH}
@@ -62,7 +62,8 @@ specs:
       endpoint: /v1/rerank
       mode: sync
 - name: bf16-sglang-ascend-c60cce82
-  display_profile: general
+  display_name_zh_cn: 910B (A2) · BF16
+  display_name_en: 910B (A2) · BF16
   scenario: balanced
   engine: sglang
   image: gpuworks/gpuworks-runner:cann9.0-910b-sglang0.5.18-r2
@@ -79,7 +80,6 @@ specs:
   gpus:
     vendor: ascend
     name: (^|[^A-Za-z0-9])910B[A-Za-z0-9]*([^A-Za-z0-9]|$)
-    display_target: ascend
   args:
   - --enable-metrics
   - --is-embedding
@@ -101,7 +101,8 @@ specs:
       endpoint: /v1/rerank
       mode: sync
 - name: bf16-sglang-ascend-a3-c60cce82
-  display_profile: general
+  display_name_zh_cn: 910C (A3) · BF16
+  display_name_en: 910C (A3) · BF16
   scenario: balanced
   engine: sglang
   image: gpuworks/gpuworks-runner:cann9.0-a3-sglang0.5.18-r2
@@ -118,7 +119,6 @@ specs:
   gpus:
     vendor: ascend
     name: (^|[^A-Za-z0-9])910C[A-Za-z0-9]*([^A-Za-z0-9]|$)
-    display_target: ascend
   args:
   - --enable-metrics
   - --is-embedding
@@ -140,7 +140,8 @@ specs:
       endpoint: /v1/rerank
       mode: sync
 - name: fp32-callable-hygon-a033394e
-  display_profile: general
+  display_name_zh_cn: K100 / BW · FP32
+  display_name_en: K100 / BW · FP32
   scenario: balanced
   engine: callable
   image: gpuworks/gpuworks-runner:dtk26.04-vllm0.18.1-r2
@@ -157,7 +158,6 @@ specs:
   gpus:
     vendor: hygon
     name: (^|[^A-Za-z0-9])(?:K100(?:[_ -]?AI)?|BW[_ -]?1000|BW[_ -]?1100)([^A-Za-z0-9_-]|$)
-    display_target: hygon
   args:
   - --model
   - ${MODEL_PATH}
@@ -194,7 +194,8 @@ specs:
       endpoint: /v1/rerank
       mode: sync
 - name: fp32-vllm-hygon-05e314a2
-  display_profile: general
+  display_name_zh_cn: K100 / BW · FP32
+  display_name_en: K100 / BW · FP32
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:dtk26.04-vllm0.18.1-r2
@@ -211,7 +212,6 @@ specs:
   gpus:
     vendor: hygon
     name: (^|[^A-Za-z0-9])(?:K100(?:[_ -]?AI)?|BW[_ -]?1000|BW[_ -]?1100)([^A-Za-z0-9_-]|$)
-    display_target: hygon
   args:
   - --runner
   - pooling
@@ -228,7 +228,8 @@ specs:
       endpoint: /rerank
       mode: sync
 - name: bf16-vllm-nvidia-general
-  display_profile: general
+  display_name_zh_cn: Ampere 及以上 · BF16
+  display_name_en: Ampere+ · BF16
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -245,7 +246,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.0'
-    display_target: nvidia
   api:
     health_endpoint: /health
     operations:
@@ -253,7 +253,8 @@ specs:
       endpoint: /v1/rerank
       mode: sync
 - name: bf16-vllm-ppu-953dc6f6
-  display_profile: general
+  display_name_zh_cn: PPU · BF16
+  display_name_en: PPU · BF16
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
@@ -270,7 +271,6 @@ specs:
   gpus:
     vendor: ppu
     name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
-    display_target: ppu
   args:
   - --runner
   - pooling

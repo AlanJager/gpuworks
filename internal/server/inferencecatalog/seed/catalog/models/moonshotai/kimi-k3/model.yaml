@@ -13,7 +13,8 @@ kv_bytes_per_token:
   sglang: 107136
 specs:
 - name: mxfp4-vllm-amd-mi355x-tp8
-  display_profile: compatible
+  display_name_zh_cn: MI355X · MXFP4
+  display_name_en: MI355X · MXFP4
   scenario: balanced
   engine: vllm
   image: vllm/vllm-openai-rocm:nightly-rocm100
@@ -27,7 +28,6 @@ specs:
   gpus:
     vendor: amd
     name: (^|[^A-Za-z0-9])(?:MI355X)([^A-Za-z0-9]|$)
-    display_target: amd
   args:
   - --trust-remote-code
   - --load-format
@@ -51,11 +51,16 @@ specs:
   - '{"cudagraph_mode":"FULL_DECODE_ONLY","custom_ops":["+fused_rms_norm_gated"]}'
   placement:
     language: starlark
-    resolver: |
+    resolver: |-
       def resolve(gpu):
-          if gpu.count != 8:
-              return reject("this recipe requires exactly 8 GPUs per node")
-          return {"TP_SIZE": 8, "SP_DEGREE": 1}
+          # Any card count whose memory holds the weights (1453.7 GiB) and the KV
+          # cache of one 128K-token request (13.1 GiB), which vLLM checks at
+          # start, within the engine's 0.95 share less about 2 GiB of runtime
+          # overhead per card. The scheduler takes the fewest such cards and keeps
+          # the tensor-parallel size a divisor of the attention heads.
+          if gpu.count * (gpu.min_memory_gib * 0.95 - 2) < 1467:
+              return reject("the weights and one 128K-token request need 1467 GiB; these cards offer less")
+          return {"GPU_COUNT": gpu.count, "TP_SIZE": gpu.count, "SP_DEGREE": 1}
   env:
     VLLM_ROCM_USE_AITER: '1'
     SAFETENSORS_FAST_GPU: '1'
@@ -69,7 +74,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: bf16-sglang-nvidia-general
-  display_profile: general
+  display_name_zh_cn: Ampere 及以上 · BF16
+  display_name_en: Ampere+ · BF16
   scenario: balanced
   engine: sglang
   image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
@@ -86,7 +92,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.0'
-    display_target: nvidia
   args:
   - --enable-metrics
   - --reasoning-parser
@@ -101,7 +106,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: mxfp4-vllm-nvidia-general
-  display_profile: compatible
+  display_name_zh_cn: Hopper 及以上 · MXFP4
+  display_name_en: Hopper+ · MXFP4
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -118,7 +124,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=9.0'
-    display_target: hopper
   args:
   - --trust-remote-code
   - --enable-auto-tool-choice
@@ -133,7 +138,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: mxfp4-vllm-nvidia-general-dspark-draft
-  display_profile: compatible
+  display_name_zh_cn: Hopper 及以上 · MXFP4 · 投机解码
+  display_name_en: Hopper+ · MXFP4 · Speculative
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -150,7 +156,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=9.0'
-    display_target: hopper
   args:
   - --trust-remote-code
   - --speculative-config
@@ -195,7 +200,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: mxfp4-vllm-nvidia-hopper
-  display_profile: compatible
+  display_name_zh_cn: Hopper · MXFP4
+  display_name_en: Hopper · MXFP4
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -212,7 +218,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '9.0'
-    display_target: hopper
   args:
   - --trust-remote-code
   - --moe-backend
@@ -233,7 +238,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: mxfp4-vllm-nvidia-hopper-dspark-draft
-  display_profile: compatible
+  display_name_zh_cn: Hopper · MXFP4 · 投机解码
+  display_name_en: Hopper · MXFP4 · Speculative
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -250,7 +256,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '9.0'
-    display_target: hopper
   args:
   - --trust-remote-code
   - --moe-backend
@@ -301,7 +306,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: nvfp4-vllm-nvidia-cc100
-  display_profile: compatible
+  display_name_zh_cn: Blackwell · NVFP4
+  display_name_en: Blackwell · NVFP4
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -318,7 +324,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=10.0'
-    display_target: blackwell
   args:
   - --trust-remote-code
   - --enable-auto-tool-choice
@@ -333,7 +338,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: nvfp4-vllm-nvidia-cc100-dspark-draft
-  display_profile: compatible
+  display_name_zh_cn: Blackwell · NVFP4 · 投机解码
+  display_name_en: Blackwell · NVFP4 · Speculative
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -350,7 +356,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=10.0'
-    display_target: blackwell
   args:
   - --trust-remote-code
   - --speculative-config

@@ -8,7 +8,8 @@ kv_bytes_per_token:
   sglang: 147456
 specs:
 - name: bf16-sglang-nvidia-general
-  display_profile: general
+  display_name_zh_cn: Ampere 及以上 · BF16
+  display_name_en: Ampere+ · BF16
   scenario: balanced
   engine: sglang
   image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
@@ -27,7 +28,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.0'
-    display_target: nvidia
   api:
     health_endpoint: /health
     operations:
@@ -35,7 +35,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: fp8-sglang-nvidia-general
-  display_profile: compatible
+  display_name_zh_cn: Hopper 及以上 · FP8
+  display_name_en: Hopper+ · FP8
   scenario: balanced
   engine: sglang
   image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
@@ -54,7 +55,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=9.0'
-    display_target: hopper
   api:
     health_endpoint: /health
     operations:
@@ -62,10 +62,11 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: int8-vllm-hygon-ba4cb994
-  display_profile: general
+  display_name_zh_cn: K100 / BW · INT8 W8A8
+  display_name_en: K100 / BW · INT8 W8A8
   scenario: balanced
   engine: vllm
-  image: harbor.sourcefind.cn:5443/dcu/admin/base/custom:vllm0210-ubuntu26.04-dtk26.04-py3.10-20260528
+  image: gpuworks/gpuworks-runner:dtk26.04-vllm0.21.0-r1
   weights:
     quantization: int8
     sources:
@@ -76,7 +77,6 @@ specs:
   gpus:
     vendor: hygon
     name: (^|[^A-Za-z0-9])(?:K100(?:[_ -]?AI)?|BW[_ -]?1000|BW[_ -]?1100)([^A-Za-z0-9_-]|$)
-    display_target: hygon
   args:
   - --dtype
   - auto
@@ -89,6 +89,7 @@ specs:
     HF_HUB_OFFLINE: '1'
     TOKENIZERS_PARALLELISM: 'false'
     TRANSFORMERS_OFFLINE: '1'
+    VLLM_HCU_USE_CUSTOM_QUANTIZATION_GEMM: '0'
   placement:
     language: starlark
     resolver: "def resolve(gpu):\n    return {\"GPU_COUNT\": gpu.count, \"TP_SIZE\"\
@@ -100,7 +101,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: fp8-sglang-ppu-953532f9
-  display_profile: compatible
+  display_name_zh_cn: PPU · FP8
+  display_name_en: PPU · FP8
   scenario: balanced
   engine: sglang
   image: gpuworks/gpuworks-runner:hggc13.0-sglang0.5.13-r2
@@ -117,7 +119,6 @@ specs:
   gpus:
     vendor: ppu
     name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
-    display_target: ppu
   args:
   - --enable-metrics
   api:

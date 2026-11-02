@@ -137,6 +137,20 @@ var vllmKVCacheDtypes = []string{
 // a second spelling of "bfloat16", not a separate option.
 var sglangKVCacheDtypes = options("auto", "bfloat16", "fp8_e4m3", "fp8_e5m2", "mxfp8", "nvfp4", "fp4_mx_block16")
 
+// Tool-call and reasoning parser names the engines register, as of the
+// runner images' versions (vLLM 0.30.0 and 0.31.0: vllm/tool_parsers and
+// vllm/reasoning; SGLang 0.5.21: function_call/parser_names.py and
+// parser/reasoning_parser_names.py). They are suggestions for the form's
+// combobox, not a gate: any other name, typed or in a template, is passed to
+// the engine as written. Refresh them when a runner image moves to a newer
+// engine.
+var (
+	vllmToolCallParsers    = []string{"apertus", "cohere_command3", "cohere_command4", "deepseek_v3", "deepseek_v31", "deepseek_v32", "deepseek_v4", "deepseek_v41", "dots", "ernie45", "functiongemma", "gemma4", "gigachat3", "glm45", "glm47", "granite", "granite-20b-fc", "granite4", "hermes", "hunyuan_a13b", "hy_v3", "hy_v4", "inkling", "internlm", "jamba", "k2_horizon", "kimi_k2", "kimi_k3", "lfm2", "ling3", "llama3_json", "llama4_json", "llama4_pythonic", "longcat", "mimo", "minicpm5", "minimax_m2", "minimax_m3", "mistral", "muse_glimmer", "olmo3", "openai", "phi4_mini_json", "poolside_v1", "pythonic", "qwen3_coder", "qwen3_xml", "seed_oss", "step3", "step3p5", "xlam"}
+	vllmReasoningParsers   = []string{"cohere_command3", "cohere_command4", "deepseek_r1", "deepseek_v3", "deepseek_v4", "deepseek_v41", "ernie45", "gemma4", "glm45", "glm47", "granite", "granite_thinking_parser", "holo2", "hunyuan_a13b", "hy_v3", "hy_v4", "inkling", "k2_horizon", "kimi_k2", "kimi_k3", "ling3", "mimo", "minimax_m2", "minimax_m2_append_think", "minimax_m3", "mistral", "muse_glimmer", "nemotron_v3", "olmo3", "openai_gptoss", "poolside_v1", "qwen3", "seed_oss", "step3", "step3p5"}
+	sglangToolCallParsers  = []string{"apertus2509", "cohere_command4", "deepseekv3", "deepseekv31", "deepseekv32", "deepseekv4", "deepseekv41", "dots", "gemma4", "gigachat3", "gigachat35", "glm", "glm45", "glm47", "gpt-oss", "hermes", "hunyuan", "inkling", "interns1", "iquest_q1", "k2_horizon", "kimi_k2", "kimi_k3", "lfm2", "ling3", "llama3", "mimo", "minicpm5", "minimax-m2", "minimax-m3", "mistral", "muse", "nanbeige", "poolside_v1", "pythonic", "qwen", "qwen25", "qwen3_coder", "spark25", "step3", "step3p5", "trinity"}
+	sglangReasoningParsers = []string{"apertus2509", "cohere_command4", "deepseek-r1", "deepseek-v3", "deepseek-v4", "deepseek-v41", "dots", "gemma4", "gigachat35", "glm45", "gpt-oss", "granite_thinking_parser", "hunyuan", "inkling", "interns1", "iquest_q1", "k2_horizon", "kimi", "kimi_k2", "kimi_k3", "ling3", "mimo", "minimax", "minimax-append-think", "minimax-m3", "mistral", "muse", "nanbeige", "nemotron_3", "poolside_v1", "qwen3", "qwen3-thinking", "step3", "step3p5"}
+)
+
 // sglangSpeculativeAlgorithms is SGLang's own vocabulary, spelled as SGLang
 // spells it: its model hooks compare the raw --speculative-algorithm string
 // against upper-case names before normalizing it, so "dspark" fails an
@@ -165,8 +179,8 @@ var parameterDefinitions = []paramDefinition{
 	{ParamDefinition: ParamDefinition{Key: "quantization", Type: "string", Control: "text", Group: "model"}, Flags: map[string]flagPair{EngineVLLM: {On: "--quantization"}, EngineSGLang: {On: "--quantization"}}},
 	{ParamDefinition: ParamDefinition{Key: "rope_scaling", Type: "json", Control: "json", Group: "model"}, Flags: map[string]flagPair{EngineVLLM: {On: "--rope-scaling"}}},
 	{ParamDefinition: ParamDefinition{Key: "trust_remote_code", Type: "boolean", Control: "switch", Group: "model", Default: false}, Flags: map[string]flagPair{EngineVLLM: {On: "--trust-remote-code"}, EngineSGLang: {On: "--trust-remote-code"}}},
-	{ParamDefinition: ParamDefinition{Key: "reasoning_parser", Type: "string", Control: "combobox", Group: "model", Options: options("deepseek_r1", "granite", "mistral", "qwen3", "step3"), Layout: "quick", Order: 31}, Flags: map[string]flagPair{EngineVLLM: {On: "--reasoning-parser"}, EngineSGLang: {On: "--reasoning-parser"}}, Options: map[string][]ParamOption{EngineSGLang: technicalOptions("apertus2509", "deepseek-r1", "deepseek-v3", "qwen3", "qwen3-thinking", "kimi_k2", "gpt-oss")}},
-	{ParamDefinition: ParamDefinition{Key: "tool_call_parser", Type: "string", Control: "combobox", Group: "model", Options: options("deepseek_v3", "granite", "hermes", "llama3_json", "mistral", "qwen3", "qwen3_coder"), Layout: "quick", Order: 30}, Flags: map[string]flagPair{EngineVLLM: {On: "--tool-call-parser"}, EngineSGLang: {On: "--tool-call-parser"}}, Options: map[string][]ParamOption{EngineSGLang: technicalOptions("apertus2509", "deepseekv3", "deepseekv31", "deepseekv32", "glm", "gpt-oss", "kimi_k2", "llama3", "llama4", "mistral", "pythonic", "qwen", "qwen25", "qwen3_coder", "step3")}},
+	{ParamDefinition: ParamDefinition{Key: "reasoning_parser", Type: "string", Control: "combobox", Group: "model", Options: technicalOptions(vllmReasoningParsers...), Layout: "quick", Order: 31}, Flags: map[string]flagPair{EngineVLLM: {On: "--reasoning-parser"}, EngineSGLang: {On: "--reasoning-parser"}}, Options: map[string][]ParamOption{EngineSGLang: technicalOptions(sglangReasoningParsers...)}},
+	{ParamDefinition: ParamDefinition{Key: "tool_call_parser", Type: "string", Control: "combobox", Group: "model", Options: technicalOptions(vllmToolCallParsers...), Layout: "quick", Order: 30}, Flags: map[string]flagPair{EngineVLLM: {On: "--tool-call-parser"}, EngineSGLang: {On: "--tool-call-parser"}}, Options: map[string][]ParamOption{EngineSGLang: technicalOptions(sglangToolCallParsers...)}},
 	{ParamDefinition: ParamDefinition{Key: "enable_auto_tool_choice", Type: "boolean", Control: "switch", Group: "model", Default: false}, Flags: map[string]flagPair{EngineVLLM: {On: "--enable-auto-tool-choice"}, EngineSGLang: {On: "--enable-auto-tool-choice"}}},
 	{ParamDefinition: ParamDefinition{Key: "limit_mm_per_prompt", Type: "json", Control: "json", Group: "multimodal", MultimodalOnly: true}, Flags: map[string]flagPair{EngineVLLM: {On: "--limit-mm-per-prompt"}}},
 	{ParamDefinition: ParamDefinition{Key: "mm_processor_kwargs", Type: "json", Control: "json", Group: "multimodal", MultimodalOnly: true}, Flags: map[string]flagPair{EngineVLLM: {On: "--mm-processor-kwargs"}}},

@@ -11,7 +11,8 @@ kv_bytes_per_token:
   sglang: 70272
 specs:
 - name: int4-vllm-ppu-tp8-74797c9c
-  display_profile: general
+  display_name_zh_cn: PPU · INT4 · 8 卡
+  display_name_en: PPU · INT4 · 8 GPUs
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
@@ -28,7 +29,6 @@ specs:
   gpus:
     vendor: ppu
     name: '(?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)'
-    display_target: ppu
   args:
   - --trust-remote-code
   - --enable-auto-tool-choice
@@ -49,7 +49,8 @@ specs:
     health_endpoint: /health
     operations: [{type: openai.chat, endpoint: /v1/chat/completions, mode: stream}]
 - name: bf16-sglang-nvidia-general
-  display_profile: general
+  display_name_zh_cn: Ampere 及以上 · BF16
+  display_name_en: Ampere+ · BF16
   scenario: balanced
   engine: sglang
   image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
@@ -66,7 +67,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.0'
-    display_target: nvidia
   args:
   - --enable-metrics
   - --trust-remote-code
@@ -80,44 +80,9 @@ specs:
     - type: openai.chat
       endpoint: /v1/chat/completions
       mode: stream
-- name: int4-vllm-nvidia-general
-  display_profile: general
-  scenario: balanced
-  engine: vllm
-  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
-  weights:
-    quantization: int4
-    sources:
-    - huggingface:
-        repo_id: moonshotai/Kimi-K2.7-Code
-        revision: 74797c9c62378b951a1f6fcf5c4631024e9b8bef
-    - modelscope:
-        repo_id: moonshotai/Kimi-K2.7-Code
-        revision: 225320e77210469e1aaa0274306ca2bc6209d70a
-  weight_bytes: 595204984507
-  gpus:
-    vendor: nvidia
-    cc: '>=8.0'
-    display_target: nvidia
-  args:
-  - --trust-remote-code
-  - --tool-call-parser
-  - kimi_k2
-  - --enable-auto-tool-choice
-  - --reasoning-parser
-  - kimi_k2
-  - --speculative-config
-  - '{"model":"lightseekorg/kimi-k2.7-coder-eagle3.1-mla","method":"eagle3","num_speculative_tokens":3}'
-  - --mm-encoder-tp-mode
-  - data
-  api:
-    health_endpoint: /health
-    operations:
-    - type: openai.chat
-      endpoint: /v1/chat/completions
-      mode: stream
 - name: int4-vllm-nvidia-general-eagle3-draft
-  display_profile: general
+  display_name_zh_cn: Ampere 及以上 · INT4 · 投机解码
+  display_name_en: Ampere+ · INT4 · Speculative
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -134,7 +99,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.0'
-    display_target: nvidia
   args:
   - --trust-remote-code
   - --tool-call-parser

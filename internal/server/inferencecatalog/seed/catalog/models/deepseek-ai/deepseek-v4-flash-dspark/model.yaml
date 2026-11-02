@@ -8,7 +8,8 @@ kv_bytes_per_token:
   sglang: 44032
 specs:
 - name: fp8-dspark-vllm-nvidia-dgx-spark-gb10
-  display_profile: optimized
+  display_name_zh_cn: DGX Spark (GB10) · FP8 · 投机解码
+  display_name_en: DGX Spark (GB10) · FP8 · Speculative
   scenario: throughput
   engine: vllm
   image: eugr/spark-vllm-b12x:latest
@@ -26,7 +27,6 @@ specs:
     vendor: nvidia
     cc: '>=10.0'
     name: (?:DGX[ _-]?Spark|GB10)
-    display_target: gb10
   args:
   - --trust-remote-code
   - --speculative-config
@@ -67,7 +67,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: fp8-dspark-vllm-nvidia-general
-  display_profile: compatible
+  display_name_zh_cn: Hopper 及以上 · FP8 · 投机解码
+  display_name_en: Hopper+ · FP8 · Speculative
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -84,7 +85,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=9.0'
-    display_target: hopper
   args:
   - --trust-remote-code
   - --speculative-config

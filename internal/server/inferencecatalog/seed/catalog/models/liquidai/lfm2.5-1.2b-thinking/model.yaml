@@ -11,7 +11,8 @@ kv_bytes_per_token:
   sglang: 12288
 specs:
 - name: bf16-sglang-nvidia-general
-  display_profile: general
+  display_name_zh_cn: Ampere 及以上 · BF16
+  display_name_en: Ampere+ · BF16
   scenario: balanced
   engine: sglang
   image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
@@ -28,7 +29,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.0'
-    display_target: nvidia
   args:
   - --enable-metrics
   - --reasoning-parser
@@ -43,7 +43,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: bf16-vllm-nvidia-blackwell
-  display_profile: compatible
+  display_name_zh_cn: Blackwell · BF16
+  display_name_en: Blackwell · BF16
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -60,7 +61,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=10.0'
-    display_target: blackwell
   env:
     VLLM_USE_OINK_OPS: '1'
   args:
@@ -76,7 +76,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: bf16-vllm-nvidia-general
-  display_profile: general
+  display_name_zh_cn: Ampere 及以上 · BF16
+  display_name_en: Ampere+ · BF16
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -93,7 +94,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.0'
-    display_target: nvidia
   args:
   - --reasoning-parser
   - qwen3
@@ -107,7 +107,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: bf16-vllm-nvidia-turing
-  display_profile: compatible
+  display_name_zh_cn: Turing · BF16
+  display_name_en: Turing · BF16
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda12.9-vllm0.31.0-r2
@@ -124,7 +125,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: 7.5..7.9
-    display_target: turing
   args:
   - --dtype
   - half
@@ -140,7 +140,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: bf16-vllm-ppu-f3134789
-  display_profile: general
+  display_name_zh_cn: PPU · BF16
+  display_name_en: PPU · BF16
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
@@ -157,7 +158,6 @@ specs:
   gpus:
     vendor: ppu
     name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
-    display_target: ppu
   args:
   - --trust-remote-code
   - --skip-mm-profiling

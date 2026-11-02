@@ -98,9 +98,6 @@ func validateExecutableContract(modelID string, spec *InferenceSpec) error {
 	if err := validateFileValuedArguments(where, modelID, spec); err != nil {
 		return err
 	}
-	if err := validateLaunchArgs(where, spec); err != nil {
-		return err
-	}
 	for index, value := range spec.Entrypoint {
 		if strings.TrimSpace(value) == "" {
 			return fmt.Errorf("%s entrypoint[%d] is empty", where, index)
@@ -158,30 +155,6 @@ func validateTemplateVariables(where string, spec *InferenceSpec) error {
 		}
 	}
 	return nil
-}
-
-// validateLaunchArgs rejects a spec that states a dictionary parameter's value
-// in a spelling the dictionary cannot read. Since the launch configuration is
-// materialized once at the write boundary, such a value is no longer a token
-// the engine happens to receive verbatim: it is a field the platform would have
-// to leave unset, so the estimator, the form and the engine would each see a
-// different launch. Import is the last moment at which the author is still
-// present to fix it, so that is where it is refused, with the flag named.
-//
-// Only a flag exactly one dictionary key owns is judged. Anything else -
-// a flag the dictionary never heard of, a flag several keys share such as
-// vLLM's --speculative-config, or an engine with no dictionary at all - stays
-// the author's to spell, and deploy.LintArgs says so by reporting nothing.
-func validateLaunchArgs(where string, spec *InferenceSpec) error {
-	problems := deploy.LintArgs(spec.Engine, spec.Args)
-	if len(problems) == 0 {
-		return nil
-	}
-	details := make([]string, 0, len(problems))
-	for _, problem := range problems {
-		details = append(details, problem.String())
-	}
-	return fmt.Errorf("%s: %s", where, strings.Join(details, "; "))
 }
 
 // validateFileValuedArguments rejects a spec that hands the engine a plugin

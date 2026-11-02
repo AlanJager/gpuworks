@@ -25,7 +25,8 @@ specs:
 # shard (39.2 GB) and the KV cache, which is small: 12 of the 48 layers use
 # full attention, about 24 KiB per token.
 - name: iq2xs-llamacpp-apple-128g
-  display_profile: general
+  display_name_zh_cn: Apple 芯片 · GGUF IQ2_XS · ≥80G
+  display_name_en: Apple silicon · GGUF IQ2_XS · 80G+
   scenario: balanced
   engine: callable
   image: gpuworks/gpuworks-runner:metal15.0-llama.cpp-b11617-r1
@@ -43,7 +44,6 @@ specs:
   weight_bytes: 68026093024
   gpus:
     vendor: apple
-    display_target: apple
   # llama-server opens a split GGUF from its first shard; the download keeps
   # the repository layout, so the shards are under IQ2_XS/. -ngl 99 keeps every
   # layer on the GPU; --jinja applies the chat template the GGUF carries (tool
@@ -102,7 +102,8 @@ specs:
 # shard (39.2 GB) and the KV cache, which is small: 12 of the 48 layers use
 # full attention, about 24 KiB per token.
 - name: iq2xs-llamacpp-apple-64g
-  display_profile: general
+  display_name_zh_cn: Apple 芯片 · GGUF IQ2_XS · ≥44G
+  display_name_en: Apple silicon · GGUF IQ2_XS · 44G+
   scenario: balanced
   engine: callable
   image: gpuworks/gpuworks-runner:metal15.0-llama.cpp-b11617-r1
@@ -120,7 +121,6 @@ specs:
   weight_bytes: 68026093024
   gpus:
     vendor: apple
-    display_target: apple
   # llama-server opens a split GGUF from its first shard; the download keeps
   # the repository layout, so the shards are under IQ2_XS/. -ngl 99 keeps every
   # layer on the GPU; --jinja applies the chat template the GGUF carries (tool

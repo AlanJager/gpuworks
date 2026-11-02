@@ -1201,14 +1201,15 @@ export interface InferenceTemplateIndexItem {
 export interface InferenceProfileSummary {
   source?: "upstream" | "user" | string;
   name: string;
-  display_profile?: string;
+  display_name_zh_cn?: string;
+  display_name_en?: string;
   scenario?: string;
   engine: string;
   image?: string;
   quantization?: string;
   weight_bytes?: number;
   weight_repo_ids?: string[];
-  gpus: { vendor: string; cc?: string; name?: string; display_target?: string };
+  gpus: { vendor: string; cc?: string; name?: string };
 }
 export interface InferenceTemplate {
   id: number;
@@ -1231,7 +1232,9 @@ export interface InferenceSpec {
   id: number;
   source: "upstream" | "user" | string;
   name: string;
-  display_profile?: "general" | "compatible" | "optimized" | string;
+  /** Human-written names; the page shows the one for its locale (specDisplayName). */
+  display_name_zh_cn?: string;
+  display_name_en?: string;
   scenario?: string;
   engine: string;
   image: string;
@@ -1280,7 +1283,6 @@ export interface GPUPredicate {
   vendor: string;
   cc?: string;
   name?: string;
-  display_target?: string;
 }
 export interface InferenceTemplateUnsupported {
   gpus: GPUPredicate;
