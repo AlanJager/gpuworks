@@ -27,7 +27,7 @@ from urllib.parse import urlsplit
 from playwright.sync_api import expect
 from local_browser_fixture import ROOT
 from platform_token_read_revoke import check, collection
-from dialog_checks import assert_drawer_shell
+from dialog_checks import assert_drawer_shell, in_viewport, regions_stacked
 from image_catalog_runner import run
 
 
@@ -294,6 +294,56 @@ def test_image_registration(page, server, artifacts, report, locale):
     expect(space).to_have_count(1, timeout=12000)
     expect(space).to_have_css("row-gap", "20px", timeout=12000)
     report["register_drawer_gap"] = True
+    # 12.2: at 1440x900 the drawer's own title, its content and the control that commits it are
+    # required to sit inside the drawer and inside the viewport without overlapping each other. The
+    # geometry is measured rather than eyeballed, so a column that wraps into the submit control
+    # fails here rather than being caught by whichever later step happens to click it.
+    drawer_box = dialog.evaluate("""element => {
+        const rect = (node) => {
+            if (!node) return null;
+            const box = node.getBoundingClientRect();
+            return {top: box.top, left: box.left, right: box.right, bottom: box.bottom,
+                    width: box.width, height: box.height};
+        };
+        const wrapper = element.closest('.ant-drawer-content-wrapper');
+        return {header: rect(element.querySelector('.ant-drawer-header')),
+                body: rect(element.querySelector('.ant-drawer-body')),
+                submit: rect([...element.querySelectorAll('button')]
+                             .find(node => node.textContent.trim() === form['addImage'])),
+                box: rect(wrapper)};
+    }""".replace("form['addImage']", json.dumps(form["addImage"])))
+    viewport = page.viewport_size
+    check(all(drawer_box.get(k) for k in ("header", "body", "submit", "box")),
+          f"the drawer did not expose its parts: {drawer_box}")
+    check(regions_stacked([drawer_box["header"], drawer_box["body"]], drawer_box["box"]),
+          f"drawer header and body overlap or leave the drawer: {drawer_box}")
+    # A tall drawer may legitimately scroll; what must not happen is a submit control the operator
+    # cannot reach. So the control is required to be reachable, not merely to start on screen: it is
+    # scrolled into view and then re-measured.
+    button(dialog, form["addImage"]).scroll_into_view_if_needed()
+    page.wait_for_timeout(300)
+    reachable = dialog.evaluate("""() => {
+        const node = [...document.querySelectorAll('.ant-drawer-body button')]
+            .find(n => n.textContent.trim() === MARK);
+        if (!node) return null;
+        const box = node.getBoundingClientRect();
+        return {top: box.top, bottom: box.bottom, left: box.left, right: box.right,
+                width: box.width, height: box.height,
+                visible: box.top >= 0 && box.bottom <= window.innerHeight};
+    }""".replace("MARK", json.dumps(form["addImage"])))
+    check(reachable and reachable["visible"],
+          f"the submit control cannot be brought into the viewport: {reachable} in {viewport}")
+    report["register_submit_reachable"] = reachable
+    def disjoint(first, second):
+        return (first["bottom"] <= second["top"] + 0.5 or second["bottom"] <= first["top"] + 0.5
+                or first["right"] <= second["left"] + 0.5 or second["right"] <= first["left"] + 0.5)
+
+    check(disjoint(drawer_box["header"], drawer_box["submit"]),
+          f"the submit control overlaps the drawer header: {drawer_box}")
+    check(disjoint(drawer_box["body"], drawer_box["submit"]),
+          f"the submit control overlaps the drawer body region: {drawer_box}")
+    report["register_drawer_viewport"] = {k: {kk: round(vv, 1) for kk, vv in drawer_box[k].items()}
+                                          for k in ("header", "body", "submit", "box")}
     report["evidence"].append(assert_drawer_shell(
         page, dialog, form["title"]["custom"],
         dialog.get_by_text(form["url"]["title"], exact=True),
