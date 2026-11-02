@@ -8,7 +8,8 @@ kv_bytes_per_token:
   sglang: 106496
 specs:
 - name: fp8-3b-vllm-nvidia-general
-  display_profile: compatible
+  display_name_zh_cn: Ampere 及以上 · FP8
+  display_name_en: Ampere+ · FP8
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda12.9-vllm0.31.0-r2
@@ -29,7 +30,6 @@ specs:
     # runner image rather than the floating tag below, so it establishes the CC
     # requirement, not this exact image tag.
     cc: '>=8.0'
-    display_target: nvidia
   args:
   - --trust-remote-code
   - --tokenizer-mode

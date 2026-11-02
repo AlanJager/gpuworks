@@ -39,7 +39,8 @@ models:                       # FlatCatalog: a single top-level models list
     reason: Insufficient compute capability       # Required
   specs:                      # At least one spec per model, except models referenced as components
   - name: bf16-sglang-nvidia-general   # Unique within the model
-    display_profile: general  # general | compatible | optimized
+    display_name_zh_cn: A100 / H100 · BF16   # Optional; see Display Names below
+    display_name_en: A100 / H100 · BF16
     scenario: balanced        # latency | balanced | throughput
     engine: sglang            # vllm | sglang | callable
     image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
@@ -57,7 +58,6 @@ models:                       # FlatCatalog: a single top-level models list
       vendor: nvidia          # Required
       cc: '>=8.0'             # Exact value / >=x / <x / a..b
       name: '(^|[^A-Za-z0-9])(?:A100|H100)([^A-Za-z0-9]|$)'   # Optional case-insensitive regular expression
-      display_target: nvidia  # Must appear together with display_profile
     env:
       NCCL_NET_PLUGIN: none
     args:
@@ -104,7 +104,7 @@ models:                       # FlatCatalog: a single top-level models list
 | Field | Constraints | Description |
 |---|---|---|
 | `name` | Required; unique within the model | |
-| `display_profile` | `general` \| `compatible` \| `optimized` | **Must be present or absent together with `gpus.display_target`** |
+| `display_name_zh_cn` / `display_name_en` | Optional; one line, at most 56 / 72 characters respectively; each unique within the model and engine (ignoring case and extra spaces) | The spec's Chinese and English display names. The UI shows the one for its language, falls back to the other, and shows `name` when there is neither. Built-in specs set both. See [Display Names](#display-names) |
 | `scenario` | `latency` \| `balanced` \| `throughput` | |
 | `engine` | Required; resolved through the registry at deployment time; valid values are `vllm` / `sglang` / `callable` (`internal/engines` is the sole source) | `callable` runs the Serve Adapter bundled with the catalog, with no log dialect or parameter dictionary; **the template controls the entire command line**. The engine appends no arguments. The template places platform facts such as model paths, ports, and multi-node ranks using [variables](#变量展开), and must reference `${API_PORT}` (ADR 0036) |
 | `image` | Required | For image reference syntax and drift, see [Image Families](image-families.md) and todo.md T2 |
@@ -215,7 +215,19 @@ writes only the normalized list.
   (only `>=` and `<`, with no `>` / `<=`; intervals require lo ≤ hi).
 - `name`: Optional regular expression; `(?i)` (case-insensitive) is added automatically when matching. Use
   boundaries such as `(^|[^A-Za-z0-9])...([^A-Za-z0-9]|$)` to avoid matching `A1000` with `A100`.
-- `display_target`: Optional; matches `^[a-z0-9]+(_[a-z0-9]+)*$`; paired with `display_profile`.
+
+### Display Names
+
+`display_name_zh_cn` / `display_name_en` are written by hand. They sum up which cards the spec is for and what tells it from its siblings, in the form `cards · quantization [· key limit or shape]`:
+
+- **Cards** match what `gpus` actually matches: for a compute-capability range only, the architecture (`>=8.0` is "Ampere 及以上" / "Ampere+", `>=9.0` is "Hopper 及以上" / "Hopper+", `>=10.0` is "Blackwell"); for named models, the models, such as "H20 / H200", "910C (A3)" or "K100 / BW". No vendor name.
+- **Quantization** is always written, in upper case: `BF16`, `FP8`, `NVFP4`, `INT8 W8A8`, `INT4 AWQ` and so on; when one quantization comes from several weight publishers, the publisher goes in parentheses, such as "NVFP4 (NVIDIA)".
+- **The rest** only states what tells siblings apart or a hard limit users must know, in this order: a fixed card count ("8 卡" / "8 GPUs"), a memory threshold, the context length, the shape ("投机解码" / "Speculative", Engram offload, multi-node, PD disaggregated, an embedding task), the scenario (only when siblings differ in nothing else, such as "High throughput"), and the image (only when siblings differ in nothing else: the engine or CUDA version, such as "CUDA 12.9").
+- No engine name and no model name.
+
+For example, GLM-5.3-Flash's two vLLM Hopper specs are "H20 / H200 141G · FP8 · 8 GPUs · 1M context" and "H100 / H20 96G · FP8 · 8 GPUs · 256K context".
+
+The `display_profile` and `gpus.display_target` keys of earlier templates are no longer used: an import still reads them, ignores them and raises the `CATALOG_DISPLAY_PROFILE_RETIRED` warning (see [Pre-Import Checks and Warnings](#pre-import-checks-and-warnings)).
 
 ### assets[]
 
@@ -507,6 +519,7 @@ Warnings do not block import. A successful import response includes the same `wa
 |---|---|---|
 | `CATALOG_CALLABLE_METRICS_UNDECLARED` | `engine: callable` without `api.metrics` | Monitoring has no engine metrics for this spec unless the engine's `/metrics` happens to use vLLM / SGLang metric names (see [Declare Engine Metrics for an Inference Template](../how-to/declare-engine-metrics.md)) |
 | `CATALOG_HEALTH_ENDPOINT_UNDECLARED` | `engine: callable` without `api.health_endpoint` | Readiness probes use the default `/health`; no warning is shown for `vllm` / `sglang`, whose engines provide `/health` natively |
+| `CATALOG_DISPLAY_PROFILE_RETIRED` | The spec still sets `display_profile` or `gpus.display_target` | Both are ignored; the UI shows `display_name_zh_cn` / `display_name_en` (or `name` when there is neither) |
 | `CATALOG_CALLABLE_SERVED_NAME_FIXED` | In an `engine: callable` spec, the `--served-model-name` value in `args` / `entrypoint` does not use `${SERVED_MODEL_NAME}` (`params.name` is the literal) | An engine that checks the model accepts only that literal, so requests and health checks return 404 whenever the deployment's served name differs; ignore it if the adapter ignores the model or the name is pinned on purpose |
 
 ## Validation Entry Points and Tools

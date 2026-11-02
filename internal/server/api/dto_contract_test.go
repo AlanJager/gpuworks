@@ -199,7 +199,7 @@ func TestAPIKeyDTOContractCannotExposeSecret(t *testing.T) {
 }
 
 func TestFlatSpecAndMatchedByDTOUseLiteralWireJSON(t *testing.T) {
-	specWire := `{"id":7,"source":"upstream","name":"blackwell","display_profile":"compatible","engine":"vllm","image":"vllm:latest","weight_sources":[{"provider":"huggingface","repo_id":"org/model","revision":"commit","subfolder":"runtime"}],"weight_bytes":2000,"runtime_weight_bytes":1000,"shm_bytes":429496729600,"memlock_unlimited":true,"gpus":{"vendor":"nvidia","cc":">=10.0","display_target":"blackwell"}}`
+	specWire := `{"id":7,"source":"upstream","name":"blackwell","display_name_zh_cn":"Blackwell · NVFP4","display_name_en":"Blackwell · NVFP4","engine":"vllm","image":"vllm:latest","weight_sources":[{"provider":"huggingface","repo_id":"org/model","revision":"commit","subfolder":"runtime"}],"weight_bytes":2000,"runtime_weight_bytes":1000,"shm_bytes":429496729600,"memlock_unlimited":true,"gpus":{"vendor":"nvidia","cc":">=10.0"}}`
 	var spec dto.InferenceSpecDTO
 	if err := json.Unmarshal([]byte(specWire), &spec); err != nil {
 		t.Fatal(err)

@@ -125,6 +125,10 @@ const (
 	// checks the request's model rejects the deployment's served name. Params
 	// also carry name, the literal it passes.
 	WarningCatalogCallableServedNameFixed = "CATALOG_CALLABLE_SERVED_NAME_FIXED"
+	// WarningCatalogDisplayProfileRetired: a spec still sets the retired
+	// display_profile or gpus.display_target keys; they were ignored, and
+	// the spec should carry display_name_zh_cn / display_name_en instead.
+	WarningCatalogDisplayProfileRetired = "CATALOG_DISPLAY_PROFILE_RETIRED"
 )
 
 // NewProductError constructs a structured product error while keeping empty

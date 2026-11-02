@@ -11,7 +11,8 @@ kv_bytes_per_token:
   sglang: 131072
 specs:
 - name: bf16-sglang-nvidia-general
-  display_profile: general
+  display_name_zh_cn: Ampere 及以上 · BF16
+  display_name_en: Ampere+ · BF16
   scenario: balanced
   engine: sglang
   image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
@@ -30,7 +31,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.0'
-    display_target: nvidia
   api:
     health_endpoint: /health
     operations:
@@ -38,7 +38,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: bf16-vllm-nvidia-general
-  display_profile: general
+  display_name_zh_cn: Ampere 及以上 · BF16
+  display_name_en: Ampere+ · BF16
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -55,7 +56,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.0'
-    display_target: nvidia
   api:
     health_endpoint: /health
     operations:
@@ -63,7 +63,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: bf16-vllm-nvidia-general-eagle3-draft
-  display_profile: general
+  display_name_zh_cn: Ampere 及以上 · BF16 · 投机解码
+  display_name_en: Ampere+ · BF16 · Speculative
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -80,7 +81,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.0'
-    display_target: nvidia
   args:
   - --speculative-config
   - '{"model":"/models/draft","method":"eagle3","num_speculative_tokens":3}'
@@ -119,7 +119,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: fp8-vllm-nvidia-general
-  display_profile: compatible
+  display_name_zh_cn: Hopper 及以上 · FP8
+  display_name_en: Hopper+ · FP8
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -136,7 +137,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=9.0'
-    display_target: hopper
   api:
     health_endpoint: /health
     operations:
@@ -144,7 +144,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: fp8-vllm-nvidia-general-eagle3-draft
-  display_profile: compatible
+  display_name_zh_cn: Hopper 及以上 · FP8 · 投机解码
+  display_name_en: Hopper+ · FP8 · Speculative
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -161,7 +162,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=9.0'
-    display_target: hopper
   args:
   - --speculative-config
   - '{"model":"/models/draft","method":"eagle3","num_speculative_tokens":3}'
@@ -200,7 +200,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: int4-vllm-nvidia-general
-  display_profile: general
+  display_name_zh_cn: Ampere 及以上 · INT4 AWQ
+  display_name_en: Ampere+ · INT4 AWQ
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -217,7 +218,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.0'
-    display_target: nvidia
   args:
   - --quantization
   - awq
@@ -228,7 +228,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: int4-vllm-nvidia-general-eagle3-draft
-  display_profile: general
+  display_name_zh_cn: Ampere 及以上 · INT4 AWQ · 投机解码
+  display_name_en: Ampere+ · INT4 AWQ · Speculative
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -245,7 +246,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.0'
-    display_target: nvidia
   args:
   - --quantization
   - awq
@@ -286,7 +286,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: int8-vllm-nvidia-general
-  display_profile: general
+  display_name_zh_cn: Ampere 及以上 · INT8 W8A8
+  display_name_en: Ampere+ · INT8 W8A8
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -303,7 +304,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.0'
-    display_target: nvidia
   api:
     health_endpoint: /health
     operations:
@@ -311,7 +311,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: int8-vllm-nvidia-general-eagle3-draft
-  display_profile: general
+  display_name_zh_cn: Ampere 及以上 · INT8 W8A8 · 投机解码
+  display_name_en: Ampere+ · INT8 W8A8 · Speculative
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -328,7 +329,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.0'
-    display_target: nvidia
   args:
   - --speculative-config
   - '{"model":"/models/draft","method":"eagle3","num_speculative_tokens":3}'
@@ -367,7 +367,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: nvfp4-vllm-nvidia-cc100
-  display_profile: compatible
+  display_name_zh_cn: Blackwell · NVFP4
+  display_name_en: Blackwell · NVFP4
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -384,7 +385,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=10.0'
-    display_target: blackwell
   api:
     health_endpoint: /health
     operations:
@@ -392,7 +392,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: nvfp4-vllm-nvidia-cc100-eagle3-draft
-  display_profile: compatible
+  display_name_zh_cn: Blackwell · NVFP4 · 投机解码
+  display_name_en: Blackwell · NVFP4 · Speculative
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -409,7 +410,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=10.0'
-    display_target: blackwell
   args:
   - --speculative-config
   - '{"model":"/models/draft","method":"eagle3","num_speculative_tokens":3}'

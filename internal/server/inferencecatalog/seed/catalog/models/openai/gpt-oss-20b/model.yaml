@@ -11,7 +11,8 @@ kv_bytes_per_token:
   sglang: 49152
 specs:
 - name: bf16-sglang-nvidia-general
-  display_profile: general
+  display_name_zh_cn: Ampere 及以上 · BF16
+  display_name_en: Ampere+ · BF16
   scenario: balanced
   engine: sglang
   image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
@@ -30,7 +31,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.0'
-    display_target: nvidia
   api:
     health_endpoint: /health
     operations:
@@ -38,7 +38,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: mxfp4-sglang-nvidia-general
-  display_profile: compatible
+  display_name_zh_cn: Hopper 及以上 · MXFP4
+  display_name_en: Hopper+ · MXFP4
   scenario: balanced
   engine: sglang
   image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
@@ -57,7 +58,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=9.0'
-    display_target: hopper
   api:
     health_endpoint: /health
     operations:
@@ -65,7 +65,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: mxfp4-vllm-nvidia-blackwell
-  display_profile: compatible
+  display_name_zh_cn: Blackwell · MXFP4
+  display_name_en: Blackwell · MXFP4
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -82,7 +83,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=10.0'
-    display_target: blackwell
   env:
     VLLM_USE_FLASHINFER_MOE_MXFP4_MXFP8: '1'
   args:
@@ -96,7 +96,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: mxfp4-vllm-nvidia-general
-  display_profile: compatible
+  display_name_zh_cn: Hopper 及以上 · MXFP4
+  display_name_en: Hopper+ · MXFP4
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -113,7 +114,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=9.0'
-    display_target: hopper
   args:
   - --tool-call-parser
   - openai
@@ -125,7 +125,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: bf16-vllm-ascend-a3-gptoss20
-  display_profile: general
+  display_name_zh_cn: 910C (A3) · BF16 · 2 卡
+  display_name_en: 910C (A3) · BF16 · 2 NPUs
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cann9.2-a3-vllm0.30.0rc2-r1
@@ -158,7 +159,6 @@ specs:
   gpus:
     vendor: ascend
     name: (^|[^A-Za-z0-9])910C[A-Za-z0-9]*([^A-Za-z0-9]|$)
-    display_target: ascend
   api:
     health_endpoint: /health
     operations:
@@ -166,7 +166,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: bf16-vllm-ppu-6cee5e81
-  display_profile: general
+  display_name_zh_cn: PPU · BF16
+  display_name_en: PPU · BF16
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
@@ -183,7 +184,6 @@ specs:
   gpus:
     vendor: ppu
     name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
-    display_target: ppu
   args:
   - --trust-remote-code
   - --enable-auto-tool-choice
@@ -201,7 +201,8 @@ specs:
 # context is capped so the KV cache of one sequence fits a 32-64 GB Mac; a
 # deployment may raise it.
 - name: mxfp4-vllm-apple
-  display_profile: general
+  display_name_zh_cn: Apple 芯片 · MXFP4
+  display_name_en: Apple silicon · MXFP4
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:metal15.0-vllm0.31.0-r2
@@ -217,7 +218,6 @@ specs:
   weight_bytes: 12076207568
   gpus:
     vendor: apple
-    display_target: apple
   args:
   - --tool-call-parser
   - openai

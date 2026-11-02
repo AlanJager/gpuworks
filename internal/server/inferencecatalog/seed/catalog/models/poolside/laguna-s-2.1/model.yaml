@@ -11,7 +11,8 @@ kv_bytes_per_token:
   sglang: 196608
 specs:
 - name: int4-vllm-ppu-tp2-a6977d07
-  display_profile: general
+  display_name_zh_cn: PPU · INT4 · 2 卡
+  display_name_en: PPU · INT4 · 2 GPUs
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
@@ -21,7 +22,7 @@ specs:
     - huggingface: {repo_id: poolside/Laguna-S-2.1-INT4, revision: a6977d070dded94c8776e29a94f7166ab1488e6c}
     - modelscope: {repo_id: poolside/Laguna-S-2.1-INT4, revision: ee646c64d2e6c64e5ace1bc6486047f26ff259ef}
   weight_bytes: 99690147680
-  gpus: {vendor: ppu, name: '(?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)', display_target: ppu}
+  gpus: {vendor: ppu, name: '(?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)'}
   args: [--trust-remote-code, --enable-auto-tool-choice, --tool-call-parser, poolside_v1, --reasoning-parser, poolside_v1]
   placement:
     language: starlark
@@ -33,7 +34,8 @@ specs:
     health_endpoint: /health
     operations: [{type: openai.chat, endpoint: /v1/chat/completions, mode: stream}]
 - name: bf16-sglang-nvidia-general
-  display_profile: general
+  display_name_zh_cn: Ampere 及以上 · BF16
+  display_name_en: Ampere+ · BF16
   scenario: balanced
   engine: sglang
   image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
@@ -50,7 +52,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.0'
-    display_target: nvidia
   args:
   - --enable-metrics
   - --trust-remote-code
@@ -65,7 +66,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: bf16-vllm-nvidia-general
-  display_profile: general
+  display_name_zh_cn: Ampere 及以上 · BF16
+  display_name_en: Ampere+ · BF16
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -82,7 +84,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.0'
-    display_target: nvidia
   args:
   - --trust-remote-code
   - --enable-auto-tool-choice
@@ -97,7 +98,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: bf16-vllm-nvidia-general-dflash-draft
-  display_profile: general
+  display_name_zh_cn: Ampere 及以上 · BF16 · 投机解码
+  display_name_en: Ampere+ · BF16 · Speculative
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -114,7 +116,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.0'
-    display_target: nvidia
   args:
   - --trust-remote-code
   - --speculative-config
@@ -159,7 +160,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: fp8-sglang-nvidia-general
-  display_profile: compatible
+  display_name_zh_cn: Hopper 及以上 · FP8
+  display_name_en: Hopper+ · FP8
   scenario: balanced
   engine: sglang
   image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
@@ -176,7 +178,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=9.0'
-    display_target: hopper
   args:
   - --enable-metrics
   - --trust-remote-code
@@ -191,7 +192,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: fp8-vllm-nvidia-general
-  display_profile: compatible
+  display_name_zh_cn: Hopper 及以上 · FP8
+  display_name_en: Hopper+ · FP8
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -208,7 +210,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=9.0'
-    display_target: hopper
   args:
   - --trust-remote-code
   - --enable-auto-tool-choice
@@ -225,7 +226,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: fp8-vllm-nvidia-general-dflash-draft
-  display_profile: compatible
+  display_name_zh_cn: Hopper 及以上 · FP8 · 投机解码
+  display_name_en: Hopper+ · FP8 · Speculative
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -242,7 +244,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=9.0'
-    display_target: hopper
   args:
   - --trust-remote-code
   - --speculative-config
@@ -289,7 +290,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: int4-sglang-nvidia-general
-  display_profile: general
+  display_name_zh_cn: Ampere 及以上 · INT4
+  display_name_en: Ampere+ · INT4
   scenario: balanced
   engine: sglang
   image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
@@ -306,7 +308,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.0'
-    display_target: nvidia
   args:
   - --enable-metrics
   - --trust-remote-code
@@ -321,7 +322,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: int4-vllm-nvidia-general
-  display_profile: general
+  display_name_zh_cn: Ampere 及以上 · INT4
+  display_name_en: Ampere+ · INT4
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -338,7 +340,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.0'
-    display_target: nvidia
   args:
   - --trust-remote-code
   - --enable-auto-tool-choice
@@ -353,7 +354,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: int4-vllm-nvidia-general-dflash-draft
-  display_profile: general
+  display_name_zh_cn: Ampere 及以上 · INT4 · 投机解码
+  display_name_en: Ampere+ · INT4 · Speculative
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -370,7 +372,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.0'
-    display_target: nvidia
   args:
   - --trust-remote-code
   - --speculative-config
@@ -415,7 +416,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: nvfp4-sglang-nvidia-cc100
-  display_profile: compatible
+  display_name_zh_cn: Blackwell · NVFP4
+  display_name_en: Blackwell · NVFP4
   scenario: throughput
   engine: sglang
   image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
@@ -432,7 +434,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=10.0'
-    display_target: blackwell
   args:
   - --enable-metrics
   - --trust-remote-code
@@ -447,7 +448,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: nvfp4-vllm-nvidia-cc100
-  display_profile: compatible
+  display_name_zh_cn: Blackwell · NVFP4
+  display_name_en: Blackwell · NVFP4
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -464,7 +466,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=10.0'
-    display_target: blackwell
   args:
   - --trust-remote-code
   - --enable-auto-tool-choice
@@ -479,7 +480,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: nvfp4-vllm-nvidia-cc100-dflash-draft
-  display_profile: compatible
+  display_name_zh_cn: Blackwell · NVFP4 · 投机解码
+  display_name_en: Blackwell · NVFP4 · Speculative
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -496,7 +498,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=10.0'
-    display_target: blackwell
   args:
   - --trust-remote-code
   - --speculative-config
@@ -541,7 +542,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: int4-vllm-ppu-a6977d07
-  display_profile: compatible
+  display_name_zh_cn: PPU · INT4
+  display_name_en: PPU · INT4
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
@@ -558,7 +560,6 @@ specs:
   gpus:
     vendor: ppu
     name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
-    display_target: ppu
   args:
   - --trust-remote-code
   - --enable-auto-tool-choice
@@ -574,7 +575,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: bf16-vllm-ppu-tp4-0f573140
-  display_profile: compatible
+  display_name_zh_cn: PPU · BF16 · 4 卡
+  display_name_en: PPU · BF16 · 4 GPUs
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
@@ -591,7 +593,6 @@ specs:
   gpus:
     vendor: ppu
     name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
-    display_target: ppu
   args:
   - --trust-remote-code
   - --enable-auto-tool-choice

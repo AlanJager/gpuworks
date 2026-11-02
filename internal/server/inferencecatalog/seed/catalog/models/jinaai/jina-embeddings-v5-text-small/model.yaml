@@ -11,7 +11,8 @@ kv_bytes_per_token:
   sglang: 114688
 specs:
 - name: bf16-classification-vllm-nvidia-general
-  display_profile: general
+  display_name_zh_cn: Ampere 及以上 · BF16 · 分类
+  display_name_en: Ampere+ · BF16 · Classification
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -28,7 +29,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.0'
-    display_target: nvidia
   args:
   - --trust-remote-code
   - --runner
@@ -40,7 +40,8 @@ specs:
       endpoint: /v1/embeddings
       mode: sync
 - name: bf16-classification-vllm-nvidia-turing
-  display_profile: compatible
+  display_name_zh_cn: Turing · BF16 · 分类
+  display_name_en: Turing · BF16 · Classification
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda12.9-vllm0.31.0-r2
@@ -57,7 +58,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: 7.5..7.9
-    display_target: turing
   args:
   - --trust-remote-code
   - --runner
@@ -71,7 +71,8 @@ specs:
       endpoint: /v1/embeddings
       mode: sync
 - name: bf16-clustering-vllm-nvidia-general
-  display_profile: general
+  display_name_zh_cn: Ampere 及以上 · BF16 · 聚类
+  display_name_en: Ampere+ · BF16 · Clustering
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -88,7 +89,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.0'
-    display_target: nvidia
   args:
   - --trust-remote-code
   - --runner
@@ -100,7 +100,8 @@ specs:
       endpoint: /v1/embeddings
       mode: sync
 - name: bf16-clustering-vllm-nvidia-turing
-  display_profile: compatible
+  display_name_zh_cn: Turing · BF16 · 聚类
+  display_name_en: Turing · BF16 · Clustering
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda12.9-vllm0.31.0-r2
@@ -117,7 +118,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: 7.5..7.9
-    display_target: turing
   args:
   - --trust-remote-code
   - --runner
@@ -131,7 +131,8 @@ specs:
       endpoint: /v1/embeddings
       mode: sync
 - name: bf16-default-vllm-nvidia-general
-  display_profile: general
+  display_name_zh_cn: Ampere 及以上 · BF16 · 检索
+  display_name_en: Ampere+ · BF16 · Retrieval
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -148,7 +149,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.0'
-    display_target: nvidia
   args:
   - --trust-remote-code
   - --runner
@@ -160,7 +160,8 @@ specs:
       endpoint: /v1/embeddings
       mode: sync
 - name: bf16-text-matching-vllm-nvidia-general
-  display_profile: general
+  display_name_zh_cn: Ampere 及以上 · BF16 · 文本匹配
+  display_name_en: Ampere+ · BF16 · Text matching
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -177,7 +178,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.0'
-    display_target: nvidia
   args:
   - --trust-remote-code
   - --runner
@@ -189,7 +189,8 @@ specs:
       endpoint: /v1/embeddings
       mode: sync
 - name: bf16-text-matching-vllm-nvidia-turing
-  display_profile: compatible
+  display_name_zh_cn: Turing · BF16 · 文本匹配
+  display_name_en: Turing · BF16 · Text matching
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda12.9-vllm0.31.0-r2
@@ -206,7 +207,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: 7.5..7.9
-    display_target: turing
   args:
   - --trust-remote-code
   - --runner
@@ -220,7 +220,8 @@ specs:
       endpoint: /v1/embeddings
       mode: sync
 - name: bf16-vllm-ascend-d5dadb85
-  display_profile: general
+  display_name_zh_cn: 910B (A2) · BF16
+  display_name_en: 910B (A2) · BF16
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cann9.1-910b-vllm0.26.0rc1-r2
@@ -237,7 +238,6 @@ specs:
   gpus:
     vendor: ascend
     name: (^|[^A-Za-z0-9])910B[A-Za-z0-9]*([^A-Za-z0-9]|$)
-    display_target: ascend
   args:
   - --trust-remote-code
   - --runner
@@ -260,7 +260,8 @@ specs:
       endpoint: /v1/embeddings
       mode: sync
 - name: bf16-vllm-ascend-a3-d5dadb85
-  display_profile: general
+  display_name_zh_cn: 910C (A3) · BF16
+  display_name_en: 910C (A3) · BF16
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cann9.1-a3-vllm0.26.0rc1-r2
@@ -277,7 +278,6 @@ specs:
   gpus:
     vendor: ascend
     name: (^|[^A-Za-z0-9])910C[A-Za-z0-9]*([^A-Za-z0-9]|$)
-    display_target: ascend
   args:
   - --trust-remote-code
   - --runner
@@ -300,7 +300,8 @@ specs:
       endpoint: /v1/embeddings
       mode: sync
 - name: bf16-vllm-nvidia-turing
-  display_profile: compatible
+  display_name_zh_cn: Turing · BF16 · 检索
+  display_name_en: Turing · BF16 · Retrieval
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda12.9-vllm0.31.0-r2
@@ -317,7 +318,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: 7.5..7.9
-    display_target: turing
   args:
   - --trust-remote-code
   - --runner
@@ -331,7 +331,8 @@ specs:
       endpoint: /v1/embeddings
       mode: sync
 - name: bf16-vllm-ppu-dd76d535
-  display_profile: general
+  display_name_zh_cn: PPU · BF16
+  display_name_en: PPU · BF16
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
@@ -348,7 +349,6 @@ specs:
   gpus:
     vendor: ppu
     name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
-    display_target: ppu
   args:
   - --trust-remote-code
   - --runner

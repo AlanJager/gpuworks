@@ -7,7 +7,8 @@ release_date: '2026-07-28'
 model_config: {kv_cache: false}
 specs:
 - name: bf16-sglang-ascend-4x32g
-  display_profile: general
+  display_name_zh_cn: 910B (A2) · BF16 · 4 卡
+  display_name_en: 910B (A2) · BF16 · 4 NPUs
   scenario: balanced
   engine: sglang
   image: gpuworks/gpuworks-runner:cann9.0-910b-sglang0.5.18-r2
@@ -26,7 +27,6 @@ specs:
   gpus:
     vendor: ascend
     name: (^|[^A-Za-z0-9])910B[A-Za-z0-9]*([^A-Za-z0-9]|$)
-    display_target: ascend
   entrypoint:
   - sglang
   - serve
@@ -102,7 +102,8 @@ specs:
         kind: image
         encoding: data_url
 - name: bf16-vllm-nvidia-blackwell
-  display_profile: compatible
+  display_name_zh_cn: Blackwell · BF16 · 4 卡
+  display_name_en: Blackwell · BF16 · 4 GPUs
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm-omni0.30.0-r3
@@ -119,7 +120,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=10.0'
-    display_target: blackwell
   args:
   - --omni
   - --task-type
@@ -173,7 +173,8 @@ specs:
         kind: image
         encoding: data_url
 - name: bf16-vllm-nvidia-general
-  display_profile: general
+  display_name_zh_cn: Ampere 及以上 · BF16 · 单卡
+  display_name_en: Ampere+ · BF16 · 1 GPU
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm-omni0.30.0-r3
@@ -190,7 +191,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.0'
-    display_target: nvidia
   args:
   - --omni
   - --task-type
@@ -238,7 +238,8 @@ specs:
         kind: image
         encoding: data_url
 - name: bf16-vllm-nvidia-rtx-4090-2x
-  display_profile: compatible
+  display_name_zh_cn: RTX 4090 · BF16 · 2 卡
+  display_name_en: RTX 4090 · BF16 · 2 GPUs
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm-omni0.30.0-r3
@@ -256,7 +257,6 @@ specs:
     vendor: nvidia
     cc: '8.9'
     name: RTX[ _-]?4090
-    display_target: rtx_4090
   args:
   - --omni
   - --task-type
@@ -318,7 +318,8 @@ specs:
         kind: image
         encoding: data_url
 - name: bf16-vllm-nvidia-rtx-5090-2x
-  display_profile: compatible
+  display_name_zh_cn: RTX 5090 · BF16 · 2 卡
+  display_name_en: RTX 5090 · BF16 · 2 GPUs
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm-omni0.30.0-r3
@@ -336,7 +337,6 @@ specs:
     vendor: nvidia
     cc: '>=10.0'
     name: RTX[ _-]?5090
-    display_target: rtx_5090
   args:
   - --omni
   - --task-type
@@ -398,7 +398,8 @@ specs:
         kind: image
         encoding: data_url
 - name: bf16-vllm-nvidia-rtx-pro-5000-4x
-  display_profile: compatible
+  display_name_zh_cn: RTX PRO 5000 · BF16 · 4 卡
+  display_name_en: RTX PRO 5000 · BF16 · 4 GPUs
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm-omni0.30.0-r3
@@ -416,7 +417,6 @@ specs:
     vendor: nvidia
     cc: '>=10.0'
     name: RTX[ _-]?PRO[ _-]?5000
-    display_target: rtx_pro_5000
   args:
   - --omni
   - --task-type

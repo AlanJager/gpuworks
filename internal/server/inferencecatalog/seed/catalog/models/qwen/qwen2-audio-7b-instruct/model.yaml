@@ -8,7 +8,8 @@ kv_bytes_per_token:
   sglang: 524288
 specs:
 - name: bf16-vllm-hygon-357dc371
-  display_profile: general
+  display_name_zh_cn: K100 / BW · BF16 · vLLM 0.18
+  display_name_en: K100 / BW · BF16 · vLLM 0.18
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:dtk26.04-vllm0.18.1-r2
@@ -25,7 +26,6 @@ specs:
   gpus:
     vendor: hygon
     name: (^|[^A-Za-z0-9])(?:K100(?:[_ -]?AI)?|BW[_ -]?1000|BW[_ -]?1100)([^A-Za-z0-9_-]|$)
-    display_target: hygon
   args:
   - --dtype
   - bfloat16
@@ -43,7 +43,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: bf16-vllm-hygon-cf217d0d
-  display_profile: general
+  display_name_zh_cn: K100 / BW · BF16 · vLLM 0.21
+  display_name_en: K100 / BW · BF16 · vLLM 0.21
   scenario: balanced
   engine: vllm
   image: harbor.sourcefind.cn:5443/dcu/admin/base/custom:vllm0210-ubuntu26.04-dtk26.04-py3.10-20260528
@@ -60,7 +61,6 @@ specs:
   gpus:
     vendor: hygon
     name: (^|[^A-Za-z0-9])(?:K100(?:[_ -]?AI)?|BW[_ -]?1000|BW[_ -]?1100)([^A-Za-z0-9_-]|$)
-    display_target: hygon
   args:
   - --dtype
   - bfloat16
@@ -83,7 +83,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: bf16-vllm-nvidia-general
-  display_profile: general
+  display_name_zh_cn: Ampere 及以上 · BF16
+  display_name_en: Ampere+ · BF16
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -100,7 +101,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.0'
-    display_target: nvidia
   args:
   - --trust-remote-code
   api:
@@ -110,7 +110,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: bf16-vllm-ppu-0a095220
-  display_profile: general
+  display_name_zh_cn: PPU · BF16
+  display_name_en: PPU · BF16
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
@@ -127,7 +128,6 @@ specs:
   gpus:
     vendor: ppu
     name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
-    display_target: ppu
   args:
   - --trust-remote-code
   - --skip-mm-profiling

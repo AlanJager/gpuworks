@@ -22,7 +22,7 @@ import (
 
 func flatAPIFixture(modelID, specName string) store.InferenceModel {
 	return store.InferenceModel{ModelID: modelID, DisplayTitle: modelID, ReleaseDate: "2025-04-03", Source: "upstream", Unsupported: `[]`, Specs: []store.InferenceSpecRow{{
-		Name: specName, DisplayProfile: "general", Scenario: "balanced", Engine: "vllm", Image: "vllm/vllm-openai:latest", Quantization: "bf16",
+		Name: specName, DisplayNameZHCN: "Turing 及以上 · BF16", DisplayNameEN: "Turing+ · BF16", Scenario: "balanced", Engine: "vllm", Image: "vllm/vllm-openai:latest", Quantization: "bf16",
 		WeightSources: `[{"provider":"huggingface","repo_id":"` + modelID + `"}]`, GPUs: `{"vendor":"nvidia","cc":">=7.5","display_target":"nvidia"}`, Args: `[]`, Env: `{}`, PreStartArgv: `[]`,
 	}}}
 }
@@ -110,7 +110,7 @@ func TestInferenceTemplateListPaginatesFiltersAndSupportsETag(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &page); err != nil {
 		t.Fatal(err)
 	}
-	if len(page.Items) != 1 || page.Total != 2 || page.Items[0].ReleaseDate != "2025-04-03" || page.Items[0].Specs[0].DisplayProfile != "general" || page.Items[0].Specs[0].GPUs.DisplayTarget != "nvidia" {
+	if len(page.Items) != 1 || page.Total != 2 || page.Items[0].ReleaseDate != "2025-04-03" || page.Items[0].Specs[0].DisplayNameZHCN != "Turing 及以上 · BF16" || page.Items[0].Specs[0].DisplayNameEN != "Turing+ · BF16" {
 		t.Fatalf("page=%+v", page)
 	}
 	req = httptest.NewRequest(http.MethodGet, "/api/v1/inference-templates?page=1&page_size=1&gpu=GeForce%20RTX%202080%20Ti&vendor=nvidia&cc=7.5", nil)
@@ -176,7 +176,8 @@ func TestInferenceTemplateImportUsesFlatYAMLAndRejectsLegacyShape(t *testing.T) 
   display_title: Flat
   specs:
   - name: fp8-balanced
-    display_profile: compatible
+    display_name_zh_cn: Ada 及以上 · FP8
+    display_name_en: Ada+ · FP8
     scenario: balanced
     engine: vllm
     image: vllm/vllm-openai:latest
@@ -185,7 +186,7 @@ func TestInferenceTemplateImportUsesFlatYAMLAndRejectsLegacyShape(t *testing.T) 
       sources:
       - modelscope: Acme/Flat-FP8
       - huggingface: Acme/Flat-FP8
-    gpus: {vendor: nvidia, cc: ">=8.9", display_target: hopper}
+    gpus: {vendor: nvidia, cc: ">=8.9"}
     args: ["--kv-cache-dtype", "fp8"]
     env: {CATALOG: "1"}
     pre_start_argv: [prepare]
@@ -196,7 +197,7 @@ func TestInferenceTemplateImportUsesFlatYAMLAndRejectsLegacyShape(t *testing.T) 
 		t.Fatalf("status/body=%d %s", rec.Code, rec.Body.String())
 	}
 	model, err := st.InferenceModelByModelID("acme/flat")
-	if err != nil || model.Source != "user" || len(model.Specs) != 1 || model.Specs[0].Name != "fp8-balanced" || model.Specs[0].DisplayProfile != "compatible" || !strings.Contains(model.Specs[0].GPUs, `"display_target":"hopper"`) || !strings.Contains(model.Specs[0].WeightSources, "modelscope") {
+	if err != nil || model.Source != "user" || len(model.Specs) != 1 || model.Specs[0].Name != "fp8-balanced" || model.Specs[0].DisplayNameZHCN != "Ada 及以上 · FP8" || model.Specs[0].DisplayNameEN != "Ada+ · FP8" || !strings.Contains(model.Specs[0].WeightSources, "modelscope") {
 		t.Fatalf("model=%+v err=%v", model, err)
 	}
 	conflict := httptest.NewRecorder()

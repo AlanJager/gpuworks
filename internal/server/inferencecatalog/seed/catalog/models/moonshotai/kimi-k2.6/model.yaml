@@ -11,7 +11,8 @@ kv_bytes_per_token:
   sglang: 70272
 specs:
 - name: int4-sglang-nvidia-general
-  display_profile: general
+  display_name_zh_cn: Ampere 及以上 · INT4
+  display_name_en: Ampere+ · INT4
   scenario: balanced
   engine: sglang
   image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
@@ -28,7 +29,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.0'
-    display_target: nvidia
   args:
   - --enable-metrics
   - --trust-remote-code
@@ -43,7 +43,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: int4-vllm-nvidia-blackwell
-  display_profile: compatible
+  display_name_zh_cn: Blackwell · INT4 · 投机解码（在线拉取草稿）
+  display_name_en: Blackwell · INT4 · Speculative (draft fetched online)
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -60,7 +61,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=10.0'
-    display_target: blackwell
   args:
   - --trust-remote-code
   - --attention-config
@@ -81,7 +81,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: int4-vllm-nvidia-blackwell-eagle3-draft
-  display_profile: compatible
+  display_name_zh_cn: Blackwell · INT4 · 投机解码
+  display_name_en: Blackwell · INT4 · Speculative
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -98,7 +99,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=10.0'
-    display_target: blackwell
   args:
   - --trust-remote-code
   - --attention-config
@@ -147,7 +147,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: int4-vllm-nvidia-general
-  display_profile: general
+  display_name_zh_cn: Ampere 及以上 · INT4 · 投机解码（在线拉取草稿）
+  display_name_en: Ampere+ · INT4 · Speculative (draft fetched online)
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -164,7 +165,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.0'
-    display_target: nvidia
   args:
   - --trust-remote-code
   - --tool-call-parser
@@ -183,7 +183,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: int4-vllm-nvidia-general-eagle3-draft
-  display_profile: general
+  display_name_zh_cn: Ampere 及以上 · INT4 · 投机解码
+  display_name_en: Ampere+ · INT4 · Speculative
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -200,7 +201,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.0'
-    display_target: nvidia
   args:
   - --trust-remote-code
   - --tool-call-parser
@@ -247,7 +247,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: nvfp4-vllm-nvidia-blackwell
-  display_profile: compatible
+  display_name_zh_cn: Blackwell · NVFP4 · 预填充 Q 量化 · 投机解码（在线拉取草稿）
+  display_name_en: Blackwell · NVFP4 · Prefill Q quant · Speculative (draft fetched online)
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -264,7 +265,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=10.0'
-    display_target: blackwell
   args:
   - --trust-remote-code
   - --attention-config
@@ -287,7 +287,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: nvfp4-vllm-nvidia-blackwell-eagle3-draft
-  display_profile: compatible
+  display_name_zh_cn: Blackwell · NVFP4 · 预填充 Q 量化 · 投机解码
+  display_name_en: Blackwell · NVFP4 · Prefill Q quant · Speculative
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -304,7 +305,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=10.0'
-    display_target: blackwell
   args:
   - --trust-remote-code
   - --attention-config
@@ -355,7 +355,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: nvfp4-vllm-nvidia-cc100
-  display_profile: compatible
+  display_name_zh_cn: Blackwell · NVFP4 · 投机解码（在线拉取草稿）
+  display_name_en: Blackwell · NVFP4 · Speculative (draft fetched online)
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -372,7 +373,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=10.0'
-    display_target: blackwell
   args:
   - --trust-remote-code
   - --tool-call-parser
@@ -393,7 +393,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: nvfp4-vllm-nvidia-cc100-eagle3-draft
-  display_profile: compatible
+  display_name_zh_cn: Blackwell · NVFP4 · 投机解码
+  display_name_en: Blackwell · NVFP4 · Speculative
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -410,7 +411,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=10.0'
-    display_target: blackwell
   args:
   - --trust-remote-code
   - --tool-call-parser
@@ -470,7 +470,8 @@ specs:
 # multi-node decode role, not to this one. No Ascend hardware was available, so
 # these arguments are the published recipe rather than a measured one.
 - name: w4a8-vllm-ascend-a3-2de1ec2b
-  display_profile: general
+  display_name_zh_cn: 910C (A3) · INT4 W4A8 · 16 卡 · 投机解码
+  display_name_en: 910C (A3) · INT4 W4A8 · 16 NPUs · Speculative
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cann9.1-a3-vllm0.26.0rc1-r2
@@ -484,7 +485,6 @@ specs:
   gpus:
     vendor: ascend
     name: (^|[^A-Za-z0-9])910C[A-Za-z0-9]*([^A-Za-z0-9]|$)
-    display_target: ascend
   args:
   - --quantization
   - ascend

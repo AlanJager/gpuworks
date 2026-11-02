@@ -13,7 +13,8 @@ kv_bytes_per_token:
   sglang: 262144
 specs:
 - name: bf16-sglang-ascend-ee5f6c9f
-  display_profile: general
+  display_name_zh_cn: 910B (A2) · BF16 · ≥2 卡
+  display_name_en: 910B (A2) · BF16 · 2+ NPUs
   scenario: balanced
   engine: sglang
   image: gpuworks/gpuworks-runner:cann9.0-910b-sglang0.5.18-r2
@@ -30,7 +31,6 @@ specs:
   gpus:
     vendor: ascend
     name: (^|[^A-Za-z0-9])910B[A-Za-z0-9]*([^A-Za-z0-9]|$)
-    display_target: ascend
   args:
   - --enable-metrics
   - --trust-remote-code
@@ -59,7 +59,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: bf16-sglang-ascend-a3-ee5f6c9f
-  display_profile: general
+  display_name_zh_cn: 910C (A3) · BF16 · ≥2 卡
+  display_name_en: 910C (A3) · BF16 · 2+ NPUs
   scenario: balanced
   engine: sglang
   image: gpuworks/gpuworks-runner:cann9.0-a3-sglang0.5.18-r2
@@ -76,7 +77,6 @@ specs:
   gpus:
     vendor: ascend
     name: (^|[^A-Za-z0-9])910C[A-Za-z0-9]*([^A-Za-z0-9]|$)
-    display_target: ascend
   args:
   - --enable-metrics
   - --trust-remote-code

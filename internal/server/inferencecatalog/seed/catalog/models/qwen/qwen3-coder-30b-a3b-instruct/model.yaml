@@ -11,7 +11,8 @@ kv_bytes_per_token:
   sglang: 98304
 specs:
 - name: bf16-vllm-ascend-04074e3b
-  display_profile: general
+  display_name_zh_cn: 910B (A2) · BF16 · ≥4 卡
+  display_name_en: 910B (A2) · BF16 · 4+ NPUs
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cann9.1-910b-vllm0.26.0rc1-r2
@@ -28,7 +29,6 @@ specs:
   gpus:
     vendor: ascend
     name: (^|[^A-Za-z0-9])910B[A-Za-z0-9]*([^A-Za-z0-9]|$)
-    display_target: ascend
   args:
   - --dtype
   - bfloat16
@@ -48,7 +48,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: bf16-vllm-ascend-a3-04074e3b
-  display_profile: general
+  display_name_zh_cn: 910C (A3) · BF16 · ≥4 卡
+  display_name_en: 910C (A3) · BF16 · 4+ NPUs
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cann9.1-a3-vllm0.26.0rc1-r2
@@ -65,7 +66,6 @@ specs:
   gpus:
     vendor: ascend
     name: (^|[^A-Za-z0-9])910C[A-Za-z0-9]*([^A-Za-z0-9]|$)
-    display_target: ascend
   args:
   - --dtype
   - bfloat16

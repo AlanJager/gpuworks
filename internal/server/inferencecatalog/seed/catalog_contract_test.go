@@ -249,7 +249,7 @@ func TestNVIDIASourceRemediationKeepsSemanticContractsAndExcludesForeignVariants
 			t.Errorf("precision repair %s/%s=%+v exists=%v", expected.model, expected.spec, actual, exists)
 		}
 	}
-	for _, specName := range []string{"fp8-fp8-vllm-nvidia-hopper", "nvfp4-vllm-nvidia-blackwell", "nvfp4-vllm-nvidia-cc100"} {
+	for _, specName := range []string{"fp8-fp8-vllm-nvidia-hopper", "nvfp4-vllm-nvidia-cc100"} {
 		spec := byModel["deepseek-ai/deepseek-v4-pro"][specName]
 		for _, pair := range [][2]string{{"--tokenizer-mode", "deepseek_v4"}, {"--tool-call-parser", "deepseek_v4"}, {"--reasoning-parser", "deepseek_v4"}} {
 			if !containsArgumentPair(spec.args, pair[0], pair[1]) {

@@ -11,7 +11,8 @@ kv_bytes_per_token:
   sglang: 245760
 specs:
 - name: bf16-gemma-4-26b-a4b-it-sglang-nvidia-general
-  display_profile: general
+  display_name_zh_cn: Ampere 及以上 · BF16 QAT
+  display_name_en: Ampere+ · BF16 QAT
   scenario: balanced
   engine: sglang
   image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
@@ -28,7 +29,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.0'
-    display_target: nvidia
   args:
   - --enable-metrics
   - --reasoning-parser
@@ -42,7 +42,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: bf16-sglang-nvidia-general
-  display_profile: general
+  display_name_zh_cn: Ampere 及以上 · BF16
+  display_name_en: Ampere+ · BF16
   scenario: balanced
   engine: sglang
   image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
@@ -59,7 +60,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.0'
-    display_target: nvidia
   args:
   - --enable-metrics
   - --reasoning-parser
@@ -85,7 +85,8 @@ specs:
 # on Triton, as upstream does, because the fused CUTLASS path it picks by
 # default is not built for those boxes.
 - name: bf16-vllm-nvidia-general
-  display_profile: general
+  display_name_zh_cn: Ampere 及以上 · BF16
+  display_name_en: Ampere+ · BF16
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -102,7 +103,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.0'
-    display_target: nvidia
   args:
   - --enable-auto-tool-choice
   - --tool-call-parser
@@ -118,7 +118,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: bf16-vllm-nvidia-general-speculative-draft
-  display_profile: general
+  display_name_zh_cn: Ampere 及以上 · BF16 · 投机解码
+  display_name_en: Ampere+ · BF16 · Speculative
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -135,7 +136,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.0'
-    display_target: nvidia
   args:
   - --enable-auto-tool-choice
   - --tool-call-parser
@@ -181,7 +181,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: bf16-vllm-nvidia-gb10-gb300-rtx-pro-6000
-  display_profile: optimized
+  display_name_zh_cn: GB10 / GB300 / RTX PRO 6000 · BF16
+  display_name_en: GB10 / GB300 / RTX PRO 6000 · BF16
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -199,7 +200,6 @@ specs:
     vendor: nvidia
     cc: '>=10.0'
     name: (?:DGX[ _-]?Spark|GB10|DGX[ _-]?Station|GB300|RTX[ _-]?PRO[ _-]?6000)
-    display_target: blackwell
   args:
   - --enable-auto-tool-choice
   - --tool-call-parser
@@ -217,7 +217,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: bf16-vllm-nvidia-gb10-gb300-rtx-pro-6000-speculative-draft
-  display_profile: optimized
+  display_name_zh_cn: GB10 / GB300 / RTX PRO 6000 · BF16 · 投机解码
+  display_name_en: GB10 / GB300 / RTX PRO 6000 · BF16 · Speculative
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -235,7 +236,6 @@ specs:
     vendor: nvidia
     cc: '>=10.0'
     name: (?:DGX[ _-]?Spark|GB10|DGX[ _-]?Station|GB300|RTX[ _-]?PRO[ _-]?6000)
-    display_target: blackwell
   args:
   - --enable-auto-tool-choice
   - --tool-call-parser
@@ -283,7 +283,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: fp8-vllm-nvidia-general
-  display_profile: compatible
+  display_name_zh_cn: Hopper 及以上 · FP8
+  display_name_en: Hopper+ · FP8
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -300,7 +301,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=9.0'
-    display_target: hopper
   args:
   - --kv-cache-dtype
   - fp8
@@ -318,7 +318,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: fp8-vllm-nvidia-general-speculative-draft
-  display_profile: compatible
+  display_name_zh_cn: Hopper 及以上 · FP8 · 投机解码
+  display_name_en: Hopper+ · FP8 · Speculative
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -335,7 +336,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=9.0'
-    display_target: hopper
   args:
   - --kv-cache-dtype
   - fp8
@@ -383,7 +383,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: fp8-vllm-nvidia-gb10-gb300-rtx-pro-6000
-  display_profile: optimized
+  display_name_zh_cn: GB10 / GB300 / RTX PRO 6000 · FP8
+  display_name_en: GB10 / GB300 / RTX PRO 6000 · FP8
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -401,7 +402,6 @@ specs:
     vendor: nvidia
     cc: '>=10.0'
     name: (?:DGX[ _-]?Spark|GB10|DGX[ _-]?Station|GB300|RTX[ _-]?PRO[ _-]?6000)
-    display_target: blackwell
   args:
   - --kv-cache-dtype
   - fp8
@@ -421,7 +421,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: fp8-vllm-nvidia-gb10-gb300-rtx-pro-6000-speculative-draft
-  display_profile: optimized
+  display_name_zh_cn: GB10 / GB300 / RTX PRO 6000 · FP8 · 投机解码
+  display_name_en: GB10 / GB300 / RTX PRO 6000 · FP8 · Speculative
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -439,7 +440,6 @@ specs:
     vendor: nvidia
     cc: '>=10.0'
     name: (?:DGX[ _-]?Spark|GB10|DGX[ _-]?Station|GB300|RTX[ _-]?PRO[ _-]?6000)
-    display_target: blackwell
   args:
   - --kv-cache-dtype
   - fp8
@@ -489,7 +489,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: fp8-vllm-nvidia-rtx-5090
-  display_profile: optimized
+  display_name_zh_cn: RTX 5090 · FP8
+  display_name_en: RTX 5090 · FP8
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -507,7 +508,6 @@ specs:
     vendor: nvidia
     cc: '>=10.0'
     name: RTX[ _-]?5090
-    display_target: rtx_5090
   args:
   - --kv-cache-dtype
   - fp8
@@ -531,7 +531,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: fp8-vllm-nvidia-rtx-5090-speculative-draft
-  display_profile: optimized
+  display_name_zh_cn: RTX 5090 · FP8 · 投机解码
+  display_name_en: RTX 5090 · FP8 · Speculative
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -549,7 +550,6 @@ specs:
     vendor: nvidia
     cc: '>=10.0'
     name: RTX[ _-]?5090
-    display_target: rtx_5090
   args:
   - --kv-cache-dtype
   - fp8
@@ -603,7 +603,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: nvfp4-nvfp4-vllm-nvidia-gb10-gb300-rtx-pro-6000
-  display_profile: optimized
+  display_name_zh_cn: GB10 / GB300 / RTX PRO 6000 · NVFP4 (RedHat)
+  display_name_en: GB10 / GB300 / RTX PRO 6000 · NVFP4 (RedHat)
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -621,7 +622,6 @@ specs:
     vendor: nvidia
     cc: '>=10.0'
     name: (?:DGX[ _-]?Spark|GB10|DGX[ _-]?Station|GB300|RTX[ _-]?PRO[ _-]?6000)
-    display_target: blackwell
   args:
   - --kv-cache-dtype
   - fp8
@@ -641,7 +641,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: nvfp4-nvfp4-vllm-nvidia-gb10-gb300-rtx-pro-6000-speculative-draft
-  display_profile: optimized
+  display_name_zh_cn: GB10 / GB300 / RTX PRO 6000 · NVFP4 (RedHat) · 投机解码
+  display_name_en: GB10 / GB300 / RTX PRO 6000 · NVFP4 (RedHat) · Speculative
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -659,7 +660,6 @@ specs:
     vendor: nvidia
     cc: '>=10.0'
     name: (?:DGX[ _-]?Spark|GB10|DGX[ _-]?Station|GB300|RTX[ _-]?PRO[ _-]?6000)
-    display_target: blackwell
   args:
   - --kv-cache-dtype
   - fp8
@@ -709,7 +709,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: nvfp4-nvfp4-vllm-nvidia-rtx-5090
-  display_profile: optimized
+  display_name_zh_cn: RTX 5090 · NVFP4 (RedHat)
+  display_name_en: RTX 5090 · NVFP4 (RedHat)
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -727,7 +728,6 @@ specs:
     vendor: nvidia
     cc: '>=10.0'
     name: RTX[ _-]?5090
-    display_target: rtx_5090
   args:
   - --kv-cache-dtype
   - fp8
@@ -751,7 +751,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: nvfp4-nvfp4-vllm-nvidia-rtx-5090-speculative-draft
-  display_profile: optimized
+  display_name_zh_cn: RTX 5090 · NVFP4 (RedHat) · 投机解码
+  display_name_en: RTX 5090 · NVFP4 (RedHat) · Speculative
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -769,7 +770,6 @@ specs:
     vendor: nvidia
     cc: '>=10.0'
     name: RTX[ _-]?5090
-    display_target: rtx_5090
   args:
   - --kv-cache-dtype
   - fp8
@@ -823,7 +823,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: nvfp4-nvidia-nvfp4-vllm-nvidia-dgx-spark-gb10
-  display_profile: optimized
+  display_name_zh_cn: DGX Spark (GB10) · NVFP4 (NVIDIA)
+  display_name_en: DGX Spark (GB10) · NVFP4 (NVIDIA)
   scenario: throughput
   engine: vllm
   image: eugr/spark-vllm:nightly-20260704
@@ -841,7 +842,6 @@ specs:
     vendor: nvidia
     cc: '>=10.0'
     name: (?:DGX[ _-]?Spark|GB10)
-    display_target: gb10
   args:
   - --gpu-memory-utilization
   - '0.8'
@@ -868,7 +868,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: nvfp4-nvidia-nvfp4-vllm-nvidia-dgx-spark-gb10-speculative-draft
-  display_profile: optimized
+  display_name_zh_cn: DGX Spark (GB10) · NVFP4 (NVIDIA) · 投机解码
+  display_name_en: DGX Spark (GB10) · NVFP4 (NVIDIA) · Speculative
   scenario: throughput
   engine: vllm
   image: eugr/spark-vllm:nightly-20260704
@@ -886,7 +887,6 @@ specs:
     vendor: nvidia
     cc: '>=10.0'
     name: (?:DGX[ _-]?Spark|GB10)
-    display_target: gb10
   args:
   - --gpu-memory-utilization
   - '0.8'
@@ -943,7 +943,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: nvfp4-nvidia-nvfp4-vllm-nvidia-dgx-station-gb300
-  display_profile: optimized
+  display_name_zh_cn: DGX Station (GB300) · NVFP4 (NVIDIA)
+  display_name_en: DGX Station (GB300) · NVFP4 (NVIDIA)
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -961,7 +962,6 @@ specs:
     vendor: nvidia
     cc: '>=10.0'
     name: (?:DGX[ _-]?Station|GB300)
-    display_target: gb300
   args:
   - --gpu-memory-utilization
   - '0.92'
@@ -991,7 +991,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: nvfp4-nvidia-nvfp4-vllm-nvidia-dgx-station-gb300-speculative-draft
-  display_profile: optimized
+  display_name_zh_cn: DGX Station (GB300) · NVFP4 (NVIDIA) · 投机解码
+  display_name_en: DGX Station (GB300) · NVFP4 (NVIDIA) · Speculative
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -1009,7 +1010,6 @@ specs:
     vendor: nvidia
     cc: '>=10.0'
     name: (?:DGX[ _-]?Station|GB300)
-    display_target: gb300
   args:
   - --gpu-memory-utilization
   - '0.92'
@@ -1069,7 +1069,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: nvfp4-nvidia-nvfp4-vllm-nvidia-rtx-pro-6000
-  display_profile: optimized
+  display_name_zh_cn: RTX PRO 6000 · NVFP4 (NVIDIA)
+  display_name_en: RTX PRO 6000 · NVFP4 (NVIDIA)
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -1087,7 +1088,6 @@ specs:
     vendor: nvidia
     cc: '>=10.0'
     name: RTX[ _-]?PRO[ _-]?6000
-    display_target: rtx_pro_6000
   args:
   - --gpu-memory-utilization
   - '0.92'
@@ -1116,7 +1116,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: nvfp4-nvidia-nvfp4-vllm-nvidia-rtx-pro-6000-speculative-draft
-  display_profile: optimized
+  display_name_zh_cn: RTX PRO 6000 · NVFP4 (NVIDIA) · 投机解码
+  display_name_en: RTX PRO 6000 · NVFP4 (NVIDIA) · Speculative
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -1134,7 +1135,6 @@ specs:
     vendor: nvidia
     cc: '>=10.0'
     name: RTX[ _-]?PRO[ _-]?6000
-    display_target: rtx_pro_6000
   args:
   - --gpu-memory-utilization
   - '0.92'
@@ -1193,7 +1193,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: bf16-vllm-ppu-4d7ae498
-  display_profile: general
+  display_name_zh_cn: PPU · BF16
+  display_name_en: PPU · BF16
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
@@ -1210,7 +1211,6 @@ specs:
   gpus:
     vendor: ppu
     name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
-    display_target: ppu
   args:
   - --enable-auto-tool-choice
   - --tool-call-parser
@@ -1233,7 +1233,8 @@ specs:
 # context is capped so the KV cache of one sequence fits a 32-64 GB Mac; a
 # deployment may raise it.
 - name: mlx4-vllm-apple
-  display_profile: general
+  display_name_zh_cn: Apple 芯片 · MLX 4bit
+  display_name_en: Apple silicon · MLX 4bit
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:metal15.0-vllm0.31.0-r2
@@ -1249,7 +1250,6 @@ specs:
   weight_bytes: 15341205776
   gpus:
     vendor: apple
-    display_target: apple
   args:
   - --enable-auto-tool-choice
   - --tool-call-parser
@@ -1278,7 +1278,8 @@ specs:
 # Ascend hardware was available here, so these arguments are the published
 # recipe rather than a measured one.
 - name: bf16-vllm-ascend-d8ff96c2
-  display_profile: general
+  display_name_zh_cn: 910B (A2) · BF16 · 4 卡
+  display_name_en: 910B (A2) · BF16 · 4 NPUs
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cann9.1-910b-vllm0.26.0rc1-r2
@@ -1292,7 +1293,6 @@ specs:
   gpus:
     vendor: ascend
     name: (^|[^A-Za-z0-9])910B[A-Za-z0-9]*([^A-Za-z0-9]|$)
-    display_target: ascend
   args:
   - --dtype
   - bfloat16
@@ -1320,7 +1320,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: bf16-vllm-ascend-a3-d8ff96c2
-  display_profile: general
+  display_name_zh_cn: 910C (A3) · BF16 · 4 卡
+  display_name_en: 910C (A3) · BF16 · 4 NPUs
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cann9.1-a3-vllm0.26.0rc1-r2
@@ -1334,7 +1335,6 @@ specs:
   gpus:
     vendor: ascend
     name: (^|[^A-Za-z0-9])910C[A-Za-z0-9]*([^A-Za-z0-9]|$)
-    display_target: ascend
   args:
   - --dtype
   - bfloat16
@@ -1367,7 +1367,8 @@ specs:
 # for this model is the only one that names 950PR beside 950DT, so both are
 # claimed here. No 950 hardware was available.
 - name: mxfp4-vllm-ascend-950-35a54503
-  display_profile: general
+  display_name_zh_cn: 950DT / 950PR · MXFP4 · 8 卡
+  display_name_en: 950DT / 950PR · MXFP4 · 8 NPUs
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cann9.2-950-vllm0.30.0rc2-r1
@@ -1381,7 +1382,6 @@ specs:
   gpus:
     vendor: ascend
     name: (^|[^A-Za-z0-9])950(?:DT|PR)([^A-Za-z0-9]|$)
-    display_target: ascend
   args:
   - --max-model-len
   - '32768'

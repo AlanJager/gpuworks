@@ -21,7 +21,8 @@ model_config:
   v_head_dim: 256
 specs:
 - name: fp8-vllm-nvidia-tp8
-  display_profile: compatible
+  display_name_zh_cn: H20 / H200 / B200 / B300 · FP8 · 8 卡 · 投机解码
+  display_name_en: H20 / H200 / B200 / B300 · FP8 · 8 GPUs · Speculative
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -35,7 +36,6 @@ specs:
   gpus:
     vendor: nvidia
     name: (^|[^A-Za-z0-9])(?:H200|H20|H20-3e|B200|B300)([^A-Za-z0-9]|$)
-    display_target: nvidia
   args:
   - --kv-cache-dtype
   - fp8_e4m3
@@ -64,7 +64,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: fp8-vllm-amd-tp8
-  display_profile: compatible
+  display_name_zh_cn: MI300X / MI325X / MI350X / MI355X · FP8 · 8 卡 · 投机解码
+  display_name_en: MI300X / MI325X / MI350X / MI355X · FP8 · 8 GPUs · Speculative
   scenario: balanced
   engine: vllm
   image: vllm/vllm-openai-rocm:v0.29.0
@@ -78,7 +79,6 @@ specs:
   gpus:
     vendor: amd
     name: (^|[^A-Za-z0-9])(?:MI300X|MI325X|MI350X|MI355X)([^A-Za-z0-9]|$)
-    display_target: amd
   args:
   - --kv-cache-dtype
   - fp8_e4m3

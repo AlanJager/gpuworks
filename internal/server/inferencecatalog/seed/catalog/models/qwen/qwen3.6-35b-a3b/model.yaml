@@ -11,7 +11,8 @@ kv_bytes_per_token:
   sglang: 20480
 specs:
 - name: bf16-sglang-ascend-67436760
-  display_profile: general
+  display_name_zh_cn: 910B (A2) · BF16 · ≥4 卡
+  display_name_en: 910B (A2) · BF16 · 4+ NPUs
   scenario: balanced
   engine: sglang
   image: gpuworks/gpuworks-runner:cann9.0-910b-sglang0.5.18-r2
@@ -28,7 +29,6 @@ specs:
   gpus:
     vendor: ascend
     name: (^|[^A-Za-z0-9])910B[A-Za-z0-9]*([^A-Za-z0-9]|$)
-    display_target: ascend
   args:
   - --enable-metrics
   - --enable-multimodal
@@ -57,7 +57,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: bf16-sglang-ascend-a3-67436760
-  display_profile: general
+  display_name_zh_cn: 910C (A3) · BF16 · ≥4 卡
+  display_name_en: 910C (A3) · BF16 · 4+ NPUs
   scenario: balanced
   engine: sglang
   image: gpuworks/gpuworks-runner:cann9.0-a3-sglang0.5.18-r2
@@ -74,7 +75,6 @@ specs:
   gpus:
     vendor: ascend
     name: (^|[^A-Za-z0-9])910C[A-Za-z0-9]*([^A-Za-z0-9]|$)
-    display_target: ascend
   args:
   - --enable-metrics
   - --enable-multimodal
@@ -106,7 +106,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: bf16-sglang-nvidia-general
-  display_profile: general
+  display_name_zh_cn: Ampere 及以上 · BF16
+  display_name_en: Ampere+ · BF16
   scenario: balanced
   engine: sglang
   image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
@@ -123,7 +124,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.0'
-    display_target: nvidia
   args:
   - --enable-metrics
   - --reasoning-parser
@@ -137,7 +137,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: bf16-vllm-nvidia-general
-  display_profile: general
+  display_name_zh_cn: Ampere 及以上 · BF16
+  display_name_en: Ampere+ · BF16
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -154,7 +155,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.0'
-    display_target: nvidia
   args:
   - --trust-remote-code
   - --enable-auto-tool-choice
@@ -171,7 +171,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: fp8-sglang-nvidia-general
-  display_profile: compatible
+  display_name_zh_cn: Hopper 及以上 · FP8
+  display_name_en: Hopper+ · FP8
   scenario: balanced
   engine: sglang
   image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
@@ -188,7 +189,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=9.0'
-    display_target: hopper
   args:
   - --enable-metrics
   - --reasoning-parser
@@ -202,7 +202,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: fp8-vllm-nvidia-general
-  display_profile: compatible
+  display_name_zh_cn: Hopper 及以上 · FP8
+  display_name_en: Hopper+ · FP8
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -219,7 +220,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=9.0'
-    display_target: hopper
   args:
   - --trust-remote-code
   - --enable-auto-tool-choice
@@ -236,7 +236,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: fp8-vllm-nvidia-rtx-pro-6000
-  display_profile: compatible
+  display_name_zh_cn: RTX PRO 6000 · FP8
+  display_name_en: RTX PRO 6000 · FP8
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -254,7 +255,6 @@ specs:
     vendor: nvidia
     cc: '>=10.0'
     name: RTX[ _-]?PRO[ _-]?6000
-    display_target: rtx_pro_6000
   args:
   - --trust-remote-code
   - --enable-auto-tool-choice
@@ -273,7 +273,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: int8-sglang-ascend-3b04014d
-  display_profile: general
+  display_name_zh_cn: 910B (A2) · INT8 W8A8 · ≥2 卡
+  display_name_en: 910B (A2) · INT8 W8A8 · 2+ NPUs
   scenario: balanced
   engine: sglang
   image: gpuworks/gpuworks-runner:cann9.0-910b-sglang0.5.18-r2
@@ -290,7 +291,6 @@ specs:
   gpus:
     vendor: ascend
     name: (^|[^A-Za-z0-9])910B[A-Za-z0-9]*([^A-Za-z0-9]|$)
-    display_target: ascend
   args:
   - --enable-metrics
   - --trust-remote-code
@@ -327,7 +327,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: int8-sglang-ascend-a3-3b04014d
-  display_profile: general
+  display_name_zh_cn: 910C (A3) · INT8 W8A8 · ≥2 卡
+  display_name_en: 910C (A3) · INT8 W8A8 · 2+ NPUs
   scenario: balanced
   engine: sglang
   image: gpuworks/gpuworks-runner:cann9.0-a3-sglang0.5.18-r2
@@ -344,7 +345,6 @@ specs:
   gpus:
     vendor: ascend
     name: (^|[^A-Za-z0-9])910C[A-Za-z0-9]*([^A-Za-z0-9]|$)
-    display_target: ascend
   args:
   - --enable-metrics
   - --trust-remote-code
@@ -381,7 +381,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: int8-vllm-hygon-aa71c4eb
-  display_profile: general
+  display_name_zh_cn: K100 / BW · INT8 W8A8
+  display_name_en: K100 / BW · INT8 W8A8
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:dtk26.04-vllm0.18.1-r2
@@ -395,7 +396,6 @@ specs:
   gpus:
     vendor: hygon
     name: (^|[^A-Za-z0-9])(?:K100(?:[_ -]?AI)?|BW[_ -]?1000|BW[_ -]?1100)([^A-Za-z0-9_-]|$)
-    display_target: hygon
   args:
   - --dtype
   - auto
@@ -422,7 +422,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: nvfp4-vllm-nvidia-cc100
-  display_profile: compatible
+  display_name_zh_cn: Blackwell · NVFP4
+  display_name_en: Blackwell · NVFP4
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -439,7 +440,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=10.0'
-    display_target: blackwell
   args:
   - --trust-remote-code
   - --moe-backend
@@ -459,7 +459,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: nvfp4-vllm-nvidia-dgx-station-gb300
-  display_profile: compatible
+  display_name_zh_cn: DGX Station (GB300) · NVFP4
+  display_name_en: DGX Station (GB300) · NVFP4
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -477,7 +478,6 @@ specs:
     vendor: nvidia
     cc: '>=10.0'
     name: (?:DGX[ _-]?Station|GB300)
-    display_target: gb300
   args:
   - --trust-remote-code
   - --moe-backend
@@ -504,7 +504,8 @@ specs:
 # engine is not ready until graph capture finishes. No 950DT hardware was
 # available, so these arguments are the published recipe, not a measured one.
 - name: mxfp8-vllm-ascend-950dt-c275cc09
-  display_profile: general
+  display_name_zh_cn: 950DT · MXFP8 · 单卡 · 投机解码
+  display_name_en: 950DT · MXFP8 · 1 NPU · Speculative
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cann9.2-950-vllm0.30.0rc2-r1
@@ -518,7 +519,6 @@ specs:
   gpus:
     vendor: ascend
     name: (^|[^A-Za-z0-9])950DT([^A-Za-z0-9]|$)
-    display_target: ascend
   args:
   - --quantization
   - ascend
@@ -568,7 +568,8 @@ specs:
 # vLLM recipe for A2 and A3 is two devices with expert parallelism; the 950DT
 # profile further down is the same page's single-device shape on MXFP8 weights.
 - name: int8-vllm-ascend-1a118d71
-  display_profile: general
+  display_name_zh_cn: 910B (A2) · INT8 W8A8 · 2 卡 · 投机解码
+  display_name_en: 910B (A2) · INT8 W8A8 · 2 NPUs · Speculative
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cann9.1-910b-vllm0.26.0rc1-r2
@@ -582,7 +583,6 @@ specs:
   gpus:
     vendor: ascend
     name: (^|[^A-Za-z0-9])910B[A-Za-z0-9]*([^A-Za-z0-9]|$)
-    display_target: ascend
   args:
   - --quantization
   - ascend
@@ -631,7 +631,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: int8-vllm-ascend-a3-1a118d71
-  display_profile: general
+  display_name_zh_cn: 910C (A3) · INT8 W8A8 · 2 卡 · 投机解码
+  display_name_en: 910C (A3) · INT8 W8A8 · 2 NPUs · Speculative
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cann9.2-a3-vllm0.30.0rc2-r1
@@ -645,7 +646,6 @@ specs:
   gpus:
     vendor: ascend
     name: (^|[^A-Za-z0-9])910C[A-Za-z0-9]*([^A-Za-z0-9]|$)
-    display_target: ascend
   args:
   - --quantization
   - ascend

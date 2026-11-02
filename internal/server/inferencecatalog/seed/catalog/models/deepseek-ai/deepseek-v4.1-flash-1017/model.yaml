@@ -22,7 +22,8 @@ model_config:
     patch_size: 14
 specs:
 - name: fp4-sglang-nvidia-h200-tp8
-  display_profile: compatible
+  display_name_zh_cn: H20 / H200 · FP4 · 8 卡
+  display_name_en: H20 / H200 · FP4 · 8 GPUs
   scenario: balanced
   engine: sglang
   image: lmsysorg/sglang:dev-dsv41
@@ -36,7 +37,6 @@ specs:
   gpus:
     vendor: nvidia
     name: (^|[^A-Za-z0-9])(?:H200|H20)([^A-Za-z0-9]|$)
-    display_target: nvidia
   args:
   - --trust-remote-code
   - --ep-size
@@ -69,7 +69,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: fp4-sglang-nvidia-h200-tp4-engram-host
-  display_profile: compatible
+  display_name_zh_cn: H20 / H200 · FP4 · 4 卡 · Engram 卸载
+  display_name_en: H20 / H200 · FP4 · 4 GPUs · Engram offload
   scenario: balanced
   engine: sglang
   image: lmsysorg/sglang:dev-dsv41
@@ -83,7 +84,6 @@ specs:
   gpus:
     vendor: nvidia
     name: (^|[^A-Za-z0-9])(?:H200|H20)([^A-Za-z0-9]|$)
-    display_target: nvidia
   args:
   - --trust-remote-code
   - --ep-size
@@ -123,7 +123,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: fp4-sglang-nvidia-h200-tp4-engram-host-dspark
-  display_profile: compatible
+  display_name_zh_cn: H20 / H200 · FP4 · 4 卡 · Engram 卸载 · 投机解码
+  display_name_en: H20 / H200 · FP4 · 4 GPUs · Engram offload · Speculative
   scenario: balanced
   engine: sglang
   image: lmsysorg/sglang:dev-dsv41
@@ -137,7 +138,6 @@ specs:
   gpus:
     vendor: nvidia
     name: (^|[^A-Za-z0-9])(?:H200|H20)([^A-Za-z0-9]|$)
-    display_target: nvidia
   args:
   - --trust-remote-code
   - --ep-size
@@ -186,7 +186,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: fp4-sglang-nvidia-b200-tp4
-  display_profile: compatible
+  display_name_zh_cn: B200 / B300 / GB300 · FP4 · 4 卡 · 投机解码
+  display_name_en: B200 / B300 / GB300 · FP4 · 4 GPUs · Speculative
   scenario: balanced
   engine: sglang
   image: lmsysorg/sglang:dev-dsv41
@@ -200,7 +201,6 @@ specs:
   gpus:
     vendor: nvidia
     name: (^|[^A-Za-z0-9])(?:B200|B300|GB300)([^A-Za-z0-9]|$)
-    display_target: nvidia
   args:
   - --trust-remote-code
   - --ep-size
@@ -232,7 +232,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: fp4-sglang-nvidia-h200-tp8-throughput
-  display_profile: compatible
+  display_name_zh_cn: H20 / H200 · FP4 · 8 卡 · 高吞吐
+  display_name_en: H20 / H200 · FP4 · 8 GPUs · High throughput
   scenario: throughput
   engine: sglang
   image: lmsysorg/sglang:dev-dsv41
@@ -246,7 +247,6 @@ specs:
   gpus:
     vendor: nvidia
     name: (^|[^A-Za-z0-9])(?:H200|H20)([^A-Za-z0-9]|$)
-    display_target: nvidia
   args:
   - --trust-remote-code
   - --ep-size
@@ -280,7 +280,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: fp4-sglang-nvidia-b200-tp4-throughput
-  display_profile: compatible
+  display_name_zh_cn: B200 / B300 / GB300 · FP4 · 4 卡
+  display_name_en: B200 / B300 / GB300 · FP4 · 4 GPUs
   scenario: throughput
   engine: sglang
   image: lmsysorg/sglang:dev-dsv41
@@ -294,7 +295,6 @@ specs:
   gpus:
     vendor: nvidia
     name: (^|[^A-Za-z0-9])(?:B200|B300|GB300)([^A-Za-z0-9]|$)
-    display_target: nvidia
   args:
   - --trust-remote-code
   - --ep-size
@@ -320,7 +320,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: fp4-vllm-nvidia-h200-tp4-engram-host
-  display_profile: compatible
+  display_name_zh_cn: H20 / H200 · FP4 · 4 卡 · Engram 卸载
+  display_name_en: H20 / H200 · FP4 · 4 GPUs · Engram offload
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda12.9-vllm0.31.0-r2
@@ -334,7 +335,6 @@ specs:
   gpus:
     vendor: nvidia
     name: (^|[^A-Za-z0-9])(?:H200|H20)([^A-Za-z0-9]|$)
-    display_target: nvidia
   args:
   - --tokenizer-mode
   - deepseek_v41
@@ -361,7 +361,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: fp4-vllm-nvidia-b200-tp2
-  display_profile: compatible
+  display_name_zh_cn: B200 · FP4 · 2 卡 · Engram 卸载
+  display_name_en: B200 · FP4 · 2 GPUs · Engram offload
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda12.9-vllm0.31.0-r2
@@ -375,7 +376,6 @@ specs:
   gpus:
     vendor: nvidia
     name: (^|[^A-Za-z0-9])(?:B200)([^A-Za-z0-9]|$)
-    display_target: nvidia
   args:
   - --tokenizer-mode
   - deepseek_v41
@@ -414,7 +414,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: fp4-vllm-nvidia-b300-tp2
-  display_profile: compatible
+  display_name_zh_cn: B300 · FP4 · 2 卡 · Engram 卸载
+  display_name_en: B300 · FP4 · 2 GPUs · Engram offload
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda12.9-vllm0.31.0-r2
@@ -428,7 +429,6 @@ specs:
   gpus:
     vendor: nvidia
     name: (^|[^A-Za-z0-9])(?:B300)([^A-Za-z0-9]|$)
-    display_target: nvidia
   args:
   - --tokenizer-mode
   - deepseek_v41
@@ -467,7 +467,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: fp4-vllm-nvidia-blackwell-dep8
-  display_profile: compatible
+  display_name_zh_cn: B200 / B300 · FP4 · 8 卡 DP+EP
+  display_name_en: B200 / B300 · FP4 · 8 GPUs DP+EP
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda12.9-vllm0.31.0-r2
@@ -481,7 +482,6 @@ specs:
   gpus:
     vendor: nvidia
     name: (^|[^A-Za-z0-9])(?:B200|B300)([^A-Za-z0-9]|$)
-    display_target: nvidia
   args:
   - --tokenizer-mode
   - deepseek_v41
@@ -521,7 +521,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: fp4-deepinfer-nvidia-blackwell-ep
-  display_profile: optimized
+  display_name_zh_cn: B200 / B300 · FP4 · 4 或 8 卡
+  display_name_en: B200 / B300 · FP4 · 4 or 8 GPUs
   scenario: throughput
   engine: callable
   image: gpuworks/deepinfer:774ce24-r9
@@ -539,7 +540,6 @@ specs:
   gpus:
     vendor: nvidia
     name: (^|[^A-Za-z0-9])(?:B200|B300)([^A-Za-z0-9]|$)
-    display_target: nvidia
   shm_bytes: 483183820800
   memlock_unlimited: true
   entrypoint:
@@ -589,7 +589,8 @@ specs:
         deepinfer:time_per_output_token_seconds: tpot_seconds
         deepinfer:e2e_request_latency_seconds: e2e_seconds
 - name: fp4-deepinfer-nvidia-blackwell-ep-multinode
-  display_profile: optimized
+  display_name_zh_cn: B200 / B300 · FP4 · 4 或 8 卡 · 多机
+  display_name_en: B200 / B300 · FP4 · 4 or 8 GPUs · Multi-node
   scenario: throughput
   engine: callable
   image: gpuworks/deepinfer:774ce24-r9
@@ -607,7 +608,6 @@ specs:
   gpus:
     vendor: nvidia
     name: (^|[^A-Za-z0-9])(?:B200|B300)([^A-Za-z0-9]|$)
-    display_target: nvidia
   shm_bytes: 68719476736
   entrypoint:
   - /opt/venv/bin/python
@@ -662,7 +662,8 @@ specs:
         deepinfer:time_per_output_token_seconds: tpot_seconds
         deepinfer:e2e_request_latency_seconds: e2e_seconds
 - name: int8-vllm-ascend-a3-tp4-dp4
-  display_profile: compatible
+  display_name_zh_cn: 910C (A3) · INT8 W8A8 · 16 卡 · Engram 卸载
+  display_name_en: 910C (A3) · INT8 W8A8 · 16 NPUs · Engram offload
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cann9.2-a3-vllm0.30.0rc2-r1
@@ -678,7 +679,6 @@ specs:
   gpus:
     vendor: ascend
     name: (^|[^A-Za-z0-9])910C([^A-Za-z0-9]|$)
-    display_target: ascend
   shm_bytes: 549755813888
   memlock_unlimited: true
   args:

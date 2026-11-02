@@ -359,8 +359,8 @@
   {
     "path": "reference/inference-catalog-spec.md",
     "block_index": 0,
-    "source_sha256": "b4399a964f344c7df4fa1b723d620b30a24df0fb70254601a817a1917035bc89",
-    "translation_sha256": "fa052f9522e49b65c5dc9febc5a6e78369466477e08e35d3b77b16654037207d",
+    "source_sha256": "87b9b0138ba4ec53acde102a7c6b84d62b6c2f8f0d3d75cab349af25de5c4c50",
+    "translation_sha256": "d678bb21d75ccc75960270f23e4263c515e921694b27de418282915199ae6923",
     "reason": "Translate YAML comments and illustrative user-facing reason text."
   },
   {

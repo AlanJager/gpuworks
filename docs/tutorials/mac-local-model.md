@@ -98,9 +98,9 @@ sudo "$HOME/gpuworks/gpuworks-agent" install-service \
 
 ![按 M5 芯片筛选推理模板，搜索 gpt-oss-20b 并打开 GPT-OSS 20B](../assets/screenshots/tutorial-mac-template-search.png)
 
-2. 在 **vLLM** 页签下找到 **Apple 芯片 通用档位**，核对权重量化为 **mxfp4**、显示大小约 **11.2 GiB**，环境包为 `gpuworks/gpuworks-runner:metal15.0-vllm0.31.0-r2`，点击这一行的 **部署**。
+2. 在 **vLLM** 页签下找到 **Apple 芯片 · MXFP4** 这一行，核对权重量化为 **mxfp4**、显示大小约 **11.2 GiB**，环境包为 `gpuworks/gpuworks-runner:metal15.0-vllm0.31.0-r2`，点击这一行的 **部署**。
 
-![选择 vLLM 下的 Apple 芯片通用档位，核对 mxfp4 权重与 Metal 环境包](../assets/screenshots/tutorial-mac-template.png)
+![选择 vLLM 下的 Apple 芯片 · MXFP4 档位，核对 mxfp4 权重与 Metal 环境包](../assets/screenshots/tutorial-mac-template.png)
 
 3. 模型来源选择 **ModelScope**，确认仓库为 `mlx-community/gpt-oss-20b-MXFP4-Q8`，点击 **登记模型并部署**，进入部署配置。
 

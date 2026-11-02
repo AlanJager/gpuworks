@@ -9,7 +9,8 @@ import type {
 import { useTranslation } from "react-i18next";
 import {
   chipDisplayLabel,
-  gpuPredicateTargetName,
+  predicateLabel,
+  specDisplayName,
 } from "../inferenceTemplateFlat";
 import { chipMatchesPredicate } from "../inferenceTemplateFlat.ts";
 
@@ -71,13 +72,6 @@ export function matchingProfiles(
     );
 }
 
-function predicateLabel(
-  profile: InferenceProfileSummary,
-  t: (key: string, options?: Record<string, unknown>) => string,
-) {
-  return gpuPredicateTargetName(profile.gpus, t);
-}
-
 function currentHardware(chips: DetectedTemplateChip[]) {
   const seen = new Set<string>();
   return (
@@ -131,7 +125,7 @@ export default function TemplateRecommendations({
     profile: InferenceProfileSummary,
   ) => void;
 }) {
-  const { t } = useTranslation("deploy");
+  const { t, i18n } = useTranslation("deploy");
   const allProfiles = matchingProfiles(
     templates,
     chips,
@@ -186,13 +180,13 @@ export default function TemplateRecommendations({
                   {selected && <CheckCircleOutlined />}
                 </Space>
                 <Typography.Text type="secondary">
-                  {profile.display_profile || profile.name} · {profile.engine} ·{" "}
+                  {specDisplayName(profile, i18n.language)} · {profile.engine} ·{" "}
                   {profile.scenario || t("templateRecommendations.general")}
                 </Typography.Text>
                 <Typography.Text type="secondary">
                   {t("templateRecommendations.requires")}:{" "}
                   <Typography.Text code>
-                    {predicateLabel(profile, t)}
+                    {predicateLabel(profile)}
                   </Typography.Text>
                 </Typography.Text>
                 <Typography.Text type="secondary">
@@ -222,12 +216,12 @@ export default function TemplateRecommendations({
               type="secondary"
             >
               <strong>{template.display_title || template.model_id}</strong> ·{" "}
-              {profile.display_profile || profile.name} · {profile.engine} ·{" "}
+              {specDisplayName(profile, i18n.language)} · {profile.engine} ·{" "}
               {profileMeta(profile, t)}
               <br />
               {t("templateRecommendations.requires")}:{" "}
               <Typography.Text code>
-                {predicateLabel(profile, t)}
+                {predicateLabel(profile)}
               </Typography.Text>
               <br />
               {t("templateRecommendations.currentHardware")}: {hardware} ·{" "}

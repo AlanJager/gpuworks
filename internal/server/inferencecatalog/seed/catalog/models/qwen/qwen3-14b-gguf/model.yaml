@@ -9,7 +9,8 @@ release_date: '2025-05-01'
 model_config: {model_type: qwen3, num_hidden_layers: 40, hidden_size: 5120, num_attention_heads: 40, num_key_value_heads: 8, head_dim: 128, max_position_embeddings: 40960}
 specs:
 - name: fp16-sglang-ascend-41226ec8
-  display_profile: general
+  display_name_zh_cn: 910B (A2) · GGUF Q4_K_M · ≥2 卡
+  display_name_en: 910B (A2) · GGUF Q4_K_M · 2+ NPUs
   scenario: balanced
   engine: sglang
   image: gpuworks/gpuworks-runner:cann9.0-910b-sglang0.5.18-r2
@@ -26,7 +27,6 @@ specs:
   gpus:
     vendor: ascend
     name: (^|[^A-Za-z0-9])910B[A-Za-z0-9]*([^A-Za-z0-9]|$)
-    display_target: ascend
   args:
   - --enable-metrics
   - --device
@@ -46,7 +46,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: fp16-sglang-ascend-a3-41226ec8
-  display_profile: general
+  display_name_zh_cn: 910C (A3) · GGUF Q4_K_M · ≥2 卡
+  display_name_en: 910C (A3) · GGUF Q4_K_M · 2+ NPUs
   scenario: balanced
   engine: sglang
   image: gpuworks/gpuworks-runner:cann9.0-a3-sglang0.5.18-r2
@@ -63,7 +64,6 @@ specs:
   gpus:
     vendor: ascend
     name: (^|[^A-Za-z0-9])910C[A-Za-z0-9]*([^A-Za-z0-9]|$)
-    display_target: ascend
   args:
   - --enable-metrics
   # The repository holds five GGUF quantizations; select the measured

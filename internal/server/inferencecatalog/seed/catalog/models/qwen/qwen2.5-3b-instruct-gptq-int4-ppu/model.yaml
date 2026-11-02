@@ -14,7 +14,8 @@ kv_bytes_per_token:
   sglang: 36864
 specs:
 - name: gptq-vllm-ppu-68c42760
-  display_profile: general
+  display_name_zh_cn: PPU · INT4 GPTQ
+  display_name_en: PPU · INT4 GPTQ
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
@@ -30,7 +31,6 @@ specs:
   gpus:
     vendor: ppu
     name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
-    display_target: ppu
   args:
   - --tensor-parallel-size
   - '1'

@@ -27,11 +27,16 @@ func CatalogWarnings(catalog FlatCatalog) []*messages.ProductError {
 }
 
 func specWarnings(modelID string, spec InferenceSpec) []*messages.ProductError {
-	if spec.Engine != engines.Callable {
-		return nil
-	}
 	params := func() map[string]any { return map[string]any{"model_id": modelID, "spec": spec.Name} }
 	var warnings []*messages.ProductError
+	if spec.RetiredDisplayProfile != "" || spec.GPUs.RetiredDisplayTarget != "" {
+		warnings = append(warnings, messages.NewProductError(messages.WarningCatalogDisplayProfileRetired,
+			"Spec "+spec.Name+" of "+modelID+" sets display_profile or gpus.display_target, which are no longer used and were ignored; name the spec with display_name_zh_cn and display_name_en.",
+			params()))
+	}
+	if spec.Engine != engines.Callable {
+		return warnings
+	}
 	if spec.API == nil || spec.API.Metrics == nil {
 		warnings = append(warnings, messages.NewProductError(messages.WarningCatalogCallableMetricsUndeclared,
 			"Callable spec "+spec.Name+" of "+modelID+" declares no api.metrics, so the monitoring center shows no engine metrics for it unless its /metrics happens to use vLLM or SGLang metric names.",

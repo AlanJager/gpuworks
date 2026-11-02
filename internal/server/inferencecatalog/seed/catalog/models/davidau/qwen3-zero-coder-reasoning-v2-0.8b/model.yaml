@@ -10,7 +10,8 @@ kv_bytes_per_token:
   sglang: 172032
 specs:
 - name: bf16-vllm-ppu-f79ed504
-  display_profile: general
+  display_name_zh_cn: PPU · BF16
+  display_name_en: PPU · BF16
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
@@ -21,7 +22,7 @@ specs:
         repo_id: DavidAU/Qwen3-Zero-Coder-Reasoning-V2-0.8B
         revision: f79ed50414fa059dc4d9a113088599efd4c08d94
   weight_bytes: 1632618872
-  gpus: {vendor: ppu, name: '(?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)', display_target: ppu}
+  gpus: {vendor: ppu, name: '(?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)'}
   args: [--trust-remote-code]
   api:
     health_endpoint: /health

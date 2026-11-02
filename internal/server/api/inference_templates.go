@@ -96,7 +96,7 @@ func (a *apiHandlers) listInferenceTemplateIndex(w http.ResponseWriter, r *http.
 				repoIDs = append(repoIDs, repoID)
 			}
 			profiles = append(profiles, dto.InferenceProfileSummary{
-				Source: spec.Source, Name: spec.Name, DisplayProfile: spec.DisplayProfile, Scenario: spec.Scenario,
+				Source: spec.Source, Name: spec.Name, DisplayNameZHCN: spec.DisplayNameZHCN, DisplayNameEN: spec.DisplayNameEN, Scenario: spec.Scenario,
 				Engine: spec.Engine, Image: spec.Image, Quantization: spec.Quantization, WeightBytes: spec.WeightBytes,
 				WeightRepoIDs: repoIDs, GPUs: gpus,
 			})
@@ -484,7 +484,7 @@ func inferenceTemplateView(model store.InferenceModel) dto.InferenceTemplate {
 	_ = json.Unmarshal([]byte(model.InputModalities), &out.InputModalities)
 	_ = json.Unmarshal([]byte(model.Unsupported), &out.Unsupported)
 	for _, spec := range model.Specs {
-		view := dto.InferenceSpecDTO{ID: spec.ID, Source: spec.Source, Name: spec.Name, DisplayProfile: spec.DisplayProfile, Scenario: spec.Scenario, Engine: spec.Engine, Image: spec.Image, Quantization: spec.Quantization, WeightBytes: spec.WeightBytes, RuntimeWeightBytes: spec.RuntimeWeightBytes, ShmBytes: spec.ShmBytes, MemlockUnlimited: spec.MemlockUnlimited, PreStartScript: spec.PreStartScript, PDMode: spec.PDMode}
+		view := dto.InferenceSpecDTO{ID: spec.ID, Source: spec.Source, Name: spec.Name, DisplayNameZHCN: spec.DisplayNameZHCN, DisplayNameEN: spec.DisplayNameEN, Scenario: spec.Scenario, Engine: spec.Engine, Image: spec.Image, Quantization: spec.Quantization, WeightBytes: spec.WeightBytes, RuntimeWeightBytes: spec.RuntimeWeightBytes, ShmBytes: spec.ShmBytes, MemlockUnlimited: spec.MemlockUnlimited, PreStartScript: spec.PreStartScript, PDMode: spec.PDMode}
 		if sources, _ := inferencecatalog.DecodeWeightSources(spec.WeightSources); sources != nil {
 			view.WeightSources = make([]dto.WeightSource, 0, len(sources))
 			for _, source := range sources {

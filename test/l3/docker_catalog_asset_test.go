@@ -174,9 +174,9 @@ func executableCatalogPackage(t *testing.T, modelID string, asset []byte, digest
 	model := inferencecatalog.InferenceModel{
 		ModelID: modelID, Source: "user", DisplayTitle: "L3 catalog asset", InputModalities: []string{"text"}, ContextLength: 2048,
 		Specs: []inferencecatalog.InferenceSpec{{
-			Name: "nvidia-general", DisplayProfile: "general", Scenario: "balanced", Engine: "fake-engine", Image: "gpuworks/fake-engine:prestart",
+			Name: "nvidia-general", Scenario: "balanced", Engine: "fake-engine", Image: "gpuworks/fake-engine:prestart",
 			Weights:     inferencecatalog.Weights{Quantization: "bf16", Sources: []inferencecatalog.WeightSource{{Provider: "huggingface", RepoID: modelID}}},
-			WeightBytes: 1 << 30, GPUs: inferencecatalog.GPUSelector{Vendor: "nvidia", CC: ">=7.5", DisplayTarget: "nvidia"},
+			WeightBytes: 1 << 30, GPUs: inferencecatalog.GPUSelector{Vendor: "nvidia", CC: ">=7.5"},
 			Assets:       []inferencecatalog.Asset{{File: "assets/runtime.tar.gz", SHA256: digest, UnpackTo: "/opt/gpuworks/runtime"}},
 			PreStartArgv: []string{"sh", "/opt/gpuworks/runtime/prepare.sh"},
 		}},

@@ -566,10 +566,10 @@ var migrations = []migration{
 		Version: 68,
 		Name:    "inference_spec_display_profile",
 		Apply: func(db *gorm.DB) error {
-			if db.Migrator().HasColumn(&InferenceSpecRow{}, "DisplayProfile") {
+			if db.Migrator().HasColumn(&inferenceSpecDisplayProfileColumn{}, "DisplayProfile") {
 				return nil
 			}
-			return db.Migrator().AddColumn(&InferenceSpecRow{}, "DisplayProfile")
+			return db.Migrator().AddColumn(&inferenceSpecDisplayProfileColumn{}, "DisplayProfile")
 		},
 	},
 	{
@@ -1322,6 +1322,7 @@ var migrations = []migration{
 		return nil
 	}},
 	{Version: 196, Name: "card_health_episodes", Apply: createCardHealthEpisodes},
+	{Version: 197, Name: "inference_spec_display_names", Apply: replaceInferenceSpecDisplayProfile},
 }
 
 // modelFileNetworkColumns are the columns migrations 76 and 77 added to

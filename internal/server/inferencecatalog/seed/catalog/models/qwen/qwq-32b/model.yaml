@@ -11,7 +11,8 @@ kv_bytes_per_token:
   sglang: 262144
 specs:
 - name: int8-sglang-ascend-48738293
-  display_profile: general
+  display_name_zh_cn: 910B (A2) · INT8 W8A8 · ≥2 卡
+  display_name_en: 910B (A2) · INT8 W8A8 · 2+ NPUs
   scenario: balanced
   engine: sglang
   image: gpuworks/gpuworks-runner:cann9.0-910b-sglang0.5.18-r2
@@ -25,7 +26,6 @@ specs:
   gpus:
     vendor: ascend
     name: (^|[^A-Za-z0-9])910B[A-Za-z0-9]*([^A-Za-z0-9]|$)
-    display_target: ascend
   args:
   - --enable-metrics
   - --trust-remote-code
@@ -52,7 +52,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: int8-sglang-ascend-a3-48738293
-  display_profile: general
+  display_name_zh_cn: 910C (A3) · INT8 W8A8 · 2 卡
+  display_name_en: 910C (A3) · INT8 W8A8 · 2 NPUs
   scenario: balanced
   engine: sglang
   image: gpuworks/gpuworks-runner:cann9.0-a3-sglang0.5.18-r2
@@ -66,7 +67,6 @@ specs:
   gpus:
     vendor: ascend
     name: (^|[^A-Za-z0-9])910C[A-Za-z0-9]*([^A-Za-z0-9]|$)
-    display_target: ascend
   args:
   - --enable-metrics
   - --trust-remote-code
@@ -110,7 +110,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: int8-vllm-ascend-a3-qwq32b
-  display_profile: general
+  display_name_zh_cn: 910C (A3) · INT8 W8A8 · 2 卡
+  display_name_en: 910C (A3) · INT8 W8A8 · 2 NPUs
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cann9.2-a3-vllm0.30.0rc2-r1
@@ -124,7 +125,6 @@ specs:
   gpus:
     vendor: ascend
     name: (^|[^A-Za-z0-9])910C[A-Za-z0-9]*([^A-Za-z0-9]|$)
-    display_target: ascend
   args:
   - --trust-remote-code
   - --enforce-eager

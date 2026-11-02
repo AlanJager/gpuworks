@@ -11,7 +11,8 @@ kv_bytes_per_token:
   sglang: 65536
 specs:
 - name: bf16-vllm-hygon-8f9848ad
-  display_profile: general
+  display_name_zh_cn: K100 / BW · BF16
+  display_name_en: K100 / BW · BF16
   scenario: balanced
   engine: vllm
   image: harbor.sourcefind.cn:5443/dcu/admin/base/custom:vllm0.18.1-ubuntu22.04-dtk26.04-py3.10-20260810-qwen3.8
@@ -28,7 +29,6 @@ specs:
   gpus:
     vendor: hygon
     name: (^|[^A-Za-z0-9])(?:K100(?:[_ -]?AI)?|BW[_ -]?1000|BW[_ -]?1100)([^A-Za-z0-9_-]|$)
-    display_target: hygon
   args:
   - --dtype
   - bfloat16
@@ -51,7 +51,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: bf16-vllm-nvidia-general
-  display_profile: general
+  display_name_zh_cn: Ampere 及以上 · BF16
+  display_name_en: Ampere+ · BF16
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -68,7 +69,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.0'
-    display_target: nvidia
   args:
   - --enable-auto-tool-choice
   - --tool-call-parser
@@ -84,7 +84,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: fp8-vllm-nvidia-general
-  display_profile: compatible
+  display_name_zh_cn: Hopper 及以上 · FP8
+  display_name_en: Hopper+ · FP8
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -101,7 +102,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=9.0'
-    display_target: hopper
   args:
   - --enable-auto-tool-choice
   - --tool-call-parser
@@ -122,7 +122,8 @@ specs:
 # model's own 262144, which is what ran on a 910C under this image. A deployment
 # that needs the published figure can set it.
 - name: int8-vllm-ascend-0a447e8a
-  display_profile: general
+  display_name_zh_cn: 910B (A2) · INT8 W8A8 · ≥2 卡 · 投机解码
+  display_name_en: 910B (A2) · INT8 W8A8 · 2+ NPUs · Speculative
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cann9.1-910b-vllm0.26.0rc1-r2
@@ -139,7 +140,6 @@ specs:
   gpus:
     vendor: ascend
     name: (^|[^A-Za-z0-9])910B[A-Za-z0-9]*([^A-Za-z0-9]|$)
-    display_target: ascend
   args:
   - --dtype
   - bfloat16
@@ -190,7 +190,8 @@ specs:
 # this separate from the W8A8 profile because it uses different weights and
 # does not rely on the quantized MTP path.
 - name: bf16-vllm-ascend-a3-1d4bf0f2
-  display_profile: general
+  display_name_zh_cn: 910C (A3) · BF16 · ≥2 卡
+  display_name_en: 910C (A3) · BF16 · 2+ NPUs
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cann9.1-a3-vllm0.26.0rc1-r2
@@ -207,7 +208,6 @@ specs:
   gpus:
     vendor: ascend
     name: (^|[^A-Za-z0-9])910C[A-Za-z0-9]*([^A-Za-z0-9]|$)
-    display_target: ascend
   args:
   - --dtype
   - bfloat16
@@ -249,7 +249,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: int8-vllm-ascend-a3-0a447e8a
-  display_profile: general
+  display_name_zh_cn: 910C (A3) · INT8 W8A8 · ≥2 卡 · 投机解码
+  display_name_en: 910C (A3) · INT8 W8A8 · 2+ NPUs · Speculative
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cann9.1-a3-vllm0.26.0rc1-r2
@@ -266,7 +267,6 @@ specs:
   gpus:
     vendor: ascend
     name: (^|[^A-Za-z0-9])910C[A-Za-z0-9]*([^A-Za-z0-9]|$)
-    display_target: ascend
   args:
   - --dtype
   - bfloat16
@@ -319,7 +319,8 @@ specs:
 # recipe, not a measured one; the 950PR profile below is the measured one and
 # uses the plain W8A8 weights.
 - name: mxfp8-vllm-ascend-950-9754c9eb
-  display_profile: general
+  display_name_zh_cn: 950DT / 950PR · MXFP8 · 单卡 · 投机解码
+  display_name_en: 950DT / 950PR · MXFP8 · 1 NPU · Speculative
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cann9.2-950-vllm0.30.0rc2-r1
@@ -333,7 +334,6 @@ specs:
   gpus:
     vendor: ascend
     name: (^|[^A-Za-z0-9])950(?:DT|PR)([^A-Za-z0-9]|$)
-    display_target: ascend
   args:
   - --quantization
   - ascend
@@ -389,7 +389,8 @@ specs:
   # model has to agree on those
   # (TestNonNVIDIAChatSpecsInheritModelFunctionalArgs). 950DT has no
   # measurement at all and is not claimed.
-  display_profile: general
+  display_name_zh_cn: 950PR · INT8 W8A8 · 单卡 · 投机解码
+  display_name_en: 950PR · INT8 W8A8 · 1 NPU · Speculative
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cann9.1-950-vllm0.27.1rc1-r2
@@ -406,7 +407,6 @@ specs:
   gpus:
     vendor: ascend
     name: (^|[^A-Za-z0-9])950PR([^A-Za-z0-9]|$)
-    display_target: ascend
   args:
   - --quantization
   - ascend
@@ -449,7 +449,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: int8-vllm-hygon-a2189a85
-  display_profile: general
+  display_name_zh_cn: K100 / BW · INT8 W8A8
+  display_name_en: K100 / BW · INT8 W8A8
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:dtk26.04-vllm0.18.1-r2
@@ -463,7 +464,6 @@ specs:
   gpus:
     vendor: hygon
     name: (^|[^A-Za-z0-9])(?:K100(?:[_ -]?AI)?|BW[_ -]?1000|BW[_ -]?1100)([^A-Za-z0-9_-]|$)
-    display_target: hygon
   args:
   - --dtype
   - auto
@@ -490,7 +490,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: nvfp4-vllm-nvidia-cc100
-  display_profile: compatible
+  display_name_zh_cn: Blackwell · NVFP4
+  display_name_en: Blackwell · NVFP4
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -507,7 +508,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=10.0'
-    display_target: blackwell
   args:
   - --enable-auto-tool-choice
   - --tool-call-parser
@@ -523,7 +523,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: bf16-vllm-ppu-1d4bf0f2
-  display_profile: general
+  display_name_zh_cn: PPU · BF16
+  display_name_en: PPU · BF16
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
@@ -540,7 +541,6 @@ specs:
   gpus:
     vendor: ppu
     name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
-    display_target: ppu
   args:
   - --trust-remote-code
   - --enable-auto-tool-choice
@@ -562,7 +562,8 @@ specs:
 # context is capped so the KV cache of one sequence fits a 32-64 GB Mac; a
 # deployment may raise it.
 - name: mlx4-vllm-apple
-  display_profile: general
+  display_name_zh_cn: Apple 芯片 · MLX 4bit
+  display_name_en: Apple silicon · MLX 4bit
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:metal15.0-vllm0.31.0-r2
@@ -578,7 +579,6 @@ specs:
   weight_bytes: 16054541349
   gpus:
     vendor: apple
-    display_target: apple
   args:
   - --enable-auto-tool-choice
   - --tool-call-parser

@@ -39,7 +39,8 @@ models:                       # FlatCatalog：顶层只有一个 models 列表
     reason: 计算能力不足       # 必填
   specs:                      # 每模型至少 1 个 spec（被引用为 component 除外）
   - name: bf16-sglang-nvidia-general   # 模型内唯一
-    display_profile: general  # general | compatible | optimized
+    display_name_zh_cn: A100 / H100 · BF16   # 可选，见下文「显示名」
+    display_name_en: A100 / H100 · BF16
     scenario: balanced        # latency | balanced | throughput
     engine: sglang            # vllm | sglang | callable
     image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
@@ -57,7 +58,6 @@ models:                       # FlatCatalog：顶层只有一个 models 列表
       vendor: nvidia          # 必填
       cc: '>=8.0'             # 精确值 / >=x / <x / a..b
       name: '(^|[^A-Za-z0-9])(?:A100|H100)([^A-Za-z0-9]|$)'   # 可选，大小写不敏感正则
-      display_target: nvidia  # 与 display_profile 必须同时出现
     env:
       NCCL_NET_PLUGIN: none
     args:
@@ -104,7 +104,7 @@ models:                       # FlatCatalog：顶层只有一个 models 列表
 | 字段 | 约束 | 说明 |
 |---|---|---|
 | `name` | 必填，模型内唯一 | |
-| `display_profile` | `general` \| `compatible` \| `optimized` | **必须与 `gpus.display_target` 同时出现或同时缺席** |
+| `display_name_zh_cn` / `display_name_en` | 可选；单行，分别不超过 56 / 72 个字符；同一模型、同一引擎内各自唯一（忽略大小写与多余空格） | 档位的中英文显示名，界面按语言显示，缺一种时用另一种，都没有时显示 `name`。内置档位两个都写。写法见下文[显示名](#显示名) |
 | `scenario` | `latency` \| `balanced` \| `throughput` | |
 | `engine` | 必填；部署时按注册表解析，合法值 `vllm` / `sglang` / `callable`（`internal/engines` 唯一产地） | `callable` 承载目录自带 Serve Adapter，无日志方言与参数字典；**命令行完全归模板**，引擎不追加任何参数，模型路径、端口、多机 rank 等平台事实由模板用[变量](#变量展开)自己摆放，且必须引用 `${API_PORT}`（ADR 0036） |
 | `image` | 必填 | 镜像引用语法与漂移问题见 [镜像家族](image-families.md) 与 todo.md T2 |
@@ -215,7 +215,19 @@ image_sources:                                    # 按偏好顺序
   （仅 `>=` 与 `<`，没有 `>` / `<=`；区间要求 lo ≤ hi）。
 - `name`：可选，正则，匹配时自动加 `(?i)`（大小写不敏感），编写时用
   `(^|[^A-Za-z0-9])...([^A-Za-z0-9]|$)` 这类边界避免 `A100` 误配 `A1000`。
-- `display_target`：可选，`^[a-z0-9]+(_[a-z0-9]+)*$`，与 `display_profile` 配对。
+
+### 显示名
+
+`display_name_zh_cn` / `display_name_en` 由人写，概括这个档位适用的卡和它与兄弟档位的区别，格式为 `适用卡 · 量化 [· 关键门槛或形态]`：
+
+- **适用卡**与 `gpus` 实际匹配的卡一致：只按算力区间时写架构（`>=8.0` 写「Ampere 及以上」/「Ampere+」，`>=9.0` 写「Hopper 及以上」/「Hopper+」，`>=10.0` 写「Blackwell」）；按型号时列型号，如「H20 / H200」「910C (A3)」「K100 / BW」。不写厂商名。
+- **量化**总是写，统一大写：`BF16`、`FP8`、`NVFP4`、`INT8 W8A8`、`INT4 AWQ` 等；同一量化有多个权重发布方时加括号，如「NVFP4 (NVIDIA)」。
+- **其余部分**只写区分兄弟档位、或用户必须知道的硬约束，依次是：固定卡数（「8 卡」/「8 GPUs」）、显存门槛、上下文长度、形态（「投机解码」「Engram 卸载」「多机」「PD 分离」、embedding 的任务）、场景（只差场景时写「高吞吐」）、镜像（只差镜像时写引擎或 CUDA 版本，如「CUDA 12.9」）。
+- 不写引擎名和模型名。
+
+例如 GLM-5.3-Flash 的两个 vLLM Hopper 档位分别是「H20 / H200 141G · FP8 · 8 卡 · 1M 上下文」和「H100 / H20 96G · FP8 · 8 卡 · 256K 上下文」。
+
+早期模板用的 `display_profile` 与 `gpus.display_target` 已不再使用：导入时仍能读，但会忽略，并给出 `CATALOG_DISPLAY_PROFILE_RETIRED` 警告（见[导入前检查与警告](#导入前检查与警告)）。
 
 ### assets[]
 
@@ -507,6 +519,7 @@ pre_start / env）引用，否则校验失败——挂了不用或拼错路径�
 |---|---|---|
 | `CATALOG_CALLABLE_METRICS_UNDECLARED` | `engine: callable` 且没有 `api.metrics` | 监控中心没有该档位的引擎指标，除非引擎的 `/metrics` 恰好用 vLLM / SGLang 的指标名（见[为推理模板声明引擎指标](../how-to/declare-engine-metrics.md)） |
 | `CATALOG_HEALTH_ENDPOINT_UNDECLARED` | `engine: callable` 且没有 `api.health_endpoint` | 就绪探测用默认的 `/health`；`vllm` / `sglang` 的 `/health` 是引擎自带的，不提示 |
+| `CATALOG_DISPLAY_PROFILE_RETIRED` | spec 还写着 `display_profile` 或 `gpus.display_target` | 这两个字段已被忽略，界面显示的是 `display_name_zh_cn` / `display_name_en`（都没有时显示 `name`） |
 | `CATALOG_CALLABLE_SERVED_NAME_FIXED` | `engine: callable` 的 `args` / `entrypoint` 里 `--served-model-name` 的值没有用 `${SERVED_MODEL_NAME}`（`params.name` 是写死的值） | 会校验模型名的引擎只认这个写死的名字，部署的服务名与它不同时请求和健康检查都会 404；adapter 不看模型名或作者有意固定时可以忽略 |
 
 ## 校验入口与工具

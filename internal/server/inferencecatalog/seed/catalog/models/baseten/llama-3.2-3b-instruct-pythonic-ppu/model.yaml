@@ -14,7 +14,8 @@ kv_bytes_per_token:
   sglang: 114688
 specs:
 - name: bf16-vllm-ppu-dda084d3
-  display_profile: general
+  display_name_zh_cn: PPU · BF16
+  display_name_en: PPU · BF16
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
@@ -30,7 +31,6 @@ specs:
   gpus:
     vendor: ppu
     name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
-    display_target: ppu
   args:
   - --tensor-parallel-size
   - '1'

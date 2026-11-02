@@ -1,6 +1,6 @@
 import { Button, Form, Tag, Typography } from "antd";
 import { useTranslation } from "react-i18next";
-import { gpuPredicateTargetName } from "../inferenceTemplateFlat";
+import { specDisplayName } from "../inferenceTemplateFlat";
 import type { WeightModel } from "./useTemplateWeightSource";
 import { ModelSourceTag } from "../ModelsPageParts";
 import type { TemplateSpecSelection } from "./deployHelpers";
@@ -19,7 +19,7 @@ export default function DeployTemplateBar({
   /** The registered model that now provides the weights, once chosen. */
   weightModel?: WeightModel;
 }) {
-  const { t } = useTranslation("deploy");
+  const { t, i18n } = useTranslation("deploy");
   const form = Form.useFormInstance();
   const imageOverride = Form.useWatch("image", { form, preserve: true }) as
     string | undefined;
@@ -63,7 +63,7 @@ export default function DeployTemplateBar({
           ? `${(spec.weight_bytes / 1024 ** 3).toFixed(1)} GiB`
           : t("templateLock.sizePending")}
       </Tag>
-      <Tag color="red">{gpuPredicateTargetName(spec.gpus, t)}</Tag>
+      <Tag color="red">{specDisplayName(spec, i18n.language)}</Tag>
       <Tag color="blue">{spec.engine}</Tag>
       <Typography.Text className="deploy-locked-image" copyable>
         {t("catalog.currentImage")}: {currentImage}

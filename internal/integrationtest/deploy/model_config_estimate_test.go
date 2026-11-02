@@ -79,7 +79,7 @@ func seedEstimateCatalog(t *testing.T, env *testenv.Env, modelID, modelConfig, k
 		// something derived from model_config at deploy time.
 		KVBytesPerToken: kvBytesPerToken,
 		Specs: []store.InferenceSpecRow{{
-			Name: "nvidia-general", DisplayProfile: "general", Engine: "vllm", Image: "gpuworks/runtime-nvidia:test",
+			Name: "nvidia-general", Engine: "vllm", Image: "gpuworks/runtime-nvidia:test",
 			Quantization: "bf16", WeightSources: `[{"provider":"huggingface","repo_id":"` + modelID + `","revision":"main"}]`,
 			WeightBytes: 1 << 30, GPUs: `{"vendor":"nvidia","cc":">=7.5"}`,
 			Args: `["--max-model-len","40960"]`, Env: `{"CATALOG_LAYER":"nvidia"}`,
@@ -327,7 +327,7 @@ func TestQuantizedReleaseFindsTheKVEstimateOfTheModelItQuantizes(t *testing.T) {
 		ModelID: modelID, Source: "upstream", ContextLength: 40960,
 		KVBytesPerToken: `{"vllm":262144}`,
 		Specs: []store.InferenceSpecRow{{
-			Name: "nvidia-general", DisplayProfile: "general", Engine: "vllm", Image: "gpuworks/runtime-nvidia:test",
+			Name: "nvidia-general", Engine: "vllm", Image: "gpuworks/runtime-nvidia:test",
 			Quantization: "bf16", WeightBytes: 1 << 30, GPUs: `{"vendor":"nvidia","cc":">=7.5"}`,
 			Args: `[]`, Env: `{}`,
 			// The quantized release is declared as this model's weight source.

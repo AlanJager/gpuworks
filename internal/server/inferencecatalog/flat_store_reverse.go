@@ -34,7 +34,7 @@ func FromFlatStoreModel(row store.InferenceModel) (InferenceModel, error) {
 	}
 	for _, stored := range row.Specs {
 		spec := InferenceSpec{
-			Name: stored.Name, DisplayProfile: stored.DisplayProfile, Scenario: stored.Scenario,
+			Name: stored.Name, DisplayNameZHCN: stored.DisplayNameZHCN, DisplayNameEN: stored.DisplayNameEN, Scenario: stored.Scenario,
 			Engine: stored.Engine, Image: stored.Image,
 			Weights: Weights{Quantization: stored.Quantization}, WeightBytes: stored.WeightBytes, RuntimeWeightBytes: stored.RuntimeWeightBytes,
 			PreStartScript: stored.PreStartScript, PDMode: stored.PDMode, ShmBytes: stored.ShmBytes, MemlockUnlimited: stored.MemlockUnlimited,

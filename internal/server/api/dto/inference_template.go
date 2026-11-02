@@ -34,7 +34,8 @@ type InferenceSpecDTO struct {
 	ID                 uint              `json:"id"`
 	Source             string            `json:"source"`
 	Name               string            `json:"name"`
-	DisplayProfile     string            `json:"display_profile,omitempty"`
+	DisplayNameZHCN    string            `json:"display_name_zh_cn,omitempty"` // human-written name; the client shows the one for its locale
+	DisplayNameEN      string            `json:"display_name_en,omitempty"`
 	Scenario           string            `json:"scenario,omitempty"`
 	Engine             string            `json:"engine"`
 	Image              string            `json:"image"`
@@ -130,10 +131,9 @@ type WeightSource struct {
 }
 
 type GPUPredicate struct {
-	Vendor        string `json:"vendor"`
-	CC            string `json:"cc,omitempty"`
-	Name          string `json:"name,omitempty"`
-	DisplayTarget string `json:"display_target,omitempty"`
+	Vendor string `json:"vendor"`
+	CC     string `json:"cc,omitempty"`
+	Name   string `json:"name,omitempty"`
 }
 
 type InferenceUnsupported struct {
@@ -159,16 +159,17 @@ type InferenceTemplateIndexItem struct {
 // InferenceProfileSummary is the compact, hardware-filterable representation
 // used by the deployment wizard before a full template detail is selected.
 type InferenceProfileSummary struct {
-	Source         string       `json:"source"`
-	Name           string       `json:"name"`
-	DisplayProfile string       `json:"display_profile,omitempty"`
-	Scenario       string       `json:"scenario,omitempty"`
-	Engine         string       `json:"engine"`
-	Image          string       `json:"image,omitempty"`
-	Quantization   string       `json:"quantization,omitempty"`
-	WeightBytes    int64        `json:"weight_bytes,omitempty"`
-	WeightRepoIDs  []string     `json:"weight_repo_ids,omitempty"`
-	GPUs           GPUPredicate `json:"gpus"`
+	Source          string       `json:"source"`
+	Name            string       `json:"name"`
+	DisplayNameZHCN string       `json:"display_name_zh_cn,omitempty"`
+	DisplayNameEN   string       `json:"display_name_en,omitempty"`
+	Scenario        string       `json:"scenario,omitempty"`
+	Engine          string       `json:"engine"`
+	Image           string       `json:"image,omitempty"`
+	Quantization    string       `json:"quantization,omitempty"`
+	WeightBytes     int64        `json:"weight_bytes,omitempty"`
+	WeightRepoIDs   []string     `json:"weight_repo_ids,omitempty"`
+	GPUs            GPUPredicate `json:"gpus"`
 }
 
 type InferenceTemplateOrganizations struct {

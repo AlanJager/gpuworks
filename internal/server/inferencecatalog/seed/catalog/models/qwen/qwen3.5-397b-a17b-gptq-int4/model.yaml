@@ -85,7 +85,8 @@ input_modalities:
 - image
 specs:
 - name: int4-vllm-ppu-df333de3
-  display_profile: compatible
+  display_name_zh_cn: PPU · INT4 GPTQ · 4 卡
+  display_name_en: PPU · INT4 GPTQ · 4 GPUs
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
@@ -101,7 +102,6 @@ specs:
   gpus:
     vendor: ppu
     name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
-    display_target: ppu
   args:
   - --trust-remote-code
   - --skip-mm-profiling

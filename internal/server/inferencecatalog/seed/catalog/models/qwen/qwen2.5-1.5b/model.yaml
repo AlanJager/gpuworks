@@ -12,7 +12,8 @@ specs:
 # OpenAI-compatible chat request returned successfully after a real model
 # download; output quality is not claimed.
 - name: bf16-sglang-ascend-a3-qwen25-1p5b
-  display_profile: general
+  display_name_zh_cn: 910C (A3) · BF16 · 单卡
+  display_name_en: 910C (A3) · BF16 · 1 NPU
   scenario: balanced
   engine: sglang
   image: gpuworks/gpuworks-runner:cann9.0-a3-sglang0.5.18-r2
@@ -29,7 +30,6 @@ specs:
   gpus:
     vendor: ascend
     name: (^|[^A-Za-z0-9])910C[A-Za-z0-9]*([^A-Za-z0-9]|$)
-    display_target: ascend
   args:
   - --enable-metrics
   - --device
@@ -48,7 +48,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: bf16-vllm-ppu-8faed761
-  display_profile: general
+  display_name_zh_cn: PPU · BF16 (Qwen)
+  display_name_en: PPU · BF16 (Qwen)
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
@@ -65,7 +66,6 @@ specs:
   gpus:
     vendor: ppu
     name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
-    display_target: ppu
   args:
   - --trust-remote-code
   env: null
@@ -76,7 +76,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: bf16-vllm-nvidia-general
-  display_profile: general
+  display_name_zh_cn: Ampere 及以上 · BF16
+  display_name_en: Ampere+ · BF16
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -93,7 +94,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.0'
-    display_target: nvidia
   api:
     health_endpoint: /health
     operations:
@@ -101,7 +101,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: bf16-vllm-ppu-c3cc84e2
-  display_profile: general
+  display_name_zh_cn: PPU · BF16 (avishaynaim)
+  display_name_en: PPU · BF16 (avishaynaim)
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
@@ -115,7 +116,6 @@ specs:
   gpus:
     vendor: ppu
     name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
-    display_target: ppu
   args:
   - --trust-remote-code
   - --skip-mm-profiling

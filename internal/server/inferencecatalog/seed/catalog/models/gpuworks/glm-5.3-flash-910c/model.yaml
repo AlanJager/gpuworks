@@ -68,7 +68,8 @@ readme_zh_cn: README.zh-CN.md
 readme_en: README.en.md
 specs:
 - name: w8a8-vllm-910c-stock-graph-16npu
-  display_profile: compatible
+  display_name_zh_cn: 910C (A3) · INT8 W8A8 · 16 卡
+  display_name_en: 910C (A3) · INT8 W8A8 · 16 NPUs
   scenario: throughput
   engine: callable
   image: quay.io/ascend/vllm-ascend@sha256:4909659565f15e94ec70c3f8523d9f2ea3dd8a2a04c59b238fbe87f5eacdae36
@@ -82,7 +83,6 @@ specs:
   gpus:
     vendor: ascend
     name: (^|[^A-Za-z0-9])910C[A-Za-z0-9]*([^A-Za-z0-9]|$)
-    display_target: ascend
   shm_bytes: 137438953472
   args:
   - vllm
@@ -164,7 +164,8 @@ specs:
     && source /usr/local/Ascend/nnal/atb/set_env.sh --cxx_abi=1 && exec "$@"
   - --
 - name: w8a8-vllm-910c-stock-graph-8npu
-  display_profile: compatible
+  display_name_zh_cn: 910C (A3) · INT8 W8A8 · 8 卡
+  display_name_en: 910C (A3) · INT8 W8A8 · 8 NPUs
   scenario: balanced
   engine: callable
   image: quay.io/ascend/vllm-ascend@sha256:4909659565f15e94ec70c3f8523d9f2ea3dd8a2a04c59b238fbe87f5eacdae36
@@ -178,7 +179,6 @@ specs:
   gpus:
     vendor: ascend
     name: (^|[^A-Za-z0-9])910C[A-Za-z0-9]*([^A-Za-z0-9]|$)
-    display_target: ascend
   shm_bytes: 137438953472
   args:
   - vllm
@@ -259,7 +259,8 @@ specs:
     && source /usr/local/Ascend/nnal/atb/set_env.sh --cxx_abi=1 && exec "$@"
   - --
 - name: w8a8-vllm-910c-dflash5-16npu
-  display_profile: optimized
+  display_name_zh_cn: 910C (A3) · INT8 W8A8 · 16 卡 · 投机解码
+  display_name_en: 910C (A3) · INT8 W8A8 · 16 NPUs · Speculative
   scenario: throughput
   engine: callable
   image: quay.io/ascend/vllm-ascend@sha256:4909659565f15e94ec70c3f8523d9f2ea3dd8a2a04c59b238fbe87f5eacdae36
@@ -273,7 +274,6 @@ specs:
   gpus:
     vendor: ascend
     name: (^|[^A-Za-z0-9])910C[A-Za-z0-9]*([^A-Za-z0-9]|$)
-    display_target: ascend
   shm_bytes: 137438953472
   args:
   - ${NNODES}

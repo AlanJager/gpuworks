@@ -11,7 +11,8 @@ kv_bytes_per_token:
   sglang: 983040
 specs:
 - name: bf16-gemma-4-31b-it-sglang-nvidia-general
-  display_profile: general
+  display_name_zh_cn: Ampere 及以上 · BF16 QAT
+  display_name_en: Ampere+ · BF16 QAT
   scenario: balanced
   engine: sglang
   image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
@@ -28,7 +29,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.0'
-    display_target: nvidia
   args:
   - --enable-metrics
   - --reasoning-parser
@@ -42,7 +42,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: bf16-sglang-nvidia-general
-  display_profile: general
+  display_name_zh_cn: Ampere 及以上 · BF16
+  display_name_en: Ampere+ · BF16
   scenario: balanced
   engine: sglang
   image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
@@ -59,7 +60,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.0'
-    display_target: nvidia
   args:
   - --enable-metrics
   - --reasoning-parser
@@ -73,7 +73,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: bf16-vllm-hygon-00334fb0
-  display_profile: general
+  display_name_zh_cn: K100 / BW · BF16
+  display_name_en: K100 / BW · BF16
   scenario: balanced
   engine: vllm
   image: harbor.sourcefind.cn:5443/dcu/admin/base/custom:vllm023-ubuntu22.04-dtk26.04-py3.10-20260629-gemma4
@@ -90,7 +91,6 @@ specs:
   gpus:
     vendor: hygon
     name: (^|[^A-Za-z0-9])(?:K100(?:[_ -]?AI)?|BW[_ -]?1000|BW[_ -]?1100)([^A-Za-z0-9_-]|$)
-    display_target: hygon
   args:
   - --dtype
   - bfloat16
@@ -117,7 +117,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: bf16-vllm-nvidia-general
-  display_profile: general
+  display_name_zh_cn: Ampere 及以上 · BF16
+  display_name_en: Ampere+ · BF16
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -134,7 +135,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.0'
-    display_target: nvidia
   args:
   - --enable-auto-tool-choice
   - --tool-call-parser
@@ -150,7 +150,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: bf16-vllm-nvidia-general-speculative-draft
-  display_profile: general
+  display_name_zh_cn: Ampere 及以上 · BF16 · 投机解码
+  display_name_en: Ampere+ · BF16 · Speculative
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -167,7 +168,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.0'
-    display_target: nvidia
   args:
   - --speculative-config
   - '{"model":"/models/draft","num_speculative_tokens":4}'
@@ -213,7 +213,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: fp8-vllm-nvidia-general
-  display_profile: compatible
+  display_name_zh_cn: Hopper 及以上 · FP8
+  display_name_en: Hopper+ · FP8
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -230,7 +231,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=9.0'
-    display_target: hopper
   args:
   - --enable-auto-tool-choice
   - --tool-call-parser
@@ -246,7 +246,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: fp8-vllm-nvidia-general-speculative-draft
-  display_profile: compatible
+  display_name_zh_cn: Hopper 及以上 · FP8 · 投机解码
+  display_name_en: Hopper+ · FP8 · Speculative
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -263,7 +264,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=9.0'
-    display_target: hopper
   args:
   - --speculative-config
   - '{"model":"/models/draft","num_speculative_tokens":4}'
@@ -309,7 +309,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: int4-vllm-nvidia-general
-  display_profile: general
+  display_name_zh_cn: Ampere 及以上 · INT4
+  display_name_en: Ampere+ · INT4
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -326,7 +327,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.0'
-    display_target: nvidia
   args:
   - --enable-auto-tool-choice
   - --tool-call-parser
@@ -342,7 +342,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: int4-vllm-nvidia-general-speculative-draft
-  display_profile: general
+  display_name_zh_cn: Ampere 及以上 · INT4 · 投机解码
+  display_name_en: Ampere+ · INT4 · Speculative
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -359,7 +360,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.0'
-    display_target: nvidia
   args:
   - --speculative-config
   - '{"model":"/models/draft","num_speculative_tokens":4}'
@@ -416,7 +416,8 @@ specs:
 # Ascend hardware was available here, so these arguments are the published
 # recipe rather than a measured one.
 - name: bf16-vllm-ascend-c7a493cd
-  display_profile: general
+  display_name_zh_cn: 910B (A2) · BF16 · 4 卡
+  display_name_en: 910B (A2) · BF16 · 4 NPUs
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cann9.1-910b-vllm0.26.0rc1-r2
@@ -430,7 +431,6 @@ specs:
   gpus:
     vendor: ascend
     name: (^|[^A-Za-z0-9])910B[A-Za-z0-9]*([^A-Za-z0-9]|$)
-    display_target: ascend
   args:
   - --dtype
   - bfloat16
@@ -456,7 +456,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: bf16-vllm-ascend-a3-c7a493cd
-  display_profile: general
+  display_name_zh_cn: 910C (A3) · BF16 · 4 卡
+  display_name_en: 910C (A3) · BF16 · 4 NPUs
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cann9.1-a3-vllm0.26.0rc1-r2
@@ -470,7 +471,6 @@ specs:
   gpus:
     vendor: ascend
     name: (^|[^A-Za-z0-9])910C[A-Za-z0-9]*([^A-Za-z0-9]|$)
-    display_target: ascend
   args:
   - --dtype
   - bfloat16
@@ -500,7 +500,8 @@ specs:
 # for this model is the only one that names 950PR beside 950DT, so both are
 # claimed here. No 950 hardware was available.
 - name: mxfp4-vllm-ascend-950-fc4f81e4
-  display_profile: general
+  display_name_zh_cn: 950DT / 950PR · MXFP4 · 8 卡
+  display_name_en: 950DT / 950PR · MXFP4 · 8 NPUs
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cann9.2-950-vllm0.30.0rc2-r1
@@ -514,7 +515,6 @@ specs:
   gpus:
     vendor: ascend
     name: (^|[^A-Za-z0-9])950(?:DT|PR)([^A-Za-z0-9]|$)
-    display_target: ascend
   args:
   - --max-model-len
   - '32768'

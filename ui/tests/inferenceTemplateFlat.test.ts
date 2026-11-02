@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { chipDisplayLabel, chipKey, chipMatchesPredicate, compactModelMetadata, modelMatchesChip, predicateLabel, preferredTemplateEngine, templateModelOperations, templateSpecDisplayName } from "../src/pages/inferenceTemplateFlat.ts";
+import { chipDisplayLabel, chipKey, chipMatchesPredicate, compactModelMetadata, modelMatchesChip, predicateLabel, preferredTemplateEngine, templateModelOperations, specDisplayName } from "../src/pages/inferenceTemplateFlat.ts";
 
 test("detected GPU labels prefer a concise model and show CC only for generic devices", () => {
   assert.equal(chipDisplayLabel({ vendor: "nvidia", name: "NVIDIA GeForce RTX 2080 Ti", cc: "7.5" }), "RTX 2080 Ti");
@@ -63,14 +63,11 @@ test("detail presentation names the GPU predicate with its compute capability an
   assert.equal(predicateLabel(spec as never), "NVIDIA · CC 9.0 · \\bH100\\b");
 });
 
-test("template display names combine stable profile and target without parsing machine IDs", () => {
-  const translate = (key: string, options?: Record<string, unknown>) => {
-    const values: Record<string, string> = { "displayTarget.nvidia": "NVIDIA", "displayTarget.gb10": "GB10" };
-    if (values[key]) return values[key];
-    if (key === "displayProfile.general") return `${options?.target} general spec`;
-    if (key === "displayProfile.optimized") return `${options?.target} optimized spec`;
-    return String(options?.defaultValue || key);
-  };
-  assert.equal(templateSpecDisplayName({ name: "opaque-id", display_profile: "general", gpus: { vendor: "nvidia", display_target: "nvidia" } } as never, translate), "NVIDIA general spec");
-  assert.equal(templateSpecDisplayName({ name: "also-opaque", display_profile: "optimized", gpus: { vendor: "nvidia", display_target: "gb10", name: "unreadable-regex" } } as never, translate), "GB10 optimized spec");
+test("spec display names are the catalog's own per-locale names, never derived", () => {
+  const spec = { name: "opaque-id", display_name_zh_cn: "H20 / H200 · FP8 · 8 卡", display_name_en: "H20 / H200 · FP8 · 8 GPUs", gpus: { vendor: "nvidia", name: "unreadable-regex" } };
+  assert.equal(specDisplayName(spec, "zh"), "H20 / H200 · FP8 · 8 卡");
+  assert.equal(specDisplayName(spec, "zh-CN"), "H20 / H200 · FP8 · 8 卡");
+  assert.equal(specDisplayName(spec, "en"), "H20 / H200 · FP8 · 8 GPUs");
+  assert.equal(specDisplayName({ ...spec, display_name_en: "" }, "en"), "H20 / H200 · FP8 · 8 卡", "falls back to the other language");
+  assert.equal(specDisplayName({ name: "user-spec" }, "zh"), "user-spec", "an unnamed user spec shows its id");
 });
