@@ -251,6 +251,17 @@ def test_assistant_service_tools(page, context, server, artifacts, report, local
     from assistant_add_inventory import exercise_add_inventory
     report["add_inventory"] = exercise_add_inventory(modal, settings)
     expect(modal.get_by_text(settings["ai"]["addService"], exact=True)).to_be_visible()
+    # 1.2: a create dialog that opens has to open on the product's own defaults, not blank.
+    # The preset, its declared address and model, the empty key and the default switch are all
+    # asserted before anything is typed, so a dialog that opened empty would fail here.
+    expect(modal.locator(".ant-select-selection-item").first).to_have_text(
+        settings["ai"]["presetName"]["deepseek"])
+    expect(modal.get_by_label(settings["ai"]["name"], exact=True)).to_have_value("")
+    expect(modal.get_by_label(settings["ai"]["baseUrl"], exact=True)).to_have_value("https://api.deepseek.com")
+    expect(modal.get_by_label(settings["ai"]["model"], exact=True)).to_have_value("deepseek-v4-flash")
+    expect(modal.get_by_label(settings["ai"]["upstreamKey"], exact=True)).to_have_value("")
+    report["add_defaults"] = {"preset": "deepseek", "base_url": "https://api.deepseek.com",
+                              "model": "deepseek-v4-flash", "name_blank": True, "key_blank": True}
     # 1.5: every preset the dropdown actually offers is selected on its own and has to fill the
     # base address and model it declares. Only deepseek (the default) and custom were exercised.
     preset_expectations = [
