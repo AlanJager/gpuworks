@@ -490,7 +490,7 @@ server 在 `/install.sh` 提供的引导脚本，添加节点时界面生成 `cu
 
 | 子命令 | 说明 |
 |---|---|
-| `assemble -channel C -dist DIR -out DIR [-commit SHA] [-built-at TIME] [-release-id ID]` | 读 `DIR` 里的 `gpuworks-<id>-<os>-<arch>.tar.gz`（所有包须是同一个 release id，不读两个构建 job 各自的 `release.json`），连同本次检出内嵌的镜像目录与推理模板目录包写成新目录树，用环境变量 `GPUWORKS_DIST_SIGNING_KEY`（`-key-env` 可改）里的 ed25519 种子签名 `<C>/index.json`，并写 `<C>/latest`、`releases/<id>/SHA256SUMS` 与根目录 `manifest.json`；`-out` 已存在时拒绝 |
+| `assemble -channel C -dist DIR -out DIR [-commit SHA] [-built-at TIME] [-release-id ID]` | 读 `DIR` 里的 `gpuworks-<id>-<os>-<arch>.tar.gz`（所有包须是同一个 release id，不读两个构建 job 各自的 `release.json`），连同本次检出内嵌的镜像目录与推理模板目录包写成新目录树，用环境变量 `GPUWORKS_DIST_SIGNING_KEY`（`-key-env` 可改）里的 ed25519 种子签名 `<C>/index.json`，并写 `<C>/latest`、`<C>/manifest.json`（与镜像目录同一文件）与 `releases/<id>/SHA256SUMS`；`-out` 已存在时拒绝 |
 | `release-id -dist DIR` | 打印 `DIR` 里发布包的 release id（规则同 `assemble`） |
 | `adopt -dir DIR -release-id ID` | 核对从某个源拷回的 `releases/<id>/`：包与 `SHA256SUMS` 逐个一致、都属于 `ID`，打印包内 `INSTALL.txt` 记录的构建时间；不一致时非零退出 |
 | `verify -channel C -source URL … [-release-id ID] [-index FILE] [-full]` | 逐个源读取并验签索引，核对 release id，并对每个文件发 HEAD 核对大小；`-full` 改为下载并核对 sha256；`-index` 改用本地尚未发布的签名索引核对各源上的文件（不读源自己的索引），用于切换通道前。任一源失败即非零退出 |
@@ -501,7 +501,7 @@ server 在 `/install.sh` 提供的引导脚本，添加节点时界面生成 `cu
 
 从 gpuworks-runner 构建矩阵（`build/runner-images/matrix.yaml`）生成系统镜像目录
 manifest（schema 3）。同一份输出既是 server 内嵌的种子 `internal/server/imagecatalog/catalog-seed.json`，也随每次发布进入
-[发布通道](#gpuworks-dist)（及旧版本读取的 `https://image-manifest.gpuworks.ai/manifest.json`）。格式与导入规则见[镜像目录](image-families.md#manifest-格式)。
+[发布通道](#gpuworks-dist)。格式与导入规则见[镜像目录](image-families.md#manifest-格式)。
 
 | flag | 默认值 | 说明 |
 |---|---|---|
@@ -529,17 +529,12 @@ list，index digest 不同属正常，平台 digest 不变）。
 Docker Hub 的 manifest GET
 计入匿名拉取限额而 HEAD 不计，所以它放在最后、只做 HEAD，内容按 digest 取自其他镜像仓。
 
-三个 make target：
+两个 make target：
 
 | target | 作用 |
 |---|---|
 | `make image-manifest` | 重新生成 `internal/server/imagecatalog/catalog-seed.json`；可用 `IMAGE_MATRIX=<路径>` 换矩阵、`IMAGE_MANIFEST_DATE=<YYYY-MM-DD>` 固定日期 |
 | `make image-manifest-verify` | 对已提交的种子跑 `-verify` |
-| `make image-manifest-publish` | 运行 `scripts/publish_image_manifest.sh`，把已提交的种子发布为上游 `manifest.json`：先跑 `-verify`，不过即不发布；再用 rclone 上传到阿里云 OSS、华为云 OBS、Cloudflare R2 三个发布源的 bucket 根目录（`Cache-Control: no-cache`），最后逐个拉取四个公网地址（三个源与 `image-manifest.gpuworks.ai`），核对内容与种子逐字节一致 |
-
-`image-manifest.gpuworks.ai` 由 R2 提供，与发布通道共用同一组发布源。凭据与 `scripts/publish_dist.sh` 相同：
-从环境变量或 `secrets/dist-publish.env`（worktree 里没有时读主 checkout 的同名文件）读取 OSS、OBS、R2 的密钥；
-需要本机有 rclone（`RCLONE=<路径>` 可指定），bucket 默认 `gpuworks-dl`（`GPUWORKS_DIST_BUCKET` 可覆盖）。
 
 ### template-probe
 

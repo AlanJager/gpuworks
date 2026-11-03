@@ -39,6 +39,22 @@ git diff --check
 `check-assets` includes `check-libvgpu` and `check-perftest`; it does not validate Ascend, PPU, or partition probe assets.
 You must run `make runtime-assets-verify` separately before release, or missing or tampered assets in these three categories go undetected.
 
+## Version Numbers
+
+Releases use calendar versions `YY.M.PATCH`, tagged as `vYY.M.PATCH`, for example `v26.11.0`.
+
+- `YY.M` is the year and month the release branch is cut from master, with no zero padding on the month (`26.1.0`, not `26.01.0`). The first version of a release line has `PATCH` 0;
+  each later bug-fix-only patch version increments it by one.
+- Each release line has one branch, `release/YY.M`, cut from a chosen commit on master. Only bug fixes go onto the branch: a fix is merged into master first, then
+  applied to the release branch with `git cherry-pick -x`.
+- Create an annotated tag on the release branch and push it (`git tag -a v26.11.0 -m "GPUWorks 26.11.0"`, `git push origin v26.11.0`).
+  Only tags that match `^v[0-9]+\.[0-9]+\.[0-9]+$` create a pipeline and publish to the `release` channel; tags such as `v26.11.0-rc.1` create no pipeline.
+- `v*` must be a protected tag in GitLab: the signing private key and the distribution source credentials are protected variables, so a pipeline for an unprotected tag cannot read them and the publish job fails.
+- Once pushed, a tag is never moved or recreated: a release id maps to exactly one set of bytes (see step 1 of the publishing process below). If something is wrong, release the next patch version.
+- When a server decides whether an update exists, it compares version numbers if both sides are version tags, and otherwise (a nightly's short commit hash, a local build) compares build times
+  ([ADR 0040](../adr/0040-signed-multi-source-distribution.md)). The `release` channel follows only the newest release line: when the channel already names a higher version
+  (for example, pushing `v26.11.2` after `v26.12.0` was released), `publish_dist.sh` refuses to publish.
+
 ## Distribution Channel
 
 Server versions, the system image catalog, and the built-in inference template catalog are delivered to installed servers through the same distribution channel ([ADR 0040](../adr/0040-signed-multi-source-distribution.md)).
@@ -48,7 +64,7 @@ The three distribution sources host byte-for-byte identical directory trees:
 |---|---|---|
 | Alibaba Cloud OSS Shanghai `gpuworks-dl` | `https://gpuworks-dl.oss-cn-shanghai.aliyuncs.com` | Mainland China (default domain; no ICP filing required) |
 | Huawei Cloud OBS Shanghai 1 `gpuworks-dl` | `https://gpuworks-dl.obs.cn-east-3.myhuaweicloud.com` | Mainland China (default domain; no ICP filing required) |
-| Cloudflare R2 `gpuworks-dl` | `https://dl.gpuworks.ai` | Other regions; `image-manifest.gpuworks.ai` is also bound to this bucket |
+| Cloudflare R2 `gpuworks-dl` | `https://dl.gpuworks.ai` | Other regions |
 
 All three sources use the same directory structure. `<channel>` represents the release channel, `<release_id>` identifies a release,
 and `<sha256>` is the content digest of the corresponding catalog file:
@@ -57,22 +73,25 @@ and `<sha256>` is the content digest of the corresponding catalog file:
 |---|---|
 | `<channel>/index.json` | An ed25519 signature envelope containing the signed release index; the body lists server archives for each platform, the image catalog, and the inference template catalog package, with a path, size, and sha256 for each file |
 | `<channel>/latest` | The release id as plain text, used to locate the version for the initial download |
+| `<channel>/manifest.json` | The same file as the image catalog in the channel's index, at a fixed address for downloading by hand and uploading in offline environments |
 | `releases/<release_id>/` | Server archives and `SHA256SUMS` |
 | `catalog/images/<sha256>.json` | The image catalog identified by its content digest |
 | `catalog/templates/<sha256>.tar.gz` | The inference template catalog package identified by its content digest |
-| Root-level `manifest.json` | Read by older versions; the same file as the image catalog |
 | Root-level `get.sh` | One-line installer (source: `scripts/get.sh`): picks the fastest source, downloads the archive for the local platform, verifies it against `SHA256SUMS`, and runs `gpuworks install` |
 
-The `nightly` channel is for every master build; `release` is reserved for `v*` tags. Binaries follow the channel injected at build time (`make CHANNEL=…`, defaulting to `nightly`).
+The `nightly` channel is every master build, with the short commit hash as the release id; `release` is every version tag, with the tag as the release id (see [Version Numbers](#version-numbers)).
+Binaries follow the channel injected at build time (`make CHANNEL=…`, defaulting to `nightly`; `scripts/package_release.sh` reads `GPUWORKS_RELEASE_CHANNEL`,
+and the `release` channel accepts only release ids of the form `vYY.M.PATCH`).
 
-CI's `release-publish` runs `scripts/publish_dist.sh nightly dist` after all four build jobs on master succeed.
+CI's `release-publish` runs `scripts/publish_dist.sh <channel> dist` after all four build jobs on master or on a version tag succeed.
 It runs in a separate `publish` stage because GitLab 14.0 allows needs to reference only jobs in earlier stages.
 `make check-ci-yaml` checks this constraint. The script follows this process:
 
 1. A release id always maps to exactly one set of bytes: Files under `releases/` use long-lived immutable caching, so the CDN retains the first copy it sees. Rebuilding the same commit
    (in a new pipeline or a manual rerun) produces different package bytes because the build time is included in the package. If a source already has `releases/<id>/`, the script copies it back.
    After `gpuworks-dist adopt` verifies it against `SHA256SUMS`, the script publishes that already-published package with its build time and discards the newly built package;
-2. If any source already serves a build in the same channel with a later creation time, the pipelines have finished out of order, and this run publishes nothing;
+2. If any source already serves a build in the same channel with a later creation time, the pipelines have finished out of order, and this run publishes nothing; the `release` channel is also compared by version number,
+   and the run exits with an error when a source's `release/latest` names a higher version;
 3. `gpuworks-dist assemble` generates the directory tree from these archives and the two catalogs embedded in the current checkout, then signs the index;
 4. rclone pushes immutable files to the three sources with `--immutable`: If an object with the same name has different contents on a source, it exits with an error and never overwrites it (that source requires manual intervention; see below);
 5. Before switching, `gpuworks-dist verify -index` uses the new index to check the size of each file at all three public addresses, including the CDN. If any size differs, it stops and the channel continues to point to the previous version;
@@ -90,11 +109,11 @@ objects in `gpuworks-dl` (Alibaba Cloud RAM user and Huawei Cloud IAM user `gpuw
 and R2 account token `gpuworks-dist-ci`). These identities cannot create buckets, so both publishing scripts set `no_check_bucket` for rclone.
 
 To publish manually from a local machine, use `make dist-publish CHANNEL=nightly`,
-with credentials in `secrets/dist-publish.env`. To publish a release, run `make release-packages CHANNEL=release GPUWORKS_RELEASE_ID=v1.2.3`, then
+with credentials in `secrets/dist-publish.env`. To publish a release, run `make release-packages CHANNEL=release GPUWORKS_RELEASE_ID=v26.11.0`, then
 `make dist-publish CHANNEL=release`.
 
-Two cache rules are configured in the Cloudflare zone `gpuworks.ai` for `dl.gpuworks.ai` and `image-manifest.gpuworks.ai`: Never cache `*/index.json`, `*/latest`,
-or `/manifest.json`; never cache 404 responses (otherwise, the edge caches the 404 from the pre-publish `newer` check for the default four hours, making a new channel unreadable after its first release).
+Two cache rules are configured in the Cloudflare zone `gpuworks.ai` for `dl.gpuworks.ai`: Never cache `*/index.json`, `*/latest`,
+or `*/manifest.json`; never cache 404 responses (otherwise, the edge caches the 404 from the pre-publish `newer` check for the default four hours, making a new channel unreadable after its first release).
 Immutable files use long-lived caching according to the origin's `Cache-Control: immutable`. `/notices.json` (publisher notices; see below) and `/get.sh` must also bypass caching and must be added to the same rule.
 
 Publisher notices ([ADR 0054](../adr/0054-usage-report-and-notices.md)): Edit `build/notices/notices.json` (the unsigned body; see
@@ -140,10 +159,8 @@ Each vendor's release assets support only the declared platform combinations (PP
 
 The server runs versioned migrations at startup. Before release, verify migration markers (which record migration versions), idempotency on repeated execution, and transaction rollback.
 The built-in inference catalog is a content-addressed package, meaning it is identified by its content digest. Release builds must apply the same schema, path, and digest checks to the package. The system image catalog's
-embedded seed is generated from the gpuworks-runner build matrix by `make image-manifest` and enters the [distribution channel](#发布通道) with every release.
-`make image-manifest-publish` also publishes the same file separately to the root of all three distribution sources—OSS, OBS, and R2. R2 exposes
-`https://image-manifest.gpuworks.ai/manifest.json` for older versions to read; see the [CLI Reference](../reference/cli.md#gpuworks-image-manifest).
-Unit tests fail if the embedded seed differs from the matrix.
+embedded seed is generated from the gpuworks-runner build matrix by `make image-manifest` and enters the [distribution channel](#发布通道) with every release; see the
+[CLI Reference](../reference/cli.md#gpuworks-image-manifest). Unit tests fail if the embedded seed differs from the matrix.
 
 ## Upgrade and Rollback
 
