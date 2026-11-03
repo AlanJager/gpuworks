@@ -327,6 +327,23 @@ def exercise_storage_write_states(page, labels, data, server, report, open_dialo
         report['readonly_storage_option'] = {'label': guard_label, 'disabled': True,
                                              'note': readonly_note,
                                              'aria_disabled': option.get_attribute('aria-disabled')}
+        # 5.1: the enumeration and the four readings it asks for, all from the rendered picker.
+        preselected = dialog.locator('.ant-select-selection-item').first.inner_text()
+        # The rows are filtered by the storage names this fixture created, which do not change with the
+        # locale - filtering on the type word did, and left this empty under zh.
+        known = [target['name'], guard['name'], 'default']
+        listed = [line for line in popup.inner_text().splitlines()
+                  if any(line.startswith(name + ' \u00b7 ') for name in known)]
+        report['picker_state'] = {'preselected': preselected, 'options': listed}
+        # The default storage is the one the form starts on, taken from preferredWritable rather than from
+        # the order the API happened to return.
+        default_label = [line for line in listed if line.startswith('default ')][0]
+        strict(preselected, default_label, 'the form did not start on the default storage')
+        checked(len(listed) == 3, f'the picker did not enumerate every storage it was given: {listed}')
+        target_label = target['name'] + ' · ' + common['storageType']['local']
+        checked(target_label in listed, f'the writable storage is absent from the picker: {listed}')
+        checked(any(line.startswith(guard_label) and readonly_note in line for line in listed),
+                f'the read-only storage is not marked with its reason: {listed}')
         # Selecting it is refused. AntD keeps the list open on a disabled row instead of closing it, so
         # what is asserted is the outcome rather than the dismissal: the row is not marked selected and the
         # form's chosen storage does not become the read-only one.

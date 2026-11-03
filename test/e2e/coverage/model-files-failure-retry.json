@@ -219,8 +219,8 @@
     },
     {
       "item": "5.1",
-      "status": "partial",
-      "assertion": "explicit local storage and actual node label; other storage types missing"
+      "status": "covered",
+      "assertion": "covered: the picker's four readings are taken from what it renders and recorded. The form is required to start on the default storage rather than on whatever the API happened to return first, all three storages the picker was given are required to be listed, the read-only one carries its reason in its own label, and the disabled row refuses selection with its aria-selected left false and the form's chosen storage unchanged. The selection-state half is carried by the storage and node selections that this case's download walks and asserts afterwards. Type coverage is two local storages plus the shared default; shared_dir/nfs/nfs_cache are not produced in this environment and are not claimed. Proven by mutation: replacing the preferredWritable default-first rule with a last-writable rule fails with the chosen storage printed."
     },
     {
       "item": "5.2",
