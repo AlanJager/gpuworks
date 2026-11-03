@@ -10,6 +10,37 @@ kv_bytes_per_token:
   vllm: 57344
   sglang: 57344
 specs:
+- name: bf16-default-vllm-nvidia-a100-r4
+  display_name_zh_cn: A100 · BF16 · 32K 上下文
+  display_name_en: A100 · BF16 · 32K context
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r4
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: baidu/ERNIE-4.5-VL-28B-A3B-PT
+        revision: e3815e65c607ea211bfe21b46ab0cd264b76731c
+    - modelscope:
+        repo_id: PaddlePaddle/ERNIE-4.5-VL-28B-A3B-PT
+        revision: 101ce591a513e42e6ce75bea04bbb1663e36826d
+  weight_bytes: 58820707865
+  gpus:
+    vendor: nvidia
+    cc: '8.0'
+  args:
+  - --trust-remote-code
+  - --mm-encoder-tp-mode
+  - data
+  - --max-model-len
+  - '32768'
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
 - name: bf16-default-vllm-nvidia-general
   display_name_zh_cn: Ampere 及以上 · BF16
   display_name_en: Ampere+ · BF16

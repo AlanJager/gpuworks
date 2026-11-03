@@ -35,7 +35,7 @@ specs:
   - --mamba-cache-mode
   - align
   - --moe-backend
-  - flashinfer_cutlass
+  - auto
   - --enable-prefix-caching
   - --reasoning-parser
   - nemotron_v3
@@ -47,8 +47,6 @@ specs:
   - --enable-mamba-cache-stochastic-rounding
   - --mamba-cache-philox-rounds
   - '5'
-  env:
-    VLLM_USE_FASTOKENS: '1'
   api:
     health_endpoint: /health
     operations:

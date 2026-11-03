@@ -7,6 +7,45 @@ kv_bytes_per_token:
   vllm: 139264
   sglang: 139264
 specs:
+- name: fp8-8b-vllm-nvidia-a100
+  display_name_zh_cn: A100 · FP8 · 32K 上下文
+  display_name_en: A100 · FP8 · 32K context
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda12.9-vllm0.31.0-r2
+  weights:
+    quantization: fp8
+    sources:
+    - huggingface:
+        repo_id: mistralai/Ministral-3-8B-Instruct-2512
+        revision: 5b26027e7b19eeb4b7352e1fed3926375dd2cb4d
+    - modelscope:
+        repo_id: mistralai/Ministral-3-8B-Instruct-2512
+        revision: 10c79cef27290ae36648bdefe9c7ab728512ddc0
+  weight_bytes: 20875283973
+  gpus:
+    vendor: nvidia
+    cc: '8.0'
+  args:
+  - --trust-remote-code
+  - --tokenizer-mode
+  - mistral
+  - --config-format
+  - mistral
+  - --load-format
+  - mistral
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - mistral
+  - --enforce-eager
+  - --max-model-len
+  - '32768'
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
 - name: fp8-8b-vllm-nvidia-general
   display_name_zh_cn: Hopper 及以上 · FP8
   display_name_en: Hopper+ · FP8
