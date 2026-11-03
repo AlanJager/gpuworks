@@ -760,6 +760,12 @@ func (s *Store) ApplyImageNodeStatus(imageID, nodeID uint, st proto.ImageNodeSta
 	if st.Source != "" {
 		updates["source"] = st.Source
 	}
+	if current.State == ImageStatePulling && st.State == ImageStatePresent {
+		// Registry layer counters are partial, not the size of a saved archive.
+		// Leave archive bytes unknown for later peer copies; runtime size is
+		// measured independently by the node's inventory.
+		updates["size_bytes"], updates["transferred_bytes"] = int64(0), int64(0)
+	}
 	if st.State == ImageStatePresent || st.State == ImageStateFailed {
 		updates["transfer_id"] = ""
 		updates["rate_bps"] = int64(0)
