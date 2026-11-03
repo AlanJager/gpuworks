@@ -8,7 +8,8 @@ kv_bytes_per_token:
   sglang: 163840
 specs:
 - name: fp8-sglang-nvidia-general
-  display_profile: compatible
+  display_name_zh_cn: Hopper 及以上 · FP8
+  display_name_en: Hopper+ · FP8
   scenario: balanced
   engine: sglang
   image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
@@ -27,7 +28,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=9.0'
-    display_target: hopper
   api:
     health_endpoint: /health
     operations:

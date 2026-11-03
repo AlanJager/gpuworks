@@ -58,6 +58,16 @@ func (p *Proxy) serveTarget(w http.ResponseWriter, r *http.Request, tgt target, 
 		injected:    injected,
 	}
 	ob.pdCached, ob.pdCachedKnown = tgt.stage.prefillCached()
+	if p.recorder != nil && probe == nil {
+		if rec := p.recorder.Begin(deploymentID, id); rec != nil {
+			ob.capture = newExchangeCapture(rec, dispatched)
+			ob.capture.captureRequest(r, p.maxBodyBytes)
+			// An exchange that never reached copying (no reply at all) ends
+			// here; finish has written the end of any other.
+			defer func() { ob.capture.end(map[string]any{"status": ob.status, "outcome": "no_reply"}) }()
+			w = &captureWriter{ResponseWriter: w, capture: ob.capture}
+		}
+	}
 	ob.onFinish = func(status int, duration time.Duration, stats responseStats, outcome uxrecord.Outcome) {
 		acct.FinishResponse(deploymentID, status, duration, stats, reading.fallbacks)
 		if p.sink != nil && probe == nil {

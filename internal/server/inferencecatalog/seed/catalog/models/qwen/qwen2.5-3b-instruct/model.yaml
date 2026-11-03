@@ -8,7 +8,8 @@ kv_bytes_per_token:
   sglang: 36864
 specs:
 - name: bf16-vllm-hygon-9b612cf0
-  display_profile: general
+  display_name_zh_cn: K100 / BW · BF16
+  display_name_en: K100 / BW · BF16
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:dtk26.04-vllm0.18.1-r2
@@ -25,7 +26,6 @@ specs:
   gpus:
     vendor: hygon
     name: (^|[^A-Za-z0-9])(?:K100(?:[_ -]?AI)?|BW[_ -]?1000|BW[_ -]?1100)([^A-Za-z0-9_-]|$)
-    display_target: hygon
   args:
   - --dtype
   - auto
@@ -43,7 +43,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: int4-vllm-hygon-43a7b1cc
-  display_profile: general
+  display_name_zh_cn: K100 / BW · INT4 AWQ
+  display_name_en: K100 / BW · INT4 AWQ
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:dtk26.04-vllm0.18.1-r2
@@ -60,7 +61,6 @@ specs:
   gpus:
     vendor: hygon
     name: (^|[^A-Za-z0-9])(?:K100(?:[_ -]?AI)?|BW[_ -]?1000|BW[_ -]?1100)([^A-Za-z0-9_-]|$)
-    display_target: hygon
   args:
   - --dtype
   - auto
@@ -80,7 +80,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: int4-vllm-hygon-66a35c26
-  display_profile: general
+  display_name_zh_cn: K100 / BW · INT4 GPTQ
+  display_name_en: K100 / BW · INT4 GPTQ
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:dtk26.04-vllm0.18.1-r2
@@ -97,7 +98,6 @@ specs:
   gpus:
     vendor: hygon
     name: (^|[^A-Za-z0-9])(?:K100(?:[_ -]?AI)?|BW[_ -]?1000|BW[_ -]?1100)([^A-Za-z0-9_-]|$)
-    display_target: hygon
   args:
   - --dtype
   - auto
@@ -115,7 +115,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: bf16-vllm-nvidia-general
-  display_profile: general
+  display_name_zh_cn: Ampere 及以上 · BF16
+  display_name_en: Ampere+ · BF16
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -132,7 +133,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.0'
-    display_target: nvidia
   api:
     health_endpoint: /health
     operations:
@@ -140,7 +140,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: bf16-vllm-ppu-aa8e7253
-  display_profile: general
+  display_name_zh_cn: PPU · BF16
+  display_name_en: PPU · BF16
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
@@ -157,7 +158,6 @@ specs:
   gpus:
     vendor: ppu
     name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
-    display_target: ppu
   args:
   - --trust-remote-code
   - --skip-mm-profiling
@@ -168,7 +168,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: int4-vllm-ppu-3559b226
-  display_profile: compatible
+  display_name_zh_cn: PPU · INT4 AWQ
+  display_name_en: PPU · INT4 AWQ
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
@@ -185,7 +186,6 @@ specs:
   gpus:
     vendor: ppu
     name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
-    display_target: ppu
   args:
   - --dtype
   - auto
@@ -198,7 +198,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: int4-vllm-ppu-68c42760
-  display_profile: compatible
+  display_name_zh_cn: PPU · INT4 GPTQ
+  display_name_en: PPU · INT4 GPTQ
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
@@ -215,7 +216,6 @@ specs:
   gpus:
     vendor: ppu
     name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
-    display_target: ppu
   args:
   - --dtype
   - auto

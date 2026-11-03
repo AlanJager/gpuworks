@@ -7,7 +7,8 @@ release_date: '2026-03-09'
 model_config: {model_type: fish_qwen3_omni, num_hidden_layers: 36, hidden_size: 2560, num_attention_heads: 32, head_dim: 128}
 specs:
 - name: bf16-vllm-nvidia-general
-  display_profile: general
+  display_name_zh_cn: Ampere 及以上 · BF16
+  display_name_en: Ampere+ · BF16
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm-omni0.30.0-r3
@@ -24,7 +25,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.0'
-    display_target: nvidia
   args:
   - --omni
   api:
@@ -43,7 +43,8 @@ specs:
       - name: ref_text
         kind: text
 - name: bf16-vllm-ppu-1de9996b
-  display_profile: compatible
+  display_name_zh_cn: PPU · BF16
+  display_name_en: PPU · BF16
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
@@ -60,7 +61,6 @@ specs:
   gpus:
     vendor: ppu
     name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
-    display_target: ppu
   args:
   - --omni
   - --deploy-config

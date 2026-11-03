@@ -25,6 +25,8 @@ models/<model-id>/assets/<small-file>
 **Assets are only for lightweight files.** Images, weights, framework libraries, venvs, and shared runtimes must not be placed in assets; they must be delivered through images, weight sources, or node assets.
 
 Catalog packages are identified by a content digest. The server validates path safety and the schema (file structure and field constraints) within the package and computes its content digest. Packages with the same digest can be reused. If the cache is corrupted, it must no longer be served under the old digest.
+
+The `schema_version` in `manifest.yaml` is the package format version, currently 2 (specs gained `display_name_zh_cn` / `display_name_en`). A server reads versions up to its own and refuses newer ones; an older server that knows only 1 marks a version-2 catalog on its channel as incompatible and does not download it, because it parses `model.yaml` strictly and would fail on the new fields.
 The database stores the digest and structured records extracted from the package; file contents are stored in the package repository.
 
 ### Relationship Between model.yaml and Specs

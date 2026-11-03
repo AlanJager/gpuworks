@@ -125,6 +125,15 @@ const (
 	// checks the request's model rejects the deployment's served name. Params
 	// also carry name, the literal it passes.
 	WarningCatalogCallableServedNameFixed = "CATALOG_CALLABLE_SERVED_NAME_FIXED"
+	// WarningCatalogDisplayProfileRetired: a spec still sets the retired
+	// display_profile or gpus.display_target keys; they were ignored, and
+	// the spec should carry display_name_zh_cn / display_name_en instead.
+	WarningCatalogDisplayProfileRetired = "CATALOG_DISPLAY_PROFILE_RETIRED"
+	// WarningCatalogArgPassedThrough: a spec gives a parameter the platform
+	// dictionary owns a value the dictionary cannot read (a newer engine
+	// choice, another type). It is passed to the engine verbatim; the form
+	// and the estimate do not see it. Params also carry flag, value and key.
+	WarningCatalogArgPassedThrough = "CATALOG_ARG_PASSED_THROUGH"
 )
 
 // NewProductError constructs a structured product error while keeping empty

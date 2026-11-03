@@ -11,7 +11,8 @@ kv_bytes_per_token:
   sglang: 73728
 specs:
 - name: bf16-sglang-nvidia-general
-  display_profile: general
+  display_name_zh_cn: Ampere 及以上 · BF16
+  display_name_en: Ampere+ · BF16
   scenario: balanced
   engine: sglang
   image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
@@ -30,7 +31,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.0'
-    display_target: nvidia
   api:
     health_endpoint: /health
     operations:
@@ -38,7 +38,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: mxfp4-amd-fp8-vllm-nvidia-blackwell
-  display_profile: compatible
+  display_name_zh_cn: Blackwell · MXFP4 (AMD)
+  display_name_en: Blackwell · MXFP4 (AMD)
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -55,7 +56,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=10.0'
-    display_target: blackwell
   env:
     VLLM_USE_FLASHINFER_MOE_MXFP4_MXFP8: '1'
   args:
@@ -69,7 +69,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: mxfp4-amd-fp8-vllm-nvidia-blackwell-eagle3-draft
-  display_profile: compatible
+  display_name_zh_cn: Blackwell · MXFP4 (AMD) · 投机解码
+  display_name_en: Blackwell · MXFP4 (AMD) · Speculative
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -86,7 +87,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=10.0'
-    display_target: blackwell
   args:
   - --speculative-config
   - '{"model":"/models/draft","num_speculative_tokens":7,"method":"eagle3","draft_tensor_parallel_size":1}'
@@ -130,7 +130,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: mxfp4-amd-fp8-vllm-nvidia-general
-  display_profile: compatible
+  display_name_zh_cn: Hopper 及以上 · MXFP4 (AMD)
+  display_name_en: Hopper+ · MXFP4 (AMD)
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -147,7 +148,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=9.0'
-    display_target: hopper
   args:
   - --tool-call-parser
   - openai
@@ -159,7 +159,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: mxfp4-amd-fp8-vllm-nvidia-general-eagle3-draft
-  display_profile: compatible
+  display_name_zh_cn: Hopper 及以上 · MXFP4 (AMD) · 投机解码
+  display_name_en: Hopper+ · MXFP4 (AMD) · Speculative
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -176,7 +177,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=9.0'
-    display_target: hopper
   args:
   - --speculative-config
   - '{"model":"/models/draft","num_speculative_tokens":7,"method":"eagle3","draft_tensor_parallel_size":1}'
@@ -218,7 +218,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: mxfp4-default-vllm-nvidia-blackwell
-  display_profile: compatible
+  display_name_zh_cn: Blackwell · MXFP4 (OpenAI)
+  display_name_en: Blackwell · MXFP4 (OpenAI)
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -235,7 +236,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=10.0'
-    display_target: blackwell
   env:
     VLLM_USE_FLASHINFER_MOE_MXFP4_MXFP8: '1'
   args:
@@ -249,7 +249,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: mxfp4-default-vllm-nvidia-blackwell-eagle3-draft
-  display_profile: compatible
+  display_name_zh_cn: Blackwell · MXFP4 (OpenAI) · 投机解码
+  display_name_en: Blackwell · MXFP4 (OpenAI) · Speculative
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -266,7 +267,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=10.0'
-    display_target: blackwell
   args:
   - --speculative-config
   - '{"model":"/models/draft","num_speculative_tokens":7,"method":"eagle3","draft_tensor_parallel_size":1}'
@@ -310,7 +310,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: mxfp4-default-vllm-nvidia-general
-  display_profile: compatible
+  display_name_zh_cn: Hopper 及以上 · MXFP4 (OpenAI)
+  display_name_en: Hopper+ · MXFP4 (OpenAI)
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -327,7 +328,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=9.0'
-    display_target: hopper
   args:
   - --tool-call-parser
   - openai
@@ -339,7 +339,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: mxfp4-default-vllm-nvidia-general-eagle3-draft
-  display_profile: compatible
+  display_name_zh_cn: Hopper 及以上 · MXFP4 (OpenAI) · 投机解码
+  display_name_en: Hopper+ · MXFP4 (OpenAI) · Speculative
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -356,7 +357,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=9.0'
-    display_target: hopper
   args:
   - --speculative-config
   - '{"model":"/models/draft","num_speculative_tokens":7,"method":"eagle3","draft_tensor_parallel_size":1}'
@@ -398,7 +398,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: mxfp4-sglang-nvidia-general
-  display_profile: compatible
+  display_name_zh_cn: Hopper 及以上 · MXFP4
+  display_name_en: Hopper+ · MXFP4
   scenario: balanced
   engine: sglang
   image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
@@ -417,7 +418,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=9.0'
-    display_target: hopper
   api:
     health_endpoint: /health
     operations:
@@ -425,7 +425,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: bf16-vllm-ppu-3609e677
-  display_profile: general
+  display_name_zh_cn: PPU · BF16 · 8 卡
+  display_name_en: PPU · BF16 · 8 GPUs
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
@@ -442,7 +443,6 @@ specs:
   gpus:
     vendor: ppu
     name: '(?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)'
-    display_target: ppu
   args:
   - --trust-remote-code
   - --enable-auto-tool-choice

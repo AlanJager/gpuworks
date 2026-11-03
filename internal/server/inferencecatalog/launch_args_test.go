@@ -9,28 +9,43 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/deploy"
 )
 
-// TestPackageImportRejectsUndecodableDictionaryValue holds the import boundary
-// to the promise the launch configuration makes downstream: a value the
-// dictionary owns is a typed field, so a package that states one in a spelling
-// the dictionary cannot read is refused while its author can still fix it. The
-// same package with a readable value imports and the value survives the trip.
-func TestPackageImportRejectsUndecodableDictionaryValue(t *testing.T) {
-	_, err := LoadPackage(packageFixtureWithMaxModelLen(t, "abc"))
-	if err == nil {
-		t.Fatal("package with --max-model-len abc imported")
-	}
-	for _, want := range []string{"org/model", "bf16-balanced", "--max-model-len", "max_model_len", `"abc"`, "is not an integer"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Fatalf("error %q does not mention %q", err, want)
-		}
-	}
-
-	loaded, err := LoadPackage(packageFixtureWithMaxModelLen(t, "4096"))
+// TestPackageImportPassesAnUndecodableDictionaryValueThrough holds the
+// import boundary to what a template is for: the author's recipe reaches the
+// engine as written, whatever the platform's dictionary knows. A value the
+// dictionary cannot read imports with a warning naming the flag, and both of
+// its tokens stay in the residual argv verbatim; a readable value becomes the
+// typed field as before.
+func TestPackageImportPassesAnUndecodableDictionaryValueThrough(t *testing.T) {
+	loaded, err := LoadPackage(packageFixtureWithMaxModelLen(t, "abc"))
 	if err != nil {
-		t.Fatalf("package with --max-model-len 4096 was rejected: %v", err)
+		t.Fatalf("package with --max-model-len abc was refused: %v", err)
+	}
+	warnings := CatalogWarnings(loaded.Catalog)
+	if len(warnings) != 1 || warnings[0].Code() != "CATALOG_ARG_PASSED_THROUGH" {
+		t.Fatalf("warnings = %+v", warnings)
+	}
+	got := warnings[0].Params()
+	if got["model_id"] != "org/model" || got["spec"] != "bf16-balanced" || got["flag"] != "--max-model-len" || got["value"] != "abc" || got["key"] != "max_model_len" {
+		t.Fatalf("warning params = %v", got)
 	}
 	spec := loaded.Catalog.Models[0].Specs[0]
 	params, residual, err := deploy.ReverseArgs(spec.Engine, spec.Args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, set := params["max_model_len"]; set || strings.Join(residual, " ") != "--max-model-len abc" {
+		t.Fatalf("params=%#v residual=%#v", params, residual)
+	}
+
+	loaded, err = LoadPackage(packageFixtureWithMaxModelLen(t, "4096"))
+	if err != nil {
+		t.Fatalf("package with --max-model-len 4096 was rejected: %v", err)
+	}
+	if warnings := CatalogWarnings(loaded.Catalog); len(warnings) != 0 {
+		t.Fatalf("readable value warned: %+v", warnings)
+	}
+	spec = loaded.Catalog.Models[0].Specs[0]
+	params, residual, err = deploy.ReverseArgs(spec.Engine, spec.Args)
 	if err != nil {
 		t.Fatal(err)
 	}

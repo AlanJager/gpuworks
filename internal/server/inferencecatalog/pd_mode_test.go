@@ -12,6 +12,7 @@ func TestFlatCatalogPDModeSpec(t *testing.T) {
 	catalog := flatFixture()
 	pd := catalog.Models[0].Specs[0]
 	pd.Name, pd.PDMode, pd.Env = "bf16-vllm-nvidia-pd", " vllm-nixl ", map[string]string{"VLLM_SSM_CONV_STATE_LAYOUT": "DS"}
+	pd.DisplayNameZHCN, pd.DisplayNameEN = "Ampere 及以上 · BF16 · PD 分离", "Ampere+ · BF16 · PD disaggregated"
 	catalog.Models[0].Specs = append(catalog.Models[0].Specs, pd)
 	if err := ValidateFlatCatalog(&catalog); err != nil {
 		t.Fatal(err)

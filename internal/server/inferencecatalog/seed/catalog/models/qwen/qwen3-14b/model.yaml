@@ -8,7 +8,8 @@ kv_bytes_per_token:
   sglang: 163840
 specs:
 - name: fp8-sglang-ppu-no-piecewise-9a283b4a
-  display_profile: compatible
+  display_name_zh_cn: PPU · FP8
+  display_name_en: PPU · FP8
   scenario: balanced
   engine: sglang
   image: gpuworks/gpuworks-runner:hggc13.0-sglang0.5.13-r2
@@ -18,7 +19,7 @@ specs:
     - huggingface: {repo_id: Qwen/Qwen3-14B-FP8, revision: 9a283b4a5efbc09ce247e0ae5b02b744739e525a}
     - modelscope: {repo_id: Qwen/Qwen3-14B-FP8, revision: 67a1c54946f00f2a2061b234ce9b1b52b70566fd}
   weight_bytes: 16326253296
-  gpus: {vendor: ppu, name: '(?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)', display_target: ppu}
+  gpus: {vendor: ppu, name: '(?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)'}
   args:
   - --enable-metrics
   - --trust-remote-code
@@ -27,7 +28,8 @@ specs:
     health_endpoint: /health
     operations: [{type: openai.chat, endpoint: /v1/chat/completions, mode: stream}]
 - name: bf16-sglang-nvidia-general
-  display_profile: general
+  display_name_zh_cn: Ampere 及以上 · BF16
+  display_name_en: Ampere+ · BF16
   scenario: balanced
   engine: sglang
   image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
@@ -46,7 +48,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.0'
-    display_target: nvidia
   api:
     health_endpoint: /health
     operations:
@@ -54,7 +55,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: fp8-sglang-nvidia-general
-  display_profile: compatible
+  display_name_zh_cn: Hopper 及以上 · FP8
+  display_name_en: Hopper+ · FP8
   scenario: balanced
   engine: sglang
   image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
@@ -73,7 +75,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=9.0'
-    display_target: hopper
   api:
     health_endpoint: /health
     operations:
@@ -81,7 +82,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: int8-vllm-hygon-a9c93b02
-  display_profile: general
+  display_name_zh_cn: K100 / BW · INT8 W8A8
+  display_name_en: K100 / BW · INT8 W8A8
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:dtk26.04-vllm0.18.1-r2
@@ -95,7 +97,6 @@ specs:
   gpus:
     vendor: hygon
     name: (^|[^A-Za-z0-9])(?:K100(?:[_ -]?AI)?|BW[_ -]?1000|BW[_ -]?1100)([^A-Za-z0-9_-]|$)
-    display_target: hygon
   args:
   - --dtype
   - auto
@@ -114,37 +115,9 @@ specs:
     - type: openai.chat
       endpoint: /v1/chat/completions
       mode: stream
-- name: fp8-sglang-ppu-9a283b4a
-  display_profile: compatible
-  scenario: balanced
-  engine: sglang
-  image: gpuworks/gpuworks-runner:hggc13.0-sglang0.5.13-r2
-  weights:
-    quantization: fp8
-    sources:
-    - huggingface:
-        repo_id: Qwen/Qwen3-14B-FP8
-        revision: 9a283b4a5efbc09ce247e0ae5b02b744739e525a
-    - modelscope:
-        repo_id: Qwen/Qwen3-14B-FP8
-        revision: 67a1c54946f00f2a2061b234ce9b1b52b70566fd
-  weight_bytes: 16326253296
-  gpus:
-    vendor: ppu
-    name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
-    display_target: ppu
-  args:
-  - --enable-metrics
-  - --trust-remote-code
-  - --disable-piecewise-cuda-graph
-  api:
-    health_endpoint: /health
-    operations:
-    - type: openai.chat
-      endpoint: /v1/chat/completions
-      mode: stream
 - name: bf16-vllm-ppu-40c06982
-  display_profile: general
+  display_name_zh_cn: PPU · BF16
+  display_name_en: PPU · BF16
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
@@ -161,7 +134,6 @@ specs:
   gpus:
     vendor: ppu
     name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
-    display_target: ppu
   args:
   - --trust-remote-code
   - --skip-mm-profiling

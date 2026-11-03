@@ -22,7 +22,16 @@ import (
 	"gpuworks.ai/gpuworks/pkg/catalogasset"
 )
 
-const PackageSchemaVersion = 1
+// PackageSchemaVersion is the package format this server writes and the
+// newest it reads. 2 added spec display names (display_name_zh_cn /
+// display_name_en): a server that only knows 1 parses model.yaml strictly
+// and would fail on them, so it must see the newer version and treat the
+// package as incompatible rather than download it. Packages of 1 still read
+// here; their retired display_profile keys are ignored with a warning.
+const PackageSchemaVersion = 2
+
+// oldestPackageSchemaVersion is the oldest package format this server reads.
+const oldestPackageSchemaVersion = 1
 
 // PackageManifest describes one executable inference catalog package. Counts
 // are a checked summary, not a second model index: model identity comes only
@@ -411,7 +420,7 @@ func parsePackageManifest(data []byte) (PackageManifest, error) {
 		}
 		return PackageManifest{}, fmt.Errorf("parse inference catalog package manifest: %w", err)
 	}
-	if manifest.SchemaVersion != PackageSchemaVersion {
+	if manifest.SchemaVersion < oldestPackageSchemaVersion || manifest.SchemaVersion > PackageSchemaVersion {
 		return PackageManifest{}, fmt.Errorf("unsupported inference catalog package schema_version %d", manifest.SchemaVersion)
 	}
 	if _, err := time.Parse(time.RFC3339, strings.TrimSpace(manifest.PublishedAt)); err != nil {

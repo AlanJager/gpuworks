@@ -10,7 +10,8 @@ specs:
 # Validated 2026-10-27 on RTX 3090 with cuda13.0-vllm0.30.0-r2:
 # official example/zh.mp3 returned the expected transcript through the Audio Playground.
 - name: bf16-vllm-nvidia-general
-  display_profile: general
+  display_name_zh_cn: Ampere 及以上 · BF16
+  display_name_en: Ampere+ · BF16
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -24,7 +25,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.0'
-    display_target: nvidia
   api:
     health_endpoint: /health
     operations:

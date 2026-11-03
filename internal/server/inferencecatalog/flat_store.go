@@ -72,7 +72,7 @@ func ToFlatStoreModels(catalog FlatCatalog) ([]store.InferenceModel, error) {
 				return nil, fmt.Errorf("model %s spec %s image_sources: %w", model.ModelID, spec.Name, err)
 			}
 			row.Specs = append(row.Specs, store.InferenceSpecRow{
-				Source: source, Name: spec.Name, DisplayProfile: spec.DisplayProfile, Scenario: spec.Scenario, Engine: spec.Engine,
+				Source: source, Name: spec.Name, DisplayNameZHCN: spec.DisplayNameZHCN, DisplayNameEN: spec.DisplayNameEN, Scenario: spec.Scenario, Engine: spec.Engine,
 				Image: spec.Image, ImageSources: imageSources, Quantization: spec.Weights.Quantization, WeightBytes: spec.WeightBytes, RuntimeWeightBytes: spec.RuntimeWeightBytes,
 				WeightSources: string(weights), GPUs: string(gpus), Args: string(args),
 				Env: string(env), PreStartArgv: string(preStartArgv), PreStartScript: spec.PreStartScript,

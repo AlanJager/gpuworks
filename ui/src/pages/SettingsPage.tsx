@@ -22,6 +22,8 @@ import SecurityCard from "./settings/SecurityCard";
 import UpdatesCard from "./settings/UpdatesCard";
 import MCPCard from "./settings/MCPCard";
 import TelemetryCard from "./settings/TelemetryCard";
+import DebugSessionCard, { DIAGNOSTICS_ANCHOR } from "./settings/DebugSessionCard";
+import DiagnosticsBundleCard from "./settings/DiagnosticsBundleCard";
 import PullSettingsCard from "./settings/pull/PullSettingsCard";
 import BrandingCard, { BRANDING_ANCHOR } from "./settings/BrandingCard";
 import { TELEMETRY_ANCHOR } from "./settings/TelemetryCard";
@@ -59,6 +61,7 @@ const SETTINGS_TABS: { key: string; anchors: string[]; cards: () => ReactNode }[
   },
   { key: "integrations", anchors: [TELEMETRY_ANCHOR], cards: () => <><AICard /><TelemetryCard /></> },
   { key: "data", anchors: [DATA_RETENTION_ANCHOR], cards: () => <DataRetentionCard /> },
+  { key: "diagnostics", anchors: [DIAGNOSTICS_ANCHOR], cards: () => <><DiagnosticsBundleCard /><DebugSessionCard /></> },
 ];
 
 /** settingsTabFor returns the tab a URL fragment selects (the first by default). */

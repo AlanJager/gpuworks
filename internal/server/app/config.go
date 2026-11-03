@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"gpuworks.ai/gpuworks/internal/debuglog"
 	"gpuworks.ai/gpuworks/internal/selflog"
 	"gpuworks.ai/gpuworks/internal/server/auth"
 	"gpuworks.ai/gpuworks/internal/server/proxy"
@@ -19,6 +20,11 @@ type Config struct {
 	// SelfLog captures the server's own error-level slog records into the
 	// logstore under source=server. Nil disables that drain.
 	SelfLog *selflog.Collector
+	// DebugLog writes the server's side of a debug session (diagnostics).
+	DebugLog *debuglog.Tee
+	// LogFile is the server's log file; a diagnostics collection reads it
+	// and its rotated generations.
+	LogFile string
 
 	// Addr is one address serving every function. It is used when Listen is
 	// empty: development, tests, and a --addr override.

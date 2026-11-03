@@ -71,7 +71,8 @@ model_config:
     patch_size: 14
 specs:
 - name: fp8-sglang-nvidia-h200
-  display_profile: compatible
+  display_name_zh_cn: H20 / H200 · FP8 · 4 或 8 卡 · 投机解码
+  display_name_en: H20 / H200 · FP8 · 4 or 8 GPUs · Speculative
   scenario: balanced
   engine: sglang
   image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
@@ -85,7 +86,6 @@ specs:
   gpus:
     vendor: nvidia
     name: (^|[^A-Za-z0-9])(?:H200|H20)([^A-Za-z0-9]|$)
-    display_target: nvidia
   args:
   - --ep-size
   - ${TP_SIZE}
@@ -126,7 +126,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: fp8-sglang-nvidia-blackwell
-  display_profile: compatible
+  display_name_zh_cn: B200 / B300 · FP8 · 4 或 8 卡 · 投机解码
+  display_name_en: B200 / B300 · FP8 · 4 or 8 GPUs · Speculative
   scenario: balanced
   engine: sglang
   image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
@@ -140,7 +141,6 @@ specs:
   gpus:
     vendor: nvidia
     name: (^|[^A-Za-z0-9])(?:B200|B300)([^A-Za-z0-9]|$)
-    display_target: nvidia
   args:
   - --ep-size
   - ${TP_SIZE}
@@ -187,7 +187,8 @@ specs:
 # the upstream nightly. Only the 141 GB H20 was run on hardware; H200 shares
 # its memory size and architecture but was not.
 - name: fp8-vllm-nvidia-hopper-141g-tp8
-  display_profile: compatible
+  display_name_zh_cn: H20 / H200 141G · FP8 · 8 卡 · 1M 上下文
+  display_name_en: H20 / H200 141G · FP8 · 8 GPUs · 1M context
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -201,7 +202,6 @@ specs:
   gpus:
     vendor: nvidia
     name: (^|[^A-Za-z0-9])(?:H200|H20|H100)([^A-Za-z0-9]|$)
-    display_target: nvidia
   args:
   - --no-enable-flashinfer-autotune
   - --tool-call-parser
@@ -231,7 +231,8 @@ specs:
 # to keep the KV pool, CUDA graphs and warm-up peak inside the 0.90 budget.
 # Not run on hardware.
 - name: fp8-vllm-nvidia-hopper-80-96g-tp8
-  display_profile: compatible
+  display_name_zh_cn: H100 / H20 96G · FP8 · 8 卡 · 256K 上下文
+  display_name_en: H100 / H20 96G · FP8 · 8 GPUs · 256K context
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -245,7 +246,6 @@ specs:
   gpus:
     vendor: nvidia
     name: (^|[^A-Za-z0-9])(?:H200|H20|H100)([^A-Za-z0-9]|$)
-    display_target: nvidia
   args:
   - --no-enable-flashinfer-autotune
   - --tool-call-parser
@@ -273,7 +273,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: fp8-vllm-amd-mi355x-tp4
-  display_profile: compatible
+  display_name_zh_cn: MI355X · FP8 · 4 卡
+  display_name_en: MI355X · FP8 · 4 GPUs
   scenario: balanced
   engine: vllm
   image: vllm/vllm-openai-rocm:nightly-rocm100
@@ -287,7 +288,6 @@ specs:
   gpus:
     vendor: amd
     name: (^|[^A-Za-z0-9])(?:MI355X)([^A-Za-z0-9]|$)
-    display_target: amd
   args:
   - --max-num-seqs
   - '512'
@@ -315,15 +315,20 @@ specs:
     - type: openai.chat
       endpoint: /v1/chat/completions
       mode: stream
-- name: int8-vllm-ascend-a3-tp16
-  display_profile: compatible
-  scenario: balanced
+# Ascend 910C recipes tuned on hardware on 2026-10-25: decode graph, W8A8
+# weights with an INT8 KV cache, 128K context, pinned official vLLM Ascend
+# image whose Ascend environment the entrypoint sources before vllm serve.
+# The DFlash spec installs the checked source overlay from
+# assets/runtime.tar.gz before start. The model README's 910C section has
+# the topologies and measurements.
+- name: w8a8-vllm-910c-stock-graph-16npu
+  display_name_zh_cn: 910C (A3) · INT8 W8A8 · 8 卡（16 NPU）
+  display_name_en: 910C (A3) · INT8 W8A8 · 8 cards (16 NPUs)
+  scenario: throughput
   engine: vllm
-  image: gpuworks/gpuworks-runner:cann9.2-a3-vllm0.30.0rc2-r1
-  image_sources:
-  - quay.nju.edu.cn/ascend/vllm-ascend:v0.30.0rc2-a3
+  image: quay.io/ascend/vllm-ascend@sha256:4909659565f15e94ec70c3f8523d9f2ea3dd8a2a04c59b238fbe87f5eacdae36
   weights:
-    quantization: int8
+    quantization: w8a8
     sources:
     - modelscope:
         repo_id: Eco-Tech/GLM-5.3-Flash-w8a8
@@ -331,58 +336,275 @@ specs:
   weight_bytes: 331764803315
   gpus:
     vendor: ascend
-    name: (^|[^A-Za-z0-9])910C([^A-Za-z0-9]|$)
-    display_target: ascend
+    name: (^|[^A-Za-z0-9])910C[A-Za-z0-9]*([^A-Za-z0-9]|$)
   args:
-  - --trust-remote-code
-  - --enforce-eager
-  - --quantization
-  - ascend
-  - --data-parallel-size
-  - '1'
+  - --tensor-parallel-size
+  - '2'
   - --enable-expert-parallel
   - --seed
   - '1024'
   - --safetensors-load-strategy
   - prefetch
-  - --max-num-seqs
-  - '32'
   - --max-model-len
-  - '1048576'
+  - '139264'
+  - --max-num-seqs
+  - '4'
+  - --enable-prompt-tokens-details
   - --max-num-batched-tokens
-  - '8192'
+  - '2048'
+  - --trust-remote-code
+  - --quantization
+  - ascend
   - --kv-cache-dtype
   - int8
   - --limit-mm-per-prompt
   - '{"image":1,"video":0}'
   - --gpu-memory-utilization
-  - '0.92'
+  - '0.88'
+  - --compilation-config
+  - '{"cudagraph_mode":"FULL_DECODE_ONLY","cudagraph_capture_sizes":[2,4]}'
   - --additional-config
-  - '{"multistream_overlap_shared_expert":true}'
-  - --api-server-count
-  - '1'
-  # vLLM-Ascend #8679 leaves the NPU device context unbound around runner
-  # initialization, and worker ranks can enter the upstream and Ascend group
-  # phases in different orders. Patch both release-image layouts idempotently.
+  - '{"enable_prefill_mc2":true,"enable_fused_mc2":1,"enable_shared_expert_dp":true,"enable_flashcomm1":true,"enable_dsa_cp":false,"ascend_compilation_config":{"fuse_qknorm_rope":false}}'
+  - --language-model-only
+  - --data-parallel-size
+  - '8'
+  - --data-parallel-size-local
+  - '8'
+  - --long-prefill-token-threshold
+  - '512'
   env:
     VLLM_USE_V2_MODEL_RUNNER: '0'
-    PYTORCH_NPU_ALLOC_CONF: expandable_segments:True
     HCCL_OP_EXPANSION_MODE: AIV
     HCCL_BUFFSIZE: '1024'
+    PYTORCH_NPU_ALLOC_CONF: expandable_segments:True
+    OMP_NUM_THREADS: '1'
+    HF_HUB_OFFLINE: '1'
+    TRANSFORMERS_OFFLINE: '1'
+  entrypoint:
+  - /bin/bash
+  - -c
+  - source /usr/local/Ascend/ascend-toolkit/set_env.sh && source /usr/local/Ascend/cann-9.2.0/share/info/ascendnpu-ir/bin/set_env.sh && source /usr/local/Ascend/nnal/atb/set_env.sh --cxx_abi=1 && exec vllm serve "$@"
+  - --
   placement:
     language: starlark
-    resolver: |
-      def resolve(gpu):
-          if gpu.count != 16:
-              return reject("the A3 recipe requires exactly 16 logical devices")
-          if gpu.min_memory_gib < 64:
-              return reject("each device requires at least 64 GiB")
-          return {"GPU_COUNT": gpu.count, "TP_SIZE": 16, "SP_DEGREE": 1}
+    resolver: "def resolve(gpu):\n    if gpu.count != 16:\n        return reject(\"requires exactly 16 logical 910C devices on one node\")\n    if gpu.min_memory_gib < 64:\n        return reject(\"requires at least 64 GiB per logical device\")\n    return accept(gpu_memory_mib_per_device=57672, prefer=80, variables={\"GPU_COUNT\": 16, \"TP_SIZE\": 2, \"SP_DEGREE\": 1})\n"
+  components:
+  - name: primary
+    role: primary
+    weights:
+      quantization: w8a8
+      sources:
+      - modelscope:
+          repo_id: Eco-Tech/GLM-5.3-Flash-w8a8
+          revision: fce3173cef79062469745b520c6742883e60a166
+    weight_bytes: 331764803315
+    mount_path: /model
   api:
     health_endpoint: /health
     operations:
     - type: openai.chat
       endpoint: /v1/chat/completions
       mode: stream
+    metrics:
+      endpoint: /metrics
+      inherit: vllm
+  shm_bytes: 137438953472
+- name: w8a8-vllm-910c-stock-graph-8npu
+  display_name_zh_cn: 910C (A3) · INT8 W8A8 · 4 卡（8 NPU）
+  display_name_en: 910C (A3) · INT8 W8A8 · 4 cards (8 NPUs)
+  scenario: balanced
+  engine: vllm
+  image: quay.io/ascend/vllm-ascend@sha256:4909659565f15e94ec70c3f8523d9f2ea3dd8a2a04c59b238fbe87f5eacdae36
+  weights:
+    quantization: w8a8
+    sources:
+    - modelscope:
+        repo_id: Eco-Tech/GLM-5.3-Flash-w8a8
+        revision: fce3173cef79062469745b520c6742883e60a166
+  weight_bytes: 331764803315
+  gpus:
+    vendor: ascend
+    name: (^|[^A-Za-z0-9])910C[A-Za-z0-9]*([^A-Za-z0-9]|$)
+  args:
+  - --tensor-parallel-size
+  - '4'
+  - --enable-expert-parallel
+  - --seed
+  - '1024'
+  - --safetensors-load-strategy
+  - prefetch
+  - --max-model-len
+  - '139264'
+  - --max-num-seqs
+  - '4'
+  - --enable-prompt-tokens-details
+  - --max-num-batched-tokens
+  - '2048'
+  - --trust-remote-code
+  - --quantization
+  - ascend
+  - --kv-cache-dtype
+  - int8
+  - --limit-mm-per-prompt
+  - '{"image":1,"video":0}'
+  - --gpu-memory-utilization
+  - '0.88'
+  - --compilation-config
+  - '{"cudagraph_mode":"FULL_DECODE_ONLY","cudagraph_capture_sizes":[4]}'
+  - --additional-config
+  - '{"enable_prefill_mc2":true,"enable_fused_mc2":1,"enable_shared_expert_dp":true,"enable_flashcomm1":true,"enable_dsa_cp":false,"ascend_compilation_config":{"fuse_qknorm_rope":false}}'
+  - --language-model-only
+  - --data-parallel-size
+  - '2'
+  - --data-parallel-size-local
+  - '2'
+  - --long-prefill-token-threshold
+  - '512'
+  env:
+    VLLM_USE_V2_MODEL_RUNNER: '0'
+    HCCL_OP_EXPANSION_MODE: AIV
+    HCCL_BUFFSIZE: '1024'
+    PYTORCH_NPU_ALLOC_CONF: expandable_segments:True
+    OMP_NUM_THREADS: '1'
+    HF_HUB_OFFLINE: '1'
+    TRANSFORMERS_OFFLINE: '1'
+  entrypoint:
+  - /bin/bash
+  - -c
+  - source /usr/local/Ascend/ascend-toolkit/set_env.sh && source /usr/local/Ascend/cann-9.2.0/share/info/ascendnpu-ir/bin/set_env.sh && source /usr/local/Ascend/nnal/atb/set_env.sh --cxx_abi=1 && exec vllm serve "$@"
+  - --
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    if gpu.count != 8:\n        return reject(\"requires exactly 8 logical 910C devices on one node\")\n    if gpu.min_memory_gib < 64:\n        return reject(\"requires at least 64 GiB per logical device\")\n    return accept(gpu_memory_mib_per_device=57672, variables={\"GPU_COUNT\": 8, \"TP_SIZE\": 4, \"SP_DEGREE\": 1})\n"
+  components:
+  - name: primary
+    role: primary
+    weights:
+      quantization: w8a8
+      sources:
+      - modelscope:
+          repo_id: Eco-Tech/GLM-5.3-Flash-w8a8
+          revision: fce3173cef79062469745b520c6742883e60a166
+    weight_bytes: 331764803315
+    mount_path: /model
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+    metrics:
+      endpoint: /metrics
+      inherit: vllm
+  shm_bytes: 137438953472
+- name: w8a8-vllm-910c-dflash5-16npu
+  display_name_zh_cn: 910C (A3) · INT8 W8A8 · 8 卡（16 NPU） · DFlash 投机解码
+  display_name_en: 910C (A3) · INT8 W8A8 · 8 cards (16 NPUs) · DFlash speculative
+  scenario: throughput
+  engine: vllm
+  image: quay.io/ascend/vllm-ascend@sha256:4909659565f15e94ec70c3f8523d9f2ea3dd8a2a04c59b238fbe87f5eacdae36
+  weights:
+    quantization: w8a8
+    sources:
+    - modelscope:
+        repo_id: Eco-Tech/GLM-5.3-Flash-w8a8
+        revision: fce3173cef79062469745b520c6742883e60a166
+  weight_bytes: 331764803315
+  gpus:
+    vendor: ascend
+    name: (^|[^A-Za-z0-9])910C[A-Za-z0-9]*([^A-Za-z0-9]|$)
+  args:
+  - --tensor-parallel-size
+  - '2'
+  - --enable-expert-parallel
+  - --seed
+  - '1024'
+  - --safetensors-load-strategy
+  - prefetch
+  - --max-model-len
+  - '139264'
+  - --max-num-seqs
+  - '4'
+  - --enable-prompt-tokens-details
+  - --max-num-batched-tokens
+  - '2048'
+  - --trust-remote-code
+  - --quantization
+  - ascend
+  - --kv-cache-dtype
+  - int8
+  - --limit-mm-per-prompt
+  - '{"image":1,"video":0}'
+  - --gpu-memory-utilization
+  - '0.88'
+  - --compilation-config
+  - '{"cudagraph_mode":"FULL_DECODE_ONLY","cudagraph_capture_sizes":[6,12,24]}'
+  - --additional-config
+  - '{"enable_prefill_mc2":true,"enable_fused_mc2":1,"enable_shared_expert_dp":true,"enable_flashcomm1":true,"enable_dsa_cp":true,"draft_window_size":4096,"ascend_compilation_config":{"fuse_qknorm_rope":false}}'
+  - --language-model-only
+  - --data-parallel-size
+  - '8'
+  - --data-parallel-size-local
+  - '8'
+  - --long-prefill-token-threshold
+  - '512'
+  - --speculative-config
+  - '{"method":"dflash","model":"/draft","num_speculative_tokens":5,"enforce_eager":false,"kv_cache_dtype":"auto"}'
+  env:
+    VLLM_USE_V2_MODEL_RUNNER: '0'
+    HCCL_OP_EXPANSION_MODE: AIV
+    HCCL_BUFFSIZE: '1024'
+    PYTORCH_NPU_ALLOC_CONF: expandable_segments:True
+    OMP_NUM_THREADS: '1'
+    HF_HUB_OFFLINE: '1'
+    TRANSFORMERS_OFFLINE: '1'
+  entrypoint:
+  - /bin/bash
+  - -c
+  - source /usr/local/Ascend/ascend-toolkit/set_env.sh && source /usr/local/Ascend/cann-9.2.0/share/info/ascendnpu-ir/bin/set_env.sh && source /usr/local/Ascend/nnal/atb/set_env.sh --cxx_abi=1 && exec vllm serve "$@"
+  - --
+  pre_start_argv:
+  - python
+  - /opt/gpuworks/glm53-910c/install.py
+  assets:
+  - file: assets/runtime.tar.gz
+    sha256: c4a24740774bb86dac9ef3ad0921718e0d4cf3bf875971a44a8fe0dfa20d9cb4
+    size_bytes: 179489
+    unpack_to: /opt/gpuworks/glm53-910c
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    if gpu.count != 16:\n        return reject(\"requires exactly 16 logical 910C devices on one node\")\n    if gpu.min_memory_gib < 64:\n        return reject(\"requires at least 64 GiB per logical device\")\n    return accept(gpu_memory_mib_per_device=57672, prefer=100, variables={\"GPU_COUNT\": 16, \"TP_SIZE\": 2, \"SP_DEGREE\": 1})\n"
+  components:
+  - name: primary
+    role: primary
+    weights:
+      quantization: w8a8
+      sources:
+      - modelscope:
+          repo_id: Eco-Tech/GLM-5.3-Flash-w8a8
+          revision: fce3173cef79062469745b520c6742883e60a166
+    weight_bytes: 331764803315
+    mount_path: /model
+  - name: modal-dflash
+    role: speculative_draft
+    model_id: modal-labs/glm-5.3-flash-dflash
+    weights:
+      quantization: bf16
+      sources:
+      - huggingface:
+          repo_id: modal-labs/GLM-5.3-Flash-DFlash
+          revision: dae6d319510889a7f1ac5242d5b7fb2d5d95eb05
+    weight_bytes: 2778465789
+    mount_path: /draft
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+    metrics:
+      endpoint: /metrics
+      inherit: vllm
+  shm_bytes: 137438953472
 readme_zh_cn: README.zh-CN.md
 readme_en: README.en.md

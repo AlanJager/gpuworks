@@ -11,7 +11,8 @@ kv_bytes_per_token:
   sglang: 70272
 specs:
 - name: int4-sglang-nvidia-general
-  display_profile: general
+  display_name_zh_cn: Ampere 及以上 · INT4
+  display_name_en: Ampere+ · INT4
   scenario: balanced
   engine: sglang
   image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
@@ -28,7 +29,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.0'
-    display_target: nvidia
   args:
   - --enable-metrics
   - --trust-remote-code
@@ -42,46 +42,9 @@ specs:
     - type: openai.chat
       endpoint: /v1/chat/completions
       mode: stream
-- name: int4-vllm-nvidia-blackwell
-  display_profile: compatible
-  scenario: throughput
-  engine: vllm
-  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
-  weights:
-    quantization: int4
-    sources:
-    - huggingface:
-        repo_id: moonshotai/Kimi-K2.6
-        revision: 7eb5002f6aadc958aed6a9177b7ed26bb94011bb
-    - modelscope:
-        repo_id: moonshotai/Kimi-K2.6
-        revision: ff9691dc2f9318ab228dc873a3f08922ea5afa38
-  weight_bytes: 595204999341
-  gpus:
-    vendor: nvidia
-    cc: '>=10.0'
-    display_target: blackwell
-  args:
-  - --trust-remote-code
-  - --attention-config
-  - '{"use_prefill_query_quantization":true}'
-  - --tool-call-parser
-  - kimi_k2
-  - --enable-auto-tool-choice
-  - --reasoning-parser
-  - kimi_k2
-  - --speculative-config
-  - '{"model":"lightseekorg/kimi-k2.6-eagle3-mla","method":"eagle3","num_speculative_tokens":3}'
-  - --mm-encoder-tp-mode
-  - data
-  api:
-    health_endpoint: /health
-    operations:
-    - type: openai.chat
-      endpoint: /v1/chat/completions
-      mode: stream
 - name: int4-vllm-nvidia-blackwell-eagle3-draft
-  display_profile: compatible
+  display_name_zh_cn: Blackwell · INT4 · 投机解码
+  display_name_en: Blackwell · INT4 · Speculative
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -98,7 +61,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=10.0'
-    display_target: blackwell
   args:
   - --trust-remote-code
   - --attention-config
@@ -140,42 +102,6 @@ specs:
           revision: d8b0b95529e8177e7e9c98fddc7c24fc6b1db453
     weight_bytes: 6031216353
     mount_path: /models/draft
-  api:
-    health_endpoint: /health
-    operations:
-    - type: openai.chat
-      endpoint: /v1/chat/completions
-      mode: stream
-- name: int4-vllm-nvidia-general
-  display_profile: general
-  scenario: balanced
-  engine: vllm
-  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
-  weights:
-    quantization: int4
-    sources:
-    - huggingface:
-        repo_id: moonshotai/Kimi-K2.6
-        revision: 7eb5002f6aadc958aed6a9177b7ed26bb94011bb
-    - modelscope:
-        repo_id: moonshotai/Kimi-K2.6
-        revision: ff9691dc2f9318ab228dc873a3f08922ea5afa38
-  weight_bytes: 595204999341
-  gpus:
-    vendor: nvidia
-    cc: '>=8.0'
-    display_target: nvidia
-  args:
-  - --trust-remote-code
-  - --tool-call-parser
-  - kimi_k2
-  - --enable-auto-tool-choice
-  - --reasoning-parser
-  - kimi_k2
-  - --speculative-config
-  - '{"model":"lightseekorg/kimi-k2.6-eagle3-mla","method":"eagle3","num_speculative_tokens":3}'
-  - --mm-encoder-tp-mode
-  - data
   api:
     health_endpoint: /health
     operations:
@@ -183,7 +109,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: int4-vllm-nvidia-general-eagle3-draft
-  display_profile: general
+  display_name_zh_cn: Ampere 及以上 · INT4 · 投机解码
+  display_name_en: Ampere+ · INT4 · Speculative
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -200,7 +127,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.0'
-    display_target: nvidia
   args:
   - --trust-remote-code
   - --tool-call-parser
@@ -246,154 +172,9 @@ specs:
     - type: openai.chat
       endpoint: /v1/chat/completions
       mode: stream
-- name: nvfp4-vllm-nvidia-blackwell
-  display_profile: compatible
-  scenario: throughput
-  engine: vllm
-  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
-  weights:
-    quantization: nvfp4
-    sources:
-    - huggingface:
-        repo_id: nvidia/Kimi-K2.6-NVFP4
-        revision: 2fd3a800dedd098b8327eb49e93ebc75f85da19f
-    - modelscope:
-        repo_id: nv-community/Kimi-K2.6-NVFP4
-        revision: 25528f32c6dfd9fe4f6a86f20f84e3a8ae8012cd
-  weight_bytes: 595219158578
-  gpus:
-    vendor: nvidia
-    cc: '>=10.0'
-    display_target: blackwell
-  args:
-  - --trust-remote-code
-  - --attention-config
-  - '{"use_prefill_query_quantization":true}'
-  - --tool-call-parser
-  - kimi_k2
-  - --enable-auto-tool-choice
-  - --reasoning-parser
-  - kimi_k2
-  - --speculative-config
-  - '{"model":"lightseekorg/kimi-k2.6-eagle3-mla","method":"eagle3","num_speculative_tokens":3}'
-  - --mm-encoder-tp-mode
-  - data
-  env:
-    VLLM_USE_FLASHINFER_MOE_FP4: '1'
-  api:
-    health_endpoint: /health
-    operations:
-    - type: openai.chat
-      endpoint: /v1/chat/completions
-      mode: stream
-- name: nvfp4-vllm-nvidia-blackwell-eagle3-draft
-  display_profile: compatible
-  scenario: throughput
-  engine: vllm
-  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
-  weights:
-    quantization: nvfp4
-    sources:
-    - huggingface:
-        repo_id: nvidia/Kimi-K2.6-NVFP4
-        revision: 2fd3a800dedd098b8327eb49e93ebc75f85da19f
-    - modelscope:
-        repo_id: nv-community/Kimi-K2.6-NVFP4
-        revision: 25528f32c6dfd9fe4f6a86f20f84e3a8ae8012cd
-  weight_bytes: 595219158578
-  gpus:
-    vendor: nvidia
-    cc: '>=10.0'
-    display_target: blackwell
-  args:
-  - --trust-remote-code
-  - --attention-config
-  - '{"use_prefill_query_quantization":true}'
-  - --tool-call-parser
-  - kimi_k2
-  - --enable-auto-tool-choice
-  - --reasoning-parser
-  - kimi_k2
-  - --speculative-config
-  - '{"model":"/models/draft","method":"eagle3","num_speculative_tokens":3}'
-  - --mm-encoder-tp-mode
-  - data
-  env:
-    VLLM_USE_FLASHINFER_MOE_FP4: '1'
-  components:
-  - name: target
-    role: primary
-    weights:
-      quantization: nvfp4
-      sources:
-      - huggingface:
-          repo_id: nvidia/Kimi-K2.6-NVFP4
-          revision: 2fd3a800dedd098b8327eb49e93ebc75f85da19f
-      - modelscope:
-          repo_id: nv-community/Kimi-K2.6-NVFP4
-          revision: 25528f32c6dfd9fe4f6a86f20f84e3a8ae8012cd
-    weight_bytes: 595219158578
-    mount_path: /models/target
-  - name: draft
-    role: speculative_draft
-    model_id: lightseekorg/kimi-k2.6-eagle3-mla
-    weights:
-      quantization: bf16
-      sources:
-      - huggingface:
-          repo_id: lightseekorg/kimi-k2.6-eagle3-mla
-          revision: d49b3f0329cc0dfc4d09c66e6c51266e1674ef02
-      - modelscope:
-          repo_id: lightseekorg/kimi-k2.6-eagle3-mla
-          revision: d8b0b95529e8177e7e9c98fddc7c24fc6b1db453
-    weight_bytes: 6031216353
-    mount_path: /models/draft
-  api:
-    health_endpoint: /health
-    operations:
-    - type: openai.chat
-      endpoint: /v1/chat/completions
-      mode: stream
-- name: nvfp4-vllm-nvidia-cc100
-  display_profile: compatible
-  scenario: throughput
-  engine: vllm
-  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
-  weights:
-    quantization: nvfp4
-    sources:
-    - huggingface:
-        repo_id: nvidia/Kimi-K2.6-NVFP4
-        revision: 2fd3a800dedd098b8327eb49e93ebc75f85da19f
-    - modelscope:
-        repo_id: nv-community/Kimi-K2.6-NVFP4
-        revision: 25528f32c6dfd9fe4f6a86f20f84e3a8ae8012cd
-  weight_bytes: 595219158578
-  gpus:
-    vendor: nvidia
-    cc: '>=10.0'
-    display_target: blackwell
-  args:
-  - --trust-remote-code
-  - --tool-call-parser
-  - kimi_k2
-  - --enable-auto-tool-choice
-  - --reasoning-parser
-  - kimi_k2
-  - --speculative-config
-  - '{"model":"lightseekorg/kimi-k2.6-eagle3-mla","method":"eagle3","num_speculative_tokens":3}'
-  - --mm-encoder-tp-mode
-  - data
-  env:
-    VLLM_USE_FLASHINFER_MOE_FP4: '1'
-  api:
-    health_endpoint: /health
-    operations:
-    - type: openai.chat
-      endpoint: /v1/chat/completions
-      mode: stream
 - name: nvfp4-vllm-nvidia-cc100-eagle3-draft
-  display_profile: compatible
+  display_name_zh_cn: Blackwell · NVFP4 · 投机解码
+  display_name_en: Blackwell · NVFP4 · Speculative
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -410,7 +191,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=10.0'
-    display_target: blackwell
   args:
   - --trust-remote-code
   - --tool-call-parser
@@ -470,7 +250,8 @@ specs:
 # multi-node decode role, not to this one. No Ascend hardware was available, so
 # these arguments are the published recipe rather than a measured one.
 - name: w4a8-vllm-ascend-a3-2de1ec2b
-  display_profile: general
+  display_name_zh_cn: 910C (A3) · INT4 W4A8 · 8 卡（16 NPU） · 投机解码
+  display_name_en: 910C (A3) · INT4 W4A8 · 8 cards (16 NPUs) · Speculative
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cann9.1-a3-vllm0.26.0rc1-r2
@@ -484,7 +265,6 @@ specs:
   gpus:
     vendor: ascend
     name: (^|[^A-Za-z0-9])910C[A-Za-z0-9]*([^A-Za-z0-9]|$)
-    display_target: ascend
   args:
   - --quantization
   - ascend

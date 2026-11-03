@@ -11,7 +11,8 @@ kv_bytes_per_token:
   sglang: 245760
 specs:
 - name: bf16-gemma-4-26b-a4b-it-sglang-nvidia-general
-  display_profile: general
+  display_name_zh_cn: Ampere 及以上 · BF16 QAT
+  display_name_en: Ampere+ · BF16 QAT
   scenario: balanced
   engine: sglang
   image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
@@ -28,7 +29,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.0'
-    display_target: nvidia
   args:
   - --enable-metrics
   - --reasoning-parser
@@ -42,7 +42,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: bf16-sglang-nvidia-general
-  display_profile: general
+  display_name_zh_cn: Ampere 及以上 · BF16
+  display_name_en: Ampere+ · BF16
   scenario: balanced
   engine: sglang
   image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
@@ -59,7 +60,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.0'
-    display_target: nvidia
   args:
   - --enable-metrics
   - --reasoning-parser
@@ -72,212 +72,21 @@ specs:
     - type: openai.chat
       endpoint: /v1/chat/completions
       mode: stream
-- name: bf16-vllm-nvidia-dgx-spark-gb10
-  display_profile: optimized
-  scenario: throughput
-  engine: vllm
-  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
-  weights:
-    quantization: bf16
-    sources:
-    - huggingface:
-        repo_id: google/gemma-4-26B-A4B-it
-        revision: 4d7ae4984b7db7de8f8457170b3f1a419ee76d52
-    - modelscope:
-        repo_id: google/gemma-4-26B-A4B-it
-        revision: d8ff96c27eee2faa7bb19430d2331a534535c73f
-  weight_bytes: 51644340088
-  gpus:
-    vendor: nvidia
-    cc: '>=10.0'
-    name: (?:DGX[ _-]?Spark|GB10)
-    display_target: gb10
-  env:
-    VLLM_USE_V2_MODEL_RUNNER: '1'
-  args:
-  - --enable-auto-tool-choice
-  - --tool-call-parser
-  - gemma4
-  - --chat-template
-  - examples/tool_chat_template_gemma4.jinja
-  - --reasoning-parser
-  - gemma4
-  api:
-    health_endpoint: /health
-    operations:
-    - type: openai.chat
-      endpoint: /v1/chat/completions
-      mode: stream
-- name: bf16-vllm-nvidia-dgx-spark-gb10-speculative-draft
-  display_profile: optimized
-  scenario: throughput
-  engine: vllm
-  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
-  weights:
-    quantization: bf16
-    sources:
-    - huggingface:
-        repo_id: google/gemma-4-26B-A4B-it
-        revision: 4d7ae4984b7db7de8f8457170b3f1a419ee76d52
-    - modelscope:
-        repo_id: google/gemma-4-26B-A4B-it
-        revision: d8ff96c27eee2faa7bb19430d2331a534535c73f
-  weight_bytes: 51644340088
-  gpus:
-    vendor: nvidia
-    cc: '>=10.0'
-    name: (?:DGX[ _-]?Spark|GB10)
-    display_target: gb10
-  args:
-  - --speculative-config
-  - '{"model":"/models/draft","num_speculative_tokens":4}'
-  - --enable-auto-tool-choice
-  - --tool-call-parser
-  - gemma4
-  - --chat-template
-  - examples/tool_chat_template_gemma4.jinja
-  - --reasoning-parser
-  - gemma4
-  env:
-    VLLM_USE_V2_MODEL_RUNNER: '1'
-  components:
-  - name: target
-    role: primary
-    weights:
-      quantization: bf16
-      sources:
-      - huggingface:
-          repo_id: google/gemma-4-26B-A4B-it
-          revision: 4d7ae4984b7db7de8f8457170b3f1a419ee76d52
-      - modelscope:
-          repo_id: google/gemma-4-26B-A4B-it
-          revision: d8ff96c27eee2faa7bb19430d2331a534535c73f
-    weight_bytes: 51644340088
-    mount_path: /models/target
-  - name: draft
-    role: speculative_draft
-    model_id: google/gemma-4-26b-a4b-it-assistant
-    weights:
-      quantization: bf16
-      sources:
-      - huggingface:
-          repo_id: google/gemma-4-26B-A4B-it-assistant
-          revision: 6e5aaaf4c42b98394530b8fda2e95cadd65c151c
-      - modelscope:
-          repo_id: google/gemma-4-26B-A4B-it-assistant
-          revision: 2941bb3091576c1c00c03ccbe0121a611c6062a1
-    weight_bytes: 871632094
-    mount_path: /models/draft
-  api:
-    health_endpoint: /health
-    operations:
-    - type: openai.chat
-      endpoint: /v1/chat/completions
-      mode: stream
-- name: bf16-vllm-nvidia-dgx-station-gb300
-  display_profile: compatible
-  scenario: throughput
-  engine: vllm
-  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
-  weights:
-    quantization: bf16
-    sources:
-    - huggingface:
-        repo_id: google/gemma-4-26B-A4B-it
-        revision: 4d7ae4984b7db7de8f8457170b3f1a419ee76d52
-    - modelscope:
-        repo_id: google/gemma-4-26B-A4B-it
-        revision: d8ff96c27eee2faa7bb19430d2331a534535c73f
-  weight_bytes: 51644340088
-  gpus:
-    vendor: nvidia
-    cc: '>=10.0'
-    name: (?:DGX[ _-]?Station|GB300)
-    display_target: gb300
-  env:
-    VLLM_USE_V2_MODEL_RUNNER: '1'
-  args:
-  - --enable-auto-tool-choice
-  - --tool-call-parser
-  - gemma4
-  - --chat-template
-  - examples/tool_chat_template_gemma4.jinja
-  - --reasoning-parser
-  - gemma4
-  api:
-    health_endpoint: /health
-    operations:
-    - type: openai.chat
-      endpoint: /v1/chat/completions
-      mode: stream
-- name: bf16-vllm-nvidia-dgx-station-gb300-speculative-draft
-  display_profile: compatible
-  scenario: throughput
-  engine: vllm
-  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
-  weights:
-    quantization: bf16
-    sources:
-    - huggingface:
-        repo_id: google/gemma-4-26B-A4B-it
-        revision: 4d7ae4984b7db7de8f8457170b3f1a419ee76d52
-    - modelscope:
-        repo_id: google/gemma-4-26B-A4B-it
-        revision: d8ff96c27eee2faa7bb19430d2331a534535c73f
-  weight_bytes: 51644340088
-  gpus:
-    vendor: nvidia
-    cc: '>=10.0'
-    name: (?:DGX[ _-]?Station|GB300)
-    display_target: gb300
-  args:
-  - --speculative-config
-  - '{"model":"/models/draft","num_speculative_tokens":4}'
-  - --enable-auto-tool-choice
-  - --tool-call-parser
-  - gemma4
-  - --chat-template
-  - examples/tool_chat_template_gemma4.jinja
-  - --reasoning-parser
-  - gemma4
-  env:
-    VLLM_USE_V2_MODEL_RUNNER: '1'
-  components:
-  - name: target
-    role: primary
-    weights:
-      quantization: bf16
-      sources:
-      - huggingface:
-          repo_id: google/gemma-4-26B-A4B-it
-          revision: 4d7ae4984b7db7de8f8457170b3f1a419ee76d52
-      - modelscope:
-          repo_id: google/gemma-4-26B-A4B-it
-          revision: d8ff96c27eee2faa7bb19430d2331a534535c73f
-    weight_bytes: 51644340088
-    mount_path: /models/target
-  - name: draft
-    role: speculative_draft
-    model_id: google/gemma-4-26b-a4b-it-assistant
-    weights:
-      quantization: bf16
-      sources:
-      - huggingface:
-          repo_id: google/gemma-4-26B-A4B-it-assistant
-          revision: 6e5aaaf4c42b98394530b8fda2e95cadd65c151c
-      - modelscope:
-          repo_id: google/gemma-4-26B-A4B-it-assistant
-          revision: 2941bb3091576c1c00c03ccbe0121a611c6062a1
-    weight_bytes: 871632094
-    mount_path: /models/draft
-  api:
-    health_endpoint: /health
-    operations:
-    - type: openai.chat
-      endpoint: /v1/chat/completions
-      mode: stream
+# vLLM on NVIDIA follows the upstream vLLM recipe (vllm-project/recipes,
+# models/Google/gemma-4-26B-A4B-it.yaml, date_updated 2026-09-27): BF16 on
+# Ampere and newer, the RedHat FP8-dynamic checkpoint on Hopper and newer, and
+# the single-GPU Blackwell desktops (DGX Spark GB10, DGX Station GB300,
+# RTX PRO 6000, RTX 5090) with the V2 model runner. The FP8 and RedHat NVFP4
+# variants carry upstream's FP8 KV cache. The NVIDIA ModelOpt NVFP4
+# checkpoint has one tested command per desktop; on GB10 upstream serves it
+# from the eugr/spark-vllm community image, as vLLM 0.24 and the generic
+# nightly fail to load it there. Each variant has an MTP twin drafting with
+# the assistant model; on GB10, GB300 and RTX PRO 6000 the drafter's MoE runs
+# on Triton, as upstream does, because the fused CUTLASS path it picks by
+# default is not built for those boxes.
 - name: bf16-vllm-nvidia-general
-  display_profile: general
+  display_name_zh_cn: Ampere 及以上 · BF16
+  display_name_en: Ampere+ · BF16
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -294,15 +103,14 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.0'
-    display_target: nvidia
   args:
   - --enable-auto-tool-choice
   - --tool-call-parser
   - gemma4
-  - --chat-template
-  - examples/tool_chat_template_gemma4.jinja
   - --reasoning-parser
   - gemma4
+  - --chat-template
+  - examples/tool_chat_template_gemma4.jinja
   api:
     health_endpoint: /health
     operations:
@@ -310,7 +118,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: bf16-vllm-nvidia-general-speculative-draft
-  display_profile: general
+  display_name_zh_cn: Ampere 及以上 · BF16 · 投机解码
+  display_name_en: Ampere+ · BF16 · Speculative
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -327,17 +136,16 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.0'
-    display_target: nvidia
   args:
-  - --speculative-config
-  - '{"model":"/models/draft","num_speculative_tokens":4}'
   - --enable-auto-tool-choice
   - --tool-call-parser
   - gemma4
-  - --chat-template
-  - examples/tool_chat_template_gemma4.jinja
   - --reasoning-parser
   - gemma4
+  - --speculative-config
+  - '{"model":"/models/draft","num_speculative_tokens":4}'
+  - --chat-template
+  - examples/tool_chat_template_gemma4.jinja
   components:
   - name: target
     role: primary
@@ -372,8 +180,9 @@ specs:
     - type: openai.chat
       endpoint: /v1/chat/completions
       mode: stream
-- name: bf16-vllm-nvidia-rtx-pro-6000
-  display_profile: compatible
+- name: bf16-vllm-nvidia-gb10-gb300-rtx-pro-6000
+  display_name_zh_cn: GB10 / GB300 / RTX PRO 6000 · BF16
+  display_name_en: GB10 / GB300 / RTX PRO 6000 · BF16
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -390,26 +199,26 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=10.0'
-    name: RTX[ _-]?PRO[ _-]?6000
-    display_target: rtx_pro_6000
-  env:
-    VLLM_USE_V2_MODEL_RUNNER: '1'
+    name: (?:DGX[ _-]?Spark|GB10|DGX[ _-]?Station|GB300|RTX[ _-]?PRO[ _-]?6000)
   args:
   - --enable-auto-tool-choice
   - --tool-call-parser
   - gemma4
-  - --chat-template
-  - examples/tool_chat_template_gemma4.jinja
   - --reasoning-parser
   - gemma4
+  - --chat-template
+  - examples/tool_chat_template_gemma4.jinja
+  env:
+    VLLM_USE_V2_MODEL_RUNNER: '1'
   api:
     health_endpoint: /health
     operations:
     - type: openai.chat
       endpoint: /v1/chat/completions
       mode: stream
-- name: bf16-vllm-nvidia-rtx-pro-6000-speculative-draft
-  display_profile: compatible
+- name: bf16-vllm-nvidia-gb10-gb300-rtx-pro-6000-speculative-draft
+  display_name_zh_cn: GB10 / GB300 / RTX PRO 6000 · BF16 · 投机解码
+  display_name_en: GB10 / GB300 / RTX PRO 6000 · BF16 · Speculative
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -426,18 +235,17 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=10.0'
-    name: RTX[ _-]?PRO[ _-]?6000
-    display_target: rtx_pro_6000
+    name: (?:DGX[ _-]?Spark|GB10|DGX[ _-]?Station|GB300|RTX[ _-]?PRO[ _-]?6000)
   args:
-  - --speculative-config
-  - '{"model":"/models/draft","num_speculative_tokens":4}'
   - --enable-auto-tool-choice
   - --tool-call-parser
   - gemma4
-  - --chat-template
-  - examples/tool_chat_template_gemma4.jinja
   - --reasoning-parser
   - gemma4
+  - --speculative-config
+  - '{"method":"mtp","model":"/models/draft","num_speculative_tokens":4,"moe_backend":"triton"}'
+  - --chat-template
+  - examples/tool_chat_template_gemma4.jinja
   env:
     VLLM_USE_V2_MODEL_RUNNER: '1'
   components:
@@ -453,210 +261,6 @@ specs:
           repo_id: google/gemma-4-26B-A4B-it
           revision: d8ff96c27eee2faa7bb19430d2331a534535c73f
     weight_bytes: 51644340088
-    mount_path: /models/target
-  - name: draft
-    role: speculative_draft
-    model_id: google/gemma-4-26b-a4b-it-assistant
-    weights:
-      quantization: bf16
-      sources:
-      - huggingface:
-          repo_id: google/gemma-4-26B-A4B-it-assistant
-          revision: 6e5aaaf4c42b98394530b8fda2e95cadd65c151c
-      - modelscope:
-          repo_id: google/gemma-4-26B-A4B-it-assistant
-          revision: 2941bb3091576c1c00c03ccbe0121a611c6062a1
-    weight_bytes: 871632094
-    mount_path: /models/draft
-  api:
-    health_endpoint: /health
-    operations:
-    - type: openai.chat
-      endpoint: /v1/chat/completions
-      mode: stream
-- name: fp8-vllm-nvidia-dgx-spark-gb10
-  display_profile: optimized
-  scenario: throughput
-  engine: vllm
-  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
-  weights:
-    quantization: fp8
-    sources:
-    - huggingface:
-        repo_id: RedHatAI/gemma-4-26B-A4B-it-FP8-dynamic
-        revision: ed35d7abe5d940da41b4ff06eb482feb0be8cb44
-    - modelscope:
-        repo_id: RedHatAI/gemma-4-26B-A4B-it-FP8-dynamic
-        revision: 36bbaf43ddbc139e0cd5dc801aa5f5e3b284960c
-  weight_bytes: 28673980572
-  gpus:
-    vendor: nvidia
-    cc: '>=10.0'
-    name: (?:DGX[ _-]?Spark|GB10)
-    display_target: gb10
-  env:
-    VLLM_USE_V2_MODEL_RUNNER: '1'
-  args:
-  - --enable-auto-tool-choice
-  - --tool-call-parser
-  - gemma4
-  - --chat-template
-  - examples/tool_chat_template_gemma4.jinja
-  - --reasoning-parser
-  - gemma4
-  api:
-    health_endpoint: /health
-    operations:
-    - type: openai.chat
-      endpoint: /v1/chat/completions
-      mode: stream
-- name: fp8-vllm-nvidia-dgx-spark-gb10-speculative-draft
-  display_profile: optimized
-  scenario: throughput
-  engine: vllm
-  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
-  weights:
-    quantization: fp8
-    sources:
-    - huggingface:
-        repo_id: RedHatAI/gemma-4-26B-A4B-it-FP8-dynamic
-        revision: ed35d7abe5d940da41b4ff06eb482feb0be8cb44
-    - modelscope:
-        repo_id: RedHatAI/gemma-4-26B-A4B-it-FP8-dynamic
-        revision: 36bbaf43ddbc139e0cd5dc801aa5f5e3b284960c
-  weight_bytes: 28673980572
-  gpus:
-    vendor: nvidia
-    cc: '>=10.0'
-    name: (?:DGX[ _-]?Spark|GB10)
-    display_target: gb10
-  args:
-  - --speculative-config
-  - '{"model":"/models/draft","num_speculative_tokens":4}'
-  - --enable-auto-tool-choice
-  - --tool-call-parser
-  - gemma4
-  - --chat-template
-  - examples/tool_chat_template_gemma4.jinja
-  - --reasoning-parser
-  - gemma4
-  env:
-    VLLM_USE_V2_MODEL_RUNNER: '1'
-  components:
-  - name: target
-    role: primary
-    weights:
-      quantization: fp8
-      sources:
-      - huggingface:
-          repo_id: RedHatAI/gemma-4-26B-A4B-it-FP8-dynamic
-          revision: ed35d7abe5d940da41b4ff06eb482feb0be8cb44
-      - modelscope:
-          repo_id: RedHatAI/gemma-4-26B-A4B-it-FP8-dynamic
-          revision: 36bbaf43ddbc139e0cd5dc801aa5f5e3b284960c
-    weight_bytes: 28673980572
-    mount_path: /models/target
-  - name: draft
-    role: speculative_draft
-    model_id: google/gemma-4-26b-a4b-it-assistant
-    weights:
-      quantization: bf16
-      sources:
-      - huggingface:
-          repo_id: google/gemma-4-26B-A4B-it-assistant
-          revision: 6e5aaaf4c42b98394530b8fda2e95cadd65c151c
-      - modelscope:
-          repo_id: google/gemma-4-26B-A4B-it-assistant
-          revision: 2941bb3091576c1c00c03ccbe0121a611c6062a1
-    weight_bytes: 871632094
-    mount_path: /models/draft
-  api:
-    health_endpoint: /health
-    operations:
-    - type: openai.chat
-      endpoint: /v1/chat/completions
-      mode: stream
-- name: fp8-vllm-nvidia-dgx-station-gb300
-  display_profile: compatible
-  scenario: throughput
-  engine: vllm
-  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
-  weights:
-    quantization: fp8
-    sources:
-    - huggingface:
-        repo_id: RedHatAI/gemma-4-26B-A4B-it-FP8-dynamic
-        revision: ed35d7abe5d940da41b4ff06eb482feb0be8cb44
-    - modelscope:
-        repo_id: RedHatAI/gemma-4-26B-A4B-it-FP8-dynamic
-        revision: 36bbaf43ddbc139e0cd5dc801aa5f5e3b284960c
-  weight_bytes: 28673980572
-  gpus:
-    vendor: nvidia
-    cc: '>=10.0'
-    name: (?:DGX[ _-]?Station|GB300)
-    display_target: gb300
-  env:
-    VLLM_USE_V2_MODEL_RUNNER: '1'
-  args:
-  - --enable-auto-tool-choice
-  - --tool-call-parser
-  - gemma4
-  - --chat-template
-  - examples/tool_chat_template_gemma4.jinja
-  - --reasoning-parser
-  - gemma4
-  api:
-    health_endpoint: /health
-    operations:
-    - type: openai.chat
-      endpoint: /v1/chat/completions
-      mode: stream
-- name: fp8-vllm-nvidia-dgx-station-gb300-speculative-draft
-  display_profile: compatible
-  scenario: throughput
-  engine: vllm
-  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
-  weights:
-    quantization: fp8
-    sources:
-    - huggingface:
-        repo_id: RedHatAI/gemma-4-26B-A4B-it-FP8-dynamic
-        revision: ed35d7abe5d940da41b4ff06eb482feb0be8cb44
-    - modelscope:
-        repo_id: RedHatAI/gemma-4-26B-A4B-it-FP8-dynamic
-        revision: 36bbaf43ddbc139e0cd5dc801aa5f5e3b284960c
-  weight_bytes: 28673980572
-  gpus:
-    vendor: nvidia
-    cc: '>=10.0'
-    name: (?:DGX[ _-]?Station|GB300)
-    display_target: gb300
-  args:
-  - --speculative-config
-  - '{"model":"/models/draft","num_speculative_tokens":4}'
-  - --enable-auto-tool-choice
-  - --tool-call-parser
-  - gemma4
-  - --chat-template
-  - examples/tool_chat_template_gemma4.jinja
-  - --reasoning-parser
-  - gemma4
-  env:
-    VLLM_USE_V2_MODEL_RUNNER: '1'
-  components:
-  - name: target
-    role: primary
-    weights:
-      quantization: fp8
-      sources:
-      - huggingface:
-          repo_id: RedHatAI/gemma-4-26B-A4B-it-FP8-dynamic
-          revision: ed35d7abe5d940da41b4ff06eb482feb0be8cb44
-      - modelscope:
-          repo_id: RedHatAI/gemma-4-26B-A4B-it-FP8-dynamic
-          revision: 36bbaf43ddbc139e0cd5dc801aa5f5e3b284960c
-    weight_bytes: 28673980572
     mount_path: /models/target
   - name: draft
     role: speculative_draft
@@ -679,7 +283,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: fp8-vllm-nvidia-general
-  display_profile: compatible
+  display_name_zh_cn: Hopper 及以上 · FP8
+  display_name_en: Hopper+ · FP8
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -696,15 +301,16 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=9.0'
-    display_target: hopper
   args:
+  - --kv-cache-dtype
+  - fp8
   - --enable-auto-tool-choice
   - --tool-call-parser
   - gemma4
-  - --chat-template
-  - examples/tool_chat_template_gemma4.jinja
   - --reasoning-parser
   - gemma4
+  - --chat-template
+  - examples/tool_chat_template_gemma4.jinja
   api:
     health_endpoint: /health
     operations:
@@ -712,7 +318,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: fp8-vllm-nvidia-general-speculative-draft
-  display_profile: compatible
+  display_name_zh_cn: Hopper 及以上 · FP8 · 投机解码
+  display_name_en: Hopper+ · FP8 · Speculative
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -729,17 +336,124 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=9.0'
-    display_target: hopper
   args:
-  - --speculative-config
-  - '{"model":"/models/draft","num_speculative_tokens":4}'
+  - --kv-cache-dtype
+  - fp8
   - --enable-auto-tool-choice
   - --tool-call-parser
   - gemma4
-  - --chat-template
-  - examples/tool_chat_template_gemma4.jinja
   - --reasoning-parser
   - gemma4
+  - --speculative-config
+  - '{"model":"/models/draft","num_speculative_tokens":4}'
+  - --chat-template
+  - examples/tool_chat_template_gemma4.jinja
+  components:
+  - name: target
+    role: primary
+    weights:
+      quantization: fp8
+      sources:
+      - huggingface:
+          repo_id: RedHatAI/gemma-4-26B-A4B-it-FP8-dynamic
+          revision: ed35d7abe5d940da41b4ff06eb482feb0be8cb44
+      - modelscope:
+          repo_id: RedHatAI/gemma-4-26B-A4B-it-FP8-dynamic
+          revision: 36bbaf43ddbc139e0cd5dc801aa5f5e3b284960c
+    weight_bytes: 28673980572
+    mount_path: /models/target
+  - name: draft
+    role: speculative_draft
+    model_id: google/gemma-4-26b-a4b-it-assistant
+    weights:
+      quantization: bf16
+      sources:
+      - huggingface:
+          repo_id: google/gemma-4-26B-A4B-it-assistant
+          revision: 6e5aaaf4c42b98394530b8fda2e95cadd65c151c
+      - modelscope:
+          repo_id: google/gemma-4-26B-A4B-it-assistant
+          revision: 2941bb3091576c1c00c03ccbe0121a611c6062a1
+    weight_bytes: 871632094
+    mount_path: /models/draft
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: fp8-vllm-nvidia-gb10-gb300-rtx-pro-6000
+  display_name_zh_cn: GB10 / GB300 / RTX PRO 6000 · FP8
+  display_name_en: GB10 / GB300 / RTX PRO 6000 · FP8
+  scenario: throughput
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: fp8
+    sources:
+    - huggingface:
+        repo_id: RedHatAI/gemma-4-26B-A4B-it-FP8-dynamic
+        revision: ed35d7abe5d940da41b4ff06eb482feb0be8cb44
+    - modelscope:
+        repo_id: RedHatAI/gemma-4-26B-A4B-it-FP8-dynamic
+        revision: 36bbaf43ddbc139e0cd5dc801aa5f5e3b284960c
+  weight_bytes: 28673980572
+  gpus:
+    vendor: nvidia
+    cc: '>=10.0'
+    name: (?:DGX[ _-]?Spark|GB10|DGX[ _-]?Station|GB300|RTX[ _-]?PRO[ _-]?6000)
+  args:
+  - --kv-cache-dtype
+  - fp8
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - gemma4
+  - --reasoning-parser
+  - gemma4
+  - --chat-template
+  - examples/tool_chat_template_gemma4.jinja
+  env:
+    VLLM_USE_V2_MODEL_RUNNER: '1'
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: fp8-vllm-nvidia-gb10-gb300-rtx-pro-6000-speculative-draft
+  display_name_zh_cn: GB10 / GB300 / RTX PRO 6000 · FP8 · 投机解码
+  display_name_en: GB10 / GB300 / RTX PRO 6000 · FP8 · Speculative
+  scenario: throughput
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: fp8
+    sources:
+    - huggingface:
+        repo_id: RedHatAI/gemma-4-26B-A4B-it-FP8-dynamic
+        revision: ed35d7abe5d940da41b4ff06eb482feb0be8cb44
+    - modelscope:
+        repo_id: RedHatAI/gemma-4-26B-A4B-it-FP8-dynamic
+        revision: 36bbaf43ddbc139e0cd5dc801aa5f5e3b284960c
+  weight_bytes: 28673980572
+  gpus:
+    vendor: nvidia
+    cc: '>=10.0'
+    name: (?:DGX[ _-]?Spark|GB10|DGX[ _-]?Station|GB300|RTX[ _-]?PRO[ _-]?6000)
+  args:
+  - --kv-cache-dtype
+  - fp8
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - gemma4
+  - --reasoning-parser
+  - gemma4
+  - --speculative-config
+  - '{"method":"mtp","model":"/models/draft","num_speculative_tokens":4,"moe_backend":"triton"}'
+  - --chat-template
+  - examples/tool_chat_template_gemma4.jinja
+  env:
+    VLLM_USE_V2_MODEL_RUNNER: '1'
   components:
   - name: target
     role: primary
@@ -775,7 +489,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: fp8-vllm-nvidia-rtx-5090
-  display_profile: compatible
+  display_name_zh_cn: RTX 5090 · FP8
+  display_name_en: RTX 5090 · FP8
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -793,17 +508,22 @@ specs:
     vendor: nvidia
     cc: '>=10.0'
     name: RTX[ _-]?5090
-    display_target: rtx_5090
-  env:
-    VLLM_USE_V2_MODEL_RUNNER: '1'
   args:
+  - --kv-cache-dtype
+  - fp8
+  - --max-model-len
+  - '131072'
+  - --max-num-seqs
+  - '1'
   - --enable-auto-tool-choice
   - --tool-call-parser
   - gemma4
-  - --chat-template
-  - examples/tool_chat_template_gemma4.jinja
   - --reasoning-parser
   - gemma4
+  - --chat-template
+  - examples/tool_chat_template_gemma4.jinja
+  env:
+    VLLM_USE_V2_MODEL_RUNNER: '1'
   api:
     health_endpoint: /health
     operations:
@@ -811,7 +531,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: fp8-vllm-nvidia-rtx-5090-speculative-draft
-  display_profile: compatible
+  display_name_zh_cn: RTX 5090 · FP8 · 投机解码
+  display_name_en: RTX 5090 · FP8 · Speculative
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -829,17 +550,22 @@ specs:
     vendor: nvidia
     cc: '>=10.0'
     name: RTX[ _-]?5090
-    display_target: rtx_5090
   args:
-  - --speculative-config
-  - '{"model":"/models/draft","num_speculative_tokens":4}'
+  - --kv-cache-dtype
+  - fp8
+  - --max-model-len
+  - '131072'
+  - --max-num-seqs
+  - '1'
   - --enable-auto-tool-choice
   - --tool-call-parser
   - gemma4
-  - --chat-template
-  - examples/tool_chat_template_gemma4.jinja
   - --reasoning-parser
   - gemma4
+  - --speculative-config
+  - '{"model":"/models/draft","num_speculative_tokens":4}'
+  - --chat-template
+  - examples/tool_chat_template_gemma4.jinja
   env:
     VLLM_USE_V2_MODEL_RUNNER: '1'
   components:
@@ -876,372 +602,76 @@ specs:
     - type: openai.chat
       endpoint: /v1/chat/completions
       mode: stream
-- name: fp8-vllm-nvidia-rtx-pro-6000
-  display_profile: compatible
+- name: nvfp4-nvfp4-vllm-nvidia-gb10-gb300-rtx-pro-6000
+  display_name_zh_cn: GB10 / GB300 / RTX PRO 6000 · NVFP4 (RedHat)
+  display_name_en: GB10 / GB300 / RTX PRO 6000 · NVFP4 (RedHat)
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
   weights:
-    quantization: fp8
+    quantization: nvfp4
     sources:
     - huggingface:
-        repo_id: RedHatAI/gemma-4-26B-A4B-it-FP8-dynamic
-        revision: ed35d7abe5d940da41b4ff06eb482feb0be8cb44
+        repo_id: RedHatAI/gemma-4-26B-A4B-it-NVFP4
+        revision: 5557756b8dce33ac72f2bd702b11729fdba3b839
     - modelscope:
-        repo_id: RedHatAI/gemma-4-26B-A4B-it-FP8-dynamic
-        revision: 36bbaf43ddbc139e0cd5dc801aa5f5e3b284960c
-  weight_bytes: 28673980572
+        repo_id: RedHatAI/gemma-4-26B-A4B-it-NVFP4
+        revision: 8c9f17380e731b0612a39c8447b411be7523b12a
+  weight_bytes: 16460298559
   gpus:
     vendor: nvidia
     cc: '>=10.0'
-    name: RTX[ _-]?PRO[ _-]?6000
-    display_target: rtx_pro_6000
-  env:
-    VLLM_USE_V2_MODEL_RUNNER: '1'
+    name: (?:DGX[ _-]?Spark|GB10|DGX[ _-]?Station|GB300|RTX[ _-]?PRO[ _-]?6000)
   args:
+  - --kv-cache-dtype
+  - fp8
   - --enable-auto-tool-choice
   - --tool-call-parser
   - gemma4
-  - --chat-template
-  - examples/tool_chat_template_gemma4.jinja
   - --reasoning-parser
   - gemma4
+  - --chat-template
+  - examples/tool_chat_template_gemma4.jinja
+  env:
+    VLLM_USE_V2_MODEL_RUNNER: '1'
   api:
     health_endpoint: /health
     operations:
     - type: openai.chat
       endpoint: /v1/chat/completions
       mode: stream
-- name: fp8-vllm-nvidia-rtx-pro-6000-speculative-draft
-  display_profile: compatible
+- name: nvfp4-nvfp4-vllm-nvidia-gb10-gb300-rtx-pro-6000-speculative-draft
+  display_name_zh_cn: GB10 / GB300 / RTX PRO 6000 · NVFP4 (RedHat) · 投机解码
+  display_name_en: GB10 / GB300 / RTX PRO 6000 · NVFP4 (RedHat) · Speculative
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
   weights:
-    quantization: fp8
+    quantization: nvfp4
     sources:
     - huggingface:
-        repo_id: RedHatAI/gemma-4-26B-A4B-it-FP8-dynamic
-        revision: ed35d7abe5d940da41b4ff06eb482feb0be8cb44
+        repo_id: RedHatAI/gemma-4-26B-A4B-it-NVFP4
+        revision: 5557756b8dce33ac72f2bd702b11729fdba3b839
     - modelscope:
-        repo_id: RedHatAI/gemma-4-26B-A4B-it-FP8-dynamic
-        revision: 36bbaf43ddbc139e0cd5dc801aa5f5e3b284960c
-  weight_bytes: 28673980572
+        repo_id: RedHatAI/gemma-4-26B-A4B-it-NVFP4
+        revision: 8c9f17380e731b0612a39c8447b411be7523b12a
+  weight_bytes: 16460298559
   gpus:
     vendor: nvidia
     cc: '>=10.0'
-    name: RTX[ _-]?PRO[ _-]?6000
-    display_target: rtx_pro_6000
+    name: (?:DGX[ _-]?Spark|GB10|DGX[ _-]?Station|GB300|RTX[ _-]?PRO[ _-]?6000)
   args:
+  - --kv-cache-dtype
+  - fp8
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - gemma4
+  - --reasoning-parser
+  - gemma4
   - --speculative-config
-  - '{"model":"/models/draft","num_speculative_tokens":4}'
-  - --enable-auto-tool-choice
-  - --tool-call-parser
-  - gemma4
+  - '{"method":"mtp","model":"/models/draft","num_speculative_tokens":4,"moe_backend":"triton"}'
   - --chat-template
   - examples/tool_chat_template_gemma4.jinja
-  - --reasoning-parser
-  - gemma4
-  env:
-    VLLM_USE_V2_MODEL_RUNNER: '1'
-  components:
-  - name: target
-    role: primary
-    weights:
-      quantization: fp8
-      sources:
-      - huggingface:
-          repo_id: RedHatAI/gemma-4-26B-A4B-it-FP8-dynamic
-          revision: ed35d7abe5d940da41b4ff06eb482feb0be8cb44
-      - modelscope:
-          repo_id: RedHatAI/gemma-4-26B-A4B-it-FP8-dynamic
-          revision: 36bbaf43ddbc139e0cd5dc801aa5f5e3b284960c
-    weight_bytes: 28673980572
-    mount_path: /models/target
-  - name: draft
-    role: speculative_draft
-    model_id: google/gemma-4-26b-a4b-it-assistant
-    weights:
-      quantization: bf16
-      sources:
-      - huggingface:
-          repo_id: google/gemma-4-26B-A4B-it-assistant
-          revision: 6e5aaaf4c42b98394530b8fda2e95cadd65c151c
-      - modelscope:
-          repo_id: google/gemma-4-26B-A4B-it-assistant
-          revision: 2941bb3091576c1c00c03ccbe0121a611c6062a1
-    weight_bytes: 871632094
-    mount_path: /models/draft
-  api:
-    health_endpoint: /health
-    operations:
-    - type: openai.chat
-      endpoint: /v1/chat/completions
-      mode: stream
-- name: nvfp4-nvfp4-vllm-nvidia-cc100
-  display_profile: compatible
-  scenario: throughput
-  engine: vllm
-  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
-  weights:
-    quantization: nvfp4
-    sources:
-    - huggingface:
-        repo_id: RedHatAI/gemma-4-26B-A4B-it-NVFP4
-        revision: 5557756b8dce33ac72f2bd702b11729fdba3b839
-    - modelscope:
-        repo_id: RedHatAI/gemma-4-26B-A4B-it-NVFP4
-        revision: 8c9f17380e731b0612a39c8447b411be7523b12a
-  weight_bytes: 16460298559
-  gpus:
-    vendor: nvidia
-    cc: '>=10.0'
-    display_target: blackwell
-  args:
-  - --enable-auto-tool-choice
-  - --tool-call-parser
-  - gemma4
-  - --chat-template
-  - examples/tool_chat_template_gemma4.jinja
-  - --reasoning-parser
-  - gemma4
-  api:
-    health_endpoint: /health
-    operations:
-    - type: openai.chat
-      endpoint: /v1/chat/completions
-      mode: stream
-- name: nvfp4-nvfp4-vllm-nvidia-cc100-speculative-draft
-  display_profile: compatible
-  scenario: throughput
-  engine: vllm
-  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
-  weights:
-    quantization: nvfp4
-    sources:
-    - huggingface:
-        repo_id: RedHatAI/gemma-4-26B-A4B-it-NVFP4
-        revision: 5557756b8dce33ac72f2bd702b11729fdba3b839
-    - modelscope:
-        repo_id: RedHatAI/gemma-4-26B-A4B-it-NVFP4
-        revision: 8c9f17380e731b0612a39c8447b411be7523b12a
-  weight_bytes: 16460298559
-  gpus:
-    vendor: nvidia
-    cc: '>=10.0'
-    display_target: blackwell
-  args:
-  - --speculative-config
-  - '{"model":"/models/draft","num_speculative_tokens":4}'
-  - --enable-auto-tool-choice
-  - --tool-call-parser
-  - gemma4
-  - --chat-template
-  - examples/tool_chat_template_gemma4.jinja
-  - --reasoning-parser
-  - gemma4
-  components:
-  - name: target
-    role: primary
-    weights:
-      quantization: nvfp4
-      sources:
-      - huggingface:
-          repo_id: RedHatAI/gemma-4-26B-A4B-it-NVFP4
-          revision: 5557756b8dce33ac72f2bd702b11729fdba3b839
-      - modelscope:
-          repo_id: RedHatAI/gemma-4-26B-A4B-it-NVFP4
-          revision: 8c9f17380e731b0612a39c8447b411be7523b12a
-    weight_bytes: 16460298559
-    mount_path: /models/target
-  - name: draft
-    role: speculative_draft
-    model_id: google/gemma-4-26b-a4b-it-assistant
-    weights:
-      quantization: bf16
-      sources:
-      - huggingface:
-          repo_id: google/gemma-4-26B-A4B-it-assistant
-          revision: 6e5aaaf4c42b98394530b8fda2e95cadd65c151c
-      - modelscope:
-          repo_id: google/gemma-4-26B-A4B-it-assistant
-          revision: 2941bb3091576c1c00c03ccbe0121a611c6062a1
-    weight_bytes: 871632094
-    mount_path: /models/draft
-  api:
-    health_endpoint: /health
-    operations:
-    - type: openai.chat
-      endpoint: /v1/chat/completions
-      mode: stream
-- name: nvfp4-nvfp4-vllm-nvidia-dgx-spark-gb10
-  display_profile: optimized
-  scenario: throughput
-  engine: vllm
-  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
-  weights:
-    quantization: nvfp4
-    sources:
-    - huggingface:
-        repo_id: RedHatAI/gemma-4-26B-A4B-it-NVFP4
-        revision: 5557756b8dce33ac72f2bd702b11729fdba3b839
-    - modelscope:
-        repo_id: RedHatAI/gemma-4-26B-A4B-it-NVFP4
-        revision: 8c9f17380e731b0612a39c8447b411be7523b12a
-  weight_bytes: 16460298559
-  gpus:
-    vendor: nvidia
-    cc: '>=10.0'
-    name: (?:DGX[ _-]?Spark|GB10)
-    display_target: gb10
-  env:
-    VLLM_USE_V2_MODEL_RUNNER: '1'
-  args:
-  - --enable-auto-tool-choice
-  - --tool-call-parser
-  - gemma4
-  - --chat-template
-  - examples/tool_chat_template_gemma4.jinja
-  - --reasoning-parser
-  - gemma4
-  api:
-    health_endpoint: /health
-    operations:
-    - type: openai.chat
-      endpoint: /v1/chat/completions
-      mode: stream
-- name: nvfp4-nvfp4-vllm-nvidia-dgx-spark-gb10-speculative-draft
-  display_profile: optimized
-  scenario: throughput
-  engine: vllm
-  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
-  weights:
-    quantization: nvfp4
-    sources:
-    - huggingface:
-        repo_id: RedHatAI/gemma-4-26B-A4B-it-NVFP4
-        revision: 5557756b8dce33ac72f2bd702b11729fdba3b839
-    - modelscope:
-        repo_id: RedHatAI/gemma-4-26B-A4B-it-NVFP4
-        revision: 8c9f17380e731b0612a39c8447b411be7523b12a
-  weight_bytes: 16460298559
-  gpus:
-    vendor: nvidia
-    cc: '>=10.0'
-    name: (?:DGX[ _-]?Spark|GB10)
-    display_target: gb10
-  args:
-  - --speculative-config
-  - '{"model":"/models/draft","num_speculative_tokens":4}'
-  - --enable-auto-tool-choice
-  - --tool-call-parser
-  - gemma4
-  - --chat-template
-  - examples/tool_chat_template_gemma4.jinja
-  - --reasoning-parser
-  - gemma4
-  env:
-    VLLM_USE_V2_MODEL_RUNNER: '1'
-  components:
-  - name: target
-    role: primary
-    weights:
-      quantization: nvfp4
-      sources:
-      - huggingface:
-          repo_id: RedHatAI/gemma-4-26B-A4B-it-NVFP4
-          revision: 5557756b8dce33ac72f2bd702b11729fdba3b839
-      - modelscope:
-          repo_id: RedHatAI/gemma-4-26B-A4B-it-NVFP4
-          revision: 8c9f17380e731b0612a39c8447b411be7523b12a
-    weight_bytes: 16460298559
-    mount_path: /models/target
-  - name: draft
-    role: speculative_draft
-    model_id: google/gemma-4-26b-a4b-it-assistant
-    weights:
-      quantization: bf16
-      sources:
-      - huggingface:
-          repo_id: google/gemma-4-26B-A4B-it-assistant
-          revision: 6e5aaaf4c42b98394530b8fda2e95cadd65c151c
-      - modelscope:
-          repo_id: google/gemma-4-26B-A4B-it-assistant
-          revision: 2941bb3091576c1c00c03ccbe0121a611c6062a1
-    weight_bytes: 871632094
-    mount_path: /models/draft
-  api:
-    health_endpoint: /health
-    operations:
-    - type: openai.chat
-      endpoint: /v1/chat/completions
-      mode: stream
-- name: nvfp4-nvfp4-vllm-nvidia-dgx-station-gb300
-  display_profile: compatible
-  scenario: throughput
-  engine: vllm
-  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
-  weights:
-    quantization: nvfp4
-    sources:
-    - huggingface:
-        repo_id: RedHatAI/gemma-4-26B-A4B-it-NVFP4
-        revision: 5557756b8dce33ac72f2bd702b11729fdba3b839
-    - modelscope:
-        repo_id: RedHatAI/gemma-4-26B-A4B-it-NVFP4
-        revision: 8c9f17380e731b0612a39c8447b411be7523b12a
-  weight_bytes: 16460298559
-  gpus:
-    vendor: nvidia
-    cc: '>=10.0'
-    name: (?:DGX[ _-]?Station|GB300)
-    display_target: gb300
-  env:
-    VLLM_USE_V2_MODEL_RUNNER: '1'
-  args:
-  - --enable-auto-tool-choice
-  - --tool-call-parser
-  - gemma4
-  - --chat-template
-  - examples/tool_chat_template_gemma4.jinja
-  - --reasoning-parser
-  - gemma4
-  api:
-    health_endpoint: /health
-    operations:
-    - type: openai.chat
-      endpoint: /v1/chat/completions
-      mode: stream
-- name: nvfp4-nvfp4-vllm-nvidia-dgx-station-gb300-speculative-draft
-  display_profile: compatible
-  scenario: throughput
-  engine: vllm
-  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
-  weights:
-    quantization: nvfp4
-    sources:
-    - huggingface:
-        repo_id: RedHatAI/gemma-4-26B-A4B-it-NVFP4
-        revision: 5557756b8dce33ac72f2bd702b11729fdba3b839
-    - modelscope:
-        repo_id: RedHatAI/gemma-4-26B-A4B-it-NVFP4
-        revision: 8c9f17380e731b0612a39c8447b411be7523b12a
-  weight_bytes: 16460298559
-  gpus:
-    vendor: nvidia
-    cc: '>=10.0'
-    name: (?:DGX[ _-]?Station|GB300)
-    display_target: gb300
-  args:
-  - --speculative-config
-  - '{"model":"/models/draft","num_speculative_tokens":4}'
-  - --enable-auto-tool-choice
-  - --tool-call-parser
-  - gemma4
-  - --chat-template
-  - examples/tool_chat_template_gemma4.jinja
-  - --reasoning-parser
-  - gemma4
   env:
     VLLM_USE_V2_MODEL_RUNNER: '1'
   components:
@@ -1279,7 +709,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: nvfp4-nvfp4-vllm-nvidia-rtx-5090
-  display_profile: compatible
+  display_name_zh_cn: RTX 5090 · NVFP4 (RedHat)
+  display_name_en: RTX 5090 · NVFP4 (RedHat)
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -1297,17 +728,22 @@ specs:
     vendor: nvidia
     cc: '>=10.0'
     name: RTX[ _-]?5090
-    display_target: rtx_5090
-  env:
-    VLLM_USE_V2_MODEL_RUNNER: '1'
   args:
+  - --kv-cache-dtype
+  - fp8
+  - --max-num-batched-tokens
+  - '4096'
+  - --max-num-seqs
+  - '4'
   - --enable-auto-tool-choice
   - --tool-call-parser
   - gemma4
-  - --chat-template
-  - examples/tool_chat_template_gemma4.jinja
   - --reasoning-parser
   - gemma4
+  - --chat-template
+  - examples/tool_chat_template_gemma4.jinja
+  env:
+    VLLM_USE_V2_MODEL_RUNNER: '1'
   api:
     health_endpoint: /health
     operations:
@@ -1315,7 +751,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: nvfp4-nvfp4-vllm-nvidia-rtx-5090-speculative-draft
-  display_profile: compatible
+  display_name_zh_cn: RTX 5090 · NVFP4 (RedHat) · 投机解码
+  display_name_en: RTX 5090 · NVFP4 (RedHat) · Speculative
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -1333,17 +770,22 @@ specs:
     vendor: nvidia
     cc: '>=10.0'
     name: RTX[ _-]?5090
-    display_target: rtx_5090
   args:
-  - --speculative-config
-  - '{"model":"/models/draft","num_speculative_tokens":4}'
+  - --kv-cache-dtype
+  - fp8
+  - --max-num-batched-tokens
+  - '4096'
+  - --max-num-seqs
+  - '4'
   - --enable-auto-tool-choice
   - --tool-call-parser
   - gemma4
-  - --chat-template
-  - examples/tool_chat_template_gemma4.jinja
   - --reasoning-parser
   - gemma4
+  - --speculative-config
+  - '{"model":"/models/draft","num_speculative_tokens":4}'
+  - --chat-template
+  - examples/tool_chat_template_gemma4.jinja
   env:
     VLLM_USE_V2_MODEL_RUNNER: '1'
   components:
@@ -1359,204 +801,6 @@ specs:
           repo_id: RedHatAI/gemma-4-26B-A4B-it-NVFP4
           revision: 8c9f17380e731b0612a39c8447b411be7523b12a
     weight_bytes: 16460298559
-    mount_path: /models/target
-  - name: draft
-    role: speculative_draft
-    model_id: google/gemma-4-26b-a4b-it-assistant
-    weights:
-      quantization: bf16
-      sources:
-      - huggingface:
-          repo_id: google/gemma-4-26B-A4B-it-assistant
-          revision: 6e5aaaf4c42b98394530b8fda2e95cadd65c151c
-      - modelscope:
-          repo_id: google/gemma-4-26B-A4B-it-assistant
-          revision: 2941bb3091576c1c00c03ccbe0121a611c6062a1
-    weight_bytes: 871632094
-    mount_path: /models/draft
-  api:
-    health_endpoint: /health
-    operations:
-    - type: openai.chat
-      endpoint: /v1/chat/completions
-      mode: stream
-- name: nvfp4-nvfp4-vllm-nvidia-rtx-pro-6000
-  display_profile: compatible
-  scenario: throughput
-  engine: vllm
-  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
-  weights:
-    quantization: nvfp4
-    sources:
-    - huggingface:
-        repo_id: RedHatAI/gemma-4-26B-A4B-it-NVFP4
-        revision: 5557756b8dce33ac72f2bd702b11729fdba3b839
-    - modelscope:
-        repo_id: RedHatAI/gemma-4-26B-A4B-it-NVFP4
-        revision: 8c9f17380e731b0612a39c8447b411be7523b12a
-  weight_bytes: 16460298559
-  gpus:
-    vendor: nvidia
-    cc: '>=10.0'
-    name: RTX[ _-]?PRO[ _-]?6000
-    display_target: rtx_pro_6000
-  env:
-    VLLM_USE_V2_MODEL_RUNNER: '1'
-  args:
-  - --enable-auto-tool-choice
-  - --tool-call-parser
-  - gemma4
-  - --chat-template
-  - examples/tool_chat_template_gemma4.jinja
-  - --reasoning-parser
-  - gemma4
-  api:
-    health_endpoint: /health
-    operations:
-    - type: openai.chat
-      endpoint: /v1/chat/completions
-      mode: stream
-- name: nvfp4-nvfp4-vllm-nvidia-rtx-pro-6000-speculative-draft
-  display_profile: compatible
-  scenario: throughput
-  engine: vllm
-  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
-  weights:
-    quantization: nvfp4
-    sources:
-    - huggingface:
-        repo_id: RedHatAI/gemma-4-26B-A4B-it-NVFP4
-        revision: 5557756b8dce33ac72f2bd702b11729fdba3b839
-    - modelscope:
-        repo_id: RedHatAI/gemma-4-26B-A4B-it-NVFP4
-        revision: 8c9f17380e731b0612a39c8447b411be7523b12a
-  weight_bytes: 16460298559
-  gpus:
-    vendor: nvidia
-    cc: '>=10.0'
-    name: RTX[ _-]?PRO[ _-]?6000
-    display_target: rtx_pro_6000
-  args:
-  - --speculative-config
-  - '{"model":"/models/draft","num_speculative_tokens":4}'
-  - --enable-auto-tool-choice
-  - --tool-call-parser
-  - gemma4
-  - --chat-template
-  - examples/tool_chat_template_gemma4.jinja
-  - --reasoning-parser
-  - gemma4
-  env:
-    VLLM_USE_V2_MODEL_RUNNER: '1'
-  components:
-  - name: target
-    role: primary
-    weights:
-      quantization: nvfp4
-      sources:
-      - huggingface:
-          repo_id: RedHatAI/gemma-4-26B-A4B-it-NVFP4
-          revision: 5557756b8dce33ac72f2bd702b11729fdba3b839
-      - modelscope:
-          repo_id: RedHatAI/gemma-4-26B-A4B-it-NVFP4
-          revision: 8c9f17380e731b0612a39c8447b411be7523b12a
-    weight_bytes: 16460298559
-    mount_path: /models/target
-  - name: draft
-    role: speculative_draft
-    model_id: google/gemma-4-26b-a4b-it-assistant
-    weights:
-      quantization: bf16
-      sources:
-      - huggingface:
-          repo_id: google/gemma-4-26B-A4B-it-assistant
-          revision: 6e5aaaf4c42b98394530b8fda2e95cadd65c151c
-      - modelscope:
-          repo_id: google/gemma-4-26B-A4B-it-assistant
-          revision: 2941bb3091576c1c00c03ccbe0121a611c6062a1
-    weight_bytes: 871632094
-    mount_path: /models/draft
-  api:
-    health_endpoint: /health
-    operations:
-    - type: openai.chat
-      endpoint: /v1/chat/completions
-      mode: stream
-- name: nvfp4-nvidia-nvfp4-vllm-nvidia-cc100
-  display_profile: compatible
-  scenario: throughput
-  engine: vllm
-  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
-  weights:
-    quantization: nvfp4
-    sources:
-    - huggingface:
-        repo_id: nvidia/Gemma-4-26B-A4B-NVFP4
-        revision: a19cfe00be84568a6867111c9a68c9c44fdcffe6
-    - modelscope:
-        repo_id: nv-community/Gemma-4-26B-A4B-NVFP4
-        revision: fc09e800b20a46267a7341defa7732101adb27a9
-  weight_bytes: 18825679760
-  gpus:
-    vendor: nvidia
-    cc: '>=10.0'
-    display_target: blackwell
-  args:
-  - --enable-auto-tool-choice
-  - --tool-call-parser
-  - gemma4
-  - --chat-template
-  - examples/tool_chat_template_gemma4.jinja
-  - --reasoning-parser
-  - gemma4
-  api:
-    health_endpoint: /health
-    operations:
-    - type: openai.chat
-      endpoint: /v1/chat/completions
-      mode: stream
-- name: nvfp4-nvidia-nvfp4-vllm-nvidia-cc100-speculative-draft
-  display_profile: compatible
-  scenario: throughput
-  engine: vllm
-  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
-  weights:
-    quantization: nvfp4
-    sources:
-    - huggingface:
-        repo_id: nvidia/Gemma-4-26B-A4B-NVFP4
-        revision: a19cfe00be84568a6867111c9a68c9c44fdcffe6
-    - modelscope:
-        repo_id: nv-community/Gemma-4-26B-A4B-NVFP4
-        revision: fc09e800b20a46267a7341defa7732101adb27a9
-  weight_bytes: 18825679760
-  gpus:
-    vendor: nvidia
-    cc: '>=10.0'
-    display_target: blackwell
-  args:
-  - --speculative-config
-  - '{"model":"/models/draft","num_speculative_tokens":4}'
-  - --enable-auto-tool-choice
-  - --tool-call-parser
-  - gemma4
-  - --chat-template
-  - examples/tool_chat_template_gemma4.jinja
-  - --reasoning-parser
-  - gemma4
-  components:
-  - name: target
-    role: primary
-    weights:
-      quantization: nvfp4
-      sources:
-      - huggingface:
-          repo_id: nvidia/Gemma-4-26B-A4B-NVFP4
-          revision: a19cfe00be84568a6867111c9a68c9c44fdcffe6
-      - modelscope:
-          repo_id: nv-community/Gemma-4-26B-A4B-NVFP4
-          revision: fc09e800b20a46267a7341defa7732101adb27a9
-    weight_bytes: 18825679760
     mount_path: /models/target
   - name: draft
     role: speculative_draft
@@ -1579,10 +823,11 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: nvfp4-nvidia-nvfp4-vllm-nvidia-dgx-spark-gb10
-  display_profile: optimized
+  display_name_zh_cn: DGX Spark (GB10) · NVFP4 (NVIDIA)
+  display_name_en: DGX Spark (GB10) · NVFP4 (NVIDIA)
   scenario: throughput
   engine: vllm
-  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  image: eugr/spark-vllm:nightly-20260704
   weights:
     quantization: nvfp4
     sources:
@@ -1597,8 +842,16 @@ specs:
     vendor: nvidia
     cc: '>=10.0'
     name: (?:DGX[ _-]?Spark|GB10)
-    display_target: gb10
   args:
+  - --gpu-memory-utilization
+  - '0.8'
+  - --max-model-len
+  - '262144'
+  - --max-num-seqs
+  - '8'
+  - --max-num-batched-tokens
+  - '8192'
+  - --enable-prefix-caching
   - --load-format
   - fastsafetensors
   - --enable-auto-tool-choice
@@ -1606,8 +859,6 @@ specs:
   - gemma4
   - --reasoning-parser
   - gemma4
-  - --chat-template
-  - examples/tool_chat_template_gemma4.jinja
   env:
     VLLM_USE_V2_MODEL_RUNNER: '1'
   api:
@@ -1617,10 +868,11 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: nvfp4-nvidia-nvfp4-vllm-nvidia-dgx-spark-gb10-speculative-draft
-  display_profile: optimized
+  display_name_zh_cn: DGX Spark (GB10) · NVFP4 (NVIDIA) · 投机解码
+  display_name_en: DGX Spark (GB10) · NVFP4 (NVIDIA) · Speculative
   scenario: throughput
   engine: vllm
-  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  image: eugr/spark-vllm:nightly-20260704
   weights:
     quantization: nvfp4
     sources:
@@ -1635,8 +887,16 @@ specs:
     vendor: nvidia
     cc: '>=10.0'
     name: (?:DGX[ _-]?Spark|GB10)
-    display_target: gb10
   args:
+  - --gpu-memory-utilization
+  - '0.8'
+  - --max-model-len
+  - '262144'
+  - --max-num-seqs
+  - '8'
+  - --max-num-batched-tokens
+  - '8192'
+  - --enable-prefix-caching
   - --load-format
   - fastsafetensors
   - --enable-auto-tool-choice
@@ -1645,9 +905,7 @@ specs:
   - --reasoning-parser
   - gemma4
   - --speculative-config
-  - '{"model":"/models/draft","num_speculative_tokens":4}'
-  - --chat-template
-  - examples/tool_chat_template_gemma4.jinja
+  - '{"method":"mtp","model":"/models/draft","num_speculative_tokens":4,"moe_backend":"triton"}'
   env:
     VLLM_USE_V2_MODEL_RUNNER: '1'
   components:
@@ -1685,7 +943,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: nvfp4-nvidia-nvfp4-vllm-nvidia-dgx-station-gb300
-  display_profile: compatible
+  display_name_zh_cn: DGX Station (GB300) · NVFP4 (NVIDIA)
+  display_name_en: DGX Station (GB300) · NVFP4 (NVIDIA)
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -1703,17 +962,26 @@ specs:
     vendor: nvidia
     cc: '>=10.0'
     name: (?:DGX[ _-]?Station|GB300)
-    display_target: gb300
   args:
+  - --gpu-memory-utilization
+  - '0.92'
+  - --max-model-len
+  - '262144'
+  - --max-num-seqs
+  - '64'
+  - --max-num-batched-tokens
+  - '8192'
+  - --enable-chunked-prefill
+  - --enable-prefix-caching
   - --load-format
   - fastsafetensors
   - --enable-auto-tool-choice
   - --tool-call-parser
   - gemma4
-  - --chat-template
-  - examples/tool_chat_template_gemma4.jinja
   - --reasoning-parser
   - gemma4
+  - --chat-template
+  - examples/tool_chat_template_gemma4.jinja
   env:
     VLLM_USE_V2_MODEL_RUNNER: '1'
   api:
@@ -1723,7 +991,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: nvfp4-nvidia-nvfp4-vllm-nvidia-dgx-station-gb300-speculative-draft
-  display_profile: compatible
+  display_name_zh_cn: DGX Station (GB300) · NVFP4 (NVIDIA) · 投机解码
+  display_name_en: DGX Station (GB300) · NVFP4 (NVIDIA) · Speculative
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -1741,121 +1010,28 @@ specs:
     vendor: nvidia
     cc: '>=10.0'
     name: (?:DGX[ _-]?Station|GB300)
-    display_target: gb300
   args:
+  - --gpu-memory-utilization
+  - '0.92'
+  - --max-model-len
+  - '262144'
+  - --max-num-seqs
+  - '64'
+  - --max-num-batched-tokens
+  - '8192'
+  - --enable-chunked-prefill
+  - --enable-prefix-caching
   - --load-format
   - fastsafetensors
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - gemma4
+  - --reasoning-parser
+  - gemma4
   - --speculative-config
-  - '{"model":"/models/draft","num_speculative_tokens":4}'
-  - --enable-auto-tool-choice
-  - --tool-call-parser
-  - gemma4
+  - '{"method":"mtp","model":"/models/draft","num_speculative_tokens":4,"moe_backend":"triton"}'
   - --chat-template
   - examples/tool_chat_template_gemma4.jinja
-  - --reasoning-parser
-  - gemma4
-  env:
-    VLLM_USE_V2_MODEL_RUNNER: '1'
-  components:
-  - name: target
-    role: primary
-    weights:
-      quantization: nvfp4
-      sources:
-      - huggingface:
-          repo_id: nvidia/Gemma-4-26B-A4B-NVFP4
-          revision: a19cfe00be84568a6867111c9a68c9c44fdcffe6
-      - modelscope:
-          repo_id: nv-community/Gemma-4-26B-A4B-NVFP4
-          revision: fc09e800b20a46267a7341defa7732101adb27a9
-    weight_bytes: 18825679760
-    mount_path: /models/target
-  - name: draft
-    role: speculative_draft
-    model_id: google/gemma-4-26b-a4b-it-assistant
-    weights:
-      quantization: bf16
-      sources:
-      - huggingface:
-          repo_id: google/gemma-4-26B-A4B-it-assistant
-          revision: 6e5aaaf4c42b98394530b8fda2e95cadd65c151c
-      - modelscope:
-          repo_id: google/gemma-4-26B-A4B-it-assistant
-          revision: 2941bb3091576c1c00c03ccbe0121a611c6062a1
-    weight_bytes: 871632094
-    mount_path: /models/draft
-  api:
-    health_endpoint: /health
-    operations:
-    - type: openai.chat
-      endpoint: /v1/chat/completions
-      mode: stream
-- name: nvfp4-nvidia-nvfp4-vllm-nvidia-rtx-5090
-  display_profile: compatible
-  scenario: throughput
-  engine: vllm
-  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
-  weights:
-    quantization: nvfp4
-    sources:
-    - huggingface:
-        repo_id: nvidia/Gemma-4-26B-A4B-NVFP4
-        revision: a19cfe00be84568a6867111c9a68c9c44fdcffe6
-    - modelscope:
-        repo_id: nv-community/Gemma-4-26B-A4B-NVFP4
-        revision: fc09e800b20a46267a7341defa7732101adb27a9
-  weight_bytes: 18825679760
-  gpus:
-    vendor: nvidia
-    cc: '>=10.0'
-    name: RTX[ _-]?5090
-    display_target: rtx_5090
-  env:
-    VLLM_USE_V2_MODEL_RUNNER: '1'
-  args:
-  - --enable-auto-tool-choice
-  - --tool-call-parser
-  - gemma4
-  - --chat-template
-  - examples/tool_chat_template_gemma4.jinja
-  - --reasoning-parser
-  - gemma4
-  api:
-    health_endpoint: /health
-    operations:
-    - type: openai.chat
-      endpoint: /v1/chat/completions
-      mode: stream
-- name: nvfp4-nvidia-nvfp4-vllm-nvidia-rtx-5090-speculative-draft
-  display_profile: compatible
-  scenario: throughput
-  engine: vllm
-  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
-  weights:
-    quantization: nvfp4
-    sources:
-    - huggingface:
-        repo_id: nvidia/Gemma-4-26B-A4B-NVFP4
-        revision: a19cfe00be84568a6867111c9a68c9c44fdcffe6
-    - modelscope:
-        repo_id: nv-community/Gemma-4-26B-A4B-NVFP4
-        revision: fc09e800b20a46267a7341defa7732101adb27a9
-  weight_bytes: 18825679760
-  gpus:
-    vendor: nvidia
-    cc: '>=10.0'
-    name: RTX[ _-]?5090
-    display_target: rtx_5090
-  args:
-  - --speculative-config
-  - '{"model":"/models/draft","num_speculative_tokens":4}'
-  - --enable-auto-tool-choice
-  - --tool-call-parser
-  - gemma4
-  - --chat-template
-  - examples/tool_chat_template_gemma4.jinja
-  - --reasoning-parser
-  - gemma4
   env:
     VLLM_USE_V2_MODEL_RUNNER: '1'
   components:
@@ -1893,7 +1069,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: nvfp4-nvidia-nvfp4-vllm-nvidia-rtx-pro-6000
-  display_profile: compatible
+  display_name_zh_cn: RTX PRO 6000 · NVFP4 (NVIDIA)
+  display_name_en: RTX PRO 6000 · NVFP4 (NVIDIA)
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -1911,17 +1088,25 @@ specs:
     vendor: nvidia
     cc: '>=10.0'
     name: RTX[ _-]?PRO[ _-]?6000
-    display_target: rtx_pro_6000
   args:
+  - --gpu-memory-utilization
+  - '0.92'
+  - --max-model-len
+  - '262144'
+  - --max-num-seqs
+  - '8'
+  - --max-num-batched-tokens
+  - '8192'
+  - --enable-prefix-caching
   - --load-format
   - fastsafetensors
   - --enable-auto-tool-choice
   - --tool-call-parser
   - gemma4
-  - --chat-template
-  - examples/tool_chat_template_gemma4.jinja
   - --reasoning-parser
   - gemma4
+  - --chat-template
+  - examples/tool_chat_template_gemma4.jinja
   env:
     VLLM_USE_V2_MODEL_RUNNER: '1'
   api:
@@ -1931,7 +1116,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: nvfp4-nvidia-nvfp4-vllm-nvidia-rtx-pro-6000-speculative-draft
-  display_profile: compatible
+  display_name_zh_cn: RTX PRO 6000 · NVFP4 (NVIDIA) · 投机解码
+  display_name_en: RTX PRO 6000 · NVFP4 (NVIDIA) · Speculative
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -1949,19 +1135,27 @@ specs:
     vendor: nvidia
     cc: '>=10.0'
     name: RTX[ _-]?PRO[ _-]?6000
-    display_target: rtx_pro_6000
   args:
+  - --gpu-memory-utilization
+  - '0.92'
+  - --max-model-len
+  - '262144'
+  - --max-num-seqs
+  - '8'
+  - --max-num-batched-tokens
+  - '8192'
+  - --enable-prefix-caching
   - --load-format
   - fastsafetensors
-  - --speculative-config
-  - '{"model":"/models/draft","num_speculative_tokens":4}'
   - --enable-auto-tool-choice
   - --tool-call-parser
   - gemma4
-  - --chat-template
-  - examples/tool_chat_template_gemma4.jinja
   - --reasoning-parser
   - gemma4
+  - --speculative-config
+  - '{"method":"mtp","model":"/models/draft","num_speculative_tokens":4,"moe_backend":"triton"}'
+  - --chat-template
+  - examples/tool_chat_template_gemma4.jinja
   env:
     VLLM_USE_V2_MODEL_RUNNER: '1'
   components:
@@ -1999,7 +1193,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: bf16-vllm-ppu-4d7ae498
-  display_profile: general
+  display_name_zh_cn: PPU · BF16
+  display_name_en: PPU · BF16
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
@@ -2016,7 +1211,6 @@ specs:
   gpus:
     vendor: ppu
     name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
-    display_target: ppu
   args:
   - --enable-auto-tool-choice
   - --tool-call-parser
@@ -2039,7 +1233,8 @@ specs:
 # context is capped so the KV cache of one sequence fits a 32-64 GB Mac; a
 # deployment may raise it.
 - name: mlx4-vllm-apple
-  display_profile: general
+  display_name_zh_cn: Apple 芯片 · MLX 4bit
+  display_name_en: Apple silicon · MLX 4bit
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:metal15.0-vllm0.31.0-r2
@@ -2055,7 +1250,6 @@ specs:
   weight_bytes: 15341205776
   gpus:
     vendor: apple
-    display_target: apple
   args:
   - --enable-auto-tool-choice
   - --tool-call-parser
@@ -2084,7 +1278,8 @@ specs:
 # Ascend hardware was available here, so these arguments are the published
 # recipe rather than a measured one.
 - name: bf16-vllm-ascend-d8ff96c2
-  display_profile: general
+  display_name_zh_cn: 910B (A2) · BF16
+  display_name_en: 910B (A2) · BF16
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cann9.1-910b-vllm0.26.0rc1-r2
@@ -2098,7 +1293,6 @@ specs:
   gpus:
     vendor: ascend
     name: (^|[^A-Za-z0-9])910B[A-Za-z0-9]*([^A-Za-z0-9]|$)
-    display_target: ascend
   args:
   - --dtype
   - bfloat16
@@ -2118,7 +1312,17 @@ specs:
   - '{"cudagraph_mode":"FULL_DECODE_ONLY"}'
   placement:
     language: starlark
-    resolver: "def resolve(gpu):\n    if gpu.count != 4: return reject(\"the published recipe runs four devices\")\n    if gpu.min_memory_gib < 32: return reject(\"each device requires at least 32 GiB\")\n    return {\"GPU_COUNT\": 4, \"TP_SIZE\": 4, \"SP_DEGREE\": 1}\n"
+    resolver: |-
+      def resolve(gpu):
+          # Any card count whose memory holds the weights (48.1 GiB) and the KV
+          # cache of one 32K-token request (7.5 GiB), which vLLM checks at start,
+          # within the engine's 0.9 share less about 2 GiB of runtime overhead per
+          # card. The scheduler takes the fewest such cards and keeps the tensor-
+          # parallel size a divisor of the attention heads.
+          if gpu.count * (gpu.min_memory_gib * 0.9 - 2) < 56:
+              return reject("the weights and one 32K-token request need 56 GiB; these cards offer less")
+          if gpu.min_memory_gib < 32: return reject("each device requires at least 32 GiB")
+          return {"GPU_COUNT": gpu.count, "TP_SIZE": gpu.count, "SP_DEGREE": 1}
   api:
     health_endpoint: /health
     operations:
@@ -2126,7 +1330,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: bf16-vllm-ascend-a3-d8ff96c2
-  display_profile: general
+  display_name_zh_cn: 910C (A3) · BF16
+  display_name_en: 910C (A3) · BF16
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cann9.1-a3-vllm0.26.0rc1-r2
@@ -2140,7 +1345,6 @@ specs:
   gpus:
     vendor: ascend
     name: (^|[^A-Za-z0-9])910C[A-Za-z0-9]*([^A-Za-z0-9]|$)
-    display_target: ascend
   args:
   - --dtype
   - bfloat16
@@ -2161,7 +1365,17 @@ specs:
   - --enforce-eager
   placement:
     language: starlark
-    resolver: "def resolve(gpu):\n    if gpu.count != 4: return reject(\"the published recipe runs four devices\")\n    if gpu.min_memory_gib < 32: return reject(\"each device requires at least 32 GiB\")\n    return {\"GPU_COUNT\": 4, \"TP_SIZE\": 4, \"SP_DEGREE\": 1}\n"
+    resolver: |-
+      def resolve(gpu):
+          # Any card count whose memory holds the weights (48.1 GiB) and the KV
+          # cache of one 32K-token request (7.5 GiB), which vLLM checks at start,
+          # within the engine's 0.9 share less about 2 GiB of runtime overhead per
+          # card. The scheduler takes the fewest such cards and keeps the tensor-
+          # parallel size a divisor of the attention heads.
+          if gpu.count * (gpu.min_memory_gib * 0.9 - 2) < 56:
+              return reject("the weights and one 32K-token request need 56 GiB; these cards offer less")
+          if gpu.min_memory_gib < 32: return reject("each device requires at least 32 GiB")
+          return {"GPU_COUNT": gpu.count, "TP_SIZE": gpu.count, "SP_DEGREE": 1}
   api:
     health_endpoint: /health
     operations:
@@ -2173,7 +1387,8 @@ specs:
 # for this model is the only one that names 950PR beside 950DT, so both are
 # claimed here. No 950 hardware was available.
 - name: mxfp4-vllm-ascend-950-35a54503
-  display_profile: general
+  display_name_zh_cn: 950DT / 950PR · MXFP4 · 8 卡
+  display_name_en: 950DT / 950PR · MXFP4 · 8 NPUs
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cann9.2-950-vllm0.30.0rc2-r1
@@ -2187,7 +1402,6 @@ specs:
   gpus:
     vendor: ascend
     name: (^|[^A-Za-z0-9])950(?:DT|PR)([^A-Za-z0-9]|$)
-    display_target: ascend
   args:
   - --max-model-len
   - '32768'

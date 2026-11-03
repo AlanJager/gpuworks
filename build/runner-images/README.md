@@ -207,6 +207,11 @@ bash shared/check_vendor_base.sh <base-ref>       # 必须在 prepare-base.sh �
    sum 50.4 GB / union 25.4 GB），`build.sh` 构建前会校验。
 8. **callable runtime 不烤进镜像**：推理目录的 spec 已用 sha256 钉住同一资产并由
    agent 只读挂载到同一路径，镜像内那份永远被盖住。
+9. **海光 dtk0.21 档的 INT8 spec 要关掉 vllm-hcu 的自定义量化 GEMM**（`dtk26.04-vllm0.21.0`，K100 真机实测）。
+   这一档的 base 是海光 vanilla，自带 `vllm-hcu` 平台插件，插件默认开启 `VLLM_HCU_USE_CUSTOM_QUANTIZATION_GEMM`；
+   Qwen3-4B-Thinking-2507 的 compressed-tensors W8A8 INT8 在它上面输出全是 `!`，而厂商 `custom:vllm0210-*` 镜像
+   （没有这个插件）正常。推理目录里该 INT8 spec 因此带 `VLLM_HCU_USE_CUSTOM_QUANTIZATION_GEMM: '0'`；
+   BF16 不受影响。镜像本身不全局关掉这个开关，以免连累别的量化负载。
 
 ## 已知待办
 
@@ -242,3 +247,26 @@ ssh gpu3 'cd /var/tmp/s7-publish && https_proxy=http://dev1.mytrix.me:7890 \
 skopeo 凭据走 0600 临时 authfile，结束即删；日志对凭据脱敏。SWR 自动加入 `no_proxy`（国内直连，
 实测走代理并不更快也不更慢）。退出码：0 成功，2 参数/配置，3 源读取失败，4 目标认证失败，5 skopeo
 重试后仍失败，6 发布后校验失败。`--dest-tag` 默认同源 tag；正式 `-r2` tag 须在真机验证通过后再发。
+
+## 同步阿里云盘（离线归档，发布后必做）
+
+离线部署文档（[`docs/how-to/deploy-offline.md`](../../docs/how-to/deploy-offline.md)）让用户从阿里云盘分享目录下载镜像归档。所以**每次新增 runner 档或升级 revision，在公网发布之后，都要把归档同步到云盘**，否则离线用户拿不到新档。云盘上每个系列只放当前版本。
+
+- 位置：企业云盘 drive 101 的 `/gpuworks-images/<引擎>-<框架>/`，目录名就是文档里列出的 `vllm-cuda/`、`sglang-dtk/` 等。文件名是 `gpuworks-runner_<tag>_linux-<架构>.tar.gz`；多架构的档，每个架构各传一份。
+- 导出：在构建机上从内网 registry 导出，归档里的引用要写成规范形式 `gpuworks/gpuworks-runner:<tag>`，用户导入后不用再打 tag：
+
+  ```bash
+  skopeo copy --override-arch amd64 \
+    docker://registry.zstack.ai/gpuworks/gpuworks-runner:<tag> \
+    docker-archive:/var/tmp/gpuworks-runner_<tag>_linux-amd64.tar:gpuworks/gpuworks-runner:<tag>
+  pigz -9 /var/tmp/gpuworks-runner_<tag>_linux-amd64.tar
+  ```
+
+- 上传：用 `pds-upload.py`。凭据（`PDS_DOMAIN_ID`、`PDS_API_KEY`）在维护者本地的 secrets 里。这把 key **只能上传、改名，不能删除**，传错了没法撤回，所以：先 `--dry-run` 核对目标目录和文件名；脚本拒绝覆盖已存在的文件；不要上传测试文件。分片 16 路并行上传（单流不到 1 MiB/s，8 GB 约 10 分钟）；PDS 要求并行上传的每个分片带前缀 SHA-1 状态，脚本经 libcrypto 计算，构建机需要有 `libcrypto.so`。传输中途失败会在云盘留下看不见也删不掉的未完成会话，所以先在构建机上 `gzip -t` 校验归档、确认网络稳定再传。
+
+  ```bash
+  env $(grep -v '^#' pds-ent-apikey.env | xargs) ./pds-upload.py gpuworks-runner_<tag>_linux-amd64.tar.gz vllm-dtk --dry-run
+  env $(grep -v '^#' pds-ent-apikey.env | xargs) ./pds-upload.py gpuworks-runner_<tag>_linux-amd64.tar.gz vllm-dtk
+  ```
+
+- 旧版本归档删不掉，需要有人在云盘网页上手动删除或移走，提交说明里写明这一项。

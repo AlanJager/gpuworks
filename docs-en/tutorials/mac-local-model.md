@@ -98,9 +98,9 @@ For other connection issues, see [Connect Nodes](../how-to/connect-nodes.md#maca
 
 ![Filter inference templates by the M5 chip, search for gpt-oss-20b, and open GPT-OSS 20B](../assets/screenshots/en/tutorial-mac-template-search.png)
 
-2. On the **vLLM** tab, find the **Apple silicon general spec**. Check that weight quantization is **mxfp4**, the displayed size is approximately **11.2 GiB**, and the environment package is `gpuworks/gpuworks-runner:metal15.0-vllm0.31.0-r2`. Click **Deploy** on this row.
+2. On the **vLLM** tab, find the **Apple silicon · MXFP4** row. Check that weight quantization is **mxfp4**, the displayed size is approximately **11.2 GiB**, and the environment package is `gpuworks/gpuworks-runner:metal15.0-vllm0.31.0-r2`. Click **Deploy** on this row.
 
-![Select the Apple Silicon general spec under vLLM and check the mxfp4 weights and Metal environment package](../assets/screenshots/en/tutorial-mac-template.png)
+![Select the Apple silicon · MXFP4 spec under vLLM and check the mxfp4 weights and Metal environment package](../assets/screenshots/en/tutorial-mac-template.png)
 
 3. Select **ModelScope** as the model source, confirm that the repository is `mlx-community/gpt-oss-20b-MXFP4-Q8`, and click **Register model and deploy** to open the deployment configuration.
 

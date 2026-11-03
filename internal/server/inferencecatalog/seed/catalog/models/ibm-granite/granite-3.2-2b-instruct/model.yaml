@@ -11,7 +11,8 @@ kv_bytes_per_token:
   sglang: 81920
 specs:
 - name: bf16-vllm-ppu-641593c3
-  display_profile: general
+  display_name_zh_cn: PPU · BF16
+  display_name_en: PPU · BF16
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
@@ -25,13 +26,14 @@ specs:
         repo_id: ibm-granite/granite-3.2-2b-instruct
         revision: 75a3165e635899a7c6407f95cec92f19164c28c2
   weight_bytes: 5067105168
-  gpus: {vendor: ppu, name: '(?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)', display_target: ppu}
+  gpus: {vendor: ppu, name: '(?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)'}
   args: [--trust-remote-code, --skip-mm-profiling]
   api:
     health_endpoint: /health
     operations: [{type: openai.chat, endpoint: /v1/chat/completions, mode: stream}]
 - name: bf16-vllm-nvidia-general
-  display_profile: general
+  display_name_zh_cn: Ampere 及以上 · BF16
+  display_name_en: Ampere+ · BF16
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -48,7 +50,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.0'
-    display_target: nvidia
   api:
     health_endpoint: /health
     operations:
@@ -56,7 +57,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: bf16-vllm-nvidia-turing
-  display_profile: compatible
+  display_name_zh_cn: Turing · BF16
+  display_name_en: Turing · BF16
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda12.9-vllm0.31.0-r2
@@ -73,7 +75,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: 7.5..7.9
-    display_target: turing
   args:
   - --dtype
   - half

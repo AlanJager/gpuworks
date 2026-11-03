@@ -27,11 +27,28 @@ func CatalogWarnings(catalog FlatCatalog) []*messages.ProductError {
 }
 
 func specWarnings(modelID string, spec InferenceSpec) []*messages.ProductError {
-	if spec.Engine != engines.Callable {
-		return nil
-	}
 	params := func() map[string]any { return map[string]any{"model_id": modelID, "spec": spec.Name} }
 	var warnings []*messages.ProductError
+	if spec.RetiredDisplayProfile != "" || spec.GPUs.RetiredDisplayTarget != "" {
+		warnings = append(warnings, messages.NewProductError(messages.WarningCatalogDisplayProfileRetired,
+			"Spec "+spec.Name+" of "+modelID+" sets display_profile or gpus.display_target, which are no longer used and were ignored; name the spec with display_name_zh_cn and display_name_en.",
+			params()))
+	}
+	// A value the parameter dictionary cannot read never blocks a template:
+	// the dictionary trails the engines, and the author's recipe is what the
+	// engine gets. The token reaches the engine verbatim (deploy.ReverseArgs
+	// keeps it in the residual); the platform only cannot show it in the form
+	// or use it in the estimate, which is what this warning says.
+	for _, problem := range deploy.LintArgs(spec.Engine, spec.Args) {
+		warning := params()
+		warning["flag"], warning["value"], warning["key"] = problem.Flag, problem.Value, problem.Key
+		warnings = append(warnings, messages.NewProductError(messages.WarningCatalogArgPassedThrough,
+			"Spec "+spec.Name+" of "+modelID+": "+problem.String()+" in the parameter dictionary, so it is passed to the engine verbatim and the form and the memory estimate do not see it.",
+			warning))
+	}
+	if spec.Engine != engines.Callable {
+		return warnings
+	}
 	if spec.API == nil || spec.API.Metrics == nil {
 		warnings = append(warnings, messages.NewProductError(messages.WarningCatalogCallableMetricsUndeclared,
 			"Callable spec "+spec.Name+" of "+modelID+" declares no api.metrics, so the monitoring center shows no engine metrics for it unless its /metrics happens to use vLLM or SGLang metric names.",

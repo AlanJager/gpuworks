@@ -235,6 +235,7 @@ func New(cfg Config, log *slog.Logger) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
+	diag := newDiagnostics(cfg, st, h, obs, px, log)
 	obs.resolveDeployment = wrapDeploymentLookup(func(instanceUUID string) (uint, error) {
 		inst, err := st.InstanceByUUID(instanceUUID)
 		if err != nil {
@@ -389,6 +390,9 @@ func New(cfg Config, log *slog.Logger) (*App, error) {
 		AISecretbox:          box,
 		BenchmarkArtifactDir: filepath.Join(cfg.DataDir, "benchmark-artifacts"),
 		Recovery:             recoverer,
+	}
+	if diag != nil {
+		apiDeps.Diagnostics = diag
 	}
 	handler := api.Router(apiDeps, auth.SessionPolicy{IdleTimeout: cfg.SessionIdleTimeout, MaxLifetime: cfg.SessionMaxLifetime, Proxies: proxies, Cookie: cfg.sessionCookie()})
 	a.scaleReplicas = planning.Scaling{Store: st, Resolve: networks.Resolve, Online: h.Online}.ScaleScheduled

@@ -1118,9 +1118,35 @@ If it reports `database ... does not exist`, use `--data` to specify the server'
 If the user does not exist, the command returns `not found`; first check the username and data directory. For permission errors, check the current user's access to the database.
 See [CLI](../reference/cli.md).
 
+## When You Cannot Log In On Site: Debug Collection and Collecting Diagnostics
+
+When you cannot log in to the customer's servers, have an administrator work in **Settings → Diagnostics** and send back the downloaded archive.
+
+**Collect diagnostics**: choose a time range (the last hour by default, at most 7 days) and the related deployments and nodes, then click **Start collecting**; when it finishes, download `gpuworks-diagnostics-<id>.tar.gz` from the list. The archive holds:
+
+| Path | Content |
+|---|---|
+| `manifest.json` | The collection's scope, the server version, and whether each part was collected, skipped (node offline, agent version without support) or failed |
+| `server/gpuworks-server.log` | The server log in the time range (info included; the Logs page has warn and above only) |
+| `nodes/<uuid>/agent.log`, `doctor.json` | The chosen nodes' (without a choice, the nodes of the chosen deployments' instances) agent logs and diagnosis reports |
+| `instances/<uuid>.log` | The chosen deployments' instance logs |
+| `debug/<session>/`, `nodes/<uuid>/debug/` | Debug collections that overlap the time range |
+| `db/*.json` | All nodes, the chosen deployments and instances, events in the time range, the chosen nodes' image states, the image catalog, storages, settings, and the chosen deployments' request records |
+
+Credentials (tokens, passwords, keys, hashes) keep only their first 8 characters, which match the API key prefixes the console shows. Archives are kept for 7 days under `diagnostics/bundles/` in the server's data directory.
+When the server does not start, run [`gpuworks support-bundle`](../reference/cli.md#gpuworks-support-bundle) on the server host; it reads the database and log files directly (the nodes' part cannot be collected, and the manifest says so).
+
+**Debug collection**: when a symptom needs debug logs or the raw requests to be understood (a client that never receives the end of a stream, say), start a debug collection, reproduce the problem once, then collect diagnostics:
+
+1. Choose a duration (10 minutes by default, at most 1 hour), a total size (10 GiB by default, at most 50 GiB), the deployments to record and the nodes to turn debug logs on for.
+2. While it runs, the server and the agents of the chosen nodes (and of the nodes the chosen deployments run on) write records at debug and above to separate files, leaving the regular log levels unchanged; every request of the chosen deployments is recorded in full as `requests/<deployment>-<request id>.jsonl`:
+   the request (credential headers removed), every frame the engine returned (`upstream`), every frame the client received (`client`), each with its milliseconds since the start, and how it ended (the `end` line's `outcome` and read/write errors). One request records at most 16 MiB, and each node's debug file at most 200 MiB.
+3. It ends when its time is up, its size is reached, or it is stopped. Its start and end each write a server warning with the operator, as the audit record.
+4. The request records contain prompts and replies; they stay on the server and the nodes only and are deleted after 7 days. Nodes whose agent version is too old do not support it and are marked as skipped.
+
 ## Still Unresolved?
 
-Include the following information when filing an issue or asking for help to reduce back-and-forth:
+When filing an issue or asking for help, attach a [diagnostics archive](#when-you-cannot-log-in-on-site-debug-collection-and-collecting-diagnostics) first; without one, include the following information to reduce back-and-forth:
 
 1. Versions: `gpuworks version` (server) and `gpuworks-agent version` (the affected node).
 2. The affected instance UUID and its event timeline: `GET /api/v1/instances/<uuid>/events` (add

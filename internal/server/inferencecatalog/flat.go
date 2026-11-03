@@ -73,7 +73,8 @@ type InferenceModel struct {
 // InferenceSpec is one complete, deployable configuration.
 type InferenceSpec struct {
 	Name               string            `yaml:"name" json:"name"`
-	DisplayProfile     string            `yaml:"display_profile,omitempty" json:"display_profile,omitempty"`
+	DisplayNameZHCN    string            `yaml:"display_name_zh_cn,omitempty" json:"display_name_zh_cn,omitempty"` // see DisplayNameEN
+	DisplayNameEN      string            `yaml:"display_name_en,omitempty" json:"display_name_en,omitempty"`       // human-written names, see validateDisplayNamesDistinct
 	Scenario           string            `yaml:"scenario,omitempty" json:"scenario,omitempty"`
 	Engine             string            `yaml:"engine" json:"engine"`
 	Image              string            `yaml:"image" json:"image"`
@@ -105,6 +106,10 @@ type InferenceSpec struct {
 	// A memlock ulimit the deployment's docker_args state wins over it (see
 	// deploy.withMemlockDockerArgs).
 	MemlockUnlimited bool `yaml:"memlock_unlimited,omitempty" json:"memlock_unlimited,omitempty"`
+	// RetiredDisplayProfile is the display_profile key specs carried before
+	// display names. It is still read, so older YAML imports, but never
+	// stored; CatalogWarnings reports it.
+	RetiredDisplayProfile string `yaml:"display_profile,omitempty" json:"-"`
 }
 
 type Weights struct {
@@ -193,10 +198,12 @@ func (s WeightSource) MarshalYAML() (any, error) {
 }
 
 type GPUSelector struct {
-	Vendor        string `yaml:"vendor" json:"vendor"`
-	CC            string `yaml:"cc,omitempty" json:"cc,omitempty"`
-	Name          string `yaml:"name,omitempty" json:"name,omitempty"`
-	DisplayTarget string `yaml:"display_target,omitempty" json:"display_target,omitempty"`
+	Vendor string `yaml:"vendor" json:"vendor"`
+	CC     string `yaml:"cc,omitempty" json:"cc,omitempty"`
+	Name   string `yaml:"name,omitempty" json:"name,omitempty"`
+	// RetiredDisplayTarget is the display_target key that paired with
+	// display_profile: still read so older YAML imports, never stored.
+	RetiredDisplayTarget string `yaml:"display_target,omitempty" json:"-"`
 }
 
 type UnsupportedGPU struct {
@@ -340,6 +347,9 @@ func validateFlatCatalogStructure(catalog *FlatCatalog) error {
 				return fmt.Errorf("model %s spec %s API contract: %w", model.ModelID, model.Specs[si].Name, err)
 			}
 		}
+		if err := validateDisplayNamesDistinct(model); err != nil {
+			return err
+		}
 		for ui := range model.Unsupported {
 			if err := validateUnsupported(model.ModelID, ui, &model.Unsupported[ui]); err != nil {
 				return err
@@ -363,13 +373,11 @@ func ValidateFlatCatalog(catalog *FlatCatalog) error {
 }
 
 var dateExpression = regexp.MustCompile(`^[0-9]{4}-[0-9]{2}-[0-9]{2}$`)
-var displayTargetExpression = regexp.MustCompile(`^[a-z0-9]+(?:_[a-z0-9]+)*$`)
 
 func validateSelector(where string, selector *GPUSelector) error {
 	selector.Vendor = strings.ToLower(strings.TrimSpace(selector.Vendor))
 	selector.CC = strings.TrimSpace(selector.CC)
 	selector.Name = strings.TrimSpace(selector.Name)
-	selector.DisplayTarget = strings.ToLower(strings.TrimSpace(selector.DisplayTarget))
 	if selector.Vendor == "" {
 		return fmt.Errorf("%s requires gpus.vendor", where)
 	}
@@ -388,9 +396,6 @@ func validateSelector(where string, selector *GPUSelector) error {
 		if _, err := regexp.Compile("(?i)" + selector.Name); err != nil {
 			return fmt.Errorf("%s has invalid gpus.name: %w", where, err)
 		}
-	}
-	if selector.DisplayTarget != "" && !displayTargetExpression.MatchString(selector.DisplayTarget) {
-		return fmt.Errorf("%s has invalid gpus.display_target %q", where, selector.DisplayTarget)
 	}
 	return nil
 }
@@ -411,7 +416,8 @@ func validateModel(model *InferenceModel) error {
 
 func validateSpec(modelID string, index int, spec *InferenceSpec, names map[string]struct{}) error {
 	spec.Name = strings.TrimSpace(spec.Name)
-	spec.DisplayProfile = strings.ToLower(strings.TrimSpace(spec.DisplayProfile))
+	spec.DisplayNameZHCN = strings.TrimSpace(spec.DisplayNameZHCN)
+	spec.DisplayNameEN = strings.TrimSpace(spec.DisplayNameEN)
 	spec.Scenario = strings.ToLower(strings.TrimSpace(spec.Scenario))
 	spec.Engine = strings.ToLower(strings.TrimSpace(spec.Engine))
 	spec.Image = strings.TrimSpace(spec.Image)
@@ -424,11 +430,11 @@ func validateSpec(modelID string, index int, spec *InferenceSpec, names map[stri
 		return err
 	}
 	spec.ImageSources = imageSources
-	if spec.DisplayProfile != "" && spec.DisplayProfile != "general" && spec.DisplayProfile != "compatible" && spec.DisplayProfile != "optimized" {
-		return fmt.Errorf("model %s spec %s has invalid display_profile %q", modelID, spec.Name, spec.DisplayProfile)
+	if err := validateDisplayName(modelID, spec.Name, "display_name_zh_cn", spec.DisplayNameZHCN, maxDisplayNameZHCN); err != nil {
+		return err
 	}
-	if (spec.DisplayProfile == "") != (spec.GPUs.DisplayTarget == "") {
-		return fmt.Errorf("model %s spec %s must set display_profile and gpus.display_target together", modelID, spec.Name)
+	if err := validateDisplayName(modelID, spec.Name, "display_name_en", spec.DisplayNameEN, maxDisplayNameEN); err != nil {
+		return err
 	}
 	if spec.WeightBytes < 0 {
 		return fmt.Errorf("model %s spec %s weight_bytes cannot be negative", modelID, spec.Name)

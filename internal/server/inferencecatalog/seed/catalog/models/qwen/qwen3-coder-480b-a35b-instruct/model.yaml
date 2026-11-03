@@ -11,7 +11,8 @@ kv_bytes_per_token:
   sglang: 253952
 specs:
 - name: bf16-vllm-nvidia-general
-  display_profile: general
+  display_name_zh_cn: Ampere 及以上 · BF16
+  display_name_en: Ampere+ · BF16
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -28,7 +29,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.0'
-    display_target: nvidia
   args:
   - --enable-auto-tool-choice
   - --tool-call-parser
@@ -40,7 +40,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: bf16-vllm-nvidia-hopper
-  display_profile: compatible
+  display_name_zh_cn: Hopper · BF16
+  display_name_en: Hopper · BF16
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -57,7 +58,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '9.0'
-    display_target: hopper
   env:
     VLLM_USE_DEEP_GEMM: '1'
   args:
@@ -71,7 +71,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: fp8-sglang-nvidia-general
-  display_profile: compatible
+  display_name_zh_cn: Hopper 及以上 · FP8
+  display_name_en: Hopper+ · FP8
   scenario: balanced
   engine: sglang
   image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
@@ -90,7 +91,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=9.0'
-    display_target: hopper
   api:
     health_endpoint: /health
     operations:
@@ -98,7 +98,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: fp8-vllm-nvidia-general
-  display_profile: compatible
+  display_name_zh_cn: Ada 及以上 · FP8
+  display_name_en: Ada+ · FP8
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -114,8 +115,7 @@ specs:
   weight_bytes: 482171275944
   gpus:
     vendor: nvidia
-    cc: '>=9.0'
-    display_target: hopper
+    cc: '>=8.9'
   args:
   - --enable-auto-tool-choice
   - --tool-call-parser
@@ -127,7 +127,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: fp8-vllm-nvidia-hopper
-  display_profile: compatible
+  display_name_zh_cn: Hopper · FP8
+  display_name_en: Hopper · FP8
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -144,7 +145,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '9.0'
-    display_target: hopper
   env:
     VLLM_USE_DEEP_GEMM: '1'
   args:
@@ -158,7 +158,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: nvfp4-vllm-nvidia-cc100
-  display_profile: compatible
+  display_name_zh_cn: Blackwell · NVFP4
+  display_name_en: Blackwell · NVFP4
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -175,7 +176,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=10.0'
-    display_target: blackwell
   env:
     VLLM_USE_FLASHINFER_MOE_FP4: '1'
   args:

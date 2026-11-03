@@ -2,51 +2,20 @@ import type { DetectedTemplateChip, GPUPredicate, InferenceSpec, InferenceTempla
 import type { OperationType } from "../inferenceApi";
 import { operationTypesOf } from "../modelInference";
 
-export function predicateLabel(spec: InferenceSpec) {
+export function predicateLabel(spec: { gpus: GPUPredicate }) {
   const parts = [spec.gpus.vendor.toUpperCase()];
   if (spec.gpus.cc) parts.push(`CC ${spec.gpus.cc}`);
   if (spec.gpus.name) parts.push(spec.gpus.name);
   return parts.join(" · ");
 }
 
-type Translate = (key: string, options?: Record<string, unknown>) => string;
-
-function readablePredicateTarget(spec: InferenceSpec) {
-  const configured = spec.gpus.display_target?.trim().toLowerCase();
-  if (configured) return configured;
-  const name = spec.gpus.name || "";
-  const known: Array<[RegExp, string]> = [
-    [/(?:DGX.*Spark|GB10)/i, "gb10"], [/(?:DGX.*Station|GB300)/i, "gb300"],
-    [/RTX.*PRO.*6000/i, "rtx_pro_6000"], [/RTX.*PRO.*5000/i, "rtx_pro_5000"],
-    [/RTX.*5090/i, "rtx_5090"], [/RTX.*4090/i, "rtx_4090"],
-    [/GB300/i, "gb300"], [/GB200/i, "gb200"], [/B300/i, "b300"], [/B200/i, "b200"],
-  ];
-  return known.find(([pattern]) => pattern.test(name))?.[1] || spec.gpus.vendor.toLowerCase();
-}
-
-function defaultTargetName(key: string) {
-  const names: Record<string, string> = {
-    nvidia: "NVIDIA", ascend: "Ascend", hygon: "Hygon", amd: "AMD", ppu: "PPU", apple: "Apple silicon",
-    turing: "Turing", hopper: "Hopper", blackwell: "Blackwell", gb10: "GB10",
-    b200: "B200", b300: "B300", gb200: "GB200", gb300: "GB300",
-    rtx_4090: "RTX 4090", rtx_5090: "RTX 5090", rtx_pro_5000: "RTX PRO 5000", rtx_pro_6000: "RTX PRO 6000",
-  };
-  return names[key] || key.split("_").join(" ").toUpperCase();
-}
-
-export function templateSpecDisplayName(spec: InferenceSpec, t: Translate) {
-  const target = templateSpecTargetName(spec, t);
-  const profile = spec.display_profile || "general";
-  return t(`displayProfile.${profile}`, { target, defaultValue: `${target} Template` });
-}
-
-export function templateSpecTargetName(spec: InferenceSpec, t: Translate) {
-  return gpuPredicateTargetName(spec.gpus, t);
-}
-
-export function gpuPredicateTargetName(predicate: GPUPredicate, t: Translate) {
-  const targetKey = readablePredicateTarget({ gpus: predicate } as InferenceSpec);
-  return t(`displayTarget.${targetKey}`, { defaultValue: defaultTargetName(targetKey) });
+/** The spec's human-written name in the page's language, falling back to the
+ * other language and then to the spec id. The names are catalog data written
+ * per locale; nothing here derives a name. */
+export function specDisplayName(spec: Pick<InferenceSpec, "name" | "display_name_zh_cn" | "display_name_en">, language: string) {
+  const zh = spec.display_name_zh_cn?.trim();
+  const en = spec.display_name_en?.trim();
+  return (language.toLowerCase().startsWith("zh") ? zh || en : en || zh) || spec.name;
 }
 
 export function templateModelOperations(model: InferenceTemplate): OperationType[] {

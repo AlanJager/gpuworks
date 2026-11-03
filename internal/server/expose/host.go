@@ -21,12 +21,13 @@ const connectorTermGrace = 10 * time.Second
 // HostMain is the hidden `gpuworks expose connector-host` entry point: the
 // helper that owns the connector process.
 //
-// It exists for one reason. The connector must not survive the server, and a
-// server can die without warning — SIGKILL, a crash, the OOM killer — so the
-// guarantee cannot live in the server's shutdown path. The helper watches the
-// pipe on stdin instead: that pipe is held by the server, and when the server
-// dies the write end closes, the helper reads EOF, and it takes the connector
-// down. There is no pid guessing and no /proc inspection on either side, which
+// It exists for one reason. The connector must not survive the connector
+// service that hosts it (`gpuworks expose run`, see ADR 0045; the server itself
+// no longer hosts the connector), and that service can die without warning —
+// SIGKILL, a crash, the OOM killer — so the guarantee cannot live in its
+// shutdown path. The helper watches the pipe on stdin instead: that pipe is
+// held by the service, and when the service dies the write end closes, the
+// helper reads EOF, and it takes the connector down. There is no pid guessing and no /proc inspection on either side, which
 // is what makes it work on macOS too, where no parent-death signal exists.
 //
 // stdin is the liveness pipe, never connector input; the spec arrives in the
@@ -34,14 +35,14 @@ const connectorTermGrace = 10 * time.Second
 func HostMain(ctx context.Context, stdin io.Reader) int {
 	// A write to fd 1 or 2 that fails with EPIPE raises SIGPIPE, whose default
 	// action kills the process on the spot — before the cleanup below runs.
-	// That is exactly the situation this helper exists for: the server died, so
+	// That is exactly the situation this helper exists for: the service died, so
 	// its end of our stdout pipe is gone, and the first log line about stopping
 	// the connector would otherwise take this process down and leave the
 	// connector running. Ignored, the write just returns an error.
 	signal.Ignore(syscall.SIGPIPE)
 
 	// This helper takes a process group of its own, so that "our group" means
-	// this tree and nothing else. The server already starts it in one; a manual
+	// this tree and nothing else. The service already starts it in one; a manual
 	// `gpuworks expose connector-host` would otherwise share the shell's job,
 	// and stopping the connector would take the shell down with it. Failing to
 	// move is not fatal — a session leader is already alone in its group.
@@ -66,7 +67,7 @@ func HostMain(ctx context.Context, stdin io.Reader) int {
 
 	cmd := exec.Command(spec.Binary, spec.Args...)
 	cmd.Env = spec.Env
-	// The connector's output goes straight through: the server's writer is the
+	// The connector's output goes straight through: the service's writer is the
 	// one that rotates it and reads it, and a second copy here would only make
 	// the two disagree.
 	cmd.Stdout = os.Stdout
@@ -77,17 +78,17 @@ func HostMain(ctx context.Context, stdin io.Reader) int {
 	// group then covers the connector and anything it spawned — and, because a
 	// process group outlives its leader, it still reaches the connector after
 	// the helper is gone. A connector in a group of its own would become
-	// unreachable the moment its helper died, and would go on serving a dead
-	// server's address from the public internet.
+	// unreachable the moment its helper died, and would go on serving the public
+	// address with nobody supervising it.
 
 	if err := cmd.Start(); err != nil {
 		fmt.Fprintf(os.Stderr, "connector-host: start %s: %v\n", spec.Binary, err)
 		return 1
 	}
 
-	// Two ways this ends, and both must take the connector down: the server
-	// disconnected (EOF on the pipe), or we were asked to stop (a signal from
-	// the server's shutdown path).
+	// Two ways this ends, and both must take the connector down: the
+	// service disconnected (EOF on the pipe), or we were asked to stop (a
+	// signal from the service's shutdown path).
 	stopping := make(chan struct{})
 	var once sync.Once
 	stop := func(reason string) {
@@ -121,7 +122,7 @@ func HostMain(ctx context.Context, stdin io.Reader) int {
 
 	select {
 	case err := <-waited:
-		// The connector ended by itself; report how it went so the server can
+		// The connector ended by itself; report how it went so the service can
 		// tell a crash from a clean stop.
 		return exitCode(err)
 	case <-stopping:
@@ -157,14 +158,14 @@ func signalTree(sig syscall.Signal) {
 }
 
 // watchPipe treats the pipe as a lease on the connector's life: EOF means the
-// server is gone.
+// connector service is gone.
 func watchPipe(stdin io.Reader, stop func(reason string)) {
 	_, err := io.Copy(io.Discard, stdin)
 	if err != nil {
 		stop("the liveness pipe broke")
 		return
 	}
-	stop("the server closed the liveness pipe")
+	stop("the connector service closed the liveness pipe")
 }
 
 func exitCode(err error) int {

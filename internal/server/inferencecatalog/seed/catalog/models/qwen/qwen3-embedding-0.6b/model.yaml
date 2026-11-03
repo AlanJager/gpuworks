@@ -11,12 +11,13 @@ kv_bytes_per_token:
   sglang: 114688
 specs:
 - name: int4-sglang-ascend-1f199710
-  display_profile: general
+  display_name_zh_cn: 910B (A2) · INT8 GPTQ
+  display_name_en: 910B (A2) · INT8 GPTQ
   scenario: balanced
   engine: sglang
   image: gpuworks/gpuworks-runner:cann9.0-910b-sglang0.5.18-r2
   weights:
-    quantization: int4
+    quantization: int8
     sources:
     - huggingface:
         repo_id: AXERA-TECH/Qwen3-Embedding-0.6B-GPTQ-Int8
@@ -28,7 +29,6 @@ specs:
   gpus:
     vendor: ascend
     name: (^|[^A-Za-z0-9])910B[A-Za-z0-9]*([^A-Za-z0-9]|$)
-    display_target: ascend
   args:
   - --enable-metrics
   - --is-embedding
@@ -52,12 +52,13 @@ specs:
       endpoint: /v1/embeddings
       mode: sync
 - name: int4-sglang-ascend-a3-1f199710
-  display_profile: general
+  display_name_zh_cn: 910C (A3) · INT8 GPTQ
+  display_name_en: 910C (A3) · INT8 GPTQ
   scenario: balanced
   engine: sglang
   image: gpuworks/gpuworks-runner:cann9.0-a3-sglang0.5.18-r2
   weights:
-    quantization: int4
+    quantization: int8
     sources:
     - huggingface:
         repo_id: AXERA-TECH/Qwen3-Embedding-0.6B-GPTQ-Int8
@@ -69,7 +70,6 @@ specs:
   gpus:
     vendor: ascend
     name: (^|[^A-Za-z0-9])910C[A-Za-z0-9]*([^A-Za-z0-9]|$)
-    display_target: ascend
   args:
   - --enable-metrics
   - --is-embedding
@@ -93,7 +93,8 @@ specs:
       endpoint: /v1/embeddings
       mode: sync
 - name: int4-sglang-nvidia-general
-  display_profile: general
+  display_name_zh_cn: Ampere 及以上 · INT8 GPTQ
+  display_name_en: Ampere+ · INT8 GPTQ
   scenario: balanced
   engine: sglang
   image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
@@ -101,7 +102,7 @@ specs:
   - --enable-metrics
   - --is-embedding
   weights:
-    quantization: int4
+    quantization: int8
     sources:
     - huggingface:
         repo_id: AXERA-TECH/Qwen3-Embedding-0.6B-GPTQ-Int8
@@ -113,7 +114,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.0'
-    display_target: nvidia
   api:
     health_endpoint: /health
     operations:
@@ -124,7 +124,8 @@ specs:
 # gpuworks-runner metal package, serving the bf16 weights with the pooling
 # runner (--runner pooling below).
 - name: bf16-vllm-apple
-  display_profile: general
+  display_name_zh_cn: Apple 芯片 · BF16
+  display_name_en: Apple silicon · BF16
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:metal15.0-vllm0.31.0-r2
@@ -140,7 +141,6 @@ specs:
   weight_bytes: 1191586416
   gpus:
     vendor: apple
-    display_target: apple
   args:
   - --runner
   - pooling

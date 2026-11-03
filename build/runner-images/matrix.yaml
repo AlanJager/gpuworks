@@ -561,6 +561,29 @@ items:
       内置 vllm-hcu-apply-patches（推理目录的 pre_start_argv 依赖它）。
       callable runtime 不烤进镜像：推理目录用 sha256 钉住同一资产并只读挂到同一路径。
 
+  - id: dtk26.04-vllm0.21.0
+    revision: r1
+    backend: dtk
+    engine: vllm
+    platforms: [linux/amd64]
+    base: harbor.sourcefind.cn:5443/dcu/admin/base/vllm:0.21.0-ubuntu22.04-dtk2604-py3.10
+    base_note: >-
+      海光厂商原件（不是 `-sf_b075` 变体），取法同 0.18.1 档：该 base 的 history
+      里同样要先压掉（见 base_requires_clean_history）。
+    base_requires_clean_history: true
+    args:
+      VLLM_OMNI_VERSION: ""
+      MOONCAKE: ""
+    requires: [engine, hcu_patches, overlays]
+    note: >-
+      K100 等海光 DCU 的 vllm 0.21 档。**不含 omni**：厂商原件（ubuntu22.04 / py3.10）的 pip 清单是
+      vllm 0.21.0、vllm-hcu 0.21.0（vllm 平台插件）、transformers 5.5.0、torch 2.10.0（dtk2604），
+      没有 vllm-omni；海光的 omni 负载仍走厂商 custom:* 系列镜像。
+      内置 vllm-hcu-apply-patches（厂商 base 构建时已执行过一次，可重复执行；推理目录的
+      pre_start_argv 依赖它）。callable runtime 不烤进镜像：推理目录用 sha256 钉住同一资产并只读挂到同一路径。
+      注意：vllm-hcu 插件默认开启自定义量化 GEMM，compressed-tensors W8A8 INT8 在 K100 上输出全是 `!`
+      （K100 真机实测）；INT8 spec 须设 `VLLM_HCU_USE_CUSTOM_QUANTIZATION_GEMM=0`，BF16 不受影响。
+
   - id: dtk26.04-sglang0.5.12
     revision: r2
     backend: dtk

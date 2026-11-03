@@ -36,6 +36,7 @@ var deniedRoutes = map[string]string{
 	"/api/v1/events":                              "a server-sent event stream",
 	"/api/v1/instances/{uuid}/logs":               "a log stream; /api/v1/logs/search reads the same lines",
 	"/api/v1/inference-templates/export/{digest}": "an archive download",
+	"/api/v1/diagnostics/bundles/{id}/download":   "a diagnostics archive, recorded request contents included",
 	"/api/v1/models/{id}/logo":                    "an image",
 	"/api/v1/nodes/{uuid}/ssh":                    "SSH access settings",
 	"/api/v1/nodes/{uuid}/terminal":               "an interactive terminal",

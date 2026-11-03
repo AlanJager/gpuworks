@@ -11,7 +11,8 @@ kv_bytes_per_token:
   sglang: 122880
 specs:
 - name: bf16-sglang-nvidia-general
-  display_profile: general
+  display_name_zh_cn: Ampere 及以上 · BF16
+  display_name_en: Ampere+ · BF16
   scenario: balanced
   engine: sglang
   image: gpuworks/gpuworks-runner:cuda12.9-sglang0.5.18-r2
@@ -28,7 +29,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.0'
-    display_target: nvidia
   args:
   - --enable-metrics
   - --reasoning-parser
@@ -43,7 +43,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: bf16-vllm-nvidia-general
-  display_profile: general
+  display_name_zh_cn: Ampere 及以上 · BF16
+  display_name_en: Ampere+ · BF16
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -60,7 +61,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.0'
-    display_target: nvidia
   args:
   - --tool-call-parser
   - minimax_m3
@@ -74,7 +74,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: bf16-vllm-nvidia-general-eagle3-draft
-  display_profile: general
+  display_name_zh_cn: Ampere 及以上 · BF16 · 投机解码
+  display_name_en: Ampere+ · BF16 · Speculative
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -91,7 +92,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.0'
-    display_target: nvidia
   args:
   - --speculative-config
   - '{"method":"eagle3","model":"/models/draft","num_speculative_tokens":3,"attention_backend":"FLASH_ATTN"}'
@@ -135,7 +135,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: mxfp8-sglang-nvidia-general
-  display_profile: compatible
+  display_name_zh_cn: Hopper 及以上 · MXFP8
+  display_name_en: Hopper+ · MXFP8
   scenario: balanced
   engine: sglang
   image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
@@ -152,7 +153,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=9.0'
-    display_target: hopper
   args:
   - --enable-metrics
   - --reasoning-parser
@@ -170,41 +170,9 @@ specs:
     - type: openai.chat
       endpoint: /v1/chat/completions
       mode: stream
-- name: mxfp8-vllm-nvidia-cc100
-  display_profile: compatible
-  scenario: throughput
-  engine: vllm
-  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
-  weights:
-    quantization: mxfp8
-    sources:
-    - huggingface:
-        repo_id: MiniMaxAI/MiniMax-M3-MXFP8
-        revision: c5454eb03678d8710e54a4e0fc681b9f3b4a3dba
-    - modelscope:
-        repo_id: MiniMax/MiniMax-M3-MXFP8
-        revision: bfda9553334175c28dae8d3fedf4a428b5169776
-  weight_bytes: 443776005285
-  gpus:
-    vendor: nvidia
-    cc: '>=10.0'
-    display_target: blackwell
-  args:
-  - --attention_config.indexer_kv_dtype
-  - fp8
-  - --tool-call-parser
-  - minimax_m3
-  - --enable-auto-tool-choice
-  - --reasoning-parser
-  - minimax_m3
-  api:
-    health_endpoint: /health
-    operations:
-    - type: openai.chat
-      endpoint: /v1/chat/completions
-      mode: stream
 - name: mxfp8-vllm-nvidia-cc100-eagle3-draft
-  display_profile: compatible
+  display_name_zh_cn: Blackwell · MXFP8 · 投机解码
+  display_name_en: Blackwell · MXFP8 · Speculative
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -221,7 +189,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=10.0'
-    display_target: blackwell
   args:
   - --attention_config.indexer_kv_dtype
   - fp8
@@ -267,7 +234,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: mxfp8-vllm-nvidia-general
-  display_profile: compatible
+  display_name_zh_cn: Hopper 及以上 · MXFP8
+  display_name_en: Hopper+ · MXFP8
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -284,7 +252,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=9.0'
-    display_target: hopper
   args:
   - --attention_config.indexer_kv_dtype
   - fp8
@@ -300,7 +267,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: mxfp8-vllm-nvidia-general-eagle3-draft
-  display_profile: compatible
+  display_name_zh_cn: Hopper 及以上 · MXFP8 · 投机解码
+  display_name_en: Hopper+ · MXFP8 · Speculative
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -317,7 +285,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=9.0'
-    display_target: hopper
   args:
   - --speculative-config
   - '{"method":"eagle3","model":"/models/draft","num_speculative_tokens":3,"attention_backend":"FLASH_ATTN"}'
@@ -363,7 +330,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: nvfp4-vllm-nvidia-cc100
-  display_profile: compatible
+  display_name_zh_cn: Blackwell · NVFP4
+  display_name_en: Blackwell · NVFP4
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -380,7 +348,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=10.0'
-    display_target: blackwell
   args:
   - --trust-remote-code
   - --attention_config.backend
@@ -406,7 +373,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: nvfp4-vllm-nvidia-cc100-eagle3-draft
-  display_profile: compatible
+  display_name_zh_cn: Blackwell · NVFP4 · 投机解码
+  display_name_en: Blackwell · NVFP4 · Speculative
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -423,7 +391,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=10.0'
-    display_target: blackwell
   args:
   - --trust-remote-code
   - --attention_config.backend
@@ -479,7 +446,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: int8-vllm-ascend-a3-tp4-dp4
-  display_profile: compatible
+  display_name_zh_cn: 910C (A3) · INT8 W8A8 · 8 卡（16 NPU）
+  display_name_en: 910C (A3) · INT8 W8A8 · 8 cards (16 NPUs)
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cann9.2-a3-vllm0.30.0rc2-r1
@@ -495,7 +463,6 @@ specs:
   gpus:
     vendor: ascend
     name: (^|[^A-Za-z0-9])910C([^A-Za-z0-9]|$)
-    display_target: ascend
   args:
   - --trust-remote-code
   - --quantization
@@ -564,7 +531,8 @@ specs:
 # (TestNonNVIDIAChatSpecsInheritModelFunctionalArgs). No 950DT hardware was
 # available, so these arguments are the published recipe, not a measured one.
 - name: mxfp8-vllm-ascend-950dt-bfda9553
-  display_profile: general
+  display_name_zh_cn: 950DT · MXFP8 · 8 卡 · 投机解码
+  display_name_en: 950DT · MXFP8 · 8 NPUs · Speculative
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cann9.2-950-vllm0.30.0rc2-r1
@@ -578,7 +546,6 @@ specs:
   gpus:
     vendor: ascend
     name: (^|[^A-Za-z0-9])950DT([^A-Za-z0-9]|$)
-    display_target: ascend
   args:
   - --distributed-executor-backend
   - mp

@@ -201,6 +201,9 @@ type Deps struct {
 	// (usage_report.go); Notices the console's notice bell. Nil serves an
 	// installation that reports nothing and has no notices.
 	UsageReport UsageReport
+	// Diagnostics runs debug sessions and diagnostics collections; nil
+	// answers DIAGNOSTICS_UNAVAILABLE.
+	Diagnostics Diagnostics
 	Notices     Notices
 
 	// Analytics is usage analytics: the data retention every store is
@@ -597,6 +600,13 @@ func Router(d Deps, policies ...auth.SessionPolicy) http.Handler {
 			r.With(a.managementAdmin).Get("/usage-report", a.getUsageReport)
 			r.With(a.managementAdmin).Put("/usage-report/enabled", a.putUsageReportEnabled)
 			r.With(a.managementAdmin).Get("/usage-report/preview", a.getUsageReportPreview)
+			r.With(a.managementAdmin).Get("/diagnostics/debug-session", a.getDebugSession)
+			r.With(a.managementAdmin).Post("/diagnostics/debug-session", a.postDebugSession)
+			r.With(a.managementAdmin).Delete("/diagnostics/debug-session", a.deleteDebugSession)
+			r.With(a.managementAdmin).Get("/diagnostics/bundles", a.getDiagnosticsBundles)
+			r.With(a.managementAdmin).Post("/diagnostics/bundles", a.postDiagnosticsBundle)
+			r.With(a.managementAdmin).Get("/diagnostics/bundles/{id}", a.getDiagnosticsBundle)
+			r.With(a.managementAdmin).Get("/diagnostics/bundles/{id}/download", a.downloadDiagnosticsBundle)
 			r.With(a.managementAdmin).Get("/experience", a.getExperience)
 			r.With(a.managementAdmin).Put("/experience/enabled", a.putExperienceEnabled)
 			r.With(a.managementAdmin).Post("/experience/reset", a.postExperienceReset)
@@ -1070,8 +1080,33 @@ func writeErr(w http.ResponseWriter, code int, err error) {
 		if params := productErr.Params(); len(params) > 0 {
 			response["params"] = params
 		}
+		noteProductError(w, productErr.Code(), productErr.Params())
 	}
 	writeJSON(w, code, response)
+}
+
+// productErrorNoter is a response writer that records the product error a
+// response carries: the server's access log, which writes the code and its
+// parameters on the request's line, so a refusal's reason outlives the
+// response the client may have dismissed.
+type productErrorNoter interface {
+	NoteProductError(code string, params map[string]any)
+}
+
+// noteProductError hands code and params to the first writer in w's wrapping
+// chain that records them.
+func noteProductError(w http.ResponseWriter, code string, params map[string]any) {
+	for w != nil {
+		if noter, ok := w.(productErrorNoter); ok {
+			noter.NoteProductError(code, params)
+			return
+		}
+		unwrapper, ok := w.(interface{ Unwrap() http.ResponseWriter })
+		if !ok {
+			return
+		}
+		w = unwrapper.Unwrap()
+	}
 }
 
 const bytesPerGiB = 1024 * 1024 * 1024

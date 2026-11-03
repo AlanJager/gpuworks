@@ -77,7 +77,7 @@ func TestEmbeddedCatalogProvidesSmallFP16RuntimeSpecsForTuring(t *testing.T) {
 				// fp16 and fp32 tensors and fails in fp16, so omni specs run fp32.
 				wantImage, wantDtype = "gpuworks/gpuworks-runner:cuda13.0-vllm-omni0.30.0-r3", "float32"
 			}
-			if spec.Weights.Quantization != "bf16" || spec.DisplayProfile != "compatible" || spec.GPUs.DisplayTarget != "turing" ||
+			if spec.Weights.Quantization != "bf16" ||
 				!containsArgumentPair(spec.Args, "--dtype", wantDtype) ||
 				spec.Image != wantImage ||
 				slices.Contains(spec.Args, "--tensor-parallel-size") {
@@ -250,4 +250,24 @@ func reconcileEmbeddedCatalog(st *store.Store) error {
 		return err
 	}
 	return inferencecatalog.ReconcileUpstreamCatalog(st, catalog, digest)
+}
+
+// Every built-in spec carries both display names: the template page shows
+// them, and a built-in spec without one would fall back to its machine id.
+// Validation already keeps them distinct within a model and engine.
+func TestEmbeddedCatalogNamesEverySpecInBothLanguages(t *testing.T) {
+	catalog, err := Catalog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, model := range catalog.Models {
+		for _, spec := range model.Specs {
+			if spec.DisplayNameZHCN == "" || spec.DisplayNameEN == "" {
+				t.Errorf("%s spec %s lacks a display name (zh %q, en %q)", model.ModelID, spec.Name, spec.DisplayNameZHCN, spec.DisplayNameEN)
+			}
+			if spec.RetiredDisplayProfile != "" || spec.GPUs.RetiredDisplayTarget != "" {
+				t.Errorf("%s spec %s still sets the retired display_profile / display_target", model.ModelID, spec.Name)
+			}
+		}
+	}
 }

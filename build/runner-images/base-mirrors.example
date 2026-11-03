@@ -10,3 +10,4 @@
 # Hygon：harbor.sourcefind.cn 在本网络不可达，原件经 skopeo 搬入本地 mirror
 # harbor.sourcefind.cn:5443/dcu/admin/base/vllm:0.18.1-ubuntu22.04-dtk26.04-py3.10          172.25.17.156:5000/sourcefind/aiworker-dcu:vllm0.18.1
 # harbor.sourcefind.cn:5443/dcu/admin/base/sglang:0.5.12-ubuntu22.04-dtk2604-py3.10         172.25.17.156:5000/sourcefind/sglang-dtk:0.5.12-ubuntu22.04-dtk2604-py3.10
+# harbor.sourcefind.cn:5443/dcu/admin/base/vllm:0.21.0-ubuntu22.04-dtk2604-py3.10            172.25.17.156:5000/sourcefind/vllm-dtk:0.21.0-ubuntu22.04-dtk2604-py3.10-clean

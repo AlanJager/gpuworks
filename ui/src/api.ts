@@ -37,6 +37,7 @@ import {
   type MonitorRequestsQuery,
 } from "./monitorRequestsApi";
 import type { TelemetryExport, TelemetryExportTest, TelemetryExportUpdate } from "./telemetryApi";
+import type { DebugSessionStart, DebugSessionState, DiagnosticsBundle, DiagnosticsBundleStart, DiagnosticsBundles } from "./diagnosticsApi";
 
 /** What an operator sets one card to (PUT /nodes/{uuid}/gpus/scheduling). */
 export type CardScheduling = "stopped" | "schedulable";
@@ -1201,14 +1202,15 @@ export interface InferenceTemplateIndexItem {
 export interface InferenceProfileSummary {
   source?: "upstream" | "user" | string;
   name: string;
-  display_profile?: string;
+  display_name_zh_cn?: string;
+  display_name_en?: string;
   scenario?: string;
   engine: string;
   image?: string;
   quantization?: string;
   weight_bytes?: number;
   weight_repo_ids?: string[];
-  gpus: { vendor: string; cc?: string; name?: string; display_target?: string };
+  gpus: { vendor: string; cc?: string; name?: string };
 }
 export interface InferenceTemplate {
   id: number;
@@ -1231,7 +1233,9 @@ export interface InferenceSpec {
   id: number;
   source: "upstream" | "user" | string;
   name: string;
-  display_profile?: "general" | "compatible" | "optimized" | string;
+  /** Human-written names; the page shows the one for its locale (specDisplayName). */
+  display_name_zh_cn?: string;
+  display_name_en?: string;
   scenario?: string;
   engine: string;
   image: string;
@@ -1280,7 +1284,6 @@ export interface GPUPredicate {
   vendor: string;
   cc?: string;
   name?: string;
-  display_target?: string;
 }
 export interface InferenceTemplateUnsupported {
   gpus: GPUPredicate;
@@ -4853,6 +4856,11 @@ export const api = {
   telemetryExport: () => getJSON<TelemetryExport>("/api/v1/telemetry/export"),
   updateTelemetryExport: (body: TelemetryExportUpdate) => sendJSON<TelemetryExport>("PUT", "/api/v1/telemetry/export", body),
   testTelemetryExport: (body: TelemetryExportUpdate) => sendJSON<TelemetryExportTest>("POST", "/api/v1/telemetry/export/test", body),
+  debugSession: () => getJSON<DebugSessionState>("/api/v1/diagnostics/debug-session"),
+  startDebugSession: (body: DebugSessionStart) => sendJSON<DebugSessionState>("POST", "/api/v1/diagnostics/debug-session", body),
+  stopDebugSession: () => sendJSON<DebugSessionState>("DELETE", "/api/v1/diagnostics/debug-session"),
+  diagnosticsBundles: () => getJSON<DiagnosticsBundles>("/api/v1/diagnostics/bundles"),
+  startDiagnosticsBundle: (body: DiagnosticsBundleStart) => sendJSON<DiagnosticsBundle>("POST", "/api/v1/diagnostics/bundles", body),
   monitorSeries: (params: MonitorSeriesParams) =>
     getJSON<List<MonitorSeries>>(monitorSeriesURL(params)),
 };

@@ -45,6 +45,11 @@ const (
 	// connection is what lets a server_dial node, which cannot reach the
 	// server's /dl/ URL, upgrade at all.
 	StreamAgentUpgrade = "agent.upgrade"
+	// StreamDiagnosticsRead carries a node's part of a diagnostics collection:
+	// the agent answers with a tar of its own log (agent.log, agent.log.1)
+	// and of the debug session files header Ref names (comma-separated
+	// session ids). The agent chooses the files; the server names no path.
+	StreamDiagnosticsRead = "diagnostics.read"
 )
 
 // LargeFileReadMaxBytes bounds one StreamLargeFileRead transfer. It matches the
@@ -61,7 +66,7 @@ const (
 func LaneFor(kind string) string {
 	switch kind {
 	case StreamLogtail, StreamTunnel, StreamModelRead, StreamModelWrite, StreamImageRead, StreamImageWrite, StreamLargeFileRead, StreamAgentUpgrade,
-		StreamStorageUpload, StreamStorageDownload:
+		StreamStorageUpload, StreamStorageDownload, StreamDiagnosticsRead:
 		return LaneData
 	default:
 		return LaneCtrl

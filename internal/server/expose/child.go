@@ -47,12 +47,13 @@ var SelfHelper = func() HelperCommand {
 
 // Child is a supervised connector process.
 //
-// The connector is not a direct child of the server: it is a grandchild, held
-// by a helper whose stdin is a pipe owned by the server, and it shares that
-// helper's process group. That indirection is the whole point — a connector
-// that outlives its server keeps serving a dead origin from the public
-// internet, and a server killed with SIGKILL gets no chance to clean up. When
-// the server dies for any reason the pipe closes, the helper sees EOF and takes
+// The connector is not a direct child of the connector service (`gpuworks
+// expose run`, which hosts it instead of the server; see ADR 0045): it is a
+// grandchild, held by a helper whose stdin is a pipe owned by the service, and
+// it shares that helper's process group. That indirection is the whole point —
+// a connector that outlives its service keeps serving the public address with
+// nobody supervising it, and a service killed with SIGKILL gets no chance to
+// clean up. When the service dies for any reason the pipe closes, the helper sees EOF and takes
 // the connector down with it. The same mechanism works on Linux and macOS,
 // where no parent-death signal exists.
 //
@@ -60,7 +61,7 @@ var SelfHelper = func() HelperCommand {
 // processes live in: signalling that group reaches the connector whether or not
 // the helper is still there to pass the signal on.
 //
-// The one window this leaves: a helper that dies and a server that is killed
+// The one window this leaves: a helper that dies and a service that is killed
 // before the next pass can notice leaves a connector with nobody watching the
 // pipe. That window is one supervisor interval wide, and what closes it is a
 // kernel-level parent-death signal, not anything this process can do later.
@@ -73,7 +74,7 @@ type Child struct {
 }
 
 // StartChild launches the helper and with it the connector. logs receives the
-// connector's own output, which is how the server both rotates it and reads
+// connector's own output, which is how the service both rotates it and reads
 // the registration lines out of it.
 //
 // The process is deliberately not bound to a context: a start budget that
@@ -94,7 +95,7 @@ func StartChild(helper HelperCommand, spec Spec, logs io.Writer) (*Child, error)
 		return nil, err
 	}
 	// The helper's own process group, which the connector joins: a signal aimed
-	// at the server's group must not reach the connector, and one signal to the
+	// at the service's group must not reach the connector, and one signal to the
 	// helper's group takes down everything the connector spawned in one go.
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := cmd.Start(); err != nil {
@@ -179,7 +180,7 @@ const orphanedConnectorGrace = 5 * time.Second
 // The connector lives in the helper's process group, so both signals reach it
 // whether or not the helper is still there to pass them on. When the helper is
 // already gone the grace is cut short: there is no process left for a shutdown
-// request to travel through, and waiting would only make the server's shutdown
+// request to travel through, and waiting would only make the service's shutdown
 // pay for a process that no longer exists.
 //
 // A connector that exits because we asked it to reports the signal that ended

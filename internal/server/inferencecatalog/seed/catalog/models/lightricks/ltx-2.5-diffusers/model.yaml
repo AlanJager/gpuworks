@@ -6,8 +6,9 @@ architecture: dense
 release_date: '2026-07-26'
 model_config: {kv_cache: false}
 specs:
-- name: bf16-vllm-nvidia-b200
-  display_profile: compatible
+- name: bf16-vllm-nvidia-b200-b300-gb200-gb300
+  display_name_zh_cn: B200 / B300 / GB200 / GB300 · BF16
+  display_name_en: B200 / B300 / GB200 / GB300 · BF16
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm-omni0.30.0-r3
@@ -24,158 +25,7 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=10.0'
-    name: (^|[^A-Za-z0-9])B200([^A-Za-z0-9]|$)
-    display_target: b200
-  args:
-  - --omni
-  - --model-class-name
-  - LTX2Pipeline
-  - --stage-overrides
-  - '{"0":{"extras":{"ltx2_use_conv_vae":true}}}'
-  - --diffusion-attention-backend
-  - CUDNN_ATTN
-  api:
-    health_endpoint: /health
-    operations:
-    - type: openai.video.generate
-      endpoint: /v1/videos/sync
-      mode: sync
-      request_encoding: multipart
-      inputs:
-      - name: seconds
-        kind: number
-      - name: size
-        kind: select
-        options:
-        - 640x360
-        - 1280x720
-      - name: fps
-        kind: number
-      - name: num_frames
-        kind: number
-      - name: input_reference
-        kind: image
-        encoding: data_url
-- name: bf16-vllm-nvidia-b300
-  display_profile: compatible
-  scenario: throughput
-  engine: vllm
-  image: gpuworks/gpuworks-runner:cuda13.0-vllm-omni0.30.0-r3
-  weights:
-    quantization: bf16
-    sources:
-    - huggingface:
-        repo_id: Lightricks/LTX-2.5-Diffusers
-        revision: 426936f8b22dc28e4def61e515478b0b7e4a53cc
-    - modelscope:
-        repo_id: Lightricks/LTX-2.5-Diffusers
-        revision: 19e41671be8303f2bcbd627cd85cdcd5ab2b6efd
-  weight_bytes: 174433347695
-  gpus:
-    vendor: nvidia
-    cc: '>=10.0'
-    name: (^|[^A-Za-z0-9])B300([^A-Za-z0-9]|$)
-    display_target: b300
-  args:
-  - --omni
-  - --model-class-name
-  - LTX2Pipeline
-  - --stage-overrides
-  - '{"0":{"extras":{"ltx2_use_conv_vae":true}}}'
-  - --diffusion-attention-backend
-  - CUDNN_ATTN
-  api:
-    health_endpoint: /health
-    operations:
-    - type: openai.video.generate
-      endpoint: /v1/videos/sync
-      mode: sync
-      request_encoding: multipart
-      inputs:
-      - name: seconds
-        kind: number
-      - name: size
-        kind: select
-        options:
-        - 640x360
-        - 1280x720
-      - name: fps
-        kind: number
-      - name: num_frames
-        kind: number
-      - name: input_reference
-        kind: image
-        encoding: data_url
-- name: bf16-vllm-nvidia-gb200
-  display_profile: compatible
-  scenario: throughput
-  engine: vllm
-  image: gpuworks/gpuworks-runner:cuda13.0-vllm-omni0.30.0-r3
-  weights:
-    quantization: bf16
-    sources:
-    - huggingface:
-        repo_id: Lightricks/LTX-2.5-Diffusers
-        revision: 426936f8b22dc28e4def61e515478b0b7e4a53cc
-    - modelscope:
-        repo_id: Lightricks/LTX-2.5-Diffusers
-        revision: 19e41671be8303f2bcbd627cd85cdcd5ab2b6efd
-  weight_bytes: 174433347695
-  gpus:
-    vendor: nvidia
-    cc: '>=10.0'
-    name: (^|[^A-Za-z0-9])GB200([^A-Za-z0-9]|$)
-    display_target: gb200
-  args:
-  - --omni
-  - --model-class-name
-  - LTX2Pipeline
-  - --stage-overrides
-  - '{"0":{"extras":{"ltx2_use_conv_vae":true}}}'
-  - --diffusion-attention-backend
-  - CUDNN_ATTN
-  api:
-    health_endpoint: /health
-    operations:
-    - type: openai.video.generate
-      endpoint: /v1/videos/sync
-      mode: sync
-      request_encoding: multipart
-      inputs:
-      - name: seconds
-        kind: number
-      - name: size
-        kind: select
-        options:
-        - 640x360
-        - 1280x720
-      - name: fps
-        kind: number
-      - name: num_frames
-        kind: number
-      - name: input_reference
-        kind: image
-        encoding: data_url
-- name: bf16-vllm-nvidia-gb300
-  display_profile: compatible
-  scenario: throughput
-  engine: vllm
-  image: gpuworks/gpuworks-runner:cuda13.0-vllm-omni0.30.0-r3
-  weights:
-    quantization: bf16
-    sources:
-    - huggingface:
-        repo_id: Lightricks/LTX-2.5-Diffusers
-        revision: 426936f8b22dc28e4def61e515478b0b7e4a53cc
-    - modelscope:
-        repo_id: Lightricks/LTX-2.5-Diffusers
-        revision: 19e41671be8303f2bcbd627cd85cdcd5ab2b6efd
-  weight_bytes: 174433347695
-  gpus:
-    vendor: nvidia
-    cc: '>=10.0'
-    name: (^|[^A-Za-z0-9])GB300([^A-Za-z0-9]|$)
-    display_target: gb300
+    name: (^|[^A-Za-z0-9])(?:B200|B300|GB200|GB300)([^A-Za-z0-9]|$)
   args:
   - --omni
   - --model-class-name
@@ -207,7 +57,8 @@ specs:
         kind: image
         encoding: data_url
 - name: bf16-vllm-nvidia-general
-  display_profile: general
+  display_name_zh_cn: Ampere 及以上 · BF16
+  display_name_en: Ampere+ · BF16
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm-omni0.30.0-r3
@@ -224,7 +75,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.0'
-    display_target: nvidia
   args:
   - --omni
   - --model-class-name
@@ -253,8 +103,9 @@ specs:
       - name: input_reference
         kind: image
         encoding: data_url
-- name: fp8-vllm-nvidia-b200
-  display_profile: compatible
+- name: fp8-vllm-nvidia-b200-b300-gb200-gb300
+  display_name_zh_cn: B200 / B300 / GB200 / GB300 · FP8
+  display_name_en: B200 / B300 / GB200 / GB300 · FP8
   scenario: throughput
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm-omni0.30.0-r3
@@ -271,158 +122,7 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=10.0'
-    name: (^|[^A-Za-z0-9])B200([^A-Za-z0-9]|$)
-    display_target: b200
-  args:
-  - --omni
-  - --model-class-name
-  - LTX2DistilledOneStagePipeline
-  - --quantization
-  - fp8
-  - --diffusion-attention-backend
-  - CUDNN_ATTN
-  api:
-    health_endpoint: /health
-    operations:
-    - type: openai.video.generate
-      endpoint: /v1/videos/sync
-      mode: sync
-      request_encoding: multipart
-      inputs:
-      - name: seconds
-        kind: number
-      - name: size
-        kind: select
-        options:
-        - 640x360
-        - 1280x720
-      - name: fps
-        kind: number
-      - name: num_frames
-        kind: number
-      - name: input_reference
-        kind: image
-        encoding: data_url
-- name: fp8-vllm-nvidia-b300
-  display_profile: compatible
-  scenario: throughput
-  engine: vllm
-  image: gpuworks/gpuworks-runner:cuda13.0-vllm-omni0.30.0-r3
-  weights:
-    quantization: fp8
-    sources:
-    - huggingface:
-        repo_id: Lightricks/LTX-2.5-Diffusers
-        revision: 426936f8b22dc28e4def61e515478b0b7e4a53cc
-    - modelscope:
-        repo_id: Lightricks/LTX-2.5-Diffusers
-        revision: 19e41671be8303f2bcbd627cd85cdcd5ab2b6efd
-  weight_bytes: 174433347695
-  gpus:
-    vendor: nvidia
-    cc: '>=10.0'
-    name: (^|[^A-Za-z0-9])B300([^A-Za-z0-9]|$)
-    display_target: b300
-  args:
-  - --omni
-  - --model-class-name
-  - LTX2DistilledOneStagePipeline
-  - --quantization
-  - fp8
-  - --diffusion-attention-backend
-  - CUDNN_ATTN
-  api:
-    health_endpoint: /health
-    operations:
-    - type: openai.video.generate
-      endpoint: /v1/videos/sync
-      mode: sync
-      request_encoding: multipart
-      inputs:
-      - name: seconds
-        kind: number
-      - name: size
-        kind: select
-        options:
-        - 640x360
-        - 1280x720
-      - name: fps
-        kind: number
-      - name: num_frames
-        kind: number
-      - name: input_reference
-        kind: image
-        encoding: data_url
-- name: fp8-vllm-nvidia-gb200
-  display_profile: compatible
-  scenario: throughput
-  engine: vllm
-  image: gpuworks/gpuworks-runner:cuda13.0-vllm-omni0.30.0-r3
-  weights:
-    quantization: fp8
-    sources:
-    - huggingface:
-        repo_id: Lightricks/LTX-2.5-Diffusers
-        revision: 426936f8b22dc28e4def61e515478b0b7e4a53cc
-    - modelscope:
-        repo_id: Lightricks/LTX-2.5-Diffusers
-        revision: 19e41671be8303f2bcbd627cd85cdcd5ab2b6efd
-  weight_bytes: 174433347695
-  gpus:
-    vendor: nvidia
-    cc: '>=10.0'
-    name: (^|[^A-Za-z0-9])GB200([^A-Za-z0-9]|$)
-    display_target: gb200
-  args:
-  - --omni
-  - --model-class-name
-  - LTX2DistilledOneStagePipeline
-  - --quantization
-  - fp8
-  - --diffusion-attention-backend
-  - CUDNN_ATTN
-  api:
-    health_endpoint: /health
-    operations:
-    - type: openai.video.generate
-      endpoint: /v1/videos/sync
-      mode: sync
-      request_encoding: multipart
-      inputs:
-      - name: seconds
-        kind: number
-      - name: size
-        kind: select
-        options:
-        - 640x360
-        - 1280x720
-      - name: fps
-        kind: number
-      - name: num_frames
-        kind: number
-      - name: input_reference
-        kind: image
-        encoding: data_url
-- name: fp8-vllm-nvidia-gb300
-  display_profile: compatible
-  scenario: throughput
-  engine: vllm
-  image: gpuworks/gpuworks-runner:cuda13.0-vllm-omni0.30.0-r3
-  weights:
-    quantization: fp8
-    sources:
-    - huggingface:
-        repo_id: Lightricks/LTX-2.5-Diffusers
-        revision: 426936f8b22dc28e4def61e515478b0b7e4a53cc
-    - modelscope:
-        repo_id: Lightricks/LTX-2.5-Diffusers
-        revision: 19e41671be8303f2bcbd627cd85cdcd5ab2b6efd
-  weight_bytes: 174433347695
-  gpus:
-    vendor: nvidia
-    cc: '>=10.0'
-    name: (^|[^A-Za-z0-9])GB300([^A-Za-z0-9]|$)
-    display_target: gb300
+    name: (^|[^A-Za-z0-9])(?:B200|B300|GB200|GB300)([^A-Za-z0-9]|$)
   args:
   - --omni
   - --model-class-name
@@ -454,7 +154,8 @@ specs:
         kind: image
         encoding: data_url
 - name: fp8-vllm-nvidia-general
-  display_profile: compatible
+  display_name_zh_cn: Hopper 及以上 · FP8
+  display_name_en: Hopper+ · FP8
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm-omni0.30.0-r3
@@ -471,7 +172,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=9.0'
-    display_target: hopper
   args:
   - --omni
   - --model-class-name

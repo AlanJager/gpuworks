@@ -11,7 +11,8 @@ kv_bytes_per_token:
   sglang: 18432
 specs:
 - name: bf16-vllm-ascend-a3-paddleocr16
-  display_profile: general
+  display_name_zh_cn: 910C (A3) · BF16 · 1 NPU
+  display_name_en: 910C (A3) · BF16 · 1 NPU
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cann9.1-a3-vllm0.26.0rc1-r2
@@ -28,7 +29,6 @@ specs:
   gpus:
     vendor: ascend
     name: (^|[^A-Za-z0-9])910C[A-Za-z0-9]*([^A-Za-z0-9]|$)
-    display_target: ascend
   args:
   - --trust-remote-code
   - --dtype
@@ -48,7 +48,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: bf16-vllm-hygon-d464cf67
-  display_profile: general
+  display_name_zh_cn: K100 / BW · BF16
+  display_name_en: K100 / BW · BF16
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:dtk26.04-vllm0.18.1-r2
@@ -65,7 +66,6 @@ specs:
   gpus:
     vendor: hygon
     name: (^|[^A-Za-z0-9])(?:K100(?:[_ -]?AI)?|BW[_ -]?1000|BW[_ -]?1100)([^A-Za-z0-9_-]|$)
-    display_target: hygon
   args:
   - --trust-remote-code
   - --dtype
@@ -89,7 +89,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: bf16-vllm-nvidia-general
-  display_profile: general
+  display_name_zh_cn: Ampere 及以上 · BF16
+  display_name_en: Ampere+ · BF16
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
@@ -106,7 +107,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.0'
-    display_target: nvidia
   args:
   - --trust-remote-code
   api:
@@ -116,7 +116,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: bf16-vllm-nvidia-turing
-  display_profile: compatible
+  display_name_zh_cn: Turing · BF16
+  display_name_en: Turing · BF16
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:cuda12.9-vllm0.31.0-r2
@@ -133,7 +134,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: 7.5..7.9
-    display_target: turing
   args:
   - --trust-remote-code
   - --dtype
@@ -145,7 +145,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: bf16-vllm-ppu-c5630aba
-  display_profile: general
+  display_name_zh_cn: PPU · BF16
+  display_name_en: PPU · BF16
   scenario: balanced
   engine: vllm
   image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
@@ -162,7 +163,6 @@ specs:
   gpus:
     vendor: ppu
     name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
-    display_target: ppu
   args:
   - --trust-remote-code
   env: null
@@ -176,7 +176,8 @@ specs:
 # gpuworks-runner metal package, which pins the instance to this model
 # (the gateway rewrites every request's "model").
 - name: mlx4-mlx-vlm-apple
-  display_profile: general
+  display_name_zh_cn: Apple 芯片 · MLX 4bit
+  display_name_en: Apple silicon · MLX 4bit
   scenario: balanced
   engine: callable
   image: gpuworks/gpuworks-runner:metal15.0-mlx-vlm0.7.8-r2
@@ -192,7 +193,6 @@ specs:
   weight_bytes: 703562705
   gpus:
     vendor: apple
-    display_target: apple
   args:
   - --model
   - ${MODEL_PATH}

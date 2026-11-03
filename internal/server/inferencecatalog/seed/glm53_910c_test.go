@@ -25,7 +25,7 @@ func TestGLM53AscendRecipesPlaceAndLaunchTheirOwnParallelism(t *testing.T) {
 		{"w8a8-vllm-910c-dflash5-16npu", 16, 2, 8, 4, 5},
 	} {
 		t.Run(recipe.name, func(t *testing.T) {
-			_, spec := catalogSpec(t, "gpuworks/glm-5.3-flash-910c", recipe.name)
+			_, spec := catalogSpec(t, "zai-org/glm-5.3-flash", recipe.name)
 			predicate := chipmatch.Predicate{Vendor: spec.GPUs.Vendor, Name: spec.GPUs.Name}
 			for _, name := range []string{"Ascend 910C", "Ascend 910C3", "Ascend 910B1", "Ascend 910B2C", "Ascend 310P"} {
 				want := strings.Contains(name, "910C")
@@ -68,7 +68,6 @@ func TestGLM53AscendRecipesPlaceAndLaunchTheirOwnParallelism(t *testing.T) {
 					"--data-parallel-size-local": strconv.Itoa(recipe.dp),
 					"--max-num-seqs":             strconv.Itoa(recipe.sequences),
 					"--max-model-len":            "139264", "--port": "31417", "--kv-cache-dtype": "int8",
-					// The gateway sends a callable engine the served name as is.
 					"--served-model-name": "GLM-5.3-Flash-W8A8-tdxi",
 				} {
 					got, found := deploy.LaunchFlag(launch.Argv, flag)
@@ -76,14 +75,13 @@ func TestGLM53AscendRecipesPlaceAndLaunchTheirOwnParallelism(t *testing.T) {
 						t.Errorf("%s=%q, want %q", flag, got, want)
 					}
 				}
-				if recipe.draftTokens == 0 {
-					if len(launch.Entrypoint) != 4 || launch.Entrypoint[0] != "/bin/bash" || !strings.Contains(launch.Entrypoint[2], `exec "$@"`) || len(launch.Argv) < 3 || launch.Argv[0] != "vllm" || launch.Argv[1] != "serve" || launch.Argv[2] != "/model" {
-						t.Fatalf("direct engine/model arguments: %v", launch.Argv)
-					}
-				} else {
-					if strings.Join(launch.Entrypoint, " ") != "bash /opt/gpuworks/glm53-910c/serve.sh" || len(launch.Argv) < 5 || strings.Join(launch.Argv[:5], " ") != "1 16 2 serve /model" {
-						t.Fatalf("DFlash launcher topology/model: %v %v", launch.Entrypoint, launch.Argv)
-					}
+				// The platform's vLLM engine builds the command: the entrypoint only
+				// sources the pinned image's Ascend environment before vllm serve.
+				if len(launch.Entrypoint) != 4 || launch.Entrypoint[0] != "/bin/bash" || !strings.HasSuffix(launch.Entrypoint[2], `exec vllm serve "$@"`) || len(launch.Argv) == 0 || launch.Argv[0] != "/model" {
+					t.Fatalf("Ascend environment wrapper or model path: %v %v", launch.Entrypoint, launch.Argv)
+				}
+				if recipe.draftTokens > 0 && strings.Join(spec.PreStartArgv, " ") != "python /opt/gpuworks/glm53-910c/install.py" {
+					t.Fatalf("DFlash overlay is not installed before start: %v", spec.PreStartArgv)
 				}
 				graph, _ := deploy.LaunchFlag(launch.Argv, "--compilation-config")
 				var compilation struct {
