@@ -71,7 +71,7 @@ func reconcileImagePresence(tx *gorm.DB, nodeID uint, reports []proto.ImagePrese
 		// An inventory snapshot reports runtime presence, not transfer outcome.
 		// Preserve an active or failed transfer until an explicit retry/update;
 		// otherwise a snapshot racing the terminal result can hide the failure.
-		if row.State == ImageStateSyncing || (!report.Present && row.State == ImageStateFailed) {
+		if inImageTransfer(row.State) || (!report.Present && row.State == ImageStateFailed) {
 			state = row.State
 		}
 		runtimeSize := report.RuntimeSizeBytes

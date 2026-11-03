@@ -31,7 +31,12 @@ func (n *NodeRuntime) pullImageCandidates(ctx context.Context, d runtime.Driver,
 		Attempt: func(ref string) { status("pulling", ref, "pulling "+ref) },
 		// Every line is offered to the egress gate, which keeps at most one
 		// per second for this image and always delivers the last one.
-		Line: func(ref, line string, _ imagepull.Snapshot, _ bool) { status("pulling", ref, line) },
+		Line: func(ref, line string, s imagepull.Snapshot, _ bool) {
+			n.reportImageNode(proto.ImageNodeStatus{
+				ImageRef: p.CanonicalRef, State: "pulling", TransferID: p.TransferID, Source: ref, Message: line,
+				TransferredBytes: s.Done, SizeBytes: s.Total, RateBPS: s.Rate,
+			})
+		},
 		Failed: func(ref string, err error) {
 			n.log.Warn("image pull source failed", "image", p.CanonicalRef, "ref", ref, "err", err)
 			notes = append(notes, "image source failed: "+ref+": "+err.Error())
