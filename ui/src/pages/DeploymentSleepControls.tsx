@@ -69,8 +69,8 @@ export default function SleepControls({ dep, onDone }: { dep: Deployment; onDone
     return true;
   };
 
-  const doSleep = async (level: 1 | 2, mode: SleepMode) => {
-    if (!(await ordered(() => api.sleepDeployment(dep.id, level, mode), "sleep.failed"))) return;
+  const doSleep = async (level: 1 | 2, mode: SleepMode, wakeOnRequest?: boolean) => {
+    if (!(await ordered(() => api.sleepDeployment(dep.id, level, mode, undefined, wakeOnRequest), "sleep.failed"))) return;
     message.success(level === 1 ? t("sleep.quickStarted") : t("sleep.deepStarted"));
     setPendingLevel(null);
     setWakeRefused(false);
@@ -115,11 +115,22 @@ export default function SleepControls({ dep, onDone }: { dep: Deployment; onDone
     setRefusal(null);
     setWakeRefused(false);
     const yielded = result?.yielded ?? [];
+    const held = result?.yielded_held ?? [];
+    const wakeable = yielded.filter((name) => !held.includes(name));
     message.success(
       yielded.length > 0
-        ? t("sleep.yieldStarted", { names: yielded.join(", ") })
+        ? [
+          wakeable.length > 0 ? t("sleep.yieldStarted", { names: wakeable.join(", ") }) : "",
+          held.length > 0 ? t("sleep.yieldStartedHeld", { names: held.join(", ") }) : "",
+        ].filter(Boolean).join(" ")
         : result?.status === "waiting" ? t("sleep.waitStarted") : t("sleep.wakeStarted"),
     );
+  };
+
+  // doReleaseHold lets requests wake the held sleepers, waking none of them now.
+  const doReleaseHold = async () => {
+    if (!(await ordered(() => api.releaseSleepHold(dep.id), "sleep.releaseHoldFailed"))) return;
+    message.success(t("sleep.releaseHoldDone"));
   };
 
   const cancelWaiting = async () => {
@@ -153,6 +164,11 @@ export default function SleepControls({ dep, onDone }: { dep: Deployment; onDone
           {t(holdHint[dep.sleep_hold])}
         </Typography.Text>
       )}
+      {(dep.sleep_hold === "all" || dep.sleep_hold === "some") && (
+        <Button size="small" loading={busy} onClick={() => void doReleaseHold()}>
+          {t("sleep.releaseHold")}
+        </Button>
+      )}
       {summary.asleep > 0 && (
         <Button size="small" type="primary" loading={busy} onClick={() => void doWake(false)}>
           {all ? t("sleep.wake") : t("sleep.wakeAll")}
@@ -178,7 +194,8 @@ export default function SleepControls({ dep, onDone }: { dep: Deployment; onDone
         open={pendingLevel !== null}
         level={pendingLevel ?? 1}
         confirming={busy}
-        onConfirm={(mode) => pendingLevel && void doSleep(pendingLevel, mode)}
+        wakeOnRequest={dep.sleep_wakes_on_request}
+        onConfirm={(mode, wakeOnRequest) => pendingLevel && void doSleep(pendingLevel, mode, wakeOnRequest)}
         onCancel={() => setPendingLevel(null)}
       />
     </Space>
@@ -239,7 +256,8 @@ function RoleSleepActions({ dep, onDone }: { dep: Deployment; onDone: () => void
         open={asking !== null}
         level={1}
         confirming={busy !== null}
-        onConfirm={(sleepMode) => asking && void order(asking, () => api.sleepDeployment(dep.id, 1, sleepMode, asking), t("sleep.quickStarted"), "sleep.failed")}
+        wakeOnRequest={dep.sleep_wakes_on_request}
+        onConfirm={(sleepMode, wakeOnRequest) => asking && void order(asking, () => api.sleepDeployment(dep.id, 1, sleepMode, asking, wakeOnRequest), t("sleep.quickStarted"), "sleep.failed")}
         onCancel={() => setAsking(null)}
       />
     </>

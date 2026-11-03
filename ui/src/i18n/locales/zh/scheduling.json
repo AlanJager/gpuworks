@@ -136,7 +136,8 @@
       "PD_GROUP_RESTARTED": "重启部署",
       "DEPLOYMENT_ROLLING_RESTARTED": "滚动重启",
       "SLEEP_ORDERED": "下达休眠",
-      "WAKE_ORDERED": "下达唤醒"
+      "WAKE_ORDERED": "下达唤醒",
+      "SLEEP_HOLD_RELEASED": "允许请求唤醒"
     }
   },
   "timeline": {

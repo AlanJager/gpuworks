@@ -1,15 +1,16 @@
 import type { TFunction } from "i18next";
 
 import type { InstanceEvent } from "../api";
-import { paramList as list, paramNumber as num, paramText as text } from "./eventParams";
+import { paramBool as bool, paramList as list, paramNumber as num, paramText as text } from "./eventParams";
 
 /**
  * The deployment timeline entries an operator's order leaves (kind
- * "schedule"): a changed replica count and a sleep or wake order. Their
- * params are counts, lists and names, so they are worded here rather than by
- * the lifecycle mapping, whose from/to are memory sizes.
+ * "schedule"): a changed replica count, a sleep or wake order, and letting
+ * requests wake a held sleep. Their params are counts, lists and names, so
+ * they are worded here rather than by the lifecycle mapping, whose from/to
+ * are memory sizes.
  */
-export const operatorEventCodes = ["REPLICAS_CHANGED", "SLEEP_ORDERED", "WAKE_ORDERED"] as const;
+export const operatorEventCodes = ["REPLICAS_CHANGED", "SLEEP_ORDERED", "WAKE_ORDERED", "SLEEP_HOLD_RELEASED"] as const;
 
 const known = new Set<string>(operatorEventCodes);
 
@@ -30,8 +31,16 @@ export function operatorEventText(t: TFunction<"deployments">, event: InstanceEv
     level: num(event, "level") ?? "",
     scope: scope ? t(`operator.scope.${scope}`, { role: roleLabel, instances, defaultValue: scope }) : "",
     modeNote: text(event, "mode") === "abort" ? t("operator.abortNote") : "",
+    wakeNote: wakeNote(t, bool(event, "wake_on_request")),
     instances,
     defaultValue: "",
   });
   return rendered.trim() || event.message?.trim() || code;
+}
+
+// wakeNote says whether a request wakes what a sleep order put to sleep;
+// nothing for an order recorded before the choice was.
+function wakeNote(t: TFunction<"deployments">, wakeOnRequest: boolean | undefined): string {
+  if (wakeOnRequest === undefined) return "";
+  return wakeOnRequest ? t("operator.wakesOnRequestNote") : t("operator.heldNote");
 }

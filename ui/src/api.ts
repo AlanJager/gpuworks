@@ -712,6 +712,15 @@ export interface WakeResult {
   refused?: WakeRefusal[];
   waiting?: string[];
   yielded?: string[];
+  // yielded_held are the yielded occupants that never yield by policy: a
+  // request does not wake them. A request wakes the other yielded ones.
+  yielded_held?: string[];
+}
+
+// wakeOnRequestQuery is a sleep order's wake_on_request parameter; none
+// leaves the choice to the server's default.
+function wakeOnRequestQuery(wakeOnRequest?: boolean): string {
+  return wakeOnRequest === undefined ? "" : `&wake_on_request=${wakeOnRequest}`;
 }
 
 // WakeOptions are the ways a wake order may proceed: role limits it to one
@@ -1872,6 +1881,10 @@ export interface Deployment {
   // sleep_held is sleep_hold all.
   sleep_hold?: SleepHold;
   sleep_held?: boolean;
+  // sleep_wakes_on_request is what an operator's sleep does unless it says
+  // otherwise: true when a request wakes what it puts to sleep (the
+  // deployment shares its cards by yield policy), false when it is held.
+  sleep_wakes_on_request?: boolean;
   // yield_policy_eligible says whether the deployment may hold a policy other
   // than never, and schedule_capabilities what its schedule may order: the
   // server's decisions, which the pages render and do not re-derive.
@@ -4478,9 +4491,15 @@ export const api = {
       `/api/v1/deployments/${id}${force ? "?force=true" : ""}`,
     ),
   // sleepDeployment orders every live instance to sleep, or with role only a
-  // PD deployment's instances of that role.
-  sleepDeployment: (id: number, level: number, mode: "wait" | "abort" = "wait", role?: string) =>
-    sendJSON<void>("POST", `/api/v1/deployments/${id}/sleep?level=${level}&mode=${mode}${role ? `&role=${encodeURIComponent(role)}` : ""}`),
+  // PD deployment's instances of that role. wakeOnRequest says whether a
+  // request wakes what it puts to sleep; absent, the server's default for the
+  // deployment (sleep_wakes_on_request).
+  sleepDeployment: (id: number, level: number, mode: "wait" | "abort" = "wait", role?: string, wakeOnRequest?: boolean) =>
+    sendJSON<void>("POST", `/api/v1/deployments/${id}/sleep?level=${level}&mode=${mode}${role ? `&role=${encodeURIComponent(role)}` : ""}${wakeOnRequestQuery(wakeOnRequest)}`),
+  // releaseSleepHold lets requests wake the deployment's held sleepers
+  // without waking them; it answers the instances released.
+  releaseSleepHold: (id: number) =>
+    sendJSON<{ released: string[] }>("POST", `/api/v1/deployments/${id}/wake-on-request`),
   // wakeDeployment wakes the deployment (or one PD role) all or nothing;
   // partial wakes the sleepers whose cards can take them back and lists the
   // rest; wait leaves the rest waiting for room, and yield first puts the
@@ -4493,8 +4512,8 @@ export const api = {
     sendJSON<List<string>>("DELETE", `/api/v1/deployments/${id}/wake-waiting`),
   // sleepInstance and wakeInstance order the single-node replica an instance
   // leads; the deployment's other replicas keep serving.
-  sleepInstance: (uuid: string, level: number, mode: "wait" | "abort" = "wait") =>
-    sendJSON<void>("POST", `/api/v1/instances/${encodeURIComponent(uuid)}/sleep?level=${level}&mode=${mode}`),
+  sleepInstance: (uuid: string, level: number, mode: "wait" | "abort" = "wait", wakeOnRequest?: boolean) =>
+    sendJSON<void>("POST", `/api/v1/instances/${encodeURIComponent(uuid)}/sleep?level=${level}&mode=${mode}${wakeOnRequestQuery(wakeOnRequest)}`),
   wakeInstance: (uuid: string, opts: WakeOptions = {}) =>
     sendJSON<WakeResult | void>("POST", `/api/v1/instances/${encodeURIComponent(uuid)}/wake${wakeQuery(opts)}`),
   // The wait before a lost node's replica moves.

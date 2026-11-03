@@ -57,6 +57,37 @@ test("the sleep mode dialog defaults to finishing in-flight requests and never o
   assert.deepEqual(chosen, ["wait", "abort"]);
 });
 
+test("given the server's default, the dialog asks whether a request wakes the sleeper and sends the choice", async () => {
+  const chosen: Array<[string, boolean | undefined]> = [];
+  const { rerender } = render(wrap(<SleepModeDialog open level={1} wakeOnRequest onConfirm={(mode, wakes) => chosen.push([mode, wakes])} onCancel={() => {}} />));
+  const box = await screen.findByRole("checkbox", { name: named(deploymentsLocale.sleepMode.wakeOnRequest) }) as HTMLInputElement;
+  assert.equal(box.checked, true, "the server's default");
+  assert.ok(screen.getByText(deploymentsLocale.sleepMode.wakeOnRequestOn));
+  fireEvent.click(screen.getByRole("button", { name: deploymentsLocale.sleepMode.confirm }));
+  fireEvent.click(box);
+  assert.ok(screen.getByText(deploymentsLocale.sleepMode.wakeOnRequestOff));
+  fireEvent.click(screen.getByRole("button", { name: deploymentsLocale.sleepMode.confirm }));
+  assert.deepEqual(chosen, [["wait", true], ["wait", false]]);
+  // Opened again, it starts from the server's default.
+  rerender(wrap(<SleepModeDialog open={false} level={1} wakeOnRequest onConfirm={(mode, wakes) => chosen.push([mode, wakes])} onCancel={() => {}} />));
+  rerender(wrap(<SleepModeDialog open level={1} wakeOnRequest onConfirm={(mode, wakes) => chosen.push([mode, wakes])} onCancel={() => {}} />));
+  await waitFor(() => assert.equal((screen.getByRole("checkbox", { name: named(deploymentsLocale.sleepMode.wakeOnRequest) }) as HTMLInputElement).checked, true));
+});
+
+test("a held default is unchecked, and without a default the dialog leaves the choice to the server", async () => {
+  const chosen: Array<[string, boolean | undefined]> = [];
+  const { unmount } = render(wrap(<SleepModeDialog open level={1} wakeOnRequest={false} onConfirm={(mode, wakes) => chosen.push([mode, wakes])} onCancel={() => {}} />));
+  const box = await screen.findByRole("checkbox", { name: named(deploymentsLocale.sleepMode.wakeOnRequest) }) as HTMLInputElement;
+  assert.equal(box.checked, false);
+  assert.ok(screen.getByText(deploymentsLocale.sleepMode.wakeOnRequestOff));
+  unmount();
+  render(wrap(<SleepModeDialog open level={1} onConfirm={(mode, wakes) => chosen.push([mode, wakes])} onCancel={() => {}} />));
+  await screen.findByText(deploymentsLocale.sleepMode.titleQuick);
+  assert.equal(screen.queryByRole("checkbox"), null);
+  fireEvent.click(screen.getByRole("button", { name: deploymentsLocale.sleepMode.confirm }));
+  assert.deepEqual(chosen, [["wait", undefined]]);
+});
+
 test("the deep sleep title says nothing about disk", async () => {
   render(wrap(<SleepModeDialog open level={2} onConfirm={() => {}} onCancel={() => {}} />));
   await screen.findByText(deploymentsLocale.sleepMode.titleDeep);

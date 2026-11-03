@@ -238,7 +238,7 @@ func TestInstanceSleepAndWakeOrdersAreInTheTimeline(t *testing.T) {
 	if got := events[0].Data; got != `{"instances":["plain-0"],"node_uuids":["sleep-node"]}` {
 		t.Errorf("wake params = %s", got)
 	}
-	if got := events[1].Data; got != `{"instances":["plain-0"],"level":2,"mode":"wait","node_uuids":["sleep-node"],"scope":"replica"}` {
+	if got := events[1].Data; got != `{"instances":["plain-0"],"level":2,"mode":"wait","node_uuids":["sleep-node"],"scope":"replica","wake_on_request":false}` {
 		t.Errorf("sleep params = %s", got)
 	}
 }

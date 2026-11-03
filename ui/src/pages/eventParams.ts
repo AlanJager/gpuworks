@@ -21,3 +21,9 @@ export function paramList(event: InstanceEvent, name: string): string[] {
   const value = event.params?.[name];
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 }
+
+/** paramBool is a boolean param; undefined when absent or not a boolean. */
+export function paramBool(event: InstanceEvent, name: string): boolean | undefined {
+  const value = event.params?.[name];
+  return typeof value === "boolean" ? value : undefined;
+}

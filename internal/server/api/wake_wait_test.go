@@ -59,7 +59,7 @@ func TestWakeWaitParksTheWakeWhenACoTenantHoldsTheCard(t *testing.T) {
 	f := newWakeWaitFixture(t, false)
 
 	status, body := f.deploymentCall(t, f.sleeper.ID, "?wait=true")
-	const want = `{"status":"waiting","woken":[],"waiting":["sleeper-1"],"yielded":[]}`
+	const want = `{"status":"waiting","woken":[],"waiting":["sleeper-1"],"yielded":[],"yielded_held":[]}`
 	if status != http.StatusAccepted || body != want {
 		t.Fatalf("wake?wait=true = %d %s, want 202 %s", status, body, want)
 	}
@@ -138,7 +138,7 @@ func TestWakeWaitWakesAtOnceWhenTheCardIsFree(t *testing.T) {
 		t.Fatal(err)
 	}
 	status, body := f.deploymentCall(t, f.sleeper.ID, "?wait=true")
-	if want := `{"status":"waking","woken":["sleeper-1"],"waiting":[],"yielded":[]}`; status != http.StatusOK || body != want {
+	if want := `{"status":"waking","woken":["sleeper-1"],"waiting":[],"yielded":[],"yielded_held":[]}`; status != http.StatusOK || body != want {
 		t.Fatalf("wake?wait=true = %d %s, want 200 %s", status, body, want)
 	}
 	if f.waitingSince(t, "sleeper-1") != nil {
@@ -161,7 +161,7 @@ func TestWakeYieldPutsASleepableCoTenantToSleep(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			f := newWakeWaitFixture(t, true)
 			status, body := f.deploymentCall(t, f.sleeper.ID, tc.query)
-			const want = `{"status":"waiting","woken":[],"waiting":["sleeper-1"],"yielded":["newcomer"]}`
+			const want = `{"status":"waiting","woken":[],"waiting":["sleeper-1"],"yielded":["newcomer"],"yielded_held":["newcomer"]}`
 			if status != http.StatusAccepted || body != want {
 				t.Fatalf("wake%s = %d %s, want 202 %s", tc.query, status, body, want)
 			}
@@ -279,7 +279,7 @@ func TestWakeInstanceWaitAndYield(t *testing.T) {
 	t.Run("wait", func(t *testing.T) {
 		f := newWakeWaitFixture(t, false)
 		rec := instanceRequest(f.h.wakeInstance, "sleeper-1", "?wait=true")
-		const want = `{"status":"waiting","woken":[],"waiting":["sleeper-1"],"yielded":[]}`
+		const want = `{"status":"waiting","woken":[],"waiting":["sleeper-1"],"yielded":[],"yielded_held":[]}`
 		if rec.Code != http.StatusAccepted || strings.TrimSpace(rec.Body.String()) != want {
 			t.Fatalf("wake?wait=true = %d %s", rec.Code, rec.Body)
 		}
@@ -300,7 +300,7 @@ func TestWakeInstanceWaitAndYield(t *testing.T) {
 	t.Run("yield", func(t *testing.T) {
 		f := newWakeWaitFixture(t, true)
 		rec := instanceRequest(f.h.wakeInstance, "sleeper-1", "?yield=true&yield_level=2")
-		const want = `{"status":"waiting","woken":[],"waiting":["sleeper-1"],"yielded":["newcomer"]}`
+		const want = `{"status":"waiting","woken":[],"waiting":["sleeper-1"],"yielded":["newcomer"],"yielded_held":["newcomer"]}`
 		if rec.Code != http.StatusAccepted || strings.TrimSpace(rec.Body.String()) != want {
 			t.Fatalf("wake?yield=true = %d %s", rec.Code, rec.Body)
 		}

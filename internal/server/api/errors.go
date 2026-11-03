@@ -100,6 +100,7 @@ const (
 	ErrorSleepEngineUnsupported                 = "SLEEP_ENGINE_UNSUPPORTED"
 	ErrorSleepInvalidLevel                      = "SLEEP_INVALID_LEVEL"
 	ErrorSleepInvalidMode                       = "SLEEP_INVALID_MODE"
+	ErrorSleepInvalidWakeOnRequest              = "SLEEP_INVALID_WAKE_ON_REQUEST"
 	ErrorWakeInsufficientGPUMemory              = "WAKE_INSUFFICIENT_GPU_MEMORY"
 	ErrorWakeGPUHeldOutside                     = "WAKE_GPU_HELD_OUTSIDE"
 	ErrorSleepHostMemoryInsufficient            = "SLEEP_HOST_MEMORY_INSUFFICIENT"

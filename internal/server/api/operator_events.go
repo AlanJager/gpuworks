@@ -35,9 +35,10 @@ func operatorEventKind(code string) string {
 
 // sleepOrdered records an operator's sleep order. scope says what the order
 // named: the whole deployment, one PD role or one replica; instances are the
-// ones the order was stamped on when it named them.
-func (a *apiHandlers) sleepOrdered(r *http.Request, deploymentID uint, level int, mode, scope, role string, instances []string) {
-	params := map[string]any{"level": level, "mode": mode, "scope": scope}
+// ones the order was stamped on when it named them; wakeOnRequest whether a
+// request wakes them (false: the sleep is held).
+func (a *apiHandlers) sleepOrdered(r *http.Request, deploymentID uint, level int, mode, scope, role string, instances []string, wakeOnRequest bool) {
+	params := map[string]any{"level": level, "mode": mode, "scope": scope, "wake_on_request": wakeOnRequest}
 	if role != "" {
 		params["role"] = role
 	}
