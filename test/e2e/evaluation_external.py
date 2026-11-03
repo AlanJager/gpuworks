@@ -111,6 +111,51 @@ def exercise_benchmark_target_keyboard(page, drawer, wizard, external):
 # Mainline: 独立 server/SQLite + 可审计 OpenAI fixture → UI 新建评测并选择参数扫描
 #           → 外部端点探测到模型 → 单并发单点小负载启动 → fixture 收到真实流式请求与 usage
 #           → 详情完成、刷新/独立 GET/CSV 回读一致 → 列表删除后 404 且 fixture 无新请求
+def exercise_wizard_steps(page, drawer, wizard, name, report):
+    """14.1 and 14.2: the wizard is three named steps with a real Previous/Next pair, going back keeps the
+    same draft, and a step whose required fields are empty refuses to advance instead of letting the form
+    submit.
+    """
+    steps = drawer.locator(".ant-steps-item")
+    expect(steps).to_have_count(3)
+    titles = [step.inner_text().strip() for step in steps.all()]
+    expected = [wizard["step"]["question"], wizard["step"]["target"], wizard["step"]["load"]]
+    # Each row is rendered as its ordinal followed by the title, so the ordinal is stripped before the
+    # names are compared rather than the whole row being matched against a label.
+    named = [re.sub(r"^\d+", "", title).strip() for title in titles]
+    check(named == expected, f"the wizard steps are not the three named ones: {titles}")
+    active = drawer.locator(".ant-steps-item-active")
+    expect(active).to_have_count(1)
+    check(wizard["step"]["target"] in active.inner_text(), "the target step is not the active one")
+    check(not button(drawer, wizard["previous"]).is_disabled(),
+          "Previous is disabled on a step that was reached from the first one")
+    # The draft held on this step has to survive going back and forward again. The name is the field
+    # this case already filled, so it is a real value rather than one invented for the check.
+    held = name
+    drawer.get_by_label(wizard["name"], exact=True).fill(held)
+    button(drawer, wizard["previous"]).click()
+    check(wizard["step"]["question"] in drawer.locator(".ant-steps-item-active").inner_text(),
+          "Previous did not return to the first step")
+    expect(button(drawer, wizard["previous"])).to_be_disabled()
+    button(drawer, wizard["next"]).click()
+    check(wizard["step"]["target"] in drawer.locator(".ant-steps-item-active").inner_text(),
+          "Next did not come back to the target step")
+    check(drawer.get_by_label(wizard["name"], exact=True).input_value() == held,
+          "the name field lost its value when the wizard went back and forward")
+    # An empty required field on this step must refuse to advance rather than create anything: the
+    # base URL and the model are what the probe fills, so clearing the name is the cheapest real block.
+    drawer.get_by_label(wizard["name"], exact=True).fill("")
+    button(drawer, wizard["next"]).click()
+    check(wizard["step"]["target"] in drawer.locator(".ant-steps-item-active").inner_text(),
+          "the wizard advanced past a step whose required name was empty")
+    check(drawer.get_by_text(re.compile("required|必填", re.I)).count() > 0
+          or drawer.locator(".ant-form-item-explain-error").count() > 0,
+          "the empty required field was refused without saying why")
+    drawer.get_by_label(wizard["name"], exact=True).fill(held)
+    report["wizard_steps"] = {"titles": titles, "draft_kept": held, "first_previous_disabled": True}
+    return held
+
+
 def upload_tokenizer(page, drawer, wizard, artifacts):
     """Give the run a real tokenizer without reaching the network.
 
@@ -219,6 +264,7 @@ def test_external_endpoint_sweep(page, context, server, artifacts, report, local
     drawer.get_by_text(external, exact=True).click()
     report["benchmark_target_keyboard"] = exercise_benchmark_target_keyboard(
         page, drawer, wizard, external)
+    drawn_name = exercise_wizard_steps(page, drawer, wizard, name, report)
     drawer.get_by_label(wizard["baseUrl"], exact=True).fill(fixture.base)
     drawer.get_by_label("API Key", exact=True).fill(fixture.api_key)
     action(drawer, wizard["probe"]).click()
