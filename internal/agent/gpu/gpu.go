@@ -20,10 +20,20 @@ import (
 
 // RuntimeInjection describes how a runtime should expose selected devices.
 type RuntimeInjection struct {
+	// ManagedSelection names stale accelerator settings to replace. It is
+	// independent of the atomic copy/apply contract used by every injector.
+	ManagedSelection  *RuntimeSelectionCleanup
 	Env               map[string]string
 	DockerArgs        []string
 	Mounts            []RuntimeMount
 	UnsupportedReason string
+}
+
+// RuntimeSelectionCleanup identifies only accelerator-owned workload settings.
+type RuntimeSelectionCleanup struct {
+	Env           []string
+	DockerOptions []string
+	DevicePaths   []string
 }
 
 // RuntimeMount is a host bind mount required for device visibility (for
