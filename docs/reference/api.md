@@ -103,7 +103,7 @@ JSON 字段按 [API 规范](api-conventions.md) 使用 snake_case，例如 `node
 未知筛选值或排序列返回 `400 LIST_FILTER_INVALID`。
 
 `GET /api/v1/inference-templates` 使用同一套页码校验与响应结构，但**始终分页**，默认第 1 页、每页 50 条，
-另有自己的硬件与文本筛选。`GET /api/v1/models`、`GET /api/v1/gpus` 也支持分页，参数见各自路由条目。
+另有自己的硬件与文本筛选：`gpu` 为卡名，`vendor` 可选，`cc` 和 `arch_id` 需要同时提供 `gpu`。这些参数是调用方提供的筛选条件，不代表服务器已检测或验证该硬件。`GET /api/v1/models`、`GET /api/v1/gpus` 也支持分页，参数见各自路由条目。
 
 ### 实时事件流与响应压缩
 
@@ -184,9 +184,9 @@ Cookie 设置为 `HttpOnly`、`SameSite=Lax`，其中保存的是不透明会话
 | GET | `/install.sh` | curl\|sh 安装脚本 | 无 |
 | GET | `/api/v1/healthz` | 健康检查（管理面） | JWT |
 | GET | `/healthz` | 健康检查（无需登录，供探活/负载均衡） | 无 |
-| GET | `/api/v1/engines` | 引擎参数字典（前端渲染表单用） | JWT |
+| GET | `/api/v1/engines?target_vendor=amd` | 面向指定厂商的引擎参数字典（省略 `target_vendor` 时使用通用 profile，未知厂商返回 400）；AMD profile 只表示实现准入范围，不证明特定 GPU/ROCm 版本已通过真机验收 | JWT |
 | GET | `/api/v1/nodes` | 节点列表；带 `page`/`page_size` 时分页并可按 `q`/`state`/`label` 筛选（见“错误与响应约定”） | JWT |
-| GET | `/api/v1/nodes/facets` | 筛选项及节点数量分布；查询参数 `q`、`state`、`label` 同节点列表，返回用户标签、系统标签与卡型号分布，见[节点列表](#节点列表的筛选与返回字段) | JWT |
+| GET | `/api/v1/nodes/facets` | 筛选项及节点数量分布；查询参数 `q`、`state`、`label` 同节点列表，返回用户标签、系统标签与卡型号分布（含已报告的 `arch_id`），见[节点列表](#节点列表的筛选与返回字段) | JWT |
 | GET | `/api/v1/dashboard/summary` | 仪表盘汇总：节点按状态计数与硬件合计、部署按状态计数、按厂商与按标签（`label_key`，缺省或无节点带该 key 时取最常用的 key）分组的容量 | JWT |
 | POST | `/api/v1/nodes` | 创建待接入节点，返回安装命令与 token；完整字段与条件见[创建节点的连接参数](#创建节点的连接参数) | JWT(admin) |
 | GET | `/api/v1/agent/rejects` | 最近被拒绝的连接尝试 | JWT |
@@ -215,7 +215,7 @@ Cookie 设置为 `HttpOnly`、`SameSite=Lax`，其中保存的是不透明会话
 | POST | `/api/v1/nodes/{uuid}/evict` | 强制驱逐：不等替代副本，把节点上每个副本立即撤下（所在副本的 leader 进入排空，follower 随之），副本在能放的地方重建，不计入重试次数；返回 `{"evicted": [leader UUID…]}`（202）。节点仍可调度时 409 `NODE_SCHEDULABLE` | JWT |
 | PUT | `/api/v1/nodes/{uuid}/labels` | 替换节点标签（key/value；空对象清空）。键名不得使用平台保留的 `gpuworks.ai/` 命名空间及其子域 | JWT |
 | PATCH | `/api/v1/nodes/{uuid}/name` | 重命名节点 | JWT |
-| PATCH | `/api/v1/nodes/{uuid}/accelerator` | 选择节点管理的加速卡厂商：`{"accelerator":"auto"}`，也可选 `nvidia`、`ascend`、`hygon`、`ppu`。成功重启 agent 并返回节点；限制见[节点调度与加速卡切换](#节点调度与加速卡切换) | JWT |
+| PATCH | `/api/v1/nodes/{uuid}/accelerator` | 选择节点管理的加速卡厂商：`{"accelerator":"auto"}`，也可选 `nvidia`、`ascend`、`hygon`、`ppu`、`amd`。成功重启 agent 并返回节点；限制见[节点调度与加速卡切换](#节点调度与加速卡切换) | JWT |
 | GET | `/api/v1/nodes/{uuid}/pull-proxy` | 节点使用的代理：`proxy`（首个选中它的代理条目，形同 `/pull/proxies` 的一项；没有条目选中时为 `null`，节点 agent 用自身环境）与 `runtime`：运行时类型，docker 节点另有 dockerd 实际使用的代理、与该条目是否一致（`applied`；节点没有代理时比较 systemd 当前加载的配置 `configured_*` 与实际值）、live-restore、`daemon.json` 是否也配了代理，以及 agent 的权限（`root` / `sudo` / `none`） | JWT |
 | GET | `/api/v1/nodes/{uuid}/network` | 已删除：410 `SETTING_REMOVED`（`route` 指向 `/api/v1/pull/proxies`）。节点的代理与站点地址都在拉取设置里按节点标签配置（`/nodes/{uuid}/pull-proxy` 给出节点使用哪一条） | JWT |
 | PUT | `/api/v1/nodes/{uuid}/network` | 已删除：410 `SETTING_REMOVED`，同上 | JWT(admin) |
@@ -275,7 +275,7 @@ Cookie 设置为 `HttpOnly`、`SameSite=Lax`，其中保存的是不透明会话
 |---|---|
 | 命中节点数 | 满足当前筛选条件的节点总数 |
 | 用户标签值、系统标签值 | 每个值附带携带它的节点数；系统标签带服务端显示文本，不含节点自身的 `gpuworks.ai/node` |
-| 卡型号 | `vendor`、`name`、`cc` 描述厂商、名称、计算能力；`model` 对应系统标签 `gpuworks.ai/gpu-model` 的值 |
+| 卡型号 | `vendor`、`name`、`cc` 描述厂商、名称、计算能力；已报告时含 `arch_id`，不同架构分别统计；`model` 对应系统标签 `gpuworks.ai/gpu-model` 的值 |
 | 每种卡型号的数量与显存 | 节点数，以及 `cards`（卡数）、`memory_bytes`（最大单卡显存） |
 
 ### 创建节点的连接参数
@@ -511,13 +511,13 @@ macOS 忽略 `no_systemd`。
 | GET | `/api/v1/inference-templates` | 推理模板列表 | JWT |
 | GET | `/api/v1/inference-templates/index` | 模板索引（轻量列表，用于选择器） | JWT |
 | GET | `/api/v1/inference-templates/organizations` | 模板涉及的组织/发布方列表 | JWT |
-| GET | `/api/v1/inference-templates/chips` | 模板声明支持的加速卡列表 | JWT |
-| GET | `/api/v1/inference-templates/my-chips` | 当前集群实际探测到的加速卡列表 | JWT |
+| GET | `/api/v1/inference-templates/chips` | 模板声明支持的静态加速卡目录；可选 `arch_id` 表示模板需要的架构 ID，其他厂商字段保持原样 | JWT |
+| GET | `/api/v1/inference-templates/my-chips` | 当前集群实际探测到的加速卡列表，含 `vendor`、`name`、可选 `cc` 和已报告的 `arch_id`；未报告架构时省略 `arch_id` | JWT |
 | GET | `/api/v1/inference-templates/summary` | 模板统计摘要 | JWT |
 | GET | `/api/v1/inference-templates/export/{digest}` | 按内容摘要导出可执行模板包 | JWT(admin) |
 | GET | `/api/v1/inference-templates/model/*` | 按模型路径获取模板详情（通配路径） | JWT |
 | GET | `/api/v1/inference-templates/yaml?model_id=…` | 模板编辑器里的平铺 YAML：server 用导入同一套目录类型写出，可加 `spec_source=user`（或 `upstream`）只留该来源的 spec，`readme_*` 字段只在 spec 全部列出或模板本身归用户时写出；原样保存（`import?overwrite=true`）不丢字段 | JWT |
-| GET | `/api/v1/inference-templates/schema` | 平铺 YAML 编辑器的字典：字段的补全、悬停说明与客户端首轮校验所需的约束（权威校验仍在导入时） | JWT |
+| GET | `/api/v1/inference-templates/schema` | 平铺 YAML 编辑器的字典：字段的补全、悬停说明与客户端首轮校验所需的约束（权威校验仍在导入时）；可选 `spec.gpus.arch_id` 必须非空且与已报告架构 ID 精确匹配（忽略大小写，缺失时不匹配） | JWT |
 | POST | `/api/v1/inference-templates/clone` | 克隆模板为可编辑的用户 spec | JWT |
 | POST | `/api/v1/inference-templates/evaluate` | 检查平铺 YAML 或目录包，不写入；请求与 `import` 相同，支持 `?overwrite=true`。返回 200 `{valid, errors, warnings}`；检查范围与结果见[导入前检查](#导入前检查) | JWT(admin) |
 | POST | `/api/v1/inference-templates/import` | 导入模板/目录包；成功返回 `{models, package_digest}`，有警告时多一个 `warnings`（同 `evaluate`，无警告时不出现该字段） | JWT(admin) |
@@ -525,6 +525,10 @@ macOS 忽略 `no_systemd`。
 | POST | `/api/v1/inference-templates/official` | 上传官方推理模板目录包（请求体为 `.tar.gz` 目录包，上限 32 MiB），与「检查更新」走同一条 upstream 对账；不是目录包时 400 `OFFICIAL_CATALOG_PACKAGE_REQUIRED`，解析或校验不过时 400 `OFFICIAL_CATALOG_NEEDS_NEWER_SERVER` | JWT(admin) |
 
 模板包结构与导入规则见[可执行推理目录包](inference-catalog-package.md)。
+
+`GET /api/v1/inference-templates/index` 默认保留完整索引。带 `compatibility=detected&vendor=<已知厂商>` 时，服务端按在线节点实际报告的卡计算每个 profile 的 `detected_compatible`，并返回参与计算的 `hardware`；可加 `node_uuid` 限定手工选择的节点。无效 mode/vendor 返回 400，未知节点返回 404；离线节点没有兼容卡。该字段仅表示芯片规则匹配，不保证显存、具体选卡或完整启动可准入，这些仍由部署 evaluate 判断。
+
+模板详情的 `detected_support` 提供服务端选择的 `preferred_engine` 与 `warnings`（含 `alternative_available`）。前端只展示这些事实；列表硬件过滤、详情与推荐共用服务端 chipmatch 的 unsupported 否决和特异性规则，不在浏览器重新编译名称正则或推导架构资格。
 
 ### 导入前检查
 
@@ -1297,6 +1301,8 @@ PD 请求（`placement.pd`）：单元可以不写 `node_uuid`，写了的单元
 
 单机自动放置在调度器选出节点之前不逐节点预估，调度后由选中的节点自己获取。多机与 PD 的自动放置在评估里先按此刻挑中的节点处理，与这些节点是手动写出的一样。
 
+硬件能力不满足时，装配返回 `ACCELERATOR_FEATURE_UNSUPPORTED`（`vendor`、`feature`）；AMD 最终放置未分配设备时返回 `ACCELERATOR_DEVICE_SELECTION_REQUIRED`。自动放置在选卡尚未完成时不触发后者。候选节点的硬件或运行时限制以结构化拒绝返回；混合厂商节点按模板匹配后的候选卡判断。
+
 ### 评估的字段错误（`errors[]`）与 `ok=false` 语义
 
 `POST /evaluate` 是交互端点：
@@ -2038,3 +2044,9 @@ Playground 与 `/v1` 网关的边界、外部模型命名 `external:<config-id>:
 - `internal/server/app` 在生产装配时始终为 `/v1/*`、`/v1/models`、`/api/v1/playground/v1/*` 注入非空
   `ProxyV1`、`ProxyModels`、`PlaygroundV1` handler。路由清单测试使用零值 `Deps{}`，因此这三个网关路由
   和 SPA fallback `/*` 不在其断言列表内，但生产环境始终挂载。
+
+### GPU 容量是否已知
+
+节点 GPU 与 `/api/v1/gpus` 的物理卡 DTO 均返回 `memory_capacity_known`（布尔）。它从库存容量派生，不持久化；为 false 时，`memory_total_bytes` 不应渲染成已知的 0 GB。真实测得的零占用仍是有效指标。旧 API 缺少该字段时，客户端兼容层才使用历史的容量零值约定。
+
+自定义命令的功能无法确认且目标声明了启动功能限制时，评估/创建返回 `LAUNCH_FEATURES_UNKNOWN`（参数 `vendor`），调度拒绝使用 `launch_features_unknown`。提供可识别的引擎入口与结构化参数后重新评估。

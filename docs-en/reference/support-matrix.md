@@ -4,6 +4,7 @@
 |---|---|---|---|---|
 | NVIDIA / CUDA | nvidia-smi, sysfs | Docker, runveil, nerdctl | HAMi libvgpu.so (x86_64, glibc ≥ 2.17) | Supports CUDA/NCCL topology; driver libraries are supplied by the host |
 | Ascend / CANN | npu-smi, driver and CANN facts | Docker + Ascend runtime; runveil in some environments | vCANN; capability depends on host device-share permissions | Host and container CANN versions must not be conflated into one conclusion |
+| AMD / ROCm | amdgpu sysfs, KFD | Linux amd64, Docker/nerdctl; limited AMD395 single-GPU BF16 vLLM and SGLang text smokes exist, other combinations require per-profile validation | Unsupported | Experimental recipes target named devices and gfx; not a compatibility claim for all AMD GPUs or ROCm combinations |
 | PPU / HGGC | ppu-smi | Depends on provider/runtime | HGGC GPU memory and weighted QoS | Sustained 20/80 workloads have demonstrated throughput weighting under load, not hard SM partitioning |
 | Hygon / DTK | hy-smi | Determined by the catalog spec and runtime | Native Z100 / K100_AI / BW vdev (experimental, x86_64, Docker or runveil/udocker) | Requires the optional native helper, host libraries and a per-GPU behavioral probe; other models remain full-GPU only |
 | Apple / Metal | sysctl, ioreg (macOS 15+, Apple silicon) | host (the engine is a host process; the image is a darwin environment package) | None; a Mac runs multiple instances concurrently using unified memory | One unified-memory card; GPU memory is the Metal working set; engine sleep, multi-node operation, and the KV disk tier are unsupported; see [ADR 0044](../adr/0044-mac-engines-as-host-processes.md) |
@@ -28,6 +29,12 @@ For tested Ascend combinations, CANN, and runtime details, see the [Ascend Matri
 
 For safe live adjustment conditions and reasons a restart is pending, see [Adjust dGPU Quotas](../how-to/dgpu.md#调整-dgpu-配额).
 These capabilities do not imply that every inference image has been verified; availability still depends on the GPU's `status` / `reason`.
+
+## AMD full-GPU implementation boundary and validation status
+
+The current AMD host integration in the agent and server is scoped to Linux amd64, Docker or nerdctl, and single-host full-GPU deployment. The PCI roster recognizes AMD functions only when bound to `amdgpu`. The agent then reads their amdgpu sysfs/KFD facts, checks inventory by PCI BDF and available unique IDs, and injects only the selected card's render node plus `/dev/kfd`. AMD dGPU partitioning is unsupported; runveil/udocker, multi-node, PP/DP, PD, and sleep paths are not enabled. This describes GPUWorks' implementation scope; it is not a compatibility claim for every AMD GPU, driver, kernel, or ROCm userspace combination.
+
+The official `gpuworks-runner` matrix now contains public-base ROCm build candidates with `catalog: false`. They have not been built, published, anonymously pulled, or GPU-validated and are absent from the built-in image catalog. Historical AMD395 r2/r5 images require explicit mapping and exact image-ID verification in the target runtime before custom import; their local tags are not pullable defaults. The old r1 recipe is incomplete. The MI300X candidates are not AMD395 images. On AMD395, Qwen3-0.6B and Qwen3.8-27B have limited single-GPU BF16 vLLM text smokes; both models also have limited SGLang r5 text smokes (eight short requests per model). On the now-released single AMD395 host, those four pinned profiles completed Web deployment, short text inference, and stop; the final required-code prefix also repeated the 0.6B vLLM post-stop display check. This evidence covers only those model/image/launch combinations. It does not establish image input, answer quality, sustained performance, long contexts, or multi-GPU isolation, or make unpublished images pullable from other nodes. UMA capacity uses the observed KFD/GTT facts and should not be generalized to other APUs or hosts. The AMD395 template's `gpus.arch_id` selector uses an exact, case-insensitive match; missing or mismatched architecture facts do not pass. Name predicates match product names; they do not replace architecture facts. See the [AMD Hardware Validation Guide](../dev/amd-hardware-validation.md), [ROCm recipe](../../build/inference-templates/rocm/README.md), and [AMD395 candidate recipe](../../build/inference-templates/amd395/README.md) for the remaining scope and validation steps.
 
 ## PPU device identity and dGPU probes
 
@@ -76,6 +83,7 @@ and are not stored in the database. The server does not read the `arch_family` f
 | Ascend | Chip model: `910B4`, `910B2C`, `910C`, `310P3` | `910b`, `910c`, `310p`; empty for first-generation 910 and unrecognized models |
 | Hygon | SKU: `K100AI`, `BW`, `BW1000`; stores the series `K100` when only the series is reported; empty if unrecognized | `k100`, `z100`, `bw`, `bw1000`, `bw1100` |
 | PPU | `ZW810E` (from the name) | `beethoven` (the architecture column in `ppu-smi`) |
+| AMD | KFD `gfx_target_version`, e.g. `gfx90a`, `gfx942`, `gfx1151`; empty when unavailable | Not derived yet |
 | Apple | SoC name: `M1 Max`, `M4 Pro` (the model from `ioreg` with `Apple` removed) | Chip generation `m1`…`m6` |
 
 When the agent detects no accelerator cards (none of the vendor CLIs respond or are installed, and no vendor device files exist), the node's vendor is empty; it no longer reports NVIDIA by default.

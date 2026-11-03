@@ -1,0 +1,50 @@
+# AMD 接入结构与硬件验收
+
+详细实现设计见 [AMD 支持设计](amd-support-design.md)。
+
+AMD 接入复用其他加速器的 Prober、PCI 库存和 DriverAwareInjector 接口。PCI 库存仅把绑定 `amdgpu` 的 AMD 功能识别为卡；agent 随后读取 amdgpu sysfs/KFD 事实并显式传入所选 render 设备。NVIDIA 保持 Toolkit 的容器设备编号语义，昇腾保持按运行时选择的设备注入。
+
+自动探测保留原有厂商优先级。混合 NVIDIA/AMD 主机，以及安装了残留或兼容版 `nvidia-smi` 的 AMD 主机，应通过节点加速卡选择接口显式选择 `amd`；单个 agent 只管理所选厂商。
+
+## 职责与支持边界
+
+- accelerator 统一声明厂商、宿主要求和功能约束。AMD 的物理 UMA 不等于 Apple 的按内存共享策略，仍按整卡分配。
+- deploy.RequestedLaunchFeatures 归一服务端的启动需求；planning 和 scheduler 按模板匹配后的实际候选卡准入。混合厂商节点不整体套用 AMD 限制。
+- agent 复核所选设备的身份和字符设备号，通过通用 RuntimeInjection 返回新增项、清除项或拒绝原因；engine 在验证成功后统一应用。AMD 要求非空设备选择；空选择在 agent 校验阶段拒绝，失败不留下部分修改。
+- sleep 的平台准入、引擎声明与协议执行分层。现阶段 AMD 拒绝 sleep；其他厂商继续使用原有能力及执行协议。
+
+AMD 使用公共 Prober、DriverAwareInjector 与目标约束接口，不依赖其他厂商的驱动、探测器、拓扑注入或模型模板。共享层只保存宿主事实、能力声明和拒绝合同；AMD 的 KFD/render 映射与 ROCm 设备注入由自己的 prober 完成。缺失 OS、架构或运行时事实报告 runtime_unreported，已知不兼容报告 runtime_unsupported，两者都不能授权启动。模板候选按实际匹配的卡检查；混卡节点上的 NVIDIA 卡不能替代仅匹配 AMD 的卡通过校验，模板允许 NVIDIA 时仍可选择该卡。所有厂商复用 resolved launch 的功能快照；显式受限目标不能用未知命令绕过准入。
+
+当前代码实现的准入范围为 Linux amd64、Docker/nerdctl、单机整卡；支持声明按镜像、模型和目标设备分别验收，不能从一组测试推广到所有 AMD GPU。未启用 sleep、多机、PD、流水线/数据并行和显存分区。系统 RAM 不自动成为可调度 GPU 显存。
+
+容量探测对 AMD395 的 UMA 仅启用受严格事实约束的窄路径：PCI device `0x1586`、KFD `gfx1151`，且唯一 KFD 节点与 DRM render minor、PCI domain/location 一致；KFD 公共 bank 必须是单个 system-memory heap，且其容量与同一 DRM 设备的 GTT total 完全相等。满足时上报该 KFD/GTT pool 容量并用 GTT used 采集占用；它表示驱动公开给 GPU 的可分配 pool，不是板载 VRAM，也不是主机总 RAM 或 HIP 当前 free。AMD395 UMA 事实缺失或冲突时上报未知容量并降级，不能将较小的 dedicated carve-out 当作已验证的健康容量。其他 AMD/APU 不从 `local_mem_size=0` 推断 UMA。
+
+[MI300X 镜像配方](../../build/inference-templates/rocm/README.md)与 [gfx1151 候选配方](../../build/inference-templates/amd395/README.md)分开维护。官方 runner 矩阵的 ROCm 档目前只是 `catalog: false` 的未发布构建候选；旧 AMD395 r1 缺完整可重建配方，历史 r2/r5 仅可受控本地导入。组件检查、镜像回载和模板导入成功不代表 GPU 推理、模型质量或隔离通过。必须先核对镜像的 gfx 目标、摘要和模型版本。
+
+## 主机准备与导入
+
+1. 记录 GPU 型号、PCI BDF、OS/kernel、amdgpu/ROCm 和容器运行时版本。APU 还须记录固件、UMA/carveout 设置及主机可用内存。不要伪造 gfx 版本绕过不匹配。
+2. 确认运行时用户可访问 /dev/kfd 和所选 /dev/dri/renderD*。核对 /sys/class/kfd/kfd/dev、PCI render 节点的 sysfs dev 与实际字符设备的 major/minor。设备 symlink、映射歧义、身份重复或库存身份变化应拒绝注入。
+3. 比较 GPUWorks 上报的 sysfs VRAM 与 ROCm 实际可用容量。128 GB 系统内存或固件 carveout 配置不能证明 27B 模型及运行时、KV cache 能装下。
+4. 在目标存储接收、校验镜像归档，再载入 agent 使用的 Docker daemon 或 nerdctl namespace，核对 tag 与 image ID。导入镜像目录元数据不会传输镜像层。
+5. 使用产品的 agent 安装流程接入节点，运行 `gpuworks-agent doctor` 检查驱动、KFD、render 设备与运行时，再运行 `gpuworks-agent smoke` 做当前节点的受限检查；记录实际命令与结果。AMD395 与 MI300X 的源码模板均含不可拉取的镜像占位符。先按各自配方的 `prepare_import.py` 提供显式镜像映射并在目标运行时核对精确 image ID，仅导入生成的 `delivery/image-import.json` 与 `delivery/catalog/`。保持默认引擎命令模式。源码包只保存 AMD 启动覆盖项，共享生成器从当前种子目录继承模型事实与权重。
+6. 准备完整且版本固定的权重和 tokenizer。核对最终模型挂载、端口、dtype、TP 与镜像；检查模板 shm/memlock 和放置偏好已进入启动计划。
+
+## 运行时与模型验证
+
+每次只启动一个引擎，保留日志，并在测试机设置资源限制。
+
+1. 先在镜像内执行小规模 GPU 分配和 FP16/BF16 矩阵运算，同步 GPU，记录设备/gfx、可用与总显存以及结果校验值。
+2. 使用对应模板的保守设置。gfx1151 Qwen3-0.6B 和 Qwen3.8-27B 模板采用 BF16、TP1 和 4096 上下文；vLLM 限制为单并发请求，SGLang 限制为 4 个并发请求。Qwen3-0.6B 的显存比例为 vLLM 0.25、SGLang 0.40；Qwen3.8-27B 两个引擎均为 0.75。vLLM 使用 eager，SGLang 使用 Triton attention 并禁用 CUDA graphs。验证相关内核前，两者均禁用 AITER。
+3. 要求完成启动、/health 和有界的文本聊天请求。调整上下文或显存比例前保留原始失败日志。文本通过后单独验证图片输入；不能据此推断视频支持。
+4. 通过 GPUWorks 重复部署，检查容器只获得 /dev/kfd 与所选 render 节点；验证模型路径、端口、库存/指标、停止、重启和恢复。独立手工启动若映射整个 `/dev/dri`，不能证明平台实现了逐设备选择。
+   停止后健康探测历史仍可显示，但当前可用副本数为零时不得把部署标为当前健康。
+5. 多卡主机验证选卡可见性与独立实例；单机 TP 只用匹配的镜像和模型验证。单 APU 上把跨卡用例标为不适用。
+
+AMD395 模板同时使用精确的 `gpus.arch_id: gfx1151` 和产品名称谓词。架构 ID 缺失或与模板不符时，模板匹配必须拒绝，即使名称包含 `gfx1151`；名称匹配不能替代可信的探测事实。该 selector 缩小候选范围，但不能证明实际 GPU 内核执行或型号 SKU，仍须完成真机验收。
+
+## 记录证据
+
+每个引擎保留 image ID/归档摘要、宿主与驱动事实、模型版本、实际命令和设备映射、GPU/主机内存观测、健康检查及请求结果，以及所有跳过或失败项。CPU 环境中因缺少 HIP 设备而不能完成的检查，仍是待验项。
+
+软件 fixture 覆盖字段损坏、部分库存、重复身份和设备号不一致。不要修改真实 sysfs 或设备节点来制造失败。注入检查用于落实分配结果，不构成管理员自定义容器配置的安全沙箱。

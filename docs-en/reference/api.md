@@ -103,7 +103,7 @@ Invalid page numbers or page sizes return `400 LIST_PAGE_INVALID` rather than si
 Unknown filter values or sort columns return `400 LIST_FILTER_INVALID`.
 
 `GET /api/v1/inference-templates` uses the same page validation and response structure but **always paginates**, defaulting to page 1 with 50 items per page.
-It also has its own hardware and text filters. `GET /api/v1/models` and `GET /api/v1/gpus` also support pagination; see their route entries for parameters.
+It also has hardware and text filters: `gpu` is the card name, `vendor` is optional, and `cc` and `arch_id` each require `gpu`. These are caller-supplied filter values; they do not attest to hardware detected or verified by the server. `GET /api/v1/models` and `GET /api/v1/gpus` also support pagination; see their route entries for parameters.
 
 ### Real-Time Event Streams and Response Compression
 
@@ -184,9 +184,9 @@ Login, logout, and management write requests using login sessions check the requ
 | GET | `/install.sh` | curl\|sh installation script | None |
 | GET | `/api/v1/healthz` | Health check (control plane) | JWT |
 | GET | `/healthz` | Health check (no login required, for liveness/load balancing) | None |
-| GET | `/api/v1/engines` | Engine parameter dictionary (for frontend form rendering) | JWT |
+| GET | `/api/v1/engines?target_vendor=amd` | Engine parameter dictionary for a target vendor (uses the general profile when `target_vendor` is omitted); the AMD profile describes implementation admission scope, not validation on a specific GPU/ROCm version | JWT |
 | GET | `/api/v1/nodes` | List nodes; paginate with `page`/`page_size` and filter by `q`/`state`/`label` (see “Error and Response Conventions”) | JWT |
-| GET | `/api/v1/nodes/facets` | Filter options and node count distributions; the `q`, `state`, and `label` query parameters are the same as for the node list. Returns distributions of user labels, system labels, and GPU models; see [Node List](#节点列表的筛选与返回字段) | JWT |
+| GET | `/api/v1/nodes/facets` | Filter options and node count distributions; the `q`, `state`, and `label` query parameters are the same as for the node list. Returns distributions of user labels, system labels, and GPU models (including reported `arch_id`); see [Node List](#节点列表的筛选与返回字段) | JWT |
 | GET | `/api/v1/dashboard/summary` | Dashboard summary: node counts by state and hardware totals, deployment counts by state, and capacity grouped by vendor and label (`label_key`; uses the most common key when omitted or when no node has that key) | JWT |
 | POST | `/api/v1/nodes` | Create a node awaiting connection and return the installation command and token; see [Connection Parameters for Node Creation](#创建节点的连接参数) for all fields and conditions | JWT(admin) |
 | GET | `/api/v1/agent/rejects` | Recent rejected connection attempts | JWT |
@@ -215,7 +215,7 @@ Login, logout, and management write requests using login sessions check the requ
 | POST | `/api/v1/nodes/{uuid}/evict` | Force eviction: immediately remove every replica on the node without waiting for replacements (the replica's leader drains, followed by its followers). Replicas are recreated wherever placement is possible, without counting toward retries; returns `{"evicted": [leader UUID…]}` (202). Returns 409 `NODE_SCHEDULABLE` if the node is still schedulable | JWT |
 | PUT | `/api/v1/nodes/{uuid}/labels` | Replace node labels (key/value; an empty object clears them). Keys must not use the platform-reserved `gpuworks.ai/` namespace or its subdomains | JWT |
 | PATCH | `/api/v1/nodes/{uuid}/name` | Rename the node | JWT |
-| PATCH | `/api/v1/nodes/{uuid}/accelerator` | Select the accelerator vendor managed on the node: `{"accelerator":"auto"}`; also accepts `nvidia`, `ascend`, `hygon`, or `ppu`. On success, restarts the agent and returns the node; see [Node Scheduling and Accelerator Switching](#节点调度与加速卡切换) for restrictions | JWT |
+| PATCH | `/api/v1/nodes/{uuid}/accelerator` | Select the accelerator vendor managed on the node: `{"accelerator":"auto"}`; also accepts `nvidia`, `ascend`, `hygon`, `ppu`, or `amd`. On success, restarts the agent and returns the node; see [Node Scheduling and Accelerator Switching](#节点调度与加速卡切换) for restrictions | JWT |
 | GET | `/api/v1/nodes/{uuid}/pull-proxy` | The proxy used by the node: `proxy` (the first proxy entry that selects it, in the same form as an item in `/pull/proxies`; `null` when no entry selects it, in which case the node agent uses its own environment) and `runtime`: the runtime type. Docker nodes also include the proxy actually used by dockerd, whether it matches the entry (`applied`; when the node has no proxy, compares systemd's currently loaded `configured_*` configuration with actual values), live-restore, whether `daemon.json` also configures a proxy, and the agent's privileges (`root` / `sudo` / `none`) | JWT |
 | GET | `/api/v1/nodes/{uuid}/network` | Removed: 410 `SETTING_REMOVED` (`route` points to `/api/v1/pull/proxies`). Node proxies and site addresses are configured by node labels in pull settings (`/nodes/{uuid}/pull-proxy` identifies the entry used by the node) | JWT |
 | PUT | `/api/v1/nodes/{uuid}/network` | Removed: 410 `SETTING_REMOVED`, as above | JWT(admin) |
@@ -275,7 +275,7 @@ Deployment forms and placement condition editors can use it directly to generate
 |---|---|
 | Matching node count | Total number of nodes that satisfy the current filters |
 | User label values and system label values | Each value includes the number of nodes carrying it; system labels include server-provided display text and exclude the node's own `gpuworks.ai/node` label |
-| GPU model | `vendor`, `name`, and `cc` describe the vendor, name, and compute capability; `model` corresponds to the value of the `gpuworks.ai/gpu-model` system label |
+| GPU model | `vendor`, `name`, and `cc` describe the vendor, name, and compute capability; reported `arch_id` is included and distinct architectures are counted separately; `model` corresponds to the value of the `gpuworks.ai/gpu-model` system label |
 | Count and GPU memory for each GPU model | Node count, plus `cards` (card count) and `memory_bytes` (maximum GPU memory per card) |
 
 ### Connection Parameters for Node Creation
@@ -328,6 +328,7 @@ The returned node's `accelerator_preference` indicates the selection; `accelerat
 - Invalid value: 400 `NODE_ACCELERATOR_INVALID`; the host has no cards from that vendor: 400 `NODE_ACCELERATOR_NOT_ON_HOST`.
 - The node has instances that are not stopped: 409 `NODE_ACCELERATOR_HAS_INSTANCES` (`params.count`); agent rejection or an offline agent also returns 409.
 - The node does not exist: 404.
+- When AMD platform capabilities or runtime requirements are not met, evaluation/creation returns a structured refusal. `ACCELERATOR_FEATURE_UNSUPPORTED` includes `vendor` and `feature`. Final AMD placement without an assigned device returns `ACCELERATOR_DEVICE_SELECTION_REQUIRED`; automatic placement does not return it before device selection is complete.
 
 ### Node Labels: Written and Generated
 
@@ -511,13 +512,13 @@ For the format and import rules, see [Image Catalog and Inference Image Families
 | GET | `/api/v1/inference-templates` | List inference templates | JWT |
 | GET | `/api/v1/inference-templates/index` | Get the template index (a lightweight list for selectors) | JWT |
 | GET | `/api/v1/inference-templates/organizations` | List organizations/publishers represented in the templates | JWT |
-| GET | `/api/v1/inference-templates/chips` | List accelerator cards that templates declare as supported | JWT |
-| GET | `/api/v1/inference-templates/my-chips` | List accelerator cards actually detected in the current cluster | JWT |
+| GET | `/api/v1/inference-templates/chips` | Static catalog of accelerator cards supported by templates; optional `arch_id` identifies the architecture required by a template, with other vendor fields unchanged | JWT |
+| GET | `/api/v1/inference-templates/my-chips` | List accelerator cards detected in the current cluster, with `vendor`, `name`, optional `cc`, and reported `arch_id` (omitted when unavailable) | JWT |
 | GET | `/api/v1/inference-templates/summary` | Get template summary statistics | JWT |
 | GET | `/api/v1/inference-templates/export/{digest}` | Export an executable template package by content digest | JWT(admin) |
 | GET | `/api/v1/inference-templates/model/*` | Get template details by model path (wildcard path) | JWT |
 | GET | `/api/v1/inference-templates/yaml?model_id=…` | Get flat YAML for the template editor: the server writes it using the same catalog types as import. Add `spec_source=user` (or `upstream`) to retain only specs from that source; `readme_*` fields are written only when all specs are listed or the template itself belongs to the user. Saving it unchanged (`import?overwrite=true`) preserves all fields | JWT |
-| GET | `/api/v1/inference-templates/schema` | Get the dictionary for the flat YAML editor: field completion, hover descriptions, and constraints for initial client-side validation (authoritative validation still occurs at import) | JWT |
+| GET | `/api/v1/inference-templates/schema` | Get the dictionary for the flat YAML editor: field completion, hover descriptions, and constraints for initial client-side validation (authoritative validation still occurs at import); optional `spec.gpus.arch_id` must be nonblank and matches the reported architecture ID exactly, ignoring case (missing IDs do not match) | JWT |
 | POST | `/api/v1/inference-templates/clone` | Clone a template into an editable user spec | JWT |
 | POST | `/api/v1/inference-templates/evaluate` | Check flat YAML or a catalog package without writing data; accepts the same request as `import` and supports `?overwrite=true`. Returns 200 `{valid, errors, warnings}`; for check scope and results, see [Pre-Import Checks](#导入前检查) | JWT(admin) |
 | POST | `/api/v1/inference-templates/import` | Import a template/catalog package; returns `{models, package_digest}` on success, with an additional `warnings` field when warnings exist (same as `evaluate`; the field is absent when there are no warnings) | JWT(admin) |
@@ -525,6 +526,10 @@ For the format and import rules, see [Image Catalog and Inference Image Families
 | POST | `/api/v1/inference-templates/official` | Upload an official inference catalog package (request body is a `.tar.gz` catalog package, up to 32 MiB), using the same upstream reconciliation as “Check for updates.” Returns 400 `OFFICIAL_CATALOG_PACKAGE_REQUIRED` if the input is not a catalog package, or 400 `OFFICIAL_CATALOG_NEEDS_NEWER_SERVER` if parsing or validation fails | JWT(admin) |
 
 For template package structure and import rules, see [Executable Inference Catalog Package](inference-catalog-package.md).
+
+`GET /api/v1/inference-templates/index` retains the complete index by default. With `compatibility=detected&vendor=<known vendor>`, the server computes each profile's `detected_compatible` from cards reported by online nodes and returns the participating `hardware`. Add `node_uuid` to scope a manual node selection. An invalid mode/vendor returns 400; an unknown node returns 404. Offline nodes have no compatible cards. This field means chip-rule compatibility only; deployment evaluate still checks memory, the specific selected cards, and the complete launch.
+
+Template details expose `detected_support` with the server-selected `preferred_engine` and `warnings` (including `alternative_available`). The UI only presents these facts. Hardware-filtered lists, details, and recommendations share the server chipmatch unsupported veto and specificity rules; the browser does not recompile name regexes or infer architecture eligibility.
 
 ### Pre-Import Checks
 
@@ -1289,6 +1294,8 @@ Deployment requests do not select where images or models come from ([ADR 0048](.
 
 Single-node automatic placement does not provide per-node estimates before the scheduler selects a node; after scheduling, the selected node acquires the assets itself. Automatic placement of multi-node and PD requests is first resolved to the nodes picked now in evaluation, as if those nodes had been written by hand.
 
+When hardware capabilities are not met, assembly returns `ACCELERATOR_FEATURE_UNSUPPORTED` (`vendor`, `feature`); final AMD placement without an assigned device returns `ACCELERATOR_DEVICE_SELECTION_REQUIRED`. Automatic placement does not return the latter before device selection is complete. Candidate hardware or runtime restrictions use structured refusal reasons; mixed-vendor nodes are evaluated against the cards matched by the template.
+
 ### Evaluation Field Errors (`errors[]`) and `ok=false` Semantics
 
 `POST /evaluate` is an interactive endpoint:
@@ -2031,3 +2038,9 @@ The following conventions maintain the endpoint inventory; they are not prerequi
 - During production assembly, `internal/server/app` always injects non-nil
   `ProxyV1`, `ProxyModels`, and `PlaygroundV1` handlers for `/v1/*`, `/v1/models`, and `/api/v1/playground/v1/*`. Route inventory tests use zero-value `Deps{}`, so these three gateway routes
   and the SPA fallback `/*` are excluded from their assertions, but are always mounted in production.
+
+### Whether GPU capacity is known
+
+Node GPU and `/api/v1/gpus` physical-card DTOs both return the boolean `memory_capacity_known`. It is derived from inventory capacity and not persisted. When false, `memory_total_bytes` must not render as a known zero-GB capacity. Measured zero usage remains a valid metric. Only the compatibility boundary for old APIs without the field uses the legacy zero-capacity sentinel.
+
+An unknown `target_vendor` on `/api/v1/engines` returns 400. If custom-command features cannot be determined and the target declares launch-feature restrictions, evaluation/creation returns `LAUNCH_FEATURES_UNKNOWN` with parameter `vendor`; the scheduler uses `launch_features_unknown`. Re-evaluate with a recognized engine entrypoint and structured parameters.

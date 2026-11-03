@@ -4,6 +4,7 @@
 |---|---|---|---|---|
 | NVIDIA / CUDA | nvidia-smi、sysfs | Docker、runveil、nerdctl | HAMi libvgpu.so（x86_64，glibc ≥ 2.17） | 支持 CUDA/NCCL 拓扑；驱动库由宿主机提供 |
 | 昇腾 / CANN | npu-smi、驱动和 CANN 事实 | Docker + Ascend runtime；部分环境 runveil | vCANN；能力取决于宿主机 device-share 权限 | 外层/内层 CANN 版本不能混为一个结论 |
+| AMD / ROCm | amdgpu sysfs、KFD | Linux amd64、Docker/nerdctl；AMD395 上有 vLLM 与 SGLang 的有限 BF16 单卡文本 smoke，其余组合逐档待验 | 不支持 | 实验配方限定型号与 gfx；这不是对所有 AMD 卡或 ROCm 组合的兼容性承诺 |
 | PPU / HGGC | ppu-smi | provider/runtime 依赖 | HGGC 显存与加权 QoS | 20/80 长负载已证明繁忙时吞吐权重，不是硬 SM 分区 |
 | 海光 / DTK | hy-smi | 由目录 spec 和 runtime 决定 | Z100 / K100_AI / BW 原生 vdev（实验性，x86_64，Docker 或 runveil/udocker） | 需可选原生 helper、宿主库和逐卡行为探针；其他型号仍只支持整卡 |
 | Apple / Metal | sysctl、ioreg（macOS 15+，Apple silicon） | host（引擎为宿主机进程，镜像是 darwin 环境包） | 无；一台 Mac 按统一内存同时跑多个实例 | 1 张统一内存卡，显存为 Metal 工作集；不支持引擎休眠、多机、KV 磁盘层；见 [ADR 0044](../adr/0044-mac-engines-as-host-processes.md) |
@@ -28,6 +29,12 @@ dGPU 不可用时，节点仍可使用整卡部署；平台不会把不满足 dG
 
 在线调整的安全条件与待重启原因见[调整 dGPU 配额](../how-to/dgpu.md#调整-dgpu-配额)。
 表中能力不代表任意推理镜像均已验证；节点是否可用仍以该卡的 `status` / `reason` 为准。
+
+## AMD 整卡实现边界与验收状态
+
+当前 agent 和 server 实现的 AMD 主机接入范围是 Linux amd64、Docker 或 nerdctl、单机整卡部署。PCI 库存仅把绑定 `amdgpu` 且具有匹配 KFD 计算节点的 AMD PCI 功能识别为卡；agent 再读取其 amdgpu sysfs/KFD 事实，按 PCI BDF 和可用的 unique ID 核对设备库存。缺少驱动绑定、KFD 或明确的 render 映射时不应推断可部署；运行时只注入所选卡的 render 节点及 `/dev/kfd`。它不支持 AMD dGPU 分区，不启用 runveil/udocker、多机、PP/DP、PD 或 sleep 路径。此范围描述 GPUWorks 当前实现，不代表所有 AMD GPU、驱动、内核或 ROCm 用户态组合都兼容。
+
+官方 `gpuworks-runner` 矩阵新增公开基础镜像的 ROCm 构建候选，但均为 `catalog: false`，尚未构建、发布、验证匿名拉取或完成 GPU 验收；不会进入内置镜像目录。AMD395 的历史 r2/r5 镜像仅能经显式映射和目标运行时的精确镜像 ID 核对后作为 custom 导入，不能把本地标签当作可拉取的默认镜像。旧 r1 缺完整可重建配方。MI300X 候选不适用于 AMD395。AMD395 上 Qwen3-0.6B 和 Qwen3.8-27B 已有 vLLM BF16 单卡文本 smoke；两个模型也各有 SGLang r5 的有限短文本 smoke（每个模型 8 个请求）。在已退租的 AMD395 单机上，这四组固定版本/配置曾完成 Web 部署、短文本推理与停止；最终必要代码前缀还复验了 0.6B vLLM 的停止后显示。证据只覆盖这些模型、镜像和配置，不代表图片输入、回答质量、持续性能、长上下文或多卡隔离已验证，也不代表未发布镜像可被其他节点拉取。UMA 容量按实际 KFD/GTT 事实读取，不可推广为其他 APU 或主机的可用 GPU 内存。AMD395 模板的 `gpus.arch_id` 是精确、大小写不敏感匹配；缺失或不一致的架构事实不会通过该 selector。名称谓词用于匹配产品名称，不替代架构事实。型号范围与剩余验收步骤见 [AMD 硬件验收指南](../dev/amd-hardware-validation.md)、[ROCm 配方](../../build/inference-templates/rocm/README.md)和 [AMD395 候选配方](../../build/inference-templates/amd395/README.md)。
 
 ## PPU 设备身份与 dGPU 探针
 
@@ -75,6 +82,7 @@ server 收到节点上报时把型号名规范化后再存（`accelerator.Normal
 | 昇腾 | 芯片型号：`910B4`、`910B2C`、`910C`、`310P3` | `910b`、`910c`、`310p`；初代 910 与认不出的为空 |
 | 海光 | SKU：`K100AI`、`BW`、`BW1000`；只报系列时存系列 `K100`；认不出为空 | `k100`、`z100`、`bw`、`bw1000`、`bw1100` |
 | PPU | `ZW810E`（取自名字） | `beethoven`（`ppu-smi` architecture 列） |
+| AMD | KFD `gfx_target_version`，如 `gfx90a`、`gfx942`、`gfx1151`；缺失时为空 | 暂不推导 |
 | Apple | SoC 名：`M1 Max`、`M4 Pro`（`ioreg` 的 model 去掉 `Apple`） | 芯片代际 `m1`…`m6` |
 
 agent 探测不到任何加速卡（各厂商 CLI 都不应答、都没装、也没有厂商设备文件）时节点厂商为空，不再按 NVIDIA 上报。

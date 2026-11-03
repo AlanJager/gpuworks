@@ -38,6 +38,8 @@ make demo
 - [代码地图：逐包职责](code-map.md)
 - [本地开发环境](setup.md)
 - [测试分层和云端策略](testing.md)
+- [AMD 支持设计：职责、准入与兼容边界](amd-support-design.md)
+- [AMD 接入结构与硬件验收](amd-hardware-validation.md)
 - [评测信息与报告规范](benchmark-reporting-standard.md)
 - [逐请求引擎排队耗时的观测边界](engine-queue-observation.md)
 - [浏览器 E2E 测试规范](../../test/e2e/browser-e2e-testing-standard.md)

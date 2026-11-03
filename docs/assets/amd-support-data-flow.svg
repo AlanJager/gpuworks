@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 860" role="img" aria-labelledby="amd-flow-title amd-flow-desc">
+<title id="amd-flow-title">AMD data flow and fact ownership</title>
+<desc id="amd-flow-desc">Inventory and metrics have two explicit outputs: the GPU API and Web, and per-card planning. Model configuration flows through planning and desired state to agent validation, AMD device injection, the container workload and deployment status. The dashed line supplies published Prober identity to injection for comparison with current devices. Green boxes are AMD-specific; blue boxes are shared components.</desc>
+<defs><marker id="amd-arrow" viewBox="0 0 10 10" markerWidth="8" markerHeight="8" refX="10" refY="5" orient="auto"><path d="M0 0 L10 5 L0 10 Z" fill="#91b9e5"/></marker></defs>
+<rect width="1200" height="860" rx="14" fill="#101925"/>
+<g fill="#acc6e6" font-family="Arial, sans-serif" font-size="19" font-weight="bold"><text x="40" y="48">1. Discover hardware and report GPU facts</text><text x="40" y="308">2. Resolve a deployment and select compatible cards</text><text x="40" y="568">3. Validate, inject devices and run the workload (right to left)</text></g>
+<g fill="none" stroke="#91b9e5" stroke-width="2.5" marker-end="url(#amd-arrow)">
+<path data-from="hardware" data-to="prober" d="M290 140 H330"/>
+<path data-from="prober" data-to="inventory" d="M580 140 H620"/>
+<path data-from="inventory" data-to="gpu-web" d="M870 140 H910"/>
+<path data-from="inventory" data-to="planning" d="M745 190 V350"/>
+<path data-from="template" data-to="launch" d="M290 400 H330"/>
+<path data-from="launch" data-to="planning" d="M580 400 H620"/>
+<path data-from="planning" data-to="desired" d="M870 400 H910"/>
+<path data-from="desired" data-to="validation" d="M1035 450 V610"/>
+<path data-from="validation" data-to="injection" d="M910 660 H870"/>
+<path data-from="injection" data-to="workload" d="M620 660 H580"/>
+<path data-from="workload" data-to="ready" d="M330 660 H290"/>
+<path data-from="prober" data-to="injection" d="M455 190 V245 H18 V785 H745 V710" stroke-dasharray="7 5"/>
+</g><g font-family="Arial, sans-serif" text-anchor="middle">
+<g id="amd-hardware" data-node="hardware"><rect x="40" y="90" width="250" height="100" rx="10" fill="#18283a" stroke="#5685b5" stroke-width="1.5"/><text x="165" y="133" fill="#ecf3ff" font-size="16" font-weight="bold">amdgpu sysfs + KFD</text><text x="165" y="160" fill="#bed0e5" font-size="12">PCI / DRM / character devices</text></g>
+<g id="amd-prober" data-node="prober"><rect x="330" y="90" width="250" height="100" rx="10" fill="#13302e" stroke="#60b59e" stroke-width="1.5"/><text x="455" y="133" fill="#ecf3ff" font-size="16" font-weight="bold">AMD Prober</text><text x="455" y="160" fill="#bed0e5" font-size="12">Identity / gfx / capacity / health</text></g>
+<g id="amd-inventory" data-node="inventory"><rect x="620" y="90" width="250" height="100" rx="10" fill="#18283a" stroke="#5685b5" stroke-width="1.5"/><text x="745" y="133" fill="#ecf3ff" font-size="16" font-weight="bold">Inventory + metrics</text><text x="745" y="160" fill="#bed0e5" font-size="12">Published GPU facts</text></g>
+<g id="amd-gpu-web" data-node="gpu-web"><rect x="910" y="90" width="250" height="100" rx="10" fill="#18283a" stroke="#5685b5" stroke-width="1.5"/><text x="1035" y="133" fill="#ecf3ff" font-size="16" font-weight="bold">Server store + GPU API</text><text x="1035" y="160" fill="#bed0e5" font-size="12">GPU inventory and metrics in Web</text></g>
+<g id="amd-template" data-node="template"><rect x="40" y="350" width="250" height="100" rx="10" fill="#18283a" stroke="#5685b5" stroke-width="1.5"/><text x="165" y="393" fill="#ecf3ff" font-size="16" font-weight="bold">Model + template + image</text><text x="165" y="420" fill="#bed0e5" font-size="12">Explicit ROCm image selection</text></g>
+<g id="amd-launch" data-node="launch"><rect x="330" y="350" width="250" height="100" rx="10" fill="#18283a" stroke="#5685b5" stroke-width="1.5"/><text x="455" y="393" fill="#ecf3ff" font-size="16" font-weight="bold">Resolved launch</text><text x="455" y="420" fill="#bed0e5" font-size="12">Actual argv + RequestedFeatures</text></g>
+<g id="amd-planning" data-node="planning"><rect x="620" y="350" width="250" height="100" rx="10" fill="#18283a" stroke="#5685b5" stroke-width="1.5"/><text x="745" y="393" fill="#ecf3ff" font-size="16" font-weight="bold">Planning + scheduling</text><text x="745" y="420" fill="#bed0e5" font-size="12">Check and select actual cards</text></g>
+<g id="amd-desired" data-node="desired"><rect x="910" y="350" width="250" height="100" rx="10" fill="#18283a" stroke="#5685b5" stroke-width="1.5"/><text x="1035" y="393" fill="#ecf3ff" font-size="16" font-weight="bold">Desired state</text><text x="1035" y="420" fill="#bed0e5" font-size="12">Selected cards + feature snapshot</text></g>
+<g id="amd-ready" data-node="ready"><rect x="40" y="610" width="250" height="100" rx="10" fill="#18283a" stroke="#5685b5" stroke-width="1.5"/><text x="165" y="653" fill="#ecf3ff" font-size="16" font-weight="bold">Ready + gateway + Web</text><text x="165" y="680" fill="#bed0e5" font-size="12">Deployment status and inference</text></g>
+<g id="amd-workload" data-node="workload"><rect x="330" y="610" width="250" height="100" rx="10" fill="#18283a" stroke="#5685b5" stroke-width="1.5"/><text x="455" y="653" fill="#ecf3ff" font-size="16" font-weight="bold">Docker / nerdctl workload</text><text x="455" y="680" fill="#bed0e5" font-size="12">Launch / stop / collect state</text></g>
+<g id="amd-injection" data-node="injection"><rect x="620" y="610" width="250" height="100" rx="10" fill="#13302e" stroke="#60b59e" stroke-width="1.5"/><text x="745" y="653" fill="#ecf3ff" font-size="16" font-weight="bold">AMD runtime injection</text><text x="745" y="680" fill="#bed0e5" font-size="12">Recheck identity and device nodes</text></g>
+<g id="amd-validation" data-node="validation"><rect x="910" y="610" width="250" height="100" rx="10" fill="#18283a" stroke="#5685b5" stroke-width="1.5"/><text x="1035" y="653" fill="#ecf3ff" font-size="16" font-weight="bold">Agent validation</text><text x="1035" y="680" fill="#bed0e5" font-size="12">New container: host / snapshot / cards</text></g>
+</g><g fill="#bed0e5" font-family="Arial, sans-serif" font-size="16"><text x="761" y="260">Card identity + capacity</text><text x="1051" y="520">Selected cards</text><text x="92" y="778">Published identity baseline; injection also rechecks live devices</text><text x="40" y="837">Solid: facts or execution flow. Dashed: identity baseline. Healthy inventory does not mean a Ready engine.</text></g></svg>

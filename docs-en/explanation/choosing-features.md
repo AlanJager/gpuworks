@@ -65,7 +65,7 @@ Compute semantics vary by vendor, as shown below (for details, see [dGPU Semanti
 | Ascend | Supported | experimental | Required host device-share permissions; inference image requires glibc ≥ 2.33 | On 910B4 in a self-owned environment, Docker passes platform dGPU inference and over-allocation rejection validation; nerdctl passes only the node-level dGPU behavioral probe. Rented cloud machines (the Gitee environment in the matrix) lack permission to execute device-share, so they prove only detection and full GPU chat, not a dGPU pass. These results do not establish a 20/80 throughput guarantee for `aicore-quota` |
 | PPU | Supported | experimental | HGGC 13.x, x86_64, and **Docker runtime only** | A 20/80 configuration behaves as weighted QoS under load (borrowing spare capacity when the other instance is idle), not hard SM partitioning |
 | Hygon (DTK) | No backend | — | — | Detection and full GPU deployment depend on the catalog spec and runtime; Hygon is absent from the dGPU backend registry, so use full GPUs |
-| AMD (ROCm) | No backend | — | — | Same as above |
+| AMD (ROCm) | Unsupported | — | — | This table covers dGPU partitioning only; see the [Vendor Support Matrix](../reference/support-matrix.md) for full-GPU implementation scope |
 
 The server derives capability availability as `ready` or `unavailable` (with a `reason`); the agent does not declare it independently. If the requirements are not met,
 the node can still deploy with full GPUs, but requests with a dGPU memory limit fail explicitly (for example, `partition_unavailable`).

@@ -174,6 +174,14 @@ model_config:
 
 `kv_cache: false` 是目录扩展的声明，不是 `config.json` 原有字段。“不适用”是已知模型不需要 KV cache，不能与缺少配置或实测数据混为一谈。完整字段约束见[模型级字段](inference-catalog-spec.md#模型级字段)。
 
+### SGLang 混合注意力模型的状态预算
+
+SGLang 的 linear-attention/Mamba 状态池与 attention KV 分开分配。只有模型提供完整的层类型、`linear_num_key_heads`、`linear_num_value_heads`、`linear_key_head_dim`、`linear_value_head_dim`、`linear_conv_kernel_dim`，且最终启动命令显式设置 `--max-mamba-cache-size` 时，GPUWorks 才能按每张 GPU 的状态形状估算基础状态池。`mamba_ssm_dtype` 指定 SSM 状态精度；缺省采用 SGLang 的 float32，卷积状态按其 bfloat16 默认值估算。状态池包含引擎额外分配的一个 padding 槽，槽数不等于可服务的请求并发数。
+
+容量展示先从剩余内存扣除基础状态预算，再估算 attention KV。显式 `--max-total-tokens` 限制 token 容量；界面分别说明可用 KV 空间和该参数对应的配置预算。状态形状或缓存上限未知时，界面显示“估算不完整”，不输出未经证明的 token 容量或并发数。即使基础状态已知，辅助、推测解码和 checkpoint 缓冲仍可能占用内存，因此 hybrid 估算保持“不完整”，需以实际引擎日志核验。
+
+此修复限定于 SGLang，不改变 vLLM 的已有 KV 布局估算。它也不把动态 KV/状态池加入调度器的静态启动准入，不将模板中的诊断限制设为平台默认值。启动所需的已知固定内存超限仍单独报告。
+
 ### 如何维护和校验这些事实
 
 维护工具是 `cmd/gpuworks-catalog-model-config`：
