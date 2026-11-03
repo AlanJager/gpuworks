@@ -247,9 +247,17 @@ type harness struct {
 
 func newHarness(t *testing.T, dir string) *harness {
 	t.Helper()
+	// Temporary roots may be aliases (macOS /var/folders or a symlink TMPDIR).
+	// Ordinary fixtures use canonical paths; symlink tests override them explicitly.
+	layout := NewLayout(dir, "", "")
+	canonical, err := resolveUninstallPath(layout.Dir)
+	if err != nil {
+		t.Fatalf("resolve fixture directory: %v", err)
+	}
+	layout = NewLayout(canonical, "", "")
 	h := &harness{
 		t:         t,
-		layout:    NewLayout(dir, "", ""),
+		layout:    layout,
 		run:       newFakeRunner(),
 		systemd:   true,
 		nextPID:   4242,
@@ -258,8 +266,8 @@ func newHarness(t *testing.T, dir string) *harness {
 		now:       time.Date(2026, 3, 4, 5, 6, 7, 0, time.UTC),
 		freeBytes: 10 << 30,
 	}
-	h.layout.UnitDir = t.TempDir()
-	h.layout.LaunchdDir = t.TempDir()
+	h.layout.UnitDir = mustEvalSymlinks(t, t.TempDir())
+	h.layout.LaunchdDir = mustEvalSymlinks(t, t.TempDir())
 	// A complete process-table fixture with no server from this installation.
 	h.run.output["ps -ww -axo pid=,command="] = "1 /sbin/init\n"
 	h.deps = Deps{
