@@ -106,6 +106,14 @@ func (i *Installer) Install(ctx context.Context, req InstallRequest) (InstallRep
 	if err != nil {
 		return InstallReport{}, err
 	}
+	// Reject deterministic permission-policy errors before replacing a working
+	// installation's binary, configuration or service definition. chownTree
+	// validates again before applying permissions and starting the service.
+	if pf.ServiceUser != "" && pf.ServiceUser != "root" {
+		if _, err := i.permissionRoots(); err != nil {
+			return InstallReport{}, err
+		}
+	}
 	for _, warning := range pf.Warnings {
 		i.io.Warn("warning: %s", warning)
 	}
