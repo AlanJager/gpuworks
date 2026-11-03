@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"net/http"
 	"os"
 	"sync"
 	"sync/atomic"
@@ -235,10 +236,20 @@ func (r *run) dispatch(dispCtx, sendCtx context.Context) error {
 // process sends one request until it has a final answer. A request the
 // platform could not serve is retried with a growing wait; it stops being
 // retried when the batch is cancelled or expires, and is recorded then only
-// if it got an answer.
+// if it got an answer. A request for a model served only by stopped
+// deployments, which the gateway refuses as unknown, waits for a start as one
+// for a failed deployment waits for a repair. While a request waits, the
+// batch's wait board says why.
 func (r *run) process(dispCtx, sendCtx context.Context, l requestLine) {
 	s := r.svc
 	body := withModel(l.Body, r.b.Model)
+	model := requestModel(body)
+	waiting := false
+	defer func() {
+		if waiting {
+			r.h.waits.settled(model)
+		}
+	}()
 	for attempt := 0; ; attempt++ {
 		select {
 		case s.global <- struct{}{}:
@@ -253,6 +264,9 @@ func (r *run) process(dispCtx, sendCtx context.Context, l requestLine) {
 			return // aborted by the expiry, a cancel's grace or a shutdown
 		}
 		v, code, message := classify(reply)
+		if v == verdictFail && reply.Status == http.StatusNotFound && s.modelStopped(model) {
+			v = verdictRetry
+		}
 		switch v {
 		case verdictDone:
 			r.record(l.CustomID, encodeResult(r.b.ID, l.CustomID, reply, nil), true)
@@ -261,6 +275,8 @@ func (r *run) process(dispCtx, sendCtx context.Context, l requestLine) {
 			r.record(l.CustomID, encodeResult(r.b.ID, l.CustomID, reply, &resultError{Code: code, Message: message}), false)
 			return
 		}
+		r.h.waits.retrying(model, !waiting, reply, s.cfg.Clock.Now())
+		waiting = true
 		select {
 		case <-dispCtx.Done():
 			return

@@ -34,6 +34,8 @@ export interface BatchFailure {
 /**
  * A finding that does not refuse the batch: BATCH_MODEL_SLEEP_HELD {model} says the model the batch was given sleeps by an
  * operator's order, which requests do not wake; BATCH_FILE_MODELS_SLEEP_HELD {models, more} says so of models its file names.
+ * BATCH_MODEL_WAITS {model, state} and BATCH_FILE_MODELS_WAIT {models, more, state} say a model is offline, failed or stopped
+ * (state a BatchModelState): its requests wait until it serves.
  */
 export interface BatchWarning {
   code: string;
@@ -61,6 +63,8 @@ export interface Batch {
   output_expires_at?: string;
   /** Non-blocking findings of creating the batch; only on the create response. */
   warnings?: BatchWarning[];
+  /** Why requests of a running batch are being retried, per model; only on a single batch, absent when none waits. */
+  waiting?: BatchModelWait[];
   user_id: number;
   api_key_id: number;
   created_at: string;
@@ -85,14 +89,32 @@ export interface BatchCreateOptions {
 
 /**
  * What a served name is to a batch, as the server judges it (the same rule its
- * create check uses): served now, asleep with a sleep a request wakes, or
- * asleep by an operator's or a schedule's order, which requests do not wake.
+ * create check uses), in the order the dictionary lists them: running, asleep
+ * with a sleep a request wakes, starting, asleep by an operator's or a
+ * schedule's order (which requests do not wake), on a disconnected node,
+ * failed, stopped.
  */
-export type BatchModelState = "served" | "asleep" | "asleep_held";
+export type BatchModelState = "running" | "asleep" | "starting" | "asleep_held" | "offline" | "failed" | "stopped";
 
 export interface BatchModel {
   name: string;
   state: BatchModelState | string;
+  /** The batch endpoints the model serves; a batch of another endpoint naming it is refused. */
+  endpoints: string[];
+}
+
+/** Why a running batch's requests for one model are being retried, as the server last saw it. */
+export interface BatchModelWait {
+  model: string;
+  /** The model's state now; absent when no deployment serves it any more. */
+  state?: BatchModelState | string;
+  /** The HTTP status of the last answer, 0 when none came. */
+  status: number;
+  /** The gateway's or the engine's words, English. */
+  detail?: string;
+  since: string;
+  /** How many requests wait for a retry now. */
+  requests: number;
 }
 
 /**
@@ -107,7 +129,7 @@ export interface BatchDictionary {
   /** Every status, in the order a filter lists them. */
   statuses: BatchStatus[];
   output_retention_days: number;
-  /** The served names of the active deployments, the ones that serve first. */
+  /** The served names of the deployments, in the order of their states and then by name. */
   models: BatchModel[];
 }
 

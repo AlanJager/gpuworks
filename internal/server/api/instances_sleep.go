@@ -21,7 +21,7 @@ import (
 // planning.InstanceSleepRefusal.
 
 // sleepInstance orders the replica an instance fills to sleep (?level=1|2,
-// ?mode=wait|abort, as for the deployment).
+// ?mode=wait|abort, ?wake_on_request=true|false, as for the deployment).
 func (a *apiHandlers) sleepInstance(w http.ResponseWriter, r *http.Request) {
 	defer planning.LockLifecycle()()
 	level, mode, ok := sleepOrderParams(w, r)
@@ -32,11 +32,15 @@ func (a *apiHandlers) sleepInstance(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !a.orderSleep(w, dep, planning.SleepOrder{Pref: planning.SleepPreference(level), Mode: mode, Held: true, Instances: uuidsOf(members)}, writeReplicaOrderErr) {
+	wakes, ok := wakeOnRequestParam(w, r, dep)
+	if !ok {
 		return
 	}
-	a.sleepOrdered(r, dep.ID, level, mode, "replica", "", uuidsOf(members))
-	writeJSON(w, http.StatusOK, dto.SleepOrder{Status: "sleeping", Level: level, Mode: mode, Instances: uuidsOf(members)})
+	if !a.orderSleep(w, dep, planning.SleepOrder{Pref: planning.SleepPreference(level), Mode: mode, Held: !wakes, Instances: uuidsOf(members)}, writeReplicaOrderErr) {
+		return
+	}
+	a.sleepOrdered(r, dep.ID, level, mode, "replica", "", uuidsOf(members), wakes)
+	writeJSON(w, http.StatusOK, dto.SleepOrder{Status: "sleeping", Level: level, Mode: mode, Instances: uuidsOf(members), WakeOnRequest: wakes})
 }
 
 // wakeInstance wakes the replica an instance fills once its GPUs can take it

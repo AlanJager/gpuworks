@@ -64,7 +64,7 @@ func (a *apiHandlers) wakeAndWait(w http.ResponseWriter, r *http.Request, dep *s
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
-	result := dto.WakeWaitResult{Status: "waking", Woken: uuidsOf(woken), Waiting: []string{}, Yielded: []string{}}
+	result := dto.WakeWaitResult{Status: "waking", Woken: uuidsOf(woken), Waiting: []string{}, Yielded: []string{}, YieldedHeld: []string{}}
 	a.wakeOrdered(r, dep.ID, result.Woken)
 	if len(refused) == 0 {
 		writeJSON(w, http.StatusOK, result)
@@ -91,8 +91,12 @@ func (a *apiHandlers) wakeAndWait(w http.ResponseWriter, r *http.Request, dep *s
 			return
 		}
 		for _, target := range targets {
+			// An occupant that shares its cards by yield policy gives them
+			// up as it would to the platform: a request wakes it again. One
+			// that never yields stays asleep until someone wakes it.
+			wakes := planning.OperatorSleepWakesOnRequest(target.Deployment)
 			level, refusal, err := planning.OrderSleep(a.d.Store, target.Deployment, planning.SleepOrder{
-				Pref: how.yieldPref, Mode: proto.SleepModeWait, Held: true, Instances: uuidsOf(target.Members),
+				Pref: how.yieldPref, Mode: proto.SleepModeWait, Held: !wakes, Instances: uuidsOf(target.Members),
 			}, a.hostMemory)
 			if err != nil {
 				writeReplicaOrderErr(w, err)
@@ -103,9 +107,12 @@ func (a *apiHandlers) wakeAndWait(w http.ResponseWriter, r *http.Request, dep *s
 				return
 			}
 			a.d.Store.AddDeploymentEventCode(target.Deployment.ID, store.EventKindAutomation, automation.EventYieldedForWake, map[string]any{
-				"deployment": dep.Name, "for_deployment": dep.ID, "instances": uuidsOf(target.Members), "level": level,
+				"deployment": dep.Name, "for_deployment": dep.ID, "instances": uuidsOf(target.Members), "level": level, "wake_on_request": wakes,
 			})
 			result.Yielded = appendUnique(result.Yielded, target.Deployment.Name)
+			if !wakes {
+				result.YieldedHeld = appendUnique(result.YieldedHeld, target.Deployment.Name)
+			}
 		}
 	}
 	for _, r := range refused {

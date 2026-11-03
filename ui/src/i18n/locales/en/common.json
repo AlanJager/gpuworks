@@ -150,6 +150,7 @@
     "SLEEP_ENGINE_UNSUPPORTED": "The {{engine}} engine does not support sleep mode.",
     "SLEEP_INVALID_LEVEL": "The sleep level must be 1 (quick) or 2 (deep); {{level}} is not a level.",
     "SLEEP_INVALID_MODE": "The sleep mode must be wait or abort; {{mode}} is not a mode.",
+    "SLEEP_INVALID_WAKE_ON_REQUEST": "wake_on_request must be true or false (got {{wake_on_request}}).",
     "WAKE_INSUFFICIENT_GPU_MEMORY": "GPU {{gpu_indexes}} on {{node}} cannot take the sleeping instance back: {{shortfall_gib}} GiB short. Stop or sleep {{occupants}} first.",
     "DISTRIBUTED_NODE_COUNT": "The distributed deployment requires {{required}} nodes, but {{actual}} were selected.",
     "DISTRIBUTED_TP_REQUIRED": "Multi-node deployments need a tensor parallel (TP) degree.",
@@ -506,9 +507,11 @@
     "BATCH_NOT_CANCELLABLE": "The batch can no longer be cancelled: it has finished or is assembling its results.",
     "BATCH_FILE_INVALID": "The batch input file is not valid. {{detail}}",
     "BATCH_FILE_TOO_LARGE": "The batch input file is larger than {{limit_mb}} MB.",
-    "BATCH_MODEL_UNKNOWN": "No active deployment serves the model {{model}}. Choose a deployment that exists on the platform.",
+    "BATCH_MODEL_UNKNOWN": "No deployment serves the model {{model}}. Choose a deployment that exists on the platform.",
+    "BATCH_MODEL_ENDPOINT": "{{model}} does not serve {{endpoint}}. Choose a model that serves it, or use an endpoint the model serves.",
     "BATCH_REQUEST_INVALID": "The batch request is not valid ({{field}}): {{reason}}",
-    "BATCH_FILE_MODELS_UNKNOWN": "The file names models that no active deployment serves: {{models, list}}. Choose a model to send every request to, or deploy these models first.",
+    "BATCH_FILE_MODELS_UNKNOWN": "No deployment serves these models of the file: {{models, list}}. Choose a model to send every request to, or deploy these models first.",
+    "BATCH_FILE_MODELS_ENDPOINT": "These models of the file do not serve {{endpoint}}: {{models, list}}. Choose a model that serves it to send every request to.",
     "AGENT_UPGRADE_REFUSED": "Agent upgrade request could not proceed: {{detail}}"
   },
   "httpError": {

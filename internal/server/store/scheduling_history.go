@@ -48,6 +48,9 @@ const (
 	// EventWakeOrdered: an operator woke instances that had room. Params:
 	// instances, actor.
 	EventWakeOrdered = "WAKE_ORDERED"
+	// EventSleepHoldReleased: an operator let requests wake the deployment's
+	// held sleepers without waking them. Params: instances, actor.
+	EventSleepHoldReleased = "SLEEP_HOLD_RELEASED"
 )
 
 // schedulingEventCodes is THE catalogue of the scheduling history: which
@@ -87,6 +90,7 @@ var schedulingEventCodes = []SchedulingEventCode{
 	{EventDeploymentRollingRestarted, EventKindSchedule, SchedulingManual},
 	{EventSleepOrdered, EventKindLifecycle, SchedulingManual},
 	{EventWakeOrdered, EventKindLifecycle, SchedulingManual},
+	{EventSleepHoldReleased, EventKindLifecycle, SchedulingManual},
 }
 
 // SchedulingEventKind is the row kind a scheduling history code is written

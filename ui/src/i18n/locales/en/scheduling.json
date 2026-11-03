@@ -136,7 +136,8 @@
       "PD_GROUP_RESTARTED": "Deployment restarted",
       "DEPLOYMENT_ROLLING_RESTARTED": "Rolling restart",
       "SLEEP_ORDERED": "Sleep ordered",
-      "WAKE_ORDERED": "Wake ordered"
+      "WAKE_ORDERED": "Wake ordered",
+      "SLEEP_HOLD_RELEASED": "Requests allowed to wake"
     }
   },
   "timeline": {

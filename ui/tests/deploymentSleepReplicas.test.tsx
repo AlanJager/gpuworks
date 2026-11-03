@@ -170,7 +170,7 @@ test("a sleepable replica's panel sleeps that replica in the chosen mode", async
   const panel = document.getElementById("instance-inst-b") as HTMLElement;
   fireEvent.click(within(panel).getByRole("button", { name: locale.replica.sleep }));
   await confirmSleepMode();
-  await waitFor(() => assert.deepEqual(orders, [["inst-b", 1, "wait"]]));
+  await waitFor(() => assert.deepEqual(orders, [["inst-b", 1, "wait", undefined]]));
   assert.equal(within(document.getElementById("instance-inst-a") as HTMLElement).queryByRole("button", { name: locale.replica.wake }), null);
 });
 
@@ -200,7 +200,7 @@ test("no replica sleep where the deployment cannot sleep; a multi-node replica s
   assert.ok(within(follower).getByText(locale.replica.followerHint));
   fireEvent.click(within(document.getElementById("instance-lead") as HTMLElement).getByRole("button", { name: locale.replica.sleep }));
   await confirmSleepMode();
-  await waitFor(() => assert.deepEqual(orders, [["lead", 1, "wait"]]));
+  await waitFor(() => assert.deepEqual(orders, [["lead", 1, "wait", undefined]]));
 });
 
 test("one replica asleep reads as partly asleep; its panel wakes it, the drawer wakes all", async () => {
@@ -339,7 +339,7 @@ test("a PD deployment sleeps the role its mode runs without, and only that one",
   assert.equal(within(drawer()).queryByRole("button", { name: i18n.t("sleep.role.sleep", { role: locale.detail.pd.role.decode }) }), null);
   fireEvent.click(sleepPrefill);
   await confirmSleepMode();
-  await waitFor(() => assert.deepEqual(orders, [[1, 1, "wait", "prefill"]]));
+  await waitFor(() => assert.deepEqual(orders, [[1, 1, "wait", "prefill", undefined]]));
 });
 
 // The drawer's own replica pair comes from the server, not from counting the

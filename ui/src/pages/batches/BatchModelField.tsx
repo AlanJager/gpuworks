@@ -2,21 +2,30 @@ import { Alert, Select, Typography } from "antd";
 import { useTranslation } from "react-i18next";
 import type { BatchModel } from "../../batchApi";
 
+// modelStateKey is the locale key of each state the server sends.
+export const modelStateKey: Record<string, string> = {
+  running: "running", asleep: "asleep", starting: "starting", asleep_held: "asleepHeld", offline: "offline", failed: "failed", stopped: "stopped",
+};
+
 /** The words of a model's state; the state is the server's (the batch dictionary). */
 export function useModelStateText() {
   const { t } = useTranslation("batches");
-  return (state: string): string => {
-    if (state === "served") return t("create.model.state.serving");
-    if (state === "asleep") return t("create.model.state.asleep");
-    if (state === "asleep_held") return t("create.model.state.asleepHeld");
-    return state;
+  return (state: string): string => (modelStateKey[state] ? t(`create.model.state.${modelStateKey[state]}`) : state);
+}
+
+/** The words of what becomes of a batch sent to a model in this state; none for a state whose requests are served. */
+export function useModelStateWarning() {
+  const { t } = useTranslation("batches");
+  return (model: string, state: string): string | null => {
+    const key = modelStateKey[state];
+    return key && t(`create.model.warning.${key}`, { model, defaultValue: "" }) || null;
   };
 }
 
 /**
  * BatchModelField picks the model every request of the batch is sent to, or
- * none to use each line's own. The server's list is offered, asleep ones with
- * their state; one a request does not wake is warned about.
+ * none to use each line's own. The server's list is offered with each model's
+ * state; one whose requests would wait for someone to act is warned about.
  */
 export default function BatchModelField({ options, value, onChange, disabled }: {
   options: BatchModel[];
@@ -26,7 +35,9 @@ export default function BatchModelField({ options, value, onChange, disabled }: 
 }) {
   const { t } = useTranslation("batches");
   const stateText = useModelStateText();
+  const stateWarning = useModelStateWarning();
   const chosen = options.find((option) => option.name === value);
+  const warning = chosen ? stateWarning(chosen.name, chosen.state) : null;
   return (
     <div className="batch-create-field">
       <label htmlFor="batch-create-model">{t("create.model.label")}</label>
@@ -41,7 +52,7 @@ export default function BatchModelField({ options, value, onChange, disabled }: 
         style={{ width: "100%" }}
       />
       <Typography.Text type="secondary">{t("create.model.help")}</Typography.Text>
-      {chosen?.state === "asleep_held" && <Alert type="warning" showIcon message={t("create.model.heldWarning", { model: chosen.name })} />}
+      {warning && <Alert type="warning" showIcon message={warning} />}
     </div>
   );
 }

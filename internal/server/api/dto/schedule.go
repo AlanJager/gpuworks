@@ -40,10 +40,14 @@ type LifecycleScheduleRequest struct {
 
 // WakeWaitResult answers a wake that waits for room (?wait=true) or makes
 // room by putting the occupants to sleep (?yield=true): the sleepers it woke
-// at once, those now waiting, and the occupants put to sleep.
+// at once, those now waiting, and the occupants put to sleep. YieldedHeld are
+// the yielded occupants whose sleep is held, because their yield policy is
+// never: a request does not wake them. The others a request wakes
+// (planning.OperatorSleepWakesOnRequest).
 type WakeWaitResult struct {
-	Status  string   `json:"status"`
-	Woken   []string `json:"woken"`
-	Waiting []string `json:"waiting"`
-	Yielded []string `json:"yielded"`
+	Status      string   `json:"status"`
+	Woken       []string `json:"woken"`
+	Waiting     []string `json:"waiting"`
+	Yielded     []string `json:"yielded"`
+	YieldedHeld []string `json:"yielded_held"`
 }

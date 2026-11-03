@@ -189,6 +189,7 @@ func (a *apiHandlers) deploymentDTOFrom(rows dtoLookup, d *store.Deployment, wit
 	out.AsleepReplicas = facts.AsleepReplicas
 	out.SleepHold = facts.SleepHold()
 	out.SleepHeld = out.SleepHold == dto.SleepHoldAll
+	out.SleepWakesOnRequest = planning.OperatorSleepWakesOnRequest(d)
 	out.State = effectiveDeploymentState(d, out.RuntimeState, facts)
 	if withInstances {
 		out.NodeRequirementLabels = a.requirementLabels(out.NodeRequirements)

@@ -40,8 +40,14 @@ type Batch struct {
 	// Warnings are the non-blocking findings of creating the batch, on the
 	// create response only: BATCH_MODEL_SLEEP_HELD {model} for the model the
 	// batch was given, BATCH_FILE_MODELS_SLEEP_HELD {models, more} for the
-	// models its input file names.
+	// models its input file names; BATCH_MODEL_WAITS {model, state} and
+	// BATCH_FILE_MODELS_WAIT {models, more, state} likewise for models that
+	// are offline, failed or stopped (state a BatchModel state).
 	Warnings []messages.Warning `json:"warnings,omitempty"`
+	// Waiting says why requests of a running batch are being retried, one
+	// entry per model; absent when none is. It is what the executor saw last,
+	// kept in memory: after a restart it fills again with the next retries.
+	Waiting []BatchModelWait `json:"waiting,omitempty"`
 	// UserID is the user that created the batch, through an API key or the console.
 	UserID       uint       `json:"user_id"`
 	APIKeyID     uint       `json:"api_key_id,omitempty"`
@@ -87,9 +93,11 @@ type BatchDictionary struct {
 	MaxFileLines          int              `json:"max_file_lines"`
 	Statuses              []string         `json:"statuses"`
 	OutputRetentionDays   int              `json:"output_retention_days"`
-	// Models are the served names of the active deployments, the ones that
-	// serve first and then by name. A create names one of them, or a file
-	// whose lines do, or it is refused; a held one is accepted with a warning.
+	// Models are the served names of the deployments not being deleted, in
+	// the order of the BatchModel states and then by name. A create names one
+	// of them that serves its endpoint, or a file whose lines do, or it is
+	// refused; one that waits for someone to act (asleep_held, offline,
+	// failed, stopped) is accepted with a warning.
 	Models []BatchModel `json:"models"`
 }
 
@@ -101,21 +109,47 @@ type BatchWindowHours struct {
 	Default int `json:"default"`
 }
 
-// The states of a BatchModel.
+// The states of a BatchModel, in the order the dictionary lists them: the
+// best for a batch first.
 const (
-	// BatchModelServed: a deployment serving the name is awake (or starting).
-	BatchModelServed = "served"
+	// BatchModelRunning: a replica serving the name is awake.
+	BatchModelRunning = "running"
 	// BatchModelAsleep: it sleeps, and a request wakes it.
 	BatchModelAsleep = "asleep"
+	// BatchModelStarting: a replica is being placed, pulled or started; a
+	// batch sent to it retries until it serves.
+	BatchModelStarting = "starting"
 	// BatchModelAsleepHeld: it sleeps by an operator's or a schedule's order,
 	// which a request does not wake; a batch sent to it waits and retries.
 	BatchModelAsleepHeld = "asleep_held"
+	// BatchModelOffline: its replicas run on nodes that are not connected.
+	BatchModelOffline = "offline"
+	// BatchModelFailed: its replicas failed to start.
+	BatchModelFailed = "failed"
+	// BatchModelStopped: its deployment is stopped.
+	BatchModelStopped = "stopped"
 )
 
-// BatchModel is a served name a batch can be sent to and what it is now
-// (BatchModelServed, BatchModelAsleep or BatchModelAsleepHeld). A name several
-// deployments share is as good as the best of them.
+// BatchModel is a served name a batch can be sent to, what it is now (one of
+// the BatchModel states) and the batch endpoints it serves: a batch of another
+// endpoint naming it is refused. A name several deployments share is as good
+// as the best of them.
 type BatchModel struct {
-	Name  string `json:"name"`
-	State string `json:"state"`
+	Name      string   `json:"name"`
+	State     string   `json:"state"`
+	Endpoints []string `json:"endpoints"`
+}
+
+// BatchModelWait is why a running batch's requests for a model are being
+// retried: the model's state now (a BatchModel state; absent when no
+// deployment serves it any more), the HTTP status and words of the last
+// answer (0 when none came), since when its requests have waited and how many
+// wait now.
+type BatchModelWait struct {
+	Model    string    `json:"model"`
+	State    string    `json:"state,omitempty"`
+	Status   int       `json:"status"`
+	Detail   string    `json:"detail,omitempty"`
+	Since    time.Time `json:"since"`
+	Requests int       `json:"requests"`
 }

@@ -6,6 +6,7 @@ import { usePolling } from "../../api";
 import { BATCH_POLL_MS, batchApi, batchFileURL, isBatchActive, type Batch, type BatchFileKind } from "../../batchApi";
 import { formatTimeSec } from "../../i18n/datetime";
 import { batchErrorText } from "./batchErrors";
+import { useModelStateText } from "./BatchModelField";
 import { BatchProgress, BatchStatusTag } from "./batchDisplay";
 import { useBatchPolling } from "./useBatchPolling";
 
@@ -44,6 +45,44 @@ function Metadata({ metadata }: { metadata: Batch["metadata"] }) {
   );
 }
 
+/**
+ * WaitingAlert says why requests of a running batch are being retried, per
+ * model: its state now in words, how many requests wait and since when, and the
+ * gateway's last answer as the technical detail. The state is the server's.
+ */
+function WaitingAlert({ waiting }: { waiting: NonNullable<Batch["waiting"]> }) {
+  const { t } = useTranslation("batches");
+  const stateText = useModelStateText();
+  return (
+    <Alert
+      type="warning"
+      showIcon
+      message={t("detail.waiting.title")}
+      description={
+        <ul className="batch-waiting">
+          {waiting.map((wait) => (
+            <li key={wait.model}>
+              <div>
+                {t("detail.waiting.line", {
+                  model: wait.model,
+                  state: wait.state ? stateText(wait.state) : t("detail.waiting.gone"),
+                  count: wait.requests,
+                  since: formatTimeSec(wait.since),
+                })}
+              </div>
+              {wait.detail && (
+                <Typography.Text type="secondary">
+                  {wait.status > 0 ? t("detail.waiting.answer", { status: wait.status, detail: wait.detail }) : wait.detail}
+                </Typography.Text>
+              )}
+            </li>
+          ))}
+        </ul>
+      }
+    />
+  );
+}
+
 function BatchBody({ batch, canManage, onChanged }: { batch: Batch; canManage: boolean; onChanged: () => void }) {
   const { t } = useTranslation("batches");
   const { t: tCommon } = useTranslation("common");
@@ -72,6 +111,7 @@ function BatchBody({ batch, canManage, onChanged }: { batch: Batch; canManage: b
     <Space direction="vertical" size="large" style={{ width: "100%" }}>
       {actionError && <Alert type="error" showIcon message={actionError} closable onClose={() => setActionError(null)} />}
       {batch.status === "cancelling" && <Alert type="info" showIcon message={t("detail.cancelPending")} />}
+      {batch.waiting && batch.waiting.length > 0 && <WaitingAlert waiting={batch.waiting} />}
       <section aria-label={t("detail.sections.summary")}>
         <Descriptions
           size="small"

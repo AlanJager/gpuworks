@@ -24,7 +24,11 @@ import (
 // pause mode (?mode=wait|abort, default wait). The level and mode are stamped
 // into each live instance's desired state, which the controller pushes to the
 // agent. ?role= orders only a PD deployment's instances of that role; the
-// deployment as a whole is then not under the order.
+// deployment as a whole is then not under the order. ?wake_on_request= says
+// whether a request wakes what the order puts to sleep, by default
+// planning.OperatorSleepWakesOnRequest; a sleep a request wakes names the
+// awake replicas rather than putting the deployment as a whole under the
+// order, which only a held sleep does.
 func (a *apiHandlers) sleepDeployment(w http.ResponseWriter, r *http.Request) {
 	defer planning.LockLifecycle()()
 	level, mode, ok := sleepOrderParams(w, r)
@@ -35,24 +39,45 @@ func (a *apiHandlers) sleepDeployment(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	wakes, ok := wakeOnRequestParam(w, r, dep)
+	if !ok {
+		return
+	}
 	role := r.URL.Query().Get("role")
 	if role == "" {
-		if !a.orderSleep(w, dep, planning.SleepOrder{Pref: planning.SleepPreference(level), Mode: mode, Held: true}, writeErr500) {
+		if !a.orderSleep(w, dep, planning.SleepOrder{Pref: planning.SleepPreference(level), Mode: mode, Held: !wakes}, writeErr500) {
 			return
 		}
-		a.sleepOrdered(r, dep.ID, level, mode, "deployment", "", nil)
-		writeJSON(w, http.StatusOK, dto.SleepOrder{Status: "sleeping", Level: level, Mode: mode})
+		a.sleepOrdered(r, dep.ID, level, mode, "deployment", "", nil, wakes)
+		writeJSON(w, http.StatusOK, dto.SleepOrder{Status: "sleeping", Level: level, Mode: mode, WakeOnRequest: wakes})
 		return
 	}
 	named, ok := a.roleSleepTargets(w, dep, role, true)
 	if !ok {
 		return
 	}
-	if !a.orderSleep(w, dep, planning.SleepOrder{Pref: planning.SleepPreference(level), Mode: mode, Held: true, Instances: uuidsOf(named)}, writeErr500) {
+	if !a.orderSleep(w, dep, planning.SleepOrder{Pref: planning.SleepPreference(level), Mode: mode, Held: !wakes, Instances: uuidsOf(named)}, writeErr500) {
 		return
 	}
-	a.sleepOrdered(r, dep.ID, level, mode, "role", role, uuidsOf(named))
-	writeJSON(w, http.StatusOK, dto.SleepOrder{Status: "sleeping", Level: level, Mode: mode, Role: role, Instances: uuidsOf(named)})
+	a.sleepOrdered(r, dep.ID, level, mode, "role", role, uuidsOf(named), wakes)
+	writeJSON(w, http.StatusOK, dto.SleepOrder{Status: "sleeping", Level: level, Mode: mode, Role: role, Instances: uuidsOf(named), WakeOnRequest: wakes})
+}
+
+// wakeOnRequestParam reads ?wake_on_request=true|false, whether a request
+// wakes what an operator's sleep puts to sleep; absent, it is the
+// deployment's default (planning.OperatorSleepWakesOnRequest). A deployment
+// that cannot sleep was refused before. It writes the response when invalid.
+func wakeOnRequestParam(w http.ResponseWriter, r *http.Request, dep *store.Deployment) (bool, bool) {
+	raw := r.URL.Query().Get("wake_on_request")
+	if raw == "" {
+		return planning.OperatorSleepWakesOnRequest(dep), true
+	}
+	wakes, err := strconv.ParseBool(raw)
+	if err != nil {
+		writeProductError(w, http.StatusBadRequest, ErrorSleepInvalidWakeOnRequest, "wake_on_request must be true or false", map[string]any{"wake_on_request": raw})
+		return false, false
+	}
+	return wakes, true
 }
 
 // orderSleep writes an operator's sleep order (planning.OrderSleep), which
@@ -271,4 +296,28 @@ func HostMemory(latest func(metric string, matchers map[string]string, sinceMS i
 		}
 		return rows[0].Value, true
 	}, time.Now)
+}
+
+// releaseSleepHold lets requests wake the deployment's held sleepers without
+// waking them (store.ReleaseSleepHolds): an operator's or a schedule's sleep
+// becomes one a request ends, as the platform's own yields are. It answers the
+// instances released, none when none was held.
+func (a *apiHandlers) releaseSleepHold(w http.ResponseWriter, r *http.Request) {
+	defer planning.LockLifecycle()()
+	dep, ok := a.sleepEligibleDeployment(w, r)
+	if !ok {
+		return
+	}
+	released, err := a.d.Store.ReleaseSleepHolds(dep.ID)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	if len(released) > 0 {
+		a.operatorEvent(r, dep.ID, store.EventSleepHoldReleased, map[string]any{"instances": released})
+	}
+	if released == nil {
+		released = []string{}
+	}
+	writeJSON(w, http.StatusOK, dto.SleepHoldRelease{Released: released})
 }

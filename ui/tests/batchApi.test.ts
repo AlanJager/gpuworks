@@ -12,7 +12,7 @@ for (const name of ["window", "document", "navigator"] as const) {
 const batchApiModule = await import("../src/batchApi.ts");
 const { batchApi, batchFileURL, isBatchActive } = batchApiModule;
 const { APIError } = await import("../src/apiError.ts");
-const { batch, dictionary, page } = await import("./helpers/batchFixtures.ts");
+const { batch, dictionary, model, page } = await import("./helpers/batchFixtures.ts");
 const originalFetch = globalThis.fetch;
 afterEach(() => { globalThis.fetch = originalFetch; });
 
@@ -116,7 +116,7 @@ test("a status is active, and polled, until the batch ended", () => {
 });
 
 test("the dictionary is one plain read, returned as the server states it", async () => {
-  const wire = dictionary([{ name: "qwen", state: "served" }, { name: "held", state: "asleep_held" }]);
+  const wire = dictionary([model("qwen", "running"), model("held", "asleep_held")]);
   const seen = fake(200, wire);
   const got = await batchApi.dictionary();
   assert.equal(seen[0].url, "/api/v1/batches/dictionary");

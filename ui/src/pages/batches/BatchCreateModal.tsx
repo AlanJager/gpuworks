@@ -81,7 +81,11 @@ export default function BatchCreateModal({ open, onClose, onCreated }: {
   const modelOptions = useMemo(() => dictionary?.models ?? [], [dictionary]);
   const known = useMemo(() => (dictionary ? new Set(dictionary.models.map((option) => option.name)) : null), [dictionary]);
   const stateText = useModelStateText();
-  const defaultSample = modelOptions.find((option) => option.state === "served")?.name ?? modelOptions[0]?.name ?? "";
+  // The sample's models are those serving its endpoint, in the server's order
+  // (the best for a batch first), so a sample runs as downloaded.
+  const sampleOptions = useMemo(() => modelOptions.filter((option) => option.endpoints.includes(sampleEndpoint)), [modelOptions, sampleEndpoint]);
+  const servesSample = (name: string | undefined) => !!name && sampleOptions.some((option) => option.name === name);
+  const defaultSample = sampleOptions[0]?.name ?? "";
   // The models the chosen file names, read here when it is small enough.
   const [fileModels, setFileModels] = useState<string[] | null>(null);
   const skipped = !!file && file.size > FILE_MODEL_SCAN_MAX_BYTES;
@@ -92,7 +96,9 @@ export default function BatchCreateModal({ open, onClose, onCreated }: {
     void modelsInFile(file).then((found) => { if (live) setFileModels(found); });
     return () => { live = false; };
   }, [file]);
-  const sampleModelName = model || sampleModel || defaultSample || "your-model";
+  // The batch's own model when it serves the sample's endpoint, else the one picked for the sample.
+  const chosenSample = [model, sampleModel].find(servesSample) || defaultSample;
+  const sampleModelName = chosenSample || "your-model";
   const useSample = () => {
     pick(new File([batchSampleJSONL(sampleEndpoint, sampleModelName)], sampleFileName(sampleEndpoint), { type: "application/jsonl" }));
   };
@@ -187,11 +193,11 @@ export default function BatchCreateModal({ open, onClose, onCreated }: {
             <Select
               id="batch-create-sample-model"
               aria-label={t("create.sample.model")}
-              value={model || sampleModel || defaultSample || undefined}
+              value={chosenSample || undefined}
               placeholder={t("create.sample.noModel")}
               onChange={setSampleModel}
-              disabled={submitting || !!model || modelOptions.length === 0}
-              options={modelOptions.map((option) => ({ value: option.name, label: `${option.name} · ${stateText(option.state)}` }))}
+              disabled={submitting || servesSample(model) || sampleOptions.length === 0}
+              options={sampleOptions.map((option) => ({ value: option.name, label: `${option.name} · ${stateText(option.state)}` }))}
               style={{ minWidth: 200, flex: 1 }}
             />
             <Button onClick={() => downloadBatchSample(sampleEndpoint, sampleModelName)} disabled={submitting}>

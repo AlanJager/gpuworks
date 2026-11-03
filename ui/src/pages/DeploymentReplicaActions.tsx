@@ -58,7 +58,7 @@ export function ReplicaActions({ dep, inst, onChanged }: { dep: Deployment; inst
           <Button size="small" danger loading={removal.busy}>{t("replica.remove")}</Button>
         </Popconfirm>
       )}
-      <ReplicaSleepAction inst={inst} onChanged={onChanged} />
+      <ReplicaSleepAction inst={inst} wakeOnRequest={dep.sleep_wakes_on_request} onChanged={onChanged} />
       {/* Draining is the default: the instance finishes the requests it
           holds while its replacement starts. */}
       <ConfirmOrderModal
@@ -84,7 +84,7 @@ export function ReplicaActions({ dep, inst, onChanged }: { dep: Deployment; inst
 // says the replica may on its own (can_sleep_alone, can_wake_alone): not the
 // last awake one of a PD role its mode cannot run without. A multi-node
 // replica sleeps whole; its followers go with the leader.
-function ReplicaSleepAction({ inst, onChanged }: { inst: Instance; onChanged: () => void }) {
+function ReplicaSleepAction({ inst, wakeOnRequest, onChanged }: { inst: Instance; wakeOnRequest?: boolean; onChanged: () => void }) {
   const { t } = useTranslation("deployments");
   const [asking, setAsking] = useState(false);
   const { busy, run } = useOrder();
@@ -114,7 +114,8 @@ function ReplicaSleepAction({ inst, onChanged }: { inst: Instance; onChanged: ()
         open={asking}
         level={1}
         confirming={busy}
-        onConfirm={(mode: SleepMode) => void order(() => api.sleepInstance(inst.uuid, 1, mode), t("replica.sleepStarted"), "sleep.failed")}
+        wakeOnRequest={wakeOnRequest}
+        onConfirm={(mode: SleepMode, wakes?: boolean) => void order(() => api.sleepInstance(inst.uuid, 1, mode, wakes), t("replica.sleepStarted"), "sleep.failed")}
         onCancel={() => setAsking(false)}
       />
     </>

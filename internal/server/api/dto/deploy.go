@@ -167,6 +167,11 @@ type Deployment struct {
 	// deployment has replicas asleep and a request wakes none of them.
 	SleepHold string `json:"sleep_hold,omitempty"`
 	SleepHeld bool   `json:"sleep_held"`
+	// SleepWakesOnRequest is what an operator's sleep of the deployment does
+	// unless its order says otherwise (planning.OperatorSleepWakesOnRequest):
+	// true when a request wakes what it puts to sleep, false when the sleep is
+	// held. A client offers it as the default of the sleep dialog.
+	SleepWakesOnRequest bool `json:"sleep_wakes_on_request"`
 	// WakeWaitingSince is when the oldest wake of the deployment that waits
 	// for room started waiting; absent when none waits. A waiting wake gives
 	// up after WakeWaitLimitSec.

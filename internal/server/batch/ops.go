@@ -181,9 +181,9 @@ func (s *Service) CreateBatch(owner Owner, req CreateRequest) (Batch, error) {
 	// matter only without one.
 	var warnings []Warning
 	if req.Model != "" {
-		warnings, err = s.checkModel(req.Model)
+		warnings, err = s.checkModel(req.Model, req.Endpoint)
 	} else {
-		warnings, err = s.checkFileModels(in)
+		warnings, err = s.checkFileModels(in, req.Endpoint)
 	}
 	if err != nil {
 		return Batch{}, err
@@ -202,22 +202,28 @@ func (s *Service) CreateBatch(owner Owner, req CreateRequest) (Batch, error) {
 	return b, nil
 }
 
-// checkModel refuses a model no active deployment serves and warns about one
-// whose deployment a request does not wake. No model is always fine.
-func (s *Service) checkModel(model string) ([]Warning, error) {
+// checkModel refuses a model no deployment serves, or one whose deployments
+// do not expose endpoint, and warns about one whose requests wait for someone
+// to act. No model is always fine.
+func (s *Service) checkModel(model, endpoint string) ([]Warning, error) {
 	if model == "" || s.cfg.Models == nil {
 		return nil, nil
 	}
-	unknown, held, err := s.classify([]string{model})
+	c, err := s.classify([]string{model}, endpoint)
 	if err != nil {
 		return nil, err
 	}
-	if len(unknown) > 0 {
-		e := invalid(CodeModelNotFound, ParamModel, "No active deployment serves the model "+model)
+	if len(c.unknown) > 0 {
+		e := invalid(CodeModelNotFound, ParamModel, "No deployment serves the model "+model)
 		e.Model = model
 		return nil, e
 	}
-	return heldWarnings(ParamModel, held), nil
+	if len(c.unserved) > 0 {
+		e := invalid(CodeModelEndpoint, ParamModel, "The deployments serving the model "+model+" do not serve "+endpoint)
+		e.Model, e.Endpoint = model, endpoint
+		return nil, e
+	}
+	return c.warnings(ParamModel), nil
 }
 
 func checkMetadata(m map[string]string) error {
