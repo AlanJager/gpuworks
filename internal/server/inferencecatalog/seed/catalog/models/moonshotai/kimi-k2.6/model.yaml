@@ -269,6 +269,11 @@ specs:
   - --quantization
   - ascend
   - --trust-remote-code
+  # A 16-device replica is TP4 x DP4. Spell out TP here: the vLLM data-parallel
+  # preflight otherwise interprets placement.tp=16 as the model TP and asks for
+  # 16 x 4 = 64 devices.
+  - --tensor-parallel-size
+  - '4'
   - --data-parallel-size
   - '4'
   - --enable-expert-parallel
@@ -323,6 +328,9 @@ specs:
       - huggingface:
           repo_id: z-lab/Kimi-K2.5-DFlash
           revision: e2db14df8337367b5eae8a6c206ea0d7d01a42a8
+      - modelscope:
+          repo_id: z-lab/Kimi-K2.5-DFlash
+          revision: 06383ea9693a58f9f18c82bdae807fb7d3c8fdfe
     weight_bytes: 6958986822
     mount_path: /draft
   api:

@@ -35,6 +35,8 @@ func TestFrontierAscendProfilesKeepUpstreamValidatedRecipes(t *testing.T) {
 		{"qwen/qwen3.5-397b-a17b", "int8-vllm-ascend-a3-w8a8-mtp-99f2a045", "--tensor-parallel-size", "16"},
 		{"qwen/qwen3.5-397b-a17b", "int8-vllm-ascend-a3-w8a8-mtp-99f2a045", "--max-model-len", "133000"},
 		{"qwen/qwen3.5-397b-a17b", "int8-vllm-ascend-a3-w8a8-mtp-99f2a045", "--speculative-config", `{"method":"qwen3_5_mtp","num_speculative_tokens":3,"enforce_eager":true}`},
+		{"moonshotai/kimi-k2.6", "w4a8-vllm-ascend-a3-2de1ec2b", "--tensor-parallel-size", "4"},
+		{"moonshotai/kimi-k2.6", "w4a8-vllm-ascend-a3-2de1ec2b", "--data-parallel-size", "4"},
 	}
 	seen := make([]bool, len(cases))
 	minimaxSeen := false
