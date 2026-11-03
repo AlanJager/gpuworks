@@ -358,4 +358,42 @@ specs:
     - type: openai.chat
       endpoint: /v1/chat/completions
       mode: stream
+- name: fp16-vllm-nvidia-volta
+  display_name_zh_cn: V100 (Volta) · FP16 · 1Cat-vLLM
+  display_name_en: V100 (Volta) · FP16 · 1Cat-vLLM
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda12.8-v100-vllm1cat1.5.1-r1
+  image_sources:
+  - swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-runner:cuda12.8-v100-vllm1cat1.5.1-r1
+  - quay.io/gpuworks/gpuworks-runner:cuda12.8-v100-vllm1cat1.5.1-r1
+  - registry.zstack.ai/gpuworks/gpuworks-runner:cuda12.8-v100-vllm1cat1.5.1-r1
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen3-0.6B
+        revision: c1899de289a04d12100db370d81485cdf75e47ca
+    - modelscope:
+        repo_id: Qwen/Qwen3-0.6B
+        revision: 09b42cad3d112e832108974449ccb5e8e0f5b5d1
+  weight_bytes: 1519209873
+  gpus:
+    vendor: nvidia
+    cc: '7.0'
+  args:
+  - --dtype
+  - float16
+  - --attention-backend
+  - FLASH_ATTN_V100
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    return {\"GPU_COUNT\": gpu.count, \"TP_SIZE\"\
+      : gpu.count, \"SP_DEGREE\": 1}\n"
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
 input_modalities: [text]
