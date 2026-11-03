@@ -15,7 +15,7 @@ specs:
   display_name_en: Ampere+ · BF16
   scenario: balanced
   engine: vllm
-  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r4
   weights:
     quantization: bf16
     sources:
@@ -60,7 +60,7 @@ specs:
   display_name_en: Blackwell · NVFP4
   scenario: throughput
   engine: vllm
-  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r4
   weights:
     quantization: nvfp4
     sources:
@@ -103,7 +103,7 @@ specs:
   display_name_en: Blackwell · NVFP4 · DFlash speculative
   scenario: throughput
   engine: vllm
-  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r4
   weights:
     quantization: nvfp4
     sources:
@@ -176,7 +176,7 @@ specs:
   display_name_en: Blackwell · NVFP4 · DSpark speculative
   scenario: throughput
   engine: vllm
-  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r4
   weights:
     quantization: nvfp4
     sources:
@@ -249,7 +249,7 @@ specs:
   display_name_en: DGX Spark (GB10) · NVFP4
   scenario: throughput
   engine: vllm
-  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r4
   weights:
     quantization: nvfp4
     sources:
@@ -295,7 +295,7 @@ specs:
   display_name_en: DGX Spark (GB10) · NVFP4 · DFlash speculative
   scenario: throughput
   engine: vllm
-  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r4
   weights:
     quantization: nvfp4
     sources:
@@ -371,7 +371,7 @@ specs:
   display_name_en: DGX Spark (GB10) · NVFP4 · DSpark speculative
   scenario: throughput
   engine: vllm
-  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r4
   weights:
     quantization: nvfp4
     sources:
@@ -447,7 +447,7 @@ specs:
   display_name_en: DGX Station (GB300) · NVFP4
   scenario: throughput
   engine: vllm
-  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r4
   weights:
     quantization: nvfp4
     sources:
@@ -493,7 +493,7 @@ specs:
   display_name_en: DGX Station (GB300) · NVFP4 · DFlash speculative
   scenario: throughput
   engine: vllm
-  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r4
   weights:
     quantization: nvfp4
     sources:
@@ -569,7 +569,7 @@ specs:
   display_name_en: DGX Station (GB300) · NVFP4 · DSpark speculative
   scenario: throughput
   engine: vllm
-  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r4
   weights:
     quantization: nvfp4
     sources:

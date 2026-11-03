@@ -47,7 +47,7 @@ dGPU 可用表示能申请带额度的实例；两个模型是否放得下，仍
 
 1. 打开 **部署 → 快捷部署**，在 **基础配置** 选择模型 `dgpu-demo-a-ms`、**目标芯片 NVIDIA**；在 **推荐推理模板** 选择 **Qwen3-1.7B**、**general · vllm · balanced** 档位，核对 **BF16** 权重标签。
    出现 **使用已登记的模型？** 弹窗时，选择带 **MS** 标记的 `dgpu-demo-a-ms`，点击 **使用此模型并部署**。
-2. 核对模型来源 ID 为 `Qwen/Qwen3-1.7B`、镜像为 `gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2`，按下表填写，保留模板镜像和启动方式。
+2. 核对模型来源 ID 为 `Qwen/Qwen3-1.7B`、镜像为 `gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r4`，按下表填写，保留模板镜像和启动方式。
 
 | 字段或操作 | 模型 A | 模型 B（下一步填写） |
 |---|---|---|

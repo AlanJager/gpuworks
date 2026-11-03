@@ -106,7 +106,7 @@ specs:
   display_name_en: Blackwell · BF16 · 4 GPUs
   scenario: throughput
   engine: vllm
-  image: gpuworks/gpuworks-runner:cuda13.0-vllm-omni0.30.0-r3
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm-omni0.30.0-r4
   weights:
     quantization: bf16
     sources:
@@ -177,7 +177,7 @@ specs:
   display_name_en: Ampere+ · BF16 · 1 GPU
   scenario: balanced
   engine: vllm
-  image: gpuworks/gpuworks-runner:cuda13.0-vllm-omni0.30.0-r3
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm-omni0.30.0-r4
   weights:
     quantization: bf16
     sources:
@@ -242,7 +242,7 @@ specs:
   display_name_en: RTX 4090 · BF16 · 2 GPUs
   scenario: throughput
   engine: vllm
-  image: gpuworks/gpuworks-runner:cuda13.0-vllm-omni0.30.0-r3
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm-omni0.30.0-r4
   weights:
     quantization: bf16
     sources:
@@ -322,7 +322,7 @@ specs:
   display_name_en: RTX 5090 · BF16 · 2 GPUs
   scenario: throughput
   engine: vllm
-  image: gpuworks/gpuworks-runner:cuda13.0-vllm-omni0.30.0-r3
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm-omni0.30.0-r4
   weights:
     quantization: bf16
     sources:
@@ -402,7 +402,7 @@ specs:
   display_name_en: RTX PRO 5000 · BF16 · 4 GPUs
   scenario: throughput
   engine: vllm
-  image: gpuworks/gpuworks-runner:cuda13.0-vllm-omni0.30.0-r3
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm-omni0.30.0-r4
   weights:
     quantization: bf16
     sources:

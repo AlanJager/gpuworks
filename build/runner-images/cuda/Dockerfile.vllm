@@ -10,6 +10,7 @@
 #          accelerate 钉到 1.12.0，与上游官方镜像一致，属已知取舍）
 #       + ray 2.54.0（2.55 破坏无 raylet 的 ray.init）
 #       + audio extras
+#       + 按档声明的模型专属依赖（VoxCPM2 的 voxcpm、ERNIE-4.5-VL 的 decord）
 #       + 补丁（严格应用，上游漂移即构建失败——见 shared/apply_patches.sh 顶部说明）
 #       + 离线审计门（产出 components.json）
 #       + 模型 overlay（供 catalog 的 spec 引用，免下载）
@@ -41,6 +42,10 @@ ARG PIP_DEFAULT_TIMEOUT=60
 ARG TORCHCODEC_SPEC=""
 ARG TORCHCODEC_INDEX_URL=https://download.pytorch.org/whl/cu129
 ARG APT_MIRROR=mirrors.aliyun.com
+# 按档声明的模型专属依赖（可选；空 = 不装），见下面「模型专属依赖」一节。均为 name==version。
+ARG VOXCPM_SPEC=""
+ARG DECORD_SPEC=""
+ARG MOVIEPY_SPEC=""
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -268,6 +273,42 @@ RUN <<EOF
     ${PIP} install --no-cache-dir librosa soundfile 'mistral_common[audio]'
 EOF
 
+## 模型专属依赖（按档声明，默认不执行）
+#
+# VOXCPM_SPEC：VoxCPM2 的 talker 构造时要 import 原生 voxcpm 包（vllm-omni 不自带，上游镜像也没有）。
+#   以 --no-deps 安装：它在 PyPI 上声明的 gradio<7、funasr、modelscope、datasets<4、spaces、argbind、
+#   matplotlib 只服务于它自己的 demo/训练/降噪，推理路径（voxcpm.core、model、modules）只用到
+#   torch、torchaudio、einops、pydantic、tqdm、transformers、librosa、huggingface_hub，本档都已有；
+#   按依赖装会拖进一整套 web/ASR 栈，还会碰 transformers 的 omni 上界。没装的声明依赖会让
+#   `pip check` 报缺，所以这里把它记进 /opt/gpuworks/pip-nodeps.json，审计门只对「这个包、这个版本」
+#   的 pip check 行放行（见 overlays/audit/stack-audit.py 的 GPUWORKS_PIP_CHECK_NODEPS）；
+#   requires 的 voxcpm 断言走 vllm-omni 自己的查找路径确认真能 import。
+# DECORD_SPEC：ERNIE-4.5-VL 的 HF 动态模块要求 `import decord`。用 decord2（import 名同为 decord）：
+#   PyPI 的 decord 停在 2021 年的 0.6.0，只有 x86_64 wheel；decord2 有 cp312 的 x86_64 与 aarch64
+#   wheel，ffmpeg 自带在 decord2.libs，硬依赖只有 numpy。按依赖正常安装。
+# MOVIEPY_SPEC：ERNIE-4.5-VL 的同一 HF 动态模块还直接 import moviepy；普通 vLLM
+#   base 不带它。固定版本随 runner 标签发布，避免部署时联网安装。
+RUN <<EOF
+    set -eux
+    if [ -n "${VOXCPM_SPEC}" ]; then
+        python3 -m pip install --no-cache-dir --no-deps "${VOXCPM_SPEC}"
+        python3 - "${VOXCPM_SPEC}" <<'PY'
+import json, sys
+name, version = sys.argv[1].split('==', 1)
+json.dump([{'name': name, 'version': version,
+            'reason': 'VoxCPM2 inference path only; declared demo/training/denoiser deps not installed'}],
+          open('/opt/gpuworks/pip-nodeps.json', 'w'), indent=2)
+PY
+        cat /opt/gpuworks/pip-nodeps.json
+    fi
+    if [ -n "${DECORD_SPEC}" ]; then
+        python3 -m pip install --no-cache-dir "${DECORD_SPEC}"
+    fi
+    if [ -n "${MOVIEPY_SPEC}" ]; then
+        python3 -m pip install --no-cache-dir "${MOVIEPY_SPEC}"
+    fi
+EOF
+
 ## torchcodec 替换（按档例外，默认不执行）
 #
 # 为什么：vllm/vllm-openai:v0.31.0-cu129 的 torchcodec 0.17.0 是 CUDA 13 构建（libtorchcodec_core*.so
@@ -355,6 +396,8 @@ RUN <<EOF
     # pip check 只放行「纯净 base 本来就有」的行（/opt/gpuworks/base-pip-check.txt，在任何 pip
     # 操作之前记录）；基线之外新增的行仍然致命。放行的行记进 components.json 的 pip_check_allowed。
     export GPUWORKS_PIP_CHECK_BASELINE=/opt/gpuworks/base-pip-check.txt
+    # 按档声明的 --no-deps 包（见「模型专属依赖」）；文件不存在即无声明。
+    export GPUWORKS_PIP_CHECK_NODEPS=/opt/gpuworks/pip-nodeps.json
     python3 /opt/gpuworks/stack-audit.py --self-test
     if ! python3 /opt/gpuworks/stack-audit.py > /opt/gpuworks/components.json; then
         echo "=== stack-audit FAILED, errors:" >&2

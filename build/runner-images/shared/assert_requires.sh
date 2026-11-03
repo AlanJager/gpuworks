@@ -4,7 +4,7 @@
 # 这是「requires 的含义」的唯一实现：构建末尾跑一次（装不上就别出镜像），
 # verify.sh 对成品再跑一次（registry 里的东西和当时构建的是不是一回事）。
 #
-# requires 取值：engine engine_import omni omni_no_mooncake omni_patched indextts2_frontend mooncake
+# requires 取值：engine engine_import omni omni_no_mooncake omni_patched indextts2_frontend voxcpm decord moviepy mooncake
 # diffusion overlays audit hcu_patches（见 matrix.yaml 顶部说明）。
 #
 # 用法：REQUIRES="engine omni mooncake" ENGINE=vllm [ENGINE_VERSION=0.30.0] \
@@ -304,6 +304,42 @@ check_indextts2_frontend() {
     fi
 }
 
+# voxcpm：VoxCPM2 talker 依赖的原生 voxcpm 包在位，且 vllm-omni 自己的查找路径能找到它。
+# 走 vllm-omni 的 import_voxcpm2_core 而不是只 import voxcpm：后者过了、前者没过的情形
+# （比如装进了 vllm-omni 看不到的目录）一样起不来。voxcpm 以 --no-deps 安装，这一步同时
+# 证明它的推理路径不需要那些没装的声明依赖（gradio、funasr、modelscope 等）。
+check_voxcpm() {
+    py "from vllm_omni.model_executor.models.voxcpm2.voxcpm2_import_utils import import_voxcpm2_core; import_voxcpm2_core()" \
+        || FAILED+=("voxcpm: vllm-omni cannot import voxcpm.core.VoxCPM")
+}
+
+# decord：HF 动态模块（ERNIE-4.5-VL）要求的视频解码库。由 decord2 提供同名模块，
+# 除了能 import，还要真能解出帧：用 ffmpeg 现做一段 1 秒的合成视频读回来。
+check_decord() {
+    local work; work="$(mktemp -d)"
+    if ffmpeg -loglevel error -f lavfi -i testsrc=size=64x48:rate=5 -t 1 -pix_fmt yuv420p "${work}/t.mp4" \
+        && python3 - "${work}/t.mp4" <<'PY' >/dev/null 2>&1
+import sys
+from decord import VideoReader, cpu
+vr = VideoReader(sys.argv[1], ctx=cpu(0))
+assert len(vr) == 5, len(vr)
+assert tuple(vr.get_batch([0, 4]).shape) == (2, 48, 64, 3)
+PY
+    then
+        echo "  decord: decoded 5 frames"
+    else
+        FAILED+=("decord: cannot decode a synthetic mp4")
+    fi
+    rm -rf "${work}"
+}
+
+# moviepy：ERNIE-4.5-VL 的动态模块直接 import moviepy。确认 import 路径存在，
+# 而不是只看 pip 元数据。
+check_moviepy() {
+    py "import moviepy; from moviepy import ColorClip; ColorClip((1, 1), color=(0, 0, 0), duration=0.01)" \
+        || FAILED+=("moviepy: cannot import and construct ColorClip")
+}
+
 check_hcu_patches() {
     command -v vllm-hcu-apply-patches >/dev/null 2>&1 \
         || FAILED+=("hcu_patches: vllm-hcu-apply-patches not on PATH")
@@ -319,6 +355,9 @@ for item in ${REQUIRES}; do
         omni_no_mooncake) check_omni_no_mooncake ;;
         omni_patched) check_omni_patched ;;
         indextts2_frontend) check_indextts2_frontend ;;
+        voxcpm)       check_voxcpm ;;
+        decord)       check_decord ;;
+        moviepy)      check_moviepy ;;
         mooncake)     check_mooncake ;;
         diffusion)    check_diffusion ;;
         overlays)     check_overlays ;;

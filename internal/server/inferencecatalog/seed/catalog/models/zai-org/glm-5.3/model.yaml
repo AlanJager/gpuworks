@@ -25,7 +25,7 @@ specs:
   display_name_en: H20 / H200 / B200 / B300 · FP8 · 8 GPUs · Speculative
   scenario: balanced
   engine: vllm
-  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r4
   weights:
     quantization: fp8
     sources:

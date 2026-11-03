@@ -10,6 +10,13 @@ vLLM overrides torch's pinned NCCL; the arm64 base ships "nvidia-cusparselt-cu13
 not supported on this platform"): they are recorded under `pip_check_allowed` instead of
 failing the gate. A line that is NOT in the baseline is a new problem and still fails.
 Without the variable, any non-zero `pip check` fails (the original behaviour).
+
+gpuworks modification (r4 omni): GPUWORKS_PIP_CHECK_NODEPS, an optional path to a JSON list of
+{"name", "version", "reason"} for packages the Dockerfile deliberately installed with
+`--no-deps` (e.g. voxcpm, whose declared gradio/funasr/modelscope stack is not needed for
+inference). `pip check` lines about the declared package at the declared version are recorded
+under `pip_check_nodeps`; lines about any other package still fail. A declared package that is
+not installed at exactly that version is itself an error, so a stale declaration cannot linger.
 Run `python3 stack-audit.py --self-test` for the built-in check of that classification.
 """
 import glob
@@ -45,6 +52,24 @@ def classify_pip_check(output, baseline):
     return allowed, new or ([] if lines else ['<pip check failed without output>'])
 
 
+def split_nodeps(lines, nodeps):
+    """Split `pip check` lines into (declared, rest). A line is declared when it is about a
+    package from `nodeps` at its declared version, i.e. starts with "<name> <version> "."""
+    prefixes = tuple(f"{d['name'].lower()} {d['version']} " for d in nodeps)
+    declared = [ln for ln in lines if prefixes and ln.lower().startswith(prefixes)]
+    return declared, [ln for ln in lines if ln not in declared]
+
+
+def check_nodeps(installed, nodeps):
+    """Errors for declared --no-deps packages that are not installed at the declared version."""
+    errors = []
+    for d in nodeps:
+        name = d['name'].lower().replace('_', '-')
+        if installed.get(name) != d['version']:
+            errors.append(f"declared --no-deps package {d['name']}=={d['version']}: found {installed.get(name)}")
+    return errors
+
+
 def self_test():
     nccl = 'torch 2.14.0 has requirement nvidia-nccl-cu13==2.29.7, but you have nvidia-nccl-cu13 2.30.7.'
     cusp = 'nvidia-cusparselt-cu13 0.8.1 is not supported on this platform'
@@ -58,6 +83,15 @@ def self_test():
     assert classify_pip_check(nccl + '\n', None) == ([], [nccl]), 'no baseline'
     # 4) empty failing output never passes silently
     assert classify_pip_check('', base)[1], 'empty output'
+    # 5) --no-deps declarations cover only their own package at the declared version
+    vox = [{'name': 'voxcpm', 'version': '2.0.3', 'reason': 'test'}]
+    miss = 'voxcpm 2.0.3 requires gradio, which is not installed.'
+    other = 'voxcpm 2.0.2 requires gradio, which is not installed.'
+    assert split_nodeps([miss, extra], vox) == ([miss], [extra]), 'nodeps own package'
+    assert split_nodeps([other], vox) == ([], [other]), 'nodeps other version'
+    assert split_nodeps([miss], []) == ([], [miss]), 'no nodeps'
+    assert check_nodeps({'voxcpm': '2.0.3'}, vox) == [], 'nodeps installed'
+    assert check_nodeps({}, vox), 'nodeps declared but missing'
     print('stack-audit self-test OK')
 
 
@@ -101,8 +135,17 @@ def inspect(environ=None):
     for package in ('torch', 'transformers'):
         if package not in installed:
             errors.append(f'missing {package}')
+    nodeps = []
+    nodeps_path = env.get('GPUWORKS_PIP_CHECK_NODEPS', '')
+    if nodeps_path and Path(nodeps_path).is_file():
+        try:
+            nodeps = json.loads(Path(nodeps_path).read_text())
+        except (OSError, ValueError):
+            errors.append(f'unreadable --no-deps declarations: {nodeps_path}')
+    errors.extend(check_nodeps(installed, nodeps))
     pip_check = command([sys.executable, '-m', 'pip', 'check'])
     pip_check_allowed = []
+    pip_check_nodeps = []
     if pip_check['exit'] != 0:
         baseline = None
         baseline_path = env.get('GPUWORKS_PIP_CHECK_BASELINE', '')
@@ -112,6 +155,7 @@ def inspect(environ=None):
             except OSError:
                 baseline = None  # unreadable baseline == no baseline: fail closed
         pip_check_allowed, new_problems = classify_pip_check(pip_check['output'], baseline)
+        pip_check_nodeps, new_problems = split_nodeps(new_problems, nodeps)
         if new_problems:
             errors.append('pip dependency closure failed')
     facts = sdk_facts(framework)
@@ -153,6 +197,7 @@ def inspect(environ=None):
             'expected': {'engine': engine, 'version': expected, 'framework': framework, 'runtime': runtime},
             'architecture': platform.machine(), 'packages': installed, 'sdk': facts,
             'pip_check': pip_check, 'pip_check_allowed': pip_check_allowed,
+            'pip_check_nodeps': pip_check_nodeps, 'nodeps': nodeps,
             'runtime_check': runtime_check, 'compiler_check': compiler_check,
             'gpu_acceptance': 'NOT_RUN'}
 
