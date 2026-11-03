@@ -15,11 +15,8 @@ import (
 // once none is.
 func TestBatchModelsAHeldReplicaLeavesTheOthersServing(t *testing.T) {
 	st, _ := modelStack(t, &scriptedSender{reply: func(string, []byte) batch.Reply { return batch.Reply{Status: 200} }})
-	node, err := st.RegisterNode("n1", store.HashToken("token"), "n1")
-	if err != nil {
-		t.Fatal(err)
-	}
-	d, err := st.CreateDeployment(&store.Deployment{Name: "chat", ServedName: "chat", State: store.DeployActive, Sleepable: true, Replicas: 2})
+	node := onlineNode(t, st, "n1")
+	d, err := st.CreateDeployment(&store.Deployment{Name: "chat", ServedName: "chat", State: store.DeployActive, Sleepable: true, Replicas: 2, ModelID: modelOf(t, st, "chat", chatModelOps)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -32,11 +29,11 @@ func TestBatchModelsAHeldReplicaLeavesTheOthersServing(t *testing.T) {
 	if err := st.OrderInstancesSleepHeld(d.ID, []string{"chat-1"}, 1, proto.SleepModeWait, true); err != nil {
 		t.Fatal(err)
 	}
-	m := batchModels{st}
+	m := batchModels{st: st}
 	check := func(want batch.ModelState) {
 		t.Helper()
 		got, err := m.Lookup("chat")
-		if err != nil || got != want {
+		if err != nil || got.State != want {
 			t.Fatalf("Lookup = %v err=%v, want %v", got, err, want)
 		}
 		list, err := m.List()
@@ -44,7 +41,7 @@ func TestBatchModelsAHeldReplicaLeavesTheOthersServing(t *testing.T) {
 			t.Fatalf("List = %v err=%v, want %v", list, err, want)
 		}
 	}
-	check(batch.ModelAvailable)
+	check(batch.ModelRunning)
 	// The other replica is ordered to sleep too: the name is held, before
 	// either engine reports the sleep.
 	if err := st.OrderInstancesSleepHeld(d.ID, []string{"chat-2"}, 1, proto.SleepModeWait, true); err != nil {

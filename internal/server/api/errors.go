@@ -521,8 +521,15 @@ const (
 	// was asked to send its requests to. Models a file's requests name are
 	// refused with messages.ErrorBatchFileModelsUnknown instead.
 	ErrorBatchModelUnknown = "BATCH_MODEL_UNKNOWN"
+	// ErrorBatchModelEndpoint: the deployments serving the {model} the batch
+	// was asked to send its requests to do not serve its {endpoint}.
+	ErrorBatchModelEndpoint = "BATCH_MODEL_ENDPOINT"
 )
 
 // WarningBatchModelSleepHeld is the warning on a created batch whose {model}
 // sleeps by an operator's or a schedule's order, which requests do not wake.
 const WarningBatchModelSleepHeld = "BATCH_MODEL_SLEEP_HELD"
+
+// WarningBatchModelWaits is the warning on a created batch whose {model} is
+// {state} (offline, failed or stopped): its requests wait until it serves.
+const WarningBatchModelWaits = "BATCH_MODEL_WAITS"

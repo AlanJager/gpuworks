@@ -360,6 +360,55 @@ func TestBatchFileModelsAndFinishedBatchWire(t *testing.T) {
 	}
 }
 
+// A running batch's detail says why its requests wait, and a model of another
+// endpoint or one that waits is a product error or warning, each in its exact
+// wire shape.
+func TestBatchWaitingAndModelStateWire(t *testing.T) {
+	r := newBatchRig(t)
+	since := time.Date(2026, 11, 3, 3, 0, 40, 0, time.UTC)
+	r.fake.batch.Status = "in_progress"
+	r.fake.batch.Waiting = []dto.BatchModelWait{{Model: "BAAI/bge-m3", State: dto.BatchModelFailed, Status: 503, Detail: "deployment for BAAI/bge-m3 failed to start; see the deployment list", Since: since, Requests: 8}}
+	rec := r.do(r.session, "GET", "/api/v1/batches/batch_1", "")
+	want := `"waiting":[{"model":"BAAI/bge-m3","state":"failed","status":503,"detail":"deployment for BAAI/bge-m3 failed to start; see the deployment list","since":"2026-11-03T03:00:40Z","requests":8}]`
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), want) {
+		t.Fatalf("waiting = %d %s", rec.Code, rec.Body)
+	}
+	var round dto.Batch
+	if err := jsonDecode(rec.Body.Bytes(), &round); err != nil || len(round.Waiting) != 1 || !round.Waiting[0].Since.Equal(since) || round.Waiting[0].Requests != 8 {
+		t.Fatalf("round trip = %+v err=%v", round.Waiting, err)
+	}
+	// A model gone from the platform has no state; a transport failure no status detail.
+	r.fake.batch.Waiting = []dto.BatchModelWait{{Model: "ghost", Since: since, Requests: 1}}
+	rec = r.do(r.session, "GET", "/api/v1/batches/batch_1", "")
+	if want := `"waiting":[{"model":"ghost","status":0,"since":"2026-11-03T03:00:40Z","requests":1}]`; !strings.Contains(rec.Body.String(), want) {
+		t.Fatalf("waiting without state = %s", rec.Body)
+	}
+
+	r.fake.batch.Waiting = nil
+	r.fake.batch.Warnings = []messages.Warning{{Code: WarningBatchModelWaits, Params: map[string]any{"model": "parked", "state": dto.BatchModelStopped}}}
+	rec = r.upload(r.session, map[string]string{"file": "x", "endpoint": "/v1/chat/completions", "model": "parked"})
+	if want := `"warnings":[{"code":"BATCH_MODEL_WAITS","params":{"model":"parked","state":"stopped"}}]`; rec.Code != http.StatusCreated || !strings.Contains(rec.Body.String(), want) {
+		t.Fatalf("waits warning = %d %s", rec.Code, rec.Body)
+	}
+	r.fake.batch.Warnings = []messages.Warning{{Code: messages.WarningBatchFileModelsWait, Params: map[string]any{"models": []string{"a"}, "more": 0, "state": dto.BatchModelFailed}}}
+	rec = r.upload(r.session, map[string]string{"file": "x", "endpoint": "/v1/chat/completions"})
+	if want := `"warnings":[{"code":"BATCH_FILE_MODELS_WAIT","params":{"models":["a"],"more":0,"state":"failed"}}]`; rec.Code != http.StatusCreated || !strings.Contains(rec.Body.String(), want) {
+		t.Fatalf("file waits warning = %d %s", rec.Code, rec.Body)
+	}
+
+	r.fake.err = &BatchError{Status: 400, Code: ErrorBatchModelEndpoint, Fallback: "The deployments serving the model bge do not serve /v1/chat/completions", Params: map[string]any{"model": "bge", "endpoint": "/v1/chat/completions"}}
+	rec = r.upload(r.session, map[string]string{"file": "x", "endpoint": "/v1/chat/completions", "model": "bge"})
+	if want := `{"code":"BATCH_MODEL_ENDPOINT","error":"The deployments serving the model bge do not serve /v1/chat/completions","params":{"endpoint":"/v1/chat/completions","model":"bge"}}`; rec.Code != http.StatusBadRequest || strings.TrimSpace(rec.Body.String()) != want {
+		t.Fatalf("endpoint refusal = %d %s", rec.Code, rec.Body)
+	}
+	r.fake.err = &BatchError{Status: 400, Code: messages.ErrorBatchFileModelsEndpoint, Fallback: "The input file names models whose deployments do not serve /v1/chat/completions: bge",
+		Params: map[string]any{"models": []string{"bge"}, "more": 0, "endpoint": "/v1/chat/completions"}}
+	rec = r.upload(r.session, map[string]string{"file": "x", "endpoint": "/v1/chat/completions"})
+	if want := `{"code":"BATCH_FILE_MODELS_ENDPOINT","error":"The input file names models whose deployments do not serve /v1/chat/completions: bge","params":{"endpoint":"/v1/chat/completions","models":["bge"],"more":0}}`; rec.Code != http.StatusBadRequest || strings.TrimSpace(rec.Body.String()) != want {
+		t.Fatalf("file endpoint refusal = %d %s", rec.Code, rec.Body)
+	}
+}
+
 // The dictionary a create dialog is built from, in its exact wire shape: it
 // is the dictionary route, not a batch named "dictionary"; any signed-in user
 // reads it; and it only reads.
@@ -372,12 +421,17 @@ func TestBatchDictionaryWire(t *testing.T) {
 		Statuses:            []string{"validating", "in_progress", "finalizing", "cancelling", "completed", "failed", "expired", "cancelled"},
 		OutputRetentionDays: 30,
 		Models: []dto.BatchModel{
-			{Name: "qwen", State: dto.BatchModelServed}, {Name: "napping", State: dto.BatchModelAsleep}, {Name: "held", State: dto.BatchModelAsleepHeld},
+			{Name: "qwen", State: dto.BatchModelRunning, Endpoints: []string{"/v1/chat/completions", "/v1/completions"}},
+			{Name: "napping", State: dto.BatchModelAsleep, Endpoints: []string{"/v1/chat/completions"}},
+			{Name: "held", State: dto.BatchModelAsleepHeld, Endpoints: []string{"/v1/chat/completions"}},
+			{Name: "parked", State: dto.BatchModelStopped, Endpoints: []string{"/v1/embeddings"}},
 		},
 	}
 	want := `{"endpoints":["/v1/chat/completions","/v1/completions","/v1/embeddings"],"completion_window_hours":{"min":1,"max":72,"default":24},` +
 		`"max_file_bytes":209715200,"max_file_lines":50000,"statuses":["validating","in_progress","finalizing","cancelling","completed","failed","expired","cancelled"],` +
-		`"output_retention_days":30,"models":[{"name":"qwen","state":"served"},{"name":"napping","state":"asleep"},{"name":"held","state":"asleep_held"}]}`
+		`"output_retention_days":30,"models":[{"name":"qwen","state":"running","endpoints":["/v1/chat/completions","/v1/completions"]},` +
+		`{"name":"napping","state":"asleep","endpoints":["/v1/chat/completions"]},{"name":"held","state":"asleep_held","endpoints":["/v1/chat/completions"]},` +
+		`{"name":"parked","state":"stopped","endpoints":["/v1/embeddings"]}]}`
 	for _, bearer := range []string{r.session, r.user, r.mint("read")} {
 		rec := r.do(bearer, "GET", "/api/v1/batches/dictionary", "")
 		if rec.Code != http.StatusOK || strings.TrimSpace(rec.Body.String()) != want {
@@ -388,7 +442,7 @@ func TestBatchDictionaryWire(t *testing.T) {
 		t.Fatalf("the dictionary was read as the batch %q", r.fake.id)
 	}
 	var round dto.BatchDictionary
-	if err := jsonDecode([]byte(want), &round); err != nil || len(round.Models) != 3 || round.Models[2].State != dto.BatchModelAsleepHeld || round.CompletionWindowHours.Default != 24 {
+	if err := jsonDecode([]byte(want), &round); err != nil || len(round.Models) != 4 || round.Models[2].State != dto.BatchModelAsleepHeld || round.Models[3].Endpoints[0] != "/v1/embeddings" || round.CompletionWindowHours.Default != 24 {
 		t.Fatalf("round trip = %+v err=%v", round, err)
 	}
 

@@ -98,12 +98,19 @@ type Service struct {
 	ctx  context.Context
 	runs map[string]*handle
 	wg   sync.WaitGroup
+
+	// stopped caches whether a model is served only by stopped deployments
+	// (modelStopped).
+	stoppedMu sync.Mutex
+	stopped   map[string]stoppedLookup
 }
 
-// handle is a launched batch: closing cancel tells its executor to stop.
+// handle is a launched batch: closing cancel tells its executor to stop;
+// waits is why its requests are being retried.
 type handle struct {
 	cancel chan struct{}
 	once   sync.Once
+	waits  waitBoard
 }
 
 func (h *handle) stop() { h.once.Do(func() { close(h.cancel) }) }

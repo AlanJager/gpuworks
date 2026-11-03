@@ -13,4 +13,11 @@ const (
 	// {more} more) of the input file sleep by an operator's or a schedule's
 	// order, which requests do not wake.
 	WarningBatchFileModelsSleepHeld = "BATCH_FILE_MODELS_SLEEP_HELD"
+	// WarningBatchFileModelsWait: the deployments serving {models} (and
+	// {more} more) of the input file are {state} (offline, failed or
+	// stopped); their requests wait until they serve.
+	WarningBatchFileModelsWait = "BATCH_FILE_MODELS_WAIT"
+	// ErrorBatchFileModelsEndpoint: the deployments serving {models} (and
+	// {more} more) of the input file do not serve the batch's {endpoint}.
+	ErrorBatchFileModelsEndpoint = "BATCH_FILE_MODELS_ENDPOINT"
 )

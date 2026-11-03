@@ -4,7 +4,7 @@ import React from "react";
 import { I18nextProvider } from "react-i18next";
 import { createI18n, dom } from "./helpers/dom.ts";
 import { trackMessageChannels } from "./helpers/trackedMessageChannels.ts";
-import { batch, dictionary, page } from "./helpers/batchFixtures.ts";
+import { batch, dictionary, model, page } from "./helpers/batchFixtures.ts";
 
 // The sample requests file (downloaded or used as is), the .jsonl-only file
 // picker, and the panel that tells the reader batches are an API.
@@ -31,7 +31,7 @@ beforeEach(() => {
   localStorage.clear();
   api.me = (async () => ({ role: "admin" })) as never;
   batchApi.list = (async () => page([])) as never;
-  batchApi.dictionary = async () => dictionary([{ name: "qwen-chat", state: "served" }, { name: "embedder", state: "served" }]);
+  batchApi.dictionary = async () => dictionary([model("qwen-chat", "running"), model("embedder", "running", ["/v1/embeddings"])]);
 });
 afterEach(() => {
   cleanup();
@@ -194,6 +194,21 @@ test("the sample type picks the endpoint of the sample, and the file goes up wit
   const first = JSON.parse((await got.file.text()).split("\n")[0]);
   assert.equal(first.url, "/v1/embeddings");
   assert.equal(typeof first.body.input, "string");
+  assert.equal(first.body.model, "embedder", "the embeddings sample names the model that serves embeddings");
+});
+
+test("the sample offers only the models serving its endpoint, in the server's order", async () => {
+  // The server lists an embedding model first (it runs; the chat model only
+  // starts): a chat sample still names the chat model, never the embedder.
+  batchApi.dictionary = async () => dictionary([model("BAAI/bge-m3", "running", ["/v1/embeddings"]), model("glm", "starting"), model("deepseek", "stopped")]);
+  const user = mountPage();
+  const dialog = await openCreate(user);
+  const sampleModel = await within(dialog).findByRole("combobox", { name: b.create.sample.model });
+  await waitFor(() => assert.ok(within(dialog).getByText(`glm · ${b.create.model.state.starting}`, { selector: ".ant-select-selection-item" })));
+  await user.click(sampleModel);
+  const offered = (await screen.findAllByRole("option")).map((option) => option.getAttribute("title") ?? option.textContent);
+  assert.ok(!offered.some((label) => label?.includes("BAAI/bge-m3")), `the embedder is not offered for chat: ${offered}`);
+  assert.ok(await screen.findByText(`deepseek · ${b.create.model.state.stopped}`, { selector: ".ant-select-item-option-content" }));
 });
 
 test("download the sample hands the browser a .jsonl file", async () => {

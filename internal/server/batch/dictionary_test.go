@@ -5,6 +5,7 @@ import (
 	"reflect"
 	"sort"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 )
@@ -68,20 +69,60 @@ func TestDictionaryModelsWithoutOrFailingALookup(t *testing.T) {
 	}
 }
 
-// A model asleep in a way a request wakes is accepted like an awake one; a
-// held one only with a warning; ranking puts awake first.
-func TestModelStatesAcceptAndRank(t *testing.T) {
-	if !ModelAvailable.Accepts() || !ModelAsleep.Accepts() || ModelSleepHeld.Accepts() || ModelUnknown.Accepts() {
-		t.Fatal("accepts")
+// Every state but unknown is known; the ones that wait for someone to act are
+// held, offline, failed and stopped; ranking follows ModelStates, unknown last.
+func TestModelStatesKnownWaitAndRank(t *testing.T) {
+	waits := map[ModelState]bool{ModelSleepHeld: true, ModelOffline: true, ModelFailed: true, ModelStopped: true}
+	for _, state := range ModelStates {
+		if !state.Known() || state.Waits() != waits[state] {
+			t.Fatalf("state %d: known=%v waits=%v", state, state.Known(), state.Waits())
+		}
 	}
-	order := []ModelState{ModelAvailable, ModelAsleep, ModelSleepHeld, ModelUnknown}
+	if ModelUnknown.Known() || ModelUnknown.Waits() {
+		t.Fatal("unknown")
+	}
+	order := append(append([]ModelState{}, ModelStates...), ModelUnknown)
+	want := []ModelState{ModelRunning, ModelAsleep, ModelStarting, ModelSleepHeld, ModelOffline, ModelFailed, ModelStopped, ModelUnknown}
+	if !reflect.DeepEqual(order, want) {
+		t.Fatalf("order = %v", order)
+	}
 	for i := 0; i+1 < len(order); i++ {
 		if !order[i].Better(order[i+1]) || order[i+1].Better(order[i]) {
 			t.Fatalf("%v should rank above %v", order[i], order[i+1])
 		}
 	}
-	r := newRig(t, Config{Models: fakeModels{states: map[string]ModelState{"napping": ModelAsleep}}}, nil)
-	if warnings, err := r.svc.checkModel("napping"); err != nil || len(warnings) != 0 {
-		t.Fatalf("an asleep model a request wakes = %v %v", warnings, err)
+	r := newRig(t, Config{Models: fakeModels{states: map[string]ModelState{"napping": ModelAsleep, "booting": ModelStarting}}}, nil)
+	for _, name := range []string{"napping", "booting"} {
+		if warnings, err := r.svc.checkModel(name, EndpointChat); err != nil || len(warnings) != 0 {
+			t.Fatalf("%s = %v %v", name, warnings, err)
+		}
+	}
+}
+
+// A model that is offline, failed or stopped is accepted with a warning that
+// names its state; one whose deployments do not expose the batch's endpoint
+// is refused, naming the endpoint.
+func TestCheckModelWaitsAndEndpoint(t *testing.T) {
+	r := newRig(t, Config{Models: fakeModels{
+		states:    map[string]ModelState{"gone": ModelOffline, "broken": ModelFailed, "parked": ModelStopped, "embed": ModelRunning},
+		endpoints: map[string][]string{"embed": {EndpointEmbedding}},
+	}}, nil)
+	for name, state := range map[string]ModelState{"gone": ModelOffline, "broken": ModelFailed, "parked": ModelStopped} {
+		warnings, err := r.svc.checkModel(name, EndpointChat)
+		if err != nil || len(warnings) != 1 {
+			t.Fatalf("%s = %+v %v", name, warnings, err)
+		}
+		w := warnings[0]
+		if w.Code != WarningModelWaits || w.Param != ParamModel || w.State != state || !reflect.DeepEqual(w.Models, []string{name}) || !strings.Contains(w.Message, waitWords[state]) {
+			t.Fatalf("%s warning = %+v", name, w)
+		}
+	}
+	_, err := r.svc.checkModel("embed", EndpointChat)
+	var be *Error
+	if !errors.As(err, &be) || be.Status != 400 || be.Code != CodeModelEndpoint || be.Param != ParamModel || be.Model != "embed" || be.Endpoint != EndpointChat {
+		t.Fatalf("an embedding model for chat = %#v", err)
+	}
+	if warnings, err := r.svc.checkModel("embed", EndpointEmbedding); err != nil || len(warnings) != 0 {
+		t.Fatalf("an embedding model for embeddings = %v %v", warnings, err)
 	}
 }

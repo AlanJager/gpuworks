@@ -245,6 +245,37 @@ test("the detail of an unknown batch reports it and retries", async () => {
   await waitFor(() => assert.ok(getCalls.length > before));
 });
 
+test("a running batch whose requests wait says for which model, in what state, since when and why", async () => {
+  const since = "2026-11-03T03:00:40Z";
+  serve([
+    batch({
+      id: "batch_wait", status: "in_progress",
+      waiting: [
+        { model: "BAAI/bge-m3", state: "failed", status: 503, detail: "deployment for BAAI/bge-m3 failed to start; see the deployment list", since, requests: 8 },
+        { model: "ghost", status: 0, detail: "connection reset", since, requests: 1 },
+      ],
+    }),
+  ]);
+  mount("/batches?detail=batch_wait");
+  const dialog = await screen.findByRole("dialog");
+  await within(dialog).findByText(b.detail.waiting.title);
+  const line = (model: string, state: string, count: number) =>
+    i18n.t("batches:detail.waiting.line", { model, state, count, since: formatTimeSec(since) });
+  assert.ok(within(dialog).getByText(line("BAAI/bge-m3", b.create.model.state.failed, 8)));
+  assert.ok(within(dialog).getByText(i18n.t("batches:detail.waiting.answer", { status: 503, detail: "deployment for BAAI/bge-m3 failed to start; see the deployment list" })));
+  // A model no deployment serves any more has no state; a transport failure has no status.
+  assert.ok(within(dialog).getByText(line("ghost", b.detail.waiting.gone, 1)));
+  assert.ok(within(dialog).getByText("connection reset"));
+});
+
+test("a batch with no request waiting shows no waiting notice", async () => {
+  serve([batch({ id: "batch_fine", status: "in_progress" })]);
+  mount("/batches?detail=batch_fine");
+  const dialog = await screen.findByRole("dialog");
+  await within(dialog).findByText("batch_fine", { selector: "code" });
+  assert.equal(within(dialog).queryByText(b.detail.waiting.title), null);
+});
+
 test("downloads are links for files that exist and disabled buttons for those that do not", async () => {
   const keptUntil = "2099-01-02T03:04:05Z";
   serve([

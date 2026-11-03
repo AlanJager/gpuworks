@@ -72,6 +72,12 @@
     "failed": "Failed",
     "pending": "Not finished (waiting or being retried)",
     "pendingHint": "Requests the platform is retrying, for example while a deployment wakes, after a preemption by a higher-ranked deployment, or after a 429 or 5xx answer, are counted as not finished.",
+    "waiting": {
+      "title": "Requests are waiting to be retried",
+      "line": "{{model}} ({{state}}): {{count}} requests waiting since {{since}}",
+      "gone": "no deployment",
+      "answer": "Last answer {{status}}: {{detail}}"
+    },
     "times": {
       "created_at": "Created at",
       "expires_at": "Expires at",
@@ -116,11 +122,20 @@
       "placeholder": "Use the model on each line of the file",
       "help": "Optional. When set, the body.model of every request in the file is replaced by it; when empty, each line keeps its own model. A sleeping deployment can be chosen too: the gateway wakes it when a request arrives.",
       "state": {
-        "serving": "Serving",
-        "asleep": "Asleep",
-        "asleepHeld": "Asleep (held, requests do not wake it)"
+        "running": "running",
+        "asleep": "asleep",
+        "starting": "starting",
+        "asleepHeld": "asleep (held, requests do not wake it)",
+        "offline": "node offline",
+        "failed": "failed",
+        "stopped": "stopped"
       },
-      "heldWarning": "{{model}} sleeps by an operator's or a schedule's order, which requests do not wake: the batch's requests are retried until someone wakes it or the batch expires."
+      "warning": {
+        "asleepHeld": "{{model}} sleeps by an operator's or a schedule's order, which requests do not wake: the batch's requests are retried until someone wakes it or the batch expires.",
+        "offline": "{{model}} runs on nodes that are not connected: the batch's requests are retried until a node returns or the batch expires.",
+        "failed": "{{model}}'s deployment failed to start: the batch's requests are retried until someone repairs it or the batch expires.",
+        "stopped": "{{model}}'s deployment is stopped: the batch's requests wait until someone starts it or the batch expires."
+      }
     },
     "fileModels": {
       "count": "Models in the file ({{count}}): {{models}}",
@@ -131,7 +146,9 @@
     },
     "warnings": {
       "BATCH_MODEL_SLEEP_HELD": "{{model}} sleeps by an operator's or a schedule's order, which requests do not wake: the batch's requests are retried until someone wakes it or the batch expires.",
-      "BATCH_FILE_MODELS_SLEEP_HELD": "{{models, list}} in the file sleep by an operator's or a schedule's order, which requests do not wake: their requests are retried until someone wakes them or the batch expires."
+      "BATCH_FILE_MODELS_SLEEP_HELD": "{{models, list}} in the file sleep by an operator's or a schedule's order, which requests do not wake: their requests are retried until someone wakes them or the batch expires.",
+      "BATCH_MODEL_WAITS": "{{model}} is {{state}}: the batch's requests are retried until it serves or the batch expires.",
+      "BATCH_FILE_MODELS_WAIT": "{{models, list}} in the file are {{state}}: their requests are retried until they serve or the batch expires."
     },
     "created": "Batch {{id}} created",
     "hintTitle": "Format and limits",

@@ -35,6 +35,14 @@ export function page(items: Batch[], extra: { page?: number; page_size?: number;
   return { items, page: extra.page ?? 1, page_size: extra.page_size ?? 20, total: extra.total ?? items.length };
 }
 
+/** The chat endpoints a chat model serves, the default of a test's model. */
+export const CHAT_ENDPOINTS = ["/v1/chat/completions", "/v1/completions"];
+
+/** A dictionary model: a chat model unless the test names its endpoints. */
+export function model(name: string, state: string, endpoints: string[] = CHAT_ENDPOINTS): BatchModel {
+  return { name, state, endpoints };
+}
+
 /**
  * The batch dictionary as GET /api/v1/batches/dictionary answers it: the
  * server's endpoints, window, limits, statuses and retention, with the models

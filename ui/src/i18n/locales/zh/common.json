@@ -506,9 +506,11 @@
     "BATCH_NOT_CANCELLABLE": "该批处理任务已无法取消：它已结束，或正在汇总结果。",
     "BATCH_FILE_INVALID": "批处理输入文件无效。{{detail}}",
     "BATCH_FILE_TOO_LARGE": "批处理输入文件超过 {{limit_mb}} MB。",
-    "BATCH_MODEL_UNKNOWN": "没有运行中的部署使用模型名 {{model}}，请选择平台上已有的部署。",
+    "BATCH_MODEL_UNKNOWN": "没有部署使用模型名 {{model}}，请选择平台上已有的部署。",
+    "BATCH_MODEL_ENDPOINT": "{{model}} 不支持 {{endpoint}}，请选择支持该接口的模型，或改用它支持的接口。",
     "BATCH_REQUEST_INVALID": "批处理请求无效（{{field}}）：{{reason}}",
-    "BATCH_FILE_MODELS_UNKNOWN": "文件里的这些模型没有运行中的部署：{{models, list}}。请选一个模型来接收全部请求，或先部署这些模型。",
+    "BATCH_FILE_MODELS_UNKNOWN": "文件里的这些模型没有部署：{{models, list}}。请选一个模型来接收全部请求，或先部署这些模型。",
+    "BATCH_FILE_MODELS_ENDPOINT": "文件里的这些模型不支持 {{endpoint}}：{{models, list}}。请选一个支持该接口的模型来接收全部请求。",
     "AGENT_UPGRADE_REFUSED": "Agent 升级请求无法执行：{{detail}}"
   },
   "httpError": {

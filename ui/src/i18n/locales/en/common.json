@@ -506,9 +506,11 @@
     "BATCH_NOT_CANCELLABLE": "The batch can no longer be cancelled: it has finished or is assembling its results.",
     "BATCH_FILE_INVALID": "The batch input file is not valid. {{detail}}",
     "BATCH_FILE_TOO_LARGE": "The batch input file is larger than {{limit_mb}} MB.",
-    "BATCH_MODEL_UNKNOWN": "No active deployment serves the model {{model}}. Choose a deployment that exists on the platform.",
+    "BATCH_MODEL_UNKNOWN": "No deployment serves the model {{model}}. Choose a deployment that exists on the platform.",
+    "BATCH_MODEL_ENDPOINT": "{{model}} does not serve {{endpoint}}. Choose a model that serves it, or use an endpoint the model serves.",
     "BATCH_REQUEST_INVALID": "The batch request is not valid ({{field}}): {{reason}}",
-    "BATCH_FILE_MODELS_UNKNOWN": "The file names models that no active deployment serves: {{models, list}}. Choose a model to send every request to, or deploy these models first.",
+    "BATCH_FILE_MODELS_UNKNOWN": "No deployment serves these models of the file: {{models, list}}. Choose a model to send every request to, or deploy these models first.",
+    "BATCH_FILE_MODELS_ENDPOINT": "These models of the file do not serve {{endpoint}}: {{models, list}}. Choose a model that serves it to send every request to.",
     "AGENT_UPGRADE_REFUSED": "Agent upgrade request could not proceed: {{detail}}"
   },
   "httpError": {

@@ -27,7 +27,7 @@ func modelStack(t *testing.T, send batch.Sender) (*store.Store, batchConsole) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
-	svc := batch.New(batchRepo{st}, send, batch.Config{Dir: t.TempDir(), Models: batchModels{st}, RetryBase: 10 * time.Millisecond, RetryCap: 20 * time.Millisecond, CheckpointEvery: 20 * time.Millisecond})
+	svc := batch.New(batchRepo{st}, send, batch.Config{Dir: t.TempDir(), Models: batchModels{st: st}, RetryBase: 10 * time.Millisecond, RetryCap: 20 * time.Millisecond, CheckpointEvery: 20 * time.Millisecond})
 	ctx, cancel := context.WithCancel(context.Background())
 	if err := svc.Start(ctx); err != nil {
 		t.Fatal(err)
@@ -36,24 +36,58 @@ func modelStack(t *testing.T, send batch.Sender) (*store.Store, batchConsole) {
 	return st, batchConsole{svc}
 }
 
-// addDeployment adds a deployment of the served name; held gives it one
-// running replica an operator's sleep holds.
-func addDeployment(t *testing.T, st *store.Store, served string, state store.DeploymentState, held bool) {
+// chatModelOps is the API contract of a chat model: the operations a model
+// row stores, which the gateway allows requests by.
+const chatModelOps = `[{"type":"openai.chat","endpoint":"/v1/chat/completions"},{"type":"openai.completions","endpoint":"/v1/completions"}]`
+
+// modelOf adds a model row with the operations (a JSON []inferenceapi.Operation).
+func modelOf(t *testing.T, st *store.Store, name, operations string) uint {
 	t.Helper()
-	d, err := st.CreateDeployment(&store.Deployment{Name: served + "-dep", ServedName: served, State: state, Sleepable: true})
+	m := &store.Model{Source: "local", SourceID: name, Name: name, Operations: operations}
+	if err := st.DB().Create(m).Error; err != nil {
+		t.Fatal(err)
+	}
+	return m.ID
+}
+
+// onlineNode registers a node that is connected: replicas on it serve.
+func onlineNode(t *testing.T, st *store.Store, uuid string) *store.Node {
+	t.Helper()
+	node, err := st.RegisterNode(uuid, store.HashToken("token-"+uuid), uuid)
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := st.SetNodeState(uuid, store.NodeStateOnline); err != nil {
+		t.Fatal(err)
+	}
+	return node
+}
+
+// addDeployment adds a deployment of the served name, of a chat model. An
+// active one has a running replica on a connected node: awake, or asleep by an
+// operator's held sleep when held. A stopped one has none.
+func addDeployment(t *testing.T, st *store.Store, served string, state store.DeploymentState, held bool) {
+	t.Helper()
+	d, err := st.CreateDeployment(&store.Deployment{Name: served + "-dep", ServedName: served, State: state, Sleepable: true, ModelID: modelOf(t, st, served, chatModelOps)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state != store.DeployActive {
+		return
+	}
+	node := onlineNode(t, st, served+"-node")
+	in := &store.Instance{UUID: served + "-replica", DeploymentID: d.ID, NodeID: node.ID, State: proto.InstRunning, NNodes: 1}
 	if held {
-		if _, err := st.CreateInstance(&store.Instance{UUID: served + "-held", DeploymentID: d.ID, State: proto.InstRunning, NNodes: 1, SleepLevel: 2, SleepHeld: true}); err != nil {
-			t.Fatal(err)
-		}
+		in.SleepLevel, in.SleepHeld = 2, true
+	}
+	if _, err := st.CreateInstance(in); err != nil {
+		t.Fatal(err)
 	}
 }
 
-// A served name is available when an active deployment serves it, held when
-// every such deployment's sleep is held, and unknown otherwise (a stopped
-// deployment does not serve).
+// A served name is running when an active deployment's replica is awake, held
+// when every such deployment's sleep is held, stopped when only a stopped
+// deployment serves it, and unknown when none does.
 func TestBatchModelsLookup(t *testing.T) {
 	st, _ := modelStack(t, &scriptedSender{reply: func(string, []byte) batch.Reply { return batch.Reply{Status: 200} }})
 	addDeployment(t, st, "serving", store.DeployActive, false)
@@ -66,12 +100,12 @@ func TestBatchModelsLookup(t *testing.T) {
 		t.Fatal(err)
 	}
 	addDeployment(t, st, "stopped-one", store.DeployStopped, false)
-	m := batchModels{st}
+	m := batchModels{st: st}
 	for name, want := range map[string]batch.ModelState{
-		"serving": batch.ModelAvailable, "held-only": batch.ModelSleepHeld, "rolling": batch.ModelAvailable,
-		"stopped-one": batch.ModelUnknown, "ghost": batch.ModelUnknown,
+		"serving": batch.ModelRunning, "held-only": batch.ModelSleepHeld, "rolling": batch.ModelRunning,
+		"stopped-one": batch.ModelStopped, "ghost": batch.ModelUnknown,
 	} {
-		if got, err := m.Lookup(name); err != nil || got != want {
+		if got, err := m.Lookup(name); err != nil || got.State != want {
 			t.Errorf("%s = %v err=%v, want %v", name, got, err, want)
 		}
 	}
@@ -164,15 +198,27 @@ func TestBatchConsoleModelThroughTheStore(t *testing.T) {
 		t.Fatalf("plain = %+v err=%v", plain, err)
 	}
 
-	for _, name := range []string{"ghost", "stopped-one"} {
-		_, err = console.CreateFromUpload(caller, form(map[string]string{"file": twoLines, "endpoint": "/v1/chat/completions", "model": name}))
-		be, ok := err.(*api.BatchError)
-		if !ok || be.Status != 400 || be.Code != api.ErrorBatchModelUnknown || be.Params["model"] != name {
-			t.Fatalf("%s: err = %#v", name, err)
-		}
+	_, err = console.CreateFromUpload(caller, form(map[string]string{"file": twoLines, "endpoint": "/v1/chat/completions", "model": "ghost"}))
+	if be, ok := err.(*api.BatchError); !ok || be.Status != 400 || be.Code != api.ErrorBatchModelUnknown || be.Params["model"] != "ghost" {
+		t.Fatalf("ghost: err = %#v", err)
+	}
+	// A stopped model is accepted: its requests wait for a start, and the
+	// warning says so with the state for the client to word.
+	parked, err := console.CreateFromUpload(caller, form(map[string]string{"file": twoLines, "endpoint": "/v1/chat/completions", "model": "stopped-one"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if raw, _ := json.Marshal(parked.Warnings); string(raw) != `[{"code":"BATCH_MODEL_WAITS","params":{"model":"stopped-one","state":"stopped"}}]` {
+		t.Fatalf("stopped model warnings = %s", raw)
+	}
+	// A chat model for an embeddings batch is refused, naming the endpoint.
+	embedLine := `{"custom_id":"e","method":"POST","url":"/v1/embeddings","body":{"model":"m","input":"x"}}` + "\n"
+	_, err = console.CreateFromUpload(caller, form(map[string]string{"file": embedLine, "endpoint": "/v1/embeddings", "model": "serving"}))
+	if be, ok := err.(*api.BatchError); !ok || be.Status != 400 || be.Code != api.ErrorBatchModelEndpoint || be.Params["model"] != "serving" || be.Params["endpoint"] != "/v1/embeddings" {
+		t.Fatalf("a chat model for embeddings: err = %#v", err)
 	}
 	page, err := console.List(caller, nil, 1, 50)
-	if err != nil || page.Total != 4 {
+	if err != nil || page.Total != 5 {
 		t.Fatalf("refused uploads left batches behind: %d %v", page.Total, err)
 	}
 	for _, item := range page.Items {
@@ -183,9 +229,9 @@ func TestBatchConsoleModelThroughTheStore(t *testing.T) {
 }
 
 // Without a model the lines name their own: the console refuses a file with a
-// model no active deployment serves (a stopped one included) as a product error
-// that names the models and leaves no batch or file behind, warns about one
-// whose sleep is held, and accepts a file of served models.
+// model no deployment serves as a product error that names the models and
+// leaves no batch or file behind, warns about one whose sleep is held or whose
+// deployment is stopped, and accepts a file of served models.
 func TestBatchConsoleChecksTheModelsOfTheFile(t *testing.T) {
 	st, console := modelStack(t, &scriptedSender{reply: func(string, []byte) batch.Reply {
 		return batch.Reply{Status: 200, RequestID: "r", Body: []byte(`{"ok":1}`)}
@@ -222,7 +268,7 @@ func TestBatchConsoleChecksTheModelsOfTheFile(t *testing.T) {
 		t.Fatalf("unknown models: %#v", err)
 	}
 	// The models go as a list for the client to join in its own language.
-	if raw, _ := json.Marshal(be.Params); string(raw) != `{"models":["Qwen/Qwen2.5-0.5B-Instruct-rp2l-clone","stopped-one"],"more":0}` {
+	if raw, _ := json.Marshal(be.Params); string(raw) != `{"models":["Qwen/Qwen2.5-0.5B-Instruct-rp2l-clone"],"more":0}` {
 		t.Fatalf("unknown models params = %s", raw)
 	}
 	_, err = create(map[string]string{"file": file("g1", "g2", "g3", "g4", "g5", "g6", "g7"), "endpoint": chat})
@@ -250,6 +296,13 @@ func TestBatchConsoleChecksTheModelsOfTheFile(t *testing.T) {
 	if raw, _ := json.Marshal(held.Warnings); string(raw) != `[{"code":"BATCH_FILE_MODELS_SLEEP_HELD","params":{"models":["napping"],"more":0}}]` {
 		t.Fatalf("held model warnings = %s", raw)
 	}
+	parked, err := create(map[string]string{"file": file("serving", "stopped-one", "napping"), "endpoint": chat})
+	if err != nil {
+		t.Fatalf("stopped model: err=%v", err)
+	}
+	if raw, _ := json.Marshal(parked.Warnings); string(raw) != `[{"code":"BATCH_FILE_MODELS_SLEEP_HELD","params":{"models":["napping"],"more":0}},{"code":"BATCH_FILE_MODELS_WAIT","params":{"models":["stopped-one"],"more":0,"state":"stopped"}}]` {
+		t.Fatalf("stopped model warnings = %s", raw)
+	}
 	over, err := create(map[string]string{"file": file("ghost"), "endpoint": chat, "model": "serving"})
 	if err != nil || over.Model != "serving" {
 		t.Fatalf("an override replaces the unknown model: %+v err=%v", over, err)
@@ -257,21 +310,30 @@ func TestBatchConsoleChecksTheModelsOfTheFile(t *testing.T) {
 }
 
 // The list a create dialog offers and the check a create makes judge every
-// name alike: awake (or starting) serves, asleep with a sleep a request wakes
-// is asleep, asleep with a held sleep - or on a deployment a request cannot
-// wake - is held, and a shared name is as good as its best deployment.
+// name alike, from the state the deployment list shows: awake serves (running),
+// asleep with a sleep a request wakes is asleep, no replica yet is starting,
+// asleep with a held sleep - or on a deployment a request cannot wake - is
+// held, a replica on a disconnected node is offline, failed replicas are
+// failed and a stopped deployment is stopped; a shared name is as good as its
+// best deployment, and the endpoints are those its model's contract allows.
 func TestBatchModelsListAgreesWithLookup(t *testing.T) {
 	st, console := modelStack(t, &scriptedSender{reply: func(string, []byte) batch.Reply { return batch.Reply{Status: 200} }})
-	node, err := st.RegisterNode("n1", store.HashToken("token"), "n1")
+	node := onlineNode(t, st, "n1")
+	far, err := st.RegisterNode("n2", store.HashToken("token-n2"), "n2")
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := st.SetNodeState("n2", store.NodeStateOffline); err != nil {
+		t.Fatal(err)
+	}
+	chatModel := modelOf(t, st, "chat-model", chatModelOps)
+	embedModel := modelOf(t, st, "embed-model", `[{"type":"openai.embeddings","endpoint":"/v1/embeddings"}]`)
 	seq := 0
 	// Each replica is its reported sleep level, with h when an operator's
-	// sleep holds it.
-	deploy := func(served string, sleepable bool, replicas ...string) {
+	// sleep holds it, x when it failed, o when its node is disconnected.
+	deploy := func(served string, sleepable bool, model uint, replicas ...string) {
 		t.Helper()
-		d, err := st.CreateDeployment(&store.Deployment{Name: fmt.Sprintf("%s-%d", served, seq), ServedName: fmt.Sprintf("%s-%d", served, seq), State: store.DeployActive, Sleepable: sleepable})
+		d, err := st.CreateDeployment(&store.Deployment{Name: fmt.Sprintf("%s-%d", served, seq), ServedName: fmt.Sprintf("%s-%d", served, seq), State: store.DeployActive, Sleepable: sleepable, ModelID: model})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -281,55 +343,90 @@ func TestBatchModelsListAgreesWithLookup(t *testing.T) {
 			t.Fatal(err)
 		}
 		for i, replica := range replicas {
-			level, held := int(replica[0]-'0'), strings.HasSuffix(replica, "h")
-			if _, err := st.CreateInstance(&store.Instance{UUID: fmt.Sprintf("%s-%d-%d", served, seq, i), DeploymentID: d.ID, NodeID: node.ID, State: proto.InstRunning, GPUIndexes: "[0]", NNodes: 1, SleepLevel: level, SleepHeld: held}); err != nil {
+			in := &store.Instance{UUID: fmt.Sprintf("%s-%d-%d", served, seq, i), DeploymentID: d.ID, NodeID: node.ID, State: proto.InstRunning, GPUIndexes: "[0]", NNodes: 1}
+			in.SleepLevel, in.SleepHeld = int(replica[0]-'0'), strings.HasSuffix(replica, "h")
+			if strings.HasSuffix(replica, "x") {
+				in.State = proto.InstFailed
+			}
+			if strings.HasSuffix(replica, "o") {
+				in.NodeID = far.ID
+			}
+			if _, err := st.CreateInstance(in); err != nil {
 				t.Fatal(err)
 			}
 		}
 		seq++
 	}
-	deploy("awake", true, "0")
-	deploy("starting", true)             // no running replica yet
-	deploy("half", true, "1", "0")       // one replica serves
-	deploy("half-held", true, "0", "2h") // one replica serves beside a held one
-	deploy("napping", true, "1", "2")    // every replica asleep, a request wakes it
-	deploy("mixed", true, "1h", "2")     // asleep, one held: a request wakes the other
-	deploy("ordered", true, "1h", "2h")  // every replica held asleep
-	deploy("unwakeable", false, "1")     // asleep, but not sleepable: a request does not wake it
-	deploy("rolling", true, "2h")        // a held old deployment ...
-	deploy("rolling", true, "1")         // ... beside a new one a request wakes
+	deploy("awake", true, chatModel, "0")
+	deploy("starting", true, chatModel)             // no replica yet
+	deploy("half", true, chatModel, "1", "0")       // one replica serves
+	deploy("half-held", true, chatModel, "0", "2h") // one replica serves beside a held one
+	deploy("napping", true, chatModel, "1", "2")    // every replica asleep, a request wakes it
+	deploy("mixed", true, chatModel, "1h", "2")     // asleep, one held: a request wakes the other
+	deploy("ordered", true, chatModel, "1h", "2h")  // every replica held asleep
+	deploy("unwakeable", false, chatModel, "1")     // asleep, but not sleepable: a request does not wake it
+	deploy("rolling", true, chatModel, "2h")        // a held old deployment ...
+	deploy("rolling", true, chatModel, "1")         // ... beside a new one a request wakes
+	deploy("far", true, chatModel, "0o")            // its only replica's node is disconnected
+	deploy("crashed", true, chatModel, "0x")        // its only replica failed
+	deploy("embedder", true, embedModel, "0")       // serves embeddings only
+	deploy("revived", true, chatModel, "0x", "0")   // a failed attempt beside a running replacement
 	addDeployment(t, st, "stopped-one", store.DeployStopped, false)
 
-	m := batchModels{st}
+	m := batchModels{st: st}
 	list, err := m.List()
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []batch.ModelEntry{
-		{Name: "awake", State: batch.ModelAvailable}, {Name: "half", State: batch.ModelAvailable}, {Name: "half-held", State: batch.ModelAvailable},
-		{Name: "starting", State: batch.ModelAvailable},
-		{Name: "mixed", State: batch.ModelAsleep}, {Name: "napping", State: batch.ModelAsleep}, {Name: "rolling", State: batch.ModelAsleep},
-		{Name: "ordered", State: batch.ModelSleepHeld}, {Name: "unwakeable", State: batch.ModelSleepHeld},
+	var got []string
+	for _, e := range list {
+		got = append(got, fmt.Sprintf("%s:%d", e.Name, e.State))
 	}
-	if fmt.Sprint(list) != fmt.Sprint(want) {
-		t.Fatalf("list = %v\nwant %v", list, want)
-	}
-	for _, entry := range list {
-		if got, err := m.Lookup(entry.Name); err != nil || got != entry.State {
-			t.Errorf("Lookup(%s) = %v %v, the list says %v", entry.Name, got, err, entry.State)
+	want := []string{}
+	for _, row := range []struct {
+		state batch.ModelState
+		names []string
+	}{
+		{batch.ModelRunning, []string{"awake", "embedder", "half", "half-held", "revived"}},
+		{batch.ModelAsleep, []string{"mixed", "napping", "rolling"}},
+		{batch.ModelStarting, []string{"starting"}},
+		{batch.ModelSleepHeld, []string{"ordered", "unwakeable"}},
+		{batch.ModelOffline, []string{"far"}},
+		{batch.ModelFailed, []string{"crashed"}},
+		{batch.ModelStopped, []string{"stopped-one"}},
+	} {
+		for _, name := range row.names {
+			want = append(want, fmt.Sprintf("%s:%d", name, row.state))
 		}
 	}
-	if got, _ := m.Lookup("stopped-one"); got != batch.ModelUnknown {
-		t.Errorf("a stopped deployment's name = %v", got)
+	if strings.Join(got, " ") != strings.Join(want, " ") {
+		t.Fatalf("list = %v\nwant %v", got, want)
+	}
+	for _, entry := range list {
+		if got, err := m.Lookup(entry.Name); err != nil || fmt.Sprint(got) != fmt.Sprint(entry) {
+			t.Errorf("Lookup(%s) = %v %v, the list says %v", entry.Name, got, err, entry)
+		}
+	}
+	if got, _ := m.Lookup("ghost"); got.State != batch.ModelUnknown || got.Endpoints != nil {
+		t.Errorf("an unknown name = %+v", got)
 	}
 
 	d, err := console.Dictionary()
 	if err != nil {
 		t.Fatal(err)
 	}
-	raw, _ := json.Marshal(d.Models)
-	if wantJSON := `[{"name":"awake","state":"served"},{"name":"half","state":"served"},{"name":"half-held","state":"served"},{"name":"starting","state":"served"},{"name":"mixed","state":"asleep"},{"name":"napping","state":"asleep"},{"name":"rolling","state":"asleep"},{"name":"ordered","state":"asleep_held"},{"name":"unwakeable","state":"asleep_held"}]`; string(raw) != wantJSON {
+	raw, _ := json.Marshal(d.Models[:2])
+	if wantJSON := `[{"name":"awake","state":"running","endpoints":["/v1/chat/completions","/v1/completions"]},{"name":"embedder","state":"running","endpoints":["/v1/embeddings"]}]`; string(raw) != wantJSON {
 		t.Fatalf("dictionary models = %s", raw)
+	}
+	var states []string
+	for _, model := range d.Models {
+		if len(states) == 0 || states[len(states)-1] != model.State {
+			states = append(states, model.State)
+		}
+	}
+	if strings.Join(states, ",") != "running,asleep,starting,asleep_held,offline,failed,stopped" {
+		t.Fatalf("dictionary states in order = %v", states)
 	}
 	if d.OutputRetentionDays != 30 || d.CompletionWindowHours != (dto.BatchWindowHours{Min: 1, Max: 72, Default: 24}) || d.MaxFileBytes != 200<<20 || d.MaxFileLines != 50000 || len(d.Statuses) != 8 || len(d.Endpoints) != 3 {
 		t.Fatalf("dictionary = %+v", d)

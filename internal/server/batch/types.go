@@ -160,6 +160,10 @@ const (
 	// a schedule's order, which a request does not wake; its requests are
 	// retried until someone wakes it or the batch expires.
 	WarningModelSleepHeld = "model_sleep_held"
+	// WarningModelWaits: the model's deployment cannot serve until someone
+	// acts (Warning.State: offline, failed or stopped); its requests are
+	// retried until it serves or the batch expires.
+	WarningModelWaits = "model_waits"
 )
 
 // Warning is a finding about a batch that does not refuse it.
@@ -170,6 +174,8 @@ type Warning struct {
 	Param string
 	// Models are the served names it is about.
 	Models []string
+	// State is the state of Models, for WarningModelWaits.
+	State ModelState
 }
 
 // Owner is the owner a batch acts for when it sends requests.
@@ -222,47 +228,94 @@ type Repo interface {
 	DeleteOutputsBefore(cutoff time.Time) ([]string, error)
 }
 
-// ModelState is what a served model name is on the platform.
+// ModelState is what a served model name is on the platform, judged from the
+// deployments serving it: the best of them when several do.
 type ModelState int
 
 const (
-	// ModelUnknown: no active deployment serves the name.
+	// ModelUnknown: no deployment, running or stopped, serves the name.
 	ModelUnknown ModelState = iota
-	// ModelAvailable: an active deployment serving it is awake (or starting):
-	// requests go to it.
-	ModelAvailable
-	// ModelSleepHeld: every active deployment serving it sleeps and a request
-	// does not wake it (an operator's or a schedule's order).
-	ModelSleepHeld
-	// ModelAsleep: no active deployment serving it is awake, and one sleeps in
-	// a way a request wakes (the gateway holds the request and wakes it).
+	// ModelRunning: a replica serving it is awake; requests go to it.
+	ModelRunning
+	// ModelAsleep: none is awake, and one sleeps in a way a request wakes
+	// (the gateway holds the request and wakes it).
 	ModelAsleep
+	// ModelStarting: a replica is being placed, pulled or started; requests
+	// are retried until it serves.
+	ModelStarting
+	// ModelSleepHeld: every replica sleeps by an operator's or a schedule's
+	// order, which a request does not wake; requests are retried until
+	// someone wakes it.
+	ModelSleepHeld
+	// ModelOffline: its replicas run on nodes that are not connected;
+	// requests are retried until a node returns.
+	ModelOffline
+	// ModelFailed: its replicas failed to start; requests are retried until
+	// someone repairs it.
+	ModelFailed
+	// ModelStopped: its deployment is stopped; requests are retried until
+	// someone starts it.
+	ModelStopped
 )
 
-// Accepts says requests for a model in this state are sent at once: it
-// serves or a request wakes it. A held model is accepted with a warning,
-// an unknown one refused.
-func (m ModelState) Accepts() bool { return m == ModelAvailable || m == ModelAsleep }
+// ModelStates are the states a served name can be in, the best for a batch
+// first: the order a client lists them in.
+var ModelStates = []ModelState{ModelRunning, ModelAsleep, ModelStarting, ModelSleepHeld, ModelOffline, ModelFailed, ModelStopped}
 
-// Better says m serves a batch better than other: awake before asleep before
-// held before unknown. A name several deployments share is as good as the best.
-func (m ModelState) Better(other ModelState) bool { return modelRank[m] > modelRank[other] }
+// Known says a deployment serves the name: a batch naming it is accepted,
+// and one naming an unknown name refused.
+func (m ModelState) Known() bool { return m != ModelUnknown }
 
-var modelRank = map[ModelState]int{ModelUnknown: 0, ModelSleepHeld: 1, ModelAsleep: 2, ModelAvailable: 3}
+// Waits says requests for a model in this state wait for someone to act (a
+// wake, a repair, a start, a node's return) rather than for the platform: a
+// batch sent to it is accepted with a warning (WarningModelWaits).
+func (m ModelState) Waits() bool {
+	return m == ModelSleepHeld || m == ModelOffline || m == ModelFailed || m == ModelStopped
+}
+
+// Better says m serves a batch better than other, in the order of
+// ModelStates; any state is better than unknown. A name several deployments
+// share is as good as the best.
+func (m ModelState) Better(other ModelState) bool { return m.rank() < other.rank() }
+
+func (m ModelState) rank() int {
+	for i, s := range ModelStates {
+		if s == m {
+			return i
+		}
+	}
+	return len(ModelStates)
+}
 
 // ModelEntry is a served name with what it is to a batch.
 type ModelEntry struct {
 	Name  string
 	State ModelState
+	// Endpoints are the batch endpoints (of Endpoints) the deployments
+	// serving the name expose, the gateway's own judgement
+	// (inferenceapi.AllowsContractRequest); a request for another is refused
+	// with 404.
+	Endpoints []string
+}
+
+// Serves says the name's deployments expose endpoint.
+func (e ModelEntry) Serves(endpoint string) bool {
+	for _, ep := range e.Endpoints {
+		if ep == endpoint {
+			return true
+		}
+	}
+	return false
 }
 
 // Models looks a served model name up among the platform's deployments, and
 // lists every name a batch can be sent to. Both answer from the same rule, so
 // the list a client chooses from and the check a create makes agree.
 type Models interface {
-	Lookup(name string) (ModelState, error)
-	// List is every served name of an active deployment with its state,
-	// none ModelUnknown, the best served first and then by name.
+	// Lookup is the name's entry, ModelUnknown when no deployment serves it.
+	Lookup(name string) (ModelEntry, error)
+	// List is every served name of a deployment that is not being deleted,
+	// none ModelUnknown, in the order of ModelStates and then by name.
 	List() ([]ModelEntry, error)
 }
 
@@ -310,6 +363,9 @@ type Error struct {
 	Param   string
 	// Model is the model name a refusal about a model names.
 	Model string
+	// Endpoint is the batch endpoint a refusal about a model's endpoints
+	// names.
+	Endpoint string
 	// Models are the models of an input file that a refusal about them names,
 	// in the order of the file: at most a few dozen, however many it names.
 	Models []string
@@ -325,6 +381,7 @@ const (
 	CodeFileNotFound         = "file_not_found"
 	CodeBatchNotFound        = "batch_not_found"
 	CodeModelNotFound        = "model_not_found"
+	CodeModelEndpoint        = "model_endpoint_unsupported"
 	CodeBatchNotCancellable  = "batch_not_cancellable"
 	CodeEmptyFile            = "empty_file"
 	CodeTooManyRequests      = "too_many_requests"
