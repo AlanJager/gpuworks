@@ -89,35 +89,68 @@ for os in $release_oses; do
     mkdir -p "$package_dir"
     cp "bin/gpuworks-${os}-${arch}" "$package_dir/gpuworks"
     chmod 0755 "$package_dir/gpuworks"
+    # The install defaults differ per OS (docs/reference/cli.md#gpuworks-install).
     case "$os" in
-      linux) platform="Linux" ;;
-      darwin) platform="macOS" ;;
+      linux)
+        platform="Linux"
+        default_dir="/opt/gpuworks/server"
+        install_step="2. Extract it and install the control plane as a systemd service:
+
+   ./gpuworks install
+
+   It prints the URL, the admin credentials and the directories it created
+   (default /opt/gpuworks/server). Useful flags: --addr IP:PORT, --dir DIR,
+   --quiet. Where systemd is not running, the server runs as a background
+   process instead. Without root or sudo, install to a writable directory:
+
+   ./gpuworks install --dir ~/gpuworks/server --no-systemd"
+        ;;
+      darwin)
+        platform="macOS"
+        default_dir="~/gpuworks/server"
+        install_step="2. Extract it and install the control plane:
+
+   ./gpuworks install
+
+   It prints the URL, the admin credentials and the directories it created
+   (default ~/gpuworks/server). Useful flags: --addr IP:PORT, --dir DIR,
+   --quiet. The server runs as a background process and does not start at
+   boot. To install it as a launch daemon instead, run this from an account
+   that can use sudo:
+
+   ./gpuworks install --autostart"
+        ;;
+      *)
+        echo "unsupported release OS: $os" >&2
+        exit 2
+        ;;
     esac
     cat > "$package_dir/INSTALL.txt" <<EOF
 GPUWorks ${release_id} for ${platform} ${arch}
 
 1. Verify the archive with SHA256SUMS.
-2. Extract it and install the control plane as a service:
-
-   ./gpuworks install
-
-   It prints the URL, the admin credentials and the directories it created
-   (default /opt/gpuworks/server). Useful flags: --addr :8800, --dir DIR,
-   --public-url URL, --quiet. Without root it falls back to a user-level
-   install, for example: ./gpuworks install --dir ~/gpuworks-server --no-systemd
+${install_step}
 
 3. Open the printed URL, create a node, and run the node-specific installation
-   command shown by the UI. The server embeds Linux amd64 and arm64 agents.
+   command shown by the UI. The server embeds the agents for Linux amd64 and
+   arm64 and for macOS on Apple silicon.
 
-Later upgrades: gpuworks upgrade (backs up first and rolls back if the new
-version does not come up; sudo is asked only for the service restart).
-A host that cannot reach the download site upgrades from a copied archive:
+Later upgrades run the installed binary, which is not on PATH:
 
-   gpuworks upgrade --archive gpuworks-<release>-<os>-<arch>.tar.gz
+   ${default_dir}/gpuworks upgrade
+
+It backs up first and rolls back if the new version does not come up. A
+systemd or launchd install asks for sudo to stop and restart the service and
+to restore file ownership; a background install upgrades without sudo. A host
+that cannot reach the distribution sources upgrades from a copied archive:
+
+   ${default_dir}/gpuworks upgrade --archive gpuworks-<release>-${os}-${arch}.tar.gz
+
+With a different --dir, use the gpuworks binary in that directory.
 
 Build commit: ${commit}
 Build time:   ${build_at}
-Documentation: https://gpuworks.zstack.ai/#install
+Documentation: https://gpuworks.readthedocs.io/stable/en/how-to/install-server/
 EOF
     tar -C "$work_dir" -czf "$dist_dir/$package.tar.gz" "$package"
   done
