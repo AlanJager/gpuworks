@@ -1,4 +1,5 @@
 import { Layout, Menu, Space, Typography, Button, Tooltip, Drawer } from "antd";
+import type { MenuProps } from "antd";
 import UpdateNotice from "./components/UpdateNotice";
 import NoticeBell from "./components/NoticeBell";
 import AssistantPanel from "./assistant/AssistantPanel";
@@ -88,11 +89,10 @@ function AuthenticatedShell({ onLogout }: { onLogout: () => Promise<void> }) {
   const [navCollapsed, setNavCollapsed] = useState(readNavCollapsed);
   const selected = selectedNavKey(loc.pathname);
 
-  const menuItems = navGroups.map((group) => ({
-    type: "group" as const,
-    label: t(group.labelKey),
-    children: group.items.map((item) => ({ ...item, label: <Link to={item.key}>{t(item.labelKey)}</Link> })),
-  }));
+  const menuItems = navGroups.flatMap((group): NonNullable<MenuProps["items"]> => {
+    const children = group.items.map(({ key, icon, labelKey }) => ({ key, icon, label: <Link to={key}>{t(labelKey)}</Link> }));
+    return group.labelKey ? [{ type: "group" as const, label: t(group.labelKey), children }] : children;
+  });
 
   const toggleNav = () => {
     const next = !navCollapsed;
@@ -183,6 +183,7 @@ function AuthenticatedShell({ onLogout }: { onLogout: () => Promise<void> }) {
         <Brand />
         <Menu
           mode="inline"
+         
           selectedKeys={[selected]}
           items={menuItems}
           className="app-nav"

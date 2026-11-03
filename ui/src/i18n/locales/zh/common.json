@@ -564,10 +564,11 @@
   },
   "navigation": {
     "groups": {
-      "overview": "概览",
-      "resources": "资源",
       "inference": "推理服务",
-      "platform": "平台"
+      "models": "模型",
+      "compute": "算力资源",
+      "operations": "运维",
+      "admin": "管理"
     },
     "dashboard": "概览",
     "monitor": "监控中心",
@@ -577,12 +578,11 @@
     "kubernetes": "Kubernetes",
     "nodes": "计算节点",
     "gpus": "GPU 设备",
-    "models": "模型",
+    "models": "模型仓库",
     "inferenceTemplates": "推理模板",
     "images": "镜像",
     "storage": "存储",
-    "deploy": "部署",
-    "deployments": "部署列表",
+    "deployments": "推理服务",
     "playground": "试验场",
     "evaluations": "评测",
     "apiKeys": "API 令牌",

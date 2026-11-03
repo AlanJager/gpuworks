@@ -1,5 +1,5 @@
 {
-  "sleep": {"wakesOnRequest": "模型正在休眠，发送请求会自动唤醒它，第一个请求要多等几秒", "held": "模型被手动或定时休眠，请求不会唤醒它，请先唤醒", "heldElsewhere": "模型被手动或定时休眠，请求不会唤醒它，请先在部署列表唤醒"},
+  "sleep": {"wakesOnRequest": "模型正在休眠，发送请求会自动唤醒它，第一个请求要多等几秒", "held": "模型被手动或定时休眠，请求不会唤醒它，请先唤醒", "heldElsewhere": "模型被手动或定时休眠，请求不会唤醒它，请先在推理服务页唤醒"},
   "inputs": {"select": "选择值", "discoveryPending": "正在加载可用值"},
   "request": {"errorTooLarge": "上游错误信息过大，已省略。请检查输入内容与所选模型。", "routeMissing": "这次部署没有提供所请求的路由"},
   "page": { "unavailableModel": "模型不可用：{{model}}", "unavailableHint": "请选择可用模型后继续。已有对话将保留。",

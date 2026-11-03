@@ -736,7 +736,7 @@
       "preflightFailed": "Preflight Failed",
       "chooseModelFirst": "Choose a model and a target accelerator to see which node the scheduler picks.",
       "noRankAddress": "no interconnect address",
-      "noRankAddressHint": "The node has neither a management address (reported by an up-to-date agent) nor a compute network (Resources → Networks), so other ranks cannot reach it.",
+      "noRankAddressHint": "The node has neither a management address (reported by an up-to-date agent) nor a compute network (Compute → Networks), so other ranks cannot reach it.",
       "planningFunnel": "Resource planning: {{passed}} passed / {{tried}} evaluated; {{untried}} not evaluated",
       "conditionFunnel": "Cluster: {{total}} → Node conditions: {{matched}} → Hardware and scheduling conditions: {{eligible}}",
       "conditionsEmpty": "No nodes matched the node conditions. Check the labels, networks and selected nodes.",
@@ -977,7 +977,7 @@
     "loading": "Loading the deployment...",
     "loadFailed": "The deployment could not be opened",
     "notFound": "This deployment no longer exists",
-    "backToList": "Back to deployments",
+    "backToList": "Back to Inference Services",
     "title": "Edit deployment: {{name}}",
     "cloneTitle": "Clone deployment: {{name}}",
     "description": {

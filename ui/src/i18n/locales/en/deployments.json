@@ -12,11 +12,11 @@
     "viewRaw": "View Raw Audit Record"
   },
   "page": {
-    "title": "Deployments",
+    "title": "Inference Services",
     "description": "View model services, instance state, and sleep operations in one place",
     "breadcrumb": {
       "services": "Inference Services",
-      "deployments": "Deployments"
+      "deployments": "Inference Services"
     },
     "count": "{{count}} deployment",
     "count_other": "{{count}} deployments",
