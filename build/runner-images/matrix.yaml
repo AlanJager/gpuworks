@@ -194,8 +194,9 @@ items:
   #
   # 为什么 catalog: false：镜像目录的自动选择只看引擎、框架、架构（ADR 0019，不看 GPU 型号），
   # 把它列进去，V100 以外的节点在更老的框架档上可能被它误选，V100 节点又选不到它。
-  # 正路是真机验证后由推理模板的 spec 以 `gpus: {vendor: nvidia, cc: '7.0'}` + `image:` 引用它；
-  # 在那之前只有 L4 用例按卡型显式指定。
+  # V100 由推理模板的 spec 以 `gpus: {vendor: nvidia, cc: '7.0'}` + `image:` 引用它，
+  # 镜像不在目录里，spec 自己在 image_sources 里列出 SWR / quay / registry.zstack.ai 副本
+  # （seed 的 TestBuiltinTemplateSystemImagesResolveToImageCatalogRows 守护）。
 
   - id: cuda12.8-v100-vllm1cat1.5.1
     revision: r1
