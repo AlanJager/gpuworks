@@ -1,25 +1,39 @@
 # Patched PRoot provenance and A/B build
 
 GPUWorks embeds `internal/assets/bin/proot-{x86_64,arm64}-static-nofd` for rootless
-udocker nodes. This directory records the source provenance, patches, and a
-repeatable build for the existing nofd behavior and an experimental
-full-no-socket variant.
+udocker nodes. This directory records the source of each embedded binary, the
+patches, a byte-for-byte reproduction of the shipped x86_64 binary, and a
+repeatable build for the nofd behavior and an experimental full-no-socket
+variant.
 
-## Source baseline
+## Source of the embedded binaries
 
-Both variants are pinned to upstream `proot-me/proot` commit:
+The two embedded binaries do not come from the same recipe:
 
-```text
-a0dc181e939c29d855f8a0fac12a484fd1014824
-```
+| Binary | Corresponding source | How to rebuild |
+|---|---|---|
+| `proot-x86_64-static-nofd` | upstream `proot-me/proot` `704a4ab7a41cf5a8bc1f66b0ebdc58cafa72d88c` (its `src/` equals `5f780cba5`, "Add clone3") + `patches/proot-nobrk-nofd.patch` only, talloc 2.4.2 | `reproduce-embedded-x86_64.sh`, which rebuilds it byte for byte and fails unless the sha256 matches |
+| `proot-arm64-static-nofd` | upstream `proot-me/proot` `a0dc181e939c29d855f8a0fac12a484fd1014824` + `proot-nobrk-nofd.patch`, `proot-temp-noise.patch` and `proot-arm64-faccessat2.patch`, talloc 2.4.2 | the `build.sh` steps; the shipped binary was built on an Ascend 910B arm64 host with its own GCC 7.3.0 rather than in the Ubuntu 24.04 container, so `build.sh` rebuilds the same source but not the same bytes |
 
-This is not the old `jorge-lip/proot-udocker` `udocker-1` branch. The base blob
-ID in the historical nofd/full-no-socket patches (`792c79e`) resolves to this
-upstream commit, and the current production binary's 2023 PRoot copyright,
-`version_48.6`, and CLI source-line strings also identify the modern upstream
-line. Fresh binaries built from the old 2019 fork fail the real udocker
-invocation with `libm.so.6: cannot stat shared object: Invalid argument` when
-`-k 6.8.0` is present.
+The x86_64 binary predates `build.sh`. It was built with no optimization and
+without `-Wl,-z,noexecstack`, against Ubuntu 24.04 gcc 13.3 and glibc
+2.39-0ubuntu8.8, and it does not carry the temp-noise patch; the reproduction
+script pins each of those, because each of them shows up in the bytes. Earlier
+revisions of this README named `a0dc181e` as its base, inferred from the
+`seccomp.c` blob in the patches; that file is the same in both commits, and
+the binary's version banner (`-704a4ab7`) and its `clone3` support identify
+the later commit. Neither binary is built from the `jorge-lip/proot-udocker`
+fork that udocker itself ships.
+
+`build.sh` remains the recipe for new builds. It pins `a0dc181e`, builds
+with `-O2` and a non-executable stack, and applies the temp-noise patch, so a
+rebuilt x86_64 binary differs in behavior from the shipped one and must pass
+the gates below and the real-node rollout before it replaces it.
+
+Fresh binaries built from the old 2019 `jorge-lip/proot-udocker` `udocker-1`
+fork fail the real udocker invocation with
+`libm.so.6: cannot stat shared object: Invalid argument` when `-k 6.8.0` is
+present.
 
 ## Variants
 

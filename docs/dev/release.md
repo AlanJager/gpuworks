@@ -148,7 +148,7 @@ Cloudflare 区域 `gpuworks.ai` 上为 `dl.gpuworks.ai` 配了两条缓存规则
 | 昇腾 vCANN | `internal/assets/bin/runtime-assets/ascend/linux-{amd64,arm64}/libvruntime.so` | amd64 + arm64 各一份 | `make runtime-assets-verify`；重建用 `make runtime-assets` |
 | PPU HGGC | `internal/assets/bin/runtime-assets/ppu/linux-amd64/hggc-13.0/{hggc_quota.so,hgml_dlsym_hook.so}` | 目前仅 amd64 | 同上 |
 | partition probe | `internal/assets/bin/runtime-assets/probe/partition-probe-linux-{amd64,arm64}.tar.gz` | amd64 + arm64 | 同上；镜像单独用 `make runtime-assets-probe` 重建 |
-| udocker PRoot | `internal/assets/bin/proot-{x86_64,arm64}-static-nofd` | x86_64 + arm64 | `check-assets`/`runtime-assets-verify` 均不覆盖，需按 `internal/assets/bin/manifest.sha256` 人工核对 |
+| udocker PRoot | `internal/assets/bin/proot-{x86_64,arm64}-static-nofd` | x86_64 + arm64 | `check-assets`/`runtime-assets-verify` 均不覆盖，需按 `internal/assets/bin/manifest.sha256` 人工核对；x86_64 可用 `build/runtime-assets/proot/reproduce-embedded-x86_64.sh` 逐字节复现，各自的源码见 `build/runtime-assets/proot/README.md` |
 
 昇腾与 PPU 运行库的清单和哈希集中在 `internal/assets/bin/runtime-assets/manifest.json`，backend id
 分别是 `ascend-dgpu`、`ppu-dgpu`（定义于 `internal/accelerator/backend.go`）。partition probe 的哈希
