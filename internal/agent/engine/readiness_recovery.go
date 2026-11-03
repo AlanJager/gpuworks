@@ -3,11 +3,11 @@ package engine
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"strings"
-	"time"
 
 	"gpuworks.ai/gpuworks/internal/engines"
 	"gpuworks.ai/gpuworks/internal/proto"
@@ -28,12 +28,11 @@ func readEngineReadiness(resp *http.Response) (engineReadiness, error) {
 	return state, err
 }
 
-// checkEngineReadiness observes positively identified Strata servers only.
-// A failed probe proves nothing. An intentionally unloaded model is still
-// listed as unloaded; after a child crash /v1/models returns an empty list.
+// checkEngineReadiness retires engines that repeatedly fail their HTTP check.
+// A Strata child failure still uses its existing in-container recovery path.
 func (e *Engine) checkEngineReadiness(ctx context.Context, serving servingInstance) {
 	spec := serving.spec
-	if spec.Engine != engines.Callable || spec.Headless || spec.APIPort <= 0 || spec.DesiredSleep > 0 {
+	if spec.Headless || spec.APIPort <= 0 || spec.DesiredSleep > 0 {
 		return
 	}
 	e.mu.Lock()
@@ -42,38 +41,35 @@ func (e *Engine) checkEngineReadiness(ctx context.Context, serving servingInstan
 	if asleep {
 		return
 	}
-	client := &http.Client{Timeout: 3 * time.Second}
-	path := spec.HealthPath
-	if path == "" {
-		path = "/health"
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("http://127.0.0.1:%d%s", spec.APIPort, path), nil)
-	if err != nil {
+	client := &http.Client{Timeout: e.healthProbeTimeout}
+	resp, probeErr := probeEngineHealth(ctx, spec, client, e.healthProbeAttempts, e.healthProbeInterval)
+	if ctx.Err() != nil || errors.Is(probeErr, errInvalidHealthEndpoint) {
+		if resp != nil {
+			resp.Body.Close()
+		}
 		return
 	}
-	resp, err := client.Do(req)
-	if err != nil {
-		return
-	}
-	state, decodeErr := readEngineReadiness(resp)
-	if decodeErr != nil || resp.StatusCode != http.StatusOK || state.Service != "strata" || state.Loaded == nil || *state.Loaded || state.APIKey == nil || *state.APIKey {
-		return
-	}
-	req, err = http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("http://127.0.0.1:%d/v1/models", spec.APIPort), nil)
-	if err != nil {
-		return
-	}
-	resp, err = client.Do(req)
-	if err != nil {
-		return
-	}
-	models, valid := readStrataModels(resp)
-	if !valid || len(models) > 0 {
-		return
+	if probeErr == nil {
+		state, decodeErr := readEngineReadiness(resp)
+		if spec.Engine != engines.Callable || decodeErr != nil || state.Service != "strata" || state.Loaded == nil || *state.Loaded || state.APIKey == nil || *state.APIKey {
+			return
+		}
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("http://127.0.0.1:%d/v1/models", spec.APIPort), nil)
+		if err != nil {
+			return
+		}
+		resp, err = client.Do(req)
+		if err != nil {
+			return
+		}
+		models, valid := readStrataModels(resp)
+		if !valid || len(models) > 0 {
+			return
+		}
 	}
 	e.mu.Lock()
 	current, ok := e.watchableLocked(spec.UUID, serving.epoch)
-	if !ok || current.DesiredSleep > 0 || e.sleepLevel[spec.UUID] > 0 {
+	if !ok || ctx.Err() != nil || current.DesiredSleep > 0 || e.sleepLevel[spec.UUID] > 0 {
 		e.mu.Unlock()
 		return
 	}
@@ -82,11 +78,13 @@ func (e *Engine) checkEngineReadiness(ctx context.Context, serving servingInstan
 	attemptCtx, cancel := context.WithCancel(ctx)
 	e.inFlightCancel[spec.UUID] = cancel
 	e.mu.Unlock()
+	defer e.finishEnsure(current)
+	if probeErr != nil {
+		e.retireStopped(attemptCtx, current, serving.epoch, probeErr.Error())
+		return
+	}
 	e.reportStateProgress(current, proto.InstStarting, containerName(spec.UUID), "", "engine child is not loaded; recovering", proto.PhaseHealthCheck, 0, 0, 0, 0)
-	go func() {
-		defer e.finishEnsure(current)
-		e.probeAndWatch(attemptCtx, current, containerName(current.UUID), serving.epoch)
-	}()
+	e.probeAndWatch(attemptCtx, current, containerName(current.UUID), serving.epoch)
 }
 
 func readStrataModels(resp *http.Response) ([]json.RawMessage, bool) {

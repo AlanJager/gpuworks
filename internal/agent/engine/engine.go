@@ -70,6 +70,9 @@ type Engine struct {
 	// it running; only such an instance is watched for its container exiting.
 	// liveness.go explains why the other maps cannot tell this.
 	servingEpoch map[string]uint64
+	// Read-only HTTP probes do not occupy inFlight: container exits must still
+	// be observed while an engine is slow to answer. One task per instance.
+	healthProbes map[string]*healthProbeTask
 	// Runtime observations are tied to the ctrl connection that was current
 	// before runtime inspection began. The reporter validates that connection
 	// epoch again without holding Engine.mu before doing any network I/O.
@@ -83,6 +86,9 @@ type Engine struct {
 	headlessProbeInterval time.Duration
 	headlessStableChecks  int
 	livenessInterval      time.Duration
+	healthProbeAttempts   int
+	healthProbeInterval   time.Duration
+	healthProbeTimeout    time.Duration
 	networkInterfaceName  func(string) (string, error)
 
 	// networkConfig reads the node's effective network configuration. The node
@@ -159,10 +165,14 @@ func NewWithProber(driver runtime.Driver, report Reporter, log *slog.Logger, sta
 		sleepPIDs:             map[string]map[string]int{},
 		runtimeEpoch:          map[string]uint64{},
 		servingEpoch:          map[string]uint64{},
+		healthProbes:          map[string]*healthProbeTask{},
 		residueSettle:         defaultResidueSettle,
 		headlessProbeInterval: time.Second,
 		headlessStableChecks:  3,
 		livenessInterval:      defaultLivenessInterval,
+		healthProbeAttempts:   runningHealthAttempts,
+		healthProbeInterval:   engineHealthRetryInterval,
+		healthProbeTimeout:    engineHealthTimeout,
 		networkInterfaceName:  networkInterfaceNameForIP,
 	}
 	for _, option := range options {

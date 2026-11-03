@@ -16,12 +16,10 @@ import (
 // makes detecting an exit a few seconds sooner worth little.
 const defaultLivenessInterval = 15 * time.Second
 
-// The readiness probes look at the container only until they report running;
-// after that nothing reported on it. A container that exits later (stopped by hand,
-// crashed, OOM-killed, or an engine that returned 0) would leave the instance
-// running on the control plane forever and the controller would never rebuild
-// it. The liveness monitor closes that gap: it reports such an exit as failed,
-// which the controller treats like any other failed attempt.
+// After startup reports running, the liveness monitor checks the container
+// and schedules an independent HTTP probe for each awake serving instance.
+// Container exits and repeated HTTP failures retire the instance through the
+// same cleanup/report path, so the controller can rebuild a failed attempt.
 //
 // Which instances it watches cannot be derived from the desired, in-flight and
 // cleanup maps. Once an ensure attempt has ended, an instance that is desired
@@ -36,6 +34,7 @@ const defaultLivenessInterval = 15 * time.Second
 
 // RunLivenessMonitor watches running instances until ctx ends.
 func (e *Engine) RunLivenessMonitor(ctx context.Context) {
+	defer e.stopHealthProbes()
 	interval := e.livenessInterval
 	if interval <= 0 {
 		interval = defaultLivenessInterval
@@ -71,9 +70,9 @@ type servingInstance struct {
 }
 
 // checkLiveness runs one round over every watched instance. The runtime's
-// listing only spares the inspect: an instance is retired on what its own
-// inspect says, so a listing that fails or leaves a container out costs that
-// round's saving and decides nothing.
+// listing only spares the inspect: a container exit is decided by its own
+// inspect, so a listing that fails or leaves a container out costs that round's
+// saving and decides nothing. HTTP retries run outside this loop.
 func (e *Engine) checkLiveness(ctx context.Context) {
 	instances := e.servingInstances()
 	if len(instances) == 0 {
@@ -85,7 +84,7 @@ func (e *Engine) checkLiveness(ctx context.Context) {
 			return
 		}
 		if running[containerName(serving.spec.UUID)] {
-			e.checkEngineReadiness(ctx, serving)
+			e.startHealthProbe(ctx, serving)
 			continue
 		}
 		e.checkServing(ctx, serving.spec, serving.epoch)
@@ -157,6 +156,7 @@ func (e *Engine) checkServing(ctx context.Context, spec proto.InstanceDesiredSta
 		return
 	}
 	if st.Exists && st.Running {
+		e.startHealthProbe(ctx, servingInstance{spec: spec, epoch: epoch})
 		return
 	}
 	// An absent container counts as well: the agent's own teardowns take the
