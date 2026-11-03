@@ -19,6 +19,8 @@ import (
 
 	// Registers the pure-Go "sqlite" driver (modernc). FTS5 is compiled in.
 	_ "github.com/glebarez/go-sqlite"
+
+	"gpuworks.ai/gpuworks/internal/sqliteutil"
 )
 
 // Severity levels as produced by the agent's classifier. Empty means unknown.
@@ -165,7 +167,8 @@ type sqliteStore struct {
 
 // OpenSQLite opens (creating if necessary) the log store at path. Any legacy
 // single-table layout found in the file is migrated atomically on open.
-func OpenSQLite(path string) (Store, error) {
+func OpenSQLite(path string) (result Store, err error) {
+	defer func() { err = sqliteutil.WrapOpenError(path, err) }()
 	writer, err := openPooled(path, 1)
 	if err != nil {
 		return nil, err

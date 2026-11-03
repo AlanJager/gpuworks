@@ -161,28 +161,51 @@ func pathWithin(parent, child string) bool {
 	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator))
 }
 
-func safeUninstallDirectory(path string) error {
+// checkDedicatedDirectory excludes shared roots before recursive filesystem changes.
+func checkDedicatedDirectory(path string) error {
 	if !filepath.IsAbs(path) {
-		return fmt.Errorf("uninstall directory must be absolute: %s", path)
+		return fmt.Errorf("directory must be absolute: %s", path)
 	}
 	clean := filepath.Clean(path)
+	canonical, err := resolveUninstallPath(clean)
+	if err != nil {
+		return err
+	}
 	// These directories can contain an installation, but cannot themselves
 	// be the installation or its dedicated data directory.
-	protected := []string{"/", "/opt", "/opt/gpuworks", "/usr", "/usr/local", "/bin", "/sbin", "/etc", "/var", "/var/lib", "/var/log", "/var/tmp", "/tmp", "/home", "/root", "/Users", "/private", "/private/tmp", "/private/var", "/srv", "/mnt", "/media", "/run", "/dev", "/proc", "/sys", "/lib", "/lib64", "/boot"}
+	protected := []string{"/", "/opt", "/opt/gpuworks", "/usr", "/usr/local", "/bin", "/sbin", "/etc", "/var", "/var/lib", "/var/log", "/var/tmp", "/tmp", "/home", "/root", "/Users", "/private", "/private/tmp", "/private/var", "/private/var/lib", "/private/var/log", "/private/var/tmp", "/srv", "/mnt", "/media", "/run", "/dev", "/proc", "/sys", "/lib", "/lib64", "/boot"}
 	if home, err := os.UserHomeDir(); err == nil {
-		protected = append(protected, home)
+		protected = append(protected, filepath.Clean(home))
 	}
 	for _, root := range protected {
-		if clean == root {
-			return fmt.Errorf("refusing cleanup of broad directory %s", path)
+		// Protect the directory identity too: /bin may be /usr/bin,
+		// /var may be /private/var, and HOME may itself be a symlink.
+		resolved, resolveErr := filepath.EvalSymlinks(root)
+		for _, candidate := range []string{clean, canonical} {
+			if candidate == root || (resolveErr == nil && candidate == resolved) {
+				return fmt.Errorf("refusing recursive changes to broad directory %s", path)
+			}
 		}
 	}
 	// User home directories are shared workspace, including those of users
-	// other than the operator running uninstall via sudo.
-	parent := filepath.Dir(clean)
-	if parent == "/home" || parent == "/Users" {
-		return fmt.Errorf("refusing cleanup of user home directory %s", path)
+	// other than the operator running the command via sudo.
+	for _, root := range []string{"/home", "/Users"} {
+		resolved, resolveErr := filepath.EvalSymlinks(root)
+		for _, candidate := range []string{clean, canonical} {
+			parent := filepath.Dir(candidate)
+			if parent == root || (resolveErr == nil && parent == resolved) {
+				return fmt.Errorf("refusing recursive changes to user home directory %s", path)
+			}
+		}
 	}
+	return nil
+}
+
+func safeUninstallDirectory(path string) error {
+	if err := checkDedicatedDirectory(path); err != nil {
+		return err
+	}
+	clean := filepath.Clean(path)
 	resolved, err := resolveUninstallPath(clean)
 	if err != nil {
 		return err

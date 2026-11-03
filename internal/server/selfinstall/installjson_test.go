@@ -25,7 +25,7 @@ type legacyInstall struct {
 // the layout came from install.json rather than from the defaults.
 func (h *harness) writeInstallJSONInstall(releaseID, addr string) legacyInstall {
 	h.t.Helper()
-	root := h.t.TempDir()
+	root := mustEvalSymlinks(h.t, h.t.TempDir())
 	old := legacyInstall{DataDir: filepath.Join(root, "srv-data"), LogsDir: filepath.Join(root, "srv-logs")}
 	writeFile(h.t, h.layout.Binary(), "old binary", 0o755)
 	writeFile(h.t, filepath.Join(old.DataDir, "gpuworks.db"), "old database", 0o600)

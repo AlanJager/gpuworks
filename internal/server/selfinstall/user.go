@@ -59,27 +59,67 @@ func nologinShell() string {
 	return "/bin/false"
 }
 
-// chown makes the install tree writable by the account the service runs as.
+// chownTree shares every application directory with the service account.
 func (i *Installer) chownTree(ctx context.Context, name string) error {
 	name = strings.TrimSpace(name)
 	if name == "" || name == "root" {
 		return nil
 	}
+	roots, err := i.permissionRoots()
+	if err != nil {
+		return err
+	}
 	run := i.deps.Run.Run
 	group := i.serviceGroup(ctx, name)
-	if err := run(ctx, Command{
-		Path: "chown", Args: []string{"-R", name + ":" + group, i.layout.Dir}, Sudo: true,
-	}); err != nil {
-		return err
+	for _, root := range roots {
+		if err := run(ctx, Command{
+			Path: "chown", Args: []string{"-R", name + ":" + group, root}, Sudo: true,
+		}); err != nil {
+			return err
+		}
+		// Share files through the service group. Only directories get setgid;
+		// setting it on an executable would change the group it runs as.
+		if err := run(ctx, Command{Path: "chmod", Args: []string{"-R", "g+rwX", root}, Sudo: true}); err != nil {
+			return err
+		}
+		if err := run(ctx, Command{Path: "find", Args: []string{root, "-type", "d", "-exec", "chmod", "g+s", "{}", "+"}, Sudo: true}); err != nil {
+			return err
+		}
 	}
-	// The tree is shared workspace: group-writable everything, and the setgid
-	// bit on directories so files created by either account keep the service
-	// group. The setgid bit stays off files — on an executable it would change
-	// the group the program runs as.
-	if err := run(ctx, Command{Path: "chmod", Args: []string{"-R", "g+rwX", i.layout.Dir}, Sudo: true}); err != nil {
-		return err
+	return nil
+}
+
+// Validate every root before changing anything. Resolve symlinks before
+// deduplicating: data inside the install tree may point to an external disk.
+func (i *Installer) permissionRoots() ([]string, error) {
+	var roots []string
+	for _, dir := range []string{i.layout.Dir, i.layout.DataDir, i.layout.LogsDir} {
+		if err := checkDedicatedDirectory(dir); err != nil {
+			return nil, fmt.Errorf("refusing recursive permission changes for %s: %w", dir, err)
+		}
+		root, err := resolveUninstallPath(dir)
+		if err != nil {
+			return nil, fmt.Errorf("resolve permission directory %s: %w", dir, err)
+		}
+		if err := checkDedicatedDirectory(root); err != nil {
+			return nil, fmt.Errorf("refusing recursive permission changes for %s: %w", dir, err)
+		}
+		roots = append(roots, root)
 	}
-	return run(ctx, Command{Path: "find", Args: []string{i.layout.Dir, "-type", "d", "-exec", "chmod", "g+s", "{}", "+"}, Sudo: true})
+	var unique []string
+	for n, root := range roots {
+		covered := false
+		for other, parent := range roots {
+			if n != other && pathWithin(parent, root) && (parent != root || other < n) {
+				covered = true
+				break
+			}
+		}
+		if !covered {
+			unique = append(unique, root)
+		}
+	}
+	return unique, nil
 }
 
 // serviceGroup is the group the service account's files are shared through:

@@ -103,8 +103,8 @@ func TestUninstallOrdinaryPreservesRecoveryFiles(t *testing.T) {
 func TestUninstallPurgeUsesConfiguredPathsAndRetainsUnownedFiles(t *testing.T) {
 	h := uninstallFixture(t)
 	cfg := h.config()
-	cfg.DataDir = filepath.Join(t.TempDir(), "dedicated-data")
-	cfg.Log.File = filepath.Join(t.TempDir(), "shared-logs", "custom-server.log")
+	cfg.DataDir = filepath.Join(mustEvalSymlinks(t, t.TempDir()), "dedicated-data")
+	cfg.Log.File = filepath.Join(mustEvalSymlinks(t, t.TempDir()), "shared-logs", "custom-server.log")
 	h.writeConfig(cfg)
 	writeFile(t, filepath.Join(cfg.DataDir, "gpuworks.db"), "external database", 0o600)
 	writeFile(t, filepath.Join(cfg.DataDir, "master.key"), "external key", 0o600)

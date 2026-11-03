@@ -18,6 +18,8 @@ import (
 
 	// Registers the pure-Go "sqlite" driver.
 	_ "github.com/glebarez/go-sqlite"
+
+	"gpuworks.ai/gpuworks/internal/sqliteutil"
 )
 
 // schemaVersion is stored in PRAGMA user_version. A file written by a newer
@@ -36,7 +38,8 @@ type Store struct {
 }
 
 // Open opens or creates stats.db at path.
-func Open(path string) (*Store, error) {
+func Open(path string) (result *Store, err error) {
+	defer func() { err = sqliteutil.WrapOpenError(path, err) }()
 	writer, err := openPooled(path, 1)
 	if err != nil {
 		return nil, err

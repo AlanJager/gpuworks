@@ -25,6 +25,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/auth"
 	"gpuworks.ai/gpuworks/internal/server/bus"
+	"gpuworks.ai/gpuworks/internal/sqliteutil"
 )
 
 // Store wraps the database handle and the event bus.
@@ -127,7 +128,8 @@ func readOnlyDSN(dsn string) string {
 
 // Open connects to SQLite (pure-Go driver) and runs migrations.
 // dsn "" or ":memory:" opens an in-memory database (used by tests).
-func Open(dsn string, b *bus.Bus) (*Store, error) {
+func Open(dsn string, b *bus.Bus) (result *Store, err error) {
+	defer func() { err = sqliteutil.WrapOpenError(dsn, err) }()
 	inMemory := isInMemoryDSN(dsn)
 	if dsn == "" {
 		dsn = "file::memory:?cache=shared"
@@ -174,7 +176,7 @@ func Open(dsn string, b *bus.Bus) (*Store, error) {
 			NowFunc: func() time.Time { return time.Now().UTC() },
 		})
 		if err != nil {
-			return nil, fmt.Errorf("open sqlite (read pool): %w", err)
+			return nil, fmt.Errorf("open sqlite (read pool): %w", sqliteutil.WrapOpenError(readOnlyDSN(dsn), err))
 		}
 		readSQLDB, err := readGDB.DB()
 		if err != nil {
