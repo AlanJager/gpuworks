@@ -1,25 +1,19 @@
 # Patched PRoot provenance and A/B build
 
 GPUWorks embeds `internal/assets/bin/proot-{x86_64,arm64}-static-nofd` for rootless
-udocker nodes. This directory records the source provenance, patches, and a
-repeatable build for the existing nofd behavior and an experimental
-full-no-socket variant.
+udocker nodes. This directory records their source, the patches, and a
+repeatable build for the nofd behavior and an experimental full-no-socket
+variant.
 
-## Source baseline
+## Source of the embedded binaries
 
-Both variants are pinned to upstream `proot-me/proot` commit:
+- `proot-x86_64-static-nofd`: upstream `proot-me/proot` `704a4ab7` plus
+  `patches/proot-nobrk-nofd.patch`. It predates `build.sh`;
+  `reproduce-embedded-x86_64.sh` rebuilds it byte for byte.
+- `proot-arm64-static-nofd`: upstream `a0dc181e` plus the nofd, temp-noise and
+  arm64-faccessat2 patches, built with the `build.sh` steps.
 
-```text
-a0dc181e939c29d855f8a0fac12a484fd1014824
-```
-
-This is not the old `jorge-lip/proot-udocker` `udocker-1` branch. The base blob
-ID in the historical nofd/full-no-socket patches (`792c79e`) resolves to this
-upstream commit, and the current production binary's 2023 PRoot copyright,
-`version_48.6`, and CLI source-line strings also identify the modern upstream
-line. Fresh binaries built from the old 2019 fork fail the real udocker
-invocation with `libm.so.6: cannot stat shared object: Invalid argument` when
-`-k 6.8.0` is present.
+New builds use `build.sh`.
 
 ## Variants
 

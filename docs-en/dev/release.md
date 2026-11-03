@@ -148,7 +148,7 @@ so rebuilding only the server does not incorporate updates to them. Validate or 
 | Ascend vCANN | `internal/assets/bin/runtime-assets/ascend/linux-{amd64,arm64}/libvruntime.so` | One copy each for amd64 + arm64 | `make runtime-assets-verify`; rebuild with `make runtime-assets` |
 | PPU HGGC | `internal/assets/bin/runtime-assets/ppu/linux-amd64/hggc-13.0/{hggc_quota.so,hgml_dlsym_hook.so}` | Currently amd64 only | Same as above |
 | partition probe | `internal/assets/bin/runtime-assets/probe/partition-probe-linux-{amd64,arm64}.tar.gz` | amd64 + arm64 | Same as above; rebuild the images separately with `make runtime-assets-probe` |
-| udocker PRoot | `internal/assets/bin/proot-{x86_64,arm64}-static-nofd` | x86_64 + arm64 | Covered by neither `check-assets` nor `runtime-assets-verify`; verify manually against `internal/assets/bin/manifest.sha256` |
+| udocker PRoot | `internal/assets/bin/proot-{x86_64,arm64}-static-nofd` | x86_64 + arm64 | Covered by neither `check-assets` nor `runtime-assets-verify`; verify manually against `internal/assets/bin/manifest.sha256`. `build/runtime-assets/proot/reproduce-embedded-x86_64.sh` rebuilds the x86_64 binary byte for byte; `build/runtime-assets/proot/README.md` records the source of each binary |
 
 The manifest and hashes for the Ascend and PPU runtime libraries are centralized in `internal/assets/bin/runtime-assets/manifest.json`. Their backend ids
 are `ascend-dgpu` and `ppu-dgpu`, respectively (defined in `internal/accelerator/backend.go`). Partition probe hashes
