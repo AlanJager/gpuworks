@@ -15,20 +15,24 @@ import (
 	"gpuworks.ai/gpuworks/internal/accelerator"
 )
 
-// GPU is the normalized hardware fact reported by an agent.
+// GPU is the normalized hardware fact reported by an agent. ArchID is the
+// persisted architecture identity; an empty value remains unknown.
 type GPU struct {
 	Name   string
 	Vendor string
 	CC     float64
+	ArchID string
 }
 
 // Predicate is the inline gpus object from a spec or unsupported rule. Vendor
 // is required. CC is a NVIDIA-only expression: >=x, <x, x, or x..y. Name is a
 // case-insensitive regular expression against the detector-provided card name.
+// ArchID, when set, requires a non-empty exact architecture ID match ignoring case.
 type Predicate struct {
-	Vendor string
-	CC     string
-	Name   string
+	Vendor string `json:"vendor"`
+	CC     string `json:"cc,omitempty"`
+	Name   string `json:"name,omitempty"`
+	ArchID string `json:"arch_id,omitempty"`
 }
 
 // Spec is the matching subset of a flat inference spec. Indexes returned by
@@ -66,6 +70,7 @@ func ReportedGPU(name, vendor, archID, computeCapability string) GPU {
 		Name:   name,
 		Vendor: accelerator.InferVendor(vendor, name, archID, computeCapability),
 		CC:     cc,
+		ArchID: strings.TrimSpace(archID),
 	}
 }
 
@@ -110,8 +115,9 @@ func ValidateSpec(gpu GPU, spec Spec, unsupported []Unsupported) error {
 
 // Verdict is the result of evaluating one predicate. Specificity is exposed
 // for diagnostics; selection uses it together with the internal predicate
-// width. A name predicate is more specific than a bounded CC range, which is
-// more specific than an open CC range or a vendor-only predicate.
+// width. An exact architecture ID is more specific than a name predicate,
+// which is more specific than a bounded CC range, an open CC range, or a
+// vendor-only predicate.
 type Verdict struct {
 	Matched     bool
 	Reason      string
@@ -135,6 +141,8 @@ type Selection struct {
 
 // Evaluate reports whether gpu matches predicate. Invalid predicates are a
 // non-match so an invalid catalog entry can never accidentally become usable.
+// An ArchID selector is exact (case-insensitive); it does not infer architecture
+// from the display name.
 func Evaluate(gpu GPU, predicate Predicate) Verdict {
 	gpu.Vendor = normalize(gpu.Vendor)
 	predicate.Vendor = normalize(predicate.Vendor)
@@ -143,6 +151,9 @@ func Evaluate(gpu GPU, predicate Predicate) Verdict {
 	}
 	if gpu.Vendor == "" || gpu.Vendor != predicate.Vendor {
 		return Verdict{Reason: "vendor mismatch"}
+	}
+	if archID := strings.TrimSpace(predicate.ArchID); archID != "" && !strings.EqualFold(strings.TrimSpace(gpu.ArchID), archID) {
+		return Verdict{Reason: "gpus.arch_id does not match GPU architecture"}
 	}
 
 	name, err := compileName(predicate.Name)
@@ -166,6 +177,9 @@ func Evaluate(gpu GPU, predicate Predicate) Verdict {
 	}
 	if name != nil {
 		specificity = 3
+	}
+	if strings.TrimSpace(predicate.ArchID) != "" {
+		specificity += 4
 	}
 	return Verdict{
 		Matched:     true,
@@ -373,6 +387,9 @@ func predicateDescription(predicate Predicate) string {
 	}
 	if name := strings.TrimSpace(predicate.Name); name != "" {
 		parts = append(parts, fmt.Sprintf("name=%q", name))
+	}
+	if archID := strings.TrimSpace(predicate.ArchID); archID != "" {
+		parts = append(parts, "arch_id="+archID)
 	}
 	return "gpus:{" + strings.Join(parts, " ") + "}"
 }

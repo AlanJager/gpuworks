@@ -452,6 +452,10 @@ func (s *Store) InferenceModelByID(id uint) (*InferenceModel, error) {
 	return &model, err
 }
 
+// InferenceModelKVBytesPerTokenByID reads only the identity and measured KV
+// metadata for one catalog model. Launch planning calls it per candidate, so it
+// must not preload every spec or scan the catalog.
+
 func (s *Store) InferenceModelByModelID(modelID string) (*InferenceModel, error) {
 	var model InferenceModel
 	err := s.db.Preload("Specs").Where("model_id = ?", strings.ToLower(strings.TrimSpace(modelID))).First(&model).Error
@@ -465,15 +469,16 @@ type DetectedGPU struct {
 	Vendor string
 	Name   string
 	CC     string
+	ArchID string
 }
 
 func (s *Store) ListDistinctDetectedGPUs() ([]DetectedGPU, error) {
 	var rows []DetectedGPU
 	err := s.db.Model(&GPU{}).
-		Select("lower(trim(vendor)) AS vendor, trim(name) AS name, trim(compute_capability) AS cc").
+		Select("lower(trim(vendor)) AS vendor, trim(name) AS name, trim(compute_capability) AS cc, trim(arch_id) AS arch_id").
 		Where("trim(name) <> ''").
-		Group("lower(trim(vendor)), trim(name), trim(compute_capability)").
-		Order("vendor, name, cc").Scan(&rows).Error
+		Group("lower(trim(vendor)), trim(name), trim(compute_capability), trim(arch_id)").
+		Order("vendor, name, cc, arch_id").Scan(&rows).Error
 	return rows, err
 }
 

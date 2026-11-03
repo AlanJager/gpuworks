@@ -21,6 +21,7 @@ type GPU struct {
 	CC           float64 `json:"cc,omitempty"`
 	Category     string  `json:"category"`
 	Architecture string  `json:"architecture"`
+	ArchID       string  `json:"arch_id,omitempty"`
 }
 
 // List returns a copy so callers cannot mutate the process-wide catalog.

@@ -95,3 +95,72 @@ func TestSelectSpecificityAndAmbiguity(t *testing.T) {
 		t.Fatalf("equal predicates must select catalog order and mark ambiguity: %+v", ambiguous)
 	}
 }
+
+func TestArchIDPredicateRequiresMatchingReportedFact(t *testing.T) {
+	predicate := Predicate{Vendor: "amd", Name: `gfx1151|radeon 8060s`, ArchID: "gfx1151"}
+	correct := ReportedGPU("GPU 0x1586 (gfx1151)", "amd", "gfx1151", "")
+	if verdict := Evaluate(correct, predicate); !verdict.Matched {
+		t.Fatalf("matching architecture was rejected: %+v", verdict)
+	}
+	uppercase := correct
+	uppercase.ArchID = "GFX1151"
+	if verdict := Evaluate(uppercase, predicate); !verdict.Matched {
+		t.Fatalf("arch_id comparison must be case-insensitive: %+v", verdict)
+	}
+	for _, tc := range []struct {
+		name string
+		gpu  GPU
+	}{
+		{"wrong architecture with spoofed gfx name", GPU{Name: "GPU 0x1586 (gfx1151)", Vendor: "amd", ArchID: "gfx1150"}},
+		{"missing architecture", GPU{Name: "Radeon 8060S", Vendor: "amd"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if verdict := Evaluate(tc.gpu, predicate); verdict.Matched {
+				t.Fatalf("unverified architecture matched: %+v", verdict)
+			}
+		})
+	}
+	legacy := Predicate{Vendor: "amd", Name: `radeon 8060s`}
+	if verdict := Evaluate(GPU{Name: "Radeon 8060S", Vendor: "amd"}, legacy); !verdict.Matched {
+		t.Fatalf("legacy predicate without arch_id changed behavior: %+v", verdict)
+	}
+}
+
+func TestArchIDSpecificityPreservesNameRefinement(t *testing.T) {
+	gpu := GPU{Name: "Radeon 8060S", Vendor: "amd", ArchID: "gfx1151"}
+	selection := Select(gpu, []Spec{
+		{Name: "arch-only", GPUs: Predicate{Vendor: "amd", ArchID: "gfx1151"}},
+		{Name: "arch-and-name", GPUs: Predicate{Vendor: "amd", Name: "radeon 8060s", ArchID: "GFX1151"}},
+	}, nil)
+	if !selection.Matched || selection.SpecIndex != 1 {
+		t.Fatalf("arch+name selector did not outrank arch-only selector: %+v", selection)
+	}
+
+	legacy := Select(gpu, []Spec{
+		{Name: "arch-only", GPUs: Predicate{Vendor: "amd", ArchID: "gfx1151"}},
+		{Name: "name-only", GPUs: Predicate{Vendor: "amd", Name: "radeon 8060s"}},
+	}, nil)
+	if !legacy.Matched || legacy.SpecIndex != 0 {
+		t.Fatalf("exact arch selector should outrank name-only while preserving old predicate ordering: %+v", legacy)
+	}
+}
+
+func TestDecodePredicateAndUnsupportedKeepArchID(t *testing.T) {
+	predicate, err := DecodePredicate(`{"vendor":"amd","name":"Radeon 8060S","arch_id":"gfx1151"}`)
+	if err != nil || predicate.ArchID != "gfx1151" {
+		t.Fatalf("decoded predicate=%+v err=%v", predicate, err)
+	}
+	if verdict := Evaluate(ReportedGPU("Radeon 8060S", "amd", "gfx1151", ""), predicate); !verdict.Matched {
+		t.Fatalf("decoded selector did not match the reported arch fact: %+v", verdict)
+	}
+
+	unsupported, err := DecodeUnsupported(`[{"gpus":{"vendor":"amd","name":"Radeon 8060S","arch_id":"gfx1150"},"reason":"gfx1150 unsupported"}]`)
+	if err != nil || len(unsupported) != 1 || unsupported[0].GPUs.ArchID != "gfx1150" {
+		t.Fatalf("decoded unsupported=%+v err=%v", unsupported, err)
+	}
+	selection := Select(ReportedGPU("Radeon 8060S", "amd", "gfx1151", ""),
+		[]Spec{{Name: "gfx1151", GPUs: predicate}}, unsupported)
+	if !selection.Matched {
+		t.Fatalf("different-arch unsupported rule vetoed gfx1151: %+v", selection)
+	}
+}

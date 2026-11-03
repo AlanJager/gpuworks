@@ -10,22 +10,35 @@ import (
 // InferenceTemplatePage is one page of GET /api/v1/inference-templates.
 type InferenceTemplatePage = ListPage[InferenceTemplate]
 
+// InferenceDetectedSupport is a read-only projection of catalog rules onto
+// detected hardware. Raw unsupported rules remain separately available.
+type InferenceDetectedSupport struct {
+	PreferredEngine string                     `json:"preferred_engine"`
+	Warnings        []InferenceDetectedWarning `json:"warnings"`
+}
+type InferenceDetectedWarning struct {
+	Reason               string `json:"reason"`
+	Quantization         string `json:"quantization,omitempty"`
+	AlternativeAvailable bool   `json:"alternative_available"`
+}
+
 type InferenceTemplate struct {
-	ID                uint                   `json:"id"`
-	ModelID           string                 `json:"model_id"`
-	DisplayTitle      string                 `json:"display_title,omitempty"`
-	ParameterCount    string                 `json:"parameter_count,omitempty"`
-	Architecture      string                 `json:"architecture,omitempty"`
-	InputModalities   []string               `json:"input_modalities,omitempty"`
-	ReadmeZHCN        string                 `json:"readme_zh_cn,omitempty"`
-	ReadmeEN          string                 `json:"readme_en,omitempty"`
-	ReadmeZHCNContent string                 `json:"readme_zh_cn_content,omitempty"`
-	ReadmeENContent   string                 `json:"readme_en_content,omitempty"`
-	ContextLength     int64                  `json:"context_length,omitempty"`
-	ReleaseDate       string                 `json:"release_date,omitempty"`
-	Source            string                 `json:"source"`
-	Unsupported       []InferenceUnsupported `json:"unsupported,omitempty"`
-	Specs             []InferenceSpecDTO     `json:"specs"`
+	DetectedSupport   *InferenceDetectedSupport `json:"detected_support,omitempty"`
+	ID                uint                      `json:"id"`
+	ModelID           string                    `json:"model_id"`
+	DisplayTitle      string                    `json:"display_title,omitempty"`
+	ParameterCount    string                    `json:"parameter_count,omitempty"`
+	Architecture      string                    `json:"architecture,omitempty"`
+	InputModalities   []string                  `json:"input_modalities,omitempty"`
+	ReadmeZHCN        string                    `json:"readme_zh_cn,omitempty"`
+	ReadmeEN          string                    `json:"readme_en,omitempty"`
+	ReadmeZHCNContent string                    `json:"readme_zh_cn_content,omitempty"`
+	ReadmeENContent   string                    `json:"readme_en_content,omitempty"`
+	ContextLength     int64                     `json:"context_length,omitempty"`
+	ReleaseDate       string                    `json:"release_date,omitempty"`
+	Source            string                    `json:"source"`
+	Unsupported       []InferenceUnsupported    `json:"unsupported,omitempty"`
+	Specs             []InferenceSpecDTO        `json:"specs"`
 }
 
 type InferenceSpecDTO struct {
@@ -134,6 +147,7 @@ type GPUPredicate struct {
 	Vendor string `json:"vendor"`
 	CC     string `json:"cc,omitempty"`
 	Name   string `json:"name,omitempty"`
+	ArchID string `json:"arch_id,omitempty"`
 }
 
 type InferenceUnsupported struct {
@@ -143,7 +157,8 @@ type InferenceUnsupported struct {
 }
 
 type InferenceTemplateIndex struct {
-	Items []InferenceTemplateIndexItem `json:"items"`
+	Hardware []DetectedTemplateChip       `json:"hardware,omitempty"`
+	Items    []InferenceTemplateIndexItem `json:"items"`
 }
 
 type InferenceTemplateIndexItem struct {
@@ -159,17 +174,18 @@ type InferenceTemplateIndexItem struct {
 // InferenceProfileSummary is the compact, hardware-filterable representation
 // used by the deployment wizard before a full template detail is selected.
 type InferenceProfileSummary struct {
-	Source          string       `json:"source"`
-	Name            string       `json:"name"`
-	DisplayNameZHCN string       `json:"display_name_zh_cn,omitempty"`
-	DisplayNameEN   string       `json:"display_name_en,omitempty"`
-	Scenario        string       `json:"scenario,omitempty"`
-	Engine          string       `json:"engine"`
-	Image           string       `json:"image,omitempty"`
-	Quantization    string       `json:"quantization,omitempty"`
-	WeightBytes     int64        `json:"weight_bytes,omitempty"`
-	WeightRepoIDs   []string     `json:"weight_repo_ids,omitempty"`
-	GPUs            GPUPredicate `json:"gpus"`
+	DetectedCompatible *bool        `json:"detected_compatible,omitempty"`
+	Source             string       `json:"source"`
+	Name               string       `json:"name"`
+	DisplayNameZHCN    string       `json:"display_name_zh_cn,omitempty"`
+	DisplayNameEN      string       `json:"display_name_en,omitempty"`
+	Scenario           string       `json:"scenario,omitempty"`
+	Engine             string       `json:"engine"`
+	Image              string       `json:"image,omitempty"`
+	Quantization       string       `json:"quantization,omitempty"`
+	WeightBytes        int64        `json:"weight_bytes,omitempty"`
+	WeightRepoIDs      []string     `json:"weight_repo_ids,omitempty"`
+	GPUs               GPUPredicate `json:"gpus"`
 }
 
 type InferenceTemplateOrganizations struct {
@@ -192,12 +208,14 @@ type TemplateChip struct {
 	CC           float64 `json:"cc,omitempty"`
 	Category     string  `json:"category"`
 	Architecture string  `json:"architecture"`
+	ArchID       string  `json:"arch_id,omitempty"`
 }
 
 type DetectedTemplateChip struct {
 	Vendor string `json:"vendor"`
 	Name   string `json:"name"`
 	CC     string `json:"cc,omitempty"`
+	ArchID string `json:"arch_id,omitempty"`
 }
 
 // InferenceTemplateEvaluation is the answer of POST /inference-templates/evaluate:
