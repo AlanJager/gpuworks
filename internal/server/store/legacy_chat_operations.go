@@ -32,6 +32,18 @@ const legacyChatOperationType = "openai.chat"
 // serialized field order or an omitempty tag changes, leaving the repair to
 // do nothing with no test able to tell.
 func IsDefaultChatOperations(raw string) bool {
+	return isBareOperation(raw, legacyChatOperationType)
+}
+
+// IsDefaultTemplateOperations also recognizes the bare video operation model
+// registration infers from a task. Neither placeholder chooses an engine API;
+// a template may supply its endpoint, mode, encoding and inputs. Normalized
+// contracts, including explicit JSON video contracts, remain user choices.
+func IsDefaultTemplateOperations(raw string) bool {
+	return isBareOperation(raw, legacyChatOperationType, "openai.video.generate")
+}
+
+func isBareOperation(raw string, allowedTypes ...string) bool {
 	var operations []map[string]json.RawMessage
 	if json.Unmarshal([]byte(raw), &operations) != nil || len(operations) != 1 {
 		return false
@@ -56,5 +68,13 @@ func IsDefaultChatOperations(raw string) bool {
 		return false
 	}
 	var operationType string
-	return json.Unmarshal(value, &operationType) == nil && operationType == legacyChatOperationType
+	if json.Unmarshal(value, &operationType) != nil {
+		return false
+	}
+	for _, allowed := range allowedTypes {
+		if operationType == allowed {
+			return true
+		}
+	}
+	return false
 }
