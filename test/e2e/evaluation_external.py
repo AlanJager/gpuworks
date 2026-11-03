@@ -414,6 +414,31 @@ def test_external_endpoint_sweep(page, context, server, artifacts, report, local
 
     gone = page.request.get(server.base + BENCHMARKS + f"/{run_id}")
     check(gone.status == 404, f"deleted run still returns {gone.status}")
+
+    # 14.2's other half: a wizard that is filled one step in and then abandoned must leave nothing
+    # behind. It is done here, after the real run was deleted, so the list is known to be empty and any
+    # row that appeared would be the abandoned draft's.
+    def run_ids():
+        response = page.request.get(server.base + BENCHMARKS)
+        check(response.status == 200, f"benchmark list HTTP {response.status}")
+        body = response.json()
+        items = body["items"] if isinstance(body, dict) else body
+        return [item["id"] for item in items]
+
+    before_abandon = run_ids()
+    action(page, ui["list"]["new"]).click()
+    abandoned = page.get_by_role("dialog")
+    expect(abandoned).to_be_visible()
+    abandoned.get_by_text(grid, exact=True).click()
+    button(abandoned, wizard["next"]).click()
+    expect(abandoned.locator(".ant-steps-item-active")).to_contain_text(wizard["step"]["target"])
+    abandoned.get_by_label(wizard["name"], exact=True).fill(f"e2e-{report['run_id']}-abandoned")
+    page.keyboard.press("Escape")
+    expect(abandoned).not_to_be_visible()
+    after_abandon = run_ids()
+    check(after_abandon == before_abandon, "closing the wizard left a run behind")
+    expect(page.get_by_text(f"e2e-{report['run_id']}-abandoned", exact=True)).to_have_count(0)
+    report["wizard_abandoned"] = {"runs_before": len(before_abandon), "runs_after": len(after_abandon)}
     check(len(fixture.snapshot()["requests"]) == len(snapshot["requests"]),
           "the fixture received requests after the run completed")
 
