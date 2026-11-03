@@ -149,8 +149,8 @@
     },
     {
       "item": "1.2",
-      "status": "partial",
-      "assertion": "empty node disables submit and loaded explicit storage selection; loading/error/no-writable missing"
+      "status": "covered",
+      "assertion": "covered: the two write states the download form can be in are both produced for real and read from what the dialog renders. Every storage the API reports - including the shared default, which is writable too - is switched off, and the dialog is then required to show the no-writable-storage notice, to render no storage picker at all, and to leave its submit disabled, rather than present an unusable form. One storage is brought back together with the default so the picker renders, and the storage that is still off is required to be listed rather than absent from the list, marked with the read-only note, carrying the disabled class, and refusing selection - the row stays aria-selected false and the form's chosen storage does not become that one. The empty-node submit-disabled check this manifest already had is unchanged. Both readings are recorded, and the theme is recorded as marking the row disabled with a class and no aria-disabled attribute rather than claiming a flag it does not set. Proven by mutation: dropping the read-only condition from the option's disabled flag makes the row selectable and fails the class assertion. The storage-enablement switch is restored in a finally block from the values read before the exercise."
     },
     {
       "item": "1.3",

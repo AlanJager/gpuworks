@@ -177,6 +177,20 @@ def drop_storage_target(server, storage_id, node_uuid):
         conn.close()
 
 
+def set_storage_enabled(server, storage_id, enabled):
+    # The only switch that reaches canWriteStorage for a local storage: its writable flag is derived from
+    # the type, so enablement is what decides whether the download form offers it.
+    conn = _files_db(server)
+    try:
+        rows = conn.execute('SELECT enabled FROM storages WHERE id = ?', (storage_id,)).fetchall()
+        checked(len(rows) == 1, f'owned storage rows {len(rows)}')
+        conn.execute('UPDATE storages SET enabled = ? WHERE id = ?', (1 if enabled else 0, storage_id))
+        conn.commit()
+        return rows[0][0]
+    finally:
+        conn.close()
+
+
 def restore_storage_target(server, saved):
     cols, row = saved['cols'], saved['row']
     conn = _files_db(server)
@@ -251,6 +265,84 @@ def prove_refused_model_download(page, dialog, server, token, path, body, report
         'independent_get': MODELS + '/' + str(data['model']['id'])})
     report['last_step'] = 'model-download-refused'
     return refused
+
+
+def exercise_storage_write_states(page, labels, data, server, report, open_dialog):
+    """1.2: a storage that cannot be written is offered but disabled, and with none writable the form
+    says so instead of opening. Both readings come from what the dialog renders, not from the flag the
+    fixture set."""
+    common = strings(report['locale'], 'common')
+    target, guard = data['storages'][0], data['storages'][1]
+    guard_label = guard['name'] + ' · ' + common['storageType']['local']
+    readonly_note = labels['download']['storageReadOnly']
+    restore = {}
+    try:
+        # Every storage the API reports is switched off, not only the ones this fixture owns: the shared
+        # default storage is writable too, and leaving it on is what kept the form alive on the first
+        # attempt and made the no-writable branch unreachable.
+        listed = [s['id'] for s in (page.request.get(server.base + '/api/v1/storages').json() or {}).get('items', [])]
+        checked(len(listed) >= 3, f'expected at least the three known storages, saw {listed}')
+        for storage_id in listed:
+            restore[storage_id] = set_storage_enabled(server, storage_id, False)
+        page.reload()
+        expect(page.get_by_role('heading', name=labels['page']['title'], exact=True)).to_be_visible()
+        dialog = open_dialog()
+        # Every writable storage is gone, so the dialog is required to explain that rather than show an
+        # unusable form: this is the branch that a fixture with only healthy storages never reaches.
+        expect(dialog.get_by_text(labels['download']['noWritableStorage'], exact=True)).to_be_visible()
+        expect(dialog.get_by_role('combobox', name=labels['download']['storage'], exact=True)).to_have_count(0)
+        expect(dialog.locator('.ant-modal-footer .ant-btn-primary')).to_be_disabled()
+        report['no_writable_storage'] = {'alert': labels['download']['noWritableStorage'],
+                                        'storage_select': 0, 'submit_enabled': False}
+        button(dialog.locator('.ant-modal-footer'), labels['action']['cancel']).click()
+        expect(dialog).not_to_be_visible()
+        # One writable storage is brought back: the disabled one must be listed and refused, marked so
+        # the operator can see why, rather than silently missing from the list.
+        # restore keeps the value read before this exercise started; re-enabling the target here must not
+        # overwrite it, or the finally block would put the target back to disabled for good.
+        # Two writable storages are needed for the picker to render at all: with exactly one writable
+        # local storage the form preselects it and hides the select entirely, so the disabled option
+        # would have nothing to appear in. The shared default is the second one, and it is put back by
+        # the finally block like every other storage this exercise touches.
+        set_storage_enabled(server, target['id'], True)
+        default_id = next(s['id'] for s in (page.request.get(server.base + '/api/v1/storages').json()
+                                            or {}).get('items', []) if s['name'] == 'default')
+        set_storage_enabled(server, default_id, True)
+        page.reload()
+        expect(page.get_by_role('heading', name=labels['page']['title'], exact=True)).to_be_visible()
+        dialog = open_dialog()
+        control = dialog.get_by_role('combobox', name=labels['download']['storage'], exact=True)
+        control.focus()
+        control.press('ArrowDown')
+        popup_id = control.get_attribute('aria-controls')
+        popup = page.locator('.ant-select-dropdown').filter(has=page.locator('[id=' + json.dumps(popup_id) + ']'))
+        expect(popup).to_have_count(1)
+        option = popup.locator('.ant-select-item-option').filter(has_text=guard_label)
+        expect(option).to_have_count(1)
+        expect(option).to_have_class(re.compile(r'\bant-select-item-option-disabled\b'))
+        # The note is inside the option's own label. This theme marks the row disabled with a class and no
+        # aria-disabled attribute, which is recorded as what the product actually does rather than
+        # required, so the claim rests on the class and the note the operator can read.
+        expect(option).to_contain_text(readonly_note)
+        report['readonly_storage_option'] = {'label': guard_label, 'disabled': True,
+                                             'note': readonly_note,
+                                             'aria_disabled': option.get_attribute('aria-disabled')}
+        # Selecting it is refused. AntD keeps the list open on a disabled row instead of closing it, so
+        # what is asserted is the outcome rather than the dismissal: the row is not marked selected and the
+        # form's chosen storage does not become the read-only one.
+        option.locator('div').first.click()
+        page.wait_for_timeout(200)
+        expect(option).to_have_attribute('aria-selected', 'false')
+        expect(dialog.locator('.ant-select-selection-item').filter(
+            has_text=guard_label)).to_have_count(0)
+        report['readonly_storage_option']['selected_after_click'] = False
+        page.keyboard.press('Escape')
+        expect(popup).to_be_hidden()
+        button(dialog.locator('.ant-modal-footer'), labels['action']['cancel']).click()
+        expect(dialog).not_to_be_visible()
+    finally:
+        for storage_id, was_enabled in restore.items():
+            set_storage_enabled(server, storage_id, bool(was_enabled))
 
 
 def hold_model_download(page, dialog, path, body, report):
@@ -545,6 +637,19 @@ def exercise_failure_retry(page, context, server, artifacts, report, locale, dat
     # storage so the rest of this case still starts from a clean target.
     download(page, labels, data, data['storages'][1], report, server=server, token=token, refuse=True,
              shell=True, stop_only=True)
+    # 1.2: the two write states this page can be in that a healthy fixture never produces - no writable
+    # storage at all, and one storage that cannot be written next to one that can.
+    trigger = page.get_by_role('row').filter(
+        has=page.get_by_role('button', name=data['name'], exact=True)).get_by_role(
+        'button', name=labels['action']['downloadToNode'], exact=True)
+    download_title = labels['download']['title'].replace('{{name}}', data['name'])
+    def open_download_dialog():
+        trigger.click()
+        opened = page.get_by_role('dialog', name=download_title, exact=True)
+        expect(opened).to_be_visible()
+        return opened
+
+    exercise_storage_write_states(page, labels, data, server, report, open_download_dialog)
     rejected = report['submit_rejection_draft']
     strict(rejected['status'], 409, 'refused submit did not answer 409')
     strict(rejected['body_exact'], True, 'the refused submit did not carry the draft it was given')
