@@ -11,7 +11,7 @@ specs:
   display_name_en: Ampere+ · BF16
   scenario: balanced
   engine: vllm
-  image: gpuworks/gpuworks-runner:cuda13.0-vllm-omni0.30.0-r3
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm-omni0.30.0-r4
   weights:
     quantization: bf16
     sources:
@@ -25,8 +25,71 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.0'
+  # vLLM-Omni tells MOSS variants apart by the model path name, so the weights
+  # mount under a path containing "realtime"; the reference-audio codec mounts
+  # beside them and replaces the Hugging Face id the checkpoint config names.
+  entrypoint:
+  - vllm
+  - serve
+  components:
+  - name: moss-tts-realtime
+    role: primary
+    weights:
+      quantization: bf16
+      sources:
+      - huggingface:
+          repo_id: OpenMOSS-Team/MOSS-TTS-Realtime
+          revision: 75682787d8e2fcc73faca37ba2931453ca9c4022
+      - modelscope:
+          repo_id: openmoss/MOSS-TTS-Realtime
+          revision: 5928e072811e9fcbe605ac2e74c4b28f2f465bf9
+    weight_bytes: 4679903798
+    mount_path: /models/MOSS-TTS-Realtime
+  - name: moss-audio-tokenizer
+    role: auxiliary
+    weights:
+      quantization: fp32
+      sources:
+      - huggingface:
+          repo_id: OpenMOSS-Team/MOSS-Audio-Tokenizer
+          revision: 3cd226ba2947efa357ef453bcad111b6eafba782
+      - modelscope:
+          repo_id: openmoss/MOSS-Audio-Tokenizer
+          revision: 1b3b842480c8fc415f373642fe78d896edc8a76d
+    weight_bytes: 7101115998
+    mount_path: /models/moss-audio-tokenizer
+  # The codec is loaded twice on the card: by the code2wav stage (about 7.7 GiB)
+  # and, for reference-audio encoding, by the API server (about 7.2 GiB, outside
+  # every stage budget). The bundled deploy config gives the talker stage 0.60 of
+  # the card, which leaves no room for that on a 24 GiB card (measured on an RTX
+  # 4090 D: OOM at the first speech request). Below 40 GiB the talker stage gets
+  # 0.25 instead (weights 4.4 GiB plus KV for about three full-length requests),
+  # which served speech on the same card; larger cards keep the bundled 0.60.
+  pre_start_script: |-
+    cat > /tmp/moss-tts-realtime-deploy.yaml <<YAML
+    base_config: /usr/local/lib/python3.12/dist-packages/vllm_omni/deploy/moss_tts_realtime.yaml
+    stages:
+      - stage_id: 0
+        gpu_memory_utilization: ${TALKER_GPU_MEMORY_UTILIZATION}
+    YAML
   args:
   - --omni
+  - --trust-remote-code
+  - --hf-overrides
+  - '{"codec_model_name_or_path":"/models/moss-audio-tokenizer"}'
+  - --deploy-config
+  - /tmp/moss-tts-realtime-deploy.yaml
+  placement:
+    language: starlark
+    resolver: |-
+      def resolve(gpu):
+          if gpu.count != 1:
+              return reject("MOSS-TTS-Realtime runs on one GPU")
+          if gpu.min_memory_gib < 22:
+              return reject("MOSS-TTS-Realtime needs at least 22 GiB: both codec copies take about 15 GiB")
+          if gpu.min_memory_gib < 40:
+              return accept(gpu_memory_mib_per_device=21504, variables={"TALKER_GPU_MEMORY_UTILIZATION": "0.25"})
+          return accept(gpu_memory_mib_per_device=40960, variables={"TALKER_GPU_MEMORY_UTILIZATION": "0.60"})
   api:
     health_endpoint: /health
     operations:

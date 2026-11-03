@@ -110,7 +110,7 @@ specs:
   display_name_en: Hopper+ · MXFP4
   scenario: balanced
   engine: vllm
-  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r4
   weights:
     quantization: mxfp4
     sources:
@@ -142,7 +142,7 @@ specs:
   display_name_en: Hopper+ · MXFP4 · Speculative
   scenario: throughput
   engine: vllm
-  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r4
   weights:
     quantization: mxfp4
     sources:
@@ -204,7 +204,7 @@ specs:
   display_name_en: Hopper · MXFP4
   scenario: throughput
   engine: vllm
-  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r4
   weights:
     quantization: mxfp4
     sources:
@@ -242,7 +242,7 @@ specs:
   display_name_en: Hopper · MXFP4 · Speculative
   scenario: throughput
   engine: vllm
-  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r4
   weights:
     quantization: mxfp4
     sources:
@@ -310,7 +310,7 @@ specs:
   display_name_en: Blackwell · NVFP4
   scenario: throughput
   engine: vllm
-  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r4
   weights:
     quantization: nvfp4
     sources:
@@ -342,7 +342,7 @@ specs:
   display_name_en: Blackwell · NVFP4 · Speculative
   scenario: throughput
   engine: vllm
-  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r4
   weights:
     quantization: nvfp4
     sources:

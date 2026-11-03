@@ -13,7 +13,7 @@ The screenshots in this tutorial show the English UI. The recorded evaluation us
 | Console permissions | You can view nodes, create and edit deployments, create evaluations, and use the Playground |
 | Two available nodes | `host2` and `host3` are online and allow scheduling. Each has an idle RTX 4090 (48 GiB). Check the instances occupying them under **GPU Devices** |
 | Model | `Qwen/Qwen3-1.7B` from ModelScope is registered, and its files are **Available** on both nodes. The example registration name in this tutorial is `dgpu-demo-a-ms` |
-| Inference template and image | Profile `bf16-vllm-nvidia-general`, image `gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2`. Both nodes already have the image |
+| Inference template and image | Profile `bf16-vllm-nvidia-general`, image `gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r4`. Both nodes already have the image |
 | Software environment | The English walkthrough uses Server build `79f927fc`, the runveil runtime, and NVIDIA driver `610.57.04`; check your Agent build in the node details |
 | Node connectivity and disk space | Both nodes can serve requests from the Server. The runtime filesystem has enough space for unpacked images and runtime logs |
 | Practice data | Download [benchmark-prompts.jsonl (English prompts)](../assets/examples/en/benchmark-prompts.jsonl) to the computer running your browser. It contains 8 synthetic prompts, each with `/no_think` and an output limit of `128` tokens. The English instructions retain the original task of producing a short Chinese paragraph |

@@ -11,7 +11,7 @@ specs:
   display_name_en: Ampere+ · BF16
   scenario: balanced
   engine: vllm
-  image: gpuworks/gpuworks-runner:cuda13.0-vllm-omni0.30.0-r3
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm-omni0.30.0-r4
   weights:
     quantization: bf16
     sources:
@@ -25,10 +25,59 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.0'
+  entrypoint:
+  - /bin/sh
+  - -c
+  - |
+    shift
+    exec vllm serve /tmp/MOSS-TTS "$@"
+  - moss-tts
+  pre_start_script: |-
+    set -e
+    src=/models/MOSS-TTS
+    dst=/tmp/MOSS-TTS
+    mkdir -p "$dst"
+    for item in "$src"/*; do ln -sfn "$item" "$dst/$(basename "$item")"; done
+    rm -f "$dst/processing_moss_tts.py"
+    cp "$src/processing_moss_tts.py" "$dst/processing_moss_tts.py"
+    sed -i 's#OpenMOSS-Team/MOSS-Audio-Tokenizer#/models/moss-audio-tokenizer#g' "$dst/processing_moss_tts.py"
+  components:
+  - name: moss-tts
+    role: primary
+    weights:
+      quantization: bf16
+      sources:
+      - huggingface:
+          repo_id: OpenMOSS-Team/MOSS-TTS
+          revision: b6b0229853ff63c68fa6aeceb380d8c016f55daf
+      - modelscope:
+          repo_id: openmoss/MOSS-TTS
+          revision: cde381f0c7a0ec3c92c4ce7a6952101e2af11247
+    weight_bytes: 16995767208
+    mount_path: /models/MOSS-TTS
+  - name: moss-audio-tokenizer
+    role: auxiliary
+    weights:
+      quantization: fp32
+      sources:
+      - huggingface:
+          repo_id: OpenMOSS-Team/MOSS-Audio-Tokenizer
+          revision: 3cd226ba2947efa357ef453bcad111b6eafba782
+      - modelscope:
+          repo_id: openmoss/MOSS-Audio-Tokenizer
+          revision: 1b3b842480c8fc415f373642fe78d896edc8a76d
+    weight_bytes: 7101115998
+    mount_path: /models/moss-audio-tokenizer
   args:
   - --omni
+  - --trust-remote-code
   - --deploy-config
   - /usr/local/lib/python3.12/dist-packages/vllm_omni/deploy/moss_tts.yaml
+  - --hf-overrides
+  - '{"codec_model_name_or_path":"/models/moss-audio-tokenizer"}'
+  - --gpu-memory-utilization
+  - '0.75'
+  - --enforce-eager
   api:
     health_endpoint: /health
     operations:

@@ -12,7 +12,7 @@ specs:
   display_name_en: Ampere+ · BF16
   scenario: balanced
   engine: vllm
-  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r4
   weights:
     quantization: bf16
     sources:
@@ -26,9 +26,37 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.0'
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-300b-vllm-nvidia-a100
+  display_name_zh_cn: A100 · BF16 · 4K 上下文
+  display_name_en: A100 · BF16 · 4K context
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r4
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: baidu/ERNIE-4.5-300B-A47B-PT
+        revision: 47bbaf1c9e356313c3cb2ded9078a494fb152f0e
+    - modelscope:
+        repo_id: PaddlePaddle/ERNIE-4.5-300B-A47B-PT
+        revision: b5dd6aa56623ba26299c126ecef71b8093f9a235
+  weight_bytes: 602996677000
+  gpus:
+    vendor: nvidia
+    cc: '8.0'
   args:
-  - --quantization
-  - fp8
+  - --max-model-len
+  - '4096'
+  - --gpu-memory-utilization
+  - '0.97'
+  - --enforce-eager
   api:
     health_endpoint: /health
     operations:
@@ -40,7 +68,7 @@ specs:
   display_name_en: Ampere+ · BF16 · Speculative
   scenario: throughput
   engine: vllm
-  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r4
   weights:
     quantization: bf16
     sources:
@@ -55,8 +83,6 @@ specs:
     vendor: nvidia
     cc: '>=8.0'
   args:
-  - --quantization
-  - fp8
   - --speculative-config
   - '{"method":"ernie_mtp","model":"/models/draft","num_speculative_tokens":1}'
   components:

@@ -10,6 +10,43 @@ kv_bytes_per_token:
   vllm: 163840
   sglang: 163840
 specs:
+- name: fp8-14b-vllm-nvidia-a100
+  display_name_zh_cn: A100 · FP8 · 32K 上下文
+  display_name_en: A100 · FP8 · 32K context
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda12.9-vllm0.31.0-r2
+  weights:
+    quantization: fp8
+    sources:
+    - huggingface:
+        repo_id: mistralai/Ministral-3-14B-Instruct-2512
+        revision: 29439f81c2be264d8d393273f99e7db9c0961120
+  weight_bytes: 31487447241
+  runtime_weight_bytes: 15726706472
+  gpus:
+    vendor: nvidia
+    cc: '8.0'
+  args:
+  - --trust-remote-code
+  - --tokenizer-mode
+  - mistral
+  - --config-format
+  - mistral
+  - --load-format
+  - mistral
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - mistral
+  - --enforce-eager
+  - --max-model-len
+  - '32768'
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
 - name: fp8-default-vllm-nvidia-general
   display_name_zh_cn: Hopper 及以上 · FP8
   display_name_en: Hopper+ · FP8
@@ -22,9 +59,6 @@ specs:
     - huggingface:
         repo_id: mistralai/Ministral-3-14B-Instruct-2512
         revision: 29439f81c2be264d8d393273f99e7db9c0961120
-    - modelscope:
-        repo_id: mistralai/Ministral-3-14B-Instruct-2512
-        revision: b276e554c7c9de7bf56b07afdb172ba6d36d0824
   weight_bytes: 31487447241
   runtime_weight_bytes: 15726706472
   gpus:

@@ -16,7 +16,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
-const hopperVLLMImage = "gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2"
+const hopperVLLMImage = "gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r4"
 
 // The vLLM Hopper profiles of the two flash models. admits lists the card
 // capacities (GiB) each profile must admit at 8 cards: H100 80 GB, H20 96 GB,

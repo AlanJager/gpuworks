@@ -37,6 +37,10 @@
 #                                        里面有文件）会失败
 #                 TORCHCODEC_SPEC        base 自带的 torchcodec 与本档 CUDA 不匹配时，
 #                                        用它显式替换成正确的构建
+#                 OMNI_PATCHES_NOT_APPLICABLE  昇腾 omni 档：本档 base 的 vllm_omni 上确实
+#                                        不适用的 omni 补丁；声明过期会失败
+#                 VOXCPM_SPEC / DECORD_SPEC / MOVIEPY_SPEC  cuda vllm 线按档加装的模型专属依赖
+#                                        （见 cuda/Dockerfile.vllm「模型专属依赖」）
 #   requires    本档必须成立的断言，构建末尾与 verify.sh 都会检查，不过即失败：
 #                 engine            引擎本体装对（元数据 + 模块可定位）
 #                 engine_import     真的 import 成功；vllm 档另断言
@@ -50,6 +54,10 @@
 #                                   补丁确实在文件里
 #                 indextts2_frontend IndexTTS 2.5 的文本前端：fugashi 能用 unidic-lite
 #                                   分词；x86_64 上 tn（WeTextProcessing）能 import
+#                 voxcpm            VoxCPM2 用的原生 voxcpm 包能经 vllm-omni 自己的
+#                                   查找路径 import
+#                 decord            decord 模块（由 decord2 提供）能解出合成视频的帧
+#                 moviepy           moviepy 能 import 并构造一个 ColorClip
 #                 mooncake          mooncake 传输引擎在位（plain / cuda13 改名包 / npu 变体）
 #                 diffusion         diffusers 与 cv2 等 diffusion 依赖在位
 #                 audit             离线组件审计门通过（components.json status=PASS）
@@ -82,7 +90,7 @@ items:
   # 分档几乎没有代价：omni 相关包约 280 MB，两档同一 base，同仓库内大层完全去重。
 
   - id: cuda13.0-vllm0.30.0
-    revision: r2
+    revision: r4
     backend: cuda
     engine: vllm
     base: vllm/vllm-openai:v0.30.0
@@ -92,13 +100,17 @@ items:
       MOONCAKE: "base"
       ENGINE_VERSION: "0.30.0"
       FRAMEWORK_VERSION: "13.0"
-    requires: [engine, engine_import, mooncake, overlays, audit]
+      DECORD_SPEC: "decord2==3.4.0"
+      MOVIEPY_SPEC: "moviepy==2.2.1"
+    requires: [engine, engine_import, decord, moviepy, mooncake, overlays, audit]
     note: >-
       CUDA 13 的默认档，普通文本/多模态推理负载用。不含 vllm-omni，transformers
       不设上界。mooncake 由 base 预装（cuda13 的包名是 mooncake-transfer-engine-cuda13）。
+      r3 加装 decord2（import 名 decord），ERNIE-4.5-VL 的 HF 动态模块要它；PyPI 的 decord
+      只有 x86_64 wheel，所以不用它。r4 再加装 moviepy：同一个动态模块还直接 import 它。
 
   - id: cuda13.0-vllm-omni0.30.0
-    revision: r3
+    revision: r4
     backend: cuda
     engine: vllm
     base: vllm/vllm-openai:v0.30.0
@@ -108,14 +120,16 @@ items:
       MOONCAKE: "base"
       ENGINE_VERSION: "0.30.0"
       FRAMEWORK_VERSION: "13.0"
-    requires: [engine, engine_import, omni, indextts2_frontend, mooncake, overlays, audit]
+      VOXCPM_SPEC: "voxcpm==2.0.3"
+    requires: [engine, engine_import, omni, indextts2_frontend, voxcpm, mooncake, overlays, audit]
     note: >-
       omni 档，给 vllm-omni 独家支持的负载用（Qwen3-TTS、Ming-omni-tts、图像与
       视频生成等）。代价是 transformers 被压到 <5.15、accelerate 钉到 1.12.0，
       所以普通负载请用默认档。不声明 diffusion：omni 自带 diffusers 但不带 opencv，
       与 sglang 的 diffusion 扩展不是一回事。r3 加装 vllm-omni 的 indextts2 前端
       （fugashi、unidic-lite，x86_64 另有 WeTextProcessing）；arm64 上没有 pynini 的 cp312 wheel，
-      所以 IndexTTS 2.5 的中英文文本规范化只在 x86_64 上可用。
+      所以 IndexTTS 2.5 的中英文文本规范化只在 x86_64 上可用。r4 以 --no-deps 加装 voxcpm
+      （VoxCPM2 用），并打 omni 补丁 003（MOSS-TTS-Realtime 参考音频编码的设备不一致）。
 
   - id: cuda13.0-sglang0.5.21
     revision: r2
@@ -194,8 +208,9 @@ items:
   #
   # 为什么 catalog: false：镜像目录的自动选择只看引擎、框架、架构（ADR 0019，不看 GPU 型号），
   # 把它列进去，V100 以外的节点在更老的框架档上可能被它误选，V100 节点又选不到它。
-  # 正路是真机验证后由推理模板的 spec 以 `gpus: {vendor: nvidia, cc: '7.0'}` + `image:` 引用它；
-  # 在那之前只有 L4 用例按卡型显式指定。
+  # V100 由推理模板的 spec 以 `gpus: {vendor: nvidia, cc: '7.0'}` + `image:` 引用它，
+  # 镜像不在目录里，spec 自己在 image_sources 里列出 SWR / quay / registry.zstack.ai 副本
+  # （seed 的 TestBuiltinTemplateSystemImagesResolveToImageCatalogRows 守护）。
 
   - id: cuda12.8-v100-vllm1cat1.5.1
     revision: r1
@@ -453,6 +468,8 @@ items:
     args:
       VLLM_OMNI_VERSION: ""
       OMNI_IN_BASE: "0.23.0rc2.dev147"
+      # 003 修的是 MossRealtimeReferenceEncoder，0.24.0 才有这个类，0.23 的 vllm_omni 里没有
+      OMNI_PATCHES_NOT_APPLICABLE: "003_moss_realtime_ref_encoder_device.diff"
       MOONCAKE: ""
     requires: [engine, omni, omni_no_mooncake, omni_patched, overlays]
     note: >-
@@ -468,6 +485,8 @@ items:
     args:
       VLLM_OMNI_VERSION: ""
       OMNI_IN_BASE: "0.23.0rc2.dev147"
+      # 003 修的是 MossRealtimeReferenceEncoder，0.24.0 才有这个类，0.23 的 vllm_omni 里没有
+      OMNI_PATCHES_NOT_APPLICABLE: "003_moss_realtime_ref_encoder_device.diff"
       MOONCAKE: ""
     requires: [engine, omni, omni_no_mooncake, omni_patched, overlays]
     note: A3（910C）的 omni 基线档，其余同 910b 档。

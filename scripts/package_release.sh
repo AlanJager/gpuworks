@@ -89,6 +89,10 @@ for os in $release_oses; do
     mkdir -p "$package_dir"
     cp "bin/gpuworks-${os}-${arch}" "$package_dir/gpuworks"
     chmod 0755 "$package_dir/gpuworks"
+    # The binary embeds third-party programs (NOTICE); their licenses require
+    # the license texts to travel with every binary distribution.
+    cp LICENSE NOTICE "$package_dir/"
+    cp -R LICENSES "$package_dir/LICENSES"
     # The install defaults differ per OS (docs/reference/cli.md#gpuworks-install).
     case "$os" in
       linux)

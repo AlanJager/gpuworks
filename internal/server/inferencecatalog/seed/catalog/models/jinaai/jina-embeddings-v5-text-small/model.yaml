@@ -15,7 +15,7 @@ specs:
   display_name_en: Ampere+ · BF16 · Classification
   scenario: balanced
   engine: vllm
-  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r4
   weights:
     quantization: bf16
     sources:
@@ -75,7 +75,7 @@ specs:
   display_name_en: Ampere+ · BF16 · Clustering
   scenario: balanced
   engine: vllm
-  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r4
   weights:
     quantization: bf16
     sources:
@@ -135,7 +135,7 @@ specs:
   display_name_en: Ampere+ · BF16 · Retrieval
   scenario: balanced
   engine: vllm
-  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r4
   weights:
     quantization: bf16
     sources:
@@ -164,7 +164,7 @@ specs:
   display_name_en: Ampere+ · BF16 · Text matching
   scenario: balanced
   engine: vllm
-  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r4
   weights:
     quantization: bf16
     sources:

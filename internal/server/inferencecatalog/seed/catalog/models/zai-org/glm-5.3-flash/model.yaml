@@ -191,7 +191,7 @@ specs:
   display_name_en: H20 / H200 141G · FP8 · 8 GPUs · 1M context
   scenario: balanced
   engine: vllm
-  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r4
   weights:
     quantization: fp8
     sources:
@@ -235,7 +235,7 @@ specs:
   display_name_en: H100 / H20 96G · FP8 · 8 GPUs · 256K context
   scenario: balanced
   engine: vllm
-  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r4
   weights:
     quantization: fp8
     sources:

@@ -10,14 +10,14 @@ kv_bytes_per_token:
   vllm: 147456
   sglang: 147456
 specs:
-- name: bf16-sglang-nvidia-general
-  display_name_zh_cn: Ampere 及以上 · BF16
-  display_name_en: Ampere+ · BF16
+- name: fp8-sglang-nvidia-hopper
+  display_name_zh_cn: Hopper 及以上 · FP8 · DP attention
+  display_name_en: Hopper+ · FP8 · DP attention
   scenario: balanced
   engine: sglang
   image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
   weights:
-    quantization: bf16
+    quantization: fp8
     sources:
     - huggingface:
         repo_id: XiaomiMiMo/MiMo-V2-Flash
@@ -28,10 +28,30 @@ specs:
   weight_bytes: 313083590609
   gpus:
     vendor: nvidia
-    cc: '>=8.0'
+    cc: '>=9.0'
   args:
   - --enable-metrics
   - --trust-remote-code
+  - --dp-size
+  - '2'
+  - --enable-dp-attention
+  - --page-size
+  - '1'
+  - --chunked-prefill-size
+  - '16384'
+  - --context-length
+  - '262144'
+  - --reasoning-parser
+  - qwen3
+  - --tool-call-parser
+  - mimo
+  placement:
+    language: starlark
+    resolver: |
+      def resolve(gpu):
+          if gpu.count != 8:
+              return reject("MiMo-V2-Flash DP attention requires exactly 8 GPUs")
+          return {"TP_SIZE": 8}
   api:
     health_endpoint: /health
     operations:
@@ -43,7 +63,7 @@ specs:
   display_name_en: Ada+ · FP8
   scenario: balanced
   engine: vllm
-  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r4
   weights:
     quantization: fp8
     sources:

@@ -43,7 +43,7 @@ specs:
   display_name_en: Ampere+ · BF16
   scenario: balanced
   engine: vllm
-  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r4
   weights:
     quantization: bf16
     sources:
@@ -103,7 +103,7 @@ specs:
   display_name_en: Blackwell · FP8
   scenario: throughput
   engine: vllm
-  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r4
   weights:
     quantization: fp8
     sources:
@@ -137,7 +137,7 @@ specs:
   display_name_en: Ada+ · FP8
   scenario: balanced
   engine: vllm
-  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r4
   weights:
     quantization: fp8
     sources:
@@ -151,70 +151,6 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.9'
-  args:
-  - --trust-remote-code
-  - --tool-call-parser
-  - step3p5
-  - --enable-auto-tool-choice
-  - --reasoning-parser
-  - step3p5
-  api:
-    health_endpoint: /health
-    operations:
-    - type: openai.chat
-      endpoint: /v1/chat/completions
-      mode: stream
-- name: int4-vllm-nvidia-general
-  display_name_zh_cn: Ampere 及以上 · INT4
-  display_name_en: Ampere+ · INT4
-  scenario: balanced
-  engine: vllm
-  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
-  weights:
-    quantization: int4
-    sources:
-    - huggingface:
-        repo_id: stepfun-ai/Step-3.5-Flash-INT4
-        revision: 6930492fee9ffd6f13c2e665a94244c60d2d7d83
-    - modelscope:
-        repo_id: stepfun-ai/Step-3.5-Flash-INT4
-        revision: 78d61ac40ae1a60a9e50b8c2fc5977d95e13de7b
-  weight_bytes: 111499772316
-  gpus:
-    vendor: nvidia
-    cc: '>=8.0'
-  args:
-  - --trust-remote-code
-  - --tool-call-parser
-  - step3p5
-  - --enable-auto-tool-choice
-  - --reasoning-parser
-  - step3p5
-  api:
-    health_endpoint: /health
-    operations:
-    - type: openai.chat
-      endpoint: /v1/chat/completions
-      mode: stream
-- name: int8-vllm-nvidia-general
-  display_name_zh_cn: Ampere 及以上 · INT8
-  display_name_en: Ampere+ · INT8
-  scenario: balanced
-  engine: vllm
-  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
-  weights:
-    quantization: int8
-    sources:
-    - huggingface:
-        repo_id: stepfun-ai/Step-3.5-Flash-INT8
-        revision: cd1b6ac3724fd6ec8b7e47091ae38c9ecb21144d
-    - modelscope:
-        repo_id: stepfun-ai/Step-3.5-Flash-INT8
-        revision: dfc680edae3d8136b4f7abd47ea47d73ac2b4b97
-  weight_bytes: 209417904039
-  gpus:
-    vendor: nvidia
-    cc: '>=8.0'
   args:
   - --trust-remote-code
   - --tool-call-parser
