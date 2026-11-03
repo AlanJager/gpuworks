@@ -525,16 +525,19 @@
 }
 
 .deploy-select-option {
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
   align-items: baseline;
   gap: 16px;
+  white-space: normal;
 }
 
 .deploy-select-option small {
+  min-width: 0;
   color: #8c95a1;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 11px;
+  overflow-wrap: anywhere;
 }
 
 .deploy-gpu-grid button.is-degraded {
