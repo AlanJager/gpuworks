@@ -455,6 +455,22 @@ func (s *Store) InferenceModelByID(id uint) (*InferenceModel, error) {
 // InferenceModelKVBytesPerTokenByID reads only the identity and measured KV
 // metadata for one catalog model. Launch planning calls it per candidate, so it
 // must not preload every spec or scan the catalog.
+func (s *Store) InferenceModelKVBytesPerTokenByID(id uint) (modelID, kvBytesPerToken string, err error) {
+	if id == 0 {
+		return "", "", ErrNotFound
+	}
+	var row struct {
+		ModelID         string
+		KVBytesPerToken string
+	}
+	err = s.db.Model(&InferenceModel{}).
+		Select("model_id", "kv_bytes_per_token").
+		First(&row, id).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return "", "", ErrNotFound
+	}
+	return row.ModelID, row.KVBytesPerToken, err
+}
 
 func (s *Store) InferenceModelByModelID(modelID string) (*InferenceModel, error) {
 	var model InferenceModel

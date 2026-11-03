@@ -280,7 +280,7 @@ func launchInput(st *store.Store, req LaunchRequest) (Input, error) {
 		RuntimeWeightBytes:   req.Selection.RuntimeWeightBytes,
 		ComponentWeightBytes: componentWeightBytes,
 		ComponentArtifacts:   componentArtifacts,
-		KVBytesPerToken:      CatalogKVBytesPerToken(st, nil, req.Model, req.Engine),
+		KVBytesPerToken:      catalogKVBytesPerTokenForSelection(st, req.Selection.TemplateID, req.Selection.ModelID, req.Model, req.Engine),
 		RuntimeImageBytes:    CatalogImageBytes(st, req.Source.Image),
 		RuntimeImageCached:   runtimeImageCached(st, req),
 		Unloaded:             req.Unloaded,
