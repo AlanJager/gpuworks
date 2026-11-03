@@ -167,7 +167,7 @@ func (a *apiHandlers) initTemplateModelInferenceConfig(selection *templateSelect
 	}
 	config = templateInferenceConfig{modelID: model.ID, operations: operations, inputModalities: modalities}
 	candidate := *model
-	if operations != "" && (store.OperationsUnset(model.Operations) || store.IsDefaultChatOperations(model.Operations)) {
+	if operations != "" && (store.OperationsUnset(model.Operations) || store.IsDefaultTemplateOperations(model.Operations)) {
 		candidate.Operations = operations
 	}
 	if modalities != "" && strings.TrimSpace(model.InputModalities) == "" {
@@ -180,12 +180,12 @@ func (a *apiHandlers) initTemplateModelInferenceConfig(selection *templateSelect
 // effective contract for this deployment request. Template specs still supply
 // the initial contract when the resolved model predates model-level inference
 // configuration, has empty operations ([] included), or holds a legacy bare
-// chat placeholder.
+// chat or inferred video placeholder.
 func applyCurrentModelAPIContract(selection *templateSelection, model *store.Model) {
 	if selection == nil || model == nil || store.OperationsUnset(model.Operations) {
 		return
 	}
-	if selection.Spec != nil && store.IsDefaultChatOperations(model.Operations) {
+	if selection.Spec != nil && store.IsDefaultTemplateOperations(model.Operations) {
 		return
 	}
 	contract := inferenceapi.ModelContract(model)
