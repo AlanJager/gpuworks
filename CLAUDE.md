@@ -66,7 +66,7 @@ make demo       # 起 server + agent，验证接入/心跳/重连
 ## 文档与计划
 
 - `docs/` 只描述当前行为；不可逆的架构取舍写 `docs/adr/`；术语以 `CONTEXT.md` 为准。
-- **`artifacts/` 是独立的私有仓库**（`ssh://git@dev.zstack.io:9022/wei.wang/gpuworks-artifacts.git`，GitHub 镜像 `GPUWorksAI/gpuworks-artifacts`），检出在主 checkout 的 `artifacts/` 下，主仓库 `.gitignore` 忽略它、绝不跟踪其中文件（`make check-artifacts` 拦截）。主 checkout 里直接 `git clone <上述地址> artifacts`；各 worktree 用 `git -C ../gpuworks/artifacts worktree add -b <分支> "$PWD/artifacts" origin/master` 共享对象。计划、证据的改动提交到 artifacts 仓库，代码改动提交到主仓库，两边分别推送。没检出 artifacts 时 `make test` 照常通过，只跳过索引与链接检查——所以 worktree 里开工前先确认 `artifacts/` 存在，缺了就按上面的命令检出，否则读不到计划与已定决策，新决策也会漏记。`scripts/githooks/post-checkout` 在 `git worktree add` 时自动以 detached 方式检出（不用软链：多个 worktree 共用一个检出会互相切分支；主 checkout 没有 artifacts 时静默跳过），由 `make githooks` 设置 `core.hooksPath` 启用，`make test` 经 `check-artifacts` 会顺带执行；detached 检出里提交前先 `git switch -c work/<主题>`。
+- **`artifacts/` 是独立的私有仓库** `gpuworks-artifacts`（与主仓库同一 git 主机、同一命名空间；GitHub 镜像 `flitai-io/gpuworks-artifacts`），检出在主 checkout 的 `artifacts/` 下，主仓库 `.gitignore` 忽略它、绝不跟踪其中文件（`make check-artifacts` 拦截）。主 checkout 里执行 `git clone "$(git remote get-url origin | sed 's/gpuworks\.git$/gpuworks-artifacts.git/')" artifacts`；各 worktree 用 `git -C ../gpuworks/artifacts worktree add -b <分支> "$PWD/artifacts" origin/master` 共享对象。计划、证据的改动提交到 artifacts 仓库，代码改动提交到主仓库，两边分别推送。没检出 artifacts 时 `make test` 照常通过，只跳过索引与链接检查——所以 worktree 里开工前先确认 `artifacts/` 存在，缺了就按上面的命令检出，否则读不到计划与已定决策，新决策也会漏记。`scripts/githooks/post-checkout` 在 `git worktree add` 时自动以 detached 方式检出（不用软链：多个 worktree 共用一个检出会互相切分支；主 checkout 没有 artifacts 时静默跳过），由 `make githooks` 设置 `core.hooksPath` 启用，`make test` 经 `check-artifacts` 会顺带执行；detached 检出里提交前先 `git switch -c work/<主题>`。
 - 主仓库将要公开：新写的代码注释、`docs/`、脚本与 CI 不再引用 `artifacts/` 路径（外部读者打不开），设计依据写进 `docs/` 或 ADR；存量引用随开源计划清理。
 - 新工作在 `artifacts/work/<YYYY-MM-DD>-<主题>/` 开目录，入口 `plan.md`（或 `README.md`）带 YAML frontmatter；计划、设计稿、验收记录、证据都放同一目录，正文只链接证据，不内联过程记录。
 - 同一计划线只有一版时叫 `plan.md`；出现第二版起统一改为 `plan-v1.md`、`plan-v2.md`… 连续编号，不再保留裸 `plan.md`。
@@ -80,7 +80,7 @@ make demo       # 起 server + agent，验证接入/心跳/重连
 
 ## 测试环境
 
-本地开发用 `make run-server` / `make demo`。真机与远端环境（live demo 服务器、gpu3、昇腾、PPU、云厂商 key）的地址、SSH 方式与部署/回滚流程见 **`secrets/test-environments.md`**（gitignored，不入仓库）。`secrets/` 只在主 checkout 下完整；各开发目录都是主 checkout 的 git worktree、与它同级（如 `../gpuworks_xxx`），worktree 里通常只有 `*.example`，需要真实配置时读 `../gpuworks/secrets/`（即主 checkout 的 secrets）。
+本地开发用 `make run-server` / `make demo`。真机与远端测试环境（含云厂商 key）的地址、SSH 方式与部署/回滚流程见 **`secrets/test-environments.md`**（gitignored，不入仓库）。`secrets/` 只在主 checkout 下完整；各开发目录都是主 checkout 的 git worktree、与它同级（如 `../gpuworks_xxx`），worktree 里通常只有 `*.example`，需要真实配置时读 `../gpuworks/secrets/`（即主 checkout 的 secrets）。
 
 本地测试 server 端口按顺序尝试 8800、8802、8804、8806，以此类推；本地测试密码使用 `password`。
 
