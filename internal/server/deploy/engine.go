@@ -60,6 +60,10 @@ type Profile struct {
 	// rules the deploy form applies (package pdmode is their catalog); the
 	// form offers exactly these and restates none of their rules.
 	PDModes []PDModeProfile `json:"pd_modes,omitempty"`
+	// MultiNodeSupported is set only when a target-specific capability policy
+	// overrides the engine profile. Nil leaves the engine's existing behavior
+	// intact; a pointer allows an explicit false to reach clients.
+	MultiNodeSupported *bool `json:"multi_node_supported,omitempty"`
 	// ReserveBase is the per-GPU memory this engine holds back besides its
 	// weights and its KV cache, in bytes, when the estimator's graph-shaped
 	// default model does not describe it (estimate.ReserveBytes takes it as

@@ -3,12 +3,11 @@ package planning
 import (
 	"context"
 	"fmt"
-	"testing"
-
 	"gpuworks.ai/gpuworks/internal/server/bus"
 	"gpuworks.ai/gpuworks/internal/server/deploy"
 	"gpuworks.ai/gpuworks/internal/server/nodelabel"
 	"gpuworks.ai/gpuworks/internal/server/store"
+	"testing"
 )
 
 // A pool is judged one node per hardware shape: six small nodes of two card

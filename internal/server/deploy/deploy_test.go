@@ -3,12 +3,11 @@ package deploy
 import (
 	"bytes"
 	"encoding/json"
+	"gpuworks.ai/gpuworks/internal/proto"
 	"reflect"
 	"slices"
 	"strings"
 	"testing"
-
-	"gpuworks.ai/gpuworks/internal/proto"
 )
 
 func TestQuickParamsAndParamSpecsStayConsistent(t *testing.T) {
@@ -619,6 +618,11 @@ func TestParamDictionaryCoversPlannedPerformanceAndModelControls(t *testing.T) {
 	for _, key := range []string{"performance_mode", "enable_chunked_prefill", "kv_offloading_size", "kv_disk_offload", "optimization_level"} {
 		if sglangKeys[key] {
 			t.Fatalf("SGLang advertises unsupported %q", key)
+		}
+	}
+	for _, key := range []string{"max_total_tokens", "max_mamba_cache_size"} {
+		if _, ok := vllmSpecs[key]; ok {
+			t.Fatalf("vLLM must not expose SGLang-only cache control %q", key)
 		}
 	}
 	for _, key := range []string{"gpu_memory_utilization", "max_num_batched_tokens", "max_num_seqs", "enable_prefix_caching", "enforce_eager", "speculative_num_steps", "speculative_eagle_top_k"} {

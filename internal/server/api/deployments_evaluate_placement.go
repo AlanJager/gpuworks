@@ -60,7 +60,7 @@ func (a *apiHandlers) evaluateAutomaticPlacement(ctx context.Context, req *dto.D
 			continue
 		}
 		plan, planErr := planning.PlanLaunch(ctx, a.d.Store, a.networks(), planning.LaunchRequest{
-			Preview: true, ExcludeDeploymentID: excludeDeployment, Engine: engine.Name(), Model: model, Node: node,
+			Preview: true, AllowUnresolvedImage: true, ExcludeDeploymentID: excludeDeployment, Engine: engine.Name(), Model: model, Node: node,
 			Selection: previewSelection, Placement: placement, Quick: quick, ExtraArgs: userExtraArgs,
 			Topology:   planning.DistTopology{NNodes: 1, Role: "standalone"},
 			Source:     planning.LaunchSourceFromRequest(image, requestOverrides),

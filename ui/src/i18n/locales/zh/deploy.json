@@ -147,6 +147,7 @@
     "insufficient_runtime_disk": "运行时文件系统空间不足，无法解压所选镜像；请清理运行时存储或更换节点。",
     "sleep_unsupported_on_node": "{{vendor}} 节点不支持引擎休眠；请关闭本部署的休眠，或改选其他节点。",
     "multi_node_unsupported_on_node": "{{vendor}} 节点不支持多机推理；请改为单机部署，或改选其他节点。",
+    "pd_unsupported_on_node": "{{vendor}} 节点不支持 PD 分离；请改选其他节点。",
     "kv_disk_unsupported_on_node": "{{vendor}} 节点不支持 KV 磁盘层；请关闭 KV 磁盘层，或改选其他节点。",
     "storage_unavailable": "这台节点上能读到该模型的存储还没就绪；请查看这些存储的节点状态，或更换节点。",
     "model_exceeds_cache_limit": "模型比该存储在这台节点上的缓存上限还大；请调高缓存上限，或改用直接读的存储。",
@@ -186,7 +187,12 @@
     "tight_fit": "GPU 容量与显存需求较匹配。",
     "placement_preference": "模板更倾向于该 GPU 数量：{{count}} 张。",
     "degraded_gpus_used": "所选 GPU 中有 {{count}} 张处于告警状态；健康 GPU 不足以承载本部署时才会使用这些 GPU。",
-    "invalid_request": "到达调度器的启动配置无效：显存利用率 {{gpu_memory_utilization}} 超出允许范围，请刷新页面后重新评估。"
+    "invalid_request": "到达调度器的启动配置无效：显存利用率 {{gpu_memory_utilization}} 超出允许范围，请刷新页面后重新评估。",
+    "runtime_unsupported": "{{vendor}} 需要 {{required_os}}/{{required_arch}} 和 {{required_runtime}}；此节点报告 {{os}}/{{arch}}、{{runtime}}。",
+    "runtime_unreported": "{{vendor}} 需要 {{required_os}}/{{required_arch}} 和 {{required_runtime}}；此节点尚未上报完整的运行时信息。",
+    "accelerator_feature_unsupported": "{{vendor}} 不支持{{feature}}。请调整启动选项或选择其他加速卡。",
+    "accelerator_device_selection_required": "{{vendor}} 启动前必须明确分配 GPU。",
+    "launch_features_unknown": "无法检查 {{vendor}} 的启动命令功能，请提供可识别的引擎入口或结构化启动参数。"
   },
   "placementReason": {
     "node_cordoned": "该节点已停止调度。请恢复它的调度或选择其他节点。",
@@ -306,6 +312,7 @@
     "targetVendorRequired": "请选择目标芯片",
     "targetVendorPlaceholder": "选择目标芯片厂商",
     "vendor": {
+      "amd": "AMD",
       "nvidia": "NVIDIA",
       "ascend": "昇腾",
       "hygon": "海光",
@@ -553,13 +560,17 @@
     "grade": {
       "rough": "粗估",
       "notApplicable": "不适用",
-      "measured": "实测"
+      "measured": "实测",
+      "incomplete": "不完整"
     },
     "segment": {
       "weights": "权重",
       "multimodal": "多模态编码器",
       "reserve": "引擎预留",
-      "kvPool": "KV pool（估算）"
+      "kvPool": "KV pool（估算）",
+      "kvPoolAvailable": "可用 KV pool",
+      "configuredAttentionKV": "已配置注意力 KV",
+      "mambaState": "Mamba 状态（{{slots}} 个槽，每槽 {{perSlot}} GiB）"
     },
     "title": "显存分配（每 GPU）",
     "measuredCalibration": "实测校准",
@@ -571,13 +582,18 @@
     "actualTotal": "实际测得占用：{{value}} GiB",
     "utilization": "（利用率 {{value}}%）",
     "confidence": "估算置信度：{{value}}",
+    "hybridFitIncomplete": "启动适配结果不完整：当前估算未完整建模 SGLang 循环状态和辅助缓冲区。",
+    "hybridStateUnknown": "Mamba 状态大小或缓存槽数未知，因此不估算 KV token 容量和并发数。",
+    "hybridEstimateIncomplete": "Mamba 状态按配置的缓存槽上限估算；其他引擎缓冲区未建模，因此不提供并发数。",
     "partitionCapacity": "dGPU 上限 {{value}} GiB",
     "kvPoolSummary": "KV pool {{value}} GiB · 预计 {{tokens}} tokens",
+    "kvPoolConfiguredSummary": "可用 KV pool {{available}} GiB · 配置的 attention KV 预算 {{configured}} GiB，约 {{tokens}} tokens",
     "measuredKvSummary": "KV pool {{value}} GiB · 引擎启动时报告 {{tokens}} tokens",
     "kvReason": {
       "kv_no_measurement": "该模型没有实测的 KV 开销",
       "kv_startup_exceeds_capacity": "去掉 KV cache 也放不下",
       "kv_not_applicable": "该模型没有 KV cache",
+      "kv_hybrid_state_unknown": "Mamba 状态大小或缓存槽数未知",
       "unknown": "未给出原因"
     },
     "kvPoolUnavailable": "KV pool {{value}} GiB · 暂无法估算 token 容量（{{reason}}）",
@@ -625,13 +641,14 @@
     "selectVendor": "选择目标芯片后显示可用推理档位",
     "empty": "当前 GPU 芯片没有兼容的推理档位",
     "general": "通用",
-    "deployable": "可部署",
+    "deployable": "芯片匹配",
     "loadFailed": "推理模板加载失败：{{detail}}",
     "otherProfiles": "查看 {{count}} 个不兼容档位",
     "chipUnavailable": "与当前 GPU 硬件不兼容",
     "requires": "要求",
     "currentHardware": "当前硬件",
-    "defaults": "模板默认参数"
+    "defaults": "模板默认参数",
+    "compatibilityScope": "仅匹配所选节点或自动放置范围内的芯片；指定 GPU、内存和其他部署条件仍需通过部署检查。"
   },
   "workbench": {
     "automatic": "自动",
@@ -702,6 +719,7 @@
       "manual": "手动指定",
       "manualDescription": "选择节点与 GPU",
       "multi": "多机",
+      "multiVendorUnsupported": "{{vendor}} 节点不支持多机推理。",
       "count": "{{count}} 台节点",
       "pd": "PD 分离",
       "pdDescription": "分离 prefill 与 decode 实例",

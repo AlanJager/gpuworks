@@ -2,14 +2,13 @@ package engine
 
 import (
 	"context"
-	"log/slog"
-	"strings"
-	"testing"
-
 	"gpuworks.ai/gpuworks/internal/agent/gpu"
 	"gpuworks.ai/gpuworks/internal/agent/runtime"
 	"gpuworks.ai/gpuworks/internal/agent/runtime/recording"
 	"gpuworks.ai/gpuworks/internal/proto"
+	"log/slog"
+	"strings"
+	"testing"
 )
 
 func nvidiaCard(index int, bdf string) proto.GPUInfo {
@@ -184,7 +183,7 @@ func (d *gatedStopDriver) Stop(ctx context.Context, id string) error {
 // card is let go.
 func TestHeldCardsKeepsAnInstanceUntilItsTeardownEnds(t *testing.T) {
 	driver := &gatedStopDriver{Driver: recording.New(t.TempDir() + "/calls.json"), stopping: make(chan struct{}), release: make(chan struct{})}
-	e := New(driver, func(proto.InstanceStatus) {}, slog.New(slog.DiscardHandler), t.TempDir())
+	e := newHermeticEngine(driver, func(proto.InstanceStatus) {}, slog.New(slog.DiscardHandler), t.TempDir())
 	e.desired["leaving"] = proto.InstanceDesiredState{UUID: "leaving", DesiredState: "running", GPUIndexes: []int{0}, GPUIdents: []string{"pci:0000:17:00.0"}}
 	e.desiredKnown = true
 

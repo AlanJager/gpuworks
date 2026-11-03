@@ -4,13 +4,12 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"log/slog"
-	"strings"
-	"testing"
-
 	"gpuworks.ai/gpuworks/internal/agent/runtime"
 	"gpuworks.ai/gpuworks/internal/agent/runtime/recording"
 	"gpuworks.ai/gpuworks/internal/proto"
+	"log/slog"
+	"strings"
+	"testing"
 )
 
 // stopProbeDriver forces every container to exist and running so
@@ -38,7 +37,7 @@ func (d *stopProbeDriver) Stop(ctx context.Context, id string) error {
 // while the forced removal still proceeds.
 func TestRemoveContainerLogsStopAndSurfacesStopFailure(t *testing.T) {
 	newEngine := func(driver runtime.Driver, logs *bytes.Buffer) *Engine {
-		return New(driver, func(proto.InstanceStatus) {}, slog.New(slog.NewTextHandler(logs, nil)), t.TempDir())
+		return newHermeticEngine(driver, func(proto.InstanceStatus) {}, slog.New(slog.NewTextHandler(logs, nil)), t.TempDir())
 	}
 	ctx := context.Background()
 

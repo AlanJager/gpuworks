@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Button, Form, Result, Segmented, Select, Skeleton, Space, Typography } from "antd";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
@@ -159,9 +159,11 @@ function DeployForm({ opened }: { opened?: OpenedDeployment }) {
   // one (knownNodes, below).
   const fleet = useNodeFacets(ONLINE, 15000);
   const knownNodesRef = useRef<Node[]>([]);
+  const targetVendor = Form.useWatch("target_vendor", watchOptions) as string | undefined;
   const engines = usePolling<List<EngineProfile>>(
-    api.engines,
+    () => api.engines(targetVendor),
     60000,
+    [targetVendor],
   );
   const routingPolicies = usePolling(api.routingPolicies, 0);
   // The cluster's instance start timeout is the placeholder of the form's own
@@ -191,9 +193,14 @@ function DeployForm({ opened }: { opened?: OpenedDeployment }) {
   // literal here: an empty engine travels as omitted and the server picks.
   const selectedEngine = (Form.useWatch("engine", watchOptions) ||
     "") as string;
-  const engineProfile = engines.data?.items.find(
+  const engineProfile = engines.loading ? undefined : engines.data?.items.find(
     (engine) => engine.name === selectedEngine,
   );
+  useEffect(() => {
+    if (!engines.loading && engineProfile && !engineProfile.sleep.supported) {
+      form.setFieldValue("sleepable", false);
+    }
+  }, [engines.loading, engineProfile, form]);
   const nodeSelectionMode =
     Form.useWatch("node_selection_mode", watchOptions) || "manual";
   const formValues = (Form.useWatch([], watchOptions) || {}) as Record<

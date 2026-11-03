@@ -3,6 +3,8 @@ package api
 import (
 	"bytes"
 	"encoding/json"
+	"gpuworks.ai/gpuworks/internal/server/auth"
+	"gpuworks.ai/gpuworks/internal/server/deploy"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -10,9 +12,6 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
-
-	"gpuworks.ai/gpuworks/internal/server/auth"
-	"gpuworks.ai/gpuworks/internal/server/deploy"
 )
 
 // enginesFixturePath is the parameter dictionary the deploy form renders in its
@@ -33,17 +32,18 @@ const enginesFixtureEnv = "GPUWORKS_UPDATE_ENGINES_FIXTURE"
 // disappears from the fixture and fails this case, which a struct with its own
 // json tags would silently paper over.
 var enginesFixtureKeys = map[string]bool{
-	"default_image":      true,
-	"health_path":        true,
-	"kv_disk_min_kernel": true,
-	"metric_prefix":      true,
-	"name":               true,
-	"param_dict":         true,
-	"param_specs":        true,
-	"pd_modes":           true,
-	"quick_form_keys":    true,
-	"shm_bytes":          true,
-	"sleep":              true,
+	"default_image":        true,
+	"health_path":          true,
+	"kv_disk_min_kernel":   true,
+	"metric_prefix":        true,
+	"multi_node_supported": true,
+	"name":                 true,
+	"param_dict":           true,
+	"param_specs":          true,
+	"pd_modes":             true,
+	"quick_form_keys":      true,
+	"shm_bytes":            true,
+	"sleep":                true,
 }
 
 // enginesFixtureServerOnlyKeys are the response fields no client reads, left out

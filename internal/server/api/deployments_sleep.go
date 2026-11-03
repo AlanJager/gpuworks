@@ -1,14 +1,16 @@
 // deployments_sleep.go carries the sleep and wake orders for a deployment.
-// The policy behind them (who may sleep, what a sleeper still occupies, whether
-// a wake fits) lives in internal/server/sleep and reaches here through
-// planning; these handlers only translate verdicts into HTTP.
+// Lifecycle and wake admission live in internal/server/sleep and planning;
+// selected-card sleep capability policy lives in planning. These handlers
+// translate verdicts into HTTP and issue the resulting store orders.
 
 package api
 
 import (
+	"errors"
 	"net/http"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -45,6 +47,14 @@ func (a *apiHandlers) sleepDeployment(w http.ResponseWriter, r *http.Request) {
 	}
 	role := r.URL.Query().Get("role")
 	if role == "" {
+		insts, err := a.d.Store.InstancesForDeployment(dep.ID)
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, err)
+			return
+		}
+		if a.refuseUnsupportedSleepTargets(w, dep.Engine, insts) {
+			return
+		}
 		if !a.orderSleep(w, dep, planning.SleepOrder{Pref: planning.SleepPreference(level), Mode: mode, Held: !wakes}, writeErr500) {
 			return
 		}
@@ -54,6 +64,9 @@ func (a *apiHandlers) sleepDeployment(w http.ResponseWriter, r *http.Request) {
 	}
 	named, ok := a.roleSleepTargets(w, dep, role, true)
 	if !ok {
+		return
+	}
+	if a.refuseUnsupportedSleepTargets(w, dep.Engine, named) {
 		return
 	}
 	if !a.orderSleep(w, dep, planning.SleepOrder{Pref: planning.SleepPreference(level), Mode: mode, Held: !wakes, Instances: uuidsOf(named)}, writeErr500) {
@@ -204,6 +217,21 @@ func (a *apiHandlers) wakeDeployment(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, result)
 }
 
+// refuseUnsupportedSleepTargets translates the shared planning decision to
+// HTTP. New sleep commands use this check; wake admission deliberately does not.
+func (a *apiHandlers) refuseUnsupportedSleepTargets(w http.ResponseWriter, engine string, insts []store.Instance) bool {
+	refusal, err := planning.UnsupportedSleepTarget(engine, insts, a.d.Store)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return true
+	}
+	if refusal == nil {
+		return false
+	}
+	writeSleepRefusal(w, http.StatusBadRequest, refusal)
+	return true
+}
+
 // sleepEligibleDeployment loads the deployment a sleep or wake order names and
 // refuses the order when the deployment cannot sleep at all. It writes the
 // response on refusal.
@@ -236,6 +264,21 @@ func (a *apiHandlers) roleSleepTargets(w http.ResponseWriter, dep *store.Deploym
 	return planning.RoleInstances(insts, role), true
 }
 
+// writeSleepDeclarationError preserves sleep refusal text and target capability
+// errors when a deployment asks to enable sleep.
+func writeSleepDeclarationError(w http.ResponseWriter, err error) {
+	var product *messages.ProductError
+	if errors.As(err, &product) {
+		fallback := product.Error()
+		if strings.HasPrefix(product.Code(), "SLEEP_") {
+			fallback = sleepRefusalFallback(product.Code())
+		}
+		writeProductError(w, http.StatusBadRequest, product.Code(), fallback, product.Params())
+	} else {
+		writeErr(w, http.StatusBadRequest, err)
+	}
+}
+
 // writeSleepRefusal answers a refused sleep or wake order with its code and
 // the English fallback; the UI renders the code.
 func writeSleepRefusal(w http.ResponseWriter, status int, refusal *planning.SleepRefusal) {
@@ -259,6 +302,8 @@ func sleepRefusalFallback(code string) string {
 		return "deployment is not PD disaggregated"
 	case messages.ErrorPDRoleUnknown:
 		return "the role is not a role of this deployment"
+	case messages.ErrorAcceleratorFeatureUnsupported:
+		return "the selected accelerator does not support sleep mode"
 	}
 	return "sleep order refused"
 }

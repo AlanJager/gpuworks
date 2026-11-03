@@ -13,8 +13,8 @@ import {
   Typography,
 } from "antd";
 import type {
-  EligibleNode,
   EngineProfile,
+  EligibleNode,
   EvaluateResponse,
   Node,
   PartitionCapability as Capability,

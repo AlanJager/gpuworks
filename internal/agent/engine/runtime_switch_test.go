@@ -1,10 +1,9 @@
 package engine
 
 import (
+	"gpuworks.ai/gpuworks/internal/proto"
 	"log/slog"
 	"testing"
-
-	"gpuworks.ai/gpuworks/internal/proto"
 )
 
 // Idle is what lets the agent switch runtimes on its own: a switch
@@ -12,7 +11,7 @@ import (
 // recreated — and an agent the control plane has not yet told what it
 // runs does not know that it runs nothing.
 func TestIdleOnlyWhenNothingRunsStartsOrAwaitsCleanup(t *testing.T) {
-	e := New(&headlessTestDriver{name: "udocker"}, nil, slog.New(slog.DiscardHandler), t.TempDir())
+	e := newHermeticEngine(&headlessTestDriver{name: "udocker"}, nil, slog.New(slog.DiscardHandler), t.TempDir())
 	set := func(mutate func()) {
 		e.mu.Lock()
 		defer e.mu.Unlock()

@@ -32,7 +32,17 @@ const DefaultMasterPort = 29500
 // placement output and the deployment's container overrides. It is
 // intentionally an input object rather than another runtime representation:
 // only ResolvedLaunch may leave this package.
+// TargetValidationMode separates capability collection from concrete allocation.
+type TargetValidationMode uint8
+
+const (
+	ValidateTargetCapabilities TargetValidationMode = iota
+	ValidateAssignedTarget
+	CollectTargetCapabilities
+)
+
 type ResolveLaunchInput struct {
+	TargetValidation   TargetValidationMode
 	Engine             Engine
 	Params             Params
 	ContainerOverrides ContainerOverrides
@@ -309,6 +319,18 @@ func ResolveLaunchWithWarnings(input ResolveLaunchInput) (ResolvedLaunch, []mess
 		if err := validateEngineTopology(input.Engine, launch, params); err != nil {
 			return ResolvedLaunch{}, nil, fmt.Errorf("resolve launch: %w", err)
 		}
+	}
+	launch.RequestedFeatures = ResolveRequestedFeatures(input.Engine.Name(), launch, params)
+	var targetErr error
+	if input.TargetValidation == CollectTargetCapabilities {
+		targetErr = nil
+	} else if input.TargetValidation == ValidateTargetCapabilities {
+		targetErr = ValidateTargetFeatures(input.Engine.Name(), launch, params)
+	} else {
+		targetErr = ValidateTargetLaunch(input.Engine.Name(), launch, params)
+	}
+	if targetErr != nil {
+		return ResolvedLaunch{}, nil, targetErr
 	}
 	warnings := launchWarnings(launch, params, input.Image, compat, engram)
 	if warning, ok := allocatorRewrite.warning(launch.Env); ok {

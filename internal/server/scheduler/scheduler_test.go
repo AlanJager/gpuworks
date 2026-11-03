@@ -1,10 +1,9 @@
 package scheduler
 
 import (
-	"testing"
-
 	"gpuworks.ai/gpuworks/internal/accelerator"
 	"gpuworks.ai/gpuworks/pkg/topoparse"
+	"testing"
 )
 
 const giB = int64(1) << 30
@@ -508,16 +507,19 @@ func TestFiltersRejectANodeWithoutAFeatureTheDeploymentNeeds(t *testing.T) {
 	for feature, code := range map[accelerator.Feature]string{
 		accelerator.FeatureEngineSleep: ReasonSleepUnsupportedOnNode,
 		accelerator.FeatureMultiNode:   ReasonMultiNodeUnsupportedOnNode,
+		accelerator.FeaturePD:          ReasonPDUnsupportedOnNode,
 		accelerator.FeatureKVDiskTier:  ReasonKVDiskUnsupportedOnNode,
 	} {
 		ok, reason := runFilters(Request{Features: []accelerator.Feature{feature}}, mac)
-		if ok || reason.Code != code || reason.Params["vendor"] != "Apple" {
+		if ok || reason.Code != code || reason.Params["vendor"] != "Apple" || reason.Params["feature"] != string(feature) {
 			t.Errorf("%s on a Mac: ok=%v reason=%+v", feature, ok, reason)
 		}
-		nvidia := mac
-		nvidia.Vendor = "nvidia"
-		if ok, reason := runFilters(Request{Features: []accelerator.Feature{feature}}, nvidia); !ok {
-			t.Errorf("%s on NVIDIA was filtered: %+v", feature, reason)
+		for _, vendor := range []string{"nvidia", "ascend"} {
+			node := mac
+			node.Vendor = vendor
+			if ok, reason := runFilters(Request{Features: []accelerator.Feature{feature}}, node); !ok {
+				t.Errorf("%s on %s was filtered: %+v", feature, vendor, reason)
+			}
 		}
 	}
 	// The reason is the first feature asked for, in order.

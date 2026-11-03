@@ -2,6 +2,7 @@ package engine
 
 import (
 	"fmt"
+	"gpuworks.ai/gpuworks/internal/accelerator"
 	"gpuworks.ai/gpuworks/internal/agent/gpu"
 	"gpuworks.ai/gpuworks/internal/agent/runtime"
 	"path/filepath"
@@ -21,7 +22,9 @@ func (e *Engine) applyDeviceInjectionForDriver(ws *runtime.WorkloadSpec, indexes
 		return nil
 	}
 	if len(indexes) == 0 {
-
+		if accelerator.RequiresDeviceSelection(e.prober.Vendor()) {
+			return fmt.Errorf("%s requires an explicit nonempty GPU selection", accelerator.VendorBrand(e.prober.Vendor()))
+		}
 		return nil
 	}
 	var inj gpu.RuntimeInjection

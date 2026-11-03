@@ -2,14 +2,13 @@ package planning
 
 import (
 	"context"
-	"reflect"
-	"strings"
-	"testing"
-
 	"gpuworks.ai/gpuworks/internal/server/bus"
 	"gpuworks.ai/gpuworks/internal/server/deploy"
 	"gpuworks.ai/gpuworks/internal/server/network"
 	"gpuworks.ai/gpuworks/internal/server/store"
+	"reflect"
+	"strings"
+	"testing"
 )
 
 // PlanLaunch is the one assembly both callers use, so its estimate input has to
@@ -30,7 +29,7 @@ func TestPlanLaunchSpendsTheSameCatalogFactsForEveryCaller(t *testing.T) {
 			Name: "balanced", Engine: "vllm", Image: "registry.example/app:v1", Quantization: "bf16",
 			WeightBytes: 8 << 30, RuntimeWeightBytes: 6 << 30,
 			WeightSources: `[{"provider":"huggingface","repo_id":"org/fixture-8b"}]`,
-			GPUs:          `{"min_count":1}`,
+			GPUs:          `{"vendor":"nvidia","min_count":1}`,
 		}},
 	}}); err != nil {
 		t.Fatal(err)
@@ -44,7 +43,7 @@ func TestPlanLaunchSpendsTheSameCatalogFactsForEveryCaller(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	selection, err := deploy.DecodeCatalogSelection([]byte(`{"engine":"vllm","spec_name":"balanced","spec_source":"upstream","weight_bytes":8589934592,"runtime_weight_bytes":6442450944,"gpus":{"min_count":1},"extra_args":["--dtype","bfloat16"]}`))
+	selection, err := deploy.DecodeCatalogSelection([]byte(`{"engine":"vllm","spec_name":"balanced","spec_source":"upstream","weight_bytes":8589934592,"runtime_weight_bytes":6442450944,"gpus":{"vendor":"nvidia","min_count":1},"extra_args":["--dtype","bfloat16"]}`))
 	if err != nil {
 		t.Fatal(err)
 	}

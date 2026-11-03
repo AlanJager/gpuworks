@@ -147,6 +147,7 @@
     "insufficient_runtime_disk": "The runtime filesystem does not have enough space to unpack the selected image. Free runtime storage or select another node.",
     "sleep_unsupported_on_node": "{{vendor}} nodes cannot put an engine to sleep. Turn off sleep for this deployment or select another node.",
     "multi_node_unsupported_on_node": "{{vendor}} nodes cannot run ranks across several nodes. Deploy on a single node or select other nodes.",
+    "pd_unsupported_on_node": "PD disaggregation is not supported on {{vendor}} nodes. Select other nodes.",
     "kv_disk_unsupported_on_node": "{{vendor}} nodes have no KV disk tier. Turn off the KV disk tier or select another node.",
     "storage_unavailable": "The storages that can serve this model are not ready on this node. Check the storages' node status or select another node.",
     "model_exceeds_cache_limit": "The model is larger than this node's cache limit for the storage. Raise the cache limit or use a storage that reads in place.",
@@ -186,7 +187,12 @@
     "tight_fit": "GPU capacity closely matches the VRAM requirement.",
     "placement_preference": "The template prefers this GPU count: {{count}} GPUs.",
     "degraded_gpus_used": "{{count}} of the chosen GPUs are at warning level; they are used only because the healthy GPUs cannot take this deployment.",
-    "invalid_request": "The launch configuration reaching the scheduler is invalid: VRAM utilization {{gpu_memory_utilization}} is outside the allowed range. Reload the page and evaluate again."
+    "invalid_request": "The launch configuration reaching the scheduler is invalid: VRAM utilization {{gpu_memory_utilization}} is outside the allowed range. Reload the page and evaluate again.",
+    "runtime_unsupported": "{{vendor}} requires {{required_os}}/{{required_arch}} with {{required_runtime}}; this node reports {{os}}/{{arch}} and {{runtime}}.",
+    "runtime_unreported": "{{vendor}} requires {{required_os}}/{{required_arch}} with {{required_runtime}}; this node has not reported all required runtime facts.",
+    "accelerator_feature_unsupported": "{{vendor}} does not support {{feature}}. Change the launch options or select another accelerator.",
+    "accelerator_device_selection_required": "{{vendor}} requires an explicit GPU assignment before launch.",
+    "launch_features_unknown": "The launch command could not be inspected for {{vendor}}. Use a recognized engine entrypoint or structured launch parameters."
   },
   "placementReason": {
     "node_cordoned": "The node is cordoned. Resume scheduling on it or choose another node.",
@@ -306,6 +312,7 @@
     "targetVendorRequired": "Select a target accelerator",
     "targetVendorPlaceholder": "Select an accelerator vendor",
     "vendor": {
+      "amd": "AMD",
       "nvidia": "NVIDIA",
       "ascend": "Ascend",
       "hygon": "Hygon",
@@ -553,13 +560,17 @@
     "grade": {
       "rough": "Rough Estimate",
       "notApplicable": "Not applicable",
-      "measured": "Measured"
+      "measured": "Measured",
+      "incomplete": "Incomplete"
     },
     "segment": {
       "weights": "Weights",
       "multimodal": "Multimodal Encoder",
       "reserve": "Engine Reserve",
-      "kvPool": "KV pool (estimated)"
+      "kvPool": "KV pool (estimated)",
+      "kvPoolAvailable": "Available KV pool",
+      "configuredAttentionKV": "Configured attention KV",
+      "mambaState": "Mamba state ({{slots}} slots, {{perSlot}} GiB/slot)"
     },
     "title": "VRAM Allocation (per GPU)",
     "measuredCalibration": "Measured Calibration",
@@ -571,13 +582,18 @@
     "actualTotal": "Actual measured usage: {{value}} GiB",
     "utilization": "(utilization {{value}}%)",
     "confidence": "Estimate confidence: {{value}}",
+    "hybridFitIncomplete": "Startup fit is incomplete: the estimate does not fully model SGLang recurrent state and auxiliary buffers.",
+    "hybridStateUnknown": "Mamba state size or cache slots are unknown, so KV token capacity and concurrency are not estimated.",
+    "hybridEstimateIncomplete": "Mamba state uses the configured cache-slot limit; additional engine buffers are not modeled, so concurrency is unavailable.",
     "partitionCapacity": "dGPU limit {{value}} GiB",
     "kvPoolSummary": "KV pool {{value}} GiB · estimated {{tokens}} tokens",
+    "kvPoolConfiguredSummary": "Available KV pool {{available}} GiB · configured attention-KV budget {{configured}} GiB for {{tokens}} tokens",
     "measuredKvSummary": "KV pool {{value}} GiB · {{tokens}} tokens reported by the engine at startup",
     "kvReason": {
       "kv_no_measurement": "no measured KV cost for this model",
       "kv_startup_exceeds_capacity": "it does not fit even before the KV cache",
       "kv_not_applicable": "this model keeps no KV cache",
+      "kv_hybrid_state_unknown": "Mamba state size or cache slots are unknown",
       "unknown": "reason not reported"
     },
     "kvPoolUnavailable": "KV pool {{value}} GiB · token capacity unavailable ({{reason}})",
@@ -625,13 +641,14 @@
     "selectVendor": "Select a target accelerator to see inference profiles",
     "empty": "No chip-compatible inference profiles are available",
     "general": "General",
-    "deployable": "Deployable",
+    "deployable": "Chip compatible",
     "loadFailed": "Failed to load inference template: {{detail}}",
     "otherProfiles": "View {{count}} incompatible profiles",
     "chipUnavailable": "not compatible with current GPU hardware",
     "requires": "Requires",
     "currentHardware": "Current hardware",
-    "defaults": "Template defaults"
+    "defaults": "Template defaults",
+    "compatibilityScope": "Matches chips on the selected node or automatic-placement pool; assigned GPUs, memory and other deployment constraints still require deployment checks."
   },
   "workbench": {
     "automatic": "Automatic",
@@ -702,6 +719,7 @@
       "manual": "Manual",
       "manualDescription": "Select a node and GPUs",
       "multi": "Multi-node",
+      "multiVendorUnsupported": "Multi-node inference is not supported on {{vendor}} nodes.",
       "count": "{{count}} nodes",
       "pd": "PD disaggregation",
       "pdDescription": "Separate prefill and decode instances",

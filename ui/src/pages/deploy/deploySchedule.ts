@@ -1,6 +1,6 @@
 import type { TFunction } from "i18next";
 
-import type { ScheduleMessageLike } from "../../api";
+import type { GPUPredicate, ScheduleMessageLike } from "../../api";
 import { durationText } from "../durationText";
 
 /** Render a structured scheduler reason while preserving historical strings. */
@@ -12,6 +12,10 @@ export function scheduleText(
   if (!value) return "";
 
   const code = value.code?.trim() ?? "";
+  if (code === "accelerator_feature_unsupported") {
+    const feature = String(value.params?.feature ?? "");
+    return t("schedule.accelerator_feature_unsupported", { ...value.params, feature: t(`common:acceleratorFeature.names.${feature}`, { defaultValue: feature }) });
+  }
   if (code) {
     // A storage reason says which storage and why; the more specific text
     // wins when there is one for that why.
@@ -50,10 +54,10 @@ export function placementRefusalText(
   const code = value && typeof value !== "string" ? value.code?.trim() ?? "" : "";
   if (code && value && typeof value !== "string") {
     if ((code === "chip_mismatch" || code === "vendor_mismatch") && Array.isArray(value.params?.actual_gpus)) {
-      const facts = value.params.actual_gpus as Array<{ name?: string; vendor?: string; cc?: string }>;
-      const actual = [...new Set(facts.map((gpu) => [gpu.name || t("placementReason.gpuUnknown"), gpu.vendor,
+      const facts = value.params.actual_gpus as GPUPredicate[];
+      const actual = [...new Set(facts.map((gpu) => [gpu.name || t("placementReason.gpuUnknown"), gpu.vendor, gpu.arch_id,
         (gpu.vendor === "nvidia" || gpu.cc) ? t("placementReason.gpuCC", { value: gpu.cc || t("placementReason.gpuUnknown") }) : ""].filter(Boolean).join(" · ")))].join("; ") || t("placementReason.noReportedGPU");
-      const required = [value.params.required_vendor || value.params.vendor,
+      const required = [value.params.required_vendor || value.params.vendor, value.params.required_arch_id,
         value.params.required_cc ? t("placementReason.gpuCC", { value: value.params.required_cc }) : "",
         value.params.required_name ? t("placementReason.gpuNamePattern", { value: value.params.required_name }) : ""].filter(Boolean).join(" · ");
       return t("placementReason.hardwareDifference", { required, actual });

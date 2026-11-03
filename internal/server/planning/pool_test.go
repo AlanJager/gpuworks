@@ -1,12 +1,11 @@
 package planning
 
 import (
-	"reflect"
-	"testing"
-
 	"gpuworks.ai/gpuworks/internal/accelerator"
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/store"
+	"reflect"
+	"testing"
 )
 
 func candidate(id uint, replicas, free int, model ModelLocality, sticky bool) PoolCandidate {
@@ -154,6 +153,17 @@ func TestHardwareShape(t *testing.T) {
 	}
 	if HardwareShape(a, true) == HardwareShape(a, false) {
 		t.Error("a node that may not serve has the shape of one that may")
+	}
+	mixed := &store.Node{GPUVendor: "nvidia", Arch: "amd64", GPUs: []store.GPU{
+		{Index: 0, Name: "H100", MemoryTotal: 80, ComputeCapability: "9.0", ArchID: "sm_90", Vendor: "nvidia"},
+		{Index: 1, Name: "H100", MemoryTotal: 80, ComputeCapability: "9.0", ArchID: "sm_90", Vendor: "amd"},
+	}}
+	uniform := &store.Node{GPUVendor: "nvidia", Arch: "amd64", GPUs: []store.GPU{
+		{Index: 0, Name: "H100", MemoryTotal: 80, ComputeCapability: "9.0", ArchID: "sm_90", Vendor: "nvidia"},
+		{Index: 1, Name: "H100", MemoryTotal: 80, ComputeCapability: "9.0", ArchID: "sm_90", Vendor: "nvidia"},
+	}}
+	if HardwareShape(mixed, true) == HardwareShape(uniform, true) {
+		t.Fatal("per-card vendor differences must distinguish hardware shapes")
 	}
 }
 

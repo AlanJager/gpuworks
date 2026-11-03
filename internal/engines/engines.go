@@ -1,6 +1,6 @@
-// Package engines is the single source of inference engine names.
+// Package engines is the single source of inference engine names and CLI vocabulary.
 //
-// It is a leaf: names only, no logic, no imports. It exists because the names
+// It is a leaf with only standard-library dependencies. It exists because the names
 // are needed on both sides of an unavoidable dependency edge —
 // internal/server/deploy owns the engine registry, but internal/agent must
 // never import internal/server, and server-side leaf packages reached through

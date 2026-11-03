@@ -3,15 +3,16 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"gpuworks.ai/gpuworks/internal/accelerator"
+	"gpuworks.ai/gpuworks/internal/proto"
+	"gpuworks.ai/gpuworks/internal/server/bus"
+	"gpuworks.ai/gpuworks/internal/server/deploy"
+	"gpuworks.ai/gpuworks/internal/server/planning"
+	"gpuworks.ai/gpuworks/internal/server/store"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
-
-	"gpuworks.ai/gpuworks/internal/proto"
-	"gpuworks.ai/gpuworks/internal/server/bus"
-	"gpuworks.ai/gpuworks/internal/server/deploy"
-	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
 // eligibleNodeFixture seeds the five-node world the eligibility cases need:
@@ -126,6 +127,19 @@ func hasReason(node struct {
 // The five cases the plan names: requirement mismatch, vendor mismatch,
 // chipmatch mismatch, offline, and all-eligible. One draft answers for every node at
 // once, which is exactly what the dropdown renders.
+
+func TestEvaluateEligibleNodesSkipsAMDFeatureWorkWithoutOwnedAMD(t *testing.T) {
+	h, _ := eligibleNodeFixture(t)
+	called := false
+	h.evaluateEligibleNodes(templateSelection{}, nil, nil, true, func(node *store.Node) map[int]planning.TargetCardRequest {
+		called = true
+		return eligibleRequestsForTest(node, planning.TargetRequest{Features: []accelerator.Feature{accelerator.FeatureMultiNode}, CommandKnown: true})
+	})
+	if !called {
+		t.Fatal("resolved launch features were not evaluated for owned cards")
+	}
+}
+
 func TestEvaluateEligibleNodesCoverEveryReason(t *testing.T) {
 	h, templateID := eligibleNodeFixture(t)
 	body := fmt.Sprintf(`{"template_id":%d,"template_spec_name":"fp8-balanced","node_uuid":"eligible-node","target_vendor":"nvidia","node_requirements":{"pool":["inference"]}}`, templateID)
@@ -209,4 +223,12 @@ func TestEvaluateEligibleNodesWithoutTemplate(t *testing.T) {
 	if entry, ok := nodes["plain-node"]; !ok || !entry.Eligible {
 		t.Fatalf("a plain online node must be eligible: %+v", entry)
 	}
+}
+
+func eligibleRequestsForTest(node *store.Node, request planning.TargetRequest) map[int]planning.TargetCardRequest {
+	out := map[int]planning.TargetCardRequest{}
+	for _, gpu := range node.OwnedGPUs() {
+		out[gpu.Index] = planning.TargetCardRequest{Request: request}
+	}
+	return out
 }
