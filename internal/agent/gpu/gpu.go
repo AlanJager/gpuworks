@@ -129,26 +129,55 @@ type Prober interface {
 // evidence, or reports that the host has no accelerator.
 func New() Prober {
 	probers := defaultProbers()
-	if p := firstAvailable(probers); p != nil {
+	bus, managed := pciBusVendors("")
+	if p := firstAvailableWithBus(probers, managed); p != nil {
 		return p
 	}
-	return fallbackProber(probers, deviceExists, commandExists, cardsOnBus(""))
+	return fallbackProber(probers, deviceExists, commandExists, bus)
+}
+
+// Preserve a failed physical backend when AMD would otherwise be the
+// automatic winner. An operator can still explicitly select AMD with NewFor.
+func firstAvailableWithBus(probers []Prober, onBus func(string) bool) Prober {
+	for _, p := range probers {
+		if p == nil || !p.Available() {
+			continue
+		}
+		if p.Vendor() == accelerator.VendorAMD {
+			for _, other := range probers {
+				if other != nil && other.Vendor() != accelerator.VendorAMD && onBus(other.Vendor()) {
+					return other
+				}
+			}
+		}
+		return p
+	}
+	return nil
 }
 
 // cardsOnBus reports, per vendor, whether the host's PCI bus has one of its
 // cards. The bus is read once, on the first question.
 func cardsOnBus(hostRoot string) func(vendor string) bool {
+	all, _ := pciBusVendors(hostRoot)
+	return all
+}
+
+// pciBusVendors shares one scan between fallback evidence and managed choices.
+func pciBusVendors(hostRoot string) (func(string) bool, func(string) bool) {
 	var once sync.Once
-	vendors := map[string]bool{}
-	return func(vendor string) bool {
+	vendors, managed := map[string]bool{}, map[string]bool{}
+	scan := func() {
 		once.Do(func() {
 			cards, _ := pcicards.Scanner{Root: hostRoot}.Scan()
 			for _, card := range cards {
 				vendors[card.Vendor] = true
+				if card.Driver != pcicards.DriverVFIO {
+					managed[card.Vendor] = true
+				}
 			}
 		})
-		return vendors[vendor]
 	}
+	return func(vendor string) bool { scan(); return vendors[vendor] }, func(vendor string) bool { scan(); return managed[vendor] }
 }
 
 // vendorDeviceFiles are control devices a vendor's kernel driver creates.
@@ -223,7 +252,10 @@ func fallbackProber(probers []Prober, exists, installed, onBus func(string) bool
 }
 
 func defaultProbers() []Prober {
-	return []Prober{&HygonProber{}, &AscendProber{}, &PPUProber{}, &SMIProber{}, &AppleProber{}}
+	// Keep the existing automatic-probe order stable. AMD is an explicit
+	// choice on mixed-vendor nodes; inserting it before NVIDIA would silently
+	// change which vendor the single-prober agent reports in auto mode.
+	return []Prober{&HygonProber{}, &AscendProber{}, &PPUProber{}, &SMIProber{}, &AppleProber{}, &AMDProber{}}
 }
 
 func firstAvailable(probers []Prober) Prober {

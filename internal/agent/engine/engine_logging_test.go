@@ -4,12 +4,13 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"gpuworks.ai/gpuworks/internal/agent/runtime"
-	"gpuworks.ai/gpuworks/internal/agent/runtime/recording"
-	"gpuworks.ai/gpuworks/internal/proto"
 	"log/slog"
 	"strings"
 	"testing"
+
+	"gpuworks.ai/gpuworks/internal/agent/runtime"
+	"gpuworks.ai/gpuworks/internal/agent/runtime/recording"
+	"gpuworks.ai/gpuworks/internal/proto"
 )
 
 // stopProbeDriver forces every container to exist and running so

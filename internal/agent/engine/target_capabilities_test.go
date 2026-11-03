@@ -1,11 +1,95 @@
 package engine
 
 import (
+	"context"
+	"encoding/json"
+	"strings"
+	"testing"
+
 	"gpuworks.ai/gpuworks/internal/accelerator"
 	"gpuworks.ai/gpuworks/internal/agent/gpu"
+	"gpuworks.ai/gpuworks/internal/agent/runtime"
 	"gpuworks.ai/gpuworks/internal/proto"
-	"testing"
 )
+
+func TestTargetDesiredRejectsUnsupportedStructuredFeaturesBeforeRuntime(t *testing.T) {
+	tests := map[string]proto.InstanceDesiredState{
+		"sleepable": {Sleepable: true}, "sleep-order": {DesiredSleep: 1},
+		"multinode": {NNodes: 2}, "rank": {NodeRank: 1}, "headless": {Headless: true}, "group": {DistGroup: "other"},
+		"partition": {VRAMLimitBytes: 1}, "partition-backend": {PartitionBackend: "nvidia-logical"}, "sm-limit": {SMLimitPct: 50},
+	}
+	for name, spec := range tests {
+		t.Run(name, func(t *testing.T) {
+			e := NewWithProber(&headlessTestDriver{name: "docker"}, nil, nil, t.TempDir(), &gpu.AMDProber{})
+			if err := e.validateTargetDesired(spec); err == nil {
+				t.Fatal("unsupported structured contract accepted")
+			}
+
+		})
+	}
+}
+func TestTargetDesiredAllowsSupportedWholeCardAllocation(t *testing.T) {
+	e := NewWithProber(&headlessTestDriver{name: "docker"}, nil, nil, t.TempDir(), &gpu.AMDProber{})
+	spec := proto.InstanceDesiredState{NNodes: 1, SMLimitPct: 100, GPUIndexes: []int{7, 12}}
+	if err := e.validateTargetDesired(spec); err != nil {
+		t.Fatal(err)
+	}
+	e.prober = &gpu.FixedProber{VendorName: "hygon"}
+	spec.Sleepable = true
+	spec.NNodes = 2
+	if err := e.validateTargetDesired(spec); err != nil {
+		t.Fatal("target validation rejected supported Hygon contract:", err)
+	}
+}
+
+func TestAMDTargetDesiredRejectsEmptyDeviceSelection(t *testing.T) {
+	e := NewWithProber(&headlessTestDriver{name: "docker"}, nil, nil, t.TempDir(), &gpu.AMDProber{}, WithHostRuntimeFacts(func() accelerator.HostRuntime { return accelerator.HostRuntime{OS: "linux", Arch: "amd64"} }))
+	if err := e.validateTargetDesired(proto.InstanceDesiredState{}); err == nil || !strings.Contains(err.Error(), "nonempty GPU selection") {
+		t.Fatalf("empty AMD selection accepted: %v", err)
+	}
+}
+
+func TestTargetDesiredDoesNotParseLaunchArguments(t *testing.T) {
+	e := NewWithProber(&headlessTestDriver{name: "docker"}, nil, nil, t.TempDir(), &gpu.AMDProber{})
+	spec := proto.InstanceDesiredState{GPUIndexes: []int{2}, ResolvedLaunch: proto.ResolvedLaunch{Argv: []string{"vllm", "serve", "--pipeline-parallel-size", "2"}}}
+	if err := e.validateTargetDesired(spec); err != nil {
+		t.Fatalf("agent reparsed argv instead of trusting the server launch contract: %v", err)
+	}
+}
+
+func TestTargetDesiredNormalizesDefaultLeaderWireAsSingleNode(t *testing.T) {
+	e := NewWithProber(&headlessTestDriver{name: "docker"}, nil, nil, t.TempDir(), &gpu.AMDProber{})
+	var spec proto.InstanceDesiredState
+	if err := json.Unmarshal([]byte(`{"dist_role":"leader","nnodes":1,"node_rank":0}`), &spec); err != nil {
+		t.Fatal(err)
+	}
+	spec.GPUIndexes = []int{2}
+	if err := e.validateTargetDesired(spec); err != nil {
+		t.Fatalf("single-node leader wire was rejected: %v", err)
+	}
+}
+
+func TestTargetDesiredRejectsDistributedWireFacts(t *testing.T) {
+	tests := map[string]string{
+		"multiple nodes":   `{"dist_role":"leader","dist_group":"group-1","dist_attempt":1,"nnodes":2,"node_rank":0}`,
+		"worker role":      `{"dist_role":"worker","nnodes":1,"node_rank":0}`,
+		"nonzero rank":     `{"dist_role":"follower","nnodes":1,"node_rank":1}`,
+		"negative rank":    `{"dist_role":"leader","nnodes":1,"node_rank":-1}`,
+		"negative attempt": `{"dist_role":"leader","nnodes":1,"dist_attempt":-1}`,
+	}
+	for name, wire := range tests {
+		t.Run(name, func(t *testing.T) {
+			var spec proto.InstanceDesiredState
+			if err := json.Unmarshal([]byte(wire), &spec); err != nil {
+				t.Fatal(err)
+			}
+			e := NewWithProber(&headlessTestDriver{name: "docker"}, nil, nil, t.TempDir(), &gpu.AMDProber{})
+			if err := e.validateTargetDesired(spec); err == nil || !strings.Contains(err.Error(), string(accelerator.FeatureMultiNode)) {
+				t.Fatalf("distributed wire was not refused as multi-node: %v", err)
+			}
+		})
+	}
+}
 
 func TestTargetDesiredLeavesOtherVendorLaunchPolicyToServer(t *testing.T) {
 	for _, tc := range []struct {
@@ -39,8 +123,110 @@ func TestEngineDoesNotAllocateDefaultHostFactsReader(t *testing.T) {
 	}
 }
 
+func TestTargetDesiredRejectsUnsupportedRuntimeBeforeLaunch(t *testing.T) {
+	e := NewWithProber(&headlessTestDriver{name: "udocker"}, nil, nil, t.TempDir(), &gpu.AMDProber{})
+	if err := e.validateTargetDesired(proto.InstanceDesiredState{}); err == nil || !strings.Contains(err.Error(), "runtime") {
+		t.Fatalf("udocker target validation error = %v", err)
+	}
+}
+
+func TestTargetDesiredHostRuntimeFacts(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		host  accelerator.HostRuntime
+		valid bool
+	}{
+		{name: "supported", host: accelerator.HostRuntime{OS: "linux", Arch: "amd64", Driver: "docker"}, valid: true},
+		{name: "wrong os", host: accelerator.HostRuntime{OS: "darwin", Arch: "amd64", Driver: "docker"}},
+		{name: "wrong arch", host: accelerator.HostRuntime{OS: "linux", Arch: "arm64", Driver: "docker"}},
+		{name: "wrong runtime", host: accelerator.HostRuntime{OS: "linux", Arch: "amd64", Driver: "udocker"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := NewWithProber(&headlessTestDriver{name: tc.host.Driver}, nil, nil, t.TempDir(), &gpu.AMDProber{}, WithHostRuntimeFacts(func() accelerator.HostRuntime {
+				return tc.host
+			}))
+			err := e.validateTargetDesired(proto.InstanceDesiredState{GPUIndexes: []int{2}})
+			if tc.valid && err != nil {
+				t.Fatalf("supported facts rejected: %v", err)
+			}
+			if !tc.valid && err == nil {
+				t.Fatal("unsupported host facts accepted")
+			}
+		})
+	}
+}
+
+func TestTargetDesiredRejectsUnsupportedRuntimeBeforePreStart(t *testing.T) {
+	driver := &preflightTrackingDriver{headlessTestDriver: &headlessTestDriver{name: "udocker"}}
+	e := NewWithProber(driver, nil, nil, t.TempDir(), &gpu.AMDProber{}, WithHostRuntimeFacts(func() accelerator.HostRuntime { return accelerator.HostRuntime{OS: "linux", Arch: "amd64"} }))
+	spec := proto.InstanceDesiredState{UUID: "preflight-amd", ResolvedLaunch: proto.ResolvedLaunch{PreStartArgv: []string{"touch", "/tmp/should-not-run"}}}
+	if err := e.validateTargetDesired(spec); err == nil {
+		t.Fatal("unsupported host runtime accepted")
+	}
+
+	if driver.statusCalls != 0 || driver.runCalls != 0 {
+		t.Fatalf("runtime touched before target validation: status=%d run=%d", driver.statusCalls, driver.runCalls)
+	}
+}
+
 type preflightTrackingDriver struct {
 	*headlessTestDriver
 	statusCalls int
 	runCalls    int
+}
+
+func (d *preflightTrackingDriver) Status(context.Context, string) (runtime.Status, error) {
+	d.statusCalls++
+	return runtime.Status{}, nil
+}
+
+func (d *preflightTrackingDriver) Run(context.Context, runtime.WorkloadSpec) (string, error) {
+	d.runCalls++
+	return "", nil
+}
+
+func TestTargetDesiredUnknownSnapshotIsVendorScoped(t *testing.T) {
+	for _, vendor := range []string{"amd", "nvidia", "ascend", "apple"} {
+		e := NewWithProber(&headlessTestDriver{name: "docker"}, nil, nil, t.TempDir(), &gpu.FixedProber{VendorName: vendor})
+		spec := proto.InstanceDesiredState{GPUIndexes: []int{0}, ResolvedLaunch: proto.ResolvedLaunch{RequestedFeatures: &proto.RequestedFeatures{CommandKnown: false}}}
+		err := e.validateTargetDesired(spec)
+		if (vendor == "amd") != (err != nil) {
+			t.Fatalf("%s unknown contract error=%v", vendor, err)
+		}
+	}
+}
+
+func TestTargetDesiredRejectsContradictorySnapshotButAllowsSleepAPIMetadata(t *testing.T) {
+	e := NewWithProber(&headlessTestDriver{name: "docker"}, nil, nil, t.TempDir(), &gpu.FixedProber{VendorName: "nvidia"})
+	spec := proto.InstanceDesiredState{SleepAPI: "/sleep", ResolvedLaunch: proto.ResolvedLaunch{RequestedFeatures: &proto.RequestedFeatures{CommandKnown: true}}}
+	if err := e.validateTargetDesired(spec); err != nil {
+		t.Fatalf("available API metadata became a sleep request: %v", err)
+	}
+	spec.NNodes = 2
+	if err := e.validateTargetDesired(spec); err == nil {
+		t.Fatal("snapshot omitted explicit distributed topology")
+	}
+}
+
+func TestLegacyTargetDesiredSleepMetadataIsNotARequest(t *testing.T) {
+	e := NewWithProber(&headlessTestDriver{name: "docker"}, nil, nil, t.TempDir(), &gpu.AMDProber{})
+	for _, tc := range []struct {
+		name   string
+		spec   proto.InstanceDesiredState
+		refuse bool
+	}{
+		{name: "available API", spec: proto.InstanceDesiredState{SleepAPI: "/sleep"}},
+		{name: "available mode", spec: proto.InstanceDesiredState{SleepMode: "wait"}},
+		{name: "declared request", spec: proto.InstanceDesiredState{SleepAPI: "/sleep", Sleepable: true}, refuse: true},
+		{name: "active sleep order", spec: proto.InstanceDesiredState{SleepAPI: "/sleep", DesiredSleep: 1}, refuse: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			spec := tc.spec
+			spec.GPUIndexes = []int{0}
+			err := e.validateTargetDesired(spec)
+			if (err != nil) != tc.refuse {
+				t.Fatalf("legacy metadata/request error=%v wantRefusal=%v", err, tc.refuse)
+			}
+		})
+	}
 }

@@ -4,12 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"gpuworks.ai/gpuworks/internal/agent/runtime"
-	"gpuworks.ai/gpuworks/internal/proto"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"gpuworks.ai/gpuworks/internal/agent/runtime"
+	"gpuworks.ai/gpuworks/internal/proto"
 )
 
 const (

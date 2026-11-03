@@ -26,6 +26,11 @@ type targetConstraint struct {
 
 var targetConstraints = map[string]targetConstraint{
 	VendorApple: {denyAll: true},
+	VendorAMD: {
+		unsupported:     []Feature{FeatureEngineSleep, FeatureMultiNode, FeaturePD, FeaturePipelineParallel, FeatureDataParallel},
+		runtime:         hostRequirements{os: "linux", arch: "amd64", drivers: []string{"docker", "nerdctl"}},
+		explicitDevices: true,
+	},
 }
 
 func Supports(vendor string, feature Feature) bool {

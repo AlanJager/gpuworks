@@ -1,9 +1,10 @@
 package engine
 
 import (
-	"gpuworks.ai/gpuworks/internal/proto"
 	"log/slog"
 	"testing"
+
+	"gpuworks.ai/gpuworks/internal/proto"
 )
 
 // Idle is what lets the agent switch runtimes on its own: a switch

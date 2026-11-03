@@ -906,6 +906,7 @@
     "commit": "Commit：{{commit}}",
     "channel": "构建渠道：{{channel}}"
   },
+  "gpuClock": "GPU 时钟频率",
   "acceleratorFeature": {
     "unsupported": "{{vendor}} 不支持{{feature}}。请关闭此能力或选择其他加速卡。",
     "names": {

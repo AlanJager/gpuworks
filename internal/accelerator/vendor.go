@@ -119,11 +119,12 @@ func IsDomestic(vendor string) bool {
 // another deployment branch.
 //
 // It differs from IsDomestic by including Hygon, whose DTK images share
-// neither the CUDA nor the upstream ROCm engine defaults, and Apple, whose
+// neither the CUDA nor the upstream ROCm engine defaults, AMD whose ROCm
+// image must not fall back to the CUDA default, and Apple, whose
 // engines are macOS environment packages rather than Linux images at all.
 func RequiresVendorCatalogImage(vendor string) bool {
 	vendor = VendorKey(vendor)
-	return IsDomestic(vendor) || vendor == VendorHygon || vendor == VendorApple
+	return IsDomestic(vendor) || vendor == VendorHygon || vendor == VendorApple || vendor == VendorAMD
 }
 
 // VendorBrand writes a canonical vendor the way the vendor writes it. It is

@@ -2,13 +2,14 @@ package planning
 
 import (
 	"context"
+	"reflect"
+	"strings"
+	"testing"
+
 	"gpuworks.ai/gpuworks/internal/server/bus"
 	"gpuworks.ai/gpuworks/internal/server/deploy"
 	"gpuworks.ai/gpuworks/internal/server/network"
 	"gpuworks.ai/gpuworks/internal/server/store"
-	"reflect"
-	"strings"
-	"testing"
 )
 
 // PlanLaunch is the one assembly both callers use, so its estimate input has to
@@ -205,6 +206,43 @@ func TestPlanLaunchCapsSGLangThreadsOnRunveilNodes(t *testing.T) {
 				t.Fatalf("%s on %s: removed TORCH_NUM_THREADS is still set", name, tc.runtime)
 			}
 		}
+	}
+}
+
+func TestLaunchInputBuildsCommandFeaturesOnlyForOwnedAMD(t *testing.T) {
+	selection := deploy.CatalogSelection{
+		Entrypoint: []string{"sglang", "serve"},
+		ExtraArgs:  []string{"--from-template"},
+	}
+	manual := deploy.ContainerOverrides{
+		CommandMode: string(deploy.CommandManual),
+		CmdDisplay:  `["sglang","serve","--enable-sleep-mode=true"]`,
+	}
+	for _, tc := range []struct {
+		name string
+		node *store.Node
+		want bool
+	}{
+		{name: "nvidia", node: &store.Node{GPUs: []store.GPU{{Index: 0, Vendor: "nvidia"}}}},
+		{name: "huawei", node: &store.Node{GPUs: []store.GPU{{Index: 0, Vendor: "ascend"}}}},
+		{name: "apple", node: &store.Node{GPUs: []store.GPU{{Index: 0, Vendor: "apple"}}}},
+		{name: "amd", node: &store.Node{GPUs: []store.GPU{{Index: 0, Vendor: "amd"}}, GPUVendor: "amd"}, want: true},
+		{name: "mixed includes owned amd", node: &store.Node{GPUs: []store.GPU{{Index: 0, Vendor: "nvidia"}, {Index: 1, Vendor: "amd"}}}, want: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			input, err := launchInput(nil, LaunchRequest{
+				Engine: "sglang", Node: tc.node, Selection: selection,
+				Source:    LaunchSourceFromRequest("image", manual),
+				ExtraArgs: []string{"--from-request"},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if input.RequestedFeatures == nil || !input.RequestedFeatures.CommandKnown {
+				t.Fatalf("missing resolved snapshot: %+v", input.RequestedFeatures)
+			}
+
+		})
 	}
 }
 

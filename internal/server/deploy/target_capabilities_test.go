@@ -34,7 +34,7 @@ func TestResolvedFeaturesUseEffectiveExecutableAndExactDialect(t *testing.T) {
 }
 func TestResolvedSnapshotAppliesAllVendorPolicies(t *testing.T) {
 	launch := ResolvedLaunch{Entrypoint: []string{"vllm", "serve"}, Argv: []string{"--enable-sleep-mode"}}
-	for _, vendor := range []string{"nvidia", "ascend", "apple"} {
+	for _, vendor := range []string{"nvidia", "ascend", "amd", "apple"} {
 		features := RequestedLaunchFeatures(EngineVLLM, launch, Params{Vendor: vendor})
 		if len(features) != 1 || features[0] != accelerator.FeatureEngineSleep {
 			t.Fatalf("%s features=%v", vendor, features)
@@ -46,7 +46,7 @@ func TestResolvedSnapshotAppliesAllVendorPolicies(t *testing.T) {
 	}
 }
 func TestPartitionCapabilityHasNoFeatureAuthority(t *testing.T) {
-	for _, vendor := range []string{"apple", "nvidia"} {
+	for _, vendor := range []string{"amd", "apple", "nvidia"} {
 		if got := RequestedLaunchFeatures(EngineVLLM, ResolvedLaunch{}, Params{Vendor: vendor, VRAMLimitBytes: 1, PartitionBackend: "explicit"}); len(got) != 0 {
 			t.Fatalf("partition leaked into feature policy: %v", got)
 		}
@@ -61,7 +61,7 @@ func TestPreparationHooksCannotSupplyLaunchFeatures(t *testing.T) {
 
 func TestUnknownExecutableRequiresProofOnlyForPartialLaunchRestrictions(t *testing.T) {
 	launch := ResolvedLaunch{Entrypoint: []string{"/bin/sh"}, Argv: []string{"-c", "exec custom-server"}}
-	for _, vendor := range []string{"nvidia", "ascend", "apple"} {
+	for _, vendor := range []string{"amd", "nvidia", "ascend", "apple"} {
 		err := ValidateTargetFeatures(EngineVLLM, launch, Params{Vendor: vendor})
 		if (vendor == "amd") != (err != nil) {
 			t.Fatalf("%s unknown launch error=%v", vendor, err)

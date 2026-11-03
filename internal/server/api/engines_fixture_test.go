@@ -3,8 +3,6 @@ package api
 import (
 	"bytes"
 	"encoding/json"
-	"gpuworks.ai/gpuworks/internal/server/auth"
-	"gpuworks.ai/gpuworks/internal/server/deploy"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +10,9 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"gpuworks.ai/gpuworks/internal/server/auth"
+	"gpuworks.ai/gpuworks/internal/server/deploy"
 )
 
 // enginesFixturePath is the parameter dictionary the deploy form renders in its

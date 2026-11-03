@@ -1,12 +1,32 @@
 package planning
 
 import (
+	"errors"
+	"testing"
+
 	"gpuworks.ai/gpuworks/internal/accelerator"
 	"gpuworks.ai/gpuworks/internal/proto"
+	"gpuworks.ai/gpuworks/internal/server/deploy"
+	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/internal/server/scheduler"
 	"gpuworks.ai/gpuworks/internal/server/store"
-	"testing"
 )
+
+func TestTargetCardFilteringKeepsCompatibleMixedVendorCandidate(t *testing.T) {
+	node := &store.Node{OS: "linux", Arch: "amd64", RuntimeDriver: "docker", GPUs: []store.GPU{
+		{Index: 0, Name: "AMD Instinct MI300X", Vendor: "amd", ArchID: "gfx942"},
+		{Index: 1, Name: "NVIDIA H100", Vendor: "nvidia", ArchID: "sm_90"},
+	}}
+	launch := &proto.RequestedFeatures{EngineSleep: true}
+	in := Input{Node: node, RequestedFeatures: launch, Sleepable: true}
+	snap := scheduler.NodeSnapshot{Vendor: "amd", GPUs: []scheduler.GPU{{Index: 0}, {Index: 1}}}
+	if refusal := constrainTargetGPUs(in, &snap); refusal != nil {
+		t.Fatalf("mixed node refusal=%+v", refusal)
+	}
+	if len(snap.GPUs) != 1 || snap.GPUs[0].Index != 1 || snap.Vendor != "nvidia" {
+		t.Fatalf("filtered candidates=%+v vendor=%q", snap.GPUs, snap.Vendor)
+	}
+}
 
 func TestNeedsTargetPreflightUsesOwnedPhysicalCards(t *testing.T) {
 	cases := []struct {
@@ -49,5 +69,104 @@ func TestResolvedFeaturesAreAppliedToEveryVendor(t *testing.T) {
 	snapshot := scheduler.NodeSnapshot{GPUs: []scheduler.GPU{{Index: 0}}}
 	if refusal := constrainTargetGPUs(appleInput, &snapshot); refusal == nil || refusal.Code != scheduler.ReasonSleepUnsupportedOnNode {
 		t.Fatalf("Apple's declared sleep restriction was not preserved: %+v", refusal)
+	}
+}
+
+func TestExplicitSelectionRejectsOneIncompatibleGPU(t *testing.T) {
+	node := &store.Node{OS: "linux", Arch: "amd64", RuntimeDriver: "docker", GPUs: []store.GPU{{Index: 0, Name: "AMD Instinct MI300X", Vendor: "amd", ArchID: "gfx942"}, {Index: 1, Name: "NVIDIA H100", Vendor: "nvidia", ArchID: "sm_90"}}}
+	in := Input{Node: node, GPUIndexes: []int{0, 1}, Sleepable: true}
+	snap := scheduler.NodeSnapshot{GPUs: []scheduler.GPU{{Index: 0}, {Index: 1}}}
+	refusal := constrainTargetGPUs(in, &snap)
+	if refusal == nil || refusal.Code != scheduler.ReasonSleepUnsupportedOnNode {
+		t.Fatalf("explicit incompatible selection refusal=%+v", refusal)
+	}
+}
+
+func TestAutomaticTargetGateCanKeepOneCompatibleCard(t *testing.T) {
+	node := &store.Node{OS: "linux", Arch: "amd64", RuntimeDriver: "docker", GPUs: []store.GPU{{Index: 0, Name: "AMD Instinct MI300X", Vendor: "amd", ArchID: "gfx942"}, {Index: 1, Name: "NVIDIA H100", Vendor: "nvidia", ArchID: "sm_90"}}}
+	req := LaunchRequest{Node: node, Model: &store.Model{}, Engine: "vllm", Sleepable: true}
+	if refusal, err := TargetCandidateRefusal(req, deploy.CatalogSelection{}, node); err != nil || refusal != nil {
+		t.Fatalf("compatible auto candidate refused: %+v", refusal)
+	}
+	node.GPUs = node.GPUs[:1]
+	if refusal, err := TargetCandidateRefusal(req, deploy.CatalogSelection{}, node); err != nil || refusal == nil || refusal.Code != scheduler.ReasonSleepUnsupportedOnNode {
+		t.Fatalf("unsupported auto candidate refusal=%+v", refusal)
+	}
+}
+
+func TestTargetCandidateRefusalDefersMixedExplicitTemplateMismatch(t *testing.T) {
+	layer := deploy.CatalogSelection{GPUs: []byte(`{"vendor":"amd"}`)}
+	orders := []struct {
+		name string
+		gpus []store.GPU
+	}{
+		{
+			name: "unsupported matching card first",
+			gpus: []store.GPU{
+				{Index: 0, Name: "AMD Instinct MI300X", Vendor: "amd", ArchID: "gfx942"},
+				{Index: 1, Name: "NVIDIA H100", Vendor: "nvidia", ArchID: "sm_90"},
+			},
+		},
+		{
+			name: "template mismatch first",
+			gpus: []store.GPU{
+				{Index: 1, Name: "NVIDIA H100", Vendor: "nvidia", ArchID: "sm_90"},
+				{Index: 0, Name: "AMD Instinct MI300X", Vendor: "amd", ArchID: "gfx942"},
+			},
+		},
+	}
+	for _, tc := range orders {
+		t.Run(tc.name, func(t *testing.T) {
+			node := &store.Node{OS: "linux", Arch: "amd64", RuntimeDriver: "docker", GPUs: tc.gpus}
+			req := LaunchRequest{
+				Node: node, Model: &store.Model{}, Engine: "vllm", Sleepable: true,
+				Placement: Placement{GPUIndexes: []int{0, 1}},
+			}
+			refusal, err := TargetCandidateRefusal(req, layer, node)
+			if err != nil || refusal != nil {
+				t.Fatalf("explicit mixed candidate should defer template mismatch to trial: refusal=%+v err=%v", refusal, err)
+			}
+
+			validator, err := TemplateGPUValidator(layer)
+			if err != nil {
+				t.Fatal(err)
+			}
+			in := Input{Node: node, Engine: "vllm", GPUIndexes: []int{0, 1}, Sleepable: true, ValidateGPU: validator}
+			// Exercise the production evaluation path in the node's actual
+			// owned-card order; template validation must finish before any
+			// selected card can produce a target-capability refusal.
+			snapGPUs := make([]scheduler.GPU, 0, len(tc.gpus))
+			for _, gpu := range tc.gpus {
+				snapGPUs = append(snapGPUs, scheduler.GPU{Index: gpu.Index})
+			}
+			snap := scheduler.NodeSnapshot{GPUs: snapGPUs}
+			trialRefusal := constrainTargetGPUs(in, &snap)
+			if trialRefusal == nil || trialRefusal.Code != scheduler.ReasonPlacementRejected {
+				t.Fatalf("bounded placement trial refusal=%+v, want template placement rejection", trialRefusal)
+			}
+		})
+	}
+}
+
+func TestTargetCandidateRefusalReturnsInvalidTemplateError(t *testing.T) {
+	node := &store.Node{GPUVendor: "amd", GPUs: []store.GPU{{Index: 0, Name: "MI300X", Vendor: "amd"}}}
+	req := LaunchRequest{Node: node, Model: &store.Model{}, Engine: "vllm"}
+	refusal, err := TargetCandidateRefusal(req, deploy.CatalogSelection{GPUs: []byte("{")}, node)
+	if err == nil || refusal != nil {
+		t.Fatalf("invalid template must propagate as an error, got refusal=%+v err=%v", refusal, err)
+	}
+}
+
+func TestSleepDeclarableUsesFeatureRefusalWithoutGPUSelectionGate(t *testing.T) {
+	err := SleepDeclarable(true, "vllm", "amd")
+	var product *messages.ProductError
+	if !errors.As(err, &product) || product.Code() != messages.ErrorAcceleratorFeatureUnsupported {
+		t.Fatalf("AMD sleep declaration error=%v, want feature refusal", err)
+	}
+	if product.Params()["feature"] != "engine_sleep" {
+		t.Fatalf("AMD sleep refusal params=%v", product.Params())
+	}
+	if err := SleepDeclarable(false, "vllm", "amd"); err != nil {
+		t.Fatalf("non-sleepable AMD request should not require target selection: %v", err)
 	}
 }

@@ -3,16 +3,17 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+
 	"gpuworks.ai/gpuworks/internal/accelerator"
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/bus"
 	"gpuworks.ai/gpuworks/internal/server/deploy"
 	"gpuworks.ai/gpuworks/internal/server/planning"
 	"gpuworks.ai/gpuworks/internal/server/store"
-	"net/http"
-	"net/http/httptest"
-	"strings"
-	"testing"
 )
 
 // eligibleNodeFixture seeds the five-node world the eligibility cases need:
@@ -127,6 +128,45 @@ func hasReason(node struct {
 // The five cases the plan names: requirement mismatch, vendor mismatch,
 // chipmatch mismatch, offline, and all-eligible. One draft answers for every node at
 // once, which is exactly what the dropdown renders.
+func TestEvaluateEligibleNodesFilterAMDFeatureRequirements(t *testing.T) {
+	h, _ := eligibleNodeFixture(t)
+	if _, err := h.d.Store.RegisterNode("amd-feature-node", store.HashToken("amd-feature-token"), "amd-feature-node"); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.d.Store.UpdateNodeStatus("amd-feature-node", proto.NodeStatus{
+		Sys:  proto.SysInfo{Hostname: "amd-feature-node", OS: "linux", Arch: "amd64", GPUVendor: "amd", Framework: "rocm", RuntimeDriver: "docker"},
+		GPUs: []proto.GPUInfo{{Index: 0, Name: "AMD Instinct MI300X", Vendor: "amd", ArchID: "gfx942", MemoryTotalBytes: 96 << 30, Healthy: true}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	features := []accelerator.Feature{accelerator.FeatureMultiNode, accelerator.FeaturePD}
+	nodes, _ := h.evaluateEligibleNodes(templateSelection{}, nil, nil, true, func(node *store.Node) map[int]planning.TargetCardRequest {
+		return eligibleRequestsForTest(node, planning.TargetRequest{Features: features, CommandKnown: true})
+	})
+	byUUID := make(map[string]struct {
+		eligible bool
+		reasons  map[string]bool
+	}, len(nodes))
+	for _, node := range nodes {
+		reasons := make(map[string]bool)
+		for _, reason := range node.Reasons {
+			reasons[reason.Code] = true
+		}
+		byUUID[node.UUID] = struct {
+			eligible bool
+			reasons  map[string]bool
+		}{node.Eligible, reasons}
+	}
+	amd := byUUID["amd-feature-node"]
+	if amd.eligible || !amd.reasons["multi_node_unsupported_on_node"] || !amd.reasons["pd_unsupported_on_node"] {
+		t.Fatalf("AMD feature requirements were not explained: %+v", amd)
+	}
+	for _, uuid := range []string{"eligible-node", "vendor-node"} {
+		if node := byUUID[uuid]; !node.eligible {
+			t.Fatalf("supported vendor %s was filtered by AMD feature requirements: %+v", uuid, node)
+		}
+	}
+}
 
 func TestEvaluateEligibleNodesSkipsAMDFeatureWorkWithoutOwnedAMD(t *testing.T) {
 	h, _ := eligibleNodeFixture(t)

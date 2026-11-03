@@ -3,11 +3,12 @@ package deploy
 import (
 	"bytes"
 	"encoding/json"
-	"gpuworks.ai/gpuworks/internal/proto"
 	"reflect"
 	"slices"
 	"strings"
 	"testing"
+
+	"gpuworks.ai/gpuworks/internal/proto"
 )
 
 func TestQuickParamsAndParamSpecsStayConsistent(t *testing.T) {

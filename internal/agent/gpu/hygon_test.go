@@ -286,13 +286,13 @@ func TestHygonAvailableRequiresAParsedDevice(t *testing.T) {
 
 // NVIDIA is tried after every other vendor CLI: a PPU host's CUDA-compat
 // nvidia-smi answers too (see TestNewPrefersPPUOverCompatNVIDIASMI).
-func TestDefaultProbersTryNVIDIALast(t *testing.T) {
+func TestDefaultProbersPreserveExistingVendorOrder(t *testing.T) {
 	probers := defaultProbers()
 	vendors := make([]string, len(probers))
 	for i, prober := range probers {
 		vendors[i] = prober.Vendor()
 	}
-	want := []string{"hygon", "ascend", "ppu", "nvidia", "apple"}
+	want := []string{"hygon", "ascend", "ppu", "nvidia", "apple", "amd"}
 	if !reflect.DeepEqual(vendors, want) {
 		t.Fatalf("default prober vendors = %v, want %v", vendors, want)
 	}

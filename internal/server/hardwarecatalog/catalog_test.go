@@ -83,3 +83,20 @@ func TestCatalogVendorsAreKnownAcceleratorVendors(t *testing.T) {
 		t.Fatal("catalog is empty; the subset assertion would be vacuous")
 	}
 }
+
+func TestCatalogIncludesAMDWithoutNVIDIAComputeCapability(t *testing.T) {
+	want := map[string]string{"AMD Instinct MI300X": CategoryDataCenter, "AMD Radeon 8060S (AMD395)": CategoryWorkstation}
+	for _, gpu := range List() {
+		category, ok := want[gpu.Name]
+		if !ok {
+			continue
+		}
+		if gpu.Vendor != accelerator.VendorAMD || gpu.CC != 0 || gpu.Category != category || gpu.Architecture == "" {
+			t.Fatalf("AMD choice = %+v", gpu)
+		}
+		delete(want, gpu.Name)
+	}
+	if len(want) != 0 {
+		t.Fatalf("missing AMD choices: %v", want)
+	}
+}

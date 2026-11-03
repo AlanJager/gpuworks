@@ -6,15 +6,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	agentengine "gpuworks.ai/gpuworks/internal/agent/engine"
-	"gpuworks.ai/gpuworks/internal/agent/gpu"
-	dockerdrv "gpuworks.ai/gpuworks/internal/agent/runtime/docker"
-	"gpuworks.ai/gpuworks/internal/engines"
-	"gpuworks.ai/gpuworks/internal/proto"
-	"gpuworks.ai/gpuworks/internal/server/bus"
-	"gpuworks.ai/gpuworks/internal/server/network"
-	"gpuworks.ai/gpuworks/internal/server/proxy"
-	"gpuworks.ai/gpuworks/internal/server/store"
 	"io"
 	"net"
 	"net/http"
@@ -27,6 +18,16 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	agentengine "gpuworks.ai/gpuworks/internal/agent/engine"
+	"gpuworks.ai/gpuworks/internal/agent/gpu"
+	dockerdrv "gpuworks.ai/gpuworks/internal/agent/runtime/docker"
+	"gpuworks.ai/gpuworks/internal/engines"
+	"gpuworks.ai/gpuworks/internal/proto"
+	"gpuworks.ai/gpuworks/internal/server/bus"
+	"gpuworks.ai/gpuworks/internal/server/network"
+	"gpuworks.ai/gpuworks/internal/server/proxy"
+	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
 type childReadinessNetworks struct{}

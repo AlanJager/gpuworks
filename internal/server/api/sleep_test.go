@@ -2,17 +2,18 @@ package api
 
 import (
 	"encoding/json"
-	"gpuworks.ai/gpuworks/internal/proto"
-	"gpuworks.ai/gpuworks/internal/server/bus"
-	"gpuworks.ai/gpuworks/internal/server/messages"
-	"gpuworks.ai/gpuworks/internal/server/sleep"
-	"gpuworks.ai/gpuworks/internal/server/store"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
 	"strings"
 	"sync"
 	"testing"
+
+	"gpuworks.ai/gpuworks/internal/proto"
+	"gpuworks.ai/gpuworks/internal/server/bus"
+	"gpuworks.ai/gpuworks/internal/server/messages"
+	"gpuworks.ai/gpuworks/internal/server/sleep"
+	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
 // The policy package produces the capability and admission codes. API-only

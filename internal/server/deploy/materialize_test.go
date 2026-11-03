@@ -4,10 +4,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"gpuworks.ai/gpuworks/internal/server/messages"
 	"reflect"
 	"strings"
 	"testing"
+
+	"gpuworks.ai/gpuworks/internal/server/messages"
 )
 
 // The tests in this file are the acceptance baseline for ADR 0020: one

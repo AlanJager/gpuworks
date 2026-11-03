@@ -2,13 +2,14 @@ package api
 
 import (
 	"fmt"
-	"gorm.io/gorm"
-	"gpuworks.ai/gpuworks/internal/server/store"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync/atomic"
 	"testing"
+
+	"gorm.io/gorm"
+	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
 func TestEvaluateLoadsEligibilityInventoryOnceForValidAndInvalidDrafts(t *testing.T) {

@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"gpuworks.ai/gpuworks/internal/agent/runtime"
-	"gpuworks.ai/gpuworks/internal/proto"
 	"io"
 	"log/slog"
 	"net/http"
@@ -14,6 +12,9 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"gpuworks.ai/gpuworks/internal/agent/runtime"
+	"gpuworks.ai/gpuworks/internal/proto"
 )
 
 // livenessDriver keeps containers the way docker does: a stopped or crashed

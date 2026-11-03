@@ -47,6 +47,10 @@ func EnvInt(name string, fallback int) int {
 // control plane from what a polling browser adds to it.
 func ReadsEnabled() bool { return os.Getenv("GPUWORKS_FLEET_READS") != "0" }
 
+// GPUReadsEnabled adds the GPU inventory endpoint to the concurrent browser
+// reads for the GPU metrics hot-path comparison.
+func GPUReadsEnabled() bool { return os.Getenv("GPUWORKS_FLEET_GPU_READS") == "1" }
+
 // Churn is the measured workload: hold a fleet connected while some of it
 // redeploys in a loop, and record what that costs the control plane.
 type Churn struct {
@@ -58,6 +62,8 @@ type Churn struct {
 	Rounds     int
 	// Reads runs the concurrent API reader.
 	Reads bool
+	// GPUReads polls the physical GPU inventory while the fleet churns.
+	GPUReads bool
 	// Watch observes node liveness for the duration. Its Snapshot must be set.
 	Watch *NodeWatch
 	// Log receives progress lines; nil discards them.
@@ -79,7 +85,10 @@ type Report struct {
 	FailedDeployments  []string
 	DeploymentTimeouts int
 	Reads              bool
+	GPUReads           bool
 	ReadFailures       []string
+	GPUReadFailures    []string
+	GPUReadLatency     *Latencies
 }
 
 // Run drives the churn and returns what it measured. Errors that stop the
@@ -93,13 +102,13 @@ func (c Churn) Run() (Report, error) {
 	if logf == nil {
 		logf = func(string, ...any) {}
 	}
-	report := Report{DeploymentLatency: &Latencies{}, EventLatency: &Latencies{}, Reads: c.Reads}
+	report := Report{DeploymentLatency: &Latencies{}, EventLatency: &Latencies{}, GPUReadLatency: &Latencies{}, Reads: c.Reads, GPUReads: c.GPUReads}
 
 	watchStop, watchDone := make(chan struct{}), make(chan struct{})
 	go c.Watch.Run(watchStop, watchDone)
 
 	readStop, readDone := make(chan struct{}), make(chan struct{})
-	if c.Reads {
+	if c.Reads || c.GPUReads {
 		go c.pollReadEndpoints(&report, readStop, readDone)
 	} else {
 		close(readDone)
@@ -197,10 +206,19 @@ const instancePollInterval = time.Second
 // caller can delete it once the whole round is up.
 func (c Churn) runOneDeployment(round int, nodeUUID string, instances *instanceWatch, eventRows, failures *sync.Map) uint {
 	attempt := fmt.Sprintf("round %d on %s", round+1, nodeUUID)
-	body, _ := json.Marshal(map[string]any{
+	payload := map[string]any{
 		"model_id": c.ModelID, "node_uuid": nodeUUID, "served_name": fmt.Sprintf("fleet-%d-%s", round, nodeUUID),
 		"quick_params": map[string]any{"max_model_len": 512},
-	})
+	}
+	// Mixed-vendor runs use one explicit, synthetic image and recognizable
+	// executable contract for every node. Neither server relies on a vendor's
+	// default image, and the fake driver never fetches this image from a registry.
+	if EnvInt("GPUWORKS_FLEET_AMD_PERCENT", 0) > 0 {
+		payload["image"] = "example.invalid/gpuworks-fleet:control-plane-test"
+		payload["container_overrides"] = map[string]any{"entrypoint_display": `["vllm","serve","${MODEL_PATH}"]`}
+	}
+	body, _ := json.Marshal(payload)
+
 	var created createdDeployment
 	if err := c.Client.PostJSON("/api/v1/deployments", body, &created); err != nil {
 		failures.Store(attempt, "create, "+attempt+": "+err.Error())
@@ -274,8 +292,8 @@ func (w *instanceWatch) get(deploymentID uint) (instanceView, bool) {
 	return view, ok
 }
 
-// pollReadEndpoints is the browser an operator leaves open: the deployment list
-// and one deployment's events, five times a second between them.
+// pollReadEndpoints is the browser an operator leaves open: deployment and
+// event reads, and optionally the GPU inventory, during the churn.
 func (c Churn) pollReadEndpoints(report *Report, stop <-chan struct{}, done chan<- struct{}) {
 	defer close(done)
 	for {
@@ -284,15 +302,24 @@ func (c Churn) pollReadEndpoints(report *Report, stop <-chan struct{}, done chan
 			return
 		case <-time.After(200 * time.Millisecond):
 		}
-		if took, err := c.Client.Discard("/api/v1/deployments"); err == nil {
-			report.DeploymentLatency.Add(took)
-		} else {
-			report.ReadFailures = append(report.ReadFailures, err.Error())
+		if c.Reads {
+			if took, err := c.Client.Discard("/api/v1/deployments"); err == nil {
+				report.DeploymentLatency.Add(took)
+			} else {
+				report.ReadFailures = append(report.ReadFailures, err.Error())
+			}
+			if took, err := c.Client.Discard("/api/v1/deployments/1/events?limit=50"); err == nil {
+				report.EventLatency.Add(took)
+			} else {
+				report.ReadFailures = append(report.ReadFailures, err.Error())
+			}
 		}
-		if took, err := c.Client.Discard("/api/v1/deployments/1/events?limit=50"); err == nil {
-			report.EventLatency.Add(took)
-		} else {
-			report.ReadFailures = append(report.ReadFailures, err.Error())
+		if c.GPUReads {
+			if took, err := c.Client.Discard("/api/v1/gpus"); err == nil {
+				report.GPUReadLatency.Add(took)
+			} else {
+				report.GPUReadFailures = append(report.GPUReadFailures, err.Error())
+			}
 		}
 	}
 }

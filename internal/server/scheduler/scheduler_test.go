@@ -1,9 +1,10 @@
 package scheduler
 
 import (
+	"testing"
+
 	"gpuworks.ai/gpuworks/internal/accelerator"
 	"gpuworks.ai/gpuworks/pkg/topoparse"
-	"testing"
 )
 
 const giB = int64(1) << 30

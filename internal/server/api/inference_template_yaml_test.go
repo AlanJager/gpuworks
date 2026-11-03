@@ -4,14 +4,6 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
-	"gpuworks.ai/gpuworks/internal/server/auth"
-	"gpuworks.ai/gpuworks/internal/server/bus"
-	"gpuworks.ai/gpuworks/internal/server/inferenceapi"
-	"gpuworks.ai/gpuworks/internal/server/inferencecatalog"
-	"gpuworks.ai/gpuworks/internal/server/inferencecatalog/packages"
-	"gpuworks.ai/gpuworks/internal/server/store"
-	"gpuworks.ai/gpuworks/pkg/localization"
-	"gpuworks.ai/gpuworks/pkg/modelconfig"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -21,6 +13,15 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"gpuworks.ai/gpuworks/internal/server/auth"
+	"gpuworks.ai/gpuworks/internal/server/bus"
+	"gpuworks.ai/gpuworks/internal/server/inferenceapi"
+	"gpuworks.ai/gpuworks/internal/server/inferencecatalog"
+	"gpuworks.ai/gpuworks/internal/server/inferencecatalog/packages"
+	"gpuworks.ai/gpuworks/internal/server/store"
+	"gpuworks.ai/gpuworks/pkg/localization"
+	"gpuworks.ai/gpuworks/pkg/modelconfig"
 )
 
 const (

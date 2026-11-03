@@ -906,6 +906,7 @@
     "commit": "Commit: {{commit}}",
     "channel": "Build channel: {{channel}}"
   },
+  "gpuClock": "GPU clock",
   "acceleratorFeature": {
     "unsupported": "{{vendor}} does not support {{feature}}. Choose a supported feature or select another accelerator.",
     "names": {

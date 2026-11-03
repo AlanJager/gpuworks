@@ -1,8 +1,9 @@
 package engine
 
 import (
-	"gpuworks.ai/gpuworks/internal/agent/runtime"
 	"log/slog"
+
+	"gpuworks.ai/gpuworks/internal/agent/runtime"
 )
 
 // newHermeticEngine makes general engine tests independent of the host GPU.

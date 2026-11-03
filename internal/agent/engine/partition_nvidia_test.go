@@ -3,13 +3,14 @@ package engine
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
+	"testing"
+
 	"gpuworks.ai/gpuworks/internal/accelerator"
 	"gpuworks.ai/gpuworks/internal/agent/gpu"
 	"gpuworks.ai/gpuworks/internal/agent/runtime"
 	"gpuworks.ai/gpuworks/internal/proto"
-	"os"
-	"path/filepath"
-	"testing"
 )
 
 func TestNvidiaPartitionMountsHostAndContainerPathsSymmetrically(t *testing.T) {

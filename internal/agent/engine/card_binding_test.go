@@ -2,13 +2,14 @@ package engine
 
 import (
 	"context"
+	"log/slog"
+	"strings"
+	"testing"
+
 	"gpuworks.ai/gpuworks/internal/agent/gpu"
 	"gpuworks.ai/gpuworks/internal/agent/runtime"
 	"gpuworks.ai/gpuworks/internal/agent/runtime/recording"
 	"gpuworks.ai/gpuworks/internal/proto"
-	"log/slog"
-	"strings"
-	"testing"
 )
 
 func nvidiaCard(index int, bdf string) proto.GPUInfo {

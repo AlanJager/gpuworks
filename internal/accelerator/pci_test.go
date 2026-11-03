@@ -31,6 +31,28 @@ func TestOnlyTheComputeFunctionOfACardCountsAsAnAccelerator(t *testing.T) {
 	}
 }
 
+// AMD PCI roster identity is established by the existing vendor/driver pair,
+// not by a broad display-class rule that could claim unrelated functions.
+func TestAMDPCIRosterUsesOnlyTheKnownGPUDriver(t *testing.T) {
+	if got := VendorForPCI(0x1002, 0, 0x030000, "amdgpu"); got != VendorAMD {
+		t.Fatalf("AMD GPU bound to amdgpu = %q, want %q", got, VendorAMD)
+	}
+	for _, fn := range []struct {
+		class  uint32
+		driver string
+	}{
+		{0x060400, "pcieport"}, {0x040300, "snd_hda_intel"},
+		{0x0c0330, "xhci_hcd"}, {0x0c8000, "typec"},
+	} {
+		if got := VendorForPCI(0x1002, 0, fn.class, fn.driver); got != "" {
+			t.Errorf("non-GPU AMD function class=%#06x driver=%q identified as %q", fn.class, fn.driver, got)
+		}
+	}
+	if !HasPCICards(VendorAMD) {
+		t.Fatal("HasPCICards(amd) = false")
+	}
+}
+
 // The display base class is shared with every BMC and integrated graphics
 // chip there is, so it is granted per vendor. Huawei's own BMC controller
 // carries the same vendor id as its NPUs, and would otherwise add a
@@ -163,12 +185,12 @@ func TestAnUnnamedCardIsLabelledByItsIDs(t *testing.T) {
 // The vendors a node can be told to manage are those a PCI bus lists:
 // every one but Apple, and nothing unknown.
 func TestOnlyVendorsOnAPCIBusCanBeChosen(t *testing.T) {
-	for _, vendor := range []string{VendorNVIDIA, VendorAscend, VendorHygon, VendorPPU} {
+	for _, vendor := range []string{VendorNVIDIA, VendorAscend, VendorHygon, VendorPPU, VendorAMD} {
 		if !HasPCICards(vendor) {
 			t.Fatalf("HasPCICards(%q) = false", vendor)
 		}
 	}
-	for _, vendor := range []string{VendorApple, VendorAMD, "", "auto", "NVIDIA"} {
+	for _, vendor := range []string{VendorApple, "", "auto", "NVIDIA"} {
 		if HasPCICards(vendor) {
 			t.Fatalf("HasPCICards(%q) = true", vendor)
 		}

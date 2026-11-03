@@ -3,6 +3,9 @@ package planning
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
+	"testing"
+
 	"gpuworks.ai/gpuworks/internal/accelerator"
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/bus"
@@ -12,8 +15,6 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/scheduler"
 	"gpuworks.ai/gpuworks/internal/server/sleep"
 	"gpuworks.ai/gpuworks/internal/server/store"
-	"strings"
-	"testing"
 )
 
 // A callable deployment must plan like any other. Its engine publishes no

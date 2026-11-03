@@ -155,7 +155,12 @@ func TestDomesticAndVendorCatalogImageDifferOnHygon(t *testing.T) {
 	if !RequiresVendorCatalogImage(VendorApple) {
 		t.Fatal("RequiresVendorCatalogImage(apple) = false")
 	}
-	for _, vendor := range []string{VendorNVIDIA, VendorAMD, "rocm", "", "moore-threads"} {
+	for _, vendor := range []string{VendorAMD, "rocm"} {
+		if IsDomestic(vendor) || !RequiresVendorCatalogImage(vendor) {
+			t.Fatalf("ROCm must select a target image: %s", vendor)
+		}
+	}
+	for _, vendor := range []string{VendorNVIDIA, "", "moore-threads"} {
 		if IsDomestic(vendor) {
 			t.Fatalf("IsDomestic(%q) = true", vendor)
 		}

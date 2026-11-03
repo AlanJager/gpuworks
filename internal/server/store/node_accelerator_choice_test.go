@@ -2,9 +2,10 @@ package store
 
 import (
 	"errors"
-	"gpuworks.ai/gpuworks/internal/proto"
 	"reflect"
 	"testing"
+
+	"gpuworks.ai/gpuworks/internal/proto"
 )
 
 // The vendors on the host's bus are replaced whole by every report, and a

@@ -3,11 +3,12 @@ package planning
 import (
 	"context"
 	"fmt"
+	"testing"
+
 	"gpuworks.ai/gpuworks/internal/server/bus"
 	"gpuworks.ai/gpuworks/internal/server/deploy"
 	"gpuworks.ai/gpuworks/internal/server/nodelabel"
 	"gpuworks.ai/gpuworks/internal/server/store"
-	"testing"
 )
 
 // A pool is judged one node per hardware shape: six small nodes of two card
@@ -70,5 +71,42 @@ func TestEverFitsPlansOneNodePerHardwareShape(t *testing.T) {
 	never, err = EverFits(context.Background(), st, storeNetworks(st), nodes, NodeFacts{}, nodelabel.Requirements{"pool": {"nowhere"}}, build)
 	if err != nil || never == nil || never.Pool != 0 || never.Shapes != 0 || never.Node != "" {
 		t.Fatalf("an empty pool: never = %+v err = %v", never, err)
+	}
+}
+
+func TestEverFitsSkipsUnsupportedAMDRuntimeAndTriesDocker(t *testing.T) {
+	st, err := store.Open("file:planning_amd_runtime?mode=memory&cache=shared", bus.New())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	model, err := st.UpsertModel(&store.Model{Source: "huggingface", SourceID: "org/amd", Name: "amd", WeightBytes: 1 << 30})
+	if err != nil {
+		t.Fatal(err)
+	}
+	card := store.GPU{Index: 1, Name: "AMD Instinct MI300X", MemoryTotal: 96 << 30, Vendor: "amd", ArchID: "gfx942"}
+	nodes := []*store.Node{
+		{ID: 1, Name: "udocker", OS: "linux", Arch: "amd64", GPUVendor: "amd", RuntimeDriver: "udocker", GPUs: []store.GPU{card}},
+		{ID: 2, Name: "docker", OS: "linux", Arch: "amd64", GPUVendor: "amd", RuntimeDriver: "docker", GPUs: []store.GPU{card}},
+	}
+	builds := 0
+	build := func(node *store.Node) (LaunchRequest, deploy.CatalogSelection, error) {
+		builds++
+		return LaunchRequest{Engine: "vllm", Model: model, Node: node, Placement: Placement{GPUIndexes: []int{1}, TP: 1}, Topology: DistTopology{NNodes: 1}, Source: LaunchSourceFromDeployment(&store.Deployment{Image: "registry.example/amd:v1"}), ServedName: "amd"}, deploy.CatalogSelection{}, nil
+	}
+	never, err := EverFits(context.Background(), st, storeNetworks(st), nodes, NodeFacts{}, nil, build)
+	if err != nil || never != nil || builds != 2 {
+		t.Fatalf("docker should be tried after udocker: never=%+v err=%v builds=%d", never, err, builds)
+	}
+	if HardwareShape(nodes[0], true) == HardwareShape(nodes[1], true) {
+		t.Fatal("different runtimes share one plan shape")
+	}
+	badConfig := func(node *store.Node) (LaunchRequest, deploy.CatalogSelection, error) {
+		req, layer, err := build(node)
+		req.Placement.PP = 2
+		return req, layer, err
+	}
+	if never, err := EverFits(context.Background(), st, storeNetworks(st), nodes, NodeFacts{}, nil, badConfig); err == nil || never != nil {
+		t.Fatalf("invalid parallelism must propagate after skipping udocker: never=%+v err=%v", never, err)
 	}
 }
