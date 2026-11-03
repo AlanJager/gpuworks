@@ -50,6 +50,9 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.0'
+  args:
+  - --chat-template-content-format
+  - openai
   api:
     health_endpoint: /health
     operations:
@@ -75,6 +78,9 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.0'
+  args:
+  - --chat-template-content-format
+  - openai
   api:
     health_endpoint: /health
     operations:

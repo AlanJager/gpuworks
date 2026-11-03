@@ -28,6 +28,9 @@ specs:
   # vLLM-Omni tells MOSS variants apart by the model path name, so the weights
   # mount under a path containing "realtime"; the reference-audio codec mounts
   # beside them and replaces the Hugging Face id the checkpoint config names.
+  entrypoint:
+  - vllm
+  - serve
   components:
   - name: moss-tts-realtime
     role: primary

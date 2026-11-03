@@ -315,6 +315,11 @@ specs:
   - poolside_v1
   - --tool-call-parser
   - poolside_v1
+  - --context-length
+  - '262144'
+  - --mem-fraction-static
+  - '0.75'
+  - --disable-cuda-graph
   api:
     health_endpoint: /health
     operations:

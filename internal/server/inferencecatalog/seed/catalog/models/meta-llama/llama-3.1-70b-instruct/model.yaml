@@ -22,9 +22,9 @@ specs:
         repo_id: meta-llama/Llama-3.1-70B-Instruct
         revision: 1605565b47bb9346c5515c34102e054115b4f98b
     - modelscope:
-        repo_id: LLM-Research/Meta-Llama-3.1-70B-Instruct
-        revision: 81a95863b03ec58284e1913dae2c6e980e5999a9
-  weight_bytes: 282246710880
+        repo_id: unsloth/Meta-Llama-3.1-70B-Instruct
+        revision: 1e8b8c9736be844fea9b4dc2dc8ce1aa94910e39
+  weight_bytes: 141107497872
   gpus:
     vendor: nvidia
     cc: '>=8.0'
