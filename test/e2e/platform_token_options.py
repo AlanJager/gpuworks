@@ -17,6 +17,7 @@ import argparse
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -486,6 +487,321 @@ def exercise_column_preferences(page, common, k, report, table_id="api-keys"):
                                         "reset_restored": True}
 
 
+def exercise_sorting_and_pagination(page, server, k, platform, common, report):
+    """10.4: every sortable column proves both directions on the rendered rows, equal values keep their
+    relative order in both directions, and the collection is sorted before it is cut into pages.
+
+    Every assertion reads the rendered first cell of each row, never the header's arrow, so a table
+    that draws a sorting indicator without moving a row cannot pass. The rows are real tokens created
+    through the product's own POST. A sortable column only proves stability when some of its values tie,
+    so the rows are built to tie: the scope alternates between the two values and the expiry stays at
+    its default on every row. The unsorted order is the server's own order (id descending), so both the
+    reversal and the equal-value assertions are measured against the contract rather than against the
+    order this test happened to create the rows in.
+    """
+    labels = k["table"]
+    check(collection(page.request.get(server.base + TOKEN_PATH)) == [],
+          "the sorting rows must start from an empty token list")
+    total = 21
+    made = []
+    for index in range(total):
+        body = {"name": f"e2e-{report['run_id']}-sort-{index:02d}",
+                "scope": "read" if index % 2 == 0 else "write"}
+        answer = page.request.post(server.base + TOKEN_PATH, data=body)
+        check(answer.status == 201, f"sorting row {index} was not created: HTTP {answer.status}")
+        made.append({**body, "id": answer.json()["item"]["id"]})
+    stored = collection(page.request.get(server.base + TOKEN_PATH))
+    check(len(stored) == total, f"the sorting rows were not all stored: {len(stored)} of {total}")
+    check(sorted(row["name"] for row in stored) == sorted(row["name"] for row in made),
+          "the stored rows differ from the created rows")
+    unsorted = [row["name"] for row in stored]
+    scope_of_value = {row["name"]: row["scope"] for row in stored}
+    page.reload()
+    tables = page.locator(".resource-table")
+    found = [index for index in range(tables.count())
+             if platform["expiresAt"] in
+             [th.inner_text().strip() for th in tables.nth(index).locator("thead th").all()]]
+    check(len(found) == 1, f"the platform token table was not found exactly once: {found}")
+    table = tables.nth(found[0])
+    rows = table.locator("tbody tr.ant-table-row")
+    size_control = table.locator(".ant-pagination-options .ant-select")
+    expect(size_control).to_have_count(1)
+
+    def names():
+        return [row.locator("td").first.inner_text().strip() for row in rows.all()]
+
+    def total_text():
+        return table.locator(".ant-pagination-total-text").inner_text().strip()
+
+    def active_page():
+        return table.locator("li.ant-pagination-item-active").get_attribute("title")
+
+    def sort_by(header):
+        header.click()
+        page.wait_for_timeout(300)
+
+    def choose_page_size(size):
+        # The option text is localised ("10 / page" or "10 条/页"), so the size is matched as the
+        # leading number instead of the whole label.
+        size_control.click()
+        page.wait_for_timeout(300)
+        option = page.locator(".ant-select-dropdown:visible .ant-select-item-option").filter(
+            has_text=re.compile(r"^\s*" + str(size) + r"\b")).first
+        expect(option).to_have_count(1)
+        option.click()
+        page.wait_for_timeout(500)
+
+    def tie_groups(sequence):
+        keys, groups = [], []
+        for row_name in sequence:
+            value = scope_of_value[row_name]
+            if not keys or keys[-1] != value:
+                keys.append(value)
+                groups.append([])
+            groups[-1].append(row_name)
+        return keys, groups
+
+    check(total_text() == common["resourceTable"]["total"].replace("{{count}}", str(total)),
+          f"the reported total is not the created row count: {total_text()}")
+    choose_page_size(100)
+    check(len(names()) == total, f"the largest page size did not show every row: {len(names())}")
+    check(names() == unsorted, f"the unsorted order is not the server order: {names()} vs {unsorted}")
+    evidence = {"layer": "ui", "rows_created": total, "unsorted_order": unsorted, "sort_columns": {}}
+
+    # 10.4 a: the name column. Ascending must be a true ordering of the rendered names and descending
+    # must be that list reversed, which an arrow-only change cannot satisfy.
+    name_header = table.locator("thead th").nth(0)
+    expect(name_header).to_have_text(labels["name"])
+    sort_by(name_header)
+    check(name_header.get_attribute("aria-sort") == "ascending",
+          f"the name header did not report ascending: {name_header.get_attribute('aria-sort')}")
+    ascending = names()
+    check(ascending == sorted(unsorted), f"name ascending is not the sorted order: {ascending}")
+    check(ascending != unsorted, "name ascending did not reorder the rows")
+    sort_by(name_header)
+    check(name_header.get_attribute("aria-sort") == "descending",
+          f"the name header did not report descending: {name_header.get_attribute('aria-sort')}")
+    descending = names()
+    check(descending == list(reversed(ascending)),
+          f"name descending is not the exact reverse of ascending: {descending}")
+    sort_by(name_header)
+    check(name_header.get_attribute("aria-sort") is None,
+          f"the name header did not clear its sort: {name_header.get_attribute('aria-sort')}")
+    check(names() == unsorted, f"clearing the name sort did not restore the server order: {names()}")
+    evidence["sort_columns"]["name"] = {"ascending": ascending, "descending": descending,
+                                        "cleared_back_to": unsorted}
+
+    # 10.4 b: the scope column has only two values, so half the rows tie. Both directions have to
+    # reverse the value groups, and the rows inside a group have to keep exactly the relative order
+    # they have in the unsorted list. A sort that also shuffled equal rows fails here.
+    scope_header = table.locator("thead th").nth(2)
+    expect(scope_header).to_have_text(platform["scope"])
+    sort_by(scope_header)
+    scope_ascending = names()
+    ascending_keys, ascending_groups = tie_groups(scope_ascending)
+    check(len(ascending_keys) == 2,
+          f"the scope column did not group its two values: {ascending_keys} over {scope_ascending}")
+    check(ascending_keys == sorted(ascending_keys),
+          f"scope ascending is not ordered by the scope value: {ascending_keys}")
+    check(len(ascending_groups[0]) + len(ascending_groups[1]) == total,
+          "a row went missing while sorting by scope")
+    sort_by(scope_header)
+    scope_descending = names()
+    descending_keys, descending_groups = tie_groups(scope_descending)
+    check(descending_keys == list(reversed(ascending_keys)),
+          f"scope descending did not reverse the value groups: {descending_keys} vs {ascending_keys}")
+    # The unsorted list is the server's own order and interleaves the two scope values, so it has no
+    # value runs to compare group-for-group. What it does define is the relative order of the rows that
+    # tie, which each sorted direction has to reproduce exactly.
+    for direction, groups in [("ascending", ascending_groups), ("descending", descending_groups)]:
+        for group in groups:
+            expected = [row_name for row_name in unsorted if scope_of_value[row_name] == scope_of_value[group[0]]]
+            check(group == expected,
+                  f"the equal-valued {scope_of_value[group[0]]} rows changed their relative order when "
+                  f"sorted {direction}: {group} vs {expected}")
+    def group_by_value(sequence):
+        keys, groups = tie_groups(sequence)
+        return {scope_of_value[group[0]]: group for key, group in zip(keys, groups)}
+
+    ascending_by_value = group_by_value(scope_ascending)
+    descending_by_value = group_by_value(scope_descending)
+    check(sorted(ascending_by_value) == sorted(descending_by_value) == sorted(set(scope_of_value.values())),
+          f"the two directions did not cover both scope values: "
+          f"{sorted(ascending_by_value)} vs {sorted(descending_by_value)}")
+    for value, group in ascending_by_value.items():
+        check(descending_by_value[value] == group,
+              f"the equal-valued {value} rows changed their relative order between the two directions: "
+              f"{group} vs {descending_by_value[value]}")
+    sort_by(scope_header)
+    check(names() == unsorted, f"clearing the scope sort did not restore the server order: {names()}")
+    evidence["sort_columns"]["scope"] = {"ascending": scope_ascending, "descending": scope_descending,
+                                         "equal_value_groups": ascending_groups,
+                                         "equal_value_order_preserved_in_both_directions": True}
+
+    # 10.4 b, a second column where every value is equal: the expiry column is left at its default on
+    # every row, so the whole list is one tie group. Both directions have to leave the unsorted order
+    # untouched, which is the strictest form of a stable sort over equal keys.
+    expiry_header = table.locator("thead th").nth(4)
+    expect(expiry_header).to_have_text(platform["expiresAt"])
+    rendered_expiry = {row.locator("td").nth(4).inner_text().strip() for row in rows.all()}
+    check(rendered_expiry == {platform["noExpiry"]},
+          f"the expiry column is not one equal value, so it cannot prove stability: {rendered_expiry}")
+    sort_by(expiry_header)
+    expiry_ascending = names()
+    sort_by(expiry_header)
+    expiry_descending = names()
+    check(expiry_ascending == unsorted and expiry_descending == unsorted,
+          f"a column whose values all tie did not keep the unsorted order: "
+          f"{expiry_ascending} vs {expiry_descending}")
+    sort_by(expiry_header)
+    evidence["sort_columns"]["expires_at"] = {"all_values_equal": platform["noExpiry"],
+                                              "ascending": expiry_ascending,
+                                              "descending": expiry_descending}
+
+    # 10.4 a, second column with distinct values: created_at also has to reverse exactly, which shows
+    # the reversal on a column whose comparator is not the one the name column uses.
+    created_header = table.locator("thead th").nth(5)
+    expect(created_header).to_have_text(labels["createdAt"])
+    sort_by(created_header)
+    created_ascending = names()
+    sort_by(created_header)
+    created_descending = names()
+    check(created_descending == list(reversed(created_ascending)),
+          f"created_at descending is not the exact reverse of ascending: {created_descending}")
+    check(sorted(created_descending) == sorted(unsorted), "created_at sorting lost or duplicated a row")
+    check(created_descending != created_ascending, "created_at sorting did not change the row order")
+    sort_by(created_header)
+    check(names() == unsorted, f"clearing the created_at sort did not restore the server order: {names()}")
+    evidence["sort_columns"]["created_at"] = {"ascending": created_ascending,
+                                              "descending": created_descending}
+
+    # 10.4 c: the sort has to cover the whole collection before the rows are cut into pages. The
+    # direction is chosen so that this cannot pass by accident: the server returns the rows
+    # newest-first, which is the reverse of the ascending name order, so a table that cut its rows
+    # into pages first and sorted only the page afterwards would show the ten largest names on page
+    # one instead of the ten smallest. Page one is therefore required to start with the smallest name
+    # in the whole collection - the row the server returned last - and the last page to hold the
+    # largest one.
+    check(names() == unsorted,
+          f"the table was not back in its unsorted order before the pagination check: {names()}")
+    sort_by(name_header)
+    check(name_header.get_attribute("aria-sort") == "ascending",
+          "the name sort was not ascending for the pagination check")
+    full_ascending = names()
+    check(full_ascending == sorted(unsorted),
+          f"the fully sorted list is not the ascending order: {full_ascending}")
+    check(full_ascending != unsorted,
+          "the ascending order is identical to the server order, so this check cannot prove ordering")
+    choose_page_size(10)
+    check(len(names()) == 10, f"ten rows per page did not cut the list: {len(names())}")
+    titles = [entry.get_attribute("title") for entry in table.locator(".ant-pagination li").all()]
+    check(titles[2:5] == ["1", "2", "3"], f"a 21 row list does not offer three pages: {titles}")
+    first_page = names()
+    check(first_page == full_ascending[:10],
+          f"page one is not the first ten rows of the sorted collection: {first_page}")
+    check(first_page[0] == min(unsorted),
+          f"page one does not start with the collection-wide smallest name: "
+          f"{first_page[0]} vs {min(unsorted)}")
+    check(first_page[0] == unsorted[-1],
+          f"page one does not start with the row the server returned last, so the collection was not "
+          f"sorted before it was paginated: {first_page[0]} vs {unsorted[-1]}")
+    table.locator("li[title='2']").click()
+    page.wait_for_timeout(400)
+    second_page = names()
+    check(second_page == full_ascending[10:20],
+          f"page two is not the middle of the sorted collection: {second_page}")
+    table.locator("li[title='3']").click()
+    page.wait_for_timeout(400)
+    third_page = names()
+    check(third_page == full_ascending[20:],
+          f"the last page is not the tail of the sorted collection: {third_page}")
+    check(third_page[0] == max(unsorted),
+          f"the last page does not hold the collection-wide largest name: "
+          f"{third_page[0]} vs {max(unsorted)}")
+    collected = first_page + second_page + third_page
+    check(collected == full_ascending and len(set(collected)) == total,
+          f"the three pages do not reassemble the sorted collection: {collected}")
+    check(collected != unsorted,
+          "the paginated collection is still in server order, so sorting did not reach every page")
+    evidence["pagination"] = {"page_size": 10, "pages": 3, "page_one": first_page,
+                              "page_three": third_page,
+                              "sort_direction": "ascending, the reverse of the server order",
+                              "page_one_first_row_is_collection_minimum": first_page[0] == min(unsorted),
+                              "last_page_row_is_collection_maximum": third_page[0] == max(unsorted)}
+
+    # 10.4 d: re-sorting while a later page is open. What the product actually does is recorded here
+    # rather than assumed: the new order is applied to the whole collection and the open page number is
+    # kept, so the rows shown are that same page of the re-sorted collection. The direction is chosen so
+    # the page's content really changes, which shows the re-sort reached the open page instead of
+    # leaving what was already drawn on screen.
+    table.locator("li[title='2']").click()
+    page.wait_for_timeout(400)
+    check(active_page() == "2", f"the second page could not be opened: {active_page()}")
+    page_two_before_resort = names()
+    check(page_two_before_resort == full_ascending[10:20],
+          f"page two is not where it was left: {page_two_before_resort}")
+    sort_by(created_header)
+    sort_by(created_header)
+    check(created_header.get_attribute("aria-sort") == "descending",
+          f"the created_at sort was not descending: {created_header.get_attribute('aria-sort')}")
+    kept_page = active_page()
+    check(kept_page == "2", f"re-sorting moved the user off the open page: {kept_page}")
+    page_two_after_resort = names()
+    check(page_two_after_resort == created_descending[10:20],
+          f"page two of the re-sorted collection is wrong: "
+          f"{page_two_after_resort} vs {created_descending[10:20]}")
+    check(page_two_after_resort != page_two_before_resort,
+          f"the re-sort did not change what the open page shows, so it cannot be shown to reach it: "
+          f"{page_two_after_resort}")
+    evidence["resort_from_page_two"] = {"open_page_before": "2", "open_page_after": kept_page,
+                                        "rows_before_resort": page_two_before_resort,
+                                        "rows_after_resort": page_two_after_resort,
+                                        "expected_for_kept_page": created_descending[10:20],
+                                        "behaviour": "the sort is applied collection-wide and the open "
+                                                     "page number is kept"}
+
+    # 10.4 d, the shrinking case: a page that no longer exists has to be corrected rather than left
+    # pointing past the end of the list. The row that is removed is the one the last page is actually
+    # showing, so the page really loses the row the user is looking at.
+    table.locator("li[title='3']").click()
+    page.wait_for_timeout(400)
+    check(active_page() == "3", f"the third page could not be opened: {active_page()}")
+    last_page_rows = names()
+    check(len(last_page_rows) == 1, f"the third page did not hold a single row: {last_page_rows}")
+    victim = next(row for row in stored if row["name"] == last_page_rows[0])
+    removed = page.request.delete(server.base + f"{TOKEN_PATH}/{victim['id']}")
+    check(removed.status == 204, f"the last page row could not be removed: HTTP {removed.status}")
+    button(table, _refresh_label(common)).click()
+    page.wait_for_timeout(900)
+    remaining = total - 1
+    check(total_text() == common["resourceTable"]["total"].replace("{{count}}", str(remaining)),
+          f"the total did not follow the removed row: {total_text()}")
+    check(active_page() == "2",
+          f"the open page was left beyond the last page after the list shrank: {active_page()}")
+    corrected_rows = remaining - 10 * (math.ceil(remaining / 10) - 1)
+    check(len(names()) == corrected_rows,
+          f"the corrected last page does not hold the rest of the list: {names()}")
+    survivors = [row_name for row_name in created_descending if row_name != last_page_rows[0]]
+    check(names() == survivors[10:],
+          f"the corrected last page is not the tail of the re-sorted collection: "
+          f"{names()} vs {survivors[10:]}")
+    evidence["shrink_page"] = {"open_page_before": "3", "removed_row": last_page_rows[0],
+                               "open_page_after": active_page(), "rows_on_corrected_page": corrected_rows,
+                               "behaviour": "the open page is moved back to the last page that exists"}
+    for item in collection(page.request.get(server.base + TOKEN_PATH)):
+        answer = page.request.delete(server.base + f"{TOKEN_PATH}/{item['id']}")
+        check(answer.status == 204, f"a sorting row could not be removed: HTTP {answer.status}")
+    check(collection(page.request.get(server.base + TOKEN_PATH)) == [],
+          "the sorting rows were not all removed")
+    evidence["cleanup"] = {"layer": "cleanup", "rows_created": total, "rows_removed": total}
+    report["sorting_and_pagination"] = evidence
+
+
+def _refresh_label(common):
+    """The table toolbar's refresh button is labelled from the shared catalogue."""
+    return common["dataTable"]["refresh"]
+
+
 def test_platform_token_option(page, context, server, artifacts, report, locale, case):
     scope, days = CASES[case]
     k, _ = strings(locale)
@@ -500,6 +816,8 @@ def test_platform_token_option(page, context, server, artifacts, report, locale,
         if urlsplit(r.url).path.startswith(TOKEN_PATH) and r.method in {"POST", "DELETE"} else None)
     check(collection(page.request.get(server.base + TOKEN_PATH)) == [], "fixture tokens not empty")
     exercise_column_preferences(page, common, k, report)
+    exercise_sorting_and_pagination(page, server, k, platform, common, report)
+    check(collection(page.request.get(server.base + TOKEN_PATH)) == [], "sorting rows were not cleaned up")
     keys_path = "/api/v1/apikeys"
     initial_keys = collection(page.request.get(server.base + keys_path))
     create = button(page, platform["create"])
