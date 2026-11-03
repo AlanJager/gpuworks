@@ -80,6 +80,9 @@ function ModelsAlias() {
   return <Navigate replace to={`/models${search}`} />;
 }
 
+/** NAV_INDENT is the menu items' inner left padding; styles.css lines the collapse button up with it. */
+const NAV_INDENT = 12;
+
 function AuthenticatedShell({ onLogout }: { onLogout: () => Promise<void> }) {
   const { t } = useTranslation();
   const branding = useBranding();
@@ -121,11 +124,12 @@ function AuthenticatedShell({ onLogout }: { onLogout: () => Promise<void> }) {
       </Header>
       <Layout hasSider>
         <Sider theme="light" width={208} collapsedWidth={56} collapsed={navCollapsed} trigger={null} className="app-sider desktop-sider">
-          <Menu mode="inline" selectedKeys={[selected]} items={menuItems} className="app-nav" />
+          <Menu mode="inline" inlineIndent={NAV_INDENT} selectedKeys={[selected]} items={menuItems} className="app-nav" />
           <div className="app-nav-toggle">
             <Tooltip title={navCollapsed ? t("header.expandNavigation") : undefined} placement="right">
               <Button
                 type="text"
+                block
                 icon={navCollapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
                 onClick={toggleNav}
                 aria-label={t(navCollapsed ? "header.expandNavigation" : "header.collapseNavigation")}
@@ -183,7 +187,7 @@ function AuthenticatedShell({ onLogout }: { onLogout: () => Promise<void> }) {
         <Brand />
         <Menu
           mode="inline"
-         
+          inlineIndent={NAV_INDENT}
           selectedKeys={[selected]}
           items={menuItems}
           className="app-nav"
