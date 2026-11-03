@@ -76,8 +76,8 @@ specs:
       endpoint: /v1/chat/completions
       mode: stream
 - name: fp8-sglang-nvidia-general
-  display_name_zh_cn: Hopper 及以上 · FP8
-  display_name_en: Hopper+ · FP8
+  display_name_zh_cn: Ada 及以上 · FP8
+  display_name_en: Ada+ · FP8
   scenario: balanced
   engine: sglang
   image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
@@ -93,7 +93,7 @@ specs:
   weight_bytes: 127195718583
   gpus:
     vendor: nvidia
-    cc: '>=9.0'
+    cc: '>=8.9'
   args:
   - --enable-metrics
   - --reasoning-parser
