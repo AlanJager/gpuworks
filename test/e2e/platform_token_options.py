@@ -389,9 +389,107 @@ def exercise_token_inflight(page, dialog, k, platform, name, scope, chosen, body
                      "failure_status": 502, "draft_retained": True, "failure_reason_visible": True})
 
 
+def exercise_column_preferences(page, common, k, report, table_id="api-keys"):
+    """11.1-11.3: the column layout is a local preference, so every step is read back twice - from the
+    rendered layout and from a reload that has to rebuild it out of storage."""
+    labels = common["resourceTable"]
+    table = page.locator(".resource-table").first
+
+    def widths():
+        return [column.evaluate("el => getComputedStyle(el).width") for column in table.locator("thead th").all()]
+
+    def headers():
+        return [th.inner_text().strip() for th in table.locator("thead th").all()]
+
+    def resize(name):
+        return table.get_by_role("separator", name=labels["resizeColumn"].replace("{{name}}", name))
+
+    def stored():
+        # The key carries a schema generation suffix, so it is found by its table id rather than assumed.
+        raw = page.evaluate(
+            "([id]) => { const hits = Object.keys(localStorage).filter(k => k.includes(id)); "
+            "return hits.length === 1 ? localStorage.getItem(hits[0]) : null; }", [table_id])
+        return json.loads(raw) if raw else None
+
+    # 11.1: a keyboard resize moves that one column and leaves the rest alone, it cannot go below the
+    # column's minimum however many times it is pressed, and the width survives a reload.
+    columns = k["table"]
+    prefix, status = columns["prefix"], columns["status"]
+    before = widths()
+    handle = resize(prefix)
+    expect(handle).to_have_count(1)
+    start = int(handle.get_attribute("aria-valuenow"))
+    handle.focus()
+    handle.press("ArrowRight")
+    handle.press("ArrowRight")
+    widened = int(handle.get_attribute("aria-valuenow"))
+    check(widened == start + 32,
+          f"two ArrowRight presses did not widen the column by two steps: {start} -> {widened}")
+    after = widths()
+    moved = [i for i, (a, b) in enumerate(zip(before, after)) if a != b]
+    check(len(moved) == 1, f"resizing one column changed {len(moved)} columns: {list(zip(before, after))}")
+    for _ in range(40):
+        handle.press("ArrowLeft")
+    floored = int(handle.get_attribute("aria-valuenow"))
+    check(floored > 0 and floored <= start, f"the column did not stop at a positive minimum: {floored}")
+    stored_widths = (stored() or {}).get("widths") or {}
+    keys = [key for key in stored_widths if str(stored_widths[key]) == str(floored)]
+    check(bool(keys), f"the floored width was not written to the preference: {stored_widths}")
+    page.reload()
+    expect(table.locator("thead th").first).to_be_visible()
+    check(int(resize(prefix).get_attribute("aria-valuenow")) == floored,
+          "the column width was not restored after a reload")
+    report["column_resize"] = {"column": prefix, "start": start, "widened": widened,
+                               "widths_changed": len(moved), "floored": floored, "restored": floored}
+
+    # 11.2: hiding, showing and resetting, each read from the rendered header row and then from a reload.
+    # 11.3: the name and actions columns are locked - the drawer renders them as checked, disabled
+    # checkboxes and as locked rows with no drag handle, so they cannot be hidden or moved.
+    table.get_by_role("button", name=labels["settings"], exact=True).click()
+    drawer = page.get_by_role("dialog", name=labels["settingsTitle"], exact=True)
+    expect(drawer).to_be_visible()
+    locked = drawer.get_by_role("checkbox", name=columns["name"], exact=True)
+    expect(locked).to_have_count(1)
+    expect(locked).to_be_disabled()
+    expect(locked).to_be_checked()
+    actions = drawer.get_by_role("checkbox", name=labels["actions"], exact=True)
+    expect(actions).to_have_count(1)
+    expect(actions).to_be_disabled()
+    locked_handles = drawer.get_by_role("button", name=labels["dragColumn"].replace("{{name}}", columns["name"]))
+    expect(locked_handles).to_have_count(0)
+    visible_before = headers()
+    check(status in " ".join(visible_before), f"the status column was not shown to begin with: {visible_before}")
+    box = drawer.get_by_role("checkbox", name=status, exact=True)
+    box.click()
+    expect(box).not_to_be_checked()
+    page.keyboard.press("Escape")
+    expect(drawer).not_to_be_visible()
+    hidden = headers()
+    check(status not in " ".join(hidden), f"the status column was still shown after being hidden: {hidden}")
+    page.reload()
+    expect(table.locator("thead th").first).to_be_visible()
+    check(status not in " ".join(headers()), "the hidden column came back after a reload")
+    # Showing it again restores the column and the reset button restores every earlier choice.
+    table.get_by_role("button", name=labels["settings"], exact=True).click()
+    expect(drawer).to_be_visible()
+    drawer.get_by_role("checkbox", name=status, exact=True).check()
+    drawer.get_by_role("button", name=labels["reset"], exact=True).click()
+    page.keyboard.press("Escape")
+    expect(drawer).not_to_be_visible()
+    restored = headers()
+    check(restored == visible_before, f"the reset did not restore the default header row: {restored}")
+    page.reload()
+    expect(table.locator("thead th").first).to_be_visible()
+    check(headers() == visible_before, "the reset layout was not restored after a reload")
+    report["column_show_hide_reset"] = {"hidden": status, "visible_before": visible_before,
+                                        "locked": [columns["name"], labels["actions"]],
+                                        "reset_restored": True}
+
+
 def test_platform_token_option(page, context, server, artifacts, report, locale, case):
     scope, days = CASES[case]
     k, _ = strings(locale)
+    common = json.loads((ROOT / "ui/src/i18n/locales" / locale / "common.json").read_text())
     platform = k["platform"]
     name = f"e2e-{report['run_id']}-{case}"
     errors, mutations = [], []
@@ -401,6 +499,7 @@ def test_platform_token_option(page, context, server, artifacts, report, locale,
     page.on("request", lambda r: mutations.append({"method": r.method, "path": urlsplit(r.url).path})
         if urlsplit(r.url).path.startswith(TOKEN_PATH) and r.method in {"POST", "DELETE"} else None)
     check(collection(page.request.get(server.base + TOKEN_PATH)) == [], "fixture tokens not empty")
+    exercise_column_preferences(page, common, k, report)
     keys_path = "/api/v1/apikeys"
     initial_keys = collection(page.request.get(server.base + keys_path))
     create = button(page, platform["create"])
