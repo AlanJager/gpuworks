@@ -89,39 +89,6 @@ func (i *Installer) chownTree(ctx context.Context, name string) error {
 	return nil
 }
 
-// Validate every root before changing anything. Resolve symlinks before
-// deduplicating: data inside the install tree may point to an external disk.
-func (i *Installer) permissionRoots() ([]string, error) {
-	var roots []string
-	for _, dir := range []string{i.layout.Dir, i.layout.DataDir, i.layout.LogsDir} {
-		if err := checkDedicatedDirectory(dir); err != nil {
-			return nil, fmt.Errorf("refusing recursive permission changes for %s: %w", dir, err)
-		}
-		root, err := resolveUninstallPath(dir)
-		if err != nil {
-			return nil, fmt.Errorf("resolve permission directory %s: %w", dir, err)
-		}
-		if err := checkDedicatedDirectory(root); err != nil {
-			return nil, fmt.Errorf("refusing recursive permission changes for %s: %w", dir, err)
-		}
-		roots = append(roots, root)
-	}
-	var unique []string
-	for n, root := range roots {
-		covered := false
-		for other, parent := range roots {
-			if n != other && pathWithin(parent, root) && (parent != root || other < n) {
-				covered = true
-				break
-			}
-		}
-		if !covered {
-			unique = append(unique, root)
-		}
-	}
-	return unique, nil
-}
-
 // serviceGroup is the group the service account's files are shared through:
 // the account's own group, which on Linux is its namesake and for a Mac user is
 // staff. It falls back to the account name when `id` cannot answer, which is

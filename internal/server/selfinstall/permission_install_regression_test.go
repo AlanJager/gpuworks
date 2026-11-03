@@ -10,37 +10,121 @@ import (
 )
 
 // Selecting the historical application root for installation must not inherit
-// the extra restriction on deleting that root during uninstall.
+// the extra restriction on deleting that root during uninstall, but the root
+// itself is never handed to the service account.
 func TestPermissionRootsAcceptHistoricalApplicationRoot(t *testing.T) {
-	want, err := resolveUninstallPath("/opt/gpuworks")
+	shared, err := resolveUninstallPath("/opt/gpuworks")
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, role := range []string{"install", "data", "logs"} {
+	h := newHarness(t, t.TempDir())
+	h.installer.layout = NewLayout("/opt/gpuworks", "", "")
+	roots, err := h.installer.permissionRoots()
+	if err != nil {
+		t.Fatalf("historical install root rejected: %v", err)
+	}
+	if slices.Contains(roots, shared) {
+		t.Fatalf("permission roots = %v, must not include the shared root %s", roots, shared)
+	}
+	for _, role := range []string{"data", "logs"} {
 		t.Run(role, func(t *testing.T) {
 			h := newHarness(t, t.TempDir())
-			switch role {
-			case "install":
-				h.installer.layout = NewLayout("/opt/gpuworks", "", "")
-			case "data":
+			if role == "data" {
 				h.installer.layout.DataDir = "/opt/gpuworks"
-			case "logs":
+			} else {
 				h.installer.layout.LogsDir = "/opt/gpuworks"
 			}
-			roots, err := h.installer.permissionRoots()
-			if err != nil {
-				t.Fatalf("historical %s root rejected: %v", role, err)
-			}
-			if !slices.Contains(roots, want) {
-				t.Fatalf("permission roots = %v, want %s", roots, want)
-			}
-			if role == "install" && len(roots) != 1 {
-				t.Fatalf("nested roots were not deduplicated: %v", roots)
+			if _, err := h.installer.permissionRoots(); err == nil ||
+				!strings.Contains(err.Error(), "refusing recursive permission changes for /opt/gpuworks") {
+				t.Fatalf("shared root as %s directory: err = %v, want a refusal", role, err)
 			}
 		})
 	}
 	if err := safeUninstallDirectory("/opt/gpuworks"); err == nil {
 		t.Fatal("install compatibility must not allow deleting the shared agent/server root")
+	}
+}
+
+// withSharedRoot points the shared application root at a temporary tree that
+// holds the colocated agent's root-owned state.
+func withSharedRoot(t *testing.T) (string, []string) {
+	t.Helper()
+	root := mustEvalSymlinks(t, t.TempDir())
+	previous := sharedApplicationRoot
+	sharedApplicationRoot = root
+	t.Cleanup(func() { sharedApplicationRoot = previous })
+	var agent []string
+	for _, rel := range []string{"bin/gpuworks-hygon-vdev-helper", "partition/libvruntime.so",
+		"probe-libs/libprobe.so", "runveil/libascend-compat.so", "models/tiny/config.json", "identity.json"} {
+		path := filepath.Join(root, rel)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		writeFile(t, path, "agent state", 0o755)
+		agent = append(agent, path)
+	}
+	return root, agent
+}
+
+// A server installed into the agent's state directory shares only its own
+// entries with the service account: a recursive chown of the directory would
+// hand the account binaries and libraries the root agent runs.
+func TestInstallIntoSharedRootLeavesAgentStateWithRoot(t *testing.T) {
+	root, agent := withSharedRoot(t)
+	h := newHarness(t, root)
+	h.writeExistingInstall("v1.0.0")
+	h.installSelf("replacement binary")
+	req := h.quiet()
+	req.ServiceUser = DefaultServiceUser
+	h.mustInstall(req)
+
+	var got []string
+	for _, cmd := range h.run.calls {
+		if cmd.Path != "chown" && cmd.Path != "chmod" && cmd.Path != "find" {
+			continue
+		}
+		target := cmd.Args[len(cmd.Args)-1]
+		if cmd.Path == "find" {
+			target = cmd.Args[0]
+		}
+		if target == root {
+			t.Errorf("%s changed the shared root itself: %s", cmd.Path, cmd)
+		}
+		for _, path := range agent {
+			if pathWithin(target, path) {
+				t.Errorf("%s reaches agent state %s: %s", cmd.Path, path, cmd)
+			}
+		}
+		if cmd.Path == "chown" {
+			got = append(got, target)
+		}
+	}
+	for _, want := range []string{h.layout.Binary(), h.layout.ConfigPath(), h.layout.DataDir,
+		h.layout.LogsDir, h.layout.TmpDir(), h.layout.BackupsDir} {
+		if !slices.Contains(got, want) {
+			t.Errorf("chown targets = %v, missing server entry %s", got, want)
+		}
+	}
+	if !strings.Contains(h.errOut.String(), "shared with the node agent") {
+		t.Errorf("install did not warn that console upgrades need the CLI: %q", h.errOut.String())
+	}
+}
+
+// An entry of the shared root that is a symlink could aim the recursive change
+// at the agent's files beside it.
+func TestPermissionRootsRefuseSymlinkedEntryInSharedRoot(t *testing.T) {
+	root, _ := withSharedRoot(t)
+	h := newHarness(t, root)
+	h.writeExistingInstall("v1.0.0")
+	if err := os.Symlink(filepath.Join(root, "partition"), h.layout.TmpDir()); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.installer.chownTree(context.Background(), "gpuworks"); err == nil ||
+		!strings.Contains(err.Error(), "is a symlink to") {
+		t.Fatalf("err = %v, want the symlinked entry refused", err)
+	}
+	if h.run.ran("sudo chown") {
+		t.Fatal("chown ran before the symlinked entry was refused")
 	}
 }
 

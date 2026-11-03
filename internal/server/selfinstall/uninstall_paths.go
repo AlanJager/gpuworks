@@ -205,7 +205,7 @@ func checkDedicatedDirectory(path string, protectedApplicationRoots ...string) e
 }
 
 func safeUninstallDirectory(path string) error {
-	if err := checkDedicatedDirectory(path, "/opt/gpuworks"); err != nil {
+	if err := checkDedicatedDirectory(path, sharedApplicationRoot); err != nil {
 		return err
 	}
 	clean := filepath.Clean(path)
