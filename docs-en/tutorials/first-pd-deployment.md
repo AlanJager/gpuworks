@@ -12,7 +12,7 @@ The screenshots in this tutorial show the English UI. The request IDs and measur
 | Two available nodes | Both nodes are connected and online, each with one idle RTX 4090 (48 GiB); their display names in this tutorial are `host2` and `host3`, and both use GPU `0` |
 | Software environment | Server version `79f927fc`, runveil runtime, and NVIDIA driver `610.57.04`; check the node environment and Agent versions in **Compute Nodes** details |
 | Model files | Both nodes already have the complete BF16 files for `Qwen/Qwen3-14B`; the directory on both nodes in this tutorial is `/model/ModelScope/Qwen/Qwen3-14B` |
-| Image | `gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2`, already available on both nodes |
+| Image | `gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r4`, already available on both nodes |
 | Network and disk | The nodes can reach each other; this tutorial uses the `eth0` management network. Both the filesystem containing the model directory and the filesystem containing the runtime have enough space for weights, unpacked images, and runtime logs |
 
 The `48 GiB` capacity is the actual GPU memory on these nodes. Use the capacity shown in **GPU Devices** for your hardware. P and D each load the complete model, so check GPU memory capacity separately for each role.
@@ -34,7 +34,7 @@ The example template uses BF16 and vLLM 0.30.0, with reasoning output disabled b
 
 1. Open **Deploy → Quick Deploy**. In **Basic Configuration**, select `tutorial-qwen3-14b` and set **Target accelerator** to **NVIDIA**.
 2. Under **Recommended Inference Template**, select the **general · vllm · balanced** spec for Qwen3-14B and check the **bf16** tag. If multiple specs have the same name, return to **Inference Templates** and click **Deploy** on the user spec whose ID you checked in the previous step. If the **Use a registered model?** page appears, select your `Qwen/Qwen3-14B` **MS** registration and click **Use this model and deploy**.
-3. Check that the source ID is `Qwen/Qwen3-14B` and the current image is `gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2`.
+3. Check that the source ID is `Qwen/Qwen3-14B` and the current image is `gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r4`.
 4. Set both **Deployment Name** and **Public Model Name** to `tutorial-pd-qwen3-14b`, and leave health checks enabled. If the name is already in use, choose an unused name and select that same service in later calls and monitoring.
 
 ![Basic configuration: the registered tutorial-qwen3-14b model uses the NVIDIA BF16 vLLM spec, and both the deployment name and external model name are tutorial-pd-qwen3-14b](../assets/screenshots/en/tutorial-pd14-basics.png)

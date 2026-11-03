@@ -194,7 +194,7 @@ func TestSyncSeedKeepsOperatorSwitches(t *testing.T) {
 	if _, err := SyncSeed(st); err != nil {
 		t.Fatal(err)
 	}
-	version, err := st.ImageByRef("gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2")
+	version, err := st.ImageByRef("gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r4")
 	if err != nil {
 		t.Fatal(err)
 	}

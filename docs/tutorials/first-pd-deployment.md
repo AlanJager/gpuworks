@@ -10,7 +10,7 @@
 | 两台可用节点 | 两台节点已接入且在线，各有一张空闲的 RTX 4090（48 GiB）；本文节点显示名称为 `host2`、`host3`，均选 GPU `0` |
 | 软件环境 | Server、Agent 为 `dca20f6d`，运行时 runveil，NVIDIA 驱动 `610.57.04`；节点环境在 **计算节点**详情核对 |
 | 模型文件 | 两台节点已有完整的 `Qwen/Qwen3-14B` BF16 文件；本文目录均为 `/model/ModelScope/Qwen/Qwen3-14B` |
-| 镜像 | `gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2`，两台节点均已取得 |
+| 镜像 | `gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r4`，两台节点均已取得 |
 | 网络与磁盘 | 两节点可互通；本文使用 `eth0` 管理网。模型目录所在文件系统及运行时所在文件系统都有足够空间，能够容纳权重、镜像解包和运行日志 |
 
 这里的 `48 GiB` 是本次节点的实际显存容量，操作时以 **GPU 设备**中显示的容量为准。P、D 各自加载完整模型，分别检查显存是否足够。
@@ -32,7 +32,7 @@
 
 1. 打开 **部署 → 快捷部署**，在 **基础配置**选择 `tutorial-qwen3-14b`，**目标芯片**选择 **NVIDIA**。
 2. 在 **推荐推理模板**中选择 Qwen3-14B 的 **general · vllm · balanced** 档位，核对 **bf16** 标签。若有多个同名档位，回到 **推理模板**，从上一步已核对标识的用户档位点击 **部署**。出现 **使用已登记的模型？**弹窗时，选择自己的 `Qwen/Qwen3-14B` **MS** 登记项，点击 **使用此模型并部署**。
-3. 核对来源 ID 为 `Qwen/Qwen3-14B`，当前镜像为 `gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2`。
+3. 核对来源 ID 为 `Qwen/Qwen3-14B`，当前镜像为 `gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r4`。
 4. **部署名称**和**对外模型名**均填写 `tutorial-pd-qwen3-14b`，保留开启健康检查。如果名称已被占用，换一个未使用的名称，并在后续调用和监控中选择同一服务。
 
 ![基础配置：已登记的 tutorial-qwen3-14b 使用 NVIDIA BF16 vLLM 档位，部署名称和对外模型名均为 tutorial-pd-qwen3-14b](../assets/screenshots/tutorial-pd14-basics.png)

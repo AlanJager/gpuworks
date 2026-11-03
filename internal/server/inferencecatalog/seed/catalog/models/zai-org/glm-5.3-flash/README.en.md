@@ -6,7 +6,7 @@ H20 shares the Hopper profile. With the default parameters, the 96 GB variant ne
 
 ## vLLM profiles (Hopper × 8, TP8)
 
-vLLM is the only engine on this platform that supports sleep/wake, so Hopper also has two single-node, 8-GPU, TP8 vLLM profiles. Arguments follow the [vLLM recipe](https://recipes.vllm.ai/zai-org/GLM-5.3-Flash) (FlashInfer autotune off, the `glm47` tool and reasoning parsers, `VLLM_ENGINE_READY_TIMEOUT_S=3600`), rewritten for vLLM 0.30.0: the recipe's `--tokenizer-mode glm5_next` does not exist in 0.30.0 (it is not among the allowed values) and is left out, and `--disable-flashinfer-autotune` is spelled `--no-enable-flashinfer-autotune` there. The image is the platform's own `gpuworks-runner:cuda13.0-vllm0.30.0-r2` (vLLM 0.30.0), not the upstream nightly: it registers `Glm5NextForConditionalGeneration` and ran on 8 × H20 141 GB. Both profiles require exactly 8 GPUs; other counts are rejected. The FP8 weights are the same checkpoint as the SGLang profiles above.
+vLLM is the only engine on this platform that supports sleep/wake, so Hopper also has two single-node, 8-GPU, TP8 vLLM profiles. Arguments follow the [vLLM recipe](https://recipes.vllm.ai/zai-org/GLM-5.3-Flash) (FlashInfer autotune off, the `glm47` tool and reasoning parsers, `VLLM_ENGINE_READY_TIMEOUT_S=3600`), rewritten for vLLM 0.30.0: the recipe's `--tokenizer-mode glm5_next` does not exist in 0.30.0 (it is not among the allowed values) and is left out, and `--disable-flashinfer-autotune` is spelled `--no-enable-flashinfer-autotune` there. The image is the platform's own `gpuworks-runner:cuda13.0-vllm0.30.0-r4` (vLLM 0.30.0), not the upstream nightly: it registers `Glm5NextForConditionalGeneration` and ran on 8 × H20 141 GB. Both profiles require exactly 8 GPUs; other counts are rejected. The FP8 weights are the same checkpoint as the SGLang profiles above.
 
 | Profile | Cards | Context |
 | --- | --- | --- |
@@ -27,7 +27,7 @@ Upstream options that are not enabled: MTP speculative decoding (`--speculative-
 
 ## Measured (vLLM, 8× H20 141 GB, TP8, 2026-10-31)
 
-Docker runtime, `gpuworks-runner:cuda13.0-vllm0.30.0-r2`, model on NFS (~830 MB/s), sleep mode on. Chat output was correct. Weights loaded in 501 s; cold start to ready took ~17 minutes, including the TileLang kernel compile on first start. Sleep/wake (L1, engine-reported): sleep 1.9-2.1 s, wake 2.9-3.8 s. L2 wake reloads the weights and takes over 10 minutes, so it is not practical. The H200 and H100 / H20 96 GB profiles were only checked offline (catalog and admission); they have not been run on hardware, and the headroom figures above are derived.
+Docker runtime, `gpuworks-runner:cuda13.0-vllm0.30.0-r4`, model on NFS (~830 MB/s), sleep mode on. Chat output was correct. Weights loaded in 501 s; cold start to ready took ~17 minutes, including the TileLang kernel compile on first start. Sleep/wake (L1, engine-reported): sleep 1.9-2.1 s, wake 2.9-3.8 s. L2 wake reloads the weights and takes over 10 minutes, so it is not practical. The H200 and H100 / H20 96 GB profiles were only checked offline (catalog and admission); they have not been run on hardware, and the headroom figures above are derived.
 
 The Ascend profile follows the vLLM-Ascend v0.30.0rc2 A3 recipe: one 16-die
 910C node, TP16/EP16, W8A8 weights, INT8 KV cache and 1M context. It pins the

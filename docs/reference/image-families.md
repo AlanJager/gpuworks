@@ -17,8 +17,8 @@ GPUWorks 自己组装完整引擎命令，不依赖镜像默认 entrypoint。镜
 
 | 系列 | 厂商 / framework | 引擎 | 示例 image_ref | 架构 |
 |---|---|---|---|---|
-| vLLM · CUDA | NVIDIA / cuda | `vllm` | `gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2` | multi |
-| vLLM Omni · CUDA | NVIDIA / cuda | `vllm-omni` | `gpuworks/gpuworks-runner:cuda13.0-vllm-omni0.30.0-r3` | multi |
+| vLLM · CUDA | NVIDIA / cuda | `vllm` | `gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r4` | multi |
+| vLLM Omni · CUDA | NVIDIA / cuda | `vllm-omni` | `gpuworks/gpuworks-runner:cuda13.0-vllm-omni0.30.0-r4` | multi |
 | SGLang · CUDA | NVIDIA / cuda | `sglang` | `gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2` | multi |
 | vLLM · CANN | 昇腾 / cann | `vllm` | `gpuworks/gpuworks-runner:cann9.1-910b-vllm0.27.1rc1-r2` | multi |
 | vLLM Omni · CANN | 昇腾 / cann | `vllm-omni` | `gpuworks/gpuworks-runner:cann9.1-910b-vllm-omni0.30.0-r3` | multi |

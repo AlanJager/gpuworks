@@ -7,14 +7,14 @@ context_length: 40960
 model_config: {model_type: qwen3, num_hidden_layers: 28, hidden_size: 1024, num_attention_heads: 16, num_key_value_heads: 8, head_dim: 128, max_position_embeddings: 40960, audio_config: {max_source_positions: 1500}}
 kv_bytes_per_token: {vllm: 114688}
 specs:
-# Validated 2026-10-27 on RTX 3090 with cuda13.0-vllm0.30.0-r2:
+# Validated 2026-10-27 on RTX 3090 with cuda13.0-vllm0.30.0-r4:
 # official example/zh.mp3 returned the expected transcript through the Audio Playground.
 - name: bf16-vllm-nvidia-general
   display_name_zh_cn: Ampere 及以上 · BF16
   display_name_en: Ampere+ · BF16
   scenario: balanced
   engine: vllm
-  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r4
   weights:
     quantization: bf16
     sources:
