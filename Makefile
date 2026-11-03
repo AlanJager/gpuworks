@@ -38,7 +38,7 @@ BIN       := bin
 TEST_LOG_DIR ?= .testlogs
 PLATFORMS := linux/amd64 linux/arm64 darwin/arm64
 
-.PHONY: all build test-host-env-adapters server server-linux-amd64 server-linux-amd64-prebuilt-ui server-linux-arm64 server-linux-arm64-prebuilt-ui server-darwin-amd64-prebuilt-ui server-darwin-arm64-prebuilt-ui agent ui test test-unit test-ui test-integration test-fleet-perf-processes test-fleet-log-scale-processes test-fleet-benchmark-processes test-coverage-report test-l2 test-l3 test-l4 test-l4-runpod-server-dial-node-onboarding test-l4-runpod-huggingface-public-download test-l4-runpod-vllm-sglang-lifecycle test-l4-autodl-node-onboarding test-l4-vast-node-onboarding test-l4-vast-server-dial-node-onboarding test-l4-gitee-ascend-partition-capability test-l4-gitee-ascend-deploy-chat test-l4-ascend-pool-partition-inference test-l4-ascend-primary test-l4-ascend-preflight test-l4-ascend-nerdctl-devinject test-l4-compshare-modelscope-public-download test-l4-compshare-offline-contracts test-l4-compshare-single-vm-tp2-dgpu test-l4-compshare-provisioning-matrix test-l4-compshare-server-dial-node-onboarding-container test-l4-compshare-two-vm-udocker-distributed test-l4-compshare-two-vm-docker-distributed test-l4-compshare-one-vm-two-logical-nodes test-l4-compshare-pd-deploy-chat-two-vm-docker prepare-compshare-golden-image test-l4-runpod test-l4-compshare test-l4-cleanup-leaked vet check-assets check-libvgpu check-perftest check-time-policy check-architecture check-tagged-build check-api-conventions check-ci-yaml check-artifacts githooks check-doc-links check-translations i18n-check i18n-translate i18n-review runtime-assets runtime-assets-probe runtime-assets-verify image-manifest image-manifest-verify image-manifest-publish fake-engine fake-engine-image fake-model clean demo run-server tidy cross release-packages dist-publish test-l4-runpod-node-onboarding test-l4-aliyun test-l4-aliyun-provisioning-matrix test-l4-aliyun-modelscope-public-download test-l4-aliyun-single-vm-tp2-dgpu test-l4-aliyun-one-vm-two-logical-nodes test-l4-aliyun-two-vm-docker-distributed test-l4-aliyun-two-vm-udocker-distributed test-l4-aliyun-pd-deploy-chat-two-vm-docker prepare-aliyun-golden-image
+.PHONY: all build test-host-env-adapters server server-linux-amd64 server-linux-amd64-prebuilt-ui server-linux-arm64 server-linux-arm64-prebuilt-ui server-darwin-amd64-prebuilt-ui server-darwin-arm64-prebuilt-ui agent ui test test-unit test-ui test-integration test-fleet-perf-processes test-fleet-log-scale-processes test-fleet-benchmark-processes test-coverage-report test-l2 test-l3 test-l4 test-l4-runpod-server-dial-node-onboarding test-l4-runpod-huggingface-public-download test-l4-runpod-vllm-sglang-lifecycle test-l4-autodl-node-onboarding test-l4-vast-node-onboarding test-l4-vast-server-dial-node-onboarding test-l4-gitee-ascend-partition-capability test-l4-gitee-ascend-deploy-chat test-l4-ascend-pool-partition-inference test-l4-ascend-primary test-l4-ascend-preflight test-l4-ascend-nerdctl-devinject test-l4-compshare-modelscope-public-download test-l4-compshare-offline-contracts test-l4-compshare-single-vm-tp2-dgpu test-l4-compshare-provisioning-matrix test-l4-compshare-server-dial-node-onboarding-container test-l4-compshare-two-vm-udocker-distributed test-l4-compshare-two-vm-docker-distributed test-l4-compshare-one-vm-two-logical-nodes test-l4-compshare-pd-deploy-chat-two-vm-docker prepare-compshare-golden-image test-l4-runpod test-l4-compshare test-l4-cleanup-leaked vet check-assets check-libvgpu check-perftest check-time-policy check-architecture check-tagged-build check-api-conventions check-ci-yaml check-artifacts githooks check-doc-links check-translations i18n-check i18n-translate i18n-review runtime-assets runtime-assets-probe runtime-assets-verify image-manifest image-manifest-verify fake-engine fake-engine-image fake-model clean demo run-server tidy cross release-packages dist-publish test-l4-runpod-node-onboarding test-l4-aliyun test-l4-aliyun-provisioning-matrix test-l4-aliyun-modelscope-public-download test-l4-aliyun-single-vm-tp2-dgpu test-l4-aliyun-one-vm-two-logical-nodes test-l4-aliyun-two-vm-docker-distributed test-l4-aliyun-two-vm-udocker-distributed test-l4-aliyun-pd-deploy-chat-two-vm-docker prepare-aliyun-golden-image
 
 all: build
 
@@ -80,7 +80,7 @@ server-darwin-arm64-prebuilt-ui: cross-agents
 
 ## release-packages: build versioned Linux and macOS server archives with checksums
 release-packages:
-	./scripts/package_release.sh
+	GPUWORKS_RELEASE_CHANNEL="$${GPUWORKS_RELEASE_CHANNEL:-$(CHANNEL)}" ./scripts/package_release.sh
 
 DIST_DIR ?= dist
 
@@ -392,10 +392,6 @@ image-manifest:
 image-manifest-verify:
 	$(GO) run ./cmd/gpuworks-image-manifest -verify $(IMAGE_MANIFEST_SEED)
 
-## image-manifest-publish: upload the checked-in seed as https://image-manifest.gpuworks.ai/manifest.json
-image-manifest-publish:
-	./scripts/publish_image_manifest.sh $(IMAGE_MANIFEST_SEED)
-
 fake-engine:
 	@arch="$${FAKE_ENGINE_GOARCH:-$$(docker info --format '{{.Architecture}}' 2>/dev/null)}"; \
 	[ -n "$$arch" ] || arch="$$(uname -m)"; \
@@ -526,12 +522,12 @@ test-l4-ascend-pool-partition-inference: cross-agents
 ## the self-owned Ascend 910B4 machine that runs real Docker + Ascend-Docker-
 ## Runtime (not udocker — unaffected by the Gitee device-share restriction). The
 ## host is whatever GPUWORKS_ASCEND_PRIMARY_HOST names; do not read an address
-## out of this comment (172.30.8.31 is a nerdctl-only pool member today).
+## out of this comment (198.51.100.31 is a nerdctl-only pool member today).
 test-l4-ascend-primary:
 	GPUWORKS_TEST_STRICT=1 CGO_ENABLED=0 $(GO) test $(GO_TEST_FLAGS) -v -tags=cloudgpu,partition -run '^TestAscendSameCardDualContainerMemoryIsolation$$' -timeout=15m ./test/l4
 
 ## test-l4-ascend-preflight: read-only SSH probe (npu-smi/docker, no containers)
-## against the configured Ascend pool members (172.30.8.31 is one of them:
+## against the configured Ascend pool members (198.51.100.31 is one of them:
 ## measured aarch64 + nerdctl, no docker). Fast and non-destructive; runs before
 ## the deeper partition tests.
 test-l4-ascend-preflight:

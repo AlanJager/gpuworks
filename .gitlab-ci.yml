@@ -8,13 +8,15 @@ stages:
 default:
   interruptible: true
 
-# Run validation for merge requests and the default branch. Ordinary feature
-# branch and tag pushes do not create pipelines until a merge request exists;
-# scheduled, web, API, and trigger pipelines remain available explicitly.
+# Run validation for merge requests, the default branch and release tags
+# (vYY.M.PATCH, docs/dev/release.md#版本号). Ordinary feature branch and other
+# tag pushes do not create pipelines until a merge request exists; scheduled,
+# web, API, and trigger pipelines remain available explicitly.
 workflow:
   rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
     - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_TAG =~ /^v[0-9]+\.[0-9]+\.[0-9]+$/'
     - if: '$CI_PIPELINE_SOURCE == "schedule"'
     - if: '$CI_PIPELINE_SOURCE == "web"'
     - if: '$CI_PIPELINE_SOURCE == "api"'
@@ -122,11 +124,11 @@ docs-build:
     # No Go toolchain or module proxy is involved at all.
     HUGO_VERSION: "0.165.0"
     # The runners have no egress to github.com, so Hugo comes from the rustfs
-    # mirror on mirror1 (bucket gpuworks-mirror). A systemd timer there
-    # (gpuworks-hugo-mirror) refreshes the mirror daily through a proxy; after
-    # bumping HUGO_VERSION, run mirror1's refresh-hugo-mirror.sh with the new
-    # version, or wait for the daily run when it is among the newest releases.
-    HUGO_MIRROR: "http://172.20.16.58:9000/gpuworks-mirror"
+    # mirror on mirror1 (bucket gpuworks-mirror), whose URL is the HUGO_MIRROR
+    # project CI/CD variable. A systemd timer there (gpuworks-hugo-mirror)
+    # refreshes the mirror daily through a proxy; after bumping HUGO_VERSION,
+    # run mirror1's refresh-hugo-mirror.sh with the new version, or wait for
+    # the daily run when it is among the newest releases.
     # Set to 1 when the runner image already contains Hugo. In that mode the
     # mirror download is skipped and the job fails clearly if the binary is
     # absent.
@@ -142,6 +144,10 @@ docs-build:
       else
         command -v curl >/dev/null
         command -v tar >/dev/null
+        test -n "$HUGO_MIRROR" || {
+          echo "HUGO_MIRROR (project CI/CD variable) must name the Hugo mirror bucket URL" >&2
+          exit 1
+        }
         name=hugo_extended_${HUGO_VERSION}_linux-amd64.tar.gz
         base="${HUGO_MIRROR}/hugo"
         curl --fail --location --retry 3 --silent --show-error "$base/$name" -o "$name"
@@ -557,8 +563,6 @@ core-compshare-offline-contracts:
     - job: core-test
     - job: core-vet
     - job: core-compshare-offline-contracts
-  variables:
-    GPUWORKS_RELEASE_ID: "$CI_COMMIT_SHORT_SHA"
   script:
     # The zstd CLI packs the embedded agents ~10% smaller than the Go
     # encoder make falls back to; a mirror hiccup only costs that, not the build.
@@ -584,8 +588,18 @@ core-compshare-offline-contracts:
     paths:
       - dist/
     expire_in: 30 days
+  # Keep these rules identical in .release-build and release-publish: the
+  # default branch builds the nightly channel under its short commit, a
+  # release tag builds the release channel under the tag (ADR 0040).
   rules:
     - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+      variables:
+        GPUWORKS_RELEASE_ID: "$CI_COMMIT_SHORT_SHA"
+        GPUWORKS_RELEASE_CHANNEL: "nightly"
+    - if: '$CI_COMMIT_TAG =~ /^v[0-9]+\.[0-9]+\.[0-9]+$/'
+      variables:
+        GPUWORKS_RELEASE_ID: "$CI_COMMIT_TAG"
+        GPUWORKS_RELEASE_CHANNEL: "release"
     - when: never
 
 release-build-linux-amd64:
@@ -594,7 +608,7 @@ release-build-linux-amd64:
     GPUWORKS_RELEASE_OSES: "linux"
     GPUWORKS_RELEASE_ARCHES: "amd64"
   artifacts:
-    name: "gpuworks-$CI_COMMIT_SHORT_SHA-linux-amd64"
+    name: "gpuworks-$GPUWORKS_RELEASE_ID-linux-amd64"
 
 release-build-linux-arm64:
   extends: .release-build
@@ -602,7 +616,7 @@ release-build-linux-arm64:
     GPUWORKS_RELEASE_OSES: "linux"
     GPUWORKS_RELEASE_ARCHES: "arm64"
   artifacts:
-    name: "gpuworks-$CI_COMMIT_SHORT_SHA-linux-arm64"
+    name: "gpuworks-$GPUWORKS_RELEASE_ID-linux-arm64"
 
 release-build-macos-amd64:
   extends: .release-build
@@ -610,7 +624,7 @@ release-build-macos-amd64:
     GPUWORKS_RELEASE_OSES: "darwin"
     GPUWORKS_RELEASE_ARCHES: "amd64"
   artifacts:
-    name: "gpuworks-$CI_COMMIT_SHORT_SHA-darwin-amd64"
+    name: "gpuworks-$GPUWORKS_RELEASE_ID-darwin-amd64"
 
 release-build-macos-arm64:
   extends: .release-build
@@ -618,14 +632,15 @@ release-build-macos-arm64:
     GPUWORKS_RELEASE_OSES: "darwin"
     GPUWORKS_RELEASE_ARCHES: "arm64"
   artifacts:
-    name: "gpuworks-$CI_COMMIT_SHORT_SHA-darwin-arm64"
+    name: "gpuworks-$GPUWORKS_RELEASE_ID-darwin-arm64"
 
-# Publish each default-branch release and the catalogs embedded in it to the
-# distribution sources (ADR 0040): Aliyun OSS, Huawei OBS and Cloudflare R2.
-# Both build jobs' dist/ artifacts are merged here; gpuworks-dist reads the
-# archives themselves, not either job's release.json. Credentials and the
-# index signing key are protected, masked project variables, so the job only
-# runs on protected refs. resource_group keeps two publishes from interleaving,
+# Publish each default-branch build (nightly) and release tag (release) and the
+# catalogs embedded in it to the distribution sources (ADR 0040): Aliyun OSS,
+# Huawei OBS and Cloudflare R2. Both build jobs' dist/ artifacts are merged
+# here; gpuworks-dist reads the archives themselves, not either job's
+# release.json. Credentials and the index signing key are protected, masked
+# project variables, so the job only runs on protected refs: master and the
+# protected v* tags. resource_group keeps two publishes from interleaving,
 # and the script skips a pipeline older than what the sources already serve.
 # rclone is built once per version into the persistent host cache. It sits in
 # a stage of its own because GitLab 14.0 only lets needs name jobs of earlier
@@ -651,9 +666,19 @@ release-publish:
   script:
     - export RCLONE="/host-go-cache/tools/rclone-$GPUWORKS_RCLONE_VERSION/rclone"
     - test -x "$RCLONE" || GOBIN="$(dirname "$RCLONE")" go install "github.com/rclone/rclone@$GPUWORKS_RCLONE_VERSION"
-    - ./scripts/publish_dist.sh nightly dist
+    - ./scripts/publish_dist.sh "$GPUWORKS_RELEASE_CHANNEL" dist
+  # Keep these rules identical in .release-build and release-publish: the
+  # default branch builds the nightly channel under its short commit, a
+  # release tag builds the release channel under the tag (ADR 0040).
   rules:
     - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+      variables:
+        GPUWORKS_RELEASE_ID: "$CI_COMMIT_SHORT_SHA"
+        GPUWORKS_RELEASE_CHANNEL: "nightly"
+    - if: '$CI_COMMIT_TAG =~ /^v[0-9]+\.[0-9]+\.[0-9]+$/'
+      variables:
+        GPUWORKS_RELEASE_ID: "$CI_COMMIT_TAG"
+        GPUWORKS_RELEASE_CHANNEL: "release"
     - when: never
 
 # Every job below that has an `environment:` uses `action: prepare`. This

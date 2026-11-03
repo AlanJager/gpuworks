@@ -10,7 +10,7 @@ import (
 
 // hygonRASFiles serves a card's RAS directory from a map; a path not in it
 // does not exist. The healthy values are as read on the K100 host
-// (172.25.17.133, 2026-10-30).
+// (192.0.2.133, 2026-10-30).
 func hygonRASFiles(files map[string]string) func(string) ([]byte, error) {
 	base := map[string]string{
 		"umc_err_count": "ue: 0\nce: 0\n", "gfx_err_count": "ue: 0\nce: 0\n",

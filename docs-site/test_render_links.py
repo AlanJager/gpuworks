@@ -120,8 +120,8 @@ source_path: how-to/source.md
         cls.source = Links((root / 'public/how-to/source/index.html').read_text()).links
         cls.english = Links((root / 'public/en/how-to/source/index.html').read_text()).links
         cls.deep = Links((root / 'public/dev/ledgers/deep/index.html').read_text()).links
-        cls.repo = 'https://example.invalid/team/gpuworks/-/blob/review-branch/'
-        cls.artifacts = 'https://example.invalid/team/gpuworks-artifacts/-/blob/review-branch/'
+        cls.repo = 'https://example.invalid/team/gpuworks/blob/review-branch/'
+        cls.artifacts = 'https://example.invalid/team/gpuworks-artifacts/blob/review-branch/'
 
     def test_local_anchor_and_normal_markdown_page(self):
         actual = urljoin('https://example.invalid/docs/how-to/source/', self.source['same']['href'])

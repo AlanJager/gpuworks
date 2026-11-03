@@ -80,7 +80,7 @@ func TestWakeYieldPutsAReplicaSpanningCardsToSleepOnce(t *testing.T) {
 			f.replica(t, sleeper, "sleeper-1", sleeperCards, true)
 
 			status, body := f.deploymentCall(t, sleeper.ID, "?yield=true")
-			if want := `{"status":"waiting","woken":[],"waiting":["sleeper-1"],"yielded":["wide"]}`; status != http.StatusAccepted || body != want {
+			if want := `{"status":"waiting","woken":[],"waiting":["sleeper-1"],"yielded":["wide"],"yielded_held":["wide"]}`; status != http.StatusAccepted || body != want {
 				t.Fatalf("wake?yield=true = %d %s, want 202 %s", status, body, want)
 			}
 			if got := sleepIntent(t, f.st, "wide-1"); got != 1 {
@@ -107,7 +107,7 @@ func TestWakeYieldPutsEachReplicaOnTheNeededCardsToSleepOnce(t *testing.T) {
 	f.replica(t, narrow, "narrow-1", "[1]", true)
 
 	status, body := f.deploymentCall(t, narrow.ID, "?yield=true")
-	if want := `{"status":"waiting","woken":[],"waiting":["narrow-1"],"yielded":["pair"]}`; status != http.StatusAccepted || body != want {
+	if want := `{"status":"waiting","woken":[],"waiting":["narrow-1"],"yielded":["pair"],"yielded_held":["pair"]}`; status != http.StatusAccepted || body != want {
 		t.Fatalf("wake narrow = %d %s, want 202 %s", status, body, want)
 	}
 	if sleepIntent(t, f.st, "pair-2") != 1 || sleepIntent(t, f.st, "pair-1") != 0 {
@@ -118,7 +118,7 @@ func TestWakeYieldPutsEachReplicaOnTheNeededCardsToSleepOnce(t *testing.T) {
 	}
 
 	status, body = f.deploymentCall(t, big.ID, "?yield=true")
-	if want := `{"status":"waiting","woken":[],"waiting":["big-1"],"yielded":["pair"]}`; status != http.StatusAccepted || body != want {
+	if want := `{"status":"waiting","woken":[],"waiting":["big-1"],"yielded":["pair"],"yielded_held":["pair"]}`; status != http.StatusAccepted || body != want {
 		t.Fatalf("wake big = %d %s, want 202 %s", status, body, want)
 	}
 	if sleepIntent(t, f.st, "pair-1") != 1 || sleepIntent(t, f.st, "pair-2") != 1 {

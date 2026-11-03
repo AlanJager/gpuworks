@@ -91,6 +91,18 @@ export default function FeatureChoice({
             disabled={disabled}
             aria-label={label}
             style={{ minWidth: 104 }}
+            popupMatchSelectWidth={false}
+            dropdownAlign={{
+              overflow: { adjustX: true, adjustY: true, shiftX: true },
+            }}
+            styles={{
+              popup: {
+                root: {
+                  width: "max-content",
+                  maxWidth: "min(480px, calc(100vw - 32px))",
+                },
+              },
+            }}
             value={position}
             options={(engineDecides
               ? ["auto", "on", "off"]

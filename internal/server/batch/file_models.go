@@ -82,11 +82,12 @@ func (s *Service) fileModels(f File) ([]string, error) {
 }
 
 // checkFileModels is the model check of a batch without an override: every
-// request goes to the model its line names, so a model no active deployment
-// serves would fail all of its requests at once. Such a file is refused;
-// models whose deployments sleep by an operator's or a schedule's order are
-// only warned about, as an override naming one is.
-func (s *Service) checkFileModels(f File) ([]Warning, error) {
+// request goes to the model its line names, so a model no deployment serves,
+// or one whose deployments do not expose the batch's endpoint, would fail all
+// of its requests at once. Such a file is refused; models that wait for
+// someone to act (ModelState.Waits) are only warned about, as an override
+// naming one is.
+func (s *Service) checkFileModels(f File, endpoint string) ([]Warning, error) {
 	if s.cfg.Models == nil {
 		return nil, nil
 	}
@@ -94,52 +95,93 @@ func (s *Service) checkFileModels(f File) ([]Warning, error) {
 	if err != nil {
 		return nil, err
 	}
-	unknown, held, err := s.classify(names)
+	c, err := s.classify(names, endpoint)
 	if err != nil {
 		return nil, err
 	}
-	if len(unknown) > 0 {
-		e := invalid(CodeModelNotFound, ParamInputFileID, "The input file names models that no active deployment serves: "+ModelsText(unknown)+
+	if len(c.unknown) > 0 {
+		e := invalid(CodeModelNotFound, ParamInputFileID, "The input file names models that no deployment serves: "+ModelsText(c.unknown)+
 			". Set a model to send every request to, or deploy these models first")
-		e.Models = unknown
+		e.Models = c.unknown
 		return nil, e
 	}
-	return heldWarnings(ParamInputFileID, held), nil
+	if len(c.unserved) > 0 {
+		e := invalid(CodeModelEndpoint, ParamInputFileID, "The input file names models whose deployments do not serve "+endpoint+": "+ModelsText(c.unserved)+
+			". Set a model that serves it, or use the endpoint these models serve")
+		e.Models, e.Endpoint = c.unserved, endpoint
+		return nil, e
+	}
+	return c.warnings(ParamInputFileID), nil
 }
 
-// classify looks names up and returns those no active deployment serves and
-// those whose every deployment sleeps by an operator's or a schedule's order,
-// each in the order of names. It stops once maxReportedModels are unknown.
-func (s *Service) classify(names []string) (unknown, held []string, err error) {
+// classified is what looking a batch's models up found, each list in the order
+// of the names looked up.
+type classified struct {
+	// unknown no deployment serves; unserved are served without the batch's
+	// endpoint.
+	unknown, unserved []string
+	// waiting are the names whose requests wait for someone to act, by state
+	// (ModelState.Waits).
+	waiting map[ModelState][]string
+}
+
+// classify looks names up for a batch of endpoint. It stops once
+// maxReportedModels are refused.
+func (s *Service) classify(names []string, endpoint string) (classified, error) {
+	c := classified{waiting: map[ModelState][]string{}}
 	for _, name := range names {
-		state, err := s.cfg.Models.Lookup(name)
+		entry, err := s.cfg.Models.Lookup(name)
 		if err != nil {
-			return nil, nil, err
+			return classified{}, err
 		}
 		switch {
-		case state.Accepts():
-		case state == ModelSleepHeld:
-			held = append(held, name)
-		default:
-			unknown = append(unknown, name)
+		case !entry.State.Known():
+			c.unknown = append(c.unknown, name)
+		case !entry.Serves(endpoint):
+			c.unserved = append(c.unserved, name)
+		case entry.State.Waits():
+			c.waiting[entry.State] = append(c.waiting[entry.State], name)
 		}
-		if len(unknown) >= maxReportedModels {
+		if len(c.unknown)+len(c.unserved) >= maxReportedModels {
 			break
 		}
 	}
-	return unknown, held, nil
+	return c, nil
 }
 
-// heldWarnings is the warning about models whose deployments sleep by an
-// operator's or a schedule's order, none when held is empty; param is the
-// request field that chose them.
-func heldWarnings(param string, held []string) []Warning {
-	if len(held) == 0 {
-		return nil
+// warnings are the warnings about the names that wait, one per state in the
+// order of ModelStates; param is the request field that chose them.
+func (c classified) warnings(param string) []Warning {
+	var out []Warning
+	for _, state := range ModelStates {
+		names := c.waiting[state]
+		if len(names) == 0 {
+			continue
+		}
+		if state == ModelSleepHeld {
+			out = append(out, heldWarning(param, names))
+			continue
+		}
+		out = append(out, Warning{Code: WarningModelWaits, Param: param, Models: names, State: state,
+			Message: "The deployments serving " + ModelsText(names) + " are " + waitWords[state] + "; their requests are retried until they serve or the batch expires"})
 	}
+	return out
+}
+
+// waitWords say in English what keeps a waiting model from serving.
+var waitWords = map[ModelState]string{
+	ModelOffline: "on nodes that are not connected",
+	ModelFailed:  "failed",
+	ModelStopped: "stopped",
+}
+
+// heldWarning is the warning about models whose deployments sleep by an
+// operator's or a schedule's order; param is the request field that chose
+// them.
+func heldWarning(param string, held []string) Warning {
 	message := "The deployment serving " + held[0] + " sleeps by an operator's or a schedule's order, which requests do not wake; the batch's requests are retried until it is woken or the batch expires"
 	if len(held) > 1 {
 		message = "The deployments serving " + ModelsText(held) + " sleep by an operator's or a schedule's order, which requests do not wake; their requests are retried until they are woken or the batch expires"
 	}
-	return []Warning{{Code: WarningModelSleepHeld, Param: param, Models: held, Message: message}}
+	return Warning{Code: WarningModelSleepHeld, Param: param, Models: held, Message: message}
 }

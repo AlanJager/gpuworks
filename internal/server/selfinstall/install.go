@@ -106,6 +106,19 @@ func (i *Installer) Install(ctx context.Context, req InstallRequest) (InstallRep
 	if err != nil {
 		return InstallReport{}, err
 	}
+	// Reject deterministic permission-policy errors before replacing a working
+	// installation's binary, configuration or service definition. chownTree
+	// validates again before applying permissions and starting the service.
+	if pf.ServiceUser != "" && pf.ServiceUser != "root" {
+		if _, err := i.permissionRoots(); err != nil {
+			return InstallReport{}, err
+		}
+		if i.installedInSharedRoot() {
+			pf.Warnings = append(pf.Warnings, fmt.Sprintf(
+				"%s is shared with the node agent and stays owned by root: the console cannot replace the binary there, so upgrade with `sudo %s upgrade`, or reinstall into a dedicated directory",
+				sharedApplicationRoot, i.layout.Binary()))
+		}
+	}
 	for _, warning := range pf.Warnings {
 		i.io.Warn("warning: %s", warning)
 	}

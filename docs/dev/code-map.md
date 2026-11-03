@@ -152,7 +152,7 @@
 ## 辅助 cmd
 
 - `cmd/gpuworks-dist`：发布通道目录树的生成与核对（`assemble` 签名索引、`verify` 逐源读回、`newer` 防乱序、`prune` 挑旧版本），由 `scripts/publish_dist.sh` / `make dist-publish` 与 CI `release-publish` 调用；上传用 rclone，本工具不持有存储凭据。
-- `cmd/gpuworks-image-manifest`：从 gpuworks-runner 构建矩阵生成系统镜像目录 manifest（即内嵌种子 `imagecatalog/catalog-seed.json` 与上游 `manifest.json`），由 `make image-manifest` / `make image-manifest-publish` 调用；每个版本的 `registry_sources` 由 pullref 出厂改写规则推出，镜像仓清单只在 `pullref` 定义。
+- `cmd/gpuworks-image-manifest`：从 gpuworks-runner 构建矩阵生成系统镜像目录 manifest（即内嵌种子 `imagecatalog/catalog-seed.json`，随发布进入发布通道），由 `make image-manifest` / `make image-manifest-verify` 调用；每个版本的 `registry_sources` 由 pullref 出厂改写规则推出，镜像仓清单只在 `pullref` 定义。
 - `cmd/template-probe`：推理模板目录 L1/L2/L3 校验 CLI（`l1|l2-command|l3|classify|alignment|calibrate`），面向目录维护者与 CI。
 - `cmd/gpuworks-catalog-model-config`：从 spec 声明的仓库拉真实 config.json，回填推理目录包的 `model_config`（估算子集），使部署期不需再取远端；gated 仓库需 `HF_TOKEN`，读不到的走 `fallback-sources.json`。默认只报告，`-write` 才落盘。
 

@@ -151,7 +151,7 @@ Docker 与 udocker 节点可以直接用 `.tar.gz`；nerdctl 节点请先解压�
 
 ### 更新镜像目录和推理模板
 
-想用比内嵌更新的系统镜像目录与推理模板目录时：在外网机上从任一发布源（如 `https://dl.gpuworks.ai`）下载 `manifest.json`
+想用比内嵌更新的系统镜像目录与推理模板目录时：在外网机上从任一发布源（如 `https://dl.gpuworks.ai`）下载 `<channel>/manifest.json`
 与 `<channel>/index.json` 里列出的 `catalog/templates/<sha256>.tar.gz`，在设置页「版本与更新」点「上传 manifest」「上传目录包」，
 规则见[镜像目录](../reference/image-families.md#更新目录)。离线环境里「检查更新」会因为发布源不可达返回 502 `UPDATE_SOURCES_UNAVAILABLE`，不改库。
 

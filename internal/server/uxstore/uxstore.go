@@ -31,6 +31,7 @@ import (
 	_ "github.com/glebarez/go-sqlite"
 
 	"gpuworks.ai/gpuworks/internal/server/uxrecord"
+	"gpuworks.ai/gpuworks/internal/sqliteutil"
 )
 
 // Defaults for the zero fields of Options.
@@ -158,7 +159,8 @@ type ctlReq struct {
 }
 
 // Open opens (creating if necessary) the store at path and starts its writer.
-func Open(path string, opts Options) (*Store, error) {
+func Open(path string, opts Options) (result *Store, err error) {
+	defer func() { err = sqliteutil.WrapOpenError(path, err) }()
 	opts = opts.withDefaults()
 	writer, err := openPooled(path, 1)
 	if err != nil {

@@ -244,7 +244,7 @@ func ownCards(cards []pcicards.Card, vendor string) []pcicards.Card {
 // node's steady state rather than a failed reading.
 //
 // Measured on a Hygon host whose only K100_AI is passed through
-// (172.25.17.133, 2026-10-15): hy-smi exits 1 every minute, and before
+// (192.0.2.133, 2026-10-15): hy-smi exits 1 every minute, and before
 // this the node carried a permanent "the readings are out of date"
 // warning over a card list that was exactly current — it comes from the
 // PCI bus, which answered.

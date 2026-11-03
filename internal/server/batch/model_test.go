@@ -17,11 +17,24 @@ import (
 )
 
 // fakeModels answers a model lookup from a table; a name it does not list is
-// unknown, one in failing is a store failure.
+// unknown, one in failing is a store failure. A name serves every batch
+// endpoint unless endpoints lists the ones it serves.
 type fakeModels struct {
-	states  map[string]ModelState
-	failing map[string]bool
-	listErr error
+	states    map[string]ModelState
+	endpoints map[string][]string
+	failing   map[string]bool
+	listErr   error
+}
+
+func (f fakeModels) entry(name string) ModelEntry {
+	e := ModelEntry{Name: name, State: f.states[name], Endpoints: append([]string(nil), Endpoints...)}
+	if eps, ok := f.endpoints[name]; ok {
+		e.Endpoints = eps
+	}
+	if !e.State.Known() {
+		e.Endpoints = nil
+	}
+	return e
 }
 
 // List is every name of the table but the unknown ones, the best first and
@@ -33,7 +46,7 @@ func (f fakeModels) List() ([]ModelEntry, error) {
 	out := []ModelEntry{}
 	for name, state := range f.states {
 		if state != ModelUnknown {
-			out = append(out, ModelEntry{Name: name, State: state})
+			out = append(out, f.entry(name))
 		}
 	}
 	sort.Slice(out, func(i, j int) bool {
@@ -45,14 +58,14 @@ func (f fakeModels) List() ([]ModelEntry, error) {
 	return out, nil
 }
 
-func (f fakeModels) Lookup(name string) (ModelState, error) {
+func (f fakeModels) Lookup(name string) (ModelEntry, error) {
 	if f.failing[name] {
-		return ModelUnknown, errors.New("store is down")
+		return ModelEntry{Name: name}, errors.New("store is down")
 	}
-	return f.states[name], nil
+	return f.entry(name), nil
 }
 
-var platformModels = fakeModels{states: map[string]ModelState{"real": ModelAvailable, "held": ModelSleepHeld, "m": ModelAvailable}}
+var platformModels = fakeModels{states: map[string]ModelState{"real": ModelRunning, "held": ModelSleepHeld, "m": ModelRunning}}
 
 // multipartForm is a console create form: the fields, then the file.
 func multipartForm(t *testing.T, fields map[string]string, file string) *multipart.Reader {
@@ -142,7 +155,7 @@ func TestOverrideRewritesTheModelOfEveryLineAndEveryRetry(t *testing.T) {
 func TestNoOverrideSendsEachLineUntouched(t *testing.T) {
 	var mu sync.Mutex
 	var got []string
-	r := newRig(t, Config{Models: fakeModels{states: map[string]ModelState{"whatever": ModelAvailable}}}, func(_ context.Context, _ Owner, _ string, body []byte) Reply {
+	r := newRig(t, Config{Models: fakeModels{states: map[string]ModelState{"whatever": ModelRunning}}}, func(_ context.Context, _ Owner, _ string, body []byte) Reply {
 		mu.Lock()
 		got = append(got, string(body))
 		mu.Unlock()
@@ -185,7 +198,7 @@ func TestWithModel(t *testing.T) {
 
 func TestCreateBatchChecksTheModel(t *testing.T) {
 	r := newRig(t, Config{Models: fakeModels{
-		states:  map[string]ModelState{"real": ModelAvailable, "held": ModelSleepHeld, "m": ModelAvailable},
+		states:  map[string]ModelState{"real": ModelRunning, "held": ModelSleepHeld, "m": ModelRunning},
 		failing: map[string]bool{"broken": true},
 	}}, echo)
 	r.start()
@@ -297,7 +310,7 @@ func TestV1BatchModelExtension(t *testing.T) {
 	}
 
 	rec := v.do("k", "POST", "/v1/batches", "application/json", strings.NewReader(fmt.Sprintf(`{"input_file_id":%q,"endpoint":"/v1/chat/completions","completion_window":"24h","model":"ghost"}`, file)))
-	if want := `{"error":{"message":"No active deployment serves the model ghost","type":"invalid_request_error","param":"model","code":"model_not_found"}}`; rec.Code != 400 || strings.TrimSpace(rec.Body.String()) != want {
+	if want := `{"error":{"message":"No deployment serves the model ghost","type":"invalid_request_error","param":"model","code":"model_not_found"}}`; rec.Code != 400 || strings.TrimSpace(rec.Body.String()) != want {
 		t.Fatalf("unknown: %d %s", rec.Code, rec.Body)
 	}
 }

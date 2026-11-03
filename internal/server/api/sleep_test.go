@@ -146,7 +146,7 @@ func TestSleepDeploymentValidatesLevelAndModeAndStampsTheOrder(t *testing.T) {
 	if status != http.StatusOK {
 		t.Fatalf("sleep: %d %v", status, body)
 	}
-	if raw, _ := json.Marshal(body); string(raw) != `{"level":2,"mode":"abort","status":"sleeping"}` {
+	if raw, _ := json.Marshal(body); string(raw) != `{"level":2,"mode":"abort","status":"sleeping","wake_on_request":false}` {
 		t.Fatalf("sleep body = %s", raw)
 	}
 	if got, _ := f.st.GetDeployment(dep.ID); got.DesiredSleep != 2 {

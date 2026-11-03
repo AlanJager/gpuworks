@@ -39,7 +39,7 @@ func pciHost(t *testing.T, functions ...pciFunction) string {
 	return root
 }
 
-// 172.30.8.31 as measured on 2026-10-15: eight 910B4, four bound to the
+// 198.51.100.31 as measured on 2026-10-15: eight 910B4, four bound to the
 // Huawei driver and four handed to virtual machines, plus the BMC display
 // controller that shares Huawei's PCI vendor id.
 func ascendHost31(t *testing.T) string {
@@ -61,7 +61,7 @@ func ascendHost31(t *testing.T) string {
 }
 
 // An Ascend host whose npu-smi cannot initialize reports eight cards, not
-// none. Measured on 172.30.8.31, where "npu-smi info" answers "dcmi module
+// none. Measured on 198.51.100.31, where "npu-smi info" answers "dcmi module
 // initialize failed. ret is -8001" and the platform showed the machine as
 // having no accelerator at all.
 func TestAscendReportsItsCardsWhenNPUSMICannotBeAsked(t *testing.T) {
@@ -110,7 +110,7 @@ func TestTheBMCDisplayControllerIsNotAnAscendCard(t *testing.T) {
 	}
 }
 
-// 172.24.0.210 as measured: sixteen PPU ZW810E, twelve on the vendor
+// 192.0.2.210 as measured: sixteen PPU ZW810E, twelve on the vendor
 // driver, three passed through and one unbound. ppu-smi lists the twelve.
 func TestPPUListsThePassedThroughAndUnboundCardsBesideTheTwelveItServes(t *testing.T) {
 	ppu := func(bdf, driver string) pciFunction {
@@ -146,7 +146,7 @@ func TestPPUListsThePassedThroughAndUnboundCardsBesideTheTwelveItServes(t *testi
 	}
 }
 
-// 172.25.17.133: the host's only DCU is passed through to a virtual
+// 192.0.2.133: the host's only DCU is passed through to a virtual
 // machine, so hy-smi answers "No device available". Saying "this host has
 // no accelerator" sends an operator looking for hardware that is sitting
 // in the machine; "one card, passed through" is the answer.

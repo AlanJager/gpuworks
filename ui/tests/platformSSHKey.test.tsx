@@ -123,7 +123,7 @@ test("saving reports a gpuworks-agent service that belongs to another server", a
     host: "gpu.example", port: 22, user: "root", has_password: false, has_private_key: false, auth_mode: "platform_key",
     probe: {
       reachable: true, agent_running: false, agent_installed: true,
-      foreign_server_url: "http://172.25.17.156:8800", detail: "foreign-systemd http://172.25.17.156:8800",
+      foreign_server_url: "http://192.0.2.156:8800", detail: "foreign-systemd http://192.0.2.156:8800",
     },
   }));
   stub("node", () => sshNode);
@@ -134,7 +134,7 @@ test("saving reports a gpuworks-agent service that belongs to another server", a
   const savedBefore = screen.queryAllByText(nodes.ssh.message.saved).length;
   fireEvent.click(screen.getByRole("button", { name: nodes.ssh.save }));
   await waitFor(() => assert.equal(puts.length, 1));
-  const warning = nodes.ssh.message.savedProbeForeignAgent.replace("{{server}}", "http://172.25.17.156:8800");
+  const warning = nodes.ssh.message.savedProbeForeignAgent.replace("{{server}}", "http://192.0.2.156:8800");
   await waitFor(() => assert.ok(screen.getByText(warning)));
   assert.equal(screen.queryAllByText(nodes.ssh.message.saved).length, savedBefore);
 });

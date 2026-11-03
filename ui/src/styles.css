@@ -3,6 +3,7 @@
 @import "./pages/images/imageSummary.css";
 
 :root {
+  --assistant-panel-width: 480px;
   color: #4a4c4f;
   background: #f5f7fa;
   font-synthesis: none;
@@ -814,13 +815,16 @@ button, input, textarea, select { letter-spacing: 0; }
 .model-grid-region .resource-table-toolbar { padding: 0 0 16px; }
 .model-grid-pagination { display: flex; justify-content: flex-end; margin-top: 16px; }
 
-/* The resident AI assistant panel (assistant/AssistantPanel.tsx): while it is
-   open, other right-side drawers step aside by its width so both show; on a
-   narrow window they overlap as before. */
+/* Bound each other drawer to the workspace beside the resident assistant.
+   Its mask and sliding content stay inside that region, including while
+   closing. Narrow windows keep the overlapping drawer layout. */
 @media (min-width: 1200px) {
+  body.assistant-open .ant-drawer-right:not(.assistant-panel) {
+    right: var(--assistant-panel-width);
+    overflow: hidden;
+  }
   body.assistant-open .ant-drawer-right:not(.assistant-panel) > .ant-drawer-content-wrapper {
-    right: 480px;
-    transition: right 0.2s;
+    max-width: 100%;
   }
 }
 

@@ -25,13 +25,8 @@ func (e *Engine) probeAndReport(ctx context.Context, spec proto.InstanceDesiredS
 	if timeout <= 0 {
 		timeout = 10 * time.Minute
 	}
-	healthPath := spec.HealthPath
-	if healthPath == "" {
-		healthPath = "/health"
-	}
-	url := fmt.Sprintf("http://127.0.0.1:%d%s", spec.APIPort, healthPath)
 	deadline := time.Now().Add(timeout)
-	client := &http.Client{Timeout: 3 * time.Second}
+	client := &http.Client{Timeout: engineHealthTimeout}
 	healthStarted := time.Now()
 	nextHealthReport := 10 * time.Second
 	loadRequested := false
@@ -54,7 +49,7 @@ func (e *Engine) probeAndReport(ctx context.Context, spec proto.InstanceDesiredS
 			e.failAfterContainer(ctx, spec, msg)
 			return false
 		}
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		req, err := engineHealthRequest(ctx, spec)
 		if err != nil {
 			e.failAfterContainer(ctx, spec, "invalid engine health endpoint: "+err.Error())
 			return false
@@ -131,7 +126,7 @@ func (e *Engine) probeAndReport(ctx context.Context, spec proto.InstanceDesiredS
 		select {
 		case <-ctx.Done():
 			return false
-		case <-time.After(2 * time.Second):
+		case <-time.After(engineHealthRetryInterval):
 			// The message stays identical for every heartbeat: a progress
 			// report is overwritable state, and an elapsed counter baked into
 			// the text would make each one look like a new milestone. The UI

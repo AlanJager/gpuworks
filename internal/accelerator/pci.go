@@ -65,9 +65,9 @@ type pciVendor struct {
 // pciVendors is read-only after init.
 //
 // Measured 2026-10-15: Ascend 910B4 19e5:d802 class 0x1200 bound to
-// devdrv_device_driver (172.30.8.31/.32); PPU ZW810E 1ded:6001 class 0x0302
-// bound to alipci (172.24.0.210); Hygon K100 "KONGMING" 1d94:6211 class
-// 0x0b40 (172.25.17.133); NVIDIA RTX 2080 Ti 10de:1e04 class 0x0300 and
+// devdrv_device_driver (198.51.100.31/.32); PPU ZW810E 1ded:6001 class 0x0302
+// bound to alipci (192.0.2.210); Hygon K100 "KONGMING" 1d94:6211 class
+// 0x0b40 (192.0.2.133); NVIDIA RTX 2080 Ti 10de:1e04 class 0x0300 and
 // Quadro RTX 8000 10de:1e78 class 0x0302, both bound to nvidia (gpu3).
 //
 // Huawei deliberately has no 0x03: 19e5:1711, the BMC display controller on
@@ -86,7 +86,7 @@ var pciVendors = map[uint32]pciVendor{
 		drivers:     []string{"devdrv_device_driver"},
 		// Kunpeng builds compression into the SoC: 19e5:a250, the ZIP
 		// engine, reports 0x1200 like the NPU does and binds hisi_zip.
-		// A 910C host presents eight of them (192.168.200.29, measured
+		// A 910C host presents eight of them (192.0.2.129, measured
 		// 2026-10-25), and nothing can run inference on one.
 		notAccelerators: []uint32{0xa250},
 	},
@@ -194,7 +194,7 @@ func (v pciVendor) isNotAnAccelerator(deviceID uint32) bool {
 // so 0x19e5 is also the vendor of its PCI bridges, its SAS and SATA
 // controllers, its USB host controllers and its NICs; reporting every
 // unrecognized function of a supported vendor printed eighteen lines of
-// them on 172.30.8.31 and would have buried the one line that matters.
+// them on 198.51.100.31 and would have buried the one line that matters.
 //
 // A function bound to vfio-pci is not reported either: a host passes all
 // sorts of hardware through to its virtual machines, and the vendor id

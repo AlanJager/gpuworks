@@ -233,3 +233,50 @@ test("an asleep deployment says a request wakes it, unless the sleep was ordered
   assert.equal(screen.queryByText(sl.requestWakesHint), null);
   assert.equal(screen.queryByText(sl.heldHint), null);
 });
+
+test("a yield names who a request wakes again and who stays asleep, as the server says", async () => {
+  stub(async (opts) => {
+    if (opts.yield) return { status: "waiting", woken: [], waiting: ["inst-a"], yielded: ["other", "third"], yielded_held: ["third"] };
+    throw shortage();
+  });
+  const user = mount();
+  await user.click(screen.getByRole("button", { name: sl.wake }));
+  await screen.findByText(sl.refused.title);
+  await confirmYield(user, "other, third");
+  await screen.findByText(`${i18n.t("deployments:sleep.yieldStarted", { names: "other" })} ${i18n.t("deployments:sleep.yieldStartedHeld", { names: "third" })}`);
+});
+
+test("a held sleep offers to let requests wake it, which wakes nothing and refreshes the deployment", async () => {
+  stub(async () => ({ status: "waking" }));
+  const released: number[] = [];
+  api.releaseSleepHold = (async (id: number) => { released.push(id); return { released: ["inst-a"] }; }) as typeof api.releaseSleepHold;
+  let done = 0;
+  const user = mount(asleep({ sleep_hold: "all", sleep_held: true }), () => { done += 1; });
+  assert.ok(screen.getByText(sl.heldHint));
+  await user.click(screen.getByRole("button", { name: sl.releaseHold }));
+  await waitFor(() => assert.deepEqual(released, [1]));
+  await screen.findByText(sl.releaseHoldDone);
+  assert.deepEqual(wakes, [], "nothing was woken");
+  assert.equal(done, 1);
+});
+
+test("a sleep a request already wakes offers no release", () => {
+  stub(async () => ({ status: "waking" }));
+  mount(asleep({ sleep_hold: "none" }));
+  assert.ok(screen.getByText(sl.requestWakesHint));
+  assert.equal(screen.queryByRole("button", { name: sl.releaseHold }), null);
+});
+
+test("the sleep dialog starts from the deployment's default and the order carries the choice", async () => {
+  stub(async () => ({ status: "waking" }));
+  const orders: unknown[][] = [];
+  api.sleepDeployment = (async (...args: unknown[]) => { orders.push(args); }) as typeof api.sleepDeployment;
+  const awake = asleep({ instances: [{ ...instance("inst-a", 0), sleep_level: 0, desired_sleep: 0, asleep: false }], sleep_wakes_on_request: true });
+  const user = mount(awake);
+  await user.click(screen.getByRole("button", { name: sl.quickAction }));
+  const box = await screen.findByRole("checkbox") as HTMLInputElement;
+  assert.equal(box.checked, true);
+  await user.click(box);
+  await user.click(screen.getByRole("button", { name: locale.deployments.sleepMode.confirm }));
+  await waitFor(() => assert.deepEqual(orders, [[1, 1, "wait", undefined, false]]));
+});

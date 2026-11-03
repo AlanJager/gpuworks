@@ -121,7 +121,7 @@ func TestWakeRefusedWhileAProcessOutsideHoldsTheCard(t *testing.T) {
 	})
 	t.Run("waiting is still allowed", func(t *testing.T) {
 		status, body := wf.deploymentCall(t, sleeper.ID, "?wait=true")
-		if want := `{"status":"waiting","woken":[],"waiting":["sleeper-1"],"yielded":[]}`; status != http.StatusAccepted || body != want {
+		if want := `{"status":"waiting","woken":[],"waiting":["sleeper-1"],"yielded":[],"yielded_held":[]}`; status != http.StatusAccepted || body != want {
 			t.Fatalf("%d %s", status, body)
 		}
 	})
@@ -247,7 +247,7 @@ func TestSleepL1RefusedWhenHostMemoryCannotHoldTheWeights(t *testing.T) {
 		f.instance(t, newcomer, "newcomer-1", 0)
 		wf := wakeWaitFixture{sleepFixture: f, sleeper: sleeper, newcomer: newcomer}
 		status, body := wf.deploymentCall(t, sleeper.ID, "?yield=true")
-		if want := `{"status":"waiting","woken":[],"waiting":["sleeper-1"],"yielded":["newcomer"]}`; status != http.StatusAccepted || body != want {
+		if want := `{"status":"waiting","woken":[],"waiting":["sleeper-1"],"yielded":["newcomer"],"yielded_held":["newcomer"]}`; status != http.StatusAccepted || body != want {
 			t.Fatalf("%d %s", status, body)
 		}
 		if got := sleepIntent(t, f.st, "newcomer-1"); got != 2 {

@@ -9,7 +9,10 @@
 #    source already holds releases/<id>/ (the commit was built and published
 #    before), its archives and build time are republished, not this build's.
 # 1. Pipelines can finish out of order: when a source already serves a build
-#    of the channel created after this one, nothing is published.
+#    of the channel created after this one, nothing is published. Servers
+#    order releases by build time, so the release channel also refuses a
+#    version tag below the one it names: a patch to an older release line
+#    published after a newer line would otherwise be offered as an upgrade.
 # 2. gpuworks-dist assemble signs a fresh tree from the release archives and
 #    the catalogs embedded in this checkout.
 # 3. rclone copies the immutable files to every source first, refusing to
@@ -17,9 +20,10 @@
 # 4. gpuworks-dist verify checks every public URL against the new index
 #    before any source points at it, so a CDN copy that differs stops the
 #    publish while the channel still names the previous build.
-# 5. Each source's <channel>/index.json, <channel>/latest and manifest.json
-#    are switched, and the channel is read back from every public URL; when
-#    that fails, every source is put back on its previous pointers.
+# 5. Each source's <channel>/index.json, <channel>/latest and
+#    <channel>/manifest.json are switched, and the channel is read back from
+#    every public URL; when that fails, every source is put back on its
+#    previous pointers.
 # 6. scripts/get.sh, the one-line installer, is copied to the root of every
 #    source as get.sh.
 # 7. Release directories beyond the newest $GPUWORKS_DIST_KEEP are removed,
@@ -95,6 +99,19 @@ if newer=$("$work/gpuworks-dist" newer -channel "$channel" -built-at "$built_at"
   exit 0
 fi
 
+if [ "$channel" = release ]; then
+  for remote in $remotes; do
+    current=$("$rclone" cat "$remote/release/latest" 2>/dev/null || true)
+    if [ -n "$current" ] && [ "$current" != "$release_id" ] &&
+      [ "$(printf '%s\n%s\n' "$current" "$release_id" | sort -V | tail -n 1)" != "$release_id" ]; then
+      echo "not publishing: $remote's release channel names $current, a later version than $release_id" >&2
+      exit 1
+    fi
+  done
+fi
+
+pointers="$channel/index.json $channel/latest $channel/manifest.json"
+
 tree="$work/tree"
 "$work/gpuworks-dist" assemble -channel "$channel" -dist "$dist" -out "$tree" -release-id "$release_id" \
   -commit "$commit" -built-at "$built_at"
@@ -104,7 +121,7 @@ pointer='Cache-Control: no-cache'
 for remote in $remotes; do
   echo "uploading files to $remote"
   "$rclone" copy "$tree" "$remote" --checksum --immutable --header-upload "$immutable" \
-    --exclude "/*/index.json" --exclude "/*/latest" --exclude "/manifest.json"
+    --exclude "/*/index.json" --exclude "/*/latest" --exclude "/*/manifest.json"
 done
 
 echo "checking every source serves the files of the new index"
@@ -117,7 +134,7 @@ n=0
 for remote in $remotes; do
   n=$((n + 1))
   mkdir -p "$previous/$n/$channel"
-  for rel in "$channel/index.json" "$channel/latest" manifest.json; do
+  for rel in $pointers; do
     status=0
     "$rclone" copyto "$remote/$rel" "$previous/$n/$rel" 2>/dev/null || status=$?
     case $status in
@@ -134,7 +151,7 @@ restore() {
   n=0
   for remote in $remotes; do
     n=$((n + 1))
-    for rel in "$channel/index.json" "$channel/latest" manifest.json; do
+    for rel in $pointers; do
       if [ -f "$previous/$n/$rel" ]; then
         "$rclone" copyto "$previous/$n/$rel" "$remote/$rel" --header-upload "$pointer" || true
       else
@@ -148,12 +165,13 @@ restore() {
 switched=true
 for remote in $remotes; do
   echo "switching $remote to $release_id"
-  if ! { "$rclone" copyto "$tree/$channel/index.json" "$remote/$channel/index.json" --header-upload "$pointer" &&
-    "$rclone" copyto "$tree/$channel/latest" "$remote/$channel/latest" --header-upload "$pointer" &&
-    "$rclone" copyto "$tree/manifest.json" "$remote/manifest.json" --header-upload "$pointer"; }; then
-    switched=false
-    break
-  fi
+  for rel in $pointers; do
+    if ! "$rclone" copyto "$tree/$rel" "$remote/$rel" --header-upload "$pointer"; then
+      switched=false
+      break
+    fi
+  done
+  $switched || break
 done
 
 if ! $switched || ! "$work/gpuworks-dist" verify -channel "$channel" -release-id "$release_id" "$@"; then

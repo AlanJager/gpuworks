@@ -294,6 +294,7 @@ POST /api/v1/deployments/{id}/stop
 POST /api/v1/deployments/{id}/units/retry
 POST /api/v1/deployments/{id}/units/suggest
 POST /api/v1/deployments/{id}/wake
+POST /api/v1/deployments/{id}/wake-on-request
 POST /api/v1/diagnostics/bundles
 POST /api/v1/diagnostics/debug-session
 POST /api/v1/evaluate

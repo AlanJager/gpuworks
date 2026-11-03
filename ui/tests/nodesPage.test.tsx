@@ -96,7 +96,7 @@ const offlineNode: Node = {
   ...onlineNode,
   uuid: "22222222-2222-2222-2222-222222222222",
   state: "offline",
-  hostname: "192.168.200.29",
+  hostname: "192.0.2.129",
   name: "k8s-3-910c-host",
   agent_version: undefined,
   last_reject_reason: "bad_token",
@@ -180,7 +180,7 @@ function stubApi(nodes: Node[]) {
   api.agentRejects = async () => list([{
     token_prefix: "891e71d7",
     reason: "bad_token",
-    remote: "172.20.14.230:41374",
+    remote: "192.0.2.230:41374",
     at: "2026-09-28T08:19:00Z",
   }]);
   api.agentUpgradeErrors = async () => ({});
@@ -208,7 +208,7 @@ test("renders each node with its name and hostname in the node column", async ()
   await waitFor(() => assert.ok(screen.getByText("gpu-a100-node-01")));
   assert.ok(screen.getByText("192.168.10.11"));
   assert.ok(screen.getByText("k8s-3-910c-host"));
-  assert.ok(screen.getByText("192.168.200.29"));
+  assert.ok(screen.getByText("192.0.2.129"));
 });
 
 test("the latest-rejection column is gone from the table; the drawer keeps the detail", async () => {

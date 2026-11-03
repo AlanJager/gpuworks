@@ -128,7 +128,7 @@ func testGiteeAscendDeployChat(t *testing.T, profile giteeDeployChatProfile) {
 		t.Fatalf("Gitee full-deploy runtime=%q runtimes=%q, want explicit inner udocker container", node.RuntimeDriver, node.Runtimes)
 	}
 
-	// Qwen3-0.6B: real-machine verified elsewhere (172.30.8.31, see
+	// Qwen3-0.6B: real-machine verified elsewhere (198.51.100.31, see
 	// qwen3-0.6b-vllm-ascend-910b4.md research) to load, serve, and answer
 	// chat requests correctly under vLLM Ascend. Meta mirrors its published
 	// config.json (Qwen3ForCausalLM, 28 layers, GQA 16/8 heads, 40960 native

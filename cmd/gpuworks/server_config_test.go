@@ -21,17 +21,17 @@ func TestFirstStartDetectsAndRecordsTheListenAddress(t *testing.T) {
 	if err := os.WriteFile(path, []byte("# written by install\ndata_dir: /srv/data\n"), 0o664); err != nil {
 		t.Fatal(err)
 	}
-	file, err := loadServerConfig(path, false, routeHost("172.25.17.156"))
-	if err != nil || len(file.Listen.Console) != 1 || file.Listen.Console[0] != "172.25.17.156:8800" || file.DataDir != "/srv/data" {
+	file, err := loadServerConfig(path, false, routeHost("192.0.2.156"))
+	if err != nil || len(file.Listen.Console) != 1 || file.Listen.Console[0] != "192.0.2.156:8800" || file.DataDir != "/srv/data" {
 		t.Fatalf("first start = %+v, %v", file, err)
 	}
 	reloaded, err := serverconfig.Load(path)
-	if err != nil || reloaded.Listen.Console[0] != "172.25.17.156:8800" {
+	if err != nil || reloaded.Listen.Console[0] != "192.0.2.156:8800" {
 		t.Fatalf("detected address not written back: %+v, %v", reloaded, err)
 	}
 	// Later starts keep what the file says, even if the route changed.
 	file, err = loadServerConfig(path, false, routeHost("10.9.9.9"))
-	if err != nil || file.Listen.Console[0] != "172.25.17.156:8800" {
+	if err != nil || file.Listen.Console[0] != "192.0.2.156:8800" {
 		t.Fatalf("second start = %+v, %v", file, err)
 	}
 }
@@ -171,7 +171,7 @@ func TestLegacyEnvAddrSkipsListenDetection(t *testing.T) {
 	if e.addr == "" {
 		t.Fatal("env addr missing")
 	}
-	file, err := loadServerConfig(path, e.addr != "", routeHost("172.25.17.156"))
+	file, err := loadServerConfig(path, e.addr != "", routeHost("192.0.2.156"))
 	if err != nil || !file.Listen.Empty() || file.DataDir != "/srv/data" {
 		t.Fatalf("listen-less file with an env address = %+v, %v", file, err)
 	}

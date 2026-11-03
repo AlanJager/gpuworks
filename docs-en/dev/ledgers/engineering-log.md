@@ -264,14 +264,14 @@ the subsequently fixed agent.
 ## Ascend Device Injection for the nerdctl Runtime Driver
 
 - Status: Implemented (IMPLEMENTED, 2026-08-28); device injection and basic partition allocation have been
-  validated on real hardware at 172.30.8.32
+  validated on real hardware at 198.51.100.32
 - Date discovered: 2026-08-28
 - Scope: `internal/agent/gpu/gpu.go` (`DriverAwareInjector`, `RuntimeMount`),
   `internal/agent/gpu/ascend.go` (`RuntimeInjectionForDriver`),
   `internal/agent/engine/engine.go` (`applyDeviceInjection`)
 
 `internal/agent/runtime/nerdctl` (added on 2026-08-28) provides GPUWorks with a
-general container lifecycle driver for containerd/nerdctl hosts. `172.30.8.32`
+general container lifecycle driver for containerd/nerdctl hosts. `198.51.100.32`
 (`huawei-ascend-node`) has only `nerdctl 1.7.6` and no Docker daemon at all, so it
 previously could not be brought under management. This general driver (run/stop/rm/status/logs/exec/pull/inspect/
 save/load) is implemented, unit tested, and validated against real `nerdctl` on `.32`
@@ -305,7 +305,7 @@ the actual production code path: `test/l4/cmd/ascend-nerdctl-verify` directly ca
 `internal/agent/runtime/nerdctl.Driver` (Run/Exec/Remove). It is executed by
 `TestAscendNerdctlDeviceInjectionEndToEnd`
 (`make test-l4-ascend-nerdctl-devinject`, integrated into the `l4-ascend-pool-partition-inference`
-CI job). The target machine's network link (measured on `172.30.8.31`: aarch64, nerdctl available, no docker,
+CI job). The target machine's network link (measured on `198.51.100.31`: aarch64, nerdctl available, no docker,
 no Go) sustains only about 45 KiB/s for bulk transfers (unrelated to this code; even a raw
 `ssh ... cat >` pipe of just a few MB stalls like `scp`). The test therefore sends a gzip-compressed
 binary through a regular SSH stdin pipe instead of using `scp`; it never

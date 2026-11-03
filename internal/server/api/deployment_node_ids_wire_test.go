@@ -31,7 +31,7 @@ func TestDeploymentDTONodeIDsWire(t *testing.T) {
 	const health = `"health":{"status":"off","threshold_sec":60,"last":null,"recent_mean_ms":null,"recent_ok":0,"recent":[]},"tokenize_enabled":true,` +
 		// A new deployment is resident (never yields, no auto sleep) and moves a
 		// replica off a node offline for ten minutes.
-		`"node_replacement":{"after_sec":600},"yield_policy":{"policy":"never"},"sleep_held":false,`
+		`"node_replacement":{"after_sec":600},"yield_policy":{"policy":"never"},"sleep_held":false,"sleep_wakes_on_request":false,`
 	// It cannot sleep (sleepable false), so it may hold no yield policy and
 	// its schedule orders no sleep or wake; a single-node deployment's replica
 	// count may be scheduled, a multi-node one placed by hand may not.

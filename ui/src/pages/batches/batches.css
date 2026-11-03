@@ -5,6 +5,8 @@
 .batch-create-field { display: flex; flex-direction: column; gap: 6px; }
 .batch-create-field label { font-weight: 500; }
 .batch-create-hint { margin: 0; padding-inline-start: 18px; }
+.batch-waiting { margin: 0; padding-inline-start: 18px; }
+.batch-waiting li + li { margin-top: 6px; }
 .batch-row { cursor: pointer; }
 
 .batch-create-sample {

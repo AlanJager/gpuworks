@@ -468,6 +468,7 @@ func Router(d Deps, policies ...auth.SessionPolicy) http.Handler {
 			r.Post("/deployments/{id}/sleep", a.sleepDeployment)
 			r.Post("/deployments/{id}/wake", a.wakeDeployment)
 			r.Delete("/deployments/{id}/wake-waiting", a.endWakeWaiting)
+			r.Post("/deployments/{id}/wake-on-request", a.releaseSleepHold)
 			r.Get("/deployments/{id}/schedule", a.listSchedule)
 			r.Post("/deployments/{id}/schedule", a.createSchedule)
 			r.Put("/deployments/{id}/schedule/{sid}", a.updateSchedule)

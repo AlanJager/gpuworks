@@ -115,7 +115,7 @@ func TestListSkipsFunctionsItCannotIdentify(t *testing.T) {
 }
 
 // A Kunpeng host presents its SoC compression engines at the same PCI class
-// as the NPU. They are neither cards nor news: 192.168.200.29 has eight ZIP
+// as the NPU. They are neither cards nor news: 192.0.2.129 has eight ZIP
 // engines beside its fourteen 910C dies.
 func TestListSkipsTheSoCCompressionEngines(t *testing.T) {
 	root := hostTree(t, []pciFunction{
@@ -198,7 +198,7 @@ func TestPCIDeviceLabelNamesACardWithNoKnownName(t *testing.T) {
 // itself, whatever the host's database says (or whether it has one). A host
 // that cannot run its vendor CLI has no other way to say what a card is,
 // and the hosts that cannot are exactly the ones with a wedged driver:
-// 172.30.8.31 showed eight "19e5:d802" before this table existed.
+// 198.51.100.31 showed eight "19e5:d802" before this table existed.
 func TestADomesticCardUpstreamLacksIsNamedWithoutAnyHostDatabase(t *testing.T) {
 	cards := []Card{
 		{BDF: "0000:41:00.0", VendorID: 0x19e5, DeviceID: 0xd802},

@@ -165,6 +165,7 @@ func (e *Engine) ensure(ctx context.Context, spec proto.InstanceDesiredState) {
 		return
 	}
 	e.inFlight[spec.UUID] = true
+	e.cancelHealthProbeLocked(spec.UUID)
 	e.nextRuntimeEpoch++
 	epoch := e.nextRuntimeEpoch
 	e.runtimeEpoch[spec.UUID] = epoch
@@ -484,6 +485,7 @@ runFinished:
 }
 
 func (e *Engine) invalidateRuntimeEpochLocked(uuid string) {
+	e.cancelHealthProbeLocked(uuid)
 	e.nextRuntimeEpoch++
 	e.runtimeEpoch[uuid] = e.nextRuntimeEpoch
 	delete(e.servingEpoch, uuid)

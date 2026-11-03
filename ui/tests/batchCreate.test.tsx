@@ -4,7 +4,7 @@ import React from "react";
 import { I18nextProvider } from "react-i18next";
 import { createI18n, dom } from "./helpers/dom.ts";
 import { trackMessageChannels } from "./helpers/trackedMessageChannels.ts";
-import { batch, dictionary, page } from "./helpers/batchFixtures.ts";
+import { batch, dictionary, model, page } from "./helpers/batchFixtures.ts";
 
 // Creating a batch: the file and endpoint choice, the hint block, the upload
 // state, an invalid file named by its line, and the keyboard paths.
@@ -36,7 +36,7 @@ const original = { list: batchApi.list, get: batchApi.get, create: batchApi.crea
 beforeEach(() => {
   localStorage.clear();
   api.me = (async () => ({ role: "admin" })) as never;
-  batchApi.dictionary = async () => dictionary([{ name: "qwen-chat", state: "served" }]);
+  batchApi.dictionary = async () => dictionary([model("qwen-chat", "running")]);
 });
 afterEach(() => {
   cleanup();
@@ -181,6 +181,17 @@ test("the models of a file are joined with the reader's separators, the further 
     assert.equal(warning, words.batches.create.warnings.BATCH_FILE_MODELS_SLEEP_HELD.replace("{{models, list}}", "napping"), lng);
     const single = batchWarningText(t, { code: "BATCH_MODEL_SLEEP_HELD", params: { model: "napping" } });
     assert.equal(single, words.batches.create.warnings.BATCH_MODEL_SLEEP_HELD.replace("{{model}}", "napping"), lng);
+    // A model that waits names its state in the reader's words.
+    const stopped = batchWarningText(t, { code: "BATCH_MODEL_WAITS", params: { model: "parked", state: "stopped" } });
+    assert.equal(stopped, words.batches.create.warnings.BATCH_MODEL_WAITS.replace("{{model}}", "parked").replace("{{state}}", words.batches.create.model.state.stopped), lng);
+    const failed = batchWarningText(t, { code: "BATCH_FILE_MODELS_WAIT", params: { models: ["a", "b"], more: 0, state: "failed" } });
+    const pair = new Intl.ListFormat(lng, { type: "conjunction" }).format(["a", "b"]);
+    assert.equal(failed, words.batches.create.warnings.BATCH_FILE_MODELS_WAIT.replace("{{models, list}}", pair).replace("{{state}}", words.batches.create.model.state.failed), lng);
+    // Models of another endpoint are refused, named as a list with the endpoint.
+    const other = batchErrorText(t, tc, new APIError("BATCH_FILE_MODELS_ENDPOINT", { models: ["bge"], more: 0, endpoint: "/v1/chat/completions" }, "fallback", 400));
+    assert.equal(other.message, words.common.apiError.BATCH_FILE_MODELS_ENDPOINT.replace("{{endpoint}}", "/v1/chat/completions").replace("{{models, list}}", "bge"), lng);
+    const one = batchErrorText(t, tc, new APIError("BATCH_MODEL_ENDPOINT", { model: "bge", endpoint: "/v1/chat/completions" }, "fallback", 400));
+    assert.equal(one.message, words.common.apiError.BATCH_MODEL_ENDPOINT.replace("{{model}}", "bge").replace("{{endpoint}}", "/v1/chat/completions"), lng);
   }
 });
 
@@ -296,7 +307,7 @@ test("the dialog reads the batch dictionary: loading, a failed read with a retry
   assert.ok(within(loading).getByText(b.create.dictionary.loading));
   assert.equal(submitButton(dialog).disabled, true);
 
-  answer(dictionary([{ name: "only-model", state: "asleep" }], {
+  answer(dictionary([model("only-model", "asleep", ["/v1/embeddings"])], {
     endpoints: ["/v1/embeddings"], completion_window_hours: { min: 2, max: 12, default: 6 },
     max_file_bytes: 10 * 1024 * 1024, max_file_lines: 1000, output_retention_days: 7,
   }));
@@ -316,12 +327,12 @@ test("the dialog reads the batch dictionary: loading, a failed read with a retry
 });
 
 test("a dictionary read again on every opening shows the models' states of now", async () => {
-  let state = "served";
+  let state = "running";
   batchApi.list = async () => page([]);
-  batchApi.dictionary = async () => dictionary([{ name: "m", state }]);
+  batchApi.dictionary = async () => dictionary([model("m", state)]);
   const user = mountPage();
   let dialog = await openCreate(user);
-  await within(dialog).findByText(`m · ${b.create.model.state.serving}`, { selector: ".ant-select-selection-item" });
+  await within(dialog).findByText(`m · ${b.create.model.state.running}`, { selector: ".ant-select-selection-item" });
   await user.click(within(dialog).getByRole("button", { name: b.create.cancel }));
   await waitFor(() => assert.ok(!screen.queryByRole("dialog", { name: b.create.title })));
   state = "asleep_held";

@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-const ascendTestImage = "172.20.9.4:10043/ai-model-registry/vllm-ascend:0.26.0rc1"
+const ascendTestImage = "203.0.113.4:10043/ai-model-registry/vllm-ascend:0.26.0rc1"
 
 func TestValidateAscendRunveilCache(t *testing.T) {
 	for _, tc := range []struct {
@@ -140,9 +140,9 @@ func (f ascendMemberFixture) preflight(t *testing.T) (out string, err error) {
 	case "daemon-down":
 		write(filepath.Join(bin, "nerdctl"), "#!/bin/sh\necho 'cannot connect to containerd' >&2; exit 1\n")
 	}
-	tagDir := filepath.Join(cache, "repos", "172.20.9.4:10043", "ai-model-registry", "vllm-ascend", "0.26.0rc1")
+	tagDir := filepath.Join(cache, "repos", "203.0.113.4:10043", "ai-model-registry", "vllm-ascend", "0.26.0rc1")
 	if f.cacheTag {
-		write(filepath.Join(tagDir, "TAG"), "172.20.9.4:10043/ai-model-registry/vllm-ascend:0.26.0rc1")
+		write(filepath.Join(tagDir, "TAG"), "203.0.113.4:10043/ai-model-registry/vllm-ascend:0.26.0rc1")
 	}
 	if f.cacheManifest {
 		write(filepath.Join(tagDir, "manifest"), "{}")
@@ -223,7 +223,7 @@ func TestAscendPoolPreflightPicksRuntimePerMember(t *testing.T) {
 func TestAscendPoolPreflightNamesTheCacheItLookedIn(t *testing.T) {
 	script := ascendPoolPreflightScript("3", "/models/m", "/opt/gpuworks-l4-runveil-cache/models/m", ascendTestImage, "/opt/gpuworks-l4-runveil-cache")
 	for _, want := range []string{
-		"/opt/gpuworks-l4-runveil-cache/repos/172.20.9.4:10043/ai-model-registry/vllm-ascend/0.26.0rc1/TAG",
+		"/opt/gpuworks-l4-runveil-cache/repos/203.0.113.4:10043/ai-model-registry/vllm-ascend/0.26.0rc1/TAG",
 		"/opt/gpuworks-l4-runveil-cache/layers",
 	} {
 		if !strings.Contains(script, want) {

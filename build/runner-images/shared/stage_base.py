@@ -20,7 +20,7 @@ base 是同一内容，不是"近似"。
 用法：
     python3 stage_base.py <upstream-ref> <staging-ref> [--insecure]
     python3 stage_base.py vllm/vllm-openai:v0.30.0 \\
-            172.25.17.156:5000/vllm/vllm-openai:v0.30.0 --insecure
+            192.0.2.156:5000/vllm/vllm-openai:v0.30.0 --insecure
 可选 --via <mirror-host> 从镜像源取 manifest/config（内容同为上游，仅取小对象更快）。
 
 实测（gpu3，2026-10-05）：daocloud 镜像源对 blob 的 token 鉴权会 403，而 docker.io

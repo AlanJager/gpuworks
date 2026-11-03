@@ -1,4 +1,4 @@
-import { Alert, Button, Card, Empty, Input, Space, Spin, Table, Tag, Typography } from "antd";
+import { Alert, Button, Card, Empty, Input, Space, Spin, Table, Tag, Tooltip, Typography } from "antd";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api, type CommunityRepo, type CommunityRepoBrowse, type CommunityTag } from "../../api";
@@ -174,6 +174,8 @@ export default function ImageCommunityBrowser({ onPick }: Props) {
             <Table
               rowKey="tag"
               size="small"
+              tableLayout="fixed"
+              scroll={{ x: 560 }}
               dataSource={visible}
               pagination={{ pageSize: 10, hideOnSinglePage: true, showSizeChanger: false }}
               locale={{
@@ -192,20 +194,24 @@ export default function ImageCommunityBrowser({ onPick }: Props) {
                 {
                   title: t("import.community.column.tag"),
                   key: "tag",
+                  width: 240,
                   render: (_: unknown, tag: CommunityTag) => (
-                    <Button
-                      type={picked === `${browse.result.repo || browse.repo}:${tag.tag}` ? "primary" : "link"}
-                      size="small"
-                      style={{ paddingInline: 4 }}
-                      onClick={() => pick(browse.result, tag)}
-                    >
-                      {tag.tag}
-                    </Button>
+                    <Tooltip title={tag.tag} trigger={["hover", "focus"]}>
+                      <Button
+                        type={picked === `${browse.result.repo || browse.repo}:${tag.tag}` ? "primary" : "link"}
+                        size="small"
+                        style={{ paddingInline: 4, maxWidth: "100%" }}
+                        onClick={() => pick(browse.result, tag)}
+                      >
+                        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{tag.tag}</span>
+                      </Button>
+                    </Tooltip>
                   ),
                 },
                 {
                   title: t("import.community.column.labels"),
                   key: "labels",
+                  width: 152,
                   render: (_: unknown, tag: CommunityTag) => (
                     <>
                       {tag.rolling_tag && <Tag color="gold">{t("import.rolling")}</Tag>}
@@ -217,8 +223,9 @@ export default function ImageCommunityBrowser({ onPick }: Props) {
                 {
                   title: t("import.community.column.lastUpdated"),
                   key: "last_updated",
+                  width: 168,
                   render: (_: unknown, tag: CommunityTag) => (
-                    <Text type="secondary">{formatTime(tag.last_updated)}</Text>
+                    <Text type="secondary" style={{ whiteSpace: "nowrap" }}>{formatTime(tag.last_updated)}</Text>
                   ),
                 },
               ]}

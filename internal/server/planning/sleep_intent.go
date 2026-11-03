@@ -3,6 +3,7 @@ package planning
 import (
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/store"
+	"gpuworks.ai/gpuworks/internal/server/yieldpolicy"
 )
 
 // InstanceSleepIntent is the sleep level an instance is ordered to: the
@@ -68,4 +69,16 @@ func RequestWakes(dep *store.Deployment, insts []store.Instance) bool {
 		}
 	}
 	return false
+}
+
+// OperatorSleepWakesOnRequest is what an operator's sleep of dep does when its
+// order does not say: whether a request wakes the replicas it puts to sleep
+// (store.Instance.SleepHeld false) or they stay asleep until someone wakes
+// them (held). A deployment that shares its cards by its yield policy (any
+// but never) has already agreed to give them up and take them back on
+// demand, so a request wakes it as it wakes the platform's own yields; one
+// that never yields stays asleep, held. The same rule decides what an
+// operator's yielding wake does to the occupants it puts to sleep.
+func OperatorSleepWakesOnRequest(dep *store.Deployment) bool {
+	return dep != nil && dep.Sleepable && dep.Policy().Yield != yieldpolicy.Never
 }

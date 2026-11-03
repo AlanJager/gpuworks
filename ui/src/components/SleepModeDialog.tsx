@@ -1,5 +1,5 @@
-import { Modal, Radio, Space, Typography } from "antd";
-import { useState } from "react";
+import { Checkbox, Modal, Radio, Space, Typography } from "antd";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 /** What the engine does with the requests it is still serving when told to sleep. */
@@ -12,16 +12,25 @@ export const defaultSleepMode: SleepMode = "wait";
  * `wait` lets them finish and only queues new ones; `abort` cuts them off.
  * vLLM's third mode (`keep`, freeze and resume) is built for RL loops that sleep
  * for seconds and is deliberately not offered.
+ *
+ * Given wakeOnRequest (the server's default for the deployment), it also asks
+ * whether a request wakes the sleeper again; without it, the order leaves
+ * that to the server's default for each deployment.
  */
-export default function SleepModeDialog({ open, level, onConfirm, onCancel, confirming = false }: {
+export default function SleepModeDialog({ open, level, onConfirm, onCancel, confirming = false, wakeOnRequest }: {
   open: boolean;
   level: 1 | 2;
-  onConfirm: (mode: SleepMode) => void;
+  onConfirm: (mode: SleepMode, wakeOnRequest?: boolean) => void;
   onCancel: () => void;
   confirming?: boolean;
+  wakeOnRequest?: boolean;
 }) {
   const { t } = useTranslation("deployments");
   const [mode, setMode] = useState<SleepMode>(defaultSleepMode);
+  const [wakes, setWakes] = useState<boolean | undefined>(undefined);
+  // The server's default until the operator chooses, each time the dialog opens.
+  useEffect(() => { if (open) setWakes(undefined); }, [open]);
+  const chosenWakes = wakes ?? wakeOnRequest;
   return (
     <Modal
       open={open}
@@ -29,7 +38,7 @@ export default function SleepModeDialog({ open, level, onConfirm, onCancel, conf
       okText={t("sleepMode.confirm")}
       cancelText={t("sleepMode.cancel")}
       confirmLoading={confirming}
-      onOk={() => onConfirm(mode)}
+      onOk={() => onConfirm(mode, chosenWakes)}
       onCancel={onCancel}
       destroyOnHidden
     >
@@ -49,6 +58,16 @@ export default function SleepModeDialog({ open, level, onConfirm, onCancel, conf
             </Radio>
           </Space>
         </Radio.Group>
+        {wakeOnRequest !== undefined && (
+          <div>
+            <Checkbox checked={chosenWakes} onChange={(e) => setWakes(e.target.checked)}>
+              <Typography.Text strong>{t("sleepMode.wakeOnRequest")}</Typography.Text>
+            </Checkbox>
+            <div>
+              <Typography.Text type="secondary">{chosenWakes ? t("sleepMode.wakeOnRequestOn") : t("sleepMode.wakeOnRequestOff")}</Typography.Text>
+            </div>
+          </div>
+        )}
       </Space>
     </Modal>
   );

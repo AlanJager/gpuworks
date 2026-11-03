@@ -95,7 +95,7 @@ func TestAscendCommandResolvesBothMappingShapes(t *testing.T) {
 	if _, err := exec.LookPath("awk"); err != nil {
 		t.Skip("no awk to resolve with")
 	}
-	// 192.168.200.29: 7 cards, 2 dies each, Phy-ID == logical id.
+	// 192.0.2.129: 7 cards, 2 dies each, Phy-ID == logical id.
 	const multiChip = `	NPU ID                         Chip ID                        Chip Logic ID                  Chip Phy-ID                    Chip Name
 	-1                             0                              -                              -                              Mcu
 	0                              0                              0                              0                              Ascend910

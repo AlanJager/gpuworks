@@ -39,17 +39,17 @@ func TestAskInstallPromptsEnterKeepsTheDefaults(t *testing.T) {
 	addrSet := false
 
 	if err := askInstallPrompts(io, installPrompts{
-		dir: &dir, addr: &addr, addrSet: &addrSet, noSystemd: &noSystemd, detect: detected("172.25.17.156"),
+		dir: &dir, addr: &addr, addrSet: &addrSet, noSystemd: &noSystemd, detect: detected("192.0.2.156"),
 	}); err != nil {
 		t.Fatalf("askInstallPrompts: %v", err)
 	}
-	if dir != selfinstall.DefaultDir || addr != "172.25.17.156:8800" || noSystemd {
+	if dir != selfinstall.DefaultDir || addr != "192.0.2.156:8800" || noSystemd {
 		t.Fatalf("answers = (%q, %q, %v), want the defaults", dir, addr, noSystemd)
 	}
 	if !addrSet {
 		t.Fatal("an answered question must count as an explicit choice")
 	}
-	if !strings.Contains(out.String(), "listen address (default: 172.25.17.156:8800)") {
+	if !strings.Contains(out.String(), "listen address (default: 192.0.2.156:8800)") {
 		t.Fatalf("the question does not offer the detected address:\n%s", out.String())
 	}
 }
@@ -60,7 +60,7 @@ func TestAskInstallPromptsTakesTypedAnswers(t *testing.T) {
 	addrSet := false
 
 	if err := askInstallPrompts(io, installPrompts{
-		dir: &dir, addr: &addr, addrSet: &addrSet, noSystemd: &noSystemd, detect: detected("172.25.17.156"),
+		dir: &dir, addr: &addr, addrSet: &addrSet, noSystemd: &noSystemd, detect: detected("192.0.2.156"),
 	}); err != nil {
 		t.Fatalf("askInstallPrompts: %v", err)
 	}
@@ -78,7 +78,7 @@ func TestAskInstallPromptsDefaultsToTheInstallation(t *testing.T) {
 	addrSet := false
 	if err := askInstallPrompts(io, installPrompts{
 		dir: &dir, addr: &addr, addrSet: &addrSet, noSystemd: &noSystemd,
-		hasPrev: true, prev: prev, detect: detected("172.25.17.156"),
+		hasPrev: true, prev: prev, detect: detected("192.0.2.156"),
 	}); err != nil {
 		t.Fatalf("askInstallPrompts: %v", err)
 	}
@@ -90,7 +90,7 @@ func TestAskInstallPromptsDefaultsToTheInstallation(t *testing.T) {
 	addr2, addrSet2, noSystemd2, dir2 := "", false, false, selfinstall.DefaultDir
 	if err := askInstallPrompts(io2, installPrompts{
 		dir: &dir2, addr: &addr2, addrSet: &addrSet2, noSystemd: &noSystemd2,
-		hasPrev: true, prev: prev, detect: detected("172.25.17.156"),
+		hasPrev: true, prev: prev, detect: detected("192.0.2.156"),
 	}); err != nil {
 		t.Fatalf("askInstallPrompts: %v", err)
 	}

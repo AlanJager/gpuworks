@@ -3,3 +3,6 @@
 internal/agent/runtime/nerdctl/testdata/** whitespace=-trailing-space,-blank-at-eol,-blank-at-eof,-space-before-tab
 # Captured engine replies: an SSE stream ends with a blank line.
 internal/server/proxy/testdata/*.sse whitespace=-blank-at-eof
+# Verbatim upstream engine sources a catalog patch pins by SHA-256: every byte
+# counts, including the trailing blanks they ship with, so no eol conversion.
+internal/server/inferencecatalog/seed/testdata/ascend-sleep-pool/vllm_ascend/** -text whitespace=-trailing-space,-blank-at-eol,-blank-at-eof,-space-before-tab

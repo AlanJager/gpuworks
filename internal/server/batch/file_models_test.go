@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -23,7 +24,7 @@ func newCountedModels(states map[string]ModelState) *countedModels {
 	return &countedModels{fakeModels: fakeModels{states: states, failing: map[string]bool{"broken": true}}, calls: map[string]int{}}
 }
 
-func (c *countedModels) Lookup(name string) (ModelState, error) {
+func (c *countedModels) Lookup(name string) (ModelEntry, error) {
 	c.mu.Lock()
 	c.calls[name]++
 	c.mu.Unlock()
@@ -66,9 +67,9 @@ func (r *rig) createOver(content, model string) (Batch, File, error) {
 	return b, f, err
 }
 
-var servedModels = map[string]ModelState{"real": ModelAvailable, "real-2": ModelAvailable, "held": ModelSleepHeld, "held-2": ModelSleepHeld}
+var servedModels = map[string]ModelState{"real": ModelRunning, "real-2": ModelRunning, "held": ModelSleepHeld, "held-2": ModelSleepHeld}
 
-// A file naming a model no active deployment serves is refused when the batch
+// A file naming a model no deployment serves is refused when the batch
 // is created: the models are named, no batch is created and the file stays.
 func TestCreateBatchRefusesAFileOfUnservedModels(t *testing.T) {
 	models := newCountedModels(servedModels)
@@ -268,7 +269,7 @@ func TestV1BatchRefusesAFileOfUnservedModels(t *testing.T) {
 	}
 
 	rec := create(modelLines("real", "Qwen/Qwen2.5-0.5B-Instruct-rp2l-clone", "ghost"))
-	want := `{"error":{"message":"The input file names models that no active deployment serves: Qwen/Qwen2.5-0.5B-Instruct-rp2l-clone, ghost. Set a model to send every request to, or deploy these models first","type":"invalid_request_error","param":"input_file_id","code":"model_not_found"}}`
+	want := `{"error":{"message":"The input file names models that no deployment serves: Qwen/Qwen2.5-0.5B-Instruct-rp2l-clone, ghost. Set a model to send every request to, or deploy these models first","type":"invalid_request_error","param":"input_file_id","code":"model_not_found"}}`
 	if rec.Code != 400 || strings.TrimSpace(rec.Body.String()) != want {
 		t.Fatalf("unknown: %d %s", rec.Code, rec.Body)
 	}
@@ -316,5 +317,60 @@ func TestConsoleFormRefusesAFileOfUnservedModels(t *testing.T) {
 	}
 	if b, err := form(map[string]string{"endpoint": EndpointChat, "model": "real"}, modelLines("ghost")); err != nil || b.Model != "real" {
 		t.Fatalf("override: %+v err=%v", b, err)
+	}
+}
+
+// Models that wait for someone to act are accepted with one warning per state,
+// in the order of ModelStates: held first, then offline, failed and stopped.
+func TestCreateBatchWarnsAboutWaitingModelsOfTheFile(t *testing.T) {
+	r := fileModelsRig(t, newCountedModels(map[string]ModelState{
+		"real": ModelRunning, "booting": ModelStarting, "held": ModelSleepHeld, "parked": ModelStopped, "parked-2": ModelStopped, "crashed": ModelFailed, "gone": ModelOffline,
+	}))
+	b, _, err := r.createOver(modelLines("real", "parked", "crashed", "booting", "held", "parked-2", "gone"), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	type got struct {
+		code   string
+		state  ModelState
+		models string
+	}
+	var have []got
+	for _, w := range b.Warnings {
+		if w.Param != ParamInputFileID {
+			t.Fatalf("warning param = %+v", w)
+		}
+		have = append(have, got{w.Code, w.State, strings.Join(w.Models, "|")})
+	}
+	want := []got{
+		{WarningModelSleepHeld, ModelUnknown, "held"},
+		{WarningModelWaits, ModelOffline, "gone"},
+		{WarningModelWaits, ModelFailed, "crashed"},
+		{WarningModelWaits, ModelStopped, "parked|parked-2"},
+	}
+	if !reflect.DeepEqual(have, want) {
+		t.Fatalf("warnings = %+v\nwant %+v", have, want)
+	}
+}
+
+// A file naming models whose deployments do not serve the batch's endpoint
+// is refused with the models and the endpoint, after the unknown ones.
+func TestCreateBatchRefusesModelsOfAnotherEndpoint(t *testing.T) {
+	models := newCountedModels(map[string]ModelState{"real": ModelRunning, "embed": ModelRunning, "embed-2": ModelFailed})
+	models.endpoints = map[string][]string{"embed": {EndpointEmbedding}, "embed-2": {EndpointEmbedding}}
+	r := fileModelsRig(t, models)
+	_, _, err := r.createOver(modelLines("real", "embed", "embed-2"), "")
+	var e *Error
+	if !errors.As(err, &e) || e.Status != 400 || e.Code != CodeModelEndpoint || e.Param != ParamInputFileID || e.Endpoint != EndpointChat ||
+		strings.Join(e.Models, "|") != "embed|embed-2" || !strings.Contains(e.Message, EndpointChat) {
+		t.Fatalf("err = %#v", err)
+	}
+	if len(r.repo.batches) != 0 {
+		t.Fatal("a refused file made a batch")
+	}
+	// An unknown model is reported as such, not as one of another endpoint.
+	_, _, err = r.createOver(modelLines("embed", "ghost"), "")
+	if !errors.As(err, &e) || e.Code != CodeModelNotFound || strings.Join(e.Models, "|") != "ghost" {
+		t.Fatalf("unknown and unserved = %#v", err)
 	}
 }

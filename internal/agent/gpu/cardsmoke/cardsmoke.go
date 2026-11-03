@@ -140,7 +140,7 @@ type Config struct {
 	// cannot be used, but it must wait for the control plane to say what
 	// it is running: Deferred holds the round back until it knows.
 	// Measured on gpu3: the desired state arrived about ten seconds after
-	// the agent registered; on 192.168.200.29 it took forty-seven.
+	// the agent registered; on 192.0.2.129 it took forty-seven.
 	FirstRound time.Duration
 	// Deferred says why no card can be asked yet, or "". It is what this
 	// node runs not being known: asking a card that is serving can disturb

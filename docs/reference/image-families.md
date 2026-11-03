@@ -71,7 +71,7 @@ image catalog synced catalog_version=2026-10-09.f085e40b created=0 updated=25 de
   `UPDATE_SOURCES_UNAVAILABLE`，索引可用但没有源提供与索引一致的目录文件时返回 502 `UPDATE_DOWNLOAD_FAILED`
   （`detail` 都列出每个源的原因），渠道没有发布镜像目录时返回 404 `UPDATE_NOT_PUBLISHED`，库都不动。
 - **上传 manifest**：`POST /api/v1/images/import`，请求体就是 manifest JSON 本身。服务器不能访问公网时用它：
-  在能联网的机器上从任一发布源下载 `manifest.json`（与发布通道里的镜像目录是同一文件）再上传。
+  在能联网的机器上从任一发布源下载当前渠道的 `<channel>/manifest.json`（如 `https://dl.gpuworks.ai/release/manifest.json`，与渠道索引里的镜像目录是同一文件）再上传。
 
 两条路径都把本次的 `catalog_version` 记为当前目录版本，设置页「版本与更新」据此显示是否有更新。
 

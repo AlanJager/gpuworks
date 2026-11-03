@@ -124,7 +124,7 @@ func TestServerDirOfReadsTheServedConfig(t *testing.T) {
 		{[]string{"/opt/gpuworks1/gpuworks", "serve", "--config", "/opt/gpuworks1/server.yaml"}, "/opt/gpuworks1", true},
 		{[]string{"/opt/b/gpuworks", "serve", "--config=/etc/b/server.yaml"}, "/etc/b", true},
 		{[]string{"/opt/b/gpuworks", "serve", "-config", "/srv/b/server.yaml"}, "/srv/b", true},
-		{[]string{filepath.Join(installed, binaryName), "serve"}, installed, true},
+		{[]string{filepath.Join(installed, binaryName), "serve"}, mustEvalSymlinks(t, installed), true},
 		{[]string{filepath.Join(bare, binaryName), "serve"}, "", false},
 		{[]string{"/usr/sbin/nginx", "-c", "/etc/nginx.conf"}, "", false},
 		{nil, "", false},
@@ -153,14 +153,14 @@ func TestDirOfIsTheInstallationTheBinaryBelongsTo(t *testing.T) {
 	}
 
 	for _, tc := range []struct{ exe, want string }{
-		{filepath.Join(withConfig, binaryName), withConfig},
-		{filepath.Join(withInstallJSON, binaryName), withInstallJSON},
+		{filepath.Join(withConfig, binaryName), mustEvalSymlinks(t, withConfig)},
+		{filepath.Join(withInstallJSON, binaryName), mustEvalSymlinks(t, withInstallJSON)},
 		// A downloaded binary next to no installation acts on the default.
 		{filepath.Join(bare, binaryName), DefaultDir},
 		// Only the installed binary itself belongs to the installation.
 		{renamed, DefaultDir},
 		// A symlink (e.g. /usr/local/bin/gpuworks) reaches what it points at.
-		{link, withConfig},
+		{link, mustEvalSymlinks(t, withConfig)},
 	} {
 		if got := DirOf(tc.exe); got != tc.want {
 			t.Errorf("DirOf(%s) = %s, want %s", tc.exe, got, tc.want)

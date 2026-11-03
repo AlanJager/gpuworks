@@ -217,7 +217,7 @@ func TestSGLangPDRoleArgv(t *testing.T) {
 func TestVLLMAscendMooncakeLaunch(t *testing.T) {
 	p := Params{ModelPath: "/model", APIPort: 30000, TensorParallel: 1, NNodes: 1, Vendor: "ascend",
 		ComputeNetwork: ComputeNetwork{Interface: "br_ens3_36"},
-		PD:             &PDLaunch{Mode: "vllm-ascend-mooncake", Role: "decode", SideChannelHost: "172.30.8.32", SideChannelPort: 30010, RoleTP: map[string]int{"prefill": 2, "decode": 1}}}
+		PD:             &PDLaunch{Mode: "vllm-ascend-mooncake", Role: "decode", SideChannelHost: "198.51.100.32", SideChannelPort: 30010, RoleTP: map[string]int{"prefill": 2, "decode": 1}}}
 	launch := BuildVLLM(p)
 	var config map[string]any
 	if err := json.Unmarshal([]byte(argValue(t, launch.Argv, "--kv-transfer-config")), &config); err != nil {
@@ -230,7 +230,7 @@ func TestVLLMAscendMooncakeLaunch(t *testing.T) {
 	}
 	// The connector reads the node address through vLLM's get_ip: the
 	// loopback default of a single-node launch would hand peers 127.0.0.1.
-	for key, want := range map[string]string{"VLLM_HOST_IP": "172.30.8.32", "HCCL_IF_IP": "172.30.8.32", "HCCL_SOCKET_IFNAME": "br_ens3_36", "TP_SOCKET_IFNAME": "br_ens3_36"} {
+	for key, want := range map[string]string{"VLLM_HOST_IP": "198.51.100.32", "HCCL_IF_IP": "198.51.100.32", "HCCL_SOCKET_IFNAME": "br_ens3_36", "TP_SOCKET_IFNAME": "br_ens3_36"} {
 		if launch.Env[key] != want {
 			t.Fatalf("env %s = %q, want %q", key, launch.Env[key], want)
 		}

@@ -138,7 +138,7 @@ func TestACardOnlyTheVendorToolKnowsIsStoredAndSchedulable(t *testing.T) {
 }
 
 // A host whose vendor CLI never answers still has its cards tracked. The
-// rows used to be written once and frozen: 172.30.8.31 reported every
+// rows used to be written once and frozen: 198.51.100.31 reported every
 // minute for half an hour with its card rows untouched, so a card later
 // handed to a virtual machine would never have been noticed, and the node
 // would have gone on offering capacity it no longer had.
@@ -228,7 +228,7 @@ func TestAFailedProbeWithNoRosterChangesNothing(t *testing.T) {
 
 // A card the vendor CLI has never described has no CLI facts to protect,
 // so a later PCI read may rename it. Without this the first name a card
-// ever got is frozen: 172.30.8.31's cards stayed "19e5:d802" after the
+// ever got is frozen: 198.51.100.31's cards stayed "19e5:d802" after the
 // agent learned to call them 910B4, because the rule meant to protect
 // the CLI's facts was protecting a PCI fallback.
 func TestAPCIOnlyCardTakesABetterNameLater(t *testing.T) {

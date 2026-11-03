@@ -6,9 +6,10 @@ import (
 )
 
 // FP8 specs opened to Ada (cc >=8.9: L20, L40S, RTX 4090) were run on an L20
-// with the vLLM 0.30 runner. Such a spec
-// must stay on vLLM and say Ada in its name; a Hopper-only kernel in its
-// arguments would not start on Ada.
+// with the vLLM 0.30 runner and with SGLang 0.5.21 at the runner image's
+// package versions (same source commit, sglang-kernel, torch, CUDA and
+// triton). Such a spec stays on one of those engines and says Ada in its
+// name; a Hopper-only kernel in its arguments would not start on Ada.
 func TestFP8SpecsOpenedToAdaStayOnVerifiedShapes(t *testing.T) {
 	catalog, err := Catalog()
 	if err != nil {
@@ -22,7 +23,7 @@ func TestFP8SpecsOpenedToAdaStayOnVerifiedShapes(t *testing.T) {
 			}
 			opened++
 			where := model.ModelID + "/" + spec.Name
-			if spec.Engine != "vllm" {
+			if spec.Engine != "vllm" && spec.Engine != "sglang" {
 				t.Errorf("%s opens FP8 to Ada on %s, which was not run on Ada with the platform image", where, spec.Engine)
 			}
 			if !strings.HasPrefix(spec.DisplayNameZHCN, "Ada 及以上") || !strings.HasPrefix(spec.DisplayNameEN, "Ada+") {
@@ -35,7 +36,7 @@ func TestFP8SpecsOpenedToAdaStayOnVerifiedShapes(t *testing.T) {
 			}
 		}
 	}
-	if opened < 40 {
+	if opened < 90 {
 		t.Fatalf("only %d FP8 specs match Ada", opened)
 	}
 }

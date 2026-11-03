@@ -66,7 +66,7 @@ func (f sleepFixture) occupy(t *testing.T, gpuIndexes string) {
 func TestSleepInstanceSleepsOneReplicaAndWakesIt(t *testing.T) {
 	f, dep := replicaSleepFixture(t)
 	rec := instanceRequest(f.h.sleepInstance, "plain-0", "?level=2&mode=abort")
-	if rec.Code != http.StatusOK || strings.TrimSpace(rec.Body.String()) != `{"status":"sleeping","level":2,"mode":"abort","instances":["plain-0"]}` {
+	if rec.Code != http.StatusOK || strings.TrimSpace(rec.Body.String()) != `{"status":"sleeping","level":2,"mode":"abort","instances":["plain-0"],"wake_on_request":false}` {
 		t.Fatalf("sleep = %d %s", rec.Code, rec.Body.String())
 	}
 	if a, b := sleepIntent(t, f.st, "plain-0"), sleepIntent(t, f.st, "plain-1"); a != 2 || b != 0 {
@@ -155,7 +155,7 @@ func TestSleepingAMultiNodeReplicaOrdersEveryRank(t *testing.T) {
 		}
 	}
 	rec := instanceRequest(h.sleepInstance, "multi-follower", "?level=1")
-	if rec.Code != http.StatusOK || rec.Body.String() != `{"status":"sleeping","level":1,"mode":"wait","instances":["multi-follower","multi-leader"]}`+"\n" {
+	if rec.Code != http.StatusOK || rec.Body.String() != `{"status":"sleeping","level":1,"mode":"wait","instances":["multi-follower","multi-leader"],"wake_on_request":false}`+"\n" {
 		t.Fatalf("sleep through the follower = %d %s", rec.Code, rec.Body.String())
 	}
 	for _, uuid := range []string{"multi-leader", "multi-follower"} {
@@ -226,7 +226,7 @@ func TestSleepByRole(t *testing.T) {
 		return rec
 	}
 	got := req("?role=prefill", h.sleepDeployment)
-	if got.Code != http.StatusOK || strings.TrimSpace(got.Body.String()) != `{"status":"sleeping","level":1,"mode":"wait","role":"prefill","instances":["prefill-0","prefill-1"]}` {
+	if got.Code != http.StatusOK || strings.TrimSpace(got.Body.String()) != `{"status":"sleeping","level":1,"mode":"wait","role":"prefill","instances":["prefill-0","prefill-1"],"wake_on_request":false}` {
 		t.Fatalf("sleep prefill = %d %s", got.Code, got.Body.String())
 	}
 	if p0, p1, d := sleepIntent(t, st, "prefill-0"), sleepIntent(t, st, "prefill-1"), sleepIntent(t, st, "decode-0"); p0 != 1 || p1 != 1 || d != 0 {

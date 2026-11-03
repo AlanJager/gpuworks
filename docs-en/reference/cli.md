@@ -490,7 +490,7 @@ and the CI `release-publish` job. rclone handles uploads; this tool does not hol
 
 | Subcommand | Description |
 |---|---|
-| `assemble -channel C -dist DIR -out DIR [-commit SHA] [-built-at TIME] [-release-id ID]` | Read `gpuworks-<id>-<os>-<arch>.tar.gz` from `DIR` (all packages must have the same release ID; do not read the separate `release.json` files from the two build jobs), and write a new directory tree containing these packages and the image catalog and inference template catalog packages embedded in the current checkout. Sign `<C>/index.json` with the ed25519 seed in the `GPUWORKS_DIST_SIGNING_KEY` environment variable (change the variable name with `-key-env`), and write `<C>/latest`, `releases/<id>/SHA256SUMS`, and the root `manifest.json`. Refuse to proceed if `-out` already exists |
+| `assemble -channel C -dist DIR -out DIR [-commit SHA] [-built-at TIME] [-release-id ID]` | Read `gpuworks-<id>-<os>-<arch>.tar.gz` from `DIR` (all packages must have the same release ID; do not read the separate `release.json` files from the two build jobs), and write a new directory tree containing these packages and the image catalog and inference template catalog packages embedded in the current checkout. Sign `<C>/index.json` with the ed25519 seed in the `GPUWORKS_DIST_SIGNING_KEY` environment variable (change the variable name with `-key-env`), and write `<C>/latest`, `<C>/manifest.json` (the same file as the image catalog), and `releases/<id>/SHA256SUMS`. Refuse to proceed if `-out` already exists |
 | `release-id -dist DIR` | Print the release ID of the release packages in `DIR` (the same rules as `assemble` apply) |
 | `adopt -dir DIR -release-id ID` | Verify `releases/<id>/` copied back from a source: each package must match `SHA256SUMS` and belong to `ID`. Print the build time recorded in the package's `INSTALL.txt`; exit with a nonzero status on a mismatch |
 | `verify -channel C -source URL … [-release-id ID] [-index FILE] [-full]` | Read the index from each source and verify its signature, check the release ID, and send a HEAD request for each file to check its size. With `-full`, download the files and check their sha256 instead. With `-index`, use a local, unpublished signed index to verify files on each source (without reading the source's own index), for checks before switching channels. Exit with a nonzero status if any source fails |
@@ -501,7 +501,7 @@ and the CI `release-publish` job. rclone handles uploads; this tool does not hol
 
 Generate the system image catalog
 manifest (schema 3) from the gpuworks-runner build matrix (`build/runner-images/matrix.yaml`). The same output serves as the server's embedded seed, `internal/server/imagecatalog/catalog-seed.json`, and is included in every release through the
-[release channel](#gpuworks-dist) (and through `https://image-manifest.gpuworks.ai/manifest.json`, which older versions read). For the format and import rules, see [Image Catalog](image-families.md#manifest-格式).
+[release channel](#gpuworks-dist). For the format and import rules, see [Image Catalog](image-families.md#manifest-格式).
 
 | Flag | Default | Description |
 |---|---|---|
@@ -529,17 +529,12 @@ platform manifest is deleted), or the catalog lists a revision that was never pu
 Docker Hub counts manifest GET requests
 against its anonymous pull quota, but does not count HEAD requests. It is therefore checked last, using only HEAD, with content retrieved by digest from other registries.
 
-Three make targets:
+Two make targets:
 
 | Target | Purpose |
 |---|---|
 | `make image-manifest` | Regenerate `internal/server/imagecatalog/catalog-seed.json`. Use `IMAGE_MATRIX=<path>` to select a different matrix and `IMAGE_MANIFEST_DATE=<YYYY-MM-DD>` to fix the date |
 | `make image-manifest-verify` | Run `-verify` on the committed seed |
-| `make image-manifest-publish` | Run `scripts/publish_image_manifest.sh` to publish the committed seed as the upstream `manifest.json`: first run `-verify` and stop publication if it fails; then use rclone to upload to the bucket root on the three release sources—Alibaba Cloud OSS, Huawei Cloud OBS, and Cloudflare R2—with `Cache-Control: no-cache`; finally, fetch all four public URLs (the three sources and `image-manifest.gpuworks.ai`) and verify that their contents are byte-for-byte identical to the seed |
-
-`image-manifest.gpuworks.ai` is served by R2 and shares the same set of release sources as the release channels. Credentials are the same as for `scripts/publish_dist.sh`:
-read OSS, OBS, and R2 keys from environment variables or `secrets/dist-publish.env` (if this file is absent from the worktree, read the file with the same name in the main checkout).
-rclone must be installed locally (set its path with `RCLONE=<path>`). The default bucket is `gpuworks-dl` (override it with `GPUWORKS_DIST_BUCKET`).
 
 ### template-probe
 

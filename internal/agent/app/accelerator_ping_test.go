@@ -106,21 +106,21 @@ func acceleratorPing(t *testing.T, n *NodeRuntime, params string) []proto.Accele
 func TestAcceleratorPingAnswersEachProbeInOrder(t *testing.T) {
 	prober := &pingProber{
 		FixedProber: gpu.FixedProber{VendorName: "ascend", GPUs: []proto.GPUInfo{{Index: 3}, {Index: 4}}},
-		reachable:   map[string]bool{"3->172.20.9.82": true, "4->172.20.9.83": true},
-		failing:     map[string]error{"4->172.20.9.99": errors.New("Command execute failed!")},
+		reachable:   map[string]bool{"3->203.0.113.82": true, "4->203.0.113.83": true},
+		failing:     map[string]error{"4->203.0.113.99": errors.New("Command execute failed!")},
 	}
 	n := &NodeRuntime{prober: prober}
 	got := acceleratorPing(t, n, `{"timeout_ms":1500,"probes":[
-		{"card":"npu3","target":"172.20.9.82"},{"card":"npu4","target":"172.20.9.82"},
-		{"card":"npu3","target":"172.20.9.83"},{"card":"npu4","target":"172.20.9.83"},
-		{"card":"npu9","target":"172.20.9.82"},{"card":"npu4","target":"172.20.9.99"}]}`)
+		{"card":"npu3","target":"203.0.113.82"},{"card":"npu4","target":"203.0.113.82"},
+		{"card":"npu3","target":"203.0.113.83"},{"card":"npu4","target":"203.0.113.83"},
+		{"card":"npu9","target":"203.0.113.82"},{"card":"npu4","target":"203.0.113.99"}]}`)
 	want := []proto.AcceleratorPingResult{
-		{Card: "npu3", Target: "172.20.9.82", Reachable: true, RTTMS: 0.25},
-		{Card: "npu4", Target: "172.20.9.82", Code: proto.AcceleratorPingUnreachable, Error: "no answer within the time limit"},
-		{Card: "npu3", Target: "172.20.9.83", Code: proto.AcceleratorPingUnreachable, Error: "no answer within the time limit"},
-		{Card: "npu4", Target: "172.20.9.83", Reachable: true, RTTMS: 0.25},
-		{Card: "npu9", Target: "172.20.9.82", Code: proto.AcceleratorPingNoCard, Error: "the node reports no card named npu9"},
-		{Card: "npu4", Target: "172.20.9.99", Code: proto.AcceleratorPingToolFailed, Error: "Command execute failed!"},
+		{Card: "npu3", Target: "203.0.113.82", Reachable: true, RTTMS: 0.25},
+		{Card: "npu4", Target: "203.0.113.82", Code: proto.AcceleratorPingUnreachable, Error: "no answer within the time limit"},
+		{Card: "npu3", Target: "203.0.113.83", Code: proto.AcceleratorPingUnreachable, Error: "no answer within the time limit"},
+		{Card: "npu4", Target: "203.0.113.83", Reachable: true, RTTMS: 0.25},
+		{Card: "npu9", Target: "203.0.113.82", Code: proto.AcceleratorPingNoCard, Error: "the node reports no card named npu9"},
+		{Card: "npu4", Target: "203.0.113.99", Code: proto.AcceleratorPingToolFailed, Error: "Command execute failed!"},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("results = %+v\nwant %+v", got, want)
@@ -141,11 +141,11 @@ func TestAcceleratorPingAnswersEachProbeInOrder(t *testing.T) {
 	}
 	// The exact keys the server reads.
 	raw, _ := json.Marshal(want[0])
-	if string(raw) != `{"card":"npu3","target":"172.20.9.82","reachable":true,"rtt_ms":0.25}` {
+	if string(raw) != `{"card":"npu3","target":"203.0.113.82","reachable":true,"rtt_ms":0.25}` {
 		t.Fatalf("wire = %s", raw)
 	}
 	raw, _ = json.Marshal(want[1])
-	if string(raw) != `{"card":"npu4","target":"172.20.9.82","reachable":false,"code":"unreachable","error":"no answer within the time limit"}` {
+	if string(raw) != `{"card":"npu4","target":"203.0.113.82","reachable":false,"code":"unreachable","error":"no answer within the time limit"}` {
 		t.Fatalf("wire = %s", raw)
 	}
 }
@@ -160,15 +160,15 @@ func TestAcceleratorPingLimits(t *testing.T) {
 	}
 	many := proto.AcceleratorPingParams{}
 	for range acceleratorPingMaxProbes + 1 {
-		many.Probes = append(many.Probes, proto.AcceleratorPingProbe{Card: "npu3", Target: "172.20.9.82"})
+		many.Probes = append(many.Probes, proto.AcceleratorPingProbe{Card: "npu3", Target: "203.0.113.82"})
 	}
 	raw, _ := json.Marshal(many)
 	if _, err := n.rpcAcceleratorPing(t.Context(), raw); err == nil {
 		t.Fatal("too many probes were accepted")
 	}
 	// The time limit defaults to three seconds and is capped.
-	acceleratorPing(t, n, `{"probes":[{"card":"npu3","target":"172.20.9.82"}]}`)
-	acceleratorPing(t, n, `{"timeout_ms":600000,"probes":[{"card":"npu3","target":"172.20.9.82"}]}`)
+	acceleratorPing(t, n, `{"probes":[{"card":"npu3","target":"203.0.113.82"}]}`)
+	acceleratorPing(t, n, `{"timeout_ms":600000,"probes":[{"card":"npu3","target":"203.0.113.82"}]}`)
 	if want := []time.Duration{3 * time.Second, 10 * time.Second}; !reflect.DeepEqual(prober.timeouts, want) {
 		t.Fatalf("time limits = %v, want %v", prober.timeouts, want)
 	}
@@ -176,7 +176,7 @@ func TestAcceleratorPingLimits(t *testing.T) {
 
 func TestAcceleratorPingOnANodeWithoutCardPorts(t *testing.T) {
 	n := &NodeRuntime{prober: &gpu.FixedProber{VendorName: "nvidia"}}
-	got := acceleratorPing(t, n, `{"probes":[{"card":"npu3","target":"172.20.9.82"}]}`)
+	got := acceleratorPing(t, n, `{"probes":[{"card":"npu3","target":"203.0.113.82"}]}`)
 	if len(got) != 1 || got[0].Reachable || got[0].Code != proto.AcceleratorPingNoCard || got[0].Error == "" {
 		t.Fatalf("results = %+v", got)
 	}

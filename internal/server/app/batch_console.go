@@ -39,7 +39,27 @@ func (c batchConsole) Get(caller api.BatchCaller, id string) (dto.Batch, error) 
 	if err != nil {
 		return dto.Batch{}, consoleBatchError(err)
 	}
-	return c.detail(b), nil
+	out := c.detail(b)
+	out.Waiting = c.waiting(b.ID)
+	return out, nil
+}
+
+// waiting is why the requests of a running batch are being retried, each
+// model with its state now: a few models at most, each looked up once.
+func (c batchConsole) waiting(id string) []dto.BatchModelWait {
+	waits := c.svc.Waits(id)
+	if len(waits) == 0 {
+		return nil
+	}
+	out := make([]dto.BatchModelWait, 0, len(waits))
+	for _, w := range waits {
+		item := dto.BatchModelWait{Model: w.Model, Status: w.Status, Detail: w.Message, Since: w.Since.UTC(), Requests: w.Requests}
+		if entry, err := c.svc.LookupModel(w.Model); err == nil {
+			item.State = batchModelStates[entry.State]
+		}
+		out = append(out, item)
+	}
+	return out
 }
 
 func (c batchConsole) Cancel(caller api.BatchCaller, id string) (dto.Batch, error) {
@@ -81,7 +101,8 @@ func (c batchConsole) Dictionary() (dto.BatchDictionary, error) {
 	}
 	for _, m := range d.Models {
 		if state, ok := batchModelStates[m.State]; ok {
-			out.Models = append(out.Models, dto.BatchModel{Name: m.Name, State: state})
+			endpoints := append([]string{}, m.Endpoints...)
+			out.Models = append(out.Models, dto.BatchModel{Name: m.Name, State: state, Endpoints: endpoints})
 		}
 	}
 	return out, nil
@@ -89,9 +110,13 @@ func (c batchConsole) Dictionary() (dto.BatchDictionary, error) {
 
 // batchModelStates are the wire names of the states a batch can be sent to.
 var batchModelStates = map[batch.ModelState]string{
-	batch.ModelAvailable: dto.BatchModelServed,
+	batch.ModelRunning:   dto.BatchModelRunning,
 	batch.ModelAsleep:    dto.BatchModelAsleep,
+	batch.ModelStarting:  dto.BatchModelStarting,
 	batch.ModelSleepHeld: dto.BatchModelAsleepHeld,
+	batch.ModelOffline:   dto.BatchModelOffline,
+	batch.ModelFailed:    dto.BatchModelFailed,
+	batch.ModelStopped:   dto.BatchModelStopped,
 }
 
 // detail is a batch with the name of its input file, which a list row leaves out.
@@ -117,12 +142,20 @@ func (c batchConsole) batchDTO(b batch.Batch, inputName string) dto.Batch {
 		out.Metadata[k] = v
 	}
 	for _, w := range b.Warnings {
+		if len(w.Models) == 0 {
+			continue
+		}
 		switch {
-		case w.Code != batch.WarningModelSleepHeld || len(w.Models) == 0:
-		case w.Param == batch.ParamInputFileID:
+		case w.Code == batch.WarningModelSleepHeld && w.Param == batch.ParamInputFileID:
 			out.Warnings = append(out.Warnings, messages.Warning{Code: messages.WarningBatchFileModelsSleepHeld, Params: namedModelsParams(w.Models)})
-		default:
+		case w.Code == batch.WarningModelSleepHeld:
 			out.Warnings = append(out.Warnings, messages.Warning{Code: api.WarningBatchModelSleepHeld, Params: map[string]any{"model": w.Models[0]}})
+		case w.Code == batch.WarningModelWaits && w.Param == batch.ParamInputFileID:
+			params := namedModelsParams(w.Models)
+			params["state"] = batchModelStates[w.State]
+			out.Warnings = append(out.Warnings, messages.Warning{Code: messages.WarningBatchFileModelsWait, Params: params})
+		case w.Code == batch.WarningModelWaits:
+			out.Warnings = append(out.Warnings, messages.Warning{Code: api.WarningBatchModelWaits, Params: map[string]any{"model": w.Models[0], "state": batchModelStates[w.State]}})
 		}
 	}
 	if b.ErrorCode != "" {
@@ -149,6 +182,13 @@ func consoleBatchError(err error) error {
 	case be.Code == batch.CodeModelNotFound:
 		out.Code = api.ErrorBatchModelUnknown
 		out.Params = map[string]any{"model": be.Model}
+	case be.Code == batch.CodeModelEndpoint && len(be.Models) > 0:
+		out.Code = messages.ErrorBatchFileModelsEndpoint
+		out.Params = namedModelsParams(be.Models)
+		out.Params["endpoint"] = be.Endpoint
+	case be.Code == batch.CodeModelEndpoint:
+		out.Code = api.ErrorBatchModelEndpoint
+		out.Params = map[string]any{"model": be.Model, "endpoint": be.Endpoint}
 	case be.Code == batch.CodeBatchNotCancellable:
 		out.Code = api.ErrorBatchNotCancellable
 	case be.Status == http.StatusRequestEntityTooLarge:

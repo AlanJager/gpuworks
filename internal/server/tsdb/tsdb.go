@@ -18,6 +18,8 @@ import (
 	"time"
 
 	_ "github.com/glebarez/go-sqlite" // registers the "sqlite" driver (shared with the main store; avoids double registration)
+
+	"gpuworks.ai/gpuworks/internal/sqliteutil"
 )
 
 // Sample is a single metric observation to be written.
@@ -76,7 +78,8 @@ type sqliteStore struct {
 // OpenSQLite opens (creating if needed) a metrics database at path and returns
 // a ready Store. WAL and a busy timeout are enabled; the connection pool is
 // capped at one since SQLite has a single writer.
-func OpenSQLite(path string) (Store, error) {
+func OpenSQLite(path string) (result Store, err error) {
+	defer func() { err = sqliteutil.WrapOpenError(path, err) }()
 	dsn := path + "?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=synchronous(NORMAL)"
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {

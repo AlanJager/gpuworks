@@ -42,8 +42,8 @@ const l = settingsLocale.listen;
 
 function listenFixture(overrides: Partial<import("../src/api.ts").ServerListen> = {}): import("../src/api.ts").ServerListen {
   return {
-    console: ["172.25.17.156:8800"], agent: [], gateway: [],
-    running: [{ addr: "172.25.17.156:8800", functions: ["console", "agent", "gateway"] }, { addr: "127.0.0.1:8800", functions: ["console", "agent", "gateway"] }],
+    console: ["192.0.2.156:8800"], agent: [], gateway: [],
+    running: [{ addr: "192.0.2.156:8800", functions: ["console", "agent", "gateway"] }, { addr: "127.0.0.1:8800", functions: ["console", "agent", "gateway"] }],
     restart_pending: false, config_path: "/opt/gpuworks/server/server.yaml", editable: true, overridden: false,
     restart_mode: "self",
     ...overrides,
@@ -85,7 +85,7 @@ test("shows the console address by default and what the server is bound to", asy
   try {
     renderCard();
     const input = await screen.findByLabelText(l.console);
-    await waitFor(() => assert.equal((input as HTMLInputElement).value, "172.25.17.156:8800"));
+    await waitFor(() => assert.equal((input as HTMLInputElement).value, "192.0.2.156:8800"));
     // Advanced addresses stay folded away.
     assert.equal(screen.queryByLabelText(l.gateway), null);
     assert.ok(screen.getByText("127.0.0.1:8800"));
@@ -101,12 +101,12 @@ test("saves the addresses of every function and offers a restart", async () => {
   try {
     renderCard();
     const input = await screen.findByLabelText(l.console);
-    await waitFor(() => assert.equal((input as HTMLInputElement).value, "172.25.17.156:8800"));
+    await waitFor(() => assert.equal((input as HTMLInputElement).value, "192.0.2.156:8800"));
     await userEvent.click(screen.getByText(l.advanced));
     await userEvent.type(await screen.findByLabelText(l.gateway), "10.20.0.5:8800, 10.20.0.5:443");
     await userEvent.click(screen.getByRole("button", { name: settingsLocale.common.save }));
     await waitFor(() => assert.equal(s.updates.length, 1));
-    assert.deepEqual(s.updates[0], { console: ["172.25.17.156:8800"], agent: [], gateway: ["10.20.0.5:8800", "10.20.0.5:443"] });
+    assert.deepEqual(s.updates[0], { console: ["192.0.2.156:8800"], agent: [], gateway: ["10.20.0.5:8800", "10.20.0.5:443"] });
     await waitFor(() => assert.ok(screen.getByText(l.pending)));
     assert.ok(screen.getByRole("button", { name: l.restartNow }));
   } finally {
@@ -119,16 +119,16 @@ test("requires a console address and shows a rejected save in the reader's words
   try {
     renderCard();
     const input = await screen.findByLabelText(l.console);
-    await waitFor(() => assert.equal((input as HTMLInputElement).value, "172.25.17.156:8800"));
+    await waitFor(() => assert.equal((input as HTMLInputElement).value, "192.0.2.156:8800"));
     await userEvent.clear(input);
     await userEvent.click(screen.getByRole("button", { name: settingsLocale.common.save }));
     await waitFor(() => assert.ok(screen.getByText(l.consoleRequired)));
     assert.equal(s.updates.length, 0);
 
-    s.failSaveWith(new APIError("SERVER_LISTEN_LOCKOUT", { address: "172.25.17.156:8800" }, "lockout", 400));
+    s.failSaveWith(new APIError("SERVER_LISTEN_LOCKOUT", { address: "192.0.2.156:8800" }, "lockout", 400));
     await userEvent.type(input, "10.20.0.5:8800");
     await userEvent.click(screen.getByRole("button", { name: settingsLocale.common.save }));
-    await waitFor(() => assert.ok(screen.getByText(/You are connected through 172\.25\.17\.156:8800/)));
+    await waitFor(() => assert.ok(screen.getByText(/You are connected through 192\.0\.2\.156:8800/)));
   } finally {
     s.restore();
   }

@@ -360,12 +360,12 @@ func TestRunningAgentIsObservedWithoutRestart(t *testing.T) {
 func TestAnotherServersAgentUnitIsReportedWithoutTakingItOver(t *testing.T) {
 	r, st, _, fake := newRecoveryHarness(t)
 	node := newOfflineNode(t, st, true)
-	fake.probeResult = provision.ProbeResult{Reachable: true, AgentInstalled: true, ForeignServerURL: "http://172.25.17.156:8800", Detail: "foreign-systemd http://172.25.17.156:8800"}
+	fake.probeResult = provision.ProbeResult{Reachable: true, AgentInstalled: true, ForeignServerURL: "http://192.0.2.156:8800", Detail: "foreign-systemd http://192.0.2.156:8800"}
 	outcome, err := r.recoverNode(context.Background(), node, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "foreign_agent: gpuworks-agent unit on the host is installed for another server (http://172.25.17.156:8800)"
+	want := "foreign_agent: gpuworks-agent unit on the host is installed for another server (http://192.0.2.156:8800)"
 	if fake.restarts != 0 || fake.installs != 0 || outcome.Phase != store.RecoveryPhaseProbing || !strings.HasPrefix(outcome.Error, want) {
 		t.Fatalf("outcome=%+v restart=%d install=%d", outcome, fake.restarts, fake.installs)
 	}

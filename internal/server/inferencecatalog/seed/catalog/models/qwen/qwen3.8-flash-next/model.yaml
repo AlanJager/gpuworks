@@ -282,6 +282,24 @@ specs:
   env:
     VLLM_ASCEND_ENABLE_QSA_E3V: '1'
     VLLM_ASCEND_ENABLE_QSA_LIGHTNING_INDEXER: '1'
+  # This image's vllm-ascend wraps the whole initialize_kv_cache() in the
+  # discardable kv_cache memory pool, so a level-1 sleep also frees the
+  # persistent metadata built there (attention metadata builders, block
+  # tables, graph-safe constants) while keeping its virtual address. Sleep and
+  # wake still report success and the damage only surfaces on the next real
+  # forward pass, where this model's GDN layers make every worker abort at
+  # once with ERR00100 "PTA call acl api failed". This pre-start patch applies
+  # the upstream fix (vllm-ascend PR #16096, merged after this image was
+  # built) to the installed sources; it is digest-pinned to them and fails the
+  # container start loudly on any other content instead of half-patching, so
+  # an image revision that changes these two files is a deliberate re-pin.
+  # Source and builder: build/inference-templates/flash-next-sleep-pool/.
+  assets:
+  - file: assets/ascend-sleep-pool-patch.tar.gz
+    sha256: 100a3ababb730b6df032bb277b79eb9a6550a3fa73c2e237cbaec30d1db20ef6
+    size_bytes: 4063
+    unpack_to: /opt/gpuworks/ascend-sleep-pool-patch
+  pre_start_script: python3 /opt/gpuworks/ascend-sleep-pool-patch/ascend_sleep_pool_patch.py
   placement:
     language: starlark
     resolver: |

@@ -4,7 +4,7 @@ import React from "react";
 import { I18nextProvider } from "react-i18next";
 import { createI18n, dom } from "./helpers/dom.ts";
 import { trackMessageChannels } from "./helpers/trackedMessageChannels.ts";
-import { batch, dictionary, page } from "./helpers/batchFixtures.ts";
+import { batch, dictionary, model, page } from "./helpers/batchFixtures.ts";
 
 // The model of a batch chosen on the platform: the select of the models the
 // server's batch dictionary lists with their states, the override sent with the
@@ -33,7 +33,7 @@ beforeEach(() => {
   api.me = (async () => ({ role: "admin" })) as never;
   batchApi.list = (async () => page([])) as never;
   batchApi.dictionary = async () => dictionary([
-    { name: "qwen-chat", state: "served" }, { name: "nap-model", state: "asleep" }, { name: "held-model", state: "asleep_held" },
+    model("qwen-chat", "running"), model("nap-model", "asleep"), model("held-model", "asleep_held"), model("parked", "stopped"), model("broken", "failed"),
   ]);
 });
 afterEach(() => {
@@ -92,9 +92,11 @@ test("the model select lists the dictionary's models in its order, each with the
   // Both selects - the batch's model and the sample's - list them.
   const listed = [...new Set(labels)];
   assert.deepEqual(listed, [
-    optionLabel("qwen-chat", b.create.model.state.serving),
+    optionLabel("qwen-chat", b.create.model.state.running),
     optionLabel("nap-model", b.create.model.state.asleep),
     optionLabel("held-model", b.create.model.state.asleepHeld),
+    optionLabel("parked", b.create.model.state.stopped),
+    optionLabel("broken", b.create.model.state.failed),
   ]);
 });
 
@@ -128,9 +130,21 @@ test("a model whose sleep is held shows the warning, and the server's warning af
   const dialog = await openCreate(user);
   await user.upload(within(dialog).getByLabelText(b.create.file), jsonl(requests("held-model")));
   await chooseModel(user, dialog, optionLabel("held-model", b.create.model.state.asleepHeld));
-  assert.ok(await within(dialog).findByText(b.create.model.heldWarning.replace("{{model}}", "held-model")));
+  assert.ok(await within(dialog).findByText(b.create.model.warning.asleepHeld.replace("{{model}}", "held-model")));
   await user.click(submitButton(dialog));
   assert.ok(await screen.findByText(b.create.warnings.BATCH_MODEL_SLEEP_HELD.replace("{{model}}", "held-model")));
+});
+
+test("a stopped or failed model shows what becomes of its requests; a starting one does not", async () => {
+  const user = mountPage();
+  const dialog = await openCreate(user);
+  await user.upload(within(dialog).getByLabelText(b.create.file), jsonl(requests("whatever")));
+  await chooseModel(user, dialog, optionLabel("parked", b.create.model.state.stopped));
+  assert.ok(await within(dialog).findByText(b.create.model.warning.stopped.replace("{{model}}", "parked")));
+  await chooseModel(user, dialog, optionLabel("broken", b.create.model.state.failed));
+  assert.ok(await within(dialog).findByText(b.create.model.warning.failed.replace("{{model}}", "broken")));
+  await chooseModel(user, dialog, optionLabel("qwen-chat", b.create.model.state.running));
+  await waitFor(() => assert.equal(within(dialog).queryByText(b.create.model.warning.failed.replace("{{model}}", "broken")), null));
 });
 
 test("the file's models are counted, and those without a deployment are warned about", async () => {
@@ -158,7 +172,7 @@ test("with a model chosen the file's other models are only said to be replaced, 
   const dialog = await openCreate(user);
   await user.upload(within(dialog).getByLabelText(b.create.file), jsonl(requests("ghost-1", "qwen-chat", "ghost-2")));
   await within(dialog).findByText(b.create.fileModels.unknown.replace("{{models}}", "ghost-1, ghost-2"));
-  await chooseModel(user, dialog, optionLabel("qwen-chat", b.create.model.state.serving));
+  await chooseModel(user, dialog, optionLabel("qwen-chat", b.create.model.state.running));
   const info = await within(dialog).findByText(b.create.fileModels.replaced.replace("{{models}}", "ghost-1, ghost-2").replace("{{model}}", "qwen-chat"));
   assert.ok(info.closest(".ant-alert-info"));
   assert.equal(within(dialog).queryByText(/have no available deployment/), null);

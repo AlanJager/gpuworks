@@ -1,14 +1,17 @@
 package dto
 
 // SleepOrder is the answer to a sleep order: the level and pause mode it
-// wrote, and for an order that names instances (one replica, one PD role)
-// which ones.
+// wrote, for an order that names instances (one replica, one PD role) which
+// ones, and whether a request wakes what it put to sleep (false: held until
+// someone wakes it).
 type SleepOrder struct {
 	Status    string   `json:"status"`
 	Level     int      `json:"level"`
 	Mode      string   `json:"mode"`
 	Role      string   `json:"role,omitempty"`
 	Instances []string `json:"instances,omitempty"`
+	// WakeOnRequest: a request wakes what the order put to sleep.
+	WakeOnRequest bool `json:"wake_on_request"`
 }
 
 // WakeResult is the answer to a wake order. An order for one replica names
@@ -32,4 +35,11 @@ type WakeRefusal struct {
 	ShortfallGiB string   `json:"shortfall_gib"`
 	Occupants    []string `json:"occupants"`
 	HeldOutside  bool     `json:"held_outside,omitempty"`
+}
+
+// SleepHoldRelease answers POST /deployments/{id}/wake-on-request: the asleep
+// instances whose hold it lifted, so a request now wakes them; empty when none
+// was held. Nothing is woken.
+type SleepHoldRelease struct {
+	Released []string `json:"released"`
 }

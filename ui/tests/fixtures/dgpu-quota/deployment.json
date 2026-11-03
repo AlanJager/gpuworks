@@ -85,6 +85,7 @@
     "policy": "never"
   },
   "sleep_held": false,
+  "sleep_wakes_on_request": false,
   "wake_wait_limit_sec": 1800,
   "yield_policy_eligible": {
     "ok": false,

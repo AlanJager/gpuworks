@@ -192,7 +192,7 @@ export default function DeploymentsPage() {
       width: 160,
       // Where the replicas run now - not where the deployment was asked to run,
       // which has its own column beside it. A spread deployment folds into
-      // "172.30.8.31 and 1 more" with every node in the tooltip and the drawer,
+      // "198.51.100.31 and 1 more" with every node in the tooltip and the drawer,
       // so no replica's node is hidden behind another's (GWKS-120).
       render: (_: unknown, d: DeploymentListItem) => <DeploymentRuntimeNodes dep={d} />,
     },
@@ -520,7 +520,7 @@ function DeploymentDetail({
 
 // runtimeNodesLabel names the nodes a deployment's replicas run on now. One
 // node prints its name. Several fold to the first and how many nodes there are
-// in all - 「172.30.8.31 等 2 台」, "172.30.8.31 and 1 more" - so the cell stays
+// in all - 「198.51.100.31 等 2 台」, "198.51.100.31 and 1 more" - so the cell stays
 // one line and still says the deployment is not on one machine. The full set is
 // in the cell's tooltip and in the drawer, so a spread deployment can always be
 // expanded; it is never printed as a single node.
@@ -553,7 +553,7 @@ export function deploymentTargetLabel(d: Pick<Deployment, "node_name" | "node_na
 // count in the tooltip and the whole list in the drawer.
 //
 // One node is printed as a link to its page. Several are printed as the folded
-// text "172.30.8.31 等 2 台" ("172.30.8.31 and 1 more") inside the tooltip that
+// text "198.51.100.31 等 2 台" ("198.51.100.31 and 1 more") inside the tooltip that
 // spells out the rest, because a row of links per node would wrap the cell and
 // bury the state beside it; the drawer lists one link per node.
 function DeploymentRuntimeNodes({ dep }: { dep: Pick<Deployment, "runtime_nodes"> }) {

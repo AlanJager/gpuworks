@@ -151,6 +151,7 @@ func TestStrataReadinessPreservesIntentionalUnloadAndUnknownProbes(t *testing.T)
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 			e.checkLiveness(ctx)
+			waitHealthProbes(t, e)
 			if len(log.states(proto.InstStarting)) != before || loads.Load() != 0 {
 				t.Fatalf("unsupported/intentional state triggered recovery: %+v loads=%d", log.snapshot(), loads.Load())
 			}
@@ -371,6 +372,7 @@ func TestStrataReadinessInvalidHealthPathDoesNotPanicOrReload(t *testing.T) {
 	}()
 	before := len(log.states(proto.InstStarting))
 	e.checkLiveness(context.Background())
+	waitHealthProbes(t, e)
 	if len(log.states(proto.InstStarting)) != before {
 		t.Fatal("invalid probe triggered recovery")
 	}

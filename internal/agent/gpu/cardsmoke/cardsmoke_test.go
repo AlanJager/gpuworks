@@ -367,7 +367,7 @@ func TestAStuckCheckIsNotJoinedByAnother(t *testing.T) {
 
 // A round that fires before the control plane has said what this node runs
 // asks no card at all, which left every card on the vendor tool's verdict
-// for a whole interval: on 192.168.200.29 the desired state arrived
+// for a whole interval: on 192.0.2.129 the desired state arrived
 // forty-seven seconds after the agent registered, seventeen seconds after
 // the first round, and a die the runtime could not use stayed schedulable
 // for the next quarter hour. Such a round is retried once.

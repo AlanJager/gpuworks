@@ -337,16 +337,16 @@ func TestAgentVersionGateOnlyRefusesAProvablyOlderAgent(t *testing.T) {
 		version string
 		refused bool
 	}{
-		{version: "0.9.9", refused: true},
-		{version: "v0.9.9", refused: true},
+		{version: "26.10.9", refused: true},
+		{version: "v26.10.9", refused: true},
 		{version: "0.0.1", refused: true},
-		{version: "1.0.0"},
-		{version: "v1.0.0"},
-		{version: "1.0.1"},
-		{version: "2.3.4"},
+		{version: "26.11.0"},
+		{version: "v26.11.0"},
+		{version: "26.11.1"},
+		{version: "27.1.0"},
 		// git describe after a tag describes a build past that tag.
-		{version: "1.0.0-14-gabc1234"},
-		{version: "0.9.0-14-gabc1234", refused: true},
+		{version: "26.11.0-14-gabc1234"},
+		{version: "26.10.0-14-gabc1234", refused: true},
 		// A development build cannot be ordered against a release, and the
 		// build of this very tree is one of them.
 		{version: "dev"},

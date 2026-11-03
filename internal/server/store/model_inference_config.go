@@ -39,8 +39,8 @@ func (s *Store) InitModelInferenceConfig(id uint, operations, inputModalities st
 	return s.initModelInferenceConfig(id, operations, inputModalities, false)
 }
 
-// InitTemplateModelInferenceConfig also replaces a bare chat contract nobody
-// chose (IsDefaultChatOperations) with the one the template declares.
+// InitTemplateModelInferenceConfig also replaces a bare chat or video contract
+// nobody chose (IsDefaultTemplateOperations) with the one the template declares.
 func (s *Store) InitTemplateModelInferenceConfig(id uint, operations, inputModalities string) (*Model, error) {
 	return s.initModelInferenceConfig(id, operations, inputModalities, true)
 }
@@ -89,9 +89,9 @@ func updateModelInferenceConfig(tx *gorm.DB, id uint, operations, inputModalitie
 }
 
 // legacyOperationsToReplace returns the stored operations value when it is the
-// migration-80 placeholder and this caller is allowed to replace it. Reading
-// through the caller's transaction also makes a disappeared model fail the
-// surrounding create rather than leaving a deployment without its model.
+// inferred chat/video placeholder and this caller is allowed to replace it.
+// Reading through the caller's transaction also makes a disappeared model fail
+// the surrounding create rather than leaving a deployment without its model.
 func legacyOperationsToReplace(tx *gorm.DB, id uint, repair bool) (string, bool, error) {
 	if !repair {
 		return "", false, nil
@@ -102,7 +102,7 @@ func legacyOperationsToReplace(tx *gorm.DB, id uint, repair bool) (string, bool,
 	} else if err != nil {
 		return "", false, err
 	}
-	if !IsDefaultChatOperations(stored.Operations) {
+	if !IsDefaultTemplateOperations(stored.Operations) {
 		return "", false, nil
 	}
 	return stored.Operations, true, nil

@@ -64,9 +64,9 @@ params:
     sidebar_width_min: 220
     sidebar_width_max: 260
     sidebar_item_overflow: wrap
-  github_repo: http://gitlab.zstack.io/wei.wang/gpuworks
+  github_repo: https://github.com/flitai-io/gpuworks
   github_branch: master
-  artifacts_repo: http://gitlab.zstack.io/wei.wang/gpuworks-artifacts
+  artifacts_repo: https://github.com/flitai-io/gpuworks-artifacts
 
 # The theme is fetched by build.sh from the gpuworks_website repository into
 # themes/oink; it needs hugo extended >= 0.160.1.

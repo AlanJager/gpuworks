@@ -62,7 +62,7 @@ func ascendNerdctlVerifyLinuxARM64Gzip(t *testing.T) []byte {
 // TestAscendNerdctlDeviceInjectionEndToEnd proves the nerdctl driver-aware
 // Ascend injection (gpu.AscendProber.RuntimeInjectionForDriver) actually
 // makes an NPU visible inside a real nerdctl container on a containerd-only
-// host (the pool members 172.30.8.31/.32 run nerdctl against a shared
+// host (the pool members 198.51.100.31/.32 run nerdctl against a shared
 // containerd; .32 also hosts k8s pods in its k8s.io namespace while the
 // agent keeps its own containers in the gpuworks namespace). It
 // builds and streams the tiny helper (test/l4/cmd/ascend-nerdctl-verify) that calls the production

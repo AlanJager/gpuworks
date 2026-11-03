@@ -58,7 +58,16 @@ type options struct {
 	copyImage     string
 	copyFrom      string
 	modelPath     string
-	buildDeadline time.Duration
+	// baseGolden says -base-image is an earlier golden image that already
+	// carries Docker, -docker-image and the model: the build only adds
+	// -extra-image on top, and the earlier image is left as it is.
+	baseGolden bool
+	// extraImage is a second image baked in next to -docker-image (the
+	// 1Cat-vLLM runner for V100), pulled from the first of extraPullSources
+	// that works; empty adds none.
+	extraImage       string
+	extraPullSources []string
+	buildDeadline    time.Duration
 	// copyPoll is how often a copy's state is read; zero means 30s.
 	copyPoll time.Duration
 }
@@ -68,6 +77,7 @@ func main() {
 		regions = flag.String("regions", defaultRegions, "regions the golden image is made available in")
 		sources = flag.String("source-regions", "", "regions the source and validation VMs may be rented in, whichever has stock (default -regions)")
 		pull    = flag.String("pull-sources", defaultPullSources, "registry references tried in order to obtain the runner image")
+		extra   = flag.String("extra-pull-sources", "", "registry references tried in order to obtain -extra-image (default -extra-image itself)")
 		o       options
 	)
 	flag.StringVar(&o.baseImage, "base-image", defaultBaseImage, "public base image (GPU driver + CUDA preinstalled)")
@@ -84,11 +94,17 @@ func main() {
 	flag.StringVar(&o.copyImage, "copy-image", "", "finish an interrupted build: copy this existing Available image ID to -regions (other than -copy-from), validate it, print the result")
 	flag.StringVar(&o.copyFrom, "copy-from", "", "region of -copy-image")
 	flag.StringVar(&o.modelPath, "model-path", goldenimage.DefaultModelPath, "absolute model path stored in the image")
+	flag.BoolVar(&o.baseGolden, "base-golden", false, "-base-image is an earlier golden image (Docker, -docker-image and the model already in it): only add -extra-image")
+	flag.StringVar(&o.extraImage, "extra-image", "", "second image to bake in next to -docker-image (e.g. the 1Cat-vLLM runner for V100)")
 	flag.DurationVar(&o.buildDeadline, "timeout", 3*time.Hour, "overall limit")
 	flag.Parse()
 	o.regions = splitList(*regions)
 	o.sourceRegions = splitList(*sources)
 	o.pullSources = splitList(*pull)
+	o.extraPullSources = splitList(*extra)
+	if len(o.extraPullSources) == 0 && o.extraImage != "" {
+		o.extraPullSources = []string{o.extraImage}
+	}
 	if err := run(o); err != nil {
 		fmt.Fprintln(os.Stderr, "prepare Aliyun golden image:", err)
 		os.Exit(1)
@@ -113,6 +129,9 @@ func modelSlug(repo string) string {
 // imageDescription names what the image carries; ECS caps it at 256 chars.
 func imageDescription(o options) string {
 	description := "gpuworks golden: Docker " + dockerMajor + ", NVIDIA container toolkit, " + o.dockerImage + ", " + o.modelRepo + " at " + o.modelPath
+	if o.extraImage != "" {
+		description += ", " + o.extraImage
+	}
 	if len(description) > 256 {
 		description = description[:256]
 	}
@@ -139,6 +158,9 @@ func run(o options) error {
 	}
 	if !strings.HasPrefix(o.modelPath, "/") {
 		return errors.New("model-path must be absolute")
+	}
+	if o.baseGolden && o.extraImage == "" {
+		return errors.New("-base-golden needs -extra-image (there is nothing else to add)")
 	}
 	if o.diskGB < 100 {
 		return fmt.Errorf("disk-gb=%d is below the 100 GiB base image", o.diskGB)
@@ -216,9 +238,11 @@ func (s sourceVM) run(ctx context.Context, command string) (string, error) {
 }
 
 func build(ctx context.Context, provider *cloudprovider.Aliyun, api imageAPI, o options, runID, keyID, secret string) (err error) {
-	files, err := goldenimage.ModelFiles(ctx, o.modelRepo, o.modelRev)
-	if err != nil {
-		return err
+	var files []goldenimage.File
+	if !o.baseGolden {
+		if files, err = goldenimage.ModelFiles(ctx, o.modelRepo, o.modelRev); err != nil {
+			return err
+		}
 	}
 	var source *cloudprovider.Instance
 	if o.resume != "" {
@@ -261,17 +285,7 @@ func build(ctx context.Context, provider *cloudprovider.Aliyun, api imageAPI, o 
 	if err := vm.wait(ctx); err != nil {
 		return fmt.Errorf("source VM SSH: %w", err)
 	}
-	steps := []struct {
-		phase   string
-		command string
-		timeout time.Duration
-	}{
-		{"install-docker", installDockerCommand(), 40 * time.Minute},
-		{"pull-runner-image", pullImageCommand(o.dockerImage, o.pullSources), 60 * time.Minute},
-		{"prepare-model", goldenimage.PrepareModelCommand(o.modelPath, o.dockerImage, files, ""), 30 * time.Minute},
-		{"validate-source", bootedChecksCommand(o.modelPath, o.dockerImage), 10 * time.Minute},
-	}
-	for _, step := range steps {
+	for _, step := range buildSteps(o, files) {
 		fmt.Printf("run_id=%s phase=%s\n", runID, step.phase)
 		stepCtx, stepCancel := context.WithTimeout(ctx, step.timeout)
 		out, stepErr := vm.run(stepCtx, step.command)
@@ -319,6 +333,32 @@ func build(ctx context.Context, provider *cloudprovider.Aliyun, api imageAPI, o 
 	}
 	printResult(o, ids)
 	return nil
+}
+
+type buildStep struct {
+	phase   string
+	command string
+	timeout time.Duration
+}
+
+// buildSteps are the commands run on the source VM in order. On an earlier
+// golden image the base is checked first, so a broken base fails before the
+// extra image is pulled onto it.
+func buildSteps(o options, files []goldenimage.File) []buildStep {
+	var steps []buildStep
+	if o.baseGolden {
+		steps = append(steps, buildStep{"validate-base", bootedChecksCommand(o.modelPath, o.dockerImage, ""), 10 * time.Minute})
+	} else {
+		steps = append(steps,
+			buildStep{"install-docker", installDockerCommand(), 40 * time.Minute},
+			buildStep{"pull-runner-image", pullImageCommand(o.dockerImage, o.pullSources), 60 * time.Minute},
+			buildStep{"prepare-model", goldenimage.PrepareModelCommand(o.modelPath, o.dockerImage, files, ""), 30 * time.Minute},
+		)
+	}
+	if o.extraImage != "" {
+		steps = append(steps, buildStep{"pull-extra-image", pullImageCommand(o.extraImage, o.extraPullSources), 60 * time.Minute})
+	}
+	return append(steps, buildStep{"validate-source", bootedChecksCommand(o.modelPath, o.dockerImage, o.extraImage), 10 * time.Minute})
 }
 
 // copyEverywhere copies the image to every other region in parallel and waits
@@ -391,7 +431,7 @@ func validateImage(ctx context.Context, keyID, secret, region, imageID, runID st
 	if err := vm.wait(ctx); err != nil {
 		return err
 	}
-	out, err := vm.run(ctx, bootedChecksCommand(o.modelPath, o.dockerImage))
+	out, err := vm.run(ctx, bootedChecksCommand(o.modelPath, o.dockerImage, o.extraImage))
 	if err != nil {
 		return fmt.Errorf("%w: %s", err, tail(out, 1500))
 	}

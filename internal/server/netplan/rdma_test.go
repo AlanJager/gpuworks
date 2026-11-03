@@ -13,7 +13,7 @@ import (
 // (enp189s0f0) whose address was removed, which also reports a bogus 2.5G
 // port rate.
 const ascendInventory = `{"interfaces":[
- {"name":"br_ens3_36","state":"up","mtu":1500,"speed_mbps":25000,"addrs":["172.30.8.31/16"]},
+ {"name":"br_ens3_36","state":"up","mtu":1500,"speed_mbps":25000,"addrs":["198.51.100.31/16"]},
  {"name":"enp189s0f0","state":"up","mtu":1500,"speed_mbps":1000},
  {"name":"enp189s0f2","state":"down","mtu":1500},
  {"name":"enp61s0f0","state":"up","mtu":9000,"speed_mbps":25000,"addrs":["100.64.29.209/30"]},
@@ -24,7 +24,7 @@ const ascendInventory = `{"interfaces":[
  {"device":"rocep189s0f2","port":1,"state":"DOWN","link_layer":"Ethernet","rate_gbps":2.5,"netdev":"enp189s0f2"},
  {"device":"rocep61s0f0","port":1,"state":"ACTIVE","link_layer":"Ethernet","rate_gbps":25,"netdev":"enp61s0f0"},
  {"device":"rocep61s0f2","port":1,"state":"ACTIVE","link_layer":"Ethernet","rate_gbps":25,"netdev":"enp61s0f2"}],
- "tools":["ib_write_bw"],"management":{"interface":"br_ens3_36","ip":"172.30.8.31"}}`
+ "tools":["ib_write_bw"],"management":{"interface":"br_ens3_36","ip":"198.51.100.31"}}`
 
 // h200Inventory is a Nebius 8x400G InfiniBand host: the ib* interfaces
 // carry no address and only eth0 (the management address) has one.
@@ -102,8 +102,8 @@ func TestRDMAInferenceKeepsOnlyTheFastestRails(t *testing.T) {
 func TestRDMABootstrapCIDRAndOverride(t *testing.T) {
 	inv := decodeInventory(t, ascendInventory)
 	// A bootstrap CIDR picks the address inside it, even off the rails.
-	got := resolveOne(inv, Network{CIDR: "172.30.0.0/16"}, Attachment{})
-	if got.Interface != "br_ens3_36" || got.IP != "172.30.8.31" || len(got.Warnings) != 0 {
+	got := resolveOne(inv, Network{CIDR: "198.51.100.0/24"}, Attachment{})
+	if got.Interface != "br_ens3_36" || got.IP != "198.51.100.31" || len(got.Warnings) != 0 {
 		t.Fatalf("cidr = %#v", got)
 	}
 	// A CIDR nothing is in leaves no bootstrap and says so; no fallback.
@@ -112,7 +112,7 @@ func TestRDMABootstrapCIDRAndOverride(t *testing.T) {
 		t.Fatalf("unmatched cidr = %#v", got)
 	}
 	// A node's pinned bootstrap beats the CIDR.
-	got = resolveOne(inv, Network{CIDR: "172.30.0.0/16"}, Attachment{Interface: "enp61s0f1"})
+	got = resolveOne(inv, Network{CIDR: "198.51.100.0/24"}, Attachment{Interface: "enp61s0f1"})
 	if got.Interface != "enp61s0f1" || got.IP != "100.64.29.217" || !got.BootstrapPinned || got.HCAsPinned {
 		t.Fatalf("override = %#v", got)
 	}

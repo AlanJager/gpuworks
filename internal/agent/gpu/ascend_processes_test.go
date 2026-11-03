@@ -36,7 +36,7 @@ func TestParseAscendProcessesOneChipCards(t *testing.T) {
 	}
 }
 
-// The row exactly as npu-smi 26.0.rc1 printed it on 172.30.8.31 (2026-10-30)
+// The row exactly as npu-smi 26.0.rc1 printed it on 198.51.100.31 (2026-10-30)
 // for a host python3 holding 512 MiB through ACL on NPU 4; a process outside
 // any container reads "NA" in the last column.
 func TestParseAscendProcessesRealRow(t *testing.T) {

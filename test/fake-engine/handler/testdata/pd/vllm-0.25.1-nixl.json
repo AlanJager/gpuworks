@@ -79,7 +79,7 @@
    ],
    "remote_engine_id": "8440d54a-6bd7-4696-87c2-d545e094ecce",
    "remote_request_id": "chatcmpl-8b4450db247d69b9-b284d53d",
-   "remote_host": "172.25.17.156",
+   "remote_host": "192.0.2.156",
    "remote_port": 18110,
    "tp_size": 1,
    "remote_num_tokens": 332
@@ -130,7 +130,7 @@
    ],
    "remote_engine_id": "8440d54a-6bd7-4696-87c2-d545e094ecce",
    "remote_request_id": "chatcmpl-8b4450db247d69b9-b284d53d",
-   "remote_host": "172.25.17.156",
+   "remote_host": "192.0.2.156",
    "remote_port": 18110,
    "tp_size": 1,
    "remote_num_tokens": 332
@@ -182,7 +182,7 @@
    ],
    "remote_engine_id": "8440d54a-6bd7-4696-87c2-d545e094ecce",
    "remote_request_id": "cmpl-89318bf61460183e-0-a3b5b0be",
-   "remote_host": "172.25.17.156",
+   "remote_host": "192.0.2.156",
    "remote_port": 18110,
    "tp_size": 1,
    "remote_num_tokens": 151

@@ -1,4 +1,5 @@
 import { APIError, apiErrorText, type APIErrorTranslator } from "../../apiError";
+import { modelStateKey } from "./BatchModelField";
 
 const FILE_REASONS = new Set([
   "invalid_json_line", "missing_custom_id", "duplicate_custom_id", "invalid_method", "invalid_url", "missing_body",
@@ -22,7 +23,7 @@ export interface BatchErrorText {
  */
 export function batchErrorText(t: APIErrorTranslator, tCommon: APIErrorTranslator, error: unknown): BatchErrorText {
   if (error instanceof APIError) {
-    if (error.code === "BATCH_FILE_MODELS_UNKNOWN") {
+    if (error.code === "BATCH_FILE_MODELS_UNKNOWN" || error.code === "BATCH_FILE_MODELS_ENDPOINT") {
       const params = { ...error.params, models: modelList(t, error.params) };
       return { message: apiErrorText(tCommon, new APIError(error.code, params, error.fallback, error.status)) };
     }
@@ -51,8 +52,14 @@ export function modelList(t: APIErrorTranslator, params: Record<string, unknown>
   return more > 0 ? [...models, t("errors.moreModels", { count: more })] : models;
 }
 
-/** batchWarningText words a warning of a created batch in the reader's language. */
+/**
+ * batchWarningText words a warning of a created batch in the reader's language:
+ * the models of a file as a list, and a model's state in words.
+ */
 export function batchWarningText(t: APIErrorTranslator, warning: { code: string; params?: Record<string, unknown> }): string {
-  const params = warning.code === "BATCH_FILE_MODELS_SLEEP_HELD" ? { ...warning.params, models: modelList(t, warning.params) } : warning.params;
+  const params: Record<string, unknown> = { ...warning.params };
+  if (Array.isArray(params.models)) params.models = modelList(t, warning.params);
+  const state = String(params.state ?? "");
+  if (modelStateKey[state]) params.state = t(`create.model.state.${modelStateKey[state]}`, {});
   return t(`create.warnings.${warning.code}`, { ...params, defaultValue: warning.code });
 }

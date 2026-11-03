@@ -26,6 +26,7 @@ await i18n.use(initReactI18next).init({
 });
 
 const { cleanup, fireEvent, render, screen, waitFor, within } = await import("@testing-library/react");
+const { Drawer } = await import("antd");
 const { default: AIAssistant } = await import("../src/components/AIAssistant.tsx");
 const { default: AssistantPanel } = await import("../src/assistant/AssistantPanel.tsx");
 const { AssistantProvider, useAssistantSubjects } = await import("../src/assistant/AssistantContext.tsx");
@@ -110,6 +111,37 @@ const instanceSubject = { kind: "instance" as const, uuid: "inst-1", label: "ins
 function renderInstance() {
   return shell(<AIAssistant task="instance.diagnose" subject={instanceSubject} buttonText="AI diagnose" />);
 }
+
+test("closing and reopening the assistant keeps the sibling detail and the unsent question", async () => {
+  shell(<Drawer open title="Deployment detail" onClose={() => assert.fail("assistant interaction closed the detail")}>Deployment facts</Drawer>);
+  fireEvent.keyDown(window, { key: "i", ctrlKey: true });
+  const question = await screen.findByRole("textbox", { name: "Question" });
+  fireEvent.change(question, { target: { value: "Why is this deployment waiting?" } });
+  const assistant = screen.getByRole("dialog", { name: /AI Assistant/ });
+  fireEvent.click(within(assistant).getByRole("button", { name: "Close" }));
+  await waitFor(() => assert.equal(document.body.classList.contains("assistant-open"), false));
+  assert.ok(screen.getByRole("dialog", { name: "Deployment detail" }));
+  fireEvent.keyDown(window, { key: "i", ctrlKey: true });
+  await waitFor(() => assert.equal(screen.getByRole("textbox", { name: "Question" }).getAttribute("disabled"), null));
+  assert.equal((screen.getByRole("textbox", { name: "Question" }) as HTMLTextAreaElement).value,
+    "Why is this deployment waiting?");
+  assert.ok(screen.getByRole("dialog", { name: "Deployment detail" }));
+});
+
+test("unmounting an open assistant releases its global layout state without removing other body classes", async () => {
+  document.body.classList.add("other-layout");
+  try {
+    const view = shell(null);
+    fireEvent.keyDown(window, { key: "i", ctrlKey: true });
+    await screen.findByRole("textbox", { name: "Question" });
+    assert.ok(document.body.classList.contains("assistant-open"));
+    view.unmount();
+    assert.equal(document.body.classList.contains("assistant-open"), false);
+    assert.ok(document.body.classList.contains("other-layout"));
+  } finally {
+    document.body.classList.remove("other-layout");
+  }
+});
 
 test("one click runs the task in the side panel: rule finding first, then steps, reasoning and text stream in", async () => {
   const stream = liveStream();
