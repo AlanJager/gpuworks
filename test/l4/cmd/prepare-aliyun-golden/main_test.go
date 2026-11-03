@@ -241,7 +241,10 @@ func TestPullImageCommandTriesMirrorsInOrderAndTagsTheCanonicalName(t *testing.T
 }
 
 func TestBootedChecksRequireModelImageRuntimeAndAGPUInAContainer(t *testing.T) {
-	command := bootedChecksCommand("/opt/gpuworks/test-fixtures/models/qwen2-0.5b", "gpustack/runner:cuda12.8-vllm0.17.1")
+	command := bootedChecksCommand("/opt/gpuworks/test-fixtures/models/qwen2-0.5b", "gpustack/runner:cuda12.8-vllm0.17.1", "")
+	if strings.Contains(command, "GPUWORKS_EXTRA_IMAGE") {
+		t.Error("no extra image was asked for, yet the checks look for one")
+	}
 	for _, want := range []string{"sha256sum -c SHA256SUMS", "docker image inspect", "grep -q nvidia", "docker run --rm --gpus all --entrypoint nvidia-smi", "GPUWORKS_GOLDEN_OK"} {
 		if !strings.Contains(command, want) {
 			t.Errorf("booted-image checks lack %q", want)
@@ -249,6 +252,56 @@ func TestBootedChecksRequireModelImageRuntimeAndAGPUInAContainer(t *testing.T) {
 	}
 	if !strings.HasPrefix(command, "set -eu") {
 		t.Error("checks must abort on the first failure")
+	}
+}
+
+func TestBootedChecksCoverTheExtraImageInAGPUContainer(t *testing.T) {
+	const extra = "swr.example/gpuworks/gpuworks-runner:cuda12.8-v100-vllm1cat1.5.1-r1"
+	command := bootedChecksCommand("/opt/m", "gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2", extra)
+	for _, want := range []string{
+		"docker image inspect '" + extra + "' --format 'GPUWORKS_EXTRA_IMAGE",
+		"docker run --rm --gpus all --entrypoint nvidia-smi '" + extra + "' -L",
+		"docker run --rm --gpus all --entrypoint nvidia-smi 'gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2' -L",
+		"GPUWORKS_GOLDEN_OK",
+	} {
+		if !strings.Contains(command, want) {
+			t.Errorf("booted-image checks lack %q", want)
+		}
+	}
+}
+
+func TestBuildStepsOnAnEarlierGoldenImageOnlyAddTheExtraImage(t *testing.T) {
+	phases := func(o options) string {
+		var names []string
+		for _, step := range buildSteps(o, nil) {
+			names = append(names, step.phase)
+		}
+		return strings.Join(names, ",")
+	}
+	base := options{modelPath: "/opt/m", dockerImage: "runner:a", pullSources: []string{"runner:a"}}
+	if got := phases(base); got != "install-docker,pull-runner-image,prepare-model,validate-source" {
+		t.Fatalf("fresh build phases = %s", got)
+	}
+	withExtra := base
+	withExtra.extraImage, withExtra.extraPullSources = "runner:v100", []string{"mirror/runner:v100", "runner:v100"}
+	if got := phases(withExtra); got != "install-docker,pull-runner-image,prepare-model,pull-extra-image,validate-source" {
+		t.Fatalf("fresh build with an extra image phases = %s", got)
+	}
+	layered := withExtra
+	layered.baseGolden = true
+	steps := buildSteps(layered, nil)
+	if got := phases(layered); got != "validate-base,pull-extra-image,validate-source" {
+		t.Fatalf("layered build phases = %s (it must not reinstall Docker or touch the model)", got)
+	}
+	if strings.Contains(steps[0].command, "runner:v100") {
+		t.Error("the base check must not expect the image it is about to add")
+	}
+	pull := steps[1].command
+	if strings.Index(pull, "docker pull 'mirror/runner:v100'") > strings.Index(pull, "docker pull 'runner:v100'") || !strings.Contains(pull, "docker tag \"$ok\" 'runner:v100'") {
+		t.Errorf("extra image pull must try the mirror first and tag the canonical name:\n%s", pull)
+	}
+	if !strings.Contains(steps[2].command, "GPUWORKS_EXTRA_IMAGE") || !strings.Contains(imageDescription(layered), "runner:v100") {
+		t.Error("the final check and the image description must name the extra image")
 	}
 }
 

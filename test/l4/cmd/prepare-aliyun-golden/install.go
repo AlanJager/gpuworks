@@ -129,10 +129,15 @@ sync`
 
 // bootedChecksCommand verifies a VM booted from the golden image: the model,
 // the runner image, Docker 29 with the nvidia runtime, the driver, and a
-// container that sees the GPU. It prints the evidence lines the L4 cases
-// expect.
-func bootedChecksCommand(modelPath, image string) string {
-	return "set -eu\n" + goldenimage.ValidationCommand(modelPath, image, "") + `
+// container that sees the GPU, from extraImage too when it is set. It prints
+// the evidence lines the L4 cases expect.
+func bootedChecksCommand(modelPath, image, extraImage string) string {
+	extra := ""
+	if extraImage != "" {
+		extra = "\ndocker image inspect " + goldenimage.ShellQuote(extraImage) + " --format 'GPUWORKS_EXTRA_IMAGE {{.Id}} {{.Size}}'" +
+			"\ndocker run --rm --gpus all --entrypoint nvidia-smi " + goldenimage.ShellQuote(extraImage) + " -L"
+	}
+	return "set -eu\n" + goldenimage.ValidationCommand(modelPath, image, "") + extra + `
 systemctl is-active docker >/dev/null
 server_version="$(docker version --format '{{.Server.Version}}')"
 case "$server_version" in ` + dockerMajor + `.*) ;; *) echo "unexpected Docker server version $server_version" >&2; exit 1;; esac
