@@ -41,14 +41,14 @@ git diff --check
 
 ## 版本号
 
-正式版本用日历版本号 `YY.M.PATCH`，tag 写作 `vYY.M.PATCH`，例如 `v26.10.0`。
+正式版本用日历版本号 `YY.M.PATCH`，tag 写作 `vYY.M.PATCH`，例如 `v26.11.0`。
 
 - `YY.M` 是从 master 切出发布分支的年月，月份不补零（`26.1.0`，不写 `26.01.0`）。一条发布线的首个版本 `PATCH` 为 0，
   之后只修缺陷的补丁版本依次加一。
 - 每条发布线一个分支 `release/YY.M`，从 master 上选定的提交切出。分支上只合缺陷修复：修复先合进 master，再
   `git cherry-pick -x` 到发布分支。
-- 在发布分支上打带注释的 tag 并推送（`git tag -a v26.10.0 -m "GPUWorks 26.10.0"`、`git push origin v26.10.0`）。
-  只有匹配 `^v[0-9]+\.[0-9]+\.[0-9]+$` 的 tag 会创建 pipeline 并发布到 `release` 渠道；`v26.10.0-rc.1` 这类 tag 不创建 pipeline。
+- 在发布分支上打带注释的 tag 并推送（`git tag -a v26.11.0 -m "GPUWorks 26.11.0"`、`git push origin v26.11.0`）。
+  只有匹配 `^v[0-9]+\.[0-9]+\.[0-9]+$` 的 tag 会创建 pipeline 并发布到 `release` 渠道；`v26.11.0-rc.1` 这类 tag 不创建 pipeline。
 - `v*` 必须在 GitLab 里设为 protected tag：签名私钥和发布源凭据是受保护变量，不受保护的 tag 的 pipeline 读不到它们，发布 job 会失败。
 - tag 推送后不移动、不重打：一个 release id 只对应一份字节（见下文发布流程第 1 步），有问题就发下一个补丁版本。
 - server 判断有没有更新时，两边都是版本 tag 就按版本号比较，否则（nightly 的短提交号、本地构建）按构建时间比较
@@ -109,7 +109,7 @@ CI 的 `release-publish` 在 master 或版本 tag 的四个构建 job 全部成�
 R2 账户令牌 `gpuworks-dist-ci`），不能建桶，所以两个发布脚本给 rclone 设了 `no_check_bucket`。
 
 本地手工补发用 `make dist-publish CHANNEL=nightly`，
-凭据放 `secrets/dist-publish.env`。发布 release：`make release-packages CHANNEL=release GPUWORKS_RELEASE_ID=v26.10.0` 后
+凭据放 `secrets/dist-publish.env`。发布 release：`make release-packages CHANNEL=release GPUWORKS_RELEASE_ID=v26.11.0` 后
 `make dist-publish CHANNEL=release`。
 
 Cloudflare 区域 `gpuworks.ai` 上为 `dl.gpuworks.ai` 配了两条缓存规则：`*/index.json`、`*/latest`、

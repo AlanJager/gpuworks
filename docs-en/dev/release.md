@@ -41,14 +41,14 @@ You must run `make runtime-assets-verify` separately before release, or missing 
 
 ## Version Numbers
 
-Releases use calendar versions `YY.M.PATCH`, tagged as `vYY.M.PATCH`, for example `v26.10.0`.
+Releases use calendar versions `YY.M.PATCH`, tagged as `vYY.M.PATCH`, for example `v26.11.0`.
 
 - `YY.M` is the year and month the release branch is cut from master, with no zero padding on the month (`26.1.0`, not `26.01.0`). The first version of a release line has `PATCH` 0;
   each later bug-fix-only patch version increments it by one.
 - Each release line has one branch, `release/YY.M`, cut from a chosen commit on master. Only bug fixes go onto the branch: a fix is merged into master first, then
   applied to the release branch with `git cherry-pick -x`.
-- Create an annotated tag on the release branch and push it (`git tag -a v26.10.0 -m "GPUWorks 26.10.0"`, `git push origin v26.10.0`).
-  Only tags that match `^v[0-9]+\.[0-9]+\.[0-9]+$` create a pipeline and publish to the `release` channel; tags such as `v26.10.0-rc.1` create no pipeline.
+- Create an annotated tag on the release branch and push it (`git tag -a v26.11.0 -m "GPUWorks 26.11.0"`, `git push origin v26.11.0`).
+  Only tags that match `^v[0-9]+\.[0-9]+\.[0-9]+$` create a pipeline and publish to the `release` channel; tags such as `v26.11.0-rc.1` create no pipeline.
 - `v*` must be a protected tag in GitLab: the signing private key and the distribution source credentials are protected variables, so a pipeline for an unprotected tag cannot read them and the publish job fails.
 - Once pushed, a tag is never moved or recreated: a release id maps to exactly one set of bytes (see step 1 of the publishing process below). If something is wrong, release the next patch version.
 - When a server decides whether an update exists, it compares version numbers if both sides are version tags, and otherwise (a nightly's short commit hash, a local build) compares build times
@@ -109,7 +109,7 @@ objects in `gpuworks-dl` (Alibaba Cloud RAM user and Huawei Cloud IAM user `gpuw
 and R2 account token `gpuworks-dist-ci`). These identities cannot create buckets, so both publishing scripts set `no_check_bucket` for rclone.
 
 To publish manually from a local machine, use `make dist-publish CHANNEL=nightly`,
-with credentials in `secrets/dist-publish.env`. To publish a release, run `make release-packages CHANNEL=release GPUWORKS_RELEASE_ID=v26.10.0`, then
+with credentials in `secrets/dist-publish.env`. To publish a release, run `make release-packages CHANNEL=release GPUWORKS_RELEASE_ID=v26.11.0`, then
 `make dist-publish CHANNEL=release`.
 
 Two cache rules are configured in the Cloudflare zone `gpuworks.ai` for `dl.gpuworks.ai`: Never cache `*/index.json`, `*/latest`,

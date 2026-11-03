@@ -169,10 +169,7 @@ func modelSourceEndpoint(model *store.Model) string {
 // source as one it does not know and fail on the node with an error about the
 // wrong host, so the download is refused here instead, where the message can
 // say what to do.
-//
-// Move this constant if the first release carrying the feature is numbered
-// differently.
-const minAgentVersionForURLModels = "1.0.0"
+const minAgentVersionForURLModels = "26.11.0"
 
 // agentPredatesURLModels reports whether a node's reported agent version is
 // provably older than the release that added HTTP directory downloads.
