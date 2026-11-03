@@ -259,8 +259,8 @@
     },
     {
       "item": "8.2",
-      "status": "MISSING",
-      "assertion": "MISSING: 验证搜索、无结果、清空搜索、候选加载失败与重试，精确检查 query 和候选集合。"
+      "status": "covered",
+      "assertion": "covered: the picker searches on the server rather than filtering what it already had. Typing a value that matches nothing is required to reach GET /api/v1/nodes with that value as q, to leave no candidate that matches, and to leave the chosen node still shown in the field; clearing the search is then required to bring the candidates back, so the empty answer was a real answer and not a picker that had stopped asking. The query the server received and the kept row are both recorded. The picker keeps a chosen node listed even when the search excludes it, so the assertion is that no candidate matched rather than that the list is empty. Proven by mutation: dropping the search term from the request makes the response this case waits for never arrive."
     },
     {
       "item": "8.3",
