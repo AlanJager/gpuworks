@@ -1,0 +1,44 @@
+{
+  "contract_id": "gpuworks/assistant/drawer-layout",
+  "name": "AI 助手与详情抽屉 / 并排交互 / 打开顺序不改变点击归属",
+  "driver_file": "test/e2e/assistant_drawer_layout.py",
+  "test_file": "test/e2e/assistant_drawer_layout.py",
+  "test_function": "test_assistant_drawer_layout",
+  "command": "make test-e2e-assistant-drawer-layout",
+  "page_id": "deployments",
+  "lane": "local-real-server-sqlite-llm-fixture",
+  "identity": "admin",
+  "priority": "P1",
+  "required_evidence": ["fixture", "ui", "request", "persistence", "cleanup"],
+  "runtime_evidence": {"status": "N/A", "reason": "Stopped deployment layout only; no deployment creation, agent, GPU or engine execution claim. The actual server serves the UI and AI tool loop; only its LLM upstream is a fixture."},
+  "crud": {"create": "MISSING: SQL deployment fixture only", "read": "PARTIAL: exact fixture name/state via real detail GET and UI", "update": "N/A: layout interactions must not change the deployment", "delete": "MISSING: owned fixture teardown only"},
+  "components": [
+    {"id": "assistant.panel", "type": "Drawer", "dimensions": ["open from header and shortcut", "both first-open orders", "real input and Send", "close and reopen", "shared width token"], "request": "POST /api/v1/ai/ask with exact question, locale and deployment_id", "persistence": "N/A: transient conversation"},
+    {"id": "deployment.detail", "type": "Drawer", "dimensions": ["name", "mask boundary", "content boundary", "outside click", "closing animation hit targets", "reopen", "1199/1200px boundary", "width clamp"], "request": "GET /api/v1/deployments/{id}", "persistence": "independent detail GET remains stopped with no instances"},
+    {"id": "deployment.delete-confirmation", "type": "Modal", "dimensions": ["exact title and description", "force checkbox", "visible confirm button", "Cancel retains parent detail and assistant"], "request": "no DELETE on Cancel", "persistence": "independent deployment GET unchanged"},
+    {"id": "node.detail", "type": "Drawer", "dimensions": ["shared DetailDrawer", "assistant-first", "real input", "mask boundary", "content boundary", "outside click"], "request": "GET /api/v1/nodes/{uuid} with exact fixture name", "persistence": "N/A: no node mutation"},
+    {"id": "deployment.other-controls", "type": "Page", "dimensions": ["search", "filters", "pagination", "edit", "start", "delete", "health", "replicas", "metrics"], "request": "MISSING: separate deployment contracts", "persistence": "MISSING: outside this layout case"}
+  ],
+  "checklist_items": {
+    "12.1": "covered: named deployment button opens the matching dialog; header/shortcut opens the assistant.",
+    "12.2": "partial: deployment/node content and mask stay left of assistant; native input/send, responsive boundaries, configurable width, and animation hit-tests; other controls remain MISSING.",
+    "12.3": "partial: native input click acquires focus; Tab cycle remains MISSING.",
+    "12.4": "partial: background dismisses only detail, assistant Close restores full-width detail, reopening preserves separation; Escape and focus-return remain MISSING.",
+    "12.5": "partial: nested delete confirmation title/description, force checkbox and Cancel remain operable; Cancel retains both parent drawers with no business mutation. Other nested dialogs remain MISSING.",
+    "12.6": "MISSING: submission errors/retry outside this layout case.",
+    "12.7": "N/A: no delete business operation.",
+    "12.8": "N/A: no destructive mutation.",
+    "22.5": "partial: separate en/zh runs cover the same layout behavior; language switching remains MISSING."
+  },
+  "failure_oracles": [
+    "Old content-only offset leaves the full-screen mask over the input; geometry fails at inputHit before a click can accidentally close the detail.",
+    "Assistant interaction closing detail fails retained dialog and route assertions.",
+    "Broken Send fails exact management request and the LLM answer derived from the real tool result.",
+    "Lost outside-click dismissal fails hidden detail with assistant still visible.",
+    "Unclipped closing content fails per-frame input hit-tests.",
+    "Divergent width sources or missing content clamp fails the 600px configuration geometry.",
+    "Clipped nested modal or broken Cancel fails native checkbox/cancel interaction and retained parent dialogs."
+  ],
+  "missing": ["full keyboard focus cycle, Escape and focus return", "other deployment/node controls and resource detail families", "nested dialogs other than deployment Delete/Cancel", "AI input validation, authorization, stream errors and retries (separate assistant contracts)", "real AI provider quality and inference"],
+  "product_contracts": ["ui/src/assistant/AssistantPanel.tsx", "ui/src/styles.css", "ui/src/pages/DeploymentsPage.tsx", "ui/src/components/detail/DetailDrawer.tsx", "ui/src/pages/nodes/NodeDetailDrawer.tsx"]
+}
