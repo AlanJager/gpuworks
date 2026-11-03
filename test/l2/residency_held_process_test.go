@@ -38,7 +38,7 @@ func TestProcessARequestWakesOnlyTheReplicaThePlatformSlept(t *testing.T) {
 		removeDeployment(t, base, token, chat)
 		_ = exec.Command("docker", "rm", "-f", first.ContainerID, second.ContainerID).Run()
 	})
-	if resp, data := authedDo(t, http.MethodPost, base, token, fmt.Sprintf("/api/v1/deployments/%d/sleep?level=2", chat), nil); resp.StatusCode != http.StatusOK {
+	if resp, data := authedDo(t, http.MethodPost, base, token, fmt.Sprintf("/api/v1/deployments/%d/sleep?level=2&wake_on_request=false", chat), nil); resp.StatusCode != http.StatusOK {
 		t.Fatalf("operator sleep status=%d body=%s", resp.StatusCode, data)
 	}
 	waitSleepLevelWithin(t, base, token, first.UUID, 2, time.Minute)

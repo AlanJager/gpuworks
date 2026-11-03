@@ -97,21 +97,31 @@ func TestProcessARequestTakesTheCardsBackFromAnOfflineDeployment(t *testing.T) {
 		t.Fatalf("online AUTO_WAKE params = %v", params)
 	}
 
-	// An operator's sleep is held: a request is refused, not held.
-	if resp, data := authedDo(t, http.MethodPost, base, token, fmt.Sprintf("/api/v1/deployments/%d/sleep?level=2", chat), nil); resp.StatusCode != http.StatusOK {
-		t.Fatalf("operator sleep status=%d body=%s", resp.StatusCode, data)
+	// An operator's sleep of a deployment that shares its cards is, by
+	// default, one a request wakes: the request is held and answered.
+	if resp, data := authedDo(t, http.MethodPost, base, token, fmt.Sprintf("/api/v1/deployments/%d/sleep?level=2", chat), nil); resp.StatusCode != http.StatusOK || !strings.Contains(string(data), `"wake_on_request":true`) {
+		t.Fatalf("operator sleep status=%d body=%s, want one a request wakes", resp.StatusCode, data)
+	}
+	waitSleepLevelWithin(t, base, token, chatInst.UUID, 2, time.Minute)
+	if status, body := ask("residency-chat", 2*time.Minute); status != http.StatusOK {
+		t.Fatalf("a request for an operator's sleep a request wakes = %d %s, want it answered", status, body)
+	}
+
+	// An operator's sleep the order holds is refused: a request gets 503.
+	if resp, data := authedDo(t, http.MethodPost, base, token, fmt.Sprintf("/api/v1/deployments/%d/sleep?level=2&wake_on_request=false", chat), nil); resp.StatusCode != http.StatusOK {
+		t.Fatalf("held operator sleep status=%d body=%s", resp.StatusCode, data)
 	}
 	waitSleepLevelWithin(t, base, token, chatInst.UUID, 2, time.Minute)
 	if status, body := ask("residency-chat", 30*time.Second); status != http.StatusServiceUnavailable || !strings.Contains(body, "asleep") {
-		t.Fatalf("a request for an operator's sleep = %d %s, want 503 asleep", status, body)
+		t.Fatalf("a request for an operator's held sleep = %d %s, want 503 asleep", status, body)
 	}
 }
 
-// sleepForTheTaking puts the deployment to sleep at L2, an operator's sleep,
-// so another may be placed on its cards.
+// sleepForTheTaking puts the deployment to sleep at L2, an operator's held
+// sleep, which keeps nothing on its cards, so another may be placed on them.
 func sleepForTheTaking(t *testing.T, base, token string, deploymentID uint, instanceUUID string) {
 	t.Helper()
-	if resp, data := authedDo(t, http.MethodPost, base, token, fmt.Sprintf("/api/v1/deployments/%d/sleep?level=2", deploymentID), nil); resp.StatusCode != http.StatusOK {
+	if resp, data := authedDo(t, http.MethodPost, base, token, fmt.Sprintf("/api/v1/deployments/%d/sleep?level=2&wake_on_request=false", deploymentID), nil); resp.StatusCode != http.StatusOK {
 		t.Fatalf("operator sleep status=%d body=%s", resp.StatusCode, data)
 	}
 	waitSleepLevelWithin(t, base, token, instanceUUID, 2, time.Minute)
