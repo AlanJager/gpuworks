@@ -205,7 +205,7 @@ More in [Architecture](docs-en/explanation/architecture.md) and the [ADRs](docs-
 
 Everything else: [documentation index](docs-en/README.md).
 
-[Documentation Website](https://gpuworks.readthedocs.io/en/)
+[Documentation Website](https://gpuworks.readthedocs.io/)
 
 ## Build from source
 
