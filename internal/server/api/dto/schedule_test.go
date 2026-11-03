@@ -126,8 +126,8 @@ func TestNodeReplacementWireAfterSec(t *testing.T) {
 }
 
 func TestWakeWaitResultWire(t *testing.T) {
-	waiting := WakeWaitResult{Status: "waiting", Woken: []string{}, Waiting: []string{"inst-1"}, Yielded: []string{"other"}}
-	const wire = `{"status":"waiting","woken":[],"waiting":["inst-1"],"yielded":["other"]}`
+	waiting := WakeWaitResult{Status: "waiting", Woken: []string{}, Waiting: []string{"inst-1"}, Yielded: []string{"other", "fixed"}, YieldedHeld: []string{"fixed"}}
+	const wire = `{"status":"waiting","woken":[],"waiting":["inst-1"],"yielded":["other","fixed"],"yielded_held":["fixed"]}`
 	if got := marshalString(t, waiting); got != wire {
 		t.Fatalf("marshal\n got %s\nwant %s", got, wire)
 	}
@@ -138,8 +138,8 @@ func TestWakeWaitResultWire(t *testing.T) {
 	// The lists are never omitted: an empty one is [] so a client can iterate
 	// without a nil check. (A nil slice would encode as null; the handler
 	// builds empty ones.)
-	if got, want := marshalString(t, WakeWaitResult{Status: "waking", Woken: []string{"a"}, Waiting: []string{}, Yielded: []string{}}),
-		`{"status":"waking","woken":["a"],"waiting":[],"yielded":[]}`; got != want {
+	if got, want := marshalString(t, WakeWaitResult{Status: "waking", Woken: []string{"a"}, Waiting: []string{}, Yielded: []string{}, YieldedHeld: []string{}}),
+		`{"status":"waking","woken":["a"],"waiting":[],"yielded":[],"yielded_held":[]}`; got != want {
 		t.Fatalf("waking = %s, want %s", got, want)
 	}
 }
