@@ -368,11 +368,11 @@ func TestControllerRunsACardMatrix(t *testing.T) {
 			t.Fatal(err)
 		}
 		inv := proto.NetInventory{
-			Interfaces: []proto.NetInterface{{Name: "br0", Addrs: []string{fmt.Sprintf("172.30.8.%d/16", 31+i)}}},
-			Management: &proto.ManagementAddress{Interface: "br0", IP: fmt.Sprintf("172.30.8.%d", 31+i)},
+			Interfaces: []proto.NetInterface{{Name: "br0", Addrs: []string{fmt.Sprintf("198.51.100.%d/16", 31+i)}}},
+			Management: &proto.ManagementAddress{Interface: "br0", IP: fmt.Sprintf("198.51.100.%d", 31+i)},
 		}
 		for _, card := range []int{3, 4} {
-			ip := fmt.Sprintf("172.20.%d.%d", 9+i, card)
+			ip := fmt.Sprintf("203.0.113.%d", 10*i+card)
 			inv.AcceleratorPorts = append(inv.AcceleratorPorts, proto.AcceleratorPort{Name: fmt.Sprintf("npu%d", card), Index: card, IP: ip, Netmask: "255.255.0.0", State: "UP", SpeedGbps: 200})
 			hub.owner[ip] = fmt.Sprintf("npu%d", card)
 		}
@@ -409,7 +409,7 @@ func TestControllerRunsACardMatrix(t *testing.T) {
 	if want := []string{"npu3>npu3:true", "npu3>npu4:false", "npu4>npu3:false", "npu4>npu4:true"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("matrix = %v, want %v", got, want)
 	}
-	if pairs[0].Rails[0].SourceIP != "172.20.9.3" || pairs[0].Rails[0].TargetIP != "172.20.10.3" || pairs[0].Target != "172.30.8.32" {
+	if pairs[0].Rails[0].SourceIP != "203.0.113.3" || pairs[0].Rails[0].TargetIP != "203.0.113.13" || pairs[0].Target != "198.51.100.32" {
 		t.Fatalf("pair = %+v", pairs[0])
 	}
 	// Two shifts, each one call on the source node only.

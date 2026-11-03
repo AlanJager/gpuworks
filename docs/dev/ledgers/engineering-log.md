@@ -264,14 +264,14 @@ GPU: NVIDIA A40
 ## 面向 nerdctl runtime driver 的 Ascend 设备注入
 
 - 状态：已实现（IMPLEMENTED，2026-08-28）；设备注入与基础切分分配已在
-  172.30.8.32 上完成真机验证
+  198.51.100.32 上完成真机验证
 - 发现日期：2026-08-28
 - 范围：`internal/agent/gpu/gpu.go`（`DriverAwareInjector`、`RuntimeMount`），
   `internal/agent/gpu/ascend.go`（`RuntimeInjectionForDriver`），
   `internal/agent/engine/engine.go`（`applyDeviceInjection`）
 
 `internal/agent/runtime/nerdctl`（2026-08-28 新增）为 GPUWorks 提供了一个
-面向 containerd/nerdctl 主机的通用容器生命周期 driver —— `172.30.8.32`
+面向 containerd/nerdctl 主机的通用容器生命周期 driver —— `198.51.100.32`
 （`huawei-ascend-node`）上只有 `nerdctl 1.7.6`，完全没有 Docker daemon，此前
 无法纳管。这个通用 driver（run/stop/rm/status/logs/exec/pull/inspect/
 save/load）已实现、已做单测，并在 `.32` 上针对真实 `nerdctl` 完成验证
@@ -304,7 +304,7 @@ Runtime 插件时不会有任何东西读它）；保留了 `ASCEND_RT_VISIBLE_D
 `internal/agent/runtime/nerdctl.Driver`（Run/Exec/Remove）。它由
 `TestAscendNerdctlDeviceInjectionEndToEnd` 执行
 （`make test-l4-ascend-nerdctl-devinject`，接入 `l4-ascend-pool-partition-inference`
-这个 CI job）。目标机（实测 `172.30.8.31`：aarch64、有 nerdctl、无 docker、
+这个 CI job）。目标机（实测 `198.51.100.31`：aarch64、有 nerdctl、无 docker、
 无 Go）的网络链路批量传输只能维持约 45 KiB/s（与本代码无关 —— 即使是几 MB
 的原始 `ssh ... cat >` 管道也会像 `scp` 一样卡住），因此测试通过普通 SSH
 stdin 管道发送一个 gzip 压缩的二进制文件，而不是用 `scp`；GPU 节点上从不

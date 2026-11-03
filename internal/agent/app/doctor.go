@@ -256,7 +256,7 @@ func doctorAccelerators(ctx context.Context, r *proto.DoctorReport, p gpu.Prober
 	// Not gated on p.Available(), which asks whether the vendor CLI can
 	// answer. A prober now describes the cards on the host's PCI bus
 	// whether or not its CLI answers, and a host whose CLI is wedged is
-	// the one somebody is running doctor on: on 172.30.8.31, where
+	// the one somebody is running doctor on: on 198.51.100.31, where
 	// npu-smi cannot initialize, the gate turned eight 910B4 into "no
 	// accelerator tool found (CPU-only node)".
 	vendor := p.Vendor()
@@ -275,7 +275,7 @@ func doctorAccelerators(ctx context.Context, r *proto.DoctorReport, p gpu.Prober
 		// failed to describe. A probe that could not ask still knows which
 		// cards are in the machine, and on the host somebody is running
 		// doctor on that list is the point: returning here showed eight
-		// 910B4 as none (172.30.8.31, 2026-10-15).
+		// 910B4 as none (198.51.100.31, 2026-10-15).
 		r.Findings = append(r.Findings, proto.DoctorFinding{
 			Code: proto.DoctorAcceleratorProbeFailed, Level: proto.DoctorLevelError,
 			Probe: accelerator.ToolCommand(vendor), Evidence: []proto.DoctorField{{Name: "error", Value: err.Error()}},

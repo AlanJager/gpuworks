@@ -86,12 +86,12 @@ func TestCallableDistributedRanksReadTheirFactsFromVariables(t *testing.T) {
 		params Params
 		want   []string
 	}{
-		{"leader", Params{APIPort: 19001, NNodes: 2, NodeRank: 0, MasterAddr: "192.168.100.10", MasterPort: 29501, NodeAddress: "192.168.100.10"},
-			[]string{"--model", "/model", "--port", "19001", "--tp", "2", "--gpus", "1", "--rank", "0/2", "--master", "192.168.100.10:29501", "--headless", "0", "--advertise", "192.168.100.10"}},
+		{"leader", Params{APIPort: 19001, NNodes: 2, NodeRank: 0, MasterAddr: "198.51.100.140", MasterPort: 29501, NodeAddress: "198.51.100.140"},
+			[]string{"--model", "/model", "--port", "19001", "--tp", "2", "--gpus", "1", "--rank", "0/2", "--master", "198.51.100.140:29501", "--headless", "0", "--advertise", "198.51.100.140"}},
 		// A headless rank was reserved no port; it says so with zero. Its own
 		// address is its own, never the leader's.
-		{"follower", Params{APIPort: 0, NNodes: 2, NodeRank: 1, MasterAddr: "192.168.100.10", MasterPort: 29501, Headless: true, NodeAddress: "192.168.100.11"},
-			[]string{"--model", "/model", "--port", "0", "--tp", "2", "--gpus", "1", "--rank", "1/2", "--master", "192.168.100.10:29501", "--headless", "1", "--advertise", "192.168.100.11"}},
+		{"follower", Params{APIPort: 0, NNodes: 2, NodeRank: 1, MasterAddr: "198.51.100.140", MasterPort: 29501, Headless: true, NodeAddress: "198.51.100.141"},
+			[]string{"--model", "/model", "--port", "0", "--tp", "2", "--gpus", "1", "--rank", "1/2", "--master", "198.51.100.140:29501", "--headless", "1", "--advertise", "198.51.100.141"}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			params := test.params
@@ -142,7 +142,7 @@ func TestSingleNodeLaunchHasNoMasterVariables(t *testing.T) {
 	}
 	// The node's own address is a distributed fact too, even when the
 	// planner knows it for a single-node launch.
-	params.NodeAddress = "192.168.100.10"
+	params.NodeAddress = "198.51.100.140"
 	params.TemplateArgs = append(append([]string(nil), callableServeArgs...), "--advertise", "${NODE_ADDR}")
 	if _, err := callableLaunch(t, params, ResolveLaunchInput{}); err == nil || !strings.Contains(err.Error(), "NODE_ADDR is unresolved") {
 		t.Fatalf("ResolveLaunch() = %v, want NODE_ADDR unresolved", err)

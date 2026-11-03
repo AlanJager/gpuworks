@@ -329,7 +329,7 @@ func TestUnusableGPUReportsReadyCapabilityButIsNotScheduled(t *testing.T) {
 
 // The other half: a warning is not a refusal. A card the vendor tool
 // flagged - rows pending repair, say - still serves, and is simply used
-// after the cards at OK. Twelve PPU cards on 172.24.0.210 are in this
+// after the cards at OK. Twelve PPU cards on 192.0.2.210 are in this
 // state (seven at Warning), and a platform that would not place on them
 // would leave most of that host idle over a finding its own vocabulary
 // calls schedulable.

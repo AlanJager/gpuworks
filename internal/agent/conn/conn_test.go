@@ -816,13 +816,13 @@ func (p *portProber) AcceleratorPorts(context.Context) []proto.AcceleratorPort {
 }
 
 func TestReportStatusCarriesAcceleratorPorts(t *testing.T) {
-	ports := []proto.AcceleratorPort{{Name: "npu3", Index: 3, IP: "172.20.9.59", Netmask: "255.255.0.0", State: "UP", SpeedGbps: 200}}
+	ports := []proto.AcceleratorPort{{Name: "npu3", Index: 3, IP: "203.0.113.59", Netmask: "255.255.0.0", State: "UP", SpeedGbps: 200}}
 	p := &portProber{FixedProber: gpu.FixedProber{VendorName: "ascend"}, ports: ports}
 	ctrl := &nopRWC{}
 	c := New(Credentials{NodeUUID: "node-1"}, nil, &inboundHandlers{}, p, slog.Default())
 	c.ctrl = ctrl
 	c.reportStatus(context.Background())
-	if got := string(ctrl.BytesCopy()); !strings.Contains(got, `"accelerator_ports":[{"name":"npu3","index":3,"ip":"172.20.9.59","netmask":"255.255.0.0","state":"UP","speed_gbps":200}]`) {
+	if got := string(ctrl.BytesCopy()); !strings.Contains(got, `"accelerator_ports":[{"name":"npu3","index":3,"ip":"203.0.113.59","netmask":"255.255.0.0","state":"UP","speed_gbps":200}]`) {
 		t.Fatalf("status without accelerator ports: %s", got)
 	}
 

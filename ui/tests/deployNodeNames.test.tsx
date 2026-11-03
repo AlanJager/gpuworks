@@ -63,11 +63,11 @@ test("the compute-node cell folds a spread deployment and names nothing when unp
   const folded = (others: number, total: number) => `plus ${others} of ${total}`;
   assert.equal(runtimeNodesLabel(undefined, folded), "—");
   assert.equal(runtimeNodesLabel([], folded), "—");
-  assert.equal(runtimeNodesLabel([{ node_uuid: "aaaa1111", node_name: "172.30.8.31", instances: 1 }], folded), "172.30.8.31");
+  assert.equal(runtimeNodesLabel([{ node_uuid: "aaaa1111", node_name: "198.51.100.31", instances: 1 }], folded), "198.51.100.31");
   assert.equal(runtimeNodesLabel([
-    { node_uuid: "aaaa1111", node_name: "172.30.8.31", instances: 1 },
-    { node_uuid: "bbbb2222", node_name: "172.30.8.32", instances: 1 },
-  ], folded), "172.30.8.31 plus 1 of 2");
+    { node_uuid: "aaaa1111", node_name: "198.51.100.31", instances: 1 },
+    { node_uuid: "bbbb2222", node_name: "198.51.100.32", instances: 1 },
+  ], folded), "198.51.100.31 plus 1 of 2");
   // A node with no operator name falls back to its uuid, as elsewhere.
   assert.equal(runtimeNodesLabel([{ node_uuid: "0123456789abcdef", instances: 1 }], folded), "01234567");
 });

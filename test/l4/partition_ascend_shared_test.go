@@ -21,7 +21,7 @@ import (
 func TestAscendSameCardDualContainerMemoryIsolation(t *testing.T) {
 	host := requiredHostEnv(t, "GPUWORKS_ASCEND_PRIMARY_HOST")
 	jump := hostEnv("GPUWORKS_ASCEND_SSH_JUMP", "")
-	image := hostEnv("GPUWORKS_ASCEND_L4_IMAGE", "172.20.9.4:10043/ai-model-registry/vllm-ascend:0.26.0rc1")
+	image := requiredHostEnv(t, "GPUWORKS_ASCEND_L4_IMAGE")
 	card := hostEnv("GPUWORKS_ASCEND_L4_CARD", "3")
 	if _, err := strconv.Atoi(card); err != nil {
 		t.Fatalf("GPUWORKS_ASCEND_L4_CARD must be a physical numeric card index: %q", card)

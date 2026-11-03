@@ -61,7 +61,7 @@ func (p *HygonProber) Probe(ctx context.Context) ([]proto.GPUInfo, error) {
 	out, err := p.run(ctx, hygonInventoryArgs()...)
 	if err != nil {
 		// hy-smi answers "No device available" on a host whose only DCU is
-		// passed through to a virtual machine (measured on 172.25.17.133).
+		// passed through to a virtual machine (measured on 192.0.2.133).
 		// The card is there; it is simply not this host's to use.
 		return p.roster(nil, false), err
 	}

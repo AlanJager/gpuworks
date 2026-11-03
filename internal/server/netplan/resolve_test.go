@@ -301,8 +301,8 @@ func TestResolveDetectsTheLinkLayer(t *testing.T) {
 
 func TestManagementCarriesRolesNothingElseIsAttachedFor(t *testing.T) {
 	nodes := []Node{
-		{ID: 1, Labels: map[string]string{"pool": "ib"}, Inventory: managedInventory("172.25.17.10", "eth0")},
-		{ID: 2, Inventory: managedInventory("172.25.17.11", "eth0"), RolesOff: rolesOff(RoleServing)},
+		{ID: 1, Labels: map[string]string{"pool": "ib"}, Inventory: managedInventory("192.0.2.10", "eth0")},
+		{ID: 2, Inventory: managedInventory("192.0.2.11", "eth0"), RolesOff: rolesOff(RoleServing)},
 		{ID: 3, Inventory: h20Inventory()}, // an older agent: no management address
 	}
 	ib := network(7, "ib", TypeHostEthernet, "10.96.0.0/13", "", RoleCompute)
@@ -314,13 +314,13 @@ func TestManagementCarriesRolesNothingElseIsAttachedFor(t *testing.T) {
 	}
 	for _, role := range []string{RoleStorageSync, RoleServing} {
 		r := find(t, out, 1, role)
-		if !r.IsManagement() || r.Network.Name != ManagementName || r.Network.ID != 0 || r.IP != "172.25.17.10" || r.Interface != "eth0" {
+		if !r.IsManagement() || r.Network.Name != ManagementName || r.Network.ID != 0 || r.IP != "192.0.2.10" || r.Interface != "eth0" {
 			t.Fatalf("%s = %+v", role, r)
 		}
 	}
 	// A role turned off stays off; the others remain.
 	absent(t, out, 2, RoleServing)
-	if r := find(t, out, 2, RoleCompute); !r.IsManagement() || r.IP != "172.25.17.11" {
+	if r := find(t, out, 2, RoleCompute); !r.IsManagement() || r.IP != "192.0.2.11" {
 		t.Fatalf("node 2 compute = %+v", r)
 	}
 	for _, role := range Roles {

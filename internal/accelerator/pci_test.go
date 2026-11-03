@@ -97,7 +97,7 @@ func TestAnUnrecognizedFunctionOfASupportedVendorIsReported(t *testing.T) {
 	}
 	// Nor the rest of a Huawei server, which carries the same vendor id:
 	// bridges, SAS and SATA, USB, NICs, the DMA engine. Measured on
-	// 172.30.8.31, where reporting them printed eighteen lines.
+	// 198.51.100.31, where reporting them printed eighteen lines.
 	for _, fn := range []struct {
 		class  uint32
 		driver string

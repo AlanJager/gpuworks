@@ -16,12 +16,12 @@ import (
 
 // manualAgentLine is how `ps axww` listed an agent started by hand on the PPU
 // host, beside the systemd one.
-const ownUnitLine = "2172144 ?        Ssl    0:05 /opt/gpuworks/gpuworks-agent run --server http://172.30.8.122:8800 --token 0123456789abcdef --state /opt/gpuworks --connect-mode agent_dial --listen :19090"
+const ownUnitLine = "2172144 ?        Ssl    0:05 /opt/gpuworks/gpuworks-agent run --server http://198.51.100.122:8800 --token 0123456789abcdef --state /opt/gpuworks --connect-mode agent_dial --listen :19090"
 
-const manualAgentLine = "2996222 ?        Sl     6:23 /var/tmp/ppu-own-agent-recovery-r3-once-20261011/gpuworks-agent run --server http://172.21.2.60:8800 --token 9a7fc99fd545dadc7ed4a711a462137893cef679a5dfd4c3 --state /var/tmp/ppu-own-agent-recovery-r3-once-20261011/state --driver docker --connect-mode agent_dial"
+const manualAgentLine = "2996222 ?        Sl     6:23 /var/tmp/ppu-own-agent-recovery-r3-once-20261011/gpuworks-agent run --server http://192.0.2.60:8800 --token 9a7fc99fd545dadc7ed4a711a462137893cef679a5dfd4c3 --state /var/tmp/ppu-own-agent-recovery-r3-once-20261011/state --driver docker --connect-mode agent_dial"
 
 func TestExistingAgentCheckWarnsBeforeAnInstallReplacesAnAgent(t *testing.T) {
-	const self = "http://172.30.8.122:8800"
+	const self = "http://198.51.100.122:8800"
 	for _, tc := range []struct {
 		name   string
 		host   *unitHost
@@ -31,16 +31,16 @@ func TestExistingAgentCheckWarnsBeforeAnInstallReplacesAnAgent(t *testing.T) {
 		{name: "clean-host", host: &unitHost{}, status: "ok", detail: "no gpuworks agent on the host"},
 		{name: "own-unit", host: &unitHost{unitServer: self + "/", active: true, processes: []string{ownUnitLine}},
 			status: "warn", detail: "the gpuworks-agent service on the host already runs for this server; installing replaces it and the node it belongs to goes offline"},
-		{name: "another-servers-unit", host: &unitHost{unitServer: "http://172.25.17.156:8800", active: true},
-			status: "warn", detail: "the gpuworks-agent service on the host belongs to another server (http://172.25.17.156:8800); installing replaces it and that server loses this host"},
-		{name: "another-servers-stopped-unit", host: &unitHost{unitServer: "http://172.25.17.156:8800"},
-			status: "warn", detail: "the gpuworks-agent service on the host belongs to another server (http://172.25.17.156:8800); installing replaces it and that server loses this host"},
+		{name: "another-servers-unit", host: &unitHost{unitServer: "http://192.0.2.156:8800", active: true},
+			status: "warn", detail: "the gpuworks-agent service on the host belongs to another server (http://192.0.2.156:8800); installing replaces it and that server loses this host"},
+		{name: "another-servers-stopped-unit", host: &unitHost{unitServer: "http://192.0.2.156:8800"},
+			status: "warn", detail: "the gpuworks-agent service on the host belongs to another server (http://192.0.2.156:8800); installing replaces it and that server loses this host"},
 		{name: "agent-started-by-hand", host: &unitHost{processes: []string{manualAgentLine}},
-			status: "warn", detail: "agents for other servers (http://172.21.2.60:8800) run outside the gpuworks-agent service; installing leaves them running"},
-		// What 172.24.0.210 looked like to its own server on 2026-10-14.
+			status: "warn", detail: "agents for other servers (http://192.0.2.60:8800) run outside the gpuworks-agent service; installing leaves them running"},
+		// What 192.0.2.210 looked like to its own server on 2026-10-14.
 		{name: "own-unit-and-another-by-hand", host: &unitHost{unitServer: self, active: true, processes: []string{manualAgentLine, ownUnitLine}},
 			status: "warn", detail: "the gpuworks-agent service on the host already runs for this server; installing replaces it and the node it belongs to goes offline; " +
-				"agents for other servers (http://172.21.2.60:8800) run outside the gpuworks-agent service; installing leaves them running"},
+				"agents for other servers (http://192.0.2.60:8800) run outside the gpuworks-agent service; installing leaves them running"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			host, port := startFakeSSHServer(t, "root", "pw", tc.host.handler(t))
@@ -56,7 +56,7 @@ func TestExistingAgentCheckWarnsBeforeAnInstallReplacesAnAgent(t *testing.T) {
 }
 
 func TestGuardedInstallStopsBeforeChangingAHostWithAnAgent(t *testing.T) {
-	foreign := &unitHost{unitServer: "http://172.25.17.156:8800", active: true}
+	foreign := &unitHost{unitServer: "http://192.0.2.156:8800", active: true}
 	inner := foreign.handler(t)
 	var mu sync.Mutex
 	var cmds []string
@@ -68,12 +68,12 @@ func TestGuardedInstallStopsBeforeChangingAHostWithAnAgent(t *testing.T) {
 	})
 	installer := NewSSHInstaller(func(string) ([]byte, error) { return nil, errors.New("agent binary is not available in this test") })
 	req := SSHInstallRequest{
-		Target: "root@" + host, Port: port, ServerURL: "http://172.30.8.122:8800", Token: "tok",
+		Target: "root@" + host, Port: port, ServerURL: "http://198.51.100.122:8800", Token: "tok",
 		SSHAuth: SSHAuth{Mode: AuthPassword, Password: "pw"}, GuardExistingAgent: true,
 	}
 	_, err := installer.InstallSSH(t.Context(), req)
 	var existing *ExistingAgentError
-	if !errors.As(err, &existing) || existing.Found.UnitServer != "http://172.25.17.156:8800" {
+	if !errors.As(err, &existing) || existing.Found.UnitServer != "http://192.0.2.156:8800" {
 		t.Fatalf("install err = %v", err)
 	}
 	mu.Lock()
@@ -114,11 +114,11 @@ func TestParseExistingAgentDedupesServers(t *testing.T) {
 }
 
 func TestAnInstallLeavesOtherServersHandStartedAgentsAlone(t *testing.T) {
-	byHand := parseExistingAgent("process http://172.21.2.60:8800\n")
-	if byHand.Replaces("http://172.30.8.122:8800") {
+	byHand := parseExistingAgent("process http://192.0.2.60:8800\n")
+	if byHand.Replaces("http://198.51.100.122:8800") {
 		t.Fatal("another server's agent outside the unit keeps running, so it does not stop the install")
 	}
-	if !byHand.Replaces("http://172.21.2.60:8800/") {
+	if !byHand.Replaces("http://192.0.2.60:8800/") {
 		t.Fatal("this server's agent started by hand is stopped by the rootless start")
 	}
 }
@@ -133,12 +133,12 @@ func TestExistingAgentCommandReadsTheServerOfAMacsJob(t *testing.T) {
 	}
 	state := filepath.Join(t.TempDir(), "secrets", "agent-state")
 	const token = "mac-job-fixture-token-c8b31d"
-	if err := agentconf.Write(state, agentconf.Config{Server: "http://172.21.1.10:8800", Token: token}); err != nil {
+	if err := agentconf.Write(state, agentconf.Config{Server: "http://192.0.2.110:8800", Token: token}); err != nil {
 		t.Fatal(err)
 	}
 	for name, plistData := range map[string][]byte{
 		"configured":      launchd.Job{Binary: state + "/gpuworks-agent", StateDir: state}.Plist(),
-		"earlier install": launchd.Spec{Label: launchd.AgentLabel, Args: []string{"/Users/a/.gpuworks/gpuworks-agent", "run", "--server", "http://172.21.1.10:8800", "--state", "/Users/a/.gpuworks"}}.Plist(),
+		"earlier install": launchd.Spec{Label: launchd.AgentLabel, Args: []string{"/Users/a/.gpuworks/gpuworks-agent", "run", "--server", "http://192.0.2.110:8800", "--state", "/Users/a/.gpuworks"}}.Plist(),
 	} {
 		t.Run(name, func(t *testing.T) {
 			home := t.TempDir()
@@ -176,14 +176,14 @@ esac
 						t.Fatal(err)
 					}
 					found := parseExistingAgent(string(out))
-					if !found.Unit || found.UnitServer != "http://172.21.1.10:8800" || strings.Contains(string(out), token) {
+					if !found.Unit || found.UnitServer != "http://192.0.2.110:8800" || strings.Contains(string(out), token) {
 						t.Fatalf("found %+v from %q", found, out)
 					}
 					if process.line == "" {
 						if len(found.ProcessServers) != 0 || len(found.ProcessStates) != 0 {
 							t.Fatalf("unexpected processes: %+v from %q", found, out)
 						}
-					} else if len(found.ProcessServers) != 1 || found.ProcessServers[0] != "http://172.21.1.10:8800" ||
+					} else if len(found.ProcessServers) != 1 || found.ProcessServers[0] != "http://192.0.2.110:8800" ||
 						len(found.ProcessStates) != 1 || found.ProcessStates[0] != state || !strings.Contains(string(out), "/secrets/") {
 						t.Fatalf("configured process: %+v from %q", found, out)
 					}
@@ -196,11 +196,11 @@ esac
 // A nohup install runs beside the host's unit and its other agents: it goes
 // ahead without asking unless an agent already runs from its own directory.
 func TestGuardedNohupInstallAsksOnlyAboutItsOwnDirectory(t *testing.T) {
-	host := &unitHost{unitServer: "http://172.30.8.122:8800", active: true, processes: []string{ownUnitLine, manualAgentLine}}
+	host := &unitHost{unitServer: "http://198.51.100.122:8800", active: true, processes: []string{ownUnitLine, manualAgentLine}}
 	h, port := startFakeSSHServer(t, "root", "pw", host.handler(t))
 	installer := NewSSHInstaller(func(string) ([]byte, error) { return nil, errors.New("agent binary is not available in this test") })
 	req := SSHInstallRequest{
-		Target: "root@" + h, Port: port, ServerURL: "http://172.30.8.122:8800", Token: "tok",
+		Target: "root@" + h, Port: port, ServerURL: "http://198.51.100.122:8800", Token: "tok",
 		SSHAuth: SSHAuth{Mode: AuthPassword, Password: "pw"}, GuardExistingAgent: true, NoSystemd: true,
 	}
 	var existing *ExistingAgentError

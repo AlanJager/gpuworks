@@ -238,7 +238,7 @@ bash shared/check_vendor_base.sh <base-ref>       # 必须在 prepare-base.sh �
 
 # 真实发布（凭据只在进程内读取；--env-file - 从 stdin 读，可不落盘）
 ssh gpu3 'cd /var/tmp/s7-publish && https_proxy=http://dev1.mytrix.me:7890 \
-  no_proxy=registry.zstack.ai,172.25.17.156,172.26.1.15 \
+  no_proxy=registry.zstack.ai,192.0.2.156,192.0.2.15 \
   python3 publish.py cuda13.0-sglang0.5.21-r2 swr --dest-tag zz-pilot-... --env-file -' < secrets/registries.env
 ```
 

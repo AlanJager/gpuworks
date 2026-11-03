@@ -526,12 +526,12 @@ test-l4-ascend-pool-partition-inference: cross-agents
 ## the self-owned Ascend 910B4 machine that runs real Docker + Ascend-Docker-
 ## Runtime (not udocker — unaffected by the Gitee device-share restriction). The
 ## host is whatever GPUWORKS_ASCEND_PRIMARY_HOST names; do not read an address
-## out of this comment (172.30.8.31 is a nerdctl-only pool member today).
+## out of this comment (198.51.100.31 is a nerdctl-only pool member today).
 test-l4-ascend-primary:
 	GPUWORKS_TEST_STRICT=1 CGO_ENABLED=0 $(GO) test $(GO_TEST_FLAGS) -v -tags=cloudgpu,partition -run '^TestAscendSameCardDualContainerMemoryIsolation$$' -timeout=15m ./test/l4
 
 ## test-l4-ascend-preflight: read-only SSH probe (npu-smi/docker, no containers)
-## against the configured Ascend pool members (172.30.8.31 is one of them:
+## against the configured Ascend pool members (198.51.100.31 is one of them:
 ## measured aarch64 + nerdctl, no docker). Fast and non-destructive; runs before
 ## the deeper partition tests.
 test-l4-ascend-preflight:

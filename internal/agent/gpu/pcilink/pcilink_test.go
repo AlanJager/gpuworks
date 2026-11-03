@@ -54,7 +54,7 @@ func tree(t *testing.T, capture string) string {
 	return root
 }
 
-// A K100 behind a PCIe switch (172.25.17.133, captured idle on 2026-11-01):
+// A K100 behind a PCIe switch (192.0.2.133, captured idle on 2026-11-01):
 // root port 64 → switch upstream port 65 → downstream port 66 → card 67.
 func TestLinksBehindASwitch(t *testing.T) {
 	r := Reader{Root: tree(t, "hygon-k100-switch.tsv")}
@@ -116,7 +116,7 @@ func TestAERAndVirtual(t *testing.T) {
 	if _, ok := r.AER("0000:67:00.0"); ok {
 		t.Fatal("a device without AER files reported counters")
 	}
-	// The kernel's format, as read on 172.25.17.133.
+	// The kernel's format, as read on 192.0.2.133.
 	files := map[string]string{
 		"aer_dev_correctable": "RxErr 0\nBadTLP 2\nBadDLLP 1\nTOTAL_ERR_COR 3\n",
 		"aer_dev_nonfatal":    "Undefined 0\nDLP 0\nTOTAL_ERR_NONFATAL 0\n",

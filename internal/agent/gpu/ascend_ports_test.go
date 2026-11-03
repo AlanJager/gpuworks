@@ -71,14 +71,14 @@ func ascendPortProber(hccn *fakeHCCN, info string) *AscendProber {
 
 func TestAscendAcceleratorPortsReadEachListedCard(t *testing.T) {
 	hccn := &fakeHCCN{cards: map[string]map[string]string{
-		"2": hccnCard("172.20.9.58", "UP", "200000 Mb/s"),
-		"4": hccnCard("172.20.9.60", "DOWN", "Unknown!"),
+		"2": hccnCard("203.0.113.58", "UP", "200000 Mb/s"),
+		"4": hccnCard("203.0.113.60", "DOWN", "Unknown!"),
 	}}
 	p := ascendPortProber(hccn, ascendInfo26Sample)
 	got := p.AcceleratorPorts(t.Context())
 	want := []proto.AcceleratorPort{
-		{Name: "npu2", Index: 2, IP: "172.20.9.58", Netmask: "255.255.0.0", State: "UP", SpeedGbps: 200},
-		{Name: "npu4", Index: 4, IP: "172.20.9.60", Netmask: "255.255.0.0", State: "DOWN"},
+		{Name: "npu2", Index: 2, IP: "203.0.113.58", Netmask: "255.255.0.0", State: "UP", SpeedGbps: 200},
+		{Name: "npu4", Index: 4, IP: "203.0.113.60", Netmask: "255.255.0.0", State: "DOWN"},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("ports = %+v, want %+v", got, want)
@@ -100,7 +100,7 @@ func TestAscendAcceleratorPortsReadEachListedCard(t *testing.T) {
 func TestAscendAcceleratorPortsReadHCCSVNIC(t *testing.T) {
 	hccn := &fakeHCCN{cards: map[string]map[string]string{
 		"2": {
-			"-ip":    "ipaddr:10.20.0.4\nnetmask:255.255.0.0\n",
+			"-ip":    "ipaddr:203.0.113.104\nnetmask:255.255.0.0\n",
 			"-link":  "link status: UP\n",
 			"-speed": "Speed: 200000 Mb/s\n",
 			"-vnic":  "vnic link status: UP\nvnic ipaddr:192.9.2.197\nvnic netmask:255.0.0.0\n",
@@ -114,12 +114,12 @@ func TestAscendAcceleratorPortsReadHCCSVNIC(t *testing.T) {
 }
 
 func TestAscendAcceleratorPortsAreCached(t *testing.T) {
-	hccn := &fakeHCCN{cards: map[string]map[string]string{"2": hccnCard("172.20.9.58", "UP", "200000 Mb/s"), "4": hccnCard("172.20.9.60", "UP", "200000 Mb/s")}}
+	hccn := &fakeHCCN{cards: map[string]map[string]string{"2": hccnCard("203.0.113.58", "UP", "200000 Mb/s"), "4": hccnCard("203.0.113.60", "UP", "200000 Mb/s")}}
 	p := ascendPortProber(hccn, ascendInfo26Sample)
 	first := p.AcceleratorPorts(t.Context())
 	first[0].IP = "changed by the caller"
 	calls := len(hccn.calls)
-	if second := p.AcceleratorPorts(t.Context()); len(hccn.calls) != calls || second[0].IP != "172.20.9.58" {
+	if second := p.AcceleratorPorts(t.Context()); len(hccn.calls) != calls || second[0].IP != "203.0.113.58" {
 		t.Fatalf("second read: calls %d -> %d, ports %+v", calls, len(hccn.calls), second)
 	}
 	p.portsTTL = time.Nanosecond
@@ -149,7 +149,7 @@ func TestAscendAcceleratorPortsLeaveOutCardsThatDoNotAnswer(t *testing.T) {
 }
 
 func TestAscendAcceleratorPortsNeedAWorkingProbe(t *testing.T) {
-	hccn := &fakeHCCN{cards: map[string]map[string]string{"2": hccnCard("172.20.9.58", "UP", "200000 Mb/s")}}
+	hccn := &fakeHCCN{cards: map[string]map[string]string{"2": hccnCard("203.0.113.58", "UP", "200000 Mb/s")}}
 	p := &AscendProber{
 		infoTTL: time.Hour,
 		runner:  func(context.Context, ...string) (string, error) { return "", errors.New("driver busy") },
@@ -161,7 +161,7 @@ func TestAscendAcceleratorPortsNeedAWorkingProbe(t *testing.T) {
 }
 
 func TestParseHCCNAnswers(t *testing.T) {
-	if ip, mask := parseHCCNAddress("ipaddr:172.20.9.59\nnetmask:255.255.0.0\n"); ip != "172.20.9.59" || mask != "255.255.0.0" {
+	if ip, mask := parseHCCNAddress("ipaddr:203.0.113.59\nnetmask:255.255.0.0\n"); ip != "203.0.113.59" || mask != "255.255.0.0" {
 		t.Fatalf("address = %q %q", ip, mask)
 	}
 	for _, out := range []string{"", "Get invalid device id.\n", "Get gateway failed, because no gateway was preset there!\n"} {
@@ -201,7 +201,7 @@ type fakePing struct {
 
 func (f *fakePing) run(ctx context.Context, args ...string) (string, error) {
 	if len(args) != 6 || args[0] != "-i" || (args[2] != "-ping" && args[2] != "-hccs_ping") || args[3] != "-g" || args[4] != "address" {
-		return hccnCard("172.20.9.1", "UP", "200000 Mb/s")[args[2]], nil
+		return hccnCard("203.0.113.101", "UP", "200000 Mb/s")[args[2]], nil
 	}
 	card, ip := args[1], args[5]
 	f.mu.Lock()
@@ -240,27 +240,27 @@ func (f *fakePing) run(ctx context.Context, args ...string) (string, error) {
 }
 
 func TestAscendPingAcceleratorPort(t *testing.T) {
-	ping := &fakePing{reachable: map[string]bool{"3->172.20.9.82": true}, delay: 5 * time.Millisecond}
+	ping := &fakePing{reachable: map[string]bool{"3->203.0.113.82": true}, delay: 5 * time.Millisecond}
 	p := &AscendProber{hccn: ping.run}
-	rtt, err := p.PingAcceleratorPort(t.Context(), "npu3", "172.20.9.82", time.Second)
+	rtt, err := p.PingAcceleratorPort(t.Context(), "npu3", "203.0.113.82", time.Second)
 	if err != nil || rtt < 0.27 || rtt > 0.28 {
 		t.Fatalf("reachable ping = %v, %v; want the mean of the three answers", rtt, err)
 	}
 	// No answer: the tool hangs, the limit ends it, and the card can ping
 	// again at once.
 	start := time.Now()
-	if _, err := p.PingAcceleratorPort(t.Context(), "npu3", "172.20.9.83", 30*time.Millisecond); !errors.Is(err, ErrAcceleratorPingTimeout) {
+	if _, err := p.PingAcceleratorPort(t.Context(), "npu3", "203.0.113.83", 30*time.Millisecond); !errors.Is(err, ErrAcceleratorPingTimeout) {
 		t.Fatalf("unreachable ping err = %v", err)
 	}
 	if took := time.Since(start); took > 500*time.Millisecond || ping.killed != 1 {
 		t.Fatalf("unreachable ping took %v, killed %d", took, ping.killed)
 	}
-	if _, err := p.PingAcceleratorPort(t.Context(), "npu3", "172.20.9.82", time.Second); err != nil {
+	if _, err := p.PingAcceleratorPort(t.Context(), "npu3", "203.0.113.82", time.Second); err != nil {
 		t.Fatalf("ping after a timed-out one: %v", err)
 	}
 	// Anything that is not an IPv4 address never reaches the tool.
 	calls := len(ping.calls)
-	for _, target := range []string{"", "node-2", "172.20.9.82; rm -rf /", "fd00::1", "address"} {
+	for _, target := range []string{"", "node-2", "203.0.113.82; rm -rf /", "fd00::1", "address"} {
 		if _, err := p.PingAcceleratorPort(t.Context(), "npu3", target, time.Second); err == nil || errors.Is(err, ErrAcceleratorPingTimeout) {
 			t.Fatalf("target %q: err = %v", target, err)
 		}
@@ -271,19 +271,19 @@ func TestAscendPingAcceleratorPort(t *testing.T) {
 	// The caller's cancellation ends a hung ping too.
 	ctx, cancel := context.WithCancel(t.Context())
 	go func() { time.Sleep(10 * time.Millisecond); cancel() }()
-	if _, err := p.PingAcceleratorPort(ctx, "npu3", "172.20.9.83", time.Minute); !errors.Is(err, ErrAcceleratorPingTimeout) {
+	if _, err := p.PingAcceleratorPort(ctx, "npu3", "203.0.113.83", time.Minute); !errors.Is(err, ErrAcceleratorPingTimeout) {
 		t.Fatalf("cancelled ping err = %v", err)
 	}
 }
 
 func TestAscendPingHCCS(t *testing.T) {
-	ping := &fakePing{reachable: map[string]bool{"3->172.20.9.82": true}, delay: time.Millisecond}
+	ping := &fakePing{reachable: map[string]bool{"3->203.0.113.82": true}, delay: time.Millisecond}
 	p := &AscendProber{hccn: ping.run}
-	rtt, err := p.PingAcceleratorPortProtocol(t.Context(), "npu3", "172.20.9.82", proto.AcceleratorPingProtocolHCCS, time.Second)
+	rtt, err := p.PingAcceleratorPortProtocol(t.Context(), "npu3", "203.0.113.82", proto.AcceleratorPingProtocolHCCS, time.Second)
 	if err != nil || rtt < 0.27 || rtt > 0.28 {
 		t.Fatalf("HCCS ping = %v, %v; want microsecond output converted to milliseconds", rtt, err)
 	}
-	if len(ping.calls) != 1 || ping.calls[0] != "3->172.20.9.82" {
+	if len(ping.calls) != 1 || ping.calls[0] != "3->203.0.113.82" {
 		t.Fatalf("calls = %v", ping.calls)
 	}
 }
@@ -291,7 +291,7 @@ func TestAscendPingHCCS(t *testing.T) {
 // Two pings on one card never overlap, whoever starts them; different cards
 // do run side by side.
 func TestAscendPingsOnOneCardRunInTurn(t *testing.T) {
-	ping := &fakePing{reachable: map[string]bool{"3->172.20.9.82": true, "4->172.20.9.83": true}, delay: 40 * time.Millisecond}
+	ping := &fakePing{reachable: map[string]bool{"3->203.0.113.82": true, "4->203.0.113.83": true}, delay: 40 * time.Millisecond}
 	p := &AscendProber{hccn: ping.run}
 	var wg sync.WaitGroup
 	errs := make([]error, 6)
@@ -300,9 +300,9 @@ func TestAscendPingsOnOneCardRunInTurn(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			card, target := "npu3", "172.20.9.82"
+			card, target := "npu3", "203.0.113.82"
 			if i%2 == 1 {
-				card, target = "npu4", "172.20.9.83"
+				card, target = "npu4", "203.0.113.83"
 			}
 			_, errs[i] = p.PingAcceleratorPort(t.Context(), card, target, time.Second)
 		}()
@@ -324,12 +324,12 @@ func TestAscendPingReportsTheToolsOwnFailure(t *testing.T) {
 	answers := map[string]string{
 		"failed":  "Command execute failed!\n",
 		"invalid": "Get invalid device id.\n",
-		"lost":    "device 3 PING 172.20.9.82\n3 packets transmitted, 0 received, 100.00% packet loss\n",
+		"lost":    "device 3 PING 203.0.113.82\n3 packets transmitted, 0 received, 100.00% packet loss\n",
 		"silent":  "",
 	}
 	for name, out := range answers {
 		p := &AscendProber{hccn: func(context.Context, ...string) (string, error) { return out, nil }}
-		_, err := p.PingAcceleratorPort(t.Context(), "npu3", "172.20.9.82", time.Second)
+		_, err := p.PingAcceleratorPort(t.Context(), "npu3", "203.0.113.82", time.Second)
 		if err == nil || errors.Is(err, ErrAcceleratorPingTimeout) {
 			t.Fatalf("%s: err = %v, want the tool's failure", name, err)
 		}
@@ -339,9 +339,9 @@ func TestAscendPingReportsTheToolsOwnFailure(t *testing.T) {
 	}
 	// One answer out of three is still an answer.
 	p := &AscendProber{hccn: func(context.Context, ...string) (string, error) {
-		return "device 3 PING 172.20.9.82\nrecv seq=2,time=0.500000ms\n3 packets transmitted, 1 received, 66.67% packet loss\n", nil
+		return "device 3 PING 203.0.113.82\nrecv seq=2,time=0.500000ms\n3 packets transmitted, 1 received, 66.67% packet loss\n", nil
 	}}
-	if rtt, err := p.PingAcceleratorPort(t.Context(), "npu3", "172.20.9.82", time.Second); err != nil || rtt != 0.5 {
+	if rtt, err := p.PingAcceleratorPort(t.Context(), "npu3", "203.0.113.82", time.Second); err != nil || rtt != 0.5 {
 		t.Fatalf("partial loss = %v, %v", rtt, err)
 	}
 }
@@ -349,11 +349,11 @@ func TestAscendPingReportsTheToolsOwnFailure(t *testing.T) {
 // A card is checked against the last inventory, without reading a new one:
 // a refresh waits for the cards' locks, which the pings of a test hold.
 func TestAscendPingKnowsItsCardsFromTheLastInventory(t *testing.T) {
-	ping := &fakePing{reachable: map[string]bool{"2->172.20.9.82": true, "7->172.20.9.82": true}}
+	ping := &fakePing{reachable: map[string]bool{"2->203.0.113.82": true, "7->203.0.113.82": true}}
 	p := &AscendProber{infoTTL: time.Hour, hccn: ping.run, runner: func(context.Context, ...string) (string, error) { return ascendInfo26Sample, nil }}
 	// Names that are not this vendor's cards never reach the tool.
 	for _, card := range []string{"", "npu", "mlx5_0:1", "npu03", "gpu2"} {
-		if _, err := p.PingAcceleratorPort(t.Context(), card, "172.20.9.82", time.Second); !errors.Is(err, ErrAcceleratorNoCard) {
+		if _, err := p.PingAcceleratorPort(t.Context(), card, "203.0.113.82", time.Second); !errors.Is(err, ErrAcceleratorNoCard) {
 			t.Fatalf("card %q: err = %v", card, err)
 		}
 	}
@@ -361,7 +361,7 @@ func TestAscendPingKnowsItsCardsFromTheLastInventory(t *testing.T) {
 		t.Fatalf("calls = %v", ping.calls)
 	}
 	// Before any inventory the tool is left to say; card 7 answers here.
-	if _, err := p.PingAcceleratorPort(t.Context(), "npu7", "172.20.9.82", time.Second); err != nil {
+	if _, err := p.PingAcceleratorPort(t.Context(), "npu7", "203.0.113.82", time.Second); err != nil {
 		t.Fatalf("before an inventory: %v", err)
 	}
 	// The inventory lists cards 2 and 4 (the sample npu-smi table).
@@ -369,13 +369,13 @@ func TestAscendPingKnowsItsCardsFromTheLastInventory(t *testing.T) {
 		t.Fatalf("ports = %+v", ports)
 	}
 	calls := len(ping.calls)
-	if _, err := p.PingAcceleratorPort(t.Context(), "npu7", "172.20.9.82", time.Second); !errors.Is(err, ErrAcceleratorNoCard) {
+	if _, err := p.PingAcceleratorPort(t.Context(), "npu7", "203.0.113.82", time.Second); !errors.Is(err, ErrAcceleratorNoCard) {
 		t.Fatalf("a card the inventory lacks: err = %v", err)
 	}
 	if len(ping.calls) != calls {
 		t.Fatal("a card the node does not own reached the tool")
 	}
-	if _, err := p.PingAcceleratorPort(t.Context(), "npu2", "172.20.9.82", time.Second); err != nil {
+	if _, err := p.PingAcceleratorPort(t.Context(), "npu2", "203.0.113.82", time.Second); err != nil {
 		t.Fatalf("an owned card: %v", err)
 	}
 	if len(ping.calls) != calls+1 {

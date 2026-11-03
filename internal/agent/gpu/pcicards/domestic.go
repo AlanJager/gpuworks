@@ -26,11 +26,11 @@ var domesticModels = []struct {
 	name           string
 	provenance     string
 }{
-	{0x19e5, 0xd500, "310P3", "npu-smi 24.1.1.3 on 172.25.115.0, 2026-10-17: NPU 4 at bus-id 0000:17:00.0, reported as 310P3; lspci at that address reads 19e5:d500 with no name"},
-	{0x19e5, 0xd802, "910B4", "npu-smi on 172.30.8.32, 2026-10-15: NPU 0 and 6, bus-ids 0000:C1:00.0 and 0000:41:00.0"},
+	{0x19e5, 0xd500, "310P3", "npu-smi 24.1.1.3 on 192.0.2.115, 2026-10-17: NPU 4 at bus-id 0000:17:00.0, reported as 310P3; lspci at that address reads 19e5:d500 with no name"},
+	{0x19e5, 0xd802, "910B4", "npu-smi on 198.51.100.32, 2026-10-15: NPU 0 and 6, bus-ids 0000:C1:00.0 and 0000:41:00.0"},
 	{0x19e5, 0xd803, "910C", "npu-smi 26.1.1 on syl-910c, 2026-10-15: twenty d803 at 81:00.0..9f:00.0, reported as multi-chip Ascend910, which is what this platform calls a 910C (ascend_chips.go)"},
 	{0x19e5, 0xd806, "950PR", "npu-smi 25.7.rc1.10, 2026-10-15: one card at bus-id 0000:71:00.0, 128 GiB HBM, reported as Ascend950PR; lspci at that same address reads 19e5:d806"},
-	{0x1ded, 0x6001, "PPU-ZW810E", "ppu-smi on 172.24.0.210, 2026-10-15: all twelve cards it serves"},
+	{0x1ded, 0x6001, "PPU-ZW810E", "ppu-smi on 192.0.2.210, 2026-10-15: all twelve cards it serves"},
 }
 
 // domesticNames indexes domesticModels by (vendor, device).

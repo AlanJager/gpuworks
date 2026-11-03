@@ -26,17 +26,17 @@ func TestComputeNetworkEnvByType(t *testing.T) {
 		{"roce with no matched hca still forces IB", multi(ComputeNetwork{Type: netplan.TypeHostRDMA}), map[string]string{"NCCL_IB_DISABLE": "0", "NCCL_NET": "IB"}},
 		// HCCL builds its communicator over the host address and interface it
 		// is told; the cards are not named, and nothing NCCL reads is set.
-		{"accelerator cards", Params{NNodes: 2, Vendor: "ascend", NodeAddress: "172.30.8.31", ComputeNetwork: ComputeNetwork{Type: netplan.TypeAcceleratorRDMA, Interface: "br_ens3_36", HCAs: []string{"npu3", "npu4"}, LinkLayer: "roce"}}, map[string]string{
-			"HCCL_IF_IP": "172.30.8.31", "HCCL_SOCKET_IFNAME": "br_ens3_36", "GLOO_SOCKET_IFNAME": "br_ens3_36",
+		{"accelerator cards", Params{NNodes: 2, Vendor: "ascend", NodeAddress: "198.51.100.31", ComputeNetwork: ComputeNetwork{Type: netplan.TypeAcceleratorRDMA, Interface: "br_ens3_36", HCAs: []string{"npu3", "npu4"}, LinkLayer: "roce"}}, map[string]string{
+			"HCCL_IF_IP": "198.51.100.31", "HCCL_SOCKET_IFNAME": "br_ens3_36", "GLOO_SOCKET_IFNAME": "br_ens3_36",
 		}},
 		{"accelerator cards without a bootstrap", Params{NNodes: 2, Vendor: "ascend", ComputeNetwork: ComputeNetwork{Type: netplan.TypeAcceleratorRDMA, HCAs: []string{"npu3"}}}, map[string]string{}},
-		{"accelerator HCCS", Params{NNodes: 2, Vendor: "ascend", NodeAddress: "172.30.8.31", ComputeNetwork: ComputeNetwork{Type: netplan.TypeAcceleratorHCCS, Interface: "br_ens3_36", HCAs: []string{"npu3", "npu4"}}}, map[string]string{
+		{"accelerator HCCS", Params{NNodes: 2, Vendor: "ascend", NodeAddress: "198.51.100.31", ComputeNetwork: ComputeNetwork{Type: netplan.TypeAcceleratorHCCS, Interface: "br_ens3_36", HCAs: []string{"npu3", "npu4"}}}, map[string]string{
 			"GLOO_SOCKET_IFNAME": "br_ens3_36", "HCCL_SOCKET_IFNAME": "br_ens3_36", "ASCEND_GLOBAL_RESOURCE_CONFIG": `{"comm_resource_config.protocol_desc":["hccs:device"]}`, "ACL_OP_INIT_MODE": "1", "ASCEND_ENABLE_USE_FABRIC_MEM": "1",
 		}},
 		// Which variables say it is the vendor's business: a vendor whose
 		// cards own no ports has none, and gets only the rendezvous interface.
 		{"accelerator network, vendor without card ports", Params{NNodes: 2, Vendor: "nvidia", NodeAddress: "10.0.0.1", ComputeNetwork: ComputeNetwork{Type: netplan.TypeAcceleratorRDMA, Interface: "eth0"}}, map[string]string{"GLOO_SOCKET_IFNAME": "eth0"}},
-		{"accelerator cards on a single node", Params{NNodes: 1, NodeAddress: "172.30.8.31", ComputeNetwork: ComputeNetwork{Type: netplan.TypeAcceleratorRDMA, Interface: "br_ens3_36"}}, nil},
+		{"accelerator cards on a single node", Params{NNodes: 1, NodeAddress: "198.51.100.31", ComputeNetwork: ComputeNetwork{Type: netplan.TypeAcceleratorRDMA, Interface: "br_ens3_36"}}, nil},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -144,7 +144,7 @@ func TestResolveLaunchOnAcceleratorNetwork(t *testing.T) {
 	}
 	params := Params{
 		ModelPath: "/model", TensorParallel: 2, NNodes: 2, NodeRank: 1, Headless: true,
-		MasterAddr: "172.30.8.31", MasterPort: 29500, NodeAddress: "172.30.8.32", Vendor: "ascend",
+		MasterAddr: "198.51.100.31", MasterPort: 29500, NodeAddress: "198.51.100.32", Vendor: "ascend",
 		Quick:          materializedConfig(t, EngineVLLM),
 		ComputeNetwork: ComputeNetwork{Type: netplan.TypeAcceleratorRDMA, Interface: "br_ens3_36", HCAs: []string{"npu3", "npu4"}, LinkLayer: "roce"},
 	}
@@ -152,7 +152,7 @@ func TestResolveLaunchOnAcceleratorNetwork(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for key, want := range map[string]string{"HCCL_IF_IP": "172.30.8.32", "HCCL_SOCKET_IFNAME": "br_ens3_36", "GLOO_SOCKET_IFNAME": "br_ens3_36"} {
+	for key, want := range map[string]string{"HCCL_IF_IP": "198.51.100.32", "HCCL_SOCKET_IFNAME": "br_ens3_36", "GLOO_SOCKET_IFNAME": "br_ens3_36"} {
 		if got := launch.Env[key]; got != want {
 			t.Fatalf("%s = %q, want %q (env %v)", key, got, want, launch.Env)
 		}

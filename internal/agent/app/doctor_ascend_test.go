@@ -117,7 +117,7 @@ func findingByCode(r proto.DoctorReport, code string) (proto.DoctorFinding, bool
 	return proto.DoctorFinding{}, false
 }
 
-// The real case: node 192.168.200.29, 14 dies, die 0 fails aclrtSetDevice with
+// The real case: node 192.0.2.129, 14 dies, die 0 fails aclrtSetDevice with
 // 507033 and 1-13 pass. Diagnose must show the broken die in the table and as
 // a finding while the others stay OK.
 func TestDoctorAscendReportsTheDieTheRuntimeCannotUse(t *testing.T) {
@@ -157,7 +157,7 @@ func TestDoctorAscendReportsTheDieTheRuntimeCannotUse(t *testing.T) {
 	}
 	// The evidence is a command, not a description of one: the reader has to
 	// be able to paste it and watch the same die fail. Measured on
-	// 192.168.200.29, where npu-smi calls die 0 healthy and dmesg says
+	// 192.0.2.129, where npu-smi calls die 0 healthy and dmesg says
 	// nothing about it, so running the check by hand is the only way to see
 	// the failure.
 	if !strings.Contains(target.Probe, accelerator.AscendACLSmokeScript) {

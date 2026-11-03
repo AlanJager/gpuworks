@@ -32,7 +32,7 @@ import "strings"
 // Healthy false because it cannot serve, not because anything ails it. A
 // card lent to a virtual machine arrives with no level and that boolean,
 // and inferring a fault from it put "故障" on four perfectly good 910B4
-// (172.30.8.31, 2026-10-15) — the very "somebody looking for a fault that
+// (198.51.100.31, 2026-10-15) — the very "somebody looking for a fault that
 // is not there" this package warns about elsewhere.
 func CardHealthLevel(ownership, status string, healthy bool) string {
 	switch level := NormalizeHealthLevel(status); level {

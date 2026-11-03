@@ -167,7 +167,7 @@ var (
 	hccnSpeedRE    = regexp.MustCompile(`(?mi)^Speed:\s*([0-9]+)\s*Mb/s`)
 )
 
-// parseHCCNAddress reads "ipaddr:172.20.9.59\nnetmask:255.255.0.0".
+// parseHCCNAddress reads "ipaddr:203.0.113.59\nnetmask:255.255.0.0".
 func parseHCCNAddress(out string) (ip, netmask string) {
 	if m := hccnIPRE.FindStringSubmatch(out); m != nil {
 		ip = m[1]
@@ -304,7 +304,7 @@ var (
 
 // parseHCCNPing reads
 //
-//	device 3 PING 172.20.9.82
+//	device 3 PING 203.0.113.82
 //	recv seq=0,time=0.359000ms
 //	3 packets transmitted, 3 received, 0.00% packet loss
 //

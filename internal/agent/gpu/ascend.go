@@ -170,7 +170,7 @@ func (p *AscendProber) Probe(ctx context.Context) ([]proto.GPUInfo, error) {
 	}
 	out, err := p.info(ctx)
 	if err != nil {
-		// npu-smi could not be asked (on 172.30.8.31 it answers "dcmi
+		// npu-smi could not be asked (on 198.51.100.31 it answers "dcmi
 		// module initialize failed"), so nothing is known about any card.
 		// The eight 910B4 in the machine are still a fact.
 		return p.roster(nil, false), err
@@ -294,7 +294,7 @@ var deviceNodeExists = func(path string) bool {
 // ascendNerdctlDriverMounts are the host driver/DCMI paths that the Ascend
 // Docker Runtime plugin normally injects implicitly. nerdctl/containerd has
 // no equivalent plugin, so they must be bind-mounted explicitly. Real-machine
-// verified on 172.30.8.32 (nerdctl 1.7.6, CANN driver 26.0.rc1): raw
+// verified on 198.51.100.32 (nerdctl 1.7.6, CANN driver 26.0.rc1): raw
 // /dev/davinciN passthrough plus these five mounts is sufficient for
 // torch.npu.is_available() to return true — no CANN toolkit mount is needed
 // beyond what the inference image itself bakes in.
@@ -315,7 +315,7 @@ var ascendNerdctlDriverMounts = []RuntimeMount{
 // --runtime ascend. Device paths are passed unrenamed
 // (--device /dev/davinciN, not /dev/davinciN:/dev/davinci0) because renaming
 // fails outright on this nerdctl/containerd combination — confirmed on
-// 172.30.8.32.
+// 198.51.100.32.
 func (p *AscendProber) RuntimeInjectionForDriver(indexes []int, driverName string) RuntimeInjection {
 	base := p.RuntimeInjection(indexes)
 	if driverName == "udocker" && len(indexes) > 0 {

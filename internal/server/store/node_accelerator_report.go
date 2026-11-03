@@ -50,7 +50,7 @@ const (
 //
 // The middle case is the one real hardware taught. A host whose vendor CLI
 // never answers used to have its cards written once and then frozen: on
-// 172.30.8.31 the rows stood untouched for half an hour while the node
+// 198.51.100.31 the rows stood untouched for half an hour while the node
 // reported every minute, so a card later handed to a virtual machine, or
 // unbound, or pulled out, would never have been noticed. The sibling host
 // .32 only escaped that by chance — its npu-smi happened to succeed once
@@ -190,7 +190,7 @@ func presenceOnlyRow(old, fromPCI GPU) GPU {
 	// A card the CLI has never described has no CLI facts to protect: its
 	// UUID is what the CLI hands out, and without one every stored field
 	// came from a PCI read. Keeping its name then freezes whatever the
-	// first read called it — on 172.30.8.31, "19e5:d802" for cards an
+	// first read called it — on 198.51.100.31, "19e5:d802" for cards an
 	// agent that carries the model names now calls 910B4.
 	describedByCLI := old.UUID != ""
 	if !describedByCLI || !accelerator.CardUsable(fromPCI.Ownership) {

@@ -69,7 +69,7 @@ func writePCIIDs(t *testing.T, root, body string) string {
 
 const mixedHostPCIIDs = "10de  NVIDIA Corporation\n\t2684  AD102 [GeForce RTX 4090]\n\t26b9  AD102GL [L40S]\n19e5  Huawei Technologies Co., Ltd.\n"
 
-// The host 172.25.115.0 as its bus showed it on 2026-10-17: an RTX 4090 and
+// The host 192.0.2.115 as its bus showed it on 2026-10-17: an RTX 4090 and
 // an Atlas 310P3 (19e5:d500, which pci.ids does not name), next to the
 // ASPEED BMC display and the Huawei-id BMC display function that are
 // nobody's accelerator. Both vendors are listed; a card passed through to a

@@ -281,7 +281,7 @@ func TestProbeWithoutTheCLIStillReportsTheCards(t *testing.T) {
 // not. The vendor CLI names the rest, and that is this model's name from
 // the vendor's own tool on this very machine — better than any database,
 // and the one thing that keeps a list from calling the same model two
-// different things. Seen on 172.24.0.210: three cards reading
+// different things. Seen on 192.0.2.210: three cards reading
 // "1ded:6001" beside twelve reading "PPU-ZW810E".
 func TestAnUnlistedCardTakesTheNameTheCLIGivesItsSiblings(t *testing.T) {
 	ppu := func(bdf, driver string) pcicards.Card {

@@ -15,8 +15,8 @@
 #
 # 用法：
 #   ./prepare-base.sh <src-ref> <dst-ref> [platform]
-#   ./prepare-base.sh 172.25.17.156:5000/asllm:2.0.0-vanilla \
-#                     172.25.17.156:5000/asllm:2.0.0-vanilla-clean
+#   ./prepare-base.sh 192.0.2.156:5000/asllm:2.0.0-vanilla \
+#                     192.0.2.156:5000/asllm:2.0.0-vanilla-clean
 # 之后把 base-mirrors.local 里的映射指向 dst-ref。
 set -euo pipefail
 

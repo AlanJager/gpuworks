@@ -24,7 +24,7 @@ type acceleratorAPI struct {
 	err    error
 }
 
-// newAcceleratorAPI serves a node on the mixed host 172.25.115.0: it
+// newAcceleratorAPI serves a node on the mixed host 192.0.2.115: it
 // manages the Ascend card and its bus also has an RTX 4090.
 func newAcceleratorAPI(t *testing.T) *acceleratorAPI {
 	t.Helper()

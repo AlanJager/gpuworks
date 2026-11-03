@@ -4,15 +4,15 @@ import { buildInstallCommand } from "../src/nodeInstallCommand.ts";
 
 test("custom agent-dial URL replaces both bootstrap URLs", () => {
   const command = buildInstallCommand({
-    baseCommand: "curl -fsSL http://172.20.16.58:8199/install.sh | sh -s -- --server http://172.20.16.58:8199 --token token-1",
+    baseCommand: "curl -fsSL http://192.0.2.58:8199/install.sh | sh -s -- --server http://192.0.2.58:8199 --token token-1",
     token: "token-1",
     connectMode: "agent_dial",
     serverURL: "http://sa1.tunnelfrp.com:10001/",
-    origin: "http://172.20.16.58:8199",
+    origin: "http://192.0.2.58:8199",
   });
   assert.equal(command, "curl -fsSL 'http://sa1.tunnelfrp.com:10001/install.sh' | sh -s -- --server 'http://sa1.tunnelfrp.com:10001' --token 'token-1'");
   assert.equal((command.match(/--server /g) ?? []).length, 1);
-  assert.ok(!command.includes("172.20.16.58"));
+  assert.ok(!command.includes("192.0.2.58"));
 });
 
 test("default URL preserves the API command and server-dial options", () => {

@@ -13,30 +13,30 @@ import (
 // card 6's port being down. The cards' addresses share one /16 that no host
 // interface is in.
 const huawei31Inventory = `{"interfaces":[
- {"name":"br_ens3_36","state":"up","mtu":1500,"speed_mbps":25000,"addrs":["172.30.8.31/16"]},
+ {"name":"br_ens3_36","state":"up","mtu":1500,"speed_mbps":25000,"addrs":["198.51.100.31/16"]},
  {"name":"enp61s0f0","state":"up","mtu":9000,"speed_mbps":25000,"addrs":["100.64.29.209/30"]}],
  "rdma_ports":[
  {"device":"rocep61s0f0","port":1,"state":"ACTIVE","link_layer":"Ethernet","rate_gbps":25,"netdev":"enp61s0f0"}],
  "accelerator_ports":[
- {"name":"npu3","index":3,"ip":"172.20.9.59","netmask":"255.255.0.0","state":"UP","speed_gbps":200},
- {"name":"npu4","index":4,"ip":"172.20.9.60","netmask":"255.255.0.0","state":"UP","speed_gbps":200}],
- "management":{"interface":"br_ens3_36","ip":"172.30.8.31"}}`
+ {"name":"npu3","index":3,"ip":"203.0.113.59","netmask":"255.255.0.0","state":"UP","speed_gbps":200},
+ {"name":"npu4","index":4,"ip":"203.0.113.60","netmask":"255.255.0.0","state":"UP","speed_gbps":200}],
+ "management":{"interface":"br_ens3_36","ip":"198.51.100.31"}}`
 
 const huawei32Inventory = `{"interfaces":[
- {"name":"br_ens3_36","state":"up","mtu":1500,"speed_mbps":25000,"addrs":["172.30.8.32/16"]},
+ {"name":"br_ens3_36","state":"up","mtu":1500,"speed_mbps":25000,"addrs":["198.51.100.32/16"]},
  {"name":"enp61s0f0","state":"up","mtu":9000,"speed_mbps":25000,"addrs":["100.64.29.210/30"]}],
  "rdma_ports":[
  {"device":"rocep61s0f0","port":1,"state":"ACTIVE","link_layer":"Ethernet","rate_gbps":25,"netdev":"enp61s0f0"}],
  "accelerator_ports":[
- {"name":"npu0","index":0,"ip":"172.20.9.79","netmask":"255.255.0.0","state":"UP","speed_gbps":200},
- {"name":"npu1","index":1,"ip":"172.20.9.80","netmask":"255.255.0.0","state":"UP","speed_gbps":200},
- {"name":"npu2","index":2,"ip":"172.20.9.81","netmask":"255.255.0.0","state":"UP","speed_gbps":200},
- {"name":"npu3","index":3,"ip":"172.20.9.82","netmask":"255.255.0.0","state":"UP","speed_gbps":200},
- {"name":"npu4","index":4,"ip":"172.20.9.83","netmask":"255.255.0.0","state":"UP","speed_gbps":200},
- {"name":"npu5","index":5,"ip":"172.20.9.84","netmask":"255.255.0.0","state":"UP","speed_gbps":200},
- {"name":"npu6","index":6,"ip":"172.20.9.85","netmask":"255.255.0.0","state":"DOWN"},
- {"name":"npu7","index":7,"ip":"172.20.9.86","netmask":"255.255.0.0","state":"UP","speed_gbps":200}],
- "management":{"interface":"br_ens3_36","ip":"172.30.8.32"}}`
+ {"name":"npu0","index":0,"ip":"203.0.113.79","netmask":"255.255.0.0","state":"UP","speed_gbps":200},
+ {"name":"npu1","index":1,"ip":"203.0.113.80","netmask":"255.255.0.0","state":"UP","speed_gbps":200},
+ {"name":"npu2","index":2,"ip":"203.0.113.81","netmask":"255.255.0.0","state":"UP","speed_gbps":200},
+ {"name":"npu3","index":3,"ip":"203.0.113.82","netmask":"255.255.0.0","state":"UP","speed_gbps":200},
+ {"name":"npu4","index":4,"ip":"203.0.113.83","netmask":"255.255.0.0","state":"UP","speed_gbps":200},
+ {"name":"npu5","index":5,"ip":"203.0.113.84","netmask":"255.255.0.0","state":"UP","speed_gbps":200},
+ {"name":"npu6","index":6,"ip":"203.0.113.85","netmask":"255.255.0.0","state":"DOWN"},
+ {"name":"npu7","index":7,"ip":"203.0.113.86","netmask":"255.255.0.0","state":"UP","speed_gbps":200}],
+ "management":{"interface":"br_ens3_36","ip":"198.51.100.32"}}`
 
 func acceleratorResolve(t *testing.T, network Network, attachments ...Attachment) (Resolved, Resolved) {
 	t.Helper()
@@ -76,7 +76,7 @@ func TestAcceleratorNetworkInfersCardsAndAHostBootstrap(t *testing.T) {
 	if want := []string{"npu0", "npu1", "npu2", "npu3", "npu4", "npu5", "npu7"}; !reflect.DeepEqual(b.HCAs, want) {
 		t.Fatalf("huawei32 rails = %v, want %v (the card whose port is down left out)", b.HCAs, want)
 	}
-	if a.Interface != "br_ens3_36" || a.IP != "172.30.8.31" || b.IP != "172.30.8.32" {
+	if a.Interface != "br_ens3_36" || a.IP != "198.51.100.31" || b.IP != "198.51.100.32" {
 		t.Fatalf("bootstrap = %s %s / %s, want the management addresses", a.Interface, a.IP, b.IP)
 	}
 	if a.LinkLayer != LinkLayerRoCE || b.LinkLayer != LinkLayerRoCE || a.HCAsPinned || a.BootstrapPinned {
@@ -125,8 +125,8 @@ func TestAcceleratorNetworkBootstrapFollowsTheCIDROrAPin(t *testing.T) {
 	if a.Interface != "enp61s0f0" || a.IP != "100.64.29.209" || b.IP != "100.64.29.210" || a.BootstrapPinned {
 		t.Fatalf("bootstrap = %s %s / %s", a.Interface, a.IP, b.IP)
 	}
-	// The cards' own subnet matches no host interface: nothing can bind it.
-	a, _ = acceleratorResolve(t, Network{CIDR: "172.20.0.0/16"})
+	// A CIDR holding all the cards' addresses matches no host interface: nothing can bind it.
+	a, _ = acceleratorResolve(t, Network{CIDR: "203.0.113.0/24"})
 	if a.IP != "" || !reflect.DeepEqual(warningCodes(a), []string{WarningBootstrapMissing, WarningHCAMismatch}) {
 		t.Fatalf("bootstrap in the cards' subnet = %q, warnings %v", a.IP, warningCodes(a))
 	}
@@ -183,7 +183,7 @@ func TestAcceleratorNetworkWithoutCards(t *testing.T) {
 func TestAcceleratorRailsDescribeTheCard(t *testing.T) {
 	inv := decodeInventory(t, huawei32Inventory)
 	rails := Rails(inv, TypeAcceleratorRDMA, []string{"npu3", "npu6", "npu9", "rocep61s0f0:1"})
-	if got := rails[0]; got.Name != "npu3" || got.Addr != "172.20.9.82/16" || got.IP() != "172.20.9.82" || got.NetDev != "" ||
+	if got := rails[0]; got.Name != "npu3" || got.Addr != "203.0.113.82/16" || got.IP() != "203.0.113.82" || got.NetDev != "" ||
 		got.LinkLayer != LinkLayerRoCE || got.State != "UP" || got.SpeedGbps != 200 || got.Gap() != "" {
 		t.Fatalf("npu3 = %#v", got)
 	}
@@ -204,17 +204,17 @@ func TestAcceleratorRailsDescribeTheCard(t *testing.T) {
 	// one leaves the address without a prefix.
 	odd := &proto.NetInventory{AcceleratorPorts: []proto.AcceleratorPort{
 		{Name: "npu0", Index: 0, State: "UP"},
-		{Name: "npu1", Index: 1, IP: "172.20.9.80", Netmask: "garbage", State: "UP"},
+		{Name: "npu1", Index: 1, IP: "203.0.113.80", Netmask: "garbage", State: "UP"},
 		{Name: "npu2", Index: 2, IP: "fd00::2", State: "UP"},
 	}}
 	got := AllRails(odd, TypeAcceleratorRDMA)
-	if got[0].Gap() != RailNoIPv4 || got[1].Addr != "172.20.9.80" || got[1].Gap() != "" || got[2].Gap() != RailNoIPv4 {
+	if got[0].Gap() != RailNoIPv4 || got[1].Addr != "203.0.113.80" || got[1].Gap() != "" || got[2].Gap() != RailNoIPv4 {
 		t.Fatalf("odd rails = %#v", got)
 	}
 	// Cards keep their inventory order, not a lexical one (npu10 after npu2).
 	many := &proto.NetInventory{}
 	for _, i := range []int{0, 2, 10} {
-		many.AcceleratorPorts = append(many.AcceleratorPorts, proto.AcceleratorPort{Name: "npu" + strconv.Itoa(i), Index: i, IP: "172.20.9.1", Netmask: "255.255.0.0", State: "UP"})
+		many.AcceleratorPorts = append(many.AcceleratorPorts, proto.AcceleratorPort{Name: "npu" + strconv.Itoa(i), Index: i, IP: "203.0.113.101", Netmask: "255.255.0.0", State: "UP"})
 	}
 	if got := inferRails(many, TypeAcceleratorRDMA); !reflect.DeepEqual(got, []string{"npu0", "npu2", "npu10"}) {
 		t.Fatalf("inferred = %v", got)

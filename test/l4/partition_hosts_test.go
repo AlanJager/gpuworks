@@ -252,7 +252,7 @@ PY'`, shellQuoteL4(name), shellQuoteL4(remoteDir), runID, shellQuoteL4(image))
 func TestAscendDockerPartitionInferenceAndWholeGPU(t *testing.T) {
 	host := requiredHostEnv(t, "GPUWORKS_ASCEND_PRIMARY_HOST")
 	jump := hostEnv("GPUWORKS_ASCEND_SSH_JUMP", "")
-	image := hostEnv("GPUWORKS_ASCEND_L4_IMAGE", "172.20.9.4:10043/ai-model-registry/vllm-ascend:0.26.0rc1")
+	image := requiredHostEnv(t, "GPUWORKS_ASCEND_L4_IMAGE")
 	modelDir := hostEnv("GPUWORKS_ASCEND_L4_MODEL", "/opt/gpuworks/models/qwen3.5-0.8b")
 	card := hostEnv("GPUWORKS_ASCEND_L4_CARD", "3")
 	runID := "gpuworks-ascend-dgpu-l4-" + strconv.FormatInt(time.Now().UnixNano(), 36)

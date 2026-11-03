@@ -19,7 +19,7 @@ func TestDropAccessSettingMigration(t *testing.T) {
 	}
 	db := openAcquisitionMigrationDB(t, "drop-access-setting")
 	for _, seed := range []Setting{
-		{Key: "access", Value: `{"console_url":"http://47.103.88.152:8808","node_server_url":"http://172.25.17.156:8800"}`},
+		{Key: "access", Value: `{"console_url":"http://198.51.100.152:8808","node_server_url":"http://192.0.2.156:8800"}`},
 		{Key: "network", Value: `{"http_proxy":"http://proxy:3128"}`},
 	} {
 		if err := db.Create(&seed).Error; err != nil {

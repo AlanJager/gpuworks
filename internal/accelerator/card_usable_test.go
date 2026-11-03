@@ -76,7 +76,7 @@ func TestEachReasonAloneKeepsACardFromWork(t *testing.T) {
 
 // A card this node does not own reports Healthy false because it cannot
 // serve, not because anything ails it. Reading a fault out of that put
-// "fault" on four working 910B4 handed to virtual machines (172.30.8.31,
+// "fault" on four working 910B4 handed to virtual machines (198.51.100.31,
 // 2026-10-15) — and sends an operator looking for a problem that is not
 // there, which is the one thing ownership must never be shown as.
 func TestACardLentElsewhereIsNotShownAsFaulty(t *testing.T) {

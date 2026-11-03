@@ -454,25 +454,25 @@ test("installing onto a host that already runs an agent asks before replacing it
   api.installNode = async (body: Record<string, unknown>) => {
     bodies.push(body);
     if (!body.replace_existing_agent) {
-      throw new APIError("NODE_INSTALL_EXISTING_AGENT", { server: "http://172.25.17.156:8800" }, "a gpuworks agent for another server is on the host", 409);
+      throw new APIError("NODE_INSTALL_EXISTING_AGENT", { server: "http://192.0.2.156:8800" }, "a gpuworks agent for another server is on the host", 409);
     }
     return installReport;
   };
   try {
     renderDrawer();
     await waitFor(() => assert.ok(screen.getByText(platformKey.authorize_command)));
-    fireEvent.change(screen.getByPlaceholderText("root@192.0.2.10:22"), { target: { value: "root@172.24.0.210" } });
+    fireEvent.change(screen.getByPlaceholderText("root@192.0.2.10:22"), { target: { value: "root@192.0.2.210" } });
     fireEvent.click(screen.getByRole("button", { name: nodes.add.installAgent }));
     // antd's confirm renders its title twice (heading and dialog label).
     await waitFor(() => assert.ok(screen.getAllByText(nodes.add.replaceAgent.title).length > 0));
-    const reason = common.apiError.NODE_INSTALL_EXISTING_AGENT.replace("{{server}}", "http://172.25.17.156:8800");
+    const reason = common.apiError.NODE_INSTALL_EXISTING_AGENT.replace("{{server}}", "http://192.0.2.156:8800");
     assert.ok(screen.getAllByText(`${reason} ${nodes.add.replaceAgent.content}`).length > 0);
     assert.equal(bodies.length, 1);
     assert.equal(bodies[0].replace_existing_agent, undefined);
     fireEvent.click(screen.getByRole("button", { name: nodes.add.replaceAgent.confirm }));
     await waitFor(() => assert.equal(bodies.length, 2));
     assert.equal(bodies[1].replace_existing_agent, true);
-    assert.equal(bodies[1].target, "root@172.24.0.210");
+    assert.equal(bodies[1].target, "root@192.0.2.210");
   } finally {
     api.installNode = original;
   }
@@ -739,7 +739,7 @@ test("a nohup install into an agent's directory asks without mentioning the serv
     renderDrawer();
     fireEvent.click(screen.getByText(nodes.add.advanced));
     fireEvent.click(screen.getByRole("switch", { name: nodes.add.useSystemd }));
-    fireEvent.change(screen.getByPlaceholderText("root@192.0.2.10:22"), { target: { value: "root@172.24.0.210" } });
+    fireEvent.change(screen.getByPlaceholderText("root@192.0.2.10:22"), { target: { value: "root@192.0.2.210" } });
     fireEvent.click(screen.getByRole("button", { name: nodes.add.installAgent }));
     const reason = common.apiError.NODE_INSTALL_EXISTING_AGENT_SAME_DIR.replace("{{dir}}", "/opt/gpuworks");
     await waitFor(() => assert.ok(screen.getAllByText(reason).length > 0));
@@ -769,7 +769,7 @@ test("an install stopped by a closed ancestor of the install directory says why 
   };
   try {
     renderDrawer();
-    fireEvent.change(screen.getByPlaceholderText("root@192.0.2.10:22"), { target: { value: "root@172.24.0.210" } });
+    fireEvent.change(screen.getByPlaceholderText("root@192.0.2.10:22"), { target: { value: "root@192.0.2.210" } });
     fireEvent.click(screen.getByRole("button", { name: nodes.add.installAgent }));
     const reason = common.apiError.NODE_INSTALL_DIR_UNTRAVERSABLE.replace("{{dir}}", "/root").replace("{{mode}}", "700").replace("{{fix}}", "chmod o+x /root");
     await screen.findByText(nodes.add.message.installFailed.replace("{{detail}}", reason));

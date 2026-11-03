@@ -55,8 +55,8 @@ func TestAgentRemoteFollowsTrustedForwardedFor(t *testing.T) {
 		{"listed hops are skipped", listed, "10.1.2.3:443", "", "203.0.113.9, 10.9.9.9", "203.0.113.9"},
 		{"unlisted peer ignores XFF", listed, "198.51.100.7:443", "", "203.0.113.9", "198.51.100.7:443"},
 		{"empty XFF keeps the peer", listed, "10.1.2.3:443", "", "", "10.1.2.3:443"},
-		{"entry point connector on this host", exposed, "172.25.17.156:40000", "172.25.17.156:8816", "203.0.113.9", "203.0.113.9"},
-		{"remote peer while exposed", exposed, "198.51.100.7:443", "172.25.17.156:8816", "203.0.113.9", "198.51.100.7:443"},
+		{"entry point connector on this host", exposed, "192.0.2.156:40000", "192.0.2.156:8816", "203.0.113.9", "203.0.113.9"},
+		{"remote peer while exposed", exposed, "198.51.100.7:443", "192.0.2.156:8816", "203.0.113.9", "198.51.100.7:443"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			h := &Hub{log: slog.Default()}

@@ -57,14 +57,14 @@ func TestCollectMergesKernelInterfacesWithSysfs(t *testing.T) {
 			{Name: "ens3f0", MTU: 9000, Addrs: []string{"10.30.1.15/16", "fd00::15/64"}},
 			{Name: "veth12ab"}, {Name: "docker0"}, {Name: "br-1f2e"}, {Name: "cni0"},
 			// Virtual devices stay only when they carry an address.
-			{Name: "vnic29.0"}, {Name: "ud_outer7"}, {Name: "br_ens3_36", Addrs: []string{"172.30.8.31/16"}},
+			{Name: "vnic29.0"}, {Name: "ud_outer7"}, {Name: "br_ens3_36", Addrs: []string{"198.51.100.31/16"}},
 			// A physical NIC without an address is still a candidate.
 			{Name: "enp1s0"},
 		}, nil
 	}}
 	got := src.Collect()
 	wantIfaces := []proto.NetInterface{
-		{Name: "br_ens3_36", Addrs: []string{"172.30.8.31/16"}},
+		{Name: "br_ens3_36", Addrs: []string{"198.51.100.31/16"}},
 		{Name: "enp1s0"},
 		{Name: "ens3f0", State: "up", MTU: 9000, SpeedMbps: 25000, Addrs: []string{"10.30.1.15/16", "fd00::15/64"}},
 		{Name: "eth0", State: "up", MTU: 1500, MAC: "52:54:00:aa:bb:cc", Addrs: []string{"192.168.8.15/24"}},

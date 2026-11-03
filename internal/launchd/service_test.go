@@ -166,7 +166,7 @@ func TestReadJobOfAnEarlierInstall(t *testing.T) {
   <key>ProgramArguments</key>
   <array>
     <string>/opt/gpuworks/gpuworks-agent</string><string>run</string>
-    <string>--server</string><string>http://172.21.1.10:8800</string>
+    <string>--server</string><string>http://192.0.2.110:8800</string>
     <string>--token</string><string>a&amp;b</string>
     <string>--connect-mode</string><string>agent_dial</string>
     <string>--listen</string><string>:19090</string>
@@ -183,7 +183,7 @@ func TestReadJobOfAnEarlierInstall(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if job.Server != "http://172.21.1.10:8800" || job.Token != "a&b" || job.StateDir != "/opt/gpuworks" || job.User != "huang" || job.Binary != "/opt/gpuworks/gpuworks-agent" {
+	if job.Server != "http://192.0.2.110:8800" || job.Token != "a&b" || job.StateDir != "/opt/gpuworks" || job.User != "huang" || job.Binary != "/opt/gpuworks/gpuworks-agent" {
 		t.Fatalf("ReadJob = %+v", job)
 	}
 	if _, err := ReadJob([]byte("<plist><dict></dict></plist>")); err == nil {
