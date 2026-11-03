@@ -8,7 +8,7 @@ The 96 GB and 141 GB H20 variants share the 4-GPU profile; admission uses the ca
 
 ## vLLM profile (Hopper × 8, TP8)
 
-vLLM is the only engine on this platform that supports sleep/wake, so H200, H20 (96/141 GB) and H100 80 GB also have one single-node, 8-GPU, TP8 vLLM profile, `bf16-vllm-nvidia-hopper-tp8`; other GPU counts are rejected. Arguments follow the [vLLM recipe](https://recipes.vllm.ai/Qwen/Qwen3.8-Flash-Next) (`--max-num-seqs 256`, the `qwen3_coder` tool parser, the `qwen3` reasoning parser, `VLLM_ENGINE_READY_TIMEOUT_S=1800`). The image is the platform's own `gpuworks-runner:cuda13.0-vllm0.30.0-r2` (vLLM 0.30.0), not the upstream nightly: it registers `Qwen4ExpForConditionalGeneration`, and the recipe states that stable vLLM >= 0.30.0 is supported.
+vLLM is the only engine on this platform that supports sleep/wake, so H200, H20 (96/141 GB) and H100 80 GB also have one single-node, 8-GPU, TP8 vLLM profile, `bf16-vllm-nvidia-hopper-tp8`; other GPU counts are rejected. Arguments follow the [vLLM recipe](https://recipes.vllm.ai/Qwen/Qwen3.8-Flash-Next) (`--max-num-seqs 256`, the `qwen3_coder` tool parser, the `qwen3` reasoning parser, `VLLM_ENGINE_READY_TIMEOUT_S=1800`). The image is the platform's own `gpuworks-runner:cuda13.0-vllm0.30.0-r4` (vLLM 0.30.0), not the upstream nightly: it registers `Qwen4ExpForConditionalGeneration`, and the recipe states that stable vLLM >= 0.30.0 is supported.
 
 **The weights are the BF16 `Qwen/Qwen3.8-Flash-Next`, not the FP8 used by the SGLang/AMD/PPU profiles above**: the repository is ~335 GiB (360.0 GB), about 42 GiB per card at TP8 (measured); the 185.5 GB figure above refers to the FP8 repository only. This is the combination that ran on hardware (TP8, no expert parallelism). The upstream vLLM recipe uses FP8 weights and, at TP8, needs `--enable-expert-parallel` (the FP8 128-wide quantization blocks do not split 8 ways); that combination has not been run on this platform, so it is not offered.
 
@@ -28,7 +28,7 @@ Upstream options that are not enabled: MTP speculative decoding, `--enable-prefi
 
 ## Measured (vLLM, 8× H20 141 GB, TP8, 2026-10-31)
 
-Docker runtime, `gpuworks-runner:cuda13.0-vllm0.30.0-r2`, BF16 weights on NFS (~830 MB/s), sleep mode on, `--disable-custom-all-reduce`. Chat output was correct. With the weights in the page cache, start to ready took ~3.5 minutes; a cold read from NFS takes longer. Sleep/wake (L1, engine-reported): sleep 1.7-1.9 s, wake 2.9-3.7 s. L2 wake reloads the weights and took 489 s, so it is not practical. H100 80 GB, H20 96 GB and H200 were only checked offline (catalog and admission); they have not been run on hardware, and the headroom figures above are derived.
+Docker runtime, `gpuworks-runner:cuda13.0-vllm0.30.0-r4`, BF16 weights on NFS (~830 MB/s), sleep mode on, `--disable-custom-all-reduce`. Chat output was correct. With the weights in the page cache, start to ready took ~3.5 minutes; a cold read from NFS takes longer. Sleep/wake (L1, engine-reported): sleep 1.7-1.9 s, wake 2.9-3.7 s. L2 wake reloads the weights and took 489 s, so it is not practical. H100 80 GB, H20 96 GB and H200 were only checked offline (catalog and admission); they have not been run on hardware, and the headroom figures above are derived.
 
 ## Measured (4× H200, TP4, 2026-10-19)
 

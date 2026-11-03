@@ -41,6 +41,9 @@ ARG IMAGE_REVISION=unknown
 ARG REQUIRES="engine overlays"
 # base 里被 pip uninstall 卸干净、却留下空目录的包名（空格分隔）。见下方 PURGE_STUB_PKGS 一节。
 ARG PURGE_STUB_PKGS=
+# 矩阵显式声明「在本档 base 的 vllm_omni 上不适用」的 omni 补丁文件名（空格分隔），语义同 cuda 档的
+# PATCHES_NOT_APPLICABLE：声明过的记为 skipped，声明了却能应用同样失败。
+ARG OMNI_PATCHES_NOT_APPLICABLE=
 # 构建期镜像源：ARG 而非 ENV。写进 ENV 等于把构建期的国内镜像源烙进运行期镜像，
 # 用户在别的网络环境里 pip 装东西会莫名走阿里云。
 ARG PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
@@ -127,7 +130,7 @@ RUN <<EOF
         OMNI_ROOT=$(python3 -c "import importlib.util as u, os; s = u.find_spec('vllm_omni'); print(os.path.dirname(os.path.dirname(s.origin)))")
         test -d "${OMNI_ROOT}/vllm_omni"
         PATCH_DIR=/tmp/patches-omni TARGET="${OMNI_ROOT}" \
-            MANIFEST=/opt/gpuworks/patches-omni.json EXPECT_ALL=1 \
+            MANIFEST=/opt/gpuworks/patches-omni.json EXPECT_ALL=1 NOT_APPLICABLE="${OMNI_PATCHES_NOT_APPLICABLE}" \
             bash /opt/gpuworks/shared/apply_patches.sh
         find "${OMNI_ROOT}/vllm_omni" -name '*.rej' -o -name '*.orig' | head -50 | xargs -r rm -f
     fi

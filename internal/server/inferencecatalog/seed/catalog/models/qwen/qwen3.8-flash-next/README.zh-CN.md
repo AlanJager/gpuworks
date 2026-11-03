@@ -8,7 +8,7 @@ H20 的 96 GB 和 141 GB 版本共用 4 卡配方，资源准入使用节点上�
 
 ## vLLM 档（Hopper × 8，TP8）
 
-vLLM 是本平台唯一支持 sleep/wake 的引擎，所以 H200、H20（96/141 GB）、H100 80 GB 另有一个单节点 8 卡 TP8 的 vLLM 档 `bf16-vllm-nvidia-hopper-tp8`，其他卡数会被拒绝。参数取自 [vLLM 配方](https://recipes.vllm.ai/Qwen/Qwen3.8-Flash-Next)（`--max-num-seqs 256`、`qwen3_coder` 工具解析器、`qwen3` 推理解析器、`VLLM_ENGINE_READY_TIMEOUT_S=1800`）。镜像用平台自带的 `gpuworks-runner:cuda13.0-vllm0.30.0-r2`（vLLM 0.30.0），不用上游 nightly：该镜像已注册 `Qwen4ExpForConditionalGeneration`，上游配方也写明稳定版 vLLM ≥ 0.30.0 即可。
+vLLM 是本平台唯一支持 sleep/wake 的引擎，所以 H200、H20（96/141 GB）、H100 80 GB 另有一个单节点 8 卡 TP8 的 vLLM 档 `bf16-vllm-nvidia-hopper-tp8`，其他卡数会被拒绝。参数取自 [vLLM 配方](https://recipes.vllm.ai/Qwen/Qwen3.8-Flash-Next)（`--max-num-seqs 256`、`qwen3_coder` 工具解析器、`qwen3` 推理解析器、`VLLM_ENGINE_READY_TIMEOUT_S=1800`）。镜像用平台自带的 `gpuworks-runner:cuda13.0-vllm0.30.0-r4`（vLLM 0.30.0），不用上游 nightly：该镜像已注册 `Qwen4ExpForConditionalGeneration`，上游配方也写明稳定版 vLLM ≥ 0.30.0 即可。
 
 **权重是 BF16 的 `Qwen/Qwen3.8-Flash-Next`，不是上文 SGLang/AMD/PPU 档用的 FP8**：仓库约 335 GiB（360.0 GB），TP8 下每卡约 42 GiB（实测）；上文的 185.5 GB 只指 FP8 仓库。这是真机跑通的组合（TP8，不开专家并行）。上游的 vLLM 配方用 FP8 权重，且 TP8 必须加 `--enable-expert-parallel`（FP8 的 128 宽量化块无法 8 路切分），这一组合未在本平台运行，所以没有提供。
 
@@ -28,7 +28,7 @@ vLLM 是本平台唯一支持 sleep/wake 的引擎，所以 H200、H20（96/141 
 
 ## 实测（vLLM，H20 141 GB × 8，TP8，2026-10-31）
 
-Docker 运行时、`gpuworks-runner:cuda13.0-vllm0.30.0-r2`、BF16 权重放在 NFS（约 830 MB/s）、开启 sleep 模式、带 `--disable-custom-all-reduce`。对话输出正确。权重在页缓存中时，启动到就绪约 3.5 分钟；冷读 NFS 会更久。Sleep/wake（L1，引擎自报）：sleep 1.7–1.9 s，wake 2.9–3.7 s。L2 唤醒需要重新加载权重，489 s，不实用。H100 80 GB、H20 96 GB 和 H200 只做了目录与准入的离线检查，没有在真机上运行；上表的余量是推算值。
+Docker 运行时、`gpuworks-runner:cuda13.0-vllm0.30.0-r4`、BF16 权重放在 NFS（约 830 MB/s）、开启 sleep 模式、带 `--disable-custom-all-reduce`。对话输出正确。权重在页缓存中时，启动到就绪约 3.5 分钟；冷读 NFS 会更久。Sleep/wake（L1，引擎自报）：sleep 1.7–1.9 s，wake 2.9–3.7 s。L2 唤醒需要重新加载权重，489 s，不实用。H100 80 GB、H20 96 GB 和 H200 只做了目录与准入的离线检查，没有在真机上运行；上表的余量是推算值。
 
 ## 实测（H200 × 4，TP4，2026-10-19）
 

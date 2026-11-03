@@ -11,7 +11,7 @@ specs:
   display_name_en: Ampere+ · BF16
   scenario: balanced
   engine: vllm
-  image: gpuworks/gpuworks-runner:cuda13.0-vllm-omni0.30.0-r3
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm-omni0.30.0-r4
   weights:
     quantization: bf16
     sources:
@@ -25,8 +25,60 @@ specs:
   gpus:
     vendor: nvidia
     cc: '>=8.0'
+  # Voice cloning needs CosyVoice's campplus.onnx speaker encoder, which the
+  # GLM-TTS repository does not ship; vLLM-Omni falls back to fetching it from
+  # FunAudioLLM/CosyVoice-300M, which an offline container cannot do.
+  # gpuworks/CosyVoice-300M-campplus holds that one file, unchanged (sha256
+  # a6ac6a63...0f4d73), so the deployment does not pull the multi-GB CosyVoice
+  # checkpoint for it; it mounts beside the weights and pre-start seeds the
+  # Hugging Face cache entry vLLM-Omni looks up.
+  components:
+  - name: glm-tts
+    role: primary
+    weights:
+      quantization: bf16
+      sources:
+      - huggingface:
+          repo_id: zai-org/GLM-TTS
+          revision: b3feb691fa4cf590eec4418f6275f95220e58844
+      - modelscope:
+          repo_id: ZhipuAI/GLM-TTS
+          revision: 723af81da5ca966a9ebd84c552286fbeb72e9827
+    weight_bytes: 8888806439
+    mount_path: /models/GLM-TTS
+  - name: campplus
+    role: auxiliary
+    weights:
+      quantization: fp32
+      sources:
+      - huggingface:
+          repo_id: gpuworks/CosyVoice-300M-campplus
+          revision: 9920592fcd7e343aa87e13df82566571a00b8f54
+      - modelscope:
+          repo_id: gpuworks/CosyVoice-300M-campplus
+          revision: 254c6ab413e4eb9fd1b888d4e0c4eef046f544be
+    weight_bytes: 28306332
+    mount_path: /models/campplus
+  # vLLM-Omni picks the pipeline from a root config.json, then from the model
+  # path's basename. GLM-TTS ships no root config.json, so pin the pipeline in
+  # a deploy overlay that inherits the bundled glm_tts.yaml rather than rely on
+  # the mount path's name.
+  pre_start_script: |-
+    set -e
+    cat > /tmp/glm-tts-deploy.yaml <<'YAML'
+    base_config: /usr/local/lib/python3.12/dist-packages/vllm_omni/deploy/glm_tts.yaml
+    pipeline: glm_tts
+    YAML
+    hub=$(python3 -c 'from huggingface_hub import constants; print(constants.HF_HUB_CACHE)')
+    rev=24c40509c3c5ea6fe06b5f8790ff99e3714a6bee
+    repo="$hub/models--FunAudioLLM--CosyVoice-300M"
+    mkdir -p "$repo/refs" "$repo/snapshots/$rev"
+    printf '%s' "$rev" > "$repo/refs/main"
+    ln -sfn /models/campplus/campplus.onnx "$repo/snapshots/$rev/campplus.onnx"
   args:
   - --omni
+  - --deploy-config
+  - /tmp/glm-tts-deploy.yaml
   - --trust-remote-code
   api:
     health_endpoint: /health

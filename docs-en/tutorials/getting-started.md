@@ -109,7 +109,7 @@ You also cannot recover the full value of an existing `default` token from the l
 ## 5. Deploy the Model
 
 1. Open **Deploy** in the left menu and use **Quick Deploy**. Select `dgpu-demo-a-ms` as the **Model** and NVIDIA as the **Target accelerator**.
-2. Under **Recommended Inference Template**, select **Qwen3-1.7B → general · vllm · balanced**. The image should be `gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2`.
+2. Under **Recommended Inference Template**, select **Qwen3-1.7B → general · vllm · balanced**. The image should be `gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r4`.
    If **Use a registered model?** appears, select `dgpu-demo-a-ms` with the **MS** and **1 node** labels, click **Use this model and deploy**, and check the selected model after returning.
 3. Enter `tutorial-qwen3-17b` for both **Deployment Name** and **Public Model Name**. The latter is used as `model` in requests.
 

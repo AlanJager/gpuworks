@@ -11,7 +11,7 @@
 | 控制台权限 | 能查看节点、创建和修改部署、创建评测、使用试验场 |
 | 两台可用节点 | `host2`、`host3` 均在线且允许调度，各有一张空闲的 RTX 4090（48 GiB）；在 **GPU 设备** 中检查占用实例 |
 | 模型 | 已登记 ModelScope 的 `Qwen/Qwen3-1.7B`，两台节点的模型文件均为 **可用**；本文的示例登记名称为 `dgpu-demo-a-ms` |
-| 推理模板与镜像 | 档位 `bf16-vllm-nvidia-general`，镜像 `gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2`；两台节点已取得镜像 |
+| 推理模板与镜像 | 档位 `bf16-vllm-nvidia-general`，镜像 `gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r4`；两台节点已取得镜像 |
 | 软件环境 | 本文实测 Server、Agent `dca20f6d`，运行时 runveil，NVIDIA 驱动 `610.57.04` |
 | 节点与磁盘 | 两台节点可向 Server 提供服务，运行时所在文件系统有足够空间容纳镜像解包文件和运行日志 |
 | 练习数据 | 下载 [benchmark-prompts.jsonl](../assets/examples/benchmark-prompts.jsonl) 到操作浏览器的电脑；文件包含 8 条合成练习样本，每条带 `/no_think`，输出上限为 `128` token |

@@ -96,10 +96,11 @@ cp base-mirrors.example base-mirrors.local && vi base-mirrors.local
 | `patches/vllm/003_mooncake_store_rejected_pending_load.patch` | MultiConnector 选中别的连接器时，mooncake store 不应再发起 pending load（否则重复加载/报错） | cuda vllm 档；**vllm 0.30 起上游已修**，识别为 already-present |
 | `patches/vllm_omni/001_omni_bypass_non_omni_loads.diff` | vllm-omni 在 import 期无条件替换 vllm 的 `EngineCoreOutput` 等内部类型；本补丁加一个 `--omni` 判断，没带该参数时不改 vllm 行为，这样 omni 镜像也能跑普通文本负载 | 所有 omni 档 |
 | `patches/vllm_omni/002_ming_audio_dsp_npu_cpu_fallback.diff` | Ming-omni-tts 的 `audio_dsp.py` 在昇腾上两处失败：`torch.hann_window` 对 int64 调 `aclnnInplaceCos` 失败、`F.fold` 在 aivec 向量核报 507035。补丁把这两步改在 CPU 上做再搬回设备（张量只有一个音频 chunk，开销可忽略） | 昇腾 omni 档（r3 起） |
+| `patches/vllm_omni/003_moss_realtime_ref_encoder_device.diff` | MOSS-TTS-Realtime 的参考音频编码在 API server 进程里跑：codec 已放到 code2wav stage 的 GPU，波形却留在 CPU，`batch_encode` 按第一段波形的设备建输入，请求报设备不一致。补丁先把波形移到 codec 所在设备（见下面「模型专属依赖与 vllm-omni 缺陷」第 4 条） | cuda omni 档（r4 起）与 0.30 的昇腾 omni 档；0.23 的昇腾 omni 档没有这个类，由 `OMNI_PATCHES_NOT_APPLICABLE` 声明跳过 |
 
 | overlay | 作用 |
 | --- | --- |
-| `overlays/audit/stack-audit.py` | **离线组件审计门**：汇总引擎/依赖版本与 `pip check` 结果写成 `/opt/gpuworks/components.json`，errors 非空即构建失败。派生自同事镜像（见 `NOTICE`）；r2 起加 `GPUWORKS_PIP_CHECK_BASELINE`——只放行"纯净 base 本来就有"的 `pip check` 行，基线之外新增的才算我们引入 |
+| `overlays/audit/stack-audit.py` | **离线组件审计门**：汇总引擎/依赖版本与 `pip check` 结果写成 `/opt/gpuworks/components.json`，errors 非空即构建失败。派生自同事镜像（见 `NOTICE`）；r2 起加 `GPUWORKS_PIP_CHECK_BASELINE`——只放行"纯净 base 本来就有"的 `pip check` 行，基线之外新增的才算我们引入；另有 `GPUWORKS_PIP_CHECK_NODEPS`——只放行按档声明以 `--no-deps` 安装的包（如 voxcpm）自己的 `pip check` 行 |
 | `overlays/audit/omni_diffusion_check.py` | omni/diffusion 栈的离线内容检查（模块可定位、版本符合声明），不等于 GPU 验收 |
 | `overlays/audit/qwen3_tts_check.py`、`qwen3_tts_prepare.py` | Qwen3-TTS 小档位的离线检查与"从上游资产推导单设备配置" |
 | `overlays/audit/patch_sdxl.py` | 对固定版本的 omni 源码应用有界的 SDXL VAE 修复；源码漂移就报错，不静默发布未打补丁的镜像 |
@@ -219,6 +220,82 @@ bash shared/check_vendor_base.sh <base-ref>       # 必须在 prepare-base.sh �
 - cuda13.4 档等上游出 stable 后补；cuda12.8 上游已无 base、cuda13.3 不存在，均不补。
 - `cann9.1-*-vllm-omni0.30.0` 三档 r3：910b 已在 .32（driver 26.1.1）真机验证；a3（无 A3 硬件）与
   950（容器环境已无）待复验，见 `artifacts/work/2026-10-03-runner-images/evidence/r2-verify.md` §6h。
+
+## 模型专属依赖与 vllm-omni 缺陷（2026-11 A100 模板验证）
+
+A100 全量 NVIDIA 模板验证里，有四个模型因 runner 起不来或请求失败。前两项与第四项改在镜像里
+（omni 档 r4、默认 vllm 档 r4），第三项只改模板。
+
+1. **VoxCPM2 缺 `voxcpm`**（omni 档 r4 起加装）。vllm-omni 0.30 的 VoxCPM2 talker 构造时执行
+   `VoxCPM.from_pretrained(model, load_denoiser=False, optimize=False)`，按 `VLLM_OMNI_VOXCPM_CODE_PATH`、
+   `../VoxCPM/src`、已安装的 `voxcpm` 三种方式依次查找；r3 里三种都没有，于是报 `No module named 'voxcpm'`。
+   上游 `vllm/vllm-omni` 镜像同样不带这个包。
+   - **以 `--no-deps` 装 `voxcpm==2.0.3`**（矩阵 `VOXCPM_SPEC`）。它在 PyPI 上声明的依赖很重，含 `gradio<7`、
+     `funasr`、`modelscope`、`datasets<4`、`spaces`、`argbind`、`matplotlib` 与无上界的 `torch`/`transformers`，
+     按依赖装会被 pip_guard 拦下，也会碰 omni 的 `transformers<5.15` 上界。推理路径实际 import 的是
+     `voxcpm.core`、`voxcpm.model.*` 与 `voxcpm.modules.*`，只用到 torch、torchaudio、einops、pydantic、tqdm、
+     transformers、librosa、huggingface_hub、safetensors，omni 档里都已经有了；降噪器（modelscope）与文本规范化
+     （wetext、inflect）在 `load_denoiser=False`、默认不做规范化时都是懒加载。
+   - 没装的声明依赖会让 `pip check` 报缺。Dockerfile 把这个包记进 `/opt/gpuworks/pip-nodeps.json`，审计门
+     （`GPUWORKS_PIP_CHECK_NODEPS`）只对「这个包、这个版本」的 `pip check` 行放行，记进 `components.json` 的
+     `pip_check_nodeps`；声明了却没装成那个版本同样失败。
+   - requires 的 `voxcpm` 走 vllm-omni 自己的 `import_voxcpm2_core()`，确认它真能找到。
+   - 实测（gpu3，Quadro RTX 8000）：r4 里 talker 构造成功（`Loaded VoxCPM2Model`、`Loaded VoxCPM2 (dtype=torch.bfloat16)`）。
+     出音频没能在这台卡上验：Turing（cc 7.5）上 vLLM 拒绝 bf16，改 fp16 又会和 voxcpm 原生的 bf16 模块混用
+     （`mat1 and mat2 must have the same dtype`）。完整 deploy+speech 要在 Ampere 及以上的卡上验。
+2. **ERNIE-4.5-VL 缺 `decord` 与 `moviepy`**（默认 vllm 档 r3 起加装 decord，r4 起加装 moviepy；两个
+   ERNIE-4.5-VL spec 都用这一档）。decord 的报错来自
+   `--trust-remote-code` 加载的 HF 动态模块，transformers 的 `check_imports` 要求能 `import decord`。
+   - **装 `decord2==3.4.0`，不装 PyPI 上的 `decord`**（矩阵 `DECORD_SPEC`）。`decord` 最后一版 0.6.0 发布于
+     2021 年，只有 x86_64 的 manylinux2010 wheel，arm64 装不上；`decord2` 的 import 名同样是 `decord`，提供
+     cp312 的 x86_64 与 aarch64 manylinux_2_28 wheel，ffmpeg 打包在 `decord2.libs` 里，硬依赖只有 numpy，
+     不碰 torch 栈。纯增量、import 期不改引擎行为，所以放进默认档，不单开一档。
+   - requires 的 `decord` 用 ffmpeg 现做一段 1 秒的合成视频，断言能解出 5 帧、形状正确。
+   - 实测：对真实模型目录的三个远程代码文件跑 transformers 的 `check_imports`，r2 的
+     `processing_ernie4_5_vl.py` 报与 A100 上相同的 `requires ... decord`，r3 三个文件都通过。
+   - **moviepy**（矩阵 `MOVIEPY_SPEC: moviepy==2.2.1`）：r3 在 A100 上真实部署时越过了 decord，又报
+     `No module named 'moviepy'`——同一个动态模块在运行时才 import 它，`check_imports` 看不到。按依赖安装，requires 的
+     `moviepy` 断言能 import 并构造一个 `ColorClip`。r4 在 A100 上 deploy+chat 通过。
+   - **代价：pillow 从 base 的 12.3.0 降到 11.3.0**（moviepy 2.2.1 要求 `pillow<12`），同时多出 imageio、
+     imageio-ffmpeg、proglog。pillow 不在 pip_guard 守护名单里；默认档上的多模态模型都经过它做图像预处理，
+     r4 抽测了一个带图像输入的视觉对话模型。以后升 moviepy 或 base 时注意这条上界。
+3. **GLM-TTS 报「不是已注册的 Omni pipeline」：镜像没问题，改的是模板**。vllm-omni 0.30 已经带了
+   GLM-TTS 的完整实现（`deploy/glm_tts.yaml`、`model_executor/models/glm_tts`、TTS adapter）。pipeline 自动
+   识别依次看根目录 `config.json` 的 `model_type`、`architectures`、`model_index.json`，最后拿模型路径的
+   basename 匹配注册名；GLM-TTS 仓库根目录没有 `config.json`（LLM 配置在 `llm/config.json`），gpuworks 又
+   把模型挂在 `/model`，basename `model` 匹配不上 `glm_tts`。上游示例能跑，是因为路径名里带 `GLM-TTS`。
+   `--hf-config-path` 帮不上忙：pipeline 识别读的是模型目录，不读这个参数。
+   - 模板做法：pre_start_script 写一个 overlay deploy yaml（`base_config:` 指向镜像里的 `glm_tts.yaml`，再加
+     `pipeline: glm_tts`），`--deploy-config` 指向它。`pipeline` 字段优先于自动识别，`base_config` 会合并
+     stages/connectors。在 omni 镜像里只放 GLM-TTS 的配置与分词器文件、只读挂到 `/model` 离线验证过：
+     bundled yaml 复现原报错，overlay 解析出 `glm_tts` → `glm_tts_dit` 两个 stage；stage 0 的 model config
+     不需要根目录 `config.json`，也不需要 `--hf-config-path`（vllm-omni 按 `model_arch` 注入 `glm_tts` 并解析出
+     `GLMTTSConfig`，分词器取 `vq32k-phoneme-tokenizer`）。真机 deploy+speech 仍待验证。
+   - PPU spec 同样用 bundled `glm_tts.yaml`、同样挂在 `/model`，很可能有同一个问题，没有验证过。
+   - 以后再遇到别的 omni 模型「仓库根目录没有 `config.json`」，同样先用 `pipeline:` 显式指定。
+4. **MOSS-TTS-Realtime 请求报 `mat2 is on cuda:0, different from other tensors on cpu`：vllm-omni 缺陷，
+   omni 档 r4 起打补丁 `patches/vllm_omni/003`**。服务能起来（两个 stage 都健康），失败出在 API server
+   进程给参考音频编码这一步。vllm-omni 把 Realtime 的 codec（`MOSS-Audio-Tokenizer`）挪到 code2wav stage
+   所在的 GPU 上（上游 #7724），但 `MossRealtimeReferenceEncoder._encode_prepared` 把 CPU 上的波形原样交给
+   `codec.batch_encode`，而 codec 的远程代码按 `wav_list[0].device` 建输入张量，于是权重在 cuda:0、输入在 CPU。
+   0.30.0、0.32.0 与上游 main（2026-11-02）的这段代码都没变，升 omni 版本解决不了。非 Realtime 的 MOSS 变体
+   走 processor 的 `encode_audios_from_wav`，它会自己处理设备，所以不受影响：同一轮验证里 MOSS-TTS、TTSD、
+   SoundEffect、VoiceGenerator 都拿到了 WAV。补丁在调 `batch_encode` 前把每段波形移到 codec 所在设备；
+   上游修好后它会被识别为 already-present。0.23 的昇腾 omni 档没有这个类，矩阵用
+   `OMNI_PATCHES_NOT_APPLICABLE` 显式声明不适用。
+   - 实测（gpu3，Quadro RTX 8000，fp16 overlay，3 秒参考音频）：r3 返回 500，报与 A100 上相同的设备不一致；
+     r4 返回 200 和 3.04 秒、24 kHz 的 WAV。
+   - **模板注意**：vllm-omni 按模型路径名区分 MOSS 变体（`realtime`、`local`、`ttsd`、`soundeffect`、
+     `voicegenerator`，都不匹配时当作 `tts`），不看 config。模型挂在 `/model` 时 Realtime 会被当成 `tts`，请求报
+     `'MossTTSRealtimeProcessor' object has no attribute 'model_config'`。Realtime 模板必须把模型挂到名字里带
+     `realtime` 的路径（A100 验证用的是 `/models/MOSS-TTS-Realtime`），codec 另挂一个目录，并用
+     `--hf-overrides '{"codec_model_name_or_path": "<codec 目录>"}'` 指过去；否则 `HF_HUB_OFFLINE=1` 下会去 HF
+     找 `OpenMOSS-Team/MOSS-Audio-Tokenizer`。其他 MOSS 变体同理。
+   - **24 GiB 卡要压 talker stage 的显存**：codec 在卡上有两份，code2wav stage 约 7.7 GiB，API server 给参考音频
+     编码的那份约 7.2 GiB（不在任何 stage 的预算里）。镜像自带的 deploy config 给 talker stage 0.60，在 RTX 4090 D
+     上第一条 speech 请求就 OOM；全局 `--gpu-memory-utilization` 只改得到 stage 0 的一部分，不够。模板用 placement
+     resolver 按每卡显存给变量：< 22 GiB 拒绝，22–40 GiB 由 pre_start 写一个只覆盖 stage 0 为 0.25 的 deploy overlay，
+     ≥ 40 GiB 保持 0.60。4090 D 上 0.35 仍 OOM，0.25 出 WAV。
 
 ## 发布（内网 registry -> 公网）
 

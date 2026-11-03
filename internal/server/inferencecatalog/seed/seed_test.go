@@ -75,7 +75,7 @@ func TestEmbeddedCatalogProvidesSmallFP16RuntimeSpecsForTuring(t *testing.T) {
 				// There is no CUDA 12 vllm-omni runner. The CUDA 13 one runs on
 				// Turing, but vllm-omni's multi-token prediction path mixes
 				// fp16 and fp32 tensors and fails in fp16, so omni specs run fp32.
-				wantImage, wantDtype = "gpuworks/gpuworks-runner:cuda13.0-vllm-omni0.30.0-r3", "float32"
+				wantImage, wantDtype = "gpuworks/gpuworks-runner:cuda13.0-vllm-omni0.30.0-r4", "float32"
 			}
 			if spec.Weights.Quantization != "bf16" ||
 				!containsArgumentPair(spec.Args, "--dtype", wantDtype) ||

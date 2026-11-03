@@ -17,7 +17,7 @@ import (
 )
 
 const upstreamManifest = `{"schema_version":3,"catalog_version":"2026-10-09.abcdef12","series":[{"name":"vLLM · CUDA","engine":"vllm","purpose":"inference","framework":"cuda","versions":[` +
-	`{"name":"cuda13.0-vllm0.30.0-r2","image_ref":"gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2","engine_version":"0.30.0","framework_version":"13.0","arch":"multi","registry_sources":["quay.io/gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2"]},` +
+	`{"name":"cuda13.0-vllm0.30.0-r4","image_ref":"gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r4","engine_version":"0.30.0","framework_version":"13.0","arch":"multi","registry_sources":["quay.io/gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r4"]},` +
 	`{"name":"cuda13.0-vllm0.31.0-r1","image_ref":"gpuworks/gpuworks-runner:cuda13.0-vllm0.31.0-r1","engine_version":"0.31.0","framework_version":"13.0","arch":"multi"}]}]}`
 
 type imageManifestRun struct {
@@ -198,7 +198,7 @@ func TestUploadManifestConflictIsRefusedWhole(t *testing.T) {
 // reported and when its row last changed.
 func TestImageDTOWire(t *testing.T) {
 	run := newImageManifestRun(t)
-	image, err := run.store.ImageByRef("gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2")
+	image, err := run.store.ImageByRef("gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r4")
 	if err != nil {
 		t.Fatal(err)
 	}

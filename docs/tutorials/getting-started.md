@@ -107,7 +107,7 @@ curl -fsSL http://192.0.2.10:8800/install.sh | sh -s -- \
 ## 5. 部署模型
 
 1. 打开左侧**部署**，使用**快捷部署**。**模型**选择 `dgpu-demo-a-ms`，**目标芯片**选择 NVIDIA。
-2. **推荐推理模板**选择 **Qwen3-1.7B → general · vllm · balanced**，镜像应为 `gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2`。
+2. **推荐推理模板**选择 **Qwen3-1.7B → general · vllm · balanced**，镜像应为 `gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r4`。
    若弹出**使用已登记的模型？**，选择带 **MS**、**1 个节点**标记的 `dgpu-demo-a-ms`，点击**使用此模型并部署**，返回后核对所选模型。
 3. **部署名称**、**对外模型名**均填 `tutorial-qwen3-17b`；后者用于请求中的 `model`。
 

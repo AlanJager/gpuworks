@@ -49,7 +49,7 @@ Prepare A and B as shown in the table and download them to the node you noted ea
 
 1. Open **Deploy → Quick Deploy**. Under **Basic Configuration**, select model `dgpu-demo-a-ms` and **Target accelerator NVIDIA**. Under **Recommended Inference Template**, select **Qwen3-1.7B** and the **general · vllm · balanced** profile, and check the **BF16** weights label.
    If the **Use a registered model?** page appears, select `dgpu-demo-a-ms` with the **MS** label and click **Use this model and deploy**.
-2. Check that the model source ID is `Qwen/Qwen3-1.7B` and the image is `gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2`. Fill in the following table, keeping the template image and launch method.
+2. Check that the model source ID is `Qwen/Qwen3-1.7B` and the image is `gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r4`. Fill in the following table, keeping the template image and launch method.
 
 | Field or action | Model A | Model B (fill in during the next step) |
 |---|---|---|
