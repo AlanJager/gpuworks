@@ -143,11 +143,68 @@ func TestGenerateRequiresAPublishedRepository(t *testing.T) {
 	}
 }
 
+func TestParseROCmCandidateTag(t *testing.T) {
+	tag, err := parseTag("rocm7.2.4-gfx1151-sglang0.5.21")
+	if err != nil || tag.Backend != "rocm" || tag.FrameworkVersion != "7.2.4" || tag.Model != "gfx1151" || tag.Engine != "sglang" || tag.EngineVersion != "0.5.21" {
+		t.Fatalf("ROCm candidate tag = %+v, err = %v", tag, err)
+	}
+}
+
+func TestROCmMatrixCandidatesStayOutOfBuiltInCatalog(t *testing.T) {
+	data, err := os.ReadFile(matrixPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var matrix matrixFile
+	if err := yaml.Unmarshal(data, &matrix); err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{
+		"rocm7.2.3-vllm0.30.0":   "vllm/vllm-openai-rocm@sha256:2e7da1ad1c66836802072588adea75f9f4991da5f9545b4318e91d422c22ce6a",
+		"rocm7.2.0-sglang0.5.21": "lmsysorg/sglang@sha256:0534eb382626ef55ace8be24f7d81cc6eb7451acac8a5727848397a5e9309d91",
+	}
+	for _, item := range matrix.Items {
+		base, found := want[item.ID]
+		if !found {
+			continue
+		}
+		if item.Catalog == nil || *item.Catalog || item.Base != base || len(item.Platforms) != 1 || item.Platforms[0] != "linux/amd64" {
+			t.Fatalf("ROCm candidate %s must be unpublished amd64 public-base recipe: %+v", item.ID, item)
+		}
+		delete(want, item.ID)
+	}
+	if len(want) != 0 {
+		t.Fatalf("missing ROCm candidates: %v", want)
+	}
+}
+
+func TestROCmRecipesContainRunnerVerificationContract(t *testing.T) {
+	for _, engine := range []string{"vllm", "sglang"} {
+		path := filepath.Join("../../build/runner-images/rocm", "Dockerfile."+engine)
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, required := range []string{
+			"ARG BASE_IMAGE", "FROM ${BASE_IMAGE}",
+			"COPY shared/assert_requires.sh /opt/gpuworks/shared/assert_requires.sh",
+			"COPY rocm/write_manifest.py /opt/gpuworks/rocm/write_manifest.py",
+			"python3 /opt/gpuworks/amd-audit.py",
+			"python3 /opt/gpuworks/rocm/write_manifest.py",
+			"bash /opt/gpuworks/shared/assert_requires.sh",
+		} {
+			if !strings.Contains(string(data), required) {
+				t.Errorf("%s missing %q", path, required)
+			}
+		}
+	}
+}
+
 func TestGenerateRejectsInconsistentMatrix(t *testing.T) {
 	for name, tc := range map[string]struct{ yaml, want string }{
 		"id grammar": {
-			yaml: "items:\n  - id: rocm6.4-vllm0.30.0\n    revision: r1\n",
-			want: "rocm6.4-vllm0.30.0",
+			yaml: "items:\n  - id: unknown6.4-vllm0.30.0\n    revision: r1\n",
+			want: "unknown6.4-vllm0.30.0",
 		},
 		"engine version arg": {
 			yaml: "items:\n  - id: cuda13.0-vllm0.30.0\n    revision: r2\n    args:\n      ENGINE_VERSION: \"0.29.0\"\n",

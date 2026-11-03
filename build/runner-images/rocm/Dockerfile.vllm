@@ -1,0 +1,20 @@
+# Unpublished MI300X ROCm candidate. This is not the AMD395 legacy image.
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+USER root
+ARG ENGINE_VERSION
+ARG FRAMEWORK_VERSION
+ARG IMAGE_ID
+ARG IMAGE_REVISION
+ARG REQUIRES="engine"
+COPY rocm/prepare.py rocm/prepare_sglang.py /opt/gpuworks/rocm/
+COPY rocm/audit.py /opt/gpuworks/amd-audit.py
+COPY rocm/write_manifest.py /opt/gpuworks/rocm/write_manifest.py
+COPY shared/assert_requires.sh /opt/gpuworks/shared/assert_requires.sh
+RUN python3 /opt/gpuworks/rocm/prepare.py vllm && python3 -m pip check
+ENV GPUWORKS_EXPECT_ENGINE=vllm GPUWORKS_EXPECT_ENGINE_VERSION=${ENGINE_VERSION}
+RUN python3 /opt/gpuworks/amd-audit.py
+RUN ENGINE=vllm python3 /opt/gpuworks/rocm/write_manifest.py \
+    && ENGINE=vllm bash /opt/gpuworks/shared/assert_requires.sh
+LABEL io.gpuworks.image.id="${IMAGE_ID}" io.gpuworks.image.revision="${IMAGE_REVISION}" \
+      io.gpuworks.hardware-validation="pending" io.gpuworks.publication="candidate"
