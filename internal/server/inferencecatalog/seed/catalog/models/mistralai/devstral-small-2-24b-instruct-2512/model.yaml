@@ -7,6 +7,39 @@ kv_bytes_per_token:
   vllm: 163840
   sglang: 163840
 specs:
+- name: fp8-vllm-nvidia-a100
+  display_name_zh_cn: A100 · FP8 · 32K 上下文
+  display_name_en: A100 · FP8 · 32K context
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda12.9-vllm0.31.0-r2
+  weights:
+    quantization: fp8
+    sources:
+    - huggingface:
+        repo_id: mistralai/Devstral-Small-2-24B-Instruct-2512
+        revision: 55c5b41e98c2dbd21b0c8afffc540dcfc9eb5128
+    - modelscope:
+        repo_id: mistralai/Devstral-Small-2-24B-Instruct-2512
+        revision: e3f708cffcacee561baf07d7e9f70f978d3da5ad
+  weight_bytes: 51620249351
+  gpus:
+    vendor: nvidia
+    cc: '8.0'
+  args:
+  - --trust-remote-code
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - mistral
+  - --enforce-eager
+  - --max-model-len
+  - '32768'
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
 - name: fp8-sglang-nvidia-general
   display_name_zh_cn: Ada 及以上 · FP8
   display_name_en: Ada+ · FP8
