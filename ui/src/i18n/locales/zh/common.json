@@ -10,7 +10,8 @@
     "hygon": "海光",
     "apple": "Apple",
     "unknown": "未知厂商",
-    "unknownFramework": "未知框架"
+    "unknownFramework": "未知框架",
+    "amd": "AMD"
   },
   "operation": {
     "all": "全部能力",

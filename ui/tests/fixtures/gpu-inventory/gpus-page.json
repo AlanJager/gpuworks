@@ -9,6 +9,7 @@
       "arch_id": "sm_75",
       "compute_capability": "7.5",
       "memory_total_bytes": 48318382080,
+      "memory_capacity_known": true,
       "power_limit_watts": 250,
       "pcie_bdf": "0000:17:00.0",
       "numa_node": 0,
@@ -57,6 +58,7 @@
       "arch_id": "sm_75",
       "compute_capability": "7.5",
       "memory_total_bytes": 23622320128,
+      "memory_capacity_known": true,
       "power_limit_watts": 250,
       "pcie_bdf": "0000:65:00.0",
       "numa_node": 0,
@@ -117,6 +119,7 @@
       "name": "GeForce RTX 3090",
       "vendor": "nvidia",
       "memory_total_bytes": 0,
+      "memory_capacity_known": false,
       "pcie_bdf": "0000:1b:00.0",
       "numa_node": 0,
       "partition_capabilities": [

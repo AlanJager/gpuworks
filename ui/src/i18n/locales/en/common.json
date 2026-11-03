@@ -10,7 +10,8 @@
     "hygon": "Hygon",
     "apple": "Apple",
     "unknown": "Unknown Vendor",
-    "unknownFramework": "Unknown Framework"
+    "unknownFramework": "Unknown Framework",
+    "amd": "AMD"
   },
   "operation": {
     "all": "All capabilities",

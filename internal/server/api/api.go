@@ -1209,6 +1209,7 @@ func nodeDTO(n *store.Node, includeToken bool) dto.Node {
 			Vendor:                g.Vendor,
 			ArchID:                arch.ID,
 			MemoryTotalBytes:      g.MemoryTotal,
+			MemoryCapacityKnown:   gpuMemoryCapacityKnown(g.MemoryTotal),
 			PowerLimitWatts:       g.PowerLimitWatts,
 			PCIeBDF:               g.PCIeBDF,
 			NUMANode:              g.NUMANode,

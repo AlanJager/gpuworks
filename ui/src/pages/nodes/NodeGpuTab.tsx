@@ -1,3 +1,4 @@
+import { formatGPUCapacity, gpuCapacityBytes } from "../../gpuMemory";
 import { Alert, Descriptions, Empty, Progress, Space, Table, Typography } from "antd";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
@@ -142,11 +143,11 @@ function gpuColumns(t: TFunction<"nodes">, snapshotOf: (gpu: GPU) => GpuSnapshot
       width: 112,
       render: (_: unknown, gpu: GPU) => {
         const used = snapshotOf(gpu).memoryUsedBytes;
-        const total = gpu.memory_total_bytes > 0 ? `${(gpu.memory_total_bytes / GIB).toFixed(0)} GiB` : "—";
+        const total = formatGPUCapacity(gpu, (bytes) => `${(bytes / GIB).toFixed(0)} GiB`);
         return (
           <div className="node-gpu-vram">
             <span className="node-gpu-num">{used == null ? "—" : (used / GIB).toFixed(1)} / {total}</span>
-            {used != null && gpu.memory_total_bytes > 0 && (
+            {used != null && gpuCapacityBytes(gpu) !== undefined && (
               <Progress
                 percent={Math.min(100, (used / gpu.memory_total_bytes) * 100)}
                 size="small"

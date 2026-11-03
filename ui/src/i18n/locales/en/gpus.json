@@ -31,6 +31,7 @@
   "metric": {
     "utilization": "Utilization",
     "gpuUtilization": "GPU utilization",
+    "gpuClock": "GPU clock",
     "vram": "VRAM",
     "vramUsage": "VRAM usage",
     "temperature": "Temperature",
