@@ -681,3 +681,9 @@ test-l4-storage-model-cache-copy-nfs:
 # Explicit disposable Ganesha image; requires root + a private mount namespace.
 test-l4-storage-model-cache-recovery-nfs:
 	GPUWORKS_TEST_STRICT=1 CGO_ENABLED=0 $(GO) test $(GO_TEST_FLAGS) -count=1 -v -tags=l4 -timeout=20m ./test/l4/nfsfault -run '^TestL4StorageModelCacheRecoveryNFS$$'
+
+# Explicit image-packaging tools lane; the ordinary Go suite stays dependency-free.
+.PHONY: test-amd-import-tools
+test-amd-import-tools:
+	python3 -c 'import yaml; print("PyYAML " + yaml.__version__)'
+	python3 -B -m unittest discover -s build/inference-templates -p 'test_*.py'

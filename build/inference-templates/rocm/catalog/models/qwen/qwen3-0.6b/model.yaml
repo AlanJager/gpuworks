@@ -1,0 +1,47 @@
+model_id: qwen/qwen3-0.6b
+specs:
+- scenario: balanced
+  name: bf16-vllm-amd-mi300x-local
+  engine: vllm
+  image: __MI300X_VLLM_IMAGE_MAPPING_REQUIRED__:required
+  entrypoint:
+  - vllm
+  - serve
+  gpus:
+    vendor: amd
+    name: ^.*[Mm][Ii]300[Xx].*$
+    arch_id: gfx942
+  args:
+  - --dtype
+  - bfloat16
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    if gpu.count not in [1, 2, 4, 8]: return reject(\"\
+      supported TP counts: 1, 2, 4, 8\")\n    return {\"GPU_COUNT\": gpu.count, \"\
+      TP_SIZE\": gpu.count}\n"
+  seed_spec: bf16-sglang-nvidia-general
+  display_name_zh_cn: BF16 · vLLM · AMD MI300X
+  display_name_en: BF16 · vLLM · AMD MI300X
+- scenario: balanced
+  name: bf16-sglang-amd-mi300x-local
+  engine: sglang
+  image: __MI300X_SGLANG_IMAGE_MAPPING_REQUIRED__:required
+  entrypoint:
+  - python3
+  - -m
+  - sglang.launch_server
+  gpus:
+    vendor: amd
+    name: ^.*[Mm][Ii]300[Xx].*$
+    arch_id: gfx942
+  args:
+  - --dtype
+  - bfloat16
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    if gpu.count not in [1, 2, 4, 8]: return reject(\"\
+      supported TP counts: 1, 2, 4, 8\")\n    return {\"GPU_COUNT\": gpu.count, \"\
+      TP_SIZE\": gpu.count}\n"
+  seed_spec: bf16-sglang-nvidia-general
+  display_name_zh_cn: BF16 · SGLang · AMD MI300X
+  display_name_en: BF16 · SGLang · AMD MI300X

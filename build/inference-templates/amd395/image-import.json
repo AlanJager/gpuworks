@@ -1,0 +1,46 @@
+{
+  "series": [
+    {
+      "name": "vLLM \u00b7 ROCm \u00b7 AMD gfx1151 family",
+      "engine": "vllm",
+      "purpose": "inference",
+      "framework": "rocm",
+      "source": "custom",
+      "notes": "Local gfx1151-family image; limited AMD395 single-GPU BF16 vLLM text-smoke evidence exists for the cataloged Qwen profiles; this is not a general compatibility claim. Historical evidence applies only to the originally pinned model revisions, not newly generated seed revisions.",
+      "versions": [
+        {
+          "name": "0.29.0-rocm723-gfx1151-r2",
+          "image_ref": "__AMD395_VLLM_IMAGE_MAPPING_REQUIRED__:required",
+          "engine_version": "0.29.0+rocm723",
+          "framework_version": "7.2.3",
+          "arch": "amd64"
+        }
+      ]
+    },
+    {
+      "name": "SGLang \u00b7 ROCm \u00b7 AMD gfx1151 family",
+      "engine": "sglang",
+      "purpose": "inference",
+      "framework": "rocm",
+      "source": "custom",
+      "notes": "Local gfx1151-family SGLang images. The r5 image has narrow single-GPU BF16 text-smoke evidence for Qwen3.8-27B and Qwen3-0.6B on AMD395; this does not establish general ROCm compatibility. Historical evidence applies only to the originally pinned model revisions, not newly generated seed revisions.",
+      "versions": [
+        {
+          "name": "0.5.21-rocm724-gfx1151-r2",
+          "image_ref": "__AMD395_SGLANG_R2_IMAGE_MAPPING_REQUIRED__:required",
+          "engine_version": "0.5.21.dev550+g4142235c2",
+          "framework_version": "7.2.4",
+          "arch": "amd64"
+        },
+        {
+          "name": "0.5.21-rocm724-gfx1151-r5",
+          "image_ref": "__AMD395_SGLANG_R5_IMAGE_MAPPING_REQUIRED__:required",
+          "engine_version": "0.5.21.dev550+g4142235c2",
+          "framework_version": "7.2.4",
+          "arch": "amd64",
+          "notes": "Historical local image sha256:c8de20ed7d138f6e3442c5995ad71a6810d097cb010032fbaec27106fef4cc1d. Narrow single-GPU BF16 SGLang text smoke on AMD395: Qwen3.8-27B and Qwen3-0.6B each passed 8/8 requests in the recorded profile; not a general ROCm compatibility claim."
+        }
+      ]
+    }
+  ]
+}
