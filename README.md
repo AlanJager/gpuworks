@@ -205,6 +205,8 @@ More in [Architecture](docs-en/explanation/architecture.md) and the [ADRs](docs-
 
 Everything else: [documentation index](docs-en/README.md).
 
+[Documentation Website](https://gpuworks.readthedocs.io/)
+
 ## Build from source
 
 Requires Go 1.26 and Node.js.
