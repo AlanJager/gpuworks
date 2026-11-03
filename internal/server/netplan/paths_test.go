@@ -15,10 +15,10 @@ func storageInventory(mgmt, storage string) *proto.NetInventory {
 }
 
 func TestStoragePathBetweenPrefersASharedNetworkThenTheManagementNetwork(t *testing.T) {
-	a := Node{ID: 1, Labels: map[string]string{"rack": "r1"}, Inventory: storageInventory("172.25.17.1", "10.30.1.1")}
-	b := Node{ID: 2, Labels: map[string]string{"rack": "r1"}, Inventory: storageInventory("172.25.17.2", "10.30.1.2")}
-	c := Node{ID: 3, Inventory: storageInventory("172.25.17.3", "10.30.1.3")}
-	off := Node{ID: 4, Inventory: storageInventory("172.25.17.4", "10.30.1.4"), RolesOff: rolesOff(RoleStorageSync)}
+	a := Node{ID: 1, Labels: map[string]string{"rack": "r1"}, Inventory: storageInventory("192.0.2.1", "10.30.1.1")}
+	b := Node{ID: 2, Labels: map[string]string{"rack": "r1"}, Inventory: storageInventory("192.0.2.2", "10.30.1.2")}
+	c := Node{ID: 3, Inventory: storageInventory("192.0.2.3", "10.30.1.3")}
+	off := Node{ID: 4, Inventory: storageInventory("192.0.2.4", "10.30.1.4"), RolesOff: rolesOff(RoleStorageSync)}
 	storage := network(9, "storage", TypeHostEthernet, "10.30.0.0/16", "", RoleStorageSync)
 	in := Inputs{Nodes: []Node{a, b, c, off}, Networks: []Network{storage}, Attachments: []Attachment{{ID: 1, NetworkID: 9, LabelKey: "rack", LabelValue: "r1"}}}
 	resolved := Resolve(in)
@@ -27,7 +27,7 @@ func TestStoragePathBetweenPrefersASharedNetworkThenTheManagementNetwork(t *test
 		t.Fatalf("shared network = %+v, %v", p, err)
 	}
 	// Only one end is on the storage network: both fall back to management.
-	if p, err := StoragePathBetween(a, c, resolved); err != nil || p != (StoragePath{Network: ManagementName, SourceIP: "172.25.17.1", TargetIP: "172.25.17.3"}) {
+	if p, err := StoragePathBetween(a, c, resolved); err != nil || p != (StoragePath{Network: ManagementName, SourceIP: "192.0.2.1", TargetIP: "192.0.2.3"}) {
 		t.Fatalf("management fallback = %+v, %v", p, err)
 	}
 	// The target does not let the management network carry storage sync.

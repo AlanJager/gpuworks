@@ -53,7 +53,7 @@ func TestAscendPoolPlatformPartitionInferenceAndWholeGPU(t *testing.T) {
 	waitAscendPoolCapability(t, control, node.uuid)
 
 	modelID := registerAscendPoolModel(t, control, node.uuid, candidate.model)
-	image := hostEnv("GPUWORKS_ASCEND_L4_IMAGE", "172.20.9.4:10043/ai-model-registry/vllm-ascend:0.26.0rc1")
+	image := requiredHostEnv(t, "GPUWORKS_ASCEND_L4_IMAGE")
 
 	partition := createAscendPlatformDeployment(t, control, map[string]any{
 		"model_id": modelID, "node_uuid": node.uuid,
@@ -95,7 +95,7 @@ func ascendPoolCandidates() []ascendPoolCandidate {
 
 func selectAscendPoolCandidate(t *testing.T) ascendPoolCandidate {
 	t.Helper()
-	image := hostEnv("GPUWORKS_ASCEND_L4_IMAGE", "172.20.9.4:10043/ai-model-registry/vllm-ascend:0.26.0rc1")
+	image := requiredHostEnv(t, "GPUWORKS_ASCEND_L4_IMAGE")
 	model := hostEnv("GPUWORKS_ASCEND_L4_MODEL", "/opt/gpuworks/models/qwen3.5-0.8b")
 	cache := ascendRunveilCachePath()
 	if err := validateAscendRunveilCache(cache); err != nil {

@@ -55,7 +55,7 @@ session_max_lifetime: 72h
 	// The server keeps no external address and dials serving networks from
 	// whatever the routing table picks; the keys that used to say otherwise
 	// are gone.
-	for _, removed := range []string{"public_url: http://47.103.88.152:8808", "serving_source: 10.40.0.1"} {
+	for _, removed := range []string{"public_url: http://198.51.100.152:8808", "serving_source: 10.40.0.1"} {
 		if err := os.WriteFile(path, []byte("listen:\n  console: [1.2.3.4:80]\n"+removed+"\n"), 0o664); err != nil {
 			t.Fatal(err)
 		}

@@ -122,11 +122,11 @@ docs-build:
     # No Go toolchain or module proxy is involved at all.
     HUGO_VERSION: "0.165.0"
     # The runners have no egress to github.com, so Hugo comes from the rustfs
-    # mirror on mirror1 (bucket gpuworks-mirror). A systemd timer there
-    # (gpuworks-hugo-mirror) refreshes the mirror daily through a proxy; after
-    # bumping HUGO_VERSION, run mirror1's refresh-hugo-mirror.sh with the new
-    # version, or wait for the daily run when it is among the newest releases.
-    HUGO_MIRROR: "http://172.20.16.58:9000/gpuworks-mirror"
+    # mirror on mirror1 (bucket gpuworks-mirror), whose URL is the HUGO_MIRROR
+    # project CI/CD variable. A systemd timer there (gpuworks-hugo-mirror)
+    # refreshes the mirror daily through a proxy; after bumping HUGO_VERSION,
+    # run mirror1's refresh-hugo-mirror.sh with the new version, or wait for
+    # the daily run when it is among the newest releases.
     # Set to 1 when the runner image already contains Hugo. In that mode the
     # mirror download is skipped and the job fails clearly if the binary is
     # absent.
@@ -142,6 +142,10 @@ docs-build:
       else
         command -v curl >/dev/null
         command -v tar >/dev/null
+        test -n "$HUGO_MIRROR" || {
+          echo "HUGO_MIRROR (project CI/CD variable) must name the Hugo mirror bucket URL" >&2
+          exit 1
+        }
         name=hugo_extended_${HUGO_VERSION}_linux-amd64.tar.gz
         base="${HUGO_MIRROR}/hugo"
         curl --fail --location --retry 3 --silent --show-error "$base/$name" -o "$name"

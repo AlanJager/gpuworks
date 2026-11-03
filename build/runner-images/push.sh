@@ -7,7 +7,7 @@
 # 用法：
 #   ./push.sh --dest quay.io/gpuworks/gpuworks-runner --tags-from matrix
 #   ./push.sh --dest docker.io/gpuworks/gpuworks-runner --only cuda13.0-vllm0.30.0-r2
-#   SRC=172.25.17.156:5000/gpuworks-runner ./push.sh --dest ... --jobs 4
+#   SRC=192.0.2.156:5000/gpuworks-runner ./push.sh --dest ... --jobs 4
 #
 # 凭据：先 docker/skopeo login，或传 --creds user:pass（不要写进文件或 CI 日志）。
 #
