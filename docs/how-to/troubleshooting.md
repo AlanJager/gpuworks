@@ -1119,9 +1119,35 @@ server 停机错过的计划只补 12 小时内最新的一次。计划的 `next
 用户不存在时报 `not found`，先核对用户名和数据目录；出现权限错误时检查当前用户对该数据库的访问权限。
 见 [CLI](../reference/cli.md)。
 
+## 无法登录现场时：调试采集与收集诊断信息
+
+不能登录客户服务器时，让管理员在 **设置 → 诊断** 里操作，把下载的压缩包发回来。
+
+**收集诊断信息**：选时间范围（默认最近 1 小时，最长 7 天）、相关的部署和节点，点**开始收集**；完成后在列表里下载 `gpuworks-diagnostics-<id>.tar.gz`。包里有：
+
+| 路径 | 内容 |
+|---|---|
+| `manifest.json` | 本次收集的范围、server 版本，以及每一项是已收集、已跳过（节点离线、agent 版本不支持）还是失败 |
+| `server/gpuworks-server.log` | 时间范围内的 server 日志（含 info，日志页只有 warn 以上） |
+| `nodes/<uuid>/agent.log`、`doctor.json` | 所选节点（不选时为所选部署的实例所在节点）的 agent 日志与诊断报告 |
+| `instances/<uuid>.log` | 所选部署的实例日志 |
+| `debug/<会话>/`、`nodes/<uuid>/debug/` | 时间重叠的调试采集 |
+| `db/*.json` | 全部节点、所选部署与实例、时间范围内的事件、所选节点的镜像状态、镜像目录、存储、设置、所选部署的请求记录 |
+
+凭据（token、密码、密钥、哈希）只保留前 8 个字符，和界面上的 API key 前缀对得上。压缩包在 server 数据目录的 `diagnostics/bundles/` 下保留 7 天。
+server 起不来时，在 server 主机上执行 [`gpuworks support-bundle`](../reference/cli.md#gpuworks-support-bundle)，直接读数据库和日志文件（节点那部分收不到，manifest 会注明）。
+
+**调试采集**：现象要靠 debug 日志或请求原文才能看清时（例如客户端一直收不到流式结束），先开调试采集复现一次，再收集诊断信息：
+
+1. 选时长（默认 10 分钟，最长 1 小时）、总大小（默认 10 GiB，最大 50 GiB）、要记录的部署和要开 debug 日志的节点。
+2. 采集期间：server 和所选节点（以及所选部署所在节点）的 agent 把 debug 及以上的日志写进单独的文件，平时的日志级别不变；所选部署的每个请求完整记录为 `requests/<部署>-<请求 ID>.jsonl`：
+   请求原文（凭据头已去掉）、引擎返回的每一帧（`upstream`）、客户端收到的每一帧（`client`）、各自相对开始的毫秒数，以及结束方式（`end` 行的 `outcome`、读写错误）。单个请求最多记录 16 MiB，每个节点的 debug 文件最多 200 MiB。
+3. 到时间、写满大小或手动停止时结束。开启与结束都写一条 server 告警日志（带操作人），作为审计记录。
+4. 请求记录含提示词与回复，只保存在 server 和节点本地，7 天后自动删除。agent 版本过旧的节点不支持，会标为已跳过。
+
 ## 仍未解决？
 
-提 issue 或求助时附上这些信息，能省掉大部分往返：
+提 issue 或求助时，优先附上[诊断信息压缩包](#无法登录现场时调试采集与收集诊断信息)；没有时附上这些信息，能省掉大部分往返：
 
 1. 版本：`gpuworks version`（server）和 `gpuworks-agent version`（出问题的节点）。
 2. 出问题的实例 UUID 及其事件时间线：`GET /api/v1/instances/<uuid>/events`（必要时加

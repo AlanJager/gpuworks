@@ -88,6 +88,7 @@ DELETE /api/v1/benchmarks/{id}
 DELETE /api/v1/deployments/{id}
 DELETE /api/v1/deployments/{id}/schedule/{sid}
 DELETE /api/v1/deployments/{id}/wake-waiting
+DELETE /api/v1/diagnostics/debug-session
 DELETE /api/v1/image-series/{id}
 DELETE /api/v1/images/{id}
 DELETE /api/v1/images/{id}/nodes/{uuid}
@@ -148,6 +149,10 @@ GET /api/v1/deployments/{id}/draft
 GET /api/v1/deployments/{id}/events
 GET /api/v1/deployments/{id}/schedule
 GET /api/v1/dgpus
+GET /api/v1/diagnostics/bundles
+GET /api/v1/diagnostics/bundles/{id}
+GET /api/v1/diagnostics/bundles/{id}/download
+GET /api/v1/diagnostics/debug-session
 GET /api/v1/engines
 GET /api/v1/events
 GET /api/v1/experience
@@ -289,6 +294,8 @@ POST /api/v1/deployments/{id}/stop
 POST /api/v1/deployments/{id}/units/retry
 POST /api/v1/deployments/{id}/units/suggest
 POST /api/v1/deployments/{id}/wake
+POST /api/v1/diagnostics/bundles
+POST /api/v1/diagnostics/debug-session
 POST /api/v1/evaluate
 POST /api/v1/experience/password
 POST /api/v1/experience/reset

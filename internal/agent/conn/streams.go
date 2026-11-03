@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"net"
+	"strings"
 	"time"
 
 	"github.com/libp2p/go-yamux/v5"
@@ -57,6 +58,8 @@ func (c *Conn) handleStream(ctx context.Context, stream *yamux.Stream) {
 		c.handleImageWrite(ctx, hdr.Dst, hdr.Ref, stream)
 	case proto.StreamLargeFileRead:
 		c.handleLargeFileRead(ctx, hdr.Dst, stream)
+	case proto.StreamDiagnosticsRead:
+		c.handleDiagnosticsRead(ctx, hdr.Ref, stream)
 	case proto.StreamAgentUpgrade:
 		c.handleUpgradePush(hdr, stream)
 	case proto.StreamStorageUpload:
@@ -226,6 +229,28 @@ func (c *Conn) handleLargeFileRead(ctx context.Context, path string, stream *yam
 	}
 	if err := c.handlers.StreamLargeFile(ctx, path, stream); err != nil {
 		c.log.Warn("large file read failed", "path", path, "err", err)
+	}
+}
+
+// handleDiagnosticsRead streams the node's part of a diagnostics collection.
+// A handler without it (or a failure) closes the stream, which the server
+// records as not collected.
+func (c *Conn) handleDiagnosticsRead(ctx context.Context, sessions string, stream *yamux.Stream) {
+	defer stream.Close()
+	h, ok := c.handlers.(interface {
+		StreamDiagnostics(ctx context.Context, sessions []string, w io.Writer) error
+	})
+	if !ok {
+		return
+	}
+	var ids []string
+	for _, id := range strings.Split(sessions, ",") {
+		if id = strings.TrimSpace(id); id != "" {
+			ids = append(ids, id)
+		}
+	}
+	if err := h.StreamDiagnostics(ctx, ids, stream); err != nil {
+		c.log.Warn("diagnostics read failed", "err", err)
 	}
 }
 

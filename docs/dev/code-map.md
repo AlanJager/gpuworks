@@ -85,6 +85,7 @@
 - `webui`：`go:embed` 内嵌前端构建产物（`internal/server/webui/dist`），文本资源在首次被请求时 gzip 一次并缓存在内存，构建产物不再附带 `.gz` 副本。
 - `selfinstall` / `installcred`：`gpuworks install` / `upgrade` 的实现（复制二进制、写 service 定义、从发布通道或发布站拉发布件、带备份可回滚）、控制台升级的启动守卫、无 systemd 时的 `serve --supervise` 守护循环，与首启 bootstrap admin 凭据记录（叶子包，install 与 server 两端共用，不得反向依赖 server）。
 - `distribution`：发布通道客户端（ADR 0040）：签名信封与索引 schema、同时请求所有发布源取第一个验签通过的索引、文件按 sha256 校验并换源续传；发布方通知 `notices.json` 的 schema、校验、本地匹配与拉取（`notices.go`，ADR 0054）；默认源与信任公钥是包内常量。只依赖标准库（`check-architecture` 守护），selfinstall 与 api 共用。
+- `diagnostics`：远程排查。调试采集（server 与所选节点的 debug 会话、所选部署请求原文的记录，一次一个、按时长与大小自动结束）与诊断信息收集（时间范围内的日志、调试采集文件、节点诊断与脱敏的数据库快照打包下载）；数据源由 `app/diagnostics_sources.go` 提供，`gpuworks support-bundle` 走同一套收集。
 - `usagereport`：用户体验改进计划（ADR 0054，字段见 `docs/reference/usage-report.md`）：叶子包，日报结构与裁剪、进程内计数器（API 路由/错误码/panic、登录、agent 连接问题，由 `api.countUsage` 中间件与 hub 写入）、SLS WebTracking 与 Cloudflare 收集端的发送、每日发送时刻，以及检查更新附带的装机规模 `FleetReport`；库侧日汇总是 `store/usage_report.go`，调度与组装在 `app/usage_report.go`，通知铃铛服务在 `app/notices.go`。
 - `bus`：事件发布。**不用 ORM 钩子**，写操作收敛进 `store` 显式方法，事务提交后 publish。
 - `experiencelaunch`：设置页「功能体验模式」开关背后的启动器：在控制台端口 +10 起停独立的 `gpuworks experience` 进程（自己的数据目录与密码），`gpuworks experience` 的命令行契约（子命令与 flag 名）只定义在这里。
@@ -133,6 +134,8 @@
 - `proto`（控制面协议）、
 - `engines`（引擎名唯一产地，纯叶子无依赖：`VLLM`/`SGLang`/`Callable`，`Callable` 承载目录自带的 Serve Adapter、无日志方言与参数字典，需要方言/字典时用 `DialectNames()` 而非 `Names()`；`deploy` 再导出为 `EngineVLLM`/`EngineSGLang`/`DefaultEngine`，因为 `modelmeta` 经 `inferenceapi` 被 `deploy` 依赖、agent 又不能依赖 server，两侧只能共用这个叶子包）、
 - `logging`（server+agent 共用的按大小轮转文件日志，`--log-file`/`--log-max-size`/`--log-keep`）、
+- `logthrottle`（server+agent 共用的相同日志限频：同一类记录每 30 秒限量写入，其余计数后补一条汇总）、
+- `debuglog`（限时限量的调试会话：会话期间把 debug 及以上的记录另写一个文件，进程本身的日志级别不变）、
 - `accelerator`（dGPU 后端注册表 + **vendor 身份唯一产地**：`VendorNVIDIA/AMD/Ascend/PPU/Hygon` 常量、`NormalizeVendor`/`VendorKey`/`FrameworkVendor`/`InferVendor`/`KnownVendors`/`RequiresVendorCatalogImage`/`IsDomestic`，以及加速卡自带网口的能力 `CardNetworkOf`（rail 命名、集合通信库要的环境变量、容器要的主机文件）、加速卡健康词汇（`health.go`：正常/告警/故障三级、稳定的发现码、取证行 `FormatHealthEvidence`/`ParseHealthEvidence`，`health_guide.go`：按厂商+码+BDF 派生取证/复核/处理命令 `HealthGuideFor`），server+agent 共享，新增后端必须显式改这里）、
 - `assets`（内嵌原生资产：libvgpu、partition probe、ib_write_bw 等）、
 - `commandlog`（外部命令脱敏日志）、

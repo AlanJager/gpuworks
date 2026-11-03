@@ -186,11 +186,6 @@ func (c *Controller) recordRefusal(dep *store.Deployment, reason scheduler.Reaso
 	payload := map[string]any{"scheduler": reason}
 	if at != nil {
 		payload["rank"], payload["node"] = at.Rank, at.Node.UUID
-		c.log.Info("deployment not schedulable yet", "dep", dep.ID,
-			"code", reason.Code, "reason", reason.Message, "params", reason.Params, "rank", at.Rank, "node", at.Node.UUID)
-	} else {
-		c.log.Info("deployment not schedulable yet", "dep", dep.ID,
-			"code", reason.Code, "reason", reason.Message, "params", reason.Params)
 	}
 
 	policy := c.store.DeploymentPolicy()
@@ -215,6 +210,16 @@ func (c *Controller) recordRefusal(dep *store.Deployment, reason scheduler.Reaso
 	// The Reason is stored whole: it is already the structured, locale-neutral
 	// form (stable Code + Params), so the human-readable text stays the
 	// client's job.
+	// Logged with the event, not on every pass: a waiting deployment is
+	// re-planned whenever a node reports, and the same refusal each time is
+	// what the throttle above keeps out of the event log - and the server log.
+	if at != nil {
+		c.log.Info("deployment not schedulable yet", "dep", dep.ID,
+			"code", reason.Code, "reason", reason.Message, "params", reason.Params, "rank", at.Rank, "node", at.Node.UUID)
+	} else {
+		c.log.Info("deployment not schedulable yet", "dep", dep.ID,
+			"code", reason.Code, "reason", reason.Message, "params", reason.Params)
+	}
 	c.store.AddDeploymentEventCode(dep.ID, store.EventKindSchedule,
 		store.EventDeploymentUnschedulable, payload)
 	c.q.addAfter(depKey(dep.ID), window)

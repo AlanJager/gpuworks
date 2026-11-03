@@ -262,6 +262,21 @@ Reset a user's password by modifying the database directly, without going throug
 - Run as the operator; `sudo` is not required. If database permissions are insufficient, the operation fails with the database's own permission error.
 - Do not write passwords or keys to shell history or logs.
 
+## gpuworks support-bundle
+
+Collects diagnostics without the server, for when the server does not start or the console cannot be reached; the content matches the console's [Collect diagnostics](../how-to/troubleshooting.md#when-you-cannot-log-in-on-site-debug-collection-and-collecting-diagnostics), except that the nodes' part cannot be collected (the manifest marks them offline). Prints the archive's path when done.
+
+| flag | Default | Description |
+|---|---|---|
+| `--data DIR` | As for `reset-password` | Data directory |
+| `--db PATH` | `<data>/gpuworks.db` | SQLite path |
+| `--log-file PATH` | `<data>/logs/gpuworks-server.log` | Server log file (with its rotated generations) |
+| `--since DURATION` | `1h` | Collect this much recent time; ignored with `--from`/`--to` |
+| `--from T`, `--to T` | None | Time range (RFC 3339); give both |
+| `--deployments IDS` | None | Comma-separated deployment IDs whose records and instance logs to include |
+| `--instances UUIDS` | None | Comma-separated instance UUIDs whose logs to include |
+| `--out PATH` | `./gpuworks-diagnostics-<id>.tar.gz` | Archive path |
+
 ## gpuworks-agent configure
 
 Write the node's startup configuration to `<state>/gpuworks-agent.conf` (permissions `0600`, replacing the entire file). The installation script calls this command after placing the binary. Every agent startup method (systemd units, nohup and `agent-restart.sh`, launchd jobs, and restarts after manual upgrades) executes only `gpuworks-agent run --state DIR` and reads all other configuration from this file.
@@ -305,7 +320,7 @@ Each configuration item is resolved in this order: **command-line flag > environ
 - `--driver udocker` selects runveil: `udocker` is the retained driver name (still used in node records and APIs). Its implementation uses native image handling and a launcher that directly invokes the embedded PRoot; the UI displays runveil.
 - `--driver host` runs the engine as a host process for macOS (Apple silicon) nodes: Linux containers on macOS run in a virtual machine and cannot access the Metal GPU. The image is a darwin/arm64 environment bundle, which the agent starts directly after extraction.
 - If no driver is specified, macOS selects host directly (even if Docker Desktop is available). Other systems detect runtimes in this order: docker (daemon available) > nerdctl > runveil. If none is available, deployments are disabled on the node. An unknown `--driver` value or a runtime unavailable on the current system (`host` on Linux or `udocker` on macOS) logs an error and leaves all runtimes disabled.
-- Logs are written to both stderr and `<state>/agent.log` (rotated at 10 MiB, retaining the previous generation as `agent.log.1`). Records at warning level or above are sent to the server's log center. Only the `GPUWORKS_LOG_LEVEL` environment variable controls the log level.
+- Logs are written to both stderr and `<state>/agent.log` (rotated at 10 MiB, retaining the previous generation as `agent.log.1`). Records at warning level or above are sent to the server's log center. Only the `GPUWORKS_LOG_LEVEL` environment variable controls the log level, which filters both the file and stderr; repeated records are compressed, see [The server's and agent's own logs](../how-to/monitor-and-logs.md#the-servers-and-agents-own-logs).
 - The merged configuration is validated with the same set of rules. A failure immediately reports an error and exits, indicating the configuration file path: a missing token; a missing server for `agent_dial`; a server URL without a scheme or containing credentials, a query string, or a fragment; or an invalid port in the listen address for `server_dial`. A `server_dial` agent only needs a token and listen address. It never connects to the server and neither requires nor uses a server address.
 
 ## gpuworks-agent smoke

@@ -40,8 +40,10 @@ import (
 	"gpuworks.ai/gpuworks/internal/agent/simulate"
 	"gpuworks.ai/gpuworks/internal/agentconf"
 	"gpuworks.ai/gpuworks/internal/benchrun"
+	"gpuworks.ai/gpuworks/internal/debuglog"
 	"gpuworks.ai/gpuworks/internal/launchd"
 	"gpuworks.ai/gpuworks/internal/logging"
+	"gpuworks.ai/gpuworks/internal/logthrottle"
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/selflog"
 	"gpuworks.ai/gpuworks/internal/version"
@@ -239,8 +241,16 @@ func run(log *slog.Logger, args []string) error {
 	// The agent's own warn+ records ship to the log center under source=agent
 	// while the file handler keeps everything, exactly as before.
 	self := selflog.NewCollector(fileLog.Handler(), slog.LevelWarn, 512)
-	log = slog.New(self)
+	// Ahead of the file and the log center: one kind of record repeating
+	// (a vendor tool failing on every probe) is cut to a few lines and a count.
+	tee := debuglog.New(self)
+	throttle := logthrottle.New(tee, logthrottle.Options{Identity: []string{"code", "reason"}})
+	throttleCtx, stopThrottle := context.WithCancel(context.Background())
+	defer stopThrottle()
+	go throttle.Run(throttleCtx)
+	log = slog.New(throttle)
 	cfg.SelfLog = self
+	cfg.DebugLog = tee
 	slog.SetDefault(log)
 
 	a := agentapp.New(cfg, log)

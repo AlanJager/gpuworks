@@ -188,6 +188,18 @@ API 方式可使用 `GET /api/v1/monitor/deployments/{id}/requests`、`GET /api/
 上下文用 `GET /api/v1/logs/context?instance=..&ts=..&id=..&before=..&after=..`；agent、server 等没有实例 UUID 的日志改用 `node` 限定范围。
 直方图用 `GET /api/v1/logs/histogram`，过滤条件与检索一致；完整参数见 [API 参考](../reference/api.md)。
 
+### server 与 agent 自身的日志
+
+- **哪些进日志页**：server 与 agent 只把 warn 及以上的记录送进日志中心；info 及以下只写各自的日志文件（server 的 `logs/gpuworks-server.log`、agent 的 `<state>/agent.log`）。
+- **重复日志会被压缩**：同一类记录在 30 秒内最多写 10 条（debug 记录只压完全相同的行，30 秒最多 50 条），其余只计数；窗口结束后补一条
+  `suppressed similar log messages`，带被压的原消息（`message`）、条数（`suppressed`）与时间窗（`since`、`window`）。
+  「同一类」指级别、消息与记录者自带的字段都相同，server 另按错误码、原因、请求方法、路径与状态码区分，agent 另按错误码与原因区分；同时活跃的类别超过 4096 个时，新类别只按消息计数。
+  因此一个客户端反复以错误凭据访问同一路径、或一个厂商工具每次探测都失败，只留下几行和一个计数。
+- **请求被拒的原因在访问日志里**：server 每个请求一行 `http request`；返回产品错误时这一行带 `code`（错误码）和 `error_params`（错误参数的 JSON，例如调度拒绝的节点、原因与显存数字），弹窗关掉后仍可查。
+- **镜像检查**：agent 每分钟检查一遍目录镜像，只在结论变化时写 info：`image present`（带运行时返回的 `image_id`）或 `image no longer present`；
+  镜像不存在是正常结论，不写告警；检查命令本身失败时写 warn `image presence inspection failed`。
+- **调度拒绝**：`deployment not schedulable yet` 与调度事件同时写，同一原因在一个等待窗口（默认 10 分钟）内只写一次。
+
 ## 设置引擎日志级别
 
 SGLang 默认日志不带级别，平台的级别过滤和直方图就看不到真正的错误。SGLang 单卡、引擎接管模式下，平台会在适用时自动注入带级别的日志配置，日志仍写入容器 stderr。

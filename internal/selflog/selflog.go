@@ -51,10 +51,11 @@ func NewCollector(inner slog.Handler, min slog.Level, queue int) *Collector {
 	}
 }
 
-// Enabled always reports true: whether a record reaches the wrapped handler
-// is the wrapped handler's decision, and the collector needs Handle calls to
-// see the records it captures.
-func (c *Collector) Enabled(context.Context, slog.Level) bool { return true }
+// Enabled reports whether either side wants the record: the queue (at or
+// above min) or the wrapped handler at its own level.
+func (c *Collector) Enabled(ctx context.Context, level slog.Level) bool {
+	return level >= c.min || c.inner.Enabled(ctx, level)
+}
 
 func (c *Collector) Handle(ctx context.Context, r slog.Record) error {
 	if r.Level >= c.min {
@@ -74,6 +75,12 @@ func (c *Collector) Handle(ctx context.Context, r slog.Record) error {
 		default:
 			c.dropped.Add(1)
 		}
+	}
+	// A handler's Handle does not check its level - slog.Logger asks Enabled
+	// first - so a record the queue wanted must not reach a wrapped handler
+	// set above it.
+	if !c.inner.Enabled(ctx, r.Level) {
+		return nil
 	}
 	return c.inner.Handle(ctx, r)
 }

@@ -25,6 +25,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/agent/registryprobe"
 	"gpuworks.ai/gpuworks/internal/agent/runtime"
 	"gpuworks.ai/gpuworks/internal/agentconf"
+	"gpuworks.ai/gpuworks/internal/debuglog"
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/selflog"
 )
@@ -65,6 +66,9 @@ type Config struct {
 	// SelfLog captures the agent's own warn+ slog records so they ship to the
 	// log center under source=agent. Nil disables that follower.
 	SelfLog *selflog.Collector
+	// DebugLog opens the time- and size-bounded debug sessions the server
+	// asks for (debug.start); nil when the process logs without one.
+	DebugLog *debuglog.Tee
 	// RegistryProbe ranks an image's registries for every pull. Nil probes
 	// the real registries, or none when Driver is injected (a test harness).
 	RegistryProbe *registryprobe.Prober
@@ -144,6 +148,8 @@ func (a *Agent) Run(ctx context.Context) error {
 	node := newNodeRuntime(a.log, a.cfg.Driver, modelsDir, a.cfg.ForceDriver, prober, a.cfg.RegistryProbe, engineOptions...)
 	node.host = a.cfg.SimulatedHost
 	node.selfLog = a.cfg.SelfLog
+	node.debugLog = a.cfg.DebugLog
+	node.logDir = a.cfg.StateDir
 	node.accelerator.preference = acceleratorPreference
 	node.accelerator.census = host
 	node.serverURL = serverURL

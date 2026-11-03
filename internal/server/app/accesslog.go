@@ -52,6 +52,13 @@ func accessLogHandler(log *slog.Logger, next http.Handler) http.Handler {
 			if params != "" {
 				attrs = append(attrs, "params", params)
 			}
+			if rw.errorCode != "" {
+				attrs = append(attrs, "code", rw.errorCode)
+				if len(rw.errorParams) > 0 {
+					encoded, _ := json.Marshal(rw.errorParams)
+					attrs = append(attrs, "error_params", string(encoded))
+				}
+			}
 			log.Info(message, attrs...)
 		}()
 		next.ServeHTTP(rw, r)
@@ -158,6 +165,15 @@ type accessResponseWriter struct {
 	status  int
 	bytes   int64
 	written bool
+	// errorCode and errorParams are the product error the response carries
+	// (api.noteProductError).
+	errorCode   string
+	errorParams map[string]any
+}
+
+// NoteProductError records the product error the response carries.
+func (w *accessResponseWriter) NoteProductError(code string, params map[string]any) {
+	w.errorCode, w.errorParams = code, params
 }
 
 func (w *accessResponseWriter) WriteHeader(code int) {

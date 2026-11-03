@@ -7,6 +7,7 @@
 //	upgrade         replace the installed server with the published release
 //	restart         restart the installed server so server.yaml takes effect
 //	reset-password  change an admin password
+//	support-bundle  collect diagnostics without the server running
 //	migrate         apply database migrations and exit
 //	expose          publish this server through a Cloudflare quick tunnel
 //	version         print version
@@ -27,8 +28,10 @@ import (
 	"strings"
 	"syscall"
 
+	"gpuworks.ai/gpuworks/internal/debuglog"
 	"gpuworks.ai/gpuworks/internal/debugsrv"
 	"gpuworks.ai/gpuworks/internal/logging"
+	"gpuworks.ai/gpuworks/internal/logthrottle"
 	"gpuworks.ai/gpuworks/internal/selflog"
 	"gpuworks.ai/gpuworks/internal/server/app"
 	"gpuworks.ai/gpuworks/internal/server/bus"
@@ -91,6 +94,11 @@ func run(log *slog.Logger, args []string, stderr io.Writer) int {
 	case "stop":
 		if err := stopCommand(cmdContext(), rest); err != nil && !errors.Is(err, flag.ErrHelp) {
 			log.Error("stop failed", "err", err)
+			return 1
+		}
+	case "support-bundle":
+		if err := supportBundle(cmdContext(), log, rest); err != nil && !errors.Is(err, flag.ErrHelp) {
+			log.Error("support bundle failed", "err", err)
 			return 1
 		}
 	case "reset-password":
@@ -213,8 +221,18 @@ func serve(log *slog.Logger, args []string) (err error) {
 	// per-request access log is info-level and stays out). The file/stderr
 	// handlers keep every record as before.
 	self := selflog.NewCollector(log.Handler(), slog.LevelWarn, 512)
-	log = slog.New(self)
+	// Ahead of both the file and the logstore: a burst of one kind of record
+	// (an unauthenticated client retrying, a path polled without end) is cut
+	// to a few lines and a count, rather than flooding either.
+	tee := debuglog.New(self)
+	throttle := logthrottle.New(tee, logthrottle.Options{Identity: serverLogIdentity})
+	throttleCtx, stopThrottle := context.WithCancel(context.Background())
+	defer stopThrottle()
+	go throttle.Run(throttleCtx)
+	log = slog.New(throttle)
 	cfg.SelfLog = self
+	cfg.DebugLog = tee
+	cfg.LogFile = logFile
 	// Packages that log through slog's default (the ingest pipelines among
 	// them) reach the log file too, rather than bare stderr - which under
 	// launchd is a file nothing rotates.
@@ -362,6 +380,11 @@ func defaultLogFile(dataDir string) string {
 // serverLogger adds the rotating file handler to the stderr logger. Every
 // failure here is non-fatal: the server must start even when it cannot write
 // its log file.
+// serverLogIdentity are the record attributes that make two records of one
+// message different kinds to the log throttle: a product error's code, a
+// refusal's reason, and an access log line's method, path and status.
+var serverLogIdentity = []string{"code", "reason", "method", "path", "status"}
+
 func serverLogger(base *slog.Logger, path, maxSize string, keep int, level slog.Level) (*slog.Logger, func()) {
 	base = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level}))
 	if strings.TrimSpace(path) == "" {
@@ -408,6 +431,8 @@ usage:
                  [--log-level info] [--supervise]
   gpuworks reset-password --user admin --password NEW_PASSWORD [--data DIR] [--db PATH]
   gpuworks migrate [--data ./data] [--db PATH]
+  gpuworks support-bundle [--data DIR] [--since 1h | --from T --to T]
+                          [--deployments IDS] [--instances UUIDS] [--out PATH]
   gpuworks version
 
 installation:

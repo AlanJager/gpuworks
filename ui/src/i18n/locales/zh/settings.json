@@ -59,7 +59,7 @@
     "readOnly": "请在 server.yaml 中修改 usage_report。",
     "saved": "已保存"
   },
-  "page": { "title": "设置", "description": "管理品牌外观、版本更新、镜像和模型从哪里拉取、节点与部署策略、安全与访问，以及 AI 服务等外部集成", "breadcrumb": { "platform": "平台", "settings": "设置" }, "tabs": { "general": "通用", "pull": "镜像与模型拉取", "nodes": "节点与部署", "access": "安全与访问", "integrations": "集成", "data": "数据保留" } },
+  "page": { "title": "设置", "description": "管理品牌外观、版本更新、镜像和模型从哪里拉取、节点与部署策略、安全与访问，以及 AI 服务等外部集成", "breadcrumb": { "platform": "平台", "settings": "设置" }, "tabs": { "general": "通用", "pull": "镜像与模型拉取", "nodes": "节点与部署", "access": "安全与访问", "integrations": "集成", "data": "数据保留", "diagnostics": "诊断" } },
   "branding": {
     "title": "品牌外观",
     "description": "自定义 Logo、产品名称、顶栏标题和登录页介绍文字。留空的项使用内置默认值，默认文案会跟随界面语言；自定义的文字原样显示，不做翻译。",
@@ -431,5 +431,94 @@
     "resetConfirm": "清空体验环境中的操作，恢复初始数据？",
     "changePassword": "更换密码",
     "passwordConfirm": "生成新密码？体验环境中已登录的会话会失效，需要用新密码重新登录。"
+  },
+  "diagnostics": {
+    "adminOnly": "只有管理员可以开启调试采集和收集诊断信息。",
+    "bundle": {
+      "title": "收集诊断信息",
+      "description": "把一段时间内的 server 日志、相关节点的 agent 日志与诊断报告、实例日志、调试采集的记录，以及相关的节点、部署、事件、镜像、存储、设置和请求记录打成一个压缩包，下载后发给技术支持。凭据只保留前 8 个字符，不含提示词与回复（调试采集记录的请求除外）。压缩包保留 {{days}} 天。",
+      "window": "时间范围",
+      "lastHours_one": "最近 {{count}} 小时",
+      "lastHours_other": "最近 {{count}} 小时",
+      "custom": "自定义",
+      "range": "起止时间",
+      "rangeRequired": "请选择起止时间。",
+      "doctor": "运行节点诊断",
+      "doctorHelp": "对收集的每个节点运行一次诊断（最多约 2 分钟），结果一并打包。",
+      "deployments": "部署",
+      "deploymentsHelp": "收集这些部署的配置、事件、请求记录和实例日志；不选节点时，收集它们所在节点的 agent 日志。",
+      "nodes": "节点",
+      "nodesHelp": "收集这些节点的 agent 日志；最多 {{max}} 个。",
+      "start": "开始收集",
+      "startConfirm": "开始收集诊断信息？",
+      "started": "已开始收集，完成后可在下方下载。",
+      "running": "收集中…",
+      "empty": "还没有收集过诊断信息",
+      "createdAt": "发起时间",
+      "state": "状态",
+      "size": "大小",
+      "download": "下载",
+      "item": "内容",
+      "note": "说明",
+      "truncated": "已达大小上限，只保留了部分",
+      "bundleState": {
+        "running": "收集中",
+        "ready": "可下载",
+        "failed": "失败"
+      },
+      "itemState": {
+        "collected": "已收集",
+        "skipped": "已跳过",
+        "failed": "失败"
+      },
+      "itemReason": {
+        "offline": "节点离线",
+        "unsupported": "该节点的 agent 版本不支持"
+      }
+    },
+    "debug": {
+      "title": "调试采集",
+      "description": "在一段时间内把 server 与所选节点 agent 的 debug 日志写进单独的文件，并记录所选部署每个请求的原始内容（请求、引擎返回的每一帧与客户端收到的每一帧、结束方式）。不改变平时的日志级别；到时间或写满大小自动结束。收集诊断信息时，时间重叠的调试采集会一并收回。",
+      "collecting": "采集中",
+      "last": "上次调试采集",
+      "startedAt": "开始",
+      "until": "截止",
+      "endedAt": "结束",
+      "used": "已写入",
+      "requests": "记录的请求数",
+      "ended": {
+        "deadline": "到时自动结束",
+        "size_limit": "写满大小自动结束",
+        "stopped": "手动停止"
+      },
+      "node": "节点",
+      "nodeStateTitle": "状态",
+      "reason": "说明",
+      "nodeState": {
+        "collecting": "采集中",
+        "skipped": "已跳过",
+        "failed": "失败"
+      },
+      "nodeReason": {
+        "offline": "节点离线",
+        "unsupported": "该节点的 agent 版本不支持"
+      },
+      "contentWarning": "所选部署的请求会被完整记录，包括提示词与回复。记录只保存在 server 与节点本地，{{days}} 天后自动删除。",
+      "duration": "时长",
+      "durationHelp": "最长 {{max}} 分钟。",
+      "minutes": "分钟",
+      "size": "总大小上限",
+      "sizeHelp": "server 日志与请求记录合计，最大 {{max}} GiB；每个节点的 agent 日志另限 {{node}}，单个请求最多记录 {{request}}。",
+      "deployments": "部署",
+      "deploymentsHelp": "记录这些部署的请求原始内容，并在它们所在的节点上开启 agent debug 日志。",
+      "nodes": "节点",
+      "nodesHelp": "在这些节点上开启 agent debug 日志。",
+      "start": "开始调试采集",
+      "startConfirm": "开始调试采集？所选部署的请求内容会被记录。",
+      "started": "调试采集已开始。",
+      "stop": "停止",
+      "stopConfirm": "现在停止调试采集？",
+      "stopped": "调试采集已停止。"
+    }
   }
 }

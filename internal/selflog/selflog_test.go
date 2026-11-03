@@ -92,3 +92,32 @@ func TestCollectorDerivedHandlersShareTheQueue(t *testing.T) {
 		t.Fatalf("attrs missing from the captured line: %+v", drained[0])
 	}
 }
+
+// The wrapped handler's own level still decides what it writes: the agent's
+// file handler set to info must not receive debug records just because the
+// collector sits in front of it, and a warn record the queue takes must not
+// reach a wrapped handler set to error.
+func TestCollectorKeepsTheWrappedHandlersLevel(t *testing.T) {
+	var file strings.Builder
+	collector := NewCollector(slog.NewTextHandler(&file, &slog.HandlerOptions{Level: slog.LevelInfo}), slog.LevelWarn, 16)
+	log := slog.New(collector)
+	log.Debug("runtime command", "args", "image inspect")
+	log.Info("agent starting")
+	log.Warn("probe failed")
+	if strings.Contains(file.String(), "runtime command") || !strings.Contains(file.String(), "agent starting") || !strings.Contains(file.String(), "probe failed") {
+		t.Fatalf("info-level file got:\n%s", file.String())
+	}
+	if !log.Enabled(context.Background(), slog.LevelInfo) || log.Enabled(context.Background(), slog.LevelDebug) {
+		t.Fatal("Enabled must follow the wrapped handler below the queue's level")
+	}
+
+	file.Reset()
+	strict := NewCollector(slog.NewTextHandler(&file, &slog.HandlerOptions{Level: slog.LevelError}), slog.LevelWarn, 16)
+	slog.New(strict).Warn("queued only")
+	if file.Len() != 0 {
+		t.Fatalf("error-level file got %q", file.String())
+	}
+	if got := strict.Drain(4); len(got) != 1 || !strings.Contains(got[0].Line, "queued only") {
+		t.Fatalf("queue = %+v", got)
+	}
+}

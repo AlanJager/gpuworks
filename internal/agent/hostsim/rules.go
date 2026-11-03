@@ -39,6 +39,10 @@ var rpcRules = map[string]rule{
 	proto.RPCImageRemove:         allow,
 	proto.RPCImageInspect:        allow,
 	proto.RPCImageExists:         allow,
+	// A debug session writes the agent's own log records under its state
+	// directory, nothing of the host.
+	proto.RPCDebugStart: allow,
+	proto.RPCDebugStop:  allow,
 
 	proto.RPCNodeDoctor:         refuse,
 	proto.RPCNodeSetRuntime:     refuse,
@@ -80,6 +84,8 @@ var streamRules = map[string]rule{
 	proto.StreamLogtail:       allow,
 	proto.StreamTunnel:        allowEngines,
 	proto.StreamLargeFileRead: allowInDir,
+	// The agent's own log and debug session files, nothing of the host.
+	proto.StreamDiagnosticsRead: allow,
 
 	proto.StreamModelRead:       refuse,
 	proto.StreamModelWrite:      refuse,

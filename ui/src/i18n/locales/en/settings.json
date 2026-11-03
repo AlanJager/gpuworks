@@ -59,7 +59,7 @@
     "readOnly": "Set usage_report in server.yaml to change it.",
     "saved": "Saved"
   },
-  "page": { "title": "Settings", "description": "Manage branding, updates, where images and models are pulled from, node and deployment policy, security and access, and integrations such as AI services", "breadcrumb": { "platform": "Platform", "settings": "Settings" }, "tabs": { "general": "General", "pull": "Image & model pulls", "nodes": "Nodes & deployments", "access": "Security & access", "integrations": "Integrations", "data": "Data retention" } },
+  "page": { "title": "Settings", "description": "Manage branding, updates, where images and models are pulled from, node and deployment policy, security and access, and integrations such as AI services", "breadcrumb": { "platform": "Platform", "settings": "Settings" }, "tabs": { "general": "General", "pull": "Image & model pulls", "nodes": "Nodes & deployments", "access": "Security & access", "integrations": "Integrations", "data": "Data retention", "diagnostics": "Diagnostics" } },
   "branding": {
     "title": "Branding",
     "description": "Customize the logo, product name, header title and sign-in page text. Fields left empty use the built-in defaults, shown in the viewer's language; custom text is shown exactly as written, without translation.",
@@ -431,5 +431,94 @@
     "resetConfirm": "Discard what was done in the experience environment and restore the initial data?",
     "changePassword": "Change password",
     "passwordConfirm": "Generate a new password? Signed-in sessions in the experience environment end and must sign in again with the new password."
+  },
+  "diagnostics": {
+    "adminOnly": "Only administrators can start debug collection and collect diagnostics.",
+    "bundle": {
+      "title": "Collect diagnostics",
+      "description": "Packs the server log for a time range, the related nodes' agent logs and diagnosis reports, instance logs, debug collection records, and the related nodes, deployments, events, images, storages, settings and request records into one archive to download and send to support. Credentials keep only their first 8 characters; prompts and replies are not included (except in requests a debug collection recorded). Archives are kept for {{days}} days.",
+      "window": "Time range",
+      "lastHours_one": "Last {{count}} hour",
+      "lastHours_other": "Last {{count}} hours",
+      "custom": "Custom",
+      "range": "From – to",
+      "rangeRequired": "Choose a start and end time.",
+      "doctor": "Run node diagnosis",
+      "doctorHelp": "Runs a diagnosis on each collected node (up to about 2 minutes) and includes the result.",
+      "deployments": "Deployments",
+      "deploymentsHelp": "Collects these deployments' configuration, events, request records and instance logs; with no node chosen, the agent logs of the nodes they run on.",
+      "nodes": "Nodes",
+      "nodesHelp": "Collects these nodes' agent logs; at most {{max}}.",
+      "start": "Start collecting",
+      "startConfirm": "Start collecting diagnostics?",
+      "started": "Collecting; download it below when it is ready.",
+      "running": "Collecting…",
+      "empty": "No diagnostics collected yet",
+      "createdAt": "Requested",
+      "state": "State",
+      "size": "Size",
+      "download": "Download",
+      "item": "Content",
+      "note": "Note",
+      "truncated": "Reached its size limit; only part was kept",
+      "bundleState": {
+        "running": "Collecting",
+        "ready": "Ready",
+        "failed": "Failed"
+      },
+      "itemState": {
+        "collected": "Collected",
+        "skipped": "Skipped",
+        "failed": "Failed"
+      },
+      "itemReason": {
+        "offline": "Node offline",
+        "unsupported": "The node's agent version does not support it"
+      }
+    },
+    "debug": {
+      "title": "Debug collection",
+      "description": "For a while, writes the server's and the chosen nodes' agent debug logs to separate files, and records each request of the chosen deployments in full (the request, every frame the engine returned and every frame the client received, and how it ended). Regular log levels are unchanged; it ends by itself when the time is up or the size is reached. Collecting diagnostics picks up debug collections that overlap its time range.",
+      "collecting": "Collecting",
+      "last": "Last debug collection",
+      "startedAt": "Started",
+      "until": "Until",
+      "endedAt": "Ended",
+      "used": "Written",
+      "requests": "Requests recorded",
+      "ended": {
+        "deadline": "ended at its deadline",
+        "size_limit": "ended at its size limit",
+        "stopped": "stopped"
+      },
+      "node": "Node",
+      "nodeStateTitle": "State",
+      "reason": "Note",
+      "nodeState": {
+        "collecting": "Collecting",
+        "skipped": "Skipped",
+        "failed": "Failed"
+      },
+      "nodeReason": {
+        "offline": "Node offline",
+        "unsupported": "The node's agent version does not support it"
+      },
+      "contentWarning": "The chosen deployments' requests are recorded in full, prompts and replies included. Records stay on the server and the nodes only, and are deleted after {{days}} days.",
+      "duration": "Duration",
+      "durationHelp": "At most {{max}} minutes.",
+      "minutes": "minutes",
+      "size": "Total size limit",
+      "sizeHelp": "Server log and request records together, at most {{max}} GiB; each node's agent log is limited to {{node}}, and one request records at most {{request}}.",
+      "deployments": "Deployments",
+      "deploymentsHelp": "Records these deployments' requests in full and turns on agent debug logs on the nodes they run on.",
+      "nodes": "Nodes",
+      "nodesHelp": "Turns on agent debug logs on these nodes.",
+      "start": "Start debug collection",
+      "startConfirm": "Start debug collection? The chosen deployments' request contents will be recorded.",
+      "started": "Debug collection started.",
+      "stop": "Stop",
+      "stopConfirm": "Stop debug collection now?",
+      "stopped": "Debug collection stopped."
+    }
   }
 }

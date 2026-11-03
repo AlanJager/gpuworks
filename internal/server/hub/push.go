@@ -572,3 +572,14 @@ func pullStartMessage(candidates []imagePullCandidate, walks bool) (source, mess
 	}
 	return first.Source, "trying " + first.Source + " " + first.Ref
 }
+
+// OpenDiagnosticsRead opens a node's part of a diagnostics collection: a tar
+// of the agent's log and the named debug sessions' files, which the agent
+// chooses (proto.StreamDiagnosticsRead).
+func (h *Hub) OpenDiagnosticsRead(ctx context.Context, nodeUUID string, sessions []string) (net.Conn, error) {
+	s := h.session(nodeUUID)
+	if s == nil {
+		return nil, errors.New("node not connected: " + nodeUUID)
+	}
+	return s.openStream(ctx, proto.StreamHeader{Kind: proto.StreamDiagnosticsRead, Ref: strings.Join(sessions, ",")})
+}
