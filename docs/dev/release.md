@@ -19,6 +19,9 @@ make release-packages
 `apt-get install zstd`，失败则退回 Go 编码器，包会增大约 1.5 MB），解压后的 server 二进制约 69 MB。macOS server 同样内嵌 Linux amd64/arm64 agent，方便在开发机运行控制面并
 接入 Linux GPU 节点；Apple silicon Mac 节点通过 `host` 运行时以宿主机进程运行受支持引擎，能力边界见 [ADR 0044](../adr/0044-mac-engines-as-host-processes.md)。
 
+每个压缩包里除 `gpuworks` 二进制与 `INSTALL.txt` 外，还带 `LICENSE`、`NOTICE` 与 `LICENSES/`：二进制内嵌的 PRoot、talloc、perftest 等第三方程序
+要求分发二进制时附上许可证正文。新增或更换内嵌资产时，同步更新 `NOTICE` 与 `LICENSES/`。
+
 CI 为避开单 job artifact 大小限制（server 内嵌了 macOS agent 后单个压缩包约 53 MB，
 一个 job 放两个就超限），按 OS 与架构拆成四个 job：`release-build-linux-amd64`、
 `release-build-linux-arm64`、`release-build-macos-amd64`、`release-build-macos-arm64`，

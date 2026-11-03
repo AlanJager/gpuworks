@@ -2,10 +2,13 @@ package seed
 
 import (
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 
 	"gpuworks.ai/gpuworks/internal/server/bus"
 	"gpuworks.ai/gpuworks/internal/server/imagecatalog"
@@ -19,6 +22,35 @@ import (
 // (TestBuiltinTemplateOtherGpuworksImagesDeclareSources).
 const systemImageRepository = "gpuworks/gpuworks-runner:"
 
+// uncataloguedRunnerImages are the runner images the matrix builds and
+// publishes but keeps out of the image catalog (catalog: false), such as the
+// V100 line: the automatic image pick does not look at the GPU model, so a
+// listed V100 image could be picked for other cards.
+func uncataloguedRunnerImages(t *testing.T) map[string]bool {
+	t.Helper()
+	raw, err := os.ReadFile("../../../../build/runner-images/matrix.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var matrix struct {
+		Items []struct {
+			ID       string `yaml:"id"`
+			Revision string `yaml:"revision"`
+			Catalog  *bool  `yaml:"catalog"`
+		} `yaml:"items"`
+	}
+	if err := yaml.Unmarshal(raw, &matrix); err != nil {
+		t.Fatal(err)
+	}
+	images := map[string]bool{}
+	for _, item := range matrix.Items {
+		if item.Catalog != nil && !*item.Catalog {
+			images[systemImageRepository+item.ID+"-"+item.Revision] = true
+		}
+	}
+	return images
+}
+
 // A built-in template that runs a runner image gets its pull sources from the
 // image catalog row of that image, not from image_sources of its own (ADR 0038:
 // the platform's mirrors belong to system images). That only holds while every
@@ -26,6 +58,8 @@ const systemImageRepository = "gpuworks/gpuworks-runner:"
 // runner matrix without moving the templates would leave them with the
 // canonical Docker Hub reference as their only source, and nothing else would
 // notice. The check goes through the store, the way a deployment resolves it.
+// A runner image the matrix keeps out of the catalog has no row, so the specs
+// running it list its copies in image_sources themselves.
 func TestBuiltinTemplateSystemImagesResolveToImageCatalogRows(t *testing.T) {
 	catalog, err := Catalog()
 	if err != nil {
@@ -40,12 +74,20 @@ func TestBuiltinTemplateSystemImagesResolveToImageCatalogRows(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	uncatalogued := uncataloguedRunnerImages(t)
 	users := map[string][]string{}
 	for _, model := range catalog.Models {
 		for _, spec := range model.Specs {
-			if strings.HasPrefix(spec.Image, systemImageRepository) {
-				users[spec.Image] = append(users[spec.Image], model.ModelID+"/"+spec.Name)
+			if !strings.HasPrefix(spec.Image, systemImageRepository) {
+				continue
 			}
+			if uncatalogued[spec.Image] {
+				if len(spec.ImageSources) == 0 {
+					t.Errorf("%s/%s runs %s, which the image catalog does not list, without image_sources", model.ModelID, spec.Name, spec.Image)
+				}
+				continue
+			}
+			users[spec.Image] = append(users[spec.Image], model.ModelID+"/"+spec.Name)
 		}
 	}
 	if len(users) == 0 {
