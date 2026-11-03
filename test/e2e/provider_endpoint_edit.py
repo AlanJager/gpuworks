@@ -49,6 +49,73 @@ def cleanup_stage(report, name, action):
         return False
 
 
+def exercise_table_id_isolation(page, common, copy, report):
+    """11.4: two ResourceTables on two pages hold their layouts under different ids, so a choice made on
+    one must not follow the user to the other, while the id that was chosen keeps it."""
+    labels = common["resourceTable"]
+    table = page.locator(".resource-table").first
+
+    def headers():
+        return [th.inner_text().strip() for th in table.locator("thead th").all()]
+
+    def stored():
+        return page.evaluate(
+            "() => Object.keys(localStorage).filter(k => k.startsWith('gpuworks.table.')).sort()")
+
+    public_before = headers()
+    # Pick a movable column of the public table and hide it.
+    drawer_button = table.get_by_role("button", name=labels["settings"], exact=True)
+    expect(drawer_button).to_have_count(1)
+    drawer_button.click()
+    drawer = page.get_by_role("dialog", name=labels["settingsTitle"], exact=True)
+    expect(drawer).to_be_visible()
+    boxes = drawer.get_by_role("checkbox")
+    movable = [box for box in boxes.all() if box.is_enabled()]
+    check(bool(movable), "the public provider table has no movable column to hide")
+    hidden_name = movable[0].evaluate("el => el.closest('label').innerText.trim()")
+    movable[0].click()
+    page.keyboard.press("Escape")
+    expect(drawer).not_to_be_visible()
+    public_after = headers()
+    check(hidden_name not in " ".join(public_after),
+          f"the public table kept the column that was hidden: {hidden_name} / {public_after}")
+    public_keys = stored()
+    # The other scope is a different table: it must start from its own defaults.
+    page.goto(page.url.split("/providers")[0] + "/zstack")
+    expect(page.get_by_role("heading", name=copy["scope"]["private"]["title"], exact=True)).to_be_visible()
+    private_headers = headers()
+    check(hidden_name in " ".join(private_headers),
+          f"a choice made on the public table followed the user to the private one: {hidden_name} / {private_headers}")
+    # The private table starts from its own defaults even though a layout is stored for the public one,
+    # which is what having a separate id means. Give it a choice of its own and both keys must exist.
+    drawer_button = table.get_by_role("button", name=labels["settings"], exact=True)
+    if drawer_button.count():
+        drawer_button.click()
+        expect(drawer).to_be_visible()
+        private_movable = [box for box in drawer.get_by_role("checkbox").all() if box.is_enabled()]
+        if private_movable:
+            private_movable[0].click()
+        page.keyboard.press("Escape")
+        expect(drawer).not_to_be_visible()
+    keys = stored()
+    check(len(keys) >= len(public_keys) + 1,
+          f"choosing on the private table did not add a layout of its own: {public_keys} -> {keys}")
+    check(len(keys) == len(set(keys)), f"the stored layout keys are not distinct: {keys}")
+    # Coming back keeps the public table's own choice, so the id is what separates them.
+    page.goto(page.url.split("/zstack")[0] + "/providers")
+    expect(page.get_by_role("heading", name=copy["scope"]["public"]["title"], exact=True)).to_be_visible()
+    check(headers() == public_after, "the public table lost its own layout after visiting the other scope")
+    report["table_id_isolation"] = {"hidden": hidden_name, "public": public_after,
+                                    "private": private_headers,
+                                    "keys": page.evaluate(
+                                        "() => Object.keys(localStorage).filter(k => k.startsWith('gpuworks.table.')).sort()")}
+    # Leave the account as it was found: the layout is local, so clearing it restores the defaults.
+    page.evaluate("() => Object.keys(localStorage).filter(k => k.startsWith('gpuworks.table.')).forEach(k => localStorage.removeItem(k))")
+    page.reload(wait_until="domcontentloaded")
+    expect(table.locator("thead th").first).to_be_visible(timeout=20000)
+    check(headers() == public_before, "clearing the stored layouts did not restore the defaults")
+
+
 def copy_server_log(artifacts):
     log = artifacts.private / "server.log"
     if log.exists():
@@ -183,6 +250,7 @@ def test_provider_endpoint_edit(page, context, server, artifacts, report, locale
         artifacts.remember(cookie["value"])
     expect(page.get_by_role("heading", name=copy["platforms"]["title"], exact=True)).to_be_visible()
     report["preflight"] = "PASS"
+    exercise_table_id_isolation(page, json.loads((texts / "common.json").read_text()), copy, report)
     page.on("console", lambda msg: console_errors.append(msg.text) if msg.type == "error" else None)
     page.on("response", lambda r: bad_http.append({"path": urlsplit(r.url).path, "status": r.status, "method": r.request.method}) if r.status >= 400 else None)
     kinds = collection(page.request.get(server.base + "/api/v1/providers/kinds"))
