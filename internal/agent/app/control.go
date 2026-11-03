@@ -9,10 +9,12 @@ import (
 	"path/filepath"
 	goruntime "runtime"
 	"strings"
+	"time"
 
 	"gpuworks.ai/gpuworks/internal/accelerator"
 	"gpuworks.ai/gpuworks/internal/agent/conn"
 	"gpuworks.ai/gpuworks/internal/agent/hostsim"
+	"gpuworks.ai/gpuworks/internal/agent/imagepull"
 	"gpuworks.ai/gpuworks/internal/agent/runtime"
 	"gpuworks.ai/gpuworks/internal/agent/runtime/hostproc"
 	"gpuworks.ai/gpuworks/internal/commandlog"
@@ -558,8 +560,13 @@ func (n *NodeRuntime) rpcImagePull(ctx context.Context, raw json.RawMessage) (an
 		}
 		// Every pull line is offered to the egress gate, which keeps at most
 		// one per second for this image and always delivers the last one.
+		progress := imagepull.NewProgress()
 		if err := d.PullImage(pullCtx, p.EffectiveRef, func(line string) {
-			n.reportImageNode(proto.ImageNodeStatus{ImageRef: p.CanonicalRef, State: "pulling", TransferID: p.TransferID, Message: line})
+			_, done, total, rate, _, _ := progress.Observe(line, time.Now())
+			n.reportImageNode(proto.ImageNodeStatus{
+				ImageRef: p.CanonicalRef, State: "pulling", TransferID: p.TransferID, Message: line,
+				TransferredBytes: done, SizeBytes: total, RateBPS: rate,
+			})
 		}); err != nil {
 			n.reportImageNode(proto.ImageNodeStatus{ImageRef: p.CanonicalRef, State: "failed", TransferID: p.TransferID, Message: imageOperationError(pullCtx, err)})
 			return
