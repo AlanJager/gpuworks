@@ -36,6 +36,8 @@ export default function DeployBasicStep({
     form,
     preserve: true,
   }) as string | undefined;
+  const selectedNodeUUID = Form.useWatch("node_uuid", { form, preserve: true }) as string | undefined;
+  const nodeSelectionMode = Form.useWatch("node_selection_mode", { form, preserve: true }) as string | undefined;
   const targetVendor = Form.useWatch("target_vendor", {
     form,
     preserve: true,
@@ -125,8 +127,7 @@ export default function DeployBasicStep({
             }
           >
             <TemplateRecommendations
-              templates={templateIndex}
-              chips={chips}
+              nodeUUID={nodeSelectionMode === "auto" ? undefined : selectedNodeUUID}
               model={selectedModel}
               scenario={scenario}
               targetVendor={targetVendor}

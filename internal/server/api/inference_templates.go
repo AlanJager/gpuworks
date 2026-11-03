@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"sort"
 	"strconv"
@@ -69,8 +70,21 @@ func (a *apiHandlers) listInferenceTemplateIndex(w http.ResponseWriter, r *http.
 		writeErr(w, http.StatusBadRequest, err)
 		return
 	}
+	hardware, projectCompatibility, status, err := a.templateCompatibilityGPUs(r)
+	if err != nil {
+		writeErr(w, status, err)
+		return
+	}
 	items := make([]dto.InferenceTemplateIndexItem, 0, len(models))
 	for _, model := range models {
+		compatible := map[string]bool{}
+		if projectCompatibility {
+			compatible, err = compatibleTemplateProfiles(model, hardware)
+			if err != nil {
+				writeErr(w, http.StatusInternalServerError, err)
+				return
+			}
+		}
 		engines, scenarios := map[string]struct{}{}, map[string]struct{}{}
 		profiles := make([]dto.InferenceProfileSummary, 0, len(model.Specs))
 		for _, spec := range model.Specs {
@@ -95,15 +109,32 @@ func (a *apiHandlers) listInferenceTemplateIndex(w http.ResponseWriter, r *http.
 				seenRepoIDs[key] = struct{}{}
 				repoIDs = append(repoIDs, repoID)
 			}
+			var detectedCompatible *bool
+			if projectCompatibility {
+				value := compatible[spec.Source+"\x00"+spec.Name]
+				detectedCompatible = &value
+			}
 			profiles = append(profiles, dto.InferenceProfileSummary{
-				Source: spec.Source, Name: spec.Name, DisplayNameZHCN: spec.DisplayNameZHCN, DisplayNameEN: spec.DisplayNameEN, Scenario: spec.Scenario,
+				DetectedCompatible: detectedCompatible,
+				Source:             spec.Source, Name: spec.Name, DisplayNameZHCN: spec.DisplayNameZHCN, DisplayNameEN: spec.DisplayNameEN, Scenario: spec.Scenario,
 				Engine: spec.Engine, Image: spec.Image, Quantization: spec.Quantization, WeightBytes: spec.WeightBytes,
 				WeightRepoIDs: repoIDs, GPUs: gpus,
 			})
 		}
 		items = append(items, dto.InferenceTemplateIndexItem{ID: model.ID, ModelID: model.ModelID, DisplayTitle: model.DisplayTitle, Source: model.Source, Engines: sortedKeys(engines), Scenarios: sortedKeys(scenarios), Profiles: profiles})
 	}
-	writeJSON(w, http.StatusOK, dto.InferenceTemplateIndex{Items: items})
+	answer := dto.InferenceTemplateIndex{Items: items}
+	if projectCompatibility {
+		answer.Hardware = []dto.DetectedTemplateChip{}
+		for _, gpu := range hardware {
+			cc := ""
+			if gpu.CC > 0 {
+				cc = strconv.FormatFloat(gpu.CC, 'f', -1, 64)
+			}
+			answer.Hardware = append(answer.Hardware, dto.DetectedTemplateChip{Vendor: gpu.Vendor, Name: gpu.Name, CC: cc, ArchID: gpu.ArchID})
+		}
+	}
+	writeJSON(w, http.StatusOK, answer)
 }
 
 func (a *apiHandlers) listInferenceTemplateOrganizations(w http.ResponseWriter, r *http.Request) {
@@ -145,6 +176,21 @@ func (a *apiHandlers) getInferenceTemplate(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	view := inferenceTemplateView(*model)
+	detected, err := a.d.Store.ListDistinctDetectedGPUs()
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	gpus := make([]chipmatch.GPU, 0, len(detected))
+	for _, gpu := range detected {
+		gpus = append(gpus, chipmatch.ReportedGPU(gpu.Name, gpu.Vendor, gpu.ArchID, gpu.CC))
+	}
+	support, err := detectedTemplateSupport(*model, gpus)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	view.DetectedSupport = &support
 	view.ReadmeZHCNContent = a.readInferenceTemplateDocumentation(*model, model.ReadmeZHCN)
 	view.ReadmeENContent = a.readInferenceTemplateDocumentation(*model, model.ReadmeEN)
 	writeJSON(w, http.StatusOK, view)
@@ -252,7 +298,7 @@ func (a *apiHandlers) listTemplateChips(w http.ResponseWriter, _ *http.Request) 
 	rows := hardwarecatalog.List()
 	items := make([]dto.TemplateChip, 0, len(rows))
 	for _, row := range rows {
-		items = append(items, dto.TemplateChip{Vendor: row.Vendor, Name: row.Name, CC: row.CC, Category: row.Category, Architecture: row.Architecture})
+		items = append(items, dto.TemplateChip{Vendor: row.Vendor, Name: row.Name, CC: row.CC, Category: row.Category, Architecture: row.Architecture, ArchID: row.ArchID})
 	}
 	writeJSON(w, http.StatusOK, dto.NewList(items))
 }
@@ -265,7 +311,7 @@ func (a *apiHandlers) listDetectedTemplateChips(w http.ResponseWriter, _ *http.R
 	}
 	items := make([]dto.DetectedTemplateChip, 0, len(rows))
 	for _, row := range rows {
-		items = append(items, dto.DetectedTemplateChip{Vendor: row.Vendor, Name: row.Name, CC: row.CC})
+		items = append(items, dto.DetectedTemplateChip{Vendor: row.Vendor, Name: row.Name, CC: row.CC, ArchID: row.ArchID})
 	}
 	writeJSON(w, http.StatusOK, dto.NewList(items))
 }
@@ -435,11 +481,15 @@ func filterInferenceModels(models []store.InferenceModel, r *http.Request) ([]st
 	gpuName := strings.TrimSpace(r.URL.Query().Get("gpu"))
 	vendor := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("vendor")))
 	ccRaw := strings.TrimSpace(r.URL.Query().Get("cc"))
+	archID := strings.TrimSpace(r.URL.Query().Get("arch_id"))
 	cc := 0.0
+	if archID != "" && gpuName == "" {
+		return nil, fmt.Errorf("arch_id requires gpu")
+	}
 	if ccRaw != "" {
 		var err error
 		cc, err = strconv.ParseFloat(ccRaw, 64)
-		if err != nil || cc <= 0 || gpuName == "" {
+		if err != nil || math.IsNaN(cc) || math.IsInf(cc, 0) || cc <= 0 || gpuName == "" {
 			return nil, fmt.Errorf("cc must be positive and requires gpu")
 		}
 	}
@@ -457,20 +507,15 @@ func filterInferenceModels(models []store.InferenceModel, r *http.Request) ([]st
 			if engine != "" && spec.Engine != engine {
 				continue
 			}
-			if gpuName != "" {
-				predicate, err := decodeSpecPredicate(spec)
-				if err != nil {
-					return nil, err
-				}
-				gpuVendor := vendor
-				if gpuVendor == "" {
-					gpuVendor = predicate.Vendor
-				}
-				if !chipmatch.Evaluate(chipmatch.GPU{Name: gpuName, Vendor: gpuVendor, CC: cc}, predicate).Matched {
-					continue
-				}
-			}
+
 			copy.Specs = append(copy.Specs, spec)
+		}
+		if gpuName != "" {
+			var err error
+			copy.Specs, err = matchingTemplateSpecs(copy, chipmatch.GPU{Name: gpuName, Vendor: vendor, CC: cc, ArchID: archID})
+			if err != nil {
+				return nil, err
+			}
 		}
 		if len(copy.Specs) > 0 {
 			result = append(result, copy)

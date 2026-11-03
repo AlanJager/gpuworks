@@ -33,12 +33,14 @@ func TestInferenceTemplateIndexIncludesProfileGPUContracts(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
-	if err := st.ReconcileInferenceCatalog([]store.InferenceModel{flatAPIFixture("acme/index", "h100")}); err != nil {
+	model := flatAPIFixture("acme/index", "amd395")
+	model.Specs[0].GPUs = `{"vendor":"amd","arch_id":"gfx1151","display_target":"amd395"}`
+	if err := st.ReconcileInferenceCatalog([]store.InferenceModel{model}); err != nil {
 		t.Fatal(err)
 	}
 	rec := httptest.NewRecorder()
 	(&apiHandlers{d: Deps{Store: st}}).listInferenceTemplateIndex(rec, httptest.NewRequest(http.MethodGet, "/api/v1/inference-templates/index", nil))
-	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"profiles"`) || !strings.Contains(rec.Body.String(), `"source":"upstream","name":"h100"`) || !strings.Contains(rec.Body.String(), `"vendor":"nvidia"`) || !strings.Contains(rec.Body.String(), `"weight_repo_ids":["acme/index"]`) {
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"profiles"`) || !strings.Contains(rec.Body.String(), `"source":"upstream","name":"amd395"`) || !strings.Contains(rec.Body.String(), `"vendor":"amd"`) || !strings.Contains(rec.Body.String(), `"arch_id":"gfx1151"`) || !strings.Contains(rec.Body.String(), `"weight_repo_ids":["acme/index"]`) {
 		t.Fatalf("status/body=%d %s", rec.Code, rec.Body.String())
 	}
 }
@@ -122,6 +124,34 @@ func TestInferenceTemplateListPaginatesFiltersAndSupportsETag(t *testing.T) {
 	}
 }
 
+func TestInferenceTemplateListFiltersByArchID(t *testing.T) {
+	st, err := store.Open("file:flat_api_arch_filter?mode=memory&cache=shared", bus.New())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	older := flatAPIFixture("acme/gfx1150", "gfx1150")
+	older.Specs[0].GPUs = `{"vendor":"amd","name":"Radeon 8060S","arch_id":"gfx1150"}`
+	newer := flatAPIFixture("acme/gfx1151", "gfx1151")
+	newer.Specs[0].GPUs = `{"vendor":"amd","name":"Radeon 8060S","arch_id":"gfx1151"}`
+	if err := st.ReconcileInferenceCatalog([]store.InferenceModel{older, newer}); err != nil {
+		t.Fatal(err)
+	}
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/inference-templates?gpu=Radeon%208060S&vendor=amd&arch_id=gfx1151", nil)
+	(&apiHandlers{d: Deps{Store: st}}).listInferenceTemplates(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rec.Code, rec.Body)
+	}
+	var page dto.InferenceTemplatePage
+	if err := json.Unmarshal(rec.Body.Bytes(), &page); err != nil {
+		t.Fatal(err)
+	}
+	if page.Total != 1 || len(page.Items) != 1 || page.Items[0].ModelID != "acme/gfx1151" {
+		t.Fatalf("arch_id filter returned %+v", page)
+	}
+}
+
 func TestInferenceTemplateHardwareFilterValidatesComputeCapability(t *testing.T) {
 	st, err := store.Open("file:flat_api_filter?mode=memory&cache=shared", bus.New())
 	if err != nil {
@@ -129,7 +159,7 @@ func TestInferenceTemplateHardwareFilterValidatesComputeCapability(t *testing.T)
 	}
 	t.Cleanup(func() { _ = st.Close() })
 	h := &apiHandlers{d: Deps{Store: st}}
-	for _, target := range []string{"/api/v1/inference-templates?cc=sm89&gpu=H100", "/api/v1/inference-templates?cc=0&gpu=H100", "/api/v1/inference-templates?cc=8.9"} {
+	for _, target := range []string{"/api/v1/inference-templates?cc=sm89&gpu=H100", "/api/v1/inference-templates?cc=0&gpu=H100", "/api/v1/inference-templates?cc=8.9", "/api/v1/inference-templates?arch_id=gfx1151"} {
 		rec := httptest.NewRecorder()
 		h.listInferenceTemplates(rec, httptest.NewRequest(http.MethodGet, target, nil))
 		if rec.Code != http.StatusBadRequest {
@@ -145,8 +175,11 @@ func TestListTemplateChipsUsesStaticPlanningCatalog(t *testing.T) {
 	if err := unmarshalList(rec.Body.Bytes(), &rows); err != nil {
 		t.Fatal(err)
 	}
-	foundB300, found910B := false, false
+	foundB300, found910B, foundAMD := false, false, false
 	for _, row := range rows {
+		if row.Vendor == "amd" && row.ArchID == "gfx1151" && row.CC == 0 {
+			foundAMD = true
+		}
 		if row.Name == "NVIDIA B300" && row.Architecture == "Blackwell" && row.Category == "data-center" && row.CC == 10.3 {
 			foundB300 = true
 		}
@@ -154,7 +187,7 @@ func TestListTemplateChipsUsesStaticPlanningCatalog(t *testing.T) {
 			found910B = true
 		}
 	}
-	if !foundB300 || !found910B {
+	if !foundB300 || !found910B || !foundAMD {
 		t.Fatalf("static catalog missing locked entries")
 	}
 }
@@ -275,6 +308,11 @@ func TestInferenceTemplateModelIDSplatCloneAndDetectedChips(t *testing.T) {
 	if err := st.DB().Create(&store.GPU{NodeID: node.ID, Index: 0, UUID: "gpu-custom", Vendor: "NVIDIA", Name: "NVIDIA H100", ComputeCapability: "9.0"}).Error; err != nil {
 		t.Fatal(err)
 	}
+	for index, archID := range []string{"gfx1150", "gfx1151"} {
+		if err := st.DB().Create(&store.GPU{NodeID: node.ID, Index: index + 1, UUID: "gpu-amd-" + archID, Vendor: "amd", Name: "AMD GPU 0x1586", ArchID: archID}).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
 	h := &apiHandlers{d: Deps{Store: st}}
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("*", "acme/org/model")
@@ -295,8 +333,9 @@ func TestInferenceTemplateModelIDSplatCloneAndDetectedChips(t *testing.T) {
 	}
 	chipsRec := httptest.NewRecorder()
 	h.listDetectedTemplateChips(chipsRec, httptest.NewRequest(http.MethodGet, "/api/v1/inference-templates/my-chips", nil))
-	if chipsRec.Code != http.StatusOK || !strings.Contains(chipsRec.Body.String(), `"name":"NVIDIA H100"`) || !strings.Contains(chipsRec.Body.String(), `"cc":"9.0"`) {
-		t.Fatalf("my chips status/body=%d %s", chipsRec.Code, chipsRec.Body.String())
+	if chipsRec.Code != http.StatusOK || !strings.Contains(chipsRec.Body.String(), `"name":"NVIDIA H100"`) || !strings.Contains(chipsRec.Body.String(), `"cc":"9.0"`) ||
+		!strings.Contains(chipsRec.Body.String(), `"arch_id":"gfx1150"`) || !strings.Contains(chipsRec.Body.String(), `"arch_id":"gfx1151"`) {
+		t.Fatalf("my chips must preserve distinct arch_id values for same-name GPUs; status/body=%d %s", chipsRec.Code, chipsRec.Body.String())
 	}
 }
 

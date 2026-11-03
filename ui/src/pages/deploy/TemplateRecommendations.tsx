@@ -1,4 +1,6 @@
-import { Button, Empty, Space, Tag, Typography } from "antd";
+import { useEffect, useState } from "react";
+import { api, type InferenceTemplateIndex } from "../../api";
+import { Button, Empty, Space, Spin, Tag, Typography } from "antd";
 import { CheckCircleOutlined } from "@ant-design/icons";
 import type {
   DetectedTemplateChip,
@@ -12,72 +14,16 @@ import {
   predicateLabel,
   specDisplayName,
 } from "../inferenceTemplateFlat";
-import { chipMatchesPredicate } from "../inferenceTemplateFlat.ts";
 
-export function matchingTemplates(
-  templates: InferenceTemplateIndexItem[],
-  model?: Model,
-  scenario?: string,
-) {
-  if (!model) return [];
-  const identities = [model.source_id, model.name]
-    .filter(Boolean)
-    .map((value) => value.toLowerCase());
-  return templates
-    .filter(
-      (template) =>
-        identities.includes(template.model_id.toLowerCase()) ||
-        (template.profiles || []).some((profile) =>
-          (profile.weight_repo_ids || []).some((repoID) =>
-            identities.includes(repoID.toLowerCase()),
-          ),
-        ),
-    )
-    .filter((template) => !scenario || template.scenarios.includes(scenario));
-}
-
-// matchingProfiles marks a template profile compatible when one of the
-// chips - the card models the online nodes have (GET /nodes/facets) -
-// matches its GPU predicate.
-export function matchingProfiles(
-  templates: InferenceTemplateIndexItem[],
-  chips: DetectedTemplateChip[],
-  model?: Model,
-  scenario?: string,
-  targetVendor?: string,
-): Array<{
-  template: InferenceTemplateIndexItem;
-  profile: InferenceProfileSummary;
-  compatible: boolean;
-}> {
-  return matchingTemplates(templates, model, scenario)
-    .flatMap((template) =>
-      (template.profiles || []).map((profile) => ({
-        template,
-        profile,
-        compatible:
-          Boolean(profile.gpus) &&
-          chips.some((chip) => chipMatchesPredicate(chip, profile.gpus)),
-      })),
-    )
-    .filter(
-      ({ profile }) =>
-        !targetVendor ||
-        String(profile.gpus.vendor || "")
-          .trim()
-          .toLowerCase() ===
-          String(targetVendor || "")
-            .trim()
-            .toLowerCase(),
-    );
-}
+import { matchingProfiles } from "./templateRecommendationProfiles";
+export { matchingProfiles, matchingTemplates } from "./templateRecommendationProfiles";
 
 function currentHardware(chips: DetectedTemplateChip[]) {
   const seen = new Set<string>();
   return (
     chips
       .filter((chip) => {
-        const key = `${chip.vendor}\u0000${chip.name}\u0000${chip.cc || ""}`;
+        const key = `${chip.vendor}\u0000${chip.name}\u0000${chip.cc || ""}\u0000${chip.arch_id || ""}`;
         if (seen.has(key)) return false;
         seen.add(key);
         return true;
@@ -104,8 +50,7 @@ function profileMeta(
 }
 
 export default function TemplateRecommendations({
-  templates,
-  chips,
+  nodeUUID,
   model,
   scenario,
   targetVendor,
@@ -113,8 +58,7 @@ export default function TemplateRecommendations({
   selectedSpecName,
   onSelect,
 }: {
-  templates: InferenceTemplateIndexItem[];
-  chips: DetectedTemplateChip[];
+  nodeUUID?: string;
   model?: Model;
   scenario?: string;
   targetVendor?: string;
@@ -126,9 +70,23 @@ export default function TemplateRecommendations({
   ) => void;
 }) {
   const { t, i18n } = useTranslation("deploy");
+  const scopeKey = `${targetVendor || ""}\u0000${nodeUUID || ""}`;
+  const [support, setSupport] = useState<{ key: string; index?: InferenceTemplateIndex; error?: string }>();
+  const hasModel = Boolean(model);
+  useEffect(() => {
+    if (!targetVendor || !hasModel) { setSupport(undefined); return; }
+    let active = true;
+    setSupport({ key: scopeKey });
+    void api.inferenceTemplateIndex({ vendor: targetVendor, node_uuid: nodeUUID }).then(
+      (index) => { if (active) setSupport({ key: scopeKey, index }); },
+      (reason) => { if (active) setSupport({ key: scopeKey, error: (reason as Error).message }); },
+    );
+    return () => { active = false; };
+  }, [targetVendor, nodeUUID, scopeKey, hasModel]);
+  const currentSupport = support?.key === scopeKey ? support : undefined;
+  const chips = currentSupport?.index?.hardware || [];
   const allProfiles = matchingProfiles(
-    templates,
-    chips,
+    currentSupport?.index?.items || [],
     model,
     scenario,
     targetVendor,
@@ -146,6 +104,8 @@ export default function TemplateRecommendations({
         {t("templateRecommendations.selectVendor")}
       </Typography.Text>
     );
+  if (currentSupport?.error) return <Typography.Text type="danger">{t("templateRecommendations.loadFailed", { detail: currentSupport.error })}</Typography.Text>;
+  if (!currentSupport?.index) return <Spin />;
   const hidden = allProfiles.filter((item) => !item.compatible);
   const hardware = currentHardware(chips);
   if (!allProfiles.length)
@@ -202,6 +162,7 @@ export default function TemplateRecommendations({
       </div>
       <Typography.Text type="secondary" className="deploy-template-hardware">
         {t("templateRecommendations.currentHardware")}: {hardware}
+        <br />{t("templateRecommendations.compatibilityScope")}
       </Typography.Text>
       {hidden.length > 0 && (
         <details className="deploy-template-unavailable">

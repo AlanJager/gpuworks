@@ -6,6 +6,7 @@ export function predicateLabel(spec: { gpus: GPUPredicate }) {
   const parts = [spec.gpus.vendor.toUpperCase()];
   if (spec.gpus.cc) parts.push(`CC ${spec.gpus.cc}`);
   if (spec.gpus.name) parts.push(spec.gpus.name);
+  if (spec.gpus.arch_id) parts.push(`arch ${spec.gpus.arch_id}`);
   return parts.join(" · ");
 }
 
@@ -45,10 +46,10 @@ export function compactModelMetadata(model: InferenceTemplate) {
 }
 
 export function chipKey(chip: DetectedTemplateChip): string {
-  return [chip.vendor.trim().toLowerCase(), chip.name.trim(), chip.cc || ""].join("\u0000");
+  return [chip.vendor.trim().toLowerCase(), chip.name.trim(), chip.cc || "", chip.arch_id?.trim().toLowerCase() || ""].join("\u0000");
 }
 
-export function chipDisplayLabel(chip: Pick<DetectedTemplateChip, "vendor" | "name" | "cc">): string {
+export function chipDisplayLabel(chip: Pick<DetectedTemplateChip, "vendor" | "name" | "cc" | "arch_id">): string {
   const rawName = chip.name.trim();
   const shortName = rawName
     .replace(/^NVIDIA\s+/i, "")
@@ -61,45 +62,8 @@ export function chipDisplayLabel(chip: Pick<DetectedTemplateChip, "vendor" | "na
     .trim();
   const fallbackName = shortName || chip.vendor.trim().toUpperCase() || "GPU";
   const hasConcreteModel = !/^(?:v?gpu(?:\s*[-_]?[0-9]+\s*(?:g|gb|b)?)?|graphics device|3d controller|unknown|generic)$/i.test(fallbackName);
-  return hasConcreteModel || !chip.cc ? fallbackName : `${fallbackName} · CC ${chip.cc}`;
-}
-
-export function matchesComputeCapability(value: string | undefined, expression: string | undefined): boolean {
-  if (!expression) return true;
-  const cc = Number(value);
-  if (!Number.isFinite(cc)) return false;
-  if (expression.startsWith(">=")) return cc >= Number(expression.slice(2));
-  if (expression.startsWith("<")) return cc < Number(expression.slice(1));
-  if (expression.includes("..")) {
-    const [lower, upper] = expression.split("..").map(Number);
-    return cc >= lower && cc <= upper;
-  }
-  return cc === Number(expression);
-}
-
-export function chipMatchesPredicate(chip: DetectedTemplateChip, predicate: GPUPredicate): boolean {
-  if (chip.vendor.trim().toLowerCase() !== predicate.vendor.trim().toLowerCase()) return false;
-  if (!matchesComputeCapability(chip.cc, predicate.cc)) return false;
-  if (!predicate.name) return true;
-  try {
-    return new RegExp(predicate.name, "i").test(chip.name);
-  } catch {
-    return false;
-  }
-}
-
-export function modelMatchesChip(model: InferenceTemplate, chip?: DetectedTemplateChip): boolean {
-  if (!chip) return true;
-  return model.specs.some((spec) => chipMatchesPredicate(chip, spec.gpus) && !(model.unsupported || []).some((item) =>
-    chipMatchesPredicate(chip, item.gpus) && (!item.quantization || item.quantization.toLowerCase() === (spec.quantization || "").toLowerCase())));
-}
-
-export function preferredTemplateEngine(specs: InferenceSpec[], chips: DetectedTemplateChip[]): string {
-  const engines = [...new Set(specs.map((spec) => spec.engine))];
-  const deployable = new Set(specs.filter((spec) => chips.some((chip) => chipMatchesPredicate(chip, spec.gpus))).map((spec) => spec.engine));
-  return engines.sort((left, right) => Number(right === "vllm") - Number(left === "vllm")
-    || Number(deployable.has(right)) - Number(deployable.has(left))
-    || left.localeCompare(right))[0] || "";
+  const label = hasConcreteModel || !chip.cc ? fallbackName : `${fallbackName} · CC ${chip.cc}`;
+  return chip.arch_id?.trim() ? `${label} · ${chip.arch_id.trim()}` : label;
 }
 
 export interface EditError { message: string; line?: number }

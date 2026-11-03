@@ -78,7 +78,7 @@
   "how-to/configure-pull-settings.md": "53cb3a2acac3ece21a11e119f5da17eca3446ab6117bada2fd6eb5f42914b199",
   "how-to/connect-nodes.md": "c37110e9fab06637cd28577260dd639063bdb36959a96b2b9b3324479197c14f",
   "how-to/declare-engine-metrics.md": "be1fb8eef925f9a4b1fbc20d8dbf3bc4eef9ba3b4ddb4ebc98e0581ff0ca8a49",
-  "how-to/deploy-models.md": "98fc61883d2f93b9b5c56ee2918ceb7662922531853e0324f826bbdf6795dfd6",
+  "how-to/deploy-models.md": "b22edca342d4b867ab66d335754fa121bad6e26f52b8f758af89d6f378278e79",
   "how-to/deploy-offline.md": "a1583d4297efb2848f1186b1592acb5a9bfd25ad221c55c58c5a0ab58020c35a",
   "how-to/deploy-production.md": "b7375ba8e786bc8780164cbdcdcd22399b8dfc326d039d3843ab80537df4c7a5",
   "how-to/dgpu.md": "bb17ec87920bb6c2b0061692a39c50b98f7fc3772e5b2edbb7cc529c52274de5",

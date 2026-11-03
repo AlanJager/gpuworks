@@ -108,6 +108,7 @@ const index = [
         image: "image/a",
         weight_repo_ids: ["quant/a"],
         gpus: { vendor: "nvidia" },
+        detected_compatible: true,
       },
       {
         name: "scheme-b",
@@ -117,14 +118,16 @@ const index = [
         image: "image/b",
         weight_repo_ids: ["quant/a"],
         gpus: { vendor: "nvidia" },
+        detected_compatible: true,
       },
     ],
   },
 ] as never;
 
-const originals = { models: api.models, modelsPage: api.modelsPage, model: api.model };
+const originals = { models: api.models, modelsPage: api.modelsPage, model: api.model, inferenceTemplateIndex: api.inferenceTemplateIndex };
 let fake: ReturnType<typeof installModels>;
 beforeEach(() => {
+  api.inferenceTemplateIndex = (async () => ({ items: index, hardware: [{ vendor: "nvidia", name: "H100" }] })) as never;
   fake = installModels(api as never, [...registry, ...(models as unknown as never[])]);
 });
 afterEach(() => {
@@ -159,15 +162,8 @@ function mount(initialValues: Record<string, unknown>) {
 }
 
 test("model selection is shown directly with matching template recommendations", async () => {
-  const nodes = [
-    {
-      uuid: "node-1",
-      state: "online",
-      gpus: [{ vendor: "nvidia", name: "H100" }],
-    },
-  ];
   assert.equal(
-    matchingProfiles(index, nodes.flatMap((node) => node.gpus.map((gpu) => ({ ...gpu, cc: undefined }))), models[0], "balanced", "nvidia")
+    matchingProfiles(index, models[0], "balanced", "nvidia")
       .length,
     2,
   );
@@ -176,14 +172,14 @@ test("model selection is shown directly with matching template recommendations",
     assert.ok(screen.getByText("Quantized A"));
     assert.ok(screen.getByText(/scheme-a/));
     assert.ok(screen.getByText(/scheme-b/));
-    assert.equal(screen.queryByRole("dialog"), null);
+    assert.equal(screen.queryByRole("dialog") === null, true);
   });
 });
 
 test("selecting a recommendation writes the complete template identity", async () => {
   const form = mount({ model_id: 7, target_vendor: "nvidia", scenario: "balanced" });
   const user = userEvent.setup({ document: dom.window.document });
-  const recommendation = screen.getByRole("button", { name: /scheme-b/ });
+  const recommendation = await screen.findByRole("button", { name: /scheme-b/ });
   await user.click(recommendation);
   assert.deepEqual(
     [
@@ -209,7 +205,7 @@ test("the model picker searches the server instead of listing every model", asyn
   await waitFor(() => assert.equal(fake.pages.at(-1)?.q, "listed-5"));
   await screen.findByText("listed-50");
   const listbox = document.querySelector(".ant-select-dropdown") as HTMLElement;
-  assert.equal(within(listbox).queryByText("listed-03"), null, "the server narrowed the options");
+  assert.equal(within(listbox).queryByText("listed-03") === null, true, "the server narrowed the options");
 });
 
 test("picking a model clears the template choice and what it wrote", async () => {

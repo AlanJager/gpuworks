@@ -10,7 +10,7 @@ import { fetchAllPages } from "../pagedList";
 import PageHeader from "../components/PageHeader";
 import VendorLogo from "../components/VendorLogo";
 import { compareVendors, frameworkForVendor } from "../vendors";
-import { chipDisplayLabel, chipKey, chipMatchesPredicate, compactModelMetadata } from "./inferenceTemplateFlat.ts";
+import { chipDisplayLabel, chipKey, compactModelMetadata } from "./inferenceTemplateFlat.ts";
 import { inputModalityLabelKey, inputModalitiesOf, operationLabelKey, operationTypes } from "../modelInference";
 import type { OperationType } from "../inferenceApi";
 import { modelOrganizationIcon, modelOrganizationKey, modelOrganizationName } from "./inferenceTemplatePresentation.ts";
@@ -29,8 +29,13 @@ export function loadHypotheticalChips(): DetectedTemplateChip[] {
 
 // The catalog is small enough to hold whole; it is read page by page all the
 // same, the way every paged list is.
-export function loadAllInferenceTemplates(fetchPage = api.inferenceTemplates): Promise<InferenceTemplate[]> {
-  return fetchAllPages(fetchPage, {}, pageSize);
+export function loadAllInferenceTemplates(fetchPage = api.inferenceTemplates, chip?: DetectedTemplateChip): Promise<InferenceTemplate[]> {
+  const extra = chip ? {
+    gpu: [chip.name], vendor: [chip.vendor],
+    ...(chip.cc ? { cc: [chip.cc] } : {}),
+    ...(chip.arch_id ? { arch_id: [chip.arch_id] } : {}),
+  } : undefined;
+  return fetchAllPages(fetchPage, { extra }, pageSize);
 }
 
 function initials(value: string) {
@@ -168,23 +173,31 @@ export default function InferenceTemplatesPage() {
     if (catalogQuery !== urlSearch.toString()) setURLSearch(catalogQuery, { replace: true });
   }, [catalogQuery, urlSearch, setURLSearch]);
   const activeChip = useMemo(() => chips.find((chip) => chipKey(chip) === selectedChip), [chips, selectedChip]);
-  const operationFacetModels = useMemo(() => models.filter((model) => {
+  const [hardwareCatalog, setHardwareCatalog] = useState<{ key: string; models?: InferenceTemplate[]; error?: string }>();
+  useEffect(() => {
+    if (!activeChip) { setHardwareCatalog(undefined); return; }
+    let active = true;
+    const key = chipKey(activeChip);
+    setHardwareCatalog({ key });
+    void loadAllInferenceTemplates(api.inferenceTemplates, activeChip).then(
+      (models) => { if (active) setHardwareCatalog({ key, models }); },
+      (reason) => { if (active) setHardwareCatalog({ key, error: (reason as Error).message }); },
+    );
+    return () => { active = false; };
+  }, [activeChip, models]);
+  const currentHardwareCatalog = activeChip && hardwareCatalog?.key === chipKey(activeChip) ? hardwareCatalog : undefined;
+  const catalogModels = activeChip ? currentHardwareCatalog?.models || [] : models;
+  const catalogLoading = loading || Boolean(activeChip && !currentHardwareCatalog?.models && !currentHardwareCatalog?.error);
+  const catalogError = error || currentHardwareCatalog?.error;
+  const operationFacetModels = useMemo(() => catalogModels.filter((model) => {
     const needle = query.trim().toLowerCase();
     const inSearch = !needle || `${model.model_id} ${model.display_title || ""} ${model.specs.flatMap((spec) => spec.weight_sources.map((source) => source.repo_id)).join(" ")}`.toLowerCase().includes(needle);
-    const hasMatchingSpec = model.specs.some((spec) => (!engine || spec.engine === engine)
-      && (!activeChip || chipMatchesPredicate(activeChip, spec.gpus))
-      && !(model.unsupported || []).some((item) => activeChip && chipMatchesPredicate(activeChip, item.gpus)
-        && (!item.quantization || item.quantization.toLowerCase() === (spec.quantization || "").toLowerCase())));
-    return inSearch && hasMatchingSpec;
-  }), [models, query, engine, activeChip]);
+    return inSearch && model.specs.some((spec) => !engine || spec.engine === engine);
+  }), [catalogModels, query, engine]);
   const operationCounts = useMemo(() => Object.fromEntries(operationTypes.map((item) => [item, operationFacetModels.filter((model) => model.specs.some((spec) => (!engine || spec.engine === engine)
-    && (!activeChip || chipMatchesPredicate(activeChip, spec.gpus))
-    && !(model.unsupported || []).some((unsupported) => activeChip && chipMatchesPredicate(activeChip, unsupported.gpus)
-      && (!unsupported.quantization || unsupported.quantization.toLowerCase() === (spec.quantization || "").toLowerCase()))
-    && (spec.api?.operations || []).some((candidate) => candidate.type === item))).length])) as Record<OperationType, number>, [activeChip, engine, operationFacetModels]);
+    && (spec.api?.operations || []).some((candidate) => candidate.type === item))).length])) as Record<OperationType, number>, [engine, operationFacetModels]);
   const visible = useMemo(() => operation ? operationFacetModels.filter((model) => model.specs.some((spec) => (!engine || spec.engine === engine)
-    && (!activeChip || chipMatchesPredicate(activeChip, spec.gpus))
-    && (spec.api?.operations || []).some((candidate) => candidate.type === operation))) : operationFacetModels, [activeChip, engine, operation, operationFacetModels]);
+    && (spec.api?.operations || []).some((candidate) => candidate.type === operation))) : operationFacetModels, [engine, operation, operationFacetModels]);
   const groups = useMemo<OrganizationGroup[]>(() => {
     const grouped = new Map<string, InferenceTemplate[]>();
     for (const model of visible) {
@@ -200,15 +213,15 @@ export default function InferenceTemplatesPage() {
   }, [visible, t]);
 
   useEffect(() => {
-    if (loading) return;
+    if (catalogLoading) return;
     if (!groups.some((group) => group.key === activeOrganization)) setActiveOrganization(groups[0]?.key || "");
-  }, [groups, activeOrganization, loading]);
+  }, [groups, activeOrganization, catalogLoading]);
 
   const activeGroup = groups.find((group) => group.key === activeOrganization);
   const addHypothetical = () => {
     const selected = catalogChips.find((chip) => chipKey({ ...chip, cc: chip.cc == null ? undefined : String(chip.cc) }) === candidateChip);
     if (!selected) return;
-    const chip = { vendor: selected.vendor, name: selected.name, cc: selected.cc == null ? undefined : String(selected.cc) };
+    const chip = { vendor: selected.vendor, name: selected.name, cc: selected.cc == null ? undefined : String(selected.cc), arch_id: selected.arch_id };
     const next = [...loadHypotheticalChips().filter((item) => chipKey(item) !== chipKey(chip)), chip];
     localStorage.setItem(hypotheticalKey, JSON.stringify(next));
     setChips((current) => [...current.filter((item) => chipKey(item) !== chipKey(chip)), chip]);
@@ -271,10 +284,10 @@ export default function InferenceTemplatesPage() {
         <Space wrap><Input.Search allowClear value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("flat.search")} /><Tag color="green">{t("flat.modelCount", { count: visible.length })}</Tag></Space>
       </div>
       {activeChip && <Alert className="template-compatibility-alert" type="info" showIcon message={t("flat.selectedChip", { chip: chipDisplayLabel(activeChip) })} />}
-      {loading && <div className="template-loading"><Spin size="large" /></div>}
-      {!loading && error && <Alert type="error" showIcon message={t("page.loadFailed", { detail: error })} action={<Button onClick={() => void reload()}>{t("flat.retry")}</Button>} />}
-      {!loading && !error && !groups.length && <Empty description={t("flat.empty")} />}
-      {!loading && !error && groups.length > 0 && <div className="template-organization-browser">
+      {catalogLoading && <div className="template-loading"><Spin size="large" /></div>}
+      {!catalogLoading && catalogError && <Alert type="error" showIcon message={t("page.loadFailed", { detail: catalogError })} action={<Button onClick={() => void reload()}>{t("flat.retry")}</Button>} />}
+      {!catalogLoading && !catalogError && !groups.length && <Empty description={t("flat.empty")} />}
+      {!catalogLoading && !catalogError && groups.length > 0 && <div className="template-organization-browser">
         <aside className="template-organization-sidebar"><header><Typography.Text strong>{t("organization.title")}</Typography.Text><span>{groups.length}</span></header><nav aria-label={t("organization.aria")}>
           {groups.map((group) => <button type="button" key={group.key} className={group.key === activeOrganization ? "is-active" : ""} onClick={() => setActiveOrganization(group.key)}>
             <OrganizationAvatar group={group} size={30} />
