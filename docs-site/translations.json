@@ -14,7 +14,7 @@
   "adr/0017-embedded-catalog-image-tag-only.md": "33e09ef12070af26a4359405b5f4a4ff2c4e5f2e6107e94d8614a07340381b5c",
   "adr/0018-explicit-deployment-acquisition.md": "a54d0410c175d8bd5e6576cd72d40cdb576e678eebe9fdf2da5d913090653be6",
   "adr/0019-image-catalog-runtime-compatibility.md": "4106a86942802b683a8dd6d515ce19790e530884970167c6e9c4f0540bd55aa7",
-  "adr/0020-launch-config-single-source.md": "20b14a0e3e0bd01e9ac7adf33cc0e22ca5d773afab451bd031fe0e335b00b432",
+  "adr/0020-launch-config-single-source.md": "56cf538bd474e4b2d414a0bd1d0f929aecea4d19422c4538147ea10c56e12681",
   "adr/0021-platform-params-copyable-command.md": "828eff4fa613639a87ac7001f33232e7d5077ab5fe2bbae0e316f8ce56eb2dfd",
   "adr/0022-template-owned-deployment-launch.md": "4700c1d57074db0ffba2bf339b3e1d7bbfd203adbcc97be38ae639e51cfb61e2",
   "adr/0023-inference-routing.md": "4c89e0383134a62b3146082ad4464c22e0bfdb0ed368b40ffac805fe8991cf2a",

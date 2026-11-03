@@ -88,7 +88,24 @@ for (const metrics of [undefined, false] as const) {
     await user.click(screen.getByRole("button", { name: labels.discardAndReturn, exact: true }));
     await waitFor(() => assert.ok(requests.slice(returnStart).some(request => request.container_overrides?.command_mode !== "manual")));
     const returned = requests.slice(returnStart).find(request => request.container_overrides?.command_mode !== "manual")!;
-    assert.deepEqual(returned, before, "explicit discard preserves the original structured request, including unset/false metrics");
+    const beforeQuick = (before.quick_params ?? {}) as Record<string, unknown>;
+    const returnedQuick = (returned.quick_params ?? {}) as Record<string, unknown>;
+    assert.equal(returned.engine, before.engine, "explicit discard restores the structured engine");
+    assert.equal(
+      returnedQuick.enable_request_metrics,
+      beforeQuick.enable_request_metrics,
+      "manual preview preserves the operator's unset or false metrics choice",
+    );
+    assert.deepEqual(
+      returned.quick_params_unset,
+      before.quick_params_unset,
+      "manual preview preserves explicit structured tombstones",
+    );
+    assert.equal(
+      Object.hasOwn(returnedQuick, "max_model_len"),
+      false,
+      "a server-displayed default is not serialized as a user override after discard",
+    );
     assert.equal(manualMetrics, metrics, "manual evaluation must not change structured metrics intent");
     assert.equal(manualLength, 4096, "manual evaluation must not clear structured values");
     await waitFor(() => {
@@ -96,6 +113,6 @@ for (const metrics of [undefined, false] as const) {
       assert.equal(form.getFieldValue("dtype"), "float16", "structured response still applies after return");
       assert.equal(form.getFieldValue("max_model_len"), undefined, "last structured response keys survive manual mode for stale-key clearing");
     });
-    assert.equal(screen.queryByRole("textbox"), null);
+    assert.equal(screen.queryByRole("textbox") === null, true);
   });
 }

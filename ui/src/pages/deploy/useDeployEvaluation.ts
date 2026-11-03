@@ -8,6 +8,7 @@ import {
   type APIErrorTranslator,
 } from "../../apiError.ts";
 import { applyEvaluateFormValues } from "./deployHelpers";
+import { EvaluateQuickParams } from "./evaluateQuickParams";
 
 // Server field paths to the deploy form's own control names. Everything the
 // server attributes must land on a control the deployer can see; the wire name
@@ -86,6 +87,7 @@ export default function useDeployEvaluation({
   const settledSignalRef = useRef(signal);
   currentSignalRef.current = signal;
   const appliedKeysRef = useRef<string[]>([]);
+  const quickParamsRef = useRef(new EvaluateQuickParams());
   const flaggedFieldsRef = useRef<string[]>([]);
 
   const invalidate = (message: string | null) => {
@@ -112,14 +114,22 @@ export default function useDeployEvaluation({
         invalidate(null);
         return;
       }
-      const previousKeys = appliedKeysRef.current;
+      const overrides = payload.container_overrides as
+        | { command_mode?: string }
+        | undefined;
+      const manual = overrides?.command_mode === "manual";
+      const request = manual ? payload : quickParamsRef.current.prepare(payload);
+      const unset = new Set((request.quick_params_unset ?? []) as string[]);
+      // A user-cleared field remains a tombstone when the server omits it.
+      // Clearing it to undefined would let the next template reintroduce it.
+      const previousKeys = appliedKeysRef.current.filter((key) => !unset.has(key));
       abortRef.current?.abort();
       const controller = new AbortController();
       abortRef.current = controller;
       const requestId = ++requestIdRef.current;
       setEvaluating(true);
       api
-        .evaluate(payload, controller.signal)
+        .evaluate(request, controller.signal)
         .then((response) => {
           if (
             !Object.is(signal, currentSignalRef.current) ||
@@ -167,15 +177,15 @@ export default function useDeployEvaluation({
           flaggedFieldsRef.current = [...flagged];
           if (fields.length) form.setFields(fields);
           if (unattributed.length) setError(unattributed.join(" · "));
-          // A manual command owns its launch. Its evaluated defaults describe
-          // that command, not the structured draft restored by explicit discard.
-          // Keep the last structured keys so its next answer can clear stale ones.
-          const overrides = payload.container_overrides as
-            | { command_mode?: string }
-            | undefined;
-          if (overrides?.command_mode !== "manual" && applyFormValues()) {
+          // Manual previews describe their command, not the structured draft
+          // restored by explicit discard. Keep its keys and quick-param origins.
+          if (!manual && applyFormValues()) {
+            quickParamsRef.current.accept(response);
             applyEvaluateFormValues(form, response, previousKeys);
-            appliedKeysRef.current = Object.keys(response.form_values ?? {});
+            // Early errors contain no display instruction; keep previous keys
+            // so the next successful answer can clear them.
+            if (response.form_values)
+              appliedKeysRef.current = Object.keys(response.form_values);
           }
         })
         .catch((reason: Error) => {
@@ -212,8 +222,9 @@ export default function useDeployEvaluation({
     evaluating: evaluating || !Object.is(settledSignalRef.current, signal),
     responseSeq,
     invalidate,
-    noteDraftChanged: () => {
+    noteDraftChanged: (changed: Record<string, unknown> = {}) => {
       revisionRef.current += 1;
+      quickParamsRef.current.noteChanged(changed);
     },
     reevaluate: () => setReevaluateSeq((seq) => seq + 1),
   };

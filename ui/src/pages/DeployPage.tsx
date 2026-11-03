@@ -334,7 +334,7 @@ function DeployForm({ opened }: { opened?: OpenedDeployment }) {
   });
   const handleValuesChange = (changed: Record<string, unknown>) => {
     touchedRef.current = true;
-    evaluation.noteDraftChanged();
+    evaluation.noteDraftChanged(changed);
     onValuesChange(changed);
   };
   useDeploymentIdentity(form, selectedModel, opened?.mode !== "edit");
