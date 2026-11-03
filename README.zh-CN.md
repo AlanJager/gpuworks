@@ -20,7 +20,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/assets/screenshots/readme/tour.zh.gif" alt="GPUWorks 演示：总览、GPU、部署向导、Playground" width="900">
+  <img src="docs/assets/screenshots/readme/tour.zh.gif" alt="GPUWorks 演示：阿里云 1003 台机器实测、生产监控、用量分析、调度分析、PD 分离、网络测试、GPU 健康检查与 AI 助手、日志" width="900">
 </p>
 
 GPUWorks 是一个超轻量的 GPU 管理和模型即服务（MaaS）平台，整个控制面连同 Web 界面下载只有 40 MB 左右。一条命令接入自有 GPU 服务器、
@@ -134,9 +134,11 @@ GPU 通过厂商命令行工具探测（`nvidia-smi`、`npu-smi`、`ppu-smi`、`
 
 | | |
 |---|---|
-| ![GPU](docs/assets/screenshots/readme/gpus.zh.webp) **GPU**：跨节点、跨厂商 | ![推理模板](docs/assets/screenshots/readme/templates.zh.webp) **模型目录**：按厂商与引擎给出启动规格 |
-| ![部署详情](docs/assets/screenshots/readme/deployment-detail.zh.webp) **部署**：副本、状态与指标 | ![Playground](docs/assets/screenshots/readme/playground.zh.webp) **Playground** 直接对话任意部署 |
-| ![监控](docs/assets/screenshots/readme/monitor.zh.webp) **监控**：GPU、引擎与网关指标 | ![压测](docs/assets/screenshots/readme/benchmark.zh.webp) **压测报告**：吞吐、TTFT、延迟 |
+| ![概览](docs/assets/screenshots/readme/overview.zh.webp) **概览**：NVIDIA、PPU、昇腾、海光混合的生产集群 | ![调度分析](docs/assets/screenshots/readme/scheduling.zh.webp) **调度分析**：多个模型轮流共用 GPU，逐卡可查 |
+| ![监控](docs/assets/screenshots/readme/monitor.zh.webp) **监控**（生产环境 7 天）：延迟、请求分布、并发与 KV Cache | ![用量分析](docs/assets/screenshots/readme/usage.zh.webp) **用量分析**：按小时、API 令牌与模型统计 token |
+| ![PD 分离](docs/assets/screenshots/readme/pd.zh.webp) **PD 分离**（昇腾 910C）：KV 交接、延迟拆解、在途请求 | ![健康检查](docs/assets/screenshots/readme/health-ai.zh.webp) **GPU 健康检查**，AI 助手给出诊断 |
+| ![网络测试](docs/assets/screenshots/readme/network.zh.webp) **网络测试**：HCCS 全卡互通矩阵 | ![压测](docs/assets/screenshots/readme/benchmark.zh.webp) **压测报告**：吞吐、TTFT、延迟 |
+| ![推理模板](docs/assets/screenshots/readme/templates.zh.webp) **模型目录**：按厂商与引擎给出启动规格 | ![Playground](docs/assets/screenshots/readme/playground.zh.webp) **Playground** 直接对话任意部署 |
 
 ## 架构
 

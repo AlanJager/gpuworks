@@ -20,7 +20,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/assets/screenshots/readme/tour.gif" alt="GPUWorks tour: overview, GPUs, deployment wizard, Playground" width="900">
+  <img src="docs/assets/screenshots/readme/tour.gif" alt="GPUWorks tour: a 1,003-machine Alibaba Cloud drill, production monitoring, usage analytics, scheduling, PD disaggregation, network tests, GPU health checks with the AI assistant, logs" width="900">
 </p>
 
 GPUWorks is an ultra-lightweight GPU management and Model-as-a-Service (MaaS) platform. The whole control plane, web
@@ -156,9 +156,11 @@ HTTP file server and deployed with your own arguments.
 
 | | |
 |---|---|
-| ![GPUs](docs/assets/screenshots/readme/gpus.webp) **GPUs** across nodes and vendors | ![Templates](docs/assets/screenshots/readme/templates.webp) **Model catalog** with launch specs per vendor and engine |
-| ![Deployment](docs/assets/screenshots/readme/deployment-detail.webp) **Deployment** replicas, status and metrics | ![Playground](docs/assets/screenshots/readme/playground.webp) **Playground** against any deployment |
-| ![Monitor](docs/assets/screenshots/readme/monitor.webp) **Monitoring**: GPU, engine and gateway metrics | ![Benchmark](docs/assets/screenshots/readme/benchmark.webp) **Benchmark** report: throughput, TTFT, latency |
+| ![Overview](docs/assets/screenshots/readme/overview.webp) **Overview** of a production cluster with NVIDIA, PPU, Ascend and Hygon GPUs | ![Scheduling](docs/assets/screenshots/readme/scheduling.webp) **Scheduling analysis**: models taking turns on the same GPUs, card by card |
+| ![Monitor](docs/assets/screenshots/readme/monitor.webp) **Monitoring** in production: latency, request shapes, concurrency and KV cache over 7 days | ![Usage](docs/assets/screenshots/readme/usage.webp) **Usage analytics**: tokens by hour, API key and model |
+| ![PD](docs/assets/screenshots/readme/pd.webp) **PD disaggregation** on Ascend 910C: KV hand-off, latency breakdown, requests in flight | ![Health](docs/assets/screenshots/readme/health-ai.webp) **GPU health checks**, diagnosed by the AI assistant |
+| ![Network](docs/assets/screenshots/readme/network.webp) **Network test**: HCCS card-to-card reachability matrix | ![Benchmark](docs/assets/screenshots/readme/benchmark.webp) **Benchmark** report: throughput, TTFT, latency |
+| ![Templates](docs/assets/screenshots/readme/templates.webp) **Model catalog** with launch specs per vendor and engine | ![Playground](docs/assets/screenshots/readme/playground.webp) **Playground** against any deployment |
 
 ## Architecture
 
