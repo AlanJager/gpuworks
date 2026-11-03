@@ -19,6 +19,9 @@ For a release, you cannot simply rebuild the server and skip these prerequisite 
 `apt-get install zstd` and falls back to the Go encoder if installation fails, increasing the package size by approximately 1.5 MB). The extracted server binary is approximately 69 MB. The macOS server also embeds the Linux amd64/arm64 agents, so you can run the control plane on a development machine and
 connect Linux GPU nodes. Apple silicon Mac nodes run supported engines as host processes through the `host` runtime; see [ADR 0044](../adr/0044-mac-engines-as-host-processes.md) for their capability limits.
 
+Besides the `gpuworks` binary and `INSTALL.txt`, each archive carries `LICENSE`, `NOTICE` and `LICENSES/`: the third-party programs embedded in the binary, such as PRoot, talloc and perftest,
+require their license texts to accompany every binary distribution. When you add or replace an embedded asset, update `NOTICE` and `LICENSES/` with it.
+
 To avoid the artifact size limit for a single job (each archive is approximately 53 MB after the server embeds the macOS agent,
 so two archives in one job exceed the limit), CI splits the build into four jobs by OS and architecture: `release-build-linux-amd64`,
 `release-build-linux-arm64`, `release-build-macos-amd64`, and `release-build-macos-arm64`.
