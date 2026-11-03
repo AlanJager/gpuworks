@@ -53,7 +53,7 @@ export default function AssistantPanel() {
       open={open}
       onClose={() => setOpen(false)}
       mask={false}
-      width={480}
+      width="var(--assistant-panel-width)"
       closable={false}
       rootClassName="assistant-panel"
       styles={{ body: { padding: 0, display: "flex", flexDirection: "column" } }}
