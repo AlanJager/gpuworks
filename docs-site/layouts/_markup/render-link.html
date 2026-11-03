@@ -31,7 +31,7 @@
       {{- end -}}
     {{- else if or (eq $target "artifacts") (strings.HasPrefix $target "artifacts/") -}}
       {{- with $page.Site.Params.artifacts_repo -}}
-        {{- $mapped = printf "%s/-/blob/%s/%s" (strings.TrimSuffix "/" .) ($page.Site.Params.github_branch | default "master") (strings.TrimPrefix "artifacts/" $target) -}}
+        {{- $mapped = printf "%s/blob/%s/%s" (strings.TrimSuffix "/" .) ($page.Site.Params.github_branch | default "master") (strings.TrimPrefix "artifacts/" $target) -}}
         {{- if eq $target "artifacts" -}}
           {{- $mapped = . -}}
         {{- end -}}
@@ -40,7 +40,7 @@
       {{- end -}}
     {{- else if and (ne $target ".") (ne $target "..") (not (strings.HasPrefix $target "../")) -}}
       {{- with $page.Site.Params.github_repo -}}
-        {{- $mapped = printf "%s/-/blob/%s/%s" (strings.TrimSuffix "/" .) ($page.Site.Params.github_branch | default "master") $target -}}
+        {{- $mapped = printf "%s/blob/%s/%s" (strings.TrimSuffix "/" .) ($page.Site.Params.github_branch | default "master") $target -}}
       {{- else -}}
         {{- errorf "Repository link %q on %s requires params.github_repo" $.Destination $page.File.Path -}}
       {{- end -}}
