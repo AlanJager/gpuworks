@@ -180,12 +180,14 @@ func (a *apiHandlers) initTemplateModelInferenceConfig(selection *templateSelect
 // effective contract for this deployment request. Template specs still supply
 // the initial contract when the resolved model predates model-level inference
 // configuration, has empty operations ([] included), or holds a legacy bare
-// chat or inferred video placeholder.
+// chat or inferred video placeholder while the spec declares operations of its
+// own. A spec without operations has nothing to supply, so the placeholder's
+// normalized contract stays.
 func applyCurrentModelAPIContract(selection *templateSelection, model *store.Model) {
 	if selection == nil || model == nil || store.OperationsUnset(model.Operations) {
 		return
 	}
-	if selection.Spec != nil && store.IsDefaultTemplateOperations(model.Operations) {
+	if selection.Spec != nil && store.IsDefaultTemplateOperations(model.Operations) && declaresOperations(selection.APIContract) {
 		return
 	}
 	contract := inferenceapi.ModelContract(model)
@@ -193,6 +195,11 @@ func applyCurrentModelAPIContract(selection *templateSelection, model *store.Mod
 	if err == nil {
 		selection.APIContract = encoded
 	}
+}
+
+func declaresOperations(raw json.RawMessage) bool {
+	var contract inferenceapi.Contract
+	return len(raw) > 0 && json.Unmarshal(raw, &contract) == nil && len(contract.Operations) > 0
 }
 
 func (a *apiHandlers) resolveTemplateComponentModels(selection *templateSelection, fallbackPrimary *store.Model) error {
