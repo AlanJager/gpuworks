@@ -751,6 +751,8 @@ export interface PdModeProfile {
   fallbacks: string[];
   kv_load_failures: string[];
   unverified?: boolean;
+  // The first request after a start compiles kernels and takes minutes.
+  first_request_compiles?: boolean;
 }
 
 export interface Health {

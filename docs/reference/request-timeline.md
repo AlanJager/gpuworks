@@ -105,7 +105,7 @@ PD 分离部署（[ADR 0028](../adr/0028-pd-disaggregated-deployment.md)）的�
 | 交接方式（PD 模式） | prefill 阶段 | 记录 |
 |---|---|---|
 | 顺序（`vllm-nixl`、`vllm-ascend-mooncake`） | 网关先把请求发给 prefill 实例、拿到 KV 参数后才交给 decode | `pd.prefill_ms` 是网关实测的等待；prefill 实例回复里的逐请求统计（与 decode 回复同一读法）记为 `prefill_queue_ms`、`prefill_compute_ms` |
-| 并发（`sglang-nixl`、`sglang-ppu-ipc`） | prefill 与 decode 同时收到请求，网关不等 | `prefill_ms` 未知、没有 `pd_prefill` 段，只记 prefill 实例与降级原因 |
+| 并发（`sglang-nixl`、`sglang-ppu-ipc`、`sglang-ppu-mooncake`） | prefill 与 decode 同时收到请求，网关不等 | `prefill_ms` 未知、没有 `pd_prefill` 段，只记 prefill 实例与降级原因 |
 
 顺序交接时，缓存命中与 Prefill 速度都使用 prefill 实例的数据：
 

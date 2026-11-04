@@ -38,7 +38,13 @@ const (
 	ErrorPDVendorMixed          = "PD_VENDOR_MIXED"
 	// ErrorPDSameNodeRequired: the mode's KV transport stays inside one host
 	// and the placement spreads the instances over several nodes.
-	ErrorPDSameNodeRequired     = "PD_SAME_NODE_REQUIRED"
+	ErrorPDSameNodeRequired = "PD_SAME_NODE_REQUIRED"
+	// ErrorPDPeerMemoryMissing: a node the placement names cannot register its
+	// cards' memory with the RDMA NIC (the vendor's peer-memory module is not
+	// loaded), and the mode moves the KV over RDMA. ErrorPDPeerMemoryNone is
+	// the same for automatic placement, when that left no node to choose.
+	ErrorPDPeerMemoryMissing    = "PD_PEER_MEMORY_MISSING"
+	ErrorPDPeerMemoryNone       = "PD_PEER_MEMORY_NONE"
 	ErrorPDConnectorArgConflict = "PD_CONNECTOR_ARG_CONFLICT"
 	ErrorPDShapeConflict        = "PD_SHAPE_CONFLICT"
 	ErrorPDSpecModeMismatch     = "PD_SPEC_MODE_MISMATCH"
@@ -46,6 +52,10 @@ const (
 	// network the group shares cannot carry the mode's KV transport.
 	ErrorPDNetworkAcceleratorRequired = "PD_NETWORK_ACCELERATOR_REQUIRED"
 	ErrorPDNetworkHostRequired        = "PD_NETWORK_HOST_REQUIRED"
+	// ErrorPDNetworkRDMARequired: the mode moves KV over RDMA (Mooncake), and
+	// the group, even a single host, is not on a host RDMA compute network;
+	// only such a network gives the instances the RDMA devices.
+	ErrorPDNetworkRDMARequired = "PD_NETWORK_RDMA_REQUIRED"
 	// ErrorPDSleepRDMAUnsupported: a sleepable PD deployment whose KV moves
 	// over UCX on a host RDMA network. NIXL registers the KV cache with the
 	// NIC, and an engine that slept cannot allocate it again on waking.

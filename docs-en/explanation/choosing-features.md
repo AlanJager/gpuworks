@@ -204,12 +204,19 @@ the two groups in sequence. The greatest benefit appears with long prompts (thou
 | `vllm-ascend-mooncake` | vLLM / Ascend | NPU's built-in RoCE ports (HCCL) | Validated: across two 910B4 machines; P and D NPUs must be mutually reachable on the NPU network |
 | `sglang-nixl` | SGLang / NVIDIA | UCX | **Unverified** |
 | `sglang-ppu-ipc` | SGLang / PPU | Card-to-card IPC within one host (Mooncake NVLink transport) | Validated: two PPU ZW810E cards on one host, TP 1; P and D must be on the same node |
+| `sglang-ppu-mooncake` | SGLang / PPU | Mooncake RDMA (over a host RDMA compute network) | Validated: PPU ZW810E over RoCE NICs, TP 1; nodes need `alixpu_peermem` loaded |
+| `vllm-ppu-mooncake` | vLLM / PPU | Mooncake RDMA (over a host RDMA compute network) | Validated: PPU ZW810E over RoCE NICs, TP 1; nodes need `alixpu_peermem` loaded |
 | (Hygon) | No PD mode | — | — |
 
 `sglang-ppu-ipc` moves the KV only between cards of one host, so a placement across several nodes is rejected (`PD_SAME_NODE_REQUIRED`);
-it needs the PPU SGLang image with the PD patches (`hggc13.0-sglang0.5.13-r3` and later) and turns off the overlap scheduler. Hygon has no PD mode yet.
+it needs the PPU SGLang image with the PD patches (`hggc13.0-sglang0.5.13-r3` and later) and turns off the overlap scheduler.
+`sglang-ppu-mooncake` and `vllm-ppu-mooncake` move the KV over RoCE NICs and can span nodes: the nodes must be on a host RDMA compute network (even a single host;
+otherwise `PD_NETWORK_RDMA_REQUIRED`) and load the PPU peer memory module `alixpu_peermem`, which lets the NIC register the cards' memory.
+A node without it shows a warning with the fix command in the **GPUDirect RDMA** column of its **Health checks**, and the Diagnose report lists it too;
+a manual placement on such a node is rejected (`PD_PEER_MEMORY_MISSING`), and automatic placement skips them, returning `PD_PEER_MEMORY_NONE` when none is left.
+Hygon has no PD mode yet.
 Two modes have opposite TP rules: `vllm-nixl` requires decode TP ≥ prefill TP, while `vllm-ascend-mooncake` requires
-prefill TP ≥ decode TP. `sglang-nixl` and `sglang-ppu-ipc` require them to be equal.
+prefill TP ≥ decode TP. `sglang-nixl`, `sglang-ppu-ipc`, and the two PPU Mooncake modes require them to be equal.
 
 **Costs and limitations**:
 
@@ -221,7 +228,8 @@ prefill TP ≥ decode TP. `sglang-nixl` and `sglang-ppu-ipc` require them to be 
 - KV Offload applies only to prefill. You cannot put `--kv-transfer-config` or
   `--kv-offloading-size` in custom arguments.
 - Combining PD with sleep or dGPU produces an "unverified" evaluation warning (`PD_UNVERIFIED_COMBINATION`).
-- Decode in `sglang-nixl` and `sglang-ppu-ipc` cannot perform prefill independently, so fallback is unavailable and prefill cannot scale down to 0. Other modes default
+- Decode in `sglang-nixl`, `sglang-ppu-ipc`, and `sglang-ppu-mooncake` cannot perform prefill independently, so fallback is unavailable and prefill cannot scale down to 0;
+  `vllm-ppu-mooncake` also only returns 503 (fallback is unverified). Other modes default
   to completing the request locally on decode when prefill is unavailable (`fallback: decode`); you can also configure them to return 503 directly.
 - Known defect: the platform currently does not detect an engine process exiting after an instance becomes ready (`todo.md` T26). With PD, this appears as persistent gateway fallback.
 

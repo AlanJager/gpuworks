@@ -211,7 +211,7 @@ func TestCreateAutoMultiNodeWithNoRoomSaysWhy(t *testing.T) {
 	if _, err := r.st.SetNodeScheduling("au-4", store.NodeCordoned); err != nil {
 		t.Fatal(err)
 	}
-	want := map[string]any{"nodes": float64(4), "busy": float64(3), "cordoned": float64(1), "offline": float64(0), "unmet": float64(0), "no_network": float64(0), "largest": float64(0)}
+	want := map[string]any{"nodes": float64(4), "busy": float64(3), "cordoned": float64(1), "offline": float64(0), "unmet": float64(0), "no_network": float64(0), "no_peer_memory": float64(0), "largest": float64(0)}
 	rec := r.do(r.session, http.MethodPost, "/api/v1/deployments", r.multiBody("none", ""))
 	code, params := errorBody(t, rec.Body.String())
 	if rec.Code != http.StatusConflict || code != ErrorUnitPlacementNone || fmt.Sprint(params) != fmt.Sprint(want) {

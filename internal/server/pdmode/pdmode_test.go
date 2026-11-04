@@ -1,6 +1,9 @@
 package pdmode
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestVLLMNixlDeclaration(t *testing.T) {
 	mode, ok := Lookup("vllm-nixl")
@@ -70,11 +73,34 @@ func TestSideChannelPortsAndValues(t *testing.T) {
 	if sglang.ValidKVLoadFailure(KVLoadFail) || !sglang.ValidKVLoadFailure("") || sglang.EffectiveKVLoadFailure("") != "" {
 		t.Fatal("sglang kv load failure values")
 	}
-	if got := ForEngine("vllm"); len(got) != 2 || got[0] != "vllm-ascend-mooncake" || got[1] != "vllm-nixl" {
+	if got := strings.Join(ForEngine("vllm"), " "); got != "vllm-ascend-mooncake vllm-nixl vllm-ppu-mooncake" {
 		t.Fatalf("ForEngine = %v", got)
 	}
-	if got := ForEngine("sglang"); len(got) != 2 || got[0] != "sglang-nixl" || got[1] != "sglang-ppu-ipc" {
+	if got := strings.Join(ForEngine("sglang"), " "); got != "sglang-nixl sglang-ppu-ipc sglang-ppu-mooncake" {
 		t.Fatalf("sglang modes = %v", got)
+	}
+}
+
+func TestPPUMooncakeDeclarations(t *testing.T) {
+	for _, name := range []string{"sglang-ppu-mooncake", "vllm-ppu-mooncake"} {
+		mode, ok := Lookup(name)
+		if !ok || !mode.SupportsVendor("ppu") || mode.SupportsVendor("nvidia") || mode.Unverified {
+			t.Fatalf("%s = %+v", name, mode)
+		}
+		if mode.Transport != TransportMooncakeRDMA || !mode.PeerMemory || mode.ExtraPorts(RolePrefill, 1) != 1 || mode.ExtraPorts(RoleDecode, 1) != 0 {
+			t.Fatalf("%s = %+v", name, mode)
+		}
+	}
+	sglang, _ := Lookup("sglang-ppu-mooncake")
+	if sglang.Wire != WireConcurrent || sglang.Connector != "mooncake" || sglang.SynthesizedHandoff {
+		t.Fatalf("sglang-ppu-mooncake = %+v", sglang)
+	}
+	vllm, _ := Lookup("vllm-ppu-mooncake")
+	if vllm.Wire != WireSequential || vllm.Connector != "MooncakeConnector" || !vllm.SynthesizedHandoff || vllm.ConnectorExtra["mooncake_protocol"] != "rdma" {
+		t.Fatalf("vllm-ppu-mooncake = %+v", vllm)
+	}
+	if got := EngineID("10.0.0.5", 30001); got != "gpuworks-10.0.0.5-30001" {
+		t.Fatalf("EngineID = %q", got)
 	}
 }
 

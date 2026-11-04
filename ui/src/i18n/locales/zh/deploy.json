@@ -856,6 +856,7 @@
   "pd": {
     "mode": "PD 模式",
     "modeRequired": "请选择 PD 模式",
+    "firstRequestCompiles": "PPU PD 分离模式的第一个请求需要编译内核，通常要几分钟，之后恢复正常。",
     "engineUnsupported": "当前引擎不支持 PD 分离。",
     "role": {
       "decode": "Decode",

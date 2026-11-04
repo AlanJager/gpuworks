@@ -619,6 +619,9 @@ func (c *Conn) reportStatus(ctx context.Context) {
 		}); ok {
 			sys.RuntimePlugin, sys.RuntimeGPUBlocked = h.RuntimeGPU(ctx)
 		}
+		if h, ok := c.handlers.(interface{ PeerMemory() string }); ok {
+			sys.PeerMemory = h.PeerMemory()
+		}
 		if h, ok := c.handlers.(interface{ RuntimeFallback() (string, string) }); ok {
 			sys.RuntimeFallbackFrom, sys.RuntimeFallbackReason = h.RuntimeFallback()
 		}

@@ -20,7 +20,7 @@ export function stateName(t: TFunction, state: CardCheckState | "stale"): string
 export function reasonText(t: TFunction, state: CardCheckState, reason?: string): string {
   if (!reason) return "";
   if (state === "skip") return t(`cardHealth.skip.${reason}`, { ns: "nodes", defaultValue: reason });
-  if (reason === "foreign_processes") return t("cardHealth.reason.foreign_processes", { ns: "nodes" });
+  if (reason === "foreign_processes" || reason === "peer_memory_missing") return t(`cardHealth.reason.${reason}`, { ns: "nodes" });
   return t(`gpuHealth.code.${reason}.label`, { ns: "common", defaultValue: reason });
 }
 
