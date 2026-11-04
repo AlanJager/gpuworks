@@ -115,7 +115,7 @@
   "reference/openai-gateway.md": "e77017aa106416b66d25fdfa6e5147ab34cfcf86e60097472ce7800c4d4052df",
   "reference/request-timeline.md": "5cce3622d94b05f4ab1a9b2e414a51eda1d31e648e403ec041016f7ab296134f",
   "reference/security.md": "97519d9923b9aa1ff0650b9c56e1e22ba6d6cb888bf85ca03fddc25f0b71e0fe",
-  "reference/support-matrix.md": "66b6157e0dca102549d4d89d5ace57e073eaa65caf689ae4a1d644fc2e162533",
+  "reference/support-matrix.md": "6ac229a579de7b4a4b1d0ee12a6fbdb66b398fb563ffc4b85a316b8d1d4bc115",
   "reference/usage-report.md": "ee3391351bad92ba79f30b8941f771de244963cb47d94765fdce32d677f3de12",
   "reference/web-ui-tour.md": "a2d7e116b2b37911b788d8b69680c28fee0d5836f4e7123bedb8ea0936137dc0",
   "tutorials/benchmark-concurrency.md": "c1e75e93fe8723689bc0b44188ee611130e0178c591968695082e3cf0c348c6b",
@@ -132,6 +132,6 @@
   "explanation/service-levels.md": "1a98e001704ac09cc25bfafb9abe43fd064bfbe3bab8456beb6152b660ba30d4",
   "adr/0060-card-health-from-hardware-facts.md": "8df92de8e08e009da35393c77eb14527a9dde33c27ba4efd48cd8bcca1afa48b",
   "adr/0061-spec-display-names-written-by-hand.md": "4a31f299b87d236fbd207f0ac03cdde11b4760f337acc286eaa6d1253f188805",
-  "dev/amd-hardware-validation.md": "bb34004e6ca6f12a4d040cf2a1de6e5904b546587042a5537370ab799894e629",
+  "dev/amd-hardware-validation.md": "c16f2313574516406de258e50a84e4d98b7ee179c78afd9db8ef9ed73415ba99",
   "dev/amd-support-design.md": "00a16b49213581749f845d4b5351c1b2eafdd7ba1f7906621bf50dfdb4a87d31"
 }
