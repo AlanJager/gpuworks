@@ -204,6 +204,7 @@ Cookie 设置为 `HttpOnly`、`SameSite=Lax`，其中保存的是不透明会话
 | GET | `/api/v1/nodes/{uuid}` | 节点详情（含 GPU 列表；管理员额外含 token） | JWT |
 | GET | `/api/v1/nodes/{uuid}/fs` | 节点文件系统浏览（本地模型注册用） | JWT |
 | POST | `/api/v1/nodes/{uuid}/doctor` | 触发节点自检 RPC | JWT |
+| POST | `/api/v1/nodes/{uuid}/connection-diagnostics` | 只读连接诊断：返回保存地址、节点侧 SSH/配置快照/HTTP 检查及公网入口历史观测；不执行恢复、不修改地址。请求为空或 `{}`，不接受自定义目标。证据范围见[节点连接诊断](#节点连接诊断) | JWT(admin) |
 | POST | `/api/v1/nodes/{uuid}/upgrade` | 触发 agent 远程升级 | JWT |
 | PUT | `/api/v1/nodes/{uuid}/scheduling` | 设置 `scheduling` 为 `cordoned`、`draining` 或 `schedulable`，返回节点；非法值 400 `FIELD_INVALID`。各状态的影响见[节点调度与加速卡切换](#节点调度与加速卡切换) | JWT |
 | PUT | `/api/v1/nodes/{uuid}/gpus/scheduling` | 设置一张卡是否接受新部署：`{"pcie_bdf":"0000:3f:00.0","scheduling":"stopped"}`（没有 PCI 地址的卡用 `uuid`）。`stopped` 一直有效、平台不会自动解除；`schedulable` 解除管理员的停止，或在平台判定这张卡不可用（故障、被平台外进程占用）时临时放开到放开 1 分钟后的第一次上报重新判定。返回节点（含卡），卡上 `scheduling_stopped`、`scheduling_allowed` 表示状态，`scheduling_actions` 给出现在可以做的操作。非法值或没点名卡 400 `FIELD_INVALID`；节点或卡不存在 404；卡已直通或没绑定驱动时设为可调度 409 `CARD_NOT_OWNED` | JWT |
@@ -277,6 +278,28 @@ Cookie 设置为 `HttpOnly`、`SameSite=Lax`，其中保存的是不透明会话
 | 用户标签值、系统标签值 | 每个值附带携带它的节点数；系统标签带服务端显示文本，不含节点自身的 `gpuworks.ai/node` |
 | 卡型号 | `vendor`、`name`、`cc` 描述厂商、名称、计算能力；`model` 对应系统标签 `gpuworks.ai/gpu-model` 的值 |
 | 每种卡型号的数量与显存 | 节点数，以及 `cards`（卡数）、`memory_bytes`（最大单卡显存） |
+
+### 节点连接诊断
+
+`POST /api/v1/nodes/{uuid}/connection-diagnostics` 由管理员手动触发，接受空请求或 `{}`，拒绝自定义 URL、SSH 参数与其他字段。目标和身份只取指定节点的已存记录。接口不调用恢复流程，不修改节点地址、token 或安装配置，也不重启或重装 Agent；SSH 沿用平台现有主机密钥信任策略。
+
+返回字段：
+
+| 字段 | 含义 |
+|---|---|
+| `node_uuid`、`checked_at`、`connect_mode`、`saved_server_url` | 节点、报告时间、连接方向与已验证格式的保存地址；无法安全显示的地址为空 |
+| `last_seen_at`、`recovery_phase`、`recovery_attempts`、`last_probe_at`、`last_recovery_error` | 已有的最后上报与恢复记录，不是本次检查执行了恢复 |
+| `exposure` | `null` 或 `{url,state,observed_at}`，公网连接器最近记录的入口、状态和原始观测时间；不是本次公网存活检查 |
+| `checks` | `ssh`、`configuration`、`node_http` 三阶段；每项有 `stage`、`outcome`、`vantage`，有证据时才有 `target`、`source`、`observed_at`、`http_status` |
+| `guidance` | 服务端给出的指引码，由客户端本地化；提示配置快照边界、HTTP 检查范围、节点侧复核及手动同步地址等 |
+
+`vantage=control_plane` 的 SSH 结果描述控制面登录节点；`vantage=node` 的 HTTP 结果描述经 SSH 从节点访问保存地址的健康接口。它使用 SSH 会话环境，未核实运行中 Agent 的代理和环境覆盖。`configuration` 的 `source` 为 `state_file` 或 `legacy_arguments`，只表示读取来源，不能证明命令行或环境覆盖后的运行态配置。`server_dial` 节点不主动访问控制面地址，该项应按不适用解释。
+
+节点离线、SSH 凭据缺失、工具缺失或部分检查失败仍可返回 HTTP 200 的部分报告；必须查看各项 `outcome`，不能把报告生成成功当作连接成功。HTTP 健康成功不证明 WebSocket、Agent 认证或 SSE 成功；保存地址与配置快照或公网历史入口不同，只提示核对，不自动判定哪一个有效。
+
+非法请求返回 400 `NODE_CONNECTION_DIAGNOSTICS_INPUT`；读取节点设置失败返回 500 `NODE_CONNECTION_SETTINGS_UNAVAILABLE`，不回显底层数据库错误；节点不存在返回 404。
+
+返回不含 SSH 密码、私钥、节点 token、完整配置、进程参数或环境变量。该 POST 接口没有接入 AI 助手现有的只读 GET 工具，不能仅因出现在接口目录中就认为助手已能执行这次诊断。
 
 ### 创建节点的连接参数
 
@@ -445,7 +468,7 @@ macOS 忽略 `no_systemd`。
 | POST | `/api/v1/storages` | 添加存储；NFS 类先在一台节点上试挂，写不进去的保存为停用（只读） | admin |
 | PATCH | `/api/v1/storages/{id}` | 修改名称、启用、默认、节点范围、路径、挂载选项、缓存目录与上限、`nfs`↔`nfs_cache` 类型；可带读取时的 `expected_updated_at` 防止覆盖并发修改，版本变化返回409 `STORAGE_CONFIG_CHANGED` | admin |
 | DELETE | `/api/v1/storages/{id}` | 移除存储对象（不删文件），并从模型列表移除只存放在此存储上的模型；有部署绑定、或部署所用模型只存放在此存储上时 409 `STORAGE_IN_USE` | admin |
-| POST | `/api/v1/storages/probe` | 在一台节点上试挂一个存储定义，不留下挂载 | admin |
+| POST | `/api/v1/storages/probe` | 在一台节点上试挂一个存储定义，不留下挂载。结果含实际 `node_uuid`、`node_name`、`target`（本次实际检查的 export 或目录 path）及 `checked_at`（控制面收到并解码结果的时间），只说明这台节点这次检查的结果；旧版本响应可缺后两字段 | admin |
 | GET | `/api/v1/storages/{id}/control-planes` | 共享存储上还有哪些 gpuworks 在用（心跳） | JWT |
 | PATCH | `/api/v1/storages/{id}/node-overrides` | 原子修改固定 `node_uuids` 的缓存例外；`cache_path`/`cache_max_bytes` 缺省保持、null继承，限额0表示不限；新例外不扩大节点范围 | admin |
 | POST | `/api/v1/storages/{id}/cache/reconcile` | `{node_uuids,mode:"trim"或"clear"}` 提交后台缓存整理，202返回accepted数量；逐节点结果见存储详情cache状态 | admin |

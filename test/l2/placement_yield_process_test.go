@@ -22,7 +22,9 @@ import (
 func TestProcessANewOnlineDeploymentTakesTheCardFromAnOfflineOne(t *testing.T) {
 	base, token, node, modelID := startDockerAutomationRig(t, "placeyield")
 
-	batch, batchInst := createFakeSleepable(t, base, token, node, modelID, "placeyield-batch", map[string]any{"yield_policy": map[string]any{"policy": "anytime"}})
+	// Keep this handoff in the rank branch even when setup crosses the
+	// default 30-second idle threshold.
+	batch, batchInst := createFakeSleepable(t, base, token, node, modelID, "placeyield-batch", map[string]any{"yield_policy": map[string]any{"policy": "anytime", "idle_sec": 3600}})
 
 	start := time.Now()
 	chat := postFakeSleepable(t, base, token, node, modelID, "placeyield-chat", map[string]any{"yield_policy": map[string]any{"policy": "idle"}})

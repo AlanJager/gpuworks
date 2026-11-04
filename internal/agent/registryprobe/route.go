@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"gpuworks.ai/gpuworks/pkg/httpproxy"
 )
@@ -14,6 +15,12 @@ type HostResult struct {
 	Reachable bool
 	LatencyMS int64
 	Cooled    bool
+	// ObservedAt is when this request answered or failed, not a later cache read.
+	ObservedAt time.Time
+	HTTPStatus int
+	Failure    string
+	// Path reports only direct/proxy/unknown, never proxy credentials or Key.
+	Path string
 }
 
 // Route is the network path a probe takes: it has to be the path the pull

@@ -8,3 +8,12 @@
 .node-gpu-table .node-gpu-model .ant-typography { font-size: 12px; }
 .node-gpu-table .node-gpu-vram { display: flex; flex-direction: column; min-width: 92px; }
 .node-gpu-table .node-gpu-vram .ant-progress { margin: 0; line-height: 1; }
+
+/* Keep node actions reachable beside long names on narrow screens. */
+@media (max-width: 600px) {
+  .node-detail-drawer .ant-drawer-header { flex-wrap: wrap; }
+  .node-detail-drawer .ant-drawer-header-title { min-width: 0; flex-basis: 100%; }
+  .node-detail-drawer .ant-drawer-title { overflow-wrap: anywhere; }
+  .node-detail-drawer .ant-drawer-extra { margin-inline-start: 0; max-width: 100%; }
+  .node-detail-drawer .ant-drawer-extra > .ant-space { max-width: 100%; flex-wrap: wrap; }
+}

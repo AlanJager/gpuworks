@@ -110,6 +110,8 @@
     "NODE_INSTALL_EXISTING_AGENT_SAME_DIR": "A gpuworks agent already runs from {{dir}} on the host; installing there replaces it. Choose another install directory to run beside it.",
     "NODE_INSTALL_DIR_UNTRAVERSABLE": "The install was stopped: {{dir}} (mode {{mode}}) is closed to the dedicated runtime user (udocker) that runs workloads on this node, so every deployment would fail to launch with permission denied. Run `{{fix}}` on the host (search only: no listing, no writing), or install into a directory outside it such as /opt/gpuworks.",
     "NODE_STORE_UNAVAILABLE": "The node store is not configured.",
+    "NODE_CONNECTION_DIAGNOSTICS_INPUT": "Connection diagnostics accepts an empty body or an empty JSON object.",
+    "NODE_CONNECTION_SETTINGS_UNAVAILABLE": "Node connection settings could not be read. Retry or inspect the control-plane log.",
     "NODE_RECOVERY_UNAVAILABLE": "Node recovery is not configured.",
     "AI_ENDPOINT_NOT_CONFIGURED": "No AI endpoint is configured.",
     "AI_TASK_INVALID": "Unknown assistant task \"{{task}}\".",

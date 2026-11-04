@@ -369,7 +369,11 @@
       "pdCompute": "Prefill instance compute",
       "pdKV": "KV transfer & queue",
       "pdFallback": "Fallback reason",
-      "deleted": "Deleted"
+      "deleted": "Deleted",
+      "observationTitle": "Gateway observation boundary",
+      "observationScope": "These records describe what GPUWorks observed. A successful gateway write does not prove that a third-party gateway delivered the response to the final client.",
+      "streamingEvidence": "For streaming requests, finish_reason describes the model completion; it does not prove that data: [DONE] was received. Enable debug collection before reproducing, then compare the upstream and client-direction bytes and the terminal read/write errors in the diagnostic bundle.",
+      "collectEvidence": "Collect streaming evidence"
     },
     "pdFallback": {
       "no_prefill": "No prefill instance available",

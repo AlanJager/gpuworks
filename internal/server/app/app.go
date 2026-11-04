@@ -363,7 +363,7 @@ func New(cfg Config, log *slog.Logger) (*App, error) {
 		Batches:              batchConsole{batches},
 		PlaygroundV1:         px.PlaygroundHandler(box),
 		NodePrecheck:         nodePrechecker,
-		NodeInstaller:        nodeInstaller,
+		NodeInstaller:        connectionInstaller(nodeInstaller, cfg.DataDir),
 		Providers:            provSvc,
 		Networks:             networks,
 		Server:               a.settings,

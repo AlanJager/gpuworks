@@ -354,6 +354,7 @@ func Router(d Deps, policies ...auth.SessionPolicy) http.Handler {
 			r.With(a.managementAdmin).Put("/nodes/{uuid}/ssh", a.putNodeSSH)
 			r.With(a.managementAdmin).Delete("/nodes/{uuid}/ssh", a.deleteNodeSSH)
 			r.With(a.managementAdmin).Post("/nodes/{uuid}/recovery/probe", a.probeNodeRecovery)
+			r.With(a.managementAdmin).Post("/nodes/{uuid}/connection-diagnostics", a.nodeConnectionDiagnostics)
 			r.With(a.managementAdmin).Post("/nodes/{uuid}/token/regenerate", a.regenerateNodeToken)
 			r.Delete("/nodes/{uuid}", a.deleteNode)
 			r.Get("/events", a.events) // SSE stream of change events

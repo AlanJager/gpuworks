@@ -77,6 +77,9 @@ func TestDebugSessionRecordsTheRawExchange(t *testing.T) {
 	if last["t"] != "end" || last["outcome"] != "ok" || last["status"] != float64(200) {
 		t.Fatalf("end line = %v", last)
 	}
+	if last["observation_scope"] != "gateway" || last["finish_reason"] != "stop" {
+		t.Fatalf("terminal gateway evidence = %v", last)
+	}
 	if n := strings.Count(string(f.Bytes()), `"t":"end"`); n != 1 {
 		t.Fatalf("%d end lines", n)
 	}

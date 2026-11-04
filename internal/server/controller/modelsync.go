@@ -526,7 +526,7 @@ func (c *Controller) runModelSync(ctx context.Context, key string, run *modelSyn
 			return
 		}
 		message := boundedModelSyncError(err)
-		c.log.Warn("direct model sync failed", "model_file", key, "transfer", run.transferID, "err", err)
+		c.log.Warn("direct model sync failed", modelSyncDiagnosticAttrs(key, run, src, dstNode, path, err)...)
 		if run.automatic {
 			c.peerCool.cool(src.node.ID, dstNode.ID, c.now())
 		}
@@ -546,7 +546,7 @@ func (c *Controller) runModelSync(ctx context.Context, key string, run *modelSyn
 		_ = c.hub.SyncNode(dstNode.UUID)
 	}
 	retainUntilTargetStatus = true
-	time.AfterFunc(modelSyncConfirmationTimeout, func() { c.expireModelSyncConfirmation(key, run, dstMF) })
+	time.AfterFunc(modelSyncConfirmationTimeout, func() { c.expireModelSyncConfirmation(key, run, dstMF, src, dstNode, path) })
 }
 
 func (c *Controller) clearModelSync(key string, run *modelSyncRun) {
@@ -556,21 +556,6 @@ func (c *Controller) clearModelSync(key string, run *modelSyncRun) {
 	}
 	c.syncMu.Unlock()
 	run.cancel()
-}
-
-func (c *Controller) expireModelSyncConfirmation(key string, run *modelSyncRun, dstMF *store.ModelFile) {
-	c.syncMu.Lock()
-	active := c.modelSyncs[key] == run
-	c.syncMu.Unlock()
-	if !active {
-		return
-	}
-	mf, err := c.store.ModelFileByID(dstMF.ID)
-	if err == nil && mf.State == proto.MFSyncing && mf.TransferID == run.transferID {
-		_ = c.store.SetModelSyncDownloadRequired(refOf(dstMF), run.transferID,
-			"Peer transfer was confirmed, but the target did not report completion. Retry peer verification or choose public download.")
-	}
-	c.clearModelSync(key, run)
 }
 
 func boundedModelSyncError(err error) string {

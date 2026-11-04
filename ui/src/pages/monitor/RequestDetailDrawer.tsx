@@ -1,4 +1,4 @@
-import { Button, Descriptions, Drawer, Tag, Typography } from "antd";
+import { Alert, Button, Descriptions, Drawer, Tag, Typography } from "antd";
 import { ExportOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import { useTranslation } from "react-i18next";
@@ -70,6 +70,17 @@ export default function RequestDetailDrawer({
             <Descriptions.Item label={r.pd ? t("requests.drawer.decodeReplica") : t("requests.drawer.replica")}>{replicaText(r, replica, t) || "—"}</Descriptions.Item>
           </Descriptions>
           {r.pd && <PDSection pd={r.pd} queueMS={r.engine_queue_ms} inStage={r.phase !== "done" && r.dispatch_ms == null} />}
+          <Alert
+            style={{ marginTop: 16 }}
+            type="info"
+            showIcon
+            message={t("requests.drawer.observationTitle")}
+            description={<>
+              <Typography.Paragraph>{t("requests.drawer.observationScope")}</Typography.Paragraph>
+              <Typography.Paragraph>{t("requests.drawer.streamingEvidence")}</Typography.Paragraph>
+              <Link to="/settings#diagnostics">{t("requests.drawer.collectEvidence")}</Link>
+            </>}
+          />
           <div style={{ marginTop: 16 }}>
             <RequestDetailLines r={r} replica="" />
           </div>

@@ -1,7 +1,6 @@
 package api
 
 import (
-	"io"
 	"mime"
 	"net/http"
 	"path"
@@ -21,6 +20,7 @@ import (
 // that can fail without the agent runs before the body is read, so a browser
 // gets a JSON error instead of a reset upload.
 func (a *apiHandlers) uploadStorageFile(w http.ResponseWriter, r *http.Request) {
+	storageTransferRequestID(w, r)
 	q := r.URL.Query()
 	rel, err := writableStorageFilePath(q.Get("path"))
 	if err != nil {
@@ -88,6 +88,7 @@ func (a *apiHandlers) storageFilesTransferErr(target *storageFilesTarget, err er
 // flow, a failure can only cut the connection, which the browser shows as a
 // failed download.
 func (a *apiHandlers) downloadStorageFile(w http.ResponseWriter, r *http.Request) {
+	requestID := storageTransferRequestID(w, r)
 	q := r.URL.Query()
 	rel, err := cleanStorageFilePath(q.Get("path"))
 	if err != nil {
@@ -149,15 +150,20 @@ func (a *apiHandlers) downloadStorageFile(w http.ResponseWriter, r *http.Request
 	// The browser starts its download now, not after the first buffer of a
 	// directory archive that may take a while to fill.
 	_ = http.NewResponseController(w).Flush()
-	n, err := io.Copy(w, body)
-	if err == nil && !head.Dir && head.Size >= 0 && n != head.Size {
-		err = io.ErrUnexpectedEOF
+	expected := head.Size
+	if head.Dir {
+		expected = -1
 	}
+	n, stage, direction, err := copyStorageDownload(w, body, expected)
 	if err != nil {
 		// The status line is out; only a cut connection tells the client
 		// the download is incomplete.
 		if a.d.Log != nil {
-			a.d.Log.Warn("storage file download cut short", "storage", target.storage.Name, "node", target.node.UUID, "path", rel, "bytes", n, "err", err)
+			a.d.Log.Warn("storage file download cut short", "request_id", requestID, "observation_scope", "gateway",
+				"storage", target.storage.Name, "storage_id", target.storage.ID, "node", target.node.UUID, "path", rel,
+				"stage", stage, "direction", direction, "bytes", n, "expected_bytes", expected,
+				"data_lane_attached", a.d.NodeStreams.DataLaneAttached(target.node.UUID),
+				"err", storageTransferErrorDetail(err, target.node.Token))
 		}
 		panic(http.ErrAbortHandler)
 	}

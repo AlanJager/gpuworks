@@ -33,6 +33,37 @@ Instance status values are `pending`, `pulling`, `starting`, `optimizing`, `runn
 
 Management API errors take the form `{"error": "...", "code": "...", "params": {...}}`. The `code` is stable; use `code` as the reference.
 
+## Scope and Evidence of Connectivity Checks
+
+Separate the segment a check covers from the business operation that failed. Record the observing host, actual target, proxy or network channel, observation time, and last completed stage. A check that did not run or return remains unknown.
+
+| Check | What it establishes | What still needs checking |
+|---|---|---|
+| Node SSH / Agent process | The control plane can log into the node and the target Agent process exists | Node-to-control-plane DNS, TLS, WebSocket and authentication; an existing process is not an established control session |
+| Public control-plane health URL | The observing host can access that URL's health endpoint | Other node or user networks, login, WebSocket and streaming inference |
+| Engine startup health | The node's local request to that instance's health endpoint | The gateway-to-node channel and the user's gateway entry point |
+| Registry ranking probe | Whether the node receives a response from registry `/v2/` through its effective proxy path | Image authentication, tag, manifest, layer download and extraction; HTTP 401 can still mean the endpoint is reachable |
+| Storage test | Mount, read and write results on the named node during that test | Other nodes, identities and later mount state |
+| Internal network test | TCP, RDMA or card-level results for the selected node pairs and network | Untested pairs, in-container NCCL/HCCL and actual PD KV transfer |
+
+Cached or historical observations have their own timestamps. Opening a page again does not repeat the probe. A difference between the public entry point and a node's saved URL is a reason to verify both, not proof that the old address is invalid or permission to switch automatically.
+
+### Node Address and Session
+
+When a node stays connecting, start with its last successful report and latest recovery error. Connection diagnosis gathers read-only evidence separately from recovery actions that may restart or reinstall the Agent. Missing SSH credentials, unreadable configuration or missing remote tools mean the corresponding checks could not be completed, not that the network is down.
+
+The platform's saved control-plane URL, the node configuration snapshot and the connector's last public observation are different evidence sources. Node-side HTTP checks use the SSH session environment, which may differ from the running Agent's proxy configuration. A configuration snapshot is not necessarily the running process's effective configuration: command-line flags and environment variables can override the file. A connector's last recorded URL is not proof that the URL is still live.
+
+Before repairing an address, verify the chosen URL from the node's own network and run `gpuworks-agent smoke --state <actual-directory>` to check the control session. After confirming a stable entry point, explicitly synchronize the platform record and node configuration, then restart using the installation's supervisor. Changing only the public tunnel or repeatedly retrying old settings is insufficient. Connection diagnosis does not itself provide an in-place URL migration for enrolled nodes; a new entry in the report is not a completed address repair. Configuration contains the token; do not share full files, process arguments or environment variables.
+
+### Streaming Requests and File Transfers
+
+Inference request details describe the gateway's observations. `finish_reason` is the engine's model termination reason, not evidence that the client received `data: [DONE]`. To inspect individual segments, enable a scoped debug session under **Settings → Diagnostics**, reproduce the request, and compare its `upstream`, `client` and `end` records. Correlate logs using the request ID / Trace ID.
+
+The captured `client` direction contains bytes the gateway wrote to its immediate downstream. When a third-party gateway, load balancer or client SDK follows it, their own receiving evidence is also required. A successful gateway write does not prove delivery of the complete reply to the final client.
+
+After a storage download sends HTTP 200, an interruption can only abort the connection; it cannot return a JSON error. Keep the request ID and use control-plane logs with the node, storage path, copied bytes and observed failure direction to distinguish an interrupted node read from a failed browser write. For peer model copies, use the transfer ID to follow the target receiver, source-to-target connection, data confirmation and final target state. Two online nodes do not establish that their direct data network is reachable.
+
 ## Node Stays Connecting or Does Not Come Online
 
 **Symptoms**: The Nodes page stays at “Connecting”, or repeatedly switches to “Offline” after coming online; the agent logs contain `connection ended`,
@@ -1140,7 +1171,7 @@ When the server does not start, run [`gpuworks support-bundle`](../reference/cli
 
 1. Choose a duration (10 minutes by default, at most 1 hour), a total size (10 GiB by default, at most 50 GiB), the deployments to record and the nodes to turn debug logs on for.
 2. While it runs, the server and the agents of the chosen nodes (and of the nodes the chosen deployments run on) write records at debug and above to separate files, leaving the regular log levels unchanged; every request of the chosen deployments is recorded in full as `requests/<deployment>-<request id>.jsonl`:
-   the request (credential headers removed), every frame the engine returned (`upstream`), every frame the client received (`client`), each with its milliseconds since the start, and how it ended (the `end` line's `outcome` and read/write errors). One request records at most 16 MiB, and each node's debug file at most 200 MiB.
+   the request (credential headers removed), raw blocks the gateway read from the engine (`upstream`), raw blocks it wrote to its immediate downstream (`client`), each with its milliseconds since the start, and how it ended (the `end` line's `observation_scope: "gateway"`, `finish_reason`, `outcome` and read/write errors). One request records at most 16 MiB, and each node's debug file at most 200 MiB.
 3. It ends when its time is up, its size is reached, or it is stopped. Its start and end each write a server warning with the operator, as the audit record.
 4. The request records contain prompts and replies; they stay on the server and the nodes only and are deleted after 7 days. Nodes whose agent version is too old do not support it and are marked as skipped.
 

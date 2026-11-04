@@ -139,7 +139,8 @@ func (o *copyObservation) finish(readErr error) {
 		o.onFinish(o.status, duration, stats, outcome)
 	}
 	if o.capture != nil {
-		end := map[string]any{"status": o.status, "outcome": outcome.String(), "copied_bytes": written, "duration_ms": duration.Seconds() * 1000}
+		end := map[string]any{"status": o.status, "outcome": outcome.String(), "copied_bytes": written, "duration_ms": duration.Seconds() * 1000,
+			"observation_scope": "gateway", "finish_reason": stats.finishReason}
 		if copyErr != nil {
 			end["read_error"] = copyErr.Error()
 		}

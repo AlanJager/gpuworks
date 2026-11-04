@@ -203,6 +203,11 @@ func TestRankedCandidatesAreOrderedByProbeAndTheOrderIsReportedOnce(t *testing.T
 	if !strings.Contains(messagesOf(statuses), "image sources by probe: up.example (") || !strings.Contains(messagesOf(statuses), "down.example (unreachable)") {
 		t.Fatalf("summary:\n%s", messagesOf(statuses))
 	}
+	for _, want := range []string{"from=node", "GET /v2/", "HTTP 200", "observed_at=", "image authorization, tag, manifest and layers not checked"} {
+		if !strings.Contains(messagesOf(statuses), want) {
+			t.Errorf("deployment preparation lost registry probe scope %q:\n%s", want, messagesOf(statuses))
+		}
+	}
 }
 
 func TestUnrankedCandidatesAreNeverProbed(t *testing.T) {

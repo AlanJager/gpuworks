@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"net"
 	"strconv"
 	"strings"
@@ -420,19 +421,49 @@ func boundedDetached(parent context.Context, timeout time.Duration) (context.Con
 }
 
 func runWithInput(ctx context.Context, client *ssh.Client, cmd, input string) (string, error) {
-	execution := commandlog.Start(cmd)
+	return runSSHInput(ctx, client, cmd, input, false)
+}
+
+// runDiagnosticWithInput keeps untrusted remote output out of command logs.
+// The input may contain an ownership token and is never logged.
+func runDiagnosticWithInput(ctx context.Context, client *ssh.Client, cmd, input string) (string, error) {
+	return runSSHInput(ctx, client, cmd, input, true)
+}
+
+func runSSHInput(ctx context.Context, client *ssh.Client, cmd, input string, diagnostic bool) (string, error) {
+	logCommand := cmd
+	if diagnostic {
+		logCommand = "read node connection diagnostics"
+	}
+	execution := commandlog.Start(logCommand)
+	finish := func(output string, err error) {
+		if diagnostic {
+			output = ""
+			if err != nil {
+				err = fmt.Errorf("diagnostic SSH command did not complete")
+			}
+		}
+		execution.Finish(output, err)
+	}
 	sess, err := client.NewSession()
 	if err != nil {
-		execution.Finish("", err)
+		finish("", err)
 		return "", err
 	}
 	defer sess.Close()
 	sess.Stdin = strings.NewReader(input + "\n")
-	out := captureSSHSessionOutput(sess)
+	var output stringOutput
+	if diagnostic {
+		out := &connectionDiagnosticOutput{}
+		sess.Stdout, sess.Stderr = out, io.Discard
+		output = out
+	} else {
+		output = captureSSHSessionOutput(sess)
+	}
 	done := make(chan error, 1)
 	go func() { done <- sess.Run(cmd) }()
-	result, err := awaitSSHCommand(ctx, sess.Close, done, out)
-	execution.Finish(result, err)
+	result, err := awaitSSHCommand(ctx, sess.Close, done, output)
+	finish(result, err)
 	return result, err
 }
 

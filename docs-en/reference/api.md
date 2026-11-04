@@ -204,6 +204,7 @@ Login, logout, and management write requests using login sessions check the requ
 | GET | `/api/v1/nodes/{uuid}` | Node details (including the GPU list; also includes the token for administrators) | JWT |
 | GET | `/api/v1/nodes/{uuid}/fs` | Browse the node filesystem (for registering local models) | JWT |
 | POST | `/api/v1/nodes/{uuid}/doctor` | Trigger the node self-check RPC | JWT |
+| POST | `/api/v1/nodes/{uuid}/connection-diagnostics` | Read-only connection diagnosis: saved URL, node-side SSH/configuration snapshot/HTTP checks and historical public entry observation; does not recover or change addresses. Empty body or `{}` only; no custom target. See [Node Connection Diagnostics](#node-connection-diagnostics). | JWT(admin) |
 | POST | `/api/v1/nodes/{uuid}/upgrade` | Trigger a remote agent upgrade | JWT |
 | PUT | `/api/v1/nodes/{uuid}/scheduling` | Set `scheduling` to `cordoned`, `draining`, or `schedulable` and return the node; invalid values return 400 `FIELD_INVALID`. See [Node Scheduling and Accelerator Switching](#节点调度与加速卡切换) for the effects of each state | JWT |
 | PUT | `/api/v1/nodes/{uuid}/gpus/scheduling` | Set whether one card takes new deployments: `{"pcie_bdf":"0000:3f:00.0","scheduling":"stopped"}` (a card without a PCI address is named by `uuid`). `stopped` holds until lifted and the platform never lifts it; `schedulable` lifts an administrator's stop, or, when the platform judged the card unusable (a fault, or processes outside the platform), allows it until the first report at least a minute later judges it again. Returns the node (with its cards); a card's `scheduling_stopped` and `scheduling_allowed` give its state and `scheduling_actions` what may be done now. Invalid values or no card named: 400 `FIELD_INVALID`; unknown node or card: 404; making a passed-through or driverless card schedulable: 409 `CARD_NOT_OWNED` | JWT |
@@ -277,6 +278,28 @@ Deployment forms and placement condition editors can use it directly to generate
 | User label values and system label values | Each value includes the number of nodes carrying it; system labels include server-provided display text and exclude the node's own `gpuworks.ai/node` label |
 | GPU model | `vendor`, `name`, and `cc` describe the vendor, name, and compute capability; `model` corresponds to the value of the `gpuworks.ai/gpu-model` system label |
 | Count and GPU memory for each GPU model | Node count, plus `cards` (card count) and `memory_bytes` (maximum GPU memory per card) |
+
+### Node Connection Diagnostics
+
+Administrators manually trigger `POST /api/v1/nodes/{uuid}/connection-diagnostics` with an empty body or `{}`. Custom URLs, SSH parameters and other fields are refused. The target and identity come only from the named node's saved record. This operation does not invoke recovery, change addresses, tokens or installation configuration, or restart/reinstall the Agent. SSH retains the platform's existing host-key trust policy.
+
+Response fields:
+
+| Field | Meaning |
+|---|---|
+| `node_uuid`, `checked_at`, `connect_mode`, `saved_server_url` | Node, report time, connection direction and format-validated saved URL; a URL that cannot be safely shown is empty |
+| `last_seen_at`, `recovery_phase`, `recovery_attempts`, `last_probe_at`, `last_recovery_error` | Existing reporting/recovery history, not recovery performed by this check |
+| `exposure` | `null` or `{url,state,observed_at}`: the connector's last recorded entry, state and original observation time; not a new public liveness check |
+| `checks` | The `ssh`, `configuration` and `node_http` stages; each has `stage`, `outcome`, `vantage`, and only when observed: `target`, `source`, `observed_at`, `http_status` |
+| `guidance` | Server-selected guidance codes localized by the client, covering snapshot scope, HTTP scope, node-side verification and manual address synchronization |
+
+An SSH result with `vantage=control_plane` describes control-plane login to the node. An HTTP result with `vantage=node` describes an SSH-run node request to the saved URL's health endpoint. It uses the SSH session environment; the running Agent's proxy and environment overrides have not been established. Configuration `source` is `state_file` or `legacy_arguments`: it identifies the snapshot source, not effective runtime settings after command-line or environment overrides. A `server_dial` node does not initiate a connection to a control-plane URL; interpret that check as not applicable.
+
+An offline node, missing SSH credentials, missing tools or a failed stage can still produce an HTTP 200 partial report. Read each `outcome`; generating the report does not establish connectivity. HTTP health does not establish WebSocket, Agent authentication or SSE. Differences between the saved URL, configuration snapshot and historical public entry prompt verification, never an automatic conclusion about validity or address change.
+
+Invalid input returns 400 `NODE_CONNECTION_DIAGNOSTICS_INPUT`; a failure reading node settings returns 500 `NODE_CONNECTION_SETTINGS_UNAVAILABLE` without the underlying database error. An unknown node returns 404.
+
+The report excludes SSH passwords, private keys, node tokens, complete configuration, process arguments and environment variables. This POST is not wired into the AI assistant's existing read-only GET tool; appearing in the API catalog does not mean the assistant can execute this diagnosis.
 
 ### Connection Parameters for Node Creation
 
@@ -445,7 +468,7 @@ the endpoint returns 409 and does not replace the existing registration. If the 
 | POST | `/api/v1/storages` | Add storage; NFS types are test-mounted on one node first, and storage that cannot be written to is saved as disabled (read-only) | admin |
 | PATCH | `/api/v1/storages/{id}` | Update the name, enabled status, default status, node scope, path, mount options, cache directory and limit, or `nfs`↔`nfs_cache` type. Include `expected_updated_at` from the read response to prevent overwriting concurrent changes; a version change returns 409 `STORAGE_CONFIG_CHANGED` | admin |
 | DELETE | `/api/v1/storages/{id}` | Remove a storage object (without deleting files) and remove models stored only in it from the model list; returns 409 `STORAGE_IN_USE` if deployments are bound to it or a deployment's model is stored only in it | admin |
-| POST | `/api/v1/storages/probe` | Test-mount a storage definition on one node without leaving it mounted | admin |
+| POST | `/api/v1/storages/probe` | Test-mount a storage definition on one node without leaving it mounted. Results name the actual `node_uuid`, `node_name`, `target` (the export or directory path actually checked) and `checked_at` (control-plane receipt and decode time); they describe only this node and this check. Older responses may omit the latter two fields. | admin |
 | GET | `/api/v1/storages/{id}/control-planes` | Get other gpuworks control planes using the shared storage (heartbeats) | JWT |
 | PATCH | `/api/v1/storages/{id}/node-overrides` | Atomically update cache overrides for fixed `node_uuids`; omitted `cache_path`/`cache_max_bytes` remain unchanged, null inherits, and a limit of 0 means unlimited. New overrides do not expand the node scope | admin |
 | POST | `/api/v1/storages/{id}/cache/reconcile` | Submit background cache reconciliation with `{node_uuids, mode}` (`mode` is `"trim"` or `"clear"`); the 202 response returns the accepted count. See the cache status in storage details for per-node results | admin |

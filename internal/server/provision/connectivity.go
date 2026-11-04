@@ -58,7 +58,7 @@ func ServerToAgentProbe(ctx context.Context, host, listen string, timeout time.D
 		return CheckResult{Name: checkServerToAgent, Status: "ok", Detail: fmt.Sprintf("the server reached %s (nothing listens there yet)", address)}
 	case isTimeout(err):
 		_, port, _ := net.SplitHostPort(address)
-		return CheckResult{Name: checkServerToAgent, Status: "warn", Detail: fmt.Sprintf("the server cannot reach %s: no answer within %s, so a security group or firewall drops the connection; allow inbound TCP %s on the node for the server", address, timeout, port)}
+		return CheckResult{Name: checkServerToAgent, Status: "warn", Detail: fmt.Sprintf("the server cannot reach %s: no answer within %s; check routing, security groups and firewalls, including inbound TCP %s on the node for the server", address, timeout, port)}
 	default:
 		return CheckResult{Name: checkServerToAgent, Status: "warn", Detail: fmt.Sprintf("the server cannot reach %s: %v", address, err)}
 	}

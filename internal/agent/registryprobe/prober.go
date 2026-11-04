@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -120,8 +121,12 @@ func (p *Prober) Probe(ctx context.Context, hosts []string, route Route) map[str
 	p.mu.Unlock()
 
 	if len(stale) > 0 {
+		// Observe the transport's actual proxy resolution. Consulting Proxy a
+		// second time could produce a different route or repeat its side effects.
+		observedRoute := route
+		observedRoute.Proxy = observeProxy(route.Proxy)
 		client := &http.Client{
-			Transport: p.transport(route),
+			Transport: p.transport(observedRoute),
 			// Any answer proves the host is reachable; where it would
 			// redirect to does not matter.
 			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
@@ -157,27 +162,37 @@ func (p *Prober) Probe(ctx context.Context, hosts []string, route Route) map[str
 	return out
 }
 
-func (p *Prober) probeOne(ctx context.Context, client *http.Client, host string) HostResult {
-	res := HostResult{Host: host}
+func (p *Prober) probeOne(ctx context.Context, client *http.Client, host string) (res HostResult) {
+	res = HostResult{Host: host}
+	var path atomic.Int32
+	defer func() {
+		res.ObservedAt = p.now()
+		res.Path = probePath(path.Load())
+	}()
 	ctx, cancel := context.WithTimeout(ctx, p.timeout)
 	defer cancel()
+	ctx = context.WithValue(ctx, probePathKey{}, &path)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://"+probeHost(host)+"/v2/", nil)
 	if err != nil {
+		res.Failure = "invalid_target"
 		return res
 	}
 	start := p.now()
 	resp, err := client.Do(req)
 	if err != nil {
+		res.Failure = probeFailure(err)
 		// A plain-HTTP registry answers a TLS handshake with an HTTP error:
 		// that is still an answer.
 		if strings.Contains(err.Error(), "server gave HTTP response to HTTPS client") {
 			res.Reachable = true
 			res.LatencyMS = p.now().Sub(start).Milliseconds()
+			res.Failure = "http_on_https"
 		}
 		return res
 	}
 	_ = resp.Body.Close()
 	res.Reachable = true
+	res.HTTPStatus = resp.StatusCode
 	res.LatencyMS = p.now().Sub(start).Milliseconds()
 	return res
 }
