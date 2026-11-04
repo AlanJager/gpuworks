@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -17,10 +16,8 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/agent/runtime"
 	"gpuworks.ai/gpuworks/internal/proto"
-	"gpuworks.ai/gpuworks/internal/server/inferencecatalog"
 	"gpuworks.ai/gpuworks/internal/server/store"
 	"gpuworks.ai/gpuworks/internal/testenv"
-	"gpuworks.ai/gpuworks/internal/testutil/catalogfixture"
 )
 
 // TestAMD395TemplateChatAndStop exercises the control plane with a reported
@@ -53,48 +50,10 @@ func TestAMD395TemplateChatAndStop(t *testing.T) {
 	env.WaitNodeOnline(t, good.Name)
 	env.WaitNodeOnline(t, bad.Name)
 
-	fixture := t.TempDir()
-	catalogfixture.WriteLaunchOverlay(t, "../../server/inferencecatalog/seed/catalog", "../../../build/inference-templates/amd395/catalog", fixture)
-	pkg, err := inferencecatalog.LoadPackage(os.DirFS(fixture))
-	if err != nil {
-		t.Fatal(err)
-	}
-	models, err := inferencecatalog.ToFlatStoreModels(pkg.Catalog)
-	if err != nil {
-		t.Fatal(err)
-	}
+	// The built-in catalog's gfx1151 launch spec, as an operator picks it.
 	const modelID = "qwen/qwen3-0.6b"
-	const specName = "bf16-vllm-amd395-gfx1151-local"
-	const fakeImage = "example.invalid/amd395-vllm:control-plane-test"
-	var selected *store.InferenceModel
-	for i := range models {
-		if models[i].ModelID == modelID {
-			copyModel := models[i]
-			selected = &copyModel
-			break
-		}
-	}
-	if selected == nil {
-		t.Fatalf("AMD package lacks %s", modelID)
-	}
-	selected.Specs = nil
-	for _, model := range models {
-		if model.ModelID != modelID {
-			continue
-		}
-		for _, spec := range model.Specs {
-			if spec.Name == specName {
-				spec.Image = fakeImage // Explicit test-only mapping of the shipped placeholder.
-				selected.Specs = append(selected.Specs, spec)
-			}
-		}
-	}
-	if len(selected.Specs) != 1 {
-		t.Fatalf("AMD vLLM spec count=%d", len(selected.Specs))
-	}
-	if err := env.Store().ImportUserInferenceCatalog([]store.InferenceModel{*selected}, false); err != nil {
-		t.Fatal(err)
-	}
+	const specName = "bf16-vllm-amd-ryzen-ai-max"
+	const runnerImage = "gpuworks/gpuworks-runner:rocm7.2.3-vllm0.30.0-r1"
 	template, err := env.Store().InferenceModelByModelID(modelID)
 	if err != nil {
 		t.Fatal(err)
@@ -175,7 +134,7 @@ func TestAMD395TemplateChatAndStop(t *testing.T) {
 	if err := json.Unmarshal([]byte(instance.DesiredStateJSON), &desired); err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(desired.GPUIndexes, []int{0}) || !reflect.DeepEqual(workload.GPUIndexes, []int{0}) || workload.Image != fakeImage || workload.Env["VLLM_ROCM_USE_AITER"] != "0" {
+	if !reflect.DeepEqual(desired.GPUIndexes, []int{0}) || !reflect.DeepEqual(workload.GPUIndexes, []int{0}) || workload.Image != runnerImage {
 		t.Fatalf("AMD desired/workload mismatch: desired=%+v workload=%+v", desired, workload)
 	}
 	key, err := env.Store().CreateAPIKey("amd395-simulation", 0)

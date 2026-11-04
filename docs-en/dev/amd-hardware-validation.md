@@ -19,7 +19,7 @@ The implementation admission scope is Linux amd64, Docker/nerdctl, and full-GPU 
 
 UMA capacity probing is enabled only through the narrow AMD395 path constrained by explicit device facts: PCI device `0x1586`, KFD `gfx1151`, and a unique KFD node matching the DRM render minor and PCI domain/location. The single KFD public bank must be a system-memory heap whose capacity exactly matches the GTT total for the same DRM device. When these facts agree, GPUWorks reports that KFD/GTT pool capacity and uses GTT used for utilization; this is the pool the driver exposes to the GPU, not onboard VRAM, total host RAM, or current HIP free memory. Missing or conflicting AMD395 UMA facts report unknown capacity and degrade the card; a small dedicated carve-out is not treated as verified healthy capacity. Other AMD/APU devices are not classified as UMA from `local_mem_size=0` alone.
 
-The [MI300X recipe](../../build/inference-templates/rocm/README.md) and [gfx1151 candidate recipe](../../build/inference-templates/amd395/README.md) are maintained separately. The ROCm entries in the official runner matrix are unpublished `catalog: false` build candidates. The old AMD395 r1 recipe is incomplete; historical r2/r5 images are limited to controlled local import. Component checks, image loading, and template import do not prove GPU inference, model quality, or isolation. Verify the image's gfx target, digest, and model revision first.
+The ROCm image recipes are in [build/runner-images/rocm](../../build/runner-images/rocm/README.md). The vLLM entry of the official runner matrix is published and listed in the built-in image catalog; the SGLang entry remains an unpublished `catalog: false` candidate. Component checks and a successful image pull do not prove GPU inference, model quality, or isolation; verify the image's gfx target, digest, and model revision first.
 
 ## Host preparation and import
 
@@ -27,7 +27,7 @@ The [MI300X recipe](../../build/inference-templates/rocm/README.md) and [gfx1151
 2. Confirm that the runtime user can access `/dev/kfd` and the selected `/dev/dri/renderD*`. Compare `/sys/class/kfd/kfd/dev`, the PCI render node's sysfs `dev`, and the actual character device's major/minor. Device symlinks, ambiguous mappings, duplicate identities, or inventory identity changes must refuse injection.
 3. Compare GPUWorks-reported sysfs VRAM with the capacity actually available to ROCm. A 128 GB system-memory report or firmware carveout setting does not prove that a 27B model, runtime, and KV cache fit.
 4. Receive and verify the image archive in the target storage, load it into the Docker daemon or nerdctl namespace used by the agent, and check its tag and image ID. Importing image-catalog metadata does not transfer image layers.
-5. Onboard the node through the product agent install flow, run `gpuworks-agent doctor` to inspect driver, KFD, render devices and runtime, then run `gpuworks-agent smoke` for bounded checks on that node; retain the actual commands and results. Both AMD395 and MI300X source templates contain unpullable image placeholders. Supply explicit image mapping to the relevant `prepare_import.py`, verify the exact image ID in the target runtime, and import only the generated `delivery/image-import.json` and `delivery/catalog/`. Keep default engine command mode. Source packages contain only AMD launch overlays; the shared generator inherits model facts and weights from the current seed catalog.
+5. Onboard the node through the product agent install flow, run `gpuworks-agent doctor` to inspect driver, KFD, render devices and runtime, then run `gpuworks-agent smoke` for bounded checks on that node; retain the actual commands and results. Deploy the built-in AMD spec for the card's `arch_id` and keep default engine command mode.
 6. Prepare complete, revision-pinned weights and tokenizer. Check the final model mount, port, dtype, TP, and image; verify that template shm/memlock and placement preference appear in the launch plan.
 
 ## Runtime and model validation
@@ -41,7 +41,7 @@ Start only one engine at a time, retain logs, and set resource limits on the tes
    Health-check history may remain visible after a stop, but a deployment with zero ready replicas must not be shown as currently healthy.
 5. On a multi-GPU host, verify selected-device visibility and independent instances; validate single-host TP only with a matching image and model. Mark cross-card tests not applicable on a single-APU host.
 
-The AMD395 template declares the exact `gpus.arch_id: gfx1151` selector as well as a product-name predicate. Missing or mismatched architecture facts must fail template matching even if the name contains `gfx1151`. This narrows candidate selection; it does not prove GPU kernel execution or the exact product SKU. Real-hardware acceptance is still required.
+The built-in AMD specs declare an exact `gpus.arch_id` (`gfx942` or `gfx1151`). Missing or mismatched architecture facts must fail template matching even if the name contains `gfx1151`. This narrows candidate selection; it does not prove GPU kernel execution or the exact product SKU. Real-hardware acceptance is still required.
 
 ## Evidence to retain
 

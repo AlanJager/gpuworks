@@ -4,7 +4,7 @@
 
 ## 目标与范围
 
-当前 GPUWorks AMD 实现面向 Linux amd64、Docker/nerdctl、单机整卡。AMD395 模板限定 gfx1151，MI300X 候选限定 gfx942。单机张量并行仍须按镜像与实际选卡另做验收。sleep、多机、PD、流水线并行、数据并行、显存分区尚未实现；这不是 AMD 硬件或 ROCm 的永久能力结论。物理统一内存不启用 Apple 的按内存共享分配策略。
+当前 GPUWorks AMD 实现面向 Linux amd64、Docker/nerdctl 整卡部署，单机或 vLLM 多机（PP 与跨机 TP，RCCL 走 NCCL_* 网络变量）。内置规格按 `arch_id` 限定 gfx942（MI300X/MI325X）与 gfx1151（AMD395）。sleep、PD、数据并行、显存分区尚未实现；这不是 AMD 硬件或 ROCm 的永久能力结论。物理统一内存不启用 Apple 的按内存共享分配策略。
 
 ## 数据流与事实来源
 
@@ -21,7 +21,7 @@
 | 逐卡兼容、选卡与资源占用 | planning、scheduler、controller | API 候选与实际调度共用拒绝工厂；单节点错误只拒绝该节点。 |
 | 分区能力与用户拒绝文案 | `partitioncap` | 不在 accelerator 中维护第二个 FeaturePartition。 |
 | 模板硬件匹配与预览落点 | 服务端 chipmatch / planning | 浏览器展示服务端结果，不复制正则、unsupported 或特异性规则。 |
-| 基础镜像与模型事实 | runner matrix / 种子目录 | AMD 包只声明启动覆盖项，导入时继承指定种子档位。 |
+| 基础镜像与模型事实 | runner matrix / 种子目录 | AMD 规格与其他厂商一样直接写在种子目录里，引用 runner matrix 发布的 ROCm 镜像。 |
 
 ## 探测、缓存与并发
 
@@ -72,9 +72,9 @@ AMD 注入比较已发布身份、当前 PCI/UUID、该 PCI 设备的 `drm/rende
 
 AMD395 UMA 仅在 PCI 0x1586、gfx1151、唯一 KFD/PCI/render 关系与 KFD system-memory bank 和 GTT total 一致时报告驱动公开池。事实缺失或冲突时容量未知并降级，不把 dedicated carve-out 当作健康容量。GTT used 不含全部宿主占用，total−used 不能当作 HIP 当前 free；真实内存压力和 OOM 仍须专项验证。
 
-源码 AMD 包不是可直接导入的完整目录。共享生成器按精确 seed_spec 继承模型配置、来源和权重，只应用允许的 AMD 启动覆盖项。生成前检查所有镜像映射及目标运行时的精确 image ID，失败不产出半成品；生成物才含可导入 manifest。镜像目录只传元数据，不传镜像层。
+AMD 规格与其他厂商的规格同在种子目录，模型配置、来源与权重与同模型其他规格一致，镜像引用官方 ROCm runner。
 
-ROCm 基础镜像、版本和 Dockerfile 选择由 runner matrix 唯一维护。官方条目仍为未发布候选；历史 gfx1151 r2/r5 只可受控本地导入，旧 r1 缺完整重建配方，不可称为可公开重建发布的镜像。没有实际构建、拉取和真机证据时，不扩大声明。
+ROCm 基础镜像、版本和 Dockerfile 选择由 runner matrix 唯一维护。vLLM 档已构建、发布并经 MI325X 与 AMD395 真机验证；SGLang 档仍是未发布候选。没有实际构建、拉取和真机证据时，不扩大声明。
 
 工具只连接明确指定、事先授权的运行时，不启动第二个 dockerd、不全局 prune。独立 socket/data-root 不构成网络隔离；另一个 daemon 须使用独立 VM 或在启动前证明独立 network namespace。
 

@@ -1,7 +1,0 @@
-{
-  "models": [
-    "catalog/models/qwen/qwen3-0.6b/model.yaml",
-    "catalog/models/qwen/qwen3.8-27b/model.yaml"
-  ],
-  "image_catalog": "image-import.json"
-}

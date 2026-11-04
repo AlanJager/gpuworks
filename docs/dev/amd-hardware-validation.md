@@ -19,7 +19,7 @@ AMD 使用公共 Prober、DriverAwareInjector 与目标约束接口，不依赖�
 
 容量探测对 AMD395 的 UMA 仅启用受严格事实约束的窄路径：PCI device `0x1586`、KFD `gfx1151`，且唯一 KFD 节点与 DRM render minor、PCI domain/location 一致；KFD 公共 bank 必须是单个 system-memory heap，且其容量与同一 DRM 设备的 GTT total 完全相等。满足时上报该 KFD/GTT pool 容量并用 GTT used 采集占用；它表示驱动公开给 GPU 的可分配 pool，不是板载 VRAM，也不是主机总 RAM 或 HIP 当前 free。AMD395 UMA 事实缺失或冲突时上报未知容量并降级，不能将较小的 dedicated carve-out 当作已验证的健康容量。其他 AMD/APU 不从 `local_mem_size=0` 推断 UMA。
 
-[MI300X 镜像配方](../../build/inference-templates/rocm/README.md)与 [gfx1151 候选配方](../../build/inference-templates/amd395/README.md)分开维护。官方 runner 矩阵的 ROCm 档目前只是 `catalog: false` 的未发布构建候选；旧 AMD395 r1 缺完整可重建配方，历史 r2/r5 仅可受控本地导入。组件检查、镜像回载和模板导入成功不代表 GPU 推理、模型质量或隔离通过。必须先核对镜像的 gfx 目标、摘要和模型版本。
+ROCm 镜像配方见 [build/runner-images/rocm](../../build/runner-images/rocm/README.md)。官方 runner 矩阵中 vLLM 档已发布并进入内置镜像目录，SGLang 档仍是 `catalog: false` 的未发布候选。组件检查和镜像拉取成功不代表 GPU 推理、模型质量或隔离通过；先核对镜像的 gfx 目标、摘要和模型版本。
 
 ## 主机准备与导入
 
@@ -27,7 +27,7 @@ AMD 使用公共 Prober、DriverAwareInjector 与目标约束接口，不依赖�
 2. 确认运行时用户可访问 /dev/kfd 和所选 /dev/dri/renderD*。核对 /sys/class/kfd/kfd/dev、PCI render 节点的 sysfs dev 与实际字符设备的 major/minor。设备 symlink、映射歧义、身份重复或库存身份变化应拒绝注入。
 3. 比较 GPUWorks 上报的 sysfs VRAM 与 ROCm 实际可用容量。128 GB 系统内存或固件 carveout 配置不能证明 27B 模型及运行时、KV cache 能装下。
 4. 在目标存储接收、校验镜像归档，再载入 agent 使用的 Docker daemon 或 nerdctl namespace，核对 tag 与 image ID。导入镜像目录元数据不会传输镜像层。
-5. 使用产品的 agent 安装流程接入节点，运行 `gpuworks-agent doctor` 检查驱动、KFD、render 设备与运行时，再运行 `gpuworks-agent smoke` 做当前节点的受限检查；记录实际命令与结果。AMD395 与 MI300X 的源码模板均含不可拉取的镜像占位符。先按各自配方的 `prepare_import.py` 提供显式镜像映射并在目标运行时核对精确 image ID，仅导入生成的 `delivery/image-import.json` 与 `delivery/catalog/`。保持默认引擎命令模式。源码包只保存 AMD 启动覆盖项，共享生成器从当前种子目录继承模型事实与权重。
+5. 使用产品的 agent 安装流程接入节点，运行 `gpuworks-agent doctor` 检查驱动、KFD、render 设备与运行时，再运行 `gpuworks-agent smoke` 做当前节点的受限检查；记录实际命令与结果。从内置目录选择对应 `arch_id` 的 AMD 规格部署，保持默认引擎命令模式。
 6. 准备完整且版本固定的权重和 tokenizer。核对最终模型挂载、端口、dtype、TP 与镜像；检查模板 shm/memlock 和放置偏好已进入启动计划。
 
 ## 运行时与模型验证
@@ -41,7 +41,7 @@ AMD 使用公共 Prober、DriverAwareInjector 与目标约束接口，不依赖�
    停止后健康探测历史仍可显示，但当前可用副本数为零时不得把部署标为当前健康。
 5. 多卡主机验证选卡可见性与独立实例；单机 TP 只用匹配的镜像和模型验证。单 APU 上把跨卡用例标为不适用。
 
-AMD395 模板同时使用精确的 `gpus.arch_id: gfx1151` 和产品名称谓词。架构 ID 缺失或与模板不符时，模板匹配必须拒绝，即使名称包含 `gfx1151`；名称匹配不能替代可信的探测事实。该 selector 缩小候选范围，但不能证明实际 GPU 内核执行或型号 SKU，仍须完成真机验收。
+内置 AMD 规格使用精确的 `gpus.arch_id`（`gfx942` 或 `gfx1151`）。架构 ID 缺失或与规格不符时，模板匹配必须拒绝，即使名称包含 `gfx1151`；名称匹配不能替代可信的探测事实。该 selector 缩小候选范围，但不能证明实际 GPU 内核执行或型号 SKU，仍须完成真机验收。
 
 ## 记录证据
 

@@ -4,7 +4,7 @@ This document explains how AMD joins the existing discovery, planning, schedulin
 
 ## Goals and scope
 
-GPUWorks currently admits AMD on Linux amd64, Docker/nerdctl, and single-node whole devices. AMD395 templates require gfx1151; MI300X candidates require gfx942. Single-node tensor parallelism needs separate image and device validation. Sleep, multi-node, PD, pipeline/data parallelism and memory partitioning are not implemented. This is not a permanent limitation of AMD hardware or ROCm. Physical unified memory does not enable Apple's memory-sharing allocation policy.
+GPUWorks currently admits AMD on Linux amd64 and Docker/nerdctl for whole-device deployments, single-node or vLLM multi-node (PP and cross-node TP; RCCL uses the NCCL_* network variables). Built-in specs select gfx942 (MI300X/MI325X) and gfx1151 (AMD395) by `arch_id`. Sleep, PD, data parallelism and memory partitioning are not implemented. This is not a permanent limitation of AMD hardware or ROCm. Physical unified memory does not enable Apple's memory-sharing allocation policy.
 
 ## Data flow and fact ownership
 
@@ -21,7 +21,7 @@ Inventory + metrics feeds API/Web to the right and card identity/capacity into p
 | Per-card eligibility, selection and resource claims | planning, scheduler, controller | Candidates and actual scheduling share a refusal factory; a node error only refuses that node. |
 | Partition capability and user refusal text | partitioncap | No second FeaturePartition in accelerator. |
 | Template hardware matching and preview placement | Server chipmatch / planning | Browsers display server results without duplicating regex, unsupported or specificity rules. |
-| Base images and model facts | Runner matrix / seed catalog | AMD packages provide launch overlays, inheriting an exact seed spec on generation. |
+| Base images and model facts | Runner matrix / seed catalog | AMD specs live in the seed catalog like every other vendor's, naming the ROCm runner the matrix publishes. |
 
 ## Discovery, caching and concurrency
 
@@ -72,9 +72,9 @@ This integration does not change SGLang hybrid/Mamba estimates, explicit token-l
 
 AMD395 UMA reports the driver-exposed pool only with PCI 0x1586, gfx1151, unique KFD/PCI/render correspondence, and matching KFD system-memory-bank/GTT totals. Missing or conflicting facts yield unknown capacity and degraded health rather than a healthy dedicated carve-out. GTT use excludes some host consumption; total minus used is not current HIP free memory. Real pressure and OOM behavior still need dedicated validation.
 
-Source AMD packages are not complete importable catalogs. A shared generator inherits model configuration, sources and weights from an exact seed_spec and applies only allowed AMD launch overrides. Every image mapping and exact image ID in the target runtime is checked before output; failures leave no partial package. Only generated output contains an importable manifest. Catalog import transfers metadata, not image layers.
+AMD specs sit in the seed catalog next to other vendors' specs, sharing the model's configuration, sources and weights, and name the official ROCm runner.
 
-The runner matrix exclusively owns ROCm base images, versions and Dockerfile selection. Official entries remain unpublished candidates. Historical gfx1151 r2/r5 images permit controlled local import only; the old r1 lacks a complete reconstruction recipe and cannot be described as a reproducible public release. No claims expand without actual build, pull and hardware evidence.
+The runner matrix exclusively owns ROCm base images, versions and Dockerfile selection. The vLLM entry is built, published and validated on MI325X and AMD395 hardware; the SGLang entry remains an unpublished candidate. No claims expand without actual build, pull and hardware evidence.
 
 Tools connect only to an explicitly selected, authorized runtime; they never start a second dockerd or perform global prune. A separate socket/data-root is not network isolation. Another daemon requires a separate VM or a distinct network namespace proven before startup.
 
