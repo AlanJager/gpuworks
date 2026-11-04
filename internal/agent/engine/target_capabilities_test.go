@@ -224,8 +224,10 @@ func TestTargetDesiredUnknownSnapshotIsVendorScoped(t *testing.T) {
 	for _, vendor := range []string{"amd", "nvidia", "ascend", "apple"} {
 		e := NewWithProber(&headlessTestDriver{name: "docker"}, nil, nil, t.TempDir(), &gpu.FixedProber{VendorName: vendor})
 		spec := proto.InstanceDesiredState{GPUIndexes: []int{0}, ResolvedLaunch: proto.ResolvedLaunch{RequestedFeatures: &proto.RequestedFeatures{CommandKnown: false}}}
+		// No vendor carries a partial restriction today, so an unknown
+		// command needs no proof anywhere.
 		err := e.validateTargetDesired(spec)
-		if (vendor == "amd") != (err != nil) {
+		if err != nil {
 			t.Fatalf("%s unknown contract error=%v", vendor, err)
 		}
 	}

@@ -47,11 +47,10 @@ func TestResolvedSnapshotAppliesAllVendorPolicies(t *testing.T) {
 			t.Fatalf("%s error=%v", vendor, err)
 		}
 	}
-	// Data parallelism is the feature AMD still lacks.
 	dp := ResolvedLaunch{Entrypoint: []string{"vllm", "serve"}, Argv: []string{"--data-parallel-size", "2"}}
 	for _, vendor := range []string{"nvidia", "amd"} {
 		err := ValidateTargetFeatures(EngineVLLM, dp, Params{Vendor: vendor})
-		if (vendor == "amd") != (err != nil) {
+		if err != nil {
 			t.Fatalf("%s data-parallel error=%v", vendor, err)
 		}
 	}
@@ -63,6 +62,7 @@ func TestPartitionCapabilityHasNoFeatureAuthority(t *testing.T) {
 		}
 	}
 }
+
 // AMD requires explicit device selection and owns a memory-only logical
 // partition backend; ValidateTargetLaunch must admit its own VRAM-only
 // quota (assuming the assigned GPU requirement is met) but structurally
@@ -97,9 +97,11 @@ func TestPreparationHooksCannotSupplyLaunchFeatures(t *testing.T) {
 
 func TestUnknownExecutableRequiresProofOnlyForPartialLaunchRestrictions(t *testing.T) {
 	launch := ResolvedLaunch{Entrypoint: []string{"/bin/sh"}, Argv: []string{"-c", "exec custom-server"}}
+	// No vendor carries a partial restriction today (AMD runs every launch
+	// feature), so no vendor needs a recognizable command.
 	for _, vendor := range []string{"amd", "nvidia", "ascend", "apple"} {
 		err := ValidateTargetFeatures(EngineVLLM, launch, Params{Vendor: vendor})
-		if (vendor == "amd") != (err != nil) {
+		if err != nil {
 			t.Fatalf("%s unknown launch error=%v", vendor, err)
 		}
 	}
