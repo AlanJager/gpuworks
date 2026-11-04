@@ -12,7 +12,12 @@ import (
 
 func TestAMD395ImageImportAddsCustomImagesWithoutReplacingOfficialCatalog(t *testing.T) {
 	run := newImageManifestRun(t)
-	const officialRef = "gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2"
+	// Any seeded official NVIDIA runner; the revision moves with the matrix.
+	var seeded store.Image
+	if err := run.store.DB().Where("source = ? AND image_ref LIKE ?", "official", "gpuworks/gpuworks-runner:cuda%").Order("image_ref").First(&seeded).Error; err != nil {
+		t.Fatalf("no seeded official NVIDIA runner: %v", err)
+	}
+	officialRef := seeded.ImageRef
 	beforeOfficial, err := run.store.ImageByRef(officialRef)
 	if err != nil {
 		t.Fatalf("seeded NVIDIA official image %q: %v", officialRef, err)
