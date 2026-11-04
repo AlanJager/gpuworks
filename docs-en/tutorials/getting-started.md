@@ -41,7 +41,7 @@ For release package download and verification steps, see [Install and Upgrade th
 
 **Expected result**: The install command prints an installation summary at the end, including the access URL and initial admin password. For either startup method, `curl http://192.0.2.10:8800/healthz` returns `{"status":"ok",...}`.
 
-The first startup creates an admin account. Its password is recorded in `initial-credentials` (0664) in the data directory and is also printed once in the installation summary.
+The first startup creates an admin account. Its password is recorded in `initial-credentials` (`0600` by default; `0660` for the trusted Linux platform group) in the data directory and is also printed once in the installation summary.
 Open `http://192.0.2.10:8800` in your browser and sign in as admin. Change the password, then delete that file. By default, the UI follows your browser language;
 choose English in the upper-right corner to match this tutorial.
 

@@ -86,10 +86,10 @@ func TestCommunityBrowseUsesTheManagementProxy(t *testing.T) {
 	p1, p2 := proxy(&first), proxy(&second)
 	defer p1.Close()
 	defer p2.Close()
-	application, _ := newTestApp(t, "password")
+	application, _ := newTestApp(t, "gpuworks-test-password-2026")
 	t.Cleanup(func() { _ = application.Store().Close() })
 	login := httptest.NewRecorder()
-	application.http.Handler.ServeHTTP(login, httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(`{"username":"admin","password":"password"}`)))
+	application.http.Handler.ServeHTTP(login, httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(`{"username":"admin","password":"gpuworks-test-password-2026"}`)))
 	if login.Code != 200 {
 		t.Fatalf("login: %d %s", login.Code, login.Body.String())
 	}

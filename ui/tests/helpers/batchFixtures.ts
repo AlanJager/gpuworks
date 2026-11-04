@@ -40,7 +40,7 @@ export const CHAT_ENDPOINTS = ["/v1/chat/completions", "/v1/completions"];
 
 /** A dictionary model: a chat model unless the test names its endpoints. */
 export function model(name: string, state: string, endpoints: string[] = CHAT_ENDPOINTS): BatchModel {
-  return { name, state, endpoints };
+  return { name, state, ready: state === "running" || state === "asleep", endpoints };
 }
 
 /**

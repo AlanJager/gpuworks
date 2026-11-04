@@ -308,7 +308,7 @@ def exercise(page, context, server, artifacts, report, upstream_id):
     auth = json.loads((ROOT / 'ui/src/i18n/locales' / report['locale'] / 'auth.json').read_text())
     page.goto(server.base + '/inference-templates')
     page.get_by_role('textbox', name=auth['username'], exact=True).fill('admin')
-    page.get_by_label(auth['password'], exact=True).fill('password')
+    page.get_by_label(auth['password'], exact=True).fill('gpuworks-test-password-2026')
     with page.expect_response(lambda r: urlsplit(r.url).path == '/api/v1/auth/login') as login:
         action(page, auth['submit']).click()
     require(login.value.status == 200, 'browser login rejected')

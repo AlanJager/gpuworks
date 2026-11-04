@@ -12,7 +12,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"os"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -23,6 +22,7 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/accelerator"
 	"gpuworks.ai/gpuworks/internal/proto"
+	"gpuworks.ai/gpuworks/internal/securefile"
 	"gpuworks.ai/gpuworks/internal/server/auth"
 	"gpuworks.ai/gpuworks/internal/server/bus"
 	"gpuworks.ai/gpuworks/internal/sqliteutil"
@@ -94,43 +94,23 @@ func (s *Store) reader() *gorm.DB {
 
 // isInMemoryDSN reports whether dsn (in any form Open accepts) names an
 // in-memory database rather than a real file: the empty string, literal
-// ":memory:", a "mode=memory" query parameter, or the shared-cache
-// ":memory:" URI Open itself normalizes "" to below. A second connection
+// ":memory:", or a file: URI naming :memory: or mode=memory. Ordinary
+// disk filenames merely containing these words remain on disk. A second connection
 // pool is never opened for these — see the readDB field doc for why.
 func isInMemoryDSN(dsn string) bool {
-	return dsn == "" || dsn == ":memory:" ||
-		strings.Contains(dsn, "mode=memory") || strings.Contains(dsn, ":memory:")
-}
-
-// readOnlyDSN turns a file-backed dsn (Open only reaches this when !isInMemoryDSN,
-// so dsn is a real path or an existing file: URI) into a read-only URI for the
-// read pool: mode=ro is SQLite's query-parameter form for opening a connection
-// that cannot write, enforced at the driver/OS file-descriptor level regardless
-// of anything the SQL layer does (mode=ro requires the "file:" scheme, which a
-// bare path does not have). query_only(1) and busy_timeout(5000) are carried as
-// _pragma= connection-string parameters (the same form tsdb.OpenSQLite uses),
-// not as a PRAGMA statement run once after Open: gorm.Exec on a pooled *sql.DB
-// only reaches whichever single physical connection happens to serve that one
-// call, so a pool with SetMaxOpenConns(4) would leave up to 3 connections
-// without query_only actually applied to them. A DSN parameter, by contrast, is
-// applied by the driver to every connection it opens for this DSN, including
-// ones opened later under concurrent load.
-func readOnlyDSN(dsn string) string {
-	if !strings.HasPrefix(dsn, "file:") {
-		dsn = "file:" + dsn
-	}
-	const params = "mode=ro&_pragma=query_only(1)&_pragma=busy_timeout(5000)"
-	if strings.Contains(dsn, "?") {
-		return dsn + "&" + params
-	}
-	return dsn + "?" + params
+	path, err := DatabaseFilePath(dsn)
+	return err == nil && path == ""
 }
 
 // Open connects to SQLite (pure-Go driver) and runs migrations.
 // dsn "" or ":memory:" opens an in-memory database (used by tests).
-func Open(dsn string, b *bus.Bus) (result *Store, err error) {
+// Files are owner-only unless the caller supplies a verified service-group policy.
+func Open(dsn string, b *bus.Bus, policies ...securefile.Policy) (result *Store, err error) {
 	defer func() { err = sqliteutil.WrapOpenError(dsn, err) }()
 	inMemory := isInMemoryDSN(dsn)
+	if err := protectDatabase(dsn, true, policies...); err != nil {
+		return nil, err
+	}
 	if dsn == "" {
 		dsn = "file::memory:?cache=shared"
 	}
@@ -191,12 +171,10 @@ func Open(dsn string, b *bus.Bus) (result *Store, err error) {
 	if err := s.migrate(); err != nil {
 		return nil, err
 	}
-	// The sqlite driver creates the database 0600 for the account that opens
-	// it, but the control plane's install and reset commands are deliberately
-	// run by the operator: the tree's access comes from its modes, not its
-	// owner, so the database (and its write-ahead sidecars, which sqlite
-	// creates with the same permissions) is opened up here.
-	chmodDBPermissive(dsn)
+	if err := protectDatabase(dsn, false, policies...); err != nil {
+		_ = s.Close()
+		return nil, err
+	}
 	if err := s.EnsureTerminalSettings(); err != nil {
 		return nil, err
 	}
@@ -210,35 +188,6 @@ func Open(dsn string, b *bus.Bus) (result *Store, err error) {
 		return nil, err
 	}
 	return s, nil
-}
-
-// chmodDBPermissive makes the on-disk database readable and writable by other
-// local accounts. In-memory databases have no file to open up.
-func chmodDBPermissive(dsn string) {
-	path := dbFilePath(dsn)
-	if path == "" {
-		return
-	}
-	for _, p := range []string{path, path + "-wal", path + "-shm"} {
-		_ = os.Chmod(p, 0o664)
-	}
-}
-
-// dbFilePath extracts the database path from the dsn forms this package
-// accepts: a plain path or a file: URI (with or without a query string).
-func dbFilePath(dsn string) string {
-	if dsn == "" || dsn == ":memory:" || strings.Contains(dsn, "mode=memory") {
-		return ""
-	}
-	if strings.HasPrefix(dsn, "file:") {
-		rest := strings.TrimPrefix(dsn, "file:")
-		rest = strings.TrimPrefix(rest, "//")
-		if i := strings.IndexByte(rest, '?'); i >= 0 {
-			rest = rest[:i]
-		}
-		return rest
-	}
-	return dsn
 }
 
 // DB exposes the handle for advanced/read-only queries in other packages.

@@ -48,7 +48,7 @@ def test_quick_controls(page, context, server, artifacts, report, locale, chip):
     page.on('pageerror', lambda error: errors.append(str(error)))
     page.goto(server.base + '/logs')
     page.get_by_role('textbox', name=auth['username'], exact=True).fill('admin')
-    page.get_by_label(auth['password'], exact=True).fill('password')
+    page.get_by_label(auth['password'], exact=True).fill('gpuworks-test-password-2026')
     with page.expect_response(lambda r: urlsplit(r.url).path == '/api/v1/auth/login' and r.request.method == 'POST') as login:
         button(page, auth['submit']).click()
     check(login.value.status == 200, 'browser login failed')

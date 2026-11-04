@@ -36,8 +36,8 @@ export const FLEET: FakeNode[] = [
 
 type Requirements = Record<string, string[]>;
 
-export function invalid(field: string, detail: string, status = 400): APIError {
-  return new APIError("PULL_SETTING_INVALID", { field, detail }, detail, status);
+export function invalid(field: string, detail: string, status = 400, reason?: string, params: Record<string, unknown> = {}): APIError {
+  return new APIError("PULL_SETTING_INVALID", { field, detail, ...(reason ? { reason } : {}), ...params }, `${field}: ${detail}`, status);
 }
 
 export function matches(node: FakeNode, requirements: Requirements): boolean {
@@ -203,22 +203,26 @@ export function installPullFake(
     return { proxy: entry ? publicProxy(entry) : null, runtime: { driver: "docker" } };
   });
 
-  const checkGroup = (body: SyncGroupRequest) => {
-    if (!body.name.trim()) throw invalid("name", "name must not be empty");
-    if (body.rate_limit_kib_s < 0) throw invalid("rate_limit", "rate_limit_kib_s must not be negative");
+  const checkGroup = (body: SyncGroupRequest, exceptID?: number) => {
+    if (/[\u0000-\u001f\u007f-\u009f]/.test(body.name)) throw invalid("name", "name must contain valid text without control characters", 400, "invalid_text");
+    const name = body.name.trim();
+    if (!name) throw invalid("name", "a sync group needs a name", 400, "name_required");
+    if (new TextEncoder().encode(name).length > 64) throw invalid("name", "name is longer than 64 bytes", 400, "max_bytes", { max: 64 });
+    if (body.rate_limit_kib_s < 0) throw invalid("rate_limit", "rate limit must not be negative", 400, "nonnegative");
+    if (fake.groups.some((group) => group.id !== exceptID && group.name === name)) throw invalid("name", "a sync group with this name already exists", 400, "name_duplicate");
   };
   define("syncGroups", () => ({ items: fake.groups.map((group) => ({ ...group, matched_nodes: count(group.node_requirements) })), total: fake.groups.length }));
   define("createSyncGroup", (body: SyncGroupRequest) => {
     checkGroup(body);
-    const group: SyncGroup = { id: ++nextId, name: body.name, node_requirements: body.node_requirements, rate_limit_kib_s: body.rate_limit_kib_s, matched_nodes: count(body.node_requirements) };
+    const group: SyncGroup = { id: ++nextId, name: body.name.trim(), node_requirements: body.node_requirements, rate_limit_kib_s: body.rate_limit_kib_s, matched_nodes: count(body.node_requirements) };
     fake.groups.push(group);
     return { ...group };
   });
   define("updateSyncGroup", (id: number, body: SyncGroupRequest) => {
     const index = fake.groups.findIndex((group) => group.id === id);
     if (index < 0) throw new Error("not found");
-    checkGroup(body);
-    fake.groups[index] = { ...fake.groups[index], name: body.name, node_requirements: body.node_requirements, rate_limit_kib_s: body.rate_limit_kib_s };
+    checkGroup(body, id);
+    fake.groups[index] = { ...fake.groups[index], name: body.name.trim(), node_requirements: body.node_requirements, rate_limit_kib_s: body.rate_limit_kib_s };
     return { ...fake.groups[index] };
   });
   define("deleteSyncGroup", (id: number) => { fake.groups = fake.groups.filter((group) => group.id !== id); });

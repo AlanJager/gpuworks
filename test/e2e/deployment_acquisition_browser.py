@@ -52,7 +52,7 @@ def login(page, context, server, artifacts, report, locale):
     report['sensitive_phase'] = True
     page.goto(server.base + '/inference-templates')
     page.get_by_role('textbox', name=auth['username'], exact=True).fill('admin')
-    page.get_by_label(auth['password'], exact=True).fill('password')
+    page.get_by_label(auth['password'], exact=True).fill('gpuworks-test-password-2026')
     with page.expect_response(lambda r: urlsplit(r.url).path == '/api/v1/auth/login'
                               and r.request.method == 'POST') as logged:
         button(page, auth['submit']).click()

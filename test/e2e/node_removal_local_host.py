@@ -72,7 +72,7 @@ class HostAcceptance:
         auth = json.loads((ROOT / f"ui/src/i18n/locales/{self.args.locale}/auth.json").read_text())
         self.page.goto(self.args.base + "/nodes")
         self.page.get_by_role("textbox", name=auth["username"], exact=True).fill("admin")
-        self.page.get_by_label(auth["password"], exact=True).fill("password")
+        self.page.get_by_label(auth["password"], exact=True).fill("gpuworks-test-password-2026")
         with self.page.expect_response(lambda r: urlsplit(r.url).path == "/api/v1/auth/login") as response:
             button(self.page, auth["submit"]).click()
         check(response.value.status == 200, "login failed")

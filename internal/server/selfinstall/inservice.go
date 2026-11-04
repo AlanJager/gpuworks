@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	osuser "os/user"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -221,6 +222,10 @@ type StartGuard struct {
 // snapshot (the database, the master key, server.yaml and the previous
 // binary), records the failed upgrade and removes the marker.
 func GuardStart(layout Layout, running, mode string, now time.Time) (StartGuard, error) {
+	return guardStart(layout, running, mode, now, osuser.LookupGroup)
+}
+
+func guardStart(layout Layout, running, mode string, now time.Time, lookupGroup func(string) (*osuser.Group, error)) (StartGuard, error) {
 	pending, err := readPending(layout)
 	if err != nil || pending == nil {
 		return StartGuard{}, err
@@ -238,7 +243,7 @@ func GuardStart(layout Layout, running, mode string, now time.Time) (StartGuard,
 		}
 		return StartGuard{Pending: pending}, nil
 	}
-	installer := &Installer{layout: layout}
+	installer := &Installer{layout: layout, deps: Deps{LookupGroup: lookupGroup}}
 	restoreErr := installer.restoreBackup(pending.Backup)
 	cause := fmt.Sprintf("%s did not come up after %d starts", pending.To, maxUpgradeStarts)
 	if restoreErr != nil {

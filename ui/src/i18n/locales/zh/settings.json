@@ -217,8 +217,8 @@
       "unlimited": "不限",
       "newTitle": "新建同步组",
       "editTitle": "编辑同步组",
-      "deleteGroup": "删除同步组 {{name}}",
-      "deleteConfirm": "删除同步组“{{name}}”？",
+      "deleteGroup": "删除同步组 {{name}}（#{{id}}）",
+      "deleteConfirm": "删除同步组“{{name}}”（#{{id}}）？",
       "deleteConfirmBody": "删除后，只属于这个组的节点不再从其他节点自动复制，而是直接从仓库拉取；同时属于其他组的节点仍在那些组里复制。需要全部节点互相复制时，新建一个不限节点的组即可。",
       "deleted": "同步组已删除",
       "saved": "同步组已保存"

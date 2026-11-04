@@ -28,10 +28,10 @@ func newTokenRig(t *testing.T) *tokenRig {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, _, err := st.EnsureAdmin("admin", "password"); err != nil {
+	if _, _, _, err := st.EnsureAdmin("admin", "gpuworks-test-password-2026"); err != nil {
 		t.Fatal(err)
 	}
-	admin, ok := st.VerifyUser("admin", "password")
+	admin, ok := st.VerifyUser("admin", "gpuworks-test-password-2026")
 	if !ok {
 		t.Fatal("no admin")
 	}

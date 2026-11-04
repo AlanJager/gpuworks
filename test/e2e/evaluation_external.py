@@ -152,7 +152,7 @@ def test_external_endpoint_sweep(page, context, server, artifacts, report, local
     auth = json.loads((ROOT / "ui/src/i18n/locales" / locale / "auth.json").read_text())
     page.goto(server.base + "/evaluations")
     page.get_by_role("textbox", name=auth["username"], exact=True).fill("admin")
-    page.get_by_label(auth["password"], exact=True).fill("password")
+    page.get_by_label(auth["password"], exact=True).fill("gpuworks-test-password-2026")
     with page.expect_response(lambda r: urlsplit(r.url).path == "/api/v1/auth/login"
                               and r.request.method == "POST") as logged_in:
         button(page, auth["submit"]).click()
@@ -409,7 +409,7 @@ def test_cancel_running_run(page, context, server, artifacts, report, locale, fi
     auth = json.loads((ROOT / "ui/src/i18n/locales" / locale / "auth.json").read_text())
     page.goto(server.base + "/evaluations")
     page.get_by_role("textbox", name=auth["username"], exact=True).fill("admin")
-    page.get_by_label(auth["password"], exact=True).fill("password")
+    page.get_by_label(auth["password"], exact=True).fill("gpuworks-test-password-2026")
     with page.expect_response(lambda r: urlsplit(r.url).path == "/api/v1/auth/login"
                               and r.request.method == "POST") as logged_in:
         button(page, auth["submit"]).click()

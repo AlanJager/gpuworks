@@ -33,7 +33,8 @@ beforeEach(() => {
   api.me = (async () => ({ role: "admin" })) as never;
   batchApi.list = (async () => page([])) as never;
   batchApi.dictionary = async () => dictionary([
-    model("qwen-chat", "running"), model("nap-model", "asleep"), model("held-model", "asleep_held"), model("parked", "stopped"), model("broken", "failed"),
+    model("qwen-chat", "running"), model("nap-model", "asleep"), model("warming", "starting"),
+    model("held-model", "asleep_held"), model("offline-model", "offline"), model("parked", "stopped"), model("broken", "failed"),
   ]);
 });
 afterEach(() => {
@@ -82,7 +83,7 @@ test("modelsInJSONL lists each body.model once and skips lines that are not requ
   assert.deepEqual(modelsInJSONL(text), ["a", "b"]);
 });
 
-test("the model select lists the dictionary's models in its order, each with the state the server gives it", async () => {
+test("the model select defaults to the server's ready models, including automatic wake", async () => {
   const user = mountPage();
   const dialog = await openCreate(user);
   await waitFor(() => assert.ok(within(dialog).getByRole("combobox", { name: b.create.model.label })));
@@ -94,10 +95,41 @@ test("the model select lists the dictionary's models in its order, each with the
   assert.deepEqual(listed, [
     optionLabel("qwen-chat", b.create.model.state.running),
     optionLabel("nap-model", b.create.model.state.asleep),
-    optionLabel("held-model", b.create.model.state.asleepHeld),
-    optionLabel("parked", b.create.model.state.stopped),
-    optionLabel("broken", b.create.model.state.failed),
   ]);
+});
+
+test("waiting models require an explicit choice and hiding them clears a waiting selection", async () => {
+  const user = mountPage();
+  const dialog = await openCreate(user);
+  const toggle = within(dialog).getByRole("checkbox", { name: b.create.model.showWaiting });
+  assert.equal((toggle as HTMLInputElement).checked, false);
+  toggle.focus();
+  await user.keyboard(" ");
+  assert.equal((toggle as HTMLInputElement).checked, true);
+  await user.click(within(dialog).getByRole("combobox", { name: b.create.model.label }));
+  const offered = (await screen.findAllByText(/ · /, { selector: ".ant-select-item-option-content" })).map((node) => node.textContent);
+  for (const name of ["warming", "held-model", "offline-model", "parked", "broken"]) {
+    assert.ok(offered.some((label) => label?.startsWith(`${name} · `)), `${name} is offered after opt-in`);
+  }
+  await user.click(await screen.findByText(optionLabel("parked", b.create.model.state.stopped), { selector: ".ant-select-item-option-content" }));
+  assert.ok(await within(dialog).findByText(b.create.model.warning.stopped.replace("{{model}}", "parked")));
+  await user.click(toggle);
+  await waitFor(() => {
+    assert.equal(within(dialog).queryByText(b.create.model.warning.stopped.replace("{{model}}", "parked")), null);
+    assert.equal(within(dialog).queryByText(optionLabel("parked", b.create.model.state.stopped), { selector: ".ant-select-selection-item" }), null);
+  });
+});
+
+test("a sample cannot silently use a waiting model and opt-out restores its ready default", async () => {
+  batchApi.dictionary = async () => dictionary([model("parked", "stopped")]);
+  const user = mountPage();
+  const dialog = await openCreate(user);
+  await waitFor(() => assert.equal((within(dialog).getByRole("button", { name: b.create.sample.use }) as HTMLButtonElement).disabled, true));
+  await user.click(within(dialog).getByRole("checkbox", { name: b.create.model.showWaiting }));
+  await waitFor(() => assert.equal((within(dialog).getByRole("button", { name: b.create.sample.use }) as HTMLButtonElement).disabled, false));
+  assert.ok(within(dialog).getByText(optionLabel("parked", b.create.model.state.stopped), { selector: ".ant-select-selection-item" }));
+  await user.click(within(dialog).getByRole("checkbox", { name: b.create.model.showWaiting }));
+  await waitFor(() => assert.equal((within(dialog).getByRole("button", { name: b.create.sample.use }) as HTMLButtonElement).disabled, true));
 });
 
 test("the chosen model goes up with the file; without one the upload carries none", async () => {
@@ -128,6 +160,7 @@ test("a model whose sleep is held shows the warning, and the server's warning af
   batchApi.get = (async () => batch({ id: "batch_h", model: "held-model" })) as never;
   const user = mountPage();
   const dialog = await openCreate(user);
+  await user.click(within(dialog).getByRole("checkbox", { name: b.create.model.showWaiting }));
   await user.upload(within(dialog).getByLabelText(b.create.file), jsonl(requests("held-model")));
   await chooseModel(user, dialog, optionLabel("held-model", b.create.model.state.asleepHeld));
   assert.ok(await within(dialog).findByText(b.create.model.warning.asleepHeld.replace("{{model}}", "held-model")));
@@ -138,6 +171,7 @@ test("a model whose sleep is held shows the warning, and the server's warning af
 test("a stopped or failed model shows what becomes of its requests; a starting one does not", async () => {
   const user = mountPage();
   const dialog = await openCreate(user);
+  await user.click(within(dialog).getByRole("checkbox", { name: b.create.model.showWaiting }));
   await user.upload(within(dialog).getByLabelText(b.create.file), jsonl(requests("whatever")));
   await chooseModel(user, dialog, optionLabel("parked", b.create.model.state.stopped));
   assert.ok(await within(dialog).findByText(b.create.model.warning.stopped.replace("{{model}}", "parked")));

@@ -158,7 +158,7 @@ def test_deployment_sleep_wake(page, context, server, artifacts, report, locale,
 
     page.goto(server.base + "/deployments")
     page.get_by_role("textbox", name=auth["username"], exact=True).fill("admin")
-    page.get_by_label(auth["password"], exact=True).fill("password")
+    page.get_by_label(auth["password"], exact=True).fill("gpuworks-test-password-2026")
     with page.expect_response(lambda r: urlsplit(r.url).path == "/api/v1/auth/login"
                               and r.request.method == "POST") as logged_in:
         button(page, auth["submit"]).click()
@@ -466,7 +466,7 @@ def main():
         report["health"] = server.start()
         report["base_url"] = server.base
         status, login = http(server.base, "POST", "/api/v1/auth/login",
-                             body={"username": "admin", "password": "password"})
+                             body={"username": "admin", "password": "gpuworks-test-password-2026"})
         check(status == 200, f"fixture login HTTP {status}")
         token = login["token"]
         artifacts.remember(token)

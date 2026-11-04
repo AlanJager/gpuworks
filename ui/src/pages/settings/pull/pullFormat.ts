@@ -1,4 +1,4 @@
-import { APIError, apiErrorText, type APIErrorTranslator } from "../../../apiError";
+import { APIError, apiErrorText, pullSettingErrorDetail, type APIErrorTranslator } from "../../../apiError";
 import type { NodeRequirementsMap } from "../../../api";
 
 /**
@@ -71,7 +71,7 @@ export function pullErrorText(tPull: PullTranslator, tCommon: APIErrorTranslator
     const field = String(error.params?.field ?? "");
     return tPull("pull.invalidField", {
       field: tPull(`pull.fields.${field}`, { defaultValue: field }),
-      detail: String(error.params?.detail ?? error.fallback),
+      detail: pullSettingErrorDetail(tCommon, error),
     });
   }
   return apiErrorText(tCommon, error);

@@ -199,7 +199,7 @@ def test_two_tab_logout_relogin(play, context, server, artifacts, report, locale
 
     # 正确登录后，两标签刷新保留深链；独立客户端证明原 Cookie/Bearer 均可用。
     # 提交挂起时再点一次并按 Enter，仍只有这一次登录。
-    secret.fill("password")
+    secret.fill("gpuworks-test-password-2026")
     expect(page.get_by_role("alert")).to_have_count(0)
     held_logins = []
 
@@ -226,7 +226,7 @@ def test_two_tab_logout_relogin(play, context, server, artifacts, report, locale
     try:
         with page.expect_response(lambda r: urlsplit(r.url).path == LOGIN and r.request.method == "POST") as accepted:
             held_logins[0].continue_()
-        check(accepted.value.request.post_data_json == {"username": "admin", "password": "password"}
+        check(accepted.value.request.post_data_json == {"username": "admin", "password": "gpuworks-test-password-2026"}
               and not urlsplit(accepted.value.url).query, "incorrect successful login request")
     finally:
         page.unroute("**/api/v1/auth/login", hold_login)
@@ -273,10 +273,10 @@ def test_two_tab_logout_relogin(play, context, server, artifacts, report, locale
 
     # 第二标签重登后双标签恢复，原凭据仍被撤销；登录及返回密钥始终不录 trace。
     dialog.get_by_role("textbox", name=auth["username"], exact=True).fill("admin")
-    dialog.get_by_label(auth["password"], exact=True).fill("password")
+    dialog.get_by_label(auth["password"], exact=True).fill("gpuworks-test-password-2026")
     with peer.expect_response(lambda r: urlsplit(r.url).path == LOGIN and r.request.method == "POST") as restored:
         dialog.get_by_label(auth["password"], exact=True).press("Enter")
-    check(restored.value.request.post_data_json == {"username": "admin", "password": "password"}, "re-login request differs")
+    check(restored.value.request.post_data_json == {"username": "admin", "password": "gpuworks-test-password-2026"}, "re-login request differs")
     expect(dialog).to_have_count(0)
     new_cookie, new_bearer, new_identity = capture_credentials(restored.value, context, artifacts, auth_body(peer, LOGIN))
     check(new_identity == identity and new_cookie != old_cookie and new_bearer != old_bearer, "re-login did not replace the revoked session")

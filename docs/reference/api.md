@@ -1383,7 +1383,6 @@ extra_args 解析（`EXTRA_ARGS_INVALID`）、挂载（`MOUNT_CONTAINER_PATH`/`M
 脚本或第三方客户端不能直接把 vLLM 的参数复用到 SGLang。`engine_decides_param_keys`
 （按入口与引擎版本只撤默认值）与这条规则互补：前者不拒绝任何值，后者按**引擎**拒绝它表达不了的值。
 
-
 ### PD 分离部署（`placement.pd`）
 
 ```json
@@ -1602,6 +1601,8 @@ RunPod 需要开放端口或补平台公钥时，先返回 409 `INSTANCE_RESTART
 | POST | `/api/v1/pull/credentials/{id}/test` | 从管理节点（经它的出站代理）试用凭据：有用户名的按镜像仓库登录 `/v2/`，只有令牌的按 Hugging Face 的 `GET /api/whoami-v2` 校验；200 `{ok, message}`，被拒 422 `CREDENTIAL_LOGIN_REJECTED`（`host`），连不上 502 `CREDENTIAL_LOGIN_FAILED`（`host`、`detail`） | JWT(admin) |
 | GET | `/api/v1/pull/registry-credentials` | 已删除：本路由及其 `POST`、`PUT/DELETE {id}`、`POST {id}/test` 回 410 `SETTING_REMOVED`（`route` 为 `/api/v1/pull/credentials`） | JWT(admin) |
 | GET | `/api/v1/server/listen` | server 的监听地址：已保存的 `console`/`agent`/`gateway` 地址、当前实际打开的 `running` 套接字、`restart_pending`（保存的地址要重启才生效）、`config_path`，以及 `editable`/`overridden`（未用 server.yaml 启动或被 `--addr` 覆盖时不可编辑） | JWT(admin) |
+
+同步组创建和改名的名称按 trim 后精确文本唯一（区分大小写，最多 64 个 UTF-8 字节）。重复名为 400 `PULL_SETTING_INVALID`，`params.field=name`、`params.reason=name_duplicate`。校验错误提供稳定 `reason` 和参数（如 `max`），英文 `detail` 保留供旧客户端和诊断；界面按 `reason` 本地化。
 
 ### 更新检查结果
 
@@ -1876,7 +1877,7 @@ Playground 与 `/v1` 网关的边界、外部模型命名 `external:<config-id>:
 | Method | Path | 说明 | 鉴权 |
 |---|---|---|---|
 | GET | `/api/v1/batches` | 批处理任务列表，最新优先，返回分页结构 `{items,page,page_size,total}`。`state` 为 8 种状态之一，多个值以逗号分隔；非法值返回 400 `LIST_FILTER_INVALID`；不支持 `q`，带 `q` 同样返回 400 `LIST_FILTER_INVALID`。管理员看到所有用户的任务，其他用户只看到自己的。列表项不含 `input_filename` | JWT |
-| GET | `/api/v1/batches/dictionary` | 创建批处理任务可用的字典：`endpoints`、`completion_window_hours`（`min`/`max`/`default`）、`max_file_bytes`、`max_file_lines`、`statuses`（列表筛选顺序）、`output_retention_days`，以及 `models`：未在删除的部署（含已停止的）的对外模型名、状态和支持的端点 `{name, state, endpoints}`。`state` 与部署列表一致，按能否尽快服务依次为 `running`（有副本醒着）、`asleep`（休眠，请求会唤醒）、`starting`（放置、拉取或启动中）、`asleep_held`（手动或定时休眠，请求不会唤醒）、`offline`（副本所在节点断开）、`failed`（启动失败）、`stopped`（已停止），列表按这个顺序再按名称排；`endpoints` 是模型推理接口声明里开放的批处理端点（网关按同一份声明放行请求）。与创建时的模型校验同一判定，同一个名字有多个部署时状态取其中最好的、端点取并集。控制台创建对话框的选项都来自这里，客户端不自行推断 | JWT |
+| GET | `/api/v1/batches/dictionary` | 创建批处理任务可用的字典：`endpoints`、`completion_window_hours`（`min`/`max`/`default`）、`max_file_bytes`、`max_file_lines`、`statuses`（列表筛选顺序）、`output_retention_days`，以及 `models`：未在删除的部署（含已停止的）的对外模型名、状态和支持的端点 `{name, state, ready, endpoints}`。`ready` 由服务端计算，仅运行或请求可自动唤醒时为 true；控制台默认显示这些模型，用户显式开启等待选项后可选择其他状态。`state` 与部署列表一致，按能否尽快服务依次为 `running`（有副本醒着）、`asleep`（休眠，请求会唤醒）、`starting`（放置、拉取或启动中）、`asleep_held`（手动或定时休眠，请求不会唤醒）、`offline`（副本所在节点断开）、`failed`（启动失败）、`stopped`（已停止），列表按这个顺序再按名称排；`endpoints` 是模型推理接口声明里开放的批处理端点（网关按同一份声明放行请求）。与创建时的模型校验同一判定，同一个名字有多个部署时状态取其中最好的、端点取并集。控制台创建对话框的选项都来自这里，客户端不自行推断 | JWT |
 | GET | `/api/v1/batches/{id}` | 批处理任务详情，含 `input_filename`；不存在或不是自己的任务（管理员除外）返回 404 `BATCH_NOT_FOUND` | JWT |
 | GET | `/api/v1/batches/{id}/files/{kind}` | 下载任务的文件，`kind` 为 `input`、`output`、`error`，响应是 JSON Lines（`application/x-ndjson`，带附件文件名）；`kind` 非法返回 400 `BATCH_REQUEST_INVALID`，文件不存在或已删除返回 404 `BATCH_NOT_FOUND` | JWT |
 | POST | `/api/v1/batches` | 创建批处理任务：`multipart/form-data`，字段 `file`（JSONL），可选 `endpoint`（不传时取文件各行共同的 `url`；各行 `url` 不同则返回 400 `BATCH_FILE_INVALID`，`reason` 为 `mixed_endpoints`，`line` 是第一处与首行不同的行）、`completion_window`（`1h` 到 `72h` 的整小时，默认 `24h`，不合法返回 400 `BATCH_REQUEST_INVALID`，`params.field` 为 `completion_window`）和 `model`（指定后每个请求的 `body.model` 都改成它，必须是某个未在删除的部署的对外模型名，否则 400 `BATCH_MODEL_UNKNOWN`；它的部署不支持任务的端点时 400 `BATCH_MODEL_ENDPOINT`）；上传时逐行校验，成功返回 201 和任务对象，所选模型（未指定 `model` 时是文件里各行的模型）需要有人处理时响应带 `warnings`：手动休眠（请求不会唤醒）是 `BATCH_MODEL_SLEEP_HELD` 或 `BATCH_FILE_MODELS_SLEEP_HELD`，节点离线、启动失败、已停止是 `BATCH_MODEL_WAITS` 或 `BATCH_FILE_MODELS_WAIT`。未指定 `model` 时，文件里有模型没有部署使用，返回 400 `BATCH_FILE_MODELS_UNKNOWN`（`params` 为 `{models, more}`），有模型不支持任务的端点，返回 400 `BATCH_FILE_MODELS_ENDPOINT`（`params` 为 `{models, more, endpoint}`），都不创建任务。任务属于当前登录用户 | JWT(admin) |

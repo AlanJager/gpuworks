@@ -27,10 +27,27 @@ export class APIError extends Error {
 
 export function apiErrorText(t: APIErrorTranslator, error: unknown): string {
   if (!(error instanceof APIError)) return error instanceof Error ? error.message : String(error ?? "");
+  const params = { ...error.params };
+  if (error.code === "PULL_SETTING_INVALID") {
+    const field = String(params.field ?? "");
+    params.field = t(`pullSettingField.${field}`, { defaultValue: field });
+    params.detail = pullSettingErrorDetail(t, error);
+  }
   return t(`apiError.${error.code}`, {
-    ...error.params,
+    ...params,
     defaultValue: error.fallback || error.code,
   });
+}
+
+const pullSettingReasons = new Set(["name_required", "name_duplicate", "max_bytes", "nonnegative", "invalid_text", "requirements_invalid"]);
+
+/** Translate semantic validation reasons; old/new unknown reasons stay useful
+ * in the current language while their raw diagnostic remains on the error. */
+export function pullSettingErrorDetail(t: APIErrorTranslator, error: APIError): string {
+  const fallback = t("pullSettingReason.invalid_value", { defaultValue: "Check this setting and try again" });
+  const reason = String(error.params?.reason ?? "");
+  if (!pullSettingReasons.has(reason)) return fallback;
+  return t(`pullSettingReason.${reason}`, { ...error.params, defaultValue: fallback });
 }
 
 /** A product message an answer carries (dto.ProductMessage), in the reader's language. */

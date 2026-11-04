@@ -523,8 +523,14 @@ func TestUpgradeRestartsTheOldVersionWhenTheBackupFails(t *testing.T) {
 	// A snapshot cannot be written where a directory already holds its name.
 	// The timestamp is the harness's fixed clock, so this is deterministic.
 	blocked := h.layout.BackupPath("v1.0.0", h.now)
-	if err := os.MkdirAll(blocked, 0o755); err != nil {
-		t.Fatalf("block the backup path: %v", err)
+	// Inject the conflict after preflight hardening, when stopping the old
+	// service has already succeeded, so this still tests backup-failure recovery.
+	h.run.on = func(cmd Command) {
+		if cmd.String() == "sudo systemctl stop gpuworks" {
+			if err := os.MkdirAll(blocked, 0755); err != nil {
+				t.Fatalf("block backup after stop: %v", err)
+			}
+		}
 	}
 
 	report, err := h.installer.Upgrade(context.Background(), h.upgradeReq())

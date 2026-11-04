@@ -25,6 +25,9 @@ const (
 	// DefaultServiceUser runs the service when the operator does not opt out.
 	// The control plane listens on a network port, so it should not be root.
 	DefaultServiceUser = "gpuworks"
+	// DefaultCredentialGroup is the explicitly authorized platform-operator
+	// group. It is independent of a custom service account's primary group.
+	DefaultCredentialGroup = "gpuworks"
 
 	historyFile = "install-history.jsonl"
 	upgradeLock = ".upgrade.lock"

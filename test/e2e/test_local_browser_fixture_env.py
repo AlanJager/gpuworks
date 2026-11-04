@@ -39,7 +39,7 @@ class LocalServerEnvironmentTest(unittest.TestCase):
         before = dict(os.environ)
         child = self.launch_environment()
         self.assertEqual(child['PATH'], before['PATH'])
-        self.assertEqual(child['GPUWORKS_ADMIN_PASSWORD'], 'password')
+        self.assertEqual(child['GPUWORKS_ADMIN_PASSWORD'], 'gpuworks-test-password-2026')
         self.assertTrue(dict(os.environ) == before, 'default launch changed parent environment')
         self.assertNotIn('auto_check_updates', self.launched_config)
 

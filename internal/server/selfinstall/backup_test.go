@@ -36,8 +36,12 @@ func TestBackupAndRestoreRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stat backup: %v", err)
 	}
-	if info.Mode().Perm() != 0o664 {
-		t.Fatalf("backup mode = %v, want 0664 like the rest of the tree", info.Mode().Perm())
+	policy, modeErr := h.installer.sensitiveFilePolicy()
+	if modeErr != nil {
+		t.Fatal(modeErr)
+	}
+	if info.Mode().Perm() != policy.Mode() {
+		t.Fatalf("backup mode = %v, want installation-sensitive permissions", info.Mode().Perm())
 	}
 	members := readArchive(t, path)
 	for _, want := range []string{"data/gpuworks.db", "data/gpuworks.db-wal", "data/gpuworks.db-shm",
@@ -89,8 +93,12 @@ func TestBackupAndRestoreRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stat restored server.yaml: %v", err)
 	}
-	if info.Mode().Perm() != 0o664 {
-		t.Fatalf("restored server.yaml mode = %v, want the 0664 it had when backed up", info.Mode().Perm())
+	wantConfigMode := os.FileMode(0644)
+	if _, group := policy.GroupID(); group {
+		wantConfigMode = 0664
+	}
+	if info.Mode().Perm() != wantConfigMode {
+		t.Fatalf("restored server.yaml mode=%#o want%#o", info.Mode().Perm(), wantConfigMode)
 	}
 }
 

@@ -140,7 +140,7 @@ def prepare(args: argparse.Namespace) -> tuple[str, dict[str, object], list[subp
     env = os.environ.copy()
     # The first start creates the admin account from this file, as after an install.
     (work / "server-data").mkdir(exist_ok=True)
-    (work / "server-data" / "initial-credentials").write_text(json.dumps({"user": "admin", "password": "password"}))
+    (work / "server-data" / "initial-credentials").write_text(json.dumps({"user": "admin", "password": "gpuworks-test-password-2026"}))
     server, server_log = start([
         str(args.server_bin.resolve()), "serve", "--addr", f"127.0.0.1:{port}",
         "--data", str(work / "server-data"), "--log-level", "warn",
@@ -149,10 +149,10 @@ def prepare(args: argparse.Namespace) -> tuple[str, dict[str, object], list[subp
     logs = [server_log]
     try:
         wait_until(lambda: request(base, "/api/v1/auth/login", method="POST", body={
-            "username": "admin", "password": "password",
+            "username": "admin", "password": "gpuworks-test-password-2026",
         }).get("token"), "server login")
         token = str(request(base, "/api/v1/auth/login", method="POST", body={
-            "username": "admin", "password": "password",
+            "username": "admin", "password": "gpuworks-test-password-2026",
         })["token"])
         created = request(base, "/api/v1/nodes", token=token, method="POST", body={"name": "browser-h100", "server_url": base})
         node_uuid = str(created["node"]["uuid"])

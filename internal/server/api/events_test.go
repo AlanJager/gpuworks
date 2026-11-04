@@ -72,7 +72,7 @@ func TestEventsStreamCoalescesRoutineNodeStatus(t *testing.T) {
 	defer func() { nodeStatusWindow = old }()
 
 	st, _, router := newSessionRouter(t)
-	cookie, _ := sessionLogin(t, router, "password")
+	cookie, _ := sessionLogin(t, router, "gpuworks-test-password-2026")
 	server := httptest.NewServer(router)
 	defer server.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

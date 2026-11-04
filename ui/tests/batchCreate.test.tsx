@@ -337,5 +337,8 @@ test("a dictionary read again on every opening shows the models' states of now",
   await waitFor(() => assert.ok(!screen.queryByRole("dialog", { name: b.create.title })));
   state = "asleep_held";
   dialog = await openCreate(user);
+  await waitFor(() => assert.equal((within(dialog).getByRole("button", { name: b.create.sample.use }) as HTMLButtonElement).disabled, true));
+  assert.equal(within(dialog).queryByText(`m · ${b.create.model.state.asleepHeld}`, { selector: ".ant-select-selection-item" }), null);
+  await user.click(within(dialog).getByRole("checkbox", { name: b.create.model.showWaiting }));
   await within(dialog).findByText(`m · ${b.create.model.state.asleepHeld}`, { selector: ".ant-select-selection-item" });
 });

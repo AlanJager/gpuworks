@@ -28,10 +28,10 @@ func sessionTestStore(t *testing.T) (*Store, *User) {
 	if err := db.AutoMigrate(&User{}, &ManagementSession{}); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, _, err := s.EnsureAdmin("admin", "password"); err != nil {
+	if _, _, _, err := s.EnsureAdmin("admin", "gpuworks-test-password-2026"); err != nil {
 		t.Fatal(err)
 	}
-	u, ok := s.VerifyUser("admin", "password")
+	u, ok := s.VerifyUser("admin", "gpuworks-test-password-2026")
 	if !ok {
 		t.Fatal("verify initial password")
 	}
@@ -91,7 +91,7 @@ func TestManagementSessionPasswordChangeRevokesAllAndRejectsOldSnapshot(t *testi
 	_, second := createTestManagementSession(t, s, u)
 	sub := s.Bus.Subscribe(4, "management-session")
 	defer sub.Close()
-	if err := s.SetUserPassword(u.Username, "new-password"); err != nil {
+	if err := s.SetUserPassword(u.Username, "gpuworks-new-test-password-2026"); err != nil {
 		t.Fatal(err)
 	}
 	for _, hash := range []string{first.TokenHash, second.TokenHash} {
@@ -105,7 +105,7 @@ func TestManagementSessionPasswordChangeRevokesAllAndRejectsOldSnapshot(t *testi
 	if _, _, err := s.CreateManagementSession(u, time.Hour, time.Hour); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("stale password snapshot err=%v", err)
 	}
-	current, ok := s.VerifyUser(u.Username, "new-password")
+	current, ok := s.VerifyUser(u.Username, "gpuworks-new-test-password-2026")
 	if !ok {
 		t.Fatal("new password rejected")
 	}
@@ -183,10 +183,10 @@ func TestManagementSessionPasswordChangeRollback(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.SetUserPassword(u.Username, "new-password"); !errors.Is(err, want) {
+	if err := s.SetUserPassword(u.Username, "gpuworks-new-test-password-2026"); !errors.Is(err, want) {
 		t.Fatalf("err=%v", err)
 	}
-	if _, ok := s.VerifyUser(u.Username, "password"); !ok {
+	if _, ok := s.VerifyUser(u.Username, "gpuworks-test-password-2026"); !ok {
 		t.Fatal("original password was not restored after failed transaction")
 	}
 	if _, _, err := s.ManagementSessionByHash(session.TokenHash); err != nil {
@@ -205,10 +205,10 @@ func TestManagementSessionPersistsAcrossRestartAndExternalPasswordChange(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, _, err := s.EnsureAdmin("admin", "password"); err != nil {
+	if _, _, _, err := s.EnsureAdmin("admin", "gpuworks-test-password-2026"); err != nil {
 		t.Fatal(err)
 	}
-	u, ok := s.VerifyUser("admin", "password")
+	u, ok := s.VerifyUser("admin", "gpuworks-test-password-2026")
 	if !ok {
 		t.Fatal("verify")
 	}
@@ -229,7 +229,7 @@ func TestManagementSessionPersistsAcrossRestartAndExternalPasswordChange(t *test
 		t.Fatal(err)
 	}
 	defer external.Close()
-	if err := external.SetUserPassword("admin", "changed-by-cli"); err != nil {
+	if err := external.SetUserPassword("admin", "gpuworks-changed-by-cli-2026"); err != nil {
 		t.Fatal(err)
 	}
 	if _, _, err := s.ManagementSessionByHash(session.TokenHash); !errors.Is(err, ErrNotFound) {
@@ -306,10 +306,10 @@ func TestManagementSessionLookupDoesNotWaitForTheWriter(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	if _, _, _, err := s.EnsureAdmin("admin", "password"); err != nil {
+	if _, _, _, err := s.EnsureAdmin("admin", "gpuworks-test-password-2026"); err != nil {
 		t.Fatal(err)
 	}
-	u, ok := s.VerifyUser("admin", "password")
+	u, ok := s.VerifyUser("admin", "gpuworks-test-password-2026")
 	if !ok {
 		t.Fatal("verify")
 	}

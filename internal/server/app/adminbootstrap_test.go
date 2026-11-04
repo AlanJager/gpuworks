@@ -2,10 +2,13 @@ package app
 
 import (
 	"log/slog"
+	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"testing"
+
+	"gpuworks.ai/gpuworks/internal/server/auth"
+	"gpuworks.ai/gpuworks/internal/server/installcred"
 )
 
 // newTestApp builds an App against a throwaway data dir and returns the log it
@@ -63,15 +66,22 @@ func TestAdminBootstrapLogDistinguishesConfiguredPassword(t *testing.T) {
 		if !strings.Contains(out, "generated password") {
 			t.Errorf("log does not report that a password was generated:\n%s", out)
 		}
-		match := regexp.MustCompile(`password=([^\s]+)`).FindStringSubmatch(out)
-		if len(match) != 2 || match[1] == "" {
-			t.Fatalf("log does not show the generated password exactly once:\n%s", out)
+		creds, err := installcred.ReadInitialCredentials(application.cfg.DataDir)
+		if err != nil {
+			t.Fatalf("read generated credentials: %v", err)
 		}
-		if strings.Count(out, "password="+match[1]) != 1 {
-			t.Errorf("generated password was logged more than once:\n%s", out)
+		if err := auth.ValidatePassword(creds.Password); err != nil {
+			t.Fatalf("generated credentials violate password policy: %v", err)
 		}
-		if _, ok := application.store.VerifyUser("admin", match[1]); !ok {
-			t.Error("password shown in the bootstrap log cannot authenticate the generated admin")
+		if strings.Contains(out, creds.Password) || strings.Contains(out, "password=") {
+			t.Error("server log exposes the generated password")
+		}
+		info, err := os.Stat(installcred.CredentialsPath(application.cfg.DataDir))
+		if err != nil || info.Mode().Perm()&0o007 != 0 || info.Mode().Perm()&0o600 != 0o600 {
+			t.Fatalf("generated credentials file is not private: info=%v err=%v", info, err)
+		}
+		if _, ok := application.store.VerifyUser("admin", creds.Password); !ok {
+			t.Error("private credentials file does not authenticate the generated admin")
 		}
 		if !strings.Contains(out, "pass --password to gpuworks install") {
 			t.Errorf("log does not explain how to configure the initial password:\n%s", out)
@@ -103,8 +113,12 @@ func TestAdminBootstrapLogSilentOnSecondStart(t *testing.T) {
 	if !strings.Contains(first.String(), "created admin user") {
 		t.Fatalf("first start did not report creating the admin user:\n%s", first.String())
 	}
-	if !strings.Contains(first.String(), "password=") {
-		t.Fatalf("first start did not show the generated password:\n%s", first.String())
+	credentials, err := os.ReadFile(installcred.CredentialsPath(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(first.String(), "password=") {
+		t.Fatal("first start exposed the generated password in the log")
 	}
 
 	var second strings.Builder
@@ -118,5 +132,9 @@ func TestAdminBootstrapLogSilentOnSecondStart(t *testing.T) {
 	}
 	if strings.Contains(second.String(), "password=") {
 		t.Errorf("second start repeated the generated password:\n%s", second.String())
+	}
+	current, err := os.ReadFile(installcred.CredentialsPath(dir))
+	if err != nil || string(current) != string(credentials) {
+		t.Fatalf("second start changed initial credentials: err=%v", err)
 	}
 }

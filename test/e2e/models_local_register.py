@@ -136,7 +136,7 @@ def test_models_local_register(page, context, server, artifacts, report, locale,
 
     page.goto(server.base + "/models")
     page.get_by_role("textbox", name=auth["username"], exact=True).fill("admin")
-    page.get_by_label(auth["password"], exact=True).fill("password")
+    page.get_by_label(auth["password"], exact=True).fill("gpuworks-test-password-2026")
     with page.expect_response(lambda r: urlsplit(r.url).path == "/api/v1/auth/login"
                               and r.request.method == "POST") as logged_in:
         button(page, auth["submit"]).click()
@@ -529,7 +529,7 @@ def main():
         report["base_url"] = server.base
         report["owned_server_pid"] = server.process.pid
         status, login = http(server.base, "POST", "/api/v1/auth/login",
-                             body={"username": "admin", "password": "password"})
+                             body={"username": "admin", "password": "gpuworks-test-password-2026"})
         check(status == 200, f"fixture login HTTP {status}")
         admin_token = login["token"]
         node_name = f"e2e-{run_id}-model-node"

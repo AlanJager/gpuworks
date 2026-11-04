@@ -37,7 +37,10 @@ export default function SyncGroups() {
       title: t("pull.groups.name"),
       key: "name",
       render: (_: unknown, group) => (
-        <Typography.Text strong>{group.name}</Typography.Text>
+        <Space size={8}>
+          <Typography.Text strong>{group.name}</Typography.Text>
+          <Typography.Text type="secondary">#{group.id}</Typography.Text>
+        </Space>
       ),
     },
     {
@@ -71,14 +74,14 @@ export default function SyncGroups() {
         <Space size={4}>
           <Button size="small" type="link" onClick={() => setEditing(group)}>{t("pull.action.edit")}</Button>
           <Popconfirm
-            title={t("pull.groups.deleteConfirm", { name: group.name })}
+            title={t("pull.groups.deleteConfirm", { name: group.name, id: group.id })}
             description={t("pull.groups.deleteConfirmBody")}
             okText={t("pull.action.delete")}
             cancelText={t("pull.action.cancel")}
             okButtonProps={{ danger: true }}
             onConfirm={() => remove(group)}
           >
-            <Button size="small" type="link" danger aria-label={t("pull.groups.deleteGroup", { name: group.name })}>{t("pull.action.delete")}</Button>
+            <Button size="small" type="link" danger aria-label={t("pull.groups.deleteGroup", { name: group.name, id: group.id })}>{t("pull.action.delete")}</Button>
           </Popconfirm>
         </Space>
       ),

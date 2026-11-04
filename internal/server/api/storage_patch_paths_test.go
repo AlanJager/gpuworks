@@ -76,7 +76,7 @@ func TestStoragePatchPaths(t *testing.T) {
 			}
 			// The stored definition predates the server's current root policy.
 			router := Router(Deps{Store: st, AuthSigner: signer, Server: StaticServerSettings{StorageRoots: []string{"/srv/models"}}})
-			cookie, _ := sessionLogin(t, router, "password")
+			cookie, _ := sessionLogin(t, router, "gpuworks-test-password-2026")
 			req := httptest.NewRequest(http.MethodPatch, fmt.Sprintf("/api/v1/storages/%d", row.ID), strings.NewReader(tc.body))
 			req.AddCookie(cookie)
 			rec := httptest.NewRecorder()

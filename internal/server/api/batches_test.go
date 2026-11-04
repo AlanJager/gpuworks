@@ -421,17 +421,17 @@ func TestBatchDictionaryWire(t *testing.T) {
 		Statuses:            []string{"validating", "in_progress", "finalizing", "cancelling", "completed", "failed", "expired", "cancelled"},
 		OutputRetentionDays: 30,
 		Models: []dto.BatchModel{
-			{Name: "qwen", State: dto.BatchModelRunning, Endpoints: []string{"/v1/chat/completions", "/v1/completions"}},
-			{Name: "napping", State: dto.BatchModelAsleep, Endpoints: []string{"/v1/chat/completions"}},
+			{Name: "qwen", State: dto.BatchModelRunning, Ready: true, Endpoints: []string{"/v1/chat/completions", "/v1/completions"}},
+			{Name: "napping", State: dto.BatchModelAsleep, Ready: true, Endpoints: []string{"/v1/chat/completions"}},
 			{Name: "held", State: dto.BatchModelAsleepHeld, Endpoints: []string{"/v1/chat/completions"}},
 			{Name: "parked", State: dto.BatchModelStopped, Endpoints: []string{"/v1/embeddings"}},
 		},
 	}
 	want := `{"endpoints":["/v1/chat/completions","/v1/completions","/v1/embeddings"],"completion_window_hours":{"min":1,"max":72,"default":24},` +
 		`"max_file_bytes":209715200,"max_file_lines":50000,"statuses":["validating","in_progress","finalizing","cancelling","completed","failed","expired","cancelled"],` +
-		`"output_retention_days":30,"models":[{"name":"qwen","state":"running","endpoints":["/v1/chat/completions","/v1/completions"]},` +
-		`{"name":"napping","state":"asleep","endpoints":["/v1/chat/completions"]},{"name":"held","state":"asleep_held","endpoints":["/v1/chat/completions"]},` +
-		`{"name":"parked","state":"stopped","endpoints":["/v1/embeddings"]}]}`
+		`"output_retention_days":30,"models":[{"name":"qwen","state":"running","ready":true,"endpoints":["/v1/chat/completions","/v1/completions"]},` +
+		`{"name":"napping","state":"asleep","ready":true,"endpoints":["/v1/chat/completions"]},{"name":"held","state":"asleep_held","ready":false,"endpoints":["/v1/chat/completions"]},` +
+		`{"name":"parked","state":"stopped","ready":false,"endpoints":["/v1/embeddings"]}]}`
 	for _, bearer := range []string{r.session, r.user, r.mint("read")} {
 		rec := r.do(bearer, "GET", "/api/v1/batches/dictionary", "")
 		if rec.Code != http.StatusOK || strings.TrimSpace(rec.Body.String()) != want {

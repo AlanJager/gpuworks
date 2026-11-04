@@ -203,6 +203,7 @@ test("the sample offers only the models serving its endpoint, in the server's or
   batchApi.dictionary = async () => dictionary([model("BAAI/bge-m3", "running", ["/v1/embeddings"]), model("glm", "starting"), model("deepseek", "stopped")]);
   const user = mountPage();
   const dialog = await openCreate(user);
+  await user.click(within(dialog).getByRole("checkbox", { name: b.create.model.showWaiting }));
   const sampleModel = await within(dialog).findByRole("combobox", { name: b.create.sample.model });
   await waitFor(() => assert.ok(within(dialog).getByText(`glm · ${b.create.model.state.starting}`, { selector: ".ant-select-selection-item" })));
   await user.click(sampleModel);

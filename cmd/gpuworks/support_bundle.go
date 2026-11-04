@@ -14,6 +14,7 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/server/app"
 	"gpuworks.ai/gpuworks/internal/server/diagnostics"
+	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
 // supportBundle collects diagnostics without the server: for a server that
@@ -41,7 +42,14 @@ func supportBundle(ctx context.Context, log *slog.Logger, args []string) error {
 	if err != nil {
 		return err
 	}
-	dataDir = filepath.Dir(db)
+	dbFile, err := store.DatabaseFilePath(db)
+	if err != nil {
+		return err
+	}
+	if dbFile == "" {
+		return fmt.Errorf("support-bundle requires a persistent database")
+	}
+	dataDir = filepath.Dir(dbFile)
 	if logFile == "" {
 		logFile = defaultLogFile(dataDir)
 	}
@@ -72,7 +80,11 @@ func supportBundle(ctx context.Context, log *slog.Logger, args []string) error {
 			req.InstanceUUIDs = append(req.InstanceUUIDs, field)
 		}
 	}
-	bundle, archive, err := app.CollectDiagnosticsOffline(ctx, app.OfflineDiagnosticsRequest{DataDir: dataDir, DBPath: db, LogFile: logFile, Request: req}, log)
+	policy, err := maintenanceDatabasePolicy(db)
+	if err != nil {
+		return err
+	}
+	bundle, archive, err := app.CollectDiagnosticsOffline(ctx, app.OfflineDiagnosticsRequest{DataDir: dataDir, DBPath: db, LogFile: logFile, Request: req}, log, policy)
 	if err != nil {
 		return err
 	}

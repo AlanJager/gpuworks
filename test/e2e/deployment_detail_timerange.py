@@ -144,7 +144,7 @@ def log_range_queries_store(page: Page) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--base-url", default="http://127.0.0.1:8802")
-    parser.add_argument("--password", default="password")
+    parser.add_argument("--password", default="gpuworks-test-password-2026")
     parser.add_argument("--deployment-id", type=int, required=True, help="an existing deployment whose drawer is inspected")
     parser.add_argument("--artifact-dir", type=Path, required=True)
     args = parser.parse_args()

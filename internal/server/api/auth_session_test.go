@@ -24,7 +24,7 @@ func newSessionRouter(t *testing.T) (*store.Store, *auth.TokenSigner, http.Handl
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
-	if _, _, _, err := st.EnsureAdmin("admin", "password"); err != nil {
+	if _, _, _, err := st.EnsureAdmin("admin", "gpuworks-test-password-2026"); err != nil {
 		t.Fatal(err)
 	}
 	signer, err := auth.NewTokenSigner("session-test-secret", 24*time.Hour)
@@ -72,9 +72,9 @@ func sessionRequest(router http.Handler, method, path string, cookie *http.Cooki
 
 func TestPasswordResetInvalidatesCapturedManagementCredentials(t *testing.T) {
 	st, _, router := newSessionRouter(t)
-	cookie, token := sessionLogin(t, router, "password")
-	otherCookie, otherToken := sessionLogin(t, router, "password")
-	if err := st.SetUserPassword("admin", "new-password"); err != nil {
+	cookie, token := sessionLogin(t, router, "gpuworks-test-password-2026")
+	otherCookie, otherToken := sessionLogin(t, router, "gpuworks-test-password-2026")
+	if err := st.SetUserPassword("admin", "gpuworks-new-test-password-2026"); err != nil {
 		t.Fatal(err)
 	}
 	for _, captured := range []struct {
@@ -88,7 +88,7 @@ func TestPasswordResetInvalidatesCapturedManagementCredentials(t *testing.T) {
 			t.Errorf("old credential survived password reset: status=%d", rec.Code)
 		}
 	}
-	fresh, _ := sessionLogin(t, router, "new-password")
+	fresh, _ := sessionLogin(t, router, "gpuworks-new-test-password-2026")
 	if rec := sessionRequest(router, http.MethodGet, "/api/v1/auth/me", fresh, ""); rec.Code != http.StatusOK {
 		t.Fatalf("new login rejected: %d", rec.Code)
 	}
@@ -96,8 +96,8 @@ func TestPasswordResetInvalidatesCapturedManagementCredentials(t *testing.T) {
 
 func TestLogoutRevokesOnlyCurrentManagementSession(t *testing.T) {
 	_, _, router := newSessionRouter(t)
-	cookie, token := sessionLogin(t, router, "password")
-	other, _ := sessionLogin(t, router, "password")
+	cookie, token := sessionLogin(t, router, "gpuworks-test-password-2026")
+	other, _ := sessionLogin(t, router, "gpuworks-test-password-2026")
 	if rec := sessionRequest(router, http.MethodPost, "/api/v1/auth/logout", cookie, ""); rec.Code != http.StatusOK {
 		t.Fatal(rec.Body.String())
 	}
@@ -116,7 +116,7 @@ func TestLogoutRevokesOnlyCurrentManagementSession(t *testing.T) {
 
 func TestBrowserCookieIsOpaqueAndUnboundLegacyJWTIsRejected(t *testing.T) {
 	_, signer, router := newSessionRouter(t)
-	cookie, _ := sessionLogin(t, router, "password")
+	cookie, _ := sessionLogin(t, router, "gpuworks-test-password-2026")
 	if strings.Contains(cookie.Value, ".") || len(cookie.Value) != 64 || !cookie.HttpOnly {
 		t.Errorf("browser cookie must contain only an opaque session credential")
 	}
@@ -131,7 +131,7 @@ func TestBrowserCookieIsOpaqueAndUnboundLegacyJWTIsRejected(t *testing.T) {
 
 func TestActivityRenewsIdleDeadlineWhilePollingDoesNot(t *testing.T) {
 	st, _, router := newSessionRouter(t)
-	cookie, _ := sessionLogin(t, router, "password")
+	cookie, _ := sessionLogin(t, router, "gpuworks-test-password-2026")
 	hash := store.HashToken(cookie.Value)
 	nearExpiry := time.Now().UTC().Add(10 * time.Minute)
 	if err := st.DB().Model(&store.ManagementSession{}).Where("token_hash = ?", hash).Update("expires_at", nearExpiry).Error; err != nil {
@@ -177,7 +177,7 @@ func TestActivityRenewsIdleDeadlineWhilePollingDoesNot(t *testing.T) {
 
 func TestManagementSessionUsesCurrentRoleAndReportsStoreFailure(t *testing.T) {
 	st, _, router := newSessionRouter(t)
-	cookie, token := sessionLogin(t, router, "password")
+	cookie, token := sessionLogin(t, router, "gpuworks-test-password-2026")
 	if err := st.DB().Model(&store.User{}).Where("username = ?", "admin").Update("role", "user").Error; err != nil {
 		t.Fatal(err)
 	}
@@ -190,7 +190,7 @@ func TestManagementSessionUsesCurrentRoleAndReportsStoreFailure(t *testing.T) {
 	if rec := sessionRequest(router, http.MethodGet, "/api/v1/auth/me", cookie, ""); rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("store failure must not look like expiry: %d", rec.Code)
 	}
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(`{"username":"admin","password":"password"}`))
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(`{"username":"admin","password":"gpuworks-test-password-2026"}`))
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 	if rec.Code != http.StatusServiceUnavailable {
@@ -202,8 +202,8 @@ func TestLogoutRevokesCookieEvenWithConflictingBearer(t *testing.T) {
 	for _, validBearer := range []bool{false, true} {
 		t.Run(map[bool]string{false: "invalid-bearer", true: "another-session-bearer"}[validBearer], func(t *testing.T) {
 			_, _, router := newSessionRouter(t)
-			cookie, _ := sessionLogin(t, router, "password")
-			other, token := sessionLogin(t, router, "password")
+			cookie, _ := sessionLogin(t, router, "gpuworks-test-password-2026")
+			other, token := sessionLogin(t, router, "gpuworks-test-password-2026")
 			bearer := "invalid-token"
 			if validBearer {
 				bearer = token
@@ -227,9 +227,9 @@ func TestLogoutRevokesCookieEvenWithConflictingBearer(t *testing.T) {
 
 func TestManagementActivityOriginAndSecureCookie(t *testing.T) {
 	st, signer, router := newSessionRouter(t)
-	cookie, _ := sessionLogin(t, router, "password")
+	cookie, _ := sessionLogin(t, router, "gpuworks-test-password-2026")
 	for _, path := range []string{"/api/v1/auth/login", "/api/v1/auth/logout", "/api/v1/auth/activity"} {
-		req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{"username":"admin","password":"password"}`))
+		req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{"username":"admin","password":"gpuworks-test-password-2026"}`))
 		req.AddCookie(cookie)
 		req.Header.Set("Origin", "https://attacker.example")
 		rec := httptest.NewRecorder()
@@ -239,7 +239,7 @@ func TestManagementActivityOriginAndSecureCookie(t *testing.T) {
 		}
 	}
 	trusted := Router(Deps{Store: st, AuthSigner: signer}, auth.SessionPolicy{Proxies: listedProxies("127.0.0.1")})
-	req := httptest.NewRequest(http.MethodPost, "http://console.example/api/v1/auth/login", strings.NewReader(`{"username":"admin","password":"password"}`))
+	req := httptest.NewRequest(http.MethodPost, "http://console.example/api/v1/auth/login", strings.NewReader(`{"username":"admin","password":"gpuworks-test-password-2026"}`))
 	req.RemoteAddr = "127.0.0.1:1234"
 	req.Header.Set("X-Forwarded-Proto", "https")
 	req.Header.Set("Origin", "https://console.example")
@@ -253,7 +253,7 @@ func TestManagementActivityOriginAndSecureCookie(t *testing.T) {
 func TestManagementSessionWireContractAndPolicy(t *testing.T) {
 	st, signer, _ := newSessionRouter(t)
 	router := Router(Deps{Store: st, AuthSigner: signer}, auth.SessionPolicy{IdleTimeout: time.Hour, MaxLifetime: 48 * time.Hour})
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(`{"username":"admin","password":"password"}`))
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(`{"username":"admin","password":"gpuworks-test-password-2026"}`))
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
@@ -331,7 +331,7 @@ func TestManagementOriginRestoresPortDroppedByProxy(t *testing.T) {
 		{"untrusted peer cannot assert a port", "198.51.100.7:4000", "203.0.113.5", "203.0.113.5", "http", "8808", "http://203.0.113.5:8808", http.StatusForbidden},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(`{"username":"admin","password":"password"}`))
+			req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(`{"username":"admin","password":"gpuworks-test-password-2026"}`))
 			req.Host = tc.host
 			req.RemoteAddr = tc.remote
 			if tc.forwardedHost != "" {
@@ -379,7 +379,7 @@ func TestManagementOriginTrustsEntryPointConnectorOnThisHost(t *testing.T) {
 			enabled := tc.enabled
 			proxies, _ := auth.NewProxyTrust("", func() bool { return enabled })
 			router := Router(Deps{Store: st, AuthSigner: signer}, auth.SessionPolicy{Proxies: proxies})
-			req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(`{"username":"admin","password":"password"}`))
+			req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(`{"username":"admin","password":"gpuworks-test-password-2026"}`))
 			req.Host = site
 			req.RemoteAddr = tc.peer
 			local, err := net.ResolveTCPAddr("tcp", tc.local)

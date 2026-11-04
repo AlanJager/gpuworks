@@ -32,10 +32,10 @@ AI service/cloud provider credentials (AI/provider) are encrypted with the serve
 ### Control Plane Installation and Upgrades
 
 - In Linux systemd mode, `gpuworks install` runs the unit as the dedicated system user `gpuworks` by default. It explicitly falls back to root only when `--service-user root` is specified.
-- The initial password is passed only through `<data>/initial-credentials` (0664). The unit file is globally readable, so the password is never written to it.
+- The initial password is passed only through `<data>/initial-credentials` (`0600` by default; `0660` for the trusted Linux platform group). The unit file is globally readable, so the password is never written to it.
 - `gpuworks upgrade` verifies the release package's sha256 before replacing it atomically. If the health check fails, it rolls back to the pre-upgrade snapshot.
 - The server neither stores nor infers its own external address. The address in node installation commands is supplied explicitly by the caller (browser, API caller, or `--server`); see [ADR 0025](../adr/0025-server-holds-no-external-address.md).
-- Both installation and upgrades write audit records to `<data>/install-history.jsonl` (0600, readable and writable only by the operator).
+- Both installation and upgrades write audit records to `<data>/install-history.jsonl` (`0600` by default; `0660` for installations shared with the trusted Linux platform group).
 
 ## Directory Permissions for udocker/runveil
 

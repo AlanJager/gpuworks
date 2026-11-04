@@ -13,6 +13,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"gpuworks.ai/gpuworks/internal/securefile"
 )
 
 // Archive member names. A backup holds exactly what an upgrade must be able to
@@ -102,6 +104,13 @@ func (i *Installer) createBackup(ctx context.Context, releaseID string) (string,
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
+	policy, err := i.sensitiveFilePolicy()
+	if err != nil {
+		return "", err
+	}
+	if err := i.hardenSensitiveFiles(ctx, policy); err != nil {
+		return "", err
+	}
 	if err := mkdirAll(i.layout.BackupsDir, dirMode); err != nil {
 		return "", err
 	}
@@ -131,15 +140,22 @@ func (i *Installer) writeBackup(path string, at time.Time) error {
 // writeBackupEntries writes a snapshot through a temporary file so an
 // interrupted backup never looks like a usable one.
 func (i *Installer) writeBackupEntries(path string, at time.Time, entries []backupEntry) error {
+	policy, err := i.sensitiveFilePolicy()
+	if err != nil {
+		return err
+	}
+	if err := hardenFilesWithPolicy(i.layout, policy); err != nil {
+		return err
+	}
 	tmp, err := os.CreateTemp(i.layout.BackupsDir, filepath.Base(path)+".part*")
 	if err != nil {
 		return err
 	}
 	tmpName := tmp.Name()
 	defer func() { _ = os.Remove(tmpName) }()
-	// 0664 like the rest of the tree: the operator restores this snapshot
-	// without sudo.
-	if err := tmp.Chmod(0o664); err != nil {
+	// Backups contain the master key and encrypted credentials together;
+	// service-group membership is privileged access to that material.
+	if err := policy.Apply(tmp); err != nil {
 		tmp.Close()
 		return err
 	}
@@ -227,7 +243,11 @@ func addToArchive(writer *tar.Writer, path, name string, at time.Time) error {
 // in, which is what requiredBackupMember and checkSnapshotMembers enforce, so
 // every snapshot this build writes is restorable.
 func (i *Installer) restoreBackup(path string) error {
-	f, err := os.Open(path)
+	policy, err := i.sensitiveFilePolicy()
+	if err != nil {
+		return err
+	}
+	f, err := securefile.Open(path, policy)
 	if err != nil {
 		return err
 	}
@@ -266,7 +286,15 @@ func (i *Installer) restoreBackup(path string) error {
 				mode = binaryMode
 			}
 		}
-		if err := writeRestored(reader, target, mode); err != nil {
+		if strings.HasPrefix(header.Name, backupDataPrefix) {
+			mode = policy.Mode()
+		} else {
+			mode &^= 0002
+			if _, group := policy.GroupID(); !group {
+				mode &^= 0020
+			}
+		}
+		if err := writeRestored(reader, target, mode, policy); err != nil {
 			return err
 		}
 	}
@@ -294,10 +322,9 @@ func restoreTarget(layout Layout, name string) (string, error) {
 }
 
 // writeRestored writes one archive member, keeping the mode it had when the
-// snapshot was taken. A restored installation must end up with the exact
-// permissions it was running with — 0664 in the shared tree — otherwise a rollback would lock the service account out of its
-// own database.
-func writeRestored(reader io.Reader, target string, mode os.FileMode) error {
+// snapshot was taken, except sensitive data members are restricted by the
+// caller even when restoring an older, publicly-readable backup.
+func writeRestored(reader io.Reader, target string, mode os.FileMode, policy securefile.Policy) error {
 	if err := mkdirAll(filepath.Dir(target), dirMode); err != nil {
 		return err
 	}
@@ -311,9 +338,15 @@ func writeRestored(reader io.Reader, target string, mode os.FileMode) error {
 		tmp.Close()
 		return err
 	}
-	if err := tmp.Chmod(mode); err != nil {
+	if err := policy.Apply(tmp); err != nil {
 		tmp.Close()
 		return err
+	}
+	if mode != policy.Mode() {
+		if err := tmp.Chmod(mode); err != nil {
+			tmp.Close()
+			return err
+		}
 	}
 	if err := tmp.Close(); err != nil {
 		return err

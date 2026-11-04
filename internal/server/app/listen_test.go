@@ -41,7 +41,7 @@ func listenApp(t *testing.T, listen serverconfig.Listen, configPath string, self
 	}}
 	a, err := New(Config{
 		Listen: listen, ConfigPath: configPath, Host: host, SelfRestart: selfRestart,
-		DataDir: dir, DBPath: filepath.Join(dir, "gpuworks.db"), AdminUser: "admin", AdminPassword: "password",
+		DataDir: dir, DBPath: filepath.Join(dir, "gpuworks.db"), AdminUser: "admin", AdminPassword: "gpuworks-test-password-2026",
 	}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err != nil {
 		t.Fatal(err)
@@ -98,7 +98,7 @@ func status(t *testing.T, method, url, token string, body []byte) (int, []byte) 
 
 func login(t *testing.T, base string) string {
 	t.Helper()
-	code, body := status(t, http.MethodPost, base+"/api/v1/auth/login", "", []byte(`{"username":"admin","password":"password"}`))
+	code, body := status(t, http.MethodPost, base+"/api/v1/auth/login", "", []byte(`{"username":"admin","password":"gpuworks-test-password-2026"}`))
 	if code != http.StatusOK {
 		t.Fatalf("login %d %s", code, body)
 	}

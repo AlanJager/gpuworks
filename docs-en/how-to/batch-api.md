@@ -178,6 +178,8 @@ The chosen model must be the served model name of a deployment (running or stopp
 
 The model names, states and supported endpoints in the drop-down come from `GET /api/v1/batches/dictionary` and follow the same rule as the check at creation. The states match the deployment list and are ordered by how soon the model can serve:
 
+The console model picker defaults to dictionary entries with `ready=true` (serving or automatically wakeable); the sample picker uses the same filter. Select “Show models that need to wait” to choose a starting, held, offline, failed or stopped model explicitly; existing waiting warnings still apply. Turning the option off clears a waiting selection. The asynchronous waiting rules for API requests and models named in each file line still apply.
+
 | State | Meaning | Requests of the batch for this model |
 |---|---|---|
 | `running` Running | A replica is awake | Handled normally |

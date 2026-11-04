@@ -107,7 +107,7 @@ def return_state(page: Page, base_url: str) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--base-url", default="http://127.0.0.1:8802")
-    parser.add_argument("--password", default="password")
+    parser.add_argument("--password", default="gpuworks-test-password-2026")
     parser.add_argument("--artifact-dir", type=Path, required=True)
     args = parser.parse_args()
     args.artifact_dir.mkdir(parents=True, exist_ok=True)

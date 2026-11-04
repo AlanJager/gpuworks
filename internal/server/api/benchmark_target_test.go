@@ -122,7 +122,7 @@ func TestBenchmarkGatewayCredentialsRemainRevocable(t *testing.T) {
 				cookie, _ := sessionLogin(t, router, "password")
 				request.AddCookie(cookie)
 				revoke = func() {
-					if err := fixture.store.SetUserPassword("admin", "new-password"); err != nil {
+					if err := fixture.store.SetUserPassword("admin", "gpuworks-new-test-password-2026"); err != nil {
 						t.Fatal(err)
 					}
 				}

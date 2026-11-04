@@ -44,9 +44,20 @@ func TestDatabaseOpenReportsInaccessiblePath(t *testing.T) {
 						_ = db.Close()
 						t.Fatal("opening an inaccessible database unexpectedly succeeded")
 					}
-					var coded interface{ Code() int }
-					if !errors.As(err, &coded) || coded.Code()&0xff != 14 {
-						t.Fatalf("original SQLITE_CANTOPEN error is not preserved: %v", err)
+					if opener.name == "management" {
+						// Sensitive-file preflight refuses the path before SQLite
+						// can open it; retain that original filesystem diagnosis.
+						if scenario == "missing parent" && !errors.Is(err, os.ErrNotExist) {
+							t.Fatalf("missing-parent cause is not preserved: %v", err)
+						}
+						if scenario == "directory as database" && !strings.Contains(err.Error(), "expected a regular file") {
+							t.Fatalf("non-file diagnosis is not preserved: %v", err)
+						}
+					} else {
+						var coded interface{ Code() int }
+						if !errors.As(err, &coded) || coded.Code()&0xff != 14 {
+							t.Fatalf("original SQLITE_CANTOPEN error is not preserved: %v", err)
+						}
 					}
 					if !strings.Contains(err.Error(), path) {
 						t.Errorf("database error does not identify path %q: %v", path, err)

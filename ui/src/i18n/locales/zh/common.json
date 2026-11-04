@@ -34,6 +34,8 @@
   "language": {
     "switch": "切换语言"
   },
+  "pullSettingReason": {"invalid_value": "请检查该设置后重试", "name_required": "请输入同步组名称", "name_duplicate": "该同步组名称已存在", "max_bytes": "最多允许 {{max}} 个 UTF-8 字节", "nonnegative": "请输入零或正数", "invalid_text": "请输入有效文本，且不要包含控制字符", "requirements_invalid": "请检查适用节点条件"},
+  "pullSettingField": {"match": "匹配", "endpoints": "替代地址", "requirements": "适用节点", "name": "组名", "host": "站点或仓库", "username": "用户名", "secret": "密码", "order": "顺序", "rate_limit": "同步限速", "note": "备注", "allow_upstream": "允许回源", "http_proxy": "HTTP 代理", "https_proxy": "HTTPS 代理", "no_proxy": "NO_PROXY", "password": "代理密码", "control_plane": "用于管理节点"},
   "apiError": {
     "ANALYTICS_RANGE_INVALID": "时间段无效：{{field}} {{detail}}。",
     "ANALYTICS_RANGE_TOO_LONG": "时间段太长：{{detail}}。请缩短时间段，或改为按天查看。",

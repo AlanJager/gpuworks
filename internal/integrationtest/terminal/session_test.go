@@ -91,7 +91,7 @@ func TestTerminalSessionRevocationClosesConnection(t *testing.T) {
 
 			switch mode {
 			case "password-reset":
-				if err := h.store.SetUserPassword("admin", "new-password"); err != nil {
+				if err := h.store.SetUserPassword("admin", "gpuworks-new-test-password-2026"); err != nil {
 					t.Fatal(err)
 				}
 			case "logout":
@@ -116,7 +116,7 @@ func TestTerminalSessionRevocationClosesConnection(t *testing.T) {
 					t.Fatal(err)
 				}
 				t.Cleanup(func() { _ = other.Close() })
-				if err := other.SetUserPassword("admin", "new-password"); err != nil {
+				if err := other.SetUserPassword("admin", "gpuworks-new-test-password-2026"); err != nil {
 					t.Fatal(err)
 				}
 			}

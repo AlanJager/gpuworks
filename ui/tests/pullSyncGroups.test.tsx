@@ -99,7 +99,45 @@ test("the server's refusal of an empty name shows at the name field", async () =
   await user.click(screen.getByRole("button", { name: new RegExp(text.new) }));
   const drawer = await screen.findByRole("dialog");
   await user.click(within(drawer).getByRole("button", { name: saveName }));
-  await within(drawer).findByText(fill("pull.invalidField", { ns: "settings", field: locale.settings.pull.fields.name, detail: "name must not be empty" }));
+  await within(drawer).findByText(fill("pull.invalidField", { ns: "settings", field: locale.settings.pull.fields.name, detail: locale.common.pullSettingReason.name_required }));
+});
+
+test("duplicate create and rename remain at the localized name field without changing groups", async () => {
+  const { fake, user } = setup();
+  await waitFor(() => assert.equal(rows().length, 2));
+  await user.click(screen.getByRole("button", { name: new RegExp(text.new) }));
+  let drawer = await screen.findByRole("dialog");
+  await user.type(within(drawer).getByLabelText(text.name), " Site B ");
+  await user.click(within(drawer).getByRole("button", { name: saveName }));
+  const refusal = fill("pull.invalidField", { ns: "settings", field: locale.settings.pull.fields.name, detail: locale.common.pullSettingReason.name_duplicate });
+  await within(drawer).findByText(refusal);
+  assert.equal(fake.groups.length, 2);
+  await user.click(within(drawer).getByRole("button", { name: action.cancel }));
+  await waitFor(() => assert.equal(screen.queryByRole("dialog"), null));
+  await user.click(within(rows()[0]).getByRole("button", { name: action.edit }));
+  drawer = await screen.findByRole("dialog");
+  const input = within(drawer).getByLabelText(text.name);
+  await user.clear(input);
+  await user.type(input, "Site B");
+  await user.click(within(drawer).getByRole("button", { name: saveName }));
+  await within(drawer).findByText(refusal);
+  assert.equal(fake.groups[0].name, "default-all-nodes");
+});
+
+test("group IDs distinguish duplicate legacy rows and their delete confirmations", async () => {
+  const { fake, user } = setup({ groups: [
+    { ...GROUPS[0], id: 11, name: "same" }, { ...GROUPS[0], id: 12, name: "same" },
+  ] });
+  await waitFor(() => assert.equal(rows().length, 2));
+  assert.ok(within(rows()[0]).getByText("#11"));
+  assert.ok(within(rows()[1]).getByText("#12"));
+  await user.click(screen.getByRole("button", { name: fill(text.deleteGroup, { name: "same", id: 12 }) }));
+  await screen.findByText(fill(text.deleteConfirm, { name: "same", id: 12 }));
+  const popover = document.querySelector(".ant-popconfirm:not(.ant-popover-hidden)") as HTMLElement;
+  await user.click(within(popover).getByRole("button", { name: action.delete }));
+  await waitFor(() => assert.equal(rows().length, 1));
+  assert.deepEqual(fake.calls.find((call) => call.method === "deleteSyncGroup")?.args, [12]);
+  assert.equal(fake.groups[0].id, 11);
 });
 
 test("editing the seeded group keeps its name, and an untouched limit round-trips exactly", async () => {
@@ -124,12 +162,12 @@ test("editing the seeded group keeps its name, and an untouched limit round-trip
 test("deleting asks first, says how to get every node copying again, and then removes the group", async () => {
   const { fake, user } = setup();
   await waitFor(() => assert.equal(rows().length, 2));
-  await user.click(screen.getByRole("button", { name: fill(text.deleteGroup, { name: "default-all-nodes" }) }));
-  await screen.findByText(fill(text.deleteConfirm, { name: "default-all-nodes" }));
+  await user.click(screen.getByRole("button", { name: fill(text.deleteGroup, { name: "default-all-nodes", id: 1 }) }));
+  await screen.findByText(fill(text.deleteConfirm, { name: "default-all-nodes", id: 1 }));
   assert.ok(screen.getByText(text.deleteConfirmBody));
   await user.click(screen.getByRole("button", { name: action.cancel }));
   assert.equal(fake.calls.filter((call) => call.method === "deleteSyncGroup").length, 0);
-  await user.click(screen.getByRole("button", { name: fill(text.deleteGroup, { name: "default-all-nodes" }) }));
+  await user.click(screen.getByRole("button", { name: fill(text.deleteGroup, { name: "default-all-nodes", id: 1 }) }));
   const popover = document.querySelector(".ant-popconfirm:not(.ant-popover-hidden)") as HTMLElement;
   await user.click(within(popover).getByRole("button", { name: action.delete }));
   await waitFor(() => assert.equal(rows().length, 1));

@@ -1,16 +1,35 @@
 package main
 
 import (
+	"errors"
 	"io"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"gpuworks.ai/gpuworks/internal/server/auth"
 	"gpuworks.ai/gpuworks/internal/server/bus"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
+
+func TestResetPasswordRejectsWeakInputBeforeDatabaseAccess(t *testing.T) {
+	for _, password := range []string{"123", "password", "admin123"} {
+		t.Run(password, func(t *testing.T) {
+			dir := t.TempDir()
+			err := resetPassword(discardLog(), []string{"--db", filepath.Join(dir, "missing.db"), "--password", password})
+			if !errors.Is(err, auth.ErrPasswordPolicy) {
+				t.Fatalf("weak password did not fail before database access: %v", err)
+			}
+			entries, err := os.ReadDir(dir)
+			if err != nil || len(entries) != 0 {
+				t.Fatalf("rejected password left files: count=%d err=%v", len(entries), err)
+			}
+		})
+	}
+}
 
 // seedAdmin creates dataDir/gpuworks.db holding the admin user.
 func seedAdmin(t *testing.T, dataDir string) string {
@@ -20,7 +39,7 @@ func seedAdmin(t *testing.T, dataDir string) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, _, err := st.EnsureAdmin("admin", "old-password"); err != nil {
+	if _, _, _, err := st.EnsureAdmin("admin", "old-admin-password-2026"); err != nil {
 		t.Fatal(err)
 	}
 	if err := st.Close(); err != nil {
@@ -43,11 +62,37 @@ func verifyPassword(t *testing.T, db, password string) bool {
 func TestResetPasswordWithDataDir(t *testing.T) {
 	data := t.TempDir()
 	db := seedAdmin(t, data)
-	if err := resetPassword(discardLog(), []string{"--data", data, "--password", "new-password"}); err != nil {
+	if err := resetPassword(discardLog(), []string{"--data", data, "--password", "new-admin-password-2026"}); err != nil {
 		t.Fatal(err)
 	}
-	if !verifyPassword(t, db, "new-password") {
+	if !verifyPassword(t, db, "new-admin-password-2026") {
 		t.Fatal("the new password does not log in")
+	}
+}
+
+func TestResetPasswordUsesTheDriversPersistentDSNPath(t *testing.T) {
+	for _, format := range []string{"plain-query", "file-uri"} {
+		t.Run(format, func(t *testing.T) {
+			db := seedAdmin(t, t.TempDir())
+			dsn := db + "?cache=shared"
+			if format == "file-uri" {
+				dsn = (&url.URL{Scheme: "file", Path: db, RawQuery: "cache=shared"}).String()
+			}
+			if err := resetPassword(discardLog(), []string{"--db", dsn, "--password", "new-admin-password-2026"}); err != nil {
+				t.Fatal(err)
+			}
+			if !verifyPassword(t, db, "new-admin-password-2026") {
+				t.Fatal("the database selected by the driver was not updated")
+			}
+		})
+	}
+}
+
+func TestResetPasswordRejectsMemoryDSN(t *testing.T) {
+	for _, dsn := range []string{":memory:", "file:reset-memory?mode=memory&cache=shared"} {
+		if _, err := resetPasswordDB("", dsn); err == nil || !strings.Contains(err.Error(), "persistent") {
+			t.Errorf("memory database was accepted as a password-reset target: %v", err)
+		}
 	}
 }
 
@@ -66,7 +111,7 @@ func TestResetPasswordMissingDatabase(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
-			err := resetPassword(discardLog(), append(tc.args(dir), "--password", "new-password"))
+			err := resetPassword(discardLog(), append(tc.args(dir), "--password", "new-admin-password-2026"))
 			if err == nil {
 				t.Fatal("reset succeeded without a database")
 			}
@@ -105,13 +150,13 @@ func TestResetPasswordReadsServerYAMLNextToBinary(t *testing.T) {
 	binary := filepath.Join(install, "gpuworks")
 	copyFile(t, os.Args[0], binary)
 
-	cmd := exec.Command(binary, "-test.run=^TestServerCLIHelp$", "--", "reset-password", "--password", "new-password")
+	cmd := exec.Command(binary, "-test.run=^TestServerCLIHelp$", "--", "reset-password", "--password", "new-admin-password-2026")
 	cmd.Dir = t.TempDir()
 	cmd.Env = append(os.Environ(), "GPUWORKS_TEST_SERVER_CLI=1")
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("reset-password: %v\n%s", err, out)
 	}
-	if !verifyPassword(t, db, "new-password") {
+	if !verifyPassword(t, db, "new-admin-password-2026") {
 		t.Fatal("the database beside the binary was not changed")
 	}
 	if entries, _ := os.ReadDir(cmd.Dir); len(entries) != 0 {

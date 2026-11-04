@@ -159,7 +159,7 @@ test("the run is shown as loading and a refused draft is explained at the sectio
   await within(drawer).findByRole("table");
   fake.failNext("testPullSourceRule", new APIError("PULL_SETTING_INVALID", { field: "endpoints", detail: "a rule with no endpoint must allow upstream" }, "a rule with no endpoint must allow upstream", 400));
   fireEvent.click(runButton(drawer));
-  await within(drawer).findByText(/a rule with no endpoint must allow upstream/);
+  await within(drawer).findByText(i18n.t("pull.invalidField", { ns: "settings", field: i18n.t("pull.fields.endpoints", { ns: "settings" }), detail: i18n.t("pullSettingReason.invalid_value", { ns: "common" }) }));
   assert.equal(within(drawer).queryByRole("table"), null, "a refused run leaves no stale result");
 });
 

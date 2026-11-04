@@ -89,7 +89,7 @@ func startShutdownTestApp(t *testing.T) (a *App, ctx context.Context, cancel con
 	cfg.DataDir = dir
 	cfg.DBPath = filepath.Join(dir, "gpuworks.db")
 	cfg.AdminUser = "admin"
-	cfg.AdminPassword = "password"
+	cfg.AdminPassword = "gpuworks-test-password-2026"
 	cfg.SelfLog = selflog.NewCollector(slog.NewTextHandler(io.Discard, nil), slog.LevelWarn, 16)
 	a, err = New(cfg, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err != nil {

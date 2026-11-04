@@ -6,6 +6,8 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"unicode"
+	"unicode/utf8"
 
 	"gorm.io/gorm"
 	"gpuworks.ai/gpuworks/internal/server/imagecatalog/pullref"
@@ -21,21 +23,6 @@ const (
 	PullSettingsCredentials = "credentials"
 	PullSettingsProxies     = "proxies"
 )
-
-// PullSettingError is a pull setting the store refuses: Field names what is
-// wrong (match, endpoints, requirements, name, registry, username, secret,
-// order, rate_limit) so the API can say which input to fix.
-type PullSettingError struct {
-	Field string
-	Err   error
-}
-
-func (e *PullSettingError) Error() string { return e.Field + ": " + e.Err.Error() }
-func (e *PullSettingError) Unwrap() error { return e.Err }
-
-func pullSettingError(field string, err error) error {
-	return &PullSettingError{Field: field, Err: err}
-}
 
 // PullSourceRuleSpec is a pull source rule with its endpoints and node
 // requirements, the shape every reader and writer works with.
@@ -370,19 +357,22 @@ func (s *Store) ReorderPullSourceRules(ids []uint) error {
 }
 
 func normalizeSyncGroup(spec SyncGroupSpec) (SyncGroupSpec, error) {
+	if !utf8.ValidString(spec.Name) || strings.ContainsFunc(spec.Name, unicode.IsControl) {
+		return spec, pullSettingReasonError("name", "invalid_text", fmt.Errorf("name must contain valid text without control characters"), nil)
+	}
 	spec.Name = strings.TrimSpace(spec.Name)
 	if spec.Name == "" {
-		return spec, pullSettingError("name", fmt.Errorf("a sync group needs a name"))
+		return spec, pullSettingReasonError("name", "name_required", fmt.Errorf("a sync group needs a name"), nil)
 	}
-	if len(spec.Name) > 64 {
-		return spec, pullSettingError("name", fmt.Errorf("name is longer than 64 bytes"))
+	if len(spec.Name) > syncGroupNameMaxBytes {
+		return spec, pullSettingReasonError("name", "max_bytes", fmt.Errorf("name is longer than %d bytes", syncGroupNameMaxBytes), map[string]any{"max": syncGroupNameMaxBytes})
 	}
 	if spec.RateLimitKiB < 0 {
-		return spec, pullSettingError("rate_limit", fmt.Errorf("rate limit must not be negative"))
+		return spec, pullSettingReasonError("rate_limit", "nonnegative", fmt.Errorf("rate limit must not be negative"), nil)
 	}
 	reqs, err := nodelabel.NormalizeRequirements(spec.Requirements)
 	if err != nil {
-		return spec, pullSettingError("requirements", err)
+		return spec, pullSettingReasonError("requirements", "requirements_invalid", err, nil)
 	}
 	spec.Requirements = reqs
 	return spec, nil
@@ -408,10 +398,13 @@ func (s *Store) CreateSyncGroup(spec SyncGroupSpec) (SyncGroupSpec, error) {
 	if err != nil {
 		return spec, err
 	}
+	if err := s.checkSyncGroupName(spec.Name, 0); err != nil {
+		return spec, err
+	}
 	err = s.db.Transaction(func(tx *gorm.DB) error {
 		row := SyncGroup{Name: spec.Name, RateLimitKiB: spec.RateLimitKiB}
 		if err := tx.Create(&row).Error; err != nil {
-			return err
+			return syncGroupWriteError(err)
 		}
 		spec.ID = row.ID
 		return writeGroupRequirements(tx, row.ID, spec.Requirements)
@@ -425,25 +418,33 @@ func (s *Store) CreateSyncGroup(spec SyncGroupSpec) (SyncGroupSpec, error) {
 
 // UpdateSyncGroup replaces a group's name, requirements and rate limit.
 func (s *Store) UpdateSyncGroup(id uint, spec SyncGroupSpec) (SyncGroupSpec, error) {
-	err := s.db.Transaction(func(tx *gorm.DB) error {
-		var row SyncGroup
-		if err := tx.First(&row, id).Error; err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return ErrNotFound
-			}
-			return err
+	// Check existence before validation, as other update paths do. This read
+	// completes before the write transaction, avoiding a read-to-write upgrade
+	// when two independent SQLite connections rename groups concurrently.
+	var row SyncGroup
+	if err := s.db.Select("id").First(&row, id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return spec, ErrNotFound
 		}
-		normalized, err := normalizeSyncGroup(spec)
-		if err != nil {
-			return err
+		return spec, err
+	}
+	spec, err := normalizeSyncGroup(spec)
+	if err != nil {
+		return spec, err
+	}
+	if err := s.checkSyncGroupName(spec.Name, id); err != nil {
+		return spec, err
+	}
+	err = s.db.Transaction(func(tx *gorm.DB) error {
+		result := tx.Model(&SyncGroup{}).Where("id = ?", id).Updates(map[string]any{"name": spec.Name, "rate_limit_ki_b": spec.RateLimitKiB})
+		if result.Error != nil {
+			return syncGroupWriteError(result.Error)
 		}
-		spec = normalized
-		row.Name, row.RateLimitKiB = spec.Name, spec.RateLimitKiB
-		if err := tx.Save(&row).Error; err != nil {
-			return err
+		if result.RowsAffected == 0 {
+			return ErrNotFound
 		}
-		spec.ID = row.ID
-		return writeGroupRequirements(tx, row.ID, spec.Requirements)
+		spec.ID = id
+		return writeGroupRequirements(tx, id, spec.Requirements)
 	})
 	if err != nil {
 		return spec, err

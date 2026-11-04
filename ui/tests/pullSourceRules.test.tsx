@@ -128,12 +128,12 @@ test("a refusal from the server is shown at its field and the drawer stays open 
   const drawer = await screen.findByRole("dialog");
   await user.click(within(drawer).getByRole("button", { name: saveName }));
   const field = i18n.t("pull.fields.match", { ns: "settings" });
-  await within(drawer).findByText(i18n.t("pull.invalidField", { ns: "settings", field, detail: "match must not be empty" }));
+  await within(drawer).findByText(i18n.t("pull.invalidField", { ns: "settings", field, detail: i18n.t("pullSettingReason.invalid_value", { ns: "common" }) }));
   assert.equal(fake.rules.length, 3, "nothing was created");
   await user.type(within(drawer).getByLabelText(text.match), "ghcr.io");
   await user.type(within(drawer).getByLabelText(fill(text.endpointN, { n: 1 })), "bad address");
   await user.click(within(drawer).getByRole("button", { name: saveName }));
-  await within(drawer).findByText(/must not contain spaces/);
+  await within(drawer).findByText(i18n.t("pull.invalidField", { ns: "settings", field: i18n.t("pull.fields.endpoints", { ns: "settings" }), detail: i18n.t("pullSettingReason.invalid_value", { ns: "common" }) }));
   assert.ok(screen.getByRole("dialog"), "still open");
 });
 
@@ -173,7 +173,7 @@ test("a refused reorder keeps the list as it was and says why", async () => {
   const { APIError } = await import("../src/apiError.ts");
   fake.failNext("orderPullSourceRules", new APIError("PULL_SETTING_INVALID", { field: "order", detail: "rules changed meanwhile" }, "x", 400));
   await user.click(screen.getByRole("button", { name: fill(text.moveDown, { match: "gpuworks/" }) }));
-  await screen.findByText(i18n.t("pull.invalidField", { ns: "settings", field: i18n.t("pull.fields.order", { ns: "settings" }), detail: "rules changed meanwhile" }));
+  await screen.findByText(i18n.t("pull.invalidField", { ns: "settings", field: i18n.t("pull.fields.order", { ns: "settings" }), detail: i18n.t("pullSettingReason.invalid_value", { ns: "common" }) }));
   assert.ok(rowText(rows()[0]).includes("gpuworks/"));
 });
 
@@ -314,6 +314,6 @@ test("a refused control_plane is shown at its checkbox", async () => {
   await user.click(within(drawer).getByRole("radio", { name: text.kindUrl }));
   await user.type(within(drawer).getByLabelText(text.match), "https://huggingface.co");
   await user.click(within(drawer).getByRole("button", { name: saveName }));
-  await within(drawer).findByText(/control_plane applies to model site rules only/);
+  await within(drawer).findByText(i18n.t("pull.invalidField", { ns: "settings", field: i18n.t("pull.fields.control_plane", { ns: "settings" }), detail: i18n.t("pullSettingReason.invalid_value", { ns: "common" }) }));
   assert.ok(screen.getByRole("dialog"));
 });

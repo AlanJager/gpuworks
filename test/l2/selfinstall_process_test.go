@@ -451,8 +451,8 @@ func readCredentials(t *testing.T, path string) credentialsRecord {
 	if err != nil {
 		t.Fatalf("stat %s: %v", path, err)
 	}
-	if info.Mode().Perm() != 0o664 {
-		t.Fatalf("%s is %v, want 0664 (the server reads it as the service account)", path, info.Mode().Perm())
+	if info.Mode().Perm() != 0o600 {
+		t.Fatalf("%s is %v, want 0600 (the standalone server reads its private credentials)", path, info.Mode().Perm())
 	}
 	var record credentialsRecord
 	if err := json.Unmarshal(readFileAt(t, path), &record); err != nil {

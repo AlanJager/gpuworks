@@ -120,7 +120,7 @@
     "model": {
       "label": "Model",
       "placeholder": "Use the model on each line of the file",
-      "help": "Optional. When set, the body.model of every request in the file is replaced by it; when empty, each line keeps its own model. A sleeping deployment can be chosen too: the gateway wakes it when a request arrives.",
+      "help": "Optional. The default choices can serve or wake automatically. Show waiting models to choose one that is starting or needs recovery; its requests may wait until the batch expires. The chosen model replaces body.model on every line.",
       "state": {
         "running": "running",
         "asleep": "asleep",
@@ -135,7 +135,8 @@
         "offline": "{{model}} runs on nodes that are not connected: the batch's requests are retried until a node returns or the batch expires.",
         "failed": "{{model}}'s deployment failed to start: the batch's requests are retried until someone repairs it or the batch expires.",
         "stopped": "{{model}}'s deployment is stopped: the batch's requests wait until someone starts it or the batch expires."
-      }
+      },
+      "showWaiting": "Show models that need to wait"
     },
     "fileModels": {
       "count": "Models in the file ({{count}}): {{models}}",

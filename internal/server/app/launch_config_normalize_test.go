@@ -50,7 +50,7 @@ func newTestServer(t *testing.T, dir string) (*App, error) {
 	t.Helper()
 	server, err := New(Config{
 		Addr: "127.0.0.1:0", DataDir: dir,
-		DBPath: filepath.Join(dir, "gpuworks.db"), AdminUser: "admin", AdminPassword: "password",
+		DBPath: filepath.Join(dir, "gpuworks.db"), AdminUser: "admin", AdminPassword: "gpuworks-test-password-2026",
 	}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if server != nil {
 		// New starts the proxy's route-table goroutine outside of Run; every

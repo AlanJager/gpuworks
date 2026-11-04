@@ -236,7 +236,7 @@ def test_branding(page, context, browser, server, artifacts, report, locale):
     page.goto(server.base + "/login")
     expect(page.get_by_text("GPUWorks", exact=True).first).to_be_visible()
     page.get_by_role("textbox", name=auth["username"], exact=True).fill("admin")
-    page.get_by_label(auth["password"], exact=True).fill("password")
+    page.get_by_label(auth["password"], exact=True).fill("gpuworks-test-password-2026")
     with page.expect_response(lambda r: urlsplit(r.url).path == "/api/v1/auth/login"
                               and r.request.method == "POST") as logged_in:
         button(page, auth["submit"]).click()

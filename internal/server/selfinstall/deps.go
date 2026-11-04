@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/user"
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/server/distribution"
@@ -35,6 +36,8 @@ type Deps struct {
 	Euid func() int
 	// LookupUser reports whether a local account exists.
 	LookupUser func(name string) bool
+	// LookupGroup resolves the explicit credential group's numeric identity.
+	LookupGroup func(name string) (*user.Group, error)
 	// HasBinary reports whether a command resolves on PATH.
 	HasBinary func(name string) bool
 	// SystemdRunning reports whether systemd is the init system. A host that
@@ -68,6 +71,7 @@ func NewDeps(stderr io.Writer) Deps {
 		StartDetached:  startDetached,
 		Euid:           os.Geteuid,
 		LookupUser:     userExists,
+		LookupGroup:    user.LookupGroup,
 		HasBinary:      hasBinary,
 		SystemdRunning: systemdAvailable,
 		LaunchdRunning: launchdAvailable,

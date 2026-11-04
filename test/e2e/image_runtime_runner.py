@@ -60,7 +60,7 @@ def run(cases, entry_path, extra_sources=(), *, runtime_description=None):
         report["base_url"] = server.base
         report["owned_server_pid"] = server.process.pid
         report["docker"] = fixture.start()
-        status, auth = http(server.base, "POST", "/api/v1/auth/login", body={"username": "admin", "password": "password"})
+        status, auth = http(server.base, "POST", "/api/v1/auth/login", body={"username": "admin", "password": "gpuworks-test-password-2026"})
         check(status == 200 and auth.get("token"), "fixture administrator login failed")
         artifacts.remember(auth["token"])
         node = fixture.start_agent(args.agent_bin, server.base, auth["token"], artifacts.remember)

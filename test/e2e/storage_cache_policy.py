@@ -113,7 +113,7 @@ def login(page, server, artifacts, locale, username='admin'):
     t = locale_strings(locale, 'auth')
     page.goto(server.base + '/dashboard')
     page.get_by_role('textbox', name=t['username'], exact=True).fill(username)
-    page.get_by_label(t['password'], exact=True).fill('password')
+    page.get_by_label(t['password'], exact=True).fill('gpuworks-test-password-2026')
     with page.expect_response(lambda r: urlsplit(r.url).path == '/api/v1/auth/login' and r.request.method == 'POST') as result:
         button(page, t['submit']).click()
     check(result.value.status == 200, 'browser login failed')

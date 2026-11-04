@@ -8,8 +8,8 @@
     "build": "tsc -b && vite build",
     "lint:i18n": "eslint",
     "preview": "vite preview",
-    "test": "tsx --import ./tests/helpers/rtlTimeout.ts --import ./tests/helpers/reactDomOrder.ts --test tests/*.test.ts tests/*.test.tsx",
-    "test:coverage": "c8 --all --include='src/**/*.{ts,tsx}' --exclude='src/**/*.d.ts' --reporter=text --reporter=lcov tsx --import ./tests/helpers/rtlTimeout.ts --import ./tests/helpers/reactDomOrder.ts --test ${TEST_SHARD:+--test-shard=$TEST_SHARD} tests/*.test.ts tests/*.test.tsx"
+    "test": "tsx --import ./tests/helpers/rtlTimeout.ts --import ./tests/helpers/reactDomOrder.ts --test ${UI_TEST_CONCURRENCY:+--test-concurrency=$UI_TEST_CONCURRENCY} tests/*.test.ts tests/*.test.tsx",
+    "test:coverage": "c8 --all --include='src/**/*.{ts,tsx}' --exclude='src/**/*.d.ts' --reporter=text --reporter=lcov tsx --import ./tests/helpers/rtlTimeout.ts --import ./tests/helpers/reactDomOrder.ts --test ${UI_TEST_CONCURRENCY:+--test-concurrency=$UI_TEST_CONCURRENCY} ${TEST_SHARD:+--test-shard=$TEST_SHARD} tests/*.test.ts tests/*.test.tsx"
   },
   "dependencies": {
     "@ant-design/icons": "^5.5.1",

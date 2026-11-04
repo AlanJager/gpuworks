@@ -415,8 +415,23 @@ func TestBatchModelsListAgreesWithLookup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	var wire []map[string]any
+	allJSON, err := json.Marshal(d.Models)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(allJSON, &wire); err != nil {
+		t.Fatal(err)
+	}
+	for _, model := range wire {
+		state := model["state"]
+		wantReady := state == "running" || state == "asleep"
+		if ready, ok := model["ready"].(bool); !ok || ready != wantReady {
+			t.Errorf("model %s readiness = %v, want %v", model["name"], model["ready"], wantReady)
+		}
+	}
 	raw, _ := json.Marshal(d.Models[:2])
-	if wantJSON := `[{"name":"awake","state":"running","endpoints":["/v1/chat/completions","/v1/completions"]},{"name":"embedder","state":"running","endpoints":["/v1/embeddings"]}]`; string(raw) != wantJSON {
+	if wantJSON := `[{"name":"awake","state":"running","ready":true,"endpoints":["/v1/chat/completions","/v1/completions"]},{"name":"embedder","state":"running","ready":true,"endpoints":["/v1/embeddings"]}]`; string(raw) != wantJSON {
 		t.Fatalf("dictionary models = %s", raw)
 	}
 	var states []string

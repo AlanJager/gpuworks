@@ -27,12 +27,9 @@ func (s *serverSettings) installLayout() (selfinstall.Layout, string) {
 	if s.restart == nil {
 		return selfinstall.Layout{}, "no_service_manager"
 	}
-	if s.cfg.ConfigPath == "" {
-		return selfinstall.Layout{}, "not_installed"
-	}
-	layout := selfinstall.NewLayout(filepath.Dir(s.cfg.ConfigPath), s.cfg.DataDir, "")
-	if !sameFile(s.executable(), layout.Binary()) {
-		return selfinstall.Layout{}, "not_installed_binary"
+	layout, reason := configuredInstallLayout(s.cfg, s.executable())
+	if reason != "" {
+		return selfinstall.Layout{}, reason
 	}
 	probe, err := os.CreateTemp(layout.Dir, ".write-probe-*")
 	if err != nil {

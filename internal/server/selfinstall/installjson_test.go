@@ -85,7 +85,7 @@ func (h *harness) assertAdopted(old legacyInstall, console string) {
 		!slices.Equal(cfg.TrustedProxies, []string{"127.0.0.1/32", "::1/128"}) {
 		h.t.Fatalf("server.yaml = %+v", cfg)
 	}
-	want := RenderUnit(UnitConfig{Binary: h.layout.Binary(), ConfigPath: h.layout.ConfigPath(), DataDir: old.DataDir, ServiceUser: DefaultServiceUser})
+	want := RenderUnit(UnitConfig{Binary: h.layout.Binary(), ConfigPath: h.layout.ConfigPath(), DataDir: old.DataDir, ServiceUser: DefaultServiceUser, ServiceGroup: DefaultCredentialGroup})
 	if got := readFile(h.t, h.layout.UnitPath()); got != want {
 		h.t.Fatalf("unit =\n%s\nwant\n%s", got, want)
 	}

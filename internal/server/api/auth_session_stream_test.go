@@ -17,7 +17,7 @@ func TestManagementSessionRevocationClosesSSE(t *testing.T) {
 	for _, external := range []bool{false, true} {
 		t.Run(map[bool]string{false: "shared-bus", true: "independent-process-store"}[external], func(t *testing.T) {
 			st, _, router := newSessionRouter(t)
-			cookie, _ := sessionLogin(t, router, "password")
+			cookie, _ := sessionLogin(t, router, "gpuworks-test-password-2026")
 			server := httptest.NewServer(router)
 			defer server.Close()
 			ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
@@ -54,7 +54,7 @@ func TestManagementSessionRevocationClosesSSE(t *testing.T) {
 				}
 				defer writer.Close()
 			}
-			if err := writer.SetUserPassword("admin", "new-password"); err != nil {
+			if err := writer.SetUserPassword("admin", "gpuworks-new-test-password-2026"); err != nil {
 				t.Fatal(err)
 			}
 			if _, err := io.Copy(io.Discard, reader); err != nil {

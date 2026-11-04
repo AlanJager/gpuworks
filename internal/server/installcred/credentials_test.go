@@ -2,11 +2,12 @@ package installcred
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 )
 
 // TestRoundTrip pins the install → server handoff: the file the installer
-// writes is the file the server reads, 0600 because it holds a clear-text
+// writes is the file the server reads, 0600 for the service account and trusted operator group because it holds a clear-text
 // password.
 func TestRoundTrip(t *testing.T) {
 	dataDir := t.TempDir()
@@ -18,8 +19,8 @@ func TestRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Mode().Perm() != 0o664 {
-		t.Fatalf("credentials mode = %v, want 0664 (the server reads it as the service account)", info.Mode().Perm())
+	if info.Mode().Perm() != 0o600 {
+		t.Fatalf("credentials mode = %v, want 0600 (the server reads it as the service account)", info.Mode().Perm())
 	}
 	creds, err := ReadInitialCredentials(dataDir)
 	if err != nil {
@@ -65,5 +66,49 @@ func TestReadToleratesDamage(t *testing.T) {
 		if _, err := ReadInitialCredentials(dataDir); err == nil {
 			t.Fatalf("%s: read succeeded, want error", name)
 		}
+	}
+}
+
+func TestProtectInitialCredentialsRestrictsLegacyFileAndRejectsSymlink(t *testing.T) {
+	dir := t.TempDir()
+	path := CredentialsPath(dir)
+	if err := WriteInitialCredentials(dir, "admin", "synthetic-fixture-password"); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(path, 0664); err != nil {
+		t.Fatal(err)
+	}
+	if err := ProtectInitialCredentials(dir); err != nil {
+		t.Fatal(err)
+	}
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(before) != string(after) {
+		t.Fatal("legacy credential bytes changed")
+	}
+	info, _ := os.Stat(path)
+	if info.Mode().Perm() != 0600 {
+		t.Fatalf("legacy credential mode=%#o", info.Mode().Perm())
+	}
+	os.Remove(path)
+	target := filepath.Join(dir, "target")
+	if err := os.WriteFile(target, before, 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, path); err != nil {
+		t.Fatal(err)
+	}
+	if err := ProtectInitialCredentials(dir); err == nil {
+		t.Fatal("linked credential file accepted")
+	}
+	info, _ = os.Stat(target)
+	if info.Mode().Perm() != 0644 {
+		t.Fatal("symlink target was changed")
 	}
 }

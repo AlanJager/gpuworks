@@ -142,7 +142,10 @@ func seedScaleFleet(t *testing.T) *scaleFleet {
 	}
 	deps := Deps{Store: rig.st, Bus: rig.st.Bus, AuthSigner: signer, SchedulingActivity: replayActivity{rig.st}.service(), AI: &fakeAI{available: true}, Online: func(uuid string) bool { return !offline[uuid] },
 		WakeHeld: func() map[uint]int { return map[uint]int{deployments[4].ID: 2, deployments[8].ID: 5} }}
-	admin, _ := rig.st.VerifyUser("admin", "password")
+	admin, ok := rig.st.VerifyUser("admin", "gpuworks-test-password-2026")
+	if !ok {
+		t.Fatal("scale fixture admin authentication failed")
+	}
 	session, err := managementSessionTestToken(t, rig.st, signer, auth.Claims{UserID: admin.ID, Username: admin.Username, Role: admin.Role})
 	if err != nil {
 		t.Fatal(err)

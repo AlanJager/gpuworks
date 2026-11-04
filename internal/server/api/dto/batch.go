@@ -135,8 +135,11 @@ const (
 // endpoint naming it is refused. A name several deployments share is as good
 // as the best of them.
 type BatchModel struct {
-	Name      string   `json:"name"`
-	State     string   `json:"state"`
+	Name  string `json:"name"`
+	State string `json:"state"`
+	// Ready is the server's default-choice eligibility: serving or able to
+	// wake on request. False models may still be chosen explicitly to wait.
+	Ready     bool     `json:"ready"`
 	Endpoints []string `json:"endpoints"`
 }
 

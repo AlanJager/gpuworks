@@ -99,6 +99,8 @@ export type BatchModelState = "running" | "asleep" | "starting" | "asleep_held" 
 export interface BatchModel {
   name: string;
   state: BatchModelState | string;
+  /** Server-derived default-choice eligibility, including automatic wake. */
+  ready: boolean;
   /** The batch endpoints the model serves; a batch of another endpoint naming it is refused. */
   endpoints: string[];
 }

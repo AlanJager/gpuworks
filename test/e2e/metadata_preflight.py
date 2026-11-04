@@ -111,7 +111,7 @@ def main():
         require(server.port_lock is not None, 'LocalServer did not retain its port lock')
         report['port_policy'] = {'start': 8800, 'end': 8898, 'step': 2, 'actual': actual_port,
                                  'lock_file': str(server.port_lock.name), 'selection': 'LocalServer sequential lock+bind'}
-        code, login = http(server.base, 'POST', '/api/v1/auth/login', body={'username': 'admin', 'password': 'password'})
+        code, login = http(server.base, 'POST', '/api/v1/auth/login', body={'username': 'admin', 'password': 'gpuworks-test-password-2026'})
         require(code == 200 and isinstance(login.get('token'), str) and login['token'], 'admin login failed')
         token = login['token']
         before = rule_list()

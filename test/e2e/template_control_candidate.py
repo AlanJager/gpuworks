@@ -50,7 +50,7 @@ def run(args):
         report['working_tree'] = subprocess.check_output(['git', 'status', '--porcelain'], cwd=ROOT, text=True)
         report['binary_sha256'] = digest(args.server_bin)
         report['health'] = server.start()
-        code, login = http(server.base, 'POST', '/api/v1/auth/login', body={'username': 'admin', 'password': 'password'})
+        code, login = http(server.base, 'POST', '/api/v1/auth/login', body={'username': 'admin', 'password': 'gpuworks-test-password-2026'})
         require(code == 200 and isinstance(login.get('token'), str) and login['token'], 'fixture login failed')
         token = login['token']
         artifacts.remember(token)

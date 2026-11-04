@@ -26,8 +26,14 @@ func writePullSettingError(w http.ResponseWriter, err error) {
 	var settingErr *store.PullSettingError
 	switch {
 	case errors.As(err, &settingErr):
-		writeProductError(w, http.StatusBadRequest, ErrorPullSettingInvalid, err.Error(),
-			map[string]any{"field": settingErr.Field, "detail": settingErr.Err.Error()})
+		params := map[string]any{"field": settingErr.Field, "detail": settingErr.Err.Error()}
+		if settingErr.Reason != "" {
+			params["reason"] = settingErr.Reason
+		}
+		for key, value := range settingErr.Params {
+			params[key] = value
+		}
+		writeProductError(w, http.StatusBadRequest, ErrorPullSettingInvalid, err.Error(), params)
 	case errors.Is(err, store.ErrNotFound):
 		writeErr(w, http.StatusNotFound, err)
 	default:
@@ -217,9 +223,6 @@ func decodeSyncGroup(w http.ResponseWriter, r *http.Request) (store.SyncGroupSpe
 	}
 	if err := decoder.Decode(new(any)); err != io.EOF {
 		writeJSONBodyError(w, err)
-		return store.SyncGroupSpec{}, false
-	}
-	if !validateName(w, req.Name) {
 		return store.SyncGroupSpec{}, false
 	}
 	return store.SyncGroupSpec{Name: req.Name, Requirements: req.NodeRequirements, RateLimitKiB: req.RateLimitKiBPerSecond}, true

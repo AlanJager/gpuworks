@@ -25,11 +25,11 @@ func imageInspectionTestSession(t *testing.T) (*store.Store, *auth.TokenSigner, 
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
-	_, _, _, err = st.EnsureAdmin("admin", "password")
+	_, _, _, err = st.EnsureAdmin("admin", "gpuworks-test-password-2026")
 	if err != nil {
 		t.Fatal(err)
 	}
-	user, err := st.AuthenticateUser("admin", "password")
+	user, err := st.AuthenticateUser("admin", "gpuworks-test-password-2026")
 	if err != nil {
 		t.Fatal(err)
 	}

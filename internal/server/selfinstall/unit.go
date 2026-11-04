@@ -11,11 +11,12 @@ import (
 // UnitConfig is everything the rendered systemd unit needs. Every setting of
 // the server itself lives in server.yaml; the unit only says where it is.
 type UnitConfig struct {
-	Binary      string
-	ConfigPath  string
-	DataDir     string // for RequiresMountsFor
-	ServiceUser string
-	StderrLog   string // launchd's StandardErrorPath; systemd has the journal
+	Binary       string
+	ConfigPath   string
+	DataDir      string // for RequiresMountsFor
+	ServiceUser  string
+	ServiceGroup string
+	StderrLog    string // launchd's StandardErrorPath; systemd has the journal
 }
 
 // RenderUnit produces the systemd unit for an installed control plane.
@@ -42,6 +43,9 @@ func RenderUnit(cfg UnitConfig) string {
 	b.WriteString("Type=simple\n")
 	if user := strings.TrimSpace(cfg.ServiceUser); user != "" {
 		fmt.Fprintf(&b, "User=%s\n", user)
+	}
+	if group := strings.TrimSpace(cfg.ServiceGroup); group != "" {
+		fmt.Fprintf(&b, "Group=%s\n", group)
 	}
 	fmt.Fprintf(&b, "ExecStart=%s\n", systemdArgs(append([]string{cfg.Binary}, serveArgs(cfg)...)))
 	fmt.Fprintf(&b, "ExecStartPre=/usr/bin/test -x %s\n", systemdQuote(cfg.Binary))

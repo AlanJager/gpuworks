@@ -130,14 +130,14 @@ func TestProcessGatewayRequestTracesReachTheCollector(t *testing.T) {
 	workRoot := t.TempDir()
 	port := freePort(t)
 	base := "http://127.0.0.1:" + port
-	server := serverCommand(t, "password", serverBin, "serve", "--config", loopbackOutboundConfig(t), "--addr", "127.0.0.1:"+port, "--data", workRoot+"/server-data")
+	server := serverCommand(t, fleetAdminPassword, serverBin, "serve", "--config", loopbackOutboundConfig(t), "--addr", "127.0.0.1:"+port, "--data", workRoot+"/server-data")
 	server.Stdout, server.Stderr = fleetProcessLog(t, workRoot, "server.log")
 	if err := server.Start(); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { stopProcess(server) })
 	client := fleetLogin(t, base)
-	token := loginWithPassword(t, base, "password")
+	token := loginWithPassword(t, base, fleetAdminPassword)
 
 	identity, err := client.CreateNode("trace-node")
 	if err != nil {

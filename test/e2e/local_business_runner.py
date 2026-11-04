@@ -169,7 +169,7 @@ def run_case(args, *, contract_id, manifest, test_file, prepare, exercise, clean
             docker_preflight(report, image)
         report['health'] = server.start()
         report['base_url'], report['server_pid'] = server.base, server.process.pid
-        code, login = http(server.base, 'POST', '/api/v1/auth/login', body={'username': 'admin', 'password': 'password'})
+        code, login = http(server.base, 'POST', '/api/v1/auth/login', body={'username': 'admin', 'password': 'gpuworks-test-password-2026'})
         checked(code == 200 and isinstance(login.get('token'), str) and login['token'], 'fixture admin login failed')
         token = login['token']
         artifacts.remember(token)

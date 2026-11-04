@@ -54,7 +54,7 @@ func TestFleet1000NodesRedeployChurnAcrossProcesses(t *testing.T) {
 	}
 	port := freePort(t)
 	base := "http://127.0.0.1:" + port
-	server := serverCommand(t, "password", serverBin, "serve", "--addr", "127.0.0.1:"+port, "--data", dataDir)
+	server := serverCommand(t, fleetAdminPassword, serverBin, "serve", "--addr", "127.0.0.1:"+port, "--data", dataDir)
 	server.Stdout, server.Stderr = fleetProcessLog(t, workRoot, "server.log")
 	if err := server.Start(); err != nil {
 		t.Fatalf("start the control plane: %v", err)
@@ -209,7 +209,7 @@ func fleetLogin(t *testing.T, base string) *fleet.Client {
 	t.Helper()
 	deadline := time.Now().Add(30 * time.Second)
 	for {
-		client, err := fleet.Login(base, "admin", "password")
+		client, err := fleet.Login(base, "admin", fleetAdminPassword)
 		if err == nil {
 			return client
 		}

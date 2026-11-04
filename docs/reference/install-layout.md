@@ -57,21 +57,28 @@
 
 | 对象 | 权限 |
 |---|---|
-| 目录 | `2775`（组可写 + setgid，新文件继承服务组） |
-| 文件 | `0664`（数据库、`master.key`、`server.yaml`、`initial-credentials`、备份包同待遇）；可执行文件不加 setgid |
+| Linux systemd 目录 | `2775`（组可写 + setgid，新文件继承平台组 `gpuworks`） |
+| 普通配置文件（如 `server.yaml`） | Linux 共享安装为 `0664`；macOS 移除组写权限 |
+| 数据库、`master.key`、`initial-credentials`、备份包 | 默认 `0600`；明确授权的 Linux 平台组使用 `0660` |
 | 二进制 | `0755` |
-| `data/install-history.jsonl` | `0600` |
+| `data/install-history.jsonl` | `0600`（独立运行）或 `0660`（可信 Linux 服务组） |
 | systemd 单元 / launchd plist | `0644`（plist 归 `root:wheel`，launchd 要求） |
 
 - install 以**操作员身份**运行，只有少数步骤以单独的 `sudo` 命令执行：首次创建 `/opt` 目录、建服务账户、写 systemd 单元、`systemctl`，以及收尾时把树交给服务组。`sudo` 在第一次特权命令时问一次密码，之后凭据缓存期内（通常 15 分钟，取决于主机 sudoers 配置）免问。
 - 首次安装时树内的写入（二进制、配置、凭证）还无法直接落盘，会自动走 `sudo` 兜底，收尾统一 chown；之后的安装和升级都直接写入。
-- systemd 模式下操作员会被加入服务账户所在的组（默认 `gpuworks`），因此之后 `reset-password` 不需要 `sudo`，`upgrade` 的备份与替换二进制也不需要；`upgrade` 仍会用 `sudo` 执行 `systemctl` 以及收尾的 `chown`/`chmod`。新组在**当前终端**不生效，需要 `newgrp gpuworks` 或重新登录。
+- systemd 模式下操作员会被加入平台保留组 `gpuworks`，因此之后 `reset-password` 不需要 `sudo`，`upgrade` 的备份与替换二进制也不需要；`upgrade` 仍会用 `sudo` 执行 `systemctl` 以及收尾的 `chown`/`chmod`。新组在**当前终端**不生效，需要 `newgrp gpuworks` 或重新登录。
 - nohup 模式没有特权步骤：进程以调用者身份运行、目录归调用者，唯一例外是首次创建 `/opt` 目录。nohup 进程归安装者——root 装的只有 root 能用 `gpuworks restart --dir <安装目录>` 重启。
 - 预检要求：root 或可用的 `sudo`（否则降级为 nohup 并告警；`sudo` 也没有且 `--dir` 不可写时拒绝安装，提示改用用户级目录）、目标端口未被别的进程占用（被当前安装占用除外）、安装目录所在文件系统至少 2 GiB 空闲。
 
+敏感文件默认仅所有者可读写（`0600`）。明确绑定本安装二进制和非 root 服务账户的 Linux systemd 安装可使用可信服务组（`0660`）；该组成员等价于拥有平台凭据访问权。macOS 与独立运行默认不向普通用户组授权。启动、安装和升级会收紧存量凭据、数据库及其 sidecar、已识别备份；临时数据库快照仅所有者可读。无法保护文件时拒绝继续，按错误路径修复所有者与服务组后重试。生成口令不写入服务日志。
+
+授权组固定为平台保留组 `gpuworks`，不跟随自定义服务账户的普通主组；systemd 单元显式写入 `Group=gpuworks`，文件实际 GID 必须与该组匹配。旧默认服务安装可保留已有 `gpuworks` 运维组授权；其他未知安装按仅所有者策略处理。回滚到未包含此修复的旧版本后，旧代码可能再次放宽文件权限，应重新升级修复版本。 预检发现旧文件需要收紧、但当前操作员没有所有者权限时，会在停服前拒绝安装或升级；以文件所有者或 root 重试。提权写入仅用于经过校验的可信目录，目录校验失败时也应以所有者或 root 运行完整命令。
+
+Linux 的组授权会先清理敏感文件上的 POSIX 扩展 ACL。为避免额外授权通过文件替换或 sidecar 继承生效，共享数据库目录、提权写入的可信目录，以及安装收尾将授予组权限的敏感目录链，不接受扩展或默认 POSIX ACL；若错误指出 ACL，应先检查并清理不必要的 ACL，再重试。
+
 ## 凭证文件
 
-单元文件是全局可读的，所以初始密码**不会**写进单元文件，而是走 `<data>/initial-credentials`（JSON，`0664`，明文）：
+单元文件是全局可读的，所以初始密码**不会**写进单元文件，而是走 `<data>/initial-credentials`（JSON，`0600` / `0660`，明文）：
 
 ```json
 {"user": "admin", "password": "...", "created_at": "2026-09-10T09:00:00Z"}

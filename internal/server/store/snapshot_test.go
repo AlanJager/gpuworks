@@ -1,6 +1,7 @@
 package store
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -21,6 +22,9 @@ func TestSnapshotToCopiesTheLiveDatabase(t *testing.T) {
 	dest := filepath.Join(dir, "snapshot.db")
 	if err := st.SnapshotTo(dest); err != nil {
 		t.Fatal(err)
+	}
+	if info, err := os.Stat(dest); err != nil || info.Mode().Perm() != 0600 {
+		t.Fatalf("snapshot mode before opening: %v/%v", info, err)
 	}
 	copyStore, err := Open(dest, bus.New())
 	if err != nil {

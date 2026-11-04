@@ -185,6 +185,9 @@ func (i *Installer) runUpgrade(ctx context.Context, req UpgradeRequest, inst ins
 	if err := i.checkSnapshotMembers(); err != nil {
 		return fmt.Errorf("%w; nothing was changed", err)
 	}
+	if err := i.preflightSensitiveFiles(ctx); err != nil {
+		return err
+	}
 	if inst.FromInstallJSON {
 		if err := i.adoptInstallJSON(ctx, inst, svc); err != nil {
 			return err

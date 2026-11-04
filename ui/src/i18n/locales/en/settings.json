@@ -217,8 +217,8 @@
       "unlimited": "Unlimited",
       "newTitle": "New sync group",
       "editTitle": "Edit sync group",
-      "deleteGroup": "Delete sync group {{name}}",
-      "deleteConfirm": "Delete sync group “{{name}}”?",
+      "deleteGroup": "Delete sync group {{name}} (#{{id}})",
+      "deleteConfirm": "Delete sync group “{{name}}” (#{{id}})?",
       "deleteConfirmBody": "Nodes that are only in this group stop copying from other nodes automatically and pull from registries instead; nodes that are also in other groups keep copying within those. To have every node copy from every other again, create a group with no node conditions.",
       "deleted": "Sync group deleted",
       "saved": "Sync group saved"

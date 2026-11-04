@@ -2,7 +2,6 @@ package store
 
 import (
 	"crypto/sha256"
-	"errors"
 	"strconv"
 	"time"
 
@@ -22,7 +21,14 @@ func (s *Store) EnsureAdmin(username, password string) (string, string, bool, er
 		return username, "", false, nil
 	}
 	if password == "" {
-		password = auth.NewToken(9)
+		var err error
+		password, err = auth.NewPassword()
+		if err != nil {
+			return "", "", false, err
+		}
+	}
+	if err := auth.ValidatePassword(password); err != nil {
+		return "", "", false, err
 	}
 	hash, err := auth.HashPassword(password)
 	if err != nil {
@@ -55,8 +61,8 @@ func (s *Store) AuthenticateUser(username, password string) (*User, error) {
 
 // SetUserPassword replaces a user's password hash.
 func (s *Store) SetUserPassword(username, password string) error {
-	if password == "" {
-		return errors.New("password must not be empty")
+	if err := auth.ValidatePassword(password); err != nil {
+		return err
 	}
 	hash, err := auth.HashPassword(password)
 	if err != nil {

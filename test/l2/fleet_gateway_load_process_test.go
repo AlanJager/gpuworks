@@ -78,7 +78,7 @@ func TestFleetGatewayLoadAcrossProcesses(t *testing.T) {
 	if os.Getenv("GPUWORKS_GATEWAY_TRACE_EXPORT") == "1" {
 		serverArgs = append(serverArgs, "--config", loopbackOutboundConfig(t))
 	}
-	server := serverCommand(t, "password", serverBin, serverArgs...)
+	server := serverCommand(t, fleetAdminPassword, serverBin, serverArgs...)
 	server.Stdout, server.Stderr = fleetProcessLog(t, workRoot, "server.log")
 	if err := server.Start(); err != nil {
 		t.Fatalf("start the control plane: %v", err)
@@ -163,7 +163,7 @@ func TestFleetGatewayLoadAcrossProcesses(t *testing.T) {
 	var traces *otlpCollector
 	if os.Getenv("GPUWORKS_GATEWAY_TRACE_EXPORT") == "1" {
 		traces = newOTLPCollector(t)
-		token := loginWithPassword(t, base, "password")
+		token := loginWithPassword(t, base, fleetAdminPassword)
 		resp, data := authedDo(t, http.MethodPut, base, token, "/api/v1/telemetry/export",
 			[]byte(fmt.Sprintf(`{"enabled":true,"endpoint":%q,"sample_ratio":1}`, traces.server.URL)))
 		if resp.StatusCode != http.StatusOK {
