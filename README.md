@@ -20,7 +20,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/assets/screenshots/readme/tour.gif" alt="GPUWorks tour: a 1,003-machine Alibaba Cloud drill, production monitoring, usage analytics, scheduling, PD disaggregation, network tests, GPU health checks with the AI assistant, logs" width="900">
+  <img src="docs/assets/screenshots/readme/tour.gif" alt="GPUWorks tour: production monitoring, usage analytics, scheduling, PD disaggregation, network tests, GPU health checks with the AI assistant" width="900">
 </p>
 
 GPUWorks is an ultra-lightweight GPU management and Model-as-a-Service (MaaS) platform. The whole control plane, web
