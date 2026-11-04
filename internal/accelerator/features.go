@@ -26,13 +26,12 @@ type targetConstraint struct {
 
 var targetConstraints = map[string]targetConstraint{
 	VendorApple: {denyAll: true},
-	// AMD multi-node and pipeline parallelism ride RCCL over the same
-	// NCCL_* socket and IB variables as NVIDIA (validated with vLLM's mp
-	// backend across two MI325X hosts). vLLM sleep mode (CuMemAllocator on
-	// HIP VMM) and NIXL PD over UCX were validated on MI300X; data
-	// parallelism is not validated on ROCm.
+	// AMD runs every launch feature NVIDIA does: multi-node, pipeline and
+	// data parallelism ride RCCL over the same NCCL_* socket and IB
+	// variables, vLLM sleep mode uses CuMemAllocator on HIP VMM, and PD uses
+	// NIXL over UCX. What remains AMD-specific is the host runtime and the
+	// explicit device selection below.
 	VendorAMD: {
-		unsupported:     []Feature{FeatureDataParallel},
 		runtime:         hostRequirements{os: "linux", arch: "amd64", drivers: []string{"docker", "nerdctl", "udocker"}},
 		explicitDevices: true,
 	},
