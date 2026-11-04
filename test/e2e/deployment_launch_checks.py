@@ -25,7 +25,7 @@ from playwright.sync_api import expect
 from local_browser_fixture import ROOT
 from platform_token_read_revoke import button, check
 
-FAMILIES = ('all', 'quick-expert', 'manual-roundtrip', 'launch-contract', 'manual-editor', 'boolean-tristate', 'boolean-inventory', 'numeric-inventory', 'boolean-rejection')
+FAMILIES = ('all', 'quick-expert', 'manual-roundtrip', 'launch-contract', 'manual-editor', 'boolean-tristate', 'boolean-inventory', 'numeric-inventory', 'boolean-rejection', 'param-inventory')
 SOURCE_FILES = ('deployment_numeric_contract.py', 'deployment_numeric_checks.py', 'deployment_editor_checks.py', 'deployment_launch_checks.py', 'deployment_batch_checks.py',
     'deployment_selector_checks.py', 'deployment_wizard_create.py', 'deployment_wizard_fixture.py',
     'deployment_override_create.py', 'deployment_override_fixture.py', 'deployment_acquisition.py',
@@ -33,7 +33,7 @@ SOURCE_FILES = ('deployment_numeric_contract.py', 'deployment_numeric_checks.py'
     'deployment_acquisition_oracles.py', 'deployment_boolean_checks.py',
     'deployment_boolean_contracts.py', 'deployment_boolean_inventory.py',
     'deployment_boolean_inventory_contracts.py', 'deployment_boolean_inventory_probe.py',
-    'deployment_boolean_rejection_checks.py')
+    'deployment_boolean_rejection_checks.py', 'deployment_param_checks.py')
 
 
 def enabled(report, family):
@@ -312,6 +312,9 @@ def draft_checks(page, labels, body, report, token=None):
     if enabled(report, 'numeric-inventory'):
         from deployment_numeric_checks import inventory
         inventory(page, labels, body, report, mode, evaluation, same)
+    if enabled(report, 'param-inventory'):
+        import deployment_param_checks
+        deployment_param_checks.exercise(page, labels, body, report)
     boolean_inventory.exercise(page, labels, body, report, token)
     boolean_checks.exercise(page, labels, body, report)
     quick_expert(page, labels, body, report)

@@ -271,7 +271,7 @@
   "missing": [
     "Real GPU inference, GPU memory release, dGPU quota and vendor driver behavior",
     "Remote weight/image download, peer copy, storage and provider choices, acquisition candidate expiry",
-    "All engine dictionary parameter options, numeric boundaries and numerical estimates remain MISSING; mode preservation and complete evaluated/instance/runtime launch consistency are checked for this one-rank contract",
+    "Numeric boundaries are measured for two documented integer/number keys on the vLLM surface only; the remaining bounds, engine-version-specific option sets other than kv_disk_min_kernel, and sglang's own UI driving stay outside this contract, as do numerical estimates and mode preservation beyond the one-rank launch this case creates",
     "Auto placement, multihost, PD, replica scaling and execution failure/cancellation",
     "Non-admin permissions, authentication expiry and reconnect",
     "Full keyboard/focus/layout and 10/30/100 candidate/list matrices",
@@ -688,8 +688,8 @@
     },
     {
       "item": "14.4",
-      "status": "MISSING",
-      "assertion": "Not fully exercised: 按 server `/engines` 字典逐项验证参数类型、枚举、边界、版本可见性，不只覆盖硬编码 vLLM 子集。"
+      "status": "covered",
+      "assertion": "The Expert draft is driven key by key from the server's own GET /api/v1/engines payload, 24 published non-boolean param specs in all: the 11 integer/number specs render an InputNumber whose aria-valuemin, aria-valuemax and step equal the dictionary bounds and whose placeholder is the dictionary text, the 7 enum specs render a Select or Segmented whose option set and order equal the dictionary options, the 1 json spec renders a text area, the 2 comboboxes render an AutoComplete, the 2 plain strings render an input, and the slider renders a Slider carrying the dictionary min and max; every one is asserted to sit in a form row labelled with the dictionary's localized label. Beyond shape, 2 non-default enum picks are followed through the real evaluate request body into the server's form_values, effective_params and the rendered engine argv, and 2 out-of-range typed values are measured settling on the dictionary bound before the request and reaching the server as that bound, read back independently of the DOM. The 10 published keys this draft shape cannot reach are recorded with the condition that hides each: 4 multimodal_only under a text-only fixture model, 5 tier companions while offload is off, and data_parallel_size, which has no renderer on any surface. kv_disk_min_kernel is published by vLLM alone. Driving is vLLM-only because the editor locks the engine field, so sglang is covered by dictionary equality and the release-publication readback rather than by UI driving."
     },
     {
       "item": "14.5",
