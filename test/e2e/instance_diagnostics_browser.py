@@ -12,7 +12,7 @@ from urllib.parse import parse_qs, urlsplit
 from playwright.sync_api import expect
 from dialog_checks import (
     assert_dialog_shell, assert_nested_dismissals, cancel_button, close_button, escape, mask)
-from local_browser_fixture import ROOT
+from local_browser_fixture import ROOT, http
 from platform_token_read_revoke import button, check
 import instance_diagnostics_fixture as fixture
 
@@ -136,6 +136,148 @@ def prove_force_delete(page, server, name, dep_id, text, report):
     report["evidence"].append({"layer": "request", "method": "DELETE", "path": path,
         "query": "force=true", "status": 200})
     report["evidence"].append({"layer": "persistence", "independent_get": path, "status": 404})
+
+
+def make_cleanup_deployment(page, server, token, data):
+    """A second deployment, so 12.7's cleanup half does not consume the one the force path needs.
+
+    It shares the model, node and image of the diagnostic fixture and is created over the API
+    because it is a fixture rather than something this case is proving. It is deliberately left
+    to start for real, because the delete has to be shown to release a live instance rather than
+    a row that never had one; the caller waits for that instance before deleting.
+    """
+    body = {"model_id": data["model"]["id"], "node_uuid": data["node"]["uuid"],
+            "name": f"e2e-{data['deployment']['name']}-cleanup",
+            "served_name": f"cleanup-{data['deployment']['served_name']}"[:60],
+            "engine": data["deployment"].get("engine") or "vllm",
+            "image": data["deployment"]["image"],
+            "placement_mode": "manual", "health_check": False,
+            "container_overrides": {"command_mode": "engine",
+                                    "env": dict(data["deployment"].get("env") or {})}}
+    status, created = http(server.base, "POST", "/api/v1/deployments", token=token, body=body)
+    check(status in (200, 201), f"cleanup fixture deployment HTTP {status}: {created}")
+    ident = created.get("id") if isinstance(created, dict) else None
+    check(isinstance(ident, int) and ident != data["deployment"]["id"],
+          'the cleanup fixture did not get its own deployment id')
+    return {"name": body["name"], "id": ident}
+
+
+def prove_allowed_cleanup(page, server, name, dep_id, text, report):
+    """12.7 item 4, the allowed-cleanup half: a normal delete really does remove the deployment.
+
+    The case has already stopped the deployment, which retires its instance rows, so the
+    instance side of the impact is captured before the delete rather than read afterwards -
+    a deployment that answers 404 can no longer report what it used to run. What the delete
+    itself must then establish is: the product answers 202 with the deleting status rather
+    than claiming the row is gone, the row is really gone on an independent GET, the reloaded
+    list no longer shows it, and the collection's own total drops by exactly one.
+    """
+    path = "/api/v1/deployments/" + str(dep_id)
+
+    def deploys():
+        answer = page.request.get(server.base + "/api/v1/deployments?page=1&page_size=200")
+        check(answer.status == 200, f"deployment list HTTP {answer.status}")
+        body = answer.json()
+        return body.get("total"), [row["id"] for row in body.get("items") or []]
+
+    def instances():
+        answer = page.request.get(server.base + "/api/v1/instances")
+        check(answer.status == 200, f"instance list HTTP {answer.status}")
+        body = answer.json()
+        rows = body.get("items") if isinstance(body, dict) else body
+        return [row for row in (rows or []) if row.get("deployment_id") == dep_id]
+
+    total_before, ids_before = deploys()
+    # The deployment under test is required to have really been running something, otherwise the
+    # instance half of "allowed cleanup" would compare zero with zero and establish nothing.
+    deadline = time.monotonic() + 120
+    instances_before = instances()
+    while not instances_before and time.monotonic() < deadline:
+        page.wait_for_timeout(500)
+        instances_before = instances()
+    check(len(instances_before) >= 1,
+          'the cleanup fixture never got an instance, so its removal proves nothing about '
+          'instance cleanup')
+    container_before = instances_before[0].get('container_id')
+    check(dep_id in ids_before, 'the deployment under test is not listed before the delete')
+
+    # Open the drawer and take the ordinary (not force) delete.
+    page.goto(server.base + "/deployments")
+    row = page.get_by_role("row").filter(has_text=name)
+    expect(row).to_have_count(1)
+    row.get_by_role("button", name=name, exact=True).click()
+    drawer = page.get_by_role("dialog", name=name, exact=True)
+    expect(drawer).to_be_visible()
+    delete = text["delete"]
+    drawer.get_by_role("button", name=re.compile(re.escape(delete["button"]) + "$")).click()
+    dialog = page.get_by_role("dialog", name=delete["title"].replace("{{name}}", name), exact=True)
+    expect(dialog).to_be_visible()
+    # The force box stays unchecked: this is the normal path, the one the confirmation copy
+    # describes.
+    expect(dialog.get_by_role("checkbox", name=delete["force"], exact=True)).not_to_be_checked()
+    with page.expect_response(lambda r: urlsplit(r.url).path == path
+                              and r.request.method == "DELETE") as deleted:
+        button(dialog, delete["button"]).click()
+    accepted = deleted.value
+    check(accepted.status == 202,
+          f"normal delete answered {accepted.status}, expected the asynchronous 202")
+    check(accepted.json() == {"status": "deleting"}, 'normal delete envelope differs')
+    check(urlsplit(accepted.url).query == "", 'normal delete carried a force query')
+
+    # The deployment leaves the readable surface and the list; the total drops by exactly one.
+    deadline = time.monotonic() + 90
+    status_after = None
+    while time.monotonic() < deadline:
+        status_after = page.request.get(server.base + path).status
+        if status_after == 404:
+            break
+        page.wait_for_timeout(500)
+    check(status_after == 404, f'deleted deployment still answers {status_after}')
+
+    total_after, ids_after = deploys()
+    check(dep_id not in ids_after, 'the deleted deployment is still listed')
+    check(total_after == total_before - 1,
+          f'the deployment count went {total_before} -> {total_after}, expected exactly one fewer')
+
+    instances_after = instances()
+    check(instances_after == [],
+          f'instances survived the deployment delete: {[(i.get("uuid"), i.get("state")) for i in instances_after]}')
+
+    # The row going away is not the same as the thing it controlled being torn down. The copy
+    # promises that a normal delete stops the instances first, so the container this deployment
+    # was running is followed to absent.
+    from deployment_container_fixture import docker_running
+    container_after = 'unknown'
+    if container_before:
+        deadline = time.monotonic() + 120
+        while time.monotonic() < deadline:
+            container_after = docker_running(container_before)
+            if container_after == 'absent':
+                break
+            page.wait_for_timeout(500)
+        check(container_after == 'absent',
+              f'the deleted deployment left its container behind: {container_after}')
+
+    page.reload()
+    expect(page.get_by_role("heading", name=text["page"]["title"], exact=True)).to_be_visible()
+    expect(page.get_by_role("row").filter(has_text=name)).to_have_count(0)
+
+    report["evidence"].append({'layer': 'request', 'allowed_cleanup': {
+        'delete_status': accepted.status,
+        'delete_envelope': accepted.json(),
+        'detail_after': status_after,
+        'row_absent_from_list': dep_id not in ids_after,
+        'list_total_before': total_before,
+        'list_total_after': total_after,
+        'list_total_delta': total_after - total_before,
+        'instances_before_delete': len(instances_before),
+        'instances_after': len(instances_after),
+        'container_id_before': container_before,
+        'container_after': container_after,
+        'force_unchecked': True,
+    }})
+    report["evidence"].append({'layer': 'persistence', 'independent_get_after_cleanup': path,
+                               'status': status_after})
 
 
 def exercise_delete_dialog(page, drawer, server, data, text, report):
@@ -765,6 +907,12 @@ def test_instance_diagnostics(page, context, server, artifacts, report, locale, 
     check([x for x in recent.value.json()["items"] if x["line"] == line] == [hit],
           "stopped log center reload lost or changed the stored marker")
     expect(page.get_by_test_id("log-row").filter(has_text=line)).to_have_count(1)
+    # 12.7 item 4 needs a deployment that is still there, and a normal delete removes it, so this
+    # runs before the force path below. The deployment it removes is a second one made for this
+    # purpose; the force delete that follows keeps its own evidence intact.
+    report["step"] = "allowed cleanup after the diagnostic"
+    cleanup_dep = make_cleanup_deployment(page, server, token, data)
+    prove_allowed_cleanup(page, server, cleanup_dep["name"], cleanup_dep["id"], text, report)
     report["step"] = "force delete after the diagnostic"
     prove_force_delete(page, server, data["name"], data["deployment"]["id"], text, report)
     check(errors == [], "diagnostics page JS errors: " + str(errors))
