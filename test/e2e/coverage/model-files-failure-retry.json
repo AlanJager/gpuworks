@@ -440,7 +440,7 @@
     {
       "item": "16.3",
       "status": "partial",
-      "assertion": "partial: final progress and terminal state are asserted once the transfer completes, but the moving states are never asserted - pinning the progress bar to 100 in every state still passes this case, so the intermediate numeric matrix is missing."
+      "assertion": "partial: the terminal progress and terminal state are asserted once the transfer completes, but this case reads no moving state, so a bar pinned to 100 in every state still passes it and the numeric values between the start and the end are not exercised here. The in-flight reading is established in the download-delete and interrupted-recovery cases, which hold a transfer at the source barrier and compare the rendered bar against the reported bytes."
     },
     {
       "item": "16.4",
@@ -449,8 +449,8 @@
     },
     {
       "item": "16.5",
-      "status": "N/A",
-      "assertion": "Public download has no in-flight cancel control; modal Cancel closes only before submit. Peer-sync cancel is a separate contract."
+      "status": "partial",
+      "assertion": "The second clause is proven here: the pre-submit Download to dialog is reopened and Cancel, Escape, close cross and mask are each taken with zero POST /download requests and no file row created, so closing the dialog is a dialog dismissal and not a task cancellation. The first clause is not proven here. The row's in-flight Cancel download control is a real product path - ui/src/pages/models/ModelFilesSection.tsx renders it for a row whose acquisition is download and whose transfer is still running, it confirms through the presenceAction.cancelDownloadConfirm popconfirm, and it posts /api/v1/models/{id}/download/cancel which internal/server/store/model_download_cancel.go answers by moving the row to canceled while keeping the already-downloaded bytes for a retry - and no run in this manifest cancels a live transfer, so post-cancel termination of the task and its temporary resources is asserted by nothing here."
     },
     {
       "item": "16.6",

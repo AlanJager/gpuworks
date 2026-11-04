@@ -10,10 +10,11 @@ import re
 import sqlite3
 import time
 from pathlib import Path
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, quote, urlsplit
 
 from playwright.sync_api import expect
 from model_detail_dialog import model_detail_dialog
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from local_browser_fixture import ROOT, http
 from local_business_runner import checked, unattributed_console_errors
 from dialog_checks import assert_dialog_shell, assert_nested_dismissals, cancel_button, close_button, escape, mask
@@ -467,8 +468,21 @@ def mutation(page, report, action, method, path, body, status, query=None):
 
 def open_detail(page, server, labels, data):
     name = data['name']
-    page.get_by_role('button', name=name, exact=True).click()
-    dialog = model_detail_dialog(page, labels, name)
+    # A running transfer makes the page refresh on its own events, and AntD lays a
+    # spin over the table while a fetch is in flight. The operator waits that out and
+    # clicks the row when it is clickable, so the click is retried until the overlay
+    # is gone instead of racing it once.
+    trigger = page.get_by_role('button', name=name, exact=True)
+    deadline = time.monotonic() + 60
+    while True:
+        try:
+            trigger.click(timeout=5000)
+            break
+        except PlaywrightTimeoutError:
+            if time.monotonic() > deadline:
+                raise
+            page.wait_for_timeout(100)
+    dialog = page.get_by_role('dialog', name=name, exact=True)
     expect(dialog.locator('#model-files')).to_be_visible()
     return dialog
 
@@ -647,19 +661,227 @@ def finish(page, artifacts, report, data, source):
     report['last_step'] = 'exact UI/request/disk/wire facts and refresh passed'
 
 
-# Mainline: download two owned same-node/storage-distinct replicas; cancel delete,
-# delete only target; guard bytes and model metadata survive.
+def exercise_duplicate_import(page, labels, data, report, server, token):
+    """16.2: import the same repository identity twice through the real register dialog.
+
+    The first attempt is the fixture's already registered row, so the second attempt is a
+    genuine repeat import of the same source_id. What the second attempt actually answers is
+    recorded rather than assumed: this product resolves the existing identity and updates it,
+    so the assertion is that both attempts answer 201 for the same resource id, and that an
+    independent collection read still finds exactly one model.
+    """
+    hub = data['hub']
+    title = labels['action']['register']
+    body = {'source_url': hub.url, 'source_id': data['source_id'], 'name': data['name']}
+    report['step'] = 'repeat the same directory import through the real register dialog'
+
+    # The toolbar button carries a plus icon, so its accessible name is not the bare label; the
+    # visible label is what the operator clicks, whether or not the list already has a row.
+    trigger = page.get_by_role('button').filter(has_text=re.compile('^' + re.escape(title) + '$')).first
+
+    def import_once(attempt):
+        trigger.click()
+        dialog = page.get_by_role('dialog', name=title, exact=True)
+        expect(dialog).to_be_visible()
+        source = dialog.get_by_label(labels['column']['source'], exact=True)
+        source.click()
+        page.get_by_text(labels['source']['url'], exact=True).click()
+        expect(dialog).to_have_css('width', '720px', timeout=12000)
+        url = dialog.get_by_label(labels['register']['directoryURL'], exact=True)
+        url.fill(hub.url + '/')
+        with page.expect_response(lambda r: urlsplit(r.url).path == MODELS + '/preview-url'
+                                  and r.request.method == 'POST') as previewed:
+            button(dialog, labels['register']['parseDirectory']).click()
+        preview = previewed.value
+        checked(preview.status == 200, f'import attempt {attempt} preview HTTP {preview.status}')
+        strict(preview.request.post_data_json, {'url': hub.url + '/'},
+               f'import attempt {attempt} preview body')
+        expect(dialog.get_by_text(labels['register']['urlParsed'], exact=True)).to_be_visible()
+        # The parse normalizes the typed value, so the confirmed URL is the one that gets registered.
+        expect(url).to_have_value(hub.url)
+        # The preview fills its own identity. Re-importing the same repository means putting back
+        # the identity the registered row already carries, which is what an operator repeating an
+        # import submits; taking the preview defaults would import a different source_id instead.
+        dialog.get_by_label(labels['column']['name'], exact=True).fill(data['name'])
+        dialog.get_by_label(labels['register']['modelID'], exact=True).fill(data['source_id'])
+        confirm = dialog.get_by_role('button').filter(
+            has_text=re.compile('^' + re.escape(labels['register']['confirm']) + '$'))
+        expect(confirm).to_be_enabled()
+        with page.expect_response(lambda r: urlsplit(r.url).path == MODELS + '/register-url'
+                                  and r.request.method == 'POST') as registered:
+            confirm.click()
+        response = registered.value
+        expect(dialog).not_to_be_visible()
+        checked(response.status == 201, f'import attempt {attempt} register HTTP {response.status}; {response.text()}')
+        strict(response.request.post_data_json, body, f'import attempt {attempt} register body')
+        strict(parse_qs(urlsplit(response.url).query), {}, f'import attempt {attempt} register query')
+        observed = response.json()
+        return {'attempt': attempt, 'status': response.status, 'body': body,
+                'id': observed['id'], 'source': observed['source'],
+                'source_id': observed['source_id'], 'source_url': observed['source_url'],
+                'name': observed['name'], 'created_at': observed['created_at']}
+
+    first = import_once(1)
+    checked(first['id'] == data['model']['id'], 'the browser import did not address the registered row')
+    after_first = len(hub.audit())
+    second = import_once(2)
+    reread = hub.audit()[after_first:]
+    checked(any(record['method'] in ('GET', 'HEAD') and record['status'] == 200
+                and record['target'] == hub.root + '/config.json' for record in reread),
+            'the repeat import did not re-read the repository directory')
+    # The contract for this product: the repeat answers the same resource, so every identity field
+    # and the creation time are unchanged. A 201 alone is not treated as proof of idempotency.
+    strict(second, {**first, 'attempt': 2}, 'the repeat import answered a different resource')
+    code, listed = http(server.base, 'GET', MODELS + '?source_id=' + quote(data['source_id'], safe=''), token)
+    checked(code == 200, f'owned model filter HTTP {code}')
+    strict(listed['total'], 1, 'the repeat import produced a second resource')
+    strict([item['id'] for item in listed['items']], [data['model']['id']],
+           'the repeat import listed a different model id')
+    code, every = http(server.base, 'GET', MODELS, token)
+    checked(code == 200, f'independent model collection HTTP {code}')
+    strict([item['id'] for item in every['items'] if item['source_id'] == data['source_id']],
+           [data['model']['id']], 'the collection holds one row for the imported identity')
+    # The list is the product's answer; the stored rows are the authority behind it.
+    conn = _files_db(server)
+    try:
+        rows = conn.execute('SELECT COUNT(*) FROM models WHERE lower(source_id) = lower(?)',
+                            (data['source_id'],)).fetchone()[0]
+    finally:
+        conn.close()
+    strict(rows, 1, 'the repeat import stored a second model row')
+    expect(page.get_by_role('row').filter(
+        has=page.get_by_role('button', name=data['name'], exact=True))).to_have_count(1)
+    report['duplicate_import'] = {'attempts': [first, second], 'same_id': first['id'] == second['id'],
+        'second_status': second['status'], 'directory_reread': True, 'filtered_total': listed['total'],
+        'stored_rows': rows}
+    report.setdefault('evidence', []).append({'layer': 'ui', 'register_dialog': title,
+        'duplicate_entries': 2, 'second_attempt_status': second['status'],
+        'second_attempt_id': second['id']})
+    return report['duplicate_import']
+
+
+# Mainline: the same directory is imported twice, then a real source503 fails the row and the
+# same row's public Retry recovers it; two owned replicas download, cancel-delete is refused,
+# only the target is deleted, and the guard bytes plus model metadata survive.
 def exercise_download_delete(page, context, server, artifacts, report, locale, data, token, holder):
     labels = begin(page, context, server, artifacts, report, locale, data)
-    start = len(data['hub'].audit())
-    for index, storage in enumerate(data['storages']):
-        download(page, labels, data, storage, report, server=server, token=token,
-                 refuse=index == 0, shell=index == 0)
-        assert_ready(page, server, token, labels, data, storage, report)
-        close_detail(page, labels, data)
+    hub, target, guard = data['hub'], data['storages'][0], data['storages'][1]
+    exercise_duplicate_import(page, labels, data, report, server, token)
+    # 16.4, server-failure half: the repository refuses the weight with a real 503, the row has to
+    # reach the failed state carrying the exact cause, and the same row's public Retry has to
+    # finish the transfer as the one resource it already was.
+    hub.set_weight_failure(True)
+    start = len(hub.audit())
+    download(page, labels, data, target, report, server=server, token=token)
+    failed = wait_state(page, server, token, data, target, 'failed', report)
+    checked(failed['acquisition'] == 'download' and failed['path'] == target['payload_path'],
+            'failed row lost download identity')
+    host = urlsplit(hub.base).netloc
+    expected_error = (f'download model.safetensors: {host} failed: {hub.url}/model.safetensors: '
+                      'download: unexpected probe status 503')
+    strict(failed.get('message'), expected_error, 'exact external503 failure cause')
+    checked(any(record['status'] == 503 and record['target'] == hub.root + '/model.safetensors'
+                for record in hub.audit()[start:]), 'no actual weight503 observed')
+    checked(not Path(target['payload_path'], 'model.safetensors').exists(),
+            'the refused weight was written as a finished file')
+    dialog = open_detail(page, server, labels, data)
+    row = dialog.locator('#model-files tr.ant-table-row')
+    expect(row).to_have_count(1)
+    expect(row.get_by_text(labels['presence']['failed'], exact=True)).to_be_visible()
+    expect(row.get_by_text(failed['message'], exact=True)).to_be_visible()
+    page.reload()
+    row = page.get_by_role('dialog', name=data['name'], exact=True).locator('#model-files tr.ant-table-row')
+    expect(row.get_by_text(labels['presence']['failed'], exact=True)).to_be_visible()
+    hub.set_weight_failure(False)
+    before_retry = len(report['mutations'])
+    path = MODELS + '/' + str(data['model']['id']) + '/download'
+    body = {'storage_id': target['id'], 'node_uuids': [data['node']['uuid']]}
+    mutation(page, report, button(row, labels['action']['retry']).click, 'POST', path, body, 202)
+    strict(report['mutations'][before_retry:],
+           [{'method': 'POST', 'path': path, 'query': '', 'body': body}],
+           'exactly one same-row public Retry request')
+    assert_ready(page, server, token, labels, data, target, report)
+    retried = document(server, token, data)
+    checked(len([r for r in retried.get('nodes', []) if not r.get('cache')]) == 1,
+            'the retry was recorded as a second resource')
+    report['failure_retry'] = {'failed': failed, 'retry_body': body, 'rows_after_retry': 1,
+                              'same_row': True}
+    close_detail(page, labels, data)
+    # 16.4, partial-transfer and broken-connection half: the second replica is held mid-file and
+    # the source stream is closed under it, so the operator sees a real incomplete transfer before
+    # the agent resolves it. The dialog shell and the refused submit stay on this storage too.
+    hub.interrupt_next_weight(65536, hold=True)
+    download(page, labels, data, guard, report, server=server, token=token, refuse=True, shell=True)
+    poll(page, lambda: hub.wait_interrupted(0), 'real partial-send barrier')
+    broken = next(record for record in hub.audit()[start:] if record['interrupted'])
+    checked(broken['bytes_sent'] == 65536 and not broken['complete'],
+            'the partial response was not held inside the weight file')
+    part = Path(guard['payload_path']) / 'model.safetensors.part'
+
+    def incomplete():
+        row = presence(document(server, token, data), data, guard)
+        return row if row and row['state'] == 'downloading' and 0 < row['downloaded'] < row['size_bytes'] else None
+    held = poll(page, incomplete, 'held transfer incomplete progress')
+    checked(held['size_bytes'] == sum(map(len, hub.files.values())), 'in-flight total is not the fixture payload')
+    checked(part.is_file() and not part.is_symlink(), 'no real in-progress partial file')
+    detail = open_detail(page, server, labels, data)
+    busy = detail.locator('#model-files').locator(':scope > div').filter(has_text=guard['name'])
+    expect(busy.locator('tr.ant-table-row')).to_have_count(1)
+    bar = busy.locator('tr.ant-table-row').get_by_role('progressbar')
+    expect(bar).to_have_count(1)
+    shown = int(bar.get_attribute('aria-valuenow'))
+    # 16.3: the row the operator sees while bytes are still arriving has to report the transfer's
+    # actual progress and stage, not a placeholder and not the finished state. The source is held at
+    # the barrier, so the record cannot move between the two reads; the bar is then required to agree
+    # with the percentage the API reports for that same frozen instant.
+    api_percent = 100.0 * held['downloaded'] / held['size_bytes']
+    frozen = presence(document(server, token, data), data, guard)
+    checked(frozen['state'] == 'downloading' and frozen['downloaded'] == held['downloaded'],
+            'the held transfer advanced while the detail was opening')
+    checked(shown == int(api_percent),
+            f'the in-flight bar disagrees with the reported progress: {shown} vs {api_percent}')
+    checked(0 < shown < 100, f'the held transfer is rendered as finished or empty: {shown}')
+    expect(busy.locator('tr.ant-table-row').get_by_text(labels['presence']['downloading'],
+                                                        exact=True)).to_be_visible()
+    # 16.6: a refresh in the middle of the transfer has to read the task back instead of resetting
+    # it. The source is still held, so nothing can move underneath the reload, and the reopened
+    # detail must show the same in-flight progress rather than a zeroed or a finished row.
+    with page.expect_response(lambda r: urlsplit(r.url).path == MODELS + '/' + str(data['model']['id'])
+                              and r.request.method == 'GET') as reloaded:
+        page.reload()
+    checked(reloaded.value.status == 200, 'detail reload during the transfer failed')
+    replayed = presence(reloaded.value.json(), data, guard)
+    checked(replayed['state'] == 'downloading' and replayed['downloaded'] == held['downloaded'],
+            'a refresh zeroed or finished the in-flight transfer')
+    reopened = page.get_by_role('dialog', name=data['name'], exact=True)
+    expect(reopened.locator('#model-files')).to_be_visible()
+    regrouped = reopened.locator('#model-files').locator(':scope > div').filter(has_text=guard['name'])
+    reload_bar = regrouped.locator('tr.ant-table-row').get_by_role('progressbar')
+    expect(reload_bar).to_have_count(1)
+    replayed_bar = int(reload_bar.get_attribute('aria-valuenow'))
+    checked(replayed_bar == shown,
+            f'the refreshed detail rendered different progress for the same frozen transfer: '
+            f'{replayed_bar} vs {shown}')
+    hub.release()
+    assert_ready(page, server, token, labels, data, guard, report)
+    records = hub.audit()[start:]
+    broken_index = next(i for i, record in enumerate(records) if record['interrupted'])
+    match = re.fullmatch(r'bytes=(\d+)-(\d+)', broken['range'] or '')
+    checked(match is not None, 'the interrupted request was not a range chunk')
+    expected_range = f'bytes={int(match[1]) + broken["bytes_sent"]}-{match[2]}'
+    checked(any(record['target'] == broken['target'] and record['range'] == expected_range
+                and record['complete'] and record['status'] == 206 for record in records[broken_index + 1:]),
+            'the broken transfer did not resume at the exact next unsent byte')
+    checked(not part.exists() and not Path(str(part) + '.state').exists(),
+            'a completed download left its partial/state files behind')
+    report['partial_transfer'] = {'interrupted': broken, 'held_state': held['state'],
+        'held_bar': shown, 'api_percent': round(api_percent, 3), 'downloaded': held['downloaded'],
+        'size_bytes': held['size_bytes'], 'resumed_range': expected_range, 'automatic': True,
+        'part_removed': True, 'refresh_state': replayed['state'],
+        'refresh_bar': replayed_bar, 'refresh_downloaded': replayed['downloaded']}
+    close_detail(page, labels, data)
     source = wire_proof(data, start)
     dialog = open_detail(page, server, labels, data)
-    target, guard = data['storages']
     before = file_facts(guard['payload_path'], data['hub'].files)
     files = dialog.locator('#model-files')
     local_label = strings(locale, 'common')['storageType']['local']
@@ -815,6 +1037,30 @@ def exercise_interrupted_recovery(page, context, server, artifacts, report, loca
     checked(held_value == int(api_percent),
             f'the in-flight bar disagrees with the reported progress: {held_value} vs {api_percent}')
     checked(0 < held_value < 100, f'the in-flight bar claims a finished transfer: {held_value}')
+    # 16.6: reload the page while the transfer is still held, so the background task has to be read
+    # back rather than recreated. The source is blocked at the barrier, so nothing can move underneath
+    # the reload: the reopened detail must render the same in-flight progress as before it, which a
+    # zeroed row or a row marked finished cannot do.
+    frozen = presence(document(server, token, data), data, target)
+    checked(frozen['state'] == 'downloading' and frozen['downloaded'] == moving['downloaded'],
+            'the held transfer advanced while the detail was opening')
+    with page.expect_response(lambda r: urlsplit(r.url).path == MODELS + '/' + str(data['model']['id'])
+                              and r.request.method == 'GET') as reloaded:
+        page.reload()
+    checked(reloaded.value.status == 200, 'detail reload during the transfer failed')
+    replayed = presence(reloaded.value.json(), data, target)
+    checked(replayed['state'] == 'downloading' and replayed['downloaded'] == frozen['downloaded'],
+            'a refresh zeroed or finished the in-flight transfer')
+    reopened = page.get_by_role('dialog', name=data['name'], exact=True)
+    expect(reopened.locator('#model-files')).to_be_visible()
+    reload_bar = reopened.locator('#model-files tr.ant-table-row').get_by_role('progressbar')
+    expect(reload_bar).to_have_count(1)
+    replayed_bar = int(reload_bar.get_attribute('aria-valuenow'))
+    checked(replayed_bar == held_value,
+            f'the refreshed detail rendered different progress for the same frozen transfer: '
+            f'{replayed_bar} vs {held_value}')
+    report['held_bar'].update({'refresh_bar': replayed_bar, 'refresh_state': replayed['state'],
+                               'refresh_downloaded': replayed['downloaded']})
     hub.release()
     assert_ready(page, server, token, labels, data, target, report)
     source = wire_proof(data, start)

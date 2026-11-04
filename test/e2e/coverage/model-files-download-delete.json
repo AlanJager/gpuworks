@@ -434,28 +434,28 @@
     },
     {
       "item": "16.2",
-      "status": "N/A",
-      "assertion": "This case starts an already registered repository download; no file upload/import control is exercised."
+      "status": "covered",
+      "assertion": "covered by this case through the real register dialog: the same HTTP directory is imported twice, the second confirming the identity the registered row already carries. Both attempts answer 201 with the identical body and, more importantly, the identical resource - same id, same created_at, and every other identity field equal - so the repeat is idempotent rather than a second resource, and that is the contract this product implements (the store resolves the existing model identity and refreshes its metadata, returning the committed row; the handler answers 201 for both). The verdict is not read off the status: an independent GET with source_id filter returns total 1 listing that one id, the unfiltered collection holds exactly one row for that source_id, a direct count of the models table by source_id returns 1, and the list view renders exactly one row with that name. The second attempt is also required to re-read the repository directory (an audited GET or HEAD of config.json) before answering, so the 201 is not a cached shortcut. Runs recorded both attempts at 201, id 1 twice with created_at 2026-11-03T18:48:08.905302597Z unchanged, and one stored row. Proven by mutation: making the store stamp a fresh created_at on the repeat import fails with 'the repeat import answered a different resource' side by side with the two identities."
     },
     {
       "item": "16.3",
-      "status": "partial",
-      "assertion": "partial: final progress and the rendered units are asserted at completion, but not the intermediate states - pinning the progress bar to 100 everywhere still passes this case."
+      "status": "covered",
+      "assertion": "covered: the operator-visible progress is required to be the transfer's actual progress while bytes are still arriving, not only once it ends. A weight transfer is held at a real source barrier with 1638685 of 2097459 bytes delivered, the detail is opened on that record, and the rendered progress bar must equal the truncation of the percentage the API reports for the same frozen instant and must sit strictly between 0 and 100, so a bar pinned high cannot pass. The row is also required to render the moving stage label. Completion is asserted separately with the exact hundred, the success mark and the byte text. Both runs recorded the bar at 78 against an API report of 78.127 percent, together with the downloaded and total byte counts, in the run report."
     },
     {
       "item": "16.4",
-      "status": "MISSING",
-      "assertion": "MISSING: 构造部分传输、断线和服务端失败，验证错误、重试及适用的续传，不能把重试计为新的成功资源。"
+      "status": "covered",
+      "assertion": "covered by this case for both halves. Server failure: the source returns a real 503 for the weight, the row reaches failed carrying the exact cause string down to the probe status, no finished weight file exists, and the same row's public Retry is the only request sent - asserted as exactly one POST to that row's download path with the original storage and node resubmitted - after which the independent GET still holds exactly one non-cache node row, so the retry is not counted as a new resource. Incomplete transfer and broken connection: the second replica's response is cut mid-body (interrupted true with 65536 of 524310 bytes sent) and then resumed, and the resume is proven at wire level by requiring a later 206 to the same target whose Range begins at the exact next unsent byte of the interrupted window (recorded as bytes=1638466-2097239 in one run and bytes=65536-524309 in the other), ending in the completed file with its sha256 verified and no leftover .part or .part.state sidecar. Proven by mutation: re-requesting the interrupted window from its start instead of the next unsent byte fails with 'the broken transfer did not resume at the exact next unsent byte'."
     },
     {
       "item": "16.5",
-      "status": "N/A",
-      "assertion": "Public download has no in-flight cancel control; modal Cancel closes only before submit. Peer-sync cancel is a separate contract."
+      "status": "partial",
+      "assertion": "The second clause is proven here: the pre-submit Download to dialog is reopened and Cancel, Escape, close cross and mask are each taken with zero POST /download requests and no file row created, so closing the dialog is a dialog dismissal and not a task cancellation. The first clause is not proven here. The row's in-flight Cancel download control is a real product path - ui/src/pages/models/ModelFilesSection.tsx renders it for a row whose acquisition is download and whose transfer is still running, it confirms through the presenceAction.cancelDownloadConfirm popconfirm, and it posts /api/v1/models/{id}/download/cancel which internal/server/store/model_download_cancel.go answers by moving the row to canceled while keeping the already-downloaded bytes for a retry - and no run in this manifest cancels a live transfer, so post-cancel termination of the task and its temporary resources is asserted by nothing here."
     },
     {
       "item": "16.6",
       "status": "covered",
-      "assertion": "covered: after a refresh the detail still lists the file row and an independent GET agrees, so a reload does not zero the progress or claim a file that is not there."
+      "assertion": "covered: the in-flight task is read back through a refresh. With the source still held so nothing can move underneath it, the page is reloaded, the GET that reload returns must still report the row downloading with the identical downloaded byte count and not a zeroed or finished one, and the reopened detail must render the same progress value and the moving stage label. After completion the row is read back again from a refresh and an independent GET. Both runs recorded refresh_state downloading with refresh_bar 78 equal to the pre-refresh bar."
     },
     {
       "item": "16.7",

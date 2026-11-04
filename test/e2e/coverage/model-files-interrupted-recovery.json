@@ -449,13 +449,13 @@
     },
     {
       "item": "16.5",
-      "status": "N/A",
-      "assertion": "Public download has no in-flight cancel control; modal Cancel closes only before submit. Peer-sync cancel is a separate contract."
+      "status": "partial",
+      "assertion": "The second clause is proven here: the pre-submit Download to dialog is reopened and Cancel, Escape, close cross and mask are each taken with zero POST /download requests and no file row created, so closing the dialog is a dialog dismissal and not a task cancellation. The first clause is not proven here. The row's in-flight Cancel download control is a real product path - ui/src/pages/models/ModelFilesSection.tsx renders it for a row whose acquisition is download and whose transfer is still running, it confirms through the presenceAction.cancelDownloadConfirm popconfirm, and it posts /api/v1/models/{id}/download/cancel which internal/server/store/model_download_cancel.go answers by moving the row to canceled while keeping the already-downloaded bytes for a retry - and no run in this manifest cancels a live transfer, so post-cancel termination of the task and its temporary resources is asserted by nothing here."
     },
     {
       "item": "16.6",
       "status": "covered",
-      "assertion": "covered: the interrupted row is refreshed mid-download and remains present and downloading, so a reload neither zeroes the progress nor reports a finished file."
+      "assertion": "covered: the transfer is still held at the source barrier when the page is reloaded, so the background task has to be read back rather than restarted. The independent GET issued by the reload returns 200 with the same row still downloading and the same byte count as before it, and the reopened detail renders the same bar value it rendered before the reload - 78 against 1638685 of 2097459 bytes in both runs - so a reload that zeroed the progress or reported the task finished cannot pass. The reopened panel is asserted visible with exactly one file row, and the source is released only afterwards so the transfer completes from the held position."
     },
     {
       "item": "16.7",
