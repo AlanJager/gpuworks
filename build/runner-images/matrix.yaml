@@ -62,6 +62,8 @@
 #                 diffusion         diffusers 与 cv2 等 diffusion 依赖在位
 #                 audit             离线组件审计门通过（components.json status=PASS）
 #                 hcu_patches       vllm-hcu-apply-patches 在 PATH 上（海光）
+#                 ppu_pd            sglang 装了 PPU 同机 PD 补丁（hggc/ppu-pd），
+#                                   且 mooncake 在位
 #   base_requires_clean_history
 #               true = 该 base 的 image history 里有内网凭据，必须先用
 #               prepare-base.sh 在 base 这一层压掉 history，再以干净 base 构建；
@@ -649,7 +651,7 @@ items:
       内网包源 env 改回公网源、运行期 env（VLLM_USE_V1=0 等）。
 
   - id: hggc13.0-sglang0.5.13
-    revision: r2
+    revision: r3
     backend: hggc
     engine: sglang
     platforms: [linux/amd64]
@@ -658,10 +660,12 @@ items:
     args:
       SGLANG_VERSION: "0.5.13"
     base_requires_clean_history: true
-    requires: [engine, diffusion, overlays]
+    requires: [engine, diffusion, overlays, ppu_pd]
     note: >-
       PPU 的 sglang 档。与 vllm 档同一 vanilla、同一 rootfs，只有 label 与引擎标识
       不同，因此两档共享 base 的全部层（前提是 base 只压一次，见本线说明）。
+      r3 加 PPU 同机 PD 补丁（hggc/ppu-pd，pdmode sglang-ppu-ipc），只在 PD 的
+      环境变量打开时生效；r2 → r3 只多这一层，r2 的部署照常可用。
 
   - id: metal15.0-vllm0.31.0
     revision: r2

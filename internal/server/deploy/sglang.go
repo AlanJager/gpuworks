@@ -199,9 +199,9 @@ func (sglangEngine) PDConnectorFlags() []string {
 }
 
 // sglangPD injects a PD instance's disaggregation role, transfer backend and,
-// on the prefill side, the bootstrap port decoders pair with it on (ADR 0028).
-// The transfer backend is UCX under NIXL, so the network device rules are
-// the same as vLLM's.
+// on the prefill side, the bootstrap port decoders pair with it on (ADR 0028),
+// plus the flags and environment the mode declares. Under NIXL the transfer
+// backend is UCX, so the network device rules are the same as vLLM's.
 func sglangPD(b *builder, p Params, env map[string]string) {
 	if p.PD == nil {
 		return
@@ -212,6 +212,25 @@ func sglangPD(b *builder, p Params, env map[string]string) {
 	if p.PD.Role == pdmode.RolePrefill && p.PD.SideChannelPort > 0 {
 		b.injectKV("--disaggregation-bootstrap-port", strconv.Itoa(p.PD.SideChannelPort))
 	}
+	for _, flag := range mode.EngineArgs {
+		b.injectFlag(flag)
+	}
+	for key, value := range mode.Env {
+		env[key] = value
+	}
+	// SGLang's prefill registers with its own bootstrap server at its --host
+	// (0.0.0.0 on a prefill instance), and a decoder queries it at the
+	// instance's PD address, both over HTTP. A container runtime
+	// that injects a proxy (Docker's client proxies, for one) would carry
+	// those calls to the proxy, which answers 502 for a host it cannot reach:
+	// measured on a PPU host whose no_proxy did not list the node address.
+	// Stating the variables keeps the runtime from injecting its own; the
+	// engine reads its weights offline, so nothing else it does needs a proxy.
+	noProxy := "localhost,127.0.0.1,::1,0.0.0.0"
+	if host := p.PD.SideChannelHost; host != "" {
+		noProxy += "," + host
+	}
+	env["NO_PROXY"], env["no_proxy"] = noProxy, noProxy
 	for key, value := range kvTransferNetworkEnv(p) {
 		env[key] = value
 	}

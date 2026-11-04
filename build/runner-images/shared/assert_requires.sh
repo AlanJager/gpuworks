@@ -5,7 +5,7 @@
 # verify.sh 对成品再跑一次（registry 里的东西和当时构建的是不是一回事）。
 #
 # requires 取值：engine engine_import omni omni_no_mooncake omni_patched indextts2_frontend voxcpm decord moviepy mooncake
-# diffusion overlays audit hcu_patches（见 matrix.yaml 顶部说明）。
+# diffusion overlays audit hcu_patches ppu_pd（见 matrix.yaml 顶部说明）。
 #
 # 用法：REQUIRES="engine omni mooncake" ENGINE=vllm [ENGINE_VERSION=0.30.0] \
 #         bash assert_requires.sh
@@ -345,6 +345,21 @@ check_hcu_patches() {
         || FAILED+=("hcu_patches: vllm-hcu-apply-patches not on PATH")
 }
 
+check_ppu_pd() {
+    # PPU 同机 PD（pdmode sglang-ppu-ipc）：hggc/ppu-pd 的补丁装进了 sglang，
+    # 且 mooncake 可用。补丁只在 SGLANG_PPU_PD_IPC=1 时生效。
+    check_mooncake
+    python3 - <<'PY' >/dev/null 2>&1 || FAILED+=("ppu_pd: SGLang lacks the PPU PD patches (hggc/ppu-pd/install_ppu_pd_ipc.py)")
+import pathlib, sglang
+root = pathlib.Path(sglang.__file__).resolve().parent / "srt" / "disaggregation"
+for name in ("ppu_ipc_registration.py", "ppu_serial_transfer.py"):
+    assert (root / name).is_file(), name
+assert "SGLANG_PPU_PD_IPC" in (root / "mooncake" / "conn.py").read_text()
+assert "SGLANG_PPU_PD_IPC" in (root / "utils.py").read_text()
+assert "ppu_serial_transfer_enabled" in (root / "prefill.py").read_text()
+PY
+}
+
 [ -n "${REQUIRES}" ] || { echo "assert_requires: REQUIRES is empty" >&2; exit 2; }
 
 for item in ${REQUIRES}; do
@@ -363,6 +378,7 @@ for item in ${REQUIRES}; do
         overlays)     check_overlays ;;
         audit)        check_audit ;;
         hcu_patches)  check_hcu_patches ;;
+        ppu_pd)       check_ppu_pd ;;
         *) FAILED+=("unknown requirement '${item}'") ;;
     esac
 done

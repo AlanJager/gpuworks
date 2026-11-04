@@ -73,7 +73,7 @@ func TestSideChannelPortsAndValues(t *testing.T) {
 	if got := ForEngine("vllm"); len(got) != 2 || got[0] != "vllm-ascend-mooncake" || got[1] != "vllm-nixl" {
 		t.Fatalf("ForEngine = %v", got)
 	}
-	if got := ForEngine("sglang"); len(got) != 1 || got[0] != "sglang-nixl" {
+	if got := ForEngine("sglang"); len(got) != 2 || got[0] != "sglang-nixl" || got[1] != "sglang-ppu-ipc" {
 		t.Fatalf("sglang modes = %v", got)
 	}
 }
@@ -88,5 +88,38 @@ func TestAscendMooncakeDeclaration(t *testing.T) {
 	}
 	if mode.Connector != "MooncakeConnectorV1" || mode.ExtraPorts(RoleDecode, 2) != 2 || mode.Transport != "hccl" {
 		t.Fatalf("mode = %+v", mode)
+	}
+}
+
+// sglang-ppu-ipc carries the KV card to card inside one PPU host, so it
+// needs both roles on one node, the IPC switches of the PPU runner's patches
+// and a scheduler that never overlaps a forward pass with a copy.
+func TestPPUIPCDeclaration(t *testing.T) {
+	mode, ok := Lookup("sglang-ppu-ipc")
+	if !ok || mode.Engine != "sglang" || !mode.SupportsVendor("ppu") || mode.SupportsVendor("nvidia") || mode.Unverified {
+		t.Fatalf("mode = %+v", mode)
+	}
+	if !mode.SameNode || mode.Transport != TransportIPC || mode.Wire != WireConcurrent || mode.Connector != "mooncake" {
+		t.Fatalf("mode = %+v", mode)
+	}
+	if mode.CheckTP(1, 1) != nil || mode.CheckTP(1, 2) == nil {
+		t.Fatal("both roles take the same TP")
+	}
+	if mode.ExtraPorts(RolePrefill, 1) != 1 || mode.ExtraPorts(RoleDecode, 1) != 0 {
+		t.Fatal("the prefill instance needs one bootstrap port")
+	}
+	for key, want := range map[string]string{"SGLANG_PPU_PD_IPC": "1", "SGLANG_PPU_PD_SERIAL_TRANSFER": "1", "MC_FORCE_MNNVL": "1", "MC_USE_NVLINK_IPC": "1", "SGLANG_ENABLE_HEALTH_ENDPOINT_GENERATION": "0"} {
+		if mode.Env[key] != want {
+			t.Fatalf("env %s = %q", key, mode.Env[key])
+		}
+	}
+	if len(mode.EngineArgs) != 1 || mode.EngineArgs[0] != "--disable-overlap-schedule" {
+		t.Fatalf("engine args = %v", mode.EngineArgs)
+	}
+	// No other mode is held to one node.
+	for _, name := range Names() {
+		if other, _ := Lookup(name); name != "sglang-ppu-ipc" && other.SameNode {
+			t.Fatalf("%s requires one node", name)
+		}
 	}
 }

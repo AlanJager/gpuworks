@@ -99,6 +99,10 @@ const (
 	// TransportHCCL is the NPUs' own RoCE ports: across hosts it needs an
 	// accelerator RDMA network, and the host network only for the handshake.
 	TransportHCCL Transport = "hccl"
+	// TransportIPC is a card-to-card copy inside one host (Mooncake's NVLink
+	// transport with legacy IPC handles): no network carries the KV, so both
+	// roles must run on the same node (Mode.SameNode).
+	TransportIPC Transport = "ipc"
 )
 
 // Mode is one PD recipe.
@@ -169,6 +173,12 @@ type Mode struct {
 	// ConnectorParallelism puts both roles' tp/dp into the connector config.
 	ConnectorPortKey     string
 	ConnectorParallelism bool
+	// SameNode requires every instance of the deployment on one node: the
+	// transport cannot reach another host.
+	SameNode bool
+	// EngineArgs are engine flags every instance of the mode needs; a flag a
+	// template or the deployment already states keeps its value.
+	EngineArgs []string
 }
 
 // ascendCards is what HCCL needs to be told on an Ascend host; the mode that
@@ -255,6 +265,44 @@ var modes = map[string]Mode{
 		ExtraPortsFixed:     map[string]int{RolePrefill: 1},
 		Unverified:          true,
 		Transport:           TransportUCX,
+	},
+	// SGLang on T-Head PPU with the mooncake backend: Mooncake's NVLink
+	// transport over legacy IPC handles copies the KV card to card inside one
+	// host, so the two roles share a node. The PPU SGLang runner carries the
+	// patches the variables switch on (build/runner-images/hggc/ppu-pd):
+	// registering the KV by allocation (an IPC handle names a whole
+	// allocation), metadata on the card, and serialized transfers - an IPC
+	// copy issued while a forward pass runs can deadlock the PPU driver, which
+	// is also why the overlap scheduler is off. The health endpoint answers
+	// without a generation: the first requests of a new shape compile PPU
+	// kernels for minutes, a generating health check times out meanwhile and
+	// the agent would retire a healthy instance, and every such check would
+	// queue a fake transfer on the prefill side. Verified on PPU ZW810E with
+	// TP 1 on both roles.
+	"sglang-ppu-ipc": {
+		Name:                "sglang-ppu-ipc",
+		Engine:              engines.SGLang,
+		Vendors:             []string{accelerator.VendorPPU},
+		SameVendor:          true,
+		SameNode:            true,
+		Roles:               []string{RoleDecode, RolePrefill},
+		Connector:           "mooncake",
+		ConnectorRoles:      map[string]string{RolePrefill: "prefill", RoleDecode: "decode"},
+		Wire:                WireConcurrent,
+		TP:                  TPEqual,
+		TwoStagePaths:       []string{"/v1/chat/completions", "/v1/completions", "/generate"},
+		TransferMetricsRole: RoleDecode,
+		ExtraPortsFixed:     map[string]int{RolePrefill: 1},
+		VerifiedVersions:    "0.5.13",
+		Env: map[string]string{
+			"SGLANG_PPU_PD_IPC":                        "1",
+			"SGLANG_PPU_PD_SERIAL_TRANSFER":            "1",
+			"MC_FORCE_MNNVL":                           "1",
+			"MC_USE_NVLINK_IPC":                        "1",
+			"SGLANG_ENABLE_HEALTH_ENDPOINT_GENERATION": "0",
+		},
+		EngineArgs: []string{"--disable-overlap-schedule"},
+		Transport:  TransportIPC,
 	},
 }
 

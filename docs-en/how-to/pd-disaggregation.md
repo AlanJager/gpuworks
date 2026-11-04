@@ -7,7 +7,7 @@ After completing this guide, you can call the model through a single service nam
 **Prerequisites**:
 
 - You are familiar with ordinary deployment. See [Deploy Models, Select GPUs, and Interpret Scheduling Results](deploy-models.md).
-- Your hardware and engine meet the requirements of the selected PD mode: `vllm-nixl` targets NVIDIA, `vllm-ascend-mooncake` targets Ascend, and `sglang-nixl` is unverified.
+- Your hardware and engine meet the requirements of the selected PD mode: `vllm-nixl` targets NVIDIA, `vllm-ascend-mooncake` targets Ascend, `sglang-ppu-ipc` targets PPU (P and D must be on the same node), and `sglang-nixl` is unverified.
 - In NVIDIA mode, KV travels over the compute network when P and D are on different machines; RDMA or Ethernet can be used. In Ascend mode, cross-machine deployments require a shared Accelerator RDMA or Accelerator HCCS network, and the NPUs hosting prefill and decode must be mutually reachable over that accelerator network. For configuration and validation, see [Configure Node Networks](configure-networks.md).
 
 PD disaggregation splits inference for one model into two instance groups: prefill instances process only the prompt, and decode instances retrieve their KV and then generate tokens one by one. Externally, it remains
@@ -24,10 +24,10 @@ one deployment with one service name. Send requests to `/v1` as usual; the gatew
 ## Deploy
 
 1. On the deployments page, select **PD disaggregation** under **Node Placement**, then select a PD mode. Available modes come from the engine profiles: vLLM offers `vllm-nixl` (NVIDIA) and
-   `vllm-ascend-mooncake` (Ascend); SGLang offers `sglang-nixl` (unverified).
+   `vllm-ascend-mooncake` (Ascend); SGLang offers `sglang-ppu-ipc` (PPU, same node) and `sglang-nixl` (unverified).
 
 2. Choose the placement mode (see [Automatic and Manual Placement](#自动放置与手动放置)), set TP separately for prefill and decode, then add instances one by one. In manual mode select a node for each instance and optionally pin cards; in automatic mode an instance may leave its node out and the platform picks it. Each mode has TP rules: `vllm-nixl` requires
-   decode TP ≥ prefill TP, `vllm-ascend-mooncake` requires the reverse, and `sglang-nixl` requires equal values.
+   decode TP ≥ prefill TP, `vllm-ascend-mooncake` requires the reverse, and `sglang-nixl` and `sglang-ppu-ipc` require equal values.
    When creating a deployment, each of the P and D roles needs at least one instance.
 
 3. To span an instance across multiple nodes, select **Add Node** under that instance. The first node is the leader (serving external requests), and the rest are followers. You must specify TP in this case,
@@ -38,7 +38,7 @@ one deployment with one service name. Send requests to `/v1` as usual; the gatew
    | Mode | When P Is Unavailable | When Decode Fails to Retrieve KV |
    |---|---|---|
    | `vllm-nixl`, `vllm-ascend-mooncake` | Decode completes locally by default (`fallback: decode`); returning 503 (`fail`) is also available | Returns an error by default (`kv_load_failure: fail`); local recomputation (`recompute`) is also available |
-   | `sglang-nixl` | Only returning 503 is supported; decode cannot perform prefill independently | This setting is unavailable |
+   | `sglang-nixl`, `sglang-ppu-ipc` | Only returning 503 is supported; decode cannot perform prefill independently | This setting is unavailable |
 
    Mode, TP, PP, and KV load failure policy cannot be changed after startup; clone the deployment to change them. Confirm these selections before submitting.
 
@@ -119,7 +119,7 @@ Open **Scale roles** in deployment details to change the instances for each role
 - For an automatically placed deployment, new instances may omit their nodes: the platform puts them in the network and architecture the existing instances are in and picks by the placement strategy. Instances that name a node are placed as written and pass the ordinary PD validation together with the others. When no node can take a new instance, 409 `UNIT_PLACEMENT_NONE`.
 - Both vLLM modes support scaling prefill to 0. Requests are then intentionally handled entirely by decode and do not count as fallback.
   This differs from still expecting P instances but falling back or returning 503 according to `fallback` when P fails.
-- `sglang-nixl` requires instances to remain for both P and D.
+- `sglang-nixl` and `sglang-ppu-ipc` require instances to remain for both P and D.
 
 ### Retry an Instance
 
@@ -174,7 +174,7 @@ Cache hits for sequential handoff requests (and `cached_tokens` returned to the 
 #### View Traces
 
 In exported OTel traces for sequential handoff, the prefill phase is a `pd.prefill` child span.
-`sglang-nixl` calls P and D concurrently, and the gateway does not wait for P's response, so there is no separate `pd.prefill` child span.
+`sglang-nixl` and `sglang-ppu-ipc` call P and D concurrently, and the gateway does not wait for P's response, so there is no separate `pd.prefill` child span.
 
 ### Evaluation
 

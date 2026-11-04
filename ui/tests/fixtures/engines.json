@@ -1326,6 +1326,23 @@
         ],
         "kv_load_failures": [],
         "unverified": true
+      },
+      {
+        "name": "sglang-ppu-ipc",
+        "vendors": [
+          "ppu"
+        ],
+        "roles": [
+          "decode",
+          "prefill"
+        ],
+        "scalable_to_zero": [],
+        "tp_rule": "equal",
+        "max_units_per_role": 32,
+        "fallbacks": [
+          "fail"
+        ],
+        "kv_load_failures": []
       }
     ],
     "quick_form_keys": [

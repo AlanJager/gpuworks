@@ -7,7 +7,7 @@
 **前置条件**：
 
 - 已熟悉普通部署流程，见[部署模型、选卡与解释调度结果](deploy-models.md)。
-- 硬件与引擎符合所选 PD 模式：`vllm-nixl` 面向 NVIDIA，`vllm-ascend-mooncake` 面向昇腾，`sglang-nixl` 未验证。
+- 硬件与引擎符合所选 PD 模式：`vllm-nixl` 面向 NVIDIA，`vllm-ascend-mooncake` 面向昇腾，`sglang-ppu-ipc` 面向 PPU（P、D 必须在同一节点），`sglang-nixl` 未验证。
 - NVIDIA 模式的 P、D 跨机时 KV 走参数网络，可选 RDMA 或以太网；昇腾模式跨机时必须共用加速器 RDMA 或加速器 HCCS 网络，且 prefill 与 decode 所在 NPU 在对应加速器网络上互通。配置与验证见[配置节点网络](configure-networks.md)。
 
 PD 分离把一个模型的推理拆成两组实例：prefill 实例只算提示，decode 实例从它那里取走 KV 后逐 token 生成。对外仍是
@@ -24,10 +24,10 @@ PD 分离把一个模型的推理拆成两组实例：prefill 实例只算提示
 ## 部署
 
 1. 部署页的 **节点放置** 选 **PD 分离**，再选 PD 模式。可选模式来自引擎档位：vLLM 有 `vllm-nixl`（NVIDIA）与
-   `vllm-ascend-mooncake`（昇腾），SGLang 有 `sglang-nixl`（未验证）。
+   `vllm-ascend-mooncake`（昇腾），SGLang 有 `sglang-ppu-ipc`（PPU，同机）与 `sglang-nixl`（未验证）。
 
 2. 选择放置方式（见[自动放置与手动放置](#自动放置与手动放置)），为 prefill 与 decode 各设 TP，并逐个添加实例：手动时每个实例选一个节点，可选钉卡；自动时实例可以不选节点，由平台挑。模式有 TP 规则：`vllm-nixl` 要求
-   decode TP ≥ prefill TP，`vllm-ascend-mooncake` 相反，`sglang-nixl` 要求相等。
+   decode TP ≥ prefill TP，`vllm-ascend-mooncake` 相反，`sglang-nixl`、`sglang-ppu-ipc` 要求相等。
    创建部署时 P、D 每个角色都需要至少一个实例。
 
 3. 一个实例要跨多台节点时，在该实例下 **添加节点**：第一台是 leader（对外服务），其余是 follower。此时必须写 TP，
@@ -38,7 +38,7 @@ PD 分离把一个模型的推理拆成两组实例：prefill 实例只算提示
    | 模式 | P 不可用时 | decode 取 KV 失败时 |
    |---|---|---|
    | `vllm-nixl`、`vllm-ascend-mooncake` | 默认由 decode 本地完成（`fallback: decode`），也可选返回 503（`fail`） | 默认报错（`kv_load_failure: fail`），可选本地重算（`recompute`） |
-   | `sglang-nixl` | 只支持返回 503，decode 不能独立完成 prefill | 不提供这项配置 |
+   | `sglang-nixl`、`sglang-ppu-ipc` | 只支持返回 503，decode 不能独立完成 prefill | 不提供这项配置 |
 
    模式、TP、PP 与 KV 加载失败策略启动后不能改，需要克隆部署；提交前确认这些选择。
 
@@ -117,7 +117,7 @@ P 与 D 要交换 KV，所以整个 PD 部署的实例都在同一张计算网�
 - 自动放置的部署新增实例时可以不写节点：平台把它们放进已有实例所在的那张网络、那种架构里，并按放置策略挑。写了节点的实例按你写的放，并和其他实例一起过 PD 的常规校验。没有节点放得下新实例返回 409 `UNIT_PLACEMENT_NONE`。
 - 两个 vLLM 模式支持将 prefill 缩到 0，此时请求有意全部由 decode 完成，不计为降级。
   这与仍期望 P 实例、但 P 故障时按 `fallback` 选择降级或返回 503 不同。
-- `sglang-nixl` 的 P、D 都必须保留实例。
+- `sglang-nixl`、`sglang-ppu-ipc` 的 P、D 都必须保留实例。
 
 ### 重试一个实例
 
@@ -172,7 +172,7 @@ P 与 D 要交换 KV，所以整个 PD 部署的实例都在同一张计算网�
 #### 查看 Trace
 
 顺序交接导出的 OTel trace 里 prefill 阶段是 `pd.prefill` 子 span。
-`sglang-nixl` 并发调用 P、D，网关不等待 P 回复，因此没有独立的 `pd.prefill` 子 span。
+`sglang-nixl`、`sglang-ppu-ipc` 并发调用 P、D，网关不等待 P 回复，因此没有独立的 `pd.prefill` 子 span。
 
 ### 评测
 

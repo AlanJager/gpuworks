@@ -36,6 +36,9 @@ const (
 	ErrorPDNodeGPUsInsufficient = "PD_NODE_GPUS_INSUFFICIENT"
 	ErrorPDVendorUnsupported    = "PD_VENDOR_UNSUPPORTED"
 	ErrorPDVendorMixed          = "PD_VENDOR_MIXED"
+	// ErrorPDSameNodeRequired: the mode's KV transport stays inside one host
+	// and the placement spreads the instances over several nodes.
+	ErrorPDSameNodeRequired     = "PD_SAME_NODE_REQUIRED"
 	ErrorPDConnectorArgConflict = "PD_CONNECTOR_ARG_CONFLICT"
 	ErrorPDShapeConflict        = "PD_SHAPE_CONFLICT"
 	ErrorPDSpecModeMismatch     = "PD_SPEC_MODE_MISMATCH"

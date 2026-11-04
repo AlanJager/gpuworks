@@ -1,7 +1,7 @@
 {
   "schema_version": 3,
-  "catalog_version": "2026-11-03.8266e677",
-  "sha256": "645bf132468ef85be0a3a27e92ed9fdc1649bfdce4044da295c8d0e01b57135d",
+  "catalog_version": "2026-11-04.844e59ca",
+  "sha256": "256cce6a838d38b04bf328c5024ead4bd2d3c3febbb97075abc66f8c9bd96fe3",
   "series": [
     {
       "name": "MLX Audio · Metal",
@@ -158,16 +158,16 @@
       "framework": "hggc",
       "versions": [
         {
-          "name": "hggc13.0-sglang0.5.13-r2",
-          "image_ref": "gpuworks/gpuworks-runner:hggc13.0-sglang0.5.13-r2",
+          "name": "hggc13.0-sglang0.5.13-r3",
+          "image_ref": "gpuworks/gpuworks-runner:hggc13.0-sglang0.5.13-r3",
           "engine_version": "0.5.13",
           "framework_version": "13.0",
           "arch": "amd64",
           "registry_sources": [
-            "quay.io/gpuworks/gpuworks-runner:hggc13.0-sglang0.5.13-r2",
-            "swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-runner:hggc13.0-sglang0.5.13-r2"
+            "quay.io/gpuworks/gpuworks-runner:hggc13.0-sglang0.5.13-r3",
+            "swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-runner:hggc13.0-sglang0.5.13-r3"
           ],
-          "notes": "PPU 的 sglang 档。与 vllm 档同一 vanilla、同一 rootfs，只有 label 与引擎标识 不同，因此两档共享 base 的全部层（前提是 base 只压一次，见本线说明）。\nrequires: engine, diffusion, overlays"
+          "notes": "PPU 的 sglang 档。与 vllm 档同一 vanilla、同一 rootfs，只有 label 与引擎标识 不同，因此两档共享 base 的全部层（前提是 base 只压一次，见本线说明）。 r3 加 PPU 同机 PD 补丁（hggc/ppu-pd，pdmode sglang-ppu-ipc），只在 PD 的 环境变量打开时生效；r2 → r3 只多这一层，r2 的部署照常可用。\nrequires: engine, diffusion, overlays, ppu_pd"
         }
       ]
     },

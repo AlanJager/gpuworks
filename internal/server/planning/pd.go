@@ -345,6 +345,14 @@ func ValidatePDNodes(p *PDPlacement, mode pdmode.Mode, nodes map[string]*store.N
 	if mode.SameVendor && len(vendorList) > 1 {
 		return nil, pdError(messages.ErrorPDVendorMixed, "PD roles must run on one accelerator vendor", map[string]any{"vendors": strings.Join(vendorList, ", ")})
 	}
+	if mode.SameNode && len(perNode) > 1 {
+		names := make([]string, 0, len(perNode))
+		for uuid := range perNode {
+			names = append(names, nodes[uuid].DisplayName())
+		}
+		sort.Strings(names)
+		return nil, pdError(messages.ErrorPDSameNodeRequired, fmt.Sprintf("PD mode %s moves the KV inside one host; its instances are on %d nodes", mode.Name, len(perNode)), map[string]any{"mode": mode.Name, "nodes": strings.Join(names, ", ")})
+	}
 	var warnings []messages.Warning
 	if len(models) > 1 {
 		names := make([]string, 0, len(models))
@@ -354,7 +362,7 @@ func ValidatePDNodes(p *PDPlacement, mode pdmode.Mode, nodes map[string]*store.N
 		sort.Strings(names)
 		warnings = append(warnings, messages.Warning{Code: messages.WarningPDGPUModelsDiffer, Params: map[string]any{"models": strings.Join(names, ", ")}})
 	}
-	if len(perNode) == 1 {
+	if len(perNode) == 1 && !mode.SameNode {
 		warnings = append(warnings, messages.Warning{Code: messages.WarningPDSameNodeThroughput})
 	}
 	return warnings, nil

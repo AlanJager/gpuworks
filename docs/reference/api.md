@@ -1397,11 +1397,11 @@ extra_args 解析（`EXTRA_ARGS_INVALID`）、挂载（`MOUNT_CONTAINER_PATH`/`M
 }}}
 ```
 
-- `mode`：引擎档位 `pd_modes` 中的一个（`vllm-nixl`、`vllm-ascend-mooncake`、`sglang-nixl`）；未知字段一律拒绝。
+- `mode`：引擎档位 `pd_modes` 中的一个（`vllm-nixl`、`vllm-ascend-mooncake`、`sglang-nixl`、`sglang-ppu-ipc`）；未知字段一律拒绝。
 - 每个 `unit` 是一个副本；`gpus` 可省略。`followers` 使该副本跨多台节点（rank 1…N），此时角色必须写 `tp`，
   每个 rank 运行 `tp × pp ÷ rank 数` 张卡。
 - `fallback` 与 `kv_load_failure` 的可选值和默认值按模式定：`vllm-nixl`、`vllm-ascend-mooncake` 的 `fallback`
-  为 `decode`（默认）或 `fail`，`kv_load_failure` 为 `fail`（默认）或 `recompute`；`sglang-nixl` 的 decode 不能单独
+  为 `decode`（默认）或 `fail`，`kv_load_failure` 为 `fail`（默认）或 `recompute`；`sglang-nixl`、`sglang-ppu-ipc` 的 decode 不能单独
   完成请求，`fallback` 只有 `fail`，也没有 `kv_load_failure`。模式不允许的值返回 `PD_FALLBACK_INVALID` /
   `PD_KV_LOAD_FAILURE_INVALID`。
 - `GET /api/v1/engines` 每个引擎的 `pd_modes[]` 给出这些规则：`name`、`vendors`、`roles`、`scalable_to_zero`（运行中可缩到 0

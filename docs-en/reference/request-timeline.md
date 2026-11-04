@@ -105,7 +105,7 @@ Requests to PD disaggregated deployments ([ADR 0028](../adr/0028-pd-disaggregate
 | Handoff Method (PD Mode) | Prefill Phase | Record |
 |---|---|---|
 | Sequential (`vllm-nixl`, `vllm-ascend-mooncake`) | The gateway first sends the request to the prefill instance and waits for KV parameters before handing it to decode | `pd.prefill_ms` is the wait measured by the gateway; per-request statistics from the prefill instance's response (read in the same way as the decode response) are recorded as `prefill_queue_ms`, `prefill_compute_ms` |
-| Concurrent (`sglang-nixl`) | Prefill and decode receive the request at the same time; the gateway does not wait | `prefill_ms` is unknown and there is no `pd_prefill` phase; only the prefill instance and fallback reason are recorded |
+| Concurrent (`sglang-nixl`, `sglang-ppu-ipc`) | Prefill and decode receive the request at the same time; the gateway does not wait | `prefill_ms` is unknown and there is no `pd_prefill` phase; only the prefill instance and fallback reason are recorded |
 
 With sequential handoff, cache hits and Prefill speed both use data from the prefill instance:
 

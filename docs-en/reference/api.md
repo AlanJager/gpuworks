@@ -1388,11 +1388,11 @@ Scripts and third-party clients cannot directly reuse vLLM parameters for SGLang
 }}}
 ```
 
-- `mode`: one of the engine profile's `pd_modes` (`vllm-nixl`, `vllm-ascend-mooncake`, `sglang-nixl`). All unknown fields are rejected.
+- `mode`: one of the engine profile's `pd_modes` (`vllm-nixl`, `vllm-ascend-mooncake`, `sglang-nixl`, `sglang-ppu-ipc`). All unknown fields are rejected.
 - Each `unit` is a replica; `gpus` can be omitted. `followers` makes the replica span multiple nodes (ranks 1…N), in which case the role must specify `tp`.
   For each rank, the GPU count is `tp × pp` divided by the number of ranks.
 - Allowed values and defaults for `fallback` and `kv_load_failure` depend on the mode: for `vllm-nixl` and `vllm-ascend-mooncake`, `fallback`
-  is `decode` (default) or `fail`, and `kv_load_failure` is `fail` (default) or `recompute`. For `sglang-nixl`, decode cannot
+  is `decode` (default) or `fail`, and `kv_load_failure` is `fail` (default) or `recompute`. For `sglang-nixl` and `sglang-ppu-ipc`, decode cannot
   complete requests on its own, so `fallback` only accepts `fail`, and there is no `kv_load_failure`. Values disallowed by the mode return `PD_FALLBACK_INVALID` /
   `PD_KV_LOAD_FAILURE_INVALID`.
 - In `GET /api/v1/engines`, each engine's `pd_modes[]` provides these rules: `name`, `vendors`, `roles`, `scalable_to_zero` (roles that can scale to 0

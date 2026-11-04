@@ -64,6 +64,12 @@ ENTRYPOINT [ "tini", "--" ]
 
 COPY overlays/ /opt/gpuworks/overlays/
 
+## PPU 同机 PD（pdmode sglang-ppu-ipc）：给 sglang 的 mooncake 后端打补丁，只在
+## SGLANG_PPU_PD_IPC=1 / SGLANG_PPU_PD_SERIAL_TRANSFER=1 时生效，普通部署不受影响。
+## 补丁逐处按原文锚定，锚点不在就构建失败，不猜。说明见 hggc/ppu-pd/install_ppu_pd_ipc.py。
+COPY hggc/ppu-pd/ /opt/gpuworks/ppu-pd/
+RUN python3 /opt/gpuworks/ppu-pd/install_ppu_pd_ipc.py
+
 COPY shared/assert_requires.sh /opt/gpuworks/shared/assert_requires.sh
 RUN <<EOF
     set -eux
