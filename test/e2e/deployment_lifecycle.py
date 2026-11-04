@@ -225,6 +225,7 @@ def test_deployment_lifecycle(page, context, server, artifacts, report, locale,
         exercise_row_actions_10_9(page, server, report, token, page_rows)
         exercise_delete_10_7(page, server, report, token, page_rows)
         exercise_filters_10_3(page, server, report, token, deployments)
+        exercise_refresh_contract_10_10(page, server, report, token, page_rows)
         # Section 10 navigates away from the detail drawer the lifecycle steps below delete
         # from, so the drawer is reopened here in the state it was left in.
         page.goto(server.base + f"/deployments?deployment={dep_id}")
@@ -1369,6 +1370,197 @@ def exercise_pagination_10_6(page, server, report, token):
 
 DEPLOYMENT_LIST_STATES = ("running", "sleeping", "asleep", "offline", "starting",
                          "pulling", "pending", "failed", "stopped", "deleting")
+
+def _filter_is_active(page):
+    """Whether the state column shows its filtered marker."""
+    tokens = (page.locator(".ant-table-filter-trigger").first.get_attribute("class") or "").split()
+    return "active" in tokens
+
+
+def exercise_refresh_contract_10_10(page, server, report, token, row_ids):
+    """10.10: what each kind of refresh does to a chosen filter, and a deleted row staying gone.
+
+    The item treats "a manual refresh" and "a background update" as one behaviour, but this
+    product separates them, and the three-layer result is recorded as measured rather than
+    assumed:
+
+      background poll   keeps the filter   ui/src/pagedList.ts re-sends the filters it was
+                                          given, and DeploymentsPage.tsx:98 polls every 8s
+      detail round trip keeps the filter   openDetail/closeDetail only touch the address
+                                          (:130 and :131), never the filter state
+      reload            drops the filter   search and states are plain useState (:95, :96), so
+                                          they start empty and are never written to the address
+                                          or to localStorage
+
+    So the background half of the item holds, and the manual-refresh half is the opposite of
+    what the wording expects. Both are asserted, because a run that only checked the polling
+    half would not notice the reload behaviour and one that only checked reload would report a
+    real contract as a failure.
+
+    The polling claim is made from the request it produced, not from the row count: waiting and
+    then finding the rows unchanged would also pass if no poll had happened at all.
+
+    The deleted row is a row this section owns, and it is checked against the server rather
+    than only against the rendered page, because "not in the list" alone could mean it was
+    filtered out rather than deleted.
+    """
+    page.goto(server.base + "/deployments")
+    _settled_path(page)
+    page.wait_for_timeout(900)
+    _choose_page_size(page, 100)
+
+    _, items = _list_total(server, token, report)
+    by_id = {item["id"]: item for item in items}
+    rows = [by_id[i] for i in row_ids if i in by_id]
+    check(len(rows) >= 3, f"only {len(rows)} of the batch rows are listed")
+
+    unfiltered_rows = _rows(page)
+    check(unfiltered_rows >= 3, f"the unfiltered list rendered {unfiltered_rows} rows")
+
+    # The filter has to narrow the list, because a filter that empties the list or leaves it
+    # untouched would make "still filtered" indistinguishable from "reset". The batch rows can
+    # all share one state - the node advertises one GPU (:340), so everything queues behind the
+    # deployment this case owns - so the state is taken from the rows that are listed and the
+    # narrowing is checked against the whole list, other deployments included, rather than
+    # requiring the batch itself to be split between two states.
+    counts = {}
+    for row in rows:
+        counts[row.get("state")] = counts.get(row.get("state"), 0) + 1
+    chosen_state = max(counts, key=counts.get)
+    check(unfiltered_rows > counts[chosen_state],
+          f"every one of the {unfiltered_rows} listed rows is {chosen_state!r}, so filtering "
+          f"by it would not narrow anything")
+
+    query = _open_state_filter(page, [chosen_state])
+    check(query.get("state") == [chosen_state],
+          f"the filter sent state={query.get('state')}")
+    page.wait_for_timeout(600)
+    filtered_rows = _rows(page)
+    check(filtered_rows < unfiltered_rows,
+          f"filtering by {chosen_state!r} left {filtered_rows} of {unfiltered_rows} rows")
+    check(_filter_is_active(page), "the state column does not show its filtered marker")
+
+    # 1. A background poll keeps the filter, and the poll is evidenced by the request it made.
+    polls = []
+
+    def record_poll(request):
+        if "/api/v1/deployments" in request.url and request.method == "GET":
+            polls.append(request.url)
+
+    page.on("request", record_poll)
+    page.wait_for_timeout(12000)
+    # The listener is removed by the same function object that was added; an anonymous one
+    # would leave it attached and later requests would be counted as polls.
+    page.remove_listener("request", record_poll)
+    # 8s is the interval (DeploymentsPage.tsx:101); 12s gives one poll room to land without
+    # waiting for several.
+    filtered_polls = [url for url in polls if "state=" in url]
+    check(filtered_polls,
+          f"no poll carried the filter during a 12s wait, so the polling half of this item "
+          f"could not be observed; the requests made were "
+          f"{[u.split('/api/v1/deployments')[-1][:60] for u in polls[-4:]]}")
+    polled_state = parse_qs(urlsplit(filtered_polls[0]).query).get("state")
+    check(polled_state == [chosen_state],
+          f"the poll asked for state={polled_state}, not the chosen {chosen_state!r}")
+    rows_after_poll = _rows(page)
+    check(_filter_is_active(page), "a background poll cleared the filter marker")
+    check(rows_after_poll == filtered_rows,
+          f"a background poll changed the row count from {filtered_rows} to {rows_after_poll}")
+
+    # 2. A detail round trip keeps the filter: opening and closing only touch the address.
+    first_button = page.locator(
+        ".ant-table-tbody tr.ant-table-row td:nth-child(1) button").first
+    check(first_button.count() == 1, "the filtered list rendered no row to open")
+    opened_name = first_button.inner_text().strip()
+    first_button.click()
+    drawer = page.locator(".ant-drawer-content").first
+    expect(drawer).to_be_visible(timeout=20000)
+    page.wait_for_timeout(800)
+    with_drawer = parse_qs(urlsplit(page.url).query).get("deployment")
+    check(with_drawer, f"opening a detail named no deployment: {page.url!r}")
+    page.locator(".ant-drawer-close").first.click()
+    page.wait_for_timeout(1200)
+    rows_after_round_trip = _rows(page)
+    check(_filter_is_active(page),
+          "closing the detail cleared the filter, though only the address was changed")
+    check(rows_after_round_trip == filtered_rows,
+          f"the detail round trip changed the row count from {filtered_rows} to "
+          f"{rows_after_round_trip}")
+    # Read here, while the round trip is the most recent thing that happened: reading it when
+    # the report is assembled would be after the reload below and would record the opposite.
+    round_trip_kept_filter = _filter_is_active(page)
+
+    # 3. A reload drops the filter. This is the product's contract, not a failure: the state
+    # starts empty (:95, :96) and is never persisted, so a manual refresh begins unfiltered.
+    page.reload()
+    _settled_path(page)
+    page.wait_for_timeout(2000)
+    rows_after_reload = _rows(page)
+    reload_cleared = not _filter_is_active(page)
+    check(reload_cleared,
+          "a reload kept the filter, though the filter state is not persisted anywhere")
+    check(rows_after_reload == unfiltered_rows,
+          f"a reload left {rows_after_reload} rows, not the unfiltered {unfiltered_rows}")
+
+    # 4. A row deleted while the list is unfiltered stays gone: the server is asked directly,
+    # and the list is read with no filter, so absence cannot be explained by the filter.
+    victim = rows[-1]
+    victim_id, victim_name = victim["id"], victim["name"]
+    status, _ = http(server.base, "DELETE", DEPLOYMENTS + f"/{victim_id}", token=token)
+    check(status in (200, 202, 204), f"deleting {victim_name!r} answered {status}")
+    row_ids.remove(victim_id)
+    page.wait_for_timeout(1500)
+
+    gone = page.request.get(server.base + DEPLOYMENTS + f"/{victim_id}")
+    check(gone.status == 404,
+          f"the deleted row still answers {gone.status} on the server")
+    # One more poll cycle, then the row must not have been recreated by it.
+    page.wait_for_timeout(9000)
+    after_poll_rows = _row_names(page)
+    check(victim_name not in after_poll_rows,
+          f"the deleted row {victim_name!r} came back into the list after a poll")
+    check(not _filter_is_active(page),
+          "the list is filtered, so absence from it would not prove the row was deleted")
+    _, live = _list_total(server, token, report)
+    check(victim_name not in {item["name"] for item in live},
+          f"the deleted row {victim_name!r} is still in the server's unfiltered list")
+
+    report["refresh_10_10"] = {"layer": "ui",
+        "contract": {"background_poll": "keeps the filter",
+                     "detail_round_trip": "keeps the filter",
+                     "manual_reload": "drops the filter"},
+        "filter": {"state": chosen_state, "rows_unfiltered": unfiltered_rows,
+                   "rows_filtered": filtered_rows},
+        "poll": {"waited_ms": 12000, "interval_ms": 8000,
+                 "requests": [u.split("/api/v1/deployments")[-1][:70] for u in polls[:6]],
+                 "filtered_poll_count": len(filtered_polls),
+                 "state_on_poll": polled_state,
+                 "rows_after_poll": rows_after_poll},
+        "detail_round_trip": {"opened": opened_name, "address_while_open": with_drawer,
+                              "rows_after": rows_after_round_trip,
+                              "filter_kept": round_trip_kept_filter},
+        "reload": {"rows_after": rows_after_reload, "filter_cleared": reload_cleared,
+                   "why": "search and states are plain useState (:95, :96); neither is written "
+                          "to the address or to localStorage"},
+        "deleted_row": {"id": victim_id, "name": victim_name,
+                        "server_status_after_delete": gone.status,
+                        "absent_from_unfiltered_list": True,
+                        "absent_after_a_poll": True},
+        "drafts": "not applicable to this list: a draft is held by the /deploy wizard, and this "
+                  "page polls list data only, so no unsaved draft exists here to be overwritten"}
+    report["evidence"].append({"layer": "ui", "item": "10.10", "what":
+        f"with a {chosen_state!r} filter applied, a background poll re-requested the list with "
+        f"state={chosen_state!r} and left the same {filtered_rows} rows, so the poll kept the "
+        "filter; opening and closing a row's detail changed only the address and also kept it; a "
+        "manual reload dropped it and showed all "
+        f"{unfiltered_rows} rows, which is this product's contract because the filter lives in "
+        "component state and is never persisted. A row deleted with no filter applied then "
+        "answered 404 on the server, stayed out of the unfiltered list across another poll, and "
+        "was absent from the server's own list. Unsaved drafts belong to the /deploy wizard, not "
+        "this page, so that half of the item does not apply to this surface.",
+        **report["refresh_10_10"]})
+    return report["refresh_10_10"]
+
 
 def _open_state_filter(page, values, apply=True):
     """Open the state column's filter, tick the given state values, and apply.
