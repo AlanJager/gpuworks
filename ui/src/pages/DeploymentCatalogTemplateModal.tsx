@@ -1,5 +1,5 @@
 import { CheckCircleOutlined, CloseCircleOutlined, CopyOutlined, DownloadOutlined, MinusCircleOutlined, ReloadOutlined, SaveOutlined } from "@ant-design/icons";
-import { Alert, Button, Checkbox, Input, Modal, Space, Spin, Typography, message } from "antd";
+import { Alert, Button, Checkbox, Input, Modal, Space, Spin, Typography, message, theme } from "antd";
 import { Component, Suspense, lazy, useCallback, useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
@@ -32,6 +32,7 @@ export default function DeploymentCatalogTemplateModal({ deploymentID, onClose }
   const { t } = useTranslation("deployments");
   const { t: tCommon } = useTranslation("common");
   const isAdmin = useIsAdmin();
+  const { token } = theme.useToken();
   const [copy, copyHolder] = useCopy();
   const [exported, setExported] = useState<CatalogTemplateExport>();
   const [yaml, setYAML] = useState("");
@@ -124,7 +125,7 @@ export default function DeploymentCatalogTemplateModal({ deploymentID, onClose }
           <ul className="catalog-template-list">
             {exported.checks.length === 0 && <li>{t("catalogTemplate.noOperations")}</li>}
             {exported.checks.map((check) => <li key={check.operation}>
-              {!check.tested ? <MinusCircleOutlined /> : check.passed ? <CheckCircleOutlined style={{ color: "var(--ant-color-success)" }} /> : <CloseCircleOutlined style={{ color: "var(--ant-color-error)" }} />}{" "}
+              {!check.tested ? <MinusCircleOutlined /> : check.passed ? <CheckCircleOutlined style={{ color: token.colorSuccess }} /> : <CloseCircleOutlined style={{ color: token.colorError }} />}{" "}
               <code>{check.operation}</code>{" "}
               {!check.tested ? t("catalogTemplate.check.notTested") : check.passed
                 ? t("catalogTemplate.check.passed", { status: check.http_status })
@@ -164,5 +165,5 @@ function noteText(t: (key: string, options?: Record<string, unknown>) => string,
 }
 
 function YamlTextArea({ value, onChange, ariaLabel }: { value: string; onChange: (value: string) => void; ariaLabel: string }) {
-  return <Input.TextArea aria-label={ariaLabel} value={value} onChange={(event) => onChange(event.target.value)} autoSize={{ minRows: 12, maxRows: 28 }} spellCheck={false} style={{ fontFamily: "var(--ant-font-family-code, monospace)" }} />;
+  return <Input.TextArea aria-label={ariaLabel} value={value} onChange={(event) => onChange(event.target.value)} autoSize={{ minRows: 12, maxRows: 28 }} spellCheck={false} style={{ fontFamily: "monospace" }} />;
 }
