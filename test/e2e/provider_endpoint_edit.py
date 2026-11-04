@@ -116,6 +116,216 @@ def exercise_table_id_isolation(page, common, copy, report):
     check(headers() == public_before, "clearing the stored layouts did not restore the defaults")
 
 
+def exercise_column_preferences(page, common, copy, report, writes, errors):
+    """11.1-11.3 on the public provider list: width, order and visibility are a viewer's local
+    preference, so every step is read three times - from the rendered header row, from the layout the
+    browser stored, and from a reload that has to rebuild the table out of that stored copy."""
+    labels = common["resourceTable"]
+    writes_before, errors_before = len(writes), len(errors)
+    columns = copy["table"]["column"]
+    table = page.locator(".resource-table").first
+    # The key carries the schema generation suffix, so it is found by its table id rather than assumed.
+    table_id = "providers-public"
+    keys_of = {columns["name"]: "name", columns["type"]: "kind",
+               columns["instances"]: "instance_count", columns["updatedAt"]: "updated_at",
+               columns["status"]: "state"}
+
+    def headers():
+        return [th.inner_text().strip() for th in table.locator("thead th").all()]
+
+    def shown():
+        return [title for title in headers() if title]
+
+    def resize(name):
+        return table.get_by_role("separator", name=labels["resizeColumn"].replace("{{name}}", name))
+
+    def width_of(name):
+        return int(resize(name).get_attribute("aria-valuenow"))
+
+    def stored():
+        raw = page.evaluate(
+            "([id]) => { const hits = Object.keys(localStorage).filter(k => k.includes(id)); "
+            "return hits.length === 1 ? localStorage.getItem(hits[0]) : null; }", [table_id])
+        return json.loads(raw) if raw else None
+
+    def cell_boxes():
+        return table.locator("tbody tr.ant-table-row").first.locator("td").evaluate_all(
+            "els => els.map(el => { const r = el.getBoundingClientRect(); "
+            "return {left: Math.round(r.left), right: Math.round(r.right), text: el.innerText.trim()}; })")
+
+    # This runs on a list that already holds the account this case created, so the content-layout check
+    # below reads a real row rather than an empty-state placeholder. The dialog closed on save, so the
+    # reload is what puts the new row on the page.
+    page.reload(wait_until="domcontentloaded")
+    expect(table.locator("tbody tr.ant-table-row").first).to_be_visible(timeout=20000)
+    default_shown = shown()
+    check(shown() == default_shown, "the provider table did not start from its default layout")
+
+    # 11.1: one keyboard resize moves that column by exactly one step per press and leaves the other
+    # columns' own widths alone; it cannot go below the column's positive minimum however often it is
+    # pressed, and the committed width is what a reload brings back.
+    start = width_of(columns["type"])
+    others = {name: width_of(name) for name in keys_of if name != columns["type"]}
+    handle = resize(columns["type"])
+    expect(handle).to_have_count(1)
+    handle.focus()
+    handle.press("ArrowRight")
+    handle.press("ArrowRight")
+    widened = width_of(columns["type"])
+    check(widened == start + 32,
+          f"two ArrowRight presses did not widen the column by two 16px steps: {start} -> {widened}")
+    check({name: width_of(name) for name in others} == others,
+          "resizing the type column changed another column's own width")
+    check(((stored() or {}).get("widths") or {}).get(keys_of[columns["type"]]) == widened,
+          f"the widened column was not written to the stored layout: {stored()}")
+    for _ in range(40):
+        handle.press("ArrowLeft")
+    floored = width_of(columns["type"])
+    check(0 < floored < start,
+          f"the column did not stop at a positive minimum below its start width: {floored}")
+    handle.press("ArrowLeft")
+    handle.press("ArrowLeft")
+    check(width_of(columns["type"]) == floored,
+          "the column width kept shrinking past its minimum")
+    stored_widths = (stored() or {}).get("widths") or {}
+    check(stored_widths.get(keys_of[columns["type"]]) == floored,
+          f"the minimum width was not written to the stored layout: {stored_widths}")
+    # Content layout: at that minimum the real row still lays out, every cell has a positive box and no
+    # two cells overlap, so the narrowest legitimate width does not collapse the row.
+    boxes = cell_boxes()
+    check(len(boxes) >= len(columns), f"the rendered row lost cells: {boxes}")
+    check(all(box["right"] > box["left"] for box in boxes), f"a cell collapsed to no width: {boxes}")
+    check(all(first["right"] <= second["left"] + 1 for first, second in zip(boxes, boxes[1:])),
+          f"cells overlap at the minimum column width: {boxes}")
+    check(any(box["text"] for box in boxes), "the rendered row is empty")
+    page.reload(wait_until="domcontentloaded")
+    expect(table.locator("thead th").first).to_be_visible(timeout=20000)
+    check(width_of(columns["type"]) == floored, "the committed column width was not restored after a reload")
+    report["column_resize"] = {"column": columns["type"], "start": start, "widened": widened,
+                               "floored": floored, "stored_widths": stored_widths,
+                               "cells": boxes, "restored_after_reload": floored}
+
+    # 11.3: the name and actions columns are locked - the drawer renders them as checked, disabled
+    # checkboxes and offers no hide or drag control for them, so they can be neither hidden nor moved.
+    table.get_by_role("button", name=labels["settings"], exact=True).click()
+    drawer = page.get_by_role("dialog", name=labels["settingsTitle"], exact=True)
+    expect(drawer).to_be_visible()
+    for locked in (columns["name"], labels["actions"]):
+        box = drawer.get_by_role("checkbox", name=locked, exact=True)
+        expect(box).to_have_count(1)
+        expect(box).to_be_disabled()
+        expect(box).to_be_checked()
+    check(drawer.get_by_role("button", name=labels["dragColumn"].replace("{{name}}", columns["name"])).count() == 0,
+          "the name column offers a drag handle, so it could be moved")
+    check(drawer.get_by_role("button", name=labels["hideColumn"].replace("{{name}}", columns["name"])).count() == 0,
+          "the name column offers a hide control, so it could be hidden")
+
+    # 11.2: hiding a movable column takes it out of the rendered header row and out of a reload;
+    # showing it again puts it back; a drag reorders; the drawer's reset restores every earlier choice.
+    visible_before = shown()
+    status_box = drawer.get_by_role("checkbox", name=columns["status"], exact=True)
+    expect(status_box).to_be_checked()
+    status_box.click()
+    expect(status_box).not_to_be_checked()
+    page.keyboard.press("Escape")
+    expect(drawer).not_to_be_visible()
+    hidden = shown()
+    check(columns["status"] not in hidden,
+          f"the status column was still rendered after being hidden: {hidden}")
+    check(hidden == [title for title in visible_before if title != columns["status"]],
+          f"hiding one column changed the rest of the header row: {hidden}")
+    check(((stored() or {}).get("hidden") or []) == [keys_of[columns["status"]]],
+          f"the hidden column was not written to the stored layout: {stored()}")
+    page.reload(wait_until="domcontentloaded")
+    expect(table.locator("thead th").first).to_be_visible(timeout=20000)
+    check(columns["status"] not in shown(), "the hidden column came back after a reload")
+    # Showing it again is what the same checkbox does in reverse.
+    table.get_by_role("button", name=labels["settings"], exact=True).click()
+    expect(drawer).to_be_visible()
+    drawer.get_by_role("checkbox", name=columns["status"], exact=True).check()
+    expect(drawer.get_by_role("checkbox", name=columns["status"], exact=True)).to_be_checked()
+    # A keyboard drag on the type column's handle moves it one slot later in the shown order.
+    drag_handle = drawer.get_by_role("button", name=labels["dragColumn"].replace("{{name}}", columns["type"]))
+    expect(drag_handle).to_have_count(1)
+    drag_handle.focus()
+    page.keyboard.press("Space")
+    page.wait_for_timeout(200)
+    page.keyboard.press("ArrowDown")
+    page.wait_for_timeout(200)
+    page.keyboard.press("Space")
+    page.wait_for_timeout(200)
+    order = (stored() or {}).get("order") or []
+    check(order.index(keys_of[columns["type"]]) == order.index(keys_of[columns["instances"]]) + 1,
+          f"the drag did not move the type column after the instances column: {order}")
+    page.keyboard.press("Escape")
+    expect(drawer).not_to_be_visible()
+    check(sorted(shown()) == sorted(visible_before),
+          f"showing the column again did not restore the full column set: {shown()}")
+    reordered = shown()
+    check(reordered.index(columns["type"]) == reordered.index(columns["instances"]) + 1,
+          f"the moved column was not rendered in its new slot: {reordered}")
+    page.reload(wait_until="domcontentloaded")
+    expect(table.locator("thead th").first).to_be_visible(timeout=20000)
+    check(shown() == reordered, "the reordered layout was not restored after a reload")
+    # Reset restores the default column set, order and widths.
+    table.get_by_role("button", name=labels["settings"], exact=True).click()
+    expect(drawer).to_be_visible()
+    drawer.get_by_role("button", name=labels["reset"], exact=True).click()
+    page.keyboard.press("Escape")
+    expect(drawer).not_to_be_visible()
+    check(shown() == default_shown, f"the reset did not restore the default header row: {shown()}")
+    check(((stored() or {}).get("widths") or {}) == {},
+          f"the reset did not clear the stored widths: {stored()}")
+    page.reload(wait_until="domcontentloaded")
+    expect(table.locator("thead th").first).to_be_visible(timeout=20000)
+    check(shown() == default_shown, "the reset layout was not restored after a reload")
+    report["column_show_hide_reset"] = {"hidden": columns["status"], "visible_before": visible_before,
+                                        "reordered": reordered, "reset_restored": default_shown,
+                                        "locked": [columns["name"], labels["actions"]]}
+
+    # 11.3 second clause: a layout saved by an older build names a column this build does not have, and
+    # one saved copy is not readable at all. Both are required to fall back safely rather than throw or
+    # render a column the table never declared.
+    stored_key = page.evaluate(
+        "([id]) => Object.keys(localStorage).filter(k => k.includes(id))[0]", [table_id])
+    page.evaluate(
+        "([key]) => localStorage.setItem(key, JSON.stringify({order: ['state', 'retired_column', 'kind'], "
+        "hidden: ['retired_column'], widths: {retired_column: 300, state: 140}, pageSize: 100}))", [stored_key])
+    page.reload(wait_until="domcontentloaded")
+    expect(table.locator("thead th").first).to_be_visible(timeout=20000)
+    migrated = shown()
+    check("retired_column" not in " ".join(migrated),
+          f"a column this build does not declare was rendered: {migrated}")
+    check(sorted(migrated) == sorted(default_shown),
+          f"the unknown-column layout lost or invented a column: {migrated}")
+    # The name column leads and the actions column trails by role, so the saved order applies to the
+    # columns in between: 'state' was asked for first and is required to be rendered first there.
+    movable = [title for title in migrated if title not in (columns["name"], labels["actions"])]
+    check(movable[0] == columns["status"],
+          f"the leading saved column was not rendered first among the movable columns: {migrated}")
+    check(movable == [columns["status"], columns["type"], columns["instances"], columns["updatedAt"]],
+          f"the surviving saved order was not applied to the movable columns: {migrated}")
+    check(width_of(columns["status"]) == 140,
+          "the saved width of a known column was not applied next to an unknown one")
+    check(len(errors) == errors_before, f"an unknown stored column raised a page error: {errors[errors_before:]}")
+    page.evaluate("([key]) => localStorage.setItem(key, 'not a stored layout')", [stored_key])
+    page.reload(wait_until="domcontentloaded")
+    expect(table.locator("thead th").first).to_be_visible(timeout=20000)
+    check(shown() == default_shown, f"an unreadable stored layout did not fall back to the defaults: {shown()}")
+    check(len(errors) == errors_before,
+          f"an unreadable stored layout raised a page error: {errors[errors_before:]}")
+    report["column_unknown_fallback"] = {"unknown_layout": migrated, "unreadable_layout": shown(),
+                                         "page_errors": errors[errors_before:]}
+    # Leave the table as it was found.
+    page.evaluate("() => Object.keys(localStorage).filter(k => k.startsWith('gpuworks.table.'))"
+                  ".forEach(k => localStorage.removeItem(k))")
+    page.reload(wait_until="domcontentloaded")
+    expect(table.locator("thead th").first).to_be_visible(timeout=20000)
+    check(shown() == default_shown, "clearing the stored layouts did not restore the defaults")
+    check(len(writes) == writes_before,
+          f"a column preference change wrote a provider: {writes[writes_before:]}")
+
+
 def copy_server_log(artifacts):
     log = artifacts.private / "server.log"
     if log.exists():
@@ -412,6 +622,11 @@ def test_provider_endpoint_edit(page, context, server, artifacts, report, locale
                                            "localized_operation_error": message, "draft_endpoint": endpoint})
 
         read(endpoints[0], name)
+        # The list now holds a real row, so the column-preference steps read the rendered content as well
+        # as the header row. They belong to this account: a layout change must never write a provider.
+        exercise_column_preferences(page, json.loads((texts / "common.json").read_text()), copy,
+                                    report, writes, errors)
+        report["last_step"] = "provider-column-preferences"
         exercise_name_boundaries(page, context, server, fixture, copy, label, path, name,
                                  endpoints[0], writes, errors, report)
         artifacts.start_trace(context)
