@@ -1,0 +1,53 @@
+--- a/vllm/distributed/kv_transfer/kv_connector/v1/mooncake/mooncake_connector.py
++++ b/vllm/distributed/kv_transfer/kv_connector/v1/mooncake/mooncake_connector.py
+@@ -802,6 +802,13 @@
+         assert self.connector_worker is not None
+         return self.connector_worker.get_finished()
+ 
++    def get_block_ids_with_load_errors(self) -> set[int]:
++        """Blocks whose pull failed, so the scheduler applies
++        kv_load_failure_policy instead of decoding them as loaded."""
++        if self.connector_worker is None:
++            return set()
++        return self.connector_worker.get_block_ids_with_load_errors()
++
+     def start_load_kv(self, forward_context: "ForwardContext", **kwargs) -> None:
+         assert self.connector_worker is not None
+         assert isinstance(self._connector_metadata, MooncakeConnectorMetadata)
+@@ -1217,6 +1224,11 @@
+ 
+         self.finished_sending_reqs: set[ReqId] = set()
+         self.finished_recving_reqs: set[ReqId] = set()
++        # Local blocks of failed pulls, reported once through
++        # get_block_ids_with_load_errors. Written on the receiver loop's
++        # thread, read on the worker's.
++        self._invalid_block_ids: set[int] = set()
++        self._invalid_block_ids_lock = threading.Lock()
+ 
+         self.xfer_stats = MooncakeKVConnectorStats()
+ 
+@@ -2376,6 +2388,11 @@
+ 
+         return finished_sending_reqs
+ 
++    def get_block_ids_with_load_errors(self) -> set[int]:
++        with self._invalid_block_ids_lock:
++            result, self._invalid_block_ids = self._invalid_block_ids, set()
++        return result
++
+     def get_finished(self) -> tuple[set[str] | None, set[str] | None]:
+         """
+         Get requests that are done sending or recving on this specific worker.
+@@ -2534,6 +2551,12 @@
+                 response.err_msg,
+             )
+ 
++        if response.err_reqs:
++            with self._invalid_block_ids_lock:
++                for req_id in response.err_reqs:
++                    for group in pull_metas[req_id].local_block_ids:
++                        self._invalid_block_ids.update(group)
++
+         for req_id in (response.ok_reqs or []) + (response.err_reqs or []):
+             pull_meta = pull_metas[req_id]
+             # No race because we are in async loop.

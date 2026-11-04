@@ -49,9 +49,11 @@ func imageReferenceCounts(db *gorm.DB, refs []string) (map[string]int, error) {
 
 // ReconcileMissingOfficialImages applies the catalog's removal rule to the
 // system rows a manifest no longer lists (every official row whose ref is not
-// in seen): a row nothing references is deleted together with its node
-// presence rows and, when it was the last one, its series; a referenced row is
-// deprecated so the deployments using it keep working. The writes are one
+// in seen): a row nothing references and no node holds is deleted together
+// with its node presence rows and, when it was the last one, its series; a
+// referenced row, or one some node holds, is kept as an older version
+// (deprecated) so the deployments using it keep working and an image a node
+// already pulled stays visible until it is removed there. The writes are one
 // transaction.
 func (s *Store) ReconcileMissingOfficialImages(seen map[string]struct{}, since string) (deleted, deprecated int, err error) {
 	// System rows are bounded by the manifest size, so reading them all and
@@ -76,11 +78,15 @@ func (s *Store) ReconcileMissingOfficialImages(seen map[string]struct{}, since s
 	if err != nil {
 		return 0, 0, err
 	}
+	held, err := imageVersionsPresentOnNodes(s.db, missing)
+	if err != nil {
+		return 0, 0, err
+	}
 	var deprecateIDs, deleteIDs []uint
 	var deprecatedRefs, deletedRefs []string
 	seriesIDs := map[uint]struct{}{}
 	for _, row := range missing {
-		if counts[row.ImageRef] > 0 {
+		if counts[row.ImageRef] > 0 || held[row.ID] {
 			// Already deprecated by an earlier catalog: keep the version that
 			// first dropped it.
 			if row.Deprecated && row.DeprecatedSince != "" {
@@ -143,4 +149,27 @@ func (s *Store) ReconcileMissingOfficialImages(seen map[string]struct{}, since s
 		s.Bus.PublishChange("image", ref, "updated")
 	}
 	return len(deleteIDs), len(deprecateIDs), nil
+}
+
+// imageVersionsPresentOnNodes reports which of rows some node holds (an image
+// node row in state present). It only keeps a row the catalog dropped; it is
+// not a reference for deletion, which a node holding the image never blocks.
+func imageVersionsPresentOnNodes(db *gorm.DB, rows []Image) (map[uint]bool, error) {
+	out := map[uint]bool{}
+	for start := 0; start < len(rows); start += imageReferenceBatch {
+		batch := rows[start:min(start+imageReferenceBatch, len(rows))]
+		ids := make([]uint, 0, len(batch))
+		for _, row := range batch {
+			ids = append(ids, row.ID)
+		}
+		var held []uint
+		if err := db.Model(&ImageNode{}).Distinct("image_version_id").
+			Where("image_version_id IN ? AND state = ?", ids, ImageStatePresent).Pluck("image_version_id", &held).Error; err != nil {
+			return nil, err
+		}
+		for _, id := range held {
+			out[id] = true
+		}
+	}
+	return out, nil
 }

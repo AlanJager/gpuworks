@@ -63,6 +63,29 @@ RUN <<EOF
     fi
 EOF
 
+## vLLM 补丁层（DTK_VLLM_PATCHES=1 的档才有；0.18.1 档的 vLLM 没有 MooncakeConnector，不开）
+#
+# patches/vllm_dtk/ 是只对海光 vllm 0.21 base 成立的补丁，与 cuda 档的 patches/vllm/ 分开：
+# 那边按 EXPECT_ALL=1 应用于 vLLM 0.30+，这里的上下文是 vllm-hcu 改过的 0.21 源码。
+# base 构建时已执行过 vllm-hcu-apply-patches，推理目录的 pre_start_argv 启动时还会再执行一次：
+# 补丁打完后在这里重跑它，并确认我们的改动还在——它是按原文锚点替换的，锚点被我们动到就会失败或回退。
+ARG DTK_VLLM_PATCHES=""
+COPY shared/apply_patches.sh /opt/gpuworks/shared/apply_patches.sh
+COPY patches/vllm_dtk/ /tmp/patches-vllm-dtk/
+RUN <<EOF
+    set -eux
+    if [ "${DTK_VLLM_PATCHES}" = "1" ]; then
+        SITE=$(python3 -c "import importlib.util,os;print(os.path.dirname(os.path.dirname(importlib.util.find_spec('vllm').origin)))")
+        PATCH_DIR=/tmp/patches-vllm-dtk TARGET="${SITE}" \
+            MANIFEST=/opt/gpuworks/patches-vllm.json EXPECT_ALL=1 \
+            bash /opt/gpuworks/shared/apply_patches.sh
+        bash -c "source /opt/dtk/env.sh >/dev/null 2>&1 || true; vllm-hcu-apply-patches"
+        grep -q "def get_block_ids_with_load_errors" "${SITE}/vllm/distributed/kv_transfer/kv_connector/v1/mooncake/mooncake_connector.py"
+        find "${SITE}" -name '*.rej' -o -name '*.orig' | head -50 | xargs -r rm -f
+    fi
+    rm -rf /tmp/patches-vllm-dtk
+EOF
+
 ## audio extras
 RUN <<EOF
     set -eux

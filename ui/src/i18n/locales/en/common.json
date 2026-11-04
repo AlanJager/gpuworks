@@ -205,7 +205,7 @@
     "IMAGE_VERSION_PATCH_INVALID": "The image version update is invalid.",
     "IMAGE_VERSION_PATCH_EMPTY": "Provide enabled or registry_sources to update the image version.",
     "IMAGE_IN_USE": "The image is still referenced by a deployment, an unfinished instance, or a model. Delete those references first.",
-    "OFFICIAL_IMAGE_DELETE_FORBIDDEN": "System images are maintained by the catalog manifest and cannot be deleted; an update deprecates or removes them.",
+    "OFFICIAL_IMAGE_DELETE_FORBIDDEN": "System images are maintained by the catalog manifest and cannot be deleted; an update removes them or keeps them as older versions, by their references and node distribution.",
     "IMAGE_SYNC_UNAVAILABLE": "Image synchronization is not configured.",
     "IMAGE_RETRY_UNAVAILABLE": "Image retry is not configured.",
     "IMAGE_INSPECTION_UNAVAILABLE": "Image inspection is not configured.",

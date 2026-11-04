@@ -128,7 +128,8 @@ When the cards a manual placement pins are held by other deployments, the instan
 
 `vllm-mooncake` uses vLLM's built-in MooncakeConnector, and the KV is moved by the Mooncake transfer engine that Hygon builds for DTK.
 
-- **Image**: It must be the built-in Hygon vLLM 0.21 image `gpuworks/gpuworks-runner:dtk26.04-vllm0.21.0-r1`, which the built-in templates' K100 / BW launch specs use.
+- **Image**: It must be the built-in Hygon vLLM 0.21 image `gpuworks/gpuworks-runner:dtk26.04-vllm0.21.0-r2`, which the built-in templates' K100 / BW launch specs use.
+  In the previous `-r1`, the connector did not report failed KV pulls: decode still returned 200 with wrong content, `kv_load_failure` did not take effect, and the failed blocks stayed in the prefix cache; r2 fixes this, so do not use r1 for PD deployments.
   The Hygon vLLM 0.18.1 image does not include Mooncake and cannot be used for PD.
 - **Transfer protocol**: The platform chooses it from the compute network shared by P and D: `rdma` on a host RDMA network, and `tcp` on Ethernet, the management network, or a single host.
 - **TP**: Prefill and decode must be equal.
@@ -139,10 +140,6 @@ When the cards a manual placement pins are held by other deployments, the instan
 - **Self-check**: The connector does not export transferred bytes, so the handoff self-check judges only whether decode answers normally, and records the transport as `unmeasured`.
 - **Sleep**: As with NIXL, a sleepable deployment cannot use a host RDMA compute network.
 - **Verification status**: Experimental.
-- **Known limitation: failed pulls are not reported.** The connector in the current built-in image `dtk26.04-vllm0.21.0-r1` treats a request whose pull failed as having received its KV: decode still returns 200,
-  the content is wrong, neither `kv_load_failure` value (`fail` or `recompute`) takes effect, and the failed blocks may stay in decode's prefix cache. The gateway hands off only after every TP rank has
-  registered with the bootstrap server, and caches the engine id per instance, which avoids the known causes of failure; a prefill instance that exits mid-handoff or a network interruption still causes errors.
-  Before going live, check output with the handoff self-check and sample requests.
 
 ## During Operation
 

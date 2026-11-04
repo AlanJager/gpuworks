@@ -205,7 +205,7 @@
     "IMAGE_VERSION_PATCH_INVALID": "镜像版本更新内容无效。",
     "IMAGE_VERSION_PATCH_EMPTY": "请提供启用状态或获取地址，以更新镜像版本。",
     "IMAGE_IN_USE": "镜像仍被部署、未结束的实例或模型引用，请先删除这些引用。",
-    "OFFICIAL_IMAGE_DELETE_FORBIDDEN": "系统镜像由目录 manifest 维护，不能直接删除；目录更新时会按引用情况删除或弃用。",
+    "OFFICIAL_IMAGE_DELETE_FORBIDDEN": "系统镜像由目录 manifest 维护，不能直接删除；目录更新时会按引用和节点上的分布删除或保留为旧版本。",
     "IMAGE_SYNC_UNAVAILABLE": "镜像同步功能尚未配置。",
     "IMAGE_RETRY_UNAVAILABLE": "镜像重试功能尚未配置。",
     "IMAGE_INSPECTION_UNAVAILABLE": "镜像检查功能尚未配置。",

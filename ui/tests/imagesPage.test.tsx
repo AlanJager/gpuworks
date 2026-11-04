@@ -9,6 +9,7 @@ import {
   installFetch,
   json,
   legacySeries,
+  legacyVersion,
   nightlyVersion,
   seriesDetails,
   systemSeries,
@@ -50,7 +51,7 @@ const SYNC_RESULT = {
   catalog_version: "2026-10-08.1a2b3c4d", created: 3, updated: 22, deleted: 71, deprecated: 1, skipped: [],
   series: [systemSeries],
 };
-const RESULT_TOAST = "新增 3 · 更新 22 · 删除 71 · 弃用 1";
+const RESULT_TOAST = "新增 3 · 更新 22 · 删除 71 · 转为旧版本 1";
 
 // antd keeps closing toasts in the DOM under jsdom (no transition end), so a
 // toast is proven by the count of its text going up, not by its presence.
@@ -187,10 +188,10 @@ test("uploading a manifest posts the JSON as is and shares the result toast; an 
     user.upload(again, new File(["{\"schema_version\":1}"], "old.json", { type: "application/json" })));
 });
 
-test("system images are read-only and a deprecated one shows its references", async () => {
+test("system images are read-only and an older one shows its references", async () => {
   const { user } = renderPage();
   const drawer = await openSeries(user, legacySeries.name);
-  await within(drawer).findByText("已弃用 · 1 个引用");
+  await within(drawer).findByText("旧版本 · 1 个引用");
   assert.equal(within(drawer).queryByRole("button", { name: /删除系列/ }) !== null, false);
   await user.click(within(drawer).getByRole("link", { name: "gpustack/runner:cuda12.9-vllm0.25.1" }));
   // Picking the version opens the node tab on it.
@@ -355,4 +356,19 @@ test("while a node of the open series is transferring, the detail is polled fast
   } finally {
     delete (document as unknown as { hidden?: boolean }).hidden;
   }
+});
+
+// A version the catalog dropped stays while a node holds it, with no
+// reference: it reads as an older version, and the tooltip says why.
+test("an older version nothing references is labelled without a count", async () => {
+  const { user } = renderPage(async (call) =>
+    call.path === "/api/v1/images/2"
+      ? json(200, { ...legacySeries, versions: [{ ...legacyVersion, reference_count: 0, present_nodes: 1, nodes: [] }] })
+      : undefined,
+  );
+  const drawer = await openSeries(user, legacySeries.name);
+  const tag = await within(drawer).findByText("旧版本");
+  assert.equal(within(drawer).queryByText(/个引用/), null);
+  await user.hover(tag);
+  await screen.findByText("目录 2026-10-08.1a2b3c4d 起已有更新的版本，这个版本只为仍在用它的部署和已拉取的节点保留");
 });

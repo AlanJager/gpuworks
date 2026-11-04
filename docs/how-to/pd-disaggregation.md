@@ -126,7 +126,8 @@ P 与 D 要交换 KV，所以整个 PD 部署的实例都在同一张计算网�
 
 `vllm-mooncake` 使用 vLLM 自带的 MooncakeConnector，KV 由海光为 DTK 编译的 Mooncake 传输引擎搬运。
 
-- **镜像**：必须是 vLLM 0.21 的海光内置镜像 `gpuworks/gpuworks-runner:dtk26.04-vllm0.21.0-r1`，内置模板的 K100 / BW 启动规格用的就是它。
+- **镜像**：必须是 vLLM 0.21 的海光内置镜像 `gpuworks/gpuworks-runner:dtk26.04-vllm0.21.0-r2`，内置模板的 K100 / BW 启动规格用的就是它。
+  上一版 `-r1` 的连接器拉取 KV 失败时不报错：decode 仍返回 200 且内容是错的，`kv_load_failure` 不生效，失败的块还会留在前缀缓存里；r2 修复了这一点，PD 部署不要再用 r1。
   vLLM 0.18.1 的海光镜像没有 Mooncake，不能用于 PD。
 - **传输协议**：平台按 P、D 共用的参数网络选择：主机 RDMA 网络用 `rdma`，以太网、管理网络或同机用 `tcp`。
 - **TP**：prefill 与 decode 必须相等。
@@ -137,10 +138,6 @@ P 与 D 要交换 KV，所以整个 PD 部署的实例都在同一张计算网�
 - **自检**：连接器不导出传输字节数，交接自检只根据 decode 是否正常回答判断，传输方式记 `unmeasured`。
 - **休眠**：与 NIXL 一样，可休眠的部署不能使用主机 RDMA 参数网络。
 - **验证状态**：实验性。
-- **已知限制：拉取失败不报错。** 当前内置镜像 `dtk26.04-vllm0.21.0-r1` 的连接器把拉取失败的请求当作已收到 KV：decode 仍返回 200，
-  内容是错的，`kv_load_failure`（`fail` 或 `recompute`）都不生效，失败的块还可能留在 decode 的前缀缓存里。网关只在 bootstrap 服务里
-  所有 TP rank 都登记后才交接，并按实例缓存 engine id，避免了已知的失败原因；但 prefill 实例在交接途中退出、网络中断时仍会出错。
-  上线前先用交接自检和抽样请求核对输出。
 
 ## 运行中
 

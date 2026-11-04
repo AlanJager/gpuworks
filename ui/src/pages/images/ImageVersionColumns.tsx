@@ -65,7 +65,11 @@ export function buildVersionColumns({
           <Tooltip
             title={row.deprecated_since ? t("versionTable.deprecatedSince", { version: row.deprecated_since }) : undefined}
           >
-            <Tag color="orange">{t("versionTable.deprecatedRefs", { refs: row.reference_count ?? 0 })}</Tag>
+            <Tag color="orange">
+              {row.reference_count
+                ? t("versionTable.deprecatedRefs", { refs: row.reference_count })
+                : t("versionTable.olderVersion")}
+            </Tag>
           </Tooltip>
         ) : (
           <Space size={6}>
