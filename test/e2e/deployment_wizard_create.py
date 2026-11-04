@@ -133,7 +133,7 @@ def test_deployment_wizard_create(page, context, server, artifacts, report,
     page.on("response", observed)
     page.goto(server.base + "/deploy")
     page.get_by_role("textbox", name=auth["username"], exact=True).fill("admin")
-    page.get_by_label(auth["password"], exact=True).fill("password")
+    page.get_by_label(auth["password"], exact=True).fill("gpuworks-test-password-2026")
     with page.expect_response(lambda r: urlsplit(r.url).path == "/api/v1/auth/login"
                               and r.request.method == "POST") as logged:
         button(page, auth["submit"]).click()
@@ -433,7 +433,7 @@ def main(*, manifest_path=None, exercise=None, fixture_module=None):
                 report["server_pid"] = server_pid
         report["base_url"] = server.base
         status, login = http(server.base, "POST", "/api/v1/auth/login",
-                             body={"username": "admin", "password": "password"})
+                             body={"username": "admin", "password": "gpuworks-test-password-2026"})
         check(status == 200, f"fixture login HTTP {status}")
         token = login["token"]
         check(isinstance(token, str) and bool(token.strip()), "fixture login returned no valid token")

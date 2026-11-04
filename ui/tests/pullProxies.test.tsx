@@ -112,10 +112,10 @@ test("a refusal is shown at its field and the drawer stays open", async () => {
   const drawer = await screen.findByRole("dialog");
   await user.click(within(drawer).getByRole("button", { name: saveName }));
   const field = i18n.t("pull.fields.http_proxy", { ns: "settings" });
-  await within(drawer).findByText(i18n.t("pull.invalidField", { ns: "settings", field, detail: "at least one of http_proxy and https_proxy is required" }));
+  await within(drawer).findByText(i18n.t("pull.invalidField", { ns: "settings", field, detail: i18n.t("pullSettingReason.invalid_value", { ns: "common" }) }));
   await user.type(within(drawer).getByLabelText(text.httpProxy), "http://u:p@proxy.corp:3128");
   await user.click(within(drawer).getByRole("button", { name: saveName }));
-  await within(drawer).findByText(/must not contain a login/);
+  await within(drawer).findByText(i18n.t("pull.invalidField", { ns: "settings", field: i18n.t("pull.fields.http_proxy", { ns: "settings" }), detail: i18n.t("pullSettingReason.invalid_value", { ns: "common" }) }));
   assert.equal(fake.proxies.length, 0, "nothing was created");
   assert.ok(screen.getByRole("dialog"), "still open");
 });
@@ -171,7 +171,7 @@ test("moving an entry sends the whole new order and a refused reorder says why",
   assert.equal((screen.getByRole("button", { name: fill(text.moveDown, { n: 2 }) }) as HTMLButtonElement).disabled, true);
   fake.failNext("orderPullProxies", new APIError("PULL_SETTING_INVALID", { field: "order", detail: "proxies changed meanwhile" }, "x", 400));
   await user.click(screen.getByRole("button", { name: fill(text.moveUp, { n: 2 }) }));
-  await screen.findByText(i18n.t("pull.invalidField", { ns: "settings", field: i18n.t("pull.fields.order", { ns: "settings" }), detail: "proxies changed meanwhile" }));
+  await screen.findByText(i18n.t("pull.invalidField", { ns: "settings", field: i18n.t("pull.fields.order", { ns: "settings" }), detail: i18n.t("pullSettingReason.invalid_value", { ns: "common" }) }));
   assert.ok(rowText(rows()[0]).includes("proxy-a.corp"), "the list is as it was");
   await user.click(screen.getByRole("button", { name: fill(text.moveUp, { n: 2 }) }));
   await waitFor(() => assert.ok(rowText(rows()[0]).includes("proxy-b.corp")));

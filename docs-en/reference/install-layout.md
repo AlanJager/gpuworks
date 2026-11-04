@@ -57,21 +57,28 @@ The installation tree is a shared workspace for the service account and the oper
 
 | Object | Permissions |
 |---|---|
-| Directories | `2775` (group-writable + setgid; new files inherit the service group) |
-| Files | `0664` (the database, `master.key`, `server.yaml`, `initial-credentials`, and backup archives receive the same permissions); executables do not receive setgid |
+| Linux systemd directories | `2775` (group-writable + setgid; new files inherit the platform group `gpuworks`) |
+| Ordinary configuration files such as `server.yaml` | `0664` for shared Linux installations; macOS removes group write permission |
+| Database, `master.key`, `initial-credentials`, and backup archives | `0600` by default; `0660` for an explicitly authorized Linux platform group |
 | Binary | `0755` |
-| `data/install-history.jsonl` | `0600` |
+| `data/install-history.jsonl` | `0600` standalone, or `0660` with a trusted Linux service group |
 | systemd unit / launchd plist | `0644` (the plist is owned by `root:wheel`, as required by launchd) |
 
 - install runs **as the operator**, using separate `sudo` commands for only a few steps: initially creating the `/opt` directory, creating the service account, writing the systemd unit, running `systemctl`, and assigning the tree to the service group at the end. `sudo` prompts for a password on the first privileged command, then does not prompt again while the credentials remain cached (typically 15 minutes, depending on the host's sudoers configuration).
 - During the first installation, files in the tree (the binary, configuration, and credentials) cannot yet be written directly. The installer automatically falls back to `sudo` and applies chown to the tree at the end. Subsequent installations and upgrades write directly.
-- In systemd mode, the operator is added to the service account's group (default: `gpuworks`), so subsequent `reset-password` operations do not require `sudo`, nor do backups and binary replacement during `upgrade`. `upgrade` still uses `sudo` for `systemctl` and the final `chown`/`chmod`. The new group does not take effect in the **current terminal**; run `newgrp gpuworks` or log in again.
+- In systemd mode, the operator is added to the reserved platform group `gpuworks`, so subsequent `reset-password` operations do not require `sudo`, nor do backups and binary replacement during `upgrade`. `upgrade` still uses `sudo` for `systemctl` and the final `chown`/`chmod`. The new group does not take effect in the **current terminal**; run `newgrp gpuworks` or log in again.
 - nohup mode has no privileged steps: the process runs as the caller and the caller owns the directory, with the sole exception of initially creating the `/opt` directory. The nohup process belongs to the installer: if root installs it, only root can restart it with `gpuworks restart --dir <install-dir>`.
 - Preflight requirements: root or usable `sudo` (otherwise, installation falls back to nohup with a warning; if `sudo` is also unavailable and `--dir` is not writable, installation is refused with a prompt to use a user-level directory); the target port is not occupied by another process (except the current installation); and the filesystem containing the installation directory has at least 2 GiB free.
 
+Sensitive files default to owner-only access (`0600`). A Linux systemd installation explicitly bound to this binary and a non-root service account may use its trusted service group (`0660`); group membership grants access to platform credentials. macOS and standalone servers do not implicitly trust ordinary primary groups. Startup, install and upgrade harden existing credentials, databases and sidecars, and recognized backups; temporary database snapshots are owner-only. Failure to protect a file stops the operation: repair the reported owner/service-group permissions and retry. Generated passwords are not written to service logs.
+
+The authorized group is the reserved platform group `gpuworks`, not an arbitrary primary group of a custom service account. The systemd unit explicitly records `Group=gpuworks`, and actual file GIDs must match it. Legacy default-service installations can retain their existing `gpuworks` operator-group authorization; unknown installations stay owner-only. Rolling back to an unfixed binary may reintroduce its older permissive behavior; upgrade to a fixed release again. If preflight finds legacy files that the operator lacks permission to harden, installation or upgrade is refused before stopping the service; retry as the file owner or root. Privileged writes require a validated trusted directory; if directory validation fails, run the complete command as the owner or root.
+
+On Linux, group authorization first clears POSIX extended ACLs from sensitive files. Shared database directories, directories used for privileged writes, and sensitive directory chains receiving installation group permissions reject extended or default POSIX ACLs, preventing extra access through file replacement or sidecar inheritance. If the error identifies an ACL, review and remove unnecessary ACLs before retrying.
+
 ## Credential Files
 
-Unit files are globally readable, so the initial password is **not** written to the unit file. Instead, it is stored in `<data>/initial-credentials` (JSON, `0664`, plaintext):
+Unit files are globally readable, so the initial password is **not** written to the unit file. Instead, it is stored in `<data>/initial-credentials` (JSON, `0600` / `0660`, plaintext):
 
 ```json
 {"user": "admin", "password": "...", "created_at": "2026-09-10T09:00:00Z"}

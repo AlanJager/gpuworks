@@ -13,7 +13,7 @@ import (
 
 func TestPlatformTokenLifecycle(t *testing.T) {
 	s := newTestStore(t)
-	if _, _, _, err := s.EnsureAdmin("admin", "password"); err != nil {
+	if _, _, _, err := s.EnsureAdmin("admin", "gpuworks-test-password-2026"); err != nil {
 		t.Fatal(err)
 	}
 	var admin User

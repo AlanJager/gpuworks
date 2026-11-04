@@ -58,6 +58,9 @@ func (i *Installer) unitConfig(serviceUser, mode string) UnitConfig {
 		ServiceUser: serviceUser,
 	}
 	cfg.StderrLog = i.layout.StderrLog()
+	if mode == ModeSystemd && serviceUser != "" && serviceUser != "root" {
+		cfg.ServiceGroup = DefaultCredentialGroup
+	}
 	if mode == ModeNohup {
 		// The detached process runs as whoever starts it.
 		cfg.ServiceUser = ""

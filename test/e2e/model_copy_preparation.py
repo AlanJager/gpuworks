@@ -36,7 +36,7 @@ def main():
         try:
             page.goto(args.base + "/deployments")
             page.locator('input[autocomplete="username"]').fill("admin")
-            page.locator('input[autocomplete="current-password"]').fill("password")
+            page.locator('input[autocomplete="current-password"]').fill("gpuworks-test-password-2026")
             page.get_by_role("button", name="Sign In").click()
             expect(page.get_by_role("heading", name="Deployments", exact=True)).to_be_visible()
             with page.expect_response(lambda response: response.url.endswith(detail) and response.status == 200) as received:

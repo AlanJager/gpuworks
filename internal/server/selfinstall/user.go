@@ -2,10 +2,15 @@ package selfinstall
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/user"
+	"runtime"
+	"strconv"
 	"strings"
+
+	"gpuworks.ai/gpuworks/internal/securefile"
 )
 
 // userExists reports whether a local account exists. With CGO disabled
@@ -28,12 +33,15 @@ func (i *Installer) ensureServiceUser(ctx context.Context, name string) error {
 	if name == "" || name == "root" {
 		return nil
 	}
+	if err := i.ensureCredentialGroup(ctx); err != nil {
+		return err
+	}
 	if i.deps.LookupUser != nil && i.deps.LookupUser(name) {
 		return nil
 	}
 	shell := nologinShell()
 	err := i.deps.Run.Run(ctx, Command{Path: "useradd", Sudo: true,
-		Args: []string{"--system", "--home-dir", i.layout.Dir, "--no-create-home", "--shell", shell, name}})
+		Args: []string{"--system", "--gid", DefaultCredentialGroup, "--home-dir", i.layout.Dir, "--no-create-home", "--shell", shell, name}})
 	if err == nil {
 		i.io.Say("created system user %s", name)
 		return nil
@@ -41,7 +49,7 @@ func (i *Installer) ensureServiceUser(ctx context.Context, name string) error {
 	// A busybox adduser with the long flag spelling is not a given (Alpine,
 	// container base images), so try its short form before giving up.
 	if busyboxErr := i.deps.Run.Run(ctx, Command{Path: "adduser", Sudo: true,
-		Args: []string{"-S", "-D", "-H", "-s", shell, name}}); busyboxErr == nil {
+		Args: []string{"-S", "-D", "-H", "-G", DefaultCredentialGroup, "-s", shell, name}}); busyboxErr == nil {
 		i.io.Say("created system user %s", name)
 		return nil
 	}
@@ -59,18 +67,32 @@ func nologinShell() string {
 	return "/bin/false"
 }
 
-// chownTree shares every application directory with the service account.
+// chownTree shares Linux installations only through the explicit platform
+// operator group; a service account's unrelated primary group is not trusted.
 func (i *Installer) chownTree(ctx context.Context, name string) error {
 	name = strings.TrimSpace(name)
+	if runtime.GOOS == "darwin" || i.deps.launchdRunning() {
+		return i.chownOwnerOnly(ctx, name)
+	}
 	if name == "" || name == "root" {
-		return nil
+		return i.hardenSensitiveFiles(ctx, securefile.Policy{})
 	}
 	roots, err := i.permissionRoots()
 	if err != nil {
 		return err
 	}
+	if err := i.checkGroupSharingACLs(roots); err != nil {
+		return err
+	}
 	run := i.deps.Run.Run
-	group := i.serviceGroup(ctx, name)
+	if err := i.ensureCredentialGroup(ctx); err != nil {
+		return err
+	}
+	policy, err := i.credentialGroupPolicy()
+	if err != nil {
+		return err
+	}
+	group := DefaultCredentialGroup
 	for _, root := range roots {
 		if err := run(ctx, Command{
 			Path: "chown", Args: []string{"-R", name + ":" + group, root}, Sudo: true,
@@ -86,18 +108,75 @@ func (i *Installer) chownTree(ctx context.Context, name string) error {
 			return err
 		}
 	}
+	return i.hardenSensitiveFiles(ctx, policy)
+}
+
+// serviceGroup is explicit platform administration authority, independent of
+// the service account's primary group.
+func (i *Installer) serviceGroup(ctx context.Context, name string) string {
+	return DefaultCredentialGroup
+}
+
+func (i *Installer) lookupCredentialGroup() (*user.Group, error) {
+	lookup := i.deps.LookupGroup
+	if lookup == nil {
+		lookup = user.LookupGroup
+	}
+	return lookup(DefaultCredentialGroup)
+}
+
+func (i *Installer) ensureCredentialGroup(ctx context.Context) error {
+	if _, err := i.lookupCredentialGroup(); err == nil {
+		return nil
+	} else {
+		var missing user.UnknownGroupError
+		if !errors.As(err, &missing) {
+			return fmt.Errorf("look up platform credential group: %w", err)
+		}
+	}
+	if err := i.deps.Run.Run(ctx, Command{Path: "groupadd", Args: []string{"--system", DefaultCredentialGroup}, Sudo: true}); err != nil {
+		if fallback := i.deps.Run.Run(ctx, Command{Path: "addgroup", Args: []string{"-S", DefaultCredentialGroup}, Sudo: true}); fallback != nil {
+			return fmt.Errorf("create platform credential group: %w", err)
+		}
+	}
+	if _, err := i.lookupCredentialGroup(); err != nil {
+		return fmt.Errorf("resolve created platform credential group: %w", err)
+	}
 	return nil
 }
 
-// serviceGroup is the group the service account's files are shared through:
-// the account's own group, which on Linux is its namesake and for a Mac user is
-// staff. It falls back to the account name when `id` cannot answer, which is
-// what the caller would have guessed anyway.
-func (i *Installer) serviceGroup(ctx context.Context, name string) string {
-	if g, err := i.deps.Run.Output(ctx, Command{Path: "id", Args: []string{"-gn", name}}); err == nil && strings.TrimSpace(g) != "" {
-		return strings.TrimSpace(g)
+func (i *Installer) credentialGroupPolicy() (securefile.Policy, error) {
+	group, err := i.lookupCredentialGroup()
+	if err != nil {
+		return securefile.Policy{}, err
 	}
-	return name
+	gid, err := strconv.Atoi(group.Gid)
+	if err != nil {
+		return securefile.Policy{}, fmt.Errorf("invalid platform credential group: %w", err)
+	}
+	return securefile.TrustedGroup(gid)
+}
+
+// chownOwnerOnly never opens a temporary staff-group access window on macOS.
+func (i *Installer) chownOwnerOnly(ctx context.Context, name string) error {
+	roots, err := i.permissionRoots()
+	if err != nil {
+		return err
+	}
+	for _, root := range roots {
+		if name != "" && name != "root" {
+			if err := i.deps.Run.Run(ctx, Command{Path: "chown", Args: []string{"-R", name, root}, Sudo: true}); err != nil {
+				return err
+			}
+		}
+		if err := i.deps.Run.Run(ctx, Command{Path: "chmod", Args: []string{"-R", "go-w", root}, Sudo: name != "" && name != "root"}); err != nil {
+			return err
+		}
+		if err := i.deps.Run.Run(ctx, Command{Path: "find", Args: []string{root, "-type", "d", "-exec", "chmod", "g-s", "{}", "+"}, Sudo: name != "" && name != "root"}); err != nil {
+			return err
+		}
+	}
+	return i.hardenSensitiveFiles(ctx, securefile.Policy{})
 }
 
 // addOperatorToGroup puts the operator into the service account's group, which
@@ -116,16 +195,16 @@ func (i *Installer) addOperatorToGroup(ctx context.Context, pf Preflight) string
 	}
 	if groups, err := i.deps.Run.Output(ctx, Command{Path: "id", Args: []string{"-nG", user}}); err == nil {
 		for _, g := range strings.Fields(groups) {
-			if g == pf.ServiceUser {
+			if g == DefaultCredentialGroup {
 				return ""
 			}
 		}
 	}
-	if err := i.deps.Run.Run(ctx, Command{Path: "usermod", Args: []string{"-aG", pf.ServiceUser, user}, Sudo: true}); err != nil {
-		i.io.Warn("warning: could not add %s to the %s group: %v", user, pf.ServiceUser, err)
+	if err := i.deps.Run.Run(ctx, Command{Path: "usermod", Args: []string{"-aG", DefaultCredentialGroup, user}, Sudo: true}); err != nil {
+		i.io.Warn("warning: could not add %s to the %s group: %v", user, DefaultCredentialGroup, err)
 		return ""
 	}
-	return fmt.Sprintf("%s was added to the %s group; new terminals get the access, this one needs `newgrp %s` (or a re-login) first.", user, pf.ServiceUser, pf.ServiceUser)
+	return fmt.Sprintf("%s was added to the %s group; new terminals get the access, this one needs `newgrp %s` (or a re-login) first.", user, DefaultCredentialGroup, DefaultCredentialGroup)
 }
 
 // currentUserName is recorded in the audit trail. SUDO_USER names the human who

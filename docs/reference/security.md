@@ -32,10 +32,10 @@ AI 服务/云厂商凭证（AI/provider）使用 server 的 AES-GCM secretbox �
 ### 控制面安装与升级
 
 - Linux systemd 模式下，`gpuworks install` 默认以专用系统用户 `gpuworks` 运行单元；只有指定 `--service-user root` 才显式退回 root。
-- 首启密码只经 `<data>/initial-credentials`（0664）传递。单元文件是全局可读的，因此绝不写入密码。
+- 首启密码只经 `<data>/initial-credentials`（默认 `0600`，可信 Linux 平台组为 `0660`）传递。单元文件是全局可读的，因此绝不写入密码。
 - `gpuworks upgrade` 先校验发布包的 sha256 再原子替换；探活失败时回滚到升级前快照。
 - server 不存储也不推断自己的对外地址。节点安装命令里的地址由调用方（浏览器、API 调用方、`--server`）显式给出，见 [ADR 0025](../adr/0025-server-holds-no-external-address.md)。
-- 安装与升级都会写审计到 `<data>/install-history.jsonl`（0600，仅操作员读写）。
+- 安装与升级都会写审计到 `<data>/install-history.jsonl`（默认 `0600`；可信 Linux 平台组共享安装为 `0660`）。
 
 ## udocker/runveil 的目录权限
 

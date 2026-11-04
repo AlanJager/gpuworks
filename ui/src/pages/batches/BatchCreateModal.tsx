@@ -67,6 +67,7 @@ export default function BatchCreateModal({ open, onClose, onCreated }: {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<BatchErrorText | null>(null);
   const [model, setModel] = useState<string | undefined>(undefined);
+  const [showWaiting, setShowWaiting] = useState(false);
   const [sampleModel, setSampleModel] = useState<string>("");
   const [chosenSampleEndpoint, setSampleEndpoint] = useState<string | undefined>(undefined);
   // The endpoint of the sample to download or use; the batch itself takes the file's.
@@ -78,7 +79,7 @@ export default function BatchCreateModal({ open, onClose, onCreated }: {
   const tooLarge = !!file && !!dictionary && file.size > dictionary.max_file_bytes;
   // The models the platform serves, as the server judges them for a batch: the
   // batch's model to choose, and the sample's, so it runs as downloaded.
-  const modelOptions = useMemo(() => dictionary?.models ?? [], [dictionary]);
+  const modelOptions = useMemo(() => dictionary?.models.filter((option) => showWaiting || option.ready) ?? [], [dictionary, showWaiting]);
   const known = useMemo(() => (dictionary ? new Set(dictionary.models.map((option) => option.name)) : null), [dictionary]);
   const stateText = useModelStateText();
   // The sample's models are those serving its endpoint, in the server's order
@@ -107,7 +108,16 @@ export default function BatchCreateModal({ open, onClose, onCreated }: {
     setFile(null);
     setError(null);
     setModel(undefined);
+    setShowWaiting(false);
+    setSampleModel("");
     setWindowHours(undefined);
+  };
+  const changeShowWaiting = (show: boolean) => {
+    setShowWaiting(show);
+    if (!show) {
+      if (!dictionary?.models.some((option) => option.name === model && option.ready)) setModel(undefined);
+      if (!dictionary?.models.some((option) => option.name === sampleModel && option.ready)) setSampleModel("");
+    }
   };
   const pick = (picked: File | null) => {
     setFile(picked);
@@ -178,7 +188,7 @@ export default function BatchCreateModal({ open, onClose, onCreated }: {
             {t("create.window.help", { min: bounds.min, max: bounds.max, default: bounds.default })}
           </Typography.Text>
         </div>
-        <BatchModelField options={modelOptions} value={model} onChange={setModel} disabled={submitting} />
+        <BatchModelField options={modelOptions} value={model} onChange={setModel} disabled={submitting} showWaiting={showWaiting} onShowWaitingChange={changeShowWaiting} />
         <div className="batch-create-field">
           <label htmlFor="batch-create-sample-model">{t("create.sample.title")}</label>
           <div className="batch-create-sample">
@@ -203,7 +213,7 @@ export default function BatchCreateModal({ open, onClose, onCreated }: {
             <Button onClick={() => downloadBatchSample(sampleEndpoint, sampleModelName)} disabled={submitting}>
               {t("create.sample.download")}
             </Button>
-            <Button onClick={useSample} disabled={submitting}>{t("create.sample.use")}</Button>
+            <Button onClick={useSample} disabled={submitting || !chosenSample}>{t("create.sample.use")}</Button>
           </div>
         </div>
         <Alert

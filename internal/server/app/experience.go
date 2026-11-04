@@ -127,7 +127,15 @@ func StartStatisticsAt(dbPath string, since time.Time) error {
 // SeedCloudAccount adds a cloud account and its instances as a sync would
 // have listed them, without asking the vendor (provider.Service.Record).
 func (a *App) SeedCloudAccount(kind, name string, creds provider.Credentials, instances []provider.Instance) error {
-	box, err := auth.NewSecretbox(masterSecret(a.cfg))
+	policy, err := startupCredentialPolicy(a.cfg)
+	if err != nil {
+		return err
+	}
+	master, err := masterSecret(a.cfg, policy)
+	if err != nil {
+		return err
+	}
+	box, err := auth.NewSecretbox(master)
 	if err != nil {
 		return err
 	}

@@ -101,7 +101,7 @@ def test_template_edit(page, context, server, artifacts, report, locale, case,
     # repeat the editor walkthrough that 15.1/15.3 already prove.
     if case == "dispatch":
         status, login = http(server.base, "POST", "/api/v1/auth/login",
-                             body={"username": "admin", "password": "password"})
+                             body={"username": "admin", "password": "gpuworks-test-password-2026"})
         check(status == 200, f"dispatch login HTTP {status}")
         token = login["token"]
         artifacts.remember(token)
@@ -119,7 +119,7 @@ def test_template_edit(page, context, server, artifacts, report, locale, case,
     source = catalog_package(model_id, spec_name, title)
     page.goto(server.base + "/inference-templates")
     page.get_by_role("textbox", name=auth["username"], exact=True).fill("admin")
-    page.get_by_label(auth["password"], exact=True).fill("password")
+    page.get_by_label(auth["password"], exact=True).fill("gpuworks-test-password-2026")
     with page.expect_response(lambda r: urlsplit(r.url).path == "/api/v1/auth/login") as login:
         button(page, auth["submit"]).click()
     check(login.value.status == 200, "browser login failed")
@@ -375,7 +375,7 @@ def test_template_edit(page, context, server, artifacts, report, locale, case,
 
     if case == "dispatch":
         status, login = http(server.base, "POST", "/api/v1/auth/login",
-                             body={"username": "admin", "password": "password"})
+                             body={"username": "admin", "password": "gpuworks-test-password-2026"})
         check(status == 200, f"dispatch login HTTP {status}")
         token = login["token"]
         artifacts.remember(token)

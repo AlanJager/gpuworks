@@ -10,7 +10,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 BIN=./bin
-ADMIN_PASSWORD="demo-admin-$$"
+ADMIN_PASSWORD="gpuworks-demo-admin-$$"
 ADDR="127.0.0.1:8099"
 BASE="http://$ADDR"
 DATA=$(mktemp -d)

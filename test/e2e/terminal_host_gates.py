@@ -84,7 +84,7 @@ def permissions(owner, sessions, admin_context, parent, locale):
     owner.sensitive = True
     page.goto(owner.server.base + '/nodes')
     page.get_by_role('textbox', name=auth['username'], exact=True).fill(owner.username)
-    page.get_by_label(auth['password'], exact=True).fill('password')
+    page.get_by_label(auth['password'], exact=True).fill('gpuworks-test-password-2026')
     with page.expect_response(lambda r: urlsplit(r.url).path == '/api/v1/auth/login'
             and r.request.method == 'POST') as login:
         button(page, auth['submit']).click()

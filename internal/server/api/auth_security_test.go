@@ -45,7 +45,7 @@ func TestProtectedRoutingErrorsRequireAuthentication(t *testing.T) {
 			t.Errorf("anonymous GET %s: status=%d Allow=%q", path, rec.Code, rec.Header().Get("Allow"))
 		}
 	}
-	cookie, _ := sessionLogin(t, router, "password")
+	cookie, _ := sessionLogin(t, router, "gpuworks-test-password-2026")
 	if rec := sessionRequest(router, http.MethodGet, "/api/v1/auth/activity", cookie, ""); rec.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("authenticated method mismatch=%d", rec.Code)
 	}
@@ -73,7 +73,7 @@ func TestSecurityHeadersAndHTTPSCookie(t *testing.T) {
 				if strings.HasSuffix(path, "login") || strings.HasSuffix(path, "logout") {
 					method = http.MethodPost
 				}
-				body = strings.NewReader(`{"username":"admin","password":"password"}`)
+				body = strings.NewReader(`{"username":"admin","password":"gpuworks-test-password-2026"}`)
 				req := httptest.NewRequest(method, path, body)
 				req.RemoteAddr = tc.peer
 				req.Header.Set("X-Forwarded-Proto", tc.proto)

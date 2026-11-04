@@ -13,7 +13,7 @@ import (
 )
 
 // The database lives in a tree shared with the operator, so opening it makes
-// it group-writable (0664) — the install and reset commands run without sudo.
+// it private to its owner and trusted group (0600) — the install and reset commands run without sudo.
 func TestOpenMakesTheDatabaseGroupWritable(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "gpuworks.db")
 	if _, err := Open(path, bus.New()); err != nil {
@@ -23,8 +23,8 @@ func TestOpenMakesTheDatabaseGroupWritable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stat: %v", err)
 	}
-	if info.Mode().Perm() != 0o664 {
-		t.Fatalf("database mode = %v, want 0664", info.Mode().Perm())
+	if info.Mode().Perm() != 0o600 {
+		t.Fatalf("database mode = %v, want 0600", info.Mode().Perm())
 	}
 }
 
@@ -48,6 +48,8 @@ func TestDBFilePath(t *testing.T) {
 		":memory:":                          "",
 		"":                                  "",
 		"file:mem?mode=memory&cache=shared": "",
+		"file:/tmp/private%20database.db?cache=shared": "/tmp/private database.db",
+		"file://localhost/tmp/private.db":              "/tmp/private.db",
 	} {
 		if got := dbFilePath(dsn); got != want {
 			t.Fatalf("dbFilePath(%q) = %q, want %q", dsn, got, want)

@@ -266,6 +266,12 @@ var ModelStates = []ModelState{ModelRunning, ModelAsleep, ModelStarting, ModelSl
 // and one naming an unknown name refused.
 func (m ModelState) Known() bool { return m != ModelUnknown }
 
+// Ready says a request can be served now or can wake the model automatically.
+// Other states remain valid asynchronous batch targets when chosen explicitly.
+func (m ModelState) Ready() bool {
+	return m == ModelRunning || m == ModelAsleep
+}
+
 // Waits says requests for a model in this state wait for someone to act (a
 // wake, a repair, a start, a node's return) rather than for the platform: a
 // batch sent to it is accepted with a warning (WarningModelWaits).

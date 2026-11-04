@@ -183,6 +183,8 @@ The endpoint is `POST /api/v1/pull/source-rules/test`.
 
 ## Sync Groups
 
+Sync-group names must be unique after trimming, are case-sensitive, and are limited to 64 UTF-8 bytes for both create and rename. The list and delete confirmation show `#ID`. Upgrades deterministically suffix historical duplicate names by ID while preserving every group ID, node selector and rate limit.
+
 Add or edit a group under **Settings → Image & model pulls → Sync groups**, use node labels to define its scope, set a copy rate limit, and save. Then check that the source node matches your expectations in the deployment's acquisition estimate or actual copy progress. Nodes automatically copy images and models only from nodes in the same sync group:
 
 - A node in multiple groups can copy from any node in those groups. If two nodes share multiple groups, the strictest rate limit applies.

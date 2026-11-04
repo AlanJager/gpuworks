@@ -3,6 +3,7 @@ package store
 import (
 	"errors"
 	"fmt"
+	"gpuworks.ai/gpuworks/internal/securefile"
 	"os"
 	"strings"
 )
@@ -14,8 +15,20 @@ func (s *Store) SnapshotTo(dest string) error {
 	if strings.TrimSpace(dest) == "" {
 		return errors.New("snapshot needs a destination")
 	}
-	if _, err := os.Stat(dest); err == nil {
+	f, err := securefile.Create(dest)
+	if errors.Is(err, os.ErrExist) {
 		return fmt.Errorf("snapshot destination %s already exists", dest)
 	}
-	return s.db.Exec("VACUUM INTO ?", dest).Error
+	if err != nil {
+		return err
+	}
+	if err := f.Close(); err != nil {
+		_ = os.Remove(dest)
+		return err
+	}
+	if err := s.db.Exec("VACUUM INTO ?", dest).Error; err != nil {
+		_ = os.Remove(dest)
+		return err
+	}
+	return securefile.Protect(dest)
 }

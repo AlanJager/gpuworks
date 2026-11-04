@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 
 	"gpuworks.ai/gpuworks/internal/debuglog"
+	"gpuworks.ai/gpuworks/internal/securefile"
 	"gpuworks.ai/gpuworks/internal/server/bus"
 
 	"gpuworks.ai/gpuworks/internal/server/diagnostics"
@@ -86,8 +87,8 @@ type OfflineDiagnosticsRequest struct {
 }
 
 // CollectDiagnosticsOffline builds the collection and answers its archive.
-func CollectDiagnosticsOffline(ctx context.Context, in OfflineDiagnosticsRequest, log *slog.Logger) (diagnostics.Bundle, string, error) {
-	st, err := store.Open(in.DBPath, bus.New())
+func CollectDiagnosticsOffline(ctx context.Context, in OfflineDiagnosticsRequest, log *slog.Logger, policies ...securefile.Policy) (diagnostics.Bundle, string, error) {
+	st, err := store.Open(in.DBPath, bus.New(), policies...)
 	if err != nil {
 		return diagnostics.Bundle{}, "", err
 	}

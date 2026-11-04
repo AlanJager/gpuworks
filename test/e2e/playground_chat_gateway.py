@@ -576,7 +576,7 @@ def test_playground_chat(page, context, server, artifacts, report, locale,
 
     page.goto(server.base + "/deployments")
     page.get_by_role("textbox", name=auth["username"], exact=True).fill("admin")
-    page.get_by_label(auth["password"], exact=True).fill("password")
+    page.get_by_label(auth["password"], exact=True).fill("gpuworks-test-password-2026")
     with page.expect_response(lambda r: urlsplit(r.url).path == "/api/v1/auth/login"
                               and r.request.method == "POST") as logged_in:
         button(page, auth["submit"]).click()
@@ -705,7 +705,7 @@ def test_playground_chat(page, context, server, artifacts, report, locale,
         page2 = other.new_page()
         page2.goto(server.base + "/deployments")
         page2.get_by_role("textbox", name=auth["username"], exact=True).fill("admin")
-        page2.get_by_label(auth["password"], exact=True).fill("password")
+        page2.get_by_label(auth["password"], exact=True).fill("gpuworks-test-password-2026")
         with page2.expect_response(lambda r: urlsplit(r.url).path == "/api/v1/auth/login"
                                    and r.request.method == "POST") as other_login:
             button(page2, auth["submit"]).click()
@@ -732,7 +732,7 @@ def test_playground_chat(page, context, server, artifacts, report, locale,
     page.goto(server.base + "/playground/chat?operation=openai.chat&model=" + served_name)
     expect(page.get_by_role("textbox", name=auth["username"], exact=True)).to_be_visible(timeout=30000)
     page.get_by_role("textbox", name=auth["username"], exact=True).fill("admin")
-    page.get_by_label(auth["password"], exact=True).fill("password")
+    page.get_by_label(auth["password"], exact=True).fill("gpuworks-test-password-2026")
     with page.expect_response(lambda r: urlsplit(r.url).path == "/api/v1/auth/login"
                               and r.request.method == "POST") as relogin:
         button(page, auth["submit"]).click()
@@ -1118,7 +1118,7 @@ def main():
         report["health"] = server.start()
         report["base_url"] = server.base
         status, login = http(server.base, "POST", "/api/v1/auth/login",
-                             body={"username": "admin", "password": "password"})
+                             body={"username": "admin", "password": "gpuworks-test-password-2026"})
         check(status == 200, f"fixture login HTTP {status}")
         token = login["token"]
         artifacts.remember(token)

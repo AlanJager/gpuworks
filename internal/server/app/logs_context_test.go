@@ -53,10 +53,10 @@ func TestLogsContextMissingAnchorWire(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
-	if _, _, _, err := st.EnsureAdmin("admin", "password"); err != nil {
+	if _, _, _, err := st.EnsureAdmin("admin", "gpuworks-test-password-2026"); err != nil {
 		t.Fatal(err)
 	}
-	user, err := st.AuthenticateUser("admin", "password")
+	user, err := st.AuthenticateUser("admin", "gpuworks-test-password-2026")
 	if err != nil {
 		t.Fatal(err)
 	}

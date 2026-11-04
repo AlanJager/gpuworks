@@ -1,4 +1,4 @@
-import { Alert, Select, Typography } from "antd";
+import { Alert, Checkbox, Select, Typography } from "antd";
 import { useTranslation } from "react-i18next";
 import type { BatchModel } from "../../batchApi";
 
@@ -27,11 +27,13 @@ export function useModelStateWarning() {
  * none to use each line's own. The server's list is offered with each model's
  * state; one whose requests would wait for someone to act is warned about.
  */
-export default function BatchModelField({ options, value, onChange, disabled }: {
+export default function BatchModelField({ options, value, onChange, disabled, showWaiting, onShowWaitingChange }: {
   options: BatchModel[];
   value: string | undefined;
   onChange: (model: string | undefined) => void;
   disabled: boolean;
+  showWaiting: boolean;
+  onShowWaitingChange: (show: boolean) => void;
 }) {
   const { t } = useTranslation("batches");
   const stateText = useModelStateText();
@@ -51,6 +53,9 @@ export default function BatchModelField({ options, value, onChange, disabled }: 
         options={options.map((option) => ({ value: option.name, label: `${option.name} · ${stateText(option.state)}` }))}
         style={{ width: "100%" }}
       />
+      <Checkbox checked={showWaiting} onChange={(event) => onShowWaitingChange(event.target.checked)} disabled={disabled}>
+        {t("create.model.showWaiting")}
+      </Checkbox>
       <Typography.Text type="secondary">{t("create.model.help")}</Typography.Text>
       {warning && <Alert type="warning" showIcon message={warning} />}
     </div>

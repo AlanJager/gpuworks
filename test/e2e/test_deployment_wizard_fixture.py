@@ -52,7 +52,7 @@ class FixtureOwnership(unittest.TestCase):
                         fixture.prepare(server, "admin", "case", report, holder, Path("agent"), artifacts.remember)
                 self.assertEqual(report["owned_node_uuid"], "known-node")
                 start.assert_not_called()
-                self.assertEqual(artifacts.secrets, ["password"])
+                self.assertEqual(artifacts.secrets, ["gpuworks-test-password-2026"])
                 artifacts.write_json("report.json", {"status": "FAIL_TEST", **report})
                 artifacts.scan()
 
@@ -73,7 +73,7 @@ class FixtureOwnership(unittest.TestCase):
                         fixture.prepare(server, "admin", "case", report, holder, Path("agent"), artifacts.remember)
                 self.assertEqual(report["owned_node_uuid"], "known-node")
                 self.assertEqual(report["owned_key_name"], "e2e-case-key")
-                self.assertEqual(artifacts.secrets, ["password", "valid-node-secret"])
+                self.assertEqual(artifacts.secrets, ["gpuworks-test-password-2026", "valid-node-secret"])
                 artifacts.write_json("report.json", {"status": "FAIL_TEST", **report})
                 artifacts.scan()
                 holder["log"].close()

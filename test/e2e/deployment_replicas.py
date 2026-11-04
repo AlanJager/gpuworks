@@ -131,7 +131,7 @@ def main():
         report["last_step"] = "isolated server ready"
         report["step"] = "fixture admin login"
         status, login = http(server.base, "POST", "/api/v1/auth/login",
-                             body={"username": "admin", "password": "password"})
+                             body={"username": "admin", "password": "gpuworks-test-password-2026"})
         check(status == 200, f"fixture login HTTP {status}")
         token = login["token"]
         check(isinstance(token, str) and bool(token.strip()), "fixture login returned no valid token")

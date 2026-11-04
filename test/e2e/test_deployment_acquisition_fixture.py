@@ -37,7 +37,7 @@ class AcquisitionOwnership(unittest.TestCase):
                         fixture.start_node(server, 'admin', 'e2e-case', 'eligible', 'A100x1,24576',
                                            report, holder, Path('agent'), artifacts)
                 self.assertEqual(report['owned_node_uuid'], 'own')
-                self.assertEqual(artifacts.secrets, ['password'])
+                self.assertEqual(artifacts.secrets, ['gpuworks-test-password-2026'])
                 launch.assert_not_called()
 
     def test_online_failure_retains_secondary_process_and_log(self):

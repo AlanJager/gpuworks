@@ -28,12 +28,12 @@ const (
 // never written into the unit file, which is world-readable.
 func (i *Installer) resolvePassword(req InstallRequest) (string, string, error) {
 	if pw := strings.TrimSpace(req.Password); pw != "" {
-		return pw, PasswordFromFlag, nil
+		return checkedPassword(pw, PasswordFromFlag)
 	}
 	interactive := !req.Quiet && i.io.Terminal()
 	if pw := strings.TrimSpace(os.Getenv(AdminPasswordEnvVar)); pw != "" {
 		if !interactive {
-			return pw, PasswordFromEnv, nil
+			return checkedPassword(pw, PasswordFromEnv)
 		}
 		// The operator exported a password on purpose; show it back so a typo
 		// in the environment does not become the password of a live server.
@@ -43,32 +43,36 @@ func (i *Installer) resolvePassword(req InstallRequest) (string, string, error) 
 			return "", "", err
 		}
 		if use {
-			return pw, PasswordFromEnv, nil
+			return checkedPassword(pw, PasswordFromEnv)
 		}
 	}
 	if !interactive {
-		return generatedPassword(), PasswordGenerated, nil
+		return generatedPassword()
 	}
 	pw, err := i.io.PromptPassword("Admin password (default: random): ")
 	if err != nil {
 		return "", "", err
 	}
 	if pw == "" {
-		return generatedPassword(), PasswordGenerated, nil
+		return generatedPassword()
 	}
-	return pw, PasswordFromPrompt, nil
+	return checkedPassword(pw, PasswordFromPrompt)
+}
+
+func checkedPassword(password, source string) (string, string, error) {
+	if err := auth.ValidatePassword(password); err != nil {
+		return "", "", err
+	}
+	return password, source, nil
 }
 
 // generatedPassword returns a random bootstrap password. It uses the same
 // generator the store falls back to, so a password minted here is
 // indistinguishable from one the server would have created itself.
-func generatedPassword() string {
-	for {
-		if pw := auth.NewToken(9); pw != "" {
-			return pw
-		}
-		// auth.NewToken only returns "" when crypto/rand fails, which means the
-		// platform has no entropy source at all. Retrying costs nothing and
-		// keeps install from writing an empty password.
+func generatedPassword() (string, string, error) {
+	password, err := auth.NewPassword()
+	if err != nil {
+		return "", "", err
 	}
+	return password, PasswordGenerated, nil
 }

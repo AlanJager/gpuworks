@@ -175,7 +175,7 @@ func TestInstallPermissionRejectionCreatesNoPartialInstallation(t *testing.T) {
 	t.Setenv("HOME", h.layout.Dir)
 	req := h.quiet()
 	req.ServiceUser = DefaultServiceUser
-	req.Password = "password"
+	req.Password = "permission-regression-password-2026"
 	if _, err := h.installer.Install(context.Background(), req); err == nil ||
 		!strings.Contains(err.Error(), "refusing recursive permission changes") {
 		t.Fatalf("want permission-policy rejection, got %v", err)

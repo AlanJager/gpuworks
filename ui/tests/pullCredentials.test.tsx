@@ -106,7 +106,7 @@ test("a missing password on a new credential is refused by the server at the pas
   await user.type(within(drawer).getByLabelText(text.host), "registry.example");
   await user.type(within(drawer).getByLabelText(text.username), "robot");
   await user.click(within(drawer).getByRole("button", { name: saveName }));
-  await within(drawer).findByText(fill("pull.invalidField", { ns: "settings", field: locale.settings.pull.fields.secret, detail: "secret must not be empty" }));
+  await within(drawer).findByText(fill("pull.invalidField", { ns: "settings", field: locale.settings.pull.fields.secret, detail: i18n.t("pullSettingReason.invalid_value", { ns: "common" }) }));
   assert.equal(fake.credentials.length, 0);
   assert.ok(screen.getByRole("dialog"), "the drawer stays open");
 });
@@ -223,7 +223,7 @@ test("a refused host is shown at the host field", async () => {
   await user.type(within(drawer).getByLabelText(text.username), "robot");
   await user.type(within(drawer).getByLabelText(text.secret), "pw");
   await user.click(within(drawer).getByRole("button", { name: saveName }));
-  await within(drawer).findByText(fill("pull.invalidField", { ns: "settings", field: locale.settings.pull.fields.host, detail: "a credential for this host already exists" }));
+  await within(drawer).findByText(fill("pull.invalidField", { ns: "settings", field: locale.settings.pull.fields.host, detail: i18n.t("pullSettingReason.invalid_value", { ns: "common" }) }));
   assert.equal(fake.credentials.length, 1);
 });
 

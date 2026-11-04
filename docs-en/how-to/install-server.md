@@ -71,6 +71,8 @@ To check each step yourself, or when the host can only receive a copied release 
 
    Save the access URL, administrator password, actual installation directory, and data directory from the summary, then complete the verification in the next section. The default installation directory is `/opt/gpuworks/server`; for a custom directory, use the one in the summary.
 
+New or changed administrator passwords must contain 15–128 Unicode characters and at most 512 bytes. Common guessable values, whole-value repetitions and sequences are rejected; character-class mixtures are not required and passphrases are supported. Without an explicit password, a 24-byte random value is encoded as hexadecimal. Existing accounts can still authenticate with their current passwords.
+
 ## Verification and First Login
 
 For the password change in this section and subsequent maintenance commands, use the **installed binary** in the actual installation directory. The installer does not add it to `PATH` automatically. Confirm the installation and data directories from the installation summary or this installation's `server.yaml`. The offline upgrade example specifies its execution location separately.

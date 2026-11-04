@@ -143,7 +143,7 @@ def test_inference_key_lifecycle(page, context, server, artifacts, report, local
     page.on("request", request_seen)
     page.goto(server.base + "/apikeys")
     page.get_by_role("textbox", name=auth["username"], exact=True).fill("admin")
-    page.get_by_label(auth["password"], exact=True).fill("password")
+    page.get_by_label(auth["password"], exact=True).fill("gpuworks-test-password-2026")
     with page.expect_response(lambda r: urlsplit(r.url).path == "/api/v1/auth/login" and r.request.method == "POST") as logged_in:
         button(page, auth["submit"]).click()
     check(logged_in.value.status == 200, "browser login failed")

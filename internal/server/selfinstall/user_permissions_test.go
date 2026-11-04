@@ -62,7 +62,7 @@ func TestChownTreeSharesExternalDirectories(t *testing.T) {
 	if err := os.Mkdir(unrelated, 0700); err != nil {
 		t.Fatal(err)
 	}
-	i := New(layout, Deps{Run: permissionRunner{root}}, nil)
+	i := New(layout, Deps{Run: permissionRunner{root}, LookupGroup: credentialGroupFixture}, nil)
 	if err := i.chownTree(context.Background(), "fixture-service"); err != nil {
 		t.Fatal(err)
 	}
@@ -230,7 +230,7 @@ func TestChownTreeSharesSymlinkedExternalData(t *testing.T) {
 	if err := os.WriteFile(dataFile, []byte("existing"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	i := New(layout, Deps{Run: permissionRunner{root}}, nil)
+	i := New(layout, Deps{Run: permissionRunner{root}, LookupGroup: credentialGroupFixture}, nil)
 	if err := i.chownTree(context.Background(), "fixture-service"); err != nil {
 		t.Fatal(err)
 	}
@@ -420,7 +420,7 @@ func TestInstallAllowsDedicatedParentDataOrLogs(t *testing.T) {
 			h.installSelf("installed fixture binary")
 			req := h.quiet()
 			req.ServiceUser = "fixture-service"
-			req.Password = "password"
+			req.Password = "permission-regression-password-2026"
 			req.DataDirSet, req.LogsDirSet = true, true
 			report := h.mustInstall(req)
 			if report.Layout.DataDir != layout.DataDir || report.Layout.LogsDir != layout.LogsDir {

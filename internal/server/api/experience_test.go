@@ -184,7 +184,7 @@ func TestSessionPolicyCookieNamesTheSessionCookie(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
-	if _, _, _, err := st.EnsureAdmin("admin", "password"); err != nil {
+	if _, _, _, err := st.EnsureAdmin("admin", "gpuworks-test-password-2026"); err != nil {
 		t.Fatal(err)
 	}
 	signer, err := auth.NewTokenSigner("session-test-secret", 24*time.Hour)
@@ -194,7 +194,7 @@ func TestSessionPolicyCookieNamesTheSessionCookie(t *testing.T) {
 	for _, tc := range []struct{ policy, want string }{{"", managementCookie}, {"gpuworks-experience-session", "gpuworks-experience-session"}} {
 		router := Router(Deps{Store: st, Bus: st.Bus, AuthSigner: signer}, auth.SessionPolicy{Cookie: tc.policy})
 		rec := httptest.NewRecorder()
-		router.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(`{"username":"admin","password":"password"}`)))
+		router.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(`{"username":"admin","password":"gpuworks-test-password-2026"}`)))
 		if rec.Code != http.StatusOK {
 			t.Fatalf("login = %d %s", rec.Code, rec.Body.String())
 		}

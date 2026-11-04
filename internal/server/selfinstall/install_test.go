@@ -17,7 +17,7 @@ func TestInstallSystemdFresh(t *testing.T) {
 	h.installSelf("gpuworks binary v1")
 	req := h.quiet()
 	req.ServiceUser = DefaultServiceUser
-	req.Password = "s3cret"
+	req.Password = "fresh-install-password-2026"
 
 	report := h.mustInstall(req)
 
@@ -75,7 +75,11 @@ func TestInstallSystemdFresh(t *testing.T) {
 		t.Errorf("systemd was not driven in order: %v", h.run.executed())
 	}
 
-	creds, err := installcred.ReadInitialCredentials(h.layout.DataDir)
+	policy, modeErr := h.installer.sensitiveFilePolicy()
+	if modeErr != nil {
+		t.Fatal(modeErr)
+	}
+	creds, err := installcred.ReadInitialCredentials(h.layout.DataDir, policy)
 	if err != nil {
 		t.Fatalf("read credentials: %v", err)
 	}
@@ -86,8 +90,8 @@ func TestInstallSystemdFresh(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stat credentials: %v", err)
 	}
-	if credInfo.Mode().Perm() != 0o664 {
-		t.Fatalf("credentials mode = %v, want 0664 (the server reads it as the service account)", credInfo.Mode().Perm())
+	if credInfo.Mode().Perm() != policy.Mode() {
+		t.Fatalf("credentials mode = %v, want 0660 (the server reads it as the service account)", credInfo.Mode().Perm())
 	}
 
 	cfg := h.config()
@@ -134,7 +138,7 @@ func TestInstallCreatesServiceUserOnlyWhenMissing(t *testing.T) {
 	if h.run.ran("sudo useradd") || h.run.ran("sudo adduser") {
 		t.Fatalf("an existing account must be reused: %v", h.run.executed())
 	}
-	if !h.run.ran("sudo chown -R " + DefaultServiceUser + ":" + DefaultServiceUser) {
+	if !h.run.ran("sudo chown -R " + DefaultServiceUser + ":" + DefaultCredentialGroup) {
 		t.Fatalf("the install tree was not given to the service user: %v", h.run.executed())
 	}
 
@@ -143,8 +147,11 @@ func TestInstallCreatesServiceUserOnlyWhenMissing(t *testing.T) {
 	req2 := h2.quiet()
 	req2.ServiceUser = DefaultServiceUser
 	h2.mustInstall(req2)
-	if !h2.run.ran("sudo useradd --system --home-dir " + h2.layout.Dir) {
+	if !h2.run.ran("sudo useradd --system --gid " + DefaultCredentialGroup + " --home-dir " + h2.layout.Dir) {
 		t.Fatalf("the service account was not created: %v", h2.run.executed())
+	}
+	if !strings.Contains(h2.unitFile(), "Group="+DefaultCredentialGroup+"\n") {
+		t.Fatalf("new service does not use the explicitly authorized group: %s", h2.unitFile())
 	}
 }
 
@@ -271,21 +278,21 @@ func TestInstallSkipsTheGroupForRootAndNohup(t *testing.T) {
 	}
 }
 
-// A directory the operator cannot create is made through sudo and opened up,
-// which is the one privileged step a fresh /opt tree needs.
-func TestInstallCreatesAPrivilegedDirectoryThroughSudo(t *testing.T) {
+// Even a privileged mkdir cannot repair a regular file where a directory
+// belongs. The fixture must not count its recorded sudo call as a repair.
+func TestInstallRejectsAFileWhereTheBackupDirectoryBelongs(t *testing.T) {
 	h := newHarness(t, t.TempDir())
 	h.installSelf("binary")
-	// A file where a directory belongs: plain mkdir fails for everyone.
-	writeFile(t, h.layout.BackupsDir, "not a directory", 0o644)
-
-	report := h.mustInstall(h.quiet())
-	if report.Mode != ModeSystemd {
-		t.Fatalf("mode = %q", report.Mode)
+	writeFile(t, h.layout.BackupsDir, "not a directory", 0644)
+	_, err := h.installer.Install(context.Background(), h.quiet())
+	if err == nil || !strings.Contains(err.Error(), "expected a directory") {
+		t.Fatalf("blocked backup directory error=%v", err)
 	}
-	if !h.run.ran("sudo mkdir -p "+h.layout.BackupsDir) ||
-		!h.run.ran("sudo chmod 2775 "+h.layout.BackupsDir) {
-		t.Fatalf("the blocked directory was not repaired through sudo: %v", h.run.executed())
+	if got := readFile(t, h.layout.BackupsDir); got != "not a directory" {
+		t.Fatal("unrelated file was replaced")
+	}
+	if h.run.ran("sudo systemctl restart gpuworks") {
+		t.Fatal("started service with invalid backup directory")
 	}
 }
 
@@ -316,19 +323,28 @@ func TestInstallFallsBackToSudoForTheFirstTreeWrites(t *testing.T) {
 	self := h.installSelf("binary")
 	// A directory the operator cannot write into forces the fallback for the
 	// writes that land in it.
-	blocked := filepath.Join(t.TempDir(), "blocked")
+	parent := t.TempDir()
+	if err := os.Chmod(parent, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	blocked := filepath.Join(parent, "blocked")
 	if err := os.MkdirAll(blocked, 0o555); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
 	defer os.Chmod(blocked, 0o755)
 	target := filepath.Join(blocked, "out")
+	runner := &privilegedWriteRunner{parent: blocked, target: target}
+	h.installer.deps.Run = runner
 
 	ctx := context.Background()
 	if err := h.installer.writeInstalled(ctx, target, []byte("content"), 0o644); err != nil {
 		t.Fatalf("writeInstalled: %v", err)
 	}
-	if !h.run.ran("sudo tee "+target) || !h.run.ran("sudo chmod 0644 "+target) {
-		t.Fatalf("the write did not fall back to sudo: %v", h.run.executed())
+	if got := readFile(t, target); got != "content" {
+		t.Fatal("privileged write did not publish its content")
+	}
+	if err := os.Chmod(blocked, 0o555); err != nil {
+		t.Fatal(err)
 	}
 	bin := filepath.Join(blocked, "bin")
 	if err := h.installer.copyInstalled(ctx, self, bin, 0o755); err != nil {
@@ -336,9 +352,22 @@ func TestInstallFallsBackToSudoForTheFirstTreeWrites(t *testing.T) {
 	}
 	// The running service keeps the target mapped, so the fallback stages a
 	// temporary file and renames it — never a direct sudo cp.
-	if !h.run.ran("sudo tee "+bin+".sudo-tmp") || !h.run.ran("sudo mv "+bin+".sudo-tmp "+bin) {
-		t.Fatalf("the copy did not fall back to a staged rename: %v", h.run.executed())
+	if got := readFile(t, bin); got != "binary" {
+		t.Fatal("privileged copy did not publish its content")
 	}
+	stages := 0
+	for _, cmd := range runner.commands {
+		if cmd.Path == "mktemp" && cmd.Sudo {
+			stages++
+		}
+		if cmd.Path == "tee" || cmd.Path == "cp" {
+			t.Fatal("fallback wrote through a public or predictable target")
+		}
+	}
+	if stages != 2 {
+		t.Fatalf("private staging commands=%d, want both write and copy", stages)
+	}
+	assertNoPrivateStages(t, blocked)
 }
 
 func TestInstallTreeWritesFailWithoutSudo(t *testing.T) {
@@ -356,7 +385,7 @@ func TestInstallTreeWritesFailWithoutSudo(t *testing.T) {
 	if err := h.installer.writeInstalled(context.Background(), filepath.Join(blocked, "out"), []byte("x"), 0o644); err == nil {
 		t.Fatal("an unwritable tree write succeeded without sudo")
 	}
-	if h.run.ran("sudo tee") {
+	if h.run.ran("sudo") {
 		t.Fatalf("sudo was invoked although it is unavailable: %v", h.run.executed())
 	}
 }
@@ -705,8 +734,8 @@ func TestInstallTakesThePasswordFromTheEnvironment(t *testing.T) {
 	h2 := newHarness(t, t.TempDir())
 	h2.installSelf("binary")
 	req2 := h2.quiet()
-	req2.Password = "from-the-flag"
-	if report := h2.mustInstall(req2); report.Password != "from-the-flag" || report.PasswordSource != PasswordFromFlag {
+	req2.Password = "from-the-explicit-flag"
+	if report := h2.mustInstall(req2); report.Password != "from-the-explicit-flag" || report.PasswordSource != PasswordFromFlag {
 		t.Fatalf("--password did not win over the environment: %+v", report)
 	}
 }
@@ -719,7 +748,7 @@ func TestInstallConfirmsTheEnvironmentPasswordInteractively(t *testing.T) {
 		name, stdin, want, source string
 	}{
 		{"accepted", "\n", "from-the-environment", PasswordFromEnv},
-		{"declined", "n\nhand-typed\n", "hand-typed", PasswordFromPrompt},
+		{"declined", "n\nhand-typed-admin-password\n", "hand-typed-admin-password", PasswordFromPrompt},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			h := newHarness(t, t.TempDir())
@@ -745,13 +774,13 @@ func TestInstallAsksForThePasswordInteractively(t *testing.T) {
 	h := newHarness(t, t.TempDir())
 	h.installSelf("binary")
 	h.terminal = true
-	h.stdin = "hand-typed\n"
+	h.stdin = "hand-typed-admin-password\n"
 	req := h.quiet()
 	req.Password = ""
 	req.Quiet = false
 
 	report := h.mustInstall(req)
-	if report.Password != "hand-typed" || report.PasswordSource != PasswordFromPrompt {
+	if report.Password != "hand-typed-admin-password" || report.PasswordSource != PasswordFromPrompt {
 		t.Fatalf("report = %+v", report)
 	}
 }

@@ -141,7 +141,7 @@ func TestAnalyticsNames(t *testing.T) {
 	if n, err := st.NodeNamesByUUID([]string{node.UUID, "nope"}); err != nil || len(n) != 1 || n[node.UUID].Name == "" {
 		t.Fatalf("nodes = %v %v", n, err)
 	}
-	if _, _, _, err := st.EnsureAdmin("admin", "password"); err != nil {
+	if _, _, _, err := st.EnsureAdmin("admin", "gpuworks-test-password-2026"); err != nil {
 		t.Fatal(err)
 	}
 	if u, err := st.UserNames([]uint{1, 42}); err != nil || u[1] != "admin" || len(u) != 1 {

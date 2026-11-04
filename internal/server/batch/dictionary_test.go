@@ -77,8 +77,11 @@ func TestModelStatesKnownWaitAndRank(t *testing.T) {
 		if !state.Known() || state.Waits() != waits[state] {
 			t.Fatalf("state %d: known=%v waits=%v", state, state.Known(), state.Waits())
 		}
+		if want := state == ModelRunning || state == ModelAsleep; state.Ready() != want {
+			t.Fatalf("state %d readiness=%v, want %v", state, state.Ready(), want)
+		}
 	}
-	if ModelUnknown.Known() || ModelUnknown.Waits() {
+	if ModelUnknown.Known() || ModelUnknown.Waits() || ModelUnknown.Ready() {
 		t.Fatal("unknown")
 	}
 	order := append(append([]ModelState{}, ModelStates...), ModelUnknown)

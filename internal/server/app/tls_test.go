@@ -57,7 +57,7 @@ func tlsTestFiles(t *testing.T) (string, string, *x509.CertPool) {
 func TestNativeTLSProtectsPublicListenersAndPreservesLocalMaintenance(t *testing.T) {
 	cert, key, roots := tlsTestFiles(t)
 	port := freePortFor(t, "127.0.0.2")
-	app, err := New(Config{Listen: serverconfig.Listen{Console: []string{"127.0.0.2:" + port}, Gateway: []string{"127.0.0.3:" + port}}, DataDir: t.TempDir(), AdminUser: "admin", AdminPassword: "password", TLSCertFile: cert, TLSKeyFile: key}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	app, err := New(Config{Listen: serverconfig.Listen{Console: []string{"127.0.0.2:" + port}, Gateway: []string{"127.0.0.3:" + port}}, DataDir: t.TempDir(), AdminUser: "admin", AdminPassword: "gpuworks-test-password-2026", TLSCertFile: cert, TLSKeyFile: key}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,7 +94,7 @@ func TestNativeTLSProtectsPublicListenersAndPreservesLocalMaintenance(t *testing
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	resp, err := client.Post("https://127.0.0.2:"+port+"/api/v1/auth/login", "application/json", strings.NewReader(`{"username":"admin","password":"password"}`))
+	resp, err := client.Post("https://127.0.0.2:"+port+"/api/v1/auth/login", "application/json", strings.NewReader(`{"username":"admin","password":"gpuworks-test-password-2026"}`))
 	if err != nil {
 		t.Fatal(err)
 	}

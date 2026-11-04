@@ -179,8 +179,12 @@ check-tagged-build:
 	CGO_ENABLED=0 $(GO) test -tags='cloudgpu,vast' ./test/l4 -run '^$$'
 	CGO_ENABLED=0 $(GO) test -tags='cloudgpu,partition' ./test/l4 -run '^$$'
 
+# Keep wall-time UI budgets from measuring contention between test files.
+# Override with e.g. make test-ui UI_TEST_CONCURRENCY=4.
+UI_TEST_CONCURRENCY ?= $(shell node -p 'Math.max(1, Math.min(8, require("node:os").availableParallelism() - 1))')
+
 test-ui:
-	cd ui && npm test
+	cd ui && UI_TEST_CONCURRENCY=$(UI_TEST_CONCURRENCY) npm test
 
 .PHONY: test-ui-motion
 ## Real Chromium layout regression; requires Python Playwright and UI dependencies.

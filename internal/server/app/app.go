@@ -120,7 +120,7 @@ func New(cfg Config, log *slog.Logger) (*App, error) {
 	// New node enrollment uses per-node tokens stored in the database.
 
 	b := bus.New()
-	st, err := store.Open(cfg.DBPath, b)
+	st, master, err := openCredentialStore(cfg, b, log)
 	if err != nil {
 		return nil, err
 	}
@@ -207,7 +207,6 @@ func New(cfg Config, log *slog.Logger) (*App, error) {
 	ctrl.SetDrainProbe(px)
 
 	// Credential encryption for cloud providers (master secret persisted in data dir).
-	master := masterSecret(cfg)
 	box, err := auth.NewSecretbox(master)
 	if err != nil {
 		return nil, err
@@ -285,9 +284,6 @@ func New(cfg Config, log *slog.Logger) (*App, error) {
 	if a.cards, err = newCardHealth(log, st, h); err != nil {
 		return nil, err
 	}
-
-	// Bootstrap an admin account and a default API key so /v1 is usable.
-	bootstrapAdminAccount(cfg, st, log)
 
 	dlDir := filepath.Join(cfg.DataDir, "dl")
 	_ = os.MkdirAll(dlDir, 0o755)

@@ -10,6 +10,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"gpuworks.ai/gpuworks/internal/securefile"
 )
 
 // initialCredentialsFile records the bootstrap admin password in the data dir.
@@ -53,10 +55,14 @@ func InitialCredentialsPayload(user, password string) ([]byte, error) {
 	return append(payload, '\n'), nil
 }
 
-// WriteInitialCredentials stores the bootstrap credentials with 0664. The write
+// WriteInitialCredentials stores the bootstrap credentials with owner/trusted-group access only. The write
 // goes through a temporary file so a crash cannot leave a half-written record
 // that a later start would misread as "no password configured".
-func WriteInitialCredentials(dataDir, user, password string) error {
+func WriteInitialCredentials(dataDir, user, password string, policies ...securefile.Policy) error {
+	policy, modeErr := securefile.Select(policies...)
+	if modeErr != nil {
+		return modeErr
+	}
 	if _, err := InitialCredentialsPayload(user, password); err != nil {
 		return err
 	}
@@ -73,9 +79,9 @@ func WriteInitialCredentials(dataDir, user, password string) error {
 	}
 	tmpName := tmp.Name()
 	defer func() { _ = os.Remove(tmpName) }()
-	// 0664 on purpose: written by the operator, read by the server's first
-	// boot under the service account, group-writable like the rest of the tree.
-	if err := tmp.Chmod(0o664); err != nil {
+	// Only the service account and its trusted operator group can read this
+	// clear-text bootstrap password.
+	if err := policy.Apply(tmp); err != nil {
 		tmp.Close()
 		return err
 	}
@@ -90,12 +96,12 @@ func WriteInitialCredentials(dataDir, user, password string) error {
 }
 
 // ReadInitialCredentials returns the recorded credentials. A missing file is
-// reported as an error; callers treat every error the same way (fall back to
-// generating a password), so a truncated or hand-edited file cannot block
-// startup.
-func ReadInitialCredentials(dataDir string) (InitialCredentials, error) {
+// reported as an error. Protection errors retain their underlying cause so
+// startup can refuse unsafe permissions; a caller may separately tolerate an
+// absent or damaged record according to its bootstrap policy.
+func ReadInitialCredentials(dataDir string, policies ...securefile.Policy) (InitialCredentials, error) {
 	path := CredentialsPath(dataDir)
-	raw, err := os.ReadFile(path)
+	raw, err := securefile.ReadFile(path, policies...)
 	if err != nil {
 		return InitialCredentials{}, err
 	}
@@ -107,4 +113,14 @@ func ReadInitialCredentials(dataDir string) (InitialCredentials, error) {
 		return InitialCredentials{}, fmt.Errorf("%s carries no password", path)
 	}
 	return creds, nil
+}
+
+// ProtectInitialCredentials tightens a legacy clear-text record even when an
+// existing account or explicit password means bootstrap will not read it.
+func ProtectInitialCredentials(dataDir string, policies ...securefile.Policy) error {
+	err := securefile.Protect(CredentialsPath(dataDir), policies...)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	return err
 }

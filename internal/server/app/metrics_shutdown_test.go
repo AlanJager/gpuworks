@@ -25,7 +25,7 @@ func TestRunFlushesFinalProxyAccountingBeforeReturning(t *testing.T) {
 	a, err := New(Config{
 		Addr: "127.0.0.1:0", DataDir: dir,
 		DBPath:    filepath.Join(dir, "gpuworks.db"),
-		AdminUser: "admin", AdminPassword: "password",
+		AdminUser: "admin", AdminPassword: "gpuworks-test-password-2026",
 	}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err != nil {
 		t.Fatal(err)

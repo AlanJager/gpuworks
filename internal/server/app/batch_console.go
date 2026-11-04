@@ -102,7 +102,7 @@ func (c batchConsole) Dictionary() (dto.BatchDictionary, error) {
 	for _, m := range d.Models {
 		if state, ok := batchModelStates[m.State]; ok {
 			endpoints := append([]string{}, m.Endpoints...)
-			out.Models = append(out.Models, dto.BatchModel{Name: m.Name, State: state, Endpoints: endpoints})
+			out.Models = append(out.Models, dto.BatchModel{Name: m.Name, State: state, Ready: m.State.Ready(), Endpoints: endpoints})
 		}
 	}
 	return out, nil

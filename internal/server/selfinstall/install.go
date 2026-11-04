@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"gpuworks.ai/gpuworks/internal/securefile"
 	"gpuworks.ai/gpuworks/internal/server/installcred"
 	"gpuworks.ai/gpuworks/internal/server/nodeaddr"
 	"gpuworks.ai/gpuworks/internal/server/serverconfig"
@@ -119,6 +120,12 @@ func (i *Installer) Install(ctx context.Context, req InstallRequest) (InstallRep
 				sharedApplicationRoot, i.layout.Binary()))
 		}
 	}
+	if err := i.preflightSensitiveFiles(ctx); err != nil {
+		return InstallReport{}, err
+	}
+	if err := i.preflightGroupSharing(pf); err != nil {
+		return InstallReport{}, err
+	}
 	for _, warning := range pf.Warnings {
 		i.io.Warn("warning: %s", warning)
 	}
@@ -144,6 +151,9 @@ func (i *Installer) Install(ctx context.Context, req InstallRequest) (InstallRep
 	if err := i.prepareDirs(ctx); err != nil {
 		return InstallReport{}, err
 	}
+	if err := i.preflightGroupSharing(pf); err != nil {
+		return InstallReport{}, err
+	}
 	self, err := i.selfPath()
 	if err != nil {
 		return InstallReport{}, err
@@ -162,7 +172,7 @@ func (i *Installer) Install(ctx context.Context, req InstallRequest) (InstallRep
 		if err != nil {
 			return InstallReport{}, fmt.Errorf("record initial credentials: %w", err)
 		}
-		if err := i.writeInstalled(ctx, installcred.CredentialsPath(i.layout.DataDir), payload, 0o664); err != nil {
+		if err := i.writeInstalled(ctx, installcred.CredentialsPath(i.layout.DataDir), payload, securefile.OwnerMode); err != nil {
 			return InstallReport{}, fmt.Errorf("record initial credentials: %w", err)
 		}
 	}
@@ -213,7 +223,7 @@ func (i *Installer) Install(ctx context.Context, req InstallRequest) (InstallRep
 		i.io.Warn("the service did not become healthy; check %s", i.layout.LogFile())
 		return InstallReport{}, err
 	}
-	return i.finishInstall(ctx, config, pf, password, source, adopted, groupHint, probe), nil
+	return i.finishInstall(ctx, config, pf, password, source, adopted, groupHint, probe)
 }
 
 // installConfig is server.yaml after this install: the previous file, with
@@ -251,18 +261,19 @@ func splitList(raw string) []string {
 }
 
 // finishInstall records the installation and assembles the summary.
-func (i *Installer) finishInstall(ctx context.Context, config serverconfig.File, pf Preflight, password, source string, adopted bool, groupHint, probe string) InstallReport {
+func (i *Installer) finishInstall(ctx context.Context, config serverconfig.File, pf Preflight, password, source string, adopted bool, groupHint, probe string) (InstallReport, error) {
+	policy, policyErr := i.sensitiveFilePolicy()
+	if policyErr != nil {
+		return InstallReport{}, policyErr
+	}
+	if err := i.chownTree(ctx, pf.ServiceUser); err != nil {
+		return InstallReport{}, fmt.Errorf("protect completed installation: %w", err)
+	}
 	if err := i.appendInstalled(ctx, i.layout.HistoryPath(), HistoryEntry{
 		Action: ActionInstall, Result: "ok", ReleaseID: version.Version,
 		Mode: pf.Mode, By: currentUserName(), At: stampNow(i.deps.now()),
-	}, 0o600); err != nil {
+	}, policy.Mode()); err != nil {
 		i.io.Warn("warning: could not append to the install history: %v", err)
-	}
-	// The bootstrap writes above may have landed through sudo — a fresh /opt is
-	// not writable yet — so the tree is handed to the service group one more
-	// time at the very end, covering whatever the fallbacks created.
-	if err := i.chownTree(ctx, pf.ServiceUser); err != nil {
-		i.io.Warn("warning: could not hand the tree to the service group: %v", err)
 	}
 	report := InstallReport{
 		Layout:         i.layout,
@@ -282,7 +293,7 @@ func (i *Installer) finishInstall(ctx context.Context, config serverconfig.File,
 	if base := consoleURL(config.Listen); base != "" {
 		report.URL = base
 	}
-	return report
+	return report, nil
 }
 
 // consoleURL is where other machines open the console: its first address, or

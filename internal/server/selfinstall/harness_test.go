@@ -14,7 +14,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/user"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -287,6 +289,7 @@ func newHarness(t *testing.T, dir string) *harness {
 		// runner the test observes.
 		Euid:           func() int { return 1000 },
 		LookupUser:     func(name string) bool { return h.users[name] },
+		LookupGroup:    credentialGroupFixture,
 		HasBinary:      func(name string) bool { return h.binaries[name] },
 		SystemdRunning: func() bool { return h.systemd },
 		LaunchdRunning: func() bool { return h.launchd },
@@ -502,4 +505,14 @@ func tarGz(t *testing.T, members map[string]string) []byte {
 func sha256Hex(data []byte) string {
 	sum := sha256.Sum256(data)
 	return hex.EncodeToString(sum[:])
+}
+
+// The runner maps service identity to this process for local filesystem tests.
+// The group lookup must report that same identity, rather than inventing a
+// successful chown to an unrelated host account.
+func credentialGroupFixture(name string) (*user.Group, error) {
+	if name != DefaultCredentialGroup {
+		return nil, user.UnknownGroupError(name)
+	}
+	return &user.Group{Name: name, Gid: strconv.Itoa(os.Getegid())}, nil
 }

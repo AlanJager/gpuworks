@@ -51,7 +51,10 @@ func newOverviewRig(t *testing.T) *overviewRig {
 		t.Fatal(err)
 	}
 	deps.AuthSigner, deps.AI = signer, &fakeAI{available: true}
-	admin, _ := base.st.VerifyUser("admin", "password")
+	admin, ok := base.st.VerifyUser("admin", "gpuworks-test-password-2026")
+	if !ok {
+		t.Fatal("overview fixture admin authentication failed")
+	}
 	session, err := managementSessionTestToken(t, base.st, signer, auth.Claims{UserID: admin.ID, Username: admin.Username, Role: admin.Role})
 	if err != nil {
 		t.Fatal(err)

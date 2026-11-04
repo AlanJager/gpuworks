@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	osuser "os/user"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -220,7 +221,7 @@ func TestGuardStartRollsBackAfterTheStartsAreUsed(t *testing.T) {
 			t.Fatalf("start %d replaced the binary early: %q", start, got)
 		}
 	}
-	guard, err := GuardStart(h.layout, "v2.0.0", ModeSystemd, now)
+	guard, err := guardStart(h.layout, "v2.0.0", ModeSystemd, now, credentialGroupFixture)
 	if err != nil || !guard.RolledBack {
 		t.Fatalf("rollback start: %+v, %v", guard, err)
 	}
@@ -325,10 +326,56 @@ func TestWaitConfirmedConfirmsOrAbandons(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "did not answer") {
 		t.Fatalf("err = %v", err)
 	}
-	if next, err := GuardStart(h2.layout, "v2.0.0", ModeSystemd, time.Now()); err != nil || !next.RolledBack {
+	if next, err := guardStart(h2.layout, "v2.0.0", ModeSystemd, time.Now(), credentialGroupFixture); err != nil || !next.RolledBack {
 		t.Fatalf("the start after an abandoned upgrade = %+v, %v", next, err)
 	}
 	if got := readFile(t, h2.layout.Binary()); got != "old binary" {
 		t.Fatalf("binary = %q", got)
+	}
+}
+
+func TestGuardStartKeepsTheUpgradeIntactWhenCredentialGroupLookupFails(t *testing.T) {
+	wantErr := errors.New("authorized credential group is unavailable")
+	for _, tc := range []struct {
+		name   string
+		lookup func(string) (*osuser.Group, error)
+	}{
+		{name: "missing resolver"},
+		{name: "failed resolver", lookup: func(string) (*osuser.Group, error) {
+			return nil, wantErr
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h, _ := stageForGuard(t)
+			pending := pendingOf(t, h.layout)
+			pending.Starts = maxUpgradeStarts
+			if err := writePending(h.layout, *pending); err != nil {
+				t.Fatal(err)
+			}
+			lookup := tc.lookup
+			var queried string
+			if lookup != nil {
+				lookup = func(name string) (*osuser.Group, error) {
+					queried = name
+					return tc.lookup(name)
+				}
+			}
+			guard, err := guardStart(h.layout, "v2.0.0", ModeSystemd, time.Now(), lookup)
+			if err == nil || guard.RolledBack || guard.Pending == nil {
+				t.Fatalf("unresolved authorization was silently downgraded: guard=%+v err=%v", guard, err)
+			}
+			if tc.lookup != nil && !errors.Is(err, wantErr) {
+				t.Fatalf("lookup failure was not propagated: %v", err)
+			}
+			if tc.lookup != nil && queried != DefaultCredentialGroup {
+				t.Fatalf("wrong credential group was resolved: %s", queried)
+			}
+			if readFile(t, h.layout.Binary()) != "new binary" || readFile(t, filepath.Join(h.layout.DataDir, "gpuworks.db")) != "migrated database" {
+				t.Fatal("failed authorization partially restored the installation")
+			}
+			if pendingOf(t, h.layout) == nil {
+				t.Fatal("failed authorization discarded the rollback marker")
+			}
+		})
 	}
 }

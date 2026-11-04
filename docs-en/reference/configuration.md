@@ -127,10 +127,15 @@ The following arguments have no configuration file keys. Their defaults are the 
 ### Initial Administrator and Keys
 
 - Administrator password: supplied through `gpuworks install --password`, the `GPUWORKS_ADMIN_PASSWORD` environment variable, or interactive input, written to
-  `<data>/initial-credentials` (0664), and read when the `admin` account is created on first startup. If
+  `<data>/initial-credentials` (permissions below), and read when the `admin` account is created on first startup. If
   `GPUWORKS_ADMIN_PASSWORD` is set on first startup, it takes precedence over this file (suitable for deployments such as containers that do not run install); if neither exists, a random password is generated and written to
   the same file. It is read only when creating the account; subsequent changes do not affect existing accounts. Unit files never carry passwords.
-- Master key: `<data>/master.key` (generated on first startup, 0664), used to encrypt cloud provider credentials and other secrets; explicitly back it up in production.
+- Master key: `<data>/master.key` (generated on first startup; permissions below), used to encrypt cloud provider credentials and other secrets; explicitly back it up in production.
+
+New or changed administrator passwords must contain 15–128 Unicode characters and at most 512 bytes. Common guessable values, whole-value repetitions and sequences are rejected; character-class mixtures are not required and passphrases are supported. Without an explicit password, a 24-byte random value is encoded as hexadecimal. Existing accounts can still authenticate with their current passwords.
+
+Sensitive files default to owner-only access (`0600`). A Linux systemd installation explicitly bound to this binary and a non-root service account may use its trusted service group (`0660`); group membership grants access to platform credentials. macOS and standalone servers do not implicitly trust ordinary primary groups. Startup, install and upgrade harden existing credentials, databases and sidecars, and recognized backups; temporary database snapshots are owner-only. Failure to protect a file stops the operation: repair the reported owner/service-group permissions and retry. Generated passwords are not written to service logs.
+
 - Model download mirrors: configure site rules under Settings → Pull Settings; there is no longer a startup argument (`--model-endpoint` remains only for in-process test fixtures: one site rule per site, pointing to that endpoint, without origin fallback, for the management node).
 
 ## Pull Proxies and Outbound Access

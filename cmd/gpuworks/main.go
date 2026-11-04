@@ -34,6 +34,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/logthrottle"
 	"gpuworks.ai/gpuworks/internal/selflog"
 	"gpuworks.ai/gpuworks/internal/server/app"
+	"gpuworks.ai/gpuworks/internal/server/auth"
 	"gpuworks.ai/gpuworks/internal/server/bus"
 	"gpuworks.ai/gpuworks/internal/server/experiencelaunch"
 	"gpuworks.ai/gpuworks/internal/server/expose"
@@ -286,10 +287,15 @@ func migrate(log *slog.Logger, args []string) error {
 	if cfg.DBPath == "" {
 		cfg.DBPath = filepath.Join(cfg.DataDir, "gpuworks.db")
 	}
-	st, err := store.Open(cfg.DBPath, bus.New())
+	policy, err := maintenanceDatabasePolicy(cfg.DBPath)
 	if err != nil {
 		return err
 	}
+	st, err := store.Open(cfg.DBPath, bus.New(), policy)
+	if err != nil {
+		return fmt.Errorf("open migration database %s: %w; use the installed gpuworks binary or run it with the service owner's privileges (sudo when required)", cfg.DBPath, err)
+	}
+	defer st.Close()
 	applyEmbedded, build, err := app.EmbeddedCatalogsDue(st)
 	if err != nil {
 		return err
@@ -328,17 +334,24 @@ func resetPassword(log *slog.Logger, args []string) error {
 	if password == "" {
 		return fmt.Errorf("-password is required")
 	}
+	if err := auth.ValidatePassword(password); err != nil {
+		return err
+	}
 	dbPath, err := resetPasswordDB(dataDir, cfg.DBPath)
 	if err != nil {
 		return err
 	}
-	// The database is world-writable by design (see store.Open), so the reset
-	// runs as the operator; a database left tight by an older installation
-	// fails here with its own permission error.
-	st, err := store.Open(dbPath, bus.New())
+	policy, err := maintenanceDatabasePolicy(dbPath)
 	if err != nil {
 		return err
 	}
+	// Opening the existing database requires its owner's privileges. Policy
+	// validation above happens before touching any database or its permissions.
+	st, err := store.Open(dbPath, bus.New(), policy)
+	if err != nil {
+		return fmt.Errorf("open password database %s: %w; use the installed gpuworks binary or run it with the service owner's privileges (sudo when required)", dbPath, err)
+	}
+	defer st.Close()
 	if err := st.SetUserPassword(username, password); err != nil {
 		return err
 	}
@@ -359,12 +372,21 @@ func resetPasswordDB(dataDir, dbPath string) (string, error) {
 		dir, source = expose.ResolveDataDir(dataDir)
 		dbPath = filepath.Join(dir, "gpuworks.db")
 	}
-	if abs, err := filepath.Abs(dbPath); err == nil {
-		dbPath = abs
+	path, err := store.DatabaseFilePath(dbPath)
+	if err != nil {
+		return "", fmt.Errorf("identify password database: %w", err)
 	}
-	if _, err := os.Stat(dbPath); err != nil {
+	if path == "" {
+		return "", fmt.Errorf("reset-password requires an existing persistent database; pass --data with the server's data directory or --db with its gpuworks.db")
+	}
+	if path == dbPath {
+		if abs, err := filepath.Abs(path); err == nil {
+			dbPath, path = abs, abs
+		}
+	}
+	if _, err := os.Stat(path); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return "", fmt.Errorf("database %s (from %s) does not exist; pass --data with the server's data directory or --db with its gpuworks.db", dbPath, source)
+			return "", fmt.Errorf("database %s (from %s) does not exist; pass --data with the server's data directory or --db with its gpuworks.db", path, source)
 		}
 		return "", err
 	}

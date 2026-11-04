@@ -70,7 +70,7 @@ def wait_until(page: Page, check, description: str, timeout: float = 15) -> obje
 def login(page: Page, base: str) -> None:
     page.goto(base + "/deploy")
     page.locator('input[autocomplete="username"]').fill("admin")
-    page.locator('input[autocomplete="current-password"]').fill("password")
+    page.locator('input[autocomplete="current-password"]').fill("gpuworks-test-password-2026")
     page.get_by_role("button", name="Sign In").click()
     expect(page.get_by_role("heading", name="Deploy", exact=True)).to_be_visible()
 

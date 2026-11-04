@@ -24,6 +24,7 @@ class ArtifactSafetyTest(unittest.TestCase):
             artifacts = Artifacts(Path(directory) / "run")
             secret = "gwp_" + "fixture-only-not-a-real-token" * 2
             cookie = "fixture-cookie-never-authorized"
+            password = "gpuworks-test-password-2026"
             artifacts.remember(secret)
 
             class Context:
@@ -31,7 +32,8 @@ class ArtifactSafetyTest(unittest.TestCase):
 
                 def stop(self, path):
                     with zipfile.ZipFile(path, "w") as archive:
-                        archive.writestr("trace.network", json.dumps({"cookie": cookie, "token": secret}))
+                        archive.writestr("trace.network", json.dumps({"cookie": cookie, "token": secret,
+                                                                     "password": password}))
 
                 def cookies(self):
                     return [{"value": cookie}]
@@ -40,13 +42,15 @@ class ArtifactSafetyTest(unittest.TestCase):
             context.tracing = context
             artifacts.tracing = True
             artifacts.stop_trace(context)
-            artifacts.write_json("report.json", {"error": f"{secret} / {cookie}"})
+            artifacts.write_json("report.json", {"error": f"{secret} / {cookie} / {password}"})
             artifacts.scan()
             self.assertFalse((artifacts.private / "trace.zip").exists())
             with zipfile.ZipFile(artifacts.directory / "trace-1.zip") as archive:
                 result = json.loads(archive.read("trace.network"))
-            self.assertEqual(result, {"cookie": "[REDACTED]", "token": "[REDACTED]"})
+            self.assertEqual(result, {"cookie": "[REDACTED]", "token": "[REDACTED]",
+                                      "password": "[REDACTED]"})
             self.assertNotIn(secret, (artifacts.directory / "report.json").read_text())
+            self.assertNotIn(password, (artifacts.directory / "report.json").read_text())
 
     # Mainline: accidental credential in a compressed resource → artifact scan → reject instead of publish.
     def test_scan_rejects_secret_inside_zip(self):
@@ -105,6 +109,10 @@ class ServerConfigTest(unittest.TestCase):
             argv = launched[0]
             self.assertEqual(argv[1:4], ["serve", "--config", str(work.resolve() / "server.yaml")])
             self.assertNotIn("--addr", argv)
+            credentials = work / "server-data" / "initial-credentials"
+            self.assertEqual(json.loads(credentials.read_text()),
+                             {"user": "admin", "password": "gpuworks-test-password-2026"})
+            self.assertEqual(credentials.stat().st_mode & 0o777, 0o600)
             config = yaml.safe_load((work / "server.yaml").read_text())
             self.assertEqual(config["listen"]["console"], [server.base.removeprefix("http://")])
             self.assertEqual(config["storage_probe_roots"], [str(work.resolve() / "storage")])

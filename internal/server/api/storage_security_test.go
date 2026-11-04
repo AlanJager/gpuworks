@@ -46,7 +46,7 @@ func TestStorageCacheOverridesRespectConfiguredRoots(t *testing.T) {
 		t.Fatal(err)
 	}
 	router := Router(Deps{Store: st, AuthSigner: signer, Server: StaticServerSettings{StorageRoots: []string{"/srv/models"}}})
-	cookie, _ := sessionLogin(t, router, "password")
+	cookie, _ := sessionLogin(t, router, "gpuworks-test-password-2026")
 	endpoint := fmt.Sprintf("/api/v1/storages/%d/node-overrides", storage.ID)
 	for _, p := range []string{"/etc", "/srv/outside", "/srv/models-other", "/srv/models/../../etc"} {
 		body, _ := json.Marshal(map[string]any{"node_uuids": []string{node.UUID}, "cache_path": p})
@@ -89,7 +89,7 @@ func TestPatchStorageDoesNotRejudgeStoredPaths(t *testing.T) {
 		t.Fatal(err)
 	}
 	router := Router(Deps{Store: st, AuthSigner: signer, Server: StaticServerSettings{StorageRoots: []string{"/var/lib/gpuworks"}}})
-	cookie, _ := sessionLogin(t, router, "password")
+	cookie, _ := sessionLogin(t, router, "gpuworks-test-password-2026")
 	call := func(method, path, body string) *httptest.ResponseRecorder {
 		t.Helper()
 		req := httptest.NewRequest(method, path, strings.NewReader(body))

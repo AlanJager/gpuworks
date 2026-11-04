@@ -3,11 +3,14 @@ package app
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/debuglog"
+	"gpuworks.ai/gpuworks/internal/securefile"
 	"gpuworks.ai/gpuworks/internal/selflog"
 	"gpuworks.ai/gpuworks/internal/server/auth"
 	"gpuworks.ai/gpuworks/internal/server/proxy"
@@ -125,16 +128,44 @@ func (c Config) bindings() []serverconfig.Binding {
 
 // masterSecret returns the secret used to derive the credential-encryption key:
 // the file in the data dir, generated once.
-func masterSecret(cfg Config) string {
+func masterSecret(cfg Config, policies ...securefile.Policy) (string, error) {
 	path := filepath.Join(cfg.DataDir, "master.key")
-	if b, err := os.ReadFile(path); err == nil && len(b) > 0 {
-		return string(b)
+	if b, err := securefile.ReadFile(path, policies...); err == nil {
+		if len(b) == 0 {
+			return "", fmt.Errorf("master key %s is empty; restore the original key before starting", path)
+		}
+		return string(b), nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return "", err
 	}
-	secret := randHex(32)
-	// 0664 on purpose: the operator backs this file up without sudo. The
-	// install tree is shared workspace — group write, others read.
-	_ = os.WriteFile(path, []byte(secret), 0o664)
-	return secret
+	raw := make([]byte, 32)
+	if _, err := rand.Read(raw); err != nil {
+		return "", fmt.Errorf("generate master key: %w", err)
+	}
+	secret := hex.EncodeToString(raw)
+	f, err := securefile.Create(path, policies...)
+	if errors.Is(err, os.ErrExist) {
+		b, readErr := securefile.ReadFile(path, policies...)
+		if readErr != nil {
+			return "", readErr
+		}
+		if len(b) == 0 {
+			return "", fmt.Errorf("master key %s is empty", path)
+		}
+		return string(b), nil
+	}
+	if err != nil {
+		return "", err
+	}
+	if _, err = f.WriteString(secret); err != nil {
+		f.Close()
+		os.Remove(path)
+		return "", err
+	}
+	if err = f.Close(); err != nil {
+		return "", err
+	}
+	return secret, nil
 }
 
 func randHex(n int) string {

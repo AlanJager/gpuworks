@@ -129,8 +129,8 @@ gpuworks restarted (systemd)
 - nohup 模式（`--no-systemd`、没有运行中的 systemd、没有 root/`sudo`，或 macOS 上未给 `--autostart`）：忽略 `--service-user`（只在显式给出时告警），以调用用户在后台运行 `serve --supervise --config <dir>/server.yaml`，server 退出后由它重新拉起（因此支持控制台升级）；重启机器或容器后不会自动恢复，用 `<dir>/gpuworks restart` 拉起、`<dir>/gpuworks stop` 停止，或把这条命令设为容器的启动命令，见[在容器里运行](../how-to/install-server.md#在容器里运行)；macOS 上可再执行 `<dir>/gpuworks install --autostart` 改为开机启动。安装摘要会打印这些命令。
 - macOS：默认以 nohup 模式运行，安装目录默认 `~/gpuworks/server`（执行安装的用户的主目录，`sudo` 下取 `SUDO_USER` 的）。launchd 模式（有 root/`sudo` 且给了 `--autostart`；重装已有 launch daemon 的安装时不给也沿用）写 `/Library/LaunchDaemons/ai.gpuworks.server.plist` 并 `launchctl bootstrap`，以执行安装的用户运行、开机即起、退出后由 launchd 拉起（支持控制台升级），安装树归该用户。plist 内容见[控制面安装布局 · launchd plist](install-layout.md#launchd-plistmacos)。
 - 交互：不带 `--quiet` 时先打印 banner（输出是终端且 locale 为 UTF-8 时是块状字符，否则纯 ASCII）；在终端上再依次问安装目录（回答开头的 `~` 同样展开）、监听地址、是否自启（yes/no，macOS 上默认 no），最后问管理员密码；命令行已给出的项不再问，回车采用括号里的默认值（既有安装的现值或静态默认）。
-- 管理员密码优先级：`--password` > 环境变量 `GPUWORKS_ADMIN_PASSWORD`（交互时回显并确认）> 交互提问（回车随机生成）> 随机生成；写入 `<data>/initial-credentials`（0664），不进单元文件。数据目录已有 `gpuworks.db` 时不再解析密码，`--password` 被忽略并提示用 `reset-password`。
-- 重复执行是修复路径：保留既有 `server.yaml`（命令行显式给出才覆盖）、替换二进制、重建服务并重启，不碰数据库、`master.key` 和 admin 账户。
+- 管理员密码优先级：`--password` > 环境变量 `GPUWORKS_ADMIN_PASSWORD`（交互时回显并确认）> 交互提问（回车随机生成）> 随机生成；写入 `<data>/initial-credentials`（默认 `0600`，可信 Linux 平台组为 `0660`），不进单元文件。数据目录已有 `gpuworks.db` 时不再解析密码，`--password` 被忽略并提示用 `reset-password`。
+- 重复执行是修复路径：保留既有 `server.yaml`（命令行显式给出才覆盖）、替换二进制、重建服务并重启，保留数据库、`master.key` 和 admin 账户内容，并收紧敏感文件权限。
 - server 不管理自己的对外地址：添加节点、云厂商安装等 API 一律要求调用方显式给出 `server_url`。
 
 ## gpuworks upgrade

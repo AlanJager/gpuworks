@@ -178,7 +178,7 @@ func TestAccessLogCarriesTheProductErrorThroughTheRouter(t *testing.T) {
 	var logs strings.Builder
 	log := slog.New(slog.NewTextHandler(&logs, nil))
 	dir := t.TempDir()
-	application, err := New(Config{Addr: "127.0.0.1:0", DataDir: dir, DBPath: dir + "/gpuworks.db", AdminUser: "admin", AdminPassword: "password"}, log)
+	application, err := New(Config{Addr: "127.0.0.1:0", DataDir: dir, DBPath: dir + "/gpuworks.db", AdminUser: "admin", AdminPassword: "gpuworks-test-password-2026"}, log)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -138,7 +138,7 @@ class LocalServer:
         data = self.work / "server-data"
         data.mkdir(mode=0o700)
         credentials = data / "initial-credentials"
-        credentials.write_text(json.dumps({"user": "admin", "password": "password"}))
+        credentials.write_text(json.dumps({"user": "admin", "password": "gpuworks-test-password-2026"}))
         credentials.chmod(0o600)
         self.storage_root.mkdir(mode=0o700)
         config = write_server_config(self.work, self.storage_root, self.base.removeprefix("http://"),
@@ -146,7 +146,7 @@ class LocalServer:
         self.environment = {"config": "private/server.yaml", "listen": [self.base.removeprefix("http://")],
                             "storage_probe_roots": [str(self.storage_root)],
                             "outbound_allow_private_hosts": ["127.0.0.1"]}
-        child_env = {**os.environ, "GPUWORKS_ADMIN_PASSWORD": "password"}
+        child_env = {**os.environ, "GPUWORKS_ADMIN_PASSWORD": "gpuworks-test-password-2026"}
         for name, value in self.env_overrides.items():
             if value is None:
                 child_env.pop(name, None)
@@ -199,7 +199,7 @@ class Artifacts:
         self.directory.mkdir(parents=True, exist_ok=False, mode=0o700)
         self.private = self.directory / "private"
         self.private.mkdir(mode=0o700)
-        self.secrets = ["password"]
+        self.secrets = ["gpuworks-test-password-2026"]
         self.tracing = False
         self.trace_number = 0
 

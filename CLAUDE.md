@@ -82,7 +82,7 @@ make demo       # 起 server + agent，验证接入/心跳/重连
 
 本地开发用 `make run-server` / `make demo`。真机与远端测试环境（含云厂商 key）的地址、SSH 方式与部署/回滚流程见 **`secrets/test-environments.md`**（gitignored，不入仓库）。`secrets/` 只在主 checkout 下完整；各开发目录都是主 checkout 的 git worktree、与它同级（如 `../gpuworks_xxx`），worktree 里通常只有 `*.example`，需要真实配置时读 `../gpuworks/secrets/`（即主 checkout 的 secrets）。
 
-本地测试 server 端口按顺序尝试 8800、8802、8804、8806，以此类推；本地测试密码使用 `password`。
+本地测试 server 端口按顺序尝试 8800、8802、8804、8806，以此类推；本地测试密码使用 `gpuworks-test-password-2026`。
 
 跑测试（尤其是真机/云主机 L4 用例）遇到失败 case，尽量别让失败现场立刻被 teardown/重试抹掉，方便先手动登录复现环境调试、看真实进程日志，再改代码、最后统一清理。云厂商 L4 测试可设 `GPUWORKS_CLOUD_KEEP_ON_FAILURE=1` 跳过失败清理，实例留到自然寿命（`cloudTestLifetime`，当前 2 小时）到期或手动 `make test-l4-cleanup-leaked` / `cleanup-leaked --run-id <run-id>` 再清；昇腾 nerdctl 设备注入验证用的是 `GPUWORKS_KEEP_ON_FAILURE=1`；非云端场景（本地容器/进程）同理，先 kill 掉相关 agent/server 进程冻结状态，别急着删容器。
 

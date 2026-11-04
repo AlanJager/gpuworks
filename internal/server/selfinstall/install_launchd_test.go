@@ -42,7 +42,7 @@ func TestInstallOnAMacRegistersALaunchDaemonRunningAsTheInstaller(t *testing.T) 
 	h.installSelf("gpuworks binary v1")
 	req := h.quiet()
 	req.ServiceUser = DefaultServiceUser
-	req.Password = "s3cret"
+	req.Password = "fresh-install-password-2026"
 
 	report := h.mustInstall(req)
 
@@ -78,12 +78,16 @@ func TestInstallOnAMacRegistersALaunchDaemonRunningAsTheInstaller(t *testing.T) 
 		"sudo launchctl bootstrap "+launchdDomain+" "+h.layout.LaunchdPath()) {
 		t.Fatalf("launchd was not driven in order: %v", h.run.executed())
 	}
-	// The tree belongs to the account that runs the server, in its own group.
-	if !h.run.ran("sudo chown -R alice:staff " + h.layout.Dir) {
+	// The server owns its tree; the macOS staff group is not an authorized
+	// credential group and must not acquire recursive write access.
+	if !h.run.ran("sudo chown -R alice " + h.layout.Dir) {
 		t.Fatalf("the tree was not given to alice: %v", h.run.executed())
 	}
+	if !h.run.ran("sudo chmod -R go-w "+h.layout.Dir) || h.run.ran("sudo chown -R alice:staff") || h.run.ran("sudo chmod -R g+rwX") {
+		t.Fatalf("the Mac installation granted an incidental primary group access: %v", h.run.executed())
+	}
 	// A Mac has no service account to create or join.
-	for _, linuxOnly := range []string{"sudo useradd", "sudo usermod", "sudo systemctl"} {
+	for _, linuxOnly := range []string{"sudo useradd", "sudo usermod", "sudo groupadd", "sudo addgroup", "sudo systemctl"} {
 		if h.run.ran(linuxOnly) {
 			t.Fatalf("ran %s on a Mac: %v", linuxOnly, h.run.executed())
 		}
