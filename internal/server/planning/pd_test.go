@@ -14,8 +14,11 @@ func pdNode(uuid, state string, gpus ...string) *store.Node {
 	node := &store.Node{UUID: uuid, Name: uuid, State: state}
 	for i, name := range gpus {
 		vendor := "nvidia"
-		if name == "Ascend910B4" {
+		switch name {
+		case "Ascend910B4":
 			vendor = "ascend"
+		case "PPU-ZW810E":
+			vendor = "ppu"
 		}
 		node.GPUs = append(node.GPUs, store.GPU{Index: i, Name: name, Vendor: vendor})
 	}
@@ -115,6 +118,35 @@ func TestValidatePDRules(t *testing.T) {
 	pd := &PDPlacement{Mode: "vllm-nixl", Roles: map[string]PDRole{"prefill": {Units: many}, "decode": {Units: []PDUnit{{NodeUUID: "b"}}}}}
 	if _, err := ValidatePD(pd, "vllm"); productCode(err) != messages.ErrorPDRoleUnitsTooMany {
 		t.Fatalf("33 units: %v", err)
+	}
+}
+
+// A mode whose transport stays inside one host takes a same-node placement
+// without the throughput warning, and refuses instances spread over nodes.
+func TestValidatePDNodesSameNodeMode(t *testing.T) {
+	nodes := map[string]*store.Node{
+		"p1": pdNode("p1", store.NodeStateOnline, "PPU-ZW810E", "PPU-ZW810E"),
+		"p2": pdNode("p2", store.NodeStateOnline, "PPU-ZW810E", "PPU-ZW810E"),
+	}
+	check := func(text string) ([]messages.Warning, error) {
+		pd := parsePDText(t, text)
+		mode, err := ValidatePD(pd, "sglang")
+		if err != nil {
+			t.Fatalf("structural: %v", err)
+		}
+		return ValidatePDNodes(pd, mode, nodes, true)
+	}
+	warnings, err := check(`{"pd":{"mode":"sglang-ppu-ipc","roles":{"prefill":{"units":[{"node_uuid":"p1","gpus":[0]}]},"decode":{"units":[{"node_uuid":"p1","gpus":[1]}]}}}}`)
+	if err != nil || len(warnings) != 0 {
+		t.Fatalf("same node: %v %v", warnings, err)
+	}
+	_, err = check(`{"pd":{"mode":"sglang-ppu-ipc","roles":{"prefill":{"units":[{"node_uuid":"p1"}]},"decode":{"units":[{"node_uuid":"p2"}]}}}}`)
+	if productCode(err) != messages.ErrorPDSameNodeRequired {
+		t.Fatalf("two nodes: %v", err)
+	}
+	var product *messages.ProductError
+	if !errors.As(err, &product) || product.Params()["nodes"] != "p1, p2" || product.Params()["mode"] != "sglang-ppu-ipc" {
+		t.Fatalf("params = %+v", product)
 	}
 }
 

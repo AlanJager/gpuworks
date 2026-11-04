@@ -126,6 +126,11 @@ func autoPlacePD(req *dto.DeployRequest, pd *planning.PDPlacement, facts plannin
 	if len(needs) == 0 {
 		return nil
 	}
+	if mode.SameNode {
+		// The KV never leaves the host: pack the roles onto one node, and
+		// let the PD validation refuse a placement that still spreads.
+		strategy = store.PlacementBinpack
+	}
 	chosen, counts, ok := planning.ChoosePDUnits(facts, needs, fixed, strategy, func(map[string][]planning.PDUnit) string { return "" })
 	if !ok {
 		return planning.UnitPlacementNone(counts)

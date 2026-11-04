@@ -25,7 +25,7 @@ test("pdActive reads the topology field, and only that field", () => {
 
 test("pdModesForEngine reads pd_modes straight off the engine profile", () => {
   assert.deepEqual(pdModesForEngine({ pd_modes: vllmModes }).map((mode) => mode.name), ["vllm-ascend-mooncake", "vllm-nixl"]);
-  assert.deepEqual(pdModesForEngine({ pd_modes: sglangModes }).map((mode) => mode.name), ["sglang-nixl"]);
+  assert.deepEqual(pdModesForEngine({ pd_modes: sglangModes }).map((mode) => mode.name), ["sglang-nixl", "sglang-ppu-ipc"]);
   assert.deepEqual(pdModesForEngine({ pd_modes: [] }), []);
   assert.deepEqual(pdModesForEngine({}), []);
   assert.deepEqual(pdModesForEngine(undefined), []);
@@ -37,12 +37,16 @@ test("defaultPdMode picks the mode the server declares for the chosen vendor", (
   const profile = { pd_modes: vllmModes };
   assert.equal(defaultPdMode(profile, "ascend"), "vllm-ascend-mooncake");
   assert.equal(defaultPdMode(profile, "nvidia"), "vllm-nixl");
+  // SGLang: PPU gets its same-host mode, NVIDIA keeps NIXL.
+  assert.equal(defaultPdMode({ pd_modes: sglangModes }, "ppu"), "sglang-ppu-ipc");
+  assert.equal(defaultPdMode({ pd_modes: sglangModes }, "nvidia"), "sglang-nixl");
 });
 
 test("defaultPdMode without a matching vendor prefers a verified mode, then the first", () => {
   const unverifiedFirst = { pd_modes: [{ ...vllmModes[1], name: "x-unverified", unverified: true }, vllmModes[1]] };
   assert.equal(defaultPdMode(unverifiedFirst, undefined), "vllm-nixl");
-  assert.equal(defaultPdMode({ pd_modes: sglangModes }, "ascend"), "sglang-nixl");
+  // No SGLang mode serves Ascend: the verified PPU mode beats the unverified NIXL one.
+  assert.equal(defaultPdMode({ pd_modes: sglangModes }, "ascend"), "sglang-ppu-ipc");
 });
 
 test("defaultPdMode returns undefined for an engine with no PD modes", () => {

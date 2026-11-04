@@ -439,6 +439,7 @@
     "PD_NODE_GPUS_INSUFFICIENT": "节点 {{node}} 有 {{available}} 张 GPU，但放置在它上面的实例需要 {{required}} 张。",
     "PD_VENDOR_UNSUPPORTED": "PD 模式 {{mode}} 不支持 {{vendor}}。",
     "PD_VENDOR_MIXED": "PD 各角色必须使用同一厂商的加速卡；当前草稿混用了 {{vendors}}。",
+    "PD_SAME_NODE_REQUIRED": "PD 模式 {{mode}} 只在同一台主机的卡之间传 KV，所有实例必须放在同一个节点上；当前放置用到了 {{nodes}}。",
     "PD_CONNECTOR_ARG_CONFLICT": "{{flag}} 由平台为 PD 部署自动生成；请改用启动参数配置 KV 卸载。",
     "PD_SHAPE_CONFLICT": "PD 部署按角色声明实例；nnodes、node_uuids、replicas 与自动放置都不适用。",
     "PD_SPEC_MODE_MISMATCH": "档位 {{spec}} 只能以 PD 模式 {{mode}} 部署，而不是 {{requested}}。",

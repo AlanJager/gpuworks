@@ -49,7 +49,7 @@ specs:
   display_name_en: PPU · BF16
   scenario: balanced
   engine: sglang
-  image: gpuworks/gpuworks-runner:hggc13.0-sglang0.5.13-r2
+  image: gpuworks/gpuworks-runner:hggc13.0-sglang0.5.13-r3
   weights:
     quantization: bf16
     sources:

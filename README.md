@@ -56,7 +56,7 @@ fine-tuning and training jobs on the same accelerators.
   (NVIDIA via HAMi-core, Ascend via vCANN, PPU via HGGC, Hygon via hy-smi virtual devices). Sleep/wake lets vLLM models take turns
   on the same GPUs on NVIDIA, Ascend, PPU and Hygon.
 - **Scale out.** Replicas across nodes, multi-node tensor/pipeline parallel, and prefill/decode disaggregation
-  (vLLM + NIXL on NVIDIA, vLLM-Ascend + Mooncake on Ascend).
+  (vLLM + NIXL on NVIDIA, vLLM-Ascend + Mooncake on Ascend, SGLang + Mooncake within one PPU host).
 - **OpenAI-compatible gateway.** Chat, completions, embeddings, rerank, audio, images, video and realtime under
   `/v1`; `/v1/messages` and `/v1/responses` pass through. Least-request, prefix-affinity or failover routing, API
   keys, per-key token usage.
@@ -120,7 +120,7 @@ Install the GPUWorks control plane on this host and verify it.
 |---|---|---|---|---|---|
 | **NVIDIA** (CUDA) | ✅ Docker, containerd or runveil (built-in rootless runtime) | ✅ memory quota at MiB granularity | ✅ vLLM | ✅ | ✅ vLLM + NIXL |
 | **Huawei Ascend** (CANN) | ✅ Docker, containerd or runveil (built-in rootless runtime) | ✅ memory quota at MiB granularity | ✅ vLLM-Ascend | ✅ | ✅ vLLM-Ascend + Mooncake |
-| **T-Head PPU** (HGGC) | ✅ Docker, containerd or runveil (built-in rootless runtime) | ✅ memory quota at MiB granularity | ✅ vLLM | ✅ | — |
+| **T-Head PPU** (HGGC) | ✅ Docker, containerd or runveil (built-in rootless runtime) | ✅ memory quota at MiB granularity | ✅ vLLM | ✅ | ✅ SGLang + Mooncake (same node) |
 | **Hygon DCU** (DTK) | ✅ Docker, containerd or runveil (built-in rootless runtime) | ✅ memory quota at MiB granularity | ✅ vLLM | ✅ | — |
 | **Apple Silicon** (M1–M5, macOS 15+) | ✅ vllm-metal, MLX, llama.cpp as native processes | — | — | — | — |
 

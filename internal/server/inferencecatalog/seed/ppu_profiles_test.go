@@ -9,7 +9,7 @@ import "testing"
 // users cannot reach, so no profile names them.
 const (
 	ppuRunnerVLLM   = "gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2"
-	ppuRunnerSGLang = "gpuworks/gpuworks-runner:hggc13.0-sglang0.5.13-r2"
+	ppuRunnerSGLang = "gpuworks/gpuworks-runner:hggc13.0-sglang0.5.13-r3"
 )
 
 type ppuProfileExpectation struct {

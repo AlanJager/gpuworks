@@ -26,7 +26,7 @@ organized into 14 series by engine × framework:
 | vLLM · DTK | Hygon / dtk | `vllm` | `gpuworks/gpuworks-runner:dtk26.04-vllm0.18.1-r2` | amd64 |
 | SGLang · DTK | Hygon / dtk | `sglang` | `gpuworks/gpuworks-runner:dtk26.04-sglang0.5.12-r2` | amd64 |
 | vLLM · HGGC | PPU / hggc | `vllm` | `gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2` | amd64 |
-| SGLang · HGGC | PPU / hggc | `sglang` | `gpuworks/gpuworks-runner:hggc13.0-sglang0.5.13-r2` | amd64 |
+| SGLang · HGGC | PPU / hggc | `sglang` | `gpuworks/gpuworks-runner:hggc13.0-sglang0.5.13-r3` | amd64 |
 | vLLM · Metal | Apple / metal | `vllm` | `gpuworks/gpuworks-runner:metal15.0-vllm0.31.0-r2` | arm64 (darwin environment package) |
 | MLX-VLM · Metal | Apple / metal | `callable` | `gpuworks/gpuworks-runner:metal15.0-mlx-vlm0.7.8-r2` | arm64 (darwin environment package) |
 | MLX Audio · Metal | Apple / metal | `callable` | `gpuworks/gpuworks-runner:metal15.0-mlx-audio0.5.9-r1` | arm64 (darwin environment package) |

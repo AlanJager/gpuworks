@@ -188,6 +188,43 @@ func TestVLLMWithoutPDKeepsDiskTierShape(t *testing.T) {
 	}
 }
 
+// The PPU IPC mode adds its scheduler flag and the PPU runner's IPC
+// switches to both roles, keeps the flag once when a template states it, and
+// sets no UCX device: no network carries its KV.
+func TestSGLangPPUIPCRoleLaunch(t *testing.T) {
+	engine, _ := SelectEngine("sglang")
+	for _, role := range []string{"prefill", "decode"} {
+		launch := engine.Build(Params{ModelPath: "/model", APIPort: 30000, TensorParallel: 1,
+			ComputeNetwork: ComputeNetwork{Type: netplan.TypeHostEthernet, Interface: "eth1"},
+			PD:             &PDLaunch{Mode: "sglang-ppu-ipc", Role: role, SideChannelHost: "10.0.0.5", SideChannelPort: 30001}})
+		argv := launch.Entrypoint
+		if argValue(t, argv, "--disaggregation-mode") != role || argValue(t, argv, "--disaggregation-transfer-backend") != "mooncake" || countFlag(argv, "--disable-overlap-schedule") != 1 {
+			t.Fatalf("%s argv = %v", role, argv)
+		}
+		for key, want := range map[string]string{"SGLANG_PPU_PD_IPC": "1", "SGLANG_PPU_PD_SERIAL_TRANSFER": "1", "MC_FORCE_MNNVL": "1", "MC_USE_NVLINK_IPC": "1"} {
+			if launch.Env[key] != want {
+				t.Fatalf("%s env %s = %q (%v)", role, key, launch.Env[key], launch.Env)
+			}
+		}
+		if _, ok := launch.Env["UCX_NET_DEVICES"]; ok {
+			t.Fatalf("%s env names a UCX device: %v", role, launch.Env)
+		}
+		// The bootstrap calls go to the PD address, never through a proxy.
+		if want := "localhost,127.0.0.1,::1,0.0.0.0,10.0.0.5"; launch.Env["NO_PROXY"] != want || launch.Env["no_proxy"] != want {
+			t.Fatalf("%s no_proxy = %q / %q", role, launch.Env["NO_PROXY"], launch.Env["no_proxy"])
+		}
+	}
+	stated := engine.Build(Params{ModelPath: "/model", APIPort: 30000, TensorParallel: 1, TemplateArgs: []string{"--disable-overlap-schedule"},
+		PD: &PDLaunch{Mode: "sglang-ppu-ipc", Role: "decode"}})
+	if countFlag(stated.Entrypoint, "--disable-overlap-schedule") != 1 {
+		t.Fatalf("argv = %v", stated.Entrypoint)
+	}
+	nixl := engine.Build(Params{ModelPath: "/model", APIPort: 30000, TensorParallel: 1, PD: &PDLaunch{Mode: "sglang-nixl", Role: "decode"}})
+	if countFlag(nixl.Entrypoint, "--disable-overlap-schedule") != 0 || nixl.Env["SGLANG_PPU_PD_IPC"] != "" {
+		t.Fatalf("sglang-nixl got the PPU switches: %v %v", nixl.Entrypoint, nixl.Env)
+	}
+}
+
 func TestSGLangPDRoleArgv(t *testing.T) {
 	engine, _ := SelectEngine("sglang")
 	network := ComputeNetwork{Type: netplan.TypeHostEthernet, Interface: "eth1"}

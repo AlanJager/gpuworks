@@ -203,11 +203,13 @@
 | `vllm-nixl` | vLLM / NVIDIA | UCX（走参数网络） | 已验证：同机、跨机以太、角色内跨机 |
 | `vllm-ascend-mooncake` | vLLM / 昇腾 | NPU 自带 RoCE 口（HCCL） | 已验证：两台 910B4 跨机；P、D 的 NPU 必须在 NPU 网络上互通 |
 | `sglang-nixl` | SGLang / NVIDIA | UCX | **未验证** |
-| （PPU、海光） | 没有 PD 模式 | — | — |
+| `sglang-ppu-ipc` | SGLang / PPU | 同机卡间 IPC（Mooncake NVLink 传输） | 已验证：PPU ZW810E 同机两卡、TP 1；P、D 必须在同一节点 |
+| （海光） | 没有 PD 模式 | — | — |
 
-PPU 目前没有可用的 PD 模式（ADR 0028 "以后"一节只是说明可能再加一个模式，不是已支持）；海光同样没有。
+`sglang-ppu-ipc` 只在一台主机的卡之间传 KV，放置到多个节点会被拒绝（`PD_SAME_NODE_REQUIRED`）；
+它需要带 PD 补丁的 PPU SGLang 镜像（`hggc13.0-sglang0.5.13-r3` 起），并关闭重叠调度。海光目前没有 PD 模式。
 两种模式的 TP 规则相反：`vllm-nixl` 要求 decode TP ≥ prefill TP，`vllm-ascend-mooncake` 要求
-prefill TP ≥ decode TP，`sglang-nixl` 要求相等。
+prefill TP ≥ decode TP，`sglang-nixl` 与 `sglang-ppu-ipc` 要求相等。
 
 **代价与限制**：
 
@@ -219,7 +221,7 @@ prefill TP ≥ decode TP，`sglang-nixl` 要求相等。
 - KV Offload 只在 prefill 上生效；不能在自定义参数里写 `--kv-transfer-config` 或
   `--kv-offloading-size`。
 - 与 sleep、dGPU 叠加时评估会给"未验证"警告（`PD_UNVERIFIED_COMBINATION`）。
-- `sglang-nixl` 的 decode 不能独立计算 prefill，所以没有降级、也不能把 prefill 缩到 0；其余模式默认
+- `sglang-nixl`、`sglang-ppu-ipc` 的 decode 不能独立计算 prefill，所以没有降级、也不能把 prefill 缩到 0；其余模式默认
   在 prefill 不可用时降级到 decode 本地完成（`fallback: decode`），也可设为直接返回 503。
 - 已知缺陷：引擎进程在实例就绪后退出时，平台暂时不会发现（`todo.md` T26），PD 下表现为网关持续降级。
 

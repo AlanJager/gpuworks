@@ -45,7 +45,7 @@ NVIDIA、华为昇腾、平头哥 PPU、海光 DCU 和 Apple Silicon 可以在�
 - **先估算显存，再解释放置。** 启动前就能看到权重、KV cache 和引擎开销各要多少显存，调度器选了哪些卡、其他卡为什么没选。
 - **一张卡跑多个模型。** dGPU 给每个实例加显存硬限额，让多个模型共用一张卡（NVIDIA 基于 HAMi-core，昇腾基于 vCANN，PPU 基于 HGGC，海光基于 hy-smi 虚拟设备）。
   sleep/wake 让多个 vLLM 模型轮流使用同一批卡，支持 NVIDIA、昇腾、PPU 和海光。
-- **横向扩展。** 跨节点多副本、多机张量 / 流水线并行，以及 PD 分离（NVIDIA 上 vLLM + NIXL，昇腾上 vLLM-Ascend + Mooncake）。
+- **横向扩展。** 跨节点多副本、多机张量 / 流水线并行，以及 PD 分离（NVIDIA 上 vLLM + NIXL，昇腾上 vLLM-Ascend + Mooncake，PPU 同机上 SGLang + Mooncake）。
 - **OpenAI 兼容网关。** `/v1` 下提供 chat、completions、embeddings、rerank、音频、图像、视频和 realtime；
   `/v1/messages`、`/v1/responses` 透传。支持最少请求、前缀亲和、故障转移三种路由，API 令牌和按令牌的 token 用量统计。
 - **看得清发生了什么。** GPU 与引擎指标、可检索的日志、带时间线的单请求追踪（可导出 OTLP）、进入主机和容器的 Web 终端，
@@ -102,7 +102,7 @@ curl http://<server>:8800/v1/chat/completions \
 |---|---|---|---|---|---|
 | **NVIDIA**（CUDA） | ✅ Docker、Containerd 或 runveil（内置免 root 运行时） | ✅ 显存 MiB 级限额 | ✅ vLLM | ✅ | ✅ vLLM + NIXL |
 | **华为昇腾**（CANN） | ✅ Docker、Containerd 或 runveil（内置免 root 运行时） | ✅ 显存 MiB 级限额 | ✅ vLLM-Ascend | ✅ | ✅ vLLM-Ascend + Mooncake |
-| **平头哥 PPU**（HGGC） | ✅ Docker、Containerd 或 runveil（内置免 root 运行时） | ✅ 显存 MiB 级限额 | ✅ vLLM | ✅ | — |
+| **平头哥 PPU**（HGGC） | ✅ Docker、Containerd 或 runveil（内置免 root 运行时） | ✅ 显存 MiB 级限额 | ✅ vLLM | ✅ | ✅ SGLang + Mooncake（同机） |
 | **海光 DCU**（DTK） | ✅ Docker、Containerd 或 runveil（内置免 root 运行时） | ✅ 显存 MiB 级限额 | ✅ vLLM | ✅ | — |
 | **Apple Silicon**（M1–M5，macOS 15+） | ✅ vllm-metal、MLX、llama.cpp 以本机进程运行 | — | — | — | — |
 

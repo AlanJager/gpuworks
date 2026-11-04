@@ -439,6 +439,7 @@
     "PD_NODE_GPUS_INSUFFICIENT": "Node {{node}} has {{available}} GPUs, but the instances placed on it need {{required}}.",
     "PD_VENDOR_UNSUPPORTED": "PD mode {{mode}} does not run on {{vendor}}.",
     "PD_VENDOR_MIXED": "PD roles must run on one accelerator vendor; this draft mixes {{vendors}}.",
+    "PD_SAME_NODE_REQUIRED": "PD mode {{mode}} moves the KV between cards of one host, so every instance must run on the same node; this placement uses {{nodes}}.",
     "PD_CONNECTOR_ARG_CONFLICT": "{{flag}} is set automatically for a PD deployment; configure KV offload through the launch parameters instead.",
     "PD_SHAPE_CONFLICT": "A PD deployment states its instances per role; nnodes, node_uuids, replicas and automatic placement do not apply.",
     "PD_SPEC_MODE_MISMATCH": "Spec {{spec}} deploys only as PD in mode {{mode}}, not {{requested}}.",
