@@ -291,20 +291,20 @@ from coverage_completion_queue import summary
 # These counts move only when a manifest declaration changes.
 BASELINE = {
     "1": 124, "2": 253, "3": 259, "4": 316, "5": 189, "6": 130,
-    "7": 101, "8": 94, "9": 71, "10": 100, "11": 93, "out": 351,
+    "7": 101, "8": 94, "9": 71, "10": 100, "11": 90, "out": 351,
 }
 
 
 class QueueTest(unittest.TestCase):
     def test_every_open_checklist_gap_has_one_phase(self):
         extra, counts, total = summary()
-        # The naming surface is now exercised, so the provider tables have a residual in section 11
-        # itself: 11.1-11.4 are declared on the api-keys and provider tables, 11.5/11.6/11.7 are not, and
-        # section 11 is therefore the smallest one still open on 公有云.
-        self.assertEqual(extra, "11")
+        # The provider tables carry no row selection, so 11.5 to 11.7 are declared not applicable on
+        # that surface with the measured header and checkbox count as the reason; with them resolved,
+        # section 11 no longer has an open provider residual to route to a phase.
+        self.assertIsNone(extra)
         self.assertEqual(dict(counts), BASELINE)
         self.assertEqual(total, sum(BASELINE.values()))
-        self.assertEqual(total, 2081)
+        self.assertEqual(total, 2078)
 
 
 if __name__ == "__main__":
