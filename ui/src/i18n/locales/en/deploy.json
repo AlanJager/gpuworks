@@ -856,6 +856,7 @@
   "pd": {
     "mode": "PD Mode",
     "modeRequired": "Choose a PD mode",
+    "firstRequestCompiles": "In PPU PD modes, the first request compiles kernels and usually takes a few minutes; later requests are back to normal.",
     "engineUnsupported": "This engine does not support PD disaggregation.",
     "role": {
       "decode": "Decode",

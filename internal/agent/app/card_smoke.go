@@ -135,6 +135,9 @@ func (n *NodeRuntime) CardHealthFindings(ctx context.Context, gpus []proto.GPUIn
 	}
 	n.applyRuntimeFindings(gpus)
 	n.runtimeChecks(gpus, now, round)
+	if !gpu.IsSynthetic(n.prober) {
+		n.peerMemoryChecks(gpus, now, round)
+	}
 	n.finishChecks(gpus, now, round, probeOK)
 }
 

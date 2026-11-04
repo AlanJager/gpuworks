@@ -1342,7 +1342,26 @@
         "fallbacks": [
           "fail"
         ],
-        "kv_load_failures": []
+        "kv_load_failures": [],
+        "first_request_compiles": true
+      },
+      {
+        "name": "sglang-ppu-mooncake",
+        "vendors": [
+          "ppu"
+        ],
+        "roles": [
+          "decode",
+          "prefill"
+        ],
+        "scalable_to_zero": [],
+        "tp_rule": "equal",
+        "max_units_per_role": 32,
+        "fallbacks": [
+          "fail"
+        ],
+        "kv_load_failures": [],
+        "first_request_compiles": true
       }
     ],
     "quick_form_keys": [
@@ -3391,6 +3410,23 @@
           "fail",
           "recompute"
         ]
+      },
+      {
+        "name": "vllm-ppu-mooncake",
+        "vendors": [
+          "ppu"
+        ],
+        "roles": [
+          "decode",
+          "prefill"
+        ],
+        "scalable_to_zero": [],
+        "tp_rule": "equal",
+        "max_units_per_role": 32,
+        "fallbacks": [
+          "fail"
+        ],
+        "kv_load_failures": []
       }
     ],
     "quick_form_keys": [

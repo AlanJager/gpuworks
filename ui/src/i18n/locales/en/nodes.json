@@ -661,6 +661,11 @@
         "label": "Sleeps when idle",
         "summary": "With the settings for its current power source, this Mac goes to sleep after being idle. The agent prevents idle sleep while an instance runs, not otherwise.",
         "impact": "A sleeping Mac is offline: new deployments cannot be scheduled here until it wakes. To keep it available, turn off idle sleep on AC power: sudo pmset -c sleep 0 (the platform does not change this setting)."
+      },
+      "peer_memory_missing": {
+        "label": "GPUDirect RDMA unavailable",
+        "summary": "This host has RDMA NICs, but the peer-memory module {{module}} is not loaded, so the NICs cannot register the cards' memory.",
+        "impact": "Instances still run, but PD modes that move KV over RDMA cannot be placed on this node. Run the fix command in the evidence on the node (it also loads the module at boot), then diagnose again."
       }
     },
     "facts": "Information",
@@ -859,7 +864,8 @@
       "pcie_errors": "PCIe errors",
       "xid": "Xid",
       "nvlink": "NVLink",
-      "runtime": "Runtime"
+      "runtime": "Runtime",
+      "peer_memory": "GPUDirect RDMA"
     },
     "checkHelp": {
       "vendor_health": "The vendor tool's verdict on the card: ECC, row remapping, npu-smi health, RAS counters and bad pages",
@@ -869,7 +875,8 @@
       "pcie_errors": "New AER errors on that path",
       "xid": "Xid events the NVIDIA driver reported",
       "nvlink": "Whether all of the card's NVLinks are up",
-      "runtime": "Whether the vendor runtime can create a context and allocate memory on the card"
+      "runtime": "Whether the vendor runtime can create a context and allocate memory on the card",
+      "peer_memory": "Whether the host's RDMA NICs can register the card's memory: the vendor's peer-memory module (alixpu_peermem, nvidia_peermem) is loaded. Only PD over RDMA needs it."
     },
     "period": {
       "minute": "Every minute",
@@ -892,7 +899,8 @@
       "probe_failed": "The vendor tool did not answer this round"
     },
     "reason": {
-      "foreign_processes": "Processes outside the platform"
+      "foreign_processes": "Processes outside the platform",
+      "peer_memory_missing": "Peer-memory module not loaded"
     },
     "card": "Card {{index}}",
     "removed": "Removed",

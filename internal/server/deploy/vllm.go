@@ -11,6 +11,7 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/accelerator"
 	"gpuworks.ai/gpuworks/internal/proto"
+	"gpuworks.ai/gpuworks/internal/server/pdmode"
 )
 
 type vLLMEngine struct{ BaseEngine }
@@ -361,6 +362,24 @@ func vllmKVTransferConfig(p Params) (string, bool) {
 			sides[r] = map[string]any{"tp_size": max(p.PD.RoleTP[r], 1), "dp_size": 1}
 		}
 		pd["kv_connector_extra_config"] = sides
+	}
+	if len(mode.ConnectorExtra) > 0 || mode.Transport == pdmode.TransportMooncakeRDMA {
+		extra, _ := pd["kv_connector_extra_config"].(map[string]any)
+		if extra == nil {
+			extra = map[string]any{}
+		}
+		for key, value := range mode.ConnectorExtra {
+			extra[key] = value
+		}
+		if hcas := hcaDevices(p.ComputeNetwork.HCAs); len(hcas) > 0 && mode.Transport == pdmode.TransportMooncakeRDMA {
+			extra["device_name"] = strings.Join(hcas, ",")
+		}
+		pd["kv_connector_extra_config"] = extra
+	}
+	// The gateway names the prefill instance to its decoder by this id
+	// (pdmode.Mode.SynthesizedHandoff), so the prefill must run under it.
+	if mode.SynthesizedHandoff && p.PD.Role == pdmode.RolePrefill && p.PD.SideChannelHost != "" && p.PD.SideChannelPort > 0 {
+		pd["engine_id"] = pdmode.EngineID(p.PD.SideChannelHost, p.PD.SideChannelPort)
 	}
 	var offload map[string]any
 	switch {

@@ -418,8 +418,10 @@ would report nonexistent additional faulty cards, so inside a container it recog
 
 The upper half of the “Health checks” tab in node details is a table of cards by checks, and the lower half is the node's failure records; the “Health checks” tab of a GPU's details has the same two halves for that card alone.
 
-**The checks**: vendor health (the vendor tool's verdict), vendor tool answering, use outside the platform, PCIe link, PCIe errors, Xid (NVIDIA), NVLink (NVIDIA) and the runtime check.
-The first five and Xid run once with every report (about a minute), NVLink every 5 minutes and the runtime check every 15 minutes. A cell's state:
+**The checks**: vendor health (the vendor tool's verdict), vendor tool answering, use outside the platform, PCIe link, PCIe errors, Xid (NVIDIA), NVLink (NVIDIA), GPUDirect RDMA (NVIDIA, PPU) and the runtime check.
+The first five, Xid and GPUDirect RDMA run once with every report (about a minute), NVLink every 5 minutes and the runtime check every 15 minutes.
+GPUDirect RDMA checks, only on a host with RDMA NICs, whether the vendor's peer memory module (`nvidia_peermem`, `alixpu_peermem`) is loaded: not loaded is a warning,
+the card stays schedulable, and only PD modes that move KV over RDMA stay off the node; the evidence gives the command that loads it and loads it at boot, and the Diagnose report lists it too. A cell's state:
 
 | State | Meaning |
 |---|---|

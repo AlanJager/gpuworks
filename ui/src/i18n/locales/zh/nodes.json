@@ -661,6 +661,11 @@
         "label": "空闲时会睡眠",
         "summary": "按当前电源的设置，这台 Mac 空闲一段时间后会睡眠。有实例运行时代理会阻止空闲睡眠，没有实例时则不会。",
         "impact": "Mac 睡眠后节点离线，新部署无法调度到这里，直到它被唤醒。需要它常驻时，可在接电源时关闭空闲睡眠：sudo pmset -c sleep 0（平台不修改此设置）。"
+      },
+      "peer_memory_missing": {
+        "label": "GPUDirect RDMA 不可用",
+        "summary": "这台宿主有 RDMA 网卡，但未加载 peer memory 模块 {{module}}，网卡无法注册卡的显存。",
+        "impact": "实例仍可正常运行，但经 RDMA 传 KV 的 PD 模式不能放到这个节点。在节点上执行证据中的修复命令（同时设置开机自动加载），然后重新诊断。"
       }
     },
     "facts": "信息",
@@ -859,7 +864,8 @@
       "pcie_errors": "PCIe 错误",
       "xid": "Xid",
       "nvlink": "NVLink",
-      "runtime": "运行时"
+      "runtime": "运行时",
+      "peer_memory": "GPUDirect RDMA"
     },
     "checkHelp": {
       "vendor_health": "厂商工具对这张卡的结论：ECC、行重映射、npu-smi 健康、RAS 计数与坏页",
@@ -869,7 +875,8 @@
       "pcie_errors": "这条路径上新增的 AER 错误",
       "xid": "NVIDIA 驱动报出的 Xid 事件",
       "nvlink": "卡的 NVLink 是否都在",
-      "runtime": "厂商运行时能否在卡上建上下文、分配显存"
+      "runtime": "厂商运行时能否在卡上建上下文、分配显存",
+      "peer_memory": "宿主的 RDMA 网卡能否注册这张卡的显存，即厂商的 peer memory 模块（alixpu_peermem、nvidia_peermem）是否已加载；只有经 RDMA 传 KV 的 PD 分离需要它"
     },
     "period": {
       "minute": "每分钟",
@@ -892,7 +899,8 @@
       "probe_failed": "厂商工具本轮没应答"
     },
     "reason": {
-      "foreign_processes": "有平台外进程"
+      "foreign_processes": "有平台外进程",
+      "peer_memory_missing": "未加载 peer memory 模块"
     },
     "card": "卡 {{index}}",
     "removed": "已移除",

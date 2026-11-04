@@ -301,6 +301,14 @@ export default function DeployPdSection({
               options={modes.map((item) => ({ value: item.name, label: item.name }))}
             />
           </Form.Item>
+          {mode?.first_request_compiles && (
+            <Alert
+              type="info"
+              showIcon
+              message={t("pd.firstRequestCompiles")}
+              style={{ marginBottom: 12 }}
+            />
+          )}
           {/* The field errors the server attributes to "placement.pd" (e.g.
               PD_GPU_OVERLAP) land here: this section is the control they are
               attributed beside, with no single input of its own. */}

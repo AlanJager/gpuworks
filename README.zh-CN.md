@@ -32,7 +32,7 @@ NVIDIA、华为昇腾、平头哥 PPU、海光 DCU 和 Apple Silicon 可以在�
 
 ## 亮点
 
-- **验证过的模型 × 芯片组合，一键部署。** 内置目录为 390 个模型提供 1,224 份启动规格：每种卡型对应的镜像、引擎、启动参数和固定的权重版本。
+- **验证过的模型 × 芯片组合，一键部署。** 内置目录为 390 个模型提供 1,226 份启动规格：每种卡型对应的镜像、引擎、启动参数和固定的权重版本。
   我们在 NVIDIA、昇腾、PPU 和 Apple 真机上跑通过的组合都带着已知可用的启动配置，选好模型点部署即可，不用自己摸索参数。
   覆盖 Qwen、DeepSeek、GLM、Kimi、MiniMax、Llama、Gemma、gpt-oss，以及 embedding、rerank、语音、图像和视频模型。
 - **异构加速器，统一调度。** NVIDIA、昇腾、PPU、海光和 Apple Silicon 节点接入同一个集群，调度器把每个部署放到其启动规格支持的硬件上。
@@ -45,7 +45,7 @@ NVIDIA、华为昇腾、平头哥 PPU、海光 DCU 和 Apple Silicon 可以在�
 - **先估算显存，再解释放置。** 启动前就能看到权重、KV cache 和引擎开销各要多少显存，调度器选了哪些卡、其他卡为什么没选。
 - **一张卡跑多个模型。** dGPU 给每个实例加显存硬限额，让多个模型共用一张卡（NVIDIA 基于 HAMi-core，昇腾基于 vCANN，PPU 基于 HGGC，海光基于 hy-smi 虚拟设备）。
   sleep/wake 让多个 vLLM 模型轮流使用同一批卡，支持 NVIDIA、昇腾、PPU 和海光。
-- **横向扩展。** 跨节点多副本、多机张量 / 流水线并行，以及 PD 分离（NVIDIA 上 vLLM + NIXL，昇腾上 vLLM-Ascend + Mooncake，PPU 同机上 SGLang + Mooncake）。
+- **横向扩展。** 跨节点多副本、多机张量 / 流水线并行，以及 PD 分离（NVIDIA 上 vLLM + NIXL，昇腾上 vLLM-Ascend + Mooncake，PPU 上 SGLang 或 vLLM + Mooncake，同机或经 RDMA）。
 - **OpenAI 兼容网关。** `/v1` 下提供 chat、completions、embeddings、rerank、音频、图像、视频和 realtime；
   `/v1/messages`、`/v1/responses` 透传。支持最少请求、前缀亲和、故障转移三种路由，API 令牌和按令牌的 token 用量统计。
 - **看得清发生了什么。** GPU 与引擎指标、可检索的日志、带时间线的单请求追踪（可导出 OTLP）、进入主机和容器的 Web 终端，
@@ -102,7 +102,7 @@ curl http://<server>:8800/v1/chat/completions \
 |---|---|---|---|---|---|
 | **NVIDIA**（CUDA） | ✅ Docker、Containerd 或 runveil（内置免 root 运行时） | ✅ 显存 MiB 级限额 | ✅ vLLM | ✅ | ✅ vLLM + NIXL |
 | **华为昇腾**（CANN） | ✅ Docker、Containerd 或 runveil（内置免 root 运行时） | ✅ 显存 MiB 级限额 | ✅ vLLM-Ascend | ✅ | ✅ vLLM-Ascend + Mooncake |
-| **平头哥 PPU**（HGGC） | ✅ Docker、Containerd 或 runveil（内置免 root 运行时） | ✅ 显存 MiB 级限额 | ✅ vLLM | ✅ | ✅ SGLang + Mooncake（同机） |
+| **平头哥 PPU**（HGGC） | ✅ Docker、Containerd 或 runveil（内置免 root 运行时） | ✅ 显存 MiB 级限额 | ✅ vLLM | ✅ | ✅ SGLang + Mooncake（同机或经 RDMA）、vLLM + Mooncake（RDMA） |
 | **海光 DCU**（DTK） | ✅ Docker、Containerd 或 runveil（内置免 root 运行时） | ✅ 显存 MiB 级限额 | ✅ vLLM | ✅ | — |
 | **Apple Silicon**（M1–M5，macOS 15+） | ✅ vllm-metal、MLX、llama.cpp 以本机进程运行 | — | — | — | — |
 
@@ -127,7 +127,7 @@ GPU 通过厂商命令行工具探测（`nvidia-smi`、`npu-smi`、`ppu-smi`、`
 | 语音 | Qwen3-ASR、Whisper large-v3、Qwen3-TTS、GLM-TTS、Voxtral、FishAudio S2-Pro |
 | 图像 / 视频 | Qwen-Image、GLM-Image、Stable Diffusion 3.5、Wan 2.1 / 2.2、LTX-2.5、Cosmos3 |
 
-目录共 390 个模型、来自 76 个组织，1,224 份启动规格（NVIDIA 775、PPU 196、昇腾 173、海光 42、Apple 9）。
+目录共 390 个模型、来自 76 个组织，1,226 份启动规格（NVIDIA 775、PPU 198、昇腾 173、海光 42、Apple 9）。
 目录之外的模型可以从 Hugging Face、ModelScope、本地目录、NFS 或 HTTP 文件服务器注册，用自定义参数部署。
 
 ## 截图

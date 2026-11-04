@@ -35,7 +35,7 @@ fine-tuning and training jobs on the same accelerators.
 
 ## Highlights
 
-- **Verified model × accelerator combinations deploy in one click.** The built-in catalog ships 1,224 launch specs
+- **Verified model × accelerator combinations deploy in one click.** The built-in catalog ships 1,226 launch specs
   for 390 models: image, engine, flags and pinned weight revisions for each GPU type. The combinations we have run
   on real NVIDIA, Ascend, PPU and Apple hardware come with launch settings that are known to work, so you pick a
   model and press deploy instead of hunting for flags. Qwen, DeepSeek, GLM, Kimi, MiniMax, Llama, Gemma, gpt-oss,
@@ -56,7 +56,7 @@ fine-tuning and training jobs on the same accelerators.
   (NVIDIA via HAMi-core, Ascend via vCANN, PPU via HGGC, Hygon via hy-smi virtual devices). Sleep/wake lets vLLM models take turns
   on the same GPUs on NVIDIA, Ascend, PPU and Hygon.
 - **Scale out.** Replicas across nodes, multi-node tensor/pipeline parallel, and prefill/decode disaggregation
-  (vLLM + NIXL on NVIDIA, vLLM-Ascend + Mooncake on Ascend, SGLang + Mooncake within one PPU host).
+  (vLLM + NIXL on NVIDIA, vLLM-Ascend + Mooncake on Ascend, SGLang or vLLM + Mooncake on PPU, within one host or over RDMA).
 - **OpenAI-compatible gateway.** Chat, completions, embeddings, rerank, audio, images, video and realtime under
   `/v1`; `/v1/messages` and `/v1/responses` pass through. Least-request, prefix-affinity or failover routing, API
   keys, per-key token usage.
@@ -120,7 +120,7 @@ Install the GPUWorks control plane on this host and verify it.
 |---|---|---|---|---|---|
 | **NVIDIA** (CUDA) | ✅ Docker, containerd or runveil (built-in rootless runtime) | ✅ memory quota at MiB granularity | ✅ vLLM | ✅ | ✅ vLLM + NIXL |
 | **Huawei Ascend** (CANN) | ✅ Docker, containerd or runveil (built-in rootless runtime) | ✅ memory quota at MiB granularity | ✅ vLLM-Ascend | ✅ | ✅ vLLM-Ascend + Mooncake |
-| **T-Head PPU** (HGGC) | ✅ Docker, containerd or runveil (built-in rootless runtime) | ✅ memory quota at MiB granularity | ✅ vLLM | ✅ | ✅ SGLang + Mooncake (same node) |
+| **T-Head PPU** (HGGC) | ✅ Docker, containerd or runveil (built-in rootless runtime) | ✅ memory quota at MiB granularity | ✅ vLLM | ✅ | ✅ SGLang + Mooncake (same node or over RDMA), vLLM + Mooncake (RDMA) |
 | **Hygon DCU** (DTK) | ✅ Docker, containerd or runveil (built-in rootless runtime) | ✅ memory quota at MiB granularity | ✅ vLLM | ✅ | — |
 | **Apple Silicon** (M1–M5, macOS 15+) | ✅ vllm-metal, MLX, llama.cpp as native processes | — | — | — | — |
 
@@ -148,7 +148,7 @@ engine and accelerator. The deploy page recommends the specs that match the mode
 | Speech | Qwen3-ASR, Whisper large-v3, Qwen3-TTS, GLM-TTS, Voxtral, FishAudio S2-Pro |
 | Image / video | Qwen-Image, GLM-Image, Stable Diffusion 3.5, Wan 2.1 / 2.2, LTX-2.5, Cosmos3 |
 
-Catalog totals: 390 models from 76 organizations, 1,224 launch specs (775 NVIDIA, 196 PPU, 173 Ascend, 42 Hygon,
+Catalog totals: 390 models from 76 organizations, 1,226 launch specs (775 NVIDIA, 198 PPU, 173 Ascend, 42 Hygon,
 9 Apple). Models outside the catalog can be registered from Hugging Face, ModelScope, a local directory, NFS or an
 HTTP file server and deployed with your own arguments.
 

@@ -1292,7 +1292,7 @@ Selection rules (a multi-node request is chosen per replica, a PD request for th
 2. Between groups: RDMA networks (host RDMA, accelerator RDMA) before Ethernet, then the group with more nodes that already hold the model file.
 3. Within a group: nodes with the model first, then `placement_strategy` (multi-node and PD default to `binpack` when it is omitted): `binpack` takes the node with the fewest free cards that still fit, `spread` the most, and ties go to the lower node ID. For PD under `binpack`, if one node can take every unit they all go on that node; under `spread`, prefill and decode avoid sharing a node where they can.
 
-When no group fits, the request returns 409 `UNIT_PLACEMENT_NONE`, with `params` `nodes` (total nodes), `unmet` (node requirements not met), `cordoned`, `offline`, `busy` (not enough free cards), `no_network` (no usable compute network), and `largest` (how many nodes the largest group has). Evaluation does not answer these failures with an HTTP error; it returns `ok=false` with an entry in `errors[]` whose `field` is `placement_mode`, and the response carries `auto_placed: true`.
+When no group fits, the request returns 409 `UNIT_PLACEMENT_NONE`, with `params` `nodes` (total nodes), `unmet` (node requirements not met), `cordoned`, `offline`, `busy` (not enough free cards), `no_network` (no usable compute network), `no_peer_memory` (a PD mode moves KV over RDMA and the node has not loaded the peer memory module), and `largest` (how many nodes the largest group has). When a PD mode moves KV over RDMA and nodes were left out for the peer memory module, the answer is 409 `PD_PEER_MEMORY_NONE` instead (`params`: `mode`, `nodes`, `no_peer_memory`, `module`, `fix` with the fix command); a manual placement on such a node returns `PD_PEER_MEMORY_MISSING` (`mode`, `role`, `node`, `module`, `fix`, `state`). Evaluation does not answer these failures with an HTTP error; it returns `ok=false` with an entry in `errors[]` whose `field` is `placement_mode`, and the response carries `auto_placed: true`.
 
 A successful evaluation carries `auto_placed: true` and previews the nodes picked now; creation picks again, so the two can differ. Creation does not submit the nodes evaluation selected, so it has none of single-node automatic placement's `AUTOMATIC_PLACEMENT_STALE`; when resources are taken after evaluation, the re-pick when the unit starts handles it. The deployment stores the nodes that were picked (in the multi-node `node_uuids` or in the PD units), and `placement_mode` in the detail is `auto`.
 
@@ -1411,12 +1411,12 @@ Scripts and third-party clients cannot directly reuse vLLM parameters for SGLang
 }}}
 ```
 
-- `mode`: one of the engine profile's `pd_modes` (`vllm-nixl`, `vllm-ascend-mooncake`, `sglang-nixl`, `sglang-ppu-ipc`). All unknown fields are rejected.
+- `mode`: one of the engine profile's `pd_modes` (`vllm-nixl`, `vllm-ascend-mooncake`, `vllm-ppu-mooncake`, `sglang-nixl`, `sglang-ppu-ipc`, `sglang-ppu-mooncake`). All unknown fields are rejected.
 - Each `unit` is a replica; `gpus` can be omitted. `followers` makes the replica span multiple nodes (ranks 1…N), in which case the role must specify `tp`.
   For each rank, the GPU count is `tp × pp` divided by the number of ranks.
 - Allowed values and defaults for `fallback` and `kv_load_failure` depend on the mode: for `vllm-nixl` and `vllm-ascend-mooncake`, `fallback`
-  is `decode` (default) or `fail`, and `kv_load_failure` is `fail` (default) or `recompute`. For `sglang-nixl` and `sglang-ppu-ipc`, decode cannot
-  complete requests on its own, so `fallback` only accepts `fail`, and there is no `kv_load_failure`. Values disallowed by the mode return `PD_FALLBACK_INVALID` /
+  is `decode` (default) or `fail`, and `kv_load_failure` is `fail` (default) or `recompute`. For `sglang-nixl`, `sglang-ppu-ipc`, `sglang-ppu-mooncake`, and
+  `vllm-ppu-mooncake`, `fallback` only accepts `fail`, and there is no `kv_load_failure`. Values disallowed by the mode return `PD_FALLBACK_INVALID` /
   `PD_KV_LOAD_FAILURE_INVALID`.
 - In `GET /api/v1/engines`, each engine's `pd_modes[]` provides these rules: `name`, `vendors`, `roles`, `scalable_to_zero` (roles that can scale to 0
   while running), `tp_rule`, `max_units_per_role`, `fallbacks`, `kv_load_failures` (the first entry is the default), and `unverified`.

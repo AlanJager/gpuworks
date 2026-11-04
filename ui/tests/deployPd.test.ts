@@ -24,8 +24,8 @@ test("pdActive reads the topology field, and only that field", () => {
 });
 
 test("pdModesForEngine reads pd_modes straight off the engine profile", () => {
-  assert.deepEqual(pdModesForEngine({ pd_modes: vllmModes }).map((mode) => mode.name), ["vllm-ascend-mooncake", "vllm-nixl"]);
-  assert.deepEqual(pdModesForEngine({ pd_modes: sglangModes }).map((mode) => mode.name), ["sglang-nixl", "sglang-ppu-ipc"]);
+  assert.deepEqual(pdModesForEngine({ pd_modes: vllmModes }).map((mode) => mode.name), ["vllm-ascend-mooncake", "vllm-nixl", "vllm-ppu-mooncake"]);
+  assert.deepEqual(pdModesForEngine({ pd_modes: sglangModes }).map((mode) => mode.name), ["sglang-nixl", "sglang-ppu-ipc", "sglang-ppu-mooncake"]);
   assert.deepEqual(pdModesForEngine({ pd_modes: [] }), []);
   assert.deepEqual(pdModesForEngine({}), []);
   assert.deepEqual(pdModesForEngine(undefined), []);

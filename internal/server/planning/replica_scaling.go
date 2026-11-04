@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"slices"
 
+	"gpuworks.ai/gpuworks/internal/accelerator"
 	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/internal/server/netplan"
 	"gpuworks.ai/gpuworks/internal/server/pdmode"
@@ -64,8 +65,21 @@ func ScaleErrorKindOf(err error) (ScaleErrorKind, error) {
 func UnitPlacementNone(counts UnitSuggestCounts) error {
 	return messages.NewProductError(messages.ErrorUnitPlacementNone, "no group of nodes can take the deployment now", map[string]any{
 		"nodes": counts.Nodes, "unmet": counts.Unmet, "cordoned": counts.Cordoned, "offline": counts.Offline,
-		"busy": counts.Busy, "no_network": counts.NoNetwork, "largest": counts.Largest,
+		"busy": counts.Busy, "no_network": counts.NoNetwork, "no_peer_memory": counts.NoPeerMemory, "largest": counts.Largest,
 	})
+}
+
+// PDPlacementNone is UnitPlacementNone for a PD mode over RDMA when the
+// peer-memory module kept nodes out: the operator learns which module to load
+// and how, rather than only that nothing fits.
+func PDPlacementNone(mode pdmode.Mode, vendor string, counts UnitSuggestCounts) error {
+	if !mode.PeerMemory || counts.NoPeerMemory == 0 {
+		return UnitPlacementNone(counts)
+	}
+	module, fix := accelerator.PeerMemoryModule(vendor), accelerator.PeerMemoryFix(vendor)
+	return messages.NewProductError(messages.ErrorPDPeerMemoryNone,
+		fmt.Sprintf("no node can take the deployment: %d of %d nodes cannot register their cards' memory with the RDMA NIC (%s not loaded); run on them: %s", counts.NoPeerMemory, counts.Nodes, module, fix),
+		map[string]any{"mode": mode.Name, "nodes": counts.Nodes, "no_peer_memory": counts.NoPeerMemory, "module": module, "fix": fix})
 }
 
 func (s Scaling) online(nodes []store.Node) func(string) bool {

@@ -8,6 +8,8 @@ package planning
 import (
 	"encoding/json"
 	"fmt"
+	"gpuworks.ai/gpuworks/internal/accelerator"
+	"gpuworks.ai/gpuworks/internal/proto"
 	"sort"
 	"strings"
 
@@ -278,6 +280,20 @@ func validatePD(p *PDPlacement, engine string, running bool) (pdmode.Mode, error
 	return mode, nil
 }
 
+// peerMemoryVendor is the vendor whose peer-memory module a node needs: its
+// cards', else the mode's.
+func peerMemoryVendor(node *store.Node, mode pdmode.Mode) string {
+	switch {
+	case node.GPUVendor != "":
+		return node.GPUVendor
+	case len(node.GPUs) > 0 && node.GPUs[0].Vendor != "":
+		return node.GPUs[0].Vendor
+	case len(mode.Vendors) > 0:
+		return mode.Vendors[0]
+	}
+	return ""
+}
+
 // ValidatePDNodes checks the placement against the nodes it names (by UUID,
 // with GPUs loaded): every node exists, is online when requireOnline, carries
 // the pinned GPUs or enough GPUs for its unpinned units, and every GPU is of a
@@ -298,6 +314,12 @@ func ValidatePDNodes(p *PDPlacement, mode pdmode.Mode, nodes map[string]*store.N
 				}
 				if requireOnline && node.State != store.NodeStateOnline {
 					return nil, pdError(messages.ErrorPDNodeOffline, fmt.Sprintf("node %s is not online", node.DisplayName()), map[string]any{"role": role, "node": rank.NodeUUID})
+				}
+				if mode.PeerMemory && node.PeerMemory != proto.PeerMemoryLoaded {
+					vendor := peerMemoryVendor(node, mode)
+					return nil, pdError(messages.ErrorPDPeerMemoryMissing,
+						fmt.Sprintf("node %s cannot register its cards' memory with the RDMA NIC (%s not loaded), which PD mode %s needs", node.DisplayName(), accelerator.PeerMemoryModule(vendor), mode.Name),
+						map[string]any{"mode": mode.Name, "role": role, "node": node.DisplayName(), "module": accelerator.PeerMemoryModule(vendor), "fix": accelerator.PeerMemoryFix(vendor), "state": node.PeerMemory})
 				}
 				d := perNode[rank.NodeUUID]
 				if d == nil {

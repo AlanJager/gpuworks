@@ -1300,7 +1300,7 @@ PD 请求（`placement.pd`）：单元可以不写 `node_uuid`，写了的单元
 2. 组之间：RDMA 网络（主机 RDMA、加速器 RDMA）优先于以太网，再看已有模型文件的节点多的组。
 3. 组内：已有模型的节点优先，再按 `placement_strategy`（没写时多机与 PD 是 `binpack`）：`binpack` 取空闲卡最少但够用的，`spread` 取最多的，最后按节点编号定。PD 在 `binpack` 下，一台节点放得下全部单元就都放这一台；`spread` 下 prefill 与 decode 尽量不在同一台。
 
-没有一组放得下返回 409 `UNIT_PLACEMENT_NONE`，`params` 为 `nodes`（节点总数）、`unmet`（不满足节点条件）、`cordoned`、`offline`、`busy`（空闲卡不够）、`no_network`（没有可用的计算网络）、`largest`（最大的一组有几台）。评估对这些失败不返回 HTTP 错误，而是 `ok=false`、`errors[]` 里 `field` 为 `placement_mode`，响应带 `auto_placed: true`。
+没有一组放得下返回 409 `UNIT_PLACEMENT_NONE`，`params` 为 `nodes`（节点总数）、`unmet`（不满足节点条件）、`cordoned`、`offline`、`busy`（空闲卡不够）、`no_network`（没有可用的计算网络）、`no_peer_memory`（PD 模式经 RDMA 传 KV 而节点未加载 peer memory 模块）、`largest`（最大的一组有几台）。PD 模式经 RDMA 传 KV、且有节点因未加载 peer memory 模块被排除时，改为 409 `PD_PEER_MEMORY_NONE`（`params`：`mode`、`nodes`、`no_peer_memory`、`module`、`fix` 修复命令）；手动放置到这样的节点返回 `PD_PEER_MEMORY_MISSING`（`mode`、`role`、`node`、`module`、`fix`、`state`）。评估对这些失败不返回 HTTP 错误，而是 `ok=false`、`errors[]` 里 `field` 为 `placement_mode`，响应带 `auto_placed: true`。
 
 评估成功时响应带 `auto_placed: true`，预览按此刻挑中的节点算；创建时重新挑一次，所以两次的节点可能不同；创建不提交评估选中的节点，也就没有单机自动放置那样的 `AUTOMATIC_PLACEMENT_STALE`，资源在评估后被占走时，由单元启动时的重新挑选处理。部署保存的是挑中的节点（写在多机的 `node_uuids` 或 PD 的单元里），详情的 `placement_mode` 为 `auto`。
 
@@ -1420,12 +1420,12 @@ extra_args 解析（`EXTRA_ARGS_INVALID`）、挂载（`MOUNT_CONTAINER_PATH`/`M
 }}}
 ```
 
-- `mode`：引擎档位 `pd_modes` 中的一个（`vllm-nixl`、`vllm-ascend-mooncake`、`sglang-nixl`、`sglang-ppu-ipc`）；未知字段一律拒绝。
+- `mode`：引擎档位 `pd_modes` 中的一个（`vllm-nixl`、`vllm-ascend-mooncake`、`vllm-ppu-mooncake`、`sglang-nixl`、`sglang-ppu-ipc`、`sglang-ppu-mooncake`）；未知字段一律拒绝。
 - 每个 `unit` 是一个副本；`gpus` 可省略。`followers` 使该副本跨多台节点（rank 1…N），此时角色必须写 `tp`，
   每个 rank 运行 `tp × pp ÷ rank 数` 张卡。
 - `fallback` 与 `kv_load_failure` 的可选值和默认值按模式定：`vllm-nixl`、`vllm-ascend-mooncake` 的 `fallback`
-  为 `decode`（默认）或 `fail`，`kv_load_failure` 为 `fail`（默认）或 `recompute`；`sglang-nixl`、`sglang-ppu-ipc` 的 decode 不能单独
-  完成请求，`fallback` 只有 `fail`，也没有 `kv_load_failure`。模式不允许的值返回 `PD_FALLBACK_INVALID` /
+  为 `decode`（默认）或 `fail`，`kv_load_failure` 为 `fail`（默认）或 `recompute`；`sglang-nixl`、`sglang-ppu-ipc`、`sglang-ppu-mooncake`、
+  `vllm-ppu-mooncake` 的 `fallback` 只有 `fail`，也没有 `kv_load_failure`。模式不允许的值返回 `PD_FALLBACK_INVALID` /
   `PD_KV_LOAD_FAILURE_INVALID`。
 - `GET /api/v1/engines` 每个引擎的 `pd_modes[]` 给出这些规则：`name`、`vendors`、`roles`、`scalable_to_zero`（运行中可缩到 0
   的角色）、`tp_rule`、`max_units_per_role`、`fallbacks`、`kv_load_failures`（首项为默认值）、`unverified`。
