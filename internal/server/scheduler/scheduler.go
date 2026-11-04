@@ -216,16 +216,22 @@ const (
 	// ReasonRuntimeUnavailable is no longer produced — a node whose runtime
 	// cannot use its cards is cordoned instead (store.Node.RuntimeGPUBlocked)
 	// — but it stays defined because recorded refusals carry it.
-	ReasonRuntimeUnavailable     = "runtime_unavailable"
-	ReasonServingUnavailable     = "serving_unavailable"
-	ReasonDtypeUnsupported       = "dtype_unsupported"
-	ReasonDtypeUnsupportedDetail = "dtype_unsupported_detail"
-	ReasonPartitionUnavailable   = "partition_unavailable"
-	ReasonInsufficientDisk       = "insufficient_disk"
+	ReasonRuntimeUnavailable                 = "runtime_unavailable"
+	ReasonRuntimeUnsupported                 = "runtime_unsupported"
+	ReasonLaunchFeaturesUnknown              = "launch_features_unknown"
+	ReasonRuntimeUnreported                  = "runtime_unreported"
+	ReasonAcceleratorFeatureUnsupported      = "accelerator_feature_unsupported"
+	ReasonAcceleratorDeviceSelectionRequired = "accelerator_device_selection_required"
+	ReasonServingUnavailable                 = "serving_unavailable"
+	ReasonDtypeUnsupported                   = "dtype_unsupported"
+	ReasonDtypeUnsupportedDetail             = "dtype_unsupported_detail"
+	ReasonPartitionUnavailable               = "partition_unavailable"
+	ReasonInsufficientDisk                   = "insufficient_disk"
 	// The node's vendor does not provide a feature the deployment asks for
 	// ({vendor}): engine sleep, ranks on several nodes, a KV disk tier.
 	ReasonSleepUnsupportedOnNode     = "sleep_unsupported_on_node"
 	ReasonMultiNodeUnsupportedOnNode = "multi_node_unsupported_on_node"
+	ReasonPDUnsupportedOnNode        = "pd_unsupported_on_node"
 	ReasonKVDiskUnsupportedOnNode    = "kv_disk_unsupported_on_node"
 	ReasonInsufficientRuntimeDisk    = "insufficient_runtime_disk"
 	// No card takes work, and why, from the operator's side: the node has

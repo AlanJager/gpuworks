@@ -16,11 +16,10 @@ export const allocationLabels: Record<PhysicalGPU["allocation_state"], { labelKe
 // "GPU 3" for a card with a device number; a card without one is named by
 // its PCI address, never "GPU -1".
 export function gpuHeading(gpu: Pick<PhysicalGPU, "index" | "pcie_bdf">) { return gpu.index >= 0 ? `GPU ${gpu.index}` : cardOrdinal(gpu); }
-export function vendorLabel(value: string, t: (key: string) => string) {
-  const key = ({ nvidia: "vendor.nvidia", ascend: "vendor.ascend", ppu: "vendor.ppu" } as Record<string, string>)[value?.toLowerCase()];
-  return key ? t(key) : value || "-";
-}
+export { vendorName as vendorLabel } from "../../vendorName";
 export function fmtGiB(value: number) { return `${(value / GIB).toFixed(value >= 10 * GIB ? 0 : 1)} GiB`; }
+// Zero capacity means unknown; measured zero usage still uses fmtGiB.
+export function fmtCapacityGiB(value: number) { return Number.isFinite(value) && value > 0 ? fmtGiB(value) : "—"; }
 export function fmtRate(value?: number) { return value == null ? "-" : value >= GIB ? `${(value / GIB).toFixed(1)} GiB/s` : `${(value / 1024 ** 2).toFixed(1)} MiB/s`; }
 export function optionalPercent(value?: number) { return value == null ? "-" : `${value.toFixed(0)}%`; }
 export function dash(value?: string) { return value || "-"; }

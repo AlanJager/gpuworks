@@ -121,9 +121,9 @@ test("the GPU list keys cards without an index apart, never says GPU -1, and ope
 test("the node's GPU list keys cards apart, reads no metrics for them, and tags them like the card table", async () => {
   api.metricsQuery = (async () => ({
     items: [
-      { labels: { gpu: "0" }, points: [[Date.now(), 42]] },
+      { labels: { node: "n1", gpu: "0", gpu_uuid: "GPU-aaa" }, points: [[Date.now(), 42]] },
       // Whatever is filed under -1 belongs to no card in particular.
-      { labels: { gpu: "-1" }, points: [[Date.now(), 99]] },
+      { labels: { node: "n1", gpu: "-1" }, points: [[Date.now(), 99]] },
     ],
   })) as never;
   const node = { uuid: "n1", hostname: "gpu-a", state: "online", os: "linux", gpu_count: 4, gpus } as unknown as NodeT;

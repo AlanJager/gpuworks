@@ -65,7 +65,7 @@ func fullTemplateCatalog(asset []byte) inferencecatalog.FlatCatalog {
 			{Provider: "modelscope", RepoID: repo},
 		}}
 	}
-	gpus := inferencecatalog.GPUSelector{Vendor: "nvidia", CC: ">=8.0", Name: "H100"}
+	gpus := inferencecatalog.GPUSelector{Vendor: "nvidia", CC: ">=8.0", Name: "H100", ArchID: "sm_90"}
 	primary := inferencecatalog.Component{Name: "main", Role: "primary", Weights: weights(fullTemplateID), WeightBytes: 4_000_000_000, MountPath: "/models/main"}
 	draft := inferencecatalog.Component{Name: "draft", Role: "speculative_draft", ModelID: fullDraftID, Weights: weights(fullDraftID), WeightBytes: 1_000_000_000, MountPath: fullDraftMount}
 	prometheus := &inferenceapi.Metrics{Endpoint: "/stats", Inherit: "sglang", Map: inferenceapi.MetricMap{
@@ -284,7 +284,7 @@ func TestInferenceTemplateYAMLRoundTripsEveryFieldThroughImport(t *testing.T) {
 	text := response.Body.String()
 	for _, want := range []string{
 		"runtime_weight_bytes: 70000000000", "pd_mode: vllm-nixl", "shm_bytes: 429496729600", "memlock_unlimited: true", "kv_bytes_per_token:", "model_config:", "unsupported:",
-		"readme_zh_cn: README.zh-CN.md", "resolver: |", "pre_start_script: |", "request_defaults:", "format: json",
+		"arch_id: sm_90", "readme_zh_cn: README.zh-CN.md", "resolver: |", "pre_start_script: |", "request_defaults:", "format: json",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("editor YAML lacks %q:\n%s", want, text)

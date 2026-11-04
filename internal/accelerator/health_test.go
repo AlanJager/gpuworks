@@ -151,7 +151,7 @@ func TestGuideFor(t *testing.T) {
 }
 
 func TestToolCommand(t *testing.T) {
-	for vendor, want := range map[string]string{"nvidia": "nvidia-smi", "ppu": "ppu-smi", "ascend": "npu-smi info", "hygon": "hy-smi", "amd": ""} {
+	for vendor, want := range map[string]string{"nvidia": "nvidia-smi", "ppu": "ppu-smi", "ascend": "npu-smi info", "hygon": "hy-smi", "amd": "rocminfo"} {
 		if got := ToolCommand(vendor); got != want {
 			t.Errorf("ToolCommand(%q) = %q", vendor, got)
 		}

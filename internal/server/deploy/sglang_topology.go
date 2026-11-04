@@ -2,6 +2,7 @@ package deploy
 
 import (
 	"fmt"
+	enginenames "gpuworks.ai/gpuworks/internal/engines"
 
 	"gpuworks.ai/gpuworks/internal/server/messages"
 )
@@ -14,7 +15,7 @@ var sglangTensorParallelFlags = []string{tpFlagTPSize, tpFlagTP, tpFlagTensorPar
 
 // sglangPipelineParallelFlags is SGLang's pipeline-parallel alias list, the
 // injected spelling first.
-var sglangPipelineParallelFlags = []string{"--pp-size", "--pp", "--pipeline-parallel-size"}
+var sglangPipelineParallelFlags = enginenames.PipelineFlags(EngineSGLang)
 
 func (sglangEngine) SymbolizePreviewTP(launch ResolvedLaunch, templateResidual, userResidual []string) ResolvedLaunch {
 	flags := (sglangEngine{}).TPFlags()
@@ -68,7 +69,7 @@ func (sglangEngine) ValidateTopology(launch ResolvedLaunch, params Params) error
 
 // sglangDataParallelFlags is SGLang's data-parallel alias list, the injected
 // spelling first.
-var sglangDataParallelFlags = []string{"--dp-size", "--dp", "--data-parallel-size"}
+var sglangDataParallelFlags = enginenames.DataParallelFlags(EngineSGLang)
 
 // validateSGLangDataParallel holds the world of a language-model command. The
 // data-parallel degree means two things: under --enable-dp-attention the

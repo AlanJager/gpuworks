@@ -10,19 +10,51 @@ type LaunchEnvLayers struct {
 	User     map[string]string `json:"user,omitempty"`
 }
 
+// RequestedFeatures is the server's capability snapshot of a resolved launch.
+// A nil pointer on an old launch means no snapshot was sent. CommandKnown=false
+// means that the executable uses an unknown dialect, not that it requests no
+// features; declared topology and resource facts remain represented below.
+type RequestedFeatures struct {
+	CommandKnown     bool `json:"command_known"`
+	EngineSleep      bool `json:"engine_sleep,omitempty"`
+	MultiNode        bool `json:"multi_node,omitempty"`
+	PD               bool `json:"prefill_decode_disaggregation,omitempty"`
+	KVDiskTier       bool `json:"kv_disk_tier,omitempty"`
+	PipelineParallel bool `json:"pipeline_parallelism,omitempty"`
+	DataParallel     bool `json:"data_parallelism,omitempty"`
+}
+
+// Names returns the stable capability identifiers represented by the snapshot.
+func (f *RequestedFeatures) Names() []string {
+	if f == nil {
+		return nil
+	}
+	var out []string
+	for _, entry := range []struct {
+		name    string
+		enabled bool
+	}{{"engine_sleep", f.EngineSleep}, {"multi_node", f.MultiNode}, {"prefill_decode_disaggregation", f.PD}, {"kv_disk_tier", f.KVDiskTier}, {"pipeline_parallelism", f.PipelineParallel}, {"data_parallelism", f.DataParallel}} {
+		if entry.enabled {
+			out = append(out, entry.name)
+		}
+	}
+	return out
+}
+
 // ResolvedLaunch is the one fully merged launch truth shared by preview,
 // persistence and agent execution. It contains no instance identity or node
 // allocation facts; those belong to InstanceDesiredState.
 type ResolvedLaunch struct {
-	CommandMode    string            `json:"command_mode,omitempty"`
-	Entrypoint     []string          `json:"entrypoint,omitempty"`
-	Argv           []string          `json:"argv"`
-	PreStartArgv   []string          `json:"pre_start_argv,omitempty"`
-	PreStartScript string            `json:"pre_start_script,omitempty"`
-	RuntimeAssets  []RuntimeAsset    `json:"runtime_assets,omitempty"`
-	Env            map[string]string `json:"env,omitempty"`
-	EnvLayers      LaunchEnvLayers   `json:"env_layers,omitempty"`
-	DockerArgs     []string          `json:"docker_args,omitempty"`
+	RequestedFeatures *RequestedFeatures `json:"requested_features,omitempty"`
+	CommandMode       string             `json:"command_mode,omitempty"`
+	Entrypoint        []string           `json:"entrypoint,omitempty"`
+	Argv              []string           `json:"argv"`
+	PreStartArgv      []string           `json:"pre_start_argv,omitempty"`
+	PreStartScript    string             `json:"pre_start_script,omitempty"`
+	RuntimeAssets     []RuntimeAsset     `json:"runtime_assets,omitempty"`
+	Env               map[string]string  `json:"env,omitempty"`
+	EnvLayers         LaunchEnvLayers    `json:"env_layers,omitempty"`
+	DockerArgs        []string           `json:"docker_args,omitempty"`
 	// ShmBytes is the size of the container's /dev/shm tmpfs, not a memory
 	// reservation or limit: pages count against the host only once written.
 	// It is ineffective under --ipc=host, which shares the host's /dev/shm.

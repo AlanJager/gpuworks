@@ -1,7 +1,9 @@
 package scheduler
 
 import (
+	"errors"
 	"fmt"
+	"gpuworks.ai/gpuworks/internal/server/messages"
 	"sort"
 	"strings"
 )
@@ -208,4 +210,29 @@ func blockingReason(rejected []Rejected) Reason {
 		}
 	}
 	return least.Reason
+}
+
+// TargetLaunchRefusal converts a structured target capability error into the
+// scheduler vocabulary; unrelated product or system errors remain untouched.
+func TargetLaunchRefusal(err error) (*Reason, bool) {
+	var product *messages.ProductError
+	if !errors.As(err, &product) {
+		return nil, false
+	}
+	if product.Code() == messages.ErrorLaunchFeaturesUnknown {
+		reason := Reason{Code: ReasonLaunchFeaturesUnknown, Params: product.Params()}
+		return &reason, true
+	}
+	if product.Code() == messages.ErrorAcceleratorDeviceSelectionRequired {
+		reason := Reason{Code: ReasonAcceleratorDeviceSelectionRequired, Params: product.Params()}
+		return &reason, true
+	}
+	if product.Code() != messages.ErrorAcceleratorFeatureUnsupported {
+		return nil, false
+	}
+	params := product.Params()
+	feature, _ := params["feature"].(string)
+	vendor, _ := params["vendor"].(string)
+	reason := Reason{Code: ReasonAcceleratorFeatureUnsupported, Params: map[string]any{"vendor": vendor, "feature": feature}}
+	return &reason, true
 }

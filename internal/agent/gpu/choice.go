@@ -1,6 +1,7 @@
 package gpu
 
 import (
+	"context"
 	"fmt"
 	"sort"
 	"strings"
@@ -55,6 +56,9 @@ type VendorCensus struct {
 	// HostRoot is where the host's /sys is mounted ("" for the host itself).
 	HostRoot string
 
+	amdRead     sysfsReadGate
+	amdReadFile func(string) ([]byte, error)
+
 	mu   sync.Mutex
 	key  string
 	last []proto.AcceleratorPresence
@@ -65,9 +69,18 @@ func (c *VendorCensus) Vendors() []proto.AcceleratorPresence {
 	scanner := pcicards.Scanner{Root: c.HostRoot}
 	cards, _ := scanner.Scan()
 	byVendor := map[string][]pcicards.Card{}
+	var computeAMD map[string]bool
+	for _, card := range cards {
+		if card.Vendor == accelerator.VendorAMD && card.Driver != pcicards.DriverVFIO {
+			ctx, cancel := context.WithTimeout(context.Background(), censusAMDReadTimeout)
+			computeAMD = c.amdComputeCandidates(ctx)
+			cancel()
+			break
+		}
+	}
 	var keys []string
 	for _, card := range cards {
-		if card.Driver == pcicards.DriverVFIO || !ChoosableVendor(card.Vendor) {
+		if card.Driver == pcicards.DriverVFIO || !ChoosableVendor(card.Vendor) || (card.Vendor == accelerator.VendorAMD && !computeAMD[card.BDF]) {
 			continue
 		}
 		byVendor[card.Vendor] = append(byVendor[card.Vendor], card)

@@ -10,7 +10,8 @@
     "hygon": "Hygon",
     "apple": "Apple",
     "unknown": "Unknown Vendor",
-    "unknownFramework": "Unknown Framework"
+    "unknownFramework": "Unknown Framework",
+    "amd": "AMD"
   },
   "operation": {
     "all": "All capabilities",
@@ -520,7 +521,11 @@
     "BATCH_REQUEST_INVALID": "The batch request is not valid ({{field}}): {{reason}}",
     "BATCH_FILE_MODELS_UNKNOWN": "No deployment serves these models of the file: {{models, list}}. Choose a model to send every request to, or deploy these models first.",
     "BATCH_FILE_MODELS_ENDPOINT": "These models of the file do not serve {{endpoint}}: {{models, list}}. Choose a model that serves it to send every request to.",
-    "AGENT_UPGRADE_REFUSED": "Agent upgrade request could not proceed: {{detail}}"
+    "AGENT_UPGRADE_REFUSED": "Agent upgrade request could not proceed: {{detail}}",
+    "ACCELERATOR_FEATURE_UNSUPPORTED": "{{vendor}} does not support {{feature}}. Choose a supported feature or select another accelerator.",
+    "ACCELERATOR_DEVICE_SELECTION_REQUIRED": "{{vendor}} requires an explicit GPU assignment before launch.",
+    "LAUNCH_FEATURES_UNKNOWN": "Cannot determine which features the custom launch command requests on {{vendor}}. Use a recognized engine entrypoint or structured launch parameters.",
+    "SLEEP_TARGET_UNRESOLVED": "Cannot resolve the GPU selection for instance {{instance}} on node {{node}}: {{detail}}."
   },
   "httpError": {
     "proxyPage": "HTTP {{status}}: a reverse proxy or tunnel between the browser and gpuworks answered with its own error page, so the server's reason was lost. Retry from the server's own address to see it."
@@ -898,5 +903,16 @@
     "details": "Build details",
     "commit": "Commit: {{commit}}",
     "channel": "Build channel: {{channel}}"
+  },
+  "acceleratorFeature": {
+    "unsupported": "{{vendor}} does not support {{feature}}. Choose a supported feature or select another accelerator.",
+    "names": {
+      "engine_sleep": "engine sleep",
+      "multi_node": "multi-node inference",
+      "pipeline_parallelism": "pipeline parallelism",
+      "data_parallelism": "data parallelism",
+      "prefill_decode_disaggregation": "PD disaggregation",
+      "kv_disk_tier": "KV disk tier"
+    }
   }
 }

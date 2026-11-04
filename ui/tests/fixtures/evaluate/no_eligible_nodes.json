@@ -236,6 +236,11 @@
           "image": "gpuworks/gpuworks-runner:metal15.0-vllm0.31.0-r2",
           "reason": "catalog_match",
           "compatible": true
+        },
+        {
+          "image": "gpuworks/gpuworks-runner:rocm7.2.3-vllm0.30.0-r1",
+          "reason": "catalog_match",
+          "compatible": true
         }
       ]
     }

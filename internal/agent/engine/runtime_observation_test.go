@@ -89,7 +89,7 @@ func TestDesiredRemovalDropsDelayedInspectBeforeSameUUIDRecreate(t *testing.T) {
 		started:            make(chan struct{}), release: make(chan struct{}),
 	}
 	reported := make(chan proto.InstanceStatus, 64)
-	e := New(driver, func(st proto.InstanceStatus) { reported <- st }, nil, t.TempDir())
+	e := newHermeticEngine(driver, func(st proto.InstanceStatus) { reported <- st }, nil, t.TempDir())
 	e.headlessProbeInterval = time.Millisecond
 	e.headlessStableChecks = 1
 	spec := proto.InstanceDesiredState{UUID: "same-instance", DesiredState: "running", Headless: true, StartTimeout: 1}
@@ -163,7 +163,7 @@ func TestDesiredRemovalDropsPendingReconnectReconcile(t *testing.T) {
 		headlessTestDriver: headlessTestDriver{name: "docker"},
 		started:            make(chan struct{}), release: make(chan struct{}),
 	}
-	e := New(driver, func(proto.InstanceStatus) {}, nil, t.TempDir())
+	e := newHermeticEngine(driver, func(proto.InstanceStatus) {}, nil, t.TempDir())
 	e.headlessProbeInterval = time.Millisecond
 	e.headlessStableChecks = 1
 	spec := proto.InstanceDesiredState{UUID: "removed-pending", DesiredState: "running", Headless: true, StartTimeout: 1}
@@ -189,7 +189,7 @@ func TestPendingReconcileHandsOffToNewestStoppedSpec(t *testing.T) {
 		headlessTestDriver: headlessTestDriver{name: "docker"},
 		started:            make(chan struct{}), release: make(chan struct{}),
 	}
-	e := New(driver, func(proto.InstanceStatus) {}, nil, t.TempDir())
+	e := newHermeticEngine(driver, func(proto.InstanceStatus) {}, nil, t.TempDir())
 	e.headlessProbeInterval = time.Millisecond
 	e.headlessStableChecks = 1
 	running := proto.InstanceDesiredState{UUID: "newest-pending", DesiredState: "running", Headless: true, StartTimeout: 1}
@@ -257,7 +257,7 @@ func TestCanceledContextPreventsRuntimeObservationPublication(t *testing.T) {
 		started:            make(chan struct{}), release: make(chan struct{}),
 	}
 	reported := make(chan proto.InstanceStatus, 1)
-	e := New(driver, func(st proto.InstanceStatus) { reported <- st }, nil, t.TempDir())
+	e := newHermeticEngine(driver, func(st proto.InstanceStatus) { reported <- st }, nil, t.TempDir())
 	spec := proto.InstanceDesiredState{UUID: "canceled-observation", DesiredState: "running"}
 	e.mu.Lock()
 	e.desired[spec.UUID] = spec
@@ -280,7 +280,7 @@ func TestCanceledContextPreventsRuntimeObservationPublication(t *testing.T) {
 }
 
 func TestUnsupportedRuntimeReportsExplicitUnknownLayers(t *testing.T) {
-	e := New(&headlessTestDriver{name: "udocker"}, func(proto.InstanceStatus) {}, nil, t.TempDir())
+	e := newHermeticEngine(&headlessTestDriver{name: "udocker"}, func(proto.InstanceStatus) {}, nil, t.TempDir())
 	got := e.collectRuntimeObservation(context.Background(), e.Driver(), "name", "")
 	if got.Container.Status != proto.ObservationUnknown || got.Container.Reason != "unsupported" {
 		t.Fatalf("container=%+v", got.Container)

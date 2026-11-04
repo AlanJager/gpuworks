@@ -65,7 +65,7 @@
 | 昇腾 | 支持 | experimental | 宿主机的 device-share 权限满足要求；推理镜像需 glibc ≥ 2.33 | 在自有环境的 910B4 上，Docker 通过了平台 dGPU 推理与超配拒绝验证，nerdctl 只通过了节点级 dGPU 行为探针；云租机（矩阵中的 Gitee 环境）无权限执行 device-share，只能证明探测和整卡对话，不能当作 dGPU 通过；`aicore-quota` 不能据此承诺 20/80 吞吐比例 |
 | PPU | 支持 | experimental | HGGC 13.x、x86_64，且**只在 Docker 运行时**可用 | 20/80 配置在繁忙时表现为加权 QoS（对端空闲时会借用余量），不是硬 SM 分区 |
 | 海光（DTK） | 没有后端 | — | — | 探测与整卡部署取决于目录 spec 和 runtime；dGPU 后端注册表里没有海光，按整卡使用 |
-| AMD（ROCm） | 没有后端 | — | — | 同上 |
+| AMD（ROCm） | 不支持 | — | — | 本表仅指 dGPU 分区；整卡实现范围见[厂商支持矩阵](../reference/support-matrix.md) |
 
 能力是否可用由 server 推导成 `ready` 或 `unavailable`（附 `reason`），agent 自己不宣布。不满足
 条件时节点仍可整卡部署，但带 dGPU 显存限额的请求会明确失败（如 `partition_unavailable`），

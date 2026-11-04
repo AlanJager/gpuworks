@@ -204,6 +204,7 @@ type GPUSelector struct {
 	// RetiredDisplayTarget is the display_target key that paired with
 	// display_profile: still read so older YAML imports, never stored.
 	RetiredDisplayTarget string `yaml:"display_target,omitempty" json:"-"`
+	ArchID string `yaml:"arch_id,omitempty" json:"arch_id,omitempty"`
 }
 
 type UnsupportedGPU struct {
@@ -375,9 +376,13 @@ func ValidateFlatCatalog(catalog *FlatCatalog) error {
 var dateExpression = regexp.MustCompile(`^[0-9]{4}-[0-9]{2}-[0-9]{2}$`)
 
 func validateSelector(where string, selector *GPUSelector) error {
+	if selector.ArchID != "" && strings.TrimSpace(selector.ArchID) == "" {
+		return fmt.Errorf("%s has blank gpus.arch_id", where)
+	}
 	selector.Vendor = strings.ToLower(strings.TrimSpace(selector.Vendor))
 	selector.CC = strings.TrimSpace(selector.CC)
 	selector.Name = strings.TrimSpace(selector.Name)
+	selector.ArchID = strings.TrimSpace(selector.ArchID)
 	if selector.Vendor == "" {
 		return fmt.Errorf("%s requires gpus.vendor", where)
 	}

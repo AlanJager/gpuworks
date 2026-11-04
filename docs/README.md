@@ -114,6 +114,7 @@
 - [代码地图：逐包职责](dev/code-map.md)
 - [本地搭建](dev/setup.md)
 - [测试指南与云端分层](dev/testing.md)
+- [AMD 接入结构与硬件验收](dev/amd-hardware-validation.md)
 - [评测信息与报告规范](dev/benchmark-reporting-standard.md)
 - [逐请求引擎排队耗时的观测边界](dev/engine-queue-observation.md)
 - [浏览器 E2E 测试规范](../test/e2e/browser-e2e-testing-standard.md)

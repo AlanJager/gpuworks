@@ -17,15 +17,19 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"hash/fnv"
 	"io"
 	"log/slog"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
 	agentapp "gpuworks.ai/gpuworks/internal/agent/app"
+	"gpuworks.ai/gpuworks/internal/agent/gpu"
 	"gpuworks.ai/gpuworks/internal/integrationtest/fleet"
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/testenv"
@@ -69,6 +73,10 @@ func run(rosterPath, nextRosterPath, server, stateRoot, modelDir, readyPath, log
 	if rosterPath == "" || server == "" || stateRoot == "" || modelDir == "" {
 		return fmt.Errorf("roster, server, state-root and model-dir are all required")
 	}
+	amdPercent, err := fleetAMDPercent(os.Getenv("GPUWORKS_FLEET_AMD_PERCENT"))
+	if err != nil {
+		return err
+	}
 	raw, err := os.ReadFile(rosterPath)
 	if err != nil {
 		return fmt.Errorf("read roster: %w", err)
@@ -100,7 +108,12 @@ func run(rosterPath, nextRosterPath, server, stateRoot, modelDir, readyPath, log
 	transcript := fleet.PullTranscript(pullLines)
 	startNodes := func(nodes []node) error {
 		for _, n := range nodes {
-			driver := testenv.NewFakeDriver("fake")
+			amd := fleetAMDNode(n.Name, amdPercent)
+			driverName := "fake"
+			if amd {
+				driverName = "docker"
+			} // A synthetic authorized runtime, not a daemon.
+			driver := testenv.NewFakeDriver(driverName)
 			// Every node is a separate machine as far as the scheduler is
 			// concerned, so they all get the same engine port. On one host that is
 			// one bind; the fake attaches to a shared listener instead.
@@ -121,21 +134,41 @@ func run(rosterPath, nextRosterPath, server, stateRoot, modelDir, readyPath, log
 					return fleet.NewRateLogStream(rate, id, follow, tail), nil, true
 				})
 			}
+			vendor, name, arch := "nvidia", "A100", "sm_80"
+			if amd {
+				vendor, name, arch = "amd", "AMD Instinct MI300X", "gfx942"
+			}
 			devices := make([]proto.GPUInfo, 0, max(gpus, 1))
 			for i := 0; i < max(gpus, 1); i++ {
 				devices = append(devices, proto.GPUInfo{
-					Index: i, UUID: fmt.Sprintf("GPU-%s-%d", n.Name, i), Name: "A100",
-					MemoryTotalBytes: int64(81920) << 20, Vendor: "nvidia", Healthy: true,
+					Index: i, UUID: fmt.Sprintf("GPU-%s-%d", n.Name, i), Name: name, ArchID: arch,
+					MemoryTotalBytes: int64(81920) << 20, Vendor: vendor, Healthy: true,
 				})
 			}
 			prober := testenv.NewFakeProber(devices)
+			if os.Getenv("GPUWORKS_FLEET_GPU_METRICS") == "1" {
+				metrics := make([]gpu.Metric, 0, len(devices))
+				for _, device := range devices {
+					metrics = append(metrics, gpu.Metric{
+						Index: device.Index, UUID: device.UUID, Vendor: device.Vendor,
+						Values: map[string]float64{
+							"gpuworks_gpu_utilization":       fleet.GPUReadTestUtilization,
+							"gpuworks_gpu_memory_used_bytes": fleet.GPUReadTestMemoryBytes,
+						},
+					})
+				}
+				prober.SetMetrics(metrics)
+			}
+			// Synthetic AMD nodes exercise admission and control-plane load, while
+			// the dedicated injection fixtures validate physical device mapping.
+			prober.DisableRuntimeInjection = amd
 			state := filepath.Join(stateRoot, n.Name)
 			if err := os.MkdirAll(state, 0o755); err != nil {
 				return fmt.Errorf("create agent state for %s: %w", n.Name, err)
 			}
 			agent := agentapp.New(agentapp.Config{
 				ServerURL: server, Token: n.Token, StateDir: state,
-				Driver: driver, ForceDriver: "fake", Prober: prober, DataLane: true,
+				Driver: driver, ForceDriver: driverName, Prober: prober, DataLane: true,
 				NetworkInterfaceResolver: func(address string) (string, error) {
 					if address == "" {
 						return "", fmt.Errorf("fake network address is empty")
@@ -224,4 +257,22 @@ func waitForRoster(ctx context.Context, path string) ([]byte, error) {
 		case <-time.After(100 * time.Millisecond):
 		}
 	}
+}
+
+// The default remains the historical NVIDIA-only fleet. The stable identity
+// hash of the fixture name keeps paired runs and reconnects on the same mix.
+func fleetAMDPercent(raw string) (int, error) {
+	if strings.TrimSpace(raw) == "" {
+		return 0, nil
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil || value < 0 || value > 100 {
+		return 0, fmt.Errorf("GPUWORKS_FLEET_AMD_PERCENT must be an integer from 0 to 100")
+	}
+	return value, nil
+}
+func fleetAMDNode(name string, percent int) bool {
+	hash := fnv.New32a()
+	_, _ = hash.Write([]byte(name))
+	return int(hash.Sum32()%100) < percent
 }

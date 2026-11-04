@@ -38,7 +38,7 @@ func (d *stopProbeDriver) Stop(ctx context.Context, id string) error {
 // while the forced removal still proceeds.
 func TestRemoveContainerLogsStopAndSurfacesStopFailure(t *testing.T) {
 	newEngine := func(driver runtime.Driver, logs *bytes.Buffer) *Engine {
-		return New(driver, func(proto.InstanceStatus) {}, slog.New(slog.NewTextHandler(logs, nil)), t.TempDir())
+		return newHermeticEngine(driver, func(proto.InstanceStatus) {}, slog.New(slog.NewTextHandler(logs, nil)), t.TempDir())
 	}
 	ctx := context.Background()
 

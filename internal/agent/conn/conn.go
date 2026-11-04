@@ -473,8 +473,8 @@ func helloCapabilitiesForRuntime(prober gpu.Prober, runtimeDriver string) []stri
 		"ascend": "gpu.npu-smi",
 		"ppu":    "gpu.ppu-smi",
 		"thead":  "gpu.ppu-smi",
-		"amd":    "gpu.amd-smi",
-		"rocm":   "gpu.amd-smi",
+		"amd":    "gpu.amdgpu-sysfs",
+		"rocm":   "gpu.amdgpu-sysfs",
 		"hygon":  "gpu.hy-smi",
 		"dcu":    "gpu.hy-smi",
 	}[vendor]

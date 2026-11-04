@@ -11,7 +11,11 @@ type ProductError struct {
 
 // Product error codes shared by domain services and the API layer.
 const (
-	ErrorAgentUpgradeRequired = "AGENT_UPGRADE_REQUIRED"
+	ErrorAgentUpgradeRequired               = "AGENT_UPGRADE_REQUIRED"
+	ErrorLaunchFeaturesUnknown              = "LAUNCH_FEATURES_UNKNOWN"
+	ErrorSleepTargetUnresolved              = "SLEEP_TARGET_UNRESOLVED"
+	ErrorAcceleratorFeatureUnsupported      = "ACCELERATOR_FEATURE_UNSUPPORTED"
+	ErrorAcceleratorDeviceSelectionRequired = "ACCELERATOR_DEVICE_SELECTION_REQUIRED"
 
 	// The experience environment's console (internal/experience) refuses
 	// what would act on the host or leave the environment, and deployments

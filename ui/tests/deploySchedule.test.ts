@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import test from "node:test";
+import { APIError, apiErrorText } from "../src/apiError.ts";
 import { createInstance } from "i18next";
 
 import { placementRefusalText, scheduleText } from "../src/pages/deploy/deploySchedule.ts";
@@ -12,8 +13,8 @@ await i18n.init({
   lng: "en",
   fallbackLng: "en",
   resources: {
-    en: { deploy: locale("en"), deployments: locale("en", "deployments") },
-    zh: { deploy: locale("zh"), deployments: locale("zh", "deployments") },
+    en: { deploy: locale("en"), deployments: locale("en", "deployments"), common: locale("en", "common") },
+    zh: { deploy: locale("zh"), deployments: locale("zh", "deployments"), common: locale("zh", "common") },
   },
   defaultNS: "deploy",
   interpolation: { escapeValue: false },
@@ -228,3 +229,18 @@ for (const { name, reason, zh, en } of heldCases) {
     assert.doesNotMatch(zhText + enText, /\{\{|undefined/);
   });
 }
+
+test("hardware refusals share feature translations across API and placement", () => {
+ for (const lng of ["en", "zh"]) {
+  for (const feature of ["pipeline_parallelism", "data_parallelism", "partition", "future_feature"]) {
+   const name = i18n.getFixedT(lng, "common")(`acceleratorFeature.names.${feature}`, { defaultValue: feature });
+   const params = { vendor: "AMD", feature };
+   const placement = scheduleText(i18n.getFixedT(lng, "deploy"), { code: "accelerator_feature_unsupported", params });
+   const api = apiErrorText(i18n.getFixedT(lng, "common"), new APIError("ACCELERATOR_FEATURE_UNSUPPORTED", params, "fallback", 400));
+   assert.equal(placement.includes(name), true);
+   assert.equal(api.includes(name), true);
+   assert.equal(placement.includes("{{"), false);
+   assert.equal(api.includes("{{"), false);
+  }
+ }
+});

@@ -577,3 +577,49 @@ test("an evaluate response from the previous draft cannot overwrite a changed fo
     "the stale marker value never lands",
   );
 });
+
+test("switching target to AMD requests ROCm capability and clears sleep selection", async () => {
+  const amdNode = {
+    ...node,
+    uuid: "amd-node",
+    hostname: "mi300x",
+    gpu_vendor: "amd",
+    gpus: [{ index: 0, name: "AMD Instinct MI300X", vendor: "amd", healthy: true, arch_id: "gfx942" }],
+  };
+  stubFleet([node, amdNode]);
+  apiAny.evaluate = async (payload: unknown) => {
+    calls.evaluate.push(payload);
+    return structuredClone(evaluateAnswer);
+  };
+  const requested: Array<string | undefined> = [];
+  let answerAMD!: (value: ReturnType<typeof list>) => void;
+  const amdAnswer = new Promise<ReturnType<typeof list>>((resolve) => { answerAMD = resolve; });
+  apiAny.engines = async (vendor?: string) => {
+    requested.push(vendor);
+    if (vendor === "amd") return amdAnswer;
+    return list([engineProfile]);
+  };
+  const { user } = await openDeployPage();
+  await pickVendorAndName(user, "vendor-switch");
+  const card = screen.getByText(deployLocale.workbench.resource.sleepable).closest("button")!;
+  await waitFor(() => assert.equal(card.hasAttribute("disabled"), false));
+  await waitFor(() => assert.ok(calls.evaluate.some((v) => (v as Record<string, unknown>).target_vendor === "nvidia")), { timeout: 10000 });
+  await user.click(card);
+  await waitFor(() => assert.equal(card.className.includes("is-active"), true));
+  await waitFor(() => assert.ok(calls.evaluate.some((v) => (v as Record<string, unknown>).sleepable === true)), { timeout: 10000 });
+
+  const vendorInput = document.querySelector('.ant-select-selection-item[title="NVIDIA"]')!
+    .closest(".ant-select")!.querySelector("input")!;
+  await user.click(vendorInput);
+  await user.click(await screen.findByText(deployLocale.basic.vendor.amd));
+  await waitFor(() => assert.ok(requested.includes("amd")));
+  // The old NVIDIA profile must not remain actionable while the new answer is in flight.
+  await waitFor(() => assert.equal(card.hasAttribute("disabled"), true));
+  answerAMD(list([{ ...engineProfile, sleep: { supported: false } }]));
+  await waitFor(() => assert.equal(card.hasAttribute("disabled"), true));
+  await waitFor(() => assert.equal(card.className.includes("is-active"), false));
+  await waitFor(() => {
+    const last = calls.evaluate[calls.evaluate.length - 1] as Record<string, unknown> | undefined;
+    assert.ok(last && last.target_vendor === "amd" && last.sleepable !== true);
+  });
+});

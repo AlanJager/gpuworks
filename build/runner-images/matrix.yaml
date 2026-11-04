@@ -13,7 +13,7 @@
 #   id          矩阵项 ID，同时就是裸 tag 名
 #   revision    构建版次（r1、r2…）。配方变了必须 +1，不许原地覆盖同名 tag：
 #               节点上已有同名镜像时不会重拉，覆盖等于改了没生效
-#   backend     cuda | cann | dtk | hggc | metal
+#   backend     cuda | cann | dtk | hggc | metal | rocm
 #   builder     缺省为本目录的 buildx 构建。host-env 表示 macOS 宿主环境包：由
 #               build/host-envs/build.sh 构建（框架档 = 最低 macOS），本目录的
 #               build.sh / verify.sh 跳过它，push.sh / publish.py 照常分发
@@ -75,6 +75,35 @@ defaults:
   platforms: [linux/amd64, linux/arm64]
 
 items:
+
+  # =======================================================================
+  # AMD ROCm
+  # =======================================================================
+  # The upstream vLLM ROCm image ships kernels for gfx90a/gfx942/gfx950,
+  # gfx1100/1101/1150/1151 and gfx1200/1201. Tested on MI325X (gfx942, single
+  # card and 2-node PP/TP over RCCL) and Ryzen AI Max+ 395 (gfx1151, UMA).
+  - id: rocm7.2.3-vllm0.30.0
+    revision: r1
+    backend: rocm
+    engine: vllm
+    platforms: [linux/amd64]
+    base: vllm/vllm-openai-rocm@sha256:2e7da1ad1c66836802072588adea75f9f4991da5f9545b4318e91d422c22ce6a
+    args: {ENGINE_VERSION: "0.30.0", FRAMEWORK_VERSION: "7.2.3"}
+    requires: [engine]
+    note: vLLM 0.30.0 on ROCm 7.2.3 (upstream vllm-openai-rocm); tested on MI325X (gfx942) and AMD395 (gfx1151).
+
+  # Unpublished pinned MI300X SGLang candidate; not hardware-validated, so it
+  # stays out of the built-in catalog.
+  - id: rocm7.2.0-sglang0.5.21
+    revision: r1
+    backend: rocm
+    engine: sglang
+    catalog: false
+    platforms: [linux/amd64]
+    base: lmsysorg/sglang@sha256:0534eb382626ef55ace8be24f7d81cc6eb7451acac8a5727848397a5e9309d91
+    args: {SGLANG_VERSION: "0.5.21", FRAMEWORK_VERSION: "7.2.0"}
+    requires: [engine]
+    note: Unpublished pinned MI300X ROCm candidate; no gfx1151 compatibility claim.
 
   # =======================================================================
   # NVIDIA CUDA

@@ -384,8 +384,10 @@ const (
 	ErrorMountTargetNested  = "MOUNT_TARGET_NESTED"
 	// ErrorQuickParamJSON and ErrorQuickParamPath are likewise produced by
 	// deploy's launch validation, on json- and path-typed parameters.
-	ErrorQuickParamJSON = "QUICK_PARAM_JSON_INVALID"
-	ErrorQuickParamPath = "QUICK_PARAM_PATH_INVALID"
+	ErrorAcceleratorFeatureUnsupported      = messages.ErrorAcceleratorFeatureUnsupported
+	ErrorAcceleratorDeviceSelectionRequired = messages.ErrorAcceleratorDeviceSelectionRequired
+	ErrorQuickParamJSON                     = "QUICK_PARAM_JSON_INVALID"
+	ErrorQuickParamPath                     = "QUICK_PARAM_PATH_INVALID"
 )
 
 // ErrorAIDefaultRequired answers a patch that would clear the default mark on

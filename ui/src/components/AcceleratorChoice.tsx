@@ -1,3 +1,4 @@
+import { vendorName } from "../vendorName";
 import { ExclamationCircleFilled, InfoCircleFilled } from "@ant-design/icons";
 import { Select, Space, Typography, message } from "antd";
 import { useState } from "react";
@@ -14,14 +15,9 @@ export function hasAcceleratorChoice(node: Pick<Node, "accelerator_vendors">): b
   return (node.accelerator_vendors?.filter((v) => v.cards > 0).length ?? 0) > 1;
 }
 
-const vendorBrands: Record<string, string> = { nvidia: "NVIDIA", ascend: "Ascend", hygon: "Hygon", ppu: "T-Head" };
-
 function useVendorName() {
   const { t } = useTranslation("common");
-  return (vendor?: string) => {
-    const v = (vendor ?? "").trim().toLowerCase();
-    return t(`vendor.${v}`, { defaultValue: vendorBrands[v] ?? (v || "—") });
-  };
+  return (vendor?: string) => vendorName(vendor, t);
 }
 
 /**

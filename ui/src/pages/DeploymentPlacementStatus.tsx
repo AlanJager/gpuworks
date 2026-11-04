@@ -143,6 +143,7 @@ const statusColor: Record<DeploymentCandidateStatus, string> = {
 export function CandidatesModal({ dep, onClose }: { dep: Deployment; onClose: () => void }) {
   const { t } = useTranslation("deployments");
   const { t: tCommon } = useTranslation("common");
+  const { t: tDeploy } = useTranslation("deploy");
   const [filter, setFilter] = useState<DeploymentCandidateStatus | "all">("all");
   const [page, setPage] = useState(1);
   const [data, setData] = useState<DeploymentCandidates | null>(null);
@@ -227,7 +228,11 @@ export function CandidatesModal({ dep, onClose }: { dep: Deployment; onClose: ()
               render: (_: unknown, row: DeploymentCandidate) => `${row.free_gpus} / ${row.gpus}`,
             },
             { title: t("detail.placement.columns.model"), dataIndex: "model", width: 96, render: (value: string) => t(`detail.placement.model.${value}`) },
-            { title: t("detail.placement.columns.detail"), dataIndex: "detail", render: (value?: string) => value ?? "" },
+            {
+              title: t("detail.placement.columns.detail"),
+              key: "detail",
+              render: (_: unknown, row: DeploymentCandidate) => (row.reason ? scheduleText(tDeploy, row.reason) : (row.detail ?? "")),
+            },
           ]}
         />
       </Space>

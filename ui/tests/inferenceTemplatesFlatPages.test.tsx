@@ -143,13 +143,15 @@ test("catalog starts unfiltered, keeps organization logos and cross-organization
     specs: [{ ...ascendSpec, id: 3, weight_sources: [{ provider: "huggingface", repo_id: "quant-factory/Qwen-GPTQ" }], quantization: "gptq" }],
   };
   localStorage.setItem("gpuworks.inferenceTemplates.selectedChip", "nvidia\u0000NVIDIA H100\u00009.0");
-  api.inferenceTemplates = (async () => ({ items: [upstreamModel, qwen], page: 1, page_size: 200, total: 2 })) as never;
+  api.inferenceTemplates = (async (query) => query.extra?.gpu
+    ? { items: [{ ...upstreamModel, specs: [h100Spec] }], page: 1, page_size: 200, total: 1 }
+    : { items: [upstreamModel, qwen], page: 1, page_size: 200, total: 2 }) as never;
   api.detectedInferenceTemplateChips = (async () => list([{ vendor: "nvidia", name: "NVIDIA H100", cc: "9.0" }])) as never;
   api.inferenceTemplateChips = (async () => list([])) as never;
   const { container } = renderList();
 
   assert.equal((await screen.findByText("DeepSeek Model")).textContent, "DeepSeek Model");
-  assert.equal(screen.queryByText(/Selected chip:/), null, "a previous-session chip must not filter the initial catalog");
+  assert.equal(screen.queryByText(/Selected chip:/) === null, true, "a previous-session chip must not filter the initial catalog");
   const qwenOrganization = screen.getByRole("button", { name: /Qwen/ });
   await userEvent.setup().click(qwenOrganization);
   assert.equal((await screen.findByText("Qwen Model")).textContent, "Qwen Model");
@@ -161,7 +163,7 @@ test("catalog starts unfiltered, keeps organization logos and cross-organization
   }
 
   await userEvent.setup().click(screen.getByRole("button", { name: "H100" }));
-  await waitFor(() => assert.equal(screen.queryByRole("button", { name: /Qwen/ }), null));
+  await waitFor(() => assert.equal(screen.queryByRole("button", { name: /Qwen/ }) === null, true));
   assert.equal((await screen.findByText("DeepSeek Model")).textContent, "DeepSeek Model");
 });
 
@@ -181,14 +183,16 @@ test("my chips use short GPU names and reserve compute capability for an unknown
   assert.ok(screen.getByRole("button", { name: "RTX 8000" }));
   assert.ok(screen.getByRole("button", { name: "A40" }));
   assert.ok(screen.getByRole("button", { name: "vGPU 32GB · CC 8.9" }));
-  assert.equal(screen.queryByRole("button", { name: /RTX 2080 Ti.*CC/ }), null);
+  assert.equal(screen.queryByRole("button", { name: /RTX 2080 Ti.*CC/ }) === null, true);
 });
 
 test("operation counts intersect with the selected chip and engine", async () => {
   const multimodal = { ...upstreamModel, specs: [{ ...h100Spec, api: { operations: [{ type: "openai.image.generate", endpoint: "/v1/images", mode: "sync", request_encodings: ["json"], renderer: "image", response: "image" }] } }] };
   const text = { ...upstreamModel, id: 8, model_id: "qwen/text", display_title: "Text Model", specs: [ascendSpec] };
   const vector = { ...upstreamModel, id: 9, model_id: "jinaai/embed", display_title: "Embed Model", specs: [{ ...h100Spec, api: { operations: [{ type: "openai.embeddings", endpoint: "/v1/embeddings", mode: "sync", request_encodings: ["json"], renderer: "vector", response: "json" }] } }] };
-  api.inferenceTemplates = (async () => ({ items: [multimodal, text, vector], page: 1, page_size: 200, total: 3 })) as never;
+  api.inferenceTemplates = (async (query) => query.extra?.gpu
+    ? { items: [multimodal, vector], page: 1, page_size: 200, total: 2 }
+    : { items: [multimodal, text, vector], page: 1, page_size: 200, total: 3 }) as never;
   api.detectedInferenceTemplateChips = (async () => list([
     { vendor: "nvidia", name: "NVIDIA H100", cc: "9.0" },
     { vendor: "ascend", name: "Ascend 910B4" },
@@ -412,23 +416,48 @@ test("the editor text is requested by model_id and spec source query, and read a
 // stubFleet answers the detail's node lookups as the server does: online
 // nodes' card models from GET /nodes/facets, and the nodes holding one model
 // from GET /nodes?label=gpuworks.ai/gpu-model=…. Listing every node fails.
-type FleetNode = { uuid: string; state: string; gpus: Array<{ vendor: string; name: string; cc: string; model: string }> };
+type FleetGPU = { vendor: string; name: string; cc: string; model: string; arch_id?: string };
+type FleetNode = { uuid: string; state: string; gpu_vendor?: string; gpus: FleetGPU[] };
 function stubFleet(fleet: FleetNode[]) {
+  const requestedPages: number[] = [];
   api.nodes = (async () => { throw new Error("the detail fetched every node"); }) as never;
   api.nodeFacets = (async (filter: { state?: string[] }) => {
     const nodes = fleet.filter((node) => !filter.state?.length || filter.state.includes(node.state));
-    const gpus = new Map<string, { vendor: string; name: string; cc: string; model: string; nodes: number }>();
-    for (const node of nodes) for (const gpu of node.gpus) {
-      const key = `${gpu.vendor}/${gpu.name}/${gpu.cc}`;
-      gpus.set(key, { ...gpu, nodes: (gpus.get(key)?.nodes ?? 0) + 1 });
+    const gpus = new Map<string, FleetGPU & { nodes: number; cards: number; memory_bytes: number }>();
+    for (const node of nodes) {
+      const seen = new Set<string>();
+      for (const gpu of node.gpus) {
+        const key = `${gpu.vendor}/${gpu.name}/${gpu.cc}/${gpu.arch_id || ""}`;
+        const group = gpus.get(key) || { ...gpu, nodes: 0, cards: 0, memory_bytes: 0 };
+        if (!seen.has(key)) group.nodes++;
+        group.cards++;
+        seen.add(key);
+        gpus.set(key, group);
+      }
     }
     return { total: nodes.length, labels: [], system_labels: [], gpus: [...gpus.values()] };
   }) as never;
-  api.nodesPage = (async (query: { state?: string[]; label?: string[] }) => {
+  api.nodesPage = (async (query: { page?: number; page_size?: number; state?: string[]; label?: string[] }) => {
     const model = query.label?.find((pair) => pair.startsWith("gpuworks.ai/gpu-model="))?.split("=")[1];
-    const items = fleet.filter((node) => (!query.state?.length || query.state.includes(node.state)) && (!model || node.gpus.some((gpu) => gpu.model === model)));
-    return { items, page: 1, page_size: 1, total: items.length, all: fleet.length, labels: [] };
+    const vendor = query.label?.find((pair) => pair.startsWith("gpuworks.ai/vendor="))?.split("=")[1];
+    const matched = fleet.filter((node) =>
+      (!query.state?.length || query.state.includes(node.state)) &&
+      (!model || node.gpus.some((gpu) => gpu.model === model)) &&
+      (!vendor || (node.gpu_vendor || node.gpus[0]?.vendor) === vendor));
+    const page = query.page || 1;
+    const pageSize = query.page_size || 50;
+    requestedPages.push(page);
+    const items = matched.slice((page - 1) * pageSize, page * pageSize).map((node) => ({
+      ...node,
+      gpu_vendor: node.gpu_vendor || node.gpus[0]?.vendor || "",
+      // Facets expose cc; the node inventory's wire field is compute_capability.
+      gpus: node.gpus.map((gpu, index) => ({
+        index, vendor: gpu.vendor, name: gpu.name, compute_capability: gpu.cc, arch_id: gpu.arch_id,
+      })),
+    }));
+    return { items, page, page_size: pageSize, total: matched.length, all: fleet.length, labels: [] };
   }) as never;
+  return requestedPages;
 }
 
 test("detail prioritizes vLLM, groups specs by GPU vendor, and keyboard-opens a command drawer", async () => {
@@ -439,7 +468,7 @@ test("detail prioritizes vLLM, groups specs by GPU vendor, and keyboard-opens a 
   renderDetail();
   assert.equal((await screen.findByText("H100 · FP8 spec")).textContent, "H100 · FP8 spec");
   assert.ok(screen.getByText("NVIDIA · 1 specs"));
-  assert.equal(screen.queryByText("910B (A2) · INT8 W8A8 spec"), null);
+  assert.equal(screen.queryByText("910B (A2) · INT8 W8A8 spec") === null, true);
   const details = screen.getByRole("button", { name: "Details" });
   details.focus();
   await userEvent.setup().keyboard("{Enter}");
@@ -469,7 +498,7 @@ test("the spec drawer lists the template's image sources in declared order, and 
   await screen.findAllByText("H100 · FP8 spec");
   await userEvent.setup().click(screen.getByRole("button", { name: "Details" }));
   await screen.findByText("Weight sources");
-  assert.equal(screen.queryByText("Image sources"), null, "a spec without sources has no such row");
+  assert.equal(screen.queryByText("Image sources") === null, true, "a spec without sources has no such row");
   assert.ok(screen.getByText("NVIDIA · CC 9.0 · H100"), "the GPU row shows the predicate the spec really matches, not its name");
 });
 
@@ -486,24 +515,27 @@ test("detail previews an explicit spec without an online matching node", async (
   await screen.findAllByText("H100 · FP8 spec");
   await userEvent.setup().click(screen.getByRole("button", { name: "Details" }));
   assert.ok((await screen.findByText(/\$TP_SIZE/)).textContent);
-  assert.equal(evaluatedNode, "");
-  assert.equal(screen.queryByText(/matching online GPU node/i), null);
+  assert.equal(evaluatedNode, undefined);
+  assert.equal(screen.queryByText(/matching online GPU node/i) === null, true);
 });
 
-test("detail previews on an online node that has a card the spec names", async () => {
-  let evaluatedNode: string | undefined;
-  api.inferenceTemplate = (async () => upstreamModel) as never;
-  api.detectedInferenceTemplateChips = (async () => list([])) as never;
-  stubFleet([
-    { uuid: "offline-h100", state: "offline", gpus: [{ vendor: "nvidia", name: "NVIDIA H100 80GB HBM3", cc: "9.0", model: "H100" }] },
-    { uuid: "online-a100", state: "online", gpus: [{ vendor: "nvidia", name: "NVIDIA A100-SXM4-80GB", cc: "8.0", model: "A100" }] },
-    { uuid: "online-h100", state: "online", gpus: [{ vendor: "nvidia", name: "NVIDIA H100 80GB HBM3", cc: "9.0", model: "H100" }] },
-  ]);
-  api.evaluate = (async (request) => { evaluatedNode = request.node_uuid; return { ok: true, command: ["vllm"], argv: [], image: "vllm/image" }; }) as never;
+test("detail delegates preview node selection to the server instead of inspecting fleet cards", async () => {
+  let request: Record<string, unknown> | undefined;
+  const amdSpec = { ...h100Spec, name: "amd-gfx1151", quantization: "bf16", gpus: { vendor: "amd", name: "(?i)Radeon 8060S", arch_id: "gfx1151" } };
+  api.inferenceTemplate = (async () => ({ ...upstreamModel, specs: [amdSpec] })) as never;
+  api.nodeFacets = (async () => { throw new Error("client must not choose a card"); }) as never;
+  api.nodesPage = (async () => { throw new Error("client must not choose a node"); }) as never;
+  api.evaluate = (async (value) => {
+    request = value as Record<string, unknown>;
+    return { ok: true, selected_node: { uuid: "mixed-gfx1151" }, command: ["vllm", "server-selected"], argv: [], image: "vllm/image" };
+  }) as never;
   renderDetail();
-  await screen.findAllByText("H100 · FP8 spec");
-  await userEvent.setup().click(screen.getByRole("button", { name: "Details" }));
-  await waitFor(() => assert.equal(evaluatedNode, "online-h100"));
+  await userEvent.setup().click(await screen.findByRole("button", { name: "Details" }));
+  await screen.findByText(/server-selected/);
+  assert.equal(request?.placement_mode, "auto");
+  assert.equal(request?.template_spec_name, "amd-gfx1151");
+  assert.equal(request?.node_uuid, undefined);
+  assert.equal(request?.node_uuids, undefined);
 });
 
 test("detail usage opens the declared operation in Playground with template and spec identity", async () => {
@@ -586,7 +618,7 @@ test("editor reports a failed YAML read and retries it", async () => {
   }) as never;
   renderDetail("/inference-templates/custom/model?edit=1");
   assert.match((await screen.findByText(/Failed to load the template YAML: catalog offline/)).textContent || "", /catalog offline/);
-  assert.equal(screen.queryByRole("textbox", { name: "Edit flat YAML" }), null, "no editor to type into while the text is unknown");
+  assert.equal(screen.queryByRole("textbox", { name: "Edit flat YAML" }) === null, true, "no editor to type into while the text is unknown");
   assert.equal((screen.getByRole("button", { name: /Save/ }) as HTMLButtonElement).disabled, true, "nothing can be saved over a template whose text was never read");
   await userEvent.setup().click(screen.getByRole("button", { name: "Retry" }));
   const editor = (await screen.findByRole("textbox", { name: "Edit flat YAML" })) as HTMLTextAreaElement;
@@ -702,7 +734,7 @@ test("user specs expose an in-place delete that removes the spec or the whole te
   await userEvent.setup().click(await screen.findByRole("button", { name: "Delete user spec my-tuned" }));
   await userEvent.setup().click(await screen.findByRole("button", { name: "Delete", exact: true }));
   await waitFor(() => assert.deepEqual(deleted, [["deepseek-ai/model", "my-tuned"]]));
-  await waitFor(() => assert.equal(screen.queryByRole("button", { name: "Delete user spec my-tuned" }), null), "the row disappears after the catalog reloads");
+  await waitFor(() => assert.equal(screen.queryByRole("button", { name: "Delete user spec my-tuned" }) === null, true), "the row disappears after the catalog reloads");
 
   // deleting the last user spec of a user-only template removes the template and returns to the list.
   // The first page must be gone before the second renders: left mounted, its
@@ -782,7 +814,7 @@ test("importing a template shows its warnings after the import settles and the a
   const input = container.querySelector('input[type="file"]') as HTMLInputElement;
   await userEvent.setup().upload(input, new File(["models: []"], "catalog.yaml", { type: "application/yaml" }));
   await waitFor(() => assert.equal(typeof finish, "function"));
-  assert.equal(screen.queryByText(/things? to check/), null, "nothing to show while the import is in flight");
+  assert.equal(screen.queryByText(/things? to check/) === null, true, "nothing to show while the import is in flight");
   finish({ models: 1, package_digest: "", warnings: [metricsWarning] });
   const alert = await screen.findByRole("alert");
   assert.match(alert.textContent || "", /Imported, with 1 thing to check/);
@@ -790,7 +822,7 @@ test("importing a template shows its warnings after the import settles and the a
   const close = within(alert).getByRole("button", { name: /close/i });
   close.focus();
   await userEvent.setup().keyboard("{Enter}");
-  await waitFor(() => assert.equal(screen.queryByText(/thing to check/), null));
+  await waitFor(() => assert.equal(screen.queryByText(/thing to check/) === null, true));
 });
 
 test("importing a clean template, or one the server rejects, shows no warnings alert", async () => {
@@ -803,11 +835,11 @@ test("importing a clean template, or one the server rejects, shows no warnings a
   const input = container.querySelector('input[type="file"]') as HTMLInputElement;
   await userEvent.setup().upload(input, new File(["models: []"], "catalog.yaml", { type: "application/yaml" }));
   assert.ok((await screen.findAllByText("Templates imported")).length > 0);
-  assert.equal(screen.queryByText(/to check/), null);
+  assert.equal(screen.queryByText(/to check/) === null, true);
   api.importInferenceTemplates = (async () => { throw new Error("model acme/x spec s has invalid thing"); }) as never;
   await userEvent.setup().upload(input, new File(["models: []"], "catalog.yaml", { type: "application/yaml" }));
   assert.ok(await screen.findByText(/invalid thing/));
-  assert.equal(screen.queryByText(/to check/), null);
+  assert.equal(screen.queryByText(/to check/) === null, true);
 });
 
 test("saving a template in the editor shows the warnings the import returned", async () => {
@@ -820,4 +852,64 @@ test("saving a template in the editor shows the warnings the import returned", a
   await userEvent.setup().click(screen.getByRole("button", { name: /Save/ }));
   const alert = await screen.findByText(/Imported, with 1 thing to check/);
   assert.match(alert.closest("[role=alert]")?.textContent || "", /Spec "serve" of acme\/adapter/);
+});
+
+
+test("a hypothetical AMD chip retains its architecture selector", async () => {
+  api.inferenceTemplates = (async () => ({ items: [], page: 1, page_size: 200, total: 0 })) as never;
+  api.detectedInferenceTemplateChips = (async () => list([])) as never;
+  api.inferenceTemplateChips = (async () => list([{ vendor: "amd", name: "AMD Radeon 8060S", category: "workstation-consumer", architecture: "RDNA 3.5", arch_id: "gfx1151" }])) as never;
+  render(<I18nextProvider i18n={i18n}><MemoryRouter><InferenceTemplatesPage /></MemoryRouter></I18nextProvider>);
+  fireEvent.click(await screen.findByRole("button", { name: /Add Chip/ }));
+  const dialog = await screen.findByRole("dialog", { name: "Add a hypothetical GPU" });
+  fireEvent.mouseDown(within(dialog).getByRole("combobox"));
+  await waitFor(() => assert.equal(document.querySelectorAll(".ant-select-item-option").length > 0, true));
+  const option = [...document.querySelectorAll(".ant-select-item-option")].find((el) => el.textContent?.includes("gfx1151"));
+  assert.equal(option !== undefined, true);
+  fireEvent.click(option!);
+  fireEvent.click(within(dialog).getByRole("button", { name: "Add", exact: true }));
+  const { loadHypotheticalChips } = await import("../src/pages/InferenceTemplatesPage.tsx");
+  await waitFor(() => assert.equal(loadHypotheticalChips().some((chip) => chip.vendor === "amd" && chip.arch_id === "gfx1151"), true));
+});
+
+
+test("chip filtering sends architecture to the server and accepts Go-only predicate syntax", async () => {
+  let requested: Record<string, string[]> | undefined;
+  const model = { ...upstreamModel, display_title: "Go regex model", specs: [{ ...h100Spec, gpus: { vendor: "amd", name: "(?i)radeon", arch_id: "gfx1151" } }] };
+  api.inferenceTemplates = (async (query) => {
+    requested = query.extra;
+    return { items: [model], page: 1, page_size: 200, total: 1 };
+  }) as never;
+  api.detectedInferenceTemplateChips = (async () => list([{ vendor: "amd", name: "Radeon 8060S", arch_id: "gfx1151" }])) as never;
+  api.inferenceTemplateChips = (async () => list([])) as never;
+  renderList();
+  await screen.findByText("Go regex model");
+  await userEvent.setup().click(screen.getByRole("button", { name: "Radeon 8060S · gfx1151" }));
+  await waitFor(() => assert.deepEqual(requested, { gpu: ["Radeon 8060S"], vendor: ["amd"], arch_id: ["gfx1151"] }));
+  assert.equal((await screen.findByText("Go regex model")).textContent, "Go regex model");
+});
+
+test("chip query failure does not show unfiltered models as compatible", async () => {
+  api.inferenceTemplates = (async (query) => {
+    if (query.extra?.gpu) throw new Error("hardware query failed");
+    return { items: [upstreamModel], page: 1, page_size: 200, total: 1 };
+  }) as never;
+  api.detectedInferenceTemplateChips = (async () => list([{ vendor: "nvidia", name: "H100", cc: "9.0" }])) as never;
+  api.inferenceTemplateChips = (async () => list([])) as never;
+  renderList();
+  await screen.findByText("DeepSeek Model");
+  await userEvent.setup().click(screen.getByRole("button", { name: "H100" }));
+  await screen.findByText(/hardware query failed/);
+  assert.equal(screen.queryByText("DeepSeek Model") === null, true);
+});
+
+test("detail displays server support warnings and preferred engine without re-evaluating predicates", async () => {
+  api.inferenceTemplate = (async () => ({ ...upstreamModel,
+    detected_support: { preferred_engine: "sglang", warnings: [{ reason: "server unsupported rule", quantization: "fp8", alternative_available: true }] },
+  })) as never;
+  api.detectedInferenceTemplateChips = (async () => { throw new Error("detail must use server support projection"); }) as never;
+  renderDetail();
+  assert.equal((await screen.findByText("910B (A2) · INT8 W8A8 spec")).textContent, "910B (A2) · INT8 W8A8 spec");
+  assert.ok(screen.getByText("server unsupported rule"));
+  assert.ok(screen.getByText(i18n.t("flat.alternativeAvailable")));
 });

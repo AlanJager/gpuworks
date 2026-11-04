@@ -16,6 +16,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/internal/server/parallelism"
 	"gpuworks.ai/gpuworks/internal/server/placement"
+	"gpuworks.ai/gpuworks/internal/server/scheduler"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -30,6 +31,10 @@ type LaunchRequest struct {
 	// Preview marks an offline preview: no port is reserved and no GPU assigned,
 	// and a placement that cannot be resolved is still previewed symbolically.
 	Preview bool
+	// AllowUnresolvedImage permits a resource-only form preview before its
+	// runtime image is chosen. It never applies to an actual launch and does
+	// not invent image acquisition facts or an entrypoint.
+	AllowUnresolvedImage bool
 	// Unloaded previews the node as if nothing ran on it (Input.Unloaded).
 	Unloaded bool
 	// ExcludeDeploymentID previews the node without that deployment's
@@ -136,16 +141,22 @@ func PlanLaunch(ctx context.Context, st *store.Store, networks Networks, req Lau
 	if err != nil {
 		return plan, err
 	}
-	profile, err := deploy.ProfileForEngine(req.Engine)
+	vendor := gpu.Vendor
+	if vendor == "" {
+		vendor = req.Node.GPUVendor
+	}
+	profile, err := deploy.ProfileForTarget(req.Engine, vendor)
 	if err != nil {
 		return plan, err
 	}
 	plan.Profile = profile
-	imagePull, err := ImagePullPlanFor(st, nodeResolverOf(networks), req.Source, req.Node, req.Selection)
-	if err != nil {
-		return plan, err
+	if !(req.Preview && req.AllowUnresolvedImage && strings.TrimSpace(req.Source.Image) == "") {
+		imagePull, err := ImagePullPlanFor(st, nodeResolverOf(networks), req.Source, req.Node, req.Selection)
+		if err != nil {
+			return plan, err
+		}
+		plan.ImagePull = imagePull
 	}
-	plan.ImagePull = imagePull
 
 	apiPort := req.APIPort
 	if req.Preview {
@@ -154,22 +165,7 @@ func PlanLaunch(ctx context.Context, st *store.Store, networks Networks, req Lau
 	if req.Topology.Headless {
 		apiPort = 0
 	}
-	arch := req.Node.ArchOf(gpu)
-	params := deploy.Params{
-		ModelPath: req.ModelMount, ServedName: req.ServedName, APIPort: apiPort,
-		AssignedGPUs: assigned, TensorParallel: parallel.TP, PipelineParallel: parallel.PP,
-		Sleepable: req.Sleepable, Quick: req.Quick,
-		TemplateArgs: req.Selection.ExtraArgs, TemplateEnv: req.Selection.Env, ExtraArgs: req.ExtraArgs,
-		Arch: arch.Family, ArchID: arch.ID, ComputeCapability: gpu.ComputeCapability, Vendor: gpu.Vendor,
-		ModelType: req.Model.Arch,
-		NNodes:    req.Topology.NNodes, NodeRank: req.Topology.NodeRank,
-		MasterAddr: req.MasterAddr, MasterPort: req.MasterPort,
-		Headless: req.Topology.Headless, NodeAddress: req.Topology.NodeAddress,
-		ComputeNetwork: req.Topology.Network,
-		PD:             req.PD,
-		Host:           deploy.RuntimeBindHost(req.Node.RuntimeDriver),
-		RuntimeDriver:  req.Node.RuntimeDriver,
-	}
+	params := launchParams(req, gpu, assigned, parallel, apiPort)
 	plan.Params = params
 
 	resolver := req.Selection.PlacementResolver()
@@ -187,7 +183,7 @@ func PlanLaunch(ctx context.Context, st *store.Store, networks Networks, req Lau
 		return plan, err
 	}
 	resolved, warnings, err := deploy.ResolveLaunchWithWarnings(deploy.ResolveLaunchInput{
-		Engine: engine, Params: params, Image: req.Source.Image,
+		Engine: engine, Params: params, Image: req.Source.Image, TargetValidation: deploy.ValidateAssignedTarget,
 		ContainerOverrides: req.Source.Overrides, ComponentModelMount: componentModelMount(req),
 		Entrypoint: req.Selection.Entrypoint, PreStartArgv: req.Selection.PreStartArgv,
 		PreStartScript: req.Selection.PreStartScript, RuntimeAssets: req.Selection.RuntimeAssets,
@@ -202,6 +198,10 @@ func PlanLaunch(ctx context.Context, st *store.Store, networks Networks, req Lau
 		ModelWeightBytes: plan.Output.Breakdown.WeightBytes,
 	})
 	if err != nil {
+		if refusal := targetLaunchRefusal(err); refusal != nil {
+			plan.Output.Result = scheduler.Result{OK: false, Message: *refusal, Explain: scheduler.Explain{Filters: []scheduler.Reason{*refusal}}}
+			return plan, nil
+		}
 		return plan, fmt.Errorf("deployment %d resolve launch: %w", req.Source.DeploymentID, err)
 	}
 	plan.Resolved = resolved
@@ -209,18 +209,78 @@ func PlanLaunch(ctx context.Context, st *store.Store, networks Networks, req Lau
 	return plan, nil
 }
 
+// launchParams is shared by the symbolic admission preview and final launch.
+// Only allocation and the API port differ; both use ResolveLaunch for command
+// precedence, image entrypoints, environment and engine hooks.
+func launchParams(req LaunchRequest, gpu store.GPU, assigned int, parallel parallelism.Spec, apiPort int) deploy.Params {
+	vendor := req.Node.VendorOf(gpu)
+	modelType := ""
+	if req.Model != nil {
+		modelType = req.Model.Arch
+	}
+	arch := req.Node.ArchOf(gpu)
+	return deploy.Params{
+		ModelPath: req.ModelMount, ServedName: req.ServedName, APIPort: apiPort,
+		AssignedGPUs: assigned, TensorParallel: parallel.TP, PipelineParallel: parallel.PP,
+		Sleepable: req.Sleepable, Quick: req.Quick,
+		TemplateArgs: req.Selection.ExtraArgs, TemplateEnv: req.Selection.Env, ExtraArgs: req.ExtraArgs,
+		Arch: arch.Family, ArchID: arch.ID, ComputeCapability: gpu.ComputeCapability, Vendor: vendor,
+		ModelType: modelType,
+		NNodes:    req.Topology.NNodes, NodeRank: req.Topology.NodeRank,
+		DistGroup: req.Topology.Group, DistRole: req.Topology.Role, DistAttempt: req.Topology.Attempt,
+		MasterAddr: req.MasterAddr, MasterPort: req.MasterPort,
+		Headless: req.Topology.Headless, NodeAddress: req.Topology.NodeAddress,
+		ComputeNetwork: req.Topology.Network,
+		PD:             req.PD,
+		Host:           deploy.RuntimeBindHost(req.Node.RuntimeDriver),
+		RuntimeDriver:  req.Node.RuntimeDriver, VRAMLimitBytes: req.VRAMLimitBytes, Partitioned: req.PartitionBackend != "", PartitionBackend: req.PartitionBackend,
+	}
+}
+
+func previewRequestedFeatures(req LaunchRequest) (*proto.RequestedFeatures, error) {
+	gpu, err := launchGPU(req.Node, req.Placement.GPUIndexes)
+	if err != nil {
+		return nil, err
+	}
+	_, assigned, parallel := previewPlacement(req, Output{})
+	params := launchParams(req, gpu, assigned, parallel, PreviewAPIPort)
+	params.AssignedGPUs = 0
+	params.TensorParallel = 0
+	engine, err := deploy.SelectEngine(req.Engine)
+	if err != nil {
+		return nil, err
+	}
+	resolved, err := deploy.ResolveLaunch(deploy.ResolveLaunchInput{
+		Engine: engine, Params: params, Image: req.Source.Image, ContainerOverrides: req.Source.Overrides,
+		ComponentModelMount: componentModelMount(req), Entrypoint: req.Selection.Entrypoint,
+		PreStartArgv: req.Selection.PreStartArgv, PreStartScript: req.Selection.PreStartScript,
+		RuntimeAssets: req.Selection.RuntimeAssets, ComponentMounts: req.ComponentMounts,
+		TemplateShmBytes: req.Selection.ShmBytes, TemplateMemlockUnlimited: req.Selection.MemlockUnlimited,
+		APIContract: req.APIContract, AllowUnresolved: true, TargetValidation: deploy.CollectTargetCapabilities,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return resolved.RequestedFeatures, nil
+}
+
 // launchInput is the estimate and schedule input for one launch. It is the same
 // for the preview and the controller by construction: both spend the catalog's
 // spec and runtime weights, its measured KV cost, and the node's cache fact.
 func launchInput(st *store.Store, req LaunchRequest) (Input, error) {
 	componentWeightBytes, componentArtifacts := componentSum(req.Selection.Components)
+	validator, err := TemplateGPUValidator(req.Selection)
+	if err != nil {
+		return Input{}, err
+	}
+	requests, features := targetRequestsFor(req, validator, targetRequestCache{}, previewRequestedFeatures)
 	return Input{
 		Model: req.Model, Node: req.Node, Engine: req.Engine, Quick: req.Quick,
 		SpecWeightBytes:      req.Selection.WeightBytes,
 		RuntimeWeightBytes:   req.Selection.RuntimeWeightBytes,
 		ComponentWeightBytes: componentWeightBytes,
 		ComponentArtifacts:   componentArtifacts,
-		KVBytesPerToken:      CatalogKVBytesPerToken(st, nil, req.Model, req.Engine),
+		KVBytesPerToken:      catalogKVBytesPerTokenForSelection(st, req.Selection.TemplateID, req.Selection.ModelID, req.Model, req.Engine),
 		RuntimeImageBytes:    CatalogImageBytes(st, req.Source.Image),
 		RuntimeImageCached:   runtimeImageCached(st, req),
 		Unloaded:             req.Unloaded,
@@ -233,8 +293,10 @@ func launchInput(st *store.Store, req LaunchRequest) (Input, error) {
 		VRAMLimitBytes:       req.VRAMLimitBytes,
 		PartitionBackend:     req.PartitionBackend,
 		Sleepable:            req.Sleepable,
+		PD:                   req.PD != nil,
 		PlacementResolver:    req.Selection.PlacementResolver(),
-		ModelRules:           req.ModelRules,
+		RequestedFeatures:    features, TargetRequests: requests, ValidateGPU: validator,
+		ModelRules: req.ModelRules,
 	}, nil
 }
 

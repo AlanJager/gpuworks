@@ -309,6 +309,8 @@ func ToolCommand(vendor string) string {
 		return "npu-smi info"
 	case VendorHygon:
 		return "hy-smi"
+	case VendorAMD:
+		return "rocminfo"
 	}
 	return ""
 }
