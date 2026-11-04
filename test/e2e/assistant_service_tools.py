@@ -560,6 +560,19 @@ def test_assistant_service_tools(page, context, server, artifacts, report, local
     node_body = created_node.json()
     artifacts.remember(node_body["token"])
     node_uuid = node_body["node"]["uuid"]
+    # 23.x: the two refusal checks further down claim the labels were not changed. They used to
+    # compare an empty map with itself, because nothing ever wrote a label to this node, and that
+    # comparison could not fail whatever the refused tool path did. A stored label is put in
+    # place first, and the seed is read back - if the seed silently fails, the preservation check
+    # would quietly become the same empty-to-empty comparison again, so it is asserted here.
+    label_probe = {"probe": "1"}
+    seeded = page.request.put(server.base + NODES + f"/{node_uuid}/labels",
+                              data={"labels": label_probe})
+    check(seeded.status == 200, f"seeding the label this case protects: HTTP {seeded.status}")
+    labels_seeded = page.request.get(server.base + NODES + f"/{node_uuid}").json()["labels"]
+    check(labels_seeded == label_probe,
+          f"the label probe did not seed a value ({labels_seeded!r}), so every preservation "
+          f"check below would compare two empty maps and could not fail")
     inventory_response = page.request.get(server.base + NODES)
     check(inventory_response.status == 200,
           f"assistant inventory HTTP {inventory_response.status}")
@@ -643,8 +656,9 @@ def test_assistant_service_tools(page, context, server, artifacts, report, local
           ["tool", "final", "slow", "denied", "denied_final"],
           f"fixture requests differ: {[item['kind'] for item in denied_snapshot['requests']]}")
     after_denied_nodes = page.request.get(server.base + NODES + f"/{node_uuid}")
-    check(after_denied_nodes.json()["labels"] == {},
-          "the assistant tool path changed node labels")
+    check(after_denied_nodes.json()["labels"] == labels_seeded,
+          f"the assistant tool path changed node labels "
+          f"{labels_seeded!r} -> {after_denied_nodes.json().get('labels')!r}")
     report["last_step"] = "denied-route-rejected"
 
     # 23.5: the answer is untrusted output. A model answer carrying markup, a script body, a
@@ -695,9 +709,15 @@ def test_assistant_service_tools(page, context, server, artifacts, report, local
           f"the write attempt never reached the tool: {write_text[:500]}")
     check('"status":"error"' in write_text and "no GET endpoint" in write_text,
           f"the write attempt was not refused as a read: {write_text[:500]}")
-    check(page.request.get(server.base + NODES + f"/{node_uuid}").json()["labels"] == {},
-          "the write attempt changed node labels")
-    report["write_attempt"] = {"refused": True, "labels_unchanged": True,
+    labels_after_attempt = page.request.get(
+        server.base + NODES + f"/{node_uuid}").json()["labels"]
+    check(labels_after_attempt == labels_seeded,
+          f"the write attempt changed node labels "
+          f"{labels_seeded!r} -> {labels_after_attempt!r}")
+    report["write_attempt"] = {"refused": True,
+                               "labels_before_probe": labels_seeded,
+                               "labels_after_attempt": labels_after_attempt,
+                               "labels_unchanged": labels_after_attempt == labels_seeded,
                                "result": write_text[:400]}
     report["last_step"] = "write-attempt-refused"
 
