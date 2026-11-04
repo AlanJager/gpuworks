@@ -191,9 +191,6 @@ func run(o options) error {
 	if len(o.extraPullSources) > 0 && len(o.extraImages) != 1 {
 		return errors.New("-extra-pull-sources is for a single -extra-image; use -extra-mirrors for several")
 	}
-	if o.baseGolden && len(o.extraImages) == 0 {
-		return errors.New("-base-golden needs -extra-image (there is nothing else to add)")
-	}
 	if o.diskGB < 100 {
 		return fmt.Errorf("disk-gb=%d is below the 100 GiB base image", o.diskGB)
 	}
@@ -383,9 +380,11 @@ func buildSteps(o options, files []goldenimage.File) []buildStep {
 		if len(o.removeImages) > 0 {
 			steps = append(steps, buildStep{"remove-images", removeImagesCommand(o.removeImages), 10 * time.Minute})
 		}
+		steps = append(steps, buildStep{"docker-cgroupfs", dockerCgroupfsCommand(), 5 * time.Minute})
 	} else {
 		steps = append(steps,
 			buildStep{"install-docker", installDockerCommand(), 40 * time.Minute},
+			buildStep{"docker-cgroupfs", dockerCgroupfsCommand(), 5 * time.Minute},
 			buildStep{"pull-runner-image", pullImageCommand(o.dockerImage, o.pullSources), 60 * time.Minute},
 			buildStep{"prepare-model", goldenimage.PrepareModelCommand(o.modelPath, o.dockerImage, files, ""), 30 * time.Minute},
 		)
@@ -393,7 +392,7 @@ func buildSteps(o options, files []goldenimage.File) []buildStep {
 	for _, image := range o.extraImages {
 		steps = append(steps, buildStep{"pull-extra-image", pullImageCommand(image, o.extraSources(image)), 60 * time.Minute})
 	}
-	return append(steps, buildStep{"validate-source", bootedChecksCommand(o.modelPath, o.dockerImage, o.extraImages, o.removeImages), 10 * time.Minute})
+	return append(steps, buildStep{"validate-source", bootedChecksCommand(o.modelPath, o.dockerImage, o.extraImages, o.removeImages) + cgroupfsCheck, 10 * time.Minute})
 }
 
 // copyEverywhere copies the image to every other region in parallel and waits
@@ -466,7 +465,7 @@ func validateImage(ctx context.Context, keyID, secret, region, imageID, runID st
 	if err := vm.wait(ctx); err != nil {
 		return err
 	}
-	out, err := vm.run(ctx, bootedChecksCommand(o.modelPath, o.dockerImage, o.extraImages, o.removeImages))
+	out, err := vm.run(ctx, bootedChecksCommand(o.modelPath, o.dockerImage, o.extraImages, o.removeImages)+cgroupfsCheck)
 	if err != nil {
 		return fmt.Errorf("%w: %s", err, tail(out, 1500))
 	}

@@ -281,28 +281,28 @@ func TestBuildStepsOnAnEarlierGoldenImageOnlyAddTheExtraImage(t *testing.T) {
 		return strings.Join(names, ",")
 	}
 	base := options{modelPath: "/opt/m", dockerImage: "runner:a", pullSources: []string{"runner:a"}}
-	if got := phases(base); got != "install-docker,pull-runner-image,prepare-model,validate-source" {
+	if got := phases(base); got != "install-docker,docker-cgroupfs,pull-runner-image,prepare-model,validate-source" {
 		t.Fatalf("fresh build phases = %s", got)
 	}
 	withExtra := base
 	withExtra.extraImages, withExtra.extraPullSources = []string{"runner:v100"}, []string{"mirror/runner:v100", "runner:v100"}
-	if got := phases(withExtra); got != "install-docker,pull-runner-image,prepare-model,pull-extra-image,validate-source" {
+	if got := phases(withExtra); got != "install-docker,docker-cgroupfs,pull-runner-image,prepare-model,pull-extra-image,validate-source" {
 		t.Fatalf("fresh build with an extra image phases = %s", got)
 	}
 	layered := withExtra
 	layered.baseGolden = true
 	steps := buildSteps(layered, nil)
-	if got := phases(layered); got != "validate-base,pull-extra-image,validate-source" {
+	if got := phases(layered); got != "validate-base,docker-cgroupfs,pull-extra-image,validate-source" {
 		t.Fatalf("layered build phases = %s (it must not reinstall Docker or touch the model)", got)
 	}
 	if strings.Contains(steps[0].command, "runner:v100") {
 		t.Error("the base check must not expect the image it is about to add")
 	}
-	pull := steps[1].command
+	pull := steps[2].command
 	if strings.Index(pull, "docker pull 'mirror/runner:v100'") > strings.Index(pull, "docker pull 'runner:v100'") || !strings.Contains(pull, "docker tag \"$ok\" 'runner:v100'") {
 		t.Errorf("extra image pull must try the mirror first and tag the canonical name:\n%s", pull)
 	}
-	if !strings.Contains(steps[2].command, "GPUWORKS_EXTRA_IMAGE") || !strings.Contains(imageDescription(layered), "runner:v100") {
+	if !strings.Contains(steps[3].command, "GPUWORKS_EXTRA_IMAGE") || !strings.Contains(imageDescription(layered), "runner:v100") {
 		t.Error("the final check and the image description must name the extra image")
 	}
 }
@@ -315,7 +315,7 @@ func TestLayeredBuildRemovesRetiredImagesBeforeAddingTheNewOne(t *testing.T) {
 	for _, step := range steps {
 		names = append(names, step.phase)
 	}
-	if got := strings.Join(names, ","); got != "validate-base,remove-images,pull-extra-image,validate-source" {
+	if got := strings.Join(names, ","); got != "validate-base,remove-images,docker-cgroupfs,pull-extra-image,validate-source" {
 		t.Fatalf("phases = %s (the old runner must go before the new one is pulled)", got)
 	}
 	remove := steps[1].command
@@ -327,7 +327,7 @@ func TestLayeredBuildRemovesRetiredImagesBeforeAddingTheNewOne(t *testing.T) {
 	if strings.Contains(steps[0].command, "runner:r2") {
 		t.Error("the base check must not depend on the image about to be removed")
 	}
-	if final := steps[3].command; !strings.Contains(final, "if docker image inspect 'runner:r2'") || !strings.Contains(final, "still present") {
+	if final := steps[4].command; !strings.Contains(final, "if docker image inspect 'runner:r2'") || !strings.Contains(final, "still present") {
 		t.Errorf("the final check must fail when the removed image is still there:\n%s", final)
 	}
 }
@@ -354,17 +354,17 @@ func TestSeveralExtraImagesArePulledFromTheMirrorsInOrder(t *testing.T) {
 	for _, step := range steps {
 		names = append(names, step.phase)
 	}
-	if got := strings.Join(names, ","); got != "validate-base,pull-extra-image,pull-extra-image,validate-source" {
+	if got := strings.Join(names, ","); got != "validate-base,docker-cgroupfs,pull-extra-image,pull-extra-image,validate-source" {
 		t.Fatalf("phases = %s", got)
 	}
 	for i, image := range o.extraImages {
-		pull := steps[1+i].command
+		pull := steps[2+i].command
 		swr, quay, own := strings.Index(pull, "docker pull 'swr.example/"+image+"'"), strings.Index(pull, "docker pull 'quay.example/"+image+"'"), strings.Index(pull, "docker pull '"+image+"'")
 		if swr < 0 || quay < swr || own < quay {
 			t.Errorf("%s must be tried from swr, then quay, then its own name:\n%s", image, pull)
 		}
 	}
-	final := steps[3].command
+	final := steps[4].command
 	for _, image := range o.extraImages {
 		if !strings.Contains(final, "gpu_smoke '"+image+"'") {
 			t.Errorf("final check does not run %s on the GPU", image)
@@ -376,6 +376,33 @@ func TestSeveralExtraImagesArePulledFromTheMirrorsInOrder(t *testing.T) {
 	bad.regions, bad.diskGB, bad.extraPullSources = []string{"cn-beijing"}, 150, []string{"x/runner:r4"}
 	if err := run(bad); err == nil || !strings.Contains(err.Error(), "single -extra-image") {
 		t.Fatalf("-extra-pull-sources with two images: err = %v", err)
+	}
+}
+
+func TestEveryBuildSwitchesDockerToCgroupfsAndTheFinalCheckRequiresIt(t *testing.T) {
+	for _, o := range []options{
+		{modelPath: "/opt/m", dockerImage: "runner:a", pullSources: []string{"runner:a"}},
+		{modelPath: "/opt/m", dockerImage: "runner:a", baseGolden: true},
+	} {
+		steps := buildSteps(o, nil)
+		var cgroupfs, final string
+		for _, step := range steps {
+			if step.phase == "docker-cgroupfs" {
+				cgroupfs = step.command
+			}
+		}
+		final = steps[len(steps)-1].command
+		for _, want := range []string{"native.cgroupdriver=cgroupfs", "systemctl restart docker", "want cgroupfs"} {
+			if !strings.Contains(cgroupfs, want) {
+				t.Errorf("baseGolden=%v: cgroupfs step lacks %q:\n%s", o.baseGolden, want, cgroupfs)
+			}
+		}
+		if !strings.Contains(final, "GPUWORKS_DOCKER_CGROUP_DRIVER") {
+			t.Errorf("baseGolden=%v: final check does not require cgroupfs", o.baseGolden)
+		}
+		if o.baseGolden && strings.Contains(steps[0].command, "want cgroupfs") {
+			t.Error("the base check must not require cgroupfs: earlier golden images use the systemd driver")
+		}
 	}
 }
 
