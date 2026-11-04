@@ -390,6 +390,10 @@ def cleanup(server, token, report, holder):
     return bool(rows_ok and owned_ok)
 
 
+# The node advertises one GPU (GPUWORKS_FAKE_GPU is "A100x1,24576" below), so only one
+# deployment runs at a time and the rest queue in the pending state. Do not write an
+# assertion that expects several rows to be running at once: the count that reaches running
+# is 1 regardless of the batch size, and 10.3 failed by assuming the whole batch would.
 PAGE_ROWS = 11
 
 
@@ -1030,6 +1034,10 @@ def _row_names(page):
     fixture row here, so reading the wrong one compares nothing: the names taken from the page
     then share no value with the names the API reports.
     """
+    # nth-child(1) is the name column; nth-child(2) is served_name. Reading the second here
+    # made every comparison against the API's own names vacuous, because the two differ on
+    # every fixture row and the sets shared no value - 10.6 then reported all twelve rows as
+    # never shown. The column order is name, served_name, model, ... (DeploymentsPage.tsx:156).
     cells = page.locator(".ant-table-tbody tr.ant-table-row td:nth-child(1)")
     return [cells.nth(index).inner_text().strip() for index in range(cells.count())]
 
@@ -1044,6 +1052,12 @@ def _list_total(server, token, report):
 
 def _choose_page_size(page, size):
     """Pick a page size in the table's own size changer.
+
+    The chosen size is stored per table and survives a reload, so it is shared state between
+    the items in this file. Any later step that needs a particular row visible on page one has
+    to widen the size first: item 10.9 failed with "did not resolve to one name button: 0"
+    because 10.5 and 10.6 had left the size at 10 and the row it wanted was on page two.
+
 
     antd formats the option label itself, so its wording follows the locale ("20 / page" in
     English, "20 条/页" in Chinese). The option is therefore anchored on the leading number,
@@ -1565,12 +1579,15 @@ def exercise_refresh_contract_10_10(page, server, report, token, row_ids):
 def _open_state_filter(page, values, apply=True):
     """Open the state column's filter, tick the given state values, and apply.
 
-    antd renders each option as a menu item whose data-menu-id ends in the state value, and
-    the option's visible label is a sibling of the checkbox rather than its text: the
-    checkbox wrapper's own inner_text() comes back empty, and the label for the pulling state
-    is "Pulling image" rather than "pulling". The value is therefore taken from the id suffix,
-    which is also what the request carries. The class ant-table-column-has-filters does not
-    exist in this antd version (measured: count 0), so the trigger is found by its own class.
+    Select by the state value, never by the visible label. Three things make labels unusable
+    here, all measured: the checkbox wrapper's own inner_text() is the empty string (the label
+    is a sibling of the checkbox, not its text), the label for the pulling state reads
+    "Pulling image" rather than "pulling", and the wording follows the locale. The state value
+    rides in the menu item's data-menu-id suffix, which is also what ends up in the request.
+
+    The class ant-table-column-has-filters does NOT exist in this antd version (measured:
+    count 0); the trigger is found by ant-table-filter-trigger. Anyone checking antd's
+    documentation will expect the first one to be there.
     """
     page.locator(".ant-table-filter-trigger").first.click()
     dropdown = page.locator(".ant-table-filter-dropdown:visible").first
@@ -1593,9 +1610,11 @@ def _open_state_filter(page, values, apply=True):
 def _clear_state_filter(page):
     """Reset the state filter so the next reading is the unfiltered list.
 
-    Reset is the only link in the filter footer that restores the unfiltered request, so the
-    response it causes is captured with no state parameter on it; that is also the assertion
-    that the filter really was cleared rather than merely re-rendered.
+    Clicking Reset alone does NOT submit: it empties the popup's own selection, but the
+    column's value is controlled by the page (DeploymentsPage.tsx:214 filteredValue), so only
+    the footer's OK reports the new value and causes the unfiltered request. Waiting on a
+    response after Reset alone times out with "reset never produced an unfiltered list
+    request" - measured, twice. Both clicks are therefore needed.
     """
     page.locator(".ant-table-filter-trigger").first.click()
     dropdown = page.locator(".ant-table-filter-dropdown:visible").first
@@ -1861,6 +1880,10 @@ def exercise_row_actions_10_9(page, server, report, token, row_ids):
     # are, and the states they happen to be in are recorded rather than required to differ.
     # Three distinct rows are still required: opening one row three times would pass even if
     # every click ignored which row it was on.
+    #
+    # Do not add criteria the item does not ask for. Requiring three distinct STATES was such
+    # an invented condition, and it cost two runs on a correct product before the mistake was
+    # found; what 10.9 asks for is that each row is reached by its own business text.
     _, items = _list_total(server, token, report)
     by_id = {item["id"]: item for item in items}
     rows = [by_id[i] for i in row_ids if i in by_id]
