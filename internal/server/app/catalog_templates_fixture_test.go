@@ -11,10 +11,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"gpuworks.ai/gpuworks/internal/server/api"
-	"gpuworks.ai/gpuworks/internal/server/auth"
 	"gpuworks.ai/gpuworks/internal/server/store"
 	"gpuworks.ai/gpuworks/internal/server/templateexport"
 )
@@ -33,25 +31,7 @@ func TestCatalogTemplateUIFixtures(t *testing.T) {
 	f := newTemplateFixture(t)
 	f.update(t, "container_overrides", `{"env":{"HF_TOKEN":"hf_secret","VLLM_LOGGING_LEVEL":"DEBUG"}}`)
 	reply := templateexport.ProbeReply{HTTPStatus: http.StatusOK}
-	signer, err := auth.NewTokenSigner(filepath.Join(t.TempDir(), "auth-secret"), time.Hour)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, _, _, err := f.st.EnsureAdmin("admin", "gpuworks-test-password-2026"); err != nil {
-		t.Fatal(err)
-	}
-	user, err := f.st.AuthenticateUser("admin", "gpuworks-test-password-2026")
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, session, err := f.st.CreateManagementSession(user, time.Hour, 24*time.Hour)
-	if err != nil {
-		t.Fatal(err)
-	}
-	token, err := signer.Sign(auth.Claims{UserID: user.ID, Username: user.Username, Role: user.Role, SessionID: session.TokenHash})
-	if err != nil {
-		t.Fatal(err)
-	}
+	signer, token := adminSession(t, f.st)
 	router := api.Router(api.Deps{Store: f.st, AuthSigner: signer, CatalogTemplates: catalogTemplates{store: f.st,
 		probe: func(context.Context, uint, string, map[string]any) templateexport.ProbeReply { return reply }}})
 	call := func(method, path, contentType, body string) (int, string) {
@@ -84,7 +64,7 @@ func TestCatalogTemplateUIFixtures(t *testing.T) {
 	if err := json.Unmarshal([]byte(exported), &answer); err != nil {
 		t.Fatal(err)
 	}
-	if status, body := importYAML(t, router, token, answer.YAML); status != http.StatusOK {
+	if status, body := postYAML(router, token, "/api/v1/inference-templates/import", answer.YAML); status != http.StatusOK {
 		t.Fatalf("import = %d %s", status, body)
 	} else {
 		checkCatalogTemplateFixture(t, dir, "imported", body, update)
@@ -106,18 +86,6 @@ func TestCatalogTemplateUIFixtures(t *testing.T) {
 	if update {
 		t.Fatalf("regenerated fixtures under %s; rerun without %s", dir, catalogTemplateFixturesEnv)
 	}
-}
-
-// importYAML posts a template document the way the console's file upload
-// does (api.importInferenceTemplates): the file itself as the body.
-func importYAML(t *testing.T, router http.Handler, token, document string) (int, string) {
-	t.Helper()
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/inference-templates/import", strings.NewReader(document))
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("Content-Type", "application/yaml")
-	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, req)
-	return rec.Code, rec.Body.String()
 }
 
 func checkCatalogTemplateFixture(t *testing.T, dir, name, body string, update bool) {
