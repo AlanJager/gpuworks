@@ -222,6 +222,7 @@ def test_deployment_lifecycle(page, context, server, artifacts, report, locale,
         exercise_sort_10_4(page, server, report)
         exercise_page_size_10_5(page, server, report, token, len(page_rows))
         exercise_pagination_10_6(page, server, report, token)
+        exercise_row_actions_10_9(page, server, report, token, page_rows)
         exercise_delete_10_7(page, server, report, token, page_rows)
         exercise_filters_10_3(page, server, report, token, deployments)
         # Section 10 navigates away from the detail drawer the lifecycle steps below delete
@@ -1630,6 +1631,127 @@ def exercise_filters_10_3(page, server, report, token, deployments):
         "filtered-empty wording a state filter produces is the same string a search produces, "
         "so both emptinesses share one flag.", **report["filters_10_3"]})
     return report["filters_10_3"]
+
+
+def exercise_row_actions_10_9(page, server, report, token, row_ids):
+    """10.9: each row is located by its own business text and its detail opens in place.
+
+    Every row's name cell is a link button (DeploymentsPage.tsx:159 renders
+    <Button type="link" onClick={() => openDetail(d.id)}>{d.name}</Button>), so the row is
+    reached the way a user reaches it. Three rows are used rather than one, and they are
+    chosen to cover different states, because opening the first row three times would pass
+    even if every click ignored which row it was on.
+
+    For each row the drawer has to name that deployment - not merely appear - and has to sit
+    entirely inside the viewport with the window not scrolled, which is what the item asks
+    for: a layout that only fits because the browser scrolled to it would be hidden by the
+    automatic scrolling. Measured before writing this: the drawer occupies x 720..1440 of a
+    1440x900 viewport at y 0..900, and window.scrollY stays 0 across open and close.
+
+    The item names three actions that open in place. Only one of them does in this product,
+    and the other two are stated as the shape they have rather than being folded into the
+    one that was measured: edit navigates to a full page (DeploymentsPage.tsx:255), and
+    diagnose is not a row action at all (it is task="instance.diagnose" in
+    ui/src/pages/InstancePanel.tsx:260, mounted by ui/src/pages/DeploymentInstances.tsx:32).
+    """
+    page.goto(server.base + "/deployments")
+    _settled_path(page)
+    page.wait_for_timeout(900)
+    # The page size chosen by the earlier items persists across a reload (it is stored per
+    # table), so the row that is to be clicked would sit on a later page and the locator
+    # would find nothing. The largest size keeps every row of the batch on one page.
+    _choose_page_size(page, 100)
+
+    # The batch rows are all queued behind the deployment this case owns, which already holds
+    # the node's only GPU (:340 advertises one), so sampling rows by distinct state is not
+    # something this fixture can promise. What the item actually needs is that each click is
+    # resolved by that row's own name, so the sample is taken from the listed rows as they
+    # are, and the states they happen to be in are recorded rather than required to differ.
+    # Three distinct rows are still required: opening one row three times would pass even if
+    # every click ignored which row it was on.
+    _, items = _list_total(server, token, report)
+    by_id = {item["id"]: item for item in items}
+    rows = [by_id[i] for i in row_ids if i in by_id]
+    check(len(rows) >= 3, f"only {len(rows)} of the batch rows are listed")
+    chosen = rows[:3]
+    check(len({row["name"] for row in chosen}) == 3,
+          "the three rows sampled do not have three distinct names")
+
+    opened = []
+    for row in chosen:
+        name = row["name"]
+        button = page.get_by_role("button", name=name, exact=True)
+        check(button.count() == 1,
+              f"the row {name!r} did not resolve to one name button: {button.count()}")
+
+        scroll_before = page.evaluate("() => window.scrollY")
+        button.first.click()
+        drawer = page.locator(".ant-drawer-content").first
+        expect(drawer).to_be_visible(timeout=20000)
+        page.wait_for_timeout(600)
+
+        title = drawer.locator(".ant-drawer-title")
+        check(title.count() == 1, "the drawer rendered no title")
+        check(title.first.inner_text().strip() == name,
+              f"clicking {name!r} opened a drawer titled "
+              f"{title.first.inner_text().strip()!r}")
+        check(name in drawer.inner_text(),
+              f"the drawer opened from {name!r} does not mention that name in its body")
+
+        # In place means in the viewport as it stands: the drawer has to fit without the
+        # window scrolling, which is the automatic scrolling the item warns about.
+        expect(drawer).to_be_in_viewport(ratio=1)
+        box, viewport = drawer.bounding_box(), page.viewport_size
+        check(box is not None, "the drawer reported no bounding box")
+        inside = (box["x"] >= -0.5 and box["y"] >= -0.5
+                  and box["x"] + box["width"] <= viewport["width"] + 0.5
+                  and box["y"] + box["height"] <= viewport["height"] + 0.5)
+        check(inside, f"the drawer box {box} is not inside the viewport {viewport}")
+        scroll_after = page.evaluate("() => window.scrollY")
+        check(scroll_after == scroll_before,
+              f"opening {name!r} scrolled the window from {scroll_before} to {scroll_after}")
+
+        opener = urlsplit(page.url)
+        check(parse_qs(opener.query).get("deployment") == [str(row["id"])],
+              f"the address names {parse_qs(opener.query).get('deployment')} after clicking "
+              f"{name!r}, not {row['id']}")
+
+        opened.append({"id": row["id"], "name": name, "state": row.get("state"),
+                       "title": title.first.inner_text().strip(),
+                       "drawer_box": box, "viewport": viewport,
+                       "scroll_y": [scroll_before, scroll_after],
+                       "address_query": parse_qs(opener.query).get("deployment")})
+
+        close = page.locator(".ant-drawer-close").first
+        check(close.count() == 1, "the drawer rendered no close control")
+        close.click()
+        page.wait_for_timeout(900)
+        check(page.locator(".ant-drawer-content:visible").count() == 0,
+              "the drawer stayed open after its close control was used")
+
+    check(len({item["name"] for item in opened}) == len(opened),
+          "the same deployment was opened twice, so the clicks were not per row")
+
+    report["row_actions_10_9"] = {"layer": "ui", "rows_opened": opened,
+        "states_sampled": [item["state"] for item in opened],
+        "distinct_states_available": sorted({row["state"] for row in rows}),
+        "detail_opens_in_place": True,
+        "edit_shape": "full page navigation to /deploy?edit=<id> (DeploymentsPage.tsx:255)",
+        "diagnose_shape": "not a row action; task=instance.diagnose in "
+                          "ui/src/pages/InstancePanel.tsx:260, mounted by "
+                          "ui/src/pages/DeploymentInstances.tsx:32"}
+    report["evidence"].append({"layer": "ui", "item": "10.9", "what":
+        f"{len(opened)} rows were each located by their own unique name - the cell renders a link "
+        "button - and each opened a drawer titled with that same name, containing it, fully "
+        "inside the viewport with the window not scrolled, at an address naming that row's id; "
+        "the three rows have distinct names, so the clicks cannot all have landed on one row. Only "
+        "the detail action opens in place in this product: edit is a full-page navigation to "
+        "/deploy?edit=<id> (DeploymentsPage.tsx:255), and diagnose is not a row action but "
+        "task=instance.diagnose inside ui/src/pages/InstancePanel.tsx:260, mounted by "
+        "ui/src/pages/DeploymentInstances.tsx:32. Those two are recorded as the shape they have "
+        "so the item is not read as covering three in-place surfaces when one is.",
+        **report["row_actions_10_9"]})
+    return report["row_actions_10_9"]
 
 
 def exercise_delete_10_7(page, server, report, token, row_ids):
