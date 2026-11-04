@@ -138,7 +138,7 @@ def materialize(source, mapping_path, output, docker='docker', docker_host=None,
             raise ValueError(f'mapping for {placeholder} needs ref and image_id')
         ref, expected = item['ref'], item['image_id']
         if (not isinstance(ref, str) or not IMAGE_REF.fullmatch(ref)
-                or ref.startswith(('gpuworks-local/', 'docker.io/zhangckid/'))
+                or ref.startswith('gpuworks-local/')
                 or not isinstance(expected, str) or not DIGEST.fullmatch(expected)):
             raise ValueError(f'invalid image mapping for {placeholder}')
         actual = subprocess.run([docker, '--host', endpoint, 'image', 'inspect', ref,
