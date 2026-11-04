@@ -24,7 +24,10 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import time
 import traceback
+import urllib.error
+import urllib.request
 from urllib.parse import urlsplit
 import uuid
 
@@ -94,6 +97,305 @@ def capture_auth_response(cdp, event, artifacts):
 # Mainline: 独立真实server/SQLite → 深链错误密码后UI登录 → 两标签刷新与身份回读
 # → UI注销 → 原Cookie和登录Bearer真实401、第二标签重新认证 → UI重登后双标签恢复且旧凭据仍401。
 # Contract: gpuworks/session/two-tab-logout-relogin
+def _duration_seconds(text):
+    """Seconds in a Go duration string such as '2s', '1500ms' or '1m'."""
+    if not isinstance(text, str) or not text.strip():
+        return 0.0
+    value = text.strip()
+    for suffix, scale in (("ms", 0.001), ("ns", 1e-9), ("us", 1e-6), ("s", 1.0), ("m", 60.0), ("h", 3600.0)):
+        if value.endswith(suffix):
+            return float(value[: -len(suffix)]) * scale
+    raise ValueError(f"unsupported duration: {text!r}")
+
+
+def _raw(base, method, path, token="", body=None, headers=None):
+    """A fresh transport that returns raw bytes, so binary downloads can be scanned."""
+    hdrs = {"Content-Type": "application/json"}
+    if token:
+        hdrs["Authorization"] = f"Bearer {token}"
+    hdrs.update(headers or {})
+    data = None if body is None else (body if isinstance(body, bytes) else json.dumps(body).encode())
+    request = urllib.request.Request(base + path, method=method, headers=hdrs, data=data)
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    try:
+        response = opener.open(request, timeout=20)
+    except urllib.error.HTTPError as error:
+        response = error
+    with response:
+        return response.status, dict(response.headers), response.read()
+
+
+def _plaintext_hits(payload, secrets):
+    """Which live secrets appear verbatim in these bytes.
+
+    Only values long and distinctive enough to identify a credential are searched. The
+    fixture password is deliberately excluded: "password" is also an ordinary JSON field
+    name, so searching for it matches the redacted request record ("password":"[REDACTED]")
+    and reports a leak that is really the redaction working.
+    """
+    hits = []
+    for label, value in secrets.items():
+        if len(value) < 12:
+            continue
+        for needle in {value, json.dumps(value)[1:-1], base64.b64encode(value.encode()).decode()}:
+            if needle and needle.encode() in payload:
+                hits.append(label)
+                break
+    return hits
+
+
+def exercise_credential_expiry(server, report, play, idle, artifacts):
+    """7.4: a credential performs a real allowed operation, then expires and is refused.
+
+    The shipped inactivity deadline is 24h, so the isolated server runs the product's own
+    session_idle_timeout to reach expiry inside a test window (see test_inactivity_and_draft).
+    A management token's own expires_in_days is whole days and therefore unreachable here;
+    the session credential is the one that can be driven to expiry for real, and it is the
+    credential every management call actually carries.
+    """
+    from local_browser_fixture import LocalServer
+    root = artifacts.private / "expiry"
+    root.mkdir(mode=0o700)
+    scoped = LocalServer(server.binary, root, session_idle_timeout=idle)
+    deadline = _duration_seconds(idle)
+    evidence = {"session_idle_timeout": idle, "own_server": True}
+    try:
+        evidence["health"] = scoped.start()
+        status, _, payload = _raw(scoped.base, "POST", LOGIN, "", {"username": "admin", "password": "password"})
+        check(status == 200, f"the isolated server refused the login: {status}")
+        credential = json.loads(payload)["token"]
+        artifacts.remember(credential)
+        # The new credential performs a real operation the product allows.
+        allowed = [
+            ("GET", "/api/v1/auth/me"),
+            ("GET", "/api/v1/models?page=1&page_size=5"),
+            ("GET", "/api/v1/nodes?page=1&page_size=5"),
+            ("GET", "/api/v1/storages"),
+        ]
+        before = [{"method": m, "path": pa, "status": _raw(scoped.base, m, pa, credential)[0]}
+                  for m, pa in allowed]
+        check(all(s["status"] == 200 for s in before),
+              f"the new credential could not perform an allowed operation: {before}")
+        evidence["allowed_operations"] = before
+        time.sleep(deadline * 1.6)
+        after = [{"method": m, "path": pa, "status": _raw(scoped.base, m, pa, credential)[0]}
+                 for m, pa in allowed]
+        check(all(s["status"] == 401 for s in after),
+              f"the expired credential still performed an allowed operation: {after}")
+        status, _, payload = _raw(scoped.base, "GET", ME, credential)
+        body = json.loads(payload)
+        check(status == 401 and body.get("code") == "AUTHENTICATION_REQUIRED",
+              f"the expired credential was refused with an unexpected body: {status} {body}")
+        evidence.update({"expired_operations": after, "expired_status": 401, "error": body,
+                         "expired_after_seconds": round(deadline * 1.6, 2)})
+        report["credential_expiry"] = evidence
+        report["evidence"].append({"layer": "request", "item": "7.4", "what":
+            "a session credential performed allowed operations, then expired and every operation was refused",
+            **evidence})
+    finally:
+        evidence["own_server_stopped"] = scoped.stop()
+    return evidence
+
+
+def exercise_download_surfaces(server, report, token, cookie, secrets):
+    """7.6: download, export and log surfaces must not leak credentials in cleartext.
+
+    The provider declaration already covers raw provider GETs and the upstream error
+    path into WARN/logstore. What it does not cover is the set of surfaces that hand a
+    file or an export back to the caller, which is where the clause about downloads
+    lands. Each surface is really fetched: a non-2xx is recorded as such rather than
+    counted as a clean download, so an unreachable surface cannot pass by default.
+    """
+    surfaces = [
+        ("GET", "/api/v1/telemetry/export", True),
+        ("GET", "/api/v1/usage-report", True),
+        ("GET", "/api/v1/usage-report/preview", True),
+        ("GET", "/api/v1/experience", True),
+        ("GET", "/api/v1/analytics/key-usage", False),
+        ("GET", "/api/v1/logs/search?limit=200", False),
+        ("GET", "/api/v1/logs/histogram?limit=200", False),
+        ("GET", "/api/v1/platform-tokens", False),
+        ("GET", "/api/v1/data-retention/status", False),
+    ]
+    findings, reached = [], []
+    for method, path, admin in surfaces:
+        status, headers, payload = _raw(server.base, method, path, token)
+        hits = _plaintext_hits(payload, secrets)
+        entry = {"method": method, "path": path, "status": status,
+                 "content_type": headers.get("Content-Type", ""), "bytes": len(payload),
+                 "cleartext_secret_hits": hits}
+        if hits:
+            findings.append(entry)
+        if status == 200:
+            reached.append(path)
+        report["download_surfaces"].append(entry)
+    check(not findings, f"a download/export/log surface leaked a live secret in cleartext: {findings}")
+    # A surface that answered 200 with an empty body proved nothing; require real bytes.
+    empty = [e["path"] for e in report["download_surfaces"] if e["status"] == 200 and e["bytes"] == 0]
+    check(not empty, f"a download/export surface answered 200 with an empty body: {empty}")
+    # The server's own log file is a log surface too, and it records the token that was
+    # just minted. Read it before artifact redaction and require the record to exist
+    # (an empty or never-written log would pass the absence check for the wrong reason)
+    # while the live token itself never appears in it.
+    log_path = server.work / "server.log"
+    logged = log_path.read_text() if log_path.exists() else ""
+    check("platform token created" in logged,
+          "the server log did not record the token creation, so its absence of the token proves nothing")
+    log_hits = _plaintext_hits(logged.encode(), secrets)
+    check(not log_hits, f"the server log leaked a live credential in cleartext: {log_hits}")
+    report["log_surface"] = {"path": "private/server.log", "bytes": len(logged.encode()),
+        "records_token_creation": True, "cleartext_secret_hits": log_hits,
+        "prefix_only_record": bool(re.search(r"prefix=gwp_[A-Za-z0-9_-]{6,}", logged))}
+    report["evidence"].append({"layer": "request", "item": "7.6", "what":
+        "download, export and log surfaces were really fetched and scanned for cleartext credentials; "
+        "the server's own log records the token creation but carries only its prefix",
+        "surfaces": report["download_surfaces"], "reached": len(reached),
+        "log_surface": report["log_surface"],
+        "auditor": "independent transport, no cookie jar, management bearer"})
+    return reached
+
+
+def _cookie_value(context):
+    for item in context.cookies():
+        if item["name"] == COOKIE:
+            return item["value"]
+    return ""
+
+
+def test_inactivity_and_draft(play, args, artifacts, report, locale, idle="2s"):
+    """22.4: an idle login expires, background polling cannot renew it, and an unsaved
+    form survives the re-authentication that follows.
+
+    The shipped inactivity deadline is 24h (auth.SessionPolicy.Normalized), which no test
+    can wait out. The product reads session_idle_timeout from its own server.yaml - the
+    same key an operator sets - so this case starts its own isolated server with a short
+    one. That is real product behaviour under a real product setting, and it is a separate
+    server so the short deadline cannot expire the sessions the main flow is asserting on.
+    """
+    auth = json.loads((ROOT / "ui/src/i18n/locales" / locale / "auth.json").read_text())
+    settings = json.loads((ROOT / "ui/src/i18n/locales" / locale / "settings.json").read_text())
+    deadline = _duration_seconds(idle)
+    check(deadline > 0, "22.4 needs a positive inactivity deadline")
+    # A fresh server and database: its own login, its own cookies, nothing borrowed.
+    idle_root = artifacts.private / "idle"
+    idle_root.mkdir(mode=0o700)
+    other = LocalServer(args.server_bin, idle_root, session_idle_timeout=idle)
+    report["inactivity"] = {"session_idle_timeout": idle, "configured_via": "server.yaml session_idle_timeout",
+        "default_in_source": "auth.SessionPolicy.Normalized IdleTimeout 24h",
+        "own_server": True}
+    try:
+        report["inactivity"]["health"] = other.start()
+        browser = play.chromium.launch(channel="chrome", headless=True)
+        try:
+            context = browser.new_context(viewport={"width": 1440, "height": 900},
+                                          locale="zh-CN" if locale == "zh" else "en-US", timezone_id="UTC")
+            context.set_default_timeout(15000)
+            page = context.new_page()
+            page.goto(other.base + "/")
+            expect(page.get_by_role("textbox", name=auth["username"], exact=True)).to_be_visible()
+            page.get_by_role("textbox", name=auth["username"], exact=True).fill("admin")
+            page.get_by_label(auth["password"], exact=True).fill("password")
+            # Barrier on the real login response, not on a timeout, so the cookie is
+            # already issued when the checks below read it.
+            with page.expect_response(lambda r: urlsplit(r.url).path == LOGIN and r.request.method == "POST") as signed_in:
+                page.get_by_label(auth["password"], exact=True).press("Enter")
+            check(signed_in.value.status == 200, f"the isolated server refused the login: {signed_in.value.status}")
+            cookie = _cookie_value(context)
+            check(bool(cookie), "the isolated server did not issue a management cookie")
+            identity = cookie_identity(play, other.base, cookie)[1]
+            report["inactivity"]["identity"] = identity
+
+            # 1) A steady background GET poll must not renew the login. The product
+            #    renews only on non-GET (api.managementAuth) and session.ts reports
+            #    activity from human pointer/key events only, so passive polling has no
+            #    channel to extend the deadline and the session must expire during it.
+            observed = []
+            started = time.monotonic()
+            while time.monotonic() - started < deadline * 3:
+                observed.append(cookie_identity(play, other.base, cookie)[0])
+                time.sleep(max(deadline / 4, 0.15))
+            check(200 in observed, "the login never worked, so the inactivity probe proves nothing")
+            check(401 in observed,
+                  f"a steady background GET poll kept the login alive past its {idle} deadline: {observed}")
+            report["inactivity"].update({"background_poll_statuses": observed,
+                "first_rejection_index": observed.index(401), "probes": len(observed),
+                "poll_runner": "cookie-only request context, no human input events"})
+            report["evidence"].append({"layer": "runtime", "item": "22.4", "what":
+                "a background GET poll ran past the configured inactivity deadline without renewing the login",
+                "path": ME, "method": "GET", "session_idle_timeout": idle, "statuses": observed})
+
+            # 2) An unsaved form survives inactivity expiry and re-authentication. The open
+            #    tab keeps SessionBoundary's children mounted, so the draft is still in the
+            #    DOM underneath the dialog. The dialog itself is raised when the product
+            #    observes a 401 (apiError.notifySessionExpired); switching a settings tab is
+            #    a real product request that produces one, so this needs no synthetic fetch.
+            # The poll above expired the login on purpose, so sign in again through the
+            # product's own dialog first: the draft has to survive an expiry that happens
+            # while the form is open, not one that predates it.
+            expired_dialog = page.get_by_role("dialog", name=auth["sessionExpiredTitle"], exact=True)
+            expect(expired_dialog).to_be_visible()
+            report["inactivity"]["dialog_after_poll_expiry"] = True
+            expired_dialog.get_by_role("textbox", name=auth["username"], exact=True).fill("admin")
+            expired_dialog.get_by_label(auth["password"], exact=True).fill("password")
+            with page.expect_response(lambda r: urlsplit(r.url).path == LOGIN and r.request.method == "POST") as again:
+                expired_dialog.get_by_label(auth["password"], exact=True).press("Enter")
+            check(again.value.status == 200, "re-authentication after expiry was refused")
+            expect(expired_dialog).to_have_count(0)
+            page.goto(other.base + "/settings")
+            expect(page.get_by_role("heading", name=settings["page"]["title"], exact=True)).to_be_visible()
+            marker = "e2e-draft-" + uuid.uuid4().hex[:10]
+            field = page.locator("input[type='text'], input:not([type])").first
+            expect(field).to_be_visible()
+            field.fill(marker)
+            check(field.input_value() == marker, "the settings form did not accept the draft marker")
+            report["inactivity"]["draft"] = {"marker": marker, "field": "settings text input"}
+            time.sleep(deadline * 2)
+            # The login is now dead but the tab has not noticed yet: the draft is still
+            # editable, which is exactly the "recoverable draft" 22.4 asks about.
+            check(field.input_value() == marker,
+                  "the draft disappeared as soon as the login expired, before any request was made")
+            report["inactivity"]["draft"]["survives_undetected_expiry"] = True
+            tabs = page.get_by_role("tab")
+            check(tabs.count() >= 2, "the settings page rendered no tabs to navigate by")
+            tabs.nth(tabs.count() - 1).click()
+            dialog = page.get_by_role("dialog", name=auth["sessionExpiredTitle"], exact=True)
+            expect(dialog).to_be_visible()
+            report["inactivity"]["dialog_after_expiry"] = True
+            kept = field.input_value()
+            check(kept == marker,
+                  f"the form draft was lost when the login expired: expected {marker!r}, got {kept!r}")
+            report["inactivity"]["draft"]["survived_expiry"] = True
+            dialog.get_by_role("textbox", name=auth["username"], exact=True).fill("admin")
+            dialog.get_by_label(auth["password"], exact=True).fill("password")
+            with page.expect_response(lambda r: urlsplit(r.url).path == LOGIN and r.request.method == "POST") as back:
+                dialog.get_by_label(auth["password"], exact=True).press("Enter")
+            check(back.value.status == 200, "re-authentication through the dialog was refused")
+            expect(dialog).to_have_count(0)
+            restored = field.input_value()
+            check(restored == marker,
+                  f"the form draft was lost across re-authentication: expected {marker!r}, got {restored!r}")
+            report["inactivity"]["draft"]["survived_relogin"] = True
+            refreshed = _cookie_value(context)
+            check(refreshed and refreshed != cookie, "re-authentication did not replace the expired session")
+            check(cookie_identity(play, other.base, refreshed) == (200, identity),
+                  "the re-authenticated session does not read the same identity back")
+            check(cookie_identity(play, other.base, cookie) == (401, DENIED),
+                  "the expired session was resurrected by re-authenticating")
+            report["inactivity"].update({"url_after_relogin": urlsplit(page.url).path,
+                "replacement_cookie_status": 200, "expired_cookie_status": 401})
+            report["evidence"].append({"layer": "persistence", "item": "22.4", "what":
+                "inactivity expiry raised the product's re-authentication dialog and the unsaved form draft "
+                "survived both the expiry and the re-authentication; the expired session stayed dead",
+                "session_idle_timeout": idle, "expired_cookie_status": 401,
+                "replacement_cookie_status": 200, "draft_survived": True, "identity": identity})
+            page.screenshot(path=artifacts.directory / "inactivity-draft-recovered.png")
+            context.close()
+        finally:
+            browser.close()
+    finally:
+        report["inactivity"]["own_server_stopped"] = other.stop()
+
+
 def test_two_tab_logout_relogin(play, context, server, artifacts, report, locale):
     strings = ROOT / "ui/src/i18n/locales" / locale
     auth = json.loads((strings / "auth.json").read_text())
@@ -203,7 +505,17 @@ def test_two_tab_logout_relogin(play, context, server, artifacts, report, locale
         alpha = re.search(r"rgba?\(([^)]*)\)", shadow)
         width = re.search(r"0px 0px 0px ([0-9.]+)px", shadow)
         parts = [float(v) for v in alpha.group(1).split(",")] if alpha else []
-        return (parts[3] if len(parts) == 4 else 1.0, float(width.group(1)) if width else 0.0)
+        # Three cases, and they are not interchangeable. An rgb(...) triple names an opaque colour, so
+        # its alpha is 1.0. An rgba(..., a) quadruple carries its own alpha. No colour function at all
+        # means the computed value is "none" - the element paints no shadow - so the alpha is 0.0.
+        # Collapsing the first case into the third reads an opaque ring as absent, and collapsing the
+        # third into the first reads an absent ring as opaque; either way the "stronger when focused"
+        # comparison reports a defect when the paint is actually correct.
+        if len(parts) == 4:
+            strength = parts[3]
+        else:
+            strength = 1.0 if len(parts) == 3 else 0.0
+        return (strength, float(width.group(1)) if width else 0.0)
 
     # The ring is required to be stronger when focused, not merely different: this theme animates it in
     # from a faint trace, so a comparison that only asked for a difference would be satisfied by the
@@ -450,6 +762,18 @@ def test_two_tab_logout_relogin(play, context, server, artifacts, report, locale
     # each entry's deep link, heading, highlighted entry and reload position.
     from session_persistence import exercise_navigation_entries
     report["navigation"] = exercise_navigation_entries(page, server, report)
+    # 7.6: a freshly minted management token is a live credential, so it is the exact
+    # value that must not appear in cleartext in any download, export or log surface.
+    report["download_surfaces"] = []
+    minted = page.request.post(server.base + "/api/v1/platform-tokens",
+                               data=json.dumps({"name": "surface-" + report["run_id"], "scope": "read"}))
+    check(minted.status == 201, f"minting a management token for the surface scan failed: {minted.status}")
+    live = minted.json()["token"]
+    artifacts.remember(live)
+    report["evidence"].append({"layer": "request", "method": "POST", "path": "/api/v1/platform-tokens",
+        "status": 201, "body": {"name": "surface-" + report["run_id"], "scope": "read"},
+        "response_token": "[REDACTED]", "purpose": "7.6 cleartext scan source"})
+    exercise_download_surfaces(server, report, new_bearer, new_cookie, {"platform_token": live})
     page.screenshot(path=artifacts.directory / "recovered-networks.png")
     with peer.expect_response(lambda r: urlsplit(r.url).path == LOGOUT) as cleanup:
         button(peer, common["header"]["logout"]).click()
@@ -469,11 +793,21 @@ def main():
     parser.add_argument("--server-bin", type=Path, default=ROOT / "bin/gpuworks")
     parser.add_argument("--artifact-dir", type=Path)
     parser.add_argument("--locale", choices=["en", "zh"], default="en")
+    parser.add_argument("--session-idle-timeout", default="90s",
+        help="server.yaml session_idle_timeout for the isolated server; the shipped default is 24h, "
+             "which no test can wait out. This is the deadline the whole flow must live inside, so it "
+             "has to exceed the runtime of every earlier step; the inactivity case re-derives the wait "
+             "from it rather than shortening it.")
     args = parser.parse_args()
     os.umask(0o077)
     run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + uuid.uuid4().hex[:8]
     artifacts = Artifacts(args.artifact_dir or ROOT / "secrets/e2e" / run_id)
-    server = LocalServer(args.server_bin, artifacts.private)
+    # The shipped inactivity deadline is 24h, so it is unreachable in a test window. The
+    # product reads session_idle_timeout from its own server.yaml, so the isolated server
+    # sets it. The main flow gets a comfortable deadline (any step may take a while), and
+    # the inactivity case starts a second isolated server with a short one, so waiting out
+    # the deadline never races the flow that is asserting other things.
+    server = LocalServer(args.server_bin, artifacts.private, session_idle_timeout=args.session_idle_timeout)
     manifest_path = ROOT / "test/e2e/coverage/session-logout.json"
     manifest = json.loads(manifest_path.read_text())
     check(manifest["contract_id"] == CONTRACT and manifest["test_function"] == test_two_tab_logout_relogin.__name__, "manifest binding drift")
@@ -500,6 +834,8 @@ def main():
             report["browser_version"] = browser.version
             try:
                 test_two_tab_logout_relogin(play, context, server, artifacts, report, args.locale)
+                test_inactivity_and_draft(play, args, artifacts, report, locale=args.locale)
+                exercise_credential_expiry(server, report, play, "2s", artifacts)
                 check(set(manifest["required_evidence"]) <= {e["layer"] for e in report["evidence"]}, "missing required evidence")
                 report["status"] = "VERIFYING_ARTIFACTS"
             finally:
