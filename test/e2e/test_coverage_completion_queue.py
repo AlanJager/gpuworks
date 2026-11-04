@@ -290,8 +290,8 @@ from coverage_completion_queue import summary
 # Six complete current-fixture boolean6.1 inventories verified against unfixed Expert baseline and restored all en/zh.
 # These counts move only when a manifest declaration changes.
 BASELINE = {
-    "1": 124, "2": 253, "3": 259, "4": 316, "5": 189, "6": 130,
-    "7": 101, "8": 94, "9": 71, "10": 100, "11": 90, "out": 351,
+    "1": 124, "2": 251, "3": 258, "4": 316, "5": 186, "6": 130,
+    "7": 101, "8": 94, "9": 71, "10": 99, "11": 90, "out": 350,
 }
 
 
@@ -304,7 +304,7 @@ class QueueTest(unittest.TestCase):
         self.assertIsNone(extra)
         self.assertEqual(dict(counts), BASELINE)
         self.assertEqual(total, sum(BASELINE.values()))
-        self.assertEqual(total, 2078)
+        self.assertEqual(total, 2070)
 
 
 if __name__ == "__main__":

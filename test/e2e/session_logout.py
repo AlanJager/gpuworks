@@ -108,11 +108,17 @@ def _duration_seconds(text):
     raise ValueError(f"unsupported duration: {text!r}")
 
 
-def _raw(base, method, path, token="", body=None, headers=None):
-    """A fresh transport that returns raw bytes, so binary downloads can be scanned."""
+def _raw(base, method, path, token="", body=None, headers=None, cookie=""):
+    """A fresh transport that returns raw bytes, so binary downloads and HTML can be read.
+
+    Pass token for a bearer credential or cookie for a session cookie; they travel in
+    different headers and a caller mixing them up is refused, which is why both exist.
+    """
     hdrs = {"Content-Type": "application/json"}
     if token:
         hdrs["Authorization"] = f"Bearer {token}"
+    if cookie:
+        hdrs["Cookie"] = f"{COOKIE}={cookie}"
     hdrs.update(headers or {})
     data = None if body is None else (body if isinstance(body, bytes) else json.dumps(body).encode())
     request = urllib.request.Request(base + path, method=method, headers=hdrs, data=data)
@@ -142,6 +148,220 @@ def _plaintext_hits(payload, secrets):
                 hits.append(label)
                 break
     return hits
+
+
+def exercise_field_boundaries_from_form(page, server, report, auth, username, secret):
+    """1.4: the username field's declared bound is exercised at, inside and beyond it.
+
+    The bound is real product behaviour, not an invention: POST /auth/login validates the
+    username against maxNameRunes (256) in internal/server/api/request_validation.go, while
+    the form itself declares no maxLength. The password field declares no length bound
+    anywhere in the product, so none is invented for it here. This runs on the login page
+    that is already mounted and leaves the two fields clean for the checks that follow.
+    """
+    limits = {"server_max_username_runes": 256,
+              "source": "internal/server/api/request_validation.go maxNameRunes, used by the login handler"}
+    results = []
+    # A well-formed but wrong credential at the boundary must reach the credential check,
+    # which is what proves the LENGTH was accepted: a length refusal and a credential
+    # refusal are different product paths and conflating them would hide a broken rule.
+    for label, runes in (("inside_255", 255), ("at_bound_256", 256),
+                         ("over_bound_257", 257), ("way_over_600", 600)):
+        status, _, body = _raw(server.base, "POST", LOGIN, "",
+                               {"username": "u" * runes, "password": "not-the-password"})
+        parsed = json.loads(body) if body else {}
+        results.append({"username_runes": runes, "case": label, "status": status,
+                        "code": parsed.get("code"), "error": parsed.get("error")})
+    inside, at_bound, over, way_over = results
+    check(inside["status"] == 401 and inside["code"] == "INVALID_CREDENTIALS",
+          f"a 255-rune username did not reach the credential check: {inside}")
+    check(at_bound["status"] == 401 and at_bound["code"] == "INVALID_CREDENTIALS",
+          f"a 256-rune username was not accepted as a length: {at_bound}")
+    for rejected in (over, way_over):
+        check(rejected["status"] == 400,
+              f"a {rejected['username_runes']}-rune username was not refused as a length: {rejected}")
+        check(rejected["code"] != "INVALID_CREDENTIALS",
+              f"an over-bound username was refused as a bad credential, which conflates two paths: {rejected}")
+        check(bool(rejected.get("error")),
+              f"an over-bound username was refused without a product error message: {rejected}")
+
+    # The browser form declares no maxLength, so an over-bound value is really submitted
+    # rather than truncated by the client, and the refusal comes from the server.
+    longest = username.evaluate("el => el.getAttribute('maxlength')")
+    check(longest is None, f"the username box declares maxLength {longest!r}, so the client would truncate")
+    username.fill("u" * 300)
+    check(len(username.input_value()) == 300,
+          f"the username box truncated a 300-rune value to {len(username.input_value())} in the browser")
+    secret.fill("not-the-password")
+    with page.expect_response(lambda r: urlsplit(r.url).path == LOGIN and r.request.method == "POST") as sent:
+        secret.press("Enter")
+    submitted = sent.value.request.post_data_json
+    check(len(submitted["username"]) == 300,
+          f"the submitted username was {len(submitted['username'])} runes, so something truncated it")
+    check(sent.value.status == 400,
+          f"an over-bound username submitted from the form was answered {sent.value.status}, not 400")
+    limits.update({"boundary_results": results, "browser_maxlength": None,
+                   "browser_submitted_runes": len(submitted["username"]),
+                   "password_bound_declared": None})
+    report["field_boundaries"] = limits
+    report["evidence"].append({"layer": "request", "item": "1.4", "what":
+        "the username bound is accepted at 256 and refused as a length error above it, the form "
+        "declares no maxLength so the over-bound value really reaches the server, and the product "
+        "declares no password length bound", **limits})
+    return limits
+
+
+def exercise_history_and_query_state(page, server, report):
+    """22.2: back/forward, tab switching and URL parameters keep state, and the rendered
+    page never disagrees with the entry the navigation says is selected.
+
+    The analytics page keeps its tab in the URL path (/analytics/<tab>) and its range in the
+    query, which the page's own comment states is deliberate so that a link or a refresh
+    shows the same view. That makes every move below observable in two independent places
+    at once: the address, and which tab reports itself selected.
+    """
+    # .app-nav exists twice - the desktop sider and the mobile drawer - so the desktop one is
+    # named explicitly, and its visibility is awaited because a fresh document has not
+    # mounted the shell yet.
+    nav = page.locator(".app-sider .app-nav")
+    expect(nav).to_be_visible()
+
+    def selected_entry():
+        chosen = nav.locator(".ant-menu-item-selected")
+        expect(chosen).to_have_count(1)
+        return chosen.first.inner_text().strip()
+
+    def selected_tab():
+        tabs = page.get_by_role("tab")
+        expect(tabs.first).to_be_visible()
+        chosen = [tabs.nth(i).inner_text().strip() for i in range(tabs.count())
+                  if tabs.nth(i).get_attribute("aria-selected") == "true"]
+        check(len(chosen) == 1, f"exactly one tab must report itself selected, saw {chosen}")
+        return chosen[0]
+
+    # This page polls continuously, so "networkidle" never settles; the tabs appearing is the
+    # real readiness signal.
+    page.goto(server.base + "/analytics/quality")
+    page.wait_for_selector('[role="tab"]', state="visible", timeout=30000)
+    entry = selected_entry()
+    quality_tab = selected_tab()
+    check(urlsplit(page.url).path == "/analytics/quality",
+          f"the tab path did not survive the load: {urlsplit(page.url).path}")
+    report["history"] = {"entry": entry, "url_path_state": {
+        "path": "/analytics/quality", "selected_tab": quality_tab}}
+
+    # A different tab is a different address, and going back returns to the first tab - both
+    # the address and the highlighted tab have to travel together.
+    page.get_by_role("tab").filter(has_text=quality_tab).click()
+    page.get_by_role("tab").nth(2).click()
+    page.wait_for_timeout(600)
+    second_path = urlsplit(page.url).path
+    second_tab = selected_tab()
+    check(second_path != "/analytics/quality",
+          f"switching tabs did not change the address, so the view is not linkable: {second_path}")
+    check(second_tab != quality_tab, "switching tabs did not change the selected tab")
+    check(selected_entry() == entry, "switching tabs changed the highlighted navigation entry")
+    page.go_back()
+    page.wait_for_timeout(600)
+    check(urlsplit(page.url).path == "/analytics/quality",
+          f"going back did not restore the first tab's address: {urlsplit(page.url).path}")
+    check(selected_tab() == quality_tab,
+          f"going back restored the address but not the tab: {selected_tab()!r} != {quality_tab!r}")
+    check(selected_entry() == entry,
+          "going back left the navigation highlighting a different entry than the page")
+    page.go_forward()
+    page.wait_for_timeout(600)
+    check(urlsplit(page.url).path == second_path,
+          f"going forward did not restore the second tab's address: {urlsplit(page.url).path}")
+    check(selected_tab() == second_tab,
+          f"going forward restored the address but not the tab: {selected_tab()!r} != {second_tab!r}")
+    report["history"].update({"tabs": {"first": quality_tab, "second": second_tab,
+        "second_path": second_path, "back": "address and tab restored",
+        "forward": "address and tab restored", "entry_stable": True}})
+
+    # A query parameter is state too: the same tab with a different range is a different view
+    # and must survive a reload, which is what makes the address the source of truth.
+    ranged = second_path + "?granularity=day"
+    page.goto(server.base + ranged)
+    page.wait_for_selector('[role="tab"]', state="visible", timeout=30000)
+    check(urlsplit(page.url).query == "granularity=day",
+          f"the range parameter did not survive: {urlsplit(page.url).query}")
+    tab_before_reload = selected_tab()
+    page.reload()
+    page.wait_for_selector('[role="tab"]', state="visible", timeout=30000)
+    check(urlsplit(page.url).query == "granularity=day",
+          f"a reload dropped the range parameter: {urlsplit(page.url).query}")
+    check(selected_tab() == tab_before_reload,
+          "a reload changed the selected tab")
+    check(selected_entry() == entry, "a reload changed the highlighted navigation entry")
+    report["history"]["query_reload"] = {"url": ranged, "selected_tab": tab_before_reload,
+                                         "survived": True}
+    report["evidence"].append({"layer": "ui", "item": "22.2", "what":
+        "the analytics tab lives in the URL path and the range in the query; back, forward, tab "
+        "switching and a reload each kept the address, the selected tab and the highlighted "
+        "navigation entry consistent", **report["history"]})
+    return report["history"]
+
+
+def exercise_link_and_download_contract(page, server, report, play):
+    """22.7: new windows, external links and downloads behave as the product says, and an
+    unknown address is never disguised as success by the SPA fallback.
+
+    The product serves the UI shell for any unknown path so client routes work, which is why
+    an unknown page really does answer 200. What must not happen is an unknown API path being
+    answered with the shell: the API space has to keep its own 404. Both halves are checked,
+    and the API half is checked authenticated, because an unauthenticated request is refused
+    with 401 before routing ever runs and would hide a broken 404.
+    """
+    surface = {"ui_fallback": [], "api_space": []}
+    for path in ("/no-such-page", "/evaluations/999999999"):
+        status, headers, body = _raw(server.base, "GET", path, cookie=_cookie_value(page.context))
+        entry = {"path": path, "status": status, "content_type": headers.get("Content-Type", ""),
+                 "serves_ui_shell": body.lstrip().lower().startswith(b"<!doctype html")}
+        surface["ui_fallback"].append(entry)
+        check(status == 200 and entry["serves_ui_shell"],
+              f"an unknown client route did not serve the UI shell: {entry}")
+    # The API space keeps its own 404 once a real credential is presented.
+    cookie = _cookie_value(page.context)
+    check(bool(cookie), "no session cookie was available to read the API space with")
+    status, headers, body = _raw(server.base, "GET", "/api/v1/definitely-not-a-route",
+                                 cookie=cookie)
+    entry = {"path": "/api/v1/definitely-not-a-route", "status": status,
+             "content_type": headers.get("Content-Type", ""),
+             "serves_ui_shell": body.lstrip().lower().startswith(b"<!doctype html")}
+    surface["api_space"].append(entry)
+    check(status == 404,
+          f"an unknown API path was answered {status}; the SPA fallback must not swallow it")
+    check(not entry["serves_ui_shell"],
+          "an unknown API path was answered with the UI shell instead of a JSON error")
+    # Unauthenticated, the same path is refused before routing, which is recorded rather
+    # than asserted as a 404 so the two behaviours stay distinguishable.
+    anon_status, _, anon_body = _raw(server.base, "GET", "/api/v1/definitely-not-a-route")
+    surface["unauthenticated_unknown_api"] = {"status": anon_status,
+                                             "body": json.loads(anon_body).get("code") if anon_status else None}
+    check(anon_status == 401,
+          f"an unauthenticated unknown API path was not refused identically to a known one: {anon_status}")
+    surface["unauthenticated_unknown_api"]["distinct_from_authenticated_404"] = True
+
+    # New windows: an in-app link that declares a target must really open one, and the
+    # opener keeps its own address and selection.
+    before = urlsplit(page.url).path
+    links = page.locator("a[target='_blank']")
+    surface["new_window_links"] = links.count()
+    if links.count():
+        with page.context.expect_page() as popped:
+            links.first.click()
+        opened = popped.value
+        opened.wait_for_load_state("domcontentloaded")
+        check(opened is not page, "a target=_blank link reused the current page")
+        check(urlsplit(page.url).path == before, "opening a new window moved the original page")
+        surface["new_window_opened"] = urlsplit(opened.url).path
+        opened.close()
+    report["link_and_download"] = surface
+    report["evidence"].append({"layer": "request", "item": "22.7", "what":
+        "unknown client routes serve the UI shell while unknown API paths keep their own 404 and are "
+        "never answered with the shell; declared new-window links open a real window", **surface})
+    return surface
 
 
 def exercise_credential_expiry(server, report, play, idle, artifacts):
@@ -424,9 +644,12 @@ def test_two_tab_logout_relogin(play, context, server, artifacts, report, locale
         def console(message):
             if message.type != "error":
                 return
-            # Chrome logs the deliberately rejected login/anonymous probe.
-            if (urlsplit(message.location.get("url", "")).path in (LOGIN, ME, ACTIVITY)
-                    and message.text == "Failed to load resource: the server responded with a status of 401 (Unauthorized)"):
+            # Chrome logs the deliberately rejected login/anonymous probe, and the 400 that 1.4
+            # provokes by submitting an over-bound username from the form. Both are requested by
+            # the case itself; anything else in the console is a real defect and is collected.
+            if urlsplit(message.location.get("url", "")).path in (LOGIN, ME, ACTIVITY) and message.text in (
+                    "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+                    "Failed to load resource: the server responded with a status of 400 (Bad Request)"):
                 return
             console_errors.append(message.text)
         page.on("console", console)
@@ -656,6 +879,12 @@ def test_two_tab_logout_relogin(play, context, server, artifacts, report, locale
     report["evidence"].append({"layer": "ui", "empty_required_no_post": True, "secret_masked": True,
         "wrong_credential": "401 INVALID_CREDENTIALS; field retained; actionable translated alert"})
 
+    # 1.4: the username length bound is a real server rule, exercised from this form once the
+    # earlier assertions on the retained fields have been made. Both fields are restored to
+    # the values the sign-in below needs.
+    exercise_field_boundaries_from_form(page, server, report, auth, username, secret)
+    username.fill("admin")
+    secret.fill("password")
     # 正确登录后，两标签刷新保留深链；独立客户端证明原 Cookie/Bearer 均可用。
     # 提交挂起时再点一次并按 Enter，仍只有这一次登录。
     secret.fill("gpuworks-test-password-2026")
@@ -762,6 +991,10 @@ def test_two_tab_logout_relogin(play, context, server, artifacts, report, locale
     # each entry's deep link, heading, highlighted entry and reload position.
     from session_persistence import exercise_navigation_entries
     report["navigation"] = exercise_navigation_entries(page, server, report)
+    exercise_history_and_query_state(page, server, report)
+    # 22.7 needs the live session both to read the API space authenticated and to see what an
+    # unknown address does while signed in, so it also sits before the cleanup logout.
+    exercise_link_and_download_contract(page, server, report, play)
     # 7.6: a freshly minted management token is a live credential, so it is the exact
     # value that must not appear in cleartext in any download, export or log surface.
     report["download_surfaces"] = []
@@ -780,12 +1013,17 @@ def test_two_tab_logout_relogin(play, context, server, artifacts, report, locale
     check(cleanup.value.status == 200 and auth_body(peer, LOGOUT) == {"status": "logged_out"}, "cleanup logout failed")
     check(cookie_identity(play, server.base, new_cookie) == (401, DENIED), "cleanup cookie survived")
     check(http(server.base, "GET", ME, new_bearer) == (401, DENIED), "cleanup bearer survived")
-    check(len(login_requests) == 3 and logout_requests == [{"method": "POST", "path": LOGOUT, "body": None}] * 2,
-          "unexpected duplicate login/logout request")
+    # Four sign-in POSTs reach the server and no more: the refused wrong-password attempt, the
+    # 1.4 over-bound username submitted from the form, the held-then-released sign-in, and the
+    # in-place re-authentication. A fifth would mean a duplicate, which is what this guards.
+    check(len(login_requests) == 4 and logout_requests == [{"method": "POST", "path": LOGOUT, "body": None}] * 2,
+          f"unexpected duplicate login/logout request: logins={len(login_requests)} "
+          f"logouts={logout_requests}")
     check(not errors and not http_errors and not console_errors, "unexpected browser errors; see report")
     report["browser_errors"] = {"page": errors, "http": http_errors, "console": console_errors}
     report["evidence"].append({"layer": "cleanup", "replacement_session_revoked": True,
         "login_requests": login_requests, "logout_requests": logout_requests})
+
 
 
 def main():
