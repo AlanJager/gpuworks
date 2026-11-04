@@ -722,8 +722,7 @@ func TestPinnedRequestRefusesAnOrderedSleepBeforeTheEngineReports(t *testing.T) 
 // itself, by the engine id and bootstrap server its launch derives from the
 // same KV endpoint, under one transfer id on both sides.
 func TestPDSynthesizedHandoffNamesThePrefillInstance(t *testing.T) {
-	h := newPDHarnessMode(t, "vllm-ppu-mooncake", 1, "")
-	h.prefills[0].mode = "no_params"
+	h, _ := newBootstrapHarnessMode(t, "vllm-ppu-mooncake", 1, "")
 	rec := h.do(t, "/v1/chat/completions", pdChat)
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "[DONE]") {
 		t.Fatalf("response = %d %s", rec.Code, rec.Body.String())
@@ -737,7 +736,9 @@ func TestPDSynthesizedHandoffNamesThePrefillInstance(t *testing.T) {
 	if p["do_remote_decode"] != true || !strings.HasPrefix(id, "gw-") {
 		t.Fatalf("prefill kv params = %v", p)
 	}
-	want := map[string]any{"do_remote_prefill": true, "remote_engine_id": "gpuworks-10.0.0.9-32100", "remote_bootstrap_addr": "http://10.0.0.9:32100", "transfer_id": id}
+	// The engine id is the one the prefill's workers registered with its
+	// bootstrap server, not one derived from its address.
+	want := map[string]any{"do_remote_prefill": true, "remote_engine_id": "mooncake-engine-0", "remote_bootstrap_addr": "http://10.0.0.9:32100", "transfer_id": id}
 	if !reflect.DeepEqual(d, want) {
 		t.Fatalf("decode kv params = %v, want %v", d, want)
 	}

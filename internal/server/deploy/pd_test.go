@@ -352,7 +352,9 @@ func TestVLLMPPUMooncakeLaunch(t *testing.T) {
 	}
 	prefill, prefillLaunch := config("prefill")
 	extra, _ := prefill["kv_connector_extra_config"].(map[string]any)
-	if prefill["kv_connector"] != "MooncakeConnector" || prefill["kv_role"] != "kv_producer" || prefill["engine_id"] != "gpuworks-10.0.0.5-30001" ||
+	// No pinned engine_id: the gateway reads the engine's own from its
+	// bootstrap server (pdmode.Mode.SynthesizedHandoff).
+	if prefill["kv_connector"] != "MooncakeConnector" || prefill["kv_role"] != "kv_producer" || prefill["engine_id"] != nil ||
 		extra["mooncake_protocol"] != "rdma" || extra["device_name"] != "mlx5_0" {
 		t.Fatalf("prefill config = %v", prefill)
 	}

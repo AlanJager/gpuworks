@@ -73,7 +73,7 @@ func TestSideChannelPortsAndValues(t *testing.T) {
 	if sglang.ValidKVLoadFailure(KVLoadFail) || !sglang.ValidKVLoadFailure("") || sglang.EffectiveKVLoadFailure("") != "" {
 		t.Fatal("sglang kv load failure values")
 	}
-	if got := strings.Join(ForEngine("vllm"), " "); got != "vllm-ascend-mooncake vllm-nixl vllm-ppu-mooncake" {
+	if got := strings.Join(ForEngine("vllm"), " "); got != "vllm-ascend-mooncake vllm-mooncake vllm-nixl vllm-ppu-mooncake" {
 		t.Fatalf("ForEngine = %v", got)
 	}
 	if got := strings.Join(ForEngine("sglang"), " "); got != "sglang-nixl sglang-ppu-ipc sglang-ppu-mooncake" {
@@ -99,8 +99,8 @@ func TestPPUMooncakeDeclarations(t *testing.T) {
 	if vllm.Wire != WireSequential || vllm.Connector != "MooncakeConnector" || !vllm.SynthesizedHandoff || vllm.ConnectorExtra["mooncake_protocol"] != "rdma" {
 		t.Fatalf("vllm-ppu-mooncake = %+v", vllm)
 	}
-	if got := EngineID("10.0.0.5", 30001); got != "gpuworks-10.0.0.5-30001" {
-		t.Fatalf("EngineID = %q", got)
+	if !vllm.Transport.MooncakeBootstrap() || !vllm.Transport.OnHostNetwork() || sglang.Transport.MooncakeBootstrap() != true {
+		t.Fatalf("transports: vllm %s sglang %s", vllm.Transport, sglang.Transport)
 	}
 }
 
@@ -147,5 +147,34 @@ func TestPPUIPCDeclaration(t *testing.T) {
 		if other, _ := Lookup(name); name != "sglang-ppu-ipc" && other.SameNode {
 			t.Fatalf("%s requires one node", name)
 		}
+	}
+}
+
+func TestVLLMMooncakeDeclaration(t *testing.T) {
+	mode, ok := Lookup("vllm-mooncake")
+	// Experimental: evaluation warns.
+	if !ok || !mode.SupportsVendor("hygon") || mode.SupportsVendor("nvidia") || mode.SupportsVendor("ppu") || !mode.Unverified {
+		t.Fatalf("mode = %+v", mode)
+	}
+	if mode.Connector != "MooncakeConnector" || mode.ConnectorRole(RolePrefill) != "kv_producer" || mode.ConnectorRole(RoleDecode) != "kv_consumer" {
+		t.Fatalf("connector = %s %v", mode.Connector, mode.ConnectorRoles)
+	}
+	// The prefill instance answers no kv_transfer_params; the gateway names
+	// the handoff and finds the prefiller through its bootstrap server, on
+	// whatever host network the group shares.
+	if mode.Wire != WireSequential || !mode.SynthesizedHandoff || mode.Transport != TransportMooncake || mode.PeerMemory || len(mode.ConnectorExtra) != 0 {
+		t.Fatalf("wire %s synthesized %v transport %s", mode.Wire, mode.SynthesizedHandoff, mode.Transport)
+	}
+	if mode.ExtraPorts(RolePrefill, 4) != 1 || mode.ExtraPorts(RoleDecode, 4) != 0 {
+		t.Fatal("one bootstrap port on the prefill instance, none on the decoder")
+	}
+	if !mode.DecodeServesAlone || !mode.MayBeEmpty(RolePrefill) || mode.EffectiveFallback("") != FallbackDecode || mode.EffectiveKVLoadFailure("") != KVLoadFail {
+		t.Fatal("a decoder without kv_transfer_params computes the prefill itself")
+	}
+	if mode.CheckTP(2, 2) != nil || mode.CheckTP(1, 2) == nil {
+		t.Fatal("only equal TP is verified")
+	}
+	if !TransportMooncake.OnHostNetwork() || !TransportMooncake.MooncakeBootstrap() || !TransportUCX.OnHostNetwork() || TransportUCX.MooncakeBootstrap() || TransportHCCL.OnHostNetwork() || TransportIPC.OnHostNetwork() {
+		t.Fatal("host network transports")
 	}
 }

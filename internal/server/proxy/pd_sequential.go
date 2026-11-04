@@ -60,16 +60,17 @@ func newTransferID() string {
 
 // synthesizedHandoff is the decoder's kv_transfer_params of a mode whose
 // prefill answer carries none (vLLM's MooncakeConnector): the prefill
-// instance named by its engine id and bootstrap server, both derived from its
-// KV endpoint as the launch derives them (pdmode.EngineID), and the transfer
-// id the prefill copy carried. Nil when the instance has no KV endpoint.
-func synthesizedHandoff(c candidate, transferID string) json.RawMessage {
-	if c.kvHost == "" || c.kvPort == 0 || transferID == "" {
+// instance named by its bootstrap server (its KV endpoint, at the node
+// address peers use) and the engine id its workers registered there
+// (bootstrapEngineID), and the transfer id the prefill copy carried. Nil when
+// any of them is missing.
+func synthesizedHandoff(c candidate, engineID, transferID string) json.RawMessage {
+	if c.kvHost == "" || c.kvPort == 0 || engineID == "" || transferID == "" {
 		return nil
 	}
 	return mustRaw(map[string]any{
 		"do_remote_prefill":     true,
-		"remote_engine_id":      pdmode.EngineID(c.kvHost, c.kvPort),
+		"remote_engine_id":      engineID,
 		"remote_bootstrap_addr": "http://" + net.JoinHostPort(c.kvHost, strconv.Itoa(c.kvPort)),
 		"transfer_id":           transferID,
 	})
@@ -115,16 +116,36 @@ func (p *Proxy) callPrefill(ctx context.Context, c candidate, path string, body 
 // a connection fails, and classifies the answer.
 func (p *Proxy) runPrefill(ctx context.Context, route *pdRoute, affinity, decodeNode, path string, body []byte, stage *pdStage, reading replyReading) prefillOutcome {
 	excluded := map[string]bool{}
+	// unreachable is the reason to give when the attempts run out: a
+	// bootstrap server that never had every rank registered, or a connection.
+	unreachable := pdFallbackUnreachable
 	for attempt := 0; attempt < retryMaxAttempts; attempt++ {
 		l := p.pickPrefill(route, affinity, decodeNode, excluded)
 		if l == nil {
 			if attempt == 0 {
 				return prefillOutcome{fallback: pdFallbackNoPrefill}
 			}
-			return prefillOutcome{fallback: pdFallbackUnreachable}
+			return prefillOutcome{fallback: unreachable}
 		}
 		excluded[l.c.instanceUUID] = true
 		stage.tried(l.c.instanceUUID)
+		var engineID string
+		if route.mode.SynthesizedHandoff {
+			// Ask before the prefill copy: an instance the decoder cannot
+			// find would keep the KV for nobody until its lease expires.
+			id, err := p.bootstrapEngineID(ctx, l.c, route.placement.TP(pdmode.RolePrefill))
+			if err != nil {
+				if ctx.Err() != nil {
+					l.release(outcomeCanceled)
+					return prefillOutcome{fallback: pdFallbackPrefillFailed}
+				}
+				p.log.Warn("prefill instance bootstrap server not usable", "instance", l.c.instanceUUID, "node", l.c.nodeUUID, "err", err)
+				l.release(outcomeConnFailure)
+				unreachable = pdFallbackNoBootstrap
+				continue
+			}
+			engineID = id
+		}
 		resp, err := p.callPrefill(ctx, l.c, path, body, stage)
 		if err != nil {
 			if ctx.Err() != nil {
@@ -155,7 +176,7 @@ func (p *Proxy) runPrefill(ctx context.Context, route *pdRoute, affinity, decode
 		_ = json.Unmarshal(data, &answer)
 		params := bytes.TrimSpace(answer.Params)
 		if route.mode.SynthesizedHandoff {
-			params = synthesizedHandoff(l.c, prefillTransferID(body))
+			params = synthesizedHandoff(l.c, engineID, prefillTransferID(body))
 		}
 		if len(params) == 0 || bytes.Equal(params, []byte("null")) || params[0] != '{' {
 			// 200 without the handoff: the engine is not running as a PD
@@ -174,7 +195,7 @@ func (p *Proxy) runPrefill(ctx context.Context, route *pdRoute, affinity, decode
 		stage.answered(l.c.instanceUUID, requestStats(data, reading.rules), cached, cachedKnown)
 		return prefillOutcome{prefill: l.c.instanceUUID, status: resp.StatusCode, params: append(json.RawMessage(nil), params...)}
 	}
-	return prefillOutcome{fallback: pdFallbackUnreachable}
+	return prefillOutcome{fallback: unreachable}
 }
 
 // serveSequentialPrefill is the prefill stage of a sequential handoff

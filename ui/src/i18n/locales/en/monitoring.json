@@ -376,6 +376,7 @@
       "prefill_unreachable": "Prefill instance unreachable",
       "prefill_5xx": "Prefill instance error (5xx)",
       "prefill_no_kv_params": "Prefill instance returned no KV handoff",
+      "prefill_no_bootstrap": "Prefill instance bootstrap server not usable",
       "prefill_failed": "Prefill call failed"
     },
     "deletedName": "{{name}} (deleted)",

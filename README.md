@@ -57,7 +57,7 @@ fine-tuning and training jobs on the same accelerators.
   (NVIDIA via HAMi-core, Ascend via vCANN, PPU via HGGC, Hygon via hy-smi virtual devices). Sleep/wake lets vLLM models take turns
   on the same GPUs on NVIDIA, Ascend, PPU and Hygon.
 - **Scale out.** Replicas across nodes, multi-node tensor/pipeline parallel, and prefill/decode disaggregation
-  (vLLM + NIXL on NVIDIA, vLLM-Ascend + Mooncake on Ascend, SGLang or vLLM + Mooncake on PPU, within one host or over RDMA).
+  (vLLM + NIXL on NVIDIA, vLLM-Ascend + Mooncake on Ascend, SGLang or vLLM + Mooncake on PPU, within one host or over RDMA, and experimental vLLM + Mooncake on Hygon).
 - **OpenAI-compatible gateway.** Chat, completions, embeddings, rerank, audio, images, video and realtime under
   `/v1`; `/v1/messages` and `/v1/responses` pass through. Least-request, prefix-affinity or failover routing, API
   keys, per-key token usage.
@@ -123,10 +123,10 @@ Install the GPUWorks control plane on this host and verify it.
 | **AMD** (ROCm: Instinct MI300 series, Ryzen AI Max) | ✅ Docker or containerd | ✅ memory quota (libvrocm, user space) | ✅ vLLM | ✅ vLLM | ✅ vLLM + NIXL |
 | **Huawei Ascend** (CANN) | ✅ Docker, containerd or runveil (built-in rootless runtime) | ✅ memory quota at MiB granularity | ✅ vLLM-Ascend | ✅ | ✅ vLLM-Ascend + Mooncake |
 | **T-Head PPU** (HGGC) | ✅ Docker, containerd or runveil (built-in rootless runtime) | ✅ memory quota at MiB granularity | ✅ vLLM | ✅ | ✅ SGLang + Mooncake (same node or over RDMA), vLLM + Mooncake (RDMA) |
-| **Hygon DCU** (DTK) | ✅ Docker, containerd or runveil (built-in rootless runtime) | ✅ memory quota at MiB granularity | ✅ vLLM | ✅ | — |
+| **Hygon DCU** (DTK) | ✅ Docker, containerd or runveil (built-in rootless runtime) | ✅ memory quota at MiB granularity | ✅ vLLM | ✅ | 🧪 vLLM 0.21 + Mooncake |
 | **Apple Silicon** (M1–M5, macOS 15+) | ✅ vllm-metal, MLX, llama.cpp as native processes | — | — | — | — |
 
-✅ verified on real hardware · — not supported or not validated. Sleep/wake beyond NVIDIA is
+✅ verified on real hardware · 🧪 experimental · — not supported or not validated. Sleep/wake beyond NVIDIA is
 verified on Ascend 910C, PPU ZW810E, Hygon K100 and AMD MI300X; the tested versions and limits are in
 [choosing features](docs-en/explanation/choosing-features.md#sleepwake-models-take-turns-on-one-gpu).
 GPUs are detected with the vendor CLIs (`nvidia-smi`, `npu-smi`, `ppu-smi`, `hy-smi`) or, for AMD, amdgpu sysfs and KFD, so there is no NVML or cgo

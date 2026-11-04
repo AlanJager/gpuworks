@@ -146,7 +146,8 @@ Behavior and restrictions by type:
 PD disaggregation also checks the KV transfer network according to the mode:
 
 - Cross-machine `vllm-ascend-mooncake` requires an Accelerator RDMA or Accelerator HCCS network (`PD_NETWORK_ACCELERATOR_REQUIRED`).
-- Modes that use UCX cannot use an Accelerator RDMA network (`PD_NETWORK_HOST_REQUIRED`).
+- Modes that use UCX or the Mooncake transfer engine (`vllm-nixl`, `sglang-nixl`, `vllm-mooncake`) cannot use an Accelerator RDMA network (`PD_NETWORK_HOST_REQUIRED`).
+  `vllm-mooncake` uses Mooncake's `rdma` protocol on a Host RDMA network and `tcp` on other networks.
 - PD deployments that support sleep cannot use a Host RDMA network for KV transfer (`PD_SLEEP_RDMA_UNSUPPORTED`); creation is rejected. If an RDMA network is attached after creation, the deployment remains unschedulable with the same reason. Ordinary multi-node deployments that use RDMA for collective communication are not subject to this restriction; see the limitations in [sleep / wake](sleep-wake.md).
 
 For specific variables and container arguments, see [Deployment Launch Parameter Sources](../reference/deployment-launch-sources.md#拓扑).

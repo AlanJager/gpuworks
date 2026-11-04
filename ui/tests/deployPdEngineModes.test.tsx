@@ -157,7 +157,7 @@ test("an engine with several PD modes offers every one of them as a choice, not 
   const options = [...document.querySelectorAll(".ant-select-dropdown .ant-select-item-option")].map(
     (el) => el.textContent,
   );
-  assert.deepEqual(options, ["vllm-ascend-mooncake", "vllm-nixl", "vllm-ppu-mooncake"]);
+  assert.deepEqual(options, ["vllm-ascend-mooncake", "vllm-mooncake", "vllm-nixl", "vllm-ppu-mooncake"]);
 });
 
 function modeOptions(): (string | null)[] {
@@ -205,7 +205,7 @@ test("a PD mode picked for another vendor gives way to this vendor's default", a
 });
 
 test("an engine with PD modes, none for the draft's vendor, disables the PD card and names the vendor", () => {
-  render(<Harness vendor="hygon" profile={{ name: "vllm", pd_modes: fixturePdModes("vllm") } as EngineProfile} />);
+  render(<Harness vendor="hygon" profile={{ name: "sglang", pd_modes: fixturePdModes("sglang") } as EngineProfile} />);
   assert.equal(pdCardButton().hasAttribute("disabled"), true);
   assert.ok(screen.getByText(deployLocale.workbench.node.pdVendorUnsupported.replace("{{vendor}}", "Hygon")));
 });

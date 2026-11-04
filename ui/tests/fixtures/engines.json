@@ -3389,6 +3389,30 @@
         ]
       },
       {
+        "name": "vllm-mooncake",
+        "vendors": [
+          "hygon"
+        ],
+        "roles": [
+          "decode",
+          "prefill"
+        ],
+        "scalable_to_zero": [
+          "prefill"
+        ],
+        "tp_rule": "equal",
+        "max_units_per_role": 32,
+        "fallbacks": [
+          "decode",
+          "fail"
+        ],
+        "kv_load_failures": [
+          "fail",
+          "recompute"
+        ],
+        "unverified": true
+      },
+      {
         "name": "vllm-nixl",
         "vendors": [
           "nvidia",

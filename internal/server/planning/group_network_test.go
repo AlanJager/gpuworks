@@ -79,6 +79,10 @@ func TestCheckPDNetwork(t *testing.T) {
 	if !ok || rdma.Transport != pdmode.TransportMooncakeRDMA {
 		t.Fatalf("vllm-ppu-mooncake = %+v %v", rdma, ok)
 	}
+	mooncake, ok := pdmode.Lookup("vllm-mooncake")
+	if !ok || mooncake.Transport != pdmode.TransportMooncake {
+		t.Fatalf("vllm-mooncake = %+v %v", mooncake, ok)
+	}
 	two := []store.Node{{ID: 1, Name: "n1"}, {ID: 2, Name: "n2"}}
 	one := two[:1]
 	cards := map[uint][]string{1: {"npu3"}, 2: {"npu3"}}
@@ -111,6 +115,14 @@ func TestCheckPDNetwork(t *testing.T) {
 		"sleepable UCX on the management":      {ucx, two, networkGroup(netplan.TypeHostEthernet, none), "", nil},
 		"sleepable UCX on one host, loopback":  {ucx, one, netplan.Group{Ranks: map[uint]netplan.Resolved{1: {NodeID: 1, IP: "127.0.0.1"}}}, "", nil},
 		"sleepable HCCL across hosts on cards": {hccl, two, networkGroup(netplan.TypeAcceleratorRDMA, cards), "", nil},
+		// Hygon's Mooncake follows the host network it is given (RDMA or
+		// TCP), refuses the accelerator fabric, and registers the KV cache
+		// with an RDMA NIC like NIXL, so a sleepable one stays off RDMA.
+		"Mooncake on host RDMA":           {mooncake, two, networkGroup(netplan.TypeHostRDMA, none), "", nil},
+		"Mooncake on the management":      {mooncake, two, networkGroup(netplan.TypeHostEthernet, none), "", nil},
+		"Mooncake on cards":               {mooncake, two, networkGroup(netplan.TypeAcceleratorRDMA, cards), messages.ErrorPDNetworkHostRequired, map[string]any{"mode": "vllm-mooncake", "network": "shared"}},
+		"sleepable Mooncake on host RDMA": {mooncake, two, networkGroup(netplan.TypeHostRDMA, none), messages.ErrorPDSleepRDMAUnsupported, map[string]any{"mode": "vllm-mooncake", "network": "shared"}},
+		"sleepable Mooncake on one host":  {mooncake, one, netplan.Group{Ranks: map[uint]netplan.Resolved{1: {NodeID: 1, IP: "127.0.0.1"}}}, "", nil},
 		// Mooncake over RDMA gets its devices only from a host RDMA network,
 		// so even one host needs one.
 		"Mooncake RDMA on host RDMA":           {rdma, two, networkGroup(netplan.TypeHostRDMA, none), "", nil},
