@@ -260,8 +260,10 @@ func TestBootedChecksCoverTheExtraImageInAGPUContainer(t *testing.T) {
 	command := bootedChecksCommand("/opt/m", "gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2", []string{extra}, nil)
 	for _, want := range []string{
 		"docker image inspect '" + extra + "' --format 'GPUWORKS_EXTRA_IMAGE",
-		"docker run --rm --gpus all --entrypoint nvidia-smi '" + extra + "' -L",
-		"docker run --rm --gpus all --entrypoint nvidia-smi 'gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2' -L",
+		"gpu_smoke '" + extra + "'",
+		"gpu_smoke 'gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2'",
+		`for try in 1 2 3; do
+    if docker run --rm --gpus all --entrypoint nvidia-smi "$1" -L; then return 0; fi`,
 		"GPUWORKS_GOLDEN_OK",
 	} {
 		if !strings.Contains(command, want) {
@@ -364,7 +366,7 @@ func TestSeveralExtraImagesArePulledFromTheMirrorsInOrder(t *testing.T) {
 	}
 	final := steps[3].command
 	for _, image := range o.extraImages {
-		if !strings.Contains(final, "docker run --rm --gpus all --entrypoint nvidia-smi '"+image+"' -L") {
+		if !strings.Contains(final, "gpu_smoke '"+image+"'") {
 			t.Errorf("final check does not run %s on the GPU", image)
 		}
 	}

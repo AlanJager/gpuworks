@@ -143,7 +143,8 @@ sync`
 
 // bootedChecksCommand verifies a VM booted from the golden image: the model,
 // the runner image, Docker 29 with the nvidia runtime, the driver, and a
-// container that sees the GPU, from every extra image too. It prints
+// container that sees the GPU (retried; see gpu_smoke), from every extra
+// image too. It prints
 // the evidence lines the L4 cases expect.
 func bootedChecksCommand(modelPath, image string, extraImages, removed []string) string {
 	extra := ""
@@ -152,14 +153,24 @@ func bootedChecksCommand(modelPath, image string, extraImages, removed []string)
 	}
 	for _, extraImage := range extraImages {
 		extra += "\ndocker image inspect " + goldenimage.ShellQuote(extraImage) + " --format 'GPUWORKS_EXTRA_IMAGE {{.Id}} {{.Size}}'" +
-			"\ndocker run --rm --gpus all --entrypoint nvidia-smi " + goldenimage.ShellQuote(extraImage) + " -L"
+			"\ngpu_smoke " + goldenimage.ShellQuote(extraImage)
 	}
-	return "set -eu\n" + goldenimage.ValidationCommand(modelPath, image, "") + extra + `
+	// The first container on a freshly booted VM can fail to initialize NVML
+	// and work a minute later, so each GPU smoke run gets three tries.
+	smoke := `
+gpu_smoke() {
+  for try in 1 2 3; do
+    if docker run --rm --gpus all --entrypoint nvidia-smi "$1" -L; then return 0; fi
+    echo "GPU smoke run of $1 failed (try $try), retrying" >&2; sleep 20
+  done
+  return 1
+}`
+	return "set -eu" + smoke + "\n" + goldenimage.ValidationCommand(modelPath, image, "") + extra + `
 systemctl is-active docker >/dev/null
 server_version="$(docker version --format '{{.Server.Version}}')"
 case "$server_version" in ` + dockerMajor + `.*) ;; *) echo "unexpected Docker server version $server_version" >&2; exit 1;; esac
 docker info --format '{{json .Runtimes}}' | grep -q nvidia
 nvidia-smi -L
-docker run --rm --gpus all --entrypoint nvidia-smi ` + goldenimage.ShellQuote(image) + ` -L
+gpu_smoke ` + goldenimage.ShellQuote(image) + `
 printf 'GPUWORKS_GOLDEN_OK docker=%s\n' "$server_version"`
 }
