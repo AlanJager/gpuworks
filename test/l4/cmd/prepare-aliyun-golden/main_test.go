@@ -241,7 +241,7 @@ func TestPullImageCommandTriesMirrorsInOrderAndTagsTheCanonicalName(t *testing.T
 }
 
 func TestBootedChecksRequireModelImageRuntimeAndAGPUInAContainer(t *testing.T) {
-	command := bootedChecksCommand("/opt/gpuworks/test-fixtures/models/qwen2-0.5b", "gpustack/runner:cuda12.8-vllm0.17.1", "")
+	command := bootedChecksCommand("/opt/gpuworks/test-fixtures/models/qwen2-0.5b", "gpustack/runner:cuda12.8-vllm0.17.1", nil, nil)
 	if strings.Contains(command, "GPUWORKS_EXTRA_IMAGE") {
 		t.Error("no extra image was asked for, yet the checks look for one")
 	}
@@ -257,11 +257,13 @@ func TestBootedChecksRequireModelImageRuntimeAndAGPUInAContainer(t *testing.T) {
 
 func TestBootedChecksCoverTheExtraImageInAGPUContainer(t *testing.T) {
 	const extra = "swr.example/gpuworks/gpuworks-runner:cuda12.8-v100-vllm1cat1.5.1-r1"
-	command := bootedChecksCommand("/opt/m", "gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2", extra)
+	command := bootedChecksCommand("/opt/m", "gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2", []string{extra}, nil)
 	for _, want := range []string{
 		"docker image inspect '" + extra + "' --format 'GPUWORKS_EXTRA_IMAGE",
-		"docker run --rm --gpus all --entrypoint nvidia-smi '" + extra + "' -L",
-		"docker run --rm --gpus all --entrypoint nvidia-smi 'gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2' -L",
+		"gpu_smoke '" + extra + "'",
+		"gpu_smoke 'gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2'",
+		`for try in 1 2 3; do
+    if docker run --rm --gpus all --entrypoint nvidia-smi "$1" -L; then return 0; fi`,
 		"GPUWORKS_GOLDEN_OK",
 	} {
 		if !strings.Contains(command, want) {
@@ -279,29 +281,128 @@ func TestBuildStepsOnAnEarlierGoldenImageOnlyAddTheExtraImage(t *testing.T) {
 		return strings.Join(names, ",")
 	}
 	base := options{modelPath: "/opt/m", dockerImage: "runner:a", pullSources: []string{"runner:a"}}
-	if got := phases(base); got != "install-docker,pull-runner-image,prepare-model,validate-source" {
+	if got := phases(base); got != "install-docker,docker-cgroupfs,pull-runner-image,prepare-model,validate-source" {
 		t.Fatalf("fresh build phases = %s", got)
 	}
 	withExtra := base
-	withExtra.extraImage, withExtra.extraPullSources = "runner:v100", []string{"mirror/runner:v100", "runner:v100"}
-	if got := phases(withExtra); got != "install-docker,pull-runner-image,prepare-model,pull-extra-image,validate-source" {
+	withExtra.extraImages, withExtra.extraPullSources = []string{"runner:v100"}, []string{"mirror/runner:v100", "runner:v100"}
+	if got := phases(withExtra); got != "install-docker,docker-cgroupfs,pull-runner-image,prepare-model,pull-extra-image,validate-source" {
 		t.Fatalf("fresh build with an extra image phases = %s", got)
 	}
 	layered := withExtra
 	layered.baseGolden = true
 	steps := buildSteps(layered, nil)
-	if got := phases(layered); got != "validate-base,pull-extra-image,validate-source" {
+	if got := phases(layered); got != "validate-base,docker-cgroupfs,pull-extra-image,validate-source" {
 		t.Fatalf("layered build phases = %s (it must not reinstall Docker or touch the model)", got)
 	}
 	if strings.Contains(steps[0].command, "runner:v100") {
 		t.Error("the base check must not expect the image it is about to add")
 	}
-	pull := steps[1].command
+	pull := steps[2].command
 	if strings.Index(pull, "docker pull 'mirror/runner:v100'") > strings.Index(pull, "docker pull 'runner:v100'") || !strings.Contains(pull, "docker tag \"$ok\" 'runner:v100'") {
 		t.Errorf("extra image pull must try the mirror first and tag the canonical name:\n%s", pull)
 	}
-	if !strings.Contains(steps[2].command, "GPUWORKS_EXTRA_IMAGE") || !strings.Contains(imageDescription(layered), "runner:v100") {
+	if !strings.Contains(steps[3].command, "GPUWORKS_EXTRA_IMAGE") || !strings.Contains(imageDescription(layered), "runner:v100") {
 		t.Error("the final check and the image description must name the extra image")
+	}
+}
+
+func TestLayeredBuildRemovesRetiredImagesBeforeAddingTheNewOne(t *testing.T) {
+	o := options{modelPath: "/opt/m", dockerImage: "runner:v100", baseGolden: true,
+		extraImages: []string{"runner:r4"}, extraPullSources: []string{"runner:r4"}, removeImages: []string{"runner:r2"}}
+	steps := buildSteps(o, nil)
+	var names []string
+	for _, step := range steps {
+		names = append(names, step.phase)
+	}
+	if got := strings.Join(names, ","); got != "validate-base,remove-images,docker-cgroupfs,pull-extra-image,validate-source" {
+		t.Fatalf("phases = %s (the old runner must go before the new one is pulled)", got)
+	}
+	remove := steps[1].command
+	for _, want := range []string{"docker image inspect --format '{{.Id}}' 'runner:r2'", "docker image rm -f \"$id\"", "docker image prune -f"} {
+		if !strings.Contains(remove, want) {
+			t.Errorf("remove step lacks %q:\n%s", want, remove)
+		}
+	}
+	if strings.Contains(steps[0].command, "runner:r2") {
+		t.Error("the base check must not depend on the image about to be removed")
+	}
+	if final := steps[4].command; !strings.Contains(final, "if docker image inspect 'runner:r2'") || !strings.Contains(final, "still present") {
+		t.Errorf("the final check must fail when the removed image is still there:\n%s", final)
+	}
+}
+
+func TestRemoveImagesNeedsALayeredBuildAndCannotDropAKeptImage(t *testing.T) {
+	t.Setenv("ALIYUN_ACCESS_KEY_ID", "id")
+	t.Setenv("ALIYUN_ACCESS_KEY_SECRET", "secret")
+	base := options{regions: []string{"cn-beijing"}, modelPath: "/opt/m", diskGB: 150, dockerImage: "runner:v100", extraImages: []string{"runner:r4"}, removeImages: []string{"runner:r2"}}
+	if err := run(base); err == nil || !strings.Contains(err.Error(), "-remove-images needs -base-golden") {
+		t.Fatalf("fresh build with -remove-images: err = %v", err)
+	}
+	keep := base
+	keep.baseGolden, keep.removeImages = true, []string{"runner:r4"}
+	if err := run(keep); err == nil || !strings.Contains(err.Error(), "must keep") {
+		t.Fatalf("removing the image being added: err = %v", err)
+	}
+}
+
+func TestSeveralExtraImagesArePulledFromTheMirrorsInOrder(t *testing.T) {
+	o := options{modelPath: "/opt/m", dockerImage: "runner:v100", baseGolden: true,
+		extraImages: []string{"runner:r4", "runner:cu129"}, extraMirrors: []string{"swr.example/", "quay.example"}}
+	steps := buildSteps(o, nil)
+	var names []string
+	for _, step := range steps {
+		names = append(names, step.phase)
+	}
+	if got := strings.Join(names, ","); got != "validate-base,docker-cgroupfs,pull-extra-image,pull-extra-image,validate-source" {
+		t.Fatalf("phases = %s", got)
+	}
+	for i, image := range o.extraImages {
+		pull := steps[2+i].command
+		swr, quay, own := strings.Index(pull, "docker pull 'swr.example/"+image+"'"), strings.Index(pull, "docker pull 'quay.example/"+image+"'"), strings.Index(pull, "docker pull '"+image+"'")
+		if swr < 0 || quay < swr || own < quay {
+			t.Errorf("%s must be tried from swr, then quay, then its own name:\n%s", image, pull)
+		}
+	}
+	final := steps[4].command
+	for _, image := range o.extraImages {
+		if !strings.Contains(final, "gpu_smoke '"+image+"'") {
+			t.Errorf("final check does not run %s on the GPU", image)
+		}
+	}
+	t.Setenv("ALIYUN_ACCESS_KEY_ID", "id")
+	t.Setenv("ALIYUN_ACCESS_KEY_SECRET", "secret")
+	bad := o
+	bad.regions, bad.diskGB, bad.extraPullSources = []string{"cn-beijing"}, 150, []string{"x/runner:r4"}
+	if err := run(bad); err == nil || !strings.Contains(err.Error(), "single -extra-image") {
+		t.Fatalf("-extra-pull-sources with two images: err = %v", err)
+	}
+}
+
+func TestEveryBuildSwitchesDockerToCgroupfsAndTheFinalCheckRequiresIt(t *testing.T) {
+	for _, o := range []options{
+		{modelPath: "/opt/m", dockerImage: "runner:a", pullSources: []string{"runner:a"}},
+		{modelPath: "/opt/m", dockerImage: "runner:a", baseGolden: true},
+	} {
+		steps := buildSteps(o, nil)
+		var cgroupfs, final string
+		for _, step := range steps {
+			if step.phase == "docker-cgroupfs" {
+				cgroupfs = step.command
+			}
+		}
+		final = steps[len(steps)-1].command
+		for _, want := range []string{"native.cgroupdriver=cgroupfs", "systemctl restart docker", "want cgroupfs"} {
+			if !strings.Contains(cgroupfs, want) {
+				t.Errorf("baseGolden=%v: cgroupfs step lacks %q:\n%s", o.baseGolden, want, cgroupfs)
+			}
+		}
+		if !strings.Contains(final, "GPUWORKS_DOCKER_CGROUP_DRIVER") {
+			t.Errorf("baseGolden=%v: final check does not require cgroupfs", o.baseGolden)
+		}
+		if o.baseGolden && strings.Contains(steps[0].command, "want cgroupfs") {
+			t.Error("the base check must not require cgroupfs: earlier golden images use the systemd driver")
+		}
 	}
 }
 

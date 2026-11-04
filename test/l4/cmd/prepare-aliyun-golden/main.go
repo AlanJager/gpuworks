@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -62,12 +63,18 @@ type options struct {
 	// carries Docker, -docker-image and the model: the build only adds
 	// -extra-image on top, and the earlier image is left as it is.
 	baseGolden bool
-	// extraImage is a second image baked in next to -docker-image (the
-	// 1Cat-vLLM runner for V100), pulled from the first of extraPullSources
-	// that works; empty adds none.
-	extraImage       string
+	// extraImages are images baked in next to -docker-image (the 1Cat-vLLM
+	// runner for V100, a CUDA 12 runner for Turing). Each is pulled from
+	// extraPullSources when it is the only one, otherwise from every prefix in
+	// extraMirrors and then its own name; empty adds none.
+	extraImages      []string
 	extraPullSources []string
-	buildDeadline    time.Duration
+	extraMirrors     []string
+	// removeImages are images of the earlier golden image to delete before
+	// -extra-image is added (a runner the templates no longer name); only
+	// with baseGolden.
+	removeImages  []string
+	buildDeadline time.Duration
 	// copyPoll is how often a copy's state is read; zero means 30s.
 	copyPoll time.Duration
 }
@@ -77,6 +84,7 @@ func main() {
 		regions = flag.String("regions", defaultRegions, "regions the golden image is made available in")
 		sources = flag.String("source-regions", "", "regions the source and validation VMs may be rented in, whichever has stock (default -regions)")
 		pull    = flag.String("pull-sources", defaultPullSources, "registry references tried in order to obtain the runner image")
+		remove  = flag.String("remove-images", "", "with -base-golden: images of the earlier golden image to delete first (comma separated)")
 		extra   = flag.String("extra-pull-sources", "", "registry references tried in order to obtain -extra-image (default -extra-image itself)")
 		o       options
 	)
@@ -95,20 +103,33 @@ func main() {
 	flag.StringVar(&o.copyFrom, "copy-from", "", "region of -copy-image")
 	flag.StringVar(&o.modelPath, "model-path", goldenimage.DefaultModelPath, "absolute model path stored in the image")
 	flag.BoolVar(&o.baseGolden, "base-golden", false, "-base-image is an earlier golden image (Docker, -docker-image and the model already in it): only add -extra-image")
-	flag.StringVar(&o.extraImage, "extra-image", "", "second image to bake in next to -docker-image (e.g. the 1Cat-vLLM runner for V100)")
+	extraImages := flag.String("extra-image", "", "images to bake in next to -docker-image, comma separated (e.g. the 1Cat-vLLM runner for V100)")
+	mirrors := flag.String("extra-mirrors", "", "registry prefixes tried in order for each -extra-image before its own name (e.g. swr.cn-southwest-2.myhuaweicloud.com)")
 	flag.DurationVar(&o.buildDeadline, "timeout", 3*time.Hour, "overall limit")
 	flag.Parse()
 	o.regions = splitList(*regions)
 	o.sourceRegions = splitList(*sources)
 	o.pullSources = splitList(*pull)
+	o.extraImages = splitList(*extraImages)
 	o.extraPullSources = splitList(*extra)
-	if len(o.extraPullSources) == 0 && o.extraImage != "" {
-		o.extraPullSources = []string{o.extraImage}
-	}
+	o.extraMirrors = splitList(*mirrors)
+	o.removeImages = splitList(*remove)
 	if err := run(o); err != nil {
 		fmt.Fprintln(os.Stderr, "prepare Aliyun golden image:", err)
 		os.Exit(1)
 	}
+}
+
+// extraSources are the references an extra image is pulled from, in order.
+func (o options) extraSources(image string) []string {
+	if len(o.extraImages) == 1 && len(o.extraPullSources) > 0 {
+		return o.extraPullSources
+	}
+	var sources []string
+	for _, mirror := range o.extraMirrors {
+		sources = append(sources, strings.TrimSuffix(mirror, "/")+"/"+image)
+	}
+	return append(sources, image)
 }
 
 func (o options) copyPollEvery() time.Duration {
@@ -129,8 +150,8 @@ func modelSlug(repo string) string {
 // imageDescription names what the image carries; ECS caps it at 256 chars.
 func imageDescription(o options) string {
 	description := "gpuworks golden: Docker " + dockerMajor + ", NVIDIA container toolkit, " + o.dockerImage + ", " + o.modelRepo + " at " + o.modelPath
-	if o.extraImage != "" {
-		description += ", " + o.extraImage
+	for _, image := range o.extraImages {
+		description += ", " + image
 	}
 	if len(description) > 256 {
 		description = description[:256]
@@ -159,8 +180,16 @@ func run(o options) error {
 	if !strings.HasPrefix(o.modelPath, "/") {
 		return errors.New("model-path must be absolute")
 	}
-	if o.baseGolden && o.extraImage == "" {
-		return errors.New("-base-golden needs -extra-image (there is nothing else to add)")
+	if len(o.removeImages) > 0 && !o.baseGolden {
+		return errors.New("-remove-images needs -base-golden (a fresh build has nothing to remove)")
+	}
+	for _, image := range o.removeImages {
+		if image == o.dockerImage || slices.Contains(o.extraImages, image) {
+			return fmt.Errorf("-remove-images names %s, which the image must keep", image)
+		}
+	}
+	if len(o.extraPullSources) > 0 && len(o.extraImages) != 1 {
+		return errors.New("-extra-pull-sources is for a single -extra-image; use -extra-mirrors for several")
 	}
 	if o.diskGB < 100 {
 		return fmt.Errorf("disk-gb=%d is below the 100 GiB base image", o.diskGB)
@@ -347,18 +376,23 @@ type buildStep struct {
 func buildSteps(o options, files []goldenimage.File) []buildStep {
 	var steps []buildStep
 	if o.baseGolden {
-		steps = append(steps, buildStep{"validate-base", bootedChecksCommand(o.modelPath, o.dockerImage, ""), 10 * time.Minute})
+		steps = append(steps, buildStep{"validate-base", bootedChecksCommand(o.modelPath, o.dockerImage, nil, nil), 10 * time.Minute})
+		if len(o.removeImages) > 0 {
+			steps = append(steps, buildStep{"remove-images", removeImagesCommand(o.removeImages), 10 * time.Minute})
+		}
+		steps = append(steps, buildStep{"docker-cgroupfs", dockerCgroupfsCommand(), 5 * time.Minute})
 	} else {
 		steps = append(steps,
 			buildStep{"install-docker", installDockerCommand(), 40 * time.Minute},
+			buildStep{"docker-cgroupfs", dockerCgroupfsCommand(), 5 * time.Minute},
 			buildStep{"pull-runner-image", pullImageCommand(o.dockerImage, o.pullSources), 60 * time.Minute},
 			buildStep{"prepare-model", goldenimage.PrepareModelCommand(o.modelPath, o.dockerImage, files, ""), 30 * time.Minute},
 		)
 	}
-	if o.extraImage != "" {
-		steps = append(steps, buildStep{"pull-extra-image", pullImageCommand(o.extraImage, o.extraPullSources), 60 * time.Minute})
+	for _, image := range o.extraImages {
+		steps = append(steps, buildStep{"pull-extra-image", pullImageCommand(image, o.extraSources(image)), 60 * time.Minute})
 	}
-	return append(steps, buildStep{"validate-source", bootedChecksCommand(o.modelPath, o.dockerImage, o.extraImage), 10 * time.Minute})
+	return append(steps, buildStep{"validate-source", bootedChecksCommand(o.modelPath, o.dockerImage, o.extraImages, o.removeImages) + cgroupfsCheck, 10 * time.Minute})
 }
 
 // copyEverywhere copies the image to every other region in parallel and waits
@@ -431,7 +465,7 @@ func validateImage(ctx context.Context, keyID, secret, region, imageID, runID st
 	if err := vm.wait(ctx); err != nil {
 		return err
 	}
-	out, err := vm.run(ctx, bootedChecksCommand(o.modelPath, o.dockerImage, o.extraImage))
+	out, err := vm.run(ctx, bootedChecksCommand(o.modelPath, o.dockerImage, o.extraImages, o.removeImages)+cgroupfsCheck)
 	if err != nil {
 		return fmt.Errorf("%w: %s", err, tail(out, 1500))
 	}

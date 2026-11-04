@@ -112,6 +112,50 @@ if [ "$ok" != %[2]s ]; then docker tag "$ok" %[2]s; fi
 docker image inspect %[2]s --format 'GPUWORKS_RUNNER_IMAGE {{.Id}} {{.Size}}'`, attempts.String(), goldenimage.ShellQuote(image))
 }
 
+// dockerCgroupfsCommand switches Docker to the cgroupfs cgroup driver. Under
+// the systemd driver every systemctl daemon-reload (cloud-init at boot, an
+// agent or package upgrade later) revokes the device access of running GPU
+// containers, which then fail with "Failed to initialize NVML: Unknown
+// Error"; cgroupfs containers keep their devices. Measured on Aliyun T4 and
+// A10 from the golden image, 2026-11-04.
+func dockerCgroupfsCommand() string {
+	return `set -eu
+python3 - <<'PY'
+import json, os
+p = '/etc/docker/daemon.json'
+d = json.load(open(p)) if os.path.exists(p) and os.path.getsize(p) else {}
+opts = [o for o in d.get('exec-opts', []) if not o.startswith('native.cgroupdriver=')]
+d['exec-opts'] = opts + ['native.cgroupdriver=cgroupfs']
+json.dump(d, open(p, 'w'), indent=4)
+PY
+systemctl restart docker
+driver="$(docker info --format '{{.CgroupDriver}}')"
+[ "$driver" = cgroupfs ] || { echo "docker cgroup driver is $driver, want cgroupfs" >&2; exit 1; }
+echo GPUWORKS_DOCKER_CGROUP_DRIVER "$driver"`
+}
+
+// cgroupfsCheck fails unless Docker runs with the cgroupfs driver. It is
+// appended to the checks of the finished image, not to the check of an
+// earlier golden base, which may predate dockerCgroupfsCommand.
+const cgroupfsCheck = `
+cgroup_driver="$(docker info --format '{{.CgroupDriver}}')"
+[ "$cgroup_driver" = cgroupfs ] || { echo "docker cgroup driver is $cgroup_driver, want cgroupfs (see dockerCgroupfsCommand)" >&2; exit 1; }
+echo GPUWORKS_DOCKER_CGROUP_DRIVER "$cgroup_driver"`
+
+// removeImagesCommand deletes images of an earlier golden image together with
+// every other tag of the same image ID (the registry-mirror name it was pulled
+// under), then drops the dangling layers so the snapshot does not keep them.
+func removeImagesCommand(images []string) string {
+	var b strings.Builder
+	b.WriteString("set -eu\n")
+	for _, image := range images {
+		q := goldenimage.ShellQuote(image)
+		fmt.Fprintf(&b, "if id=$(docker image inspect --format '{{.Id}}' %[1]s 2>/dev/null); then\n  docker image rm -f \"$id\"\n  echo GPUWORKS_REMOVED_IMAGE %[1]s \"$id\"\nelse\n  echo GPUWORKS_REMOVED_IMAGE %[1]s absent\nfi\n", q)
+	}
+	b.WriteString("docker image prune -f >/dev/null\ndf -h / | tail -1")
+	return b.String()
+}
+
 // finishCommand quiesces the VM for the snapshot: Docker stopped (no layer
 // writes in flight), caches and shell history dropped, filesystem synced. It
 // leaves cloud-init and the SSH host keys alone: Alibaba Cloud injects the
@@ -129,20 +173,34 @@ sync`
 
 // bootedChecksCommand verifies a VM booted from the golden image: the model,
 // the runner image, Docker 29 with the nvidia runtime, the driver, and a
-// container that sees the GPU, from extraImage too when it is set. It prints
+// container that sees the GPU (retried; see gpu_smoke), from every extra
+// image too. It prints
 // the evidence lines the L4 cases expect.
-func bootedChecksCommand(modelPath, image, extraImage string) string {
+func bootedChecksCommand(modelPath, image string, extraImages, removed []string) string {
 	extra := ""
-	if extraImage != "" {
-		extra = "\ndocker image inspect " + goldenimage.ShellQuote(extraImage) + " --format 'GPUWORKS_EXTRA_IMAGE {{.Id}} {{.Size}}'" +
-			"\ndocker run --rm --gpus all --entrypoint nvidia-smi " + goldenimage.ShellQuote(extraImage) + " -L"
+	for _, gone := range removed {
+		extra += "\nif docker image inspect " + goldenimage.ShellQuote(gone) + " >/dev/null 2>&1; then echo " + goldenimage.ShellQuote("removed image "+gone+" is still present") + " >&2; exit 1; fi"
 	}
-	return "set -eu\n" + goldenimage.ValidationCommand(modelPath, image, "") + extra + `
+	for _, extraImage := range extraImages {
+		extra += "\ndocker image inspect " + goldenimage.ShellQuote(extraImage) + " --format 'GPUWORKS_EXTRA_IMAGE {{.Id}} {{.Size}}'" +
+			"\ngpu_smoke " + goldenimage.ShellQuote(extraImage)
+	}
+	// The first container on a freshly booted VM can fail to initialize NVML
+	// and work a minute later, so each GPU smoke run gets three tries.
+	smoke := `
+gpu_smoke() {
+  for try in 1 2 3; do
+    if docker run --rm --gpus all --entrypoint nvidia-smi "$1" -L; then return 0; fi
+    echo "GPU smoke run of $1 failed (try $try), retrying" >&2; sleep 20
+  done
+  return 1
+}`
+	return "set -eu" + smoke + "\n" + goldenimage.ValidationCommand(modelPath, image, "") + extra + `
 systemctl is-active docker >/dev/null
 server_version="$(docker version --format '{{.Server.Version}}')"
 case "$server_version" in ` + dockerMajor + `.*) ;; *) echo "unexpected Docker server version $server_version" >&2; exit 1;; esac
 docker info --format '{{json .Runtimes}}' | grep -q nvidia
 nvidia-smi -L
-docker run --rm --gpus all --entrypoint nvidia-smi ` + goldenimage.ShellQuote(image) + ` -L
+gpu_smoke ` + goldenimage.ShellQuote(image) + `
 printf 'GPUWORKS_GOLDEN_OK docker=%s\n' "$server_version"`
 }
