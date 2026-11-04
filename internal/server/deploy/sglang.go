@@ -6,6 +6,7 @@ package deploy
 import (
 	"net"
 	"strconv"
+	"strings"
 
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/pdmode"
@@ -215,6 +216,13 @@ func sglangPD(b *builder, p Params, env map[string]string) {
 	for _, flag := range mode.EngineArgs {
 		b.injectFlag(flag)
 	}
+	// Mooncake over RDMA registers the cards with the HCAs the group's host
+	// RDMA network names; left to itself it picks among every HCA on the host.
+	if mode.Transport == pdmode.TransportMooncakeRDMA {
+		if hcas := hcaDevices(p.ComputeNetwork.HCAs); len(hcas) > 0 {
+			b.injectKV("--disaggregation-ib-device", strings.Join(hcas, ","))
+		}
+	}
 	for key, value := range mode.Env {
 		env[key] = value
 	}
@@ -226,11 +234,7 @@ func sglangPD(b *builder, p Params, env map[string]string) {
 	// measured on a PPU host whose no_proxy did not list the node address.
 	// Stating the variables keeps the runtime from injecting its own; the
 	// engine reads its weights offline, so nothing else it does needs a proxy.
-	noProxy := "localhost,127.0.0.1,::1,0.0.0.0"
-	if host := p.PD.SideChannelHost; host != "" {
-		noProxy += "," + host
-	}
-	env["NO_PROXY"], env["no_proxy"] = noProxy, noProxy
+	pdNoProxy(p, env)
 	for key, value := range kvTransferNetworkEnv(p) {
 		env[key] = value
 	}

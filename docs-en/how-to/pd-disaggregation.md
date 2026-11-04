@@ -7,7 +7,8 @@ After completing this guide, you can call the model through a single service nam
 **Prerequisites**:
 
 - You are familiar with ordinary deployment. See [Deploy Models, Select GPUs, and Interpret Scheduling Results](deploy-models.md).
-- Your hardware and engine meet the requirements of the selected PD mode: `vllm-nixl` targets NVIDIA, `vllm-ascend-mooncake` targets Ascend, `sglang-ppu-ipc` targets PPU (P and D must be on the same node), and `sglang-nixl` is unverified.
+- Your hardware and engine meet the requirements of the selected PD mode: `vllm-nixl` targets NVIDIA, `vllm-ascend-mooncake` targets Ascend, `sglang-ppu-ipc` targets PPU (P and D must be on the same node), `sglang-ppu-mooncake` and `vllm-ppu-mooncake` target PPU with the KV over RoCE NICs (across nodes too), and `sglang-nixl` is unverified.
+- PPU Mooncake modes: the nodes are on a host RDMA compute network and have `alixpu_peermem` loaded (see [PPU KV over RDMA](#ppu-kv-over-rdma)).
 - In NVIDIA mode, KV travels over the compute network when P and D are on different machines; RDMA or Ethernet can be used. In Ascend mode, cross-machine deployments require a shared Accelerator RDMA or Accelerator HCCS network, and the NPUs hosting prefill and decode must be mutually reachable over that accelerator network. For configuration and validation, see [Configure Node Networks](configure-networks.md).
 
 PD disaggregation splits inference for one model into two instance groups: prefill instances process only the prompt, and decode instances retrieve their KV and then generate tokens one by one. Externally, it remains
@@ -24,10 +25,11 @@ one deployment with one service name. Send requests to `/v1` as usual; the gatew
 ## Deploy
 
 1. On the deployments page, select **PD disaggregation** under **Node Placement**, then select a PD mode. Available modes come from the engine profiles: vLLM offers `vllm-nixl` (NVIDIA) and
-   `vllm-ascend-mooncake` (Ascend); SGLang offers `sglang-ppu-ipc` (PPU, same node) and `sglang-nixl` (unverified).
+   `vllm-ascend-mooncake` (Ascend), and `vllm-ppu-mooncake` (PPU, RDMA); SGLang offers `sglang-ppu-ipc` (PPU, same node),
+   `sglang-ppu-mooncake` (PPU, RDMA), and `sglang-nixl` (unverified).
 
 2. Choose the placement mode (see [Automatic and Manual Placement](#自动放置与手动放置)), set TP separately for prefill and decode, then add instances one by one. In manual mode select a node for each instance and optionally pin cards; in automatic mode an instance may leave its node out and the platform picks it. Each mode has TP rules: `vllm-nixl` requires
-   decode TP ≥ prefill TP, `vllm-ascend-mooncake` requires the reverse, and `sglang-nixl` and `sglang-ppu-ipc` require equal values.
+   decode TP ≥ prefill TP, `vllm-ascend-mooncake` requires the reverse, and `sglang-nixl`, `sglang-ppu-ipc`, and the two PPU Mooncake modes require equal values.
    When creating a deployment, each of the P and D roles needs at least one instance.
 
 3. To span an instance across multiple nodes, select **Add Node** under that instance. The first node is the leader (serving external requests), and the rest are followers. You must specify TP in this case,
@@ -38,7 +40,8 @@ one deployment with one service name. Send requests to `/v1` as usual; the gatew
    | Mode | When P Is Unavailable | When Decode Fails to Retrieve KV |
    |---|---|---|
    | `vllm-nixl`, `vllm-ascend-mooncake` | Decode completes locally by default (`fallback: decode`); returning 503 (`fail`) is also available | Returns an error by default (`kv_load_failure: fail`); local recomputation (`recompute`) is also available |
-   | `sglang-nixl`, `sglang-ppu-ipc` | Only returning 503 is supported; decode cannot perform prefill independently | This setting is unavailable |
+   | `sglang-nixl`, `sglang-ppu-ipc`, `sglang-ppu-mooncake` | Only returning 503 is supported; decode cannot perform prefill independently | This setting is unavailable |
+   | `vllm-ppu-mooncake` | Only returning 503 is supported (fallback is unverified) | This setting is unavailable |
 
    Mode, TP, PP, and KV load failure policy cannot be changed after startup; clone the deployment to change them. Confirm these selections before submitting.
 
@@ -51,12 +54,33 @@ one deployment with one service name. Send requests to `/v1` as usual; the gatew
    If two machines are directly connected by card number without a switch, P and D must select matching card numbers that are actually connected.
    First run **Card reachability · full card matrix** under the network's **Internal test** to check cabling. Deployment validation does not verify card-to-card links for you.
 
+### PPU KV over RDMA
+
+`sglang-ppu-mooncake` and `vllm-ppu-mooncake` use Mooncake to read and write the cards' memory directly through the host's RoCE/IB NICs, so:
+
+- The nodes must be on a **host RDMA** compute network, even for a single-node deployment: only then do the instances get `/dev/infiniband`, unlimited locked memory, and
+  `IPC_LOCK`, and the KV uses the HCAs that network declares (SGLang's `--disaggregation-ib-device`, vLLM's `device_name`). Otherwise the deployment is rejected with
+  `PD_NETWORK_RDMA_REQUIRED`.
+- Every node must load the PPU peer memory module `alixpu_peermem`; without it the NIC fails to register the cards' memory (Mooncake logs
+  `Failed to register memory ... Bad address`). Run on the node:
+
+  ```bash
+  modprobe alixpu_peermem && echo alixpu_peermem > /etc/modules-load.d/alixpu_peermem.conf
+  ```
+
+  The second half loads it at boot. The **GPUDirect RDMA** column in the node's **Health checks** shows each card's state (not loaded is a warning; the card stays schedulable),
+  and the **Diagnose** report lists it as well. A manual placement on a node without the module is rejected (`PD_PEER_MEMORY_MISSING`, with the fix command); automatic placement skips those
+  nodes, and when nothing fits after skipping them returns `PD_PEER_MEMORY_NONE`, stating how many nodes were left out for it.
+- vLLM's MooncakeConnector answers the prefill without handoff parameters, so the gateway composes the decoder's
+  `kv_transfer_params` itself from the prefill instance's KV endpoint (`remote_engine_id`, `remote_bootstrap_addr`, and one `transfer_id` per request).
+- Neither mode can be sleepable: KV cache memory registered with the NIC cannot be allocated again after waking (`PD_SLEEP_RDMA_UNSUPPORTED`).
+
 6. The preview shows placement, GPU memory, and complete commands for each instance. KV Offload applies only to prefill; decode does not attach a KV cache layer. Do not include
    `--kv-transfer-config` or `--kv-offloading-size` in custom arguments; the platform rejects them.
 
 7. Submit the deployment. In its details, confirm that both P and D roles reach their desired ready counts, then check the handoff self-check result in the prefill instance timeline.
    Send a request through Playground or `/v1/chat/completions`, then check the prefill instance and fallback reason in request details.
-   For the two vLLM modes with sequential handoff, you can also see the “PD prefill” phase. If a fallback reason appears, a successful response does not confirm that disaggregation took effect.
+   For the vLLM modes, which use sequential handoff, you can also see the “PD prefill” phase. If a fallback reason appears, a successful response does not confirm that disaggregation took effect.
 
 API form: `placement.pd` in `POST /api/v1/deployments`. See the [API Reference](../reference/api.md) for fields.
 
@@ -117,9 +141,9 @@ After each prefill instance first becomes ready, the platform automatically perf
 Open **Scale roles** in deployment details to change the instances for each role (`PUT /api/v1/deployments/{id}/pd`). Removed instances drain before stopping.
 
 - For an automatically placed deployment, new instances may omit their nodes: the platform puts them in the network and architecture the existing instances are in and picks by the placement strategy. Instances that name a node are placed as written and pass the ordinary PD validation together with the others. When no node can take a new instance, 409 `UNIT_PLACEMENT_NONE`.
-- Both vLLM modes support scaling prefill to 0. Requests are then intentionally handled entirely by decode and do not count as fallback.
+- `vllm-nixl` and `vllm-ascend-mooncake` support scaling prefill to 0. Requests are then intentionally handled entirely by decode and do not count as fallback.
   This differs from still expecting P instances but falling back or returning 503 according to `fallback` when P fails.
-- `sglang-nixl` and `sglang-ppu-ipc` require instances to remain for both P and D.
+- `sglang-nixl`, `sglang-ppu-ipc`, `sglang-ppu-mooncake`, and `vllm-ppu-mooncake` require instances to remain for both P and D.
 
 ### Retry an Instance
 
@@ -143,7 +167,7 @@ The service page's PD card provides:
 
 - **PD Effectiveness**: The proportion of decode prompt tokens received through KV transfer. The denominator includes tokens from transfer, local computation, and cache hits.
   A low value alone does not prove handoff failure. Consider the desired P count, sleep state, fallback reasons, and handoff self-check results together.
-- **Fallback rate and top reasons**: The ratio of fallback requests to gateway requests, aggregated by reason. In the two vLLM modes, when P is intentionally scaled to 0 or all P instances are asleep,
+- **Fallback rate and top reasons**: The ratio of fallback requests to gateway requests, aggregated by reason. In `vllm-nixl` and `vllm-ascend-mooncake`, when P is intentionally scaled to 0 or all P instances are asleep,
   decode handles requests independently and they do not count as fallback.
 - **Mean and P95 prefill phase duration** (the gateway's wait for the prefill instance), prefill instance queueing, and mean prompt length;
 - **KV transfer**: Mean / P95 transfer time, mean size, throughput, failure count, and expiry count, from the vLLM NIXL connector's `vllm:nixl_*` metrics. These are per-transfer statistics,
@@ -163,7 +187,7 @@ The service page's PD card provides:
 The PD section of request details shows the prefill instance, prefill phase, that instance's reported queue and Prefill times, and the fallback reason;
 requests still in the prefill phase also appear in the in-flight table. For field definitions, see [Request Timeline and Phase Breakdown](../reference/request-timeline.md#6-pd-分离部署).
 
-Both vLLM modes use sequential handoff. The request view lists a separate “PD prefill” segment after “Gateway”; the same segment is simply called “Prefill” in the end-to-end latency breakdown. The decode instance's reported queue time appears as
+The vLLM modes all use sequential handoff. The request view lists a separate “PD prefill” segment after “Gateway”; the same segment is simply called “Prefill” in the end-to-end latency breakdown. The decode instance's reported queue time appears as
 “KV transfer & queue” (both vLLM and vllm-ascend include the wait for remote KV in queue time), and its reported Prefill appears as “First-token recompute.” In the latency breakdown,
 this segment is hidden if it accounts for 1% or less of mean end-to-end latency.
 
@@ -174,7 +198,7 @@ Cache hits for sequential handoff requests (and `cached_tokens` returned to the 
 #### View Traces
 
 In exported OTel traces for sequential handoff, the prefill phase is a `pd.prefill` child span.
-`sglang-nixl` and `sglang-ppu-ipc` call P and D concurrently, and the gateway does not wait for P's response, so there is no separate `pd.prefill` child span.
+`sglang-nixl`, `sglang-ppu-ipc`, and `sglang-ppu-mooncake` call P and D concurrently, and the gateway does not wait for P's response, so there is no separate `pd.prefill` child span.
 
 ### Evaluation
 

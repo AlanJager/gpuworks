@@ -65,7 +65,10 @@ func CheckPDNetwork(mode pdmode.Mode, nodes []store.Node, group netplan.Group, s
 	case mode.Transport == pdmode.TransportUCX && onCards:
 		return messages.NewProductError(messages.ErrorPDNetworkHostRequired,
 			fmt.Sprintf("PD mode %s moves KV over UCX, which needs a host network; the group shares accelerator network %s", mode.Name, group.Network.Name), params)
-	case sleepable && mode.Transport == pdmode.TransportUCX && group.Network.Type == netplan.TypeHostRDMA:
+	case mode.Transport == pdmode.TransportMooncakeRDMA && group.Network.Type != netplan.TypeHostRDMA:
+		return messages.NewProductError(messages.ErrorPDNetworkRDMARequired,
+			fmt.Sprintf("PD mode %s moves KV over RDMA, so its nodes need a host RDMA compute network, even on one host; the group shares %q", mode.Name, group.Network.Name), params)
+	case sleepable && (mode.Transport == pdmode.TransportUCX || mode.Transport == pdmode.TransportMooncakeRDMA) && group.Network.Type == netplan.TypeHostRDMA:
 		return messages.NewProductError(messages.ErrorPDSleepRDMAUnsupported,
 			fmt.Sprintf("a sleepable PD deployment cannot move KV over RDMA network %s: the KV cache registered with the NIC cannot be allocated again after sleep; turn sleep off or use an Ethernet compute network", group.Network.Name), params)
 	}

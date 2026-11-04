@@ -33,6 +33,12 @@ const (
 	// CheckRuntime is whether the vendor runtime can create a context on the
 	// card and allocate on it.
 	CheckRuntime = "runtime"
+	// CheckPeerMemory is whether the host's RDMA NICs can register the card's
+	// memory (GPUDirect RDMA): the vendor's peer-memory kernel module is
+	// loaded. Only hosts with RDMA NICs are asked; PD modes that move the KV
+	// over RDMA need it, nothing else does, so a missing module warns and
+	// leaves the card schedulable.
+	CheckPeerMemory = "peer_memory"
 )
 
 // Check states.
@@ -72,6 +78,34 @@ const (
 // outside the platform use the card.
 const CheckReasonForeignProcesses = "foreign_processes"
 
+// CheckReasonPeerMemoryMissing is why the peer-memory check warns: the
+// vendor's peer-memory module is not loaded, so the NIC cannot register the
+// card's memory.
+const CheckReasonPeerMemoryMissing = "peer_memory_missing"
+
+// PeerMemoryModule is the kernel module through which a vendor's driver lets
+// RDMA NICs register its cards' memory, or "" for a vendor without one this
+// platform checks.
+func PeerMemoryModule(vendor string) string {
+	switch NormalizeVendor(vendor) {
+	case VendorPPU:
+		return "alixpu_peermem"
+	case VendorNVIDIA:
+		return "nvidia_peermem"
+	}
+	return ""
+}
+
+// PeerMemoryFix is the command that loads a vendor's peer-memory module now
+// and on every boot, or "".
+func PeerMemoryFix(vendor string) string {
+	module := PeerMemoryModule(vendor)
+	if module == "" {
+		return ""
+	}
+	return "modprobe " + module + " && echo " + module + " > /etc/modules-load.d/" + module + ".conf"
+}
+
 // CardCheckSpec is one check in the catalog.
 type CardCheckSpec struct {
 	ID string
@@ -103,6 +137,7 @@ var cardCheckCatalog = []CardCheckSpec{
 	{ID: CheckXid, Period: ReportPeriod, Vendors: []string{VendorNVIDIA}},
 	{ID: CheckNVLink, Period: NVLinkCheckPeriod, Vendors: []string{VendorNVIDIA}},
 	{ID: CheckRuntime, Period: RuntimeCheckPeriod, Vendors: []string{VendorNVIDIA, VendorAscend, VendorHygon, VendorPPU}},
+	{ID: CheckPeerMemory, Period: ReportPeriod, Vendors: []string{VendorNVIDIA, VendorPPU}},
 }
 
 // CardChecks are the checks that exist for a vendor's cards, in display order.
@@ -201,6 +236,10 @@ func CardCheckProbe(check string, card HealthCard) string {
 		}
 	case CheckXid:
 		return "dmesg | grep -i xid"
+	case CheckPeerMemory:
+		if module := PeerMemoryModule(card.Vendor); module != "" {
+			return "lsmod | grep " + module
+		}
 	case CheckNVLink:
 		if target != "" {
 			return "nvidia-smi nvlink -s -e -i " + target

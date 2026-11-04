@@ -16,10 +16,10 @@ func TestCardChecksPerVendor(t *testing.T) {
 		return strings.Join(out, ",")
 	}
 	for vendor, want := range map[string]string{
-		VendorNVIDIA: "vendor_health,vendor_cli,occupancy,pcie_link,pcie_errors,xid,nvlink,runtime",
+		VendorNVIDIA: "vendor_health,vendor_cli,occupancy,pcie_link,pcie_errors,xid,nvlink,runtime,peer_memory",
 		VendorAscend: "vendor_health,vendor_cli,occupancy,pcie_link,pcie_errors,runtime",
 		VendorHygon:  "vendor_health,vendor_cli,occupancy,pcie_link,pcie_errors,runtime",
-		VendorPPU:    "vendor_health,vendor_cli,occupancy,pcie_link,pcie_errors,runtime",
+		VendorPPU:    "vendor_health,vendor_cli,occupancy,pcie_link,pcie_errors,runtime,peer_memory",
 		VendorAMD:    "vendor_health,vendor_cli,occupancy,pcie_link,pcie_errors",
 		VendorApple:  "",
 		"":           "",
@@ -70,5 +70,22 @@ func TestEveryCheckHasAProbe(t *testing.T) {
 	}
 	if got := CardCheckProbe("unknown", card); got != "" {
 		t.Errorf("unknown check probe = %q", got)
+	}
+}
+
+func TestPeerMemoryModuleAndFix(t *testing.T) {
+	for vendor, want := range map[string]string{VendorPPU: "alixpu_peermem", VendorNVIDIA: "nvidia_peermem", VendorAscend: "", VendorHygon: ""} {
+		if got := PeerMemoryModule(vendor); got != want {
+			t.Errorf("%s module = %q, want %q", vendor, got, want)
+		}
+	}
+	if got := PeerMemoryFix(VendorPPU); got != "modprobe alixpu_peermem && echo alixpu_peermem > /etc/modules-load.d/alixpu_peermem.conf" {
+		t.Errorf("fix = %q", got)
+	}
+	if PeerMemoryFix(VendorAscend) != "" {
+		t.Error("Ascend has no peer-memory module to load")
+	}
+	if got := CardCheckProbe(CheckPeerMemory, HealthCard{Vendor: VendorPPU}); got != "lsmod | grep alixpu_peermem" {
+		t.Errorf("probe = %q", got)
 	}
 }

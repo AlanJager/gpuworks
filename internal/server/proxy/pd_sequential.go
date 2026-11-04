@@ -7,9 +7,12 @@ package proxy
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"strconv"
 	"time"
@@ -23,8 +26,10 @@ const maxPrefillResponseBytes = 16 << 20
 
 // prefillBody is the prefill instance's copy of the request: one output
 // token, not streamed, and asked to keep the KV for a remote decoder. Fields
-// that only make sense for the real generation go.
-func prefillBody(original []byte) ([]byte, error) {
+// that only make sense for the real generation go. transferID, when set, is
+// the id both sides of a synthesized handoff name the KV by
+// (pdmode.Mode.SynthesizedHandoff).
+func prefillBody(original []byte, transferID string) ([]byte, error) {
 	var doc map[string]json.RawMessage
 	if err := json.Unmarshal(original, &doc); err != nil || doc == nil {
 		return nil, fmt.Errorf("request body is not a JSON object")
@@ -38,8 +43,47 @@ func prefillBody(original []byte) ([]byte, error) {
 	for _, key := range []string{"stream_options", "min_tokens", "min_completion_tokens"} {
 		delete(doc, key)
 	}
-	doc[kvTransferField] = json.RawMessage(`{"do_remote_decode":true}`)
+	params := map[string]any{"do_remote_decode": true}
+	if transferID != "" {
+		params["transfer_id"] = transferID
+	}
+	doc[kvTransferField] = mustRaw(params)
 	return json.Marshal(doc)
+}
+
+// newTransferID is a fresh id for one synthesized handoff.
+func newTransferID() string {
+	var b [16]byte
+	_, _ = rand.Read(b[:])
+	return "gw-" + hex.EncodeToString(b[:])
+}
+
+// synthesizedHandoff is the decoder's kv_transfer_params of a mode whose
+// prefill answer carries none (vLLM's MooncakeConnector): the prefill
+// instance named by its engine id and bootstrap server, both derived from its
+// KV endpoint as the launch derives them (pdmode.EngineID), and the transfer
+// id the prefill copy carried. Nil when the instance has no KV endpoint.
+func synthesizedHandoff(c candidate, transferID string) json.RawMessage {
+	if c.kvHost == "" || c.kvPort == 0 || transferID == "" {
+		return nil
+	}
+	return mustRaw(map[string]any{
+		"do_remote_prefill":     true,
+		"remote_engine_id":      pdmode.EngineID(c.kvHost, c.kvPort),
+		"remote_bootstrap_addr": "http://" + net.JoinHostPort(c.kvHost, strconv.Itoa(c.kvPort)),
+		"transfer_id":           transferID,
+	})
+}
+
+// prefillTransferID is the transfer id a prefill copy carries, if any.
+func prefillTransferID(body []byte) string {
+	var doc struct {
+		Params struct {
+			TransferID string `json:"transfer_id"`
+		} `json:"kv_transfer_params"`
+	}
+	_ = json.Unmarshal(body, &doc)
+	return doc.Params.TransferID
 }
 
 // prefillOutcome is how one prefill call ended.
@@ -110,6 +154,9 @@ func (p *Proxy) runPrefill(ctx context.Context, route *pdRoute, affinity, decode
 		}
 		_ = json.Unmarshal(data, &answer)
 		params := bytes.TrimSpace(answer.Params)
+		if route.mode.SynthesizedHandoff {
+			params = synthesizedHandoff(l.c, prefillTransferID(body))
+		}
 		if len(params) == 0 || bytes.Equal(params, []byte("null")) || params[0] != '{' {
 			// 200 without the handoff: the engine is not running as a PD
 			// producer (a replaced connector, an image without it). Count it
@@ -143,7 +190,11 @@ func (p *Proxy) serveSequentialPrefill(w http.ResponseWriter, r *http.Request, t
 		// Unreadable here is unreadable for the decoder too; it answers.
 		return true, noop
 	}
-	body, err := prefillBody(original)
+	transferID := ""
+	if route.mode.SynthesizedHandoff {
+		transferID = newTransferID()
+	}
+	body, err := prefillBody(original, transferID)
 	if err != nil {
 		return true, noop
 	}

@@ -75,6 +75,10 @@ func TestCheckPDNetwork(t *testing.T) {
 	if !ok || ucx.Transport != pdmode.TransportUCX {
 		t.Fatalf("vllm-nixl = %+v %v", ucx, ok)
 	}
+	rdma, ok := pdmode.Lookup("vllm-ppu-mooncake")
+	if !ok || rdma.Transport != pdmode.TransportMooncakeRDMA {
+		t.Fatalf("vllm-ppu-mooncake = %+v %v", rdma, ok)
+	}
 	two := []store.Node{{ID: 1, Name: "n1"}, {ID: 2, Name: "n2"}}
 	one := two[:1]
 	cards := map[uint][]string{1: {"npu3"}, 2: {"npu3"}}
@@ -107,6 +111,14 @@ func TestCheckPDNetwork(t *testing.T) {
 		"sleepable UCX on the management":      {ucx, two, networkGroup(netplan.TypeHostEthernet, none), "", nil},
 		"sleepable UCX on one host, loopback":  {ucx, one, netplan.Group{Ranks: map[uint]netplan.Resolved{1: {NodeID: 1, IP: "127.0.0.1"}}}, "", nil},
 		"sleepable HCCL across hosts on cards": {hccl, two, networkGroup(netplan.TypeAcceleratorRDMA, cards), "", nil},
+		// Mooncake over RDMA gets its devices only from a host RDMA network,
+		// so even one host needs one.
+		"Mooncake RDMA on host RDMA":           {rdma, two, networkGroup(netplan.TypeHostRDMA, none), "", nil},
+		"Mooncake RDMA on host RDMA, one host": {rdma, one, networkGroup(netplan.TypeHostRDMA, none), "", nil},
+		"Mooncake RDMA on the management":      {rdma, two, networkGroup(netplan.TypeHostEthernet, none), messages.ErrorPDNetworkRDMARequired, map[string]any{"mode": "vllm-ppu-mooncake", "network": "management"}},
+		"Mooncake RDMA on one host, loopback":  {rdma, one, netplan.Group{Ranks: map[uint]netplan.Resolved{1: {NodeID: 1, IP: "127.0.0.1"}}}, messages.ErrorPDNetworkRDMARequired, map[string]any{"mode": "vllm-ppu-mooncake", "network": ""}},
+		"Mooncake RDMA on cards":               {rdma, two, networkGroup(netplan.TypeAcceleratorRDMA, cards), messages.ErrorPDNetworkRDMARequired, map[string]any{"mode": "vllm-ppu-mooncake", "network": "shared"}},
+		"sleepable Mooncake RDMA on host RDMA": {rdma, two, networkGroup(netplan.TypeHostRDMA, none), messages.ErrorPDSleepRDMAUnsupported, map[string]any{"mode": "vllm-ppu-mooncake", "network": "shared"}},
 	} {
 		sleepable := strings.HasPrefix(name, "sleepable ")
 		code, params := productCodeAndParams(t, CheckPDNetwork(tc.mode, tc.nodes, tc.group, sleepable))

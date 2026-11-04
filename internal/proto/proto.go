@@ -349,6 +349,12 @@ type PartitionCapability struct {
 	ProbeCheckedAt *time.Time `json:"probe_checked_at,omitempty"`
 }
 
+// Peer-memory states (SysInfo.PeerMemory).
+const (
+	PeerMemoryLoaded  = "loaded"
+	PeerMemoryMissing = "missing"
+)
+
 // SysInfo is the host summary reported in NodeStatus.
 type SysInfo struct {
 	Hostname         string `json:"hostname"`
@@ -377,6 +383,12 @@ type SysInfo struct {
 	// display string. A code rather than a sentence, so the operator reads
 	// it in their own language.
 	RuntimeGPUBlocked string `json:"runtime_gpu_blocked,omitempty"`
+	// PeerMemory is whether the host's RDMA NICs can register this node's
+	// cards' memory: PeerMemoryLoaded or PeerMemoryMissing for the vendor's
+	// peer-memory module, empty when the host has no RDMA NIC or the vendor
+	// has no such module (and from an agent that predates the field). PD
+	// modes that move the KV over RDMA run only where it is loaded.
+	PeerMemory string `json:"peer_memory,omitempty"`
 	// RuntimeFallbackFrom is the runtime auto-detection passed over because
 	// it cannot give a container this node's accelerators, and
 	// RuntimeFallbackReason the code saying why (accelerator.RuntimeGPUBlocked*,

@@ -7,6 +7,7 @@
 package planning
 
 import (
+	"gpuworks.ai/gpuworks/internal/proto"
 	"sort"
 
 	"gpuworks.ai/gpuworks/internal/accelerator"
@@ -39,6 +40,10 @@ type UnitSuggestFacts struct {
 	// Strategy orders each group's nodes after the model: binpack the fewest
 	// free cards that still fit, anything else (spread, unset) the most.
 	Strategy store.PlacementStrategy
+	// PeerMemory leaves out the nodes whose RDMA NICs cannot register their
+	// cards' memory: the deployment is a PD mode over RDMA
+	// (pdmode.Mode.PeerMemory).
+	PeerMemory bool
 }
 
 // UnitGroup is a set of nodes that could carry one replica: they share a
@@ -55,6 +60,9 @@ type UnitGroup struct {
 // once by the first it fails, for saying why nothing was suggested.
 type UnitSuggestCounts struct {
 	Nodes, Unmet, Cordoned, Offline, Busy, NoNetwork int
+	// NoPeerMemory are the nodes left out because the peer-memory module is
+	// not loaded (UnitSuggestFacts.PeerMemory).
+	NoPeerMemory int
 	// Largest is the most nodes any group has, short of Ranks.
 	Largest int
 }
@@ -82,6 +90,9 @@ func SuggestUnitGroups(f UnitSuggestFacts) ([]UnitGroup, UnitSuggestCounts) {
 			continue
 		case f.Online != nil && !f.Online(node.UUID):
 			counts.Offline++
+			continue
+		case f.PeerMemory && node.PeerMemory != proto.PeerMemoryLoaded:
+			counts.NoPeerMemory++
 			continue
 		}
 		free := FreeHealthyGPUs(node, f.Held[node.ID]) - f.Claimed[node.UUID]

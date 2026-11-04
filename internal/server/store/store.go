@@ -702,6 +702,7 @@ func (s *Store) UpdateNodeStatus(uuid string, st proto.NodeStatus) error {
 		}
 		updates["runtime_plugin"] = st.Sys.RuntimePlugin
 		updates["runtime_gpu_blocked"] = truncate(st.Sys.RuntimeGPUBlocked, 64)
+		updates["peer_memory"] = truncate(st.Sys.PeerMemory, 16)
 		updates["runtime_fallback_from"] = truncate(st.Sys.RuntimeFallbackFrom, 16)
 		updates["runtime_fallback_reason"] = truncate(st.Sys.RuntimeFallbackReason, 64)
 		updates["accelerator_vendors"] = encodeAcceleratorVendors(st.Sys.AcceleratorVendors)
