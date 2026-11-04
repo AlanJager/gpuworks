@@ -937,7 +937,7 @@
     {
       "item": "17.1",
       "status": "N/A",
-      "assertion": "no loading, empty, error or stale chart state exists on this page; the acquisition Table's own loading and empty states are stated under the table item, not here. N/A: the deploy surfaces render no chart, metric card or timeline. A recursive search of ui/src/pages/deploy/ finds no echarts, no EChart, no Statistic, no Timeline, no Progress and no canvas: the acquisition view is one antd Table with five Tags (ui/src/pages/deploy/DeployNodeAcquisition.tsx), and the health-check view is three antd Forms with a Checkbox and an InputNumber (ui/src/pages/deploy/HealthCheckFields.tsx). The charts this item describes live in ui/src/pages/analytics/EChart.tsx, which no deploy page imports."
+      "assertion": "no chart loading, empty, error or stale state exists on these pages, because no chart is drawn. N/A: the deploy surfaces render no chart, metric card or timeline. A recursive search of ui/src/pages/deploy/ finds no echarts, no EChart, no Statistic, no Timeline, no Progress and no canvas: the acquisition view is one antd Table with five Tags (ui/src/pages/deploy/DeployNodeAcquisition.tsx), and the health-check view is three antd Forms with a Checkbox and an InputNumber (ui/src/pages/deploy/HealthCheckFields.tsx). The charts this item describes live in ui/src/pages/analytics/EChart.tsx, which no deploy page imports."
     },
     {
       "item": "17.2",
