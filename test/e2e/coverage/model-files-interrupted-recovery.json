@@ -464,8 +464,8 @@
     },
     {
       "item": "16.8",
-      "status": "MISSING",
-      "assertion": "MISSING: 下载/导出检查原始字节、格式、中文编码、列/单位、记录数和筛选一致；失败不能下载 HTML 错误页冒充文件。"
+      "status": "partial",
+      "assertion": "Partial: only the download side applies to this surface, and this case proves the bytes and format half of it after an interrupted transfer resumes. Each delivered file on the actual chosen path is decoded through its own standard envelope - config.json by Python's json module, model.safetensors by the length-prefixed header the safetensors format defines - and the sha256 of the bytes on disk equals the sha256 of the bytes the external repository served, so the resumed artifact is verified as the declared format and as byte-identical content rather than as a resent document. The directory is then enumerated: it holds exactly the source file set beside the product's own completion marker, whose measured byte total equals the sum of the served files, with no .part, .part.state, .tmp or .html leftover from the interruption, which is the specific risk this case creates. The clause that a failure must not download an HTML error page as the file is NOT claimed by this case, because this case does not make the source fail; that clause is proven on the failure-retry case, which really refuses the weight with a 503 and calibrates the HTML detector against the fixture's real error body. The export-shaped sub-dimensions are also NOT claimed: 中文编码, 列/单位, 记录数与筛选一致 require an exported artifact, and this page has none - neither models locale file contains any word for export, ui/src/pages/models has no export surface, the tables declare no antd filter or sorter, and the backend exposes no model export route. That half belongs to the logs export contract, declared there by log-filter-export.json; claiming it here would be a mis-attribution, so this item remains a gap in the completion queue."
     },
     {
       "item": "22.1",

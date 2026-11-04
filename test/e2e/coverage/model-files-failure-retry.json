@@ -464,8 +464,8 @@
     },
     {
       "item": "16.8",
-      "status": "MISSING",
-      "assertion": "MISSING: 下载/导出检查原始字节、格式、中文编码、列/单位、记录数和筛选一致；失败不能下载 HTML 错误页冒充文件。"
+      "status": "partial",
+      "assertion": "Partial: only the download side applies to this surface, and this case proves both halves of it. Bytes and format: each delivered file on the actual chosen path is decoded through its own standard envelope - config.json by Python's json module, model.safetensors by the length-prefixed header the safetensors format defines - and the sha256 of the bytes on disk equals the sha256 of the bytes the external repository served, so the format claim rests on the format itself and not on the product's serializer, and completion leaves exactly the source file set beside the product's own completion marker with no .part, .tmp or .html leftover. Failure clause, which is this case's specialty: the weight source really answers 503, and then the storage directory is enumerated and every file in it is compared to the served bytes and to the fixture's real error body - the fixture's root route is fetched first and really answers a 241-byte text/html table, and both declared file names are fed that body and must be rejected by the HTML detector, so the check is calibrated rather than vacuously clean; after the real 503 only config.json remains at byte-identical source content, with no substitute file and no error page stored as the model file, and the retry that follows reaches the same verification. The remaining sub-dimensions are export-shaped and are NOT claimed: 中文编码, 列/单位, 记录数与筛选一致 need an exported artifact, and this page has none - neither models locale file contains any word for export, ui/src/pages/models has no export surface, the tables declare no antd filter or sorter, and the backend exposes no model export route. That half belongs to the logs export contract, declared there by log-filter-export.json; claiming it here would be a mis-attribution, so this item remains a gap in the completion queue."
     },
     {
       "item": "22.1",

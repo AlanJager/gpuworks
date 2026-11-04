@@ -464,8 +464,8 @@
     },
     {
       "item": "16.8",
-      "status": "MISSING",
-      "assertion": "MISSING: 下载/导出检查原始字节、格式、中文编码、列/单位、记录数和筛选一致；失败不能下载 HTML 错误页冒充文件。"
+      "status": "partial",
+      "assertion": "Partial: only the download side applies to this surface, and it is proven rather than assumed. The delivered bytes are the declared formats, not a substituted document: each file on the actual chosen path is parsed by its own standard envelope - config.json through Python's json module, model.safetensors through the length-prefixed header the safetensors format defines - and the sha256 of the bytes read back equals the sha256 of the bytes the external repository actually served, so the format claim rests on the format and not on the product's serializer. Completion also leaves exactly the source file set beside the product's own completion marker, whose measured byte total equals the sum of the served files, with no .part, .tmp or .html leftover. The failure clause is proven by calibration rather than by absence: the fixture's root route is fetched and really answers text/html as a 241-byte HTML table, both declared file names are fed that real error body and must be rejected by the HTML detector, and after the real 503 failure the storage holds only config.json at byte-identical source content with no substitute file and no stored error page. The remaining sub-dimensions of this item are export-shaped and are NOT claimed here: 中文编码, 列/单位, 记录数与筛选一致 require an exported artifact, and this page has none - neither models locale file contains any word for export, ui/src/pages/models has no export surface, the tables declare no antd filter or sorter, and the backend exposes no model export route. That half belongs to the logs export contract and is declared there instead; claiming it on this manifest would be a mis-attribution, so this item remains a gap in the completion queue."
     },
     {
       "item": "22.1",

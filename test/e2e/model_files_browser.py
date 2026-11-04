@@ -8,7 +8,9 @@ import hashlib
 import json
 import re
 import sqlite3
+import struct
 import time
+import urllib.request
 from pathlib import Path
 from urllib.parse import parse_qs, quote, urlsplit
 
@@ -122,9 +124,31 @@ def begin(page, context, server, artifacts, report, locale, data):
     return labels
 
 
+def settle_click(page, target, deadline=60):
+    """Click through a transient AntD spin overlay that a background refresh lays down.
+
+    The page refreshes on its own live transfer events, and AntD covers the
+    table with aria-busy while the fetch is in flight. An operator waits that
+    out and clicks when it is clickable, so the click is retried for a bounded
+    time instead of racing the overlay once.
+    """
+    until = time.monotonic() + deadline
+    while True:
+        try:
+            target.click(timeout=5000)
+            return
+        except PlaywrightTimeoutError:
+            if time.monotonic() > until:
+                raise
+            page.wait_for_timeout(100)
+
+
 def choose(page, control, label):
     # A non-searchable AntD Select overlays its readonly input with the
     # selection label. Open through the real combobox keyboard contract.
+    # A background refresh lays an ant-spin over the form while a fetch is in
+    # flight, so the option click is retried until that overlay is gone
+    # instead of racing it once.
     control.focus()
     control.press('ArrowDown')
     popup_id = control.get_attribute('aria-controls')
@@ -133,12 +157,14 @@ def choose(page, control, label):
     expect(popup).to_have_count(1)
     option = popup.get_by_text(label, exact=True)
     expect(option).to_be_visible()
-    option.click()
+    settle_click(page, option)
 
 
 def select_node(page, dialog, labels, data):
     control = dialog.get_by_role('combobox', name=labels['download']['nodes'], exact=True)
-    control.click()
+    # Same overlay hazard as choose(): the opened combobox is clicked while a
+    # refresh may still be spinning, so the open is retried rather than raced.
+    settle_click(page, control)
     control.fill(data['node']['name'])
     # Exact readable node option, using the real keyboard selection contract.
     name = labels['download']['gpuCount'].replace('{{count}}', '2')
@@ -473,15 +499,7 @@ def open_detail(page, server, labels, data):
     # clicks the row when it is clickable, so the click is retried until the overlay
     # is gone instead of racing it once.
     trigger = page.get_by_role('button', name=name, exact=True)
-    deadline = time.monotonic() + 60
-    while True:
-        try:
-            trigger.click(timeout=5000)
-            break
-        except PlaywrightTimeoutError:
-            if time.monotonic() > deadline:
-                raise
-            page.wait_for_timeout(100)
+    settle_click(page, trigger)
     dialog = page.get_by_role('dialog', name=name, exact=True)
     expect(dialog.locator('#model-files')).to_be_visible()
     return dialog
@@ -504,7 +522,7 @@ def download(page, labels, data, storage, report, server=None, token=None, refus
             if request.method == 'POST' and urlsplit(request.url).path == path else None)
 
     def reopen():
-        trigger.click()
+        settle_click(page, trigger)
         opened = page.get_by_role('dialog', name=title, exact=True)
         expect(opened).to_be_visible()
         return opened
@@ -582,7 +600,45 @@ def assert_ready(page, server, token, labels, data, storage, report, *, reload=T
     checked(row['acquisition'] == 'download', 'public file acquisition is download')
     checked(row['state'] == 'present', 'downloaded file reaches actual present state')
     actual = file_facts(storage['payload_path'], data['hub'].files)
-    dialog = model_detail_dialog(page, labels, data['name'])
+    # 16.8, download half: the bytes on disk are the declared formats, and once the transfer is
+    # complete the directory holds the source file set plus only the product's own completion
+    # marker - no partial, state or error file left behind pretending to be the model.
+    delivered = downloaded_format(storage['payload_path'], data['hub'].files)
+    on_disk = sorted(entry.name for entry in Path(storage['payload_path']).iterdir())
+    marker = '.gpuworks-model-complete.json'
+    strict([name for name in on_disk if name != marker], sorted(data['hub'].files),
+           'the delivered storage holds exactly the source file set')
+    leftovers = [name for name in on_disk if name.endswith(('.part', '.part.state', '.tmp', '.html'))]
+    strict(leftovers, [], 'a finished download left a temporary or error file behind')
+    if marker in on_disk:
+        with open(Path(storage['payload_path']) / marker, encoding='utf-8') as marker_file:
+            recorded = json.load(marker_file)
+        checked(isinstance(recorded, dict) and recorded, 'the completion marker is not a JSON object')
+        # The marker measures what landed on disk, so its own record is an independent count of the
+        # delivered file set and total bytes rather than a copy of the source listing.
+        strict(sorted(entry['path'] for entry in recorded.get('files') or []), sorted(data['hub'].files),
+               'the completion marker does not describe the delivered files')
+        strict(recorded.get('bytes'), sum(len(value) for value in data['hub'].files.values()),
+               'the completion marker measured a different delivered total')
+    # The detector is calibrated against the real error body this fixture serves, so a clean result
+    # proves the check can fail rather than only that it was never asked.
+    error_body, error_type = served_error_page(data['hub'].url + '/')
+    checked(error_type.startswith('text/html'), f'fixture error body is not HTML: {error_type}')
+    for name in data['hub'].files:
+        try:
+            declared_format(name, error_body)
+        except AssertionError as refusal:
+            checked('HTML document' in str(refusal), f'format probe rejected for the wrong reason: {refusal}')
+        else:
+            raise AssertionError(f'an HTML error page was accepted as {name}')
+    checked(error_body not in tuple(data['hub'].files.values()),
+            'the fixture error body is byte-identical to a declared model file')
+    report.setdefault('download_formats', []).append({'storage_id': storage['id'],
+        'files': delivered, 'on_disk': on_disk, 'completion_marker': marker in on_disk,
+        'temporary_leftovers': leftovers, 'error_body_rejected': True,
+        'error_content_type': error_type, 'error_body_bytes': len(error_body)})
+    # Select by the API-stable group heading when two locations share node/path.
+    dialog = page.get_by_role('dialog', name=data['name'], exact=True)
     if not dialog.is_visible():
         dialog = open_detail(page, server, labels, data)
     files = dialog.locator('#model-files')
@@ -616,6 +672,94 @@ def assert_ready(page, server, token, labels, data, storage, report, *, reload=T
         checked(file_facts(storage['payload_path'], data['hub'].files) == actual, 'refresh changed payload')
         expect(model_detail_dialog(page, labels, data['name']).locator('#model-files')).to_be_visible()
     return row
+
+
+def declared_format(name, body):
+    """Decode one delivered file through its own standard envelope, never the product's.
+
+    JSON is parsed with the json module, safetensors through the length-prefixed header the format
+    defines. An HTML or plain-text error body satisfies neither, so a downloaded file that is really
+    an error page cannot be reported as this format.
+    """
+    leading = body[:15].lstrip().lower()
+    checked(not leading.startswith((b'<html', b'<!doctype', b'<body', b'<table')),
+            f'{name} was delivered as an HTML document instead of its declared format')
+    if name.endswith('.json'):
+        parsed = json.loads(body.decode('utf-8'))
+        checked(isinstance(parsed, dict) and parsed, f'{name} is not a JSON object')
+        return {'format': 'json', 'parsed': True, 'keys': sorted(parsed)}
+    if name.endswith('.safetensors'):
+        checked(len(body) >= 8, f'{name} is shorter than a safetensors length prefix')
+        header_length = struct.unpack('<Q', body[:8])[0]
+        checked(0 < header_length <= len(body) - 8, f'{name} header length {header_length} is out of range')
+        header = json.loads(body[8:8 + header_length].decode('utf-8'))
+        checked(isinstance(header, dict) and header, f'{name} safetensors header is not an object')
+        tensors = sorted(key for key in header if key != '__metadata__')
+        checked(tensors, f'{name} safetensors header declares no tensors')
+        return {'format': 'safetensors', 'parsed': True, 'header_length': header_length, 'tensors': tensors}
+    return {'format': 'binary', 'parsed': False}
+
+
+def downloaded_format(root, files):
+    """16.8, download half: the bytes on disk are the declared formats, not substituted text."""
+    facts = {}
+    for name, value in files.items():
+        path = Path(root) / name
+        checked(path.is_file() and not path.is_symlink(), f'missing real payload: {path}')
+        body = path.read_bytes()
+        checked(body == value, f'payload bytes differ: {path}')
+        facts[name] = {**declared_format(name, body), 'bytes': len(body),
+                       'sha256': hashlib.sha256(body).hexdigest()}
+    return facts
+
+
+def served_error_page(root):
+    """The exact bytes the fixture answers with when it is not serving a file.
+
+    This is the body the download path must never persist as a model file. It is fetched from the
+    fixture's own root route, so the calibration compares against a real response rather than a
+    guess about what an error page looks like.
+    """
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    with opener.open(root, timeout=10) as response:
+        body = response.read()
+        content_type = response.headers.get('Content-Type', '')
+    return body, content_type
+
+
+def refused_weight_left_no_substitute(target, hub, report):
+    """16.8, failure half: a refused weight is not saved as the error page or any other substitute.
+
+    Every file actually present is compared to the bytes the repository serves and to the fixture's
+    real HTML error body, so a download that "succeeded" into an error document is a failure here
+    rather than a file. Product bookkeeping is recorded, not ignored.
+    """
+    root = Path(target['payload_path'])
+    present = sorted(entry.name for entry in root.iterdir()) if root.is_dir() else []
+    error_body, error_type = served_error_page(hub.url + '/')
+    checked(error_type.startswith('text/html'), f'fixture error body is not HTML: {error_type}')
+    substituted, bookkeeping = [], []
+    for name in present:
+        blob = (root / name).read_bytes()
+        looks_html = blob[:15].lstrip().lower().startswith((b'<html', b'<!doctype', b'<body', b'<table'))
+        record = {'name': name, 'bytes': len(blob), 'is_error_body': blob == error_body, 'looks_html': looks_html}
+        if name == '.gpuworks-model-complete.json' or name.endswith('.part.state'):
+            bookkeeping.append(record)
+            continue
+        base = name[:-len('.part')] if name.endswith('.part') else name
+        # Only a genuine byte prefix of the source repository file is acceptable, and an error body
+        # is never a prefix of it because the fixture's error page is HTML.
+        if base in hub.files and hub.files[base][:len(blob)] == blob and not looks_html:
+            continue
+        substituted.append(record)
+    strict([item['name'] for item in substituted], [],
+           'a failed download saved a substitute file, including any HTML error body')
+    strict([item['name'] for item in substituted if item['is_error_body']], [],
+           'a failed download saved the repository error page as the model file')
+    report.setdefault('refused_weight_checks', []).append({
+        'storage_id': target['id'], 'present': present, 'substituted': substituted,
+        'bookkeeping': bookkeeping, 'error_body_bytes': len(error_body), 'error_content_type': error_type})
+    return present
 
 
 def wire_proof(data, start):
@@ -904,6 +1048,8 @@ def exercise_download_delete(page, context, server, artifacts, report, locale, d
                 for record in hub.audit()[start:]), 'no actual weight503 observed')
     checked(not Path(target['payload_path'], 'model.safetensors').exists(),
             'the refused weight was written as a finished file')
+    # 16.8, failure half: the refused weight is not persisted as an error page or a substitute.
+    refused_weight_left_no_substitute(target, hub, report)
     dialog = open_detail(page, server, labels, data)
     row = dialog.locator('#model-files tr.ant-table-row')
     expect(row).to_have_count(1)
@@ -1089,6 +1235,8 @@ def exercise_failure_retry(page, context, server, artifacts, report, locale, dat
     checked(any(r['status'] == 503 and r['target'] == hub.root + '/model.safetensors' for r in hub.audit()[start:]),
             'no actual weight503 observed')
     checked(not Path(target['payload_path'], 'model.safetensors').exists(), 'source503 incorrectly left complete weight')
+    # 16.8, failure half: a refused weight must not be saved as the error page or any other substitute.
+    refused_weight_left_no_substitute(target, hub, report)
     dialog = open_detail(page, server, labels, data)
     row = dialog.locator('#model-files tr.ant-table-row')
     expect(row).to_have_count(1)
