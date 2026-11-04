@@ -46,6 +46,12 @@ PPU slicing shim from gpustack-operator (hggc_quota.so, hgml_dlsym_hook.so, patc
   License: Apache License 2.0
   Source and patches: build/runtime-assets/ppu/
 
+ROCm slicing shim from gpustack-operator (libvrocm.so)
+  https://github.com/gpustack/gpustack-operator (csrc/amd/rocm-slicing-shim)
+  Copyright (c) GPUStack contributors
+  License: Apache License 2.0
+  Source: build/runtime-assets/amd/
+
 perftest (ib_write_bw) with rdma-core - separate program
   https://github.com/linux-rdma/perftest
   https://github.com/linux-rdma/rdma-core

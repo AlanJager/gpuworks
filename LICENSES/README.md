@@ -16,5 +16,5 @@ release archive ships it next to `LICENSE` and `NOTICE`.
 | `rdma-core/` | rdma-core, statically linked into `ib_write_bw`: the upstream `COPYING.md` and the license files it refers to |
 | `HAMi-core-NOTICE.txt` | HAMi-core (`libvgpu.so`): the upstream NOTICE, propagated as Apache-2.0 section 4(d) requires |
 
-HAMi-core, udocker and the gpustack-operator PPU slicing shim are licensed
-under the Apache License 2.0, whose text is the top-level `LICENSE`.
+HAMi-core, udocker and the gpustack-operator PPU and ROCm slicing shims are
+licensed under the Apache License 2.0, whose text is the top-level `LICENSE`.

@@ -120,7 +120,7 @@ Install the GPUWorks control plane on this host and verify it.
 | Accelerator | Whole-GPU deploy | dGPU (shared GPU) | Sleep/wake | Multi-node | PD disaggregation |
 |---|---|---|---|---|---|
 | **NVIDIA** (CUDA) | ✅ Docker, containerd or runveil (built-in rootless runtime) | ✅ memory quota at MiB granularity | ✅ vLLM | ✅ | ✅ vLLM + NIXL |
-| **AMD** (ROCm: Instinct MI300 series, Ryzen AI Max) | ✅ Docker or containerd | — | ✅ vLLM | ✅ vLLM | ✅ vLLM + NIXL |
+| **AMD** (ROCm: Instinct MI300 series, Ryzen AI Max) | ✅ Docker or containerd | ✅ memory quota (libvrocm, user space) | ✅ vLLM | ✅ vLLM | ✅ vLLM + NIXL |
 | **Huawei Ascend** (CANN) | ✅ Docker, containerd or runveil (built-in rootless runtime) | ✅ memory quota at MiB granularity | ✅ vLLM-Ascend | ✅ | ✅ vLLM-Ascend + Mooncake |
 | **T-Head PPU** (HGGC) | ✅ Docker, containerd or runveil (built-in rootless runtime) | ✅ memory quota at MiB granularity | ✅ vLLM | ✅ | ✅ SGLang + Mooncake (same node or over RDMA), vLLM + Mooncake (RDMA) |
 | **Hygon DCU** (DTK) | ✅ Docker, containerd or runveil (built-in rootless runtime) | ✅ memory quota at MiB granularity | ✅ vLLM | ✅ | — |

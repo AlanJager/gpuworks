@@ -31,6 +31,7 @@ required = {
     ("ascend-dgpu", "amd64"),
     ("ascend-dgpu", "arm64"),
     ("ppu-dgpu", "amd64"),
+    ("amd-dgpu", "amd64"),
 }
 missing = required - seen
 if missing:

@@ -278,7 +278,7 @@ func newNodeRuntime(log *slog.Logger, driver runtime.Driver, modelsDir, forceDri
 	n.storage = newStorageRuntime(stateDir, n.mountBusy)
 	n.servingForward = newServingForwarder(log, n.currentNodeToken, n.instanceAPIPort)
 	n.perftest = perftest.Host(stateDir)
-	if accelerator.IsDomestic(prober.Vendor()) {
+	if accelerator.HasRuntimeAssetBundles(prober.Vendor()) {
 		if installed, err := assets.InstallDomesticRuntimeAssets(filepath.Dir(modelsDir), prober.Vendor()); err != nil {
 			log.Warn("domestic runtime asset package unavailable", "vendor", prober.Vendor(), "err", err)
 		} else if len(installed) > 0 {
