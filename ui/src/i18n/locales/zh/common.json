@@ -522,6 +522,7 @@
     "AGENT_UPGRADE_REFUSED": "Agent 升级请求无法执行：{{detail}}",
     "ACCELERATOR_FEATURE_UNSUPPORTED": "{{vendor}} 不支持{{feature}}。请关闭此能力或选择其他加速卡。",
     "ACCELERATOR_DEVICE_SELECTION_REQUIRED": "{{vendor}} 启动前必须明确分配 GPU。",
+    "ACCELERATOR_SM_LIMIT_UNSUPPORTED": "{{vendor}} 不支持算力（SM）上限。请去掉该设置，或选择支持算力上限的 dGPU 后端。",
     "LAUNCH_FEATURES_UNKNOWN": "无法确认自定义启动命令在 {{vendor}} 上请求的功能。请提供可识别的引擎入口或结构化启动参数。",
     "SLEEP_TARGET_UNRESOLVED": "无法确认实例 {{instance}} 在节点 {{node}} 上的 GPU 选择：{{detail}}。"
   },

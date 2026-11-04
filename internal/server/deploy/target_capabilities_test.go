@@ -1,8 +1,11 @@
 package deploy
 
 import (
-	"gpuworks.ai/gpuworks/internal/accelerator"
+	"errors"
 	"testing"
+
+	"gpuworks.ai/gpuworks/internal/accelerator"
+	"gpuworks.ai/gpuworks/internal/server/messages"
 )
 
 func TestResolvedFeaturesUseEffectiveExecutableAndExactDialect(t *testing.T) {
@@ -60,6 +63,31 @@ func TestPartitionCapabilityHasNoFeatureAuthority(t *testing.T) {
 		}
 	}
 }
+// AMD requires explicit device selection and owns a memory-only logical
+// partition backend; ValidateTargetLaunch must admit its own VRAM-only
+// quota (assuming the assigned GPU requirement is met) but structurally
+// refuse any non-default SM limit, since AMD exposes no compute control.
+// Other vendors are unaffected: PPU and Hygon do expose an SM limit.
+func TestValidateTargetLaunchRefusesAMDComputeLimit(t *testing.T) {
+	launch := ResolvedLaunch{Entrypoint: []string{"vllm", "serve"}}
+	base := Params{Vendor: "amd", AssignedGPUs: 1, VRAMLimitBytes: 1 << 30, PartitionBackend: "amd-dgpu"}
+	if err := ValidateTargetLaunch(EngineVLLM, launch, base); err != nil {
+		t.Fatalf("AMD's own memory-only partition contract was refused: %v", err)
+	}
+	limited := base
+	limited.SMLimitPct = 50
+	err := ValidateTargetLaunch(EngineVLLM, launch, limited)
+	var productErr *messages.ProductError
+	if !errors.As(err, &productErr) || productErr.Code() != messages.ErrorAcceleratorSMLimitUnsupported {
+		t.Fatalf("AMD compute/SM limit error = %v, want %s", err, messages.ErrorAcceleratorSMLimitUnsupported)
+	}
+	for _, vendor := range []string{"nvidia", "ppu", "hygon"} {
+		if err := ValidateTargetLaunch(EngineVLLM, launch, Params{Vendor: vendor, SMLimitPct: 50}); err != nil {
+			t.Fatalf("%s SM limit was unexpectedly refused: %v", vendor, err)
+		}
+	}
+}
+
 func TestPreparationHooksCannotSupplyLaunchFeatures(t *testing.T) {
 	f := ResolveRequestedFeatures(EngineVLLM, ResolvedLaunch{Entrypoint: []string{"my-launcher"}, PreStartArgv: []string{"vllm", "serve", "-pp", "2"}, PreStartScript: "vllm serve --enable-sleep-mode"}, Params{})
 	if f.CommandKnown || f.EngineSleep || f.PipelineParallel {
