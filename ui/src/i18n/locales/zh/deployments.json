@@ -956,5 +956,59 @@
     "hours": "{{value}} 小时",
     "days": "{{value}} 天",
     "hoursMinutes": "{{hours}} 小时 {{minutes}} 分钟"
+  },
+  "catalogTemplate": {
+    "open": "另存为模板",
+    "title": "另存为推理模板",
+    "testing": "正在实测 API，并按部署实际运行的内容生成模板…",
+    "failed": "这个部署不能另存为模板",
+    "retry": "重试",
+    "close": "关闭",
+    "verified": "实测的接口全部有应答。模板为 {{model}} / {{spec}}。",
+    "notVerified": "有接口实测失败，这份模板不能保存。下面的 YAML 只供排查。",
+    "checks": "API 实测",
+    "noOperations": "模型没有声明接口，没有可实测的操作。",
+    "check": {
+      "passed": "应答 HTTP {{status}}",
+      "failed": "失败：HTTP {{status}} {{detail}}",
+      "notTested": "未实测（实测耗时或成本高，YAML 中已注明）"
+    },
+    "notes": "模板写了什么、缺什么",
+    "note": {
+      "verified_on": "已在 {{count}} × {{gpu}} 上验证；模板只匹配这一型号的卡。",
+      "kv_bytes_missing": "缺少 {{engine}} 的每 token KV 字节数：在评审者按 config.json 补齐之前，部署表单不显示 token 容量。",
+      "model_config_missing": "拿不到模型的 config.json，显存估算缺少模型结构。",
+      "placement_omitted": "未写 placement：部署实际用了 {{gpu_count}} 张卡、每卡 {{gpu_memory_mib}} MiB；卡数由调度决定。",
+      "vram_limit": "部署在 dGPU 每卡 {{vram_limit_mib}} MiB 的显存上限下运行。这是本次部署的选择，没有写成要求。",
+      "env_excluded": "未导出部署自己的环境变量：{{keys}}。",
+      "parameters_dropped": "没有引擎参数承载的设置未导出：{{keys}}。",
+      "container_overrides_omitted": "挂载与 docker 参数描述的是某一台主机，未导出。"
+    },
+    "reason": {
+      "not_running": "部署没有在运行，或没有运行中的实例。先启动它，再另存为模板。",
+      "distributed": "多机部署暂不支持另存为模板。",
+      "pd": "PD 分离部署暂不支持另存为模板。",
+      "no_gpu_facts": "运行中的实例没有绑定到具体的卡，不知道它是在哪种卡上测的。",
+      "template_assets": "源模板带随包文件，单个 YAML 装不下。请在模板编辑器里修改模板。",
+      "components": "源模板使用了组件模型，单个 YAML 无法解析。请在模板编辑器里修改模板。",
+      "weights_not_public": "权重来自本地目录或 URL，别人下载不到。",
+      "revision_unpinned": "权重版本是分支名而不是 commit。把模型固定到一个 commit 后重新部署。",
+      "revisions_differ": "模型的各个副本解析到了不同的 commit。把模型固定到一个 commit 后重新部署。",
+      "template_missing": "创建这个部署所用的模板已被删除。",
+      "model_missing": "部署的模型已被删除。",
+      "command_overridden": "部署替换了引擎命令，启动方式无法写成模板参数。"
+    },
+    "env": "未导出的环境变量",
+    "envHint": "这些变量常含令牌和主机路径。只勾选模型需要、且不含密钥的变量，再重新生成。",
+    "rebuild": "重新生成",
+    "yaml": "模板 YAML",
+    "download": "下载 YAML",
+    "copyEvidence": "复制测试记录",
+    "evidenceCopied": "测试记录已复制",
+    "save": "保存到目录",
+    "saveNeedsAdmin": "保存到目录需要管理员。可以下载 YAML 和测试记录拿去分享。",
+    "saved": "已保存到目录",
+    "saveFailed": "保存失败",
+    "openTemplate": "打开模板"
   }
 }

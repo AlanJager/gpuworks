@@ -515,7 +515,9 @@
     "BATCH_REQUEST_INVALID": "The batch request is not valid ({{field}}): {{reason}}",
     "BATCH_FILE_MODELS_UNKNOWN": "No deployment serves these models of the file: {{models, list}}. Choose a model to send every request to, or deploy these models first.",
     "BATCH_FILE_MODELS_ENDPOINT": "These models of the file do not serve {{endpoint}}: {{models, list}}. Choose a model that serves it to send every request to.",
-    "AGENT_UPGRADE_REFUSED": "Agent upgrade request could not proceed: {{detail}}"
+    "AGENT_UPGRADE_REFUSED": "Agent upgrade request could not proceed: {{detail}}",
+    "TEMPLATE_EXPORT_UNAVAILABLE": "This deployment cannot be saved as a template ({{reason}}).",
+    "LAUNCH_NOT_EXPORTABLE": "The deployment's launch arguments cannot be written as template arguments that rebuild the same {{engine}} command, so no approximate template is given."
   },
   "httpError": {
     "proxyPage": "HTTP {{status}}: a reverse proxy or tunnel between the browser and gpuworks answered with its own error page, so the server's reason was lost. Retry from the server's own address to see it."

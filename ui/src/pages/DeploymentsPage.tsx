@@ -18,7 +18,7 @@ import {
   Typography,
   message,
 } from "antd";
-import { ApiOutlined, CodeOutlined, CopyOutlined, DeleteOutlined, EditOutlined, ExperimentOutlined, MessageOutlined, MoreOutlined } from "@ant-design/icons";
+import { ApiOutlined, CodeOutlined, CopyOutlined, DeleteOutlined, EditOutlined, ExperimentOutlined, FileAddOutlined, MessageOutlined, MoreOutlined } from "@ant-design/icons";
 import { api, useEventPayload, useEvents, usePolling, type ChangeEvent, type Deployment, type DeploymentListItem, type DeploymentRuntimeNode, type Instance, type RoutingPolicyOption } from "../api";
 import { DeploymentPreparation, ListPreparationAction, PreparationLabel } from "./DeploymentPreparation";
 import DeploymentMetricsPanel from "../components/DeploymentMetricsPanel";
@@ -29,6 +29,7 @@ import DeploymentInstances from "./DeploymentInstances";
 import SleepControls from "./DeploymentSleepControls";
 import PlacementModeControl from "./DeploymentPlacementMode";
 import DeploymentSchedulingPolicy from "./DeploymentSchedulingPolicy";
+import DeploymentCatalogTemplateModal from "./DeploymentCatalogTemplateModal";
 import DeploymentLifecycleActions, { ReplicaRetryAlert } from "./DeploymentLifecycleActions";
 import { ReplicasEditor } from "./DeploymentReplicaActions";
 import { PlacementStatusAlert, RequirementTags } from "./DeploymentPlacementStatus";
@@ -147,6 +148,7 @@ export default function DeploymentsPage() {
     }
   };
   const [deleting, setDeleting] = useState<DeploymentListItem | null>(null);
+  const [templating, setTemplating] = useState<number | null>(null);
   const copyCurl = async (dep: DeploymentListItem) => { await copy(deploymentCurl(window.location.origin, dep), { success: t("page.curlCopied") }); };
 
   const columns: ResourceColumn<DeploymentListItem>[] = [
@@ -250,9 +252,12 @@ export default function DeploymentsPage() {
       { key: "clone", icon: <CopyOutlined />, label: t("page.clone") },
       { key: "cloneModify", icon: <CopyOutlined />, label: t("page.cloneModify") },
       { key: "benchmark", icon: <ExperimentOutlined />, disabled: effectiveDeploymentState(d) !== "running", label: t("page.benchmark") },
+      // The server decides whether the deployment can be written as a
+      // template and says why not; the menu only waits for it to run.
+      { key: "catalogTemplate", icon: <FileAddOutlined />, disabled: effectiveDeploymentState(d) !== "running", label: t("catalogTemplate.open") },
       { type: "divider" },
       { key: "delete", icon: <DeleteOutlined />, danger: true, label: t("delete.button") },
-      ], onClick: ({ key }) => { if (key === "terminal") void openTerminal(d); else if (key === "edit") navigate(`/deploy?edit=${d.id}`); else if (key === "clone") void clone(d); else if (key === "cloneModify") navigate(`/deploy?from=${d.id}`); else if (key === "benchmark") void benchmark(d); else if (key === "delete") setDeleting(d); } }}><Tooltip title={t("page.more")}><Button type="text" size="small" icon={<MoreOutlined />} aria-label={t("page.more")} /></Tooltip></Dropdown>
+      ], onClick: ({ key }) => { if (key === "terminal") void openTerminal(d); else if (key === "edit") navigate(`/deploy?edit=${d.id}`); else if (key === "clone") void clone(d); else if (key === "cloneModify") navigate(`/deploy?from=${d.id}`); else if (key === "benchmark") void benchmark(d); else if (key === "catalogTemplate") setTemplating(d.id); else if (key === "delete") setDeleting(d); } }}><Tooltip title={t("page.more")}><Button type="text" size="small" icon={<MoreOutlined />} aria-label={t("page.more")} /></Tooltip></Dropdown>
         </Space>;
     },
     },
@@ -291,6 +296,7 @@ export default function DeploymentsPage() {
         />
       </Card>
       <DeleteDeploymentModal dep={deleting} onClose={() => setDeleting(null)} onDeleted={refetch} />
+      {templating != null && <DeploymentCatalogTemplateModal deploymentID={templating} onClose={() => setTemplating(null)} />}
       <DeploymentDetail
         id={detailId}
         focusInstance={searchParams.get("instance")}

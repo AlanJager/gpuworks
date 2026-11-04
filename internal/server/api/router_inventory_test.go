@@ -285,6 +285,7 @@ POST /api/v1/benchmarks/tokenizers/import
 POST /api/v1/benchmarks/{id}/cancel
 POST /api/v1/deployments
 POST /api/v1/deployments/preflight
+POST /api/v1/deployments/{id}/catalog-template
 POST /api/v1/deployments/{id}/clone
 POST /api/v1/deployments/{id}/restart
 POST /api/v1/deployments/{id}/schedule

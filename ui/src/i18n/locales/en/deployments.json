@@ -956,5 +956,59 @@
     "hours": "{{value}} h",
     "days": "{{value}} d",
     "hoursMinutes": "{{hours}} h {{minutes}} min"
+  },
+  "catalogTemplate": {
+    "open": "Save as template",
+    "title": "Save as inference template",
+    "testing": "Testing the API and writing the template from what the deployment runs…",
+    "failed": "This deployment cannot be saved as a template",
+    "retry": "Try again",
+    "close": "Close",
+    "verified": "Every tested operation answered. The template is {{model}} / {{spec}}.",
+    "notVerified": "A tested operation failed, so this template cannot be saved. The YAML is shown for troubleshooting.",
+    "checks": "API checks",
+    "noOperations": "The model declares no operations, so nothing was tested.",
+    "check": {
+      "passed": "answered HTTP {{status}}",
+      "failed": "failed: HTTP {{status}} {{detail}}",
+      "notTested": "not tested (slow or costly to test; the YAML says so)"
+    },
+    "notes": "What the template states and what is missing",
+    "note": {
+      "verified_on": "Verified on {{count}} × {{gpu}}; the template matches only this card model.",
+      "kv_bytes_missing": "No KV cost per token for {{engine}}: the deploy form will show no token capacity until a reviewer computes it from config.json.",
+      "model_config_missing": "The model's config.json was not available, so memory estimation has no model shape.",
+      "placement_omitted": "No placement: the deployment ran on {{gpu_count}} card(s) with {{gpu_memory_mib}} MiB each; scheduling decides the card count.",
+      "vram_limit": "The deployment ran under a dGPU memory limit of {{vram_limit_mib}} MiB per card. That is this deployment's choice, not written as a requirement.",
+      "env_excluded": "The deployment's own environment variables were left out: {{keys}}.",
+      "parameters_dropped": "Settings that no engine flag carries were left out: {{keys}}.",
+      "container_overrides_omitted": "Mounts and docker arguments describe one host and were left out."
+    },
+    "reason": {
+      "not_running": "The deployment is not running, or none of its instances is running. Start it, then save it as a template.",
+      "distributed": "Multi-node deployments cannot be saved as a template yet.",
+      "pd": "PD disaggregated deployments cannot be saved as a template yet.",
+      "no_gpu_facts": "The running instance is not bound to specific cards, so the cards it was tested on are unknown.",
+      "template_assets": "The source template carries packaged files, which one YAML document cannot hold. Edit the template in the template editor instead.",
+      "components": "The source template uses component models, which one YAML document cannot resolve. Edit the template in the template editor instead.",
+      "weights_not_public": "The weights come from a local directory or a URL that nobody else can download.",
+      "revision_unpinned": "The weight revision is a branch name, not a commit. Pin the model to a commit and deploy again.",
+      "revisions_differ": "The model's copies resolved to different commits. Pin the model to one commit and deploy again.",
+      "template_missing": "The template this deployment was created from has been deleted.",
+      "model_missing": "The deployment's model has been deleted.",
+      "command_overridden": "The deployment replaced the engine command, so its launch cannot be written as template arguments."
+    },
+    "env": "Environment variables left out",
+    "envHint": "They often hold tokens and host paths. Tick only the ones the model needs and that hold no secret, then rebuild.",
+    "rebuild": "Rebuild",
+    "yaml": "Template YAML",
+    "download": "Download YAML",
+    "copyEvidence": "Copy test record",
+    "evidenceCopied": "Test record copied",
+    "save": "Save to catalog",
+    "saveNeedsAdmin": "Saving into the catalog needs an administrator. Download the YAML and the test record to share them.",
+    "saved": "Saved to the catalog",
+    "saveFailed": "Saving failed",
+    "openTemplate": "Open the template"
   }
 }

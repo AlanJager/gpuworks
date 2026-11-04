@@ -2858,6 +2858,31 @@ export interface InferenceTemplateIssue {
 }
 
 // The import answer; `warnings` is absent when there are none.
+// POST /deployments/{id}/catalog-template: a running deployment written as a
+// flat catalog template (docs/how-to/save-deployment-as-template.md). The
+// server tests the cheap operations before it writes the YAML; notes are the
+// facts the YAML comments state, by stable code.
+export interface CatalogTemplateCheck {
+  operation: string;
+  endpoint?: string;
+  tested: boolean;
+  passed: boolean;
+  http_status?: number;
+  message?: string;
+}
+
+export interface CatalogTemplateExport {
+  model_id: string;
+  spec_name: string;
+  yaml: string;
+  verified: boolean;
+  saveable: boolean;
+  checks: CatalogTemplateCheck[];
+  notes: ProductWarning[];
+  excluded_env: string[];
+  evidence: string;
+}
+
 export interface InferenceTemplateImportResult {
   models: number;
   package_digest?: string;
@@ -4471,6 +4496,12 @@ export const api = {
   deploymentDraft: (id: number) =>
     getJSON<DeploymentDraft>(`/api/v1/deployments/${id}/draft`),
   editDeployment,
+  exportCatalogTemplate: (id: number, includeEnv: string[] = []) =>
+    sendJSON<CatalogTemplateExport>(
+      "POST",
+      `/api/v1/deployments/${id}/catalog-template`,
+      includeEnv.length ? { include_env: includeEnv } : {},
+    ),
   cloneDeployment: (id: number, name?: string) =>
     sendJSON<Deployment>(
       "POST",

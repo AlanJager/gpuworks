@@ -518,7 +518,7 @@ For the format and import rules, see [Image Catalog and Inference Image Families
 | GET | `/api/v1/inference-templates/model/*` | Get template details by model path (wildcard path) | JWT |
 | GET | `/api/v1/inference-templates/yaml?model_id=…` | Get flat YAML for the template editor: the server writes it using the same catalog types as import. Add `spec_source=user` (or `upstream`) to retain only specs from that source; `readme_*` fields are written only when all specs are listed or the template itself belongs to the user. Saving it unchanged (`import?overwrite=true`) preserves all fields | JWT |
 | GET | `/api/v1/inference-templates/schema` | Get the dictionary for the flat YAML editor: field completion, hover descriptions, and constraints for initial client-side validation (authoritative validation still occurs at import) | JWT |
-| POST | `/api/v1/inference-templates/clone` | Clone a template into an editable user spec | JWT |
+| POST | `/api/v1/inference-templates/clone` | Clone a template into an editable user spec | JWT(admin) |
 | POST | `/api/v1/inference-templates/evaluate` | Check flat YAML or a catalog package without writing data; accepts the same request as `import` and supports `?overwrite=true`. Returns 200 `{valid, errors, warnings}`; for check scope and results, see [Pre-Import Checks](#导入前检查) | JWT(admin) |
 | POST | `/api/v1/inference-templates/import` | Import a template/catalog package; returns `{models, package_digest}` on success, with an additional `warnings` field when warnings exist (same as `evaluate`; the field is absent when there are no warnings) | JWT(admin) |
 | POST | `/api/v1/inference-templates/sync` | “Check for updates”: fetch the official inference catalog package from the release channel and reconcile upstream sources (leaving user specs unchanged); ignores the request body. Returns `{models, package_digest, version}`. Returns 409 `UPDATE_CATALOG_INCOMPATIBLE` if the catalog package schema is newer than this server supports; returns 400 `OFFICIAL_CATALOG_NEEDS_NEWER_SERVER` if package parsing or validation fails (`params.error` contains the original error, and the UI indicates that this version of the inference templates requires the latest server version). For other errors, see [Catalog Import Results](#目录导入结果) | JWT(admin) |
@@ -554,6 +554,7 @@ This endpoint does not check whether a user spec with the same name already exis
 | PUT | `/api/v1/deployments/{id}/tokenize` | Enable or disable gateway forwarding of tokenization requests (`/v1/tokenize`, `/v1/detokenize`) to this deployment: `{"enabled": false}`. `enabled` is required; omitting it returns 400 `FIELD_INVALID` (`params.field` is `enabled`), and a non-boolean value returns 400. Returns 404 if the deployment does not exist. Does not restart instances; takes effect after the gateway routing table is rebuilt in response to the change event. Returns deployment details (including `tokenize_enabled`) | JWT |
 | GET | `/api/v1/deployments/{id}/events` | Deployment event timeline (newest first, cursor pagination, collapsed on read) | JWT |
 | POST | `/api/v1/deployments/{id}/clone` | Clone the deployment configuration, including node requirements and placement strategy. The clone's served model name is the original name followed by `-` and 4 random lowercase letters or digits. The request body `{"name": ...}` sets both the deployment name and the served model name; returns 409 `SERVED_NAME_IN_USE` if the name is taken | JWT |
+| POST | `/api/v1/deployments/{id}/catalog-template` | Write a running deployment as an inference template: first send the smallest request each cheap operation (chat, completions, embeddings) takes, then build flat YAML from the launch arguments, weight commit and GPUs the deployment actually ran. Nothing is written to the catalog. See [Save as an inference template](#save-as-an-inference-template) | JWT |
 | POST | `/api/v1/deployments/{id}/stop` | Stop the deployment: delete all instances and retain the configuration | JWT |
 | POST | `/api/v1/deployments/{id}/start` | Start a stopped deployment and reschedule it using the retained configuration (resetting each replica's retry count). Does nothing if already running; returns 409 `DEPLOYMENT_DELETING` if the deployment is being deleted | JWT |
 | DELETE | `/api/v1/deployments/{id}` | Delete the deployment | JWT |
@@ -591,6 +592,34 @@ This endpoint does not check whether a user spec with the same name already exis
 
 The instance launch facts endpoint provides three layers of information: deployment intent (intent), the resolved launch plan (resolved), and runtime observations (runtime observation).
 Missing or unavailable information remains unknown and is not replaced with information from another layer; sensitive text is redacted.
+
+### Save as an Inference Template
+
+The body of `POST /api/v1/deployments/{id}/catalog-template` may be omitted, or be `{"include_env": ["KEY", ...]}`: none of the deployment's own environment variables are exported by default (they often hold tokens and host paths); only the listed keys go into the spec. Any signed-in user may export; saving the result into the catalog is still `POST /inference-templates/import`, which only administrators may call.
+
+It returns 200:
+
+```json
+{
+  "model_id": "allenai/olmo-2-0425-1b-instruct",
+  "spec_name": "vllm-1xnvidia-h20-d12",
+  "yaml": "# Saved from GPUWorks deployment \"olmo\" (id 12).\n# Verified on 1 x NVIDIA H20.\n...",
+  "verified": true,
+  "saveable": true,
+  "checks": [{"operation": "openai.chat", "endpoint": "/v1/chat/completions", "tested": true, "passed": true, "http_status": 200}],
+  "notes": [{"code": "verified_on", "params": {"gpu": "NVIDIA H20", "count": 1}}],
+  "excluded_env": ["HF_TOKEN"],
+  "evidence": "GPUWorks template test record\n..."
+}
+```
+
+- `yaml` imports as it is; the comments at its top state the same facts as `notes`. The comments are in English; the UI localizes `notes` from their `code` and `params`.
+- `checks`: chat, completions and embeddings each get the same smallest request the health check sends (`tested: true`); video, image, speech and other operations get no request, `tested: false`, and an `operation_not_tested` note.
+- When a tested operation fails, `verified` and `saveable` are both `false` and `yaml` is for troubleshooting only.
+- `notes` codes: `verified_on`, `operation_passed`, `operation_failed`, `operation_not_tested`, `kv_bytes_missing` when there is no `kv_bytes_per_token`, `model_config_missing`, `placement_omitted` (`gpu_count`, `gpu_memory_mib`), `vram_limit`, `env_excluded`, `parameters_dropped` (settings no engine flag carries, such as `cpu_cores`), `container_overrides_omitted`.
+- `evidence` is the plain-text test record to attach when proposing the template upstream.
+
+When the deployment cannot be written as a template, it returns 409 `TEMPLATE_EXPORT_UNAVAILABLE` with `params.reason`: `not_running` (the deployment is not running or has no running instance), `distributed` (multi-node), `pd`, `no_gpu_facts`, `template_assets`, `components` (the source template carries packaged files or component models), `weights_not_public` (weights from a local directory or a URL), `revision_unpinned` (the weight revision is not a commit), `revisions_differ`, `template_missing`, `model_missing`, `command_overridden` (the deployment replaced the engine command). When the exported arguments cannot rebuild the original command it returns 409 `LAUNCH_NOT_EXPORTABLE`. An unknown deployment is 404, and a body that is not valid JSON is 400. How the template is built is described in [Save a deployment as an inference template](../how-to/save-deployment-as-template.md).
 
 ### Deployment List Filters and Response Fields
 
