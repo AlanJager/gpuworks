@@ -68,7 +68,11 @@ def exercise_navigation_entries(page, server, report):
     that highlights afterwards names the page that rendered. The list is the menu the
     page actually shows, not a copy of the route table, so an entry that quietly
     disappears or gains a wrong target shows up as a missing or mismatched row."""
-    nav = page.locator(".app-nav")
+    # The shell mounts the same menu twice: once inside the desktop sider and once inside the
+    # mobile drawer, and the drawer stays in the document while closed. A bare .app-nav
+    # therefore resolves to two menus, and the selection read below then matches nothing.
+    # The desktop one is named explicitly, which is also the one this case drives.
+    nav = page.locator(".app-sider .app-nav")
     expect(nav).to_be_visible()
     labels = [item.strip() for item in nav.locator(".ant-menu-item").all_inner_texts()]
     entries = [{ "label": label, "href": nav.locator(".ant-menu-item a").nth(index).get_attribute("href") }
@@ -82,9 +86,23 @@ def exercise_navigation_entries(page, server, report):
         # under the entry rather than equal to it.
         expect(page).to_have_url(re.compile(re.escape(server.base + entry["href"].rstrip("/")) + r"(?:/.*)?$"))
         page.wait_for_load_state()
+        # A page may redirect once it mounts, and the sidebar entry still owns the address it
+        # lands on: /analytics renders <Navigate to="/analytics/usage"> until a tab is chosen,
+        # so the settled address is the child route rather than the entry's own href. The
+        # settled path is therefore read only once the address has stopped changing, and it
+        # is required to sit under the entry, which is what the check above already asked of
+        # the first navigation. Reading it here rather than before the load state settled was
+        # what made this row compare a pre-redirect address against a post-reload one.
+        settled = urlsplit(page.url).path
+        for _ in range(10):
+            page.wait_for_timeout(150)
+            current = urlsplit(page.url).path
+            if current == settled:
+                break
+            settled = current
         # A page may add query state of its own (?organization=...), so the settled
         # address is compared on its path with the query kept for the record.
-        landed = urlsplit(page.url).path
+        landed = settled
         check(landed == entry["href"] or landed.startswith(entry["href"].rstrip("/") + "/"),
               f"{entry['href']} settled on {landed}, which is outside that entry")
         # The entry that lights up must be this one, and it must be exactly one: a page
