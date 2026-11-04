@@ -79,10 +79,13 @@ image catalog synced catalog_version=2026-10-09.f085e40b created=0 updated=25 de
 
 1. 按 `image_ref` 新增或更新（upsert）系列与版本；运维对系列、版本的启用开关保留；系统版本上用户登记的归档 URL
    （`http(s)://` 开头的获取地址）保留。
-2. manifest 里已经没有的系统版本：没有任何引用的直接删除（连同它在各节点的分布记录，系列空了也删）；
-   仍有引用的标为弃用，`deprecated_since` 记为本次 `catalog_version`，镜像页显示「已弃用 · N 个引用」。
+2. manifest 里已经没有的系统版本（通常是同一档升了版次，例如 r1 换成 r2）：既没有引用、也不在任何节点上的直接删除
+   （连同它在各节点的分布记录，系列空了也删）；仍有引用、或有节点已经拉取（分布状态为 `present`）的保留为**旧版本**：
+   API 字段 `deprecated` 为 `true`，`deprecated_since` 记为本次 `catalog_version`，镜像页显示「旧版本」，有引用时显示「旧版本 · N 个引用」。
+   旧版本照常可用，新部署不会再选它；在各节点删掉它之后，下一次目录同步把这一行清掉。
    「引用」指 `deployments.image`、未结束的 `instances.image`（`stopped`、`failed`、`pending_removal` 不算）
-   或 `models.image_id` 任一命中。删除社区/自定义镜像时用的是同一口径：仍被引用的版本或系列拒绝删除（409 `IMAGE_IN_USE`）。
+   或 `models.image_id` 任一命中。删除社区/自定义镜像时用的是同一口径：仍被引用的版本或系列拒绝删除（409 `IMAGE_IN_USE`），
+   只在节点上存在不算引用、不会阻止删除。
 3. 手动更新时 manifest 条目与社区/自定义行同名系列或同一 ref 冲突，整次导入返回 400 `IMAGE_IMPORT_CONFLICT`，
    不写入任何内容。
 4. 同一份 manifest 导入两次结果相同。没有版本比较、防降级、签名或来源校验：导入什么就是什么。

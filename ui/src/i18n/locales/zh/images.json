@@ -23,7 +23,7 @@
         "created": "新增 {{n}}",
         "updated": "更新 {{n}}",
         "deleted": "删除 {{n}}",
-        "deprecated": "弃用 {{n}}"
+        "deprecated": "转为旧版本 {{n}}"
       }
     },
     "addCommunity": "添加社区镜像",
@@ -127,9 +127,10 @@
     "sizeHelp": "Registry 压缩层体积估算；节点实际占用以本地上报为准",
     "deleteTitle": "删除镜像版本“{{ref}}”？",
     "deleteDescription": "该版本的节点分发记录也会被清理。",
-    "deprecatedSince": "目录 {{version}} 起废弃",
+    "deprecatedSince": "目录 {{version}} 起已有更新的版本，这个版本只为仍在用它的部署和已拉取的节点保留",
     "disabledBySeries": "随系列禁用",
-    "deprecatedRefs": "已弃用 · {{refs}} 个引用"
+    "deprecatedRefs": "旧版本 · {{refs}} 个引用",
+    "olderVersion": "旧版本"
   },
   "nodeTable": {
     "column": {

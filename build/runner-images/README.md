@@ -21,7 +21,7 @@
     **必须在 `prepare-base.sh` 压 history 之前跑**，压完就查不到了
   - `stage_base.py` — 把上游 base「注册」进本地 mirror，已有的层零传输（见下）
 - `overlays/` — 模型 overlay 与离线审计脚本（装进 `/opt/gpuworks/overlays/` 供 spec 引用）
-- `patches/vllm/`、`patches/vllm_omni/` — vLLM 与 vllm-omni 的源码补丁
+- `patches/vllm/`、`patches/vllm_omni/`、`patches/vllm_dtk/` — vLLM（cuda 档）、vllm-omni 与海光 dtk vllm 档的源码补丁
   （两者逐文件说明见下面「patches/ 与 overlays/ 逐文件说明」）
 - `build.sh` — 构建驱动 ｜ `verify.sh` — 成品验证 ｜ `push.sh` — registry 间搬运
   ｜ `publish.py` — 发布到公网三端（见下面「发布」）
@@ -94,6 +94,7 @@ cp base-mirrors.example base-mirrors.local && vi base-mirrors.local
 | `patches/vllm/001_wrong_dp_ray.patch` | 给 `vllm/utils/network_utils.py` 的 `get_open_port` 补上缺失的 `_next_port` 模块级变量（DP + Ray 下取端口会 `NameError`） | cuda vllm 档。**在 vllm 0.31 上已不适用**（上游重构了 `get_open_port`）：`cuda12.9-vllm0.31.0` 档在矩阵 args 里用 `PATCHES_NOT_APPLICABLE` 显式声明，清单记为 `001_wrong_dp_ray.patch:declared-not-applicable`；声明与事实不符（补丁其实能应用）同样让构建失败 |
 | `patches/vllm/002_mooncake_prom_metrics.patch` | 给 mooncake KV 连接器补 Prometheus 指标导出（上游只有内部统计，平台监控读不到） | cuda vllm 档 |
 | `patches/vllm/003_mooncake_store_rejected_pending_load.patch` | MultiConnector 选中别的连接器时，mooncake store 不应再发起 pending load（否则重复加载/报错） | cuda vllm 档；**vllm 0.30 起上游已修**，识别为 already-present |
+| `patches/vllm_dtk/001_mooncake_report_failed_pulls.patch` | 海光 vllm 0.21 base 里 vLLM 的 MooncakeConnector 把拉取失败的请求与成功的一样记为完成、也不实现 `get_block_ids_with_load_errors`：decode 拿没收到的 KV 照样回答（200 + 乱码），`kv_load_failure_policy` 不生效，失败的块还会留在前缀缓存里。补丁照 NIXL 的做法把失败请求的本地块记下并上报给调度器（K100 实测：`fail` 返回 500，`recompute` 重算出正确结果） | dtk vllm 0.21 档（r2 起，矩阵 `DTK_VLLM_PATCHES=1`）；打完后重跑 `vllm-hcu-apply-patches` 确认改动仍在 |
 | `patches/vllm_omni/001_omni_bypass_non_omni_loads.diff` | vllm-omni 在 import 期无条件替换 vllm 的 `EngineCoreOutput` 等内部类型；本补丁加一个 `--omni` 判断，没带该参数时不改 vllm 行为，这样 omni 镜像也能跑普通文本负载 | 所有 omni 档 |
 | `patches/vllm_omni/002_ming_audio_dsp_npu_cpu_fallback.diff` | Ming-omni-tts 的 `audio_dsp.py` 在昇腾上两处失败：`torch.hann_window` 对 int64 调 `aclnnInplaceCos` 失败、`F.fold` 在 aivec 向量核报 507035。补丁把这两步改在 CPU 上做再搬回设备（张量只有一个音频 chunk，开销可忽略） | 昇腾 omni 档（r3 起） |
 | `patches/vllm_omni/003_moss_realtime_ref_encoder_device.diff` | MOSS-TTS-Realtime 的参考音频编码在 API server 进程里跑：codec 已放到 code2wav stage 的 GPU，波形却留在 CPU，`batch_encode` 按第一段波形的设备建输入，请求报设备不一致。补丁先把波形移到 codec 所在设备（见下面「模型专属依赖与 vllm-omni 缺陷」第 4 条） | cuda omni 档（r4 起）与 0.30 的昇腾 omni 档；0.23 的昇腾 omni 档没有这个类，由 `OMNI_PATCHES_NOT_APPLICABLE` 声明跳过 |
