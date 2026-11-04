@@ -40,6 +40,18 @@
           "sha256": "7383be2a836567d0cfab58a51cca9c8a27a5fd8c68cb5bfed55455444cbd456f"
         }
       ]
+    },
+    {
+      "id": "amd-rocm-slicing-amd64",
+      "backend": "amd-dgpu",
+      "vendor": "amd",
+      "platform_arch": "amd64",
+      "files": [
+        {
+          "path": "amd/linux-amd64/libvrocm.so",
+          "sha256": "fe1c0b6a9b2903a63cf30cd22bb017450400af6ad463e39d529f66c583ca556e"
+        }
+      ]
     }
   ]
 }

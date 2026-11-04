@@ -14,6 +14,12 @@
 	"path": "csrc/thead/ppu-slicing-shim",
     "patches": ["ppu/patches/0001-resolve-hggc-via-explicit-handle.patch", "ppu/patches/0002-map-hgml-quota-by-uuid.patch", "ppu/patches/0003-use-separate-device-uuids.patch"]
   },
+  "amd": {
+    "upstream": "https://github.com/gpustack/gpustack-operator.git",
+    "commit": "ff55d90bfcafb9c813f318857b6942092d788d0a",
+    "path": "csrc/amd/rocm-slicing-shim",
+    "patches": []
+  },
   "perftest": {
     "upstream": "https://github.com/linux-rdma/perftest",
     "version": "26.07.8",
