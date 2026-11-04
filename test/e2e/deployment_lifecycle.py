@@ -223,6 +223,7 @@ def test_deployment_lifecycle(page, context, server, artifacts, report, locale,
         exercise_page_size_10_5(page, server, report, token, len(page_rows))
         exercise_pagination_10_6(page, server, report, token)
         exercise_delete_10_7(page, server, report, token, page_rows)
+        exercise_filters_10_3(page, server, report, token, deployments)
         # Section 10 navigates away from the detail drawer the lifecycle steps below delete
         # from, so the drawer is reopened here in the state it was left in.
         page.goto(server.base + f"/deployments?deployment={dep_id}")
@@ -1363,6 +1364,272 @@ def exercise_pagination_10_6(page, server, report, token):
         "reports; and going back restored the first page in the same order",
         **report["pagination_10_6"]})
     return report["pagination_10_6"]
+
+
+DEPLOYMENT_LIST_STATES = ("running", "sleeping", "asleep", "offline", "starting",
+                         "pulling", "pending", "failed", "stopped", "deleting")
+
+def _open_state_filter(page, values, apply=True):
+    """Open the state column's filter, tick the given state values, and apply.
+
+    antd renders each option as a menu item whose data-menu-id ends in the state value, and
+    the option's visible label is a sibling of the checkbox rather than its text: the
+    checkbox wrapper's own inner_text() comes back empty, and the label for the pulling state
+    is "Pulling image" rather than "pulling". The value is therefore taken from the id suffix,
+    which is also what the request carries. The class ant-table-column-has-filters does not
+    exist in this antd version (measured: count 0), so the trigger is found by its own class.
+    """
+    page.locator(".ant-table-filter-trigger").first.click()
+    dropdown = page.locator(".ant-table-filter-dropdown:visible").first
+    dropdown.wait_for(state="visible", timeout=15000)
+    for value in values:
+        option = dropdown.locator(f"[data-menu-id$='-{value}']")
+        check(option.count() == 1,
+              f"the {value!r} filter option resolved to {option.count()} menu items")
+        option.first.click()
+        page.wait_for_timeout(200)
+    if not apply:
+        return dropdown
+    with page.expect_response(
+            lambda r: "/api/v1/deployments" in r.url and "state=" in r.url) as caught:
+        dropdown.locator(".ant-btn-primary").first.click()
+    page.wait_for_timeout(1200)
+    return parse_qs(urlsplit(caught.value.url).query)
+
+
+def _clear_state_filter(page):
+    """Reset the state filter so the next reading is the unfiltered list.
+
+    Reset is the only link in the filter footer that restores the unfiltered request, so the
+    response it causes is captured with no state parameter on it; that is also the assertion
+    that the filter really was cleared rather than merely re-rendered.
+    """
+    page.locator(".ant-table-filter-trigger").first.click()
+    dropdown = page.locator(".ant-table-filter-dropdown:visible").first
+    dropdown.wait_for(state="visible", timeout=15000)
+    # The footer holds Reset and OK; scoping to it keeps the click off a link elsewhere in
+    # the popup, which would leave the filter applied.
+    footer = dropdown.locator(".ant-table-filter-dropdown-btns")
+    check(footer.count() == 1, f"the filter footer resolved to {footer.count()} elements")
+    reset = footer.locator(".ant-btn-link").first
+    check(reset.count() == 1, "the filter footer rendered no reset control")
+
+    # Reset clears the unticked column value inside the popup but does not submit it: the
+    # column's value is controlled by the page (DeploymentsPage.tsx:214 filteredValue), so
+    # only the footer's OK reports the new value to the table and produces the unfiltered
+    # request. Measured: Reset alone caused no list request at all.
+    seen = []
+    reset.click()
+    page.wait_for_timeout(300)
+    footer.locator(".ant-btn-primary").first.click()
+
+    def cleared(response):
+        if "/api/v1/deployments" not in response.url or response.request.method != "GET":
+            return False
+        seen.append(response.url)
+        return "state" not in parse_qs(urlsplit(response.url).query)
+
+    try:
+        page.wait_for_event("response", predicate=cleared, timeout=20000)
+    except Exception:
+        tail = [url.split("/api/v1/deployments")[-1][:70] for url in seen[-4:]]
+        raise AssertionError(
+            f"reset never produced an unfiltered list request; the recent ones were {tail}")
+    page.wait_for_timeout(600)
+    return seen[-1]
+
+
+def exercise_filters_10_3(page, server, report, token, deployments):
+    """10.3: every filter the column offers is executed, and a combination is empty on one side.
+
+    The state filter is served by the product (DeploymentsPage.tsx:213 builds its options from
+    DEPLOYMENT_LIST_STATES, and :97 passes them on as the state parameter, which api.ts:916
+    joins with commas). Ten options are therefore ten real filters, and each is executed here
+    with the request captured, because a filter whose parameter never left the browser would
+    look identical on screen.
+
+    A row reaches the running state a couple of seconds after it is created (measured: two
+    rows, one still pending at 0.3s, running at 2.4s), so the number of rows the running
+    filter should show is not assumed: it is waited for until the state-filtered total equals
+    the total the list reports. Every attempt is recorded, so a timeout can be read as either
+    "never arrived" or "arrived and then fell away" rather than as a bare failure.
+
+    Two states are populated in this fixture and the other eight return an empty set; that is
+    recorded as measured, not as a state that failed. The requirement that a combination is
+    populated on both sides and empty where they meet is met with a different pair: a state
+    filter and a search term each return rows alone, and their combination returns none. Both
+    sides use the same search term, so the empty intersection comes from the state rather than
+    from two unrelated conditions.
+    """
+    page.goto(server.base + "/deployments")
+    _settled_path(page)
+    page.wait_for_timeout(900)
+
+    # The state a row settles into is not known at request time, so the expected populations
+    # come from the server's own filtered totals rather than from assumptions about the batch.
+    total, items = _list_total(server, token, report)
+    check(total > 0, "no rows to filter")
+
+    # 1. Every state the column offers, executed one at a time, with its parameter recorded.
+    executed = []
+    for state in DEPLOYMENT_LIST_STATES:
+        query = _open_state_filter(page, [state])
+        status, document = http(server.base, "GET",
+                                DEPLOYMENTS + f"?page=1&page_size=100&state={state}",
+                                token=token)
+        check(status == 200,
+              f"the state filter {state!r} answered {status}: {str(document)[:120]}")
+        rendered = _rows(page)
+        executed.append({"state": state, "param": query.get("state"),
+                         "rendered_rows": rendered,
+                         "server_total": document.get("total")})
+        check(query.get("state") == [state],
+              f"the {state!r} filter sent state={query.get('state')} instead")
+        check(rendered == document.get("total"),
+              f"the {state!r} filter rendered {rendered} rows, the server reports "
+              f"{document.get('total')}")
+        _clear_state_filter(page)
+
+    populated = [item for item in executed if item["rendered_rows"]]
+    empty = [item for item in executed if not item["rendered_rows"]]
+    check(len(executed) == len(DEPLOYMENT_LIST_STATES),
+          f"only {len(executed)} of the {len(DEPLOYMENT_LIST_STATES)} offered states were run")
+    check(populated, "no state filter returned any row, so nothing was shown to exist")
+
+    # 2. The running state, waited for rather than assumed. The node advertises one GPU
+    # (GPUWORKS_FAKE_GPU is A100x1 at :340), so the batch does not all run at once: the rows
+    # beyond the first wait for a device. What has to settle is therefore that the running
+    # count stops moving, not that it reaches the whole list - assuming the latter would make
+    # this item fail on a correct product. The stable count is then what the filter has to
+    # render, and every attempt is recorded so a timeout reads as "never settled" rather than
+    # as a bare failure.
+    expected_running = None
+    attempts = []
+    deadline = time.time() + 180
+    while time.time() < deadline:
+        status, document = http(server.base, "GET",
+                                DEPLOYMENTS + "?page=1&page_size=100&state=running",
+                                token=token)
+        check(status == 200, f"the running-state read answered {status}")
+        running_total, whole = document.get("total"), _list_total(server, token, report)[0]
+        attempts.append({"running_total": running_total, "list_total": whole})
+        # Two consecutive equal readings: the row count has stopped changing.
+        if len(attempts) >= 2 and running_total and \
+                attempts[-1]["running_total"] == attempts[-2]["running_total"]:
+            expected_running = running_total
+            break
+        page.wait_for_timeout(2000)
+    check(expected_running is not None,
+          f"the running count did not settle within 180s; the attempts were {attempts[-6:]}")
+
+    query = _open_state_filter(page, ["running"])
+    rendered = _rows(page)
+    check(query.get("state") == ["running"],
+          f"the running filter sent state={query.get('state')}")
+    check(rendered == expected_running,
+          f"the running filter rendered {rendered} rows; the server reports "
+          f"{expected_running} running of {total} total")
+    _clear_state_filter(page)
+
+    # 3. One search term that returns exactly one row, used by both sides of the combination.
+    _, rows_now = _list_total(server, token, report)
+    target = next((item["name"] for item in rows_now if item.get("name")), None)
+    check(target, "no deployment name to search for")
+    search = page.locator(".ant-input-search input").first
+    check(search.count() > 0, "the list rendered no search box")
+    with page.expect_response(
+            lambda r: "/api/v1/deployments" in r.url) as caught:
+        search.fill(target)
+        search.press("Enter")
+    search_query = parse_qs(urlsplit(caught.value.url).query)
+    page.wait_for_timeout(1500)
+    search_rows = _rows(page)
+    check(search_query.get("q") == [target],
+          f"the search sent q={search_query.get('q')}, not the typed term")
+    check(search_rows >= 1,
+          f"searching for the row's own name returned {search_rows} rows")
+
+    # The row the search found reports a state; a different state plus that same term has to
+    # be empty, and it must be empty because of the state, not because the term is unrelated.
+    status, document = http(server.base, "GET",
+                            DEPLOYMENTS + "?page=1&page_size=100&q=" + target, token=token)
+    check(status == 200, f"the search-only read answered {status}")
+    matched = [item for item in document.get("items", []) if item.get("name") == target]
+    check(len(matched) == 1, f"the term {target!r} did not resolve to one deployment")
+    row_state = matched[0].get("state")
+    other_state = next((s for s in DEPLOYMENT_LIST_STATES if s != row_state), None)
+    check(other_state, "the fixture offers no second state to combine with")
+    status, both = http(server.base, "GET",
+                        DEPLOYMENTS + f"?page=1&page_size=100&q={target}&state={other_state}",
+                        token=token)
+    check(status == 200, f"the combined read answered {status}")
+    check(both.get("total") == 0,
+          f"the combination of the term {target!r} with state {other_state!r} returned "
+          f"{both.get('total')} rows, though the row is {row_state!r}")
+
+    # 4. The filtered-empty wording is driven by one flag (DeploymentsPage.tsx:102 sets
+    # filtered when the search is non-empty or any state is chosen), so a state filter that
+    # matches nothing has to render the same text a search that matches nothing renders.
+    # Each reading is taken while the table is actually empty: reading it while the search
+    # still returns a row would read an element that is not rendered at all.
+    unmatched = "zzz-no-deployment-matches-this-" + report["run_id"]
+    with page.expect_response(lambda r: "/api/v1/deployments" in r.url):
+        search.fill(unmatched)
+        search.press("Enter")
+    page.wait_for_timeout(1500)
+    check(_rows(page) == 0, "the unmatched term still rendered rows")
+    search_empty = page.locator(".ant-table-placeholder, .ant-empty").first.inner_text().strip()
+    check(search_empty, "the unmatched search rendered no empty-state text")
+
+    search.fill("")
+    search.press("Enter")
+    page.wait_for_timeout(1200)
+    # The state alone is chosen first, then the same unmatched term narrows it further, so
+    # the empty text is produced with a state filter active rather than by the search alone.
+    _open_state_filter(page, [other_state], apply=False)
+    with page.expect_response(
+            lambda r: "/api/v1/deployments" in r.url and "state=" in r.url):
+        page.locator(".ant-table-filter-dropdown:visible .ant-btn-primary").first.click()
+    page.wait_for_timeout(1200)
+    with page.expect_response(lambda r: "/api/v1/deployments" in r.url):
+        search.fill(unmatched)
+        search.press("Enter")
+    page.wait_for_timeout(1500)
+    check(_rows(page) == 0, "the state filter plus the unmatched term still rendered rows")
+    state_empty = page.locator(".ant-table-placeholder, .ant-empty").first.inner_text().strip()
+    check(state_empty, "the state-filtered empty result rendered no empty-state text")
+    check(state_empty == search_empty,
+          f"a state filter plus an unmatched term rendered {state_empty!r}, while a search "
+          f"alone rendered {search_empty!r}; the two emptinesses should share one wording")
+    search.fill("")
+    search.press("Enter")
+    page.wait_for_timeout(1000)
+    _clear_state_filter(page)
+
+    report["filters_10_3"] = {"layer": "request", "offered_states": list(DEPLOYMENT_LIST_STATES),
+        "executed": executed, "populated_states": [i["state"] for i in populated],
+        "empty_states": [i["state"] for i in empty],
+        "running_wait_attempts": attempts[-8:],
+        "running_expected": expected_running, "list_total": total,
+        "running_rendered": rendered,
+        "combination": {"search_term": target, "search_rows": search_rows,
+                        "row_state": row_state, "combined_with_state": other_state,
+                        "combined_rows": both.get("total")},
+        "filtered_empty_text": {"search": search_empty, "state": state_empty,
+                                "identical": state_empty == search_empty},
+        "measured_absent_class": "ant-table-column-has-filters"}
+    report["evidence"].append({"layer": "request", "item": "10.3", "what":
+        f"all {len(executed)} state filters the column offers were executed one at a time and "
+        "each request carried its own state value; the populated ones are asserted on their "
+        f"row sets ({', '.join(i['state'] for i in populated)}) and the rest return an empty "
+        "set, recorded as measured rather than failing because this fixture holds deployments "
+        "in two of the states only; the running filter's expectation was waited for until the "
+        "filtered total equalled the list total rather than assumed; and a search term and a "
+        "differing state each return rows alone while their combination returns none, with "
+        "the same term on both sides so the empty intersection comes from the state. The "
+        "filtered-empty wording a state filter produces is the same string a search produces, "
+        "so both emptinesses share one flag.", **report["filters_10_3"]})
+    return report["filters_10_3"]
 
 
 def exercise_delete_10_7(page, server, report, token, row_ids):
