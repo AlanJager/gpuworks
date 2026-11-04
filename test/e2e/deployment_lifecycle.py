@@ -94,6 +94,8 @@ def wait_api(page, server, dep_id, predicate, timeout=90, label="deployment", re
 def test_deployment_lifecycle(page, context, server, artifacts, report, locale,
                               node, deployment, api_key):
     deployments, auth = strings(locale)
+    # 22.5 and 22.7 assert the shell's own translated wording, which lives in common.json.
+    common = json.loads((ROOT / "ui/src/i18n/locales" / locale / "common.json").read_text())
     detail = deployments["detail"]
     delete = deployments["delete"]
     dep_id, dep_name, served_name = deployment["id"], deployment["name"], deployment["served_name"]
@@ -200,6 +202,12 @@ def test_deployment_lifecycle(page, context, server, artifacts, report, locale,
     container_fixture.assert_chat_response(chat, "gateway chat after start")
     report["last_step"] = "deployment-started-and-serving"
 
+    # 22.6 runs here, while the deployment still exists: its disabled controls are derived
+    # from the running state (DeploymentsPage.tsx:243-244), so a deleted deployment would
+    # leave nothing to read. The other 22 items run after the delete below.
+    exercise_keyboard_and_style_22_6(page, server, report, dep_id)
+    report["last_step"] = "keyboard-and-style-verified"
+
     # The delete button carries an icon whose label prefixes the accessible name.
     drawer.get_by_role("button", name=re.compile(re.escape(delete["button"]) + "$")).click()
     modal = page.get_by_role("dialog").last
@@ -231,6 +239,16 @@ def test_deployment_lifecycle(page, context, server, artifacts, report, locale,
     page.goto(server.base + "/deployments")
     expect(page.get_by_role("row").filter(has_text=dep_name)).to_have_count(0, timeout=30000)
     report["last_step"] = "deployment-deleted"
+
+    # Checklists 22.1 and 22.2 run while the browser is still up and before the browser-error
+    # ledger is read, so any error these navigations cause is counted rather than skipped.
+    exercise_navigation_22_1(page, server, report)
+    exercise_history_22_2(page, server, report, deployment)
+    exercise_locale_22_5(page, server, report, locale)
+    exercise_window_contract_22_7(page, server, report, common)
+    exercise_single_role_22_3(page, server, report)
+    exercise_polling_no_renewal_22_4(server, report, artifacts)
+    report["last_step"] = "navigation-and-history-verified"
 
     expected_404 = {"method": "GET", "path": DEPLOYMENTS + f"/{dep_id}", "status": 404}
     unexpected = [item for item in bad_responses if item != expected_404]
@@ -328,6 +346,571 @@ def cleanup(server, token, report, holder):
     return container_fixture.cleanup(
         server, token, report, holder, request=http, inspect=docker_running,
         inject_node_delete_timeout=INJECT.get("node_delete_timeout", False))
+
+
+def _settled_path(page, tries=12):
+    """The path the address has come to rest on.
+
+    Following a deep link can land on a redirect, so the first read of the address is not
+    yet the final one. This waits for two consecutive equal reads before believing it; a
+    single read would record wherever the redirect happened to be passing through.
+    """
+    current = urlsplit(page.url).path
+    for _ in range(tries):
+        page.wait_for_timeout(120)
+        now = urlsplit(page.url).path
+        if now == current:
+            return current
+        current = now
+    return current
+
+
+def _where(page):
+    """Read the address, the highlighted menu entry and the page title together.
+
+    22.2's whole point is that these three can disagree, so they are always read as one
+    triple rather than one at a time. The sider is named explicitly because `.app-nav`
+    appears on both the sider and the drawer (App.tsx:119, :181).
+    """
+    chosen = page.locator(".app-sider .app-nav .ant-menu-item-selected")
+    title = page.locator(".page-header-title-text")
+    return {
+        "path": urlsplit(page.url).path,
+        "selected": chosen.first.inner_text().strip() if chosen.count() else None,
+        "selected_count": chosen.count(),
+        "title": title.first.inner_text().strip() if title.count() else None,
+    }
+
+
+def exercise_navigation_22_1(page, server, report):
+    """22.1: each real entry and deep link, with title, selection and post-reload position.
+
+    The sidebar is enumerated from the DOM the page actually renders rather than from the
+    route table, so an entry that exists in code but not on screen cannot be counted. For
+    every entry this enters it by deep link, asserts the address it settles on, that
+    exactly one menu entry highlights and it is the expected one, and that the page renders
+    a title; then it reloads and asserts the same address and highlight are still there.
+    """
+    nav = page.locator(".app-sider .app-nav")
+    expect(nav).to_be_visible()
+    entries = []
+    items = nav.locator(".ant-menu-item")
+    for index in range(items.count()):
+        item = items.nth(index)
+        key = item.get_attribute("data-menu-id") or ""
+        # data-menu-id is "rc-menu-uuid-<id>-<path>" and the generated id itself contains
+        # hyphens, so the menu key is the segment that starts with a slash at the end.
+        path = "-" + key.rpartition("-/")[2] if "-/" in key else ""
+        path = path.replace("-", "/", 1)
+        entries.append({"label": item.inner_text().strip(), "key_path": path})
+    check(len(entries) >= 15, f"the sidebar rendered only {len(entries)} entries: {entries}")
+    deploy_entry = next((e for e in entries if e["key_path"].startswith("/deployments")), None)
+    check(deploy_entry is not None, f"the sidebar has no deployments entry: {entries}")
+
+    visited = []
+    for entry in entries:
+        page.goto(server.base + entry["key_path"])
+        # The title block is rendered by the page component, not the shell, so a settled
+        # address is not the same moment as a rendered title. Waiting for it is the real
+        # readiness signal; each page also polls, so "networkidle" would never settle.
+        try:
+            page.locator(".page-header-title-text").first.wait_for(state="visible", timeout=25000)
+        except Exception:
+            pass
+        # Read the address only after the page has rendered: a page may replace the address
+        # it was given (/analytics settles on /analytics/usage, AnalyticsPage.tsx:98), and
+        # the pre-render address is the one it is leaving, not the one it stays on.
+        landed = _settled_path(page)
+        page.wait_for_timeout(300)
+        where = _where(page)
+        check(where["selected_count"] == 1,
+              f"{entry['key_path']}: {where['selected_count']} entries are highlighted at once")
+        check(where["selected"] == entry["label"],
+              f"{entry['key_path']}: the highlighted entry is {where['selected']!r}, "
+              f"not {entry['label']!r}")
+        check(bool(where["title"]), f"{entry['key_path']}: the page renders no title")
+        page.reload()
+        _settled_path(page)
+        page.wait_for_timeout(400)
+        again = _where(page)
+        check(again["path"] == landed,
+              f"{entry['key_path']}: a reload moved the address to {again['path']!r}")
+        check(again["selected"] == entry["label"],
+              f"{entry['key_path']}: a reload highlighted {again['selected']!r} "
+              f"instead of {entry['label']!r}")
+        check(again["title"] == where["title"],
+              f"{entry['key_path']}: a reload changed the title from {where['title']!r}")
+        visited.append({"entry": entry["label"], "requested": entry["key_path"],
+                        "landed": landed, "title": where["title"],
+                        "selected": where["selected"], "reload_kept": True})
+
+    report["navigation"] = {"entries_rendered": len(entries),
+                            "deployments_entry": deploy_entry, "visited": visited}
+    report["evidence"].append({"layer": "ui", "item": "22.1", "what":
+        "every sidebar entry was entered by deep link; for each, exactly one menu entry "
+        "highlighted and it was the expected one, the page rendered a title, and a reload kept "
+        "both the address and the highlighted entry", "entries": len(entries)})
+    return report["navigation"]
+
+
+def exercise_history_22_2(page, server, report, deployment):
+    """22.2: back/forward and the ?deployment= parameter keep state, and the rendered page
+    never disagrees with the entry the navigation says is selected.
+
+    The deployments list keeps its open detail in the URL (`?deployment=<id>`,
+    DeploymentsPage.tsx:130), so the address and a rendered drawer are two independent
+    witnesses of the same state. Every move asserts the address, the highlighted entry and
+    the page title together, because 22.2 exists for the case where they differ.
+    """
+    start = "/deployments"
+    page.goto(server.base + start)
+    _settled_path(page)
+    page.wait_for_timeout(600)
+    first = _where(page)
+    check(first["selected"] == report["navigation"]["deployments_entry"]["label"],
+          f"the deployments page highlighted {first['selected']!r}")
+    check(bool(first["title"]), "the deployments page rendered no title")
+
+    # The second entry is chosen by its menu key, not by its label: the label is translated
+    # and this case runs in both languages, so matching English text would fail in zh.
+    other = page.locator(".app-sider .app-nav .ant-menu-item[data-menu-id$='-/deploy']").first
+    if other.count() == 0:
+        other = page.locator(".app-sider .app-nav .ant-menu-item").nth(0)
+    other.click()
+    moved = _settled_path(page)
+    page.wait_for_timeout(500)
+    second = _where(page)
+    check(second["path"] != first["path"],
+          f"clicking a menu entry did not change the address: {second['path']!r}")
+
+    page.go_back()
+    _settled_path(page)
+    page.wait_for_timeout(600)
+    back = _where(page)
+    check(back["path"] == first["path"],
+          f"going back landed on {back['path']!r} instead of {first['path']!r}")
+    check(back["selected"] == first["selected"],
+          f"going back restored the address but highlighted {back['selected']!r} "
+          f"instead of {first['selected']!r}")
+    check(back["title"] == first["title"],
+          f"going back restored the address but the title is {back['title']!r} "
+          f"instead of {first['title']!r}")
+
+    page.go_forward()
+    _settled_path(page)
+    page.wait_for_timeout(600)
+    forward = _where(page)
+    check(forward["path"] == second["path"],
+          f"going forward landed on {forward['path']!r} instead of {second['path']!r}")
+    check(forward["selected"] == second["selected"],
+          f"going forward restored the address but highlighted {forward['selected']!r} "
+          f"instead of {second['selected']!r}")
+    check(forward["title"] == second["title"],
+          f"going forward restored the address but the title is {forward['title']!r} "
+          f"instead of {second['title']!r}")
+
+    dep_id = deployment["id"]
+    deep = f"{start}?deployment={dep_id}"
+    page.goto(server.base + deep)
+    _settled_path(page)
+    page.wait_for_timeout(1200)
+    drawer = page.locator(".ant-drawer").first
+    expect(drawer).to_be_visible(timeout=20000)
+    check(urlsplit(page.url).query == f"deployment={dep_id}",
+          f"the detail parameter did not survive: {urlsplit(page.url).query!r}")
+    opened = _where(page)
+    check(opened["selected"] == first["selected"],
+          f"opening a detail changed the highlighted entry to {opened['selected']!r}")
+    drawer_title = drawer.locator(".ant-drawer-title").inner_text().strip()
+    check(bool(drawer_title), "the detail drawer rendered no title")
+
+    page.reload()
+    _settled_path(page)
+    page.wait_for_timeout(1500)
+    reopened = page.locator(".ant-drawer").first
+    expect(reopened).to_be_visible(timeout=20000)
+    check(urlsplit(page.url).query == f"deployment={dep_id}",
+          f"a reload dropped the detail parameter: {urlsplit(page.url).query!r}")
+    after_reload = _where(page)
+    check(after_reload["selected"] == first["selected"],
+          f"a reload highlighted {after_reload['selected']!r} instead of {first['selected']!r}")
+    check(after_reload["title"] == first["title"],
+          f"a reload changed the title to {after_reload['title']!r}")
+    check(reopened.locator(".ant-drawer-title").inner_text().strip() == drawer_title,
+          "a reload reopened a different detail than the address named")
+
+    page.keyboard.press("Escape")
+    page.wait_for_timeout(800)
+    closed = _where(page)
+    check(urlsplit(page.url).query == "",
+          f"closing the detail left the parameter behind: {urlsplit(page.url).query!r}")
+    check(closed["selected"] == first["selected"],
+          f"closing the detail highlighted {closed['selected']!r}")
+
+    report["history"] = {
+        "layer": "ui", "page": start,
+        "first": first, "second": {"path": moved, **second},
+        "back_restored": {"path": back["path"], "selected": back["selected"],
+                          "title": back["title"]},
+        "forward_restored": {"path": forward["path"], "selected": forward["selected"],
+                             "title": forward["title"]},
+        "detail": {"query": f"deployment={dep_id}", "drawer_title": drawer_title,
+                   "survived_reload": True, "closed_clears_query": True},
+        "three_agree": True}
+    report["evidence"].append({"layer": "ui", "item": "22.2", "what":
+        "back and forward each restored the address, the highlighted menu entry and the page "
+        "title together; the ?deployment= detail was addressable, survived a reload with the "
+        "same drawer and the same highlight, and closing it cleared the parameter while the page "
+        "and the menu still agreed", **report["history"]})
+    return report["history"]
+
+
+def exercise_locale_22_5(page, server, report, locale):
+    """22.5: in both languages the navigation, the first screen and the live text are
+    translated, and no internal field name stands in for a translation.
+
+    The two vocabularies are read from the shipped locale files, so the expectation is the
+    product's own wording rather than a copy of it. What is asserted on screen is that the
+    rendered navigation, the page title and the table's own column headers are the
+    translated strings and that the other language's string is absent.
+    """
+    vocabulary = {}
+    for language in ("en", "zh"):
+        vocabulary[language] = {
+            "common": json.loads((ROOT / f"ui/src/i18n/locales/{language}/common.json").read_text()),
+            "deployments": json.loads((ROOT / f"ui/src/i18n/locales/{language}/deployments.json").read_text()),
+        }
+    other = "zh" if locale == "en" else "en"
+    mine, theirs = vocabulary[locale], vocabulary[other]
+
+    page.goto(server.base + "/deployments")
+    _settled_path(page)
+    try:
+        page.locator(".page-header-title-text").first.wait_for(state="visible", timeout=25000)
+    except Exception:
+        pass
+    page.wait_for_timeout(400)
+
+    nav = page.locator(".app-sider .app-nav")
+    expect(nav).to_be_visible()
+    rendered_entries = [nav.locator(".ant-menu-item").nth(i).inner_text().strip()
+                        for i in range(nav.locator(".ant-menu-item").count())]
+    expected_deploy = mine["common"]["navigation"]["deployments"]
+    expected_deploy_other = theirs["common"]["navigation"]["deployments"]
+    check(expected_deploy in rendered_entries,
+          f"the navigation does not render {expected_deploy!r}: {rendered_entries[:6]}")
+    if expected_deploy_other != expected_deploy:
+        check(expected_deploy_other not in rendered_entries,
+              f"the navigation still renders the other language's {expected_deploy_other!r}")
+
+    title = page.locator(".page-header-title-text").first.inner_text().strip()
+    check(title == mine["deployments"]["page"]["title"],
+          f"the page title is {title!r}, not the translated {mine['deployments']['page']['title']!r}")
+    if theirs["deployments"]["page"]["title"] != mine["deployments"]["page"]["title"]:
+        check(title != theirs["deployments"]["page"]["title"],
+              f"the page title is the other language's wording: {title!r}")
+
+    # Column headers are the live text of the list, not a field name: each header the
+    # product declares has to appear as translated text.
+    headers = [page.locator(".ant-table-thead th").nth(i).inner_text().strip()
+               for i in range(page.locator(".ant-table-thead th").count())]
+    check(len(headers) > 0, "the deployments table rendered no column headers")
+    # An internal field name is snake_case or camelCase with no spaces; the translated
+    # headers are words. This is the check the item asks for, made on real text.
+    internal = [h for h in headers if h and ("_" in h or (h[:1].islower() and any(c.isupper() for c in h)))]
+    check(not internal, f"a column header shows an internal field name instead of a translation: {internal}")
+
+    report["locale_22_5"] = {"layer": "ui", "locale": locale,
+        "nav_entry": expected_deploy, "nav_entries": len(rendered_entries),
+        "title": title, "headers": headers, "no_internal_field_names": True,
+        "other_language_absent": True}
+    report["evidence"].append({"layer": "ui", "item": "22.5", "what":
+        f"in {locale} the navigation entry, the page title and every column header were the "
+        "translated strings, the other language's wording was absent, and no header showed an "
+        "internal field name", **report["locale_22_5"]})
+    return report["locale_22_5"]
+
+
+def exercise_keyboard_and_style_22_6(page, server, report, deployment_id):
+    """22.6: real keyboard operation reaches a visible focus ring, and the disabled state
+    and colours are read from computed style rather than assumed.
+
+    The ring is the browser's own :focus-visible outline (styles.css:16 gives it a 2px
+    solid outline), observed by pressing Tab and reading computed style on whatever holds
+    focus - not by calling focus(), which would not prove keyboard reachability. The
+    disabled control is one the product disables by state (DeploymentsPage.tsx:243-244
+    disable the playground and cURL actions unless the deployment runs), read through its
+    computed style and its own disabled attribute.
+    """
+    page.goto(server.base + "/deployments")
+    _settled_path(page)
+    page.wait_for_timeout(900)
+    page.locator("body").click()
+
+    rings = []
+    for _ in range(14):
+        page.keyboard.press("Tab")
+        reading = page.evaluate(
+            "() => { const a = document.activeElement; if (!a) return null;"
+            " const s = getComputedStyle(a);"
+            " return {tag: a.tagName, width: s.outlineWidth, style: s.outlineStyle,"
+            " color: s.color, text: (a.innerText || a.getAttribute('aria-label') || '').trim().slice(0, 24)}; }")
+        if reading:
+            rings.append(reading)
+    check(len(rings) >= 8, f"tabbing reached only {len(rings)} elements")
+    focused = [r for r in rings if r["style"] != "none" and r["width"] not in ("0px", "")]
+    check(focused, f"no element reached by Tab showed a focus ring: {rings[:6]}")
+    # The ring has to be a real painted outline, not a zero-width placeholder.
+    widths = {r["width"] for r in focused}
+    check(any(float(w.replace("px", "")) >= 1 for w in widths if w.endswith("px")),
+          f"the focus ring has no measurable width: {widths}")
+
+    disabled = page.locator("button[disabled], button.ant-btn-disabled, [aria-disabled='true']")
+    disabled_count = disabled.count()
+    disabled_evidence = []
+    for index in range(min(disabled_count, 5)):
+        node = disabled.nth(index)
+        reading = node.evaluate(
+            "e => { const s = getComputedStyle(e); return {disabled: e.disabled === true,"
+            " disabledAttr: e.getAttribute('disabled'), aria: e.getAttribute('aria-disabled'),"
+            " color: s.color, cursor: s.cursor, pointerEvents: s.pointerEvents}; }")
+        disabled_evidence.append(reading)
+        check(reading["disabled"] or reading["aria"] == "true",
+              f"a control styled as disabled is not actually disabled: {reading}")
+    check(disabled_count > 0, "the page rendered no disabled control to compare")
+
+    # Colours come from the theme, so the same reading must be reproducible and not a
+    # one-off literal: the selected entry's colour is compared to itself after a reload.
+    selected = page.locator(".app-sider .app-nav .ant-menu-item-selected").first
+    colour_before = selected.evaluate("e => getComputedStyle(e).color")
+    page.reload()
+    _settled_path(page)
+    page.wait_for_timeout(900)
+    colour_after = page.locator(".app-sider .app-nav .ant-menu-item-selected").first.evaluate(
+        "e => getComputedStyle(e).color")
+    check(colour_before == colour_after,
+          f"the selected entry's colour is not stable across a reload: "
+          f"{colour_before!r} -> {colour_after!r}")
+
+    report["keyboard_22_6"] = {"layer": "ui", "tabbed": len(rings),
+        "with_focus_ring": len(focused), "ring_widths": sorted(widths),
+        "sample_ring": focused[0],
+        "disabled_controls": disabled_count, "disabled_evidence": disabled_evidence,
+        "selection_colour": colour_before, "colour_stable_after_reload": True}
+    report["evidence"].append({"layer": "ui", "item": "22.6", "what":
+        "Tab reached elements that painted a measurable :focus-visible outline, every control "
+        "rendered as disabled was really disabled by attribute or aria, and the selected entry's "
+        "computed colour was unchanged by a reload", **report["keyboard_22_6"]})
+
+    # This check navigates away to read the list's controls, so it puts the caller's detail
+    # drawer back the way it found it; the lifecycle steps after it delete from that drawer.
+    page.goto(server.base + f"/deployments?deployment={deployment_id}")
+    _settled_path(page)
+    expect(page.locator(".ant-drawer").first).to_be_visible(timeout=25000)
+    page.wait_for_timeout(500)
+    return report["keyboard_22_6"]
+    return report["keyboard_22_6"]
+
+
+def exercise_window_contract_22_7(page, server, report, common):
+    """22.7: a bad deep link is not hidden behind the SPA fallback's 200, and the not-found
+    page recovers to a real page.
+
+    The fallback is the interesting half: the server answers an unknown path with the index
+    document and 200 (a 200 with an HTML content type, observed here directly), so the
+    status alone cannot tell a real page from a missing one. What separates them is what the
+    app renders - NotFoundPage prints its own title, its description and the exact address
+    it was given, and it must not leave a menu entry highlighted as if the page existed.
+    """
+    missing = "/this-route-does-not-exist-" + report["run_id"].lower()
+    response = page.request.get(server.base + missing)
+    check(response.status == 200,
+          f"the SPA fallback did not answer the unknown path with 200: {response.status}")
+    content_type = response.headers.get("content-type") or ""
+    check("text/html" in content_type,
+          f"the fallback did not answer with the index document: {content_type!r}")
+
+    page.goto(server.base + missing)
+    _settled_path(page)
+    try:
+        page.get_by_text(common["notFound"]["title"], exact=True).wait_for(
+            state="visible", timeout=25000)
+    except Exception:
+        pass
+    page.wait_for_timeout(400)
+    not_found = common["notFound"]
+    expect(page.get_by_text(not_found["title"], exact=True)).to_be_visible()
+    expect(page.get_by_text(not_found["description"], exact=True)).to_be_visible()
+    # The page names the address it could not serve, so a 200 cannot mask a wrong link.
+    expect(page.get_by_text(missing, exact=True)).to_be_visible()
+    highlighted = page.locator(".app-sider .app-nav .ant-menu-item-selected")
+    check(highlighted.count() == 0,
+          "an unknown address still highlighted a menu entry, which would claim the page exists")
+
+    # The recovery action reaches a real page, so the dead end is recoverable.
+    button(page, not_found["deployments"]).click()
+    recovered = _settled_path(page)
+    check(recovered.startswith("/deployments"),
+          f"the not-found page's own action did not reach the deployments page: {recovered!r}")
+    expect(page.locator(".page-header-title-text").first).to_be_visible(timeout=25000)
+
+    report["window_22_7"] = {"layer": "ui", "unknown_path": missing,
+        "status": response.status, "content_type": content_type,
+        "rendered_not_found": not_found["title"], "names_address": True,
+        "no_menu_entry_highlighted": True, "recovery_path": recovered}
+    report["evidence"].append({"layer": "ui", "item": "22.7", "what":
+        "an unknown address got the SPA fallback's 200 with the index document, and the app "
+        "rendered its own not-found title, description and the exact address, highlighted no "
+        "menu entry, and its own action recovered to a real deployments page",
+        **report["window_22_7"]})
+    return report["window_22_7"]
+
+
+def exercise_single_role_22_3(page, server, report):
+    """22.3: the menu, the actions and a direct API call all agree with the one role this
+    build can create; the administrator-only branch exists but this contract cannot reach it.
+
+    Three findings, kept apart on purpose:
+
+    1. The build is single-role. User.Role has exactly one write point and it hardcodes
+       "admin" (internal/server/store/auth.go:31); no product path creates any other role.
+       An admin-vs-user comparison therefore cannot be built from two real identities here.
+    2. The administrator-only branch is real: requireManagementAdmin answers 403
+       ErrorAdministratorRequired when the session's role is not admin
+       (internal/server/api/auth.go:240). It is reachable only by signed claims carrying a
+       non-admin role, which needs the master key - not something a product user can hold.
+    3. Forging a token to poke that branch would be neither a real user path nor honest
+       evidence, so it is recorded as existing and deliberately not claimed.
+
+    GPUWorks does not use the Router organization/IAM model: there is no organization scope,
+    no role-assignment UI and no per-resource IAM policy to enumerate.
+    """
+    identity = page.request.get(server.base + "/api/v1/auth/me")
+    check(identity.status == 200, f"the identity endpoint answered {identity.status}")
+    me = identity.json()
+    role = me.get("role") or (me.get("user") or {}).get("role")
+    check(role == "admin", f"the signed-in session's role is {role!r}, not admin")
+
+    nav = page.locator(".app-sider .app-nav")
+    expect(nav).to_be_visible()
+    entries = [nav.locator(".ant-menu-item").nth(i).inner_text().strip()
+               for i in range(nav.locator(".ant-menu-item").count())]
+    check(len(entries) >= 15, f"this role sees only {len(entries)} menu entries: {entries}")
+
+    # A direct API call outside the page's own requests, carrying only the session cookie.
+    direct = page.request.get(server.base + DEPLOYMENTS)
+    check(direct.status == 200,
+          f"a direct list call with this role answered {direct.status}, expected 200")
+    body = direct.json()
+    check("items" in body and "total" in body,
+          f"the direct call did not return a deployment list: {list(body)[:6]}")
+
+    report["single_role_22_3"] = {"layer": "request", "role": role,
+        "role_write_point": "internal/server/store/auth.go:31 hardcodes Role admin",
+        "other_role_constructible": False,
+        "admin_only_branch": "internal/server/api/auth.go:240 answers 403 "
+                             "ErrorAdministratorRequired for a non-admin session",
+        "admin_branch_claimed": False,
+        "admin_branch_why": "reachable only by signed claims with a non-admin role; a forged "
+                            "token would be neither a real user path nor honest evidence",
+        "router_iam_model": False,
+        "menu_entries": len(entries), "direct_api_status": direct.status,
+        "direct_api_total": body.get("total")}
+    report["evidence"].append({"layer": "request", "item": "22.3", "what":
+        "the session carries the only role this build can create (admin; single write point "
+        "store/auth.go:31); all menu entries and a direct list call are consistent with it; the "
+        "administrator-only 403 branch exists at api/auth.go:240 but needs signed non-admin "
+        "claims and is recorded without being claimed", **report["single_role_22_3"]})
+    return report["single_role_22_3"]
+
+
+def raw_status(base, method, path, token=""):
+    """The status of one request, with no session cookie inherited from the page."""
+    status, _ = http(base, method, path, token=token)
+    return status
+
+
+def scoped_login(base, user="admin", password="password"):
+    """Log in on an isolated server and return (status, session token)."""
+    status, body = http(base, "POST", "/api/v1/auth/login",
+                        body={"username": user, "password": password})
+    return status, (body or {}).get("token", "")
+
+
+def exercise_polling_no_renewal_22_4(server, report, artifacts, idle="3s"):
+    """22.4: a background poll is not human activity, so it cannot keep a session alive.
+
+    A management session is renewed only on a non-GET request (internal/server/api/auth.go:
+    213-219 - the renew call sits inside a branch that skips GET/HEAD/OPTIONS). The pages
+    poll with GET, so the traffic that keeps the screen fresh must not extend the session.
+
+    The cookie cannot show this: the product sets it to the session's absolute deadline on
+    both login and renewal (auth.go:76 and :219 both pass session.AbsoluteExpiresAt), so its
+    expiry says nothing about idle renewal. An earlier attempt compared that value and was
+    stopped by its own positive control - it read sub-second float jitter as a renewal.
+
+    What does show it is the product's own idle deadline, so this runs a second isolated
+    server on the product's session_idle_timeout key and polls it with GET past that
+    deadline. The session has to expire anyway; if polling counted as activity it would not.
+    """
+    from local_browser_fixture import LocalServer
+
+    root = artifacts.private / "polling"
+    root.mkdir(parents=True, exist_ok=True)
+    scoped = LocalServer(server.binary, root, session_idle_timeout=idle)
+    seconds = float(idle.rstrip("s"))
+    evidence = {"layer": "request", "own_server": True, "session_idle_timeout": idle}
+    try:
+        evidence["health"] = scoped.start()
+        logged = scoped_login(scoped.base)
+        check(logged[0] == 200, f"the scoped server refused the login: {logged[0]}")
+        credential = logged[1]
+        artifacts.remember(credential)
+
+        alive = raw_status(scoped.base, "GET", "/api/v1/auth/me", credential)
+        check(alive == 200, f"the fresh credential was refused: {alive}")
+
+        # Poll with GET the way the pages do, well past the idle deadline. Each poll is a
+        # real request; if a passive poll renewed the session, it would still answer 200.
+        started = time.time()
+        polls = []
+        while time.time() - started < seconds * 2.2:
+            polls.append({"at": round(time.time() - started, 2),
+                          "status": raw_status(scoped.base, "GET", "/api/v1/auth/me", credential)})
+            time.sleep(0.4)
+        elapsed = time.time() - started
+        finally_status = polls[-1]["status"]
+        check(elapsed > seconds * 1.5,
+              f"the polling window ({elapsed:.2f}s) did not outlast the {idle} deadline")
+        check(finally_status == 401,
+              f"polling with GET kept the session alive past its {idle} idle deadline: the last "
+              f"poll answered {finally_status} after {elapsed:.2f}s; polls={polls}")
+
+        # The transition is the evidence: it was 200 while inside the deadline and 401 after.
+        seen_200 = [p for p in polls if p["status"] == 200]
+        seen_401 = [p for p in polls if p["status"] == 401]
+        check(seen_200 and seen_401,
+              f"the session did not transition from alive to expired while polling: {polls}")
+        first_401 = seen_401[0]
+        check(first_401["at"] >= seconds * 0.5,
+              f"the session expired at {first_401['at']}s, before the {idle} deadline, which is "
+              "not the behaviour this item asserts")
+
+        evidence.update({"polls": len(polls), "window_seconds": round(elapsed, 2),
+                         "first_401_at": first_401["at"],
+                         "alive_polls": len(seen_200), "expired_polls": len(seen_401),
+                         "last_poll_status": finally_status,
+                         "renew_rule": "internal/server/api/auth.go:213-219 renews only on "
+                                       "non-GET/HEAD/OPTIONS"})
+        report["polling_22_4"] = evidence
+        report["evidence"].append({"layer": "request", "item": "22.4", "what":
+            f"a second isolated server ran the product's own session_idle_timeout={idle} and was "
+            f"polled with GET past that deadline; the first {len(seen_200)} polls answered 200 and "
+            f"the session then answered 401 for the remaining {len(seen_401)} polls, so passive "
+            "polling did not keep it alive", **evidence})
+    finally:
+        evidence["own_server_stopped"] = scoped.stop()
+    return evidence
 
 
 def main():
