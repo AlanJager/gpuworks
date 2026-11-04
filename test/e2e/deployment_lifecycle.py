@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 from datetime import datetime, timezone
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -24,7 +25,7 @@ import subprocess
 import sys
 import time
 import traceback
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 import uuid
 
 from playwright.sync_api import expect, sync_playwright
@@ -92,7 +93,7 @@ def wait_api(page, server, dep_id, predicate, timeout=90, label="deployment", re
 #           → 部署运行并可通过网关请求 → UI 停止后容器退出 → UI 启动后新容器运行并再次可请求
 #           → UI 删除后部署 404、容器消失 → 停止 agent、删除节点与模型
 def test_deployment_lifecycle(page, context, server, artifacts, report, locale,
-                              node, deployment, api_key):
+                              node, deployment, api_key, token=""):
     deployments, auth = strings(locale)
     # 22.5 and 22.7 assert the shell's own translated wording, which lives in common.json.
     common = json.loads((ROOT / "ui/src/i18n/locales" / locale / "common.json").read_text())
@@ -207,6 +208,33 @@ def test_deployment_lifecycle(page, context, server, artifacts, report, locale,
     # leave nothing to read. The other 22 items run after the delete below.
     exercise_keyboard_and_style_22_6(page, server, report, dep_id)
     report["last_step"] = "keyboard-and-style-verified"
+
+    # Section 10 runs while the deployment under test is still alive. The pagination batch is
+    # created first because sorting and the populated reading need more rows than this case
+    # owns, and it is torn down in its own finally so the delete below sees only the
+    # deployment this case owns.
+    report["token"] = token
+    page_rows = []
+    try:
+        page_rows = _page_rows_fixture(server, token, node, deployment["model_id"], report)
+        exercise_list_states_10_1(page, server, report, deployments, token)
+        exercise_search_10_2(page, server, report, token)
+        exercise_sort_10_4(page, server, report)
+        exercise_page_size_10_5(page, server, report, token, len(page_rows))
+        exercise_pagination_10_6(page, server, report, token)
+        exercise_delete_10_7(page, server, report, token, page_rows)
+        # Section 10 navigates away from the detail drawer the lifecycle steps below delete
+        # from, so the drawer is reopened here in the state it was left in.
+        page.goto(server.base + f"/deployments?deployment={dep_id}")
+        _settled_path(page)
+        expect(page.locator(".ant-drawer").first).to_be_visible(timeout=25000)
+        page.wait_for_timeout(600)
+    finally:
+        # The rows are real deployments with real containers, so they are removed here even
+        # when a section-10 assertion failed; cleanup() also covers this batch, and this is
+        # the earlier teardown for the failure path.
+        report["page_rows_cleanup_ok"] = _stop_page_rows(server, token, page_rows, report)
+    report["last_step"] = "list-section-verified"
 
     # The delete button carries an icon whose label prefixes the accessible name.
     drawer.get_by_role("button", name=re.compile(re.escape(delete["button"]) + "$")).click()
@@ -343,9 +371,81 @@ def create_fixtures(server, token, run_id, report, holder, agent_bin,
 
 
 def cleanup(server, token, report, holder):
-    return container_fixture.cleanup(
+    # The pagination batch is reclaimed first: container_fixture.cleanup only knows the one
+    # deployment in report["owned_deployment_id"], so a batch left to it would leak every
+    # container it created. It tolerates an absent or partial id list on the failure path,
+    # where the section never ran or stopped halfway.
+    rows_ok = True
+    try:
+        rows_ok = _stop_page_rows(server, token, report.get("page_row_ids") or [], report)
+    except Exception:
+        rows_ok = False
+        report["page_rows_cleanup_error"] = traceback.format_exc().splitlines()[-1]
+    owned_ok = container_fixture.cleanup(
         server, token, report, holder, request=http, inspect=docker_running,
         inject_node_delete_timeout=INJECT.get("node_delete_timeout", False))
+    return bool(rows_ok and owned_ok)
+
+
+PAGE_ROWS = 11
+
+
+def _page_rows_fixture(server, token, node, model_id, report):
+    """Create enough real deployments for the list to make two pages at page size 10.
+
+    The list pages on the server (ui/src/pagedList.ts sends page and page_size) and
+    DEPLOYMENT_PAGE_SIZE is 20 (DeploymentsPage.tsx:53), so one page holds twenty rows.
+    Eleven rows are enough rather than twenty-one because page size is switchable down to ten
+    (columnPrefs.ts:27 PAGE_SIZE_OPTIONS): at ten the same rows make two pages, which gives
+    both pagination edges, while sizes 10 and 20 return different counts and so prove the
+    parameter reached the server. Each row is a real deployment with a real container, which
+    is why the batch is kept at eleven.
+
+    The ids start as a placeholder list here and are appended as each row is made. If the
+    seventh creation fails, the caller's tuple assignment never happens, so its teardown would
+    see nothing and the first six containers would leak; the counter therefore lives in this
+    function so that the rollback below can still see them.
+    """
+    created = []
+    try:
+        for index in range(PAGE_ROWS):
+            name = f"e2e-{report['run_id']}-row{index:02d}"
+            status, deployment = http(server.base, "POST", DEPLOYMENTS, token=token, body={
+                "model_id": model_id, "node_uuid": node["uuid"], "name": name,
+                "served_name": f"e2e-{report['run_id']}-served{index:02d}",
+                "engine": "vllm", "image": IMAGE, "placement_mode": "manual",
+                "container_overrides": {"command_mode": "engine"}})
+            check(status in (200, 201),
+                  f"pagination row {index} HTTP {status} {str(deployment)[:160]}")
+            created.append(deployment["id"])
+        report["page_row_ids"] = list(created)
+        return created
+    except BaseException:
+        # Undo what was made before the failure, then let it through: swallowing it would
+        # report a broken fixture as a pass.
+        _stop_page_rows(server, token, created, report)
+        raise
+
+
+def _stop_page_rows(server, token, ids, report):
+    """Delete the pagination rows and their containers.
+
+    Every argument may be the placeholder the caller starts with: a fixture that fails while
+    being built has still usually created some rows, and passing None or an empty list is what
+    makes this safe on that path. An earlier fixture in this repo leaked because its teardown
+    was never told about what had been made.
+    """
+    removed, failed = [], []
+    for deployment_id in ids or ():
+        status, _ = http(server.base, "DELETE", DEPLOYMENTS + f"/{deployment_id}", token=token)
+        (removed if status in (200, 202, 204, 404) else failed).append(
+            {"id": deployment_id, "status": status})
+    report["page_rows_removed"] = removed
+    if failed:
+        report.setdefault("remaining_resources", []).extend(
+            [{"kind": "deployment", "id": item["id"], "state": f"delete HTTP {item['status']}",
+              "reclaim": f"DELETE /api/v1/deployments/{item['id']}"} for item in failed])
+    return not failed
 
 
 def _settled_path(page, tries=12):
@@ -913,6 +1013,430 @@ def exercise_polling_no_renewal_22_4(server, report, artifacts, idle="3s"):
     return evidence
 
 
+
+def _rows(page):
+    """How many body rows the table renders."""
+    return page.locator(".ant-table-tbody tr.ant-table-row").count()
+
+
+def _row_names(page):
+    """The deployment name of every rendered row.
+
+    The first data cell is the deployment's own name; the second is the served name
+    (DeploymentsPage.tsx columns start name, served_name, model, ...). The two differ on every
+    fixture row here, so reading the wrong one compares nothing: the names taken from the page
+    then share no value with the names the API reports.
+    """
+    cells = page.locator(".ant-table-tbody tr.ant-table-row td:nth-child(1)")
+    return [cells.nth(index).inner_text().strip() for index in range(cells.count())]
+
+
+def _list_total(server, token, report):
+    """The total the server reports for the unpaged list, and the rows behind it."""
+    status, document = http(server.base, "GET",
+                            DEPLOYMENTS + "?page=1&page_size=100", token=token)
+    check(status == 200, f"the independent list read answered {status}")
+    return document.get("total"), document.get("items", [])
+
+
+def _choose_page_size(page, size):
+    """Pick a page size in the table's own size changer.
+
+    antd formats the option label itself, so its wording follows the locale ("20 / page" in
+    English, "20 条/页" in Chinese). The option is therefore anchored on the leading number,
+    which is the page size itself, and required to carry no other digits before it.
+    """
+    page.locator(".ant-pagination-options .ant-select").first.click()
+    page.locator(".ant-select-dropdown:visible .ant-select-item-option").filter(
+        has_text=re.compile(rf"^\s*{size}(?!\d)")).first.click()
+    page.wait_for_timeout(1200)
+
+
+def exercise_list_states_10_1(page, server, report, deployments, token):
+    """10.1: the list is observed populated and empty, and the two meanings of empty differ.
+
+    Both states are produced by the server, not by a stubbed front end: the populated reading
+    is the fixture rows counted against the total the product itself reports, and the empty
+    reading is reached through the product's own search with a term that matches nothing. An
+    empty table that showed the same text as "nothing exists yet" would make the two
+    indistinguishable to a user, which is what this item asks about. A failed request and the
+    loading state are not constructed by this case and are not claimed.
+    """
+    page.goto(server.base + "/deployments")
+    _settled_path(page)
+    page.locator(".page-header-title-text").first.wait_for(state="visible", timeout=25000)
+    page.wait_for_timeout(800)
+
+    populated = _rows(page)
+    check(populated > 0, "the populated list rendered no rows")
+    total, items = _list_total(server, token, report)
+    check(total == len(items), f"the list total {total} does not match the items it returned")
+    header = page.locator(".page-header").inner_text()
+    check(str(total) in header,
+          f"the header does not state the total {total}: {header[:140]!r}")
+    report["list_total"] = total
+
+    search = page.locator(".ant-input-search input").first
+    check(search.count() > 0, "the list rendered no search box")
+    search.fill("zzz-no-deployment-matches-this-" + report["run_id"])
+    search.press("Enter")
+    page.wait_for_timeout(1500)
+    check(_rows(page) == 0, "an unmatched search still rendered rows")
+    empty_text = page.locator(".ant-table-placeholder, .ant-empty").first.inner_text().strip()
+    check(empty_text, "the empty result rendered no empty-state text")
+    check(empty_text != deployments["page"]["empty"],
+          "an unmatched search showed the 'nothing exists yet' text, so filtered and "
+          "unfiltered emptiness are indistinguishable")
+
+    report["list_state_10_1"] = {"layer": "ui", "populated_rows": populated,
+        "server_total": total, "empty_rows": 0, "empty_text": empty_text,
+        "filtered_empty_distinct_from_unfiltered": True}
+    report["evidence"].append({"layer": "ui", "item": "10.1", "what":
+        "the list was observed populated (fixture rows counted against the total the product "
+        "reports in its own header) and empty (a search matching nothing, rendered through the "
+        "product's filtered-empty wording, which differs from the never-created text); a "
+        "failed request and the loading state are not claimed",
+        **report["list_state_10_1"]})
+    return report["list_state_10_1"]
+
+
+def exercise_search_10_2(page, server, report, token):
+    """10.2: complete, partial, absent, wildcard and cleared searches.
+
+    The list searches on the server (DeploymentsPage.tsx:99 puts q into the request), so a
+    client-side filter over rows already fetched would look identical on screen while doing
+    something else. Each search therefore captures the request it caused and compares the
+    term that reached the server with the rows that came back.
+    """
+    page.goto(server.base + "/deployments")
+    _settled_path(page)
+    page.wait_for_timeout(900)
+    baseline = _row_names(page)
+    check(baseline, "no rows to search within")
+    target = baseline[0]
+    fragment = target[len(target) // 2:][:6] or target[-4:]
+    search = page.locator(".ant-input-search input").first
+    check(search.count() > 0, "the list rendered no search box")
+
+    def searched(value):
+        with page.expect_response(
+                lambda r: urlsplit(r.url).path == DEPLOYMENTS
+                and r.request.method == "GET") as caught:
+            search.fill(value)
+            search.press("Enter")
+        query = parse_qs(urlsplit(caught.value.url).query)
+        page.wait_for_timeout(1200)
+        return query, _row_names(page)
+
+    complete_query, complete_rows = searched(target)
+    check(complete_rows == [target] or target in complete_rows,
+          f"a complete-name search did not return {target!r}: {complete_rows}")
+    check(complete_query.get("q", [""])[0] == target,
+          f"the search term did not reach the server: {complete_query.get('q')}")
+
+    partial_query, partial_rows = searched(fragment)
+    check(any(fragment in name for name in partial_rows),
+          f"a partial-name search did not return a match for {fragment!r}: {partial_rows}")
+    check(partial_query.get("q", [""])[0] == fragment,
+          f"the partial term did not reach the server: {partial_query.get('q')}")
+
+    absent_query, absent_rows = searched("zzz-absent-" + report["run_id"])
+    check(absent_rows == [], f"a term that matches nothing returned rows: {absent_rows[:3]}")
+
+    # A wildcard character must be treated as text: a search for "%" returning everything
+    # would mean the term reached the query unescaped.
+    wildcard_query, wildcard_rows = searched("%")
+    check(len(wildcard_rows) < len(baseline),
+          f"a bare '%' returned every row ({len(wildcard_rows)} of {len(baseline)}), so it "
+          "acted as a wildcard instead of a literal character")
+
+    search.fill("")
+    search.press("Enter")
+    page.wait_for_timeout(1500)
+    restored = _row_names(page)
+    check(len(restored) == len(baseline),
+          f"clearing the search restored {len(restored)} rows, not the original {len(baseline)}")
+
+    report["search_10_2"] = {"layer": "request", "baseline_rows": len(baseline),
+        "complete": {"term": target, "q": complete_query.get("q"), "rows": len(complete_rows)},
+        "partial": {"term": fragment, "q": partial_query.get("q"), "rows": len(partial_rows)},
+        "absent": {"q": absent_query.get("q"), "rows": len(absent_rows)},
+        "wildcard_percent": {"q": wildcard_query.get("q"), "rows": len(wildcard_rows)},
+        "cleared_rows": len(restored)}
+    report["evidence"].append({"layer": "request", "item": "10.2", "what":
+        "a complete name, a partial fragment, an absent term, a literal '%' and a cleared box "
+        "were each searched; the captured request carried the typed term as q every time, the "
+        "returned rows matched only for the first two, '%' did not act as a wildcard, and "
+        "clearing restored the original row count", **report["search_10_2"]})
+    return report["search_10_2"]
+
+
+def exercise_sort_10_4(page, server, report):
+    """10.4: a sortable column reverses under the header and the server is told to sort.
+
+    The columns that sort do it on the server (DeploymentsPage.tsx:99 sends sort, "-key" for
+    descending), so the rendered order alone cannot tell a server sort from a stale first
+    page. The request is captured and the rendered order is compared across two clicks.
+    """
+    page.goto(server.base + "/deployments")
+    _settled_path(page)
+    page.wait_for_timeout(900)
+    baseline = _row_names(page)
+    check(len(baseline) >= 2, "fewer than two rows, so a sort cannot be observed")
+
+    header = page.locator(".ant-table-thead th").filter(
+        has_text=re.compile(r"Created|创建")).first
+    check(header.count() > 0, "the created-at column header was not found")
+
+    def once():
+        with page.expect_response(
+                lambda r: urlsplit(r.url).path == DEPLOYMENTS
+                and r.request.method == "GET") as caught:
+            header.click()
+        query = parse_qs(urlsplit(caught.value.url).query)
+        page.wait_for_timeout(900)
+        return query, _row_names(page)
+
+    first_query, first = once()
+    second_query, second = once()
+    check(first != second,
+          f"clicking the sortable header did not change the rendered order: {first[:3]}")
+    check(sorted(first) == sorted(second),
+          "the two orders are not the same set of rows")
+    sent = (first_query.get("sort", [""])[0], second_query.get("sort", [""])[0])
+    check(any(sent), f"the sort never reached the server: {sent}")
+    check(sent[0] != sent[1], f"both clicks sent the same sort parameter: {sent}")
+
+    report["sort_10_4"] = {"layer": "request", "column": "created_at",
+        "sort_params": list(sent), "first_order_head": first[:3],
+        "second_order_head": second[:3], "order_changed": True, "same_row_set": True}
+    report["evidence"].append({"layer": "request", "item": "10.4", "what":
+        "the created-at header was clicked twice; the two clicks sent different sort "
+        "parameters to the server, the rendered order changed between them, and both orders "
+        "contained the same set of rows", **report["sort_10_4"]})
+    return report["sort_10_4"]
+
+
+def exercise_page_size_10_5(page, server, report, token, batch_rows):
+    """10.5: every page size the table offers is switched and really applied.
+
+    The options are the product's own (columnPrefs.ts:27 PAGE_SIZE_OPTIONS = [10, 20, 50,
+    100]) and the list is server-paged, so each choice has to appear in the request and in the
+    number of rows that come back. The list holds this case's own deployment as well as the
+    batch, so the real total is read from the server rather than assumed to be the batch size:
+    with twelve rows, size 10 renders ten while 20/50/100 render twelve, which is what proves
+    the choice took effect instead of falling back to a default.
+    """
+    page.goto(server.base + "/deployments")
+    _settled_path(page)
+    page.wait_for_timeout(900)
+    total, _ = _list_total(server, token, report)
+    check(total >= batch_rows,
+          f"the server lists {total} rows, fewer than the {batch_rows} batch rows")
+
+    observed = []
+    for size in (10, 20, 50, 100):
+        with page.expect_response(
+                lambda r: urlsplit(r.url).path == DEPLOYMENTS
+                and r.request.method == "GET") as caught:
+            _choose_page_size(page, size)
+        query = parse_qs(urlsplit(caught.value.url).query)
+        page.wait_for_timeout(800)
+        observed.append({"requested": size, "page_size_param": query.get("page_size"),
+                         "page_param": query.get("page"), "rendered": _rows(page)})
+
+    check(all(item["page_size_param"] == [str(item["requested"])] for item in observed),
+          f"a page size did not reach the server: {observed}")
+    small = [i for i in observed if i["requested"] == 10][0]
+    large = [i for i in observed if i["requested"] == 20][0]
+    check(small["rendered"] != large["rendered"],
+          f"page size 10 and 20 rendered the same number of rows ({small['rendered']}), so "
+          f"the choice did not take effect with {total} rows available")
+    check(large["rendered"] == min(large["requested"], total),
+          f"page size {large['requested']} rendered {large['rendered']} rows, not "
+          f"{min(large['requested'], total)} of {total}")
+
+    report["page_size_10_5"] = {"layer": "request", "rows_available": total,
+        "batch_rows": batch_rows, "observed": observed, "options": [10, 20, 50, 100],
+        "source": "ui/src/components/resourceTable/columnPrefs.ts:27"}
+    report["evidence"].append({"layer": "request", "item": "10.5", "what":
+        "all four page sizes the table offers were selected in turn; each choice appeared as "
+        f"page_size in the request, and with {total} rows size 10 rendered ten while 20/50/100 "
+        "rendered all of them, so the switch really applies instead of falling back",
+        **report["page_size_10_5"]})
+    return report["page_size_10_5"]
+
+
+def exercise_pagination_10_6(page, server, report, token):
+    """10.6: first, previous, next and last page, the disabled edges, every row once.
+
+    At page size ten the fixture rows make two pages, which gives both edges: previous is
+    disabled on the first page and next on the last. The rows are collected page by page and
+    the collection has to be the whole set with no repeat and no gap. Counting rows per page
+    would not show this - two pages of ten and two could still repeat one row and omit another
+    - so the comparison is between the name sets, checked against the unpaged list the server
+    reports, with both page collections recorded for audit.
+    """
+    page.goto(server.base + "/deployments")
+    _settled_path(page)
+    page.wait_for_timeout(900)
+    total, _ = _list_total(server, token, report)
+    expected_pages = math.ceil(total / 10)
+
+    _choose_page_size(page, 10)
+    first_page = _row_names(page)
+    check(len(first_page) == min(10, total),
+          f"the first page at size 10 rendered {len(first_page)} rows, not "
+          f"{min(10, total)} of {total}")
+
+    def page_state():
+        items = page.locator(".ant-pagination-item")
+
+        def disabled(selector):
+            # The control's own class is "ant-pagination-prev"/"-next", so testing for that
+            # substring would always be true and the check would never fail. The disabled
+            # marker is the separate class token ant-pagination-disabled.
+            tokens = (page.locator(selector).get_attribute("class") or "").split()
+            return "ant-pagination-disabled" in tokens
+
+        return {
+            "pages": [items.nth(i).inner_text().strip() for i in range(items.count())],
+            "active": page.locator(".ant-pagination-item-active").inner_text().strip(),
+            "prev_disabled": disabled(".ant-pagination-prev"),
+            "next_disabled": disabled(".ant-pagination-next"),
+        }
+
+    at_first = page_state()
+    check(at_first["prev_disabled"],
+          f"the previous control was usable on the first page: {at_first}")
+    check(at_first["active"] == "1", f"the first page is not marked active: {at_first}")
+    check(len(at_first["pages"]) == expected_pages,
+          f"{total} rows at page size 10 did not make {expected_pages} pages: "
+          f"{at_first['pages']}")
+
+    page.locator(".ant-pagination-next").first.click()
+    page.wait_for_timeout(1200)
+    second_page = _row_names(page)
+    at_last = page_state()
+    check(at_last["active"] == str(expected_pages),
+          f"next did not move to the last page {expected_pages}: {at_last}")
+    check(at_last["next_disabled"],
+          f"the next control was usable on the last page: {at_last}")
+    check(not at_last["prev_disabled"],
+          f"the previous control was unusable on the last page: {at_last}")
+
+    collected = first_page + second_page
+    repeats = [name for name in set(collected) if collected.count(name) > 1]
+    check(not repeats, f"a row appeared on both pages: {repeats[:3]}")
+
+    _, items = _list_total(server, token, report)
+    independent = {item["name"] for item in items}
+    missing = independent - set(collected)
+    extra = set(collected) - independent
+    check(not missing,
+          f"{len(missing)} rows the server lists were never shown by any page: "
+          f"{sorted(missing)[:3]}")
+    check(not extra,
+          f"a page showed rows the server does not list: {sorted(extra)[:3]}")
+    check(len(collected) == total,
+          f"the pages together rendered {len(collected)} rows, not the {total} listed")
+
+    page.locator(".ant-pagination-prev").first.click()
+    page.wait_for_timeout(1200)
+    back = _row_names(page)
+    check(back == first_page,
+          "returning to the first page did not restore the same rows in the same order")
+
+    report["pagination_10_6"] = {"layer": "ui", "page_size": 10, "rows_total": total,
+        "expected_pages": expected_pages,
+        "page1_names": first_page, "page2_names": second_page,
+        "collected_unique": len(set(collected)), "repeats": repeats,
+        "missing_vs_independent": sorted(missing), "extra_vs_independent": sorted(extra),
+        "no_repeat_no_gap": not repeats and not missing and not extra,
+        "first_page_prev_disabled": at_first["prev_disabled"],
+        "last_page_next_disabled": at_last["next_disabled"],
+        "independent_total": total, "back_restored_same_rows": back == first_page}
+    report["evidence"].append({"layer": "ui", "item": "10.6", "what":
+        f"at page size 10 the {total} rows made {expected_pages} pages; next and previous were "
+        "both used, previous was disabled on the first page and next on the last; the names "
+        "collected page by page had no repeat and no gap against the unpaged list the server "
+        "reports; and going back restored the first page in the same order",
+        **report["pagination_10_6"]})
+    return report["pagination_10_6"]
+
+
+def exercise_delete_10_7(page, server, report, token, row_ids):
+    """10.7: deleting the last row of the last page leaves the total, the page and the rows right.
+
+    This reuses the pagination batch, so it costs no extra container. Only a row this section
+    created may be deleted: the last page can also hold the deployment this case owns, and
+    deleting that one would pull the fixture out from under the steps that follow.
+    """
+    page.goto(server.base + "/deployments")
+    _settled_path(page)
+    page.wait_for_timeout(900)
+    _choose_page_size(page, 10)
+
+    total_before, items_before = _list_total(server, token, report)
+    batch = {item["name"]: item["id"] for item in items_before
+             if item["id"] in set(row_ids)}
+    check(len(batch) == len(row_ids),
+          f"only {len(batch)} of the {len(row_ids)} batch rows are in the list")
+
+    page.locator(".ant-pagination-item").last.click()
+    page.wait_for_timeout(1200)
+    last_page_rows = _row_names(page)
+    check(0 < len(last_page_rows) <= 10,
+          f"the last page at size 10 held {len(last_page_rows)} rows")
+    on_last_page = [name for name in last_page_rows if name in batch]
+    check(on_last_page,
+          f"the last page holds none of the batch rows, so this section has nothing it may "
+          f"delete there: {last_page_rows}")
+    victim_name = on_last_page[-1]
+    victim_id = batch[victim_name]
+
+    status, _ = http(server.base, "DELETE", DEPLOYMENTS + f"/{victim_id}", token=token)
+    check(status in (200, 202, 204), f"deleting the last row answered {status}")
+    row_ids.remove(victim_id)
+
+    page.wait_for_timeout(1500)
+    page.reload()
+    _settled_path(page)
+    page.wait_for_timeout(2000)
+
+    active = page.locator(".ant-pagination-item-active")
+    active_page = active.inner_text().strip() if active.count() else None
+    after_rows = _row_names(page)
+    check(victim_name not in after_rows,
+          f"the deleted row {victim_name!r} is still rendered after a reload")
+
+    total_after, items_after = _list_total(server, token, report)
+    check(total_after == total_before - 1,
+          f"the total went from {total_before} to {total_after}, not down by one")
+    names_after = {item["name"] for item in items_after}
+    check(victim_name not in names_after,
+          f"the deleted row {victim_name!r} is still in the server's list")
+    # Whatever page the product leaves the user on, it must not be an empty page while rows
+    # still exist - that would be a dead end the user has to escape by hand.
+    if names_after:
+        check(after_rows,
+              f"after deleting the last row of the last page the view shows no rows at all, "
+              f"though {total_after} rows still exist; the active page is {active_page!r}")
+
+    report["delete_10_7"] = {"layer": "ui", "deleted": {"id": victim_id, "name": victim_name},
+        "total_before": total_before, "total_after": total_after,
+        "active_page_after": active_page, "rows_after_on_page": len(after_rows),
+        "deleted_row_gone_from_page": victim_name not in after_rows,
+        "deleted_row_gone_from_server": victim_name not in names_after,
+        "page_count_after": page.locator(".ant-pagination-item").count()}
+    report["evidence"].append({"layer": "ui", "item": "10.7", "what":
+        "the last batch row on the last page was deleted; the total fell from "
+        f"{total_before} to {total_after}, the row disappeared from both the page and the "
+        "server's list, and the view did not leave the user on a page with no rows while rows "
+        "still existed", **report["delete_10_7"]})
+    return report["delete_10_7"]
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--server-bin", type=Path, default=ROOT / "bin/gpuworks")
@@ -989,7 +1513,8 @@ def main():
             page.set_default_timeout(10000)
             try:
                 test_deployment_lifecycle(page, context, server, artifacts, report,
-                                          args.locale, node, deployment, key["key"])
+                                          args.locale, node, deployment, key["key"],
+                                          token=token)
                 layers = {item["layer"] for item in report["evidence"]}
                 check(set(manifest["required_evidence"]) <= layers,
                       "required evidence is missing")
