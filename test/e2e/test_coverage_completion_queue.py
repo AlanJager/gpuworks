@@ -290,13 +290,21 @@ from coverage_completion_queue import summary
 # Six complete current-fixture boolean6.1 inventories verified against unfixed Expert baseline and restored all en/zh.
 # These counts move only when a manifest declaration changes.
 BASELINE = {
-    "1": 124, "2": 251, "3": 258, "4": 315, "5": 186, "6": 130,
-    "7": 101, "8": 94, "9": 71, "10": 99, "11": 83, "out": 301,
+    "1": 124, "2": 251, "3": 258, "4": 315, "5": 182, "6": 130,
+    "7": 101, "8": 89, "9": 71, "10": 99, "11": 83, "out": 301,
 }
 
 # The deploy manifests declare section 17 not applicable: no deploy page imports a chart library,
 # and a recursive search of ui/src/pages/deploy/ finds no echarts, Statistic, Timeline, Progress or
 # canvas, so the seven chart items leave the queue on six manifests at once (42 fewer open items).
+#
+# The container-overrides manifest also leaves the queue on sections 13 and 22: 13.1 to 13.3 and
+# 22.1, 22.2 and 22.7 are measured, 13.4 and 13.6 name a branch the product's own data keeps shut
+# (every image series is official, PATCH answers 400 and there is no create route), and 22.3 is a
+# single-role product that cannot produce the second identity it would compare against. Three
+# drafts had also cleared 22.4 to 22.6 as not applicable; those items describe a session timeout,
+# a locale switcher and theme tokens the product does have, so the sentences were about the
+# contract rather than the product and the items are open again.
 
 
 class QueueTest(unittest.TestCase):
@@ -308,7 +316,7 @@ class QueueTest(unittest.TestCase):
         self.assertIsNone(extra)
         self.assertEqual(dict(counts), BASELINE)
         self.assertEqual(total, sum(BASELINE.values()))
-        self.assertEqual(total, 2013)
+        self.assertEqual(total, 2004)
 
 
 if __name__ == "__main__":
