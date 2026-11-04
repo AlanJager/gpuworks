@@ -387,21 +387,37 @@ func targetRefusalFor(dep *store.Deployment, reqs map[string][]string, model *st
 	}
 	req.Topology.NNodes = dep.NNodes
 	cache := targetRequestCache{}
+	// Without pinned GPU indexes the verdict depends only on the node's
+	// hardware shape, so a fleet of identical nodes is judged once per scan
+	// instead of validating every card of every node.
+	byShape := map[string]string{}
+	pinned := len(req.Placement.GPUIndexes) > 0
 	return func(node *store.Node) string {
 		if !targetNodeParticipates(node, online) {
 			return ""
 		}
+		shape := ""
+		if !pinned {
+			shape = HardwareShape(node, true)
+			if code, ok := byShape[shape]; ok {
+				return code
+			}
+		}
 		candidate := req
 		candidate.Node = node
 		requests, _ := targetRequestsFor(candidate, validator, cache, resolve)
+		code := ""
 		refusal, e := targetCandidateRefusal(node, req.Placement.GPUIndexes, validator, requests)
-		if e != nil {
-			return scheduler.ReasonPlacementRejected
+		switch {
+		case e != nil:
+			code = scheduler.ReasonPlacementRejected
+		case refusal != nil:
+			code = refusal.Code
 		}
-		if refusal != nil {
-			return refusal.Code
+		if !pinned {
+			byShape[shape] = code
 		}
-		return ""
+		return code
 	}, nil
 }
 

@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 
 	"gpuworks.ai/gpuworks/internal/accelerator"
 )
@@ -266,14 +267,23 @@ func quantizationApplies(rule, spec string) bool {
 	return strings.TrimSpace(rule) == "" || strings.EqualFold(strings.TrimSpace(rule), strings.TrimSpace(spec))
 }
 
+// compiledNames caches gpus.name patterns. They come from the finite set of
+// catalog specs, and matching runs per card on scheduling paths, so each
+// pattern is compiled once per process. Invalid patterns are not cached.
+var compiledNames sync.Map // pattern -> *regexp.Regexp
+
 func compileName(pattern string) (*regexp.Regexp, error) {
 	if strings.TrimSpace(pattern) == "" {
 		return nil, nil
+	}
+	if re, ok := compiledNames.Load(pattern); ok {
+		return re.(*regexp.Regexp), nil
 	}
 	re, err := regexp.Compile("(?i)" + pattern)
 	if err != nil {
 		return nil, fmt.Errorf("invalid gpus.name regex: %w", err)
 	}
+	compiledNames.Store(pattern, re)
 	return re, nil
 }
 

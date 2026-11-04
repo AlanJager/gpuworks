@@ -186,3 +186,60 @@ func TestTargetPoolMemoizesMalformedTemplateByEffectiveShape(t *testing.T) {
 		t.Fatalf("malformed template resolved %d times for 200 nodes/two target shapes", calls)
 	}
 }
+
+// The per-scan verdict cache is keyed by the whole hardware shape: nodes that
+// differ only in runtime driver or card architecture are judged separately.
+func TestTargetPoolVerdictCacheSeparatesShapes(t *testing.T) {
+	dep := &store.Deployment{Engine: "vllm", CatalogSelectionSnapshot: `{"gpus":{"vendor":"amd","arch_id":"gfx942","name":"MI3\\d\\dX"}}`}
+	refusal, err := targetRefusalFor(dep, nil, &store.Model{Name: "model"}, func(string) bool { return true }, func(LaunchRequest) (*proto.RequestedFeatures, error) {
+		return &proto.RequestedFeatures{CommandKnown: true}, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	node := func(uuid, driver, arch string) *store.Node {
+		gpus := make([]store.GPU, 8)
+		for i := range gpus {
+			gpus[i] = store.GPU{Index: i, Vendor: "amd", Name: "MI325X", ArchID: arch}
+		}
+		return &store.Node{UUID: uuid, GPUVendor: "amd", OS: "linux", Arch: "amd64", RuntimeDriver: driver, GPUs: gpus}
+	}
+	// The refused shape comes first so a shape-blind cache would leak it.
+	if got := refusal(node("udocker", "udocker", "gfx942")); got != scheduler.ReasonRuntimeUnsupported {
+		t.Fatalf("udocker node verdict = %q, want %s", got, scheduler.ReasonRuntimeUnsupported)
+	}
+	for i := 0; i < 50; i++ {
+		if got := refusal(node(fmt.Sprint("ok-", i), "docker", "gfx942")); got != "" {
+			t.Fatalf("compatible node %d refused: %s", i, got)
+		}
+	}
+	if got := refusal(node("udocker-2", "udocker", "gfx942")); got != scheduler.ReasonRuntimeUnsupported {
+		t.Fatalf("second udocker node verdict = %q", got)
+	}
+}
+
+// go test ./internal/server/planning -run '^$' -bench TargetPoolRefusal -benchmem
+func BenchmarkTargetPoolRefusal1000Nodes(b *testing.B) {
+	dep := &store.Deployment{Engine: "vllm", CatalogSelectionSnapshot: `{"gpus":{"vendor":"amd","arch_id":"gfx942","name":"MI3\\d\\dX"}}`}
+	nodes := make([]store.Node, 1000)
+	for n := range nodes {
+		gpus := make([]store.GPU, 8)
+		for i := range gpus {
+			gpus[i] = store.GPU{Index: i, Vendor: "amd", Name: "MI325X", ArchID: "gfx942"}
+		}
+		nodes[n] = store.Node{UUID: fmt.Sprint(n), GPUVendor: "amd", OS: "linux", Arch: "amd64", RuntimeDriver: "docker", GPUs: gpus}
+	}
+	resolve := func(LaunchRequest) (*proto.RequestedFeatures, error) { return &proto.RequestedFeatures{CommandKnown: true}, nil }
+	b.ReportAllocs()
+	for b.Loop() {
+		refusal, err := targetRefusalFor(dep, nil, &store.Model{Name: "model"}, func(string) bool { return true }, resolve)
+		if err != nil {
+			b.Fatal(err)
+		}
+		for i := range nodes {
+			if refusal(&nodes[i]) != "" {
+				b.Fatal("refused")
+			}
+		}
+	}
+}
