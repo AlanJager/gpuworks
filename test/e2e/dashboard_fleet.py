@@ -660,48 +660,66 @@ def _storage_fixture(page, server, artifacts, report, root):
     accepts any path that mountinfo lists as a mount point). The run therefore owns a
     bind mount per storage and unmounts them again, so the product's own guard is
     satisfied rather than bypassed. Returns (agent, mounts, ids) for cleanup.
-    """
-    enrolled = page.request.post(server.base + "/api/v1/nodes",
-                                 data={"name": f"e2e-{report['run_id']}-storage", "server_url": server.base})
-    check(enrolled.status == 201, f"storage node enrollment HTTP {enrolled.status}")
-    enrollment = enrolled.json()
-    token, node_uuid = enrollment["token"], enrollment["node"]["uuid"]
-    artifacts.remember(token)
-    state = artifacts.private / "storage-agent-state"
-    state.mkdir(exist_ok=True)
-    log = (artifacts.private / "storage-agent.log").open("w")
-    agent = subprocess.Popen(
-        ["sudo", "-n", "sh", "-c", 'IFS= read -r GPUWORKS_TOKEN; export GPUWORKS_TOKEN; exec "$@"',
-         "dashboard-storage-agent", str((ROOT / "bin/gpuworks-agent").resolve()), "run",
-         "--server", server.base, "--state", str(state), "--driver", "none"],
-        stdin=subprocess.PIPE, stdout=log, stderr=subprocess.STDOUT, text=True)
-    agent.stdin.write(token + "\n")
-    agent.stdin.close()
-    deadline = time.time() + 45
-    while time.time() < deadline:
-        check(agent.poll() is None, "the storage agent exited before the node came online")
-        if page.request.get(server.base + "/api/v1/nodes/" + node_uuid).json().get("state") == "online":
-            break
-        time.sleep(0.5)
-    else:
-        raise AssertionError("the storage node never came online")
 
-    mounts, ids = [], []
-    for index in range(3):
-        target = root / f"share{index}"
-        backing = root / f"backing{index}"
-        target.mkdir(parents=True, exist_ok=True)
-        backing.mkdir(parents=True, exist_ok=True)
-        mounted = subprocess.run(["sudo", "-n", "mount", "--bind", str(backing), str(target)],
-                                 capture_output=True, text=True)
-        check(mounted.returncode == 0, f"bind mount {index} failed: {mounted.stderr.strip()}")
-        mounts.append(target)
-        created = page.request.post(server.base + STORAGES, data={
-            "name": storage_name(report, index), "type": "shared_dir",
-            "path": str(target), "enabled": True, "all_nodes": True})
-        check(created.status == 201, f"shared storage {index} HTTP {created.status}: {created.text()[:200]}")
-        ids.append(created.json()["id"])
-    return agent, mounts, ids, node_uuid
+    The body runs inside its own try because a fixture that fails part way through has
+    still made some of the things it is about to report: the bind mount is made and
+    recorded before the storage is created, and the agent is started long before the
+    first storage. None of that escapes this function when an exception is raised - the
+    caller's tuple assignment never happens, so its placeholders stay empty and its
+    teardown, however careful, has nothing to clean. The counters therefore start as
+    placeholders at the top of this function, so that the rollback here can see whatever
+    was made before the failure and undo it. The caller keeps its own teardown for the
+    success path; this layer only undoes what the caller never got told about.
+    """
+    agent, mounts, ids, node_uuid = None, [], [], None
+    try:
+        enrolled = page.request.post(server.base + "/api/v1/nodes",
+                                     data={"name": f"e2e-{report['run_id']}-storage", "server_url": server.base})
+        check(enrolled.status == 201, f"storage node enrollment HTTP {enrolled.status}")
+        enrollment = enrolled.json()
+        token, node_uuid = enrollment["token"], enrollment["node"]["uuid"]
+        artifacts.remember(token)
+        state = artifacts.private / "storage-agent-state"
+        state.mkdir(exist_ok=True)
+        log = (artifacts.private / "storage-agent.log").open("w")
+        agent = subprocess.Popen(
+            ["sudo", "-n", "sh", "-c", 'IFS= read -r GPUWORKS_TOKEN; export GPUWORKS_TOKEN; exec "$@"',
+             "dashboard-storage-agent", str((ROOT / "bin/gpuworks-agent").resolve()), "run",
+             "--server", server.base, "--state", str(state), "--driver", "none"],
+            stdin=subprocess.PIPE, stdout=log, stderr=subprocess.STDOUT, text=True)
+        agent.stdin.write(token + "\n")
+        agent.stdin.close()
+        deadline = time.time() + 45
+        while time.time() < deadline:
+            check(agent.poll() is None, "the storage agent exited before the node came online")
+            if page.request.get(server.base + "/api/v1/nodes/" + node_uuid).json().get("state") == "online":
+                break
+            time.sleep(0.5)
+        else:
+            raise AssertionError("the storage node never came online")
+
+        # mounts and ids keep the placeholders from the top of the function: rebinding them
+        # here would throw away any mount or storage recorded before a mid-loop failure.
+        for index in range(3):
+            target = root / f"share{index}"
+            backing = root / f"backing{index}"
+            target.mkdir(parents=True, exist_ok=True)
+            backing.mkdir(parents=True, exist_ok=True)
+            mounted = subprocess.run(["sudo", "-n", "mount", "--bind", str(backing), str(target)],
+                                     capture_output=True, text=True)
+            check(mounted.returncode == 0, f"bind mount {index} failed: {mounted.stderr.strip()}")
+            mounts.append(target)
+            created = page.request.post(server.base + STORAGES, data={
+                "name": storage_name(report, index), "type": "shared_dir",
+                "path": str(target), "enabled": True, "all_nodes": True})
+            check(created.status == 201, f"shared storage {index} HTTP {created.status}: {created.text()[:200]}")
+            ids.append(created.json()["id"])
+        return agent, mounts, ids, node_uuid
+    except BaseException:
+        # Roll back what this function made before it failed, then let the failure
+        # through: swallowing it here would turn a broken fixture into a pass.
+        _stop_storage_fixture(page, server, agent, mounts, ids, node_uuid)
+        raise
 
 
 def _stop_storage_fixture(page, server, agent, mounts, ids, node_uuid):
