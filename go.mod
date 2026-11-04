@@ -1,12 +1,12 @@
 module gpuworks.ai/gpuworks
 
-go 1.26.9
+go 1.26.10
 
 require (
 	github.com/coder/websocket v1.8.15
 	github.com/glebarez/go-sqlite v1.21.2
 	github.com/glebarez/sqlite v1.11.0
-	github.com/go-chi/chi/v5 v5.3.1
+	github.com/go-chi/chi/v5 v5.4.0
 	github.com/itchyny/gojq v0.12.19
 	github.com/klauspost/compress v1.19.2
 	github.com/libp2p/go-yamux/v5 v5.1.0

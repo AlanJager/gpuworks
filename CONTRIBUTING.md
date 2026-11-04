@@ -55,7 +55,7 @@ evidence cannot go into [docs/reference/support-matrix.md](docs/reference/suppor
 
 Requirements:
 
-- **Go** — the version in `go.mod` (currently Go 1.26.9, matching the CI image `golang:1.26`).
+- **Go** — the version in `go.mod` (currently Go 1.26.10, matching the CI image `golang:1.26`).
 - **Node.js and npm** — versions follow `ui/package.json` and the lockfile.
 - **GNU Make**.
 - **Docker**, SSH, and vendor CLIs are needed only for the container-level and cloud test
