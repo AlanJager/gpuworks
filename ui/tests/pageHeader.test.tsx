@@ -47,7 +47,7 @@ test("the breadcrumb names the menu section the page sits in", () => {
 
 test("a detail page adds its parents after the section, as links back", () => {
   at("/monitor/d/7", <PageHeader title="qwen" parents={[<Link key="list" to="/monitor">Monitor Center</Link>]} />);
-  assert.deepEqual(crumbs(), ["Operations", "Monitor Center"]);
+  assert.deepEqual(crumbs(), ["Monitoring & Analytics", "Monitor Center"]);
   assert.equal(screen.getByRole("link", { name: "Monitor Center" }).getAttribute("href"), "/monitor");
 });
 

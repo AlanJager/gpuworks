@@ -23,12 +23,20 @@ export interface NavGroup {
 }
 
 // The side menu, also read by PageHeader so a page's breadcrumb names the
-// same section the menu files it under. Groups run from daily work (serving,
-// models) down to the platform (compute, operations, administration); new
-// features go to the end of their group so existing entries keep their place.
+// same section the menu files it under. Monitoring and analysis come first,
+// then daily work (serving, models), then the platform (compute,
+// administration). New features go to the end of their group so existing
+// entries keep their place; monitoring and analysis holds at most five
+// entries (alerts would be the fifth), and further views become tabs.
 export const navGroups: NavGroup[] = [
   { items: [
     { key: "/dashboard", icon: <DashboardOutlined />, labelKey: "navigation.dashboard" },
+  ] },
+  { labelKey: "navigation.groups.observability", items: [
+    { key: "/monitor", icon: <HeartOutlined />, labelKey: "navigation.monitor" },
+    { key: "/scheduling", icon: <ScheduleOutlined />, labelKey: "navigation.scheduling" },
+    { key: "/analytics", icon: <BarChartOutlined />, labelKey: "navigation.analytics" },
+    { key: "/logs", icon: <FileTextOutlined />, labelKey: "navigation.logs" },
   ] },
   { labelKey: "navigation.groups.inference", items: [
     // Deploying is the list's create action, so /deploy highlights the list.
@@ -49,12 +57,6 @@ export const navGroups: NavGroup[] = [
     { key: "/networks", icon: <ApiOutlined />, labelKey: "navigation.networks" },
     { key: "/providers", icon: <CloudOutlined />, labelKey: "navigation.publicCloud" },
     { key: "/zstack", icon: <ApartmentOutlined />, labelKey: "navigation.privateCloud" },
-  ] },
-  { labelKey: "navigation.groups.operations", items: [
-    { key: "/monitor", icon: <HeartOutlined />, labelKey: "navigation.monitor" },
-    { key: "/scheduling", icon: <ScheduleOutlined />, labelKey: "navigation.scheduling" },
-    { key: "/analytics", icon: <BarChartOutlined />, labelKey: "navigation.analytics" },
-    { key: "/logs", icon: <FileTextOutlined />, labelKey: "navigation.logs" },
   ] },
   { labelKey: "navigation.groups.admin", items: [
     { key: "/apikeys", icon: <KeyOutlined />, labelKey: "navigation.apiKeys" },

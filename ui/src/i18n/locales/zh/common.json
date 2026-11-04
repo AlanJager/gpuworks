@@ -567,7 +567,7 @@
       "inference": "推理服务",
       "models": "模型",
       "compute": "算力资源",
-      "operations": "运维",
+      "observability": "监控与分析",
       "admin": "管理"
     },
     "dashboard": "概览",
