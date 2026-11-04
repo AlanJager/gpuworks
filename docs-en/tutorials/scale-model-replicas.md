@@ -26,7 +26,7 @@ This tutorial uses **Single node**, which means each replica performs inference 
 
 ## 1. Create a Service with One Replica
 
-1. Open **Deploy → Quick Deploy**. Under **Basic Configuration**, select your registered `Qwen/Qwen3-1.7B` model (`dgpu-demo-a-ms` in this example) and set **Target accelerator** to **NVIDIA**.
+1. Open **Inference Services → Create Deployment → Quick Deploy**. Under **Basic Configuration**, select your registered `Qwen/Qwen3-1.7B` model (`dgpu-demo-a-ms` in this example) and set **Target accelerator** to **NVIDIA**.
 2. Under **Recommended Inference Template**, select the **general · vllm · balanced** profile for **Qwen3-1.7B** and check the **bf16** label. If the **Use a registered model?** page appears, select the **MS** registration for this model and click **Use this model and deploy**.
 3. Confirm that the source ID, profile, and image match the prerequisite table. Enter `tutorial-replicas-qwen3` for both **Deployment Name** and **Public Model Name**.
 
@@ -50,17 +50,17 @@ This tutorial uses **Single node**, which means each replica performs inference 
 
 ![Placement configuration: automatic selection limited to host2 and host3 with the Spread strategy; one replica, currently previewed on host2 GPU 0](../assets/screenshots/en/tutorial-replicas-placement.png)
 
-If you just stopped another deployment and released its GPU but the creation form still reports no available GPUs, reopen **Deploy → Quick Deploy**, enter these settings again, and check the candidate nodes.
+If you just stopped another deployment and released its GPU but the creation form still reports no available GPUs, reopen **Inference Services → Create Deployment → Quick Deploy**, enter these settings again, and check the candidate nodes.
 
 6. Wait for **Compatibility check passed** on the right, then click **Deploy**.
-7. Open `tutorial-replicas-qwen3` in **Deployments**. Wait until **Replicas** shows **1 of 1 running** and the health check is normal. Record the first instance's node and GPU.
+7. Open `tutorial-replicas-qwen3` in **Inference Services**. Wait until **Replicas** shows **1 of 1 running** and the health check is normal. Record the first instance's node and GPU.
 8. Open **Playground → Chat**, click **New conversation**, and select `tutorial-replicas-qwen3`. Send “Explain a model replica in one sentence.” and confirm that you receive a normal answer.
 
 The first replica can run on either candidate node; it does not have to be `host2`. If the replica is waiting for a node, check the wait reason in the deployment details and open **View candidate nodes**. If startup fails, open the instance's **Logs**, resolve any GPU memory, model file, or disk issues, then retry.
 
 ## 2. Scale to Two Replicas
 
-1. Return to **Deployments → tutorial-replicas-qwen3**.
+1. Return to **Inference Services → tutorial-replicas-qwen3**.
 2. In the number field to the right of **Replicas**, change `1` to `2` and click **Apply**.
 3. Wait until **Replicas** shows **2 of 2 running**. Expand both instances and confirm that one runs on `host2` and the other on `host3`, each uses one GPU, and both show **Running**.
 4. Check the **Routing Policy** that now appears and keep it set to **Load balance**.
@@ -113,7 +113,7 @@ If the history shows only one instance, first check that **Server** is selected,
 
 ## 4. Scale Back to One Replica and Call It Again
 
-1. Wait for the evaluation to finish, then return to **Deployments → tutorial-replicas-qwen3**.
+1. Wait for the evaluation to finish, then return to **Inference Services → tutorial-replicas-qwen3**.
 2. Change **Replicas** from `2` to `1` and click **Apply**.
 3. Wait until **Replicas** shows **1 of 1 running**. Confirm that the retained instance is **Running** and the other instance is no longer running. Then open **GPU Devices** and confirm that the removed instance's GPU is released.
 4. Open **Playground → Chat**, click **New conversation**, and select `tutorial-replicas-qwen3` again. Send “Explain in one sentence why model services need to scale up and down.”
@@ -129,7 +129,7 @@ During scale-down, the platform chooses which replica to remove and lets it fini
 
 ## 5. Clean Up Experimental Resources
 
-1. When you no longer need the deployment, open **Deployments → tutorial-replicas-qwen3**, click **Delete**, and confirm using normal deletion.
+1. When you no longer need the deployment, open **Inference Services → tutorial-replicas-qwen3**, click **Delete**, and confirm using normal deletion.
 2. Wait for the deployment to disappear from the list, then confirm that it no longer occupies either GPU. The registered model, model files, and image remain available for reuse.
 3. Find `tutorial-replicas-distribution-en` in **Evaluations**. Export its report first if needed, then click **Delete**. Deletion removes the run's point results and per-request details.
 4. If you stopped other experimental deployments before starting, click **Start** in their deployment details. Wait for their original replicas to return and verify inference.

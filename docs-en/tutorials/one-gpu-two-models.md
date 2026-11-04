@@ -23,9 +23,9 @@ The 12 GiB and 16 GiB limits below have been verified in the RTX 4090 (48 GiB) e
 
 1. Open the target GPU's details under **GPU Devices**, note its node and GPU index, and confirm that **Basic information → dGPU** shows **dGPU available**.
 2. Check **Instances** and GPU memory to confirm there is enough capacity for two new deployments.
-3. Open **Deployments** and confirm that the deployment names and public model names `dgpu-demo-a` and `dgpu-demo-b` are not in use.
+3. Open **Inference Services** and confirm that the deployment names and public model names `dgpu-demo-a` and `dgpu-demo-b` are not in use.
 
-If the target GPU is occupied by one of your experimental deployments that you no longer need, open that deployment in **Deployments**, click **Stop**, and confirm. Wait for the instance to be removed and the GPU to be released; keep the models and images. Only operate on your own experimental deployments, leaving other workloads alone.
+If the target GPU is occupied by one of your experimental deployments that you no longer need, open that deployment in **Inference Services**, click **Stop**, and confirm. Wait for the instance to be removed and the GPU to be released; keep the models and images. Only operate on your own experimental deployments, leaving other workloads alone.
 
 dGPU availability means you can request instances with memory limits. Whether both models fit still requires evaluating and starting each one.
 
@@ -47,7 +47,7 @@ Prepare A and B as shown in the table and download them to the node you noted ea
 
 ## 2. Configure and Start Model A
 
-1. Open **Deploy → Quick Deploy**. Under **Basic Configuration**, select model `dgpu-demo-a-ms` and **Target accelerator NVIDIA**. Under **Recommended Inference Template**, select **Qwen3-1.7B** and the **general · vllm · balanced** profile, and check the **BF16** weights label.
+1. Open **Inference Services → Create Deployment → Quick Deploy**. Under **Basic Configuration**, select model `dgpu-demo-a-ms` and **Target accelerator NVIDIA**. Under **Recommended Inference Template**, select **Qwen3-1.7B** and the **general · vllm · balanced** profile, and check the **BF16** weights label.
    If the **Use a registered model?** page appears, select `dgpu-demo-a-ms` with the **MS** label and click **Use this model and deploy**.
 2. Check that the model source ID is `Qwen/Qwen3-1.7B` and the image is `gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r4`. Fill in the following table, keeping the template image and launch method.
 
@@ -77,13 +77,13 @@ Prepare A and B as shown in the table and download them to the node you noted ea
 
 *Model A: Enable Sleepable and set a 12 GiB GPU memory limit and 2048 context length. The configuration evaluation is on the right; deployment and request verification are still required.*
 
-5. After evaluation passes, click **Deploy** and open `dgpu-demo-a` in **Deployments**. Wait for the instance to become **Running**, then record the deployment ID, node, GPU index, and final limit.
+5. After evaluation passes, click **Deploy** and open `dgpu-demo-a` in **Inference Services**. Wait for the instance to become **Running**, then record the deployment ID, node, GPU index, and final limit.
 
 **dGPU Memory** is the GPU memory limit for a single instance. Runtime overhead exists beyond this limit, so the sum of the limits alone is not sufficient; check the evaluation on the page. For details, see [How dGPU Works](../explanation/dgpu.md).
 
 ## 3. Start Model B on the Same GPU
 
-1. Keep A running and reopen **Deploy → Quick Deploy**. Select the model and target chip from column B of the table in section 2. Under **Recommended Inference Template**, select **Qwen3-4B**, using the same profile and **BF16** weights label as A.
+1. Keep A running and reopen **Inference Services → Create Deployment → Quick Deploy**. Select the model and target chip from column B of the table in section 2. Under **Recommended Inference Template**, select **Qwen3-4B**, using the same profile and **BF16** weights label as A.
 2. Check that the model is `dgpu-demo-b-ms`, the source ID is `Qwen/Qwen3-4B`, and the image matches A's. Handle the model confirmation page as you did for A, selecting B with the **MS** label.
 3. Fill in the remaining settings from column B of the table in section 2. Use **Manual** to select the same node as A, and select only the same GPU index.
 4. Enable **Sleepable** and **dGPU Memory**, and confirm the limit is `16` GiB. A already occupies resources, so wait for this evaluation; do not reuse the available capacity shown before creating A.
@@ -92,7 +92,7 @@ Prepare A and B as shown in the table and download them to the node you noted ea
 
 A and B must run simultaneously before you verify requests. Do not free capacity by putting A or other workloads to sleep.
 
-![Deployment list: dgpu-demo-a and dgpu-demo-b both run on host3, are healthy, and each have one replica](../assets/screenshots/en/tutorial-dgpu-running.png)
+![Inference Services: dgpu-demo-a and dgpu-demo-b both run on host3, are healthy, and each have one replica](../assets/screenshots/en/tutorial-dgpu-running.png)
 
 *Both deployments are running and healthy. The list only shows that they are on the same node; you must also check the instance details to confirm that both GPU indexes are `0`.*
 
@@ -135,7 +135,7 @@ Only proceed to the sleep experiment after both requests succeed.
 ## 5. Put A to Sleep and Confirm That B Still Responds
 
 1. Open the target GPU's details under **GPU Devices** and note its GPU memory usage for comparison after sleep.
-2. Open the details under **Deployments → dgpu-demo-a** and click **Sleep (Memory / L1)**. In the page, select **Finish in-flight requests first (recommended)** and click **Sleep**.
+2. Open the details under **Inference Services → dgpu-demo-a** and click **Sleep (Memory / L1)**. In the page, select **Finish in-flight requests first (recommended)** and click **Sleep**.
 3. Wait until the deployment details show the orange **Sleeping · L1 (Quick / Memory)** label. Then open the target GPU's details and confirm that GPU memory usage has dropped. Some GPU memory remains occupied during sleep; it does not need to drop to zero.
 4. In the original terminal, rerun A's command from section 4. Confirm it returns `HTTP 503` with an error explaining that the model is asleep. Then call B and confirm it still returns `HTTP 200` and a response.
 
