@@ -22,7 +22,6 @@ export const colors = {
   borderSoft: "#f0f2f5",
   controlBorder: "#c8cacd",
   canvas: "#f5f7fa",
-  navSelectedBg: "#eaeef5",
   white: "#ffffff",
   success: "#57d344",
   successSoft: "#ecfedf",
@@ -119,7 +118,7 @@ export const themeConfig: ThemeConfig = {
       activeShadow: `0 0 0 2px ${colors.primarySoft}`,
     },
     // The side menu follows the Zeron NavMenu (md): 32px items 4px apart, a
-    // soft grey-blue selection instead of brand blue, hover only darkens text.
+    // soft neutral selection instead of brand blue, hover only darkens text.
     Menu: {
       itemHeight: 32,
       itemBorderRadius: radius.lg,
@@ -128,9 +127,9 @@ export const themeConfig: ThemeConfig = {
       iconSize: 16,
       iconMarginInlineEnd: 8,
       itemColor: colors.text,
-      itemSelectedBg: colors.navSelectedBg,
+      itemSelectedBg: colors.borderSoft,
       itemSelectedColor: colors.ink,
-      itemActiveBg: colors.navSelectedBg,
+      itemActiveBg: colors.borderSoft,
       itemHoverBg: "transparent",
       itemHoverColor: colors.ink,
       groupTitleFontSize: 12,

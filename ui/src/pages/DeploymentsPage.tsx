@@ -265,7 +265,7 @@ export default function DeploymentsPage() {
         title={t("page.title")}
         description={t("page.description")}
         extra={
-          <Space size={12}>
+          <Space>
             <Typography.Text type="secondary">{t("page.count", { count: data?.total ?? 0 })}</Typography.Text>
             <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate("/deploy")}>{t("page.create")}</Button>
           </Space>

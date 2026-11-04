@@ -216,7 +216,10 @@ button, input, textarea, select { letter-spacing: 0; }
 /* Group titles sit 4px left of the item text; the open item reads in 500. */
 .app-nav .ant-menu-item-group-title { height: 24px; margin: 12px 0 2px; padding: 0 16px; line-height: 24px; }
 .app-nav .ant-menu-item-selected { font-weight: 500; }
-.app-nav .ant-menu-item .ant-menu-item-icon { color: #181a1d; }
+/* Folded, an item's name shows in a tooltip; it zooms in at half antd's speed
+   so it lands sooner (the 0.1s hover delay is fixed inside antd's Menu). */
+.ant-menu-inline-collapsed-tooltip.ant-zoom-big-fast-appear,
+.ant-menu-inline-collapsed-tooltip.ant-zoom-big-fast-enter { animation-duration: 0.05s; }
 .mobile-menu-button { display: none; }
 /* Centered so wide viewports split the leftover margin symmetrically instead
    of piling all of it to the right of the 1600px content cap. */
