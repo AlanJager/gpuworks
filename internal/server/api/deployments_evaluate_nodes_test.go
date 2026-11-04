@@ -139,7 +139,7 @@ func TestEvaluateEligibleNodesFilterAMDFeatureRequirements(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	features := []accelerator.Feature{accelerator.FeatureMultiNode, accelerator.FeaturePD}
+	features := []accelerator.Feature{accelerator.FeatureMultiNode, accelerator.FeaturePD, accelerator.FeatureDataParallel}
 	nodes, _ := h.evaluateEligibleNodes(templateSelection{}, nil, nil, true, func(node *store.Node) map[int]planning.TargetCardRequest {
 		return eligibleRequestsForTest(node, planning.TargetRequest{Features: features, CommandKnown: true})
 	})
@@ -158,7 +158,8 @@ func TestEvaluateEligibleNodesFilterAMDFeatureRequirements(t *testing.T) {
 		}{node.Eligible, reasons}
 	}
 	amd := byUUID["amd-feature-node"]
-	if amd.eligible || !amd.reasons["multi_node_unsupported_on_node"] || !amd.reasons["pd_unsupported_on_node"] {
+	// AMD runs multi-node ranks; PD and data parallelism remain refused.
+	if amd.eligible || amd.reasons["multi_node_unsupported_on_node"] || !amd.reasons["pd_unsupported_on_node"] || !amd.reasons["accelerator_feature_unsupported"] {
 		t.Fatalf("AMD feature requirements were not explained: %+v", amd)
 	}
 	for _, uuid := range []string{"eligible-node", "vendor-node"} {

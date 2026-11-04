@@ -69,13 +69,13 @@ func TestTargetDesiredNormalizesDefaultLeaderWireAsSingleNode(t *testing.T) {
 	}
 }
 
-func TestTargetDesiredRejectsDistributedWireFacts(t *testing.T) {
+// AMD runs distributed ranks (RCCL over the NCCL_* socket variables), so the
+// structural multi-node facts of a legacy wire no longer refuse a launch;
+// sleep, which ROCm does not support here, still does.
+func TestTargetDesiredAcceptsAMDDistributedWireButNotSleep(t *testing.T) {
 	tests := map[string]string{
-		"multiple nodes":   `{"dist_role":"leader","dist_group":"group-1","dist_attempt":1,"nnodes":2,"node_rank":0}`,
-		"worker role":      `{"dist_role":"worker","nnodes":1,"node_rank":0}`,
-		"nonzero rank":     `{"dist_role":"follower","nnodes":1,"node_rank":1}`,
-		"negative rank":    `{"dist_role":"leader","nnodes":1,"node_rank":-1}`,
-		"negative attempt": `{"dist_role":"leader","nnodes":1,"dist_attempt":-1}`,
+		"multiple nodes": `{"dist_role":"leader","dist_group":"group-1","dist_attempt":1,"nnodes":2,"node_rank":0}`,
+		"worker role":    `{"dist_role":"worker","nnodes":2,"node_rank":1,"headless":true}`,
 	}
 	for name, wire := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -83,9 +83,14 @@ func TestTargetDesiredRejectsDistributedWireFacts(t *testing.T) {
 			if err := json.Unmarshal([]byte(wire), &spec); err != nil {
 				t.Fatal(err)
 			}
+			spec.GPUIndexes = []int{1}
 			e := NewWithProber(&headlessTestDriver{name: "docker"}, nil, nil, t.TempDir(), &gpu.AMDProber{})
-			if err := e.validateTargetDesired(spec); err == nil || !strings.Contains(err.Error(), string(accelerator.FeatureMultiNode)) {
-				t.Fatalf("distributed wire was not refused as multi-node: %v", err)
+			if err := e.validateTargetDesired(spec); err != nil {
+				t.Fatalf("distributed AMD wire refused: %v", err)
+			}
+			spec.Sleepable = true
+			if err := e.validateTargetDesired(spec); err == nil || !strings.Contains(err.Error(), string(accelerator.FeatureEngineSleep)) {
+				t.Fatalf("sleepable AMD rank was not refused as engine_sleep: %v", err)
 			}
 		})
 	}

@@ -26,8 +26,12 @@ type targetConstraint struct {
 
 var targetConstraints = map[string]targetConstraint{
 	VendorApple: {denyAll: true},
+	// AMD multi-node and pipeline parallelism ride RCCL over the same
+	// NCCL_* socket and IB variables as NVIDIA (validated with vLLM's mp
+	// backend across two MI325X hosts); sleep, PD and data parallelism are
+	// not validated on ROCm.
 	VendorAMD: {
-		unsupported:     []Feature{FeatureEngineSleep, FeatureMultiNode, FeaturePD, FeaturePipelineParallel, FeatureDataParallel},
+		unsupported:     []Feature{FeatureEngineSleep, FeaturePD, FeatureDataParallel},
 		runtime:         hostRequirements{os: "linux", arch: "amd64", drivers: []string{"docker", "nerdctl"}},
 		explicitDevices: true,
 	},

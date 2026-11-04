@@ -18,7 +18,7 @@ type architectureFeatureEngine struct {
 func (e architectureFeatureEngine) Build(p deploy.Params) deploy.ResolvedLaunch {
 	launch := e.Engine.Build(p)
 	if p.ArchID == "gfx1151" {
-		launch.Argv = append(launch.Argv, "--pipeline-parallel-size", "2")
+		launch.Argv = append(launch.Argv, "--data-parallel-size", "2")
 	}
 	return launch
 }
@@ -58,6 +58,6 @@ func TestEvaluateEligibilityUsesActualArchitectureForTemplateLaunch(t *testing.T
 		t.Fatalf("ordinary target rejected: %+v", nodes["eligible-gfx942"])
 	}
 	if nodes["eligible-gfx1151"].Eligible || !hasReason(nodes["eligible-gfx1151"], "accelerator_feature_unsupported") {
-		t.Fatalf("architecture-dependent resolved PP requirement was lost: %+v", nodes["eligible-gfx1151"])
+		t.Fatalf("architecture-dependent resolved DP requirement was lost: %+v", nodes["eligible-gfx1151"])
 	}
 }

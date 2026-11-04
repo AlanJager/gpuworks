@@ -29,8 +29,13 @@ func TestEnginesAMDTargetCapabilities(t *testing.T) {
 		t.Fatalf("engine response=%d %s", rec.Code, rec.Body.String())
 	}
 	for _, item := range response.Items {
-		if item.DefaultImage != "" || item.Sleep.Supported || len(item.PDModes) > 0 || item.MultiNodeSupported == nil || *item.MultiNodeSupported {
+		if item.DefaultImage != "" || item.Sleep.Supported || len(item.PDModes) > 0 {
 			t.Fatalf("AMD capability overclaim: %+v", item)
+		}
+		// AMD runs multi-node ranks, so the engine profile decides, as on
+		// other vendors: no target override.
+		if item.MultiNodeSupported != nil {
+			t.Fatalf("AMD profile %s overrides multi-node support: %v", item.Name, *item.MultiNodeSupported)
 		}
 	}
 }
