@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"gpuworks.ai/gpuworks/internal/accelerator"
 	"gpuworks.ai/gpuworks/internal/server/pdmode"
 )
 
@@ -77,7 +78,11 @@ func kvTransferNetworkEnv(p Params) map[string]string {
 	switch {
 	case n.HostRDMA() && len(n.HCAs) > 0:
 		env["UCX_NET_DEVICES"] = n.HCAs[0]
-		env["UCX_TLS"] = "rc,cuda_copy,cuda_ipc,gdr_copy"
+		// The transport list names CUDA's copy transports; on ROCm UCX picks
+		// its own (rocm_copy, rocm_ipc) once the device is named.
+		if accelerator.NormalizeVendor(p.Vendor) != accelerator.VendorAMD {
+			env["UCX_TLS"] = "rc,cuda_copy,cuda_ipc,gdr_copy"
+		}
 	case n.Interface != "":
 		env["UCX_NET_DEVICES"] = n.Interface
 		env["UCX_TCP_BRIDGE_ENABLE"] = "y"

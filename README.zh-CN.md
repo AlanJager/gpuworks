@@ -101,13 +101,13 @@ curl http://<server>:8800/v1/chat/completions \
 | 加速器 | 整卡部署 | dGPU（共享一张卡） | sleep/wake | 多机 | PD 分离 |
 |---|---|---|---|---|---|
 | **NVIDIA**（CUDA） | ✅ Docker、Containerd 或 runveil（内置免 root 运行时） | ✅ 显存 MiB 级限额 | ✅ vLLM | ✅ | ✅ vLLM + NIXL |
-| **AMD**（ROCm：Instinct MI300 系列、Ryzen AI Max） | ✅ Docker 或 Containerd | — | — | ✅ vLLM | — |
+| **AMD**（ROCm：Instinct MI300 系列、Ryzen AI Max） | ✅ Docker 或 Containerd | — | ✅ vLLM | ✅ vLLM | ✅ vLLM + NIXL |
 | **华为昇腾**（CANN） | ✅ Docker、Containerd 或 runveil（内置免 root 运行时） | ✅ 显存 MiB 级限额 | ✅ vLLM-Ascend | ✅ | ✅ vLLM-Ascend + Mooncake |
 | **平头哥 PPU**（HGGC） | ✅ Docker、Containerd 或 runveil（内置免 root 运行时） | ✅ 显存 MiB 级限额 | ✅ vLLM | ✅ | ✅ SGLang + Mooncake（同机或经 RDMA）、vLLM + Mooncake（RDMA） |
 | **海光 DCU**（DTK） | ✅ Docker、Containerd 或 runveil（内置免 root 运行时） | ✅ 显存 MiB 级限额 | ✅ vLLM | ✅ | — |
 | **Apple Silicon**（M1–M5，macOS 15+） | ✅ vllm-metal、MLX、llama.cpp 以本机进程运行 | — | — | — | — |
 
-✅ 真机验证 · — 不支持或未验证。NVIDIA 以外的 sleep/wake 已在昇腾 910C、PPU ZW810E、海光 K100 上真机验证，
+✅ 真机验证 · — 不支持或未验证。NVIDIA 以外的 sleep/wake 已在昇腾 910C、PPU ZW810E、海光 K100、AMD MI300X 上真机验证，
 所测版本与限制见[如何选择功能](docs/explanation/choosing-features.md#sleepwake多个模型轮流用一张卡)。
 GPU 通过厂商命令行工具（`nvidia-smi`、`npu-smi`、`ppu-smi`、`hy-smi`）或 AMD 的 amdgpu sysfs 与 KFD 探测，不依赖 NVML，也不需要 cgo。
 各组合的详细状态见[厂商支持矩阵](docs/reference/support-matrix.md)和[昇腾 CANN 矩阵](docs/reference/ascend-support-matrix.md)。

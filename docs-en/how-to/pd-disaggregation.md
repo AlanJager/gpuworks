@@ -7,7 +7,7 @@ After completing this guide, you can call the model through a single service nam
 **Prerequisites**:
 
 - You are familiar with ordinary deployment. See [Deploy Models, Select GPUs, and Interpret Scheduling Results](deploy-models.md).
-- Your hardware and engine meet the requirements of the selected PD mode: `vllm-nixl` targets NVIDIA, `vllm-ascend-mooncake` targets Ascend, `sglang-ppu-ipc` targets PPU (P and D must be on the same node), `sglang-ppu-mooncake` and `vllm-ppu-mooncake` target PPU with the KV over RoCE NICs (across nodes too), and `sglang-nixl` is unverified.
+- Your hardware and engine meet the requirements of the selected PD mode: `vllm-nixl` targets NVIDIA and AMD, `vllm-ascend-mooncake` targets Ascend, `sglang-ppu-ipc` targets PPU (P and D must be on the same node), `sglang-ppu-mooncake` and `vllm-ppu-mooncake` target PPU with the KV over RoCE NICs (across nodes too), and `sglang-nixl` is unverified.
 - PPU Mooncake modes: the nodes are on a host RDMA compute network and have `alixpu_peermem` loaded (see [PPU KV over RDMA](#ppu-kv-over-rdma)).
 - In NVIDIA mode, KV travels over the compute network when P and D are on different machines; RDMA or Ethernet can be used. In Ascend mode, cross-machine deployments require a shared Accelerator RDMA or Accelerator HCCS network, and the NPUs hosting prefill and decode must be mutually reachable over that accelerator network. For configuration and validation, see [Configure Node Networks](configure-networks.md).
 
@@ -24,7 +24,7 @@ one deployment with one service name. Send requests to `/v1` as usual; the gatew
 
 ## Deploy
 
-1. On the deployments page, select **PD disaggregation** under **Node Placement**, then select a PD mode. Available modes come from the engine profiles: vLLM offers `vllm-nixl` (NVIDIA) and
+1. On the deployments page, select **PD disaggregation** under **Node Placement**, then select a PD mode. Available modes come from the engine profiles: vLLM offers `vllm-nixl` (NVIDIA, AMD) and
    `vllm-ascend-mooncake` (Ascend), and `vllm-ppu-mooncake` (PPU, RDMA); SGLang offers `sglang-ppu-ipc` (PPU, same node),
    `sglang-ppu-mooncake` (PPU, RDMA), and `sglang-nixl` (unverified).
 

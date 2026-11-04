@@ -74,23 +74,29 @@ func TestResolvedFeaturesAreAppliedToEveryVendor(t *testing.T) {
 
 func TestExplicitSelectionRejectsOneIncompatibleGPU(t *testing.T) {
 	node := &store.Node{OS: "linux", Arch: "amd64", RuntimeDriver: "docker", GPUs: []store.GPU{{Index: 0, Name: "AMD Instinct MI300X", Vendor: "amd", ArchID: "gfx942"}, {Index: 1, Name: "NVIDIA H100", Vendor: "nvidia", ArchID: "sm_90"}}}
-	in := Input{Node: node, GPUIndexes: []int{0, 1}, Sleepable: true}
+	in := Input{Node: node, GPUIndexes: []int{0, 1}, Quick: deploy.LaunchConfig{DP: 2}}
 	snap := scheduler.NodeSnapshot{GPUs: []scheduler.GPU{{Index: 0}, {Index: 1}}}
 	refusal := constrainTargetGPUs(in, &snap)
-	if refusal == nil || refusal.Code != scheduler.ReasonSleepUnsupportedOnNode {
+	if refusal == nil || refusal.Params["feature"] != string(accelerator.FeatureDataParallel) {
 		t.Fatalf("explicit incompatible selection refusal=%+v", refusal)
 	}
 }
 
 func TestAutomaticTargetGateCanKeepOneCompatibleCard(t *testing.T) {
 	node := &store.Node{OS: "linux", Arch: "amd64", RuntimeDriver: "docker", GPUs: []store.GPU{{Index: 0, Name: "AMD Instinct MI300X", Vendor: "amd", ArchID: "gfx942"}, {Index: 1, Name: "NVIDIA H100", Vendor: "nvidia", ArchID: "sm_90"}}}
-	req := LaunchRequest{Node: node, Model: &store.Model{}, Engine: "vllm", Sleepable: true}
+	// Data parallelism is what AMD still lacks.
+	req := LaunchRequest{Node: node, Model: &store.Model{}, Engine: "vllm", Quick: deploy.LaunchConfig{DP: 2}}
 	if refusal, err := TargetCandidateRefusal(req, deploy.CatalogSelection{}, node); err != nil || refusal != nil {
 		t.Fatalf("compatible auto candidate refused: %+v", refusal)
 	}
 	node.GPUs = node.GPUs[:1]
-	if refusal, err := TargetCandidateRefusal(req, deploy.CatalogSelection{}, node); err != nil || refusal == nil || refusal.Code != scheduler.ReasonSleepUnsupportedOnNode {
-		t.Fatalf("unsupported auto candidate refusal=%+v", refusal)
+	if refusal, err := TargetCandidateRefusal(req, deploy.CatalogSelection{}, node); err != nil || refusal == nil || refusal.Params["feature"] != string(accelerator.FeatureDataParallel) {
+		t.Fatalf("unsupported auto candidate refusal=%+v err=%v", refusal, err)
+	}
+	// Sleep no longer rules an AMD card out.
+	sleepy := LaunchRequest{Node: node, Model: &store.Model{}, Engine: "vllm", Sleepable: true}
+	if refusal, err := TargetCandidateRefusal(sleepy, deploy.CatalogSelection{}, node); err != nil || refusal != nil {
+		t.Fatalf("sleepable AMD candidate refused: %+v err=%v", refusal, err)
 	}
 }
 
@@ -158,13 +164,16 @@ func TestTargetCandidateRefusalReturnsInvalidTemplateError(t *testing.T) {
 }
 
 func TestSleepDeclarableUsesFeatureRefusalWithoutGPUSelectionGate(t *testing.T) {
-	err := SleepDeclarable(true, "vllm", "amd")
+	err := SleepDeclarable(true, "vllm", "apple")
 	var product *messages.ProductError
 	if !errors.As(err, &product) || product.Code() != messages.ErrorAcceleratorFeatureUnsupported {
-		t.Fatalf("AMD sleep declaration error=%v, want feature refusal", err)
+		t.Fatalf("Apple sleep declaration error=%v, want feature refusal", err)
 	}
 	if product.Params()["feature"] != "engine_sleep" {
-		t.Fatalf("AMD sleep refusal params=%v", product.Params())
+		t.Fatalf("Apple sleep refusal params=%v", product.Params())
+	}
+	if err := SleepDeclarable(true, "vllm", "amd"); err != nil {
+		t.Fatalf("AMD sleep declaration refused: %v", err)
 	}
 	if err := SleepDeclarable(false, "vllm", "amd"); err != nil {
 		t.Fatalf("non-sleepable AMD request should not require target selection: %v", err)

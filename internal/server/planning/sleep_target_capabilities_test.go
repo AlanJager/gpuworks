@@ -17,11 +17,13 @@ type sleepTargetNodeReader struct {
 
 func (r sleepTargetNodeReader) NodeByID(uint) (*store.Node, error) { return r.node, r.err }
 
-func TestUnsupportedSleepTargetFailsClosedOnlyForUnresolvedAMDBearingTargets(t *testing.T) {
-	amd := &store.Node{ID: 1, GPUs: []store.GPU{{Index: 0, Vendor: "amd", Name: "Radeon 8060S", ArchID: "gfx1151"}}}
+// Apple is the vendor without engine sleep; AMD now sleeps like NVIDIA.
+func TestUnsupportedSleepTargetFailsClosedOnlyForUnresolvedRestrictedTargets(t *testing.T) {
+	apple := &store.Node{ID: 1, GPUs: []store.GPU{{Index: 0, Vendor: "apple", Name: "Apple M4 Max"}}}
+	amd := &store.Node{ID: 1, GPUs: []store.GPU{{Index: 0, Vendor: "amd", Name: "Instinct MI300X", ArchID: "gfx942"}}}
 	nvidia := &store.Node{ID: 1, GPUs: []store.GPU{{Index: 0, Vendor: "nvidia", Name: "H100", ArchID: "sm_90"}}}
 	mixed := &store.Node{ID: 1, GPUs: []store.GPU{
-		{Index: 0, Vendor: "amd", Name: "Radeon 8060S", ArchID: "gfx1151"},
+		{Index: 0, Vendor: "apple", Name: "Apple M4 Max"},
 		{Index: 1, Vendor: "nvidia", Name: "H100", ArchID: "sm_90"},
 	}}
 	cases := []struct {
@@ -32,10 +34,12 @@ func TestUnsupportedSleepTargetFailsClosedOnlyForUnresolvedAMDBearingTargets(t *
 		wantErr bool
 		wantRef string
 	}{
-		{name: "selected AMD is refused", node: amd, indexes: "[0]", wantRef: messages.ErrorAcceleratorFeatureUnsupported},
-		{name: "empty AMD selection is unresolved", node: amd, indexes: "[]", wantErr: true},
-		{name: "restricted vendor with missing inventory is unresolved", node: &store.Node{ID: 1, GPUVendor: "amd"}, indexes: "[0]", wantErr: true},
-		{name: "stale AMD index is unresolved", node: amd, indexes: "[9]", wantErr: true},
+		{name: "selected restricted card is refused", node: apple, indexes: "[0]", wantRef: messages.ErrorAcceleratorFeatureUnsupported},
+		{name: "empty restricted selection is unresolved", node: apple, indexes: "[]", wantErr: true},
+		{name: "restricted vendor with missing inventory is unresolved", node: &store.Node{ID: 1, GPUVendor: "apple"}, indexes: "[0]", wantErr: true},
+		{name: "stale restricted index is unresolved", node: apple, indexes: "[9]", wantErr: true},
+		{name: "selected AMD sleeps", node: amd, indexes: "[0]"},
+		{name: "empty AMD selection keeps prior behavior", node: amd, indexes: "[]"},
 		{name: "empty pure NVIDIA record keeps prior behavior", node: nvidia, indexes: "[]"},
 		{name: "stale pure NVIDIA record keeps prior behavior", node: nvidia, indexes: "[9]"},
 		{name: "malformed pure NVIDIA desired state is not newly parsed", node: nvidia, indexes: "[]", desired: "{"},
@@ -63,8 +67,8 @@ func TestUnsupportedSleepTargetFailsClosedOnlyForUnresolvedAMDBearingTargets(t *
 				t.Fatalf("error=%q does not identify unresolved target", err)
 			}
 			if tc.wantRef != "" {
-				if refusal == nil || refusal.Code != tc.wantRef || refusal.Params["vendor"] != "AMD" || refusal.Params["feature"] != "engine_sleep" {
-					t.Fatalf("refusal=%+v, want AMD engine sleep refusal", refusal)
+				if refusal == nil || refusal.Code != tc.wantRef || refusal.Params["vendor"] != "Apple" || refusal.Params["feature"] != "engine_sleep" {
+					t.Fatalf("refusal=%+v, want Apple engine sleep refusal", refusal)
 				}
 			} else if refusal != nil {
 				t.Fatalf("unexpected refusal: %+v", refusal)

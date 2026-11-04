@@ -121,6 +121,7 @@
 - **昇腾 910C**：vLLM-Ascend 0.26.0rc1 的 L1/L2 均通过。平台在声明"可休眠"时自动把 `weight_nz_mode` 合并为 `0`，保留其他 `additional-config` 键；模板环境里的 `PYTORCH_NPU_ALLOC_CONF` 若含 `expandable_segments:True`，平台把它改为 `expandable_segments:False`，其余分配器设置不变，并在评估/预览里给出警告 `ASCEND_SLEEP_EXPANDABLE_SEGMENTS_DISABLED`（`params`：`variable`、`template_value`、`value`）。关闭 expandable segments 可能增加 NPU 显存碎片，KV cache 可能变小，显存余量紧的配置（例如大模型配 `gpu_memory_utilization` 0.9 以上）可能在启动或高负载时显存不足；出现时调低 `gpu_memory_utilization` 或 `max_model_len`，或关闭"可休眠"。这些大模型模板开启休眠后尚未经过真机验证。用户在附加参数里显式指定非零 NZ（`ASCEND_SLEEP_WEIGHT_NZ_CONFLICT`），或在部署环境变量里开启 `expandable_segments:True`（`ASCEND_SLEEP_EXPANDABLE_SEGMENTS`），会在创建/预览阶段被拒绝。用命令编辑器完整覆盖启动命令时，平台不注入也不检查这两项。
 - **PPU ZW810E**：当前 hggc runner（vLLM 0.23.0）的 L1/L2 均通过，实际运行 V1。`/is_sleeping` 的逻辑状态可能先于实际操作完成切换，必须以 POST 完成、显存和醒后推理共同确认。
 - **海光 K100**：vLLM 0.18.1 在 Docker 和 nerdctl 下的 L1/L2 均通过。平台在声明"可休眠"时为 Hygon 注入 `VLLM_CUDART_SO_PATH`，已有模板或用户环境值仍可覆盖。udocker/PRoot 路径未通过基础 Torch kernel 验证，不能用于证明此组合可用。
+- **AMD Instinct MI300X**：gpuworks-runner ROCm 档（vLLM 0.30.0、ROCm 7.2.3）的 L1/L2 均通过：休眠后另一进程可申请到约 185 GiB 中的 150 GiB，L2 按分步唤醒（先恢复权重缓冲、重载权重、再恢复 KV 并清空前缀缓存）后推理正确。`amd-smi` 报告的已用显存在该 VF 上不随休眠更新，以 sysfs `mem_info_vram_used` 为准。Ryzen AI Max（gfx1151）未验证。
 
 海光 ROCm sleep allocator 还需要宿主内存后备：在 62 GiB RAM、无 swap 的 K100 上，`gpu_memory_utilization=0.9` 曾导致 EngineCore 被 OOM killer 杀掉，降到 `0.25` 后通过。平台目前**没有针对该后备内存的专门准入**，创建前必须自行评估节点 RAM、其他实例和系统保留。以上结论均绑定所测镜像与配置；自定义镜像仍不做能力探测。
 

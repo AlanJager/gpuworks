@@ -3391,7 +3391,8 @@
       {
         "name": "vllm-nixl",
         "vendors": [
-          "nvidia"
+          "nvidia",
+          "amd"
         ],
         "roles": [
           "decode",

@@ -69,10 +69,10 @@ func TestTargetDesiredNormalizesDefaultLeaderWireAsSingleNode(t *testing.T) {
 	}
 }
 
-// AMD runs distributed ranks (RCCL over the NCCL_* socket variables), so the
-// structural multi-node facts of a legacy wire no longer refuse a launch;
-// sleep, which ROCm does not support here, still does.
-func TestTargetDesiredAcceptsAMDDistributedWireButNotSleep(t *testing.T) {
+// AMD runs distributed ranks (RCCL over the NCCL_* socket variables) and
+// vLLM sleep mode, so neither the structural multi-node facts nor sleep intent
+// of a legacy wire refuse a launch.
+func TestTargetDesiredAcceptsAMDDistributedAndSleepWire(t *testing.T) {
 	tests := map[string]string{
 		"multiple nodes": `{"dist_role":"leader","dist_group":"group-1","dist_attempt":1,"nnodes":2,"node_rank":0}`,
 		"worker role":    `{"dist_role":"worker","nnodes":2,"node_rank":1,"headless":true}`,
@@ -89,8 +89,8 @@ func TestTargetDesiredAcceptsAMDDistributedWireButNotSleep(t *testing.T) {
 				t.Fatalf("distributed AMD wire refused: %v", err)
 			}
 			spec.Sleepable = true
-			if err := e.validateTargetDesired(spec); err == nil || !strings.Contains(err.Error(), string(accelerator.FeatureEngineSleep)) {
-				t.Fatalf("sleepable AMD rank was not refused as engine_sleep: %v", err)
+			if err := e.validateTargetDesired(spec); err != nil {
+				t.Fatalf("sleepable AMD rank refused: %v", err)
 			}
 		})
 	}
@@ -214,7 +214,8 @@ func TestTargetDesiredRejectsContradictorySnapshotButAllowsSleepAPIMetadata(t *t
 }
 
 func TestLegacyTargetDesiredSleepMetadataIsNotARequest(t *testing.T) {
-	e := NewWithProber(&headlessTestDriver{name: "docker"}, nil, nil, t.TempDir(), &gpu.AMDProber{})
+	// Apple is the vendor that refuses engine sleep.
+	e := NewWithProber(&headlessTestDriver{name: "docker"}, nil, nil, t.TempDir(), &gpu.FixedProber{VendorName: "apple"})
 	for _, tc := range []struct {
 		name   string
 		spec   proto.InstanceDesiredState
