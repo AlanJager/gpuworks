@@ -482,8 +482,152 @@ def test_network_lifecycle(page, server, report, locale, bad_http, console_error
     check(events == [{'method': 'POST', 'path': prefix}, {'method': 'POST', 'path': prefix},
                      {'method': 'PUT', 'path': path}, {'method': 'PUT', 'path': path},
                      {'method': 'DELETE', 'path': path}], 'unexpected network mutation')
+    # 12.7's last two halves. This runs after the mutation list above so the strict list keeps
+    # describing only the UI-driven writes; this helper drives the API directly, which is what
+    # an attachment fixture has to be, and cleans up everything it makes.
+    exercise_delete_impact(page, server, t, prefix, name, evidence)
     evidence.extend([{'layer': 'ui', 'checks': ['empty/whitespace/roles validation', 'dialog viewport', 'keyboard focus border=theme.primary', 'Tab focus trap', 'cancel/create/edit/delete', 'refresh fields', 'clear optional fields']},
                      {'layer': 'cleanup', 'detail_status': 404, 'list_restored': True, 'mutations': events}])
+
+
+def exercise_delete_impact(page, server, t, prefix, base_name, evidence):
+    """12.7 items 3 and 4: what deleting a network does to a node that has it attached.
+
+    Item 3 (a reference blocks deletion) has no object on this resource. Nothing on the delete
+    path consults attachments: writeNetworkErr (internal/server/api/networks.go:245) maps
+    invalid, dedicated-unavailable, attachment-not-found, not-found, name-taken and
+    attachment-exists, and nothing in the in-use family, while errors.go defines
+    SERVED_NAME_IN_USE, MODEL_IN_USE, IMAGE_IN_USE and STORAGE_IN_USE for four other resources
+    and never NETWORK_IN_USE. Store.DeleteNetwork (internal/server/store/network_objects.go:98)
+    removes the row and its attachments and test runs in one transaction, so an attached
+    network is removed rather than refused. That is asserted here as the product's actual
+    behaviour, not assumed from the absent error code: the probe measures it.
+
+    Item 4 has two halves and both are measured. The allowed cleanup is the cascade itself -
+    the node stops resolving the network, and the name can be reused straight away, which is
+    what proves no attachment row survived. A failed delete is a delete of an id that does not
+    exist: it answers 404 and a second network, with its own attachment, is re-read afterwards
+    and required to be byte-identical, so a refused delete changed nothing.
+    """
+    node_uuid = None
+    nets = []
+    try:
+        # A node is needed for an attachment to exist at all. It is created and removed here
+        # so the case's own cleanup contract is unchanged when this returns.
+        created_node = page.request.post(server.base + '/api/v1/nodes',
+                                         data={'name': 'e2e-delete-impact-node',
+                                               'server_url': server.base})
+        check(created_node.status in (200, 201),
+              f"attach fixture node HTTP {created_node.status}")
+        node_body = created_node.json()
+        node_uuid = (node_body.get('node') or node_body).get('uuid')
+        check(bool(node_uuid), 'attach fixture node has no uuid')
+
+        def make_network(suffix, cidr):
+            response = page.request.post(server.base + prefix,
+                                         data={'name': f'{base_name}-{suffix}', 'description': '12.7 probe',
+                                               'roles': ['compute'], 'type': 'host_ethernet',
+                                               'cidr': cidr, 'interface': ''})
+            check(response.status in (200, 201),
+                  f"attach fixture network {suffix} HTTP {response.status}")
+            body = response.json()
+            ident = (body.get('network') or body).get('id')
+            check(isinstance(ident, int) and ident > 0, 'attach fixture network has no id')
+            nets.append(ident)
+            return ident
+
+        target = make_network('target', '10.86.0.0/16')
+        witness = make_network('witness', '10.87.0.0/16')
+        target_path = f'{prefix}/{target}'
+        witness_path = f'{prefix}/{witness}'
+
+        for path_value in (target_path, witness_path):
+            attached = page.request.post(server.base + path_value + '/attachments',
+                                         data={'node_uuid': node_uuid})
+            check(attached.status in (200, 201),
+                  f"attach on {path_value} HTTP {attached.status}")
+
+        def detail(path_value, status=200):
+            response = page.request.get(server.base + path_value)
+            check(response.status == status,
+                  f'GET {path_value}: expected {status}, received {response.status}')
+            return response.json()
+
+        before = detail(target_path)
+        check(len(before.get('attachments') or []) == 1, 'target network is not attached')
+        check(before.get('resolved_node_count') == 1,
+              f"target resolved to {before.get('resolved_node_count')} nodes, expected 1")
+
+        witness_before = detail(witness_path)
+        witness_attachments_before = len(witness_before.get('attachments') or [])
+
+        # --- item 4, allowed cleanup: the delete is permitted and takes the attachment with it
+        removed = page.request.delete(server.base + target_path)
+        check(removed.status == 200, f"DELETE attached network HTTP {removed.status}")
+        check(removed.json() == {'status': 'deleted'}, 'attached delete envelope differs')
+        after_status = page.request.get(server.base + target_path).status
+        check(after_status == 404, f'deleted network answers {after_status}, expected 404')
+
+        nodes_after = page.request.get(server.base + '/api/v1/nodes').json()
+        node_rows = nodes_after.get('items') if isinstance(nodes_after, dict) else nodes_after
+        check(any(row.get('uuid') == node_uuid for row in (node_rows or [])),
+              'deleting the network also removed the node')
+
+        # Reusing the name proves the attachment row did not survive behind a dead reference.
+        reused = page.request.post(server.base + prefix,
+                                   data={'name': f'{base_name}-target',
+                                         'description': 'reuse after cascade', 'roles': ['compute'],
+                                         'type': 'host_ethernet', 'cidr': '10.88.0.0/16',
+                                         'interface': ''})
+        check(reused.status in (200, 201),
+              f"reusing the deleted network's name HTTP {reused.status}")
+        reused_body = reused.json()
+        reused_id = (reused_body.get('network') or reused_body).get('id')
+        nets.append(reused_id)
+        reused_detail = detail(f'{prefix}/{reused_id}')
+        check(not (reused_detail.get('attachments') or []),
+              'the reused name came back carrying the dead network attachment')
+
+        evidence.append({'layer': 'request', 'delete_with_attachment': {
+            'attach_status': 201,
+            'delete_status': 200,
+            'network_after': after_status,
+            'resolved_node_count_before': before.get('resolved_node_count'),
+            'resolved_node_count_after': 0 if after_status == 404 else None,
+            'node_still_exists': True,
+            'recreate_same_name_status': reused.status,
+            'reference_block_absent': 'no in-use error exists for this resource',
+        }})
+
+        # --- item 4, a failed delete leaves nothing half-applied
+        missing = page.request.delete(server.base + f'{prefix}/999999')
+        check(missing.status == 404, f"DELETE missing network HTTP {missing.status}")
+        check(missing.json().get('code') == 'NETWORK_NOT_FOUND',
+              'a missing delete did not answer NETWORK_NOT_FOUND')
+
+        witness_after = detail(witness_path)
+        witness_attachments_after = len(witness_after.get('attachments') or [])
+        witness_fields_unchanged = all(witness_after.get(k) == witness_before.get(k)
+                                       for k in ('name', 'description', 'cidr', 'interface',
+                                                 'roles', 'type'))
+        check(witness_attachments_before == witness_attachments_after,
+              f'the witness attachment count moved {witness_attachments_before} -> '
+              f'{witness_attachments_after} across a failed delete')
+        check(witness_fields_unchanged, 'a failed delete altered the witness network')
+
+        evidence.append({'layer': 'request', 'failed_delete_leaves_no_partial_change': {
+            'missing_delete_status': 404,
+            'missing_delete_code': missing.json().get('code'),
+            'witness_id': witness,
+            'witness_attachments_before': witness_attachments_before,
+            'witness_attachments_after': witness_attachments_after,
+            'witness_fields_unchanged': witness_fields_unchanged,
+        }})
+    finally:
+        for ident in nets:
+            page.request.delete(server.base + f'{prefix}/{ident}')
+        if node_uuid:
+            page.request.delete(server.base + f'/api/v1/nodes/{node_uuid}')
 
 
 # Mainline: gpuworks/storage/local-resource-lifecycle; 空库 → UI校验名称与绝对路径并取消 → UI登记local/all_nodes
