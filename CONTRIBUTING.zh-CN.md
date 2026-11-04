@@ -53,7 +53,7 @@ vLLM / SGLang 推理服务，再通过 OpenAI 兼容网关对外提供调用。�
 
 依赖：
 
-- **Go** —— 版本以 `go.mod` 为准（当前 Go 1.26.9，与 CI 镜像 `golang:1.26` 一致）。
+- **Go** —— 版本以 `go.mod` 为准（当前 Go 1.26.10，与 CI 镜像 `golang:1.26` 一致）。
 - **Node.js 与 npm** —— 版本以 `ui/package.json` 和 lockfile 为准。
 - **GNU Make**。
 - **Docker**、SSH 和厂商 CLI 只有在跑容器级/云端测试层，或者构建交叉编译 agent 时才需要。
