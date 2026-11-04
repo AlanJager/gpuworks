@@ -936,38 +936,38 @@
     },
     {
       "item": "17.1",
-      "status": "MISSING",
-      "assertion": "Not fully exercised in this acquisition contract: 分别验证 loading、empty、error、数据与陈旧数据，缺失值和真实零值必须可区分。"
+      "status": "N/A",
+      "assertion": "no loading, empty, error or stale chart state exists on this page; the acquisition Table's own loading and empty states are stated under the table item, not here. N/A: the deploy surfaces render no chart, metric card or timeline. A recursive search of ui/src/pages/deploy/ finds no echarts, no EChart, no Statistic, no Timeline, no Progress and no canvas: the acquisition view is one antd Table with five Tags (ui/src/pages/deploy/DeployNodeAcquisition.tsx), and the health-check view is three antd Forms with a Checkbox and an InputNumber (ui/src/pages/deploy/HealthCheckFields.tsx). The charts this item describes live in ui/src/pages/analytics/EChart.tsx, which no deploy page imports."
     },
     {
       "item": "17.2",
-      "status": "MISSING",
-      "assertion": "Not fully exercised in this acquisition contract: 用已知样本检查查询参数、时间范围、聚合、单位与精度；canvas 存在或截图相似不足以证明数据正确。"
+      "status": "N/A",
+      "assertion": "there is no query parameter, time range, aggregation, unit or precision to check, because no series is drawn. N/A: the deploy surfaces render no chart, metric card or timeline. A recursive search of ui/src/pages/deploy/ finds no echarts, no EChart, no Statistic, no Timeline, no Progress and no canvas: the acquisition view is one antd Table with five Tags (ui/src/pages/deploy/DeployNodeAcquisition.tsx), and the health-check view is three antd Forms with a Checkbox and an InputNumber (ui/src/pages/deploy/HealthCheckFields.tsx). The charts this item describes live in ui/src/pages/analytics/EChart.tsx, which no deploy page imports."
     },
     {
       "item": "17.3",
-      "status": "MISSING",
-      "assertion": "Not fully exercised in this acquisition contract: 实际操作图例、tooltip、时间控件及适用联动，验证对应系列与样本值。"
+      "status": "N/A",
+      "assertion": "there is no legend, tooltip or time control, and no series to link them to. N/A: the deploy surfaces render no chart, metric card or timeline. A recursive search of ui/src/pages/deploy/ finds no echarts, no EChart, no Statistic, no Timeline, no Progress and no canvas: the acquisition view is one antd Table with five Tags (ui/src/pages/deploy/DeployNodeAcquisition.tsx), and the health-check view is three antd Forms with a Checkbox and an InputNumber (ui/src/pages/deploy/HealthCheckFields.tsx). The charts this item describes live in ui/src/pages/analytics/EChart.tsx, which no deploy page imports."
     },
     {
       "item": "17.4",
-      "status": "MISSING",
-      "assertion": "Not fully exercised in this acquisition contract: 切换节点/GPU/部署或范围后旧响应不覆盖新图表，刷新、follow 与暂停遵循当前选择。"
+      "status": "N/A",
+      "assertion": "there is no chart response that a later response could overwrite, and no follow or pause control. N/A: the deploy surfaces render no chart, metric card or timeline. A recursive search of ui/src/pages/deploy/ finds no echarts, no EChart, no Statistic, no Timeline, no Progress and no canvas: the acquisition view is one antd Table with five Tags (ui/src/pages/deploy/DeployNodeAcquisition.tsx), and the health-check view is three antd Forms with a Checkbox and an InputNumber (ui/src/pages/deploy/HealthCheckFields.tsx). The charts this item describes live in ui/src/pages/analytics/EChart.tsx, which no deploy page imports."
     },
     {
       "item": "17.5",
-      "status": "MISSING",
-      "assertion": "Not fully exercised in this acquisition contract: GPU 显存、利用率、引擎吞吐和网关请求分别使用其权威来源，不把健康探测请求当成业务调用。"
+      "status": "N/A",
+      "assertion": "no card maps a metric to an authoritative source, because no metric card exists. N/A: the deploy surfaces render no chart, metric card or timeline. A recursive search of ui/src/pages/deploy/ finds no echarts, no EChart, no Statistic, no Timeline, no Progress and no canvas: the acquisition view is one antd Table with five Tags (ui/src/pages/deploy/DeployNodeAcquisition.tsx), and the health-check view is three antd Forms with a Checkbox and an InputNumber (ui/src/pages/deploy/HealthCheckFields.tsx). The charts this item describes live in ui/src/pages/analytics/EChart.tsx, which no deploy page imports."
     },
     {
       "item": "17.6",
-      "status": "MISSING",
-      "assertion": "Not fully exercised in this acquisition contract: 时间线验证事件顺序、状态转移、关联资源与终态；时间接近的历史事件不能代替本次 runId。"
+      "status": "N/A",
+      "assertion": "no timeline is drawn; deployment status transitions are asserted from the deployment record and its events endpoint, not from a timeline widget. N/A: the deploy surfaces render no chart, metric card or timeline. A recursive search of ui/src/pages/deploy/ finds no echarts, no EChart, no Statistic, no Timeline, no Progress and no canvas: the acquisition view is one antd Table with five Tags (ui/src/pages/deploy/DeployNodeAcquisition.tsx), and the health-check view is three antd Forms with a Checkbox and an InputNumber (ui/src/pages/deploy/HealthCheckFields.tsx). The charts this item describes live in ui/src/pages/analytics/EChart.tsx, which no deploy page imports."
     },
     {
       "item": "17.7",
-      "status": "MISSING",
-      "assertion": "Not fully exercised in this acquisition contract: 无数据、长标签、大数和错误态下检查实际尺寸、单位可见性与无重叠，颜色从主题语义推导。"
+      "status": "N/A",
+      "assertion": "there is no chart axis, series label or unit rendering whose size, overlap or colour could be measured. N/A: the deploy surfaces render no chart, metric card or timeline. A recursive search of ui/src/pages/deploy/ finds no echarts, no EChart, no Statistic, no Timeline, no Progress and no canvas: the acquisition view is one antd Table with five Tags (ui/src/pages/deploy/DeployNodeAcquisition.tsx), and the health-check view is three antd Forms with a Checkbox and an InputNumber (ui/src/pages/deploy/HealthCheckFields.tsx). The charts this item describes live in ui/src/pages/analytics/EChart.tsx, which no deploy page imports."
     },
     {
       "item": "22.1",

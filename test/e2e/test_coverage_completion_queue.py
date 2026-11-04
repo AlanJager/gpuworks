@@ -291,8 +291,12 @@ from coverage_completion_queue import summary
 # These counts move only when a manifest declaration changes.
 BASELINE = {
     "1": 124, "2": 251, "3": 258, "4": 315, "5": 186, "6": 130,
-    "7": 101, "8": 94, "9": 71, "10": 99, "11": 90, "out": 343,
+    "7": 101, "8": 94, "9": 71, "10": 99, "11": 90, "out": 301,
 }
+
+# The deploy manifests declare section 17 not applicable: no deploy page imports a chart library,
+# and a recursive search of ui/src/pages/deploy/ finds no echarts, Statistic, Timeline, Progress or
+# canvas, so the seven chart items leave the queue on six manifests at once (42 fewer open items).
 
 
 class QueueTest(unittest.TestCase):
@@ -304,7 +308,7 @@ class QueueTest(unittest.TestCase):
         self.assertIsNone(extra)
         self.assertEqual(dict(counts), BASELINE)
         self.assertEqual(total, sum(BASELINE.values()))
-        self.assertEqual(total, 2062)
+        self.assertEqual(total, 2020)
 
 
 if __name__ == "__main__":
