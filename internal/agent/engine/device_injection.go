@@ -2,11 +2,13 @@ package engine
 
 import (
 	"fmt"
+	"path/filepath"
+	"strconv"
+	"strings"
+
 	"gpuworks.ai/gpuworks/internal/accelerator"
 	"gpuworks.ai/gpuworks/internal/agent/gpu"
 	"gpuworks.ai/gpuworks/internal/agent/runtime"
-	"path/filepath"
-	"strings"
 )
 
 func (e *Engine) applyDeviceInjection(ws *runtime.WorkloadSpec, indexes []int) error {
@@ -55,6 +57,15 @@ func applyRuntimeInjection(ws *runtime.WorkloadSpec, inj gpu.RuntimeInjection, i
 		}
 	}
 	for key, value := range inj.Env {
+		// NVIDIA Container Toolkit uses the host device IDs from --gpus to
+		// construct a compact container-visible inventory. Reusing the host
+		// indexes in CUDA_VISIBLE_DEVICES then hides non-zero selected cards
+		// (for example host device 1 is CUDA device 0 inside a one-card
+		// container). Udocker has no such remapping and continues to use the
+		// physical indexes supplied by the prober.
+		if key == "CUDA_VISIBLE_DEVICES" && driverName == "docker" && hasDockerOption(inj.DockerArgs, "--gpus") {
+			value = compactDeviceIndexes(len(indexes))
+		}
 		env[key] = value
 	}
 	updated.Env = env
@@ -63,6 +74,14 @@ func applyRuntimeInjection(ws *runtime.WorkloadSpec, inj gpu.RuntimeInjection, i
 	if cleanup := inj.ManagedSelection; cleanup != nil {
 		args = removeDockerDevicePaths(args, cleanup.DevicePaths)
 		for _, option := range cleanup.DockerOptions {
+			args = removeDockerOption(args, option)
+		}
+	}
+	// The scheduled selection is authoritative over image- or user-provided
+	// singleton runtime options: an image-level `--gpus all` must not remain
+	// alongside the injected `--gpus '"device=0,1"'`.
+	for _, option := range []string{"--gpus", "--runtime"} {
+		if hasDockerOption(inj.DockerArgs, option) {
 			args = removeDockerOption(args, option)
 		}
 	}
@@ -76,12 +95,6 @@ func applyRuntimeInjection(ws *runtime.WorkloadSpec, inj gpu.RuntimeInjection, i
 	}
 	*ws = updated
 }
-
-// mergeDeviceDockerArgs makes the agent's scheduled accelerator selection
-// authoritative over image- or user-provided singleton runtime options. In
-// particular, an image-level --gpus all must not remain alongside a scheduler
-// selected --gpus device selector. Repeatable options such as --device are
-// removed only when the selected prober declares them managed.
 
 // removeDockerDevicePaths removes only --device mappings whose host source
 // names a prober-managed device path. Other devices and malformed options are
@@ -149,4 +162,21 @@ func removeDockerOption(args []string, option string) []string {
 		result = append(result, arg)
 	}
 	return result
+}
+
+func hasDockerOption(args []string, option string) bool {
+	for _, arg := range args {
+		if arg == option || strings.HasPrefix(arg, option+"=") {
+			return true
+		}
+	}
+	return false
+}
+
+func compactDeviceIndexes(count int) string {
+	indexes := make([]string, count)
+	for index := range indexes {
+		indexes[index] = strconv.Itoa(index)
+	}
+	return strings.Join(indexes, ",")
 }

@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"fmt"
 	"log/slog"
 	"reflect"
 	"testing"
@@ -142,8 +143,9 @@ func TestNonAMDInjectorsKeepEnvironmentValuesAndArgumentMerge(t *testing.T) {
 			if ws.Env["KEEP"] != "old" {
 				t.Fatalf("unrelated env changed: %v", ws.Env)
 			}
-			if vendor == "nvidia" && ws.Env["CUDA_VISIBLE_DEVICES"] != "7" {
-				t.Fatalf("NVIDIA supplied CUDA selector = %q, want 7", ws.Env["CUDA_VISIBLE_DEVICES"])
+			// Docker's --gpus renumbers the selected card to container ordinal 0.
+			if vendor == "nvidia" && ws.Env["CUDA_VISIBLE_DEVICES"] != "0" {
+				t.Fatalf("NVIDIA container CUDA selector = %q, want 0", ws.Env["CUDA_VISIBLE_DEVICES"])
 			}
 			if vendor == "ascend" && ws.Env["CUDA_VISIBLE_DEVICES"] != "legacy" {
 				t.Fatalf("legacy unrelated CUDA selector = %q, want legacy", ws.Env["CUDA_VISIBLE_DEVICES"])
@@ -163,10 +165,9 @@ func TestNonAMDInjectorsKeepEnvironmentValuesAndArgumentMerge(t *testing.T) {
 			if !devicePreserved {
 				t.Fatalf("legacy injection scanned/removed an undeclared device path: %v", ws.DockerArgs)
 			}
-			wantArgs := []string{"--device", "/dev/dri/renderD135:/dev/dri/renderD135:rwm", "--gpus", "all", "--ipc=host"}
-			if vendor == "nvidia" {
-				wantArgs = append(wantArgs, "--gpus", `"device=7"`)
-			} else {
+			// The injected --gpus replaces the image-level --gpus all.
+			wantArgs := []string{"--device", "/dev/dri/renderD135:/dev/dri/renderD135:rwm", "--ipc=host", "--gpus", `"device=7"`}
+			if vendor != "nvidia" {
 				wantArgs = []string{
 					"--device", "/dev/dri/renderD135:/dev/dri/renderD135:rwm",
 					"--gpus", "all", "--ipc=host", "--runtime", "ascend",
@@ -190,4 +191,46 @@ func cloneWorkloadSpec(spec runtime.WorkloadSpec) runtime.WorkloadSpec {
 		}
 	}
 	return clone
+}
+
+func TestApplyDeviceInjectionReplacesImageGPUSelectionForDocker(t *testing.T) {
+	e := NewWithProber(&headlessTestDriver{name: "docker"}, nil, slog.Default(), t.TempDir(), injectionProber{
+		inj: gpu.RuntimeInjection{
+			Env:        map[string]string{"CUDA_VISIBLE_DEVICES": "2,4"},
+			DockerArgs: []string{"--gpus", `"device=2,4"`},
+		},
+	})
+	ws := runtime.WorkloadSpec{
+		Env:        map[string]string{},
+		DockerArgs: []string{"--ipc=host", "--gpus", "all", "--gpus=all", "--privileged"},
+	}
+
+	if err := e.applyDeviceInjection(&ws, []int{2, 4}); err != nil {
+		t.Fatal(err)
+	}
+
+	wantArgs := []string{"--ipc=host", "--privileged", "--gpus", `"device=2,4"`}
+	if fmt.Sprint(ws.DockerArgs) != fmt.Sprint(wantArgs) {
+		t.Fatalf("DockerArgs = %v, want %v", ws.DockerArgs, wantArgs)
+	}
+	if got := ws.Env["CUDA_VISIBLE_DEVICES"]; got != "0,1" {
+		t.Fatalf("container CUDA_VISIBLE_DEVICES = %q, want compact indexes", got)
+	}
+}
+
+func TestApplyDeviceInjectionKeepsPhysicalCUDAIndexesForUdocker(t *testing.T) {
+	e := NewWithProber(&headlessTestDriver{name: "udocker"}, nil, slog.Default(), t.TempDir(), injectionProber{
+		inj: gpu.RuntimeInjection{
+			Env:        map[string]string{"CUDA_VISIBLE_DEVICES": "2,4"},
+			DockerArgs: []string{"--gpus", `"device=2,4"`},
+		},
+	})
+	ws := runtime.WorkloadSpec{Env: map[string]string{}}
+
+	if err := e.applyDeviceInjection(&ws, []int{2, 4}); err != nil {
+		t.Fatal(err)
+	}
+	if got := ws.Env["CUDA_VISIBLE_DEVICES"]; got != "2,4" {
+		t.Fatalf("udocker CUDA_VISIBLE_DEVICES = %q, want physical indexes", got)
+	}
 }
