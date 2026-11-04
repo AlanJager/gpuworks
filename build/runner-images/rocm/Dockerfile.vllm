@@ -1,4 +1,5 @@
-# Unpublished MI300X ROCm candidate. This is not the AMD395 legacy image.
+# vLLM on ROCm, from the upstream vllm-openai-rocm image (gfx942, gfx1151 and
+# the other architectures it ships kernels for).
 ARG BASE_IMAGE
 FROM ${BASE_IMAGE}
 USER root
@@ -16,5 +17,12 @@ ENV GPUWORKS_EXPECT_ENGINE=vllm GPUWORKS_EXPECT_ENGINE_VERSION=${ENGINE_VERSION}
 RUN python3 /opt/gpuworks/amd-audit.py
 RUN ENGINE=vllm python3 /opt/gpuworks/rocm/write_manifest.py \
     && ENGINE=vllm bash /opt/gpuworks/shared/assert_requires.sh
-LABEL io.gpuworks.image.id="${IMAGE_ID}" io.gpuworks.image.revision="${IMAGE_REVISION}" \
-      io.gpuworks.hardware-validation="pending" io.gpuworks.publication="candidate"
+LABEL org.opencontainers.image.title="gpuworks-runner" \
+      org.opencontainers.image.vendor="gpuworks" \
+      org.opencontainers.image.revision="${IMAGE_REVISION}" \
+      io.gpuworks.image.id="${IMAGE_ID}" \
+      io.gpuworks.engine="vllm" \
+      io.gpuworks.engine.version="${ENGINE_VERSION}" \
+      io.gpuworks.framework="rocm" \
+      io.gpuworks.framework.version="${FRAMEWORK_VERSION}" \
+      io.gpuworks.requires="${REQUIRES}"

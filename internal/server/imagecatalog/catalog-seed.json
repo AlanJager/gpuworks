@@ -1,7 +1,7 @@
 {
   "schema_version": 3,
-  "catalog_version": "2026-11-04.844e59ca",
-  "sha256": "256cce6a838d38b04bf328c5024ead4bd2d3c3febbb97075abc66f8c9bd96fe3",
+  "catalog_version": "2026-11-04.2bc7d868",
+  "sha256": "a48d7f20b5b5b35f2342c54027b5dbe4ed0c29e346054f8e999a8523272fc94d",
   "series": [
     {
       "name": "MLX Audio · Metal",
@@ -520,6 +520,26 @@
             "swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-runner:metal15.0-vllm0.31.0-r2"
           ],
           "notes": "Apple silicon（M1–M5，macOS 15+）的 vLLM 档，引擎是 vllm-metal 0.31.0（钉 vLLM 0.31.0 CPU 核心 + MLX）。不是容器镜像：agent 的 host 运行时把它解包成宿主环境， 引擎以 macOS 原生进程跑在 Metal 上。构建： build/host-envs/build.sh vllm-metal 0.31.0 r2。r2 起带 vLLM 源码里的 examples/*.jinja 并以 /vllm-workspace 为工作目录（与 Linux runner 一致，模板的 --chat-template 可原样引用）。 不支持 sleep、多机、KV 磁盘层（accelerator.Supports）。"
+        }
+      ]
+    },
+    {
+      "name": "vLLM · ROCm",
+      "engine": "vllm",
+      "purpose": "inference",
+      "framework": "rocm",
+      "versions": [
+        {
+          "name": "rocm7.2.3-vllm0.30.0-r1",
+          "image_ref": "gpuworks/gpuworks-runner:rocm7.2.3-vllm0.30.0-r1",
+          "engine_version": "0.30.0",
+          "framework_version": "7.2.3",
+          "arch": "amd64",
+          "registry_sources": [
+            "quay.io/gpuworks/gpuworks-runner:rocm7.2.3-vllm0.30.0-r1",
+            "swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-runner:rocm7.2.3-vllm0.30.0-r1"
+          ],
+          "notes": "vLLM 0.30.0 on ROCm 7.2.3 (upstream vllm-openai-rocm); tested on MI325X (gfx942) and AMD395 (gfx1151).\nrequires: engine"
         }
       ]
     }

@@ -75,12 +75,12 @@ func TestGenerateMapsMatrixItems(t *testing.T) {
 			seriesOf[version.Name] = series
 		}
 	}
-	wantSeries := "MLX Audio · Metal,MLX-VLM · Metal,SGLang · CANN,SGLang · CUDA,SGLang · DTK,SGLang · HGGC,llama.cpp · Metal,vLLM Omni · CANN,vLLM Omni · CUDA,vLLM · CANN,vLLM · CUDA,vLLM · DTK,vLLM · HGGC,vLLM · Metal"
+	wantSeries := "MLX Audio · Metal,MLX-VLM · Metal,SGLang · CANN,SGLang · CUDA,SGLang · DTK,SGLang · HGGC,llama.cpp · Metal,vLLM Omni · CANN,vLLM Omni · CUDA,vLLM · CANN,vLLM · CUDA,vLLM · DTK,vLLM · HGGC,vLLM · Metal,vLLM · ROCm"
 	if strings.Join(names, ",") != wantSeries {
 		t.Fatalf("series = %v", names)
 	}
-	if len(versions) != 34 {
-		t.Fatalf("versions = %d, want 34", len(versions))
+	if len(versions) != 35 {
+		t.Fatalf("versions = %d, want 35", len(versions))
 	}
 	// The Apple silicon environment package: framework metal, its version the
 	// minimum macOS, its arch the CPU's.
@@ -150,7 +150,9 @@ func TestParseROCmCandidateTag(t *testing.T) {
 	}
 }
 
-func TestROCmMatrixCandidatesStayOutOfBuiltInCatalog(t *testing.T) {
+// The validated vLLM ROCm runner is listed; the SGLang candidate is not.
+// Both stay pinned to their public amd64 base digests.
+func TestROCmMatrixItemsPinPublicBases(t *testing.T) {
 	data, err := os.ReadFile(matrixPath)
 	if err != nil {
 		t.Fatal(err)
@@ -159,22 +161,26 @@ func TestROCmMatrixCandidatesStayOutOfBuiltInCatalog(t *testing.T) {
 	if err := yaml.Unmarshal(data, &matrix); err != nil {
 		t.Fatal(err)
 	}
-	want := map[string]string{
-		"rocm7.2.3-vllm0.30.0":   "vllm/vllm-openai-rocm@sha256:2e7da1ad1c66836802072588adea75f9f4991da5f9545b4318e91d422c22ce6a",
-		"rocm7.2.0-sglang0.5.21": "lmsysorg/sglang@sha256:0534eb382626ef55ace8be24f7d81cc6eb7451acac8a5727848397a5e9309d91",
+	want := map[string]struct {
+		base   string
+		listed bool
+	}{
+		"rocm7.2.3-vllm0.30.0":   {"vllm/vllm-openai-rocm@sha256:2e7da1ad1c66836802072588adea75f9f4991da5f9545b4318e91d422c22ce6a", true},
+		"rocm7.2.0-sglang0.5.21": {"lmsysorg/sglang@sha256:0534eb382626ef55ace8be24f7d81cc6eb7451acac8a5727848397a5e9309d91", false},
 	}
 	for _, item := range matrix.Items {
-		base, found := want[item.ID]
+		w, found := want[item.ID]
 		if !found {
 			continue
 		}
-		if item.Catalog == nil || *item.Catalog || item.Base != base || len(item.Platforms) != 1 || item.Platforms[0] != "linux/amd64" {
-			t.Fatalf("ROCm candidate %s must be unpublished amd64 public-base recipe: %+v", item.ID, item)
+		listed := item.Catalog == nil || *item.Catalog
+		if listed != w.listed || item.Base != w.base || len(item.Platforms) != 1 || item.Platforms[0] != "linux/amd64" {
+			t.Fatalf("ROCm item %s: listed=%v (want %v), %+v", item.ID, listed, w.listed, item)
 		}
 		delete(want, item.ID)
 	}
 	if len(want) != 0 {
-		t.Fatalf("missing ROCm candidates: %v", want)
+		t.Fatalf("missing ROCm items: %v", want)
 	}
 }
 

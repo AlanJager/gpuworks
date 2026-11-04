@@ -300,11 +300,15 @@ func versionNotes(item matrixItem, tag parsedTag) string {
 }
 
 // seriesName writes a framework the way its vendor does: the acronyms (CUDA,
-// CANN, DTK, HGGC) in capitals, Apple's Metal as a word.
+// CANN, DTK, HGGC) in capitals, Apple's Metal as a word and AMD's ROCm in
+// its own casing.
 func seriesName(engine, framework string) string {
 	name := strings.ToUpper(framework)
-	if framework == "metal" {
+	switch framework {
+	case "metal":
 		name = "Metal"
+	case "rocm":
+		name = "ROCm"
 	}
 	display := engines.DisplayName(engine)
 	if server, ok := callableServers[engine]; ok {
