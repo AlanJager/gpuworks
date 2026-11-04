@@ -236,7 +236,7 @@ func (s *scanner) visit(ctx context.Context, n node) {
 			s.skip(n.rel, proto.ScanSkipComponent)
 		case slices.ContainsFunc(report.Issues, func(i modelmetadata.Issue) bool { return i.Code == "metadata_read_limit" }):
 			s.skip(n.rel, proto.ScanSkipMetadataLimit)
-		case len(report.Issues) > 0:
+		case report.HasMetadataIssues():
 			if summarizeModelFiles(dir).size == 0 {
 				s.skip(n.rel, SkipEmpty)
 			} else {
@@ -259,7 +259,7 @@ func (s *scanner) visit(ctx context.Context, n node) {
 		}
 		return
 	}
-	if done || len(report.Entries) > 0 || report.Component || len(report.Issues) > 0 {
+	if done || len(report.Entries) > 0 || report.Component || report.HasMetadataIssues() {
 		return
 	}
 	switch {

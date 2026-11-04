@@ -17,15 +17,19 @@ func readDocument(ctx context.Context, files FileView, name string) ([]byte, err
 		return nil, nil
 	}
 	if err != nil {
-		return nil, err
+		return nil, metadataError(name, err)
 	}
 	if info.IsDir {
 		return nil, &fs.PathError{Op: "read", Path: name, Err: fs.ErrInvalid}
 	}
 	if info.Size > maxDocumentBytes {
-		return nil, ErrReadLimit
+		return nil, metadataError(name, ErrReadLimit)
 	}
-	return files.ReadRange(ctx, name, 0, info.Size)
+	body, err := files.ReadRange(ctx, name, 0, info.Size)
+	if err != nil {
+		return nil, metadataError(name, err)
+	}
+	return body, nil
 }
 
 func readJSON(ctx context.Context, files FileView, name string, target any) (bool, error) {
@@ -34,9 +38,13 @@ func readJSON(ctx context.Context, files FileView, name string, target any) (boo
 		return false, err
 	}
 	if err := json.Unmarshal(body, target); err != nil {
-		return true, err
+		return true, metadataError(name, err)
 	}
 	return true, nil
+}
+
+func metadataError(name string, err error) error {
+	return &fs.PathError{Op: "read metadata", Path: name, Err: err}
 }
 
 func childPath(base, name string) (string, error) {
@@ -51,8 +59,21 @@ func childPath(base, name string) (string, error) {
 }
 
 func exists(ctx context.Context, files FileView, name string) bool {
+	return requiredFileError(ctx, files, name) == nil
+}
+
+func requiredFileError(ctx context.Context, files FileView, name string) error {
 	i, err := files.Stat(ctx, name)
-	return err == nil && !i.IsDir && i.Size > 0
+	if err != nil {
+		return err
+	}
+	if i.IsDir {
+		return errors.New("expected a file, found a directory")
+	}
+	if i.Size <= 0 {
+		return errors.New("file is empty")
+	}
+	return nil
 }
 
 func hasName(items []FileInfo, name string) bool {
@@ -73,6 +94,10 @@ func issue(name, code string, err error) Issue {
 		var pathErr *fs.PathError
 		if errors.As(err, &pathErr) {
 			i.Path = pathErr.Path
+			err = pathErr.Err
+			for errors.As(err, &pathErr) {
+				err = pathErr.Err
+			}
 		}
 		i.Detail = err.Error()
 	}

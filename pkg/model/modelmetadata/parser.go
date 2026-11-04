@@ -62,7 +62,10 @@ func (p *Parser) Parse(ctx context.Context, input Input, source FileView) (Repor
 	out.Tasks = tasks.Tasks
 	out.TaskPriority = tasks.Priority
 	out.Evidence = append(out.Evidence, tasks.Evidence...)
-	out.Issues = append(out.Issues, tasks.Issues...)
+	for _, issue := range tasks.Issues {
+		issue.Path = path.Join(input.Path, issue.Path)
+		out.Issues = append(out.Issues, issue)
+	}
 	if !tasks.Declared && input.Context.Repository && len(input.Context.Tasks) > 0 &&
 		(len(out.Tasks) == 0 || (tasks.Priority <= architectureTaskPriority && input.Context.TaskPriority > tasks.Priority)) {
 		out.Tasks = slices.Clone(input.Context.Tasks)
@@ -96,6 +99,7 @@ func (p *Parser) Parse(ctx context.Context, input Input, source FileView) (Repor
 	if err := ctx.Err(); err != nil {
 		return out, err
 	}
+	out.Issues = recognitionIssues(out.Issues, len(out.Entries) > 0)
 	return out, nil
 }
 
@@ -120,7 +124,7 @@ func parseRepository(ctx context.Context, in Input, files FileView) (RuleResult,
 	r := RuleResult{}
 	if hasName(items, "blobs") && hasName(items, "snapshots") {
 		r.Prune = true
-		r.Issues = append(r.Issues, issue(in.Path, "hf_hub_cache_layout", nil))
+		r.Issues = append(r.Issues, Issue{Path: in.Path, Code: "hf_hub_cache_layout", Detail: "directory is a Hugging Face blob/snapshot cache, not a model entry"})
 	}
 	// The completion marker counts too: a gpuworks download is a whole
 	// repository. The ModelScope names come from markers.go, which owns that

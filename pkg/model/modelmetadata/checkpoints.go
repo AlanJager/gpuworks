@@ -20,19 +20,32 @@ func parseTransformers(ctx context.Context, in Input, files FileView) (RuleResul
 		Class         string   `json:"_class_name"`
 	}
 	ok, err := readJSON(ctx, files, path.Join(in.Path, "config.json"), &cfg)
-	if err != nil || !ok {
+	if err != nil {
 		return RuleResult{}, err
+	}
+	if !ok {
+		items, err := files.ReadDir(ctx, in.Path)
+		if err != nil {
+			return RuleResult{}, metadataError(in.Path, err)
+		}
+		if len(checkpointIndexes(in.Path, items)) > 0 || len(checkpointWeights(in.Path, items)) > 0 {
+			return unrecognized(path.Join(in.Path, "config.json"), "checkpoint files are present, but the Transformers model configuration is absent"), nil
+		}
+		return RuleResult{}, nil
 	}
 	// A Diffusers component's config is not a Transformers model contract.
 	if cfg.Class != "" && len(cfg.Architectures) == 0 && cfg.ModelType == "" {
-		return RuleResult{}, nil
+		return unrecognized(path.Join(in.Path, "config.json"), "configuration describes a Diffusers component, not an independent Transformers model"), nil
 	}
 	if len(cfg.Architectures) == 0 && cfg.ModelType == "" {
-		return RuleResult{}, nil
+		return unrecognized(path.Join(in.Path, "config.json"), "Transformers identity is absent: neither model_type nor architectures is declared"), nil
 	}
 	entry, err := checkpoint(ctx, in.Path, "transformers", files)
-	if err != nil || len(entry.Files) == 0 {
+	if err != nil {
 		return RuleResult{}, err
+	}
+	if len(entry.Files) == 0 {
+		return unrecognized(path.Join(in.Path, "config.json"), "Transformers configuration was read, but no supported checkpoint weights or index were found in this directory"), nil
 	}
 	return RuleResult{Entries: []Entry{entry}}, nil
 }
@@ -119,11 +132,24 @@ func checkRequired(ctx context.Context, e *Entry, files FileView) {
 func parseMistral(ctx context.Context, in Input, files FileView) (RuleResult, error) {
 	var params map[string]json.RawMessage
 	ok, err := readJSON(ctx, files, path.Join(in.Path, "params.json"), &params)
-	if err != nil || !ok || len(params) == 0 {
+	if err != nil {
 		return RuleResult{}, err
 	}
-	if !exists(ctx, files, path.Join(in.Path, "tekken.json")) {
+	if !ok {
+		items, err := files.ReadDir(ctx, in.Path)
+		if err != nil {
+			return RuleResult{}, metadataError(in.Path, err)
+		}
+		if hasName(items, "tekken.json") {
+			return unrecognized(path.Join(in.Path, "params.json"), "Mistral tokenizer is present, but model parameters are absent"), nil
+		}
 		return RuleResult{}, nil
+	}
+	if len(params) == 0 {
+		return unrecognized(path.Join(in.Path, "params.json"), "Mistral model parameters are empty"), nil
+	}
+	if err := requiredFileError(ctx, files, path.Join(in.Path, "tekken.json")); err != nil {
+		return unrecognized(path.Join(in.Path, "tekken.json"), "Mistral tokenizer: "+err.Error()), nil
 	}
 	items, err := files.ReadDir(ctx, in.Path)
 	if err != nil {
@@ -136,7 +162,7 @@ func parseMistral(ctx context.Context, in Input, files FileView) (RuleResult, er
 		}
 	}
 	if len(e.Files) == 0 {
-		return RuleResult{}, nil
+		return unrecognized(in.Path, "Mistral configuration was read, but no consolidated*.safetensors weights were found in this directory"), nil
 	}
 	checkRequired(ctx, &e, files)
 	return RuleResult{Entries: []Entry{e}}, nil
@@ -148,8 +174,11 @@ func parseAdapter(ctx context.Context, in Input, files FileView) (RuleResult, er
 		Base     string `json:"base_model_name_or_path"`
 	}
 	ok, err := readJSON(ctx, files, path.Join(in.Path, "adapter_config.json"), &cfg)
-	if err != nil || !ok || cfg.PEFTType == "" {
+	if err != nil || !ok {
 		return RuleResult{}, err
+	}
+	if cfg.PEFTType == "" {
+		return unrecognized(path.Join(in.Path, "adapter_config.json"), "adapter identity is absent: peft_type is not declared"), nil
 	}
 	return RuleResult{Components: []Reference{{Path: in.Path, Role: "adapter", Repository: cfg.Base, Source: "adapter_config.json"}}}, nil
 }
@@ -160,8 +189,11 @@ func parseModelScope(ctx context.Context, in Input, files FileView) (RuleResult,
 		Model map[string]json.RawMessage `json:"model"`
 	}
 	ok, err := readJSON(ctx, files, path.Join(in.Path, "configuration.json"), &cfg)
-	if err != nil || !ok || cfg.Task == "" || len(cfg.Model) == 0 {
+	if err != nil || !ok {
 		return RuleResult{}, err
+	}
+	if cfg.Task == "" || len(cfg.Model) == 0 {
+		return unrecognized(path.Join(in.Path, "configuration.json"), "ModelScope identity requires both a task and a non-empty model definition"), nil
 	}
 	e, err := checkpoint(ctx, in.Path, "modelscope", files)
 	if err != nil {
@@ -171,7 +203,7 @@ func parseModelScope(ctx context.Context, in Input, files FileView) (RuleResult,
 		e.Files = []string{path.Join(in.Path, "pytorch_model.pt")}
 	}
 	if len(e.Files) == 0 {
-		return RuleResult{}, nil
+		return unrecognized(path.Join(in.Path, "configuration.json"), "ModelScope configuration was read, but no supported checkpoint weights or index were found in this directory"), nil
 	}
 	e.Supersedes = []string{"transformers"}
 	return RuleResult{Entries: []Entry{e}}, nil

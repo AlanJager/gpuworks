@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"path"
 	"slices"
 	"strings"
@@ -15,20 +16,23 @@ func parseSentenceTransformers(ctx context.Context, in Input, files FileView) (R
 		Type string `json:"type"`
 	}
 	ok, err := readJSON(ctx, files, path.Join(in.Path, "modules.json"), &modules)
-	if err != nil || !ok || len(modules) == 0 {
+	if err != nil || !ok {
 		return RuleResult{}, err
+	}
+	if len(modules) == 0 {
+		return unrecognized(path.Join(in.Path, "modules.json"), "Sentence Transformers manifest declares no modules"), nil
 	}
 	e := Entry{Path: in.Path, Format: "sentence-transformers", Independent: true, Supersedes: []string{"transformers", "modelscope"}}
 	r := RuleResult{Repository: true}
 	for _, module := range modules {
 		if module.Type == "" {
-			return RuleResult{}, errors.New("modules.json: module has no type")
+			return RuleResult{}, metadataError(path.Join(in.Path, "modules.json"), errors.New("module has no type"))
 		}
 		dir := in.Path
 		if module.Path != "" && module.Path != "." {
 			dir, err = childPath(in.Path, module.Path)
 			if err != nil {
-				return RuleResult{}, err
+				return RuleResult{}, metadataError(path.Join(in.Path, "modules.json"), fmt.Errorf("module path %q: %w", module.Path, err))
 			}
 			r.Components = append(r.Components, Reference{Path: dir, Role: "component", Source: "modules.json"})
 		}
@@ -64,7 +68,7 @@ func parseDiffusers(ctx context.Context, in Input, files FileView) (RuleResult, 
 		}
 		var class string
 		if json.Unmarshal(manifest["_class_name"], &class) != nil || class == "" {
-			return RuleResult{}, errors.New(name + ": missing _class_name")
+			return RuleResult{}, metadataError(path.Join(in.Path, name), errors.New("missing _class_name"))
 		}
 		format := "diffusers"
 		if name == "modular_model_index.json" {
@@ -90,7 +94,7 @@ func parseDiffusers(ctx context.Context, in Input, files FileView) (RuleResult, 
 			} // optional absent component
 			var library, componentClass string
 			if json.Unmarshal(spec[0], &library) != nil || json.Unmarshal(spec[1], &componentClass) != nil || library == "" || componentClass == "" {
-				return RuleResult{}, errors.New(name + ": component library and class must be non-empty strings")
+				return RuleResult{}, metadataError(path.Join(in.Path, name), fmt.Errorf("%s: component library and class must be non-empty strings", key))
 			}
 			ref := Reference{Role: "component", Source: name}
 			if len(spec) > 2 {
@@ -99,7 +103,7 @@ func parseDiffusers(ctx context.Context, in Input, files FileView) (RuleResult, 
 					Subfolder string `json:"subfolder"`
 				}
 				if err := json.Unmarshal(spec[2], &location); err != nil {
-					return RuleResult{}, err
+					return RuleResult{}, metadataError(path.Join(in.Path, name), fmt.Errorf("%s: %w", key, err))
 				}
 				ref.Repository, ref.Subfolder = location.Repo, location.Subfolder
 			}
@@ -108,11 +112,11 @@ func parseDiffusers(ctx context.Context, in Input, files FileView) (RuleResult, 
 			if ref.Repository != "" {
 				e.Incomplete = true
 				e.Missing = append(e.Missing, ref.Repository+"/"+ref.Subfolder)
-				r.Issues = append(r.Issues, Issue{Path: in.Path, Code: "external_component", Detail: ref.Repository + "/" + ref.Subfolder})
+				r.Issues = append(r.Issues, Issue{Path: in.Path, Code: "external_component", Detail: "component requires an external repository: " + ref.Repository + "/" + ref.Subfolder})
 			} else {
 				ref.Path, err = childPath(in.Path, key)
 				if err != nil {
-					return RuleResult{}, err
+					return RuleResult{}, metadataError(path.Join(in.Path, name), fmt.Errorf("component path %q: %w", key, err))
 				}
 				contract, known := diffusersComponentContract(library, componentClass)
 				if err := validateComponent(ctx, files, ref.Path, library+"."+componentClass, contract, known, &e, &r); err != nil {
@@ -122,7 +126,7 @@ func parseDiffusers(ctx context.Context, in Input, files FileView) (RuleResult, 
 			r.Components = append(r.Components, ref)
 		}
 		if len(r.Components) == 0 {
-			return RuleResult{}, errors.New(name + ": no components")
+			return RuleResult{}, metadataError(path.Join(in.Path, name), errors.New("pipeline manifest declares no components"))
 		}
 		components, issues, err := readAdditionalDiffusersComponents(ctx, in, files, diffusersManifestNames[index+1:])
 		if err != nil {
@@ -225,13 +229,27 @@ func parseExports(ctx context.Context, in Input, files FileView) (RuleResult, er
 	if err != nil {
 		return RuleResult{}, err
 	}
+	r := RuleResult{}
 	if ok && (cfg.ModelType != "" || len(cfg.Architectures) > 0) {
 		if exists(ctx, files, path.Join(in.Path, "model.onnx")) {
 			return RuleResult{Entries: []Entry{{Path: in.Path, Format: "onnx", Files: []string{path.Join(in.Path, "model.onnx")}, Supersedes: []string{"transformers"}}}}, nil
 		}
+	} else if exists(ctx, files, path.Join(in.Path, "model.onnx")) {
+		r = unrecognized(path.Join(in.Path, "config.json"), "ONNX model requires a configuration declaring model_type or architectures")
 	}
-	if exists(ctx, files, path.Join(in.Path, "saved_model.pb")) && exists(ctx, files, path.Join(in.Path, "variables/variables.index")) {
+	graphErr := requiredFileError(ctx, files, path.Join(in.Path, "saved_model.pb"))
+	variablesErr := requiredFileError(ctx, files, path.Join(in.Path, "variables/variables.index"))
+	if graphErr == nil && variablesErr == nil {
 		return RuleResult{Entries: []Entry{{Path: in.Path, Format: "savedmodel", Files: []string{path.Join(in.Path, "saved_model.pb"), path.Join(in.Path, "variables/variables.index")}}}}, nil
 	}
-	return RuleResult{}, nil
+	if graphErr == nil || variablesErr == nil {
+		missing := "saved_model.pb"
+		cause := graphErr
+		if graphErr == nil {
+			missing = "variables/variables.index"
+			cause = variablesErr
+		}
+		r.Issues = append(r.Issues, unrecognized(path.Join(in.Path, missing), "SavedModel required file: "+cause.Error()).Issues...)
+	}
+	return r, nil
 }

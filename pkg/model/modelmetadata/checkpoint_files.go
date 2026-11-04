@@ -29,24 +29,29 @@ func checkpoint(ctx context.Context, dir, format string, files FileView) (Entry,
 	if indexes := checkpointIndexes(dir, items); len(indexes) > 0 {
 		e.Files, err = indexedCheckpointFiles(ctx, files, dir, indexes)
 	} else {
-		var weights []string
-		for _, encoding := range checkpointEncodings {
-			for _, item := range items {
-				if !item.IsDir && strings.HasSuffix(item.Name, encoding.extension) && !trainingCheckpointFile(item.Name) {
-					weights = append(weights, path.Join(dir, item.Name))
-				}
-			}
-			if len(weights) > 0 {
-				break
-			}
-		}
-		e.Files, err = unindexedCheckpointFiles(weights)
+		e.Files, err = unindexedCheckpointFiles(checkpointWeights(dir, items))
 	}
 	if err != nil {
 		return e, err
 	}
 	checkRequired(ctx, &e, files)
 	return e, nil
+}
+
+// Discovery and missing-config diagnostics use the same format evidence.
+func checkpointWeights(dir string, items []FileInfo) []string {
+	var weights []string
+	for _, encoding := range checkpointEncodings {
+		for _, item := range items {
+			if !item.IsDir && strings.HasSuffix(item.Name, encoding.extension) && !trainingCheckpointFile(item.Name) {
+				weights = append(weights, path.Join(dir, item.Name))
+			}
+		}
+		if len(weights) > 0 {
+			break
+		}
+	}
+	return weights
 }
 
 func checkpointIndexes(dir string, items []FileInfo) []string {

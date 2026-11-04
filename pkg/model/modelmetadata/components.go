@@ -62,7 +62,7 @@ func diffusersComponentContract(library, class string) (componentContract, bool)
 func validateComponent(ctx context.Context, files FileView, dir, class string, contract componentContract, known bool, entry *Entry, result *RuleResult) error {
 	if !known {
 		entry.Incomplete = true
-		result.Issues = append(result.Issues, Issue{Path: dir, Code: "unverified_component", Detail: class})
+		result.Issues = append(result.Issues, Issue{Path: dir, Code: "unverified_component", Detail: "no local validation contract is available for component class " + class})
 		return nil
 	}
 	if contract.config == "" && len(contract.weights) == 0 && len(contract.fileSets) == 0 {
