@@ -705,18 +705,28 @@ def _storage_fixture(page, server, artifacts, report, root):
 
 
 def _stop_storage_fixture(page, server, agent, mounts, ids, node_uuid):
-    """Remove the storages, unmount what this run mounted, and stop its agent."""
-    for storage_id in ids:
+    """Remove the storages, unmount what this run mounted, and stop its agent.
+
+    Every argument is allowed to be the placeholder the caller starts with, because a
+    fixture that fails while it is being built has still usually mounted something or
+    started an agent. Passing None and an empty list here is what makes the teardown safe
+    on that path: the earlier version read the failure as a broken teardown, when in
+    truth the teardown had never run, and one run left a bind mount and an agent behind.
+    """
+    if agent is not None and agent.poll() is not None:
+        agent = None
+    for storage_id in ids or ():
         page.request.delete(server.base + STORAGES + f"/{storage_id}")
-    for target in mounts:
+    for target in mounts or ():
         subprocess.run(["sudo", "-n", "umount", str(target)], capture_output=True, text=True)
-    if agent.poll() is None:
+    if agent is not None and agent.poll() is None:
         agent.terminate()
         try:
             agent.wait(timeout=10)
         except subprocess.TimeoutExpired:
             agent.kill()
-    page.request.delete(server.base + "/api/v1/nodes/" + node_uuid + "?force=true")
+    if node_uuid:
+        page.request.delete(server.base + "/api/v1/nodes/" + node_uuid + "?force=true")
 
 
 def exercise_storage_pagination_10_6(page, server, artifacts, report, locale, k):
@@ -731,8 +741,12 @@ def exercise_storage_pagination_10_6(page, server, artifacts, report, locale, k)
     """
     root = artifacts.private / "storage"
     root.mkdir(parents=True, exist_ok=True)
-    agent, mounts, ids, node_uuid = _storage_fixture(page, server, artifacts, report, root)
+    # The fixture is built inside the try: a run that fails part way through it has still
+    # usually mounted something or started an agent, and an assignment before the try would
+    # skip the teardown entirely on exactly that path.
+    agent, mounts, ids, node_uuid = None, [], [], None
     try:
+        agent, mounts, ids, node_uuid = _storage_fixture(page, server, artifacts, report, root)
         page.reload()
         expect(page.get_by_role("heading", name=k["title"], exact=True)).to_be_visible()
         card = page.locator(".ant-card").filter(has_text=k["overview"]["storageCapacity"]).first
