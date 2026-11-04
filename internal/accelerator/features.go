@@ -33,7 +33,7 @@ var targetConstraints = map[string]targetConstraint{
 	// parallelism is not validated on ROCm.
 	VendorAMD: {
 		unsupported:     []Feature{FeatureDataParallel},
-		runtime:         hostRequirements{os: "linux", arch: "amd64", drivers: []string{"docker", "nerdctl"}},
+		runtime:         hostRequirements{os: "linux", arch: "amd64", drivers: []string{"docker", "nerdctl", "udocker"}},
 		explicitDevices: true,
 	},
 }

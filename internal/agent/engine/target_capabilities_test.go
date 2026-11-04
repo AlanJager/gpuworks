@@ -158,9 +158,9 @@ func TestEngineDoesNotAllocateDefaultHostFactsReader(t *testing.T) {
 }
 
 func TestTargetDesiredRejectsUnsupportedRuntimeBeforeLaunch(t *testing.T) {
-	e := NewWithProber(&headlessTestDriver{name: "udocker"}, nil, nil, t.TempDir(), &gpu.AMDProber{})
-	if err := e.validateTargetDesired(proto.InstanceDesiredState{}); err == nil || !strings.Contains(err.Error(), "runtime") {
-		t.Fatalf("udocker target validation error = %v", err)
+	e := NewWithProber(&headlessTestDriver{name: "host"}, nil, nil, t.TempDir(), &gpu.AMDProber{})
+	if err := e.validateTargetDesired(proto.InstanceDesiredState{GPUIndexes: []int{0}}); err == nil || !strings.Contains(err.Error(), "runtime") {
+		t.Fatalf("host-process target validation error = %v", err)
 	}
 }
 
@@ -173,7 +173,8 @@ func TestTargetDesiredHostRuntimeFacts(t *testing.T) {
 		{name: "supported", host: accelerator.HostRuntime{OS: "linux", Arch: "amd64", Driver: "docker"}, valid: true},
 		{name: "wrong os", host: accelerator.HostRuntime{OS: "darwin", Arch: "amd64", Driver: "docker"}},
 		{name: "wrong arch", host: accelerator.HostRuntime{OS: "linux", Arch: "arm64", Driver: "docker"}},
-		{name: "wrong runtime", host: accelerator.HostRuntime{OS: "linux", Arch: "amd64", Driver: "udocker"}},
+		{name: "runveil", host: accelerator.HostRuntime{OS: "linux", Arch: "amd64", Driver: "udocker"}, valid: true},
+		{name: "wrong runtime", host: accelerator.HostRuntime{OS: "linux", Arch: "amd64", Driver: "host"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			e := NewWithProber(&headlessTestDriver{name: tc.host.Driver}, nil, nil, t.TempDir(), &gpu.AMDProber{}, WithHostRuntimeFacts(func() accelerator.HostRuntime {

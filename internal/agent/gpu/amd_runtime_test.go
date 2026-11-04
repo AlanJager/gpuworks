@@ -108,7 +108,7 @@ func TestAMDRuntimeFactsDefaultToCurrentHost(t *testing.T) {
 }
 
 func TestAMDRuntimeEmptySelectionFailsClosed(t *testing.T) {
-	inj := (&AMDProber{}).RuntimeInjectionForDriver(nil, "udocker")
+	inj := (&AMDProber{}).RuntimeInjectionForDriver(nil, "docker")
 	if inj.UnsupportedReason == "" {
 		t.Fatalf("empty selection injection was accepted: %+v", inj)
 	}
@@ -137,6 +137,38 @@ func TestAMDRuntimeUsesSelectedRenderWithoutGuessingUserspaceOrdinals(t *testing
 	}
 	if len(inj.Env) != 0 {
 		t.Fatal(inj.Env)
+	}
+}
+
+// runveil binds all of /dev and /sys, so the selection is pinned by ROCm's
+// GPU UUID (GPU-<unique_id>, zero-padded to 16 hex digits as rocminfo
+// prints it); docker keeps relying on the injected render node alone.
+func TestAMDRuntimePinsRunveilSelectionByGPUUUID(t *testing.T) {
+	p := runtimeAMDFixture()
+	gs, err := p.Probe(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var uuid string
+	for _, g := range gs {
+		if g.Index == 7 {
+			uuid = g.UUID
+		}
+	}
+	id := normalizeAMDUniqueID(strings.TrimPrefix(uuid, "amd-"))
+	if id == "" {
+		t.Fatalf("fixture card 7 has no unique_id-backed UUID: %q", uuid)
+	}
+	inj := p.RuntimeInjectionForDriver([]int{7}, "udocker")
+	if inj.UnsupportedReason != "" {
+		t.Fatal(inj.UnsupportedReason)
+	}
+	want := "GPU-" + strings.Repeat("0", 16-len(id)) + id
+	if inj.Env["ROCR_VISIBLE_DEVICES"] != want {
+		t.Fatalf("ROCR_VISIBLE_DEVICES = %q, want %q", inj.Env["ROCR_VISIBLE_DEVICES"], want)
+	}
+	if !strings.Contains(strings.Join(inj.DockerArgs, " "), "/dev/kfd") {
+		t.Fatalf("runveil injection lost the device nodes: %v", inj.DockerArgs)
 	}
 }
 
@@ -198,7 +230,7 @@ func TestAMDRuntimeFailsClosed(t *testing.T) {
 			driver := "nerdctl"
 			switch test {
 			case "driver":
-				driver = "udocker"
+				driver = "host"
 			case "platform":
 				p.hostRuntime = func() accelerator.HostRuntime { return accelerator.HostRuntime{OS: "linux", Arch: "arm64"} }
 			case "missing":

@@ -86,7 +86,7 @@ func TestEverFitsSkipsUnsupportedAMDRuntimeAndTriesDocker(t *testing.T) {
 	}
 	card := store.GPU{Index: 1, Name: "AMD Instinct MI300X", MemoryTotal: 96 << 30, Vendor: "amd", ArchID: "gfx942"}
 	nodes := []*store.Node{
-		{ID: 1, Name: "udocker", OS: "linux", Arch: "amd64", GPUVendor: "amd", RuntimeDriver: "udocker", GPUs: []store.GPU{card}},
+		{ID: 1, Name: "hostproc", OS: "linux", Arch: "amd64", GPUVendor: "amd", RuntimeDriver: "host", GPUs: []store.GPU{card}},
 		{ID: 2, Name: "docker", OS: "linux", Arch: "amd64", GPUVendor: "amd", RuntimeDriver: "docker", GPUs: []store.GPU{card}},
 	}
 	builds := 0
@@ -96,7 +96,7 @@ func TestEverFitsSkipsUnsupportedAMDRuntimeAndTriesDocker(t *testing.T) {
 	}
 	never, err := EverFits(context.Background(), st, storeNetworks(st), nodes, NodeFacts{}, nil, build)
 	if err != nil || never != nil || builds != 2 {
-		t.Fatalf("docker should be tried after udocker: never=%+v err=%v builds=%d", never, err, builds)
+		t.Fatalf("docker should be tried after the host-process node: never=%+v err=%v builds=%d", never, err, builds)
 	}
 	if HardwareShape(nodes[0], true) == HardwareShape(nodes[1], true) {
 		t.Fatal("different runtimes share one plan shape")
@@ -107,6 +107,6 @@ func TestEverFitsSkipsUnsupportedAMDRuntimeAndTriesDocker(t *testing.T) {
 		return req, layer, err
 	}
 	if never, err := EverFits(context.Background(), st, storeNetworks(st), nodes, NodeFacts{}, nil, badConfig); err == nil || never != nil {
-		t.Fatalf("invalid parallelism must propagate after skipping udocker: never=%+v err=%v", never, err)
+		t.Fatalf("invalid parallelism must propagate after skipping the host-process node: never=%+v err=%v", never, err)
 	}
 }

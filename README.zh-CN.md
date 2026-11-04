@@ -101,7 +101,7 @@ curl http://<server>:8800/v1/chat/completions \
 | 加速器 | 整卡部署 | dGPU（共享一张卡） | sleep/wake | 多机 | PD 分离 |
 |---|---|---|---|---|---|
 | **NVIDIA**（CUDA） | ✅ Docker、Containerd 或 runveil（内置免 root 运行时） | ✅ 显存 MiB 级限额 | ✅ vLLM | ✅ | ✅ vLLM + NIXL |
-| **AMD**（ROCm：Instinct MI300 系列、Ryzen AI Max） | ✅ Docker 或 Containerd | ✅ 显存配额（libvrocm，用户态） | ✅ vLLM | ✅ vLLM | ✅ vLLM + NIXL |
+| **AMD**（ROCm：Instinct MI300 系列、Ryzen AI Max） | ✅ Docker、Containerd 或 runveil（内置免 root 运行时） | ✅ 显存配额（libvrocm，用户态） | ✅ vLLM | ✅ vLLM | ✅ vLLM + NIXL |
 | **华为昇腾**（CANN） | ✅ Docker、Containerd 或 runveil（内置免 root 运行时） | ✅ 显存 MiB 级限额 | ✅ vLLM-Ascend | ✅ | ✅ vLLM-Ascend + Mooncake |
 | **平头哥 PPU**（HGGC） | ✅ Docker、Containerd 或 runveil（内置免 root 运行时） | ✅ 显存 MiB 级限额 | ✅ vLLM | ✅ | ✅ SGLang + Mooncake（同机或经 RDMA）、vLLM + Mooncake（RDMA） |
 | **海光 DCU**（DTK） | ✅ Docker、Containerd 或 runveil（内置免 root 运行时） | ✅ 显存 MiB 级限额 | ✅ vLLM | ✅ | 🧪 vLLM 0.21 + Mooncake |

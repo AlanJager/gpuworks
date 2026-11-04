@@ -4,7 +4,7 @@ This document explains how AMD joins the existing discovery, planning, schedulin
 
 ## Goals and scope
 
-GPUWorks currently admits AMD on Linux amd64 and Docker/nerdctl for whole-device deployments, single-node or vLLM multi-node (PP and cross-node TP; RCCL uses the NCCL_* network variables). Built-in specs select gfx942 (MI300X/MI325X) and gfx1151 (AMD395) by `arch_id`. Sleep and PD (`vllm-nixl` over UCX) are implemented and validated on MI300X; data parallelism and memory partitioning are not implemented. This is not a permanent limitation of AMD hardware or ROCm. Physical unified memory does not enable Apple's memory-sharing allocation policy.
+GPUWorks currently admits AMD on Linux amd64 and Docker/nerdctl/runveil for whole-device deployments, single-node or vLLM multi-node (PP and cross-node TP; RCCL uses the NCCL_* network variables). Built-in specs select gfx942 (MI300X/MI325X) and gfx1151 (AMD395) by `arch_id`. Sleep and PD (`vllm-nixl` over UCX) are implemented and validated on MI300X; data parallelism and memory partitioning are not implemented. This is not a permanent limitation of AMD hardware or ROCm. Physical unified memory does not enable Apple's memory-sharing allocation policy.
 
 ## Data flow and fact ownership
 

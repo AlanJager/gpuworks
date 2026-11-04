@@ -23,7 +23,7 @@ func TestAMDDefaultPlacementSkipsIncompatibleRuntime(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = st.Close() })
 	for index := 0; index < 10; index++ {
-		uuid, driver := fmt.Sprintf("amd-%02d", index), "udocker"
+		uuid, driver := fmt.Sprintf("amd-%02d", index), "host"
 		if index == 9 {
 			driver = "docker"
 		}
