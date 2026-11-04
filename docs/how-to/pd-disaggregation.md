@@ -7,7 +7,7 @@
 **前置条件**：
 
 - 已熟悉普通部署流程，见[部署模型、选卡与解释调度结果](deploy-models.md)。
-- 硬件与引擎符合所选 PD 模式：`vllm-nixl` 面向 NVIDIA，`vllm-ascend-mooncake` 面向昇腾，`sglang-ppu-ipc` 面向 PPU（P、D 必须在同一节点），`sglang-ppu-mooncake`、`vllm-ppu-mooncake` 面向经 RoCE 网卡传 KV 的 PPU（可跨机），`sglang-nixl` 未验证。
+- 硬件与引擎符合所选 PD 模式：`vllm-nixl` 面向 NVIDIA 与 AMD，`vllm-ascend-mooncake` 面向昇腾，`sglang-ppu-ipc` 面向 PPU（P、D 必须在同一节点），`sglang-ppu-mooncake`、`vllm-ppu-mooncake` 面向经 RoCE 网卡传 KV 的 PPU（可跨机），`sglang-nixl` 未验证。
 - PPU Mooncake 模式：节点在主机 RDMA 参数网络上，并已加载 `alixpu_peermem`（见[PPU 经 RDMA 传 KV](#ppu-经-rdma-传-kv)）。
 - NVIDIA 模式的 P、D 跨机时 KV 走参数网络，可选 RDMA 或以太网；昇腾模式跨机时必须共用加速器 RDMA 或加速器 HCCS 网络，且 prefill 与 decode 所在 NPU 在对应加速器网络上互通。配置与验证见[配置节点网络](configure-networks.md)。
 
@@ -24,7 +24,7 @@ PD 分离把一个模型的推理拆成两组实例：prefill 实例只算提示
 
 ## 部署
 
-1. 部署页的 **节点放置** 选 **PD 分离**，再选 PD 模式。可选模式来自引擎档位：vLLM 有 `vllm-nixl`（NVIDIA）与
+1. 部署页的 **节点放置** 选 **PD 分离**，再选 PD 模式。可选模式来自引擎档位：vLLM 有 `vllm-nixl`（NVIDIA、AMD）与
    `vllm-ascend-mooncake`（昇腾）、`vllm-ppu-mooncake`（PPU，RDMA），SGLang 有 `sglang-ppu-ipc`（PPU，同机）、
    `sglang-ppu-mooncake`（PPU，RDMA）与 `sglang-nixl`（未验证）。
 

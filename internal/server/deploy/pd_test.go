@@ -124,6 +124,13 @@ func TestVLLMPDRecomputePolicyAndRDMA(t *testing.T) {
 	if _, ok := launch.Env["UCX_TCP_BRIDGE_ENABLE"]; ok {
 		t.Fatal("RDMA does not use the TCP bridge switch")
 	}
+	// On ROCm the CUDA transport list would leave UCX without a GPU copy
+	// path; naming the HCA is enough for it to pick rocm_copy/rocm_ipc.
+	amd := p
+	amd.Vendor = "amd"
+	if env := BuildVLLM(amd).Env; env["UCX_NET_DEVICES"] != "mlx5_0:1" || env["UCX_TLS"] != "" {
+		t.Fatalf("amd rdma env = %v", env)
+	}
 	args := withComputeNetworkDockerArgs(nil, p)
 	if !reflect.DeepEqual(args, []string{"--device", "/dev/infiniband", "--ulimit", "memlock=-1", "--cap-add", "IPC_LOCK"}) {
 		t.Fatalf("docker args = %v", args)

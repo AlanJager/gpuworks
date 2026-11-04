@@ -4,7 +4,7 @@
 
 ## 目标与范围
 
-当前 GPUWorks AMD 实现面向 Linux amd64、Docker/nerdctl 整卡部署，单机或 vLLM 多机（PP 与跨机 TP，RCCL 走 NCCL_* 网络变量）。内置规格按 `arch_id` 限定 gfx942（MI300X/MI325X）与 gfx1151（AMD395）。sleep、PD、数据并行、显存分区尚未实现；这不是 AMD 硬件或 ROCm 的永久能力结论。物理统一内存不启用 Apple 的按内存共享分配策略。
+当前 GPUWorks AMD 实现面向 Linux amd64、Docker/nerdctl 整卡部署，单机或 vLLM 多机（PP 与跨机 TP，RCCL 走 NCCL_* 网络变量）。内置规格按 `arch_id` 限定 gfx942（MI300X/MI325X）与 gfx1151（AMD395）。sleep 与 PD（`vllm-nixl`，UCX）已实现并在 MI300X 上验证；数据并行、显存分区尚未实现；这不是 AMD 硬件或 ROCm 的永久能力结论。物理统一内存不启用 Apple 的按内存共享分配策略。
 
 ## 数据流与事实来源
 

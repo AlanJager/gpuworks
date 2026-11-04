@@ -12,8 +12,11 @@ func TestFeatureSupportByVendor(t *testing.T) {
 			t.Errorf("%q lacks %v", vendor, missing)
 		}
 	}
-	if missing := Unsupported(VendorAMD, all...); !slices.Equal(missing, []Feature{FeatureEngineSleep, FeaturePD}) {
-		t.Fatalf("AMD lacks %v, want sleep and PD", missing)
+	if missing := Unsupported(VendorAMD, all...); len(missing) != 0 {
+		t.Fatalf("AMD lacks %v, want none of %v", missing, all)
+	}
+	if missing := Unsupported(VendorAMD, FeatureDataParallel, FeatureEngineSleep); !slices.Equal(missing, []Feature{FeatureDataParallel}) {
+		t.Fatalf("AMD lacks %v, want data parallelism only", missing)
 	}
 	if missing := Unsupported("Apple", all...); !slices.Equal(missing, all) {
 		t.Fatalf("apple lacks %v, want all of %v", missing, all)

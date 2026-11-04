@@ -216,9 +216,10 @@ var ascendCards, _ = accelerator.CardNetworkOf(accelerator.VendorAscend)
 
 var modes = map[string]Mode{
 	"vllm-nixl": {
-		Name:                "vllm-nixl",
-		Engine:              engines.VLLM,
-		Vendors:             []string{accelerator.VendorNVIDIA},
+		Name:   "vllm-nixl",
+		Engine: engines.VLLM,
+		// AMD: nixl-rocm over UCX TCP, validated across two MI300X hosts.
+		Vendors:             []string{accelerator.VendorNVIDIA, accelerator.VendorAMD},
 		SameVendor:          true,
 		Roles:               []string{RoleDecode, RolePrefill},
 		Connector:           "NixlConnector",

@@ -22,6 +22,18 @@ func ProfileForTarget(engine, vendor string) (Profile, error) {
 	}
 	if !accelerator.Supports(vendor, accelerator.FeaturePD) {
 		p.PDModes = nil
+	} else if v := accelerator.NormalizeVendor(vendor); v != "" {
+		// A target's profile lists only the PD modes declared for it.
+		modes := p.PDModes[:0:0]
+		for _, mode := range p.PDModes {
+			for _, declared := range mode.Vendors {
+				if accelerator.NormalizeVendor(declared) == v {
+					modes = append(modes, mode)
+					break
+				}
+			}
+		}
+		p.PDModes = modes
 	}
 	return p, nil
 }

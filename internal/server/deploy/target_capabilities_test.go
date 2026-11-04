@@ -40,8 +40,16 @@ func TestResolvedSnapshotAppliesAllVendorPolicies(t *testing.T) {
 			t.Fatalf("%s features=%v", vendor, features)
 		}
 		err := ValidateTargetFeatures(EngineVLLM, launch, Params{Vendor: vendor})
-		if (vendor == "amd" || vendor == "apple") != (err != nil) {
+		if (vendor == "apple") != (err != nil) {
 			t.Fatalf("%s error=%v", vendor, err)
+		}
+	}
+	// Data parallelism is the feature AMD still lacks.
+	dp := ResolvedLaunch{Entrypoint: []string{"vllm", "serve"}, Argv: []string{"--data-parallel-size", "2"}}
+	for _, vendor := range []string{"nvidia", "amd"} {
+		err := ValidateTargetFeatures(EngineVLLM, dp, Params{Vendor: vendor})
+		if (vendor == "amd") != (err != nil) {
+			t.Fatalf("%s data-parallel error=%v", vendor, err)
 		}
 	}
 }

@@ -11,11 +11,11 @@ AMD 接入复用其他加速器的 Prober、PCI 库存和 DriverAwareInjector �
 - accelerator 统一声明厂商、宿主要求和功能约束。AMD 的物理 UMA 不等于 Apple 的按内存共享策略，仍按整卡分配。
 - deploy.RequestedLaunchFeatures 归一服务端的启动需求；planning 和 scheduler 按模板匹配后的实际候选卡准入。混合厂商节点不整体套用 AMD 限制。
 - agent 复核所选设备的身份和字符设备号，通过通用 RuntimeInjection 返回新增项、清除项或拒绝原因；engine 在验证成功后统一应用。AMD 要求非空设备选择；空选择在 agent 校验阶段拒绝，失败不留下部分修改。
-- sleep 的平台准入、引擎声明与协议执行分层。现阶段 AMD 拒绝 sleep；其他厂商继续使用原有能力及执行协议。
+- sleep 的平台准入、引擎声明与协议执行分层。AMD 与 NVIDIA 共用 vLLM sleep 协议（L2 分步唤醒），已在 MI300X 上验证。
 
 AMD 使用公共 Prober、DriverAwareInjector 与目标约束接口，不依赖其他厂商的驱动、探测器、拓扑注入或模型模板。共享层只保存宿主事实、能力声明和拒绝合同；AMD 的 KFD/render 映射与 ROCm 设备注入由自己的 prober 完成。缺失 OS、架构或运行时事实报告 runtime_unreported，已知不兼容报告 runtime_unsupported，两者都不能授权启动。模板候选按实际匹配的卡检查；混卡节点上的 NVIDIA 卡不能替代仅匹配 AMD 的卡通过校验，模板允许 NVIDIA 时仍可选择该卡。所有厂商复用 resolved launch 的功能快照；显式受限目标不能用未知命令绕过准入。
 
-当前代码实现的准入范围为 Linux amd64、Docker/nerdctl、整卡（单机或 vLLM 多机）；支持声明按镜像、模型和目标设备分别验收，不能从一组测试推广到所有 AMD GPU。未启用 sleep、PD、数据并行和显存分区；多机与流水线并行需按网络与 RCCL 版本分别验收。系统 RAM 不自动成为可调度 GPU 显存。
+当前代码实现的准入范围为 Linux amd64、Docker/nerdctl、整卡（单机或 vLLM 多机）；支持声明按镜像、模型和目标设备分别验收，不能从一组测试推广到所有 AMD GPU。未启用数据并行和显存分区；sleep 与 PD（`vllm-nixl`）需按镜像与网络分别验收；多机与流水线并行需按网络与 RCCL 版本分别验收。系统 RAM 不自动成为可调度 GPU 显存。
 
 容量探测对 AMD395 的 UMA 仅启用受严格事实约束的窄路径：PCI device `0x1586`、KFD `gfx1151`，且唯一 KFD 节点与 DRM render minor、PCI domain/location 一致；KFD 公共 bank 必须是单个 system-memory heap，且其容量与同一 DRM 设备的 GTT total 完全相等。满足时上报该 KFD/GTT pool 容量并用 GTT used 采集占用；它表示驱动公开给 GPU 的可分配 pool，不是板载 VRAM，也不是主机总 RAM 或 HIP 当前 free。AMD395 UMA 事实缺失或冲突时上报未知容量并降级，不能将较小的 dedicated carve-out 当作已验证的健康容量。其他 AMD/APU 不从 `local_mem_size=0` 推断 UMA。
 

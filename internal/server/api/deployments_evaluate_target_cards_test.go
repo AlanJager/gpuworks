@@ -72,7 +72,8 @@ func TestEvaluateEligibleNodesAMDSleepWire(t *testing.T) {
 	body := fmt.Sprintf(`{"model_id":%d,"engine":"vllm","placement_mode":"auto","sleepable":true}`, model.ID)
 	nodes := targetEligibleWire(t, h.d.Store, body)
 	node, ok := nodes[uuid]
-	if !ok || node.Eligible || len(node.Reasons) == 0 || node.Reasons[0].Code != "sleep_unsupported_on_node" {
+	// vLLM sleep mode runs on ROCm, so a sleepable draft keeps the AMD card.
+	if !ok || !node.Eligible || len(node.Reasons) != 0 {
 		t.Fatalf("AMD eligible_nodes=%+v", node)
 	}
 }

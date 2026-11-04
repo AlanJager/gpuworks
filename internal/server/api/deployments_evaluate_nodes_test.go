@@ -158,8 +158,8 @@ func TestEvaluateEligibleNodesFilterAMDFeatureRequirements(t *testing.T) {
 		}{node.Eligible, reasons}
 	}
 	amd := byUUID["amd-feature-node"]
-	// AMD runs multi-node ranks; PD and data parallelism remain refused.
-	if amd.eligible || amd.reasons["multi_node_unsupported_on_node"] || !amd.reasons["pd_unsupported_on_node"] || !amd.reasons["accelerator_feature_unsupported"] {
+	// AMD runs multi-node ranks and PD; data parallelism remains refused.
+	if amd.eligible || amd.reasons["multi_node_unsupported_on_node"] || amd.reasons["pd_unsupported_on_node"] || !amd.reasons["accelerator_feature_unsupported"] {
 		t.Fatalf("AMD feature requirements were not explained: %+v", amd)
 	}
 	for _, uuid := range []string{"eligible-node", "vendor-node"} {

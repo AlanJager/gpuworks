@@ -29,13 +29,32 @@ func TestEnginesAMDTargetCapabilities(t *testing.T) {
 		t.Fatalf("engine response=%d %s", rec.Code, rec.Body.String())
 	}
 	for _, item := range response.Items {
-		if item.DefaultImage != "" || item.Sleep.Supported || len(item.PDModes) > 0 {
-			t.Fatalf("AMD capability overclaim: %+v", item)
+		if item.DefaultImage != "" {
+			t.Fatalf("AMD profile %s names a default image: %+v", item.Name, item)
 		}
 		// AMD runs multi-node ranks, so the engine profile decides, as on
 		// other vendors: no target override.
 		if item.MultiNodeSupported != nil {
 			t.Fatalf("AMD profile %s overrides multi-node support: %v", item.Name, *item.MultiNodeSupported)
+		}
+		var modes []string
+		for _, raw := range item.PDModes {
+			var mode struct {
+				Name string `json:"name"`
+			}
+			if err := json.Unmarshal(raw, &mode); err != nil {
+				t.Fatal(err)
+			}
+			modes = append(modes, mode.Name)
+		}
+		// vLLM sleeps and runs NIXL PD on ROCm; only modes declared for AMD
+		// are listed.
+		if item.Name == "vllm" {
+			if !item.Sleep.Supported || len(modes) != 1 || modes[0] != "vllm-nixl" {
+				t.Fatalf("AMD vLLM profile sleep=%v modes=%v", item.Sleep.Supported, modes)
+			}
+		} else if len(modes) != 0 {
+			t.Fatalf("AMD %s profile lists PD modes not declared for AMD: %v", item.Name, modes)
 		}
 	}
 }
