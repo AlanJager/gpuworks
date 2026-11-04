@@ -171,7 +171,7 @@ span 的类型是 SERVER，名字是 `chat <模型名>`、`text_completion <模�
 
 ### PD 分离部署的 prefill 子 span
 
-**顺序交接（`vllm-nixl`、`vllm-ascend-mooncake`）**：请求多一个 CLIENT 类型的子 span `pd.prefill`，从网关把请求发给 prefill 实例计到拿到回复。
+**顺序交接（`vllm-nixl`、`vllm-ascend-mooncake`、`vllm-mooncake`）**：请求多一个 CLIENT 类型的子 span `pd.prefill`，从网关把请求发给 prefill 实例计到拿到回复。
 
 - 子 span 的属性有 `gpuworks.pd.prefill_instance`、`gpuworks.pd.fallback`，以及 prefill 实例自报的 `gen_ai.latency.time_in_queue`、`gen_ai.latency.time_in_model_prefill`。
 - 发给 prefill 实例的 `traceparent` 以该子 span 为父，发给 decode 实例的以网关 span 为父；两个引擎各自导出 span 时分别挂在这两处。

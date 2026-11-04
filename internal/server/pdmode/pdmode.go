@@ -108,7 +108,23 @@ const (
 	// the cards' memory, which needs the vendor's peer-memory kernel module
 	// on every node (Mode.PeerMemory).
 	TransportMooncakeRDMA Transport = "mooncake_rdma"
+	// TransportMooncake is the Mooncake transfer engine on whatever host
+	// network the group shares: RDMA on a host RDMA network, TCP on any other,
+	// which the launch chooses (mooncake_protocol).
+	TransportMooncake Transport = "mooncake"
 )
+
+// OnHostNetwork reports whether the transport drives host network devices
+// (UCX, Mooncake), so the KV cannot ride an accelerator network.
+func (t Transport) OnHostNetwork() bool {
+	return t == TransportUCX || t == TransportMooncake || t == TransportMooncakeRDMA
+}
+
+// MooncakeBootstrap reports whether the transport is Mooncake's, whose vLLM
+// connector serves the prefill's handshake from a bootstrap server.
+func (t Transport) MooncakeBootstrap() bool {
+	return t == TransportMooncake || t == TransportMooncakeRDMA
+}
 
 // Mode is one PD recipe.
 type Mode struct {
@@ -194,20 +210,18 @@ type Mode struct {
 	// SynthesizedHandoff is a sequential mode whose prefill answer carries no
 	// kv_transfer_params (vLLM's MooncakeConnector): the gateway gives the
 	// prefill copy a transfer id and composes the decoder's params itself,
-	// naming the prefill instance by EngineID and its bootstrap server.
+	// naming the prefill instance by its bootstrap server and the engine id
+	// its workers registered there. The engine id is read from that server,
+	// not pinned at launch: the decoder caches a prefill's worker addresses
+	// by engine id, so a prefill restarted on the same port under the same id
+	// would be pulled from at its dead workers' addresses (measured: every
+	// handoff then failed after 540 s).
 	SynthesizedHandoff bool
 	// FirstRequestCompiles: the engine compiles kernels for each new request
 	// shape, so the first request after a start takes minutes (measured on
 	// PPU SGLang: 188–198 s, the rest under a second). The deploy form says
 	// so; the gateway waits as for any slow answer.
 	FirstRequestCompiles bool
-}
-
-// EngineID is the connector engine id of the PD instance whose KV endpoint
-// is host:port. The launch names the engine with it and the gateway names
-// the same instance to the decoder, both from the instance's PD record.
-func EngineID(host string, port int) string {
-	return fmt.Sprintf("gpuworks-%s-%d", host, port)
 }
 
 // ascendCards is what HCCL needs to be told on an Ascend host; the mode that
@@ -346,6 +360,36 @@ var modes = map[string]Mode{
 		SynthesizedHandoff:  true,
 		PeerMemory:          true,
 		Transport:           TransportMooncakeRDMA,
+	},
+	// vLLM's MooncakeConnector on Hygon DCU: the Hygon vLLM 0.21 image runs it
+	// on a Mooncake transfer engine built for DTK (TCP, RDMA and an intra-host
+	// HIP transport), patched by vllm-hcu, so the KV moves over whatever host
+	// network the group shares. A decoder given no handoff computes the
+	// prefill itself. The vllm-hcu patch is about heterogeneous TP/PP; only
+	// equal TP was tried. The mode is experimental and marked unverified. It
+	// needs the image's r2 or later: r1's connector reported a failed pull as
+	// finished, so the decoder answered from KV it never received and the
+	// load failure policy did not apply.
+	"vllm-mooncake": {
+		Name:                "vllm-mooncake",
+		Engine:              engines.VLLM,
+		Vendors:             []string{accelerator.VendorHygon},
+		SameVendor:          true,
+		Roles:               []string{RoleDecode, RolePrefill},
+		Connector:           "MooncakeConnector",
+		ConnectorRoles:      map[string]string{RolePrefill: "kv_producer", RoleDecode: "kv_consumer"},
+		Wire:                WireSequential,
+		TP:                  TPEqual,
+		TwoStagePaths:       []string{"/v1/chat/completions", "/v1/completions"},
+		TransferMetricsRole: RoleDecode,
+		VerifiedVersions:    "0.21.0",
+		ScalableToZero:      []string{RolePrefill},
+		DecodeServesAlone:   true,
+		KVLoadFailures:      []string{KVLoadFail, KVLoadRecompute},
+		ExtraPortsFixed:     map[string]int{RolePrefill: 1},
+		SynthesizedHandoff:  true,
+		Unverified:          true,
+		Transport:           TransportMooncake,
 	},
 	// SGLang on T-Head PPU with the mooncake backend: Mooncake's NVLink
 	// transport over legacy IPC handles copies the KV card to card inside one

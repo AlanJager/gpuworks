@@ -49,12 +49,13 @@ func CheckGroupNetwork(nodes []store.Node, group netplan.Group) error {
 // CheckPDNetwork reports why the network a PD group shares cannot carry its
 // KV transfer in this mode. A mode whose transport is HCCL needs an
 // accelerator network as soon as the group spans hosts; a mode whose
-// transport is UCX cannot use one, because UCX drives host devices. A
-// sleepable deployment cannot move its KV over UCX on a host RDMA network:
-// NIXL registers the engine's KV cache with the NIC, and once the engine has
-// slept it cannot allocate that memory again (wake_up: CUDA out of memory,
-// measured with dma-buf registration; collectives over the same NIC sleep
-// fine, they register buffers of their own).
+// transport drives host devices (UCX, Mooncake) cannot use one. A sleepable
+// deployment cannot move its KV over such a transport on a host RDMA
+// network: NIXL registers the engine's KV cache with the NIC, and once the
+// engine has slept it cannot allocate that memory again (wake_up: CUDA out of
+// memory, measured with dma-buf registration; collectives over the same NIC
+// sleep fine, they register buffers of their own). Mooncake registers the KV
+// cache with the NIC the same way, so it is refused alike.
 func CheckPDNetwork(mode pdmode.Mode, nodes []store.Node, group netplan.Group, sleepable bool) error {
 	onCards := netplan.IsAccelerator(group.Network.Type)
 	params := map[string]any{"mode": mode.Name, "network": group.Network.Name}
@@ -62,13 +63,13 @@ func CheckPDNetwork(mode pdmode.Mode, nodes []store.Node, group netplan.Group, s
 	case mode.Transport == pdmode.TransportHCCL && len(nodes) > 1 && !onCards:
 		return messages.NewProductError(messages.ErrorPDNetworkAcceleratorRequired,
 			fmt.Sprintf("PD mode %s moves KV on the accelerator fabric, so a group across hosts needs an accelerator network; the group shares %s", mode.Name, group.Network.Name), params)
-	case mode.Transport == pdmode.TransportUCX && onCards:
-		return messages.NewProductError(messages.ErrorPDNetworkHostRequired,
-			fmt.Sprintf("PD mode %s moves KV over UCX, which needs a host network; the group shares accelerator network %s", mode.Name, group.Network.Name), params)
 	case mode.Transport == pdmode.TransportMooncakeRDMA && group.Network.Type != netplan.TypeHostRDMA:
 		return messages.NewProductError(messages.ErrorPDNetworkRDMARequired,
 			fmt.Sprintf("PD mode %s moves KV over RDMA, so its nodes need a host RDMA compute network, even on one host; the group shares %q", mode.Name, group.Network.Name), params)
-	case sleepable && (mode.Transport == pdmode.TransportUCX || mode.Transport == pdmode.TransportMooncakeRDMA) && group.Network.Type == netplan.TypeHostRDMA:
+	case mode.Transport.OnHostNetwork() && onCards:
+		return messages.NewProductError(messages.ErrorPDNetworkHostRequired,
+			fmt.Sprintf("PD mode %s moves KV over %s, which needs a host network; the group shares accelerator network %s", mode.Name, mode.Transport, group.Network.Name), params)
+	case sleepable && mode.Transport.OnHostNetwork() && group.Network.Type == netplan.TypeHostRDMA:
 		return messages.NewProductError(messages.ErrorPDSleepRDMAUnsupported,
 			fmt.Sprintf("a sleepable PD deployment cannot move KV over RDMA network %s: the KV cache registered with the NIC cannot be allocated again after sleep; turn sleep off or use an Ethernet compute network", group.Network.Name), params)
 	}

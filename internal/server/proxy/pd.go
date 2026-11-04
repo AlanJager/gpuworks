@@ -26,6 +26,10 @@ const (
 	pdFallbackServerError   = "prefill_5xx"
 	pdFallbackNoKVParams    = "prefill_no_kv_params"
 	pdFallbackPrefillFailed = "prefill_failed"
+
+	// pdFallbackNoBootstrap: no prefill instance's bootstrap server reported
+	// every TP rank of it registered (pdmode.WireSequentialBootstrap).
+	pdFallbackNoBootstrap = "prefill_no_bootstrap"
 )
 
 // stripClientKVTransfer neutralises a client-supplied kv_transfer_params on

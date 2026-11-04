@@ -171,7 +171,7 @@ Queue, prefill and decode times are the original values reported by the engine i
 
 ### Prefill Child Spans for PD Disaggregation Deployments
 
-**Sequential handoff (`vllm-nixl`, `vllm-ascend-mooncake`)**: The request has an additional CLIENT child span, `pd.prefill`, from when the gateway sends the request to the prefill instance until it receives the response.
+**Sequential handoff (`vllm-nixl`, `vllm-ascend-mooncake`, `vllm-mooncake`)**: The request has an additional CLIENT child span, `pd.prefill`, from when the gateway sends the request to the prefill instance until it receives the response.
 
 - The child span's attributes include `gpuworks.pd.prefill_instance`, `gpuworks.pd.fallback`, and the prefill instance's reported `gen_ai.latency.time_in_queue` and `gen_ai.latency.time_in_model_prefill`.
 - The `traceparent` sent to the prefill instance uses this child span as its parent, while the one sent to the decode instance uses the gateway span. Spans exported by the two engines attach to these two respective locations.

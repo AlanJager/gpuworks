@@ -376,6 +376,7 @@
       "prefill_unreachable": "prefill 实例连不上",
       "prefill_5xx": "prefill 实例出错（5xx）",
       "prefill_no_kv_params": "prefill 实例没有返回 KV 交接参数",
+      "prefill_no_bootstrap": "prefill 实例的 bootstrap 服务不可用",
       "prefill_failed": "prefill 调用失败"
     },
     "deletedName": "{{name}}（已删除）",

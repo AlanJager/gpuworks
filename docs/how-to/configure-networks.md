@@ -138,7 +138,8 @@ A3/910C 的灵衢 HCCS 是独立于加速器 RoCE 的 HIXL 传输路径。节点
 PD 分离还按模式检查 KV 传输网络：
 
 - `vllm-ascend-mooncake` 跨机时必须使用加速器 RDMA 或加速器 HCCS 网络（`PD_NETWORK_ACCELERATOR_REQUIRED`）。
-- 走 UCX 的模式不能使用加速器 RDMA 网络（`PD_NETWORK_HOST_REQUIRED`）。
+- 走 UCX 或 Mooncake 传输引擎的模式（`vllm-nixl`、`sglang-nixl`、`vllm-mooncake`）不能使用加速器 RDMA 网络（`PD_NETWORK_HOST_REQUIRED`）。
+  `vllm-mooncake` 在主机 RDMA 网络上用 Mooncake 的 `rdma` 协议，其他网络用 `tcp`。
 - 可休眠的 PD 部署不能让 KV 走主机 RDMA 网络（`PD_SLEEP_RDMA_UNSUPPORTED`），创建时会拒绝；创建后再挂上 RDMA 网络，部署会停在无法调度并给出同一原因。普通多机部署经 RDMA 做集合通信不受此限制，见 [sleep / wake](sleep-wake.md) 的限制。
 
 具体变量与容器参数见[部署启动参数来源](../reference/deployment-launch-sources.md#拓扑)。
