@@ -8,7 +8,9 @@ import (
 	"os/user"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
+	"strings"
 	"syscall"
 	"testing"
 
@@ -18,10 +20,14 @@ import (
 // denyProtect makes every descriptor-based protection fail the way it does for
 // an operator whose shell has not yet picked up the service group, or for a
 // service account reading a root-owned snapshot.
-func denyProtect(t *testing.T) {
+// Paths listed in only are denied; with none, every path is.
+func denyProtect(t *testing.T, only ...string) {
 	t.Helper()
 	previous := protectFile
-	protectFile = func(path string, _ securefile.Policy) error {
+	protectFile = func(path string, policy securefile.Policy) error {
+		if len(only) > 0 && !slices.Contains(only, path) {
+			return previous(path, policy)
+		}
 		return &fs.PathError{Op: "open", Path: path, Err: syscall.EACCES}
 	}
 	t.Cleanup(func() { protectFile = previous })
@@ -97,7 +103,7 @@ func TestUnopenableSensitiveFileMustAlreadyMatchPolicy(t *testing.T) {
 	exposed := filepath.Join(layout.DataDir, "master.key")
 	writeSensitive(t, exposed, 0664)
 	denyProtect(t)
-	err := protectSensitiveFile(exposed, securefile.Policy{})
+	err := protectHandedOverFile(exposed, securefile.Policy{})
 	if err == nil || !errors.Is(err, os.ErrPermission) {
 		t.Fatalf("exposed key accepted without protection: %v", err)
 	}
@@ -107,7 +113,7 @@ func TestUnopenableSensitiveFileMustAlreadyMatchPolicy(t *testing.T) {
 	if err := os.Symlink(target, link); err != nil {
 		t.Fatal(err)
 	}
-	if err := protectSensitiveFile(link, securefile.Policy{}); err == nil {
+	if err := protectHandedOverFile(link, securefile.Policy{}); err == nil {
 		t.Fatal("verification followed a symlink")
 	}
 }
@@ -117,7 +123,7 @@ func TestStartupHardeningWarnsAboutSnapshotsItCannotProtect(t *testing.T) {
 	writeSensitive(t, filepath.Join(layout.DataDir, "master.key"), 0600)
 	backup := layout.BackupPath("v1", NewDeps(nil).now())
 	writeSensitive(t, backup, 0664)
-	denyProtect(t)
+	denyProtect(t, backup)
 
 	var warned []string
 	warn := func(path string, err error) {
@@ -132,13 +138,32 @@ func TestStartupHardeningWarnsAboutSnapshotsItCannotProtect(t *testing.T) {
 	if len(warned) != 1 || warned[0] != backup {
 		t.Fatalf("warned=%v, want only %s", warned, backup)
 	}
-	if err := HardenSensitiveFiles(layout, nil); err == nil {
+	if err := New(layout, Deps{}, nil).hardenSensitiveFiles(context.Background(), securefile.Policy{}); err == nil {
 		t.Fatal("installer-side hardening must still refuse an exposed snapshot")
 	}
 
-	writeSensitive(t, filepath.Join(layout.DataDir, "master.key"), 0664)
+	key := filepath.Join(layout.DataDir, "master.key")
+	writeSensitive(t, key, 0664)
+	denyProtect(t, key)
 	warned = nil
 	if err := HardenSensitiveFiles(layout, warn); err == nil {
 		t.Fatal("exposed credential was downgraded to a warning")
+	}
+}
+
+// The upgrade preflight and the backup writer go on to read these files, so
+// they must refuse up front, before the service is stopped, instead of
+// accepting a compliant file this process cannot open.
+func TestPreflightAndBackupRefuseCompliantFilesTheyCannotOpen(t *testing.T) {
+	layout := sensitiveLayout(t)
+	writeSensitive(t, filepath.Join(layout.DataDir, "master.key"), 0600)
+	denyProtect(t)
+	i := New(layout, Deps{}, nil)
+	err := i.preflightSensitiveFiles(context.Background())
+	if err == nil || !errors.Is(err, os.ErrPermission) || !strings.Contains(err.Error(), "retry install or upgrade") {
+		t.Fatalf("preflight accepted an unreadable credential: %v", err)
+	}
+	if err := hardenFilesWithPolicy(layout, securefile.Policy{}); err == nil {
+		t.Fatal("backup writer accepted an unreadable credential")
 	}
 }

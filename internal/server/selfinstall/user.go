@@ -75,7 +75,7 @@ func (i *Installer) chownTree(ctx context.Context, name string) error {
 		return i.chownOwnerOnly(ctx, name)
 	}
 	if name == "" || name == "root" {
-		return i.hardenSensitiveFiles(ctx, securefile.Policy{})
+		return i.hardenHandedOverFiles(ctx, securefile.Policy{})
 	}
 	roots, err := i.permissionRoots()
 	if err != nil {
@@ -108,7 +108,7 @@ func (i *Installer) chownTree(ctx context.Context, name string) error {
 			return err
 		}
 	}
-	return i.hardenSensitiveFiles(ctx, policy)
+	return i.hardenHandedOverFiles(ctx, policy)
 }
 
 // serviceGroup is explicit platform administration authority, independent of
@@ -176,7 +176,7 @@ func (i *Installer) chownOwnerOnly(ctx context.Context, name string) error {
 			return err
 		}
 	}
-	return i.hardenSensitiveFiles(ctx, securefile.Policy{})
+	return i.hardenHandedOverFiles(ctx, securefile.Policy{})
 }
 
 // addOperatorToGroup puts the operator into the service account's group, which

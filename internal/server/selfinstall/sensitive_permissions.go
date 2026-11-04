@@ -29,7 +29,7 @@ func HardenSensitiveFiles(layout Layout, warn func(path string, err error)) erro
 		return err
 	}
 	for _, path := range paths {
-		err := protectSensitiveFile(path, policy)
+		err := protectFile(path, policy)
 		if err != nil && warn != nil && errors.Is(err, os.ErrPermission) && isBackupPath(layout, path) {
 			warn(path, err)
 			continue
@@ -46,18 +46,19 @@ func hardenFilesWithPolicy(layout Layout, policy securefile.Policy) error {
 		return err
 	}
 	for _, path := range paths {
-		if err := protectSensitiveFile(path, policy); err != nil {
+		if err := protectFile(path, policy); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-// protectSensitiveFile hardens a file through an open descriptor. When this
-// process may not open or chmod it (a privileged chown just handed it to the
-// service account and this shell has not picked up the new group yet), a
-// file that already satisfies the policy is accepted after a no-follow check.
-func protectSensitiveFile(path string, policy securefile.Policy) error {
+// protectHandedOverFile is for files a privileged chown just handed to the
+// service account: this shell may not have picked up the new group yet, so a
+// file it may not open or chmod is accepted when a no-follow check shows it
+// already satisfies the policy. Paths that go on to read the files keep the
+// strict check so they refuse before changing anything.
+func protectHandedOverFile(path string, policy securefile.Policy) error {
 	err := protectFile(path, policy)
 	if err == nil || !errors.Is(err, os.ErrPermission) {
 		return err
@@ -210,6 +211,15 @@ func (i *Installer) preflightSensitiveFiles(ctx context.Context) error {
 }
 
 func (i *Installer) hardenSensitiveFiles(ctx context.Context, policy securefile.Policy) error {
+	return i.hardenWith(ctx, policy, protectFile)
+}
+
+// hardenHandedOverFiles finishes chownTree's privileged handoff.
+func (i *Installer) hardenHandedOverFiles(ctx context.Context, policy securefile.Policy) error {
+	return i.hardenWith(ctx, policy, protectHandedOverFile)
+}
+
+func (i *Installer) hardenWith(ctx context.Context, policy securefile.Policy, protect func(string, securefile.Policy) error) error {
 	paths, err := sensitivePaths(i.layout)
 	if err != nil {
 		return err
@@ -218,7 +228,7 @@ func (i *Installer) hardenSensitiveFiles(ctx context.Context, policy securefile.
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if err := protectSensitiveFile(path, policy); err != nil {
+		if err := protect(path, policy); err != nil {
 			// Protect changes the opened file descriptor. A privileged chmod or
 			// chgrp by pathname could follow a replacement symlink before any
 			// post-check, so retry the whole command with appropriate ownership.
