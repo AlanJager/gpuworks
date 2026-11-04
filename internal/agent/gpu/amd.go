@@ -184,6 +184,9 @@ func (p *AMDProber) inventoryRaw(ctx context.Context) ([]proto.GPUInfo, error) {
 		name := p.text(filepath.Join(path, "product_name"))
 		archID := p.archID(path)
 		if name == "" {
+			name = amdInstinctName(p.text(filepath.Join(path, "device")))
+		}
+		if name == "" {
 			name = "AMD GPU " + p.text(filepath.Join(path, "device"))
 			if archID != "" {
 				name += " (" + archID + ")"
