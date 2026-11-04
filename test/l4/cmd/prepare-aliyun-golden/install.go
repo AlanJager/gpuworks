@@ -143,14 +143,14 @@ sync`
 
 // bootedChecksCommand verifies a VM booted from the golden image: the model,
 // the runner image, Docker 29 with the nvidia runtime, the driver, and a
-// container that sees the GPU, from extraImage too when it is set. It prints
+// container that sees the GPU, from every extra image too. It prints
 // the evidence lines the L4 cases expect.
-func bootedChecksCommand(modelPath, image, extraImage string, removed []string) string {
+func bootedChecksCommand(modelPath, image string, extraImages, removed []string) string {
 	extra := ""
 	for _, gone := range removed {
 		extra += "\nif docker image inspect " + goldenimage.ShellQuote(gone) + " >/dev/null 2>&1; then echo " + goldenimage.ShellQuote("removed image "+gone+" is still present") + " >&2; exit 1; fi"
 	}
-	if extraImage != "" {
+	for _, extraImage := range extraImages {
 		extra += "\ndocker image inspect " + goldenimage.ShellQuote(extraImage) + " --format 'GPUWORKS_EXTRA_IMAGE {{.Id}} {{.Size}}'" +
 			"\ndocker run --rm --gpus all --entrypoint nvidia-smi " + goldenimage.ShellQuote(extraImage) + " -L"
 	}

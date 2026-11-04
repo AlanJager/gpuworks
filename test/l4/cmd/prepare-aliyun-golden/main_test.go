@@ -241,7 +241,7 @@ func TestPullImageCommandTriesMirrorsInOrderAndTagsTheCanonicalName(t *testing.T
 }
 
 func TestBootedChecksRequireModelImageRuntimeAndAGPUInAContainer(t *testing.T) {
-	command := bootedChecksCommand("/opt/gpuworks/test-fixtures/models/qwen2-0.5b", "gpustack/runner:cuda12.8-vllm0.17.1", "", nil)
+	command := bootedChecksCommand("/opt/gpuworks/test-fixtures/models/qwen2-0.5b", "gpustack/runner:cuda12.8-vllm0.17.1", nil, nil)
 	if strings.Contains(command, "GPUWORKS_EXTRA_IMAGE") {
 		t.Error("no extra image was asked for, yet the checks look for one")
 	}
@@ -257,7 +257,7 @@ func TestBootedChecksRequireModelImageRuntimeAndAGPUInAContainer(t *testing.T) {
 
 func TestBootedChecksCoverTheExtraImageInAGPUContainer(t *testing.T) {
 	const extra = "swr.example/gpuworks/gpuworks-runner:cuda12.8-v100-vllm1cat1.5.1-r1"
-	command := bootedChecksCommand("/opt/m", "gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2", extra, nil)
+	command := bootedChecksCommand("/opt/m", "gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2", []string{extra}, nil)
 	for _, want := range []string{
 		"docker image inspect '" + extra + "' --format 'GPUWORKS_EXTRA_IMAGE",
 		"docker run --rm --gpus all --entrypoint nvidia-smi '" + extra + "' -L",
@@ -283,7 +283,7 @@ func TestBuildStepsOnAnEarlierGoldenImageOnlyAddTheExtraImage(t *testing.T) {
 		t.Fatalf("fresh build phases = %s", got)
 	}
 	withExtra := base
-	withExtra.extraImage, withExtra.extraPullSources = "runner:v100", []string{"mirror/runner:v100", "runner:v100"}
+	withExtra.extraImages, withExtra.extraPullSources = []string{"runner:v100"}, []string{"mirror/runner:v100", "runner:v100"}
 	if got := phases(withExtra); got != "install-docker,pull-runner-image,prepare-model,pull-extra-image,validate-source" {
 		t.Fatalf("fresh build with an extra image phases = %s", got)
 	}
@@ -307,7 +307,7 @@ func TestBuildStepsOnAnEarlierGoldenImageOnlyAddTheExtraImage(t *testing.T) {
 
 func TestLayeredBuildRemovesRetiredImagesBeforeAddingTheNewOne(t *testing.T) {
 	o := options{modelPath: "/opt/m", dockerImage: "runner:v100", baseGolden: true,
-		extraImage: "runner:r4", extraPullSources: []string{"runner:r4"}, removeImages: []string{"runner:r2"}}
+		extraImages: []string{"runner:r4"}, extraPullSources: []string{"runner:r4"}, removeImages: []string{"runner:r2"}}
 	steps := buildSteps(o, nil)
 	var names []string
 	for _, step := range steps {
@@ -333,7 +333,7 @@ func TestLayeredBuildRemovesRetiredImagesBeforeAddingTheNewOne(t *testing.T) {
 func TestRemoveImagesNeedsALayeredBuildAndCannotDropAKeptImage(t *testing.T) {
 	t.Setenv("ALIYUN_ACCESS_KEY_ID", "id")
 	t.Setenv("ALIYUN_ACCESS_KEY_SECRET", "secret")
-	base := options{regions: []string{"cn-beijing"}, modelPath: "/opt/m", diskGB: 150, dockerImage: "runner:v100", extraImage: "runner:r4", removeImages: []string{"runner:r2"}}
+	base := options{regions: []string{"cn-beijing"}, modelPath: "/opt/m", diskGB: 150, dockerImage: "runner:v100", extraImages: []string{"runner:r4"}, removeImages: []string{"runner:r2"}}
 	if err := run(base); err == nil || !strings.Contains(err.Error(), "-remove-images needs -base-golden") {
 		t.Fatalf("fresh build with -remove-images: err = %v", err)
 	}
@@ -341,6 +341,39 @@ func TestRemoveImagesNeedsALayeredBuildAndCannotDropAKeptImage(t *testing.T) {
 	keep.baseGolden, keep.removeImages = true, []string{"runner:r4"}
 	if err := run(keep); err == nil || !strings.Contains(err.Error(), "must keep") {
 		t.Fatalf("removing the image being added: err = %v", err)
+	}
+}
+
+func TestSeveralExtraImagesArePulledFromTheMirrorsInOrder(t *testing.T) {
+	o := options{modelPath: "/opt/m", dockerImage: "runner:v100", baseGolden: true,
+		extraImages: []string{"runner:r4", "runner:cu129"}, extraMirrors: []string{"swr.example/", "quay.example"}}
+	steps := buildSteps(o, nil)
+	var names []string
+	for _, step := range steps {
+		names = append(names, step.phase)
+	}
+	if got := strings.Join(names, ","); got != "validate-base,pull-extra-image,pull-extra-image,validate-source" {
+		t.Fatalf("phases = %s", got)
+	}
+	for i, image := range o.extraImages {
+		pull := steps[1+i].command
+		swr, quay, own := strings.Index(pull, "docker pull 'swr.example/"+image+"'"), strings.Index(pull, "docker pull 'quay.example/"+image+"'"), strings.Index(pull, "docker pull '"+image+"'")
+		if swr < 0 || quay < swr || own < quay {
+			t.Errorf("%s must be tried from swr, then quay, then its own name:\n%s", image, pull)
+		}
+	}
+	final := steps[3].command
+	for _, image := range o.extraImages {
+		if !strings.Contains(final, "docker run --rm --gpus all --entrypoint nvidia-smi '"+image+"' -L") {
+			t.Errorf("final check does not run %s on the GPU", image)
+		}
+	}
+	t.Setenv("ALIYUN_ACCESS_KEY_ID", "id")
+	t.Setenv("ALIYUN_ACCESS_KEY_SECRET", "secret")
+	bad := o
+	bad.regions, bad.diskGB, bad.extraPullSources = []string{"cn-beijing"}, 150, []string{"x/runner:r4"}
+	if err := run(bad); err == nil || !strings.Contains(err.Error(), "single -extra-image") {
+		t.Fatalf("-extra-pull-sources with two images: err = %v", err)
 	}
 }
 
