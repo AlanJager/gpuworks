@@ -589,3 +589,57 @@ test("create serializes all effective values displayed by evaluate", async () =>
     gpu_memory_utilization: 0.9,
   });
 });
+
+// The deployer clears a number and pauses before typing the new one. The
+// answer to the cleared draft carries the field's default; written into the
+// focused control it would be spliced into what is typed next (4, then "0",
+// gives 40). It waits until the control loses focus.
+function installCpuOffloadDefault() {
+  return installEvaluate((request) => {
+    const quick = quickParams(request);
+    return {
+      ok: true,
+      form_values: {
+        dtype: "auto",
+        gpu_memory_utilization: 0.9,
+        cpu_offload_gb: Object.hasOwn(quick, "cpu_offload_gb") ? quick.cpu_offload_gb : 4,
+      },
+    } as never;
+  });
+}
+
+async function clearAndLetTheAnswerArrive(requests: Record<string, unknown>[]) {
+  const user = (await import("@testing-library/user-event")).default.setup({
+    document: dom.window.document,
+  });
+  const cpuOffload = screen.getByRole("spinbutton", { name: "CPU weight offload" }) as HTMLInputElement;
+  await waitFor(() => assert.equal(cpuOffload.value, "4"));
+  const before = requests.length;
+  await user.clear(cpuOffload);
+  // The pause: the cleared draft is evaluated and answered before any typing.
+  await waitFor(() => {
+    assert.ok(requests.length > before);
+    assert.equal(Object.hasOwn(quickParams(requests.at(-1)!), "cpu_offload_gb"), false);
+    assert.equal(getHarnessContext().evaluation.evaluating, false);
+  });
+  return { user, cpuOffload };
+}
+
+test("an answer does not write a default into the number the deployer is retyping", async () => {
+  const requests = installCpuOffloadDefault();
+  mountEvaluationHarness();
+  const { user, cpuOffload } = await clearAndLetTheAnswerArrive(requests);
+  assert.equal(cpuOffload.value, "", "the default must not land in the focused control");
+  await user.type(cpuOffload, "0");
+  await waitFor(() => assert.equal(quickParams(requests.at(-1)!).cpu_offload_gb, 0));
+  assert.equal(cpuOffload.value, "0");
+});
+
+test("a number left empty shows the server's value once its control loses focus", async () => {
+  const requests = installCpuOffloadDefault();
+  mountEvaluationHarness();
+  const { user, cpuOffload } = await clearAndLetTheAnswerArrive(requests);
+  assert.equal(cpuOffload.value, "");
+  await user.tab();
+  await waitFor(() => assert.equal(cpuOffload.value, "4"));
+});

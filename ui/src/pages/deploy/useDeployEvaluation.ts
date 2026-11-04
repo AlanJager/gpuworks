@@ -40,6 +40,22 @@ const listControlFields = new Set(["container_mount_rows", "pd"]);
 // never gives a control at all (e.g. engine, quick_params_unset) - checking
 // the live form registration, rather than hard-coding every such field,
 // covers both without drifting out of sync as the form changes.
+// controlHasFocus reports whether the deployer is typing in the control of a
+// form field: antd's field instance is the input itself (Switch), or carries
+// its root as nativeElement (InputNumber, Input) or the input as input.
+function controlHasFocus(form: FormInstance, name: string): boolean {
+  const active = typeof document === "undefined" ? null : document.activeElement;
+  if (!active || active === document.body) return false;
+  const instance: unknown = form.getFieldInstance(name);
+  if (!instance || typeof instance !== "object") return false;
+  const refs = instance as Partial<{ nativeElement: Element; input: Element }>;
+  const root =
+    typeof Element !== "undefined" && instance instanceof Element
+      ? instance
+      : (refs.nativeElement ?? refs.input);
+  return Boolean(root && root.contains(active));
+}
+
 function hasRenderedControl(form: FormInstance, name: string): boolean {
   return (
     listControlFields.has(name) || form.getFieldInstance(name) !== undefined
@@ -89,6 +105,8 @@ export default function useDeployEvaluation({
   const appliedKeysRef = useRef<string[]>([]);
   const quickParamsRef = useRef(new EvaluateQuickParams());
   const flaggedFieldsRef = useRef<string[]>([]);
+  // Keys an answer skipped because their control had focus.
+  const deferredRef = useRef<string[]>([]);
 
   const invalidate = (message: string | null) => {
     abortRef.current?.abort();
@@ -181,7 +199,12 @@ export default function useDeployEvaluation({
           // restored by explicit discard. Keep its keys and quick-param origins.
           if (!manual && applyFormValues()) {
             quickParamsRef.current.accept(response);
-            applyEvaluateFormValues(form, response, previousKeys);
+            deferredRef.current = applyEvaluateFormValues(
+              form,
+              response,
+              previousKeys,
+              (key) => controlHasFocus(form, key),
+            );
             // Early errors contain no display instruction; keep previous keys
             // so the next successful answer can clear them.
             if (response.form_values)
@@ -213,6 +236,24 @@ export default function useDeployEvaluation({
     }, 400);
     return () => clearTimeout(timer);
   }, [signal, reevaluateSeq]);
+
+  // A skipped key takes the server's display value once the deployer leaves
+  // its control: evaluate the draft again then, through the ordinary path.
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const onFocusOut = () => {
+      if (!deferredRef.current.length) return;
+      // focusout fires before focus moves; read the new focus next turn.
+      setTimeout(() => {
+        const still = deferredRef.current.filter((key) => controlHasFocus(form, key));
+        if (still.length === deferredRef.current.length) return;
+        deferredRef.current = still;
+        setReevaluateSeq((seq) => seq + 1);
+      }, 0);
+    };
+    document.addEventListener("focusout", onFocusOut);
+    return () => document.removeEventListener("focusout", onFocusOut);
+  }, [form]);
 
   useEffect(() => () => abortRef.current?.abort(), []);
 

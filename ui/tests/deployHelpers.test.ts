@@ -948,7 +948,25 @@ test("the display instruction clears stale keys and preserves disabled tier draf
     32,
     "the tier card position governs the key, not the response",
   );
-  assert.equal(applyEvaluateFormValues(form, null, []), undefined);
+  assert.deepEqual(applyEvaluateFormValues(form, null, []), [], "no answer defers no field");
+});
+
+test("the display instruction skips the controls being typed in and returns them", () => {
+  const values: Record<string, unknown> = { cpu_offload_gb: null, gpu_memory_utilization: 0.8, dtype: "auto" };
+  const form = {
+    setFieldsValue: (next: Record<string, unknown>) => Object.assign(values, next),
+    getFieldsValue: () => ({ ...values }),
+  };
+  const deferred = applyEvaluateFormValues(
+    form,
+    { form_values: { cpu_offload_gb: 4, gpu_memory_utilization: 0.9 } } as never,
+    ["dtype"],
+    (key) => key === "cpu_offload_gb" || key === "dtype",
+  );
+  assert.deepEqual(deferred.sort(), ["cpu_offload_gb", "dtype"]);
+  assert.equal(values.cpu_offload_gb, null, "a focused control keeps what the deployer left in it");
+  assert.equal(values.dtype, "auto", "a stale key is not cleared under the deployer's cursor either");
+  assert.equal(values.gpu_memory_utilization, 0.9, "other fields still take the answer");
 });
 
 test("a shared memory size is sent in bytes and an empty or zero size is not sent", () => {
