@@ -383,38 +383,45 @@
     },
     {
       "item": "17.1",
-      "status": "MISSING",
-      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+      "status": "N/A",
+      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed",
+      "assertion": "no chart loading, empty, error or stale state exists on the deployments list. N/A: this case drives the deployments list and its replica actions, and that page draws no chart. DeploymentsPage.tsx is six Buttons, two Tags, one Select and one Modal with no echarts, no Statistic, no Timeline and no canvas; the only Progress in the deployments surfaces is the per-file preparation bar in DeploymentPreparation.tsx:59, which this case does not open, and the chart component section 17 describes lives at ui/src/pages/analytics/EChart.tsx, imported by no deployments page."
     },
     {
       "item": "17.2",
-      "status": "MISSING",
-      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+      "status": "N/A",
+      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed",
+      "assertion": "there is no series, query parameter, time range, aggregation or unit to check. N/A: this case drives the deployments list and its replica actions, and that page draws no chart. DeploymentsPage.tsx is six Buttons, two Tags, one Select and one Modal with no echarts, no Statistic, no Timeline and no canvas; the only Progress in the deployments surfaces is the per-file preparation bar in DeploymentPreparation.tsx:59, which this case does not open, and the chart component section 17 describes lives at ui/src/pages/analytics/EChart.tsx, imported by no deployments page."
     },
     {
       "item": "17.3",
-      "status": "MISSING",
-      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+      "status": "N/A",
+      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed",
+      "assertion": "there is no legend, tooltip or time control, and no series to link them to. N/A: this case drives the deployments list and its replica actions, and that page draws no chart. DeploymentsPage.tsx is six Buttons, two Tags, one Select and one Modal with no echarts, no Statistic, no Timeline and no canvas; the only Progress in the deployments surfaces is the per-file preparation bar in DeploymentPreparation.tsx:59, which this case does not open, and the chart component section 17 describes lives at ui/src/pages/analytics/EChart.tsx, imported by no deployments page."
     },
     {
       "item": "17.4",
-      "status": "MISSING",
-      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+      "status": "N/A",
+      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed",
+      "assertion": "there is no chart response that a later response could overwrite. N/A: this case drives the deployments list and its replica actions, and that page draws no chart. DeploymentsPage.tsx is six Buttons, two Tags, one Select and one Modal with no echarts, no Statistic, no Timeline and no canvas; the only Progress in the deployments surfaces is the per-file preparation bar in DeploymentPreparation.tsx:59, which this case does not open, and the chart component section 17 describes lives at ui/src/pages/analytics/EChart.tsx, imported by no deployments page."
     },
     {
       "item": "17.5",
-      "status": "MISSING",
-      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+      "status": "N/A",
+      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed",
+      "assertion": "no card maps a metric to an authoritative source, because no metric card exists here. N/A: this case drives the deployments list and its replica actions, and that page draws no chart. DeploymentsPage.tsx is six Buttons, two Tags, one Select and one Modal with no echarts, no Statistic, no Timeline and no canvas; the only Progress in the deployments surfaces is the per-file preparation bar in DeploymentPreparation.tsx:59, which this case does not open, and the chart component section 17 describes lives at ui/src/pages/analytics/EChart.tsx, imported by no deployments page."
     },
     {
       "item": "17.6",
-      "status": "MISSING",
-      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+      "status": "N/A",
+      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed",
+      "assertion": "no timeline widget is drawn; replica state transitions are asserted from the deployment record and its instances, not from a timeline. N/A: this case drives the deployments list and its replica actions, and that page draws no chart. DeploymentsPage.tsx is six Buttons, two Tags, one Select and one Modal with no echarts, no Statistic, no Timeline and no canvas; the only Progress in the deployments surfaces is the per-file preparation bar in DeploymentPreparation.tsx:59, which this case does not open, and the chart component section 17 describes lives at ui/src/pages/analytics/EChart.tsx, imported by no deployments page."
     },
     {
       "item": "17.7",
-      "status": "MISSING",
-      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+      "status": "N/A",
+      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed",
+      "assertion": "there is no chart axis, series label or unit rendering whose size, overlap or colour could be measured. N/A: this case drives the deployments list and its replica actions, and that page draws no chart. DeploymentsPage.tsx is six Buttons, two Tags, one Select and one Modal with no echarts, no Statistic, no Timeline and no canvas; the only Progress in the deployments surfaces is the per-file preparation bar in DeploymentPreparation.tsx:59, which this case does not open, and the chart component section 17 describes lives at ui/src/pages/analytics/EChart.tsx, imported by no deployments page."
     },
     {
       "item": "22.1",
