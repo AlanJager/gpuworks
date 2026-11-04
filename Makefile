@@ -160,6 +160,7 @@ test-host-env-adapters:
 .PHONY: test-inference-template-assets
 test-inference-template-assets:
 	python3 -B -m unittest discover -s build/inference-templates/glm53-910c -p 'test_*.py'
+	python3 -B -m unittest discover -s test/runtime-wrapper-assets -p '*_test.py'
 
 .PHONY: test-strata-queue-assets
 test-strata-queue-assets:

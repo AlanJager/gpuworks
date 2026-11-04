@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/agent/runtime"
+	"gpuworks.ai/gpuworks/internal/engines"
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/pkg/enginelog"
 )
@@ -57,6 +58,14 @@ func (e *Engine) probeAndReport(ctx context.Context, spec proto.InstanceDesiredS
 		resp, err := client.Do(req)
 		if err == nil {
 			readiness, decodeErr := readEngineReadiness(resp)
+			if spec.Engine == engines.Callable && decodeErr == nil {
+				if failure := callableStartupFailure(resp, readiness); failure != "" {
+					if ctx.Err() == nil {
+						e.failAfterContainer(ctx, spec, failure)
+					}
+					return false
+				}
+			}
 			ready := resp.StatusCode == http.StatusOK
 			if ready && readiness.Service == "strata" {
 				ready = decodeErr == nil && readiness.Loaded != nil && *readiness.Loaded
