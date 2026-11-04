@@ -276,7 +276,8 @@
     "Non-admin permissions, authentication expiry and reconnect",
     "Full keyboard/focus/layout and 10/30/100 candidate/list matrices",
     "Held handler, external cleanup timeout and persistent filesystem failure matrices remain MISSING; dedicated selftests run actual main for successful baseline, context/browser close failure, first/finally report write failure, screenshot failure and failed context setup",
-    "Each run covers one --locale; both locales require separate reports"
+    "Each run covers one --locale; both locales require separate reports",
+    "Product defect, recorded and not repaired here: data_parallel_size is a published parameter spec with Group parallel and flags for both engines (--data-parallel-size on vLLM, --dp-size on sglang), the server injects and validates it (DATA_PARALLEL_GPU_COUNT, plus the sglang DATA_PARALLEL_ATTENTION_DIVISOR check) and the localizations exist, but no UI surface renders a control for it - ui/src matches data_parallel_size zero times, and parallel is the only parameter group with no consumer among the four group lists the draft steps draw from, while every other group is read by one of them. The value is projected into the request body when present, so only the input control is missing. Data parallel size is therefore settable through the API but not through the interface."
   ],
   "not_applicable_sections": {
     "4": "No URL/path entry is exercised in the deployment draft; fixture paths are prepared through APIs.",
