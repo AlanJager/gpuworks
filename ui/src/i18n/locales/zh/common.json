@@ -850,11 +850,7 @@
     "seconds": "秒",
     "unsupported": "这个模型不提供对话或向量接口，无法检查",
     "save": "保存",
-    "saved": "健康检查已更新",
-    "waitingForReplica": "等待副本就绪",
-    "waitingForReplicaHelp": "副本运行后才会发送健康检查。模型加载和引擎预热可能需要几分钟。",
-    "waitingForHealthCheck": "等待下一次健康检查",
-    "waitingForHealthCheckHelp": "已有副本就绪；状态会在下一次定时探测后更新。"
+    "saved": "健康检查已更新"
   },
   "tokenize": {
     "title": "分词 API",
@@ -906,7 +902,6 @@
     "commit": "Commit：{{commit}}",
     "channel": "构建渠道：{{channel}}"
   },
-  "gpuClock": "GPU 时钟频率",
   "acceleratorFeature": {
     "unsupported": "{{vendor}} 不支持{{feature}}。请关闭此能力或选择其他加速卡。",
     "names": {

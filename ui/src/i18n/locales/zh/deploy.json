@@ -567,10 +567,7 @@
       "weights": "权重",
       "multimodal": "多模态编码器",
       "reserve": "引擎预留",
-      "kvPool": "KV pool（估算）",
-      "kvPoolAvailable": "可用 KV pool",
-      "configuredAttentionKV": "已配置注意力 KV",
-      "mambaState": "Mamba 状态（{{slots}} 个槽，每槽 {{perSlot}} GiB）"
+      "kvPool": "KV pool（估算）"
     },
     "title": "显存分配（每 GPU）",
     "measuredCalibration": "实测校准",
@@ -582,18 +579,13 @@
     "actualTotal": "实际测得占用：{{value}} GiB",
     "utilization": "（利用率 {{value}}%）",
     "confidence": "估算置信度：{{value}}",
-    "hybridFitIncomplete": "启动适配结果不完整：当前估算未完整建模 SGLang 循环状态和辅助缓冲区。",
-    "hybridStateUnknown": "Mamba 状态大小或缓存槽数未知，因此不估算 KV token 容量和并发数。",
-    "hybridEstimateIncomplete": "Mamba 状态按配置的缓存槽上限估算；其他引擎缓冲区未建模，因此不提供并发数。",
     "partitionCapacity": "dGPU 上限 {{value}} GiB",
     "kvPoolSummary": "KV pool {{value}} GiB · 预计 {{tokens}} tokens",
-    "kvPoolConfiguredSummary": "可用 KV pool {{available}} GiB · 配置的 attention KV 预算 {{configured}} GiB，约 {{tokens}} tokens",
     "measuredKvSummary": "KV pool {{value}} GiB · 引擎启动时报告 {{tokens}} tokens",
     "kvReason": {
       "kv_no_measurement": "该模型没有实测的 KV 开销",
       "kv_startup_exceeds_capacity": "去掉 KV cache 也放不下",
       "kv_not_applicable": "该模型没有 KV cache",
-      "kv_hybrid_state_unknown": "Mamba 状态大小或缓存槽数未知",
       "unknown": "未给出原因"
     },
     "kvPoolUnavailable": "KV pool {{value}} GiB · 暂无法估算 token 容量（{{reason}}）",

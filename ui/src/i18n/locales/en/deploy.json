@@ -567,10 +567,7 @@
       "weights": "Weights",
       "multimodal": "Multimodal Encoder",
       "reserve": "Engine Reserve",
-      "kvPool": "KV pool (estimated)",
-      "kvPoolAvailable": "Available KV pool",
-      "configuredAttentionKV": "Configured attention KV",
-      "mambaState": "Mamba state ({{slots}} slots, {{perSlot}} GiB/slot)"
+      "kvPool": "KV pool (estimated)"
     },
     "title": "VRAM Allocation (per GPU)",
     "measuredCalibration": "Measured Calibration",
@@ -582,18 +579,13 @@
     "actualTotal": "Actual measured usage: {{value}} GiB",
     "utilization": "(utilization {{value}}%)",
     "confidence": "Estimate confidence: {{value}}",
-    "hybridFitIncomplete": "Startup fit is incomplete: the estimate does not fully model SGLang recurrent state and auxiliary buffers.",
-    "hybridStateUnknown": "Mamba state size or cache slots are unknown, so KV token capacity and concurrency are not estimated.",
-    "hybridEstimateIncomplete": "Mamba state uses the configured cache-slot limit; additional engine buffers are not modeled, so concurrency is unavailable.",
     "partitionCapacity": "dGPU limit {{value}} GiB",
     "kvPoolSummary": "KV pool {{value}} GiB · estimated {{tokens}} tokens",
-    "kvPoolConfiguredSummary": "Available KV pool {{available}} GiB · configured attention-KV budget {{configured}} GiB for {{tokens}} tokens",
     "measuredKvSummary": "KV pool {{value}} GiB · {{tokens}} tokens reported by the engine at startup",
     "kvReason": {
       "kv_no_measurement": "no measured KV cost for this model",
       "kv_startup_exceeds_capacity": "it does not fit even before the KV cache",
       "kv_not_applicable": "this model keeps no KV cache",
-      "kv_hybrid_state_unknown": "Mamba state size or cache slots are unknown",
       "unknown": "reason not reported"
     },
     "kvPoolUnavailable": "KV pool {{value}} GiB · token capacity unavailable ({{reason}})",

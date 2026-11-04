@@ -31,7 +31,6 @@
   "metric": {
     "utilization": "利用率",
     "gpuUtilization": "GPU 利用率",
-    "gpuClock": "GPU 时钟频率",
     "vram": "显存",
     "vramUsage": "显存使用",
     "temperature": "温度",

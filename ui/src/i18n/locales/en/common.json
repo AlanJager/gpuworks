@@ -850,11 +850,7 @@
     "seconds": "s",
     "unsupported": "This model serves neither chat nor embeddings, so it cannot be checked",
     "save": "Save",
-    "saved": "Health check updated",
-    "waitingForReplica": "Waiting for a ready replica",
-    "waitingForReplicaHelp": "No health check is sent until a replica is running. Model loading and engine warm-up can take several minutes.",
-    "waitingForHealthCheck": "Waiting for the next health check",
-    "waitingForHealthCheckHelp": "A replica is ready. Its health status will update after the next scheduled probe."
+    "saved": "Health check updated"
   },
   "tokenize": {
     "title": "Tokenize API",
@@ -906,7 +902,6 @@
     "commit": "Commit: {{commit}}",
     "channel": "Build channel: {{channel}}"
   },
-  "gpuClock": "GPU clock",
   "acceleratorFeature": {
     "unsupported": "{{vendor}} does not support {{feature}}. Choose a supported feature or select another accelerator.",
     "names": {

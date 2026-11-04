@@ -174,14 +174,6 @@ The catalog therefore supplies these model facts in the package. ModelScope and 
 
 `kv_cache: false` is a catalog extension declaration, not an original `config.json` field. “Not applicable” means the model is known not to require a KV cache; it must not be confused with missing configuration or measured data. See [Model-Level Fields](inference-catalog-spec.md#模型级字段) for complete field constraints.
 
-### State budgets for SGLang hybrid-attention models
-
-SGLang allocates its linear-attention/Mamba state separately from attention KV. GPUWorks estimates the base state pool per GPU only when the model supplies complete layer types, `linear_num_key_heads`, `linear_num_value_heads`, `linear_key_head_dim`, `linear_value_head_dim`, and `linear_conv_kernel_dim`, and the effective launch command explicitly sets `--max-mamba-cache-size`. `mamba_ssm_dtype` selects the SSM state precision; an omitted value uses SGLang's float32 default, while convolution state uses its bfloat16 default. The state pool includes one extra padding slot allocated by the engine. Cache slots are not request concurrency.
-
-The capacity estimate subtracts the base state budget before sizing attention KV. An explicit `--max-total-tokens` caps token capacity; the UI distinguishes available KV space from the configured budget corresponding to that limit. Unknown geometry or cache limits produce an incomplete estimate without unproven token capacity or concurrency. Even with known base state, auxiliary, speculative-decoding and checkpoint buffers may consume more memory, so the hybrid estimate remains incomplete and must be checked against real engine logs.
-
-This correction is limited to SGLang and preserves vLLM's existing KV layout estimate. It neither adds dynamic KV/state pools to static scheduler startup admission nor makes diagnostic template limits global defaults. A known fixed startup-memory shortfall is still reported separately.
-
 ### Maintaining and Validating These Facts
 
 The maintenance tool is `cmd/gpuworks-catalog-model-config`:
