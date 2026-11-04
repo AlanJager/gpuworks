@@ -14,11 +14,11 @@ func TestAMDHostRequirementsPreserveBothDeviceRuntimes(t *testing.T) {
 	for _, host := range []HostRuntime{
 		{OS: "darwin", Arch: "amd64", Driver: "docker"},
 		{OS: "linux", Arch: "arm64", Driver: "docker"},
-		{OS: "linux", Arch: "amd64", Driver: "udocker"},
+		{OS: "linux", Arch: "amd64", Driver: "host"},
 		{OS: "linux", Arch: "amd64", Driver: ""},
 	} {
 		got := RuntimeMismatchParams(VendorAMD, host)
-		if got == nil || got["required_runtime"] != "docker/nerdctl" || got["required_os"] != "linux" || got["runtime"] != host.Driver {
+		if got == nil || got["required_runtime"] != "docker/nerdctl/udocker" || got["required_os"] != "linux" || got["runtime"] != host.Driver {
 			t.Fatalf("missing host refusal facts: %v", got)
 		}
 	}
@@ -41,7 +41,7 @@ func TestAMDRuntimeDistinguishesMissingFactsFromKnownMismatch(t *testing.T) {
 		{"no facts", HostRuntime{}, true},
 		{"missing runtime", HostRuntime{OS: "linux", Arch: "amd64"}, true},
 		{"missing OS", HostRuntime{Arch: "amd64", Driver: "docker"}, true},
-		{"unsupported runtime", HostRuntime{OS: "linux", Arch: "amd64", Driver: "udocker"}, false},
+		{"unsupported runtime", HostRuntime{OS: "linux", Arch: "amd64", Driver: "host"}, false},
 		{"known mismatch with missing fact", HostRuntime{OS: "darwin", Arch: "amd64"}, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

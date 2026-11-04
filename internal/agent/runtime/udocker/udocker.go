@@ -522,7 +522,7 @@ func (d *Driver) containerRunArgs(spec runtime.WorkloadSpec) []string {
 // nvidia-smi, the accelerator device nodes, and a short-path /tmp.
 func (d *Driver) workloadMounts(spec runtime.WorkloadSpec) []runtime.Mount {
 	mounts := append([]runtime.Mount(nil), spec.Mounts...)
-	if d.nvidiaSMIPath != "" && !isDomesticSpec(spec) && !hasMountTarget(mounts, "/usr/bin/nvidia-smi") {
+	if d.nvidiaSMIPath != "" && !isNonNVIDIASpec(spec) && !hasMountTarget(mounts, "/usr/bin/nvidia-smi") {
 		// The NVIDIA setup exposes devices and driver libraries, but not the
 		// host utility. SGLang invokes nvidia-smi during argument validation
 		// to determine memory capacity, before CUDA initialization starts.

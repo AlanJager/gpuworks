@@ -208,3 +208,19 @@ func TestRunEnvWithoutContainerKeepsPlatformLibraryPath(t *testing.T) {
 		t.Fatalf("LD_LIBRARY_PATH = %q, want %q", got, platformLibraryPath)
 	}
 }
+
+// A ROCm workload pinned by ROCR_VISIBLE_DEVICES gets none of the NVIDIA shim
+// environment: CUDA_VISIBLE_DEVICES=<host index> would hide the card from HIP,
+// which numbers the cards it enumerates itself.
+func TestRunEnvLeavesAMDSelectionToROCm(t *testing.T) {
+	d := &Driver{}
+	env := d.runEnv(runtime.WorkloadSpec{GPUIndexes: []int{1}, Env: map[string]string{"ROCR_VISIBLE_DEVICES": "GPU-bbdb6c523df10b7d"}})
+	for _, key := range []string{"CUDA_VISIBLE_DEVICES", "TRITON_LIBCUDA_PATH", "NCCL_SOCKET_IFNAME", libraryPathEnv} {
+		if _, ok := env[key]; ok {
+			t.Fatalf("AMD runveil env carries %s=%q: %v", key, env[key], env)
+		}
+	}
+	if env["ROCR_VISIBLE_DEVICES"] != "GPU-bbdb6c523df10b7d" {
+		t.Fatalf("selection lost: %v", env)
+	}
+}

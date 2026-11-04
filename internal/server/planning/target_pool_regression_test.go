@@ -15,7 +15,7 @@ func TestTargetPoolRefusalIsLocalAndIndependentOfNodeOrder(t *testing.T) {
 	for _, reverse := range []bool{false, true} {
 		t.Run(fmt.Sprint(reverse), func(t *testing.T) {
 			nodes := []store.Node{
-				{UUID: "broken", GPUVendor: "amd", OS: "linux", Arch: "amd64", RuntimeDriver: "udocker", GPUs: []store.GPU{{Index: 0, Vendor: "amd", Name: "MI300X"}}},
+				{UUID: "broken", GPUVendor: "amd", OS: "linux", Arch: "amd64", RuntimeDriver: "host", GPUs: []store.GPU{{Index: 0, Vendor: "amd", Name: "MI300X"}}},
 				{UUID: "healthy", GPUVendor: "amd", OS: "linux", Arch: "amd64", RuntimeDriver: "docker", GPUs: []store.GPU{{Index: 0, Vendor: "amd", Name: "MI300X"}}},
 			}
 			if reverse {
@@ -205,16 +205,16 @@ func TestTargetPoolVerdictCacheSeparatesShapes(t *testing.T) {
 		return &store.Node{UUID: uuid, GPUVendor: "amd", OS: "linux", Arch: "amd64", RuntimeDriver: driver, GPUs: gpus}
 	}
 	// The refused shape comes first so a shape-blind cache would leak it.
-	if got := reasonCode(refusal(node("udocker", "udocker", "gfx942"))); got != scheduler.ReasonRuntimeUnsupported {
-		t.Fatalf("udocker node verdict = %q, want %s", got, scheduler.ReasonRuntimeUnsupported)
+	if got := reasonCode(refusal(node("hostproc", "host", "gfx942"))); got != scheduler.ReasonRuntimeUnsupported {
+		t.Fatalf("host-process node verdict = %q, want %s", got, scheduler.ReasonRuntimeUnsupported)
 	}
 	for i := 0; i < 50; i++ {
 		if got := reasonCode(refusal(node(fmt.Sprint("ok-", i), "docker", "gfx942"))); got != "" {
 			t.Fatalf("compatible node %d refused: %s", i, got)
 		}
 	}
-	if got := reasonCode(refusal(node("udocker-2", "udocker", "gfx942"))); got != scheduler.ReasonRuntimeUnsupported {
-		t.Fatalf("second udocker node verdict = %q", got)
+	if got := reasonCode(refusal(node("hostproc-2", "host", "gfx942"))); got != scheduler.ReasonRuntimeUnsupported {
+		t.Fatalf("second host-process node verdict = %q", got)
 	}
 }
 

@@ -191,6 +191,11 @@ func (p *AMDProber) runtimeInjectionForDriver(indexes []int, driver string, ctx 
 	seen := map[int]bool{}
 	renderSeen := map[string]bool{}
 	args := []string{"--device", "/dev/kfd:/dev/kfd:rwm"}
+	// runveil binds the host's whole /dev and /sys, so HIP enumerates every
+	// card; ROCR_VISIBLE_DEVICES pins the selection by ROCm's stable GPU
+	// UUID (GPU-<unique_id>) rather than by an ordinal that depends on KFD
+	// enumeration order.
+	var pinned []string
 	for _, index := range indexes {
 		if seen[index] {
 			return fail(fmt.Sprintf("duplicate device %d", index))
@@ -212,6 +217,13 @@ func (p *AMDProber) runtimeInjectionForDriver(indexes []int, driver string, ctx 
 		}
 		if old.PCIeBDF != current.PCIeBDF || old.UUID != current.UUID {
 			return fail(fmt.Sprintf("device %d PCI or GPU identity changed", index))
+		}
+		if driver == "udocker" {
+			id, ok := strings.CutPrefix(current.UUID, "amd-")
+			if !ok || normalizeAMDUniqueID(id) == "" {
+				return fail(fmt.Sprintf("device %d has no unique_id; runveil cannot pin it", index))
+			}
+			pinned = append(pinned, fmt.Sprintf("GPU-%016s", normalizeAMDUniqueID(id)))
 		}
 		paths, err := p.match(filepath.Join("/sys/bus/pci/devices", current.PCIeBDF, "drm/renderD*"))
 		if err != nil {
@@ -254,5 +266,13 @@ func (p *AMDProber) runtimeInjectionForDriver(indexes []int, driver string, ctx 
 			DevicePaths:   p.dockerDevicePathsUnset(inventory),
 		},
 		DockerArgs: args,
+		Env:        amdPinnedEnv(pinned),
 	}
+}
+
+func amdPinnedEnv(pinned []string) map[string]string {
+	if len(pinned) == 0 {
+		return nil
+	}
+	return map[string]string{"ROCR_VISIBLE_DEVICES": strings.Join(pinned, ",")}
 }
