@@ -2,6 +2,7 @@
 // and import React Testing Library and the components dynamically afterwards,
 // so the globals exist before antd reads them.
 import fs from "node:fs";
+import { afterEach } from "node:test";
 import { JSDOM } from "jsdom";
 import { createInstance } from "i18next";
 import { initReactI18next } from "react-i18next";
@@ -36,6 +37,45 @@ class ShimPort {
 }
 class ShimMessageChannel { port1 = new ShimPort(); port2 = new ShimPort(); }
 Object.defineProperty(globalThis, "MessageChannel", { value: ShimMessageChannel, configurable: true });
+
+// jsdom has no requestAnimationFrame, so zrender (ECharts) falls back to
+// setTimeout(16). A progressive layer (the analytics heat map) paints at most
+// 15 ms per frame and schedules the next one; on a loaded machine a paint is
+// still pending when the test ends, cleanup disposes the chart, and the
+// pending frame then reads the disposed painter ("Cannot read properties of
+// null (reading 'layerStack')"), which node:test reports against the test
+// that just finished. Frames belong to the test that scheduled them: once it
+// ends they are dropped. Installed before ECharts is imported, since zrender
+// binds requestAnimationFrame when its module loads.
+let frameGeneration = 0;
+const pendingFrames = new Map<number, ReturnType<typeof setTimeout>>();
+let nextFrame = 0;
+Object.defineProperties(dom.window, {
+  requestAnimationFrame: {
+    configurable: true,
+    value: (callback: (time: number) => void) => {
+      const id = ++nextFrame;
+      const generation = frameGeneration;
+      pendingFrames.set(id, setTimeout(() => {
+        pendingFrames.delete(id);
+        if (generation === frameGeneration) callback(performance.now());
+      }, 16));
+      return id;
+    },
+  },
+  cancelAnimationFrame: {
+    configurable: true,
+    value: (id: number) => {
+      clearTimeout(pendingFrames.get(id));
+      pendingFrames.delete(id);
+    },
+  },
+});
+/** Frames scheduled and not yet run (or dropped); a test can wait for 0. */
+export const pendingFrameCount = () => pendingFrames.size;
+afterEach(() => {
+  frameGeneration += 1;
+});
 
 /** Loads the real English locale files of the given namespaces (common is always included). */
 export async function createI18n(namespaces: string[], lng: "en" | "zh" = "en") {
