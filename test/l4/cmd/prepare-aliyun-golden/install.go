@@ -112,6 +112,20 @@ if [ "$ok" != %[2]s ]; then docker tag "$ok" %[2]s; fi
 docker image inspect %[2]s --format 'GPUWORKS_RUNNER_IMAGE {{.Id}} {{.Size}}'`, attempts.String(), goldenimage.ShellQuote(image))
 }
 
+// removeImagesCommand deletes images of an earlier golden image together with
+// every other tag of the same image ID (the registry-mirror name it was pulled
+// under), then drops the dangling layers so the snapshot does not keep them.
+func removeImagesCommand(images []string) string {
+	var b strings.Builder
+	b.WriteString("set -eu\n")
+	for _, image := range images {
+		q := goldenimage.ShellQuote(image)
+		fmt.Fprintf(&b, "if id=$(docker image inspect --format '{{.Id}}' %[1]s 2>/dev/null); then\n  docker image rm -f \"$id\"\n  echo GPUWORKS_REMOVED_IMAGE %[1]s \"$id\"\nelse\n  echo GPUWORKS_REMOVED_IMAGE %[1]s absent\nfi\n", q)
+	}
+	b.WriteString("docker image prune -f >/dev/null\ndf -h / | tail -1")
+	return b.String()
+}
+
 // finishCommand quiesces the VM for the snapshot: Docker stopped (no layer
 // writes in flight), caches and shell history dropped, filesystem synced. It
 // leaves cloud-init and the SSH host keys alone: Alibaba Cloud injects the
@@ -131,10 +145,13 @@ sync`
 // the runner image, Docker 29 with the nvidia runtime, the driver, and a
 // container that sees the GPU, from extraImage too when it is set. It prints
 // the evidence lines the L4 cases expect.
-func bootedChecksCommand(modelPath, image, extraImage string) string {
+func bootedChecksCommand(modelPath, image, extraImage string, removed []string) string {
 	extra := ""
+	for _, gone := range removed {
+		extra += "\nif docker image inspect " + goldenimage.ShellQuote(gone) + " >/dev/null 2>&1; then echo " + goldenimage.ShellQuote("removed image "+gone+" is still present") + " >&2; exit 1; fi"
+	}
 	if extraImage != "" {
-		extra = "\ndocker image inspect " + goldenimage.ShellQuote(extraImage) + " --format 'GPUWORKS_EXTRA_IMAGE {{.Id}} {{.Size}}'" +
+		extra += "\ndocker image inspect " + goldenimage.ShellQuote(extraImage) + " --format 'GPUWORKS_EXTRA_IMAGE {{.Id}} {{.Size}}'" +
 			"\ndocker run --rm --gpus all --entrypoint nvidia-smi " + goldenimage.ShellQuote(extraImage) + " -L"
 	}
 	return "set -eu\n" + goldenimage.ValidationCommand(modelPath, image, "") + extra + `

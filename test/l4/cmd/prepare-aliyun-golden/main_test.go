@@ -241,7 +241,7 @@ func TestPullImageCommandTriesMirrorsInOrderAndTagsTheCanonicalName(t *testing.T
 }
 
 func TestBootedChecksRequireModelImageRuntimeAndAGPUInAContainer(t *testing.T) {
-	command := bootedChecksCommand("/opt/gpuworks/test-fixtures/models/qwen2-0.5b", "gpustack/runner:cuda12.8-vllm0.17.1", "")
+	command := bootedChecksCommand("/opt/gpuworks/test-fixtures/models/qwen2-0.5b", "gpustack/runner:cuda12.8-vllm0.17.1", "", nil)
 	if strings.Contains(command, "GPUWORKS_EXTRA_IMAGE") {
 		t.Error("no extra image was asked for, yet the checks look for one")
 	}
@@ -257,7 +257,7 @@ func TestBootedChecksRequireModelImageRuntimeAndAGPUInAContainer(t *testing.T) {
 
 func TestBootedChecksCoverTheExtraImageInAGPUContainer(t *testing.T) {
 	const extra = "swr.example/gpuworks/gpuworks-runner:cuda12.8-v100-vllm1cat1.5.1-r1"
-	command := bootedChecksCommand("/opt/m", "gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2", extra)
+	command := bootedChecksCommand("/opt/m", "gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2", extra, nil)
 	for _, want := range []string{
 		"docker image inspect '" + extra + "' --format 'GPUWORKS_EXTRA_IMAGE",
 		"docker run --rm --gpus all --entrypoint nvidia-smi '" + extra + "' -L",
@@ -302,6 +302,45 @@ func TestBuildStepsOnAnEarlierGoldenImageOnlyAddTheExtraImage(t *testing.T) {
 	}
 	if !strings.Contains(steps[2].command, "GPUWORKS_EXTRA_IMAGE") || !strings.Contains(imageDescription(layered), "runner:v100") {
 		t.Error("the final check and the image description must name the extra image")
+	}
+}
+
+func TestLayeredBuildRemovesRetiredImagesBeforeAddingTheNewOne(t *testing.T) {
+	o := options{modelPath: "/opt/m", dockerImage: "runner:v100", baseGolden: true,
+		extraImage: "runner:r4", extraPullSources: []string{"runner:r4"}, removeImages: []string{"runner:r2"}}
+	steps := buildSteps(o, nil)
+	var names []string
+	for _, step := range steps {
+		names = append(names, step.phase)
+	}
+	if got := strings.Join(names, ","); got != "validate-base,remove-images,pull-extra-image,validate-source" {
+		t.Fatalf("phases = %s (the old runner must go before the new one is pulled)", got)
+	}
+	remove := steps[1].command
+	for _, want := range []string{"docker image inspect --format '{{.Id}}' 'runner:r2'", "docker image rm -f \"$id\"", "docker image prune -f"} {
+		if !strings.Contains(remove, want) {
+			t.Errorf("remove step lacks %q:\n%s", want, remove)
+		}
+	}
+	if strings.Contains(steps[0].command, "runner:r2") {
+		t.Error("the base check must not depend on the image about to be removed")
+	}
+	if final := steps[3].command; !strings.Contains(final, "if docker image inspect 'runner:r2'") || !strings.Contains(final, "still present") {
+		t.Errorf("the final check must fail when the removed image is still there:\n%s", final)
+	}
+}
+
+func TestRemoveImagesNeedsALayeredBuildAndCannotDropAKeptImage(t *testing.T) {
+	t.Setenv("ALIYUN_ACCESS_KEY_ID", "id")
+	t.Setenv("ALIYUN_ACCESS_KEY_SECRET", "secret")
+	base := options{regions: []string{"cn-beijing"}, modelPath: "/opt/m", diskGB: 150, dockerImage: "runner:v100", extraImage: "runner:r4", removeImages: []string{"runner:r2"}}
+	if err := run(base); err == nil || !strings.Contains(err.Error(), "-remove-images needs -base-golden") {
+		t.Fatalf("fresh build with -remove-images: err = %v", err)
+	}
+	keep := base
+	keep.baseGolden, keep.removeImages = true, []string{"runner:r4"}
+	if err := run(keep); err == nil || !strings.Contains(err.Error(), "must keep") {
+		t.Fatalf("removing the image being added: err = %v", err)
 	}
 }
 
