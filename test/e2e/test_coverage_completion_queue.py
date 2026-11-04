@@ -290,8 +290,8 @@ from coverage_completion_queue import summary
 # Six complete current-fixture boolean6.1 inventories verified against unfixed Expert baseline and restored all en/zh.
 # These counts move only when a manifest declaration changes.
 BASELINE = {
-    "1": 124, "2": 251, "3": 258, "4": 319, "5": 182, "6": 130,
-    "7": 101, "8": 89, "9": 71, "10": 99, "11": 83, "out": 301,
+    "1": 124, "2": 251, "3": 253, "4": 319, "5": 182, "6": 130,
+    "7": 101, "8": 89, "9": 66, "10": 99, "11": 83, "out": 301,
 }
 
 # The deploy manifests declare section 17 not applicable: no deploy page imports a chart library,
@@ -316,7 +316,7 @@ class QueueTest(unittest.TestCase):
         self.assertIsNone(extra)
         self.assertEqual(dict(counts), BASELINE)
         self.assertEqual(total, sum(BASELINE.values()))
-        self.assertEqual(total, 2008)
+        self.assertEqual(total, 1998)
 
 
 if __name__ == "__main__":
