@@ -991,10 +991,114 @@ def test_platform_token_option(page, context, server, artifacts, report, locale,
           + [{"method": "POST", "path": TOKEN_PATH}] * posts + [{"method": "DELETE", "path": delete_path}],
           "extra token mutations")
     check(not errors, "browser errors: " + str(errors))
+    # 12.7's last two halves, after the strict mutation list above so that list keeps describing
+    # only the writes this case drives through the UI.
+    exercise_revoke_impact(page, server, platform, report["run_id"], report["evidence"])
     check(page.evaluate("document.documentElement.scrollWidth <= innerWidth"), "horizontal overflow")
     page.screenshot(path=artifacts.directory / "revoked.png")
     report["evidence"].append({"layer": "cleanup", "method": "DELETE", "path": delete_path, "status": 204,
         "get_after_reload": "empty", "revoked_bearer_get_and_post": 401, "inference_keys": "unchanged baseline", "mutations": mutations})
+
+
+def exercise_revoke_impact(page, server, platform, run_id, evidence):
+    """12.7 items 3 and 4 for the platform token, whose revoke is a real removal.
+
+    Item 3 (a reference blocks deletion) has no object on this resource. deletePlatformToken
+    (internal/server/api/platform_tokens.go:81) maps an invalid id, a not-found row and an
+    internal error, and nothing in the in-use family; errors.go defines SERVED_NAME_IN_USE,
+    MODEL_IN_USE, IMAGE_IN_USE and STORAGE_IN_USE for four other resources and never
+    TOKEN_IN_USE. A token is a credential, not a referenced object, so nothing could be checked
+    before removing it - that is the resource's contract, not untested ground.
+
+    Item 4 has two halves and both are measured here. The allowed removal is checked against the
+    server's own set rather than a fixed total, because eight combinations each leave their own
+    rows behind: the revoked id must be absent and the set must shrink by exactly one. The failed
+    half revokes an id that does not exist, requires 404, and then makes a live token actually
+    authenticate - which is stronger than comparing fields, because Store.DeletePlatformToken
+    (internal/server/store/platform_tokens.go:129) drops the row and then calls
+    platformTokens.forget on the way out, so a failed removal that walked through that branch and
+    cached the eviction would break a bystander credential that no field comparison would notice.
+    """
+    made = None
+    witness_id = None
+    witness_secret = None
+    try:
+        def create(name):
+            response = page.request.post(server.base + TOKEN_PATH,
+                                         data={"name": name, "scope": "read"})
+            check(response.status in (200, 201),
+                  f"12.7 fixture token HTTP {response.status}")
+            body = response.json()
+            # The create answers {"token": <plaintext>, "item": {...}}; the plaintext is shown
+            # once and is what a real caller authenticates with.
+            item = body.get("item") or {}
+            ident = item.get("id")
+            secret = body.get("token")
+            check(isinstance(ident, int) and ident > 0, '12.7 fixture token has no id')
+            check(bool(secret), '12.7 fixture token has no plaintext to authenticate with')
+            return ident, secret
+
+        made, _ = create(f'e2e-{run_id}-127-target')
+        witness_id, witness_secret = create(f'e2e-{run_id}-127-witness')
+
+        before = {row['id'] for row in collection(page.request.get(server.base + TOKEN_PATH))}
+        check(made in before and witness_id in before,
+              'the 12.7 fixtures are not both listed before the removal')
+
+        witness_before = next(row for row in collection(page.request.get(server.base + TOKEN_PATH))
+                              if row['id'] == witness_id)
+
+        removed = page.request.delete(server.base + f'{TOKEN_PATH}/{made}')
+        check(removed.status == 204, f"removing the target token HTTP {removed.status}")
+
+        after = {row['id'] for row in collection(page.request.get(server.base + TOKEN_PATH))}
+        check(made not in after, 'the removed token is still listed')
+        check(len(after) == len(before) - 1,
+              f'the token set went {len(before)} -> {len(after)}, expected exactly one fewer')
+        check(witness_id in after, 'removing one token took the bystander with it')
+
+        # --- item 4, a failed revoke leaves nothing half-applied
+        missing = page.request.delete(server.base + f'{TOKEN_PATH}/999999')
+        check(missing.status == 404, f"revoking a missing token HTTP {missing.status}")
+
+        after_failed = {row['id'] for row in collection(page.request.get(server.base + TOKEN_PATH))}
+        check(after_failed == after,
+              'a failed revoke changed the token set')
+
+        # The bystander must still authenticate with its own plaintext. This catches an eviction
+        # cache that a field comparison cannot see.
+        authenticated = http(server.base, "GET", "/api/v1/nodes", witness_secret)
+        witness_authenticates = authenticated[0] == 200
+        check(witness_authenticates,
+              f"a bystander token stopped authenticating after a failed revoke: "
+              f"{authenticated[0]} {str(authenticated[1])[:160]}")
+
+        witness_after = next(row for row in collection(page.request.get(server.base + TOKEN_PATH))
+                             if row['id'] == witness_id)
+        fields_unchanged = all(witness_after.get(key) == witness_before.get(key)
+                               for key in ('name', 'scope', 'expires_at', 'created_at'))
+
+        evidence.append({'layer': 'runtime', 'failed_revoke_leaves_no_partial_change': {
+            'missing_revoke_status': 404,
+            'witness_id': witness_id,
+            'witness_authenticates_after': witness_authenticates,
+            'witness_fields_unchanged': fields_unchanged,
+            'token_set_before': len(before),
+            'token_set_after_removal': len(after),
+            'token_set_after_failed_revoke': len(after_failed),
+        }})
+        evidence.append({'layer': 'request', 'revoke_with_live_credential': {
+            'target_id': made,
+            'remove_status': 204,
+            'absent_after': made not in after,
+            'set_shrank_by': len(before) - len(after),
+            'bystander_survived': witness_id in after,
+            'reference_block_absent': 'no in-use error exists for this resource',
+        }})
+    finally:
+        for ident in (made, witness_id):
+            if ident:
+                page.request.delete(server.base + f'{TOKEN_PATH}/{ident}')
 
 
 def main():
