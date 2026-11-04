@@ -760,6 +760,122 @@ def exercise_duplicate_import(page, labels, data, report, server, token):
     return report['duplicate_import']
 
 
+def exercise_cancel_transfer(page, labels, data, server, token, report, storage):
+    """16.5 first clause: withdraw a live transfer from its own row and prove it stopped."""
+    report['step'] = '16.5 cancel a real in-flight transfer and verify it actually terminated'
+    hub = data['hub']
+    # The source holds the weight mid-response, so the transfer is genuinely still running
+    # when the operator cancels it instead of having finished a moment earlier.
+    hub.interrupt_next_weight(65536, hold=True)
+    mark = len(hub.audit())
+    download(page, labels, data, storage, report, server=server, token=token)
+    poll(page, lambda: hub.wait_interrupted(0), 'real partial-send barrier before the cancel')
+    interrupted = next(record for record in hub.audit()[mark:] if record['interrupted'])
+    checked(interrupted['bytes_sent'] == 65536 and not interrupted['complete'],
+            'the transfer held for the cancel test was not cut inside the weight file')
+
+    def in_flight():
+        current = document(server, token, data)
+        report['last_model_observation'] = current
+        row = presence(current, data, storage)
+        return row if row and row['state'] == 'downloading' and 0 < row['downloaded'] < row['size_bytes'] else None
+    moving = poll(page, in_flight, 'in-flight transfer to cancel')
+    part = Path(storage['payload_path']) / 'model.safetensors.part'
+    checked(part.is_file() and not part.is_symlink(), 'no real partial file to keep for a retry')
+    detail = open_detail(page, server, labels, data)
+    row = detail.locator('#model-files').locator('tr.ant-table-row')
+    expect(row).to_have_count(1)
+    expect(row.get_by_text(labels['presence']['downloading'], exact=True)).to_be_visible()
+    trigger = button(row, labels['presenceAction']['cancelDownload'])
+    expect(trigger).to_have_count(1)
+    frozen = presence(document(server, token, data), data, storage)
+    checked(frozen['state'] == 'downloading' and frozen['downloaded'] == moving['downloaded'],
+            'the held transfer advanced before the operator canceled it')
+    trigger.click()
+    confirm = labels['presenceAction']['cancelDownloadConfirm']
+    popup = page.locator('.ant-popconfirm').filter(has=page.get_by_text(confirm, exact=True))
+    expect(popup.get_by_text(confirm, exact=True)).to_be_visible()
+    cancel_path = MODELS + '/' + str(data['model']['id']) + '/download/cancel'
+    cancel_body = {'storage_id': storage['id'], 'node_uuid': data['node']['uuid']}
+    before = len(report['mutations'])
+    response = mutation(page, report, button(popup, labels['presenceAction']['cancelDownload']).click,
+                        'POST', cancel_path, cancel_body, 200)
+    # One request, and no other mutation rides along: the control withdraws the task it belongs to.
+    strict(report['mutations'][before:],
+           [{'method': 'POST', 'path': cancel_path, 'query': '', 'body': cancel_body}],
+           'the cancel control sent exactly one cancel request and nothing else')
+    strict(response.json().get('state'), 'canceled', 'the cancel answered a state other than canceled')
+    expect(page.locator('.ant-message').get_by_text(labels['presenceMessage']['downloadCanceled'],
+                                                    exact=True)).to_be_visible()
+    canceled = wait_state(page, server, token, data, storage, 'canceled', report)
+    checked(canceled['acquisition'] == 'download', 'the canceled row lost its download identity')
+    strict(canceled['message'], 'Download canceled by user', 'the canceled row lost the withdrawal reason')
+    expect(row.get_by_text(labels['presence']['canceled'], exact=True)).to_be_visible()
+    expect(row.get_by_text(canceled['message'], exact=True)).to_be_visible()
+    # The independent read agrees with the page, and the bytes the row had already reported
+    # are neither zeroed nor inflated to the finished total by the withdrawal.
+    checked(canceled['downloaded'] == frozen['downloaded'] and canceled['size_bytes'] == frozen['size_bytes'],
+            'canceling rewrote the bytes the in-flight transfer had already reported')
+    checked(0 < canceled['downloaded'] < canceled['size_bytes'],
+            'the canceled row renders its progress as empty or as a finished transfer')
+    # Withdrawing the row is a request to the writer, not a label change on the server. The cancel
+    # route delivers the stop to the agent before it answers, so the stop has already been applied
+    # when the response above arrived. The source keeps holding the chunk for a moment longer and is
+    # then released, which tears the held socket down under the agent: a transfer that was merely
+    # relabelled sees a broken response and asks the source again for the missing bytes, while one
+    # that was really stopped has already left its worker and issues nothing.
+    stopped_mark = len(hub.audit())
+    page.wait_for_timeout(1500)
+    hub.release()
+    page.wait_for_timeout(5000)
+    arrived = hub.audit()[stopped_mark:]
+    checked(arrived == [], f'the canceled transfer kept asking the source for bytes: {arrived}')
+    settled = presence(document(server, token, data), data, storage)
+    checked(settled['state'] == 'canceled', 'the canceled row left the canceled state after the task stopped')
+    weight = len(hub.files['model.safetensors'])
+    # The bytes already on disk are the reason the transfer is canceled instead of deleted: the
+    # partial file has to survive the withdrawal so a Retry can continue it. The chunk writer
+    # preallocates the full size and fills chunks out of order, so the file is not a prefix and
+    # neither existence nor a nonzero count proves resumable data. Instead every byte the transfer
+    # did write has to be the source's own byte at that offset - any other value would be a hole or
+    # garbage passed off as downloaded - and the finished name must not exist, so the cancel did not
+    # quietly publish a sparse file as a completed model.
+    checked(part.is_file() and not part.is_symlink(),
+            'the partial file the cancel dialog promises to keep for a retry was deleted')
+    body_on_disk = part.read_bytes()
+    strict(len(body_on_disk), weight, 'the kept partial is not the resumable weight file')
+    payload = hub.files['model.safetensors']
+    foreign = [index for index, (kept, source) in enumerate(zip(body_on_disk, payload))
+               if kept and kept != source]
+    checked(foreign == [], f'bytes the transfer wrote are not the source payload at those offsets: {foreign[:8]}')
+    kept_bytes = sum(1 for byte in body_on_disk if byte)
+    checked(kept_bytes > 0, 'the kept partial holds no payload bytes at all')
+    checked(not (Path(storage['payload_path']) / 'model.safetensors').exists(),
+            'the canceled transfer left a finished weight file behind')
+    report['cancel_transfer'] = {'state': canceled['state'], 'message': canceled['message'],
+        'downloaded': canceled['downloaded'], 'size_bytes': canceled['size_bytes'],
+        'kept_part_bytes': len(body_on_disk), 'kept_part_written': kept_bytes,
+        'kept_part_foreign': len(foreign), 'finished_weight_absent': True,
+        'requests_after_stop': len(arrived), 'window_ms': 5000,
+        'state_after_window': settled['state'], 'cancel_body': cancel_body, 'status': response.status}
+    # Test hygiene, not a contract claim: the canceled row and its kept bytes are reclaimed so
+    # the flows that follow start from a storage with no replica on it.
+    path = f"{MODELS}/{data['model']['id']}/nodes/{data['node']['uuid']}"
+    code, reclaimed = http(server.base, 'DELETE', path + '?storage_id=' + str(storage['id']), token)
+    checked(code == 200, f'clearing the canceled row HTTP {code}')
+    # The reclaim answers with the bytes the server still attributes to that row, which is the
+    # row the cancel withdrew: the withdrawal kept the data and did not lose its byte accounting.
+    checked(isinstance(reclaimed, dict), 'the cancel reclaim answered no eviction body')
+    strict(reclaimed.get('physical_bytes'), canceled['downloaded'],
+           'the withdrawn row no longer accounts for the bytes it had reported')
+    poll(page, lambda: not Path(storage['payload_path']).exists(), 'canceled payload directory absent')
+    checked(presence(document(server, token, data), data, storage) is None,
+            'the canceled row survived the eviction used to reclaim it')
+    if detail.is_visible():
+        close_detail(page, labels, data)
+    return report['cancel_transfer']
+
+
 # Mainline: the same directory is imported twice, then a real source503 fails the row and the
 # same row's public Retry recovers it; two owned replicas download, cancel-delete is refused,
 # only the target is deleted, and the guard bytes plus model metadata survive.
@@ -767,6 +883,10 @@ def exercise_download_delete(page, context, server, artifacts, report, locale, d
     labels = begin(page, context, server, artifacts, report, locale, data)
     hub, target, guard = data['hub'], data['storages'][0], data['storages'][1]
     exercise_duplicate_import(page, labels, data, report, server, token)
+    # 16.5, first clause: a live transfer is withdrawn from its own row, and the withdrawal is
+    # verified against the task rather than against the toast. It runs on the target storage and
+    # reclaims it, so the download flows below start from a storage with no replica on it.
+    exercise_cancel_transfer(page, labels, data, server, token, report, target)
     # 16.4, server-failure half: the repository refuses the weight with a real 503, the row has to
     # reach the failed state carrying the exact cause, and the same row's public Retry has to
     # finish the transfer as the one resource it already was.
@@ -933,6 +1053,10 @@ def exercise_failure_retry(page, context, server, artifacts, report, locale, dat
     # storage so the rest of this case still starts from a clean target.
     download(page, labels, data, data['storages'][1], report, server=server, token=token, refuse=True,
              shell=True, stop_only=True)
+    # 16.5, first clause: a live transfer is withdrawn from its own row, and the withdrawal is
+    # verified against the task rather than against the toast. It runs before the failed transfer
+    # below and reclaims its storage, so that flow starts from an empty storage.
+    exercise_cancel_transfer(page, labels, data, server, token, report, target)
     # 1.2: the two write states this page can be in that a healthy fixture never produces - no writable
     # storage at all, and one storage that cannot be written next to one that can.
     trigger = page.get_by_role('row').filter(
@@ -1000,6 +1124,10 @@ def exercise_failure_retry(page, context, server, artifacts, report, locale, dat
 def exercise_interrupted_recovery(page, context, server, artifacts, report, locale, data, token, holder):
     labels = begin(page, context, server, artifacts, report, locale, data)
     hub, target = data['hub'], data['storages'][0]
+    # 16.5, first clause: a live transfer is withdrawn from its own row, and the withdrawal is
+    # verified against the task rather than against the toast. It reclaims its storage, so the
+    # resume flow below starts from a storage with no replica on it.
+    exercise_cancel_transfer(page, labels, data, server, token, report, target)
     hub.interrupt_next_weight(65536, hold=True)
     start = len(hub.audit())
     download(page, labels, data, target, report, server=server, token=token, refuse=True, shell=True)
@@ -1073,7 +1201,7 @@ def exercise_interrupted_recovery(page, context, server, artifacts, report, loca
     checked(any(r['target'] == broken['target'] and r['range'] == expected_range and r['complete']
                 and r['status'] == 206 for r in records[broken_index+1:]),
             'automatic resume did not request the exact next unsent byte to the same chunk end')
-    checked(len(report['mutations']) == 2, 'resume added a mutation or the refused download was not sent')
+    checked(len(report['mutations']) == 4, 'resume added a mutation or the refused download was not sent')
     report['interrupted_recovery'] = {'held_state': moving, 'interrupted': broken,
         'resumed_range': expected_range, 'automatic': True, 'part_removed': not part.exists()}
     checked(not part.exists() and not Path(str(part) + '.state').exists(), 'successful download left partial/state')
