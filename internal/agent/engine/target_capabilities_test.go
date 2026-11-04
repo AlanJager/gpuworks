@@ -49,6 +49,35 @@ func TestAMDTargetDesiredRejectsEmptyDeviceSelection(t *testing.T) {
 	}
 }
 
+// AMD requires explicit device selection like any other whole-device vendor,
+// but also owns a memory-only logical partition backend of its own: a quota
+// naming amd-dgpu is accepted once a device is selected, a quota naming a
+// different vendor's backend (or none, which defaults to NVIDIA's) is still
+// refused as a whole-device contract, and a compute/SM limit is refused
+// regardless of backend, because AMD exposes no such control.
+func TestAMDTargetDesiredAcceptsItsOwnMemoryPartitionButNotOthers(t *testing.T) {
+	e := NewWithProber(&headlessTestDriver{name: "docker"}, nil, nil, t.TempDir(), &gpu.AMDProber{})
+	spec := proto.InstanceDesiredState{GPUIndexes: []int{0}, VRAMLimitBytes: 60000 << 20, PartitionBackend: accelerator.BackendAMDLogical}
+	if err := e.validateTargetDesired(spec); err != nil {
+		t.Fatalf("AMD's own memory partition contract was refused: %v", err)
+	}
+	foreign := spec
+	foreign.PartitionBackend = accelerator.BackendNVIDIALogical
+	if err := e.validateTargetDesired(foreign); err == nil || !strings.Contains(err.Error(), "whole-device partition contract") {
+		t.Fatalf("a foreign partition backend was accepted: %v", err)
+	}
+	legacyDefault := spec
+	legacyDefault.PartitionBackend = ""
+	if err := e.validateTargetDesired(legacyDefault); err == nil || !strings.Contains(err.Error(), "whole-device partition contract") {
+		t.Fatalf("a quota with no named backend (implicit NVIDIA default) was accepted: %v", err)
+	}
+	smLimited := spec
+	smLimited.SMLimitPct = 50
+	if err := e.validateTargetDesired(smLimited); err == nil || !strings.Contains(err.Error(), "compute/SM limit") {
+		t.Fatalf("a compute/SM limit was accepted on AMD: %v", err)
+	}
+}
+
 func TestTargetDesiredDoesNotParseLaunchArguments(t *testing.T) {
 	e := NewWithProber(&headlessTestDriver{name: "docker"}, nil, nil, t.TempDir(), &gpu.AMDProber{})
 	spec := proto.InstanceDesiredState{GPUIndexes: []int{2}, ResolvedLaunch: proto.ResolvedLaunch{Argv: []string{"vllm", "serve", "--pipeline-parallel-size", "2"}}}

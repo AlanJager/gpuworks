@@ -71,8 +71,22 @@ func (e *Engine) validateTargetDesiredForDriver(spec proto.InstanceDesiredState,
 	if accelerator.RequiresDeviceSelection(vendor) && len(spec.GPUIndexes) == 0 {
 		return fmt.Errorf("%s requires an explicit nonempty GPU selection", accelerator.VendorBrand(vendor))
 	}
-	if accelerator.RequiresDeviceSelection(vendor) && (spec.PartitionBackend != "" || spec.VRAMLimitBytes != 0 || (spec.SMLimitPct != 0 && spec.SMLimitPct != 100)) {
-		return fmt.Errorf("%s requires a whole-device partition contract", accelerator.VendorBrand(vendor))
+	if accelerator.RequiresDeviceSelection(vendor) {
+		// A vendor that requires explicit device selection may still have a
+		// memory-only logical partition backend of its own (AMD's
+		// amd-dgpu/libvrocm.so): a quota is accepted only when it names
+		// exactly that backend, never a whole-device contract borrowed from
+		// another vendor and never a compute/SM limit, which no such backend
+		// currently exposes.
+		if spec.SMLimitPct != 0 && spec.SMLimitPct != 100 {
+			return fmt.Errorf("%s does not support a compute/SM limit", accelerator.VendorBrand(vendor))
+		}
+		if spec.PartitionBackend != "" || spec.VRAMLimitBytes != 0 {
+			backend, ok := accelerator.Lookup(spec.PartitionBackend)
+			if !ok || !backend.Matches(vendor, "") {
+				return fmt.Errorf("%s requires a whole-device partition contract", accelerator.VendorBrand(vendor))
+			}
+		}
 	}
 	return nil
 }

@@ -85,6 +85,7 @@ var partitionInjectors = map[string]partitionInjector{
 	accelerator.BackendAscendLogical: ascendPartitionInjector{},
 	accelerator.BackendPPULogical:    ppuPartitionInjector{},
 	accelerator.BackendHygonLogical:  hygonPartitionInjector{},
+	accelerator.BackendAMDLogical:    amdPartitionInjector{},
 }
 
 func (e *Engine) applyPartition(ctx context.Context, ws *agentruntime.WorkloadSpec, spec proto.InstanceDesiredState) (bool, string) {
