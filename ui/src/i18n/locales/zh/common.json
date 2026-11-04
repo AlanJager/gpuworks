@@ -564,7 +564,7 @@
   },
   "navigation": {
     "groups": {
-      "inference": "推理服务",
+      "inference": "推理",
       "models": "模型",
       "compute": "算力资源",
       "observability": "监控与分析",

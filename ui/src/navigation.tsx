@@ -12,8 +12,6 @@ export interface NavItem {
   labelKey: string;
   /** Other first path segments filed under this entry, e.g. the create page of a list. */
   also?: string[];
-  /** The entry is named after its group, so its own page shows no section crumb. */
-  namesGroup?: boolean;
 }
 
 export interface NavGroup {
@@ -40,7 +38,7 @@ export const navGroups: NavGroup[] = [
   ] },
   { labelKey: "navigation.groups.inference", items: [
     // Deploying is the list's create action, so /deploy highlights the list.
-    { key: "/deployments", icon: <RocketOutlined />, labelKey: "navigation.deployments", also: ["deploy"], namesGroup: true },
+    { key: "/deployments", icon: <RocketOutlined />, labelKey: "navigation.deployments", also: ["deploy"] },
     { key: "/batches", icon: <InboxOutlined />, labelKey: "navigation.batches" },
     { key: "/playground/chat", icon: <ExperimentOutlined />, labelKey: "navigation.playground" },
     { key: "/evaluations", icon: <FundOutlined />, labelKey: "navigation.evaluations" },
@@ -78,16 +76,9 @@ export function navItemForPath(pathname: string) {
   return undefined;
 }
 
-/**
- * sectionLabelKey is the breadcrumb's section: the entry's group. It is absent
- * for the overview, which sits above the groups, and under an entry named
- * after its group: the list's own page would repeat its title, and its other
- * pages (the deploy page) link back to the list by that same name instead.
- */
+/** sectionLabelKey is the breadcrumb's section: the entry's group, absent for the overview, which sits above the groups. */
 export function sectionLabelKey(pathname: string) {
-  const placed = navItemForPath(pathname);
-  if (!placed || placed.item.namesGroup) return undefined;
-  return placed.group.labelKey;
+  return navItemForPath(pathname)?.group.labelKey;
 }
 
 /**

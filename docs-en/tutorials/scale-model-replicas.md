@@ -73,7 +73,7 @@ If the status remains **1 of 2 running**, first check that the second node is on
 
 ## 3. Send Concurrent Requests and Check Both Replicas
 
-1. Open **Inference Services → Evaluations**, click **New Evaluation**, and select **Parameter Sweep** under **Choose Question**.
+1. Open **Inference → Evaluations**, click **New Evaluation**, and select **Parameter Sweep** under **Choose Question**.
 2. Under **Set Target**, enter:
 
 | Field | Value |

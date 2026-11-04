@@ -204,19 +204,33 @@ test("sorting a column asks the server to order every row, not just the page", a
   await waitFor(() => assert.equal(server.queries.at(-1)?.sort, undefined));
 });
 
+// The header always offers to create a deployment, so the empty state is
+// checked on its own: it offers creating only when there is nothing at all.
+const createButton = (scope: HTMLElement) => within(scope).queryByRole("button", { name: new RegExp(`${deploymentsLocale.page.create}$`) });
+const emptyState = (description: string) => screen.getByText(description).closest(".empty-state") as HTMLElement;
+const pageHeader = () => document.querySelector(".page-header") as HTMLElement;
+
+test("the header offers to create a deployment, whatever the list holds", async () => {
+  renderPage(fakeServer(fleet).serve);
+  await screen.findByText("svc-45");
+  assert.ok(createButton(pageHeader()));
+});
+
 test("a search that matches nothing says so instead of offering to create a deployment", async () => {
   const server = fakeServer(fleet);
   renderPage(server.serve);
   await screen.findByText("svc-45");
   await userEvent.setup().type(screen.getByRole("searchbox", { name: deploymentsLocale.page.search }), "no-such-service{Enter}");
   await screen.findByText(deploymentsLocale.page.emptyFiltered);
-  assert.equal(screen.queryByRole("button", { name: deploymentsLocale.page.create }), null);
+  assert.equal(createButton(emptyState(deploymentsLocale.page.emptyFiltered)), null);
+  assert.ok(createButton(pageHeader()), "the header keeps its button");
 });
 
 test("with no deployments at all the empty state offers to create one", async () => {
   renderPage(fakeServer([]).serve);
   await screen.findByText(deploymentsLocale.page.empty);
-  assert.ok(screen.getByRole("button", { name: deploymentsLocale.page.create }));
+  assert.ok(createButton(emptyState(deploymentsLocale.page.empty)));
+  assert.equal(screen.getAllByRole("button", { name: new RegExp(`${deploymentsLocale.page.create}$`) }).length, 2, "the header's and the empty state's");
 });
 
 test("a failed page load shows the error and retries on request", async () => {

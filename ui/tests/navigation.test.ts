@@ -46,13 +46,12 @@ test("the deploy page has no entry of its own: it highlights inference services 
   assert.equal(navGroups.some((group) => group.items.some((item) => item.key === "/deploy")), false);
   assert.equal(selectedNavKey("/deploy"), "/deployments");
   assert.equal(navItemForPath("/deploy")?.item.labelKey, "navigation.deployments");
-  // The deploy page links back to the list (same name as the group) instead.
-  assert.equal(sectionLabelKey("/deploy"), undefined);
+  // Its breadcrumb names the group, then links back to the list (DeployPage's parents).
+  assert.equal(sectionLabelKey("/deploy"), "navigation.groups.inference");
 });
 
-// The list is named after its group: a crumb would repeat the title.
-test("the inference services list and the overview show no section crumb; other pages name their group", () => {
-  assert.equal(sectionLabelKey("/deployments"), undefined);
+test("the overview shows no section crumb; every other page names its group", () => {
+  assert.equal(sectionLabelKey("/deployments"), "navigation.groups.inference");
   assert.equal(sectionLabelKey("/dashboard"), undefined);
   assert.equal(sectionLabelKey("/batches"), "navigation.groups.inference");
   assert.equal(sectionLabelKey("/scheduling"), "navigation.groups.observability");
