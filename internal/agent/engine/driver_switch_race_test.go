@@ -14,7 +14,7 @@ import (
 func TestConcurrentDriverReadsAndSwitchAreRaceFree(t *testing.T) {
 	docker := &headlessTestDriver{name: "docker"}
 	udocker := &headlessTestDriver{name: "udocker"}
-	e := New(docker, nil, slog.Default(), t.TempDir())
+	e := newHermeticEngine(docker, nil, slog.Default(), t.TempDir())
 	e.SetDesiredFull(context.Background(), nil)
 
 	stop := make(chan struct{})
@@ -61,7 +61,7 @@ func TestConcurrentDriverReadsAndSwitchAreRaceFree(t *testing.T) {
 func TestConcurrentMountManagerReadsAndSwitchAreRaceFree(t *testing.T) {
 	docker := &headlessTestDriver{name: "docker"}
 	udocker := &headlessTestDriver{name: "udocker"}
-	e := New(docker, nil, slog.Default(), t.TempDir())
+	e := newHermeticEngine(docker, nil, slog.Default(), t.TempDir())
 	e.SetDesiredFull(context.Background(), nil)
 
 	stop := make(chan struct{})

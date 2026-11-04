@@ -62,8 +62,12 @@ type Input struct {
 	// Sleepable is the deployment's declaration that it may be put to sleep,
 	// a platform feature not every vendor provides.
 	Sleepable         bool
+	PD                bool
 	PartitionBackend  string
 	PlacementResolver string
+	RequestedFeatures *proto.RequestedFeatures
+	TargetRequests    map[int]TargetCardRequest
+	ValidateGPU       func(store.GPU) error
 	// ServingUnavailable rejects the node: its management network may not
 	// serve and it has no serving network of its own. PlanLaunch sets it from
 	// its Networks.
@@ -91,6 +95,12 @@ type Input struct {
 	ExplainHolders bool
 	// ModelRules are the deployment's model source rules (store.SourceRules).
 	ModelRules store.SourceRules
+}
+
+// UnsupportedFeatureReasons reports why no accelerator card can satisfy these
+// requested capabilities, using the same per-card gate as placement.
+func UnsupportedFeatureReasons(node *store.Node, features ...accelerator.Feature) []scheduler.Reason {
+	return TargetRefusals(node, features, nil)
 }
 
 // Artifact identifies one independently downloaded model tree.
@@ -216,6 +226,12 @@ func (in Input) Evaluate(st *store.Store) Output {
 	} else if storageAdmit.AvailBytes > 0 {
 		snap.DiskAvailBytes = storageAdmit.AvailBytes
 	}
+	if NeedsTargetPreflight(in.Node) {
+		if refusal := constrainTargetGPUs(in, &snap); refusal != nil {
+			out.Result = scheduler.Result{OK: false, Message: *refusal, Explain: scheduler.Explain{Filters: []scheduler.Reason{*refusal}}}
+			return out
+		}
+	}
 	// This is the one place an unset utilization becomes a number. A deployment
 	// that stated none runs at the engine's own default and carries no
 	// --gpu-memory-utilization flag, so the estimate has to size against that
@@ -243,7 +259,7 @@ func (in Input) Evaluate(st *store.Store) Output {
 		PartitionBackend:     in.PartitionBackend,
 		GPUMemUtil:           util,
 		StorageRefusal:       storageAdmit.Refusal,
-		Features:             deploymentFeatures(in),
+		Features:             requestedInputFeaturesForVendor(in, snap.Vendor),
 		UtilizationIsShare:   deploy.UtilizationSizesMemory(in.Engine),
 	}
 	req.Parallel = in.Parallel
@@ -534,15 +550,8 @@ func parseInts(s string) []int {
 // deploymentFeatures are the platform features a deployment asks of the nodes
 // it runs on, beyond its engine and accelerator (accelerator.Feature).
 func deploymentFeatures(in Input) []accelerator.Feature {
-	var features []accelerator.Feature
-	if in.Sleepable {
-		features = append(features, accelerator.FeatureEngineSleep)
-	}
-	if in.Parallel.Normalized().NNodes > 1 {
-		features = append(features, accelerator.FeatureMultiNode)
-	}
-	if in.Quick.KVDiskOffload {
-		features = append(features, accelerator.FeatureKVDiskTier)
-	}
-	return features
+	if in.TargetRequests != nil {
+		return nil
+	} // Every retained card was checked with its own resolved facts.
+	return requestedInputFeaturesForVendor(in, "")
 }

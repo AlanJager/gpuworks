@@ -6,13 +6,13 @@ import { ArrowLeftOutlined, CloseCircleOutlined, CopyOutlined, DeleteOutlined, E
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 
-import { api, type DetectedTemplateChip, type EvaluateResponse, type InferenceSpec, type InferenceTemplate, type InferenceTemplateIssue } from "../api";
+import { api, type EvaluateResponse, type InferenceSpec, type InferenceTemplate, type InferenceTemplateIssue } from "../api";
 import TemplateWarnings from "../components/TemplateWarnings";
 import PageHeader from "../components/PageHeader";
 import MarkdownContent from "../components/MarkdownContent";
 import VendorLogo from "../components/VendorLogo";
 import { compareVendors, frameworkForVendor } from "../vendors";
-import { chipMatchesPredicate, compactModelMetadata, editErrorOf, predicateLabel, preferredTemplateEngine, specDisplayName, yamlModelID } from "./inferenceTemplateFlat.ts";
+import { compactModelMetadata, editErrorOf, predicateLabel, specDisplayName, yamlModelID } from "./inferenceTemplateFlat.ts";
 import { engineOptionLabel } from "../engineLabels";
 import { inputModalityLabelKey, inputModalitiesOf, operationLabelKey, operationTypesOf } from "../modelInference";
 
@@ -55,10 +55,10 @@ export default function InferenceTemplateDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [engine, setEngine] = useState("");
-  const [detectedChips, setDetectedChips] = useState<DetectedTemplateChip[]>([]);
   const [drawerSpec, setDrawerSpec] = useState<InferenceSpec>();
   const [preview, setPreview] = useState<EvaluateResponse>();
   const [previewLoading, setPreviewLoading] = useState(false);
+  const previewRequest = useRef(0);
   const [editing, setEditing] = useState(search.get("edit") === "1");
   const [yaml, setYAML] = useState("");
   const [savedYAML, setSavedYAML] = useState("");
@@ -78,14 +78,12 @@ export default function InferenceTemplateDetailPage() {
     const requested = modelID;
     setLoading(true); setError("");
     try {
-      const [value, detected] = await Promise.all([api.inferenceTemplate(requested), api.detectedInferenceTemplateChips()]);
-      const chips = detected.items;
-      setDetectedChips(chips);
+      const value = await api.inferenceTemplate(requested);
       setModel(value); setModelFor(requested);
       yamlRequest.current += 1;
       setYAML(""); setSavedYAML(""); setYAMLState("idle"); setEditError(undefined);
       const values = [...new Set(value.specs.map((spec) => spec.engine))];
-      setEngine((current) => values.includes(current) ? current : preferredTemplateEngine(value.specs, chips));
+      setEngine((current) => values.includes(current) ? current : (values.includes(value.detected_support?.preferred_engine || "") ? value.detected_support!.preferred_engine : values[0] || ""));
     } catch (reason) { setError((reason as Error).message); }
     finally { setLoading(false); }
   };
@@ -128,21 +126,16 @@ export default function InferenceTemplateDetailPage() {
   }, [specs]);
 
   const openSpec = async (spec: InferenceSpec) => {
+    const request = ++previewRequest.current;
     setDrawerSpec(spec); setPreview(undefined); setPreviewLoading(true);
     try {
-      // Preview on an online node with a card the spec names: find the card
-      // among the fleet's models, then one node that has it - two small
-      // answers instead of the whole node list.
-      const online = await api.nodeFacets({ state: ["online"] }).catch(() => null);
-      const card = online?.gpus.find((gpu) => chipMatchesPredicate({ vendor: gpu.vendor, name: gpu.name, cc: gpu.cc }, spec.gpus));
-      const holders = card?.model
-        ? await api.nodesPage({ page: 1, page_size: 1, state: ["online"], label: [`gpuworks.ai/gpu-model=${card.model}`] }).catch(() => null)
-        : null;
-      const node = holders?.items[0];
       if (!model) return;
-      setPreview(await api.evaluate({ template_id: model.id, template_spec_source: spec.source, template_spec_name: spec.name, node_uuid: node?.uuid || "", engine: spec.engine, quick_params: {}, placement: {} }));
-    } catch (reason) { message.error((reason as Error).message); }
-    finally { setPreviewLoading(false); }
+      // The server applies the template predicate, unsupported rules and
+      // placement constraints before choosing a preview node.
+      const value = await api.evaluate({ template_id: model.id, template_spec_source: spec.source, template_spec_name: spec.name, placement_mode: "auto", engine: spec.engine, quick_params: {}, placement: {} });
+      if (request === previewRequest.current) setPreview(value);
+    } catch (reason) { if (request === previewRequest.current) message.error((reason as Error).message); }
+    finally { if (request === previewRequest.current) setPreviewLoading(false); }
   };
 
   const clone = async () => {
@@ -231,12 +224,12 @@ export default function InferenceTemplateDetailPage() {
     <TemplateWarnings warnings={saveWarnings} onClose={() => setSaveWarnings([])} />
     <Descriptions bordered size="small" column={{ xs: 1, md: 4 }}><Descriptions.Item label={t("detail.modelID")}><Typography.Text copyable>{model.model_id}</Typography.Text></Descriptions.Item><Descriptions.Item label={t("detail.source")}><Tag color={model.source === "user" ? "purple" : "blue"}>{t(model.source === "user" ? "flat.userSource" : "flat.builtInSource")}</Tag></Descriptions.Item><Descriptions.Item label={t("flat.context")}>{model.context_length || "-"}</Descriptions.Item><Descriptions.Item label={t("flat.specCount")}>{model.specs.length}</Descriptions.Item><Descriptions.Item label={t("detail.operations")} span={2}>{operationTypesOf(model.specs.flatMap((spec) => spec.api?.operations ?? [])).map((value) => <Tag color="blue" key={value}>{t(operationLabelKey[value])}</Tag>)}</Descriptions.Item><Descriptions.Item label={t("detail.inputModalities")} span={2}>{inputModalitiesOf(model.input_modalities).map((value) => <Tag key={value}>{t(inputModalityLabelKey[value])}</Tag>)}</Descriptions.Item></Descriptions>
     {engines.length >= 2 && <Segmented className="template-engine-switch" value={engine} options={engines.map((value) => ({ value, label: engineOptionLabel(value) }))} onChange={(value) => setEngine(String(value))} />}
-    {model.unsupported?.filter((item) => detectedChips.some((chip) => chipMatchesPredicate(chip, item.gpus))).map((item) => <Alert key={`${item.gpus.vendor}:${item.gpus.cc}:${item.quantization}`} type="warning" showIcon message={item.reason} description={item.quantization && model.specs.some((spec) => spec.quantization !== item.quantization && detectedChips.some((chip) => chipMatchesPredicate(chip, spec.gpus))) ? t("flat.alternativeAvailable") : undefined} />)}
+    {model.detected_support?.warnings.map((item, index) => <Alert key={`${item.reason}:${index}`} type="warning" showIcon message={item.reason} description={item.alternative_available ? t("flat.alternativeAvailable") : undefined} />)}
     <div className="template-spec-groups">{specGroups.map(([vendor, vendorSpecs]) => <section className="template-spec-vendor-group" key={vendor}>
       <header><VendorLogo framework={frameworkForVendor(vendor)} size={22} /><Typography.Text strong>{t("detail.vendorGroup", { vendor: t(`vendor.${vendor}`, { defaultValue: vendor.toUpperCase() }), count: vendorSpecs.length })}</Typography.Text></header>
       <div className="template-spec-list">{vendorSpecs.map((spec) => <article className="template-detail-table-row" key={`${spec.source}:${spec.name}`}><div><Typography.Text strong>{specDisplayName(spec, i18n.language)}</Typography.Text><Space wrap><Tag color={spec.source === "user" ? "purple" : "blue"}>{t(spec.source === "user" ? "flat.userSource" : "flat.builtInSource")}</Tag><Tag>{spec.scenario || t("scenario.general")}</Tag><Tag color="geekblue">{spec.quantization}</Tag><Typography.Text type="secondary">{spec.weight_bytes ? `${(spec.weight_bytes / GIB).toFixed(1)} GiB` : t("detail.sizePending")}</Typography.Text></Space></div><Typography.Text type="secondary" code>{spec.name}</Typography.Text><Typography.Text ellipsis={{ tooltip: spec.image }}>{spec.image}</Typography.Text><Space><Button onClick={() => void openSpec(spec)}>{t("flat.details")}</Button><Button type="primary" icon={<RocketOutlined />} onClick={() => navigate(`/deploy?template=${model.id}&spec_source=${encodeURIComponent(spec.source)}&spec=${encodeURIComponent(spec.name)}`)}>{t("detail.deploy")}</Button>{spec.source === "user" && <Popconfirm title={t("editor.deleteSpecTitle")} description={t("editor.deleteSpecBody", { name: spec.name })} okText={t("editor.deleteSpecOk")} okButtonProps={{ danger: true }} cancelText={t("flat.cancel")} onConfirm={() => void deleteSpec(spec)}><Button danger icon={<DeleteOutlined />} aria-label={t("editor.deleteSpec", { name: spec.name })} /></Popconfirm>}</Space></article>)}</div>
     </section>)}{!specs.length && <Empty description={t("flat.emptySpecs")} />}</div>
-    <Drawer open={Boolean(drawerSpec)} width={760} title={drawerSpec ? specDisplayName(drawerSpec, i18n.language) : undefined} onClose={() => setDrawerSpec(undefined)}>{drawerSpec && <Tabs items={[
+    <Drawer open={Boolean(drawerSpec)} width={760} title={drawerSpec ? specDisplayName(drawerSpec, i18n.language) : undefined} onClose={() => { previewRequest.current += 1; setDrawerSpec(undefined); }}>{drawerSpec && <Tabs items={[
       { key: "details", label: t("detail.configuration"), children: <Space direction="vertical" size="middle" style={{ width: "100%" }}><Descriptions bordered size="small" column={1}><Descriptions.Item label={t("flat.specID")}><Typography.Text copyable>{drawerSpec.name}</Typography.Text></Descriptions.Item><Descriptions.Item label={t("flat.gpus")}><Typography.Text code>{predicateLabel(drawerSpec)}</Typography.Text></Descriptions.Item>{drawerSpec.image_sources?.length ? <Descriptions.Item label={t("flat.imageSources")}><Space direction="vertical" size={4} style={{ width: "100%" }}>{drawerSpec.image_sources.map((source) => <Typography.Text key={source} copyable>{source}</Typography.Text>)}</Space></Descriptions.Item> : null}<Descriptions.Item label={t("weightSources.title")}><Space direction="vertical" size={6} style={{ width: "100%" }}>{drawerSpec.weight_sources.map((source, index) => <Space key={`${source.provider}:${source.repo_id}:${index}`} wrap><Tag color={source.provider.toLowerCase() === "modelscope" ? "green" : "blue"}>{t(`weightSources.${source.provider.toLowerCase()}`, { defaultValue: source.provider })}</Tag><Typography.Text copyable>{source.repo_id}</Typography.Text>{source.revision && <Typography.Text type="secondary">@{source.revision}</Typography.Text>}{source.subfolder && <Typography.Text type="secondary">/{source.subfolder}</Typography.Text>}</Space>)}</Space></Descriptions.Item><Descriptions.Item label="env"><pre>{JSON.stringify(drawerSpec.env || {}, null, 2)}</pre></Descriptions.Item><Descriptions.Item label="pre_start"><pre>{drawerSpec.pre_start_script || JSON.stringify(drawerSpec.pre_start_argv || [], null, 2)}</pre></Descriptions.Item></Descriptions><Typography.Title level={5}>{t("flat.commandPreview")}</Typography.Title>{previewLoading ? <Spin /> : preview ? <pre className="template-command-preview">{JSON.stringify(preview.command || [...(preview.entrypoint || []), ...(preview.argv || [])], null, 2)}</pre> : null}</Space> },
       { key: "usage", label: t("detail.usage"), children: <SpecUsage spec={drawerSpec} templateID={model.id} navigate={navigate} t={t} /> },
       { key: "readme", label: t("detail.instructions"), children: (i18n.language.startsWith("zh") ? model.readme_zh_cn_content : model.readme_en_content) ? <MarkdownContent content={(i18n.language.startsWith("zh") ? model.readme_zh_cn_content : model.readme_en_content) || ""} /> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("detail.noInstructions")} /> },

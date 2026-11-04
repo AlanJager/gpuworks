@@ -75,7 +75,7 @@ func (a *apiHandlers) evaluateRanks(env evaluateRankEnv) bool {
 			rankImage = resp.Image
 		}
 		plan, planErr := planning.PlanLaunch(ctx, a.d.Store, a.networks(), planning.LaunchRequest{
-			Preview: true, ExcludeDeploymentID: env.excludeDeployment, Engine: eng.Name(), Model: model, Node: rankNode,
+			Preview: true, AllowUnresolvedImage: true, ExcludeDeploymentID: env.excludeDeployment, Engine: eng.Name(), Model: model, Node: rankNode,
 			Selection: rankSelection, Placement: placement, Quick: quick, ExtraArgs: userExtraArgs,
 			Topology:   topology,
 			Source:     planning.LaunchSourceFromRequest(rankImage, requestOverrides),

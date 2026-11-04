@@ -1,3 +1,4 @@
+import { formatGPUCapacity } from "../../gpuMemory";
 import type { ReactNode } from "react";
 import { Form, Typography } from "antd";
 import type { Node } from "../../api";
@@ -60,7 +61,7 @@ export function GPUGrid({
                       : t("workbench.gpu.selectIndex", { index: gpu.index }),
                     // Which card the number is: a mixed node's cards differ
                     // in model and memory, and the button shows only its index.
-                    t("workbench.gpu.cardFacts", { name: gpu.name.replace(/^NVIDIA\s+/i, ""), memory: (gpu.memory_total_bytes / 1024 ** 3).toFixed(0) }),
+                    t("workbench.gpu.cardFacts", { name: gpu.name.replace(/^NVIDIA\s+/i, ""), memory: formatGPUCapacity(gpu, (bytes) => (bytes / 1024 ** 3).toFixed(0)) }),
                     health && t("workbench.gpu.degradedHealth", { health }),
                   ].filter(Boolean).join(" · ")
             }

@@ -63,10 +63,14 @@ func (a *apiHandlers) deploymentCandidates(w http.ResponseWriter, r *http.Reques
 		if out.Total <= offset || len(out.Items) == limit {
 			continue
 		}
+		var reason *dto.ScheduleReason
+		if entry.Reason != nil {
+			reason = &dto.ScheduleReason{Code: entry.Reason.Code, Params: entry.Reason.Params}
+		}
 		out.Items = append(out.Items, dto.DeploymentCandidate{
 			UUID: entry.Node.UUID, Name: nodeDisplayName(entry.Node), Status: string(entry.Status), Rank: entry.Rank,
 			Detail: entry.Detail, Replicas: entry.Replicas, FreeGPUs: entry.FreeGPUs, GPUs: len(entry.Node.OwnedGPUs()),
-			Model: modelLocalityNames[entry.Model],
+			Model: modelLocalityNames[entry.Model], Reason: reason,
 		})
 	}
 	writeJSON(w, http.StatusOK, out)
@@ -112,10 +116,16 @@ func (a *apiHandlers) deploymentPool(dep *store.Deployment) (*planning.Pool, int
 	if err != nil {
 		return nil, 0, err
 	}
-	return planning.BuildPool(planning.PoolFacts{
+	admission := planning.TargetRefusalFor(dep, reqs, func() (*store.Model, error) { return a.d.Store.GetModel(dep.ModelID) }, online)
+	pool := planning.BuildPool(planning.PoolFacts{
 		Nodes: nodes, Held: held, Files: files, Facts: facts, Instances: instances,
 		Online: online, Requirements: reqs, Strategy: dep.PlacementStrategy, Need: planning.ReplicaGPUNeed(dep), Placement: placement,
-	}), len(nodes), nil
+		TargetRefusal: admission.Refusal,
+	})
+	if err := admission.Err(); err != nil {
+		return nil, 0, err
+	}
+	return pool, len(nodes), nil
 }
 
 func candidatesPage(r *http.Request) (offset, limit int, status string, err error) {

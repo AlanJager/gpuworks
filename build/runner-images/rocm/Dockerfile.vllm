@@ -1,0 +1,28 @@
+# vLLM on ROCm, from the upstream vllm-openai-rocm image (gfx942, gfx1151 and
+# the other architectures it ships kernels for).
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+USER root
+ARG ENGINE_VERSION
+ARG FRAMEWORK_VERSION
+ARG IMAGE_ID
+ARG IMAGE_REVISION
+ARG REQUIRES="engine"
+COPY rocm/prepare.py rocm/prepare_sglang.py /opt/gpuworks/rocm/
+COPY rocm/audit.py /opt/gpuworks/amd-audit.py
+COPY rocm/write_manifest.py /opt/gpuworks/rocm/write_manifest.py
+COPY shared/assert_requires.sh /opt/gpuworks/shared/assert_requires.sh
+RUN python3 /opt/gpuworks/rocm/prepare.py vllm && python3 -m pip check
+ENV GPUWORKS_EXPECT_ENGINE=vllm GPUWORKS_EXPECT_ENGINE_VERSION=${ENGINE_VERSION}
+RUN python3 /opt/gpuworks/amd-audit.py
+RUN ENGINE=vllm python3 /opt/gpuworks/rocm/write_manifest.py \
+    && ENGINE=vllm bash /opt/gpuworks/shared/assert_requires.sh
+LABEL org.opencontainers.image.title="gpuworks-runner" \
+      org.opencontainers.image.vendor="gpuworks" \
+      org.opencontainers.image.revision="${IMAGE_REVISION}" \
+      io.gpuworks.image.id="${IMAGE_ID}" \
+      io.gpuworks.engine="vllm" \
+      io.gpuworks.engine.version="${ENGINE_VERSION}" \
+      io.gpuworks.framework="rocm" \
+      io.gpuworks.framework.version="${FRAMEWORK_VERSION}" \
+      io.gpuworks.requires="${REQUIRES}"

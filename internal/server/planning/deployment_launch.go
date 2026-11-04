@@ -184,7 +184,7 @@ func DeploymentLaunch(dep *store.Deployment, reqs map[string][]string, node *sto
 		})
 	}
 	served := dep.ServedName
-	if served == "" {
+	if served == "" && model != nil {
 		served = model.Name
 	}
 	return LaunchRequest{

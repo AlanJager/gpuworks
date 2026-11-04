@@ -10,7 +10,8 @@
     "hygon": "海光",
     "apple": "Apple",
     "unknown": "未知厂商",
-    "unknownFramework": "未知框架"
+    "unknownFramework": "未知框架",
+    "amd": "AMD"
   },
   "operation": {
     "all": "全部能力",
@@ -518,7 +519,11 @@
     "BATCH_REQUEST_INVALID": "批处理请求无效（{{field}}）：{{reason}}",
     "BATCH_FILE_MODELS_UNKNOWN": "文件里的这些模型没有部署：{{models, list}}。请选一个模型来接收全部请求，或先部署这些模型。",
     "BATCH_FILE_MODELS_ENDPOINT": "文件里的这些模型不支持 {{endpoint}}：{{models, list}}。请选一个支持该接口的模型来接收全部请求。",
-    "AGENT_UPGRADE_REFUSED": "Agent 升级请求无法执行：{{detail}}"
+    "AGENT_UPGRADE_REFUSED": "Agent 升级请求无法执行：{{detail}}",
+    "ACCELERATOR_FEATURE_UNSUPPORTED": "{{vendor}} 不支持{{feature}}。请关闭此能力或选择其他加速卡。",
+    "ACCELERATOR_DEVICE_SELECTION_REQUIRED": "{{vendor}} 启动前必须明确分配 GPU。",
+    "LAUNCH_FEATURES_UNKNOWN": "无法确认自定义启动命令在 {{vendor}} 上请求的功能。请提供可识别的引擎入口或结构化启动参数。",
+    "SLEEP_TARGET_UNRESOLVED": "无法确认实例 {{instance}} 在节点 {{node}} 上的 GPU 选择：{{detail}}。"
   },
   "httpError": {
     "proxyPage": "HTTP {{status}}：浏览器与 gpuworks 之间的反向代理或隧道返回了它自己的错误页，server 给出的原因丢失了。直接通过 server 自身地址访问并重试，可以看到原因。"
@@ -896,5 +901,16 @@
     "details": "构建详情",
     "commit": "Commit：{{commit}}",
     "channel": "构建渠道：{{channel}}"
+  },
+  "acceleratorFeature": {
+    "unsupported": "{{vendor}} 不支持{{feature}}。请关闭此能力或选择其他加速卡。",
+    "names": {
+      "engine_sleep": "引擎休眠",
+      "multi_node": "多机推理",
+      "pipeline_parallelism": "流水线并行",
+      "data_parallelism": "数据并行",
+      "prefill_decode_disaggregation": "PD 解耦",
+      "kv_disk_tier": "KV 磁盘层"
+    }
   }
 }

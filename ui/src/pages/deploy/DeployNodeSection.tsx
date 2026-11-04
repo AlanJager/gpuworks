@@ -1,4 +1,4 @@
-import { useContext, useMemo } from "react";
+import { useContext, useEffect, useMemo } from "react";
 import { Alert, Collapse, Form, Input, InputNumber, Radio, Segmented, Space, Tag, Typography } from "antd";
 import type { EligibleNode, EngineProfile, EvaluateResponse, Node, NodeFacets } from "../../api";
 import NodePlacementLabels from "../../components/NodePlacementLabels";
@@ -104,6 +104,7 @@ export default function NodeSection({
     preserve: true,
   }) as string | undefined;
   const pdEngine = pdModesForEngine(profile).length > 0;
+  const multiNodeSupported = profile?.multi_node_supported !== false;
   const pdSupported = pdModesForVendor(profile, targetVendor).length > 0;
   // The auto card renders the server's selection; the manual dropdown reads
   // the form's own node field. Switching to manual starts from an empty pick,
@@ -112,6 +113,9 @@ export default function NodeSection({
     ? knownNodes.get(result.selected_node.uuid)
     : undefined;
   const ready = modelReady && Boolean(targetVendor);
+  useEffect(() => {
+    if (profile && profile.multi_node_supported === false && mode === "multi") onNodeMode("auto");
+  }, [profile, mode, onNodeMode]);
   // Nodes the scheduler judged and turned down: with them, "nothing
   // matches" would hide the reasons the deployer can act on.
   const refusals = autoSelected ? [] : nodeRefusals(t, result);
@@ -139,11 +143,11 @@ export default function NodeSection({
           />
           <ChoiceCard
             active={mode === "multi"}
-            disabled={!ready}
+            disabled={!ready || !multiNodeSupported}
             title={t("workbench.node.multi")}
-            description={t("workbench.node.count", {
-              count: Math.max(2, nnodes),
-            })}
+            description={multiNodeSupported
+              ? t("workbench.node.count", { count: Math.max(2, nnodes) })
+              : t("workbench.node.multiVendorUnsupported", { vendor: t(`basic.vendor.${targetVendor}`, { defaultValue: targetVendor?.toUpperCase() }) })}
             onClick={() => onNodeMode("multi")}
           />
           <ChoiceCard

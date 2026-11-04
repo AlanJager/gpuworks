@@ -23,6 +23,10 @@ const EligibilityCodes = new Set([
   "node_requirements_invalid",
   "vendor_mismatch",
   "chip_mismatch",
+  "runtime_unsupported",
+  "runtime_unreported",
+  "accelerator_feature_unsupported",
+  "accelerator_device_selection_required",
 ]);
 
 type Candidate = NonNullable<EvaluateResponse["candidates"]>[number];

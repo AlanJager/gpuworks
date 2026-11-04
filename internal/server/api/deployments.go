@@ -289,8 +289,8 @@ func (a *apiHandlers) createDeploymentOnce(w http.ResponseWriter, r *http.Reques
 		distNodes = pdReq.otherNodes()
 	}
 	var node *store.Node
-	if code := planning.SleepDeclarable(req.Sleepable, eng.Name()); code != "" {
-		writeProductError(w, http.StatusBadRequest, code, sleepRefusalFallback(code), map[string]any{"engine": eng.Name()})
+	if sleepErr := planning.SleepDeclarable(req.Sleepable, eng.Name(), targetVendor); sleepErr != nil {
+		writeSleepDeclarationError(w, sleepErr)
 		return
 	}
 	yieldPolicy, ok := createYieldPolicy(w, req, eng.Name(), pdReq != nil)

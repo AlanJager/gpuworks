@@ -63,10 +63,15 @@ func (c *Controller) poolOf(deployment *unitDeployment, model *store.Model) (*un
 		return nil, err
 	}
 	need := planning.ReplicaGPUNeed(dep)
+	admission := planning.TargetRefusalFor(dep, deployment.requirements, func() (*store.Model, error) { return model, nil }, c.hub.Online)
 	pool := &unitPool{nodes: len(nodes) + others, need: need, Pool: planning.BuildPool(planning.PoolFacts{
 		Nodes: nodes, Held: held, Files: files, Facts: facts, Instances: deployment.insts,
 		Online: c.hub.Online, Requirements: deployment.requirements, Strategy: dep.PlacementStrategy, Need: need, Placement: placement,
+		TargetRefusal: admission.Refusal,
 	})}
+	if err := admission.Err(); err != nil {
+		return nil, err
+	}
 	if others > 0 {
 		// The nodes left unread fail the node requirement, as BuildPool would
 		// have counted them.

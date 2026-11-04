@@ -107,6 +107,68 @@ specs:
     - type: openai.chat
       endpoint: /v1/chat/completions
       mode: stream
+- name: bf16-vllm-amd-mi300
+  display_name_zh_cn: Instinct MI300 系列 · BF16
+  display_name_en: Instinct MI300 series · BF16
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:rocm7.2.3-vllm0.30.0-r1
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen3-1.7B
+        revision: 70d244cc86ccca08cf5af4e1e306ecf908b1ad5e
+    - modelscope:
+        repo_id: Qwen/Qwen3-1.7B
+        revision: 4855588ea1a12789f2e965e5f52a9e4a24c94b2a
+  weight_bytes: 4079450110
+  gpus:
+    vendor: amd
+    arch_id: gfx942
+  args:
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - hermes
+  - --reasoning-parser
+  - qwen3
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-vllm-amd-ryzen-ai-max
+  display_name_zh_cn: Ryzen AI Max 系列 · BF16
+  display_name_en: Ryzen AI Max series · BF16
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:rocm7.2.3-vllm0.30.0-r1
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen3-1.7B
+        revision: 70d244cc86ccca08cf5af4e1e306ecf908b1ad5e
+    - modelscope:
+        repo_id: Qwen/Qwen3-1.7B
+        revision: 4855588ea1a12789f2e965e5f52a9e4a24c94b2a
+  weight_bytes: 4079450110
+  gpus:
+    vendor: amd
+    arch_id: gfx1151
+  args:
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - hermes
+  - --reasoning-parser
+  - qwen3
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
 - name: bf16-vllm-nvidia-turing
   display_name_zh_cn: Turing · BF16
   display_name_en: Turing · BF16

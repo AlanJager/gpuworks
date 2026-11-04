@@ -49,7 +49,7 @@ test("the choice exists only on a host with cards of more than one vendor", () =
 
   const { container } = renderChoice({ uuid: "plain", gpu_vendor: "nvidia", accelerator_vendors: [{ vendor: "nvidia", cards: 8 }] });
   assert.equal(container.textContent, "");
-  assert.equal(screen.queryByRole("combobox"), null);
+  assert.equal(screen.queryByRole("combobox") === null, true);
 });
 
 test("automatic says which vendor it picked and which cards it leaves unmanaged", async () => {
@@ -57,7 +57,7 @@ test("automatic says which vendor it picked and which cards it leaves unmanaged"
   assert.equal(document.querySelector(".ant-select-selection-item")?.textContent, "Auto (now Ascend)");
   const alert = screen.getByRole("alert");
   assert.equal(alert.textContent, "This machine also has NVIDIA ×1 (AD102 [GeForce RTX 4090]), not managed by this node; you can switch. A node manages one vendor's cards at a time.");
-  assert.equal(screen.queryByRole("status"), null);
+  assert.equal(screen.queryByRole("status") === null, true);
 
   fireEvent.mouseDown(screen.getByRole("combobox", { name: "Accelerator" }));
   await waitFor(() => assert.equal(document.querySelectorAll(".ant-select-item-option").length, 3));
@@ -78,14 +78,14 @@ test("a card without a model name is named by its vendor alone, and every other 
 test("a chosen vendor that the node manages shows no warning", () => {
   renderChoice({ ...mixed, gpu_vendor: "nvidia", accelerator_preference: "nvidia" });
   assert.equal(document.querySelector(".ant-select-selection-item")?.textContent, "NVIDIA ×1 (AD102 [GeForce RTX 4090])");
-  assert.equal(screen.queryByRole("alert"), null);
-  assert.equal(screen.queryByRole("status"), null);
+  assert.equal(screen.queryByRole("alert") === null, true);
+  assert.equal(screen.queryByRole("status") === null, true);
 });
 
 test("until the agent restarts onto the chosen vendor the node says it is switching", () => {
   renderChoice({ ...mixed, accelerator_preference: "nvidia" });
   assert.equal(screen.getByRole("status").textContent, "Switching to NVIDIA: the agent restarts and then manages its cards.");
-  assert.equal(screen.queryByRole("alert"), null);
+  assert.equal(screen.queryByRole("alert") === null, true);
 });
 
 test("choosing the other vendor asks the server and hands back the updated node", async () => {
@@ -105,7 +105,7 @@ test("choosing the other vendor asks the server and hands back the updated node"
   await waitFor(() => assert.equal(updated.length, 1));
   assert.equal(updated[0].accelerator_preference, "nvidia");
   await screen.findByText("Switched. The agent is restarting; the new cards appear shortly");
-  await waitFor(() => assert.equal(document.querySelector(".ant-select-disabled"), null));
+  await waitFor(() => assert.equal(document.querySelector(".ant-select-disabled") === null, true));
 });
 
 test("choosing what is already chosen sends nothing", async () => {
@@ -126,4 +126,15 @@ test("a refused switch says why and leaves the choice as it was", async () => {
   await screen.findByText("Could not switch accelerators: 1 instance(s) still run on this node; stop or move them before switching accelerators.");
   assert.equal(updated.length, 0);
   assert.equal(document.querySelector(".ant-select-selection-item")?.textContent, "Auto (now Ascend)");
+});
+
+
+test("AMD is named consistently when selecting a mixed-vendor node", async () => {
+  renderChoice({ uuid: "amd-mixed", gpu_vendor: "amd", accelerator_vendors: [
+    { vendor: "amd", cards: 1, model: "AMD395" }, { vendor: "nvidia", cards: 1, model: "RTX 4090" },
+  ] });
+  assert.equal(document.querySelector(".ant-select-selection-item")?.textContent, "Auto (now AMD)");
+  fireEvent.mouseDown(screen.getByRole("combobox", { name: "Accelerator" }));
+  await waitFor(() => assert.equal(document.querySelectorAll(".ant-select-item-option").length, 3));
+  assert.equal([...document.querySelectorAll(".ant-select-item-option")].some((el) => el.textContent === "AMD ×1 (AMD395)"), true);
 });

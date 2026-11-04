@@ -52,6 +52,7 @@ export interface GPU {
   vendor?: string;
   arch_id?: string;
   memory_total_bytes: number;
+  memory_capacity_known?: boolean; // Present on current servers; absent on older API responses.
   power_limit_watts?: number;
   pcie_bdf?: string;
   numa_node: number;
@@ -686,6 +687,7 @@ export interface EngineProfile {
   // form and the scale dialog read modes, policy options, defaults and
   // limits from here (pages/deploy/deployPd.ts) instead of restating them.
   pd_modes?: PdModeProfile[];
+  multi_node_supported?: boolean;
 }
 
 // WakeRefusal is one group of sleepers a wake could not put back: the cards
@@ -1146,7 +1148,19 @@ export interface NodeFacets {
    * Distinct accelerator models, each with how many matched nodes have one;
    * model is the card's gpuworks.ai/gpu-model label value.
    */
-  gpus: Array<{ vendor: string; name: string; cc: string; model: string; nodes: number; cards: number; memory_bytes: number }>;
+  gpus: NodeGPUCount[];
+}
+
+/** One reported accelerator identity aggregated by GET /nodes/facets. */
+export interface NodeGPUCount {
+  vendor: string;
+  name: string;
+  cc: string;
+  arch_id?: string;
+  model: string;
+  nodes: number;
+  cards: number;
+  memory_bytes: number;
 }
 
 /** The filters of GET /nodes/facets: a list query without the page. */
@@ -1196,6 +1210,7 @@ export interface DashboardSummary {
 
 export type InferenceTemplatePage = ListPage<InferenceTemplate>;
 export interface InferenceTemplateIndex {
+  hardware?: DetectedTemplateChip[];
   items: InferenceTemplateIndexItem[];
 }
 export interface InferenceTemplateOrganizations {
@@ -1211,6 +1226,7 @@ export interface InferenceTemplateIndexItem {
   profiles: InferenceProfileSummary[];
 }
 export interface InferenceProfileSummary {
+  detected_compatible?: boolean;
   source?: "upstream" | "user" | string;
   name: string;
   display_name_zh_cn?: string;
@@ -1221,9 +1237,10 @@ export interface InferenceProfileSummary {
   quantization?: string;
   weight_bytes?: number;
   weight_repo_ids?: string[];
-  gpus: { vendor: string; cc?: string; name?: string };
+  gpus: GPUPredicate;
 }
 export interface InferenceTemplate {
+  detected_support?: { preferred_engine: string; warnings: Array<{ reason: string; quantization?: string; alternative_available: boolean }> };
   id: number;
   model_id: string;
   display_title?: string;
@@ -1295,6 +1312,7 @@ export interface GPUPredicate {
   vendor: string;
   cc?: string;
   name?: string;
+  arch_id?: string;
 }
 export interface InferenceTemplateUnsupported {
   gpus: GPUPredicate;
@@ -1311,11 +1329,13 @@ export interface InferenceTemplateChip {
   cc?: number;
   category: string;
   architecture: string;
+  arch_id?: string;
 }
 export interface DetectedTemplateChip {
   vendor: string;
   name: string;
   cc?: string;
+  arch_id?: string;
 }
 export interface AuthUser {
   id: number;
@@ -1978,6 +1998,9 @@ export interface DeploymentCandidate {
   status: DeploymentCandidateStatus;
   rank?: number;
   detail?: string;
+  // reason is set instead of detail when the node's accelerators cannot run
+  // the deployment (unmet key "accelerator").
+  reason?: ScheduleMessage;
   replicas: number;
   free_gpus: number;
   gpus: number;
@@ -3358,6 +3381,7 @@ export interface PhysicalGPU {
   arch_id?: string;
   compute_capability?: string;
   memory_total_bytes: number;
+  memory_capacity_known?: boolean; // Present on current servers; absent on older API responses.
   power_limit_watts?: number;
   pcie_bdf?: string;
   numa_node: number;
@@ -3937,7 +3961,7 @@ export interface ServerListenUpdate {
 
 export const api = {
   health: () => getJSON<Health>("/api/v1/healthz"),
-  engines: () => getJSON<List<EngineProfile>>("/api/v1/engines"),
+  engines: (targetVendor?: string) => getJSON<List<EngineProfile>>(`/api/v1/engines${targetVendor ? `?target_vendor=${encodeURIComponent(targetVendor)}` : ""}`),
   nodes: () => getJSON<List<Node>>("/api/v1/nodes"),
   nodesPage: (query: ListQuery) => getJSON<NodePage>(`/api/v1/nodes?${listQueryString(query)}`),
   nodeFacets: (filter: NodeFilter = {}) => getJSON<NodeFacets>(`/api/v1/nodes/facets?${nodeFilterString(filter)}`),
@@ -4140,8 +4164,8 @@ export const api = {
   model: (id: number) => getJSON<Model>(`/api/v1/models/${id}`),
   inferenceTemplates: (query: ListQuery) =>
     getJSON<InferenceTemplatePage>(`/api/v1/inference-templates?${listQueryString(query)}`),
-  inferenceTemplateIndex: () =>
-    getJSON<InferenceTemplateIndex>("/api/v1/inference-templates/index"),
+  inferenceTemplateIndex: (scope?: { vendor: string; node_uuid?: string }) =>
+    getJSON<InferenceTemplateIndex>(`/api/v1/inference-templates/index${scope ? `?${new URLSearchParams({ compatibility: "detected", vendor: scope.vendor, ...(scope.node_uuid ? { node_uuid: scope.node_uuid } : {}) })}` : ""}`),
   inferenceTemplateOrganizations: (query = "") =>
     getJSON<InferenceTemplateOrganizations>(
       `/api/v1/inference-templates/organizations${query}`,

@@ -359,7 +359,7 @@ func TestParseThrottleReasonsHex(t *testing.T) {
 
 func TestNVIDIAProbeCachesDriverAndFramework(t *testing.T) {
 	var calls [][]string
-	p := &SMIProber{frameworkTTL: time.Hour, runner: func(_ context.Context, args ...string) (string, error) {
+	p := &SMIProber{hostRoot: "/nonexistent-nvidia-test-root", frameworkTTL: time.Hour, runner: func(_ context.Context, args ...string) (string, error) {
 		calls = append(calls, append([]string(nil), args...))
 		if len(args) == 0 {
 			return "Driver Version: 550.90\nCUDA Version: 12.8\n", nil
@@ -493,7 +493,7 @@ func TestParseNVIDIAInfoHealthLevels(t *testing.T) {
 // fall back tier by tier instead of losing the inventory.
 func TestNVIDIAProbeFallsBackWhenDriverRejectsHealthFields(t *testing.T) {
 	var queries []string
-	p := &SMIProber{runner: func(_ context.Context, args ...string) (string, error) {
+	p := &SMIProber{hostRoot: "/nonexistent-nvidia-test-root", runner: func(_ context.Context, args ...string) (string, error) {
 		if len(args) > 0 && strings.HasPrefix(args[0], "--query-gpu=") {
 			queries = append(queries, args[0])
 			if strings.Contains(args[0], "remapped_rows.pending") {

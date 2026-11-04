@@ -14,6 +14,10 @@ This guide explains how to deploy a model as a callable inference service, check
 
 On the deployment page, select a registered model or search for a specific model in the built-in catalog, then select a runtime scheme. Models and schemes are searched separately; schemes with the same name are distinguished by source and name. If the catalog does not contain the combination you need, use your own image and configuration.
 
+Chip filtering in the template list checks vendor, model name, applicable compute capability and architecture ID, and honors catalog unsupported rules. More specific matching recipes come first. A missing or different architecture ID does not pass because the GPU has the same name. Template detail warnings and the default engine use the same rules; the platform evaluates node selection for command previews.
+
+The deployment page's **Chip compatible** recommendations are scoped to the selected node, or to online nodes of the target vendor when no node is pinned. They indicate matching hardware in that scope; they do not guarantee availability of manually assigned GPUs, memory or other deployment constraints. After changing the node or vendor, wait for the new scope's result. The current draft's deployment evaluation remains authoritative.
+
 If the form displays **This deployment will expose no inference API**, first set the required APIs on the **Models** page. If neither the model nor the selected template recipe declares any APIs, the deployment does not appear in the Playground and cannot have health checks enabled. APIs declared by the template recipe are assigned to models with no APIs, including models whose API list is `[]`, whose task was not identified at registration, or whose APIs were subsequently cleared. Models that already have APIs remain unchanged.
 
 ### Select a Deployment Shape and Nodes

@@ -96,6 +96,10 @@ func TestFlatCatalogValidationRejectsRetiredAndUnsafeShapes(t *testing.T) {
 		{"multi-line display name", func(c *FlatCatalog) { c.Models[0].Specs[0].DisplayNameEN = "Ampere+\nBF16" }},
 		{"overlong zh display name", func(c *FlatCatalog) { c.Models[0].Specs[0].DisplayNameZHCN = strings.Repeat("卡", 57) }},
 		{"overlong en display name", func(c *FlatCatalog) { c.Models[0].Specs[0].DisplayNameEN = strings.Repeat("x", 73) }},
+		{"blank architecture ID", func(c *FlatCatalog) { c.Models[0].Specs[0].GPUs.ArchID = "   " }},
+		{"blank unsupported architecture ID", func(c *FlatCatalog) {
+			c.Models[0].Unsupported = []UnsupportedGPU{{GPUs: GPUSelector{Vendor: "amd", ArchID: " \t"}, Reason: "unsupported"}}
+		}},
 		{"missing weight source", func(c *FlatCatalog) { c.Models[0].Specs[0].Weights.Sources = nil }},
 		{"negative runtime weight", func(c *FlatCatalog) { c.Models[0].Specs[0].RuntimeWeightBytes = -1 }},
 		{"runtime weight exceeds storage", func(c *FlatCatalog) { c.Models[0].Specs[0].RuntimeWeightBytes = c.Models[0].Specs[0].WeightBytes + 1 }},
@@ -198,5 +202,27 @@ func TestFlatCatalogStoreProjectionCanBecomePortableAgain(t *testing.T) {
 	rows[0].Specs[0].Placement = `{broken`
 	if _, err := FromFlatStoreModel(rows[0]); err == nil || !strings.Contains(err.Error(), "placement") {
 		t.Fatalf("corrupt projection error = %v", err)
+	}
+}
+
+func TestGPUSelectorArchIDRoundTrip(t *testing.T) {
+	catalog := flatFixture()
+	catalog.Models[0].Specs[0].GPUs = GPUSelector{Vendor: "amd", Name: `Radeon 8060S`, ArchID: " gfx1151 "}
+	if err := ValidateFlatCatalog(&catalog); err != nil {
+		t.Fatal(err)
+	}
+	if got := catalog.Models[0].Specs[0].GPUs.ArchID; got != "gfx1151" {
+		t.Fatalf("arch_id was not trimmed: %q", got)
+	}
+	encoded, err := yaml.Marshal(catalog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := ParseYAML(encoded)
+	if err != nil {
+		t.Fatalf("round-trip catalog did not parse: %v", err)
+	}
+	if got := decoded.Models[0].Specs[0].GPUs.ArchID; got != "gfx1151" {
+		t.Fatalf("round-trip lost arch_id: %q", got)
 	}
 }

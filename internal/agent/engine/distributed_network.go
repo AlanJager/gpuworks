@@ -25,6 +25,8 @@ const vllmHostIPEnv = "VLLM_HOST_IP"
 // never needed one, and inject Ascend variables into CUDA containers.
 var distributedSocketInterfaceEnv = map[string][]string{
 	accelerator.VendorNVIDIA: {"GLOO_SOCKET_IFNAME", "NCCL_SOCKET_IFNAME"},
+	// RCCL reads the NCCL_* names.
+	accelerator.VendorAMD:    {"GLOO_SOCKET_IFNAME", "NCCL_SOCKET_IFNAME"},
 	accelerator.VendorAscend: {"GLOO_SOCKET_IFNAME", "HCCL_SOCKET_IFNAME", "TP_SOCKET_IFNAME"},
 }
 

@@ -7,9 +7,10 @@ import "strconv"
 // place a PCI id is turned into a vendor: a new backend declares itself
 // here or it is not recognized anywhere.
 //
-// Every entry was read off a machine of that kind; none is guessed, because
-// a wrong id mis-identifies somebody's hardware in the one place that is
-// meant to be the fact an operator can rely on.
+// Entries use recorded device/class/driver facts; AMD is recognized only by
+// vendor 0x1002 bound to its existing amdgpu driver contract. No display-class
+// fallback is declared for AMD here, and this does not claim a 395 hardware
+// validation.
 //
 // A card is recognized two ways, and either is enough:
 //
@@ -75,6 +76,10 @@ type pciVendor struct {
 // an NPU. The same care will be needed for Intel if it is ever added, whose
 // integrated graphics is 0x0300 and whose QAT and DSA are 0x0b40.
 var pciVendors = map[uint32]pciVendor{
+	AMDPCIVendorID: {
+		name:    VendorAMD,
+		drivers: []string{AMDGPUDriver},
+	},
 	0x10de: {
 		name:    VendorNVIDIA,
 		classes: []uint32{pciClassVGA, pciClass3D},

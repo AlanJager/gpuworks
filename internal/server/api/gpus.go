@@ -210,7 +210,8 @@ func physicalGPU(node *store.Node, partitionReports partitioncap.Reports, gpu *s
 	item := dto.PhysicalGPU{
 		Index: gpu.Index, UUID: gpu.UUID, Name: gpu.Name, Vendor: gpu.Vendor,
 		ArchFamily: arch.Family, ArchID: arch.ID, ComputeCapability: gpu.ComputeCapability,
-		MemoryTotalBytes: gpu.MemoryTotal, PowerLimitWatts: gpu.PowerLimitWatts, PCIeBDF: gpu.PCIeBDF,
+		MemoryCapacityKnown: gpuMemoryCapacityKnown(gpu.MemoryTotal),
+		MemoryTotalBytes:    gpu.MemoryTotal, PowerLimitWatts: gpu.PowerLimitWatts, PCIeBDF: gpu.PCIeBDF,
 		NUMANode: gpu.NUMANode, PartitionCapabilities: partitionReports.ForGPU(gpu),
 		Ownership: gpu.Ownership, ForeignProcesses: gpu.ForeignUse(),
 		SchedulingStopped: gpu.SchedulingStopped, SchedulingAllowed: gpu.SchedulingAllowedAt != nil,

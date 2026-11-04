@@ -21,6 +21,7 @@ type GPU struct {
 	CC           float64 `json:"cc,omitempty"`
 	Category     string  `json:"category"`
 	Architecture string  `json:"architecture"`
+	ArchID       string  `json:"arch_id,omitempty"`
 }
 
 // List returns a copy so callers cannot mutate the process-wide catalog.
@@ -109,6 +110,12 @@ var catalog = func() []GPU {
 		"QUADRO T2000", "NVIDIA T1200", "NVIDIA T1000", "NVIDIA T600", "NVIDIA T500", "NVIDIA T400",
 		"GeForce GTX 1650 Ti", "NVIDIA TITAN RTX", "GeForce RTX 2080 Ti", "GeForce RTX 2080",
 		"GeForce RTX 2070", "GeForce RTX 2060")...)
+	// Representative AMD choices for hypothetical planning, not a runtime
+	// support or GPU-memory-capacity claim. Device eligibility uses probe facts.
+	result = append(result,
+		GPU{Vendor: accelerator.VendorAMD, Name: "AMD Instinct MI300X", Category: CategoryDataCenter, Architecture: "CDNA 3", ArchID: "gfx942"},
+		GPU{Vendor: accelerator.VendorAMD, Name: "AMD Radeon 8060S (AMD395)", Category: CategoryWorkstation, Architecture: "RDNA 3.5", ArchID: "gfx1151"},
+	)
 	result = append(result, apple("M5", "", "Pro", "Max")...)
 	result = append(result, apple("M4", "", "Pro", "Max")...)
 	result = append(result, apple("M3", "", "Pro", "Max", "Ultra")...)

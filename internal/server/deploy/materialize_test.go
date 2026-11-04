@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"strings"
 	"testing"
 
 	"gpuworks.ai/gpuworks/internal/server/messages"
@@ -176,6 +177,24 @@ func TestMaterializePrecedenceFieldOverExtraOverTemplate(t *testing.T) {
 	}
 	if fmt.Sprint(out.TemplateParams["gpu_memory_utilization"]) != "0.95" {
 		t.Fatalf("TemplateParams still reports what the template said: %v", out.TemplateParams)
+	}
+}
+
+func TestSGLangCacheLimitsRemainUnpersistedArgs(t *testing.T) {
+	args := []string{"--max-total-tokens", "8192", "--max-mamba-cache-size", "16"}
+	out, err := Materialize(MaterializeInput{Engine: EngineSGLang, ExtraArgs: args})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(out.UserResidual, args) {
+		t.Fatalf("cache args were not retained: %v", out.UserResidual)
+	}
+	data, err := json.Marshal(out.Quick)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "max_total_tokens") || strings.Contains(string(data), "max_mamba_cache_size") {
+		t.Fatalf("ephemeral cache limits persisted: %s", data)
 	}
 }
 

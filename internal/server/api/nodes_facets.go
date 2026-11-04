@@ -50,7 +50,7 @@ func (a *apiHandlers) facetsOf(nodes []store.Node) dto.NodeFacets {
 	facts := planning.NodeFacts{Networks: resolved, Storages: storages, Providers: providers}
 	written := map[string]map[string]int{}
 	system := map[string]map[string]*dto.SystemLabelValueCount{}
-	type chip struct{ vendor, name, cc string }
+	type chip struct{ vendor, name, cc, archID string }
 	gpus := map[chip]int{}
 	// cards and memory sum the chip's cards across the matched nodes and keep
 	// the largest card's memory, for a reader sizing a model against the fleet.
@@ -83,7 +83,7 @@ func (a *apiHandlers) facetsOf(nodes []store.Node) dto.NodeFacets {
 		}
 		seen := map[chip]bool{}
 		for _, g := range n.OwnedGPUs() {
-			c := chip{g.Vendor, g.Name, g.ComputeCapability}
+			c := chip{g.Vendor, g.Name, g.ComputeCapability, g.ArchID}
 			cards[c]++
 			memory[c] = max(memory[c], g.MemoryTotal)
 			if !seen[c] {
@@ -112,7 +112,7 @@ func (a *apiHandlers) facetsOf(nodes []store.Node) dto.NodeFacets {
 	}
 	sort.Slice(out.SystemLabels, func(i, j int) bool { return out.SystemLabels[i].Key < out.SystemLabels[j].Key })
 	for c, count := range gpus {
-		out.GPUs = append(out.GPUs, dto.NodeGPUCount{Vendor: c.vendor, Name: c.name, CC: c.cc, Model: accelerator.NormalizeGPUName(c.name), Nodes: count, Cards: cards[c], MemoryBytes: memory[c]})
+		out.GPUs = append(out.GPUs, dto.NodeGPUCount{Vendor: c.vendor, Name: c.name, CC: c.cc, ArchID: c.archID, Model: accelerator.NormalizeGPUName(c.name), Nodes: count, Cards: cards[c], MemoryBytes: memory[c]})
 	}
 	sort.Slice(out.GPUs, func(i, j int) bool {
 		a, b := out.GPUs[i], out.GPUs[j]
@@ -122,7 +122,10 @@ func (a *apiHandlers) facetsOf(nodes []store.Node) dto.NodeFacets {
 		if a.Name != b.Name {
 			return a.Name < b.Name
 		}
-		return a.CC < b.CC
+		if a.CC != b.CC {
+			return a.CC < b.CC
+		}
+		return a.ArchID < b.ArchID
 	})
 	return out
 }

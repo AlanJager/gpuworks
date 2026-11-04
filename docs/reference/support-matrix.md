@@ -4,6 +4,7 @@
 |---|---|---|---|---|
 | NVIDIA / CUDA | nvidia-smi、sysfs | Docker、runveil、nerdctl | HAMi libvgpu.so（x86_64，glibc ≥ 2.17） | 支持 CUDA/NCCL 拓扑；驱动库由宿主机提供 |
 | 昇腾 / CANN | npu-smi、驱动和 CANN 事实 | Docker + Ascend runtime；部分环境 runveil | vCANN；能力取决于宿主机 device-share 权限 | 外层/内层 CANN 版本不能混为一个结论 |
+| AMD / ROCm | amdgpu sysfs、KFD | Linux amd64、Docker/nerdctl；上游 vLLM ROCm 镜像已在 MI325X（gfx942）与 AMD395（gfx1151）单卡 BF16 文本推理实测，其余组合逐档待验 | 不支持 | 多机与 PP 经 vLLM mp 后端运行（RCCL 读取 NCCL_* 网络变量，已在两台 MI325X 上实测 PP=2 与跨机 TP=2）；这不是对所有 AMD 卡或 ROCm 组合的兼容性承诺 |
 | PPU / HGGC | ppu-smi | provider/runtime 依赖 | HGGC 显存与加权 QoS | 20/80 长负载已证明繁忙时吞吐权重，不是硬 SM 分区 |
 | 海光 / DTK | hy-smi | 由目录 spec 和 runtime 决定 | Z100 / K100_AI / BW 原生 vdev（实验性，x86_64，Docker 或 runveil/udocker） | 需可选原生 helper、宿主库和逐卡行为探针；其他型号仍只支持整卡 |
 | Apple / Metal | sysctl、ioreg（macOS 15+，Apple silicon） | host（引擎为宿主机进程，镜像是 darwin 环境包） | 无；一台 Mac 按统一内存同时跑多个实例 | 1 张统一内存卡，显存为 Metal 工作集；不支持引擎休眠、多机、KV 磁盘层；见 [ADR 0044](../adr/0044-mac-engines-as-host-processes.md) |
@@ -28,6 +29,12 @@ dGPU 不可用时，节点仍可使用整卡部署；平台不会把不满足 dG
 
 在线调整的安全条件与待重启原因见[调整 dGPU 配额](../how-to/dgpu.md#调整-dgpu-配额)。
 表中能力不代表任意推理镜像均已验证；节点是否可用仍以该卡的 `status` / `reason` 为准。
+
+## AMD 整卡实现边界与验收状态
+
+当前 agent 和 server 实现的 AMD 主机接入范围是 Linux amd64、Docker 或 nerdctl、整卡部署（单机或 vLLM 多机）。PCI 库存仅把绑定 `amdgpu` 且具有匹配 KFD 计算节点的 AMD PCI 功能识别为卡；agent 再读取其 amdgpu sysfs/KFD 事实，按 PCI BDF 和可用的 unique ID 核对设备库存。缺少驱动绑定、KFD 或明确的 render 映射时不应推断可部署；运行时只注入所选卡的 render 节点及 `/dev/kfd`。它不支持 AMD dGPU 分区，不启用 runveil/udocker、DP、PD 或 sleep 路径。多机与 PP 走 vLLM mp 后端：RCCL 与 NVIDIA 一样读取 `NCCL_SOCKET_IFNAME`、`NCCL_IB_*`，agent 按节点地址填入网卡，无 RDMA 时关闭 IB。此范围描述 GPUWorks 当前实现，不代表所有 AMD GPU、驱动、内核或 ROCm 用户态组合都兼容。
+
+内置镜像目录提供 `gpuworks/gpuworks-runner:rocm7.2.3-vllm0.30.0-r1`（基于上游 `vllm/vllm-openai-rocm`，ROCm 7.2.3、vLLM 0.30.0），内置推理目录为 Qwen3 0.6B–32B 与 30B-A3B 提供 `arch_id: gfx942`（MI300X/MI325X）的 BF16 vLLM 规格，为 0.6B–8B 提供 `arch_id: gfx1151`（Ryzen AI Max+ 395）的规格；选模型即可部署，无需导入镜像或模板。实测覆盖：MI325X 单卡与两台 MI325X 的 PP=2、跨机 TP=2，AMD395 单卡；只证明短文本推理与部署/停止流程，不代表回答质量、持续性能、长上下文或图片输入已验证。SGLang ROCm 档仍是 `catalog: false` 的未发布候选。UMA 容量按实际 KFD/GTT 事实读取，不可推广为其他 APU 或主机的可用 GPU 内存。`gpus.arch_id` 是精确、大小写不敏感匹配；缺失或不一致的架构事实不会通过。验收步骤见 [AMD 硬件验收指南](../dev/amd-hardware-validation.md)与 [ROCm 镜像配方](../../build/runner-images/rocm/README.md)。
 
 ## PPU 设备身份与 dGPU 探针
 
@@ -75,6 +82,7 @@ server 收到节点上报时把型号名规范化后再存（`accelerator.Normal
 | 昇腾 | 芯片型号：`910B4`、`910B2C`、`910C`、`310P3` | `910b`、`910c`、`310p`；初代 910 与认不出的为空 |
 | 海光 | SKU：`K100AI`、`BW`、`BW1000`；只报系列时存系列 `K100`；认不出为空 | `k100`、`z100`、`bw`、`bw1000`、`bw1100` |
 | PPU | `ZW810E`（取自名字） | `beethoven`（`ppu-smi` architecture 列） |
+| AMD | KFD `gfx_target_version`，如 `gfx90a`、`gfx942`、`gfx1151`；缺失时为空 | 暂不推导 |
 | Apple | SoC 名：`M1 Max`、`M4 Pro`（`ioreg` 的 model 去掉 `Apple`） | 芯片代际 `m1`…`m6` |
 
 agent 探测不到任何加速卡（各厂商 CLI 都不应答、都没装、也没有厂商设备文件）时节点厂商为空，不再按 NVIDIA 上报。

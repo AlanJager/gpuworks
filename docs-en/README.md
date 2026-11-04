@@ -114,6 +114,7 @@ see the index in [`artifacts/README.md`](../artifacts/README.md)). Chinese origi
 - [Code Map: Package Responsibilities](dev/code-map.md)
 - [Local Setup](dev/setup.md)
 - [Testing Guide and Cloud Test Tiers](dev/testing.md)
+- [AMD Integration and Hardware Validation](dev/amd-hardware-validation.md)
 - [Benchmark Information and Reporting Standards](dev/benchmark-reporting-standard.md)
 - [Observability Limits of Per-Request Engine Queue Time](dev/engine-queue-observation.md)
 - [Browser E2E Testing Standards](../test/e2e/browser-e2e-testing-standard.md)

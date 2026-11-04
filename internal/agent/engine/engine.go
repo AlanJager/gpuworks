@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"gpuworks.ai/gpuworks/internal/accelerator"
 	"gpuworks.ai/gpuworks/internal/agent/gpu"
 	"gpuworks.ai/gpuworks/internal/agent/imagepull"
 	"gpuworks.ai/gpuworks/internal/agent/runtime"
@@ -27,13 +28,14 @@ type Reporter func(proto.InstanceStatus)
 
 // Engine reconciles desired instances against running containers.
 type Engine struct {
-	driver         runtime.Driver
-	prober         gpu.Prober
-	report         Reporter
-	log            *slog.Logger
-	stateDir       string // for extracted assets (libvgpu), the dGPU usage cache
-	runtimeMounts  *RuntimeMountManager
-	extractLibvgpu func(string) (string, error)
+	driver           runtime.Driver
+	hostRuntimeFacts func() accelerator.HostRuntime
+	prober           gpu.Prober
+	report           Reporter
+	log              *slog.Logger
+	stateDir         string // for extracted assets (libvgpu), the dGPU usage cache
+	runtimeMounts    *RuntimeMountManager
+	extractLibvgpu   func(string) (string, error)
 	// checkPorts runs before a container is created (checkEnginePorts).
 	checkPorts func(proto.InstanceDesiredState) error
 

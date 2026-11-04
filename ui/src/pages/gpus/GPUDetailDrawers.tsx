@@ -1,3 +1,4 @@
+import { formatGPUCapacity, gpuCapacityBytes } from "../../gpuMemory";
 import { useEffect, useState } from "react";
 import { Descriptions, Segmented, Space, Tag, Typography } from "antd";
 import {
@@ -41,7 +42,7 @@ export function PhysicalGPUDetail({ gpu, onClose }: { gpu: PhysicalGPU | null; o
                 children: (
                   <>
                     {/* What the card is doing now is what one opens it for most. */}
-                    {cardHasDetail(gpu) && gpu.memory_total_bytes > 0 && (
+                    {cardHasDetail(gpu) && gpuCapacityBytes(gpu) !== undefined && (
                       <DetailSection title={t("composition.title")}><GPUMemoryComposition gpu={gpu} /></DetailSection>
                     )}
                     <DetailSection title={t("detail.basicInfo")}>
@@ -77,7 +78,7 @@ export function PhysicalGPUDetail({ gpu, onClose }: { gpu: PhysicalGPU | null; o
                         <Descriptions.Item label={t("column.vendor")}>{vendorLabel(gpu.vendor, t)}</Descriptions.Item>
                         <Descriptions.Item label={t("column.model")}>{gpu.name}</Descriptions.Item>
                         <Descriptions.Item label={t("detail.architecture")}>{gpu.arch_id || gpu.arch_family || "-"}</Descriptions.Item>
-                        <Descriptions.Item label={t("metric.vram")}>{fmtGiB(gpu.memory_total_bytes)}</Descriptions.Item>
+                        <Descriptions.Item label={t("metric.vram")}>{formatGPUCapacity(gpu, fmtGiB)}</Descriptions.Item>
                         <Descriptions.Item label={t("detail.driver")}>{dash(gpu.driver_version)}</Descriptions.Item>
                         <Descriptions.Item label={t("detail.maxPower")}>{gpu.power_limit_watts ? `${gpu.power_limit_watts.toFixed(0)} W` : "-"}</Descriptions.Item>
                       </Descriptions>
@@ -158,7 +159,7 @@ function LoadTiles({ gpu }: { gpu: PhysicalGPU }) {
   const { t } = useTranslation("gpus");
   const items = [
     { icon: <DashboardOutlined />, label: t("metric.gpuUtilization"), value: optionalPercent(gpu.load.utilization_pct) },
-    { icon: <DatabaseOutlined />, label: t("metric.vram"), value: gpu.load.memory_used_bytes == null ? "-" : `${fmtGiB(gpu.load.memory_used_bytes)} / ${fmtGiB(gpu.memory_total_bytes)}` },
+    { icon: <DatabaseOutlined />, label: t("metric.vram"), value: gpu.load.memory_used_bytes == null ? "-" : `${fmtGiB(gpu.load.memory_used_bytes)} / ${formatGPUCapacity(gpu, fmtGiB)}` },
     { icon: <FireOutlined />, label: t("metric.temperature"), value: gpu.load.temperature_c == null ? "-" : `${gpu.load.temperature_c.toFixed(0)} °C` },
     { icon: <ThunderboltOutlined />, label: t("metric.power"), value: gpu.load.power_watts == null ? "-" : `${gpu.load.power_watts.toFixed(0)} W` },
     { icon: <AppstoreOutlined />, label: t("metric.fan"), value: optionalPercent(gpu.load.fan_speed_pct) },

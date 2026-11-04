@@ -31,11 +31,33 @@ func CatalogKVBytesPerToken(st *store.Store, catalog *store.InferenceModel, mode
 			}
 		}
 	}
-	if catalog == nil || strings.TrimSpace(catalog.KVBytesPerToken) == "" {
+	if catalog == nil {
+		return 0
+	}
+	return catalogKVBytesPerToken(catalog.KVBytesPerToken, engine)
+}
+
+// catalogKVBytesPerTokenForSelection first uses the catalog model recorded in
+// the deployment snapshot. The registered weight model may be shared by
+// multiple catalog entries with different engine measurements, so its
+// SourceID is only the compatibility fallback when the snapshot identity is
+// absent, unreadable, or inconsistent.
+func catalogKVBytesPerTokenForSelection(st *store.Store, templateID uint, selectedModelID string, model *store.Model, engine string) int64 {
+	if st != nil && templateID > 0 && strings.TrimSpace(selectedModelID) != "" {
+		modelID, raw, err := st.InferenceModelKVBytesPerTokenByID(templateID)
+		if err == nil && strings.EqualFold(strings.TrimSpace(modelID), strings.TrimSpace(selectedModelID)) {
+			return catalogKVBytesPerToken(raw, engine)
+		}
+	}
+	return CatalogKVBytesPerToken(st, nil, model, engine)
+}
+
+func catalogKVBytesPerToken(raw, engine string) int64 {
+	if strings.TrimSpace(raw) == "" {
 		return 0
 	}
 	var byEngine map[string]int64
-	if err := json.Unmarshal([]byte(catalog.KVBytesPerToken), &byEngine); err != nil {
+	if err := json.Unmarshal([]byte(raw), &byEngine); err != nil {
 		return 0
 	}
 	return byEngine[engine]

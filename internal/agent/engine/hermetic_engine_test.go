@@ -1,0 +1,13 @@
+package engine
+
+import (
+	"log/slog"
+
+	"gpuworks.ai/gpuworks/internal/agent/runtime"
+)
+
+// newHermeticEngine makes general engine tests independent of the host GPU.
+// Vendor-specific tests use NewWithProber with their own explicit prober.
+func newHermeticEngine(driver runtime.Driver, report Reporter, log *slog.Logger, stateDir string) *Engine {
+	return NewWithProber(driver, report, log, stateDir, injectionProber{})
+}
