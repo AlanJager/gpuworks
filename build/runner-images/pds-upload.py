@@ -208,7 +208,8 @@ def main():
                 if url is None or (expiry and time.time() > expiry - RENEW_MARGIN):
                     fresh = api(domain, key, "/v2/file/get_upload_url", {
                         "drive_id": DRIVE_ID, "file_id": file_id, "upload_id": upload_id,
-                        "part_info_list": [{"part_number": number}],
+                        # A parallel upload must re-send the part's SHA-1 state, or PDS rejects it.
+                        "part_info_list": [part_info[number - 1]],
                     })
                     url = urls[number] = fresh["part_info_list"][0]["upload_url"]
                 try:
