@@ -386,6 +386,257 @@ def launch_facts(page, panel, server, data, report, text):
     report["evidence"].append({"layer": "persistence", "launch_observation_relation": "current"})
 
 
+def seed_stdout(container, prefix, count):
+    """Write distinct real stdout lines into the owned engine's PID 1 stream."""
+    lines = ["INFO " + prefix + "-%02d 中文诊断" % index for index in range(count)]
+    # Positional arguments are iterated rather than referenced one by one: a bare $10 is $1
+    # followed by a literal 0 in a POSIX shell, so an unbraced chain would silently overwrite
+    # the same line for every argument from the tenth on.
+    fixture.docker("exec", container, "/bin/sh", "-c",
+                  'for line in "$@"; do printf "%s\\n" "$line" > /proc/1/fd/1; done', "sh", *lines)
+    deadline = time.monotonic() + 20
+    while True:
+        recorded = fixture.docker("logs", container).decode().splitlines()
+        counts = [recorded.count(line) for line in lines]
+        if all(count == 1 for count in counts):
+            return lines
+        check(time.monotonic() < deadline,
+              "owned engine stdout did not receive the seeded lines: %s" % counts)
+        time.sleep(0.2)
+
+
+def scroll_state(panel):
+    """Measured scroll position of the log viewport, in CSS pixels."""
+    return panel.locator("pre").evaluate(
+        "el => ({top: el.scrollTop, height: el.scrollHeight, client: el.clientHeight})")
+
+
+def log_follow_and_modes(page, panel, server, data, report, text):
+    """18.2: live/query switching, follow pause and resume, and the return to the default view.
+
+    The instance log surface exposes exactly two controls: a range select whose first entry is
+    the live default, and a follow checkbox that is checked by default. Follow is asserted the
+    way the product implements it - it pins the viewport to the newest line on every arrival and
+    never gates the stream - so pausing is proven through the checkbox: an unchecked follow must
+    keep the reader's scroll position while new stdout lines still arrive and still persist.
+    """
+    inst, container = data["instance"], data["container"]
+    pre = panel.locator("pre")
+    expect(pre).to_have_count(1)
+    hint = panel.get_by_text(text["instance"]["logsHistoryHint"], exact=True)
+    control = panel.locator(".ant-tabs-extra-content")
+    range_label = text["timeRange"]["ariaLabel"]
+    follow = control.get_by_role("checkbox", name=text["instance"]["followLogs"], exact=True)
+    shown = control.locator(".ant-select-selection-item")
+
+    report["step"] = "log view control surface before any mode change"
+    expect(control).to_have_count(1)
+    expect(control.get_by_role("checkbox")).to_have_count(1)
+    expect(control.get_by_role("combobox")).to_have_count(1)
+    expect(follow).to_be_checked()
+    expect(shown).to_have_count(1)
+    expect(shown).to_have_text(text["timeRange"]["live"])
+    expect(hint).to_have_count(0)
+
+    report["step"] = "default follow pins a live tail to the newest stdout line"
+    seeded = seed_stdout(container, "e2e-" + report["run_id"] + "-follow", 60)
+    expect(pre).to_contain_text(seeded[-1], timeout=45000)
+    page.wait_for_timeout(400)
+    pinned = scroll_state(panel)
+    check(pinned["height"] > pinned["client"] + 100,
+          "seeded live stdout does not overflow the log viewport: %s" % pinned)
+    check(pinned["top"] + pinned["client"] >= pinned["height"] - 2,
+          "the default follow control left the live view off the newest line: %s" % pinned)
+
+    report["step"] = "an enabled follow returns the view to the newest line"
+    pre.hover()
+    page.mouse.wheel(0, -100000)
+    page.wait_for_timeout(300)
+    away = scroll_state(panel)
+    check(away["top"] < pinned["top"] - 1, "the live view could not be scrolled off the newest line")
+    tracked = fixture.write_marker(container, "e2e-" + report["run_id"] + "-follow-on")
+    expect(pre).to_contain_text(tracked, timeout=45000)
+    page.wait_for_timeout(400)
+    repinned = scroll_state(panel)
+    check(repinned["top"] + repinned["client"] >= repinned["height"] - 2,
+          "an enabled follow control did not return the view to the newest line: %s" % repinned)
+
+    report["step"] = "follow unchecked keeps the reader's position while stdout keeps arriving"
+    check(control.get_by_role("button", name=re.compile("pause|暂停", re.IGNORECASE)).count() == 0,
+          "the log view control surface unexpectedly gained a stream pause button")
+    follow.uncheck()
+    expect(follow).not_to_be_checked()
+    pre.hover()
+    page.mouse.wheel(0, -100000)
+    page.wait_for_timeout(300)
+    held_at = scroll_state(panel)
+    check(held_at["top"] < repinned["top"] - 1, "the view did not move when follow was unchecked")
+    lower = int(time.time() * 1000)
+    paused = fixture.write_marker(container, "e2e-" + report["run_id"] + "-follow-off")
+    expect(pre).to_contain_text(paused, timeout=45000)
+    page.wait_for_timeout(800)
+    stayed = scroll_state(panel)
+    check(abs(stayed["top"] - held_at["top"]) < 1,
+          "an unchecked follow still moved the reader's position: %s -> %s" % (held_at, stayed))
+    check(stayed["height"] > held_at["height"] + 2,
+          "the paused log view never received the new stdout line: %s -> %s" % (held_at, stayed))
+    paused_hit = fixture.persisted_marker(page, server, inst["uuid"], data["node"]["uuid"], paused, lower)
+
+    report["step"] = "follow re-enabled snaps back to the newest line"
+    follow.check()
+    expect(follow).to_be_checked()
+    page.wait_for_timeout(400)
+    resumed = scroll_state(panel)
+    check(resumed["top"] > stayed["top"] + 1, "re-enabling follow did not move the paused view")
+    check(resumed["top"] + resumed["client"] >= resumed["height"] - 2,
+          "re-enabling follow did not snap the view to the newest line: %s" % resumed)
+    expect(pre).to_contain_text(paused, timeout=5000)
+
+    query_path = "/api/v1/logs/search"
+    stream_path = "/api/v1/instances/" + inst["uuid"] + "/logs"
+    held, searches = [], []
+
+    def hold_one_hour(route):
+        query = parse_qs(urlsplit(route.request.url).query)
+        if not held and query.get("from") and query.get("to") and \
+                int(query["to"][0]) - int(query["from"][0]) == 3600000:
+            held.append(route)
+            return
+        route.continue_()
+
+    def watch_search(request):
+        if urlsplit(request.url).path == query_path:
+            searches.append(request.url)
+
+    pattern = re.compile(re.escape(server.base + query_path) + r"(\?|$)")
+    page.route(pattern, hold_one_hour)
+    try:
+        report["step"] = "live mode replaced by a real one-hour query"
+        select_range(page, panel, range_label, text["timeRange"]["1h"])
+        deadline = time.monotonic() + 20
+        while not held:
+            check(time.monotonic() < deadline, "the one-hour window issued no log search")
+            page.wait_for_timeout(100)
+        older_query = parse_qs(urlsplit(held[0].request.url).query)
+        check(held[0].request.method == "GET", "the historical log query is not a GET")
+        check(set(older_query) == {"instance", "from", "to", "limit"},
+              "historical log query fields differ: " + str(sorted(older_query)))
+        check(older_query["instance"] == [inst["uuid"]] and older_query["limit"] == ["2000"]
+              and int(older_query["to"][0]) - int(older_query["from"][0]) == 3600000,
+              "historical log query window differs: " + str(older_query))
+        expect(shown).to_have_text(text["timeRange"]["1h"])
+        expect(control.get_by_role("checkbox", name=text["instance"]["followLogs"], exact=True)) \
+            .to_have_count(1)
+        # Independent snapshot of the very same window while the browser's copy is still held,
+        # so the held response is a genuinely older view of the store than the one that follows.
+        withheld = page.request.get(server.base + query_path + "?" + urlsplit(held[0].request.url).query)
+        check(withheld.status == 200, "independent one-hour log read HTTP %s" % withheld.status)
+        older = withheld.json()
+        check(isinstance(older.get("items"), list) and bool(older["items"]),
+              "independent one-hour log read returned no rows")
+
+        report["step"] = "a newer stdout line appears while the one-hour response is still held"
+        lower = int(time.time() * 1000)
+        probe = fixture.write_marker(container, "e2e-" + report["run_id"] + "-stale-probe")
+        probe_hit = fixture.persisted_marker(page, server, inst["uuid"], data["node"]["uuid"], probe, lower)
+        check(all(row["line"] != probe for row in older["items"]),
+              "the independently read older window already holds the newer probe line")
+
+        report["step"] = "the still-held one-hour window is replaced by the six-hour window"
+
+        def six_hours(response):
+            query = parse_qs(urlsplit(response.url).query)
+            if urlsplit(response.url).path != query_path or query.get("instance") != [inst["uuid"]]:
+                return False
+            return bool(query.get("from") and query.get("to")) \
+                and int(query["to"][0]) - int(query["from"][0]) == 21600000
+
+        with page.expect_response(six_hours) as newer:
+            select_range(page, panel, range_label, text["timeRange"]["6h"])
+        newer_query = parse_qs(urlsplit(newer.value.url).query)
+        check(set(newer_query) == {"instance", "from", "to", "limit"},
+              "six-hour log query fields differ: " + str(sorted(newer_query)))
+        check(newer_query["instance"] == [inst["uuid"]] and newer_query["limit"] == ["2000"]
+              and int(newer_query["to"][0]) - int(newer_query["from"][0]) == 21600000,
+              "six-hour log query window differs: " + str(newer_query))
+        check(int(newer_query["from"][0]) < int(older_query["from"][0]),
+              "the six-hour window does not start before the one-hour window")
+        request_contract(newer.value, query_path, {k: v[0] for k, v in newer_query.items()})
+        expect(shown).to_have_text(text["timeRange"]["6h"])
+        expect(hint).to_have_count(1)
+        expect(pre).to_contain_text(probe, timeout=20000)
+        # The persisted copy carries its server arrival time; the live copy does not, so
+        # the prefix is asserted against the very line under test rather than the head of
+        # the view, which may legitimately open with a system line.
+        stamped = re.compile(r"\[[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}\] " + re.escape(probe))
+        check(stamped.search(pre.inner_text()) is not None,
+              "the historical view does not prefix the line with its arrival time")
+
+        report["step"] = "the held one-hour response cannot overwrite the six-hour view"
+        before_release = pre.inner_text()
+        held[0].fulfill(status=200, content_type="application/json", body=json.dumps(older))
+        page.wait_for_timeout(2000)
+        after_release = pre.inner_text()
+        check(probe in after_release, "the stale one-hour response overwrote the six-hour view")
+        expect(shown).to_have_text(text["timeRange"]["6h"])
+        view_changed_after_release = after_release != before_release
+
+        report["step"] = "the historical view does not consume the live stream"
+        lower = int(time.time() * 1000)
+        during = fixture.write_marker(container, "e2e-" + report["run_id"] + "-query-mode")
+        page.wait_for_timeout(5000)
+        check(during not in pre.inner_text(), "the historical view consumed a live stream line")
+        during_hit = fixture.persisted_marker(page, server, inst["uuid"], data["node"]["uuid"], during, lower)
+
+        report["step"] = "return to the default live view"
+        page.on("request", watch_search)
+        try:
+            with page.expect_response(lambda r: urlsplit(r.url).path == stream_path) as reopened:
+                select_control(page, control.get_by_role("combobox", name=range_label, exact=True),
+                               text["timeRange"]["live"])
+            check(reopened.value.headers.get("content-type") == "text/event-stream",
+                  "returning to the default view did not reopen the live stream")
+            check(parse_qs(urlsplit(reopened.value.url).query) == {},
+                  "the reopened live stream carries a query: " + reopened.value.url)
+            page.wait_for_timeout(1000)
+            check(not searches, "returning to the default view issued a log search: " + str(searches))
+        finally:
+            page.remove_listener("request", watch_search)
+        expect(shown).to_have_text(text["timeRange"]["live"])
+        expect(hint).to_have_count(0)
+        check(probe in pre.inner_text(), "returning to the default view dropped the rows it showed")
+        lower = int(time.time() * 1000)
+        back = fixture.write_marker(container, "e2e-" + report["run_id"] + "-live-again")
+        expect(pre).to_contain_text(back, timeout=45000)
+        back_hit = fixture.persisted_marker(page, server, inst["uuid"], data["node"]["uuid"], back, lower)
+    finally:
+        page.unroute(pattern, hold_one_hour)
+
+    report["log_follow_and_modes"] = {
+        "follow_default": True, "pinned_top": pinned["top"], "paused_top": stayed["top"],
+        "resumed_top": resumed["top"], "view_text_changed_after_release": view_changed_after_release,
+        "live_stream_reopened": True, "log_searches_when_returning_to_live": len(searches)}
+    report["evidence"].append({"layer": "ui", "log_follow": {
+        "default_checked": True, "pinned_to_newest": True, "kept_tracking": tracked,
+        "paused_at_px": stayed["top"], "received_while_unchecked": paused,
+        "resumed_at_px": resumed["top"], "stream_pause_button": False}})
+    report["evidence"].append({"layer": "ui", "log_modes": {
+        "live": "default streaming tail, no history hint",
+        "one_hour": "persisted rows of the real one-hour window",
+        "six_hours": "replaced the still-held one-hour response",
+        "back_to_live": "same rows kept and the stream resumed",
+        "stale_one_hour_overwrote_view": False}})
+    report["evidence"].append({"layer": "request", "log_modes": {
+        "one_hour": {k: v[0] for k, v in older_query.items()},
+        "six_hours": {k: v[0] for k, v in newer_query.items()},
+        "return_to_live": {"method": "GET", "path": stream_path, "query": {},
+                           "content_type": "text/event-stream", "log_searches": 0}}})
+    report["evidence"].append({"layer": "persistence", "log_modes": {
+        "unchecked_follow_marker": paused_hit, "stale_probe": probe_hit,
+        "query_mode_marker": during_hit, "live_again_marker": back_hit}})
+    report["last_step"] = "log-follow-and-view-modes"
+
+
 # Mainline: real container stdout marker → browser live SSE → known engine
 # gauges / all metric quick ranges → independent Docker launch observations
 # → browser Stop → persisted historical marker after reload; no real GPU claim.
@@ -441,6 +692,7 @@ def test_instance_diagnostics(page, context, server, artifacts, report, locale, 
     report["step"] = "delete dialog over the detail drawer"
     exercise_delete_dialog(page, drawer, server, data, text, report)
     inst = data["instance"]
+    log_follow_and_modes(page, panel, server, data, report, text)
     report["step"] = "real stdout marker through browser SSE"
     lower = int(time.time() * 1000)
     line = fixture.write_marker(data["container"], "e2e-" + report["run_id"] + "-diagnostics")
