@@ -159,7 +159,7 @@ func TestHardenSensitiveFilesRejectsLinksAndLeavesUnrelatedFilesAlone(t *testing
 	if err := os.Symlink(target, filepath.Join(layout.DataDir, "master.key")); err != nil {
 		t.Fatal(err)
 	}
-	if err := HardenSensitiveFiles(layout); err == nil {
+	if err := HardenSensitiveFiles(layout, nil); err == nil {
 		t.Fatal("linked key accepted")
 	}
 	info, err := os.Stat(target)
@@ -174,7 +174,7 @@ func TestHardenSensitiveFilesRejectsLinksAndLeavesUnrelatedFilesAlone(t *testing
 	if err := os.WriteFile(note, []byte("public"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	if err := HardenSensitiveFiles(layout); err != nil {
+	if err := HardenSensitiveFiles(layout, nil); err != nil {
 		t.Fatal(err)
 	}
 	info, _ = os.Stat(note)
@@ -185,7 +185,7 @@ func TestHardenSensitiveFilesRejectsLinksAndLeavesUnrelatedFilesAlone(t *testing
 	if err := os.Symlink(target, path); err != nil {
 		t.Fatal(err)
 	}
-	if err := HardenSensitiveFiles(layout); err == nil {
+	if err := HardenSensitiveFiles(layout, nil); err == nil {
 		t.Fatal("linked snapshot accepted")
 	}
 }

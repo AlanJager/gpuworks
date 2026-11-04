@@ -15,13 +15,30 @@ import (
 )
 
 // HardenSensitiveFiles protects only the established installation's known
-// credentials and recognized snapshots, not unrelated adjacent trees.
-func HardenSensitiveFiles(layout Layout) error {
+// credentials and recognized snapshots, not unrelated adjacent trees. A
+// snapshot this process may not open or chmod (one an upgrade wrote as root or
+// as another operator) is rollback material only, so it is reported to warn
+// instead of failing; credentials always fail.
+func HardenSensitiveFiles(layout Layout, warn func(path string, err error)) error {
 	policy, err := SensitiveFilePolicy(layout)
 	if err != nil {
 		return err
 	}
-	return hardenFilesWithPolicy(layout, policy)
+	paths, err := sensitivePaths(layout)
+	if err != nil {
+		return err
+	}
+	for _, path := range paths {
+		err := protectSensitiveFile(path, policy)
+		if err != nil && warn != nil && errors.Is(err, os.ErrPermission) && isBackupPath(layout, path) {
+			warn(path, err)
+			continue
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 func hardenFilesWithPolicy(layout Layout, policy securefile.Policy) error {
 	paths, err := sensitivePaths(layout)
@@ -29,11 +46,36 @@ func hardenFilesWithPolicy(layout Layout, policy securefile.Policy) error {
 		return err
 	}
 	for _, path := range paths {
-		if err := securefile.Protect(path, policy); err != nil {
+		if err := protectSensitiveFile(path, policy); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// protectSensitiveFile hardens a file through an open descriptor. When this
+// process may not open or chmod it (a privileged chown just handed it to the
+// service account and this shell has not picked up the new group yet), a
+// file that already satisfies the policy is accepted after a no-follow check.
+func protectSensitiveFile(path string, policy securefile.Policy) error {
+	err := protectFile(path, policy)
+	if err == nil || !errors.Is(err, os.ErrPermission) {
+		return err
+	}
+	if verifyErr := securefile.Verify(path, policy); verifyErr != nil {
+		return fmt.Errorf("%w (%v)", err, verifyErr)
+	}
+	return nil
+}
+
+// protectFile is replaced in tests: an unprivileged test cannot create a file
+// it may not open whose mode still matches the policy.
+var protectFile = func(path string, policy securefile.Policy) error {
+	return securefile.Protect(path, policy)
+}
+
+func isBackupPath(layout Layout, path string) bool {
+	return filepath.Dir(path) == filepath.Clean(layout.BackupsDir)
 }
 
 func sensitivePaths(layout Layout) ([]string, error) {
@@ -176,7 +218,7 @@ func (i *Installer) hardenSensitiveFiles(ctx context.Context, policy securefile.
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if err := securefile.Protect(path, policy); err != nil {
+		if err := protectSensitiveFile(path, policy); err != nil {
 			// Protect changes the opened file descriptor. A privileged chmod or
 			// chgrp by pathname could follow a replacement symlink before any
 			// post-check, so retry the whole command with appropriate ownership.

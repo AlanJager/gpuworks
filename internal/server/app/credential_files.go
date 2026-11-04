@@ -20,7 +20,7 @@ func openCredentialStore(cfg Config, events *bus.Bus, log *slog.Logger) (*store.
 	if err != nil {
 		return nil, "", err
 	}
-	if err := protectStartupCredentials(cfg, policy); err != nil {
+	if err := protectStartupCredentials(cfg, log, policy); err != nil {
 		return nil, "", err
 	}
 	master, err := masterSecret(cfg, policy)
@@ -66,7 +66,7 @@ func startupCredentialPolicy(cfg Config) (securefile.Policy, error) {
 	return selfinstall.SensitiveFilePolicy(layout)
 }
 
-func protectStartupCredentials(cfg Config, policies ...securefile.Policy) error {
+func protectStartupCredentials(cfg Config, log *slog.Logger, policies ...securefile.Policy) error {
 	if err := installcred.ProtectInitialCredentials(cfg.DataDir, policies...); err != nil {
 		return fmt.Errorf("protect initial credentials: %w", err)
 	}
@@ -81,7 +81,12 @@ func protectStartupCredentials(cfg Config, policies ...securefile.Policy) error 
 	if reason != "" {
 		return nil
 	}
-	if err := selfinstall.HardenSensitiveFiles(layout); err != nil {
+	warn := func(path string, err error) {
+		if log != nil {
+			log.Warn("cannot protect backup snapshot; have its owner or root restrict it", "path", path, "err", err)
+		}
+	}
+	if err := selfinstall.HardenSensitiveFiles(layout, warn); err != nil {
 		return fmt.Errorf("protect installation credentials: %w", err)
 	}
 	return nil

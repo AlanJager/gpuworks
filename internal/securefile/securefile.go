@@ -183,6 +183,23 @@ func Protect(path string, policies ...Policy) error {
 	}
 	return f.Close()
 }
+
+// Verify checks a file against its policy without opening or changing it, for
+// callers that may not read the file but must still confirm it is protected.
+func Verify(path string, policies ...Policy) error {
+	policy, err := Select(policies...)
+	if err != nil {
+		return err
+	}
+	info, err := os.Lstat(path)
+	if err != nil {
+		return err
+	}
+	if err := policy.Check(info); err != nil {
+		return fmt.Errorf("protect %s: %w", path, err)
+	}
+	return CheckFileACL(path)
+}
 func ReadFile(path string, policies ...Policy) ([]byte, error) {
 	f, err := Open(path, policies...)
 	if err != nil {

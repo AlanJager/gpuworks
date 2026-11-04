@@ -33,7 +33,7 @@ func TestStartupProtectsInitialCredentialsWithoutReadingTheirPassword(t *testing
 	if err := os.Chmod(path, 0o664); err != nil {
 		t.Fatal(err)
 	}
-	if err := protectStartupCredentials(Config{DataDir: dir, AdminPassword: "an explicit long passphrase"}); err != nil {
+	if err := protectStartupCredentials(Config{DataDir: dir, AdminPassword: "an explicit long passphrase"}, nil); err != nil {
 		t.Fatal(err)
 	}
 	info, err := os.Stat(path)
@@ -67,7 +67,7 @@ func TestStartupOnlyHardensBackupsBelongingToThisInstalledBinary(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			if err := protectStartupCredentials(cfg); err != nil {
+			if err := protectStartupCredentials(cfg, nil); err != nil {
 				t.Fatal(err)
 			}
 			info, err := os.Stat(backup)
