@@ -10,7 +10,7 @@ This guide explains how to check a GPU's available dGPU capabilities, create a d
 - NVIDIA: x86_64, glibc ≥ 2.17, and shared libraries provided by the host driver (`libcuda.so.1`, `libnvidia-ml.so.1`).
 - Ascend: host device-share permissions meet vCANN requirements, and the selected inference image provides glibc ≥ 2.33. Being able to connect the node and run on a whole card does not mean the host permits dGPU device sharing.
 - PPU: quotas combine a GPU memory limit with weighted QoS under contention. A 20/80 configuration specifies relative throughput weights under contention, not hard SM partitions.
-- AMD: x86_64, Docker or nerdctl, libvrocm.so enforces a hard GPU memory limit; there is no compute (SM/CU) limit. Only MI300X (gfx942) has been tested so far.
+- AMD: x86_64, Docker, nerdctl or runveil, libvrocm.so enforces a hard GPU memory limit; there is no compute (SM/CU) limit. Only MI300X (gfx942) has been tested so far.
 - Hygon Z100 / K100_AI / BW: experimental, with Docker or runveil/udocker on x86_64 and one GPU per instance. Install the native helper and host DTK/HYHAL/DCGM libraries, and pass the per-GPU probe. CUs follow the memory ratio; there is no independent compute quota. A report containing only the K100 family, or another unsupported model, remains full-GPU only. PRoot provides neither a separate cgroup nor kernel-enforced read-only mounts, so it does not establish security isolation against hostile programs. See [Hygon Z100 / K100_AI / BW dGPU](../reference/support-matrix.md#海光-z100--k100_ai--bw-dgpu).
 - For a complete walkthrough first, see [Run Two Models on One GPU](../tutorials/one-gpu-two-models.md); for semantics and boundaries, see [What dGPU Is and Is Not](../explanation/dgpu.md).
 

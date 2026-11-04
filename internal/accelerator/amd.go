@@ -28,7 +28,7 @@ func (amdLogicalBackend) Matches(vendor, _ string) bool {
 func (amdLogicalBackend) Maturity() Maturity       { return MaturityExperimental }
 func (amdLogicalBackend) RequiredAssets() []string { return []string{"libvrocm.so"} }
 func (amdLogicalBackend) Metadata() Metadata {
-	return Metadata{Vendor: VendorAMD, DisplayName: "AMD dGPU", Compatibility: "AMD ROCm GPU × x86_64 · Docker / nerdctl · memory quota only"}
+	return Metadata{Vendor: VendorAMD, DisplayName: "AMD dGPU", Compatibility: "AMD ROCm GPU × x86_64 · Docker / nerdctl / runveil · memory quota only"}
 }
 func (amdLogicalBackend) NeedsInstanceTeardown() bool { return true }
 
@@ -36,15 +36,15 @@ func (amdLogicalBackend) NeedsInstanceTeardown() bool { return true }
 // build/runtime-assets/manifest.json), so AMD skips the behavioral probe.
 func (amdLogicalBackend) SkipsBehaviorProbe() bool { return true }
 
-// AMD's host runtime contract (internal/accelerator/features.go) already
-// restricts the vendor to Docker/nerdctl; this backend-level constraint
-// surfaces the same restriction in partition capability reporting.
+// AMD's host runtime contract (internal/accelerator/features.go) admits
+// Docker, nerdctl and runveil (udocker); libvrocm.so is an LD_PRELOAD
+// interposer that PRoot carries like any other bind-mounted library.
 func (amdLogicalBackend) RuntimeConstraint(driver string) string {
 	switch strings.ToLower(strings.TrimSpace(driver)) {
-	case "docker", "nerdctl":
+	case "docker", "nerdctl", "udocker":
 		return ""
 	default:
-		return "AMD dGPU currently requires the Docker or nerdctl runtime"
+		return "AMD dGPU currently requires the Docker, nerdctl or udocker runtime"
 	}
 }
 

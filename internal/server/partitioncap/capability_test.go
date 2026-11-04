@@ -259,7 +259,7 @@ func testHygonCapabilityPrerequisites(t *testing.T, model string) {
 // AMD is probe-exempt like NVIDIA: readiness rests on the agent's safety
 // protocol and reported assets alone, under Docker or nerdctl; no probe
 // report is required or consulted.
-func TestAMDDGPUIsProbeExemptAndRuntimeConstrainedToDockerOrNerdctl(t *testing.T) {
+func TestAMDDGPUIsProbeExemptAndRuntimeConstrained(t *testing.T) {
 	node := &store.Node{
 		PartitionSafetyProtocol: 1, GPUVendor: "amd", Arch: "amd64", Framework: "rocm", FrameworkVersion: "7.2.3", RuntimeDriver: "docker",
 		PartitionAssets: `[{"backend":"amd-dgpu","root":"/opt","files":["libvrocm.so"]}]`,
@@ -274,8 +274,12 @@ func TestAMDDGPUIsProbeExemptAndRuntimeConstrainedToDockerOrNerdctl(t *testing.T
 		t.Fatalf("AMD nerdctl capability = %+v", got)
 	}
 	node.RuntimeDriver = "udocker"
-	if got := ForGPU(node, &node.GPUs[0]); len(got) != 1 || got[0].Status != StatusUnavailable || !strings.Contains(got[0].Reason, "Docker or nerdctl") {
-		t.Fatalf("AMD udocker capability = %+v", got)
+	if got := ForGPU(node, &node.GPUs[0]); len(got) != 1 || got[0].Status != StatusReady {
+		t.Fatalf("AMD runveil capability = %+v", got)
+	}
+	node.RuntimeDriver = "host"
+	if got := ForGPU(node, &node.GPUs[0]); len(got) != 1 || got[0].Status != StatusUnavailable || !strings.Contains(got[0].Reason, "Docker, nerdctl or udocker") {
+		t.Fatalf("AMD host-process capability = %+v", got)
 	}
 	node.RuntimeDriver = "docker"
 	node.PartitionSafetyProtocol = 0

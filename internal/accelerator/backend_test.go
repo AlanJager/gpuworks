@@ -128,12 +128,12 @@ func TestOptionalCapabilitiesAreBackendScoped(t *testing.T) {
 			t.Errorf("Hygon under %q must report a runtime constraint", driver)
 		}
 	}
-	for _, driver := range []string{"docker", "nerdctl", "Docker"} {
+	for _, driver := range []string{"docker", "nerdctl", "Docker", "udocker"} {
 		if why := RuntimeConstraint(amd, driver); why != "" {
 			t.Fatalf("AMD under %s constrained: %q", driver, why)
 		}
 	}
-	for _, driver := range []string{"", "udocker", "runveil"} {
+	for _, driver := range []string{"", "host", "runveil"} {
 		if why := RuntimeConstraint(amd, driver); why == "" {
 			t.Errorf("AMD under %q must report a runtime constraint", driver)
 		}
