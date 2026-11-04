@@ -740,7 +740,7 @@ For the procedure, see [Sleep and Wake Operations](../how-to/sleep-wake.md).
 
 `GET /api/v1/deployments/{id}/candidates`
 
-Provides the deployment candidate pool's live state. From the perspective of the "next replica," each cluster node is categorized by the first check it fails (`room`: appears to have free GPUs; `busy`: GPUs occupied by awake instances; `unmet`: does not meet node requirements; `cordoned`: scheduling stopped or eviction in progress; `offline`: offline). `counts` covers all nodes and sums to `nodes`; `unmet_by_key` counts nodes by the first unmet requirement key.
+Provides the deployment candidate pool's live state. From the perspective of the "next replica," each cluster node is categorized by the first check it fails (`room`: appears to have free GPUs; `busy`: GPUs occupied by awake instances; `unmet`: does not meet node requirements; `cordoned`: scheduling stopped or eviction in progress; `offline`: offline). `counts` covers all nodes and sums to `nodes`; `unmet_by_key` counts nodes by the first unmet requirement key. A node that meets the requirements but has no card that can run the launch (host runtime mismatch, or the accelerator does not support a requested feature) is also `unmet`, counted under the `accelerator` key; its item carries a structured `reason` (`code` and `params`, rendered by the client in the reader's language) instead of `detail`.
 
 `items` contains one page of details (candidates include `rank` in replica attempt order, followed by nodes with unmet requirements and offline nodes). Filter with `?status=` and paginate with `?offset=` and `?limit=` (1–200, default 50). Invalid parameters return 400 `FIELD_INVALID`.
 

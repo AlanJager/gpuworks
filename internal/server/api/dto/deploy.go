@@ -542,10 +542,13 @@ type DeploymentCandidate struct {
 	// a node that is not a candidate.
 	Rank int `json:"rank,omitempty"`
 	// Detail says which requirement an unmet node fails.
-	Detail   string `json:"detail,omitempty"`
-	Replicas int    `json:"replicas"`
-	FreeGPUs int    `json:"free_gpus"`
-	GPUs     int    `json:"gpus"`
+	Detail string `json:"detail,omitempty"`
+	// Reason is the structured refusal of an unmet node whose accelerators
+	// cannot run the deployment, rendered by the client from its code.
+	Reason   *ScheduleReason `json:"reason,omitempty"`
+	Replicas int             `json:"replicas"`
+	FreeGPUs int             `json:"free_gpus"`
+	GPUs     int             `json:"gpus"`
 	// Model is present, fetching or absent.
 	Model string `json:"model"`
 }

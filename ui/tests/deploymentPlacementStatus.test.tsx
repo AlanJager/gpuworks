@@ -99,7 +99,12 @@ test("the candidate table pages and filters on the server, from the keyboard", a
   apiAny.deploymentCandidates = async (id: number, page: Page) => {
     assert.equal(id, 7);
     asked.push(page);
-    if (page.status === "unmet") return candidates([{ ...node(1, "unmet"), rank: undefined, detail: "node gpu-1 does not satisfy pool ∈ {a, b}" }], 90);
+    if (page.status === "unmet") {
+      return candidates([
+        { ...node(1, "unmet"), rank: undefined, detail: "node gpu-1 does not satisfy pool ∈ {a, b}" },
+        { ...node(2, "unmet"), rank: undefined, reason: { code: "accelerator_feature_unsupported", params: { vendor: "AMD", feature: "engine_sleep" } } },
+      ], 90);
+    }
     return candidates(Array.from({ length: 50 }, (_, i) => node((page.offset ?? 0) + i + 1)), 1000);
   };
   const user = userEvent.setup({ document: dom.window.document });
@@ -122,6 +127,11 @@ test("the candidate table pages and filters on the server, from the keyboard", a
   await user.keyboard(" ");
   await within(modal).findByText("node gpu-1 does not satisfy pool ∈ {a, b}");
   assert.deepEqual(asked.at(-1), { status: "unmet", offset: 0, limit: 50 });
+  // An accelerator refusal arrives as a code and is rendered in the reader's language.
+  const feature = i18n.t("common:acceleratorFeature.names.engine_sleep");
+  assert.notEqual(feature, "engine_sleep");
+  assert.ok(within(modal).getByText(i18n.t("deploy:schedule.accelerator_feature_unsupported", { vendor: "AMD", feature })));
+  assert.equal(within(modal).queryByText(/accelerator_feature_unsupported/), null);
 });
 
 test("an empty page and a failed load say so", async () => {

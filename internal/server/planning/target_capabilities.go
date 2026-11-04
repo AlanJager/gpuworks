@@ -328,7 +328,7 @@ type TargetAdmission struct {
 	loadModel    func() (*store.Model, error)
 	online       func(string) bool
 	prepared     bool
-	refusal      func(*store.Node) string
+	refusal      func(*store.Node) *scheduler.Reason
 	err          error
 }
 
@@ -343,32 +343,32 @@ func targetNodeParticipates(node *store.Node, online func(string) bool) bool {
 	return node != nil && node.Scheduling.TakesReplicas() && (online == nil || online(node.UUID))
 }
 
-func (a *TargetAdmission) Refusal(node *store.Node) string {
+func (a *TargetAdmission) Refusal(node *store.Node) *scheduler.Reason {
 	if !targetNodeParticipates(node, a.online) {
-		return ""
+		return nil
 	}
 	if len(node.OwnedGPUs()) == 0 {
-		return scheduler.ReasonNoOwnedGPU
+		return &scheduler.Reason{Code: scheduler.ReasonNoOwnedGPU}
 	}
 	if !a.prepared {
 		a.prepared = true
 		if a.dep == nil || a.loadModel == nil {
 			a.err = fmt.Errorf("deployment target admission requires a model loader")
-			return ""
+			return nil
 		}
 		model, err := a.loadModel()
 		if err != nil {
 			a.err = fmt.Errorf("load deployment %d model record %d: %w", a.dep.ID, a.dep.ModelID, err)
-			return ""
+			return nil
 		}
 		if model == nil && a.dep.ModelID != 0 {
 			a.err = fmt.Errorf("load deployment %d model record %d: no model returned", a.dep.ID, a.dep.ModelID)
-			return ""
+			return nil
 		}
 		a.refusal, a.err = targetRefusalFor(a.dep, a.requirements, model, a.online, previewRequestedFeatures)
 	}
 	if a.err != nil {
-		return ""
+		return nil
 	}
 	return a.refusal(node)
 }
@@ -376,7 +376,7 @@ func (a *TargetAdmission) Refusal(node *store.Node) string {
 // Err reports only observed global preparation failures and never starts IO.
 func (a *TargetAdmission) Err() error { return a.err }
 
-func targetRefusalFor(dep *store.Deployment, reqs map[string][]string, model *store.Model, online func(string) bool, resolve func(LaunchRequest) (*proto.RequestedFeatures, error)) (func(*store.Node) string, error) {
+func targetRefusalFor(dep *store.Deployment, reqs map[string][]string, model *store.Model, online func(string) bool, resolve func(LaunchRequest) (*proto.RequestedFeatures, error)) (func(*store.Node) *scheduler.Reason, error) {
 	req, layer, _, err := DeploymentLaunch(dep, reqs, nil, model, nil)
 	if err != nil {
 		return nil, err
@@ -390,34 +390,30 @@ func targetRefusalFor(dep *store.Deployment, reqs map[string][]string, model *st
 	// Without pinned GPU indexes the verdict depends only on the node's
 	// hardware shape, so a fleet of identical nodes is judged once per scan
 	// instead of validating every card of every node.
-	byShape := map[string]string{}
+	byShape := map[string]*scheduler.Reason{}
 	pinned := len(req.Placement.GPUIndexes) > 0
-	return func(node *store.Node) string {
+	return func(node *store.Node) *scheduler.Reason {
 		if !targetNodeParticipates(node, online) {
-			return ""
+			return nil
 		}
 		shape := ""
 		if !pinned {
 			shape = HardwareShape(node, true)
-			if code, ok := byShape[shape]; ok {
-				return code
+			if verdict, ok := byShape[shape]; ok {
+				return verdict
 			}
 		}
 		candidate := req
 		candidate.Node = node
 		requests, _ := targetRequestsFor(candidate, validator, cache, resolve)
-		code := ""
 		refusal, e := targetCandidateRefusal(node, req.Placement.GPUIndexes, validator, requests)
-		switch {
-		case e != nil:
-			code = scheduler.ReasonPlacementRejected
-		case refusal != nil:
-			code = refusal.Code
+		if e != nil {
+			refusal = &scheduler.Reason{Code: scheduler.ReasonPlacementRejected, Params: map[string]any{"detail": e.Error()}}
 		}
 		if !pinned {
-			byShape[shape] = code
+			byShape[shape] = refusal
 		}
-		return code
+		return refusal
 	}, nil
 }
 

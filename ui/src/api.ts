@@ -1998,6 +1998,9 @@ export interface DeploymentCandidate {
   status: DeploymentCandidateStatus;
   rank?: number;
   detail?: string;
+  // reason is set instead of detail when the node's accelerators cannot run
+  // the deployment (unmet key "accelerator").
+  reason?: ScheduleMessage;
   replicas: number;
   free_gpus: number;
   gpus: number;

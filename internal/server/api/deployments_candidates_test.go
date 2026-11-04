@@ -290,3 +290,31 @@ func countCandidateModelReads(t *testing.T, st *store.Store) *atomic.Int64 {
 	t.Cleanup(func() { st.DB().Callback().Query().Remove(name) })
 	return reads
 }
+
+// A node whose accelerator cannot run the launch is unmet under the
+// "accelerator" key and carries a structured reason, not a bare code in detail.
+func TestDeploymentCandidatesWireAcceleratorRefusal(t *testing.T) {
+	h, st, dep := candidatesFixture(t)
+	if _, err := st.RegisterNode("n-amd", store.HashToken("n-amd"), "n-amd"); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.UpdateNodeStatus("n-amd", proto.NodeStatus{
+		Sys:  proto.SysInfo{Hostname: "n-amd", OS: "linux", Arch: "amd64", GPUVendor: "amd", RuntimeDriver: "udocker"},
+		GPUs: []proto.GPUInfo{{Index: 0, Name: "AMD Instinct MI325X", Vendor: "amd", ArchID: "gfx942", MemoryTotalBytes: 256 << 30, Healthy: true}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetDeploymentRequirements(dep.ID, nodelabel.Requirements{"gpuworks.ai/vendor": {"amd"}}, store.PlacementSpread); err != nil {
+		t.Fatal(err)
+	}
+	h.d.Online = func(uuid string) bool { return uuid == "n-amd" }
+	status, body := getCandidates(t, h, dep.ID, "?status=unmet")
+	if status != http.StatusOK {
+		t.Fatalf("status = %d %s", status, body)
+	}
+	const wantKeys = `"unmet_by_key":{"accelerator":1,"gpuworks.ai/vendor":5}`
+	const wantItem = `{"uuid":"n-amd","name":"n-amd","status":"unmet","reason":{"code":"runtime_unsupported","params":{"arch":"amd64","missing_facts":false,"os":"linux","required_arch":"amd64","required_os":"linux","required_runtime":"docker/nerdctl","runtime":"udocker","vendor":"AMD"}},"replicas":0,"free_gpus":1,"gpus":1,"model":"absent"}`
+	if !strings.Contains(string(body), wantKeys) || !strings.Contains(string(body), wantItem) {
+		t.Fatalf("wire = %s\nwant %s and %s", body, wantKeys, wantItem)
+	}
+}

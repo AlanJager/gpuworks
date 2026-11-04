@@ -747,7 +747,7 @@ macOS 忽略 `no_systemd`。
 
 `GET /api/v1/deployments/{id}/candidates`
 
-部署候选池的实时情况：按「下一个副本」的视角把集群每台节点归到它没通过的第一道检查（`room` 看上去有空卡、`busy` 卡被醒着的实例占用、`unmet` 不满足节点条件、`cordoned` 已停止调度或驱逐中、`offline` 离线），`counts` 覆盖全部节点、相加等于 `nodes`，`unmet_by_key` 按首个不满足的条件键计数。
+部署候选池的实时情况：按「下一个副本」的视角把集群每台节点归到它没通过的第一道检查（`room` 看上去有空卡、`busy` 卡被醒着的实例占用、`unmet` 不满足节点条件、`cordoned` 已停止调度或驱逐中、`offline` 离线），`counts` 覆盖全部节点、相加等于 `nodes`，`unmet_by_key` 按首个不满足的条件键计数。节点条件满足、但没有一张卡能运行这次启动（宿主运行时不符、加速卡不支持所需功能）的节点也归 `unmet`，计在 `accelerator` 键下，条目不带 `detail`，改带结构化的 `reason`（`code` 与 `params`，由客户端按语言渲染）。
 
 `items` 是一页明细（候选按副本尝试顺序带 `rank`，其后是不满足的与离线的），`?status=` 过滤，`?offset=`、`?limit=`（1–200，默认 50）分页，参数不合法 400 `FIELD_INVALID`。
 

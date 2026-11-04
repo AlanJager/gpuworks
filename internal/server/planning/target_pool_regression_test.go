@@ -34,7 +34,7 @@ func TestTargetPoolRefusalIsLocalAndIndependentOfNodeOrder(t *testing.T) {
 			}
 			got := map[string]string{}
 			for i := range nodes {
-				got[nodes[i].UUID] = refusal(&nodes[i])
+				got[nodes[i].UUID] = reasonCode(refusal(&nodes[i]))
 			}
 			if got["healthy"] != "" || got["broken"] != scheduler.ReasonPlacementRejected {
 				t.Fatalf("node refusals=%v", got)
@@ -59,7 +59,7 @@ func TestTargetPoolResolvesOnlyDistinctHardwareShapes(t *testing.T) {
 			vendor, name = "amd", "MI300X"
 		}
 		node := &store.Node{UUID: fmt.Sprint(i), GPUVendor: vendor, OS: "linux", Arch: "amd64", RuntimeDriver: "docker", GPUs: []store.GPU{{Index: i % 7, Vendor: vendor, Name: name}}}
-		if got := refusal(node); got != "" {
+		if got := reasonCode(refusal(node)); got != "" {
 			t.Fatalf("node %d refused: %s", i, got)
 		}
 	}
@@ -88,7 +88,7 @@ func TestTargetPoolDoesNotCacheComponentPathFailure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := refusal(node); got != "" {
+	if got := reasonCode(refusal(node)); got != "" {
 		t.Fatalf("pure preview refused: %s", got)
 	}
 	if _, _, _, err := DeploymentLaunch(dep, nil, node, model, &ModelPaths{Primary: "/primary"}); err == nil {
@@ -99,7 +99,7 @@ func TestTargetPoolDoesNotCacheComponentPathFailure(t *testing.T) {
 	}
 	healthy := *node
 	healthy.UUID = "healthy-node"
-	if got := refusal(&healthy); got != "" {
+	if got := reasonCode(refusal(&healthy)); got != "" {
 		t.Fatalf("pool preview reused concrete path error: %s", got)
 	}
 	if calls != 1 {
@@ -130,7 +130,7 @@ func TestTargetPoolUsesTemplateCardRatherThanInventoryOrder(t *testing.T) {
 			ordered[0], ordered[1] = ordered[1], ordered[0]
 		}
 		node := &store.Node{OS: "linux", Arch: "amd64", RuntimeDriver: "docker", GPUs: ordered}
-		if got := refusal(node); got != "" {
+		if got := reasonCode(refusal(node)); got != "" {
 			t.Fatalf("reverse=%v refusal=%s", reverse, got)
 		}
 	}
@@ -178,7 +178,7 @@ func TestTargetPoolMemoizesMalformedTemplateByEffectiveShape(t *testing.T) {
 			vendor, name = "amd", "MI300X"
 		}
 		node := &store.Node{UUID: fmt.Sprint(i), OS: "linux", Arch: "amd64", RuntimeDriver: "docker", GPUs: []store.GPU{{Index: 0, Vendor: vendor, Name: name}}}
-		if got := refusal(node); got != scheduler.ReasonPlacementRejected {
+		if got := reasonCode(refusal(node)); got != scheduler.ReasonPlacementRejected {
 			t.Fatalf("node %d refusal=%q", i, got)
 		}
 	}
@@ -205,15 +205,15 @@ func TestTargetPoolVerdictCacheSeparatesShapes(t *testing.T) {
 		return &store.Node{UUID: uuid, GPUVendor: "amd", OS: "linux", Arch: "amd64", RuntimeDriver: driver, GPUs: gpus}
 	}
 	// The refused shape comes first so a shape-blind cache would leak it.
-	if got := refusal(node("udocker", "udocker", "gfx942")); got != scheduler.ReasonRuntimeUnsupported {
+	if got := reasonCode(refusal(node("udocker", "udocker", "gfx942"))); got != scheduler.ReasonRuntimeUnsupported {
 		t.Fatalf("udocker node verdict = %q, want %s", got, scheduler.ReasonRuntimeUnsupported)
 	}
 	for i := 0; i < 50; i++ {
-		if got := refusal(node(fmt.Sprint("ok-", i), "docker", "gfx942")); got != "" {
+		if got := reasonCode(refusal(node(fmt.Sprint("ok-", i), "docker", "gfx942"))); got != "" {
 			t.Fatalf("compatible node %d refused: %s", i, got)
 		}
 	}
-	if got := refusal(node("udocker-2", "udocker", "gfx942")); got != scheduler.ReasonRuntimeUnsupported {
+	if got := reasonCode(refusal(node("udocker-2", "udocker", "gfx942"))); got != scheduler.ReasonRuntimeUnsupported {
 		t.Fatalf("second udocker node verdict = %q", got)
 	}
 }
@@ -237,9 +237,16 @@ func BenchmarkTargetPoolRefusal1000Nodes(b *testing.B) {
 			b.Fatal(err)
 		}
 		for i := range nodes {
-			if refusal(&nodes[i]) != "" {
+			if reasonCode(refusal(&nodes[i])) != "" {
 				b.Fatal("refused")
 			}
 		}
 	}
+}
+
+func reasonCode(reason *scheduler.Reason) string {
+	if reason == nil {
+		return ""
+	}
+	return reason.Code
 }

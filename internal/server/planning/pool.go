@@ -10,6 +10,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/accelerator"
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/nodelabel"
+	"gpuworks.ai/gpuworks/internal/server/scheduler"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -185,7 +186,15 @@ type PoolEntry struct {
 	// UnmetKey and Detail say which requirement an unmet node fails.
 	UnmetKey string
 	Detail   string
+	// Reason is the structured refusal of a node whose accelerators cannot
+	// run the deployment (UnmetKey PoolUnmetAccelerator); the client renders
+	// it by code, so Detail stays empty.
+	Reason *scheduler.Reason
 }
+
+// PoolUnmetAccelerator is the UnmetKey of nodes refused because no card can
+// run the deployment's launch (host runtime or accelerator feature support).
+const PoolUnmetAccelerator = "accelerator"
 
 // PoolFacts is everything a pool is built from, each read in bulk.
 type PoolFacts struct {
@@ -208,8 +217,8 @@ type PoolFacts struct {
 	// Placement restricts the free-card approximation to the GPUs a replica
 	// may actually use, just as the full scheduler trial does.
 	Placement Placement
-	// TargetRefusal returns the stable refusal code, or empty for a compatible target.
-	TargetRefusal func(*store.Node) string
+	// TargetRefusal returns the node's refusal, or nil for a compatible target.
+	TargetRefusal func(*store.Node) *scheduler.Reason
 }
 
 // Pool is a deployment's candidate pool: every node classified, and the
@@ -249,7 +258,7 @@ func BuildPool(f PoolFacts) *Pool {
 			Node: node, Replicas: replicas[node.ID], FreeGPUs: freeHealthyGPUs(node, f.Held[node.ID], f.Placement.GPUIndexes),
 			Model: ModelLocalityOf(fileOn[node.ID]), Sticky: sticky[node.ID],
 		}}
-		var targetRefusal string
+		var targetRefusal *scheduler.Reason
 		switch err := MatchRequirements(node, f.Facts, f.Requirements); {
 		case err != nil:
 			entry.Status, entry.Detail = PoolUnmet, err.Error()
@@ -260,11 +269,8 @@ func BuildPool(f PoolFacts) *Pool {
 			if pool.UnmetDetail == "" && entry.UnmetKey != nodelabel.KeyNode {
 				pool.UnmetDetail = entry.Detail
 			}
-		case f.TargetRefusal != nil && func() bool { targetRefusal = f.TargetRefusal(node); return targetRefusal != "" }():
-			entry.Status, entry.Detail = PoolUnmet, targetRefusal
-			if pool.UnmetDetail == "" {
-				pool.UnmetDetail = entry.Detail
-			}
+		case f.TargetRefusal != nil && func() bool { targetRefusal = f.TargetRefusal(node); return targetRefusal != nil }():
+			entry.Status, entry.UnmetKey, entry.Reason = PoolUnmet, PoolUnmetAccelerator, targetRefusal
 		case !node.Scheduling.TakesReplicas():
 			entry.Status = PoolCordoned
 		case f.Online != nil && !f.Online(node.UUID):
