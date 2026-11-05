@@ -93,3 +93,16 @@ test("legacy and future evidence versions cannot manufacture a zero completion r
   assert.ok(screen.getByText(/no supported session or round evidence/));
   assert.equal(screen.queryByText("75%"), null);
 });
+
+test("first visible content is shown beside TTFT and reasoning-only requests are counted, not hidden", () => {
+  const e = evidence();
+  e.followup_turns.first_content = { count: 30, mean_ms: 4100, p50_ms: 4000, p99_ms: 6000 };
+  e.followup_turns.no_content = 6;
+  show(e);
+  assert.ok(screen.getByRole("columnheader", { name: "First content" }));
+  const follow = screen.getAllByText("Follow-up turns")[0].closest("tr")!;
+  assert.ok(within(follow).getByText("4,000 / 6,000 ms · n=30 · 6 without content"));
+  // Evidence recorded before first content was summarized has neither field.
+  const first = screen.getAllByText("First turns")[0].closest("tr")!;
+  assert.equal(within(first).getAllByText("Unknown").length >= 1, true);
+});

@@ -58,6 +58,8 @@ func parseSSEWithClock(r io.Reader, started time.Time, now func() time.Time) (ou
 				Delta struct {
 					Content          string `json:"content"`
 					ReasoningContent string `json:"reasoning_content"`
+					Reasoning        string `json:"reasoning"`
+					Thinking         string `json:"thinking"`
 				} `json:"delta"`
 				FinishReason *string `json:"finish_reason"`
 			} `json:"choices"`
@@ -74,7 +76,7 @@ func parseSSEWithClock(r io.Reader, started time.Time, now func() time.Time) (ou
 		content, reasoning := "", ""
 		if len(ev.Choices) > 0 {
 			choice := ev.Choices[0]
-			content, reasoning = choice.Delta.Content, choice.Delta.ReasoningContent
+			content, reasoning = choice.Delta.Content, reasoningDelta(choice.Delta.ReasoningContent, choice.Delta.Reasoning, choice.Delta.Thinking)
 			if choice.FinishReason != nil {
 				out.Metrics.FinishReason = *choice.FinishReason
 				complete = *choice.FinishReason != ""
@@ -108,6 +110,20 @@ func parseSSEWithClock(r io.Reader, started time.Time, now func() time.Time) (ou
 		return out, io.ErrUnexpectedEOF
 	}
 	return out, nil
+}
+
+// reasoningDelta returns a chunk's (or a message's) reasoning text. Engines name the field
+// differently (SGLang and older vLLM reasoning_content, vLLM 0.34 reasoning,
+// some gateways thinking), and transitional vLLM releases send the same text
+// under two names, so the first non-empty one is the chunk's reasoning rather
+// than their concatenation. The gateway's usage observer accepts the same set.
+func reasoningDelta(names ...string) string {
+	for _, text := range names {
+		if text != "" {
+			return text
+		}
+	}
+	return ""
 }
 
 // applyServerUsage records presence independently for each field. An explicit

@@ -219,8 +219,12 @@ func (e *execution) point(ctx context.Context, index int, point *search.Point, p
 	}
 	e.report(status(0, sample()))
 	runner := e.runner(*point, dc.Seed)
+	var unrecognized atomic.Bool
 	runner.OnResult = func(r loadgen.Result) {
 		acc.Add(r.Metrics)
+		if streamOutputUnrecognized(r) {
+			unrecognized.Store(true)
+		}
 		if e.hooks.Result != nil {
 			e.hooks.Result(seq, r)
 		}
@@ -239,6 +243,9 @@ func (e *execution) point(ctx context.Context, index int, point *search.Point, p
 	peak := metrics.RollingPeakThroughput(requests, ended, 10*time.Second)
 	averages := metrics.AverageRequestMetrics(requests)
 	actualISL, actualOSL := snapshot.AverageTokenLengths()
+	if unrecognized.Load() {
+		e.hooks.Warn(proto.BenchmarkWarningStreamOutputUnrecognized)
+	}
 	if dc.Kind == "agentic" && dataset.AgenticLengthDriftExceeded(actualISL, dc.MeanInputTokens) {
 		e.hooks.Warn(proto.BenchmarkWarningAgenticDrift)
 	}
@@ -367,4 +374,13 @@ func LongTail(s metrics.Snapshot) LongTailDoc {
 		out.Speculative = &SpeculativeDoc{TokensPerIteration: s.Speculative.TokensPerIteration, AcceptanceRate: s.Speculative.AcceptanceRate}
 	}
 	return out
+}
+
+// streamOutputUnrecognized reports a successful streamed request whose usage
+// counts generated tokens although no chunk carried text the load generator
+// recognizes: the stream names its text fields in a way the parser does not
+// know, and the request has no first or last output time to sample.
+func streamOutputUnrecognized(r loadgen.Result) bool {
+	m := r.Metrics
+	return r.Stream && m.Error == nil && !m.Canceled && m.FirstOutputAt.IsZero() && m.ServerOutputTokens != nil && *m.ServerOutputTokens > 0
 }

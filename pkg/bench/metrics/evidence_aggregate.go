@@ -105,7 +105,7 @@ func BuildPointEvidence(plan EvidencePlan, plans []SessionEvidence, requests []R
 func summarizeRequests(rs []Request) RequestEvidence {
 	e := RequestEvidence{FinishReasons: map[string]int{}, ErrorStages: map[string]int{}}
 	e.Tokens.InputSources, e.Tokens.OutputSources = map[string]int{}, map[string]int{}
-	var ttft, tpot, latency, completion []float64
+	var ttft, firstContent, tpot, latency, completion []float64
 	var input, output, context, serverInput, serverOutput, localInput, localOutput, reasoning, failedOutput []int
 	cacheRatioOverflow := false
 	for _, r := range rs {
@@ -152,6 +152,12 @@ func summarizeRequests(rs []Request) RequestEvidence {
 		}
 		if !r.FirstOutputAt.IsZero() {
 			ttft = append(ttft, DurationMillis(r.TTFT))
+			if r.FirstContentAt.IsZero() {
+				e.NoContent++
+			}
+		}
+		if !r.FirstContentAt.IsZero() && !r.StartedAt.IsZero() {
+			firstContent = append(firstContent, DurationMillis(r.FirstContentAt.Sub(r.StartedAt)))
 		}
 		if v, ok := r.TimePerOutputToken(); ok {
 			tpot = append(tpot, DurationMillis(v))
@@ -185,6 +191,7 @@ func summarizeRequests(rs []Request) RequestEvidence {
 		appendOptional(r.ReasoningTokens, &reasoning)
 	}
 	e.TTFT, e.TPOT, e.LastOutputLatency, e.Completion = summarizeMetric(ttft), summarizeMetric(tpot), summarizeMetric(latency), summarizeMetric(completion)
+	e.FirstContent = summarizeMetric(firstContent)
 	e.Tokens.Input, e.Tokens.Output, e.Tokens.Context = summarizeTokens(input), summarizeTokens(output), summarizeTokens(context)
 	e.Tokens.ServerInput, e.Tokens.ServerOutput = summarizeTokens(serverInput), summarizeTokens(serverOutput)
 	e.Tokens.LocalInput, e.Tokens.LocalOutput = summarizeTokens(localInput), summarizeTokens(localOutput)

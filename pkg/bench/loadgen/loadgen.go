@@ -204,6 +204,8 @@ func (c Client) Do(ctx context.Context, req Request) (out Result, err error) {
 			Message struct {
 				Content          string `json:"content"`
 				ReasoningContent string `json:"reasoning_content"`
+				Reasoning        string `json:"reasoning"`
+				Thinking         string `json:"thinking"`
 			} `json:"message"`
 			FinishReason string `json:"finish_reason"`
 		} `json:"choices"`
@@ -223,7 +225,8 @@ func (c Client) Do(ctx context.Context, req Request) (out Result, err error) {
 		return out, fmt.Errorf("endpoint returned no choices")
 	}
 	out.Text, out.Metrics.FinishReason = v.Choices[0].Message.Content, v.Choices[0].FinishReason
-	out.generatedText = v.Choices[0].Message.ReasoningContent + out.Text
+	message := v.Choices[0].Message
+	out.generatedText = reasoningDelta(message.ReasoningContent, message.Reasoning, message.Thinking) + out.Text
 	out.Metrics.Latency = time.Since(out.Metrics.StartedAt)
 	out.UsageJSON = append(json.RawMessage(nil), v.Usage...)
 	applyServerUsage(&out)

@@ -19,6 +19,9 @@ export interface BenchmarkRequestEvidence {
   failed: number;
   canceled: number;
   ttft: BenchmarkMetricSummary;
+  /** Absent from evidence recorded before first visible content was summarized. */
+  first_content?: BenchmarkMetricSummary;
+  no_content?: number;
   tpot: BenchmarkMetricSummary;
   last_output_latency: BenchmarkMetricSummary;
   completion: BenchmarkMetricSummary;
