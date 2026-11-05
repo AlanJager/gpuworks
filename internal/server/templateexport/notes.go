@@ -24,6 +24,9 @@ const (
 	ReasonRevisionsDiffer  = "revisions_differ"
 	ReasonTemplateMissing  = "template_missing"
 	ReasonModelMissing     = "model_missing"
+	ReasonLaunchChanged    = "launch_changed"
+	ReasonLaunchMissing    = "launch_snapshot_missing"
+	ReasonMixedGPUs        = "heterogeneous_gpus"
 	// ReasonCommandOverridden: the deployment replaced the engine command,
 	// so its launch is not the engine's command plus args.
 	ReasonCommandOverridden = "command_overridden"

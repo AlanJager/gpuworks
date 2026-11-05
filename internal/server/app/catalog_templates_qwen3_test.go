@@ -128,7 +128,7 @@ func catalogRouter(t *testing.T) (*store.Store, http.Handler, string) {
 	f := newTemplateFixture(t)
 	signer, token := adminSession(t, f.st)
 	return f.st, api.Router(api.Deps{Store: f.st, AuthSigner: signer, CatalogTemplates: catalogTemplates{store: f.st,
-		probe: func(context.Context, uint, string, map[string]any) templateexport.ProbeReply {
+		probe: func(context.Context, uint, string, string, map[string]any) templateexport.ProbeReply {
 			return templateexport.ProbeReply{HTTPStatus: 200}
 		}}}), token
 }

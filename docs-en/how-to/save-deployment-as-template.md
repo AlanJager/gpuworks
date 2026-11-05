@@ -15,11 +15,14 @@ When you are done you have a flat YAML document that imports as it is, and a tes
 | `env` | The source template's environment variables; variables the deployment added itself are not exported by default, see below |
 | `gpus` | The vendor and model of the instance's cards, the model written as a pattern that matches only that model (such as `^NVIDIA H20$`) |
 | `weights` | A deployment made from a template keeps the template's weight sources; a custom deployment gets the commit the copy its instance reads resolved to |
-| `model_config`, `context_length`, `input_modalities`, `api` | A deployment made from a template keeps the template's; a custom deployment takes the model's config.json and registered operations |
+| `model_config`, `context_length`, `input_modalities` | Current catalog model metadata for a template deployment (estimation facts that may change with catalog updates), or the registered model row's config.json and metadata for a custom deployment; these are not claimed to be a launch-time snapshot |
+| `api` | The API declaration in the instance's immutable launch record, used to choose operation checks |
 | `kv_bytes_per_token` | Written only when there is a reliable source: the source template, or the catalog's value for the same model. Otherwise it is left out and a comment says so |
 | `placement` | A deployment made from a template keeps the template's; a custom deployment states none, so estimation and scheduling decide the card count, and the tested card count and memory per card go into a comment |
 
 One success proves one card model, so `gpus` matches only the tested model; widening it to more models is an explicit edit by you or the reviewer. A dGPU memory limit is this deployment's resource choice, not a requirement of the model, so it only goes into a comment.
+
+Export uses one fixed instance and its immutable launch record. Saved configuration that has not been applied is not treated as tested. Changed inputs, a changed instance during checks, or a gateway response from another replica cannot verify this export; apply the configuration and retry. Later catalog updates do not replace the executed weights, pre-start script, topology or API declaration.
 
 ## In the console
 
@@ -88,6 +91,9 @@ For 409 `TEMPLATE_EXPORT_UNAVAILABLE`, read `params.reason`:
 | `template_assets`, `components` | The source template carries packaged files or component models, which one YAML document cannot hold; use the template editor instead |
 | `weights_not_public` | The weights come from a local directory or a URL that nobody else can download |
 | `revision_unpinned`, `revisions_differ` | The weight revision is a branch name, or the copies resolved different commits; pin the model to one commit and deploy again |
+| `launch_changed` | Configuration or the running instance changed; apply it and restart before retrying |
+| `launch_snapshot_missing` | The instance has no complete, verifiable launch snapshot; restart it with the current server version |
+| `heterogeneous_gpus` | The instance uses different card models that one tested-model selector cannot describe |
 | `command_overridden` | The deployment replaced the engine command, so its launch cannot be written as template arguments |
 | `no_gpu_facts`, `template_missing`, `model_missing` | The instance is not bound to specific cards, or the source template or model has been deleted |
 

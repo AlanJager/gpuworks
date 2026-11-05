@@ -170,3 +170,101 @@ test("the test record is copied, or offered for manual copy when the browser ref
   const manual = await screen.findByText(/GPUWorks template test record/);
   assert.ok(manual);
 });
+
+test("changing language preserves edits without probing the deployment again", async () => {
+  const dialog = await open();
+  const yaml = await within(dialog).findByRole("textbox", { name: text.yaml });
+  const edited = exported.yaml + "\n# user edit\n";
+  fireEvent.change(yaml, { target: { value: edited } });
+  try {
+    await i18n.changeLanguage("zh");
+    await waitFor(() => assert.equal((within(dialog).getByRole("textbox", { name: text.yaml }) as HTMLTextAreaElement).value, edited));
+    assert.equal(exports().length, 1);
+  } finally {
+    await i18n.changeLanguage("en");
+  }
+});
+
+test("a rebuild hides stale actions and a late old deployment response cannot replace the new one", async () => {
+  let resolveOld: (value: Response) => void = () => {};
+  const old = new Promise<Response>((resolve) => { resolveOld = resolve; });
+  const original = globalThis.fetch;
+  let oldCalls = 0;
+  globalThis.fetch = async (input, init) => {
+    if (String(input).endsWith("/deployments/1/catalog-template") && ++oldCalls > 1) return old;
+    if (String(input).endsWith("/deployments/2/catalog-template")) return Response.json({ ...exported, model_id: "new/model", yaml: "models: []\n# new deployment\n" });
+    return original(input, init);
+  };
+  const element = (id: number) => <I18nextProvider i18n={i18n}><MemoryRouter><DeploymentCatalogTemplateModal deploymentID={id} onClose={() => {}} /></MemoryRouter></I18nextProvider>;
+  try {
+    const rendered = render(element(1));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(await within(dialog).findByRole("button", { name: new RegExp(text.rebuild) }));
+    await within(dialog).findByRole("status");
+    assert.equal(within(dialog).queryByRole("button", { name: new RegExp(text.save) }), null);
+    assert.equal(within(dialog).queryByRole("button", { name: new RegExp(text.download) }), null);
+    rendered.rerender(element(2));
+    const yaml = await within(dialog).findByRole("textbox", { name: text.yaml });
+    assert.equal((yaml as HTMLTextAreaElement).value, "models: []\n# new deployment\n");
+    resolveOld(Response.json(exported));
+    await old;
+    await waitFor(() => assert.equal((yaml as HTMLTextAreaElement).value, "models: []\n# new deployment\n"));
+  } finally {
+    resolveOld(Response.json(exported));
+    globalThis.fetch = original;
+  }
+});
+
+test("only the YAML actually saved is marked saved, and edited model identities link to the catalog", async () => {
+  const original = globalThis.fetch;
+  let resolveImport: (value: Response) => void = () => {};
+  const pending = new Promise<Response>((resolve) => { resolveImport = resolve; });
+  globalThis.fetch = async (input, init) => String(input).endsWith("/inference-templates/import") ? pending : original(input, init);
+  try {
+    const dialog = await open();
+    const editor = await within(dialog).findByRole("textbox", { name: text.yaml });
+    const renamed = exported.yaml.replace(exported.model_id, "new/model");
+    fireEvent.change(editor, { target: { value: renamed } });
+    fireEvent.click(within(dialog).getByRole("button", { name: new RegExp(text.save) }));
+    const editedDuringSave = renamed + "\n# not yet saved\n";
+    fireEvent.change(editor, { target: { value: editedDuringSave } });
+    resolveImport(Response.json(imported));
+    await waitFor(() => assert.equal((within(dialog).getByRole("button", { name: new RegExp(text.save) }) as HTMLButtonElement).disabled, false));
+    assert.equal(within(dialog).queryByRole("link", { name: text.openTemplate }), null);
+    fireEvent.change(editor, { target: { value: renamed } });
+    const link = await within(dialog).findByRole("link", { name: text.openTemplate });
+    assert.equal(link.getAttribute("href"), "/inference-templates");
+    assert.equal((within(dialog).getByRole("button", { name: new RegExp(text.save) }) as HTMLButtonElement).disabled, true);
+    fireEvent.change(editor, { target: { value: editedDuringSave } });
+    assert.equal((within(dialog).getByRole("button", { name: new RegExp(text.save) }) as HTMLButtonElement).disabled, false);
+  } finally {
+    resolveImport(Response.json(imported));
+    globalThis.fetch = original;
+  }
+});
+
+test("changing deployment while an import is pending clears the old saving state", async () => {
+  const original = globalThis.fetch;
+  let resolveImport: (value: Response) => void = () => {};
+  const pending = new Promise<Response>((resolve) => { resolveImport = resolve; });
+  globalThis.fetch = async (input, init) => {
+    if (String(input).endsWith("/inference-templates/import")) return pending;
+    if (String(input).endsWith("/deployments/2/catalog-template")) return Response.json({ ...exported, model_id: "new/model" });
+    return original(input, init);
+  };
+  const element = (id: number) => <I18nextProvider i18n={i18n}><MemoryRouter><DeploymentCatalogTemplateModal deploymentID={id} onClose={() => {}} /></MemoryRouter></I18nextProvider>;
+  try {
+    const rendered = render(element(1));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(await within(dialog).findByRole("button", { name: new RegExp(text.save) }));
+    rendered.rerender(element(2));
+    await within(dialog).findByRole("textbox", { name: text.yaml });
+    await waitFor(() => assert.equal(within(dialog).getByRole("button", { name: new RegExp(text.save) }).querySelector(".ant-btn-loading-icon"), null));
+    resolveImport(Response.json(imported));
+    await pending;
+    assert.equal(within(dialog).queryByRole("link", { name: text.openTemplate }), null);
+  } finally {
+    resolveImport(Response.json(imported));
+    globalThis.fetch = original;
+  }
+});

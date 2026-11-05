@@ -996,7 +996,10 @@
       "revisions_differ": "The model's copies resolved to different commits. Pin the model to one commit and deploy again.",
       "template_missing": "The template this deployment was created from has been deleted.",
       "model_missing": "The deployment's model has been deleted.",
-      "command_overridden": "The deployment replaced the engine command, so its launch cannot be written as template arguments."
+      "command_overridden": "The deployment replaced the engine command, so its launch cannot be written as template arguments.",
+      "launch_changed": "The saved configuration or running instance changed. Restart the deployment to apply its configuration, then try again.",
+      "launch_snapshot_missing": "The running instance has no complete launch snapshot that can be verified. Restart it with this server version, then try again.",
+      "heterogeneous_gpus": "The instance uses different GPU models. One tested-card selector cannot describe this combination."
     },
     "env": "Environment variables left out",
     "envHint": "They often hold tokens and host paths. Tick only the ones the model needs and that hold no secret, then rebuild.",

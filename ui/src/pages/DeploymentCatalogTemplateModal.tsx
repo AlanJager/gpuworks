@@ -1,6 +1,6 @@
 import { CheckCircleOutlined, CloseCircleOutlined, CopyOutlined, DownloadOutlined, MinusCircleOutlined, ReloadOutlined, SaveOutlined } from "@ant-design/icons";
 import { Alert, Button, Checkbox, Input, Modal, Space, Spin, Typography, message, theme } from "antd";
-import { Component, Suspense, lazy, useCallback, useEffect, useState, type ReactNode } from "react";
+import { Component, Suspense, lazy, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 
@@ -8,6 +8,7 @@ import { api, type CatalogTemplateExport, type ProductWarning } from "../api";
 import { APIError, apiErrorText } from "../apiError";
 import { useCopy } from "../components/CopyButton";
 import { useIsAdmin } from "../components/useIsAdmin";
+import { yamlModelID } from "./inferenceTemplateFlat";
 
 // CodeMirror needs requestAnimationFrame; environments without it (test
 // runners, restricted embedders) edit the YAML in a plain textarea.
@@ -41,7 +42,10 @@ export default function DeploymentCatalogTemplateModal({ deploymentID, onClose }
   const [keepEnv, setKeepEnv] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
-  const [saved, setSaved] = useState(false);
+  const [savedYAML, setSavedYAML] = useState<string>();
+  const saved = savedYAML !== undefined && savedYAML === yaml;
+  const generation = useRef(0);
+  const controller = useRef<AbortController>();
 
   const exportErrorText = useCallback((reason: unknown): string => {
     if (reason instanceof APIError && reason.code === TEMPLATE_EXPORT_UNAVAILABLE) {
@@ -50,25 +54,40 @@ export default function DeploymentCatalogTemplateModal({ deploymentID, onClose }
     }
     return apiErrorText(tCommon, reason);
   }, [t, tCommon]);
+  const errorText = useRef(exportErrorText);
+  errorText.current = exportErrorText;
 
   const run = useCallback(async (includeEnv: string[]) => {
+    const current = ++generation.current;
+    controller.current?.abort();
+    const request = new AbortController();
+    controller.current = request;
     setLoading(true);
+    setExported(undefined);
+    setYAML("");
+    setSaving(false);
     setError("");
     setSaveError("");
     try {
-      const answer = await api.exportCatalogTemplate(deploymentID, includeEnv);
+      const answer = await api.exportCatalogTemplate(deploymentID, includeEnv, request.signal);
+      if (generation.current !== current) return;
       setExported(answer);
       setYAML(answer.yaml);
-      setSaved(false);
+      setSavedYAML(undefined);
     } catch (reason) {
+      if (generation.current !== current) return;
       setExported(undefined);
-      setError(exportErrorText(reason));
+      setError(errorText.current(reason));
     } finally {
-      setLoading(false);
+      if (generation.current === current) setLoading(false);
     }
-  }, [deploymentID, exportErrorText]);
+  }, [deploymentID]);
 
-  useEffect(() => { void run([]); }, [run]);
+  useEffect(() => {
+    setKeepEnv([]);
+    void run([]);
+    return () => { generation.current++; controller.current?.abort(); };
+  }, [run]);
 
   const download = () => {
     if (!exported) return;
@@ -82,16 +101,20 @@ export default function DeploymentCatalogTemplateModal({ deploymentID, onClose }
   };
 
   const save = async () => {
+    const current = generation.current;
+    const submittedYAML = yaml;
     setSaving(true);
     setSaveError("");
     try {
-      await api.importInferenceTemplates(new File([yaml], "catalog-template.yaml", { type: "application/yaml" }), false);
-      setSaved(true);
+      await api.importInferenceTemplates(new File([submittedYAML], "catalog-template.yaml", { type: "application/yaml" }), false);
+      if (generation.current !== current) return;
+      setSavedYAML(submittedYAML);
       message.success(t("catalogTemplate.saved"));
     } catch (reason) {
+      if (generation.current !== current) return;
       setSaveError(apiErrorText(tCommon, reason));
     } finally {
-      setSaving(false);
+      if (generation.current === current) setSaving(false);
     }
   };
 
@@ -105,7 +128,7 @@ export default function DeploymentCatalogTemplateModal({ deploymentID, onClose }
     </EditorBoundary>
   );
 
-  const footer = exported ? [
+  const footer = !loading && exported ? [
     <Button key="download" icon={<DownloadOutlined />} onClick={download}>{t("catalogTemplate.download")}</Button>,
     <Button key="evidence" icon={<CopyOutlined />} onClick={() => void copy(exported.evidence, { success: t("catalogTemplate.evidenceCopied") })}>{t("catalogTemplate.copyEvidence")}</Button>,
     isAdmin && <Button key="save" type="primary" icon={<SaveOutlined />} loading={saving} disabled={!exported.saveable || saved} onClick={() => void save()}>{t("catalogTemplate.save")}</Button>,
@@ -151,7 +174,7 @@ export default function DeploymentCatalogTemplateModal({ deploymentID, onClose }
         {editor}
         {!isAdmin && <Typography.Text type="secondary">{t("catalogTemplate.saveNeedsAdmin")}</Typography.Text>}
         {saveError && <Alert type="error" showIcon message={t("catalogTemplate.saveFailed")} description={saveError} />}
-        {saved && <Alert type="success" showIcon message={<Link to={`/inference-templates/${exported.model_id.split("/").map(encodeURIComponent).join("/")}`}>{t("catalogTemplate.openTemplate")}</Link>} />}
+        {saved && <Alert type="success" showIcon message={<Link to={yamlModelID(savedYAML) === exported.model_id ? `/inference-templates/${exported.model_id.split("/").map(encodeURIComponent).join("/")}` : "/inference-templates"}>{t("catalogTemplate.openTemplate")}</Link>} />}
       </Space>}
     </Modal>
   );

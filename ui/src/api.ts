@@ -4522,11 +4522,12 @@ export const api = {
   deploymentDraft: (id: number) =>
     getJSON<DeploymentDraft>(`/api/v1/deployments/${id}/draft`),
   editDeployment,
-  exportCatalogTemplate: (id: number, includeEnv: string[] = []) =>
+  exportCatalogTemplate: (id: number, includeEnv: string[] = [], signal?: AbortSignal) =>
     sendJSON<CatalogTemplateExport>(
       "POST",
       `/api/v1/deployments/${id}/catalog-template`,
       includeEnv.length ? { include_env: includeEnv } : {},
+      signal,
     ),
   cloneDeployment: (id: number, name?: string) =>
     sendJSON<Deployment>(

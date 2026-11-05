@@ -121,7 +121,7 @@ func Build(in Input) (Export, error) {
 		// A deployment stored before the engine was recorded runs the default.
 		in.Engine = deploy.DefaultEngine
 	}
-	if in.GPUCount <= 0 || len(in.GPUs) == 0 {
+	if in.GPUCount <= 0 || len(in.GPUs) != in.GPUCount {
 		return Export{}, Unavailable(ReasonNoGPUFacts, nil)
 	}
 	if in.TemplateSpec != nil && len(in.TemplateSpec.Assets) > 0 {
@@ -141,6 +141,15 @@ func Build(in Input) (Export, error) {
 	gpus, err := Selector(in.GPUs[0])
 	if err != nil {
 		return Export{}, err
+	}
+	for _, card := range in.GPUs[1:] {
+		selector, err := Selector(card)
+		if err != nil {
+			return Export{}, err
+		}
+		if selector != gpus {
+			return Export{}, Unavailable(ReasonMixedGPUs, nil)
+		}
 	}
 	env, excluded := exportEnv(in.TemplateEnv, in.UserEnv, in.IncludeEnv)
 

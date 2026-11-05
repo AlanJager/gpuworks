@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -13,6 +14,8 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/inferenceapi"
 	"gpuworks.ai/gpuworks/internal/server/inferencecatalog"
 	"gpuworks.ai/gpuworks/internal/server/messages"
+	"gpuworks.ai/gpuworks/internal/server/parallelism"
+	"gpuworks.ai/gpuworks/internal/server/planning"
 	"gpuworks.ai/gpuworks/internal/server/store"
 	"gpuworks.ai/gpuworks/internal/server/templateexport"
 )
@@ -54,7 +57,7 @@ func newTemplateFixture(t *testing.T) *templateFixture {
 		}}
 	mustCreateRow(t, db.Create(&node).Error)
 	f.deployment = store.Deployment{
-		Name: "olmo", ModelID: f.model.ID, NodeID: node.ID, Engine: "vllm", Image: "runner:vllm", State: store.DeployActive,
+		Name: "olmo", ModelID: f.model.ID, NodeID: node.ID, Engine: "vllm", Image: "runner:vllm@sha", State: store.DeployActive,
 		QuickParams:        `{"max_model_len":4096,"gpu_memory_utilization":0.9}`,
 		ExtraArgs:          "--seed 7",
 		ContainerOverrides: `{"env":{"HF_TOKEN":"secret"}}`,
@@ -66,7 +69,64 @@ func newTemplateFixture(t *testing.T) *templateFixture {
 	file := store.ModelFile{ModelID: f.model.ID, NodeID: node.ID, State: "ready", Revision: templateCommit, SizeBytes: 2969854224}
 	mustCreateRow(t, db.Create(&file).Error)
 	mustCreateRow(t, db.Create(&store.InstanceModelFile{InstanceID: f.instance.ID, ModelID: f.model.ID, ModelFileID: file.ID}).Error)
+	f.persistRuntimeLaunch(t)
 	return f
+}
+
+// Use the same pure post-allocation assembly as the controller, so the
+// fixture includes the immutable executable that a real running row stores.
+func (f *templateFixture) persistRuntimeLaunch(t *testing.T) {
+	f.persistRuntimeLaunchAt(t, 30000)
+}
+
+func (f *templateFixture) persistRuntimeLaunchAt(t *testing.T, port int) {
+	f.persistAllocatedRuntimeLaunch(t, port, []int{0}, parallelism.Spec{TP: 1, PP: 1, NNodes: 1})
+}
+
+func (f *templateFixture) persistAllocatedRuntimeLaunch(t *testing.T, port int, indexes []int, parallel parallelism.Spec) {
+	t.Helper()
+	dep, err := f.st.GetDeployment(f.deployment.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	node, err := f.st.NodeByID(f.instance.NodeID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	model, err := f.st.GetModel(f.model.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request, _, _, err := planning.DeploymentLaunch(dep, nil, node, model, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Source.Image = f.instance.Image
+	plan, err := planning.ResolveAllocatedLaunch(request, indexes, len(indexes), parallel, port, nil, model.WeightBytes, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var idents []string
+	for _, index := range indexes {
+		for _, card := range node.GPUs {
+			if card.Index == index {
+				idents = append(idents, card.Ident)
+				break
+			}
+		}
+	}
+	desired := proto.InstanceDesiredState{ResolvedLaunch: plan.Resolved, UUID: f.instance.UUID, DeploymentID: dep.ID, Engine: dep.Engine, Image: f.instance.Image,
+		GPUIndexes: indexes, GPUIdents: idents, APIPort: port, VRAMLimitBytes: dep.VRAMLimitBytes, ModelPath: "/models/olmo"}
+	raw, err := json.Marshal(desired)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.instance.DesiredStateJSON = string(raw)
+	bound, err := json.Marshal(idents)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustCreateRow(t, f.st.DB().Model(&store.Instance{}).Where("id = ?", f.instance.ID).Updates(map[string]any{"spec": string(raw), "gpu_idents": string(bound)}).Error)
 }
 
 func mustCreateRow(t *testing.T, err error) {
@@ -172,7 +232,9 @@ func TestLoadStartsFromTheTemplateSpecTheDeploymentNames(t *testing.T) {
 	f.update(t, "template_id", row.ID)
 	f.update(t, "template_spec_name", "bf16-vllm")
 	f.update(t, "template_spec_source", "upstream")
-	f.update(t, "template_snapshot", `{"template_id":1,"extra_args":["--upstream"],"env":{"TEMPLATE_ENV":"1"},"api":{"operations":[{"type":"openai.embeddings"}]}}`)
+	f.update(t, "template_snapshot", `{"template_id":1,"spec_name":"bf16-vllm","spec_source":"upstream","quantization":"bf16","weight_provider":"huggingface","weight_repo_id":"allenai/OLMo-2-0425-1B-Instruct","weight_revision":"`+templateCommit+`","extra_args":["--upstream"],"env":{"TEMPLATE_ENV":"1"},"api":{"operations":[{"type":"openai.embeddings"}]}}`)
+	mustCreateRow(t, f.st.DB().Model(&store.Model{}).Where("id = ?", f.model.ID).Update("operations", `[{"type":"openai.embeddings","endpoint":"/v1/embeddings"}]`).Error)
+	f.persistRuntimeLaunch(t)
 
 	source, err := loadTemplateSource(f.st, f.deployment.ID, nil)
 	if err != nil {
@@ -192,6 +254,8 @@ func TestLoadStartsFromTheTemplateSpecTheDeploymentNames(t *testing.T) {
 	}
 
 	f.update(t, "template_spec_source", "user")
+	f.update(t, "template_snapshot", `{"template_id":1,"spec_name":"bf16-vllm","spec_source":"user","quantization":"bf16","weight_provider":"huggingface","weight_repo_id":"allenai/OLMo-2-0425-1B-Instruct","weight_revision":"`+templateCommit+`","extra_args":["--mine"],"env":{"TEMPLATE_ENV":"1"}}`)
+	f.persistRuntimeLaunch(t)
 	if source, err = loadTemplateSource(f.st, f.deployment.ID, nil); err != nil {
 		t.Fatal(err)
 	}
@@ -211,9 +275,9 @@ func (f *templateFixture) update(t *testing.T, column string, value any) {
 func TestCatalogTemplatesExportsAStoredDeployment(t *testing.T) {
 	f := newTemplateFixture(t)
 	var sent []string
-	exporter := catalogTemplates{store: f.st, probe: func(_ context.Context, id uint, path string, payload map[string]any) templateexport.ProbeReply {
+	exporter := catalogTemplates{store: f.st, probe: func(_ context.Context, id uint, _ string, path string, payload map[string]any) templateexport.ProbeReply {
 		sent = append(sent, fmt.Sprintf("%d %s max_tokens=%v", id, path, payload["max_tokens"]))
-		return templateexport.ProbeReply{HTTPStatus: 200}
+		return templateexport.ProbeReply{HTTPStatus: 200, InstanceUUID: f.instance.UUID}
 	}}
 	out, err := exporter.Export(context.Background(), f.deployment.ID, nil)
 	if err != nil {

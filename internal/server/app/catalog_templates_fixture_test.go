@@ -30,10 +30,11 @@ func TestCatalogTemplateUIFixtures(t *testing.T) {
 	update := os.Getenv(catalogTemplateFixturesEnv) != ""
 	f := newTemplateFixture(t)
 	f.update(t, "container_overrides", `{"env":{"HF_TOKEN":"hf_secret","VLLM_LOGGING_LEVEL":"DEBUG"}}`)
-	reply := templateexport.ProbeReply{HTTPStatus: http.StatusOK}
+	f.persistRuntimeLaunch(t)
+	reply := templateexport.ProbeReply{HTTPStatus: http.StatusOK, InstanceUUID: f.instance.UUID}
 	signer, token := adminSession(t, f.st)
 	router := api.Router(api.Deps{Store: f.st, AuthSigner: signer, CatalogTemplates: catalogTemplates{store: f.st,
-		probe: func(context.Context, uint, string, map[string]any) templateexport.ProbeReply { return reply }}})
+		probe: func(context.Context, uint, string, string, map[string]any) templateexport.ProbeReply { return reply }}})
 	call := func(method, path, contentType, body string) (int, string) {
 		t.Helper()
 		req := httptest.NewRequest(method, path, strings.NewReader(body))
@@ -70,7 +71,7 @@ func TestCatalogTemplateUIFixtures(t *testing.T) {
 		checkCatalogTemplateFixture(t, dir, "imported", body, update)
 	}
 
-	reply = templateexport.ProbeReply{HTTPStatus: http.StatusInternalServerError, Message: "engine error"}
+	reply = templateexport.ProbeReply{HTTPStatus: http.StatusInternalServerError, Message: "engine error", InstanceUUID: f.instance.UUID}
 	if status, body := call(http.MethodPost, exportPath, "", ""); status != http.StatusOK {
 		t.Fatalf("export with a failed check = %d %s", status, body)
 	} else {

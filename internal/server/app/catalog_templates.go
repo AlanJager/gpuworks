@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"strings"
 
 	"gpuworks.ai/gpuworks/internal/proto"
@@ -30,7 +31,30 @@ func (c catalogTemplates) Export(ctx context.Context, deploymentID uint, include
 	if err != nil {
 		return dto.CatalogTemplateExport{}, err
 	}
-	source.input.Checks = templateexport.Checks(ctx, c.probe, deploymentID, source.contract)
+	// A gateway retry or another replica cannot establish facts about the
+	// instance whose hardware and model copy this document describes.
+	probe := c.probe
+	if probe != nil {
+		probe = func(ctx context.Context, id uint, instanceUUID, path string, payload map[string]any) templateexport.ProbeReply {
+			reply := c.probe(ctx, id, instanceUUID, path, payload)
+			if !reply.NoReplica && reply.InstanceUUID != source.instance.UUID && reply.Message == "" {
+				reply.Message = "the probe did not complete on the instance being exported"
+			}
+			return reply
+		}
+	}
+	if _, err := templateexport.Build(source.input); err != nil {
+		return dto.CatalogTemplateExport{}, err
+	}
+	checks := templateexport.Checks(ctx, probe, deploymentID, source.instance.UUID, source.contract)
+	after, err := loadTemplateSource(c.store, deploymentID, includeEnv)
+	if err != nil {
+		return dto.CatalogTemplateExport{}, err
+	}
+	if source.instance.UUID != after.instance.UUID || !reflect.DeepEqual(source.input, after.input) {
+		return dto.CatalogTemplateExport{}, templateexport.Unavailable(templateexport.ReasonLaunchChanged, nil)
+	}
+	source.input.Checks = checks
 	out, err := templateexport.Build(source.input)
 	if err != nil {
 		return dto.CatalogTemplateExport{}, err
@@ -64,6 +88,7 @@ func catalogTemplateDTO(out templateexport.Export) dto.CatalogTemplateExport {
 type templateSource struct {
 	input    templateexport.Input
 	contract inferenceapi.Contract
+	instance store.Instance
 }
 
 // loadTemplateSource reads deployment id from st. It reads one deployment,
@@ -115,7 +140,8 @@ func loadTemplateSource(st *store.Store, id uint, includeEnv []string) (template
 	if in.UserArgs, err = deploy.ParseArgsText(dep.ExtraArgs); err != nil {
 		return templateSource{}, fmt.Errorf("deployment %d extra_args: %w", dep.ID, err)
 	}
-	if err := loadTemplateCards(st, instance, &in); err != nil {
+	node, err := loadTemplateCards(st, instance, &in)
+	if err != nil {
 		return templateSource{}, err
 	}
 	model, err := st.GetModel(dep.ModelID)
@@ -142,7 +168,19 @@ func loadTemplateSource(st *store.Store, id uint, includeEnv []string) (template
 	} else if err := loadTemplateModel(st, model, instance, &in); err != nil {
 		return templateSource{}, err
 	}
-	return templateSource{input: in, contract: contract}, nil
+	if err := verifyTemplateLaunch(dep, instance, node, model, selection, &in); err != nil {
+		return templateSource{}, err
+	}
+	// The running instance owns its executable API contract too. The model's
+	// editable operations may already describe a later generation.
+	var desired proto.InstanceDesiredState
+	_ = json.Unmarshal([]byte(instance.DesiredStateJSON), &desired)
+	if len(desired.APIContract) > 0 {
+		if err := json.Unmarshal(desired.APIContract, &contract); err != nil {
+			return templateSource{}, err
+		}
+	}
+	return templateSource{input: in, contract: contract, instance: instance}, nil
 }
 
 // runningTemplateInstance is the deployment's first running instance. One is enough:
@@ -162,19 +200,19 @@ func runningTemplateInstance(st *store.Store, deploymentID uint) (store.Instance
 
 // loadTemplateCards reads the cards instance holds from its node, by the hardware
 // identity it is bound to.
-func loadTemplateCards(st *store.Store, instance store.Instance, in *templateexport.Input) error {
+func loadTemplateCards(st *store.Store, instance store.Instance, in *templateexport.Input) (*store.Node, error) {
 	var idents []string
 	if strings.TrimSpace(instance.GPUIdents) != "" {
 		if err := json.Unmarshal([]byte(instance.GPUIdents), &idents); err != nil {
-			return fmt.Errorf("instance %s gpu_idents: %w", instance.UUID, err)
+			return nil, fmt.Errorf("instance %s gpu_idents: %w", instance.UUID, err)
 		}
 	}
 	if len(idents) == 0 {
-		return templateexport.Unavailable(templateexport.ReasonNoGPUFacts, nil)
+		return nil, templateexport.Unavailable(templateexport.ReasonNoGPUFacts, nil)
 	}
 	node, err := st.NodeByID(instance.NodeID)
 	if err != nil {
-		return templateexport.Unavailable(templateexport.ReasonNoGPUFacts, nil)
+		return nil, templateexport.Unavailable(templateexport.ReasonNoGPUFacts, nil)
 	}
 	held := map[string]bool{}
 	for _, ident := range idents {
@@ -192,11 +230,11 @@ func loadTemplateCards(st *store.Store, instance store.Instance, in *templateexp
 			})
 		}
 	}
-	if len(in.GPUs) == 0 {
-		return templateexport.Unavailable(templateexport.ReasonNoGPUFacts, nil)
+	if len(in.GPUs) != len(idents) || len(held) != len(idents) {
+		return nil, templateexport.Unavailable(templateexport.ReasonNoGPUFacts, nil)
 	}
 	in.GPUCount = len(idents)
-	return nil
+	return node, nil
 }
 
 // loadTemplateSpec reads the catalog spec the deployment was created from and
@@ -210,19 +248,19 @@ func loadTemplateSpec(st *store.Store, dep *store.Deployment, selection deploy.C
 	if err != nil {
 		return err
 	}
-	// FromFlatStoreModel keeps the rows' order, so a spec and its row share an
-	// index; specs are identified by (model, source, name), and a user spec
-	// may share its name with an upstream one.
-	for index := range template.Specs {
-		spec := template.Specs[index]
-		source := row.Specs[index].Source
-		if spec.Name == dep.TemplateSpecName && (strings.TrimSpace(dep.TemplateSpecSource) == "" || source == dep.TemplateSpecSource) {
-			in.Template, in.TemplateSpec = &template, &spec
-			break
+	template.Unsupported = nil
+	if len(selection.Unsupported) > 0 {
+		if err := json.Unmarshal(selection.Unsupported, &template.Unsupported); err != nil {
+			return err
 		}
 	}
-	if in.TemplateSpec == nil {
-		return templateexport.Unavailable(templateexport.ReasonTemplateMissing, nil)
+	spec, err := templateSpecFromSnapshot(selection, in.Image)
+	if err != nil {
+		return err
+	}
+	in.Template, in.TemplateSpec = &template, &spec
+	if selection.ModelID != "" {
+		in.Template.ModelID = selection.ModelID
 	}
 	in.TemplateArgs = append([]string(nil), selection.ExtraArgs...)
 	in.TemplateEnv = selection.Env

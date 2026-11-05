@@ -24,6 +24,7 @@ var probeKey probeKeyType
 // probeTrace collects what the probe's caller wants back from the path.
 type probeTrace struct {
 	instanceUUID string
+	message      string
 }
 
 func probeFrom(ctx context.Context) *probeTrace {
@@ -63,6 +64,30 @@ func (p *Proxy) Probe(ctx context.Context, deploymentID uint, path string, paylo
 	if !ok {
 		return ProbeReply{NoReplica: true}
 	}
+	return p.probeSelected(ctx, deploymentID, path, payload, servedName, tgt)
+}
+
+// ProbeForInstance is an internal, unaccounted probe of one exact replica.
+// The existing pinned-target checks enforce deployment ownership, readiness,
+// sleep and node liveness. Its target has no alternate-replica retry attempt.
+func (p *Proxy) ProbeForInstance(ctx context.Context, deploymentID uint, instanceUUID, path string, payload map[string]any) ProbeReply {
+	dep, err := p.store.GetDeployment(deploymentID)
+	if err != nil {
+		return ProbeReply{NoReplica: true}
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, path, nil)
+	if err != nil {
+		return ProbeReply{Message: err.Error()}
+	}
+	req.Header.Set(instanceHeader, instanceUUID)
+	selected, tgt, pinned, status, message, _ := p.pinnedTarget(req, dep.ServedName)
+	if !pinned || status != 0 || selected == nil || selected.ID != deploymentID {
+		return ProbeReply{NoReplica: true, HTTPStatus: status, Message: message}
+	}
+	return p.probeSelected(ctx, deploymentID, path, payload, dep.ServedName, tgt)
+}
+
+func (p *Proxy) probeSelected(ctx context.Context, deploymentID uint, path string, payload map[string]any, servedName string, tgt target) (out ProbeReply) {
 	body := make(map[string]any, len(payload)+1)
 	for k, v := range payload {
 		body[k] = v
@@ -81,8 +106,16 @@ func (p *Proxy) Probe(ctx context.Context, deploymentID uint, path string, paylo
 	}
 	req.Header.Set("Content-Type", "application/json")
 	w := &probeWriter{header: http.Header{}}
+	defer func() {
+		if failure := recover(); failure != nil {
+			if failure != http.ErrAbortHandler {
+				panic(failure)
+			}
+			out = ProbeReply{HTTPStatus: w.status, InstanceUUID: trace.instanceUUID, Message: "the upstream response body was interrupted"}
+		}
+	}()
 	p.serveSelectedTarget(w, req, servedName, tgt, deploymentID)
-	out := ProbeReply{HTTPStatus: w.status, InstanceUUID: trace.instanceUUID}
+	out = ProbeReply{HTTPStatus: w.status, InstanceUUID: trace.instanceUUID, Message: trace.message}
 	if w.status == 0 && w.wrote {
 		out.HTTPStatus = http.StatusOK
 	}

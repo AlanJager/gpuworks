@@ -996,7 +996,10 @@
       "revisions_differ": "模型的各个副本解析到了不同的 commit。把模型固定到一个 commit 后重新部署。",
       "template_missing": "创建这个部署所用的模板已被删除。",
       "model_missing": "部署的模型已被删除。",
-      "command_overridden": "部署替换了引擎命令，启动方式无法写成模板参数。"
+      "command_overridden": "部署替换了引擎命令，启动方式无法写成模板参数。",
+      "launch_changed": "已保存的配置或运行实例发生了变化。请重启部署以应用配置，再重试。",
+      "launch_snapshot_missing": "运行实例缺少可核验的完整启动快照。请用当前服务端版本重启实例，再重试。",
+      "heterogeneous_gpus": "实例使用了不同型号的 GPU，单一实测型号选择器无法描述这种组合。"
     },
     "env": "未导出的环境变量",
     "envHint": "这些变量常含令牌和主机路径。只勾选模型需要、且不含密钥的变量，再重新生成。",
