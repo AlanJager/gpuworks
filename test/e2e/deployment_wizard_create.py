@@ -418,10 +418,28 @@ def test_deployment_wizard_create(page, context, server, artifacts, report,
     expect(forecast.get_by_role("row").last).to_have_text(
         fixture["node"]["name"] + labels["workbench"]["nodeAcquisition"]["present"] * 2)
     launch_checks.boolean_rejection.seed(page, labels, expected_body(fixture, fixture["name"]), report, token, launch_checks.boolean_rejection.declared_mount(fixture["model_dir"]))
-    name_input.fill("")
-    deploy.click()
-    expect(page.get_by_text(labels["basic"]["nameRequired"], exact=True)).to_be_visible()
-    check(deployment_requests == [], "blank name emitted a deployment mutation")
+    # The name rule is required with whitespace: true (DeployBasicStep.tsx:143),
+    # so an empty value and a value made only of spaces are two distinct branches
+    # of the same rule. Only the empty branch was exercised, which left the
+    # whitespace branch unmeasured: a rule that dropped it would have kept this
+    # check green. Both are now driven and each must be refused by the field
+    # itself, with the error on the name control and no create on the wire.
+    refusals = {}
+    for kind, typed in (("empty", ""), ("whitespace", "   \t  ")):
+        name_input.fill(typed)
+        deploy.click()
+        error = page.get_by_text(labels["basic"]["nameRequired"], exact=True)
+        expect(error).to_be_visible()
+        # The error must sit on this control's own form item, not merely exist
+        # somewhere on the page: a rule attached to the wrong field would still
+        # draw this message.
+        explain = name_item.locator(".ant-form-item-explain-error")
+        expect(explain).to_have_count(1)
+        refusals[kind] = {"typed": typed, "error_visible": error.count() > 0,
+                          "error_on_name_item": explain.count() == 1,
+                          "creates": len(deployment_requests)}
+        check(deployment_requests == [], f"{kind} name emitted a deployment mutation")
+    report["required_name_refusals"] = refusals
     report["last_step"] = "required-name-refused"
     # The UI accepts text, while the real server limits display names to 256
     # runes. A 257-rune name exercises backend refusal without any mocking.
