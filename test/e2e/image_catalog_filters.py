@@ -88,14 +88,31 @@ def exercise_list_states(page, server, text, common, prefix, all_before, errors,
         expect(alert).to_be_visible()
         expect(alert).to_contain_text(text["page"]["loadFailed"])
         states["error_alert"] = True
-        expect(alert.get_by_role("button", name=common["actions"]["retry"], exact=True)).to_be_visible()
+        # antd inserts a space between the two glyphs of a two-character label
+        # (autoInsertSpace), so a Chinese Retry renders as "重 试" while the label
+        # itself is "重试". Comparing the exact text would reject a button that is
+        # correct on screen, and it passed in en only because "Retry" is one word.
+        # The accessible name is compared with that spacing removed, which still
+        # fails if the Alert carries a different action or none at all.
+        retry = alert.locator("button")
+        expect(retry).to_have_count(1)
+        check("".join(retry.inner_text().split()) == "".join(common["actions"]["retry"].split()),
+              "the error Alert's only action is not the retry control")
         states["retry_offered"] = True
     finally:
         page.unroute(re.compile(re.escape(server.base + list_path) + r"(?:\?|$)"), refuse)
 
     # Retry: now that the route is back, the same control has to recover the set.
     with page.expect_response(lambda r: urlsplit(r.url).path == list_path and r.request.method == "GET") as again:
-        page.get_by_role("button", name=common["actions"]["retry"], exact=True).click()
+        # antd puts a space between the two glyphs of "重试" (autoInsertSpace), so no
+        # name match finds it in zh: neither exact nor substring. The control is
+        # located as the error Alert's only button and its text is checked against
+        # the label with spacing removed, so a different action still fails.
+        retry_button = page.get_by_role("alert").first.locator("button")
+        expect(retry_button).to_have_count(1)
+        check("".join(retry_button.inner_text().split()) == "".join(common["actions"]["retry"].split()),
+              "the retried control is not the error Alert's retry action")
+        retry_button.click()
     check(again.value.status == 200, f"retry HTTP {again.value.status}")
     check(collection(again.value) == all_before, "retry lost rows against the independent GET")
     # Recovery has to be judged on the source tab that actually holds the fixture:
@@ -175,9 +192,15 @@ def test_image_series_filters(page, server, artifacts, report, locale):
     errors, failures, mutations = observe(page)
     reads = []
     page.on("response", lambda r: reads.append(r) if urlsplit(r.url).path == "/api/v1/images" and r.request.method == "GET" else None)
+    # reload() discards the previous document, and Playwright can no longer fetch a
+    # response body that belonged to it ("No resource with given identifier"). Reading
+    # the body inside the expect_response block keeps it while the page that produced
+    # it is still current, so the comparison is made on a body that was actually read
+    # rather than on a handle that has gone stale.
     with page.expect_response(lambda r: urlsplit(r.url).path == "/api/v1/images" and r.request.method == "GET") as initial:
         page.reload()
-    check(collection(initial.value) == all_before, "browser list differs from independent authority")
+        initial_items = collection(initial.value)
+    check(initial_items == all_before, "browser list differs from independent authority")
     page.get_by_role("tab", name=text["page"]["tab"]["custom"], exact=True).click()
     expect(page.get_by_role("tab", name=text["page"]["tab"]["custom"], exact=True)).to_have_attribute("aria-selected", "true")
     rows = page.get_by_role("table").get_by_role("button", name=re.compile("^" + re.escape(prefix)))
