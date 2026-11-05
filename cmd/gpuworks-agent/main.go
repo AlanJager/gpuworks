@@ -243,14 +243,13 @@ func run(log *slog.Logger, args []string) error {
 	// The agent's own warn+ records ship to the log center under source=agent
 	// while the file handler keeps everything, exactly as before.
 	self := selflog.NewCollector(fileLog.Handler(), slog.LevelWarn, 512)
-	// Ahead of the file and the log center: one kind of record repeating
-	// (a vendor tool failing on every probe) is cut to a few lines and a count.
-	tee := debuglog.New(self)
-	throttle := logthrottle.New(tee, logthrottle.Options{Identity: []string{"code", "reason"}})
+	// Debug sessions capture original records first. Ordinary logs throttle
+	// repeating records (a vendor tool failing on every probe) to a few lines
+	// and a count.
+	log, tee, throttle := debuglog.NewLogger(self, logthrottle.Options{Identity: []string{"code", "reason"}})
 	throttleCtx, stopThrottle := context.WithCancel(context.Background())
 	defer stopThrottle()
 	go throttle.Run(throttleCtx)
-	log = slog.New(throttle)
 	cfg.SelfLog = self
 	cfg.DebugLog = tee
 	slog.SetDefault(log)

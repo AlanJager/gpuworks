@@ -90,7 +90,8 @@ func (o *copyObservation) recordWrite(n int, err error) {
 }
 
 // finish logs the copy outcome once. readErr is the terminal error observed
-// reading the upstream body (nil or io.EOF means a clean end).
+// reading the upstream body, or the transport error before response headers.
+// A normal body EOF is clean; a pre-response transport EOF is a failure.
 func (o *copyObservation) finish(readErr error) {
 	o.mu.Lock()
 	if o.logged {
@@ -103,7 +104,7 @@ func (o *copyObservation) finish(readErr error) {
 	o.mu.Unlock()
 
 	copyErr := readErr
-	if copyErr != nil && errors.Is(copyErr, io.EOF) {
+	if copyErr != nil && errors.Is(copyErr, io.EOF) && !o.upstreamFailed {
 		copyErr = nil
 	}
 
@@ -148,6 +149,11 @@ func (o *copyObservation) finish(readErr error) {
 			end["write_error"] = writeErr.Error()
 		}
 		o.capture.end(end)
+	}
+	// ErrorHandler already logged a pre-response failure. No response body
+	// existed, so do not describe this as a completed or truncated body copy.
+	if o.upstreamFailed {
+		return
 	}
 
 	attrs := []any{

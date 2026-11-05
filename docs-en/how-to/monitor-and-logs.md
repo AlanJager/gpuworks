@@ -200,6 +200,16 @@ For the histogram, use `GET /api/v1/logs/histogram` with the same filters as the
   An absent image is an ordinary answer and is not a warning; a failing check command writes the warning `image presence inspection failed`.
 - **Scheduling refusals**: `deployment not schedulable yet` is written with the scheduling event, once per waiting window (10 minutes by default) for the same reason.
 
+### Temporarily Capture Debug Logs and Raw Requests
+
+1. As an administrator, open **Settings → Diagnostics → Debug capture** (`/settings#diagnostics`), select the deployments to investigate, and start capture. Their nodes are included automatically; selecting nodes alone does not capture deployment requests. The defaults are 10 minutes and 10 GiB. You can stop capture manually without restarting the engine.
+2. Reproduce the issue during capture and record the client's `X-Request-ID`, time, and status code. Confirm that the relevant nodes are collecting. Offline, unsupported, or failed nodes must not be treated as captured.
+3. After stopping, use **Collect diagnostics** on the same page, covering the reproduction time and the relevant deployments, nodes, and debug capture, then download the bundle. The debug session contains `server.log`, node debug logs, and `requests/<deployment ID>-<request ID>.jsonl`.
+
+While a session is active and below its size limit, debug files retain repeated original records, including debug records. Ordinary log files and the log center remain throttled as described above; their individual log lines are not a count of failed requests. Stopping, expiry, or the size limit restores the configured ordinary log level. Raw captures contain request and response content; check for sensitive data before sharing.
+
+A request JSONL's `end` record describes the gateway's observations. An upstream EOF before response headers retains `read_error` (for example, `EOF`) and `outcome=upstream_error`; a normal response must not record body EOF as an error. For streamed responses actually returned within the capture limits, inspect `upstream` / `client` data for `finish_reason` and `data: [DONE]`. The gateway's prepared request snapshot does not prove the engine received it, and a missing `[DONE]` alone cannot locate the disconnection.
+
 ## Set the Engine Log Level
 
 SGLang logs do not include levels by default, so the platform's level filters and histogram cannot identify actual errors. In single-GPU SGLang deployments with engine-managed startup, the platform automatically injects a logging configuration with levels where applicable. Logs still go to container stderr.
