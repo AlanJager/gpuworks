@@ -216,13 +216,14 @@ func groupProperties(group metrics.RequestEvidence) [][2]string {
 	for _, metric := range []struct {
 		Name    string
 		Summary metrics.MetricSummary
-	}{{"TTFT", group.TTFT}, {"TPOT", group.TPOT}, {"Last output latency", group.LastOutputLatency}, {"Stream completion", group.Completion}} {
+	}{{"TTFT", group.TTFT}, {"First content", group.FirstContent}, {"TPOT", group.TPOT}, {"Last output latency", group.LastOutputLatency}, {"Stream completion", group.Completion}} {
 		value := "unknown (n=0)"
 		if metric.Summary.Count > 0 {
 			value = fmt.Sprintf("n=%d; mean=%s; P50=%s; P99=%s ms", metric.Summary.Count, number(metric.Summary.MeanMs), metricValue(metric.Summary, false), metricValue(metric.Summary, true))
 		}
 		out = append(out, [2]string{metric.Name, value})
 	}
+	out = append(out, [2]string{"Successful with output but no answer text", strconv.Itoa(group.NoContent)})
 	for _, token := range []struct {
 		Name         string
 		Distribution metrics.TokenDistribution

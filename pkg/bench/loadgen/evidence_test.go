@@ -241,3 +241,66 @@ func TestNonstreamReasoningCountsGeneratedOutputWithoutEnteringConversation(t *t
 		})
 	}
 }
+
+// vllmReasoningStream is the chunk sequence vLLM 0.34 sends with
+// --reasoning-parser kimi_k3 and stream_options.include_usage: a role opener
+// with empty content, reasoning under "reasoning", the answer under "content",
+// a finish chunk, then a usage chunk with no choices.
+const vllmReasoningStream = `data: {"id":"chatcmpl-1","object":"chat.completion.chunk","created":1793889000,"model":"kimi-k3.1-pro","choices":[{"index":0,"delta":{"role":"assistant","content":""},"logprobs":null,"finish_reason":null}]}
+
+data: {"id":"chatcmpl-1","object":"chat.completion.chunk","created":1793889000,"model":"kimi-k3.1-pro","choices":[{"index":0,"delta":{"reasoning":"The user"},"logprobs":null,"finish_reason":null}]}
+
+data: {"id":"chatcmpl-1","object":"chat.completion.chunk","created":1793889000,"model":"kimi-k3.1-pro","choices":[{"index":0,"delta":{"reasoning":" asks"},"logprobs":null,"finish_reason":null}]}
+
+data: {"id":"chatcmpl-1","object":"chat.completion.chunk","created":1793889000,"model":"kimi-k3.1-pro","choices":[{"index":0,"delta":{"content":"391"},"logprobs":null,"finish_reason":null}]}
+
+data: {"id":"chatcmpl-1","object":"chat.completion.chunk","created":1793889000,"model":"kimi-k3.1-pro","choices":[{"index":0,"delta":{"content":"."},"logprobs":null,"finish_reason":"stop","stop_reason":null}]}
+
+data: {"id":"chatcmpl-1","object":"chat.completion.chunk","created":1793889000,"model":"kimi-k3.1-pro","choices":[],"usage":{"prompt_tokens":20,"total_tokens":26,"completion_tokens":6,"completion_tokens_details":{"reasoning_tokens":4}}}
+
+data: [DONE]
+
+`
+
+func TestStreamTimingCountsVLLMReasoningField(t *testing.T) {
+	start := time.Unix(100, 0)
+	tick := 0
+	clock := func() time.Time { tick++; return start.Add(time.Duration(tick) * 10 * time.Millisecond) }
+	out, err := parseSSEWithClock(strings.NewReader(vllmReasoningStream), start, clock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := out.Metrics
+	// Events: opener 10ms, reasoning 20/30ms, content 40/50ms, usage 60ms, DONE 70ms.
+	if m.TTFT != 20*time.Millisecond || m.FirstContentAt.Sub(start) != 40*time.Millisecond || m.LastOutputAt.Sub(start) != 50*time.Millisecond || m.Chunks != 4 {
+		t.Fatalf("timing = %+v", m)
+	}
+	if out.Text != "391." || out.generatedText != "The user asks391." || m.OutputTokens != 6 || m.ReasoningTokens == nil || *m.ReasoningTokens != 4 {
+		t.Fatalf("text=%q generated=%q metrics=%+v", out.Text, out.generatedText, m)
+	}
+	// TPOT spans reasoning and answer: 30ms over 5 inter-token gaps.
+	if v, ok := m.TimePerOutputToken(); !ok || v != 6*time.Millisecond {
+		t.Fatalf("TPOT = %v %v", v, ok)
+	}
+}
+
+func TestStreamReasoningFieldNamesAreNotDoubleCounted(t *testing.T) {
+	for _, delta := range []string{`{"reasoning_content":"abc"}`, `{"reasoning":"abc"}`, `{"thinking":"abc"}`, `{"reasoning_content":"abc","reasoning":"abc"}`} {
+		stream := "data: {\"choices\":[{\"delta\":" + delta + "}]}\n\ndata: {\"choices\":[{\"delta\":{\"content\":\"d\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n"
+		out, err := parseSSE(strings.NewReader(stream), time.Now())
+		if err != nil || out.generatedText != "abcd" || out.Text != "d" || out.Metrics.FirstOutputAt.IsZero() || out.Metrics.Chunks != 2 {
+			t.Fatalf("delta %s: generated=%q text=%q metrics=%+v err=%v", delta, out.generatedText, out.Text, out.Metrics, err)
+		}
+	}
+}
+
+func TestNonstreamReasoningFieldCountsGeneratedOutput(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"choices":[{"message":{"role":"assistant","content":"","reasoning":"abcdefgh"},"finish_reason":"length"}]}`)
+	}))
+	defer srv.Close()
+	out, err := (Client{BaseURL: srv.URL}).Do(context.Background(), Request{Messages: []Message{{Role: "user", Content: "test"}}})
+	if err != nil || out.Text != "" || out.generatedText != "abcdefgh" || out.Metrics.OutputTokens != 2 {
+		t.Fatalf("result=%+v generated=%q err=%v", out, out.generatedText, err)
+	}
+}

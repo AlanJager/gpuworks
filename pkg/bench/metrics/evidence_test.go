@@ -224,3 +224,26 @@ func TestSnapshotNeverWrapsRepresentableTokenRatesOrIndependentTotals(t *testing
 		}
 	}
 }
+
+func TestEvidenceSummarizesFirstContentAndCountsReasoningOnlyRequests(t *testing.T) {
+	start := time.Unix(100, 0)
+	rs := []Request{
+		// Reasoning then answer.
+		{Turn: 1, StartedAt: start, FirstOutputAt: start.Add(time.Second), FirstContentAt: start.Add(4 * time.Second), LastOutputAt: start.Add(5 * time.Second), FinishedAt: start.Add(5 * time.Second), TTFT: time.Second},
+		// The whole budget spent reasoning: TTFT, no first content.
+		{Turn: 2, StartedAt: start, FirstOutputAt: start.Add(2 * time.Second), LastOutputAt: start.Add(6 * time.Second), FinishedAt: start.Add(6 * time.Second), TTFT: 2 * time.Second},
+		// Failed after reasoning: counted in neither.
+		{Turn: 2, StartedAt: start, FirstOutputAt: start.Add(time.Second), FinishedAt: start.Add(2 * time.Second), TTFT: time.Second, Error: errors.New("reset"), ErrorStage: "stream"},
+	}
+	e := BuildPointEvidence(EvidencePlan{}, nil, rs, EvidenceExecution{}, false)
+	if e.All.TTFT.Count != 2 || e.All.FirstContent.Count != 1 || e.All.FirstContent.P50Ms != 4000 || e.All.NoContent != 1 {
+		t.Fatalf("all = %+v", e.All)
+	}
+	if e.FirstTurn.NoContent != 0 || e.FollowupTurns.NoContent != 1 || e.FollowupTurns.FirstContent.Count != 0 {
+		t.Fatalf("first=%+v follow=%+v", e.FirstTurn, e.FollowupTurns)
+	}
+	wire, _ := json.Marshal(e.FollowupTurns)
+	if !strings.Contains(string(wire), `"first_content":{"count":0,"mean_ms":0,"p50_ms":0,"p99_ms":0}`) || !strings.Contains(string(wire), `"no_content":1`) {
+		t.Fatalf("wire = %s", wire)
+	}
+}
