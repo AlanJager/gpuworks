@@ -23,7 +23,7 @@
   "contract_id": "gpuworks/image-catalog/tagged-registration",
   "name": "镜像目录 / 自定义带 tag 镜像登记 / 系列和版本分别持久化",
   "test_function": "test_image_registration",
-  "command": "make test-e2e-image-register",
+  "command": "python3 -B test/e2e/image_catalog.py --case register --locale en",
   "missing": [
     "MISSING: official catalog update button and manifest file upload; valid/invalid/duplicate content, result counters and independent catalog readback are separate from custom form registration",
     "full field and enumeration matrix",

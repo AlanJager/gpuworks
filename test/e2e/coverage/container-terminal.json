@@ -8,7 +8,7 @@
   "driver_file": "test/e2e/container_terminal.py",
   "test_file": "test/e2e/container_terminal_browser.py",
   "test_function": "test_container_terminal",
-  "command": "make test-e2e-container-terminal E2E_LOCALE=en",
+  "command": "python3 -B test/e2e/container_terminal.py --locale en",
   "required_evidence": [
     "ui",
     "request",

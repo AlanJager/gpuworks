@@ -7,7 +7,7 @@
   "test_file": "test/e2e/model_picker_height/case.py",
   "driver_file": "test/e2e/model_picker_height/case.py",
   "test_function": "test_model_picker_height",
-  "command": "make test-e2e-model-picker-height E2E_TARGET_REF=upstream/master E2E_BROWSER_CHANNEL=chromium",
+  "command": "cd test/e2e && python3 -B -m model_picker_height.test_case",
   "required_evidence": [
     "ui",
     "request",

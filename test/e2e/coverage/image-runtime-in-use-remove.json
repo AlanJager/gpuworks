@@ -5,7 +5,7 @@
   "page_id": "images",
   "test_file": "test/e2e/image_in_use.py",
   "test_function": "test_in_use_remove",
-  "command": "make test-e2e-image-in-use-remove",
+  "command": "python3 -B test/e2e/image_in_use.py --case in-use-remove --locale en",
   "lane": "local-real-server-agent-isolated-docker",
   "identity": "admin",
   "required_evidence": [

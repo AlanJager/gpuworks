@@ -13,7 +13,7 @@
     "out of memory",
     "no such container"
   ],
-  "command": "make test-e2e-log-quick-controls",
+  "command": "python3 -B test/e2e/log_quick_controls.py --locale en",
   "lane": "local-real-server-sqlite",
   "identity": "admin",
   "locales": [

@@ -3,7 +3,7 @@
   "name": "镜像统计 / 等宽等高与统计口径 / 双语响应式布局",
   "test_file": "test/e2e/image_summary_layout.py",
   "test_function": "test_image_summary_layout",
-  "command": "make test-e2e-image-summary-layout",
+  "command": "python3 -B test/e2e/image_summary_layout.py --case summary-layout --locale en",
   "page_id": "images",
   "lane": "local-real-server-sqlite",
   "identity": "admin",

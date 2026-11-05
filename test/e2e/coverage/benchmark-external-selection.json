@@ -3,7 +3,7 @@
   "name": "评测 / 列表批量选择矩阵 / 单行多行取消与全选作用域、五条上限、混合集合、翻页过滤刷新后的集合",
   "test_file": "test/e2e/evaluation_bulk_selection.py",
   "test_function": "test_batch_selection",
-  "command": "make test-e2e-benchmark-selection",
+  "command": "python3 -B test/e2e/evaluation_bulk_selection.py --case selection --locale en",
   "priority": "P1",
   "page_id": "evaluations",
   "lane": "local-real-server-sqlite-openai-fixture",

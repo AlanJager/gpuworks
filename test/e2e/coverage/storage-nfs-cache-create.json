@@ -7,7 +7,7 @@
   "scope": "Single targeted contract for creating one nfs_cache storage on one local node; not a storage-type or page completion claim",
   "test_file": "test/e2e/storage_cache_create.py",
   "test_function": "test_storage_cache_create",
-  "command": "make test-e2e-storage-nfs-cache-create E2E_NFS_EXPORT=host:/path",
+  "command": "python3 -B test/e2e/storage_cache_create.py --locale en",
   "lane": "local-real-server-agent-nfs",
   "identity": "admin browser; one real agent (driver=none) enrolled through the real nodes API and run with sudo -n",
   "fixture": "isolated server and fresh SQLite, real Chrome, real agent over WS, a caller-owned NFSv4.2 export allowing root writes (gated by mount.nfs4 and a TCP connection to port 2049 before the run counts); every storage path sits under the isolated server's storage root; the default local storage is moved there through the real API before the browser flow, although the agent may report its own models directory for that storage; fixture setup sets reserve_free_bytes=1048576 through the real storage settings API so this empty-cache scenario does not depend on the workstation having the production default disk reserve free",

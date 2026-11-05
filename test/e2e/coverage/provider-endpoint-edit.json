@@ -5,7 +5,7 @@
   "page_id": "providers",
   "test_file": "test/e2e/provider_endpoint_edit.py",
   "test_function": "test_provider_endpoint_edit",
-  "command": "make test-e2e-provider-endpoint-edit",
+  "command": "python3 -B test/e2e/provider_endpoint_edit.py --locale en",
   "lane": "local-real-server-sqlite",
   "identity": "admin browser; local RunPod REST fixture",
   "product_contracts": [

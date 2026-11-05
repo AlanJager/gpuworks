@@ -3,7 +3,7 @@
   "name": "设置 / 请求 Trace 导出 / OTLP 测试 span、加密请求头、采样比例、保存与关闭",
   "test_file": "test/e2e/settings_telemetry.py",
   "test_function": "test_telemetry_export",
-  "command": "make test-e2e-settings-telemetry",
+  "command": "python3 -B test/e2e/settings_telemetry.py --locale en",
   "priority": "P1",
   "page_id": "settings",
   "lane": "local-real-server-sqlite-otlp-fixture",

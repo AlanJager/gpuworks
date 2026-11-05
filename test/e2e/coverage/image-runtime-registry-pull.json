@@ -5,7 +5,7 @@
   "test_file": "test/e2e/image_registry.py",
   "test_function": "test_registry_pull",
   "name": "镜像节点副本 / UI选择Registry直接拉取 / 刷新来源与digest正确且真实容器可执行",
-  "command": "make test-e2e-image-registry-pull",
+  "command": "python3 -B test/e2e/image_registry.py --case registry-pull --locale en",
   "lane": "local-real-server-agent-isolated-docker",
   "identity": "admin",
   "required_evidence": [

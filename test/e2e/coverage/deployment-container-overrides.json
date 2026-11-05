@@ -12,7 +12,7 @@
   },
   "test_file": "test/e2e/deployment_override_create.py",
   "test_function": "test_deployment_container_overrides",
-  "command": "make test-e2e-deployment-container-overrides",
+  "command": "python3 -B test/e2e/deployment_override_create.py",
   "lane": "local-real-agent-docker-fake-gpu-facts",
   "identity": "admin browser, real local agent and Docker; inference API key for gateway",
   "fixture": "Fresh real server/SQLite/Chrome, real agent with synthetic A100 identity; local unchanged fake-engine copied into run-owned alpine3.20 tools image without pulls/network. Local model files. No deployment writes during preparation.",

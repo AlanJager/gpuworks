@@ -13,7 +13,7 @@
     "syntax",
     "schema"
   ],
-  "command": "make test-e2e-template-edit",
+  "command": "python3 -B test/e2e/template_edit.py --case all --locale en",
   "lane": "local-real-server-sqlite",
   "identity": "admin",
   "required_evidence": [

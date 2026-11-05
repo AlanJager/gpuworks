@@ -3,7 +3,7 @@
   "name": "设置 / 部署启动超时默认值 / 边界保存、刷新回读与服务端拒绝",
   "test_file": "test/e2e/settings_deployment_policy.py",
   "test_function": "test_deployment_start_timeout",
-  "command": "make test-e2e-settings-deployment-policy",
+  "command": "python3 -B test/e2e/settings_deployment_policy.py --locale en",
   "priority": "P1",
   "page_id": "settings",
   "lane": "local-real-server-sqlite",

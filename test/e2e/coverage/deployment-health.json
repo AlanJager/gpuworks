@@ -7,7 +7,7 @@
   "test_file": "test/e2e/deployment_health.py",
   "driver_file": "test/e2e/deployment_health.py",
   "test_function": "test_deployment_health",
-  "command": "make test-e2e-deployment-health LOCALE=en",
+  "command": "python3 -B test/e2e/deployment_health.py --locale en",
   "lane": "local-real-server-agent-isolated-docker-audited-fake-engine",
   "identity": "admin browser; real agent and Docker; synthetic A100x2 scheduling facts only",
   "scope": "One chat deployment health editor with separate guard deployment witnessing real one-minute rounds. Configuration applies next round and never restarts. Not GPU compute or /health startup readiness.",

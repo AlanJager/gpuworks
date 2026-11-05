@@ -6,7 +6,7 @@
   "page_id": "login",
   "test_file": "test/e2e/session_logout.py",
   "test_function": "test_two_tab_logout_relogin",
-  "command": "make test-e2e-session-logout",
+  "command": "python3 -B test/e2e/session_logout.py --locale en",
   "lane": "local-real-server-sqlite",
   "identity": "admin browser; separate cookie-only and bearer-only clients",
   "product_contracts": [

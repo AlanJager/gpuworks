@@ -3,7 +3,7 @@
   "name": "评测 / 外部 OpenAI 端点参数扫描 / UI 探测模型、真实流式请求、完成回读与删除",
   "test_file": "test/e2e/evaluation_external.py",
   "test_function": "test_external_endpoint_sweep",
-  "command": "make test-e2e-benchmark-external",
+  "command": "python3 -B test/e2e/evaluation_external.py --case sweep --locale en",
   "additional_cases": [
     {
       "manifest": "test/e2e/coverage/benchmark-external-cancel.json",

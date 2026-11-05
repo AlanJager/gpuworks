@@ -7,7 +7,7 @@
   "scope": "Eight targeted option combinations; not full form/page or actual-expiration coverage",
   "test_file": "test/e2e/platform_token_options.py",
   "test_function": "test_platform_token_option",
-  "command": "make test-e2e-platform-token-options",
+  "command": "python3 -B test/e2e/platform_token_options.py --case read-0 --locale en",
   "lane": "local-real-server-sqlite",
   "identity": "admin login session creates; read/write bearer consumes without cookies",
   "fixture": "fresh isolated server/SQLite for each case, real Chrome, runId-owned resources, no management mocks",
@@ -19,7 +19,7 @@
         "scope": "read",
         "days": 0
       },
-      "command": "make test-e2e-platform-token-options E2E_TOKEN_CASE=read-0"
+      "command": "python3 -B test/e2e/platform_token_options.py --case read-0 --locale en"
     },
     {
       "case": "read-30",
@@ -28,7 +28,7 @@
         "scope": "read",
         "days": 30
       },
-      "command": "make test-e2e-platform-token-options E2E_TOKEN_CASE=read-30"
+      "command": "python3 -B test/e2e/platform_token_options.py --case read-30 --locale en"
     },
     {
       "case": "read-90",
@@ -37,7 +37,7 @@
         "scope": "read",
         "days": 90
       },
-      "command": "make test-e2e-platform-token-options E2E_TOKEN_CASE=read-90"
+      "command": "python3 -B test/e2e/platform_token_options.py --case read-90 --locale en"
     },
     {
       "case": "read-365",
@@ -46,7 +46,7 @@
         "scope": "read",
         "days": 365
       },
-      "command": "make test-e2e-platform-token-options E2E_TOKEN_CASE=read-365"
+      "command": "python3 -B test/e2e/platform_token_options.py --case read-365 --locale en"
     },
     {
       "case": "write-0",
@@ -55,7 +55,7 @@
         "scope": "write",
         "days": 0
       },
-      "command": "make test-e2e-platform-token-options E2E_TOKEN_CASE=write-0"
+      "command": "python3 -B test/e2e/platform_token_options.py --case write-0 --locale en"
     },
     {
       "case": "write-30",
@@ -64,7 +64,7 @@
         "scope": "write",
         "days": 30
       },
-      "command": "make test-e2e-platform-token-options E2E_TOKEN_CASE=write-30"
+      "command": "python3 -B test/e2e/platform_token_options.py --case write-30 --locale en"
     },
     {
       "case": "write-90",
@@ -73,7 +73,7 @@
         "scope": "write",
         "days": 90
       },
-      "command": "make test-e2e-platform-token-options E2E_TOKEN_CASE=write-90"
+      "command": "python3 -B test/e2e/platform_token_options.py --case write-90 --locale en"
     },
     {
       "case": "write-365",
@@ -82,7 +82,7 @@
         "scope": "write",
         "days": 365
       },
-      "command": "make test-e2e-platform-token-options E2E_TOKEN_CASE=write-365"
+      "command": "python3 -B test/e2e/platform_token_options.py --case write-365 --locale en"
     }
   ],
   "product_contracts": [

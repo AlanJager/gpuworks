@@ -3,7 +3,7 @@
   "name": "镜像目录 / 引擎、框架、状态组合筛选 / 精确交集与清空恢复",
   "test_file": "test/e2e/image_catalog_filters.py",
   "test_function": "test_image_series_filters",
-  "command": "make test-e2e-image-filters",
+  "command": "python3 -B test/e2e/image_catalog_filters.py --case filters --locale en",
   "priority": "P1",
   "page_id": "images",
   "lane": "local-real-server-sqlite",

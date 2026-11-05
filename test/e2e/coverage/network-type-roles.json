@@ -1,7 +1,7 @@
 {
   "scope": "Targeted network definition contracts, not communication or full page coverage",
   "test_file": "test/e2e/network_type_roles.py",
-  "command": "make test-e2e-network-type-roles",
+  "command": "python3 -B test/e2e/network_type_roles.py --case all --locale en",
   "lane": "local-real-server-sqlite",
   "identity": "admin",
   "result": "NOT_RUN: execution belongs to SHA/runId report",

@@ -3,7 +3,7 @@
   "name": "节点 / 离线节点定义 / 标签保存、名称搜索与标签筛选 / 刷新和独立 GET 一致",
   "test_file": "test/e2e/nodes_labels_search.py",
   "test_function": "test_node_labels_search",
-  "command": "make test-e2e-nodes-labels-search",
+  "command": "python3 -B test/e2e/nodes_labels_search.py --locale en",
   "priority": "P1",
   "page_id": "nodes",
   "lane": "local-real-server-sqlite",

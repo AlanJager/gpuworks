@@ -5,7 +5,7 @@
   "test_function": "test_community_prefill",
   "contract_id": "gpuworks/image-catalog/community-prefill",
   "name": "镜像目录 / 社区选择从 A 到 B / 预填替换、手工草稿与刷新持久化",
-  "command": "make test-e2e-image-community-prefill",
+  "command": "python3 -B test/e2e/image_selection.py --case community-prefill --locale en",
   "lane": "local-real-server-sqlite",
   "identity": "admin",
   "required_evidence": [

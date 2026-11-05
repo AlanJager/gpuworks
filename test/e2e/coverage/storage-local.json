@@ -3,7 +3,7 @@
   "name": "存储 / 本地存储表单与生命周期 / 类型条件字段、字段负例、创建、刷新与删除",
   "test_file": "test/e2e/storage_local.py",
   "test_function": "test_storage_local",
-  "command": "make test-e2e-storage-local",
+  "command": "python3 -B test/e2e/storage_local.py --locale en",
   "priority": "P1",
   "page_id": "storage",
   "lane": "local-real-server-sqlite",

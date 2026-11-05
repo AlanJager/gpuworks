@@ -4,7 +4,7 @@
   "test_file": "test/e2e/http_model_registration.py",
   "test_function": "test_model_registration",
   "lane": "local-real-server-sqlite-http-directory",
-  "command": "make test-e2e-http-model-registration",
+  "command": "python3 -B test/e2e/http_model_registration.py --case all --locale en",
   "cases": {
     "register": {
       "id": "gpuworks/models/http-register",

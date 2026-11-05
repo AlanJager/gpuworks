@@ -3,7 +3,7 @@
   "name": "AI 助手 / 服务配置与只读工具读取 / 流式回答、停止、刷新与删除",
   "test_file": "test/e2e/assistant_service_tools.py",
   "test_function": "test_assistant_service_tools",
-  "command": "make test-e2e-assistant-service-tools",
+  "command": "python3 -B test/e2e/assistant_service_tools.py --locale en",
   "priority": "P1",
   "page_id": "assistant",
   "lane": "local-real-server-sqlite-llm-fixture",

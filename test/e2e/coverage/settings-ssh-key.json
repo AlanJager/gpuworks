@@ -3,7 +3,7 @@
   "name": "设置 / 平台 SSH 密钥 / 重新生成、拒绝损坏私钥、导入既有私钥并刷新回读",
   "test_file": "test/e2e/settings_ssh_key.py",
   "test_function": "test_platform_ssh_key",
-  "command": "make test-e2e-settings-ssh-key",
+  "command": "python3 -B test/e2e/settings_ssh_key.py --locale en",
   "priority": "P1",
   "page_id": "settings",
   "lane": "local-real-server-sqlite",

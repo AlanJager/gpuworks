@@ -7,7 +7,7 @@
   "scope": "One registered local model, one user vLLM running spec, one explicit node, one replica; partial deployment form coverage",
   "test_file": "test/e2e/deployment_wizard_create.py",
   "test_function": "test_deployment_wizard_create",
-  "command": "make test-e2e-deployment-wizard-create",
+  "command": "python3 -B test/e2e/deployment_wizard_create.py --locale en",
   "lane": "local-real-agent-docker-fake-gpu-facts",
   "identity": "admin browser, real local agent and Docker; inference API key for gateway",
   "fixture": "Fresh real server/SQLite, Chrome, run-scoped local weights copied from testdata/fake-model; user running spec imported before browser; synthetic A100 facts without GPU injection; real Docker fake-engine. Preparation performs no deployment create.",

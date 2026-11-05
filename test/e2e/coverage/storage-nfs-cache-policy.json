@@ -7,7 +7,7 @@
   "scope": "Single targeted contract on an existing NFS-cache definition; not a storage-type or page completion claim",
   "test_file": "test/e2e/storage_cache_policy.py",
   "test_function": "test_storage_cache_policy",
-  "command": "make test-e2e-storage-nfs-cache-policy",
+  "command": "python3 -B test/e2e/storage_cache_policy.py --locale en",
   "lane": "local-real-server-sqlite",
   "identity": "admin browser for every mutation; a seeded role=user account for the read-only and refusal phase",
   "fixture": "isolated server and fresh SQLite; 25 offline node records (Cache node 01..25, rack a/b labels), one nfs_cache storage named e2e-<runId>-cache whose mount and cache paths sit under the isolated server's storage root (default 128 GiB, cache-node-01 unlimited, cache-node-02 64 GiB) and a role=user account are inserted into the isolated database before the browser starts; the product has no user-management API or UI, so the account is a seeded fact. Every tested change goes through the UI",

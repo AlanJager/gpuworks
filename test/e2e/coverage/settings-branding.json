@@ -3,7 +3,7 @@
   "name": "设置 / 品牌外观 / 文字与图标保存、刷新回读、登录页与浏览器标题生效",
   "test_file": "test/e2e/settings_branding.py",
   "test_function": "test_branding",
-  "command": "make test-e2e-settings-branding",
+  "command": "python3 -B test/e2e/settings_branding.py --locale en",
   "priority": "P1",
   "page_id": "settings",
   "lane": "local-real-server-sqlite",

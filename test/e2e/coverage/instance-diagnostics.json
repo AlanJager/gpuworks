@@ -8,7 +8,7 @@
   "driver_file": "test/e2e/instance_diagnostics.py",
   "test_file": "test/e2e/instance_diagnostics_browser.py",
   "test_function": "test_instance_diagnostics",
-  "command": "make test-e2e-instance-diagnostics E2E_LOCALE=en",
+  "command": "python3 -B test/e2e/instance_diagnostics.py --locale en",
   "required_evidence": [
     "ui",
     "request",

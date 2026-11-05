@@ -3,7 +3,7 @@
   "name": "终端 / 宿主机 PTY / 真实命令回显、退出结束、管理员开关禁用与恢复",
   "test_file": "test/e2e/terminal_host.py",
   "test_function": "test_terminal_host",
-  "command": "make test-e2e-terminal-host",
+  "command": "python3 -B test/e2e/terminal_host.py --locale en",
   "priority": "P1",
   "page_id": "terminal",
   "lane": "local-real-server-agent-webterm",

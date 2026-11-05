@@ -3,7 +3,7 @@
   "name": "概览 / 未上线节点库存与标签容量分组 / UI 计数、切换标签键、刷新与独立 GET 一致",
   "test_file": "test/e2e/dashboard_fleet.py",
   "test_function": "test_dashboard_fleet",
-  "command": "make test-e2e-dashboard-fleet",
+  "command": "python3 -B test/e2e/dashboard_fleet.py --locale en",
   "priority": "P1",
   "page_id": "dashboard",
   "lane": "local-real-server-sqlite",

@@ -5,7 +5,7 @@
   "test_function": "test_archive_prefill",
   "contract_id": "gpuworks/image-catalog/archive-prefill",
   "name": "镜像目录 / 归档地址 A 到 B 与失败恢复 / 仅保存最终解析的引用与地址",
-  "command": "make test-e2e-image-archive-prefill",
+  "command": "python3 -B test/e2e/image_selection.py --case archive-prefill --locale en",
   "lane": "local-real-server-sqlite",
   "identity": "admin",
   "required_evidence": [
