@@ -201,18 +201,28 @@ function DetailsCell({ row }: { row: SchedulingHistoryEntry }) {
   const event = { id: row.id, kind: row.kind, code: row.code, params: row.params, created_at: row.created_at };
   const target = row.target;
   const text = instanceEventText(tDeployments, tCommon, event, { withActor: false, deploymentLabel: target ? () => TARGET : undefined });
-  if (!target || !text.includes(TARGET)) return <Typography.Text>{text}</Typography.Text>;
-  const parts = text.split(TARGET);
-  return (
-    <Typography.Text>
-      {parts.map((part, index) => (
-        <Fragment key={index}>
-          {index > 0 && <DeploymentRef id={target.id} name={target.name} deleted={target.deleted} />}
-          {part}
-        </Fragment>
-      ))}
-    </Typography.Text>
-  );
+  const details = !target || !text.includes(TARGET)
+    ? <Typography.Text>{text}</Typography.Text>
+    : (
+      <Typography.Text>
+        {text.split(TARGET).map((part, index) => (
+          <Fragment key={index}>
+            {index > 0 && <DeploymentRef id={target.id} name={target.name} deleted={target.deleted} />}
+            {part}
+          </Fragment>
+        ))}
+      </Typography.Text>
+    );
+  if (!row.logs) return details;
+  return <Space size={8} wrap>{details}<FailedAttemptLogs logs={row.logs} /></Space>;
+}
+
+// FailedAttemptLogs opens the logs page on the failed attempt's output in the
+// window the server named: the entry gives the cause in a line, its output
+// the rest.
+function FailedAttemptLogs({ logs }: { logs: NonNullable<SchedulingHistoryEntry["logs"]> }) {
+  const { t } = useTranslation("scheduling");
+  return <Link to={`/logs?instance=${encodeURIComponent(logs.instance)}&from=${logs.from}&to=${logs.to}`}>{t("history.viewLogs")}</Link>;
 }
 
 // NodesCell names the nodes an entry concerns, each opening its drawer; none

@@ -28,6 +28,19 @@ type SchedulingHistoryEntry struct {
 	// Nodes are the node or nodes the entry concerns; absent when the event
 	// names none and the instances it names are gone.
 	Nodes []SchedulingHistoryNode `json:"nodes,omitempty"`
+	// Logs is where the output that explains a failed attempt can be read:
+	// the instance and the window before its failure, for an entry about an
+	// attempt that failed (a replica rebuilt after it, or retries given up).
+	// Absent for other entries.
+	Logs *SchedulingHistoryLogs `json:"logs,omitempty"`
+}
+
+// SchedulingHistoryLogs is a window of one instance's stored output, as the
+// logs page takes it: Unix milliseconds.
+type SchedulingHistoryLogs struct {
+	Instance string `json:"instance"`
+	From     int64  `json:"from"`
+	To       int64  `json:"to"`
 }
 
 // SchedulingHistoryNode names a node an entry concerns. UUID is set only for

@@ -273,6 +273,10 @@ func TestDeploymentRetryRemovesPriorContainersAndKeepsTerminalFailure(t *testing
 		if !reflect.DeepEqual(params, want) || ev.Kind != store.EventKindLifecycle {
 			t.Fatalf("rebuild %d = kind %q %v, want %v", i, ev.Kind, params, want)
 		}
+		// Written on the attempt that failed, so the entry leads to its output.
+		if ev.InstanceUUID != failedUUIDs[i] || ev.DeploymentID != dep.ID {
+			t.Fatalf("rebuild %d is on instance %q of deployment %d, want the failed attempt %q of %d", i, ev.InstanceUUID, ev.DeploymentID, failedUUIDs[i], dep.ID)
+		}
 	}
 }
 

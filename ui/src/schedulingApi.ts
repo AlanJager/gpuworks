@@ -294,6 +294,12 @@ export interface SchedulingHistoryEntry {
   target?: SchedulingHistoryDeployment;
   /** The nodes the entry concerns; absent when it names none the server can tell. */
   nodes?: SchedulingHistoryNode[];
+  /**
+   * Where the output that explains a failed attempt can be read (the
+   * instance and a window in Unix ms, as the logs page takes them); the
+   * server sets it on entries about an attempt that failed.
+   */
+  logs?: { instance: string; from: number; to: number };
 }
 
 /** A node a history entry concerns; uuid is absent for a node that is gone. */

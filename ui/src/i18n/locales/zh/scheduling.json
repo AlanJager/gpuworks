@@ -78,7 +78,7 @@
       "roleReplicas": "{{role}}副本数设为 {{count}}"
     }
   },
-  "history": {
+  "history": { "viewLogs": "查看日志",
     "title": "调度记录",
     "loading": "正在加载调度记录…",
     "loadFailed": "无法加载调度记录",

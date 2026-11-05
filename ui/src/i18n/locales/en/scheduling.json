@@ -78,7 +78,7 @@
       "roleReplicas": "Set {{role}} replicas to {{count}}"
     }
   },
-  "history": {
+  "history": { "viewLogs": "View logs",
     "title": "Scheduling history",
     "loading": "Loading the scheduling history…",
     "loadFailed": "Cannot load the scheduling history",

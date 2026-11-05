@@ -434,9 +434,12 @@ func (c *Controller) recordUnitExhausted(dep *store.Deployment, unit planning.Un
 const rebuildReasonRunes = 200
 
 // recordReplicaRebuilt says on the deployment's timeline that a replica was
-// started again after its previous attempt failed, and why it failed.
+// started again after its previous attempt failed, and why it failed. The
+// entry is written on the failed attempt, so it names the instance whose
+// output says the rest.
 func (c *Controller) recordReplicaRebuilt(dep *store.Deployment, unit planning.Unit, attempts []store.Instance, leader *store.Node) {
-	reason := []rune(strings.TrimSpace(planning.NewestAttempt(attempts).Message))
+	failed := planning.NewestAttempt(attempts)
+	reason := []rune(strings.TrimSpace(failed.Message))
 	if len(reason) > rebuildReasonRunes {
 		reason = append(reason[:rebuildReasonRunes], '…')
 	}
@@ -445,7 +448,12 @@ func (c *Controller) recordReplicaRebuilt(dep *store.Deployment, unit planning.U
 	if unit.Role != "" {
 		params["role"] = unit.Role
 	}
-	c.store.AddDeploymentEventCode(dep.ID, store.EventKindLifecycle, store.EventReplicaRebuilt, params)
+	if failed.UUID == "" {
+		c.store.AddDeploymentEventCode(dep.ID, store.EventKindLifecycle, store.EventReplicaRebuilt, params)
+		return
+	}
+	failed.DeploymentID = dep.ID
+	c.store.AddInstanceEventCode(&failed, store.EventKindLifecycle, store.EventReplicaRebuilt, params)
 }
 
 // retryWait is how long a unit waits before its next attempt: the retry
