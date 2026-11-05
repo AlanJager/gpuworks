@@ -98,7 +98,9 @@ For example, suppose there are 4 sessions with 13 turns each. If one session fai
 
 The first turn and subsequent turns each have P50/P99 values and valid sample counts for TTFT, TPOT, last-output latency, and stream-completion latency.
 Unobservable metrics for requests such as single-chunk streams or requests with no generated output appear as unknown; they are not counted as zero-duration samples.
-The first reasoning output and the first response text are distinct events; intervals between chunks are not intervals between individual tokens.
+The first reasoning output and the first response text are distinct events: TTFT counts from the first reasoning or answer text, **first content** has its own P50/P99 and sample count, and a successful request that produced only reasoning and no answer text counts as "without content".
+Reasoning is recognized under the field the engine uses (`reasoning_content`, `reasoning`, `thinking`); when the server usage reports output tokens but the stream carries no recognizable output, the evaluation warns that stream output was not recognized and those requests are left out of the TTFT/TPOT samples.
+Intervals between chunks are not intervals between individual tokens.
 
 Length reconciliation retains the output budget / policy, actual distributions, and peak combined input and output for the same request, listing server-reported usage
 and local estimates separately. Naturally short outputs and fixed-length diagnostics can both be retained, with finish_reason and errors explaining differences.
