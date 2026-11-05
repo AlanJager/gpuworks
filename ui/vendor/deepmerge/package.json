@@ -1,0 +1,9 @@
+{
+  "name": "@gpuworks/deepmerge",
+  "version": "4.3.1-gpuworks.1",
+  "private": true,
+  "description": "Local deepmerge 4.3.1 fork with GHSA-gcqx-w48m-w2h4 fixed",
+  "main": "index.cjs",
+  "types": "index.d.ts",
+  "license": "MIT"
+}
