@@ -1,6 +1,7 @@
 package store
 
 import (
+	"errors"
 	"reflect"
 	"sync"
 	"sync/atomic"
@@ -137,8 +138,8 @@ func TestRevokeAPIKeyInvalidatesTheCacheImmediately(t *testing.T) {
 		t.Fatalf("a no-op revoke published %+v", e)
 	default:
 	}
-	if err := st.RevokeAPIKey("gw-unknown000"); err != nil {
-		t.Fatalf("revoking an unknown prefix: %v", err)
+	if err := st.RevokeAPIKey("gw-unknown000"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("revoking an unknown prefix: %v, want ErrNotFound", err)
 	}
 	// A new key works beside the revoked one.
 	other, err := st.CreateAPIKey("gateway", 0)

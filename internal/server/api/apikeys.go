@@ -152,6 +152,10 @@ func (a *apiHandlers) setAPIKeyScope(w http.ResponseWriter, r *http.Request) {
 
 func (a *apiHandlers) deleteAPIKey(w http.ResponseWriter, r *http.Request) {
 	if err := a.d.Store.RevokeAPIKey(chi.URLParam(r, "prefix")); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			writeProductError(w, http.StatusNotFound, ErrorAPIKeyNotFound, "no API key has this prefix", nil)
+			return
+		}
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
