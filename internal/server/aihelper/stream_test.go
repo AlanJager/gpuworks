@@ -189,3 +189,17 @@ func TestRunStreamPropagatesStreamFailure(t *testing.T) {
 }
 
 func decodeJSON(r *http.Request, v any) error { return json.NewDecoder(r.Body).Decode(v) }
+
+// vLLM 0.34 streams reasoning under "reasoning", some gateways under
+// "thinking"; a transitional vLLM sends the same text under two names.
+func TestChatStreamReadsEveryReasoningFieldOnce(t *testing.T) {
+	for _, delta := range []string{`{"reasoning":"think"}`, `{"thinking":"think"}`, `{"reasoning_content":"think","reasoning":"think"}`} {
+		srv, _ := sseServer(t, frames(`{"choices":[{"delta":`+delta+`}]}`, `{"choices":[{"delta":{"content":"ok"},"finish_reason":"stop"}]}`, `[DONE]`))
+		var reasoning []string
+		msg, _, err := NewClient(Endpoint{BaseURL: srv.URL, APIKey: "k", Model: "m"}, "127.0.0.1").ChatStream(context.Background(), []Message{{Role: "user", Content: "hi"}}, nil,
+			nil, func(d string) { reasoning = append(reasoning, d) })
+		if err != nil || msg.Content != "ok" || strings.Join(reasoning, "|") != "think" {
+			t.Fatalf("delta %s: msg=%+v reasoning=%q err=%v", delta, msg, reasoning, err)
+		}
+	}
+}
