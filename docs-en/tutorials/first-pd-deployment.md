@@ -32,7 +32,7 @@ The example template uses BF16 and vLLM 0.30.0, with reasoning output disabled b
 
 ## 2. Select the Model and Inference Template
 
-1. Open **Deploy → Quick Deploy**. In **Basic Configuration**, select `tutorial-qwen3-14b` and set **Target accelerator** to **NVIDIA**.
+1. Open **Inference Services → Create Deployment → Quick Deploy**. In **Basic Configuration**, select `tutorial-qwen3-14b` and set **Target accelerator** to **NVIDIA**.
 2. Under **Recommended Inference Template**, select the **general · vllm · balanced** spec for Qwen3-14B and check the **bf16** tag. If multiple specs have the same name, return to **Inference Templates** and click **Deploy** on the user spec whose ID you checked in the previous step. If the **Use a registered model?** page appears, select your `Qwen/Qwen3-14B` **MS** registration and click **Use this model and deploy**.
 3. Check that the source ID is `Qwen/Qwen3-14B` and the current image is `gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r4`.
 4. Set both **Deployment Name** and **Public Model Name** to `tutorial-pd-qwen3-14b`, and leave health checks enabled. If the name is already in use, choose an unused name and select that same service in later calls and monitoring.
@@ -68,7 +68,7 @@ Configuration evaluation checks whether you can submit the deployment. You still
 
 ## 4. Submit the Deployment and Observe Both Roles
 
-1. Click **Deploy**, then open `tutorial-pd-qwen3-14b` in **Deployments**.
+1. Click **Deploy**, then open `tutorial-pd-qwen3-14b` in **Inference Services**.
 2. Wait for container startup, model loading, and health checks to finish. Confirm that **Prefill** and **Decode** each show `1/1` ready and that both instances show **Running**.
 3. Open the details of both instances. Confirm that P runs on `host2` GPU `0` and D runs on `host3` GPU `0`. Wait until both roles are ready before sending a request.
 
@@ -138,7 +138,7 @@ If a **Fallback reason** or request error appears, or you cannot confirm P's par
 
 ## 7. Check the KV Handoff Self-Test and Logs
 
-1. Return to **Deployments → tutorial-pd-qwen3-14b**, open the Prefill instance's **Logs**, select **Live**, and find the system event **KV handoff verified** (`PD_HANDOFF_VERIFIED`).
+1. Return to **Inference Services → tutorial-pd-qwen3-14b**, open the Prefill instance's **Logs**, select **Live**, and find the system event **KV handoff verified** (`PD_HANDOFF_VERIFIED`).
 2. Record the transport method and transfer volume in the event, and check the corresponding instance. This example uses Ethernet; the actual result should match the node network. If the result is `unmeasured`, the transferred byte count was not measured, and you still need additional evidence of the handoff.
 3. Open the P and D instance logs separately. Select a historical range such as **1 hour** that includes startup and the call, then review the persisted engine logs for KV handoff failures or engine errors. Each log line's time prefix is the server collection time and may differ from the engine's embedded timestamp.
 4. In the D instance logs, find `KV Transfer metrics` and review `Num successful transfers` (successful transfer count), `Avg xfer time (ms)` (average transfer duration), `Avg MB per transfer` (average transfer size), and `Throughput (MB/s)` (throughput). These values cover the log's statistics interval; without a request ID, they cannot be attributed to an individual request as its precise transfer data.

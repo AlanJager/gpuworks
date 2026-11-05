@@ -1,6 +1,9 @@
 package deploy
 
-import "fmt"
+import (
+	"fmt"
+	enginenames "gpuworks.ai/gpuworks/internal/engines"
+)
 
 // Tensor-parallel flag spellings. vLLM and SGLang accept the same three
 // spellings of the dimension and each engine injects its own primary, so the
@@ -16,7 +19,7 @@ var vllmTensorParallelFlags = []string{tpFlagTensorParallelSize, tpFlagTPSize, t
 // vllmDataParallelFlags is vLLM's data-parallel alias list, the injected
 // spelling first. --data-parallel-size-local is a per-node share of the same
 // degree and never matches these exact names.
-var vllmDataParallelFlags = []string{"--data-parallel-size", "-dp"}
+var vllmDataParallelFlags = enginenames.DataParallelFlags(EngineVLLM)
 
 func (vLLMEngine) SymbolizePreviewTP(launch ResolvedLaunch, templateResidual, userResidual []string) ResolvedLaunch {
 	flags := (vLLMEngine{}).TPFlags()
@@ -35,7 +38,7 @@ func (vLLMEngine) ValidateTopology(launch ResolvedLaunch, params Params) error {
 	if err != nil {
 		return err
 	}
-	pp, ppSet, ppSymbolic, err := topologyInteger(arguments, "--pipeline-parallel-size", "--pp")
+	pp, ppSet, ppSymbolic, err := topologyInteger(arguments, enginenames.PipelineFlags(EngineVLLM)...)
 	if err != nil {
 		return err
 	}

@@ -205,7 +205,7 @@ def send_and_capture(page, composer, prompt, timeout=60000):
 
 # Contract: gpuworks/playground/chat-streaming-conversations
 # Mainline: 独立 server/SQLite + 真实 agent/Docker + fake-engine，模型配置 openai.chat
-#           → 从部署列表进入 Playground → 真实 SSE 请求经网关到引擎并渲染回复
+#           → 从推理服务页进入 Playground → 真实 SSE 请求经网关到引擎并渲染回复
 #           → 刷新后对话仍在（IndexedDB）→ 新对话隔离，切换回旧对话内容正确
 #           → 删除部署、停止 agent、清理节点与模型
 def vector_operation(page, server, report, playground, served_name):

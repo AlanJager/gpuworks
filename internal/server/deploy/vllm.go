@@ -11,6 +11,7 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/accelerator"
 	"gpuworks.ai/gpuworks/internal/proto"
+	"gpuworks.ai/gpuworks/internal/server/pdmode"
 )
 
 type vLLMEngine struct{ BaseEngine }
@@ -362,6 +363,27 @@ func vllmKVTransferConfig(p Params) (string, bool) {
 		}
 		pd["kv_connector_extra_config"] = sides
 	}
+	if len(mode.ConnectorExtra) > 0 || mode.Transport.MooncakeBootstrap() {
+		extra, _ := pd["kv_connector_extra_config"].(map[string]any)
+		if extra == nil {
+			extra = map[string]any{}
+		}
+		for key, value := range mode.ConnectorExtra {
+			extra[key] = value
+		}
+		// TransportMooncake follows the network the group shares; the RDMA
+		// transport states its protocol in ConnectorExtra.
+		if mode.Transport == pdmode.TransportMooncake {
+			extra["mooncake_protocol"] = MooncakeProtocol(p.ComputeNetwork)
+		}
+		if hcas := hcaDevices(p.ComputeNetwork.HCAs); len(hcas) > 0 && extra["mooncake_protocol"] == "rdma" {
+			extra["device_name"] = strings.Join(hcas, ",")
+		}
+		pd["kv_connector_extra_config"] = extra
+	}
+	// No engine_id: vLLM gives each engine process a fresh one, and the
+	// gateway reads it from the prefill's bootstrap server
+	// (pdmode.Mode.SynthesizedHandoff).
 	var offload map[string]any
 	switch {
 	case q.KVDiskOffload:

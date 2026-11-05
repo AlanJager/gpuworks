@@ -79,10 +79,13 @@ Both paths share the following import rules with startup sync:
 
 1. Add or update (upsert) series and versions by `image_ref`. Preserve the enable/disable settings operators configured for series and versions, as well as user-registered archive URLs
    (acquisition addresses starting with `http(s)://`) on system versions.
-2. For system versions no longer in the manifest: delete those with no references directly (along with their distribution records on all nodes, and delete the series if it becomes empty).
-   Mark versions that still have references as deprecated, set `deprecated_since` to the current `catalog_version`, and show “Deprecated · N references” on the Images page.
+2. For system versions no longer in the manifest (usually because the same tier got a new revision, for example r1 replaced by r2): delete those that have no references and are on no node directly
+   (along with their distribution records on all nodes, and delete the series if it becomes empty). Keep those that still have references, or that some node has already pulled (distribution state `present`), as an **older version**:
+   the API field `deprecated` is `true`, `deprecated_since` is set to the current `catalog_version`, and the Images page shows “Older version”, or “Older version · N references” when it has references.
+   An older version keeps working, and new deployments no longer pick it; once it is removed from every node, the next catalog sync removes the row.
    A “reference” means a match in any of `deployments.image`, unfinished `instances.image` (excluding `stopped`, `failed`, and `pending_removal`),
-   or `models.image_id`. The same definition applies when deleting community/custom images: deletion of a version or series that is still referenced is rejected (409 `IMAGE_IN_USE`).
+   or `models.image_id`. The same definition applies when deleting community/custom images: deletion of a version or series that is still referenced is rejected (409 `IMAGE_IN_USE`);
+   being present on a node is not a reference and does not block deletion.
 3. During a manual update, if a manifest entry conflicts with a community/custom row through a same-named series or identical ref, the entire import returns 400 `IMAGE_IMPORT_CONFLICT`
    and writes nothing.
 4. Importing the same manifest twice produces the same result. There is no version comparison, downgrade prevention, signature verification, or source verification: the imported content is used as provided.

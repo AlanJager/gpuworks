@@ -254,7 +254,7 @@ func healthyEngine(t *testing.T) int {
 func newLivenessEngine(t *testing.T, driver runtime.Driver) (*Engine, *statusLog) {
 	t.Helper()
 	log := &statusLog{}
-	e := New(driver, log.report, slog.Default(), t.TempDir())
+	e := newHermeticEngine(driver, log.report, slog.Default(), t.TempDir())
 	e.headlessProbeInterval = time.Millisecond
 	e.headlessStableChecks = 1
 	t.Cleanup(e.stopHealthProbes)

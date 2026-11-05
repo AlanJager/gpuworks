@@ -10,7 +10,8 @@
     "hygon": "Hygon",
     "apple": "Apple",
     "unknown": "Unknown Vendor",
-    "unknownFramework": "Unknown Framework"
+    "unknownFramework": "Unknown Framework",
+    "amd": "AMD"
   },
   "operation": {
     "all": "All capabilities",
@@ -204,7 +205,7 @@
     "IMAGE_VERSION_PATCH_INVALID": "The image version update is invalid.",
     "IMAGE_VERSION_PATCH_EMPTY": "Provide enabled or registry_sources to update the image version.",
     "IMAGE_IN_USE": "The image is still referenced by a deployment, an unfinished instance, or a model. Delete those references first.",
-    "OFFICIAL_IMAGE_DELETE_FORBIDDEN": "System images are maintained by the catalog manifest and cannot be deleted; an update deprecates or removes them.",
+    "OFFICIAL_IMAGE_DELETE_FORBIDDEN": "System images are maintained by the catalog manifest and cannot be deleted; an update removes them or keeps them as older versions, by their references and node distribution.",
     "IMAGE_SYNC_UNAVAILABLE": "Image synchronization is not configured.",
     "IMAGE_RETRY_UNAVAILABLE": "Image retry is not configured.",
     "IMAGE_INSPECTION_UNAVAILABLE": "Image inspection is not configured.",
@@ -407,8 +408,9 @@
     "COMPUTE_NETWORK_ACCELERATOR_REQUIRED": "Node “{{node}}” runs Ascend accelerators, whose collectives across hosts only move on the cards' own ports; the network this group shares, “{{network}}”, is not an accelerator RDMA network. Create an accelerator RDMA network and attach these nodes.",
     "COMPUTE_NETWORK_NO_CARDS": "Node “{{node}}” has no usable accelerator port on accelerator RDMA network “{{network}}”.",
     "PD_NETWORK_ACCELERATOR_REQUIRED": "PD mode {{mode}} moves KV on the accelerator cards' own ports, so a deployment across hosts needs an accelerator RDMA network; this group shares “{{network}}”.",
-    "PD_NETWORK_HOST_REQUIRED": "PD mode {{mode}} moves KV over UCX, which needs a host network; “{{network}}”, which this group shares, is an accelerator RDMA network.",
-    "PD_SLEEP_RDMA_UNSUPPORTED": "A sleepable PD deployment cannot move its KV over RDMA network “{{network}}”: NIXL registers the KV cache with the RDMA NIC, and after sleeping the engine cannot allocate that memory again (waking fails with CUDA out of memory). Turn sleep off, or put the nodes on an Ethernet compute network.",
+    "PD_NETWORK_HOST_REQUIRED": "PD mode {{mode}} moves KV over host network devices (UCX or Mooncake), which needs a host network; “{{network}}”, which this group shares, is an accelerator RDMA network.",
+    "PD_NETWORK_RDMA_REQUIRED": "PD mode {{mode}} moves KV over RDMA, so its nodes, even a single host, must share a host RDMA network, which gives the instances the RDMA devices; this group does not share one.",
+    "PD_SLEEP_RDMA_UNSUPPORTED": "A sleepable PD deployment cannot move its KV over RDMA network “{{network}}”: the KV transfer engine (NIXL, Mooncake) registers the KV cache with the RDMA NIC, and after sleeping the engine cannot allocate that memory again (waking fails with out of memory). Turn sleep off, or put the nodes on an Ethernet compute network.",
     "NETWORK_TEST_UNSUPPORTED": "Only storage-sync and compute networks have an internal test.",
     "NETWORK_TEST_NODE_COUNT": "A network test needs {{minimum}} to {{maximum}} nodes on the network; this selection has {{count}}.",
     "NETWORK_TEST_NODE_INVALID": "Node “{{node}}” is not on this network.",
@@ -440,6 +442,8 @@
     "PD_VENDOR_UNSUPPORTED": "PD mode {{mode}} does not run on {{vendor}}.",
     "PD_VENDOR_MIXED": "PD roles must run on one accelerator vendor; this draft mixes {{vendors}}.",
     "PD_SAME_NODE_REQUIRED": "PD mode {{mode}} moves the KV between cards of one host, so every instance must run on the same node; this placement uses {{nodes}}.",
+    "PD_PEER_MEMORY_MISSING": "Node {{node}} cannot register its cards' memory with the RDMA NIC because {{module}} is not loaded, and PD mode {{mode}} moves the KV over RDMA. Run on the node: {{fix}} (the node's Health checks tab shows the same check).",
+    "PD_PEER_MEMORY_NONE": "No node can take this PD deployment: {{no_peer_memory}} of {{nodes}} nodes cannot register their cards' memory with the RDMA NIC because {{module}} is not loaded. Run on those nodes: {{fix}} (each node's Health checks tab shows the same check).",
     "PD_CONNECTOR_ARG_CONFLICT": "{{flag}} is set automatically for a PD deployment; configure KV offload through the launch parameters instead.",
     "PD_SHAPE_CONFLICT": "A PD deployment states its instances per role; nnodes, node_uuids, replicas and automatic placement do not apply.",
     "PD_SPEC_MODE_MISMATCH": "Spec {{spec}} deploys only as PD in mode {{mode}}, not {{requested}}.",
@@ -517,7 +521,12 @@
     "BATCH_FILE_MODELS_ENDPOINT": "These models of the file do not serve {{endpoint}}: {{models, list}}. Choose a model that serves it to send every request to.",
     "AGENT_UPGRADE_REFUSED": "Agent upgrade request could not proceed: {{detail}}",
     "TEMPLATE_EXPORT_UNAVAILABLE": "This deployment cannot be saved as a template ({{reason}}).",
-    "LAUNCH_NOT_EXPORTABLE": "The deployment's launch arguments cannot be written as template arguments that rebuild the same {{engine}} command, so no approximate template is given."
+    "LAUNCH_NOT_EXPORTABLE": "The deployment's launch arguments cannot be written as template arguments that rebuild the same {{engine}} command, so no approximate template is given.",
+    "ACCELERATOR_FEATURE_UNSUPPORTED": "{{vendor}} does not support {{feature}}. Choose a supported feature or select another accelerator.",
+    "ACCELERATOR_DEVICE_SELECTION_REQUIRED": "{{vendor}} requires an explicit GPU assignment before launch.",
+    "ACCELERATOR_SM_LIMIT_UNSUPPORTED": "{{vendor}} does not support a compute/SM limit. Remove it, or use a vendor whose dGPU backend exposes one.",
+    "LAUNCH_FEATURES_UNKNOWN": "Cannot determine which features the custom launch command requests on {{vendor}}. Use a recognized engine entrypoint or structured launch parameters.",
+    "SLEEP_TARGET_UNRESOLVED": "Cannot resolve the GPU selection for instance {{instance}} on node {{node}}: {{detail}}."
   },
   "httpError": {
     "proxyPage": "HTTP {{status}}: a reverse proxy or tunnel between the browser and gpuworks answered with its own error page, so the server's reason was lost. Retry from the server's own address to see it."
@@ -557,10 +566,11 @@
   },
   "navigation": {
     "groups": {
-      "overview": "Overview",
-      "resources": "Resources",
       "inference": "Inference",
-      "platform": "Platform"
+      "models": "Models",
+      "compute": "Compute",
+      "observability": "Monitoring & Analytics",
+      "admin": "Administration"
     },
     "dashboard": "Overview",
     "monitor": "Monitor Center",
@@ -570,12 +580,11 @@
     "kubernetes": "Kubernetes",
     "nodes": "Compute Nodes",
     "gpus": "GPU Devices",
-    "models": "Models",
+    "models": "Model Repository",
     "inferenceTemplates": "Inference Templates",
     "images": "Images",
     "storage": "Storage",
-    "deploy": "Deploy",
-    "deployments": "Deployments",
+    "deployments": "Inference Services",
     "playground": "Playground",
     "evaluations": "Evaluations",
     "apiKeys": "API Tokens",
@@ -895,5 +904,16 @@
     "details": "Build details",
     "commit": "Commit: {{commit}}",
     "channel": "Build channel: {{channel}}"
+  },
+  "acceleratorFeature": {
+    "unsupported": "{{vendor}} does not support {{feature}}. Choose a supported feature or select another accelerator.",
+    "names": {
+      "engine_sleep": "engine sleep",
+      "multi_node": "multi-node inference",
+      "pipeline_parallelism": "pipeline parallelism",
+      "data_parallelism": "data parallelism",
+      "prefill_decode_disaggregation": "PD disaggregation",
+      "kv_disk_tier": "KV disk tier"
+    }
   }
 }

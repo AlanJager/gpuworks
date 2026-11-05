@@ -374,7 +374,7 @@ func gpuSelectorSchema() map[string]any {
 		"type":                 "object",
 		"additionalProperties": false,
 		"required":             []string{"vendor"},
-		"description":          "GPU predicate: vendor plus optional compute-capability expression and case-insensitive name regex.",
+		"description":          "GPU predicate: vendor plus optional compute-capability expression, case-insensitive name regex, and exact architecture ID.",
 		"properties": map[string]any{
 			"vendor": map[string]any{
 				"type":        "string",
@@ -389,6 +389,11 @@ func gpuSelectorSchema() map[string]any {
 			"name": map[string]any{
 				"type":        "string",
 				"description": "Case-insensitive regular expression matched against GPU names.",
+			},
+			"arch_id": map[string]any{
+				"type":        "string",
+				"minLength":   1,
+				"description": "Nonblank exact architecture ID stored for the GPU; compared case-insensitively. A missing GPU arch_id does not match this selector.",
 			},
 			"display_target": map[string]any{
 				"type":        "string",

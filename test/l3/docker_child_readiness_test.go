@@ -20,6 +20,7 @@ import (
 	"time"
 
 	agentengine "gpuworks.ai/gpuworks/internal/agent/engine"
+	"gpuworks.ai/gpuworks/internal/agent/gpu"
 	dockerdrv "gpuworks.ai/gpuworks/internal/agent/runtime/docker"
 	"gpuworks.ai/gpuworks/internal/engines"
 	"gpuworks.ai/gpuworks/internal/proto"
@@ -93,14 +94,14 @@ func TestDockerChildReadinessRejectsWaitersAndRecoversSameContainer(t *testing.T
 		t.Fatal(err)
 	}
 	var reports atomic.Int32
-	e := agentengine.New(dockerdrv.New(), func(status proto.InstanceStatus) {
+	e := agentengine.NewWithProber(dockerdrv.New(), func(status proto.InstanceStatus) {
 		if err := st.UpdateInstanceStatus(status); err != nil {
 			t.Errorf("status report: %v", err)
 		}
 		if status.State == proto.InstRunning {
 			reports.Add(1)
 		}
-	}, nil, t.TempDir())
+	}, nil, t.TempDir(), gpu.NoAccelerator{})
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	e.SetDesiredFull(ctx, []proto.InstanceDesiredState{spec})

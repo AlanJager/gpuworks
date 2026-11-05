@@ -35,6 +35,7 @@ type GPU struct {
 	Vendor                string                      `json:"vendor,omitempty"`
 	ArchID                string                      `json:"arch_id,omitempty"`
 	MemoryTotalBytes      int64                       `json:"memory_total_bytes"`
+	MemoryCapacityKnown   bool                        `json:"memory_capacity_known"`
 	PowerLimitWatts       float64                     `json:"power_limit_watts,omitempty"`
 	PCIeBDF               string                      `json:"pcie_bdf,omitempty"`
 	NUMANode              int                         `json:"numa_node"`

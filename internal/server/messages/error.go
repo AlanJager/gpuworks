@@ -11,7 +11,17 @@ type ProductError struct {
 
 // Product error codes shared by domain services and the API layer.
 const (
-	ErrorAgentUpgradeRequired = "AGENT_UPGRADE_REQUIRED"
+	ErrorAgentUpgradeRequired               = "AGENT_UPGRADE_REQUIRED"
+	ErrorLaunchFeaturesUnknown              = "LAUNCH_FEATURES_UNKNOWN"
+	ErrorSleepTargetUnresolved              = "SLEEP_TARGET_UNRESOLVED"
+	ErrorAcceleratorFeatureUnsupported      = "ACCELERATOR_FEATURE_UNSUPPORTED"
+	ErrorAcceleratorDeviceSelectionRequired = "ACCELERATOR_DEVICE_SELECTION_REQUIRED"
+	// ErrorAcceleratorSMLimitUnsupported reports a compute/SM limit requested
+	// on a vendor whose logical partition backend (if any) enforces GPU
+	// memory only, such as AMD's amd-dgpu (ROCm enforces compute quotas in
+	// hardware through HSA_CU_MASK, outside what a preloaded library can
+	// verify; see docs/explanation/dgpu.md).
+	ErrorAcceleratorSMLimitUnsupported = "ACCELERATOR_SM_LIMIT_UNSUPPORTED"
 
 	// The experience environment's console (internal/experience) refuses
 	// what would act on the host or leave the environment, and deployments

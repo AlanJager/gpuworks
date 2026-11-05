@@ -1,3 +1,4 @@
+import { formatGPUCapacity } from "../gpuMemory";
 import { useEffect, useMemo, useState } from "react";
 import {
   Alert, Badge, Button, Card, Input, Progress,
@@ -208,7 +209,7 @@ function PhysicalGPUView({ page, loading, error, pagination, query, onQuery, fil
     { key: "utilization", title: t("metric.utilization"), width: 100, align: "right", serverSort: true, render: (_, gpu) => optionalPercent(gpu.load.utilization_pct) },
     {
       key: "memory", title: t("metric.vram"), width: 170, serverSort: true,
-      render: (_, gpu) => gpu.load.memory_used_bytes == null ? "-" : `${fmtGiB(gpu.load.memory_used_bytes)} / ${fmtGiB(gpu.memory_total_bytes)}`,
+      render: (_, gpu) => gpu.load.memory_used_bytes == null ? "-" : `${fmtGiB(gpu.load.memory_used_bytes)} / ${formatGPUCapacity(gpu, fmtGiB)}`,
     },
     { key: "temperature", title: t("metric.temperature"), width: 90, align: "right", serverSort: true, render: (_, gpu) => gpu.load.temperature_c == null ? "-" : `${gpu.load.temperature_c.toFixed(0)} °C` },
     {
@@ -349,8 +350,8 @@ function SliceSummary({ gpu }: { gpu: PhysicalGPU }) {
   if (slices.length) {
     const limit = slices.reduce((sum, item) => sum + (item.limit_bytes ?? 0), 0);
     return (
-      <Tooltip title={t("slices.summaryTitle", { limit: fmtGiB(limit), total: fmtGiB(gpu.memory_total_bytes) })}>
-        <Tag color="blue" style={{ marginInlineEnd: 0 }}>{t("slices.summary", { count: slices.length, limit: fmtGiB(limit), total: fmtGiB(gpu.memory_total_bytes) })}</Tag>
+      <Tooltip title={t("slices.summaryTitle", { limit: fmtGiB(limit), total: formatGPUCapacity(gpu, fmtGiB) })}>
+        <Tag color="blue" style={{ marginInlineEnd: 0 }}>{t("slices.summary", { count: slices.length, limit: fmtGiB(limit), total: formatGPUCapacity(gpu, fmtGiB) })}</Tag>
       </Tooltip>
     );
   }

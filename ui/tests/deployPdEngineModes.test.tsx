@@ -157,7 +157,7 @@ test("an engine with several PD modes offers every one of them as a choice, not 
   const options = [...document.querySelectorAll(".ant-select-dropdown .ant-select-item-option")].map(
     (el) => el.textContent,
   );
-  assert.deepEqual(options, ["vllm-ascend-mooncake", "vllm-nixl"]);
+  assert.deepEqual(options, ["vllm-ascend-mooncake", "vllm-mooncake", "vllm-nixl", "vllm-ppu-mooncake"]);
 });
 
 function modeOptions(): (string | null)[] {
@@ -205,7 +205,40 @@ test("a PD mode picked for another vendor gives way to this vendor's default", a
 });
 
 test("an engine with PD modes, none for the draft's vendor, disables the PD card and names the vendor", () => {
-  render(<Harness vendor="hygon" profile={{ name: "vllm", pd_modes: fixturePdModes("vllm") } as EngineProfile} />);
+  render(<Harness vendor="hygon" profile={{ name: "sglang", pd_modes: fixturePdModes("sglang") } as EngineProfile} />);
   assert.equal(pdCardButton().hasAttribute("disabled"), true);
   assert.ok(screen.getByText(deployLocale.workbench.node.pdVendorUnsupported.replace("{{vendor}}", "Hygon")));
+});
+
+function PdSectionFor({ engine, vendor, mode }: { engine: string; vendor: string; mode?: string }) {
+  return (
+    <I18nextProvider i18n={i18n}>
+      <Form initialValues={{ target_vendor: vendor, pd_mode: mode }}>
+        <DeployPdSection
+          nodes={[]}
+          eligibleNodes={[]}
+          result={null}
+          profile={{ name: engine, pd_modes: fixturePdModes(engine) } as EngineProfile}
+        />
+      </Form>
+    </I18nextProvider>
+  );
+}
+
+test("a PD mode whose first request compiles kernels says so, as the server declares it", async () => {
+  render(<PdSectionFor engine="sglang" vendor="ppu" mode="sglang-ppu-mooncake" />);
+  await screen.findByText(deployLocale.pd.firstRequestCompiles);
+  cleanup();
+  render(<PdSectionFor engine="sglang" vendor="ppu" mode="sglang-ppu-ipc" />);
+  await screen.findByText(deployLocale.pd.firstRequestCompiles);
+});
+
+test("a PD mode without that declaration shows no compile notice", async () => {
+  render(<PdSectionFor engine="vllm" vendor="ppu" mode="vllm-ppu-mooncake" />);
+  await screen.findByText("vllm-ppu-mooncake");
+  assert.equal(screen.queryByText(deployLocale.pd.firstRequestCompiles), null);
+  cleanup();
+  render(<PdSectionFor engine="vllm" vendor="nvidia" mode="vllm-nixl" />);
+  await screen.findByText("vllm-nixl");
+  assert.equal(screen.queryByText(deployLocale.pd.firstRequestCompiles), null);
 });

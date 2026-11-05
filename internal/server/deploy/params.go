@@ -342,11 +342,14 @@ func PerformanceWarnings(q LaunchConfig, extraArgs, modelArch string, gpuCount i
 
 // Params is the engine-neutral input every Engine.Build consumes.
 type Params struct {
-	ModelPath  string // container-visible model path
-	ServedName string
-	Host       string // default 127.0.0.1
-	APIPort    int
-	APIKey     string
+	// Distributed identity is launch topology, even when a worker omits NNodes.
+	DistGroup, DistRole string
+	DistAttempt         int
+	ModelPath           string // container-visible model path
+	ServedName          string
+	Host                string // default 127.0.0.1
+	APIPort             int
+	APIKey              string
 	// AssignedGPUs is the number of GPUs placement assigned to this node. It is
 	// a fact written by the scheduler (or the deployment preview), never by
 	// engine policy, and is what topology validation measures the effective
@@ -358,6 +361,10 @@ type Params struct {
 	TensorParallel    int
 	PipelineParallel  int
 	Sleepable         bool
+	VRAMLimitBytes    int64
+	SMLimitPct        int
+	Partitioned       bool
+	PartitionBackend  string
 	Quick             LaunchConfig
 	TemplateArgs      []string // template passthrough (below structured form values)
 	TemplateEnv       map[string]string

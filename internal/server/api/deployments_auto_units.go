@@ -131,9 +131,15 @@ func autoPlacePD(req *dto.DeployRequest, pd *planning.PDPlacement, facts plannin
 		// let the PD validation refuse a placement that still spreads.
 		strategy = store.PlacementBinpack
 	}
+	// A mode over RDMA places only where the NICs can register the cards.
+	facts.PeerMemory = mode.PeerMemory
 	chosen, counts, ok := planning.ChoosePDUnits(facts, needs, fixed, strategy, func(map[string][]planning.PDUnit) string { return "" })
 	if !ok {
-		return planning.UnitPlacementNone(counts)
+		vendor := ""
+		if len(mode.Vendors) > 0 {
+			vendor = mode.Vendors[0]
+		}
+		return planning.PDPlacementNone(mode, vendor, counts)
 	}
 	for role, units := range chosen {
 		r := pd.Roles[role]

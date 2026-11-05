@@ -60,14 +60,17 @@ type GPULoad struct {
 }
 
 type PhysicalGPU struct {
-	Index                 int                         `json:"index"`
-	UUID                  string                      `json:"uuid"`
-	Name                  string                      `json:"name"`
-	Vendor                string                      `json:"vendor"`
-	ArchFamily            string                      `json:"arch_family,omitempty"`
-	ArchID                string                      `json:"arch_id,omitempty"`
-	ComputeCapability     string                      `json:"compute_capability,omitempty"`
+	Index             int    `json:"index"`
+	UUID              string `json:"uuid"`
+	Name              string `json:"name"`
+	Vendor            string `json:"vendor"`
+	ArchFamily        string `json:"arch_family,omitempty"`
+	ArchID            string `json:"arch_id,omitempty"`
+	ComputeCapability string `json:"compute_capability,omitempty"`
+	// MemoryTotalBytes is capacity in bytes; zero means the agent could not
+	// determine the card's memory capacity.
 	MemoryTotalBytes      int64                       `json:"memory_total_bytes"`
+	MemoryCapacityKnown   bool                        `json:"memory_capacity_known"`
 	PowerLimitWatts       float64                     `json:"power_limit_watts,omitempty"`
 	PCIeBDF               string                      `json:"pcie_bdf,omitempty"`
 	NUMANode              int                         `json:"numa_node"`

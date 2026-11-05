@@ -176,7 +176,7 @@ With a model chosen, the platform sets the `body.model` of every request (retrie
 
 The chosen model must be the served model name of a deployment (running or stopped; one being deleted does not count); an unknown one returns 400 (`BATCH_MODEL_UNKNOWN` in the console, `model_not_found` on `/v1`) and no batch is created. When the model's deployment does not support the batch's endpoint (for example a chat batch that names an embeddings-only model), it also returns 400 (`BATCH_MODEL_ENDPOINT` in the console, with `params` `{model, endpoint}`; `model_endpoint_unsupported` on `/v1`), by the same rule the gateway uses to decide whether a deployment exposes that API (the model's inference API declaration).
 
-The model names, states and supported endpoints in the drop-down come from `GET /api/v1/batches/dictionary` and follow the same rule as the check at creation. The states match the deployment list and are ordered by how soon the model can serve:
+The model names, states and supported endpoints in the drop-down come from `GET /api/v1/batches/dictionary` and follow the same rule as the check at creation. The states match the Inference Services page and are ordered by how soon the model can serve:
 
 The console model picker defaults to dictionary entries with `ready=true` (serving or automatically wakeable); the sample picker uses the same filter. Select “Show models that need to wait” to choose a starting, held, offline, failed or stopped model explicitly; existing waiting warnings still apply. Turning the option off clears a waiting selection. The asynchronous waiting rules for API requests and models named in each file line still apply.
 

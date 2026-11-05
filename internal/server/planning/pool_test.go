@@ -155,6 +155,36 @@ func TestHardwareShape(t *testing.T) {
 	if HardwareShape(a, true) == HardwareShape(a, false) {
 		t.Error("a node that may not serve has the shape of one that may")
 	}
+	mixed := &store.Node{GPUVendor: "nvidia", Arch: "amd64", GPUs: []store.GPU{
+		{Index: 0, Name: "H100", MemoryTotal: 80, ComputeCapability: "9.0", ArchID: "sm_90", Vendor: "nvidia"},
+		{Index: 1, Name: "H100", MemoryTotal: 80, ComputeCapability: "9.0", ArchID: "sm_90", Vendor: "amd"},
+	}}
+	uniform := &store.Node{GPUVendor: "nvidia", Arch: "amd64", GPUs: []store.GPU{
+		{Index: 0, Name: "H100", MemoryTotal: 80, ComputeCapability: "9.0", ArchID: "sm_90", Vendor: "nvidia"},
+		{Index: 1, Name: "H100", MemoryTotal: 80, ComputeCapability: "9.0", ArchID: "sm_90", Vendor: "nvidia"},
+	}}
+	if HardwareShape(mixed, true) == HardwareShape(uniform, true) {
+		t.Fatal("per-card vendor differences must distinguish hardware shapes")
+	}
+}
+
+func TestHardwareShapeIncludesPerCardVendorAndRuntimeFacts(t *testing.T) {
+	nvidia := func(os, runtime, cardVendor string) *store.Node {
+		return &store.Node{GPUVendor: "", OS: os, RuntimeDriver: runtime, Arch: "amd64", GPUs: []store.GPU{{
+			Index: 0, Name: "GPU Model", Vendor: cardVendor, MemoryTotal: 80, ComputeCapability: "9.0", ArchID: "sm_90",
+		}}}
+	}
+	if HardwareShape(nvidia("linux", "docker", "nvidia"), true) == HardwareShape(nvidia("windows", "nerdctl", "ascend"), true) {
+		t.Fatal("vendor and runtime differences must distinguish all target shapes")
+	}
+	amd := func(os, runtime string) *store.Node {
+		return &store.Node{OS: os, RuntimeDriver: runtime, Arch: "amd64", GPUs: []store.GPU{{
+			Index: 0, Name: "MI300X", Vendor: "amd", MemoryTotal: 192, ArchID: "gfx942",
+		}}}
+	}
+	if HardwareShape(amd("linux", "docker"), true) == HardwareShape(amd("linux", "nerdctl"), true) {
+		t.Fatal("AMD runtime differences must remain distinct target shapes")
+	}
 }
 
 // Every node of the cluster gets exactly one status, the first check it

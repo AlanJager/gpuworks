@@ -841,8 +841,15 @@ func TestEvaluateRefusesFeaturesTheNodesVendorLacks(t *testing.T) {
 	if snap := NodeSnapshot(st, mac, true, ""); snap.Vendor != "apple" {
 		t.Fatalf("snapshot vendor = %q", snap.Vendor)
 	}
-	if got := deploymentFeatures(Input{Sleepable: true, Quick: kvDisk, Parallel: parallelism.Spec{TP: 1, NNodes: 2}}); len(got) != 3 {
-		t.Fatalf("deploymentFeatures = %v", got)
+	got := deploymentFeatures(Input{Sleepable: true, PD: true, Quick: kvDisk, Parallel: parallelism.Spec{TP: 1, NNodes: 2}, PartitionBackend: "mig"})
+	want := []accelerator.Feature{accelerator.FeatureEngineSleep, accelerator.FeatureMultiNode, accelerator.FeaturePD, accelerator.FeatureKVDiskTier}
+	if len(got) != len(want) {
+		t.Fatalf("deploymentFeatures = %v, want all explicitly requested features %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("deploymentFeatures = %v, want %v", got, want)
+		}
 	}
 }
 

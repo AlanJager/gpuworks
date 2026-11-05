@@ -388,10 +388,19 @@ export function applyEvaluateFormValues(
   },
   response: EvaluateResponse | null | undefined,
   previousKeys: string[],
-) {
-  if (!response?.form_values) return;
+  // Keys whose control the deployer is typing in right now. The answer was
+  // built from the draft as it stood when the request left - a field just
+  // cleared and about to be retyped reads as "not stated", so the answer
+  // carries its default, and writing that into the focused control would
+  // splice it into what is typed next (4, then "0" typed, gives 40). Those
+  // keys are skipped and returned; the caller evaluates again once the
+  // control loses focus.
+  editing: (key: string) => boolean = () => false,
+): string[] {
+  if (!response?.form_values) return [];
   const draft = form.getFieldsValue(true);
   const updates: Record<string, unknown> = {};
+  const deferred: string[] = [];
   for (const key of previousKeys) {
     // A disabled memory tier keeps its preserved size out of the response by
     // design; its absence is not staleness.
@@ -400,8 +409,10 @@ export function applyEvaluateFormValues(
     if (
       !Object.prototype.hasOwnProperty.call(response.form_values, key) &&
       draft[key] !== undefined
-    )
-      updates[key] = undefined;
+    ) {
+      if (editing(key)) deferred.push(key);
+      else updates[key] = undefined;
+    }
   }
   for (const [key, value] of Object.entries(response.form_values)) {
     if (key === memoryTierKey && draft[memoryTierEnabledField] === false)
@@ -411,9 +422,14 @@ export function applyEvaluateFormValues(
     // same draft.
     if (JSON.stringify(draft[key] ?? null) === JSON.stringify(value ?? null))
       continue;
+    if (editing(key)) {
+      deferred.push(key);
+      continue;
+    }
     updates[key] = value;
   }
   if (Object.keys(updates).length) form.setFieldsValue(updates);
+  return deferred;
 }
 
 // deploymentQuery reads the URL scheme a deploy link carries: which template,

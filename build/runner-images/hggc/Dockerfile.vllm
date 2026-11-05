@@ -1,8 +1,5 @@
 # gpuworks-runner: T-Head PPU（HGGC）vLLM 线
 #
-# 派生自 gpustack/runner 的 pack/hggc/Dockerfile.vllm（Apache-2.0，见 ../NOTICE）：
-# 「厂商 vanilla 之上只叠工具层」与运行期 env 的取值参照其实现。
-#
 # vanilla = asllm 厂商镜像（containerimages.zstack.ai 的 tar，docker load 后入
 # 本地 mirror）。artifacts/work/2026-10-03-runner-images/research/ppu-asllm-base.md 实测其自带 PPU_SDK 2.1.0（HGGC 13.0）、torch 2.10.0、
 # vllm 0.23.0+ppu2.1.0.cosyvoice3、vllm-omni 0.23.0rc2、sglang 0.5.13+asllm2.0.0.8、

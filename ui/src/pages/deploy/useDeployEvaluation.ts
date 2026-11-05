@@ -8,6 +8,7 @@ import {
   type APIErrorTranslator,
 } from "../../apiError.ts";
 import { applyEvaluateFormValues } from "./deployHelpers";
+import { EvaluateQuickParams } from "./evaluateQuickParams";
 
 // Server field paths to the deploy form's own control names. Everything the
 // server attributes must land on a control the deployer can see; the wire name
@@ -39,6 +40,22 @@ const listControlFields = new Set(["container_mount_rows", "pd"]);
 // never gives a control at all (e.g. engine, quick_params_unset) - checking
 // the live form registration, rather than hard-coding every such field,
 // covers both without drifting out of sync as the form changes.
+// controlHasFocus reports whether the deployer is typing in the control of a
+// form field: antd's field instance is the input itself (Switch), or carries
+// its root as nativeElement (InputNumber, Input) or the input as input.
+function controlHasFocus(form: FormInstance, name: string): boolean {
+  const active = typeof document === "undefined" ? null : document.activeElement;
+  if (!active || active === document.body) return false;
+  const instance: unknown = form.getFieldInstance(name);
+  if (!instance || typeof instance !== "object") return false;
+  const refs = instance as Partial<{ nativeElement: Element; input: Element }>;
+  const root =
+    typeof Element !== "undefined" && instance instanceof Element
+      ? instance
+      : (refs.nativeElement ?? refs.input);
+  return Boolean(root && root.contains(active));
+}
+
 function hasRenderedControl(form: FormInstance, name: string): boolean {
   return (
     listControlFields.has(name) || form.getFieldInstance(name) !== undefined
@@ -86,7 +103,10 @@ export default function useDeployEvaluation({
   const settledSignalRef = useRef(signal);
   currentSignalRef.current = signal;
   const appliedKeysRef = useRef<string[]>([]);
+  const quickParamsRef = useRef(new EvaluateQuickParams());
   const flaggedFieldsRef = useRef<string[]>([]);
+  // Keys an answer skipped because their control had focus.
+  const deferredRef = useRef<string[]>([]);
 
   const invalidate = (message: string | null) => {
     abortRef.current?.abort();
@@ -112,14 +132,22 @@ export default function useDeployEvaluation({
         invalidate(null);
         return;
       }
-      const previousKeys = appliedKeysRef.current;
+      const overrides = payload.container_overrides as
+        | { command_mode?: string }
+        | undefined;
+      const manual = overrides?.command_mode === "manual";
+      const request = manual ? payload : quickParamsRef.current.prepare(payload);
+      const unset = new Set((request.quick_params_unset ?? []) as string[]);
+      // A user-cleared field remains a tombstone when the server omits it.
+      // Clearing it to undefined would let the next template reintroduce it.
+      const previousKeys = appliedKeysRef.current.filter((key) => !unset.has(key));
       abortRef.current?.abort();
       const controller = new AbortController();
       abortRef.current = controller;
       const requestId = ++requestIdRef.current;
       setEvaluating(true);
       api
-        .evaluate(payload, controller.signal)
+        .evaluate(request, controller.signal)
         .then((response) => {
           if (
             !Object.is(signal, currentSignalRef.current) ||
@@ -167,15 +195,20 @@ export default function useDeployEvaluation({
           flaggedFieldsRef.current = [...flagged];
           if (fields.length) form.setFields(fields);
           if (unattributed.length) setError(unattributed.join(" · "));
-          // A manual command owns its launch. Its evaluated defaults describe
-          // that command, not the structured draft restored by explicit discard.
-          // Keep the last structured keys so its next answer can clear stale ones.
-          const overrides = payload.container_overrides as
-            | { command_mode?: string }
-            | undefined;
-          if (overrides?.command_mode !== "manual" && applyFormValues()) {
-            applyEvaluateFormValues(form, response, previousKeys);
-            appliedKeysRef.current = Object.keys(response.form_values ?? {});
+          // Manual previews describe their command, not the structured draft
+          // restored by explicit discard. Keep its keys and quick-param origins.
+          if (!manual && applyFormValues()) {
+            quickParamsRef.current.accept(response);
+            deferredRef.current = applyEvaluateFormValues(
+              form,
+              response,
+              previousKeys,
+              (key) => controlHasFocus(form, key),
+            );
+            // Early errors contain no display instruction; keep previous keys
+            // so the next successful answer can clear them.
+            if (response.form_values)
+              appliedKeysRef.current = Object.keys(response.form_values);
           }
         })
         .catch((reason: Error) => {
@@ -204,6 +237,24 @@ export default function useDeployEvaluation({
     return () => clearTimeout(timer);
   }, [signal, reevaluateSeq]);
 
+  // A skipped key takes the server's display value once the deployer leaves
+  // its control: evaluate the draft again then, through the ordinary path.
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const onFocusOut = () => {
+      if (!deferredRef.current.length) return;
+      // focusout fires before focus moves; read the new focus next turn.
+      setTimeout(() => {
+        const still = deferredRef.current.filter((key) => controlHasFocus(form, key));
+        if (still.length === deferredRef.current.length) return;
+        deferredRef.current = still;
+        setReevaluateSeq((seq) => seq + 1);
+      }, 0);
+    };
+    document.addEventListener("focusout", onFocusOut);
+    return () => document.removeEventListener("focusout", onFocusOut);
+  }, [form]);
+
   useEffect(() => () => abortRef.current?.abort(), []);
 
   return {
@@ -212,8 +263,9 @@ export default function useDeployEvaluation({
     evaluating: evaluating || !Object.is(settledSignalRef.current, signal),
     responseSeq,
     invalidate,
-    noteDraftChanged: () => {
+    noteDraftChanged: (changed: Record<string, unknown> = {}) => {
       revisionRef.current += 1;
+      quickParamsRef.current.noteChanged(changed);
     },
     reevaluate: () => setReevaluateSeq((seq) => seq + 1),
   };

@@ -103,7 +103,28 @@ const (
 	// transport with legacy IPC handles): no network carries the KV, so both
 	// roles must run on the same node (Mode.SameNode).
 	TransportIPC Transport = "ipc"
+	// TransportMooncakeRDMA is Mooncake's RDMA transport between the hosts'
+	// RDMA NICs: the group shares a host RDMA network, and the NIC registers
+	// the cards' memory, which needs the vendor's peer-memory kernel module
+	// on every node (Mode.PeerMemory).
+	TransportMooncakeRDMA Transport = "mooncake_rdma"
+	// TransportMooncake is the Mooncake transfer engine on whatever host
+	// network the group shares: RDMA on a host RDMA network, TCP on any other,
+	// which the launch chooses (mooncake_protocol).
+	TransportMooncake Transport = "mooncake"
 )
+
+// OnHostNetwork reports whether the transport drives host network devices
+// (UCX, Mooncake), so the KV cannot ride an accelerator network.
+func (t Transport) OnHostNetwork() bool {
+	return t == TransportUCX || t == TransportMooncake || t == TransportMooncakeRDMA
+}
+
+// MooncakeBootstrap reports whether the transport is Mooncake's, whose vLLM
+// connector serves the prefill's handshake from a bootstrap server.
+func (t Transport) MooncakeBootstrap() bool {
+	return t == TransportMooncake || t == TransportMooncakeRDMA
+}
 
 // Mode is one PD recipe.
 type Mode struct {
@@ -179,6 +200,28 @@ type Mode struct {
 	// EngineArgs are engine flags every instance of the mode needs; a flag a
 	// template or the deployment already states keeps its value.
 	EngineArgs []string
+	// PeerMemory names the kernel module that lets the RDMA NIC register the
+	// cards' memory (accelerator.PeerMemoryModule); a node without it loaded
+	// cannot run the mode, and placement says so.
+	PeerMemory bool
+	// ConnectorExtra is fixed kv_connector_extra_config for the mode's
+	// connector (vLLM), merged under what the launch composes.
+	ConnectorExtra map[string]any
+	// SynthesizedHandoff is a sequential mode whose prefill answer carries no
+	// kv_transfer_params (vLLM's MooncakeConnector): the gateway gives the
+	// prefill copy a transfer id and composes the decoder's params itself,
+	// naming the prefill instance by its bootstrap server and the engine id
+	// its workers registered there. The engine id is read from that server,
+	// not pinned at launch: the decoder caches a prefill's worker addresses
+	// by engine id, so a prefill restarted on the same port under the same id
+	// would be pulled from at its dead workers' addresses (measured: every
+	// handoff then failed after 540 s).
+	SynthesizedHandoff bool
+	// FirstRequestCompiles: the engine compiles kernels for each new request
+	// shape, so the first request after a start takes minutes (measured on
+	// PPU SGLang: 188–198 s, the rest under a second). The deploy form says
+	// so; the gateway waits as for any slow answer.
+	FirstRequestCompiles bool
 }
 
 // ascendCards is what HCCL needs to be told on an Ascend host; the mode that
@@ -187,9 +230,10 @@ var ascendCards, _ = accelerator.CardNetworkOf(accelerator.VendorAscend)
 
 var modes = map[string]Mode{
 	"vllm-nixl": {
-		Name:                "vllm-nixl",
-		Engine:              engines.VLLM,
-		Vendors:             []string{accelerator.VendorNVIDIA},
+		Name:   "vllm-nixl",
+		Engine: engines.VLLM,
+		// AMD: nixl-rocm over UCX TCP, validated across two MI300X hosts.
+		Vendors:             []string{accelerator.VendorNVIDIA, accelerator.VendorAMD},
 		SameVendor:          true,
 		Roles:               []string{RoleDecode, RolePrefill},
 		Connector:           "NixlConnector",
@@ -266,6 +310,87 @@ var modes = map[string]Mode{
 		Unverified:          true,
 		Transport:           TransportUCX,
 	},
+	// SGLang on T-Head PPU with Mooncake's RDMA transport: the KV goes card
+	// to NIC to card, across hosts on a host RDMA network or between two cards
+	// of one host. The NIC registers the cards' memory through the PPU
+	// driver's peer-memory module (alixpu_peermem), so every node needs it
+	// loaded. None of the IPC mode's patches is involved. Verified on PPU
+	// ZW810E (RoCE, mlx5) with TP 1 on both roles.
+	"sglang-ppu-mooncake": {
+		Name:                "sglang-ppu-mooncake",
+		Engine:              engines.SGLang,
+		Vendors:             []string{accelerator.VendorPPU},
+		SameVendor:          true,
+		Roles:               []string{RoleDecode, RolePrefill},
+		Connector:           "mooncake",
+		ConnectorRoles:      map[string]string{RolePrefill: "prefill", RoleDecode: "decode"},
+		Wire:                WireConcurrent,
+		TP:                  TPEqual,
+		TwoStagePaths:       []string{"/v1/chat/completions", "/v1/completions", "/generate"},
+		TransferMetricsRole: RoleDecode,
+		ExtraPortsFixed:     map[string]int{RolePrefill: 1},
+		VerifiedVersions:    "0.5.13",
+		// First requests of a shape compile PPU kernels for minutes; a
+		// generating health check would time out and retire the instance.
+		Env:                  map[string]string{"SGLANG_ENABLE_HEALTH_ENDPOINT_GENERATION": "0"},
+		FirstRequestCompiles: true,
+		PeerMemory:           true,
+		Transport:            TransportMooncakeRDMA,
+	},
+	// vLLM's MooncakeConnector on T-Head PPU over RDMA, as sglang-ppu-mooncake.
+	// The prefill engine answers its one-token copy without kv_transfer_params;
+	// the decoder pulls by the prefill engine's id from its bootstrap server
+	// (VLLM_MOONCAKE_BOOTSTRAP_PORT), so the gateway composes the handoff.
+	// Verified on PPU ZW810E with vLLM 0.23.0 and TP 1 on both roles.
+	"vllm-ppu-mooncake": {
+		Name:                "vllm-ppu-mooncake",
+		Engine:              engines.VLLM,
+		Vendors:             []string{accelerator.VendorPPU},
+		SameVendor:          true,
+		Roles:               []string{RoleDecode, RolePrefill},
+		Connector:           "MooncakeConnector",
+		ConnectorRoles:      map[string]string{RolePrefill: "kv_producer", RoleDecode: "kv_consumer"},
+		Wire:                WireSequential,
+		TP:                  TPEqual,
+		TwoStagePaths:       []string{"/v1/chat/completions", "/v1/completions"},
+		TransferMetricsRole: RoleDecode,
+		ExtraPortsFixed:     map[string]int{RolePrefill: 1},
+		VerifiedVersions:    "0.23.0",
+		ConnectorExtra:      map[string]any{"mooncake_protocol": "rdma"},
+		SynthesizedHandoff:  true,
+		PeerMemory:          true,
+		Transport:           TransportMooncakeRDMA,
+	},
+	// vLLM's MooncakeConnector on Hygon DCU: the Hygon vLLM 0.21 image runs it
+	// on a Mooncake transfer engine built for DTK (TCP, RDMA and an intra-host
+	// HIP transport), patched by vllm-hcu, so the KV moves over whatever host
+	// network the group shares. A decoder given no handoff computes the
+	// prefill itself. The vllm-hcu patch is about heterogeneous TP/PP; only
+	// equal TP was tried. The mode is experimental and marked unverified. It
+	// needs the image's r2 or later: r1's connector reported a failed pull as
+	// finished, so the decoder answered from KV it never received and the
+	// load failure policy did not apply.
+	"vllm-mooncake": {
+		Name:                "vllm-mooncake",
+		Engine:              engines.VLLM,
+		Vendors:             []string{accelerator.VendorHygon},
+		SameVendor:          true,
+		Roles:               []string{RoleDecode, RolePrefill},
+		Connector:           "MooncakeConnector",
+		ConnectorRoles:      map[string]string{RolePrefill: "kv_producer", RoleDecode: "kv_consumer"},
+		Wire:                WireSequential,
+		TP:                  TPEqual,
+		TwoStagePaths:       []string{"/v1/chat/completions", "/v1/completions"},
+		TransferMetricsRole: RoleDecode,
+		VerifiedVersions:    "0.21.0",
+		ScalableToZero:      []string{RolePrefill},
+		DecodeServesAlone:   true,
+		KVLoadFailures:      []string{KVLoadFail, KVLoadRecompute},
+		ExtraPortsFixed:     map[string]int{RolePrefill: 1},
+		SynthesizedHandoff:  true,
+		Unverified:          true,
+		Transport:           TransportMooncake,
+	},
 	// SGLang on T-Head PPU with the mooncake backend: Mooncake's NVLink
 	// transport over legacy IPC handles copies the KV card to card inside one
 	// host, so the two roles share a node. The PPU SGLang runner carries the
@@ -301,8 +426,9 @@ var modes = map[string]Mode{
 			"MC_USE_NVLINK_IPC":                        "1",
 			"SGLANG_ENABLE_HEALTH_ENDPOINT_GENERATION": "0",
 		},
-		EngineArgs: []string{"--disable-overlap-schedule"},
-		Transport:  TransportIPC,
+		EngineArgs:           []string{"--disable-overlap-schedule"},
+		FirstRequestCompiles: true,
+		Transport:            TransportIPC,
 	},
 }
 

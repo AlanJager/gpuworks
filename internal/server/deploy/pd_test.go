@@ -2,9 +2,11 @@ package deploy
 
 import (
 	"encoding/json"
-	"gpuworks.ai/gpuworks/internal/server/netplan"
 	"reflect"
+	"strings"
 	"testing"
+
+	"gpuworks.ai/gpuworks/internal/server/netplan"
 )
 
 func argValue(t *testing.T, argv []string, flag string) string {
@@ -121,6 +123,13 @@ func TestVLLMPDRecomputePolicyAndRDMA(t *testing.T) {
 	}
 	if _, ok := launch.Env["UCX_TCP_BRIDGE_ENABLE"]; ok {
 		t.Fatal("RDMA does not use the TCP bridge switch")
+	}
+	// On ROCm the CUDA transport list would leave UCX without a GPU copy
+	// path; naming the HCA is enough for it to pick rocm_copy/rocm_ipc.
+	amd := p
+	amd.Vendor = "amd"
+	if env := BuildVLLM(amd).Env; env["UCX_NET_DEVICES"] != "mlx5_0:1" || env["UCX_TLS"] != "" {
+		t.Fatalf("amd rdma env = %v", env)
 	}
 	args := withComputeNetworkDockerArgs(nil, p)
 	if !reflect.DeepEqual(args, []string{"--device", "/dev/infiniband", "--ulimit", "memlock=-1", "--cap-add", "IPC_LOCK"}) {
@@ -290,5 +299,81 @@ func TestVLLMAscendMooncakeLaunch(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("mounts = %+v", resolved.Mounts)
+	}
+}
+
+func TestSGLangPPUMooncakeLaunch(t *testing.T) {
+	engine, _ := SelectEngine("sglang")
+	network := ComputeNetwork{Type: netplan.TypeHostRDMA, Interface: "bond0", HCAs: []string{"mlx5_0:1", "mlx5_1:1", "mlx5_0:2"}}
+	for _, role := range []string{"prefill", "decode"} {
+		p := Params{ModelPath: "/model", APIPort: 30000, TensorParallel: 1, ComputeNetwork: network,
+			PD: &PDLaunch{Mode: "sglang-ppu-mooncake", Role: role, SideChannelHost: "10.0.0.5", SideChannelPort: 30001}}
+		launch := engine.Build(p)
+		argv := launch.Entrypoint
+		if argValue(t, argv, "--disaggregation-transfer-backend") != "mooncake" || argValue(t, argv, "--disaggregation-ib-device") != "mlx5_0,mlx5_1" {
+			t.Fatalf("%s argv = %v", role, argv)
+		}
+		// No same-host IPC switches: the KV goes over the NIC.
+		for _, key := range []string{"SGLANG_PPU_PD_IPC", "MC_USE_NVLINK_IPC", "UCX_NET_DEVICES"} {
+			if _, ok := launch.Env[key]; ok {
+				t.Fatalf("%s env carries %s: %v", role, key, launch.Env)
+			}
+		}
+		if launch.Env["SGLANG_ENABLE_HEALTH_ENDPOINT_GENERATION"] != "0" || launch.Env["NO_PROXY"] != "localhost,127.0.0.1,::1,0.0.0.0,10.0.0.5" {
+			t.Fatalf("%s env = %v", role, launch.Env)
+		}
+		// The host RDMA network brings the devices and the locked memory.
+		resolved, err := ResolveLaunch(ResolveLaunchInput{Engine: engine, Params: p})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !hasDockerArgValue(resolved.DockerArgs, "--device", "/dev/infiniband") || !hasDockerArgValue(resolved.DockerArgs, "--cap-add", "IPC_LOCK") {
+			t.Fatalf("%s docker args = %v", role, resolved.DockerArgs)
+		}
+	}
+	// Without HCAs the engine picks its own device.
+	bare := engine.Build(Params{ModelPath: "/model", APIPort: 30000, TensorParallel: 1, ComputeNetwork: ComputeNetwork{Type: netplan.TypeHostRDMA},
+		PD: &PDLaunch{Mode: "sglang-ppu-mooncake", Role: "decode"}})
+	if countFlag(bare.Entrypoint, "--disaggregation-ib-device") != 0 {
+		t.Fatalf("argv = %v", bare.Entrypoint)
+	}
+}
+
+func TestVLLMPPUMooncakeLaunch(t *testing.T) {
+	network := ComputeNetwork{Type: netplan.TypeHostRDMA, Interface: "bond0", HCAs: []string{"mlx5_0:1"}}
+	config := func(role string) (map[string]any, ResolvedLaunch) {
+		launch := BuildVLLM(Params{ModelPath: "/model", APIPort: 30000, TensorParallel: 1, NNodes: 1, Vendor: "ppu", ComputeNetwork: network,
+			PD: &PDLaunch{Mode: "vllm-ppu-mooncake", Role: role, SideChannelHost: "10.0.0.5", SideChannelPort: 30001}})
+		var c map[string]any
+		if err := json.Unmarshal([]byte(argValue(t, launch.Argv, "--kv-transfer-config")), &c); err != nil {
+			t.Fatal(err)
+		}
+		return c, ResolvedLaunch{Env: launch.Env}
+	}
+	prefill, prefillLaunch := config("prefill")
+	extra, _ := prefill["kv_connector_extra_config"].(map[string]any)
+	// No pinned engine_id: the gateway reads the engine's own from its
+	// bootstrap server (pdmode.Mode.SynthesizedHandoff).
+	if prefill["kv_connector"] != "MooncakeConnector" || prefill["kv_role"] != "kv_producer" || prefill["engine_id"] != nil ||
+		extra["mooncake_protocol"] != "rdma" || extra["device_name"] != "mlx5_0" {
+		t.Fatalf("prefill config = %v", prefill)
+	}
+	for key, want := range map[string]string{"VLLM_MOONCAKE_BOOTSTRAP_PORT": "30001", "VLLM_HOST_IP": "10.0.0.5", "NO_PROXY": "localhost,127.0.0.1,::1,0.0.0.0,10.0.0.5"} {
+		if prefillLaunch.Env[key] != want {
+			t.Fatalf("prefill env %s = %q (%v)", key, prefillLaunch.Env[key], prefillLaunch.Env)
+		}
+	}
+	decode, decodeLaunch := config("decode")
+	if decode["kv_role"] != "kv_consumer" || decode["engine_id"] != nil {
+		t.Fatalf("decode config = %v", decode)
+	}
+	if _, ok := decodeLaunch.Env["VLLM_MOONCAKE_BOOTSTRAP_PORT"]; ok {
+		t.Fatalf("decode env = %v", decodeLaunch.Env)
+	}
+	// Other modes keep their configs.
+	nixl := BuildVLLM(Params{ModelPath: "/model", APIPort: 30000, TensorParallel: 1, NNodes: 1, ComputeNetwork: network,
+		PD: &PDLaunch{Mode: "vllm-nixl", Role: "prefill", SideChannelHost: "10.0.0.5", SideChannelPort: 30001}})
+	if raw := argValue(t, nixl.Argv, "--kv-transfer-config"); strings.Contains(raw, "engine_id") || strings.Contains(raw, "device_name") {
+		t.Fatalf("vllm-nixl config = %s", raw)
 	}
 }

@@ -60,6 +60,8 @@ func TestFleet1000NodesRedeployChurnAcrossProcesses(t *testing.T) {
 		t.Fatalf("start the control plane: %v", err)
 	}
 	t.Cleanup(func() { stopProcess(server) })
+	peak := &peakRSS{}
+	t.Cleanup(peak.sample(server.Process.Pid, time.Second))
 
 	client := fleetLogin(t, base)
 
@@ -120,6 +122,13 @@ func TestFleet1000NodesRedeployChurnAcrossProcesses(t *testing.T) {
 		}
 		churnUUIDs = append(churnUUIDs, roster[i].UUID)
 	}
+	gpuReads := fleet.GPUReadsEnabled()
+	if gpuReads {
+		if err := fleet.WaitGPUInventoryMetrics(client, nodeCount, 45*time.Second); err != nil {
+			t.Fatal(err)
+		}
+		t.Logf("GPU inventory telemetry preflight passed for %d synthetic cards", nodeCount)
+	}
 
 	dbPath := filepath.Join(dataDir, "gpuworks.db")
 	baselineDB := fleetDatabaseBytes(dbPath)
@@ -129,7 +138,7 @@ func TestFleet1000NodesRedeployChurnAcrossProcesses(t *testing.T) {
 	watch := &fleet.NodeWatch{Snapshot: func() ([]fleet.NodeState, error) { return fleet.ListNodes(client) }}
 	report, err := fleet.Churn{
 		Client: client, ModelID: modelID, ChurnNodes: churnUUIDs,
-		Rounds: rounds, Reads: fleet.ReadsEnabled(), Watch: watch,
+		Rounds: rounds, Reads: fleet.ReadsEnabled(), GPUReads: gpuReads, Watch: watch,
 		Log: func(format string, args ...any) { t.Logf(format, args...) },
 	}.Run()
 	if err != nil {
@@ -141,8 +150,21 @@ func TestFleet1000NodesRedeployChurnAcrossProcesses(t *testing.T) {
 		t.Log(line)
 	}
 	t.Logf("database grew %.1f MiB", float64(fleetDatabaseBytes(dbPath)-baselineDB)/(1<<20))
+	serverCPU := readProcessCPU(server.Process.Pid) - serverBefore
 	t.Logf("server process: RSS=%.1f MiB, %.1f CPU-seconds during the churn",
-		readProcessRSSMiB(server.Process.Pid), readProcessCPU(server.Process.Pid)-serverBefore)
+		readProcessRSSMiB(server.Process.Pid), serverCPU)
+	// RSS covers onboarding and churn; CPU-seconds cover exactly the churn
+	// window used in baseline/candidate comparisons. These coarse ceilings
+	// catch resource regressions, not small performance differences.
+	maxRSS := float64(fleet.EnvInt("GPUWORKS_FLEET_MAX_SERVER_RSS_MIB", 2048))
+	maxCPU := float64(fleet.EnvInt("GPUWORKS_FLEET_MAX_SERVER_CPU_SECONDS", max(60, nodeCount*rounds)))
+	t.Logf("server resource budgets: peak RSS=%.1f/%.1f MiB; churn CPU=%.1f/%.1f seconds", peak.max(), maxRSS, serverCPU, maxCPU)
+	if peak.max() > maxRSS {
+		t.Errorf("server RSS peak %.1f MiB exceeds budget %.1f MiB", peak.max(), maxRSS)
+	}
+	if serverCPU > maxCPU {
+		t.Errorf("server churn CPU %.1f seconds exceeds budget %.1f seconds", serverCPU, maxCPU)
+	}
 	t.Logf("fleet process: RSS=%.1f MiB, %.1f CPU-seconds during the churn",
 		readProcessRSSMiB(host.Process.Pid), readProcessCPU(host.Process.Pid)-hostBefore)
 
@@ -254,6 +276,11 @@ func startFleetGroup(t *testing.T, hostBin, base, workRoot, modelDir, nextRoster
 	gpus := strconv.Itoa(fleet.EnvInt("GPUWORKS_FLEET_GPUS", 1))
 	host := exec.Command(hostBin, "--roster", rosterPath, "--next-roster", nextRosterPath, "--server", base, "--state-root", filepath.Join(workRoot, "agents"), "--model-dir", modelDir, "--ready", readyPath, "--gpus", gpus)
 	host.Env = os.Environ()
+	if fleet.GPUReadsEnabled() {
+		// Reading the GPU endpoint also requires the deterministic samples
+		// checked by WaitGPUInventoryMetrics; do not depend on a second opt-in.
+		host.Env = append(host.Env, "GPUWORKS_FLEET_GPU_METRICS=1")
+	}
 	host.Stdout, host.Stderr = fleetProcessLog(t, workRoot, "fleet-host.log")
 	if err := host.Start(); err != nil {
 		t.Fatalf("start the fleet: %v", err)

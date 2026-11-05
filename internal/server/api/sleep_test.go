@@ -11,6 +11,7 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/bus"
+	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/internal/server/sleep"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
@@ -173,6 +174,53 @@ func TestSleepDeploymentValidatesLevelAndModeAndStampsTheOrder(t *testing.T) {
 	inst, _ = f.st.InstanceByUUID("inst-1")
 	if !strings.Contains(inst.DesiredStateJSON, `"sleep_mode":"wait"`) {
 		t.Fatalf("default mode not stamped: %s", inst.DesiredStateJSON)
+	}
+}
+
+func TestRestrictedVendorSleepOrdersRefuseButExistingSleepCanWake(t *testing.T) {
+	f := newSleepFixture(t)
+	if err := f.st.DB().Model(&store.GPU{}).Where("id = ?", f.node.GPUs[0].ID).Update("vendor", "apple").Error; err != nil {
+		t.Fatal(err)
+	}
+	dep := f.deployment(t, &store.Deployment{
+		Name: "amd-sleeper", ServedName: "amd-sleeper", Engine: "vllm",
+		Sleepable: true, DesiredSleep: 1,
+	})
+	f.instance(t, dep, "amd-sleeper-1", 1)
+
+	status, body := f.call(t, f.h.sleepDeployment, "/api/v1/deployments/x/sleep", dep.ID)
+	params, _ := body["params"].(map[string]any)
+	if status != http.StatusBadRequest || body["code"] != messages.ErrorAcceleratorFeatureUnsupported ||
+		params["vendor"] != "Apple" || params["feature"] != "engine_sleep" {
+		t.Fatalf("restricted-vendor sleep order = %d %v", status, body)
+	}
+	if got, _ := f.st.GetDeployment(dep.ID); got.DesiredSleep != 1 {
+		t.Fatalf("refused sleep order changed desired level to %d", got.DesiredSleep)
+	}
+
+	status, body = f.call(t, f.h.wakeDeployment, "/api/v1/deployments/x/wake", dep.ID)
+	if status != http.StatusOK || body["status"] != "waking" {
+		t.Fatalf("wake of existing restricted-vendor sleeper = %d %v", status, body)
+	}
+	if got, _ := f.st.GetDeployment(dep.ID); got.DesiredSleep != 0 {
+		t.Fatalf("wake did not restore desired level: %d", got.DesiredSleep)
+	}
+}
+
+// AMD cards sleep: vLLM's sleep mode runs on ROCm (validated on MI300X).
+func TestAMDSleepOrderIsAccepted(t *testing.T) {
+	f := newSleepFixture(t)
+	if err := f.st.DB().Model(&store.GPU{}).Where("id = ?", f.node.GPUs[0].ID).Update("vendor", "amd").Error; err != nil {
+		t.Fatal(err)
+	}
+	dep := f.deployment(t, &store.Deployment{Name: "amd-sleeper", ServedName: "amd-sleeper", Engine: "vllm", Sleepable: true})
+	f.instance(t, dep, "amd-sleeper-1", 0)
+	status, body := f.call(t, f.h.sleepDeployment, "/api/v1/deployments/x/sleep", dep.ID)
+	if status != http.StatusOK || body["status"] != "sleeping" {
+		t.Fatalf("AMD sleep order = %d %v", status, body)
+	}
+	if got, _ := f.st.GetDeployment(dep.ID); got.DesiredSleep == 0 {
+		t.Fatal("AMD sleep order did not record the desired level")
 	}
 }
 

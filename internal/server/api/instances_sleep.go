@@ -36,6 +36,9 @@ func (a *apiHandlers) sleepInstance(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	if a.refuseUnsupportedSleepTargets(w, dep.Engine, members) {
+		return
+	}
 	if !a.orderSleep(w, dep, planning.SleepOrder{Pref: planning.SleepPreference(level), Mode: mode, Held: !wakes, Instances: uuidsOf(members)}, writeReplicaOrderErr) {
 		return
 	}

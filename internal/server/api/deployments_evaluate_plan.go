@@ -72,22 +72,11 @@ func (a *apiHandlers) evaluatePlan(env evaluatePlanEnv) (evaluatePlanResult, boo
 			specWeightBytes = env.selection.Spec.WeightBytes
 		}
 		a.persistCatalogWeight(env.model, specWeightBytes)
-		previewSelection := snapshotTemplateSelection(env.selection, resp.Image)
-		previewSelection.ExtraArgs = env.templateResidual
-		previewPlan, planErr := planning.PlanLaunch(env.ctx, a.d.Store, a.networks(), planning.LaunchRequest{
-			Preview: true, ExcludeDeploymentID: env.excludeDeployment, Engine: env.engine.Name(), Model: env.model, Node: node,
-			Selection: previewSelection, Placement: env.placement, Quick: env.quick, ExtraArgs: env.userExtraArgs,
-			// Rank zero's share of a multi-node group: the node count decides
-			// how many of the TP×PP GPUs land here.
-			Topology:   planning.DistTopology{NNodes: max(req.NNodes, 1), Role: "standalone"},
-			Source:     planning.LaunchSourceFromRequest(resp.Image, env.requestOverrides),
-			ModelMount: env.modelMount, ComponentMounts: env.componentMounts,
-			ServedName: env.servedName, Sleepable: req.Sleepable, YieldPolicy: requestYield(req.YieldPolicy), ExplainHolders: true,
-			MasterAddr: req.MasterAddr, MasterPort: req.MasterPort,
-			VRAMLimitBytes: int64(req.VRAMLimitGiB * (1 << 30)), PartitionBackend: req.PartitionBackend,
-			RuntimeImageCached: out.nodeImageCached, APIContract: previewSelection.APIContract,
-			ModelRules: store.SourceRules{Pinned: store.StoragePins(req.NodeRequirements), SaveTo: a.previewSaveToStorageID(req.ModelSource, env.model, node)},
-		})
+		request := evaluationLaunchRequest(env, node)
+		request.RuntimeImageCached = out.nodeImageCached
+		request.ModelRules.SaveTo = a.previewSaveToStorageID(req.ModelSource, env.model, node)
+		previewPlan, planErr := planning.PlanLaunch(env.ctx, a.d.Store, a.networks(), request)
+
 		if planErr != nil {
 			// Launch-assembly failures name no form control; they belong on the
 			// page-level error line, not beside a parameter.

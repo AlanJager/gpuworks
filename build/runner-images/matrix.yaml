@@ -2,7 +2,7 @@
 #
 # 本文件是每一档镜像的权威定义：构建什么、以什么为 base、必须具备什么。
 # 读这一个文件就能知道某档是干什么用的、有什么前提、有什么已知限制。
-# 署名与派生关系见 NOTICE（构建配方部分派生自 Apache-2.0 的 gpustack/runner）。
+# 补丁的第三方署名见 NOTICE。
 # 构建与发布怎么跑见 README.md；真机验证结论见 artifacts/work/2026-10-03-runner-images/evidence/r2-verify.md。
 #
 # tag 命名：<backend><框架档>[-<型号>]-<engine><版本>，并发一个带构建版次的不可变
@@ -13,7 +13,7 @@
 #   id          矩阵项 ID，同时就是裸 tag 名
 #   revision    构建版次（r1、r2…）。配方变了必须 +1，不许原地覆盖同名 tag：
 #               节点上已有同名镜像时不会重拉，覆盖等于改了没生效
-#   backend     cuda | cann | dtk | hggc | metal
+#   backend     cuda | cann | dtk | hggc | metal | rocm
 #   builder     缺省为本目录的 buildx 构建。host-env 表示 macOS 宿主环境包：由
 #               build/host-envs/build.sh 构建（框架档 = 最低 macOS），本目录的
 #               build.sh / verify.sh 跳过它，push.sh / publish.py 照常分发
@@ -41,6 +41,8 @@
 #                                        不适用的 omni 补丁；声明过期会失败
 #                 VOXCPM_SPEC / DECORD_SPEC / MOVIEPY_SPEC  cuda vllm 线按档加装的模型专属依赖
 #                                        （见 cuda/Dockerfile.vllm「模型专属依赖」）
+#                 DTK_VLLM_PATCHES       "1"=dtk vllm 档应用 patches/vllm_dtk/（严格应用，且要经得起
+#                                        重跑 vllm-hcu-apply-patches）；不传则不打
 #   requires    本档必须成立的断言，构建末尾与 verify.sh 都会检查，不过即失败：
 #                 engine            引擎本体装对（元数据 + 模块可定位）
 #                 engine_import     真的 import 成功；vllm 档另断言
@@ -64,6 +66,8 @@
 #                 hcu_patches       vllm-hcu-apply-patches 在 PATH 上（海光）
 #                 ppu_pd            sglang 装了 PPU 同机 PD 补丁（hggc/ppu-pd），
 #                                   且 mooncake 在位
+#                 mooncake_load_errors  vLLM 的 MooncakeConnector 把拉取失败的块上报给调度器
+#                                   （patches/vllm_dtk/001），且 mooncake 在位
 #   base_requires_clean_history
 #               true = 该 base 的 image history 里有内网凭据，必须先用
 #               prepare-base.sh 在 base 这一层压掉 history，再以干净 base 构建；
@@ -75,6 +79,35 @@ defaults:
   platforms: [linux/amd64, linux/arm64]
 
 items:
+
+  # =======================================================================
+  # AMD ROCm
+  # =======================================================================
+  # The upstream vLLM ROCm image ships kernels for gfx90a/gfx942/gfx950,
+  # gfx1100/1101/1150/1151 and gfx1200/1201. Tested on MI325X (gfx942, single
+  # card and 2-node PP/TP over RCCL) and Ryzen AI Max+ 395 (gfx1151, UMA).
+  - id: rocm7.2.3-vllm0.30.0
+    revision: r1
+    backend: rocm
+    engine: vllm
+    platforms: [linux/amd64]
+    base: vllm/vllm-openai-rocm@sha256:2e7da1ad1c66836802072588adea75f9f4991da5f9545b4318e91d422c22ce6a
+    args: {ENGINE_VERSION: "0.30.0", FRAMEWORK_VERSION: "7.2.3"}
+    requires: [engine]
+    note: vLLM 0.30.0 on ROCm 7.2.3 (upstream vllm-openai-rocm); tested on MI325X (gfx942) and AMD395 (gfx1151).
+
+  # Unpublished pinned MI300X SGLang candidate; not hardware-validated, so it
+  # stays out of the built-in catalog.
+  - id: rocm7.2.0-sglang0.5.21
+    revision: r1
+    backend: rocm
+    engine: sglang
+    catalog: false
+    platforms: [linux/amd64]
+    base: lmsysorg/sglang@sha256:0534eb382626ef55ace8be24f7d81cc6eb7451acac8a5727848397a5e9309d91
+    args: {SGLANG_VERSION: "0.5.21", FRAMEWORK_VERSION: "7.2.0"}
+    requires: [engine]
+    note: Unpublished pinned MI300X ROCm candidate; no gfx1151 compatibility claim.
 
   # =======================================================================
   # NVIDIA CUDA
@@ -183,8 +216,9 @@ items:
     note: >-
       CUDA 12.x 的 vllm 档（驱动低于 580 的节点用它，CUDA 13.0 要求驱动 ≥580）。
       不含 omni。torchcodec 换成 0.16.0+cu129，其余 torch 栈与 base 逐包一致。
-      补丁 001（wrong_dp_ray）在 vllm 0.31 上不适用——上游已重构 get_open_port，
-      故由 PATCHES_NOT_APPLICABLE 显式声明跳过；002 应用，003 已在上游。
+      补丁 001（wrong_dp_ray）在 vllm 0.31 上打不上：上游只是重排了 get_open_port 的
+      docstring（vllm #52136），端口问题本身没有修，故暂由 PATCHES_NOT_APPLICABLE 声明跳过，
+      下次升 revision 时要按 0.31 的上下文重做 001。002 应用。
 
   - id: cuda12.9-sglang0.5.18
     revision: r2
@@ -583,7 +617,7 @@ items:
       callable runtime 不烤进镜像：推理目录用 sha256 钉住同一资产并只读挂到同一路径。
 
   - id: dtk26.04-vllm0.21.0
-    revision: r1
+    revision: r2
     backend: dtk
     engine: vllm
     platforms: [linux/amd64]
@@ -595,9 +629,12 @@ items:
     args:
       VLLM_OMNI_VERSION: ""
       MOONCAKE: ""
-    requires: [engine, hcu_patches, overlays]
+      DTK_VLLM_PATCHES: "1"
+    requires: [engine, hcu_patches, overlays, mooncake, mooncake_load_errors]
     note: >-
-      K100 等海光 DCU 的 vllm 0.21 档。**不含 omni**：厂商原件（ubuntu22.04 / py3.10）的 pip 清单是
+      K100 等海光 DCU 的 vllm 0.21 档。r2 起应用 patches/vllm_dtk/001：base 自带海光构建的
+      mooncake-transfer-engine 0.3.10 与 vLLM 的 MooncakeConnector（PD 模式 vllm-mooncake 用它），但连接器
+      把拉取失败的请求当作已收到 KV，decode 照样回答、kv_load_failure_policy 不生效；补丁让失败的块上报给调度器。**不含 omni**：厂商原件（ubuntu22.04 / py3.10）的 pip 清单是
       vllm 0.21.0、vllm-hcu 0.21.0（vllm 平台插件）、transformers 5.5.0、torch 2.10.0（dtk2604），
       没有 vllm-omni；海光的 omni 负载仍走厂商 custom:* 系列镜像。
       内置 vllm-hcu-apply-patches（厂商 base 构建时已执行过一次，可重复执行；推理目录的

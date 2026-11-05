@@ -16,7 +16,7 @@ const libraryPathEnv = "LD_LIBRARY_PATH"
 // and the caller's spec env.
 func (d *Driver) runEnv(spec runtime.WorkloadSpec) map[string]string {
 	env := map[string]string{}
-	if !isDomesticSpec(spec) {
+	if !isNonNVIDIASpec(spec) {
 		env = map[string]string{
 			"TRITON_LIBCUDA_PATH":                  "/opt/nvidia-shim",
 			libraryPathEnv:                         "/opt/nvidia-shim:/usr/local/nvidia/lib64:/usr/local/nvidia/lib:/usr/local/cuda/lib64",
@@ -32,7 +32,7 @@ func (d *Driver) runEnv(spec runtime.WorkloadSpec) map[string]string {
 	// NCCL_NVLS_ENABLE=0 only helps on Hopper (avoids an NVLS init hang under
 	// udocker); harmless elsewhere but we only set it when the arch looks Hopper.
 	// The agent passes arch via spec.Env when known; default off-switch is safe.
-	if len(spec.GPUIndexes) > 0 && !isDomesticSpec(spec) {
+	if len(spec.GPUIndexes) > 0 && !isNonNVIDIASpec(spec) {
 		idx := make([]string, len(spec.GPUIndexes))
 		for i, g := range spec.GPUIndexes {
 			idx[i] = strconv.Itoa(g)

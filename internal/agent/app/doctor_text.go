@@ -145,6 +145,7 @@ var findingSummary = map[string]string{
 	proto.DoctorCUDAInitFailed:            "the CUDA driver could not be initialised",
 	proto.DoctorMultiGPUCheckFailed:       "a multi-GPU check failed",
 	proto.DoctorMacOSUnsupported:          "this macOS is older than Mac nodes support",
+	proto.DoctorPeerMemoryMissing:         "the RDMA NICs cannot register the cards' memory because the peer-memory module is not loaded; PD over RDMA cannot run here until the fix command is run",
 	proto.DoctorMacOSIdleSleep:            "the Mac sleeps when idle on this power source and then drops off the cluster while no instance runs; to keep it awake on AC power: sudo pmset -c sleep 0",
 }
 

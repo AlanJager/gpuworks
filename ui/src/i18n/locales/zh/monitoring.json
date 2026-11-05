@@ -170,7 +170,7 @@
       "memBw": "显存带宽",
       "temperature": "温度",
       "power": "功耗",
-      "openInDeployments": "在部署页查看该实例"
+      "openInDeployments": "在推理服务页查看该实例"
     },
     "logs": {
       "title": "日志",
@@ -192,7 +192,7 @@
       "throughput": "按副本：Prompt tok/s = prefill 阶段每秒处理的提示词（输入）token 数；Generation tok/s = decode 阶段每秒生成的输出 token 数。",
       "stage_time": "queue = 请求进入引擎到开始 prefill 的等待；prefill = 首个 token 前处理提示词的时间；decode = 首个 token 之后生成全部输出的时长（随输出长度变化，每个 token 的时间看 TPOT）；均为单个请求的时长在窗口内每 10 秒分位数的最大值，属保守上界。引擎没有导出这些直方图时，用引擎在每个回复里自报的耗时汇总；回复里没有的阶段不画（如 TensorFold 只报 prefill 与 decode）。",
       "preemptions": "引擎每秒因 KV Cache 压力把请求从运行集合中逐出并重新排队的次数。每次抢占都要为该请求重新 prefill，持续非零会拉高 TTFT 并浪费算力。",
-      "replicas": "本部署每个实例一行：引擎侧并发、KV Cache 与 token 吞吐，以及节点采集器上报的每张 GPU 的利用率、显存带宽、温度与功耗。点击行可在部署页打开该实例。",
+      "replicas": "本部署每个实例一行：引擎侧并发、KV Cache 与 token 吞吐，以及节点采集器上报的每张 GPU 的利用率、显存带宽、温度与功耗。点击行可在推理服务页打开该实例。",
       "pd": "PD 有效性 = decode 实例的提示词 token 中通过 KV 传输到达（而非重新计算）的比例；降级率 = 仅由 decode 实例单独完成的请求比例，附最常见原因；Prefill 阶段（均值 / P95）是网关等待 prefill 实例的时间，Prefill 排队反映 prefill 实例是否跟得上；KV 传输取自引擎自己的传输指标，按每次传输统计（不是每个请求）：耗时、大小与速率来自 decode 实例；失败是 decode 拉取 KV 失败的次数；过期是 prefill 实例算好的 KV 在租约（vLLM 0.30 默认 30 秒，decode 收到请求后会持续续约）到期前没有被拉走、只好释放的请求数，说明 prefill 之后请求没有到达 decode（客户端断开、交给 decode 失败）或 decode 实例出了故障；平均 prompt token 数用于识别过短、分离收益不大的负载。"
     },
     "tabs": {
@@ -376,6 +376,7 @@
       "prefill_unreachable": "prefill 实例连不上",
       "prefill_5xx": "prefill 实例出错（5xx）",
       "prefill_no_kv_params": "prefill 实例没有返回 KV 交接参数",
+      "prefill_no_bootstrap": "prefill 实例的 bootstrap 服务不可用",
       "prefill_failed": "prefill 调用失败"
     },
     "deletedName": "{{name}}（已删除）",

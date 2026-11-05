@@ -165,14 +165,23 @@ func (a *apiHandlers) evaluate(w http.ResponseWriter, r *http.Request) {
 	// drafts. Requirements that cannot be read leave every node ineligible
 	// rather than every node eligible.
 	pool, poolErr := requestPool(req)
-	resp.EligibleNodes, resp.PoolPartitionCapability = a.evaluateEligibleNodes(selection, pool, poolErr, isAutomaticPlacement(req) && req.NNodes <= 1)
+	placement, _ := planning.ParsePlacement(req.Placement)
+	eligibleLoaded := false
+	loadEligible := func(requests func(*store.Node) map[int]planning.TargetCardRequest) {
+		if eligibleLoaded {
+			return
+		}
+		resp.EligibleNodes, resp.PoolPartitionCapability = a.evaluateEligibleNodes(selection, pool, poolErr, isAutomaticPlacement(req) && req.NNodes <= 1, requests)
+		eligibleLoaded = true
+	}
+	writeFieldErrors := func() { loadEligible(nil); writeEvaluateFieldErrors(w, &resp, errs) }
+
 	// A placement read failure was collected above; the zero placement keeps
 	// the rest of the answer renderable.
-	placement, _ := planning.ParsePlacement(req.Placement)
 	eng, err := deploy.SelectEngine(req.Engine)
 	if err != nil {
 		errs.add("engine", productError(ErrorEngineInvalid, "unknown engine", map[string]any{"engine": req.Engine}))
-		writeEvaluateFieldErrors(w, &resp, errs)
+		writeFieldErrors()
 		return
 	}
 	// Whether the form may offer a yield policy other than never: the create's
@@ -183,10 +192,10 @@ func (a *apiHandlers) evaluate(w http.ResponseWriter, r *http.Request) {
 		// A draft with an early field error is what the form must fix before a
 		// preview means anything; continuing would only re-report the same
 		// rules from the assembled launch.
-		writeEvaluateFieldErrors(w, &resp, errs)
+		writeFieldErrors()
 		return
 	}
-	profile, err := deploy.ProfileForEngine(eng.Name())
+	profile, err := deploy.ProfileForTarget(eng.Name(), targetVendor)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return
@@ -198,7 +207,7 @@ func (a *apiHandlers) evaluate(w http.ResponseWriter, r *http.Request) {
 	model, err := a.resolveDeploymentModelFromTemplate(r.Context(), req.ModelID, &selection, req.TemplateID)
 	if err != nil {
 		errs.add("model_id", err)
-		writeEvaluateFieldErrors(w, &resp, errs)
+		writeFieldErrors()
 		return
 	}
 	// A quick registration may not have metadata yet. Keep evaluation and
@@ -219,7 +228,7 @@ func (a *apiHandlers) evaluate(w http.ResponseWriter, r *http.Request) {
 		// ProductErrors that name a key land on that key's control; the
 		// extra-args parse error is the one that starts on the text box.
 		errs.add(fieldExtraArgs, err)
-		writeEvaluateFieldErrors(w, &resp, errs)
+		writeFieldErrors()
 		return
 	}
 	quick := launch.Quick
@@ -236,6 +245,17 @@ func (a *apiHandlers) evaluate(w http.ResponseWriter, r *http.Request) {
 	resp.Moved = launch.Moved
 	resp.TemplateParams = launch.TemplateParams
 	resp.TemplateResidualArgs = launch.TemplateResidual
+	if requestOverrides, overrideErr := requestContainerOverrides(req.ContainerOverrides); overrideErr == nil && placement.PD == nil {
+		mount, components := previewComponentMounts(nil, selection.Components, nil)
+		draft := evaluationLaunchRequest(evaluatePlanEnv{request: req, excludeDeployment: evaluateReq.DeploymentID, response: &resp, engine: eng, model: model, selection: selection, placement: placement, quick: quick, userExtraArgs: userExtraArgs, servedName: servedName, requestOverrides: requestOverrides, modelMount: mount, componentMounts: components, templateResidual: launch.TemplateResidual}, nil)
+		// Choosing another node also chooses its cards; explicit indexes are
+		// validated by the displayed plan for the selected node, not this dropdown.
+		draft.Placement.GPUIndexes = nil
+		if requests, requestErr := planning.TargetRequestsForLaunch(draft); requestErr == nil {
+			loadEligible(requests)
+		}
+	}
+	loadEligible(nil)
 	if placement.PD != nil {
 		requestOverrides, _ := requestContainerOverrides(req.ContainerOverrides)
 		a.evaluatePD(evaluatePDEnv{ctx: r.Context(), writer: w, request: req, excludeDeployment: evaluateReq.DeploymentID, response: &resp, engine: eng, model: model,
@@ -272,7 +292,7 @@ func (a *apiHandlers) evaluate(w http.ResponseWriter, r *http.Request) {
 			field := distributedErrorField(err)
 			errs.add(field, err)
 			if !isParallelismField(field) {
-				writeEvaluateFieldErrors(w, &resp, errs)
+				writeFieldErrors()
 				return
 			}
 			parallelInvalid = true
@@ -304,7 +324,7 @@ func (a *apiHandlers) evaluate(w http.ResponseWriter, r *http.Request) {
 			withGPUs, err := a.d.Store.NodeWithGPUs(n.UUID)
 			if err != nil {
 				errs.add("node_uuids", productError(ErrorDeploymentNodeInvalid, fmt.Sprintf("node %s: %v", n.UUID, err), map[string]any{"node": n.UUID, "detail": err.Error()}))
-				writeEvaluateFieldErrors(w, &resp, errs)
+				writeFieldErrors()
 				return
 			}
 			rankNodes = append(rankNodes, withGPUs)
@@ -353,7 +373,7 @@ func (a *apiHandlers) evaluate(w http.ResponseWriter, r *http.Request) {
 		req.PartitionBackend, err = resolvePartitionBackend(node, req.VRAMLimitGiB, req.PartitionBackend)
 		if err != nil {
 			errs.add("partition_backend", err)
-			writeEvaluateFieldErrors(w, &resp, errs)
+			writeFieldErrors()
 			return
 		}
 	}
@@ -371,7 +391,7 @@ func (a *apiHandlers) evaluate(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if parallelInvalid {
-		writeEvaluateFieldErrors(w, &resp, errs)
+		writeFieldErrors()
 		return
 	}
 	arch, archID, vendor := image.arch, image.archID, image.vendor
@@ -394,7 +414,7 @@ func (a *apiHandlers) evaluate(w http.ResponseWriter, r *http.Request) {
 		// The override layer is a section, not one control: the page-level
 		// line carries its decode failures.
 		errs.add("", overrideErr)
-		writeEvaluateFieldErrors(w, &resp, errs)
+		writeFieldErrors()
 		return
 	}
 	previewModelMount, previewMounts := previewComponentMounts(a.d.Store, selection.Components, node)

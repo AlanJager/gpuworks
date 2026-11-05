@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"errors"
 	"strings"
 
@@ -40,7 +41,7 @@ const (
 // dGPU slice never fits before the quota is set, so the form gates its quota
 // on this instead. A draft that names its node reads the node's own, so the
 // per-node derivation is skipped for it.
-func (a *apiHandlers) evaluateEligibleNodes(selection templateSelection, reqs map[string][]string, reqsErr error, automatic bool) ([]dto.EligibleNode, *proto.PartitionCapability) {
+func (a *apiHandlers) evaluateEligibleNodes(selection templateSelection, reqs map[string][]string, reqsErr error, automatic bool, loadTargetRequests func(*store.Node) map[int]planning.TargetCardRequest) ([]dto.EligibleNode, *proto.PartitionCapability) {
 	nodes, err := a.d.Store.ListNodes()
 	if err != nil || len(nodes) == 0 {
 		return nil, nil
@@ -106,7 +107,30 @@ func (a *apiHandlers) evaluateEligibleNodes(selection templateSelection, reqs ma
 			}
 		}
 		if predicate != nil && !nodeMatchesChipPredicate(node, *predicate, unsupported) {
-			reason(reasonChipMismatch, map[string]any{"predicate": strings.TrimSpace(selection.Spec.GPUs), "required_vendor": predicate.Vendor, "required_cc": predicate.CC, "required_name": predicate.Name, "actual_gpus": reportedGPUFacts(node)})
+			var required struct {
+				ArchID string `json:"arch_id"`
+			}
+			_ = json.Unmarshal([]byte(selection.Spec.GPUs), &required)
+			params := map[string]any{"predicate": strings.TrimSpace(selection.Spec.GPUs), "required_vendor": predicate.Vendor, "required_cc": predicate.CC, "required_name": predicate.Name, "actual_gpus": reportedGPUFacts(node)}
+			if archID := strings.TrimSpace(required.ArchID); archID != "" {
+				params["required_arch_id"] = archID
+			}
+			reason(reasonChipMismatch, params)
+		}
+		// Only a node that passed the ordinary eligibility filters needs the
+		// resolved launch capability preflight. Mixed nodes are checked by physical
+		// card below; offline, cordoned, mismatched and template-ineligible nodes
+		// do not trigger request parsing.
+		if entry.Eligible && planning.NeedsTargetPreflight(node) {
+			requests := map[int]planning.TargetCardRequest{}
+			if loadTargetRequests != nil {
+				requests = loadTargetRequests(node)
+			}
+			for _, refusal := range planning.TargetRefusalsByCard(node, func(gpu store.GPU) bool {
+				return predicate == nil || gpuMatchesChipPredicate(gpu, *predicate, unsupported)
+			}, func(gpu store.GPU) planning.TargetCardRequest { return requests[gpu.Index] }) {
+				reason(refusal.Code, refusal.Params)
+			}
 		}
 		if automatic && entry.Eligible && poolPartition == nil {
 			if capability, ok := partitioncap.Preferred(node); ok {
@@ -122,9 +146,7 @@ func (a *apiHandlers) evaluateEligibleNodes(selection templateSelection, reqs ma
 // template's GPU predicate under the model's unsupported rules.
 func nodeMatchesChipPredicate(node *store.Node, predicate chipmatch.Predicate, unsupported []chipmatch.Unsupported) bool {
 	for _, gpu := range node.OwnedGPUs() {
-		reported := chipmatch.ReportedGPU(gpu.Name, gpu.Vendor, gpu.ArchID, gpu.ComputeCapability)
-		selection := chipmatch.Select(reported, []chipmatch.Spec{{GPUs: predicate}}, unsupported)
-		if selection.Matched {
+		if gpuMatchesChipPredicate(gpu, predicate, unsupported) {
 			return true
 		}
 	}
@@ -137,7 +159,16 @@ func reportedGPUFacts(node *store.Node) []map[string]string {
 	out := make([]map[string]string, 0, len(node.OwnedGPUs()))
 	for _, gpu := range node.OwnedGPUs() {
 		reported := chipmatch.ReportedGPU(gpu.Name, gpu.Vendor, gpu.ArchID, gpu.ComputeCapability)
-		out = append(out, map[string]string{"name": reported.Name, "vendor": reported.Vendor, "cc": strings.TrimSpace(gpu.ComputeCapability)})
+		facts := map[string]string{"name": reported.Name, "vendor": reported.Vendor, "cc": strings.TrimSpace(gpu.ComputeCapability)}
+		if archID := strings.TrimSpace(gpu.ArchID); archID != "" {
+			facts["arch_id"] = archID
+		}
+		out = append(out, facts)
 	}
 	return out
+}
+
+func gpuMatchesChipPredicate(gpu store.GPU, predicate chipmatch.Predicate, unsupported []chipmatch.Unsupported) bool {
+	reported := chipmatch.ReportedGPU(gpu.Name, gpu.Vendor, gpu.ArchID, gpu.ComputeCapability)
+	return chipmatch.Select(reported, []chipmatch.Spec{{GPUs: predicate}}, unsupported).Matched
 }

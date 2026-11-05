@@ -137,6 +137,59 @@ specs:
     - type: openai.chat
       endpoint: /v1/chat/completions
       mode: stream
+- name: bf16-vllm-nvidia-general
+  display_name_zh_cn: Ampere 及以上 · BF16
+  display_name_en: Ampere+ · BF16
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r4
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen3-0.6B
+        revision: c1899de289a04d12100db370d81485cdf75e47ca
+    - modelscope:
+        repo_id: Qwen/Qwen3-0.6B
+        revision: 09b42cad3d112e832108974449ccb5e8e0f5b5d1
+  weight_bytes: 1519209243
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-vllm-nvidia-turing
+  display_name_zh_cn: Turing · BF16
+  display_name_en: Turing · BF16
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda12.9-vllm0.31.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen3-0.6B
+        revision: c1899de289a04d12100db370d81485cdf75e47ca
+    - modelscope:
+        repo_id: Qwen/Qwen3-0.6B
+        revision: 09b42cad3d112e832108974449ccb5e8e0f5b5d1
+  weight_bytes: 1519209243
+  gpus:
+    vendor: nvidia
+    cc: 7.5..7.9
+  args:
+  - --dtype
+  - half
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
 - name: bf16-vllm-hygon-4cb0dcc8
   display_name_zh_cn: K100 / BW · BF16
   display_name_en: K100 / BW · BF16
@@ -325,6 +378,68 @@ specs:
     - type: openai.chat
       endpoint: /v1/chat/completions
       mode: stream
+- name: bf16-vllm-amd-mi300
+  display_name_zh_cn: Instinct MI300 系列 · BF16
+  display_name_en: Instinct MI300 series · BF16
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:rocm7.2.3-vllm0.30.0-r1
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen3-0.6B
+        revision: c1899de289a04d12100db370d81485cdf75e47ca
+    - modelscope:
+        repo_id: Qwen/Qwen3-0.6B
+        revision: 09b42cad3d112e832108974449ccb5e8e0f5b5d1
+  weight_bytes: 1503300328
+  gpus:
+    vendor: amd
+    arch_id: gfx942
+  args:
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - hermes
+  - --reasoning-parser
+  - qwen3
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-vllm-amd-ryzen-ai-max
+  display_name_zh_cn: Ryzen AI Max 系列 · BF16
+  display_name_en: Ryzen AI Max series · BF16
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:rocm7.2.3-vllm0.30.0-r1
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen3-0.6B
+        revision: c1899de289a04d12100db370d81485cdf75e47ca
+    - modelscope:
+        repo_id: Qwen/Qwen3-0.6B
+        revision: 09b42cad3d112e832108974449ccb5e8e0f5b5d1
+  weight_bytes: 1503300328
+  gpus:
+    vendor: amd
+    arch_id: gfx1151
+  args:
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - hermes
+  - --reasoning-parser
+  - qwen3
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
 - name: bf16-sglang-ppu-pd-c1899de2
   display_name_zh_cn: PPU · BF16 · PD 分离
   display_name_en: PPU · BF16 · PD
@@ -347,6 +462,63 @@ specs:
     name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
   args:
   - --enable-metrics
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-sglang-ppu-pd-rdma-c1899de2
+  display_name_zh_cn: PPU · BF16 · PD 分离 · RDMA
+  display_name_en: PPU · BF16 · PD · RDMA
+  scenario: balanced
+  engine: sglang
+  pd_mode: sglang-ppu-mooncake
+  image: gpuworks/gpuworks-runner:hggc13.0-sglang0.5.13-r3
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen3-0.6B
+        revision: c1899de289a04d12100db370d81485cdf75e47ca
+    - modelscope:
+        repo_id: Qwen/Qwen3-0.6B
+        revision: 09b42cad3d112e832108974449ccb5e8e0f5b5d1
+  weight_bytes: 1503300328
+  gpus:
+    vendor: ppu
+    name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
+  args:
+  - --enable-metrics
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-vllm-ppu-pd-rdma-c1899de2
+  display_name_zh_cn: PPU · BF16 · PD 分离 · RDMA
+  display_name_en: PPU · BF16 · PD · RDMA
+  scenario: balanced
+  engine: vllm
+  pd_mode: vllm-ppu-mooncake
+  image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen3-0.6B
+        revision: c1899de289a04d12100db370d81485cdf75e47ca
+    - modelscope:
+        repo_id: Qwen/Qwen3-0.6B
+        revision: 09b42cad3d112e832108974449ccb5e8e0f5b5d1
+  weight_bytes: 1503300328
+  gpus:
+    vendor: ppu
+    name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
+  args:
+  - --trust-remote-code
+  env: null
   api:
     health_endpoint: /health
     operations:

@@ -118,7 +118,7 @@ Weight size does not represent total runtime memory use. You also need room for 
 ![Set the maximum context length to 4096 under Model and Context in Expert Deploy, and confirm that configuration evaluation passes](../assets/screenshots/en/tutorial-mac-context.png)
 
 4. Wait for **Compatibility check passed** on the right. Check the local node, GPU, environment package, and memory requirements, then click **Deploy**.
-5. Open **Deployments → mac-gpt-oss** and watch model file preparation, environment package acquisition, and engine startup. Wait until the deployment is **Running**, its health is **Healthy**, and the replica count is `1/1` before entering the Playground.
+5. Open **Inference Services → mac-gpt-oss** and watch model file preparation, environment package acquisition, and engine startup. Wait until the deployment is **Running**, its health is **Healthy**, and the replica count is `1/1` before entering the Playground.
 
 The first deployment downloads the model and environment package. After the downloads finish, you still need to wait for the engine to load the model. During file downloads, the deployment may show **Pending**, **No replica**, and `0/1`. Check the downloaded amount, percentage, and speed under **Model Preparation** to confirm that files are still downloading. If configuration evaluation reports insufficient memory, first reduce other applications' memory use or adjust the model and context, then evaluate again. Do not decide whether the model can run based only on weight size.
 
@@ -148,7 +148,7 @@ When the local node is online, the deployment is healthy, and the Playground ret
 
 When you do not need inference, you can stop the model to release runtime resources. While stopped, `mac-gpt-oss` cannot accept chat requests.
 
-1. Return to **Deployments**, open `mac-gpt-oss`, and click **Stop** at the top of the details. Click **Stop** again in the confirmation page.
+1. Return to **Inference Services**, open `mac-gpt-oss`, and click **Stop** at the top of the details. Click **Stop** again in the confirmation page.
 2. Wait for the deployment to show **Stopped**, the replica count to become `0/1`, and the instance count in the details to become `0`. To use it again later, return to the same deployment, click **Start**, and wait for it to become healthy before sending requests.
 
 Stopping the deployment retains its configuration, model files, and environment package; it does not uninstall GPUWorks. The console and agent continue running independently. The console installed in this tutorial is not registered to start at boot.

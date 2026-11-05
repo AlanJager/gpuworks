@@ -16,7 +16,7 @@ The platform generates input for Fixed-Length Random. This workload helps you le
 
 ## 1. Select the Service Under Test
 
-1. Open **Inference Services → Evaluations** and click **New Evaluation**.
+1. Open **Inference → Evaluations** and click **New Evaluation**.
 2. In **Choose Question**, select **Parameter Sweep**.
 3. In **Set Target**, enter the following values and click **Next**.
 

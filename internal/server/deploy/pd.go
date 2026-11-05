@@ -6,8 +6,11 @@
 package deploy
 
 import (
+	"slices"
 	"strconv"
+	"strings"
 
+	"gpuworks.ai/gpuworks/internal/accelerator"
 	"gpuworks.ai/gpuworks/internal/server/pdmode"
 )
 
@@ -75,12 +78,55 @@ func kvTransferNetworkEnv(p Params) map[string]string {
 	switch {
 	case n.HostRDMA() && len(n.HCAs) > 0:
 		env["UCX_NET_DEVICES"] = n.HCAs[0]
-		env["UCX_TLS"] = "rc,cuda_copy,cuda_ipc,gdr_copy"
+		// The transport list names CUDA's copy transports; on ROCm UCX picks
+		// its own (rocm_copy, rocm_ipc) once the device is named.
+		if accelerator.NormalizeVendor(p.Vendor) != accelerator.VendorAMD {
+			env["UCX_TLS"] = "rc,cuda_copy,cuda_ipc,gdr_copy"
+		}
 	case n.Interface != "":
 		env["UCX_NET_DEVICES"] = n.Interface
 		env["UCX_TCP_BRIDGE_ENABLE"] = "y"
 	}
 	return env
+}
+
+// pdNoProxy keeps a runtime-injected proxy off a PD instance's own HTTP
+// handshakes (SGLang's bootstrap server, vLLM Mooncake's): the engine
+// registers with them at 0.0.0.0 and peers query them at the instance's PD
+// address. A container runtime that injects a proxy (Docker's client proxies,
+// for one) would carry those calls to the proxy, which answers 502 for a host
+// it cannot reach: measured on a PPU host whose no_proxy did not list the node
+// address. Stating the variables keeps the runtime from injecting its own; the
+// engine reads its weights offline, so nothing else it does needs a proxy.
+func pdNoProxy(p Params, env map[string]string) {
+	noProxy := "localhost,127.0.0.1,::1,0.0.0.0"
+	if host := p.PD.SideChannelHost; host != "" {
+		noProxy += "," + host
+	}
+	env["NO_PROXY"], env["no_proxy"] = noProxy, noProxy
+}
+
+// hcaDevices are the device names of a network's HCAs ("mlx5_0:1" names
+// device mlx5_0, port 1), each once, in order.
+func hcaDevices(hcas []string) []string {
+	var out []string
+	for _, hca := range hcas {
+		dev, _, _ := strings.Cut(hca, ":")
+		if dev != "" && !slices.Contains(out, dev) {
+			out = append(out, dev)
+		}
+	}
+	return out
+}
+
+// MooncakeProtocol is the protocol a TransportMooncake instance hands the
+// Mooncake transfer engine: RDMA on a host RDMA compute network, TCP on any
+// other (the management network, an Ethernet network, or none on one host).
+func MooncakeProtocol(n ComputeNetwork) string {
+	if n.HostRDMA() {
+		return "rdma"
+	}
+	return "tcp"
 }
 
 // vllmPDEnv is the vLLM side channel environment of a PD instance, as the
@@ -97,6 +143,17 @@ func vllmPDEnv(p Params, env map[string]string) {
 	mode := p.PD.mode()
 	for key, value := range mode.Env {
 		env[key] = value
+	}
+	// vLLM's MooncakeConnector serves its KV handshake from a bootstrap
+	// server on the prefill instance, over HTTP.
+	if mode.Transport.MooncakeBootstrap() {
+		if p.PD.Role == pdmode.RolePrefill && p.PD.SideChannelPort > 0 {
+			env["VLLM_MOONCAKE_BOOTSTRAP_PORT"] = strconv.Itoa(p.PD.SideChannelPort)
+		}
+		if p.PD.SideChannelHost != "" {
+			env["VLLM_HOST_IP"] = p.PD.SideChannelHost
+		}
+		pdNoProxy(p, env)
 	}
 	if mode.SideChannel == pdmode.SideChannelNIXL {
 		if p.PD.SideChannelHost != "" {
@@ -140,6 +197,9 @@ type PDModeProfile struct {
 	Fallbacks      []string `json:"fallbacks"`
 	KVLoadFailures []string `json:"kv_load_failures"`
 	Unverified     bool     `json:"unverified,omitempty"`
+	// FirstRequestCompiles: the first request after a start compiles
+	// kernels and takes minutes (pdmode.Mode.FirstRequestCompiles).
+	FirstRequestCompiles bool `json:"first_request_compiles,omitempty"`
 }
 
 func pdModeProfiles(engine string) []PDModeProfile {
@@ -150,6 +210,7 @@ func pdModeProfiles(engine string) []PDModeProfile {
 			Name: mode.Name, Vendors: nonNil(mode.Vendors), Roles: nonNil(mode.Roles), ScalableToZero: nonNil(mode.ScalableToZero),
 			TPRule: string(mode.TP), MaxUnitsPerRole: pdmode.MaxUnitsPerRole,
 			Fallbacks: nonNil(mode.Fallbacks()), KVLoadFailures: nonNil(mode.KVLoadFailures), Unverified: mode.Unverified,
+			FirstRequestCompiles: mode.FirstRequestCompiles,
 		})
 	}
 	return out

@@ -8,8 +8,9 @@ func runFilters(req Request, node NodeSnapshot) (bool, Reason) {
 	if node.ServingUnavailable {
 		return false, Reason{Code: ReasonServingUnavailable}
 	}
+
 	if missing := accelerator.Unsupported(node.Vendor, req.Features...); len(missing) > 0 {
-		return false, Reason{Code: featureReason[missing[0]], Params: map[string]any{"vendor": accelerator.VendorBrand(node.Vendor)}}
+		return false, UnsupportedFeature(node.Vendor, missing[0])
 	}
 	if req.StorageRefusal != nil {
 		return false, *req.StorageRefusal
@@ -49,9 +50,19 @@ func runFilters(req Request, node NodeSnapshot) (bool, Reason) {
 
 // featureReason names each platform feature's refusal.
 var featureReason = map[accelerator.Feature]string{
-	accelerator.FeatureEngineSleep: ReasonSleepUnsupportedOnNode,
-	accelerator.FeatureMultiNode:   ReasonMultiNodeUnsupportedOnNode,
-	accelerator.FeatureKVDiskTier:  ReasonKVDiskUnsupportedOnNode,
+	accelerator.FeatureEngineSleep:      ReasonSleepUnsupportedOnNode,
+	accelerator.FeatureMultiNode:        ReasonMultiNodeUnsupportedOnNode,
+	accelerator.FeaturePD:               ReasonPDUnsupportedOnNode,
+	accelerator.FeatureKVDiskTier:       ReasonKVDiskUnsupportedOnNode,
+	accelerator.FeaturePipelineParallel: ReasonAcceleratorFeatureUnsupported,
+	accelerator.FeatureDataParallel:     ReasonAcceleratorFeatureUnsupported,
+}
+
+// FeatureReason returns the scheduler refusal code for an unsupported
+// platform feature. Planning uses the same mapping when explaining candidate
+// nodes before running a full schedule.
+func FeatureReason(feature accelerator.Feature) string {
+	return featureReason[feature]
 }
 
 func contains(values []string, want string) bool {
@@ -110,4 +121,13 @@ func usableGPUs(gpus []GPU, req Request, need int64) []GPU {
 		}
 	}
 	return out
+}
+
+// UnsupportedFeature is the shared structured refusal for a target capability.
+func UnsupportedFeature(vendor string, feature accelerator.Feature) Reason {
+	code := FeatureReason(feature)
+	if code == "" {
+		code = ReasonAcceleratorFeatureUnsupported
+	}
+	return Reason{Code: code, Params: map[string]any{"vendor": accelerator.VendorBrand(vendor), "feature": string(feature)}}
 }

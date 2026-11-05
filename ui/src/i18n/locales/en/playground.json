@@ -1,5 +1,5 @@
 {
-  "sleep": {"wakesOnRequest": "The model is asleep; sending a request wakes it, and the first one waits a few seconds longer.", "held": "The model was put to sleep by hand or by a schedule, so a request does not wake it. Wake it first.", "heldElsewhere": "The model was put to sleep by hand or by a schedule, so a request does not wake it. Wake it from Deployments first."},
+  "sleep": {"wakesOnRequest": "The model is asleep; sending a request wakes it, and the first one waits a few seconds longer.", "held": "The model was put to sleep by hand or by a schedule, so a request does not wake it. Wake it first.", "heldElsewhere": "The model was put to sleep by hand or by a schedule, so a request does not wake it. Wake it from Inference Services first."},
   "inputs": {"select": "Select a value", "discoveryPending": "Loading available values"},
   "request": {"errorTooLarge": "The upstream error was too large to display. Check the input and selected model.", "routeMissing": "This deployment does not serve the requested route"},
   "page": { "unavailableModel": "Model unavailable: {{model}}", "unavailableHint": "Select an available model to continue. Your conversation is kept.",

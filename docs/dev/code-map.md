@@ -95,7 +95,7 @@
 
 - `app`：装配根：重连生命周期 + doctor 自检 + 后台任务（bench、下载重试、netprobe、modeldisk）；连接身份来自 `<state>/gpuworks-agent.conf`（命令行 flag 与环境变量可覆盖，优先级见 CLI 参考），server 发的 UUID 只存内存。
 - `conn`：外连 + yamux 流；断线重连。
-- `gpu`：多厂商探测器。**不用 NVML cgo**，走 `nvidia-smi` + `/proc` + sysfs；ascend `npu-smi`、ppu `ppu-smi`、hygon `hy-smi`、Apple silicon `sysctl` + `ioreg`。`gpu.Prober` 可注入以做 hermetic 测试。
+- `gpu`：多厂商探测器。AMD 通过 amdgpu sysfs/KFD 探测并按已发布身份注入所选 render 设备；单卡异常保留健康同伴。**不用 NVML cgo**，走 `nvidia-smi` + `/proc` + sysfs；ascend `npu-smi`、ppu `ppu-smi`、hygon `hy-smi`、Apple silicon `sysctl` + `ioreg`。`gpu.Prober` 可注入以做 hermetic 测试。
 - `runtime`：docker / udocker / nerdctl（containerd，全命令固定 namespace；`pull_output.go` 把 nerdctl 重画的进度表换算成逐层字节行与解包行）driver，另有测试用 recording driver（shell out 到 CLI，不用 Go SDK）；`runtime.Driver` 可注入。
   - `runtime/nerdctl` 的容器身份标签：`gpuworks.image-target` 保存启动前查询到的 manifest/index digest。`Run` 只追加这一个 `--label`，保留原镜像引用。观测通过内部 `WorkloadInspection.ImageLookupRef` 按 target 查询镜像，核对返回的 target 后，将 config digest 作为容器和镜像的对外 ImageID，与 Docker 及原有镜像上报保持一致；不另外保存 config ID 标签。查询失败时不猜测 ImageID。标签缺失、无效或与不可变的 `Image` 冲突时只有镜像身份未知，容器本身照常观测，不自动补标或重建。标签可跨 agent 重启、容器创建后改 tag 保留，但不能消除 inspect 到创建之间并发改 tag 的窗口；启动前查询失败仍按原参数启动且不写标签。不要手工写入这个保留标签。
   - `runtime/hostproc`：macOS 的 `host` driver（ADR 0044）。镜像是 darwin 环境包（OCI 镜像，用 `runtime/udocker/native` 的镜像库拉取与解包），引擎作为宿主进程组运行，`launch.go` 把容器形态的 spec（挂载、包内路径）翻译成宿主路径；`SupportedOn` 是它只在 macOS 可用的唯一判定。环境包由 `build/host-envs` 构建。

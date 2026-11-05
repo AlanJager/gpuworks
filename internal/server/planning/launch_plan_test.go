@@ -30,7 +30,7 @@ func TestPlanLaunchSpendsTheSameCatalogFactsForEveryCaller(t *testing.T) {
 			Name: "balanced", Engine: "vllm", Image: "registry.example/app:v1", Quantization: "bf16",
 			WeightBytes: 8 << 30, RuntimeWeightBytes: 6 << 30,
 			WeightSources: `[{"provider":"huggingface","repo_id":"org/fixture-8b"}]`,
-			GPUs:          `{"min_count":1}`,
+			GPUs:          `{"vendor":"nvidia","min_count":1}`,
 		}},
 	}}); err != nil {
 		t.Fatal(err)
@@ -44,7 +44,7 @@ func TestPlanLaunchSpendsTheSameCatalogFactsForEveryCaller(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	selection, err := deploy.DecodeCatalogSelection([]byte(`{"engine":"vllm","spec_name":"balanced","spec_source":"upstream","weight_bytes":8589934592,"runtime_weight_bytes":6442450944,"gpus":{"min_count":1},"extra_args":["--dtype","bfloat16"]}`))
+	selection, err := deploy.DecodeCatalogSelection([]byte(`{"engine":"vllm","spec_name":"balanced","spec_source":"upstream","weight_bytes":8589934592,"runtime_weight_bytes":6442450944,"gpus":{"vendor":"nvidia","min_count":1},"extra_args":["--dtype","bfloat16"]}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -206,6 +206,43 @@ func TestPlanLaunchCapsSGLangThreadsOnRunveilNodes(t *testing.T) {
 				t.Fatalf("%s on %s: removed TORCH_NUM_THREADS is still set", name, tc.runtime)
 			}
 		}
+	}
+}
+
+func TestLaunchInputBuildsCommandFeaturesOnlyForOwnedAMD(t *testing.T) {
+	selection := deploy.CatalogSelection{
+		Entrypoint: []string{"sglang", "serve"},
+		ExtraArgs:  []string{"--from-template"},
+	}
+	manual := deploy.ContainerOverrides{
+		CommandMode: string(deploy.CommandManual),
+		CmdDisplay:  `["sglang","serve","--enable-sleep-mode=true"]`,
+	}
+	for _, tc := range []struct {
+		name string
+		node *store.Node
+		want bool
+	}{
+		{name: "nvidia", node: &store.Node{GPUs: []store.GPU{{Index: 0, Vendor: "nvidia"}}}},
+		{name: "huawei", node: &store.Node{GPUs: []store.GPU{{Index: 0, Vendor: "ascend"}}}},
+		{name: "apple", node: &store.Node{GPUs: []store.GPU{{Index: 0, Vendor: "apple"}}}},
+		{name: "amd", node: &store.Node{GPUs: []store.GPU{{Index: 0, Vendor: "amd"}}, GPUVendor: "amd"}, want: true},
+		{name: "mixed includes owned amd", node: &store.Node{GPUs: []store.GPU{{Index: 0, Vendor: "nvidia"}, {Index: 1, Vendor: "amd"}}}, want: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			input, err := launchInput(nil, LaunchRequest{
+				Engine: "sglang", Node: tc.node, Selection: selection,
+				Source:    LaunchSourceFromRequest("image", manual),
+				ExtraArgs: []string{"--from-request"},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if input.RequestedFeatures == nil || !input.RequestedFeatures.CommandKnown {
+				t.Fatalf("missing resolved snapshot: %+v", input.RequestedFeatures)
+			}
+
+		})
 	}
 }
 

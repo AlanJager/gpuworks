@@ -145,7 +145,7 @@ Finish reasons are normalized to the chat convention: `max_tokens`, or a status 
 
 PD disaggregation assigns input prompt computation and subsequent generation to different instances. When vLLM sequential handoff succeeds, the prefill instance computes the prompt, then passes the computed result (KV) to the decode instance to continue content generation. Decode counts all received KV as cache hits, so its reported `cached_tokens` equals the full prompt length and cannot indicate how much cache was actually reused during prefill.
 
-**Sequential handoff modes `vllm-nixl` and `vllm-ascend-mooncake` use the cache hit count reported by the prefill instance.** For example, if the input contains 1,036 tokens and prefill actually hits the cache for 512 tokens, the gateway returns `cached_tokens` of 512 even if decode reports 1,036 hits. This means 512 input tokens directly reuse cached prefill results.
+**Sequential handoff modes `vllm-nixl`, `vllm-ascend-mooncake`, and `vllm-mooncake` use the cache hit count reported by the prefill instance.** For example, if the input contains 1,036 tokens and prefill actually hits the cache for 512 tokens, the gateway returns `cached_tokens` of 512 even if decode reports 1,036 hits. This means 512 input tokens directly reuse cached prefill results.
 
 | Situation | Returned `cached_tokens` |
 |---|---|

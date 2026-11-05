@@ -23,7 +23,7 @@
         "created": "Added {{n}}",
         "updated": "Updated {{n}}",
         "deleted": "Deleted {{n}}",
-        "deprecated": "Deprecated {{n}}"
+        "deprecated": "Kept as older {{n}}"
       }
     },
     "addCommunity": "Add Community Image",
@@ -127,9 +127,10 @@
     "sizeHelp": "Estimated compressed Registry layer size. Actual node usage is reported by each node.",
     "deleteTitle": "Delete image version “{{ref}}”?",
     "deleteDescription": "Node distribution records for this version will also be deleted.",
-    "deprecatedSince": "Deprecated since catalog {{version}}",
+    "deprecatedSince": "Superseded in catalog {{version}}; kept only for the deployments still using it and the nodes that pulled it",
     "disabledBySeries": "Disabled with series",
-    "deprecatedRefs": "Deprecated · {{refs}} references"
+    "deprecatedRefs": "Older version · {{refs}} references",
+    "olderVersion": "Older version"
   },
   "nodeTable": {
     "column": {

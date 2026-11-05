@@ -14,7 +14,7 @@ ADR 0007 决策 3 已经规定"导入时能映射参数字典的拆成 key-value
 
 1. **参数字典是唯一产地。** `deploy/param_specs.go` 一行一个参数，持有 key、类型、控件、默认值（可按引擎分列）、别名（如 `half → float16`）、每引擎的取值 flag 与关闭 flag（布尔参数的 on/off 两种形态）。所有默认值、枚举、上下限、key↔flag 映射只从这里读；`sglang.go` 手写的映射表、`ValidateQuickParamsForEngine` 手写的枚举、前端硬编码的 key 列表、`structuredQuickFlagSet` 与 `ReverseArgs.booleanFlagValue` 里的极性例外全部删除。
 2. **写入边界物化一次。** `evaluate` 与 `create` 经同一个 `deploy.Materialize`：请求字段、extra_args、目录 spec args 按"显式字段 > extra_args > 模板 args > 字典默认"合并成一份完整的类型化配置，字典内 flag 从 args 里拆进字段，字典外 flag 留作残余 args。extra_args 里的字典内 flag 搬入字段并在响应里回显 `moved`；与显式字段值冲突时拒绝（ProductError `LAUNCH_CONFIG_CONFLICT`，同时给出两个值）。此后系统内部不再有第二种表示。
-3. **未设置即引擎默认，服务端不发明值。** 持久化配置只记录用户字段、extra_args 与模板陈述过的值；没有任何一方陈述的 key 保持未设置，含义是"用户没有选择，引擎自身默认生效"，argv 不发射它。参数字典的默认值是表单的初始值：前端提交它显示的每一个值，所以新建部署的 argv 与界面所见一致（vLLM 显存利用率默认 0.9，与引擎自身默认相同；SGLang 0.88）。估算所需而未设置的利用率在 planning 一处按字典默认解析（`deploy.DefaultGPUMemUtil`），估算、reserve、scheduler 不再各自回退，无效值是错误。字典标为 `Automatic` 的 key（如 `max_model_len`）由估算器从模型事实（config.json）推导，不发明数字。`dtype` 类硬件相关 key 允许 `auto` 作为显式值，如何按节点解析见 `todo.md` T6，不在本 ADR。
+3. **未设置即引擎默认，服务端不发明值。** 持久化配置只记录用户字段、extra_args 与模板陈述过的值；没有任何一方陈述的 key 保持未设置，含义是"用户没有选择，引擎自身默认生效"，argv 不发射它。参数字典的默认值是表单的初始值：前端创建部署时提交它显示的每一个值，所以新建部署的 argv 与界面所见一致（vLLM 显存利用率默认 0.9，与引擎自身默认相同；SGLang 0.88）。重新评估时，服务端回填且用户未编辑的显示值不提升为显式字段，避免旧模板或字典默认覆盖新模板。用户编辑、显式清空以及从 extra_args 搬入字段的选择继续保留；当前评估完成后，创建请求确认整份显示配置。估算所需而未设置的利用率在 planning 一处按字典默认解析（`deploy.DefaultGPUMemUtil`），估算、reserve、scheduler 不再各自回退，无效值是错误。字典标为 `Automatic` 的 key（如 `max_model_len`）由估算器从模型事实（config.json）推导，不发明数字。`dtype` 类硬件相关 key 允许 `auto` 作为显式值，如何按节点解析见 `todo.md` T6，不在本 ADR。
 4. **快照是启动的唯一输入。** `Deployment.QuickParams`（完整配置）、`Deployment.ExtraArgs`（用户残余）、`CatalogSelectionSnapshot.extra_args`（模板残余）在创建时写定，实例启动只读它们，不回目录。这与 ADR 0002 一致，也是现状，只是快照内容从原始 args 变为拆分结果。
 5. **读者只读这一份。** argv 组装、估算与调度、表单渲染、模板偏差判定、已部署实例的显存账本都从持久化配置取值。argv 组装的层间规则只剩两条，且都只作用于字典外的残余：用户残余覆盖平台注入的同名 flag（`--host` 等）；用户残余覆盖模板残余的同名 flag。
 6. **命令模式 `manual` 是唯一例外。** 用户接管整条命令时，命令文本是真源：估算不适用并在界面明示，表单参数字段置灰；放置输入（GPU 数、TP、显存限额）仍来自表单，准入按权重加 reserve；平台仍改写 `--port` 与 `--served-model-name`。`engine` 与 `image-entry` 模式不在例外之列。
@@ -30,3 +30,9 @@ ADR 0007 决策 3 已经规定"导入时能映射参数字典的拆成 key-value
 ## 修订（2026-11-02）
 
 决策 7 的「解码不了即拒绝导入」改为不阻止导入：只有一个 key 拥有的 flag 若带着字典解不出来的值，flag 和值原样留在残余 args 里交给引擎，导入给出 `CATALOG_ARG_PASSED_THROUGH` 警告。原因是字典总落后于引擎（新的 tool call / reasoning parser、KV 精度不断加入），拒绝导入等于让平台的词表决定模板能不能用，作者被迫绕道（例如为了用 Ascend 的 int8 KV cache 把整个档位改成 callable 引擎）。代价是这样的值不进入类型化配置，部署表单和显存估算看不到它；内置目录出现该警告时更新字典。
+
+## 启动功能快照（2026-11-03）
+
+功能准入消费 ResolveLaunch 生成的真实可执行 argv 与结构化拓扑，参数名词表由 internal/engines 维护。RequestedFeatures 随现有 ResolvedLaunch 快照下发；agent 核对该快照和 desired state 的显式结构字段，不反向解析 shell。预览与实际创建都使用同一个 resolver；预览明确采用功能收集模式，不靠未分配 GPU 等字段组合隐式选择校验模式。
+
+未知入口、动态 shell 和不可识别的功能值记为 CommandKnown=false。显式受限目标拒绝无法确认的命令，未声明该限制的目标保留既有自定义命令行为。历史无快照协议保留结构检查。该快照用于准入，不成为估算器反解 argv 的第二个配置源；估算继续消费既有 LaunchConfig。分区状态仍由 partitioncap 唯一推导。

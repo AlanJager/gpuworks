@@ -96,6 +96,12 @@ type Node struct {
 	// every deployment would still fail at container start. A code, so
 	// the operator reads it in their own language.
 	RuntimeGPUBlocked string `gorm:"size:64"`
+	// PeerMemory is whether the node's RDMA NICs can register its cards'
+	// memory (proto.PeerMemoryLoaded / PeerMemoryMissing), empty when the
+	// node has no RDMA NIC, its vendor has no peer-memory module, or its
+	// agent predates the report. PD modes over RDMA (pdmode.Mode.PeerMemory)
+	// place only on nodes where it is loaded.
+	PeerMemory string `gorm:"size:16"`
 	// RuntimeFallbackFrom is the runtime the agent's auto-detection passed
 	// over because it cannot give a container this node's accelerators
 	// (docker | nerdctl), and RuntimeFallbackReason the code saying why

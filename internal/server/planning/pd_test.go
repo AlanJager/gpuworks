@@ -19,6 +19,8 @@ func pdNode(uuid, state string, gpus ...string) *store.Node {
 			vendor = "ascend"
 		case "PPU-ZW810E":
 			vendor = "ppu"
+		case "K100_AI":
+			vendor = "hygon"
 		}
 		node.GPUs = append(node.GPUs, store.GPU{Index: i, Name: name, Vendor: vendor})
 	}
@@ -156,6 +158,7 @@ func TestValidatePDNodes(t *testing.T) {
 		"b":   pdNode("b", store.NodeStateOnline, "RTX 3080 Ti"),
 		"off": pdNode("off", "offline", "RTX 4090"),
 		"npu": pdNode("npu", store.NodeStateOnline, "Ascend910B4"),
+		"dcu": pdNode("dcu", store.NodeStateOnline, "K100_AI", "K100_AI"),
 	}
 	check := func(text string, requireOnline bool) ([]messages.Warning, error) {
 		pd := parsePDText(t, text)
@@ -173,7 +176,13 @@ func TestValidatePDNodes(t *testing.T) {
 	if err != nil || len(warnings) != 1 || warnings[0].Code != messages.WarningPDGPUModelsDiffer {
 		t.Fatalf("mixed models: %v %v", warnings, err)
 	}
+	// Hygon DCUs run vllm-mooncake and no NIXL mode.
+	if _, err := check(`{"pd":{"mode":"vllm-mooncake","roles":{"prefill":{"units":[{"node_uuid":"dcu","gpus":[0]}]},"decode":{"units":[{"node_uuid":"dcu","gpus":[1]}]}}}}`, true); err != nil {
+		t.Fatalf("vllm-mooncake on DCUs: %v", err)
+	}
 	for text, code := range map[string]string{
+		`{"pd":{"mode":"vllm-nixl","roles":{"prefill":{"units":[{"node_uuid":"dcu"}]},"decode":{"units":[{"node_uuid":"a"}]}}}}`:                 messages.ErrorPDVendorUnsupported,
+		`{"pd":{"mode":"vllm-mooncake","roles":{"prefill":{"units":[{"node_uuid":"a"}]},"decode":{"units":[{"node_uuid":"a"}]}}}}`:               messages.ErrorPDVendorUnsupported,
 		`{"pd":{"mode":"vllm-nixl","roles":{"prefill":{"units":[{"node_uuid":"zz"}]},"decode":{"units":[{"node_uuid":"a"}]}}}}`:                  messages.ErrorPDNodeUnknown,
 		`{"pd":{"mode":"vllm-nixl","roles":{"prefill":{"units":[{"node_uuid":"off"}]},"decode":{"units":[{"node_uuid":"a"}]}}}}`:                 messages.ErrorPDNodeOffline,
 		`{"pd":{"mode":"vllm-nixl","roles":{"prefill":{"units":[{"node_uuid":"b","gpus":[3]}]},"decode":{"units":[{"node_uuid":"a"}]}}}}`:        messages.ErrorPDNodeGPUMissing,

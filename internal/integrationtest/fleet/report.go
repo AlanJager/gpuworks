@@ -27,6 +27,14 @@ func (r Report) Lines() []string {
 			r.EventLatency.Percentile(0.99).Round(time.Millisecond),
 			r.EventLatency.Count()))
 	}
+	if !r.GPUReads {
+		lines = append(lines, "GET /gpus: not sampled (the GPU inventory reader was off)")
+	} else {
+		lines = append(lines, fmt.Sprintf("GET /gpus p50=%s p99=%s (n=%d)",
+			r.GPUReadLatency.Percentile(0.5).Round(time.Millisecond),
+			r.GPUReadLatency.Percentile(0.99).Round(time.Millisecond),
+			r.GPUReadLatency.Count()))
+	}
 	// Quiesced reads separate list cost from concurrent write pressure.
 	lines = append(lines, fmt.Sprintf("GET /deployments with writes quiesced: %s for %d deployments",
 		r.QuiescedList.Round(time.Millisecond), r.QuiescedCount))
@@ -50,6 +58,9 @@ func (r Report) Problems(offlineAtEnd []string) []string {
 	if r.Reads {
 		problems = append(problems, readProblems("GET /deployments", r.DeploymentLatency, r.ReadFailures, 1)...)
 		problems = append(problems, readProblems("GET events", r.EventLatency, nil, 1)...)
+	}
+	if r.GPUReads {
+		problems = append(problems, readProblems("GET /gpus", r.GPUReadLatency, r.GPUReadFailures, 1)...)
 	}
 	// The failure this whole change exists to prevent: heartbeats queued behind
 	// progress writes until the control plane declares a live node dead. It is

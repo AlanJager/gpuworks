@@ -43,10 +43,10 @@ func seedRefs(t *testing.T) map[string]struct{} {
 }
 
 // An install upgraded from the gpustack catalog: one old row is named by a
-// deployment, one by an unfinished instance, one by a model. The sync deletes
-// every other old row (with its node rows and emptied series), deprecates the
-// three referenced ones, and keeps the archive URL an operator registered on
-// one of them.
+// deployment, one by an unfinished instance, one by a model, and one only
+// pulled onto a node. The sync deletes every other old row (with its node rows
+// and emptied series), keeps those four as older versions (deprecated), and
+// keeps the archive URL an operator registered on one of them.
 func TestSyncSeedReplacesGPUStackCatalog(t *testing.T) {
 	st, err := store.Open("file:image_sync_upgrade?mode=memory&cache=shared", bus.New())
 	if err != nil {
@@ -69,6 +69,7 @@ func TestSyncSeedReplacesGPUStackCatalog(t *testing.T) {
 		byInstance   = "gpustack/runner:cuda13.0-vllm0.24.0"
 		byModel      = "gpustack/runner:cuda13.0-vllm0.22.1"
 		byStopped    = "gpustack/runner:cuda13.0-vllm0.22.0"
+		onNode       = "gpustack/runner:cuda12.9-vllm0.24.0"
 		archiveURL   = "https://mirror.example/runner-cuda12.9-vllm0.25.1.tar"
 	)
 	deployed, err := st.ImageByRef(byDeployment)
@@ -102,7 +103,15 @@ func TestSyncSeedReplacesGPUStackCatalog(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := st.UpsertImageNode(&store.ImageNode{ImageVersionID: stopped.ID, NodeID: node.ID, State: store.ImageStatePresent}); err != nil {
+	// A node that failed to pull the stopped instance's image does not hold it.
+	if _, err := st.UpsertImageNode(&store.ImageNode{ImageVersionID: stopped.ID, NodeID: node.ID, State: "failed"}); err != nil {
+		t.Fatal(err)
+	}
+	pulled, err := st.ImageByRef(onNode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.UpsertImageNode(&store.ImageNode{ImageVersionID: pulled.ID, NodeID: node.ID, State: store.ImageStatePresent}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -110,7 +119,7 @@ func TestSyncSeedReplacesGPUStackCatalog(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Created != 34 || result.Updated != 0 || result.Deleted != 69 || result.Deprecated != 3 || len(result.Skipped) != 0 {
+	if result.Created != 35 || result.Updated != 0 || result.Deleted != 68 || result.Deprecated != 4 || len(result.Skipped) != 0 {
 		t.Fatalf("sync result = %+v", result)
 	}
 
@@ -132,6 +141,14 @@ func TestSyncSeedReplacesGPUStackCatalog(t *testing.T) {
 	}
 	if counts[byStopped] != 0 {
 		t.Fatalf("a stopped instance counted as a reference: %v", counts)
+	}
+	// An image a node holds stays visible as an older version, though nothing
+	// references it (and deleting it is not refused).
+	if row, err := st.ImageByRef(onNode); err != nil || !row.Deprecated || row.DeprecatedSince != result.CatalogVersion {
+		t.Fatalf("pulled row = %+v, %v", row, err)
+	}
+	if held, _ := st.ImageReferenceCounts([]string{onNode}); held[onNode] != 0 {
+		t.Fatalf("a node holding an image counted as a reference: %v", held)
 	}
 	if _, err := st.ImageByRef(byStopped); err != store.ErrNotFound {
 		t.Fatalf("unreferenced row survived: %v", err)
@@ -179,7 +196,7 @@ func TestSyncSeedReplacesGPUStackCatalog(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if again.Created != 0 || again.Updated != 34 || again.Deleted != 0 || again.Deprecated != 0 {
+	if again.Created != 0 || again.Updated != 35 || again.Deleted != 0 || again.Deprecated != 0 {
 		t.Fatalf("second sync = %+v", again)
 	}
 }
@@ -243,7 +260,7 @@ func TestSyncSeedSkipsConflicts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(result.Skipped) != 2 || result.Created != 32 {
+	if len(result.Skipped) != 2 || result.Created != 33 {
 		t.Fatalf("result = %+v", result)
 	}
 	community, err := st.ImageByRef("gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2")

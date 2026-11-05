@@ -24,8 +24,8 @@ test("pdActive reads the topology field, and only that field", () => {
 });
 
 test("pdModesForEngine reads pd_modes straight off the engine profile", () => {
-  assert.deepEqual(pdModesForEngine({ pd_modes: vllmModes }).map((mode) => mode.name), ["vllm-ascend-mooncake", "vllm-nixl"]);
-  assert.deepEqual(pdModesForEngine({ pd_modes: sglangModes }).map((mode) => mode.name), ["sglang-nixl", "sglang-ppu-ipc"]);
+  assert.deepEqual(pdModesForEngine({ pd_modes: vllmModes }).map((mode) => mode.name), ["vllm-ascend-mooncake", "vllm-mooncake", "vllm-nixl", "vllm-ppu-mooncake"]);
+  assert.deepEqual(pdModesForEngine({ pd_modes: sglangModes }).map((mode) => mode.name), ["sglang-nixl", "sglang-ppu-ipc", "sglang-ppu-mooncake"]);
   assert.deepEqual(pdModesForEngine({ pd_modes: [] }), []);
   assert.deepEqual(pdModesForEngine({}), []);
   assert.deepEqual(pdModesForEngine(undefined), []);
@@ -43,7 +43,8 @@ test("defaultPdMode picks the mode the server declares for the chosen vendor", (
 });
 
 test("defaultPdMode without a matching vendor prefers a verified mode, then the first", () => {
-  const unverifiedFirst = { pd_modes: [{ ...vllmModes[1], name: "x-unverified", unverified: true }, vllmModes[1]] };
+  const nixl = vllmModes.find((mode) => mode.name === "vllm-nixl")!;
+  const unverifiedFirst = { pd_modes: [{ ...nixl, name: "x-unverified", unverified: true }, nixl] };
   assert.equal(defaultPdMode(unverifiedFirst, undefined), "vllm-nixl");
   // No SGLang mode serves Ascend: the verified PPU mode beats the unverified NIXL one.
   assert.equal(defaultPdMode({ pd_modes: sglangModes }, "ascend"), "sglang-ppu-ipc");

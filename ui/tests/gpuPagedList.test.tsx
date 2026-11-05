@@ -141,3 +141,24 @@ test("a deep link opens a GPU that is not on the first page", async () => {
   await waitFor(() => assert.ok(queries.some((query) => query.q === "GPU-29")));
   await waitFor(() => assert.ok(document.querySelector(".gpu-detail-drawer .ant-drawer-title")?.textContent?.includes("GPU 5")));
 });
+
+// A measured zero is a real reading. Unknown capacity must not become a
+// zero-sized device in either the table or the detail drawer.
+test("unknown capacity stays unknown while measured zero usage remains visible", async () => {
+  const gpu: PhysicalGPU = { ...fleet[0], vendor: "amd", name: "AMD test GPU", memory_total_bytes: 0, memory_capacity_known: false,
+    load: { memory_used_bytes: 0 }, occupants: [], allocation_state: "unusable" };
+  api.gpusPage = async (query) => ({ items: [gpu], page: query.page, page_size: query.page_size, total: 1,
+    overview: { total: 1, health: { ok: 0, warning: 0, error: 1 }, allocation: { allocated: 0, allocatable: 0, unusable: 1, unknown: 0 } },
+    facets: { nodes: [{ uuid: gpu.node_uuid, name: gpu.node_name }], models: [gpu.name], vendors: ["amd"] } });
+  renderPage();
+  const usage = await screen.findByText("0.0 GiB / —");
+  assert.equal(within(usage.closest("tr")!).queryByText("AMD") !== null, true);
+  fireEvent.click(usage.closest("tr")!);
+  await waitFor(() => {
+    const drawer = document.querySelector(".gpu-detail-drawer");
+    assert.equal(drawer !== null, true);
+    const labels = Array.from(drawer?.querySelectorAll(".ant-descriptions-item-label") ?? []);
+    const capacity = labels.find((label) => label.textContent === "VRAM");
+    assert.equal(capacity?.parentElement?.querySelector(".ant-descriptions-item-content")?.textContent, "—");
+  });
+});

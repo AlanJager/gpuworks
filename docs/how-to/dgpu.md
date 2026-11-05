@@ -10,6 +10,7 @@
 - NVIDIA：x86_64、glibc ≥ 2.17，宿主机驱动提供动态库（`libcuda.so.1`、`libnvidia-ml.so.1`）。
 - 昇腾：宿主机的 device-share 权限满足 vCANN 的要求，所选推理镜像提供 glibc ≥ 2.33；能接入并整卡运行，不代表宿主机已允许 dGPU 设备共享。
 - PPU：配额语义是显存限额加繁忙时的加权 QoS。20/80 配置表示繁忙时的相对吞吐权重，不是硬 SM 分区。
+- AMD：x86_64、Docker、nerdctl 或 runveil，libvrocm.so 做硬显存限额，不支持算力（SM/CU）上限；当前只在 MI300X（gfx942）上实测。
 - 海光 Z100 / K100_AI / BW：实验性，支持 x86_64 上的 Docker 或 runveil/udocker，每实例一张卡；需安装原生 helper、宿主 DTK/HYHAL/DCGM 库并通过逐卡探针。CU 随显存比例分配，不支持独立算力配额；仅报告系列 K100 或其他未适配型号时仍只支持整卡。PRoot 不提供独立 cgroup 或内核只读挂载，不代表敌对程序的安全隔离。详见[海光 Z100 / K100_AI / BW dGPU](../reference/support-matrix.md#海光-z100--k100_ai--bw-dgpu)。
 - 想先走一遍完整流程，见[一张 GPU 跑两个模型](../tutorials/one-gpu-two-models.md)；语义与边界见 [dGPU 是什么、又不是什么](../explanation/dgpu.md)。
 
@@ -18,7 +19,7 @@
 ## 确认能力并部署
 
 1. 打开**GPU 设备**页，查看目标 GPU 详情中的 **dGPU** 能力及原因。只有状态为 `ready` 的 GPU 才能创建带配额的实例。
-2. 在[部署模型](deploy-models.md)时填写 **dGPU 显存上限**，检查候选节点与显存评估结果，再提交。平台根据节点硬件选择已就绪的后端；NVIDIA 对应 HAMi-core、昇腾对应 vCANN、PPU 对应 HGGC、海光 Z100 / K100_AI / BW 对应原生 vdev，无需手动指定。
+2. 在[部署模型](deploy-models.md)时填写 **dGPU 显存上限**，检查候选节点与显存评估结果，再提交。平台根据节点硬件选择已就绪的后端；NVIDIA 对应 HAMi-core、昇腾对应 vCANN、PPU 对应 HGGC、AMD 对应 libvrocm、海光 Z100 / K100_AI / BW 对应原生 vdev，无需手动指定。
 3. 实例启动后，回到 **GPU 设备 → dGPU**，确认切片所属部署、节点和显存上限。需要验证两个模型共卡时，按[一张 GPU 跑两个模型](../tutorials/one-gpu-two-models.md)完成调用检查。
 
 能力以页面返回的 `status` 和 `reason` 为准：
@@ -34,7 +35,8 @@
 | 探针尚未完成 | 等待探针结果，再查看该 GPU 的状态 |
 | 运行时未通过或探针失败 | 查看原因与 agent 日志，处理后确认恢复为 `ready`；也可选择已就绪的节点 |
 
-非 NVIDIA 后端另有独立的 `probe_status`（`passed`/`skipped`/`failed`），用于诊断 dGPU 探针本身
+经过行为探针的后端（除 NVIDIA、AMD 以外；二者就绪只看内嵌资产，豁免探针）另有独立的
+`probe_status`（`passed`/`skipped`/`failed`），用于诊断 dGPU 探针本身
 的结果，不等同于上面的 `status`。
 
 `unavailable` 时改成整卡部署不能作为 dGPU 验证通过的证据。
@@ -57,7 +59,7 @@
 
 | `reason` | 情况 |
 |---|---|
-| `backend` | 后端需重启实例才能应用新上限（昇腾 vCANN、PPU HGGC、海光 Z100 / K100_AI 原生 vdev） |
+| `backend` | 后端需重启实例才能应用新上限（昇腾 vCANN、PPU HGGC、AMD libvrocm、海光 Z100 / K100_AI 原生 vdev） |
 | `in_use` | 调低时，实例已占用的显存超过新上限——当场调低会让引擎下一次分配失败而退出 |
 | `starting` / `asleep` | 调低时实例正在启动或休眠，之后需要的显存可能比现在多 |
 | `no_usage` | 调低时实例没有上报显存用量 |

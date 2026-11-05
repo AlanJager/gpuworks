@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -409,7 +410,7 @@ func TestJSONFieldRewrite(t *testing.T) {
 }
 
 func TestPrefillBody(t *testing.T) {
-	out, err := prefillBody([]byte(`{"model":"m","max_completion_tokens":50,"stream":true,"stream_options":{},"min_completion_tokens":3,"kv_transfer_params":{"evil":1}}`))
+	out, err := prefillBody([]byte(`{"model":"m","max_completion_tokens":50,"stream":true,"stream_options":{},"min_completion_tokens":3,"kv_transfer_params":{"evil":1}}`), "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -421,7 +422,7 @@ func TestPrefillBody(t *testing.T) {
 	if kv := doc["kv_transfer_params"].(map[string]any); len(kv) != 1 || kv["do_remote_decode"] != true {
 		t.Fatalf("kv = %v", kv)
 	}
-	if _, err := prefillBody([]byte(`[1]`)); err == nil {
+	if _, err := prefillBody([]byte(`[1]`), ""); err == nil {
 		t.Fatal("a non-object body was accepted")
 	}
 }
@@ -713,5 +714,46 @@ func TestPinnedRequestRefusesAnOrderedSleepBeforeTheEngineReports(t *testing.T) 
 	}
 	if c.classTotals[class5xx] != 0 {
 		t.Fatalf("an asleep pinned refusal must not also count as class5xx: %+v", c.classTotals)
+	}
+}
+
+// vLLM's MooncakeConnector answers the prefill copy without
+// kv_transfer_params: the gateway names the prefill instance to the decoder
+// itself, by the engine id and bootstrap server its launch derives from the
+// same KV endpoint, under one transfer id on both sides.
+func TestPDSynthesizedHandoffNamesThePrefillInstance(t *testing.T) {
+	h, _ := newBootstrapHarnessMode(t, "vllm-ppu-mooncake", 1, "")
+	rec := h.do(t, "/v1/chat/completions", pdChat)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "[DONE]") {
+		t.Fatalf("response = %d %s", rec.Code, rec.Body.String())
+	}
+	if len(h.prefills[0].bodies) != 1 || len(h.decode.bodies) != 1 {
+		t.Fatalf("calls: prefill %d decode %d", len(h.prefills[0].bodies), len(h.decode.bodies))
+	}
+	p, _ := h.prefills[0].bodies[0]["kv_transfer_params"].(map[string]any)
+	d, _ := h.decode.bodies[0]["kv_transfer_params"].(map[string]any)
+	id, _ := p["transfer_id"].(string)
+	if p["do_remote_decode"] != true || !strings.HasPrefix(id, "gw-") {
+		t.Fatalf("prefill kv params = %v", p)
+	}
+	// The engine id is the one the prefill's workers registered with its
+	// bootstrap server, not one derived from its address.
+	want := map[string]any{"do_remote_prefill": true, "remote_engine_id": "mooncake-engine-0", "remote_bootstrap_addr": "http://10.0.0.9:32100", "transfer_id": id}
+	if !reflect.DeepEqual(d, want) {
+		t.Fatalf("decode kv params = %v, want %v", d, want)
+	}
+	// Each request gets its own transfer id.
+	h.do(t, "/v1/chat/completions", pdChat)
+	if next, _ := h.prefills[0].bodies[1]["kv_transfer_params"].(map[string]any); next["transfer_id"] == id {
+		t.Fatalf("transfer id reused: %v", next)
+	}
+	if fallbacks := h.acct.PDFallbacks(h.dep.ID); len(fallbacks) != 0 {
+		t.Fatalf("fallbacks = %v", fallbacks)
+	}
+	// A prefill instance that fails still fails the request: there is no
+	// decoder fallback in this mode.
+	h.prefills[0].mode = "500"
+	if rec := h.do(t, "/v1/chat/completions", pdChat); rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("failed prefill = %d %s", rec.Code, rec.Body.String())
 	}
 }

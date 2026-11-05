@@ -1324,6 +1324,13 @@ var migrations = []migration{
 	{Version: 196, Name: "card_health_episodes", Apply: createCardHealthEpisodes},
 	{Version: 197, Name: "inference_spec_display_names", Apply: replaceInferenceSpecDisplayProfile},
 	{Version: 198, Name: "sync_group_unique_names", Apply: migrateSyncGroupNames},
+	{Version: 199, Name: "node_peer_memory", Apply: func(db *gorm.DB) error {
+		if !db.Migrator().HasTable(&Node{}) || db.Migrator().HasColumn(&Node{}, "PeerMemory") {
+			return nil
+		}
+		// Empty until each node's next report says otherwise.
+		return db.Migrator().AddColumn(&Node{}, "PeerMemory")
+	}},
 }
 
 // modelFileNetworkColumns are the columns migrations 76 and 77 added to

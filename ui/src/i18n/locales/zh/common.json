@@ -10,7 +10,8 @@
     "hygon": "海光",
     "apple": "Apple",
     "unknown": "未知厂商",
-    "unknownFramework": "未知框架"
+    "unknownFramework": "未知框架",
+    "amd": "AMD"
   },
   "operation": {
     "all": "全部能力",
@@ -204,7 +205,7 @@
     "IMAGE_VERSION_PATCH_INVALID": "镜像版本更新内容无效。",
     "IMAGE_VERSION_PATCH_EMPTY": "请提供启用状态或获取地址，以更新镜像版本。",
     "IMAGE_IN_USE": "镜像仍被部署、未结束的实例或模型引用，请先删除这些引用。",
-    "OFFICIAL_IMAGE_DELETE_FORBIDDEN": "系统镜像由目录 manifest 维护，不能直接删除；目录更新时会按引用情况删除或弃用。",
+    "OFFICIAL_IMAGE_DELETE_FORBIDDEN": "系统镜像由目录 manifest 维护，不能直接删除；目录更新时会按引用和节点上的分布删除或保留为旧版本。",
     "IMAGE_SYNC_UNAVAILABLE": "镜像同步功能尚未配置。",
     "IMAGE_RETRY_UNAVAILABLE": "镜像重试功能尚未配置。",
     "IMAGE_INSPECTION_UNAVAILABLE": "镜像检查功能尚未配置。",
@@ -407,8 +408,9 @@
     "COMPUTE_NETWORK_ACCELERATOR_REQUIRED": "节点“{{node}}”是昇腾加速卡，跨机集合通信只能走加速卡自带的网口；这组节点共用的网络“{{network}}”不是加速器 RDMA 网络。请新建一个加速器 RDMA 网络并加载这些节点。",
     "COMPUTE_NETWORK_NO_CARDS": "节点“{{node}}”在加速器 RDMA 网络“{{network}}”上没有可用的加速卡网口。",
     "PD_NETWORK_ACCELERATOR_REQUIRED": "PD 模式 {{mode}} 的 KV 走加速卡自带的网口，跨机部署需要加速器 RDMA 网络；这组节点共用的是“{{network}}”。",
-    "PD_NETWORK_HOST_REQUIRED": "PD 模式 {{mode}} 的 KV 走 UCX，需要主机网络；这组节点共用的“{{network}}”是加速器 RDMA 网络。",
-    "PD_SLEEP_RDMA_UNSUPPORTED": "可休眠的 PD 部署不能经 RDMA 网络“{{network}}”传 KV：NIXL 会把 KV cache 显存注册给 RDMA 网卡，引擎休眠后申请不回这块显存（唤醒时报 CUDA out of memory）。请关闭“可休眠”，或让这些节点改用以太网参数网络。",
+    "PD_NETWORK_HOST_REQUIRED": "PD 模式 {{mode}} 的 KV 走主机网卡（UCX 或 Mooncake），需要主机网络；这组节点共用的“{{network}}”是加速器 RDMA 网络。",
+    "PD_NETWORK_RDMA_REQUIRED": "PD 模式 {{mode}} 经 RDMA 传 KV，节点需要在同一个主机 RDMA 网络上（单机也一样），才能拿到 RDMA 设备；当前这组节点没有共用这样的网络。",
+    "PD_SLEEP_RDMA_UNSUPPORTED": "可休眠的 PD 部署不能经 RDMA 网络“{{network}}”传 KV：KV 传输引擎（NIXL、Mooncake）会把 KV cache 显存注册给 RDMA 网卡，引擎休眠后申请不回这块显存（唤醒时报 out of memory）。请关闭“可休眠”，或让这些节点改用以太网参数网络。",
     "NETWORK_TEST_UNSUPPORTED": "只有存储同步网络和参数网络支持内部测试。",
     "NETWORK_TEST_NODE_COUNT": "网络测试需要该网络上的 {{minimum}} 到 {{maximum}} 个节点，当前选择了 {{count}} 个。",
     "NETWORK_TEST_NODE_INVALID": "节点“{{node}}”不在这个网络上。",
@@ -440,6 +442,8 @@
     "PD_VENDOR_UNSUPPORTED": "PD 模式 {{mode}} 不支持 {{vendor}}。",
     "PD_VENDOR_MIXED": "PD 各角色必须使用同一厂商的加速卡；当前草稿混用了 {{vendors}}。",
     "PD_SAME_NODE_REQUIRED": "PD 模式 {{mode}} 只在同一台主机的卡之间传 KV，所有实例必须放在同一个节点上；当前放置用到了 {{nodes}}。",
+    "PD_PEER_MEMORY_MISSING": "节点 {{node}} 未加载 {{module}}，RDMA 网卡无法注册它的卡的显存，而 PD 模式 {{mode}} 需要经 RDMA 传 KV。请在该节点上执行：{{fix}}（节点的「健康检查」页签可以看到同一项检查）。",
+    "PD_PEER_MEMORY_NONE": "没有节点能放下这个 PD 部署：{{nodes}} 个节点中有 {{no_peer_memory}} 个未加载 {{module}}，RDMA 网卡无法注册它们的卡的显存。请在这些节点上执行：{{fix}}（各节点的「健康检查」页签可以看到同一项检查）。",
     "PD_CONNECTOR_ARG_CONFLICT": "{{flag}} 由平台为 PD 部署自动生成；请改用启动参数配置 KV 卸载。",
     "PD_SHAPE_CONFLICT": "PD 部署按角色声明实例；nnodes、node_uuids、replicas 与自动放置都不适用。",
     "PD_SPEC_MODE_MISMATCH": "档位 {{spec}} 只能以 PD 模式 {{mode}} 部署，而不是 {{requested}}。",
@@ -517,7 +521,12 @@
     "BATCH_FILE_MODELS_ENDPOINT": "文件里的这些模型不支持 {{endpoint}}：{{models, list}}。请选一个支持该接口的模型来接收全部请求。",
     "AGENT_UPGRADE_REFUSED": "Agent 升级请求无法执行：{{detail}}",
     "TEMPLATE_EXPORT_UNAVAILABLE": "这个部署不能另存为模板（{{reason}}）。",
-    "LAUNCH_NOT_EXPORTABLE": "部署的启动参数无法写成能重建同一条 {{engine}} 命令的模板参数，平台不给出近似的模板。"
+    "LAUNCH_NOT_EXPORTABLE": "部署的启动参数无法写成能重建同一条 {{engine}} 命令的模板参数，平台不给出近似的模板。",
+    "ACCELERATOR_FEATURE_UNSUPPORTED": "{{vendor}} 不支持{{feature}}。请关闭此能力或选择其他加速卡。",
+    "ACCELERATOR_DEVICE_SELECTION_REQUIRED": "{{vendor}} 启动前必须明确分配 GPU。",
+    "ACCELERATOR_SM_LIMIT_UNSUPPORTED": "{{vendor}} 不支持算力（SM）上限。请去掉该设置，或选择支持算力上限的 dGPU 后端。",
+    "LAUNCH_FEATURES_UNKNOWN": "无法确认自定义启动命令在 {{vendor}} 上请求的功能。请提供可识别的引擎入口或结构化启动参数。",
+    "SLEEP_TARGET_UNRESOLVED": "无法确认实例 {{instance}} 在节点 {{node}} 上的 GPU 选择：{{detail}}。"
   },
   "httpError": {
     "proxyPage": "HTTP {{status}}：浏览器与 gpuworks 之间的反向代理或隧道返回了它自己的错误页，server 给出的原因丢失了。直接通过 server 自身地址访问并重试，可以看到原因。"
@@ -557,10 +566,11 @@
   },
   "navigation": {
     "groups": {
-      "overview": "概览",
-      "resources": "资源",
-      "inference": "推理服务",
-      "platform": "平台"
+      "inference": "推理",
+      "models": "模型",
+      "compute": "算力资源",
+      "observability": "监控与分析",
+      "admin": "管理"
     },
     "dashboard": "概览",
     "monitor": "监控中心",
@@ -570,12 +580,11 @@
     "kubernetes": "Kubernetes",
     "nodes": "计算节点",
     "gpus": "GPU 设备",
-    "models": "模型",
+    "models": "模型仓库",
     "inferenceTemplates": "推理模板",
     "images": "镜像",
     "storage": "存储",
-    "deploy": "部署",
-    "deployments": "部署列表",
+    "deployments": "推理服务",
     "playground": "试验场",
     "evaluations": "评测",
     "apiKeys": "API 令牌",
@@ -895,5 +904,16 @@
     "details": "构建详情",
     "commit": "Commit：{{commit}}",
     "channel": "构建渠道：{{channel}}"
+  },
+  "acceleratorFeature": {
+    "unsupported": "{{vendor}} 不支持{{feature}}。请关闭此能力或选择其他加速卡。",
+    "names": {
+      "engine_sleep": "引擎休眠",
+      "multi_node": "多机推理",
+      "pipeline_parallelism": "流水线并行",
+      "data_parallelism": "数据并行",
+      "prefill_decode_disaggregation": "PD 解耦",
+      "kv_disk_tier": "KV 磁盘层"
+    }
   }
 }

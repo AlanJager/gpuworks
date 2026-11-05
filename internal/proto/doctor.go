@@ -145,6 +145,11 @@ const (
 	// source; with no instance running it then drops off the cluster.
 	DoctorMacOSUnsupported = "macos_unsupported"
 	DoctorMacOSIdleSleep   = "macos_idle_sleep"
+	// DoctorPeerMemoryMissing: the host has RDMA NICs but the vendor's
+	// peer-memory module is not loaded, so the NICs cannot register the
+	// cards' memory and PD over RDMA cannot move KV between nodes. Evidence:
+	// the module and the command that loads it.
+	DoctorPeerMemoryMissing = "peer_memory_missing"
 )
 
 // DoctorFinding is one item that needs attention.

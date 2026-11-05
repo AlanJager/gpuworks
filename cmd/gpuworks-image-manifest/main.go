@@ -31,7 +31,7 @@ const DefaultRegistry = "gpuworks/gpuworks-runner"
 // vllm-omni must precede vllm in the alternation, or the omni ids would split
 // into engine=vllm with an engine version of "-omni…". llama.cpp numbers its
 // releases b<build> and is written llama.cpp-b<build>.
-var tagPattern = regexp.MustCompile(`^(?P<backend>cuda|cann|dtk|hggc|metal)(?P<fwver>[0-9]+(\.[0-9]+)*)(-(?P<model>910b|a3|310p|950|v100))?-(?:(?P<engine>` +
+var tagPattern = regexp.MustCompile(`^(?P<backend>cuda|cann|dtk|hggc|metal|rocm)(?P<fwver>[0-9]+(\.[0-9]+)*)(-(?P<model>910b|a3|310p|950|v100|gfx1151))?-(?:(?P<engine>` +
 	regexp.QuoteMeta(engines.VLLMOmni) + `|` + regexp.QuoteMeta(engines.VLLM) + `|` + regexp.QuoteMeta(engines.SGLang) +
 	`|mlx-vlm|mlx-audio)(?P<engver>[0-9][0-9A-Za-z.]*)|(?P<llamacpp>llama\.cpp)-(?P<llamabuild>b[0-9]+))$`)
 
@@ -94,6 +94,7 @@ type matrixItem struct {
 	ID        string            `yaml:"id"`
 	Revision  string            `yaml:"revision"`
 	Backend   string            `yaml:"backend"`
+	Base      string            `yaml:"base"`
 	Platforms []string          `yaml:"platforms"`
 	Args      map[string]string `yaml:"args"`
 	Requires  []string          `yaml:"requires"`
@@ -299,11 +300,15 @@ func versionNotes(item matrixItem, tag parsedTag) string {
 }
 
 // seriesName writes a framework the way its vendor does: the acronyms (CUDA,
-// CANN, DTK, HGGC) in capitals, Apple's Metal as a word.
+// CANN, DTK, HGGC) in capitals, Apple's Metal as a word and AMD's ROCm in
+// its own casing.
 func seriesName(engine, framework string) string {
 	name := strings.ToUpper(framework)
-	if framework == "metal" {
+	switch framework {
+	case "metal":
 		name = "Metal"
+	case "rocm":
+		name = "ROCm"
 	}
 	display := engines.DisplayName(engine)
 	if server, ok := callableServers[engine]; ok {

@@ -8,13 +8,14 @@ import (
 	"testing"
 
 	"gpuworks.ai/gpuworks/internal/accelerator"
+	"gpuworks.ai/gpuworks/internal/agent/gpu"
 	"gpuworks.ai/gpuworks/internal/agent/runtime"
 	"gpuworks.ai/gpuworks/internal/proto"
 )
 
 func TestNvidiaPartitionMountsHostAndContainerPathsSymmetrically(t *testing.T) {
 	state := t.TempDir()
-	e := NewWithProber(nil, nil, nil, state, nil)
+	e := NewWithProber(nil, nil, nil, state, &gpu.FixedProber{VendorName: accelerator.VendorNVIDIA})
 	e.extractLibvgpu = func(path string) (string, error) {
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 			return "", err
@@ -63,7 +64,7 @@ func TestNvidiaPartitionMountsHostAndContainerPathsSymmetrically(t *testing.T) {
 }
 
 func TestNvidiaPartitionFailsClosedWhenLibMissing(t *testing.T) {
-	e := NewWithProber(nil, nil, nil, t.TempDir(), nil)
+	e := NewWithProber(nil, nil, nil, t.TempDir(), &gpu.FixedProber{VendorName: accelerator.VendorNVIDIA})
 	e.extractLibvgpu = func(string) (string, error) { return "", errors.New("missing fake lib") }
 	ok, reason := e.applyPartition(context.Background(), &runtime.WorkloadSpec{Env: map[string]string{}}, proto.InstanceDesiredState{UUID: "missing", GPUIndexes: []int{0}, VRAMLimitBytes: 1, PartitionBackend: accelerator.BackendNVIDIALogical})
 	if ok || reason == "" {
@@ -72,7 +73,7 @@ func TestNvidiaPartitionFailsClosedWhenLibMissing(t *testing.T) {
 }
 
 func TestNvidiaPartitionFailsClosedWithoutAssignedGPU(t *testing.T) {
-	e := NewWithProber(nil, nil, nil, t.TempDir(), nil)
+	e := NewWithProber(nil, nil, nil, t.TempDir(), &gpu.FixedProber{VendorName: accelerator.VendorNVIDIA})
 	e.extractLibvgpu = func(path string) (string, error) {
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 			return "", err
@@ -88,7 +89,7 @@ func TestNvidiaPartitionFailsClosedWithoutAssignedGPU(t *testing.T) {
 // A desired state without a backend string (older server) must keep defaulting
 // to the NVIDIA backend rather than failing the instance.
 func TestNvidiaPartitionIsTheDefaultBackend(t *testing.T) {
-	e := NewWithProber(nil, nil, nil, t.TempDir(), nil)
+	e := NewWithProber(nil, nil, nil, t.TempDir(), &gpu.FixedProber{VendorName: accelerator.VendorNVIDIA})
 	e.extractLibvgpu = func(path string) (string, error) {
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 			return "", err

@@ -33,11 +33,20 @@ func isNVIDIASpec(spec runtime.WorkloadSpec) bool {
 	return strings.TrimSpace(spec.Env["CUDA_VISIBLE_DEVICES"]) != ""
 }
 
-func isDomesticSpec(spec runtime.WorkloadSpec) bool {
-	return isAscendSpec(spec) || isPPUSpec(spec) || isHygonSpec(spec)
+// isAMDSpec marks a ROCm workload: the AMD prober pins its cards through
+// ROCR_VISIBLE_DEVICES (GPU-<unique id>), which PRoot cannot do with device
+// cgroups the way Docker's --device does.
+func isAMDSpec(spec runtime.WorkloadSpec) bool {
+	return strings.HasPrefix(strings.TrimSpace(spec.Env["ROCR_VISIBLE_DEVICES"]), "GPU-") && !isHygonSpec(spec)
 }
 
-func needsNVIDIASetup(spec runtime.WorkloadSpec) bool { return !isDomesticSpec(spec) }
+// isNonNVIDIASpec reports a workload whose accelerator needs none of the
+// NVIDIA shim setup (libraries, CUDA_VISIBLE_DEVICES, nvidia-smi).
+func isNonNVIDIASpec(spec runtime.WorkloadSpec) bool {
+	return isAscendSpec(spec) || isPPUSpec(spec) || isHygonSpec(spec) || isAMDSpec(spec)
+}
+
+func needsNVIDIASetup(spec runtime.WorkloadSpec) bool { return !isNonNVIDIASpec(spec) }
 
 var ascendSupportPaths = []string{
 	"/dev/davinci_manager", "/dev/devmm_svm", "/dev/hisi_hdc", "/dev/ummu", "/dev/uburma",

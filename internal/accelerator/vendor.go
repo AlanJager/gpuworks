@@ -112,6 +112,21 @@ func IsDomestic(vendor string) bool {
 	return vendor == VendorAscend || vendor == VendorPPU
 }
 
+// HasRuntimeAssetBundles reports whether the vendor's partition backend ships
+// a gpuworks-built shared object embedded in the agent binary
+// (internal/assets/bin/runtime-assets, build/runtime-assets/manifest.json),
+// the way InstallDomesticRuntimeAssets extracts and installs it on the node.
+// It is deliberately broader than IsDomestic: AMD is not a domestic
+// accelerator (RequiresVendorCatalogImage still covers that), but its dGPU
+// shim (libvrocm.so) is bundled the same way Ascend's and PPU's are. NVIDIA's
+// HAMi-core is embedded by a separate, unconditional mechanism, and Hygon's
+// dGPU backend composes host-installed driver libraries in place instead of
+// shipping its own, so neither belongs here.
+func HasRuntimeAssetBundles(vendor string) bool {
+	vendor = NormalizeVendor(vendor)
+	return vendor == VendorAscend || vendor == VendorPPU || vendor == VendorAMD
+}
+
 // RequiresVendorCatalogImage identifies runtimes that cannot safely inherit a
 // CUDA/ROCm engine default image and must be given a vendor-specific catalog
 // entry instead. This is deliberately vendor-level: model and SKU
@@ -119,11 +134,12 @@ func IsDomestic(vendor string) bool {
 // another deployment branch.
 //
 // It differs from IsDomestic by including Hygon, whose DTK images share
-// neither the CUDA nor the upstream ROCm engine defaults, and Apple, whose
+// neither the CUDA nor the upstream ROCm engine defaults, AMD whose ROCm
+// image must not fall back to the CUDA default, and Apple, whose
 // engines are macOS environment packages rather than Linux images at all.
 func RequiresVendorCatalogImage(vendor string) bool {
 	vendor = VendorKey(vendor)
-	return IsDomestic(vendor) || vendor == VendorHygon || vendor == VendorApple
+	return IsDomestic(vendor) || vendor == VendorHygon || vendor == VendorApple || vendor == VendorAMD
 }
 
 // VendorBrand writes a canonical vendor the way the vendor writes it. It is

@@ -18,7 +18,7 @@ import {
   Typography,
   message,
 } from "antd";
-import { ApiOutlined, CodeOutlined, CopyOutlined, DeleteOutlined, EditOutlined, ExperimentOutlined, FileAddOutlined, MessageOutlined, MoreOutlined } from "@ant-design/icons";
+import { ApiOutlined, CodeOutlined, CopyOutlined, DeleteOutlined, EditOutlined, ExperimentOutlined, FileAddOutlined, MessageOutlined, MoreOutlined, PlusOutlined } from "@ant-design/icons";
 import { api, useEventPayload, useEvents, usePolling, type ChangeEvent, type Deployment, type DeploymentListItem, type DeploymentRuntimeNode, type Instance, type RoutingPolicyOption } from "../api";
 import { DeploymentPreparation, ListPreparationAction, PreparationLabel } from "./DeploymentPreparation";
 import DeploymentMetricsPanel from "../components/DeploymentMetricsPanel";
@@ -266,7 +266,16 @@ export default function DeploymentsPage() {
   return (
     <>
       {copyHolder}
-      <PageHeader title={t("page.title")} description={t("page.description")} extra={<Typography.Text type="secondary">{t("page.count", { count: data?.total ?? 0 })}</Typography.Text>} />
+      <PageHeader
+        title={t("page.title")}
+        description={t("page.description")}
+        extra={
+          <Space>
+            <Typography.Text type="secondary">{t("page.count", { count: data?.total ?? 0 })}</Typography.Text>
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate("/deploy")}>{t("page.create")}</Button>
+          </Space>
+        }
+      />
       <Card>
         <ResourceTable<DeploymentListItem>
           tableId={DEPLOYMENT_TABLE_ID}
@@ -292,7 +301,7 @@ export default function DeploymentsPage() {
           }
           emptyDescription={t(filtered ? "page.emptyFiltered" : "page.empty")}
           emptyKind="deployments"
-          emptyAction={filtered ? undefined : <Button type="primary" onClick={() => location.assign("/deploy")}>{t("page.create")}</Button>}
+          emptyAction={filtered ? undefined : <Button type="primary" onClick={() => navigate("/deploy")}>{t("page.create")}</Button>}
         />
       </Card>
       <DeleteDeploymentModal dep={deleting} onClose={() => setDeleting(null)} onDeleted={refetch} />

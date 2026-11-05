@@ -325,8 +325,8 @@ func (a *apiHandlers) editedDeployment(ctx context.Context, dep *store.Deploymen
 		// only while the deployment runs that image (ImageSourcesFor).
 		next.Image = image
 	}
-	if code := planning.SleepDeclarable(req.Sleepable, engine.Name()); code != "" {
-		return bad(productError(code, sleepRefusalFallback(code), map[string]any{"engine": engine.Name()}))
+	if sleepErr := planning.SleepDeclarable(req.Sleepable, engine.Name(), req.TargetVendor); sleepErr != nil {
+		return bad(sleepErr)
 	}
 	next.Sleepable = req.Sleepable
 	// A yield policy that gives way needs the sleep it gives way by, as on

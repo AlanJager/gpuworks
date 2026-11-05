@@ -12,7 +12,7 @@
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="License: Apache-2.0"></a>
   <img src="https://img.shields.io/badge/go-1.26-00ADD8.svg" alt="Go 1.26">
-  <img src="https://img.shields.io/badge/accelerators-NVIDIA%20%7C%20Ascend%20%7C%20PPU%20%7C%20Hygon%20%7C%20Apple%20Silicon-76B900.svg" alt="Accelerators">
+  <img src="https://img.shields.io/badge/accelerators-NVIDIA%20%7C%20AMD%20%7C%20Ascend%20%7C%20PPU%20%7C%20Hygon%20%7C%20Apple%20Silicon-76B900.svg" alt="Accelerators">
 </p>
 
 <p align="center">
@@ -25,17 +25,17 @@
 
 GPUWorks 是一个超轻量的 GPU 管理和模型即服务（MaaS）平台，整个控制面连同 Web 界面下载只有 40 MB 左右。一条命令接入自有 GPU 服务器、
 租来的云主机或容器或一台 Mac，选一个模型，GPUWorks 会估算它需要多少显存、选好卡、启动 vLLM 或 SGLang 或推理模板定义好的 Strata、ninfer、……，并通过统一的 OpenAI 兼容入口对外提供服务。
-NVIDIA、华为昇腾、平头哥 PPU、海光 DCU 和 Apple Silicon 可以在同一个集群里并存。
+NVIDIA、AMD Instinct 与 Ryzen AI Max、华为昇腾、平头哥 PPU、海光 DCU 和 Apple Silicon 可以在同一个集群里并存。
 
 平台的核心是统一的算力池：今天接入裸机、公有云主机和私有云虚拟机，接下来还会接入 Kubernetes 集群和 Slurm 分区；
 在这个算力池之上，GPUWorks 现在提供模型服务，之后也会在同一批加速器上运行微调与训练任务。
 
 ## 亮点
 
-- **验证过的模型 × 芯片组合，一键部署。** 内置目录为 390 个模型提供 1,224 份启动规格：每种卡型对应的镜像、引擎、启动参数和固定的权重版本。
-  我们在 NVIDIA、昇腾、PPU 和 Apple 真机上跑通过的组合都带着已知可用的启动配置，选好模型点部署即可，不用自己摸索参数。
+- **验证过的模型 × 芯片组合，一键部署。** 内置目录为 392 个模型提供 1,235 份启动规格：每种卡型对应的镜像、引擎、启动参数和固定的权重版本。
+  我们在 NVIDIA、AMD、昇腾、PPU 和 Apple 真机上跑通过的组合都带着已知可用的启动配置，选好模型点部署即可，不用自己摸索参数。
   覆盖 Qwen、DeepSeek、GLM、Kimi、MiniMax、Llama、Gemma、gpt-oss，以及 embedding、rerank、语音、图像和视频模型。
-- **异构加速器，统一调度。** NVIDIA、昇腾、PPU、海光和 Apple Silicon 节点接入同一个集群，调度器把每个部署放到其启动规格支持的硬件上。
+- **异构加速器，统一调度。** NVIDIA、AMD、昇腾、PPU、海光和 Apple Silicon 节点接入同一个集群，调度器把每个部署放到其启动规格支持的硬件上。
 - **公有云与私有云混合调度。** 从 RunPod、优云智算（CompShare）、AutoDL、Vast.ai、阿里云同步云主机，或从 ZStack Cloud 同步虚拟机，
   一键安装 agent，和自有服务器放在同一个资源池里调度。
 - **超轻量。** server 和 agent 各是一个静态二进制（`CGO_ENABLED=0`），server 内嵌 Web 界面（中文 / English）和各平台的 agent，
@@ -45,7 +45,7 @@ NVIDIA、华为昇腾、平头哥 PPU、海光 DCU 和 Apple Silicon 可以在�
 - **先估算显存，再解释放置。** 启动前就能看到权重、KV cache 和引擎开销各要多少显存，调度器选了哪些卡、其他卡为什么没选。
 - **一张卡跑多个模型。** dGPU 给每个实例加显存硬限额，让多个模型共用一张卡（NVIDIA 基于 HAMi-core，昇腾基于 vCANN，PPU 基于 HGGC，海光基于 hy-smi 虚拟设备）。
   sleep/wake 让多个 vLLM 模型轮流使用同一批卡，支持 NVIDIA、昇腾、PPU 和海光。
-- **横向扩展。** 跨节点多副本、多机张量 / 流水线并行，以及 PD 分离（NVIDIA 上 vLLM + NIXL，昇腾上 vLLM-Ascend + Mooncake，PPU 同机上 SGLang + Mooncake）。
+- **横向扩展。** 跨节点多副本、多机张量 / 流水线并行，以及 PD 分离（NVIDIA 上 vLLM + NIXL，昇腾上 vLLM-Ascend + Mooncake，PPU 上 SGLang 或 vLLM + Mooncake，同机或经 RDMA，海光上 vLLM + Mooncake 为实验性）。
 - **OpenAI 兼容网关。** `/v1` 下提供 chat、completions、embeddings、rerank、音频、图像、视频和 realtime；
   `/v1/messages`、`/v1/responses` 透传。支持最少请求、前缀亲和、故障转移三种路由，API 令牌和按令牌的 token 用量统计。
 - **看得清发生了什么。** GPU 与引擎指标、可检索的日志、带时间线的单请求追踪（可导出 OTLP）、进入主机和容器的 Web 终端，
@@ -101,14 +101,15 @@ curl http://<server>:8800/v1/chat/completions \
 | 加速器 | 整卡部署 | dGPU（共享一张卡） | sleep/wake | 多机 | PD 分离 |
 |---|---|---|---|---|---|
 | **NVIDIA**（CUDA） | ✅ Docker、Containerd 或 runveil（内置免 root 运行时） | ✅ 显存 MiB 级限额 | ✅ vLLM | ✅ | ✅ vLLM + NIXL |
+| **AMD**（ROCm：Instinct MI300 系列、Ryzen AI Max） | ✅ Docker、Containerd 或 runveil（内置免 root 运行时） | ✅ 显存配额（libvrocm，用户态） | ✅ vLLM | ✅ vLLM | ✅ vLLM + NIXL |
 | **华为昇腾**（CANN） | ✅ Docker、Containerd 或 runveil（内置免 root 运行时） | ✅ 显存 MiB 级限额 | ✅ vLLM-Ascend | ✅ | ✅ vLLM-Ascend + Mooncake |
-| **平头哥 PPU**（HGGC） | ✅ Docker、Containerd 或 runveil（内置免 root 运行时） | ✅ 显存 MiB 级限额 | ✅ vLLM | ✅ | ✅ SGLang + Mooncake（同机） |
-| **海光 DCU**（DTK） | ✅ Docker、Containerd 或 runveil（内置免 root 运行时） | ✅ 显存 MiB 级限额 | ✅ vLLM | ✅ | — |
+| **平头哥 PPU**（HGGC） | ✅ Docker、Containerd 或 runveil（内置免 root 运行时） | ✅ 显存 MiB 级限额 | ✅ vLLM | ✅ | ✅ SGLang + Mooncake（同机或经 RDMA）、vLLM + Mooncake（RDMA） |
+| **海光 DCU**（DTK） | ✅ Docker、Containerd 或 runveil（内置免 root 运行时） | ✅ 显存 MiB 级限额 | ✅ vLLM | ✅ | 🧪 vLLM 0.21 + Mooncake |
 | **Apple Silicon**（M1–M5，macOS 15+） | ✅ vllm-metal、MLX、llama.cpp 以本机进程运行 | — | — | — | — |
 
-✅ 真机验证 · — 不支持或未验证。NVIDIA 以外的 sleep/wake 已在昇腾 910C、PPU ZW810E、海光 K100 上真机验证，
+✅ 真机验证 · 🧪 实验性 · — 不支持或未验证。NVIDIA 以外的 sleep/wake 已在昇腾 910C、PPU ZW810E、海光 K100、AMD MI300X 上真机验证，
 所测版本与限制见[如何选择功能](docs/explanation/choosing-features.md#sleepwake多个模型轮流用一张卡)。
-GPU 通过厂商命令行工具探测（`nvidia-smi`、`npu-smi`、`ppu-smi`、`hy-smi`），不依赖 NVML，也不需要 cgo。
+GPU 通过厂商命令行工具（`nvidia-smi`、`npu-smi`、`ppu-smi`、`hy-smi`）或 AMD 的 amdgpu sysfs 与 KFD 探测，不依赖 NVML，也不需要 cgo。
 各组合的详细状态见[厂商支持矩阵](docs/reference/support-matrix.md)和[昇腾 CANN 矩阵](docs/reference/ascend-support-matrix.md)。
 
 **推理引擎：** vLLM（含 vLLM-Ascend、vLLM-Omni）、SGLang；Mac 上是 vllm-metal、MLX-VLM、MLX-Audio 和 llama.cpp。
@@ -127,7 +128,7 @@ GPU 通过厂商命令行工具探测（`nvidia-smi`、`npu-smi`、`ppu-smi`、`
 | 语音 | Qwen3-ASR、Whisper large-v3、Qwen3-TTS、GLM-TTS、Voxtral、FishAudio S2-Pro |
 | 图像 / 视频 | Qwen-Image、GLM-Image、Stable Diffusion 3.5、Wan 2.1 / 2.2、LTX-2.5、Cosmos3 |
 
-目录共 390 个模型、来自 76 个组织，1,224 份启动规格（NVIDIA 775、PPU 196、昇腾 173、海光 42、Apple 9）。
+目录共 392 个模型、来自 77 个组织，1,235 份启动规格（NVIDIA 745、PPU 216、昇腾 209、海光 41、AMD 15、Apple 9）。
 目录之外的模型可以从 Hugging Face、ModelScope、本地目录、NFS 或 HTTP 文件服务器注册，用自定义参数部署。
 
 ## 截图

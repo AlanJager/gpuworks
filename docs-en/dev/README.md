@@ -38,6 +38,8 @@ The root [`CLAUDE.md`](../../CLAUDE.md) is authoritative for development convent
 - [Code Map: Package Responsibilities](code-map.md)
 - [Local Development Environment](setup.md)
 - [Test Tiers and Cloud Strategy](testing.md)
+- [AMD support design: responsibilities, admission and compatibility](amd-support-design.md)
+- [AMD Integration and Hardware Validation](amd-hardware-validation.md)
 - [Benchmark Information and Reporting Standards](benchmark-reporting-standard.md)
 - [Observability Limits of Per-Request Engine Queue Time](engine-queue-observation.md)
 - [Browser E2E Testing Standards](../../test/e2e/browser-e2e-testing-standard.md)

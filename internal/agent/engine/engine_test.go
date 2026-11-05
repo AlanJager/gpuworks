@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"gpuworks.ai/gpuworks/internal/agent/gpu"
+	"gpuworks.ai/gpuworks/internal/agent/runtime"
+	"gpuworks.ai/gpuworks/internal/proto"
 	"io"
 	"log/slog"
 	"net"
@@ -16,10 +19,6 @@ import (
 	"sync"
 	"testing"
 	"time"
-
-	"gpuworks.ai/gpuworks/internal/agent/gpu"
-	"gpuworks.ai/gpuworks/internal/agent/runtime"
-	"gpuworks.ai/gpuworks/internal/proto"
 )
 
 func TestApplyPreStartArgvWrapsEngineCommand(t *testing.T) {
@@ -89,7 +88,7 @@ type headlessTestDriver struct {
 func TestSwitchDriverReplacesRuntimeAndKeepsDesiredState(t *testing.T) {
 	old := &headlessTestDriver{name: "docker"}
 	newDriver := &headlessTestDriver{name: "udocker"}
-	e := New(old, nil, slog.Default(), t.TempDir())
+	e := newHermeticEngine(old, nil, slog.Default(), t.TempDir())
 	e.SetDesiredFull(context.Background(), nil)
 	if err := e.SwitchDriver(context.Background(), newDriver); err != nil {
 		t.Fatalf("switch driver: %v", err)
@@ -159,7 +158,7 @@ func TestSwitchDriverKeepsOldRuntimeUntilContainersAreConfirmedAbsent(t *testing
 				tc.setup(old)
 			}
 			next := &headlessTestDriver{name: "new"}
-			e := New(old, nil, slog.Default(), t.TempDir())
+			e := newHermeticEngine(old, nil, slog.Default(), t.TempDir())
 			spec := proto.InstanceDesiredState{UUID: "switch-owned", DesiredState: "running"}
 			e.mu.Lock()
 			e.desired[spec.UUID] = spec
@@ -205,7 +204,7 @@ func TestRemovalDuringPullWaitsForStartupBeforeAcknowledgingTeardown(t *testing.
 		proceed:            make(chan struct{}),
 	}
 	reported := make(chan proto.InstanceStatus, 16)
-	e := New(driver, func(st proto.InstanceStatus) { reported <- st }, slog.Default(), t.TempDir())
+	e := newHermeticEngine(driver, func(st proto.InstanceStatus) { reported <- st }, slog.Default(), t.TempDir())
 	spec := proto.InstanceDesiredState{UUID: "removal-during-pull", Image: "example:latest", DesiredState: "running"}
 	e.SetDesiredFull(context.Background(), []proto.InstanceDesiredState{spec})
 	select {
@@ -264,7 +263,7 @@ func (d *healthWaitDriver) Status(context.Context, string) (runtime.Status, erro
 func TestRemovalCancelsHealthWaitBeforeTeardownAck(t *testing.T) {
 	driver := &healthWaitDriver{headlessTestDriver: &headlessTestDriver{}, checked: make(chan struct{})}
 	reported := make(chan proto.InstanceStatus, 32)
-	e := New(driver, func(st proto.InstanceStatus) { reported <- st }, slog.Default(), t.TempDir())
+	e := newHermeticEngine(driver, func(st proto.InstanceStatus) { reported <- st }, slog.Default(), t.TempDir())
 	spec := proto.InstanceDesiredState{UUID: "removal-during-health", DesiredState: "running", APIPort: 1, StartTimeout: 600}
 	e.SetDesiredFull(context.Background(), []proto.InstanceDesiredState{spec})
 	select {
@@ -341,7 +340,7 @@ func TestSameUUIDReaddWaitsForSuccessfulOldGenerationCleanup(t *testing.T) {
 		secondRun:          make(chan struct{}),
 	}
 	reported := make(chan proto.InstanceStatus, 32)
-	e := New(driver, func(st proto.InstanceStatus) { reported <- st }, slog.Default(), t.TempDir())
+	e := newHermeticEngine(driver, func(st proto.InstanceStatus) { reported <- st }, slog.Default(), t.TempDir())
 	spec := proto.InstanceDesiredState{UUID: "same-uuid-generation", Image: "example:latest", DesiredState: "running", Headless: true}
 	e.SetDesiredFull(context.Background(), []proto.InstanceDesiredState{spec})
 	select {
@@ -404,7 +403,7 @@ func TestFullSyncRetriesFailedRemovalWithoutDesiredEntry(t *testing.T) {
 		secondRun:          make(chan struct{}),
 	}
 	reported := make(chan proto.InstanceStatus, 32)
-	e := New(driver, func(st proto.InstanceStatus) { reported <- st }, slog.Default(), t.TempDir())
+	e := newHermeticEngine(driver, func(st proto.InstanceStatus) { reported <- st }, slog.Default(), t.TempDir())
 	spec := proto.InstanceDesiredState{UUID: "retry-removed-generation", Image: "example:latest", DesiredState: "running", Headless: true}
 	e.SetDesiredFull(context.Background(), []proto.InstanceDesiredState{spec})
 	select {
@@ -481,7 +480,7 @@ func (d *transientInspectDriver) Run(context.Context, runtime.WorkloadSpec) (str
 func TestTransientInspectionErrorRetriesWithoutRetiringRunningInstance(t *testing.T) {
 	driver := &transientInspectDriver{headlessTestDriver: &headlessTestDriver{}}
 	reported := make(chan proto.InstanceStatus, 16)
-	e := New(driver, func(st proto.InstanceStatus) { reported <- st }, slog.Default(), t.TempDir())
+	e := newHermeticEngine(driver, func(st proto.InstanceStatus) { reported <- st }, slog.Default(), t.TempDir())
 	e.headlessStableChecks = 1
 	spec := proto.InstanceDesiredState{UUID: "transient-inspect", DesiredState: "running", Headless: true}
 	e.SetDesiredFull(context.Background(), []proto.InstanceDesiredState{spec})
@@ -597,51 +596,9 @@ func TestApplyDeviceInjection(t *testing.T) {
 	}
 }
 
-func TestApplyDeviceInjectionReplacesImageGPUSelectionForDocker(t *testing.T) {
-	e := NewWithProber(&headlessTestDriver{name: "docker"}, nil, slog.Default(), t.TempDir(), injectionProber{
-		inj: gpu.RuntimeInjection{
-			Env:        map[string]string{"CUDA_VISIBLE_DEVICES": "2,4"},
-			DockerArgs: []string{"--gpus", `"device=2,4"`},
-		},
-	})
-	ws := runtime.WorkloadSpec{
-		Env:        map[string]string{},
-		DockerArgs: []string{"--ipc=host", "--gpus", "all", "--gpus=all", "--privileged"},
-	}
-
-	if err := e.applyDeviceInjection(&ws, []int{2, 4}); err != nil {
-		t.Fatal(err)
-	}
-
-	wantArgs := []string{"--ipc=host", "--privileged", "--gpus", `"device=2,4"`}
-	if fmt.Sprint(ws.DockerArgs) != fmt.Sprint(wantArgs) {
-		t.Fatalf("DockerArgs = %v, want %v", ws.DockerArgs, wantArgs)
-	}
-	if got := ws.Env["CUDA_VISIBLE_DEVICES"]; got != "0,1" {
-		t.Fatalf("container CUDA_VISIBLE_DEVICES = %q, want compact indexes", got)
-	}
-}
-
-func TestApplyDeviceInjectionKeepsPhysicalCUDAIndexesForUdocker(t *testing.T) {
-	e := NewWithProber(&headlessTestDriver{name: "udocker"}, nil, slog.Default(), t.TempDir(), injectionProber{
-		inj: gpu.RuntimeInjection{
-			Env:        map[string]string{"CUDA_VISIBLE_DEVICES": "2,4"},
-			DockerArgs: []string{"--gpus", `"device=2,4"`},
-		},
-	})
-	ws := runtime.WorkloadSpec{Env: map[string]string{}}
-
-	if err := e.applyDeviceInjection(&ws, []int{2, 4}); err != nil {
-		t.Fatal(err)
-	}
-	if got := ws.Env["CUDA_VISIBLE_DEVICES"]; got != "2,4" {
-		t.Fatalf("udocker CUDA_VISIBLE_DEVICES = %q, want physical indexes", got)
-	}
-}
-
 func TestDetectOOMUsesLogMarkerWhenRuntimeOnlyReportsExit137(t *testing.T) {
 	d := &headlessTestDriver{status: runtime.Status{Exists: true, ExitCode: 137}}
-	e := New(d, nil, slog.Default(), t.TempDir())
+	e := newHermeticEngine(d, nil, slog.Default(), t.TempDir())
 	if e.detectOOM(context.Background(), "worker", d.status) {
 		t.Fatal("empty logs incorrectly classified exit 137 as OOM")
 	}
@@ -712,7 +669,7 @@ func TestApplyDeviceInjectionUsesDriverAwareInjectorAndPropagatesMounts(t *testi
 func TestHeadlessWorkerUsesContainerReadinessWithoutHTTP(t *testing.T) {
 	driver := &headlessTestDriver{status: runtime.Status{Exists: true, Running: true}}
 	reported := make(chan proto.InstanceStatus, 1)
-	e := New(driver, func(st proto.InstanceStatus) { reported <- st }, slog.Default(), t.TempDir())
+	e := newHermeticEngine(driver, func(st proto.InstanceStatus) { reported <- st }, slog.Default(), t.TempDir())
 	e.headlessProbeInterval = time.Millisecond
 	e.headlessStableChecks = 2
 	spec := proto.InstanceDesiredState{
@@ -734,7 +691,7 @@ func TestHeadlessWorkerUsesContainerReadinessWithoutHTTP(t *testing.T) {
 func TestHeadlessWorkerReportsContainerExit(t *testing.T) {
 	driver := &headlessTestDriver{status: runtime.Status{Exists: true, Running: false, ExitCode: 17}}
 	reported := make(chan proto.InstanceStatus, 1)
-	e := New(driver, func(st proto.InstanceStatus) { reported <- st }, slog.Default(), t.TempDir())
+	e := newHermeticEngine(driver, func(st proto.InstanceStatus) { reported <- st }, slog.Default(), t.TempDir())
 	e.headlessProbeInterval = time.Millisecond
 	e.probeAndReport(context.Background(), proto.InstanceDesiredState{
 		UUID: "worker-exited", Headless: true, NodeRank: 1, StartTimeout: 1,
@@ -747,7 +704,7 @@ func TestHeadlessWorkerReportsContainerExit(t *testing.T) {
 }
 
 func TestMetricSpecsExcludeHeadlessWorkers(t *testing.T) {
-	e := New(&headlessTestDriver{}, func(proto.InstanceStatus) {}, slog.Default(), t.TempDir())
+	e := newHermeticEngine(&headlessTestDriver{}, func(proto.InstanceStatus) {}, slog.Default(), t.TempDir())
 	e.desired["leader"] = proto.InstanceDesiredState{UUID: "leader", DesiredState: "running", APIPort: 30000}
 	e.desired["worker"] = proto.InstanceDesiredState{UUID: "worker", DesiredState: "running", Headless: true}
 
@@ -826,7 +783,7 @@ func (h *sleepHTTPServer) port(t *testing.T) int {
 func TestReconcileSleepTransitionsAndRetainsLevelOnFailure(t *testing.T) {
 	h := newSleepHTTPServer(t)
 	reported := make(chan proto.InstanceStatus, 16)
-	e := New(&headlessTestDriver{}, func(st proto.InstanceStatus) { reported <- st }, slog.Default(), t.TempDir())
+	e := newHermeticEngine(&headlessTestDriver{}, func(st proto.InstanceStatus) { reported <- st }, slog.Default(), t.TempDir())
 	spec := proto.InstanceDesiredState{UUID: "sleep-1", Sleepable: true, APIPort: h.port(t), Ports: []int{h.port(t)}}
 
 	spec.DesiredSleep = 1
@@ -909,7 +866,7 @@ func TestReconcileSleepTreatsPartialL2WakeAsUncertain(t *testing.T) {
 	h := newSleepHTTPServer(t)
 	h.status["/wake_up"] = http.StatusInternalServerError
 	reported := make(chan proto.InstanceStatus, 1)
-	e := New(&headlessTestDriver{}, func(st proto.InstanceStatus) { reported <- st }, slog.Default(), t.TempDir())
+	e := newHermeticEngine(&headlessTestDriver{}, func(st proto.InstanceStatus) { reported <- st }, slog.Default(), t.TempDir())
 	e.sleepLevel["partial-l2"] = 2
 	e.reconcileSleep(context.Background(), proto.InstanceDesiredState{UUID: "partial-l2", Sleepable: true, DesiredSleep: 0, APIPort: h.port(t)})
 	st := <-reported
@@ -926,7 +883,7 @@ func TestReconcileSleepRestoresConfirmedL1AfterFailedWake(t *testing.T) {
 	h.status["/wake_up"] = http.StatusInternalServerError
 	h.probeBodies = []string{`{"is_sleeping":false}`, `{"is_sleeping":true}`}
 	reported := make(chan proto.InstanceStatus, 1)
-	e := New(&headlessTestDriver{}, func(st proto.InstanceStatus) { reported <- st }, slog.Default(), t.TempDir())
+	e := newHermeticEngine(&headlessTestDriver{}, func(st proto.InstanceStatus) { reported <- st }, slog.Default(), t.TempDir())
 	e.sleepLevel["restore-l1"] = 1
 	e.reconcileSleep(context.Background(), proto.InstanceDesiredState{UUID: "restore-l1", Sleepable: true, DesiredSleep: 0, APIPort: h.port(t)})
 	st := <-reported
@@ -941,7 +898,7 @@ func TestReconcileSleepRestoresConfirmedL1AfterFailedWake(t *testing.T) {
 func TestReconcileSleepCanceledOrderReportsUncertain(t *testing.T) {
 	h := newSleepHTTPServer(t)
 	reported := make(chan proto.InstanceStatus, 1)
-	e := New(&headlessTestDriver{}, func(st proto.InstanceStatus) { reported <- st }, slog.Default(), t.TempDir())
+	e := newHermeticEngine(&headlessTestDriver{}, func(st proto.InstanceStatus) { reported <- st }, slog.Default(), t.TempDir())
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	e.reconcileSleep(ctx, proto.InstanceDesiredState{UUID: "canceled-sleep", Sleepable: true, DesiredSleep: 1, APIPort: h.port(t)})
@@ -956,7 +913,7 @@ func TestReconcileSleepProbeErrorReportsUncertain(t *testing.T) {
 	h.status["/wake_up"] = http.StatusInternalServerError
 	h.body["/is_sleeping"] = `not-json`
 	reported := make(chan proto.InstanceStatus, 1)
-	e := New(&headlessTestDriver{}, func(st proto.InstanceStatus) { reported <- st }, slog.Default(), t.TempDir())
+	e := newHermeticEngine(&headlessTestDriver{}, func(st proto.InstanceStatus) { reported <- st }, slog.Default(), t.TempDir())
 	e.sleepLevel["probe-error"] = 1
 	e.reconcileSleep(context.Background(), proto.InstanceDesiredState{UUID: "probe-error", Sleepable: true, DesiredSleep: 0, APIPort: h.port(t)})
 	st := <-reported
@@ -972,7 +929,7 @@ func TestReconcileSleepReportsAppliedWhenSleepCompletedDespiteATransportError(t 
 	h.drop["/sleep"] = true
 	h.body["/is_sleeping"] = `{"is_sleeping":true}`
 	reported := make(chan proto.InstanceStatus, 1)
-	e := New(&headlessTestDriver{}, func(st proto.InstanceStatus) { reported <- st }, slog.Default(), t.TempDir())
+	e := newHermeticEngine(&headlessTestDriver{}, func(st proto.InstanceStatus) { reported <- st }, slog.Default(), t.TempDir())
 	e.reconcileSleep(context.Background(), proto.InstanceDesiredState{UUID: "late-sleep", Sleepable: true, DesiredSleep: 1, APIPort: h.port(t)})
 	st := <-reported
 	if st.State != proto.InstRunning || st.SleepLevel != 1 || st.Phase != "" || st.Message != "" {
@@ -1067,7 +1024,7 @@ func TestAdoptSleepLevelTakesTheLevelFromTheDesiredState(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			h := newSleepHTTPServer(t)
 			h.body["/is_sleeping"] = tc.body
-			e := New(&headlessTestDriver{}, nil, slog.Default(), t.TempDir())
+			e := newHermeticEngine(&headlessTestDriver{}, nil, slog.Default(), t.TempDir())
 			spec := proto.InstanceDesiredState{UUID: "adopt", Sleepable: true, DesiredSleep: tc.desired, APIPort: h.port(t)}
 			if err := e.adoptSleepLevel(context.Background(), spec); err != nil {
 				t.Fatal(err)
@@ -1106,7 +1063,7 @@ func TestProbeSleepStateSupportsBooleanAndObjectResponses(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			h := newSleepHTTPServer(t)
 			h.body["/is_sleeping"] = tc.body
-			e := New(&headlessTestDriver{}, nil, slog.Default(), t.TempDir())
+			e := newHermeticEngine(&headlessTestDriver{}, nil, slog.Default(), t.TempDir())
 			got, err := e.probeSleepState(context.Background(), proto.InstanceDesiredState{APIPort: h.port(t)})
 			if tc.err {
 				if err == nil {
@@ -1125,7 +1082,7 @@ func TestProbeAndReportPrewarmsOnceAndSkipsWhenDesiredSleepNonzero(t *testing.T)
 	h := newSleepHTTPServer(t)
 	driver := &headlessTestDriver{status: runtime.Status{Exists: true, Running: true}}
 	reported := make(chan proto.InstanceStatus, 16)
-	e := New(driver, func(st proto.InstanceStatus) { reported <- st }, slog.Default(), t.TempDir())
+	e := newHermeticEngine(driver, func(st proto.InstanceStatus) { reported <- st }, slog.Default(), t.TempDir())
 	spec := proto.InstanceDesiredState{UUID: "prewarm-1", Sleepable: true, DesiredSleep: 0, APIPort: h.port(t), StartTimeout: 1}
 	e.probeAndReport(context.Background(), spec, "container")
 	first := <-reported
@@ -1150,7 +1107,7 @@ func TestProbeAndReportPrewarmsOnceAndSkipsWhenDesiredSleepNonzero(t *testing.T)
 
 	h2 := newSleepHTTPServer(t)
 	reported2 := make(chan proto.InstanceStatus, 4)
-	e2 := New(driver, func(st proto.InstanceStatus) { reported2 <- st }, slog.Default(), t.TempDir())
+	e2 := newHermeticEngine(driver, func(st proto.InstanceStatus) { reported2 <- st }, slog.Default(), t.TempDir())
 	spec2 := proto.InstanceDesiredState{UUID: "prewarm-sleeping", Sleepable: true, DesiredSleep: 1, APIPort: h2.port(t), StartTimeout: 1}
 	e2.probeAndReport(context.Background(), spec2, "container")
 	if st := <-reported2; st.State != proto.InstRunning || st.L1HostBufferHeld {
@@ -1168,7 +1125,7 @@ func TestAdoptRunningContainerSkipsPrewarm(t *testing.T) {
 	h.body["/is_sleeping"] = "false"
 	driver := &headlessTestDriver{status: runtime.Status{Exists: true, Running: true}}
 	reported := make(chan proto.InstanceStatus, 4)
-	e := New(driver, func(st proto.InstanceStatus) { reported <- st }, slog.Default(), t.TempDir())
+	e := newHermeticEngine(driver, func(st proto.InstanceStatus) { reported <- st }, slog.Default(), t.TempDir())
 	spec := proto.InstanceDesiredState{UUID: "adopt-prewarmed", Sleepable: true, DesiredSleep: 0, APIPort: h.port(t), StartTimeout: 1}
 	e.startOrAdopt(context.Background(), spec)
 	// An adopting agent does not know whether the engine holds a host buffer
@@ -1190,7 +1147,7 @@ func TestProbeAndReportPrewarmFailureReportsFailed(t *testing.T) {
 	h := newSleepHTTPServer(t)
 	h.status["/sleep"] = http.StatusInternalServerError
 	reported := make(chan proto.InstanceStatus, 16)
-	e := New(&headlessTestDriver{status: runtime.Status{Exists: true, Running: true}}, func(st proto.InstanceStatus) { reported <- st }, slog.Default(), t.TempDir())
+	e := newHermeticEngine(&headlessTestDriver{status: runtime.Status{Exists: true, Running: true}}, func(st proto.InstanceStatus) { reported <- st }, slog.Default(), t.TempDir())
 	e.probeAndReport(context.Background(), proto.InstanceDesiredState{UUID: "prewarm-fail", Sleepable: true, APIPort: h.port(t), StartTimeout: 1}, "container")
 	got := []proto.InstanceStatus{<-reported, <-reported}
 	if got[0].State != proto.InstOptimizing || got[1].State != proto.InstFailed || !strings.Contains(got[1].Message, "sleep prewarm failed") {
@@ -1411,7 +1368,7 @@ func (d *orphanDriver) Remove(_ context.Context, id string) error {
 // instance uuids.
 func orphanTestEngine(t *testing.T, driver runtime.Driver, uuids ...string) *Engine {
 	t.Helper()
-	e := New(driver, func(proto.InstanceStatus) {}, slog.Default(), t.TempDir())
+	e := newHermeticEngine(driver, func(proto.InstanceStatus) {}, slog.Default(), t.TempDir())
 	for _, uuid := range uuids {
 		e.desired[uuid] = proto.InstanceDesiredState{UUID: uuid, DesiredState: "running"}
 	}
@@ -1510,7 +1467,7 @@ func TestTeardownReportsRemovalFailureToTheControlPlane(t *testing.T) {
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	e := New(driver, func(st proto.InstanceStatus) { reported = append(reported, st) }, slog.Default(), stateDir)
+	e := newHermeticEngine(driver, func(st proto.InstanceStatus) { reported = append(reported, st) }, slog.Default(), stateDir)
 
 	e.teardown(context.Background(), uuid)
 
@@ -1545,7 +1502,7 @@ func TestTeardownRetainsStateWhenContainerInspectionFails(t *testing.T) {
 	}
 	driver := &statusErrorDriver{}
 	var reported proto.InstanceStatus
-	e := New(driver, func(st proto.InstanceStatus) { reported = st }, slog.Default(), stateDir)
+	e := newHermeticEngine(driver, func(st proto.InstanceStatus) { reported = st }, slog.Default(), stateDir)
 	if e.teardown(context.Background(), uuid) || reported.State != proto.InstRemoving || len(driver.removed) != 0 {
 		t.Fatalf("inspection failure was treated as removal: %+v, removed=%v", reported, driver.removed)
 	}
@@ -1558,7 +1515,7 @@ func TestTeardownReportsStoppedWhenTheContainerIsGone(t *testing.T) {
 	uuid := "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
 	var reported []proto.InstanceStatus
 	driver := &orphanDriver{headlessTestDriver: headlessTestDriver{status: runtime.Status{Exists: true, Running: true}}}
-	e := New(driver, func(st proto.InstanceStatus) { reported = append(reported, st) }, slog.Default(), t.TempDir())
+	e := newHermeticEngine(driver, func(st proto.InstanceStatus) { reported = append(reported, st) }, slog.Default(), t.TempDir())
 
 	e.teardown(context.Background(), uuid)
 

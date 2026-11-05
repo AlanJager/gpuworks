@@ -65,7 +65,7 @@
 | 昇腾 | 支持 | experimental | 宿主机的 device-share 权限满足要求；推理镜像需 glibc ≥ 2.33 | 在自有环境的 910B4 上，Docker 通过了平台 dGPU 推理与超配拒绝验证，nerdctl 只通过了节点级 dGPU 行为探针；云租机（矩阵中的 Gitee 环境）无权限执行 device-share，只能证明探测和整卡对话，不能当作 dGPU 通过；`aicore-quota` 不能据此承诺 20/80 吞吐比例 |
 | PPU | 支持 | experimental | HGGC 13.x、x86_64，且**只在 Docker 运行时**可用 | 20/80 配置在繁忙时表现为加权 QoS（对端空闲时会借用余量），不是硬 SM 分区 |
 | 海光（DTK） | 没有后端 | — | — | 探测与整卡部署取决于目录 spec 和 runtime；dGPU 后端注册表里没有海光，按整卡使用 |
-| AMD（ROCm） | 没有后端 | — | — | 同上 |
+| AMD（ROCm） | 不支持 | — | — | 本表仅指 dGPU 分区；整卡实现范围见[厂商支持矩阵](../reference/support-matrix.md) |
 
 能力是否可用由 server 推导成 `ready` 或 `unavailable`（附 `reason`），agent 自己不宣布。不满足
 条件时节点仍可整卡部署，但带 dGPU 显存限额的请求会明确失败（如 `partition_unavailable`），
@@ -121,6 +121,7 @@
 - **昇腾 910C**：vLLM-Ascend 0.26.0rc1 的 L1/L2 均通过。平台在声明"可休眠"时自动把 `weight_nz_mode` 合并为 `0`，保留其他 `additional-config` 键；模板环境里的 `PYTORCH_NPU_ALLOC_CONF` 若含 `expandable_segments:True`，平台把它改为 `expandable_segments:False`，其余分配器设置不变，并在评估/预览里给出警告 `ASCEND_SLEEP_EXPANDABLE_SEGMENTS_DISABLED`（`params`：`variable`、`template_value`、`value`）。关闭 expandable segments 可能增加 NPU 显存碎片，KV cache 可能变小，显存余量紧的配置（例如大模型配 `gpu_memory_utilization` 0.9 以上）可能在启动或高负载时显存不足；出现时调低 `gpu_memory_utilization` 或 `max_model_len`，或关闭"可休眠"。这些大模型模板开启休眠后尚未经过真机验证。用户在附加参数里显式指定非零 NZ（`ASCEND_SLEEP_WEIGHT_NZ_CONFLICT`），或在部署环境变量里开启 `expandable_segments:True`（`ASCEND_SLEEP_EXPANDABLE_SEGMENTS`），会在创建/预览阶段被拒绝。用命令编辑器完整覆盖启动命令时，平台不注入也不检查这两项。
 - **PPU ZW810E**：当前 hggc runner（vLLM 0.23.0）的 L1/L2 均通过，实际运行 V1。`/is_sleeping` 的逻辑状态可能先于实际操作完成切换，必须以 POST 完成、显存和醒后推理共同确认。
 - **海光 K100**：vLLM 0.18.1 在 Docker 和 nerdctl 下的 L1/L2 均通过。平台在声明"可休眠"时为 Hygon 注入 `VLLM_CUDART_SO_PATH`，已有模板或用户环境值仍可覆盖。udocker/PRoot 路径未通过基础 Torch kernel 验证，不能用于证明此组合可用。
+- **AMD Instinct MI300X**：gpuworks-runner ROCm 档（vLLM 0.30.0、ROCm 7.2.3）的 L1/L2 均通过：休眠后另一进程可申请到约 185 GiB 中的 150 GiB，L2 按分步唤醒（先恢复权重缓冲、重载权重、再恢复 KV 并清空前缀缓存）后推理正确。`amd-smi` 报告的已用显存在该 VF 上不随休眠更新，以 sysfs `mem_info_vram_used` 为准。Ryzen AI Max（gfx1151）未验证。
 
 海光 ROCm sleep allocator 还需要宿主内存后备：在 62 GiB RAM、无 swap 的 K100 上，`gpu_memory_utilization=0.9` 曾导致 EngineCore 被 OOM killer 杀掉，降到 `0.25` 后通过。平台目前**没有针对该后备内存的专门准入**，创建前必须自行评估节点 RAM、其他实例和系统保留。以上结论均绑定所测镜像与配置；自定义镜像仍不做能力探测。
 
@@ -202,14 +203,21 @@
 |---|---|---|---|
 | `vllm-nixl` | vLLM / NVIDIA | UCX（走参数网络） | 已验证：同机、跨机以太、角色内跨机 |
 | `vllm-ascend-mooncake` | vLLM / 昇腾 | NPU 自带 RoCE 口（HCCL） | 已验证：两台 910B4 跨机；P、D 的 NPU 必须在 NPU 网络上互通 |
+| `vllm-mooncake` | vLLM 0.21 / 海光 | Mooncake 传输引擎（走参数网络，RDMA 或 TCP） | **实验性** |
 | `sglang-nixl` | SGLang / NVIDIA | UCX | **未验证** |
 | `sglang-ppu-ipc` | SGLang / PPU | 同机卡间 IPC（Mooncake NVLink 传输） | 已验证：PPU ZW810E 同机两卡、TP 1；P、D 必须在同一节点 |
-| （海光） | 没有 PD 模式 | — | — |
+| `sglang-ppu-mooncake` | SGLang / PPU | Mooncake RDMA（走主机 RDMA 参数网络） | 已验证：PPU ZW810E 经 RoCE 网卡，TP 1；节点须加载 `alixpu_peermem` |
+| `vllm-ppu-mooncake` | vLLM / PPU | Mooncake RDMA（走主机 RDMA 参数网络） | 已验证：PPU ZW810E 经 RoCE 网卡，TP 1；节点须加载 `alixpu_peermem` |
 
 `sglang-ppu-ipc` 只在一台主机的卡之间传 KV，放置到多个节点会被拒绝（`PD_SAME_NODE_REQUIRED`）；
-它需要带 PD 补丁的 PPU SGLang 镜像（`hggc13.0-sglang0.5.13-r3` 起），并关闭重叠调度。海光目前没有 PD 模式。
-两种模式的 TP 规则相反：`vllm-nixl` 要求 decode TP ≥ prefill TP，`vllm-ascend-mooncake` 要求
-prefill TP ≥ decode TP，`sglang-nixl` 与 `sglang-ppu-ipc` 要求相等。
+它需要带 PD 补丁的 PPU SGLang 镜像（`hggc13.0-sglang0.5.13-r3` 起），并关闭重叠调度。
+`sglang-ppu-mooncake`、`vllm-ppu-mooncake` 经 RoCE 网卡传 KV，可以跨机：节点必须在主机 RDMA 参数网络上（单机也一样，
+否则拒绝 `PD_NETWORK_RDMA_REQUIRED`），并加载 PPU 的 peer memory 模块 `alixpu_peermem`，让网卡能注册卡的显存。
+没加载的节点在节点详情「健康检查」的 **GPUDirect RDMA** 一列显示警告并给出修复命令，诊断报告同样列出；
+手动选到这样的节点会被拒绝（`PD_PEER_MEMORY_MISSING`），自动放置跳过它们，一个都不剩时返回 `PD_PEER_MEMORY_NONE`。
+海光只有 vLLM 0.21 的镜像带 Mooncake，0.18.1 的镜像不能用于 PD。
+TP 规则按模式不同：`vllm-nixl` 要求 decode TP ≥ prefill TP，`vllm-ascend-mooncake` 要求
+prefill TP ≥ decode TP，`vllm-mooncake`、`sglang-nixl`、`sglang-ppu-ipc` 与两个 PPU Mooncake 模式要求相等。
 
 **代价与限制**：
 
@@ -221,11 +229,12 @@ prefill TP ≥ decode TP，`sglang-nixl` 与 `sglang-ppu-ipc` 要求相等。
 - KV Offload 只在 prefill 上生效；不能在自定义参数里写 `--kv-transfer-config` 或
   `--kv-offloading-size`。
 - 与 sleep、dGPU 叠加时评估会给"未验证"警告（`PD_UNVERIFIED_COMBINATION`）。
-- `sglang-nixl`、`sglang-ppu-ipc` 的 decode 不能独立计算 prefill，所以没有降级、也不能把 prefill 缩到 0；其余模式默认
+- `sglang-nixl`、`sglang-ppu-ipc`、`sglang-ppu-mooncake` 的 decode 不能独立计算 prefill，所以没有降级、也不能把 prefill 缩到 0；
+  `vllm-ppu-mooncake` 也只支持返回 503（降级未验证）；其余模式默认
   在 prefill 不可用时降级到 decode 本地完成（`fallback: decode`），也可设为直接返回 503。
 - 已知缺陷：引擎进程在实例就绪后退出时，平台暂时不会发现（`todo.md` T26），PD 下表现为网关持续降级。
 
-**什么时候不该用**：提示很短；只有一张卡或一台机器的卡不够分成两组；硬件不是 NVIDIA 或昇腾；想要
+**什么时候不该用**：提示很短；只有一张卡或一台机器的卡不够分成两组；硬件不是 NVIDIA、昇腾、PPU 或海光；想要
 靠"副本数"扩容（PD 忽略 `Replicas`）。
 
 **怎么确认真的在分离**：每个 prefill 实例首次就绪后平台自动做一次交接自检，在时间线里记

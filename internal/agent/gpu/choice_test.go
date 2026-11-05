@@ -20,6 +20,7 @@ func TestTheChosenVendorPicksItsBackend(t *testing.T) {
 		"ascend": &AscendProber{},
 		"hygon":  &HygonProber{},
 		"ppu":    &PPUProber{},
+		"amd":    &AMDProber{},
 	} {
 		got := chosenProber(probers, vendor)
 		if reflect.TypeOf(got) != reflect.TypeOf(want) {

@@ -168,6 +168,7 @@ type SystemLabelValueCount struct {
 // Model is the card's gpuworks.ai/gpu-model label value, so the nodes with
 // it can be listed with label=gpuworks.ai/gpu-model=<model>.
 type NodeGPUCount struct {
+	ArchID string `json:"arch_id,omitempty"`
 	Vendor string `json:"vendor"`
 	Name   string `json:"name"`
 	CC     string `json:"cc"`

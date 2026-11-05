@@ -1,8 +1,5 @@
 # gpuworks-runner: NVIDIA CUDA vLLM 线
 #
-# 派生自 gpustack/runner 的 pack/cuda/Dockerfile.vllm（Apache-2.0，见 ../NOTICE）：
-# 工具层构成、ray 的 2.54.0 pin、omni 与补丁的先后顺序参照其做法。
-#
 # 内容 = 上游 vanilla（vllm/vllm-openai，自带 torch/vllm/flashinfer；cu13 档还预装
 #          改名包 mooncake-transfer-engine-cuda13，故 mooncake 无需另装）
 #       + 轻量工具层（刻意不含编译链，wheel 均为预编译）

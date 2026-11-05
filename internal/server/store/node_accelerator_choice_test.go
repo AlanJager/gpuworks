@@ -86,7 +86,7 @@ func TestTheAcceleratorChoiceIsStoredAndReplayed(t *testing.T) {
 	if ds.AcceleratorPreference != "" {
 		t.Fatalf("a node nobody chose for replays %q", ds.AcceleratorPreference)
 	}
-	for _, tc := range []struct{ in, want string }{{" NVIDIA ", "nvidia"}, {"auto", "auto"}, {"ascend", "ascend"}} {
+	for _, tc := range []struct{ in, want string }{{" NVIDIA ", "nvidia"}, {"auto", "auto"}, {" AMD ", "amd"}, {"ascend", "ascend"}} {
 		if err := s.SetNodeAcceleratorPreference(node.UUID, tc.in); err != nil {
 			t.Fatal(err)
 		}
@@ -98,7 +98,7 @@ func TestTheAcceleratorChoiceIsStoredAndReplayed(t *testing.T) {
 			t.Fatalf("after choosing %q the replay says %q", tc.in, ds.AcceleratorPreference)
 		}
 	}
-	for _, bad := range []string{"", "apple", "amd", "nvidia,ascend"} {
+	for _, bad := range []string{"", "apple", "unknown-vendor", "nvidia,ascend"} {
 		if err := s.SetNodeAcceleratorPreference(node.UUID, bad); err == nil {
 			t.Fatalf("%q was stored", bad)
 		}

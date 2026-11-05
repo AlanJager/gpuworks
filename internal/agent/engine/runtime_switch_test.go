@@ -12,7 +12,7 @@ import (
 // recreated — and an agent the control plane has not yet told what it
 // runs does not know that it runs nothing.
 func TestIdleOnlyWhenNothingRunsStartsOrAwaitsCleanup(t *testing.T) {
-	e := New(&headlessTestDriver{name: "udocker"}, nil, slog.New(slog.DiscardHandler), t.TempDir())
+	e := newHermeticEngine(&headlessTestDriver{name: "udocker"}, nil, slog.New(slog.DiscardHandler), t.TempDir())
 	set := func(mutate func()) {
 		e.mu.Lock()
 		defer e.mu.Unlock()

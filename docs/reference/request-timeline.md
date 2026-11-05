@@ -104,15 +104,15 @@ PD 分离部署（[ADR 0028](../adr/0028-pd-disaggregated-deployment.md)）的�
 
 | 交接方式（PD 模式） | prefill 阶段 | 记录 |
 |---|---|---|
-| 顺序（`vllm-nixl`、`vllm-ascend-mooncake`） | 网关先把请求发给 prefill 实例、拿到 KV 参数后才交给 decode | `pd.prefill_ms` 是网关实测的等待；prefill 实例回复里的逐请求统计（与 decode 回复同一读法）记为 `prefill_queue_ms`、`prefill_compute_ms` |
-| 并发（`sglang-nixl`、`sglang-ppu-ipc`） | prefill 与 decode 同时收到请求，网关不等 | `prefill_ms` 未知、没有 `pd_prefill` 段，只记 prefill 实例与降级原因 |
+| 顺序（`vllm-nixl`、`vllm-ascend-mooncake`、`vllm-mooncake`） | 网关先把请求发给 prefill 实例、拿到 KV 参数（`vllm-mooncake` 由网关自己生成）后才交给 decode | `pd.prefill_ms` 是网关实测的等待；prefill 实例回复里的逐请求统计（与 decode 回复同一读法）记为 `prefill_queue_ms`、`prefill_compute_ms` |
+| 并发（`sglang-nixl`、`sglang-ppu-ipc`、`sglang-ppu-mooncake`） | prefill 与 decode 同时收到请求，网关不等 | `prefill_ms` 未知、没有 `pd_prefill` 段，只记 prefill 实例与降级原因 |
 
 顺序交接时，缓存命中与 Prefill 速度都使用 prefill 实例的数据：
 
 - 请求的缓存命中（`cached_tokens`）取 prefill 实例回复里的值，客户端收到的 usage 也是这个数（见 [OpenAI 兼容网关](openai-gateway.md#用量usage)）。原因是 decode 实例把拉来的 KV 算作命中，它的数总等于整个提示。
 - Prefill 速度用 prefill 实例自报的 Prefill（`prefill_compute_ms`），不用 decode 的首 token 重算。
 
-prefill 实例不可用而由 decode 单独完成时（`fallback: decode`），`pd.fallback` 记原因（`prefill_unreachable`、`prefill_5xx`、`prefill_no_kv_params` 等，与 PD 卡片的降级原因同一套），`prefill_instance_uuid` 为空；`prefill_ms` 仍是网关在放弃之前等的时间。
+prefill 实例不可用而由 decode 单独完成时（`fallback: decode`），`pd.fallback` 记原因（`prefill_unreachable`、`prefill_5xx`、`prefill_no_kv_params`、`prefill_no_bootstrap` 等，与 PD 卡片的降级原因同一套），`prefill_instance_uuid` 为空；`prefill_ms` 仍是网关在放弃之前等的时间。
 
 **decode 实例自报的数在 PD 下含义不同**，界面改了名字，拆分规则不变：
 

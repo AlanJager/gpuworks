@@ -1,0 +1,18 @@
+{
+  "code": "chip_mismatch",
+  "params": {
+    "actual_gpus": [
+      {
+        "arch_id": "gfx942",
+        "cc": "",
+        "name": "Instinct MI300X",
+        "vendor": "amd"
+      }
+    ],
+    "predicate": "{\"vendor\":\"amd\",\"arch_id\":\"gfx1151\"}",
+    "required_arch_id": "gfx1151",
+    "required_cc": "",
+    "required_name": "",
+    "required_vendor": "amd"
+  }
+}

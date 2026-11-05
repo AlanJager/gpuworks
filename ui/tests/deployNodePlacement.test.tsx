@@ -53,7 +53,7 @@ const nodes = [
 // renderSection mounts the node block the way the deploy page does: the
 // online nodes' facets in hand, the node endpoints answered by a faithful
 // fake of the server.
-async function renderSection(values: Record<string, unknown>, onNodeMode: (mode: string) => void = () => {}, eligible?: Array<{ uuid: string; eligible: boolean }>) {
+async function renderSection(values: Record<string, unknown>, onNodeMode: (mode: string) => void = () => {}, eligible?: Array<{ uuid: string; eligible: boolean }>, profile?: import("../src/api.ts").EngineProfile) {
   const fake = installFleet(api as never, nodes as never);
   const fleet = await fake.nodeFacets({ state: ["online"] });
   let form: ReturnType<typeof Form.useForm>[0] | undefined;
@@ -62,7 +62,7 @@ async function renderSection(values: Record<string, unknown>, onNodeMode: (mode:
     form = instance;
     return (
       <Form form={instance} initialValues={values}>
-        <NodeSection fleet={fleet} knownNodes={new Map()} selection={undefined as never} modelReady result={null} loading={false} onNodeMode={onNodeMode as never} eligibleNodes={eligible as never} />
+        <NodeSection fleet={fleet} knownNodes={new Map()} selection={undefined as never} modelReady result={null} loading={false} onNodeMode={onNodeMode as never} eligibleNodes={eligible as never} profile={profile} />
       </Form>
     );
   }
@@ -84,6 +84,21 @@ test("a single-node replica chooses automatic or pinned candidates; multi-node a
   assert.deepEqual(modes, ["manual"]);
   await user.click(screen.getByText(node.multi));
   assert.deepEqual(modes, ["manual", "multi"]);
+});
+
+test("an explicitly unsupported target profile disables and resets multi-node mode", async () => {
+  const modes: string[] = [];
+  const form = await renderSection(
+    { node_selection_mode: "multi", target_vendor: "amd", nnodes: 2 },
+    (mode) => { modes.push(mode); },
+    undefined,
+    { name: "vllm", multi_node_supported: false } as import("../src/api.ts").EngineProfile,
+  );
+  await waitFor(() => assert.equal(modes.length > 0, true));
+  form().setFieldValue("node_selection_mode", modes.at(-1));
+  await waitFor(() => assert.equal(form().getFieldValue("node_selection_mode") === "auto", true));
+  assert.equal(screen.getByText(node.multi).closest("button")?.hasAttribute("disabled"), true);
+  assert.deepEqual(modes, ["auto"]);
 });
 
 test("the strategy is a placement option of automatic candidates, spread by default", async () => {

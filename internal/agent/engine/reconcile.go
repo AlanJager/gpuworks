@@ -356,6 +356,12 @@ func (e *Engine) startOrAdoptEpoch(ctx context.Context, spec proto.InstanceDesir
 		}
 	}
 
+	// Admission governs creation. A running container is adopted above using
+	// its existing runtime contract, even if a newer policy rejects new launches.
+	if err := e.validateTargetDesiredForDriver(spec, driver.Name()); err != nil {
+		e.reportState(spec, proto.InstFailed, "", "", err.Error())
+		return
+	}
 	// A model path that is not there must fail the launch, not reach the
 	// runtime: docker creates a missing bind-mount source as an empty
 	// directory, so an unmounted NFS would otherwise start the engine on an
@@ -403,7 +409,7 @@ func (e *Engine) startOrAdoptEpoch(ctx context.Context, spec proto.InstanceDesir
 		return
 	}
 
-	if err := e.applyDeviceInjection(&ws, spec.GPUIndexes); err != nil {
+	if err := e.applyDeviceInjectionForDriver(&ws, spec.GPUIndexes, driver.Name()); err != nil {
 		e.reportState(spec, proto.InstFailed, "", "", err.Error())
 		return
 	}
