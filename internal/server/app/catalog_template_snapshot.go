@@ -112,6 +112,9 @@ func verifyTemplateLaunch(dep *store.Deployment, instance store.Instance, node *
 	// expansion for this allocation; concrete EnvLayers would bake its port or
 	// model path into a template intended for another allocation.
 	in.TemplateEnv, in.UserEnv = maps.Clone(in.TemplateEnv), maps.Clone(in.UserEnv)
+	for _, key := range request.Source.Overrides.EnvUnset {
+		delete(in.TemplateEnv, strings.TrimSpace(key))
+	}
 	for _, env := range []map[string]string{in.TemplateEnv, in.UserEnv} {
 		for key := range env {
 			if _, present := actual.Env[key]; !present {

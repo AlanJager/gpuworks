@@ -257,6 +257,30 @@ func TestTemplateExportUsesCapturedTensorParallelismRatherThanGPUCount(t *testin
 	}
 }
 
+func TestTemplateExportKeepsUnsetTemplateDefaultsOutWhenUserEnvIsExcluded(t *testing.T) {
+	f := newTemplateFixture(t)
+	f.installSnapshot(t, deploy.CatalogSelection{Env: map[string]string{"REPLACED": "old-template-default"}})
+	f.update(t, "container_overrides", `{"env_unset":["REPLACED"],"env":{"REPLACED":"new-user-value"}}`)
+	f.persistRuntimeLaunch(t)
+	for _, include := range [][]string{nil, {"REPLACED"}} {
+		source, err := loadTemplateSource(f.st, f.deployment.ID, include)
+		if err != nil {
+			t.Fatal(err)
+		}
+		out, err := templateexport.Build(source.input)
+		if err != nil {
+			t.Fatal(err)
+		}
+		value, present := out.Model.Specs[0].Env["REPLACED"]
+		if len(include) == 0 && present {
+			t.Fatalf("excluding user env restored an unset, untested template value: %q", value)
+		}
+		if len(include) > 0 && value != "new-user-value" {
+			t.Fatalf("explicit user opt-in did not preserve the executed replacement: %q", value)
+		}
+	}
+}
+
 func TestTemplateExportRejectsChecksFromAnotherReplica(t *testing.T) {
 	f := newTemplateFixture(t)
 	exporter := catalogTemplates{store: f.st, probe: func(context.Context, uint, string, string, map[string]any) templateexport.ProbeReply {

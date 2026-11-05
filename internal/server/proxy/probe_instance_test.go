@@ -4,9 +4,9 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"sync"
 	"sync/atomic"
 	"testing"
-	"time"
 
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/store"
@@ -52,24 +52,57 @@ func TestInstanceProbePinsOneReplicaWithoutAccountingOrFallback(t *testing.T) {
 func TestInstanceProbeRejectsInterruptedHTTP200Bodies(t *testing.T) {
 	for _, canceled := range []bool{false, true} {
 		t.Run(map[bool]string{false: "short body", true: "cancellation after headers"}[canceled], func(t *testing.T) {
+			release := make(chan struct{})
 			p, _, _, id, closeUpstream := newAccountingProxy(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				_, _ = io.Copy(io.Discard, r.Body)
 				if canceled {
 					w.WriteHeader(200)
 					w.(http.Flusher).Flush()
-					<-r.Context().Done()
+					select {
+					case <-r.Context().Done():
+					case <-release:
+					}
 					return
 				}
 				w.Header().Set("Content-Length", "100")
 				_, _ = io.WriteString(w, "short")
 			}))
 			defer closeUpstream()
-			ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+			defer close(release)
+			ctx, cancel := context.WithCancel(t.Context())
 			defer cancel()
+			if deadline, ok := t.Deadline(); ok {
+				var stop context.CancelFunc
+				ctx, stop = context.WithDeadline(ctx, deadline)
+				defer stop()
+			}
+			if canceled {
+				base := p.rp.Transport
+				p.rp.Transport = roundTripFunc(func(request *http.Request) (*http.Response, error) {
+					response, err := base.RoundTrip(request)
+					if err == nil {
+						response.Body = &cancelProbeBody{ReadCloser: response.Body, cancel: cancel}
+					}
+					return response, err
+				})
+			}
 			reply := p.ProbeForInstance(ctx, id, "omni-instance", chatPath, map[string]any{"max_tokens": 1})
 			if reply.HTTPStatus != 200 || reply.Message == "" || reply.InstanceUUID != "omni-instance" {
 				t.Fatalf("an interrupted HTTP200 response appeared complete: %+v", reply)
 			}
 		})
 	}
+}
+
+// ReverseProxy writes the response status before its first body read. Cancel
+// at that exact boundary, so slow CI setup cannot turn this into a dial timeout.
+type cancelProbeBody struct {
+	io.ReadCloser
+	once   sync.Once
+	cancel context.CancelFunc
+}
+
+func (body *cancelProbeBody) Read(buffer []byte) (int, error) {
+	body.once.Do(body.cancel)
+	return body.ReadCloser.Read(buffer)
 }
