@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"path"
 	"slices"
 	"strings"
@@ -229,27 +230,48 @@ func parseExports(ctx context.Context, in Input, files FileView) (RuleResult, er
 	if err != nil {
 		return RuleResult{}, err
 	}
+	items, err := files.ReadDir(ctx, in.Path)
+	if err != nil {
+		return RuleResult{}, err
+	}
 	r := RuleResult{}
-	if ok && (cfg.ModelType != "" || len(cfg.Architectures) > 0) {
-		if exists(ctx, files, path.Join(in.Path, "model.onnx")) {
+	onnxPath := path.Join(in.Path, "model.onnx")
+	onnxErr := requiredFileError(ctx, files, onnxPath)
+	if errors.Is(onnxErr, context.Canceled) || errors.Is(onnxErr, context.DeadlineExceeded) {
+		return RuleResult{}, onnxErr
+	}
+	if hasName(items, "model.onnx") || onnxErr == nil {
+		if ok && (cfg.ModelType != "" || len(cfg.Architectures) > 0) && onnxErr == nil {
 			return RuleResult{Entries: []Entry{{Path: in.Path, Format: "onnx", Files: []string{path.Join(in.Path, "model.onnx")}, Supersedes: []string{"transformers"}}}}, nil
 		}
-	} else if exists(ctx, files, path.Join(in.Path, "model.onnx")) {
-		r = unrecognized(path.Join(in.Path, "config.json"), "ONNX model requires a configuration declaring model_type or architectures")
+		if !ok || (cfg.ModelType == "" && len(cfg.Architectures) == 0) {
+			r = unrecognized(path.Join(in.Path, "config.json"), "ONNX model requires a configuration declaring model_type or architectures")
+		}
+		if onnxErr != nil {
+			r.Issues = append(r.Issues, issue(onnxPath, unrecognizedModelIssue, onnxErr))
+		}
 	}
 	graphErr := requiredFileError(ctx, files, path.Join(in.Path, "saved_model.pb"))
 	variablesErr := requiredFileError(ctx, files, path.Join(in.Path, "variables/variables.index"))
+	for _, err := range []error{graphErr, variablesErr} {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return RuleResult{}, err
+		}
+	}
 	if graphErr == nil && variablesErr == nil {
 		return RuleResult{Entries: []Entry{{Path: in.Path, Format: "savedmodel", Files: []string{path.Join(in.Path, "saved_model.pb"), path.Join(in.Path, "variables/variables.index")}}}}, nil
 	}
-	if graphErr == nil || variablesErr == nil {
-		missing := "saved_model.pb"
-		cause := graphErr
-		if graphErr == nil {
-			missing = "variables/variables.index"
-			cause = variablesErr
+	// File presence identifies the layout even when none of its assets is valid.
+	// A generic variables directory alone is not evidence of a SavedModel.
+	if hasName(items, "saved_model.pb") || graphErr == nil || !errors.Is(variablesErr, fs.ErrNotExist) {
+		for _, failure := range []struct {
+			name string
+			err  error
+		}{{"saved_model.pb", graphErr}, {"variables/variables.index", variablesErr}} {
+			if failure.err != nil {
+				r.Issues = append(r.Issues, issue(path.Join(in.Path, failure.name), unrecognizedModelIssue, failure.err))
+			}
 		}
-		r.Issues = append(r.Issues, unrecognized(path.Join(in.Path, missing), "SavedModel required file: "+cause.Error()).Issues...)
 	}
 	return r, nil
 }

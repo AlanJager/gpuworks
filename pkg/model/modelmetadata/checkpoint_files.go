@@ -20,11 +20,11 @@ var checkpointEncodings = [...]struct{ extension, defaultIndex string }{
 
 // An index owns its shard set. Preserve index precedence over loose files,
 // including a partial export in a different encoding.
-func checkpoint(ctx context.Context, dir, format string, files FileView) (Entry, error) {
+func checkpoint(ctx context.Context, dir, format string, files FileView) (Entry, []Issue, error) {
 	e := Entry{Path: dir, Format: format}
 	items, err := files.ReadDir(ctx, dir)
 	if err != nil {
-		return e, err
+		return e, nil, err
 	}
 	if indexes := checkpointIndexes(dir, items); len(indexes) > 0 {
 		e.Files, err = indexedCheckpointFiles(ctx, files, dir, indexes)
@@ -32,10 +32,10 @@ func checkpoint(ctx context.Context, dir, format string, files FileView) (Entry,
 		e.Files, err = unindexedCheckpointFiles(checkpointWeights(dir, items))
 	}
 	if err != nil {
-		return e, err
+		return e, nil, err
 	}
-	checkRequired(ctx, &e, files)
-	return e, nil
+	issues, err := checkRequired(ctx, &e, files)
+	return e, issues, err
 }
 
 // Discovery and missing-config diagnostics use the same format evidence.

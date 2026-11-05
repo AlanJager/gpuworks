@@ -96,11 +96,12 @@ func validateComponent(ctx context.Context, files FileView, dir, class string, c
 	if len(contract.weights) == 0 {
 		return nil
 	}
-	weights, err := checkpointWithNames(ctx, dir, entry.Format, files, contract.weights)
+	weights, issues, err := checkpointWithNames(ctx, dir, entry.Format, files, contract.weights)
 	if err != nil {
 		return componentReadError(dir, err, entry, result)
 	}
 	entry.Files = append(entry.Files, weights.Files...)
+	result.Issues = append(result.Issues, issues...)
 	entry.Incomplete = entry.Incomplete || weights.Incomplete
 	entry.Missing = append(entry.Missing, weights.Missing...)
 	if len(weights.Files) == 0 {

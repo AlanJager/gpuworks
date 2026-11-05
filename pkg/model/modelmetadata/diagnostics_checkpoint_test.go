@@ -112,6 +112,7 @@ func TestDiagnosticRuleDirectoryFailures(t *testing.T) {
 		{"mistral without params", parseMistral, nil},
 		{"mistral weights", parseMistral, map[string]string{"params.json": `{"dim":4}`, "tekken.json": `{}`}},
 		{"gguf", parseGGUF, nil},
+		{"exports", parseExports, map[string]string{"config.json": `{"model_type":"example"}`}},
 		{"component weights", parseSentenceTransformers, map[string]string{"modules.json": `[{"path":"encoder","type":"sentence_transformers.models.Transformer"}]`, "encoder/config.json": `{}`}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

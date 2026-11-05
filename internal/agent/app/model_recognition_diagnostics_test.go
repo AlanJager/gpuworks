@@ -31,3 +31,37 @@ func TestRegisterPathPreservesRecognitionReasons(t *testing.T) {
 		})
 	}
 }
+
+func TestRegisterPathPreservesAssetFailures(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		files map[string]string
+		want  []string
+	}{
+		{"empty weight", map[string]string{"config.json": `{"model_type":"example"}`, "model.safetensors": ""}, []string{"model.safetensors", "file is empty"}},
+		{"empty ONNX", map[string]string{"config.json": `{"model_type":"example"}`, "model.onnx": ""}, []string{"model.onnx", "file is empty"}},
+		{"empty SavedModel", map[string]string{"saved_model.pb": "", "variables/variables.index": ""}, []string{"saved_model.pb", "variables/variables.index", "file is empty"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			for name, body := range tc.files {
+				filename := filepath.Join(dir, name)
+				if err := os.MkdirAll(filepath.Dir(filename), 0755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filename, []byte(body), 0644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			_, err := (&NodeRuntime{}).OnRPC(context.Background(), proto.RPCRegisterPath, mustRaw(t, map[string]any{"path": dir, "inspect_metadata": true}))
+			if err == nil {
+				t.Fatal("invalid model assets were admitted")
+			}
+			for _, want := range tc.want {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("cause %q missing from %v", want, err)
+				}
+			}
+		})
+	}
+}
