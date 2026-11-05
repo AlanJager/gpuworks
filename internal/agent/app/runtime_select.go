@@ -104,6 +104,25 @@ func driverUnavailableOn(goos, driver string) string {
 // access to the Metal GPU. prober decides which runtimes can serve the
 // node's accelerators; nil skips that question.
 func detectDriver(log *slog.Logger, baseDir, force string, prober gpu.Prober) runtimeSelection {
+	return detectDriverWaiting(log, baseDir, force, prober, 0)
+}
+
+// daemonStartWait is how long the agent's first detection waits for a
+// container daemon that is installed but not answering (runtime.
+// ErrDaemonNotReady) before passing it over. It covers dockerd still
+// starting at boot and dockerd busy pulling a large image; taking the next
+// runtime at once would start the node's instances there, where they stay.
+// The minute-level recheck covers a daemon slower than this. A variable so
+// a test need not wait.
+var daemonStartWait = 2 * time.Minute
+
+// daemonRetryDelay is the first pause between asks while waiting; it doubles
+// up to 15 seconds. A variable for the same reason.
+var daemonRetryDelay = 2 * time.Second
+
+// detectDriverWaiting is detectDriver that waits up to wait for an
+// installed daemon to answer. Only startup waits; the recheck asks once.
+func detectDriverWaiting(log *slog.Logger, baseDir, force string, prober gpu.Prober, wait time.Duration) runtimeSelection {
 	ctx := context.Background()
 	force = strings.ToLower(strings.TrimSpace(force))
 	if reason := driverUnavailableOn(goruntime.GOOS, force); reason != "" {
@@ -143,7 +162,18 @@ func detectDriver(log *slog.Logger, baseDir, force string, prober gpu.Prober) ru
 	var fallback runtimeFallback
 	for _, candidate := range candidates {
 		driver := candidate.build()
-		if ok, _ := driver.Detect(ctx); !ok {
+		ok, err := driver.Detect(ctx)
+		if !ok && errors.Is(err, runtime.ErrDaemonNotReady) && wait > 0 {
+			ok, err = waitForDaemon(ctx, log, driver, err, wait)
+		}
+		if !ok {
+			if errors.Is(err, runtime.ErrDaemonNotReady) {
+				log.Warn("runtime driver passed over: its daemon is installed but not answering; rechecking every minute",
+					"driver", driver.Name(), "err", err)
+				if fallback.from == "" {
+					fallback = runtimeFallback{from: driver.Name(), reason: proto.RuntimeFallbackDaemonNotReady}
+				}
+			}
 			continue
 		}
 		blocked, answered := passOver(ctx, log, prober, driver)
@@ -156,7 +186,10 @@ func detectDriver(log *slog.Logger, baseDir, force string, prober gpu.Prober) ru
 			continue
 		}
 		label := candidate.label
-		if fallback.from != "" {
+		switch {
+		case fallback.reason == proto.RuntimeFallbackDaemonNotReady:
+			label = fmt.Sprintf("%s (%s daemon not answering)", driver.Name(), fallback.from)
+		case fallback.from != "":
 			label = fmt.Sprintf("%s (%s cannot use the accelerators: %s)", driver.Name(), fallback.from, fallback.reason)
 		}
 		log.Info("runtime driver detected", "driver", label)
@@ -164,6 +197,25 @@ func detectDriver(log *slog.Logger, baseDir, force string, prober gpu.Prober) ru
 	}
 	log.Warn("no usable container runtime (docker/nerdctl/udocker); deployments disabled on this node")
 	return runtimeSelection{}
+}
+
+// waitForDaemon asks driver again, backing off from daemonRetryDelay to 15
+// seconds, until
+// its daemon answers, it stops being merely not ready, or wait has passed.
+func waitForDaemon(ctx context.Context, log *slog.Logger, driver runtime.Driver, err error, wait time.Duration) (bool, error) {
+	log.Info("runtime daemon installed but not answering; waiting for it", "driver", driver.Name(), "wait", wait, "err", err)
+	deadline := time.Now().Add(wait)
+	delay := min(daemonRetryDelay, wait)
+	for time.Now().Before(deadline) {
+		time.Sleep(min(delay, time.Until(deadline)))
+		ok, detectErr := driver.Detect(ctx)
+		if ok || !errors.Is(detectErr, runtime.ErrDaemonNotReady) {
+			return ok, detectErr
+		}
+		err = detectErr
+		delay = min(2*delay, 15*time.Second)
+	}
+	return false, err
 }
 
 // passOver is why auto-detection should not take driver on this node, or ""

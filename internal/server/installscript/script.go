@@ -315,7 +315,9 @@ if [ "$USE_SYSTEMD" = 1 ]; then
   cat <<GPUWORKS_AGENT_UNIT | $SUDO tee /etc/systemd/system/gpuworks-agent.service >/dev/null
 [Unit]
 Description=gpuworks agent
-After=network-online.target
+# Start after the container daemons so the agent finds them answering; only
+# ordering, so a host without them is unaffected.
+After=network-online.target docker.service containerd.service
 RequiresMountsFor=$INSTALL_DIR $STATE_DIR
 
 [Service]

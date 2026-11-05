@@ -9,10 +9,11 @@ type RuntimeFallbackNode = Pick<Node, "gpu_vendor" | "runtime_fallback_from" | "
 
 /**
  * The reasons the agent passes a runtime over for runveil
- * (Node.runtime_fallback_reason). gpu_ready is the passed-over runtime
+ * (Node.runtime_fallback_reason). daemon_not_ready is a daemon that did not
+ * answer while the agent started; gpu_ready is the passed-over runtime
  * being able to serve again; the agent switches back once the node is idle.
  */
-const fallbackCodes = ["gpu_plugin_missing", "gpu_runtime_unconfigured", "gpu_ready"] as const;
+const fallbackCodes = ["gpu_plugin_missing", "gpu_runtime_unconfigured", "daemon_not_ready", "gpu_ready"] as const;
 
 function known(code: string): code is (typeof fallbackCodes)[number] {
   return (fallbackCodes as readonly string[]).includes(code);

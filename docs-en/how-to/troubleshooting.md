@@ -354,6 +354,13 @@ The node can continue scheduling with runveil; the “Runtime” row in node det
 The agent rechecks every minute: when a skipped runtime becomes usable, it switches back automatically if the node has no instances. If instances are present, it shows “Docker is ready and can be switched to” (`gpu_ready`),
 and you can switch manually in the “Runtime” dropdown. Ascend nodes do not use this fallback (runveil cannot run CANN on ARM 910B).
 
+**Docker is installed but did not answer when the agent started**
+
+When the agent starts before dockerd at boot, or dockerd is busy pulling a large image and does not answer within 5 seconds, an agent that picks its own runtime waits up to 2 more minutes at startup;
+only if Docker still does not answer does it use runveil, and the orange notice on the node details gives the reason (`daemon_not_ready`). It then rechecks every minute and switches back automatically once Docker answers and the node has no instances;
+with instances present it likewise shows “Docker is ready and can be switched to”. The agent's systemd unit starts after `docker.service` and `containerd.service` (ordering only,
+so a host without Docker is unaffected). An agent user that may not use Docker (not in the docker group) is a different case and is not waited for.
+
 **Nodes with an explicitly selected runtime, or Ascend nodes**
 
 When an explicitly selected runtime (or the runtime on an Ascend node) cannot provide accelerators to containers (`gpu_plugin_missing` / `gpu_runtime_unconfigured`),

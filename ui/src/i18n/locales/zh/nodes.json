@@ -218,7 +218,7 @@
     "copyConfigureCommand": "复制配置命令",
     "configureCopied": "配置命令已复制",
     "fallback": {
-      "gpu_plugin_missing": "检测到 {{from}}，但未安装 {{plugin}}，已改用 runveil。建议安装 {{plugin}}；安装后节点空闲时自动切回 {{from}}。",
+      "gpu_plugin_missing": "检测到 {{from}}，但未安装 {{plugin}}，已改用 runveil。建议安装 {{plugin}}；安装后节点空闲时自动切回 {{from}}。", "daemon_not_ready": "{{from}} 已安装但 agent 启动时没有响应（可能仍在启动或正忙），已暂用 runveil。agent 每分钟重试；{{from}} 响应后，节点空闲时自动切回。",
       "gpu_runtime_unconfigured": "检测到 {{from}} 且已安装 {{plugin}}，但 {{from}} 未配置 GPU 支持，已改用 runveil。建议配置后重启 {{from}}；之后节点空闲时自动切回。",
       "gpu_ready": "{{from}} 已可用，可切换；节点空闲时将自动切换。"
     }
