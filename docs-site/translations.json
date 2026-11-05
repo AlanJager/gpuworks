@@ -95,7 +95,7 @@
   "how-to/expose-public-address.md": "5dd2b0f7efb514af1c8c79d4f3d8e70159155087c53bf5baa0b97a56f0161485",
   "how-to/import-from-http.md": "e46fe42320a80624aea67d51acb859d96468c44fa2f80a7b8848507375a64d35",
   "how-to/install-server.md": "2cf7ccfe39557b39e8099338d91cf4a08a5635b4affda9e9470ad3f8309e0627",
-  "how-to/monitor-and-logs.md": "1cb5bb87c39185d19c8650bfb1147a70ee534b36776e656eec38f0104d099502",
+  "how-to/monitor-and-logs.md": "a231053abbe8a876fc1575634b4eb41de7312b77f70a35868c70935b75fbc796",
   "how-to/multi-node-inference.md": "83edea4a11671e8b16fe7329f2e8cebb8cef1b8761696f01eac34260fd45c6fd",
   "how-to/node-failover.md": "1a44cfcee9c75da94f321143331391428358775dcfc83864e05a264d068cd4c3",
   "how-to/pd-disaggregation.md": "aa197874cd7c58e1f057f616475902eae9760da200b308402cc34b993a20e964",

@@ -19,7 +19,7 @@ type memFile struct {
 func (f *memFile) Close() error { f.closed = true; return nil }
 
 // A debug session records a streamed request's whole exchange: the request
-// as the engine got it (with the usage the gateway asked for), the engine's
+// as prepared by the gateway (with the usage the gateway asked for), the engine's
 // bytes, the client's (without the usage event), and how it ended.
 func TestDebugSessionRecordsTheRawExchange(t *testing.T) {
 	upstream := &vllmUpstream{t: t}
@@ -79,6 +79,9 @@ func TestDebugSessionRecordsTheRawExchange(t *testing.T) {
 	}
 	if last["observation_scope"] != "gateway" || last["finish_reason"] != "stop" {
 		t.Fatalf("terminal gateway evidence = %v", last)
+	}
+	if last["read_error"] != nil || last["write_error"] != nil {
+		t.Fatalf("successful response reported a copy failure: %v", last)
 	}
 	if n := strings.Count(string(f.Bytes()), `"t":"end"`); n != 1 {
 		t.Fatalf("%d end lines", n)

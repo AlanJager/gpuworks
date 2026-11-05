@@ -219,18 +219,15 @@ func serve(log *slog.Logger, args []string) (err error) {
 	// The server's own warn+ records land in the logstore under source=server
 	// (warn, not error: a single process emits few warnings and they are the
 	// ones worth searching — retries, reconcile lag, handshake trouble; the
-	// per-request access log is info-level and stays out). The file/stderr
-	// handlers keep every record as before.
+	// per-request access log is info-level and stays out).
 	self := selflog.NewCollector(log.Handler(), slog.LevelWarn, 512)
-	// Ahead of both the file and the logstore: a burst of one kind of record
-	// (an unauthenticated client retrying, a path polled without end) is cut
-	// to a few lines and a count, rather than flooding either.
-	tee := debuglog.New(self)
-	throttle := logthrottle.New(tee, logthrottle.Options{Identity: serverLogIdentity})
+	// Debug sessions capture original records first. Ordinary logs throttle
+	// repeating records (an unauthenticated client retrying, a path polled
+	// without end) to a few lines and a count.
+	log, tee, throttle := debuglog.NewLogger(self, logthrottle.Options{Identity: serverLogIdentity})
 	throttleCtx, stopThrottle := context.WithCancel(context.Background())
 	defer stopThrottle()
 	go throttle.Run(throttleCtx)
-	log = slog.New(throttle)
 	cfg.SelfLog = self
 	cfg.DebugLog = tee
 	cfg.LogFile = logFile

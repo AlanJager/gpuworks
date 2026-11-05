@@ -44,6 +44,55 @@ func capturedEnd(t *testing.T, r *oneCaptureRecorder) map[string]any {
 	return end
 }
 
+func TestDebugSessionUpstreamEOFBeforeHeadersKeepsReadFailure(t *testing.T) {
+	for _, wrapped := range []bool{false, true} {
+		t.Run(fmt.Sprintf("wrapped=%t", wrapped), func(t *testing.T) {
+			// Accept the whole request, then close without any response headers.
+			upstream := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				_, _ = io.Copy(io.Discard, r.Body)
+				conn, _, err := w.(http.Hijacker).Hijack()
+				if err == nil {
+					_ = conn.Close()
+				}
+			})
+			logs := &syncBuffer{}
+			p, key, closeUpstream := newObservedProxy(t, upstream, logs)
+			t.Cleanup(closeUpstream)
+			t.Cleanup(func() { _ = p.store.Close() })
+			if wrapped {
+				// Exercise the same ReverseProxy ErrorHandler with a wrapped EOF.
+				p.rp.Transport = roundTripFunc(func(*http.Request) (*http.Response, error) {
+					return nil, fmt.Errorf("read upstream response: %w", io.EOF)
+				})
+			}
+			recorder := &oneCaptureRecorder{}
+			p.SetRequestRecorder(recorder)
+			req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"omni"}`))
+			req.Header.Set("Authorization", "Bearer "+key)
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("Cookie", "session=private-cookie")
+			out := httptest.NewRecorder()
+			p.Handler().ServeHTTP(out, req)
+			end := capturedEnd(t, recorder)
+			wantErr := "EOF"
+			if wrapped {
+				wantErr = "read upstream response: EOF"
+			}
+			if out.Code != http.StatusBadGateway || end["status"] != float64(502) ||
+				end["outcome"] != "upstream_error" || end["read_error"] != wantErr ||
+				end["write_error"] != nil || end["copied_bytes"] != float64(0) {
+				t.Fatalf("status=%d terminal upstream evidence=%v", out.Code, end)
+			}
+			if strings.Contains(recorder.file.String(), key) || strings.Contains(recorder.file.String(), "private-cookie") {
+				t.Fatal("request capture leaked authentication headers")
+			}
+			if !hasLogMsg(logs, "proxy upstream error") || hasLogMsg(logs, "proxy response body truncated") || hasLogMsg(logs, "proxy response body copied") {
+				t.Fatalf("pre-response error was misclassified as a body copy: %s", logs.String())
+			}
+		})
+	}
+}
+
 func TestDebugSessionUpstreamTruncationKeepsReadFailure(t *testing.T) {
 	upstream := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		conn, brw, err := w.(http.Hijacker).Hijack()
