@@ -56,6 +56,7 @@
 
 - [部署模型、选卡与解释调度结果](how-to/deploy-models.md)
 - [多机推理](how-to/multi-node-inference.md)
+- [用 MinerU 连接远程视觉模型](how-to/use-mineru.md)
 - [PD 分离部署](how-to/pd-disaggregation.md)
 - [启用和排查 dGPU](how-to/dgpu.md)
 - [让实例 sleep / wake](how-to/sleep-wake.md)
