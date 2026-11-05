@@ -16,6 +16,7 @@ const userEvent = (await import("@testing-library/user-event")).default;
 const { api } = await import("../src/api.ts");
 const { APIError } = await import("../src/apiError.ts");
 const { default: RequestLookup } = await import("../src/pages/monitor/RequestLookup.tsx");
+const { default: RequestDetailDrawer } = await import("../src/pages/monitor/RequestDetailDrawer.tsx");
 const { resetTraceLinkCache } = await import("../src/pages/monitor/useTraceLink.ts");
 import type { MonitorRequest, MonitorRequestLookup, MonitorRequestLookupQuery } from "../src/monitorRequestsApi";
 
@@ -99,6 +100,9 @@ test("a trace id finds the trace's requests across deployments, each naming its 
   const link = within(panel).getByRole("link", { name: "qwen" });
   assert.equal(link.getAttribute("href"), "/monitor/d/7");
   assert.ok(within(panel).queryByText("Deleted") === null);
+  assert.ok(within(panel).getByText(/finish_reason describes the model/));
+  assert.ok(within(panel).getByText(/third-party gateway/));
+  assert.equal(within(panel).getByRole("link", { name: "Collect streaming evidence" }).getAttribute("href"), "/settings#diagnostics");
   // A deleted deployment's details name it, marked deleted, still linking to
   // its page (which says it was deleted).
   await user.click(rows[2]);
@@ -144,3 +148,16 @@ test("a failed lookup says why and retries; an empty box does nothing", async ()
   assert.ok(await screen.findByText(/1 found/));
   assert.equal(calls.length, 2);
 });
+
+for (const lng of ["en", "zh"] as const) {
+  test(`${lng}: request evidence explains the gateway boundary and offers diagnostic collection`, async () => {
+    const local = await createI18n(["monitoring", "common"], lng);
+    api.telemetryExport = async () => { throw new Error("not configured"); };
+    render(<MemoryRouter><I18nextProvider i18n={local.i18n}><RequestDetailDrawer request={request({})} onClose={() => {}} /></I18nextProvider></MemoryRouter>);
+    const t = (key: string) => local.i18n.t(`requests.drawer.${key}`, { ns: "monitoring" });
+    assert.ok(await screen.findByText(t("observationTitle")));
+    assert.ok(screen.getByText(t("observationScope")));
+    assert.ok(screen.getByText(t("streamingEvidence")));
+    assert.equal(screen.getByRole("link", { name: t("collectEvidence") }).getAttribute("href"), "/settings#diagnostics");
+  });
+}

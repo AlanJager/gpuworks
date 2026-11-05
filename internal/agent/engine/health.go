@@ -31,6 +31,8 @@ func (e *Engine) probeAndReport(ctx context.Context, spec proto.InstanceDesiredS
 	nextHealthReport := 10 * time.Second
 	loadRequested := false
 	var loadResult <-chan string
+	var lastObservedAt time.Time
+	var lastTarget, lastResult string
 
 	for time.Now().Before(deadline) {
 		st, err := driver.Status(ctx, id)
@@ -51,15 +53,25 @@ func (e *Engine) probeAndReport(ctx context.Context, spec proto.InstanceDesiredS
 		}
 		req, err := engineHealthRequest(ctx, spec)
 		if err != nil {
-			e.failAfterContainer(ctx, spec, "invalid engine health endpoint: "+err.Error())
+			e.failAfterContainer(ctx, spec, "invalid engine health endpoint")
 			return false
 		}
+		lastTarget = healthDiagnosticTarget(req.URL)
 		resp, err := client.Do(req)
+		lastObservedAt = time.Now()
+		lastResult = healthTransportResult(err)
 		if err == nil {
+			lastResult = fmt.Sprintf("HTTP %d", resp.StatusCode)
 			readiness, decodeErr := readEngineReadiness(resp)
 			ready := resp.StatusCode == http.StatusOK
 			if ready && readiness.Service == "strata" {
 				ready = decodeErr == nil && readiness.Loaded != nil && *readiness.Loaded
+				if !ready {
+					lastResult += ", readiness=not_loaded"
+					if decodeErr != nil || readiness.Loaded == nil {
+						lastResult = fmt.Sprintf("HTTP %d, readiness=unknown", resp.StatusCode)
+					}
+				}
 				if decodeErr == nil && !ready && readiness.Loaded != nil && readiness.APIKey != nil && !*readiness.APIKey {
 					modelsReq, modelsErr := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("http://127.0.0.1:%d/v1/models", spec.APIPort), nil)
 					var modelsResp *http.Response
@@ -132,12 +144,16 @@ func (e *Engine) probeAndReport(ctx context.Context, spec proto.InstanceDesiredS
 			// the text would make each one look like a new milestone. The UI
 			// derives "how long" from the event and instance timestamps.
 			if elapsed := time.Since(healthStarted); elapsed >= nextHealthReport {
-				e.reportStateProgress(spec, proto.InstStarting, id, "", "waiting for engine health", proto.PhaseHealthCheck, 0, 0, 0, 0)
+				e.reportStateProgress(spec, proto.InstStarting, id, "", "waiting for engine health: "+healthDiagnosticDetail(lastTarget, lastResult), proto.PhaseHealthCheck, 0, 0, 0, 0)
 				nextHealthReport += 10 * time.Second
 			}
 		}
 	}
-	e.failAfterContainer(ctx, spec, "health check timed out")
+	message := "health check timed out"
+	if !lastObservedAt.IsZero() {
+		message += ": " + healthDiagnosticDetail(lastTarget, lastResult) + " observed_at=" + lastObservedAt.UTC().Format(time.RFC3339Nano)
+	}
+	e.failAfterContainer(ctx, spec, message)
 	return false
 }
 

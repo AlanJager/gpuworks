@@ -30,7 +30,8 @@ func (a *apiHandlers) probeStorage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Without a named node the probe runs on any online node: the form has
-	// not saved its targets yet, and the export reads the same from each.
+	// not saved its targets yet. This trial does not establish access from
+	// any other node.
 	row := &store.Storage{Name: "probe", Type: strings.TrimSpace(req.Type), Path: strings.TrimSpace(req.Path),
 		Export: strings.TrimSpace(req.Export), MountOptions: strings.TrimSpace(req.MountOptions), AllNodes: true}
 	// A shared storage the form has not given a path yet is tried where a
@@ -81,7 +82,15 @@ func (a *apiHandlers) probeOnNode(ctx context.Context, nodeUUID string, row *sto
 	if err := json.Unmarshal(raw, &result); err != nil {
 		return dto.StorageProbeResult{}, err
 	}
+	checkedAt := time.Now().UTC()
+	target := row.Path
+	// Only a new NFS mount probes the export; existing mounts and directory
+	// storage are checked through the configured node path.
+	if !existing && (row.Type == proto.StorageNFS || row.Type == proto.StorageNFSCache) {
+		target = row.Export
+	}
 	return dto.StorageProbeResult{
+		Target: target, CheckedAt: &checkedAt,
 		NodeUUID: node.UUID, NodeName: nodeDisplayName(node), OK: result.OK, Reason: result.Reason,
 		Message: result.Message, Output: result.Output, Version: result.Version, Options: result.Options,
 		Readable: result.Readable, Writable: result.Writable, TotalBytes: result.TotalBytes, AvailableBytes: result.AvailableBytes,

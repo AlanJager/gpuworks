@@ -16,6 +16,7 @@ import { formatTime } from "../../i18n/datetime";
 import { runtimeChoices, runtimeLabel } from "../../nodeDisplay";
 import DetailSection from "../../components/detail/DetailSection";
 import NodeDiskUsage from "./NodeDiskUsage";
+import NodeConnectionDiagnostics from "../../components/NodeConnectionDiagnostics";
 
 // NodeBasicTab is the node detail's overview tab: the node itself, its
 // container runtime, its storage and how it is reached.
@@ -152,6 +153,7 @@ export default function NodeBasicTab({
           </Descriptions.Item>
         </Descriptions>
         <div className="detail-cards">
+          <NodeConnectionDiagnostics nodeUUID={node.uuid} />
           <NodeNetworksCard nodeUUID={node.uuid} />
           <NodePullProxy nodeUUID={node.uuid} />
         </div>

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -142,7 +143,7 @@ type storageFilesRig struct {
 	answer func(method string, params json.RawMessage) (json.RawMessage, error)
 }
 
-func newStorageFilesRig(t *testing.T) *storageFilesRig {
+func newStorageFilesRig(t *testing.T, logs ...*slog.Logger) *storageFilesRig {
 	t.Helper()
 	st, err := store.Open("file:"+strings.ReplaceAll(t.Name(), "/", "_")+"?mode=memory&cache=shared", bus.New())
 	if err != nil {
@@ -186,7 +187,11 @@ func newStorageFilesRig(t *testing.T) *storageFilesRig {
 		rig.streams.attached[n.UUID] = true
 		rig.setStorageState(n, true, true)
 	}
-	rig.h = Router(Deps{Store: st, AuthSigner: signer, NodeStreams: rig.streams,
+	var log *slog.Logger
+	if len(logs) > 0 {
+		log = logs[0]
+	}
+	rig.h = Router(Deps{Store: st, AuthSigner: signer, NodeStreams: rig.streams, Log: log,
 		Online: func(uuid string) bool {
 			rig.mu.Lock()
 			defer rig.mu.Unlock()

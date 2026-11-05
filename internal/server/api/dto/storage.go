@@ -105,18 +105,21 @@ type StorageProbeRequest struct {
 
 // StorageProbeResult is what the probe found and on which node.
 type StorageProbeResult struct {
-	NodeUUID       string `json:"node_uuid"`
-	NodeName       string `json:"node_name"`
-	OK             bool   `json:"ok"`
-	Reason         string `json:"reason,omitempty"`
-	Message        string `json:"message,omitempty"`
-	Output         string `json:"output,omitempty"`
-	Version        string `json:"version,omitempty"`
-	Options        string `json:"options,omitempty"`
-	Readable       bool   `json:"readable"`
-	Writable       bool   `json:"writable"`
-	TotalBytes     int64  `json:"total_bytes,omitempty"`
-	AvailableBytes int64  `json:"available_bytes,omitempty"`
+	NodeUUID string `json:"node_uuid"`
+	NodeName string `json:"node_name"`
+	Target   string `json:"target,omitempty"`
+	// CheckedAt is when the control plane received this node result, not the node clock.
+	CheckedAt      *time.Time `json:"checked_at,omitempty"`
+	OK             bool       `json:"ok"`
+	Reason         string     `json:"reason,omitempty"`
+	Message        string     `json:"message,omitempty"`
+	Output         string     `json:"output,omitempty"`
+	Version        string     `json:"version,omitempty"`
+	Options        string     `json:"options,omitempty"`
+	Readable       bool       `json:"readable"`
+	Writable       bool       `json:"writable"`
+	TotalBytes     int64      `json:"total_bytes,omitempty"`
+	AvailableBytes int64      `json:"available_bytes,omitempty"`
 }
 
 // StorageScanResult is one page of a shared storage's model directories,

@@ -4,6 +4,7 @@ import (
 	"context"
 	"strconv"
 	"strings"
+	"time"
 
 	"gpuworks.ai/gpuworks/internal/proto"
 )
@@ -19,16 +20,31 @@ type Report struct {
 func (r Report) String() string {
 	parts := make([]string, 0, len(r.Hosts))
 	for _, h := range r.Hosts {
+		var description string
 		switch {
 		case h.Cooled:
-			parts = append(parts, h.Host+" (cooling down)")
+			description = h.Host + " (cooling down)"
 		case !h.Reachable:
-			parts = append(parts, h.Host+" (unreachable)")
+			description = h.Host + " (unreachable)"
 		default:
-			parts = append(parts, h.Host+" ("+strconv.FormatInt(h.LatencyMS, 10)+" ms)")
+			description = h.Host + " (" + strconv.FormatInt(h.LatencyMS, 10) + " ms)"
 		}
+		if !h.ObservedAt.IsZero() {
+			description += " [observed_at=" + h.ObservedAt.UTC().Format(time.RFC3339Nano) + " route=" + h.Path + " target=https://" + probeHost(h.Host) + "/v2/"
+			if h.HTTPStatus != 0 {
+				description += " HTTP " + strconv.Itoa(h.HTTPStatus)
+			}
+			if h.Failure != "" {
+				description += " failure=" + h.Failure
+			}
+			description += "]"
+		}
+		parts = append(parts, description)
 	}
-	return strings.Join(parts, ", ")
+	if len(parts) == 0 {
+		return ""
+	}
+	return strings.Join(parts, ", ") + "; from=node GET /v2/ endpoint reachability only; image authorization, tag, manifest and layers not checked"
 }
 
 // Rank reorders each maximal run of two or more adjacent Rank candidates by

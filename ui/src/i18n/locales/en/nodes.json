@@ -950,5 +950,84 @@
       "hours": "{{count}} h",
       "days": "{{count}} d"
     }
+  },
+  "connectionDiagnostics": {
+    "title": "Connection evidence",
+    "run": "Check connection",
+    "scope": "Reads this node’s saved connection settings and runs bounded SSH checks. It does not change addresses, tokens, installation or recovery state. Existing SSH host-key trust rules still apply.",
+    "empty": "Run a check to collect evidence, including when the Agent control connection is offline.",
+    "loading": "Collecting connection evidence…",
+    "failed": "The report could not be collected. Retry or inspect the control-plane log.",
+    "unknown": "Not observed",
+    "checkedAt": "Report requested at",
+    "savedAddress": "Saved control-plane address",
+    "lastSeen": "Last successful report",
+    "lastRecovery": "Last recovery probe",
+    "attempts": "{{count}} recovery attempts",
+    "recoveryError": "Last recovery error",
+    "exposure": "Public entry: last observation",
+    "lastObserved": "Last observed at {{time}}; this is not a live availability check.",
+    "result": "Observation",
+    "vantage": "Check location",
+    "target": "Checked address",
+    "source": "Configuration source",
+    "observedAt": "Observed at",
+    "stage": {
+      "ssh": "SSH access",
+      "configuration": "Node configuration snapshot",
+      "node_http": "Node → saved control-plane health URL"
+    },
+    "location": {
+      "control_plane": "Control-plane host",
+      "node": "Node host, through SSH"
+    },
+    "sourceName": {
+      "state_file": "Selected state directory configuration file",
+      "legacy_arguments": "Legacy service arguments"
+    },
+    "outcome": {
+      "unavailable": "SSH evidence unavailable; check saved SSH access and credentials.",
+      "not_checked": "Not checked",
+      "not_applicable": "Not applicable for this connection direction",
+      "invalid_address": "Address is invalid or contains unsupported credentials, query parameters or fragments.",
+      "unverified_identity": "Could not verify that this installation belongs to the selected node.",
+      "ssh_failed": "SSH connection or authentication failed.",
+      "cancelled": "Check cancelled",
+      "timeout": "No answer within the check’s time limit.",
+      "connected": "SSH connection established",
+      "command_failed": "The read-only SSH command did not complete.",
+      "invalid_response": "The node returned an unsupported or oversized diagnostic response.",
+      "snapshot": "Configuration snapshot read; running flags or environment overrides have not been verified.",
+      "tool_missing": "curl is unavailable on the node; the HTTP check was not run.",
+      "http_error": "The endpoint answered with an unexpected HTTP status.",
+      "http_ok": "The health URL returned HTTP 200. WebSocket and Agent authentication were not tested.",
+      "dns": "The node could not resolve the target or its configured proxy.",
+      "connect": "The node could not establish a connection.",
+      "tls": "The node could not complete TLS or verify its certificate.",
+      "transport": "The HTTP exchange failed before a complete response.",
+      "unknown": "Unsupported observation",
+      "unsupported": "This installation does not support connection diagnostics.",
+      "credentials_unavailable": "SSH access is not configured; node-side checks were not run.",
+      "credential_error": "Saved SSH credentials could not be read; node-side checks were not run."
+    },
+    "guidance": {
+      "snapshot_scope": "A configuration snapshot does not prove the running process has adopted it. Check the selected state directory, startup flags and environment overrides; never share TOKEN or full process arguments.",
+      "http_scope": "An HTTP health response does not prove WebSocket, Agent authentication, inference streaming or a user’s network path is working. SSH curl uses the SSH session environment, which may differ from the running Agent’s proxy and NO_PROXY settings.",
+      "test_from_node": "On the affected node, run gpuworks-agent smoke --state <actual-state-directory> and inspect agent.log from the same directory.",
+      "manual_address_update": "This check does not repair addresses. A change requires an administrator to verify both the platform record and the Agent configuration. In-place address migration is not provided by this diagnostic. Use a stable address for long-term connections.",
+      "addresses_differ": "The saved address differs from the connector’s last observed public entry. Verify the intended entry; this difference alone does not prove the old address is invalid.",
+      "configuration_differs": "The node configuration snapshot differs from the platform’s saved address. Check startup overrides and the intended control plane before changing either value.",
+      "server_dial_scope": "For server-initiated connections, inspect the Agent listen address and the control plane → node path. The node does not need to call a control-plane health URL."
+    },
+    "recoveryPhase": "Recorded recovery phase",
+    "exposureState": {
+      "ready": "Recorded as ready",
+      "starting": "Recorded as starting",
+      "awaiting_route": "Recorded as awaiting a route",
+      "degraded": "Recorded as degraded",
+      "disabled": "Recorded as disabled",
+      "failed": "Recorded as failed",
+      "unknown": "Recorded state unknown"
+    }
   }
 }

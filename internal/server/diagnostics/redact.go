@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"regexp"
 	"strings"
+
+	"gpuworks.ai/gpuworks/internal/commandlog"
 )
 
 // sensitiveKey matches the names of fields and settings that hold a
@@ -69,4 +71,23 @@ func redactWalk(v any, sensitive bool) any {
 	default:
 		return v
 	}
+}
+
+// RedactErrorText removes credentials from diagnostic error text and bounds its
+// encoded size. Unlike Redact's JSON prefix contract, known secret values are
+// removed entirely. Redaction precedes truncation so no partial secret escapes.
+func RedactErrorText(text string, maxBytes int, secrets ...string) string {
+	if maxBytes <= 0 {
+		return ""
+	}
+	text = commandlog.RedactScript(text)
+	for _, secret := range secrets {
+		if secret != "" {
+			text = strings.ReplaceAll(text, secret, "")
+		}
+	}
+	if len(text) > maxBytes {
+		text = text[:maxBytes]
+	}
+	return strings.ToValidUTF8(text, "")
 }

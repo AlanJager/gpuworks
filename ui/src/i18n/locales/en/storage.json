@@ -328,7 +328,11 @@
     "capacityValue": "{{available}} available of {{total}}",
     "yes": "Yes",
     "no": "No",
-    "readOnlyNotice": "Nothing could be written, so it will be saved as read-only (disabled): it can be scanned and deployed from, but not downloaded into or deleted from."
+    "readOnlyNotice": "Nothing could be written, so it will be saved as read-only (disabled): it can be scanned and deployed from, but not downloaded into or deleted from.",
+    "target": "Probe target",
+    "receivedAt": "Result received by control plane",
+    "unknown": "Unknown (not reported)",
+    "scope": "This result applies only to this node and this check. It does not establish access from other nodes or continued availability."
   },
   "scan": {
     "title": "Scan and import: {{name}}",

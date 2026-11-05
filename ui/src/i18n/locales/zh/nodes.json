@@ -950,5 +950,84 @@
       "hours": "{{count}} 小时",
       "days": "{{count}} 天"
     }
+  },
+  "connectionDiagnostics": {
+    "title": "连接证据",
+    "run": "检查连接",
+    "scope": "读取该节点保存的连接配置并执行有时限的 SSH 检查，不修改地址、令牌、安装或恢复状态；沿用现有 SSH 主机密钥信任规则。",
+    "empty": "可主动收集连接证据，Agent 控制连接离线时也可使用。",
+    "loading": "正在收集连接证据…",
+    "failed": "未能收集报告，请重试或查看控制面日志。",
+    "unknown": "未观测",
+    "checkedAt": "报告请求时间",
+    "savedAddress": "平台保存的控制面地址",
+    "lastSeen": "最后成功上报",
+    "lastRecovery": "最近恢复探测",
+    "attempts": "已尝试恢复 {{count}} 次",
+    "recoveryError": "最近恢复错误",
+    "exposure": "公网入口：最近观测",
+    "lastObserved": "观测于 {{time}}，不代表当前可用。",
+    "result": "观测结果",
+    "vantage": "检查位置",
+    "target": "检查地址",
+    "source": "配置来源",
+    "observedAt": "观测时间",
+    "stage": {
+      "ssh": "SSH 访问",
+      "configuration": "节点配置快照",
+      "node_http": "节点 → 平台保存的控制面健康地址"
+    },
+    "location": {
+      "control_plane": "控制面主机",
+      "node": "节点主机，通过 SSH 执行"
+    },
+    "sourceName": {
+      "state_file": "指定 state 目录的配置文件",
+      "legacy_arguments": "旧版服务启动参数"
+    },
+    "outcome": {
+      "unavailable": "无法获取 SSH 证据，请核对已保存的 SSH 地址和凭据。",
+      "not_checked": "未检查",
+      "not_applicable": "此连接方向不适用",
+      "invalid_address": "地址无效，或包含不支持的用户凭据、查询参数、片段。",
+      "unverified_identity": "无法核实该安装属于所选节点。",
+      "ssh_failed": "SSH 连接或认证失败。",
+      "cancelled": "检查已取消",
+      "timeout": "检查时限内未收到响应。",
+      "connected": "SSH 连接已建立",
+      "command_failed": "只读 SSH 命令未完成。",
+      "invalid_response": "节点返回了不支持或超过大小限制的诊断结果。",
+      "snapshot": "已读取配置快照，尚未核实运行中进程的参数或环境变量覆盖。",
+      "tool_missing": "节点没有 curl，未执行 HTTP 检查。",
+      "http_error": "目标返回了非预期 HTTP 状态。",
+      "http_ok": "健康地址返回 HTTP 200；尚未验证 WebSocket 和 Agent 认证。",
+      "dns": "节点无法解析目标或其配置的代理地址。",
+      "connect": "节点无法建立连接。",
+      "tls": "节点无法完成 TLS 握手或证书校验。",
+      "transport": "HTTP 交换未获得完整响应。",
+      "unknown": "不支持的观测结果",
+      "unsupported": "当前安装不支持连接诊断。",
+      "credentials_unavailable": "未配置 SSH 访问，未执行节点侧检查。",
+      "credential_error": "无法读取保存的 SSH 凭据，未执行节点侧检查。"
+    },
+    "guidance": {
+      "snapshot_scope": "配置快照不代表运行中进程已经采用该配置。请核对指定 state 目录、启动参数和环境变量覆盖；不要分享 TOKEN 或完整进程参数。",
+      "http_scope": "HTTP 健康响应不能证明 WebSocket、Agent 认证、推理流式输出或用户侧网络正常。 SSH 中的 curl 使用 SSH 会话环境，可能与运行中 Agent 的代理和 NO_PROXY 设置不同。",
+      "test_from_node": "在故障节点执行 gpuworks-agent smoke --state <实际 state 目录>，并查看同一目录下的 agent.log。",
+      "manual_address_update": "本检查不修复地址。地址变更需要管理员核对平台记录和 Agent 配置；此诊断不提供原位地址迁移。长期连接应使用稳定地址。",
+      "addresses_differ": "平台保存地址与连接器最近观测到的公网入口不同，请核对预期入口；仅地址不同不能判定旧地址失效。",
+      "configuration_differs": "节点配置快照与平台保存地址不同。修改前请核对启动覆盖项和预期控制面。",
+      "server_dial_scope": "Server 发起连接时，应检查 Agent 监听地址及控制面 → 节点链路；节点无需访问控制面健康地址。"
+    },
+    "recoveryPhase": "已记录的恢复阶段",
+    "exposureState": {
+      "ready": "记录状态：已就绪",
+      "starting": "记录状态：启动中",
+      "awaiting_route": "记录状态：等待路由",
+      "degraded": "记录状态：降级",
+      "disabled": "记录状态：已禁用",
+      "failed": "记录状态：失败",
+      "unknown": "记录状态：未知"
+    }
   }
 }

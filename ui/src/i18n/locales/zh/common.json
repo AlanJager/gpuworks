@@ -111,6 +111,8 @@
     "NODE_INSTALL_EXISTING_AGENT_SAME_DIR": "主机上已有 gpuworks agent 从安装目录 {{dir}} 运行，继续安装会替换它；换一个安装目录可以与它并存。",
     "NODE_INSTALL_DIR_UNTRAVERSABLE": "安装已停止：{{dir}}（权限 {{mode}}）对本节点运行工作负载的专用运行时用户（udocker）关闭，部署启动时都会报 permission denied。在主机上执行 `{{fix}}`（只开放搜索，不开放列目录和写入），或把 agent 装到它之外的目录，例如 /opt/gpuworks。",
     "NODE_STORE_UNAVAILABLE": "节点存储尚未配置。",
+    "NODE_CONNECTION_DIAGNOSTICS_INPUT": "连接诊断仅接受空请求体或空 JSON 对象。",
+    "NODE_CONNECTION_SETTINGS_UNAVAILABLE": "无法读取节点连接配置，请重试或查看控制面日志。",
     "NODE_RECOVERY_UNAVAILABLE": "节点恢复功能尚未配置。",
     "AI_ENDPOINT_NOT_CONFIGURED": "尚未配置 AI 服务端点。",
     "AI_TASK_INVALID": "未知的助手任务“{{task}}”。",
