@@ -1,7 +1,7 @@
-import { sendJSON } from "./api";
+import { sendJSON, type NodeDoctorReport } from "./api";
 
 export interface NodeConnectionCheck {
-  stage: "ssh" | "configuration" | "node_http";
+  stage: "agent_control" | "ssh" | "configuration" | "node_http";
   outcome: string;
   vantage: "control_plane" | "node";
   target?: string;
@@ -20,6 +20,9 @@ export interface NodeConnectionDiagnostics {
   recovery_attempts: number;
   last_probe_at: string | null;
   last_recovery_error: string;
+  last_reject_reason?: string;
+  last_reject_at?: string;
+  agent_report?: NodeDoctorReport;
   exposure: { url: string; state: string; observed_at: string } | null;
   checks: NodeConnectionCheck[];
   guidance: string[];

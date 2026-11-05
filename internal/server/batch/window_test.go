@@ -95,7 +95,7 @@ func TestV1WireJSONWithAnExtendedWindow(t *testing.T) {
 // bad one leaves no file behind.
 func TestConsoleFormWindow(t *testing.T) {
 	r := newRig(t, Config{}, echo)
-	r.start()
+	// Form validation is synchronous; leave unrelated batch executors stopped.
 	form := func(window string) (Batch, error) {
 		return r.svc.CreateFromUpload(testOwner, multipartForm(t, map[string]string{"endpoint": EndpointChat, "completion_window": window}, inputLines(1)))
 	}
@@ -123,7 +123,7 @@ func TestConsoleFormWindow(t *testing.T) {
 // leaves no file behind.
 func TestConsoleFormInfersTheEndpoint(t *testing.T) {
 	r := newRig(t, Config{}, echo)
-	r.start()
+	// Form validation is synchronous; leave unrelated batch executors stopped.
 	embed := `{"custom_id":"e1","method":"POST","url":"/v1/embeddings","body":{"model":"m","input":"x"}}` + "\n"
 	b, err := r.svc.CreateFromUpload(testOwner, multipartForm(t, nil, embed))
 	if err != nil || b.Endpoint != EndpointEmbedding {

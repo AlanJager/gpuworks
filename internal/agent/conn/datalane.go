@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"math/rand"
 	"net/http"
@@ -49,9 +50,9 @@ func (c *Conn) runDataLane(ctx context.Context) {
 				// A reject is expected transient state (the ctrl session id the
 				// server holds differs from ours mid-reconnect); log once at debug
 				// and retry, never escalating to the ctrl loop.
-				c.log.Debug("data lane rejected", "reason", rej.Reason)
+				c.log.Debug("data lane rejected", "reason", safeRejectReason(rej.Reason))
 			} else {
-				c.log.Debug("data lane ended", "err", err)
+				c.log.Debug("data lane ended", "err", safeConnectionError(err))
 			}
 			attempt++
 		} else {
@@ -59,21 +60,39 @@ func (c *Conn) runDataLane(ctx context.Context) {
 			// reset backoff so a transient drop recovers promptly.
 			attempt = 0
 		}
+		delay := dataLaneBackoff(attempt)
+		if err != nil {
+			c.emitDataConnectionFailure(err, time.Now().Add(delay))
+		}
 		select {
 		case <-ctx.Done():
 			return
-		case <-time.After(dataLaneBackoff(attempt)):
+		case <-time.After(delay):
 		}
 	}
 }
 
 // dialDataLane performs one data-lane connection attempt: dial, DataHello, wait
 // for ack (or reject), then run the data-profile yamux client until it closes.
-func (c *Conn) dialDataLane(ctx context.Context) error {
+func (c *Conn) dialDataLane(ctx context.Context) (err error) {
+	client, observation := c.observeHTTPClient(http.DefaultClient, false)
+	stage := "dial"
+	attempt := fmt.Sprintf("%016x%016x", time.Now().UnixNano(), connectionAttemptSequence.Add(1))
+	defer func() {
+		if err != nil {
+			observed := observation.current()
+			if stage == "dial" && observed != "" {
+				stage = observed
+			}
+			err = &connectionFailure{reason: connectionReason(err), cause: err, stage: stage, attempt: attempt}
+		}
+	}()
 	wsURL := toWSURL(c.creds.ServerURL) + "/api/v1/agent/connect?lane=data"
 	dialCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
+	dialCtx = observation.context(dialCtx)
 	ws, resp, err := websocket.Dial(dialCtx, wsURL, &websocket.DialOptions{
+		HTTPClient: client,
 		HTTPHeader: http.Header{"User-Agent": []string{"gpuworks-agent/" + version.Version}},
 	})
 	if err != nil {
@@ -98,6 +117,7 @@ func (c *Conn) dialDataLane(ctx context.Context) error {
 		}
 	}()
 
+	stage = "hello"
 	hello := proto.DataHello{NodeToken: c.creds.NodeToken, SessionID: c.sessionID}
 	line, err := json.Marshal(hello)
 	if err != nil {
@@ -110,6 +130,7 @@ func (c *Conn) dialDataLane(ctx context.Context) error {
 
 	// The server replies with exactly one line before yamux: an ack on success
 	// or a reject envelope on failure.
+	stage = "wait_registered"
 	respLine, err := readLine(netConn)
 	if err != nil {
 		return err
@@ -129,6 +150,7 @@ func (c *Conn) dialDataLane(ctx context.Context) error {
 		return errors.New("data lane: unexpected reply " + env.T)
 	}
 
+	stage = "yamux"
 	ycfg := laneYamuxConfig(proto.LaneData, io.Discard)
 	data, err := yamux.Client(netConn, ycfg, nil)
 	if err != nil {
@@ -136,12 +158,16 @@ func (c *Conn) dialDataLane(ctx context.Context) error {
 	}
 	c.setDataSess(data)
 	defer c.clearDataSess(data)
-	c.log.Info("data lane connected", "node", c.creds.NodeUUID)
+	c.log.Info("data lane connected")
+	stage = "session"
 
 	// Serve server-initiated data-plane streams on the data lane until it closes.
 	for {
 		stream, err := data.AcceptStream()
 		if err != nil {
+			if ctx.Err() == nil {
+				c.emitDataConnectionFailure(&connectionFailure{reason: "transport", cause: err, stage: stage, attempt: attempt}, time.Time{})
+			}
 			return nil // lane closed; caller decides whether to reconnect
 		}
 		go c.handleStream(ctx, stream)
@@ -152,6 +178,9 @@ func (c *Conn) setDataSess(s *yamux.Session) {
 	c.dataMu.Lock()
 	old := c.dataSess
 	c.dataSess = s
+	if s != nil {
+		c.dataEver = true
+	}
 	c.dataMu.Unlock()
 	if old != nil && old != s {
 		_ = old.Close()

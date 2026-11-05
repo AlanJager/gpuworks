@@ -40,7 +40,7 @@ func (a *apiHandlers) nodeConnectionDiagnostics(w http.ResponseWriter, r *http.R
 	}
 	out := dto.NodeConnectionDiagnostics{
 		NodeUUID: node.UUID, CheckedAt: time.Now().UTC(), ConnectMode: node.ConnectMode,
-		SavedServerURL: provision.ConnectionDiagnosticURL(node.ServerURL), LastSeenAt: node.LastSeenAt,
+		SavedServerURL: safeNodeConnectionURL(node.ServerURL, node.Token, false), LastSeenAt: node.LastSeenAt,
 		RecoveryPhase: node.RecoveryPhase, RecoveryAttempts: node.RecoveryAttempts,
 		LastProbeAt:       node.LastProbeAt,
 		LastRecoveryError: provision.ConnectionDiagnosticDetail(node.LastRecoveryError, node.Token),
@@ -49,7 +49,7 @@ func (a *apiHandlers) nodeConnectionDiagnostics(w http.ResponseWriter, r *http.R
 	if exposure, ok := a.d.NodeInstaller.(interface {
 		ConnectionExposure() *dto.NodeConnectionExposure
 	}); ok {
-		if snapshot := exposure.ConnectionExposure(); snapshot != nil && provision.ConnectionDiagnosticURL(snapshot.URL) != "" {
+		if snapshot := exposure.ConnectionExposure(); snapshot != nil && safeNodeConnectionURL(snapshot.URL, node.Token, false) != "" {
 			copy := *snapshot
 			out.Exposure = &copy
 			if out.SavedServerURL != "" && strings.TrimRight(copy.URL, "/") != strings.TrimRight(out.SavedServerURL, "/") {
@@ -57,6 +57,11 @@ func (a *apiHandlers) nodeConnectionDiagnostics(w http.ResponseWriter, r *http.R
 			}
 		}
 	}
+	switch node.LastRejectReason {
+	case "bad_token", "proto_mismatch", "stale_session":
+		out.LastRejectReason, out.LastRejectAt = node.LastRejectReason, utcTimePtr(node.LastRejectAt)
+	}
+	agentCheck, attempted := a.nodeConnectionAgentReport(r.Context(), node, &out)
 	diagnostic := provision.ConnectionDiagnostic{
 		SSH:           provision.ConnectionCheck{Stage: "ssh", Outcome: "unsupported"},
 		Configuration: provision.ConnectionCheck{Stage: "configuration", Outcome: "not_checked"},
@@ -64,6 +69,8 @@ func (a *apiHandlers) nodeConnectionDiagnostics(w http.ResponseWriter, r *http.R
 	}
 	if !node.HasSSHCredential {
 		diagnostic.SSH.Outcome = "credentials_unavailable"
+	} else if attempted {
+		diagnostic.SSH.Outcome = "not_checked"
 	}
 	if node.ConnectMode == "server_dial" {
 		diagnostic.Health.Outcome = "not_applicable"
@@ -71,7 +78,7 @@ func (a *apiHandlers) nodeConnectionDiagnostics(w http.ResponseWriter, r *http.R
 	}
 	if prober, ok := a.d.NodeInstaller.(interface {
 		DiagnoseConnection(context.Context, provision.SSHProbeRequest) provision.ConnectionDiagnostic
-	}); ok && node.HasSSHCredential {
+	}); ok && node.HasSSHCredential && !attempted {
 		row, secrets, credentialErr := a.d.Store.GetNodeSSHCredential(node.UUID)
 		if credentialErr != nil {
 			diagnostic.SSH.Outcome = "credential_error"
@@ -87,9 +94,13 @@ func (a *apiHandlers) nodeConnectionDiagnostics(w http.ResponseWriter, r *http.R
 		}
 	}
 	out.Checks = []dto.NodeConnectionCheck{
+		agentCheck,
 		connectionCheckDTO(diagnostic.SSH, "ssh", "control_plane"),
 		connectionCheckDTO(diagnostic.Configuration, "configuration", "node"),
 		connectionCheckDTO(diagnostic.Health, "node_http", "node"),
+	}
+	for i := range out.Checks {
+		out.Checks[i].Target = safeNodeConnectionURL(out.Checks[i].Target, node.Token, false)
 	}
 	if diagnostic.Configuration.Target != "" && provision.ConnectionDiagnosticURL(diagnostic.Configuration.Target) != "" && out.SavedServerURL != "" && strings.TrimRight(diagnostic.Configuration.Target, "/") != strings.TrimRight(out.SavedServerURL, "/") {
 		out.Guidance = append(out.Guidance, "configuration_differs")

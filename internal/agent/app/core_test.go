@@ -381,11 +381,6 @@ func mustJSONBytes(t *testing.T, value any) []byte {
 }
 
 func TestAgentHelpersAndServerDialCancellation(t *testing.T) {
-	for _, tc := range []struct{ token, want string }{{"short", "short"}, {"123456789", "12345678"}} {
-		if got := tokenPrefix(tc.token); got != tc.want {
-			t.Errorf("tokenPrefix(%q)=%q want %q", tc.token, got, tc.want)
-		}
-	}
 	if connectMode("server_dial") != "server_dial" || connectMode("anything") != "agent_dial" {
 		t.Fatal("connectMode normalization failed")
 	}

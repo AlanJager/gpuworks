@@ -352,13 +352,29 @@ Manually upgrade the agent: download the new version from the server, replace th
 
 ## gpuworks-agent doctor
 
-No flags. Print a node environment self-check that you can paste directly into an issue:
+By default, print a node environment self-check. Use `--state DIR` to select the Agent directory:
 
 - Host, CPU, memory, root partition capacity, and filesystem type (mount flags: network, noexec, read-only, container layer). "Diagnostics" in node details additionally includes paths such as the model, udocker, and agent directories, and reports checks for runtime initialization failures, `noexec` / read-only mounts, and data in container layers. See [Troubleshooting](../how-to/troubleshooting.md#运行时初始化失败与容器节点的文件系统).
 - Availability and versions of `docker`, `python3`, and `dcgmi`.
 - GPU: vendor, driver version, and each card's model/GPU memory/architecture/NUMA/health status.
 - Runtime plugin detection results and whether device injection can be planned.
 - NVIDIA nodes also include a manual diagnostics section: driver and Fabric Manager, CUDA runtime smoke test, inter-card peer access, and multi-GPU NCCL.
+
+`--connectivity` selects lightweight connection checks without GPU, CUDA or NCCL self-checks:
+
+```bash
+gpuworks-agent doctor --connectivity --state /opt/gpuworks
+gpuworks-agent doctor --connectivity --state /opt/gpuworks --json
+```
+
+- Substitute the actual state directory. Precedence matches `run`: explicit flags > this invocation's environment > `gpuworks-agent.conf`. `--server`, `--token` and `--connect-mode` can override it; prefer the file for tokens so credentials do not appear in process arguments.
+- The total budget is at most 10 seconds, using the real WebSocket, yamux and identity handshake. DNS, connect, proxy CONNECT and TLS are reported only from actual transport callbacks. Proxy-side DNS, reused connections and other unobserved stages are not filled in as successful.
+- Text and JSON identify `source=cli`, the environment of this invocation, not necessarily the running service. JSON reuses `DoctorReport` with `report` and primitive `connection.*` facts. Logs go to stderr, separately from stdout JSON.
+- Exit `0` means the listed checks succeeded or a valid `server_dial` outbound check is not applicable; `3` is the total deadline, `4` an explicit server rejection, `1` another failure including invalid configuration, and `2` invalid arguments. Default environment doctor still requires reading the report, not judging hardware health from its exit code.
+- `control=smoke_verified` establishes only this short handshake; `data_lane=unverified` means no data test. It starts no second formal Agent or replacement ctrl/data session and closes its own connection on completion or timeout. Smoke on an old Server can still clear an upgrade error; a new Server reserves that for formal sessions. Mixed versions are not guaranteed to cause zero writes.
+- History reads only that state's `agent.log` and `agent.log.1`, at most 512 KiB total and 32 new safe events. `connection.last_failure.*` is the latest valid recorded failure with its original time, separate from this test. Optional `last_failure.server_url` and `last_failure.retry_at` retain that event's original target and planned retry time; missing values are not filled from this probe, and an old plan does not establish that the Agent is still waiting. Legacy, missing, rotated or unreadable evidence is unknown/unavailable; raw logs are not emitted. Repeated events are aggregated, so the summary does not enumerate every attempt.
+
+A valid `server_dial` configuration requires a token but no Server URL. It does not dial the control plane from the node; check inbound listening and the reverse network. Online nodes can return runtime observations over existing ctrl from the page without SSH. Offline nodes require the local CLI through the node console.
 
 ## gpuworks-agent grant-device-access
 

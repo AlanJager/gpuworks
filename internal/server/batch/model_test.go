@@ -319,7 +319,7 @@ func TestV1BatchModelExtension(t *testing.T) {
 // file; an unknown model leaves no file behind.
 func TestConsoleFormModel(t *testing.T) {
 	r := newRig(t, Config{Models: platformModels}, echo)
-	r.start()
+	// Form validation is synchronous; leave unrelated batch executors stopped.
 	form := func(modelFirst bool, model string) *multipart.Reader {
 		var buf bytes.Buffer
 		mw := multipart.NewWriter(&buf)

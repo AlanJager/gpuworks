@@ -80,7 +80,7 @@ func TestNodeConnectionDiagnosticsWireIdentityAndReadOnlyState(t *testing.T) {
 	}
 	var checks []map[string]any
 	_ = json.Unmarshal(got["checks"], &checks)
-	if len(checks) != 3 || checks[0]["vantage"] != "control_plane" || checks[1]["source"] != "state_file" || checks[2]["outcome"] != "dns" || checks[2]["target"] != "https://saved.example/healthz" {
+	if len(checks) != 4 || checks[0]["stage"] != "agent_control" || checks[1]["vantage"] != "control_plane" || checks[2]["source"] != "state_file" || checks[3]["outcome"] != "dns" || checks[3]["target"] != "https://saved.example/healthz" {
 		t.Fatalf("checks=%v", checks)
 	}
 	if !strings.Contains(string(got["guidance"]), "addresses_differ") || !strings.Contains(string(got["guidance"]), "configuration_differs") {
