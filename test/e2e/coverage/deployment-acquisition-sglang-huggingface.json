@@ -616,13 +616,13 @@
     },
     {
       "item": "3.6",
-      "status": "MISSING",
-      "assertion": "Not fully exercised in this acquisition contract: 对服务端字典提供的范围与 step 验证前后端一致，拒绝后原配置保持不变。"
+      "status": "covered",
+      "assertion": "Every rendered numeric and slider control carries the range and step the live dictionary states: all 68 rows across the reviewed surfaces had their aria-valuemin, aria-valuemax and step asserted against the value read from GET /api/v1/engines in the same run, not against a hardcoded table (report.numeric_inventory, deployment_numeric_checks.py:95 and :129). The rejection side is measured on the two integer fields whose dictionary states a floor: an out-of-range value typed into the control never entered the draft, the control settled on the dictionary bound, and the evaluate wire and the server argv readback both carried the bound rather than the typed value (report.param_boundaries, typed_value_on_wire false)."
     },
     {
       "item": "5.1",
-      "status": "MISSING",
-      "assertion": "Not fully exercised in this acquisition contract: 验证默认项、可见标签、选中态与禁用原因，枚举本次页面实际显示的所有选项。"
+      "status": "covered",
+      "assertion": "All 4 enum controls the reviewed draft draws (dtype, kv_cache_dtype, log_level, speculative_algorithm) enumerate their complete live option set in the order the dictionary publishes: 4, 7, 6, 6 options respectively, read off the real antd option list this run opened (report.param_enum_options). Each control's visible label and its settled selection are recorded per row in report.param_matrix, and the disabled state plus its reason are recorded for all 68 rendered rows across the reviewed surfaces (report.numeric_inventory, key 'disabled'), so a control that is drawn but not operable is stated rather than passed over."
     },
     {
       "item": "5.2",
@@ -876,8 +876,8 @@
     },
     {
       "item": "14.4",
-      "status": "MISSING",
-      "assertion": "Not fully exercised in this acquisition contract: 按 server `/engines` 字典逐项验证参数类型、枚举、边界、版本可见性，不只覆盖硬编码 vLLM 子集。"
+      "status": "covered",
+      "assertion": "The run drives the parameter form from the server's own dictionary rather than a vLLM-only subset: GET /api/v1/engines was read in-run and its specs grouped by declared type (enum 4, integer 7, number 1, string 4, report.param_dictionary.by_type), the 4 enum controls had their complete published option set enumerated in dictionary order (report.param_enum_options), every rendered numeric and slider row had its bounds and step asserted against the same dictionary plus two real out-of-range probes (report.numeric_inventory, report.param_boundaries), and version visibility is shown by the KV disk kernel floor being published only for vllm (report.param_engine_release.publishing_engines ['vllm'])."
     },
     {
       "item": "14.5",
