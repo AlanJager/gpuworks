@@ -447,7 +447,7 @@
     {
       "item": "5.3",
       "status": "MISSING",
-      "assertion": "Not covered yet: the probe for this item is written but has not passed a recorded run, so nothing is claimed for it."
+      "assertion": "Not covered yet: assert_searchable_select in deployment_wizard_create.py:916 has no caller, so the search path this item describes is never entered and nothing is claimed for it. The helper stays in place rather than being removed, because editing this file would invalidate the recorded run that backs its other declarations; treat it as unwritten when picking this item up."
     },
     {
       "item": "5.4",
