@@ -40,7 +40,7 @@ func TestPermissionRootsAcceptHistoricalApplicationRoot(t *testing.T) {
 			}
 		})
 	}
-	if err := safeUninstallDirectory("/opt/gpuworks"); err == nil {
+	if err := safeUninstallDirectory("/opt/gpuworks", sharedApplicationRoot); err == nil {
 		t.Fatal("install compatibility must not allow deleting the shared agent/server root")
 	}
 }
