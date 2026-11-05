@@ -182,12 +182,15 @@ button, input, textarea, select { letter-spacing: 0; }
 }
 .app-sider > .ant-layout-sider-children { display: flex; flex-direction: column; }
 .app-sider .app-nav { flex: 1; min-height: 0; overflow-x: hidden; overflow-y: auto; }
-.app-nav-toggle { display: flex; flex: none; align-items: center; height: 40px; padding: 0 8px; border-top: 1px solid #f0f2f5; }
-.app-nav-toggle .ant-btn { color: #707275; }
-.app-sider.ant-layout-sider-collapsed .app-nav-toggle { justify-content: center; padding: 0; }
+/* The collapse button spans the whole bar like a menu item (12px indent,
+   16px icon), so every point of the bar toggles; it used to hug its label. */
+.app-nav-toggle { display: flex; flex: none; align-items: center; height: 44px; padding: 0 8px; border-top: 1px solid #f0f2f5; }
+.app-nav-toggle > .ant-btn { justify-content: flex-start; gap: 8px; height: 32px; padding: 0 12px; border-radius: var(--radius-lg); color: #707275; }
+.app-nav-toggle > .ant-btn .anticon { font-size: 16px; }
+.app-nav-toggle > .ant-btn:not(:disabled):hover { background: transparent; color: #181a1d; }
+.app-sider.ant-layout-sider-collapsed .app-nav-toggle > .ant-btn { justify-content: center; padding: 0; }
 /* Collapsed, the group titles cannot fit: a thin rule separates the groups instead. */
 .app-sider.ant-layout-sider-collapsed .ant-menu-item-group-title { height: 1px; margin: 8px 12px; padding: 0; overflow: hidden; background: #f0f2f5; font-size: 0; }
-.app-sider.ant-layout-sider-collapsed .ant-menu-item-group:first-child > .ant-menu-item-group-title { display: none; }
 .app-brand {
   display: flex;
   min-width: 0;
@@ -209,7 +212,14 @@ button, input, textarea, select { letter-spacing: 0; }
 .app-brand-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* Shows the logo at its top bar size, inside a top-bar-high strip. */
 .branding-logo-preview { display: inline-flex; height: var(--app-header-height); align-items: center; padding: 0 12px; border: 1px solid #f0f2f5; border-radius: var(--radius-md); background: #fff; }
-.app-nav { padding: 4px 0 12px; border-inline-end: 0 !important; }
+.app-nav { padding: 8px 0 12px; border-inline-end: 0 !important; }
+/* Group titles sit 4px left of the item text; the open item reads in 500. */
+.app-nav .ant-menu-item-group-title { height: 24px; margin: 12px 0 2px; padding: 0 16px; line-height: 24px; }
+.app-nav .ant-menu-item-selected { font-weight: 500; }
+/* Folded, an item's name shows in a tooltip; it zooms in at half antd's speed
+   so it lands sooner (the 0.1s hover delay is fixed inside antd's Menu). */
+.ant-menu-inline-collapsed-tooltip.ant-zoom-big-fast-appear,
+.ant-menu-inline-collapsed-tooltip.ant-zoom-big-fast-enter { animation-duration: 0.05s; }
 .mobile-menu-button { display: none; }
 /* Centered so wide viewports split the leftover margin symmetrically instead
    of piling all of it to the right of the 1600px content cap. */

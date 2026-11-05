@@ -25,7 +25,7 @@ _ALIASES = {
     "api-tokens": "apikeys", "inference-key": "apikeys", "platform-token": "apikeys",
     "provider": "providers", "node": "nodes", "model": "models",
     "image-catalog": "images", "image-runtime": "images", "network": "networks",
-    "deployment": "deployments", "templates": "inference-templates",
+    "deployment": "deployments", "deploy": "deployments", "templates": "inference-templates",
     "benchmark": "evaluations", "session": "login", "mcp": "settings",
     "playground/chat": "playground",
 }
@@ -63,7 +63,7 @@ def _modules(root: Path, warnings: list[str]) -> list[dict]:
     modules = []
     if app:
         source = app.read_text()
-        block = re.search(r"\bconst\s+navGroups\s*=\s*\[(.*?)\n\s*\];", source, re.S)
+        block = re.search(r"\bconst\s+navGroups(?:\s*:\s*[\w\[\]<>]+)?\s*=\s*\[(.*?)\n\s*\];", source, re.S)
         if block:
             for path, key in re.findall(
                 r'\{\s*key:\s*["\']([^"\']+)["\'].*?labelKey:\s*["\']navigation\.([^"\']+)["\']',

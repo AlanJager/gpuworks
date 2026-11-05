@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button, Form, Result, Segmented, Select, Skeleton, Space, Typography } from "antd";
-import { useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
   api,
@@ -378,6 +378,7 @@ function DeployForm({ opened }: { opened?: OpenedDeployment }) {
           )
         }
         description={opened ? t(`edit.description.${opened.mode}`) : t("page.description")}
+        parents={[<Link key="list" to="/deployments">{t("common:navigation.deployments")}</Link>]}
         extra={
           <Space size={16}>
             {opened && <DeployEditBack opened={opened} />}

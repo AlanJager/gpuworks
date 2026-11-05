@@ -17,13 +17,13 @@ The **Listen addresses** card under Settings → General (the `listen.*` setting
 UI fields that require a server address are prefilled with the address currently used by your browser. You can change it to a domain name or reverse proxy address; the corresponding API field, `server_url`, must be supplied explicitly.
 Changing `listen.agent` affects **already installed** agents: they only dial the address in their installation command. If that address no longer forwards to the new listen address, they go offline until forwarding is fixed or the agents are reinstalled.
 
-The **Network topology and settings** card at the top of **Resources → Networks** shows each setting on a simple topology diagram and a complex topology diagram,
+The **Network topology and settings** card at the top of **Compute → Networks** shows each setting on a simple topology diagram and a complex topology diagram,
 alongside a numbered reference table explaining where you configure it, what it does, and what it does not determine. Hover over a number or table row to highlight the corresponding items.
 If these address concepts are unfamiliar, start with this diagram.
 
 ## Networks
 
-1. Open **Resources → Networks**, click **New network**, enter a name, select the roles and type, and configure selectors as described below. A network can carry multiple roles; Accelerator RDMA and Accelerator HCCS can only carry the Compute role.
+1. Open **Compute → Networks**, click **New network**, enter a name, select the roles and type, and configure selectors as described below. A network can carry multiple roles; Accelerator RDMA and Accelerator HCCS can only carry the Compute role.
 2. Click **Save** to open the new network's details page. Attach it to the target nodes as described in [Attach to Nodes or Labels](#加载到节点或标签).
 3. In the node list on the details page, check the actual IP addresses and interfaces; for RDMA networks, also check the bootstrap addresses and HCAs. An orange exclamation mark indicates configuration that is not in effect or is unavailable. Check the reason and correct it first.
 4. To verify paths between nodes, run an [internal test](#内部测试). Successfully saving a network declaration does not mean the physical links work. Running instances continue to use the network they started with; changes apply the next time they start.

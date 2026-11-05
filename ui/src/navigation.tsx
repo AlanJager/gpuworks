@@ -1,40 +1,63 @@
 import {
-  CloudServerOutlined, DashboardOutlined, AppstoreOutlined, RocketOutlined,
-  UnorderedListOutlined, KeyOutlined, CloudOutlined, SettingOutlined, FileSearchOutlined,
-  ApartmentOutlined, ControlOutlined, ApiOutlined,
-  ExperimentOutlined, HeartOutlined, BarChartOutlined, ScheduleOutlined, InboxOutlined,
+  ApartmentOutlined, ApiOutlined, AppstoreOutlined, BarChartOutlined, CloudOutlined,
+  CloudServerOutlined, ContainerOutlined, ControlOutlined, DashboardOutlined, DatabaseOutlined,
+  ExperimentOutlined, FileTextOutlined, FundOutlined, HeartOutlined, InboxOutlined, KeyOutlined,
+  ProfileOutlined, RocketOutlined, ScheduleOutlined, SettingOutlined,
 } from "@ant-design/icons";
+import type { ReactNode } from "react";
+
+export interface NavItem {
+  key: string;
+  icon: ReactNode;
+  labelKey: string;
+  /** Other first path segments filed under this entry, e.g. the create page of a list. */
+  also?: string[];
+}
+
+export interface NavGroup {
+  /** Absent for the entries above the first group (the overview). */
+  labelKey?: string;
+  items: NavItem[];
+}
 
 // The side menu, also read by PageHeader so a page's breadcrumb names the
-// same section the menu files it under.
-export const navGroups = [
-  { labelKey: "navigation.groups.overview", items: [
+// same section the menu files it under. Monitoring and analysis come first,
+// then daily work (serving, models), then the platform (compute,
+// administration). New features go to the end of their group so existing
+// entries keep their place; monitoring and analysis holds at most five
+// entries (alerts would be the fifth), and further views become tabs.
+export const navGroups: NavGroup[] = [
+  { items: [
     { key: "/dashboard", icon: <DashboardOutlined />, labelKey: "navigation.dashboard" },
-    { key: "/monitor", icon: <HeartOutlined />, labelKey: "navigation.monitor" },
-    { key: "/analytics", icon: <BarChartOutlined />, labelKey: "navigation.analytics" },
-    { key: "/scheduling", icon: <ScheduleOutlined />, labelKey: "navigation.scheduling" },
   ] },
-  { labelKey: "navigation.groups.resources", items: [
-    { key: "/providers", icon: <CloudOutlined />, labelKey: "navigation.publicCloud" },
-    { key: "/zstack", icon: <ApartmentOutlined />, labelKey: "navigation.privateCloud" },
-    { key: "/nodes", icon: <CloudServerOutlined />, labelKey: "navigation.nodes" },
-    { key: "/gpus", icon: <ControlOutlined />, labelKey: "navigation.gpus" },
-    { key: "/models", icon: <AppstoreOutlined />, labelKey: "navigation.models" },
-	{ key: "/inference-templates", icon: <AppstoreOutlined />, labelKey: "navigation.inferenceTemplates" },
-    { key: "/images", icon: <CloudOutlined />, labelKey: "navigation.images" },
-    { key: "/storage", icon: <CloudServerOutlined />, labelKey: "navigation.storage" },
-    { key: "/networks", icon: <ApiOutlined />, labelKey: "navigation.networks" },
+  { labelKey: "navigation.groups.observability", items: [
+    { key: "/monitor", icon: <HeartOutlined />, labelKey: "navigation.monitor" },
+    { key: "/scheduling", icon: <ScheduleOutlined />, labelKey: "navigation.scheduling" },
+    { key: "/analytics", icon: <BarChartOutlined />, labelKey: "navigation.analytics" },
+    { key: "/logs", icon: <FileTextOutlined />, labelKey: "navigation.logs" },
   ] },
   { labelKey: "navigation.groups.inference", items: [
-    { key: "/deploy", icon: <RocketOutlined />, labelKey: "navigation.deploy" },
-    { key: "/deployments", icon: <UnorderedListOutlined />, labelKey: "navigation.deployments" },
+    // Deploying is the list's create action, so /deploy highlights the list.
+    { key: "/deployments", icon: <RocketOutlined />, labelKey: "navigation.deployments", also: ["deploy"] },
     { key: "/batches", icon: <InboxOutlined />, labelKey: "navigation.batches" },
     { key: "/playground/chat", icon: <ExperimentOutlined />, labelKey: "navigation.playground" },
-    { key: "/evaluations", icon: <FileSearchOutlined />, labelKey: "navigation.evaluations" },
+    { key: "/evaluations", icon: <FundOutlined />, labelKey: "navigation.evaluations" },
   ] },
-  { labelKey: "navigation.groups.platform", items: [
+  { labelKey: "navigation.groups.models", items: [
+    { key: "/models", icon: <AppstoreOutlined />, labelKey: "navigation.models" },
+    { key: "/inference-templates", icon: <ProfileOutlined />, labelKey: "navigation.inferenceTemplates" },
+    { key: "/images", icon: <ContainerOutlined />, labelKey: "navigation.images" },
+  ] },
+  { labelKey: "navigation.groups.compute", items: [
+    { key: "/nodes", icon: <CloudServerOutlined />, labelKey: "navigation.nodes" },
+    { key: "/gpus", icon: <ControlOutlined />, labelKey: "navigation.gpus" },
+    { key: "/storage", icon: <DatabaseOutlined />, labelKey: "navigation.storage" },
+    { key: "/networks", icon: <ApiOutlined />, labelKey: "navigation.networks" },
+    { key: "/providers", icon: <CloudOutlined />, labelKey: "navigation.publicCloud" },
+    { key: "/zstack", icon: <ApartmentOutlined />, labelKey: "navigation.privateCloud" },
+  ] },
+  { labelKey: "navigation.groups.admin", items: [
     { key: "/apikeys", icon: <KeyOutlined />, labelKey: "navigation.apiKeys" },
-    { key: "/logs", icon: <FileSearchOutlined />, labelKey: "navigation.logs" },
     { key: "/settings", icon: <SettingOutlined />, labelKey: "navigation.settings" },
   ] },
 ];
@@ -47,18 +70,15 @@ function pathSection(pathname: string) {
 export function navItemForPath(pathname: string) {
   const section = pathSection(pathname);
   for (const group of navGroups) {
-    const item = group.items.find((entry) => entry.key.split("/")[1] === section);
+    const item = group.items.find((entry) => entry.key.split("/")[1] === section || entry.also?.includes(section));
     if (item) return { group, item };
   }
   return undefined;
 }
 
-/** sectionLabelKey is the breadcrumb's section, absent when the entry is the group. */
+/** sectionLabelKey is the breadcrumb's section: the entry's group, absent for the overview, which sits above the groups. */
 export function sectionLabelKey(pathname: string) {
-  const placed = navItemForPath(pathname);
-  // /dashboard is the group itself, so a section crumb would repeat the page.
-  if (!placed || placed.item.key === "/dashboard") return undefined;
-  return placed.group.labelKey;
+  return navItemForPath(pathname)?.group.labelKey;
 }
 
 /**

@@ -52,7 +52,7 @@ Check results mean the following:
 - **Failed**: Returned an error or could not connect to the replica.
 - **No replica**: No available awake replica; no request is sent.
 
-The three types of information displayed side by side in the deployment list and details serve different purposes:
+The three types of information displayed side by side in the Inference Services list and details serve different purposes:
 
 - **Status** describes how the deployment is running.
 - **Health** is the result of the latest minimal request.

@@ -40,14 +40,14 @@ const crumbs = () => {
 
 test("the breadcrumb names the menu section the page sits in", () => {
   at("/nodes", <PageHeader title="Compute Nodes" description="Onboarded hardware" />);
-  assert.deepEqual(crumbs(), ["Resources"]);
+  assert.deepEqual(crumbs(), ["Compute"]);
   assert.ok(screen.getByRole("heading", { level: 2, name: "Compute Nodes" }));
   assert.ok(screen.getByText("Onboarded hardware"));
 });
 
 test("a detail page adds its parents after the section, as links back", () => {
   at("/monitor/d/7", <PageHeader title="qwen" parents={[<Link key="list" to="/monitor">Monitor Center</Link>]} />);
-  assert.deepEqual(crumbs(), ["Overview", "Monitor Center"]);
+  assert.deepEqual(crumbs(), ["Monitoring & Analytics", "Monitor Center"]);
   assert.equal(screen.getByRole("link", { name: "Monitor Center" }).getAttribute("href"), "/monitor");
 });
 
@@ -57,8 +57,8 @@ test("the overview entry omits its section even when the title text differs", ()
 });
 
 test("a title that happens to equal a section name still shows that section", () => {
-  at("/nodes", <PageHeader title="Resources" />);
-  assert.deepEqual(crumbs(), ["Resources"]);
+  at("/nodes", <PageHeader title="Compute" />);
+  assert.deepEqual(crumbs(), ["Compute"]);
 });
 
 test("a nested route selects the menu item key, not the first path segment", () => {
@@ -66,7 +66,7 @@ test("a nested route selects the menu item key, not the first path segment", () 
   assert.equal(selectedNavKey("/playground/audio"), "/playground/chat");
   assert.equal(selectedNavKey("/playground"), "/playground/chat");
   assert.equal(selectedNavKey("/nodes"), "/nodes");
-  assert.equal(selectedNavKey("/deploy"), "/deploy");
+  assert.equal(selectedNavKey("/deploy"), "/deployments");
   assert.equal(selectedNavKey("/deployments/3"), "/deployments");
   assert.equal(selectedNavKey("/"), "/dashboard");
 });

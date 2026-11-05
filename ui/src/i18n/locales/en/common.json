@@ -564,10 +564,11 @@
   },
   "navigation": {
     "groups": {
-      "overview": "Overview",
-      "resources": "Resources",
       "inference": "Inference",
-      "platform": "Platform"
+      "models": "Models",
+      "compute": "Compute",
+      "observability": "Monitoring & Analytics",
+      "admin": "Administration"
     },
     "dashboard": "Overview",
     "monitor": "Monitor Center",
@@ -577,12 +578,11 @@
     "kubernetes": "Kubernetes",
     "nodes": "Compute Nodes",
     "gpus": "GPU Devices",
-    "models": "Models",
+    "models": "Model Repository",
     "inferenceTemplates": "Inference Templates",
     "images": "Images",
     "storage": "Storage",
-    "deploy": "Deploy",
-    "deployments": "Deployments",
+    "deployments": "Inference Services",
     "playground": "Playground",
     "evaluations": "Evaluations",
     "apiKeys": "API Tokens",

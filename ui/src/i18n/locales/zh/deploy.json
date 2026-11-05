@@ -736,7 +736,7 @@
       "preflightFailed": "预检未通过",
       "chooseModelFirst": "选择模型和目标加速卡后，这里会显示调度器选中的节点。",
       "noRankAddress": "无互联地址",
-      "noRankAddressHint": "节点还没有管理网地址（升级 agent 后上报），也没有加载参数网络（资源 → 网络），其他 rank 连不到它。",
+      "noRankAddressHint": "节点还没有管理网地址（升级 agent 后上报），也没有加载参数网络（算力资源 → 网络），其他 rank 连不到它。",
       "planningFunnel": "资源规划：通过 {{passed}} 台 / 已评估 {{tried}} 台；未评估 {{untried}} 台",
       "conditionFunnel": "集群 {{total}} 台 → 节点条件匹配 {{matched}} 台 → 硬件及调度条件通过 {{eligible}} 台",
       "conditionsEmpty": "没有节点匹配节点条件，请检查标签、网络与限定节点。",
@@ -977,7 +977,7 @@
     "loading": "正在载入部署……",
     "loadFailed": "无法打开该部署",
     "notFound": "该部署已不存在",
-    "backToList": "返回部署列表",
+    "backToList": "返回推理服务",
     "title": "编辑部署：{{name}}",
     "cloneTitle": "克隆部署：{{name}}",
     "description": {

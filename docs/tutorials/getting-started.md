@@ -106,7 +106,7 @@ curl -fsSL http://192.0.2.10:8800/install.sh | sh -s -- \
 
 ## 5. 部署模型
 
-1. 打开左侧**部署**，使用**快捷部署**。**模型**选择 `dgpu-demo-a-ms`，**目标芯片**选择 NVIDIA。
+1. 打开左侧**推理服务**，点击**创建部署**，使用**快捷部署**。**模型**选择 `dgpu-demo-a-ms`，**目标芯片**选择 NVIDIA。
 2. **推荐推理模板**选择 **Qwen3-1.7B → general · vllm · balanced**，镜像应为 `gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r4`。
    若弹出**使用已登记的模型？**，选择带 **MS**、**1 个节点**标记的 `dgpu-demo-a-ms`，点击**使用此模型并部署**，返回后核对所选模型。
 3. **部署名称**、**对外模型名**均填 `tutorial-qwen3-17b`；后者用于请求中的 `model`。
@@ -123,12 +123,12 @@ curl -fsSL http://192.0.2.10:8800/install.sh | sh -s -- \
 图：选中 host3 的 GPU 0，并检查右侧配置评估。
 
 5. 等待**配置评估**完成，核对节点、GPU、镜像和显存，确认没有阻止部署的错误。
-6. 点击**部署**，在**部署列表**打开 `tutorial-qwen3-17b`，查看模型准备、镜像拉取和实例启动进度。
+6. 点击**部署**，在**推理服务**打开 `tutorial-qwen3-17b`，查看模型准备、镜像拉取和实例启动进度。
 
 **完成依据**：部署及实例均为**运行中**。首次启动需下载镜像、加载模型，请等待完成。
 下一步用真实请求验证推理接口。
 
-![部署列表：tutorial-qwen3-17b 运行中，健康正常，副本数为 1/1](../assets/screenshots/tutorial-deployment-ready.png)
+![推理服务：tutorial-qwen3-17b 运行中，健康正常，副本数为 1/1](../assets/screenshots/tutorial-deployment-ready.png)
 
 图：确认部署“运行中”、健康检查正常，副本数为 `1/1`。
 

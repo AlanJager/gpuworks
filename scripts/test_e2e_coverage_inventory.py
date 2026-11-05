@@ -68,6 +68,20 @@ class InventoryTest(unittest.TestCase):
         self.assertIn("monitor", ids)
         self.assertIn("gpus", ids)
 
+    def test_typed_nav_groups_and_create_pages_file_under_their_list(self):
+        # navGroups carries a type annotation, and the deploy page has no menu
+        # entry of its own: its cases count toward the deployments list.
+        (self.root / "ui/src/App.tsx").write_text("export default function App() { return null; }\n")
+        self.write("ui/src/navigation.tsx", '''export const navGroups: NavGroup[] = [
+          { labelKey: "navigation.groups.inference", items: [
+            { key: "/deployments", icon: <X />, labelKey: "navigation.deployments", also: ["deploy"] },
+          ] },
+        ];''')
+        self.manifest("wizard", page_id="deploy")
+        result = inventory(self.root)
+        self.assertEqual(result["warnings"], [])
+        self.assertEqual([row["module"] for row in result["contracts"]], ["deployments"])
+
     def test_cases_inherit_execution_and_preserve_parent_missing(self):
         self.manifest("nested", contract_id="gpuworks/model/umbrella", lane="offline-test",
                       required_evidence=["request", "persistence"], missing=["parent gap"],
