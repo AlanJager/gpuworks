@@ -202,6 +202,11 @@ func TestRPCImagePullRanksMarkedCandidatesAndReportsTheOrder(t *testing.T) {
 	if last := got[len(got)-1].Message; strings.Count(last, "image sources by probe:") != 1 || !strings.Contains(last, "a.example (unreachable)") {
 		t.Fatalf("order not reported once:\n%s", messages(got))
 	}
+	for _, want := range []string{"from=node", "GET /v2/", "HTTP 401", "observed_at=", "image authorization, tag, manifest and layers not checked"} {
+		if !strings.Contains(got[len(got)-1].Message, want) {
+			t.Errorf("explicit image pull lost registry probe scope %q:\n%s", want, messages(got))
+		}
+	}
 }
 
 func TestRegistryLoginsFromStateSyncReachPullsAndAreReplacedEachSync(t *testing.T) {

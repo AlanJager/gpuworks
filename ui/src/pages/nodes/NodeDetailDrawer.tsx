@@ -118,6 +118,7 @@ export default function NodeDetailDrawer({
 
   return (
     <DetailDrawer
+      className="node-detail-drawer"
       open={!!node}
       onClose={onClose}
       // The name leads; the hostname follows when the node has a name of its own.

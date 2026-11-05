@@ -54,6 +54,8 @@ const (
 	ErrorNodeInstallExistingAgentSameDir        = "NODE_INSTALL_EXISTING_AGENT_SAME_DIR"
 	ErrorNodeInstallDirUntraversable            = "NODE_INSTALL_DIR_UNTRAVERSABLE"
 	ErrorNodeStoreUnavailable                   = "NODE_STORE_UNAVAILABLE"
+	ErrorNodeConnectionDiagnosticsInput         = "NODE_CONNECTION_DIAGNOSTICS_INPUT"
+	ErrorNodeConnectionSettingsUnavailable      = "NODE_CONNECTION_SETTINGS_UNAVAILABLE"
 	ErrorNodeRecoveryUnavailable                = "NODE_RECOVERY_UNAVAILABLE"
 	ErrorPlatformSSHKeyMissing                  = "PLATFORM_SSH_KEY_MISSING"
 	ErrorAIEndpointNotConfigured                = "AI_ENDPOINT_NOT_CONFIGURED"

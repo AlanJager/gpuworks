@@ -33,6 +33,7 @@ await i18n.use(initReactI18next).init({
 });
 
 const { cleanup, render, screen, waitFor, within, fireEvent } = await import("@testing-library/react");
+const { MemoryRouter } = await import("react-router-dom");
 const userEvent = (await import("@testing-library/user-event")).default;
 const { api } = await import("../src/api.ts");
 const { RequestDetailLines } = await import("../src/pages/monitor/RequestRow.tsx");
@@ -81,9 +82,11 @@ const replicas = [
 
 function renderView(view: "live" | "history" = "live", pd = false) {
   return render(
-    <I18nextProvider i18n={i18n}>
-      <RequestView view={view} deploymentId={7} range="6h" replicas={replicas} pd={pd} />
-    </I18nextProvider>,
+    <MemoryRouter initialEntries={["/monitor/d/7"]}>
+      <I18nextProvider i18n={i18n}>
+        <RequestView view={view} deploymentId={7} range="6h" replicas={replicas} pd={pd} />
+      </I18nextProvider>
+    </MemoryRouter>,
   );
 }
 

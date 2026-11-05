@@ -10,6 +10,18 @@ import (
 
 func row(name, status string) *CheckResult { return &CheckResult{Name: name, Status: status} }
 
+func TestConnectionDiagnosticTimeoutDoesNotAssertFirewallCause(t *testing.T) {
+	restore := dialServerToAgent
+	t.Cleanup(func() { dialServerToAgent = restore })
+	dialServerToAgent = func(context.Context, string, string) (net.Conn, error) {
+		return nil, context.DeadlineExceeded
+	}
+	result := ServerToAgentProbe(context.Background(), "203.0.113.1", "", time.Second)
+	if strings.Contains(result.Detail, "so a security group or firewall drops") || !strings.Contains(result.Detail, "routing") {
+		t.Fatalf("a timeout must retain possible causes instead of asserting one: %+v", result)
+	}
+}
+
 func TestConnectivityVerdict(t *testing.T) {
 	ok, bad := "ok", "warn"
 	for _, tc := range []struct {
@@ -134,7 +146,10 @@ func TestServerDialProbeDialsTheMappedAddressAndFailsWhenDropped(t *testing.T) {
 		t.Fatalf("dialed %q, want the mapped address", dialed)
 	}
 	probe := findCheck(got, checkServerToAgent)
-	if probe == nil || probe.Status != "error" || !strings.Contains(probe.Detail, "security group or firewall") || !strings.Contains(probe.Detail, "allow inbound TCP 37145") {
+	if probe == nil || probe.Status != "error" ||
+		!strings.Contains(probe.Detail, "no answer within 3s") ||
+		!strings.Contains(probe.Detail, "check routing, security groups and firewalls") ||
+		!strings.Contains(probe.Detail, "inbound TCP 37145 on the node for the server") {
 		t.Fatalf("server_dial rows = %+v", got)
 	}
 }

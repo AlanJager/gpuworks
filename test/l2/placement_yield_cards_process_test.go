@@ -29,8 +29,10 @@ import (
 func TestProcessASharingReplicaOnTwoCardsYieldsToAHigherRankAndTakesThemBack(t *testing.T) {
 	base, token, node, modelID := startDockerAutomationRigOn(t, "cardsyield", "A10x2,24576")
 
+	// Isolate rank preemption from the default 30-second idle threshold,
+	// which slow setup can cross before the second deployment is ready.
 	wide, wideInst := createFakeSleepable(t, base, token, node, modelID, "cardsyield-wide", map[string]any{
-		"yield_policy": map[string]any{"policy": "anytime"}, "placement": map[string]any{"tp": 2},
+		"yield_policy": map[string]any{"policy": "anytime", "idle_sec": 3600}, "placement": map[string]any{"tp": 2},
 	})
 	if !slices.Equal(wideInst.GPUIndexes, []int{0, 1}) {
 		t.Fatalf("the offline replica holds cards %v, want 0 and 1", wideInst.GPUIndexes)

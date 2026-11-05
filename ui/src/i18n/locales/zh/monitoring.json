@@ -369,7 +369,11 @@
       "pdCompute": "prefill 实例计算",
       "pdKV": "KV 传输·排队",
       "pdFallback": "降级原因",
-      "deleted": "已删除"
+      "deleted": "已删除",
+      "observationTitle": "网关观测范围",
+      "observationScope": "这些记录描述 GPUWorks 观测到的情况。网关成功写出响应，不代表第三方网关已将响应送达最终客户端。",
+      "streamingEvidence": "对于流式请求，finish_reason 描述模型生成结束，不证明已收到 data: [DONE]。复现前开启调试采集，再在诊断包中对比 upstream 与 client 方向的原始数据和结束时的读写错误。",
+      "collectEvidence": "采集流式排查证据"
     },
     "pdFallback": {
       "no_prefill": "没有可用的 prefill 实例",

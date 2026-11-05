@@ -150,6 +150,9 @@ export interface StorageProbeRequest {
 }
 
 export interface StorageProbeResult {
+  /** The actual mount target and when the control plane received this node result. */
+  target?: string;
+  checked_at?: string;
   node_uuid: string;
   node_name: string;
   ok: boolean;

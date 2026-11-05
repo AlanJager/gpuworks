@@ -341,6 +341,7 @@ POST /api/v1/networks/{id}/tests/estimate
 POST /api/v1/nodes
 POST /api/v1/nodes/install
 POST /api/v1/nodes/precheck
+POST /api/v1/nodes/{uuid}/connection-diagnostics
 POST /api/v1/nodes/{uuid}/doctor
 POST /api/v1/nodes/{uuid}/evict
 POST /api/v1/nodes/{uuid}/gpus/recheck
