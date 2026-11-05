@@ -1,0 +1,17 @@
+(EngineCore pid=1650) INFO 11-05 13:12:08 [gpu_worker.py:432] Available KV cache memory: 14.21 GiB
+(EngineCore pid=1650) ERROR 11-05 13:12:09 [core.py:1183] EngineCore failed to start.
+(EngineCore pid=1650) ERROR 11-05 13:12:09 [core.py:1183] Traceback (most recent call last):
+(EngineCore pid=1650) ERROR 11-05 13:12:09 [core.py:1183]   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/engine/core.py", line 1157, in run_engine_core
+(EngineCore pid=1650) ERROR 11-05 13:12:09 [core.py:1183]     engine_core = EngineCoreProc(*args, engine_index=dp_rank, **kwargs)
+(EngineCore pid=1650) ERROR 11-05 13:12:09 [core.py:1183]   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/core/kv_cache_utils.py", line 687, in check_enough_kv_cache_memory
+(EngineCore pid=1650) ERROR 11-05 13:12:09 [core.py:1183]     raise ValueError(
+(EngineCore pid=1650) ERROR 11-05 13:12:09 [core.py:1183] ValueError: To serve at least one request with the models's max seq len (1048576), (16.92 GiB KV cache is needed, which is larger than the available KV cache memory (14.21 GiB). Based on the available memory, the estimated maximum model length is 876544. Try increasing `gpu_memory_utilization` or decreasing `max_model_len` when initializing the engine.
+(EngineCore pid=1650) Process EngineCore:
+(EngineCore pid=1650) Traceback (most recent call last):
+(EngineCore pid=1650)   File "/usr/lib/python3.12/multiprocessing/process.py", line 314, in _bootstrap
+(EngineCore pid=1650)     self.run()
+(EngineCore pid=1650) ValueError: To serve at least one request with the models's max seq len (1048576), (16.92 GiB KV cache is needed, which is larger than the available KV cache memory (14.21 GiB). Based on the available memory, the estimated maximum model length is 876544. Try increasing `gpu_memory_utilization` or decreasing `max_model_len` when initializing the engine.
+(APIServer pid=1) Traceback (most recent call last):
+(APIServer pid=1)   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/engine/utils.py", line 1109, in wait_for_engine_startup
+(APIServer pid=1)     raise RuntimeError(
+(APIServer pid=1) RuntimeError: Engine core initialization failed. See root cause above. Failed core proc(s): {}

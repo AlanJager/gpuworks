@@ -3,6 +3,8 @@ package engine
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -280,7 +282,15 @@ func TestLivenessDoesNotRepeatAStartupFailure(t *testing.T) {
 // line: removal deletes the output, and this is what remains of it. With no
 // output at all (a full disk cannot write it) the message says so.
 func TestStartupFailureCarriesTheEnginesLastErrorLine(t *testing.T) {
+	// vLLM's last line only points up ("See root cause above"); the failed
+	// instance carries the worker's exception instead.
+	vllmFailure, err := os.ReadFile(filepath.Join("..", "..", "..", "pkg", "enginelog", "testdata", "vllm-max-num-seqs-failure.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
 	for name, tc := range map[string]struct{ logs, want string }{
+		"vllm root cause above": {string(vllmFailure),
+			"container exited (code 2): ValueError: max_num_seqs (1024) exceeds available Mamba cache blocks (839). Each decode sequence requires one Mamba cache block, so CUDA graph capture cannot proceed. Please lower max_num_seqs to at most 839 or increase gpu_memory_utilization."},
 		"argument error": {"usage: vllm [-h] [-v]\nvllm: error: unrecognized arguments: --definitely-not-a-flag\n",
 			"container exited (code 2): vllm: error: unrecognized arguments: --definitely-not-a-flag"},
 		"no device": {"Traceback (most recent call last):\n  File \"/usr/local/bin/vllm\", line 10\n\x1b[31mRuntimeError: Failed to infer device type\x1b[0m\n",

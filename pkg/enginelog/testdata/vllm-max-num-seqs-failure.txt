@@ -1,0 +1,57 @@
+(Worker_TP2 pid=1907) ERROR 11-05 13:39:46 [multiproc_executor.py:1189] WorkerProc hit an exception.
+(Worker_TP2 pid=1907) ERROR 11-05 13:39:46 [multiproc_executor.py:1189] Traceback (most recent call last):
+(Worker_TP2 pid=1907) ERROR 11-05 13:39:46 [multiproc_executor.py:1189]   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/executor/multiproc_executor.py", line 1177, in _execute_worker_rpc
+(Worker_TP2 pid=1907) ERROR 11-05 13:39:46 [multiproc_executor.py:1189]     output = func(*args, **kwargs)
+(Worker_TP2 pid=1907) ERROR 11-05 13:39:46 [multiproc_executor.py:1189]              ^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP2 pid=1907) ERROR 11-05 13:39:46 [multiproc_executor.py:1189]   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/worker/worker_base.py", line 359, in initialize_from_config
+(Worker_TP2 pid=1907) ERROR 11-05 13:39:46 [multiproc_executor.py:1189]     self.worker.initialize_from_config(kv_cache_config)  # type: ignore
+(Worker_TP2 pid=1907) ERROR 11-05 13:39:46 [multiproc_executor.py:1189]     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP2 pid=1907) ERROR 11-05 13:39:46 [multiproc_executor.py:1189]   File "/usr/local/lib/python3.12/dist-packages/vllm/tracing/otel.py", line 175, in sync_wrapper
+(Worker_TP2 pid=1907) ERROR 11-05 13:39:46 [multiproc_executor.py:1189]     return func(*args, **kwargs)
+(Worker_TP2 pid=1907) ERROR 11-05 13:39:46 [multiproc_executor.py:1189]            ^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP2 pid=1907) ERROR 11-05 13:39:46 [multiproc_executor.py:1189]   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/worker/gpu_worker.py", line 910, in initialize_from_config
+(Worker_TP2 pid=1907) ERROR 11-05 13:39:46 [multiproc_executor.py:1189]     self.model_runner.initialize_kv_cache(
+(Worker_TP2 pid=1907) ERROR 11-05 13:39:46 [multiproc_executor.py:1189]   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/worker/gpu/model_runner.py", line 780, in initialize_kv_cache
+(Worker_TP2 pid=1907) ERROR 11-05 13:39:46 [multiproc_executor.py:1189]     cudagraph_mode = self.compilation_config.resolve_cudagraph_mode_and_sizes(
+(Worker_TP2 pid=1907) ERROR 11-05 13:39:46 [multiproc_executor.py:1189]                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP2 pid=1907) ERROR 11-05 13:39:46 [multiproc_executor.py:1189]   File "/usr/local/lib/python3.12/dist-packages/vllm/config/compilation.py", line 1525, in resolve_cudagraph_mode_and_sizes
+(Worker_TP2 pid=1907) ERROR 11-05 13:39:46 [multiproc_executor.py:1189]     raise ValueError(
+(Worker_TP2 pid=1907) ERROR 11-05 13:39:46 [multiproc_executor.py:1189] ValueError: max_num_seqs (1024) exceeds available Mamba cache blocks (839). Each decode sequence requires one Mamba cache block, so CUDA graph capture cannot proceed. Please lower max_num_seqs to at most 839 or increase gpu_memory_utilization.
+(Worker_TP2 pid=1907) ERROR 11-05 13:39:46 [multiproc_executor.py:1189] Traceback (most recent call last):
+(Worker_TP2 pid=1907) ERROR 11-05 13:39:46 [multiproc_executor.py:1189]   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/executor/multiproc_executor.py", line 1177, in _execute_worker_rpc
+(Worker_TP2 pid=1907) ERROR 11-05 13:39:46 [multiproc_executor.py:1189]     output = func(*args, **kwargs)
+(Worker_TP2 pid=1907) ERROR 11-05 13:39:46 [multiproc_executor.py:1189]              ^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP2 pid=1907) ERROR 11-05 13:39:46 [multiproc_executor.py:1189]   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/worker/worker_base.py", line 359, in initialize_from_config
+(Worker_TP2 pid=1907) ERROR 11-05 13:39:46 [multiproc_executor.py:1189]     self.worker.initialize_from_config(kv_cache_config)  # type: ignore
+(Worker_TP2 pid=1907) ERROR 11-05 13:39:46 [multiproc_executor.py:1189]     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP2 pid=1907) ERROR 11-05 13:39:46 [multiproc_executor.py:1189]   File "/usr/local/lib/python3.12/dist-packages/vllm/tracing/otel.py", line 175, in sync_wrapper
+(Worker_TP2 pid=1907) ERROR 11-05 13:39:46 [multiproc_executor.py:1189]     return func(*args, **kwargs)
+(Worker_TP2 pid=1907) ERROR 11-05 13:39:46 [multiproc_executor.py:1189]            ^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP2 pid=1907) ERROR 11-05 13:39:46 [multiproc_executor.py:1189]   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/worker/gpu_worker.py", line 910, in initialize_from_config
+(Worker_TP2 pid=1907) ERROR 11-05 13:39:46 [multiproc_executor.py:1189]     self.model_runner.initialize_kv_cache(
+(Worker_TP2 pid=1907) ERROR 11-05 13:39:46 [multiproc_executor.py:1189]   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/worker/gpu/model_runner.py", line 780, in initialize_kv_cache
+(Worker_TP2 pid=1907) ERROR 11-05 13:39:46 [multiproc_executor.py:1189]     cudagraph_mode = self.compilation_config.resolve_cudagraph_mode_and_sizes(
+(Worker_TP2 pid=1907) ERROR 11-05 13:39:46 [multiproc_executor.py:1189]                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP2 pid=1907) ERROR 11-05 13:39:46 [multiproc_executor.py:1189]   File "/usr/local/lib/python3.12/dist-packages/vllm/config/compilation.py", line 1525, in resolve_cudagraph_mode_and_sizes
+(Worker_TP2 pid=1907) ERROR 11-05 13:39:46 [multiproc_executor.py:1189]     raise ValueError(
+(Worker_TP2 pid=1907) ERROR 11-05 13:39:46 [multiproc_executor.py:1189] ValueError: max_num_seqs (1024) exceeds available Mamba cache blocks (839). Each decode sequence requires one Mamba cache block, so CUDA graph capture cannot proceed. Please lower max_num_seqs to at most 839 or increase gpu_memory_utilization.
+(Worker_TP2 pid=1907) ERROR 11-05 13:39:46 [multiproc_executor.py:1189] 
+(Worker_TP0 pid=1905) ERROR 11-05 13:39:46 [multiproc_executor.py:1189] WorkerProc hit an exception.
+(EngineCore pid=1650) ERROR 11-05 13:39:46 [core.py:1183] EngineCore failed to start.
+(EngineCore pid=1650) ERROR 11-05 13:39:46 [core.py:1183] Traceback (most recent call last):
+(EngineCore pid=1650) ERROR 11-05 13:39:46 [core.py:1183]   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/engine/core.py", line 1157, in run_engine_core
+(EngineCore pid=1650) ERROR 11-05 13:39:46 [core.py:1183]     engine_core = EngineCoreProc(*args, engine_index=dp_rank, **kwargs)
+(EngineCore pid=1650) ERROR 11-05 13:39:46 [core.py:1183]   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/executor/multiproc_executor.py", line 412, in collective_rpc
+(EngineCore pid=1650) ERROR 11-05 13:39:46 [core.py:1183]     raise RuntimeError(
+(EngineCore pid=1650) ERROR 11-05 13:39:46 [core.py:1183] RuntimeError: Worker failed with error 'max_num_seqs (1024) exceeds available Mamba cache blocks (839). Each decode sequence requires one Mamba cache block, so CUDA graph capture cannot proceed. Please lower max_num_seqs to at most 839 or increase gpu_memory_utilization.', please check the stack trace above for the root cause
+(EngineCore pid=1650) Process EngineCore:
+(EngineCore pid=1650) Traceback (most recent call last):
+(EngineCore pid=1650)   File "/usr/lib/python3.12/multiprocessing/process.py", line 314, in _bootstrap
+(EngineCore pid=1650)     self.run()
+(EngineCore pid=1650) RuntimeError: Worker failed with error 'max_num_seqs (1024) exceeds available Mamba cache blocks (839). Each decode sequence requires one Mamba cache block, so CUDA graph capture cannot proceed. Please lower max_num_seqs to at most 839 or increase gpu_memory_utilization.', please check the stack trace above for the root cause
+(APIServer pid=1) Traceback (most recent call last):
+(APIServer pid=1)   File "/usr/local/bin/vllm", line 10, in <module>
+(APIServer pid=1)     sys.exit(main())
+(APIServer pid=1)   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/engine/utils.py", line 1109, in wait_for_engine_startup
+(APIServer pid=1)     raise RuntimeError(
+(APIServer pid=1) RuntimeError: Engine core initialization failed. See root cause above. Failed core proc(s): {}

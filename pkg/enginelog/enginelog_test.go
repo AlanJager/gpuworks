@@ -1,6 +1,8 @@
 package enginelog
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -109,5 +111,45 @@ func TestLastErrorIsTheFinalErrorLine(t *testing.T) {
 	// Only the final lines are searched: an error long before the end is history.
 	if got := LastError("ValueError: early\n" + strings.Repeat("INFO line\n", 60)); got != "" {
 		t.Errorf("an error before the final lines = %q", got)
+	}
+}
+
+// vLLM ends a failed start with the API server's "Engine core
+// initialization failed. See root cause above." The cause is a worker's or
+// the engine core's exception further up, each rank repeating it. Both
+// fixtures are this repository's 8 × B300 Kimi-K3.1-Pro failures; the worker
+// tracebacks of the first are verbatim, the wrapper tail after them is the
+// shape vLLM prints.
+func TestRootCauseLooksPastVLLMWrapperExceptions(t *testing.T) {
+	for _, tc := range []struct{ file, want string }{
+		{"vllm-max-num-seqs-failure.txt", "ValueError: max_num_seqs (1024) exceeds available Mamba cache blocks (839). Each decode sequence requires one Mamba cache block"},
+		{"vllm-kv-cache-failure.txt", "ValueError: To serve at least one request with the models's max seq len (1048576), (16.92 GiB KV cache is needed, which is larger than the available KV cache memory (14.21 GiB)."},
+	} {
+		raw, err := os.ReadFile(filepath.Join("testdata", tc.file))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if last := LastError(string(raw)); !strings.Contains(last, "See root cause above") {
+			t.Fatalf("%s: fixture no longer ends on the wrapper: %q", tc.file, last)
+		}
+		got := RootCause(string(raw))
+		if !strings.HasPrefix(got, tc.want) || len([]rune(got)) > lastErrorMax+1 {
+			t.Errorf("%s: RootCause = %q, want it to start %q", tc.file, got, tc.want)
+		}
+	}
+}
+
+func TestRootCauseKeepsTheFinalErrorUnlessItIsAWrapper(t *testing.T) {
+	for name, tc := range map[string]struct{ logs, want string }{
+		// An exception handled long before the end is not the cause of an
+		// argparse failure.
+		"final error is not a wrapper": {"ValueError: handled during load\nusage: vllm\nvllm: error: unrecognized arguments: --x\n", "vllm: error: unrecognized arguments: --x"},
+		"only wrappers":                {"RuntimeError: Engine core initialization failed. See root cause above.\n", "RuntimeError: Engine core initialization failed. See root cause above."},
+		"dotted exception under tag":   {"(Worker_TP0 pid=9) ERROR 11-05 13:00:00 [w.py:1] torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 2.00 GiB\n(APIServer pid=1) RuntimeError: Engine core initialization failed. See root cause above. Failed core proc(s): {}\n", "torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 2.00 GiB"},
+		"nothing":                      {"INFO serving\n", ""},
+	} {
+		if got := RootCause(tc.logs); got != tc.want {
+			t.Errorf("%s: RootCause = %q, want %q", name, got, tc.want)
+		}
 	}
 }
