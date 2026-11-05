@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { access } from "node:fs/promises";
 import test from "node:test";
 
 import { vendorForFramework } from "../src/components/VendorLogo.tsx";
@@ -16,4 +17,12 @@ test("Apple silicon resolves from its metal framework to the Apple mark", () => 
   assert.equal(vendorForFramework("metal"), "apple");
   assert.equal(vendorForFramework("Apple"), "apple");
   assert.equal(VENDOR_ASSETS.apple, "/vendor-logos/apple.svg");
+});
+
+test("every vendor mark is a file shipped under public/vendor-logos", async () => {
+  for (const vendor of ["nvidia", "amd", "ascend", "thead", "hygon", "apple"]) {
+    const asset = VENDOR_ASSETS[vendor];
+    assert.match(asset, /^\/vendor-logos\/[a-z]+\.(svg|png|webp)$/, vendor);
+    await access(new URL(`../public${asset}`, import.meta.url));
+  }
 });

@@ -75,10 +75,18 @@ modules; see the NOTICE.txt and LICENSE.txt in that directory.
 Web UI assets (ui/)
 --------------------------------------------------------------------------------
 
-Accelerator vendor marks in ui/src/components/vendorAssets.ts are copied from
-the GPUStack project (https://github.com/gpustack/gpustack, docs/assets/logos),
-licensed under the Apache License 2.0. The Apple glyph is from Simple Icons
-(https://simpleicons.org, CC0-1.0).
+Accelerator vendor marks live in ui/public/vendor-logos/ (sources listed in
+ui/src/components/vendorAssets.ts):
+
+  nvidia.svg   NVIDIA lockup from NVIDIA BioNeMo Framework
+               (https://github.com/NVIDIA/bionemo-framework,
+               docs/docs/assets/images/logo-white.svg), Copyright NVIDIA
+               Corporation, licensed under the Apache License 2.0; recoloured
+               dark-on-light as in Wikimedia Commons "File:NVIDIA logo.svg".
+  amd.svg      Wikimedia Commons "File:AMD Logo.svg", public domain text logo.
+  ascend.svg   Header logo of https://www.hiascend.com (Huawei).
+  thead.png    Header logo of https://www.t-head.cn (T-Head).
+  apple.svg    Glyph from Simple Icons (https://simpleicons.org, CC0-1.0).
 
 Vendor, cloud provider and model organization names and logos shown in the UI
 are trademarks of their respective owners and are used only to identify
