@@ -1,8 +1,5 @@
 # gpuworks-runner: Ascend CANN SGLang 线
 #
-# 派生自 gpustack/runner 的 pack/cann/Dockerfile.sglang（Apache-2.0，见 ../NOTICE）：
-# 引擎可执行文件的 env 包装做法参照其 ENTRYPOINT/wrapper 实现。
-#
 # 内容 = 上游 vanilla（quay.io/ascend/sglang:<v>-cann<x>-<型号>，自带 CANN/
 #          torch-npu/sglang-npu）+ 轻量工具层 + diffusion 依赖
 ARG BASE_IMAGE=quay.io/ascend/sglang:v0.5.18-cann9.0.0-910b

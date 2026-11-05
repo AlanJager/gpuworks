@@ -1,7 +1,7 @@
 {
   "schema_version": 3,
-  "catalog_version": "2026-11-04.e3058230",
-  "sha256": "59c7774e8b98cdee4f4a1a3dd2ae78cac143926e36f2ca6c39f64e0288266f41",
+  "catalog_version": "2026-11-05.3a8b3c18",
+  "sha256": "bca97ccf7af3aef356dfd9f1d38c3a7b26e7becbe2bf86ec867449668931ad88",
   "series": [
     {
       "name": "MLX Audio · Metal",
@@ -435,7 +435,7 @@
             "quay.io/gpuworks/gpuworks-runner:cuda12.9-vllm0.31.0-r2",
             "swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-runner:cuda12.9-vllm0.31.0-r2"
           ],
-          "notes": "CUDA 12.x 的 vllm 档（驱动低于 580 的节点用它，CUDA 13.0 要求驱动 ≥580）。 不含 omni。torchcodec 换成 0.16.0+cu129，其余 torch 栈与 base 逐包一致。 补丁 001（wrong_dp_ray）在 vllm 0.31 上不适用——上游已重构 get_open_port， 故由 PATCHES_NOT_APPLICABLE 显式声明跳过；002 应用，003 已在上游。\nrequires: engine, engine_import, mooncake, overlays, audit"
+          "notes": "CUDA 12.x 的 vllm 档（驱动低于 580 的节点用它，CUDA 13.0 要求驱动 ≥580）。 不含 omni。torchcodec 换成 0.16.0+cu129，其余 torch 栈与 base 逐包一致。 补丁 001（wrong_dp_ray）在 vllm 0.31 上打不上：上游只是重排了 get_open_port 的 docstring（vllm #52136），端口问题本身没有修，故暂由 PATCHES_NOT_APPLICABLE 声明跳过， 下次升 revision 时要按 0.31 的上下文重做 001。002 应用。\nrequires: engine, engine_import, mooncake, overlays, audit"
         },
         {
           "name": "cuda13.0-vllm0.30.0-r4",

@@ -2,7 +2,7 @@
 #
 # 本文件是每一档镜像的权威定义：构建什么、以什么为 base、必须具备什么。
 # 读这一个文件就能知道某档是干什么用的、有什么前提、有什么已知限制。
-# 署名与派生关系见 NOTICE（构建配方部分派生自 Apache-2.0 的 gpustack/runner）。
+# 补丁的第三方署名见 NOTICE。
 # 构建与发布怎么跑见 README.md；真机验证结论见 artifacts/work/2026-10-03-runner-images/evidence/r2-verify.md。
 #
 # tag 命名：<backend><框架档>[-<型号>]-<engine><版本>，并发一个带构建版次的不可变
@@ -216,8 +216,9 @@ items:
     note: >-
       CUDA 12.x 的 vllm 档（驱动低于 580 的节点用它，CUDA 13.0 要求驱动 ≥580）。
       不含 omni。torchcodec 换成 0.16.0+cu129，其余 torch 栈与 base 逐包一致。
-      补丁 001（wrong_dp_ray）在 vllm 0.31 上不适用——上游已重构 get_open_port，
-      故由 PATCHES_NOT_APPLICABLE 显式声明跳过；002 应用，003 已在上游。
+      补丁 001（wrong_dp_ray）在 vllm 0.31 上打不上：上游只是重排了 get_open_port 的
+      docstring（vllm #52136），端口问题本身没有修，故暂由 PATCHES_NOT_APPLICABLE 声明跳过，
+      下次升 revision 时要按 0.31 的上下文重做 001。002 应用。
 
   - id: cuda12.9-sglang0.5.18
     revision: r2

@@ -63,10 +63,11 @@ perftest (ib_write_bw) with rdma-core - separate program
 Container image recipes (build/runner-images/)
 --------------------------------------------------------------------------------
 
-Parts of the gpuworks-runner image recipes and patches are derived from
-GPUStack Runner (https://github.com/gpustack/runner), Copyright (c) GPUStack
-contributors, licensed under the Apache License 2.0. See
-build/runner-images/NOTICE for the per-file derivation list.
+Three vLLM / vLLM-Omni patches under build/runner-images/patches/ are derived
+from GPUStack Runner (https://github.com/gpustack/runner), Copyright (c)
+GPUStack contributors, licensed under the Apache License 2.0. See
+build/runner-images/NOTICE for the list and for third-party software the
+images install.
 
 build/inference-templates/glm53-910c/ contains patched vLLM / vLLM-Ascend
 modules; see the NOTICE.txt and LICENSE.txt in that directory.
