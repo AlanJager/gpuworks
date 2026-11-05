@@ -82,14 +82,16 @@ func main() {
 			os.Exit(1)
 		}
 	case "doctor":
-		fs := flag.NewFlagSet("doctor", flag.ExitOnError)
-		stateDir := fs.String("state", defaultStateDir(), "agent state directory")
-		_ = fs.Parse(os.Args[2:])
-		if fs.NArg() != 0 {
-			fmt.Fprintf(os.Stderr, "doctor: unexpected argument %q\n", fs.Arg(0))
-			os.Exit(2)
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer stop()
+		if err := doctor(ctx, log, os.Args[2:], os.Stdout, os.Stderr); err != nil && !errors.Is(err, flag.ErrHelp) {
+			fmt.Fprintln(os.Stderr, err)
+			var coded *exitCodeError
+			if errors.As(err, &coded) {
+				os.Exit(coded.code)
+			}
+			os.Exit(1)
 		}
-		agentapp.DoctorForState(context.Background(), os.Stdout, *stateDir)
 	case "grant-device-access":
 		if err := grantDeviceAccess(os.Args[2:]); err != nil && !errors.Is(err, flag.ErrHelp) {
 			fmt.Fprintf(os.Stderr, "gpuworks-agent grant-device-access: %v\n", err)
@@ -202,10 +204,10 @@ func run(log *slog.Logger, args []string) error {
 
 	conf, stateDir, _, err := launch.resolve(os.Getenv)
 	if err != nil {
-		return err
+		return safeAgentConfigurationError(err)
 	}
 	if err := conf.Validate(); err != nil {
-		return fmt.Errorf("%w (configure %s, or pass --server/--token)", err, agentconf.Path(stateDir))
+		return safeAgentConfigurationError(err)
 	}
 	cfg.ServerURL, cfg.Token, cfg.StateDir = conf.Server, conf.Token, stateDir
 	cfg.ConnectMode, cfg.ListenAddr, cfg.ForceDriver = conf.Mode(), conf.Listen, conf.RuntimeDriver
@@ -258,38 +260,6 @@ func run(log *slog.Logger, args []string) error {
 	defer stop()
 	log.Info("agent starting", "connect_mode", cfg.ConnectMode, "server", cfg.ServerURL, "listen", cfg.ListenAddr, "state", cfg.StateDir)
 	return a.Run(ctx)
-}
-
-func smoke(log *slog.Logger, args []string) error {
-	fs := flag.NewFlagSet("smoke", flag.ContinueOnError)
-	launch := newLaunchFlags(fs)
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
-	conf, _, _, err := launch.resolve(os.Getenv)
-	if err != nil {
-		return err
-	}
-	if conf.Server == "" || conf.Token == "" {
-		return fmt.Errorf("--server and --token are required")
-	}
-	// The deadline covers the dial and the handshake only. Accelerator
-	// discovery stays outside it: New skips that probe for a smoke connection.
-	c := agentconn.New(agentconn.Credentials{ServerURL: conf.Server, NodeToken: conf.Token, Smoke: true}, nil, nil, nil, log)
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	err = c.Run(ctx)
-	if err != nil && ctx.Err() != nil {
-		return &exitCodeError{code: 3, err: err}
-	}
-	var reject *agentconn.RejectError
-	if errors.As(err, &reject) {
-		return &exitCodeError{code: 4, err: err}
-	}
-	if err != nil {
-		return &exitCodeError{code: 1, err: err}
-	}
-	return nil
 }
 
 type exitCodeError struct {
@@ -418,7 +388,7 @@ usage:
   gpuworks-agent run [--state DIR]   (flags --server, --token, ... override DIR/gpuworks-agent.conf)
   gpuworks-agent smoke [--state DIR] [--server URL --token TOKEN]
   gpuworks-agent upgrade [--state DIR] [--server URL --token TOKEN]
-  gpuworks-agent doctor [--state DIR]
+  gpuworks-agent doctor [--state DIR] [--connectivity [--json]]
   gpuworks-agent grant-device-access --user USER [--create-user] [--state DIR]
   gpuworks-agent runveil [--state DIR] ps|images|exec|logs ...
   gpuworks-agent bench --url http://127.0.0.1:8000 --model MODEL [--concurrency 1] [--isl 128] [--osl 32]

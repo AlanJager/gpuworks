@@ -954,7 +954,7 @@
   "connectionDiagnostics": {
     "title": "Connection evidence",
     "run": "Check connection",
-    "scope": "Reads this node’s saved connection settings and runs bounded SSH checks. It does not change addresses, tokens, installation or recovery state. Existing SSH host-key trust rules still apply.",
+    "scope": "Reads the running Agent’s connection snapshot over its existing control channel. Offline or older agents may use the optional saved SSH access. It does not change addresses, credentials, installation or recovery state.",
     "empty": "Run a check to collect evidence, including when the Agent control connection is offline.",
     "loading": "Collecting connection evidence…",
     "failed": "The report could not be collected. Retry or inspect the control-plane log.",
@@ -975,18 +975,20 @@
     "stage": {
       "ssh": "SSH access",
       "configuration": "Node configuration snapshot",
-      "node_http": "Node → saved control-plane health URL"
+      "node_http": "Node → saved control-plane health URL",
+      "agent_control": "Existing Agent control channel"
     },
     "location": {
       "control_plane": "Control-plane host",
-      "node": "Node host, through SSH"
+      "node": "Node host, through SSH",
+      "unknown": "Not observed"
     },
     "sourceName": {
       "state_file": "Selected state directory configuration file",
       "legacy_arguments": "Legacy service arguments"
     },
     "outcome": {
-      "unavailable": "SSH evidence unavailable; check saved SSH access and credentials.",
+      "unavailable": "Connection evidence is unavailable; other recorded observations remain available.",
       "not_checked": "Not checked",
       "not_applicable": "Not applicable for this connection direction",
       "invalid_address": "Address is invalid or contains unsupported credentials, query parameters or fragments.",
@@ -1007,8 +1009,10 @@
       "transport": "The HTTP exchange failed before a complete response.",
       "unknown": "Unsupported observation",
       "unsupported": "This installation does not support connection diagnostics.",
-      "credentials_unavailable": "SSH access is not configured; node-side checks were not run.",
-      "credential_error": "Saved SSH credentials could not be read; node-side checks were not run."
+      "credentials_unavailable": "SSH access is not configured; the optional SSH checks were not run.",
+      "credential_error": "Saved SSH credentials could not be read; node-side checks were not run.",
+      "runtime_snapshot": "The control RPC returned a current-process snapshot; no new connection was opened.",
+      "offline": "No live Agent control session; current node-side evidence could not be requested."
     },
     "guidance": {
       "snapshot_scope": "A configuration snapshot does not prove the running process has adopted it. Check the selected state directory, startup flags and environment overrides; never share TOKEN or full process arguments.",
@@ -1028,6 +1032,123 @@
       "disabled": "Recorded as disabled",
       "failed": "Recorded as failed",
       "unknown": "Recorded state unknown"
+    },
+    "currentTitle": "Current Agent observation",
+    "historyTitle": "Platform records and earlier observations",
+    "sshTitle": "Optional SSH evidence",
+    "cliTitle": "Check locally on the node",
+    "cliScope": "An offline Agent cannot receive a new RPC. Run the command through the node’s console using the actual state directory. CLI configuration and proxy settings may differ from the running service. Cancelling this page stops waiting; the Agent limits its own work.",
+    "cliCommand": "gpuworks-agent doctor --connectivity --state <actual-state-directory> --json",
+    "lastReject": "Last recorded handshake rejection",
+    "runtime": {
+      "scope": "This is a snapshot of the existing connection, not a new control/data handshake or an inference test. Missing stages remain unverified. A pending or unverified data channel is not a successful data check.",
+      "field": {
+        "source": "Observation source",
+        "checked_at": "Agent snapshot acquired at",
+        "server_url": "Running Agent control-plane address",
+        "connect_mode": "Connection direction",
+        "server_source": "Address configuration source",
+        "token_present": "Credential configured",
+        "control": "Current control channel",
+        "data_lane": "Current data channel",
+        "outcome": "Agent observation result",
+        "reason": "Recorded reason",
+        "retry_at": "Next scheduled reconnect",
+        "proxy": "Observed transport path",
+        "proxy_url": "Observed proxy origin"
+      },
+      "value": {
+        "source": {
+          "agent_runtime": "Running Agent process"
+        },
+        "connect_mode": {
+          "agent_dial": "Agent → control plane",
+          "server_dial": "Control plane → Agent"
+        },
+        "server_source": {
+          "flag": "Command-line flag",
+          "environment": "Environment",
+          "state_file": "State configuration file",
+          "missing": "Not configured",
+          "agent_runtime": "Effective running-process configuration",
+          "unknown": "Source not observed"
+        },
+        "token_present": {
+          "true": "Configured (credential value is never shown)",
+          "false": "Not configured"
+        },
+        "control": {
+          "probing": "Connection in progress",
+          "connected": "Existing control channel connected",
+          "not_connected": "Control channel not connected",
+          "smoke_verified": "One smoke handshake verified; daemon health is unverified",
+          "not_applicable": "Not applicable",
+          "unknown": "Control state not observed"
+        },
+        "data_lane": {
+          "unverified": "Data channel not tested",
+          "attached": "Data channel currently attached; throughput is untested",
+          "detached": "Previously attached data channel is disconnected; data operations wait for reconnection",
+          "disabled": "Dedicated data channel disabled; single-channel mode",
+          "not_negotiated": "Dedicated data channel not negotiated",
+          "pending": "Dedicated data channel has not attached yet",
+          "not_applicable": "Not applicable for this connection direction",
+          "unknown": "Data channel state not observed"
+        },
+        "outcome": {
+          "ok": "The listed observations completed; full-path health is not established",
+          "failed": "The recorded connection attempt failed",
+          "invalid_configuration": "Invalid connection configuration",
+          "not_applicable": "Not applicable for this connection direction",
+          "probing": "Observation in progress",
+          "unknown": "Result not observed"
+        },
+        "reason": {
+          "bad_token": "Node credential was not accepted",
+          "proto_mismatch": "No compatible protocol version",
+          "stale_session": "Data connection belongs to a stale control session",
+          "dns": "Name resolution failed",
+          "connect": "Connection could not be established",
+          "tls": "TLS negotiation or verification failed",
+          "ws_upgrade": "WebSocket upgrade failed",
+          "timeout": "Observation timed out",
+          "cancelled": "Observation cancelled",
+          "transport": "Transport exchange failed",
+          "invalid_configuration": "Invalid connection configuration",
+          "none": "No failure reason recorded"
+        },
+        "proxy": {
+          "direct": "Direct transport path observed",
+          "environment_proxy": "Environment proxy used by the transport",
+          "unknown": "Transport path not observed"
+        }
+      },
+      "stage": {
+        "configuration": "Connection configuration",
+        "dial": "Connection attempt",
+        "dns": "Observed DNS lookup",
+        "connect": "Observed TCP connection",
+        "proxy_connect": "Proxy CONNECT",
+        "tls": "Observed TLS negotiation",
+        "ws_upgrade": "WebSocket upgrade",
+        "yamux": "Multiplexing session",
+        "hello": "Identity handshake",
+        "wait_registered": "Registration response",
+        "server_hello": "Server hello",
+        "session": "Post-handshake session"
+      },
+      "phase": {
+        "ok": "Stage completed",
+        "failed": "Stage failed",
+        "timeout": "Stage timed out",
+        "cancelled": "Stage cancelled",
+        "in_progress": "Stage in progress",
+        "not_observed": "Stage not observed",
+        "not_checked": "Stage not checked",
+        "not_applicable": "Stage not applicable"
+      },
+      "elapsed": "Observed stage duration",
+      "milliseconds": "{{count}} ms"
     }
   }
 }

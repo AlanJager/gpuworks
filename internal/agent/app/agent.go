@@ -176,6 +176,7 @@ func (a *Agent) Run(ctx context.Context) error {
 	}
 
 	backoff := newBackoff(1*time.Second, 30*time.Second)
+	connectionLog := connectionDiagnosticLogger(a.log)
 	for {
 		if ctx.Err() != nil {
 			return nil
@@ -198,7 +199,7 @@ func (a *Agent) Run(ctx context.Context) error {
 			return nil
 		}
 
-		c := conn.New(creds, onReg, a.handlers(node), prober, a.log)
+		c := conn.New(creds, onReg, a.handlers(node), prober, connectionLog)
 		start := time.Now()
 		err := c.Run(ctx)
 		if ctx.Err() != nil {
@@ -207,8 +208,9 @@ func (a *Agent) Run(ctx context.Context) error {
 		if err != nil {
 			var reject *conn.RejectError
 			if errors.As(err, &reject) {
-				a.log.Error("server rejected connection", "reason", reject.Reason, "detail", reject.Detail, "server", serverURL, "token_prefix", tokenPrefix(nodeToken))
+				logConnectionFailure(a.log, c, true)
 				d := 5 * time.Minute
+				c.RecordReconnect(d)
 				a.log.Info("reconnecting", "in", d.String())
 				select {
 				case <-ctx.Done():
@@ -217,7 +219,7 @@ func (a *Agent) Run(ctx context.Context) error {
 				}
 				continue
 			}
-			a.log.Warn("connection ended", "err", err)
+			logConnectionFailure(a.log, c, false)
 		} else {
 			a.log.Info("connection closed")
 		}
@@ -227,6 +229,7 @@ func (a *Agent) Run(ctx context.Context) error {
 			backoff.reset()
 		}
 		d := backoff.next()
+		c.RecordReconnect(d)
 		a.log.Info("reconnecting", "in", d.String())
 		select {
 		case <-ctx.Done():
@@ -234,13 +237,6 @@ func (a *Agent) Run(ctx context.Context) error {
 		case <-time.After(d):
 		}
 	}
-}
-
-func tokenPrefix(token string) string {
-	if len(token) <= 8 {
-		return token
-	}
-	return token[:8]
 }
 
 func (a *Agent) runServerDial(ctx context.Context, serverURL, nodeToken string, nodeUUID *string, node *NodeRuntime, prober gpu.Prober, startBG func(string)) error {
@@ -258,6 +254,7 @@ func (a *Agent) runServerDial(ctx context.Context, serverURL, nodeToken string, 
 		_ = ln.Close()
 	}()
 	a.log.Info("agent listening for server_dial", "addr", listenAddr)
+	connectionLog := connectionDiagnosticLogger(a.log)
 	for {
 		netConn, err := ln.Accept()
 		if err != nil {
@@ -283,9 +280,9 @@ func (a *Agent) runServerDial(ctx context.Context, serverURL, nodeToken string, 
 			startBG(uuid)
 			return nil
 		}
-		c := conn.New(creds, onReg, a.handlers(node), prober, a.log)
+		c := conn.New(creds, onReg, a.handlers(node), prober, connectionLog)
 		if err := c.RunAccepted(ctx, netConn); err != nil && ctx.Err() == nil {
-			a.log.Warn("server_dial session ended", "err", err)
+			logConnectionFailure(a.log, c, false)
 		}
 	}
 }

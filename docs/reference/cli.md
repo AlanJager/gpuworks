@@ -352,13 +352,29 @@ gpuworks uninstall --dir /opt/gpuworks/server --purge --dry-run --json
 
 ## gpuworks-agent doctor
 
-无 flag。打印节点环境自检，可直接贴进问题单：
+默认打印节点环境自检，可用 `--state DIR` 指定 Agent 目录：
 
 - 主机、CPU、内存、根分区容量及其文件系统类型（挂载标记：网络、noexec、只读、容器层）；节点详情里的「诊断」另含模型目录、udocker 目录、agent 目录等路径，并给出运行时初始化失败、`noexec` / 只读挂载、容器层数据的检查结果，见[排障](../how-to/troubleshooting.md#运行时初始化失败与容器节点的文件系统)；
 - `docker`、`python3`、`dcgmi` 是否可用及版本；
 - GPU：厂商、驱动版本、每张卡的型号/显存/架构/NUMA/健康状态；
 - 运行时插件的检测结果、设备注入是否可规划；
 - NVIDIA 节点另有一段手工诊断：驱动与 Fabric Manager、CUDA 运行时冒烟、卡间 peer access、多卡 NCCL。
+
+`--connectivity` 选择轻量连接检查，不执行 GPU、CUDA 或 NCCL 自检：
+
+```bash
+gpuworks-agent doctor --connectivity --state /opt/gpuworks
+gpuworks-agent doctor --connectivity --state /opt/gpuworks --json
+```
+
+- 替换为实际 state 目录。配置优先级与 `run` 相同：显式参数 > 本次命令环境 > `gpuworks-agent.conf`。可用 `--server`、`--token`、`--connect-mode` 覆盖；优先从文件读取 token，避免凭据出现在进程参数中。
+- 总预算最多 10 秒，复用真实 WebSocket、yamux 和身份握手。DNS、连接、代理 CONNECT、TLS 仅在真实 transport 回调发生时报告；代理端 DNS、连接复用等未观测阶段不补成成功。
+- 文本和 JSON 标明 `source=cli`，代表本次命令的环境，不保证与运行服务相同。JSON 复用 `DoctorReport` 的 `report` 与 primitive `facts`（`connection.*`），日志走 stderr，不混入 stdout JSON。
+- 退出码 `0` 表示列明的检查成功或合法 `server_dial` 主动外连检查不适用，`3` 为总超时，`4` 为服务端明确拒绝，`1` 为其他失败（含配置无效），`2` 为参数错误。默认环境 doctor 仍需阅读报告，不能只凭退出码判断硬件健康。
+- `control=smoke_verified` 只证明这次短握手，`data_lane=unverified` 明确未测 data。不会启动第二个正式 Agent、替换在线 ctrl/data；结束或超时关闭自身连接。旧 Server 的 Smoke 仍可能清除升级错误，新 Server 仅允许正式会话清理，不宣称混合版本零写。
+- 历史仅读取该 state 的 `agent.log` 与 `agent.log.1`，总计最多 512 KiB、32 条新版安全事件。`connection.last_failure.*` 是最近一条有效的已记录失败，保留原时间，与本次测试分开。可选 `last_failure.server_url`、`last_failure.retry_at` 仅取该事件原目标与当时计划的重试时间，缺失不补当前值，不能据旧计划判断 Agent 目前仍在等待。旧格式、未记录、轮转或读不到时为未知/不可用，不输出原始日志；同类重复日志聚合，摘要不枚举每次尝试。
+
+合法 `server_dial` 配置需要 token、不需要 Server URL，在节点上不主动拨控制面，应检查反向监听与网络。在线节点可从页面经既有 ctrl 获取运行态，无需 SSH；离线节点需通过节点控制台运行 CLI。
 
 ## gpuworks-agent grant-device-access
 

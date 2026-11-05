@@ -113,6 +113,8 @@ const (
 	CapImagePullCandidates = "image.pull.candidates"
 	// CapNetworkUpdate accepts network-only state.update without a full replay.
 	CapNetworkUpdate = "state.update.network"
+	// CapConnectionDiagnostics serves a lightweight connection snapshot over ctrl.
+	CapConnectionDiagnostics = "node.connection_diagnostics"
 )
 
 // StreamHeader is the first line written on every yamux stream.

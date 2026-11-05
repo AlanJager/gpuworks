@@ -32,7 +32,7 @@ func TestHelloCapabilitiesReflectVendor(t *testing.T) {
 		"":        {"sysinfo"},
 	}
 	for vendor, want := range tests {
-		want = append([]string(nil), want...)
+		want = append(append([]string(nil), want...), proto.CapConnectionDiagnostics)
 		if terminal.Supported() {
 			want = append(want, proto.CapWebterm)
 		}
@@ -55,7 +55,7 @@ func TestHelloCapabilitiesReflectVendor(t *testing.T) {
 
 func TestHelloCapabilitiesNilProber(t *testing.T) {
 	got := helloCapabilities(nil)
-	want := []string{"sysinfo"}
+	want := []string{"sysinfo", proto.CapConnectionDiagnostics}
 	if terminal.Supported() {
 		want = append(want, proto.CapWebterm)
 	}
