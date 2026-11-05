@@ -151,7 +151,7 @@ export async function streamChat(
     const choice = Array.isArray(frame.choices) ? frame.choices[0] as Record<string, unknown> | undefined : undefined;
     const delta = choice?.delta as Record<string, unknown> | undefined;
     const content = typeof delta?.content === "string" ? delta.content : "";
-    const reasoning = typeof delta?.reasoning_content === "string" ? delta.reasoning_content : "";
+    const reasoning = reasoningDelta(delta);
     if (content || reasoning) callbacks.onDelta();
     if (content) callbacks.onContent(content);
     if (reasoning) callbacks.onReasoning(reasoning);
@@ -326,4 +326,18 @@ async function responseError(response: Response): Promise<string> {
     }
   }
   return playgroundErrorText(response.status, raw);
+}
+
+/**
+ * A chunk's reasoning text. Engines name the field differently (SGLang and
+ * older vLLM `reasoning_content`, vLLM 0.34 `reasoning`, some gateways
+ * `thinking`), and transitional vLLM releases send the same text under two
+ * names, so the first non-empty one is taken rather than their sum.
+ */
+export function reasoningDelta(delta: Record<string, unknown> | undefined): string {
+  for (const key of ["reasoning_content", "reasoning", "thinking"]) {
+    const value = delta?.[key];
+    if (typeof value === "string" && value) return value;
+  }
+  return "";
 }
