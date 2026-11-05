@@ -343,7 +343,13 @@ def inventory(parent, labels, body, report, mode, evaluation, same):
         page.goto(urljoin(parent.url, '/deploy?' + query))
         report['last_step'] = 'numeric-inventory-probe-fixture-model'
         modal = page.get_by_role('dialog', name=labels['weightSourceModal']['confirmTitle'], exact=True)
-        expect(modal).to_be_visible()
+        # The confirmation is raised by a lookup the page runs after mount, so it can
+        # arrive well after load: the draft asks the server which registered models
+        # serve this spec's declared sources (useTemplateWeightSource.ts:177 holds
+        # until lookup.key === key). Waiting for the element to appear is different
+        # from asserting it is already there - the latter turns a slow lookup into a
+        # failure on a surface that would have answered correctly a moment later.
+        expect(modal).to_be_visible(timeout=60000)
         expect(modal.locator('input[type="radio"][value=' + json.dumps(str(body['model_id']), ensure_ascii=False) + ']')).to_be_checked()
         button(modal, labels['weightSourceModal']['useModel']).click()
         expect(modal).not_to_be_visible()

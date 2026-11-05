@@ -66,6 +66,36 @@ def unconditional(spec):
             and spec['key'] not in TIER_KEYS)
 
 
+# The only engine profile that declares a KV disk tier, and therefore the only one
+# whose dictionary entry carries kv_disk_min_kernel (internal/server/deploy/vllm.go:49).
+KNOWN_FLOOR_ENGINE = 'vllm'
+
+ADVANCED_GROUP = 'performance_advanced'
+
+
+def draws_advanced_group(specs):
+    """Whether this engine's dictionary publishes any performance_advanced spec.
+
+    The fold is drawn by the draft only when the engine has rows to put in it. All
+    eleven performance_advanced specs are vllm-only in internal/server/deploy/
+    param_specs.go, so an sglang profile legitimately renders no fold at all. Asking
+    for the fold unconditionally turned a correct absence into a failure, so the
+    fold is expanded when the dictionary puts something in it, and the specs in it
+    are still asserted one by one by visit().
+    """
+    return any((spec.get('group') or '') == ADVANCED_GROUP for spec in specs)
+
+
+# Keys the draft draws through a dedicated component that wires the control to the
+# form by hand instead of through Form.Item's name, so no [id="<key>"] exists:
+# DeployParamField.tsx:117 hands log_level to DeployLogLevelField, whose Form.Item
+# carries only a label (DeployLogLevelField.tsx:52) and whose Select is identified
+# by aria-label (DeployLogLevelField.tsx:24). Looking these up by id fails on a
+# control that is drawn and operable, so they are located by their row label like
+# the slider and switch specs are.
+NO_FORM_ID_KEYS = ('log_level',)
+
+
 def expected_shape(spec):
     control, kind = spec.get('control'), spec.get('type')
     if control == 'segmented':
@@ -194,10 +224,17 @@ def select_shape(control, spec, locale, report, key):
     check(expected, key + ': live enum spec publishes no option')
     check(sorted(value for value, _ in expected) == sorted(spec.get('enum') or [value for value, _ in expected]),
           key + ': published options disagree with the published enum')
-    labels = option_labels(control, len(expected))
-    check(labels == [text for _, text in expected],
+    # DeployLogLevelField.tsx:30 puts a "no override" entry in front of the dictionary
+    # options, because an untouched log level and an explicit empty one mean different
+    # things (DeployLogLevelField.tsx:20-21). That entry is drawn by the product and is
+    # part of this control's real option set, so it is expected here rather than
+    # tolerated; the dictionary's own options must still follow in their stated order.
+    unset = report['param_labels']['unset'] if key in NO_FORM_ID_KEYS else None
+    wanted = ([unset] if unset else []) + [text for _, text in expected]
+    labels = option_labels(control, len(wanted))
+    check(labels == wanted,
           key + ': select option set/order differs from the live dictionary: ' + json.dumps(
-              {'rendered': labels, 'dictionary': [text for _, text in expected]}, ensure_ascii=False))
+              {'rendered': labels, 'dictionary': wanted}, ensure_ascii=False))
     report.setdefault('param_enum_options', {})[key] = [value for value, _ in expected]
 
 
@@ -207,10 +244,15 @@ def shape(page, spec, locale, labels, report, tab):
     wanted = expected_shape(spec)
     label = localized(spec.get('label'), locale)
     check(label, key + ': live dictionary publishes no ' + locale + ' label')
-    if wanted == 'slider':
+    if wanted == 'slider' or key in NO_FORM_ID_KEYS:
         row = labeled_field(page, key, label)
-        control = row.get_by_role('slider')
-        expect(control).to_have_count(1)
+        if wanted == 'slider':
+            control = row.get_by_role('slider')
+            expect(control).to_have_count(1)
+        else:
+            # An antd Select reports the combobox role on its inner input, which is
+            # also what carries the aria-label DeployLogLevelField.tsx:24 sets.
+            control = row.get_by_role('combobox')
     else:
         control = field(page, key)
         row = form_row(control)
@@ -280,7 +322,7 @@ def collapse(page, label):
 def visit(page, tab, specs, locale, labels, report):
     """Walk one Expert tab and assert every drawable spec the dictionary assigns to it."""
     page.get_by_role('tab', name=labels['page']['step'][tab], exact=True).click()
-    if tab == 'performance':
+    if tab == 'performance' and draws_advanced_group(specs):
         collapse(page, labels['performance']['advanced'])
     groups = GROUPS[tab]
     on_tab = [spec for spec in specs
@@ -453,13 +495,22 @@ def kv_kernel_publication(parent, engine, report):
     check(response.status == 200, 'engine dictionary GET failed')
     items = response.json()['items']
     published = {row['name']: row.get('kv_disk_min_kernel') for row in items}
-    check(published.get(engine) is not None,
-          engine + ': the live dictionary publishes no kv_disk_min_kernel release')
-    others = {name: value for name, value in published.items()
-              if name != engine and value is not None}
-    same(others, {}, 'kv_disk_min_kernel must stay unpublished for engines that do not use it')
-    report['param_engine_release'] = {'engine': engine, 'kv_disk_min_kernel': published[engine],
-                                      'other_engines_publishing_it': others,
+    # The floor is a property of an engine with a KV disk tier, and vllm is the only
+    # profile that declares one: internal/server/deploy/vllm.go:49 is the sole place
+    # that sets KVDiskMinKernel, the field carries omitempty, and engines_test.go:156
+    # requires sglang and callable to publish none so a client cannot read "no tier"
+    # as "any kernel is too old". Requiring the floor of every engine therefore failed
+    # on exactly the engines the product leaves without one. The invariant is what is
+    # asserted instead: nobody but vllm may publish a floor, and vllm must publish one.
+    floors = {name: value for name, value in published.items() if value is not None}
+    same(sorted(name for name in floors if name != KNOWN_FLOOR_ENGINE), [],
+         'an engine without a KV disk tier published a kernel floor')
+    if engine == KNOWN_FLOOR_ENGINE:
+        check(engine in floors,
+              engine + ': the live dictionary publishes no kv_disk_min_kernel release')
+    report['param_engine_release'] = {'engine': engine,
+                                      'kv_disk_min_kernel': published.get(engine),
+                                      'publishing_engines': sorted(floors),
                                       'read': {'method': 'GET', 'path': '/api/v1/engines',
                                                'status': response.status}}
 
@@ -470,7 +521,8 @@ def exercise(parent, labels, body, report):
     specs = dictionary(parent, engine, report)
     kv_kernel_publication(parent, engine, report)
     deploy = json.loads((ROOT / ('ui/src/i18n/locales/' + locale + '/deploy.json')).read_text())
-    report['param_labels'] = {'automatic': deploy['shared']['automatic']}
+    report['param_labels'] = {'automatic': deploy['shared']['automatic'],
+                              'unset': deploy['workbench']['unset']}
     page = parent.context.new_page()
     page.set_default_timeout(15000)
     observed = {'creates': [], 'console_errors': [], 'page_errors': [], 'http_errors': []}
@@ -504,7 +556,12 @@ def exercise(parent, labels, body, report):
         page.goto(urljoin(parent.url, '/deploy?' + query))
         report['last_step'] = 'param-inventory-fixture-model'
         modal = page.get_by_role('dialog', name=labels['weightSourceModal']['confirmTitle'], exact=True)
-        expect(modal).to_be_visible()
+        # The confirmation is raised by a lookup the page runs after mount
+        # (useTemplateWeightSource.ts:177 holds until lookup.key === key), so it can
+        # arrive well after load. deployment_numeric_checks.py waits for the same
+        # dialog for the same reason; a short fixed window turned a slow lookup into
+        # a failure on a surface that answers correctly a moment later.
+        expect(modal).to_be_visible(timeout=60000)
         button(modal, labels['weightSourceModal']['useModel']).click()
         expect(modal).not_to_be_visible()
         marker = 'e2e-' + report['run_id'] + '-params'
@@ -546,7 +603,8 @@ def exercise(parent, labels, body, report):
         # each verdict is read back from the server, not from the DOM.
         by_key = {spec['key']: spec for spec in specs}
         page.get_by_role('tab', name=labels['page']['step']['performance'], exact=True).click()
-        collapse(page, labels['performance']['advanced'])
+        if draws_advanced_group(specs):
+            collapse(page, labels['performance']['advanced'])
         for key, value in ENUM_PROBES.get(engine, ()):
             spec = by_key[key]
             check(value in (spec.get('enum') or []), key + ': probe value is not a published option')
