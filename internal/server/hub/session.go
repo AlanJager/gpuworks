@@ -184,9 +184,6 @@ func (s *Session) handshake() error {
 	}
 	s.NodeUUID = n.UUID
 	s.nodeID = n.ID
-	if strings.TrimSpace(hello.Version) == version.Version {
-		s.hub.setUpgradeError(n.UUID, "")
-	}
 	registeredToken, ok := n.PlaintextToken()
 	if !ok {
 		registeredToken = strings.TrimSpace(hello.NodeToken)
@@ -201,6 +198,11 @@ func (s *Session) handshake() error {
 			return err
 		}
 		return errSmokeHandshake
+	}
+	// A diagnostic handshake must preserve an earlier upgrade failure. Only a
+	// formal connection running this version can clear that observation.
+	if strings.TrimSpace(hello.Version) == version.Version {
+		s.hub.setUpgradeError(n.UUID, "")
 	}
 	s.upgradeSessionID = s.sessionID
 	if s.upgradeSessionID == "" {

@@ -58,8 +58,12 @@ func smokeStageDone() {}
 // records the duration; calling it more than once records the first one.
 // A nil trace makes it a no-op, so the normal connection path pays nothing.
 func (c *Conn) smokeStage(name string) func() {
-	if c == nil || c.trace == nil {
+	if c == nil {
 		return smokeStageDone
+	}
+	c.beginConnectionPhase(name, true)
+	if c.trace == nil {
+		return func() { c.endConnectionPhase(name, nil) }
 	}
 	start := time.Now()
 	c.trace.open = name
@@ -71,12 +75,14 @@ func (c *Conn) smokeStage(name string) func() {
 		}
 		done = true
 		c.trace.finish(name, time.Since(start))
+		c.endConnectionPhase(name, nil)
 	}
 }
 
 // finishSmoke logs the stage clock and attaches it to a failure. A success
 // stays a nil error; the log is the record that the attempt finished.
 func (c *Conn) finishSmoke(err error) error {
+	err = safeConnectionError(err)
 	if c == nil || c.trace == nil {
 		return err
 	}

@@ -954,7 +954,7 @@
   "connectionDiagnostics": {
     "title": "连接证据",
     "run": "检查连接",
-    "scope": "读取该节点保存的连接配置并执行有时限的 SSH 检查，不修改地址、令牌、安装或恢复状态；沿用现有 SSH 主机密钥信任规则。",
+    "scope": "通过已有控制通道读取运行中 Agent 的连接快照；离线或旧版 Agent 可使用已保存的 SSH 旁路。本检查不修改地址、凭据、安装或恢复状态。",
     "empty": "可主动收集连接证据，Agent 控制连接离线时也可使用。",
     "loading": "正在收集连接证据…",
     "failed": "未能收集报告，请重试或查看控制面日志。",
@@ -975,18 +975,20 @@
     "stage": {
       "ssh": "SSH 访问",
       "configuration": "节点配置快照",
-      "node_http": "节点 → 平台保存的控制面健康地址"
+      "node_http": "节点 → 平台保存的控制面健康地址",
+      "agent_control": "Agent 已有控制通道"
     },
     "location": {
       "control_plane": "控制面主机",
-      "node": "节点主机，通过 SSH 执行"
+      "node": "节点主机，通过 SSH 执行",
+      "unknown": "未观测"
     },
     "sourceName": {
       "state_file": "指定 state 目录的配置文件",
       "legacy_arguments": "旧版服务启动参数"
     },
     "outcome": {
-      "unavailable": "无法获取 SSH 证据，请核对已保存的 SSH 地址和凭据。",
+      "unavailable": "当前连接证据不可用，仍保留其他已记录的观察。",
       "not_checked": "未检查",
       "not_applicable": "此连接方向不适用",
       "invalid_address": "地址无效，或包含不支持的用户凭据、查询参数、片段。",
@@ -1007,8 +1009,10 @@
       "transport": "HTTP 交换未获得完整响应。",
       "unknown": "不支持的观测结果",
       "unsupported": "当前安装不支持连接诊断。",
-      "credentials_unavailable": "未配置 SSH 访问，未执行节点侧检查。",
-      "credential_error": "无法读取保存的 SSH 凭据，未执行节点侧检查。"
+      "credentials_unavailable": "未配置 SSH 接入，未执行可选 SSH 旁路检查。",
+      "credential_error": "无法读取保存的 SSH 凭据，未执行节点侧检查。",
+      "runtime_snapshot": "控制通道已返回当前进程快照，未新建连接。",
+      "offline": "当前没有 Agent 控制会话，无法请求节点当前证据。"
     },
     "guidance": {
       "snapshot_scope": "配置快照不代表运行中进程已经采用该配置。请核对指定 state 目录、启动参数和环境变量覆盖；不要分享 TOKEN 或完整进程参数。",
@@ -1028,6 +1032,123 @@
       "disabled": "记录状态：已禁用",
       "failed": "记录状态：失败",
       "unknown": "记录状态：未知"
+    },
+    "currentTitle": "当前 Agent 观察",
+    "historyTitle": "平台记录与历史观察",
+    "sshTitle": "可选 SSH 旁路证据",
+    "cliTitle": "在节点本地检查",
+    "cliScope": "离线 Agent 无法接收新的远程调用。请通过节点控制台使用实际 state 目录执行命令；CLI 配置和代理环境可能与运行中的服务不同。取消页面只停止等待，Agent 自行限制执行时间。",
+    "cliCommand": "gpuworks-agent doctor --connectivity --state <实际-state-目录> --json",
+    "lastReject": "最近记录的握手拒绝",
+    "runtime": {
+      "scope": "这是已有连接的快照，并未新建控制/数据握手或测试推理。缺失阶段仍未验证，等待附着或未测试的数据通道不能视为检查成功。",
+      "field": {
+        "source": "观察来源",
+        "checked_at": "Agent 快照采集时间",
+        "server_url": "运行中 Agent 的控制面地址",
+        "connect_mode": "连接方向",
+        "server_source": "地址配置来源",
+        "token_present": "是否已配置凭据",
+        "control": "当前控制通道",
+        "data_lane": "当前数据通道",
+        "outcome": "Agent 观察结果",
+        "reason": "已记录原因",
+        "retry_at": "下次计划重连时间",
+        "proxy": "实际观察的传输路径",
+        "proxy_url": "实际观察的代理地址"
+      },
+      "value": {
+        "source": {
+          "agent_runtime": "运行中的 Agent 进程"
+        },
+        "connect_mode": {
+          "agent_dial": "Agent → 控制面",
+          "server_dial": "控制面 → Agent"
+        },
+        "server_source": {
+          "flag": "命令行参数",
+          "environment": "环境变量",
+          "state_file": "state 配置文件",
+          "missing": "未配置",
+          "agent_runtime": "运行进程的有效配置",
+          "unknown": "未观测到来源"
+        },
+        "token_present": {
+          "true": "已配置（不显示凭据内容）",
+          "false": "未配置"
+        },
+        "control": {
+          "probing": "正在建立连接",
+          "connected": "已有控制通道已连接",
+          "not_connected": "控制通道未连接",
+          "smoke_verified": "单次 smoke 握手已验证，未验证服务进程健康",
+          "not_applicable": "不适用",
+          "unknown": "未观测到控制通道状态"
+        },
+        "data_lane": {
+          "unverified": "未测试数据通道",
+          "attached": "数据通道当前已附着，未测试吞吐",
+          "detached": "曾附着的数据通道已断开，数据操作等待重连",
+          "disabled": "专用数据通道已禁用，使用单通道模式",
+          "not_negotiated": "未协商专用数据通道",
+          "pending": "专用数据通道尚未附着",
+          "not_applicable": "此连接方向不适用",
+          "unknown": "未观测到数据通道状态"
+        },
+        "outcome": {
+          "ok": "所列观察已完成，不代表全链路健康",
+          "failed": "记录的连接尝试失败",
+          "invalid_configuration": "连接配置无效",
+          "not_applicable": "此连接方向不适用",
+          "probing": "正在观察",
+          "unknown": "未观测到结果"
+        },
+        "reason": {
+          "bad_token": "节点凭据未被接受",
+          "proto_mismatch": "协议版本不兼容",
+          "stale_session": "数据连接对应的控制会话已过期",
+          "dns": "域名解析失败",
+          "connect": "无法建立连接",
+          "tls": "TLS 协商或验证失败",
+          "ws_upgrade": "WebSocket 升级失败",
+          "timeout": "观察超时",
+          "cancelled": "观察已取消",
+          "transport": "传输交换失败",
+          "invalid_configuration": "连接配置无效",
+          "none": "未记录失败原因"
+        },
+        "proxy": {
+          "direct": "观察到直接连接路径",
+          "environment_proxy": "传输实际使用了环境代理",
+          "unknown": "未观测到传输路径"
+        }
+      },
+      "stage": {
+        "configuration": "连接配置",
+        "dial": "连接尝试",
+        "dns": "实际观察的 DNS 解析",
+        "connect": "实际观察的 TCP 连接",
+        "proxy_connect": "代理 CONNECT",
+        "tls": "实际观察的 TLS 协商",
+        "ws_upgrade": "WebSocket 升级",
+        "yamux": "多路复用会话",
+        "hello": "身份握手",
+        "wait_registered": "注册响应",
+        "server_hello": "Server hello",
+        "session": "握手后的会话"
+      },
+      "phase": {
+        "ok": "阶段已完成",
+        "failed": "阶段失败",
+        "timeout": "阶段超时",
+        "cancelled": "阶段已取消",
+        "in_progress": "阶段进行中",
+        "not_observed": "未观测到该阶段",
+        "not_checked": "未检查该阶段",
+        "not_applicable": "该阶段不适用"
+      },
+      "elapsed": "观察到的阶段耗时",
+      "milliseconds": "{{count}} ms"
     }
   }
 }

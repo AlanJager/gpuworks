@@ -2,8 +2,11 @@ package proto
 
 // RPC method names (short request/response actions).
 const (
-	RPCNodeDoctor     = "node.doctor"
-	RPCNodeSetRuntime = "node.set_runtime"
+	RPCNodeDoctor = "node.doctor"
+	// RPCNodeConnectionDiagnostics reads the receiving connection's own state.
+	// Keep this distinct from doctor: old agents must refuse it, not run hardware checks.
+	RPCNodeConnectionDiagnostics = "node.connection_diagnostics"
+	RPCNodeSetRuntime            = "node.set_runtime"
 	// RPCNodeSetAccelerator chooses which vendor's cards the node manages
 	// ({"accelerator": "auto" | vendor}). The agent refuses while anything
 	// runs on the node, and otherwise restarts itself to manage them.

@@ -1,6 +1,10 @@
 package dto
 
-import "time"
+import (
+	"time"
+
+	"gpuworks.ai/gpuworks/internal/proto"
+)
 
 // NodeConnectionCheck describes a bounded observation, not end-to-end health.
 type NodeConnectionCheck struct {
@@ -31,7 +35,10 @@ type NodeConnectionDiagnostics struct {
 	RecoveryAttempts  int                     `json:"recovery_attempts"`
 	LastProbeAt       *time.Time              `json:"last_probe_at"`
 	LastRecoveryError string                  `json:"last_recovery_error"`
+	LastRejectReason  string                  `json:"last_reject_reason,omitempty"`
+	LastRejectAt      *time.Time              `json:"last_reject_at,omitempty"`
 	Exposure          *NodeConnectionExposure `json:"exposure"`
+	AgentReport       *proto.DoctorReport     `json:"agent_report,omitempty"`
 	Checks            []NodeConnectionCheck   `json:"checks"`
 	Guidance          []string                `json:"guidance"`
 }

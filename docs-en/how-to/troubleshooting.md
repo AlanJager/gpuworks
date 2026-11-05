@@ -50,11 +50,21 @@ Cached or historical observations have their own timestamps. Opening a page agai
 
 ### Node Address and Session
 
-When a node stays connecting, start with its last successful report and latest recovery error. Connection diagnosis gathers read-only evidence separately from recovery actions that may restart or reinstall the Agent. Missing SSH credentials, unreadable configuration or missing remote tools mean the corresponding checks could not be completed, not that the network is down.
+When a node stays connecting, start with its last report and recovery error. Administrators can collect read-only evidence from Connection Diagnostics in node details: an online capable Agent returns runtime observations over existing ctrl without control-plane SSH access or full GPU doctor. The report identifies source, acquisition time, effective Server URL, current control/data state and actually observed transport stages.
 
-The platform's saved control-plane URL, the node configuration snapshot and the connector's last public observation are different evidence sources. Node-side HTTP checks use the SSH session environment, which may differ from the running Agent's proxy configuration. A configuration snapshot is not necessarily the running process's effective configuration: command-line flags and environment variables can override the file. A connector's last recorded URL is not proof that the URL is still live.
+A successful ctrl round trip is not data or business health. Data `attached` is a connection snapshot; after a previously established lane drops, `detached` waits for reconnection without automatic ctrl fallback. Disabled, unnegotiated, initially pending and unknown states are distinct. An online node alone does not establish that logs/downloads work. After an RPC attempt, SSH is not waited for serially. The Agent has its own short budget; cancelling the page wait does not remotely cancel execution.
 
-Before repairing an address, verify the chosen URL from the node's own network and run `gpuworks-agent smoke --state <actual-directory>` to check the control session. After confirming a stable entry point, explicitly synchronize the platform record and node configuration, then restart using the installation's supervisor. Changing only the public tunnel or repeatedly retrying old settings is insufficient. Connection diagnosis does not itself provide an in-place URL migration for enrolled nodes; a new entry in the report is not a completed address repair. Configuration contains the token; do not share full files, process arguments or environment variables.
+Offline or old Agents cannot provide a fresh runtime report. The page retains saved addresses, reporting/recovery records and public-entry history; available SSH is an alternative. Missing credentials, tools or a live control session leave checks unperformed, not proof of a broken network. Through the node console, run:
+
+```bash
+gpuworks-agent doctor --connectivity --state /opt/gpuworks --json
+```
+
+Substitute the actual directory. It uses the real short handshake with a 10-second total budget and no GPU checks. `source=cli` identifies this invocation's shell/flags/env/file, which can differ from the service. `data_lane=unverified` explicitly leaves data untested. The latest valid recorded safe failure keeps its original time, separate from the current result. Legacy, rotated, unrecorded-at-current-log-level or unreadable evidence is unknown/unavailable; raw log lines are not emitted. Existing `smoke --state` remains available but likewise proves neither dual-lane nor long-term health.
+
+Saved URLs, node configuration snapshots, running-process facts and historical public entries are different evidence sources. SSH HTTP uses the SSH environment, possibly a different proxy; flags/env can override files; historical public URLs may no longer work. Only actual callbacks establish DNS, connect, proxy CONNECT or TLS stages. Proxy-side DNS and missing callbacks cannot be filled in as successful.
+
+After confirming a stable URL, explicitly synchronize the platform record and node configuration and restart using the installation's supervisor. Diagnosis does not migrate an enrolled node's URL in place; a new report entry is not a completed repair. Do not share full configuration, process arguments, environment, tokens or proxy credentials.
 
 ### Streaming Requests and File Transfers
 
@@ -74,7 +84,7 @@ After a storage download sends HTTP 200, an interruption can only abort the conn
 1. Check the connection direction in the node details. For **agent-initiated connections**, run the following command on the node; replace the path if the state directory is not `/opt/gpuworks`:
 
    ```bash
-   gpuworks-agent smoke --state /opt/gpuworks
+   gpuworks-agent doctor --connectivity --state /opt/gpuworks
    ```
 
    Exit code `0` means success, `3` means a 10-second timeout, `4` means the server rejected the connection, and `1` means another error.

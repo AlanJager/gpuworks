@@ -204,7 +204,7 @@ Login, logout, and management write requests using login sessions check the requ
 | GET | `/api/v1/nodes/{uuid}` | Node details (including the GPU list; also includes the token for administrators) | JWT |
 | GET | `/api/v1/nodes/{uuid}/fs` | Browse the node filesystem (for registering local models) | JWT |
 | POST | `/api/v1/nodes/{uuid}/doctor` | Trigger the node self-check RPC | JWT |
-| POST | `/api/v1/nodes/{uuid}/connection-diagnostics` | Read-only connection diagnosis: saved URL, node-side SSH/configuration snapshot/HTTP checks and historical public entry observation; does not recover or change addresses. Empty body or `{}` only; no custom target. See [Node Connection Diagnostics](#node-connection-diagnostics). | JWT(admin) |
+| POST | `/api/v1/nodes/{uuid}/connection-diagnostics` | Read Agent runtime observations over existing ctrl without SSH; also saved URL, optional SSH and public-entry history. Empty body or `{}`, no recovery/address changes; see [Node Connection Diagnostics](#node-connection-diagnostics) | JWT(admin) |
 | POST | `/api/v1/nodes/{uuid}/upgrade` | Trigger a remote agent upgrade | JWT |
 | PUT | `/api/v1/nodes/{uuid}/scheduling` | Set `scheduling` to `cordoned`, `draining`, or `schedulable` and return the node; invalid values return 400 `FIELD_INVALID`. See [Node Scheduling and Accelerator Switching](#节点调度与加速卡切换) for the effects of each state | JWT |
 | PUT | `/api/v1/nodes/{uuid}/gpus/scheduling` | Set whether one card takes new deployments: `{"pcie_bdf":"0000:3f:00.0","scheduling":"stopped"}` (a card without a PCI address is named by `uuid`). `stopped` holds until lifted and the platform never lifts it; `schedulable` lifts an administrator's stop, or, when the platform judged the card unusable (a fault, or processes outside the platform), allows it until the first report at least a minute later judges it again. Returns the node (with its cards); a card's `scheduling_stopped` and `scheduling_allowed` give its state and `scheduling_actions` what may be done now. Invalid values or no card named: 400 `FIELD_INVALID`; unknown node or card: 404; making a passed-through or driverless card schedulable: 409 `CARD_NOT_OWNED` | JWT |
@@ -281,23 +281,26 @@ Deployment forms and placement condition editors can use it directly to generate
 
 ### Node Connection Diagnostics
 
-Administrators manually trigger `POST /api/v1/nodes/{uuid}/connection-diagnostics` with an empty body or `{}`. Custom URLs, SSH parameters and other fields are refused. The target and identity come only from the named node's saved record. This operation does not invoke recovery, change addresses, tokens or installation configuration, or restart/reinstall the Agent. SSH retains the platform's existing host-key trust policy.
-
-Response fields:
+Administrators manually trigger `POST /api/v1/nodes/{uuid}/connection-diagnostics` with an empty body or `{}`. Custom URLs, SSH parameters and other fields are refused. Runtime observations use the named node's existing session; SSH uses only its saved identity and address. No recovery, address/token/installation changes or Agent restart/reinstall occur. SSH retains the existing host-key policy.
 
 | Field | Meaning |
 |---|---|
-| `node_uuid`, `checked_at`, `connect_mode`, `saved_server_url` | Node, report time, connection direction and format-validated saved URL; a URL that cannot be safely shown is empty |
-| `last_seen_at`, `recovery_phase`, `recovery_attempts`, `last_probe_at`, `last_recovery_error` | Existing reporting/recovery history, not recovery performed by this check |
-| `exposure` | `null` or `{url,state,observed_at}`: the connector's last recorded entry, state and original observation time; not a new public liveness check |
-| `checks` | The `ssh`, `configuration` and `node_http` stages; each has `stage`, `outcome`, `vantage`, and only when observed: `target`, `source`, `observed_at`, `http_status` |
-| `guidance` | Server-selected guidance codes localized by the client, covering snapshot scope, HTTP scope, node-side verification and manual address synchronization |
+| `node_uuid`, `checked_at`, `connect_mode`, `saved_server_url` | Node, report time, direction and safe saved URL; not a process configuration readback |
+| `last_seen_at`, `recovery_phase`, `recovery_attempts`, `last_probe_at`, `last_recovery_error`, optional `last_reject_reason`/`last_reject_at` | Existing reporting/recovery and controlled rejection history, not recovery performed by this request; unknown rejection reasons are not echoed |
+| `exposure` | `null` or `{url,state,observed_at}`: the connector's last record and original time, not a new liveness check |
+| `checks` | `agent_control` describes this RPC, offline/old-agent or failure result; optional `ssh`, `configuration`, `node_http`. Each has `stage`, `outcome`, `vantage`, and only when observed: `target`, `source`, `observed_at`, `http_status` |
+| `agent_report?` | A sanitized existing `DoctorReport`, retaining only whitelisted primitive `connection.*` facts. `report` is empty; Findings, typed evidence and other original content are not forwarded |
+| `guidance` | Localized guidance distinguishing runtime observations, SSH snapshots, HTTP scope, local CLI and manual URL synchronization |
 
-An SSH result with `vantage=control_plane` describes control-plane login to the node. An HTTP result with `vantage=node` describes an SSH-run node request to the saved URL's health endpoint. It uses the SSH session environment; the running Agent's proxy and environment overrides have not been established. Configuration `source` is `state_file` or `legacy_arguments`: it identifies the snapshot source, not effective runtime settings after command-line or environment overrides. A `server_dial` node does not initiate a connection to a control-plane URL; interpret that check as not applicable.
+An online Agent advertising `node.connection_diagnostics` returns the receiving connection's own snapshot over an independent lightweight RPC: `connection.source=agent_runtime`, actual Server URL, direction, current ctrl/data, observed transport stages with durations/original times, and available proxy facts. The Server waits at most 15 seconds; the Agent enforces its own 10-second budget. Cancelling the HTTP wait does not remotely cancel execution. No new connection or full `node.doctor` is started. A switch to an old session after capability checking cannot invoke hardware diagnosis; late replaced-session replies are discarded. After an RPC attempt, SSH is not run serially afterward.
 
-An offline node, missing SSH credentials, missing tools or a failed stage can still produce an HTTP 200 partial report. Read each `outcome`; generating the report does not establish connectivity. HTTP health does not establish WebSocket, Agent authentication or SSE. Differences between the saved URL, configuration snapshot and historical public entry prompt verification, never an automatic conclusion about validity or address change.
+`agent_control.outcome=runtime_snapshot` establishes this ctrl round trip and sanitized snapshot, not file-transfer or inference health. Data `attached` is a connection observation; `detached` waits for reconnection without automatic ctrl fallback. `disabled`, `not_negotiated`, `pending` and `unknown` are distinct; missing facts are never filled in as successful. Online RPC does not manufacture CLI-only log history.
 
-Invalid input returns 400 `NODE_CONNECTION_DIAGNOSTICS_INPUT`; a failure reading node settings returns 500 `NODE_CONNECTION_SETTINGS_UNAVAILABLE` without the underlying database error. An unknown node returns 404.
+SSH with `vantage=control_plane` describes control-plane login. HTTP with `vantage=node` is an SSH-environment request to the saved URL's health endpoint, possibly with a different proxy environment. `configuration.source=state_file|legacy_arguments` identifies the snapshot source, not effective configuration after flags/env overrides. A `server_dial` node does not call the control-plane URL; that check is not applicable.
+
+Offline, old-agent, cancelled, timed-out or invalid-response cases can still return HTTP 200 partial reports; inspect each `outcome`. SSH can be an available alternative; otherwise run `gpuworks-agent doctor --connectivity --state <actual-directory>` through the node console. HTTP health does not establish WS/authentication/SSE health. Address differences prompt verification, never an automatic address change.
+
+Invalid input returns 400 `NODE_CONNECTION_DIAGNOSTICS_INPUT`; failure to read node settings returns 500 `NODE_CONNECTION_SETTINGS_UNAVAILABLE` without the DB error; an unknown node returns 404.
 
 The report excludes SSH passwords, private keys, node tokens, complete configuration, process arguments and environment variables. This POST is not wired into the AI assistant's existing read-only GET tool; appearing in the API catalog does not mean the assistant can execute this diagnosis.
 

@@ -204,7 +204,7 @@ Cookie 设置为 `HttpOnly`、`SameSite=Lax`，其中保存的是不透明会话
 | GET | `/api/v1/nodes/{uuid}` | 节点详情（含 GPU 列表；管理员额外含 token） | JWT |
 | GET | `/api/v1/nodes/{uuid}/fs` | 节点文件系统浏览（本地模型注册用） | JWT |
 | POST | `/api/v1/nodes/{uuid}/doctor` | 触发节点自检 RPC | JWT |
-| POST | `/api/v1/nodes/{uuid}/connection-diagnostics` | 只读连接诊断：返回保存地址、节点侧 SSH/配置快照/HTTP 检查及公网入口历史观测；不执行恢复、不修改地址。请求为空或 `{}`，不接受自定义目标。证据范围见[节点连接诊断](#节点连接诊断) | JWT(admin) |
+| POST | `/api/v1/nodes/{uuid}/connection-diagnostics` | 在线经既有ctrl读取Agent运行态，无需SSH；另有保存地址、可选SSH检查及历史公网入口。空body或`{}`，不执行恢复或修改地址；见[节点连接诊断](#节点连接诊断) | JWT(admin) |
 | POST | `/api/v1/nodes/{uuid}/upgrade` | 触发 agent 远程升级 | JWT |
 | PUT | `/api/v1/nodes/{uuid}/scheduling` | 设置 `scheduling` 为 `cordoned`、`draining` 或 `schedulable`，返回节点；非法值 400 `FIELD_INVALID`。各状态的影响见[节点调度与加速卡切换](#节点调度与加速卡切换) | JWT |
 | PUT | `/api/v1/nodes/{uuid}/gpus/scheduling` | 设置一张卡是否接受新部署：`{"pcie_bdf":"0000:3f:00.0","scheduling":"stopped"}`（没有 PCI 地址的卡用 `uuid`）。`stopped` 一直有效、平台不会自动解除；`schedulable` 解除管理员的停止，或在平台判定这张卡不可用（故障、被平台外进程占用）时临时放开到放开 1 分钟后的第一次上报重新判定。返回节点（含卡），卡上 `scheduling_stopped`、`scheduling_allowed` 表示状态，`scheduling_actions` 给出现在可以做的操作。非法值或没点名卡 400 `FIELD_INVALID`；节点或卡不存在 404；卡已直通或没绑定驱动时设为可调度 409 `CARD_NOT_OWNED` | JWT |
@@ -281,23 +281,26 @@ Cookie 设置为 `HttpOnly`、`SameSite=Lax`，其中保存的是不透明会话
 
 ### 节点连接诊断
 
-`POST /api/v1/nodes/{uuid}/connection-diagnostics` 由管理员手动触发，接受空请求或 `{}`，拒绝自定义 URL、SSH 参数与其他字段。目标和身份只取指定节点的已存记录。接口不调用恢复流程，不修改节点地址、token 或安装配置，也不重启或重装 Agent；SSH 沿用平台现有主机密钥信任策略。
-
-返回字段：
+`POST /api/v1/nodes/{uuid}/connection-diagnostics` 由管理员手动触发，接受空请求或 `{}`，拒绝自定义 URL、SSH 参数与其他字段。通过指定节点的既有会话读取运行态；SSH 旁路仅使用该节点已存身份与地址。不执行恢复、不修改地址/token/安装配置，也不重启或重装 Agent；SSH 沿用现有主机密钥策略。
 
 | 字段 | 含义 |
 |---|---|
-| `node_uuid`、`checked_at`、`connect_mode`、`saved_server_url` | 节点、报告时间、连接方向与已验证格式的保存地址；无法安全显示的地址为空 |
-| `last_seen_at`、`recovery_phase`、`recovery_attempts`、`last_probe_at`、`last_recovery_error` | 已有的最后上报与恢复记录，不是本次检查执行了恢复 |
-| `exposure` | `null` 或 `{url,state,observed_at}`，公网连接器最近记录的入口、状态和原始观测时间；不是本次公网存活检查 |
-| `checks` | `ssh`、`configuration`、`node_http` 三阶段；每项有 `stage`、`outcome`、`vantage`，有证据时才有 `target`、`source`、`observed_at`、`http_status` |
-| `guidance` | 服务端给出的指引码，由客户端本地化；提示配置快照边界、HTTP 检查范围、节点侧复核及手动同步地址等 |
+| `node_uuid`、`checked_at`、`connect_mode`、`saved_server_url` | 节点、报告时间、连接方向、安全保存地址；不是运行进程配置回读 |
+| `last_seen_at`、`recovery_phase`、`recovery_attempts`、`last_probe_at`、`last_recovery_error`、可选 `last_reject_reason`/`last_reject_at` | 已有上报、恢复与受控拒绝历史，不是本次执行恢复；未知拒绝原因不回显 |
+| `exposure` | `null` 或 `{url,state,observed_at}`，公网连接器最近记录及原时间；不是本次存活检查 |
+| `checks` | `agent_control` 表达本次RPC/离线/旧版/失败；另有可选 `ssh`、`configuration`、`node_http`。每项有 `stage`、`outcome`、`vantage`，有证据才有 `target`、`source`、`observed_at`、`http_status` |
+| `agent_report?` | 清洗后的已有 `DoctorReport`，仅白名单 `connection.*` primitive Facts；`report` 为空，不透传 Findings、typed evidence 或其他原文 |
+| `guidance` | 本地化指引码，区分运行态、SSH快照、HTTP范围、本地CLI和手动同步地址 |
 
-`vantage=control_plane` 的 SSH 结果描述控制面登录节点；`vantage=node` 的 HTTP 结果描述经 SSH 从节点访问保存地址的健康接口。它使用 SSH 会话环境，未核实运行中 Agent 的代理和环境覆盖。`configuration` 的 `source` 为 `state_file` 或 `legacy_arguments`，只表示读取来源，不能证明命令行或环境覆盖后的运行态配置。`server_dial` 节点不主动访问控制面地址，该项应按不适用解释。
+在线且宣告 `node.connection_diagnostics` 能力的 Agent，经独立轻量 RPC 返回接收请求的那条连接的快照，`connection.source=agent_runtime`：实际 Server URL、连接方向、当前 ctrl/data、真实传输阶段状态/耗时/原始时间及可用代理事实。Server 最多等待 15 秒，Agent 自行限制 10 秒；取消HTTP等待不等于远端执行已取消。不新建连接、不运行完整 `node.doctor`；能力检查后换成旧会话也不会误跑硬件自检，旧会话迟到结果丢弃。尝试 RPC 后不再串行执行 SSH。
 
-节点离线、SSH 凭据缺失、工具缺失或部分检查失败仍可返回 HTTP 200 的部分报告；必须查看各项 `outcome`，不能把报告生成成功当作连接成功。HTTP 健康成功不证明 WebSocket、Agent 认证或 SSE 成功；保存地址与配置快照或公网历史入口不同，只提示核对，不自动判定哪一个有效。
+`agent_control.outcome=runtime_snapshot` 表示本次控制通道往返与安全快照成功，不证明业务传输或推理健康。data `attached` 只是当时连接，`detached` 表示等待重连，不会自动切回 ctrl；`disabled`、`not_negotiated`、`pending`、`unknown` 不可混用，缺字段不补成功。在线RPC不伪造CLI-only日志历史。
 
-非法请求返回 400 `NODE_CONNECTION_DIAGNOSTICS_INPUT`；读取节点设置失败返回 500 `NODE_CONNECTION_SETTINGS_UNAVAILABLE`，不回显底层数据库错误；节点不存在返回 404。
+SSH 的 `vantage=control_plane` 描述控制面登录节点；HTTP 的 `vantage=node` 是SSH环境访问保存URL的健康接口，可能不同于Agent代理环境。`configuration.source=state_file|legacy_arguments` 仅表示快照来源，不保证覆盖flags/env后的有效配置。`server_dial` 不主动访问控制面URL，此项不适用。
+
+离线、旧版、取消、超时或无效响应仍可返回 HTTP 200 的部分报告，须逐项看 `outcome`。可用SSH为旁路，否则从节点控制台运行 `gpuworks-agent doctor --connectivity --state <实际目录>`。HTTP健康成功不证明WS/认证/SSE成功；地址差异只提示核对，不自动修改地址。
+
+非法请求为400 `NODE_CONNECTION_DIAGNOSTICS_INPUT`；读取节点设置失败为500 `NODE_CONNECTION_SETTINGS_UNAVAILABLE`、不回显DB错误；未知节点404。
 
 返回不含 SSH 密码、私钥、节点 token、完整配置、进程参数或环境变量。该 POST 接口没有接入 AI 助手现有的只读 GET 工具，不能仅因出现在接口目录中就认为助手已能执行这次诊断。
 

@@ -558,7 +558,11 @@ func (h *Hub) CallNode(ctx context.Context, uuid, method string, params any) (js
 	if s == nil {
 		return nil, errors.New("node not connected: " + uuid)
 	}
-	return s.Call(ctx, method, params)
+	result, err := s.Call(ctx, method, params)
+	if method == proto.RPCNodeConnectionDiagnostics && h.session(uuid) != s {
+		return nil, errors.New("connection changed during diagnostics")
+	}
+	return result, err
 }
 
 // pullStartMessage is what an image row says until the node reports. A node
