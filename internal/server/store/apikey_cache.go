@@ -139,7 +139,11 @@ func (c *apiKeyCache) join(digest [sha256.Size]byte) (*verifyCall, bool) {
 
 func (c *apiKeyCache) finish(digest [sha256.Size]byte, call *verifyCall) {
 	c.mu.Lock()
-	delete(c.inflight, digest)
+	// Invalidation may have replaced this call while its slow check was
+	// running. Only the current call may remove its entry.
+	if c.inflight[digest] == call {
+		delete(c.inflight, digest)
+	}
 	c.mu.Unlock()
 	close(call.done)
 }
@@ -161,6 +165,10 @@ func (c *apiKeyCache) forget(prefix string) {
 	}
 	c.hasAny = 0
 	c.generation++
+	// Existing requests can finish, but later requests must not join a
+	// verification that read permissions before this change. The generation
+	// guard also prevents those old results from repopulating the cache.
+	clear(c.inflight)
 }
 
 // dueLastUsed reports whether key id's last_used should be written now, and
@@ -206,6 +214,7 @@ func (c *apiKeyCache) changed() {
 	c.mu.Lock()
 	c.hasAny = 0
 	c.generation++
+	clear(c.inflight)
 	c.mu.Unlock()
 }
 

@@ -70,6 +70,9 @@ func TestAPIKeyCreationRouteRequiresAuthenticationAndPost(t *testing.T) {
 		status              int
 	}{
 		{http.MethodPost, "/api/v1/apikeys", "", http.StatusUnauthorized},
+		{http.MethodDelete, "/api/v1/apikeys/gw-000000000", "", http.StatusUnauthorized},
+		{http.MethodPost, "/api/v1/apikeys/gw-000000000", rig.session, http.StatusMethodNotAllowed},
+		{http.MethodDelete, "/api/v1/apikeys/gw-000000000", rig.session, http.StatusNotFound},
 		{http.MethodPatch, "/api/v1/apikeys", rig.session, http.StatusMethodNotAllowed},
 		{http.MethodPost, "/api/v1/apikeys/not-a-route/unknown", rig.session, http.StatusNotFound},
 		{http.MethodPut, "/api/v1/apikeys/gw-x/scope", "", http.StatusUnauthorized},
