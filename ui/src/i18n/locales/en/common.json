@@ -522,6 +522,8 @@
     "BATCH_FILE_MODELS_UNKNOWN": "No deployment serves these models of the file: {{models, list}}. Choose a model to send every request to, or deploy these models first.",
     "BATCH_FILE_MODELS_ENDPOINT": "These models of the file do not serve {{endpoint}}: {{models, list}}. Choose a model that serves it to send every request to.",
     "AGENT_UPGRADE_REFUSED": "Agent upgrade request could not proceed: {{detail}}",
+    "TEMPLATE_EXPORT_UNAVAILABLE": "This deployment cannot be saved as a template ({{reason}}).",
+    "LAUNCH_NOT_EXPORTABLE": "The deployment's launch arguments cannot be written as template arguments that rebuild the same {{engine}} command, so no approximate template is given.",
     "ACCELERATOR_FEATURE_UNSUPPORTED": "{{vendor}} does not support {{feature}}. Choose a supported feature or select another accelerator.",
     "ACCELERATOR_DEVICE_SELECTION_REQUIRED": "{{vendor}} requires an explicit GPU assignment before launch.",
     "ACCELERATOR_SM_LIMIT_UNSUPPORTED": "{{vendor}} does not support a compute/SM limit. Remove it, or use a vendor whose dGPU backend exposes one.",

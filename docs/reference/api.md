@@ -541,7 +541,7 @@ macOS 忽略 `no_systemd`。
 | GET | `/api/v1/inference-templates/model/*` | 按模型路径获取模板详情（通配路径） | JWT |
 | GET | `/api/v1/inference-templates/yaml?model_id=…` | 模板编辑器里的平铺 YAML：server 用导入同一套目录类型写出，可加 `spec_source=user`（或 `upstream`）只留该来源的 spec，`readme_*` 字段只在 spec 全部列出或模板本身归用户时写出；原样保存（`import?overwrite=true`）不丢字段 | JWT |
 | GET | `/api/v1/inference-templates/schema` | 平铺 YAML 编辑器的字典：字段的补全、悬停说明与客户端首轮校验所需的约束（权威校验仍在导入时）；可选 `spec.gpus.arch_id` 必须非空且与已报告架构 ID 精确匹配（忽略大小写，缺失时不匹配） | JWT |
-| POST | `/api/v1/inference-templates/clone` | 克隆模板为可编辑的用户 spec | JWT |
+| POST | `/api/v1/inference-templates/clone` | 克隆模板为可编辑的用户 spec | JWT(admin) |
 | POST | `/api/v1/inference-templates/evaluate` | 检查平铺 YAML 或目录包，不写入；请求与 `import` 相同，支持 `?overwrite=true`。返回 200 `{valid, errors, warnings}`；检查范围与结果见[导入前检查](#导入前检查) | JWT(admin) |
 | POST | `/api/v1/inference-templates/import` | 导入模板/目录包；成功返回 `{models, package_digest}`，有警告时多一个 `warnings`（同 `evaluate`，无警告时不出现该字段） | JWT(admin) |
 | POST | `/api/v1/inference-templates/sync` | 「检查更新」：从发布通道取官方推理模板目录包，按 upstream 来源对账（用户档位不动）；请求体忽略。返回 `{models, package_digest, version}`；目录包 schema 高于本 server 时 409 `UPDATE_CATALOG_INCOMPATIBLE`；目录包解析或校验不过时 400 `OFFICIAL_CATALOG_NEEDS_NEWER_SERVER`（`params.error` 带原始报错，界面提示该版本推理模板依赖最新版本服务端）；其余错误见[目录导入结果](#目录导入结果) | JWT(admin) |
@@ -581,6 +581,7 @@ macOS 忽略 `no_systemd`。
 | PUT | `/api/v1/deployments/{id}/tokenize` | 开关网关对该部署的分词转发（`/v1/tokenize`、`/v1/detokenize`）：`{"enabled": false}`。`enabled` 必填，缺省 400 `FIELD_INVALID`（`params.field` 为 `enabled`），不是布尔 400；部署不存在 404。不重启实例，网关路由表随变更事件重建后生效。返回部署详情（带 `tokenize_enabled`） | JWT |
 | GET | `/api/v1/deployments/{id}/events` | 部署事件时间线（最新优先、游标分页、读取时折叠） | JWT |
 | POST | `/api/v1/deployments/{id}/clone` | 克隆部署配置，节点条件与放置策略一并复制。副本的对外模型名为原名加 `-` 和 4 位随机小写字母或数字；请求体 `{"name": ...}` 同时设定部署名与对外模型名，被占用时 409 `SERVED_NAME_IN_USE` | JWT |
+| POST | `/api/v1/deployments/{id}/catalog-template` | 把运行中的部署写成推理模板：先对 chat、completions、embeddings 等低成本操作各发一个最小请求，再按部署实际运行的启动参数、权重 commit 与 GPU 生成平铺 YAML，不写入目录。见[另存为推理模板](#另存为推理模板) | JWT |
 | POST | `/api/v1/deployments/{id}/stop` | 停止部署：删除全部实例，保留配置 | JWT |
 | POST | `/api/v1/deployments/{id}/start` | 启动已停止的部署，按保留的配置重新调度（每个副本的重试次数重新计）；已在运行则不做任何事；删除中的部署 409 `DEPLOYMENT_DELETING` | JWT |
 | DELETE | `/api/v1/deployments/{id}` | 删除部署 | JWT |
@@ -618,6 +619,34 @@ macOS 忽略 `no_systemd`。
 
 实例启动事实接口的三层信息分别是：部署意图（intent）、解析后启动方案（resolved）和运行时观测（runtime observation）。
 缺失或不可用的信息保持 unknown，不以其他层的信息代替；敏感文本脱敏。
+
+### 另存为推理模板
+
+`POST /api/v1/deployments/{id}/catalog-template` 请求体可省略，或为 `{"include_env": ["KEY", ...]}`：部署自己的环境变量默认全部不导出（常含令牌与主机路径），只有列出的 key 写进档位。任何登录用户都可以导出；把结果存进目录仍走 `POST /inference-templates/import`，只允许管理员。
+
+返回 200：
+
+```json
+{
+  "model_id": "allenai/olmo-2-0425-1b-instruct",
+  "spec_name": "vllm-1xnvidia-h20-d12",
+  "yaml": "# Saved from GPUWorks deployment \"olmo\" (id 12).\n# Verified on 1 x NVIDIA H20.\n...",
+  "verified": true,
+  "saveable": true,
+  "checks": [{"operation": "openai.chat", "endpoint": "/v1/chat/completions", "tested": true, "passed": true, "http_status": 200}],
+  "notes": [{"code": "verified_on", "params": {"gpu": "NVIDIA H20", "count": 1}}],
+  "excluded_env": ["HF_TOKEN"],
+  "evidence": "GPUWorks template test record\n..."
+}
+```
+
+- `yaml` 可原样导入，开头的注释与 `notes` 说的是同一组事实；注释是英文，界面按 `notes` 的 `code` 与 `params` 本地化。
+- `checks`：chat、completions、embeddings 各发一个与健康检查相同的最小请求（`tested: true`）；视频、图片、语音等操作不发请求，`tested: false`，并有一条 `operation_not_tested`。
+- 有操作实测失败时 `verified`、`saveable` 都是 `false`，`yaml` 只供排查。
+- `notes` 的 `code`：`verified_on`、`operation_passed`、`operation_failed`、`operation_not_tested`、`kv_bytes_per_token` 缺失时的 `kv_bytes_missing`、`model_config_missing`、`placement_omitted`（`gpu_count`、`gpu_memory_mib`）、`vram_limit`、`env_excluded`、`parameters_dropped`（没有引擎 flag 承载的设置，如 `cpu_cores`）、`container_overrides_omitted`。
+- `evidence` 是提交上游时附带的纯文本测试记录。
+
+写不成模板时返回 409 `TEMPLATE_EXPORT_UNAVAILABLE`，`params.reason` 为：`not_running`（部署未运行或没有运行中的实例）、`distributed`（多机）、`pd`、`no_gpu_facts`、`template_assets`、`components`（源模板带随包文件或组件模型）、`weights_not_public`（权重来自本地目录或 URL）、`revision_unpinned`（权重版本不是 commit）、`revisions_differ`、`template_missing`、`model_missing`、`launch_changed`（配置或运行实例已变化）、`launch_snapshot_missing`（没有完整可核验的启动记录）、`heterogeneous_gpus`（绑定了不同型号的卡）、`command_overridden`（部署替换了引擎命令）。导出的参数重建不出原命令时返回 409 `LAUNCH_NOT_EXPORTABLE`。部署不存在 404，请求体不是合法 JSON 400。生成规则见[把部署另存为推理模板](../how-to/save-deployment-as-template.md)。
 
 ### 部署列表的筛选与返回字段
 

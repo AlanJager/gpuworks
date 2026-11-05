@@ -69,6 +69,9 @@ func (p *Proxy) serveTarget(w http.ResponseWriter, r *http.Request, tgt target, 
 		}
 	}
 	ob.onFinish = func(status int, duration time.Duration, stats responseStats, outcome uxrecord.Outcome) {
+		if probe != nil && outcome != uxrecord.OutcomeOK {
+			probe.message = "the upstream response did not complete"
+		}
 		acct.FinishResponse(deploymentID, status, duration, stats, reading.fallbacks)
 		if p.sink != nil && probe == nil {
 			instanceUUID := tgt.instanceUUID

@@ -382,6 +382,7 @@ func New(cfg Config, log *slog.Logger) (*App, error) {
 		UsageReport:          a.usage,
 		Notices:              a.notices,
 		AI:                   ai,
+		CatalogTemplates:     catalogTemplates{store: st, probe: templateProbe(px)},
 		AuthSigner:           jwtSigner,
 		AISecretbox:          box,
 		BenchmarkArtifactDir: filepath.Join(cfg.DataDir, "benchmark-artifacts"),

@@ -68,6 +68,7 @@ see the index in [`artifacts/README.md`](../artifacts/README.md)). Chinese origi
 - [View Usage Analytics](how-to/analyze-operations.md)
 - [Export Request Traces to OpenTelemetry](how-to/export-request-traces.md)
 - [Declare Engine Metrics for Inference Templates](how-to/declare-engine-metrics.md)
+- [Save a Deployment as an Inference Template](how-to/save-deployment-as-template.md)
 - [Run Benchmarks and Interpret Reports](how-to/benchmark.md)
 - [Use the AI Assistant](how-to/use-ai-helper.md)
 - [Connect Through MCP](how-to/use-mcp.md)
