@@ -270,6 +270,11 @@ awk '/^type Deps struct/ {inside=1; next}
 
 2026-10-22：51→53。`Deps.UsageReport`（改进计划的日报：状态、开关、预览与 API 写入的进程内计数）与 `Deps.Notices`
 （页头通知铃铛，内容来自签名发布通道）各是一个具名接口，不挂在含义不同的 `Deps.Server` 或 `Deps.Outside` 上。
+
+2026-11-04：另存为推理模板（`docs/how-to/save-deployment-as-template.md`）59→60：`Deps.CatalogTemplates`（`api.CatalogTemplates`，一个方法）。
+读部署、经网关实测操作、生成模板都在 `internal/server/app` 与 `internal/server/templateexport`，api 只依赖这个具名接口，
+因此 `api_fanout` 与 `store_concrete_importers` 不变（`templateexport` 不导入 store，读 store 的部分放在 app）；
+响应里的 notes 用已有的 `messages.Warning`，`api_opaque_response_fields` 不变。
 ### api_goroutines（初值 5）
 
 意图：后台 job 起在 HTTP 层（计划 B4）。

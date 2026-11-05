@@ -137,19 +137,6 @@ func PlanLaunch(ctx context.Context, st *store.Store, networks Networks, req Lau
 	}
 
 	gpus, assigned, parallel := previewPlacement(req, plan.Output)
-	gpu, err := launchGPU(req.Node, gpus)
-	if err != nil {
-		return plan, err
-	}
-	vendor := gpu.Vendor
-	if vendor == "" {
-		vendor = req.Node.GPUVendor
-	}
-	profile, err := deploy.ProfileForTarget(req.Engine, vendor)
-	if err != nil {
-		return plan, err
-	}
-	plan.Profile = profile
 	if !(req.Preview && req.AllowUnresolvedImage && strings.TrimSpace(req.Source.Image) == "") {
 		imagePull, err := ImagePullPlanFor(st, nodeResolverOf(networks), req.Source, req.Node, req.Selection)
 		if err != nil {
@@ -165,9 +152,6 @@ func PlanLaunch(ctx context.Context, st *store.Store, networks Networks, req Lau
 	if req.Topology.Headless {
 		apiPort = 0
 	}
-	params := launchParams(req, gpu, assigned, parallel, apiPort)
-	plan.Params = params
-
 	resolver := req.Selection.PlacementResolver()
 	// A placement the scheduler could not settle is still previewed: the
 	// variables the topology resolver would fill stay symbolic, which is what
@@ -178,25 +162,7 @@ func PlanLaunch(ctx context.Context, st *store.Store, networks Networks, req Lau
 	if resolver != "" && !unresolved {
 		variables = placementVariables(plan.Output, len(gpus), parallel.TP, req.ModelMount)
 	}
-	engine, err := deploy.SelectEngine(req.Engine)
-	if err != nil {
-		return plan, err
-	}
-	resolved, warnings, err := deploy.ResolveLaunchWithWarnings(deploy.ResolveLaunchInput{
-		Engine: engine, Params: params, Image: req.Source.Image, TargetValidation: deploy.ValidateAssignedTarget,
-		ContainerOverrides: req.Source.Overrides, ComponentModelMount: componentModelMount(req),
-		Entrypoint: req.Selection.Entrypoint, PreStartArgv: req.Selection.PreStartArgv,
-		PreStartScript: req.Selection.PreStartScript, RuntimeAssets: req.Selection.RuntimeAssets,
-		ComponentMounts: req.ComponentMounts, TemplateShmBytes: req.Selection.ShmBytes, TemplateMemlockUnlimited: req.Selection.MemlockUnlimited,
-		APIContract: req.APIContract, PlacementVariables: variables,
-		AllowUnresolved: req.Preview && unresolved,
-		HealthPath:      profile.HealthPath,
-		// The KV disk tier's automatic capacity ceiling is derived from the
-		// weights the estimator already sized for this deployment; it reaches
-		// the agent as the mount's size hint and is never written back into the
-		// deployment's configuration.
-		ModelWeightBytes: plan.Output.Breakdown.WeightBytes,
-	})
+	allocated, err := ResolveAllocatedLaunch(req, gpus, assigned, parallel, apiPort, variables, plan.Output.Breakdown.WeightBytes, req.Preview && unresolved)
 	if err != nil {
 		if refusal := targetLaunchRefusal(err); refusal != nil {
 			plan.Output.Result = scheduler.Result{OK: false, Message: *refusal, Explain: scheduler.Explain{Filters: []scheduler.Reason{*refusal}}}
@@ -204,8 +170,8 @@ func PlanLaunch(ctx context.Context, st *store.Store, networks Networks, req Lau
 		}
 		return plan, fmt.Errorf("deployment %d resolve launch: %w", req.Source.DeploymentID, err)
 	}
-	plan.Resolved = resolved
-	plan.Warnings = warnings
+	plan.Params, plan.Profile = allocated.Params, allocated.Profile
+	plan.Resolved, plan.Warnings = allocated.Resolved, allocated.Warnings
 	return plan, nil
 }
 

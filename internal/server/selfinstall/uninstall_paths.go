@@ -20,6 +20,9 @@ func (i *Installer) validateUninstall(paths []string, purge bool) error {
 	if err := i.validateUninstallPID(); err != nil {
 		return err
 	}
+	// The install directory is retained, including historical installations
+	// directly in the agent's shared root. Protect that root below when a
+	// path will actually be removed recursively.
 	if err := safeUninstallDirectory(i.layout.Dir); err != nil {
 		return err
 	}
@@ -56,7 +59,7 @@ func (i *Installer) validateUninstall(paths []string, purge bool) error {
 		}
 	}
 	if purge {
-		if err := safeUninstallDirectory(i.layout.DataDir); err != nil {
+		if err := safeUninstallDirectory(i.layout.DataDir, sharedApplicationRoot); err != nil {
 			return err
 		}
 		if pathWithin(i.layout.DataDir, i.layout.Dir) {
@@ -98,7 +101,7 @@ func (i *Installer) validateUninstall(paths []string, purge bool) error {
 			return fmt.Errorf("expected a file, found directory %s", path)
 		}
 		if recursive {
-			if err := safeUninstallDirectory(path); err != nil {
+			if err := safeUninstallDirectory(path, sharedApplicationRoot); err != nil {
 				return err
 			}
 			mounts, err := uninstallMountPoints()
@@ -204,8 +207,8 @@ func checkDedicatedDirectory(path string, protectedApplicationRoots ...string) e
 	return nil
 }
 
-func safeUninstallDirectory(path string) error {
-	if err := checkDedicatedDirectory(path, sharedApplicationRoot); err != nil {
+func safeUninstallDirectory(path string, protectedApplicationRoots ...string) error {
+	if err := checkDedicatedDirectory(path, protectedApplicationRoots...); err != nil {
 		return err
 	}
 	clean := filepath.Clean(path)

@@ -68,6 +68,7 @@
 - [查看用量分析](how-to/analyze-operations.md)
 - [导出请求 trace 到 OpenTelemetry](how-to/export-request-traces.md)
 - [为推理模板声明引擎指标](how-to/declare-engine-metrics.md)
+- [把部署另存为推理模板](how-to/save-deployment-as-template.md)
 - [运行评测并解读报告](how-to/benchmark.md)
 - [使用 AI 助手](how-to/use-ai-helper.md)
 - [通过 MCP 接入](how-to/use-mcp.md)

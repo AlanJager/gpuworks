@@ -8,6 +8,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/inferenceapi"
 	"gpuworks.ai/gpuworks/internal/server/proxy"
 	"gpuworks.ai/gpuworks/internal/server/store"
+	"gpuworks.ai/gpuworks/internal/server/templateexport"
 )
 
 // healthSource lists the deployments with the health check on, and what
@@ -71,4 +72,13 @@ type healthSender struct {
 func (s healthSender) Probe(ctx context.Context, id uint, path string, payload map[string]any) healthcheck.Reply {
 	r := s.proxy.Probe(ctx, id, path, payload)
 	return healthcheck.Reply{NoReplica: r.NoReplica, HTTPStatus: r.HTTPStatus, InstanceUUID: r.InstanceUUID, Message: r.Message}
+}
+
+// templateProbe is how saving a deployment as a template tests the
+// operations it serves: the health check's own unaccounted gateway request.
+func templateProbe(px *proxy.Proxy) templateexport.Prober {
+	return func(ctx context.Context, id uint, instanceUUID, path string, payload map[string]any) templateexport.ProbeReply {
+		r := px.ProbeForInstance(ctx, id, instanceUUID, path, payload)
+		return templateexport.ProbeReply{NoReplica: r.NoReplica, HTTPStatus: r.HTTPStatus, InstanceUUID: r.InstanceUUID, Message: r.Message}
+	}
 }

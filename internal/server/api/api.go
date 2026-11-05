@@ -224,6 +224,9 @@ type Deps struct {
 	// AI serves /ai/available, /ai/ask and the LLM-free findings and fit
 	// reads. Nil means no AI service is wired: available reports false.
 	AI AIService
+	// CatalogTemplates saves a running deployment as an inference template
+	// (deployments_catalog_template.go). Nil answers 404.
+	CatalogTemplates CatalogTemplates
 
 	// Management-plane authentication. Data-plane /v1 uses API keys separately.
 	AuthSigner           *auth.TokenSigner
@@ -438,7 +441,7 @@ func Router(d Deps, policies ...auth.SessionPolicy) http.Handler {
 			r.With(a.managementAdmin).Get("/inference-templates/export/{digest}", a.exportInferenceTemplatePackage)
 			r.Get("/inference-templates/model/*", a.getInferenceTemplate)
 			r.Get("/inference-templates/yaml", a.inferenceTemplateYAML)
-			r.Post("/inference-templates/clone", a.cloneInferenceTemplate)
+			r.With(a.managementAdmin).Post("/inference-templates/clone", a.cloneInferenceTemplate)
 			r.With(a.managementAdmin).Post("/inference-templates/import", a.importInferenceTemplates)
 			r.With(a.managementAdmin).Post("/inference-templates/evaluate", a.evaluateInferenceTemplates)
 			r.With(a.managementAdmin).Delete("/inference-templates/spec", a.deleteInferenceTemplateSpec)
@@ -458,6 +461,7 @@ func Router(d Deps, policies ...auth.SessionPolicy) http.Handler {
 			r.Put("/deployments/{id}/tokenize", a.setTokenize)
 			r.Put("/deployments/{id}/dgpu", a.setDeploymentDGPUQuota)
 			r.Post("/deployments/{id}/clone", a.cloneDeployment)
+			r.Post("/deployments/{id}/catalog-template", a.exportCatalogTemplate)
 			r.Post("/deployments/{id}/stop", a.stopDeployment)
 			r.Post("/deployments/{id}/start", a.startDeployment)
 			r.Put("/deployments/{id}/pd", a.updatePD)
