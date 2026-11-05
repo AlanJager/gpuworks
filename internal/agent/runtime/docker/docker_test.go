@@ -363,3 +363,42 @@ func TestScanPullLinesEndsLinesAtCarriageReturnsAndDropsBlankRedraws(t *testing.
 		t.Fatalf("a read failure is passed on: %v", err)
 	}
 }
+
+// A daemon still coming up is ErrDaemonNotReady, so startup can wait for it;
+// one this agent may not use is plain false, as before.
+func TestDetectSeparatesADaemonNotReadyFromOneThisAgentMayNotUse(t *testing.T) {
+	sock := shortUnixSocketPath(t)
+	ln, err := net.Listen("unix", sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	t.Setenv("DOCKER_CONTEXT", "")
+	t.Setenv("DOCKER_HOST", "unix://"+sock)
+	for _, tc := range []struct {
+		name, stderr string
+		notReady     bool
+	}{
+		{"not up yet", "Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?", true},
+		{"refusing connections", "error during connect: dial unix /var/run/docker.sock: connect: connection refused", true},
+		{"permission denied", "permission denied while trying to connect to the Docker daemon socket at unix:///var/run/docker.sock: connect: permission denied", false},
+		{"other failure", "unknown flag: --format", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			installFakeDocker(t, "echo '"+tc.stderr+"' >&2; exit 1")
+			ok, err := New().Detect(context.Background())
+			if ok || errors.Is(err, runtime.ErrDaemonNotReady) != tc.notReady {
+				t.Fatalf("detect = %t,%v; want not-ready=%t", ok, err, tc.notReady)
+			}
+			if tc.notReady && !strings.Contains(err.Error(), tc.stderr) {
+				t.Fatalf("error %q does not carry the daemon's answer", err)
+			}
+			if !tc.notReady && err != nil {
+				t.Fatalf("detect error = %v, want none", err)
+			}
+		})
+	}
+	if !daemonNotReady(context.DeadlineExceeded, "") {
+		t.Fatal("a docker info that outlived its timeout is a busy daemon")
+	}
+}

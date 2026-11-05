@@ -5,6 +5,7 @@ package runtime
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -12,6 +13,13 @@ import (
 
 	"gpuworks.ai/gpuworks/pkg/httpproxy"
 )
+
+// ErrDaemonNotReady is what Detect returns for a runtime whose CLI and local
+// socket are present but whose daemon did not answer: still starting, or too
+// busy to answer in time. It is a state that passes, unlike a missing
+// runtime or one the agent may not use (permission denied), which Detect
+// reports as plain false.
+var ErrDaemonNotReady = errors.New("container daemon is installed but not answering")
 
 type pullProxyContextKey struct{}
 
