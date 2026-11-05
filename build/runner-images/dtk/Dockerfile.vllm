@@ -1,8 +1,5 @@
 # gpuworks-runner: Hygon DTK vLLM 线
 #
-# 派生自 gpustack/runner 的 pack/dtk/Dockerfile.vllm（Apache-2.0，见 ../NOTICE）：
-# 工具层构成与「厂商 vanilla 之上只叠薄层」的分层思路参照其实现。
-#
 # 内容 = 厂商 vanilla（sourcefind 的 dtk vllm 镜像，自带 DTK/torch/vllm 的 DCU 构建）
 #       + 轻量工具层
 #       + vllm-hcu-apply-patches 预启动工具（厂商 custom 镜像里提取，见 files/README）

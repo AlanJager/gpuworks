@@ -1,7 +1,5 @@
 # gpuworks-runner: Hygon DTK SGLang 线
 #
-# 派生自 gpustack/runner 的 pack/dtk/Dockerfile.sglang（Apache-2.0，见 ../NOTICE）。
-#
 # vanilla = sourcefind 的 sglang dtk 镜像，自带 DTK/torch/sglang 的 DCU 构建。
 # 本层：工具层 + diffusion 依赖 + 模型 overlay。
 ARG BASE_IMAGE=harbor.sourcefind.cn:5443/dcu/admin/base/sglang:0.5.12-ubuntu22.04-dtk2604-py3.10

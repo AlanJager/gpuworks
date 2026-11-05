@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
 # gpuworks-runner 构建驱动：按 matrix.yaml 逐项 buildx 构建并推送。
 #
-# 构建流程（分层、squash 的做法）部分派生自 gpustack/runner，Apache-2.0，见 NOTICE。
-#
 # 用法（在构建机上，本脚本位于 build/ 目录内执行）：
 #   ./build.sh --list
 #   ./build.sh --only cuda13.0-vllm0.30.0

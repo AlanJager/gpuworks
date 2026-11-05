@@ -1,7 +1,5 @@
 # gpuworks-runner: T-Head PPU（HGGC）SGLang 线
 #
-# 派生自 gpustack/runner 的 pack/hggc/Dockerfile.sglang（Apache-2.0，见 ../NOTICE）。
-#
 # 与 vllm 线同一 vanilla（asllm 自带 sglang 0.5.13+asllm2.0.0.8 与 diffusion 全家），
 # rootfs 完全相同，只有 label 与引擎标识不同；sglang 本体与 diffusers 均继承 vanilla。
 # 同样必须配合 build.sh --squash（厂商 history 含明文凭据，理由见 Dockerfile.vllm）。

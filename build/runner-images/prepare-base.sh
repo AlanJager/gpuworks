@@ -11,8 +11,6 @@
 #   单层，去重消失，registry 存储和推送量都翻倍。在 base 上压一次，两个最终镜像
 #   继续共享它，各自只叠自己的薄层。
 #
-# 做法派生自 gpustack/runner 的 pack/squash_image.sh（Apache-2.0，见 NOTICE）。
-#
 # 用法：
 #   ./prepare-base.sh <src-ref> <dst-ref> [platform]
 #   ./prepare-base.sh 192.0.2.156:5000/asllm:2.0.0-vanilla \
