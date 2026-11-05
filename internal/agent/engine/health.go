@@ -238,19 +238,26 @@ func (e *Engine) detectOOM(ctx context.Context, id string, st runtime.Status) bo
 	return err == nil && (strings.Contains(string(b), "OutOfMemoryError") || strings.Contains(string(b), "CUDA out of memory"))
 }
 
+// exitTailLines is how much of a stopped container's output exitMessage
+// reads. A tensor-parallel vLLM prints each worker's traceback before the
+// engine core's and the API server's wrappers, so the root cause can sit a
+// few hundred lines above the end.
+const exitTailLines = 1000
+
 // exitMessage says why a container exited: a cause the output names in words
 // (enginelog.HumanizeStartupFailure), else base with what stopped it: its
-// dGPU memory limit when the interposer refused an allocation, else the last
-// error line the engine printed - or "with no output" when it printed
+// dGPU memory limit when the interposer refused an allocation, else the
+// error the engine's failure began with (enginelog.RootCause, which looks
+// past "See root cause above" wrappers) - or "with no output" when it printed
 // nothing, which a full disk also produces. Removal deletes the output, so this is what is left of
 // it on the failed instance.
 func (e *Engine) exitMessage(ctx context.Context, id, base string) string {
-	rc, err := e.Driver().Logs(ctx, id, false, 200)
+	rc, err := e.Driver().Logs(ctx, id, false, exitTailLines)
 	if err != nil {
 		return base
 	}
 	defer rc.Close()
-	data, err := io.ReadAll(io.LimitReader(rc, 256*1024))
+	data, err := io.ReadAll(io.LimitReader(rc, 512*1024))
 	if err != nil {
 		return base
 	}
@@ -261,7 +268,7 @@ func (e *Engine) exitMessage(ctx context.Context, id, base string) string {
 	if limit := enginelog.DGPULimitExceeded(text); limit != "" {
 		return base + ": " + limit
 	}
-	if last := enginelog.LastError(text); last != "" {
+	if last := enginelog.RootCause(text); last != "" {
 		return base + ": " + last
 	}
 	if strings.TrimSpace(text) == "" {
