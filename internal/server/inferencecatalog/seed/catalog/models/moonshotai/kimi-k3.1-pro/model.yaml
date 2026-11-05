@@ -1,0 +1,654 @@
+model_id: moonshotai/kimi-k3.1-pro
+source: upstream
+display_title: Kimi-K3.1-Pro
+readme_zh_cn: README.zh-CN.md
+readme_en: README.en.md
+parameter_count: 2.8T
+architecture: moe
+context_length: 1048576
+release_date: '2026-11-02'
+kv_bytes_per_token:
+  vllm: 145920
+model_config: {model_type: kimi_k31, num_hidden_layers: 93, hidden_size: 7168, num_attention_heads: 96, num_key_value_heads: 96, max_position_embeddings: 1048576, layer_types: [linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, full_attention], kv_lora_rank: 512, qk_rope_head_dim: 64, qk_nope_head_dim: 128, v_head_dim: 128, vision_config: {patch_size: 14}}
+specs:
+- name: mxfp4-sglang-nvidia-b200-tp-dcp-multinode
+  display_name_zh_cn: B200 · MXFP4 · 多机 · DCP
+  display_name_en: B200 · MXFP4 · Multi-node · DCP
+  scenario: balanced
+  engine: sglang
+  image: lmsysorg/sglang:dev-kimi-k31-pro
+  weights:
+    quantization: mxfp4
+    sources:
+    - huggingface:
+        repo_id: moonshotai/Kimi-K3.1-Pro
+        revision: 6d0a0202956796543364d666ab19c6ad1a494ee1
+  weight_bytes: 1561355966963
+  gpus:
+    vendor: nvidia
+    name: (^|[^A-Za-z0-9])(?:B200)([^A-Za-z0-9]|$)
+  args:
+  - --trust-remote-code
+  - --enable-metrics
+  - --dcp-size
+  - ${TP_SIZE}
+  - --mem-fraction-static
+  - '0.85'
+  - --max-running-requests
+  - '64'
+  - --reasoning-parser
+  - kimi_k3
+  - --tool-call-parser
+  - kimi_k3
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: mxfp4-sglang-nvidia-b300-tp8
+  display_name_zh_cn: B300 · MXFP4
+  display_name_en: B300 · MXFP4
+  scenario: latency
+  engine: sglang
+  image: lmsysorg/sglang:dev-kimi-k31-pro
+  weights:
+    quantization: mxfp4
+    sources:
+    - huggingface:
+        repo_id: moonshotai/Kimi-K3.1-Pro
+        revision: 6d0a0202956796543364d666ab19c6ad1a494ee1
+  weight_bytes: 1561355966963
+  gpus:
+    vendor: nvidia
+    name: (^|[^A-Za-z0-9])(?:B300)([^A-Za-z0-9]|$)
+  args:
+  - --trust-remote-code
+  - --enable-metrics
+  - --mem-fraction-static
+  - '0.85'
+  - --max-running-requests
+  - '64'
+  - --weight-loader-prefetch-checkpoints
+  - --model-loader-extra-config
+  - '{"enable_multithread_load": true}'
+  - --reasoning-parser
+  - kimi_k3
+  - --tool-call-parser
+  - kimi_k3
+  placement:
+    language: starlark
+    resolver: |-
+      def resolve(gpu):
+          # Any card count whose memory holds the weights (1454.1 GiB) and a
+          # 4 GiB KV pool within the engine's 0.85 share less about 2 GiB of
+          # runtime overhead per card. The scheduler takes the fewest such cards
+          # and keeps the tensor-parallel size a divisor of the attention heads.
+          if gpu.count * (gpu.min_memory_gib * 0.85 - 2) < 1459:
+              return reject("the weights and a 4 GiB KV pool need 1459 GiB; these cards offer less")
+          return {"GPU_COUNT": gpu.count, "TP_SIZE": gpu.count, "SP_DEGREE": 1}
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: mxfp4-sglang-nvidia-b300-tp8-dcp8
+  display_name_zh_cn: B300 · MXFP4 · 8 卡 · DCP8
+  display_name_en: B300 · MXFP4 · 8 GPUs · DCP8
+  scenario: throughput
+  engine: sglang
+  image: lmsysorg/sglang:dev-kimi-k31-pro
+  weights:
+    quantization: mxfp4
+    sources:
+    - huggingface:
+        repo_id: moonshotai/Kimi-K3.1-Pro
+        revision: 6d0a0202956796543364d666ab19c6ad1a494ee1
+  weight_bytes: 1561355966963
+  gpus:
+    vendor: nvidia
+    name: (^|[^A-Za-z0-9])(?:B300)([^A-Za-z0-9]|$)
+  args:
+  - --trust-remote-code
+  - --enable-metrics
+  - --dcp-size
+  - '8'
+  - --dcp-comm-backend
+  - fi_a2a
+  - --ep-size
+  - '2'
+  - --mem-fraction-static
+  - '0.85'
+  - --max-running-requests
+  - '64'
+  - --weight-loader-prefetch-checkpoints
+  - --model-loader-extra-config
+  - '{"enable_multithread_load": true}'
+  - --reasoning-parser
+  - kimi_k3
+  - --tool-call-parser
+  - kimi_k3
+  env:
+    SGLANG_DCP_PUSH_COMBINE_MAX_ROWS: '1536'
+    SGLANG_CUSTOM_ALL_REDUCE_V2_MAX_SIZE_KB: '32768'
+  placement:
+    language: starlark
+    resolver: |-
+      def resolve(gpu):
+          # The SGLang cookbook's high-concurrency command: TP8 with DCP8 and EP2
+          # on one 8-GPU node.
+          if gpu.count != 8:
+              return reject("this recipe runs TP8 with DCP8 on exactly 8 GPUs")
+          return {"GPU_COUNT": 8, "TP_SIZE": 8, "SP_DEGREE": 1}
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: mxfp4-sglang-amd-mi355x-tp8
+  display_name_zh_cn: MI350X / MI355X · MXFP4 · 8 卡 · 低延迟
+  display_name_en: MI350X / MI355X · MXFP4 · 8 GPUs · Low latency
+  scenario: latency
+  engine: sglang
+  image: lmsysorg/sglang:dev-kimi-k31-pro-mi35x
+  weights:
+    quantization: mxfp4
+    sources:
+    - huggingface:
+        repo_id: moonshotai/Kimi-K3.1-Pro
+        revision: 6d0a0202956796543364d666ab19c6ad1a494ee1
+  weight_bytes: 1561355966963
+  gpus:
+    vendor: amd
+    name: (^|[^A-Za-z0-9])(?:MI350X|MI355X)([^A-Za-z0-9]|$)
+  args:
+  - --trust-remote-code
+  - --enable-metrics
+  - --mem-fraction-static
+  - '0.85'
+  - --chunked-prefill-size
+  - '16384'
+  - --max-running-requests
+  - '4'
+  - --cuda-graph-max-bs-decode
+  - '4'
+  - --schedule-policy
+  - lpm
+  - --prefill-decode-interval
+  - '16'
+  - --max-mamba-cache-size
+  - '60'
+  - --mamba-radix-cache-strategy
+  - extra_buffer_lazy
+  - --cuda-graph-backend-prefill
+  - breakable
+  - --cuda-graph-bs-prefill
+  - '256'
+  - '512'
+  - '768'
+  - '1024'
+  - '1536'
+  - '2048'
+  - '3072'
+  - '4096'
+  - --enable-amd-monokernel
+  - --weight-loader-prefetch-checkpoints
+  - --model-loader-extra-config
+  - '{"enable_multithread_load": true}'
+  - --reasoning-parser
+  - kimi_k3
+  - --tool-call-parser
+  - kimi_k3
+  env:
+    SGLANG_USE_AITER: '1'
+    SGLANG_AITER_K3_OPT: '1'
+    AITER_FLYDSL_FORCE: '1'
+    AITER_SITUV2_A8W4: '1'
+    SGLANG_AMD_MONO_K31_WIDE: '1'
+    PYTORCH_HIP_ALLOC_CONF: garbage_collection_threshold:0.95
+    SGLANG_ROCM_RUNTIME_RESERVE_GB: '6'
+    SGLANG_OPT_MAMBA_SKIP_DECODE_LOCK: '1'
+    HSA_USERPTR_FOR_PAGED_MEM: '0'
+  placement:
+    language: starlark
+    resolver: |-
+      def resolve(gpu):
+          # The SGLang cookbook's MI350X / MI355X low-latency command: TP8 on the
+          # AMD monokernel, tuned for one 8-GPU node and up to 4 requests.
+          if gpu.count != 8:
+              return reject("this recipe runs TP8 on exactly 8 GPUs")
+          return {"GPU_COUNT": 8, "TP_SIZE": 8, "SP_DEGREE": 1}
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: mxfp4-sglang-amd-mi355x-tp8-dcp8
+  display_name_zh_cn: MI350X / MI355X · MXFP4 · 8 卡 · DCP8
+  display_name_en: MI350X / MI355X · MXFP4 · 8 GPUs · DCP8
+  scenario: throughput
+  engine: sglang
+  image: lmsysorg/sglang:dev-kimi-k31-pro-mi35x
+  weights:
+    quantization: mxfp4
+    sources:
+    - huggingface:
+        repo_id: moonshotai/Kimi-K3.1-Pro
+        revision: 6d0a0202956796543364d666ab19c6ad1a494ee1
+  weight_bytes: 1561355966963
+  gpus:
+    vendor: amd
+    name: (^|[^A-Za-z0-9])(?:MI350X|MI355X)([^A-Za-z0-9]|$)
+  args:
+  - --trust-remote-code
+  - --enable-metrics
+  - --dcp-size
+  - '8'
+  - --dcp-comm-backend
+  - a2a
+  - --mem-fraction-static
+  - '0.85'
+  - --chunked-prefill-size
+  - '16384'
+  - --max-running-requests
+  - '48'
+  - --cuda-graph-max-bs-decode
+  - '48'
+  - --schedule-policy
+  - lpm
+  - --prefill-decode-interval
+  - '16'
+  - --mamba-full-memory-ratio
+  - '0.65'
+  - --mamba-radix-cache-strategy
+  - extra_buffer_lazy
+  - --cuda-graph-backend-prefill
+  - breakable
+  - --cuda-graph-bs-prefill
+  - '256'
+  - '512'
+  - '768'
+  - '1024'
+  - '1536'
+  - '2048'
+  - '3072'
+  - '4096'
+  - --weight-loader-prefetch-checkpoints
+  - --model-loader-extra-config
+  - '{"enable_multithread_load": true}'
+  - --reasoning-parser
+  - kimi_k3
+  - --tool-call-parser
+  - kimi_k3
+  env:
+    SGLANG_USE_AITER: '1'
+    SGLANG_AITER_K3_OPT: '1'
+    AITER_FLYDSL_FORCE: '1'
+    AITER_SITUV2_A8W4: '1'
+    PYTORCH_HIP_ALLOC_CONF: garbage_collection_threshold:0.95
+    SGLANG_ROCM_RUNTIME_RESERVE_GB: '10'
+    SGLANG_OPT_MAMBA_SKIP_DECODE_LOCK: '1'
+    HSA_USERPTR_FOR_PAGED_MEM: '0'
+  placement:
+    language: starlark
+    resolver: |-
+      def resolve(gpu):
+          # The SGLang cookbook's MI350X / MI355X high-throughput command: TP8
+          # with DCP8 on one 8-GPU node, up to 48 requests.
+          if gpu.count != 8:
+              return reject("this recipe runs TP8 with DCP8 on exactly 8 GPUs")
+          return {"GPU_COUNT": 8, "TP_SIZE": 8, "SP_DEGREE": 1}
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: mxfp4-vllm-nvidia-b300-tp8
+  display_name_zh_cn: B300 · MXFP4
+  display_name_en: B300 · MXFP4
+  scenario: latency
+  engine: vllm
+  image: vllm/vllm-openai:kimi-k31
+  weights:
+    quantization: mxfp4
+    sources:
+    - huggingface:
+        repo_id: moonshotai/Kimi-K3.1-Pro
+        revision: 6d0a0202956796543364d666ab19c6ad1a494ee1
+  weight_bytes: 1561355966963
+  gpus:
+    vendor: nvidia
+    name: (^|[^A-Za-z0-9])(?:B300)([^A-Za-z0-9]|$)
+  args:
+  - --trust-remote-code
+  - --max-model-len
+  - '262144'
+  - --max-num-seqs
+  - '128'
+  - --load-format
+  - fastsafetensors
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - kimi_k3
+  - --reasoning-parser
+  - kimi_k3
+  env:
+    VLLM_ENGINE_READY_TIMEOUT_S: '3600'
+  placement:
+    language: starlark
+    resolver: |-
+      def resolve(gpu):
+          # Any card count whose memory holds what vLLM needs at start, measured
+          # on 8 B300 at TP8: 195 GiB of loaded weights, 5.7 GiB of CUDA graphs,
+          # 4.2 GiB of KV for one 262K-token request and about 3 GiB of
+          # activations per card (1665 GiB in all), within vLLM's default 0.9
+          # share less about 2 GiB of runtime overhead per card. The scheduler
+          # takes the fewest such cards and keeps the tensor-parallel size a
+          # divisor of the attention heads.
+          if gpu.count * (gpu.min_memory_gib * 0.9 - 2) < 1665:
+              return reject("the weights and one 262K-token request need 1665 GiB; these cards offer less")
+          return {"GPU_COUNT": gpu.count, "TP_SIZE": gpu.count, "SP_DEGREE": 1}
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: mxfp4-vllm-nvidia-b300-tep8
+  display_name_zh_cn: B300 · MXFP4 · 8 卡 · 专家并行
+  display_name_en: B300 · MXFP4 · 8 GPUs · Expert parallel
+  scenario: balanced
+  engine: vllm
+  image: vllm/vllm-openai:kimi-k31
+  weights:
+    quantization: mxfp4
+    sources:
+    - huggingface:
+        repo_id: moonshotai/Kimi-K3.1-Pro
+        revision: 6d0a0202956796543364d666ab19c6ad1a494ee1
+  weight_bytes: 1561355966963
+  gpus:
+    vendor: nvidia
+    name: (^|[^A-Za-z0-9])(?:B300)([^A-Za-z0-9]|$)
+  args:
+  - --trust-remote-code
+  - --max-model-len
+  - '262144'
+  - --max-num-seqs
+  - '128'
+  - --enable-expert-parallel
+  - --moe-backend
+  - deep_gemm_mega_moe
+  - --all2all-backend
+  - flashinfer_nvlink_one_sided
+  - --load-format
+  - fastsafetensors
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - kimi_k3
+  - --reasoning-parser
+  - kimi_k3
+  env:
+    VLLM_ENGINE_READY_TIMEOUT_S: '3600'
+  placement:
+    language: starlark
+    resolver: |-
+      def resolve(gpu):
+          # The vLLM recipe's single-node TEP strategy: attention at TP8, routed
+          # experts on MegaMoE expert parallelism, on one 8-GPU node.
+          if gpu.count != 8:
+              return reject("this recipe runs TP8 with expert parallelism on exactly 8 GPUs")
+          return {"GPU_COUNT": 8, "TP_SIZE": 8, "SP_DEGREE": 1}
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: mxfp4-vllm-nvidia-b300-tp8-dcp8
+  display_name_zh_cn: B300 · MXFP4 · 8 卡 · DCP8
+  display_name_en: B300 · MXFP4 · 8 GPUs · DCP8
+  scenario: throughput
+  engine: vllm
+  image: vllm/vllm-openai:kimi-k31
+  weights:
+    quantization: mxfp4
+    sources:
+    - huggingface:
+        repo_id: moonshotai/Kimi-K3.1-Pro
+        revision: 6d0a0202956796543364d666ab19c6ad1a494ee1
+  weight_bytes: 1561355966963
+  gpus:
+    vendor: nvidia
+    name: (^|[^A-Za-z0-9])(?:B300)([^A-Za-z0-9]|$)
+  args:
+  - --trust-remote-code
+  - --max-model-len
+  - '262144'
+  - --max-num-seqs
+  - '128'
+  - --decode-context-parallel-size
+  - '8'
+  - --load-format
+  - fastsafetensors
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - kimi_k3
+  - --reasoning-parser
+  - kimi_k3
+  env:
+    VLLM_ENGINE_READY_TIMEOUT_S: '3600'
+  placement:
+    language: starlark
+    resolver: |-
+      def resolve(gpu):
+          # The vLLM recipe's decode context parallelism: DCP8 matches TP8 on one
+          # 8-GPU node.
+          if gpu.count != 8:
+              return reject("this recipe runs TP8 with DCP8 on exactly 8 GPUs")
+          return {"GPU_COUNT": 8, "TP_SIZE": 8, "SP_DEGREE": 1}
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: mxfp4-vllm-nvidia-gb300-tp8-multinode
+  display_name_zh_cn: GB300 · MXFP4 · 多机
+  display_name_en: GB300 · MXFP4 · Multi-node
+  scenario: latency
+  engine: vllm
+  image: vllm/vllm-openai:kimi-k31
+  weights:
+    quantization: mxfp4
+    sources:
+    - huggingface:
+        repo_id: moonshotai/Kimi-K3.1-Pro
+        revision: 6d0a0202956796543364d666ab19c6ad1a494ee1
+  weight_bytes: 1561355966963
+  gpus:
+    vendor: nvidia
+    name: (^|[^A-Za-z0-9])(?:GB300)([^A-Za-z0-9]|$)
+  args:
+  - --trust-remote-code
+  - --max-model-len
+  - '262144'
+  - --max-num-seqs
+  - '128'
+  - --load-format
+  - fastsafetensors
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - kimi_k3
+  - --reasoning-parser
+  - kimi_k3
+  env:
+    VLLM_ENGINE_READY_TIMEOUT_S: '3600'
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: mxfp4-vllm-amd-mi355x-tp8
+  display_name_zh_cn: MI355X · MXFP4
+  display_name_en: MI355X · MXFP4
+  scenario: balanced
+  engine: vllm
+  image: vllm/vllm-openai-rocm:kimi-k31
+  weights:
+    quantization: mxfp4
+    sources:
+    - huggingface:
+        repo_id: moonshotai/Kimi-K3.1-Pro
+        revision: 6d0a0202956796543364d666ab19c6ad1a494ee1
+  weight_bytes: 1561355966963
+  gpus:
+    vendor: amd
+    name: (^|[^A-Za-z0-9])(?:MI355X)([^A-Za-z0-9]|$)
+  args:
+  - --trust-remote-code
+  - --max-model-len
+  - '262144'
+  - --max-num-seqs
+  - '128'
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - kimi_k3
+  - --reasoning-parser
+  - kimi_k3
+  env:
+    VLLM_ROCM_USE_AITER: '1'
+    SAFETENSORS_FAST_GPU: '1'
+    VLLM_ROCM_USE_AITER_MOE_SITUV2: '1'
+    VLLM_USE_BREAKABLE_CUDAGRAPH: '1'
+    VLLM_ENGINE_READY_TIMEOUT_S: '7200'
+  placement:
+    language: starlark
+    resolver: |-
+      def resolve(gpu):
+          # Any card count whose memory holds what vLLM needs at start, measured
+          # on 8 B300 at TP8: 195 GiB of loaded weights, 5.7 GiB of CUDA graphs,
+          # 4.2 GiB of KV for one 262K-token request and about 3 GiB of
+          # activations per card (1665 GiB in all), within vLLM's default 0.9
+          # share less about 2 GiB of runtime overhead per card. The scheduler
+          # takes the fewest such cards and keeps the tensor-parallel size a
+          # divisor of the attention heads.
+          if gpu.count * (gpu.min_memory_gib * 0.9 - 2) < 1665:
+              return reject("the weights and one 262K-token request need 1665 GiB; these cards offer less")
+          return {"GPU_COUNT": gpu.count, "TP_SIZE": gpu.count, "SP_DEGREE": 1}
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: mxfp4-vllm-ppu-810e-tp32-ep-multinode
+  display_name_zh_cn: 810E · MXFP4 · 多机
+  display_name_en: 810E · MXFP4 · Multi-node
+  scenario: balanced
+  engine: vllm
+  image: egslingjun-registry.cn-wulanchabu.cr.aliyuncs.com/egslingjun-tmp/inference-xpu-pytorch:kimi-k3.1-pro-vllm0.32.0-cuda13.0-pytorch2.13.0-20261103
+  weights:
+    quantization: mxfp4
+    sources:
+    - huggingface:
+        repo_id: moonshotai/Kimi-K3.1-Pro
+        revision: 6d0a0202956796543364d666ab19c6ad1a494ee1
+  weight_bytes: 1561355966963
+  gpus:
+    vendor: ppu
+    name: (?:PPU[ _-]?ZW810E)([^A-Za-z0-9]|$)
+  args:
+  - --trust-remote-code
+  - --enable-expert-parallel
+  - --gpu-memory-utilization
+  - '0.9'
+  - --max-num-seqs
+  - '256'
+  - --disable-custom-all-reduce
+  - --no-enable-prefix-caching
+  - --moe-backend
+  - ppu_deep_gemm_w4a16
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - kimi_k3
+  - --reasoning-parser
+  - kimi_k3
+  env:
+    VLLM_ENGINE_READY_TIMEOUT_S: '3600'
+    DG_USE_MOE_DYNAMIC_TILE: '1'
+    PCCL_NET_PLUGIN_ENABLE: '1'
+    NCCL_DEBUG: WARN
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: mxfp4-vllm-ppu-m890-tp8-dp-multinode
+  display_name_zh_cn: M890 · MXFP4 · 多机 · 每机 TP8
+  display_name_en: M890 · MXFP4 · Multi-node · TP8 per node
+  scenario: balanced
+  engine: vllm
+  image: egslingjun-registry.cn-wulanchabu.cr.aliyuncs.com/egslingjun-tmp/inference-xpu-pytorch:kimi-k3.1-pro-vllm0.32.0-cuda13.0-pytorch2.13.0-20261103
+  weights:
+    quantization: mxfp4
+    sources:
+    - huggingface:
+        repo_id: moonshotai/Kimi-K3.1-Pro
+        revision: 6d0a0202956796543364d666ab19c6ad1a494ee1
+  weight_bytes: 1561355966963
+  gpus:
+    vendor: ppu
+    name: (?:PPU[ _-]?M890)([^A-Za-z0-9]|$)
+  args:
+  - --trust-remote-code
+  - --enable-expert-parallel
+  - --tensor-parallel-size
+  - '8'
+  - --all2all-backend
+  - deepep_low_latency
+  - --gpu-memory-utilization
+  - '0.9'
+  - --max-num-seqs
+  - '32'
+  - --disable-custom-all-reduce
+  - --no-enable-prefix-caching
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - kimi_k3
+  - --reasoning-parser
+  - kimi_k3
+  env:
+    VLLM_ENGINE_READY_TIMEOUT_S: '3600'
+    DG_USE_MOE_DYNAMIC_TILE: '1'
+    VLLM_SAIL_DENSE_BF16_DEEPGEMM: '1'
+    VLLM_SAIL_DEEPGEMM_MOE_TP_FUSED: '1'
+    VLLM_SAIL_DEEPGEMM_MOE_FUSED_ACT_QUANT: '1'
+    VLLM_DEEPEPLL_RECV_HOOK: '0'
+    VLLM_DEEPEP_LOW_LATENCY_USE_MNNVL: '1'
+    DEEPEP_COMBINE_TOKEN_BALANCED: '1'
+  placement:
+    language: starlark
+    resolver: |-
+      def resolve(gpu):
+          # The vLLM recipe runs TP8 on every 8-PPU M890 node and one
+          # data-parallel replica per node (TP8 x DP4 on four nodes), so each
+          # node takes exactly 8 cards. The deployment states the data-parallel
+          # degree (the node count); TP_SIZE stays the deployment's own, since
+          # it counts every node's cards for multi-node placement.
+          if gpu.count != 8:
+              return reject("this recipe runs TP8 on exactly 8 PPUs per node")
+          return {"GPU_COUNT": 8, "SP_DEGREE": 1}
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+input_modalities: [text, image]
