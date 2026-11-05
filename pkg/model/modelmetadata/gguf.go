@@ -50,6 +50,7 @@ func parseGGUF(ctx context.Context, in Input, files FileView) (RuleResult, error
 		}
 		if m.kind == "mmproj" || m.architecture == "clip" || m.architecture == "controlvector" || (m.kind != "" && m.kind != "model") {
 			r.Components = append(r.Components, Reference{Path: name, Role: "component", Source: "gguf metadata"})
+			r.Issues = append(r.Issues, unrecognized(name, fmt.Sprintf("GGUF metadata identifies a component (general.type=%q, general.architecture=%q), not an independent model", m.kind, m.architecture)).Issues...)
 			continue
 		}
 		metadata[name] = m
@@ -72,7 +73,7 @@ func parseGGUF(ctx context.Context, in Input, files FileView) (RuleResult, error
 		if match := splitGGUFName.FindStringSubmatch(path.Base(names[0])); match != nil {
 			count, _ := strconv.Atoi(match[3])
 			if count < 1 || count > 10000 {
-				r.Issues = append(r.Issues, issue(names[0], "invalid_gguf_split", nil))
+				r.Issues = append(r.Issues, Issue{Path: names[0], Code: "invalid_gguf_split", Detail: fmt.Sprintf("GGUF filename declares invalid split count %d", count)})
 				continue
 			}
 			for i := 1; i <= count; i++ {
@@ -91,7 +92,7 @@ func parseGGUF(ctx context.Context, in Input, files FileView) (RuleResult, error
 				}
 				if !m.hasSplit || m.splitNo != uint64(i-1) || m.splitCount != uint64(count) {
 					e.Incomplete = true
-					r.Issues = append(r.Issues, issue(want, "invalid_gguf_split", nil))
+					r.Issues = append(r.Issues, Issue{Path: want, Code: "invalid_gguf_split", Detail: fmt.Sprintf("GGUF split metadata does not match its filename: split.no=%d, split.count=%d; expected %d and %d", m.splitNo, m.splitCount, i-1, count)})
 				}
 			}
 			if !strings.Contains(path.Base(names[0]), "-00001-of-") {
@@ -99,10 +100,10 @@ func parseGGUF(ctx context.Context, in Input, files FileView) (RuleResult, error
 			}
 		} else if lead.splitCount > 1 {
 			e.Incomplete = true
-			r.Issues = append(r.Issues, issue(names[0], "unresolved_gguf_split", nil))
+			r.Issues = append(r.Issues, Issue{Path: names[0], Code: "unresolved_gguf_split", Detail: "GGUF declares multiple splits but its filename does not identify the shard set"})
 		}
 		if lead.architecture == "" && !e.Incomplete {
-			r.Issues = append(r.Issues, issue(names[0], "gguf_missing_architecture", nil))
+			r.Issues = append(r.Issues, Issue{Path: names[0], Code: "gguf_missing_architecture", Detail: "GGUF metadata does not declare general.architecture"})
 			continue
 		}
 		r.Entries = append(r.Entries, e)

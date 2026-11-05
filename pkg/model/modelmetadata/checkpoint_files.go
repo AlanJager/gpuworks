@@ -20,33 +20,38 @@ var checkpointEncodings = [...]struct{ extension, defaultIndex string }{
 
 // An index owns its shard set. Preserve index precedence over loose files,
 // including a partial export in a different encoding.
-func checkpoint(ctx context.Context, dir, format string, files FileView) (Entry, error) {
+func checkpoint(ctx context.Context, dir, format string, files FileView) (Entry, []Issue, error) {
 	e := Entry{Path: dir, Format: format}
 	items, err := files.ReadDir(ctx, dir)
 	if err != nil {
-		return e, err
+		return e, nil, err
 	}
 	if indexes := checkpointIndexes(dir, items); len(indexes) > 0 {
 		e.Files, err = indexedCheckpointFiles(ctx, files, dir, indexes)
 	} else {
-		var weights []string
-		for _, encoding := range checkpointEncodings {
-			for _, item := range items {
-				if !item.IsDir && strings.HasSuffix(item.Name, encoding.extension) && !trainingCheckpointFile(item.Name) {
-					weights = append(weights, path.Join(dir, item.Name))
-				}
-			}
-			if len(weights) > 0 {
-				break
-			}
-		}
-		e.Files, err = unindexedCheckpointFiles(weights)
+		e.Files, err = unindexedCheckpointFiles(checkpointWeights(dir, items))
 	}
 	if err != nil {
-		return e, err
+		return e, nil, err
 	}
-	checkRequired(ctx, &e, files)
-	return e, nil
+	issues, err := checkRequired(ctx, &e, files)
+	return e, issues, err
+}
+
+// Discovery and missing-config diagnostics use the same format evidence.
+func checkpointWeights(dir string, items []FileInfo) []string {
+	var weights []string
+	for _, encoding := range checkpointEncodings {
+		for _, item := range items {
+			if !item.IsDir && strings.HasSuffix(item.Name, encoding.extension) && !trainingCheckpointFile(item.Name) {
+				weights = append(weights, path.Join(dir, item.Name))
+			}
+		}
+		if len(weights) > 0 {
+			break
+		}
+	}
+	return weights
 }
 
 func checkpointIndexes(dir string, items []FileInfo) []string {
