@@ -93,18 +93,37 @@ func (s *Store) ListAPIKeys() ([]APIKey, error) {
 }
 
 // RevokeAPIKey stops a key authenticating, keeping its row (and so its name
-// in the usage it has). Revoking an unknown or already revoked key is a
-// no-op.
+// in the usage it has). An unknown prefix returns ErrNotFound; an already
+// revoked key remains a no-op.
 func (s *Store) RevokeAPIKey(prefix string) error {
-	result := s.db.Model(&APIKey{}).Where("prefix = ? AND revoked_at IS NULL", prefix).
-		Update("revoked_at", time.Now().UTC())
+	changed := false
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		result := tx.Model(&APIKey{}).Where("prefix = ? AND revoked_at IS NULL", prefix).
+			Update("revoked_at", time.Now().UTC())
+		if result.Error != nil {
+			return result.Error
+		}
+		changed = result.RowsAffected > 0
+		if changed {
+			return nil
+		}
+		// The UPDATE acquires SQLite's writer before this existence check, so
+		// a concurrent create cannot turn an unmatched target into a live key
+		// that we acknowledge without revoking.
+		var existing APIKey
+		err := tx.Select("id").Where("prefix = ?", prefix).First(&existing).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ErrNotFound
+		}
+		return err
+	})
 	// Forget the key even when the write errored: re-verifying against the
 	// database is always safe, trusting a possibly revoked key is not.
 	s.apiKeys.forget(prefix)
-	if result.Error == nil && result.RowsAffected > 0 {
+	if err == nil && changed {
 		s.Bus.PublishChange("apikey", prefix, "revoked")
 	}
-	return result.Error
+	return err
 }
 
 // APIKeyIdentity is who presented a valid API key: the key, its owner and
