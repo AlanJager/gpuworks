@@ -391,11 +391,13 @@ type SysInfo struct {
 	// has no such module (and from an agent that predates the field). PD
 	// modes that move the KV over RDMA run only where it is loaded.
 	PeerMemory string `json:"peer_memory,omitempty"`
-	// RuntimeFallbackFrom is the runtime auto-detection passed over because
-	// it cannot give a container this node's accelerators, and
-	// RuntimeFallbackReason the code saying why (accelerator.RuntimeGPUBlocked*,
-	// or accelerator.RuntimeGPUReady once it can and the agent has yet to
-	// switch back). Both empty when nothing was passed over.
+	// RuntimeFallbackFrom is the runtime auto-detection passed over, and
+	// RuntimeFallbackReason the code saying why: it cannot give a container
+	// this node's accelerators (accelerator.RuntimeGPUBlocked*), its daemon
+	// is installed but did not answer at startup
+	// (RuntimeFallbackDaemonNotReady), or accelerator.RuntimeGPUReady once it
+	// can serve and the agent has yet to switch back. Both empty when nothing
+	// was passed over.
 	RuntimeFallbackFrom   string   `json:"runtime_fallback_from,omitempty"`
 	RuntimeFallbackReason string   `json:"runtime_fallback_reason,omitempty"`
 	Runtimes              []string `json:"runtimes,omitempty"`
@@ -532,3 +534,10 @@ const (
 	RuntimePrivilegeSudo = "sudo"
 	RuntimePrivilegeNone = "none"
 )
+
+// RuntimeFallbackDaemonNotReady is the fallback reason for a runtime whose
+// CLI and local socket are present but whose daemon did not answer while the
+// agent started: dockerd still starting at boot, or too busy (pulling a
+// large image) to answer in time. The agent rechecks it every minute and
+// switches back once it answers and no instance would be disturbed.
+const RuntimeFallbackDaemonNotReady = "daemon_not_ready"

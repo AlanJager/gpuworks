@@ -218,7 +218,7 @@
     "copyConfigureCommand": "Copy configure command",
     "configureCopied": "Configure command copied",
     "fallback": {
-      "gpu_plugin_missing": "{{from}} is installed but {{plugin}} is not, so this node uses runveil. Install {{plugin}}; the node switches back to {{from}} once it is idle.",
+      "gpu_plugin_missing": "{{from}} is installed but {{plugin}} is not, so this node uses runveil. Install {{plugin}}; the node switches back to {{from}} once it is idle.", "daemon_not_ready": "{{from}} is installed but did not answer when the agent started (still starting or busy), so this node uses runveil for now. The agent retries every minute and switches back to {{from}} once it answers and the node is idle.",
       "gpu_runtime_unconfigured": "{{from}} and {{plugin}} are installed but {{from}} is not configured for GPUs, so this node uses runveil. Configure it and restart {{from}}; the node switches back once it is idle.",
       "gpu_ready": "{{from}} is ready and can be switched to; the node switches automatically once it is idle."
     }

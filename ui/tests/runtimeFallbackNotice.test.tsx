@@ -89,3 +89,11 @@ test("a reason this client does not know is shown as its code rather than as not
   renderNotice({ gpu_vendor: "nvidia", runtime_fallback_from: "docker", runtime_fallback_reason: "gpu_something_new" });
   assert.equal(screen.getByRole("alert").textContent, "docker: gpu_something_new");
 });
+
+test("a daemon that did not answer at startup warns, says the agent retries, and offers no command", () => {
+  renderNotice({ gpu_vendor: "nvidia", runtime_fallback_from: "docker", runtime_fallback_reason: "daemon_not_ready" });
+  assert.equal(screen.getByRole("alert").textContent,
+    "docker is installed but did not answer when the agent started (still starting or busy), so this node uses runveil for now. The agent retries every minute and switches back to docker once it answers and the node is idle.");
+  assert.equal(screen.queryByRole("button"), null);
+  assert.equal(runtimeFallbackCommand({ gpu_vendor: "nvidia", runtime_fallback_from: "docker", runtime_fallback_reason: "daemon_not_ready" }), "");
+});

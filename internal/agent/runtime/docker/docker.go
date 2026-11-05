@@ -49,11 +49,39 @@ func (d *Driver) Detect(ctx context.Context) (bool, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	slog.Debug("runtime command", "runtime", "docker", "args", []string{"info", "--format", "{{.ServerVersion}}"})
-	if err := exec.CommandContext(ctx, "docker", "info", "--format", "{{.ServerVersion}}").Run(); err != nil {
-		slog.Debug("docker runtime unavailable", "reason", "docker info failed", "err", err)
-		return false, nil // installed but daemon not reachable / no permission
+	var stderr strings.Builder
+	cmd := exec.CommandContext(ctx, "docker", "info", "--format", "{{.ServerVersion}}")
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		slog.Debug("docker runtime unavailable", "reason", "docker info failed", "err", err, "stderr", strings.TrimSpace(stderr.String()))
+		if daemonNotReady(ctx.Err(), stderr.String()) {
+			return false, fmt.Errorf("%w: %s", runtime.ErrDaemonNotReady, firstLine(stderr.String(), err))
+		}
+		return false, nil // installed, but this agent may not use it (permission denied)
 	}
 	return true, nil
+}
+
+// daemonNotReady reports whether a failed `docker info` is a daemon that has
+// not come up or is too busy to answer, rather than one this agent may not
+// use. dockerd starting at boot leaves the socket refusing connections;
+// dockerd pulling a large image answers slower than the timeout.
+func daemonNotReady(ctxErr error, stderr string) bool {
+	if errors.Is(ctxErr, context.DeadlineExceeded) {
+		return true
+	}
+	text := strings.ToLower(stderr)
+	if strings.Contains(text, "permission denied") {
+		return false
+	}
+	return strings.Contains(text, "cannot connect to the docker daemon") || strings.Contains(text, "connection refused") || strings.Contains(text, "is the docker daemon running")
+}
+
+func firstLine(stderr string, err error) string {
+	if line, _, _ := strings.Cut(strings.TrimSpace(stderr), "\n"); line != "" {
+		return line
+	}
+	return err.Error()
 }
 
 // localDockerHost resolves the endpoint Docker can use without shelling out.
