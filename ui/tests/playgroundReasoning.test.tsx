@@ -56,3 +56,18 @@ test("a restored completed reply shows its reasoning expanded by default", async
   assert.ok(screen.getByText("saved reasoning"));
   assert.ok(screen.getByText("saved answer"));
 });
+
+test("vLLM's reasoning field and a gateway's thinking field stream into the same reasoning panel, each once", async () => {
+  const stream = controllableSSE();
+  serveStreams([stream]);
+  await renderChat().then((user) => sendPrompt(user, "think about this"));
+  stream.frame({ choices: [{ delta: { role: "assistant", content: "" } }] });
+  stream.frame({ choices: [{ delta: { reasoning: "The user" } }] });
+  stream.frame({ choices: [{ delta: { reasoning_content: " asks", reasoning: " asks" } }] });
+  stream.frame({ choices: [{ delta: { thinking: " twice" } }] });
+  await screen.findByText("The user asks twice");
+  stream.push("391");
+  await screen.findByText("391");
+  stream.end();
+  await screen.findByRole("button", { name: locale.playground.pane.copyReply });
+});
