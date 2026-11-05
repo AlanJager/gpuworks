@@ -363,7 +363,7 @@ func vllmKVTransferConfig(p Params) (string, bool) {
 		}
 		pd["kv_connector_extra_config"] = sides
 	}
-	if len(mode.ConnectorExtra) > 0 || mode.Transport == pdmode.TransportMooncakeRDMA {
+	if len(mode.ConnectorExtra) > 0 || mode.Transport.MooncakeBootstrap() {
 		extra, _ := pd["kv_connector_extra_config"].(map[string]any)
 		if extra == nil {
 			extra = map[string]any{}
@@ -371,16 +371,19 @@ func vllmKVTransferConfig(p Params) (string, bool) {
 		for key, value := range mode.ConnectorExtra {
 			extra[key] = value
 		}
-		if hcas := hcaDevices(p.ComputeNetwork.HCAs); len(hcas) > 0 && mode.Transport == pdmode.TransportMooncakeRDMA {
+		// TransportMooncake follows the network the group shares; the RDMA
+		// transport states its protocol in ConnectorExtra.
+		if mode.Transport == pdmode.TransportMooncake {
+			extra["mooncake_protocol"] = MooncakeProtocol(p.ComputeNetwork)
+		}
+		if hcas := hcaDevices(p.ComputeNetwork.HCAs); len(hcas) > 0 && extra["mooncake_protocol"] == "rdma" {
 			extra["device_name"] = strings.Join(hcas, ",")
 		}
 		pd["kv_connector_extra_config"] = extra
 	}
-	// The gateway names the prefill instance to its decoder by this id
-	// (pdmode.Mode.SynthesizedHandoff), so the prefill must run under it.
-	if mode.SynthesizedHandoff && p.PD.Role == pdmode.RolePrefill && p.PD.SideChannelHost != "" && p.PD.SideChannelPort > 0 {
-		pd["engine_id"] = pdmode.EngineID(p.PD.SideChannelHost, p.PD.SideChannelPort)
-	}
+	// No engine_id: vLLM gives each engine process a fresh one, and the
+	// gateway reads it from the prefill's bootstrap server
+	// (pdmode.Mode.SynthesizedHandoff).
 	var offload map[string]any
 	switch {
 	case q.KVDiskOffload:

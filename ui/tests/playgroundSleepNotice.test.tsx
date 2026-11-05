@@ -7,7 +7,7 @@ import { createI18n, dom } from "./helpers/dom.ts";
 // The playground's notice for a sleeping model says what the next request
 // does, as the server tells it: a platform sleep ends on a request, so sending
 // is enough; an operator's or a schedule's sleep does not, so the model must be
-// woken first, by the page's own button or from Deployments.
+// woken first, by the page's own button or from Inference Services.
 
 void dom;
 const { i18n, locale } = await createI18n(["playground"]);
@@ -32,7 +32,7 @@ test("a sleep a request ends says sending wakes it, with no wake to press", () =
   assert.equal(screen.queryByRole("button", { name: "wake" }), null);
 });
 
-test("a held sleep asks for a wake: the page's own, or from Deployments", () => {
+test("a held sleep asks for a wake: the page's own, or from Inference Services", () => {
   mount(<SleepNotice model={model({ sleeping: true })} action={<button type="button">wake</button>} />);
   assert.ok(screen.getByText(s.held));
   assert.ok(screen.getByRole("button", { name: "wake" }));

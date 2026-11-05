@@ -106,7 +106,7 @@ After the deployment starts, check the instance details for the storage and host
 
 ## Cache Preparation Progress and Recovery
 
-For models on NFS with local cache, instances do not start until the local copy is complete. Check the preparation summary in the deployment list. To investigate, open the details and inspect the source-checking, copying, verification, installation, or cache-eviction stage by node, main model and components, and selected storage. Copied bytes update even while an individual weight file is still incomplete. No percentage is shown when the total size is unknown, and estimated time remaining appears only after the rate stabilizes.
+For models on NFS with local cache, instances do not start until the local copy is complete. Check the preparation summary on the Inference Services page. To investigate, open the details and inspect the source-checking, copying, verification, installation, or cache-eviction stage by node, main model and components, and selected storage. Copied bytes update even while an individual weight file is still incomplete. No percentage is shown when the total size is unknown, and estimated time remaining appears only after the rate stabilizes.
 
 Deployment cache filling has no rate limit. For a manual copy from the Models page, you can set a rate limit (MiB/s) for that copy; leaving it empty or setting it to 0 means unlimited. Retrying a failed copy retains its rate limit; subsequent new copies do not inherit it.
 

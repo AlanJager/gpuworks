@@ -22,6 +22,18 @@ func ProfileForTarget(engine, vendor string) (Profile, error) {
 	}
 	if !accelerator.Supports(vendor, accelerator.FeaturePD) {
 		p.PDModes = nil
+	} else if v := accelerator.NormalizeVendor(vendor); v != "" {
+		// A target's profile lists only the PD modes declared for it.
+		modes := p.PDModes[:0:0]
+		for _, mode := range p.PDModes {
+			for _, declared := range mode.Vendors {
+				if accelerator.NormalizeVendor(declared) == v {
+					modes = append(modes, mode)
+					break
+				}
+			}
+		}
+		p.PDModes = modes
 	}
 	return p, nil
 }
@@ -72,6 +84,14 @@ func RequestedLaunchFeatures(engine string, launch ResolvedLaunch, p Params) []a
 func ValidateTargetLaunch(engine string, launch ResolvedLaunch, p Params) error {
 	if accelerator.RequiresDeviceSelection(p.Vendor) && p.AssignedGPUs <= 0 {
 		return messages.NewProductError(messages.ErrorAcceleratorDeviceSelectionRequired, "the target requires an explicit assigned GPU set", map[string]any{"vendor": accelerator.VendorBrand(p.Vendor)})
+	}
+	// A vendor requiring explicit device selection (AMD) may still own a
+	// memory-only logical partition backend; it never owns a compute/SM
+	// limit. RequiresDeviceSelection scopes this to that vendor rather than
+	// refusing SMLimitPct for every vendor, since NVIDIA/PPU/Hygon do expose
+	// one.
+	if accelerator.RequiresDeviceSelection(p.Vendor) && p.SMLimitPct != 0 && p.SMLimitPct != 100 {
+		return messages.NewProductError(messages.ErrorAcceleratorSMLimitUnsupported, "the target does not support a compute/SM limit", map[string]any{"vendor": accelerator.VendorBrand(p.Vendor)})
 	}
 	return ValidateTargetFeatures(engine, launch, p)
 }

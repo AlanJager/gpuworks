@@ -121,6 +121,7 @@ They **never silently fall back to unlimited GPU memory**.
 - **Ascend 910C**: L1 and L2 both pass with vLLM-Ascend 0.26.0rc1. When Sleep Capable is declared, the platform merges `weight_nz_mode` as `0` while preserving other `additional-config` keys. If the template environment's `PYTORCH_NPU_ALLOC_CONF` contains `expandable_segments:True`, the platform changes it to `expandable_segments:False`, keeps the other allocator settings, and evaluation/preview reports the warning `ASCEND_SLEEP_EXPANDABLE_SEGMENTS_DISABLED` (`params`: `variable`, `template_value`, `value`). Turning expandable segments off can fragment NPU memory more: the KV cache can be smaller, and a configuration with little memory headroom (for example a large model with `gpu_memory_utilization` 0.9 or higher) may run out of memory at startup or under load. If it does, lower `gpu_memory_utilization` or `max_model_len`, or turn sleep off. These large-model templates have not been validated on real hardware with sleep enabled. A nonzero NZ value the user states in extra arguments (`ASCEND_SLEEP_WEIGHT_NZ_CONFLICT`), or `expandable_segments:True` set in the deployment's own environment (`ASCEND_SLEEP_EXPANDABLE_SEGMENTS`), is rejected during creation or preview. When the command editor replaces the whole launch command, the platform neither injects nor checks these two settings.
 - **PPU ZW810E**: L1 and L2 both pass with the current hggc runner (vLLM 0.23.0), which actually runs V1. The logical `/is_sleeping` state may change before the underlying operation completes, so confirm completion from the POST response, memory readings, and inference after waking.
 - **Hygon K100**: L1 and L2 pass with vLLM 0.18.1 under both Docker and nerdctl. The platform injects `VLLM_CUDART_SO_PATH` for Hygon when Sleep Capable is declared; template or user environment values can still override it. The udocker/PRoot path fails the basic Torch kernel check and must not be used as evidence that this combination works.
+- **AMD Instinct MI300X**: L1 and L2 pass with the gpuworks-runner ROCm entry (vLLM 0.30.0, ROCm 7.2.3): while asleep another process could allocate 150 GiB of the ~185 GiB free, and after the staged L2 wake (weight buffers, weight reload, then KV cache and a prefix-cache reset) inference is correct. On that VF `amd-smi` does not reflect the freed memory; sysfs `mem_info_vram_used` does. Ryzen AI Max (gfx1151) is not validated.
 
 The Hygon ROCm sleep allocator also requires host-memory backing. On a K100 with 62 GiB RAM and no swap, `gpu_memory_utilization=0.9` caused the OOM killer to terminate EngineCore; lowering it to `0.25` passed. The platform currently has **no dedicated admission check for this backing memory**, so before creation you must evaluate node RAM, other instances, and system reserves yourself. Every result above is tied to the tested image and configuration; custom images are still not probed for capability.
 
@@ -202,11 +203,11 @@ the two groups in sequence. The greatest benefit appears with long prompts (thou
 |---|---|---|---|
 | `vllm-nixl` | vLLM / NVIDIA | UCX (over the compute network) | Validated: same machine, cross-machine Ethernet, and multi-node within a role |
 | `vllm-ascend-mooncake` | vLLM / Ascend | NPU's built-in RoCE ports (HCCL) | Validated: across two 910B4 machines; P and D NPUs must be mutually reachable on the NPU network |
+| `vllm-mooncake` | vLLM 0.21 / Hygon | Mooncake transfer engine (over the compute network, RDMA or TCP) | **Experimental** |
 | `sglang-nixl` | SGLang / NVIDIA | UCX | **Unverified** |
 | `sglang-ppu-ipc` | SGLang / PPU | Card-to-card IPC within one host (Mooncake NVLink transport) | Validated: two PPU ZW810E cards on one host, TP 1; P and D must be on the same node |
 | `sglang-ppu-mooncake` | SGLang / PPU | Mooncake RDMA (over a host RDMA compute network) | Validated: PPU ZW810E over RoCE NICs, TP 1; nodes need `alixpu_peermem` loaded |
 | `vllm-ppu-mooncake` | vLLM / PPU | Mooncake RDMA (over a host RDMA compute network) | Validated: PPU ZW810E over RoCE NICs, TP 1; nodes need `alixpu_peermem` loaded |
-| (Hygon) | No PD mode | — | — |
 
 `sglang-ppu-ipc` moves the KV only between cards of one host, so a placement across several nodes is rejected (`PD_SAME_NODE_REQUIRED`);
 it needs the PPU SGLang image with the PD patches (`hggc13.0-sglang0.5.13-r3` and later) and turns off the overlap scheduler.
@@ -214,9 +215,9 @@ it needs the PPU SGLang image with the PD patches (`hggc13.0-sglang0.5.13-r3` an
 otherwise `PD_NETWORK_RDMA_REQUIRED`) and load the PPU peer memory module `alixpu_peermem`, which lets the NIC register the cards' memory.
 A node without it shows a warning with the fix command in the **GPUDirect RDMA** column of its **Health checks**, and the Diagnose report lists it too;
 a manual placement on such a node is rejected (`PD_PEER_MEMORY_MISSING`), and automatic placement skips them, returning `PD_PEER_MEMORY_NONE` when none is left.
-Hygon has no PD mode yet.
-Two modes have opposite TP rules: `vllm-nixl` requires decode TP ≥ prefill TP, while `vllm-ascend-mooncake` requires
-prefill TP ≥ decode TP. `sglang-nixl`, `sglang-ppu-ipc`, and the two PPU Mooncake modes require them to be equal.
+On Hygon only the vLLM 0.21 image includes Mooncake; the 0.18.1 image cannot be used for PD.
+TP rules differ by mode: `vllm-nixl` requires decode TP ≥ prefill TP, `vllm-ascend-mooncake` requires
+prefill TP ≥ decode TP, and `vllm-mooncake`, `sglang-nixl`, `sglang-ppu-ipc`, and the two PPU Mooncake modes require them to be equal.
 
 **Costs and limitations**:
 
@@ -233,7 +234,7 @@ prefill TP ≥ decode TP. `sglang-nixl`, `sglang-ppu-ipc`, and the two PPU Moonc
   to completing the request locally on decode when prefill is unavailable (`fallback: decode`); you can also configure them to return 503 directly.
 - Known defect: the platform currently does not detect an engine process exiting after an instance becomes ready (`todo.md` T26). With PD, this appears as persistent gateway fallback.
 
-**When not to use it**: Prompts are very short; you have only one GPU or too few GPUs in one machine to divide into two groups; hardware is neither NVIDIA nor Ascend; or you want
+**When not to use it**: Prompts are very short; you have only one GPU or too few GPUs in one machine to divide into two groups; hardware is not NVIDIA, Ascend, PPU, or Hygon; or you want
 to scale through "replica count" (PD ignores `Replicas`).
 
 **How to confirm disaggregation is actually happening**: Once each prefill instance first becomes ready, the platform automatically runs a handoff self-check and records

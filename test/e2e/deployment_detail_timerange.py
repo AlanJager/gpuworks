@@ -41,7 +41,7 @@ def login(page: Page, base_url: str, password: str) -> None:
     page.locator('input[autocomplete="username"]').fill("admin")
     page.locator('input[autocomplete="current-password"]').fill(password)
     page.get_by_role("button", name="Sign In").click()
-    expect(page.get_by_role("heading", name="Deployments")).to_be_visible()
+    expect(page.get_by_role("heading", name="Inference Services")).to_be_visible()
 
 
 def open_drawer(page: Page, base_url: str, deployment_id: int) -> None:

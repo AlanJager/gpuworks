@@ -17,6 +17,7 @@ func TestRegistryExhaustive(t *testing.T) {
 		{BackendAscendLogical, VendorAscend, MaturityExperimental, []string{"libvruntime.so"}},
 		{BackendPPULogical, VendorPPU, MaturityExperimental, []string{"hggc_quota.so", "hgml_dlsym_hook.so"}},
 		{BackendHygonLogical, VendorHygon, MaturityExperimental, []string{"libamdhip64.so", "libhydmi.so", "libhydmi_mig.so", "librocm_smi64.so", "gpuworks-hygon-vdev-helper"}},
+		{BackendAMDLogical, VendorAMD, MaturityExperimental, []string{"libvrocm.so"}},
 	}
 	all := All()
 	if len(all) != len(want) {
@@ -72,8 +73,8 @@ func TestMatchProfileUnknownBackendAndProfilelessBackend(t *testing.T) {
 
 func TestProfilesAreOwnedByTheirBackend(t *testing.T) {
 	got := PartitionProfiles()
-	if len(got) != 6 {
-		t.Fatalf("PartitionProfiles() has %d rows, want 6 (4 Ascend + 1 PPU + 1 Hygon)", len(got))
+	if len(got) != 7 {
+		t.Fatalf("PartitionProfiles() has %d rows, want 7 (4 Ascend + 1 PPU + 1 Hygon + 1 AMD)", len(got))
 	}
 	for _, profile := range got {
 		if profile.Backend == BackendAscendLogical && profile.Framework != "cann" {
@@ -85,6 +86,9 @@ func TestProfilesAreOwnedByTheirBackend(t *testing.T) {
 		if profile.Backend == BackendHygonLogical && (profile.Framework != "dtk" || profile.Verified) {
 			t.Fatalf("Hygon profile must be advisory and unverified: %+v", profile)
 		}
+		if profile.Backend == BackendAMDLogical && profile.Framework != "rocm" {
+			t.Fatalf("AMD profile carries framework %q", profile.Framework)
+		}
 	}
 }
 
@@ -93,12 +97,19 @@ func TestOptionalCapabilitiesAreBackendScoped(t *testing.T) {
 	ascend, _ := Lookup(BackendAscendLogical)
 	ppu, _ := Lookup(BackendPPULogical)
 	hygon, _ := Lookup(BackendHygonLogical)
+	amd, _ := Lookup(BackendAMDLogical)
 
 	if !SkipsBehaviorProbe(nvidia) {
 		t.Fatal("NVIDIA must skip the behavior probe")
 	}
 	if SkipsBehaviorProbe(ascend) || SkipsBehaviorProbe(ppu) || SkipsBehaviorProbe(hygon) {
 		t.Fatal("Ascend, PPU, and Hygon must run the behavior probe")
+	}
+	// AMD has no host ROCm runtime available to the lightweight probe image
+	// (unlike PPU/Ascend/Hygon, whose whole-card containers already carry a
+	// host driver library); it is probe-exempt like NVIDIA instead.
+	if !SkipsBehaviorProbe(amd) {
+		t.Fatal("AMD must skip the behavior probe")
 	}
 
 	if why := RuntimeConstraint(ppu, "docker"); why != "" {
@@ -117,6 +128,16 @@ func TestOptionalCapabilitiesAreBackendScoped(t *testing.T) {
 			t.Errorf("Hygon under %q must report a runtime constraint", driver)
 		}
 	}
+	for _, driver := range []string{"docker", "nerdctl", "Docker", "udocker"} {
+		if why := RuntimeConstraint(amd, driver); why != "" {
+			t.Fatalf("AMD under %s constrained: %q", driver, why)
+		}
+	}
+	for _, driver := range []string{"", "host", "runveil"} {
+		if why := RuntimeConstraint(amd, driver); why == "" {
+			t.Errorf("AMD under %q must report a runtime constraint", driver)
+		}
+	}
 	if why := RuntimeConstraint(ascend, "udocker"); why != "" || RuntimeConstraint(nvidia, "nerdctl") != "" {
 		t.Fatal("Ascend and NVIDIA must be runtime-unconstrained")
 	}
@@ -124,8 +145,8 @@ func TestOptionalCapabilitiesAreBackendScoped(t *testing.T) {
 	if len(HostRequirementNotes(ascend)) == 0 {
 		t.Fatal("Ascend must surface host requirement notes")
 	}
-	if len(HostRequirementNotes(nvidia)) != 0 || len(HostRequirementNotes(ppu)) != 0 {
-		t.Fatal("NVIDIA and PPU must not surface host requirement notes")
+	if len(HostRequirementNotes(nvidia)) != 0 || len(HostRequirementNotes(ppu)) != 0 || len(HostRequirementNotes(amd)) != 0 {
+		t.Fatal("NVIDIA, PPU and AMD must not surface host requirement notes")
 	}
 }
 
@@ -134,6 +155,7 @@ func TestSupportsFrameworkFollowsBackendProfiles(t *testing.T) {
 	ppu, _ := Lookup(BackendPPULogical)
 	nvidia, _ := Lookup(BackendNVIDIALogical)
 	hygon, _ := Lookup(BackendHygonLogical)
+	amd, _ := Lookup(BackendAMDLogical)
 	if !SupportsFramework(ascend, "CANN") || SupportsFramework(ascend, "hggc") {
 		t.Fatal("Ascend framework support mismatch")
 	}
@@ -145,6 +167,9 @@ func TestSupportsFrameworkFollowsBackendProfiles(t *testing.T) {
 	}
 	if !SupportsFramework(hygon, "DTK") || SupportsFramework(hygon, "rocm") {
 		t.Fatal("Hygon framework support mismatch")
+	}
+	if !SupportsFramework(amd, "ROCm") || SupportsFramework(amd, "cuda") {
+		t.Fatal("AMD framework support mismatch")
 	}
 }
 

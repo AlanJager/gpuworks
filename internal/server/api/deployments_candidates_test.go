@@ -299,7 +299,7 @@ func TestDeploymentCandidatesWireAcceleratorRefusal(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := st.UpdateNodeStatus("n-amd", proto.NodeStatus{
-		Sys:  proto.SysInfo{Hostname: "n-amd", OS: "linux", Arch: "amd64", GPUVendor: "amd", RuntimeDriver: "udocker"},
+		Sys:  proto.SysInfo{Hostname: "n-amd", OS: "linux", Arch: "amd64", GPUVendor: "amd", RuntimeDriver: "host"},
 		GPUs: []proto.GPUInfo{{Index: 0, Name: "AMD Instinct MI325X", Vendor: "amd", ArchID: "gfx942", MemoryTotalBytes: 256 << 30, Healthy: true}},
 	}); err != nil {
 		t.Fatal(err)
@@ -313,7 +313,7 @@ func TestDeploymentCandidatesWireAcceleratorRefusal(t *testing.T) {
 		t.Fatalf("status = %d %s", status, body)
 	}
 	const wantKeys = `"unmet_by_key":{"accelerator":1,"gpuworks.ai/vendor":5}`
-	const wantItem = `{"uuid":"n-amd","name":"n-amd","status":"unmet","reason":{"code":"runtime_unsupported","params":{"arch":"amd64","missing_facts":false,"os":"linux","required_arch":"amd64","required_os":"linux","required_runtime":"docker/nerdctl","runtime":"udocker","vendor":"AMD"}},"replicas":0,"free_gpus":1,"gpus":1,"model":"absent"}`
+	const wantItem = `{"uuid":"n-amd","name":"n-amd","status":"unmet","reason":{"code":"runtime_unsupported","params":{"arch":"amd64","missing_facts":false,"os":"linux","required_arch":"amd64","required_os":"linux","required_runtime":"docker/nerdctl/udocker","runtime":"host","vendor":"AMD"}},"replicas":0,"free_gpus":1,"gpus":1,"model":"absent"}`
 	if !strings.Contains(string(body), wantKeys) || !strings.Contains(string(body), wantItem) {
 		t.Fatalf("wire = %s\nwant %s and %s", body, wantKeys, wantItem)
 	}

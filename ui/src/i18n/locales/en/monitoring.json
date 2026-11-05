@@ -170,7 +170,7 @@
       "memBw": "Mem BW",
       "temperature": "Temp",
       "power": "Power",
-      "openInDeployments": "View instance in Deployments"
+      "openInDeployments": "View instance in Inference Services"
     },
     "logs": {
       "title": "Logs",
@@ -192,7 +192,7 @@
       "throughput": "Per replica: Prompt tok/s = prompt (input) tokens processed per second during prefill; Generation tok/s = output tokens produced per second during decode.",
       "stage_time": "queue = wait from a request entering the engine until prefill starts; prefill = time processing the prompt before the first token; decode = time generating the whole output after the first token (it grows with the output; per-token speed is TPOT). Each is a single request's duration, the maximum of the per-10-second p95 within the window - a conservative upper bound. When the engine exports no such histograms, the times the engine reports in each reply are aggregated instead; a stage the replies do not carry is not drawn (TensorFold reports prefill and decode only).",
       "preemptions": "Requests per second the engine evicted from the running set (KV cache pressure) and re-queued. Every preemption re-runs prefill for that request, so a sustained non-zero rate inflates TTFT and wastes compute.",
-      "replicas": "One row per instance of this deployment: engine-side concurrency, KV cache and token throughput, plus per-GPU utilization, memory bandwidth, temperature and power from the node's collector. Click a row to open the instance in Deployments.",
+      "replicas": "One row per instance of this deployment: engine-side concurrency, KV cache and token throughput, plus per-GPU utilization, memory bandwidth, temperature and power from the node's collector. Click a row to open the instance in Inference Services.",
       "pd": "PD effectiveness = the share of the decode instances' prompt tokens that arrived by KV transfer rather than being recomputed; fallback rate = requests the decode instances served alone, with the top reasons; the prefill stage (mean / p95) is how long the gateway waited for the prefill instance, and the prefill queue tells whether the prefill instances keep up; the KV transfer comes from the engine's own transfer metrics, per transfer rather than per request: time, size and rate from the decode instances; failed counts the decoders' failed KV pulls; expired counts requests whose KV a prefill instance released because no decoder pulled it before its lease ran out (30 s by default in vLLM 0.30, renewed once a decoder holds the request): the request never reached a decoder after its prefill (the client left, the hand-off failed) or the decode instance failed; the mean prompt length flags loads too short to gain from disaggregation."
     },
     "tabs": {
@@ -380,6 +380,7 @@
       "prefill_unreachable": "Prefill instance unreachable",
       "prefill_5xx": "Prefill instance error (5xx)",
       "prefill_no_kv_params": "Prefill instance returned no KV handoff",
+      "prefill_no_bootstrap": "Prefill instance bootstrap server not usable",
       "prefill_failed": "Prefill call failed"
     },
     "deletedName": "{{name}} (deleted)",

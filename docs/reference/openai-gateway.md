@@ -145,7 +145,7 @@ Messages 流式的输入取自 `message_start`，输出取自最后的 `message_
 
 PD 分离将输入提示词计算和后续生成交给不同实例。vLLM 顺序交接成功时，prefill 实例先计算提示词，再把计算结果（KV）交给 decode 实例继续生成内容。decode 把收到的 KV 全部算作缓存命中，因此它报告的 `cached_tokens` 等于整个提示词长度，不能用来判断 prefill 阶段实际复用了多少缓存。
 
-**顺序交接模式 `vllm-nixl`、`vllm-ascend-mooncake` 使用 prefill 实例报告的缓存命中数。** 例如，输入有 1,036 个 token，prefill 实际命中缓存 512 个；即使 decode 报告命中 1,036 个，网关返回的 `cached_tokens` 仍为 512，表示有 512 个输入 token 直接复用了 prefill 的缓存结果。
+**顺序交接模式 `vllm-nixl`、`vllm-ascend-mooncake`、`vllm-mooncake` 使用 prefill 实例报告的缓存命中数。** 例如，输入有 1,036 个 token，prefill 实际命中缓存 512 个；即使 decode 报告命中 1,036 个，网关返回的 `cached_tokens` 仍为 512，表示有 512 个输入 token 直接复用了 prefill 的缓存结果。
 
 | 情况 | 返回的 `cached_tokens` |
 |---|---|

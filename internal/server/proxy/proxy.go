@@ -70,6 +70,8 @@ type Proxy struct {
 	load       *engineLoad
 	bufferPool *bufferPool
 	handoffs   handoffs
+	// bootstrap caches prefill instances' engine ids (pd_bootstrap.go).
+	bootstrap bootstrapEngines
 	// transport is the tunnel or serving-path transport under the retry
 	// layer; the PD prefill stage sends its own requests over it.
 	transport http.RoundTripper

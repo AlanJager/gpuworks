@@ -345,6 +345,20 @@ check_hcu_patches() {
         || FAILED+=("hcu_patches: vllm-hcu-apply-patches not on PATH")
 }
 
+check_mooncake_load_errors() {
+    # vLLM 的 MooncakeConnector 把拉取失败的块上报给调度器（patches/vllm_dtk/001），
+    # kv_load_failure_policy 才会生效；没有它时 decode 拿未收到的 KV 照样回答。
+    # 只读源码：dtk 档在构建容器里 import vllm 会因缺宿主库失败。
+    check_mooncake
+    python3 - <<'PY' >/dev/null 2>&1 || FAILED+=("mooncake_load_errors: MooncakeConnector does not report failed pulls (patches/vllm_dtk/001)")
+import importlib.util, pathlib
+root = pathlib.Path(importlib.util.find_spec("vllm").origin).parent
+src = (root / "distributed/kv_transfer/kv_connector/v1/mooncake/mooncake_connector.py").read_text()
+assert src.count("def get_block_ids_with_load_errors") == 2, "connector and worker"
+assert "self._invalid_block_ids.update(group)" in src
+PY
+}
+
 check_ppu_pd() {
     # PPU 同机 PD（pdmode sglang-ppu-ipc）：hggc/ppu-pd 的补丁装进了 sglang，
     # 且 mooncake 可用。补丁只在 SGLANG_PPU_PD_IPC=1 时生效。
@@ -379,6 +393,7 @@ for item in ${REQUIRES}; do
         audit)        check_audit ;;
         hcu_patches)  check_hcu_patches ;;
         ppu_pd)       check_ppu_pd ;;
+        mooncake_load_errors) check_mooncake_load_errors ;;
         *) FAILED+=("unknown requirement '${item}'") ;;
     esac
 done

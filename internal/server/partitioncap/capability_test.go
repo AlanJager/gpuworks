@@ -108,7 +108,10 @@ func TestCapabilityDerivationMatrix(t *testing.T) {
 		}
 	})
 	t.Run("vendor mismatch has no entry", func(t *testing.T) {
-		node := testNode(t, "amd", []proto.AssetReport{{Backend: accelerator.BackendAscendLogical, Files: []string{"libvruntime.so"}}})
+		// Apple has no registered logical partition backend at all (unlike
+		// AMD, which now owns amd-dgpu), so it stays the case with zero
+		// matching backends rather than one unavailable for a wrong reason.
+		node := testNode(t, "apple", []proto.AssetReport{{Backend: accelerator.BackendAscendLogical, Files: []string{"libvruntime.so"}}})
 		if got := ForGPU(node, &node.GPUs[0]); len(got) != 0 {
 			t.Fatalf("capabilities = %+v", got)
 		}
@@ -178,6 +181,10 @@ func TestPreferredIsTheNodesReadyBackend(t *testing.T) {
 	if got, ok := Preferred(nvidia); ok {
 		t.Fatalf("an unavailable backend was preferred: %+v", got)
 	}
+	amd := testNode(t, "amd", []proto.AssetReport{{Backend: accelerator.BackendAMDLogical, Root: "/assets", Files: []string{"libvrocm.so"}}})
+	if got, ok := Preferred(amd); !ok || got.Backend != accelerator.BackendAMDLogical {
+		t.Fatalf("amd preferred = %+v ok=%v, want %s", got, ok, accelerator.BackendAMDLogical)
+	}
 	// No assets reported: nothing can be ready, answered without deriving a
 	// capability per card.
 	bare := testNode(t, "nvidia", nil)
@@ -246,5 +253,37 @@ func testHygonCapabilityPrerequisites(t *testing.T, model string) {
 	node.PartitionProbes = `[]`
 	if got := ForGPU(node, &node.GPUs[0]); len(got) != 1 || got[0].Status != StatusUnavailable || got[0].ProbeStatus == proto.PartitionProbePassed {
 		t.Fatalf("missing probe capability = %+v", got)
+	}
+}
+
+// AMD is probe-exempt like NVIDIA: readiness rests on the agent's safety
+// protocol and reported assets alone, under Docker or nerdctl; no probe
+// report is required or consulted.
+func TestAMDDGPUIsProbeExemptAndRuntimeConstrained(t *testing.T) {
+	node := &store.Node{
+		PartitionSafetyProtocol: 1, GPUVendor: "amd", Arch: "amd64", Framework: "rocm", FrameworkVersion: "7.2.3", RuntimeDriver: "docker",
+		PartitionAssets: `[{"backend":"amd-dgpu","root":"/opt","files":["libvrocm.so"]}]`,
+	}
+	node.GPUs = []store.GPU{{Index: 0, Vendor: "amd", ArchID: "gfx942"}}
+	got := ForGPU(node, &node.GPUs[0])
+	if len(got) != 1 || got[0].Backend != accelerator.BackendAMDLogical || got[0].Status != StatusReady || got[0].ProbeStatus != "" {
+		t.Fatalf("AMD docker capability = %+v, want ready with no probe status", got)
+	}
+	node.RuntimeDriver = "nerdctl"
+	if got := ForGPU(node, &node.GPUs[0]); len(got) != 1 || got[0].Status != StatusReady {
+		t.Fatalf("AMD nerdctl capability = %+v", got)
+	}
+	node.RuntimeDriver = "udocker"
+	if got := ForGPU(node, &node.GPUs[0]); len(got) != 1 || got[0].Status != StatusReady {
+		t.Fatalf("AMD runveil capability = %+v", got)
+	}
+	node.RuntimeDriver = "host"
+	if got := ForGPU(node, &node.GPUs[0]); len(got) != 1 || got[0].Status != StatusUnavailable || !strings.Contains(got[0].Reason, "Docker, nerdctl or udocker") {
+		t.Fatalf("AMD host-process capability = %+v", got)
+	}
+	node.RuntimeDriver = "docker"
+	node.PartitionSafetyProtocol = 0
+	if got := ForGPU(node, &node.GPUs[0]); len(got) != 1 || got[0].Status != StatusUnavailable || !strings.Contains(got[0].Reason, "upgrade the agent") {
+		t.Fatalf("old agent AMD capability = %+v", got)
 	}
 }

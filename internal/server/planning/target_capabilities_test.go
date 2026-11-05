@@ -23,7 +23,8 @@ func TestTargetCardFilteringKeepsCompatibleMixedVendorCandidate(t *testing.T) {
 	if refusal := constrainTargetGPUs(in, &snap); refusal != nil {
 		t.Fatalf("mixed node refusal=%+v", refusal)
 	}
-	if len(snap.GPUs) != 1 || snap.GPUs[0].Index != 1 || snap.Vendor != "nvidia" {
+	// AMD sleeps and needs no recognizable command, so both cards stay.
+	if len(snap.GPUs) != 2 || snap.Vendor != "" {
 		t.Fatalf("filtered candidates=%+v vendor=%q", snap.GPUs, snap.Vendor)
 	}
 }
@@ -73,7 +74,8 @@ func TestResolvedFeaturesAreAppliedToEveryVendor(t *testing.T) {
 }
 
 func TestExplicitSelectionRejectsOneIncompatibleGPU(t *testing.T) {
-	node := &store.Node{OS: "linux", Arch: "amd64", RuntimeDriver: "docker", GPUs: []store.GPU{{Index: 0, Name: "AMD Instinct MI300X", Vendor: "amd", ArchID: "gfx942"}, {Index: 1, Name: "NVIDIA H100", Vendor: "nvidia", ArchID: "sm_90"}}}
+	// Apple is the vendor that refuses requested features.
+	node := &store.Node{OS: "linux", Arch: "amd64", RuntimeDriver: "docker", GPUs: []store.GPU{{Index: 0, Name: "Apple M4 Max", Vendor: "apple"}, {Index: 1, Name: "NVIDIA H100", Vendor: "nvidia", ArchID: "sm_90"}}}
 	in := Input{Node: node, GPUIndexes: []int{0, 1}, Sleepable: true}
 	snap := scheduler.NodeSnapshot{GPUs: []scheduler.GPU{{Index: 0}, {Index: 1}}}
 	refusal := constrainTargetGPUs(in, &snap)
@@ -83,14 +85,21 @@ func TestExplicitSelectionRejectsOneIncompatibleGPU(t *testing.T) {
 }
 
 func TestAutomaticTargetGateCanKeepOneCompatibleCard(t *testing.T) {
-	node := &store.Node{OS: "linux", Arch: "amd64", RuntimeDriver: "docker", GPUs: []store.GPU{{Index: 0, Name: "AMD Instinct MI300X", Vendor: "amd", ArchID: "gfx942"}, {Index: 1, Name: "NVIDIA H100", Vendor: "nvidia", ArchID: "sm_90"}}}
+	// Apple is the vendor that refuses requested features.
+	node := &store.Node{OS: "linux", Arch: "amd64", RuntimeDriver: "docker", GPUs: []store.GPU{{Index: 0, Name: "Apple M4 Max", Vendor: "apple"}, {Index: 1, Name: "NVIDIA H100", Vendor: "nvidia", ArchID: "sm_90"}}}
 	req := LaunchRequest{Node: node, Model: &store.Model{}, Engine: "vllm", Sleepable: true}
 	if refusal, err := TargetCandidateRefusal(req, deploy.CatalogSelection{}, node); err != nil || refusal != nil {
 		t.Fatalf("compatible auto candidate refused: %+v", refusal)
 	}
 	node.GPUs = node.GPUs[:1]
 	if refusal, err := TargetCandidateRefusal(req, deploy.CatalogSelection{}, node); err != nil || refusal == nil || refusal.Code != scheduler.ReasonSleepUnsupportedOnNode {
-		t.Fatalf("unsupported auto candidate refusal=%+v", refusal)
+		t.Fatalf("unsupported auto candidate refusal=%+v err=%v", refusal, err)
+	}
+	// Neither sleep nor data parallelism rules an AMD card out.
+	node.GPUs = []store.GPU{{Index: 0, Name: "AMD Instinct MI300X", Vendor: "amd", ArchID: "gfx942"}}
+	sleepy := LaunchRequest{Node: node, Model: &store.Model{}, Engine: "vllm", Sleepable: true, Quick: deploy.LaunchConfig{DP: 2}}
+	if refusal, err := TargetCandidateRefusal(sleepy, deploy.CatalogSelection{}, node); err != nil || refusal != nil {
+		t.Fatalf("sleepable AMD candidate refused: %+v err=%v", refusal, err)
 	}
 }
 
@@ -158,13 +167,16 @@ func TestTargetCandidateRefusalReturnsInvalidTemplateError(t *testing.T) {
 }
 
 func TestSleepDeclarableUsesFeatureRefusalWithoutGPUSelectionGate(t *testing.T) {
-	err := SleepDeclarable(true, "vllm", "amd")
+	err := SleepDeclarable(true, "vllm", "apple")
 	var product *messages.ProductError
 	if !errors.As(err, &product) || product.Code() != messages.ErrorAcceleratorFeatureUnsupported {
-		t.Fatalf("AMD sleep declaration error=%v, want feature refusal", err)
+		t.Fatalf("Apple sleep declaration error=%v, want feature refusal", err)
 	}
 	if product.Params()["feature"] != "engine_sleep" {
-		t.Fatalf("AMD sleep refusal params=%v", product.Params())
+		t.Fatalf("Apple sleep refusal params=%v", product.Params())
+	}
+	if err := SleepDeclarable(true, "vllm", "amd"); err != nil {
+		t.Fatalf("AMD sleep declaration refused: %v", err)
 	}
 	if err := SleepDeclarable(false, "vllm", "amd"); err != nil {
 		t.Fatalf("non-sleepable AMD request should not require target selection: %v", err)

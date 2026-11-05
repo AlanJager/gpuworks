@@ -167,6 +167,99 @@ func TestPPUPartitionUsesSafePreloadOrderAndQuota(t *testing.T) {
 	}
 }
 
+func TestAMDPartitionMountsLibvrocmAndSetsPerCardQuota(t *testing.T) {
+	root := t.TempDir()
+	assetDir := filepath.Join(root, "dgpu-runtime", "amd", "linux-"+runtime.GOARCH)
+	if err := os.MkdirAll(assetDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(assetDir, "libvrocm.so"), fakeELF(runtime.GOARCH), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	e := &Engine{stateDir: root}
+	ws := &agentruntime.WorkloadSpec{Env: map[string]string{}}
+	ok, reason := e.applyPartition(context.Background(), ws, proto.InstanceDesiredState{UUID: "amd-1", GPUIndexes: []int{0, 1}, VRAMLimitBytes: 60000 << 20, PartitionBackend: accelerator.BackendAMDLogical})
+	if !ok {
+		t.Fatalf("apply failed: %s", reason)
+	}
+	if ws.Env["LD_PRELOAD"] != "/opt/gpuworks/partition/libvrocm.so" {
+		t.Fatalf("LD_PRELOAD = %q", ws.Env["LD_PRELOAD"])
+	}
+	if ws.Env["VROCM_DEVICE_MEMORY_LIMIT_0"] != "60000" || ws.Env["VROCM_DEVICE_MEMORY_LIMIT_1"] != "60000" {
+		t.Fatalf("quota env = %+v", ws.Env)
+	}
+	if ws.Env["VROCM_LEDGER_PATH"] != "/dev/shm/gpuworks-amd-amd-1" {
+		t.Fatalf("ledger path = %q", ws.Env["VROCM_LEDGER_PATH"])
+	}
+	var mounted bool
+	for _, mount := range ws.Mounts {
+		if mount.Target == "/opt/gpuworks/partition/libvrocm.so" {
+			mounted = true
+			if !mount.ReadOnly || mount.Source != filepath.Join(assetDir, "libvrocm.so") {
+				t.Fatalf("libvrocm mount = %+v", mount)
+			}
+		}
+	}
+	if !mounted {
+		t.Fatalf("libvrocm.so was not mounted: %+v", ws.Mounts)
+	}
+	// AMD has no compute/SM env: this backend is memory-only.
+	for key := range ws.Env {
+		if strings.Contains(key, "SM_LIMIT") || strings.Contains(key, "CU_MASK") {
+			t.Fatalf("unexpected compute-limit env %q", key)
+		}
+	}
+}
+
+func TestAMDPartitionRequiresSelectedDevice(t *testing.T) {
+	e := &Engine{stateDir: t.TempDir()}
+	ok, reason := e.applyPartition(context.Background(), &agentruntime.WorkloadSpec{Env: map[string]string{}}, proto.InstanceDesiredState{UUID: "amd-empty", VRAMLimitBytes: 1 << 30, PartitionBackend: accelerator.BackendAMDLogical})
+	if ok || !strings.Contains(reason, "at least one selected device") {
+		t.Fatalf("result = %v/%q", ok, reason)
+	}
+}
+
+func TestAMDPartitionLiveLimitIsUnsupported(t *testing.T) {
+	injector := amdPartitionInjector{}
+	changed, err := injector.applyLimit(&Engine{}, proto.InstanceDesiredState{})
+	if changed || !errors.Is(err, errLiveLimitUnsupported) {
+		t.Fatalf("applyLimit = %v, %v", changed, err)
+	}
+}
+
+func TestCleanupPartitionStateRemovesAMDLedger(t *testing.T) {
+	root := t.TempDir()
+	e := &Engine{stateDir: root}
+	uuid := "amd-cleanup-" + strings.ReplaceAll(t.Name(), "/", "-")
+	instanceDir := filepath.Join(root, "dgpu-runtime", "instances", sanitizeID(uuid))
+	if err := os.MkdirAll(instanceDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	ledger := amdLedgerPath(uuid)
+	ledgerCreated := false
+	if _, err := os.Stat("/dev/shm"); err == nil {
+		if err := os.WriteFile(ledger, []byte("test"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		ledgerCreated = true
+	}
+	t.Cleanup(func() {
+		if ledgerCreated {
+			_ = os.Remove(ledger)
+		}
+	})
+
+	e.cleanupPartitionState(uuid)
+	if _, err := os.Stat(instanceDir); !os.IsNotExist(err) {
+		t.Fatalf("instance directory remains: %v", err)
+	}
+	if ledgerCreated {
+		if _, err := os.Stat(ledger); !os.IsNotExist(err) {
+			t.Fatalf("AMD ledger remains: %v", err)
+		}
+	}
+}
+
 type probeLibraryPPUProber struct{ *gpu.FixedProber }
 
 func (p *probeLibraryPPUProber) RuntimeInjection(indexes []int) gpu.RuntimeInjection {

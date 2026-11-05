@@ -39,9 +39,11 @@ func TestSleepTargetPolicyUsesSelectedGPUOnMixedNode(t *testing.T) {
 	}
 }
 
-func TestSleepTargetPolicyRefusesLegacyAMDSleepButAllowsWake(t *testing.T) {
+// Apple is the vendor without engine sleep; the refusal mechanics are
+// vendor-neutral.
+func TestSleepTargetPolicyRefusesRestrictedVendorSleepButAllowsWake(t *testing.T) {
 	f := newSleepFixture(t)
-	setSleepFixtureGPUVendor(t, f, f.node.GPUs[0].ID, "amd")
+	setSleepFixtureGPUVendor(t, f, f.node.GPUs[0].ID, "apple")
 	dep := f.deployment(t, &store.Deployment{
 		Name: "legacy-amd", ServedName: "legacy-amd", Engine: "vllm",
 		Sleepable: true, DesiredSleep: 1,
@@ -51,7 +53,7 @@ func TestSleepTargetPolicyRefusesLegacyAMDSleepButAllowsWake(t *testing.T) {
 
 	status, body := f.call(t, f.h.sleepDeployment, "/api/v1/deployments/x/sleep", dep.ID)
 	if status != http.StatusBadRequest || body["code"] != messages.ErrorAcceleratorFeatureUnsupported {
-		t.Fatalf("new sleep order for legacy AMD deployment = %d %v", status, body)
+		t.Fatalf("new sleep order for restricted-vendor deployment = %d %v", status, body)
 	}
 	gotDep, err := f.st.GetDeployment(dep.ID)
 	if err != nil {
@@ -67,20 +69,20 @@ func TestSleepTargetPolicyRefusesLegacyAMDSleepButAllowsWake(t *testing.T) {
 
 	status, body = f.call(t, f.h.wakeDeployment, "/api/v1/deployments/x/wake", dep.ID)
 	if status != http.StatusOK || body["status"] != "waking" {
-		t.Fatalf("wake existing AMD sleeper = %d %v", status, body)
+		t.Fatalf("wake existing restricted-vendor sleeper = %d %v", status, body)
 	}
 	gotDep, err = f.st.GetDeployment(dep.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if gotDep.DesiredSleep != 0 || sleepIntent(t, f.st, inst.UUID) != 0 {
-		t.Fatalf("AMD wake did not clear sleep intent: deployment=%d instance=%d", gotDep.DesiredSleep, sleepIntent(t, f.st, inst.UUID))
+		t.Fatalf("restricted-vendor wake did not clear sleep intent: deployment=%d instance=%d", gotDep.DesiredSleep, sleepIntent(t, f.st, inst.UUID))
 	}
 }
 
-func TestInstanceSleepTargetPolicyRejectsAMDWithoutChangingIntentAndAllowsWake(t *testing.T) {
+func TestInstanceSleepTargetPolicyRejectsRestrictedVendorWithoutChangingIntentAndAllowsWake(t *testing.T) {
 	f := newSleepFixture(t)
-	setSleepFixtureGPUVendor(t, f, f.node.GPUs[0].ID, "amd")
+	setSleepFixtureGPUVendor(t, f, f.node.GPUs[0].ID, "apple")
 	dep := f.deployment(t, &store.Deployment{
 		Name: "legacy-amd-instance", ServedName: "legacy-amd-instance", Engine: "vllm",
 		Sleepable: true, DesiredSleep: 1,
@@ -94,7 +96,7 @@ func TestInstanceSleepTargetPolicyRejectsAMDWithoutChangingIntentAndAllowsWake(t
 
 	rec := instanceRequest(f.h.sleepInstance, inst.UUID, "")
 	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), `"code":"`+messages.ErrorAcceleratorFeatureUnsupported+`"`) {
-		t.Fatalf("new instance sleep order for legacy AMD deployment = %d %s", rec.Code, rec.Body.String())
+		t.Fatalf("new instance sleep order for restricted-vendor deployment = %d %s", rec.Code, rec.Body.String())
 	}
 	after, err := f.st.InstanceByUUID(inst.UUID)
 	if err != nil {
@@ -113,22 +115,22 @@ func TestInstanceSleepTargetPolicyRejectsAMDWithoutChangingIntentAndAllowsWake(t
 
 	rec = instanceRequest(f.h.wakeInstance, inst.UUID, "")
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"status":"waking"`) {
-		t.Fatalf("wake existing AMD instance sleeper = %d %s", rec.Code, rec.Body.String())
+		t.Fatalf("wake existing restricted-vendor instance sleeper = %d %s", rec.Code, rec.Body.String())
 	}
 	if sleepIntent(t, f.st, inst.UUID) != 0 {
-		t.Fatalf("AMD instance wake left intent at %d", sleepIntent(t, f.st, inst.UUID))
+		t.Fatalf("restricted-vendor instance wake left intent at %d", sleepIntent(t, f.st, inst.UUID))
 	}
 }
 
-func TestSleepTargetUnresolvedSelectionFailsClosedOnlyWhenNodeHasAMD(t *testing.T) {
+func TestSleepTargetUnresolvedSelectionFailsClosedOnlyWhenNodeHasRestrictedVendor(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
 		vendor  string
 		indexes string
 		want    int
 	}{
-		{name: "AMD empty selection", vendor: "amd", indexes: "[]", want: http.StatusInternalServerError},
-		{name: "AMD stale index", vendor: "amd", indexes: "[99]", want: http.StatusInternalServerError},
+		{name: "restricted empty selection", vendor: "apple", indexes: "[]", want: http.StatusInternalServerError},
+		{name: "restricted stale index", vendor: "apple", indexes: "[99]", want: http.StatusInternalServerError},
 		{name: "NVIDIA empty legacy selection", vendor: "nvidia", indexes: "[]", want: http.StatusOK},
 		{name: "NVIDIA stale legacy index", vendor: "nvidia", indexes: "[99]", want: http.StatusOK},
 	} {
@@ -152,9 +154,9 @@ func TestSleepTargetUnresolvedSelectionFailsClosedOnlyWhenNodeHasAMD(t *testing.
 			if err != nil {
 				t.Fatal(err)
 			}
-			if tc.vendor == "amd" {
+			if tc.vendor == "apple" {
 				if after.DesiredStateJSON != before.DesiredStateJSON {
-					t.Fatalf("unresolved AMD target changed desired state: before=%s after=%s", before.DesiredStateJSON, after.DesiredStateJSON)
+					t.Fatalf("unresolved restricted-vendor target changed desired state: before=%s after=%s", before.DesiredStateJSON, after.DesiredStateJSON)
 				}
 			} else if after.DesiredStateJSON == before.DesiredStateJSON {
 				t.Fatal("pure NVIDIA legacy target did not retain the pre-existing sleep behavior")

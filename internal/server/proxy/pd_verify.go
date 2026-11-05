@@ -79,9 +79,14 @@ func (p *Proxy) VerifyPDHandoff(ctx context.Context, deploymentID uint, prefillU
 	if err != nil {
 		return out, fmt.Errorf("read decoder metrics: %w", err)
 	}
-	transferID := ""
+	transferID, engineID := "", ""
 	if route.mode.SynthesizedHandoff {
-		transferID = newTransferID()
+		id, err := p.bootstrapEngineID(ctx, *prefill, route.placement.TP(pdmode.RolePrefill))
+		if err != nil {
+			out.Failed, out.Reason, out.EndedAt = true, pdFallbackNoBootstrap, time.Now()
+			return out, nil
+		}
+		transferID, engineID = newTransferID(), id
 	}
 	prefillRequest, _ := prefillBody(body, transferID)
 	resp, err := p.callPrefill(ctx, *prefill, "/v1/completions", prefillRequest, nil)
@@ -96,7 +101,7 @@ func (p *Proxy) VerifyPDHandoff(ctx context.Context, deploymentID uint, prefillU
 	}
 	_ = json.Unmarshal(data, &answer)
 	if route.mode.SynthesizedHandoff && resp.StatusCode == http.StatusOK {
-		answer.Params = synthesizedHandoff(*prefill, transferID)
+		answer.Params = synthesizedHandoff(*prefill, engineID, transferID)
 	}
 	if resp.StatusCode != http.StatusOK || len(bytes.TrimSpace(answer.Params)) == 0 || bytes.Equal(bytes.TrimSpace(answer.Params), []byte("null")) {
 		out.Failed, out.Reason, out.EndedAt = true, pdFallbackNoKVParams, time.Now()

@@ -1,9 +1,5 @@
 # gpuworks-runner: Ascend CANN vLLM 线（vllm-ascend）
 #
-# 派生自 gpustack/runner 的 pack/cann/Dockerfile.vllm（Apache-2.0，见 ../NOTICE）：
-# 「包装引擎可执行文件以 source SDK env」与「按型号跳过 mooncake/LMCache」两处
-# 做法参照其实现。
-#
 # 内容 = 上游 vanilla（quay.io/ascend/vllm-ascend|vllm-omni，自带 CANN/torch-npu/
 #          vllm-ascend）+ 轻量工具层 + audio extras + mooncake（npu 变体，按型号）
 #

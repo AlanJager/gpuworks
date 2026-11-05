@@ -1,8 +1,5 @@
 # gpuworks-runner: NVIDIA CUDA SGLang 线
 #
-# 派生自 gpustack/runner 的 pack/cuda/Dockerfile.sglang（Apache-2.0，见 ../NOTICE）：
-# 工具层构成与分层思路参照其做法。
-#
 # 内容 = 上游 vanilla（lmsysorg/sglang 官方镜像，**已自带 diffusion 全套**）
 #       + 轻量工具层
 #

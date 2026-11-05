@@ -1426,10 +1426,10 @@ extra_args 解析（`EXTRA_ARGS_INVALID`）、挂载（`MOUNT_CONTAINER_PATH`/`M
 }}}
 ```
 
-- `mode`：引擎档位 `pd_modes` 中的一个（`vllm-nixl`、`vllm-ascend-mooncake`、`vllm-ppu-mooncake`、`sglang-nixl`、`sglang-ppu-ipc`、`sglang-ppu-mooncake`）；未知字段一律拒绝。
+- `mode`：引擎档位 `pd_modes` 中的一个（`vllm-nixl`、`vllm-ascend-mooncake`、`vllm-mooncake`、`vllm-ppu-mooncake`、`sglang-nixl`、`sglang-ppu-ipc`、`sglang-ppu-mooncake`）；未知字段一律拒绝。
 - 每个 `unit` 是一个副本；`gpus` 可省略。`followers` 使该副本跨多台节点（rank 1…N），此时角色必须写 `tp`，
   每个 rank 运行 `tp × pp ÷ rank 数` 张卡。
-- `fallback` 与 `kv_load_failure` 的可选值和默认值按模式定：`vllm-nixl`、`vllm-ascend-mooncake` 的 `fallback`
+- `fallback` 与 `kv_load_failure` 的可选值和默认值按模式定：`vllm-nixl`、`vllm-ascend-mooncake`、`vllm-mooncake` 的 `fallback`
   为 `decode`（默认）或 `fail`，`kv_load_failure` 为 `fail`（默认）或 `recompute`；`sglang-nixl`、`sglang-ppu-ipc`、`sglang-ppu-mooncake`、
   `vllm-ppu-mooncake` 的 `fallback` 只有 `fail`，也没有 `kv_load_failure`。模式不允许的值返回 `PD_FALLBACK_INVALID` /
   `PD_KV_LOAD_FAILURE_INVALID`。
@@ -1739,7 +1739,7 @@ PD 部署另返回 `pd`：
 
 - `effectiveness_pct`、`fallback_rate_pct`、`fallbacks`（降级原因对应次数）、`prefill_waiting_avg`、`avg_prompt_tokens`。
 - `prefill_stage_avg_ms`、`prefill_stage_p95_ms`：网关等待 prefill 的平均时间与 P95，均取近 5 分钟；P95 来自请求分段直方图。
-- `kv_transfer.exposed`：引擎是否导出 KV 传输指标；`vllm-ascend-mooncake` 为 `false`，其余传输字段均为 `null`。
+- `kv_transfer.exposed`：引擎是否导出 KV 传输指标；`vllm-ascend-mooncake` 与 `vllm-mooncake` 为 `false`，其余传输字段均为 `null`。
 - `kv_transfer` 的其他字段：每次传输的 `avg_ms`、`p95_ms`、`avg_mb`，传输速度 `mb_per_s`，窗口内的 `failed`（decode 拉取失败）和 `expired`（prefill KV 租约到期未被拉走）次数。没有数据为 `null`。
 
 ### 跨部署查找请求

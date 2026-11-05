@@ -37,13 +37,14 @@ The instance count, placement, and TP for each role go in the `pd` object of the
 
 **The PD mode catalog is the sole source of rules.** The pure leaf package `internal/server/pdmode` declares each mode: engine, role names, each role's KV connector
 role value, wire protocol, TP direction rule, ports required per instance, whether the same vendor is required, and the role from which KV transfer metrics are read. Platform code hardcodes
-no rules beyond "prefill/decode". There are currently three modes:
+no rules beyond "prefill/decode". There are currently four modes:
 
 | Mode | Wire Protocol | TP Rule | Transport | Hardware Verification |
 |---|---|---|---|---|
 | `vllm-nixl` | Sequential, two-stage | decode ≥ prefill | UCX | Verified (same node, cross-node Ethernet, and multiple nodes within a role) |
 | `sglang-nixl` | Concurrent dispatch to both (`bootstrap_host/port/room`) | Equal | UCX | Not verified |
 | `vllm-ascend-mooncake` | Sequential, two-stage | prefill ≥ decode | HCCL (RoCE built into the NPU; mounts `/etc/hccn.conf`) | Verified (cross-node; P and D NPUs must reach each other on the NPU network) |
+| `vllm-mooncake` | Sequential, two-stage; the gateway generates the handoff parameters (prefill returns no `kv_transfer_params`; the gateway reads the engine id from its bootstrap server) | Equal | Mooncake transfer engine (Hygon DTK build, RDMA or TCP) | Experimental |
 
 Violating a TP rule returns the corresponding error code. Engine presets expose `pd_modes` through `pdmode.ForEngine`, and the frontend uses them to offer available modes.
 

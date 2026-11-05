@@ -57,7 +57,8 @@ func TestEvaluateEligibilityUsesActualArchitectureForTemplateLaunch(t *testing.T
 	if !nodes["eligible-gfx942"].Eligible {
 		t.Fatalf("ordinary target rejected: %+v", nodes["eligible-gfx942"])
 	}
-	if nodes["eligible-gfx1151"].Eligible || !hasReason(nodes["eligible-gfx1151"], "accelerator_feature_unsupported") {
-		t.Fatalf("architecture-dependent resolved DP requirement was lost: %+v", nodes["eligible-gfx1151"])
+	// The gfx1151 launch resolves to data parallelism, which AMD runs.
+	if !nodes["eligible-gfx1151"].Eligible {
+		t.Fatalf("architecture-dependent resolved DP launch refused: %+v", nodes["eligible-gfx1151"])
 	}
 }

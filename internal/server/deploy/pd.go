@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"gpuworks.ai/gpuworks/internal/accelerator"
 	"gpuworks.ai/gpuworks/internal/server/pdmode"
 )
 
@@ -77,7 +78,11 @@ func kvTransferNetworkEnv(p Params) map[string]string {
 	switch {
 	case n.HostRDMA() && len(n.HCAs) > 0:
 		env["UCX_NET_DEVICES"] = n.HCAs[0]
-		env["UCX_TLS"] = "rc,cuda_copy,cuda_ipc,gdr_copy"
+		// The transport list names CUDA's copy transports; on ROCm UCX picks
+		// its own (rocm_copy, rocm_ipc) once the device is named.
+		if accelerator.NormalizeVendor(p.Vendor) != accelerator.VendorAMD {
+			env["UCX_TLS"] = "rc,cuda_copy,cuda_ipc,gdr_copy"
+		}
 	case n.Interface != "":
 		env["UCX_NET_DEVICES"] = n.Interface
 		env["UCX_TCP_BRIDGE_ENABLE"] = "y"
@@ -114,6 +119,16 @@ func hcaDevices(hcas []string) []string {
 	return out
 }
 
+// MooncakeProtocol is the protocol a TransportMooncake instance hands the
+// Mooncake transfer engine: RDMA on a host RDMA compute network, TCP on any
+// other (the management network, an Ethernet network, or none on one host).
+func MooncakeProtocol(n ComputeNetwork) string {
+	if n.HostRDMA() {
+		return "rdma"
+	}
+	return "tcp"
+}
+
 // vllmPDEnv is the vLLM side channel environment of a PD instance, as the
 // mode declares it.
 func vllmPDEnv(p Params, env map[string]string) {
@@ -131,7 +146,7 @@ func vllmPDEnv(p Params, env map[string]string) {
 	}
 	// vLLM's MooncakeConnector serves its KV handshake from a bootstrap
 	// server on the prefill instance, over HTTP.
-	if mode.Transport == pdmode.TransportMooncakeRDMA {
+	if mode.Transport.MooncakeBootstrap() {
 		if p.PD.Role == pdmode.RolePrefill && p.PD.SideChannelPort > 0 {
 			env["VLLM_MOONCAKE_BOOTSTRAP_PORT"] = strconv.Itoa(p.PD.SideChannelPort)
 		}

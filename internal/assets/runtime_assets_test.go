@@ -52,6 +52,35 @@ func TestInstallDomesticRuntimeAssetsExtractsMatchingArch(t *testing.T) {
 	}
 }
 
+// AMD is not a domestic accelerator (accelerator.IsDomestic), but it does
+// ship a runtime asset bundle (accelerator.HasRuntimeAssetBundles), so the
+// install must extract it the same way Ascend's is extracted above. This
+// also exercises the real embed.FS entry for the AMD asset
+// (embed_linux_amd64.go), which a test that only skips on a missing
+// manifest would not catch if that one file's directive were missing.
+func TestInstallDomesticRuntimeAssetsExtractsAMD(t *testing.T) {
+	if _, err := files.ReadFile("bin/runtime-assets/manifest.json"); err != nil {
+		t.Skip("runtime assets are not embedded in this binary")
+	}
+	if runtime.GOARCH != "amd64" {
+		t.Skip("the AMD asset is linux/amd64 only")
+	}
+	root := t.TempDir()
+	got, err := InstallDomesticRuntimeAssets(root, "amd")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Backend != "amd-dgpu" || got[0].Vendor != "amd" || got[0].Files != 1 {
+		t.Fatalf("AMD asset groups = %+v", got)
+	}
+	asset := filepath.Join(root, "dgpu-runtime", "amd", "linux-amd64", "libvrocm.so")
+	if info, err := os.Stat(asset); err != nil {
+		t.Fatalf("installed lib %s: %v", asset, err)
+	} else if info.Mode().Perm()&0o111 == 0 {
+		t.Fatalf("installed lib %s is not executable: %v", asset, info.Mode())
+	}
+}
+
 func TestRuntimeAssetManifestCarriesOneCheckedAssetPerBackendArchitecture(t *testing.T) {
 	if _, err := files.ReadFile("bin/runtime-assets/manifest.json"); err != nil {
 		t.Skip("runtime assets are not embedded in this binary")
@@ -73,7 +102,7 @@ func TestRuntimeAssetManifestCarriesOneCheckedAssetPerBackendArchitecture(t *tes
 			}
 		}
 	}
-	for _, key := range []string{"ascend-dgpu/amd64", "ascend-dgpu/arm64", "ppu-dgpu/amd64"} {
+	for _, key := range []string{"ascend-dgpu/amd64", "ascend-dgpu/arm64", "ppu-dgpu/amd64", "amd-dgpu/amd64"} {
 		if !seen[key] {
 			t.Fatalf("manifest lacks %s", key)
 		}

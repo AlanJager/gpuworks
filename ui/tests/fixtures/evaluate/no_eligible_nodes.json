@@ -153,7 +153,7 @@
           "compatible": true
         },
         {
-          "image": "gpuworks/gpuworks-runner:dtk26.04-vllm0.21.0-r1",
+          "image": "gpuworks/gpuworks-runner:dtk26.04-vllm0.21.0-r2",
           "reason": "catalog_match",
           "compatible": true
         },

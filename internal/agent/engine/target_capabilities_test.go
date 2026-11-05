@@ -49,6 +49,35 @@ func TestAMDTargetDesiredRejectsEmptyDeviceSelection(t *testing.T) {
 	}
 }
 
+// AMD requires explicit device selection like any other whole-device vendor,
+// but also owns a memory-only logical partition backend of its own: a quota
+// naming amd-dgpu is accepted once a device is selected, a quota naming a
+// different vendor's backend (or none, which defaults to NVIDIA's) is still
+// refused as a whole-device contract, and a compute/SM limit is refused
+// regardless of backend, because AMD exposes no such control.
+func TestAMDTargetDesiredAcceptsItsOwnMemoryPartitionButNotOthers(t *testing.T) {
+	e := NewWithProber(&headlessTestDriver{name: "docker"}, nil, nil, t.TempDir(), &gpu.AMDProber{})
+	spec := proto.InstanceDesiredState{GPUIndexes: []int{0}, VRAMLimitBytes: 60000 << 20, PartitionBackend: accelerator.BackendAMDLogical}
+	if err := e.validateTargetDesired(spec); err != nil {
+		t.Fatalf("AMD's own memory partition contract was refused: %v", err)
+	}
+	foreign := spec
+	foreign.PartitionBackend = accelerator.BackendNVIDIALogical
+	if err := e.validateTargetDesired(foreign); err == nil || !strings.Contains(err.Error(), "whole-device partition contract") {
+		t.Fatalf("a foreign partition backend was accepted: %v", err)
+	}
+	legacyDefault := spec
+	legacyDefault.PartitionBackend = ""
+	if err := e.validateTargetDesired(legacyDefault); err == nil || !strings.Contains(err.Error(), "whole-device partition contract") {
+		t.Fatalf("a quota with no named backend (implicit NVIDIA default) was accepted: %v", err)
+	}
+	smLimited := spec
+	smLimited.SMLimitPct = 50
+	if err := e.validateTargetDesired(smLimited); err == nil || !strings.Contains(err.Error(), "compute/SM limit") {
+		t.Fatalf("a compute/SM limit was accepted on AMD: %v", err)
+	}
+}
+
 func TestTargetDesiredDoesNotParseLaunchArguments(t *testing.T) {
 	e := NewWithProber(&headlessTestDriver{name: "docker"}, nil, nil, t.TempDir(), &gpu.AMDProber{})
 	spec := proto.InstanceDesiredState{GPUIndexes: []int{2}, ResolvedLaunch: proto.ResolvedLaunch{Argv: []string{"vllm", "serve", "--pipeline-parallel-size", "2"}}}
@@ -69,10 +98,10 @@ func TestTargetDesiredNormalizesDefaultLeaderWireAsSingleNode(t *testing.T) {
 	}
 }
 
-// AMD runs distributed ranks (RCCL over the NCCL_* socket variables), so the
-// structural multi-node facts of a legacy wire no longer refuse a launch;
-// sleep, which ROCm does not support here, still does.
-func TestTargetDesiredAcceptsAMDDistributedWireButNotSleep(t *testing.T) {
+// AMD runs distributed ranks (RCCL over the NCCL_* socket variables) and
+// vLLM sleep mode, so neither the structural multi-node facts nor sleep intent
+// of a legacy wire refuse a launch.
+func TestTargetDesiredAcceptsAMDDistributedAndSleepWire(t *testing.T) {
 	tests := map[string]string{
 		"multiple nodes": `{"dist_role":"leader","dist_group":"group-1","dist_attempt":1,"nnodes":2,"node_rank":0}`,
 		"worker role":    `{"dist_role":"worker","nnodes":2,"node_rank":1,"headless":true}`,
@@ -89,8 +118,8 @@ func TestTargetDesiredAcceptsAMDDistributedWireButNotSleep(t *testing.T) {
 				t.Fatalf("distributed AMD wire refused: %v", err)
 			}
 			spec.Sleepable = true
-			if err := e.validateTargetDesired(spec); err == nil || !strings.Contains(err.Error(), string(accelerator.FeatureEngineSleep)) {
-				t.Fatalf("sleepable AMD rank was not refused as engine_sleep: %v", err)
+			if err := e.validateTargetDesired(spec); err != nil {
+				t.Fatalf("sleepable AMD rank refused: %v", err)
 			}
 		})
 	}
@@ -129,9 +158,9 @@ func TestEngineDoesNotAllocateDefaultHostFactsReader(t *testing.T) {
 }
 
 func TestTargetDesiredRejectsUnsupportedRuntimeBeforeLaunch(t *testing.T) {
-	e := NewWithProber(&headlessTestDriver{name: "udocker"}, nil, nil, t.TempDir(), &gpu.AMDProber{})
-	if err := e.validateTargetDesired(proto.InstanceDesiredState{}); err == nil || !strings.Contains(err.Error(), "runtime") {
-		t.Fatalf("udocker target validation error = %v", err)
+	e := NewWithProber(&headlessTestDriver{name: "host"}, nil, nil, t.TempDir(), &gpu.AMDProber{})
+	if err := e.validateTargetDesired(proto.InstanceDesiredState{GPUIndexes: []int{0}}); err == nil || !strings.Contains(err.Error(), "runtime") {
+		t.Fatalf("host-process target validation error = %v", err)
 	}
 }
 
@@ -144,7 +173,8 @@ func TestTargetDesiredHostRuntimeFacts(t *testing.T) {
 		{name: "supported", host: accelerator.HostRuntime{OS: "linux", Arch: "amd64", Driver: "docker"}, valid: true},
 		{name: "wrong os", host: accelerator.HostRuntime{OS: "darwin", Arch: "amd64", Driver: "docker"}},
 		{name: "wrong arch", host: accelerator.HostRuntime{OS: "linux", Arch: "arm64", Driver: "docker"}},
-		{name: "wrong runtime", host: accelerator.HostRuntime{OS: "linux", Arch: "amd64", Driver: "udocker"}},
+		{name: "runveil", host: accelerator.HostRuntime{OS: "linux", Arch: "amd64", Driver: "udocker"}, valid: true},
+		{name: "wrong runtime", host: accelerator.HostRuntime{OS: "linux", Arch: "amd64", Driver: "host"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			e := NewWithProber(&headlessTestDriver{name: tc.host.Driver}, nil, nil, t.TempDir(), &gpu.AMDProber{}, WithHostRuntimeFacts(func() accelerator.HostRuntime {
@@ -194,8 +224,10 @@ func TestTargetDesiredUnknownSnapshotIsVendorScoped(t *testing.T) {
 	for _, vendor := range []string{"amd", "nvidia", "ascend", "apple"} {
 		e := NewWithProber(&headlessTestDriver{name: "docker"}, nil, nil, t.TempDir(), &gpu.FixedProber{VendorName: vendor})
 		spec := proto.InstanceDesiredState{GPUIndexes: []int{0}, ResolvedLaunch: proto.ResolvedLaunch{RequestedFeatures: &proto.RequestedFeatures{CommandKnown: false}}}
+		// No vendor carries a partial restriction today, so an unknown
+		// command needs no proof anywhere.
 		err := e.validateTargetDesired(spec)
-		if (vendor == "amd") != (err != nil) {
+		if err != nil {
 			t.Fatalf("%s unknown contract error=%v", vendor, err)
 		}
 	}
@@ -214,7 +246,8 @@ func TestTargetDesiredRejectsContradictorySnapshotButAllowsSleepAPIMetadata(t *t
 }
 
 func TestLegacyTargetDesiredSleepMetadataIsNotARequest(t *testing.T) {
-	e := NewWithProber(&headlessTestDriver{name: "docker"}, nil, nil, t.TempDir(), &gpu.AMDProber{})
+	// Apple is the vendor that refuses engine sleep.
+	e := NewWithProber(&headlessTestDriver{name: "docker"}, nil, nil, t.TempDir(), &gpu.FixedProber{VendorName: "apple"})
 	for _, tc := range []struct {
 		name   string
 		spec   proto.InstanceDesiredState

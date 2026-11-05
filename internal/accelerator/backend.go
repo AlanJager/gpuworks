@@ -10,6 +10,7 @@ const (
 	BackendAscendLogical = "ascend-dgpu"
 	BackendPPULogical    = "ppu-dgpu"
 	BackendHygonLogical  = "hygon-dgpu"
+	BackendAMDLogical    = "amd-dgpu"
 
 	EnvLDPreload            = "LD_PRELOAD"
 	EnvLDLibraryPath        = "LD_LIBRARY_PATH"
@@ -44,6 +45,24 @@ const (
 	// PPUEnvDeviceUUIDs preserves selected physical identities in compute order,
 	// independently of the numeric selectors consumed by inference engines.
 	PPUEnvDeviceUUIDs = "GPUWORKS_PPU_DEVICE_UUIDS"
+
+	// AMDLibraryTarget is libvrocm.so (gpustack-operator's rocm-slicing-shim,
+	// build/runtime-assets/amd/): one shared object for every ROCm version,
+	// interposing the HIP runtime's allocating and capacity-query entry
+	// points. It links only libc, so it is LD_PRELOAD-safe into any ROCm
+	// inference image regardless of that image's own glibc.
+	AMDLibraryTarget = "/opt/gpuworks/partition/libvrocm.so"
+	// AMDEnvMemoryLimitPrefix (VROCM_DEVICE_MEMORY_LIMIT_<N>, MiB) names the
+	// quota for the card at position N in the container's own visible-device
+	// list. There is no compute/SM counterpart: ROCm enforces compute quotas
+	// through HSA_CU_MASK, read by ROCr below anything a preloaded library in
+	// the workload process can see or verify, so this backend is memory-only.
+	AMDEnvMemoryLimitPrefix = "VROCM_DEVICE_MEMORY_LIMIT_"
+	// AMDEnvLedgerPath (VROCM_LEDGER_PATH) is the cross-process usage region
+	// libvrocm.so charges allocations against, analogous to PPUEnvLedgerPath.
+	AMDEnvLedgerPath = "VROCM_LEDGER_PATH"
+	// AMDEnvLogLevel (LIBVROCM_LOG_LEVEL): 0 quiet, 1 denials, 2 debug.
+	AMDEnvLogLevel = "LIBVROCM_LOG_LEVEL"
 )
 
 type Maturity string
@@ -84,6 +103,7 @@ var registry = []Backend{
 	ascendLogicalBackend{},
 	ppuLogicalBackend{},
 	hygonLogicalBackend{},
+	amdLogicalBackend{},
 }
 
 func All() []Backend { return append([]Backend(nil), registry...) }

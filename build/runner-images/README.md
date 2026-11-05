@@ -1,336 +1,334 @@
-# gpuworks-runner 自建镜像构建仓
+# gpuworks-runner self-built image build repo
 
-矩阵定义见 [matrix.yaml](matrix.yaml)；计划与证据见 artifacts 私有仓库 [artifacts/work/2026-10-03-runner-images/plan.md](../../artifacts/work/2026-10-03-runner-images/plan.md)。
-**署名与派生关系见 [NOTICE](NOTICE)**：本目录的构建配方部分派生自 Apache-2.0 的
-`gpustack/runner`，许可副本在 [licenses/Apache-2.0.txt](licenses/Apache-2.0.txt)。
+The matrix is defined in [matrix.yaml](matrix.yaml); for plans and evidence see the private artifacts repo, [artifacts/work/2026-10-03-runner-images/plan.md](../../artifacts/work/2026-10-03-runner-images/plan.md).
+Some vLLM patches under patches/ carry third-party attribution; see [NOTICE](NOTICE). The Apache License 2.0 text is in [licenses/Apache-2.0.txt](licenses/Apache-2.0.txt).
 
-## 目录
+## Layout
 
-- `matrix.yaml` — 目标矩阵（厂商 × 框架档 × 引擎 × 架构 × base × requires × 版次）
-- `cuda/` `cann/` `dtk/` `hggc/` — 各后端 `Dockerfile.{vllm,sglang}`（ARG 驱动，base 由矩阵注入）
-  另有 `cuda/Dockerfile.vllm-v100`：V100 / V100S（sm_70）专用线，装 1Cat-vLLM 发行 wheel，不以上游
-  vllm 镜像为 base（上游预编译内核不含 sm_70）；矩阵项标 `catalog: false`，只构建、验证、发布，
-  不进系统镜像目录，由 L4 用例按卡型显式引用
-  构建机到不了 GitHub 时，把发行 wheel 放到本机 HTTP 目录（`<url>/v1.5.1/1cat_vllm-1.5.1-cp312-cp312-linux_x86_64.whl`），
-  用构建机本地的 matrix 副本给该项加 `ONECAT_RELEASE_URL` 指过去；SHA-256 校验仍照常生效
-- `shared/` — 构建与验证共用的脚本
-  - `assert_requires.sh` — 「requires 的含义」的唯一实现：构建末尾与 verify 都用它
-  - `apply_patches.sh` — 严格打补丁（先 dry-run、不给 fuzz、不留 .rej/.orig）
-  - `check_clean_history.sh` — 查镜像 config/history 里有没有凭据形态字符串
-  - `check_vendor_base.sh` — 查 base 里有没有公司内部二次封装的痕迹（ZStack/AIOS 标记）；
-    **必须在 `prepare-base.sh` 压 history 之前跑**，压完就查不到了
-  - `stage_base.py` — 把上游 base「注册」进本地 mirror，已有的层零传输（见下）
-- `overlays/` — 模型 overlay 与离线审计脚本（装进 `/opt/gpuworks/overlays/` 供 spec 引用）
-- `patches/vllm/`、`patches/vllm_omni/` — vLLM 与 vllm-omni 的源码补丁
-  （两者逐文件说明见下面「patches/ 与 overlays/ 逐文件说明」）
-- `build.sh` — 构建驱动 ｜ `verify.sh` — 成品验证 ｜ `push.sh` — registry 间搬运
-  ｜ `publish.py` — 发布到公网三端（见下面「发布」）
-- `prepare-base.sh` — 压掉厂商 base 的 history（凭据清洗，只在 base 这一层做）
-- `base-mirrors.example` — 构建机本地 base 映射的样例（见下）
+- `matrix.yaml` — target matrix (vendor × framework tier × engine × architecture × base × requires × revision)
+- `cuda/` `cann/` `dtk/` `hggc/` — per-backend `Dockerfile.{vllm,sglang}` (ARG-driven; the base is injected by the matrix)
+  There is also `cuda/Dockerfile.vllm-v100`: a dedicated line for V100 / V100S (sm_70) that installs the 1Cat-vLLM release wheel
+  and does not use the upstream vllm image as its base (the upstream prebuilt kernels do not include sm_70); its matrix entry is marked `catalog: false`, so it is only built, verified and published,
+  and never enters the system image catalog; L4 test cases reference it explicitly by card model.
+  If the build machine cannot reach GitHub, put the release wheel in a local HTTP directory (`<url>/v1.5.1/1cat_vllm-1.5.1-cp312-cp312-linux_x86_64.whl`),
+  and use the build machine's local copy of the matrix to point that entry's `ONECAT_RELEASE_URL` at it; the SHA-256 check still applies as usual
+- `shared/` — scripts shared by build and verification
+  - `assert_requires.sh` — the single implementation of "what requires means": used both at the end of the build and by verify
+  - `apply_patches.sh` — strict patching (dry-run first, no fuzz, no leftover .rej/.orig)
+  - `check_clean_history.sh` — checks the image config/history for credential-shaped strings
+  - `check_vendor_base.sh` — checks the base for traces of the company's internal re-packaging (ZStack/AIOS markers);
+    **must run before `prepare-base.sh` squashes the history**, since afterwards there is nothing left to find
+  - `stage_base.py` — "registers" an upstream base into the local mirror, with zero transfer for layers that already exist (see below)
+- `overlays/` — model overlays and offline audit scripts (installed into `/opt/gpuworks/overlays/` for specs to reference)
+- `patches/vllm/`, `patches/vllm_omni/`, `patches/vllm_dtk/` — source patches for vLLM (cuda tier), vllm-omni, and the Hygon dtk vllm tier
+  (per-file descriptions for both are in "patches/ and overlays/ file-by-file notes" below)
+- `build.sh` — build driver ｜ `verify.sh` — finished-image verification ｜ `push.sh` — copy between registries
+  ｜ `publish.py` — publish to the three public registries (see "Publishing" below)
+- `prepare-base.sh` — squashes the history of a vendor base (credential scrubbing, done only at the base layer)
+- `base-mirrors.example` — sample of the build machine's local base mapping (see below)
 
-## 关键约定
+## Key conventions
 
-1. **tag 不可变**。每项有 `revision`（r1、r2…），产出
-   `<id>-<revision>` 作为权威 tag，另打一个裸 `<id>` 作人用别名。
-   推理目录（seed catalog）只引用带版次的 tag。改了配方就 +1，不原地覆盖——
-   节点上已有同名镜像时不会重拉，原地覆盖等于改了没生效。
-2. **matrix 的 `base` 永远是可复现的上游来源**。厂商 registry 不可达或只给 tar
-   时，用构建机本地的 `base-mirrors.local`（不进仓库）显式映射到 mirror：
+1. **Tags are immutable**. Each entry has a `revision` (r1, r2, ...) and produces
+   `<id>-<revision>` as the authoritative tag, plus a bare `<id>` as a human-friendly alias.
+   The inference catalog (seed catalog) only references revisioned tags. When a recipe changes, bump the revision; never overwrite in place —
+   a node that already has an image with the same name will not re-pull it, so overwriting in place means the change never takes effect.
+2. **The matrix `base` is always a reproducible upstream source**. When the vendor registry is unreachable or only provides a tar,
+   use the build machine's local `base-mirrors.local` (not checked into the repo) to map it to a mirror explicitly:
 
    ```bash
-   cp base-mirrors.example base-mirrors.local   # 然后按本机实际 mirror 填
+   cp base-mirrors.example base-mirrors.local   # then fill in according to the actual local mirror
    ```
 
-3. **上游 base 不必重新下载**。gpu3 到 docker.io 各镜像源实测只有 0.1~0.6 MB/s
-   （daocloud、1ms.run 都试过），一个 10 GB 的 cuda base 要拉 4 小时以上。但只要本地
-   registry 里已经有过从同一 base 构建出来的成品镜像，**base 的每一层就已经作为 blob
-   存在那里**（镜像的层是内容寻址的，上游 base 的前 N 层正是成品镜像的前 N 层）。`shared/stage_base.py` 用跨仓库
-   blob mount 把它们链进目标仓库，只补一个约 40 KB 的 config，digest 与上游逐个校验：
+3. **Upstream bases do not need to be downloaded again**. From gpu3, the various docker.io mirrors measured only 0.1~0.6 MB/s
+   (daocloud and 1ms.run were both tried); pulling a 10 GB cuda base takes more than 4 hours. But as long as the local
+   registry already holds a finished image built from the same base, **every layer of the base already exists there as a blob**
+   (image layers are content-addressed; the first N layers of the upstream base are exactly the first N layers of the finished image). `shared/stage_base.py` uses cross-repository
+   blob mount to link them into the target repository and only adds a config of about 40 KB, with digests verified one by one against upstream:
 
    ```bash
-   export https_proxy=... no_proxy=<本地 mirror>   # 小对象走代理取 docker.io
+   export https_proxy=... no_proxy=<local mirror>   # small objects go through the proxy to fetch from docker.io
    python3 shared/stage_base.py vllm/vllm-openai:v0.30.0 \
        <mirror>/vllm/vllm-openai:v0.30.0 --insecure --mount-from gpuworks-runner
    ```
 
-   任何一层既不在目标仓库、也 mount 不过来就报错退出——这时才需要 skopeo 真拉一次。
-4. **声明了就必须有**。`requires` 里写了的组件（omni/mooncake/diffusion/
-   audit/hcu_patches），构建末尾断言不过就不出镜像；也有「声明了就必须没有」的：
-   昇腾 omni 档的 `omni_no_mooncake`（pip 包 `mooncake-transfer-engine-npu` 必须不在，
-   见下面「昇腾 omni 档」）与 `omni_patched`（vllm_omni 补丁落地）；`verify.sh` 再按
-   镜像自带的 `/opt/gpuworks/image.json` 复验一遍。不再有 `|| echo WARN` 这种
-   「名字里有、实际没有」的档。
-5. **补丁严格应用**。上下文不匹配即构建失败（理由见 `shared/apply_patches.sh`
-   顶部：`--fuzz` 会让纯追加补丁插进函数体中间且返回 0）。
-   cuda vllm 档统一 `EXPECT_ALL=1`；确实不适用于某档 base 的补丁，必须由矩阵的
-   `PATCHES_NOT_APPLICABLE` 显式声明（不是靠 `EXPECT_ALL=0` 悄悄放过）。
-6. **构建期配置不留给运行期**。pip/apt 镜像源是 `ARG` 并在构建后还原，不写进
-   镜像 ENV。
-7. **厂商 base 的 history 可能含凭据**。厂商 vanilla（asllm、sourcefind dtk）的 image
-   history 里带内网明文凭据，而 history 随镜像分发到每个 registry。`matrix.yaml` 里标了
-   `base_requires_clean_history: true` 的档，必须先用 `prepare-base.sh` 把 base 的
-   history 压掉、再把 `base-mirrors.local` 指向清洗后的 ref；`build.sh` 在构建前会校验
-   effective base，不干净直接拒绝，`verify.sh` 再对成品复验一遍。
-   **在 base 这一层压，不要对每个最终镜像压**：实测 hggc 两档共享 asllm 全部层
-   （sum 50.4 GB / union 25.4 GB），逐个压会把这 50% 的去重打碎成两份独立单层。
+   If any layer is neither in the target repository nor mountable, it errors out — only then do you need a real skopeo pull.
+4. **If declared, it must be present**. For a component listed in `requires` (omni/mooncake/diffusion/
+   audit/hcu_patches), an assertion failure at the end of the build means no image is produced; there are also "if declared, it must be absent" checks:
+   for the Ascend omni tier, `omni_no_mooncake` (the pip package `mooncake-transfer-engine-npu` must not be present,
+   see "Ascend omni tier" below) and `omni_patched` (the vllm_omni patches have landed); `verify.sh` re-verifies against the
+   image's own `/opt/gpuworks/image.json`. There are no more `|| echo WARN` style tiers
+   where the name says one thing and the contents say another.
+5. **Patches are applied strictly**. A context mismatch fails the build (see the top of `shared/apply_patches.sh`
+   for the reason: `--fuzz` can make an append-only patch land in the middle of a function body while returning 0).
+   The cuda vllm tiers all use `EXPECT_ALL=1`; a patch that genuinely does not apply to some tier's base must be declared explicitly by the matrix's
+   `PATCHES_NOT_APPLICABLE` (not quietly let through via `EXPECT_ALL=0`).
+6. **Build-time configuration is not left behind for runtime**. The pip/apt mirrors are `ARG`s and are restored after the build; they are not written into the
+   image ENV.
+7. **The history of a vendor base may contain credentials**. The image history of vendor vanilla bases (asllm, sourcefind dtk)
+   carries plaintext internal-network credentials, and the history is distributed with the image to every registry. For tiers marked
+   `base_requires_clean_history: true` in `matrix.yaml`, first squash the base's history with `prepare-base.sh`,
+   then point `base-mirrors.local` at the cleaned ref; before building, `build.sh` validates the
+   effective base and rejects it outright if it is not clean, and `verify.sh` re-checks the finished image.
+   **Squash at the base layer, not on every final image**: measured, the two hggc tiers share all of the asllm layers
+   (sum 50.4 GB / union 25.4 GB), and squashing each one would break that 50% deduplication into two independent single-layer copies.
 
-## 构建机准备（一次性）
+## Build machine setup (one-time)
 
 ```bash
 docker buildx create --name gpuworks-builder --driver docker-container --use
-docker run --privileged --rm tonistiigi/binfmt --install arm64   # 跨架构
-docker login "<目标 registry 主机>"                               # 推送凭据
+docker run --privileged --rm tonistiigi/binfmt --install arm64   # cross-architecture
+docker login "<target registry host>"                             # push credentials
 cp base-mirrors.example base-mirrors.local && vi base-mirrors.local
 ```
 
-## patches/ 与 overlays/ 逐文件说明
+## patches/ and overlays/ file-by-file notes
 
-补丁由 `shared/apply_patches.sh` 严格应用（dry-run + `-F0`，不留 `.rej`/`.orig`），
-清单写进镜像内 `/opt/gpuworks/patches-vllm.json`、`/opt/gpuworks/patches-omni.json`，
-`verify.sh` 与 `assert_requires.sh` 的 `omni_patched` 会复验。
+Patches are applied strictly by `shared/apply_patches.sh` (dry-run + `-F0`, no `.rej`/`.orig` left behind);
+the manifests are written into the image as `/opt/gpuworks/patches-vllm.json` and `/opt/gpuworks/patches-omni.json`,
+and `verify.sh` and the `omni_patched` check in `assert_requires.sh` re-verify them.
 
-| 补丁 | 作用 | 适用 |
+| Patch | Purpose | Applies to |
 | --- | --- | --- |
-| `patches/vllm/001_wrong_dp_ray.patch` | 给 `vllm/utils/network_utils.py` 的 `get_open_port` 补上缺失的 `_next_port` 模块级变量（DP + Ray 下取端口会 `NameError`） | cuda vllm 档。**在 vllm 0.31 上已不适用**（上游重构了 `get_open_port`）：`cuda12.9-vllm0.31.0` 档在矩阵 args 里用 `PATCHES_NOT_APPLICABLE` 显式声明，清单记为 `001_wrong_dp_ray.patch:declared-not-applicable`；声明与事实不符（补丁其实能应用）同样让构建失败 |
-| `patches/vllm/002_mooncake_prom_metrics.patch` | 给 mooncake KV 连接器补 Prometheus 指标导出（上游只有内部统计，平台监控读不到） | cuda vllm 档 |
-| `patches/vllm/003_mooncake_store_rejected_pending_load.patch` | MultiConnector 选中别的连接器时，mooncake store 不应再发起 pending load（否则重复加载/报错） | cuda vllm 档；**vllm 0.30 起上游已修**，识别为 already-present |
-| `patches/vllm_omni/001_omni_bypass_non_omni_loads.diff` | vllm-omni 在 import 期无条件替换 vllm 的 `EngineCoreOutput` 等内部类型；本补丁加一个 `--omni` 判断，没带该参数时不改 vllm 行为，这样 omni 镜像也能跑普通文本负载 | 所有 omni 档 |
-| `patches/vllm_omni/002_ming_audio_dsp_npu_cpu_fallback.diff` | Ming-omni-tts 的 `audio_dsp.py` 在昇腾上两处失败：`torch.hann_window` 对 int64 调 `aclnnInplaceCos` 失败、`F.fold` 在 aivec 向量核报 507035。补丁把这两步改在 CPU 上做再搬回设备（张量只有一个音频 chunk，开销可忽略） | 昇腾 omni 档（r3 起） |
-| `patches/vllm_omni/003_moss_realtime_ref_encoder_device.diff` | MOSS-TTS-Realtime 的参考音频编码在 API server 进程里跑：codec 已放到 code2wav stage 的 GPU，波形却留在 CPU，`batch_encode` 按第一段波形的设备建输入，请求报设备不一致。补丁先把波形移到 codec 所在设备（见下面「模型专属依赖与 vllm-omni 缺陷」第 4 条） | cuda omni 档（r4 起）与 0.30 的昇腾 omni 档；0.23 的昇腾 omni 档没有这个类，由 `OMNI_PATCHES_NOT_APPLICABLE` 声明跳过 |
+| `patches/vllm/001_wrong_dp_ray.patch` | Adds the missing `_next_port` module-level variable to `get_open_port` in `vllm/utils/network_utils.py` (under DP + Ray, getting a port raises `NameError`) | cuda vllm tiers. **No longer applies on vllm 0.31, but only because upstream reflowed the `get_open_port` docstring** (vllm-project/vllm#52136); the port issue itself is not fixed upstream. The `cuda12.9-vllm0.31.0` tier currently declares it explicitly with `PATCHES_NOT_APPLICABLE` in the matrix args, and the manifest records `001_wrong_dp_ray.patch:declared-not-applicable`; the patch must be rebased onto 0.31 at the next revision. A stale declaration (the patch actually applies) also fails the build |
+| `patches/vllm/002_mooncake_prom_metrics.patch` | Adds Prometheus metrics export to the mooncake KV connector (upstream only has internal statistics, which platform monitoring cannot read) | cuda vllm tiers |
+| `patches/vllm_dtk/001_mooncake_report_failed_pulls.patch` | In the Hygon vllm 0.21 base, vLLM's MooncakeConnector records requests whose pull failed as completed just like successful ones, and does not implement `get_block_ids_with_load_errors`: decode answers anyway with KV it never received (200 + garbage), `kv_load_failure_policy` has no effect, and the failed blocks even remain in the prefix cache. Following NIXL's approach, the patch records the local blocks of failed requests and reports them to the scheduler (measured on K100: `fail` returns 500, `recompute` recomputes the correct result) | dtk vllm 0.21 tier (from r2, matrix `DTK_VLLM_PATCHES=1`); after patching, rerun `vllm-hcu-apply-patches` to confirm the change is still in place |
+| `patches/vllm_omni/001_omni_bypass_non_omni_loads.diff` | vllm-omni unconditionally replaces vllm's internal types such as `EngineCoreOutput` at import time; this patch adds an `--omni` check so that vllm's behavior is unchanged when that flag is absent, letting the omni image also run ordinary text workloads | all omni tiers |
+| `patches/vllm_omni/002_ming_audio_dsp_npu_cpu_fallback.diff` | Ming-omni-tts's `audio_dsp.py` fails in two places on Ascend: `torch.hann_window` fails in `aclnnInplaceCos` for int64, and `F.fold` reports 507035 on the aivec vector core. The patch performs both steps on the CPU and moves the result back to the device (the tensors are just one audio chunk, so the overhead is negligible) | Ascend omni tiers (from r3) |
+| `patches/vllm_omni/003_moss_realtime_ref_encoder_device.diff` | MOSS-TTS-Realtime's reference-audio encoding runs in the API server process: the codec has been placed on the code2wav stage's GPU while the waveform stays on the CPU, and `batch_encode` builds its input on the device of the first waveform, so the request fails with a device mismatch. The patch first moves the waveform to the device the codec lives on (see item 4 of "Model-specific dependencies and vllm-omni defects" below) | cuda omni tiers (from r4) and the 0.30 Ascend omni tier; the 0.23 Ascend omni tier does not have this class and skips it via an `OMNI_PATCHES_NOT_APPLICABLE` declaration |
 
-| overlay | 作用 |
+| Overlay | Purpose |
 | --- | --- |
-| `overlays/audit/stack-audit.py` | **离线组件审计门**：汇总引擎/依赖版本与 `pip check` 结果写成 `/opt/gpuworks/components.json`，errors 非空即构建失败。派生自同事镜像（见 `NOTICE`）；r2 起加 `GPUWORKS_PIP_CHECK_BASELINE`——只放行"纯净 base 本来就有"的 `pip check` 行，基线之外新增的才算我们引入；另有 `GPUWORKS_PIP_CHECK_NODEPS`——只放行按档声明以 `--no-deps` 安装的包（如 voxcpm）自己的 `pip check` 行 |
-| `overlays/audit/omni_diffusion_check.py` | omni/diffusion 栈的离线内容检查（模块可定位、版本符合声明），不等于 GPU 验收 |
-| `overlays/audit/qwen3_tts_check.py`、`qwen3_tts_prepare.py` | Qwen3-TTS 小档位的离线检查与"从上游资产推导单设备配置" |
-| `overlays/audit/patch_sdxl.py` | 对固定版本的 omni 源码应用有界的 SDXL VAE 修复；源码漂移就报错，不静默发布未打补丁的镜像 |
-| `overlays/gpuworks-{diffusers,transformers,vision_remote}-runtime.tar.gz` | 推理目录里海光 callable 档引用的适配器（`gpuworks_serve.py` + 各自 adapter），由 spec 解包使用 |
-| `overlays/vllm-omni-h3-48298030.tar.gz` | MiniMax-H3 的 vllm-omni 源码覆盖层（上游镜像早于 H3 管线合入），内容寻址，由 spec 校验 SHA-256 后只读挂载 |
-| `dtk/files/vllm-hcu-apply-patches` | 海光 `pre_start_argv` 依赖的工具（厂商 `custom:*` 镜像里提取，见 `dtk/files/README.md`），构建时内置进 dtk 档 |
+| `overlays/audit/stack-audit.py` | **Offline component audit gate**: aggregates engine/dependency versions and `pip check` results into `/opt/gpuworks/components.json`; any non-empty errors fails the build. Derived from a colleague's image (see `NOTICE`); from r2 it adds `GPUWORKS_PIP_CHECK_BASELINE` — only `pip check` lines that "a clean base already had" are let through, and anything new beyond the baseline counts as introduced by us; there is also `GPUWORKS_PIP_CHECK_NODEPS` — it only lets through the `pip check` lines of packages declared per tier to be installed with `--no-deps` (such as voxcpm) |
+| `overlays/audit/omni_diffusion_check.py` | Offline content check for the omni/diffusion stack (modules locatable, versions match the declaration); not equivalent to GPU acceptance |
+| `overlays/audit/qwen3_tts_check.py`, `qwen3_tts_prepare.py` | Offline check for the small Qwen3-TTS tier, and "deriving a single-device config from upstream assets" |
+| `overlays/audit/patch_sdxl.py` | Applies a bounded SDXL VAE fix to the pinned-version omni source; errors on source drift rather than silently publishing an unpatched image |
+| `overlays/gpuworks-{diffusers,transformers,vision_remote}-runtime.tar.gz` | Adapters (`gpuworks_serve.py` + one adapter each) referenced by the Hygon callable tier in the inference catalog; unpacked and used by the spec |
+| `overlays/vllm-omni-h3-48298030.tar.gz` | vllm-omni source overlay for MiniMax-H3 (the upstream image predates the merge of the H3 pipeline); content-addressed, mounted read-only by the spec after SHA-256 verification |
+| `dtk/files/vllm-hcu-apply-patches` | Tool that the Hygon `pre_start_argv` depends on (extracted from the vendor `custom:*` images, see `dtk/files/README.md`); built into the dtk tier at build time |
 
-## 复现一个档（从零到成品）
+## Reproducing a tier (from scratch to finished image)
 
 ```bash
-# 0) 一次性：见下面「构建机准备」；厂商/不可达 base 另需 base-mirrors.local
-cp base-mirrors.example base-mirrors.local        # 按本机 mirror 填
+# 0) One-time: see "Build machine setup" below; vendor/unreachable bases additionally need base-mirrors.local
+cp base-mirrors.example base-mirrors.local        # fill in according to the local mirror
 
-# 1) 看这一档会怎么构建（不动任何东西）
+# 1) See how this tier would be built (touches nothing)
 ./build.sh --list
 ./build.sh --only cann9.1-910b-vllm-omni0.30.0 --dry-run
 
-# 2) 上游 base 若不在本地 mirror：先注册（已有层零传输，失败再用 skopeo 真拉）
+# 2) If the upstream base is not in the local mirror: register it first (existing layers transfer nothing; on failure fall back to a real skopeo pull)
 python3 shared/stage_base.py quay.io/ascend/vllm-omni:v0.30.0     <mirror>/ascend/vllm-omni:v0.30.0 --insecure --mount-from gpuworks-runner
 
-# 3) 厂商 base（matrix 里 base_requires_clean_history: true）：先查内部封装痕迹，再压 history
-bash shared/check_vendor_base.sh <base-ref>       # 必须在 prepare-base.sh 之前
-./prepare-base.sh <base-ref> <clean-ref>          # 然后把 base-mirrors.local 指向 clean-ref
+# 3) Vendor base (base_requires_clean_history: true in the matrix): check for internal re-packaging traces first, then squash the history
+bash shared/check_vendor_base.sh <base-ref>       # must run before prepare-base.sh
+./prepare-base.sh <base-ref> <clean-ref>          # then point base-mirrors.local at clean-ref
 
-# 4) 构建并推内网（多架构）；构建末尾会跑 assert_requires.sh，不过就不出镜像
+# 4) Build and push to the internal registry (multi-arch); assert_requires.sh runs at the end of the build, no image is produced if it fails
 ./build.sh --only cann9.1-910b-vllm-omni0.30.0
 
-# 5) 对成品复验一遍（按镜像自带的 /opt/gpuworks/image.json）
+# 5) Re-verify the finished image (against the image's own /opt/gpuworks/image.json)
 ./verify.sh registry.zstack.ai/gpuworks/gpuworks-runner:cann9.1-910b-vllm-omni0.30.0-r3
 
-# 6) 真机验证通过后，再发公网并把裸 tag 指过去
+# 6) After it passes on real hardware, publish to the public registries and point the bare tag at it
 ./publish.py cann9.1-910b-vllm-omni0.30.0-r3 swr --dry-run
 ```
 
-真机验证该看什么、已经验到什么程度，见 [`artifacts/work/2026-10-03-runner-images/evidence/r2-verify.md`](../../artifacts/work/2026-10-03-runner-images/evidence/r2-verify.md)。
+For what to look for in real-hardware verification and how far it has been taken, see [`artifacts/work/2026-10-03-runner-images/evidence/r2-verify.md`](../../artifacts/work/2026-10-03-runner-images/evidence/r2-verify.md).
 
-## 常用
+## Common commands
 
 ```bash
-./build.sh --list                                   # 看矩阵（含版次与 requires）
-./build.sh --only cuda13.0-vllm0.30.0 --dry-run     # 只看会怎么构建
-./build.sh --only dtk26.04-vllm0.18.1 --no-push     # 构建到本地 daemon
+./build.sh --list                                   # view the matrix (with revisions and requires)
+./build.sh --only cuda13.0-vllm0.30.0 --dry-run     # only see how it would be built
+./build.sh --only dtk26.04-vllm0.18.1 --no-push     # build into the local daemon
 ./verify.sh registry.zstack.ai/gpuworks/gpuworks-runner:dtk26.04-vllm0.18.1-r2
-./build.sh --revision-only r2                       # 构建并推送全部 r2 档
-./build.sh --only hggc13.0-vllm0.23.0 --squash      # 厂商 base 需压 history
-./verify.sh --all                                   # 对 registry 里全部版次复验
-./push.sh --dest quay.io/gpuworks/gpuworks-runner    # 搬到另一个 registry
+./build.sh --revision-only r2                       # build and push all r2 tiers
+./build.sh --only hggc13.0-vllm0.23.0 --squash      # vendor base needs its history squashed
+./verify.sh --all                                   # re-verify all revisions in the registry
+./push.sh --dest quay.io/gpuworks/gpuworks-runner    # copy to another registry
 ```
 
-`REGISTRY` 环境变量决定推送目标，默认 `registry.zstack.ai/gpuworks/gpuworks-runner`。
+The `REGISTRY` environment variable determines the push target; the default is `registry.zstack.ai/gpuworks/gpuworks-runner`.
 
-## 设计取舍（相对上游 runner）
+## Design trade-offs
 
-1. **精简工具层**：不装编译链（cmake/gfortran/openmpi 等），全部用预编译 wheel；
-   镜像更小、构建更快。上游那套重型工具链对 gpuworks 的使用场景非必需。
-2. **合并策略**：sglang+diffusion 合一个镜像（diffusion extras 是纯增量，不压核心
-   依赖、不在 import 期改引擎行为）；**vllm 与 omni 分档**，因为
-   `vllm-omni` 会把 `transformers` 压到 `<5.15`、`accelerate` 钉到 `1.12.0`，
-   合并等于把这个上界加在镜像里所有负载上，而推理目录里 nvidia 的 vllm spec
-   是 517 普通 : 27 omni。omni 档另发 `<框架档>-vllm-omni<版本>`，与昇腾线命名一致；
-   两档同一 base，同仓库内大层完全去重，多这个 tag 只多约 280 MB。
-   不再分 diffusion/tts 变体。
-3. **昇腾线不装 PyPI 的 vllm-omni**：实证会让引擎的 registry 检查子进程崩
-   （`artifacts/work/2026-10-03-runner-images/evidence/r1-verify.md` §2.2/§2.4）；昇腾的 omni 负载走 `vllm-omni` 档
-   （base 自带 NPU 原生构建）。
-   **omni 档（r3 起）的两处处理**——这是 r2 在 .32（8×910B4，driver 26.1.1，真容器）上
-   实测出的（证据 `artifacts/work/2026-10-03-runner-images/evidence/r2-verify.md` §6h）：
-   - **卸掉 base 自带的 `mooncake-transfer-engine-npu`**。它是 `import vllm_omni` /
-     `vllm --help` 退出阶段 `corrupted size vs. prev_size` 堆损坏的根因（与 vllm_omni 同进程
-     加载时，`mooncake/*.so`、`libcann_hixl.so`、`libllm_datadist.so`、`libibverbs` 触发；单独
-     `import mooncake` 不崩），也让 vLLM 的模型架构内省子进程 SIGABRT，Ming-omni-tts 与
-     Qwen3-TTS 起不来。`quay.io/ascend/vllm-omni` 从 v0.24.0 起带它，v0.23.0rc1 没有。omni 档因此
-     `MOONCAKE` 置空、requires 去掉 `mooncake`、加 `omni_no_mooncake`。
-   - **Ming-omni-tts 的 NPU 补丁**（`patches/vllm_omni/002`）：`audio_dsp.py` 里 `hann_window`
-     （int64 的 `aclnnInplaceCos` 失败）与两处 `F.fold`（aivec 向量核 507035）回 CPU 算。
-   - 注意 omni 在 base 里是 editable 安装（`/vllm-workspace/vllm-omni`），补丁目标按
-     `find_spec('vllm_omni')` 定位，不是 site-packages。
-   - 推荐基线：旧驱动（26.0.rc1）机队用 `cann9.0-910b-vllm-omni0.23.0rc1`（上游原件无 mooncake、
-     CANN 9.0.0）；HDK ≥ 26.1.1 用 0.30.0 的 r3。v0.25.0 的 Ming 另有独立的 `lm_head` 缺陷，别用。
-4. **引擎可执行文件自带 env source**（昇腾线）：gpuworks 的 spec 一旦声明
-   `entrypoint` 就会覆盖镜像 ENTRYPOINT，base 里那条 `source set_env.sh` 的链会断。
-   把 source 放进 `vllm`/`sglang` 自身，两种情形都成立（做法参照上游）。
-5. **cu129 的 vllm 档显式替换 base 里的 torchcodec**（`cuda12.9-vllm0.31.0`，证据
-   `artifacts/work/2026-10-03-runner-images/evidence/r2-verify.md` §6e、§6e.1）。上游 `vllm/vllm-openai:v0.31.0-cu129` 的
-   `torchcodec 0.17.0` 是 **CUDA 13 构建**（`libtorchcodec_core*.so` 依赖 `libnvrtc.so.13`，镜像里只有
-   `.12`），`import torchcodec` 直接 `OSError`；而 `vllm serve` 的 CLI 阶段会
-   `from torchcodec.decoders import AudioDecoder`，所以**任何硬件上都起不来**。成因：上游用
-   `uv --extra-index-url https://download.pytorch.org/whl/cu129` 装依赖，cu129 索引的 torchcodec 只到
-   0.16.0+cu129，PyPI 的 0.17.0（Linux 默认 CUDA 13）版本更高，被选中。
-   **做法**：`cuda/Dockerfile.vllm` 在其它 pip 步骤之后用 `--no-deps` 从官方 cu129 索引装
-   `torchcodec==0.16.0+cu129`（torchcodec 0.14~0.17 都只要求 `torch>=2.11`，vllm 要求 `>=0.14`），
-   由矩阵的 `TORCHCODEC_SPEC` / `TORCHCODEC_INDEX_URL` 驱动，其它档不传就不执行。
-   **pip_guard 的按档例外**：`torchcodec` 仍在守护名单里，不是全局放开；Dockerfile 必须用
-   `pip_guard.py replaced <name> <version> <reason>` 显式声明，声明会断言「已装版本等于声明版本且与 base 不同」
-   并把 `{from, to, reason}` 写进镜像里的 `/opt/gpuworks/base-replaced.json`；`check` 只放行
-   「恰好是 base→声明版本」的变化，任何别的变化（含同一个包变成另一个版本）仍然失败，构建日志会打印
-   `DECLARED REPLACEMENT torchcodec: 0.17.0 -> 0.16.0+cu129`。**不是空壳模块**：是官方 cu129 wheel，音频解码走真实路径。
-   **门**：`assert_requires.sh` 的 `engine_import` 对 vllm 档断言 `import vllm.multimodal.media.audio`，并在
-   torchcodec 已装时断言 `import torchcodec`（二者离线、无需 GPU 即可判定），这个缺陷再出现会让构建失败。
-   `-cu129-ubuntu2404` 变体与 gpustack 的 cuda12.9-vllm 镜像的对照见证据文档 §6e.1。
-6. **ENTRYPOINT 其余情况保持上游原样**：gpuworks 部署时按 spec 注入 argv。
-7. **厂商 base 先清 history 再用**：厂商 vanilla（asllm、sourcefind dtk）的 image
-   history 里带内网凭据，而 history 随镜像分发。用 `prepare-base.sh` 在 **base**
-   这一层压一次（不是对每个最终镜像压——实测那样会把共享层打碎，hggc 两档
-   sum 50.4 GB / union 25.4 GB），`build.sh` 构建前会校验。
-8. **callable runtime 不烤进镜像**：推理目录的 spec 已用 sha256 钉住同一资产并由
-   agent 只读挂载到同一路径，镜像内那份永远被盖住。
-9. **海光 dtk0.21 档的 INT8 spec 要关掉 vllm-hcu 的自定义量化 GEMM**（`dtk26.04-vllm0.21.0`，K100 真机实测）。
-   这一档的 base 是海光 vanilla，自带 `vllm-hcu` 平台插件，插件默认开启 `VLLM_HCU_USE_CUSTOM_QUANTIZATION_GEMM`；
-   Qwen3-4B-Thinking-2507 的 compressed-tensors W8A8 INT8 在它上面输出全是 `!`，而厂商 `custom:vllm0210-*` 镜像
-   （没有这个插件）正常。推理目录里该 INT8 spec 因此带 `VLLM_HCU_USE_CUSTOM_QUANTIZATION_GEMM: '0'`；
-   BF16 不受影响。镜像本身不全局关掉这个开关，以免连累别的量化负载。
+1. **Slimmer tooling layer**: no build toolchain (cmake/gfortran/openmpi, etc.); everything uses prebuilt wheels,
+   so images are smaller and builds are faster. gpuworks' use cases do not need a heavy toolchain.
+2. **Merge strategy**: sglang+diffusion go into one image (the diffusion extras are purely additive; they do not squeeze the core
+   dependencies or change engine behavior at import time); **vllm and omni are separate tiers**, because
+   `vllm-omni` pushes `transformers` down to `<5.15` and pins `accelerate` to `1.12.0`,
+   and merging them would put that upper bound on every workload in the image, while the nvidia vllm specs
+   in the inference catalog are 517 ordinary : 27 omni. The omni tier is additionally published as `<framework tier>-vllm-omni<version>`, consistent with the Ascend line's naming;
+   both tiers share the same base, so the large layers are fully deduplicated within the same repository, and this extra tag costs only about 280 MB.
+   There is no longer a diffusion/tts variant split.
+3. **The Ascend line does not install PyPI's vllm-omni**: it was shown to crash the engine's registry-check subprocess
+   (`artifacts/work/2026-10-03-runner-images/evidence/r1-verify.md` §2.2/§2.4); Ascend omni workloads use the `vllm-omni` tier
+   (whose base ships a native NPU build).
+   **Two treatments in the omni tier (from r3)** — measured by r2 on .32 (8×910B4, driver 26.1.1, real containers)
+   (evidence `artifacts/work/2026-10-03-runner-images/evidence/r2-verify.md` §6h):
+   - **Remove the `mooncake-transfer-engine-npu` that ships in the base**. It is the root cause of the `corrupted size vs. prev_size` heap corruption at exit during `import vllm_omni` /
+     `vllm --help` (triggered when `mooncake/*.so`, `libcann_hixl.so`, `libllm_datadist.so` and `libibverbs` are loaded in the same process
+     as vllm_omni; `import mooncake` alone does not crash), and it also makes vLLM's model-architecture introspection subprocess SIGABRT, so Ming-omni-tts and
+     Qwen3-TTS cannot start. `quay.io/ascend/vllm-omni` has carried it since v0.24.0; v0.23.0rc1 does not. The omni tier therefore
+     sets `MOONCAKE` to empty, drops `mooncake` from requires, and adds `omni_no_mooncake`.
+   - **NPU patch for Ming-omni-tts** (`patches/vllm_omni/002`): in `audio_dsp.py`, `hann_window`
+     (int64 `aclnnInplaceCos` fails) and the two `F.fold` calls (aivec vector core 507035) are computed on the CPU instead.
+   - Note that omni is an editable install in the base (`/vllm-workspace/vllm-omni`); the patch target is located via
+     `find_spec('vllm_omni')`, not in site-packages.
+   - Recommended baselines: fleets with the old driver (26.0.rc1) use `cann9.0-910b-vllm-omni0.23.0rc1` (the upstream original has no mooncake and
+     uses CANN 9.0.0); for HDK ≥ 26.1.1 use r3 of 0.30.0. Ming in v0.25.0 has a separate `lm_head` defect; do not use it.
+4. **Engine executables carry their own env source** (Ascend line): as soon as a gpuworks spec declares
+   an `entrypoint`, it overrides the image ENTRYPOINT, and the chain that does `source set_env.sh` in the base breaks.
+   Putting the source inside `vllm`/`sglang` themselves makes both cases work.
+5. **The cu129 vllm tier explicitly replaces the torchcodec in the base** (`cuda12.9-vllm0.31.0`, evidence
+   `artifacts/work/2026-10-03-runner-images/evidence/r2-verify.md` §6e, §6e.1). The `torchcodec 0.17.0` in upstream `vllm/vllm-openai:v0.31.0-cu129`
+   is a **CUDA 13 build** (`libtorchcodec_core*.so` depends on `libnvrtc.so.13`, while the image only has
+   `.12`), so `import torchcodec` fails outright with `OSError`; and the CLI stage of `vllm serve` does
+   `from torchcodec.decoders import AudioDecoder`, so it **cannot start on any hardware**. Cause: upstream installs dependencies with
+   `uv --extra-index-url https://download.pytorch.org/whl/cu129`; the cu129 index's torchcodec only goes up to
+   0.16.0+cu129, while PyPI's 0.17.0 (CUDA 13 by default on Linux) has a higher version and gets selected.
+   **Fix**: after the other pip steps, `cuda/Dockerfile.vllm` installs
+   `torchcodec==0.16.0+cu129` with `--no-deps` from the official cu129 index (torchcodec 0.14~0.17 all only require `torch>=2.11`, and vllm requires `>=0.14`),
+   driven by the matrix's `TORCHCODEC_SPEC` / `TORCHCODEC_INDEX_URL`; other tiers do not pass them and do not run this step.
+   **Per-tier exception to pip_guard**: `torchcodec` is still on the guard list, so this is not a global relaxation; the Dockerfile must declare it explicitly with
+   `pip_guard.py replaced <name> <version> <reason>`; the declaration asserts that "the installed version equals the declared version and differs from the base"
+   and writes `{from, to, reason}` into `/opt/gpuworks/base-replaced.json` in the image; `check` only lets through
+   exactly the change "base -> declared version", and any other change (including the same package becoming another version) still fails; the build log prints
+   `DECLARED REPLACEMENT torchcodec: 0.17.0 -> 0.16.0+cu129`. **It is not a stub module**: it is the official cu129 wheel, and audio decoding takes the real path.
+   **Gate**: `engine_import` in `assert_requires.sh` asserts `import vllm.multimodal.media.audio` for vllm tiers, and
+   asserts `import torchcodec` when torchcodec is installed (both can be decided offline without a GPU); if this defect reappears the build fails.
+   A comparison for the `-cu129-ubuntu2404` variant is in evidence doc §6e.1.
+6. **ENTRYPOINT is otherwise left as upstream has it**: when gpuworks deploys, it injects argv according to the spec.
+7. **Clean a vendor base's history before using it**: the image
+   history of vendor vanilla bases (asllm, sourcefind dtk) carries internal-network credentials, and the history is distributed with the image. Use `prepare-base.sh` to squash once at the **base**
+   layer (not on every final image — measured, that would break the shared layers; the two hggc tiers have
+   sum 50.4 GB / union 25.4 GB), and `build.sh` validates this before building.
+8. **The callable runtime is not baked into the image**: the inference catalog's spec already pins the same asset by sha256 and
+   the agent mounts it read-only at the same path, so the copy inside the image would always be covered up.
+9. **The INT8 spec of the Hygon dtk0.21 tier must turn off vllm-hcu's custom quantized GEMM** (`dtk26.04-vllm0.21.0`, measured on real K100 hardware).
+   This tier's base is the Hygon vanilla, which ships the `vllm-hcu` platform plugin, and the plugin enables `VLLM_HCU_USE_CUSTOM_QUANTIZATION_GEMM` by default;
+   the compressed-tensors W8A8 INT8 of Qwen3-4B-Thinking-2507 outputs nothing but `!` on it, while the vendor `custom:vllm0210-*` images
+   (which do not have this plugin) work correctly. The INT8 spec in the inference catalog therefore carries `VLLM_HCU_USE_CUSTOM_QUANTIZATION_GEMM: '0'`;
+   BF16 is not affected. The image itself does not turn this switch off globally, so as not to affect other quantized workloads.
 
-## 已知待办
+## Known TODOs
 
-- `dtk/files/vllm-hcu-apply-patches` 来自厂商 `custom:*` 镜像（见 `dtk/files/README.md`）。
-- cuda13.4 档等上游出 stable 后补；cuda12.8 上游已无 base、cuda13.3 不存在，均不补。
-- `cann9.1-*-vllm-omni0.30.0` 三档 r3：910b 已在 .32（driver 26.1.1）真机验证；a3（无 A3 硬件）与
-  950（容器环境已无）待复验，见 `artifacts/work/2026-10-03-runner-images/evidence/r2-verify.md` §6h。
+- `dtk/files/vllm-hcu-apply-patches` comes from the vendor `custom:*` images (see `dtk/files/README.md`).
+- The cuda13.4 tier will be added once upstream ships a stable release; cuda12.8 no longer has an upstream base and cuda13.3 does not exist, so neither will be added.
+- The three `cann9.1-*-vllm-omni0.30.0` tiers at r3: 910b has been verified on real hardware on .32 (driver 26.1.1); a3 (no A3 hardware) and
+  950 (the container environment is gone) await re-verification, see `artifacts/work/2026-10-03-runner-images/evidence/r2-verify.md` §6h.
 
-## 模型专属依赖与 vllm-omni 缺陷（2026-11 A100 模板验证）
+## Model-specific dependencies and vllm-omni defects (2026-11 A100 template verification)
 
-A100 全量 NVIDIA 模板验证里，有四个模型因 runner 起不来或请求失败。前两项与第四项改在镜像里
-（omni 档 r4、默认 vllm 档 r4），第三项只改模板。
+In the full NVIDIA template verification on A100, four models failed to start under the runner or failed requests. The first, second and fourth are fixed in the image
+(omni tier r4, default vllm tier r4); the third only changes the template.
 
-1. **VoxCPM2 缺 `voxcpm`**（omni 档 r4 起加装）。vllm-omni 0.30 的 VoxCPM2 talker 构造时执行
-   `VoxCPM.from_pretrained(model, load_denoiser=False, optimize=False)`，按 `VLLM_OMNI_VOXCPM_CODE_PATH`、
-   `../VoxCPM/src`、已安装的 `voxcpm` 三种方式依次查找；r3 里三种都没有，于是报 `No module named 'voxcpm'`。
-   上游 `vllm/vllm-omni` 镜像同样不带这个包。
-   - **以 `--no-deps` 装 `voxcpm==2.0.3`**（矩阵 `VOXCPM_SPEC`）。它在 PyPI 上声明的依赖很重，含 `gradio<7`、
-     `funasr`、`modelscope`、`datasets<4`、`spaces`、`argbind`、`matplotlib` 与无上界的 `torch`/`transformers`，
-     按依赖装会被 pip_guard 拦下，也会碰 omni 的 `transformers<5.15` 上界。推理路径实际 import 的是
-     `voxcpm.core`、`voxcpm.model.*` 与 `voxcpm.modules.*`，只用到 torch、torchaudio、einops、pydantic、tqdm、
-     transformers、librosa、huggingface_hub、safetensors，omni 档里都已经有了；降噪器（modelscope）与文本规范化
-     （wetext、inflect）在 `load_denoiser=False`、默认不做规范化时都是懒加载。
-   - 没装的声明依赖会让 `pip check` 报缺。Dockerfile 把这个包记进 `/opt/gpuworks/pip-nodeps.json`，审计门
-     （`GPUWORKS_PIP_CHECK_NODEPS`）只对「这个包、这个版本」的 `pip check` 行放行，记进 `components.json` 的
-     `pip_check_nodeps`；声明了却没装成那个版本同样失败。
-   - requires 的 `voxcpm` 走 vllm-omni 自己的 `import_voxcpm2_core()`，确认它真能找到。
-   - 实测（gpu3，Quadro RTX 8000）：r4 里 talker 构造成功（`Loaded VoxCPM2Model`、`Loaded VoxCPM2 (dtype=torch.bfloat16)`）。
-     出音频没能在这台卡上验：Turing（cc 7.5）上 vLLM 拒绝 bf16，改 fp16 又会和 voxcpm 原生的 bf16 模块混用
-     （`mat1 and mat2 must have the same dtype`）。完整 deploy+speech 要在 Ampere 及以上的卡上验。
-2. **ERNIE-4.5-VL 缺 `decord` 与 `moviepy`**（默认 vllm 档 r3 起加装 decord，r4 起加装 moviepy；两个
-   ERNIE-4.5-VL spec 都用这一档）。decord 的报错来自
-   `--trust-remote-code` 加载的 HF 动态模块，transformers 的 `check_imports` 要求能 `import decord`。
-   - **装 `decord2==3.4.0`，不装 PyPI 上的 `decord`**（矩阵 `DECORD_SPEC`）。`decord` 最后一版 0.6.0 发布于
-     2021 年，只有 x86_64 的 manylinux2010 wheel，arm64 装不上；`decord2` 的 import 名同样是 `decord`，提供
-     cp312 的 x86_64 与 aarch64 manylinux_2_28 wheel，ffmpeg 打包在 `decord2.libs` 里，硬依赖只有 numpy，
-     不碰 torch 栈。纯增量、import 期不改引擎行为，所以放进默认档，不单开一档。
-   - requires 的 `decord` 用 ffmpeg 现做一段 1 秒的合成视频，断言能解出 5 帧、形状正确。
-   - 实测：对真实模型目录的三个远程代码文件跑 transformers 的 `check_imports`，r2 的
-     `processing_ernie4_5_vl.py` 报与 A100 上相同的 `requires ... decord`，r3 三个文件都通过。
-   - **moviepy**（矩阵 `MOVIEPY_SPEC: moviepy==2.2.1`）：r3 在 A100 上真实部署时越过了 decord，又报
-     `No module named 'moviepy'`——同一个动态模块在运行时才 import 它，`check_imports` 看不到。按依赖安装，requires 的
-     `moviepy` 断言能 import 并构造一个 `ColorClip`。r4 在 A100 上 deploy+chat 通过。
-   - **代价：pillow 从 base 的 12.3.0 降到 11.3.0**（moviepy 2.2.1 要求 `pillow<12`），同时多出 imageio、
-     imageio-ffmpeg、proglog。pillow 不在 pip_guard 守护名单里；默认档上的多模态模型都经过它做图像预处理，
-     r4 抽测了一个带图像输入的视觉对话模型。以后升 moviepy 或 base 时注意这条上界。
-3. **GLM-TTS 报「不是已注册的 Omni pipeline」：镜像没问题，改的是模板**。vllm-omni 0.30 已经带了
-   GLM-TTS 的完整实现（`deploy/glm_tts.yaml`、`model_executor/models/glm_tts`、TTS adapter）。pipeline 自动
-   识别依次看根目录 `config.json` 的 `model_type`、`architectures`、`model_index.json`，最后拿模型路径的
-   basename 匹配注册名；GLM-TTS 仓库根目录没有 `config.json`（LLM 配置在 `llm/config.json`），gpuworks 又
-   把模型挂在 `/model`，basename `model` 匹配不上 `glm_tts`。上游示例能跑，是因为路径名里带 `GLM-TTS`。
-   `--hf-config-path` 帮不上忙：pipeline 识别读的是模型目录，不读这个参数。
-   - 模板做法：pre_start_script 写一个 overlay deploy yaml（`base_config:` 指向镜像里的 `glm_tts.yaml`，再加
-     `pipeline: glm_tts`），`--deploy-config` 指向它。`pipeline` 字段优先于自动识别，`base_config` 会合并
-     stages/connectors。在 omni 镜像里只放 GLM-TTS 的配置与分词器文件、只读挂到 `/model` 离线验证过：
-     bundled yaml 复现原报错，overlay 解析出 `glm_tts` → `glm_tts_dit` 两个 stage；stage 0 的 model config
-     不需要根目录 `config.json`，也不需要 `--hf-config-path`（vllm-omni 按 `model_arch` 注入 `glm_tts` 并解析出
-     `GLMTTSConfig`，分词器取 `vq32k-phoneme-tokenizer`）。真机 deploy+speech 仍待验证。
-   - PPU spec 同样用 bundled `glm_tts.yaml`、同样挂在 `/model`，很可能有同一个问题，没有验证过。
-   - 以后再遇到别的 omni 模型「仓库根目录没有 `config.json`」，同样先用 `pipeline:` 显式指定。
-4. **MOSS-TTS-Realtime 请求报 `mat2 is on cuda:0, different from other tensors on cpu`：vllm-omni 缺陷，
-   omni 档 r4 起打补丁 `patches/vllm_omni/003`**。服务能起来（两个 stage 都健康），失败出在 API server
-   进程给参考音频编码这一步。vllm-omni 把 Realtime 的 codec（`MOSS-Audio-Tokenizer`）挪到 code2wav stage
-   所在的 GPU 上（上游 #7724），但 `MossRealtimeReferenceEncoder._encode_prepared` 把 CPU 上的波形原样交给
-   `codec.batch_encode`，而 codec 的远程代码按 `wav_list[0].device` 建输入张量，于是权重在 cuda:0、输入在 CPU。
-   0.30.0、0.32.0 与上游 main（2026-11-02）的这段代码都没变，升 omni 版本解决不了。非 Realtime 的 MOSS 变体
-   走 processor 的 `encode_audios_from_wav`，它会自己处理设备，所以不受影响：同一轮验证里 MOSS-TTS、TTSD、
-   SoundEffect、VoiceGenerator 都拿到了 WAV。补丁在调 `batch_encode` 前把每段波形移到 codec 所在设备；
-   上游修好后它会被识别为 already-present。0.23 的昇腾 omni 档没有这个类，矩阵用
-   `OMNI_PATCHES_NOT_APPLICABLE` 显式声明不适用。
-   - 实测（gpu3，Quadro RTX 8000，fp16 overlay，3 秒参考音频）：r3 返回 500，报与 A100 上相同的设备不一致；
-     r4 返回 200 和 3.04 秒、24 kHz 的 WAV。
-   - **模板注意**：vllm-omni 按模型路径名区分 MOSS 变体（`realtime`、`local`、`ttsd`、`soundeffect`、
-     `voicegenerator`，都不匹配时当作 `tts`），不看 config。模型挂在 `/model` 时 Realtime 会被当成 `tts`，请求报
-     `'MossTTSRealtimeProcessor' object has no attribute 'model_config'`。Realtime 模板必须把模型挂到名字里带
-     `realtime` 的路径（A100 验证用的是 `/models/MOSS-TTS-Realtime`），codec 另挂一个目录，并用
-     `--hf-overrides '{"codec_model_name_or_path": "<codec 目录>"}'` 指过去；否则 `HF_HUB_OFFLINE=1` 下会去 HF
-     找 `OpenMOSS-Team/MOSS-Audio-Tokenizer`。其他 MOSS 变体同理。
-   - **24 GiB 卡要压 talker stage 的显存**：codec 在卡上有两份，code2wav stage 约 7.7 GiB，API server 给参考音频
-     编码的那份约 7.2 GiB（不在任何 stage 的预算里）。镜像自带的 deploy config 给 talker stage 0.60，在 RTX 4090 D
-     上第一条 speech 请求就 OOM；全局 `--gpu-memory-utilization` 只改得到 stage 0 的一部分，不够。模板用 placement
-     resolver 按每卡显存给变量：< 22 GiB 拒绝，22–40 GiB 由 pre_start 写一个只覆盖 stage 0 为 0.25 的 deploy overlay，
-     ≥ 40 GiB 保持 0.60。4090 D 上 0.35 仍 OOM，0.25 出 WAV。
+1. **VoxCPM2 is missing `voxcpm`** (installed in the omni tier from r4). When vllm-omni 0.30's VoxCPM2 talker is constructed, it runs
+   `VoxCPM.from_pretrained(model, load_denoiser=False, optimize=False)`, which looks up `VLLM_OMNI_VOXCPM_CODE_PATH`,
+   `../VoxCPM/src`, and an installed `voxcpm`, in that order; in r3 none of the three exist, so it reports `No module named 'voxcpm'`.
+   The upstream `vllm/vllm-omni` image does not ship this package either.
+   - **Install `voxcpm==2.0.3` with `--no-deps`** (matrix `VOXCPM_SPEC`). The dependencies it declares on PyPI are heavy, including `gradio<7`,
+     `funasr`, `modelscope`, `datasets<4`, `spaces`, `argbind`, `matplotlib`, and unbounded `torch`/`transformers`;
+     installing by dependencies would be blocked by pip_guard and would also hit omni's `transformers<5.15` upper bound. The inference path actually imports
+     `voxcpm.core`, `voxcpm.model.*` and `voxcpm.modules.*`, which only use torch, torchaudio, einops, pydantic, tqdm,
+     transformers, librosa, huggingface_hub and safetensors, all of which the omni tier already has; the denoiser (modelscope) and text normalization
+     (wetext, inflect) are lazily loaded when `load_denoiser=False` and normalization is not enabled by default.
+   - The declared dependencies that are not installed make `pip check` report them missing. The Dockerfile records this package in `/opt/gpuworks/pip-nodeps.json`, and the audit gate
+     (`GPUWORKS_PIP_CHECK_NODEPS`) only lets through the `pip check` lines for "this package at this version", recording them in `pip_check_nodeps` of `components.json`;
+     if it is declared but not installed at that version, that fails too.
+   - The `voxcpm` requires check goes through vllm-omni's own `import_voxcpm2_core()` and confirms that it can actually be found.
+   - Measured (gpu3, Quadro RTX 8000): in r4 the talker is constructed successfully (`Loaded VoxCPM2Model`, `Loaded VoxCPM2 (dtype=torch.bfloat16)`).
+     Producing audio could not be verified on this card: on Turing (cc 7.5) vLLM rejects bf16, and switching to fp16 mixes with voxcpm's native bf16 modules
+     (`mat1 and mat2 must have the same dtype`). A full deploy+speech must be verified on Ampere or newer cards.
+2. **ERNIE-4.5-VL is missing `decord` and `moviepy`** (decord is installed in the default vllm tier from r3, moviepy from r4; both
+   ERNIE-4.5-VL specs use this tier). The decord error comes from the HF dynamic module loaded with
+   `--trust-remote-code`: transformers' `check_imports` requires `import decord` to work.
+   - **Install `decord2==3.4.0`, not PyPI's `decord`** (matrix `DECORD_SPEC`). The last `decord` release, 0.6.0, was published in
+     2021 and only has an x86_64 manylinux2010 wheel, so it cannot be installed on arm64; `decord2` has the same import name, `decord`, and provides
+     cp312 x86_64 and aarch64 manylinux_2_28 wheels, with ffmpeg bundled in `decord2.libs`; its only hard dependency is numpy,
+     and it does not touch the torch stack. It is purely additive and does not change engine behavior at import time, so it goes into the default tier rather than a separate one.
+   - The `decord` requires check uses ffmpeg to produce a 1-second synthetic video and asserts that 5 frames can be decoded with the correct shape.
+   - Measured: running transformers' `check_imports` on the three remote-code files of the real model directory, r2's
+     `processing_ernie4_5_vl.py` reports the same `requires ... decord` as on A100, and in r3 all three files pass.
+   - **moviepy** (matrix `MOVIEPY_SPEC: moviepy==2.2.1`): in r3's real deployment on A100, it got past decord and then reported
+     `No module named 'moviepy'` — the same dynamic module imports it only at runtime, which `check_imports` cannot see. It is installed with its dependencies, and the `moviepy`
+     requires check asserts that it can be imported and that a `ColorClip` can be constructed. r4 passed deploy+chat on A100.
+   - **Cost: pillow drops from the base's 12.3.0 to 11.3.0** (moviepy 2.2.1 requires `pillow<12`), and imageio, imageio-ffmpeg
+     and proglog are added as well. pillow is not on the pip_guard list; the multimodal models on the default tier all go through it for image preprocessing,
+     and r4 spot-checked a vision chat model with image input. Watch this upper bound when upgrading moviepy or the base.
+3. **GLM-TTS reports "not a registered Omni pipeline": the image is fine, it is the template that needs changing**. vllm-omni 0.30 already ships
+   a complete GLM-TTS implementation (`deploy/glm_tts.yaml`, `model_executor/models/glm_tts`, the TTS adapter). Pipeline auto-detection
+   looks, in order, at `model_type` and `architectures` in the root `config.json`, then `model_index.json`, and finally matches the basename of the model path
+   against registered names; the GLM-TTS repo has no `config.json` in its root (the LLM config is in `llm/config.json`), and gpuworks
+   mounts the model at `/model`, so the basename `model` does not match `glm_tts`. The upstream example works because the path name contains `GLM-TTS`.
+   `--hf-config-path` does not help: pipeline detection reads the model directory, not this argument.
+   - Template fix: pre_start_script writes an overlay deploy yaml (`base_config:` pointing at the image's `glm_tts.yaml`, plus
+     `pipeline: glm_tts`), and `--deploy-config` points at it. The `pipeline` field takes priority over auto-detection, and `base_config` merges
+     stages/connectors. Verified offline in the omni image with only GLM-TTS's config and tokenizer files mounted read-only at `/model`:
+     the bundled yaml reproduces the original error, and the overlay resolves to the two stages `glm_tts` → `glm_tts_dit`; stage 0's model config
+     needs neither a root `config.json` nor `--hf-config-path` (vllm-omni injects `glm_tts` by `model_arch` and resolves to
+     `GLMTTSConfig`, taking the tokenizer from `vq32k-phoneme-tokenizer`). Real-hardware deploy+speech is still to be verified.
+   - The PPU spec likewise uses the bundled `glm_tts.yaml` and likewise mounts at `/model`, so it very likely has the same problem; this has not been verified.
+   - If another omni model has "no `config.json` in the repo root" in the future, likewise specify `pipeline:` explicitly first.
+4. **A MOSS-TTS-Realtime request fails with `mat2 is on cuda:0, different from other tensors on cpu`: a vllm-omni defect,
+   patched with `patches/vllm_omni/003` from omni tier r4**. The service starts (both stages are healthy); the failure occurs at the step where the API server
+   process encodes the reference audio. vllm-omni moves the Realtime codec (`MOSS-Audio-Tokenizer`) to the GPU where the code2wav stage
+   lives (upstream #7724), but `MossRealtimeReferenceEncoder._encode_prepared` hands the CPU waveform as-is to
+   `codec.batch_encode`, and the codec's remote code builds the input tensor on `wav_list[0].device`, so the weights are on cuda:0 and the input is on the CPU.
+   This code is unchanged in 0.30.0, 0.32.0 and upstream main (2026-11-02), so upgrading the omni version does not fix it. The non-Realtime MOSS variants
+   go through the processor's `encode_audios_from_wav`, which handles devices itself, so they are unaffected: in the same verification round MOSS-TTS, TTSD,
+   SoundEffect and VoiceGenerator all produced WAVs. The patch moves each waveform to the codec's device before calling `batch_encode`;
+   once upstream fixes it, it will be detected as already-present. The 0.23 Ascend omni tier does not have this class, and the matrix declares it not applicable explicitly with
+   `OMNI_PATCHES_NOT_APPLICABLE`.
+   - Measured (gpu3, Quadro RTX 8000, fp16 overlay, 3-second reference audio): r3 returns 500 with the same device mismatch as on A100;
+     r4 returns 200 and a 3.04-second, 24 kHz WAV.
+   - **Template caveat**: vllm-omni distinguishes MOSS variants by model path name (`realtime`, `local`, `ttsd`, `soundeffect`,
+     `voicegenerator`; treated as `tts` when none match), not by config. With the model mounted at `/model`, Realtime is treated as `tts`, and the request fails with
+     `'MossTTSRealtimeProcessor' object has no attribute 'model_config'`. A Realtime template must mount the model at a path whose name contains
+     `realtime` (the A100 verification used `/models/MOSS-TTS-Realtime`), mount the codec in a separate directory, and point to it with
+     `--hf-overrides '{"codec_model_name_or_path": "<codec directory>"}'`; otherwise under `HF_HUB_OFFLINE=1` it goes looking on HF
+     for `OpenMOSS-Team/MOSS-Audio-Tokenizer`. The same applies to the other MOSS variants.
+   - **On 24 GiB cards the talker stage's memory must be reduced**: the codec exists twice on the card — about 7.7 GiB in the code2wav stage, and about 7.2 GiB for the copy the API server uses to
+     encode reference audio (not in any stage's budget). The image's bundled deploy config gives the talker stage 0.60, which OOMs on the first speech request on an RTX 4090 D;
+     the global `--gpu-memory-utilization` only reaches part of stage 0, which is not enough. The template uses the placement
+     resolver to set variables by per-card memory: < 22 GiB is rejected, 22–40 GiB has pre_start write a deploy overlay that only overrides stage 0 to 0.25,
+     and ≥ 40 GiB keeps 0.60. On the 4090 D, 0.35 still OOMs and 0.25 produces a WAV.
 
-## 发布（内网 registry -> 公网）
+## Publishing (internal registry -> public)
 
-`publish.py` 把 `registry.zstack.ai/gpuworks/gpuworks-runner:<tag>` 发布到 Docker Hub / quay / 华为 SWR。
-仅标准库、Python 3.6 兼容（gpu3 可直接跑）。镜像 = 上游 base 全部层 + 几百 MB 薄层，
-所以发布的关键是**别重传 base 层**：
+`publish.py` publishes `registry.zstack.ai/gpuworks/gpuworks-runner:<tag>` to Docker Hub / quay / Huawei SWR.
+It uses only the standard library and is Python 3.6 compatible (runs directly on gpu3). An image = all of the upstream base's layers + a few hundred MB of thin layers,
+so the key to publishing is **not re-uploading the base layers**:
 
-| 目标 | 跨仓库 mount（实测） | 结论 |
+| Target | Cross-repository mount (measured) | Conclusion |
 | --- | --- | --- |
-| Docker Hub | 201，跨 namespace 可用（源 `vllm/vllm-openai`） | base 在 Docker Hub 的 cuda 档只传薄层 |
-| quay.io | 201，跨 namespace 可用（源 `ascend/vllm-ascend`） | base 在 quay 的 cann 档只传薄层；cuda 档 base 在 Docker Hub，无法 mount，需全量上传 |
-| SWR | 仅 SWR 内已有的 blob 可 mount（同 namespace 201）；外部 base 层 202；blob 的 HEAD 是账号全局的 | 已推过的层自动跳过，首次需全量上传；SWR 会把 OCI index 改写为 manifest list（index digest 变，平台 manifest digest 不变） |
+| Docker Hub | 201, works across namespaces (source `vllm/vllm-openai`) | for cuda tiers whose base is on Docker Hub, only the thin layers are uploaded |
+| quay.io | 201, works across namespaces (source `ascend/vllm-ascend`) | for cann tiers whose base is on quay, only the thin layers are uploaded; the cuda tiers' base is on Docker Hub and cannot be mounted, so a full upload is needed |
+| SWR | only blobs already in SWR can be mounted (same namespace 201); external base layers 202; a blob's HEAD is account-global | layers already pushed are skipped automatically, the first time needs a full upload; SWR rewrites the OCI index into a manifest list (the index digest changes, the per-platform manifest digests do not) |
 
 ```bash
-# 只报告：N 个 blob、其中 M 个可 mount、K 个需上传、预计上传量（不做任何写入）
+# Report only: N blobs, of which M can be mounted, K need uploading, estimated upload size (no writes at all)
 ./publish.py cuda13.0-sglang0.5.21-r2 dockerhub --dry-run
 
-# 真实发布（凭据只在进程内读取；--env-file - 从 stdin 读，可不落盘）
+# Real publish (credentials are only read in-process; --env-file - reads from stdin, so nothing need touch disk)
 ssh gpu3 'cd /var/tmp/s7-publish && https_proxy=http://dev1.mytrix.me:7890 \
   no_proxy=registry.zstack.ai,192.0.2.156,192.0.2.15 \
   python3 publish.py cuda13.0-sglang0.5.21-r2 swr --dest-tag zz-pilot-... --env-file -' < secrets/registries.env
 ```
 
-流程：读源 index -> 逐层判定（目标已有 / 可 mount / 需上传）-> mount -> `skopeo copy --all
---preserve-digests`（skopeo 跳过目标已有 blob）-> 校验（index/平台 manifest digest 与全部 blob）。
-skopeo 凭据走 0600 临时 authfile，结束即删；日志对凭据脱敏。SWR 自动加入 `no_proxy`（国内直连，
-实测走代理并不更快也不更慢）。退出码：0 成功，2 参数/配置，3 源读取失败，4 目标认证失败，5 skopeo
-重试后仍失败，6 发布后校验失败。`--dest-tag` 默认同源 tag；正式 `-r2` tag 须在真机验证通过后再发。
+Flow: read the source index -> decide per layer (already at target / mountable / needs upload) -> mount -> `skopeo copy --all
+--preserve-digests` (skopeo skips blobs the target already has) -> verify (index/per-platform manifest digests and all blobs).
+skopeo credentials go through a 0600 temporary authfile that is deleted when done; logs redact credentials. SWR is automatically added to `no_proxy` (direct connection within China;
+measured, going through the proxy was neither faster nor slower). Exit codes: 0 success, 2 arguments/configuration, 3 source read failure, 4 destination authentication failure, 5 skopeo
+still failing after retries, 6 post-publish verification failure. `--dest-tag` defaults to the same tag as the source; a formal `-r2` tag must only be published after it passes real-hardware verification.
 
-## 同步阿里云盘（离线归档，发布后必做）
+## Sync to Aliyun Drive (offline archive, mandatory after publishing)
 
-离线部署文档（[`docs/how-to/deploy-offline.md`](../../docs/how-to/deploy-offline.md)）让用户从阿里云盘分享目录下载镜像归档。所以**每次新增 runner 档或升级 revision，在公网发布之后，都要把归档同步到云盘**，否则离线用户拿不到新档。云盘上每个系列只放当前版本。
+The offline deployment doc ([`docs/how-to/deploy-offline.md`](../../docs/how-to/deploy-offline.md)) lets users download image archives from a shared Aliyun Drive directory. So **every time a runner tier is added or a revision is upgraded, after the public publish, the archive must be synced to the drive**, otherwise offline users will not get the new tier. The drive only holds the current version of each series.
 
-- 位置：企业云盘 drive 101 的 `/gpuworks-images/<引擎>-<框架>/`，目录名就是文档里列出的 `vllm-cuda/`、`sglang-dtk/` 等。文件名是 `gpuworks-runner_<tag>_linux-<架构>.tar.gz`；多架构的档，每个架构各传一份。
-- 导出：在构建机上从内网 registry 导出，归档里的引用要写成规范形式 `gpuworks/gpuworks-runner:<tag>`，用户导入后不用再打 tag：
+- Location: `/gpuworks-images/<engine>-<framework>/` on enterprise drive 101; the directory names are the ones listed in the doc, such as `vllm-cuda/` and `sglang-dtk/`. File names are `gpuworks-runner_<tag>_linux-<arch>.tar.gz`; for multi-arch tiers, upload one copy per architecture.
+- Export: on the build machine, export from the internal registry; the reference inside the archive must be in canonical form `gpuworks/gpuworks-runner:<tag>`, so users need not re-tag after importing:
 
   ```bash
   skopeo copy --override-arch amd64 \
@@ -339,11 +337,11 @@ skopeo 凭据走 0600 临时 authfile，结束即删；日志对凭据脱敏。S
   pigz -9 /var/tmp/gpuworks-runner_<tag>_linux-amd64.tar
   ```
 
-- 上传：用 `pds-upload.py`。凭据（`PDS_DOMAIN_ID`、`PDS_API_KEY`）在维护者本地的 secrets 里。这把 key **只能上传、改名，不能删除**，传错了没法撤回，所以：先 `--dry-run` 核对目标目录和文件名；脚本拒绝覆盖已存在的文件；不要上传测试文件。分片 16 路并行上传（单流不到 1 MiB/s，8 GB 约 10 分钟）；PDS 要求并行上传的每个分片带前缀 SHA-1 状态，脚本经 libcrypto 计算，构建机需要有 `libcrypto.so`。传输中途失败会在云盘留下看不见也删不掉的未完成会话，所以先在构建机上 `gzip -t` 校验归档、确认网络稳定再传。
+- Upload: use `pds-upload.py`. The credentials (`PDS_DOMAIN_ID`, `PDS_API_KEY`) are in the maintainer's local secrets. This key **can only upload and rename, not delete**, and a wrong upload cannot be undone, so: run `--dry-run` first to check the target directory and file name; the script refuses to overwrite existing files; do not upload test files. Chunks upload 16 in parallel (a single stream is under 1 MiB/s; 8 GB takes about 10 minutes); PDS requires every chunk of a parallel upload to carry a prefix SHA-1 state, which the script computes via libcrypto, so the build machine needs `libcrypto.so`. A mid-transfer failure leaves an invisible, undeletable incomplete session on the drive, so first verify the archive with `gzip -t` on the build machine and make sure the network is stable before uploading.
 
   ```bash
   env $(grep -v '^#' pds-ent-apikey.env | xargs) ./pds-upload.py gpuworks-runner_<tag>_linux-amd64.tar.gz vllm-dtk --dry-run
   env $(grep -v '^#' pds-ent-apikey.env | xargs) ./pds-upload.py gpuworks-runner_<tag>_linux-amd64.tar.gz vllm-dtk
   ```
 
-- 旧版本归档删不掉，需要有人在云盘网页上手动删除或移走，提交说明里写明这一项。
+- Old-version archives cannot be deleted; someone has to delete or move them manually on the drive's web page, and the commit message must note this.

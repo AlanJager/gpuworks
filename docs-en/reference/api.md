@@ -1418,10 +1418,10 @@ Scripts and third-party clients cannot directly reuse vLLM parameters for SGLang
 }}}
 ```
 
-- `mode`: one of the engine profile's `pd_modes` (`vllm-nixl`, `vllm-ascend-mooncake`, `vllm-ppu-mooncake`, `sglang-nixl`, `sglang-ppu-ipc`, `sglang-ppu-mooncake`). All unknown fields are rejected.
+- `mode`: one of the engine profile's `pd_modes` (`vllm-nixl`, `vllm-ascend-mooncake`, `vllm-mooncake`, `vllm-ppu-mooncake`, `sglang-nixl`, `sglang-ppu-ipc`, `sglang-ppu-mooncake`). All unknown fields are rejected.
 - Each `unit` is a replica; `gpus` can be omitted. `followers` makes the replica span multiple nodes (ranks 1…N), in which case the role must specify `tp`.
   For each rank, the GPU count is `tp × pp` divided by the number of ranks.
-- Allowed values and defaults for `fallback` and `kv_load_failure` depend on the mode: for `vllm-nixl` and `vllm-ascend-mooncake`, `fallback`
+- Allowed values and defaults for `fallback` and `kv_load_failure` depend on the mode: for `vllm-nixl`, `vllm-ascend-mooncake`, and `vllm-mooncake`, `fallback`
   is `decode` (default) or `fail`, and `kv_load_failure` is `fail` (default) or `recompute`. For `sglang-nixl`, `sglang-ppu-ipc`, `sglang-ppu-mooncake`, and
   `vllm-ppu-mooncake`, `fallback` only accepts `fail`, and there is no `kv_load_failure`. Values disallowed by the mode return `PD_FALLBACK_INVALID` /
   `PD_KV_LOAD_FAILURE_INVALID`.
@@ -1731,7 +1731,7 @@ PD deployments also return `pd`:
 
 - `effectiveness_pct`, `fallback_rate_pct`, `fallbacks` (counts by fallback reason), `prefill_waiting_avg`, and `avg_prompt_tokens`.
 - `prefill_stage_avg_ms` and `prefill_stage_p95_ms`: mean and P95 time the gateway waits for prefill, both over the last 5 minutes; P95 comes from the request segment histogram.
-- `kv_transfer.exposed`: whether the engine exports KV transfer metrics; for `vllm-ascend-mooncake`, this is `false`, and all other transfer fields are `null`.
+- `kv_transfer.exposed`: whether the engine exports KV transfer metrics; for `vllm-ascend-mooncake` and `vllm-mooncake`, this is `false`, and all other transfer fields are `null`.
 - Other `kv_transfer` fields: per-transfer `avg_ms`, `p95_ms`, and `avg_mb`; transfer speed `mb_per_s`; and counts of `failed` (decode pull failure) and `expired` (prefill KV lease expires without being pulled) within the window. Values are `null` when no data is available.
 
 ### Find Requests Across Deployments

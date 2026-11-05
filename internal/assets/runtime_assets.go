@@ -38,9 +38,13 @@ type DomesticRuntimeAssetResult struct {
 }
 
 // InstallDomesticRuntimeAssets extracts only packages matching the detected
-// vendor and host architecture. NVIDIA and unknown nodes are strict no-ops.
+// vendor and host architecture. NVIDIA, Hygon and unknown nodes are strict
+// no-ops: NVIDIA's HAMi-core is embedded unconditionally, and Hygon's dGPU
+// backend composes host-installed driver libraries instead of shipping its
+// own. The gate is HasRuntimeAssetBundles rather than IsDomestic because AMD
+// ships a bundle here (libvrocm.so) without being a domestic accelerator.
 func InstallDomesticRuntimeAssets(stateDir, vendor string) ([]DomesticRuntimeAssetResult, error) {
-	if !accelerator.IsDomestic(vendor) {
+	if !accelerator.HasRuntimeAssetBundles(vendor) {
 		return nil, nil
 	}
 	manifest, err := readRuntimeAssetManifest()

@@ -16,6 +16,7 @@ import "embed"
 //go:embed bin/runtime-assets/ascend/linux-amd64/libvruntime.so
 //go:embed bin/runtime-assets/ppu/linux-amd64/hggc-13.0/hggc_quota.so
 //go:embed bin/runtime-assets/ppu/linux-amd64/hggc-13.0/hgml_dlsym_hook.so
+//go:embed bin/runtime-assets/amd/linux-amd64/libvrocm.so
 var files embed.FS
 
 //go:embed bin/ib_write_bw-x86_64
