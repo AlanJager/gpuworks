@@ -237,6 +237,7 @@ GET /api/v1/scheduling/timeline
 GET /api/v1/scheduling/yield-policies
 GET /api/v1/security/settings
 GET /api/v1/server/listen
+GET /api/v1/server/outbound-policy
 GET /api/v1/settings
 GET /api/v1/ssh-key
 GET /api/v1/storages
@@ -415,6 +416,7 @@ PUT /api/v1/pull/source-rules/order
 PUT /api/v1/pull/source-rules/{id}
 PUT /api/v1/pull/sync-groups/{id}
 PUT /api/v1/server/listen
+PUT /api/v1/server/outbound-policy
 PUT /api/v1/settings/{key}
 PUT /api/v1/ssh-key
 PUT /api/v1/storages/{id}/files/upload

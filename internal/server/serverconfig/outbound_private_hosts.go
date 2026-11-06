@@ -2,9 +2,6 @@ package serverconfig
 
 import (
 	"bytes"
-	"errors"
-	"fmt"
-	"io"
 	"os"
 	"sync"
 )
@@ -35,55 +32,18 @@ func WatchOutboundPrivateHosts(path string, restrict bool, fallback []string, re
 	var lastError string
 	return func() []string {
 		mu.Lock()
-		result, err := func() (result []string, err error) {
-			f, err := openOutboundConfiguration(path)
+		result, err := func() ([]string, error) {
+			raw, _, err := readOutboundSnapshot(path)
 			if err != nil {
 				return nil, err
-			}
-			defer func() {
-				err = errors.Join(err, f.Close())
-				if err != nil {
-					result = nil
-				}
-			}()
-			before, err := f.Stat()
-			if err != nil {
-				return nil, err
-			}
-			if !before.Mode().IsRegular() {
-				return nil, fmt.Errorf("read outbound configuration %s: expected a regular file", path)
-			}
-			if before.Size() > maxOutboundConfigBytes {
-				return nil, fmt.Errorf("read outbound configuration %s: file exceeds %d bytes", path, maxOutboundConfigBytes)
-			}
-			raw, err := io.ReadAll(io.LimitReader(f, maxOutboundConfigBytes+1))
-			if err != nil {
-				return nil, err
-			}
-			if len(raw) > maxOutboundConfigBytes {
-				return nil, fmt.Errorf("read outbound configuration %s: file exceeds %d bytes", path, maxOutboundConfigBytes)
 			}
 			nextHosts := hosts
 			if cached == nil || !bytes.Equal(cached, raw) {
-				cfg, err := decodeFile(path, raw)
+				cfg, _, err := decodeOutboundPolicyDocument(path, raw, false)
 				if err != nil {
 					return nil, err
 				}
 				nextHosts = effectiveOutboundPrivateHosts(cfg.OutboundRestrictPrivateHosts, cfg.OutboundAllowPrivateHosts)
-			}
-			after, err := f.Stat()
-			if err != nil {
-				return nil, err
-			}
-			if !sameOutboundConfigSnapshot(before, after) {
-				return nil, fmt.Errorf("outbound configuration %s changed while being read", path)
-			}
-			current, err := os.Stat(path)
-			if err != nil {
-				return nil, err
-			}
-			if !sameOutboundConfigSnapshot(before, current) {
-				return nil, fmt.Errorf("outbound configuration %s changed while being read", path)
 			}
 			cached, hosts = raw, nextHosts
 			return append([]string(nil), hosts...), nil

@@ -224,6 +224,8 @@ func SetListen(path string, l Listen) error {
 // writes the file back atomically with its mode, keeping comments and the
 // keys change does not touch.
 func editDocument(path string, change func(root *yaml.Node) error) error {
+	configDocumentMu.Lock()
+	defer configDocumentMu.Unlock()
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return err
@@ -271,7 +273,7 @@ func setKey(m *yaml.Node, key string, value *yaml.Node) {
 	for i := 0; i+1 < len(m.Content); i += 2 {
 		if m.Content[i].Value == key {
 			// Keep comments attached to the old value's node.
-			value.HeadComment, value.LineComment = m.Content[i+1].HeadComment, m.Content[i+1].LineComment
+			value.HeadComment, value.LineComment, value.FootComment = m.Content[i+1].HeadComment, m.Content[i+1].LineComment, m.Content[i+1].FootComment
 			m.Content[i+1] = value
 			return
 		}

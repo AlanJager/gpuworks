@@ -1,4 +1,21 @@
 {
+  "outboundPolicy": {
+    "title": "出站访问策略",
+    "description": "普通内网主机默认允许访问。开启严格模式后，管理节点的私网 HTTP 访问仅允许白名单内目标。",
+    "permanent": "云元数据、链路本地和特殊保留地址始终禁止访问，关闭严格模式或加入白名单也不例外。",
+    "adminOnly": "查看或修改出站策略需要管理员权限。",
+    "loading": "正在加载出站策略…",
+    "restrict": "限制私网主机访问",
+    "restrictHelp": "默认关闭。开启后，私网目标必须匹配白名单；关闭时保留已填写的白名单。",
+    "hosts": "允许访问的私网主机",
+    "hostsHelp": "每行一个主机名、IP 地址或 CIDR 网段，不支持通配主机名。仅在严格模式下使用此列表。",
+    "persisted": "保存会将 outbound_restrict_private_hosts 和 outbound_allow_private_hosts 写入 server.yaml 并立即生效。",
+    "readOnly": "服务配置为只读或没有可写配置文件，请管理员先确保 server.yaml 可写后再保存。",
+    "retry": "重试",
+    "reload": "重新加载并丢弃草稿",
+    "failed": "无法加载或保存出站策略。请保留草稿后重试。",
+    "saved": "出站策略已保存并生效。"
+  },
   "updates": {
     "title": "版本与更新",
     "description": "服务端版本、系统镜像目录与推理模板目录都可以在这里检查和更新。开启自动检测时，打开控制台会自动检查（服务端每小时最多向外检查一次），点「检查更新」立即重新检查；不能联网时可以上传文件更新。",

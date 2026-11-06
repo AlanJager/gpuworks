@@ -6,7 +6,7 @@
 
 - 使用有 `managementAdmin` 权限的账号。下载或导入到节点时，目标节点须在线；下载模型还要求 agent 支持 HTTP 目录来源（过旧时见下方错误处理）。
 - URL 为不含内嵌凭据的 `http` / `https`。模型指向权重所在的目录，镜像指向归档文件。
-- **server 能读取来源**，用于解析。普通私网及本机回环默认无需白名单；仅当管理员在 `server.yaml` 开启 `outbound_restrict_private_hosts: true` 时，才须在 `outbound_allow_private_hosts` 中授权来源。两个字段保存后下一次请求生效，无需重启 server，见[出站 HTTP 代理策略](../reference/configuration.md#出站-http-代理策略)。
+- **server 能读取来源**，用于解析。普通私网及本机回环默认无需白名单；仅当开启严格模式时才需要白名单。平台管理员可在**设置 → 安全与访问 → 出站访问策略**保存授权，也可由主机管理员直接编辑 `server.yaml` 的 `outbound_restrict_private_hosts` 和 `outbound_allow_private_hosts`。保存后下一次请求生效，无需重启 server，见[出站 HTTP 代理策略](../reference/configuration.md#出站-http-代理策略)。
 - **模型由目标节点下载**，节点也必须能访问目录。镜像归档可由节点直连，或由能读取归档的 server 中转。
 
 重定向最多 5 次；模型目录的每次跳转还必须留在注册时的主机上。管理节点与 agent 各自使用对应的拉取代理；内网地址需要绕过代理时，将其加入相应代理条目的 `no_proxy`。
@@ -81,7 +81,7 @@
 | `HTTP_DIRECTORY_TOO_LARGE` | 文件数或层级超出上限，请指向模型自身的目录 |
 | `MODEL_SOURCE_REQUIRES_NEWER_AGENT` | 目标节点 agent 过旧，先升级 agent |
 | `IMAGE_ARCHIVE_URL_INVALID` | 归档地址不可用：必须是无内嵌凭据的 `http`/`https` |
-| `IMAGE_ARCHIVE_URL_POLICY_DENIED` | 管理节点出站策略拒绝该来源。普通私网及本机回环默认无需白名单；开启严格模式时，由文件管理员在 `outbound_allow_private_hosts` 授权，保存后重试。配置文件缺失、不可读、无效或超过 1 MiB 也会拒绝私网请求，先修复配置；特殊元数据、链路本地与保留地址始终不能放行 |
+| `IMAGE_ARCHIVE_URL_POLICY_DENIED` | 管理节点出站策略拒绝该来源。普通私网及本机回环默认无需白名单；开启严格模式时，由平台管理员在设置 → 安全与访问 → 出站访问策略添加授权，保存后重试，也可直接编辑 `server.yaml` 的 `outbound_allow_private_hosts`。配置文件缺失、不可读、无效或超过 1 MiB 也会拒绝私网请求，先修复配置；特殊元数据、链路本地与保留地址始终不能放行 |
 | `IMAGE_ARCHIVE_URL_UNREACHABLE` | server 读不到归档，检查地址、网络、TLS 与文件是否存在；节点直连失败还需检查节点到来源的网络 |
 | `IMAGE_ARCHIVE_URL_NOT_DECLARED` | 该 URL 不在这个镜像的「获取地址」里，先把它加进去再同步 |
 

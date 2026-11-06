@@ -8,7 +8,7 @@
 
 - server 已运行并能登录控制台，见[从零启动并部署第一个模型](../tutorials/getting-started.md)。
 - 只用平台检查时不需要配置 LLM。需要 AI 解读时，先在**设置 → 集成 → AI 服务**保存一个 server 可访问的 OpenAI 兼容端点（base URL、模型名和 API key）；key 由 server 加密保存。
-- 普通内网或本机回环的 AI 端点默认无需白名单；仅当管理员在 `server.yaml` 开启 `outbound_restrict_private_hosts: true` 时，才须在 `outbound_allow_private_hosts` 中授权目标主机。两个字段保存后下一次请求生效，无需重启 server，见[出站访问配置](../reference/configuration.md#server-配置文件-serveryaml)。
+- 普通内网或本机回环的 AI 端点默认无需白名单；仅当开启严格模式时才需要白名单；平台管理员可在**设置 → 安全与访问 → 出站访问策略**管理，或由主机管理员直接编辑 `server.yaml` 的 `outbound_restrict_private_hosts` 和 `outbound_allow_private_hosts` 授权目标主机。两个字段保存后下一次请求生效，无需重启 server，见[出站访问配置](../reference/configuration.md#server-配置文件-serveryaml)。
 - 分析会把读取到的诊断数据发送给所配置的 AI 服务。配置前确认目标主机与数据使用范围；设置页会提示外部服务主机，同源的平台模型不显示这条提示。
 
 ## 入口：点一下就开始，不需要写提示词

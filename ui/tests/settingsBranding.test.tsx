@@ -213,6 +213,7 @@ test("a fragment selects the settings tab: its own key or a card it holds", () =
   assert.equal(settingsTabFor("#pull-settings"), "pull");
   assert.equal(settingsTabFor("#nodes"), "nodes");
   assert.equal(settingsTabFor("#security"), "access");
+  assert.equal(settingsTabFor("#outbound-policy"), "access");
   assert.equal(settingsTabFor("#telemetry"), "integrations");
 });
 
