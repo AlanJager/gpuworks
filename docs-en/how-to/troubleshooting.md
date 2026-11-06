@@ -673,7 +673,7 @@ Statuses include `pending`, `downloading`, `syncing`, `present`, `registered`, `
 |---|---|
 | `present` | Downloaded and verified as complete; all files and sizes match the manifest in `.gpuworks-model-complete.json` |
 | `registered` | A local path is registered and ready to use without waiting for `present`; later checks may update the status, but the acquisition method remains local registration |
-| `<file>.part`, `<file>.part.state` | Intermediate download files; retries attempt to resume, so these files do not indicate completeness |
+| `<file>.part`, `<file>.part.state` | Intermediate download files; retries attempt to resume, so these files do not indicate completeness. When another tool (such as `hf download`) has finished the file of the same name at the size `.part.state` records, the two are leftovers: validation and scans no longer count them as unfinished, and the next platform download removes them |
 
 If a model from a local source is incomplete on the node, deployment creation returns 409 `MODEL_SOURCE_UNAVAILABLE`.
 For public sources, creation attempts to read metadata. An unreachable site may leave metadata empty without preventing creation. **Successful creation does not mean weights are available**; acquisition must still finish before startup.

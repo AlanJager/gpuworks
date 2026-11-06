@@ -313,6 +313,7 @@ func (n *NodeRuntime) downloadRepo(ctx context.Context, mf proto.ModelFileTask, 
 	// disk admission, completeness and progress all have to allow for the
 	// rounding until the transfer reports each file's real length.
 	approximate := modelrepo.SizeIsApproximate(mf.Source)
+	removeStaleRepoSidecars(n.log, mf.Key, absTarget, files, approximate)
 	// A legacy cache may predate completion markers. Validate every repository
 	// file and backfill the marker without downloading the model again.
 	if present, _ := repoFilesPresent(absTarget, files, approximate); present {

@@ -414,7 +414,7 @@ Returns `200 {"status":"registered"}` on success. The node checks that the direc
 Metadata must identify exactly one complete model entry in the directory. Formats with embedded metadata, such as GGUF, do not require `config.json`; parent directories, non-model directories, and unknown layouts return 409. `registered` means the selected model directory has been registered;
 it does not guarantee that the engine can load the model. Do not treat a request as invalid because the path is outside the storage root.
 
-An empty `path` returns 400; a missing target model returns 404. The node rejects missing or empty directories and directories containing `.part`/`.part.state` files;
+An empty `path` returns 400; a missing target model returns 404. The node rejects missing or empty directories and directories containing unfinished `.part`/`.part.state` files (leftovers beside a file complete at the size `.part.state` records do not count);
 the endpoint returns 409 and does not replace the existing registration. If the agent cannot return directory recognition metadata, the endpoint returns `AGENT_UPGRADE_REQUIRED`; upgrade the agent first. Errors such as unavailable RPC to the actual node may also return 409; handle them according to the error details.
 
 ## Images / Storages (Image Catalog and Storage Policies)
