@@ -3,6 +3,7 @@ import json
 import math
 from urllib.parse import urlencode, urlsplit
 from playwright.sync_api import expect
+from model_detail_dialog import model_detail_dialog
 from model_hub_registration_browser import texts, poll
 from platform_token_read_revoke import button
 from model_metadata_table_owner import MODELS, require
@@ -32,7 +33,7 @@ class ModelsTable:
 
     @property
     def table(self):
-        return self.page.locator('.resource-table')
+        return self.page.locator('.model-resource-card .resource-table')
 
     @property
     def pager(self):
@@ -209,7 +210,7 @@ class ModelsTable:
             target.click()
         require(read.value.status == 200, 'detail GET failed')
         self.owner.facts(read.value.json(), row)
-        dialog = self.page.get_by_role('dialog', name=row.name, exact=True)
+        dialog = model_detail_dialog(self.page, self.labels, row.name)
         expect(dialog).to_be_visible()
         for value in (row.repo, row.revision, 'Qwen2ForCausalLM', 'float16', '4,096', 'Audited browser registration fixture.'):
             expect(dialog).to_contain_text(value)
