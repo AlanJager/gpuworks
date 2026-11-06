@@ -153,7 +153,7 @@
     "ROUTING_POLICY_INVALID": "The routing policy is invalid.",
     "DISTRIBUTED_REPLICA_COUNT": "Distributed deployments require exactly {{required}} replica.",
     "SLEEP_NOT_ENABLED": "Sleep mode was not enabled for this deployment. Redeploy with sleep mode enabled to use it.",
-    "ACCELERATOR_FEATURE_UNSUPPORTED": "{{vendor}} does not support {{feature}}.",
+    "ACCELERATOR_FEATURE_UNSUPPORTED": "{{vendor}} does not support {{feature}}. Choose a supported feature or select another accelerator.",
     "SLEEP_ENGINE_UNSUPPORTED": "The {{engine}} engine does not support sleep mode.",
     "SLEEP_INVALID_LEVEL": "The sleep level must be 1 (quick) or 2 (deep); {{level}} is not a level.",
     "SLEEP_INVALID_MODE": "The sleep mode must be wait or abort; {{mode}} is not a mode.",
@@ -526,11 +526,15 @@
     "AGENT_UPGRADE_REFUSED": "Agent upgrade request could not proceed: {{detail}}",
     "TEMPLATE_EXPORT_UNAVAILABLE": "This deployment cannot be saved as a template ({{reason}}).",
     "LAUNCH_NOT_EXPORTABLE": "The deployment's launch arguments cannot be written as template arguments that rebuild the same {{engine}} command, so no approximate template is given.",
-    "ACCELERATOR_FEATURE_UNSUPPORTED": "{{vendor}} does not support {{feature}}. Choose a supported feature or select another accelerator.",
     "ACCELERATOR_DEVICE_SELECTION_REQUIRED": "{{vendor}} requires an explicit GPU assignment before launch.",
     "ACCELERATOR_SM_LIMIT_UNSUPPORTED": "{{vendor}} does not support a compute/SM limit. Remove it, or use a vendor whose dGPU backend exposes one.",
     "LAUNCH_FEATURES_UNKNOWN": "Cannot determine which features the custom launch command requests on {{vendor}}. Use a recognized engine entrypoint or structured launch parameters.",
-    "SLEEP_TARGET_UNRESOLVED": "Cannot resolve the GPU selection for instance {{instance}} on node {{node}}: {{detail}}."
+    "SLEEP_TARGET_UNRESOLVED": "Cannot resolve the GPU selection for instance {{instance}} on node {{node}}: {{detail}}.",
+    "ACCELERATOR_RUNTIME_UNSUPPORTED": "{{vendor}} requires {{required_os}}/{{required_arch}} and {{required_runtime}}; the node reports {{os}}/{{arch}} and {{runtime}}.",
+    "ACCELERATOR_RUNTIME_UNREPORTED": "The node has not reported all runtime facts required by {{vendor}}. Refresh the node inventory before retrying.",
+    "ACCELERATOR_DEVICE_UNAVAILABLE": "The selected {{vendor}} devices could not be verified. Check the device identities and driver diagnostics.",
+    "ACCELERATOR_INVENTORY_UNAVAILABLE": "The {{vendor}} driver inventory could not be read. Check the vendor CLI and driver.",
+    "ACCELERATOR_RESOURCE_UNAVAILABLE": "{{vendor}} requires {{resource}} for this launch. Check the host device and resolved container resources."
   },
   "httpError": {
     "proxyPage": "HTTP {{status}}: a reverse proxy or tunnel between the browser and gpuworks answered with its own error page, so the server's reason was lost. Retry from the server's own address to see it."

@@ -30,11 +30,14 @@ func (e *Engine) applyDeviceInjectionForLaunch(ctx context.Context, ws *runtime.
 	}
 	if len(indexes) == 0 {
 		if accelerator.RequiresDeviceSelection(e.prober.Vendor()) {
-			return fmt.Errorf("%s requires an explicit nonempty GPU selection", accelerator.VendorBrand(e.prober.Vendor()))
+			return gpu.DeviceSelectionError(e.prober.Vendor())
 		}
 		return nil
 	}
 	inj := gpu.ResolveInjection(ctx, e.prober, gpu.InjectionRequest{Indexes: indexes, DriverName: driverName, NNodes: nNodes, DockerArgs: ws.DockerArgs})
+	if inj.Failure != nil {
+		return &gpu.InjectionError{Failure: *inj.Failure, Reason: inj.UnsupportedReason}
+	}
 	if inj.UnsupportedReason != "" {
 		return fmt.Errorf("accelerator runtime unavailable: %s", inj.UnsupportedReason)
 	}

@@ -480,7 +480,8 @@ func (a *apiHandlers) instanceDTOFrom(rows dtoLookup, in *store.Instance) dto.In
 	d := dto.Instance{
 		UUID: in.UUID, DeploymentID: in.DeploymentID, State: in.State, ImageDigestID: in.ImageDigestID,
 		APIPort: in.APIPort, Image: in.Image, Message: in.Message, ContainerID: in.ContainerID,
-		Phase: in.Phase, Progress: in.Progress, BytesDone: in.BytesDone, BytesTotal: in.BytesTotal, RateBPS: in.RateBPS,
+		RuntimeFailure: instanceRuntimeFailure(in),
+		Phase:          in.Phase, Progress: in.Progress, BytesDone: in.BytesDone, BytesTotal: in.BytesTotal, RateBPS: in.RateBPS,
 		SleepLevel: in.SleepLevel, DesiredSleep: in.SleepIntent(), Asleep: planning.InstanceAsleep(in), SleepHeld: in.SleepHeld,
 		DistGroup: in.DistGroup, DistRole: instanceDistRole(in), NNodes: in.NNodes, NodeRank: in.NodeRank, Headless: in.Headless, DistAttempt: in.DistAttempt,
 		GPUIndexes: parseIntSlice(in.GPUIndexes), Ports: parseIntSlice(in.Ports), Role: in.Role,

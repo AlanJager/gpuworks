@@ -12,6 +12,7 @@ import (
 	"syscall"
 
 	"gpuworks.ai/gpuworks/internal/accelerator"
+	"gpuworks.ai/gpuworks/internal/proto"
 )
 
 // Runtime injection verifies the native device identities before granting the
@@ -31,7 +32,9 @@ func (p *KunlunProber) runtimeInjectionForDriver(ctx context.Context, indexes []
 	if len(indexes) == 0 {
 		return RuntimeInjection{}
 	}
-	fail := func(s string) RuntimeInjection { return RuntimeInjection{UnsupportedReason: s} }
+	fail := func(s string) RuntimeInjection {
+		return rejectedInjection(proto.RuntimeFailure{Code: proto.ErrorAcceleratorDeviceUnavailable, Vendor: p.Vendor()}, s)
+	}
 	if err := ctx.Err(); err != nil {
 		return fail(err.Error())
 	}
@@ -40,20 +43,13 @@ func (p *KunlunProber) runtimeInjectionForDriver(ctx context.Context, indexes []
 		actual = p.platform()
 		actual.Driver = driver
 	}
-	if params := accelerator.RuntimeMismatchParams(p.Vendor(), actual); params != nil {
-		// Named after the server's refusals for the same two cases, so one
-		// grep finds both sides of a report. Neither authorizes a launch;
-		// the distinction is whether the operator is missing a fact or has
-		// a host this backend does not run on.
-		cause := "runtime_unsupported"
-		if params["missing_facts"] == true {
-			cause = "runtime_unreported"
-		}
-		return fail(fmt.Sprintf("%s: requires %s/%s with %s; observed os=%q arch=%q runtime=%q", cause, params["required_os"], params["required_arch"], params["required_runtime"], actual.OS, actual.Arch, actual.Driver))
+	if err := RuntimeRequirementError(p.Vendor(), actual); err != nil {
+		return rejectedInjection(err.Failure, err.Error())
 	}
+
 	inv, e := p.inventoryWithFreshness(ctx, true)
 	if e != nil {
-		return fail("cannot verify Kunlun inventory: " + e.Error())
+		return rejectedInjection(proto.RuntimeFailure{Code: proto.ErrorAcceleratorInventoryUnavailable, Vendor: p.Vendor()}, "cannot verify Kunlun inventory: "+e.Error())
 	}
 	cards := map[int]kunlunCard{}
 	for _, c := range inv.Cards {

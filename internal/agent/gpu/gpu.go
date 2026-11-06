@@ -27,6 +27,8 @@ type RuntimeInjection struct {
 	DockerArgs        []string
 	Mounts            []RuntimeMount
 	UnsupportedReason string
+	// Failure augments the legacy reason; old backends need not implement it.
+	Failure *proto.RuntimeFailure
 }
 
 // RuntimeSelectionCleanup identifies only accelerator-owned workload settings.

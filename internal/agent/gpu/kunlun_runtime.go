@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"os"
 	"strings"
+
+	"gpuworks.ai/gpuworks/internal/accelerator"
+	"gpuworks.ai/gpuworks/internal/proto"
 )
 
 // XDR is the only transport device owned by this backend. Verbs devices,
@@ -24,7 +27,11 @@ func (p *KunlunProber) verifyKunlunXDR() error {
 
 // Check the effective container resources, not the identity of the selected
 // network. Docker arguments alone cannot establish how that network was chosen.
-func resolvedKunlunRDMAArgs(args []string) error {
+func kunlunResourceError(resource, reason string) *InjectionError {
+	return &InjectionError{Failure: proto.RuntimeFailure{Code: proto.ErrorAcceleratorResourceUnavailable, Vendor: accelerator.VendorKunlunxin, Resource: resource}, Reason: reason}
+}
+
+func resolvedKunlunRDMAArgs(args []string) *InjectionError {
 	hasRDMA, hasMemlock, hasLock := false, false, false
 	for i := 0; i < len(args); i++ {
 		key, value, eq := strings.Cut(args[i], "=")
@@ -41,18 +48,18 @@ func resolvedKunlunRDMAArgs(args []string) error {
 		if key == "--ulimit" && strings.HasPrefix(value, "memlock=") {
 			hasMemlock = true
 			if value != "memlock=-1" && value != "memlock=-1:-1" {
-				return fmt.Errorf("Kunlun host RDMA requires unlimited memlock; resolved limit is finite")
+				return kunlunResourceError("memlock", "Kunlun host RDMA requires unlimited memlock; resolved limit is finite")
 			}
 		}
 	}
 	if !hasRDMA {
-		return fmt.Errorf("Kunlun multi-node runtime requires resolved host RDMA device access")
+		return kunlunResourceError("/dev/infiniband", "Kunlun multi-node runtime requires resolved host RDMA device access")
 	}
 	if !hasLock {
-		return fmt.Errorf("Kunlun host RDMA requires IPC_LOCK capability")
+		return kunlunResourceError("IPC_LOCK", "Kunlun host RDMA requires IPC_LOCK capability")
 	}
 	if !hasMemlock {
-		return fmt.Errorf("Kunlun host RDMA requires an explicit unlimited memlock limit")
+		return kunlunResourceError("memlock", "Kunlun host RDMA requires an explicit unlimited memlock limit")
 	}
 	return nil
 }
@@ -69,10 +76,10 @@ func (p *KunlunProber) RuntimeInjectionForLaunch(ctx context.Context, indexes []
 	}
 	if nNodes > 1 {
 		if err := resolvedKunlunRDMAArgs(dockerArgs); err != nil {
-			return RuntimeInjection{UnsupportedReason: err.Error()}
+			return rejectedInjection(err.Failure, err.Error())
 		}
 		if err := p.verifyKunlunXDR(); err != nil {
-			return RuntimeInjection{UnsupportedReason: err.Error()}
+			return rejectedInjection(proto.RuntimeFailure{Code: proto.ErrorAcceleratorResourceUnavailable, Vendor: p.Vendor(), Resource: "/dev/xdrdrv"}, err.Error())
 		}
 		inj.DockerArgs = append(inj.DockerArgs, "--device", "/dev/xdrdrv")
 	}
