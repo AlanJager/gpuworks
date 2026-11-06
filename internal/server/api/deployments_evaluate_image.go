@@ -98,6 +98,13 @@ func (a *apiHandlers) imageCacheFact(ctx context.Context, image string, node *st
 // the public sources the model or its template is registered under, and the
 // storages that hold it or may save it for the selected node. No additional
 // state is persisted for these facts.
+//
+// The template's sources are offered only when the model comes from one of
+// them. A model registered from elsewhere (a local directory, a source the
+// spec does not declare) has only its own source: offering the template's
+// would invite a model_source.provider that the request then rejects as a
+// conflict with model_id, and a rejected evaluation carries no acquisition
+// to take the choice back.
 func (a *apiHandlers) evaluateWeightFacts(model *store.Model, selection templateSelection, profileNode *store.Node) acquisition.WeightFacts {
 	weightFacts := acquisition.WeightFacts{
 		Providers: []acquisition.WeightSource{{
@@ -105,7 +112,7 @@ func (a *apiHandlers) evaluateWeightFacts(model *store.Model, selection template
 			DisplayName: modelSourceHost(model),
 		}},
 	}
-	if selection.Spec != nil {
+	if selection.Spec != nil && specDeclaresProvider(selection.Spec, model.Source) {
 		weightFacts.Providers = templateAcquisitionProviders(selection)
 	}
 	weightFacts.Present, weightFacts.Targets = a.storageFacts(model, profileNode)
