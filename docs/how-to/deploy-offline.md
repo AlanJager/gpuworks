@@ -60,7 +60,13 @@ docker load -i gpuworks-runner_<tag>_linux-amd64.tar.gz
 gunzip -c gpuworks-runner_<tag>_linux-arm64.tar.gz | nerdctl -n gpuworks load
 ```
 
-约一分钟后，镜像页对应节点显示「已存在」。udocker（runveil）节点没有 load 命令，改用[经管理节点中转](#经管理节点中转导入镜像)。
+约一分钟后，镜像页对应节点显示「已存在」。udocker（runveil）节点用 agent 自带的命令导入，`<image-ref>` 填镜像页上显示的完整镜像引用：
+
+```bash
+sudo gpuworks-agent runveil load -i gpuworks-runner_<tag>_linux-amd64.tar.gz <image-ref>
+```
+
+不方便登录节点时，也可以[经管理节点中转](#经管理节点中转导入镜像)。
 
 **模型**：把模型目录拷到节点的本地存储目录下，例如 `/opt/gpuworks/models/Qwen/Qwen3-8B`，然后在模型页「注册模型」→ 来源选
 「计算节点本地」→ 选节点、填这个目录 → 预览后注册。平台从 `config.json` 读出架构、精度和上下文长度。本地存储不支持批量扫描，

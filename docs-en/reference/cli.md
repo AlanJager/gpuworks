@@ -47,7 +47,7 @@ To specify another installation directory, append `--dir /path/to/installation` 
 | | [`doctor`](#gpuworks-agent-doctor) | Print node environment self-check results | Troubleshooting node connection, GPU, or runtime issues |
 | | [`grant-device-access`](#gpuworks-agent-grant-device-access) | Give a non-root runtime user access to accelerator device nodes | Called automatically by the installation script; used to manually grant missing permissions on rootless runveil nodes |
 | | [`bench`](#gpuworks-agent-bench) | Load-test an OpenAI-compatible endpoint | Performance evaluation; the command-line equivalent of the Benchmarks page |
-| | [`runveil`](#gpuworks-agent-runveil) | Inspect or enter runveil containers | Troubleshooting on runveil nodes |
+| | [`runveil`](#gpuworks-agent-runveil) | Inspect or enter runveil containers, import image archives | Troubleshooting on runveil nodes; importing an image archive copied onto the node |
 | | [`install-service`](#gpuworks-agent-install-service) | Register this binary as a macOS launchd job | Called by the installation script on Mac |
 | | [`uninstall`](#gpuworks-agent-uninstall) | Stop and remove the agent service | Decommissioning a node |
 | | `version` | Print the version | Anyone |
@@ -410,7 +410,7 @@ Load-test an OpenAI-compatible endpoint (the Benchmarks page uses the same built
 
 ## gpuworks-agent runveil
 
-Troubleshoot runveil nodes by reading the agent's state directory directly, without going through the agent or requiring Python.
+Troubleshoot runveil nodes and import images by reading and writing the agent's state directory directly, without going through the agent or requiring Python.
 
 Usage: `gpuworks-agent runveil [--state DIR] <command>`. `--state` must appear before the command and has the same default as `run` (including `GPUWORKS_STATE_DIR`).
 
@@ -418,11 +418,13 @@ Usage: `gpuworks-agent runveil [--state DIR] <command>`. `--state` must appear b
 |---|---|
 | `ps [-a]` | List containers (NAME/IMAGE/STATUS/PID/CREATED); only running containers by default; `-a` (`--all`) lists all |
 | `images` | List images (REPOSITORY/TAG/IMAGE ID/SIZE) |
+| `load -i FILE REF` | Register a `docker save` or OCI archive (`.tar` or `.tar.gz`) as the image `REF`; `-i` may also be written `--input` and may come before or after `REF` |
 | `exec NAME [CMD [ARG...]]` | Execute a command inside a container with the workload's environment variables, mounts, and GPUs; defaults to `/bin/sh -l`, with the exit code passed through |
 | `logs [-f] [-n N] NAME` | Print container output; `-n` (`--tail`) selects the number of trailing lines, defaulting to all; `-f` (`--follow`) follows until the container stops |
 
 - `NAME` can be a unique prefix of a container name. Multiple matches list the candidates and fail.
 - Any user who can read the state directory can execute `ps`/`images`/`logs`, with the same results as root. `exec` must run as root or the agent's runtime user (the owner of the container spec file recorded by the agent).
+- `REF` is required for `load`: give the full image reference the Images page shows (such as `gpuworks/gpuworks-runner:cuda13.0-sglang0.5.22-r1`). The platform decides whether a node has an image by this reference; the tag recorded in the archive may differ and is not registered separately. Digest references are not accepted. Run it as root or as the owner of `udocker/` in the state directory; new files are given to that owner so the runtime user can read and replace them. The agent need not be stopped: after its next image status report (about one minute) the Images page shows “Present.” On failure no image is registered and the layers already written are removed.
 - SIZE in `images` is the compressed size actually stored on the node. Images registered by the old udocker CLI have no manifest, so ID and SIZE display `-`.
 - If the state directory contains no runveil state, report an error prompting you to pass `--state` (if the agent's state directory is specified through `GPUWORKS_STATE_DIR` in the unit, set it here as well).
 - Exit codes: `0` success; `1` runtime error; `2` usage error.

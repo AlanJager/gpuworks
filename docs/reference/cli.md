@@ -47,7 +47,7 @@ gpuworks restarted (systemd)
 | | [`doctor`](#gpuworks-agent-doctor) | 打印节点环境自检 | 排查节点接入、GPU、运行时问题 |
 | | [`grant-device-access`](#gpuworks-agent-grant-device-access) | 让非 root 运行时用户获得加速卡设备节点的访问权 | 安装脚本自动调用；无 root 的 runveil 节点手工补权限 |
 | | [`bench`](#gpuworks-agent-bench) | 对 OpenAI 兼容端点做压测 | 性能评估；评测页的命令行等价入口 |
-| | [`runveil`](#gpuworks-agent-runveil) | 查看/进入 runveil 容器 | 在 runveil 节点上排障 |
+| | [`runveil`](#gpuworks-agent-runveil) | 查看/进入 runveil 容器，导入镜像归档 | 在 runveil 节点上排障；把拷到节点上的镜像归档导入 |
 | | [`install-service`](#gpuworks-agent-install-service) | 把本二进制注册为 macOS 的 launchd 任务 | 安装脚本在 Mac 上调用 |
 | | [`uninstall`](#gpuworks-agent-uninstall) | 停止并移除 agent 服务 | 节点下线 |
 | | `version` | 打印版本 | 任何人 |
@@ -410,7 +410,7 @@ gpuworks uninstall --dir /opt/gpuworks/server --purge --dry-run --json
 
 ## gpuworks-agent runveil
 
-在 runveil 节点上排障：直接读 agent 的 state 目录，不经过 agent，也不需要 Python。
+在 runveil 节点上排障和导入镜像：直接读写 agent 的 state 目录，不经过 agent，也不需要 Python。
 
 用法：`gpuworks-agent runveil [--state DIR] <命令>`。`--state` 必须写在命令之前，默认同 `run`（含 `GPUWORKS_STATE_DIR`）。
 
@@ -418,11 +418,13 @@ gpuworks uninstall --dir /opt/gpuworks/server --purge --dry-run --json
 |---|---|
 | `ps [-a]` | 列容器（NAME/IMAGE/STATUS/PID/CREATED）；默认只列运行中的，`-a`（`--all`）列全部 |
 | `images` | 列镜像（REPOSITORY/TAG/IMAGE ID/SIZE） |
+| `load -i FILE REF` | 把 `docker save` 或 OCI 归档（`.tar` 或 `.tar.gz`）以 `REF` 登记为镜像；`-i` 也可写作 `--input`，可放在 `REF` 前后 |
 | `exec NAME [CMD [ARG...]]` | 在容器里执行命令，带上工作负载的环境变量、挂载与 GPU；默认 `/bin/sh -l`，退出码透传 |
 | `logs [-f] [-n N] NAME` | 打印容器输出；`-n`（`--tail`）取末尾行数，默认全部；`-f`（`--follow`）跟随至容器停止 |
 
 - `NAME` 可以是容器名的唯一前缀；匹配多个时列出候选并失败。
 - `ps`/`images`/`logs` 任意能读 state 目录的用户都能执行，结果与 root 相同；`exec` 必须以 root 或 agent 的运行用户（agent 记录该容器 spec 文件的属主）执行。
+- `load` 的 `REF` 必填，填镜像页显示的完整镜像引用（如 `gpuworks/gpuworks-runner:cuda13.0-sglang0.5.22-r1`）：平台按这个引用判断节点上有没有镜像，归档里自带的 tag 可以不同，也不会另外登记。不接受 digest 引用。必须以 root 或 state 目录里 `udocker/` 的属主执行，新文件交给该属主，运行用户能读取和替换。不需要停 agent，agent 下一次上报镜像状态（约一分钟）后镜像页显示「已存在」。失败时不登记镜像，已写入的层随之删除。
 - `images` 的 SIZE 是节点实际存储的压缩大小；旧 udocker CLI 登记的镜像没有 manifest，ID 与 SIZE 显示为 `-`。
 - state 目录里没有 runveil 状态时报错并提示传 `--state`（agent 的 state 目录若由单元里的 `GPUWORKS_STATE_DIR` 指定，这里需要同样设置）。
 - 退出码：`0` 成功；`1` 运行错误；`2` 用法错误。
