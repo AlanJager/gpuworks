@@ -264,7 +264,7 @@ gpuworks uninstall --dir /opt/gpuworks/server --purge --dry-run --json
 
 ## gpuworks support-bundle
 
-不经过 server 收集诊断信息，用于 server 起不来或控制台打不开时；内容与控制台的[收集诊断信息](../how-to/troubleshooting.md#无法登录现场时调试采集与收集诊断信息)相同，但节点那部分收不到（manifest 里标为离线）。完成后打印压缩包路径。
+不经过 server 收集诊断信息，用于 server 起不来或控制台打不开时；内容与控制台的[收集诊断信息](../how-to/troubleshooting.md#无法登录现场时调试采集与收集诊断信息)相同，但节点那部分收不到（manifest 里标为离线）。完成后打印压缩包路径。压缩包在 `--out` 所在的目录组装，不写数据目录，所以 server 所在磁盘写满时，把 `--out` 指到另一块盘照样能收集。
 
 | flag | 默认值 | 说明 |
 |---|---|---|

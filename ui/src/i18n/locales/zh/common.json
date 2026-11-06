@@ -913,6 +913,9 @@
     "commit": "Commit：{{commit}}",
     "channel": "构建渠道：{{channel}}"
   },
+  "serverStorageFull": {
+    "at": "服务端主机的磁盘已满，本次操作未能保存：数据目录 {{path}} 所在磁盘剩余 {{available}}（共 {{total}}）。请清理这块磁盘后重试。"
+  },
   "acceleratorFeature": {
     "unsupported": "{{vendor}} 不支持{{feature}}。请关闭此能力或选择其他加速卡。",
     "names": {

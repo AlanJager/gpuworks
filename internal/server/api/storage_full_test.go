@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -93,5 +94,39 @@ func TestWriteErrLeavesOtherErrorsAsTheyWere(t *testing.T) {
 		if !reflect.DeepEqual(body, tc.want) {
 			t.Errorf("%s: body = %v, want %v", tc.name, body, tc.want)
 		}
+	}
+}
+
+// dataDirRecorder is a response writer that knows the server's data
+// directory, as the server's access log does.
+type dataDirRecorder struct {
+	*httptest.ResponseRecorder
+	dir string
+}
+
+func (r dataDirRecorder) ServerDataDir() string { return r.dir }
+
+func TestWriteErrNamesTheFullDataDirectoryAndItsRoom(t *testing.T) {
+	if runtime.GOOS != "linux" && runtime.GOOS != "darwin" {
+		t.Skip("statfs is reported on Linux and macOS")
+	}
+	dir := t.TempDir()
+	rec := dataDirRecorder{httptest.NewRecorder(), dir}
+	writeErr(rec, http.StatusServiceUnavailable, realFullDiskError(t))
+
+	if rec.Code != http.StatusInsufficientStorage {
+		t.Fatalf("status = %d, want 507", rec.Code)
+	}
+	var body struct {
+		Code   string         `json:"code"`
+		Params map[string]any `json:"params"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	total, _ := body.Params["total_bytes"].(float64)
+	avail, hasAvail := body.Params["available_bytes"].(float64)
+	if body.Code != "SERVER_STORAGE_FULL" || body.Params["path"] != dir || total <= 0 || !hasAvail || avail < 0 || avail > total || len(body.Params) != 3 {
+		t.Fatalf("body = %s, want the data directory with its filesystem's total and available bytes", rec.Body.String())
 	}
 }

@@ -913,6 +913,9 @@
     "commit": "Commit: {{commit}}",
     "channel": "Build channel: {{channel}}"
   },
+  "serverStorageFull": {
+    "at": "The server host's disk is full, so the change was not saved: the disk holding the data directory {{path}} has {{available}} of {{total}} left. Free space on it, then retry."
+  },
   "acceleratorFeature": {
     "unsupported": "{{vendor}} does not support {{feature}}. Choose a supported feature or select another accelerator.",
     "names": {

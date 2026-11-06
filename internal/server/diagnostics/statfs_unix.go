@@ -4,9 +4,9 @@ package diagnostics
 
 import "golang.org/x/sys/unix"
 
-// statfs answers the size of path's filesystem and the room an unprivileged
+// FilesystemUsage answers the size of path's filesystem and the room an unprivileged
 // writer has left on it (blocks reserved for root not counted).
-func statfs(path string) (total, avail int64, err error) {
+func FilesystemUsage(path string) (total, avail int64, err error) {
 	var st unix.Statfs_t
 	if err := unix.Statfs(path, &st); err != nil {
 		return 0, 0, err

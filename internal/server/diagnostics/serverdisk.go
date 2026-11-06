@@ -56,7 +56,7 @@ func writeServerDisk(w io.Writer, dirs []ServerDir) (int64, bool, error) {
 	budget := serverDiskEntries
 	for _, d := range dirs {
 		usage := ServerDirUsage{Kind: d.Kind, Path: d.Path}
-		total, avail, err := statfs(d.Path)
+		total, avail, err := FilesystemUsage(d.Path)
 		if err != nil {
 			usage.Error = err.Error()
 		}

@@ -264,7 +264,7 @@ Reset a user's password by modifying the database directly, without going throug
 
 ## gpuworks support-bundle
 
-Collects diagnostics without the server, for when the server does not start or the console cannot be reached; the content matches the console's [Collect diagnostics](../how-to/troubleshooting.md#when-you-cannot-log-in-on-site-debug-collection-and-collecting-diagnostics), except that the nodes' part cannot be collected (the manifest marks them offline). Prints the archive's path when done.
+Collects diagnostics without the server, for when the server does not start or the console cannot be reached; the content matches the console's [Collect diagnostics](../how-to/troubleshooting.md#when-you-cannot-log-in-on-site-debug-collection-and-collecting-diagnostics), except that the nodes' part cannot be collected (the manifest marks them offline). Prints the archive's path when done. The archive is assembled in the directory of `--out`, not in the data directory, so with `--out` on another disk it still works when the server's disk is full.
 
 | flag | Default | Description |
 |---|---|---|

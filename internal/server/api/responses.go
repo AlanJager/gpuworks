@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 
+	"gpuworks.ai/gpuworks/internal/server/diagnostics"
 	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
@@ -26,7 +27,7 @@ func writeErr(w http.ResponseWriter, code int, err error) {
 	if !errors.As(err, &productErr) && store.IsStorageFull(err) {
 		// Which write it was matters less than where the room ran out: the
 		// server's own disk, which no retry or input fixes.
-		err = messages.WrapProductError(ErrorServerStorageFull, "the server's disk is full; free space on the server host and retry: "+err.Error(), nil, err)
+		err = messages.WrapProductError(ErrorServerStorageFull, "the server's disk is full; free space on the server host and retry: "+err.Error(), serverStorageParams(w), err)
 		code = http.StatusInsufficientStorage
 	}
 	response := map[string]any{"error": err.Error()}
@@ -39,6 +40,39 @@ func writeErr(w http.ResponseWriter, code int, err error) {
 		noteProductError(w, productErr.Code(), productErr.Params())
 	}
 	writeJSON(w, code, response)
+}
+
+// serverStorageParams are SERVER_STORAGE_FULL's params: the data directory
+// and its filesystem's size and room, read with statfs, which writes nothing
+// and so still answers on a full disk. Nil when no writer in w's chain knows
+// the directory.
+func serverStorageParams(w http.ResponseWriter) map[string]any {
+	dir := ""
+	for w != nil && dir == "" {
+		if d, ok := w.(serverDataDirWriter); ok {
+			dir = d.ServerDataDir()
+			break
+		}
+		unwrapper, ok := w.(interface{ Unwrap() http.ResponseWriter })
+		if !ok {
+			break
+		}
+		w = unwrapper.Unwrap()
+	}
+	if dir == "" {
+		return nil
+	}
+	params := map[string]any{"path": dir}
+	if total, avail, err := diagnostics.FilesystemUsage(dir); err == nil {
+		params["total_bytes"], params["available_bytes"] = total, avail
+	}
+	return params
+}
+
+// serverDataDirWriter is a response writer that knows the answering server's
+// data directory (the server's access log).
+type serverDataDirWriter interface {
+	ServerDataDir() string
 }
 
 // productErrorNoter is a response writer that records the product error a

@@ -98,6 +98,9 @@ type OfflineDiagnosticsRequest struct {
 	DataDir string
 	DBPath  string
 	LogFile string
+	// WorkDir is where the collection is staged and packed; empty means the
+	// data directory's diagnostics/bundles, which a full disk refuses.
+	WorkDir string
 	Request diagnostics.BundleRequest
 }
 
@@ -115,6 +118,9 @@ func CollectDiagnosticsOffline(ctx context.Context, in OfflineDiagnosticsRequest
 	defer obs.close()
 	m := diagnostics.NewManager(filepath.Join(in.DataDir, "diagnostics"), debuglog.New(slog.DiscardHandler), offlineNodes{}, diagnosticsScope{st}, log)
 	m.SetSources(diagnosticsSources{st: st, logs: obs.logs, ux: obs.ux, logFile: in.LogFile, dataDir: in.DataDir})
+	if in.WorkDir != "" {
+		m.SetBundleDir(in.WorkDir)
+	}
 	return m.CollectNow(ctx, in.Request)
 }
 

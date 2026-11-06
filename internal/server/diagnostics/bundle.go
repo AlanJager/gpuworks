@@ -105,7 +105,17 @@ type BundleItem struct {
 }
 
 // BundleDir is where collections are kept.
-func (m *Manager) BundleDir() string { return filepath.Join(m.dir, "bundles") }
+func (m *Manager) BundleDir() string {
+	if m.bundleDir != "" {
+		return m.bundleDir
+	}
+	return filepath.Join(m.dir, "bundles")
+}
+
+// SetBundleDir puts collections somewhere other than the data directory:
+// the offline command builds next to its output, so it still works when
+// the data directory's disk is the one that is full.
+func (m *Manager) SetBundleDir(dir string) { m.bundleDir = dir }
 
 // SetSources wires what collections read; until then they are unavailable.
 func (m *Manager) SetSources(s Sources) { m.sources = s }
@@ -241,18 +251,40 @@ func (m *Manager) writeBundleManifest(b Bundle) {
 		return
 	}
 	tmp := m.bundleManifest(b.ID) + ".tmp"
-	if os.WriteFile(tmp, raw, 0o600) == nil {
-		_ = os.Rename(tmp, m.bundleManifest(b.ID))
+	err = os.WriteFile(tmp, raw, 0o600)
+	if err == nil {
+		err = os.Rename(tmp, m.bundleManifest(b.ID))
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if err == nil {
+		delete(m.unsaved, b.ID)
+		return
+	}
+	_ = os.Remove(tmp)
+	if m.unsaved == nil {
+		m.unsaved = map[string]Bundle{}
+	}
+	m.unsaved[b.ID] = b
+	for len(m.unsaved) > maxUnsavedBundles {
+		oldest := ""
+		for id, kept := range m.unsaved {
+			if oldest == "" || kept.CreatedAt.Before(m.unsaved[oldest].CreatedAt) {
+				oldest = id
+			}
+		}
+		delete(m.unsaved, oldest)
 	}
 }
 
+// maxUnsavedBundles bounds the collections kept in memory without a manifest.
+const maxUnsavedBundles = 16
+
 // Bundles are the kept collections, newest first.
 func (m *Manager) Bundles() []Bundle {
-	entries, err := os.ReadDir(m.BundleDir())
-	if err != nil {
-		return []Bundle{}
-	}
 	out := []Bundle{}
+	listed := map[string]bool{}
+	entries, _ := os.ReadDir(m.BundleDir())
 	for _, e := range entries {
 		id, ok := strings.CutSuffix(e.Name(), ".json")
 		if !ok {
@@ -260,8 +292,16 @@ func (m *Manager) Bundles() []Bundle {
 		}
 		if b, ok := m.Bundle(id); ok {
 			out = append(out, b)
+			listed[id] = true
 		}
 	}
+	m.mu.Lock()
+	for id, b := range m.unsaved {
+		if !listed[id] {
+			out = append(out, b)
+		}
+	}
+	m.mu.Unlock()
 	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.After(out[j].CreatedAt) })
 	return out
 }
@@ -270,6 +310,13 @@ func (m *Manager) Bundles() []Bundle {
 func (m *Manager) Bundle(id string) (Bundle, bool) {
 	if !validID(id) {
 		return Bundle{}, false
+	}
+	m.mu.Lock()
+	unsaved, isUnsaved := m.unsaved[id]
+	m.mu.Unlock()
+	if isUnsaved {
+		// Newer than any manifest on disk: that write is the one that failed.
+		return unsaved, true
 	}
 	raw, err := os.ReadFile(m.bundleManifest(id))
 	if err != nil {
