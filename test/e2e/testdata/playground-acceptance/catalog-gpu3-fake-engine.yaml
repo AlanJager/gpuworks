@@ -56,7 +56,7 @@ models:
               inputs:
                 - name: language
                   kind: text
-                  label: { en: Language hint, zh-CN: 语言提示 }
+                  label: { en: Language hint, zh: 语言提示 }
             - type: openai.audio.speech
               endpoint: /v1/audio/speech
               mode: sync
@@ -66,19 +66,19 @@ models:
                 - name: voice
                   kind: select
                   options: []            # filled at runtime from GET /v1/audio/voices
-                  label: { en: Voice, zh-CN: 音色 }
+                  label: { en: Voice, zh: 音色 }
                 - name: language
                   kind: select
                   options: [Auto, Chinese, English]
                   default: Auto
-                  label: { en: Language, zh-CN: 语言 }
+                  label: { en: Language, zh: 语言 }
                 - name: ref_audio
                   kind: audio
                   encoding: data_url
-                  label: { en: Reference audio, zh-CN: 参考音频 }
+                  label: { en: Reference audio, zh: 参考音频 }
                 - name: instructions
                   kind: text
-                  label: { en: Style instructions, zh-CN: 风格说明 }
+                  label: { en: Style instructions, zh: 风格说明 }
             - type: openai.image.generate
               endpoint: /v1/images/generations
               mode: sync
@@ -89,14 +89,14 @@ models:
                   kind: select
                   options: [512x512, 768x768, 1024x1024]
                   default: 1024x1024
-                  label: { en: Size, zh-CN: 尺寸 }
+                  label: { en: Size, zh: 尺寸 }
                 - name: num_inference_steps
                   kind: number
                   default: 20
-                  label: { en: Steps, zh-CN: 步数 }
+                  label: { en: Steps, zh: 步数 }
                 - name: extra
                   kind: json
-                  label: { en: Extra parameters, zh-CN: 额外参数 }
+                  label: { en: Extra parameters, zh: 额外参数 }
             - type: openai.video.generate
               endpoint: /v1/videos
               mode: async
@@ -105,16 +105,16 @@ models:
                   kind: number
                   required: true
                   default: 4
-                  label: { en: Seconds, zh-CN: 秒 }
+                  label: { en: Seconds, zh: 秒 }
                 - name: size
                   kind: select
                   options: [640x360, 1280x720]
                   default: 640x360
-                  label: { en: Size, zh-CN: 尺寸 }
+                  label: { en: Size, zh: 尺寸 }
                 - name: input_reference
                   kind: image
                   encoding: data_url
-                  label: { en: Reference image, zh-CN: 参考图 }
+                  label: { en: Reference image, zh: 参考图 }
             - type: openai.realtime
               endpoint: /v1/realtime
               mode: realtime

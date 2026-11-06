@@ -57,6 +57,7 @@ specs:
           repo_id: k2-fsa/OmniVoice
           revision: 316f89b819e04e49dfbd0239f85e4e363b862cce
           subfolder: audio_tokenizer
+    # HF snapshot size; ModelScope is 805682710 bytes (extra LICENSE, no .gitattributes).
     weight_bytes: 805675058
     mount_path: /models/audio-tokenizer
   api:
