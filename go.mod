@@ -8,7 +8,7 @@ require (
 	github.com/glebarez/sqlite v1.11.0
 	github.com/go-chi/chi/v5 v5.4.0
 	github.com/itchyny/gojq v0.12.19
-	github.com/klauspost/compress v1.19.2
+	github.com/klauspost/compress v1.20.3
 	github.com/libp2p/go-yamux/v5 v5.1.0
 	go.starlark.net v0.0.0-20260828210309-6dd8f160a37f
 	golang.org/x/crypto v0.56.0
