@@ -1,4 +1,6 @@
-export type TokenizerSource = "auto" | "estimate" | "huggingface" | "modelscope" | "upload";
+export type TokenizerSource = "auto" | "engine" | "estimate" | "huggingface" | "modelscope" | "upload";
+
+export const ENGINE_REF = "engine:";
 
 export type TokenizerFormState = {
 	source: TokenizerSource;
@@ -14,6 +16,10 @@ export type TokenizerFormState = {
 export function tokenizerFormState(reference?: string, managedTarget = false): TokenizerFormState {
 	const value = reference?.trim();
 	if (!value) return { source: "estimate" };
+	// The server names the target's own tokenizer "engine:", followed by
+	// what it falls back to when "auto" resolved it.
+	if (value === ENGINE_REF) return { source: "engine", reference: value };
+	if (value.startsWith(ENGINE_REF)) return { source: "auto", reference: value };
 	if (value.startsWith("hf://")) return { source: "huggingface", repository: value.slice("hf://".length), reference: value };
 	if (value.startsWith("ms://")) return { source: "modelscope", repository: value.slice("ms://".length), reference: value };
 	return managedTarget ? { source: "auto", reference: value } : { source: "upload", reference: value };
@@ -30,9 +36,9 @@ export function tokenizerSourceOrDefault(managedTarget: boolean, tokenLengthCont
 }
 
 export function tokenizerReference(source: TokenizerSource, repository: string | undefined, uploadedReference: string | undefined, schemes: Record<string, string>): string | undefined {
-	// auto and estimate carry no reference: the first is resolved on the server,
-	// and the second means "no tokenizer at all".
-	if (source === "auto" || source === "estimate") return undefined;
+	// auto, engine and estimate carry no reference: the first two are resolved
+	// on the server, and the last means "no tokenizer at all".
+	if (source === "auto" || source === "engine" || source === "estimate") return undefined;
 	if (source === "upload") return uploadedReference?.trim() || undefined;
 	const value = repository?.trim();
 	return value ? `${schemes[source]}://${value}` : undefined;

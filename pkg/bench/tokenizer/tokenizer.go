@@ -14,6 +14,9 @@ type Tokenizer struct {
 	tokens        []string
 	charsPerToken float64
 	byteDecoder   map[rune]byte
+	// decoded: the entries are the text they stand for (a tiktoken file or
+	// an engine's detokenizer), joined as they are when sampled.
+	decoded bool
 }
 
 func Load(r io.Reader) (*Tokenizer, error) {
@@ -60,6 +63,13 @@ func Load(r io.Reader) (*Tokenizer, error) {
 func (t *Tokenizer) Sample(r *rand.Rand, n int) string {
 	if t == nil || len(t.tokens) == 0 || n <= 0 {
 		return ""
+	}
+	if t.decoded {
+		var b strings.Builder
+		for i := 0; i < n; i++ {
+			b.WriteString(t.tokens[r.Intn(len(t.tokens))])
+		}
+		return b.String()
 	}
 	if t.byteDecoder != nil {
 		var encoded strings.Builder

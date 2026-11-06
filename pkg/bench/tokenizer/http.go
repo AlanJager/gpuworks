@@ -17,6 +17,10 @@ import (
 // Wrapped transport errors retain their DNS, timeout and cancellation identity.
 var ErrDownload = errors.New("tokenizer download failed")
 
+// errNotFound is a tokenizer file the server does not have (HTTP 404): a
+// repository that ships its vocabulary under another name.
+var errNotFound = errors.New("tokenizer file not found")
+
 const maxTokenizerBytes = 64 << 20
 
 func loadHTTP(parent context.Context, rawURL string) (*Tokenizer, error) {
@@ -38,7 +42,7 @@ func loadHTTP(parent context.Context, rawURL string) (*Tokenizer, error) {
 			return nil, ctx.Err()
 		}
 		if err == nil {
-			tok, err := Load(bytes.NewReader(data))
+			tok, err := LoadFile(bytes.NewReader(data))
 			if err != nil {
 				return nil, err
 			}
@@ -80,6 +84,9 @@ func downloadTokenizer(ctx context.Context, rawURL string) ([]byte, bool, time.D
 	defer resp.Body.Close()
 	if resp.StatusCode/100 != 2 {
 		retry := resp.StatusCode == 408 || resp.StatusCode == 429 || resp.StatusCode == 500 || resp.StatusCode == 502 || resp.StatusCode == 503 || resp.StatusCode == 504
+		if resp.StatusCode == http.StatusNotFound {
+			return nil, false, 0, fmt.Errorf("%w: HTTP %s", errNotFound, resp.Status)
+		}
 		return nil, retry, tokenizerRetryAfter(resp.Header.Get("Retry-After")), fmt.Errorf("HTTP %s", resp.Status)
 	}
 	data, err := io.ReadAll(io.LimitReader(resp.Body, maxTokenizerBytes+1))
