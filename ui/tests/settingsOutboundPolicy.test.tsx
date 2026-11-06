@@ -33,7 +33,7 @@ test("an admin sees loading while the outbound policy request is pending", async
   const calls = fixture(() => new Promise((resolve) => { finish = resolve; }));
   show();
   await waitFor(() => assert.equal(calls.length, 1));
-  assert.ok(screen.getByText("Loading outbound policy…"));
+  assert.ok(await screen.findByText("Loading outbound policy…"));
   finish(json(200, policy));
   await screen.findByRole("switch", { name: "Restrict access to private hosts" });
 });
