@@ -159,6 +159,7 @@ func TestStageInServiceSharesTheUpgradeLock(t *testing.T) {
 			h := lockFixture(t)
 			h.deps.Euid = func() int { return tc.euid }
 			h.installer = New(h.layout, h.deps, h.io)
+			h.prepareInServiceDatabase()
 			archive := h.writeArchive("v2.0.0", []byte("new binary"))
 
 			if _, err := h.installer.StageInService(context.Background(), "v1.0.0",
