@@ -543,3 +543,7 @@ const WarningBatchModelSleepHeld = "BATCH_MODEL_SLEEP_HELD"
 // WarningBatchModelWaits is the warning on a created batch whose {model} is
 // {state} (offline, failed or stopped): its requests wait until it serves.
 const WarningBatchModelWaits = "BATCH_MODEL_WAITS"
+
+// ErrorServerStorageFull answers any request whose write failed because the
+// server's disk is full (store.IsStorageFull), whichever handler it reached.
+const ErrorServerStorageFull = "SERVER_STORAGE_FULL"

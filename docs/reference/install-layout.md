@@ -144,6 +144,8 @@ server 同时写 stderr 和文件：`<dir>/logs/gpuworks-server.log`，按 10 MB
 
 launchd 部署下，stderr 指向的文件没有轮转机制。server 发现 stderr 是普通文件时，正常日志只写入可轮转的日志文件（见上节）。日志目录不可写时退回 stderr，不影响启动。
 
+日志文件写失败时（例如磁盘已满）停写，记录仍写进 stderr。之后每 30 秒重试一次，成功后先写一行 `log file writes resumed`，带丢弃的条数（`dropped`）、停写的起点（`since`）和原因（`err`），不用重启。agent 的日志文件也是这样。
+
 server 因错误退出（如监听地址被占用）时，原因以 `msg="server exited"` 写进同一份日志；nohup 模式的 stderr 指向 `/dev/null`，这是唯一能看到原因的地方。
 
 ## agent 配置文件

@@ -1148,6 +1148,20 @@ Use `stream: true` to receive output incrementally. Long non-streaming requests 
 4. You are using a temporary public address from `cloudflare-quick`, which does not support SSE. See [Give the Console a Public Address](expose-public-address.md).
 5. A server restart, upgrade, or node agent disconnection interrupts in-flight streams without retrying them.
 
+## An Operation Reports "The Server Host's Disk Is Full"
+
+When an operation that saves data (registering a model, creating a deployment, changing a setting) returns HTTP 507 with error code `SERVER_STORAGE_FULL`, the full disk is the **server host's**, not the target node's. SQLite reports it this way whenever its database file, WAL or a temporary file has no room.
+
+1. Find the full disk on the server host. The directories to check are the data directory, the log directory, `backups/` under the installation directory, and SQLite's temporary directory. That is the first writable one of `SQLITE_TMPDIR`, `TMPDIR`, `/var/tmp`, `/usr/tmp` and `/tmp`.
+
+   ```bash
+   df -h <data> <data>/logs /var/tmp /tmp
+   du -xsh <data>/* | sort -h
+   ```
+
+   While the console still works, [collect diagnostics](#when-you-cannot-log-in-on-site-debug-collection-and-collecting-diagnostics). `server/disk.json` records the size and free space of these directories' filesystems, and the size of each entry in every directory.
+2. Retry once space is freed; the server does not need a restart. While writes fail, the server log file stops, and records still go to stderr (`journalctl -u gpuworks` under systemd). Within 30 seconds of space coming back the log file resumes, starting with a `log file writes resumed` line that carries the number of records dropped (`dropped`) and when writing stopped (`since`).
+
 ## Forgotten Admin Password
 
 **Symptoms**: You cannot sign in.
@@ -1177,6 +1191,7 @@ When you cannot log in to the customer's servers, have an administrator work in 
 | Path | Content |
 |---|---|
 | `manifest.json` | The collection's scope, the server version, and whether each part was collected, skipped (node offline, agent version without support) or failed |
+| `server/disk.json` | The server's data, log and backup directories and SQLite's temporary directory: their filesystems' size and free space, and the size of each entry in every directory (largest first) |
 | `server/gpuworks-server.log` | The server log in the time range (info included; the Logs page has warn and above only) |
 | `nodes/<uuid>/agent.log`, `doctor.json` | The chosen nodes' (without a choice, the nodes of the chosen deployments' instances) agent logs and diagnosis reports |
 | `instances/<uuid>.log` | The chosen deployments' instance logs |

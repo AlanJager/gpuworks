@@ -1149,6 +1149,20 @@ server 停机错过的计划只补 12 小时内最新的一次。计划的 `next
 4. 用了 `cloudflare-quick` 的临时公网地址：它不支持 SSE，见[给控制台一个公网地址](expose-public-address.md)。
 5. server 重启、升级或节点 agent 断线会断开在途的流，且不会重试。
 
+## 操作报「服务端主机的磁盘已满」
+
+登记模型、创建部署、修改设置等任何要保存数据的操作返回 HTTP 507、错误码 `SERVER_STORAGE_FULL` 时，满的是 **server 主机**的磁盘，不是部署目标节点的。SQLite 的数据库文件、WAL 或临时文件写不下时都会这样报。
+
+1. 在 server 主机上找出满的那块盘。要看的目录有数据目录、日志目录、安装目录下的 `backups/`，以及 SQLite 的临时目录。临时目录取 `SQLITE_TMPDIR`、`TMPDIR`、`/var/tmp`、`/usr/tmp`、`/tmp` 中第一个可写的。
+
+   ```bash
+   df -h <data> <data>/logs /var/tmp /tmp
+   du -xsh <data>/* | sort -h
+   ```
+
+   控制台还能用时，[收集一次诊断信息](#无法登录现场时调试采集与收集诊断信息)。`server/disk.json` 记录了这些目录所在文件系统的总量和剩余量，以及每个目录下各项的大小。
+2. 清出空间后直接重试，不用重启 server。写失败期间 server 日志文件停写，记录仍写进 stderr（systemd 下即 `journalctl -u gpuworks`）。空间恢复后 30 秒内日志文件会续写，第一行是 `log file writes resumed`，带丢弃的条数（`dropped`）和停写的起点（`since`）。
+
 ## 忘记 admin 密码
 
 **现象**：无法登录。
@@ -1178,6 +1192,7 @@ server 停机错过的计划只补 12 小时内最新的一次。计划的 `next
 | 路径 | 内容 |
 |---|---|
 | `manifest.json` | 本次收集的范围、server 版本，以及每一项是已收集、已跳过（节点离线、agent 版本不支持）还是失败 |
+| `server/disk.json` | server 的数据、日志、备份目录与 SQLite 临时目录：所在文件系统的总量与剩余量，以及每个目录下各项的大小（从大到小） |
 | `server/gpuworks-server.log` | 时间范围内的 server 日志（含 info，日志页只有 warn 以上） |
 | `nodes/<uuid>/agent.log`、`doctor.json` | 所选节点（不选时为所选部署的实例所在节点）的 agent 日志与诊断报告 |
 | `instances/<uuid>.log` | 所选部署的实例日志 |

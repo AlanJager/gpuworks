@@ -47,6 +47,9 @@ type Sources interface {
 	Snapshot(ctx context.Context, scope SnapshotScope) (map[string]any, error)
 	// ServerLogFiles are the server's log file and its rotated generations.
 	ServerLogFiles() []string
+	// ServerDirs are the directories whose filesystems server/disk.json
+	// reports.
+	ServerDirs() []ServerDir
 	// Version is the server's version.
 	Version() string
 }

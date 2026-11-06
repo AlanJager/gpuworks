@@ -62,6 +62,7 @@
     "SERVER_LISTEN_LOCKOUT": "你正通过 {{address}} 访问，重启后该地址将不再提供控制台。请把它保留在控制台监听地址中。",
     "SERVER_LISTEN_READ_ONLY": "本服务的监听地址不能在控制台修改。",
     "SERVER_RESTART_MANUAL": "没有服务管理器会自动拉起本服务，请在服务器上执行：{{command}}",
+    "SERVER_STORAGE_FULL": "服务端主机的磁盘已满，本次操作未能保存。请清理服务端数据目录所在磁盘后重试。",
     "NODE_LABELS_INVALID": "节点标签无效：{{detail}}",
     "NODE_REQUIREMENTS_INVALID": "节点条件无效：{{detail}}",
     "NODE_REQUIREMENTS_UNMET": "节点不满足部署的节点条件：{{detail}}",

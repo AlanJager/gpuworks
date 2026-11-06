@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"gpuworks.ai/gpuworks/internal/server/messages"
+	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
 func writeJSON(w http.ResponseWriter, code int, v any) {
@@ -21,8 +22,14 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 func WriteError(w http.ResponseWriter, status int, err error) { writeErr(w, status, err) }
 
 func writeErr(w http.ResponseWriter, code int, err error) {
-	response := map[string]any{"error": err.Error()}
 	var productErr *messages.ProductError
+	if !errors.As(err, &productErr) && store.IsStorageFull(err) {
+		// Which write it was matters less than where the room ran out: the
+		// server's own disk, which no retry or input fixes.
+		err = messages.WrapProductError(ErrorServerStorageFull, "the server's disk is full; free space on the server host and retry: "+err.Error(), nil, err)
+		code = http.StatusInsufficientStorage
+	}
+	response := map[string]any{"error": err.Error()}
 	if errors.As(err, &productErr) {
 		response["code"] = productErr.Code()
 		w.Header().Set(usageErrorHeader, productErr.Code())

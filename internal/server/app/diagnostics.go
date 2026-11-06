@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"os"
 	"path/filepath"
 
 	"gpuworks.ai/gpuworks/internal/debuglog"
@@ -14,6 +15,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/diagnostics"
 	"gpuworks.ai/gpuworks/internal/server/hub"
 	"gpuworks.ai/gpuworks/internal/server/proxy"
+	"gpuworks.ai/gpuworks/internal/server/selfinstall"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -27,8 +29,21 @@ func newDiagnostics(cfg Config, st *store.Store, h *hub.Hub, obs *observability,
 	}
 	m := diagnostics.NewManager(filepath.Join(cfg.DataDir, "diagnostics"), cfg.DebugLog, h, diagnosticsScope{st}, log)
 	px.SetRequestRecorder(m)
-	m.SetSources(diagnosticsSources{st: st, hub: h, logs: obs.logs, ux: obs.ux, logFile: cfg.LogFile})
+	m.SetSources(diagnosticsSources{st: st, hub: h, logs: obs.logs, ux: obs.ux, logFile: cfg.LogFile, dataDir: cfg.DataDir, backupsDir: installBackupsDir(cfg)})
 	return m
+}
+
+// installBackupsDir is the upgrade backups directory of the installation
+// whose server.yaml this is; empty without one, or before any upgrade made it.
+func installBackupsDir(cfg Config) string {
+	if cfg.ConfigPath == "" {
+		return ""
+	}
+	dir := selfinstall.NewLayout(filepath.Dir(cfg.ConfigPath), cfg.DataDir, "").BackupsDir
+	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
+		return ""
+	}
+	return dir
 }
 
 // diagnosticsScope resolves a debug session's scope against the store.
@@ -99,7 +114,7 @@ func CollectDiagnosticsOffline(ctx context.Context, in OfflineDiagnosticsRequest
 	}
 	defer obs.close()
 	m := diagnostics.NewManager(filepath.Join(in.DataDir, "diagnostics"), debuglog.New(slog.DiscardHandler), offlineNodes{}, diagnosticsScope{st}, log)
-	m.SetSources(diagnosticsSources{st: st, logs: obs.logs, ux: obs.ux, logFile: in.LogFile})
+	m.SetSources(diagnosticsSources{st: st, logs: obs.logs, ux: obs.ux, logFile: in.LogFile, dataDir: in.DataDir})
 	return m.CollectNow(ctx, in.Request)
 }
 
