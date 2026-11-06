@@ -20,6 +20,7 @@ import type { AgentUpgradeCreate, AgentUpgradeItem, AgentUpgradePage, AgentUpgra
 export type * from "./agentUpgradesTypes";
 import i18n from "./i18n";
 import { APIError, apiErrorText, apiResponseError, ProxyErrorPage, type ProductMessage } from "./apiError";
+import type { DiagnosticReport } from "./diagnosticChecks";
 import { readSSE } from "./sse";
 import { isSessionExpired, subscribeSessionChanges } from "./session";
 import type { LocalizedText } from "./i18n/localizedText";
@@ -3226,6 +3227,8 @@ export interface PreflightSummary {
 
 export interface EvaluateResponse {
   schema_version?: number;
+  diagnostics?: DiagnosticReport;
+  request_id?: string;
   // Request errors attributed to form fields. A response with errors has
   // ok=false and stays HTTP 200; the codes match the create 400 path.
   errors?: EvaluateFieldError[];

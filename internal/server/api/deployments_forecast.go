@@ -5,20 +5,21 @@ import (
 	"errors"
 	"net/url"
 
-	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"gpuworks.ai/gpuworks/internal/server/messages"
+	"gpuworks.ai/gpuworks/internal/server/netplan"
 	"gpuworks.ai/gpuworks/internal/server/planning"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
 // Forecast plans, reported by an evaluation for each node a request names.
 const (
-	forecastPresent  = "present"
-	forecastCopy     = "copy"
-	forecastPull     = "pull"
-	forecastStorage  = "storage"
-	forecastDownload = "download"
+	forecastPresent     = "present"
+	forecastCopy        = "copy"
+	forecastPull        = "pull"
+	forecastStorage     = "storage"
+	forecastDownload    = "download"
+	forecastUnavailable = "unavailable"
 )
 
 // pinnedNodeUUIDs are the nodes a request names: the ranks of a multi-node
@@ -127,34 +128,54 @@ func (a *apiHandlers) onlineNodes(ids []uint) []store.Node {
 }
 
 func (a *apiHandlers) forecastWeights(fact *dto.AcquisitionNode, node *store.Node, model *store.Model, rules store.SourceRules, resolve planning.NodeResolver) {
-	if loc, err := a.d.Store.ReadyLocation(model.ID, node.ID); err == nil && loc != nil {
+	src, err := a.d.Store.ModelSourceOn(model.ID, node, rules)
+	if err != nil {
+		fact.WeightsPlan = forecastUnavailable
+		check := modelDiagnostic(model, node, src, "facts", "unknown", "facts_unavailable", "Model location facts could not be read")
+		fact.WeightsFetchError = &check.Message
+		return
+	}
+	switch src.Action {
+	case store.SourceReady:
 		fact.WeightsPresent = true
 		fact.WeightsPlan = forecastPresent
 		return
-	}
-	src, err := a.d.Store.ModelSourceOn(model.ID, node, rules)
-	if err == nil {
-		switch src.Action {
-		case store.SourceReady:
-			fact.WeightsPresent = true
-			fact.WeightsPlan = forecastPresent
-			return
-		case store.SourceFillCache, store.SourceWaitShared:
-			fact.WeightsPlan = forecastStorage
-			fact.WeightsStorage = src.Location.Storage.Name
+	case store.SourceFillCache, store.SourceWaitShared:
+		fact.WeightsPlan = forecastStorage
+		fact.WeightsStorage = src.Location.Storage.Name
+		return
+	case store.SourceRefused:
+		if src.Reason != store.LocationModelMissingInStore || !modelHasPublicSource(model) {
+			fact.WeightsPlan = forecastUnavailable
+			fact.WeightsFetchError = &dto.ProductMessage{Code: ErrorModelSourceUnavailable,
+				Params: modelDiagnosticParams(model, node, src, src.Reason), Message: "The requested model storage is not usable on this node"}
 			return
 		}
 	}
-	if holders := a.modelHolders(model.ID, node); len(holders) > 0 {
-		if peers, err := planning.SyncPeersFor(a.d.Store, resolve, node, holders); err == nil && len(peers) > 0 {
-			fact.WeightsPlan = forecastCopy
-			for i := range holders {
-				if holders[i].ID == peers[0].NodeID {
-					fact.WeightsCopyFrom = nodeDisplayName(&holders[i])
-				}
+	if src.Action == store.SourceAcquire {
+		peer, peerErr := a.modelCopyPeer(model.ID, node)
+		if errors.Is(peerErr, netplan.ErrNoStoragePath) {
+			if !modelHasPublicSource(model) {
+				fact.WeightsPlan = forecastUnavailable
+				fact.WeightsFetchError = productMessage(peerErr)
+				return
 			}
+		} else if peerErr != nil {
+			fact.WeightsPlan = forecastUnavailable
+			fact.WeightsFetchError = &dto.ProductMessage{Code: ErrorModelSourceUnavailable,
+				Params: modelDiagnosticParams(model, node, src, "facts_unavailable"), Message: "Model peer facts could not be read"}
 			return
 		}
+		if peer != "" {
+			fact.WeightsPlan, fact.WeightsCopyFrom = forecastCopy, peer
+			return
+		}
+	}
+	if !modelHasPublicSource(model) {
+		fact.WeightsPlan = forecastUnavailable
+		fact.WeightsFetchError = &dto.ProductMessage{Code: ErrorModelSourceUnavailable,
+			Params: modelDiagnosticParams(model, node, src, "no_acquisition_path"), Message: "This local model has no qualified peer or public download source"}
+		return
 	}
 	fact.WeightsPlan = forecastDownload
 	fact.WeightsProvider = model.Source
@@ -168,25 +189,6 @@ func (a *apiHandlers) forecastWeights(fact *dto.AcquisitionNode, node *store.Nod
 			fact.WeightsFetchHosts = append(fact.WeightsFetchHosts, parsed.Host)
 		}
 	}
-}
-
-// modelHolders are the online nodes other than target with a complete copy
-// on a local storage, the copies a node-to-node sync reads from.
-func (a *apiHandlers) modelHolders(modelID uint, target *store.Node) []store.Node {
-	files, err := a.d.Store.ModelFilesForModel(modelID)
-	if err != nil {
-		return nil
-	}
-	ids := make([]uint, 0, len(files))
-	seen := map[uint]bool{}
-	for _, file := range files {
-		if file.NodeID == 0 || file.NodeID == target.ID || seen[file.NodeID] || (file.State != proto.MFPresent && file.State != proto.MFRegistered) {
-			continue
-		}
-		seen[file.NodeID] = true
-		ids = append(ids, file.NodeID)
-	}
-	return a.onlineNodes(ids)
 }
 
 // productMessage carries an error inside an answer: a ProductError keeps its

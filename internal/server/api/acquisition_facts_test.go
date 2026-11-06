@@ -14,7 +14,10 @@ func TestURLModelOffersNoTemplateProviders(t *testing.T) {
 	selection := templateSelection{Spec: &store.InferenceSpecRow{
 		WeightSources: `[{"provider":"huggingface","repo_id":"Acme/Model"},{"provider":"modelscope","repo_id":"Acme/Model"}]`,
 	}}
-	facts := h.evaluateWeightFacts(&store.Model{Source: "url", SourceID: "https://models.example/weights"}, selection, nil)
+	facts, err := h.evaluateWeightFacts(&store.Model{Source: "url", SourceID: "https://models.example/weights"}, selection, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(facts.Providers) != 0 {
 		t.Fatalf("URL registration offered template providers: %+v", facts.Providers)
 	}

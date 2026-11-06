@@ -51,7 +51,9 @@ type EvaluateResponse struct {
 	// errors has ok=false and stays HTTP 200: evaluation is the interactive
 	// endpoint, and the form keeps the draft while showing each error beside
 	// its control. Codes match the 400 path create would answer with.
-	Errors []FieldError `json:"errors,omitempty"`
+	Errors      []FieldError      `json:"errors,omitempty"`
+	Diagnostics *DiagnosticReport `json:"diagnostics,omitempty"`
+	RequestID   string            `json:"request_id,omitempty"`
 	// AutoPlaced says the server picked the nodes of this multi-node or PD
 	// request (placement_mode "auto"): the nodes the preview shows are where
 	// it would go now, and the create picks again.

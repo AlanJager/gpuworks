@@ -60,7 +60,16 @@ func (r *forecastRig) node(uuid string, online bool, labels map[string]string) *
 			r.t.Fatal(err)
 		}
 	}
+	if err := r.st.UpdateNodeStatus(uuid, proto.NodeStatus{Sys: proto.SysInfo{Hostname: uuid}, Network: &proto.NetInventory{
+		Management: &proto.ManagementAddress{Interface: "eth0", IP: fmt.Sprintf("192.0.2.%d", node.ID)},
+	}}); err != nil {
+		r.t.Fatal(err)
+	}
 	r.online[uuid] = online
+	node, err = r.st.NodeByUUID(uuid)
+	if err != nil {
+		r.t.Fatal(err)
+	}
 	return node
 }
 
