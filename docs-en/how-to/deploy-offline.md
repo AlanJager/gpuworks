@@ -106,7 +106,7 @@ If the archive contains only the replica address tag, the platform does not reco
 
 For udocker (runveil) nodes, or when logging in to a node is inconvenient, import through the console. The node must remain connected to the server. Even if the node cannot access the archive source, the server can relay it.
 
-Before starting, confirm that the server can read the archive. Explicitly authorize private network sources in `outbound_allow_private_hosts` in `server.yaml`, then restart the server. The loopback address below also requires authorization. See [HTTP Import Prerequisites](import-from-http.md).
+Before starting, confirm that the server can read the archive. Ordinary private sources and the local loopback address below need no allowlist by default. An allowlist is needed only in strict mode. Platform administrators can authorize the source under **Settings → Security & access → Outbound access policy**; host administrators can also edit `outbound_restrict_private_hosts` and `outbound_allow_private_hosts` directly in `server.yaml`. Changes to either field apply to the next request after saving, without restarting the server. See [HTTP Import Prerequisites](import-from-http.md).
 
 1. Place the archive at an HTTP URL accessible to the control plane node. The simplest approach is to copy it to that node and start a temporary file server there:
 

@@ -127,6 +127,8 @@ type Options struct {
 	Client *http.Client
 	// AllowPrivateHosts permits only administrator-approved private HTTP sources.
 	AllowPrivateHosts []string
+	// ReadPrivateHosts, when present, is authoritative on every export request.
+	ReadPrivateHosts func() []string
 	// Queue is the capacity of the Observe queue.
 	Queue int
 	// BatchSize and FlushEvery shape the posts: a batch goes when it is
@@ -160,7 +162,11 @@ const (
 
 func (o Options) withDefaults() Options {
 	if o.Client == nil {
-		o.Client = &http.Client{Timeout: defaultTimeout, Transport: outbound.Transport(func() (proto.NetworkConfig, error) { return proto.NetworkConfig{}, nil }, o.AllowPrivateHosts...)}
+		transport := outbound.Transport(func() (proto.NetworkConfig, error) { return proto.NetworkConfig{}, nil }, o.AllowPrivateHosts...)
+		if o.ReadPrivateHosts != nil {
+			transport = outbound.TransportWithPrivateHosts(func() (proto.NetworkConfig, error) { return proto.NetworkConfig{}, nil }, o.ReadPrivateHosts)
+		}
+		o.Client = &http.Client{Timeout: defaultTimeout, Transport: transport}
 	}
 	if o.Queue <= 0 {
 		o.Queue = DefaultQueue

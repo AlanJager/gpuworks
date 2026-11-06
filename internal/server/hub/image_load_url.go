@@ -8,8 +8,6 @@ import (
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/auth"
 	"gpuworks.ai/gpuworks/internal/server/imagecatalog"
-	"gpuworks.ai/gpuworks/internal/server/outbound"
-	"gpuworks.ai/gpuworks/internal/server/planning"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -37,7 +35,7 @@ func (h *Hub) loadImageArchiveURL(ctx context.Context, image *store.Image, targe
 	// gets the download, just without either.
 	sizeBytes := int64(0)
 	client := imagecatalog.ArchiveHTTPClient()
-	client.Transport = outbound.Transport(func() (proto.NetworkConfig, error) { return planning.ControlPlaneNetwork(h.store) }, h.outboundAllowPrivateHosts...)
+	client.Transport = h.outboundTransport()
 	defer client.CloseIdleConnections()
 	if size, headErr := imagecatalog.ArchiveURLSize(ctx, client, archiveURL); headErr == nil {
 		sizeBytes = size

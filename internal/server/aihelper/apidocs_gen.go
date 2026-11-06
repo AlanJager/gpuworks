@@ -126,6 +126,7 @@ var routeDocs = map[string]string{
 	"/api/v1/scheduling/yield-policies":         "出让策略字典：四个策略按等级从高到低，每个带 `defaults` 与可能适用的参数 `applies`，加只在另一个参数取某些值时才适用的条件 `applies_when`，各数值参数的范围 `bounds`（`at_most` 为不得超过的另一个参数）、`sleep_levels`、`unfinished`，客户端据此编辑，不另存默认值；见[出让策略](#出让策略)",
 	"/api/v1/security/settings":                 "安全开关：`playground_preview_network`（试验场 HTML 预览是否允许发起网络请求，默认 `false`）",
 	"/api/v1/server/listen":                     "server 的监听地址：已保存的 `console`/`agent`/`gateway` 地址、当前实际打开的 `running` 套接字、`restart_pending`（保存的地址要重启才生效）、`config_path`，以及 `editable`/`overridden`（未用 server.yaml 启动或被 `--addr` 覆盖时不可编辑）",
+	"/api/v1/server/outbound-policy":            "出站私网访问策略：原始 `restrict_private_hosts`（默认 false）、`allow_private_hosts`、`editable` 与仅基于策略值的 `revision`；不返回配置文件其他字段",
 	"/api/v1/settings":                          "全部设置项当前值（不含 `telemetry_export` 与 `branding`，它们只经各自的专用接口读写）",
 	"/api/v1/storages":                          "存储列表（类型、路径或导出、节点汇总与问题节点、模型数、在用部署）",
 	"/api/v1/storages/settings":                 "控制面显示名与缓存盘保留空间",

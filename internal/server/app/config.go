@@ -59,19 +59,20 @@ type Config struct {
 	// console (experience.go).
 	Experience *ExperienceConsole
 
-	DataDir                   string // base dir for db and future tsdb/logs
-	DBPath                    string // sqlite path (derived from DataDir if empty)
-	VLLMImage                 string // default vllm image for deployments
-	AdminUser                 string // bootstrap admin username
-	AdminPassword             string // bootstrap admin password for in-process harnesses
-	UdockerBundleSource       string // optional local udocker offline bundle source for SSH installs
-	SSHProxy                  string // SOCKS5 proxy (socks5://host:port) for SSH to nodes
-	ModelEndpoint             string // optional HF/ModelScope endpoint override for in-process harnesses
-	TrustedProxies            string // comma-separated proxy IPs/CIDRs allowed to supply X-Forwarded-* headers
-	TLSCertFile               string
-	TLSKeyFile                string
-	OutboundAllowPrivateHosts []string
-	StorageProbeRoots         []string
+	DataDir                      string // base dir for db and future tsdb/logs
+	DBPath                       string // sqlite path (derived from DataDir if empty)
+	VLLMImage                    string // default vllm image for deployments
+	AdminUser                    string // bootstrap admin username
+	AdminPassword                string // bootstrap admin password for in-process harnesses
+	UdockerBundleSource          string // optional local udocker offline bundle source for SSH installs
+	SSHProxy                     string // SOCKS5 proxy (socks5://host:port) for SSH to nodes
+	ModelEndpoint                string // optional HF/ModelScope endpoint override for in-process harnesses
+	TrustedProxies               string // comma-separated proxy IPs/CIDRs allowed to supply X-Forwarded-* headers
+	TLSCertFile                  string
+	TLSKeyFile                   string
+	OutboundAllowPrivateHosts    []string
+	OutboundRestrictPrivateHosts bool
+	StorageProbeRoots            []string
 
 	SessionIdleTimeout time.Duration // inactivity deadline for management sessions
 	SessionMaxLifetime time.Duration // absolute login deadline

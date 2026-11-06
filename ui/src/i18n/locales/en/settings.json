@@ -1,4 +1,21 @@
 {
+  "outboundPolicy": {
+    "title": "Outbound access policy",
+    "description": "Ordinary private hosts are allowed by default. Enable strict mode to restrict management-node HTTP access to an explicit allowlist.",
+    "permanent": "Cloud metadata, link-local and special reserved addresses are always blocked, even when strict mode is off or an allowlist entry matches.",
+    "adminOnly": "Administrator permission is required to view or change the outbound policy.",
+    "loading": "Loading outbound policy…",
+    "restrict": "Restrict access to private hosts",
+    "restrictHelp": "Off by default. When enabled, private destinations must match the allowlist. Turning this off preserves the list.",
+    "hosts": "Allowed private hosts",
+    "hostsHelp": "One hostname, IP address or CIDR per line. No wildcard hostnames. This list is used only in strict mode.",
+    "persisted": "Saving writes outbound_restrict_private_hosts and outbound_allow_private_hosts to server.yaml and applies them immediately.",
+    "readOnly": "The server configuration is read-only or has no writable configuration file. An administrator must make server.yaml writable before saving.",
+    "retry": "Retry",
+    "reload": "Reload and discard draft",
+    "failed": "The outbound policy could not be loaded or saved. Retry without changing the draft.",
+    "saved": "Outbound policy saved and applied."
+  },
   "updates": {
     "title": "Version and updates",
     "description": "Check and update the server, the system image catalog and the inference template catalog here. With automatic checks on, the console checks when it opens (the server reaches out at most once an hour); Check for updates asks again right away. Without internet access, upload the files instead.",
