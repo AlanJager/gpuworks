@@ -355,3 +355,73 @@ func TestExplicitProviderComponentIgnoresARegisteredMirrorRow(t *testing.T) {
 		}
 	}
 }
+
+// Regression: a model registered from a local directory matches a template
+// that declares two public sources. Offering those sources made the form pick
+// one, and the next evaluation then rejected model_source.provider as a
+// conflict with model_id, with no acquisition left to take the choice back.
+// The local model offers only its own source, so nothing is asked.
+func TestEvaluateLocalModelOffersNoTemplateProviders(t *testing.T) {
+	st := newAcquisitionStore(t)
+	fixture := deploymentFlatFixture()
+	fixture.Specs[0].WeightSources = `[{"provider":"huggingface","repo_id":"Acme/Deploy-FP8"},{"provider":"modelscope","repo_id":"Acme/Deploy-FP8"}]`
+	if err := st.ReconcileInferenceCatalog([]store.InferenceModel{fixture}); err != nil {
+		t.Fatal(err)
+	}
+	template, err := st.InferenceModelByModelID(fixture.ModelID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	node, err := st.RegisterNode("local-node", store.HashToken("token"), "local-node")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.DB().Create(&store.GPU{
+		NodeID: node.ID, Index: 0, UUID: "GPU-local-0", Name: "NVIDIA H100", Vendor: "nvidia",
+		ComputeCapability: "9.0", ArchID: "sm_90", MemoryTotal: 80 << 30,
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	local, err := st.UpsertModel(&store.Model{Source: "local", SourceID: "Acme/Deploy-FP8", Name: "Deploy-FP8"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.UpsertModelFile(&store.ModelFile{ModelID: local.ID, NodeID: node.ID, State: proto.MFPresent, Path: "/models/deploy-fp8", SizeBytes: 1 << 30}); err != nil {
+		t.Fatal(err)
+	}
+	h := &apiHandlers{d: Deps{Store: st, Online: func(string) bool { return true }}}
+	evaluate := func(modelSource string) (bool, []map[string]any, string) {
+		t.Helper()
+		body := fmt.Sprintf(`{"template_id":%d,"template_spec_source":"upstream","template_spec_name":"fp8-balanced","node_uuid":%q,"model_id":%d,%s"quick_params":{},"placement":{}}`,
+			template.ID, node.UUID, local.ID, modelSource)
+		rec := httptest.NewRecorder()
+		h.evaluate(rec, httptest.NewRequest(http.MethodPost, "/api/v1/evaluate", strings.NewReader(body)))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+		}
+		var resp struct {
+			OK          bool `json:"ok"`
+			Acquisition *struct {
+				Providers []map[string]any `json:"providers"`
+			} `json:"acquisition"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+			t.Fatal(err)
+		}
+		if resp.Acquisition == nil {
+			return resp.OK, nil, rec.Body.String()
+		}
+		return resp.OK, resp.Acquisition.Providers, rec.Body.String()
+	}
+	ok, providers, raw := evaluate("")
+	if !ok {
+		t.Fatalf("local model evaluation failed: %s", raw)
+	}
+	if len(providers) != 1 || providers[0]["label"] != "local" {
+		t.Fatalf("local model offered providers %+v, want only its own source", providers)
+	}
+	// A request that still names a public provider is a real conflict.
+	if ok, _, raw := evaluate(`"model_source":{"provider":"huggingface"},`); ok || !strings.Contains(raw, "conflicts with model_source.provider") {
+		t.Fatalf("explicit provider on a local model was accepted: %s", raw)
+	}
+}
