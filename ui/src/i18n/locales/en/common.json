@@ -839,6 +839,11 @@
         "label": "OK",
         "summary": "The card has a history of memory errors whose pages were retired or rows replaced. The counter is cumulative and a reset does not clear it.",
         "action": ""
+      },
+      "inventory_incomplete": {
+        "summary": "The driver card count differs from its inventory rows. Verified cards remain available; the inventory may be incomplete.",
+        "action": "Compare the vendor inventory with PCI devices and check the driver log. Missing card identities are not guessed.",
+        "label": "Incomplete inventory"
       }
     }
   },

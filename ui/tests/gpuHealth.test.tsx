@@ -233,3 +233,12 @@ test("missing telemetry is a visible warning, not a reported CLI failure", () =>
   assert.equal(screen.queryByText("诊断数据缺失") !== null, true);
   assert.equal(screen.queryByText("不可读取") === null, true);
 });
+
+
+test("incomplete driver inventory is visible without disabling verified cards", async () => {
+ wrap(<GPUHealthTag gpu={{ schedulable: true, health_status: "Warning", health_code: "inventory_incomplete", health_message: "attached_xpus=8\ninventory_rows=7" }} />);
+ assert.equal(screen.queryByText("设备清单不完整") !== null, true);
+ fireEvent.click(screen.getByRole("button", { name: "查看健康详情" }));
+ await waitFor(() => assert.equal(screen.queryByText(/驱动报告的卡数与设备清单行数不一致/) !== null, true));
+ assert.equal(screen.queryByText("已停止调度。") === null, true);
+});

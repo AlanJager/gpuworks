@@ -179,12 +179,26 @@ func New() Prober {
 	return fallbackProber(probers, deviceExists, commandExists, bus)
 }
 
-// Preserve a failed physical backend when AMD would otherwise be the
-// automatic winner. An operator can still explicitly select AMD with NewFor.
+// Prefer physical native evidence over an answering compatibility CLI.
+// NewFor remains authoritative when an operator explicitly chooses a backend.
 func firstAvailableWithBus(probers []Prober, onBus func(string) bool) Prober {
 	for _, p := range probers {
 		if p == nil || !p.Available() {
 			continue
+		}
+		// A CUDA-compatible CLI can answer even when a native driver has failed.
+		// Without a physical NVIDIA card, retain the earlier native PCI owner so
+		// the failure remains attributable. An actual NVIDIA card is still a valid
+		// fallback on a mixed host. This does not invent PCI facts in containers.
+		if p.Vendor() == accelerator.VendorNVIDIA && !onBus(accelerator.VendorNVIDIA) {
+			for _, native := range probers {
+				if native != nil && native.Vendor() == p.Vendor() {
+					break
+				}
+				if native != nil && onBus(native.Vendor()) {
+					return native
+				}
+			}
 		}
 		if p.Vendor() == accelerator.VendorAMD {
 			for _, other := range probers {

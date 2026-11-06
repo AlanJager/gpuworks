@@ -111,3 +111,29 @@ func TestKunlunZeroMemoryProcessStillReportsOccupation(t *testing.T) {
 		t.Fatal(processes, err)
 	}
 }
+
+// Synthetic missing-row output without PCI sysfs: retain known identities,
+// surface the count mismatch, and never invent the missing card's identity.
+func TestKunlunIncompleteInventoryWithoutSysfsIsVisible(t *testing.T) {
+	p, raw := kunlunFixture(t)
+	p.hostRoot = t.TempDir()
+	start := strings.LastIndex(*raw, "<xpu ")
+	end := strings.Index((*raw)[start:], "</xpu>") + start + len("</xpu>")
+	*raw = (*raw)[:start] + (*raw)[end:]
+	cards, err := p.Probe(t.Context())
+	if err != nil || len(cards) != 1 {
+		t.Fatalf("cards=%+v err=%v", cards, err)
+	}
+	card := cards[0]
+	if !card.Healthy || card.HealthCode != accelerator.HealthInventoryIncomplete || card.HealthStatus != accelerator.HealthWarning || !strings.Contains(card.HealthMessage, "attached_xpus=2") || !strings.Contains(card.HealthMessage, "inventory_rows=1") {
+		t.Fatalf("incomplete inventory lost its diagnostic or valid card: %+v", card)
+	}
+	if inj := p.RuntimeInjectionForDriver([]int{0}, "docker"); inj.UnsupportedReason != "" {
+		t.Fatal(inj.UnsupportedReason)
+	}
+	*raw = strings.Replace(*raw, "<dram_uncorrectable>0</dram_uncorrectable>", "<dram_uncorrectable>1</dram_uncorrectable>", 1)
+	cards, err = p.Probe(t.Context())
+	if err != nil || len(cards) != 1 || cards[0].Healthy || cards[0].HealthCode != accelerator.HealthMemoryUncorrectable {
+		t.Fatalf("warning hid ECC error: %+v %v", cards, err)
+	}
+}

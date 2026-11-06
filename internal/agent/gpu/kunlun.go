@@ -238,6 +238,10 @@ func (p *KunlunProber) Probe(ctx context.Context) ([]proto.GPUInfo, error) {
 		if code != "" {
 			evidence = append(evidence, accelerator.HealthField{Name: "ecc_errors.volatile.dram_uncorrectable", Value: c.ECC})
 		}
+		if inv.Attached != len(inv.Cards) {
+			code = accelerator.MostSevereHealth(code, accelerator.HealthInventoryIncomplete)
+			evidence = append(evidence, accelerator.HealthField{Name: "attached_xpus", Value: strconv.Itoa(inv.Attached)}, accelerator.HealthField{Name: "inventory_rows", Value: strconv.Itoa(len(inv.Cards))})
+		}
 		SetCardFinding(&g, code, evidence)
 		out = append(out, g)
 	}

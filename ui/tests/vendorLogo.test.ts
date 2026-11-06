@@ -23,7 +23,7 @@ test("Apple silicon resolves from its metal framework to the Apple mark", () => 
 });
 
 test("every vendor mark is a file shipped under public/vendor-logos", async () => {
-  for (const vendor of ["nvidia", "amd", "ascend", "thead", "hygon", "apple"]) {
+  for (const vendor of Object.keys(VENDOR_ASSETS)) {
     const asset = VENDOR_ASSETS[vendor];
     assert.match(asset, /^\/vendor-logos\/[a-z]+\.(svg|png|webp)$/, vendor);
     await access(new URL(`../public${asset}`, import.meta.url));

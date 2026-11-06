@@ -20,6 +20,7 @@ const knownCodes = new Set([
   "driver_init_failed",
   "vendor_cli_unanswered",
   "inventory_identity_invalid",
+  "inventory_incomplete",
   "telemetry_unavailable",
   "runtime_unusable",
   "memory_repair_pending",
