@@ -18,6 +18,22 @@ func writeSnapshot(content string) func(string) error {
 	return func(dest string) error { return os.WriteFile(dest, []byte(content), 0o600) }
 }
 
+// Online fixtures represent a server that applied its database policy at
+// startup. Offline fixtures retain legacy modes to exercise permission repair.
+func (h *harness) prepareInServiceDatabase() {
+	h.t.Helper()
+	policy, err := h.installer.sensitiveFilePolicy()
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	for _, suffix := range []string{"", "-wal", "-shm", "-journal"} {
+		err := os.Chmod(filepath.Join(h.layout.DataDir, "gpuworks.db")+suffix, policy.Mode())
+		if err != nil && !os.IsNotExist(err) {
+			h.t.Fatal(err)
+		}
+	}
+}
+
 func openArchive(t *testing.T, path string) *os.File {
 	t.Helper()
 	f, err := os.Open(path)
@@ -40,6 +56,7 @@ func pendingOf(t *testing.T, layout Layout) *PendingUpgrade {
 func TestStageInServiceSwapsTheBinaryBehindASnapshot(t *testing.T) {
 	h := newHarness(t, t.TempDir())
 	h.writeExistingInstall("v1.0.0")
+	h.prepareInServiceDatabase()
 	archive := h.writeArchive("v2.0.0", []byte("new binary"))
 
 	up, err := h.installer.StageInService(context.Background(), "v1.0.0", openArchive(t, archive), writeSnapshot("live snapshot"), "admin")
@@ -170,6 +187,7 @@ func TestStageInServiceRefusesAndChangesNothing(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			h := newHarness(t, t.TempDir())
 			h.writeExistingInstall("v1.0.0")
+			h.prepareInServiceDatabase()
 			if tc.prepare != nil {
 				tc.prepare(h)
 			}
@@ -199,6 +217,7 @@ func stageForGuard(t *testing.T) (*harness, InServiceUpgrade) {
 	t.Helper()
 	h := newHarness(t, t.TempDir())
 	h.writeExistingInstall("v1.0.0")
+	h.prepareInServiceDatabase()
 	up, err := h.installer.StageInService(context.Background(), "v1.0.0", openArchive(t, h.writeArchive("v2.0.0", []byte("new binary"))), writeSnapshot("pre-upgrade database"), "admin")
 	if err != nil {
 		t.Fatal(err)

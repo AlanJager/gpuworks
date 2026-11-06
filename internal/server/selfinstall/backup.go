@@ -144,7 +144,7 @@ func (i *Installer) writeBackupEntries(path string, at time.Time, entries []back
 	if err != nil {
 		return err
 	}
-	if err := hardenFilesWithPolicy(i.layout, policy); err != nil {
+	if err := i.hardenBackupFiles(policy, entries); err != nil {
 		return err
 	}
 	tmp, err := os.CreateTemp(i.layout.BackupsDir, filepath.Base(path)+".part*")
@@ -182,6 +182,51 @@ func (i *Installer) writeBackupEntries(path string, at time.Time, entries []back
 		return err
 	}
 	return os.Rename(tmpName, path)
+}
+
+func (i *Installer) hardenBackupFiles(policy securefile.Policy, entries []backupEntry) error {
+	livePath := filepath.Join(i.layout.DataDir, "gpuworks.db")
+	liveInfo, err := os.Lstat(livePath)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	archivesLive := false
+	var snapshots []string
+	for _, entry := range entries {
+		if entry.name != backupDataPrefix+"gpuworks.db" {
+			continue
+		}
+		info, include, err := inspectBackupMember(entry.path, entry.name)
+		if err != nil {
+			return err
+		}
+		if !include {
+			continue
+		}
+		if liveInfo != nil && os.SameFile(liveInfo, info) {
+			if filepath.Clean(entry.path) != filepath.Clean(livePath) {
+				return errors.New("database snapshot aliases the live database")
+			}
+			archivesLive = true
+		} else {
+			snapshots = append(snapshots, entry.path)
+		}
+	}
+	var active []string
+	if !archivesLive {
+		for _, suffix := range []string{"", "-wal", "-shm", "-journal"} {
+			active = append(active, livePath+suffix)
+		}
+	}
+	if err := hardenFilesWithPolicy(i.layout, policy, active...); err != nil {
+		return err
+	}
+	for _, path := range snapshots {
+		if err := protectFile(path, policy); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // archiveName maps an installed file to the name it carries inside the archive.

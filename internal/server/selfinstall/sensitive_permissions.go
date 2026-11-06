@@ -8,6 +8,7 @@ import (
 	"os/user"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -40,17 +41,52 @@ func HardenSensitiveFiles(layout Layout, warn func(path string, err error)) erro
 	}
 	return nil
 }
-func hardenFilesWithPolicy(layout Layout, policy securefile.Policy) error {
+func hardenFilesWithPolicy(layout Layout, policy securefile.Policy, activeDatabases ...string) error {
 	paths, err := sensitivePaths(layout)
 	if err != nil {
 		return err
 	}
+	// In-service backup reads a separate SQLite snapshot. Live database files
+	// must be checked without opening/closing descriptors that cancel locks.
 	for _, path := range paths {
+		if slices.Contains(activeDatabases, path) {
+			if err := verifyActiveDatabaseFile(path, policy); err != nil {
+				return err
+			}
+		}
+	}
+	for _, path := range paths {
+		if slices.Contains(activeDatabases, path) {
+			continue
+		}
 		if err := protectFile(path, policy); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func verifyActiveDatabaseFile(path string, policy securefile.Policy) error {
+	before, err := os.Lstat(path)
+	if err != nil {
+		return err
+	}
+	if err := policy.Check(before); err != nil {
+		return fmt.Errorf("verify active database %s without repairing permissions: %w", path, err)
+	}
+	if _, group := policy.GroupID(); group {
+		if err := securefile.CheckFileACL(path); err != nil {
+			return err
+		}
+	}
+	after, err := os.Lstat(path)
+	if err != nil {
+		return err
+	}
+	if !os.SameFile(before, after) {
+		return fmt.Errorf("active database %s changed during permission inspection", path)
+	}
+	return policy.Check(after)
 }
 
 // protectHandedOverFile is for files a privileged chown just handed to the
