@@ -317,3 +317,18 @@ test("pages follow the entry id as cursor, forward and back", async () => {
   await screen.findByText("dep-100");
   assert.equal(queries.at(-1)?.before, undefined);
 });
+
+test("an entry about a failed attempt opens that attempt's logs in the window the server named", async () => {
+  serve([
+    entry(41, { code: "REPLICA_REBUILT", kind: "lifecycle", category: "failure", instance: "attempt-1", params: { replica: 1, attempt: 2, node: "gpu-3", reason: "ValueError: max_num_seqs (1024) exceeds available Mamba cache blocks (839)" }, nodes: [{ name: "gpu-3" }], logs: { instance: "attempt-1", from: 1793889000000, to: 1793889660000 } }),
+    entry(40, { code: "REPLICAS_CHANGED", kind: "schedule", category: "manual", params: { from: 1, to: 3 } }),
+  ]);
+  const user = mount();
+  await screen.findByText(/Mamba cache blocks/);
+  const rows = screen.getAllByRole("row").slice(1);
+  assert.equal(within(rows[1]).queryByRole("link", { name: h.viewLogs }), null, "an entry about no failed attempt has no logs to open");
+  const link = within(rows[0]).getByRole("link", { name: h.viewLogs });
+  link.focus();
+  await user.keyboard("{Enter}");
+  assert.equal(screen.getByTestId("loc").textContent, "/logs?instance=attempt-1&from=1793889000000&to=1793889660000");
+});

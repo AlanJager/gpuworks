@@ -302,3 +302,38 @@ func TestSchedulingHistoryNamesTheNodesOfEachEntry(t *testing.T) {
 		t.Errorf("WAKE_ORDERED params = %v, want the node kept", params)
 	}
 }
+
+// An entry about a failed attempt carries where its output can be read: the
+// attempt's instance and the ten minutes before the entry, as the logs page
+// takes them. Other entries, and a rebuild written before entries named the
+// attempt, carry none.
+func TestSchedulingHistoryPointsFailedAttemptsAtTheirLogs(t *testing.T) {
+	rig := newScheduleRig(t)
+	failed := &store.Instance{UUID: "attempt-1", DeploymentID: rig.multi.ID}
+	rig.st.AddInstanceEventCode(failed, store.EventKindLifecycle, store.EventReplicaRebuilt, map[string]any{"replica": 1, "attempt": 2, "reason": "ValueError: max_num_seqs", "node": "gpu-1"})
+	rig.st.AddInstanceEventCode(failed, store.EventKindSchedule, store.EventUnitRetryExhausted, map[string]any{"attempts": 3, "reason": "ValueError: max_num_seqs"})
+	rig.st.AddDeploymentEventCode(rig.multi.ID, store.EventKindLifecycle, store.EventReplicaRebuilt, map[string]any{"replica": 1, "attempt": 2, "reason": "oom", "node": "gpu-1"})
+	rig.st.AddInstanceEventCode(failed, store.EventKindSchedule, store.EventReplicaRestarted, map[string]any{"replica": 1})
+
+	status, items, body := rig.history(t, rig.session, "")
+	if status != http.StatusOK || historyCodesOf(items) != "REPLICA_RESTARTED,REPLICA_REBUILT,UNIT_RETRY_EXHAUSTED,REPLICA_REBUILT" {
+		t.Fatalf("history = %d %s", status, body)
+	}
+	for i, wantLogs := range []bool{false, false, true, true} {
+		logs, ok := items[i]["logs"].(map[string]any)
+		if ok != wantLogs {
+			t.Fatalf("item %d (%v) logs = %v, want present=%v", i, items[i]["code"], items[i]["logs"], wantLogs)
+		}
+		if !ok {
+			continue
+		}
+		at, err := time.Parse(time.RFC3339Nano, items[i]["created_at"].(string))
+		if err != nil {
+			t.Fatal(err)
+		}
+		from, to := int64(logs["from"].(float64)), int64(logs["to"].(float64))
+		if logs["instance"] != "attempt-1" || len(logs) != 3 || from != at.Add(-10*time.Minute).UnixMilli() || to != at.Add(time.Minute).UnixMilli() {
+			t.Fatalf("item %d logs = %v, created %s", i, logs, at)
+		}
+	}
+}

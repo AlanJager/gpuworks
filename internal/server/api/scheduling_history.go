@@ -118,7 +118,24 @@ func (a *apiHandlers) schedulingHistory(w http.ResponseWriter, r *http.Request) 
 		if actor, ok := item.Params["actor"].(string); ok {
 			item.Actor = actor
 		}
+		item.Logs = failedAttemptLogs(ev)
 		items = append(items, item)
 	}
 	writeJSON(w, http.StatusOK, dto.NewCursorPage(items))
+}
+
+// failedAttemptLogLead is how far before a failed attempt's entry its logs
+// window starts: an engine that fails at startup prints its cause while it
+// loads, and a large model loads for minutes.
+const failedAttemptLogLead = 10 * time.Minute
+
+// failedAttemptLogs is the logs window of the attempt an entry reports
+// failed, or nil for an entry that reports none. The stored output outlives
+// the instance row, which a rebuild may retire.
+func failedAttemptLogs(ev store.InstanceEvent) *dto.SchedulingHistoryLogs {
+	if ev.InstanceUUID == "" || (ev.Code != store.EventReplicaRebuilt && ev.Code != store.EventUnitRetryExhausted) {
+		return nil
+	}
+	at := ev.CreatedAt
+	return &dto.SchedulingHistoryLogs{Instance: ev.InstanceUUID, From: at.Add(-failedAttemptLogLead).UnixMilli(), To: at.Add(time.Minute).UnixMilli()}
 }
