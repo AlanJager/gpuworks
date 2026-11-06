@@ -12,6 +12,45 @@ import (
 )
 
 func protectDatabase(dsn string, create bool, policies ...securefile.Policy) error {
+	return checkDatabaseFiles(dsn, create, securefile.Protect, policies...)
+}
+
+// verifyDatabase checks active SQLite files without opening or closing them:
+// closing an unrelated descriptor would release the process's POSIX locks.
+func verifyDatabase(dsn string, policies ...securefile.Policy) error {
+	return checkDatabaseFiles(dsn, false, verifyDatabaseFile, policies...)
+}
+
+// Owner-only files may retain a named ACL with mask000: it grants no access.
+// A trusted-group policy must reject ACLs that could grant named users access.
+func verifyDatabaseFile(path string, policies ...securefile.Policy) error {
+	policy, err := securefile.Select(policies...)
+	if err != nil {
+		return err
+	}
+	before, err := os.Lstat(path)
+	if err != nil {
+		return err
+	}
+	if err := policy.Check(before); err != nil {
+		return err
+	}
+	if _, group := policy.GroupID(); group {
+		if err := securefile.CheckFileACL(path); err != nil {
+			return err
+		}
+	}
+	after, err := os.Lstat(path)
+	if err != nil {
+		return err
+	}
+	if !os.SameFile(before, after) {
+		return fmt.Errorf("file %s changed during permission verification", path)
+	}
+	return policy.Check(after)
+}
+
+func checkDatabaseFiles(dsn string, create bool, check func(string, ...securefile.Policy) error, policies ...securefile.Policy) error {
 	policy, err := securefile.Select(policies...)
 	if err != nil {
 		return err
@@ -41,7 +80,7 @@ func protectDatabase(dsn string, create bool, policies ...securefile.Policy) err
 		}
 	}
 	for i, p := range []string{path, path + "-wal", path + "-shm", path + "-journal"} {
-		err := securefile.Protect(p, policy)
+		err := check(p, policy)
 		if errors.Is(err, os.ErrNotExist) {
 			if i != 0 || !create {
 				continue
@@ -51,7 +90,9 @@ func protectDatabase(dsn string, create bool, policies ...securefile.Policy) err
 			}
 			f, createErr := securefile.Create(path, policy)
 			if errors.Is(createErr, os.ErrExist) {
-				err = securefile.Protect(path, policy)
+				// A concurrent creator may already have SQLite handles. Validate
+				// its file without opening a descriptor that could drop its locks.
+				err = verifyDatabaseFile(path, policy)
 			} else if createErr != nil {
 				err = createErr
 			} else {
