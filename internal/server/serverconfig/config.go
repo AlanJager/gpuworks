@@ -44,7 +44,11 @@ type File struct {
 	// remain HTTP and are reachable only from this host.
 	TLSCertFile string `yaml:"tls_cert_file,omitempty"`
 	TLSKeyFile  string `yaml:"tls_key_file,omitempty"`
-	// Exceptions for private HTTP model/registry/AI/telemetry destinations.
+	// OutboundRestrictPrivateHosts requires explicit exceptions for ordinary private
+	// HTTP destinations; false keeps them accessible. Special targets remain
+	// forbidden by the outbound transport in either mode.
+	OutboundRestrictPrivateHosts bool `yaml:"outbound_restrict_private_hosts,omitempty"`
+	// Exceptions when ordinary private HTTP destinations are restricted.
 	OutboundAllowPrivateHosts []string `yaml:"outbound_allow_private_hosts,omitempty"`
 	// StorageProbeRoots limits new storage paths and probes on managed nodes.
 	StorageProbeRoots []string `yaml:"storage_probe_roots,omitempty"`

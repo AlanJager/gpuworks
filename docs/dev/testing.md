@@ -357,7 +357,7 @@ secret 或自托管 runner。
   root 登录的 agent 以专用用户 `udocker` 跑工作负载，所以 `$root` 要 `chmod 711`，否则 PRoot 报 `fork/exec .../proot-x86_64: permission denied`。
   udocker 有自己的镜像存储，黄金镜像里 Docker 存的 runner 镜像它用不上；该用例不去 registry 拉（每个 rank 拉一遍要 25 到 40 分钟，偶尔拉到末尾换源重来），
   而是走平台的「从 URL 导入」：每台 VM 上 `docker save` 出未压缩的归档（约 14 GiB，约 4 分钟），用一个支持 HEAD 与 Range 的小文件服务（`python3` 脚本，只绑私网地址 18881，只服务这一个文件）发布，
-  server 以 `outbound_allow_private_hosts` 放行两台 VM 的私网地址，用例再像运维一样调管理 API：`POST /images/preview-archive-url` 解析归档、
+  普通私网默认可访问；夹具预置的 `outbound_allow_private_hosts` 在开启 `outbound_restrict_private_hosts: true` 的严格模式时用于授权两台 VM。用例再像运维一样调管理 API：`POST /images/preview-archive-url` 解析归档、
   把两个归档 URL 登记到 runner 镜像的获取地址（目录没有该镜像时按控制台的自定义镜像表单新建）、对每个节点 `POST /images/{id}/nodes/{uuid}/sync`（`source=url`）让节点从**自己所在 VM** 直连下载并 load，
   等到节点镜像行为 `present` 才创建部署，部署之后还会确认镜像行仍是 `present`、来源仍是 `url`。归档与文件服务在导入完成后立即删除/停止。
   用例日志记录每个 rank 的 `save`、`download`、`load` 与合计耗时（下载与 load 的分界取自镜像行的消息，精度为轮询间隔）；2026-10-27 实测 save 约 4 分钟，下载约 1 分钟、load 约 15 秒，整个用例约 11 分钟。

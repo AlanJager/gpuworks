@@ -15,6 +15,11 @@ import (
 
 func writeOutboundConfig(t *testing.T, path, body string) {
 	t.Helper()
+	writeRawOutboundConfig(t, path, "outbound_restrict_private_hosts: true\n"+body)
+}
+
+func writeRawOutboundConfig(t *testing.T, path, body string) {
+	t.Helper()
 	if err := os.WriteFile(path, []byte(body), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -30,7 +35,7 @@ func assertOutboundHosts(t *testing.T, read func() []string, want ...string) {
 func TestOutboundPrivateHostsWatchReflectsFileEditsAndRemoval(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "server.yaml")
 	writeOutboundConfig(t, path, "outbound_allow_private_hosts: [first.internal]\n")
-	read := serverconfig.WatchOutboundPrivateHosts(path, []string{"startup.internal"}, nil)
+	read := serverconfig.WatchOutboundPrivateHosts(path, true, []string{"startup.internal"}, nil)
 	assertOutboundHosts(t, read, "first.internal")
 	writeOutboundConfig(t, path, "outbound_allow_private_hosts: [second.internal, 10.2.0.0/16]\n")
 	assertOutboundHosts(t, read, "second.internal", "10.2.0.0/16")
@@ -44,7 +49,7 @@ func TestOutboundPrivateHostsWatchSeesSameLengthAtomicReplacement(t *testing.T) 
 	dir := t.TempDir()
 	path := filepath.Join(dir, "server.yaml")
 	writeOutboundConfig(t, path, "outbound_allow_private_hosts: [first.internal]\n")
-	read := serverconfig.WatchOutboundPrivateHosts(path, nil, nil)
+	read := serverconfig.WatchOutboundPrivateHosts(path, true, nil, nil)
 	assertOutboundHosts(t, read, "first.internal")
 	before, err := os.Stat(path)
 	if err != nil {
@@ -74,7 +79,7 @@ func TestOutboundPrivateHostsWatchFailsClosedAndRecovers(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "server.yaml")
 			writeOutboundConfig(t, path, "outbound_allow_private_hosts: [first.internal]\n")
 			var reports atomic.Int32
-			read := serverconfig.WatchOutboundPrivateHosts(path, []string{"startup.internal"}, func(error) { reports.Add(1) })
+			read := serverconfig.WatchOutboundPrivateHosts(path, true, []string{"startup.internal"}, func(error) { reports.Add(1) })
 			assertOutboundHosts(t, read, "first.internal")
 			switch scenario {
 			case "missing":
@@ -119,7 +124,7 @@ func TestOutboundPrivateHostsWatchFailsClosedAndRecovers(t *testing.T) {
 
 func TestOutboundPrivateHostsWatchWithoutFileCopiesFallback(t *testing.T) {
 	initial := []string{"first.internal"}
-	read := serverconfig.WatchOutboundPrivateHosts("", initial, nil)
+	read := serverconfig.WatchOutboundPrivateHosts("", true, initial, nil)
 	initial[0] = "changed.internal"
 	assertOutboundHosts(t, read, "first.internal")
 	result := read()
@@ -130,7 +135,7 @@ func TestOutboundPrivateHostsWatchWithoutFileCopiesFallback(t *testing.T) {
 func TestOutboundPrivateHostsWatchCopiesFileResult(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "server.yaml")
 	writeOutboundConfig(t, path, "outbound_allow_private_hosts: [first.internal]\n")
-	read := serverconfig.WatchOutboundPrivateHosts(path, nil, nil)
+	read := serverconfig.WatchOutboundPrivateHosts(path, true, nil, nil)
 	result := read()
 	if len(result) != 1 {
 		t.Fatalf("private hosts=%v", result)
@@ -143,7 +148,7 @@ func TestOutboundPrivateHostsWatchConcurrentReaders(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "server.yaml")
 	writeOutboundConfig(t, path, "outbound_allow_private_hosts: [first.internal]\n")
-	read := serverconfig.WatchOutboundPrivateHosts(path, nil, nil)
+	read := serverconfig.WatchOutboundPrivateHosts(path, true, nil, nil)
 	var wg sync.WaitGroup
 	for i := 0; i < 8; i++ {
 		wg.Add(1)
@@ -174,7 +179,7 @@ func TestOutboundPrivateHostsWatchConcurrentReaders(t *testing.T) {
 
 func TestOutboundPrivateHostsWatchNeverUsesFallbackForUnavailableFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "server.yaml")
-	read := serverconfig.WatchOutboundPrivateHosts(path, []string{"startup.internal"}, nil)
+	read := serverconfig.WatchOutboundPrivateHosts(path, true, []string{"startup.internal"}, nil)
 	assertOutboundHosts(t, read)
 	writeOutboundConfig(t, path, "outbound_allow_private_hosts: [unterminated\n")
 	assertOutboundHosts(t, read)
@@ -186,7 +191,7 @@ func TestOutboundPrivateHostsWatchReportsOutsideTheReadLock(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "server.yaml")
 	var reports atomic.Int32
 	var read func() []string
-	read = serverconfig.WatchOutboundPrivateHosts(path, nil, func(error) {
+	read = serverconfig.WatchOutboundPrivateHosts(path, true, nil, func(error) {
 		reports.Add(1)
 		if got := read(); len(got) != 0 {
 			t.Errorf("recursive failed read returned grants: %v", got)
@@ -208,7 +213,7 @@ func TestOutboundPrivateHostsWatchReflectsRevocationWithoutMetadataChange(t *tes
 	path := filepath.Join(t.TempDir(), "server.yaml")
 	initial := "outbound_allow_private_hosts: [private.internal]\n"
 	writeOutboundConfig(t, path, initial)
-	read := serverconfig.WatchOutboundPrivateHosts(path, nil, nil)
+	read := serverconfig.WatchOutboundPrivateHosts(path, true, nil, nil)
 	assertOutboundHosts(t, read, "private.internal")
 	before, err := os.Stat(path)
 	if err != nil {
@@ -234,7 +239,7 @@ func TestOutboundPrivateHostsWatchRejectsOversizedFileAndRecovers(t *testing.T) 
 	path := filepath.Join(t.TempDir(), "server.yaml")
 	writeOutboundConfig(t, path, "outbound_allow_private_hosts: [first.internal]\n")
 	var reports atomic.Int32
-	read := serverconfig.WatchOutboundPrivateHosts(path, nil, func(error) { reports.Add(1) })
+	read := serverconfig.WatchOutboundPrivateHosts(path, true, nil, func(error) { reports.Add(1) })
 	assertOutboundHosts(t, read, "first.internal")
 	// Static startup loading remains compatible with valid large files; only
 	// the repeated runtime security read has a bounded allocation budget.

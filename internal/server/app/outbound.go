@@ -23,7 +23,7 @@ func privateHostPermissions(cfg Config, log *slog.Logger) func() []string {
 			log.Warn("cannot read outbound private-host permissions; private sources denied", "config_path", cfg.ConfigPath, "reason", reason)
 		}
 	}
-	return serverconfig.WatchOutboundPrivateHosts(cfg.ConfigPath, cfg.OutboundAllowPrivateHosts, report)
+	return serverconfig.WatchOutboundPrivateHosts(cfg.ConfigPath, cfg.OutboundRestrictPrivateHosts, cfg.OutboundAllowPrivateHosts, report)
 }
 
 var _ api.OutboundPolicySettings = (*serverSettings)(nil)
@@ -32,7 +32,7 @@ func (s *serverSettings) OutboundAllowPrivateHosts() []string {
 	if s.readPrivateHosts != nil {
 		return s.readPrivateHosts()
 	}
-	return append([]string(nil), s.cfg.OutboundAllowPrivateHosts...)
+	return privateHostPermissions(s.cfg, nil)()
 }
 
 func (a *aiService) privateHosts() []string {

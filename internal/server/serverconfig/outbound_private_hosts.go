@@ -13,18 +13,20 @@ import (
 const maxOutboundConfigBytes = 1 << 20
 
 // WatchOutboundPrivateHosts reads the administrator's current private HTTP
-// exceptions. A file-backed configuration never falls back to startup grants:
-// missing, invalid or unreadable files revoke those exceptions until recovery.
-// With no configuration file, explicit in-process settings remain immutable.
+// exceptions and restriction mode. Ordinary private targets are unrestricted
+// unless the configuration explicitly enables outbound_restrict_private_hosts;
+// special targets remain forbidden by the outbound transport in either mode.
+// A missing, invalid or unreadable file never falls back to startup permissions.
+// With no file, the supplied mode and exceptions remain immutable.
 //
 // Each call reads the file, so revocation is observed even if an editor keeps
 // its inode, timestamps and length. Only changed content is reparsed. Runtime
 // reads are bounded to 1 MiB; larger files revoke exceptions without changing
 // Load's startup contract. Results are copied so callers cannot mutate cached
 // authority. report runs outside the lock on entering a different error state.
-func WatchOutboundPrivateHosts(path string, fallback []string, report func(error)) func() []string {
+func WatchOutboundPrivateHosts(path string, restrict bool, fallback []string, report func(error)) func() []string {
 	if path == "" {
-		initial := append([]string(nil), fallback...)
+		initial := effectiveOutboundPrivateHosts(restrict, fallback)
 		return func() []string { return append([]string(nil), initial...) }
 	}
 	var mu sync.Mutex
@@ -67,7 +69,7 @@ func WatchOutboundPrivateHosts(path string, fallback []string, report func(error
 				if err != nil {
 					return nil, err
 				}
-				nextHosts = append([]string(nil), cfg.OutboundAllowPrivateHosts...)
+				nextHosts = effectiveOutboundPrivateHosts(cfg.OutboundRestrictPrivateHosts, cfg.OutboundAllowPrivateHosts)
 			}
 			after, err := f.Stat()
 			if err != nil {
@@ -103,4 +105,14 @@ func WatchOutboundPrivateHosts(path string, fallback []string, report func(error
 
 func sameOutboundConfigSnapshot(a, b os.FileInfo) bool {
 	return a != nil && b != nil && os.SameFile(a, b) && a.ModTime().Equal(b.ModTime()) && a.Size() == b.Size() && a.Mode() == b.Mode()
+}
+
+// Broad IP exceptions express the default mode through the existing transport
+// policy. Its permanent special-address checks run before these exceptions.
+func effectiveOutboundPrivateHosts(restrict bool, hosts []string) []string {
+	result := append([]string(nil), hosts...)
+	if !restrict {
+		result = append(result, "0.0.0.0/0", "::/0")
+	}
+	return result
 }

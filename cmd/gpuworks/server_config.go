@@ -40,6 +40,7 @@ func loadServerConfig(path string, addrGiven bool, host serverconfig.Host) (serv
 func applyServerConfig(cfg *app.Config, file serverconfig.File, given map[string]bool) {
 	cfg.TLSCertFile, cfg.TLSKeyFile = file.TLSCertFile, file.TLSKeyFile
 	cfg.OutboundAllowPrivateHosts = append([]string(nil), file.OutboundAllowPrivateHosts...)
+	cfg.OutboundRestrictPrivateHosts = file.OutboundRestrictPrivateHosts
 	if len(file.StorageProbeRoots) > 0 {
 		cfg.StorageProbeRoots = append([]string(nil), file.StorageProbeRoots...)
 	}
