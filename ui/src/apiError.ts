@@ -1,3 +1,4 @@
+import { acceleratorMessageParams } from "./acceleratorMessages";
 import { notifySessionExpired } from "./session";
 
 export interface APIErrorPayload {
@@ -34,8 +35,7 @@ export function apiErrorText(t: APIErrorTranslator, error: unknown): string {
     params.detail = pullSettingErrorDetail(t, error);
   }
   if (error.code === "ACCELERATOR_FEATURE_UNSUPPORTED") {
-    const feature = String(params.feature ?? "");
-    return t("acceleratorFeature.unsupported", { ...params, feature: t(`acceleratorFeature.names.${feature}`, { defaultValue: feature }), defaultValue: error.fallback || error.code });
+    return t("acceleratorFeature.unsupported", { ...acceleratorMessageParams(t, params), defaultValue: error.fallback || error.code });
   }
   return t(`apiError.${error.code}`, {
     ...params,
