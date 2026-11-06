@@ -47,10 +47,14 @@ func ValidateModelDir(dir string) (int64, error) {
 		}
 		name := entry.Name()
 		// A downloader's in-flight file (see internal/agent/download) means the
-		// directory is still being written, whatever else it holds.
+		// directory is still being written, whatever else it holds - unless it
+		// is left over beside the file another tool finished.
 		if strings.HasSuffix(name, ".part") || strings.HasSuffix(name, ".part.state") {
+			if staleDownloadSidecar(path) {
+				return nil
+			}
 			rel, _ := filepath.Rel(resolved, path)
-			return fmt.Errorf("model directory has an unfinished download: %s", filepath.ToSlash(rel))
+			return fmt.Errorf("model directory has an unfinished download: %s (a download into it is still running or was interrupted; resume the download, or remove the model from this node and download it again)", filepath.ToSlash(rel))
 		}
 		info, err := entry.Info()
 		if err != nil {

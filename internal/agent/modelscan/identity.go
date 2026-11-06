@@ -222,24 +222,31 @@ func (in modelFileSummary) reason() string {
 	return strings.Join(parts, "; ")
 }
 
-func (in *modelFileSummary) note(name string) {
+func (in *modelFileSummary) note(path string) {
+	name := filepath.Base(path)
 	switch {
 	case strings.HasSuffix(name, ".incomplete"):
 		in.incomplete = true
 	case strings.HasSuffix(name, ".part.state"):
-		in.partState = true
+		in.partState = in.partState || !staleDownloadSidecar(path)
 	case strings.HasSuffix(name, ".part"):
-		in.part = true
+		in.part = in.part || !staleDownloadSidecar(path)
 	}
 }
 
 // summarizeModelFiles sums regular files outside dot entries and looks for unfinished
 // downloads. Dot directories are entered only for ".huggingface" and ".cache"
 // (download state lives there); they never count towards size or file count.
-// It only stats, never reads file contents.
+// It stats; the only contents it reads are a download sidecar's recorded size
+// and, when the CLI left *.incomplete files, the checkpoint's shard index.
 func summarizeModelFiles(dir string) modelFileSummary {
 	var in modelFileSummary
 	in.walk(dir, false)
+	// The Hugging Face CLI's leftovers name no file; a checkpoint with every
+	// shard in place is not waiting on them.
+	if in.incomplete && shardsPresent(dir) {
+		in.incomplete = false
+	}
 	return in
 }
 
@@ -265,7 +272,7 @@ func (in *modelFileSummary) walk(dir string, inDot bool) {
 				in.walk(path, true)
 			}
 		default:
-			in.note(name)
+			in.note(path)
 			if inDot || strings.HasPrefix(name, ".") {
 				continue
 			}
