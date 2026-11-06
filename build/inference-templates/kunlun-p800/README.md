@@ -5,7 +5,7 @@ This optional package adds Qwen3-0.6B and Qwen3.8-27B text inference profiles to
 ## Import
 
 1. Build the small catalog archive: `python3 build/inference-templates/kunlun-p800/build.py --output /tmp/kunlun-p800-qwen.tgz`.
-2. Make the reviewed private-registry image available to the selected Docker nodes, with registry credentials if required. The specs pin its manifest digest directly. `images.json` is an optional legacy tag-based catalog entry; it is not a built-in or public runner image and is not required for these specs.
+2. Make the reviewed private-registry image available to the selected Docker nodes, with registry credentials if required. The specs pin its manifest digest directly. No separate image catalog import is needed: the specs use the locked image directly.
 3. In **Inference templates → Import**, upload `kunlun-p800-qwen.tgz`. Both specs are user profiles named `bf16-vllm-kunlun-p800`; existing profiles are retained.
 4. Select the profile under Qwen3-0.6B or Qwen3.8-27B. Use Linux amd64, Docker, whole P800 PCIe/KL3 cards. Start with one card and the package defaults. Qwen3.8 is text-only here.
 
@@ -33,6 +33,6 @@ The Go package test validates package/image import, official revisions, card pre
 
 The general Web evaluation-default inheritance fix must also be present for untouched form defaults to keep the template dtype. It is delivered separately from hardware enablement. Before starting on older servers, explicitly choose Float16 and verify the command preview.
 
-The spec pins the reviewed manifest digest. The optional image catalog entry retains a mutable tag because that import API accepts tags; do not treat it as an immutable or built-in entry.
+Both the specs and image-lock pin the reviewed manifest digest. No mutable-tag image catalog is shipped. This remains an optional private-registry package, not a public built-in runner release.
 
 The multi-node image additionally includes Ubuntu RDMA userspace libraries (`libibverbs`, `librdmacm`, `libmlx5`) and providers. Passing GPU/XDR devices alone does not supply these libraries. Single-node device injection remains independent of XDR.

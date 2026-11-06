@@ -41,22 +41,6 @@ func TestKunlunQwenPackageImportsAndResolvesLaunches(t *testing.T) {
 	if err := st.DB().Where("source = ?", "official").Find(&before).Error; err != nil {
 		t.Fatal(err)
 	}
-	manifest, err := os.ReadFile(filepath.Join(root, "images.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	for attempt := 0; attempt < 2; attempt++ {
-		rec := run.do(http.MethodPost, "/api/v1/images/import", manifest)
-		if rec.Code != http.StatusOK {
-			t.Fatalf("image import: %d %s", rec.Code, rec.Body.String())
-		}
-	}
-	for _, original := range before {
-		current, err := st.ImageByRef(original.ImageRef)
-		if err != nil || current.ID != original.ID || current.Source != "official" || current.Deprecated != original.Deprecated || current.Enabled != original.Enabled {
-			t.Fatalf("optional import changed upstream image %s: %+v %v", original.ImageRef, current, err)
-		}
-	}
 	originalModels := map[string]*store.InferenceModel{}
 	for _, model := range pkg.Catalog.Models {
 		original, err := st.InferenceModelByModelID(model.ModelID)
@@ -72,6 +56,12 @@ func TestKunlunQwenPackageImportsAndResolvesLaunches(t *testing.T) {
 	rec := run.do(http.MethodPost, "/api/v1/inference-templates/import", archive.Bytes())
 	if rec.Code != http.StatusOK {
 		t.Fatalf("package import: %d %s", rec.Code, rec.Body.String())
+	}
+	for _, original := range before {
+		current, err := st.ImageByRef(original.ImageRef)
+		if err != nil || current.ID != original.ID || current.Source != "official" || current.Deprecated != original.Deprecated || current.Enabled != original.Enabled {
+			t.Fatalf("template import changed upstream image %s", original.ImageRef)
+		}
 	}
 	for id, original := range originalModels {
 		current, err := st.InferenceModelByModelID(id)
