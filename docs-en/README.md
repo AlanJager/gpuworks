@@ -128,6 +128,7 @@ see the index in [`artifacts/README.md`](../artifacts/README.md)). Chinese origi
 - [Browser E2E Testing Standards](../test/e2e/browser-e2e-testing-standard.md)
 - [Releases and Embedded Assets](dev/release.md)
 - [Contributing and Document Placement](dev/contributing.md)
+- [PR / MR Workflow](dev/pull-requests.md)
 - [Engineering Log](dev/ledgers/engineering-log.md), [A100 Bug Registry](dev/ledgers/a100-verification-bug-registry.md), [PPU Support Gap Register](dev/ledgers/ppu-support-gaps.md)
 
 ## Document Placement Rules

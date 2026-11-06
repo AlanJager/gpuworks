@@ -1,5 +1,5 @@
 {
-  "README.md": "cf5a38f8b6a7727f6b2114d9b46ecb55094441f7d3fb826b4c06adefc954ebfb",
+  "README.md": "4ed6a36e9392ba053463fe0340f16ce152e629b9ff361e2fd7b10e21de05e785",
   "adr/0001-image-digest-tag-pull-verify-after.md": "a6510eb2e98dba9d784c1596acd0e17ed42dcd27d3b29a988238d275ee128c54",
   "adr/0003-benchmark-engine-embedded-no-containers.md": "22f9a7a4ae72120a531c94f745d1153d159a4dfe8c3ed41e03c12b64d1bfffe8",
   "adr/0004-empty-revision-default-branch.md": "7c6bbbb35d79d97b297cf6dab71c5765c05c90a4be287e99d0efafc76c6dfd9c",
@@ -67,6 +67,7 @@
   "dev/ledgers/a100-verification-bug-registry.md": "94e3d3f09b94a8b75546862bb292d9ea1c432f043c9b2c882c96f2f712d215b6",
   "dev/ledgers/engineering-log.md": "3ada271ff8c1b9d7898b5879d51306511917573a87ffa23a5d2efe0acd02b7ed",
   "dev/ledgers/ppu-support-gaps.md": "dd334db53ca533a4c76381995a3a97741ce847aed0731c5ab8e6b2f781b83fb3",
+  "dev/pull-requests.md": "ae83c80992315a979ed87b12c2f470627df2f928a44036454b69237c0758d77f",
   "dev/release.md": "ffc0b93f84d468b5638b0126691f5a5322ea4bb3122bd2b18891c7980d5d5c41",
   "dev/setup.md": "76ecda80ba19f53457baf53a475cfba263cf892ecf147a0bbda9139316a51046",
   "dev/testing.md": "00eb458e716f591fe8b81ea7568bdc3e7fbb3e69d4dda2b78cb5b37cfdf45dc2",
