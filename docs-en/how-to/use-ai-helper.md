@@ -8,7 +8,7 @@ By the end, you can obtain evidence-based analysis for a specific object, then r
 
 - The server is running and you can sign in to the console. See [Install GPUWorks and Deploy Your First Model](../tutorials/getting-started.md).
 - Platform checks alone do not require an LLM. For AI interpretation, first save an OpenAI-compatible endpoint that the server can access under **Settings → Integrations → AI service** (base URL, model name, and API key). The server stores the key encrypted.
-- If the AI endpoint is on a private network or the local machine, an administrator must first authorize the target host in `outbound_allow_private_hosts` in `server.yaml`; saving the file applies the permission to the next request without restarting the server. See [Outbound Access Configuration](../reference/configuration.md#server-配置文件-serveryaml).
+- AI endpoints on ordinary private networks or local loopback addresses need no allowlist by default. Only when an administrator enables `outbound_restrict_private_hosts: true` in `server.yaml` must the target host be authorized in `outbound_allow_private_hosts`. Changes to either field apply to the next request after saving, without restarting the server. See [Outbound Access Configuration](../reference/configuration.md#server-配置文件-serveryaml).
 - Analysis sends the diagnostic data it reads to the configured AI service. Before configuring it, confirm the target host and permitted data use. The settings page displays a notice identifying the external service host; same-origin platform models do not show this notice.
 
 ## Entry Points: Start With a Click, No Prompt Required

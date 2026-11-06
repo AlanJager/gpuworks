@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -18,6 +19,8 @@ import (
 	"testing"
 	"time"
 
+	"gpuworks.ai/gpuworks/internal/proto"
+	"gpuworks.ai/gpuworks/internal/server/outbound"
 	"gpuworks.ai/gpuworks/internal/server/serverconfig"
 	"gpuworks.ai/gpuworks/internal/server/store"
 	"gpuworks.ai/gpuworks/test/ocifixture"
@@ -31,7 +34,7 @@ func saveRuntimePrivateHosts(t *testing.T, path string, hosts []string) {
 	}
 	// JSON arrays are YAML sequences. Replace the file as an editor's safe
 	// save does, keeping other startup-only settings unchanged.
-	content := "usage_report: false\nauto_check_updates: false\noutbound_allow_private_hosts: " + string(encoded) + "\n"
+	content := "usage_report: false\nauto_check_updates: false\noutbound_restrict_private_hosts: true\noutbound_allow_private_hosts: " + string(encoded) + "\n"
 	temporary := path + ".new"
 	if err := os.WriteFile(temporary, []byte(content), 0o600); err != nil {
 		t.Fatal(err)
@@ -209,5 +212,86 @@ func TestInvalidRuntimePrivateHostConfigurationDoesNotLeakParserValues(t *testin
 		if strings.Contains(output, secret) {
 			t.Fatalf("runtime permission diagnostic leaked YAML content: %s", output)
 		}
+	}
+}
+
+func TestRunningAppDefaultsToPrivateAccessAndHotTogglesStrictMode(t *testing.T) {
+	archive, err := ocifixture.DockerSaveArchive(ocifixture.DockerSaveOptions{
+		RepoTags: []string{"example/default-private:v1"}, LayerBytes: 256 << 10,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, origin := ocifixture.StartArchiveServer(archive)
+	t.Cleanup(origin.Close)
+	path := filepath.Join(t.TempDir(), serverconfig.FileName)
+	save := func(policy string) {
+		t.Helper()
+		content := "usage_report: false\nauto_check_updates: false\n" + policy
+		if err := os.WriteFile(path+".new", []byte(content), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Rename(path+".new", path); err != nil {
+			t.Fatal(err)
+		}
+	}
+	save("")
+	_, base := startOutboundRuntimeApp(t, path)
+	token := login(t, base)
+	for _, stage := range []struct {
+		name, policy string
+		want         int
+	}{
+		{"default", "", 200},
+		{"strict", "outbound_restrict_private_hosts: true\n", 403},
+		{"strict-granted", "outbound_restrict_private_hosts: true\noutbound_allow_private_hosts: [127.0.0.1]\n", 200},
+		{"relaxed", "outbound_restrict_private_hosts: false\n", 200},
+		{"strict-revoked", "outbound_restrict_private_hosts: true\n", 403},
+	} {
+		t.Run(stage.name, func(t *testing.T) {
+			save(stage.policy)
+			code, body := status(t, http.MethodPost, base+"/api/v1/images/preview-archive-url", token,
+				[]byte(fmt.Sprintf(`{"url":%q}`, origin.URL+"/image.tar")))
+			if code != stage.want {
+				t.Fatalf("preview=%d want=%d body=%s", code, stage.want, body)
+			}
+			if code == 200 && !strings.Contains(string(body), `"repo_tags":["example/default-private:v1"]`) {
+				t.Fatalf("default/authorized preview did not parse real archive: %s", body)
+			}
+		})
+	}
+	save("outbound_restrict_private_hosts: false\noutbound_allow_private_hosts: [0.0.0.0/0, '::/0']\n")
+	for _, target := range []string{
+		"http://169.254.169.254/latest/meta-data/", "http://100.100.100.200/latest/meta-data/",
+		"http://[fe80::1]/image.tar", "http://[fd00:ec2::254]/image.tar",
+	} {
+		code, body := status(t, http.MethodPost, base+"/api/v1/images/preview-archive-url", token,
+			[]byte(fmt.Sprintf(`{"url":%q}`, target)))
+		if code != http.StatusForbidden || !strings.Contains(string(body), "IMAGE_ARCHIVE_URL_POLICY_DENIED") {
+			t.Fatalf("relaxed policy allowed a permanently forbidden target: status=%d body=%s", code, body)
+		}
+	}
+}
+
+func TestInProcessPrivateDefaultsAndExplicitStrictMode(t *testing.T) {
+	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) }))
+	defer origin.Close()
+	for _, strict := range []bool{false, true} {
+		cfg := DefaultConfig()
+		cfg.OutboundRestrictPrivateHosts = strict
+		transport := outbound.TransportWithPrivateHosts(func() (proto.NetworkConfig, error) { return proto.NetworkConfig{}, nil }, privateHostPermissions(cfg, nil))
+		client := &http.Client{Transport: transport}
+		response, err := client.Get(origin.URL)
+		if strict {
+			if !errors.Is(err, outbound.ErrTargetDenied) {
+				t.Errorf("strict mode did not refuse an unapproved target: %v", err)
+			}
+		} else if err != nil || response == nil || response.StatusCode != http.StatusNoContent {
+			t.Errorf("default mode did not allow a normal local source: response=%v err=%v", response, err)
+		}
+		if response != nil {
+			response.Body.Close()
+		}
+		transport.CloseIdleConnections()
 	}
 }

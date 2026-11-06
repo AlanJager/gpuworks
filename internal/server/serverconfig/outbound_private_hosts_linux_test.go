@@ -15,7 +15,7 @@ import (
 func TestOutboundPrivateHostsWatchRejectsFIFOWithoutWaitingForWriter(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "server.yaml")
 	writeOutboundConfig(t, path, "outbound_allow_private_hosts: [first.internal]\n")
-	read := serverconfig.WatchOutboundPrivateHosts(path, nil, nil)
+	read := serverconfig.WatchOutboundPrivateHosts(path, true, nil, nil)
 	assertOutboundHosts(t, read, "first.internal")
 	if err := os.Remove(path); err != nil {
 		t.Fatal(err)

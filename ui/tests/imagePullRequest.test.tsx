@@ -221,7 +221,7 @@ test("a manual copy from a node still names source_node and its rate", async () 
 });
 
 
-test("a private archive policy denial explains file authorization without exposing raw errors", async () => {
+test("a private archive policy denial explains optional strict-mode authorization without exposing raw errors", async () => {
   const { default: ImageArchiveURLImport } = await import("../src/pages/images/ImageArchiveURLImport.tsx");
   const stub = installFetch((call) => call.method === "POST" && call.path === "/api/v1/images/preview-archive-url"
     ? json(403, { code: "IMAGE_ARCHIVE_URL_POLICY_DENIED", error: "RAW https://archive.internal/image.tar?token=private-query", params: { host: "archive.internal", config_key: "outbound_allow_private_hosts" } })
@@ -234,6 +234,9 @@ test("a private archive policy denial explains file authorization without exposi
   const alert = await screen.findByRole("alert");
   assert.match(alert.textContent ?? "", /outbound_allow_private_hosts/);
   assert.match(alert.textContent ?? "", /管理节点.*出站.*拒绝/);
+  assert.match(alert.textContent ?? "", /普通内网来源默认允许访问/);
+  assert.match(alert.textContent ?? "", /若.*开启 outbound_restrict_private_hosts 严格模式/);
+  assert.match(alert.textContent ?? "", /关闭严格模式或加入白名单也不例外/);
   assert.match(alert.textContent ?? "", /server\.yaml/);
   assert.match(alert.textContent ?? "", /保存后重试/);
   assert.match(alert.textContent ?? "", /特殊保留地址始终禁止/);
@@ -268,6 +271,9 @@ test("the node archive dialog retains a policy denial code while allowing node-d
   assert.match(alert.textContent ?? "", /outbound_allow_private_hosts/);
   assert.match(alert.textContent ?? "", /HTTP 403 · IMAGE_ARCHIVE_URL_POLICY_DENIED/);
   assert.match(alert.textContent ?? "", /server\.yaml.*保存后重试/);
+  assert.match(alert.textContent ?? "", /普通内网来源默认允许访问/);
+  assert.match(alert.textContent ?? "", /若.*开启 outbound_restrict_private_hosts 严格模式/);
+  assert.match(alert.textContent ?? "", /关闭严格模式或加入白名单也不例外/);
   assert.equal(screen.queryByText(/RAW|private-query|重启/), null);
   const pull = screen.getByRole("button", { name: PULL }) as HTMLButtonElement;
   assert.equal(pull.disabled, false, "management-node policy does not describe the node's direct route");
@@ -301,9 +307,12 @@ for (const entry of ["import", "dialog"] as const) {
       }
       const alert = await screen.findByRole("alert");
       assert.match(alert.textContent ?? "", /management node's outbound policy refuses access to archive\.internal/);
-      assert.match(alert.textContent ?? "", /outbound_allow_private_hosts in server\.yaml/);
+      assert.match(alert.textContent ?? "", /Ordinary private sources are allowed by default/);
+      assert.match(alert.textContent ?? "", /If strict mode is enabled with outbound_restrict_private_hosts in server\.yaml/);
+      assert.match(alert.textContent ?? "", /check outbound_allow_private_hosts and add the required host/);
+      assert.match(alert.textContent ?? "", /even with strict mode off or an allowlist entry/);
       assert.match(alert.textContent ?? "", /save the file and retry/);
-      assert.match(alert.textContent ?? "", /special-purpose reserved addresses remain blocked/);
+      assert.match(alert.textContent ?? "", /special-purpose reserved addresses stay blocked/);
       assert.match(alert.textContent ?? "", /HTTP 403 · IMAGE_ARCHIVE_URL_POLICY_DENIED/);
       assert.equal(screen.queryByText(/RAW|private-query|restart/), null);
     } finally {

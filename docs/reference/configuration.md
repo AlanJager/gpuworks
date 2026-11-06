@@ -58,7 +58,8 @@ usage_report: false        # 不发日报，自动检查不带节点数/GPU型�
 | `log.level` | info | 日志级别：`debug` / `info` / `warn` / `error`，其他值按 info | `--log-level` |
 | `trusted_proxies` | 空（install 写入 `127.0.0.1/32, ::1/128`） | 允许提供 `X-Forwarded-For` / `-Host` / `-Proto` / `-Port` 的代理；公网入口（`gpuworks expose`）启用期间另外信任来自本机的连接，不必列出（[ADR 0049](../adr/0049-expose-trusts-same-host-connector.md)） | `--trusted-proxies` |
 | `tls_cert_file` / `tls_key_file` | 空 | 原生 HTTPS 的 PEM 证书链和私钥路径，必须同时设置。非维护监听使用 TLS 1.2 以上；要求显式监听 IP，不支持通配地址。本机 `127.0.0.1` / `::1` 维护入口保留 HTTP，见[生产部署](../how-to/deploy-production.md#原生-https) | — |
-| `outbound_allow_private_hosts` | 空 | 管理节点访问模型、镜像、AI 和遥测等 HTTP 来源的私网例外：精确主机名、IP 或 CIDR；保存后下一次请求生效，无需重启。禁止通配域名；元数据、链路本地和特殊保留地址始终拒绝。仅管理员编辑此文件可授权，管理 API 不能修改 | — |
+| `outbound_restrict_private_hosts` | `false` | 管理节点 HTTP 出站的私网严格模式；默认关闭，普通私网及本机回环无需白名单。设为 `true` 后，仅允许 `outbound_allow_private_hosts` 授权的私网目标。保存后下一次请求生效；特殊元数据、链路本地和保留地址始终拒绝 | — |
+| `outbound_allow_private_hosts` | 空 | 严格模式下的私网例外：精确主机名、IP 或 CIDR；关闭严格模式时普通私网及本机回环不需要此列表。保存后下一次请求生效，无需重启。禁止通配域名；特殊地址始终拒绝。两个字段仅配置文件管理员可修改，控制台和管理 API 不提供修改入口 | — |
 | `storage_probe_roots` | `/opt/gpuworks/models`、`/opt/gpuworks/cache`、`/mnt/gpuworks` | 不再限制存储路径：新建、修改存储与探测可使用这些目录根之外的路径。server 启动时仍按它检查已有存储，路径（含缓存目录与按节点路径）不在其中时记一条 warn。重启生效 | — |
 | `storage_denied_paths` | `/etc`、`/proc`、`/sys`、`/dev`、`/boot`、`/bin`、`/sbin`、`/lib`、`/lib64`、`/usr`、`/run`、`/var/run`、`/var/lib/docker`、`/var/lib/containerd` | 存储路径与缓存目录禁止使用的目录，按路径分段匹配并包含子目录；设置后整体替换内置清单，`[]` 表示不禁用任何目录，不写则用内置清单。每项须是绝对路径，不能是 `/` 或含 `.`、`..` 段。路径格式规则（绝对路径、无 `.`/`..`、非 `/`、节点上不经符号链接）不受此项影响。只能编辑文件，重启生效；只约束本次提交的路径，已保存的路径不会因清单变化被拒绝编辑，见[使用存储](../how-to/storages.md) | — |
 | `metrics_retention` | 72h | **只在首次启动时**作为指标原始样本与容器日志保留时长的初值（Go duration，非法或非正值按默认 72h，限定在 24 小时–30 天）；之后以设置页「数据保留」为准（`PUT /api/v1/data-retention`，[ADR 0055](../adr/0055-long-term-statistics.md)），两者不一致时启动日志打一条 warn。清理每小时一次、分批执行（样本每批 5 万行，日志边界日每批 5000 行） | `--metrics-retention` |
@@ -152,17 +153,20 @@ HTTPS 由反代终止时，必须在 `trusted_proxies` 中配置实际反代地�
 
 出站 URL 的主机名只接受 ASCII；国际化域名请先转换为 Punycode（例如 `bücher.example` 写为 `xn--bcher-kva.example`），`outbound_allow_private_hosts` 中的域名也使用该形式。原始非 ASCII 主机名会在 DNS 查询前被拒绝；URL 路径和查询参数仍可包含中文等 Unicode 文本。
 
-管理节点的用户可配置 HTTP 来源默认只访问公网地址。连接前检查全部 DNS 回答，并将连接绑定到已校验 IP；重定向的每一步重新校验。不能通过 URL 凭据、IPv4 映射、DNS 重绑定或代理二次解析绕过。私有模型镜像站、registry、AI 端点或 OTLP collector 需在 `server.yaml` 的 `outbound_allow_private_hosts` 显式授权，例如：
+管理节点的用户可配置 HTTP 来源默认不限制普通私网及本机回环，使用内网模型镜像站、registry、AI 端点或 OTLP collector 不需要新增白名单配置。连接前仍检查全部 DNS 回答，并将连接绑定到已校验 IP；重定向的每一步重新校验，特殊元数据、链路本地和保留地址始终拒绝。URL 凭据、IPv4 映射、DNS 重绑定或代理二次解析不能绕过这些目标检查。
+
+需要限制私网出站时，由配置文件管理员将 `server.yaml` 的 `outbound_restrict_private_hosts` 设为 `true`，再用 `outbound_allow_private_hosts` 授权必要的精确主机、IP 或网段。例如，以下配置开启严格模式：
 
 ```yaml
+outbound_restrict_private_hosts: true
 outbound_allow_private_hosts:
   - models.example.internal
   - 10.20.30.0/24
 ```
 
-`outbound_allow_private_hosts` 的新增与撤销在配置保存后的下一次管理节点 HTTP 请求或重定向时生效，无需重启 server；已开始读取的响应体继续传输。模型元数据、镜像归档与中转、社区目录、发布通道、AI 和遥测共用这项运行时授权。此规则只热更新出站私网授权，不会让同文件中的监听地址等启动配置同时生效。
+`outbound_restrict_private_hosts` 的切换以及 `outbound_allow_private_hosts` 的新增与撤销，均在配置保存后的下一次管理节点 HTTP 请求或重定向时生效，无需重启 server；已开始读取的响应体继续传输。模型元数据、镜像归档与中转、社区目录、发布通道、AI 和遥测共用这项运行时策略。此规则只热更新这两个出站字段，不会让同文件中的监听地址等启动配置同时生效。
 
-热读取配置文件的大小上限为 1 MiB。配置文件超限、缺失、无法读取或 YAML 无效时，管理节点收回私网例外；公网访问继续遵循原有安全策略。修复文件后，下次请求重新读取有效授权。只有能编辑该 `server.yaml` 的管理员可以授予例外，控制台和管理 API 不提供修改入口；元数据、链路本地及特殊保留地址始终禁止，不能靠此列表放行。
+热读取配置文件的大小上限为 1 MiB。正常配置中不写 `outbound_restrict_private_hosts` 就使用默认值 `false`；这与配置文件本身超限、缺失、无法读取或 YAML 无效不同：后者临时拒绝普通私网与本机回环，公网访问继续遵循原有安全策略。修复文件后，下次请求重新使用有效策略。只有能编辑该 `server.yaml` 的管理员可以修改这两个字段，控制台和管理 API 不提供修改入口；特殊元数据、链路本地及保留地址始终禁止，关闭严格模式或添加白名单也不能放行。
 
 HTTP/HTTPS 代理需要支持向目标端口的 CONNECT（HTTP 来源也包括 80），以保留原始 Host / TLS SNI 并固定目标 IP；不支持时访问失败，不回退到不安全的解析路径。此规则不替代云平台、SSH 和已注册 agent 的专用管理连接策略。
 
