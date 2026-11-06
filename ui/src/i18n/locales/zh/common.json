@@ -358,6 +358,7 @@
     "IMAGE_ARCHIVE_URL_REQUIRED": "请填写镜像归档 URL。",
     "IMAGE_ARCHIVE_URL_INVALID": "该镜像归档 URL 不可用。请使用不含内嵌凭据的 http 或 https 地址。",
     "IMAGE_ARCHIVE_URL_UNREACHABLE": "无法读取 {{host}} 上的镜像归档。",
+    "IMAGE_ARCHIVE_URL_POLICY_DENIED": "管理节点的出站安全策略拒绝访问 {{host}}。若是内网归档源，请管理员在 server.yaml 的 outbound_allow_private_hosts 中授权该主机，保存后重试即可。元数据、链路本地和特殊保留地址始终禁止访问。",
     "IMAGE_ARCHIVE_URL_NOT_DECLARED": "该归档 URL 未声明在此镜像上，请先把它加入镜像的获取地址。",
     "QUERY_WINDOW_INVALID": "请求的时间范围无效：start 必须早于 end。",
     "MONITOR_RANGE_INVALID": "时间范围必须是 15m、1h、6h、24h 或 7d 之一。",

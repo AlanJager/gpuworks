@@ -326,6 +326,7 @@ const (
 	ErrorImageArchiveURLRequired                = "IMAGE_ARCHIVE_URL_REQUIRED"
 	ErrorImageArchiveURLInvalid                 = "IMAGE_ARCHIVE_URL_INVALID"
 	ErrorImageArchiveURLUnreachable             = "IMAGE_ARCHIVE_URL_UNREACHABLE"
+	ErrorImageArchiveURLPolicyDenied            = "IMAGE_ARCHIVE_URL_POLICY_DENIED"
 	ErrorImageArchiveURLNotDeclared             = "IMAGE_ARCHIVE_URL_NOT_DECLARED"
 	ErrorMonitorRangeInvalid                    = "MONITOR_RANGE_INVALID"
 	ErrorMonitorGroupInvalid                    = "MONITOR_GROUP_INVALID"

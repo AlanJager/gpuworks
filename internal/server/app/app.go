@@ -175,8 +175,9 @@ func New(cfg Config, log *slog.Logger) (*App, error) {
 	// One network service for every component, so they all resolve against
 	// the same catalog: every network declared in the store.
 	networks := network.New(st, network.StoreCatalog{Store: st})
+	readPrivateHosts := privateHostPermissions(cfg, log)
 	h := hub.New(st, log)
-	h.SetOutboundAllowPrivateHosts(cfg.OutboundAllowPrivateHosts)
+	h.SetOutboundPrivateHostsReader(readPrivateHosts)
 	h.SetNetworks(networks)
 	// Besides the listed proxies, the public entry point's connector on this
 	// host while `gpuworks expose` has it enabled (ADR 0049).
@@ -256,7 +257,7 @@ func New(cfg Config, log *slog.Logger) (*App, error) {
 	// Every finished /v1 request's record goes to ux.db (ADR 0042), where
 	// the request view reads it back with the in-flight table, and to the
 	// trace exporter, which samples the traces the gateway starts (ADR 0046).
-	telemetry := newTelemetry(st, cfg.OutboundAllowPrivateHosts...)
+	telemetry := newTelemetryWithPrivateHosts(st, readPrivateHosts)
 	px.SetTraceSampler(telemetry.exporter.Sample)
 	ops, err := newOpsStats(cfg.DataDir, cfg.MetricsRetention, st, obs, log)
 	if err != nil {
@@ -266,7 +267,7 @@ func New(cfg Config, log *slog.Logger) (*App, error) {
 
 	ai := newAIService(st, obs, box)
 	ai.log = log
-	ai.outboundAllowPrivateHosts = append([]string(nil), cfg.OutboundAllowPrivateHosts...)
+	ai.readPrivateHosts = readPrivateHosts
 	health := healthcheck.New(healthSource{store: st}, healthSender{proxy: px})
 	batches := batch.New(batchRepo{st}, batchSender{px}, batch.Config{Dir: filepath.Join(cfg.DataDir, "batch-files"), Models: batchModels{st, modelPreparation{h, ctrl}}, Log: log})
 	monSvc := newMonitorAPIService(st, obs.tsdb, nil, newRequestSource(st, px.LiveRequests, obs.ux), health.Health, modelPreparation{h, ctrl})
@@ -277,8 +278,9 @@ func New(cfg Config, log *slog.Logger) (*App, error) {
 		restart = a.requestRestart
 	}
 	a.settings = newServerSettings(cfg, restart, st.SnapshotTo)
+	a.settings.readPrivateHosts = readPrivateHosts
 	a.settings.installID = installIDOf(master)
-	outside := outsideSources(st, cfg.OutboundAllowPrivateHosts...)
+	outside := outsideSources(st, readPrivateHosts)
 	a.usage, a.notices = newImprovementProgram(st, obs.ux, a.settings, outside.Channel, log)
 	h.SetUsageCounters(a.usage.Counters())
 	if a.cards, err = newCardHealth(log, st, h); err != nil {
@@ -313,7 +315,7 @@ func New(cfg Config, log *slog.Logger) (*App, error) {
 	})
 	a.recovery = recoverer
 
-	metadataClient := &http.Client{Transport: outbound.Transport(func() (proto.NetworkConfig, error) { return planning.ControlPlaneNetwork(st) }, cfg.OutboundAllowPrivateHosts...)}
+	metadataClient := &http.Client{Transport: outbound.TransportWithPrivateHosts(func() (proto.NetworkConfig, error) { return planning.ControlPlaneNetwork(st) }, readPrivateHosts)}
 	apiDeps := api.Deps{
 		Store:         st,
 		Bus:           b,

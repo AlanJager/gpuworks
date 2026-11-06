@@ -58,7 +58,7 @@ usage_report: false        # 不发日报，自动检查不带节点数/GPU型�
 | `log.level` | info | 日志级别：`debug` / `info` / `warn` / `error`，其他值按 info | `--log-level` |
 | `trusted_proxies` | 空（install 写入 `127.0.0.1/32, ::1/128`） | 允许提供 `X-Forwarded-For` / `-Host` / `-Proto` / `-Port` 的代理；公网入口（`gpuworks expose`）启用期间另外信任来自本机的连接，不必列出（[ADR 0049](../adr/0049-expose-trusts-same-host-connector.md)） | `--trusted-proxies` |
 | `tls_cert_file` / `tls_key_file` | 空 | 原生 HTTPS 的 PEM 证书链和私钥路径，必须同时设置。非维护监听使用 TLS 1.2 以上；要求显式监听 IP，不支持通配地址。本机 `127.0.0.1` / `::1` 维护入口保留 HTTP，见[生产部署](../how-to/deploy-production.md#原生-https) | — |
-| `outbound_allow_private_hosts` | 空 | 管理节点访问模型、镜像、AI 和遥测等 HTTP 来源的私网例外：精确主机名、IP 或 CIDR；重启生效。禁止通配域名；元数据、链路本地和特殊保留地址始终拒绝。仅管理员编辑此文件可授权，管理 API 不能修改 | — |
+| `outbound_allow_private_hosts` | 空 | 管理节点访问模型、镜像、AI 和遥测等 HTTP 来源的私网例外：精确主机名、IP 或 CIDR；保存后下一次请求生效，无需重启。禁止通配域名；元数据、链路本地和特殊保留地址始终拒绝。仅管理员编辑此文件可授权，管理 API 不能修改 | — |
 | `storage_probe_roots` | `/opt/gpuworks/models`、`/opt/gpuworks/cache`、`/mnt/gpuworks` | 新建、修改存储与探测允许使用的目录根；子目录按路径分段匹配，不能用相似前缀绕过。自定义存储需在文件中显式添加根目录。系统目录始终拒绝；探测要求规范路径，不能经符号链接越界。重启生效 | — |
 | `metrics_retention` | 72h | **只在首次启动时**作为指标原始样本与容器日志保留时长的初值（Go duration，非法或非正值按默认 72h，限定在 24 小时–30 天）；之后以设置页「数据保留」为准（`PUT /api/v1/data-retention`，[ADR 0055](../adr/0055-long-term-statistics.md)），两者不一致时启动日志打一条 warn。清理每小时一次、分批执行（样本每批 5 万行，日志边界日每批 5000 行） | `--metrics-retention` |
 | `session_idle_timeout` | 24h | 管理会话无真实操作后的失效期限（Go duration，非法或非正值取默认值） | — |
@@ -168,6 +168,10 @@ storage_probe_roots:
   - /mnt/gpuworks
   - /srv/model-archive
 ```
+
+`outbound_allow_private_hosts` 的新增与撤销在配置保存后的下一次管理节点 HTTP 请求或重定向时生效，无需重启 server；已开始读取的响应体继续传输。模型元数据、镜像归档与中转、社区目录、发布通道、AI 和遥测共用这项运行时授权。此规则只热更新出站私网授权，不会让同文件中的监听地址等启动配置同时生效。
+
+热读取配置文件的大小上限为 1 MiB。配置文件超限、缺失、无法读取或 YAML 无效时，管理节点收回私网例外；公网访问继续遵循原有安全策略。修复文件后，下次请求重新读取有效授权。只有能编辑该 `server.yaml` 的管理员可以授予例外，控制台和管理 API 不提供修改入口；元数据、链路本地及特殊保留地址始终禁止，不能靠此列表放行。
 
 HTTP/HTTPS 代理需要支持向目标端口的 CONNECT（HTTP 来源也包括 80），以保留原始 Host / TLS SNI 并固定目标 IP；不支持时访问失败，不回退到不安全的解析路径。此规则不替代云平台、SSH 和已注册 agent 的专用管理连接策略。
 

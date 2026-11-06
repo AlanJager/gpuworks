@@ -111,7 +111,7 @@ If the management node and compute nodes have different networks, select **Used 
 
 Outbound requests for directory URLs, image archives, login tests, and similar operations use the management node proxy and are not rewritten by site rules.
 
-To access private-network model sites, HTTP directories, or image registries from the management node, an administrator must also explicitly authorize the relevant hosts or network ranges in `outbound_allow_private_hosts` in `server.yaml` and restart the server. A configured proxy or network reachability alone is not sufficient. See [Outbound HTTP Proxy Policy](../reference/configuration.md#出站-http-代理策略).
+To access private-network model sites, HTTP directories, or image registries from the management node, an administrator must also explicitly authorize the relevant hosts or network ranges in `outbound_allow_private_hosts` in `server.yaml`. After saving, additions and revocations apply to the next management-node HTTP request or redirect without restarting the server; response bodies already being read are not interrupted. Only editing the configuration file can change this authorization; the console and management API cannot. A missing, unreadable, or invalid YAML configuration disables private-network exceptions while public destinations retain their existing policy; restoring the file restores valid authorization on the next request. Metadata, link-local, and special reserved addresses remain prohibited. A configured proxy or network reachability alone is not sufficient. See [Outbound HTTP Proxy Policy](../reference/configuration.md#出站-http-代理策略).
 
 | Registered Source | If Reading Fails |
 |---|---|

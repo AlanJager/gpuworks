@@ -34,8 +34,13 @@ type telemetryService struct {
 // stored setting. A setting that does not decrypt or validate leaves export
 // off and is reported in the status rather than failing the server.
 func newTelemetry(st *store.Store, allowedPrivateHosts ...string) *telemetryService {
+	hosts := append([]string(nil), allowedPrivateHosts...)
+	return newTelemetryWithPrivateHosts(st, func() []string { return hosts })
+}
+
+func newTelemetryWithPrivateHosts(st *store.Store, readPrivateHosts func() []string) *telemetryService {
 	identity := st.ControlPlaneIdentity()
-	exporter := traceexport.New(traceexport.Options{AllowPrivateHosts: allowedPrivateHosts, Resource: traceexport.Resource{
+	exporter := traceexport.New(traceexport.Options{ReadPrivateHosts: readPrivateHosts, Resource: traceexport.Resource{
 		ServiceVersion: version.Version, InstanceID: identity.ID, Name: identity.Name,
 	}})
 	t := &telemetryService{store: st, exporter: exporter}

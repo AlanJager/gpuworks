@@ -15,6 +15,7 @@ import (
 // each answer with is assembled in aicontext.go.
 type aiService struct {
 	outboundAllowPrivateHosts []string
+	readPrivateHosts          func() []string
 	store                     *store.Store
 	obs                       *observability
 	box                       *auth.Secretbox

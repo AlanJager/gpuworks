@@ -9,8 +9,6 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/imagecatalog"
-	"gpuworks.ai/gpuworks/internal/server/outbound"
-	"gpuworks.ai/gpuworks/internal/server/planning"
 )
 
 type countingReader struct {
@@ -52,7 +50,7 @@ func (h *Hub) CopyImageArchiveURL(ctx context.Context, archiveURL, targetNodeUUI
 		return 0, fmt.Errorf("request image archive from %s: %w", host, err)
 	}
 	client := imagecatalog.ArchiveStreamHTTPClient()
-	client.Transport = outbound.Transport(func() (proto.NetworkConfig, error) { return planning.ControlPlaneNetwork(h.store) }, h.outboundAllowPrivateHosts...)
+	client.Transport = h.outboundTransport()
 	defer client.CloseIdleConnections()
 	response, err := client.Do(request)
 	if err != nil {
