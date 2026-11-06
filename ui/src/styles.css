@@ -366,6 +366,7 @@ button, input, textarea, select { letter-spacing: 0; }
 .model-detail-specs .ant-tag { margin-inline-end: 0; max-width: 100%; white-space: normal; }
 .model-detail-inference-form { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; align-items: end; gap: 12px; margin-top: 12px; }
 .model-detail-inference-form .ant-form-item { margin-bottom: 0; }
+.model-file-state-tag.ant-tag { display: inline-block; width: 72px; max-width: 100%; margin-inline-end: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; text-align: center; vertical-align: middle; }
 .model-file-progress { width: 100%; line-height: 16px; }
 .model-file-progress .ant-progress-text, .model-file-progress .ant-typography { font-size: 12px; }
 .model-file-progress .ant-typography { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

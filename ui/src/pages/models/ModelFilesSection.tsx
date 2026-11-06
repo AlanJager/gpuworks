@@ -1,5 +1,5 @@
 import { Button, Flex, Popconfirm, Progress, Space, Tag, Tooltip, Typography, message } from "antd";
-import { CheckCircleFilled, StopOutlined } from "@ant-design/icons";
+import { CheckCircleFilled, CloudDownloadOutlined, ReloadOutlined, StopOutlined } from "@ant-design/icons";
 import { useTranslation } from "react-i18next";
 import { api, type Model, type ModelNodePresence } from "../../api";
 import ResourceTable, { type ResourceColumn } from "../../components/resourceTable/ResourceTable";
@@ -19,7 +19,10 @@ type ModelFile = ModelNodePresence | ModelStoragePresence;
 function StateTag({ state }: { state: string }) {
   const { t } = useTranslation("models");
   const visual = presenceVisual[state];
-  return <Tag color={visual?.color}>{visual ? t(visual.labelKey) : state}</Tag>;
+  const label = visual ? t(visual.labelKey) : state;
+  return <Tooltip title={label} trigger={["hover", "focus"]}>
+    <Tag className="model-file-state-tag" color={visual?.color} tabIndex={0}>{label}</Tag>
+  </Tooltip>;
 }
 
 function SourceText({ row }: { row: Parameters<typeof transferOrigin>[0] }) {
@@ -65,7 +68,7 @@ function CancelDownload({ modelId, storageId, nodeUuid, onChanged }: { modelId: 
   };
   const label = t("presenceAction.cancelDownload");
   return <Popconfirm title={t("presenceAction.cancelDownloadConfirm")} onConfirm={cancel} okText={label} cancelText={t("action.cancel")}>
-    <Tooltip title={label}>
+    <Tooltip title={label} trigger={["hover", "focus"]}>
       <Button type="text" size="small" danger icon={<StopOutlined />} aria-label={label} />
     </Tooltip>
   </Popconfirm>;
@@ -90,11 +93,19 @@ function NodeFileActions({ model, row, isAdmin, onChanged }: { model: Model; row
     }
     return run(() => api.syncModel(model.id, row.node_uuid, row.source_node_uuid, row.last_rate_limit_kib_s ?? 0), t("presenceMessage.syncStarted"));
   };
-  return <Space size={4} wrap>
-    {row.state === "download_required" && <Button size="small" onClick={() => run(() => api.downloadModel(model.id, row.node_uuid), t("presenceMessage.downloadStarted"))}>{t("action.internetDownload")}</Button>}
-    {(row.state === "failed" || row.state === "download_required" || row.state === "canceled") && <Button size="small" onClick={retry}>{t("action.retry")}</Button>}
+  return <Flex wrap>
+    {row.state === "download_required" && <Tooltip title={t("action.internetDownload")} trigger={["hover", "focus"]}>
+      <Button type="text" size="small" icon={<CloudDownloadOutlined />} aria-label={t("action.internetDownload")} onClick={() => run(() => api.downloadModel(model.id, row.node_uuid), t("presenceMessage.downloadStarted"))} />
+    </Tooltip>}
+    {(row.state === "failed" || row.state === "download_required" || row.state === "canceled") && <Tooltip title={t("action.retry")} trigger={["hover", "focus"]}>
+      <Button type="text" size="small" icon={<ReloadOutlined />} aria-label={t("action.retry")} onClick={retry} />
+    </Tooltip>}
     {row.acquisition === "download" && (row.state === "pending" || row.state === "downloading") && <CancelDownload modelId={model.id} storageId={row.storage_id} nodeUuid={row.node_uuid} onChanged={onChanged} />}
-    {row.state === "syncing" && <Popconfirm title={t("presenceAction.cancelConfirm")} onConfirm={() => run(() => api.cancelModelSync(model.id, row.node_uuid), t("presenceMessage.syncCanceled"))} okText={t("presenceAction.cancelSync")} cancelText={t("presenceAction.continueSync")}><Button size="small" danger>{t("presenceAction.cancelSync")}</Button></Popconfirm>}
+    {row.state === "syncing" && <Popconfirm title={t("presenceAction.cancelConfirm")} onConfirm={() => run(() => api.cancelModelSync(model.id, row.node_uuid), t("presenceMessage.syncCanceled"))} okText={t("presenceAction.cancelSync")} cancelText={t("presenceAction.continueSync")}>
+      <Tooltip title={t("presenceAction.cancelSync")} trigger={["hover", "focus"]}>
+        <Button type="text" size="small" danger icon={<StopOutlined />} aria-label={t("presenceAction.cancelSync")} />
+      </Tooltip>
+    </Popconfirm>}
     {isAdmin && <ModelNodeFileDelete
       modelId={model.id}
       nodeUuid={row.node_uuid}
@@ -105,12 +116,14 @@ function NodeFileActions({ model, row, isAdmin, onChanged }: { model: Model; row
       writable={row.deletable === true}
       onDone={onChanged}
     />}
-  </Space>;
+  </Flex>;
 }
 
 function FileDetails({ row }: { row: ModelFile }) {
   const { t } = useTranslation("models");
   const node = "node_uuid" in row;
+  const statusNote = row.state === "missing" && !node ? t("files.missingHint")
+    : ["failed", "download_required", "canceled"].includes(row.state) ? row.message : undefined;
   return <dl className="detail-extra">
     <div style={{ gridColumn: node ? "1 / -1" : "1 / -2" }}>
       <dt>{t(node ? "files.path" : "files.relativePath")}</dt>
@@ -129,6 +142,9 @@ function FileDetails({ row }: { row: ModelFile }) {
         {row.writer_node && <div><dt>{t("files.writerNodeLabel")}</dt><dd>{row.writer_node}</dd></div>}
       </>
     )}
+    {statusNote && <div style={{ gridColumn: "1 / -1" }}>
+      <dt>{t("files.statusNote")}</dt><dd>{statusNote}</dd>
+    </div>}
   </dl>;
 }
 
@@ -166,18 +182,11 @@ export function ModelFilesSection({ model, onChanged }: { model: Model; onChange
     ...nodes.filter((row) => row.cache),
   ];
   const columns: ResourceColumn<ModelFile>[] = [
-    { key: "location", title: tStorage("files.column.place"), width: 136, render: (_, row) => <FileLocation row={row} /> },
-    { key: "state", title: t("detail.status"), width: 88, ellipsis: false, render: (_, row) => (
-      <Space direction="vertical" size={0}>
-        <StateTag state={row.state} />
-        {row.state === "missing" && !("node_uuid" in row)
-          ? <Typography.Text type="danger">{t("files.missingHint")}</Typography.Text>
-          : row.message && ["failed", "download_required", "canceled"].includes(row.state) && <Typography.Text type="danger" style={{ overflowWrap: "anywhere" }}>{row.message}</Typography.Text>}
-      </Space>
-    ) },
-    { key: "progress", title: t("detail.progress"), width: 230, minWidth: 218, ellipsis: false, render: (_, row) => <TransferProgress row={row} /> },
+    { key: "location", title: tStorage("files.column.place"), width: 132, render: (_, row) => <FileLocation row={row} /> },
+    { key: "state", title: t("detail.status"), width: 88, ellipsis: false, render: (_, row) => <StateTag state={row.state} /> },
+    { key: "progress", title: t("detail.progress"), width: 218, minWidth: 218, ellipsis: false, render: (_, row) => <TransferProgress row={row} /> },
     { key: "size", title: t("detail.size"), width: 78, align: "right", render: (_, row) => row.size_bytes ? formatBytes(row.size_bytes) : "—" },
-    { key: "actions", role: "actions", title: t("column.actions"), width: 80, render: (_, row) => (
+    { key: "actions", role: "actions", title: t("column.actions"), width: 100, render: (_, row) => (
       <div onClick={(event) => event.stopPropagation()}>
         {"node_uuid" in row ? <NodeFileActions model={model} row={row} isAdmin={isAdmin} onChanged={onChanged} /> : <Space size={4} wrap>
           {row.acquisition === "download" && (row.state === "pending" || row.state === "downloading") &&

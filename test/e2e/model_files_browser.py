@@ -532,8 +532,14 @@ def exercise_failure_retry(page, context, server, artifacts, report, locale, dat
     dialog = open_detail(page, server, labels, data)
     row = dialog.locator('#model-files tr.ant-table-row')
     expect(row).to_have_count(1)
-    expect(row.get_by_text(labels['presence']['failed'], exact=True)).to_be_visible()
-    expect(row.get_by_text(failed['message'], exact=True)).to_be_visible()
+    state = row.get_by_text(labels['presence']['failed'], exact=True)
+    expect(state).to_be_visible()
+    state.focus()
+    expect(page.get_by_role('tooltip', name=labels['presence']['failed'], exact=True)).to_be_visible()
+    expect(row.get_by_text(failed['message'], exact=True)).to_have_count(0)
+    row.get_by_role('button', name=strings(locale, 'storage')['detail']['expand'], exact=True).click()
+    details = row.locator('xpath=following-sibling::tr[1]')
+    expect(details.get_by_text(failed['message'], exact=True)).to_be_visible()
     page.reload()
     row = model_detail_dialog(page, labels, data['name']).locator('#model-files tr.ant-table-row')
     expect(row.get_by_text(labels['presence']['failed'], exact=True)).to_be_visible()
@@ -541,7 +547,9 @@ def exercise_failure_retry(page, context, server, artifacts, report, locale, dat
     before = len(report['mutations'])
     path = MODELS + '/' + str(data['model']['id']) + '/download'
     body = {'storage_id': target['id'], 'node_uuids': [data['node']['uuid']]}
-    mutation(page, report, button(row, labels['action']['retry']).click, 'POST', path, body, 202)
+    retry = button(row, labels['action']['retry'])
+    expect(retry).to_have_text('')
+    mutation(page, report, retry.click, 'POST', path, body, 202)
     strict(report['mutations'][before:], [{'method': 'POST', 'path': path, 'query': '', 'body': body}], 'exactly one same-row public Retry request')
     assert_ready(page, server, token, labels, data, target, report)
     report['failure_recovery'] = {'failed': failed, 'retry_body': body, 'same_row': True}

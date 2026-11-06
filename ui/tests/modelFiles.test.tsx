@@ -75,7 +75,7 @@ test("a file the storage no longer holds is shown as missing with the hint to sc
   renderSection(modelWith({ storages: [shared({ state: "missing", ready_nodes: 0 })] }));
   const state = screen.getByText(models.presence.missing);
   assert.ok(state.className.includes("ant-tag-red"), "missing is red");
-  assert.ok(screen.getByText(models.files.missingHint));
+  assert.ok(expandFile("archive").getByText(models.files.missingHint));
 });
 
 test("only admins get a delete, for shared storage files and for a node's files", async () => {
@@ -135,7 +135,8 @@ test("a failed delete reports the server's message and a failed row keeps its re
   const syncs: unknown[][] = [];
   api.syncModel = (async (...args: unknown[]) => { syncs.push(args); return { state: "syncing" }; }) as never;
   renderSection(modelWith({ nodes: [row({ state: "failed", message: "disk_full", acquisition: "peer", source_node_uuid: "n9", last_rate_limit_kib_s: 512, storage_id: 1, storage_name: "default", storage_type: "local" })] }));
-  assert.ok(screen.getByText("disk_full"));
+  assert.equal(screen.queryByText("disk_full"), null);
+  assert.ok(expandFile("gpu3").getByText("disk_full"));
   fireEvent.click(screen.getByRole("button", { name: models.action.retry }));
   await waitFor(() => assert.equal(syncs.length, 1));
   assert.deepEqual(syncs[0], [9, "n1", "n9", 512]);
@@ -154,7 +155,7 @@ test("retrying a failed public download keeps its non-default storage and exact 
   api.syncModel = (async (...args: unknown[]) => { syncs.push(args); return { state: "syncing" }; }) as never;
   let changed = 0;
   renderSection(modelWith({ nodes: [row({ state: "failed", node_uuid: "n-selected", node_name: "selected-node", storage_id: 7, storage_name: "nvme", storage_type: "local", message: "download failed" })] }), () => { changed += 1; });
-  assert.ok(screen.getByText("download failed"));
+  assert.ok(expandFile("selected-node").getByText("download failed"));
   fireEvent.click(screen.getByRole("button", { name: models.action.retry }));
   await waitFor(() => assert.equal(downloads.length + legacy.length + syncs.length, 1));
   assert.deepEqual(downloads, [[9, { storage_id: 7, node_uuids: ["n-selected"] }]]);

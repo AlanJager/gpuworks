@@ -269,6 +269,7 @@
     "cachedNodes": "已缓存节点数",
     "writerNodeLabel": "写入节点",
     "writerNode": "由 {{node}} 写入",
+    "statusNote": "状态说明",
     "missingHint": "存储里已找不到，请重新扫描存储。",
     "deleteOnNode": "删除此节点上的模型文件",
     "deleteOnNodeConfirm": "删除 {{node}} 上的模型文件？",

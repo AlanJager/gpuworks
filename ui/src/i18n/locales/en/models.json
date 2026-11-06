@@ -269,6 +269,7 @@
     "cachedNodes": "Nodes with a cached copy",
     "writerNodeLabel": "Writer node",
     "writerNode": "Written by {{node}}",
+    "statusNote": "Status details",
     "missingHint": "No longer found in the storage. Scan the storage again.",
     "deleteOnNode": "Delete the model files on this node",
     "deleteOnNodeConfirm": "Delete the model files on {{node}}?",
