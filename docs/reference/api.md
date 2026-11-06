@@ -1663,6 +1663,8 @@ RunPod 需要开放端口或补平台公钥时，先返回 409 `INSTANCE_RESTART
 | POST | `/api/v1/pull/credentials/{id}/test` | 从管理节点（经它的出站代理）试用凭据：有用户名的按镜像仓库登录 `/v2/`，只有令牌的按 Hugging Face 的 `GET /api/whoami-v2` 校验；200 `{ok, message}`，被拒 422 `CREDENTIAL_LOGIN_REJECTED`（`host`），连不上 502 `CREDENTIAL_LOGIN_FAILED`（`host`、`detail`） | JWT(admin) |
 | GET | `/api/v1/pull/registry-credentials` | 已删除：本路由及其 `POST`、`PUT/DELETE {id}`、`POST {id}/test` 回 410 `SETTING_REMOVED`（`route` 为 `/api/v1/pull/credentials`） | JWT(admin) |
 | GET | `/api/v1/server/listen` | server 的监听地址：已保存的 `console`/`agent`/`gateway` 地址、当前实际打开的 `running` 套接字、`restart_pending`（保存的地址要重启才生效）、`config_path`，以及 `editable`/`overridden`（未用 server.yaml 启动或被 `--addr` 覆盖时不可编辑） | JWT(admin) |
+| GET | `/api/v1/server/outbound-policy` | 出站私网访问策略：原始 `restrict_private_hosts`（默认 false）、`allow_private_hosts`、`editable` 与仅基于策略值的 `revision`；不返回配置文件其他字段 | JWT(admin) |
+| PUT | `/api/v1/server/outbound-policy` | 原子保存全部必填的 `restrict_private_hosts`、`allow_private_hosts` 与 `revision`，返回更新后的策略；写入 server.yaml 后立即生效。400 `SERVER_OUTBOUND_POLICY_INVALID`，409 `SERVER_OUTBOUND_POLICY_CONFLICT` / `SERVER_OUTBOUND_POLICY_READ_ONLY`，503 `SERVER_OUTBOUND_POLICY_UNAVAILABLE`；保留其他配置及注释，不支持安全编辑的文件保持原样 | JWT(admin) |
 
 同步组创建和改名的名称按 trim 后精确文本唯一（区分大小写，最多 64 个 UTF-8 字节）。重复名为 400 `PULL_SETTING_INVALID`，`params.field=name`、`params.reason=name_duplicate`。校验错误提供稳定 `reason` 和参数（如 `max`），英文 `detail` 保留供旧客户端和诊断；界面按 `reason` 本地化。
 
