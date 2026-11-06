@@ -15,6 +15,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/internal/server/store"
+	"gpuworks.ai/gpuworks/pkg/bench/tokenizer"
 )
 
 // tokenizerFixture seeds one model on one node and the two seams the resolver
@@ -141,11 +142,22 @@ func (f *tokenizerFixture) autoRequest(loadOrigin string) benchmarkTokenizerRequ
 	}
 }
 
+// resolve returns the reference a source resolves to. The automatic source
+// on a deployment that serves tokenize names the engine first; what the
+// tests below check is the copy or repository it falls back to, so that
+// part is returned.
 func (f *tokenizerFixture) resolve(t *testing.T, req benchmarkTokenizerRequest) string {
 	t.Helper()
 	ref, err := f.admission.handlers.resolveBenchmarkTokenizer(context.Background(), req)
 	if err != nil {
 		t.Fatalf("resolve %q: %v", req.Source, err)
+	}
+	if req.Source == benchmarkTokenizerSourceAuto && req.Deployment != nil && !req.Deployment.TokenizeDisabled {
+		fallback, ok := tokenizer.IsEngineRef(ref)
+		if !ok {
+			t.Fatalf("auto on a deployment serving tokenize = %q, want the engine first", ref)
+		}
+		return fallback
 	}
 	return ref
 }
@@ -387,9 +399,44 @@ func TestResolveBenchmarkTokenizerSourceRules(t *testing.T) {
 			want:    "/var/lib/gpuworks/tokenizer-1.json",
 		},
 		{
-			name:    "auto needs a managed target",
+			name:    "auto on an external endpoint is its own tokenizer, with nothing to fall back to",
 			request: benchmarkTokenizerRequest{Source: benchmarkTokenizerSourceAuto, TargetKind: "external", LoadOrigin: "server"},
+			want:    "engine:",
+		},
+		{
+			name:    "the engine named on its own has no fallback",
+			request: benchmarkTokenizerRequest{Source: benchmarkTokenizerSourceEngine, TargetKind: "instance", LoadOrigin: "server", Deployment: &store.Deployment{}, Node: f.node},
+			want:    "engine:",
+		},
+		{
+			name:    "the engine of an external endpoint",
+			request: benchmarkTokenizerRequest{Source: benchmarkTokenizerSourceEngine, TargetKind: "external", LoadOrigin: "server"},
+			want:    "engine:",
+		},
+		{
+			name:    "the engine of a deployment with tokenize turned off is refused",
+			request: benchmarkTokenizerRequest{Source: benchmarkTokenizerSourceEngine, TargetKind: "instance", LoadOrigin: "server", Deployment: &store.Deployment{TokenizeDisabled: true}, Node: f.node},
 			wantErr: ErrorBenchmarkTokenizerSourceInvalid,
+		},
+		{
+			name:    "a repository written as people write it",
+			request: benchmarkTokenizerRequest{Source: benchmarkTokenizerSourceHuggingFace, Reference: " moonshotai/Kimi-K3.1-Pro ", TargetKind: "external", LoadOrigin: "server"},
+			want:    "hf://moonshotai/Kimi-K3.1-Pro",
+		},
+		{
+			name:    "a ModelScope repository with a revision",
+			request: benchmarkTokenizerRequest{Source: benchmarkTokenizerSourceModelScope, Reference: "Qwen/Qwen3-8B@master", TargetKind: "external", LoadOrigin: "server"},
+			want:    "ms://Qwen/Qwen3-8B@master",
+		},
+		{
+			name:    "a reference for the other repository source is refused",
+			request: benchmarkTokenizerRequest{Source: benchmarkTokenizerSourceHuggingFace, Reference: "ms://Qwen/Qwen3-8B", TargetKind: "external", LoadOrigin: "server"},
+			wantErr: ErrorBenchmarkParameterInvalid,
+		},
+		{
+			name:    "a bare model name is not a repository",
+			request: benchmarkTokenizerRequest{Source: benchmarkTokenizerSourceHuggingFace, Reference: "Kimi-K3.1-Pro", TargetKind: "external", LoadOrigin: "server"},
+			wantErr: ErrorBenchmarkParameterInvalid,
 		},
 		{
 			name:    "an unknown source is refused, not guessed",
@@ -500,14 +547,16 @@ func TestCreateBenchmarkTokenizerSourceContract(t *testing.T) {
 }
 
 // An agentic run without any resolvable tokenizer fails at creation, where the
-// user can still fix it, rather than at execution where it is fatal.
+// user can still fix it, rather than at execution where it is fatal. A
+// deployment that serves tokenize always has one: the engine's own
+// (TestCreateBenchmarkAgenticUsesTheEngineWhenNothingElseResolves).
 func TestCreateBenchmarkAgenticRequiresAResolvableTokenizer(t *testing.T) {
 	f := newTokenizerFixture(t, "benchmark_tokenizer_agentic_required")
 	local, err := f.admission.store.UpsertModel(&store.Model{Source: "local", SourceID: "gguf-only", Revision: "main", Name: "local", Operations: `[{"type":"openai.chat"}]`})
 	if err != nil {
 		t.Fatal(err)
 	}
-	deployment, err := f.admission.store.CreateDeployment(&store.Deployment{Name: "agentic", ServedName: "agentic-served", State: "active", ModelID: local.ID})
+	deployment, err := f.admission.store.CreateDeployment(&store.Deployment{Name: "agentic", ServedName: "agentic-served", State: "active", ModelID: local.ID, TokenizeDisabled: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -573,5 +622,47 @@ func TestValidTokenizerJSONMatchesTheUploadProbe(t *testing.T) {
 		if validTokenizerJSON([]byte(raw)) {
 			t.Fatalf("%q should be refused", raw)
 		}
+	}
+}
+
+// A deployment that does not serve tokenize resolves "auto" to the copy or
+// repository alone: naming the engine would only fail at run time.
+func TestBenchmarkTokenizerAutoSkipsTheEngineOfADeploymentWithTokenizeOff(t *testing.T) {
+	f := newTokenizerFixture(t, "benchmark_tokenizer_auto_tokenize_off")
+	request := f.autoRequest(f.node.UUID)
+	off := *request.Deployment
+	off.TokenizeDisabled = true
+	request.Deployment = &off
+	got, err := f.admission.handlers.resolveBenchmarkTokenizer(context.Background(), request)
+	if err != nil || got != f.repositoryRef(t) {
+		t.Fatalf("ref = %q err = %v, want the repository %q", got, err, f.repositoryRef(t))
+	}
+}
+
+// With nothing on disk or in a repository, "auto" on a deployment that serves
+// tokenize is the engine alone, and the agentic run is admitted with it.
+func TestCreateBenchmarkAgenticUsesTheEngineWhenNothingElseResolves(t *testing.T) {
+	f := newTokenizerFixture(t, "benchmark_tokenizer_agentic_engine")
+	local, err := f.admission.store.UpsertModel(&store.Model{Source: "local", SourceID: "gguf-only", Revision: "main", Name: "local", Operations: `[{"type":"openai.chat"}]`})
+	if err != nil {
+		t.Fatal(err)
+	}
+	deployment, err := f.admission.store.CreateDeployment(&store.Deployment{Name: "agentic", ServedName: "agentic-served", State: "active", ModelID: local.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.admission.store.CreateInstance(&store.Instance{UUID: "agentic-leader", DeploymentID: deployment.ID, NodeID: f.node.ID, State: proto.InstRunning, APIPort: 31000}); err != nil {
+		t.Fatal(err)
+	}
+	body := fmt.Sprintf(`{"name":"agentic","target_kind":"instance","deployment_id":%d,"load_origin":%q,"tokenizer_source":"auto","dataset":{"kind":"agentic"},"mode":"grid","search":{"concurrency":[1],"requests_per_point_multiplier":1}}`, deployment.ID, f.node.UUID)
+	rec := f.admission.create(t, body)
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	var run struct {
+		TokenizerRef string `json:"tokenizer_ref"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &run); err != nil || run.TokenizerRef != "engine:" {
+		t.Fatalf("tokenizer_ref = %q err = %v, want the engine alone", run.TokenizerRef, err)
 	}
 }

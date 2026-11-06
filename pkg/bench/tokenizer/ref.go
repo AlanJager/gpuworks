@@ -2,6 +2,7 @@ package tokenizer
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -32,7 +33,7 @@ func LoadRef(ctx context.Context, ref string) (*Tokenizer, error) {
 		return nil, err
 	}
 	defer f.Close()
-	return Load(f)
+	return LoadFile(f)
 }
 
 func loadRepoRef(ctx context.Context, ref string) (*Tokenizer, error) {
@@ -52,5 +53,12 @@ func loadRepoRef(ctx context.Context, ref string) (*Tokenizer, error) {
 	if len(parts) == 2 && strings.TrimSpace(parts[1]) != "" {
 		revision = strings.TrimSpace(parts[1])
 	}
-	return loadHTTP(ctx, modelrepo.ResolveURL(source, repo, revision, "tokenizer.json", ""))
+	tok, err := loadHTTP(ctx, modelrepo.ResolveURL(source, repo, revision, "tokenizer.json", ""))
+	if errors.Is(err, errNotFound) {
+		// tiktoken-based models ship their vocabulary instead.
+		if tiktoken, tiktokenErr := loadHTTP(ctx, modelrepo.ResolveURL(source, repo, revision, TiktokenFile, "")); tiktokenErr == nil {
+			return tiktoken, nil
+		}
+	}
+	return tok, err
 }

@@ -34,7 +34,7 @@ func cachedTokenizer(path string) *Tokenizer {
 	if err != nil || !info.Mode().IsRegular() || info.Size() > maxTokenizerBytes || time.Since(info.ModTime()) < 0 || time.Since(info.ModTime()) >= 24*time.Hour {
 		return nil
 	}
-	tok, err := Load(io.LimitReader(f, maxTokenizerBytes))
+	tok, err := LoadFile(io.LimitReader(f, maxTokenizerBytes))
 	if err != nil {
 		return nil
 	}

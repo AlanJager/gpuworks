@@ -544,15 +544,16 @@ func (a *apiHandlers) importBenchmarkTokenizer(w http.ResponseWriter, r *http.Re
 		writeProductError(w, http.StatusBadRequest, ErrorBenchmarkTokenizerEmpty, "tokenizer file is empty", nil)
 		return
 	}
-	if !validTokenizerJSON(raw) {
-		writeProductError(w, http.StatusBadRequest, ErrorBenchmarkTokenizerUnsupported, "file is not a supported tokenizer.json", nil)
+	ext, ok := tokenizerFileKind(raw)
+	if !ok {
+		writeProductError(w, http.StatusBadRequest, ErrorBenchmarkTokenizerUnsupported, "file is not a supported tokenizer.json or tiktoken vocabulary", nil)
 		return
 	}
 	if err := os.MkdirAll(a.d.BenchmarkArtifactDir, 0o750); err != nil {
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
-	name := fmt.Sprintf("tokenizer-%d.json", time.Now().UTC().UnixNano())
+	name := fmt.Sprintf("tokenizer-%d%s", time.Now().UTC().UnixNano(), ext)
 	path := filepath.Join(a.d.BenchmarkArtifactDir, name)
 	if err := os.WriteFile(path, raw, 0o640); err != nil {
 		writeErr(w, http.StatusInternalServerError, err)

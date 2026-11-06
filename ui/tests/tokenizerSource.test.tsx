@@ -18,8 +18,10 @@ const i18n = createInstance();
 await i18n.use(initReactI18next).init({
 	lng: "zh", defaultNS: "evaluations", interpolation: { escapeValue: false },
 	resources: { zh: { evaluations: { wizard: {
-		tokenizerSource: "Tokenizer 来源", tokenizerEstimate: "估算", tokenizerAuto: "自动（模型仓库 / 目标机）", uploadFile: "上传文件",
-		tokenizerAutoHelp: "优先使用目标机上已有的 tokenizer.json；发压点选 server 时经数据通道取回，两者都没有再回落到模型仓库。",
+		tokenizerSource: "Tokenizer 来源", tokenizerEstimate: "估算", tokenizerAuto: "自动（推理服务分词接口 / 目标机 / 模型仓库）", uploadFile: "上传文件",
+		tokenizerAutoHelp: "优先用推理服务自己的 /v1/tokenize、/v1/detokenize 生成负载，长度与引擎计数一致，任何 tokenizer 格式都适用；接口不可用时，用目标机上已有的 tokenizer.json 或 tiktoken.model（发压点选 server 时经数据通道取回），都没有再回落到模型仓库。",
+		tokenizerAutoExternalHelp: "外部端点使用端点自己的 /v1/tokenize、/v1/detokenize；端点不提供时评测在推理前终止，请改选其他来源。",
+		tokenizerEngine: "推理服务 (de)tokenize 接口", tokenizerEngineHelp: "用推理服务自己的 /v1/tokenize、/v1/detokenize 生成负载（vLLM、SGLang 提供）；接口不可用时评测在推理前终止，不会改用其他来源。",
 		tokenizerAgenticHelp: "Agentic 的多轮长度和设计前缀复用率都按 token 计算；估算误差会逐轮累积，并可能使长上下文超限，因此必须使用 tokenizer。",
 		tokenizerControlledHelp: "按 token 长度必须提供可加载 tokenizer", tokenizerManagedHelp: "托管模型帮助", tokenizerHelp: "普通帮助", tokenizerRequired: "请上传 tokenizer.json",
 		tokenizerRepositoryRequired: "请输入模型仓库", currentTokenizerFile: "当前文件：{{name}}",
@@ -41,6 +43,11 @@ test("rerun restores every tokenizer source and rebuilds remote references", () 
 	assert.equal(tokenizerReference("estimate", undefined, undefined, { huggingface: "hf", modelscope: "ms" }), undefined);
 	assert.equal(tokenizerReference("huggingface", "Qwen/Qwen3-8B", undefined, { huggingface: "hf", modelscope: "ms" }), "hf://Qwen/Qwen3-8B");
 	assert.equal(tokenizerReference("upload", undefined, "/tmp/tokenizer.json", { huggingface: "hf", modelscope: "ms" }), "/tmp/tokenizer.json");
+	// The target's own tokenizer: alone it was chosen; with a fallback it was
+	// what "auto" resolved to. Neither carries a reference from the form.
+	assert.deepEqual(tokenizerFormState("engine:"), { source: "engine", reference: "engine:" });
+	assert.deepEqual(tokenizerFormState("engine:hf://moonshotai/Kimi-K3.1-Pro", true), { source: "auto", reference: "engine:hf://moonshotai/Kimi-K3.1-Pro" });
+	assert.equal(tokenizerReference("engine", undefined, undefined, { huggingface: "hf", modelscope: "ms" }), undefined);
 });
 
 test("a managed rerun re-resolves a machine-local path instead of reusing it", () => {
@@ -69,22 +76,32 @@ test("the automatic source is the managed default and never survives an agentic 
 
 test("Agentic offers every source, disables estimation, and explains why", () => {
 	render(<I18nextProvider i18n={i18n}><Form initialValues={{ tokenizer_source: "huggingface" }}><TokenizerSourceFields source="huggingface" dataset="agentic" targetKind="external" onUpload={() => {}} /></Form></I18nextProvider>);
-	assert.equal(screen.getAllByRole("radio").length, 5);
+	assert.equal(screen.getAllByRole("radio").length, 6);
 	assert.equal((screen.getByRole("radio", { name: "估算" }) as HTMLInputElement).disabled, true);
 	assert.ok(screen.getByText(/按 token 长度必须提供可加载/));
 });
 
-test("a managed target offers the automatic source, an external endpoint does not", () => {
+test("the automatic source asks the target's tokenize API first, on a managed target and an external endpoint alike", () => {
 	render(<I18nextProvider i18n={i18n}><Form initialValues={{ tokenizer_source: "auto" }}><TokenizerSourceFields source="auto" dataset="random" targetKind="instance" onUpload={() => {}} /></Form></I18nextProvider>);
-	assert.equal((screen.getByRole("radio", { name: "自动（模型仓库 / 目标机）" }) as HTMLInputElement).disabled, false);
+	assert.equal((screen.getByRole("radio", { name: "自动（推理服务分词接口 / 目标机 / 模型仓库）" }) as HTMLInputElement).disabled, false);
 	assert.equal((screen.getByRole("radio", { name: "估算" }) as HTMLInputElement).disabled, true);
-	assert.ok(screen.getByText(/优先使用目标机上已有的 tokenizer/));
+	assert.ok(screen.getByText(/优先用推理服务自己的 \/v1\/tokenize/));
 	// Nothing to type: the source is resolved rather than entered.
 	assert.equal(screen.queryByLabelText("模型仓库"), null);
 	cleanup();
 
-	render(<I18nextProvider i18n={i18n}><Form initialValues={{ tokenizer_source: "estimate" }}><TokenizerSourceFields source="estimate" dataset="random" targetKind="external" onUpload={() => {}} /></Form></I18nextProvider>);
-	assert.equal((screen.getByRole("radio", { name: "自动（模型仓库 / 目标机）" }) as HTMLInputElement).disabled, true);
+	render(<I18nextProvider i18n={i18n}><Form initialValues={{ tokenizer_source: "auto" }}><TokenizerSourceFields source="auto" dataset="random" targetKind="external" onUpload={() => {}} /></Form></I18nextProvider>);
+	assert.equal((screen.getByRole("radio", { name: "自动（推理服务分词接口 / 目标机 / 模型仓库）" }) as HTMLInputElement).disabled, false);
+	assert.ok(screen.getByText(/外部端点使用端点自己的/));
+});
+
+test("the inference service's tokenize API is a source of its own that falls back to nothing", async () => {
+	render(<I18nextProvider i18n={i18n}><Form initialValues={{ tokenizer_source: "engine" }}><TokenizerSourceFields source="engine" dataset="agentic" targetKind="external" onUpload={() => {}} /></Form></I18nextProvider>);
+	const engine = screen.getByRole("radio", { name: "推理服务 (de)tokenize 接口" }) as HTMLInputElement;
+	assert.equal(engine.checked, true);
+	assert.ok(screen.getByText(/不会改用其他来源/));
+	assert.equal(screen.queryByLabelText("模型仓库"), null);
+	assert.equal(screen.queryByRole("button", { name: /上传/ }), null);
 });
 
 test("a repository source asks for the repository and nothing else", () => {

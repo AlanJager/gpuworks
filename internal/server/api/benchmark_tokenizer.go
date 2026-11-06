@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"gpuworks.ai/gpuworks/internal/benchrun"
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
@@ -28,6 +29,9 @@ const (
 	benchmarkTokenizerSourceHuggingFace = "huggingface"
 	benchmarkTokenizerSourceModelScope  = "modelscope"
 	benchmarkTokenizerSourceUpload      = "upload"
+	// benchmarkTokenizerSourceEngine is the target's own tokenizer, reached
+	// through its /v1/tokenize and /v1/detokenize (benchrun.EngineTokenizerRef).
+	benchmarkTokenizerSourceEngine = "engine"
 )
 
 const (
@@ -70,22 +74,62 @@ func (a *apiHandlers) resolveBenchmarkTokenizer(ctx context.Context, req benchma
 		// would put the run in exact mode while the user believes it is
 		// estimating — and would send the node to the network for it.
 		return "", nil
-	case benchmarkTokenizerSourceHuggingFace, benchmarkTokenizerSourceModelScope, benchmarkTokenizerSourceUpload:
+	case benchmarkTokenizerSourceHuggingFace, benchmarkTokenizerSourceModelScope:
+		return repositoryTokenizerReference(req.Source, req.Reference)
+	case benchmarkTokenizerSourceUpload:
 		reference := strings.TrimSpace(req.Reference)
 		if reference == "" {
 			return "", benchmarkParameterError("tokenizer_ref", "the selected tokenizer source requires a repository or uploaded tokenizer reference")
 		}
 		return reference, nil
+	case benchmarkTokenizerSourceEngine:
+		// Named on its own, the engine is the only source: a target that does
+		// not answer stops the run before load rather than switching to a
+		// tokenizer nobody chose.
+		if req.TargetKind == "instance" && req.Deployment != nil && req.Deployment.TokenizeDisabled {
+			return "", productError(ErrorBenchmarkTokenizerSourceInvalid,
+				"tokenize is turned off for this deployment; turn it on or choose another tokenizer source", map[string]any{"source": req.Source})
+		}
+		return benchrun.EngineTokenizerRef, nil
 	case benchmarkTokenizerSourceAuto:
 		if req.TargetKind != "instance" {
-			return "", productError(ErrorBenchmarkTokenizerSourceInvalid,
-				"automatic tokenizer resolution needs a managed target; name a repository or upload a tokenizer.json", map[string]any{"source": req.Source})
+			// An external endpoint has no model directory or repository the
+			// platform knows: its own tokenizer is the one candidate.
+			return benchrun.EngineTokenizerRef, nil
 		}
-		return a.autoBenchmarkTokenizer(ctx, req), nil
+		fallback := a.autoBenchmarkTokenizer(ctx, req)
+		if req.Deployment == nil || req.Deployment.TokenizeDisabled {
+			return fallback, nil
+		}
+		// The engine counts with its own tokenizer whatever format that is;
+		// the copy or repository is what is loaded if it does not answer.
+		return benchrun.EngineTokenizerRef + fallback, nil
 	default:
 		return "", productError(ErrorBenchmarkTokenizerSourceInvalid,
 			fmt.Sprintf("unknown tokenizer source %q", req.Source), map[string]any{"source": req.Source})
 	}
+}
+
+// repositoryTokenizerReference is the reference a repository source names:
+// the client may send the repository as people write it ("org/model") or as
+// a reference ("hf://org/model"); a reference for the other source is refused.
+func repositoryTokenizerReference(source, reference string) (string, error) {
+	scheme := "hf://"
+	if source == benchmarkTokenizerSourceModelScope {
+		scheme = "ms://"
+	}
+	reference = strings.TrimSpace(reference)
+	if rest, ok := strings.CutPrefix(reference, scheme); ok {
+		reference = rest
+	} else if strings.Contains(reference, "://") {
+		return "", benchmarkParameterError("tokenizer_ref", fmt.Sprintf("a %s tokenizer reference is a repository such as org/model or %sorg/model", source, scheme))
+	}
+	reference = strings.Trim(reference, "/")
+	repo, _, _ := strings.Cut(reference, "@")
+	if repo == "" || strings.Count(repo, "/") != 1 || strings.Contains(repo, "..") {
+		return "", benchmarkParameterError("tokenizer_ref", fmt.Sprintf("a %s tokenizer reference is a repository such as org/model or %sorg/model", source, scheme))
+	}
+	return scheme + reference, nil
 }
 
 // autoBenchmarkTokenizer resolves the automatic source. The order is the point:
@@ -106,10 +150,12 @@ func (a *apiHandlers) autoBenchmarkTokenizer(ctx context.Context, req benchmarkT
 		// on the target machine is pulled back over the data lane. Without a
 		// lane — or without a copy — the repository reference stands, since the
 		// node-local file is exactly what an isolated network makes unavailable.
-		local := a.nodeModelTokenizerPath(req.Deployment, req.Node)
-		if local != "" && req.Node != nil {
-			if fetched, err := a.fetchBenchmarkTokenizer(ctx, req.Node.UUID, local); err == nil {
-				return fetched
+		dir := a.nodeModelDir(req.Deployment, req.Node)
+		if dir != "" && req.Node != nil {
+			for _, name := range nodeTokenizerFiles {
+				if fetched, err := a.fetchBenchmarkTokenizer(ctx, req.Node.UUID, filepath.Join(dir, name)); err == nil {
+					return fetched
+				}
 			}
 		}
 		return repository
@@ -121,19 +167,26 @@ func (a *apiHandlers) autoBenchmarkTokenizer(ctx context.Context, req benchmarkT
 	if err != nil {
 		return repository
 	}
-	local := a.nodeModelTokenizerPath(req.Deployment, origin)
-	if local != "" && a.nodeTokenizerFileExists(ctx, req.LoadOrigin, local) {
-		return local
+	if dir := a.nodeModelDir(req.Deployment, origin); dir != "" {
+		for _, name := range nodeTokenizerFiles {
+			if local := filepath.Join(dir, name); a.nodeTokenizerFileExists(ctx, req.LoadOrigin, local) {
+				return local
+			}
+		}
 	}
 	return repository
 }
 
-// nodeModelTokenizerPath is the tokenizer.json the target node already holds for
-// the model this run measures, or "" when there is no such copy. The directory
+// nodeTokenizerFiles are the vocabulary files a model directory may hold, in
+// the order they are tried: tokenizer.json, then a tiktoken vocabulary.
+var nodeTokenizerFiles = []string{"tokenizer.json", benchrun.TiktokenFile}
+
+// nodeModelDir is the directory the target node already holds for the model
+// this run measures, or "" when there is no such copy. The directory
 // is the copy the node reads the deployment's model from
 // (store.ModelSourceOn): the host path its instances mount, whichever storage
 // holds it.
-func (a *apiHandlers) nodeModelTokenizerPath(deployment *store.Deployment, node *store.Node) string {
+func (a *apiHandlers) nodeModelDir(deployment *store.Deployment, node *store.Node) string {
 	if deployment == nil || node == nil || deployment.ModelID == 0 {
 		return ""
 	}
@@ -149,7 +202,7 @@ func (a *apiHandlers) nodeModelTokenizerPath(deployment *store.Deployment, node 
 	if dir == "" || !filepath.IsAbs(dir) {
 		return ""
 	}
-	return filepath.Join(dir, "tokenizer.json")
+	return dir
 }
 
 // nodeTokenizerFileExists confirms a candidate path is a regular file on the
@@ -197,11 +250,12 @@ func (a *apiHandlers) fetchBenchmarkTokenizer(ctx context.Context, nodeUUID, pat
 	// A file that is not a loadable tokenizer would put an agentic run into a
 	// fatal failure at execution time; treating it as "no fetch" here keeps the
 	// decision at creation, where the caller can still fall back.
-	if !validTokenizerJSON(raw) {
-		return "", errors.New("the node file is not a supported tokenizer.json")
+	ext, ok := tokenizerFileKind(raw)
+	if !ok {
+		return "", errors.New("the node file is not a supported tokenizer.json or tiktoken vocabulary")
 	}
 	sum := sha256.Sum256(raw)
-	target := filepath.Join(dir, fmt.Sprintf("%s%x.json", benchmarkTokenizerFetchedPrefix, sum[:8]))
+	target := filepath.Join(dir, fmt.Sprintf("%s%x%s", benchmarkTokenizerFetchedPrefix, sum[:8], ext))
 	if _, err := os.Stat(target); err == nil {
 		return target, nil
 	}
@@ -265,6 +319,19 @@ func readBoundedNodeFile(ctx context.Context, conn net.Conn) ([]byte, error) {
 		return nil, errors.New("the node returned no bytes")
 	}
 	return buf.Bytes(), nil
+}
+
+// tokenizerFileKind reports whether raw is a tokenizer file the runtime can
+// load, and the extension its stored copy takes: ".json" for a
+// tokenizer.json, ".tiktoken" for a tiktoken vocabulary.
+func tokenizerFileKind(raw []byte) (string, bool) {
+	if validTokenizerJSON(raw) {
+		return ".json", true
+	}
+	if benchrun.IsTiktokenVocabulary(raw) {
+		return ".tiktoken", true
+	}
+	return "", false
 }
 
 // validTokenizerJSON reports whether raw is a tokenizer.json the runtime can

@@ -16,7 +16,7 @@ import { hasOperation } from "../../modelInference";
 import { benchmarkOriginNodes } from "./benchmarkOrigins";
 import AgenticLoadSummary from "./AgenticLoadSummary";
 import TokenizerSourceFields from "./TokenizerSourceFields";
-import type { TokenizerSource } from "./tokenizerSource";
+import { ENGINE_REF, type TokenizerSource } from "./tokenizerSource";
 import { tokenizerFormState, tokenizerReference, tokenizerSourceOrDefault } from "./tokenizerSource";
 
 type Values = {
@@ -66,11 +66,14 @@ const CONFLICT_CODES = new Set(["BENCHMARK_RUN_CONFLICT", "BENCHMARK_SERVER_ACTI
 const LEGACY_SLA_KEYS = ["max_per_user_total_tps", "min_per_user_total_tps", "max_per_user_output_tps", "min_per_user_output_tps"] as const;
 
 // The created run records only the reference the automatic source resolved to,
-// so the notice names which of its three paths produced it: a repository, a
-// copy fetched back to the server, or a file on the node that will generate the
-// load.
+// so the notice names what it will use: the target's tokenize endpoint
+// alone, or the target's endpoint before a fallback that is a repository, a
+// copy fetched back to the server, or a file on the node that will generate
+// the load.
 function automaticTokenizerNoticeKey(run: BenchmarkRun): string {
-	const reference = run.tokenizer_ref || "";
+	let reference = run.tokenizer_ref || "";
+	if (reference === ENGINE_REF) return "wizard.tokenizerAutoEngine";
+	if (reference.startsWith(ENGINE_REF)) reference = reference.slice(ENGINE_REF.length);
 	if (reference.startsWith("hf://") || reference.startsWith("ms://")) return "wizard.tokenizerAutoRepository";
 	return run.load_origin === "server" ? "wizard.tokenizerAutoFetched" : "wizard.tokenizerAutoNode";
 }
@@ -388,7 +391,11 @@ export default function BenchmarkWizard({ open, meta, deployments, nodes, onSear
 			});
 			onCreated(created);
 			message.success(t("wizard.created"));
-			if (values.tokenizer_source === "auto" && created.tokenizer_ref) message.info(t(automaticTokenizerNoticeKey(created), { ref: created.tokenizer_ref, path: created.tokenizer_ref }));
+			if (values.tokenizer_source === "auto" && created.tokenizer_ref) {
+				const fallback = created.tokenizer_ref.startsWith(ENGINE_REF) ? created.tokenizer_ref.slice(ENGINE_REF.length) : created.tokenizer_ref;
+				const notice = t(automaticTokenizerNoticeKey(created), { ref: fallback, path: fallback });
+				message.info(created.tokenizer_ref.startsWith(ENGINE_REF) && fallback ? t("wizard.tokenizerAutoEngineFirst", { fallback: notice }) : notice);
+			}
 		} catch (error) {
 			// Admission conflicts are a decision to put to the user, not an
 			// error to report: the same create is retried with the override.
@@ -413,9 +420,6 @@ export default function BenchmarkWizard({ open, meta, deployments, nodes, onSear
 					<Form.Item name="target_kind" label={t("wizard.target")}><Radio.Group optionType="button" buttonStyle="solid" options={[{ label: t("wizard.managedInstance"), value: "instance" }, { label: t("wizard.externalEndpoint"), value: "external" }]} onChange={(event) => {
 						// Start a newly selected external target from the default origin.
 						if (event.target.value === "external") form.setFieldValue("load_origin", "server");
-						// The automatic tokenizer source reads the target machine, which an
-						// external endpoint does not have.
-						if (event.target.value === "external" && form.getFieldValue("tokenizer_source") === "auto") form.setFieldValue("tokenizer_source", dataset === "random" || dataset === "agentic" ? "huggingface" : "estimate");
 					}} /></Form.Item>
 					{targetKind === "instance" ? <Form.Item name="deployment_id" label={t("wizard.service")} rules={[{ required: true, message: t("wizard.serviceRequired") }, { validator: async (_, id) => {
 						const selected = knownDeployments.get(id) || deployments.find((item) => item.id === id);

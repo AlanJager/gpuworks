@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -136,6 +137,10 @@ func TestTokenizerFailureDiagnosticDistinguishesNetworkAndContent(t *testing.T) 
 		{&net.OpError{Op: "dial", Net: "tcp", Err: syscall.ECONNREFUSED}, "network connection failed"},
 		{fmt.Errorf("%w: HTTP 404 Not Found", tokenizer.ErrDownload), "tokenizer download failed"},
 		{errors.New("tokenizer.json has no BPE vocab"), "tokenizer could not be loaded"},
+		// A bare repository name read as a path: missing, not a network fault,
+		// although ENOENT satisfies net.Error.
+		{&fs.PathError{Op: "open", Path: "moonshotai/Kimi-K3.1-Pro", Err: syscall.ENOENT}, "tokenizer file not found: moonshotai/Kimi-K3.1-Pro"},
+		{fmt.Errorf("%w: /v1/detokenize answered HTTP 404", tokenizer.ErrEngineTokenize), "choose another tokenizer source"},
 	} {
 		message := tokenizerLoadError(tt.cause).Error()
 		if !strings.Contains(message, tt.want) || !strings.Contains(message, "evaluation was not started") {
@@ -184,5 +189,80 @@ func TestTokenizerWrappedTransportFailuresKeepDownloadClassification(t *testing.
 				t.Fatalf("diagnostic exposed %s", secret)
 			}
 		}
+	}
+}
+
+// A run whose reference names the target's tokenizer builds its prompts from
+// the target's /v1/detokenize; when the target does not serve it, the
+// fallback the reference names is loaded, and without a fallback the run
+// stops before any inference.
+func TestEngineTokenizerReferenceUsesTheTargetThenItsFallback(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		serve    bool
+		fallback bool
+		ok       bool
+	}{
+		{"the target serves tokenize", true, false, true},
+		{"the target does not, a fallback is named", false, true, true},
+		{"the target does not, no fallback", false, false, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var tokenize, inference atomic.Int32
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.Path {
+				case "/v1/tokenize", "/v1/detokenize":
+					tokenize.Add(1)
+					if !tc.serve {
+						http.Error(w, "tokenize is turned off", http.StatusNotFound)
+						return
+					}
+					var body struct {
+						Tokens []int `json:"tokens"`
+					}
+					_ = json.NewDecoder(r.Body).Decode(&body)
+					if r.URL.Path == "/v1/tokenize" {
+						_, _ = w.Write([]byte(`{"count":1,"max_model_len":4096,"tokens":[3],"token_strs":null}`))
+						return
+					}
+					var b strings.Builder
+					for _, id := range body.Tokens {
+						if id >= 4000 {
+							http.Error(w, `{"object":"error","message":"out of vocabulary"}`, http.StatusBadRequest)
+							return
+						}
+						if id == 3 {
+							b.WriteString("\n")
+						} else {
+							fmt.Fprintf(&b, " t%d", id)
+						}
+					}
+					_ = json.NewEncoder(w).Encode(map[string]string{"prompt": b.String()})
+				default:
+					inference.Add(1)
+					http.Error(w, "stop after setup", http.StatusServiceUnavailable)
+				}
+			}))
+			defer server.Close()
+			ref := tokenizer.EngineRef
+			if tc.fallback {
+				ref += testTokenizerRef(t)
+			}
+			e := &execution{run: Run{ID: 5, Model: "m", TokenizerRef: ref, Client: loadgen.Client{BaseURL: server.URL + "/v1"}}, hooks: Hooks{Warn: func(string) {}}}
+			e.dc.Kind = "random"
+			err := e.loadTokenizer(context.Background())
+			if (err == nil) != tc.ok {
+				t.Fatalf("loadTokenizer err = %v, want ok=%v", err, tc.ok)
+			}
+			if tokenize.Load() == 0 {
+				t.Fatal("the target's tokenizer was not asked")
+			}
+			if !tc.ok && !strings.Contains(err.Error(), "choose another tokenizer source") {
+				t.Fatalf("err = %v", err)
+			}
+			if inference.Load() != 0 {
+				t.Fatal("loading the tokenizer sent inference")
+			}
+		})
 	}
 }

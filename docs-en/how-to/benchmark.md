@@ -26,8 +26,11 @@ For external endpoints, prepare the address, model name, and required API key. S
    Multi-node followers are not independent service entry points, and a direct connection to a single PD instance does not prove that P and D work together correctly.
 3. In **Configure Load**, select a **Dataset** and enter the applicable input / output lengths, concurrency list or arrival rates, and requests per point.
    To import a dataset, first upload JSONL. Multi-turn conversations send requests in session order, and the output length is an upper limit.
-   Random token-length and Agentic datasets require a loadable tokenizer. For managed models, select **Automatic**, specify a model repository, or upload `tokenizer.json`.
-   External endpoints cannot automatically read the tokenizer on the target machine, so you must specify a source.
+   Random token-length and Agentic datasets require a loadable tokenizer. **Automatic** tries, in order: the inference service's own `/v1/tokenize` and `/v1/detokenize`
+   (served by vLLM and SGLang and on by default for a deployment; sampling uses the engine's tokenizer, so lengths match the engine's count whatever the tokenizer format),
+   the `tokenizer.json` or `tiktoken.model` already on the target machine, and finally the model repository. For an external endpoint, **Automatic** uses only the endpoint's own tokenize endpoints.
+   You can also use only the **Inference service (de)tokenize endpoints** (if it is unavailable the evaluation stops before inference rather than switching sources), name a model repository (`org/repo`),
+   or upload `tokenizer.json` / `tiktoken.model`.
 4. Review warmup, output policy, experience thresholds, and per-request details in **Advanced Settings**. To view individual timelines in the report, enable **Keep per-request details** and set the capacity.
    If every warmup request fails transiently (network interruption, 408/429, or recoverable 5xx),
    recovery waits up to 6 minutes, sending one probe every 5 seconds. Authentication and parameter errors stop immediately.
