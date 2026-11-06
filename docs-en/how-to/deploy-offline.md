@@ -60,7 +60,13 @@ docker load -i gpuworks-runner_<tag>_linux-amd64.tar.gz
 gunzip -c gpuworks-runner_<tag>_linux-arm64.tar.gz | nerdctl -n gpuworks load
 ```
 
-After about one minute, the corresponding node on the Images page shows “Present.” udocker (runveil) nodes have no load command; use [Import Images Through the Control Plane Node](#经管理节点中转导入镜像) instead.
+After about one minute, the corresponding node on the Images page shows “Present.” On udocker (runveil) nodes, import with the agent's own command, with `<image-ref>` set to the full image reference shown on the Images page:
+
+```bash
+sudo gpuworks-agent runveil load -i gpuworks-runner_<tag>_linux-amd64.tar.gz <image-ref>
+```
+
+When logging in to the node is inconvenient, you can also [import through the control plane node](#经管理节点中转导入镜像).
 
 **Models**: Copy the model directory into the node's local storage directory, such as `/opt/gpuworks/models/Qwen/Qwen3-8B`. Then, on the Models page, click “Register model” → select
 “Local path on node” as the source → select the node and enter the directory → preview and register. The platform reads the architecture, precision, and context length from `config.json`. Local storage does not support batch scanning;
