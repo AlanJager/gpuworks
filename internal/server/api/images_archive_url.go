@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -44,6 +45,11 @@ func (a *apiHandlers) previewImageArchiveURL(w http.ResponseWriter, r *http.Requ
 	defer client.CloseIdleConnections()
 	peek, err := imagecatalog.PeekArchiveURL(ctx, client, normalized)
 	if err != nil {
+		if errors.Is(err, outbound.ErrTargetDenied) {
+			writeProductError(w, http.StatusForbidden, ErrorImageArchiveURLPolicyDenied, "the management node's outbound policy does not permit this archive source",
+				map[string]any{"host": imagecatalog.ArchiveURLHost(normalized), "config_key": "outbound_allow_private_hosts"})
+			return
+		}
 		if imagecatalog.ArchiveURLInvalid(err) {
 			writeProductError(w, http.StatusBadRequest, ErrorImageArchiveURLInvalid, "invalid image archive URL: "+err.Error(), map[string]any{"detail": err.Error()})
 			return

@@ -106,7 +106,7 @@ docker save "$REF" | gzip > gpuworks-runner_cuda13.0-sglang0.5.21-r2_linux-amd64
 
 udocker（runveil）节点，或不方便登录节点时，可以在控制台里导入。节点须保持与 server 连接；即使节点不能访问归档来源，也可由 server 中转。
 
-开始前，确认 server 能读取归档。内网来源须在 `server.yaml` 的 `outbound_allow_private_hosts` 中显式授权，并重启 server；下面的环回地址同样需要授权，见[HTTP 导入前提](import-from-http.md)。
+开始前，确认 server 能读取归档。内网来源须在 `server.yaml` 的 `outbound_allow_private_hosts` 中显式授权；保存后下一次请求生效，无需重启 server；下面的环回地址同样需要授权，见[HTTP 导入前提](import-from-http.md)。
 
 1. 把归档放到管理节点能访问的 HTTP 地址。最简单的是拷到管理节点上，就地起一个临时文件服务：
 

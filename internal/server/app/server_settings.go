@@ -22,8 +22,9 @@ import (
 // serverSettings serves api.ServerSettings from the running configuration and
 // server.yaml. Saved listen changes take effect on the next start.
 type serverSettings struct {
-	cfg  Config
-	host serverconfig.Host
+	cfg              Config
+	host             serverconfig.Host
+	readPrivateHosts func() []string
 	// restart ends the process for the service manager to start again; nil
 	// when nothing would start it (development, the nohup service mode).
 	restart func()
@@ -50,7 +51,7 @@ func newServerSettings(cfg Config, restart func(), snapshot func(dest string) er
 	if host.RouteIP == nil && host.Interfaces == nil {
 		host = serverconfig.SystemHost()
 	}
-	return &serverSettings{cfg: cfg, host: host, restart: restart, snapshot: snapshot, saved: cfg.Listen, channel: cfg.UpdateChannel, manualChecks: cfg.ManualUpdateChecks, usageReportOff: cfg.UsageReportOff}
+	return &serverSettings{cfg: cfg, host: host, readPrivateHosts: privateHostPermissions(cfg, nil), restart: restart, snapshot: snapshot, saved: cfg.Listen, channel: cfg.UpdateChannel, manualChecks: cfg.ManualUpdateChecks, usageReportOff: cfg.UsageReportOff}
 }
 
 var _ api.ServerSettings = (*serverSettings)(nil)

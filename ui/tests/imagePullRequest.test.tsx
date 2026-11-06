@@ -219,3 +219,108 @@ test("a manual copy from a node still names source_node and its rate", async () 
   await waitFor(() => assert.equal(posts(calls, "/api/v1/images/31/nodes/n3/sync").length, 1));
   assert.deepEqual(JSON.parse(posts(calls, "/api/v1/images/31/nodes/n3/sync")[0].body ?? ""), { source_node: "n1", rate_limit_kib_s: 0 });
 });
+
+
+test("a private archive policy denial explains file authorization without exposing raw errors", async () => {
+  const { default: ImageArchiveURLImport } = await import("../src/pages/images/ImageArchiveURLImport.tsx");
+  const stub = installFetch((call) => call.method === "POST" && call.path === "/api/v1/images/preview-archive-url"
+    ? json(403, { code: "IMAGE_ARCHIVE_URL_POLICY_DENIED", error: "RAW https://archive.internal/image.tar?token=private-query", params: { host: "archive.internal", config_key: "outbound_allow_private_hosts" } })
+    : undefined);
+  restoreFetch = stub.restore;
+  render(<I18nextProvider i18n={i18n}><ImageArchiveURLImport versions={[]} onMatched={() => assert.fail("a denied source must not resolve")} onPrefill={() => assert.fail("a denied source must not prefill")} /></I18nextProvider>);
+  const user = userEvent.setup({ document: dom.window.document });
+  await user.type(screen.getByLabelText(z.import.url.label), "http://archive.internal/image.tar");
+  await user.click(screen.getByRole("button", { name: spaced(z.import.url.resolve) }));
+  const alert = await screen.findByRole("alert");
+  assert.match(alert.textContent ?? "", /outbound_allow_private_hosts/);
+  assert.match(alert.textContent ?? "", /管理节点.*出站.*拒绝/);
+  assert.match(alert.textContent ?? "", /server\.yaml/);
+  assert.match(alert.textContent ?? "", /保存后重试/);
+  assert.match(alert.textContent ?? "", /特殊保留地址始终禁止/);
+  assert.equal(screen.queryByText(/RAW|private-query|重启/), null);
+  await screen.findByText("HTTP 403 · IMAGE_ARCHIVE_URL_POLICY_DENIED");
+});
+
+
+test("an archive import hides unstructured upstream error text", async () => {
+  const { default: ImageArchiveURLImport } = await import("../src/pages/images/ImageArchiveURLImport.tsx");
+  const stub = installFetch((call) => call.method === "POST" && call.path === "/api/v1/images/preview-archive-url"
+    ? json(502, { error: "RAW https://archive.internal/image.tar?token=private-query" }) : undefined);
+  restoreFetch = stub.restore;
+  render(<I18nextProvider i18n={i18n}><ImageArchiveURLImport versions={[]} onMatched={() => {}} onPrefill={() => {}} /></I18nextProvider>);
+  const user = userEvent.setup({ document: dom.window.document });
+  await user.type(screen.getByLabelText(z.import.url.label), "http://archive.internal/image.tar");
+  await user.click(screen.getByRole("button", { name: spaced(z.import.url.resolve) }));
+  const alert = await screen.findByRole("alert");
+  assert.equal(alert.textContent, "无法读取该镜像归档。");
+  assert.equal(screen.queryByText(/RAW|private-query/), null);
+});
+
+
+test("the node archive dialog retains a policy denial code while allowing node-direct acquisition", async () => {
+  const { default: ImageArchiveURLDialog } = await import("../src/pages/images/ImageArchiveURLDialog.tsx");
+  const stub = installFetch((call) => call.method === "POST" && call.path === "/api/v1/images/preview-archive-url"
+    ? json(403, { code: "IMAGE_ARCHIVE_URL_POLICY_DENIED", error: "RAW https://archive.internal/image.tar?token=private-query", params: { host: "archive.internal", config_key: "outbound_allow_private_hosts" } }) : undefined);
+  restoreFetch = stub.restore;
+  const starts: Array<{ url: string; relay: boolean }> = [];
+  render(<I18nextProvider i18n={i18n}><ImageArchiveURLDialog open version={nightlyVersion as never} nodeLabel="gpu-03" initialURL="http://archive.internal/image.tar" onCancel={() => {}} onStart={async (url, relay) => { starts.push({ url, relay }); }} /></I18nextProvider>);
+  const alert = await screen.findByRole("alert");
+  assert.match(alert.textContent ?? "", /outbound_allow_private_hosts/);
+  assert.match(alert.textContent ?? "", /HTTP 403 · IMAGE_ARCHIVE_URL_POLICY_DENIED/);
+  assert.match(alert.textContent ?? "", /server\.yaml.*保存后重试/);
+  assert.equal(screen.queryByText(/RAW|private-query|重启/), null);
+  const pull = screen.getByRole("button", { name: PULL }) as HTMLButtonElement;
+  assert.equal(pull.disabled, false, "management-node policy does not describe the node's direct route");
+  const user = userEvent.setup({ document: dom.window.document });
+  await user.click(pull);
+  await waitFor(() => assert.deepEqual(starts, [{ url: "http://archive.internal/image.tar", relay: false }]));
+});
+
+
+for (const entry of ["import", "dialog"] as const) {
+  test(`the ${entry} archive policy guidance is localized in English`, async () => {
+    const fs = await import("node:fs");
+    for (const ns of ["images", "common"]) {
+      const resource = JSON.parse(fs.readFileSync(new URL(`../src/i18n/locales/en/${ns}.json`, import.meta.url), "utf8"));
+      i18n.addResourceBundle("en", ns, resource, true, true);
+    }
+    await i18n.changeLanguage("en");
+    try {
+      const stub = installFetch((call) => call.method === "POST" && call.path === "/api/v1/images/preview-archive-url"
+        ? json(403, { code: "IMAGE_ARCHIVE_URL_POLICY_DENIED", error: "RAW https://archive.internal/image.tar?token=private-query", params: { host: "archive.internal", config_key: "outbound_allow_private_hosts" } }) : undefined);
+      restoreFetch = stub.restore;
+      if (entry === "import") {
+        const { default: Import } = await import("../src/pages/images/ImageArchiveURLImport.tsx");
+        render(<I18nextProvider i18n={i18n}><Import versions={[]} onMatched={() => assert.fail("a denied source must not resolve")} onPrefill={() => assert.fail("a denied source must not prefill")} /></I18nextProvider>);
+        const user = userEvent.setup({ document: dom.window.document });
+        await user.type(screen.getByLabelText("Image archive URL"), "http://archive.internal/image.tar");
+        await user.click(screen.getByRole("button", { name: "Resolve" }));
+      } else {
+        const { default: Dialog } = await import("../src/pages/images/ImageArchiveURLDialog.tsx");
+        render(<I18nextProvider i18n={i18n}><Dialog open version={nightlyVersion as never} nodeLabel="gpu-03" initialURL="http://archive.internal/image.tar" onCancel={() => {}} onStart={async () => {}} /></I18nextProvider>);
+      }
+      const alert = await screen.findByRole("alert");
+      assert.match(alert.textContent ?? "", /management node's outbound policy refuses access to archive\.internal/);
+      assert.match(alert.textContent ?? "", /outbound_allow_private_hosts in server\.yaml/);
+      assert.match(alert.textContent ?? "", /save the file and retry/);
+      assert.match(alert.textContent ?? "", /special-purpose reserved addresses remain blocked/);
+      assert.match(alert.textContent ?? "", /HTTP 403 · IMAGE_ARCHIVE_URL_POLICY_DENIED/);
+      assert.equal(screen.queryByText(/RAW|private-query|restart/), null);
+    } finally {
+      cleanup();
+      await i18n.changeLanguage("zh");
+    }
+  });
+}
+
+
+test("the node archive dialog hides unstructured upstream error text", async () => {
+  const { default: Dialog } = await import("../src/pages/images/ImageArchiveURLDialog.tsx");
+  const stub = installFetch((call) => call.method === "POST" && call.path === "/api/v1/images/preview-archive-url"
+    ? json(502, { error: "RAW https://archive.internal/image.tar?token=private-query" }) : undefined);
+  restoreFetch = stub.restore;
+  render(<I18nextProvider i18n={i18n}><Dialog open version={nightlyVersion as never} nodeLabel="gpu-03" initialURL="http://archive.internal/image.tar" onCancel={() => {}} onStart={async () => {}} /></I18nextProvider>);
+  const alert = await screen.findByRole("alert");
+  assert.equal(alert.textContent, "无法读取该镜像归档。");
+  assert.equal(screen.queryByText(/RAW|private-query/), null);
+});

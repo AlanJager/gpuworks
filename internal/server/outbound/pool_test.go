@@ -106,7 +106,7 @@ func TestProxyPoolConfigurationsAreBounded(t *testing.T) {
 	defer transport.CloseIdleConnections()
 	for i := range maxTransportPools * 3 {
 		proxy, _ := url.Parse(fmt.Sprintf("http://proxy.example:%d", 1000+i))
-		transport.requestTransport(proxy)
+		transport.requestTransport(proxy, pinnedTarget{})
 	}
 	if len(transport.transports) != maxTransportPools || len(transport.transportOrder) != maxTransportPools {
 		t.Fatalf("unbounded proxy cache: transports=%d order=%d", len(transport.transports), len(transport.transportOrder))

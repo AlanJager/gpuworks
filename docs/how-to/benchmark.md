@@ -19,7 +19,7 @@
    | **托管实例**：**发压点**选某个节点 | 直接访问该节点上的实例；PD 选择 decode，不能作为 PD 端到端结果 | 该节点上必须有该部署可服务、未休眠的 rank 0，且 agent 支持评测 |
    | **外部端点**：填写地址、API key，选择**发压点**后点**探测**并选模型 | 从所选发压点访问该外部端点 | 默认从 `Server` 发压，也可选择支持评测的在线节点；网络与鉴权必须从所选位置可用 |
 
-   从 `Server` 测试内网或本机的外部端点前，需管理员在 `server.yaml` 的 `outbound_allow_private_hosts` 中授权目标主机并重启 server，
+   从 `Server` 测试内网或本机的外部端点前，需管理员在 `server.yaml` 的 `outbound_allow_private_hosts` 中授权目标主机；保存后下一次请求生效，无需重启 server，
    见[出站访问配置](../reference/configuration.md#server-配置文件-serveryaml)。
 
    API 可通过 `instance_uuid` 指定某个实例，此时必须由实例所在节点直连；可服务条件同样要求运行且未休眠。

@@ -100,6 +100,12 @@ func Load(path string) (File, error) {
 	if err != nil {
 		return File{}, err
 	}
+	return decodeFile(path, raw)
+}
+
+// decodeFile shares strict parsing and validation with readers that already
+// hold a file descriptor and must keep its identity tied to the contents.
+func decodeFile(path string, raw []byte) (File, error) {
 	var f File
 	dec := yaml.NewDecoder(bytes.NewReader(raw))
 	dec.KnownFields(true)
