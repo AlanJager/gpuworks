@@ -360,7 +360,7 @@ func TestExplicitProviderComponentIgnoresARegisteredMirrorRow(t *testing.T) {
 // that declares two public sources. Offering those sources made the form pick
 // one, and the next evaluation then rejected model_source.provider as a
 // conflict with model_id, with no acquisition left to take the choice back.
-// The local model offers only its own source, so nothing is asked.
+// A local directory is an existing copy, not a public provider.
 func TestEvaluateLocalModelOffersNoTemplateProviders(t *testing.T) {
 	st := newAcquisitionStore(t)
 	fixture := deploymentFlatFixture()
@@ -417,8 +417,8 @@ func TestEvaluateLocalModelOffersNoTemplateProviders(t *testing.T) {
 	if !ok {
 		t.Fatalf("local model evaluation failed: %s", raw)
 	}
-	if len(providers) != 1 || providers[0]["label"] != "local" {
-		t.Fatalf("local model offered providers %+v, want only its own source", providers)
+	if len(providers) != 0 {
+		t.Fatalf("local model offered public providers %+v", providers)
 	}
 	// A request that still names a public provider is a real conflict.
 	if ok, _, raw := evaluate(`"model_source":{"provider":"huggingface"},`); ok || !strings.Contains(raw, "conflicts with model_source.provider") {

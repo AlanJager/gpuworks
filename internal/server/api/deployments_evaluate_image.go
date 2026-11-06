@@ -99,22 +99,19 @@ func (a *apiHandlers) imageCacheFact(ctx context.Context, image string, node *st
 // storages that hold it or may save it for the selected node. No additional
 // state is persisted for these facts.
 //
-// The template's sources are offered only when the model comes from one of
-// them. A model registered from elsewhere (a local directory, a source the
-// spec does not declare) has only its own source: offering the template's
-// would invite a model_source.provider that the request then rejects as a
-// conflict with model_id, and a rejected evaluation carries no acquisition
-// to take the choice back.
+// Public sources are offered only for a downloadable registered model. A local
+// directory is an existing storage copy, never a provider that can fetch files.
+// In manual placement there may briefly be no selected node (and no Present
+// candidate); offering "local" then makes the form select a provider that the
+// template cannot accept on its next evaluation.
 func (a *apiHandlers) evaluateWeightFacts(model *store.Model, selection templateSelection, profileNode *store.Node) acquisition.WeightFacts {
-	weightFacts := acquisition.WeightFacts{
-		Providers: []acquisition.WeightSource{{
-			Provider: model.Source, RepoID: model.SourceID, Revision: model.Revision, Suggested: true,
-			DisplayName: modelSourceHost(model),
-		}},
-	}
-	if selection.Spec != nil && specDeclaresProvider(selection.Spec, model.Source) {
-		weightFacts.Providers = templateAcquisitionProviders(selection)
-	}
+ var weightFacts acquisition.WeightFacts
+ if model.Source != "local" {
+  weightFacts.Providers = []acquisition.WeightSource{{Provider: model.Source, RepoID: model.SourceID, Revision: model.Revision, Suggested: true, DisplayName: modelSourceHost(model)}}
+  if selection.Spec != nil && specDeclaresProvider(selection.Spec, model.Source) {
+   weightFacts.Providers = templateAcquisitionProviders(selection)
+  }
+ }
 	weightFacts.Present, weightFacts.Targets = a.storageFacts(model, profileNode)
 	return weightFacts
 }
