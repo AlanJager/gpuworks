@@ -13,7 +13,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
-func TestStorageProbeRejectsSystemPathsBeforeNodeRPC(t *testing.T) {
+func TestStorageProbeValidatesPathsBeforeNodeRPC(t *testing.T) {
 	st := routerAuthStore(t)
 	t.Cleanup(func() { _ = st.Close() })
 	node, err := st.RegisterNode("storage-security", "storage-security-token", "node")
@@ -21,7 +21,11 @@ func TestStorageProbeRejectsSystemPathsBeforeNodeRPC(t *testing.T) {
 		t.Fatal(err)
 	}
 	calls := 0
-	h := &apiHandlers{d: Deps{Store: st, Online: func(string) bool { return true }, CallNode: func(context.Context, string, string, any) (json.RawMessage, error) {
+	h := &apiHandlers{d: Deps{Store: st, Server: StaticServerSettings{StorageRoots: []string{"/srv/models"}}, Online: func(string) bool { return true }, CallNode: func(_ context.Context, _ string, _ string, params any) (json.RawMessage, error) {
+		p, ok := params.(proto.StorageProbeParams)
+		if !ok || p.Path != "/tmp" {
+			return nil, fmt.Errorf("unexpected probe parameters: %#v", params)
+		}
 		calls++
 		return json.Marshal(proto.StorageProbeResult{OK: true})
 	}}}
@@ -33,9 +37,16 @@ func TestStorageProbeRejectsSystemPathsBeforeNodeRPC(t *testing.T) {
 			t.Errorf("unsafe probe %s reached node: status=%d calls=%d body=%s", path, rec.Code, calls, rec.Body.String())
 		}
 	}
+	body, _ := json.Marshal(map[string]string{"type": "local", "path": "/tmp", "node_uuid": node.UUID})
+	rec := httptest.NewRecorder()
+	h.probeStorage(rec, httptest.NewRequest(http.MethodPost, "/api/v1/storages/probe", strings.NewReader(string(body))))
+	var result proto.StorageProbeResult
+	if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil || rec.Code != http.StatusOK || calls != 1 || !result.OK {
+		t.Fatalf("custom probe: status=%d calls=%d body=%s err=%v", rec.Code, calls, rec.Body.String(), err)
+	}
 }
 
-func TestStorageCacheOverridesRespectConfiguredRoots(t *testing.T) {
+func TestStorageCacheOverridesValidatePaths(t *testing.T) {
 	st, signer, _ := newSessionRouter(t)
 	node, err := st.RegisterNode("root-policy-node", "root-policy-token", "node")
 	if err != nil {
@@ -48,7 +59,7 @@ func TestStorageCacheOverridesRespectConfiguredRoots(t *testing.T) {
 	router := Router(Deps{Store: st, AuthSigner: signer, Server: StaticServerSettings{StorageRoots: []string{"/srv/models"}}})
 	cookie, _ := sessionLogin(t, router, "password")
 	endpoint := fmt.Sprintf("/api/v1/storages/%d/node-overrides", storage.ID)
-	for _, p := range []string{"/etc", "/srv/outside", "/srv/models-other", "/srv/models/../../etc"} {
+	for _, p := range []string{"/etc", "/srv/models/../../etc"} {
 		body, _ := json.Marshal(map[string]any{"node_uuids": []string{node.UUID}, "cache_path": p})
 		req := httptest.NewRequest(http.MethodPatch, endpoint, strings.NewReader(string(body)))
 		req.AddCookie(cookie)
@@ -62,19 +73,23 @@ func TestStorageCacheOverridesRespectConfiguredRoots(t *testing.T) {
 	if err != nil || len(rows) != 0 {
 		t.Fatalf("invalid overrides persisted: %+v %v", rows, err)
 	}
-	body, _ := json.Marshal(map[string]any{"node_uuids": []string{node.UUID}, "cache_path": "/srv/models/node-cache"})
+	body, _ := json.Marshal(map[string]any{"node_uuids": []string{node.UUID}, "cache_path": "/outside/node-cache"})
 	req := httptest.NewRequest(http.MethodPatch, endpoint, strings.NewReader(string(body)))
 	req.AddCookie(cookie)
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 	if rec.Code != 200 {
-		t.Fatalf("configured cache root rejected: %d %s", rec.Code, rec.Body.String())
+		t.Fatalf("custom cache path rejected: %d %s", rec.Code, rec.Body.String())
+	}
+	rows, err = st.StorageNodes(storage.ID)
+	if err != nil || len(rows) != 1 || rows[0].CachePath != "/outside/node-cache" {
+		t.Fatalf("custom cache override not persisted: %+v %v", rows, err)
 	}
 }
 
 // A stored path that is outside the current roots does not block a change
-// that leaves the path alone. Submitting that path, or a new path outside
-// the roots, is still refused and the error names the path.
+// that leaves the path alone. Resubmitting it, including node and cache
+// paths, also succeeds without moving it under a configured root.
 func TestPatchStorageDoesNotRejudgeStoredPaths(t *testing.T) {
 	st, signer, _ := newSessionRouter(t)
 	node, err := st.RegisterNode("root-policy-node", "root-policy-token", "node")
@@ -129,15 +144,14 @@ func TestPatchStorageDoesNotRejudgeStoredPaths(t *testing.T) {
 		case "/opt/gpuworks/cache":
 			body = `{"cache_path":"/opt/gpuworks/cache"}`
 		case "/opt/gpuworks/node":
-			body = `{"targets":[{"node_uuid":"` + node.UUID + `","path":"/opt/gpuworks/node"}]}`
+			body = `{"targets":[{"node_uuid":"` + node.UUID + `","path":"/opt/gpuworks/node","cache_path":"/opt/gpuworks/node-cache"}]}`
 		default:
-			body = `{"targets":[{"node_uuid":"` + node.UUID + `","cache_path":"/opt/gpuworks/node-cache"}]}`
+			body = `{"targets":[{"node_uuid":"` + node.UUID + `","path":"/opt/gpuworks/node","cache_path":"/opt/gpuworks/node-cache"}]}`
 		}
-		requireOutsideRoot(t, call(http.MethodPatch, endpoint, body), path, "/var/lib/gpuworks")
+		requireStorageStatus(t, call(http.MethodPatch, endpoint, body), http.StatusOK)
 	}
 	assertStoredPaths("/opt/gpuworks/cache")
-	// A submitted inside cache does not pull the stored path or targets back
-	// under the root check.
+	// Changing the cache directory keeps the stored path and targets intact.
 	rec := call(http.MethodPatch, endpoint, `{"cache_path":"/var/lib/gpuworks/cache"}`)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("cache inside the roots = %d %s", rec.Code, rec.Body.String())
@@ -155,29 +169,14 @@ func TestPatchStorageDoesNotRejudgeStoredPaths(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("move inside the roots = %d %s", rec.Code, rec.Body.String())
 	}
-	requireOutsideRoot(t, call(http.MethodPost, "/api/v1/storages", `{"name":"again","type":"local","path":"/opt/gpuworks/models"}`), "/opt/gpuworks/models", "/var/lib/gpuworks")
-	requireOutsideRoot(t, call(http.MethodPost, "/api/v1/storages", `{"name":"cache-out","type":"local","path":"/var/lib/gpuworks/models","cache_path":"/opt/gpuworks/cache"}`), "/opt/gpuworks/cache", "/var/lib/gpuworks")
-	requireOutsideRoot(t, call(http.MethodPost, "/api/v1/storages", `{"name":"tgt-out","type":"local","path":"/var/lib/gpuworks/models","targets":[{"node_uuid":"`+node.UUID+`","path":"/opt/gpuworks/node","cache_path":"/opt/gpuworks/node-cache"}]}`), "/opt/gpuworks/node", "/var/lib/gpuworks")
+	requireStorageStatus(t, call(http.MethodPost, "/api/v1/storages", `{"name":"again","type":"local","path":"/opt/gpuworks/models"}`), http.StatusCreated)
+	requireStorageStatus(t, call(http.MethodPost, "/api/v1/storages", `{"name":"cache-out","type":"local","path":"/var/lib/gpuworks/models","cache_path":"/opt/gpuworks/cache"}`), http.StatusCreated)
+	requireStorageStatus(t, call(http.MethodPost, "/api/v1/storages", `{"name":"tgt-out","type":"local","path":"/var/lib/gpuworks/models","targets":[{"node_uuid":"`+node.UUID+`","path":"/opt/gpuworks/node","cache_path":"/opt/gpuworks/node-cache"}]}`), http.StatusCreated)
 }
 
-func requireOutsideRoot(t *testing.T, rec *httptest.ResponseRecorder, path, root string) {
+func requireStorageStatus(t *testing.T, rec *httptest.ResponseRecorder, status int) {
 	t.Helper()
-	var body struct {
-		Code   string         `json:"code"`
-		Error  string         `json:"error"`
-		Params map[string]any `json:"params"`
+	if rec.Code != status {
+		t.Fatalf("storage response = %d %s, want %d", rec.Code, rec.Body.String(), status)
 	}
-	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil || rec.Code != http.StatusBadRequest || body.Code != ErrorStoragePathInvalid {
-		t.Fatalf("outside root %s = %d %s", path, rec.Code, rec.Body.String())
-	}
-	if !strings.Contains(body.Error, path) || !strings.Contains(body.Error, root) || body.Params["path"] != path {
-		t.Fatalf("fallback/params = %+v", body)
-	}
-	roots, _ := body.Params["allowed_roots"].([]any)
-	for _, item := range roots {
-		if item == root {
-			return
-		}
-	}
-	t.Fatalf("allowed_roots = %#v", body.Params["allowed_roots"])
 }

@@ -329,8 +329,8 @@ def exercise_edit_conflict(page, server, storage, common, storage_id, name, path
 def test_storage_local(page, context, server, artifacts, report, locale):
     storage, common, auth = strings(locale)
     name = f"e2e-{report['run_id'].lower()}-{uuid.uuid4().hex[:6]}"
-    path = str(server.storage_root / f"e2e-{report['run_id'].lower()}")
-    outside = f"/tmp/e2e-{report['run_id'].lower()}-outside-root"
+    path = str(server.work / f"e2e-{report['run_id'].lower()}")
+    protected_path = f"/etc/e2e-{report['run_id'].lower()}-system-directory"
     page_errors, console_errors, bad_responses, posts = [], [], [], []
     authenticated = False
     page.on("pageerror", lambda error: page_errors.append(str(error)))
@@ -342,7 +342,7 @@ def test_storage_local(page, context, server, artifacts, report, locale):
             source = urlsplit(message.location.get("url", "")).path
             if not authenticated and source == "/api/v1/auth/me" and "401" in message.text:
                 return
-            # Chrome's resource-error line for the asserted out-of-root refusal.
+            # Chrome's resource-error line for the asserted system-directory refusal.
             if source == STORAGES and "status of 400" in message.text:
                 refusal_console.append(message.text)
                 return
@@ -428,22 +428,22 @@ def test_storage_local(page, context, server, artifacts, report, locale):
     check(posts == [], "a relative path saved")
     report["last_step"] = "invalid-path-rejected"
 
-    # The server, not the form, owns the root boundary: an absolute path outside
-    # storage_probe_roots reaches the API, is refused, and the draft stays open.
-    path_input.fill(outside)
+    # System directories remain protected even though ordinary custom paths
+    # no longer need to fall under the configured storage_probe_roots setting.
+    path_input.fill(protected_path)
     with page.expect_response(lambda r: urlsplit(r.url).path == STORAGES
                               and r.request.method == "POST") as refused:
         save.click()
     refused_body = refused.value.request.post_data_json
-    check(refused_body == {"name": name, "type": "local", "all_nodes": True, "targets": [], "path": outside},
-          f"out-of-root create body differs: {refused_body}")
+    check(refused_body == {"name": name, "type": "local", "all_nodes": True, "targets": [], "path": protected_path},
+          f"system-directory create body differs: {refused_body}")
     refusal = refused.value.json()
     check(refused.value.status == 400 and refusal.get("code") == "STORAGE_PATH_INVALID",
-          f"out-of-root path: expected 400 STORAGE_PATH_INVALID, received {refused.value.status} {refusal}")
+          f"system-directory path: expected 400 STORAGE_PATH_INVALID, received {refused.value.status} {refusal}")
     alert = modal.get_by_role("alert").filter(has_text=storage["form"]["saveFailed"])
     expect(alert).to_contain_text(common["apiError"]["STORAGE_PATH_INVALID"])
     expect(name_input).to_have_value(name)
-    expect(path_input).to_have_value(outside)
+    expect(path_input).to_have_value(protected_path)
     listed = page.request.get(server.base + STORAGES).json()["items"]
     check(all(item["name"] != name for item in listed), "a refused storage was created")
     # This refusal is the asserted outcome, not a browser error.
@@ -451,7 +451,7 @@ def test_storage_local(page, context, server, artifacts, report, locale):
     check(bad_responses.count(expected_http) == 1, f"expected exactly one refused POST: {bad_responses}")
     bad_responses.remove(expected_http)
     check(len(refusal_console) == 1, f"expected one console line for the refused POST: {refusal_console}")
-    report["last_step"] = "outside-root-path-refused"
+    report["last_step"] = "system-directory-refused"
 
     # Retrying in the same dialog is BLOCKED_PRODUCT (coverage/storage-local.json): after a
     # fast refusal the Save button can keep AntD's loading icon in its accessible name.
@@ -554,7 +554,7 @@ def test_storage_local(page, context, server, artifacts, report, locale):
          "nfs_save_disabled": True,
          "invalid_name": storage["form"]["error"]["name"],
          "invalid_path": storage["form"]["error"]["pathAbsolute"],
-         "outside_root_alert": [storage["form"]["saveFailed"], common["apiError"]["STORAGE_PATH_INVALID"]],
+         "system_directory_alert": [storage["form"]["saveFailed"], common["apiError"]["STORAGE_PATH_INVALID"]],
          "created": name, "deleted": name,
          "delete_confirmation": {"title": format_text(
              storage["actions"]["deleteConfirm"], name=name),

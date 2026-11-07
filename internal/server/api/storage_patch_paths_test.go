@@ -22,6 +22,8 @@ func TestStoragePatchPaths(t *testing.T) {
 		status      int
 		update      func(*store.Storage)
 		targetPath  string
+
+		targetCache string
 	}{
 		{name: "rename", storageType: proto.StorageLocal, legacy: true, body: `{"name":"renamed"}`, status: 200,
 			update: func(s *store.Storage) { s.Name = "renamed" }},
@@ -37,18 +39,25 @@ func TestStoragePatchPaths(t *testing.T) {
 			update: func(s *store.Storage) { s.CachePath = "/srv/models/cache" }},
 		{name: "node_path_with_unchanged_legacy_paths", storageType: proto.StorageNFSCache, legacy: true,
 			body: `{"targets":[{"node_uuid":"patch-path-node","path":"/srv/models/node"}]}`, status: 200, targetPath: "/srv/models/node"},
-		{name: "outside_path", storageType: proto.StorageLocal, body: `{"name":"renamed","path":"/outside/models"}`, status: 400},
-		{name: "outside_cache", storageType: proto.StorageNFSCache, body: `{"name":"renamed","cache_path":"/outside/cache"}`, status: 400},
+		{name: "outside_path", storageType: proto.StorageLocal, body: `{"name":"renamed","path":"/outside/models"}`, status: 200,
+			update: func(s *store.Storage) { s.Name, s.Path = "renamed", "/outside/models" }},
+		{name: "outside_cache", storageType: proto.StorageNFSCache, body: `{"name":"renamed","cache_path":"/outside/cache"}`, status: 200,
+			update: func(s *store.Storage) { s.Name, s.CachePath = "renamed", "/outside/cache" }},
 		{name: "resubmitted_legacy_path", storageType: proto.StorageLocal, legacy: true,
-			body: `{"name":"renamed","path":"/opt/gpuworks/models"}`, status: 400},
+			body: `{"name":"renamed","path":"/opt/gpuworks/models"}`, status: 200,
+			update: func(s *store.Storage) { s.Name = "renamed" }},
 		{name: "resubmitted_legacy_cache", storageType: proto.StorageNFSCache, legacy: true,
-			body: `{"name":"renamed","cache_path":"/opt/gpuworks/cache/legacy"}`, status: 400},
-		{name: "similar_prefix", storageType: proto.StorageLocal, body: `{"name":"renamed","path":"/srv/models-other"}`, status: 400},
+			body: `{"name":"renamed","cache_path":"/opt/gpuworks/cache/legacy"}`, status: 200,
+			update: func(s *store.Storage) { s.Name = "renamed" }},
+		{name: "similar_prefix", storageType: proto.StorageLocal, body: `{"name":"renamed","path":"/srv/models-other"}`, status: 200,
+			update: func(s *store.Storage) { s.Name, s.Path = "renamed", "/srv/models-other" }},
 		{name: "system_path", storageType: proto.StorageLocal, body: `{"name":"renamed","path":"/etc"}`, status: 400},
 		{name: "outside_node_path", storageType: proto.StorageNFSCache,
-			body: `{"name":"renamed","targets":[{"node_uuid":"patch-path-node","path":"/outside/node"}]}`, status: 400},
+			body: `{"name":"renamed","targets":[{"node_uuid":"patch-path-node","path":"/outside/node"}]}`, status: 200, targetPath: "/outside/node",
+			update: func(s *store.Storage) { s.Name = "renamed" }},
 		{name: "outside_node_cache", storageType: proto.StorageNFSCache,
-			body: `{"name":"renamed","targets":[{"node_uuid":"patch-path-node","cache_path":"/outside/cache"}]}`, status: 400},
+			body: `{"name":"renamed","targets":[{"node_uuid":"patch-path-node","cache_path":"/outside/cache"}]}`, status: 200, targetCache: "/outside/cache",
+			update: func(s *store.Storage) { s.Name = "renamed" }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			st, signer, _ := newSessionRouter(t)
@@ -110,8 +119,8 @@ func TestStoragePatchPaths(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if tc.targetPath != "" {
-				if len(targets) != 1 || targets[0].NodeID != node.ID || targets[0].Path != tc.targetPath {
+			if tc.targetPath != "" || tc.targetCache != "" {
+				if len(targets) != 1 || targets[0].NodeID != node.ID || targets[0].Path != tc.targetPath || targets[0].CachePath != tc.targetCache {
 					t.Fatalf("persisted targets = %+v", targets)
 				}
 			} else if len(targets) != 0 {
