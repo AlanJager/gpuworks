@@ -23,6 +23,8 @@ type fakeEndpoint struct {
 	bodies        []map[string]any
 	fail          bool
 	failureStatus int
+	// textField names the delta field the chunks carry; empty is "content".
+	textField string
 }
 
 func (f *fakeEndpoint) serve(t *testing.T) *httptest.Server {
@@ -32,8 +34,11 @@ func (f *fakeEndpoint) serve(t *testing.T) *httptest.Server {
 		_ = json.NewDecoder(r.Body).Decode(&body)
 		f.mu.Lock()
 		f.bodies = append(f.bodies, body)
-		fail := f.fail
+		fail, field := f.fail, f.textField
 		f.mu.Unlock()
+		if field == "" {
+			field = "content"
+		}
 		if fail {
 			status := f.failureStatus
 			if status == 0 {
@@ -44,7 +49,7 @@ func (f *fakeEndpoint) serve(t *testing.T) *httptest.Server {
 		}
 		w.Header().Set("Content-Type", "text/event-stream")
 		for _, piece := range []string{"a", "b", "c"} {
-			_, _ = w.Write([]byte(`data: {"choices":[{"delta":{"content":"` + piece + `"}}]}` + "\n\n"))
+			_, _ = w.Write([]byte(`data: {"choices":[{"delta":{"` + field + `":"` + piece + `"}}]}` + "\n\n"))
 			w.(http.Flusher).Flush()
 			time.Sleep(2 * time.Millisecond)
 		}
@@ -342,5 +347,36 @@ func TestLongTailCarriesOptionalFacts(t *testing.T) {
 	var back LongTailDoc
 	if err := json.Unmarshal([]byte(want), &back); err != nil || back.Speculative == nil || *back.KVHitRate != 0.5 {
 		t.Fatalf("round trip = %+v err=%v", back, err)
+	}
+}
+
+func TestUnrecognizedStreamOutputWarnsOnce(t *testing.T) {
+	for _, tc := range []struct {
+		field string
+		warn  bool
+	}{{"content", false}, {"reasoning", false}, {"text", true}} {
+		t.Run(tc.field, func(t *testing.T) {
+			endpoint := &fakeEndpoint{textField: tc.field}
+			srv := endpoint.serve(t)
+			rec := &recorder{}
+			Execute(context.Background(), Run{TokenizerRef: testTokenizerRef(t),
+				ID: 9, Model: "m", Mode: "grid", Client: loadgen.Client{BaseURL: srv.URL},
+				Dataset: json.RawMessage(`{"kind":"random","ignore_eos":true}`),
+				Search:  json.RawMessage(`{"concurrency":[1,2],"isl":[8],"osl":[3],"requests_per_point_multiplier":1}`),
+			}, rec.hooks())
+			if done := rec.last(); done.State != "done" {
+				t.Fatalf("terminal status = %+v", done)
+			}
+			warned := 0
+			for _, code := range rec.warnings {
+				if code == proto.BenchmarkWarningStreamOutputUnrecognized {
+					warned++
+				}
+			}
+			// One warning per point; the store keeps a code once per run.
+			if (warned > 0) != tc.warn {
+				t.Fatalf("field %q warnings = %v", tc.field, rec.warnings)
+			}
+		})
 	}
 }

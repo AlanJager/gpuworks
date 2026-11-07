@@ -33,11 +33,18 @@ type EvidenceOutcomes struct {
 	RetryCount          int `json:"retry_count"`
 }
 type RequestEvidence struct {
-	Attempted         int            `json:"attempted"`
-	Success           int            `json:"success"`
-	Failed            int            `json:"failed"`
-	Canceled          int            `json:"canceled"`
-	TTFT              MetricSummary  `json:"ttft"`
+	Attempted int           `json:"attempted"`
+	Success   int           `json:"success"`
+	Failed    int           `json:"failed"`
+	Canceled  int           `json:"canceled"`
+	TTFT      MetricSummary `json:"ttft"`
+	// FirstContent is the time to the first visible answer text; TTFT also
+	// counts reasoning. NoContent counts successful requests that streamed
+	// output but no answer text, such as a reasoning model spending the whole
+	// output budget thinking. Both are absent from evidence recorded before
+	// they existed.
+	FirstContent      MetricSummary  `json:"first_content"`
+	NoContent         int            `json:"no_content"`
 	TPOT              MetricSummary  `json:"tpot"`
 	LastOutputLatency MetricSummary  `json:"last_output_latency"`
 	Completion        MetricSummary  `json:"completion"`

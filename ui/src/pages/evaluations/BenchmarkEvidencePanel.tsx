@@ -33,6 +33,15 @@ export default function BenchmarkEvidencePanel({ run, point }: { run: BenchmarkR
       return summary.count > 0 ? `${number(summary.p50_ms)} / ${number(summary.p99_ms)} ms · n=${summary.count}` : unknown;
     },
   });
+  // TTFT counts reasoning; first visible answer text is a separate time, and a
+  // reasoning model can finish a request without any.
+  const firstContentColumn = {
+    title: t("evidence.firstContent"), key: "first_content", render: (_: unknown, row: typeof groups[number]) => {
+      const summary = row.value.first_content;
+      const timing = summary && summary.count > 0 ? `${number(summary.p50_ms)} / ${number(summary.p99_ms)} ms · n=${summary.count}` : unknown;
+      return row.value.no_content ? `${timing} · ${t("evidence.noContent", { count: row.value.no_content })}` : timing;
+    },
+  };
   const reasonRows = Object.entries(all.finish_reasons || {}).map(([reason, count]) => ({ reason, count }));
   const finishUnknown = Math.max(0, all.attempted - reasonRows.reduce((total, row) => total + row.count, 0));
   return <Card title={t("evidence.title")} extra={point?.detail_path ? <Button href={`/api/v1/benchmarks/${run.id}/points/${point.seq}/detail`}>{t("evidence.download")}</Button> : undefined}>
@@ -47,10 +56,10 @@ export default function BenchmarkEvidencePanel({ run, point }: { run: BenchmarkR
         { key: "sessionTime", label: t("evidence.sessionLatency"), children: timing.completed_session_latency.count > 0 ? `${number(timing.completed_session_latency.p50_ms)} / ${number(timing.completed_session_latency.p99_ms)} ms · n=${timing.completed_session_latency.count}` : unknown },
       ]} />
       <Typography.Text type="secondary">{t("evidence.percentiles")}</Typography.Text>
-      <Table size="small" rowKey="key" pagination={false} scroll={{ x: 760 }} dataSource={groups} columns={[
+      <Table size="small" rowKey="key" pagination={false} scroll={{ x: 900 }} dataSource={groups} columns={[
         { title: t("evidence.group"), dataIndex: "name" },
         { title: t("evidence.attempted"), render: (_, row) => row.value.attempted },
-        metricColumns("ttft", "TTFT"), metricColumns("tpot", "TPOT"),
+        metricColumns("ttft", "TTFT"), firstContentColumn, metricColumns("tpot", "TPOT"),
         metricColumns("last_output_latency", t("evidence.lastOutput")), metricColumns("completion", t("evidence.completion")),
       ]} />
       <Typography.Title level={5}>{t("evidence.tokens")}</Typography.Title>
