@@ -45,6 +45,11 @@ func (n *NodeRuntime) rpcModelSyncListen(params json.RawMessage) (any, error) {
 		return nil, errors.New("model sync target_path must stay inside the managed model directory")
 	}
 	p.TargetPath = cleanTarget
+	// A model larger than the archive limit would be cut off only after its
+	// limit's worth had crossed the network, so it is refused before listening.
+	if !modelArchiveFits(p.ExpectedFileBytes) {
+		return nil, fmt.Errorf("model sync of %d bytes exceeds the %d-byte transfer limit", p.ExpectedFileBytes, modelArchiveHardLimit)
+	}
 	n.syncMu.Lock()
 	if current := n.modelSyncs[p.Key]; current != nil {
 		n.syncMu.Unlock()
@@ -228,16 +233,25 @@ func (n *NodeRuntime) rpcModelSyncStop(params json.RawMessage) (any, error) {
 	return map[string]string{"status": "stopping"}, nil
 }
 
+// modelArchiveHardLimit bounds one peer model transfer. It is far above image
+// archives' limit because a quantized trillion-parameter checkpoint alone is
+// about 1.5 TB.
+const modelArchiveHardLimit int64 = 4 << 40
+
+// modelArchiveLimit is the most a transfer may carry: the expected file bytes
+// plus 5% and 1 GiB for the archive's own framing, never above the hard limit.
 func modelArchiveLimit(expectedFileBytes int64) int64 {
-	const hardLimit int64 = 4 << 40
-	if expectedFileBytes <= 0 {
-		return hardLimit
+	if expectedFileBytes <= 0 || expectedFileBytes > modelArchiveHardLimit {
+		return modelArchiveHardLimit
 	}
-	limit := expectedFileBytes + expectedFileBytes/20 + 1<<30
-	if limit > hardLimit {
-		return hardLimit
-	}
-	return limit
+	return min(expectedFileBytes+expectedFileBytes/20+1<<30, modelArchiveHardLimit)
+}
+
+// modelArchiveFits reports whether a model of the expected size fits its
+// limit with that headroom. An unknown size (0) is bounded only by the hard
+// limit while it streams.
+func modelArchiveFits(expectedFileBytes int64) bool {
+	return expectedFileBytes <= 0 || (expectedFileBytes <= modelArchiveHardLimit && expectedFileBytes+expectedFileBytes/20+1<<30 <= modelArchiveHardLimit)
 }
 
 func boundedModelSyncMessage(err error) string {

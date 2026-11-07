@@ -34,6 +34,12 @@ const (
 	// no cost.
 	DefaultWarmupRequests = 1
 	MaxWarmupRequests     = 1000
+	// Each request, warmup included, is abandoned after its timeout. Ten
+	// minutes covers a long-context prefill queued behind other requests;
+	// a run that sends longer requests raises it.
+	DefaultRequestTimeoutSeconds = 600
+	MinRequestTimeoutSeconds     = 10
+	MaxRequestTimeoutSeconds     = 7200
 )
 
 type Option struct {
@@ -99,7 +105,8 @@ type Meta struct {
 }
 
 // LoadDefaultsMeta holds the defaults and bounds of the advanced load
-// settings: warmup, open-loop arrivals and the fixed-output-length switch.
+// settings: warmup, open-loop arrivals, the per-request timeout and the
+// fixed-output-length switch.
 type LoadDefaultsMeta struct {
 	WarmupRequests       int     `json:"warmup_requests"`
 	MaxWarmupRequests    int     `json:"max_warmup_requests"`
@@ -112,6 +119,9 @@ type LoadDefaultsMeta struct {
 	MaxRequestRates      int     `json:"max_request_rates"`
 	MaxBurstiness        float64 `json:"max_burstiness"`
 	MaxInFlight          int     `json:"max_in_flight"`
+	RequestTimeout       int     `json:"request_timeout_s"`
+	MinRequestTimeout    int     `json:"min_request_timeout_s"`
+	MaxRequestTimeout    int     `json:"max_request_timeout_s"`
 	// IgnoreEOS is the default of the fixed-output-length switch for the
 	// datasets that offer it (IgnoreEOSDatasets).
 	IgnoreEOS         bool     `json:"ignore_eos"`
@@ -169,6 +179,7 @@ func dictionaryDefinition() Meta {
 			MinPointDuration: MinPointDurationSeconds, MaxPointDuration: MaxPointDurationSeconds,
 			MinOpenLoopRequests: MinOpenLoopRequests, MaxRequestRate: MaxRequestRate, MaxRequestRates: MaxRequestRates,
 			MaxBurstiness: MaxBurstiness, MaxInFlight: MaxInFlight,
+			RequestTimeout: DefaultRequestTimeoutSeconds, MinRequestTimeout: MinRequestTimeoutSeconds, MaxRequestTimeout: MaxRequestTimeoutSeconds,
 			IgnoreEOS: true, IgnoreEOSDatasets: dataset.IgnoreEOSKinds(),
 		},
 	}

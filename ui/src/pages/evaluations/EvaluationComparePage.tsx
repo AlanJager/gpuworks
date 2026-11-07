@@ -58,6 +58,7 @@ function parameterDiff(series: Series[], t: TFunction) {
 		["maxConcurrency", t("compare.diff.maxConcurrency"), (item: Series) => String(item.run.search?.max_concurrency || "—")],
 		["requestRates", t("compare.diff.requestRates"), (item: Series) => item.run.search?.request_rates?.join(",") || "—"],
 		["warmup", t("compare.diff.warmup"), (item: Series) => String(item.run.search?.warmup_requests ?? 0)],
+		["requestTimeout", t("compare.diff.requestTimeout"), (item: Series) => item.run.search?.request_timeout_s ? `${item.run.search.request_timeout_s}s` : "—"],
 		["ignoreEOS", t("compare.diff.ignoreEOS"), (item: Series) => item.run.dataset?.ignore_eos == null ? "—" : t(item.run.dataset.ignore_eos ? "compare.diff.on" : "compare.diff.off")],
 		["gain", t("compare.diff.gain"), (item: Series) => item.run.search?.min_throughput_gain == null ? "—" : `${Number(item.run.search.min_throughput_gain) * 100}%`],
 		["sla", t("compare.diff.sla"), (item: Series) => item.run.mode === "sla" ? JSON.stringify(Object.fromEntries(Object.entries(item.run.search || {}).filter(([key]) => key.startsWith("min_") || key.startsWith("max_") && key !== "max_concurrency" && key !== "max_in_flight"))) : "—"],

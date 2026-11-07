@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"sync/atomic"
 	"time"
 
@@ -87,6 +88,7 @@ func (e *execution) execute(ctx context.Context) error {
 	if err := e.loadTokenizer(ctx); err != nil {
 		return err
 	}
+	e.run.Client.HTTP = withRequestTimeout(e.run.Client.HTTP, doc.RequestTimeout())
 
 	var points []search.Point
 	var adaptive *search.Strategy
@@ -383,4 +385,16 @@ func LongTail(s metrics.Snapshot) LongTailDoc {
 func streamOutputUnrecognized(r loadgen.Result) bool {
 	m := r.Metrics
 	return r.Stream && m.Error == nil && !m.Canceled && m.FirstOutputAt.IsZero() && m.ServerOutputTokens != nil && *m.ServerOutputTokens > 0
+}
+
+// withRequestTimeout gives the inference requests of a run its configured
+// timeout in place of the origin client's default, keeping the origin's
+// transport and redirect policy. The origin's client is not modified.
+func withRequestTimeout(client *http.Client, timeout time.Duration) *http.Client {
+	if client == nil {
+		return &http.Client{Timeout: timeout}
+	}
+	bounded := *client
+	bounded.Timeout = timeout
+	return &bounded
 }

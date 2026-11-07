@@ -411,6 +411,7 @@ Load-test an OpenAI-compatible endpoint (the Benchmarks page uses the same built
 | `--max-in-flight N` | `0` | Maximum in-flight requests in open-loop mode; 0 means unlimited |
 | `--point-duration S` | `60` | Arrival duration per open-loop point (seconds); request count = arrival rate × duration, with a minimum of 20 |
 | `--warmup-requests N` | `1` | Warmup requests sent and discarded before the first point; 0 disables warmup |
+| `--request-timeout S` | `600` | Seconds each request, warmup included, may take before it fails; 10–7200 |
 | `--ignore-eos BOOL` | `true` | Include `ignore_eos` in random / agentic requests to generate up to the target output length |
 | `--dataset KIND` | `random` | `random` / `multiturn` / `agentic` |
 | `--preset NAME` | `agentic-80k-v1` | Agentic input preset: `agentic-{10k,20k,40k,80k,128k,256k,512k,1m}-v1` |

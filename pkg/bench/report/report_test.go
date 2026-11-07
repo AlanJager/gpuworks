@@ -294,3 +294,21 @@ func TestWarmupReportDistinguishesCanceledAttemptFromFailure(t *testing.T) {
 		t.Fatalf("cancellation misreported as failure: %s", document.Body)
 	}
 }
+
+func TestReportStatesTheConfiguredRequestTimeout(t *testing.T) {
+	for _, tc := range []struct{ search, want string }{
+		{`{"concurrency":1,"request_timeout_s":1800}`, "| Configured request timeout | 1800 seconds |"},
+		// A run stored before the setting existed does not record what bounded
+		// its requests, so the report claims no value for it.
+		{`{"concurrency":1}`, "| Configured request timeout | not recorded |"},
+	} {
+		run := Run{ID: 7, Name: "timeout", Model: "m", Dataset: []byte(`{"kind":"random","input_tokens":8,"output_tokens":4}`), Search: []byte(tc.search), Points: []Point{{Concurrency: 1, Success: 1}}}
+		doc, err := Render("markdown", run)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if body := string(doc.Body); !strings.Contains(body, tc.want) {
+			t.Fatalf("report for %s missing %q:\n%s", tc.search, tc.want, body)
+		}
+	}
+}

@@ -677,11 +677,10 @@ specs:
 #
 # Memory utilisation is 0.90 rather than the Decode role's 0.80: 32 ranks put
 # 42.8 GiB of weights on each 64 GiB device before any cache, where upstream's
-# 64 ranks put 21.4 GiB.
+# 64 ranks put 21.4 GiB. 0.95 and 0.98 ran out of device memory under 200K
+# multi-turn load.
 #
-# No 950DT profile is stated: its 8 devices per node cannot hold these weights
-# on the node count upstream publishes a recipe for, and no 950DT hardware was
-# available.
+# No 950DT profile is stated: it has not been validated yet.
 #
 # Validated on two 910C nodes with 16 dies each, using TP16 per node and PP2
 # across the nodes. Ascend multi-node runs on an accelerator RDMA or HCCS

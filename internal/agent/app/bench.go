@@ -109,6 +109,8 @@ func (e *benchEngine) run(ctx context.Context, s proto.BenchmarkSpec) {
 	}
 	benchrun.Execute(ctx, benchrun.Run{
 		ID: s.ID, Model: s.Model, Mode: s.Mode, Dataset: s.Dataset, Search: s.Search, TokenizerRef: s.TokenizerRef,
+		// This bound covers loading the tokenizer from the target; benchrun
+		// gives inference requests the run's configured timeout.
 		Client: loadgen.Client{HTTP: &http.Client{Timeout: 5 * time.Minute}, BaseURL: s.TargetURL, APIKey: s.APIKey},
 	}, benchrun.Hooks{
 		Report: report,

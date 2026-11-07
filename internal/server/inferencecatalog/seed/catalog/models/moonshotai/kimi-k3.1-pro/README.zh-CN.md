@@ -44,7 +44,7 @@ Kimi 的 tokenizer 是 tiktoken（`tiktoken.model`），评测的自动 tokenize
 
 `w4a8-vllm-ascend-a3-multinode-16npu` 使用官方 `kimi-k3.1-pro-a3` 镜像与 W4A8 权重（约 1.47 TB，显存约 1.34 TiB），采用单实例多机共置：节点内 TP16，每节点一个流水线阶段，两节点为能装下权重的最少节点数，四节点对应上游 Prefill 的阶段数。缓存精度、块大小、解析器与 MLAPO 取自上游 Decode 角色；DCP / PCP 与交织大小属于分离角色，未纳入。共置模式不启用 Decode 专用的 `recompute_scheduler_enable`。
 
-该配置已在两台各 16 个 910C die 的节点上完成 TP16 × PP2 验证：`--max-model-len 210000`、`--max-num-seqs 64`、`--gpu-memory-utilization 0.90`。随机 2048/512、Agentic 80K 与 Agentic 200K 三组共 836 个请求全部成功，另完成 93 个多长度、真实多轮、10K Agentic 与 200K 单请求。推理与工具调用需要 `--tokenizer-mode`、两个解析器与 `--enable-auto-tool-choice` 同时配置，模板已一并给出。昇腾多机跑在加速器 RDMA 或 HCCS 网络上，部署需要一个覆盖全部参与节点的此类网络。950DT 未给档位——单节点 8 卡装不下这份权重，也没有 950DT 硬件。
+该档位已在两台各 16 个 910C die 的节点上以 TP16 × PP2 跑通真实对话、工具调用，以及随机长度、Agentic 80K 与 200K 多轮负载，全部请求成功；`--max-model-len 210000`、`--max-num-seqs 64` 与 `--gpu-memory-utilization 0.90` 即验证时的取值，显存利用率调到 0.95 或 0.98 会在 200K 负载下 OOM。推理与工具调用需要 `--tokenizer-mode`、两个解析器与 `--enable-auto-tool-choice` 同时配置，模板已一并给出。昇腾多机跑在加速器 RDMA 或 HCCS 网络上，部署需要一个覆盖全部参与节点的此类网络。950DT 尚未验证，暂不提供档位。
 
 ## 不支持
 

@@ -2615,6 +2615,7 @@ export interface BenchmarkRun {
     max_in_flight?: number;
     point_duration_s?: number;
     warmup_requests?: number;
+    request_timeout_s?: number;
   };
   keep_detail: boolean;
   detail_cap_mb: number;
@@ -2785,6 +2786,9 @@ export interface BenchmarkLoadDefaults {
   max_request_rates: number;
   max_burstiness: number;
   max_in_flight: number;
+  request_timeout_s: number;
+  min_request_timeout_s: number;
+  max_request_timeout_s: number;
   ignore_eos: boolean;
   ignore_eos_datasets: string[];
 }

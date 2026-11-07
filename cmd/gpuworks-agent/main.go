@@ -413,6 +413,7 @@ func bench(args []string) error {
 	maxInFlight := fs.Int("max-in-flight", 0, "open-loop cap on requests in flight (0 = unlimited)")
 	pointDuration := fs.Float64("point-duration", benchmeta.DefaultPointDurationSeconds, "open-loop seconds of arrivals per point")
 	warmup := fs.Int("warmup-requests", benchmeta.DefaultWarmupRequests, "discarded requests sent before the first point")
+	requestTimeout := fs.Int("request-timeout", benchmeta.DefaultRequestTimeoutSeconds, "seconds each request, warmup included, may take before it fails")
 	ignoreEOS := fs.Bool("ignore-eos", true, "ask random/agentic requests to generate exactly the target output length")
 	kind := fs.String("dataset", "random", "random | multiturn | agentic")
 	preset := fs.String("preset", dataset.AgenticDefaultPreset, "agentic input preset")
@@ -427,6 +428,9 @@ func bench(args []string) error {
 	}
 	if *concurrency < 1 {
 		return fmt.Errorf("--concurrency must be positive")
+	}
+	if *requestTimeout < benchmeta.MinRequestTimeoutSeconds || *requestTimeout > benchmeta.MaxRequestTimeoutSeconds {
+		return fmt.Errorf("--request-timeout must be between %d and %d seconds", benchmeta.MinRequestTimeoutSeconds, benchmeta.MaxRequestTimeoutSeconds)
 	}
 	concs, err := parseCSVInts(*concurrencyList, *concurrency)
 	if err != nil {
@@ -452,7 +456,7 @@ func bench(args []string) error {
 	}
 	rawConcurrency, _ := json.Marshal(concs)
 	doc := search.Document{Concurrency: rawConcurrency, ISL: isls, OSL: osls, RequestsPerPointMultiplier: 2, WarmupRequests: *warmup,
-		RequestRates: rates, Burstiness: *burstiness, MaxInFlight: *maxInFlight, PointDurationSeconds: *pointDuration}
+		RequestTimeoutSeconds: *requestTimeout, RequestRates: rates, Burstiness: *burstiness, MaxInFlight: *maxInFlight, PointDurationSeconds: *pointDuration}
 	if *kind == "agentic" {
 		doc.SessionsPerPoint = map[string]int{"1": 4, "2": 8, "4": 8, "8": 16}
 	}
