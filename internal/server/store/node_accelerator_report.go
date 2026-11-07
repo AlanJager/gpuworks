@@ -343,13 +343,19 @@ func preloadCards(db *gorm.DB) *gorm.DB {
 }
 
 // withCards runs a node query with its cards preloaded as one read. The
-// preload is a second statement, and outside a transaction a status report
-// committed between the two pairs a node row from before the report with the
-// cards it wrote (a dGPU capability then derived from cards the node row does
-// not know the runtime of yet). Inside one transaction both statements read
-// the same snapshot.
-func withCards(db *gorm.DB, query func(*gorm.DB) error) error {
-	return db.Transaction(func(tx *gorm.DB) error { return query(preloadCards(tx)) })
+// preload is a second statement, and between two separate statements a status
+// report can commit, pairing a node row from before the report with the cards
+// it wrote (a dGPU capability then derived from cards the node row does not
+// know the runtime of yet). On the read pool both statements run in one
+// transaction and so read one snapshot. The writer pool is a single connection
+// that every write goes through, so holding it across both statements already
+// keeps any write out, without a BEGIN and COMMIT on each lookup.
+func (s *Store) withCards(db *gorm.DB, query func(*gorm.DB) error) error {
+	run := func(tx *gorm.DB) error { return query(preloadCards(tx)) }
+	if db == s.db {
+		return db.Connection(run)
+	}
+	return db.Transaction(run)
 }
 
 // encodeCardProcesses stores the card's foreign processes as the snapshot

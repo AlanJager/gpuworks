@@ -13,7 +13,7 @@ func (s *Store) NodesByUUID(uuids []string) ([]Node, error) {
 		return nil, nil
 	}
 	var nodes []Node
-	err := withCards(s.reader(), func(q *gorm.DB) error { return q.Where("uuid IN ?", uuids).Order("id desc").Find(&nodes).Error })
+	err := s.withCards(s.reader(), func(q *gorm.DB) error { return q.Where("uuid IN ?", uuids).Order("id desc").Find(&nodes).Error })
 	if err == nil {
 		err = s.markNodeCredentialFlags(nodes)
 	}
@@ -50,7 +50,7 @@ func (s *Store) NodesForLabels(withGPUs bool) ([]Node, error) {
 	var nodes []Node
 	find := func(q *gorm.DB) error { return q.Select(labelNodeColumns).Order("id desc").Find(&nodes).Error }
 	if withGPUs {
-		return nodes, withCards(s.reader(), find)
+		return nodes, s.withCards(s.reader(), find)
 	}
 	return nodes, find(s.reader())
 }
@@ -82,7 +82,7 @@ func (s *Store) NodesForLabelsByID(ids []uint, withGPUs bool) ([]Node, error) {
 		return q.Select(labelNodeColumns).Where("id IN ?", ids).Order("id").Find(&nodes).Error
 	}
 	if withGPUs {
-		return nodes, withCards(s.reader(), find)
+		return nodes, s.withCards(s.reader(), find)
 	}
 	return nodes, find(s.reader())
 }
