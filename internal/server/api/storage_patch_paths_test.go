@@ -96,7 +96,7 @@ func TestStoragePatchPaths(t *testing.T) {
 				var response struct {
 					Code string `json:"code"`
 				}
-				if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil || response.Code != ErrorStoragePathInvalid {
+				if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil || response.Code != ErrorStoragePathDenied {
 					t.Fatalf("unexpected path error: %s, err=%v", rec.Body.String(), err)
 				}
 			}

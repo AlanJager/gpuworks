@@ -36,6 +36,10 @@ func CheckPathForm(p string) error {
 	return nil
 }
 
+// ErrDeniedPath is the refusal of a path at or below a denied directory; any
+// other ValidatePath error is a malformed path.
+var ErrDeniedPath = errors.New("operating-system directories cannot be used as storage")
+
 // ValidatePath applies CheckPathForm and refuses p at or below any denied
 // directory.
 func ValidatePath(p string, denied []string) error {
@@ -44,7 +48,7 @@ func ValidatePath(p string, denied []string) error {
 	}
 	for _, root := range denied {
 		if Within(root, p) {
-			return errors.New("operating-system directories cannot be used as storage")
+			return ErrDeniedPath
 		}
 	}
 	return nil

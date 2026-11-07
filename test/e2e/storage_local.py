@@ -438,10 +438,11 @@ def test_storage_local(page, context, server, artifacts, report, locale):
     check(refused_body == {"name": name, "type": "local", "all_nodes": True, "targets": [], "path": protected_path},
           f"system-directory create body differs: {refused_body}")
     refusal = refused.value.json()
-    check(refused.value.status == 400 and refusal.get("code") == "STORAGE_PATH_INVALID",
-          f"system-directory path: expected 400 STORAGE_PATH_INVALID, received {refused.value.status} {refusal}")
+    check(refused.value.status == 400 and refusal.get("code") == "STORAGE_PATH_DENIED"
+          and (refusal.get("params") or {}).get("path") == protected_path,
+          f"system-directory path: expected 400 STORAGE_PATH_DENIED naming the path, received {refused.value.status} {refusal}")
     alert = modal.get_by_role("alert").filter(has_text=storage["form"]["saveFailed"])
-    expect(alert).to_contain_text(common["apiError"]["STORAGE_PATH_INVALID"])
+    expect(alert).to_contain_text(format_text(common["apiError"]["STORAGE_PATH_DENIED"], path=protected_path))
     expect(name_input).to_have_value(name)
     expect(path_input).to_have_value(protected_path)
     listed = page.request.get(server.base + STORAGES).json()["items"]
@@ -554,7 +555,7 @@ def test_storage_local(page, context, server, artifacts, report, locale):
          "nfs_save_disabled": True,
          "invalid_name": storage["form"]["error"]["name"],
          "invalid_path": storage["form"]["error"]["pathAbsolute"],
-         "system_directory_alert": [storage["form"]["saveFailed"], common["apiError"]["STORAGE_PATH_INVALID"]],
+         "system_directory_alert": [storage["form"]["saveFailed"], format_text(common["apiError"]["STORAGE_PATH_DENIED"], path=protected_path)],
          "created": name, "deleted": name,
          "delete_confirmation": {"title": format_text(
              storage["actions"]["deleteConfirm"], name=name),

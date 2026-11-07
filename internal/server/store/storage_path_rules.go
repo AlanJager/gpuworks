@@ -6,6 +6,10 @@ import "gpuworks.ai/gpuworks/internal/storagerules"
 // refuses p at or below any of the denied directories.
 func CheckStoragePath(p string, denied []string) error { return storagerules.ValidatePath(p, denied) }
 
+// ErrStorageDeniedPath is what CheckStoragePath returns for a path at or
+// below a denied directory.
+var ErrStorageDeniedPath = storagerules.ErrDeniedPath
+
 // CheckStoragePathForm applies only the form rules: absolute, no dot segments
 // or control characters, not the filesystem root.
 func CheckStoragePathForm(p string) error { return storagerules.CheckPathForm(p) }

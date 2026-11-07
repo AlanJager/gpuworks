@@ -1,6 +1,9 @@
 package storagerules
 
-import "testing"
+import (
+	"errors"
+	"testing"
+)
 
 func TestValidateStoragePath(t *testing.T) {
 	denied := DefaultDeniedPaths()
@@ -27,16 +30,20 @@ func TestValidateStoragePathWithReplacedDenylist(t *testing.T) {
 		t.Errorf("built-in directory still denied after replacement: %v", err)
 	}
 	for _, p := range []string{"/opt/gpuworks", "/opt/gpuworks/bin"} {
-		if ValidatePath(p, denied) == nil {
-			t.Errorf("configured denied path accepted: %s", p)
+		if err := ValidatePath(p, denied); !errors.Is(err, ErrDeniedPath) {
+			t.Errorf("configured denied path %s: err = %v, want ErrDeniedPath", p, err)
 		}
 	}
 	if err := ValidatePath("/opt/gpuworks-models", denied); err != nil {
 		t.Errorf("similar prefix denied: %v", err)
 	}
-	for _, p := range []string{"/", "relative", "/data/../etc", "/data/\x01"} {
-		if ValidatePath(p, nil) == nil {
-			t.Errorf("malformed path accepted with an empty denylist: %q", p)
+	// A malformed path is refused for its form, never as a denied directory,
+	// even when it would also fall under one.
+	for _, list := range [][]string{nil, {"/etc"}} {
+		for _, p := range []string{"/", "relative", "/data/../etc", "/data/\x01", "/etc/../x"} {
+			if err := ValidatePath(p, list); err == nil || errors.Is(err, ErrDeniedPath) {
+				t.Errorf("malformed path %q with denylist %v: err = %v", p, list, err)
+			}
 		}
 	}
 	list := DefaultDeniedPaths()
