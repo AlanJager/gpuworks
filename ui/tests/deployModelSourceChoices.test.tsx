@@ -120,6 +120,24 @@ test("a provider the next evaluation no longer offers gives way to the recommend
   await waitFor(() => assert.equal(requested(), undefined, "with one source left nothing is asked or sent"));
 });
 
+test("a local model with no template sources clears the provider and preserves the selected storage", async () => {
+  const targets = [localTarget, nfsTarget];
+  const view = mount(acq({ providers: [huggingface, modelscope], targets }), "huggingface");
+  await waitFor(() => assert.deepEqual(requested(), { provider: "huggingface", storage_id: 1 }));
+  fireEvent.mouseDown(screen.getByRole("combobox", { name: text("saveTo") }));
+  fireEvent.click(optionRow(targetName("model-archive", "nfs")));
+  await waitFor(() => assert.deepEqual(requested(), { provider: "huggingface", storage_id: 7 }));
+
+  // The API omits providers when there are no candidates.
+  view.rerender(tree(acq({ targets }), "local"));
+  await waitFor(() => assert.deepEqual(requested(), { storage_id: 7 }));
+  assert.equal(screen.queryByRole("combobox", { name: text("modelProvider") }), null);
+  assert.equal(buildPayload({ engine: "vllm", model_id: 1, ...form.getFieldsValue(true) }).payload.model_id, 1);
+
+  view.rerender(tree(acq({ providers: [] }), "local"));
+  await waitFor(() => assert.equal(requested(), undefined));
+});
+
 // ---------------------------------------------------------------- where a fetched model is saved
 
 test("several writable storages ask where to save, default to the recommended one and send the choice", async () => {
