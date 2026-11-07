@@ -339,6 +339,17 @@ test("a save error stays in the dialog and the dialog can be cancelled from the 
   await waitFor(() => assert.equal(calls.closed, 1));
 });
 
+test("a denied directory is refused with the path and how to allow it, not a generic path error", async () => {
+  api.createStorage = (async () => { throw new APIError("STORAGE_PATH_DENIED", { path: "/etc/models" }, "english fallback from the server", 400); }) as never;
+  const { user } = renderModal();
+  await user.type(field(s.form.name), "nvme");
+  await user.type(field(s.form.path), "/etc/models");
+  await user.click(button(s.form.save));
+  const alertBox = (await screen.findByText(s.form.saveFailed)).closest(".ant-alert") as HTMLElement;
+  assert.ok(within(alertBox).getByText(locale.common.apiError.STORAGE_PATH_DENIED.replace("{{path}}", "/etc/models")));
+  assert.equal(within(alertBox).queryByText(/english fallback/), null);
+});
+
 test("a storage refresh while the edit form is open keeps what was typed", async () => {
   const first = nfsStorage();
   const view = renderModal({ storage: first });

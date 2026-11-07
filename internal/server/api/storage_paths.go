@@ -1,6 +1,10 @@
 package api
 
-import "gpuworks.ai/gpuworks/internal/server/store"
+import (
+	"errors"
+
+	"gpuworks.ai/gpuworks/internal/server/store"
+)
 
 // Callers pass only paths this request is setting. The shared rules reject
 // malformed paths and the configured denied directories without limiting
@@ -15,7 +19,10 @@ func (a *apiHandlers) validateStoragePaths(row *store.Storage, targets []store.S
 		if p == "" {
 			continue
 		}
-		if err := store.CheckStoragePath(p, denied); err != nil {
+		switch err := store.CheckStoragePath(p, denied); {
+		case errors.Is(err, store.ErrStorageDeniedPath):
+			return productError(ErrorStoragePathDenied, err.Error(), map[string]any{"path": p})
+		case err != nil:
 			return productError(ErrorStoragePathInvalid, err.Error(), map[string]any{"path": p})
 		}
 	}

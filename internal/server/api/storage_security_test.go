@@ -159,9 +159,12 @@ func TestStorageDeniedPathsFollowServerSettings(t *testing.T) {
 	requireDenied := func(rec *httptest.ResponseRecorder, what string) {
 		t.Helper()
 		var body struct {
-			Code string `json:"code"`
+			Code   string         `json:"code"`
+			Params map[string]any `json:"params"`
 		}
-		if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil || rec.Code != http.StatusBadRequest || body.Code != ErrorStoragePathInvalid {
+		// A denied directory has its own code, naming the path, so the reader
+		// learns storage_denied_paths refused it rather than its form.
+		if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil || rec.Code != http.StatusBadRequest || body.Code != ErrorStoragePathDenied || body.Params["path"] != "/opt/gpuworks/bin" {
 			t.Fatalf("%s = %d %s", what, rec.Code, rec.Body.String())
 		}
 	}

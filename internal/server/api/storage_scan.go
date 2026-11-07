@@ -181,7 +181,7 @@ func (a *apiHandlers) importStorageModels(w http.ResponseWriter, r *http.Request
 		return
 	}
 	if len(req.Items) == 0 || len(req.Items) > 2000 {
-		writeProductError(w, http.StatusBadRequest, ErrorStoragePathInvalid, "import 1-2000 directories at a time", nil)
+		writeProductError(w, http.StatusBadRequest, ErrorStorageImportCountInvalid, "import 1-2000 directories at a time", map[string]any{"max": 2000})
 		return
 	}
 	node, err := a.storageReadNode(row)
