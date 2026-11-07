@@ -113,9 +113,12 @@ func (r *storageTestRuntime) lastFile(t *testing.T, key string) proto.ModelFileS
 	return proto.ModelFileStatus{}
 }
 
+// waitFile polls for the key's latest status to be one of states. The bound is
+// only a hang detector: a copy or download fsyncs its completion marker, which
+// takes seconds on a CI disk shared with other jobs, so it must not be tight.
 func (r *storageTestRuntime) waitFile(t *testing.T, key string, states ...string) proto.ModelFileStatus {
 	t.Helper()
-	deadline := time.Now().Add(10 * time.Second)
+	deadline := time.Now().Add(60 * time.Second)
 	for time.Now().Before(deadline) {
 		r.mu.Lock()
 		for i := len(r.files) - 1; i >= 0; i-- {
