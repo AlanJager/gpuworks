@@ -176,6 +176,7 @@ GET /api/v1/inference-templates/my-chips
 GET /api/v1/inference-templates/organizations
 GET /api/v1/inference-templates/schema
 GET /api/v1/inference-templates/summary
+GET /api/v1/inference-templates/weight-models
 GET /api/v1/inference-templates/yaml
 GET /api/v1/instances
 GET /api/v1/instances/{uuid}
@@ -258,6 +259,7 @@ PATCH /api/v1/ai/configs/{id}
 PATCH /api/v1/branding
 PATCH /api/v1/images/versions/{id}
 PATCH /api/v1/images/{id}
+PATCH /api/v1/models/{id}
 PATCH /api/v1/models/{id}/inference-config
 PATCH /api/v1/nodes/management-roles
 PATCH /api/v1/nodes/{uuid}/accelerator

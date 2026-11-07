@@ -126,11 +126,15 @@
     "status": "Status",
     "progress": "Progress",
     "size": "Size",
+    "editSourceID": "Edit source ID",
+    "editSourceIDHint": "Set it to the repository ID (such as Qwen/Qwen3-0.6B) so inference templates recognize this model. Existing copies keep their paths; later copies use the new name.",
     "message": {
       "metadataUpdated": "Model metadata and Logo updated",
       "refreshFailed": "Refresh failed: {{detail}}",
       "inferenceConfigUpdated": "Model capabilities and input modalities updated",
-      "inferenceConfigFailed": "Update failed: {{detail}}"
+      "inferenceConfigFailed": "Update failed: {{detail}}",
+      "sourceIDUpdated": "Source ID updated",
+      "sourceIDFailed": "Could not change the source ID: {{detail}}"
     }
   },
   "register": {

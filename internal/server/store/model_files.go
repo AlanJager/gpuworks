@@ -144,6 +144,17 @@ func (s *Store) ModelFilesInStorage(storageID uint) ([]ModelFile, error) {
 	return mfs, err
 }
 
+// SharedModelFileAt returns the shared-storage row recorded at a path relative
+// to the storage root (idx_mf_shared_path), or ErrNotFound.
+func (s *Store) SharedModelFileAt(storageID uint, relPath string) (*ModelFile, error) {
+	var mf ModelFile
+	err := s.db.Where("storage_id = ? AND node_id = 0 AND path = ?", storageID, relPath).First(&mf).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, ErrNotFound
+	}
+	return &mf, err
+}
+
 // ModelFileByID loads one row.
 func (s *Store) ModelFileByID(id uint) (*ModelFile, error) {
 	var mf ModelFile

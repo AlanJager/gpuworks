@@ -10,7 +10,6 @@ import {
   deployDraftPayload,
   deploymentPartitionDraft,
   findTemplateSpec,
-  modelServesWeightSource,
   quickParamSpecs,
   visibleParamSpecs,
 } from "../src/pages/deploy/deployHelpers.ts";
@@ -114,74 +113,6 @@ test("manual partition draft fills only a backend explicitly ready on the select
   assert.deepEqual(
     deploymentPartitionDraft({ vram_limit_gib: 16 }, undefined, false),
     { vram_limit_gib: 16 },
-  );
-});
-
-test("template model lookup accepts the same repository whatever its provider or revision", () => {
-  const source = {
-    provider: "huggingface",
-    repo_id: "Qwen/Qwen3-1.7B",
-    revision: "70d244cc",
-    subfolder: "weights",
-  };
-  const exact = {
-    source: "huggingface",
-    source_id: "qwen/qwen3-1.7b",
-    revision: "70d244cc",
-    artifact_subfolder: "weights",
-  } as never;
-  assert.equal(modelServesWeightSource(exact, source), true);
-  assert.equal(
-    modelServesWeightSource({ ...exact, artifact_subfolder: "" }, source),
-    true,
-    "a complete repository contains the requested subfolder",
-  );
-  assert.equal(
-    modelServesWeightSource({ ...exact, revision: "main" }, source),
-    true,
-    "a pinned template revision is a preference, not an identity",
-  );
-  assert.equal(
-    modelServesWeightSource({ ...exact, revision: "" }, source),
-    true,
-    "a registration that never pinned a commit still matches",
-  );
-  assert.equal(
-    modelServesWeightSource({ ...exact, source: "modelscope" }, source),
-    true,
-    "a provider is a mirror of the same repository",
-  );
-});
-
-test("template model lookup keeps distinct repositories apart", () => {
-  const source = {
-    provider: "huggingface",
-    repo_id: "Acme/X-Int8",
-    revision: "abc",
-  };
-  const model = {
-    source: "huggingface",
-    source_id: "Acme/X-Int8",
-    revision: "abc",
-    artifact_subfolder: "",
-  } as never;
-  assert.equal(modelServesWeightSource(model, source), true);
-  assert.equal(
-    modelServesWeightSource({ ...model, source_id: "Acme/X" } as never, source),
-    false,
-    "a quantized repository is not the base model",
-  );
-  assert.equal(
-    modelServesWeightSource(model, { ...source, repo_id: "Acme/X" }),
-    false,
-  );
-  assert.equal(
-    modelServesWeightSource(
-      { ...model, artifact_subfolder: "weights" } as never,
-      source,
-    ),
-    false,
-    "a subfolder-only copy does not contain the whole repository",
   );
 });
 

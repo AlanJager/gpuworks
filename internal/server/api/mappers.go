@@ -25,6 +25,7 @@ func (a *apiHandlers) modelDTO(m *store.Model, withNodes bool) dto.Model {
 		README:    m.README, LogoPath: m.LogoPath,
 		OriginCreatedAt: utcTimePtr(m.OriginCreatedAt), OriginUpdatedAt: utcTimePtr(m.OriginUpdatedAt),
 		ContextLength: m.ContextLength, Precision: m.Precision,
+		SourceIDEditable: store.ModelSourceIDEditable(m),
 	}
 	_ = json.Unmarshal([]byte(m.Operations), &d.Operations)
 	_ = json.Unmarshal([]byte(m.InputModalities), &d.InputModalities)

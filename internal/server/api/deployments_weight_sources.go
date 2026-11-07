@@ -57,6 +57,16 @@ func specWeightSources(spec *store.InferenceSpecRow) []weightSource {
 	return sources
 }
 
+// weightSourceRepoIDs lists the repository ids the sources name, the key a
+// registered model is looked up by (see templateWeightMatchesModel).
+func weightSourceRepoIDs(sources []weightSource) []string {
+	ids := make([]string, 0, len(sources))
+	for _, source := range sources {
+		ids = append(ids, source.RepoID)
+	}
+	return ids
+}
+
 // specDeclaresProvider reports whether the spec lists a weight source at the
 // given provider.
 func specDeclaresProvider(spec *store.InferenceSpecRow, provider string) bool {

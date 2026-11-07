@@ -405,7 +405,7 @@ func (a *apiHandlers) selectWeightSource(spec store.InferenceSpecRow, nodeID uin
 		return weightSource{}, fmt.Errorf("inference spec %s has no weight source", spec.Name)
 	}
 	if nodeID != 0 {
-		models, err := a.d.Store.ListModels()
+		models, err := a.d.Store.ModelArtifactsBySourceIDs(weightSourceRepoIDs(sources)...)
 		if err != nil {
 			return weightSource{}, err
 		}

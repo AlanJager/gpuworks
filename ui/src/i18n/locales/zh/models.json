@@ -126,11 +126,15 @@
     "status": "状态",
     "progress": "进度",
     "size": "体积",
+    "editSourceID": "编辑来源 ID",
+    "editSourceIDHint": "改成仓库 ID（如 Qwen/Qwen3-0.6B）后，推理模板能识别这个模型。已有副本路径不变，之后新拷贝的副本使用新名字。",
     "message": {
       "metadataUpdated": "模型元数据和 Logo 已更新",
       "refreshFailed": "刷新失败：{{detail}}",
       "inferenceConfigUpdated": "模型能力和输入模态已更新",
-      "inferenceConfigFailed": "更新失败：{{detail}}"
+      "inferenceConfigFailed": "更新失败：{{detail}}",
+      "sourceIDUpdated": "来源 ID 已更新",
+      "sourceIDFailed": "修改来源 ID 失败：{{detail}}"
     }
   },
   "register": {

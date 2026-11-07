@@ -76,16 +76,19 @@ const DeployWeightSourceModal = (await import("../src/pages/deploy/DeployWeightS
 const useTemplateWeightSource = (
   await import("../src/pages/deploy/useTemplateWeightSource.ts")
 ).default;
-import type { ListQuery, ModelPage } from "../src/api";
+import type { TemplateWeightModels, WeightSource } from "../src/api";
 import { fakeModels, type FixtureModel } from "./helpers/fakeModels.ts";
 
 const apiAny = api as unknown as Record<string, unknown>;
-const originals = { models: api.models, modelsPage: api.modelsPage, model: api.model, quickRegisterModel: api.quickRegisterModel };
+const originals = { models: api.models, modelsPage: api.modelsPage, model: api.model, quickRegisterModel: api.quickRegisterModel, templateWeightModels: api.templateWeightModels };
 afterEach(() => {
   cleanup();
   Object.assign(api, originals);
 });
 after(() => dom.window.close());
+
+// The spec the mounted form selected, as the server's catalog holds it.
+let declared: { source: string; name: string; weight_sources: WeightSource[] } | undefined;
 
 // The page answers lookups from a registry the test controls; `hold` makes
 // each lookup wait until the test releases (or fails) it.
@@ -95,10 +98,13 @@ function serve(registry: FixtureModel[], { hold = false } = {}) {
   const registered: unknown[] = [];
   apiAny.models = fake.models_all;
   apiAny.model = fake.model;
-  apiAny.modelsPage = (query: ListQuery): Promise<ModelPage> => {
-    if (!hold) return fake.modelsPage(query);
+  apiAny.modelsPage = fake.modelsPage;
+  const answer = fake.templateWeightModels((templateID, source, name) =>
+    templateID === 3 && declared && declared.source === source && declared.name === name ? declared.weight_sources : undefined);
+  apiAny.templateWeightModels = (templateID: number, source: string, name: string): Promise<TemplateWeightModels> => {
+    if (!hold) return answer(templateID, source, name);
     return new Promise((resolve, reject) => {
-      held.push({ release: () => resolve(fake.modelsPage(query)), fail: reject });
+      held.push({ release: () => resolve(answer(templateID, source, name)), fail: reject });
     });
   };
   apiAny.quickRegisterModel = async (payload: Record<string, unknown>) => {
@@ -120,6 +126,7 @@ const oneSource = spec([{ provider: "modelscope", repo_id: "Org/Model" }]);
 
 function Host({ selection, engine = "vllm", initialSource }: { selection: unknown; engine?: string; initialSource?: Record<string, unknown> }) {
   const [form] = Form.useForm();
+  if (selection) declared = (selection as { spec: typeof declared }).spec;
   const state = useTemplateWeightSource({
     form,
     template: { id: 3 } as never,
@@ -243,7 +250,7 @@ test("a single source with a matching registered model asks for confirmation ins
   await waitFor(() => assert.equal(text("model-id"), "9"));
   assert.equal(text("template-id"), "3");
   assert.equal(registered.length, 0);
-  assert.deepEqual(fake.pages, [{ page: 1, page_size: 50, extra: { source_id: ["Org/Model"] } }]);
+  assert.deepEqual(fake.weightLookups, [[3, "upstream", "balanced"]], "the spec's registered models are asked of the server once");
 });
 
 test("a single source with no registered match registers directly, once, without a dialog (R2, R3, R8)", async () => {
@@ -370,5 +377,5 @@ test("same-name matches distinguish revisions and select the registration alread
   await waitFor(() => assert.equal(text("model-id"), "72"));
   assert.equal(registered.length, 0, "existing shared-storage registration is reused");
   assert.equal(fake.listedAll, 0);
-  assert.ok(fake.pages.every((query) => query.page_size === 50));
+  assert.deepEqual(fake.pages, [], "the form does not page through the model list itself");
 });
