@@ -18,15 +18,19 @@ import (
 	"time"
 )
 
-// diskFullRig is a real server process whose data directory sits on a 64 MiB
-// tmpfs mounted in a user and mount namespace of its own, so the test can fill
-// the disk for real: SQLite, the log file and the diagnostics all meet the
-// kernel's ENOSPC, not a stub. A sleeping holder keeps the namespace alive
-// while servers are stopped and started inside it with nsenter.
+// diskFullRig is a real server process whose data directory sits on a small
+// tmpfs, so the test can fill the disk for real: SQLite, the log file and the
+// diagnostics all meet the kernel's ENOSPC, not a stub. The tmpfs is either
+// one mounted for the test (GPUWORKS_TEST_FULL_DISK_TMPFS: CI's container,
+// started with docker run --tmpfs, may not create user namespaces) or one the
+// test mounts in a user and mount namespace of its own, which a sleeping
+// holder keeps alive while servers are stopped and started inside it with
+// nsenter.
 type diskFullRig struct {
 	t       *testing.T
-	holder  *exec.Cmd
+	holder  *exec.Cmd // nil on a tmpfs mounted for the test
 	mount   string
+	total   int64
 	data    string
 	stderr  string
 	base    string
@@ -37,8 +41,19 @@ type diskFullRig struct {
 	scratch string
 }
 
+// fullDiskTmpfsEnv names a tmpfs mounted for this test alone. It is filled
+// to the last byte, so it must never be a real disk.
+const fullDiskTmpfsEnv = "GPUWORKS_TEST_FULL_DISK_TMPFS"
+
+// maxFullDiskBytes refuses to fill anything larger: a misconfigured path
+// must not fill a real filesystem.
+const maxFullDiskBytes = 512 << 20
+
 func requireUserNamespaces(t *testing.T) {
 	t.Helper()
+	if os.Getenv(fullDiskTmpfsEnv) != "" {
+		return
+	}
 	for _, tool := range []string{"unshare", "nsenter", "dd"} {
 		if _, err := exec.LookPath(tool); err != nil {
 			skipOrFailDiskFull(t, fmt.Sprintf("%s unavailable: %v", tool, err))
@@ -61,6 +76,22 @@ func newDiskFullRig(t *testing.T) *diskFullRig {
 	t.Helper()
 	scratch := t.TempDir()
 	r := &diskFullRig{t: t, scratch: scratch, mount: filepath.Join(scratch, "fs"), stderr: filepath.Join(scratch, "server.stderr"), binary: buildBinary(t, "./cmd/gpuworks")}
+	r.addr = "127.0.0.1:" + freePort(t)
+	r.base = "http://" + r.addr
+	if mount := os.Getenv(fullDiskTmpfsEnv); mount != "" {
+		r.mount = mount
+		r.data = filepath.Join(mount, fmt.Sprintf("data-%d", time.Now().UnixNano()))
+		r.measure()
+		if err := os.Mkdir(r.data, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() {
+			r.stop()
+			_ = os.RemoveAll(r.data)
+			r.sh(`rm -f "` + r.mount + `"/filler-*`)
+		})
+		return r
+	}
 	r.data = filepath.Join(r.mount, "data")
 	if err := os.MkdirAll(r.mount, 0o755); err != nil {
 		t.Fatal(err)
@@ -84,13 +115,25 @@ func newDiskFullRig(t *testing.T) *diskFullRig {
 	if strings.TrimSpace(line) != "ready" {
 		t.Fatalf("namespace holder did not mount its tmpfs: %q", line)
 	}
-	r.addr = "127.0.0.1:" + freePort(t)
-	r.base = "http://" + r.addr
+	r.measure()
 	return r
 }
 
-// in runs argv inside the rig's namespaces, where the tmpfs is mounted.
+// measure records the tmpfs's size and refuses one too large to be the
+// small filesystem this test fills.
+func (r *diskFullRig) measure() {
+	r.t.Helper()
+	fmt.Sscan(strings.TrimSpace(r.sh(`df -B1 --output=size "`+r.mount+`" | tail -1`)), &r.total)
+	if r.total <= 0 || r.total > maxFullDiskBytes {
+		r.t.Fatalf("%s is %d bytes; the test fills it, so it must be a tmpfs of at most %d bytes", r.mount, r.total, maxFullDiskBytes)
+	}
+}
+
+// in runs argv where the tmpfs is mounted: in the rig's namespaces, or here.
 func (r *diskFullRig) in(argv ...string) *exec.Cmd {
+	if r.holder == nil {
+		return exec.Command(argv[0], argv[1:]...)
+	}
 	args := append([]string{"-t", fmt.Sprint(r.holder.Process.Pid), "-U", "-m", "--preserve-credentials"}, argv...)
 	return exec.Command("nsenter", args...)
 }
@@ -120,7 +163,7 @@ func (r *diskFullRig) fill() {
 func (r *diskFullRig) free() {
 	r.t.Helper()
 	r.sh(`rm -f "` + r.mount + `"/filler-*`)
-	if r.available() < 32<<20 {
+	if r.available() < r.total/2 {
 		r.t.Fatalf("freeing the fillers left only %d bytes", r.available())
 	}
 }
@@ -290,8 +333,8 @@ func TestProcessServerOnAFullDisk(t *testing.T) {
 	if refused.status != http.StatusInsufficientStorage || refused.Code != "SERVER_STORAGE_FULL" {
 		t.Fatalf("refusal = %d %+v, want 507 SERVER_STORAGE_FULL", refused.status, refused)
 	}
-	if refused.Params["path"] != r.data || refused.Params["available_bytes"] != float64(0) || refused.Params["total_bytes"] != float64(64<<20) {
-		t.Fatalf("refusal params = %v, want the data directory with 0 of 64 MiB free", refused.Params)
+	if refused.Params["path"] != r.data || refused.Params["available_bytes"] != float64(0) || refused.Params["total_bytes"] != float64(r.total) {
+		t.Fatalf("refusal params = %v, want the data directory with 0 of %d bytes free", refused.Params, r.total)
 	}
 	// The log file gave up; stderr says so and keeps every record.
 	if !strings.Contains(r.stderrText(), `msg="log file writes failed; using stderr until they succeed again"`) {
@@ -370,7 +413,7 @@ func TestProcessServerOnAFullDisk(t *testing.T) {
 	if up, _ := r.start(); up {
 		t.Fatal("server started with 0 bytes free; the test no longer covers a refused start")
 	}
-	if tail := r.stderrText()[before:]; !strings.Contains(tail, `msg="server exited"`) || !strings.Contains(tail, "has 0 B free of 64.0 MiB") || !strings.Contains(tail, r.data) {
+	if tail := r.stderrText()[before:]; !strings.Contains(tail, `msg="server exited"`) || !strings.Contains(tail, "has 0 B free of ") || !strings.Contains(tail, r.data) {
 		t.Fatalf("exit on a full disk does not name the disk:\n%s", tail)
 	}
 
