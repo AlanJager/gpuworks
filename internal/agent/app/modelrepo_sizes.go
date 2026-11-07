@@ -1,12 +1,14 @@
 package app
 
 import (
+	"log/slog"
 	"net/http"
 	"os"
 	"strings"
 	"sync"
 
 	"gpuworks.ai/gpuworks/internal/agent/modelfetch"
+	"gpuworks.ai/gpuworks/internal/agent/modelscan"
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/pkg/modelrepo"
 )
@@ -172,4 +174,31 @@ func sourceURLRewrite(source string, net proto.NetworkConfig) func(string) strin
 		return nil
 	}
 	return net.Apply
+}
+
+// removeStaleRepoSidecars removes the resume sidecars left beside repository
+// files that are already complete at their listed size, and logs what it
+// removed. A transfer stopped earlier and another tool finished its files:
+// the sidecars would hold the directory "unfinished". Only an exactly listed
+// size proves a file complete, so nothing is removed for a source that lists
+// display sizes. The files themselves are never touched.
+func removeStaleRepoSidecars(log *slog.Logger, key, dir string, files []modelrepo.File, approximate bool) {
+	if approximate {
+		return
+	}
+	listed := make(map[string]int64, len(files))
+	rels := make([]string, 0, len(files))
+	for _, f := range files {
+		if _, err := modelRepoDestination(dir, f.Path); err != nil {
+			continue
+		}
+		listed[f.Path] = f.Size
+		rels = append(rels, f.Path)
+	}
+	removed := modelscan.RemoveStaleDownloadSidecars(dir, rels, func(rel string, info os.FileInfo) bool {
+		return info.Size() == listed[rel]
+	})
+	if len(removed) > 0 {
+		log.Info("removed resume files left beside complete model files", "key", key, "path", dir, "files", removed)
+	}
 }

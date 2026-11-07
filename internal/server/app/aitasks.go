@@ -49,7 +49,7 @@ func (a *aiService) prepare(req aihelper.AskRequest) (preparedAsk, error) {
 	if err != nil {
 		return preparedAsk{}, err
 	}
-	client := aihelper.NewClient(aihelper.Endpoint{BaseURL: cfg.BaseURL, APIKey: key, Model: cfg.Model}, a.outboundAllowPrivateHosts...)
+	client := aihelper.NewClientWithPrivateHosts(aihelper.Endpoint{BaseURL: cfg.BaseURL, APIKey: key, Model: cfg.Model}, a.privateHosts)
 	return preparedAsk{
 		runner:   aihelper.NewRunner(client, askEnv{aiService: a, api: req.API}),
 		messages: aihelper.Conversation(aihelper.WithResponseLanguage(aihelper.WithPlatformReading(system, time.Now()), req.Locale, req.Task == aihelper.TaskAsk), seed, req.History, after),

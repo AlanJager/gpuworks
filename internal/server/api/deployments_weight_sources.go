@@ -57,6 +57,18 @@ func specWeightSources(spec *store.InferenceSpecRow) []weightSource {
 	return sources
 }
 
+// specDeclaresProvider reports whether the spec lists a weight source at the
+// given provider.
+func specDeclaresProvider(spec *store.InferenceSpecRow, provider string) bool {
+	provider = strings.TrimSpace(provider)
+	for _, source := range specWeightSources(spec) {
+		if strings.EqualFold(source.Provider, provider) {
+			return true
+		}
+	}
+	return false
+}
+
 func modelArtifactSatisfiesSubfolder(actual, requested string) bool {
 	actual = strings.TrimSpace(actual)
 	requested = strings.TrimSpace(requested)

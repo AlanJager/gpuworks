@@ -98,6 +98,10 @@ func (a *apiHandlers) imageCacheFact(ctx context.Context, image string, node *st
 // the public sources the model or its template is registered under, and the
 // storages that hold it or may save it for the selected node. No additional
 // state is persisted for these facts.
+//
+// A registration from a source absent in the spec has no template provider
+// to choose. Offering its own source would make the form send a provider
+// the template cannot accept on the next evaluation.
 func (a *apiHandlers) evaluateWeightFacts(model *store.Model, selection templateSelection, profileNode *store.Node) acquisition.WeightFacts {
 	weightFacts := acquisition.WeightFacts{
 		Providers: []acquisition.WeightSource{{
@@ -106,7 +110,11 @@ func (a *apiHandlers) evaluateWeightFacts(model *store.Model, selection template
 		}},
 	}
 	if selection.Spec != nil {
-		weightFacts.Providers = templateAcquisitionProviders(selection)
+		if specDeclaresProvider(selection.Spec, model.Source) {
+			weightFacts.Providers = templateAcquisitionProviders(selection)
+		} else {
+			weightFacts.Providers = nil
+		}
 	}
 	weightFacts.Present, weightFacts.Targets = a.storageFacts(model, profileNode)
 	return weightFacts

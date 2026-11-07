@@ -51,14 +51,15 @@ def http(base: str, method: str, path: str, token: str = "", body=None):
 def write_server_config(work: Path, storage_root: Path, listen: str, *, auto_check_updates=None) -> Path:
     """server.yaml that makes the isolated server a self-contained installation.
 
-    The product refuses storage paths outside storage_probe_roots and refuses
-    user-configured HTTP sources on private or loopback addresses unless
-    outbound_allow_private_hosts lists them. The isolated server therefore
-    allows exactly storage_root (private/storage, which excludes the server's
-    own data directory) as its only storage root and exactly 127.0.0.1, where
-    the audited local fixtures listen; every other private destination stays
-    refused as in a default installation. The seeded default storage keeps the
-    product's /opt/gpuworks/models path, which is outside this root. listen is
+    The product refuses user-configured HTTP sources on private or loopback
+    addresses unless outbound_allow_private_hosts lists them. The isolated
+    server therefore allows exactly 127.0.0.1, where the audited local
+    fixtures listen; every other private destination stays refused as in a
+    default installation. storage_probe_roots is set to storage_root
+    (private/storage) only so the startup check of existing storage has a
+    root to compare against; it no longer limits which paths a storage may
+    use. The seeded default storage keeps the product's /opt/gpuworks/models
+    path, which is outside this root. listen is
     written instead of passing --addr so the server reports a consistent,
     non-overridden listen configuration. With --config the server also treats
     the private directory as its install directory: listen and update settings

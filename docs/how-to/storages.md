@@ -4,7 +4,7 @@
 
 添加存储前准备好路径；试挂、扫描或部署前，先接入可访问该存储的[在线节点](connect-nodes.md)。已有模型目录须对 agent 可读，下载或复制目标须可写。添加、修改、扫描导入和清理存储需要管理员权限。按文件位置和读取方式选择存储类型：
 
-自定义存储路径或缓存目录须位于 `server.yaml` 的 `storage_probe_roots` 内，默认允许 `/opt/gpuworks/models`、`/opt/gpuworks/cache`、`/mnt/gpuworks` 及其子目录。使用其他目录前，由管理员添加允许的目录根并重启 server，否则新建、修改或试挂会被拒绝，见[配置参考](../reference/configuration.md#server-配置文件-serveryaml)。
+存储路径与缓存目录可以是任意绝对路径，不必位于 `server.yaml` 的 `storage_probe_roots` 内。路径不能是 `/`，不能含 `.`、`..` 段或控制字符；也不能位于禁用目录下，默认禁用 `/etc`、`/proc`、`/sys`、`/dev`、`/boot`、`/bin`、`/sbin`、`/lib`、`/lib64`、`/usr`、`/run`、`/var/run`、`/var/lib/docker`、`/var/lib/containerd` 及其子目录。禁用目录由主机管理员在 `server.yaml` 的 `storage_denied_paths` 中整体替换，重启 server 生效，管理 API 与设置页不能修改，见[配置参考](../reference/configuration.md#server-配置文件-serveryaml)。节点挂载和试挂时还要求路径是规范目录，不能经符号链接指向别处。违反这些规则的新建、修改或试挂会以 `STORAGE_PATH_INVALID` 拒绝；已保存的路径后来落入禁用目录时，不改路径的编辑仍可保存。
 
 | 类型 | 模型文件在哪 | 节点怎么读 | 适合 |
 |---|---|---|---|

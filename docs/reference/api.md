@@ -414,7 +414,7 @@ macOS 忽略 `no_systemd`。
 目录元数据必须识别出恰好一个完整模型入口，GGUF 等自带元数据的格式不要求 `config.json`；父目录、非模型目录和未知布局返回 409。`registered` 表示调用方选定的模型目录已登记，
 不保证引擎可以加载该模型。不能用“路径在存储范围外”判断请求无效。
 
-空 `path` 返回 400；目标模型不存在返回 404；缺失、空目录或含 `.part`/`.part.state` 的目录由节点拒绝，
+空 `path` 返回 400；目标模型不存在返回 404；缺失、空目录或含未完成 `.part`/`.part.state` 的目录由节点拒绝（同名文件已完整、大小等于 `.part.state` 记录的残留不计），
 接口返回 409，已有登记不被替换。agent 过旧、无法返回目录元数据识别结果时，返回 `AGENT_UPGRADE_REQUIRED`，需先升级 agent。真实节点 RPC 不可用等错误也可能返回 409，调用方应结合错误内容处理。
 
 ## Images / Storages（镜像目录与存储策略）
@@ -1465,7 +1465,7 @@ extra_args 解析（`EXTRA_ARGS_INVALID`）、挂载（`MOUNT_CONTAINER_PATH`/`M
 | GET | `/api/v1/apikeys` | API key 列表（不含明文），含已吊销的 key：已吊销的带 `revoked_at`（UTC 时间），未吊销的不出现该字段。`all_deployments` 为 true 时可调用全部模型服务；为 false 时只能调用 `deployments`（`[{id,name,served_name}]`）中的部署，这些部署全被删除后列表为空、key 什么都调用不了 | JWT |
 | POST | `/api/v1/apikeys` | 创建 API key；`name` 去除首尾空白后不能为空，否则返回 400 `API_KEY_NAME_REQUIRED`；明文仅创建响应中返回一次。可选 `all_deployments` 与 `deployment_ids` 限定可调用的部署：省略 `all_deployments` 时，`deployment_ids` 为空即全部部署、非空即仅这些部署；`all_deployments` 与 `deployment_ids` 矛盾（true 且非空，或 false 且为空）返回 400 `API_KEY_SCOPE_INVALID`，不存在的部署返回 400 `API_KEY_DEPLOYMENT_UNKNOWN`（`params.ids`） | JWT |
 | PUT | `/api/v1/apikeys/{prefix}/scope` | 修改未吊销 key 的可调用范围，`{"all_deployments":bool,"deployment_ids":[...]}`，`all_deployments` 必填，校验同创建；返回更新后的 key（同列表项）。下一次请求起生效；未知或已吊销的前缀返回 404 `API_KEY_NOT_FOUND` | JWT |
-| DELETE | `/api/v1/apikeys/{prefix}` | 按前缀吊销 API key：立即不能再认证，记录保留（名字留给它的历史用量），前缀不复用；返回 `{"status":"revoked"}`。吊销未知或已吊销的 key 不报错、不改动；所有 key 都吊销后网关回到匿名访问（与没有 key 时相同） | JWT |
+| DELETE | `/api/v1/apikeys/{prefix}` | 按列表中的 12 字符 `prefix`（完整 key 的前 12 个字符，不是完整密钥）吊销 API key：吊销完成后的新请求不能再以该 key 认证，记录保留（名字留给它的历史用量），前缀不复用；成功返回 `{"status":"revoked"}`。未知前缀返回 404 `API_KEY_NOT_FOUND`；重复吊销已吊销的前缀仍返回 200，不改动原 `revoked_at`。所有 key 都吊销后网关回到匿名访问（与没有 key 时相同） | JWT |
 
 ## Platform Tokens（平台 API 令牌）
 

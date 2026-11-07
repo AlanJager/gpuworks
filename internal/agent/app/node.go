@@ -289,7 +289,7 @@ func newNodeRuntime(log *slog.Logger, driver runtime.Driver, modelsDir, forceDri
 	// detected one is a real node's. Decide before detection replaces nil.
 	injected := driver != nil
 	if driver == nil {
-		selection := detectDriver(log, filepath.Dir(modelsDir), forceDriver, prober)
+		selection := detectDriverWaiting(log, filepath.Dir(modelsDir), forceDriver, prober, daemonStartWait)
 		driver = selection.driver
 		n.runtimeChoice.reset(strings.TrimSpace(forceDriver) == "", selection.fallback)
 	}

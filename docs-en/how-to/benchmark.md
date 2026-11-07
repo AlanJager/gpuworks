@@ -19,7 +19,7 @@ For external endpoints, prepare the address, model name, and required API key. S
    | **Managed Instance**: select a node as the **Load Origin** | Direct access to an instance on that node; PD selects decode, so this is not an end-to-end PD result | The node must have a running, awake rank 0 for that deployment that can serve requests, and its agent must support evaluations |
    | **External Endpoint**: enter the address and API key, select the **Load Origin**, click **Probe**, and select a model | Access to the external endpoint from the selected load origin | Load originates from `Server` by default; you can also select an online node that supports evaluations. Network access and authentication must work from the selected location |
 
-   Before testing an internal or local external endpoint from `Server`, an administrator must authorize the target host in `outbound_allow_private_hosts` in `server.yaml` and restart the server.
+   Testing an ordinary private or local loopback external endpoint from `Server` needs no allowlist by default. Only when an administrator enables `outbound_restrict_private_hosts: true` in `server.yaml` must the target host be authorized in `outbound_allow_private_hosts`. Changes to either field apply to the next request after saving, without restarting the server.
    See [Outbound Access Configuration](../reference/configuration.md#server-配置文件-serveryaml).
 
    The API can select a specific instance through `instance_uuid`, which requires a direct connection from the node hosting that instance. It must likewise be running, awake, and able to serve requests.

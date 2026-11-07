@@ -97,6 +97,13 @@ func NewClient(ep Endpoint, allowPrivateHosts ...string) *Client {
 	return &Client{ep: ep, http: &http.Client{Timeout: 120 * time.Second, Transport: transport}, stream: &http.Client{Transport: transport}}
 }
 
+// NewClientWithPrivateHosts checks the live administrator policy on each call,
+// including subsequent calls made by an already-running assistant task.
+func NewClientWithPrivateHosts(ep Endpoint, readHosts func() []string) *Client {
+	transport := outbound.TransportWithPrivateHosts(func() (proto.NetworkConfig, error) { return proto.NetworkConfig{}, nil }, readHosts)
+	return &Client{ep: ep, http: &http.Client{Timeout: 120 * time.Second, Transport: transport}, stream: &http.Client{Transport: transport}}
+}
+
 // Chat performs one chat completion.
 func (c *Client) Chat(ctx context.Context, messages []Message, tools []ToolDef) (Message, Usage, error) {
 	body, _ := json.Marshal(ChatRequest{Model: c.ep.Model, Messages: messages, Tools: tools})

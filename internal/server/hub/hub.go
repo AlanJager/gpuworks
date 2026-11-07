@@ -37,6 +37,7 @@ import (
 // Hub manages all agent sessions.
 type Hub struct {
 	outboundAllowPrivateHosts []string
+	readPrivateHosts          func() []string
 	store                     *store.Store
 	networks                  Networks
 	log                       *slog.Logger
@@ -588,9 +589,4 @@ type slogWriter struct{ log *slog.Logger }
 func (w *slogWriter) Write(p []byte) (int, error) {
 	w.log.Debug("yamux", "msg", string(p))
 	return len(p), nil
-}
-
-// SetOutboundAllowPrivateHosts sets administrator-controlled HTTP exceptions before the hub starts.
-func (h *Hub) SetOutboundAllowPrivateHosts(hosts []string) {
-	h.outboundAllowPrivateHosts = append([]string(nil), hosts...)
 }

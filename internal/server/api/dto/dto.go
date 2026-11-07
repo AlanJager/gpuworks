@@ -125,11 +125,12 @@ type Node struct {
 	// shown as going against it. A client renders the code in its own
 	// language, naming the plugin from RuntimeGPUPlugin.
 	RuntimeGPUBlocked string `json:"runtime_gpu_blocked,omitempty"`
-	// RuntimeFallbackFrom is the runtime the agent passed over because it
-	// cannot give a container this node's cards (docker | nerdctl), and
-	// RuntimeFallbackReason why: gpu_plugin_missing, gpu_runtime_unconfigured,
-	// or gpu_ready once it can and the agent switches back when the node is
-	// idle. RuntimeFallbackPlugin names the plugin that runtime needs
+	// RuntimeFallbackFrom is the runtime the agent passed over (docker |
+	// nerdctl), and RuntimeFallbackReason why: gpu_plugin_missing or
+	// gpu_runtime_unconfigured when it cannot give a container this node's
+	// cards, daemon_not_ready when its daemon did not answer while the agent
+	// started, or gpu_ready once it can serve and the agent switches back when
+	// the node is idle. RuntimeFallbackPlugin names the plugin that runtime needs
 	// (accelerator.RuntimeGPUPlugin). All empty when nothing was passed over.
 	RuntimeFallbackFrom   string `json:"runtime_fallback_from,omitempty"`
 	RuntimeFallbackReason string `json:"runtime_fallback_reason,omitempty"`

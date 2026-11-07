@@ -27,7 +27,7 @@ type ProbeResult struct {
 // storage is OK with Writable false.
 func (m *Manager) Probe(ctx context.Context, spec Spec) ProbeResult {
 	if spec.Path != "" {
-		if err := storagerules.ValidatePath(spec.Path); err != nil {
+		if err := storagerules.CheckPathForm(spec.Path); err != nil {
 			return probeFail(ReasonPermission, err.Error(), "")
 		}
 	}

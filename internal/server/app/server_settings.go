@@ -15,14 +15,16 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"gpuworks.ai/gpuworks/internal/server/distribution"
 	"gpuworks.ai/gpuworks/internal/server/serverconfig"
+	"gpuworks.ai/gpuworks/internal/storagerules"
 	"gpuworks.ai/gpuworks/internal/version"
 )
 
 // serverSettings serves api.ServerSettings from the running configuration and
 // server.yaml. Saved listen changes take effect on the next start.
 type serverSettings struct {
-	cfg  Config
-	host serverconfig.Host
+	cfg              Config
+	host             serverconfig.Host
+	readPrivateHosts func() []string
 	// restart ends the process for the service manager to start again; nil
 	// when nothing would start it (development, the nohup service mode).
 	restart func()
@@ -49,7 +51,7 @@ func newServerSettings(cfg Config, restart func(), snapshot func(dest string) er
 	if host.RouteIP == nil && host.Interfaces == nil {
 		host = serverconfig.SystemHost()
 	}
-	return &serverSettings{cfg: cfg, host: host, restart: restart, snapshot: snapshot, saved: cfg.Listen, channel: cfg.UpdateChannel, manualChecks: cfg.ManualUpdateChecks, usageReportOff: cfg.UsageReportOff}
+	return &serverSettings{cfg: cfg, host: host, readPrivateHosts: privateHostPermissions(cfg, nil), restart: restart, snapshot: snapshot, saved: cfg.Listen, channel: cfg.UpdateChannel, manualChecks: cfg.ManualUpdateChecks, usageReportOff: cfg.UsageReportOff}
 }
 
 var _ api.ServerSettings = (*serverSettings)(nil)
@@ -316,7 +318,11 @@ func nonNil(s []string) []string {
 	return s
 }
 
-// StorageProbeRoots is local policy, never editable through the management API.
-func (s *serverSettings) StorageProbeRoots() []string {
-	return append([]string(nil), s.cfg.StorageProbeRoots...)
+// StorageDeniedPaths is local policy, never editable through the management
+// API. A configuration that never set the list keeps the built-in one.
+func (s *serverSettings) StorageDeniedPaths() []string {
+	if s.cfg.StorageDeniedPaths == nil {
+		return storagerules.DefaultDeniedPaths()
+	}
+	return append([]string{}, s.cfg.StorageDeniedPaths...)
 }

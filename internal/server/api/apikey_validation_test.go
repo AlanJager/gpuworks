@@ -2,9 +2,13 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
+
+	"gorm.io/gorm"
 )
 
 func TestAPIKeyCreationRejectsMissingNameWithoutCreatingKey(t *testing.T) {
@@ -121,5 +125,76 @@ func TestAPIKeyRevokeKeepsTheKeyListed(t *testing.T) {
 	again := rig.do(rig.session, http.MethodGet, "/api/v1/apikeys", "")
 	if !strings.Contains(again.Body.String(), `"revoked_at":"`+revoked+`"`) {
 		t.Fatalf("a second revoke moved revoked_at: %s", again.Body)
+	}
+}
+
+func TestAPIKeyRevokeRejectsUnknownTargetsWithoutRevokingLiveKeys(t *testing.T) {
+	for _, target := range []string{"unknown-prefix", "full-secret", "short-prefix"} {
+		t.Run(target, func(t *testing.T) {
+			rig := newTokenRig(t)
+			t.Cleanup(func() { _ = rig.st.Close() })
+			create := func(name string) string {
+				t.Helper()
+				rec := rig.do(rig.session, http.MethodPost, "/api/v1/apikeys", `{"name":"`+name+`"}`)
+				var created map[string]string
+				if rec.Code != http.StatusCreated || json.Unmarshal(rec.Body.Bytes(), &created) != nil || len(created["key"]) < 12 {
+					t.Fatalf("create %s: status=%d", name, rec.Code)
+				}
+				return created["key"]
+			}
+			key, other := create("client"), create("other-client")
+			unknown := "gw-000000000"
+			for _, candidate := range []string{"gw-000000000", "gw-111111111", "gw-222222222"} {
+				if candidate != key[:12] && candidate != other[:12] {
+					unknown = candidate
+					break
+				}
+			}
+			if target == "full-secret" {
+				unknown = key
+			} else if target == "short-prefix" {
+				unknown = key[:11]
+			}
+			// Populate the authentication cache before the rejected operation.
+			if !rig.st.VerifyAPIKey(key) || !rig.st.VerifyAPIKey(other) {
+				t.Fatal("created keys do not authenticate")
+			}
+			rec := rig.do(rig.session, http.MethodDelete, "/api/v1/apikeys/"+url.PathEscape(unknown), "")
+			if rec.Code != http.StatusNotFound || rec.Body.String() != `{"code":"API_KEY_NOT_FOUND","error":"no API key has this prefix"}`+"\n" {
+				t.Errorf("unknown target revoke: status=%d body=%s", rec.Code, rec.Body)
+			}
+			if !rig.st.VerifyAPIKey(key) || !rig.st.VerifyAPIKey(other) {
+				t.Fatal("unknown-target revoke invalidated a live key")
+			}
+			keys := listedKeys(t, rig)
+			if len(keys) != 2 || keys["client"]["prefix"] != key[:12] || keys["other-client"]["prefix"] != other[:12] || keys["client"]["revoked_at"] != nil || keys["other-client"]["revoked_at"] != nil {
+				t.Fatalf("unknown-target revoke changed key metadata: %v", keys)
+			}
+		})
+	}
+}
+
+func TestAPIKeyRevokeReportsWriteFailureWithoutRevokingKey(t *testing.T) {
+	rig := newTokenRig(t)
+	t.Cleanup(func() { _ = rig.st.Close() })
+	key, err := rig.st.CreateAPIKey("client", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const callback = "revoke_write_failure"
+	if err := rig.st.DB().Callback().Update().Before("gorm:update").Register(callback, func(tx *gorm.DB) {
+		if tx.Statement.Table == "api_keys" {
+			tx.AddError(errors.New("injected API key write failure"))
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = rig.st.DB().Callback().Update().Remove(callback) })
+	rec := rig.do(rig.session, http.MethodDelete, "/api/v1/apikeys/"+key[:12], "")
+	if rec.Code != http.StatusInternalServerError || strings.Contains(rec.Body.String(), `"status":"revoked"`) {
+		t.Errorf("failed revoke: status=%d body=%s", rec.Code, rec.Body)
+	}
+	if !rig.st.VerifyAPIKey(key) || listedKeys(t, rig)["client"]["revoked_at"] != nil {
+		t.Fatal("failed write revoked the key")
 	}
 }

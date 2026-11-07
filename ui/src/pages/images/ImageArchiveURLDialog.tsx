@@ -13,6 +13,7 @@ import {
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api, type ImageArchivePreview, type ImageCatalogEntry } from "../../api";
+import { APIError, apiErrorText } from "../../apiError";
 import { bytes } from "./ImagePageHelpers";
 
 const { Text } = Typography;
@@ -54,18 +55,19 @@ export default function ImageArchiveURLDialog({
   onStart,
 }: Props) {
   const { t } = useTranslation("images");
+  const { t: tCommon } = useTranslation("common");
   const [url, setUrl] = useState(initialURL);
   const [relay, setRelay] = useState(false);
   const [resolving, setResolving] = useState(false);
   const [starting, setStarting] = useState(false);
   const [preview, setPreview] = useState<ImageArchivePreview | null>(null);
-  const [resolveError, setResolveError] = useState<string | null>(null);
-  const [startError, setStartError] = useState<string | null>(null);
+  const [resolveError, setResolveError] = useState<Error | null>(null);
+  const [startError, setStartError] = useState<Error | null>(null);
 
   const resolve = async (address: string) => {
     const trimmed = address.trim();
     if (!trimmed) {
-      setResolveError(t("import.url.required"));
+      setResolveError(new Error(t("import.url.required")));
       setPreview(null);
       return;
     }
@@ -75,7 +77,7 @@ export default function ImageArchiveURLDialog({
       setPreview(await api.previewImageArchiveURL(trimmed));
     } catch (e) {
       setPreview(null);
-      setResolveError(e instanceof Error ? e.message : t("import.url.failed"));
+      setResolveError(e instanceof APIError ? e : new Error(t("import.url.failed")));
     } finally {
       setResolving(false);
     }
@@ -96,6 +98,10 @@ export default function ImageArchiveURLDialog({
     if (initialURL.trim()) void resolve(initialURL);
   }, [open, initialURL]);
 
+  const errorMessage = (error: Error, fallback: string) => error instanceof APIError
+    ? apiErrorText((key, options) => tCommon(key, { ...options, defaultValue: fallback }), error)
+    : error.message;
+
   const tags = preview?.repo_tags ?? [];
   // A mismatch is only known once the archive named its references. An archive
   // that named none is unverifiable, not wrong.
@@ -114,7 +120,7 @@ export default function ImageArchiveURLDialog({
     try {
       await onStart(url.trim(), relay);
     } catch (e) {
-      setStartError(e instanceof Error ? e.message : t("action.pullFailed"));
+      setStartError(e instanceof APIError ? e : new Error(t("action.pullFailed")));
     } finally {
       setStarting(false);
     }
@@ -202,13 +208,14 @@ export default function ImageArchiveURLDialog({
         ) : null}
         {!mismatch && !preview && resolveError ? (
           <Alert
-            type="warning"
+            type={resolveError instanceof APIError && resolveError.code === "IMAGE_ARCHIVE_URL_POLICY_DENIED" ? "error" : "warning"}
             showIcon
-            message={t("nodeTable.archiveDialog.unverified")}
-            description={resolveError}
+            message={errorMessage(resolveError, t("import.url.failed"))}
+            description={resolveError instanceof APIError ? `HTTP ${resolveError.status} · ${resolveError.code}` : undefined}
           />
         ) : null}
-        {startError ? <Alert type="error" showIcon message={startError} /> : null}
+        {startError ? <Alert type="error" showIcon message={errorMessage(startError, t("action.pullFailed"))}
+          description={startError instanceof APIError ? `HTTP ${startError.status} · ${startError.code}` : undefined} /> : null}
         <Tooltip title={t("nodeTable.relayHelp")}>
           <Checkbox checked={relay} onChange={(event) => setRelay(event.target.checked)}>
             {t("nodeTable.relay")}

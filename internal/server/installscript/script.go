@@ -37,7 +37,14 @@ var Script = strings.NewReplacer(
 	"@MIN_MACOS@", strconv.Itoa(accelerator.MinimumMacOSMajor),
 	"@MAC_DIR_FUNCS@", MacInstallDirFuncs,
 	"@CONF_FUNCS@", agentconf.ShellFuncs,
+	"@CLEAR_LAUNCH_ENV@", clearLaunchEnv,
 ).Replace(script)
+
+// The installer has already resolved environment defaults and explicit flags
+// into the configuration file. Do not let inherited launch overrides apply a
+// second time, including when the generated restart script is run later.
+const clearLaunchEnv = `unset GPUWORKS_SERVER GPUWORKS_TOKEN GPUWORKS_CONNECT_MODE GPUWORKS_SERVER_DIAL_LISTEN
+unset GPUWORKS_RUNTIME_DRIVER GPUWORKS_RUNTIME_MOUNT_ROOT GPUWORKS_UDOCKER_BUNDLE`
 
 // MacInstallDirFuncs defines gw_mac_install_dir HOME [SYSTEM_DIR], which
 // prints where an install that names no directory puts a Mac's agent: where an
@@ -265,6 +272,7 @@ fi
 set -- --state "$STATE_DIR" --connect-mode "$CONNECT_MODE" --listen "$LISTEN_ADDR" --driver "$RUNTIME_DRIVER" --mount-root "$RUNTIME_MOUNT_ROOT" --udocker-bundle "$UDOCKER_BUNDLE"
 if [ -n "$SERVER_URL" ]; then set -- "$@" --server "$SERVER_URL"; fi
 printf '%s\n' "$TOKEN" | "$BIN" configure "$@"
+@CLEAR_LAUNCH_ENV@
 
 if [ "$GOOS" = "darwin" ]; then
   # launchd supervises the agent, and the agent registers its own job: with
@@ -307,7 +315,9 @@ if [ "$USE_SYSTEMD" = 1 ]; then
   cat <<GPUWORKS_AGENT_UNIT | $SUDO tee /etc/systemd/system/gpuworks-agent.service >/dev/null
 [Unit]
 Description=gpuworks agent
-After=network-online.target
+# Start after the container daemons so the agent finds them answering; only
+# ordering, so a host without them is unaffected.
+After=network-online.target docker.service containerd.service
 RequiresMountsFor=$INSTALL_DIR $STATE_DIR
 
 [Service]
@@ -343,6 +353,7 @@ else
 # through gpuworks-agent.service instead; this script is the crash and
 # post-mortem restart path for nohup installs, where nothing supervises the
 # agent. The agent reads its configuration from the state directory.
+@CLEAR_LAUNCH_ENV@
 nohup "$BIN" run --state "$STATE_DIR" >/dev/null 2>&1 &
 AGENT_PID=\$!
 echo "\$AGENT_PID" > "$PID_FILE"

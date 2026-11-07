@@ -1,5 +1,5 @@
 // Package runveilcli implements `gpuworks-agent runveil`, the operator's view
-// of a node's runveil containers: ps, images, exec and logs. It works from
+// of a node's runveil containers: ps, images, load, exec and logs. It works from
 // the udocker driver's on-disk state, so it runs beside the agent without
 // talking to it, and needs no Python or udocker CLI on the node.
 package runveilcli
@@ -28,6 +28,9 @@ const usageText = `usage: gpuworks-agent runveil [--state DIR] <command>
 Commands:
   ps [-a]                     list running containers (-a: all)
   images                      list images
+  load -i FILE REF            import a docker save or OCI archive (.tar or
+                              .tar.gz) under REF, the image's reference in
+                              the platform's image catalog
   exec NAME [CMD [ARG...]]    run CMD (default: a login shell) in a container,
                               with the workload's environment, mounts and GPUs
   logs [-f] [-n N] NAME       print a container's output (-f: follow)
@@ -89,6 +92,8 @@ func (c *CLI) Execute(ctx context.Context, args []string) int {
 		err = c.ps(ctx, args[1:])
 	case "images":
 		err = c.images(args[1:])
+	case "load":
+		err = c.load(ctx, args[1:])
 	case "exec":
 		status, err = c.exec(ctx, args[1:])
 	case "logs":
@@ -171,6 +176,46 @@ func (c *CLI) images(args []string) error {
 		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", repo, tag, id, size)
 	}
 	return tw.Flush()
+}
+
+// load imports an archive copied onto the node, the runveil counterpart of
+// `docker load` for nodes the console cannot reach an archive for. REF is
+// required: the platform finds images by their catalog reference, which the
+// tag recorded in the archive need not match.
+func (c *CLI) load(ctx context.Context, args []string) error {
+	fs := c.flags("load")
+	input := fs.String("i", "", "image archive to import")
+	fs.StringVar(input, "input", "", "same as -i")
+	// Accept the flag on either side of the reference, as logs does.
+	var positional []string
+	for {
+		if err := fs.Parse(args); err != nil {
+			return usageError{err.Error()}
+		}
+		if fs.NArg() == 0 {
+			break
+		}
+		positional = append(positional, fs.Arg(0))
+		args = fs.Args()[1:]
+	}
+	if *input == "" {
+		return usageError{"load needs -i FILE"}
+	}
+	if len(positional) != 1 {
+		return usageError{"load needs exactly one image reference (as the image catalog shows it)"}
+	}
+	if err := c.requireState(); err != nil {
+		return err
+	}
+	if err := c.requireStateOwner(); err != nil {
+		return err
+	}
+	ref := positional[0]
+	if err := c.Driver.ImportArchive(ctx, ref, *input); err != nil {
+		return err
+	}
+	fmt.Fprintf(c.Stdout, "Loaded image: %s\n", ref)
+	return nil
 }
 
 func (c *CLI) exec(ctx context.Context, args []string) (int, error) {
@@ -337,6 +382,26 @@ func (c *CLI) requireAgentUser(name string) error {
 		return nil
 	}
 	return fmt.Errorf("exec needs root (sudo) or the agent's user (uid %d)", stat.Uid)
+}
+
+// requireStateOwner lets load run only as root or as the owner of the
+// runveil state, the only callers that can write images the run user can
+// still read and replace.
+func (c *CLI) requireStateOwner() error {
+	euid := c.geteuid()
+	if euid == 0 {
+		return nil
+	}
+	udockerDir, _ := c.Driver.StateDirs()
+	info, err := os.Stat(udockerDir)
+	if err != nil {
+		return err
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok || uint32(euid) == stat.Uid {
+		return nil
+	}
+	return fmt.Errorf("load needs root (sudo) or the owner of %s (uid %d)", udockerDir, stat.Uid)
 }
 
 func (c *CLI) geteuid() int {

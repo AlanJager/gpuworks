@@ -7,7 +7,7 @@
 - 能以管理员身份修改控制台设置。
 - 有一个可调用的推理部署及其服务名（`served_name`），并已创建推理服务令牌，见入门教程中的[创建推理令牌与调用](../tutorials/getting-started.md)。
 - 准备能收 OTLP/HTTP 的端点（OpenTelemetry Collector，或支持该协议的追踪后端），server 能访问它的 OTLP/HTTP 端口（默认 4318）。只有导出网关 trace 时，节点不需要能访问它；尚无端点可按第 1 节启动试用实例。
-- 端点在内网或 server 本机时，先由管理员在 `server.yaml` 的 `outbound_allow_private_hosts` 中授权目标主机并重启 server，见[出站访问配置](../reference/configuration.md#server-配置文件-serveryaml)。
+- 普通内网或 server 本机回环的端点默认无需白名单；仅当管理员在 `server.yaml` 开启 `outbound_restrict_private_hosts: true` 时，才须在 `outbound_allow_private_hosts` 中授权目标主机。两个字段保存后下一次请求生效，无需重启 server，见[出站访问配置](../reference/configuration.md#server-配置文件-serveryaml)。
 
 **会得到什么**：网关为每个转发的 `/v1` 与 Playground 请求，在请求结束后发一个 span：模型、调用方、部署与副本，输入 / 输出 / 缓存命中 / 思考 token，采样参数，首 token 时间，网关、排队、Prefill、思考、回答各阶段耗时，结果（完成、截断、客户端断开、出错）。上游带了 `traceparent` 时，这个 span 挂在上游 span 下面。不导出提示词与回复内容，平台本身也不保存它们。字段见文末[附录](#附录span-字段)。
 

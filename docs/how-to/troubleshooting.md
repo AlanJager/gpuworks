@@ -355,6 +355,13 @@ agent 不会再启动第二个检查去排在同一把驱动锁后面。这期�
 agent 每分钟复查一次：被跳过的运行时能用了，节点上没有实例时自动切回；有实例时提示「Docker 已可用，可切换」（`gpu_ready`），
 可在「运行时」下拉框手动切换。昇腾节点不做这种回退（ARM 910B 上 runveil 跑不起 CANN）。
 
+**Docker 装了但 agent 启动时没响应**
+
+开机时 agent 早于 dockerd 启动，或 dockerd 正忙着拉大镜像、5 秒内没有应答时，自动选择运行时的 agent 在启动阶段最多再等 2 分钟；
+仍不应答才改用 runveil，节点详情的橙色提示说明原因（`daemon_not_ready`）。之后每分钟复查一次，Docker 应答且节点上没有实例时自动切回，
+有实例时同样提示「Docker 已可用，可切换」。agent 的 systemd 单元排在 `docker.service`、`containerd.service` 之后启动（只排顺序，
+没有 Docker 的主机不受影响）。agent 用户无权访问 Docker（不在 docker 组）不属于这种情况，不会等待。
+
 **指定运行时的节点，或昇腾节点**
 
 指定了运行时（或昇腾节点）而运行时给不了容器加速卡时（`gpu_plugin_missing` / `gpu_runtime_unconfigured`），
@@ -674,7 +681,7 @@ runveil 只要 Linux 的 amd64 / arm64，
 |---|---|
 | `present` | 下载并校验完整；`.gpuworks-model-complete.json` 的文件清单和大小全部吻合 |
 | `registered` | 已登记本地路径，可直接使用，无需等待 `present`；后续检查可更新状态，获取方式仍是本地登记 |
-| `<文件>.part`、`<文件>.part.state` | 下载中间文件，重试会尝试续传，不能据此判断完整 |
+| `<文件>.part`、`<文件>.part.state` | 下载中间文件，重试会尝试续传，不能据此判断完整。若同名文件已由其他工具（如 `hf download`）下完，且大小等于 `.part.state` 记录的大小，这两个文件视为残留：校验与扫描不再据此判为未完成，平台下次下载时自动删除 |
 
 本地来源的模型在节点上不完整时，创建部署返回 409 `MODEL_SOURCE_UNAVAILABLE`。
 公网来源在创建时尝试读取元数据，站点不可达可能只留下空元数据而不阻止创建；**创建成功不代表权重已可用**，启动前仍须完成获取。

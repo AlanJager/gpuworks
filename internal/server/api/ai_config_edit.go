@@ -154,9 +154,9 @@ func (a *apiHandlers) testAIConfig(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), aiConfigTestTimeout)
 	defer cancel()
-	result := aihelper.NewClient(
+	result := aihelper.NewClientWithPrivateHosts(
 		aihelper.Endpoint{BaseURL: base, APIKey: key, Model: model},
-		a.d.Outside.AllowPrivateHosts...,
+		a.outboundPrivateHosts,
 	).Probe(ctx)
 	writeJSON(w, http.StatusOK, dto.AIConfigTestResult{
 		Outcome: string(result.Outcome), Status: result.Status, Detail: result.Detail,

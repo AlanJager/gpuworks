@@ -183,12 +183,15 @@ func TestScriptWritesAUnitThatRunsTheStateDirectory(t *testing.T) {
 		"ExecStartPre=/usr/bin/test -x " + h.stateDir + "/gpuworks-agent\n",
 		"ExecStart=" + h.stateDir + "/gpuworks-agent run --state " + h.stateDir + "\n",
 		"KillMode=process\n",
+		// Ordered after the container daemons, never requiring them: a host
+		// without Docker or containerd starts the agent all the same.
+		"After=network-online.target docker.service containerd.service\n",
 	} {
 		if !strings.Contains(unit, want) {
 			t.Errorf("unit lacks %q:\n%s", want, unit)
 		}
 	}
-	for _, refused := range []string{"node-token", "--server", "Environment="} {
+	for _, refused := range []string{"node-token", "--server", "Environment=", "Requires=", "Wants=", "BindsTo="} {
 		if strings.Contains(unit, refused) {
 			t.Fatalf("unit carries %q:\n%s", refused, unit)
 		}

@@ -25,6 +25,8 @@ type streamChunk struct {
 		Delta struct {
 			Content          string `json:"content"`
 			ReasoningContent string `json:"reasoning_content"`
+			Reasoning        string `json:"reasoning"`
+			Thinking         string `json:"thinking"`
 			ToolCalls        []struct {
 				Index    int    `json:"index"`
 				ID       string `json:"id"`
@@ -41,6 +43,19 @@ type streamChunk struct {
 	Error *struct {
 		Message string `json:"message"`
 	} `json:"error"`
+}
+
+// chunkReasoning is a chunk's reasoning text. Engines name the field
+// differently (SGLang and older vLLM reasoning_content, vLLM 0.34 reasoning,
+// some gateways thinking), and transitional vLLM releases send the same text
+// under two names, so the first non-empty one is taken, not their sum.
+func chunkReasoning(names ...string) string {
+	for _, text := range names {
+		if text != "" {
+			return text
+		}
+	}
+	return ""
 }
 
 // errStreamCut is a stream that ended without a finish reason or [DONE]:
@@ -111,8 +126,8 @@ func (c *Client) ChatStream(ctx context.Context, messages []Message, tools []Too
 		}
 		for _, choice := range ch.Choices {
 			d := choice.Delta
-			if d.ReasoningContent != "" && onReasoning != nil {
-				onReasoning(d.ReasoningContent)
+			if reasoning := chunkReasoning(d.ReasoningContent, d.Reasoning, d.Thinking); reasoning != "" && onReasoning != nil {
+				onReasoning(reasoning)
 			}
 			if d.Content != "" {
 				text.WriteString(d.Content)
