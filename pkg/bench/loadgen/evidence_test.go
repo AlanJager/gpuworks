@@ -216,12 +216,14 @@ func TestStreamTimingSeparatesReasoningContentAndFinish(t *testing.T) {
 }
 
 func TestNonstreamReasoningCountsGeneratedOutputWithoutEnteringConversation(t *testing.T) {
-	for _, usage := range []string{"", `,"usage":{"prompt_tokens":10,"completion_tokens":7,"completion_tokens_details":{"reasoning_tokens":5}}`} {
-		t.Run(fmt.Sprintf("usage=%t", usage != ""), func(t *testing.T) {
-			field := "reasoning_content"
-			if usage != "" {
-				field = "reasoning"
-			}
+	for _, tc := range []struct{ field, usage string }{
+		{"reasoning_content", ""},
+		{"reasoning_content", `,"usage":{"prompt_tokens":10,"completion_tokens":7,"completion_tokens_details":{"reasoning_tokens":5}}`},
+		{"reasoning", ""},
+		{"reasoning", `,"usage":{"prompt_tokens":10,"completion_tokens":7,"completion_tokens_details":{"reasoning_tokens":5}}`},
+	} {
+		field, usage := tc.field, tc.usage
+		t.Run(fmt.Sprintf("%s/usage=%t", field, usage != ""), func(t *testing.T) {
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				fmt.Fprintf(w, `{"choices":[{"message":{"content":"","%s":"abcdefgh"},"finish_reason":"length"}]`, field)
 				_, _ = w.Write([]byte(usage + `}`))
