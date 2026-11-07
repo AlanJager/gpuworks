@@ -406,6 +406,8 @@ core-vet:
       -v /usr/bin/docker:/usr/bin/docker:ro
       -v "$CI_PROJECT_DIR:$CI_PROJECT_DIR"
       -v "$GPUWORKS_CI_SOCKET_DIR:/run/gpuworks-e2e"
+      --tmpfs /run/gpuworks-full-disk:rw,size=64m,mode=1777
+      -e GPUWORKS_TEST_FULL_DISK_TMPFS=/run/gpuworks-full-disk
       -v "$DOCKER_HOST_CACHE/go-mod:/go-cache/mod"
       -v "$DOCKER_HOST_CACHE/go-build:/go-cache/build"
       -w "$CI_PROJECT_DIR"

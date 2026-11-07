@@ -30,6 +30,12 @@ var accessLogSensitiveFields = map[string]struct{}{
 // lived SSE and WebSocket requests additionally get an opening record so an
 // active connection is visible before it eventually closes.
 func accessLogHandler(log *slog.Logger, next http.Handler) http.Handler {
+	return accessLogHandlerFor(log, "", next)
+}
+
+// accessLogHandlerFor is accessLogHandler for a server whose data directory
+// is dataDir: an error answering a full disk names it (api.writeErr).
+func accessLogHandlerFor(log *slog.Logger, dataDir string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		started := time.Now()
 		requestID := "r" + strconv.FormatUint(middleware.NextRequestID(), 10)
@@ -41,7 +47,7 @@ func accessLogHandler(log *slog.Logger, next http.Handler) http.Handler {
 				"path", r.URL.Path, "remote", r.RemoteAddr)
 		}
 
-		rw := &accessResponseWriter{ResponseWriter: w}
+		rw := &accessResponseWriter{ResponseWriter: w, dataDir: dataDir}
 		defer func() {
 			message := "http request"
 			if stream {
@@ -169,7 +175,11 @@ type accessResponseWriter struct {
 	// (api.noteProductError).
 	errorCode   string
 	errorParams map[string]any
+	dataDir     string
 }
+
+// ServerDataDir is the data directory of the server answering.
+func (w *accessResponseWriter) ServerDataDir() string { return w.dataDir }
 
 // NoteProductError records the product error the response carries.
 func (w *accessResponseWriter) NoteProductError(code string, params map[string]any) {

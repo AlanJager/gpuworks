@@ -66,6 +66,11 @@ func (m *Manager) buildBundle(ctx context.Context, b Bundle) (Bundle, error) {
 		add(BundleItem{Name: name, State: "collected", Bytes: n, Truncated: truncated}, &stagedEntry{name: name, path: local})
 	}
 
+	// The server's disks first: when one is full, nothing later may fit.
+	stage("server/disk.json", func(w io.Writer) (int64, bool, error) {
+		return writeServerDisk(w, m.sources.ServerDirs())
+	})
+
 	// The server's log in the window.
 	stage("server/gpuworks-server.log", func(w io.Writer) (int64, bool, error) {
 		return m.serverLogWindow(w, b.From, b.To)
@@ -355,4 +360,3 @@ func (c *countingWriter) Write(p []byte) (int, error) {
 	c.n += int64(n)
 	return n, err
 }
-

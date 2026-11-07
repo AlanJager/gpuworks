@@ -62,6 +62,7 @@
     "SERVER_LISTEN_LOCKOUT": "You are connected through {{address}}, which would no longer serve the console after a restart. Keep it in the console addresses.",
     "SERVER_LISTEN_READ_ONLY": "The listen addresses cannot be changed from the console on this server.",
     "SERVER_RESTART_MANUAL": "Nothing restarts this server automatically. Run on its host: {{command}}",
+    "SERVER_STORAGE_FULL": "The server host's disk is full, so the change was not saved. Free space on the disk holding the server's data directory, then retry.",
     "NODE_LABELS_INVALID": "Invalid node labels: {{detail}}",
     "NODE_REQUIREMENTS_INVALID": "The node requirements are invalid: {{detail}}",
     "NODE_REQUIREMENTS_UNMET": "The node does not satisfy the deployment's node requirements: {{detail}}",
@@ -911,6 +912,9 @@
     "details": "Build details",
     "commit": "Commit: {{commit}}",
     "channel": "Build channel: {{channel}}"
+  },
+  "serverStorageFull": {
+    "at": "The server host's disk is full, so the change was not saved: the disk holding the data directory {{path}} has {{available}} of {{total}} left. Free space on it, then retry."
   },
   "acceleratorFeature": {
     "unsupported": "{{vendor}} does not support {{feature}}. Choose a supported feature or select another accelerator.",

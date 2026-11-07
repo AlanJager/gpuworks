@@ -103,12 +103,18 @@ type Manager struct {
 	now   func() time.Time
 
 	sources Sources
+	// bundleDir, when set, holds the collections instead of <dir>/bundles.
+	bundleDir string
 
 	mu      sync.Mutex
 	current *runningSession
 	last    *DebugSession
 	// bundleRunning is the collection being built, "" when none.
 	bundleRunning string
+	// unsaved are collections whose manifest could not be written (a full
+	// disk): kept here so the list still shows them, and why they failed,
+	// until a later write of the manifest succeeds.
+	unsaved map[string]Bundle
 }
 
 type runningSession struct {

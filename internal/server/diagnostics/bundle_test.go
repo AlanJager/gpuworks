@@ -21,6 +21,7 @@ type fakeSources struct {
 	nodeTar   map[string][]byte // uuid -> tar; nil entry = an agent that closes at once
 	block     chan struct{}
 	logFile   string
+	dirs      []ServerDir
 	requested [][]string
 }
 
@@ -56,6 +57,7 @@ func (f *fakeSources) Snapshot(_ context.Context, scope SnapshotScope) (map[stri
 }
 
 func (f *fakeSources) ServerLogFiles() []string { return []string{f.logFile} }
+func (f *fakeSources) ServerDirs() []ServerDir  { return f.dirs }
 func (f *fakeSources) Version() string          { return "v-test" }
 
 func tarOf(t *testing.T, files map[string]string) []byte {
@@ -120,7 +122,9 @@ func TestBundleCollectsTheWindowRedactedAndSaysWhatItSkipped(t *testing.T) {
 	logDir := t.TempDir()
 	logFile := filepath.Join(logDir, "gpuworks-server.log")
 	_ = os.WriteFile(logFile, []byte("time="+before+" level=INFO msg=old\ntime="+in+" level=WARN msg=\"in window\"\n\tstack continuation\n"), 0o600)
-	src := &fakeSources{logFile: logFile, nodeTar: map[string][]byte{
+	dataDir := t.TempDir()
+	_ = os.WriteFile(filepath.Join(dataDir, "gpuworks.db-wal"), make([]byte, 4096), 0o600)
+	src := &fakeSources{logFile: logFile, dirs: []ServerDir{{Kind: "data", Path: dataDir}}, nodeTar: map[string][]byte{
 		"n-run": tarOf(t, map[string]string{
 			"agent.log":    "time=" + before + " level=INFO msg=early\ntime=" + in + " level=INFO msg=\"image present\" image=x\n",
 			"debug/s1.log": "time=" + in + " level=DEBUG msg=\"runtime command\"\n",
@@ -164,6 +168,11 @@ func TestBundleCollectsTheWindowRedactedAndSaysWhatItSkipped(t *testing.T) {
 	}
 	if !strings.Contains(files["nodes/n-run/debug/s1.log"], "runtime command") || files["debug/s1/requests/7-r1.jsonl"] == "" || files["debug/s1/session.json"] == "" {
 		t.Fatalf("debug session files missing: %v", keys(files))
+	}
+	var disk ServerDisk
+	if err := json.Unmarshal([]byte(files["server/disk.json"]), &disk); err != nil || len(disk.Dirs) != 1 || disk.Dirs[0].Path != dataDir ||
+		len(disk.Dirs[0].Entries) != 1 || disk.Dirs[0].Entries[0] != (ServerDirEntry{Name: "gpuworks.db-wal", Bytes: 4096}) {
+		t.Fatalf("server/disk.json = %s", files["server/disk.json"])
 	}
 	if !strings.Contains(files["instances/inst-1.log"], "engine started inst-1") {
 		t.Fatalf("instance log = %q", files["instances/inst-1.log"])

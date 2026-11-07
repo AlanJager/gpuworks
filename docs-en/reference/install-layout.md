@@ -144,6 +144,8 @@ The server writes to both stderr and `<dir>/logs/gpuworks-server.log`. Logs rota
 
 In launchd deployments, the file receiving stderr has no rotation mechanism. When the server detects that stderr is a regular file, it writes normal logs only to the rotating log file (see the previous section). If the log directory is not writable, it falls back to stderr without preventing startup.
 
+When a write to the log file fails (for example, on a full disk), the file stops and records still go to stderr. The file is retried every 30 seconds; once that works, a `log file writes resumed` line comes first, carrying the number of records dropped (`dropped`), when writing stopped (`since`) and why (`err`), with no restart needed. The agent's log file behaves the same way.
+
 When the server exits because of an error, such as an occupied listen address, it records the reason in the same log with `msg="server exited"`. In nohup mode, stderr points to `/dev/null`, so this log is the only place to see the reason.
 
 ## Agent Configuration File

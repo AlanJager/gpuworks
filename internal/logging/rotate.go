@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 // RotationOptions configures a RotatingWriter.
@@ -32,13 +33,20 @@ func DefaultRotation() RotationOptions {
 	return RotationOptions{MaxBytes: 10 << 20, Keep: 20}
 }
 
+// resumeInterval is how long a failed writer waits before it tries the file
+// again.
+const resumeInterval = 30 * time.Second
+
 // RotatingWriter is an io.WriteCloser that rotates its file by size.
 //
 // It is log plumbing, not a data path: once rotation or a write fails the
-// writer disables itself, reports the failure through OnError and silently
-// discards further writes, so a full disk cannot take the process down or
-// drown it in repeated errors. A nil *RotatingWriter is not usable; callers
-// that may not have a file use NewLogger instead.
+// writer disables itself, reports the failure through OnError and discards
+// further writes, so a full disk cannot take the process down or drown it in
+// repeated errors. Every resumeInterval a discarded write tries the file again;
+// once that works the file gets a line saying how many records it lost and
+// since when, and logging carries on, so freeing the disk brings the log back
+// without a restart. A nil *RotatingWriter is not usable; callers that may not
+// have a file use NewLogger instead.
 type RotatingWriter struct {
 	mu       sync.Mutex
 	path     string
@@ -46,7 +54,17 @@ type RotatingWriter struct {
 	f        *os.File
 	size     int64
 	disabled bool
+	closed   bool
 	onError  func(error)
+	now      func() time.Time
+	// While disabled: when and why it stopped, the records it has dropped
+	// since, when it tries again, and whether the failed write left part of a
+	// line in the file.
+	disabledAt time.Time
+	cause      error
+	dropped    int64
+	retryAt    time.Time
+	partial    bool
 }
 
 // NewRotatingWriter opens path for appending, rotating first when the existing
@@ -61,7 +79,7 @@ func NewRotatingWriter(path string, opts RotationOptions) (*RotatingWriter, erro
 	if opts.Keep < 0 {
 		opts.Keep = 0
 	}
-	w := &RotatingWriter{path: filepath.Clean(path), opts: opts}
+	w := &RotatingWriter{path: filepath.Clean(path), opts: opts, now: time.Now}
 	if info, err := os.Stat(w.path); err == nil {
 		w.size = info.Size()
 		if w.size >= opts.MaxBytes {
@@ -80,7 +98,8 @@ func NewRotatingWriter(path string, opts RotationOptions) (*RotatingWriter, erro
 	return w, nil
 }
 
-// OnError registers a callback invoked at most once, when the writer gives up.
+// OnError registers a callback invoked each time the writer gives up: once per
+// outage, not per dropped record.
 func (w *RotatingWriter) OnError(f func(error)) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -92,12 +111,17 @@ func (w *RotatingWriter) OnError(f func(error)) {
 func (w *RotatingWriter) Write(p []byte) (int, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	if w.disabled {
+	if w.closed {
+		return len(p), nil
+	}
+	if w.disabled && !w.resume() {
+		w.dropped++
 		return len(p), nil
 	}
 	if w.size > 0 && w.size+int64(len(p)) > w.opts.MaxBytes {
 		if err := w.rotate(); err != nil {
-			w.disable(err)
+			w.disable(err, false)
+			w.dropped++
 			return len(p), nil
 		}
 	}
@@ -107,16 +131,61 @@ func (w *RotatingWriter) Write(p []byte) (int, error) {
 	n, err := w.f.Write(p)
 	w.size += int64(n)
 	if err != nil {
-		w.disable(err)
+		w.disable(err, n > 0)
+		w.dropped++
 		return len(p), nil
 	}
 	return n, nil
+}
+
+// resume tries the file again once the wait is over: it reopens it and
+// writes the line recording the outage. False keeps the writer disabled
+// until the next try. Callers must hold w.mu.
+func (w *RotatingWriter) resume() bool {
+	now := w.now()
+	if now.Before(w.retryAt) {
+		return false
+	}
+	w.retryAt = now.Add(resumeInterval)
+	f, err := os.OpenFile(w.path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		return false
+	}
+	info, err := f.Stat()
+	if err != nil {
+		_ = f.Close()
+		return false
+	}
+	w.f, w.size = f, info.Size()
+	if w.size >= w.opts.MaxBytes {
+		if err := w.rotate(); err != nil {
+			w.closeFile()
+			return false
+		}
+		w.partial = false // the cut line stays in the rotated generation
+	}
+	var line strings.Builder
+	if w.partial {
+		line.WriteByte('\n') // end the line the failed write cut short
+	}
+	fmt.Fprintf(&line, "time=%s level=WARN msg=\"log file writes resumed\" dropped=%d since=%s err=%s\n",
+		now.Format(time.RFC3339Nano), w.dropped, w.disabledAt.Format(time.RFC3339Nano), strconv.Quote(w.cause.Error()))
+	n, err := w.f.WriteString(line.String())
+	w.size += int64(n)
+	if err != nil {
+		w.partial = w.partial || n > 0
+		w.closeFile()
+		return false
+	}
+	w.disabled, w.cause, w.dropped, w.partial = false, nil, 0, false
+	return true
 }
 
 // Close closes the current file. The writer is unusable afterwards.
 func (w *RotatingWriter) Close() error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	w.closed = true
 	if w.f == nil {
 		return nil
 	}
@@ -160,16 +229,23 @@ func (w *RotatingWriter) rotate() error {
 	return nil
 }
 
-// disable reports the failure once and drops every later write. Callers must
-// hold w.mu.
-func (w *RotatingWriter) disable(err error) {
-	w.disabled = true
+// disable reports the failure and drops later writes until resume succeeds;
+// partial says the failed write left part of a record in the file. Callers
+// must hold w.mu.
+func (w *RotatingWriter) disable(err error, partial bool) {
+	now := w.now()
+	w.disabled, w.disabledAt, w.cause, w.partial = true, now, err, partial
+	w.retryAt = now.Add(resumeInterval)
+	w.closeFile()
+	if w.onError != nil {
+		w.onError(err)
+	}
+}
+
+func (w *RotatingWriter) closeFile() {
 	if w.f != nil {
 		_ = w.f.Close()
 		w.f = nil
-	}
-	if w.onError != nil {
-		w.onError(err)
 	}
 }
 
@@ -237,7 +313,7 @@ func NewLogger(base *slog.Logger, opts FileOptions) (*slog.Logger, func()) {
 		return base, func() {}
 	}
 	w.OnError(func(err error) {
-		base.Warn("log rotation failed; using stderr", "path", opts.Path, "err", err)
+		base.Warn("log file writes failed; using stderr until they succeed again", "path", opts.Path, "err", err)
 	})
 	// RotatingWriter consumes the full record even when disabled or failing.
 	// Write it first so a stderr failure cannot short-circuit the healthy file;

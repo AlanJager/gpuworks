@@ -212,6 +212,7 @@ func serve(log *slog.Logger, args []string) (err error) {
 	// port another process holds being the usual case.
 	defer func() {
 		if err != nil {
+			err = explainFullDisk(err, cfg.DataDir)
 			log.Error("server exited", "err", err)
 			err = fmt.Errorf("%w: %w", errServeLogged, err)
 		}
