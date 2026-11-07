@@ -440,6 +440,7 @@ func coordinateModelCopyProbe(ctx context.Context, req proto.ModelSyncCopyReques
 	if req.TransferID == "" {
 		req.TransferID = auth.NewUUID()
 	}
+	// Long for the same reason as coordinateModelCopy's listen.
 	listenRaw, err := call(ctx, req.TargetNodeUUID, proto.RPCModelSyncListen, proto.ModelSyncListenParams{TransferID: req.TransferID, Key: req.Key, TargetPath: req.TargetPath, Token: token, BindIP: req.TargetIP, ExpectedFileBytes: req.ExpectedFileBytes, StorageID: req.TargetStorageID}, true)
 	if err != nil {
 		return proto.ModelSyncCopyResult{TransferID: req.TransferID}, fmt.Errorf("start target model receiver: %w", err)
@@ -490,6 +491,11 @@ func coordinateModelCopy(ctx context.Context, req proto.ModelSyncCopyRequest, to
 			TransferID: req.TransferID, Key: req.Key,
 		}, false)
 	}
+	// Listen is long like send: before it answers, the target resolves its
+	// storage and checks free space, each bounded by the agent's own 30-second
+	// storage timeout, so on slow storage the reply arrives after the ordinary
+	// management deadline and the server would give up on a receiver that then
+	// starts anyway.
 	listenRaw, err := call(ctx, req.TargetNodeUUID, proto.RPCModelSyncListen, proto.ModelSyncListenParams{
 		TransferID: req.TransferID, Key: req.Key, TargetPath: req.TargetPath, Token: token,
 		BindIP: req.TargetIP, ExpectedFileBytes: req.ExpectedFileBytes, StorageID: req.TargetStorageID,
