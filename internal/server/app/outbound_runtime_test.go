@@ -49,7 +49,7 @@ func startOutboundRuntimeApp(t *testing.T, path string) (*App, string) {
 	cfg := DefaultConfig()
 	cfg.Addr, cfg.ConfigPath = "127.0.0.1:0", path
 	cfg.DataDir = t.TempDir()
-	cfg.AdminUser, cfg.AdminPassword = "admin", "gpuworks-test-password-2026"
+	cfg.AdminUser, cfg.AdminPassword = "admin", "password"
 	cfg.UsageReportOff, cfg.ManualUpdateChecks, cfg.RecoveryEnabled = true, true, false
 	// A stale startup value must never authorize a target after the file
 	// has removed its permission.
