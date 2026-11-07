@@ -99,7 +99,8 @@ func TestBenchmarkMetaDictionarySchema(t *testing.T) {
 	wantLoad := map[string]string{
 		"warmup_requests": "1", "max_warmup_requests": "1000", "burstiness": "1", "point_duration_s": "60",
 		"min_point_duration_s": "5", "max_point_duration_s": "3600", "min_open_loop_requests": "20",
-		"max_request_rate": "10000", "max_request_rates": "32", "max_burstiness": "100", "max_in_flight": "100000", "ignore_eos": "true", "ignore_eos_datasets": `["random","agentic"]`,
+		"max_request_rate": "10000", "max_request_rates": "32", "max_burstiness": "100", "max_in_flight": "100000",
+		"request_timeout_s": "600", "min_request_timeout_s": "10", "max_request_timeout_s": "7200", "ignore_eos": "true", "ignore_eos_datasets": `["random","agentic"]`,
 	}
 	if len(body.LoadDefaults) != len(wantLoad) {
 		t.Fatalf("load defaults = %s", w.Body.String())

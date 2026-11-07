@@ -411,6 +411,7 @@ gpuworks-agent doctor --connectivity --state /opt/gpuworks --json
 | `--max-in-flight N` | `0` | 开环在途请求上限，0 为不限 |
 | `--point-duration S` | `60` | 开环每个点位的到达时长（秒）；请求数 = 到达率 × 时长，至少 20 |
 | `--warmup-requests N` | `1` | 第一个点位前发送并丢弃的预热请求数，0 为不预热 |
+| `--request-timeout S` | `600` | 每个请求（含预热）的超时秒数，范围 10–7200 |
 | `--ignore-eos BOOL` | `true` | random / agentic 请求带 `ignore_eos`，生成到目标输出长度 |
 | `--dataset KIND` | `random` | `random` / `multiturn` / `agentic` |
 | `--preset NAME` | `agentic-80k-v1` | agentic 输入预设：`agentic-{10k,20k,40k,80k,128k,256k,512k,1m}-v1` |

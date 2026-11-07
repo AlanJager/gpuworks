@@ -252,7 +252,7 @@ func helloCapabilitiesForRuntime(prober gpu.Prober, runtimeDriver string) []stri
 		// Container capabilities are intentionally not inferred from a runtime
 		// name; the handler must provide the concrete PTY implementation.
 	}
-	caps = append(caps, proto.CapNetworkUpdate, proto.CapBench, proto.CapBenchWarmup, proto.CapBenchArrival, proto.CapBenchInteractivity, proto.CapBenchEvidence, proto.CapImagePullCandidates,
+	caps = append(caps, proto.CapNetworkUpdate, proto.CapBench, proto.CapBenchWarmup, proto.CapBenchArrival, proto.CapBenchInteractivity, proto.CapBenchEvidence, proto.CapBenchRequestTimeout, proto.CapImagePullCandidates,
 		proto.CapStorageFiles, proto.CapCardChecks)
 	if upgradeSupported() {
 		caps = append(caps, proto.CapUpgradePush)

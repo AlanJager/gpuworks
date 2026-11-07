@@ -26,8 +26,10 @@ func (e *execution) report(st proto.BenchmarkStatus) {
 	e.hooks.Report(st)
 }
 
+// warmup's recovery window is never shorter than one request's timeout, so a
+// slow first request is bounded by its timeout and not cut off by the window.
 func (e *execution) warmup(ctx context.Context, first search.Point) error {
-	return e.warmupRecovery(ctx, first, warmupRecoveryWindow, warmupRetryInterval)
+	return e.warmupRecovery(ctx, first, max(warmupRecoveryWindow, e.doc.RequestTimeout()), warmupRetryInterval)
 }
 
 // Warmup probes are never measured point requests. After the configured batch

@@ -39,7 +39,7 @@ const meta = {
 	detail_cap_mb: { default: 20, min: 1, max: 50, unit: "MB" },
 	agentic_presets: [{ value: "agentic-80k-v1", label: "80K", mean_input_tokens: 80_000, first_turn_input_tokens: 74_162, peak_input_tokens: 85_838, required_context_tokens: 90_000, recommended: true }],
 	agentic_defaults: { preset: "agentic-80k-v1", turns: 13, subsequent_turn_input_tokens: 753, output_tokens: 220, seed: 42, concurrency: [1, 2, 4, 8], sessions_per_point: { "1": 4, "2": 8, "4": 8, "8": 16 }, sessions_per_concurrency: 2, min_sessions_per_point: 4 },
-	load_defaults: { warmup_requests: 1, max_warmup_requests: 1000, burstiness: 1, point_duration_s: 60, min_point_duration_s: 5, max_point_duration_s: 3600, min_open_loop_requests: 20, max_request_rate: 10000, max_request_rates: 32, max_burstiness: 100, max_in_flight: 100000, ignore_eos: true, ignore_eos_datasets: ["random", "agentic"] },
+	load_defaults: { warmup_requests: 1, max_warmup_requests: 1000, request_timeout_s: 600, min_request_timeout_s: 10, max_request_timeout_s: 7200, burstiness: 1, point_duration_s: 60, min_point_duration_s: 5, max_point_duration_s: 3600, min_open_loop_requests: 20, max_request_rate: 10000, max_request_rates: 32, max_burstiness: 100, max_in_flight: 100000, ignore_eos: true, ignore_eos_datasets: ["random", "agentic"] },
 } as unknown as BenchmarkMeta;
 
 const deployment = { id: 7, name: "托管部署", node_uuid: "node-1", model_id: 1, served_name: "served", engine: "vllm", desired_state: "active", runtime_state: "running", sleepable: false, replicas: 1, template_deviated: false, created_at: "2026-09-01T00:00:00Z", operations: [{ type: "openai.chat", endpoint: "/v1/chat/completions", renderer: "chat" }] } as unknown as import("../src/api.ts").Deployment;
@@ -96,8 +96,11 @@ test("a new run warms up once and fixes the output length by default", async () 
 	assert.equal(screen.queryByText(zh.wizard.loadMode), null);
 	assert.equal((screen.getByLabelText(new RegExp(zh.wizard.warmupRequests)) as HTMLInputElement).value, "1");
 	assert.equal((screen.getByRole("checkbox", { name: new RegExp(zh.wizard.ignoreEOS.replace(/[()]/g, "\\$&")) }) as HTMLInputElement).checked, true);
+	// The request timeout defaults to the server's dictionary value.
+	assert.equal((screen.getByLabelText(new RegExp(zh.wizard.requestTimeout)) as HTMLInputElement).value, "600");
 	const body = await start(user);
 	assert.equal(body.search.warmup_requests, 1);
+	assert.equal(body.search.request_timeout_s, 600);
 	assert.equal(body.search.request_rates, undefined);
 	assert.equal(body.dataset.kind, "random");
 	assert.equal(body.dataset.ignore_eos, true);
@@ -113,6 +116,17 @@ test("warmup and the fixed output length can be turned off", async () => {
 	const body = await start(user);
 	assert.equal(body.search.warmup_requests, 0);
 	assert.equal(body.dataset.ignore_eos, false);
+});
+
+test("a long-context run raises the request timeout in the advanced settings", async () => {
+	const user = await openLoadStep({ mode: "saturation" });
+	await openAdvanced(user);
+	const timeout = screen.getByLabelText(new RegExp(zh.wizard.requestTimeout));
+	await user.clear(timeout);
+	await user.type(timeout, "1800");
+	await user.keyboard("{Tab}");
+	const body = await start(user);
+	assert.equal(body.search.request_timeout_s, 1800);
 });
 
 test("a parameter scan by arrival rate sends rates instead of concurrency", async () => {
@@ -189,7 +203,7 @@ test("rerunning a run with retired per-user limits drops them and says so", asyn
 });
 
 test("rerunning an arrival-rate scan restores its load settings", async () => {
-	const source = { id: 11, name: "开环", mode: "grid", target_kind: "instance", deployment_id: 7, model: "m", load_origin: "server", num_gpus: 1, dataset: { kind: "random", input_tokens: 512, output_tokens: 128, ignore_eos: false }, search: { request_rates: [0.5, 4], burstiness: 0.5, max_in_flight: 32, point_duration_s: 120, isl: [512], osl: [128], warmup_requests: 3 }, keep_detail: false, detail_cap_mb: 20, state: "done", created_at: "2026-10-09T00:00:00Z" } as unknown as BenchmarkRun;
+	const source = { id: 11, name: "开环", mode: "grid", target_kind: "instance", deployment_id: 7, model: "m", load_origin: "server", num_gpus: 1, dataset: { kind: "random", input_tokens: 512, output_tokens: 128, ignore_eos: false }, search: { request_rates: [0.5, 4], burstiness: 0.5, max_in_flight: 32, point_duration_s: 120, isl: [512], osl: [128], warmup_requests: 3, request_timeout_s: 1200 }, keep_detail: false, detail_cap_mb: 20, state: "done", created_at: "2026-10-09T00:00:00Z" } as unknown as BenchmarkRun;
 	const user = await openLoadStep({ sourceRun: source });
 	assert.equal(screen.queryByText(zh.wizard.legacySLADropped), null);
 	assert.equal((screen.getByPlaceholderText("1, 2, 4, 8") as HTMLInputElement).value, "0.5,4");
@@ -199,6 +213,7 @@ test("rerunning an arrival-rate scan restores its load settings", async () => {
 	assert.equal(body.search.max_in_flight, 32);
 	assert.equal(body.search.point_duration_s, 120);
 	assert.equal(body.search.warmup_requests, 3);
+	assert.equal(body.search.request_timeout_s, 1200);
 	assert.equal(body.dataset.ignore_eos, false);
 });
 

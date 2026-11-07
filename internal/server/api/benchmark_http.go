@@ -8,17 +8,16 @@ import (
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/server/store"
+	benchmeta "gpuworks.ai/gpuworks/pkg/bench"
 )
-
-const benchmarkRequestTimeout = 30 * time.Minute
 
 // benchmarkHTTPClient protects server-origin external load just like probes.
 // The one internal exception is the configured self gateway of a persisted
 // managed target. An external URL can never opt into that exception.
 func (a *apiHandlers) benchmarkHTTPClient(run *store.BenchmarkRun) *http.Client {
-	// Long-context requests can exceed loadgen.Client's five-minute default.
-	// Supplying the guarded transport must not remove its header/body timeout.
-	client := &http.Client{Transport: a.outboundTransport(), Timeout: benchmarkRequestTimeout}
+	// Supplying the guarded transport must not remove the per-request bound;
+	// benchrun replaces this default with the run's configured timeout.
+	client := &http.Client{Transport: a.outboundTransport(), Timeout: benchmeta.DefaultRequestTimeoutSeconds * time.Second}
 	if !a.managedBenchmarkGateway(run) {
 		return client
 	}
