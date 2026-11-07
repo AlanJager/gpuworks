@@ -87,96 +87,42 @@ func TestStorageCacheOverridesValidatePaths(t *testing.T) {
 	}
 }
 
-// A stored path that is outside the current roots does not block a change
-// that leaves the path alone. Resubmitting it, including node and cache
-// paths, also succeeds without moving it under a configured root.
-func TestPatchStorageDoesNotRejudgeStoredPaths(t *testing.T) {
+// storage_probe_roots no longer limits storage paths: a create whose path,
+// cache directory and node targets all sit outside the configured roots is
+// stored as submitted. TestStoragePatchPaths covers the same paths on PATCH.
+func TestCreateStorageAcceptsPathsOutsideConfiguredRoots(t *testing.T) {
 	st, signer, _ := newSessionRouter(t)
 	node, err := st.RegisterNode("root-policy-node", "root-policy-token", "node")
 	if err != nil {
 		t.Fatal(err)
 	}
-	outside, err := st.CreateStorage(&store.Storage{
-		Name: "probe-locked", Type: proto.StorageLocal, Enabled: true, AllNodes: false,
-		Path: "/opt/gpuworks/models", CachePath: "/opt/gpuworks/cache",
-	}, []store.StorageNode{{NodeID: node.ID, Path: "/opt/gpuworks/node", CachePath: "/opt/gpuworks/node-cache"}})
+	router := Router(Deps{Store: st, AuthSigner: signer, Server: StaticServerSettings{StorageRoots: []string{"/var/lib/gpuworks"}}})
+	cookie, _ := sessionLogin(t, router, "gpuworks-test-password-2026")
+	body := `{"name":"outside","type":"local","path":"/opt/gpuworks/models","cache_path":"/opt/gpuworks/cache",` +
+		`"targets":[{"node_uuid":"` + node.UUID + `","path":"/opt/gpuworks/node","cache_path":"/opt/gpuworks/node-cache"}]}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/storages", strings.NewReader(body))
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create outside the roots = %d %s", rec.Code, rec.Body.String())
+	}
+	rows, err := st.ListStorages()
 	if err != nil {
 		t.Fatal(err)
 	}
-	router := Router(Deps{Store: st, AuthSigner: signer, Server: StaticServerSettings{StorageRoots: []string{"/var/lib/gpuworks"}}})
-	cookie, _ := sessionLogin(t, router, "gpuworks-test-password-2026")
-	call := func(method, path, body string) *httptest.ResponseRecorder {
-		t.Helper()
-		req := httptest.NewRequest(method, path, strings.NewReader(body))
-		req.AddCookie(cookie)
-		rec := httptest.NewRecorder()
-		router.ServeHTTP(rec, req)
-		return rec
-	}
-	endpoint := fmt.Sprintf("/api/v1/storages/%d", outside.ID)
-	for _, body := range []string{
-		`{"name":"probe-locked-renamed"}`,
-		`{"enabled":false}`,
-		`{"is_default":true}`,
-	} {
-		rec := call(http.MethodPatch, endpoint, body)
-		if rec.Code != http.StatusOK {
-			t.Fatalf("patch %s = %d %s", body, rec.Code, rec.Body.String())
+	for _, row := range rows {
+		if row.Name != "outside" {
+			continue
 		}
-	}
-	assertStoredPaths := func(cache string) {
-		t.Helper()
-		row, err := st.StorageByID(outside.ID)
-		if err != nil || row.Name != "probe-locked-renamed" || row.Enabled || !row.IsDefault || row.Path != "/opt/gpuworks/models" || row.CachePath != cache {
-			t.Fatalf("stored row = %+v err=%v", row, err)
+		if row.Path != "/opt/gpuworks/models" || row.CachePath != "/opt/gpuworks/cache" {
+			t.Fatalf("stored row = %+v", row)
 		}
-		targets, err := st.StorageNodes(outside.ID)
+		targets, err := st.StorageNodes(row.ID)
 		if err != nil || len(targets) != 1 || targets[0].Path != "/opt/gpuworks/node" || targets[0].CachePath != "/opt/gpuworks/node-cache" {
 			t.Fatalf("stored targets = %+v err=%v", targets, err)
 		}
+		return
 	}
-	assertStoredPaths("/opt/gpuworks/cache")
-	for _, path := range []string{"/opt/gpuworks/models", "/opt/gpuworks/cache", "/opt/gpuworks/node", "/opt/gpuworks/node-cache"} {
-		var body string
-		switch path {
-		case "/opt/gpuworks/models":
-			body = `{"path":"/opt/gpuworks/models"}`
-		case "/opt/gpuworks/cache":
-			body = `{"cache_path":"/opt/gpuworks/cache"}`
-		case "/opt/gpuworks/node":
-			body = `{"targets":[{"node_uuid":"` + node.UUID + `","path":"/opt/gpuworks/node","cache_path":"/opt/gpuworks/node-cache"}]}`
-		default:
-			body = `{"targets":[{"node_uuid":"` + node.UUID + `","path":"/opt/gpuworks/node","cache_path":"/opt/gpuworks/node-cache"}]}`
-		}
-		requireStorageStatus(t, call(http.MethodPatch, endpoint, body), http.StatusOK)
-	}
-	assertStoredPaths("/opt/gpuworks/cache")
-	// Changing the cache directory keeps the stored path and targets intact.
-	rec := call(http.MethodPatch, endpoint, `{"cache_path":"/var/lib/gpuworks/cache"}`)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("cache inside the roots = %d %s", rec.Code, rec.Body.String())
-	}
-	assertStoredPaths("/var/lib/gpuworks/cache")
-	rec = call(http.MethodPatch, endpoint, `{"targets":[{"node_uuid":"`+node.UUID+`","path":"/var/lib/gpuworks/node","cache_path":"/var/lib/gpuworks/node-cache"}]}`)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("targets inside the roots = %d %s", rec.Code, rec.Body.String())
-	}
-	row, err := st.StorageByID(outside.ID)
-	if err != nil || row.Path != "/opt/gpuworks/models" || row.CachePath != "/var/lib/gpuworks/cache" {
-		t.Fatalf("path rejudged while editing targets = %+v err=%v", row, err)
-	}
-	rec = call(http.MethodPatch, endpoint, `{"path":"/var/lib/gpuworks/models"}`)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("move inside the roots = %d %s", rec.Code, rec.Body.String())
-	}
-	requireStorageStatus(t, call(http.MethodPost, "/api/v1/storages", `{"name":"again","type":"local","path":"/opt/gpuworks/models"}`), http.StatusCreated)
-	requireStorageStatus(t, call(http.MethodPost, "/api/v1/storages", `{"name":"cache-out","type":"local","path":"/var/lib/gpuworks/models","cache_path":"/opt/gpuworks/cache"}`), http.StatusCreated)
-	requireStorageStatus(t, call(http.MethodPost, "/api/v1/storages", `{"name":"tgt-out","type":"local","path":"/var/lib/gpuworks/models","targets":[{"node_uuid":"`+node.UUID+`","path":"/opt/gpuworks/node","cache_path":"/opt/gpuworks/node-cache"}]}`), http.StatusCreated)
-}
-
-func requireStorageStatus(t *testing.T, rec *httptest.ResponseRecorder, status int) {
-	t.Helper()
-	if rec.Code != status {
-		t.Fatalf("storage response = %d %s, want %d", rec.Code, rec.Body.String(), status)
-	}
+	t.Fatalf("created storage missing from %+v", rows)
 }

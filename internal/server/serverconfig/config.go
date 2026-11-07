@@ -50,7 +50,8 @@ type File struct {
 	OutboundRestrictPrivateHosts bool `yaml:"outbound_restrict_private_hosts,omitempty"`
 	// Exceptions when ordinary private HTTP destinations are restricted.
 	OutboundAllowPrivateHosts []string `yaml:"outbound_allow_private_hosts,omitempty"`
-	// StorageProbeRoots limits new storage paths and probes on managed nodes.
+	// StorageProbeRoots are the roots the startup check compares stored storage
+	// paths against. They do not limit new storage paths or probes.
 	StorageProbeRoots []string `yaml:"storage_probe_roots,omitempty"`
 	// MetricsRetention bounds raw metric and log samples (a Go duration).
 	MetricsRetention string `yaml:"metrics_retention,omitempty"`

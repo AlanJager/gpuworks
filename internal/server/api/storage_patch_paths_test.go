@@ -22,7 +22,6 @@ func TestStoragePatchPaths(t *testing.T) {
 		status      int
 		update      func(*store.Storage)
 		targetPath  string
-
 		targetCache string
 	}{
 		{name: "rename", storageType: proto.StorageLocal, legacy: true, body: `{"name":"renamed"}`, status: 200,

@@ -20,7 +20,8 @@ type ServerSettings interface {
 	// LoopbackURL is the base URL the server answers on over 127.0.0.1, for
 	// requests it makes to itself; "" when it binds no port.
 	LoopbackURL() string
-	// StorageProbeRoots are the host-configured roots for storage definitions.
+	// StorageProbeRoots are the host-configured storage roots. Storage path
+	// validation does not consult them.
 	StorageProbeRoots() []string
 	Listen() dto.ServerListen
 	// UpdateListen saves new addresses; localAddr is the address the request
