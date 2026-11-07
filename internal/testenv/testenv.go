@@ -303,9 +303,12 @@ func newEnv(t testing.TB, modelEndpoint, dbPath string, recovery bool, allowedPr
 // for the metrics drain, and then waits for its background loops and flushes
 // the request sinks to SQLite; on a loaded CI runner (two pipelines share one)
 // that is well past 9s, so the budget must not be below what Run itself may
-// use. The embedded server is not latency-sensitive: pay the wait instead of
-// failing whichever test tears down last.
-const serverShutdownBudget = 15 * time.Second
+// use. Closing the request sinks also checkpoints their SQLite WAL with an
+// fsync, which has taken over 15s on a runner whose disk another job was
+// loading. The embedded server is not latency-sensitive and the budget only
+// tells a hang from a slow drain: pay the wait instead of failing whichever
+// test tears down last.
+const serverShutdownBudget = 60 * time.Second
 
 // reportShutdownTimeout fails the test for a server that did not return, with
 // the goroutines still running so a hang can be told from a slow drain.
