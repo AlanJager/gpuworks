@@ -20,6 +20,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"gpuworks.ai/gpuworks/internal/server/distribution"
+	"gpuworks.ai/gpuworks/internal/storagerules"
 )
 
 // FileName is the configuration file kept in the install directory. It is not
@@ -46,8 +47,12 @@ type File struct {
 	TLSKeyFile  string `yaml:"tls_key_file,omitempty"`
 	// Exceptions for private HTTP model/registry/AI/telemetry destinations.
 	OutboundAllowPrivateHosts []string `yaml:"outbound_allow_private_hosts,omitempty"`
-	// StorageProbeRoots limits new storage paths and probes on managed nodes.
+	// StorageProbeRoots are the roots the startup check compares stored storage
+	// paths against. They do not limit new storage paths or probes.
 	StorageProbeRoots []string `yaml:"storage_probe_roots,omitempty"`
+	// StorageDeniedPaths replaces the built-in list of directories no storage
+	// may use. Absent keeps the built-in list; an empty list denies none.
+	StorageDeniedPaths *[]string `yaml:"storage_denied_paths,omitempty"`
 	// MetricsRetention bounds raw metric and log samples (a Go duration).
 	MetricsRetention string `yaml:"metrics_retention,omitempty"`
 	// Management session deadlines (Go durations).
@@ -113,6 +118,13 @@ func Load(path string) (File, error) {
 	for _, root := range f.StorageProbeRoots {
 		if !filepath.IsAbs(root) || filepath.Clean(root) == string(filepath.Separator) {
 			return File{}, fmt.Errorf("%s: storage_probe_roots must contain absolute directories below the filesystem root", path)
+		}
+	}
+	if f.StorageDeniedPaths != nil {
+		for _, p := range *f.StorageDeniedPaths {
+			if err := storagerules.CheckPathForm(p); err != nil {
+				return File{}, fmt.Errorf("%s: storage_denied_paths entry %q: %w", path, p, err)
+			}
 		}
 	}
 	return f, nil

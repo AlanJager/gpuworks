@@ -43,6 +43,9 @@ func applyServerConfig(cfg *app.Config, file serverconfig.File, given map[string
 	if len(file.StorageProbeRoots) > 0 {
 		cfg.StorageProbeRoots = append([]string(nil), file.StorageProbeRoots...)
 	}
+	if file.StorageDeniedPaths != nil {
+		cfg.StorageDeniedPaths = append([]string{}, (*file.StorageDeniedPaths)...)
+	}
 	if given["addr"] {
 		cfg.ListenOverridden = !file.Listen.Empty()
 	} else {

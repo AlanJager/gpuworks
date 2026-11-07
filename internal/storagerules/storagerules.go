@@ -2,6 +2,8 @@
 // contain that both ends enforce: the server when a storage is created,
 // changed or probed, and the agent when it mounts one. They live in one place
 // so the server can never accept what the agent will refuse at mount time.
+// The directory denylist is the exception: it is server policy (server.yaml
+// can replace it), so the agent checks only the path form.
 //
 // It is a leaf package with no dependencies beyond the standard library, so
 // both the server and the agent may import it.

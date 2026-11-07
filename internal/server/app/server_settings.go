@@ -15,6 +15,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"gpuworks.ai/gpuworks/internal/server/distribution"
 	"gpuworks.ai/gpuworks/internal/server/serverconfig"
+	"gpuworks.ai/gpuworks/internal/storagerules"
 	"gpuworks.ai/gpuworks/internal/version"
 )
 
@@ -316,7 +317,11 @@ func nonNil(s []string) []string {
 	return s
 }
 
-// StorageProbeRoots is local policy, never editable through the management API.
-func (s *serverSettings) StorageProbeRoots() []string {
-	return append([]string(nil), s.cfg.StorageProbeRoots...)
+// StorageDeniedPaths is local policy, never editable through the management
+// API. A configuration that never set the list keeps the built-in one.
+func (s *serverSettings) StorageDeniedPaths() []string {
+	if s.cfg.StorageDeniedPaths == nil {
+		return storagerules.DefaultDeniedPaths()
+	}
+	return append([]string{}, s.cfg.StorageDeniedPaths...)
 }

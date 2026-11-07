@@ -216,7 +216,7 @@
           "default": "",
           "request": "path",
           "persisted": "path",
-          "contract": "absolute path below the server's storage_probe_roots (the isolated server allows only private/storage)",
+          "contract": "absolute path that is not an operating-system directory; storage_probe_roots no longer limits it",
           "covered": [
             "relative rejected",
             "trim",
@@ -224,7 +224,7 @@
           ],
           "missing": [
             "node accessibility",
-            "server refusal of a path outside storage_probe_roots (storage-local.json covers it on create only)"
+            "server refusal of an operating-system directory on PATCH (storage-local.json covers it on create only)"
           ]
         },
         {

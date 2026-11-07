@@ -9,6 +9,7 @@ import (
 	"net/http"
 
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
+	"gpuworks.ai/gpuworks/internal/server/store"
 	"gpuworks.ai/gpuworks/internal/version"
 )
 
@@ -20,8 +21,9 @@ type ServerSettings interface {
 	// LoopbackURL is the base URL the server answers on over 127.0.0.1, for
 	// requests it makes to itself; "" when it binds no port.
 	LoopbackURL() string
-	// StorageProbeRoots are the host-configured roots for storage definitions.
-	StorageProbeRoots() []string
+	// StorageDeniedPaths are the directories no storage may use: server.yaml's
+	// storage_denied_paths, or the built-in list when it is not set.
+	StorageDeniedPaths() []string
 	Listen() dto.ServerListen
 	// UpdateListen saves new addresses; localAddr is the address the request
 	// arrived on, which must keep serving the console.
@@ -67,14 +69,18 @@ func (e *ServerSettingsError) Error() string { return e.Fallback }
 // StaticServerSettings serves fixed values and cannot be edited; it backs
 // harnesses that start the API without a configuration file. An empty
 // Channel is the build's.
+// A nil StorageDenied is the built-in denylist.
 type StaticServerSettings struct {
-	StorageRoots []string
-	Loopback     string
-	Channel      string
+	StorageDenied []string
+	Loopback      string
+	Channel       string
 }
 
-func (s StaticServerSettings) StorageProbeRoots() []string {
-	return append([]string(nil), s.StorageRoots...)
+func (s StaticServerSettings) StorageDeniedPaths() []string {
+	if s.StorageDenied == nil {
+		return store.DefaultStorageDeniedPaths()
+	}
+	return append([]string{}, s.StorageDenied...)
 }
 func (s StaticServerSettings) LoopbackURL() string { return s.Loopback }
 func (s StaticServerSettings) Listen() dto.ServerListen {

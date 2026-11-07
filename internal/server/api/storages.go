@@ -245,8 +245,11 @@ func validateStorage(row *store.Storage) error {
 		if p != "" && !path.IsAbs(p) {
 			return productError(ErrorStoragePathInvalid, "paths must be absolute", map[string]any{"path": p})
 		}
+		// Only the form is checked here: a PATCH validates the whole row, and a
+		// stored path a later denylist covers must not block unrelated edits.
+		// validateStoragePaths applies the denylist to submitted paths.
 		if p != "" {
-			if err := store.CheckStoragePath(p); err != nil {
+			if err := store.CheckStoragePathForm(p); err != nil {
 				return productError(ErrorStoragePathInvalid, err.Error(), nil)
 			}
 		}
