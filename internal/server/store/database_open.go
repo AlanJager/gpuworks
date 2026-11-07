@@ -86,7 +86,11 @@ func Open(dsn string, b *bus.Bus, policies ...securefile.Policy) (result *Store,
 		// blocking on it.
 		readSQLDB.SetMaxOpenConns(4)
 	}
-	if err := s.migrate(); err != nil {
+	migrate := s.migrate
+	if inMemory {
+		migrate = s.migrateInMemory
+	}
+	if err := migrate(); err != nil {
 		return nil, err
 	}
 	if err := verifyDatabase(dsn, policies...); err != nil {
