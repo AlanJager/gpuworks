@@ -29,7 +29,7 @@ func TestBenchmarkHTTPClientsKeepPerRequestDeadline(t *testing.T) {
 			client.Transport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
 				deadline, ok := req.Context().Deadline()
 				remaining := time.Until(deadline)
-				if !ok || remaining < 4*time.Minute || remaining > 5*time.Minute {
+				if !ok || remaining < benchmarkRequestTimeout-time.Minute || remaining > benchmarkRequestTimeout {
 					t.Fatalf("default per-request deadline missing: present=%v remaining=%s", ok, remaining)
 				}
 				return &http.Response{StatusCode: 204, Header: make(http.Header), Body: http.NoBody}, nil

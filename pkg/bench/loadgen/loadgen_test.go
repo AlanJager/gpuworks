@@ -111,7 +111,7 @@ func TestParseSSECountsReasoningOnlyOutput(t *testing.T) {
 		return value
 	}
 	stream := strings.NewReader(
-		"data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"think\"}}]}\n\n" +
+		"data: {\"choices\":[{\"delta\":{\"reasoning\":\"think\"}}]}\n\n" +
 			"data: {\"choices\":[],\"usage\":{\"prompt_tokens\":4,\"completion_tokens\":8}}\n\n" +
 			"data: [DONE]\n\n",
 	)

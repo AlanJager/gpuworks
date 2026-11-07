@@ -25,10 +25,29 @@ var kimiK31ProImages = map[string]map[string]string{
 
 func TestKimiK31ProSpecsUseTheDayZeroImagesAndPinnedWeights(t *testing.T) {
 	model, _ := catalogSpec(t, kimiK31ProModel, "mxfp4-vllm-nvidia-b300-tp8")
-	if len(model.Specs) != 12 {
-		t.Fatalf("specs = %d, want 12", len(model.Specs))
+	if len(model.Specs) != 13 {
+		t.Fatalf("specs = %d, want 13", len(model.Specs))
 	}
 	for _, spec := range model.Specs {
+		if spec.Name == "w4a8-vllm-ascend-a3-multinode-16npu" {
+			if spec.Image != "quay.io/ascend/vllm-ascend@sha256:e7c67329d7a7390dd472437020531a4ef289daa4f7374d11042364f80ab596b7" {
+				t.Errorf("%s: image = %q, want the official Ascend A3 image", spec.Name, spec.Image)
+			}
+			if spec.Weights.Quantization != "w4a8" || spec.WeightBytes != 1466844769783 || len(spec.Weights.Sources) != 1 {
+				t.Errorf("%s: weights = %+v (%d bytes)", spec.Name, spec.Weights, spec.WeightBytes)
+				continue
+			}
+			source := spec.Weights.Sources[0]
+			if source.Provider != "modelscope" || source.RepoID != "Eco-Tech/Kimi-K3.1-Pro-w4a8" || source.Revision != "bc632341a53fb72bcb65fe7c1aab24a3a5990ada" {
+				t.Errorf("%s: source = %+v", spec.Name, source)
+			}
+			for _, pair := range [][2]string{{"--reasoning-parser", "kimi_k3"}, {"--tool-call-parser", "kimi_k3"}} {
+				if !containsArgumentPair(spec.Args, pair[0], pair[1]) {
+					t.Errorf("%s: missing %s %s", spec.Name, pair[0], pair[1])
+				}
+			}
+			continue
+		}
 		if want := kimiK31ProImages[spec.Engine][spec.GPUs.Vendor]; spec.Image != want {
 			t.Errorf("%s: image = %q, want %q", spec.Name, spec.Image, want)
 		}

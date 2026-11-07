@@ -229,7 +229,7 @@ func (n *NodeRuntime) rpcModelSyncStop(params json.RawMessage) (any, error) {
 }
 
 func modelArchiveLimit(expectedFileBytes int64) int64 {
-	const hardLimit int64 = 500 << 30
+	const hardLimit int64 = 4 << 40
 	if expectedFileBytes <= 0 {
 		return hardLimit
 	}
