@@ -9,8 +9,8 @@ import (
 // warnUnmanagedStoragePaths logs storages whose path, cache directory, or
 // per-node path is outside the roots this process was given. Changing those
 // roots replaces the previous list, so a path that was allowed at install
-// can become unmanaged. Edits that do not submit the path still succeed;
-// this is the notice that the path can no longer be chosen again.
+// can become unmanaged. The roots do not restrict storage paths, so this is
+// only a notice: such paths can still be stored, edited and resubmitted.
 func warnUnmanagedStoragePaths(st *store.Store, roots []string, log *slog.Logger) {
 	if st == nil || log == nil || len(roots) == 0 {
 		return

@@ -15,6 +15,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/auth"
 	"gpuworks.ai/gpuworks/internal/server/proxy"
 	"gpuworks.ai/gpuworks/internal/server/serverconfig"
+	"gpuworks.ai/gpuworks/internal/storagerules"
 )
 
 // Config holds server runtime configuration. cmd/gpuworks fills it from
@@ -73,6 +74,9 @@ type Config struct {
 	OutboundAllowPrivateHosts    []string
 	OutboundRestrictPrivateHosts bool
 	StorageProbeRoots            []string
+	// StorageDeniedPaths are the directories no storage may use; nil is the
+	// built-in list, and an empty list denies none beyond the path form rules.
+	StorageDeniedPaths []string
 
 	SessionIdleTimeout time.Duration // inactivity deadline for management sessions
 	SessionMaxLifetime time.Duration // absolute login deadline
@@ -116,6 +120,7 @@ func DefaultConfig() Config {
 		ServerDialReconnectInterval: 10 * time.Second,
 		MetricsRetention:            72 * time.Hour,
 		StorageProbeRoots:           []string{"/opt/gpuworks/models", "/opt/gpuworks/cache", "/mnt/gpuworks"},
+		StorageDeniedPaths:          storagerules.DefaultDeniedPaths(),
 	}
 }
 
