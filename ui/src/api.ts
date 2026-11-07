@@ -802,6 +802,8 @@ export interface Model {
   id: number;
   source: string;
   source_id: string;
+  /** Set when PATCH /models/{id} may change source_id (a local or URL model). */
+  source_id_editable?: boolean;
   /** The HTTP directory a source="url" model is served from; absent for every other source. */
   source_url?: string;
   revision: string;
@@ -1033,6 +1035,14 @@ export type ModelCore = Omit<Model, "nodes" | "storages" | "readme">;
 
 /** A model as a list row: no README and no per-location presence, which GET /models/{id} carries. */
 export type ModelListItem = ModelCore & { presence: ModelPresenceSummary };
+
+/** GET /inference-templates/weight-models: the registered models serving a spec's weight sources. */
+export interface TemplateWeightModels {
+  /** Every model serving at least one source, newest first, each once. */
+  models: ModelListItem[];
+  /** The spec's sources in order; reuse_model_id is the model a choice of that source reuses. */
+  sources: Array<WeightSource & { reuse_model_id?: number }>;
+}
 
 /** One page of GET /models?page=…, with the summary of every model. */
 export interface ModelPage extends ListPage<ModelListItem> {
@@ -4191,6 +4201,10 @@ export const api = {
   models: () => getJSON<List<Model>>("/api/v1/models"),
   modelsPage: (query: ListQuery) => getJSON<ModelPage>(`/api/v1/models?${listQueryString(query)}`),
   model: (id: number) => getJSON<Model>(`/api/v1/models/${id}`),
+  templateWeightModels: (templateID: number, specSource: string, specName: string) =>
+    getJSON<TemplateWeightModels>(
+      `/api/v1/inference-templates/weight-models?${new URLSearchParams({ template_id: String(templateID), spec_source: specSource, spec_name: specName })}`,
+    ),
   inferenceTemplates: (query: ListQuery) =>
     getJSON<InferenceTemplatePage>(`/api/v1/inference-templates?${listQueryString(query)}`),
   inferenceTemplateIndex: (scope?: { vendor: string; node_uuid?: string }) =>
@@ -4311,6 +4325,8 @@ export const api = {
     },
   ) =>
     sendJSON<Model>("POST", `/api/v1/models/${id}/metadata/refresh`, metadata),
+  updateModelSourceID: (id: number, sourceID: string) =>
+    sendJSON<Model>("PATCH", `/api/v1/models/${id}`, { source_id: sourceID }),
   updateModelInferenceConfig: (
     id: number,
     operations: Pick<InferenceAPIOperation, "type">[],

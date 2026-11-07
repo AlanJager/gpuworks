@@ -118,19 +118,33 @@ func (a *apiHandlers) storageReadNode(row *store.Storage) (*store.Node, error) {
 func (a *apiHandlers) annotateScan(row *store.Storage, node *store.Node, page proto.StorageScanResult) dto.StorageScanResult {
 	out := dto.StorageScanResult{NodeUUID: node.UUID, NextCursor: page.NextCursor, Complete: page.Complete,
 		Candidates: []dto.StorageScanCandidate{}, Skipped: []dto.StorageScanSkipped{}}
-	imported := map[string]bool{}
+	imported := map[string]uint{}
+	holders := map[uint]*store.Model{}
 	if files, err := a.d.Store.ModelFilesInStorage(row.ID); err == nil {
 		for _, file := range files {
 			if file.NodeID == 0 {
-				imported[file.Path] = true
+				imported[file.Path] = file.ModelID
 			}
 		}
 	}
 	for _, c := range page.Candidates {
 		item := dto.StorageScanCandidate{RelPath: c.RelPath, SizeBytes: c.SizeBytes, Files: c.Files, Source: c.Source,
 			SourceID: c.SourceID, Revision: c.Revision, Subfolder: c.Subfolder, Format: c.Format, Tasks: c.Tasks, MetadataIssues: c.MetadataIssues, Basis: c.Basis, Incomplete: c.Incomplete,
-			IncompleteReason: c.IncompleteReason, Imported: imported[c.RelPath]}
-		if model := a.bindingModel(c.Source, c.SourceID, c.Revision, c.Subfolder); model != nil {
+			IncompleteReason: c.IncompleteReason}
+		// A recorded directory stays bound to the model holding it, even after
+		// that model's source id was renamed (see importOne).
+		var model *store.Model
+		if holderID, ok := imported[c.RelPath]; ok {
+			item.Imported = true
+			if model, ok = holders[holderID]; !ok {
+				model, _ = a.d.Store.GetModel(holderID)
+				holders[holderID] = model
+			}
+		}
+		if model == nil {
+			model = a.bindingModel(c.Source, c.SourceID, c.Revision, c.Subfolder)
+		}
+		if model != nil {
 			item.BindModelID, item.BindModelName = model.ID, model.Name
 		}
 		out.Candidates = append(out.Candidates, item)
@@ -242,16 +256,21 @@ func (a *apiHandlers) importOne(ctx context.Context, row *store.Storage, node *s
 		return result, err
 	}
 	item.SizeBytes = reg.SizeBytes
+	// The model already recorded at this path owns it, whatever its source id
+	// says now: a local model's source id can be renamed after import.
+	holder := a.modelRecordedAt(row.ID, item.RelPath)
 	var model *store.Model
 	if item.ModelID != 0 {
 		m, err := a.d.Store.GetModel(item.ModelID)
 		if err != nil {
 			return result, err
 		}
-		if nestedEntry && (m.Source != "local" || m.SourceID != item.RelPath || m.ArtifactSubfolder != "") {
+		if nestedEntry && (holder == nil || holder.ID != m.ID) && (m.Source != "local" || m.SourceID != item.RelPath || m.ArtifactSubfolder != "") {
 			return result, errors.New("a standalone directory cannot bind a repository-subfolder artifact")
 		}
 		model = m
+	} else if holder != nil {
+		model = holder
 	} else if m := a.bindingModel(item.Source, item.SourceID, item.Revision, item.Subfolder); m != nil {
 		model = m
 	} else {
@@ -277,6 +296,20 @@ func (a *apiHandlers) importOne(ctx context.Context, row *store.Storage, node *s
 	}
 	result.ModelID = model.ID
 	return result, nil
+}
+
+// modelRecordedAt is the model whose shared-storage row sits at relPath, or
+// nil when the path is not recorded.
+func (a *apiHandlers) modelRecordedAt(storageID uint, relPath string) *store.Model {
+	file, err := a.d.Store.SharedModelFileAt(storageID, relPath)
+	if err != nil {
+		return nil
+	}
+	model, err := a.d.Store.GetModel(file.ModelID)
+	if err != nil {
+		return nil
+	}
+	return model
 }
 
 func (a *apiHandlers) modelFromParsedDir(dir modelDir, item dto.StorageImportItem) (*store.Model, error) {

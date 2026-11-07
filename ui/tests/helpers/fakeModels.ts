@@ -1,4 +1,4 @@
-import type { List, ListQuery, Model, ModelPage } from "../../src/api";
+import type { List, ListQuery, Model, ModelPage, TemplateWeightModels, WeightSource } from "../../src/api";
 
 const presence = { ready_nodes: 0, cached_nodes: 0, ready_storages: 0, in_flight: 0, in_flight_percent: 0, failed: 0 };
 
@@ -45,6 +45,36 @@ export function fakeModels(models: FixtureModel[]) {
         summary: { registered: models.length, ready_files: 0, sources: 0, weight_gib: 0 },
       };
     },
+    weightLookups: [] as Array<[number, string, string]>,
+    /**
+     * GET /inference-templates/weight-models as the server answers it, for
+     * the spec `specs` resolves (an unknown spec fails as a 404 does): a model
+     * serves a source when its source id is the source's repo id ignoring case
+     * and it holds the requested subfolder or the whole repository; models come
+     * newest first, each once; a source reuses the newest serving model from
+     * its own provider.
+     */
+    templateWeightModels: (specs: (templateID: number, source: string, name: string) => WeightSource[] | undefined) =>
+      async (templateID: number, specSource: string, specName: string): Promise<TemplateWeightModels> => {
+        fake.weightLookups.push([templateID, specSource, specName]);
+        const sources = specs(templateID, specSource, specName);
+        if (!sources) throw new Error("inference spec not found");
+        const newest = [...models].sort((a, b) => b.id - a.id);
+        const serves = (m: FixtureModel, source: WeightSource) => {
+          const held = (m.artifact_subfolder ?? "").trim();
+          const asked = (source.subfolder ?? "").trim();
+          return (m.source_id ?? "").trim().toLowerCase() === source.repo_id.trim().toLowerCase() &&
+            (held === asked || (held === "" && asked !== ""));
+        };
+        const serving = newest.filter((m) => sources.some((source) => serves(m, source)));
+        return {
+          models: serving.map(({ nodes: _n, storages: _s, readme: _r, presence: own, ...row }) => ({ ...row, presence: { ...presence, ...own } })) as never,
+          sources: sources.map((source) => {
+            const reuse = serving.find((m) => (m.source ?? "").toLowerCase() === source.provider.toLowerCase() && serves(m, source));
+            return reuse ? { ...source, reuse_model_id: reuse.id } : { ...source };
+          }),
+        };
+      },
     model: async (id: number): Promise<Model> => {
       reads.push(id);
       const found = models.find((m) => m.id === id);

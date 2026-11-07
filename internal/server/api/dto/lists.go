@@ -280,3 +280,24 @@ type DashboardCurrentMetrics struct {
 	PowerWatts      *float64 `json:"power_watts"`
 	MemoryUsedBytes *float64 `json:"memory_used_bytes"`
 }
+
+// TemplateWeightModels answers GET /inference-templates/weight-models: the
+// registered models that serve one spec's declared weight sources, matched
+// by the server's repository identity rule (the deploy create path's).
+type TemplateWeightModels struct {
+	// Models is every registered model serving at least one source, newest
+	// first, each once.
+	Models  []ModelListItem       `json:"models"`
+	Sources []TemplateWeightMatch `json:"sources"`
+}
+
+// TemplateWeightMatch is one declared source, in the spec's order, and the
+// registered model a choice of that source reuses: the newest one from the
+// same provider that serves it. Absent when the source would be registered.
+type TemplateWeightMatch struct {
+	Provider     string `json:"provider"`
+	RepoID       string `json:"repo_id"`
+	Revision     string `json:"revision,omitempty"`
+	Subfolder    string `json:"subfolder,omitempty"`
+	ReuseModelID uint   `json:"reuse_model_id,omitempty"`
+}

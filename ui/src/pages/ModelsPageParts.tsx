@@ -25,6 +25,7 @@ import {
 } from "@ant-design/icons";
 import { formatDate } from "../i18n/datetime";
 import { useTranslation } from "react-i18next";
+import ModelSourceIDField from "./models/ModelSourceIDField";
 import {
   api,
   type FSEntry,
@@ -255,7 +256,7 @@ export function ModelDetailModal({
             {model.revision || t("detail.defaultBranch")}
             {hasUnpinnedLocalCopy(model) && <Tooltip title={t("detail.unpinnedHint")}><Tag color="orange" style={{ marginLeft: 8 }}>{t("detail.unpinned")}</Tag></Tooltip>}
           </Descriptions.Item>
-          <Descriptions.Item label={t("column.sourceID")} span={2}>{model.source_id}</Descriptions.Item>
+          <Descriptions.Item label={t("column.sourceID")} span={2}><ModelSourceIDField model={model} onChanged={onChanged} /></Descriptions.Item>
           <Descriptions.Item label={t("detail.architecture")}>{model.arch || t("unrecognized")}</Descriptions.Item>
           <Descriptions.Item label={t("column.weight")}>{model.weight_gib ? `${model.weight_gib.toFixed(1)} GiB` : "—"}</Descriptions.Item>
           <Descriptions.Item label={t("detail.precision")}>{model.precision || t("unrecognized")}</Descriptions.Item>

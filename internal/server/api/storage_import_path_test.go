@@ -128,3 +128,81 @@ func TestImportStorageModelsReportsPathConflict(t *testing.T) {
 		})
 	}
 }
+
+// A local model renamed after import still owns its directory: importing that
+// directory again binds it instead of registering a second model that the
+// path's unique row would then refuse.
+// go test ./internal/server/api -run TestImportStorageModelsBindsTheRenamedHolder -count=1
+func TestImportStorageModelsBindsTheRenamedHolder(t *testing.T) {
+	r := newSaveToRig(t)
+	root := t.TempDir()
+	rel := "Qwen3-0.6B"
+	dir := filepath.Join(root, rel)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	for name, body := range map[string]string{"config.json": `{"architectures":["Qwen3ForCausalLM"]}`, "model.safetensors": "weights"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := r.st.ApplyStorageStatus(r.node.ID, proto.StorageStatusReport{Storages: []proto.StorageStatus{{ID: r.nfs.ID, State: proto.StorageStateReady, Path: root, Writable: true}}}); err != nil {
+		t.Fatal(err)
+	}
+	holder, err := r.st.UpsertModel(&store.Model{Source: "local", SourceID: rel, Revision: "local", Name: "qwen"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.st.UpsertModelFile(&store.ModelFile{ModelID: holder.ID, StorageID: r.nfs.ID, Path: rel, State: proto.MFPresent}); err != nil {
+		t.Fatal(err)
+	}
+	if _, changed, err := r.st.SetModelSourceID(holder.ID, "Qwen/Qwen3-0.6B"); err != nil || !changed {
+		t.Fatalf("rename: changed=%t err=%v", changed, err)
+	}
+	before, err := r.st.ListModels()
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.h.d.CallNode = func(ctx context.Context, uuid, method string, params any) (json.RawMessage, error) {
+		p := params.(map[string]any)
+		path := p["path"].(string)
+		report, err := modelscan.ParseMetadataWithin(ctx, root, path)
+		if err != nil {
+			return nil, err
+		}
+		size, err := modelscan.ValidateModelDir(path)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(registerPathResponse{Path: path, SizeBytes: size, Metadata: &report})
+	}
+
+	// The scan names the holder, not whatever the directory name would bind.
+	scan := r.h.annotateScan(r.nfs, r.node, proto.StorageScanResult{Candidates: []proto.StorageScanCandidate{{RelPath: rel, Source: "local", SourceID: rel, Revision: "local"}}})
+	if len(scan.Candidates) != 1 || !scan.Candidates[0].Imported || scan.Candidates[0].BindModelID != holder.ID || scan.Candidates[0].BindModelName != "qwen" {
+		t.Fatalf("scan candidate = %+v", scan.Candidates)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(fmt.Sprintf(`{"items":[{"rel_path":"%s","source":"local","source_id":"%s"}]}`, rel, rel)))
+	route := chi.NewRouteContext()
+	route.URLParams.Add("id", fmt.Sprint(r.nfs.ID))
+	rec := httptest.NewRecorder()
+	r.h.importStorageModels(rec, req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, route)))
+	var response dto.StorageImportResult
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if rec.Code != http.StatusOK || len(response.Failed) != 0 || len(response.Imported) != 1 || response.Imported[0].ModelID != holder.ID || response.Imported[0].Created {
+		t.Fatalf("import response=%s", rec.Body.String())
+	}
+	after, err := r.st.ListModels()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(after) != len(before) {
+		t.Fatalf("import registered another model: %d -> %d", len(before), len(after))
+	}
+	if stored, _ := r.st.GetModel(holder.ID); stored.SourceID != "Qwen/Qwen3-0.6B" {
+		t.Fatalf("holder changed: %+v", stored)
+	}
+}

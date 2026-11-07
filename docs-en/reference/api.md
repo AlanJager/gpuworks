@@ -398,6 +398,7 @@ so renaming changes only `display` and does not affect label-based matching.
 | POST | `/api/v1/models/local` | Register a local model on a node | JWT |
 | GET | `/api/v1/models/{id}/logo` | Get the model logo image | JWT |
 | GET | `/api/v1/models/{id}` | Get model details | JWT |
+| PATCH | `/api/v1/models/{id}` | Change the source ID of a local / HTTP-directory model (`{"source_id"}`; `source_id_editable` in the details says whether it can be changed). A public-repository model returns 400 `MODEL_SOURCE_ID_FIXED`, a name another model already has returns 409 `MODEL_SOURCE_ID_TAKEN`, and an in-progress copy, download, or removal returns 409 `MODEL_TRANSFER_ACTIVE`. Existing copies keep their paths | JWT |
 | DELETE | `/api/v1/models/{id}` | Delete a model | JWT(admin) |
 | POST | `/api/v1/models/{id}/metadata/refresh` | Fetch model metadata again (config/README/logo) | JWT |
 | POST | `/api/v1/models/{id}/download` | Start a public repository download: `storage_id` selects the storage (defaults to the default storage when omitted). For local storage, also provide `node_uuid` or `node_uuids`; for shared storage, one writer node downloads the model once | JWT |
@@ -541,6 +542,7 @@ For the format and import rules, see [Image Catalog and Inference Image Families
 | GET | `/api/v1/inference-templates/chips` | Static catalog of accelerator cards supported by templates; optional `arch_id` identifies the architecture required by a template, with other vendor fields unchanged | JWT |
 | GET | `/api/v1/inference-templates/my-chips` | List accelerator cards detected in the current cluster, with `vendor`, `name`, optional `cc`, and reported `arch_id` (omitted when unavailable) | JWT |
 | GET | `/api/v1/inference-templates/summary` | Get template summary statistics | JWT |
+| GET | `/api/v1/inference-templates/weight-models` | Registered models for the weight sources one spec declares (`template_id`, `spec_source`, and `spec_name` are required; a missing one returns 400 `TEMPLATE_WEIGHT_MODELS_QUERY_INVALID`, an unknown spec 404): `models` are the models serving any source (repo ID matched case-insensitively, a whole repository serves a subfolder request, newest first, each once, rows shaped as in the paged list); `sources` lists the sources in declared order, and `reuse_model_id` is the newest same-provider model a choice of that source reuses | JWT |
 | GET | `/api/v1/inference-templates/export/{digest}` | Export an executable template package by content digest | JWT(admin) |
 | GET | `/api/v1/inference-templates/model/*` | Get template details by model path (wildcard path) | JWT |
 | GET | `/api/v1/inference-templates/yaml?model_id=…` | Get flat YAML for the template editor: the server writes it using the same catalog types as import. Add `spec_source=user` (or `upstream`) to retain only specs from that source; `readme_*` fields are written only when all specs are listed or the template itself belongs to the user. Saving it unchanged (`import?overwrite=true`) preserves all fields | JWT |
