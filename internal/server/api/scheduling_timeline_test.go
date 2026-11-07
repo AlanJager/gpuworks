@@ -22,11 +22,32 @@ type timelineRig struct {
 	shared, res *store.Deployment
 }
 
+// awaitMidMinute waits until the clock is clear of a minute's edge. The
+// store stamps an event as it is written and the handlers read the memory in
+// whole minutes up to the second the request came in, so a request in the
+// first second of a minute leaves out the events of that same second (their
+// minute starts at the range's end), and events written across the edge land
+// in two buckets. A test that writes events as it runs and then asks for the
+// range starts clear of both: at most about three seconds, and only when the
+// run begins there.
+func awaitMidMinute(t *testing.T) {
+	t.Helper()
+	const margin = 2 // seconds either side of the edge
+	deadline := time.Now().Add(10 * time.Second)
+	for sec := time.Now().Second(); sec < 1 || sec >= 60-margin; sec = time.Now().Second() {
+		if time.Now().After(deadline) {
+			t.Fatal("the clock never left the edge of a minute")
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}
+
 // newTimelineRig builds a node with two cards, a shared deployment on card 0
 // and a resident one on card 1, and a past three hours old that the tests add
 // events to.
 func newTimelineRig(t *testing.T) *timelineRig {
 	t.Helper()
+	awaitMidMinute(t)
 	rig := newScheduleRig(t)
 	node, err := rig.st.RegisterNode("tl-node", store.HashToken("token"), "tl-node")
 	if err != nil {
