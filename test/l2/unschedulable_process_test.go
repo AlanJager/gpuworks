@@ -365,7 +365,7 @@ func TestDeleteWaitsForTheAgentUnlessForced(t *testing.T) {
 		t.Fatal("deployment disappeared before the agent confirmed the teardown")
 	}
 	// It still completes once the agent reports the teardown.
-	waitDeploymentGone(t, base, adminToken, waited.ID, 60*time.Second)
+	waitDeploymentGone(t, base, adminToken, waited.ID, deploymentRemovalDeadline)
 
 	// Force is the opposite guarantee, and it exists for the node that will
 	// never answer: the record goes away immediately.
@@ -383,13 +383,15 @@ func TestDeleteWaitsForTheAgentUnlessForced(t *testing.T) {
 
 func waitDeploymentGone(t *testing.T, base, token string, id uint, timeout time.Duration) {
 	t.Helper()
-	deadline := time.Now().Add(timeout)
+	start := time.Now()
+	deadline := start.Add(timeout)
 	for time.Now().Before(deadline) {
 		resp, _ := authedDo(t, http.MethodGet, base, token, "/api/v1/deployments/"+itoa(id), nil)
 		if resp.StatusCode == http.StatusNotFound {
+			t.Logf("deployment %d gone after %s", id, time.Since(start))
 			return
 		}
 		time.Sleep(250 * time.Millisecond)
 	}
-	t.Fatalf("deployment %d was never removed after the agent confirmed", id)
+	t.Fatalf("deployment %d was not removed within %s of the delete\n%s", id, timeout, removalDiagnostics(t, base, token, id))
 }
