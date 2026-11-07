@@ -156,7 +156,7 @@ jobs:
     timeout-minutes: 45
     env:
       DOCKER_DIND_IMAGE: "docker:29-dind@sha256:12e683a161823b2a839aeea999b9d960e6e1f9a97b1679ad6b441982e2d9cf07"
-      DOCKER_GO_IMAGE: "golang:1.26@sha256:d7722066f0b60ceccb6c0643cbed1f5f9e15506ac237146c95333504d7805d89"
+      DOCKER_GO_IMAGE: "golang:1.26@sha256:670bb5aa5349ae03b8516764718486f4f16399134bdc9acd0c46a23f043ab05c"
       DIND: gpuworks-docker-core-dind
     steps:
       - uses: actions/checkout@v5
