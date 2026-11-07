@@ -8,12 +8,15 @@ import (
 	"testing"
 )
 
-func TestStorageProbeRejectsSystemPathsAndSymlinkAliases(t *testing.T) {
+// The agent refuses malformed paths and symbolic-link aliases on its own; the
+// operating-system denylist is server policy (storagerules.ValidatePath), so a
+// server that replaced that list can place storage under a former default.
+func TestStorageProbeRejectsMalformedPathsAndSymlinkAliases(t *testing.T) {
 	m := New(Options{})
-	for _, p := range []string{"/etc", "/proc", "/sys", "/dev"} {
+	for _, p := range []string{"/", "relative/models", "/data/../etc", "/data/./models", "/data/\x00models"} {
 		res := m.Probe(context.Background(), Spec{Type: TypeLocal, Path: p})
 		if res.OK || res.Readable || res.Writable {
-			t.Fatalf("system probe succeeded: %s %+v", p, res)
+			t.Fatalf("malformed probe succeeded: %q %+v", p, res)
 		}
 	}
 	dir := t.TempDir()
@@ -21,13 +24,17 @@ func TestStorageProbeRejectsSystemPathsAndSymlinkAliases(t *testing.T) {
 	if err := os.Symlink("/etc", alias); err != nil {
 		t.Fatal(err)
 	}
+	cacheAlias := filepath.Join(dir, "cache")
+	if err := os.Symlink("/etc", cacheAlias); err != nil {
+		t.Fatal(err)
+	}
 	res := m.Probe(context.Background(), Spec{Type: TypeLocal, Path: alias})
 	if res.OK || res.Readable || res.Writable || !strings.Contains(res.Message, "canonical") {
 		t.Fatalf("symlink alias probe: %+v", res)
 	}
-	statuses := m.Reconcile(context.Background(), []Spec{{ID: 1, Type: TypeLocal, Path: alias}, {ID: 2, Type: TypeNFSCache, Path: dir, CachePath: "/etc", Export: "nfs:/models"}})
+	statuses := m.Reconcile(context.Background(), []Spec{{ID: 1, Type: TypeLocal, Path: alias}, {ID: 2, Type: TypeNFSCache, Path: dir, CachePath: cacheAlias, Export: "nfs:/models"}})
 	for _, status := range statuses {
-		if status.State == StateReady || status.Writable {
+		if status.State == StateReady || status.Writable || !strings.Contains(status.Message, "canonical") {
 			t.Fatalf("unsafe storage reconciled: %+v", status)
 		}
 	}

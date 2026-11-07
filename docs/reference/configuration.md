@@ -60,7 +60,8 @@ usage_report: false        # 不发日报，自动检查不带节点数/GPU型�
 | `tls_cert_file` / `tls_key_file` | 空 | 原生 HTTPS 的 PEM 证书链和私钥路径，必须同时设置。非维护监听使用 TLS 1.2 以上；要求显式监听 IP，不支持通配地址。本机 `127.0.0.1` / `::1` 维护入口保留 HTTP，见[生产部署](../how-to/deploy-production.md#原生-https) | — |
 | `outbound_restrict_private_hosts` | `false` | 管理节点 HTTP 出站的私网严格模式；默认关闭，普通私网及本机回环无需白名单。设为 `true` 后，仅允许 `outbound_allow_private_hosts` 授权的私网目标。保存后下一次请求生效；特殊元数据、链路本地和保留地址始终拒绝 | — |
 | `outbound_allow_private_hosts` | 空 | 严格模式下的私网例外：精确主机名、IP 或 CIDR；关闭严格模式时普通私网及本机回环不需要此列表。保存后下一次请求生效，无需重启。禁止通配域名；特殊地址始终拒绝。平台管理员可在设置页或管理 API 修改这两个字段，也可由主机管理员直接编辑文件 | — |
-| `storage_probe_roots` | `/opt/gpuworks/models`、`/opt/gpuworks/cache`、`/mnt/gpuworks` | 不再限制存储路径：新建、修改存储与探测可使用这些目录根之外的路径。server 启动时仍按它检查已有存储，路径（含缓存目录与按节点路径）不在其中时记一条 warn。系统目录始终拒绝，清单内置不可配置，见[使用存储](../how-to/storages.md)。重启生效 | — |
+| `storage_probe_roots` | `/opt/gpuworks/models`、`/opt/gpuworks/cache`、`/mnt/gpuworks` | 不再限制存储路径：新建、修改存储与探测可使用这些目录根之外的路径。server 启动时仍按它检查已有存储，路径（含缓存目录与按节点路径）不在其中时记一条 warn。重启生效 | — |
+| `storage_denied_paths` | `/etc`、`/proc`、`/sys`、`/dev`、`/boot`、`/bin`、`/sbin`、`/lib`、`/lib64`、`/usr`、`/run`、`/var/run`、`/var/lib/docker`、`/var/lib/containerd` | 存储路径与缓存目录禁止使用的目录，按路径分段匹配并包含子目录；设置后整体替换内置清单，`[]` 表示不禁用任何目录，不写则用内置清单。每项须是绝对路径，不能是 `/` 或含 `.`、`..` 段。路径格式规则（绝对路径、无 `.`/`..`、非 `/`、节点上不经符号链接）不受此项影响。只能编辑文件，重启生效；只约束本次提交的路径，已保存的路径不会因清单变化被拒绝编辑，见[使用存储](../how-to/storages.md) | — |
 | `metrics_retention` | 72h | **只在首次启动时**作为指标原始样本与容器日志保留时长的初值（Go duration，非法或非正值按默认 72h，限定在 24 小时–30 天）；之后以设置页「数据保留」为准（`PUT /api/v1/data-retention`，[ADR 0055](../adr/0055-long-term-statistics.md)），两者不一致时启动日志打一条 warn。清理每小时一次、分批执行（样本每批 5 万行，日志边界日每批 5000 行） | `--metrics-retention` |
 | `session_idle_timeout` | 24h | 管理会话无真实操作后的失效期限（Go duration，非法或非正值取默认值） | — |
 | `session_max_lifetime` | 168h（7 天） | 从登录起计算的绝对期限，操作不会延长（Go duration，非法或非正值取默认值） | — |

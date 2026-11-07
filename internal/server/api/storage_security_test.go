@@ -21,7 +21,7 @@ func TestStorageProbeValidatesPathsBeforeNodeRPC(t *testing.T) {
 		t.Fatal(err)
 	}
 	calls := 0
-	h := &apiHandlers{d: Deps{Store: st, Server: StaticServerSettings{StorageRoots: []string{"/srv/models"}}, Online: func(string) bool { return true }, CallNode: func(_ context.Context, _ string, _ string, params any) (json.RawMessage, error) {
+	h := &apiHandlers{d: Deps{Store: st, Server: StaticServerSettings{}, Online: func(string) bool { return true }, CallNode: func(_ context.Context, _ string, _ string, params any) (json.RawMessage, error) {
 		p, ok := params.(proto.StorageProbeParams)
 		if !ok || p.Path != "/tmp" {
 			return nil, fmt.Errorf("unexpected probe parameters: %#v", params)
@@ -56,7 +56,7 @@ func TestStorageCacheOverridesValidatePaths(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	router := Router(Deps{Store: st, AuthSigner: signer, Server: StaticServerSettings{StorageRoots: []string{"/srv/models"}}})
+	router := Router(Deps{Store: st, AuthSigner: signer, Server: StaticServerSettings{}})
 	cookie, _ := sessionLogin(t, router, "gpuworks-test-password-2026")
 	endpoint := fmt.Sprintf("/api/v1/storages/%d/node-overrides", storage.ID)
 	for _, p := range []string{"/etc", "/srv/models/../../etc"} {
@@ -96,7 +96,7 @@ func TestCreateStorageAcceptsPathsOutsideConfiguredRoots(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	router := Router(Deps{Store: st, AuthSigner: signer, Server: StaticServerSettings{StorageRoots: []string{"/var/lib/gpuworks"}}})
+	router := Router(Deps{Store: st, AuthSigner: signer, Server: StaticServerSettings{}})
 	cookie, _ := sessionLogin(t, router, "gpuworks-test-password-2026")
 	body := `{"name":"outside","type":"local","path":"/opt/gpuworks/models","cache_path":"/opt/gpuworks/cache",` +
 		`"targets":[{"node_uuid":"` + node.UUID + `","path":"/opt/gpuworks/node","cache_path":"/opt/gpuworks/node-cache"}]}`
@@ -125,4 +125,64 @@ func TestCreateStorageAcceptsPathsOutsideConfiguredRoots(t *testing.T) {
 		return
 	}
 	t.Fatalf("created storage missing from %+v", rows)
+}
+
+// A replaced denylist frees a built-in directory and denies its own entries
+// on create, PATCH and probe. A stored path the new list covers does not block
+// an edit that leaves it alone.
+func TestStorageDeniedPathsFollowServerSettings(t *testing.T) {
+	st, signer, _ := newSessionRouter(t)
+	node, err := st.RegisterNode("denied-policy-node", "denied-policy-token", "node")
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored, err := st.CreateStorage(&store.Storage{Name: "stored-denied", Type: proto.StorageLocal, Enabled: true, AllNodes: true, Path: "/opt/gpuworks/models"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	calls := 0
+	router := Router(Deps{Store: st, AuthSigner: signer, Server: StaticServerSettings{StorageDenied: []string{"/opt/gpuworks"}},
+		Online: func(string) bool { return true },
+		CallNode: func(context.Context, string, string, any) (json.RawMessage, error) {
+			calls++
+			return json.Marshal(proto.StorageProbeResult{OK: true})
+		}})
+	cookie, _ := sessionLogin(t, router, "gpuworks-test-password-2026")
+	call := func(method, path, body string) *httptest.ResponseRecorder {
+		t.Helper()
+		req := httptest.NewRequest(method, path, strings.NewReader(body))
+		req.AddCookie(cookie)
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+		return rec
+	}
+	requireDenied := func(rec *httptest.ResponseRecorder, what string) {
+		t.Helper()
+		var body struct {
+			Code string `json:"code"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil || rec.Code != http.StatusBadRequest || body.Code != ErrorStoragePathInvalid {
+			t.Fatalf("%s = %d %s", what, rec.Code, rec.Body.String())
+		}
+	}
+	if rec := call(http.MethodPost, "/api/v1/storages", `{"name":"freed","type":"local","path":"/usr/local/models"}`); rec.Code != http.StatusCreated {
+		t.Fatalf("built-in directory still denied after replacement = %d %s", rec.Code, rec.Body.String())
+	}
+	requireDenied(call(http.MethodPost, "/api/v1/storages", `{"name":"denied","type":"local","path":"/opt/gpuworks/bin"}`), "create under a configured denied path")
+	endpoint := fmt.Sprintf("/api/v1/storages/%d", stored.ID)
+	if rec := call(http.MethodPatch, endpoint, `{"name":"stored-renamed"}`); rec.Code != http.StatusOK {
+		t.Fatalf("rename with a stored denied path = %d %s", rec.Code, rec.Body.String())
+	}
+	requireDenied(call(http.MethodPatch, endpoint, `{"path":"/opt/gpuworks/bin"}`), "patch into a configured denied path")
+	requireDenied(call(http.MethodPost, "/api/v1/storages/probe", `{"type":"local","path":"/opt/gpuworks/bin","node_uuid":"`+node.UUID+`"}`), "probe under a configured denied path")
+	if calls != 0 {
+		t.Fatalf("denied probe reached the node: calls=%d", calls)
+	}
+	if rec := call(http.MethodPost, "/api/v1/storages/probe", `{"type":"local","path":"/usr/local/models","node_uuid":"`+node.UUID+`"}`); rec.Code != http.StatusOK || calls != 1 {
+		t.Fatalf("probe of a freed directory = %d calls=%d %s", rec.Code, calls, rec.Body.String())
+	}
+	row, err := st.StorageByID(stored.ID)
+	if err != nil || row.Name != "stored-renamed" || row.Path != "/opt/gpuworks/models" {
+		t.Fatalf("stored row = %+v err=%v", row, err)
+	}
 }

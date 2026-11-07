@@ -12,7 +12,7 @@ import (
 // resolving their nearest existing ancestor. Run inside the mount guard: a
 // path on an unresponsive filesystem must not stall the reconcile loop.
 func checkCanonicalStoragePath(p string) error {
-	if err := storagerules.ValidatePath(p); err != nil {
+	if err := storagerules.CheckPathForm(p); err != nil {
 		return err
 	}
 	ancestor := filepath.Clean(p)

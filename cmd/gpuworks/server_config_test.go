@@ -5,11 +5,13 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/server/app"
 	"gpuworks.ai/gpuworks/internal/server/serverconfig"
+	"gpuworks.ai/gpuworks/internal/storagerules"
 )
 
 func routeHost(ip string) serverconfig.Host {
@@ -90,6 +92,16 @@ func TestServerSecurityPolicyComesOnlyFromTheHostConfiguration(t *testing.T) {
 	applyServerConfig(&cfg, serverconfig.File{}, nil)
 	if len(cfg.StorageProbeRoots) != 3 || len(cfg.OutboundAllowPrivateHosts) != 0 || cfg.TLSCertFile != "" {
 		t.Fatalf("empty file discarded security defaults: %+v", cfg)
+	}
+	if !reflect.DeepEqual(cfg.StorageDeniedPaths, storagerules.DefaultDeniedPaths()) {
+		t.Fatalf("absent storage_denied_paths dropped the built-in list: %v", cfg.StorageDeniedPaths)
+	}
+	for _, denied := range [][]string{{}, {"/opt/gpuworks"}} {
+		cfg = app.DefaultConfig()
+		applyServerConfig(&cfg, serverconfig.File{StorageDeniedPaths: &denied}, nil)
+		if cfg.StorageDeniedPaths == nil || !reflect.DeepEqual(cfg.StorageDeniedPaths, denied) {
+			t.Fatalf("storage_denied_paths %v applied as %v", denied, cfg.StorageDeniedPaths)
+		}
 	}
 }
 
