@@ -440,7 +440,7 @@ func coordinateModelCopyProbe(ctx context.Context, req proto.ModelSyncCopyReques
 	if req.TransferID == "" {
 		req.TransferID = auth.NewUUID()
 	}
-	listenRaw, err := call(ctx, req.TargetNodeUUID, proto.RPCModelSyncListen, proto.ModelSyncListenParams{TransferID: req.TransferID, Key: req.Key, TargetPath: req.TargetPath, Token: token, BindIP: req.TargetIP, ExpectedFileBytes: req.ExpectedFileBytes, StorageID: req.TargetStorageID}, false)
+	listenRaw, err := call(ctx, req.TargetNodeUUID, proto.RPCModelSyncListen, proto.ModelSyncListenParams{TransferID: req.TransferID, Key: req.Key, TargetPath: req.TargetPath, Token: token, BindIP: req.TargetIP, ExpectedFileBytes: req.ExpectedFileBytes, StorageID: req.TargetStorageID}, true)
 	if err != nil {
 		return proto.ModelSyncCopyResult{TransferID: req.TransferID}, fmt.Errorf("start target model receiver: %w", err)
 	}
@@ -493,7 +493,7 @@ func coordinateModelCopy(ctx context.Context, req proto.ModelSyncCopyRequest, to
 	listenRaw, err := call(ctx, req.TargetNodeUUID, proto.RPCModelSyncListen, proto.ModelSyncListenParams{
 		TransferID: req.TransferID, Key: req.Key, TargetPath: req.TargetPath, Token: token,
 		BindIP: req.TargetIP, ExpectedFileBytes: req.ExpectedFileBytes, StorageID: req.TargetStorageID,
-	}, false)
+	}, true)
 	if err != nil {
 		stop()
 		return proto.ModelSyncCopyResult{TransferID: req.TransferID}, fmt.Errorf("start target model receiver: %w", err)

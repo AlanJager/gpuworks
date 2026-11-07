@@ -18,7 +18,7 @@ test("reasoning appears expanded before the answer and respects keyboard collaps
   serveStreams([stream]);
   const user = await renderChat();
   await sendPrompt(user, "think about this");
-  stream.frame({ choices: [{ delta: { reasoning_content: "First thought" } }] });
+  stream.frame({ choices: [{ delta: { reasoning: "First thought" } }] });
   const toggle = await screen.findByRole("button", { name: new RegExp(locale.playground.pane.reasoning) });
   assert.equal(toggle.getAttribute("aria-expanded"), "true");
   assert.ok(screen.getByText("First thought"));

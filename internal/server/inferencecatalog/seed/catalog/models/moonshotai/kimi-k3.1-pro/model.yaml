@@ -666,10 +666,11 @@ specs:
 # for its own PP4 stage count; a stage count the deployment chooses cannot
 # carry a fixed partition, so vLLM's default split applies.
 #
-# Cache dtypes, block size, parsers, MLAPO and the scheduler settings are
-# upstream's Decode role, which is the role that generates: FULL_DECODE_ONLY
-# captures decode as a graph and leaves prefill eager, which is what one
-# co-located engine needs. DCP, PCP and the interleave size belong to the
+# Cache dtypes, block size, parsers and MLAPO come from upstream's Decode
+# role, which is the role that generates: FULL_DECODE_ONLY captures decode as
+# a graph and leaves prefill eager, which is what one co-located engine needs.
+# The Decode-only recompute_scheduler_enable flag is omitted because a
+# co-located engine rejects it. DCP, PCP and the interleave size belong to the
 # separated roles and are left out with them. --tokenizer-mode, the two
 # parsers and --enable-auto-tool-choice are configured together because
 # upstream's FAQ requires all four for reasoning and tool calling.
@@ -682,9 +683,9 @@ specs:
 # on the node count upstream publishes a recipe for, and no 950DT hardware was
 # available.
 #
-# Not verified on hardware: no run could be made while this profile was
-# written. Ascend multi-node runs on an accelerator RDMA or HCCS network, so a
-# deployment needs one covering every node it spans.
+# Validated on two 910C nodes with 16 dies each, using TP16 per node and PP2
+# across the nodes. Ascend multi-node runs on an accelerator RDMA or HCCS
+# network, so a deployment needs one covering every node it spans.
 - name: w4a8-vllm-ascend-a3-multinode-16npu
   display_name_zh_cn: 910C (A3) · INT4 W4A8 · 每节点 8 卡（16 NPU） · 多机
   display_name_en: 910C (A3) · INT4 W4A8 · 8 cards (16 NPUs) per node · Multi-node
@@ -720,11 +721,11 @@ specs:
   - --seed
   - '1024'
   - --max-model-len
-  - '204800'
+  - '210000'
   - --max-num-batched-tokens
   - '8192'
   - --max-num-seqs
-  - '12'
+  - '64'
   - --block-size
   - '768'
   - --kv-cache-dtype
@@ -744,7 +745,7 @@ specs:
   - --compilation-config
   - '{"cudagraph_mode":"FULL_DECODE_ONLY"}'
   - --additional-config
-  - '{"enable_fused_mc2":0,"multistream_overlap_shared_expert":true,"enable_shared_expert_dp":false,"enable_mlapo":true,"scheduler_config":{"recompute_scheduler_enable":true}}'
+  - '{"enable_fused_mc2":0,"multistream_overlap_shared_expert":true,"enable_shared_expert_dp":false,"enable_mlapo":true}'
   env:
     VLLM_USE_V2_MODEL_RUNNER: '1'
     VLLM_EXECUTE_MODEL_TIMEOUT_SECONDS: '30000'
