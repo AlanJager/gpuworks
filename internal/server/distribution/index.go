@@ -247,6 +247,13 @@ func compareBuilds(theirID, theirBuilt, ourID, ourBuilt string) (order int, ok b
 
 var releaseVersionPattern = regexp.MustCompile(`^v([0-9]+)\.([0-9]+)\.([0-9]+)$`)
 
+// IsReleaseVersion reports whether id is a release tag vYY.M.PATCH, as the
+// release channel publishes, rather than a nightly build's short commit.
+func IsReleaseVersion(id string) bool {
+	_, ok := parseReleaseVersion(id)
+	return ok
+}
+
 // parseReleaseVersion reads a release tag vYY.M.PATCH. A pre-release or a
 // git describe suffix is not a release version.
 func parseReleaseVersion(id string) ([3]int, bool) {

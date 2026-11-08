@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -229,6 +230,44 @@ func TestPrunable(t *testing.T) {
 	}
 	if got := prunable(listing, 10, nil); len(got) != 0 {
 		t.Fatalf("nothing to prune when under the limit, got %v", got)
+	}
+}
+
+// Version tags are kept forever and do not count against the nightly quota;
+// only the nightly builds beyond it are deleted.
+func TestPrunableKeepsEveryReleaseVersion(t *testing.T) {
+	at := func(day int) time.Time { return time.Date(2026, 10, day, 0, 0, 0, 0, time.UTC) }
+	listing := []lsjsonEntry{
+		{Path: "v26.9.0/SHA256SUMS", ModTime: at(1)},
+		{Path: "a1b2c3d4e/SHA256SUMS", ModTime: at(2)},
+		{Path: "v26.10.3/SHA256SUMS", ModTime: at(3)},
+		{Path: "v26.11.0-rc.1/SHA256SUMS", ModTime: at(4)},
+		{Path: "v26.11.1-3-g0bcb9eb/SHA256SUMS", ModTime: at(5)},
+		{Path: "f00dfeed1/SHA256SUMS", ModTime: at(6)},
+		{Path: "v26.11.2/SHA256SUMS", ModTime: at(7)},
+		{Path: "0ddba11c3/SHA256SUMS", ModTime: at(8)},
+	}
+	if got := strings.Join(prunable(listing, 2, nil), ","); got != "a1b2c3d4e,v26.11.0-rc.1,v26.11.1-3-g0bcb9eb" {
+		t.Fatalf("prunable keep 2 = %s", got)
+	}
+	if got := strings.Join(prunable(listing, 0, nil), ","); got != "0ddba11c3,a1b2c3d4e,f00dfeed1,v26.11.0-rc.1,v26.11.1-3-g0bcb9eb" {
+		t.Fatalf("prunable keep 0 = %s", got)
+	}
+}
+
+func TestPruneCommandKeepsSixtyNightliesByDefault(t *testing.T) {
+	var entries []map[string]any
+	for i := 0; i < 62; i++ {
+		entries = append(entries, map[string]any{"Path": fmt.Sprintf("n%02d/SHA256SUMS", i), "ModTime": time.Date(2026, 1, 1, 0, i, 0, 0, time.UTC).Format(time.RFC3339)})
+	}
+	entries = append(entries, map[string]any{"Path": "v26.1.0/SHA256SUMS", "ModTime": "2025-01-01T00:00:00Z"})
+	listing, _ := json.Marshal(entries)
+	var out, errOut bytes.Buffer
+	if code := run([]string{"prune"}, bytes.NewReader(listing), &out, &errOut); code != 0 {
+		t.Fatalf("exit %d: %s", code, errOut.String())
+	}
+	if out.String() != "n00\nn01\n" {
+		t.Fatalf("output = %q", out.String())
 	}
 }
 
