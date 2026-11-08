@@ -33,17 +33,17 @@ bash <(curl -fsSL https://dl.gpuworks.ai/get.sh)
 
    中国大陆可选阿里云 OSS（下例）或华为云 OBS `https://gpuworks-dl.obs.cn-east-3.myhuaweicloud.com`；其他地区可用 `https://dl.gpuworks.ai`，三个源提供相同发布包。
 
-   下例使用滚动预览版 `nightly`；安装正式发布版时，把命令中的 `nightly` 换成 `release`。`latest` 返回所选渠道当前的 release id。
+   下例安装正式发布版（`release` 渠道，各版本的变化见[发布说明](../releases/README.md)）；要装滚动预览版，把命令中的 `release` 换成 `nightly`。`latest` 返回所选渠道当前的 release id。
 
    ```bash
    src=https://gpuworks-dl.oss-cn-shanghai.aliyuncs.com
-   id=$(curl -fsSL $src/nightly/latest)
+   id=$(curl -fsSL $src/release/latest)
    curl -fLO $src/releases/$id/gpuworks-$id-linux-amd64.tar.gz
    curl -fLO $src/releases/$id/SHA256SUMS
    sha256sum -c SHA256SUMS --ignore-missing
    ```
 
-   确认对应压缩包的校验结果为 `OK`，再继续。内网也可以从发布站 `https://gpuworks.zstack.ai/downloads/` 下载同一批发布包。
+   确认对应压缩包的校验结果为 `OK`，再继续。
 
 2. **在同一终端解压并运行安装程序。**
 
@@ -213,7 +213,7 @@ Kubernetes 请通过更换镜像升级，不使用控制台升级。
 使用其他来源时，按场景选一条命令，替代上述第 1、2 步；先追加 `--check` 核对，再去掉它执行：
 
 ```bash
-./gpuworks upgrade --base-url https://gpuworks.zstack.ai        # 内网发布站
+./gpuworks upgrade --base-url https://releases.example.internal # 内网发布站
 ```
 
 ```bash
