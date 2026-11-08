@@ -34,7 +34,7 @@ func TestCheckEnginePortsRefusesAPortSomeoneListensOn(t *testing.T) {
 	free.Close()
 
 	err = checkEnginePorts(proto.InstanceDesiredState{APIPort: port, Ports: []int{port}})
-	if err == nil || !strings.HasPrefix(err.Error(), EnginePortInUse) || !strings.Contains(err.Error(), strconv.Itoa(port)) {
+	if err == nil || !strings.HasPrefix(err.Error(), EnginePortRefused) || !strings.Contains(err.Error(), strconv.Itoa(port)) {
 		t.Fatalf("busy port: err = %v", err)
 	}
 	// A side-channel port of a PD instance counts as much as the API port.
@@ -170,8 +170,8 @@ func TestStartRefusesAPortTakenSinceAllocation(t *testing.T) {
 			done = true
 		}
 	}
-	if last.State != proto.InstFailed || !strings.HasPrefix(last.Message, EnginePortInUse) {
-		t.Fatalf("final status = %+v, want failed with %s", last, EnginePortInUse)
+	if last.State != proto.InstFailed || !proto.IsEnginePortRefusal(last.Message) {
+		t.Fatalf("final status = %+v, want failed with %s", last, EnginePortRefused)
 	}
 }
 
@@ -205,7 +205,7 @@ func (d *portBinderDriver) BindHostPort(port int) (io.Closer, error) {
 
 // A runtime that binds host ports in its own terms answers the check: a port
 // busy on the host is fine when the runtime says it is free, and one the
-// runtime holds fails as ENGINE_PORT_IN_USE.
+// runtime holds is refused (ENGINE_PORT_REFUSED).
 func TestPortCheckAsksARuntimeThatBindsItsOwnPorts(t *testing.T) {
 	busy, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -219,7 +219,7 @@ func TestPortCheckAsksARuntimeThatBindsItsOwnPorts(t *testing.T) {
 		t.Fatalf("port free in the runtime's terms: err = %v", err)
 	}
 	err = check(proto.InstanceDesiredState{APIPort: 31001, Ports: []int{31001}})
-	if err == nil || !strings.HasPrefix(err.Error(), EnginePortInUse) {
+	if err == nil || !strings.HasPrefix(err.Error(), EnginePortRefused) {
 		t.Fatalf("port the runtime holds: err = %v", err)
 	}
 	if len(driver.asked) != 2 {

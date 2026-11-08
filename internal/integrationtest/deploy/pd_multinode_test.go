@@ -37,14 +37,12 @@ func TestPDMultiNodeDecodeRebuildsAfterItsFirstGenerationFailedToStart(t *testin
 }
 
 func runPDMultiNodeDecodeRebuild(t *testing.T, firstLaunchFails bool) {
+	// The default retry policy on purpose: a launch refused because another
+	// process on the host holds a port the controller picked
+	// (ENGINE_PORT_REFUSED) is retried at once and does not charge the
+	// budget, so such refusals cannot exhaust the unit before the rebuild
+	// this case waits for.
 	env := testenv.New(t)
-	// A unit's retry budget counts every failed generation it ever had, and
-	// the rebuild this case waits for spends one more. A launch that fails
-	// for a reason outside the case (ENGINE_PORT_IN_USE when another process
-	// on the host holds a port the controller picked) is rebuilt and spends
-	// one too; with the default budget of 3 two of those leave the unit
-	// exhausted and the group is never rebuilt.
-	env.SetControllerRetryPolicy(200*time.Millisecond, 10)
 	const leaderAddress, followerAddress = "10.43.0.10", "10.43.0.11"
 	a := env.AddNode("pd-rank-0", testenv.WithGPUs(2, testenv.GPUSpec{Model: "A100", VRAMMB: 24576}),
 		testenv.WithDriverName("fake"), testenv.WithManagementAddress(leaderAddress))

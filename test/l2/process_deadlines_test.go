@@ -36,10 +36,11 @@ const (
 	// slack covers the debounce and polling around the mechanisms above.
 	slack = 15 * time.Second
 
-	// instanceRunningDeadline: every attempt but the last may fail at once
-	// (an engine port another listener took is refused before any container
-	// exists, ENGINE_PORT_IN_USE) and costs one backoff; then comes one good
-	// attempt, and a sibling replica launches the same way.
+	// instanceRunningDeadline: every charged attempt but the last may fail
+	// early and costs one backoff; then comes one good attempt, and a sibling
+	// replica launches the same way. A launch refused for an engine port
+	// another listener took (ENGINE_PORT_REFUSED) costs neither a backoff nor
+	// budget, so it does not add to this.
 	instanceRunningDeadline = (controllerMaxAttempts-1)*controllerRetryBackoff + 2*launchAttemptAllowance
 	// deploymentRemovalDeadline: a teardown that hits the agent's cap is
 	// reported as still removing, the controller pushes it again after one

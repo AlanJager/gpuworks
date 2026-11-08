@@ -27,7 +27,7 @@ func (c *Controller) rollRestart(dep *store.Deployment, insts []store.Instance, 
 		inst := slot.Inst
 		if inst == nil || inst.State != proto.InstRunning || incomplete[inst.UUID] {
 			unavailable++
-			if inst == nil && len(match.Failed[slot.Key]) >= c.maxAttempts {
+			if inst == nil && len(planning.ChargedAttempts(match.Failed[slot.Key])) >= c.maxAttempts {
 				stalled = &match.Slots[i]
 			}
 		}

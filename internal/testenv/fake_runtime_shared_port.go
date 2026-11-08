@@ -121,7 +121,7 @@ func releaseSharedEnginePort(claim sharedClaim) {
 // node in the process. Two nodes are two machines, so both may be given the
 // same port and check it at the same moment; on one host each check's probe
 // socket would then refuse the other's bind, failing a launch with
-// ENGINE_PORT_IN_USE on a port neither machine uses.
+// ENGINE_PORT_REFUSED on a port neither machine uses.
 var hostPortCheckMu sync.Mutex
 
 // BindHostPort is the engine's pre-create port check (runtime.HostPortBinder).
@@ -129,8 +129,12 @@ var hostPortCheckMu sync.Mutex
 // probe before another node's check can see it. With them the fakes stand
 // separate machines up on one host, so another node's instance on the same
 // port number is not this node's conflict: only an instance of this driver's
-// own node still holding the port is.
+// own node still holding the port is. FailNext("BindHostPort", err) makes the
+// next check fail with err, as a port another process took would.
 func (d *FakeDriver) BindHostPort(port int) (io.Closer, error) {
+	if err := d.fail("BindHostPort"); err != nil {
+		return nil, err
+	}
 	d.mu.Lock()
 	shared := d.sharedPorts
 	held := false

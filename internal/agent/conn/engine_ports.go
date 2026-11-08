@@ -36,3 +36,24 @@ func (c *Conn) enginePortListeners() []int {
 	}
 	return ports
 }
+
+// handlerSend is the sender the engine and downloader report through. A
+// launch refused because another process holds one of its host ports
+// (proto.EnginePortRefused) is followed by a node status at once: the
+// server retries such a launch without waiting, and the status carries the
+// listeners its next allocation must avoid, which would otherwise wait for
+// the next periodic report.
+func (c *Conn) handlerSend(ctx context.Context) SendFunc {
+	return func(t string, d any) error {
+		err := c.send(t, 0, d)
+		if err == nil && refusedLaunch(t, d) {
+			c.requestStatus(ctx)
+		}
+		return err
+	}
+}
+
+func refusedLaunch(t string, d any) bool {
+	st, ok := d.(proto.InstanceStatus)
+	return ok && t == proto.TStatusInstance && st.State == proto.InstFailed && proto.IsEnginePortRefusal(st.Message)
+}

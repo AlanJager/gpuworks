@@ -35,6 +35,14 @@ the attempt number = the failure count + 1. `deployments.restart_count` is remov
 removed, so adding the same unit back restores its full budget. When the budget is exhausted, the controller records `UNIT_RETRY_EXHAUSTED` on the latest failure (once only);
 operators use `POST /deployments/{id}/units/retry` to restore the budget for an individual unit without affecting others.
 
+**Attempts refused before starting because a port was taken do not charge the budget (amended 2026-11-08).** Before pulling an image or
+creating a container, the agent checks the host ports the server allocated; when another process already holds one it reports
+`ENGINE_PORT_REFUSED` at once, and nothing has started. An attempt whose leader row failed with this code is retried immediately, without the retry backoff;
+a unit's first 10 such refusals do not charge its budget (`planning.FreePortRefusals`), and later ones count like any failure,
+so a node that keeps refusing still exhausts the budget in the end. The failed rows are kept as usual, and the ports they hold keep the next allocation away from them. When a follower is refused, the leader row records
+`rank N on … failed: …` and the leader's container may already have started, so it counts as an ordinary failure. After reporting a refusal the agent sends a node status at once,
+so the next allocation sees the current port listeners. An engine that started and found another model answering on its API port (`ENGINE_PORT_IN_USE`) is not this case: that attempt created a container.
+
 **A generation is either complete or failed.** Multi-node collective communication cannot replace an individual process: if any rank fails, its row disappears (stopped), or its node remains offline beyond
 the reconnect grace period, the leader is marked failed and its container is removed, and the followers are removed. Removal is pushed before writing the failed status; if the push fails, the next round retries.
 

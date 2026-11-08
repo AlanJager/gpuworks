@@ -972,6 +972,7 @@ Containers of sleeping instances are still running and are not treated as exited
 
 The platform recreates instances through the controller. Containers use `--restart no` and do not rely on Docker restart policies.
 Each unit allows up to 3 attempts, with each new attempt created at least 15 seconds after the previous one. Each attempt uses a new UUID and retains the previous failure record.
+An attempt refused before starting because another process holds one of its host ports (`ENGINE_PORT_REFUSED`; nothing has started) is the exception: it is retried at once on other ports, and a unit's first 10 such refusals do not count toward the 3.
 When the budget is exhausted, `UNIT_RETRY_EXHAUSTED` is emitted (`params` contains `attempts` and `reason`), and automatic recreation stops.
 
 After resolving the cause, call `POST /api/v1/deployments/{id}/units/retry` with body `{"role":"","index":0}` (`role` is empty for a regular deployment).
