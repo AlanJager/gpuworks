@@ -255,9 +255,9 @@ func TestPrunableKeepsEveryReleaseVersion(t *testing.T) {
 	}
 }
 
-func TestPruneCommandKeepsSixtyNightliesByDefault(t *testing.T) {
+func TestPruneCommandKeepsThirtyNightliesByDefault(t *testing.T) {
 	var entries []map[string]any
-	for i := 0; i < 62; i++ {
+	for i := 0; i < 32; i++ {
 		entries = append(entries, map[string]any{"Path": fmt.Sprintf("n%02d/SHA256SUMS", i), "ModTime": time.Date(2026, 1, 1, 0, i, 0, 0, time.UTC).Format(time.RFC3339)})
 	}
 	entries = append(entries, map[string]any{"Path": "v26.1.0/SHA256SUMS", "ModTime": "2025-01-01T00:00:00Z"})

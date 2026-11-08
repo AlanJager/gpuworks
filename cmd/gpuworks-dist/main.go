@@ -75,7 +75,7 @@ const usage = `usage:
   gpuworks-dist adopt -dir DIR -release-id ID   (prints the archives' build time)
   gpuworks-dist verify -channel nightly -source URL [-source URL ...] [-release-id ID] [-index FILE] [-full]
   gpuworks-dist newer -channel nightly -built-at TIME [-source URL ...]   (exit 0: a newer build is published)
-  gpuworks-dist prune -keep 60 [-protect ID ...] < rclone-lsjson-of-releases.json
+  gpuworks-dist prune -keep 30 [-protect ID ...] < rclone-lsjson-of-releases.json
   gpuworks-dist notices -in build/notices/notices.json -out FILE
   gpuworks-dist notices -source URL [-source URL ...] [-expect FILE]`
 
