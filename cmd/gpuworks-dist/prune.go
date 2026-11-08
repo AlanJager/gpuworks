@@ -8,6 +8,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"gpuworks.ai/gpuworks/internal/server/distribution"
 )
 
 // lsjsonEntry is one line of `rclone lsjson -R --files-only` output.
@@ -20,7 +22,7 @@ func pruneCommand(args []string, stdin io.Reader, stdout io.Writer) error {
 	fs := flag.NewFlagSet("prune", flag.ContinueOnError)
 	var keep int
 	var protect stringList
-	fs.IntVar(&keep, "keep", 20, "newest release directories to keep")
+	fs.IntVar(&keep, "keep", 60, "newest nightly (non-version) directories to keep; version tags are always kept")
 	fs.Var(&protect, "protect", "release id that must be kept (repeatable): what each channel's latest names")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -35,14 +37,16 @@ func pruneCommand(args []string, stdin io.Reader, stdout io.Writer) error {
 	return nil
 }
 
-// prunable returns the release directories to delete: all but the newest
-// keep (by their newest file) and the protected ones. Entries are paths
-// relative to releases/, "<id>/<file>".
+// prunable returns the release directories to delete. A version tag
+// (vYY.M.PATCH) is never deleted: people install and roll back to a named
+// release long after it ships. Of the other directories, the nightly builds,
+// the newest keep (by their newest file) stay, as do the protected ones.
+// Entries are paths relative to releases/, "<id>/<file>".
 func prunable(listing []lsjsonEntry, keep int, protect []string) []string {
 	newest := map[string]time.Time{}
 	for _, entry := range listing {
 		id, _, ok := strings.Cut(entry.Path, "/")
-		if !ok || id == "" {
+		if !ok || id == "" || distribution.IsReleaseVersion(id) {
 			continue
 		}
 		if entry.ModTime.After(newest[id]) {

@@ -26,8 +26,9 @@
 #    previous pointers.
 # 6. scripts/get.sh, the one-line installer, is copied to the root of every
 #    source as get.sh.
-# 7. Release directories beyond the newest $GPUWORKS_DIST_KEEP are removed,
-#    except the ones either channel's latest names.
+# 7. Version-tag directories (vYY.M.PATCH) are kept forever. Of the nightly
+#    directories, those beyond the newest $GPUWORKS_DIST_KEEP (default 60)
+#    are removed, except the one either channel's latest names.
 #
 # Credentials come from the environment (protected CI variables) or from
 # secrets/dist-publish.env; a worktree without it falls back to the main
@@ -57,7 +58,7 @@ done
 export GPUWORKS_DIST_SIGNING_KEY GPUWORKS_DIST_SIGNING_KEY_ID
 
 rclone=${RCLONE:-rclone}
-keep=${GPUWORKS_DIST_KEEP:-20}
+keep=${GPUWORKS_DIST_KEEP:-60}
 
 built_at=${CI_PIPELINE_CREATED_AT:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}
 commit=${CI_COMMIT_SHA:-$(git rev-parse HEAD)}
