@@ -51,7 +51,7 @@ git diff --check
 - 每条发布线一个分支 `release/YY.M`，从 master 上选定的提交切出。分支上只合缺陷修复：修复先合进 master，再
   `git cherry-pick -x` 到发布分支。
 - 打 tag 前，在 `docs/releases/` 新增该版本的发布说明（`vYY.M.PATCH.md`，含升级须知、新增、变更、修复、安全与下载校验和），
-  在 `docs/releases/README.md` 的版本列表顶部加一行，并同步 `docs-en/releases/` 的译文；先合入 master，再回合到发布分支。
+  在 `docs/releases/README.md` 的版本列表顶部加一行，并同步 `docs-en/releases/` 的译文；先合入 master，再回合到发布分支。`release` 渠道构建时，`scripts/package_release.sh` 检查中英文版本页都存在、版本列表里有这一行，缺任何一项都在构建前失败。
 - 在发布分支上打带注释的 tag 并推送（`git tag -a v26.11.0 -m "GPUWorks 26.11.0"`、`git push origin v26.11.0`）。
   只有匹配 `^v[0-9]+\.[0-9]+\.[0-9]+$` 的 tag 会创建 pipeline 并发布到 `release` 渠道；`v26.11.0-rc.1` 这类 tag 不创建 pipeline。
 - `v*` 必须在 GitLab 里设为 protected tag：签名私钥和发布源凭据是受保护变量，不受保护的 tag 的 pipeline 读不到它们，发布 job 会失败。
