@@ -1,5 +1,5 @@
 {
-  "README.md": "4af13feb48c30a68f9b6f85e4458539674d0012bf21503a5356b7039722eba9b",
+  "README.md": "02a313582287d781eefb17e9666f9d6cbacecc45cb3118273af20d0c2dadaf3e",
   "adr/0001-image-digest-tag-pull-verify-after.md": "a6510eb2e98dba9d784c1596acd0e17ed42dcd27d3b29a988238d275ee128c54",
   "adr/0003-benchmark-engine-embedded-no-containers.md": "22f9a7a4ae72120a531c94f745d1153d159a4dfe8c3ed41e03c12b64d1bfffe8",
   "adr/0004-empty-revision-default-branch.md": "7c6bbbb35d79d97b297cf6dab71c5765c05c90a4be287e99d0efafc76c6dfd9c",
@@ -60,7 +60,7 @@
   "dev/ledgers/a100-verification-bug-registry.md": "94e3d3f09b94a8b75546862bb292d9ea1c432f043c9b2c882c96f2f712d215b6",
   "dev/ledgers/engineering-log.md": "3ada271ff8c1b9d7898b5879d51306511917573a87ffa23a5d2efe0acd02b7ed",
   "dev/ledgers/ppu-support-gaps.md": "dd334db53ca533a4c76381995a3a97741ce847aed0731c5ab8e6b2f781b83fb3",
-  "dev/release.md": "19037a379617bf100ce80f2a24cd1aba8a59fe034174e48286e5a936ac83ea58",
+  "dev/release.md": "2b658c527f0be42671e9e7197a84db1d2b021cc5682ebab337b55786c7987c36",
   "dev/setup.md": "76ecda80ba19f53457baf53a475cfba263cf892ecf147a0bbda9139316a51046",
   "dev/testing.md": "437a47f7c97349552baca7bf78f8bd83b668e97e0313c51966d87c6a017900e1",
   "explanation/architecture.md": "654893630e010e8cf66ded0ef5ea2a0ddf5d9cbdf7a73431b5881e959128e853",
@@ -131,5 +131,9 @@
   "adr/0059-service-levels-and-the-residency-arbiter.md": "0bf11701730f14102d4179482965234d7ed9fe942973f24e927c2d22d721f211",
   "explanation/service-levels.md": "1a98e001704ac09cc25bfafb9abe43fd064bfbe3bab8456beb6152b660ba30d4",
   "adr/0060-card-health-from-hardware-facts.md": "8df92de8e08e009da35393c77eb14527a9dde33c27ba4efd48cd8bcca1afa48b",
-  "adr/0061-spec-display-names-written-by-hand.md": "4a31f299b87d236fbd207f0ac03cdde11b4760f337acc286eaa6d1253f188805"
+  "adr/0061-spec-display-names-written-by-hand.md": "4a31f299b87d236fbd207f0ac03cdde11b4760f337acc286eaa6d1253f188805",
+  "releases/README.md": "e27f268ab728a0d8aacb16f69c16cef605b2ca19505e953b3eb2511c46158f02",
+  "releases/v26.11.0.md": "1bc9a2f63ee5e00f3c4c8645eeea4745ceaaca376d2a4669bdbe0abf09cfce6d",
+  "releases/v26.11.1.md": "f2ff9ffb558d9bfb5f4217791570cec53edc226f573b47ea5ab8083c68b05d80",
+  "releases/v26.11.2.md": "d4a50471ba467a6d564dff6048da2cc010132b4fd93d942cde9b47c91b52fb7f"
 }

@@ -24,6 +24,7 @@ SECTION_META = {
     "how-to": ("操作指南", "针对安装、部署、同步、监控和生产环境的任务型文档。"),
     "reference": ("参考手册", "API、CLI、配置、支持矩阵和安全边界的精确说明。"),
     "explanation": ("架构说明", "解释 GPUWorks 的连接、调度、显存估算和 dGPU 设计。"),
+    "releases": ("发布说明", "各版本的新增功能、行为变化、缺陷修复与升级须知。"),
     "dev": ("开发者文档", "本地搭建、测试、代码地图、发布和贡献约定。"),
     "adr": ("架构决策记录", "已接受的长期架构取舍和协议边界。"),
 }
@@ -33,6 +34,7 @@ ENGLISH_SECTION_META = {
     "how-to": ("How-to Guides", "Complete installation, deployment, synchronization, monitoring, and production tasks."),
     "reference": ("Reference", "Look up APIs, CLI commands, configuration, supported hardware, and security boundaries."),
     "explanation": ("Architecture", "Understand connections, scheduling, GPU memory estimation, and dGPU."),
+    "releases": ("Release Notes", "See what each version adds, changes, and fixes, and what to check before upgrading."),
     "dev": ("Developer Documentation", "Set up, test, navigate, release, and contribute to GPUWorks."),
     "adr": ("Architecture Decision Records", "Review accepted architectural decisions and protocol boundaries."),
 }
@@ -115,6 +117,19 @@ def tutorial_weights(source_dir: Path) -> dict[str, int]:
         entry = re.match(r"\s*[-*+]\s+\[[^\]]+\]\((tutorials/[^\s)?#]+\.md)\)", line)
         if entry and entry.group(1) not in weights:
             weights[entry.group(1)] = len(weights) + 1
+    return weights
+
+
+def release_weights(source_dir: Path) -> dict[str, int]:
+    """Order release pages as releases/README.md lists them, newest first."""
+    index = source_dir / "releases" / "README.md"
+    if not index.is_file():
+        return {}
+    weights = {}
+    for link in re.findall(r"\]\(((?!\.\./)[^\s)?#/]+\.md)\)", index.read_text(encoding="utf-8")):
+        path = f"releases/{link}"
+        if path not in weights:
+            weights[path] = len(weights) + 1
     return weights
 
 
@@ -237,7 +252,8 @@ def home_page(language: str = "zh") -> str:
             "- [Deploy models and call the OpenAI-compatible API](how-to/deploy-models/)\n"
             "- [Troubleshoot problems](how-to/troubleshooting/)\n"
             "- [Browse how-to guides by category](how-to/)\n"
-            "- [Look up APIs, CLI commands, and configuration](reference/)\n",
+            "- [Look up APIs, CLI commands, and configuration](reference/)\n"
+            "- [Read the release notes](releases/)\n",
             "GPUWorks Documentation", description="From your first GPU to a working inference service.",
         )
     return (
@@ -255,6 +271,7 @@ def home_page(language: str = "zh") -> str:
         "- [遇到问题：排障指南](how-to/troubleshooting/)\n"
         "- [按分类浏览操作指南](how-to/)\n"
         "- [查看 API、CLI 和配置参考](reference/)\n"
+        "- [查看各版本发布说明](releases/)\n"
     )
 
 
@@ -269,6 +286,7 @@ def main() -> None:
         )
     }
     navigation.update({path: {"weight": weight} for path, weight in tutorial_weights(SOURCE).items()})
+    navigation.update({path: {"weight": weight} for path, weight in release_weights(SOURCE).items()})
     shutil.rmtree(DEST, ignore_errors=True)
     DEST.mkdir(parents=True)
 
@@ -330,6 +348,7 @@ def stage_english(english_source: Path) -> None:
         )
     }
     navigation.update({path: {"weight": weight} for path, weight in tutorial_weights(english_source).items()})
+    navigation.update({path: {"weight": weight} for path, weight in release_weights(english_source).items()})
     for source in sorted(english_source.rglob("*.md")):
         relative = source.relative_to(english_source)
         if not (SOURCE / relative).is_file():
