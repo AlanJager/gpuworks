@@ -50,6 +50,8 @@ Releases use calendar versions `YY.M.PATCH`, tagged as `vYY.M.PATCH`, for exampl
   each later bug-fix-only patch version increments it by one.
 - Each release line has one branch, `release/YY.M`, cut from a chosen commit on master. Only bug fixes go onto the branch: a fix is merged into master first, then
   applied to the release branch with `git cherry-pick -x`.
+- Before tagging, add the version's release notes under `docs/releases/` (`vYY.M.PATCH.md`, with upgrade notes, additions, changes, fixes, security, and download checksums),
+  add a row at the top of the version list in `docs/releases/README.md`, and update the translation under `docs-en/releases/`; merge into master first, then backport to the release branch.
 - Create an annotated tag on the release branch and push it (`git tag -a v26.11.0 -m "GPUWorks 26.11.0"`, `git push origin v26.11.0`).
   Only tags that match `^v[0-9]+\.[0-9]+\.[0-9]+$` create a pipeline and publish to the `release` channel; tags such as `v26.11.0-rc.1` create no pipeline.
 - `v*` must be a protected tag in GitLab: the signing private key and the distribution source credentials are protected variables, so a pipeline for an unprotected tag cannot read them and the publish job fails.

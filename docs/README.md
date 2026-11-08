@@ -12,6 +12,7 @@
 | 第一次接触 GPUWorks | [从零启动并部署第一个模型](tutorials/getting-started.md)，再看[控制台页面导览](reference/web-ui-tour.md) |
 | 在 Mac 上本地试用 | [在 Mac 上运行第一个本地模型](tutorials/mac-local-model.md) |
 | 要在生产上线 | [安装和升级控制面](how-to/install-server.md) → [生产环境部署](how-to/deploy-production.md) → [升级与版本兼容](how-to/upgrade-and-compatibility.md) |
+| 要升级到新版本 | [发布说明](releases/README.md) → [升级与版本兼容](how-to/upgrade-and-compatibility.md) |
 | 遇到问题 | [排障指南](how-to/troubleshooting.md) |
 | 在选方案 | [怎么选：dGPU、sleep/wake、多机、副本、PD](explanation/choosing-features.md)、[典型部署拓扑](explanation/topologies.md) |
 | 对接 API | [OpenAI 兼容网关](reference/openai-gateway.md)、[REST API 全量路由](reference/api.md) |
@@ -108,6 +109,10 @@
 - [dGPU 的语义与边界](explanation/dgpu.md)
 - [安全模型与信任边界](explanation/security-model.md)
 - [架构决策记录（ADR）](adr/README.md)
+
+## 发布说明
+
+- [各版本发布说明](releases/README.md)：新增功能、行为变化、缺陷修复与升级须知，最新版本在前
 
 ## 开发者入口
 

@@ -1,5 +1,5 @@
 {
-  "README.md": "7ef7d681f889e779aa02fc31c6ba88f8786e2dc6aa96e15a7579c2689c8478e2",
+  "README.md": "54314d2b0a8572059dc70f3d8ee02709a1da754c69d14e221ce3313e6f830271",
   "adr/0001-image-digest-tag-pull-verify-after.md": "a6510eb2e98dba9d784c1596acd0e17ed42dcd27d3b29a988238d275ee128c54",
   "adr/0003-benchmark-engine-embedded-no-containers.md": "22f9a7a4ae72120a531c94f745d1153d159a4dfe8c3ed41e03c12b64d1bfffe8",
   "adr/0004-empty-revision-default-branch.md": "7c6bbbb35d79d97b297cf6dab71c5765c05c90a4be287e99d0efafc76c6dfd9c",
@@ -66,7 +66,7 @@
   "dev/ledgers/a100-verification-bug-registry.md": "94e3d3f09b94a8b75546862bb292d9ea1c432f043c9b2c882c96f2f712d215b6",
   "dev/ledgers/engineering-log.md": "3ada271ff8c1b9d7898b5879d51306511917573a87ffa23a5d2efe0acd02b7ed",
   "dev/ledgers/ppu-support-gaps.md": "dd334db53ca533a4c76381995a3a97741ce847aed0731c5ab8e6b2f781b83fb3",
-  "dev/release.md": "d4116e080691a9e8d03b0c74b57ce2b34f9d1e77d0b6a6d66c0c7336ba081dba",
+  "dev/release.md": "542eeb08531e3c5d97f758d9b2706a5abb35ecf42ded58d0099ce7eadea3e77f",
   "dev/setup.md": "76ecda80ba19f53457baf53a475cfba263cf892ecf147a0bbda9139316a51046",
   "dev/testing.md": "00eb458e716f591fe8b81ea7568bdc3e7fbb3e69d4dda2b78cb5b37cfdf45dc2",
   "explanation/architecture.md": "654893630e010e8cf66ded0ef5ea2a0ddf5d9cbdf7a73431b5881e959128e853",
@@ -134,5 +134,9 @@
   "tutorials/mac-local-model.md": "ae01c5cfedfe4b69dfbc263f634f3d7538f2fec97d29f27b595105287e6f78f0",
   "tutorials/one-gpu-two-models.md": "8708c171588f121e3fab5750fc9fad1cdfc965c44fe09ca0a80cbd874019eb41",
   "tutorials/scale-model-replicas.md": "93dc9c25f11625af4fb6157da7404538ca0b62699408fa5649f0de063cec15e9",
-  "tutorials/trace-slow-request.md": "6e582ef2a8658da1057336f4ee79f5a41179dbae69773cd0b753431027acc065"
+  "tutorials/trace-slow-request.md": "6e582ef2a8658da1057336f4ee79f5a41179dbae69773cd0b753431027acc065",
+  "releases/README.md": "e27f268ab728a0d8aacb16f69c16cef605b2ca19505e953b3eb2511c46158f02",
+  "releases/v26.11.0.md": "1bc9a2f63ee5e00f3c4c8645eeea4745ceaaca376d2a4669bdbe0abf09cfce6d",
+  "releases/v26.11.1.md": "f2ff9ffb558d9bfb5f4217791570cec53edc226f573b47ea5ab8083c68b05d80",
+  "releases/v26.11.2.md": "d4a50471ba467a6d564dff6048da2cc010132b4fd93d942cde9b47c91b52fb7f"
 }
