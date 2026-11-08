@@ -26,6 +26,7 @@ type processNode struct {
 	UUID                  string              `json:"uuid"`
 	State                 string              `json:"state"`
 	GPUCount              int                 `json:"gpu_count"`
+	ManagementAddress     string              `json:"management_address"`
 	PartitionCapabilities []processCapability `json:"partition_capabilities"`
 	GPUs                  []struct {
 		PartitionCapabilities []processCapability `json:"partition_capabilities"`
