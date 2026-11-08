@@ -143,7 +143,7 @@ gpuworks restarted (systemd)
 | `--data DIR` / `--logs DIR` | 安装时记录的目录 | 覆盖数据/日志目录 |
 | `--channel NAME` | `server.yaml` 的 `update_channel`，没有时为构建时的渠道（master 构建 `nightly`，`v*` tag 构建 `release`） | 读哪个渠道的发布索引：`release`（正式发布版）或 `nightly`（滚动预览版）；只用于发布通道 |
 | `--source URL` | 内置的三个公共源 | 发布通道格式的源（`<URL>/<channel>/index.json`），可重复，替换内置源；用于客户自建镜像站 |
-| `--base-url URL` | 空 | 改读发布站（`<URL>/data/release.json` 与 `<URL>/downloads/`），如内网的 `https://gpuworks.zstack.ai` |
+| `--base-url URL` | 空 | 改读发布站（`<URL>/data/release.json` 与 `<URL>/downloads/`），例如自建在内网的发布站 |
 | `--archive FILE` | 空 | 本地发布包 `gpuworks-<release_id>-<os>-<arch>.tar.gz`，不发任何网络请求 |
 | `--version ID` | 空 | 期望的 release id；与渠道或站点当前版本（或发布包里的版本）不一致时报错，不会静默升到别的版本 |
 | `--keep N` | `3` | 保留的升级前备份组数 |

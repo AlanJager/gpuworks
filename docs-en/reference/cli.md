@@ -143,7 +143,7 @@ Fetch the current version from a [release channel](../adr/0040-signed-multi-sour
 | `--data DIR` / `--logs DIR` | Directories recorded at installation | Override the data/log directories |
 | `--channel NAME` | `update_channel` in `server.yaml`, or the build-time channel if absent (`nightly` for master builds, `release` for `v*` tag builds) | Channel whose release index to read: `release` (stable releases) or `nightly` (rolling previews); applies only to release channels |
 | `--source URL` | Three built-in public sources | Source in release channel format (`<URL>/<channel>/index.json`); repeatable, replaces the built-in sources; used for customer-hosted mirrors |
-| `--base-url URL` | Empty | Read from a release site instead (`<URL>/data/release.json` and `<URL>/downloads/`), such as the internal `https://gpuworks.zstack.ai` |
+| `--base-url URL` | Empty | Read from a release site instead (`<URL>/data/release.json` and `<URL>/downloads/`), such as one hosted on an internal network |
 | `--archive FILE` | Empty | Local release archive `gpuworks-<release_id>-<os>-<arch>.tar.gz`; makes no network requests |
 | `--version ID` | Empty | Expected release ID; error if it differs from the current channel/site version or the archive version, rather than silently upgrading to another version |
 | `--keep N` | `3` | Number of pre-upgrade backup sets to retain |
