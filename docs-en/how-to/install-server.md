@@ -31,17 +31,17 @@ To check each step yourself, or when the host can only receive a copied release 
 
    In mainland China, use Alibaba Cloud OSS (in the example below) or Huawei Cloud OBS at `https://gpuworks-dl.obs.cn-east-3.myhuaweicloud.com`. In other regions, use `https://dl.gpuworks.ai`. All three sources provide the same release packages.
 
-   The example below uses the rolling preview channel, `nightly`. To install a stable release, replace `nightly` in the commands with `release`. `latest` returns the current release ID for the selected channel.
+   The example below installs a stable release (the `release` channel; see the [Release Notes](../releases/README.md) for what each version changes). To install the rolling preview instead, replace `release` in the commands with `nightly`. `latest` returns the current release ID for the selected channel.
 
    ```bash
    src=https://gpuworks-dl.oss-cn-shanghai.aliyuncs.com
-   id=$(curl -fsSL $src/nightly/latest)
+   id=$(curl -fsSL $src/release/latest)
    curl -fLO $src/releases/$id/gpuworks-$id-linux-amd64.tar.gz
    curl -fLO $src/releases/$id/SHA256SUMS
    sha256sum -c SHA256SUMS --ignore-missing
    ```
 
-   Confirm that verification returns `OK` for the corresponding archive before continuing. On the internal network, you can also download the same release packages from `https://gpuworks.zstack.ai/downloads/`.
+   Confirm that verification returns `OK` for the corresponding archive before continuing.
 
 2. **Extract the package and run the installer in the same terminal.**
 
@@ -211,7 +211,7 @@ Run these commands in the **actual installation directory** on the control plane
 To use another source, select the appropriate command below to replace steps 1 and 2 above. First append `--check` to verify, then remove it to perform the upgrade:
 
 ```bash
-./gpuworks upgrade --base-url https://gpuworks.zstack.ai        # Internal release site
+./gpuworks upgrade --base-url https://releases.example.internal # Internal release site
 ```
 
 ```bash
