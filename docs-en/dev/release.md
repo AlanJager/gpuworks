@@ -100,7 +100,7 @@ It runs in a separate `publish` stage because GitLab 14.0 allows needs to refere
 5. Before switching, `gpuworks-dist verify -index` uses the new index to check the size of each file at all three public addresses, including the CDN. If any size differs, it stops and the channel continues to point to the previous version;
 6. It saves the current index, `latest`, and `manifest.json` from each source, switches to the new version, then reads them back from all three public addresses to verify them. If the switch or readback fails, it restores each source's previous pointers and exits;
 7. Upload `scripts/get.sh` to the root of every source as `get.sh` with `Cache-Control: no-cache`.
-8. Each source retains only the most recent 20 version directories, plus the versions referenced by `latest` in the two channels.
+8. Version tag (`vYY.M.PATCH`) directories are kept on every source permanently; each source keeps only the most recent 60 nightly directories (`GPUWORKS_DIST_KEEP`), plus the versions referenced by `latest` in the two channels.
 
 If a source's `releases/<id>/` does not match its own `SHA256SUMS` (for example, it was overwritten before this rule existed), publishing fails at step 4 without switching versions. To resolve this, determine which source
 has the correct copy, delete the incorrect copy or replace it with the correct one, clear the CDN cache for `releases/<id>/`, then rerun publishing.

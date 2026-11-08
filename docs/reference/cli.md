@@ -497,7 +497,7 @@ server 在 `/install.sh` 提供的引导脚本，添加节点时界面生成 `cu
 | `adopt -dir DIR -release-id ID` | 核对从某个源拷回的 `releases/<id>/`：包与 `SHA256SUMS` 逐个一致、都属于 `ID`，打印包内 `INSTALL.txt` 记录的构建时间；不一致时非零退出 |
 | `verify -channel C -source URL … [-release-id ID] [-index FILE] [-full]` | 逐个源读取并验签索引，核对 release id，并对每个文件发 HEAD 核对大小；`-full` 改为下载并核对 sha256；`-index` 改用本地尚未发布的签名索引核对各源上的文件（不读源自己的索引），用于切换通道前。任一源失败即非零退出 |
 | `newer -channel C -built-at TIME [-source URL …]` | 有源在服务构建时间晚于 `TIME` 的同渠道版本时打印它并以 0 退出，没有时以 1 退出，其他错误以 2 退出；发布脚本据此跳过乱序完成的旧流水线 |
-| `prune -keep N [-protect ID …] < listing.json` | 读 `rclone lsjson -R --files-only <remote>/releases` 的输出，打印最新 N 个与受保护版本之外、可以删除的版本目录 |
+| `prune [-keep N] [-protect ID …] < listing.json` | 读 `rclone lsjson -R --files-only <remote>/releases` 的输出，打印可以删除的版本目录：版本 tag（`vYY.M.PATCH`）的目录永不删除，其余（nightly）目录保留最新 N 个（默认 60）与受保护的版本 |
 
 ### gpuworks-image-manifest
 

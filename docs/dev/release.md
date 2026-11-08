@@ -100,7 +100,7 @@ CI 的 `release-publish` 在 master 或版本 tag 的四个构建 job 全部成�
 5. 切换前，`gpuworks-dist verify -index` 用新索引逐个核对三个公开地址（含 CDN）上的文件大小，任一不符就停下，通道仍指向上一版；
 6. 先存下各源当前的索引、`latest` 与 `manifest.json`，再切换到新版本，并从三个公开地址读回核对；切换或读回失败时把各源恢复到原来的指针后退出；
 7. 把 `scripts/get.sh` 以 `Cache-Control: no-cache` 传到每个源的根目录 `get.sh`；
-8. 每个源只保留最近 20 个版本目录，以及两个渠道 `latest` 指向的版本。
+8. 版本 tag（`vYY.M.PATCH`）的目录在每个源上永久保留；nightly 目录每个源只保留最近 60 个（`GPUWORKS_DIST_KEEP`），以及两个渠道 `latest` 指向的版本。
 
 源上的 `releases/<id>/` 与它自己的 `SHA256SUMS` 对不上（例如本规则之前被覆盖过）时，发布会在第 4 步失败而不切换。处理方式：确认哪个源上的
 那份是对的，把错的那份删掉或换成对的，并清掉 CDN 上 `releases/<id>/` 的缓存，再重跑发布。
