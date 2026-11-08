@@ -22,7 +22,7 @@ func pruneCommand(args []string, stdin io.Reader, stdout io.Writer) error {
 	fs := flag.NewFlagSet("prune", flag.ContinueOnError)
 	var keep int
 	var protect stringList
-	fs.IntVar(&keep, "keep", 60, "newest nightly (non-version) directories to keep; version tags are always kept")
+	fs.IntVar(&keep, "keep", 30, "newest nightly (non-version) directories to keep; version tags are always kept")
 	fs.Var(&protect, "protect", "release id that must be kept (repeatable): what each channel's latest names")
 	if err := fs.Parse(args); err != nil {
 		return err
