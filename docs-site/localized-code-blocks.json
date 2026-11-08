@@ -233,8 +233,8 @@
   {
     "path": "how-to/install-server.md",
     "block_index": 12,
-    "source_sha256": "ed68da2e314cd8d9eaa5f0415b9ab32e3d54dd984172348fed4f98a8d288555b",
-    "translation_sha256": "b49aa5fd4f66f24fac22e24f883212de7efe8c2a59248a06a31fe3090e31be8f",
+    "source_sha256": "065bb64e923f37496561b5ef8420b692b7d61b90d1fd7c1d642b2dc252b829ef",
+    "translation_sha256": "47722574ed1a0f86b771369b5e2cc33be3416bdbae43abc3f6493e06a142d86e",
     "reason": "Translate Chinese code comments, preserving executable statements, parameter values, and paths."
   },
   {
