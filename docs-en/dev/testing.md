@@ -246,6 +246,26 @@ environment fails the earlier one that is still running (truncated trace, `403 J
 scheduled master pipeline and an MR manual run of the same job would kill each other. A new cloud L4 job must
 use `action: prepare` too; mutual exclusion comes from `resource_group`, not from the environment.
 
+## GitLab MR Pipeline Splitting
+
+An MR pipeline takes as long as the slowest job in the `core` stage, and the runners differ widely in core
+count (the same suite runs about 4 times slower on a 20-core machine than on the 192-core one), with a job
+landing wherever a slot is free. The two long suites therefore run as parallel shards, so a shard landing on
+a slow machine no longer sets the critical path:
+
+- `core-ui-test` uses `parallel: 3` and passes `TEST_SHARD=$CI_NODE_INDEX/$CI_NODE_TOTAL` to the same
+  `--test-shard` as on GitHub; the two non-UI checks, the host-env adapters and the strata queue assets, run
+  only in shard 1.
+- `core-l2` uses `parallel: 3`. `make test-l2 L2_SHARD=<i>/<n>` has `scripts/go_test_shard.sh` list the
+  suite's top-level tests, sort them by name and deal them round-robin (the 1st, 4th, 7th... to shard 1), then
+  passes the result to `go test` as `-run`; every test lands in exactly one shard. CI runs it with `-v`, so
+  the trace carries each test's duration for checking that the shards stay balanced.
+
+A cost independent of the runner is opening a database: when `store.Open` opens an empty in-memory database,
+each test process runs the full migration chain for real only once, and later empty in-memory databases
+replay its result (see `internal/server/store/migration_snapshot.go`). File databases, and in-memory ones
+that already hold tables, always run the real migrations, so upgrade paths are unaffected.
+
 ## GitHub Actions Mirror Gates
 
 `.github/workflows/ci.yml` runs the same checks as GitLab's core stage on GitHub-hosted runners: the UI

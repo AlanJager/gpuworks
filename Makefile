@@ -424,23 +424,33 @@ fake-model:
 ## limit stays well inside the job's own 45m so a real hang still fails here.
 L2_TIMEOUT ?= 30m
 
+## L2_SHARD=<index>/<total> runs one round-robin share of the suite's
+## top-level tests (scripts/go_test_shard.sh); CI splits the suite this way.
+L2_SHARD ?=
+
 test-l2:
 	@set -eu; \
 	mkdir -p $(TEST_LOG_DIR); \
+	run_flag=""; \
+	if [ -n "$(L2_SHARD)" ]; then \
+		pattern="$$(GO="$(GO)" CGO_ENABLED=0 ./scripts/go_test_shard.sh "$(L2_SHARD)" -tags=multiproc ./test/l2/...)"; \
+		run_flag="-run=$$pattern"; \
+		echo "l2 shard $(L2_SHARD): $$pattern"; \
+	fi; \
 	log="$(TEST_LOG_DIR)/l2.log"; status_file="$$(mktemp)"; \
 	trap 'rm -f "$$status_file"' EXIT; \
 	echo 70 >"$$status_file"; \
 	if [ -n "$(COVERPROFILE)" ]; then \
 		cover_dir="$$(mktemp -d)"; \
 		trap 'rm -rf "$$cover_dir"; rm -f "$$status_file"' EXIT; \
-		{ if GOCOVERDIR="$$cover_dir" CGO_ENABLED=0 $(GO) test $(GO_TEST_FLAGS) -timeout=$(L2_TIMEOUT) -tags=multiproc ./test/l2/...; then echo 0 >"$$status_file"; else echo $$? >"$$status_file"; fi; } 2>&1 | tee "$$log"; \
+		{ if GOCOVERDIR="$$cover_dir" CGO_ENABLED=0 $(GO) test $(GO_TEST_FLAGS) $$run_flag -timeout=$(L2_TIMEOUT) -tags=multiproc ./test/l2/...; then echo 0 >"$$status_file"; else echo $$? >"$$status_file"; fi; } 2>&1 | tee "$$log"; \
 		status="$$(cat "$$status_file")"; \
 		if [ "$$status" != 0 ]; then echo "l2 failed (status $$status); full output: $$log"; exit "$$status"; fi; \
 		$(GO) tool covdata textfmt -i="$$cover_dir" -o="$(COVERPROFILE)"; \
 		test -s "$(COVERPROFILE)"; \
 		$(GO) tool cover -func="$(COVERPROFILE)" | tail -1; \
 	else \
-		{ if CGO_ENABLED=0 $(GO) test $(GO_TEST_FLAGS) -timeout=$(L2_TIMEOUT) -tags=multiproc ./test/l2/...; then echo 0 >"$$status_file"; else echo $$? >"$$status_file"; fi; } 2>&1 | tee "$$log"; \
+		{ if CGO_ENABLED=0 $(GO) test $(GO_TEST_FLAGS) $$run_flag -timeout=$(L2_TIMEOUT) -tags=multiproc ./test/l2/...; then echo 0 >"$$status_file"; else echo $$? >"$$status_file"; fi; } 2>&1 | tee "$$log"; \
 		status="$$(cat "$$status_file")"; \
 		if [ "$$status" != 0 ]; then echo "l2 failed (status $$status); full output: $$log"; exit "$$status"; fi; \
 	fi

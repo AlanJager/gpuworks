@@ -159,7 +159,25 @@ func TestPDDeploymentServesThroughTheGatewayTwoStage(t *testing.T) {
 
 func waitPDRunning(t *testing.T, api *testenv.APIClient, id uint) dto.Deployment {
 	t.Helper()
-	deadline := time.Now().Add(30 * time.Second)
+	return waitPDRunningWithin(t, api, id, 30*time.Second)
+}
+
+// waitPDRunningWithin is waitPDRunning with the time a case allows: one that
+// rebuilds a unit first waits out the retry backoff and a second launch.
+func waitPDRunningWithin(t *testing.T, api *testenv.APIClient, id uint, within time.Duration) dto.Deployment {
+	t.Helper()
+	last, ok := pollPDRunning(api, id, within)
+	if !ok {
+		t.Fatalf("PD deployment did not reach running: %+v", last.PD)
+	}
+	return last
+}
+
+// pollPDRunning polls the deployment until its PD state is running with every
+// role complete, or within passes. It returns the last response read either
+// way, so a caller that keeps waiting for something else can report it.
+func pollPDRunning(api *testenv.APIClient, id uint, within time.Duration) (dto.Deployment, bool) {
+	deadline := time.Now().Add(within)
 	var last dto.Deployment
 	for time.Now().Before(deadline) {
 		resp, err := api.Get(fmt.Sprintf("/api/v1/deployments/%d", id))
@@ -171,12 +189,11 @@ func waitPDRunning(t *testing.T, api *testenv.APIClient, id uint) dto.Deployment
 			resp.Body.Close()
 		}
 		if last.PD != nil && last.PD.State == "running" && !last.PD.Short {
-			return last
+			return last, true
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-	t.Fatalf("PD deployment did not reach running: %+v", last.PD)
-	return dto.Deployment{}
+	return last, false
 }
 
 func waitHandoffEvent(t *testing.T, st *store.Store, uuid string) store.InstanceEvent {

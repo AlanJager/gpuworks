@@ -245,6 +245,22 @@ target。先以 `make help`/Makefile 确认目标，再只运行所需的测试�
 定时 master 流水线与 MR 手动点同一个 job 就会这样互相打断。新增云端 L4 job 必须同样写
 `action: prepare`；互斥靠 `resource_group`，不靠环境。
 
+## GitLab MR 流水线的拆分
+
+MR 流水线的总时长由 `core` 阶段最慢的 job 决定，而 runner 的核数差距很大（192 核与 20 核的机器上同一个
+suite 相差约 4 倍），job 落在哪台机器取决于哪里有空位。所以两个长 suite 拆成并行分片，单片落到慢机器上也
+不再是关键路径：
+
+- `core-ui-test` 用 `parallel: 3`，以 `TEST_SHARD=$CI_NODE_INDEX/$CI_NODE_TOTAL` 走与 GitHub 相同的
+  `--test-shard`；host-env adapter 与 strata 队列资产两项非 UI 检查只在第 1 片跑。
+- `core-l2` 用 `parallel: 3`。`make test-l2 L2_SHARD=<i>/<n>` 由 `scripts/go_test_shard.sh` 列出 suite 的
+  顶层用例，按名字排序后轮流分配（第 1、4、7… 个归第 1 片），再作为 `-run` 传给 `go test`；每个用例恰好
+  落在一片里。CI 带 `-v`，trace 里有每个用例的耗时，可据此检查各片是否均衡。
+
+另一项与 runner 无关的开销是建库：`store.Open` 打开空的内存库时，每个测试进程只真实执行一次完整迁移链，
+之后的空内存库回放这次的结果（见 `internal/server/store/migration_snapshot.go`）。文件库以及已有表的内存库
+始终走真实迁移，升级路径不受影响。
+
 ## GitHub Actions 镜像门禁
 
 `.github/workflows/ci.yml` 在 GitHub 托管 runner 上跑与 GitLab core 阶段相同的检查：UI 构建与测试、

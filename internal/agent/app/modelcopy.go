@@ -102,8 +102,13 @@ func sameSource(a, b []copyFile) bool {
 // complete; an interrupted copy resumes from the bytes already there. When the
 // source changes while it is being read, the copy starts over.
 func (n *NodeRuntime) copyModelDir(ctx context.Context, mf proto.ModelFileTask, workDir, finalTarget string) {
+	// The progress monitor reports on its own goroutine while the paths below
+	// are resolved in place, so report reads the target through reportedTarget
+	// rather than finalTarget itself.
+	var reportedTarget atomic.Value
+	reportedTarget.Store(finalTarget)
 	report := func(st proto.ModelFileStatus) {
-		st.Key, st.Path, st.Acquisition, st.TransferID = mf.Key, finalTarget, proto.ModelAcquireCopy, mf.TransferID
+		st.Key, st.Path, st.Acquisition, st.TransferID = mf.Key, reportedTarget.Load().(string), proto.ModelAcquireCopy, mf.TransferID
 		if ctx.Err() == nil {
 			n.reportModelFileContext(ctx, st)
 		}
@@ -147,6 +152,7 @@ func (n *NodeRuntime) copyModelDir(ctx context.Context, mf proto.ModelFileTask, 
 		}
 		*path = resolved
 	}
+	reportedTarget.Store(finalTarget)
 	if pathWithin(source, workDir) || pathWithin(workDir, source) || pathWithin(source, finalTarget) || pathWithin(finalTarget, source) {
 		fail("copy source and target directories overlap", 0, 0)
 		return

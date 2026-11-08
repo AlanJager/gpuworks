@@ -181,11 +181,7 @@ func TestMonitorOverviewReportsQuantilesFromFakeEngineHistograms(t *testing.T) {
 		return inst.DeploymentID == created.ID && inst.State == "running" && inst.ContainerID != ""
 	})
 	t.Cleanup(func() {
-		resp, err := authedDo(t, http.MethodDelete, base, adminToken, "/api/v1/deployments/"+itoa(created.ID), nil)
-		if err == nil && resp != nil {
-			resp.Body.Close()
-		}
-		waitDeploymentGone(t, base, adminToken, created.ID, 30*time.Second)
+		deleteDeployment(t, base, adminToken, created.ID)
 		if instance.ContainerID != "" {
 			_ = exec.Command("docker", "rm", "-f", instance.ContainerID).Run()
 		}

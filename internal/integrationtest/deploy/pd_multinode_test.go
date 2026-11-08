@@ -3,6 +3,7 @@ package deploy
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -23,13 +24,36 @@ import (
 // only, and when the follower's engine dies the unit is rebuilt as a new
 // group while the prefill instance keeps running.
 func TestPDMultiNodeDecodeServesAndRebuildsAsOneGroup(t *testing.T) {
+	runPDMultiNodeDecodeRebuild(t, false)
+}
+
+// TestPDMultiNodeDecodeRebuildsAfterItsFirstGenerationFailedToStart is the
+// same unit when its first generation fails to start (a launch on the
+// leader's node is refused) and is rebuilt before the deployment serves: the
+// follower of the generation that serves, not the one that was launched
+// first, is the one whose exit rebuilds the group.
+func TestPDMultiNodeDecodeRebuildsAfterItsFirstGenerationFailedToStart(t *testing.T) {
+	runPDMultiNodeDecodeRebuild(t, true)
+}
+
+func runPDMultiNodeDecodeRebuild(t *testing.T, firstLaunchFails bool) {
 	env := testenv.New(t)
+	// A unit's retry budget counts every failed generation it ever had, and
+	// the rebuild this case waits for spends one more. A launch that fails
+	// for a reason outside the case (ENGINE_PORT_IN_USE when another process
+	// on the host holds a port the controller picked) is rebuilt and spends
+	// one too; with the default budget of 3 two of those leave the unit
+	// exhausted and the group is never rebuilt.
+	env.SetControllerRetryPolicy(200*time.Millisecond, 10)
 	const leaderAddress, followerAddress = "10.43.0.10", "10.43.0.11"
 	a := env.AddNode("pd-rank-0", testenv.WithGPUs(2, testenv.GPUSpec{Model: "A100", VRAMMB: 24576}),
 		testenv.WithDriverName("fake"), testenv.WithManagementAddress(leaderAddress))
 	b := env.AddNode("pd-rank-1", testenv.WithGPUs(1, testenv.GPUSpec{Model: "A100", VRAMMB: 24576}),
 		testenv.WithDriverName("fake"), testenv.WithManagementAddress(followerAddress))
-	followerRuns := make(chan runtime.WorkloadSpec, 4)
+	// Every launch on the follower node is captured, not only the first: a
+	// generation that fails while it starts is rebuilt, and the test must
+	// exit the follower of the generation that serves, not of one that is gone.
+	followerRuns := make(chan runtime.WorkloadSpec, 16)
 	b.Driver.AfterRun(func(spec runtime.WorkloadSpec) { captureWorkload(followerRuns, spec) })
 	env.WaitNodeOnline(t, a.Name)
 	env.WaitNodeOnline(t, b.Name)
@@ -48,6 +72,9 @@ func TestPDMultiNodeDecodeServesAndRebuildsAsOneGroup(t *testing.T) {
 		if _, err := env.Store().UpsertModelFile(&store.ModelFile{ModelID: model.ID, NodeID: row.ID, State: proto.MFPresent, Path: testenv.ModelDir(t, "qwen3-pd-group-fake")}); err != nil {
 			t.Fatal(err)
 		}
+	}
+	if firstLaunchFails {
+		a.Driver.FailNext("Run", errors.New("first launch refused"))
 	}
 	api := env.API(t)
 	payload, _ := json.Marshal(map[string]any{
@@ -72,12 +99,17 @@ func TestPDMultiNodeDecodeServesAndRebuildsAsOneGroup(t *testing.T) {
 	if err := json.Unmarshal(raw, &created); err != nil {
 		t.Fatal(err)
 	}
-	deployment := waitPDRunning(t, api, created.ID)
+	// A launch can fail for a reason outside the case (an engine port a
+	// sibling process on the host holds) and is rebuilt; allow for that.
+	deployment := waitPDRunningWithin(t, api, created.ID, 2*time.Minute)
 	prefill, leader, follower := pdGroupInstances(deployment)
+	if firstLaunchFails && len(deployment.Instances) <= 3 {
+		t.Fatalf("the first generation did not fail: %+v", deployment.Instances)
+	}
 	if prefill.UUID == "" || leader.UUID == "" || follower.UUID == "" {
 		t.Fatalf("instances = %+v", deployment.Instances)
 	}
-	followerSpec := waitCapturedWorkload(t, followerRuns, "decode follower")
+	followerSpec := waitFollowerWorkload(t, followerRuns, follower.UUID)
 	argv := strings.Join(followerSpec.Cmd, " ")
 	if !strings.Contains(argv, "--headless") || !strings.Contains(argv, "--node-rank 1") || !strings.Contains(argv, "--master-addr "+leaderAddress) || !strings.Contains(argv, "kv_consumer") {
 		t.Fatalf("follower argv = %s", argv)
@@ -115,12 +147,18 @@ func TestPDMultiNodeDecodeServesAndRebuildsAsOneGroup(t *testing.T) {
 	// The follower's worker exits and its agent reports it: its unit is
 	// rebuilt as a new group and the prefill instance is left alone.
 	b.Driver.Exit(followerSpec.Name, 1)
-	// The rebuild takes about 12 s on an idle machine and several times that
-	// on a loaded CI runner.
+	// The rebuild waits for the next reconcile pass and the engine's launch
+	// and readiness checks, several times longer on a loaded CI runner.
 	deadline := time.Now().Add(3 * time.Minute)
 	var rebuilt dto.Deployment
 	for time.Now().Before(deadline) {
-		rebuilt = waitPDRunning(t, api, created.ID)
+		// The unit is rebuilding, so the deployment is not running for as
+		// long as that takes: the loop's own deadline bounds the wait, not a
+		// per-poll one.
+		var ok bool
+		if rebuilt, ok = pollPDRunning(api, created.ID, time.Until(deadline)); !ok {
+			break
+		}
 		p, l, f := pdGroupInstances(rebuilt)
 		if l.UUID != "" && l.UUID != leader.UUID && f.UUID != "" && f.UUID != follower.UUID {
 			if p.UUID != prefill.UUID {
@@ -134,6 +172,28 @@ func TestPDMultiNodeDecodeServesAndRebuildsAsOneGroup(t *testing.T) {
 		time.Sleep(200 * time.Millisecond)
 	}
 	t.Fatalf("decode group was not rebuilt: %+v", rebuilt.Instances)
+}
+
+// waitFollowerWorkload returns the launch of the follower instance uuid from
+// those captured on its node, skipping launches of earlier generations of the
+// unit. Their containers are gone, so exiting one would end nothing that
+// serves and the unit would never be rebuilt.
+func waitFollowerWorkload(t *testing.T, source <-chan runtime.WorkloadSpec, uuid string) runtime.WorkloadSpec {
+	t.Helper()
+	// The agent names a container "gpuworks-" and the instance's first 12
+	// characters.
+	name := "gpuworks-" + uuid[:12]
+	var seen []string
+	for {
+		spec := waitCapturedWorkload(t, source, "decode follower "+uuid)
+		if spec.Name == name {
+			return spec
+		}
+		seen = append(seen, spec.Name)
+		if len(seen) > cap(source) {
+			t.Fatalf("no launch of follower container %s among %v", name, seen)
+		}
+	}
 }
 
 // pdGroupInstances picks the running prefill instance, decode leader and

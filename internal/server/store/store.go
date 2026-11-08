@@ -134,7 +134,7 @@ func (s *Store) NodeByTokenHash(hash string) (*Node, error) {
 // ListNodes returns all nodes with their GPUs preloaded, newest first.
 func (s *Store) ListNodes() ([]Node, error) {
 	var nodes []Node
-	err := preloadCards(s.reader()).Order("id desc").Find(&nodes).Error
+	err := s.withCards(s.reader(), func(q *gorm.DB) error { return q.Order("id desc").Find(&nodes).Error })
 	if err == nil {
 		err = s.markNodeCredentialFlags(nodes)
 	}
@@ -152,7 +152,7 @@ func (s *Store) ServerDialNodes() ([]Node, error) {
 // NodeByID loads a node with GPUs by primary key.
 func (s *Store) NodeByID(id uint) (*Node, error) {
 	var n Node
-	err := preloadCards(s.db).First(&n, id).Error
+	err := s.withCards(s.db, func(q *gorm.DB) error { return q.First(&n, id).Error })
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, ErrNotFound
 	}
@@ -165,7 +165,7 @@ func (s *Store) NodeByID(id uint) (*Node, error) {
 // NodeWithGPUs loads a single node with GPUs by UUID.
 func (s *Store) NodeWithGPUs(uuid string) (*Node, error) {
 	var n Node
-	err := preloadCards(s.db).Where("uuid = ?", uuid).First(&n).Error
+	err := s.withCards(s.db, func(q *gorm.DB) error { return q.Where("uuid = ?", uuid).First(&n).Error })
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, ErrNotFound
 	}

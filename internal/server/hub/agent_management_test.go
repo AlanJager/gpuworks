@@ -40,10 +40,14 @@ func TestPerNodeTokenHandshakePersistsAgentInfo(t *testing.T) {
 		done <- c.Run(ctx)
 	}()
 
-	deadline := time.Now().Add(3 * time.Second)
-	for time.Now().Before(deadline) && !h.Online(n.UUID) {
-		time.Sleep(10 * time.Millisecond)
-	}
+	// register puts the session in the table before it persists the node as
+	// online, so h.Online alone can be read before the state lands. The
+	// handshake facts are recorded before either, so a node the store reads
+	// as online must already carry them.
+	waitFor(t, 10*time.Second, func() bool {
+		got, err := st.NodeByUUID(n.UUID)
+		return err == nil && got.State == store.NodeStateOnline
+	}, "per-node token to persist the node as online")
 	if !h.Online(n.UUID) {
 		t.Fatal("per-node token did not establish an online session")
 	}
