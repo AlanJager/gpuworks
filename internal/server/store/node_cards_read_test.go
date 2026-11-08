@@ -147,3 +147,53 @@ func TestWriterPoolNodeLookupsKeepAReportOutOfTheGap(t *testing.T) {
 		})
 	}
 }
+
+// A store bound to a write transaction (&Store{db: tx}, as BeginCacheDeletion
+// checks its row) reads a node and its cards on that transaction: asking the
+// writer pool for its one connection there would wait on the transaction
+// holding it, forever.
+func TestNodeLookupsInsideAWriteTransactionDoNotWaitOnItsConnection(t *testing.T) {
+	s, err := Open(filepath.Join(t.TempDir(), "test.db"), bus.New())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+	n, err := s.RegisterNode("uuid-tx", HashToken("tok-tx"), "host-tx")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.db.Create(&GPU{NodeID: n.ID, Ident: "card-0", Name: "Fake"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() {
+		done <- s.db.Transaction(func(tx *gorm.DB) error {
+			bound := &Store{db: tx}
+			for name, lookup := range map[string]func() (*Node, error){
+				"NodeByID":     func() (*Node, error) { return bound.NodeByID(n.ID) },
+				"NodeWithGPUs": func() (*Node, error) { return bound.NodeWithGPUs(n.UUID) },
+			} {
+				got, err := lookup()
+				if err != nil {
+					return err
+				}
+				if len(got.GPUs) != 1 {
+					t.Errorf("%s inside the transaction read %d card(s), want 1", name, len(got.GPUs))
+				}
+			}
+			nodes, err := bound.ListNodes()
+			if err == nil && (len(nodes) != 1 || len(nodes[0].GPUs) != 1) {
+				t.Errorf("ListNodes inside the transaction = %+v, want the node with its card", nodes)
+			}
+			return err
+		})
+	}()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("a node lookup inside a write transaction waited for the connection that transaction holds")
+	}
+}
