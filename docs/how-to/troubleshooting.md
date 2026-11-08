@@ -973,6 +973,7 @@ agent 每 15 秒检查一次运行中实例的容器。被 `docker stop`、进�
 
 平台通过 controller 重建实例，容器使用 `--restart no`，不依赖 Docker 重启策略。
 每个 unit 最多尝试 3 次，新尝试距上次尝试创建至少 15 秒；每次使用新 UUID，并保留旧失败记录。
+启动前因主机端口被别的进程占用而被拒绝（`ENGINE_PORT_REFUSED`，此时什么都没有启动）的尝试例外：立即换端口重试，最早的 10 次不计入这 3 次。
 预算用尽时产生 `UNIT_RETRY_EXHAUSTED`（`params` 含 `attempts`、`reason`），不再自动重建。
 
 处理原因后，调用 `POST /api/v1/deployments/{id}/units/retry`，body 为 `{"role":"","index":0}`（普通部署 `role` 为空）。

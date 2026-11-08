@@ -125,3 +125,47 @@ func TestNetworkUpdateRefreshesEnginePortInventory(t *testing.T) {
 		}
 	}
 }
+
+// A launch refused for a host port another process holds is followed by a
+// node status at once, carrying the listeners the server's retry must avoid;
+// any other instance report leaves the node status to its schedule.
+func TestARefusedLaunchReportsTheNodeStatusAtOnce(t *testing.T) {
+	cases := []struct {
+		name       string
+		t          string
+		st         proto.InstanceStatus
+		wantStatus bool
+	}{
+		{"refused", proto.TStatusInstance, proto.InstanceStatus{UUID: "u", State: proto.InstFailed, Message: proto.EnginePortRefused + ": port 30000 is already in use on this node; nothing was started"}, true},
+		{"foreign engine on the API port", proto.TStatusInstance, proto.InstanceStatus{UUID: "u", State: proto.InstFailed, Message: proto.EnginePortInUse + ": another engine answers on this port"}, false},
+		{"other failure", proto.TStatusInstance, proto.InstanceStatus{UUID: "u", State: proto.InstFailed, Message: "image pull failed"}, false},
+		{"refusal text on a running report", proto.TStatusInstance, proto.InstanceStatus{UUID: "u", State: proto.InstRunning, Message: proto.EnginePortRefused + ": stale"}, false},
+		{"another envelope", proto.TStatusModelFile, proto.InstanceStatus{}, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctrl := &nopRWC{}
+			c := New(Credentials{NodeUUID: "node-1"}, nil, &inboundHandlers{}, &gpu.FixedProber{VendorName: "test"}, slog.Default())
+			c.ctrl = ctrl
+			c.enginePorts.Store(&proto.PortRange{Start: 30000, End: 30010})
+			var d any = tc.st
+			if tc.t == proto.TStatusModelFile {
+				d = proto.ModelFileStatus{Key: "k", State: proto.MFFailed, Message: proto.EnginePortRefused + ": x"}
+			}
+			if err := c.handlerSend(context.Background())(tc.t, d); err != nil {
+				t.Fatal(err)
+			}
+			statusIdle(t, c)
+			statuses := sentStatuses(t, ctrl)
+			if got := len(statuses) == 1; got != tc.wantStatus {
+				t.Fatalf("node statuses sent = %d, want a status: %v", len(statuses), tc.wantStatus)
+			}
+			if tc.wantStatus && statuses[0].Network == nil {
+				t.Fatalf("status after a refusal has no network inventory: %+v", statuses[0])
+			}
+			if !bytes.Contains(ctrl.BytesCopy(), []byte(`"t":"`+tc.t+`"`)) {
+				t.Fatalf("the report itself was not sent: %s", ctrl.BytesCopy())
+			}
+		})
+	}
+}

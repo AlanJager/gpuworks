@@ -17,9 +17,13 @@ import (
 	"gpuworks.ai/gpuworks/internal/proto"
 )
 
-// EnginePortInUse prefixes the failure of a launch whose host port another
-// process already holds, so the server and the UI can tell it apart.
-const EnginePortInUse = "ENGINE_PORT_IN_USE"
+// EnginePortInUse prefixes the failure of an engine whose API port another
+// engine answers on; EnginePortRefused that of a launch refused before
+// anything started because another process holds one of its host ports.
+const (
+	EnginePortInUse   = proto.EnginePortInUse
+	EnginePortRefused = proto.EnginePortRefused
+)
 
 // listenTCP is the bind checkEnginePorts tries; tests replace it through
 // checkEnginePortsWith.
@@ -69,7 +73,7 @@ func checkEnginePortsWith(spec proto.InstanceDesiredState, listen func(int) (io.
 			continue
 		}
 		if errors.Is(err, syscall.EADDRINUSE) {
-			return fmt.Errorf("%s: port %d is already in use on this node", EnginePortInUse, port)
+			return fmt.Errorf("%s: port %d is already in use on this node; nothing was started", EnginePortRefused, port)
 		}
 		// Anything else (a port the agent may not bind as a user, for one)
 		// says nothing about another listener; the engine finds out itself.

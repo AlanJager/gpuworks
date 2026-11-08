@@ -140,7 +140,7 @@ func (c *Controller) reconcileUnits(ctx context.Context, dep *store.Deployment, 
 			continue
 		}
 		attempts := match.Failed[slot.Key]
-		if len(attempts) >= c.maxAttempts {
+		if len(planning.ChargedAttempts(attempts)) >= c.maxAttempts {
 			if done, err := c.finalizeFailedAttempts(ctx, dep, attempts); err != nil || !done {
 				return err
 			}
@@ -457,8 +457,12 @@ func (c *Controller) recordReplicaRebuilt(dep *store.Deployment, unit planning.U
 }
 
 // retryWait is how long a unit waits before its next attempt: the retry
-// backoff since its newest failed attempt.
+// backoff since its newest failed attempt, or nothing after a launch refused
+// before it started anything (planning.RetryAtOnce).
 func (c *Controller) retryWait(attempts []store.Instance) time.Duration {
+	if planning.RetryAtOnce(attempts) {
+		return 0
+	}
 	var newest time.Time
 	for _, inst := range attempts {
 		if inst.CreatedAt.After(newest) {

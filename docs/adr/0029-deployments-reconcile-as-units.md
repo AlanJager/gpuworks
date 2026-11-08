@@ -35,6 +35,13 @@ followers 立即移除，失败的 leader 按 unit key 归为该 unit 已用掉�
 移除，同一 unit 再加回来时预算是满的。预算用完时控制器在最新一次失败上记一条 `UNIT_RETRY_EXHAUSTED`（只记一次）；
 运维经 `POST /deployments/{id}/units/retry` 让单个 unit 重新获得预算，不动其他 unit。
 
+**启动前因端口被占而拒绝的尝试不计预算（2026-11-08 修订）。** agent 在拉镜像、建容器之前先检查 server 分配的主机端口，
+端口已被别的进程占用时直接上报 `ENGINE_PORT_REFUSED`，这时什么都没有启动。leader 行以这个码失败的尝试立即重试，不等重试间隔；
+每个 unit 最早的 10 次这类拒绝不计入预算（`planning.FreePortRefusals`），之后的拒绝与其他失败一样计入，
+所以一台一直拒绝的节点最终仍会用尽预算。失败行照常保留，它们占着的端口让下一次分配避开。follower 被拒时 leader 行记的是
+`rank N on … failed: …`，leader 的容器可能已经启动，仍按普通失败计。agent 上报拒绝后立即补发一次节点状态，
+让下一次分配看到最新的端口占用。引擎启动后 API 端口上答话的是别的模型（`ENGINE_PORT_IN_USE`）不属于这一类：那次尝试已经建了容器。
+
 **代要么完整，要么失败。** 多机集合通信不能替换单个进程：任何 rank 失败、行消失（已停止）或所在节点离线超过
 重连宽限，leader 记为失败并移除容器，followers 移除。先推送移除再写失败状态，推送失败时下一轮重试。
 
