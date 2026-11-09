@@ -208,7 +208,7 @@ make test-l2    # 多进程测试：真实二进制 + 假 GPU
 
 加入技术交流群：
 
-![community qccode](docs/assets/screenshots/readme/mmexport1792757893017.jpg)
+![微信交流群](docs/assets/screenshots/readme/wechat-group.jpg)
 
 ## 许可证
 
