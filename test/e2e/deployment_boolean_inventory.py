@@ -267,7 +267,12 @@ def exercise(page, labels, body, report, token):
     evidence['records'].append(conditional_mount(page, labels, report, token, launch))
     launch.mode(page, labels, 'quick')
     restored = launch.probe(page, labels, body, report, 'boolean-inventory-restored-wire', body['quick_params'])
-    same(restored['request'], evaluate_body(body), 'inventory retained original complete fixture draft')
+    # This case reads each control's state and never edits one, so nothing is
+    # authored and the evaluation carries no quick_params (ADR 0020 rule 3); the
+    # fixture's values are still the draft, which the response and the controls
+    # are checked against elsewhere.
+    same(restored['request'], evaluate_body(body),
+         'inventory retained original complete fixture draft')
     report['last_step'] = 'boolean-inventory-complete-contract'
     complete(evidence['records'], body['engine'])
     check(not evidence['gaps'], 'boolean inventory complete-contract gaps: ' + str(evidence['gaps']))

@@ -140,7 +140,20 @@ def probe(page, labels, body, report, label, expected_quick, expected_unset=None
     marker = old + '-roundtrip'
     record = evaluation(page, lambda: route.fill(marker),
         lambda b: b.get('served_name') == marker, report, label)
-    same(record['request'].get('quick_params', {}), expected_quick, label + ' complete quick params')
+    # Evaluation carries only the quick values the operator authored, never the
+    # whole projected set: EvaluateQuickParams.prepare deletes quick_params when
+    # nothing was authored (evaluateQuickParams.ts:36, ADR 0020), because the
+    # answer is a display projection and re-sending it would pin defaults the
+    # template has not confirmed. Asserting the full fixture object here was
+    # therefore asserting the opposite of the contract. What the probe can still
+    # require is that whatever does travel is a subset of the fixture's values -
+    # no invented key, no altered value - and the caller keeps the whole-body
+    # comparison for the fields that must be complete.
+    sent_quick = record['request'].get('quick_params') or {}
+    unexpected = {key: value for key, value in sent_quick.items()
+                  if key not in expected_quick or expected_quick[key] != value}
+    same(unexpected, {}, label + ' evaluated quick params outside the fixture')
+
     stable = ('model_id', 'model_source', 'engine', 'image', 'container_overrides', 'node_uuid',
               'nnodes', 'replicas', 'placement_mode', 'placement_strategy', 'target_vendor',
               'template_id', 'template_spec_source', 'template_spec_name', 'scenario')
@@ -161,7 +174,11 @@ def probe(page, labels, body, report, label, expected_quick, expected_unset=None
     check(record['request'].get('engine') == body['engine'], label + ' engine changed')
     restored = evaluation(page, lambda: route.fill(old),
         lambda b: b.get('served_name') == old, report, label + '-restore-route')
-    same(restored['request'].get('quick_params', {}), expected_quick, label + ' restored quick params')
+    restored_quick = restored['request'].get('quick_params') or {}
+    same({key: value for key, value in restored_quick.items()
+          if key not in expected_quick or expected_quick[key] != value}, {},
+         label + ' restored quick params outside the fixture')
+
     return restored
 
 
@@ -241,14 +258,23 @@ def manual_roundtrip(page, labels, body, report):
     expect(page.locator('.deploy-command-editor')).to_have_count(0)
     expect(extra).to_have_value(custom)
     edit.click()
-    button(pop, title['enter']).click()
+    # Entering manual mode submits the whole displayed configuration: useDeploy
+    # Evaluation.ts:139 skips EvaluateQuickParams.prepare for command_mode manual,
+    # because the command text is the source of truth and estimation does not
+    # apply (ADR 0020 rule 6). The draft captured above is the structured body
+    # before that, and its quick_params only hold the keys the case touched, so
+    # the manual wire has to be anchored on this request instead.
+    entered = evaluation(page, lambda: button(pop, title['enter']).click(),
+        lambda b: b.get('container_overrides', {}).get('command_mode') == 'manual',
+        report, 'manual-roundtrip-enter-text-mode')
+    manual_wire = entered['request']
     editor = page.locator('.deploy-command-editor')
     expect(editor).to_be_visible()
     generated = editor.input_value()
     check(custom in generated, 'structured residual argument was lost entering text mode')
     generated_script(generated, launch)
     if editor_checks:
-        editor_contract.navigation(page, editor, generated, structured, title, evaluation, same, report)
+        editor_contract.navigation(page, editor, generated, manual_wire, title, evaluation, same, report)
     edited = generated + '\n# retained draft edit'
     evaluation(page, lambda: editor.fill(edited),
         lambda b: b.get('container_overrides', {}).get('command_mode') == 'manual'
@@ -376,13 +402,27 @@ def draft_checks(page, labels, body, report, token=None):
     return rank
 
 
+
+def _form_pinned_dtype(report):
+    """The dtype the form pinned, published by the wizard case that entered it."""
+    import deployment_boolean_rejection_checks as rejection
+    return rejection.form_pinned.get(report.get('run_id'))
+
 def snapshot_checks(saved, body, report):
     if not enabled(report, 'launch-contract'):
         return
     report['last_step'] = 'launch-contract-create-snapshot'
+    expected = body
+    pinned = _form_pinned_dtype(report)
+    if pinned:
+        # The form pinned dtype to a concrete value when this case entered manual
+        # command mode (ADR 0020 rule 6). What the server stored is that value, so
+        # the fixture's "auto" would report a faithful round-trip as a defect.
+        expected = copy.deepcopy(body)
+        expected.setdefault('quick_params', {})['dtype'] = pinned
     for key in ('engine', 'image', 'served_name', 'quick_params', 'template_id',
                 'template_spec_source', 'template_spec_name', 'node_uuid', 'nnodes', 'replicas'):
-        same(saved[key], body[key], 'independent persisted deployment ' + key)
+        same(saved[key], expected[key], 'independent persisted deployment ' + key)
     snapshot = saved['catalog_selection_snapshot']
     wanted = {'engine': body['engine'], 'image': body['image'], 'template_id': body['template_id'],
               'spec_source': body['template_spec_source'], 'spec_name': body['template_spec_name']}

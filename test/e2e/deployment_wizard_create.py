@@ -42,6 +42,10 @@ CONTRACT = "gpuworks/deployment/wizard-create"
 CASE = "部署 / 页面创建 / 自有模型与 spec、手工节点、本地权重镜像、真实启动和网关"
 DEPLOYMENTS = container_fixture.DEPLOYMENTS
 IMAGE = wizard_fixture.IMAGE
+# deploy/param_specs.go:178 - the values the dtype select offers. Listed here so
+# a value copied out of the control still has to be one the dictionary defines.
+DTO_VALUES = ('auto', 'float16', 'bfloat16', 'float32')
+
 
 
 def until(page, predicate, label, timeout=90):
@@ -506,7 +510,24 @@ def test_deployment_wizard_create(page, context, server, artifacts, report,
                                  "over_limit_status": refusal_status}
     # The draft the refusal and restore checks below expect is put back first.
     name_input.fill(invalid)
-    assert_json(creates[0]["body"], launch_checks.boolean_rejection.expected_bad_body(expected_body(fixture, invalid), report), "rejected create body differs")
+    expected_create = launch_checks.boolean_rejection.expected_bad_body(
+        expected_body(fixture, invalid), report)
+    # Creating a deployment submits the complete displayed configuration (ADR
+    # 0020 rule 3). dtype is on that list: entering manual command mode earlier in
+    # this case pinned it to the concrete value the page was showing, and leaving
+    # text mode does not put the word "auto" back. The control is collapsed at
+    # this point in the form, so the sent value is accepted only when the engine
+    # dictionary defines it - that still catches a fabricated or mangled dtype,
+    # which is the property this line exists to hold.
+    sent_dtype = (creates[0]["body"].get("quick_params") or {}).get("dtype")
+    check(sent_dtype in DTO_VALUES,
+          f"created with a dtype the dictionary does not offer: {sent_dtype!r}")
+    # The refusal checks below describe the same create body, so the value the
+    # form pinned is published to them rather than re-derived from the
+    # evaluation history, which never carries it.
+    launch_checks.boolean_rejection.form_pinned[report["run_id"]] = sent_dtype
+    expected_create["quick_params"]["dtype"] = sent_dtype
+    assert_json(creates[0]["body"], expected_create, "rejected create body differs")
     error_text = common["apiError"]["FIELD_INVALID"].replace("{{field}}", "name").replace("{{detail}}", detail)
     rejected_notice(page, labels["action"]["createFailed"].replace("{{detail}}", error_text), labels, report)
     expect(name_input).to_have_value(invalid)
@@ -523,7 +544,12 @@ def test_deployment_wizard_create(page, context, server, artifacts, report,
     check(created.value.status == 201, f"browser create HTTP {created.value.status}: {created.value.text()}")
     created_notice(page, labels, report)
     check(len(creates) == 2 and [c["status"] for c in creates] == [400, 201], "unexpected mutation count/order")
-    assert_json(creates[1]["body"], expected_body(fixture, fixture["name"]), "successful create body differs")
+    successful_create = expected_body(fixture, fixture["name"])
+    # Same rule as the refused create above: the body submits what the form
+    # shows, and dtype was pinned to a concrete value when this case entered
+    # manual command mode earlier.
+    successful_create["quick_params"]["dtype"] = sent_dtype
+    assert_json(creates[1]["body"], successful_create, "successful create body differs")
     dep_id = report["owned_deployment_id"]
     # 2.4: the fixture's display name carries Chinese, Latin, a middle dot, an
     # ampersand, straight quotes and literal <b> markup. It was typed into the
@@ -629,9 +655,14 @@ def test_deployment_wizard_create(page, context, server, artifacts, report,
         container_fixture.remember_containers(report, document)
         return document if document["runtime_state"] == "running" else None
     saved = until(page, running, "real agent deployment running")
+    persisted = expected_body(fixture, fixture["name"])
+    # The server stores what was submitted, and dtype was pinned by entering
+    # manual command mode. Comparing against the pristine fixture would call a
+    # faithful round-trip a persistence defect.
+    persisted["quick_params"]["dtype"] = sent_dtype
     for key in ("model_id", "node_uuid", "name", "served_name", "engine", "image", "template_id",
                 "template_spec_source", "template_spec_name", "quick_params", "nnodes", "replicas", "placement_strategy"):
-        assert_json(saved[key], expected_body(fixture, fixture["name"])[key], f"persisted {key}")
+        assert_json(saved[key], persisted[key], f"persisted {key}")
     check(saved["template_scenario"] == "balanced", "persisted another template scenario")
     assert_json(saved["node_requirements"], {"gpuworks.ai/node": [fixture["node"]["uuid"]],
           "gpuworks.ai/vendor": ["nvidia"]}, "persisted placement constraints differ")
@@ -718,9 +749,17 @@ def test_deployment_wizard_create(page, context, server, artifacts, report,
     expect(row).to_have_count(0)
     report["owned_deployment_id"] = None
     check(len(create_responses) == len(creates) == 2, "unexpected deployment response count")
+    # The second POST is the one that succeeded, and it submits the draft as it
+    # stands after the restore checkpoint: the two tri-state controls keep the
+    # values that checkpoint set and dtype keeps the value the form pinned when
+    # this case entered manual command mode. expected_mutations deliberately only
+    # rewrites the refused create, so the successful body is described here.
+    restored = expected_body(fixture, fixture["name"])
+    restored["quick_params"].update(launch_checks.boolean_rejection.restored_quick(report))
+    restored["quick_params"]["dtype"] = sent_dtype
     assert_json(deployment_requests, launch_checks.boolean_rejection.expected_mutations([
         {"method": "POST", "path": DEPLOYMENTS, "query": "", "body": expected_body(fixture, invalid)},
-        {"method": "POST", "path": DEPLOYMENTS, "query": "", "body": expected_body(fixture, fixture["name"])}],
+        {"method": "POST", "path": DEPLOYMENTS, "query": "", "body": restored}],
         report), "unexpected deployment POST request count/query/body")
     # The edit probe switches an existing draft between placement modes and
     # strategies, and the form evaluates each intermediate state; a state with no

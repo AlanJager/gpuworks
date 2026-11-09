@@ -29,6 +29,10 @@ STATIC = ('global/health_check', 'global/tokenize_enabled', 'quick/sleepable',
           'quick/mount-rows', 'expert/runtime/mount-rows', 'conditional/mount-read-only')
 
 
+CARRIED_MARK = '__carried_quick'
+_MISSING = object()
+
+
 def rows(engine):
     check(engine in ENGINE, 'unreviewed inventory engine')
     return {row[0]: row for row in COMMON + ENGINE[engine]}
@@ -42,11 +46,24 @@ def expected_ids(engine):
 
 def initial(body, key):
     row = rows(body['engine'])[key]
+    # Two different questions arrive here. A pristine inventory asks what the
+    # fixture states and what the engine decides; a checkpoint after real edits
+    # asks what the page is showing now, and those carried values are marked.
+    # Merging the two without the mark made the inventory expect an On control
+    # for an engine-decided key the page had never been asked to set.
+    explicit = (body.get(CARRIED_MARK) or {}).get(key, _MISSING)
+    if explicit is not _MISSING:
+        return {'position': 'on' if explicit else 'off', 'wire': 'explicit', 'value': explicit}
+    if key in ENGINE_DECIDES[body['engine']]:
+        return {'position': 'auto', 'wire': 'omitted', 'value': None}
     if key in body['quick_params']:
         value = body['quick_params'][key]
         check(type(value) is bool, 'fixture boolean is not boolean: ' + key)
         return {'position': 'on' if value else 'off', 'wire': 'explicit', 'value': value}
-    if row[1] is None or key in ENGINE_DECIDES[body['engine']]:
+    if row[1] is None:
+        # No stated value and no dictionary default: the control states no
+        # choice. A default of None is not the same thing as being engine
+        # decided, so this check has to come after the explicit one.
         return {'position': 'auto', 'wire': 'omitted', 'value': None}
     return {'position': 'on' if row[1] else 'off', 'wire': 'omitted', 'value': row[1]}
 
