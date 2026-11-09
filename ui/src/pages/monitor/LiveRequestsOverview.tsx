@@ -124,7 +124,7 @@ const TICKS_MS = [100, 1000, 2000, 5000, 10_000, 30_000, 60_000, 120_000, 300_00
 
 // useWidth is the element's current content width, kept up to date as it
 // resizes; 0 until it is measured (and always in a DOM without layout).
-function useWidth<T extends HTMLElement>(): [RefObject<T>, number] {
+function useWidth<T extends HTMLElement>(): [RefObject<T | null>, number] {
   const ref = useRef<T>(null);
   const [width, setWidth] = useState(0);
   useEffect(() => {

@@ -32,7 +32,7 @@ export default function RequestDetailDrawer({
   const template = useTraceLink(r != null);
   const link = r ? traceLinkFor(template, r.trace_id) : null;
   return (
-    <Drawer open={r != null} onClose={onClose} title={t("requests.drawer.title")} width={520} destroyOnClose>
+    <Drawer open={r != null} onClose={onClose} title={t("requests.drawer.title")} width={520} destroyOnHidden>
       {r && (
         <>
           <Descriptions size="small" column={1} bordered labelStyle={{ width: 104, whiteSpace: "nowrap" }}>

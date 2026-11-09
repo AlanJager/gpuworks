@@ -126,7 +126,7 @@ export function RailsCell({ network, node, onChanged }: { network: NetworkDetail
             placeholder={t(accelerator ? "rail.pickCard" : "rail.pick")}
             options={options}
             notFoundContent={loading ? undefined : t("rail.noMore")}
-            onDropdownVisibleChange={(open) => { if (!open) setAdding(false); }}
+            onOpenChange={(open) => { if (!open) setAdding(false); }}
             onSelect={(hca: string) => edit({ op: "add", hca, node_uuid: node.node_uuid })}
           />
         ) : (
@@ -197,7 +197,7 @@ export function BootstrapCell({ network, node, onChanged }: { network: NetworkDe
             loading={loading}
             placeholder={t("rail.pickInterface")}
             options={options}
-            onDropdownVisibleChange={(open) => { if (!open) setEditing(false); }}
+            onOpenChange={(open) => { if (!open) setEditing(false); }}
             onSelect={(iface: string) => save(iface)}
           />
         ) : (

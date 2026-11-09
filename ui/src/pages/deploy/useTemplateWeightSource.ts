@@ -73,7 +73,7 @@ export default function useTemplateWeightSource({
   const stateRef = useRef({ applied: adoptedKey ?? "", prompted: "", registering: "" });
   // What the user settled on for this spec: a registered model or a declared
   // source (whose model, registered now or already there, is then applied).
-  const pickedRef = useRef<{ key: string; model?: WeightModel; source?: WeightSource }>();
+  const pickedRef = useRef<{ key: string; model?: WeightModel; source?: WeightSource }>(undefined);
   // The registered models matching a declared source, listed for the user to
   // confirm (5.13), and which one (or the template's own source) they picked.
   const [matches, setMatches] = useState<WeightModel[]>([]);

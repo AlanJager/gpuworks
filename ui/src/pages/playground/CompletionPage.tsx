@@ -34,7 +34,7 @@ export default function CompletionPage({ catalog }: { catalog: PlaygroundCatalog
   const [usage, setUsage] = useState<Usage>();
   const [error, setError] = useState<string>();
   const [running, setRunning] = useState(false);
-  const abort = useRef<AbortController>();
+  const abort = useRef<AbortController>(undefined);
 
   useEffect(() => {
     const next = new URLSearchParams(search);

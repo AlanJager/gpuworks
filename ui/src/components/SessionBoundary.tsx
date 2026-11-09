@@ -11,7 +11,7 @@ export default function SessionBoundary({ children, onLogout }: { children: (log
   const [expired, setExpired] = useState(false);
   const [error, setError] = useState("");
   const [checking, setChecking] = useState(false);
-  const request = useRef<AbortController>();
+  const request = useRef<AbortController>(undefined);
 
   const checkSession = useCallback(async () => {
     request.current?.abort();

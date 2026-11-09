@@ -87,7 +87,7 @@ export default function PlatformSSHKeyCard() {
         okText={t("sshKey.import")}
         okButtonProps={{ disabled: !importPEM.trim() }}
         confirmLoading={importing}
-        destroyOnClose
+        destroyOnHidden
       >
         <Typography.Paragraph type="secondary">{t("sshKey.importHelp")}</Typography.Paragraph>
         <Input.TextArea

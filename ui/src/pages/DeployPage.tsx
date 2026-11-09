@@ -237,7 +237,7 @@ function DeployForm({ opened }: { opened?: OpenedDeployment }) {
     modalities: selectedModel?.input_modalities ?? [],
     settled: Boolean(opened) && !engines.loading && !selectedModelRead.loading,
   });
-  const bodyOfRef = useRef<(values: Record<string, unknown>) => Record<string, unknown> | null>();
+  const bodyOfRef = useRef<(values: Record<string, unknown>) => Record<string, unknown> | null>(undefined);
   const evaluationSignal = useMemo(
     () => ({ values: formValues, ready: !opened || draftReady }),
     [formValues, opened, draftReady],

@@ -47,10 +47,10 @@ export default function AudioPage({ catalog }: { catalog: PlaygroundCatalog }) {
   const [rawRequest, setRawRequest] = useState<string>();
   const [audioURL, setAudioURL] = useState("");
   const mountedRef = useRef(true);
-  const recorderRef = useRef<MediaRecorder>();
-  const streamRef = useRef<MediaStream>();
-  const timerRef = useRef<number>();
-  const abortRef = useRef<AbortController>();
+  const recorderRef = useRef<MediaRecorder>(undefined);
+  const streamRef = useRef<MediaStream>(undefined);
+  const timerRef = useRef<number>(undefined);
+  const abortRef = useRef<AbortController>(undefined);
 
   // Discovery is asynchronous.  A CustomVoice operation is unusable until
   // the voice list arrives, so select the first advertised voice as the

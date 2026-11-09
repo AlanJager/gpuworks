@@ -19,7 +19,7 @@ export default function RealtimePage({ catalog }: { catalog: PlaygroundCatalog }
   const defaultEvent = JSON.stringify({ type: "session.update", model, session: {} });
   const [event, setEvent] = useState(defaultEvent);
   const [events, setEvents] = useState<string[]>([]);
-  const socketRef = useRef<WebSocket>();
+  const socketRef = useRef<WebSocket>(undefined);
 
   useEffect(() => {
     const next = new URLSearchParams(searchParams);

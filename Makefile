@@ -118,10 +118,10 @@ cross-agents: check-libvgpu
 ## cross: alias kept for the demo (the plain agents are in $(BIN)/dl)
 cross: cross-agents
 
-## ui: install deps (if needed) and build the frontend into the embed dir
+## ui: install or refresh deps when package-lock.json changed (ui/ensure-deps.mjs), then build the frontend into the embed dir
 ui: i18n-check
 	@if [ -f secrets/i18n-llm.env ]; then echo "  i18n LLM config detected; run 'make i18n-translate' to fill new missing keys"; fi
-	@if [ ! -d ui/node_modules ]; then cd ui && npm install; fi
+	@cd ui && node ensure-deps.mjs
 	cd ui && npm run lint:i18n
 	cd ui && npm run build
 

@@ -27,7 +27,7 @@ const SCROLL_UP_KEYS = new Set(["ArrowUp", "PageUp", "Home"]);
  * FOLLOW_AWAY_THRESHOLD_PX above the bottom.
  */
 export function useFollowScroll(
-  ref: RefObject<HTMLElement>,
+  ref: RefObject<HTMLElement | null>,
   follow: boolean,
   onUserScrollAway: () => void,
   contentVersion: unknown,
