@@ -13,7 +13,8 @@
     "out of memory",
     "no such container"
   ],
-  "command": "python3 -B test/e2e/log_quick_controls.py --locale en",
+  "command": "python3 -B test/e2e/log_quick_controls.py --chip 'out of memory' --locale en",
+  "command_note": "One chip per invocation: the flag is --chip and the parameters list above is the authority for the six values. Run it once per chip, then again with --locale zh.",
   "lane": "local-real-server-sqlite",
   "identity": "admin",
   "locales": [

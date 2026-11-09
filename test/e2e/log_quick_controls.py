@@ -152,11 +152,17 @@ def test_quick_controls(page, context, server, artifacts, report, locale, chip):
         for index, row in enumerate(expected_rows):
             expect(visible.nth(index)).to_contain_text(row['line'])
         # Verify rendered histogram too, not merely its response.
-        bars = page.get_by_test_id('logs-histogram').get_by_role('img')
+        # A bar publishes role="img" while it is a readout and role="button" once
+        # onPick makes it clickable (LogsHistogram.tsx:35). Both are the same bar,
+        # and pinning one role would go red the moment the page gains or loses the
+        # pick handler, so the bars are addressed by their aria-label instead and
+        # the count still has to match the buckets the response carried.
+        histogram = page.get_by_test_id('logs-histogram')
+        bars = histogram.locator('[role="img"], [role="button"]')
         expect(bars).to_have_count(len(buckets))
         for stamp, count in counts.items():
             label_text = datetime.fromtimestamp(stamp / 1000, timezone.utc).strftime('%Y-%m-%d %H:%M:%S') + ' ' + str(count)
-            expect(page.get_by_test_id('logs-histogram').get_by_role('img', name=label_text, exact=True)).to_be_visible()
+            expect(histogram.locator(f'[aria-label="{label_text}"]')).to_be_visible()
         for name, control in controls.items():
             expect(control).to_have_attribute('aria-pressed', 'true' if name in selected else 'false')
         if keys:
