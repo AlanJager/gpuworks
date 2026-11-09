@@ -52,7 +52,7 @@ export default function ChatPage({ catalog, onCatalogChanged }: { catalog: Playg
   const [follow, setFollow] = useState(true);
   const stopFollowing = useCallback(() => setFollow(false), []);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
-  const handledModel = useRef<string>();
+  const handledModel = useRef<string>(undefined);
   const queryModel = searchParams.get("model") || undefined;
   const streamOptions = useMemo(() => catalog.stream_options || [], [catalog.stream_options]);
   const chatModels = useMemo(() => catalog.models.filter((model) => model.operations.some((operation) => operation.type === "openai.chat")), [catalog.models]);

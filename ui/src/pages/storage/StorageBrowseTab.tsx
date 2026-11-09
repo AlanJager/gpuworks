@@ -173,7 +173,7 @@ export default function StorageBrowseTab({ storage }: { storage: Storage }) {
   const uploadButton = <Button type="primary" icon={<UploadOutlined />} onClick={() => setDialog({ kind: "upload" })}>{t("browse.upload")}</Button>;
   const mkdirButton = <Button icon={<FolderAddOutlined />} onClick={() => setDialog({ kind: "mkdir" })}>{t("browse.mkdir")}</Button>;
   // Until the directory is listed nothing says whether it is writable.
-  const gate = (button: ReactElement) => (!current ? cloneElement(button, { disabled: true }) : <WithReason reason={dirReasonText}>{button}</WithReason>);
+  const gate = (button: ReactElement<{ disabled?: boolean }>) => (!current ? cloneElement(button, { disabled: true }) : <WithReason reason={dirReasonText}>{button}</WithReason>);
 
   return (
     <Space direction="vertical" size={12} style={{ width: "100%" }}>

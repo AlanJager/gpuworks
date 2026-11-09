@@ -39,7 +39,7 @@ export default function SchedulingPage() {
   const [cancelling, setCancelling] = useState<number | null>(null);
 
   // A poll that finds the fleet unchanged hands the grid the same node views.
-  const seen = useRef<Map<string, { signature: string; view: NodeView }>>();
+  const seen = useRef<Map<string, { signature: string; view: NodeView }>>(undefined);
   const built = useMemo(() => {
     if (!overview.data) return null;
     const result = buildModel(overview.data, seen.current);

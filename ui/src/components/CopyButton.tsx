@@ -66,7 +66,7 @@ export default function CopyButton({ text, label, success, manualTitle, size, ty
   const { t } = useTranslation("common");
   const [copy, holder] = useCopy();
   const [copied, setCopied] = useState(false);
-  const timer = useRef<ReturnType<typeof setTimeout>>();
+  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   useEffect(() => () => clearTimeout(timer.current), []);
   const onClick = async () => {
     if (!(await copy(typeof text === "function" ? text() : text, { success, manualTitle }))) return;

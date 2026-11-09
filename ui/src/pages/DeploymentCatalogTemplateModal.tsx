@@ -45,7 +45,7 @@ export default function DeploymentCatalogTemplateModal({ deploymentID, onClose }
   const [savedYAML, setSavedYAML] = useState<string>();
   const saved = savedYAML !== undefined && savedYAML === yaml;
   const generation = useRef(0);
-  const controller = useRef<AbortController>();
+  const controller = useRef<AbortController>(undefined);
 
   const exportErrorText = useCallback((reason: unknown): string => {
     if (reason instanceof APIError && reason.code === TEMPLATE_EXPORT_UNAVAILABLE) {

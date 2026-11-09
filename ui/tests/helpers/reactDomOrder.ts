@@ -15,6 +15,7 @@ const Module = require("node:module") as {
 };
 
 let loadedWithoutDom: string | undefined;
+let compatibilityLoaded = false;
 const load = Module._load;
 Module._load = function (request, parent, isMain) {
   if (
@@ -24,7 +25,15 @@ Module._load = function (request, parent, isMain) {
   ) {
     loadedWithoutDom = parent?.filename ?? request;
   }
-  return load.call(this, request, parent, isMain);
+  const result = load.call(this, request, parent, isMain);
+  // Tests mount components without main.tsx. Apply the same official patch
+  // after antd and DOM globals exist, including files with their own JSDOM.
+  // Mark first because the patch itself imports antd.
+  if ((request === "antd" || /[/\\]antd[/\\]lib[/\\]index\.js$/.test(request)) && typeof globalThis.document !== "undefined" && !compatibilityLoaded) {
+    compatibilityLoaded = true;
+    require("@ant-design/v5-patch-for-react-19");
+  }
+  return result;
 };
 
 process.on("exit", () => {
