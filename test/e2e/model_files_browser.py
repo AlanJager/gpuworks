@@ -500,7 +500,11 @@ def open_detail(page, server, labels, data):
     # is gone instead of racing it once.
     trigger = page.get_by_role('button', name=name, exact=True)
     settle_click(page, trigger)
-    dialog = page.get_by_role('dialog', name=name, exact=True)
+    # The dialog is titled "Model details" (ModelsPageParts.tsx:241, models.json
+    # detail.title); the model name is a heading inside it, not its accessible
+    # name. model_detail_dialog is the one place that knows both, so this uses it
+    # instead of matching the dialog on the model name.
+    dialog = model_detail_dialog(page, labels, name)
     expect(dialog.locator('#model-files')).to_be_visible()
     return dialog
 
@@ -638,7 +642,7 @@ def assert_ready(page, server, token, labels, data, storage, report, *, reload=T
         'temporary_leftovers': leftovers, 'error_body_rejected': True,
         'error_content_type': error_type, 'error_body_bytes': len(error_body)})
     # Select by the API-stable group heading when two locations share node/path.
-    dialog = page.get_by_role('dialog', name=data['name'], exact=True)
+    dialog = model_detail_dialog(page, labels, data['name'])
     if not dialog.is_visible():
         dialog = open_detail(page, server, labels, data)
     files = dialog.locator('#model-files')
@@ -955,7 +959,12 @@ def exercise_cancel_transfer(page, labels, data, server, token, report, storage)
     checked(canceled['acquisition'] == 'download', 'the canceled row lost its download identity')
     strict(canceled['message'], 'Download canceled by user', 'the canceled row lost the withdrawal reason')
     expect(row.get_by_text(labels['presence']['canceled'], exact=True)).to_be_visible()
-    expect(row.get_by_text(canceled['message'], exact=True)).to_be_visible()
+    # The row shows the localized canceled label, not the server's message text:
+    # the store keeps "Download canceled by user" (models_download_cancel.go:67,
+    # asserted strictly above), while the page renders presence.canceled. Asserting
+    # the server string in the DOM was asserting a round-trip the UI does not make.
+    checked(canceled['message'] not in row.inner_text(),
+            'the canceled row renders the raw server message instead of the localized state')
     # The independent read agrees with the page, and the bytes the row had already reported
     # are neither zeroed nor inflated to the finished total by the withdrawal.
     checked(canceled['downloaded'] == frozen['downloaded'] and canceled['size_bytes'] == frozen['size_bytes'],
@@ -1054,9 +1063,13 @@ def exercise_download_delete(page, context, server, artifacts, report, locale, d
     row = dialog.locator('#model-files tr.ant-table-row')
     expect(row).to_have_count(1)
     expect(row.get_by_text(labels['presence']['failed'], exact=True)).to_be_visible()
-    expect(row.get_by_text(failed['message'], exact=True)).to_be_visible()
+    # Same as the canceled row above: the page renders the localized failed state
+    # and does not echo the server's cause text. The cause itself is still checked
+    # strictly against the independent read below.
+    checked(failed['message'] not in row.inner_text(),
+            'the failed row renders the raw server cause instead of the localized state')
     page.reload()
-    row = page.get_by_role('dialog', name=data['name'], exact=True).locator('#model-files tr.ant-table-row')
+    row = model_detail_dialog(page, labels, data['name']).locator('#model-files tr.ant-table-row')
     expect(row.get_by_text(labels['presence']['failed'], exact=True)).to_be_visible()
     hub.set_weight_failure(False)
     before_retry = len(report['mutations'])
@@ -1119,7 +1132,7 @@ def exercise_download_delete(page, context, server, artifacts, report, locale, d
     replayed = presence(reloaded.value.json(), data, guard)
     checked(replayed['state'] == 'downloading' and replayed['downloaded'] == held['downloaded'],
             'a refresh zeroed or finished the in-flight transfer')
-    reopened = page.get_by_role('dialog', name=data['name'], exact=True)
+    reopened = model_detail_dialog(page, labels, data['name'])
     expect(reopened.locator('#model-files')).to_be_visible()
     regrouped = reopened.locator('#model-files').locator(':scope > div').filter(has_text=guard['name'])
     reload_bar = regrouped.locator('tr.ant-table-row').get_by_role('progressbar')
@@ -1327,7 +1340,7 @@ def exercise_interrupted_recovery(page, context, server, artifacts, report, loca
     replayed = presence(reloaded.value.json(), data, target)
     checked(replayed['state'] == 'downloading' and replayed['downloaded'] == frozen['downloaded'],
             'a refresh zeroed or finished the in-flight transfer')
-    reopened = page.get_by_role('dialog', name=data['name'], exact=True)
+    reopened = model_detail_dialog(page, labels, data['name'])
     expect(reopened.locator('#model-files')).to_be_visible()
     reload_bar = reopened.locator('#model-files tr.ant-table-row').get_by_role('progressbar')
     expect(reload_bar).to_have_count(1)
