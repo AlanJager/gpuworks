@@ -175,9 +175,16 @@ def count_editor(page, drawer, server, token, data, labels, report, requests, re
     integer(before['replicas'], expected_count, 'saved editor count')
     if active(report, 'numeric'):
         report['last_step'] = 'replica-count-metadata'
-        integer(get_document(server, token, data['deployment']['id']).get('max_replicas'), 32, 'server replica range')
+        # The ceiling is a product constant (planning.MaxReplicas), not a test fact.
+        # Pinning 32 here went red the day the server raised it to 1024 and said
+        # nothing about whether the control agrees with the server - which is the
+        # only thing this line is for. Read the server's number, then require the
+        # control to publish the same one.
+        ceiling = get_document(server, token, data['deployment']['id']).get('max_replicas')
+        check(type(ceiling) is int and ceiling >= 1,
+              f'server replica range is not a usable JSON integer: {ceiling!r}')
         expect(spin).to_have_attribute('aria-valuemin', '1')
-        expect(spin).to_have_attribute('aria-valuemax', '32')
+        expect(spin).to_have_attribute('aria-valuemax', str(ceiling))
         expect(spin).to_have_value(str(expected_count))
         spin.press('ArrowUp')
         expect(spin).to_have_value(str(expected_count + 1))

@@ -102,11 +102,23 @@ def _drawer_focus(dialog):
     }""")
 
 
+
+def _drawer_focusables(dialog):
+    """How many tab stops the drawer itself publishes, for sizing a Tab cycle."""
+    return dialog.evaluate("""(d) => d.querySelectorAll(
+        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), '
+        + 'textarea:not([disabled]), [tabindex]:not([tabindex="-1"])').length""")
+
 def _cycle_drawer(page, dialog, key):
     """One rc-drawer sentinel is part of the trap. The page behind it is not."""
     seen = []
     bridges = 0
-    for _ in range(48):
+    # Enough presses to come back to the first control however many the drawer
+    # holds. A fixed 48 stopped being enough once the replica editor grew: the
+    # cycle is still the assertion, only the budget is derived, and a drawer whose
+    # trap is genuinely broken still fails because the first control never repeats.
+    budget = max(48, _drawer_focusables(dialog) * 2 + 8)
+    for _ in range(budget):
         page.keyboard.press(key)
         focus = _drawer_focus(dialog)
         check(focus["inDrawer"], f"{key} reached background content: {focus}")
