@@ -7,7 +7,7 @@ import sqlite3
 import time
 from urllib.parse import urlsplit
 from playwright.sync_api import expect
-from local_browser_fixture import ROOT
+from local_browser_fixture import ADMIN_PASSWORD, ROOT
 from platform_token_read_revoke import button, check
 from terminal_host_oracles import POLICY, TEXT, NODE_BUSY, GLOBAL_BUSY, OFFLINE, require, policy_contract
 from terminal_host_owner import Owner
@@ -290,7 +290,7 @@ def session_expiry(owner, page, locale, result):
     check(not page.get_by_role('button', name='Close').count(),
           'the expiry dialog can be dismissed')
     modal.get_by_role('textbox', name=auth_text['username'], exact=True).fill('admin')
-    modal.get_by_label(auth_text['password'], exact=True).fill('password')
+    modal.get_by_label(auth_text['password'], exact=True).fill(ADMIN_PASSWORD)
     button(modal, auth_text['submit']).click()
     expect(modal).not_to_be_visible(timeout=30000)
     require(urlsplit(page.url).path == urlsplit(draft_url).path,
