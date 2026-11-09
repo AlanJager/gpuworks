@@ -81,11 +81,11 @@ def first_open(page, server, token, data, labels, report, requests, expected_cou
         report['last_step'] = 'replica-navigation-entry'
         # A real menu entry and the row action are different UI entry paths.
         page.goto(server.base + '/')
-        link = page.locator('.app-nav').get_by_role('link', name=labels['_navigation'], exact=True)
+        link = page.locator('[data-slot=sidebar]').get_by_role('link', name=labels['_navigation'], exact=True)
         link.click()
         expect(page).to_have_url(server.base + '/deployments')
         expect(page.get_by_role('heading', name=labels['page']['title'], exact=True)).to_be_visible()
-        expect(link.locator('xpath=ancestor::li[1]')).to_have_class(re.compile(r'\bant-menu-item-selected\b'))
+        expect(link).to_have_attribute('aria-current', 'page')
         report['replica_navigation'] = {'menu_path': '/deployments', 'selected': True}
     if not active(report, 'first-open'):
         return

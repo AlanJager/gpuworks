@@ -22,6 +22,8 @@ function Root() {
   return (
     <ConfigProvider
       locale={antdLocale}
+      // Zeron buttons do not space two-character Chinese labels; antd ones match them.
+      button={{ autoInsertSpace: false }}
       theme={{ algorithm: darkPreview ? theme.darkAlgorithm : theme.defaultAlgorithm, ...themeConfig }}
     >
       <BrowserRouter>

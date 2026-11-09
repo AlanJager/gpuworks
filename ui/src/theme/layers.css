@@ -21,3 +21,11 @@
     max-width: calc(100vw - var(--assistant-panel-width) - 2rem);
   }
 }
+
+/* Tailwind's preflight strips list markers; pages still written for antd
+   expect the browser's. In the base layer, so antd's own lists (menus,
+   pagination) and Tailwind's list-none still win; Zeron lists carry data-slot. */
+@layer base {
+  ul:not([data-slot]) { list-style: disc; }
+  ol:not([data-slot]) { list-style: decimal; }
+}

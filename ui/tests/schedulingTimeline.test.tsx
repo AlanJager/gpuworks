@@ -451,7 +451,7 @@ test("when the server cannot give the switch counts for the range, the columns s
     return answerWindow(query as { window?: string });
   };
   const user = mount();
-  const qwenRow = () => within([...document.querySelectorAll<HTMLElement>(".ant-table-tbody tr")].find((tr) => tr.textContent?.includes("qwen")) as HTMLElement);
+  const qwenRow = () => within([...document.querySelectorAll<HTMLElement>("tbody tr")].find((tr) => tr.textContent?.includes("qwen")) as HTMLElement);
   await screen.findByText(s.timeline.sharingTitle);
   const qwen = qwenRow();
   assert.ok(qwen.getByText("3"), "the counts are shown when the server has them");

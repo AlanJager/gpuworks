@@ -7,7 +7,7 @@ import { createInstance } from "i18next";
 import { I18nextProvider, initReactI18next } from "react-i18next";
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>", { url: "http://localhost/nodes" });
-for (const name of ["window", "document", "navigator", "HTMLElement", "HTMLBodyElement", "HTMLInputElement", "HTMLTextAreaElement", "SVGElement", "Element", "Node", "MutationObserver", "ShadowRoot", "Document"] as const) {
+for (const name of ["window", "document", "navigator", "HTMLElement", "HTMLBodyElement", "HTMLHtmlElement", "HTMLInputElement", "HTMLTextAreaElement", "SVGElement", "Element", "Node", "MutationObserver", "ShadowRoot", "Document"] as const) {
   Object.defineProperty(globalThis, name, { value: dom.window[name], configurable: true });
 }
 Object.defineProperty(globalThis, "getComputedStyle", { value: (element: Element) => dom.window.getComputedStyle(element), configurable: true });
@@ -226,18 +226,18 @@ test("the table uses a fixed layout with explicit widths; the name leads frozen 
   stubApi([onlineNode]);
   const { container } = renderPage();
   await waitFor(() => assert.ok(screen.getByText("gpu-a100-node-01")));
-  const table = container.querySelector(".ant-table-content table") as HTMLTableElement;
+  const table = container.querySelector("table") as HTMLTableElement;
   assert.equal(table.style.tableLayout, "fixed");
-  const cols = Array.from(table.querySelectorAll("colgroup col"));
+  const cols = Array.from(table.querySelectorAll("thead th"));
   // A selection column plus 10 shown columns; the agent version and creation time are offered but hidden by default.
   assert.equal(cols.length, 11);
   assert.equal((cols[1] as HTMLElement).style.width, "220px");
   assert.equal((cols[cols.length - 1] as HTMLElement).style.width, "110px");
   const headers = screen.getAllByRole("columnheader");
   assert.equal(headers[1].textContent, "Name");
-  assert.ok(headers[1].className.includes("ant-table-cell-fix-left"), "the name column is frozen left");
+  assert.equal((headers[1] as HTMLElement).style.left, "48px");
   assert.equal(headers.at(-1)?.textContent, "Actions");
-  assert.ok(headers.at(-1)?.className.includes("ant-table-cell-fix-right"), "the actions column is frozen right");
+  assert.equal((headers.at(-1) as HTMLElement).style.right, "0px");
 });
 
 function rowOf(text: string) {
@@ -269,7 +269,7 @@ test("the name opens the detail; row actions are Terminal and a More dropdown; T
   onlineRow.getByRole("button", { name: "gpu-a100-node-01" });
   const onlineTerminal = onlineRow.getByRole("button", { name: /Terminal/ }) as HTMLButtonElement;
   assert.equal(onlineTerminal.disabled, false);
-  assert.equal(onlineRow.queryByRole("button", { name: /Resource group/ }), null);
+  assert.ok(onlineRow.queryByRole("button", { name: /Resource group/ }) === null, "Expected the element to be absent");
   onlineRow.getByRole("button", { name: "More" }).click();
   for (const item of [/Details/, /Edit labels/, /Delete/]) await waitFor(() => screen.getByRole("menuitem", { name: item }));
 
@@ -277,7 +277,7 @@ test("the name opens the detail; row actions are Terminal and a More dropdown; T
   const offlineTerminal = offlineRow.getByRole("button", { name: /Terminal/ }) as HTMLButtonElement;
   assert.equal(offlineTerminal.disabled, true);
   // Delete is no longer an inline button that forced the row to wrap.
-  assert.equal(offlineRow.queryByRole("button", { name: /Delete/ }), null);
+  assert.ok(offlineRow.queryByRole("button", { name: /Delete/ }) === null, "Expected the element to be absent");
 });
 
 test("delete lives behind the More dropdown and asks for confirmation", async () => {
@@ -389,10 +389,10 @@ test("the detail drawer renders identity rows and the accelerator table", async 
   await waitFor(() => assert.equal(screen.getAllByRole("link", { name: "A100-SXM4-80GB" }).length, 2));
   // The detail response still carries the node token, but the drawer no
   // longer shows it or offers to regenerate it.
-  const drawer = document.querySelector(".ant-drawer")!;
+  const drawer = screen.queryByRole("dialog")!;
   assert.ok(!drawer.textContent?.includes("3267d3b0a4684093b8393fc6eeeacea0cdff34ae15108322"), "token is not shown");
-  assert.equal(drawer.querySelector(".ant-typography-copy"), null);
-  assert.equal(screen.queryByRole("button", { name: /regenerate/i }), null);
+  assert.ok(drawer.querySelector(".ant-typography-copy") === null, "Expected the element to be absent");
+  assert.ok(screen.queryByRole("button", { name: /regenerate/i }) === null, "Expected the element to be absent");
 });
 
 test("the label filter ORs values of one key, ANDs across keys, and explains an empty match", async () => {
@@ -450,7 +450,7 @@ test("the node list asks the server for one page and counts matches against the 
   assert.ok(screen.getByText("23/23 nodes"));
   assert.ok(!screen.queryByText("node-20"), `"node-20" is still shown`);
 
-  fireEvent.click(screen.getByTitle("2"));
+  fireEvent.click(screen.getByRole("button", { name: "Next page" }));
   await waitFor(() => assert.ok(screen.getByText("node-22")));
   assert.equal(pageQueries.at(-1)?.page, 2);
   assert.ok(!screen.queryByText("node-00"), `"node-00" is still shown`);
@@ -480,8 +480,8 @@ test("a deep link opens the named node even when it is not on the first page", a
       </MemoryRouter>
     </I18nextProvider>,
   );
-  await waitFor(() => assert.ok(document.querySelector(".ant-drawer-open")));
-  await waitFor(() => assert.ok(within(document.querySelector(".ant-drawer-open") as HTMLElement).getAllByText(/deep-0/).length > 0));
+  await waitFor(() => assert.ok(screen.queryByRole("dialog")));
+  await waitFor(() => assert.ok(within(screen.queryByRole("dialog") as HTMLElement).getAllByText(/deep-0/).length > 0));
 });
 
 test("the instance topology link opens its node on the GPU tab with the topology; the list still opens on the overview", async () => {
@@ -496,17 +496,17 @@ test("the instance topology link opens its node on the GPU tab with the topology
       </MemoryRouter>
     </I18nextProvider>,
   );
-  await waitFor(() => assert.ok(document.querySelector(".ant-drawer-open")));
-  const drawer = within(document.querySelector(".ant-drawer-open") as HTMLElement);
+  await waitFor(() => assert.ok(screen.queryByRole("dialog")));
+  const drawer = within(screen.queryByRole("dialog") as HTMLElement);
   await waitFor(() => assert.equal(drawer.getByRole("tab", { name: /GPUs/ }).getAttribute("aria-selected"), "true"));
   assert.ok(document.querySelector(".node-gpu-table"));
   assert.ok(drawer.getByRole("heading", { name: "Accelerator topology" }));
   // Another node opened from the list afterwards starts on its overview.
   fireEvent.click(drawer.getByRole("button", { name: "Close" }));
-  await waitFor(() => assert.equal(document.querySelector(".ant-drawer-open"), null));
+  await waitFor(() => assert.ok(screen.queryByRole("dialog") === null, "Expected the element to be absent"));
   screen.getByRole("button", { name: other.name }).click();
   await waitFor(() => assert.ok(screen.getByText(other.uuid)));
-  const next = within(document.querySelector(".ant-drawer-open") as HTMLElement);
+  const next = within(screen.queryByRole("dialog") as HTMLElement);
   assert.equal(next.getByRole("tab", { name: "Overview" }).getAttribute("aria-selected"), "true");
 });
 
@@ -532,11 +532,11 @@ test("the detail drawer lists the node labels where the resource group used to b
   renderPage();
   await waitFor(() => assert.ok(screen.getByText("gpu-a100-node-01")));
   screen.getByRole("button", { name: "gpu-a100-node-01" }).click();
-  await waitFor(() => assert.ok(document.querySelector(".ant-drawer")));
-  const drawer = within(document.querySelector(".ant-drawer") as HTMLElement);
+  await waitFor(() => assert.ok(screen.queryByRole("dialog")));
+  const drawer = within(screen.queryByRole("dialog") as HTMLElement);
   await waitFor(() => assert.ok(drawer.getByText("resource_group=pool-a")));
   assert.ok(drawer.getByText("owner=ml"));
-  assert.equal(drawer.queryByText("Resource group"), null);
+  assert.ok(drawer.queryByText("Resource group") === null, "Expected the element to be absent");
 });
 
 test("a Mac offers only the automatic runtime, which picks its host driver", () => {
@@ -553,9 +553,9 @@ test("the runtime selector of a Mac node offers only the automatic choice", asyn
   renderPage();
   await waitFor(() => assert.ok(screen.getByText("mac-studio-01")));
   screen.getByRole("button", { name: "mac-studio-01" }).click();
-  await waitFor(() => assert.ok(document.querySelector(".ant-drawer .ant-select")));
+  await waitFor(() => assert.ok(screen.queryByRole("dialog")?.querySelector(".ant-select")));
   const optionTexts = async () => {
-    const selector = document.querySelector(".ant-drawer .ant-select-selector") as HTMLElement;
+    const selector = screen.queryByRole("dialog")?.querySelector(".ant-select-selector") as HTMLElement;
     fireEvent.mouseDown(selector);
     await waitFor(() => assert.ok(document.querySelector(".ant-select-dropdown .ant-select-item-option")));
     return [...document.querySelectorAll(".ant-select-dropdown .ant-select-item-option")].map((option) => option.textContent);
@@ -574,10 +574,10 @@ test("the udocker driver is shown as runveil while its wire value stays udocker"
   await waitFor(() => assert.ok(screen.getByText("gpu-a100-node-01")));
   screen.getByRole("button", { name: "gpu-a100-node-01" }).click();
   await waitFor(() => {
-    const selected = document.querySelector(".ant-drawer .ant-select-selection-item");
+    const selected = screen.queryByRole("dialog")?.querySelector(".ant-select-selection-item");
     assert.equal(selected?.textContent, "runveil");
   });
-  assert.equal(document.querySelector(".ant-drawer")?.textContent?.includes("udocker"), false);
+  assert.equal(screen.queryByRole("dialog")?.textContent?.includes("udocker"), false);
 });
 
 test("a node on its runveil fallback says which runtime it runs and why Docker was passed over", async () => {
@@ -591,10 +591,10 @@ test("a node on its runveil fallback says which runtime it runs and why Docker w
   await waitFor(() => assert.ok(screen.getByText("gpu-a100-node-01")));
   screen.getByRole("button", { name: "gpu-a100-node-01" }).click();
   await waitFor(() => {
-    const selected = document.querySelector(".ant-drawer .ant-select-selection-item");
+    const selected = screen.queryByRole("dialog")?.querySelector(".ant-select-selection-item");
     assert.equal(selected?.textContent, "auto (now runveil)");
   });
-  const drawer = within(document.querySelector(".ant-drawer") as HTMLElement);
+  const drawer = within(screen.queryByRole("dialog") as HTMLElement);
   assert.ok(drawer.getAllByRole("alert").some((alert) =>
     /docker is installed but NVIDIA Container Toolkit is not, so this node uses runveil/.test(alert.textContent ?? "")));
   assert.ok(drawer.getByRole("button", { name: /Copy install command/ }));
@@ -626,10 +626,10 @@ test("the detail drawer offers the accelerator choice only on a host with cards 
   renderPage();
   await waitFor(() => assert.ok(screen.getByText("gpu-a100-node-01")));
   screen.getByRole("button", { name: "gpu-a100-node-01" }).click();
-  await waitFor(() => assert.ok(document.querySelector(".ant-drawer")?.textContent?.includes("Runtime plugin")));
-  const drawer = within(document.querySelector(".ant-drawer") as HTMLElement);
+  await waitFor(() => assert.ok(screen.queryByRole("dialog")?.textContent?.includes("Runtime plugin")));
+  const drawer = within(screen.queryByRole("dialog") as HTMLElement);
   // The accelerator choice lives with the cards it chooses between.
-  assert.equal(drawer.queryByRole("combobox", { name: "Accelerator" }), null);
+  assert.ok(drawer.queryByRole("combobox", { name: "Accelerator" }) === null, "Expected the element to be absent");
   fireEvent.click(drawer.getByRole("tab", { name: /GPUs/ }));
   await waitFor(() => assert.ok(drawer.getByRole("combobox", { name: "Accelerator" })));
   assert.ok(drawer.getAllByRole("alert").some((alert) => /This machine also has NVIDIA ×1/.test(alert.textContent ?? "")));
@@ -642,15 +642,15 @@ test("a node whose host has one vendor's cards shows no accelerator choice", asy
   renderPage();
   await waitFor(() => assert.ok(screen.getByText("gpu-a100-node-01")));
   screen.getByRole("button", { name: "gpu-a100-node-01" }).click();
-  await waitFor(() => assert.ok(document.querySelector(".ant-drawer")?.textContent?.includes("Runtime plugin")));
-  const drawer = document.querySelector(".ant-drawer") as HTMLElement;
+  await waitFor(() => assert.ok(screen.queryByRole("dialog")?.textContent?.includes("Runtime plugin")));
+  const drawer = screen.queryByRole("dialog") as HTMLElement;
   const labels = [...drawer.querySelectorAll(".ant-descriptions-item-label")].map((el) => el.textContent);
   assert.ok(labels.includes("Runtime"), `labels: ${labels.join(", ")}`);
   fireEvent.click(within(drawer).getByRole("tab", { name: /GPUs/ }));
   await waitFor(() => assert.ok(within(drawer).getByText("Summary")));
   const gpuLabels = [...drawer.querySelectorAll(".ant-descriptions-item-label")].map((el) => el.textContent);
   assert.equal(gpuLabels.includes("Accelerator"), false, `labels: ${gpuLabels.join(", ")}`);
-  assert.equal(within(drawer).queryByRole("combobox", { name: "Accelerator" }), null);
+  assert.ok(within(drawer).queryByRole("combobox", { name: "Accelerator" }) === null, "Expected the element to be absent");
 });
 
 async function openDrawer(node: Node) {
@@ -660,7 +660,7 @@ async function openDrawer(node: Node) {
   await waitFor(() => assert.ok(screen.getByText(node.name!)));
   screen.getByRole("button", { name: node.name! }).click();
   await waitFor(() => assert.ok(screen.getByText(node.uuid)));
-  return within(document.querySelector(".ant-drawer") as HTMLElement);
+  return within(screen.queryByRole("dialog") as HTMLElement);
 }
 
 test("the detail drawer opens on the overview, in sections, and is a little wider than before but never wider than the window", async () => {
@@ -669,7 +669,7 @@ test("the detail drawer opens on the overview, in sections, and is a little wide
   for (const section of ["Node", "Runtime", "Storage", "Network"]) assert.ok(drawer.getByRole("heading", { name: section }), section);
   // The GPU tab carries its card count apart from its label.
   const gpuTab = drawer.getByRole("tab", { name: /GPUs/ });
-  assert.equal(gpuTab.querySelector(".detail-tab-count")?.textContent, "1");
+  assert.match(gpuTab.textContent ?? "", /GPUs\s*1$/);
   // JSDOM drops a min() width from inline styles, so the bound is checked
   // where the drawer takes it from.
   assert.equal(DETAIL_DRAWER_WIDTH, "min(720px, calc(100vw - 32px))");
@@ -689,7 +689,7 @@ test("the GPU tab leads each card with its model, memory and live readings, and 
   assert.ok(within(table).getByText("20.0 / 80 GiB"));
   assert.ok(within(table).getByText("61°C"));
   // PCIe address and NUMA node wait in the expanded row.
-  assert.equal(within(table).queryByText("0000:8a:00.0"), null);
+  assert.ok(within(table).queryByText("0000:8a:00.0") === null, "Expected the element to be absent");
   const expand = within(table).getByRole("button", { name: "Show details" });
   fireEvent.click(expand);
   await waitFor(() => assert.ok(within(table).getByText("0000:8a:00.0")));
@@ -708,7 +708,7 @@ test("a capability every card reports alike is listed once, with how many cards 
 test("a diagnosis opens its own tab", async () => {
   api.nodeDoctor = async () => ({ report: "all checks passed" }) as never;
   const drawer = await openDrawer({ ...onlineNode, gpus: [] });
-  assert.equal(drawer.queryByRole("tab", { name: "Diagnosis" }), null);
+  assert.ok(drawer.queryByRole("tab", { name: "Diagnosis" }) === null, "Expected the element to be absent");
   fireEvent.click(drawer.getByRole("button", { name: "Diagnose" }));
   await waitFor(() => assert.equal(drawer.getByRole("tab", { name: "Diagnosis" }).getAttribute("aria-selected"), "true"));
 });
@@ -720,7 +720,7 @@ test("a node event reloads the list in the background, without the table's loadi
   api.nodesPage = (query) => serve(query);
   renderPage();
   await waitFor(() => assert.ok(screen.getByText("gpu-a100-node-01")));
-  await waitFor(() => assert.equal(document.querySelector(".ant-spin-spinning"), null));
+  await waitFor(() => assert.ok(document.querySelector(".ant-spin-spinning") === null, "Expected the element to be absent"));
   const grown = nodesServer([onlineNode, offlineNode]);
   let release!: () => void;
   const held = new Promise<void>((resolve) => { release = resolve; });
@@ -768,10 +768,10 @@ test("batch upgrade retains checked nodes across pages and previews only those n
   assert.equal(batch.disabled, true);
   fireEvent.click(rowOf("batch-node-0").getByRole("checkbox"));
   await screen.findByText("1 nodes selected");
-  fireEvent.click(screen.getByTitle("2")); await screen.findByText("batch-node-11");
+  fireEvent.click(screen.getByRole("button", { name: "Next page" })); await screen.findByText("batch-node-11");
   fireEvent.click(rowOf("batch-node-11").getByRole("checkbox")); await screen.findByText("2 nodes selected");
-  fireEvent.click(screen.getByTitle("1")); await screen.findByText("batch-node-0");
-  assert.equal((rowOf("batch-node-0").getByRole("checkbox") as HTMLInputElement).checked, true);
+  fireEvent.click(screen.getByRole("button", { name: "Previous page" })); await screen.findByText("batch-node-0");
+  assert.equal(rowOf("batch-node-0").getByRole("checkbox").getAttribute("aria-checked"), "true");
   fireEvent.click(batch); await screen.findByRole("dialog", { name: "Review Agent upgrade" });
   assert.deepEqual(requests, [{ node_uuids: ["batch-0", "batch-11"] }]);
 });
@@ -783,8 +783,8 @@ test("clear selection unchecks selected rows and disables batch upgrade", async 
   fireEvent.click(rowOf(offlineNode.name!).getByRole("checkbox"));
   await screen.findByText("2 nodes selected");
   fireEvent.click(screen.getByRole("button", { name: "Clear selection" }));
-  assert.equal((rowOf(onlineNode.name!).getByRole("checkbox") as HTMLInputElement).checked, false);
-  assert.equal((rowOf(offlineNode.name!).getByRole("checkbox") as HTMLInputElement).checked, false);
+  assert.equal(rowOf(onlineNode.name!).getByRole("checkbox").getAttribute("aria-checked"), "false");
+  assert.equal(rowOf(offlineNode.name!).getByRole("checkbox").getAttribute("aria-checked"), "false");
   assert.equal((screen.getByRole("button", { name: "Upgrade selected Agents" }) as HTMLButtonElement).disabled, true);
   assert.ok(!screen.queryByText("2 nodes selected"));
 });

@@ -21,7 +21,7 @@ test("EmptyState renders user-visible description and optional action", () => {
   }));
   assert.equal(screen.getByText("No models yet").textContent, "No models yet");
   assert.equal(screen.getByRole("button", { name: "Add model" }).textContent, "Add model");
-  assert.equal(document.querySelector(".empty-state-image")?.getAttribute("src"), "/assets/empty-models.webp");
+  assert.equal(document.querySelector('[data-slot="empty-media"] img')?.getAttribute("src"), "/assets/empty-models.webp");
 });
 
 test("EmptyState omits action and applies compact class", () => {
@@ -29,6 +29,7 @@ test("EmptyState omits action and applies compact class", () => {
     description: "Nothing here",
     compact: true,
   }));
-  assert.match(container.firstElementChild?.className ?? "", /empty-state-compact/);
+  assert.equal(container.firstElementChild?.getAttribute("data-density"), "compact");
+  assert.equal(container.firstElementChild?.getAttribute("data-scope"), "inline");
   assert.equal(screen.queryByRole("button"), null);
 });
