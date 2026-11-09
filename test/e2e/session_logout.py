@@ -32,7 +32,7 @@ from urllib.parse import urlsplit
 import uuid
 
 from playwright.sync_api import expect, sync_playwright
-from local_browser_fixture import Artifacts, LocalServer, ROOT, digest, http
+from local_browser_fixture import Artifacts, LocalServer, ROOT, digest, http, ADMIN_PASSWORD
 from platform_token_read_revoke import button, check
 
 CONTRACT = "gpuworks/session/two-tab-logout-relogin"
@@ -381,7 +381,7 @@ def exercise_credential_expiry(server, report, play, idle, artifacts):
     evidence = {"session_idle_timeout": idle, "own_server": True}
     try:
         evidence["health"] = scoped.start()
-        status, _, payload = _raw(scoped.base, "POST", LOGIN, "", {"username": "admin", "password": "password"})
+        status, _, payload = _raw(scoped.base, "POST", LOGIN, "", {"username": "admin", "password": ADMIN_PASSWORD})
         check(status == 200, f"the isolated server refused the login: {status}")
         credential = json.loads(payload)["token"]
         artifacts.remember(credential)
@@ -514,7 +514,7 @@ def test_inactivity_and_draft(play, args, artifacts, report, locale, idle="2s"):
             page.goto(other.base + "/")
             expect(page.get_by_role("textbox", name=auth["username"], exact=True)).to_be_visible()
             page.get_by_role("textbox", name=auth["username"], exact=True).fill("admin")
-            page.get_by_label(auth["password"], exact=True).fill("password")
+            page.get_by_label(auth["password"], exact=True).fill(ADMIN_PASSWORD)
             # Barrier on the real login response, not on a timeout, so the cookie is
             # already issued when the checks below read it.
             with page.expect_response(lambda r: urlsplit(r.url).path == LOGIN and r.request.method == "POST") as signed_in:
@@ -556,7 +556,7 @@ def test_inactivity_and_draft(play, args, artifacts, report, locale, idle="2s"):
             expect(expired_dialog).to_be_visible()
             report["inactivity"]["dialog_after_poll_expiry"] = True
             expired_dialog.get_by_role("textbox", name=auth["username"], exact=True).fill("admin")
-            expired_dialog.get_by_label(auth["password"], exact=True).fill("password")
+            expired_dialog.get_by_label(auth["password"], exact=True).fill(ADMIN_PASSWORD)
             with page.expect_response(lambda r: urlsplit(r.url).path == LOGIN and r.request.method == "POST") as again:
                 expired_dialog.get_by_label(auth["password"], exact=True).press("Enter")
             check(again.value.status == 200, "re-authentication after expiry was refused")
@@ -586,7 +586,7 @@ def test_inactivity_and_draft(play, args, artifacts, report, locale, idle="2s"):
                   f"the form draft was lost when the login expired: expected {marker!r}, got {kept!r}")
             report["inactivity"]["draft"]["survived_expiry"] = True
             dialog.get_by_role("textbox", name=auth["username"], exact=True).fill("admin")
-            dialog.get_by_label(auth["password"], exact=True).fill("password")
+            dialog.get_by_label(auth["password"], exact=True).fill(ADMIN_PASSWORD)
             with page.expect_response(lambda r: urlsplit(r.url).path == LOGIN and r.request.method == "POST") as back:
                 dialog.get_by_label(auth["password"], exact=True).press("Enter")
             check(back.value.status == 200, "re-authentication through the dialog was refused")

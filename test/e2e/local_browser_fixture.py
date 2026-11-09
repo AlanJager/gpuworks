@@ -24,6 +24,11 @@ import zipfile
 
 
 ROOT = Path(__file__).resolve().parents[2]
+# The one admin password an isolated server is started with. Cases that log in
+# through the API or a second browser context import this instead of spelling the
+# literal again: six of them still said "password" and got HTTP 401 once the real
+# value changed, which read like a product defect and was not one.
+ADMIN_PASSWORD = "gpuworks-test-password-2026"
 
 
 def digest(path: Path) -> str:
@@ -159,7 +164,7 @@ class LocalServer:
         data = self.work / "server-data"
         data.mkdir(mode=0o700)
         credentials = data / "initial-credentials"
-        credentials.write_text(json.dumps({"user": "admin", "password": "gpuworks-test-password-2026"}))
+        credentials.write_text(json.dumps({"user": "admin", "password": ADMIN_PASSWORD}))
         credentials.chmod(0o600)
         self.storage_root.mkdir(mode=0o700)
         config = write_server_config(self.work, self.storage_root, self.base.removeprefix("http://"),
@@ -168,7 +173,7 @@ class LocalServer:
         self.environment = {"config": "private/server.yaml", "listen": [self.base.removeprefix("http://")],
                             "storage_probe_roots": [str(self.storage_root)],
                             "outbound_allow_private_hosts": ["127.0.0.1"]}
-        child_env = {**os.environ, "GPUWORKS_ADMIN_PASSWORD": "gpuworks-test-password-2026"}
+        child_env = {**os.environ, "GPUWORKS_ADMIN_PASSWORD": ADMIN_PASSWORD}
         for name, value in self.env_overrides.items():
             if value is None:
                 child_env.pop(name, None)

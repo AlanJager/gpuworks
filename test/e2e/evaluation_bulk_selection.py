@@ -34,7 +34,7 @@ import uuid
 from playwright.sync_api import expect, sync_playwright
 from benchmark_fixture import BenchmarkEndpoint
 from benchmark_support import strings, format_text, finish_environment, close_browser
-from local_browser_fixture import Artifacts, LocalServer, ROOT, digest
+from local_browser_fixture import Artifacts, LocalServer, ROOT, digest, ADMIN_PASSWORD
 from platform_token_read_revoke import button, check
 
 CONTRACT = "gpuworks/benchmark/batch-selection-matrix"
@@ -166,7 +166,7 @@ def test_batch_selection(page, context, server, artifacts, report, locale, fixtu
 
     page.goto(server.base + "/evaluations")
     page.get_by_role("textbox", name=auth["username"], exact=True).fill("admin")
-    page.get_by_label(auth["password"], exact=True).fill("password")
+    page.get_by_label(auth["password"], exact=True).fill(ADMIN_PASSWORD)
     with page.expect_response(lambda r: urlsplit(r.url).path == "/api/v1/auth/login"
                               and r.request.method == "POST") as logged_in:
         button(page, auth["submit"]).click()

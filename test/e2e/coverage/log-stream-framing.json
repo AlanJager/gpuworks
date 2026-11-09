@@ -17,7 +17,8 @@
     "multibyte",
     "reconnect"
   ],
-  "command": "python3 -B test/e2e/log_stream_framing.py --locale en --dimension <dimension>",
+  "command": "python3 -B test/e2e/log_stream_framing.py --dimension empty --locale en",
+  "command_note": "One dimension per invocation: the flag is --dimension (this script has no --case). Run it four times with empty, long, multibyte and reconnect, then again with --locale zh; the dimensions list above is the authority for the set.",
   "lane": "local-real-server-sqlite",
   "identity": "admin",
   "locales": [

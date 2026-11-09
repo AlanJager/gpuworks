@@ -439,7 +439,7 @@ def browser_login(page, context, base, locale, artifacts, report):
     report['sensitive_phase'] = True
     page.goto(base + '/deployments')
     page.get_by_role('textbox', name=auth['username'], exact=True).fill('admin')
-    page.get_by_label(auth['password'], exact=True).fill('password')
+    page.get_by_label(auth['password'], exact=True).fill('gpuworks-test-password-2026')
     with page.expect_response(lambda r: urlsplit(r.url).path == '/api/v1/auth/login'
                               and r.request.method == 'POST') as logged:
         button(page, auth['submit']).click()
@@ -511,7 +511,7 @@ def main():
         report['health'] = server.start()
         report['base_url'], report['owned_server_pid'] = server.base, server.process.pid
         status, login = fixture_http(server.base, 'POST', '/api/v1/auth/login',
-                                     body={'username': 'admin', 'password': 'password'})
+                                     body={'username': 'admin', 'password': 'gpuworks-test-password-2026'})
         check(status == 200 and isinstance(login.get('token'), str), 'fixture admin login failed')
         token = login['token']
         artifacts.remember(token)

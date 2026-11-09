@@ -29,7 +29,7 @@ from urllib.parse import parse_qs, urlsplit
 import uuid
 
 from playwright.sync_api import expect, sync_playwright
-from local_browser_fixture import Artifacts, LocalServer, ROOT, digest, http
+from local_browser_fixture import Artifacts, LocalServer, ROOT, digest, http, ADMIN_PASSWORD
 from platform_token_read_revoke import button, check
 import deployment_container_fixture as container_fixture
 
@@ -937,7 +937,7 @@ def raw_status(base, method, path, token=""):
     return status
 
 
-def scoped_login(base, user="admin", password="password"):
+def scoped_login(base, user="admin", password=ADMIN_PASSWORD):
     """Log in on an isolated server and return (status, session token)."""
     status, body = http(base, "POST", "/api/v1/auth/login",
                         body={"username": user, "password": password})
