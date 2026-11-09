@@ -139,7 +139,7 @@ export default function ImageArchiveURLDialog({
       confirmLoading={starting}
       okButtonProps={{ disabled: !url.trim() || resolving || mismatch }}
       onOk={() => void submit()}
-      destroyOnClose
+      destroyOnHidden
     >
       <Space direction="vertical" size={12} style={{ width: "100%" }}>
         <Text type="secondary">{t("nodeTable.archiveDialog.description")}</Text>

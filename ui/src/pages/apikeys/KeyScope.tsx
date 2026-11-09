@@ -142,7 +142,7 @@ export function KeyScopeModal({ apiKey, onClose, onSaved }: { apiKey: ApiKey | n
       confirmLoading={saving}
       okText={t("actions.save")}
       cancelText={t("actions.cancel")}
-      destroyOnClose
+      destroyOnHidden
     >
       {apiKey && (
         <Form

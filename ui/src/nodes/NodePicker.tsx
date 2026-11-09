@@ -93,7 +93,7 @@ const NodePicker = forwardRef<RefSelectProps, Props>(function NodePicker({
       showSearch
       filterOption={false}
       onSearch={setSearch}
-      onDropdownVisibleChange={(open) => { if (!open) setSearch(""); }}
+      onOpenChange={(open) => { if (!open) setSearch(""); }}
       value={value}
       onChange={(next: Value) => {
         const uuids = next === undefined ? [] : Array.isArray(next) ? next : [next];

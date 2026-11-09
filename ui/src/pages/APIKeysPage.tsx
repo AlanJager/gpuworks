@@ -254,7 +254,7 @@ function CreateModal({
       confirmLoading={submitting}
       okText={t("actions.create")}
       cancelText={t("actions.cancel")}
-      destroyOnClose
+      destroyOnHidden
     >
       <Form form={form} layout="vertical">
         <Form.Item label={t("table.name")} name="name" rules={[{ required: true, whitespace: true, message: t("create.nameRequired") }]}>

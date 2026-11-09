@@ -147,7 +147,7 @@ export default function ProviderConfigModal({
       okButtonProps={{ disabled: !editReady || loadError }}
       okText={t(provider ? "config.save" : "config.add")}
       cancelText={t("config.cancel")}
-      destroyOnClose
+      destroyOnHidden
     >
       {loadError && <Alert type="error" showIcon message={t("config.loadFailed")} />}
       <Form

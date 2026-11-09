@@ -74,7 +74,7 @@ export default function NetworkFormModal({
       confirmLoading={saving}
       okText={t("actions.save")}
       cancelText={t("actions.cancel")}
-      destroyOnClose
+      destroyOnHidden
     >
       <Form form={form} layout="vertical">
         <Form.Item label={t("form.name")} name="name" rules={[{ required: true, whitespace: true, message: t("form.nameRequired") }]}>

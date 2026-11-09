@@ -162,7 +162,7 @@ export default function DeploymentPdScaleModal({
       confirmLoading={saving}
       maskClosable={!saving}
       closable={!saving}
-      destroyOnClose
+      destroyOnHidden
     >
       {error && <Alert type="error" showIcon message={error} style={{ marginBottom: 12 }} />}
       {auto && <Alert type="info" showIcon message={t("unitsPlacement.scale.autoNote")} style={{ marginBottom: 12 }} />}

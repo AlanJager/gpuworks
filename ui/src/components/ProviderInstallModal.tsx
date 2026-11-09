@@ -146,7 +146,7 @@ export default function ProviderInstallModal({
           </Button>
         </>
       )}
-      destroyOnClose
+      destroyOnHidden
     >
       <Space direction="vertical" size={12} style={{ width: "100%" }}>
         {submitting && <Alert type="info" showIcon message={t("install.running")} />}
