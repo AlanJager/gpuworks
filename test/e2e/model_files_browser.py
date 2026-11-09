@@ -13,6 +13,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 from playwright.sync_api import expect
+from model_detail_dialog import model_detail_dialog
 from local_browser_fixture import ROOT, http
 from local_business_runner import checked, unattributed_console_errors
 from dialog_checks import assert_dialog_shell, assert_nested_dismissals, cancel_button, close_button, escape, mask
@@ -298,13 +299,13 @@ def mutation(page, report, action, method, path, body, status, query=None):
 def open_detail(page, server, labels, data):
     name = data['name']
     page.get_by_role('button', name=name, exact=True).click()
-    dialog = page.get_by_role('dialog', name=name, exact=True)
+    dialog = model_detail_dialog(page, labels, name)
     expect(dialog.locator('#model-files')).to_be_visible()
     return dialog
 
 
 def close_detail(page, labels, data):
-    dialog = page.get_by_role('dialog', name=data['name'], exact=True)
+    dialog = model_detail_dialog(page, labels, data['name'])
     button(dialog.locator('.ant-modal-footer'), labels['action']['close']).click()
     expect(dialog).not_to_be_visible()
 
@@ -379,19 +380,14 @@ def assert_ready(page, server, token, labels, data, storage, report, *, reload=T
     checked(row['acquisition'] == 'download', 'public file acquisition is download')
     checked(row['state'] == 'present', 'downloaded file reaches actual present state')
     actual = file_facts(storage['payload_path'], data['hub'].files)
-    # Select by the API-stable group heading when two locations share node/path.
-    dialog = page.get_by_role('dialog', name=data['name'], exact=True)
+    dialog = model_detail_dialog(page, labels, data['name'])
     if not dialog.is_visible():
         dialog = open_detail(page, server, labels, data)
     files = dialog.locator('#model-files')
-    group = files.locator(':scope > div').filter(has_text=storage['name'])
-    if len(document(server, token, data).get('nodes', [])) > 1:
-        visible = group.locator('tr.ant-table-row')
-    else:
-        visible = files.locator('tr.ant-table-row')
+    place = storage['name'] + ' · ' + strings(report['locale'], 'common')['storageType']['local']
+    visible = files.locator('tr.ant-table-row').filter(has=page.get_by_text(place, exact=True))
     expect(visible).to_have_count(1)
     expect(visible.get_by_text(data['node']['name'], exact=True)).to_be_visible()
-    expect(visible.get_by_text(storage['payload_path'], exact=True)).to_be_visible()
     expect(visible.get_by_text(labels['presence']['present'], exact=True)).to_be_visible()
     expect(visible.get_by_text(bytes_text(total), exact=True)).to_be_visible()
     expect(visible.get_by_text(bytes_text(total) + ' / ' + bytes_text(total), exact=True)).to_be_visible()
@@ -401,7 +397,12 @@ def assert_ready(page, server, token, labels, data, storage, report, *, reload=T
     expect(visible.get_by_role('progressbar')).to_have_attribute('aria-valuemin', '0')
     expect(visible.get_by_role('progressbar')).to_have_attribute('aria-valuemax', '100')
     expect(visible.locator('.ant-progress-text').get_by_role('img', name='check-circle')).to_be_visible()
-    expect(visible.get_by_text(labels['acquisition']['download'], exact=True)).to_be_visible()
+    toggle = strings(report['locale'], 'storage')['detail']
+    visible.get_by_role('button', name=toggle['expand'], exact=True).click()
+    details = visible.locator('xpath=following-sibling::tr[1]')
+    expect(details.get_by_text(storage['payload_path'], exact=True)).to_be_visible()
+    expect(details.get_by_text(labels['acquisition']['download'], exact=True)).to_be_visible()
+    visible.get_by_role('button', name=toggle['collapse'], exact=True).click()
     report.setdefault('completed_locations', []).append({'storage_id': storage['id'],
         'node_uuid': data['node']['uuid'], 'actual_path': storage['payload_path'], 'files': actual, 'api': row})
     if reload:
@@ -411,7 +412,7 @@ def assert_ready(page, server, token, labels, data, storage, report, *, reload=T
         checked(refreshed.value.status == 200, 'detail reload failed')
         strict(presence(refreshed.value.json(), data, storage), row, 'full presence row after reload')
         checked(file_facts(storage['payload_path'], data['hub'].files) == actual, 'refresh changed payload')
-        expect(page.get_by_role('dialog', name=data['name'], exact=True).locator('#model-files')).to_be_visible()
+        expect(model_detail_dialog(page, labels, data['name']).locator('#model-files')).to_be_visible()
     return row
 
 
@@ -473,8 +474,9 @@ def exercise_download_delete(page, context, server, artifacts, report, locale, d
     target, guard = data['storages']
     before = file_facts(guard['payload_path'], data['hub'].files)
     files = dialog.locator('#model-files')
-    group = files.locator(':scope > div').filter(has_text=target['name'])
-    remove = group.get_by_role('button', name=labels['files']['deleteOnNode'], exact=True)
+    local_label = strings(locale, 'common')['storageType']['local']
+    target_row = files.locator('tr.ant-table-row').filter(has=page.get_by_text(target['name'] + ' · ' + local_label, exact=True))
+    remove = target_row.get_by_role('button', name=labels['files']['deleteOnNode'], exact=True)
     remove.click()
     title = labels['files']['deleteOnNodeConfirm'].replace('{{node}}', data['node']['name'])
     popup = page.locator('.ant-popconfirm').filter(has=page.get_by_text(title, exact=True))
@@ -500,9 +502,9 @@ def exercise_download_delete(page, context, server, artifacts, report, locale, d
     strict(file_facts(guard['payload_path'], data['hub'].files), before, 'guard replica unchanged')
     checked(presence(current, data, guard)['state'] == 'present', 'guard replica not present')
     expect(files.locator('tr.ant-table-row')).to_have_count(1)
-    expect(files.get_by_text(guard['name'], exact=True)).to_have_count(0)  # single local group hides heading
+    expect(files.get_by_text(guard['name'] + ' · ' + local_label, exact=True)).to_be_visible()
     page.reload()
-    expect(page.get_by_role('dialog', name=data['name'], exact=True).locator('#model-files tr.ant-table-row')).to_have_count(1)
+    expect(model_detail_dialog(page, labels, data['name']).locator('#model-files tr.ant-table-row')).to_have_count(1)
     strict(file_facts(guard['payload_path'], data['hub'].files), before, 'guard survives reload')
     report['deletion'] = {'node_uuid': data['node']['uuid'], 'storage_id': target['id'],
                           'target_absent': True, 'guard_files': before, 'model_still_exists': current['id']}
@@ -530,16 +532,24 @@ def exercise_failure_retry(page, context, server, artifacts, report, locale, dat
     dialog = open_detail(page, server, labels, data)
     row = dialog.locator('#model-files tr.ant-table-row')
     expect(row).to_have_count(1)
-    expect(row.get_by_text(labels['presence']['failed'], exact=True)).to_be_visible()
-    expect(row.get_by_text(failed['message'], exact=True)).to_be_visible()
+    state = row.get_by_text(labels['presence']['failed'], exact=True)
+    expect(state).to_be_visible()
+    state.focus()
+    expect(page.get_by_role('tooltip', name=labels['presence']['failed'], exact=True)).to_be_visible()
+    expect(row.get_by_text(failed['message'], exact=True)).to_have_count(0)
+    row.get_by_role('button', name=strings(locale, 'storage')['detail']['expand'], exact=True).click()
+    details = row.locator('xpath=following-sibling::tr[1]')
+    expect(details.get_by_text(failed['message'], exact=True)).to_be_visible()
     page.reload()
-    row = page.get_by_role('dialog', name=data['name'], exact=True).locator('#model-files tr.ant-table-row')
+    row = model_detail_dialog(page, labels, data['name']).locator('#model-files tr.ant-table-row')
     expect(row.get_by_text(labels['presence']['failed'], exact=True)).to_be_visible()
     hub.set_weight_failure(False)
     before = len(report['mutations'])
     path = MODELS + '/' + str(data['model']['id']) + '/download'
     body = {'storage_id': target['id'], 'node_uuids': [data['node']['uuid']]}
-    mutation(page, report, button(row, labels['action']['retry']).click, 'POST', path, body, 202)
+    retry = button(row, labels['action']['retry'])
+    expect(retry).to_have_text('')
+    mutation(page, report, retry.click, 'POST', path, body, 202)
     strict(report['mutations'][before:], [{'method': 'POST', 'path': path, 'query': '', 'body': body}], 'exactly one same-row public Retry request')
     assert_ready(page, server, token, labels, data, target, report)
     report['failure_recovery'] = {'failed': failed, 'retry_body': body, 'same_row': True}
@@ -573,7 +583,7 @@ def exercise_interrupted_recovery(page, context, server, artifacts, report, loca
     dialog = open_detail(page, server, labels, data)
     expect(dialog.locator('#model-files').get_by_text(labels['presence']['downloading'], exact=True)).to_be_visible()
     page.reload()
-    expect(page.get_by_role('dialog', name=data['name'], exact=True).locator('#model-files').get_by_text(labels['presence']['downloading'], exact=True)).to_be_visible()
+    expect(model_detail_dialog(page, labels, data['name']).locator('#model-files').get_by_text(labels['presence']['downloading'], exact=True)).to_be_visible()
     hub.release()
     assert_ready(page, server, token, labels, data, target, report)
     source = wire_proof(data, start)

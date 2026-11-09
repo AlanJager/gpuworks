@@ -318,7 +318,7 @@ def test_model_registration(page, context, server, fixture, artifacts, report, l
     with page.expect_response(lambda r: urlsplit(r.url).path == path and r.request.method == "GET") as detail_response:
         detail_trigger.click()
     check(detail_response.value.status == 200, "browser detail GET failed")
-    detail = page.get_by_role("dialog", name=target_name, exact=True)
+    detail = page.get_by_role("dialog", name=k["detail"]["title"], exact=True)
     expect(detail).to_be_in_viewport()
     report["last_step"] = "register-detail-heading"
     heading = detail.locator("h4.ant-typography")
@@ -436,7 +436,7 @@ def test_model_registration(page, context, server, fixture, artifacts, report, l
     with page.expect_response(lambda r: urlsplit(r.url).path == min_path and r.request.method == "GET") as minimum_detail:
         detail_trigger.click()
     check(minimum_detail.value.status == 200 and minimum_detail.value.json().get("name") == "tiny-model", "minimum detail mismatch")
-    detail = page.get_by_role("dialog", name="tiny-model", exact=True)
+    detail = page.get_by_role("dialog", name=k["detail"]["title"], exact=True)
     expect(detail.locator("h4.ant-typography")).to_have_text("tiny-model", timeout=12000)
     expect(detail.get_by_text("Qwen3ForCausalLM", exact=True)).to_be_visible()
     page.wait_for_function("el => el.contains(document.activeElement)", arg=detail.element_handle())

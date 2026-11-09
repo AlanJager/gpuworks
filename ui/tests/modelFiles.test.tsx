@@ -4,7 +4,7 @@ import { createI18n } from "./helpers/dom.ts";
 import React from "react";
 import { I18nextProvider } from "react-i18next";
 
-const { i18n, locale } = await createI18n(["models"]);
+const { i18n, locale } = await createI18n(["models", "storage"]);
 const models = locale.models;
 const { cleanup, fireEvent, render, screen, waitFor, within } = await import("@testing-library/react");
 const userEventModule = await import("@testing-library/user-event");
@@ -33,70 +33,41 @@ function stubMe(role: string) { api.me = (async () => ({ role })) as never; }
 function renderSection(model: unknown, onChanged = () => {}) {
   return render(<I18nextProvider i18n={i18n}><ModelFilesSection model={model as never} onChanged={onChanged} /></I18nextProvider>);
 }
-const tbl = (el: HTMLElement) => el.closest("table") as HTMLElement;
+function expandFile(name: string) {
+  const row = screen.getByText(name, { exact: true }).closest("tr")!;
+  fireEvent.click(within(row).getByRole("button", { name: locale.storage.detail.expand }));
+  return within(row.nextElementSibling as HTMLElement);
+}
 
-test("with a single local storage and nothing shared it is the plain node table without storage headings", async () => {
-  stubMe("admin");
-  renderSection(modelWith({ nodes: [
-    // Times render in the local time zone, so the fixture is a local time.
-    row({ storage_id: 1, storage_name: "default", storage_type: "local", last_used_at: new Date(2026, 8, 30, 8, 30).toISOString() }),
-    row({ node_uuid: "n2", node_name: "node-01", storage_id: 1, storage_name: "default", storage_type: "local", acquisition: "peer" }),
-  ] }));
-  assert.ok(screen.getByText(models.files.title));
-  assert.equal(screen.getAllByRole("table").length, 1);
-  assert.equal(screen.queryByText("default"), null, "the storage name is not repeated when there is only one");
-  assert.equal(screen.queryByText("Local storage"), null);
-  assert.equal(screen.queryByText(models.files.sharedTitle), null);
-  const header = screen.getAllByRole("columnheader").map((c) => c.textContent);
-  for (const title of [models.detail.node, models.files.path, models.detail.size, models.detail.status, models.detail.progress, models.column.source, models.files.lastUsed]) assert.ok(header.includes(title), title);
-  assert.ok(screen.getByText("gpu3"));
-  assert.ok(screen.getByText("node-01"));
-  assert.ok(screen.getByText("2026-09-30 08:30"));
-  assert.equal(screen.getAllByText(models.files.neverUsed).length, 1, "the file that was never used says so");
-  assert.equal(screen.getAllByText("15.0 GiB").length, 2);
-});
-
-test("legacy node rows without a storage form one unnamed group even next to a shared storage", () => {
-  stubMe("viewer");
-  renderSection(modelWith({ nodes: [row({})], storages: [shared({})] }));
-  assert.equal(screen.getAllByRole("table").length, 2);
-  assert.ok(screen.getByText(models.files.sharedTitle));
-  assert.ok(screen.getByText("gpu3"));
-});
-
-test("model files are grouped by storage: local storages by node, a shared storage as one row with availability", async () => {
+test("one table compares copies while keeping each location's details on its own row", () => {
   stubMe("admin");
   renderSection(modelWith({
     nodes: [
-      row({ storage_id: 1, storage_name: "default", storage_type: "local" }),
-      row({ node_uuid: "n3", node_name: "node-03", storage_id: 2, storage_name: "nvme", storage_type: "local" }),
-      row({ node_uuid: "n1", node_name: "gpu3", storage_id: 4, storage_name: "team-cache", storage_type: "nfs_cache", cache: true, path: "cache/team-cache/Qwen/Qwen3-8B", last_used_at: "2026-09-29T00:00:00Z" }),
-      row({ node_uuid: "n2", node_name: "node-01", storage_id: 4, storage_name: "team-cache", storage_type: "nfs_cache", cache: true, path: "cache/team-cache/Qwen/Qwen3-8B" }),
+      row({ storage_id: 1, storage_name: "default", storage_type: "local", last_used_at: new Date(2026, 8, 30, 8, 30).toISOString() }),
+      row({ node_uuid: "n2", node_name: "legacy", path: "/old/path" }),
+      row({ node_uuid: "n1", node_name: "cached-node", storage_id: 4, storage_name: "team-cache", storage_type: "nfs_cache", cache: true }),
     ],
-    storages: [shared({}), shared({ storage_id: 4, storage_name: "team-cache", storage_type: "nfs_cache", ready_nodes: 30, cached_nodes: 2, writer_node: "gpu3" })],
+    storages: [shared({}), shared({ storage_id: 4, storage_name: "team-cache", storage_type: "nfs_cache", ready_nodes: 30, cached_nodes: 1, writer_node: "gpu3" })],
   }));
-  // Headings: each local storage, the shared block, and the cache nodes.
-  assert.ok(screen.getByText("default")); assert.ok(screen.getByText("nvme"));
-  assert.ok(screen.getByText(models.files.sharedTitle));
-  assert.equal(screen.getAllByRole("table").length, 4, "default, nvme, shared, team-cache cache nodes");
-  // A shared storage is one row, no per-node list.
-  const archiveReady = screen.getByText(fill(models.files.readyNodes, { count: 128 }));
-  const archiveRow = archiveReady.closest("tr") as HTMLElement;
-  assert.ok(within(archiveRow).getByText("archive"));
-  assert.ok(within(archiveRow).getByText("NFS"));
-  assert.ok(within(archiveRow).getByText("Qwen/Qwen3-8B"));
-  assert.ok(within(archiveRow).getByText(models.presence.present));
-  assert.equal(within(archiveRow).queryByText(/Cached on/), null, "plain NFS has no cache count");
-  // nfs_cache: authoritative row says how many nodes cached it and who wrote it.
-  const cacheRow = screen.getByText(fill(models.files.readyNodes, { count: 30 })).closest("tr") as HTMLElement;
-  assert.ok(within(cacheRow).getByText(fill(models.files.cachedNodes, { count: 2 })));
-  assert.ok(within(cacheRow).getByText(fill(models.files.writerNode, { node: "gpu3" })));
-  // ...and the cached nodes are listed below, tagged as cache with their last use.
-  assert.equal(screen.getAllByText(models.files.cache).length, 2);
-  assert.ok(screen.getByText("node-01"));
-  assert.equal(tbl(screen.getByText("node-01")).querySelectorAll("tbody tr").length, 2);
-  // Admin gets one delete per shared storage row.
-  await waitFor(() => assert.equal(screen.getAllByRole("button", { name: models.action.deleteModelFiles }).length, 2));
+  assert.equal(screen.getAllByRole("table").length, 1);
+  assert.equal(document.querySelectorAll("tr[data-row-key]").length, 5);
+  assert.equal(screen.queryByText("/old/path"), null);
+  assert.ok(screen.getByText(models.files.cache));
+  const local = expandFile("gpu3");
+  assert.ok(local.getByText("2026-09-30 08:30"));
+  assert.ok(local.getByText("/data/models/qwen"));
+  const legacy = expandFile("legacy");
+  assert.ok(legacy.getByText("/old/path"));
+  assert.ok(legacy.getByText(models.files.neverUsed));
+  const sharedFile = expandFile("archive");
+  assert.ok(sharedFile.getByText("Qwen/Qwen3-8B"));
+  assert.equal(sharedFile.getByText(models.files.readyNodes).nextElementSibling?.textContent, "128");
+  assert.equal(sharedFile.queryByText(models.files.cachedNodes), null);
+  assert.equal(sharedFile.queryByText(models.files.writerNodeLabel), null);
+  const cached = expandFile("team-cache");
+  assert.equal(cached.getByText(models.files.readyNodes).nextElementSibling?.textContent, "30");
+  assert.equal(cached.getByText(models.files.cachedNodes).nextElementSibling?.textContent, "1");
+  assert.equal(cached.getByText(models.files.writerNodeLabel).nextElementSibling?.textContent, "gpu3");
 });
 
 test("a file the storage no longer holds is shown as missing with the hint to scan again", () => {
@@ -104,7 +75,7 @@ test("a file the storage no longer holds is shown as missing with the hint to sc
   renderSection(modelWith({ storages: [shared({ state: "missing", ready_nodes: 0 })] }));
   const state = screen.getByText(models.presence.missing);
   assert.ok(state.className.includes("ant-tag-red"), "missing is red");
-  assert.ok(screen.getByText(models.files.missingHint));
+  assert.ok(expandFile("archive").getByText(models.files.missingHint));
 });
 
 test("only admins get a delete, for shared storage files and for a node's files", async () => {
@@ -164,7 +135,8 @@ test("a failed delete reports the server's message and a failed row keeps its re
   const syncs: unknown[][] = [];
   api.syncModel = (async (...args: unknown[]) => { syncs.push(args); return { state: "syncing" }; }) as never;
   renderSection(modelWith({ nodes: [row({ state: "failed", message: "disk_full", acquisition: "peer", source_node_uuid: "n9", last_rate_limit_kib_s: 512, storage_id: 1, storage_name: "default", storage_type: "local" })] }));
-  assert.ok(screen.getByText("disk_full"));
+  assert.equal(screen.queryByText("disk_full"), null);
+  assert.ok(expandFile("gpu3").getByText("disk_full"));
   fireEvent.click(screen.getByRole("button", { name: models.action.retry }));
   await waitFor(() => assert.equal(syncs.length, 1));
   assert.deepEqual(syncs[0], [9, "n1", "n9", 512]);
@@ -183,7 +155,7 @@ test("retrying a failed public download keeps its non-default storage and exact 
   api.syncModel = (async (...args: unknown[]) => { syncs.push(args); return { state: "syncing" }; }) as never;
   let changed = 0;
   renderSection(modelWith({ nodes: [row({ state: "failed", node_uuid: "n-selected", node_name: "selected-node", storage_id: 7, storage_name: "nvme", storage_type: "local", message: "download failed" })] }), () => { changed += 1; });
-  assert.ok(screen.getByText("download failed"));
+  assert.ok(expandFile("selected-node").getByText("download failed"));
   fireEvent.click(screen.getByRole("button", { name: models.action.retry }));
   await waitFor(() => assert.equal(downloads.length + legacy.length + syncs.length, 1));
   assert.deepEqual(downloads, [[9, { storage_id: 7, node_uuids: ["n-selected"] }]]);
@@ -275,7 +247,7 @@ test("the detail dialog carries the model files and the copy action", async () =
     model={modelWith({ nodes: [], storages: [shared({})], weight_gib: 15 })}
     onClose={() => {}} onDownload={() => {}} onCopy={(m: unknown) => copied.push(m)} onRegisterPath={() => {}} onChanged={() => {}}
   /></I18nextProvider>);
-  assert.ok(screen.getByText(fill(models.files.readyNodes, { count: 128 })));
+  assert.ok(expandFile("archive").getByText("128"));
   const copy = screen.getByRole("button", { name: new RegExp(models.action.copyTo) });
   copy.focus();
   await userEvent.keyboard("{Enter}");
@@ -293,6 +265,76 @@ test("a transfer in flight shows its rate next to the bytes; a finished file sho
   assert.ok(screen.getByText("3.8 GiB / 15.0 GiB · 1.5 GiB/s"));
   assert.ok(screen.getByText("1.5 GiB / 15.0 GiB · 512.0 KiB/s"), "a shared storage transfer shows its rate too");
   assert.equal(screen.queryByText(/9\.0 MiB\/s/), null, "a present file reports no rate");
+});
+
+test("only a finished transfer shows Completed, including shared downloads and node caches", () => {
+  stubMe("viewer");
+  renderSection(modelWith({
+    nodes: [row({}), row({ node_uuid: "n2", node_name: "cache-node", cache: true, acquisition: "copy" })],
+    storages: [
+      shared({ acquisition: "download" }),
+      shared({ storage_id: 4, storage_name: "verifying", acquisition: "download", state: "downloading", progress: 1 }),
+      shared({ storage_id: 5, storage_name: "registered" }),
+    ],
+  }));
+  const file = (name: string) => within(screen.getByText(name, { exact: true }).closest("tr")!);
+  for (const name of ["gpu3", "cache-node", "archive"]) {
+    assert.ok(file(name).getByText(models.files.completed));
+    assert.equal(file(name).getByRole("progressbar").getAttribute("aria-valuenow"), "100");
+  }
+  assert.ok(file("verifying").getByText("100%"));
+  assert.equal(file("verifying").queryByText(models.files.completed), null);
+  assert.equal(file("registered").queryByText(models.files.completed), null);
+});
+
+test("the model ID and its three specs stay together without repeating the fields in the detail grid", () => {
+  stubMe("viewer");
+  const props = { onClose() {}, onDownload() {}, onCopy() {}, onRegisterPath() {}, onChanged() {} };
+  const detail = (specs: Record<string, unknown>) => <I18nextProvider i18n={i18n}>
+    <ModelDetailModal model={modelWith(specs)} {...props} />
+  </I18nextProvider>;
+  const view = render(detail({ context_length: 262144, weight_gib: 1.6, precision: "bfloat16" }));
+  const dialog = within(screen.getByRole("dialog", { name: models.detail.title }));
+  assert.ok(dialog.getByRole("heading", { name: "Qwen3-8B" }));
+  assert.equal(screen.getByTitle(models.column.sourceID).textContent, "Qwen/Qwen3-8B");
+  const labels = [models.detail.contextLength, models.column.weight, models.detail.precision];
+  for (const [index, value] of [(262144).toLocaleString(), "1.6 GiB", "bfloat16"].entries()) {
+    const tag = dialog.getByText(labels[index]);
+    assert.ok(within(tag).getByText(value));
+    assert.equal(screen.getAllByText(labels[index]).length, 1);
+  }
+  view.rerender(detail({ name: "Qwen/Qwen3-8B" }));
+  const name = dialog.getByRole("heading", { name: "Qwen/Qwen3-8B" });
+  const sourceID = dialog.getByTitle(models.column.sourceID);
+  assert.equal(sourceID.textContent, name.textContent);
+  assert.notEqual(sourceID, name, "the source ID stays visible separately even when it matches the model name");
+  assert.ok(within(dialog.getByText(models.detail.contextLength)).getByText(models.unrecognized));
+  assert.ok(within(dialog.getByText(models.detail.precision)).getByText(models.unrecognized));
+  assert.ok(within(dialog.getByText(models.column.weight)).getByText("—"));
+  assert.equal(dialog.queryByRole("button", { name: models.detail.editSourceID }), null);
+  view.rerender(detail({ source: "local", source_id_editable: true }));
+  const editableID = within(dialog.getByTitle(models.column.sourceID));
+  fireEvent.click(editableID.getByRole("button", { name: models.detail.editSourceID }));
+  assert.equal((editableID.getByRole("textbox") as HTMLTextAreaElement).value, "Qwen/Qwen3-8B");
+});
+
+test("each file shows its own revision even when the requested branch or another node's revision differs", () => {
+  stubMe("viewer");
+  const props = { onClose() {}, onDownload() {}, onCopy() {}, onRegisterPath() {}, onChanged() {} };
+  const nodes = [
+    row({ revision: "a1b2c3d4e5f67890" }),
+    row({ node_uuid: "n2", node_name: "gpu4", revision: "de987654" }),
+    row({ node_uuid: "n3", node_name: "gpu5" }),
+  ];
+  render(<I18nextProvider i18n={i18n}>
+    <ModelDetailModal model={modelWith({ revision: "main", nodes, storages: [shared({})] })} {...props} />
+  </I18nextProvider>);
+  assert.ok(within(screen.getByText(models.detail.requestedRevision).closest("table")!).getByText("main"));
+  assert.equal(screen.queryByText(models.detail.nodePinnedRevision), null);
+  assert.ok(expandFile("gpu3").getByText("a1b2c3d4e5f67890"));
+  assert.ok(expandFile("gpu4").getByText("de987654"));
+  assert.ok(expandFile("gpu5").getByText(models.detail.noResolvedRevision));
+  assert.equal(expandFile("archive").queryByText(models.detail.nodePinnedRevision), null);
 });
 
 test("the detail dialog names the published and added times as the list does", () => {
@@ -317,10 +359,9 @@ test("a transfer names where its bytes come from: the mirror a download uses, th
     row({ node_uuid: "n2", node_name: "node-01", state: "syncing", acquisition: "peer", source_node_uuid: "n1", source_node_name: "gpu3" }),
     row({ node_uuid: "n3", node_name: "node-02", message: "" }),
   ] }));
-  const rowOf = (name: string) => screen.getByText(name).closest("tr") as HTMLElement;
-  assert.ok(within(rowOf("gpu3")).getByText(`${models.acquisition.download} · ${fill(models.files.fromHost, { host: "hf-mirror.com" })}`));
-  assert.ok(within(rowOf("node-01")).getByText(`${models.acquisition.peer} · ${fill(models.files.fromNode, { node: "gpu3" })}`));
-  assert.ok(within(rowOf("node-02")).getByText(models.acquisition.download), "nothing known beyond how it was acquired");
+  assert.ok(expandFile("gpu3").getByText(`${models.acquisition.download} · ${fill(models.files.fromHost, { host: "hf-mirror.com" })}`));
+  assert.ok(expandFile("node-01").getByText(`${models.acquisition.peer} · ${fill(models.files.fromNode, { node: "gpu3" })}`));
+  assert.ok(expandFile("node-02").getByText(models.acquisition.download), "nothing known beyond how it was acquired");
 });
 
 test("download cancellation names local and shared locations and refreshes after confirmation", async () => {

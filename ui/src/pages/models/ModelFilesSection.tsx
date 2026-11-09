@@ -1,7 +1,9 @@
-import { type ReactNode } from "react";
-import { Button, Popconfirm, Progress, Space, Table, Tag, Tooltip, Typography, message } from "antd";
+import { Button, Flex, Popconfirm, Progress, Space, Tag, Tooltip, Typography, message } from "antd";
+import { CheckCircleFilled, CloudDownloadOutlined, ReloadOutlined, StopOutlined } from "@ant-design/icons";
 import { useTranslation } from "react-i18next";
 import { api, type Model, type ModelNodePresence } from "../../api";
+import ResourceTable, { type ResourceColumn } from "../../components/resourceTable/ResourceTable";
+import { detailExpandable } from "../../components/detail/DetailDrawer";
 import { formatTime } from "../../i18n/datetime";
 import { useIsAdmin } from "../../components/useIsAdmin";
 import { nodeRowName } from "../../nodeDisplay";
@@ -12,29 +14,15 @@ import { ModelNodeFileDelete } from "./ModelNodeFileDelete";
 import { ModelStorageFileDelete } from "./ModelStorageFileDelete";
 import { acquisitionLabel, modelPresenceBytes, presenceVisual, rateLabel, transferOrigin } from "./modelPresenceDisplay";
 
-interface NodeGroup {
-  key: string;
-  storageName?: string;
-  storageType?: string;
-  rows: ModelNodePresence[];
-}
-
-/** Node rows grouped by the storage they are in; rows from before storages existed share one unnamed group. */
-function groupByStorage(rows: ModelNodePresence[], cache: boolean): NodeGroup[] {
-  const groups = new Map<string, NodeGroup>();
-  for (const row of rows.filter((r) => !!r.cache === cache)) {
-    const key = String(row.storage_id ?? 0);
-    const group = groups.get(key) ?? { key, storageName: row.storage_name, storageType: row.storage_type, rows: [] };
-    group.rows.push(row);
-    groups.set(key, group);
-  }
-  return [...groups.values()];
-}
+type ModelFile = ModelNodePresence | ModelStoragePresence;
 
 function StateTag({ state }: { state: string }) {
   const { t } = useTranslation("models");
   const visual = presenceVisual[state];
-  return <Tag color={visual?.color}>{visual ? t(visual.labelKey) : state}</Tag>;
+  const label = visual ? t(visual.labelKey) : state;
+  return <Tooltip title={label} trigger={["hover", "focus"]}>
+    <Tag className="model-file-state-tag" color={visual?.color} tabIndex={0}>{label}</Tag>
+  </Tooltip>;
 }
 
 function SourceText({ row }: { row: Parameters<typeof transferOrigin>[0] }) {
@@ -50,30 +38,20 @@ function SourceText({ row }: { row: Parameters<typeof transferOrigin>[0] }) {
   return <>{label} · {origin.switched ? <Tooltip title={t("files.switchedSource", { reason: origin.switched })}><span style={{ textDecoration: "underline dotted" }}>{host}</span></Tooltip> : host}</>;
 }
 
-function StorageHeading({ name, type }: { name?: string; type?: string }) {
-  const { t } = useTranslation("models");
-  if (!name && !type) return null;
-  return <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "12px 0 6px" }}>
-    {name && <Typography.Text strong>{name}</Typography.Text>}
-    {type && <Tag>{storageTypeLabel(t, type)}</Tag>}
-  </div>;
-}
-
-/**
- * Whether the storage a node's files are in can be changed now. A node row does
- * not carry it: an nfs_cache copy follows its shared storage's row, and a local
- * storage's files are always the node's to delete.
- */
-
-const NODE_FILE_PAGE_SIZE = 10;
+const FILE_PAGE_SIZE = 10;
 
 /** A transfer's progress, bytes and, while it moves, its rate. */
-function TransferProgress({ row }: { row: Pick<ModelNodePresence, "state" | "progress" | "downloaded" | "size_bytes" | "rate_bps"> }) {
+function TransferProgress({ row }: { row: ModelFile }) {
+  const { t } = useTranslation("models");
   const moving = row.state === "downloading" || row.state === "syncing";
+  const complete = row.state === "present" && ["download", "auto", "peer", "copy"].includes(row.acquisition);
+  if (!("node_uuid" in row) && !moving && !complete) return <>—</>;
   const rate = moving ? rateLabel(row.rate_bps) : "";
-  return <Space direction="vertical" size={0} style={{ width: "100%" }}>
-    <Progress percent={Math.round((row.progress || 0) * 100)} size="small" />
-    <Typography.Text type="secondary">{modelPresenceBytes(row)}{rate ? ` · ${rate}` : ""}</Typography.Text>
+  const details = [modelPresenceBytes(row), rate].filter(Boolean).join(" · ");
+  return <Space direction="vertical" size={0} className="model-file-progress">
+    <Progress percent={complete ? 100 : Math.round((row.progress || 0) * 100)} size="small" status={moving ? "normal" : undefined}
+      format={complete ? () => <Space size={4}><CheckCircleFilled />{t("files.completed")}</Space> : undefined} />
+    <Typography.Text type="secondary" title={details}>{details}</Typography.Text>
   </Space>;
 }
 
@@ -88,10 +66,15 @@ function CancelDownload({ modelId, storageId, nodeUuid, onChanged }: { modelId: 
       message.error(storageErrorText(t, e));
     }
   };
-  return <Popconfirm title={t("presenceAction.cancelDownloadConfirm")} onConfirm={cancel} okText={t("presenceAction.cancelDownload")} cancelText={t("action.cancel")}><Button size="small" danger>{t("presenceAction.cancelDownload")}</Button></Popconfirm>;
+  const label = t("presenceAction.cancelDownload");
+  return <Popconfirm title={t("presenceAction.cancelDownloadConfirm")} onConfirm={cancel} okText={label} cancelText={t("action.cancel")}>
+    <Tooltip title={label} trigger={["hover", "focus"]}>
+      <Button type="text" size="small" danger icon={<StopOutlined />} aria-label={label} />
+    </Tooltip>
+  </Popconfirm>;
 }
 
-function NodeFileTable({ model, group, isAdmin, onChanged }: { model: Model; group: NodeGroup; isAdmin: boolean; onChanged: () => void }) {
+function NodeFileActions({ model, row, isAdmin, onChanged }: { model: Model; row: ModelNodePresence; isAdmin: boolean; onChanged: () => void }) {
   const { t } = useTranslation("models");
   const run = async (action: () => Promise<unknown>, success: string) => {
     try {
@@ -102,7 +85,7 @@ function NodeFileTable({ model, group, isAdmin, onChanged }: { model: Model; gro
       message.error(storageErrorText(t, e));
     }
   };
-  const retry = (row: ModelNodePresence) => {
+  const retry = () => {
     if (row.acquisition === "download" && !row.cache) {
       return run(() => row.storage_id !== undefined
         ? api.downloadModelToStorage(model.id, { storage_id: row.storage_id, node_uuids: [row.node_uuid] })
@@ -110,8 +93,20 @@ function NodeFileTable({ model, group, isAdmin, onChanged }: { model: Model; gro
     }
     return run(() => api.syncModel(model.id, row.node_uuid, row.source_node_uuid, row.last_rate_limit_kib_s ?? 0), t("presenceMessage.syncStarted"));
   };
-  const deleteButton = (row: ModelNodePresence) => (
-    <ModelNodeFileDelete
+  return <Flex wrap>
+    {row.state === "download_required" && <Tooltip title={t("action.internetDownload")} trigger={["hover", "focus"]}>
+      <Button type="text" size="small" icon={<CloudDownloadOutlined />} aria-label={t("action.internetDownload")} onClick={() => run(() => api.downloadModel(model.id, row.node_uuid), t("presenceMessage.downloadStarted"))} />
+    </Tooltip>}
+    {(row.state === "failed" || row.state === "download_required" || row.state === "canceled") && <Tooltip title={t("action.retry")} trigger={["hover", "focus"]}>
+      <Button type="text" size="small" icon={<ReloadOutlined />} aria-label={t("action.retry")} onClick={retry} />
+    </Tooltip>}
+    {row.acquisition === "download" && (row.state === "pending" || row.state === "downloading") && <CancelDownload modelId={model.id} storageId={row.storage_id} nodeUuid={row.node_uuid} onChanged={onChanged} />}
+    {row.state === "syncing" && <Popconfirm title={t("presenceAction.cancelConfirm")} onConfirm={() => run(() => api.cancelModelSync(model.id, row.node_uuid), t("presenceMessage.syncCanceled"))} okText={t("presenceAction.cancelSync")} cancelText={t("presenceAction.continueSync")}>
+      <Tooltip title={t("presenceAction.cancelSync")} trigger={["hover", "focus"]}>
+        <Button type="text" size="small" danger icon={<StopOutlined />} aria-label={t("presenceAction.cancelSync")} />
+      </Tooltip>
+    </Popconfirm>}
+    {isAdmin && <ModelNodeFileDelete
       modelId={model.id}
       nodeUuid={row.node_uuid}
       nodeName={row.node_name}
@@ -120,79 +115,102 @@ function NodeFileTable({ model, group, isAdmin, onChanged }: { model: Model; gro
       cache={row.cache}
       writable={row.deletable === true}
       onDone={onChanged}
-    />
-  );
-  // A model on a hundred nodes pages instead of stretching the dialog.
-  return <Table<ModelNodePresence> size="small" rowKey={(row) => `${row.node_uuid}:${row.storage_id ?? 0}:${row.cache ? "c" : "l"}`} pagination={group.rows.length > NODE_FILE_PAGE_SIZE ? { pageSize: NODE_FILE_PAGE_SIZE, size: "small", showSizeChanger: false } : false} dataSource={group.rows} columns={[
-    { title: t("detail.node"), key: "node", render: (_: unknown, row) => <Space size={4} wrap>
-      <Tooltip title={row.node_uuid}><Typography.Text strong={!!row.node_name} code={!row.node_name}>{nodeRowName(row)}</Typography.Text></Tooltip>
-      {row.cache && <Tag>{t("files.cache")}</Tag>}
-    </Space> },
-    { title: t("files.path"), dataIndex: "path", render: (value: string) => value ? <Typography.Text code style={{ wordBreak: "break-all" }}>{value}</Typography.Text> : "—" },
-    { title: t("detail.size"), dataIndex: "size_bytes", render: (value: number) => value ? formatBytes(value) : "—" },
-    { title: t("detail.status"), dataIndex: "state", render: (value: string, row) => <Space direction="vertical" size={0}>
-      <StateTag state={value} />
-      {row.message && (value === "failed" || value === "download_required" || value === "canceled") && <Typography.Text type="danger" style={{ wordBreak: "break-word" }}>{row.message}</Typography.Text>}
-    </Space> },
-    { title: t("detail.progress"), key: "progress", render: (_: unknown, row) => <TransferProgress row={row} /> },
-    { title: t("column.source"), key: "source", render: (_: unknown, row) => <SourceText row={row} /> },
-    { title: t("files.lastUsed"), dataIndex: "last_used_at", render: (value?: string) => value ? formatTime(value) : <Typography.Text type="secondary">{t("files.neverUsed")}</Typography.Text> },
-    { title: t("column.actions"), key: "action", render: (_: unknown, row) => <Space size={4}>
-      {row.state === "download_required" && <Button size="small" onClick={() => run(() => api.downloadModel(model.id, row.node_uuid), t("presenceMessage.downloadStarted"))}>{t("action.internetDownload")}</Button>}
-      {(row.state === "failed" || row.state === "download_required" || row.state === "canceled") && <Button size="small" onClick={() => retry(row)}>{t("action.retry")}</Button>}
-      {row.acquisition === "download" && (row.state === "pending" || row.state === "downloading") && <CancelDownload modelId={model.id} storageId={row.storage_id} nodeUuid={row.node_uuid} onChanged={onChanged} />}
-      {row.state === "syncing" && <Popconfirm title={t("presenceAction.cancelConfirm")} onConfirm={() => run(() => api.cancelModelSync(model.id, row.node_uuid), t("presenceMessage.syncCanceled"))} okText={t("presenceAction.cancelSync")} cancelText={t("presenceAction.continueSync")}><Button size="small" danger>{t("presenceAction.cancelSync")}</Button></Popconfirm>}
-      {isAdmin && deleteButton(row)}
-    </Space> },
-  ]} />;
+    />}
+  </Flex>;
 }
 
-function SharedFileTable({ model, rows, isAdmin, onChanged }: { model: Model; rows: ModelStoragePresence[]; isAdmin: boolean; onChanged: () => void }) {
+function FileDetails({ row }: { row: ModelFile }) {
   const { t } = useTranslation("models");
-  return <Table<ModelStoragePresence> size="small" rowKey="storage_id" pagination={false} dataSource={rows} columns={[
-    { title: t("files.storage"), key: "storage", render: (_: unknown, row) => <Space size={4} wrap><Typography.Text strong>{row.storage_name}</Typography.Text><Tag>{storageTypeLabel(t, row.storage_type)}</Tag></Space> },
-    { title: t("files.relativePath"), dataIndex: "path", render: (value: string) => value ? <Typography.Text code style={{ wordBreak: "break-all" }}>{value}</Typography.Text> : "—" },
-    { title: t("detail.size"), dataIndex: "size_bytes", render: (value: number) => value ? formatBytes(value) : "—" },
-    { title: t("detail.status"), dataIndex: "state", render: (value: string, row) => <Space direction="vertical" size={0}>
-      <StateTag state={value} />
-      {value === "missing"
-        ? <Typography.Text type="danger">{t("files.missingHint")}</Typography.Text>
-        : row.message && (value === "failed" || value === "download_required" || value === "canceled") && <Typography.Text type="danger" style={{ wordBreak: "break-word" }}>{row.message}</Typography.Text>}
-    </Space> },
-    { title: t("column.source"), key: "source", render: (_: unknown, row) => <SourceText row={row} /> },
-    { title: t("detail.progress"), key: "progress", render: (_: unknown, row) => row.state === "downloading" || row.state === "syncing" ? <TransferProgress row={row} /> : "—" },
-    { title: t("files.availability"), key: "availability", render: (_: unknown, row) => <Space direction="vertical" size={0}>
-      <Typography.Text strong>{t("files.readyNodes", { count: row.ready_nodes })}</Typography.Text>
-      {storageTypeInfo(row.storage_type).cache && <Typography.Text>{t("files.cachedNodes", { count: row.cached_nodes })}</Typography.Text>}
-      {row.writer_node && <Typography.Text type="secondary">{t("files.writerNode", { node: row.writer_node })}</Typography.Text>}
-    </Space> },
-    { title: t("column.actions"), key: "action", render: (_: unknown, row) => <Space size={4}>
-      {row.acquisition === "download" && (row.state === "pending" || row.state === "downloading") && <CancelDownload modelId={model.id} storageId={row.storage_id} onChanged={onChanged} />}
-      {isAdmin && <ModelStorageFileDelete modelId={model.id} storageId={row.storage_id} storageName={row.storage_name} storageType={row.storage_type} writable={row.writable} cachedNodes={row.cached_nodes} onDone={onChanged} />}
-    </Space> },
-  ]} />;
+  const node = "node_uuid" in row;
+  const statusNote = row.state === "missing" && !node ? t("files.missingHint")
+    : ["failed", "download_required", "canceled"].includes(row.state) ? row.message : undefined;
+  return <dl className="detail-extra">
+    <div style={{ gridColumn: node ? "1 / -1" : "1 / -2" }}>
+      <dt>{t(node ? "files.path" : "files.relativePath")}</dt>
+      <dd>{row.path ? <Typography.Text code>{row.path}</Typography.Text> : "—"}</dd>
+    </div>
+    <div><dt>{t("column.source")}</dt><dd><SourceText row={row} /></dd></div>
+    {node ? (
+      <>
+        <div><dt>{t("detail.nodePinnedRevision")}</dt><dd>{row.revision ? <Typography.Text code>{row.revision}</Typography.Text> : t("detail.noResolvedRevision")}</dd></div>
+        <div><dt>{t("files.lastUsed")}</dt><dd>{row.last_used_at ? formatTime(row.last_used_at) : t("files.neverUsed")}</dd></div>
+      </>
+    ) : (
+      <>
+        <div><dt>{t("files.readyNodes")}</dt><dd>{row.ready_nodes}</dd></div>
+        {storageTypeInfo(row.storage_type).cache && <div><dt>{t("files.cachedNodes")}</dt><dd>{row.cached_nodes}</dd></div>}
+        {row.writer_node && <div><dt>{t("files.writerNodeLabel")}</dt><dd>{row.writer_node}</dd></div>}
+      </>
+    )}
+    {statusNote && <div style={{ gridColumn: "1 / -1" }}>
+      <dt>{t("files.statusNote")}</dt><dd>{statusNote}</dd>
+    </div>}
+  </dl>;
 }
 
-/**
- * A model's files, grouped by where they are. Local storages list one row per
- * node; a shared storage is one row (its files exist once) that says how many
- * nodes can use it; an nfs_cache storage also lists the nodes that cached it.
- * With a single local storage and nothing shared it is the plain node table.
- */
+function FileLocation({ row }: { row: ModelFile }) {
+  const { t } = useTranslation("models");
+  const node = "node_uuid" in row;
+  const name = node ? nodeRowName(row) : row.storage_name;
+  const storageType = row.storage_type && storageTypeLabel(t, row.storage_type);
+  const description = [node ? row.storage_name : t("files.sharedTitle"), storageType].filter(Boolean).join(" · ");
+  return <>
+    <Flex align="center" gap={6}>
+      <Tooltip title={node && row.node_uuid !== name ? `${name} · ${row.node_uuid}` : name}>
+        <Typography.Text strong={!node || !!row.node_name} code={node && !row.node_name} ellipsis>{name}</Typography.Text>
+      </Tooltip>
+      {node && row.cache && <Tag style={{ flex: "none", marginInlineEnd: 0 }}>{t("files.cache")}</Tag>}
+    </Flex>
+    {description && <span className="resource-table-sub" title={description}>{description}</span>}
+  </>;
+}
+
+function fileKey(row: ModelFile) {
+  return "node_uuid" in row
+    ? `node:${row.node_uuid}:${row.storage_id ?? 0}:${row.cache ? "cache" : "local"}`
+    : `shared:${row.storage_id}`;
+}
+
 export function ModelFilesSection({ model, onChanged }: { model: Model; onChanged: () => void }) {
   const { t } = useTranslation("models");
+  const { t: tStorage } = useTranslation("storage");
   const isAdmin = useIsAdmin();
-  const shared = model.storages ?? [];
-  const local = groupByStorage(model.nodes ?? [], false);
-  const cached = groupByStorage(model.nodes ?? [], true);
-  const headings = shared.length > 0 || local.length + cached.length > 1;
-  const empty = local.length + cached.length === 0 && shared.length === 0;
-  const block = (key: string, heading: ReactNode, body: ReactNode) => <div key={key}>{heading}{body}</div>;
+  const nodes = model.nodes ?? [];
+  const rows: ModelFile[] = [
+    ...nodes.filter((row) => !row.cache),
+    ...(model.storages ?? []),
+    ...nodes.filter((row) => row.cache),
+  ];
+  const columns: ResourceColumn<ModelFile>[] = [
+    { key: "location", title: tStorage("files.column.place"), width: 132, render: (_, row) => <FileLocation row={row} /> },
+    { key: "state", title: t("detail.status"), width: 88, ellipsis: false, render: (_, row) => <StateTag state={row.state} /> },
+    { key: "progress", title: t("detail.progress"), width: 218, minWidth: 218, ellipsis: false, render: (_, row) => <TransferProgress row={row} /> },
+    { key: "size", title: t("detail.size"), width: 78, align: "right", render: (_, row) => row.size_bytes ? formatBytes(row.size_bytes) : "—" },
+    { key: "actions", role: "actions", title: t("column.actions"), width: 100, render: (_, row) => (
+      <div onClick={(event) => event.stopPropagation()}>
+        {"node_uuid" in row ? <NodeFileActions model={model} row={row} isAdmin={isAdmin} onChanged={onChanged} /> : <Space size={4} wrap>
+          {row.acquisition === "download" && (row.state === "pending" || row.state === "downloading") &&
+            <CancelDownload modelId={model.id} storageId={row.storage_id} onChanged={onChanged} />}
+          {isAdmin && <ModelStorageFileDelete modelId={model.id} storageId={row.storage_id} storageName={row.storage_name} storageType={row.storage_type} writable={row.writable} cachedNodes={row.cached_nodes} onDone={onChanged} />}
+        </Space>}
+      </div>
+    ) },
+  ];
+
   return <div id="model-files" style={{ marginTop: 16, scrollMarginTop: 16 }}>
-    <Typography.Text strong style={{ display: "block", marginBottom: 8 }}>{t("files.title")}</Typography.Text>
-    {empty && <Table size="small" pagination={false} dataSource={[]} columns={[{ title: t("detail.node"), key: "node" }]} locale={{ emptyText: t("files.empty") }} />}
-    {local.map((group) => block(`local-${group.key}`, headings ? <StorageHeading name={group.storageName} type={group.storageType} /> : null, <NodeFileTable model={model} group={group} isAdmin={isAdmin} onChanged={onChanged} />))}
-    {shared.length > 0 && block("shared", <StorageHeading name={t("files.sharedTitle")} />, <SharedFileTable model={model} rows={shared} isAdmin={isAdmin} onChanged={onChanged} />)}
-    {cached.map((group) => block(`cache-${group.key}`, <StorageHeading name={group.storageName} type={group.storageType} />, <NodeFileTable model={model} group={group} isAdmin={isAdmin} onChanged={onChanged} />))}
+    <Typography.Text strong>{t("files.title")}</Typography.Text>
+    <ResourceTable<ModelFile>
+      key={model.id}
+      tableId="model-file-locations"
+      rowKey={fileKey}
+      columns={columns}
+      data={rows}
+      columnSettings={false}
+      pagination={rows.length > FILE_PAGE_SIZE ? { pageSize: FILE_PAGE_SIZE, size: "small", showSizeChanger: false } : false}
+      emptyDescription={t("files.empty")}
+      expandable={detailExpandable((row) => <FileDetails row={row} />, {
+        expand: tStorage("detail.expand"), collapse: tStorage("detail.collapse"),
+      })}
+    />
   </div>;
 }
