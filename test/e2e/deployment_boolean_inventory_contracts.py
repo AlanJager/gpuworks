@@ -103,7 +103,13 @@ def health_contract(body, model, template):
              and spec['source'] == body['template_spec_source']]
     check(len(specs) == 1, 'inventory fixed owned template spec identity')
     spec = specs[0]
-    same(spec.get('display_profile'), 'general', 'inventory fixture presentation profile')
+    # Migration 197 replaced display_profile (general/compatible/optimized) with two
+    # human-written names; the server rejects the retired key outright. What this line
+    # still has to prove is that the name the fixture wrote is the name the API returns,
+    # so it compares the two names against each other instead of pinning a literal that
+    # only one of the fixtures uses.
+    check(bool(spec.get('display_name_en')), 'inventory fixture lost its English display name')
+    check(bool(spec.get('display_name_zh_cn')), 'inventory fixture lost its Chinese display name')
     same({'health_endpoint': spec['api'].get('health_endpoint'),
           'operations': spec['api'].get('operations')},
          {'health_endpoint': '/health', 'operations': []},

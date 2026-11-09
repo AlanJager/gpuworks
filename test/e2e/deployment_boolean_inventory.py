@@ -211,7 +211,7 @@ def exercise(page, labels, body, report, token):
     check(status == 200, 'inventory independent effective template GET failed')
     evidence['observed_health_model'] = {key: model.get(key) for key in ('id', 'source', 'operations')}
     evidence['observed_health_template'] = {'id': template['id'], 'specs': [
-        {key: spec.get(key) for key in ('name', 'source', 'display_profile', 'api')}
+        {key: spec.get(key) for key in ('name', 'source', 'display_name_en', 'api')}
         for spec in template['specs']]}
     health_contract(body, model, template)
     reviewed_profile(profile)
