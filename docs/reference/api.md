@@ -397,6 +397,7 @@ macOS 忽略 `no_systemd`。
 | POST | `/api/v1/models/local` | 注册节点本地模型 | JWT |
 | GET | `/api/v1/models/{id}/logo` | 模型 logo 图片 | JWT |
 | GET | `/api/v1/models/{id}` | 模型详情 | JWT |
+| PATCH | `/api/v1/models/{id}` | 修改本地 / HTTP 目录模型的来源 ID（`{"source_id"}`，详情的 `source_id_editable` 表示可改）；公共仓库模型 400 `MODEL_SOURCE_ID_FIXED`，与已有模型重名 409 `MODEL_SOURCE_ID_TAKEN`，有进行中的复制、下载或删除 409 `MODEL_TRANSFER_ACTIVE`；已有副本路径不变 | JWT |
 | DELETE | `/api/v1/models/{id}` | 删除模型 | JWT(admin) |
 | POST | `/api/v1/models/{id}/metadata/refresh` | 重新拉取模型元数据（config/README/logo） | JWT |
 | POST | `/api/v1/models/{id}/download` | 发起公共仓库下载：`storage_id` 选存储（省略为默认存储），本地存储再给 `node_uuid` 或 `node_uuids`，共享存储由一台写入节点下载一次 | JWT |
@@ -468,7 +469,7 @@ macOS 忽略 `no_systemd`。
 | POST | `/api/v1/images/{id}/nodes/{uuid}/inspect` | 读取节点上镜像的 OCI 配置（`entrypoint`/`cmd`/`env`/`volumes`）与镜像 id；配置只在响应里返回，不写回目录 | JWT(admin) |
 | GET | `/api/v1/storages` | 存储列表（类型、路径或导出、节点汇总与问题节点、模型数、在用部署） | JWT |
 | GET | `/api/v1/storages/{id}` | 单个存储；`?all_nodes=1` 返回每个节点的状态 | JWT |
-| POST | `/api/v1/storages` | 添加存储；NFS 类先在一台节点上试挂，写不进去的保存为停用（只读） | admin |
+| POST | `/api/v1/storages` | 添加存储；NFS 类先在一台节点上试挂，写不进去的保存为停用（只读）。校验错误按原因区分，均为 400：`STORAGE_PATH_INVALID`（路径格式不对，`params.path`）、`STORAGE_PATH_DENIED`（位于 `storage_denied_paths` 下，`params.path`）、`STORAGE_PATH_REQUIRED`（缺目录）、`STORAGE_CACHE_LIMIT_NEGATIVE`（缓存上限为负）；修改、试挂与节点覆盖同样适用 | admin |
 | PATCH | `/api/v1/storages/{id}` | 修改名称、启用、默认、节点范围、路径、挂载选项、缓存目录与上限、`nfs`↔`nfs_cache` 类型；可带读取时的 `expected_updated_at` 防止覆盖并发修改，版本变化返回409 `STORAGE_CONFIG_CHANGED` | admin |
 | DELETE | `/api/v1/storages/{id}` | 移除存储对象（不删文件），并从模型列表移除只存放在此存储上的模型；有部署绑定、或部署所用模型只存放在此存储上时 409 `STORAGE_IN_USE` | admin |
 | POST | `/api/v1/storages/probe` | 在一台节点上试挂一个存储定义，不留下挂载。结果含实际 `node_uuid`、`node_name`、`target`（本次实际检查的 export 或目录 path）及 `checked_at`（控制面收到并解码结果的时间），只说明这台节点这次检查的结果；旧版本响应可缺后两字段 | admin |
@@ -540,6 +541,7 @@ macOS 忽略 `no_systemd`。
 | GET | `/api/v1/inference-templates/chips` | 模板声明支持的静态加速卡目录；可选 `arch_id` 表示模板需要的架构 ID，其他厂商字段保持原样 | JWT |
 | GET | `/api/v1/inference-templates/my-chips` | 当前集群实际探测到的加速卡列表，含 `vendor`、`name`、可选 `cc` 和已报告的 `arch_id`；未报告架构时省略 `arch_id` | JWT |
 | GET | `/api/v1/inference-templates/summary` | 模板统计摘要 | JWT |
+| GET | `/api/v1/inference-templates/weight-models` | 某个 spec 声明的权重来源对应的已登记模型（`template_id`、`spec_source`、`spec_name` 必填，缺一 400 `TEMPLATE_WEIGHT_MODELS_QUERY_INVALID`，spec 不存在 404）：`models` 为服务任一来源的模型（按 repo id 不区分大小写匹配，完整仓库可服务子目录请求，新的在前，各一次，行格式同分页列表）；`sources` 按声明顺序列出各来源，`reuse_model_id` 是选择该来源时复用的同 provider 最新模型 | JWT |
 | GET | `/api/v1/inference-templates/export/{digest}` | 按内容摘要导出可执行模板包 | JWT(admin) |
 | GET | `/api/v1/inference-templates/model/*` | 按模型路径获取模板详情（通配路径） | JWT |
 | GET | `/api/v1/inference-templates/yaml?model_id=…` | 模板编辑器里的平铺 YAML：server 用导入同一套目录类型写出，可加 `spec_source=user`（或 `upstream`）只留该来源的 spec，`readme_*` 字段只在 spec 全部列出或模板本身归用户时写出；原样保存（`import?overwrite=true`）不丢字段 | JWT |
@@ -1663,6 +1665,8 @@ RunPod 需要开放端口或补平台公钥时，先返回 409 `INSTANCE_RESTART
 | POST | `/api/v1/pull/credentials/{id}/test` | 从管理节点（经它的出站代理）试用凭据：有用户名的按镜像仓库登录 `/v2/`，只有令牌的按 Hugging Face 的 `GET /api/whoami-v2` 校验；200 `{ok, message}`，被拒 422 `CREDENTIAL_LOGIN_REJECTED`（`host`），连不上 502 `CREDENTIAL_LOGIN_FAILED`（`host`、`detail`） | JWT(admin) |
 | GET | `/api/v1/pull/registry-credentials` | 已删除：本路由及其 `POST`、`PUT/DELETE {id}`、`POST {id}/test` 回 410 `SETTING_REMOVED`（`route` 为 `/api/v1/pull/credentials`） | JWT(admin) |
 | GET | `/api/v1/server/listen` | server 的监听地址：已保存的 `console`/`agent`/`gateway` 地址、当前实际打开的 `running` 套接字、`restart_pending`（保存的地址要重启才生效）、`config_path`，以及 `editable`/`overridden`（未用 server.yaml 启动或被 `--addr` 覆盖时不可编辑） | JWT(admin) |
+| GET | `/api/v1/server/outbound-policy` | 出站私网访问策略：原始 `restrict_private_hosts`（默认 false）、`allow_private_hosts`、`editable` 与仅基于策略值的 `revision`；不返回配置文件其他字段 | JWT(admin) |
+| PUT | `/api/v1/server/outbound-policy` | 原子保存全部必填的 `restrict_private_hosts`、`allow_private_hosts` 与 `revision`，返回更新后的策略；写入 server.yaml 后立即生效。400 `SERVER_OUTBOUND_POLICY_INVALID`，409 `SERVER_OUTBOUND_POLICY_CONFLICT` / `SERVER_OUTBOUND_POLICY_READ_ONLY`，503 `SERVER_OUTBOUND_POLICY_UNAVAILABLE`；保留其他配置及注释，不支持安全编辑的文件保持原样 | JWT(admin) |
 
 同步组创建和改名的名称按 trim 后精确文本唯一（区分大小写，最多 64 个 UTF-8 字节）。重复名为 400 `PULL_SETTING_INVALID`，`params.field=name`、`params.reason=name_duplicate`。校验错误提供稳定 `reason` 和参数（如 `max`），英文 `detail` 保留供旧客户端和诊断；界面按 `reason` 本地化。
 

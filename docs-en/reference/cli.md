@@ -47,7 +47,7 @@ To specify another installation directory, append `--dir /path/to/installation` 
 | | [`doctor`](#gpuworks-agent-doctor) | Print node environment self-check results | Troubleshooting node connection, GPU, or runtime issues |
 | | [`grant-device-access`](#gpuworks-agent-grant-device-access) | Give a non-root runtime user access to accelerator device nodes | Called automatically by the installation script; used to manually grant missing permissions on rootless runveil nodes |
 | | [`bench`](#gpuworks-agent-bench) | Load-test an OpenAI-compatible endpoint | Performance evaluation; the command-line equivalent of the Benchmarks page |
-| | [`runveil`](#gpuworks-agent-runveil) | Inspect or enter runveil containers | Troubleshooting on runveil nodes |
+| | [`runveil`](#gpuworks-agent-runveil) | Inspect or enter runveil containers, import image archives | Troubleshooting on runveil nodes; importing an image archive copied onto the node |
 | | [`install-service`](#gpuworks-agent-install-service) | Register this binary as a macOS launchd job | Called by the installation script on Mac |
 | | [`uninstall`](#gpuworks-agent-uninstall) | Stop and remove the agent service | Decommissioning a node |
 | | `version` | Print the version | Anyone |
@@ -143,7 +143,7 @@ Fetch the current version from a [release channel](../adr/0040-signed-multi-sour
 | `--data DIR` / `--logs DIR` | Directories recorded at installation | Override the data/log directories |
 | `--channel NAME` | `update_channel` in `server.yaml`, or the build-time channel if absent (`nightly` for master builds, `release` for `v*` tag builds) | Channel whose release index to read: `release` (stable releases) or `nightly` (rolling previews); applies only to release channels |
 | `--source URL` | Three built-in public sources | Source in release channel format (`<URL>/<channel>/index.json`); repeatable, replaces the built-in sources; used for customer-hosted mirrors |
-| `--base-url URL` | Empty | Read from a release site instead (`<URL>/data/release.json` and `<URL>/downloads/`), such as the internal `https://gpuworks.zstack.ai` |
+| `--base-url URL` | Empty | Read from a release site instead (`<URL>/data/release.json` and `<URL>/downloads/`), such as one hosted on an internal network |
 | `--archive FILE` | Empty | Local release archive `gpuworks-<release_id>-<os>-<arch>.tar.gz`; makes no network requests |
 | `--version ID` | Empty | Expected release ID; error if it differs from the current channel/site version or the archive version, rather than silently upgrading to another version |
 | `--keep N` | `3` | Number of pre-upgrade backup sets to retain |
@@ -264,7 +264,7 @@ Reset a user's password by modifying the database directly, without going throug
 
 ## gpuworks support-bundle
 
-Collects diagnostics without the server, for when the server does not start or the console cannot be reached; the content matches the console's [Collect diagnostics](../how-to/troubleshooting.md#when-you-cannot-log-in-on-site-debug-collection-and-collecting-diagnostics), except that the nodes' part cannot be collected (the manifest marks them offline). Prints the archive's path when done.
+Collects diagnostics without the server, for when the server does not start or the console cannot be reached; the content matches the console's [Collect diagnostics](../how-to/troubleshooting.md#when-you-cannot-log-in-on-site-debug-collection-and-collecting-diagnostics), except that the nodes' part cannot be collected (the manifest marks them offline). Prints the archive's path when done. The archive is assembled in the directory of `--out`, not in the data directory, so with `--out` on another disk it still works when the server's disk is full.
 
 | flag | Default | Description |
 |---|---|---|
@@ -411,6 +411,7 @@ Load-test an OpenAI-compatible endpoint (the Benchmarks page uses the same built
 | `--max-in-flight N` | `0` | Maximum in-flight requests in open-loop mode; 0 means unlimited |
 | `--point-duration S` | `60` | Arrival duration per open-loop point (seconds); request count = arrival rate × duration, with a minimum of 20 |
 | `--warmup-requests N` | `1` | Warmup requests sent and discarded before the first point; 0 disables warmup |
+| `--request-timeout S` | `600` | Seconds each request, warmup included, may take before it fails; 10–7200 |
 | `--ignore-eos BOOL` | `true` | Include `ignore_eos` in random / agentic requests to generate up to the target output length |
 | `--dataset KIND` | `random` | `random` / `multiturn` / `agentic` |
 | `--preset NAME` | `agentic-80k-v1` | Agentic input preset: `agentic-{10k,20k,40k,80k,128k,256k,512k,1m}-v1` |
@@ -426,7 +427,7 @@ Load-test an OpenAI-compatible endpoint (the Benchmarks page uses the same built
 
 ## gpuworks-agent runveil
 
-Troubleshoot runveil nodes by reading the agent's state directory directly, without going through the agent or requiring Python.
+Troubleshoot runveil nodes and import images by reading and writing the agent's state directory directly, without going through the agent or requiring Python.
 
 Usage: `gpuworks-agent runveil [--state DIR] <command>`. `--state` must appear before the command and has the same default as `run` (including `GPUWORKS_STATE_DIR`).
 
@@ -434,11 +435,13 @@ Usage: `gpuworks-agent runveil [--state DIR] <command>`. `--state` must appear b
 |---|---|
 | `ps [-a]` | List containers (NAME/IMAGE/STATUS/PID/CREATED); only running containers by default; `-a` (`--all`) lists all |
 | `images` | List images (REPOSITORY/TAG/IMAGE ID/SIZE) |
+| `load -i FILE REF` | Register a `docker save` or OCI archive (`.tar` or `.tar.gz`) as the image `REF`; `-i` may also be written `--input` and may come before or after `REF` |
 | `exec NAME [CMD [ARG...]]` | Execute a command inside a container with the workload's environment variables, mounts, and GPUs; defaults to `/bin/sh -l`, with the exit code passed through |
 | `logs [-f] [-n N] NAME` | Print container output; `-n` (`--tail`) selects the number of trailing lines, defaulting to all; `-f` (`--follow`) follows until the container stops |
 
 - `NAME` can be a unique prefix of a container name. Multiple matches list the candidates and fail.
 - Any user who can read the state directory can execute `ps`/`images`/`logs`, with the same results as root. `exec` must run as root or the agent's runtime user (the owner of the container spec file recorded by the agent).
+- `REF` is required for `load`: give the full image reference the Images page shows (such as `gpuworks/gpuworks-runner:cuda13.0-sglang0.5.22-r1`). The platform decides whether a node has an image by this reference; the tag recorded in the archive may differ and is not registered separately. Digest references are not accepted. Run it as root or as the owner of `udocker/` in the state directory; new files are given to that owner so the runtime user can read and replace them. The agent need not be stopped: after its next image status report (about one minute) the Images page shows “Present.” On failure no image is registered and the layers already written are removed.
 - SIZE in `images` is the compressed size actually stored on the node. Images registered by the old udocker CLI have no manifest, so ID and SIZE display `-`.
 - If the state directory contains no runveil state, report an error prompting you to pass `--state` (if the agent's state directory is specified through `GPUWORKS_STATE_DIR` in the unit, set it here as well).
 - Exit codes: `0` success; `1` runtime error; `2` usage error.
@@ -511,7 +514,7 @@ and the CI `release-publish` job. rclone handles uploads; this tool does not hol
 | `adopt -dir DIR -release-id ID` | Verify `releases/<id>/` copied back from a source: each package must match `SHA256SUMS` and belong to `ID`. Print the build time recorded in the package's `INSTALL.txt`; exit with a nonzero status on a mismatch |
 | `verify -channel C -source URL … [-release-id ID] [-index FILE] [-full]` | Read the index from each source and verify its signature, check the release ID, and send a HEAD request for each file to check its size. With `-full`, download the files and check their sha256 instead. With `-index`, use a local, unpublished signed index to verify files on each source (without reading the source's own index), for checks before switching channels. Exit with a nonzero status if any source fails |
 | `newer -channel C -built-at TIME [-source URL …]` | If a source serves a version in the same channel with a build time later than `TIME`, print it and exit with status 0. Exit with status 1 if none exists, or 2 for other errors. The publish script uses this result to skip older pipelines that finish out of order |
-| `prune -keep N [-protect ID …] < listing.json` | Read the output of `rclone lsjson -R --files-only <remote>/releases` and print version directories that can be deleted, excluding the latest N versions and protected versions |
+| `prune [-keep N] [-protect ID …] < listing.json` | Read the output of `rclone lsjson -R --files-only <remote>/releases` and print version directories that can be deleted: version tag (`vYY.M.PATCH`) directories are never deleted; of the other (nightly) directories, the latest N (default 30) and protected versions are kept |
 
 ### gpuworks-image-manifest
 

@@ -50,6 +50,8 @@ git diff --check
   之后只修缺陷的补丁版本依次加一。
 - 每条发布线一个分支 `release/YY.M`，从 master 上选定的提交切出。分支上只合缺陷修复：修复先合进 master，再
   `git cherry-pick -x` 到发布分支。
+- 打 tag 前，在 `docs/releases/` 新增该版本的发布说明（`vYY.M.PATCH.md`，含升级须知、新增、变更、修复、安全与下载校验和），
+  在 `docs/releases/README.md` 的版本列表顶部加一行，并同步 `docs-en/releases/` 的译文；先合入 master，再回合到发布分支。`release` 渠道构建时，`scripts/package_release.sh` 检查中英文版本页都存在、版本列表里有这一行，缺任何一项都在构建前失败。
 - 在发布分支上打带注释的 tag 并推送（`git tag -a v26.11.0 -m "GPUWorks 26.11.0"`、`git push origin v26.11.0`）。
   只有匹配 `^v[0-9]+\.[0-9]+\.[0-9]+$` 的 tag 会创建 pipeline 并发布到 `release` 渠道；`v26.11.0-rc.1` 这类 tag 不创建 pipeline。
 - `v*` 必须在 GitLab 里设为 protected tag：签名私钥和发布源凭据是受保护变量，不受保护的 tag 的 pipeline 读不到它们，发布 job 会失败。
@@ -100,7 +102,7 @@ CI 的 `release-publish` 在 master 或版本 tag 的四个构建 job 全部成�
 5. 切换前，`gpuworks-dist verify -index` 用新索引逐个核对三个公开地址（含 CDN）上的文件大小，任一不符就停下，通道仍指向上一版；
 6. 先存下各源当前的索引、`latest` 与 `manifest.json`，再切换到新版本，并从三个公开地址读回核对；切换或读回失败时把各源恢复到原来的指针后退出；
 7. 把 `scripts/get.sh` 以 `Cache-Control: no-cache` 传到每个源的根目录 `get.sh`；
-8. 每个源只保留最近 20 个版本目录，以及两个渠道 `latest` 指向的版本。
+8. 版本 tag（`vYY.M.PATCH`）的目录在每个源上永久保留；nightly 目录每个源只保留最近 30 个（`GPUWORKS_DIST_KEEP`），以及两个渠道 `latest` 指向的版本。
 
 源上的 `releases/<id>/` 与它自己的 `SHA256SUMS` 对不上（例如本规则之前被覆盖过）时，发布会在第 4 步失败而不切换。处理方式：确认哪个源上的
 那份是对的，把错的那份删掉或换成对的，并清掉 CDN 上 `releases/<id>/` 的缓存，再重跑发布。

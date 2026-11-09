@@ -185,6 +185,11 @@ core-ui-test:
   # hard-requiring this job (see .l4-acceptance) but the nightly report still
   # reads pipeline status, so a single flake stays worth absorbing.
   retry: 1
+  # The suite is CPU-bound: one run takes ~4 min on the 192-core runner but
+  # ~16 on the 20-core ones, and a pipeline lands wherever a slot is free.
+  # Three shards (node --test-shard, see TEST_SHARD in ui/package.json) keep
+  # the slow-runner case near the fast one instead of on the critical path.
+  parallel: 3
   image:
     name: node:22-bookworm@sha256:0557ac14e0d45d02ed563067b82856ca5e7aa3437fa28d98d4350ea9c3d9494a
   variables:
@@ -202,9 +207,9 @@ core-ui-test:
     policy: pull
   needs: []
   script:
-    # The macOS serve adapters' tests need only the image's python3.
-    - make test-host-env-adapters
-    - make test-strata-queue-assets
+    # The macOS serve adapters' tests need only the image's python3. They are
+    # not part of the UI suite, so only the first shard runs them.
+    - if [ "$CI_NODE_INDEX" = 1 ]; then make test-host-env-adapters && make test-strata-queue-assets; fi
     - cd ui
     # See core-ui: registry.npmmirror.com occasionally stalls mid-transfer and
     # resets the connection instead of failing fast, so retry the install.
@@ -220,7 +225,7 @@ core-ui-test:
         rm -rf node_modules
         sleep 15
       done
-    - npm run test:coverage
+    - TEST_SHARD="$CI_NODE_INDEX/$CI_NODE_TOTAL" npm run test:coverage
   artifacts:
     when: always
     # Only the reports: coverage/tmp holds c8's raw V8 dumps (one per test
@@ -406,6 +411,8 @@ core-vet:
       -v /usr/bin/docker:/usr/bin/docker:ro
       -v "$CI_PROJECT_DIR:$CI_PROJECT_DIR"
       -v "$GPUWORKS_CI_SOCKET_DIR:/run/gpuworks-e2e"
+      --tmpfs /run/gpuworks-full-disk:rw,size=64m,mode=1777
+      -e GPUWORKS_TEST_FULL_DISK_TMPFS=/run/gpuworks-full-disk
       -v "$DOCKER_HOST_CACHE/go-mod:/go-cache/mod"
       -v "$DOCKER_HOST_CACHE/go-build:/go-cache/build"
       -w "$CI_PROJECT_DIR"
@@ -419,6 +426,8 @@ core-vet:
       -e GOSUMDB=sum.golang.google.cn
       -e GOTOOLCHAIN=local
       -e GPUWORKS_TEST_STRICT=1
+      -e CI_NODE_INDEX
+      -e CI_NODE_TOTAL
       -e GPUWORKS_L3_RUNTIME_BASE_IMAGE="$GPUWORKS_L3_RUNTIME_BASE_IMAGE"
       -e GPUWORKS_L3_SHELL_BASE_IMAGE="$GPUWORKS_L3_SHELL_BASE_IMAGE"
       -e GPUWORKS_L3_NO_PYTHON_IMAGE="$GPUWORKS_L3_NO_PYTHON_IMAGE"
@@ -456,8 +465,13 @@ core-l2:
   # the nightly report even though the L4 lanes no longer depend on this job.
   # A persistent failure still fails: only one retry.
   retry: 1
+  # The suite is one package whose ~70 cases run one after another for
+  # 14-23 min. Three round-robin shards by test name (L2_SHARD, see
+  # scripts/go_test_shard.sh) each carry about a third; -v puts every case's
+  # duration in the trace for rebalancing.
+  parallel: 3
   variables:
-    DOCKER_TEST_COMMAND: "make test-l2 COVERPROFILE=coverage-l2.out"
+    DOCKER_TEST_COMMAND: "make test-l2 GO_TEST_FLAGS=-v L2_SHARD=$CI_NODE_INDEX/$CI_NODE_TOTAL COVERPROFILE=coverage-l2.out"
   artifacts:
     when: always
     paths:

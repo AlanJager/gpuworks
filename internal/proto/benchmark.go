@@ -117,6 +117,11 @@ const (
 	// BenchmarkWarningWarmupUnsupported marks a run whose load-origin agent
 	// predates warmup (no CapBenchWarmup); it ran without warmup requests.
 	BenchmarkWarningWarmupUnsupported = "BENCHMARK_WARMUP_UNSUPPORTED"
+	// BenchmarkWarningRequestTimeoutUnsupported marks a run whose load-origin
+	// agent predates the configurable request timeout (no
+	// CapBenchRequestTimeout); it bounded every request by five minutes
+	// instead of the configured timeout.
+	BenchmarkWarningRequestTimeoutUnsupported = "BENCHMARK_REQUEST_TIMEOUT_UNSUPPORTED"
 	// BenchmarkWarningStreamOutputUnrecognized marks a run in which a
 	// successful streamed request reported output tokens in its usage but no
 	// stream chunk carried text the load generator recognizes, so its TTFT,

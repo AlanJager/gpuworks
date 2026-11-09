@@ -1,6 +1,7 @@
 package store
 
 import (
+	"database/sql"
 	"encoding/json"
 	"strconv"
 	"time"
@@ -340,6 +341,28 @@ func preloadCards(db *gorm.DB) *gorm.DB {
 	return db.Preload("GPUs", func(cards *gorm.DB) *gorm.DB {
 		return cards.Order(cardOrder)
 	})
+}
+
+// withCards runs a node query with its cards preloaded as one read. The
+// preload is a second statement, and between two separate statements a status
+// report can commit, pairing a node row from before the report with the cards
+// it wrote (a dGPU capability then derived from cards the node row does not
+// know the runtime of yet). On the read pool both statements run in one
+// transaction and so read one snapshot. The writer pool is a single connection
+// that every write goes through, so holding it across both statements already
+// keeps any write out, without a BEGIN and COMMIT on each lookup. A store
+// bound to a transaction or a held connection (&Store{db: tx} inside a write
+// transaction) already runs both statements on it: asking its pool for a
+// connection there would wait forever on the one that transaction holds.
+func (s *Store) withCards(db *gorm.DB, query func(*gorm.DB) error) error {
+	run := func(tx *gorm.DB) error { return query(preloadCards(tx)) }
+	if _, pool := db.Statement.ConnPool.(*sql.DB); !pool {
+		return run(db)
+	}
+	if db == s.db {
+		return db.Connection(run)
+	}
+	return db.Transaction(run)
 }
 
 // encodeCardProcesses stores the card's foreign processes as the snapshot

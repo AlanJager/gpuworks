@@ -311,6 +311,11 @@ test("the model ID and its three specs stay together without repeating the field
   assert.ok(within(dialog.getByText(models.detail.contextLength)).getByText(models.unrecognized));
   assert.ok(within(dialog.getByText(models.detail.precision)).getByText(models.unrecognized));
   assert.ok(within(dialog.getByText(models.column.weight)).getByText("—"));
+  assert.equal(dialog.queryByRole("button", { name: models.detail.editSourceID }), null);
+  view.rerender(detail({ source: "local", source_id_editable: true }));
+  const editableID = within(dialog.getByTitle(models.column.sourceID));
+  fireEvent.click(editableID.getByRole("button", { name: models.detail.editSourceID }));
+  assert.equal((editableID.getByRole("textbox") as HTMLTextAreaElement).value, "Qwen/Qwen3-8B");
 });
 
 test("each file shows its own revision even when the requested branch or another node's revision differs", () => {

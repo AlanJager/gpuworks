@@ -41,8 +41,8 @@
       "component": "Text input whose label follows the type",
       "request": "path",
       "persisted": "path",
-      "covered": ["relative path is rejected without a request", "an absolute path outside storage_probe_roots reaches POST /storages, is refused with 400 STORAGE_PATH_INVALID, the form shows the save-failed alert with the code's localized text, keeps the draft and creates no record", "an absolute path below the server's storage root is persisted"],
-      "missing": ["empty path for each type", "per-node override paths", "NFS mount point defaults", "the root boundary on PATCH /storages/{id} and POST /storages/probe", "BLOCKED_PRODUCT: retrying in the same dialog after the refusal — the enabled Save button can keep AntD's collapsed loading icon in its accessible name (\"loading Save\") after a fast failed save; the case cancels and creates from a fresh form instead", "BLOCKED_PRODUCT: an actionable reason — STORAGE_PATH_INVALID reads \"paths must be absolute and sizes non-negative\" and does not describe the storage-root boundary"]
+      "covered": ["relative path is rejected without a request", "a protected system directory reaches POST /storages, is refused with 400 STORAGE_PATH_DENIED, the form shows the save-failed alert with the code's localized text naming the path, keeps the draft and creates no record", "a custom absolute path outside the configured storage_probe_roots is persisted"],
+      "missing": ["empty path for each type", "per-node override paths", "NFS mount point defaults", "system-directory protection on PATCH /storages/{id} and POST /storages/probe", "BLOCKED_PRODUCT: retrying in the same dialog after the refusal — the enabled Save button can keep AntD's collapsed loading icon in its accessible name (\"loading Save\") after a fast failed save; the case cancels and creates from a fresh form instead"]
     },
     {
       "id": "storage.scope",

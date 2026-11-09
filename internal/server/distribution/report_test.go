@@ -44,16 +44,26 @@ func TestFetchIndexReportingSendsTheReportToDefaultSources(t *testing.T) {
 	if err != nil || fetched.Index.Server.ReleaseID != "abc1234" {
 		t.Fatalf("fetch = %+v, %v", fetched, err)
 	}
-	// Both sources were asked at once; whichever answered, the parameters are the report's.
+	// Both sources were asked at once and the race cancels the loser once
+	// one answers, so the loser's request may never arrive. Every request
+	// that did carries the report's parameters, and the winner's did.
 	deadline := time.Now().Add(2 * time.Second)
 	for len(a.queryLog())+len(b.queryLog()) < 4 && time.Now().Before(deadline) {
 		time.Sleep(10 * time.Millisecond)
 	}
+	reached := 0
 	for _, s := range []*objectStore{a, b} {
 		log := s.queryLog()
-		if len(log) < 2 || log[1] != report.Encode() {
+		if len(log) < 2 {
+			continue
+		}
+		reached++
+		if log[1] != report.Encode() {
 			t.Fatalf("source saw %q, want %q", log, report.Encode())
 		}
+	}
+	if reached == 0 {
+		t.Fatalf("no source saw the reporting fetch: %q, %q", a.queryLog(), b.queryLog())
 	}
 }
 

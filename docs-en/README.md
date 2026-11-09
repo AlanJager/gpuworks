@@ -12,6 +12,7 @@ see the index in [`artifacts/README.md`](../artifacts/README.md)). Chinese origi
 | New to GPUWorks | [Install GPUWorks and Deploy Your First Model](tutorials/getting-started.md), then [Console Page Tour](reference/web-ui-tour.md) |
 | Trying it locally on a Mac | [Run Your First Local Model on a Mac](tutorials/mac-local-model.md) |
 | Going to production | [Install and Upgrade the Control Plane](how-to/install-server.md) → [Production Deployment](how-to/deploy-production.md) → [Upgrades and Version Compatibility](how-to/upgrade-and-compatibility.md) |
+| Upgrading to a new version | [Release Notes](releases/README.md) → [Upgrades and Version Compatibility](how-to/upgrade-and-compatibility.md) |
 | Having a problem | [Troubleshooting](how-to/troubleshooting.md) |
 | Choosing an approach | [Choosing Between dGPU, Sleep/Wake, Multi-Node Inference, Replicas, and PD](explanation/choosing-features.md), [Typical Deployment Topologies](explanation/topologies.md) |
 | Integrating with the API | [OpenAI-Compatible Gateway](reference/openai-gateway.md), [Complete REST API Routes](reference/api.md) |
@@ -108,6 +109,10 @@ see the index in [`artifacts/README.md`](../artifacts/README.md)). Chinese origi
 - [dGPU Semantics and Boundaries](explanation/dgpu.md)
 - [Security Model and Trust Boundaries](explanation/security-model.md)
 - [Architecture Decision Records (ADRs)](adr/README.md)
+
+## Release Notes
+
+- [Release notes for each version](releases/README.md): new features, behavior changes, bug fixes, and upgrade notes, newest first
 
 ## Developer Documentation
 

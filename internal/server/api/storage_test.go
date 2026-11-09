@@ -147,7 +147,12 @@ func TestStoragesAPI(t *testing.T) {
 		{`{"name":"nfs1","type":"nfs","export":"h:/x","mount_options":"rw;reboot"}`, ErrorStorageOptionsInvalid},
 		{`{"name":"nvme","type":"local","path":"/nvme","all_nodes":false}`, ErrorStorageTargetsRequired},
 		// A local storage states its directory; it never falls back to the agent's.
-		{`{"name":"nvme","type":"local"}`, ErrorStoragePathInvalid},
+		{`{"name":"nvme","type":"local"}`, ErrorStoragePathRequired},
+		{`{"name":"nvme","type":"local","path":"/data/../models"}`, ErrorStoragePathInvalid},
+		{`{"name":"nvme","type":"local","path":"/"}`, ErrorStoragePathInvalid},
+		{`{"name":"nvme","type":"local","path":"/etc/models"}`, ErrorStoragePathDenied},
+		{`{"name":"cache","type":"nfs_cache","export":"h:/x","cache_max_bytes":-1}`, ErrorStorageCacheLimitNegative},
+		{`{"name":"nvme","type":"local","path":"/nvme","targets":[{"node_uuid":"any","cache_max_bytes":-1}]}`, ErrorStorageCacheLimitNegative},
 	} {
 		code, body := call(admin, http.MethodPost, "/api/v1/storages", bad.body)
 		if code != http.StatusBadRequest || !strings.Contains(body, `"code":"`+bad.code+`"`) {

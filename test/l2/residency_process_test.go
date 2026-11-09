@@ -200,8 +200,6 @@ func postFakeSleepable(t *testing.T, base, token, node string, modelID uint, ser
 
 // removeDeployment deletes the deployment and waits until it is gone.
 func removeDeployment(t *testing.T, base, token string, id uint) {
-	if resp, err := authedDo(t, http.MethodDelete, base, token, "/api/v1/deployments/"+itoa(id), nil); err == nil && resp != nil {
-		resp.Body.Close()
-	}
-	waitDeploymentGone(t, base, token, id, 30*time.Second)
+	t.Helper()
+	deleteDeployment(t, base, token, id)
 }

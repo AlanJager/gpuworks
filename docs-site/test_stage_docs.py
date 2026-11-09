@@ -259,5 +259,25 @@ class TutorialOrderTest(unittest.TestCase):
                     self.assertEqual(before, {p: p.read_bytes() for p in source.rglob("*.md")})
 
 
+
+class ReleaseOrderTest(unittest.TestCase):
+    def test_release_pages_follow_the_index_order(self):
+        with tempfile.TemporaryDirectory() as workspace:
+            source = Path(workspace)
+            (source / "releases").mkdir()
+            (source / "releases" / "README.md").write_text(
+                "# 发布说明\n\n| 版本 |\n|---|\n| [v26.12.0](v26.12.0.md) |\n| [v26.11.2](v26.11.2.md) |\n"
+                "| [v26.11.10](v26.11.10.md) |\n\n见[升级](../how-to/upgrade.md)，再看 [v26.12.0](v26.12.0.md#升级须知)。\n",
+                encoding="utf-8",
+            )
+            self.assertEqual(stage_docs.release_weights(source), {
+                "releases/v26.12.0.md": 1, "releases/v26.11.2.md": 2, "releases/v26.11.10.md": 3,
+            })
+
+    def test_missing_release_index_gives_no_weights(self):
+        with tempfile.TemporaryDirectory() as workspace:
+            self.assertEqual(stage_docs.release_weights(Path(workspace)), {})
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -47,7 +47,7 @@ gpuworks restarted (systemd)
 | | [`doctor`](#gpuworks-agent-doctor) | 打印节点环境自检 | 排查节点接入、GPU、运行时问题 |
 | | [`grant-device-access`](#gpuworks-agent-grant-device-access) | 让非 root 运行时用户获得加速卡设备节点的访问权 | 安装脚本自动调用；无 root 的 runveil 节点手工补权限 |
 | | [`bench`](#gpuworks-agent-bench) | 对 OpenAI 兼容端点做压测 | 性能评估；评测页的命令行等价入口 |
-| | [`runveil`](#gpuworks-agent-runveil) | 查看/进入 runveil 容器 | 在 runveil 节点上排障 |
+| | [`runveil`](#gpuworks-agent-runveil) | 查看/进入 runveil 容器，导入镜像归档 | 在 runveil 节点上排障；把拷到节点上的镜像归档导入 |
 | | [`install-service`](#gpuworks-agent-install-service) | 把本二进制注册为 macOS 的 launchd 任务 | 安装脚本在 Mac 上调用 |
 | | [`uninstall`](#gpuworks-agent-uninstall) | 停止并移除 agent 服务 | 节点下线 |
 | | `version` | 打印版本 | 任何人 |
@@ -143,7 +143,7 @@ gpuworks restarted (systemd)
 | `--data DIR` / `--logs DIR` | 安装时记录的目录 | 覆盖数据/日志目录 |
 | `--channel NAME` | `server.yaml` 的 `update_channel`，没有时为构建时的渠道（master 构建 `nightly`，`v*` tag 构建 `release`） | 读哪个渠道的发布索引：`release`（正式发布版）或 `nightly`（滚动预览版）；只用于发布通道 |
 | `--source URL` | 内置的三个公共源 | 发布通道格式的源（`<URL>/<channel>/index.json`），可重复，替换内置源；用于客户自建镜像站 |
-| `--base-url URL` | 空 | 改读发布站（`<URL>/data/release.json` 与 `<URL>/downloads/`），如内网的 `https://gpuworks.zstack.ai` |
+| `--base-url URL` | 空 | 改读发布站（`<URL>/data/release.json` 与 `<URL>/downloads/`），例如自建在内网的发布站 |
 | `--archive FILE` | 空 | 本地发布包 `gpuworks-<release_id>-<os>-<arch>.tar.gz`，不发任何网络请求 |
 | `--version ID` | 空 | 期望的 release id；与渠道或站点当前版本（或发布包里的版本）不一致时报错，不会静默升到别的版本 |
 | `--keep N` | `3` | 保留的升级前备份组数 |
@@ -264,7 +264,7 @@ gpuworks uninstall --dir /opt/gpuworks/server --purge --dry-run --json
 
 ## gpuworks support-bundle
 
-不经过 server 收集诊断信息，用于 server 起不来或控制台打不开时；内容与控制台的[收集诊断信息](../how-to/troubleshooting.md#无法登录现场时调试采集与收集诊断信息)相同，但节点那部分收不到（manifest 里标为离线）。完成后打印压缩包路径。
+不经过 server 收集诊断信息，用于 server 起不来或控制台打不开时；内容与控制台的[收集诊断信息](../how-to/troubleshooting.md#无法登录现场时调试采集与收集诊断信息)相同，但节点那部分收不到（manifest 里标为离线）。完成后打印压缩包路径。压缩包在 `--out` 所在的目录组装，不写数据目录，所以 server 所在磁盘写满时，把 `--out` 指到另一块盘照样能收集。
 
 | flag | 默认值 | 说明 |
 |---|---|---|
@@ -411,6 +411,7 @@ gpuworks-agent doctor --connectivity --state /opt/gpuworks --json
 | `--max-in-flight N` | `0` | 开环在途请求上限，0 为不限 |
 | `--point-duration S` | `60` | 开环每个点位的到达时长（秒）；请求数 = 到达率 × 时长，至少 20 |
 | `--warmup-requests N` | `1` | 第一个点位前发送并丢弃的预热请求数，0 为不预热 |
+| `--request-timeout S` | `600` | 每个请求（含预热）的超时秒数，范围 10–7200 |
 | `--ignore-eos BOOL` | `true` | random / agentic 请求带 `ignore_eos`，生成到目标输出长度 |
 | `--dataset KIND` | `random` | `random` / `multiturn` / `agentic` |
 | `--preset NAME` | `agentic-80k-v1` | agentic 输入预设：`agentic-{10k,20k,40k,80k,128k,256k,512k,1m}-v1` |
@@ -426,7 +427,7 @@ gpuworks-agent doctor --connectivity --state /opt/gpuworks --json
 
 ## gpuworks-agent runveil
 
-在 runveil 节点上排障：直接读 agent 的 state 目录，不经过 agent，也不需要 Python。
+在 runveil 节点上排障和导入镜像：直接读写 agent 的 state 目录，不经过 agent，也不需要 Python。
 
 用法：`gpuworks-agent runveil [--state DIR] <命令>`。`--state` 必须写在命令之前，默认同 `run`（含 `GPUWORKS_STATE_DIR`）。
 
@@ -434,11 +435,13 @@ gpuworks-agent doctor --connectivity --state /opt/gpuworks --json
 |---|---|
 | `ps [-a]` | 列容器（NAME/IMAGE/STATUS/PID/CREATED）；默认只列运行中的，`-a`（`--all`）列全部 |
 | `images` | 列镜像（REPOSITORY/TAG/IMAGE ID/SIZE） |
+| `load -i FILE REF` | 把 `docker save` 或 OCI 归档（`.tar` 或 `.tar.gz`）以 `REF` 登记为镜像；`-i` 也可写作 `--input`，可放在 `REF` 前后 |
 | `exec NAME [CMD [ARG...]]` | 在容器里执行命令，带上工作负载的环境变量、挂载与 GPU；默认 `/bin/sh -l`，退出码透传 |
 | `logs [-f] [-n N] NAME` | 打印容器输出；`-n`（`--tail`）取末尾行数，默认全部；`-f`（`--follow`）跟随至容器停止 |
 
 - `NAME` 可以是容器名的唯一前缀；匹配多个时列出候选并失败。
 - `ps`/`images`/`logs` 任意能读 state 目录的用户都能执行，结果与 root 相同；`exec` 必须以 root 或 agent 的运行用户（agent 记录该容器 spec 文件的属主）执行。
+- `load` 的 `REF` 必填，填镜像页显示的完整镜像引用（如 `gpuworks/gpuworks-runner:cuda13.0-sglang0.5.22-r1`）：平台按这个引用判断节点上有没有镜像，归档里自带的 tag 可以不同，也不会另外登记。不接受 digest 引用。必须以 root 或 state 目录里 `udocker/` 的属主执行，新文件交给该属主，运行用户能读取和替换。不需要停 agent，agent 下一次上报镜像状态（约一分钟）后镜像页显示「已存在」。失败时不登记镜像，已写入的层随之删除。
 - `images` 的 SIZE 是节点实际存储的压缩大小；旧 udocker CLI 登记的镜像没有 manifest，ID 与 SIZE 显示为 `-`。
 - state 目录里没有 runveil 状态时报错并提示传 `--state`（agent 的 state 目录若由单元里的 `GPUWORKS_STATE_DIR` 指定，这里需要同样设置）。
 - 退出码：`0` 成功；`1` 运行错误；`2` 用法错误。
@@ -511,7 +514,7 @@ server 在 `/install.sh` 提供的引导脚本，添加节点时界面生成 `cu
 | `adopt -dir DIR -release-id ID` | 核对从某个源拷回的 `releases/<id>/`：包与 `SHA256SUMS` 逐个一致、都属于 `ID`，打印包内 `INSTALL.txt` 记录的构建时间；不一致时非零退出 |
 | `verify -channel C -source URL … [-release-id ID] [-index FILE] [-full]` | 逐个源读取并验签索引，核对 release id，并对每个文件发 HEAD 核对大小；`-full` 改为下载并核对 sha256；`-index` 改用本地尚未发布的签名索引核对各源上的文件（不读源自己的索引），用于切换通道前。任一源失败即非零退出 |
 | `newer -channel C -built-at TIME [-source URL …]` | 有源在服务构建时间晚于 `TIME` 的同渠道版本时打印它并以 0 退出，没有时以 1 退出，其他错误以 2 退出；发布脚本据此跳过乱序完成的旧流水线 |
-| `prune -keep N [-protect ID …] < listing.json` | 读 `rclone lsjson -R --files-only <remote>/releases` 的输出，打印最新 N 个与受保护版本之外、可以删除的版本目录 |
+| `prune [-keep N] [-protect ID …] < listing.json` | 读 `rclone lsjson -R --files-only <remote>/releases` 的输出，打印可以删除的版本目录：版本 tag（`vYY.M.PATCH`）的目录永不删除，其余（nightly）目录保留最新 N 个（默认 30）与受保护的版本 |
 
 ### gpuworks-image-manifest
 

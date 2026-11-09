@@ -22,7 +22,7 @@ runveil；`udocker` 这个名字只留在线上值、配置项、目录名和兼
 | 拉取、导入、导出镜像 | agent 内的 native 实现：多层并发、大层分段下载、边下边解压 | `runtime/udocker/native` |
 | 创建容器 rootfs | native 解包，写成 udocker 认得的 `containers/<name>/ROOT` | `runtime/udocker/native` |
 | 启动、exec、终端、删除 | agent 直接调用内嵌的 patched PRoot，按 udocker P1 语义构造参数和环境，移植了 `setup --nvidia` | `runtime/runveil` |
-| 排障 | `gpuworks-agent runveil ps / images / exec / logs`，直接读磁盘状态，不经过 agent | `runveilcli` |
+| 排障与手工导入 | `gpuworks-agent runveil ps / images / load / exec / logs`，直接读写磁盘状态，不经过 agent | `runveilcli` |
 
 udocker CLI 仍内嵌在 agent 里（离线包：udocker 源码、englib 和同一个 patched PRoot），只在以下情况按需
 解压使用，这时节点需要 python3：

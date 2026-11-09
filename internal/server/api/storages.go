@@ -157,7 +157,7 @@ func writeStoreErr(w http.ResponseWriter, err error) {
 	case errors.Is(err, store.ErrStorageNameTaken):
 		writeProductError(w, http.StatusConflict, ErrorStorageNameTaken, err.Error(), nil)
 	case errors.Is(err, store.ErrStoragePathRequired):
-		writeProductError(w, http.StatusBadRequest, ErrorStoragePathInvalid, err.Error(), nil)
+		writeProductError(w, http.StatusBadRequest, ErrorStoragePathRequired, err.Error(), nil)
 	case errors.Is(err, store.ErrStorageConfigChanged):
 		writeProductError(w, http.StatusConflict, ErrorStorageConfigChanged, "Storage configuration changed; reload and try again.", nil)
 	case errors.Is(err, store.ErrStorageDisabled):
@@ -245,21 +245,24 @@ func validateStorage(row *store.Storage) error {
 		if p != "" && !path.IsAbs(p) {
 			return productError(ErrorStoragePathInvalid, "paths must be absolute", map[string]any{"path": p})
 		}
+		// Only the form is checked here: a PATCH validates the whole row, and a
+		// stored path a later denylist covers must not block unrelated edits.
+		// validateStoragePaths applies the denylist to submitted paths.
 		if p != "" {
-			if err := store.CheckStoragePath(p); err != nil {
-				return productError(ErrorStoragePathInvalid, err.Error(), nil)
+			if err := store.CheckStoragePathForm(p); err != nil {
+				return productError(ErrorStoragePathInvalid, err.Error(), map[string]any{"path": p})
 			}
 		}
 	}
 	if row.Type == proto.StorageSharedDir && row.Path == "" {
-		return productError(ErrorStoragePathInvalid, "a shared directory needs its path", nil)
+		return productError(ErrorStoragePathRequired, "a shared directory needs its path", nil)
 	}
 	if row.Type == proto.StorageLocal && row.Path == "" {
 		// Never the agent's own directory: see store.DefaultLocalStoragePath.
-		return productError(ErrorStoragePathInvalid, "a local storage needs its directory", nil)
+		return productError(ErrorStoragePathRequired, "a local storage needs its directory", nil)
 	}
 	if row.CacheMaxBytes < 0 {
-		return productError(ErrorStoragePathInvalid, "cache_max_bytes must be non-negative", nil)
+		return productError(ErrorStorageCacheLimitNegative, "cache_max_bytes must be non-negative", nil)
 	}
 	return nil
 }
@@ -272,7 +275,7 @@ func (a *apiHandlers) storageTargets(in []dto.StorageTarget) ([]store.StorageNod
 			Path: strings.TrimSpace(target.Path), CachePath: strings.TrimSpace(target.CachePath),
 			CacheMaxBytes: target.CacheMaxBytes, Existing: target.Existing}
 		if row.CacheMaxBytes != nil && *row.CacheMaxBytes < 0 {
-			return nil, productError(ErrorStoragePathInvalid, "cache_max_bytes must be non-negative", nil)
+			return nil, productError(ErrorStorageCacheLimitNegative, "cache_max_bytes must be non-negative", nil)
 		}
 		if strings.TrimSpace(target.NodeUUID) != "" && (row.LabelKey != "" || row.LabelValue != "") {
 			return nil, productError(ErrorStorageTargetsRequired, "a target must name either a node or a label", nil)

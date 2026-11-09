@@ -18,6 +18,8 @@ import (
 var upstreamAscendImages = map[string]string{
 	"quay.io/ascend/vllm-ascend@sha256:2cbb274af050cb5be7db7318e1c461fe22ec0643c54f1ed32aa7266513a7d421": "910C",
 	"quay.io/ascend/vllm-ascend@sha256:4909659565f15e94ec70c3f8523d9f2ea3dd8a2a04c59b238fbe87f5eacdae36": "910C",
+	// The kimi-k3.1-pro-a3 tag, which upstream publishes for Atlas 800I A3.
+	"quay.io/ascend/vllm-ascend@sha256:e7c67329d7a7390dd472437020531a4ef289daa4f7374d11042364f80ab596b7": "910C",
 	"quay.io/ascend/vllm-ascend:v0.30.0rc2-a3":                                                           "910C",
 }
 
@@ -115,7 +117,7 @@ func TestEvery910CClaimingBuiltInTemplateSelectsAnA3Image(t *testing.T) {
 	}
 	// This exact count audits the current catalog's image-routing contract. It
 	// is deliberately not presented as a count of real-hardware validations.
-	const current910CClaimingTemplates = 110
+	const current910CClaimingTemplates = 111
 	if checked != current910CClaimingTemplates {
 		t.Fatalf("910C-claiming template count = %d, want the reviewed catalog count %d", checked, current910CClaimingTemplates)
 	}

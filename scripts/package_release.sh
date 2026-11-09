@@ -32,6 +32,18 @@ case "$channel" in
       echo "release channel build needs a vYY.M.PATCH release id, got: $release_id" >&2
       exit 2
     fi
+    # Every release ships with its notes (docs/dev/release.md#版本号): the
+    # version's page in both languages and its row in the version list.
+    for notes in "docs/releases/$release_id.md" "docs-en/releases/$release_id.md"; do
+      if [ ! -f "$notes" ]; then
+        echo "release $release_id has no release notes: add $notes before tagging" >&2
+        exit 2
+      fi
+    done
+    if ! grep -Fq "]($release_id.md)" docs/releases/README.md; then
+      echo "release $release_id is not listed in docs/releases/README.md" >&2
+      exit 2
+    fi
     ;;
   *)
     echo "unknown release channel: $channel" >&2

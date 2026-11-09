@@ -20,11 +20,13 @@ Object.defineProperty(globalThis, "ResizeObserver", { value: ResizeObserverStub,
 
 const imagesLocale = JSON.parse(fs.readFileSync(new URL("../src/i18n/locales/en/images.json", import.meta.url), "utf8"));
 const imagesZhLocale = JSON.parse(fs.readFileSync(new URL("../src/i18n/locales/zh/images.json", import.meta.url), "utf8"));
+const commonLocale = JSON.parse(fs.readFileSync(new URL("../src/i18n/locales/en/common.json", import.meta.url), "utf8"));
+const commonZhLocale = JSON.parse(fs.readFileSync(new URL("../src/i18n/locales/zh/common.json", import.meta.url), "utf8"));
 const i18n = createInstance();
 await i18n.use(initReactI18next).init({
   lng: "en",
   fallbackLng: "en",
-  resources: { en: { images: imagesLocale }, zh: { images: imagesZhLocale } },
+  resources: { en: { images: imagesLocale, common: commonLocale }, zh: { images: imagesZhLocale, common: commonZhLocale } },
   defaultNS: "images",
   interpolation: { escapeValue: false },
 });
@@ -161,7 +163,7 @@ test("an archive that cannot be inspected shows its size and asks for the refere
   }
 });
 
-test("a failed resolve renders the server's message and resolves nothing", async () => {
+test("a failed resolve shows a safe generic message and resolves nothing", async () => {
   const stub = stubPreview(null, new Error("The image archive at containerimages.example could not be read."));
   const matched: unknown[] = [];
   try {
@@ -174,7 +176,7 @@ test("a failed resolve renders the server's message and resolves nothing", async
     await user.type(screen.getByLabelText(imagesLocale.import.url.label), ARCHIVE_URL);
     await user.click(screen.getByRole("button", { name: imagesLocale.import.url.resolve }));
 
-    await screen.findByText("The image archive at containerimages.example could not be read.");
+    await screen.findByText(imagesLocale.import.url.failed);
     assert.equal(matched.length, 0);
   } finally {
     stub.restore();
@@ -184,6 +186,7 @@ test("a failed resolve renders the server's message and resolves nothing", async
 test("a rejected archive preview retains the HTTP status and stable diagnostic code", async () => {
   const { APIError } = await import("../src/apiError.ts");
   const error = new APIError("IMAGE_ARCHIVE_URL_UNREACHABLE", {
+    host: "archive.example",
     detail: "HEAD https://archive.example/image.tar?token=private-query: 503 Service Unavailable",
   }, "The image archive at archive.example could not be read.", 502);
   const stub = stubPreview(null, error);
@@ -195,6 +198,7 @@ test("a rejected archive preview retains the HTTP status and stable diagnostic c
     await user.type(screen.getByLabelText(imagesLocale.import.url.label), ARCHIVE_URL);
     await user.click(screen.getByRole("button", { name: imagesLocale.import.url.resolve }));
     await screen.findByText("HTTP 502 · IMAGE_ARCHIVE_URL_UNREACHABLE");
+    await screen.findByText("The image archive at archive.example could not be read.");
     assert.equal(screen.queryByText(/private-query/) !== null, false,
       "raw upstream URLs can carry query credentials and must not be rendered");
     assert.equal((screen.getByLabelText(imagesLocale.import.url.label) as HTMLInputElement).value, ARCHIVE_URL);

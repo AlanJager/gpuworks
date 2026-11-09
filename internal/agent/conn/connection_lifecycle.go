@@ -156,7 +156,7 @@ func (c *Conn) runYamuxClient(ctx context.Context, netConn net.Conn, lane string
 	// Bind the persistent handlers to this connection's sender so the engine and
 	// downloader can report status; unbind when the connection ends.
 	if c.handlers != nil {
-		c.handlers.Bind(func(t string, d any) error { return c.send(t, 0, d) })
+		c.handlers.Bind(c.handlerSend(ctx))
 		defer c.handlers.Unbind()
 	}
 

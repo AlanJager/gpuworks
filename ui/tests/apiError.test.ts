@@ -46,3 +46,12 @@ test("an HTML error page from a proxy or tunnel never becomes the error text", a
   const json = await apiResponseError(new Response('{"error":"the target has not authorized the platform key"}', { status: 422, headers: { "Content-Type": "application/json" } }), "request failed");
   assert.equal(json.message, "the target has not authorized the platform key");
 });
+
+test("a full server disk names the data directory and its room when the server gives them", () => {
+  const t = (key: string, options: Record<string, unknown>) => `${key}|${options.path ?? ""}|${options.available ?? ""}|${options.total ?? ""}`;
+  const located = new APIError("SERVER_STORAGE_FULL", { path: "/opt/gpuworks/data", available_bytes: 0, total_bytes: 107374182400 }, "disk full", 507);
+  assert.equal(apiErrorText(t, located), "serverStorageFull.at|/opt/gpuworks/data|0 B|100.0 GiB");
+  // Without the directory (an older server, or no statfs) the plain message stays.
+  const bare = new APIError("SERVER_STORAGE_FULL", undefined, "disk full", 507);
+  assert.equal(apiErrorText(t, bare), "apiError.SERVER_STORAGE_FULL|||");
+});

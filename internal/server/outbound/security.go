@@ -20,8 +20,9 @@ var ErrTargetDenied = errors.New("outbound URL is not permitted")
 // policy applies only to user-configurable HTTP sources, never node RPC/SSH.
 // Exceptions are administrator configuration, not fields accepted by the API.
 type policy struct {
-	allowed []string
-	lookup  func(context.Context, string, string) ([]netip.Addr, error)
+	allowed     []string
+	readAllowed func() []string
+	lookup      func(context.Context, string, string) ([]netip.Addr, error)
 }
 
 func (p policy) addresses(ctx context.Context, host string) ([]netip.Addr, error) {
@@ -52,6 +53,9 @@ func (p policy) addresses(ctx context.Context, host string) ([]netip.Addr, error
 	}
 	if len(addresses) == 0 {
 		return nil, ErrTargetDenied
+	}
+	if p.readAllowed != nil {
+		p.allowed = p.readAllowed()
 	}
 	// Validate the entire DNS answer before any dial. Mixed public/private
 	// answers must not allow a public first address to hide a private fallback.
@@ -158,7 +162,7 @@ func (t *SafeTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	if proxy != nil && proxy.Scheme != "http" && proxy.Scheme != "https" && proxy.Scheme != "socks5" && proxy.Scheme != "socks5h" {
 		return nil, ErrTargetDenied
 	}
-	transport := t.requestTransport(proxy)
+	transport := t.requestTransport(proxy, pinned)
 	resp, err := transport.RoundTrip(clone)
 	if resp != nil && resp.Body != nil {
 		resp.Body = &closeTransportBody{ReadCloser: resp.Body, transport: transport, owner: t}

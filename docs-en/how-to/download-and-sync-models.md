@@ -54,6 +54,8 @@ The node checks that the directory is readable, contains nonempty files, and has
 
 Registering a path also fills in missing model metadata (config, README, and size) from that directory without overwriting existing metadata. If the directory was downloaded with `huggingface-cli download --local-dir`, all `.cache/huggingface/download/*.metadata` files point to the same commit, and this is the model's only copy, the model is pinned to that commit. This is the offline import workflow; see [Import Models Offline](configure-pull-settings.md#离线导入模型).
 
+A model registered from a local or HTTP directory takes its source ID from the directory name by default, which may not match the repository ID an inference template declares (such as `Qwen/Qwen3-0.6B`), so the template does not recognize it. Click edit next to **Source ID** in the model details and set it to the repository ID. The source ID of a Hugging Face / ModelScope model is the repository itself and cannot be changed; register it again if needed. Existing copies keep their paths, and copies made or downloaded later are placed in directories named after the new source ID. The change is refused while a copy, download, or removal of the model is in progress, or when another model already uses that source ID. The API is `PATCH /api/v1/models/{id}`.
+
 ## How Deployments Obtain Models and Images
 
 Confirm two settings when deploying:

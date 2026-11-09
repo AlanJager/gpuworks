@@ -26,6 +26,7 @@ import {
 } from "@ant-design/icons";
 import { formatDate } from "../i18n/datetime";
 import { useTranslation } from "react-i18next";
+import ModelSourceIDField from "./models/ModelSourceIDField";
 import {
   api,
   type FSEntry,
@@ -257,7 +258,9 @@ export function ModelDetailModal({
               <ModelLogo model={model} />
               <div>
                 <Typography.Title level={4}>{displayName}</Typography.Title>
-                {model.source_id && <Typography.Text type="secondary" title={t("column.sourceID")}>{model.source_id}</Typography.Text>}
+                <Typography.Paragraph type="secondary" title={t("column.sourceID")} style={{ marginBottom: 0 }}>
+                  <ModelSourceIDField key={model.id} model={model} onChanged={onChanged} />
+                </Typography.Paragraph>
               </div>
             </Flex>
             <Flex gap={8} style={{ alignItems: "last baseline" }}>

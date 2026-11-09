@@ -4,6 +4,7 @@ import React from "react";
 import { I18nextProvider } from "react-i18next";
 import { createI18n } from "./helpers/dom.ts";
 import { trackMessageChannels } from "./helpers/trackedMessageChannels.ts";
+import { cpuClock } from "./helpers/cpuClock.ts";
 import { bigFleet, smallFleet } from "./helpers/overviewFixtures.ts";
 
 // The heatmap grid: one cell per card grouped by node, the hover card, the
@@ -156,16 +157,18 @@ test("grouped by model, each model is a section headed with its cards and free c
 test("8000 cards render, are described by one hover card, move by keyboard and open a node", async () => {
   const overview = bigFleet(1000, 8);
   const started = performance.now();
+  const renderCPU = cpuClock();
   const { user, opened } = mount(overview);
-  const rendered = performance.now() - started;
-  console.log(`heatmap: rendered 8000 cards in ${Math.round(rendered)} ms`);
+  const rendered = renderCPU();
+  console.log(`heatmap: rendered 8000 cards in ${Math.round(performance.now() - started)} ms (${Math.round(rendered)} ms of CPU)`);
   assert.equal(cells().length, 8000);
   assert.equal(document.querySelectorAll(".hm-node").length, 1000);
   assert.equal(document.querySelectorAll("button.hm-node-name").length, 0, "with this many nodes the names are read from the hover card");
   assert.equal(cells().filter((cell) => cell.tabIndex === 0).length, 1);
-  assert.ok(rendered < 20_000, `rendering took ${Math.round(rendered)} ms`);
+  assert.ok(rendered < 20_000, `rendering took ${Math.round(rendered)} ms of CPU`);
 
   const moved = performance.now();
+  const movedCPU = cpuClock();
   await user.tab();
   for (let i = 0; i < 20; i += 1) await user.keyboard("{ArrowDown}");
   await user.keyboard("{PageDown}{End}");
@@ -175,6 +178,6 @@ test("8000 cards render, are described by one hover card, move by keyboard and o
   assert.equal(screen.getAllByRole("tooltip", { hidden: true }).length, 1);
   await user.click(cells()[17]);
   assert.deepEqual(opened, ["node-2"]);
-  console.log(`heatmap: 22 key presses, a hover and a click in ${Math.round(performance.now() - moved)} ms`);
-  assert.ok(performance.now() - moved < 20_000);
+  console.log(`heatmap: 22 key presses, a hover and a click in ${Math.round(performance.now() - moved)} ms (${Math.round(movedCPU())} ms of CPU)`);
+  assert.ok(movedCPU() < 20_000, `22 key presses, a hover and a click took ${Math.round(movedCPU())} ms of CPU`);
 });

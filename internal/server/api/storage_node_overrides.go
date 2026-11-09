@@ -41,7 +41,7 @@ func (a *apiHandlers) patchStorageNodeOverrides(w http.ResponseWriter, r *http.R
 	}
 	patch := store.StorageNodeOverridePatch{SetCacheMaxBytes: req.CacheMaxBytes.Present, CacheMaxBytes: req.CacheMaxBytes.Value}
 	if patch.CacheMaxBytes != nil && *patch.CacheMaxBytes < 0 {
-		writeProductError(w, http.StatusBadRequest, ErrorStoragePathInvalid, "cache_max_bytes must be non-negative", nil)
+		writeProductError(w, http.StatusBadRequest, ErrorStorageCacheLimitNegative, "cache_max_bytes must be non-negative", nil)
 		return
 	}
 	if req.CachePath.Present {
@@ -49,7 +49,7 @@ func (a *apiHandlers) patchStorageNodeOverrides(w http.ResponseWriter, r *http.R
 		if req.CachePath.Value != nil {
 			value = strings.TrimSpace(*req.CachePath.Value)
 			if value == "" {
-				writeProductError(w, http.StatusBadRequest, ErrorStoragePathInvalid, "use null to inherit the cache directory", nil)
+				writeProductError(w, http.StatusBadRequest, ErrorStoragePathRequired, "use null to inherit the cache directory", nil)
 				return
 			}
 		}

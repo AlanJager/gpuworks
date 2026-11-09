@@ -19,7 +19,7 @@ For external endpoints, prepare the address, model name, and required API key. S
    | **Managed Instance**: select a node as the **Load Origin** | Direct access to an instance on that node; PD selects decode, so this is not an end-to-end PD result | The node must have a running, awake rank 0 for that deployment that can serve requests, and its agent must support evaluations |
    | **External Endpoint**: enter the address and API key, select the **Load Origin**, click **Probe**, and select a model | Access to the external endpoint from the selected load origin | Load originates from `Server` by default; you can also select an online node that supports evaluations. Network access and authentication must work from the selected location |
 
-   Before testing an internal or local external endpoint from `Server`, an administrator must authorize the target host in `outbound_allow_private_hosts` in `server.yaml` and restart the server.
+   Testing an ordinary private or local loopback external endpoint from `Server` needs no allowlist by default. An allowlist is needed only in strict mode. Platform administrators can authorize the target host under **Settings → Security & access → Outbound access policy**; host administrators can also edit `outbound_restrict_private_hosts` and `outbound_allow_private_hosts` directly in `server.yaml`. Changes to either field apply to the next request after saving, without restarting the server.
    See [Outbound Access Configuration](../reference/configuration.md#server-配置文件-serveryaml).
 
    The API can select a specific instance through `instance_uuid`, which requires a direct connection from the node hosting that instance. It must likewise be running, awake, and able to serve requests.
@@ -31,9 +31,9 @@ For external endpoints, prepare the address, model name, and required API key. S
    the `tokenizer.json` or `tiktoken.model` already on the target machine, and finally the model repository. For an external endpoint, **Automatic** uses only the endpoint's own tokenize endpoints.
    You can also use only the **Inference service (de)tokenize endpoints** (if it is unavailable the evaluation stops before inference rather than switching sources), name a model repository (`org/repo`),
    or upload `tokenizer.json` / `tiktoken.model`.
-4. Review warmup, output policy, experience thresholds, and per-request details in **Advanced Settings**. To view individual timelines in the report, enable **Keep per-request details** and set the capacity.
+4. Review warmup, request timeout, output policy, experience thresholds, and per-request details in **Advanced Settings**. To view individual timelines in the report, enable **Keep per-request details** and set the capacity.
    If every warmup request fails transiently (network interruption, 408/429, or recoverable 5xx),
-   recovery waits up to 6 minutes, sending one probe every 5 seconds. Authentication and parameter errors stop immediately.
+   recovery waits up to 6 minutes (or the request timeout, if longer), sending one probe every 5 seconds. Authentication and parameter errors stop immediately.
    Cancellation stops both waiting and in-flight requests. Warmup attempts and retries never count as measured points,
    throughput, or latency. Reports retain attempt counts, HTTP statuses, stages, and diagnostics even before any measured
    point exists; warmup diagnostics do not retain request or reply bodies.
@@ -69,6 +69,9 @@ SLA constraints defined with that metric on historical Runs still use the origin
 - **Warmup requests** (default: 1): Before the measured points begin, send this many requests using the first point's workload and discard all results.
   This reduces the effect of the first request's cold start on measured points but does not guarantee that later points are fully warmed up. Set this to 0 to disable warmup; if all warmup requests fail, the evaluation fails immediately. If the load-origin node's
   agent is too old, warmup is skipped and the evaluation displays a warning.
+- **Request timeout** (default: 600 seconds; 10–7200 seconds): How long each request, warmup included, may take before it counts as failed.
+  Raise it when long contexts or high concurrency make requests queue. If the load-origin node's agent is too old for this setting, every request
+  is bounded by a fixed 5 minutes and the evaluation displays a warning. Reports state the configured timeout; evaluations created before the setting existed show it as not recorded.
 - **Fixed output length (`ignore_eos`)** (random fixed-length and Agentic workloads; enabled by default): Ask the engine to generate the target
   output length. The report marks fixed length as requested; check the actual OSL and finish reason rather than treating the setting as proof that the server complied. Some SaaS endpoints do not recognize this parameter and
   return 400; disable it in that case. Multi-turn conversations and imported datasets always end naturally.

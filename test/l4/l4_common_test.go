@@ -29,6 +29,12 @@ const cloudSetupTimeout = 30 * time.Minute
 const cloudTestLifetime = 120 * time.Minute
 const cloudRetryGrace = 45 * time.Second
 
+// cloudNodeOfflineGrace bounds how long a startup wait tolerates the node
+// being offline. The SSH tunnels reconnect within seconds and the agent redials
+// every 30s, so an offline node past this is a lost connection to report, not
+// a slow engine start to keep waiting for.
+const cloudNodeOfflineGrace = 5 * time.Minute
+
 // skipOrFailExternal prevents strict cloud jobs from reporting green when a
 // required external capability is absent. Local exploratory runs retain the
 // useful skip behavior.
@@ -268,6 +274,11 @@ func setupCloudNodeWithInstance(t *testing.T, env *testenv.Env, p cloudprovider.
 		if err != nil {
 			t.Fatal(err)
 		}
+		// Reconnects of the forward are part of the run's evidence. The logger
+		// is detached before the test ends, also when a failed instance is
+		// kept and the forward is left open.
+		state.Forward.SetLogf(t.Logf)
+		t.Cleanup(func() { state.Forward.SetLogf(nil) })
 		if err := verifyCloudServerForward(setupCtx, instance, state.Forward.URL()); err != nil {
 			t.Fatalf("verify cloud server forward: %v", err)
 		}
@@ -285,6 +296,8 @@ func setupCloudNodeWithInstance(t *testing.T, env *testenv.Env, p cloudprovider.
 			t.Fatal(err)
 		}
 		state.Tunnel = tunnel
+		tunnel.SetLogf(t.Logf)
+		t.Cleanup(func() { tunnel.SetLogf(nil) })
 		if err := installCloudAgent(setupCtx, instance, env.URL(), state.NodeToken); err != nil {
 			if topologyCloudTest(t) && isCloudCapacityError(err) {
 				skipOrFailExternal(t, "cloud SSH session unavailable during agent install: %v", err)
@@ -439,10 +452,30 @@ func waitDeploymentInstance(t *testing.T, env *cloudTestEnv, deploymentID uint, 
 	t.Helper()
 	deadline := time.Now().Add(timeout)
 	nextLog := time.Now()
-	var noActiveSince time.Time
+	var noActiveSince, offlineSince time.Time
 	for time.Now().Before(deadline) {
 		rows, _ := env.Control.Store().InstancesForDeployment(deploymentID)
 		inst, failed := currentCloudStartupAttempt(rows)
+		nodeState := "unknown"
+		if node, err := env.Control.Store().NodeByUUID(env.NodeUUID); err == nil {
+			nodeState = node.State
+		}
+		if nodeState == store.NodeStateOffline {
+			if offlineSince.IsZero() {
+				offlineSince = time.Now()
+				t.Logf("cloud startup: node %s went offline", env.NodeUUID)
+			}
+			if time.Since(offlineSince) >= cloudNodeOfflineGrace {
+				latest := inst
+				if latest == nil && len(rows) > 0 {
+					latest = &rows[0]
+				}
+				reportCloudStartupFailure(t, env, deploymentID, fmt.Sprintf("node %s has been offline for %s; the agent lost its connection to the server", env.NodeUUID, cloudNodeOfflineGrace), latest)
+			}
+		} else if !offlineSince.IsZero() {
+			t.Logf("cloud startup: node %s is %s again after %s offline", env.NodeUUID, nodeState, time.Since(offlineSince).Round(time.Second))
+			offlineSince = time.Time{}
+		}
 		if inst != nil {
 			noActiveSince = time.Time{}
 			if inst.State == proto.InstRunning && inst.ContainerID != "" {
@@ -464,7 +497,7 @@ func waitDeploymentInstance(t *testing.T, env *cloudTestEnv, deploymentID uint, 
 				nextLog = time.Now().Add(15 * time.Second)
 			}
 		} else if time.Now().After(nextLog) {
-			t.Logf("cloud startup: no instance yet; %s", deploymentModelProgress(env, deploymentID))
+			t.Logf("cloud startup: no instance yet; node=%s %s", nodeState, deploymentModelProgress(env, deploymentID))
 			nextLog = time.Now().Add(15 * time.Second)
 		}
 		time.Sleep(2 * time.Second)

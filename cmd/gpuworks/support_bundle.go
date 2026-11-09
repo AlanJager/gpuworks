@@ -84,15 +84,28 @@ func supportBundle(ctx context.Context, log *slog.Logger, args []string) error {
 	if err != nil {
 		return err
 	}
-	bundle, archive, err := app.CollectDiagnosticsOffline(ctx, app.OfflineDiagnosticsRequest{DataDir: dataDir, DBPath: db, LogFile: logFile, Request: req}, log, policy)
+	// Stage beside the output, not in the data directory: the command is what
+	// is left when the server's disk is full, and --out can name another one.
+	outDir := "."
+	if out != "" {
+		outDir = filepath.Dir(out)
+	}
+	work, err := os.MkdirTemp(outDir, ".gpuworks-diagnostics-*")
+	if err != nil {
+		return fmt.Errorf("stage the collection in %s: %w", outDir, err)
+	}
+	defer os.RemoveAll(work)
+	bundle, archive, err := app.CollectDiagnosticsOffline(ctx, app.OfflineDiagnosticsRequest{DataDir: dataDir, DBPath: db, LogFile: logFile, WorkDir: work, Request: req}, log, policy)
 	if err != nil {
 		return err
 	}
 	if out == "" {
 		out = "gpuworks-diagnostics-" + bundle.ID + ".tar.gz"
 	}
-	if err := copyArchive(archive, out); err != nil {
-		return err
+	if err := os.Rename(archive, out); err != nil {
+		if err := copyArchive(archive, out); err != nil {
+			return err
+		}
 	}
 	fmt.Println(out)
 	return nil

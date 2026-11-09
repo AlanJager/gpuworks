@@ -972,6 +972,7 @@ Containers of sleeping instances are still running and are not treated as exited
 
 The platform recreates instances through the controller. Containers use `--restart no` and do not rely on Docker restart policies.
 Each unit allows up to 3 attempts, with each new attempt created at least 15 seconds after the previous one. Each attempt uses a new UUID and retains the previous failure record.
+An attempt refused before starting because another process holds one of its host ports (`ENGINE_PORT_REFUSED`; nothing has started) is the exception: it is retried at once on other ports, and a unit's first 10 such refusals do not count toward the 3.
 When the budget is exhausted, `UNIT_RETRY_EXHAUSTED` is emitted (`params` contains `attempts` and `reason`), and automatic recreation stops.
 
 After resolving the cause, call `POST /api/v1/deployments/{id}/units/retry` with body `{"role":"","index":0}` (`role` is empty for a regular deployment).
@@ -1148,6 +1149,23 @@ Use `stream: true` to receive output incrementally. Long non-streaming requests 
 4. You are using a temporary public address from `cloudflare-quick`, which does not support SSE. See [Give the Console a Public Address](expose-public-address.md).
 5. A server restart, upgrade, or node agent disconnection interrupts in-flight streams without retrying them.
 
+## An Operation Reports "The Server Host's Disk Is Full"
+
+When an operation that saves data (registering a model, creating a deployment, changing a setting) returns HTTP 507 with error code `SERVER_STORAGE_FULL`, the full disk is the **server host's**, not the target node's. SQLite reports it this way whenever its database file, WAL or a temporary file has no room, and the message names the data directory with the free space and size of its disk.
+
+Not every write fails once the disk fills: SQLite first uses up the space it already holds, so in the same stretch of time some operations succeed and others are refused. Every console operation that changes something (signing in included) writes the database, and any of them can be refused.
+
+1. Find the full disk on the server host. The directories to check are the data directory, the log directory, `backups/` under the installation directory, and SQLite's temporary directory. That is the first writable one of `SQLITE_TMPDIR`, `TMPDIR`, `/var/tmp`, `/usr/tmp` and `/tmp`.
+
+   ```bash
+   df -h <data> <data>/logs /var/tmp /tmp
+   du -xsh <data>/* | sort -h
+   ```
+
+   While the disk is full, the console's "Collect diagnostics" cannot write either, and the list shows the collection as failed (`no space left on device`). Run [`gpuworks support-bundle`](../reference/cli.md#gpuworks-support-bundle) on the server host instead, with `--out` on another disk that has room. `server/disk.json` in it records the size and free space of these directories' filesystems, and the size of each entry in every directory. `disk.json` lists only what these directories hold: when free space is 0 but their contents add up to far less than the size, the space is taken by another directory on the same filesystem (such as `/var/log` on the same root partition); keep looking with `du -xsh /*`.
+2. Retry once space is freed; the server does not need a restart. While writes fail, the server log file stops, and records still go to stderr (`journalctl -u gpuworks` under systemd). Within 30 seconds of space coming back the log file resumes, starting with a `log file writes resumed` line that carries the number of records dropped (`dropped`) and when writing stopped (`since`).
+3. Do not restart the server before freeing space: with 0 bytes free it cannot start, since SQLite cannot even create its shared-memory file. The exit reason, `msg="server exited"`, then adds to the original error how much the data directory's disk has left (`the disk holding the data directory … has 0 B free of …`). Start it again once there is room.
+
 ## Forgotten Admin Password
 
 **Symptoms**: You cannot sign in.
@@ -1177,6 +1195,7 @@ When you cannot log in to the customer's servers, have an administrator work in 
 | Path | Content |
 |---|---|
 | `manifest.json` | The collection's scope, the server version, and whether each part was collected, skipped (node offline, agent version without support) or failed |
+| `server/disk.json` | The server's data, log and backup directories and SQLite's temporary directory: their filesystems' size and free space, and the size of each entry in every directory (largest first) |
 | `server/gpuworks-server.log` | The server log in the time range (info included; the Logs page has warn and above only) |
 | `nodes/<uuid>/agent.log`, `doctor.json` | The chosen nodes' (without a choice, the nodes of the chosen deployments' instances) agent logs and diagnosis reports |
 | `instances/<uuid>.log` | The chosen deployments' instance logs |

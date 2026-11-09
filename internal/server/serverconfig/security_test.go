@@ -51,3 +51,40 @@ func TestTLSConfigurationRequiresBothFiles(t *testing.T) {
 		}
 	}
 }
+
+// storage_denied_paths distinguishes absent (built-in list), an empty list
+// (deny none) and a replacement list, and keeps that through a rewrite.
+func TestStorageDeniedPathsLoadAndRoundTrip(t *testing.T) {
+	for _, tc := range []struct {
+		content string
+		want    *[]string
+	}{
+		{"", nil},
+		{"storage_denied_paths: []\n", &[]string{}},
+		{"storage_denied_paths: [/etc, /opt/gpuworks]\n", &[]string{"/etc", "/opt/gpuworks"}},
+	} {
+		path := filepath.Join(t.TempDir(), FileName)
+		if err := os.WriteFile(path, []byte(tc.content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		file, err := Load(path)
+		if err != nil || !reflect.DeepEqual(file.StorageDeniedPaths, tc.want) {
+			t.Fatalf("%q loaded as %v err=%v", tc.content, file.StorageDeniedPaths, err)
+		}
+		if err := Write(path, file, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if again, err := Load(path); err != nil || !reflect.DeepEqual(again.StorageDeniedPaths, tc.want) {
+			t.Fatalf("%q lost on round trip: %v err=%v", tc.content, again.StorageDeniedPaths, err)
+		}
+	}
+	for _, entry := range []string{"/", "relative", "/opt/../etc"} {
+		path := filepath.Join(t.TempDir(), FileName)
+		if err := os.WriteFile(path, []byte("storage_denied_paths: [\""+entry+"\"]\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := Load(path); err == nil {
+			t.Fatalf("malformed storage_denied_paths entry accepted: %s", entry)
+		}
+	}
+}
