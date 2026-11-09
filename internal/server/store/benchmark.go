@@ -51,6 +51,12 @@ func (s *Store) ListBenchmarkRuns() ([]BenchmarkRun, error) {
 	return out, s.db.Order("id desc").Find(&out).Error
 }
 
+// CountActiveBenchmarkRuns counts the runs not yet finished.
+func (s *Store) CountActiveBenchmarkRuns() (int64, error) {
+	var n int64
+	return n, s.db.Model(&BenchmarkRun{}).Where("state IN ?", []string{"pending", "running"}).Count(&n).Error
+}
+
 // RecoverServerBenchmarkRuns fails workloads that could only have been driven
 // by the previous server process. Agent-origin runs remain reconcilable through
 // desired state and are intentionally left untouched.

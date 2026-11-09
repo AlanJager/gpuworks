@@ -187,7 +187,7 @@ Cookie 设置为 `HttpOnly`、`SameSite=Lax`，其中保存的是不透明会话
 | GET | `/api/v1/engines?target_vendor=amd` | 面向指定厂商的引擎参数字典（省略 `target_vendor` 时使用通用 profile，未知厂商返回 400）；AMD profile 只表示实现准入范围，不证明特定 GPU/ROCm 版本已通过真机验收 | JWT |
 | GET | `/api/v1/nodes` | 节点列表；带 `page`/`page_size` 时分页并可按 `q`/`state`/`label` 筛选（见“错误与响应约定”） | JWT |
 | GET | `/api/v1/nodes/facets` | 筛选项及节点数量分布；查询参数 `q`、`state`、`label` 同节点列表，返回用户标签、系统标签与卡型号分布（含已报告的 `arch_id`），见[节点列表](#节点列表的筛选与返回字段) | JWT |
-| GET | `/api/v1/dashboard/summary` | 仪表盘汇总：节点按状态计数与硬件合计、部署按状态计数、按厂商与按标签（`label_key`，缺省或无节点带该 key 时取最常用的 key）分组的容量 | JWT |
+| GET | `/api/v1/dashboard/summary` | 仪表盘汇总：节点按状态计数与硬件合计、部署按状态计数、按厂商与按标签（`label_key`，缺省或无节点带该 key 时取最常用的 key）分组的容量；另含当前 GPU 指标、卡占用、在途任务，字段见[仪表盘汇总](#仪表盘汇总的返回字段) | JWT |
 | POST | `/api/v1/nodes` | 创建待接入节点，返回安装命令与 token；完整字段与条件见[创建节点的连接参数](#创建节点的连接参数) | JWT(admin) |
 | GET | `/api/v1/agent/rejects` | 最近被拒绝的连接尝试 | JWT |
 | GET | `/api/v1/agent/upgrade-errors` | 最近 agent 升级失败记录 | JWT |
@@ -278,6 +278,19 @@ Cookie 设置为 `HttpOnly`、`SameSite=Lax`，其中保存的是不透明会话
 | 用户标签值、系统标签值 | 每个值附带携带它的节点数；系统标签带服务端显示文本，不含节点自身的 `gpuworks.ai/node` |
 | 卡型号 | `vendor`、`name`、`cc` 描述厂商、名称、计算能力；已报告时含 `arch_id`，不同架构分别统计；`model` 对应系统标签 `gpuworks.ai/gpu-model` 的值 |
 | 每种卡型号的数量与显存 | 节点数，以及 `cards`（卡数）、`memory_bytes`（最大单卡显存） |
+
+### 仪表盘汇总的返回字段
+
+`GET /api/v1/dashboard/summary` 的计数都由 server 算好，仪表盘只做展示。除节点计数和容量分组外，主要字段如下：
+
+| 字段 | 含义 |
+|---|---|
+| `current_metrics.vram_used_bytes`、`current_metrics.vram_total_bytes` | 在线节点自有卡的显存已用与总量，只累加最近两分钟内两项都有采样的卡，两者之比即显存利用率；没有这样的卡时均为 `null` |
+| `deployments.running`、`warming`、`sleeping`、`pending`、`other` | 部署按有效状态分桶，每个部署只落一个桶，相加等于 `total`。`warming` 为拉镜像或启动中，`sleeping` 为整体休眠或正在休眠，`pending` 为等待放置，`other` 为不属于前述各桶的部署（已停止、失败、离线等） |
+| `cards` | 与 `GET /api/v1/scheduling/overview` 的 `summary` 相同的卡状态计数，另加 `allocated`；调度总览无法构建时为 `null`，表示未知而非没有卡 |
+| `cards.allocated` | 部署占用的卡数，即 `awake + asleep`：休眠部署的卡仍为唤醒保留，算作已分配；平台外占用、不健康和离线的卡不算。`allocated / cards` 即分配率 |
+| `tasks.batches` | 调用者可见的批处理数（管理员为全部用户，其他用户只算自己的）：`active` 为执行或收尾中，`waiting` 为校验输入中；未启用 Batch API 或计数失败时为 `null` |
+| `tasks.benchmarks` | 等待或运行中的评测数，统计全部用户（评测不按用户归属） |
 
 ### 节点连接诊断
 
