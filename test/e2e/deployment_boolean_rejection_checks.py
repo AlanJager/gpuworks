@@ -143,6 +143,15 @@ def expected_mutations(original, report):
               and expected[0]['query'] == '' and expected[0]['body']['name'] == INVALID_NAME,
               '6.5 rejected-mutation binding must be the literal first invalid-name create')
         expected[0]['body'] = seeded_body(expected[0]['body'], _pending(report), report)
+        # dtype is pinned in the form by entering manual command mode and every
+        # later create submits it (ADR 0020 rules 3 and 6). A case can publish the
+        # exact value it pinned; without one the fixture's own value stands.
+        pinned = form_pinned.get(report.get('run_id'))
+        if pinned:
+            for mutation in expected:
+                body = mutation.get('body')
+                if isinstance(body, dict) and isinstance(body.get('quick_params'), dict):
+                    body['quick_params']['dtype'] = pinned
     return expected
 
 
@@ -395,11 +404,20 @@ def _carried_quick(report):
     carrying those keys now. Reading them from the last real wire describes what
     the page actually does instead of guessing which controls were touched.
     """
+    latest = {}
     for record in reversed(report.get('launch_evaluations') or []):
         request = record.get('request') or {}
-        if isinstance(request.get('quick_params'), dict):
-            return dict(request['quick_params'])
-    return {}
+        quick = request.get('quick_params')
+        if isinstance(quick, dict):
+            # The newest evaluation describes the current authored set, and the
+            # dtype pinned by manual command mode is first seen here too - it never
+            # appears in an evaluation that only touched a boolean, so a plain
+            # "last request wins" would lose it after the first quick-mode step.
+            if not latest:
+                latest.update(quick)
+            if 'dtype' in quick:
+                latest.setdefault('dtype', quick['dtype'])
+    return latest
 
 
 def _wire(page, labels, body, report, phase, positions=None, mount_action=None):
@@ -427,6 +445,11 @@ def _wire(page, labels, body, report, phase, positions=None, mount_action=None):
     # still a failure.
     sent_quick = {}
     for key, value in _carried_quick(report).items():
+        # dtype is pinned in the form but never travels through an evaluation -
+        # EvaluateQuickParams only ever carries keys the operator authored there.
+        # The create bodies below still describe it; an evaluate body must not.
+        if key == 'dtype':
+            continue
         sent_quick[key] = value
     if positions is not None:
         for key in (CACHE, PREFIX):

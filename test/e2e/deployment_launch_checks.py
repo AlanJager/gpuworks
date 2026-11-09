@@ -268,6 +268,12 @@ def manual_roundtrip(page, labels, body, report):
         lambda b: b.get('container_overrides', {}).get('command_mode') == 'manual',
         report, 'manual-roundtrip-enter-text-mode')
     manual_wire = entered['request']
+    # Entering manual mode pins dtype in the form; publish it so every later
+    # create body in this run can be described without guessing.
+    pinned_dtype = (manual_wire.get('quick_params') or {}).get('dtype')
+    if isinstance(pinned_dtype, str):
+        import deployment_boolean_rejection_checks as _rejection
+        _rejection.form_pinned[report.get('run_id')] = pinned_dtype
     editor = page.locator('.deploy-command-editor')
     expect(editor).to_be_visible()
     generated = editor.input_value()
