@@ -90,7 +90,7 @@ export function LoginForm({ onLogin }: { onLogin: () => void }) {
       <div className="auth-forgot">
         <Popover
           trigger="click"
-          placement="bottom"
+          placement="bottomRight"
           content={<div className="auth-forgot-help">
             <Typography.Paragraph>{t("forgotPasswordHelp")}</Typography.Paragraph>
             <Typography.Text code copyable>{t("forgotPasswordCommand")}</Typography.Text>

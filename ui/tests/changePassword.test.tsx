@@ -133,3 +133,21 @@ test("the sign-in form tells how to reset a forgotten password", async () => {
   await user.click(screen.getByText(locale("auth").forgotPassword));
   assert.ok(await screen.findByText(locale("auth").forgotPasswordCommand));
 });
+
+test("a server rejection clears once the field is edited, and the next answer replaces it", async () => {
+  const sent: Sent[] = [];
+  answer(400, { code: "PASSWORD_GUESSABLE", error: "guessable" }, sent);
+  const user = await openForm();
+  await fill(user, "wrong-password", "Password123");
+  assert.ok(await screen.findByText(locale("common").apiError.PASSWORD_GUESSABLE));
+  answer(400, { code: "CURRENT_PASSWORD_INVALID", error: "wrong" }, sent);
+  for (const label of [auth.next, auth.confirm]) {
+    await user.clear(screen.getByLabelText(label));
+    await user.type(screen.getByLabelText(label), "Tiger#Lake9");
+  }
+  await waitFor(() => assert.equal(screen.queryByText(locale("common").apiError.PASSWORD_GUESSABLE), null));
+  await user.click(screen.getByRole("button", { name: auth.submit }));
+  assert.ok(await screen.findByText(locale("common").apiError.CURRENT_PASSWORD_INVALID));
+  assert.equal(screen.queryByText(locale("common").apiError.PASSWORD_GUESSABLE), null);
+  assert.equal(sent.length, 2);
+});
