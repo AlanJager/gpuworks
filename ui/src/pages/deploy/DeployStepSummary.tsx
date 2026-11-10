@@ -5,15 +5,19 @@ import VRAMBreakdown from "../../components/VRAMBreakdown";
 import { warningKey, warningText } from "./deployWarnings";
 import { scheduleText } from "./deploySchedule";
 import EvictionSuggestionAlert from "./EvictionSuggestion";
+import { APIError } from "../../apiError";
+import DeployDiagnostics from "./DeployDiagnostics";
 
 export default function DeployStepSummary({
   result,
   error,
+  failure,
   loading,
   onReevaluate,
 }: {
   result: EvaluateResponse | null;
   error: string | null;
+  failure?: Error | null;
   loading: boolean;
   onReevaluate?: () => void;
 }) {
@@ -74,6 +78,7 @@ export default function DeployStepSummary({
       <Space direction="vertical" size={5} style={{ width: "100%" }}>
         <Typography.Text strong>{t("summary.title")}</Typography.Text>
         {conclusion}
+        {!loading && <DeployDiagnostics report={failure instanceof APIError ? failure.diagnostics : result?.diagnostics} requestId={failure instanceof APIError ? failure.requestId : result?.request_id} />}
         {warnings.map((warning) => (
           <Alert
             key={warningKey(warning)}

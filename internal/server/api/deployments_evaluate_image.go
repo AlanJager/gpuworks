@@ -102,7 +102,7 @@ func (a *apiHandlers) imageCacheFact(ctx context.Context, image string, node *st
 // A registration from a source absent in the spec has no template provider
 // to choose. Offering its own source would make the form send a provider
 // the template cannot accept on the next evaluation.
-func (a *apiHandlers) evaluateWeightFacts(model *store.Model, selection templateSelection, profileNode *store.Node) acquisition.WeightFacts {
+func (a *apiHandlers) evaluateWeightFacts(model *store.Model, selection templateSelection, profileNode *store.Node) (acquisition.WeightFacts, error) {
 	weightFacts := acquisition.WeightFacts{
 		Providers: []acquisition.WeightSource{{
 			Provider: model.Source, RepoID: model.SourceID, Revision: model.Revision, Suggested: true,
@@ -116,19 +116,21 @@ func (a *apiHandlers) evaluateWeightFacts(model *store.Model, selection template
 			weightFacts.Providers = nil
 		}
 	}
-	weightFacts.Present, weightFacts.Targets = a.storageFacts(model, profileNode)
-	return weightFacts
+	var err error
+	weightFacts.Present, weightFacts.Targets, err = a.storageFacts(model, profileNode)
+	return weightFacts, err
 }
 
 // storageFacts lists the storages the profile node can read that hold the
 // model, and the storages a copy or download may save into for that node.
-func (a *apiHandlers) storageFacts(model *store.Model, node *store.Node) ([]acquisition.StoragePresence, []acquisition.StorageTarget) {
+func (a *apiHandlers) storageFacts(model *store.Model, node *store.Node) ([]acquisition.StoragePresence, []acquisition.StorageTarget, error) {
 	if model == nil || node == nil {
-		return nil, nil
+		return nil, nil, nil
 	}
 	locations, err := a.d.Store.ModelLocations(model.ID, node.ID)
 	if err != nil {
-		return nil, nil
+		check := modelDiagnostic(model, node, store.ModelSource{}, "facts", "unknown", "facts_unavailable", "Model location facts could not be read")
+		return nil, nil, withDiagnostics(wrapProductError(ErrorModelSourceUnavailable, check.Message.Message, check.Message.Params, err), &dto.DiagnosticReport{Checks: []dto.DiagnosticCheck{check}})
 	}
 	var present []acquisition.StoragePresence
 	var targets []acquisition.StorageTarget
@@ -138,7 +140,7 @@ func (a *apiHandlers) storageFacts(model *store.Model, node *store.Node) ([]acqu
 		// "already there", never as a place to save another copy into.
 		held := (storage.Type == proto.StorageLocal && loc.Ready) ||
 			(storage.Type != proto.StorageLocal && loc.Shared.Ready())
-		if !held && a.d.Store.StorageAcceptsWrites(&storage) == nil {
+		if !held && (storage.Type == proto.StorageLocal || modelHasPublicSource(model)) && a.d.Store.StorageAcceptsWrites(&storage) == nil {
 			targets = append(targets, acquisition.StorageTarget{StorageID: storage.ID, StorageName: storage.Name, StorageType: storage.Type, Default: storage.IsDefault})
 		}
 		p := acquisition.StoragePresence{StorageID: storage.ID, StorageName: storage.Name, StorageType: storage.Type, SizeBytes: loc.SizeBytes}
@@ -170,5 +172,5 @@ func (a *apiHandlers) storageFacts(model *store.Model, node *store.Node) ([]acqu
 		}
 		present = append(present, p)
 	}
-	return present, targets
+	return present, targets, nil
 }
