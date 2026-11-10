@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { ArrowLeftOutlined, CopyOutlined, StopOutlined } from "@ant-design/icons";
 import { Alert, Button, Card, Col, Popconfirm, Progress, Row, Segmented, Space, Spin, Typography, message } from "antd";
 import { Link, useNavigate, useParams } from "react-router-dom";
@@ -19,7 +20,10 @@ import BenchmarkCurveNotice from "./BenchmarkCurveNotice";
 import BenchmarkReportMenu from "./BenchmarkReportMenu";
 import MetricLabel from "./MetricLabel";
 import BenchmarkEvidencePanel from "./BenchmarkEvidencePanel";
+import BenchmarkRequestTimeline from "./BenchmarkRequestTimeline";
+import useBenchmarkRequestTimeline from "./useBenchmarkRequestTimeline";
 import { useWizardTargets } from "./useWizardTargets";
+import { renderBenchmarkReport, downloadBenchmarkReport, type BenchmarkVisualFormat } from "./benchmarkReportExport";
 
 const curveFields: Record<string, keyof Omit<BenchmarkCurveSample, "t">> = {
 	gpuworks_bench_output_tput: "output_tput",
@@ -46,6 +50,10 @@ export default function EvaluationDetailPage() {
 	const [chartMetric, setChartMetric] = useState(curveMetrics[0].value);
 	const [selectedSeq, setSelectedSeq] = useState<number>();
 	const [wizardPreset, setWizardPreset] = useState<WizardPreset>();
+	const reportRef = useRef<HTMLDivElement>(null);
+	const exportingRef = useRef(false);
+	const [captureWidth, setCaptureWidth] = useState<number>();
+	const capturing = captureWidth != null;
 	const runQuery = usePolling<BenchmarkRun>(() => api.benchmark(id), 0, [id]);
 	const metaQuery = usePolling(api.benchmarkMeta, 0);
 	const run = runQuery.data;
@@ -55,7 +63,7 @@ export default function EvaluationDetailPage() {
 	const targets = useWizardTargets(wizardOpen);
 	const refreshRef = useRef({ run: runQuery.refresh, curve: curve.refresh });
 	refreshRef.current = { run: runQuery.refresh, curve: curve.refresh };
-	const coalescer = useMemo(() => createRefreshCoalescer(async () => { await Promise.all([refreshRef.current.run(), refreshRef.current.curve()]); }, 1000), [id]);
+	const coalescer = useMemo(() => createRefreshCoalescer(async () => { if (!exportingRef.current) await Promise.all([refreshRef.current.run(), refreshRef.current.curve()]); }, 1000), [id]);
 	useEffect(() => () => coalescer.dispose(), [coalescer]);
 	useEventPayload("benchmark", (event) => { if (event.key === String(id)) coalescer.trigger(); });
 	useEffect(() => {
@@ -66,6 +74,7 @@ export default function EvaluationDetailPage() {
 
 	const best = (run?.points?.length ? bestPoint(run) : undefined) as BenchmarkPoint | undefined;
 	const selected = run?.points?.find((point) => point.seq === selectedSeq) || best;
+	const timeline = useBenchmarkRequestTimeline(id, run?.id === id && selected?.state !== "running" ? selected?.seq : undefined);
 	const liveCards = run ? metricCardState(run, t) : undefined;
 	const curveSeriesName = useCallback((labels: Record<string, string>, index: number) => run ? benchmarkSeriesName(run, labels, index, t) : t("common.point", { value: index + 1 }), [run, t]);
 	const chart = useMemo<MetricSeries[]>(() => {
@@ -73,6 +82,21 @@ export default function EvaluationDetailPage() {
 		return (curve.data?.points || []).map((point) => ({ labels: { benchmark: String(id), point: String(point.seq) }, points: point.samples.map((sample): MetricPoint => [sample.t, Number(sample[field])]) }));
 	}, [chartMetric, curve.data?.points, id]);
 	const curveHasSamples = chart.some((series) => series.points.length > 0);
+	const exportVisual = async (format: BenchmarkVisualFormat) => {
+		const report = reportRef.current;
+		if (!report || exportingRef.current) return;
+		exportingRef.current = true;
+		// Widen the report to include every selected table column in the exported report.
+		const extraWidth = Math.max(0, ...[...report.querySelectorAll<HTMLElement>(".ant-table-content, .ant-table-body")].map((table) => table.scrollWidth - table.clientWidth));
+		try {
+			flushSync(() => setCaptureWidth(Math.ceil(report.getBoundingClientRect().width + extraWidth)));
+			const blob = await renderBenchmarkReport(report, format);
+			downloadBenchmarkReport(blob, id, format);
+		} finally {
+			flushSync(() => setCaptureWidth(undefined));
+			exportingRef.current = false;
+		}
+	};
 
 	if (runQuery.loading && !runQuery.data || metaQuery.loading && !metaQuery.data) return <Card><Spin /></Card>;
 	if (runQuery.error || metaQuery.error || !run || !metaQuery.data) return <Card><Alert type="error" showIcon message={t("detail.loadFailed")} description={(runQuery.error || metaQuery.error)?.message || t("detail.missing")} action={<Button onClick={() => navigate("/evaluations")}>{t("common.back")}</Button>} /></Card>;
@@ -84,7 +108,8 @@ export default function EvaluationDetailPage() {
 	const reusesSamples = benchmarkReusesSamples(run, datasetProfile);
 
 	return <div>
-		<PageHeader title={run.name || `Run #${run.id}`} description={`${localizedText(meta.modes.find((item) => item.value === run.mode)?.label, language) || run.mode} · ${run.model}`} parents={[<Link key="list" to="/evaluations">{t("list.breadcrumb.evaluations")}</Link>]} extra={<Space><Button icon={<ArrowLeftOutlined />} onClick={() => navigate("/evaluations")}>{t("common.back")}</Button><BenchmarkReportMenu runID={run.id} /><Button icon={<CopyOutlined />} onClick={() => setWizardPreset({ sourceRun: run })}>{t("detail.rerun")}</Button>{active && <Popconfirm title={t("detail.cancelTitle")} description={t("detail.cancelDescription")} onConfirm={async () => { try { await api.cancelBenchmark(run.id); await runQuery.refetch(); message.success(t("detail.canceled")); } catch (error) { message.error((error as Error).message); } }}><Button danger icon={<StopOutlined />}>{t("detail.cancel")}</Button></Popconfirm>}</Space>} />
+		<div ref={reportRef} className={capturing ? "benchmark-report-export" : undefined} style={capturing ? { width: captureWidth } : undefined}>
+		<PageHeader title={run.name || `Run #${run.id}`} description={`${localizedText(meta.modes.find((item) => item.value === run.mode)?.label, language) || run.mode} · ${run.model}`} parents={[<Link key="list" to="/evaluations">{t("list.breadcrumb.evaluations")}</Link>]} extra={<Space data-report-exclude><Button icon={<ArrowLeftOutlined />} onClick={() => navigate("/evaluations")}>{t("common.back")}</Button><BenchmarkReportMenu runID={run.id} onExportVisual={exportVisual} visualDisabled={runQuery.loading || curve.loading || timeline.loading} /><Button icon={<CopyOutlined />} onClick={() => setWizardPreset({ sourceRun: run })}>{t("detail.rerun")}</Button>{active && <Popconfirm title={t("detail.cancelTitle")} description={t("detail.cancelDescription")} onConfirm={async () => { try { await api.cancelBenchmark(run.id); await runQuery.refetch(); message.success(t("detail.canceled")); } catch (error) { message.error((error as Error).message); } }}><Button danger icon={<StopOutlined />}>{t("detail.cancel")}</Button></Popconfirm>}</Space>} />
 			<Space direction="vertical" size={16} style={{ width: "100%" }}>
 				<VerdictCard run={run} meta={meta} onRerun={(maxConcurrency) => setWizardPreset({ sourceRun: run, maxConcurrency })} />
 				{run.warnings?.map((warning) => <Alert key={warning} type="warning" showIcon message={t(`benchmarkWarning.${warning}`, { defaultValue: warning })} />)}
@@ -103,9 +128,11 @@ export default function EvaluationDetailPage() {
 			</Row>
 			<PointResultsTable run={run} selectedSeq={selected?.seq} onSelect={(point) => setSelectedSeq(point.seq)} />
 			<BenchmarkEvidencePanel run={run} point={selected} />
-			<AdvancedResult run={run} point={selected} />
-				<BenchmarkSnapshotPanel run={run} />
+			{selected && (selected.state === "running" ? <Card title={t("timeline.title")}><Alert type="info" showIcon message={t("timeline.running")} /></Card> : <BenchmarkRequestTimeline key={`${id}:${selected.seq}`} data={timeline.data} loading={timeline.loading} error={timeline.error} onRetry={timeline.refetch} />)}
+			<AdvancedResult run={run} point={selected} expanded={capturing} />
+				<BenchmarkSnapshotPanel run={run} expanded={capturing} />
 		</Space>
+		</div>
 		<BenchmarkWizard open={wizardOpen} meta={meta} deployments={targets.deployments} nodes={targets.nodes} onSearchDeployments={targets.searchDeployments} onSearchNodes={targets.searchNodes} preset={wizardPreset} onClose={() => setWizardPreset(undefined)} onCreated={(created) => { setWizardPreset(undefined); navigate(`/evaluations/${created.id}`); }} />
 	</div>;
 }

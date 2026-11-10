@@ -1494,6 +1494,7 @@ extra_args 解析（`EXTRA_ARGS_INVALID`）、挂载（`MOUNT_CONTAINER_PATH`/`M
 | GET | `/api/v1/benchmarks/{id}/report` | 下载评测报告 | JWT |
 | DELETE | `/api/v1/benchmarks/{id}` | 删除评测任务 | JWT |
 | GET | `/api/v1/benchmarks/{id}/points/{seq}/detail` | 下载某负载点的明细数据 | JWT |
+| GET | `/api/v1/benchmarks/{id}/points/{seq}/timeline` | 读取点位请求时间线（有界、脱敏的计时与请求身份） | JWT |
 | POST | `/api/v1/benchmarks/{id}/cancel` | 取消运行中的评测 | JWT |
 
 ## Profiles / GPUs（估算校准与 GPU 清单）

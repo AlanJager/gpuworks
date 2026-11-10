@@ -254,6 +254,7 @@ func Router(d Deps, policies ...auth.SessionPolicy) http.Handler {
 			r.Get("/benchmarks/{id}/report", a.downloadBenchmarkReport)
 			r.Delete("/benchmarks/{id}", a.deleteBenchmark)
 			r.Get("/benchmarks/{id}/points/{seq}/detail", a.downloadBenchmarkDetail)
+			r.Get("/benchmarks/{id}/points/{seq}/timeline", a.getBenchmarkRequestTimeline)
 			r.Post("/benchmarks/{id}/cancel", a.cancelBenchmark)
 
 			// Instances.
