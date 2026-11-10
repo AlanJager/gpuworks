@@ -13,7 +13,15 @@ const { api } = await import("../src/api.ts");
 const { APIError } = await import("../src/apiError.ts");
 const { default: KubernetesPage } = await import("../src/pages/KubernetesPage.tsx");
 const { cardReturnText } = await import("../src/kubeClusters.ts");
-import type { KubeCluster } from "../src/api";
+import type { KubeCluster, KubeDefaults } from "../src/api";
+
+// What GET /api/v1/kube/defaults answers: the drawer shows these as hints and sends only what was typed.
+const DEFAULTS: KubeDefaults = {
+  vendor: "nvidia", namespace: "gpuworks-system", state_dir: "/opt/gpuworks", engine_ports: "40000-42767", idle_return_seconds: 60, idle_return_keep: -1,
+  agent_image: "gpuworks/gpuworks-agent:v1", stalled_after_seconds: 300,
+  vendors: [{ id: "nvidia", runtime_class: true }, { id: "ascend", runtime_class: false }, { id: "hygon", runtime_class: false }, { id: "ppu", runtime_class: false }],
+};
+
 
 const k = locale.kubernetes;
 const originals = { ...api };
@@ -26,7 +34,7 @@ function cluster(overrides: Partial<KubeCluster> = {}): KubeCluster {
     vendor: "nvidia", state_dir: "/opt/gpuworks", agent_image: "", node_selector: "nvidia.com/gpu.present=true", runtime_class: "", image_pull_secret: "",
     containerd_socket: "", api_server: "", engine_ports: "40000-42767", idle_return_seconds: 600,
     cluster_uid: "7f3c2a10-aaaa-bbbb-cccc-0123456789ab", revoked: false, node_count: 3,
-    created_at: "2026-10-19T08:30:00Z", apply_command: APPLY, ...overrides,
+    created_at: "2026-10-19T08:30:00Z", apply_command: APPLY, stalled: false, can_apply: false, can_remove: false, operation_blocked: "no_source", ...overrides,
   };
 }
 const prod = cluster();
@@ -34,7 +42,7 @@ const lab = cluster({ id: 2, uuid: "c-2", name: "lab", namespace: "gpu-lab", clu
 const old = cluster({ id: 3, uuid: "c-3", name: "retired", revoked: true, idle_return_seconds: 7200, vendor: "ascend", runtime_class: "" });
 
 type Calls = Record<string, unknown[][]>;
-function stubApi(options: { clusters?: KubeCluster[] | Error; admin?: boolean } = {}) {
+function stubApi(options: { clusters?: KubeCluster[] | Error; admin?: boolean; defaults?: KubeDefaults | Error } = {}) {
   const calls: Calls = {};
   const record = (name: string, result: unknown) => async (...args: unknown[]) => {
     (calls[name] ??= []).push(args);
@@ -44,6 +52,7 @@ function stubApi(options: { clusters?: KubeCluster[] | Error; admin?: boolean } 
   const clusters = options.clusters ?? [prod, lab, old];
   api.me = record("me", { role: options.admin === false ? "viewer" : "admin" }) as never;
   api.kubeClusters = record("kubeClusters", clusters instanceof Error ? clusters : list(clusters.map((c) => options.admin === false ? { ...c, apply_command: undefined } : c))) as never;
+  api.kubeDefaults = record("kubeDefaults", options.defaults ?? DEFAULTS) as never;
   api.kubeManifest = record("kubeManifest", "apiVersion: apps/v1\nkind: DaemonSet\n") as never;
   api.revokeKubeCluster = record("revokeKubeCluster", (uuid: string) => ({ ...prod, uuid, revoked: true })) as never;
   api.deleteKubeCluster = record("deleteKubeCluster", undefined) as never;
@@ -225,7 +234,7 @@ test("a cluster that still has nodes cannot be deleted: the page shows the produ
   assert.ok(screen.getByText("prod-gpu"), "the cluster is still listed");
 });
 
-test("connecting opens a form with the server address prefilled and the defaults in the advanced section", async () => {
+test("connecting opens a form with the server address prefilled and the server's defaults as hints in the advanced section, every field left empty", async () => {
   stubApi();
   const { user } = renderPage();
   await user.click((await screen.findAllByRole("button", { name: new RegExp(`${add}$`) }))[0]);
@@ -233,7 +242,9 @@ test("connecting opens a form with the server address prefilled and the defaults
   assert.equal((await form.findByLabelText(field(k.drawer.serverUrl)) as HTMLInputElement).value, "http://localhost", "the origin of this page, stated explicitly");
   assert.ok(form.getByPlaceholderText("nvidia.com/gpu.present=true"));
   await user.click(form.getByText(k.drawer.advanced));
-  assert.equal((form.getByLabelText(field(k.drawer.namespace)) as HTMLInputElement).value, "gpuworks-system");
+  const namespace = form.getByLabelText(field(k.drawer.namespace)) as HTMLInputElement;
+  await waitFor(() => assert.equal(namespace.placeholder, "gpuworks-system", "the server's default, as a hint"));
+  assert.equal(namespace.value, "", "left empty so the server applies its default");
   const runtimeClass = form.getByLabelText(field(k.drawer.runtimeClass)) as HTMLInputElement;
   assert.equal(runtimeClass.value, "", "empty: each node decides");
   assert.equal(runtimeClass.placeholder, k.drawer.runtimeClassPlaceholder);
@@ -244,9 +255,12 @@ test("connecting opens a form with the server address prefilled and the defaults
   assert.equal(socket.placeholder, k.drawer.containerdSocketPlaceholder);
   assert.equal((form.getByLabelText(field(k.drawer.stateDir)) as HTMLInputElement).placeholder, "/opt/gpuworks");
   assert.ok(form.getByText(k.drawer.stateDirHelp));
-  assert.equal(form.getByRole("combobox", { name: field(k.drawer.vendor) }).textContent, locale.common.vendor.nvidia, "NVIDIA is the default vendor");
-  assert.equal((form.getByLabelText(field(k.drawer.enginePorts)) as HTMLInputElement).value, "40000-42767");
-  assert.equal((form.getByLabelText(field(k.drawer.idleReturnSeconds)) as HTMLInputElement).value, "60");
+  await waitFor(() => assert.equal(form.getByRole("combobox", { name: field(k.drawer.vendor) }).textContent, locale.common.vendor.nvidia, "the server's default vendor is shown"));
+  const ports = form.getByLabelText(field(k.drawer.enginePorts)) as HTMLInputElement;
+  assert.deepEqual([ports.value, ports.placeholder], ["", "40000-42767"]);
+  const idle = form.getByLabelText(field(k.drawer.idleReturnSeconds)) as HTMLInputElement;
+  assert.deepEqual([idle.value, idle.placeholder], ["", "60"]);
+  assert.equal((form.getByLabelText(field(k.drawer.agentImage)) as HTMLInputElement).placeholder, "gpuworks/gpuworks-agent:v1");
   assert.ok(form.getByText(k.drawer.containerdSocketHelp), "the auto-detect hint");
   assert.ok(form.getByText(k.drawer.enginePortsHelp), "the NodePort hint");
 });
@@ -266,7 +280,7 @@ test("a form without a name or with a server address that is no URL is refused b
   assert.equal(calls.createKubeCluster, undefined);
 });
 
-test("submitting sends exactly what the form shows, then presents the command to run in the cluster and reloads the list", async () => {
+test("submitting sends exactly what was typed, then presents the command to run in the cluster and reloads the list", async () => {
   const calls = stubApi();
   const { user } = renderPage();
   await user.click((await screen.findAllByRole("button", { name: new RegExp(`${add}$`) }))[0]);
@@ -276,10 +290,7 @@ test("submitting sends exactly what the form shows, then presents the command to
   const before = calls.kubeClusters.length;
   await user.click(form.getByRole("button", { name: k.drawer.submit }));
   await waitFor(() => assert.equal(calls.createKubeCluster?.length, 1));
-  assert.deepEqual(calls.createKubeCluster[0], [{
-    name: "edge", server_url: "http://localhost", vendor: "nvidia", idle_return_seconds: 60,
-    namespace: "gpuworks-system", node_selector: "gpu=a100,zone=b", engine_ports: "40000-42767",
-  }]);
+  assert.deepEqual(calls.createKubeCluster[0], [{ name: "edge", server_url: "http://localhost", node_selector: "gpu=a100,zone=b" }], "what was not typed is left to the server");
   assert.ok(await dialog().findByText(k.created.note));
   assert.ok(dialog().getByText(k.created.title.replace("{{name}}", "edge")));
   await waitFor(() => assert.ok(calls.kubeClusters.length > before));
@@ -390,10 +401,7 @@ test("the vendor choice offers the four vendors; an Ascend cluster sends its ven
   await user.type(form.getByLabelText(field(k.drawer.stateDir)), "/opt/gpuworks-k8s");
   await user.click(form.getByRole("button", { name: k.drawer.submit }));
   await waitFor(() => assert.equal(calls.createKubeCluster?.length, 1));
-  assert.deepEqual(calls.createKubeCluster[0], [{
-    name: "npu", server_url: "http://localhost", vendor: "ascend", idle_return_seconds: 60,
-    namespace: "gpuworks-system", state_dir: "/opt/gpuworks-k8s", engine_ports: "40000-42767",
-  }]);
+  assert.deepEqual(calls.createKubeCluster[0], [{ name: "npu", server_url: "http://localhost", vendor: "ascend", state_dir: "/opt/gpuworks-k8s" }]);
 });
 
 test("every vendor can be chosen, and going back to NVIDIA brings the RuntimeClass field back", async () => {
@@ -412,17 +420,106 @@ test("every vendor can be chosen, and going back to NVIDIA brings the RuntimeCla
   assert.equal((await form.findByLabelText(field(k.drawer.runtimeClass)) as HTMLInputElement).value, "");
 });
 
-test("a cluster no node joined from for minutes offers the commands and causes to look at; a fresh one does not", async () => {
-  const stalled = cluster({ id: 4, uuid: "c-4", name: "doks", namespace: "gpuworks-system", cluster_uid: "", node_count: 0, created_at: new Date(Date.now() - 10 * 60_000).toISOString() });
+test("a cluster the server calls stalled offers the commands and causes to look at; one it does not, does not, whatever its age", async () => {
+  const stalled = cluster({ id: 4, uuid: "c-4", name: "doks", namespace: "gpuworks-system", cluster_uid: "", node_count: 0, stalled: true });
   stubApi({ clusters: [stalled, lab] });
   const { user } = renderPage();
-  assert.equal(within(await rowOf("lab")).queryByRole("button", { name: k.clusterUid.troubleshoot }), null, "a minute is not long enough to worry");
+  assert.equal(within(await rowOf("lab")).queryByRole("button", { name: k.clusterUid.troubleshoot }), null, "the server did not call it stalled");
   await user.click(within(await rowOf("doks")).getByRole("button", { name: k.clusterUid.troubleshoot }));
   assert.ok(await screen.findByText(k.stalled.title));
-  assert.ok(screen.getByText(k.stalled.intro.replace("{{minutes}}", "5")));
+  assert.ok(screen.getByText(k.stalled.intro));
   for (const key of ["pull", "runtimeClass", "selector", "connect"] as const) assert.ok(screen.getByText(k.stalled[key]));
   const commands = screen.getByLabelText(k.stalled.copy, { selector: "pre" }).textContent ?? "";
   assert.ok(commands.includes("kubectl -n gpuworks-system describe daemonset gpuworks-agent"), commands);
   await user.click(screen.getByRole("button", { name: k.stalled.copy }));
   assert.equal(await navigator.clipboard.readText(), commands);
+});
+
+test("the vendor list and which vendor takes a RuntimeClass come from the server's dictionary, not from the page", async () => {
+  stubApi({ defaults: { ...DEFAULTS, vendor: "ascend", vendors: [{ id: "ascend", runtime_class: false }, { id: "nvidia", runtime_class: true }, { id: "hygon", runtime_class: true }] } });
+  const { user } = renderPage();
+  await user.click((await screen.findAllByRole("button", { name: new RegExp(`${add}$`) }))[0]);
+  const form = dialog();
+  await form.findByLabelText(field(k.drawer.name));
+  await user.click(form.getByText(k.drawer.advanced));
+  await waitFor(() => assert.equal(form.getByRole("combobox", { name: field(k.drawer.vendor) }).textContent, locale.common.vendor.ascend, "the server's default vendor leads"));
+  assert.ok(form.queryByLabelText(k.drawer.runtimeClass) === null, "the dictionary says the default vendor takes none");
+  const vendors = form.getByRole("combobox", { name: field(k.drawer.vendor) });
+  vendors.focus();
+  await user.keyboard("{Enter}");
+  assert.deepEqual((await screen.findAllByRole("option")).map((option) => option.textContent), [locale.common.vendor.ascend, locale.common.vendor.nvidia, locale.common.vendor.hygon]);
+  await user.keyboard("{Escape}");
+  await waitFor(() => assert.ok(!screen.queryByRole("listbox"), "the options closed"));
+  await selectVendor(user, form, locale.common.vendor.hygon);
+  assert.ok(await form.findByLabelText(field(k.drawer.runtimeClass)), "the dictionary says hygon takes one");
+});
+
+test("the idle-return switch sends the server's own keep value", async () => {
+  const calls = stubApi({ defaults: { ...DEFAULTS, idle_return_keep: -7 } });
+  const { user } = renderPage();
+  await user.click((await screen.findAllByRole("button", { name: new RegExp(`${add}$`) }))[0]);
+  const form = dialog();
+  await user.type(await form.findByLabelText(field(k.drawer.name)), "keeper");
+  await user.click(form.getByText(k.drawer.advanced));
+  const keep = form.getByRole("switch", { name: k.drawer.keepCards });
+  // The switch is enabled once the dictionary, which owns the keep value, has arrived.
+  await waitFor(() => assert.equal((form.getByLabelText(field(k.drawer.namespace)) as HTMLInputElement).placeholder, "gpuworks-system"));
+  keep.focus();
+  await user.keyboard(" ");
+  await waitFor(() => assert.equal(keep.getAttribute("aria-checked"), "true"));
+  await user.click(form.getByRole("button", { name: k.drawer.submit }));
+  await waitFor(() => assert.equal(calls.createKubeCluster?.length, 1));
+  assert.equal((calls.createKubeCluster[0][0] as { idle_return_seconds: number }).idle_return_seconds, -7);
+});
+
+test("when the defaults cannot be loaded the form says so and still sends only what was typed", async () => {
+  const calls = stubApi({ defaults: new Error("defaults down") });
+  const { user } = renderPage();
+  await user.click((await screen.findAllByRole("button", { name: new RegExp(`${add}$`) }))[0]);
+  const form = dialog();
+  assert.ok(await form.findByText(k.drawer.defaultsFailed));
+  await user.type(form.getByLabelText(field(k.drawer.name)), "plain");
+  await user.click(form.getByRole("button", { name: k.drawer.submit }));
+  await waitFor(() => assert.equal(calls.createKubeCluster?.length, 1));
+  assert.deepEqual(calls.createKubeCluster[0], [{ name: "plain", server_url: "http://localhost" }]);
+});
+
+test("applying and removing follow the server's can_apply and can_remove, with its reason", async () => {
+  const source = { provider_id: 3, provider_name: "ali-prod", provider_kind: "aliyun", cluster_id: "c-1" };
+  const cloud = (overrides: Partial<KubeCluster>) => cluster({ source, can_apply: true, can_remove: true, operation_blocked: undefined, ...overrides });
+  stubApi({
+    clusters: [
+      cloud({ id: 11, uuid: "u-ok", name: "ok" }),
+      cloud({ id: 12, uuid: "u-private", name: "private", can_apply: false, can_remove: false, operation_blocked: "private_api" }),
+      cloud({ id: 13, uuid: "u-revoked", name: "revoked-cloud", revoked: true, can_apply: false, can_remove: true, operation_blocked: "revoked" }),
+      cluster({ id: 14, uuid: "u-hand", name: "by-hand" }),
+    ],
+  });
+  const { user } = renderPage();
+  const state = async (name: string, action: string) => (within(await rowOf(name)).queryByRole("button", { name: action }) as HTMLButtonElement | null)?.disabled;
+  assert.equal(await state("ok", k.actions.apply), false);
+  assert.equal(await state("ok", k.actions.remove), false);
+  assert.equal(await state("private", k.actions.apply), true);
+  assert.equal(await state("private", k.actions.remove), true);
+  assert.equal(await state("revoked-cloud", k.actions.apply), true);
+  assert.equal(await state("revoked-cloud", k.actions.remove), false);
+  assert.equal(await state("by-hand", k.actions.apply), undefined, "no apply for an entry made by hand");
+
+  await user.hover(within(await rowOf("private")).getByRole("button", { name: k.actions.apply }).parentElement as HTMLElement);
+  assert.ok(await screen.findByText(k.blocked.private_api), "the reason is the server's code, written in this language");
+});
+
+test("a created cloud entry the server cannot apply to says why instead of offering to", async () => {
+  stubApi();
+  const source = { provider_id: 3, provider_name: "ali-prod", provider_kind: "aliyun", cluster_id: "c-1" };
+  api.createKubeCluster = (async (body: { name: string }) => cluster({ id: 9, uuid: "c-9", name: body.name, cluster_uid: "", node_count: 0, source, can_apply: false, can_remove: false, operation_blocked: "private_api" })) as never;
+  const { user } = renderPage();
+  await user.click((await screen.findAllByRole("button", { name: new RegExp(`${add}$`) }))[0]);
+  const form = dialog();
+  await user.type(await form.findByLabelText(field(k.drawer.name)), "priv");
+  await user.click(form.getByRole("button", { name: k.drawer.submit }));
+  assert.ok(await dialog().findByText(k.created.applyBlocked));
+  assert.ok(dialog().getByText(k.blocked.private_api));
+  assert.equal(dialog().queryByRole("button", { name: k.created.applyNow }), null);
+  assert.ok(dialog().getByLabelText(k.created.command), "the kubectl command is still there");
 });

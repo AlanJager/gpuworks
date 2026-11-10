@@ -16,7 +16,7 @@ import { Notice } from "../ui-kit/Notice";
 import { api, usePolling, type KubeCluster, type List } from "../api";
 import { apiErrorText } from "../apiError";
 import { formatTime } from "../i18n/datetime";
-import { KUBE_STALLED_MINUTES, cardReturnText, kubeClusterStalled, kubeTroubleshootCommands } from "../kubeClusters";
+import { cardReturnText, kubeTroubleshootCommands } from "../kubeClusters";
 import KubeClusterDrawer from "./kubernetes/KubeClusterDrawer";
 import KubeManifestModal from "./kubernetes/KubeManifestModal";
 import KubeClusterOperationModal from "./kubernetes/KubeClusterOperationModal";
@@ -27,7 +27,7 @@ function StalledHelp({ cluster }: { cluster: KubeCluster }) {
   const commands = kubeTroubleshootCommands(cluster.namespace);
   return (
     <div className="flex max-w-[520px] flex-col gap-2">
-      <p>{t("stalled.intro", { minutes: KUBE_STALLED_MINUTES })}</p>
+      <p>{t("stalled.intro")}</p>
       <div className="flex items-start gap-1">
         <pre aria-label={t("stalled.copy")} className="code-block min-w-0 flex-1 overflow-x-auto text-label">{commands}</pre>
         <CopyButton size="small" label={t("stalled.copy")} text={commands} />
@@ -95,7 +95,7 @@ export default function KubernetesPage() {
       width: 300,
       render: (_, c) => c.cluster_uid
         ? <code>{c.cluster_uid}</code>
-        : kubeClusterStalled(c) ? (
+        : c.stalled ? (
           <div className="flex items-center gap-1">
             <Badge status="warning">{t("clusterUid.notEnrolled")}</Badge>
             <Popover>
@@ -128,11 +128,11 @@ export default function KubernetesPage() {
         <div className="flex items-center gap-0.5">
           {c.source && (
             <>
-              {rowAction(t("actions.apply"), (
-                <Button variant="ghost" size="sm" iconOnly aria-label={t("actions.apply")} disabled={c.revoked} onClick={() => setOperation({ cluster: c, op: "apply" })}><ConsoleIcon.upload size={16} /></Button>
+              {rowAction(c.can_apply || !c.operation_blocked ? t("actions.apply") : t(`blocked.${c.operation_blocked}`), (
+                <Button variant="ghost" size="sm" iconOnly aria-label={t("actions.apply")} disabled={!c.can_apply} onClick={() => setOperation({ cluster: c, op: "apply" })}><ConsoleIcon.upload size={16} /></Button>
               ))}
-              {rowAction(t("actions.remove"), (
-                <Button variant="ghost" size="sm" iconOnly className="text-fg-danger hover:text-fg-danger" aria-label={t("actions.remove")} onClick={() => setOperation({ cluster: c, op: "remove" })}><ConsoleIcon.unlink size={16} /></Button>
+              {rowAction(c.can_remove || !c.operation_blocked ? t("actions.remove") : t(`blocked.${c.operation_blocked}`), (
+                <Button variant="ghost" size="sm" iconOnly className="text-fg-danger hover:text-fg-danger" aria-label={t("actions.remove")} disabled={!c.can_remove} onClick={() => setOperation({ cluster: c, op: "remove" })}><ConsoleIcon.unlink size={16} /></Button>
               ))}
             </>
           )}

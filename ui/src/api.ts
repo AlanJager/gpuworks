@@ -1049,8 +1049,36 @@ export interface KubeCluster {
   created_at: string;
   /** Carries the enrollment token; administrators only. */
   apply_command?: string;
+  /** No node joined for longer than the dictionary's stalled_after_seconds: worth troubleshooting. */
+  stalled: boolean;
+  /** Whether the server can apply the manifest to the source cluster, or delete it from there. */
+  can_apply: boolean;
+  can_remove: boolean;
+  /** Why not: no_source (made by hand), private_api (the cloud says the API server has no public address), revoked (apply only). */
+  operation_blocked?: "no_source" | "private_api" | "revoked";
   /** The cloud account cluster the entry was made from; gpuworks can then apply the manifest itself. */
   source?: KubeClusterSource;
+}
+
+/** What the cluster form takes from the server (dto.KubeDefaults); every value is a hint, a field left empty takes it. */
+export interface KubeDefaults {
+  vendor: KubeVendor;
+  namespace: string;
+  state_dir: string;
+  engine_ports: string;
+  idle_return_seconds: number;
+  /** The idle_return_seconds value that keeps borrowed cards. */
+  idle_return_keep: number;
+  agent_image: string;
+  stalled_after_seconds: number;
+  /** The vendors a cluster can be connected for, the default first. */
+  vendors: KubeVendorInfo[];
+}
+
+export interface KubeVendorInfo {
+  id: KubeVendor;
+  /** The cluster may name a RuntimeClass for this vendor; for the others the server ignores one. */
+  runtime_class: boolean;
 }
 
 /** Where a cluster entry came from (dto.KubeClusterSource). */
@@ -5008,6 +5036,7 @@ export const api = {
   putMCPSettings: (enabled: boolean) => sendJSON<MCPStatus>("PUT", "/api/v1/mcp/settings", { enabled }),
 
   kubeClusters: () => getJSON<List<KubeCluster>>("/api/v1/kube/clusters"),
+  kubeDefaults: () => getJSON<KubeDefaults>("/api/v1/kube/defaults"),
   createKubeCluster: (body: KubeClusterRequest) => sendJSON<KubeCluster>("POST", "/api/v1/kube/clusters", body),
   kubeManifest: (uuid: string) => getText(`/api/v1/kube/clusters/${encodeURIComponent(uuid)}/manifest`),
   revokeKubeCluster: (uuid: string) => sendJSON<KubeCluster>("POST", `/api/v1/kube/clusters/${encodeURIComponent(uuid)}/revoke`),

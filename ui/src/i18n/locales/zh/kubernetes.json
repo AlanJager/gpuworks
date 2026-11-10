@@ -83,6 +83,8 @@
     "stateDirHelp": "agent 在主机上的目录。改成别的目录，可以让 agent 与主机上已安装的 agent 共存；留空使用 /opt/gpuworks。",
     "agentImage": "agent 镜像",
     "agentImagePlaceholder": "默认镜像",
+    "defaultsFailed": "默认值没有加载成功",
+    "defaultsFailedHelp": "留空的字段仍然采用 server 的默认值；只是看不到提示，也没有厂商列表。",
     "agentImageHelp": "留空使用默认的 agent 镜像。",
     "imagePullSecret": "镜像拉取凭据",
     "imagePullSecretPlaceholder": "不使用",
@@ -119,11 +121,17 @@
     "byGpuworks": "由 gpuworks 应用到集群",
     "byGpuworksHelp": "gpuworks 用云账号现取的临时集群凭据（15 分钟内有效，用完即弃，不保存）先检查再应用，应用前会列出要创建的对象请你确认。",
     "applyNow": "检查并应用…",
-    "byKubectl": "或者自己在集群里执行"
+    "byKubectl": "或者自己在集群里执行",
+    "applyBlocked": "gpuworks 不能替你应用"
+  },
+  "blocked": {
+    "no_source": "这个集群是手动添加的，gpuworks 没有进入它的途径，请在集群里执行 kubectl 命令。",
+    "private_api": "云厂商说这个集群的 API Server 没有公网地址，gpuworks 连不上；请在集群的内网里执行 kubectl 命令。",
+    "revoked": "接入令牌已吊销，不能再次应用 manifest；仍可从集群里删除。"
   },
   "stalled": {
     "title": "还没有节点接入",
-    "intro": "集群创建已超过 {{minutes}} 分钟，仍没有节点接入。先在集群里看 agent 的 DaemonSet 和 Pod：",
+    "intro": "集群已等了一阵，仍没有节点接入。先在集群里看 agent 的 DaemonSet 和 Pod：",
     "causes": "常见原因",
     "pull": "Pod 处于 ImagePullBackOff：拉不到 agent 镜像。镜像在需要登录的仓库时，在命名空间里建好 docker-registry Secret，并在新建集群时填写“镜像拉取凭据”。",
     "runtimeClass": "DaemonSet 事件提示 RuntimeClass 不存在：填写的 RuntimeClass 在集群里没有；留空即可，由 agent 自动判断。",

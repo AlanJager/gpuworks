@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -27,11 +28,13 @@ type apiClusterDriver struct {
 	apiInstallFailingProviderDriver
 	kubeconfig []byte
 	listErr    error
+	lists      atomic.Int32 // how many times the cloud was asked for the clusters
 }
 
 func (*apiClusterDriver) Name() string { return "api-cluster-provider" }
 
 func (d *apiClusterDriver) ListClusters(context.Context, provider.Credentials) ([]provider.Cluster, error) {
+	d.lists.Add(1)
 	if d.listErr != nil {
 		return nil, d.listErr
 	}

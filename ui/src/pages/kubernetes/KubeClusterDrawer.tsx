@@ -3,9 +3,9 @@ import { useForm, useWatch } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useTranslation } from "react-i18next";
-import { api, type KubeCluster, type KubeClusterRequest, type KubeVendor } from "../../api";
+import { api, type KubeCluster, type KubeClusterRequest, type KubeDefaults, type KubeVendor } from "../../api";
 import { APIError, apiErrorText } from "../../apiError";
-import { KEEP_BORROWED_CARDS, KUBE_DEFAULTS, KUBE_VENDORS } from "../../kubeClusters";
+import { useKubeDefaults } from "../../kubeClusters";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "../../components/ui/accordion";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
@@ -79,46 +79,58 @@ const ADVANCED_FIELDS: ReadonlySet<FormField_> = new Set<FormField_>([
   "namespace", "agent_image", "image_pull_secret", "state_dir", "runtime_class", "containerd_socket", "api_server", "engine_ports", "keep_cards", "idle_return_seconds",
 ]);
 
+/**
+ * The form starts empty: the server's defaults (GET /api/v1/kube/defaults) are
+ * shown as hints and a field left empty is not sent, so the server applies
+ * them. Only a cloud prefill brings values of its own.
+ */
 function defaultsOf(prefill?: KubeClusterPrefill): FormValues {
   return {
     name: prefill?.name ?? "",
     server_url: window.location.origin,
-    vendor: prefill?.vendor ?? KUBE_DEFAULTS.vendor,
+    vendor: prefill?.vendor ?? "",
     node_selector: prefill?.node_selector ?? "",
-    namespace: KUBE_DEFAULTS.namespace,
+    namespace: "",
     state_dir: "",
     agent_image: "",
     image_pull_secret: "",
     runtime_class: "",
     containerd_socket: "",
     api_server: "",
-    engine_ports: KUBE_DEFAULTS.enginePorts,
+    engine_ports: "",
     keep_cards: false,
-    idle_return_seconds: KUBE_DEFAULTS.idleReturnSeconds,
+    idle_return_seconds: null,
   };
 }
 
-function requestOf(values: FormValues, prefill?: KubeClusterPrefill): KubeClusterRequest {
+function requestOf(values: FormValues, defaults: KubeDefaults | null, prefill?: KubeClusterPrefill): KubeClusterRequest {
   const request: KubeClusterRequest = {
     name: values.name.trim(),
     server_url: values.server_url.trim(),
-    vendor: values.vendor as KubeVendor,
   };
+  if (values.vendor) request.vendor = values.vendor as KubeVendor;
   // A cleared number takes the server's default, like every other empty field.
-  if (values.keep_cards) request.idle_return_seconds = KEEP_BORROWED_CARDS;
+  if (values.keep_cards && defaults) request.idle_return_seconds = defaults.idle_return_keep;
   else if (values.idle_return_seconds !== null) request.idle_return_seconds = values.idle_return_seconds;
   if (prefill) {
     request.provider_id = prefill.provider_id;
     request.provider_cluster_id = prefill.provider_cluster_id;
   }
-  // Only NVIDIA nodes get their devices through a RuntimeClass (the others through the agent's device plugin). Every
-  // empty field takes the server's default; an empty RuntimeClass is decided on each node.
-  const optional = { runtime_class: values.vendor === "nvidia" ? values.runtime_class : "", image_pull_secret: values.image_pull_secret, namespace: values.namespace, state_dir: values.state_dir, agent_image: values.agent_image, node_selector: values.node_selector, containerd_socket: values.containerd_socket, api_server: values.api_server, engine_ports: values.engine_ports } as const;
+  // Only a vendor the server says takes a RuntimeClass gets one (the others have their devices through the agent's
+  // device plugin). Every empty field takes the server's default; an empty RuntimeClass is decided on each node.
+  const optional = { runtime_class: runtimeClassApplies(defaults, values.vendor) ? values.runtime_class : "", image_pull_secret: values.image_pull_secret, namespace: values.namespace, state_dir: values.state_dir, agent_image: values.agent_image, node_selector: values.node_selector, containerd_socket: values.containerd_socket, api_server: values.api_server, engine_ports: values.engine_ports } as const;
   for (const [key, value] of Object.entries(optional)) {
     const text = (value ?? "").trim();
     if (text) (request as unknown as Record<string, string>)[key] = text;
   }
   return request;
+}
+
+/** Whether the vendor (empty: the server's default one) takes a RuntimeClass; true while the dictionary is unknown, the server ignores it where it does not apply. */
+function runtimeClassApplies(defaults: KubeDefaults | null, vendor: string): boolean {
+  if (!defaults) return true;
+  const id = vendor || defaults.vendor;
+  return defaults.vendors.find((v) => v.id === id)?.runtime_class ?? false;
 }
 
 /**
@@ -132,6 +144,7 @@ export default function KubeClusterDrawer({ open, onClose, onCreated, prefill }:
   const schema = useMemo(() => formSchema(t), [t]);
   const form = useForm<FormValues>({ resolver: zodResolver(schema), shouldFocusError: false, defaultValues: defaultsOf(prefill) });
   const [keepCards, vendor] = useWatch({ control: form.control, name: ["keep_cards", "vendor"] });
+  const { defaults, error: defaultsError } = useKubeDefaults(open);
   const formRef = useRef<HTMLFormElement>(null);
   const nameInput = useRef<HTMLInputElement | null>(null);
   const [saving, setSaving] = useState(false);
@@ -157,7 +170,7 @@ export default function KubeClusterDrawer({ open, onClose, onCreated, prefill }:
     setSaving(true);
     setError(null);
     try {
-      const cluster = await api.createKubeCluster(requestOf(values, prefill));
+      const cluster = await api.createKubeCluster(requestOf(values, defaults, prefill));
       setCreated(cluster);
       onCreated();
     } catch (e) {
@@ -177,18 +190,18 @@ export default function KubeClusterDrawer({ open, onClose, onCreated, prefill }:
   const advanced = (
     <div className="flex flex-col gap-4 pt-2">
       <FormField control={form.control} name="namespace" label={t("drawer.namespace")} description={t("drawer.namespaceHelp")}>
-        {(binding) => <Input {...binding} />}
+        {(binding) => <Input {...binding} placeholder={defaults?.namespace} />}
       </FormField>
       <FormField control={form.control} name="agent_image" label={t("drawer.agentImage")} description={t("drawer.agentImageHelp")}>
-        {(binding) => <Input {...binding} placeholder={t("drawer.agentImagePlaceholder")} />}
+        {(binding) => <Input {...binding} placeholder={defaults?.agent_image ?? t("drawer.agentImagePlaceholder")} />}
       </FormField>
       <FormField control={form.control} name="image_pull_secret" label={t("drawer.imagePullSecret")} description={t("drawer.imagePullSecretHelp")}>
         {(binding) => <Input {...binding} placeholder={t("drawer.imagePullSecretPlaceholder")} />}
       </FormField>
       <FormField control={form.control} name="state_dir" label={t("drawer.stateDir")} description={t("drawer.stateDirHelp")}>
-        {(binding) => <Input {...binding} placeholder={KUBE_DEFAULTS.stateDir} />}
+        {(binding) => <Input {...binding} placeholder={defaults?.state_dir} />}
       </FormField>
-      {vendor === "nvidia" && (
+      {runtimeClassApplies(defaults, vendor) && (
         <FormField control={form.control} name="runtime_class" label={t("drawer.runtimeClass")} description={t("drawer.runtimeClassHelp")}>
           {(binding) => <Input {...binding} placeholder={t("drawer.runtimeClassPlaceholder")} />}
         </FormField>
@@ -200,14 +213,14 @@ export default function KubeClusterDrawer({ open, onClose, onCreated, prefill }:
         {(binding) => <Input {...binding} placeholder={t("drawer.apiServerPlaceholder")} />}
       </FormField>
       <FormField control={form.control} name="engine_ports" label={t("drawer.enginePorts")} description={t("drawer.enginePortsHelp")}>
-        {(binding) => <Input {...binding} />}
+        {(binding) => <Input {...binding} placeholder={defaults?.engine_ports} />}
       </FormField>
       <FormField control={form.control} name="idle_return_seconds" label={t("drawer.idleReturn")} description={keepCards ? t("drawer.keepCardsHelp") : t("drawer.idleReturnHelp")}>
         {(binding) => (
           <div className="flex flex-wrap items-center gap-3">
-            <Switch label={t("drawer.keepCards")} checked={keepCards} onCheckedChange={(checked) => form.setValue("keep_cards", checked)} />
+            <Switch label={t("drawer.keepCards")} checked={keepCards} disabled={!defaults} onCheckedChange={(checked) => form.setValue("keep_cards", checked)} />
             <div className="flex items-center gap-2">
-              <NumberInput {...binding} aria-label={t("drawer.idleReturnSeconds")} min={0} precision={0} disabled={keepCards} className="w-32" />
+              <NumberInput {...binding} aria-label={t("drawer.idleReturnSeconds")} min={0} precision={0} disabled={keepCards} placeholder={defaults ? String(defaults.idle_return_seconds) : undefined} className="w-32" />
               <span className="text-fg-muted">{t("drawer.secondsUnit")}</span>
             </div>
           </div>
@@ -219,13 +232,16 @@ export default function KubeClusterDrawer({ open, onClose, onCreated, prefill }:
   const body = created ? (
     <div className="flex flex-col gap-4">
       <Notice tone="info" title={t("created.title", { name: created.name })}>{created.source ? t("created.noteSource") : t("created.note")}</Notice>
-      {created.source && (
+      {created.source && created.can_apply && (
         <div className="flex flex-col items-start gap-2">
           <strong className="font-semibold text-fg-default">{t("created.byGpuworks")}</strong>
           <span className="text-fg-muted">{t("created.byGpuworksHelp")}</span>
           <Button variant="primary" onClick={() => setApplying(true)}>{t("created.applyNow")}</Button>
           <strong className="mt-2 font-semibold text-fg-default">{t("created.byKubectl")}</strong>
         </div>
+      )}
+      {created.source && !created.can_apply && created.operation_blocked && (
+        <Notice tone="warning" title={t("created.applyBlocked")}>{t(`blocked.${created.operation_blocked}`)}</Notice>
       )}
       {created.apply_command && <ApplyCommand command={created.apply_command} />}
       <span className="text-fg-muted">{t("created.secret")}</span>
@@ -236,6 +252,7 @@ export default function KubeClusterDrawer({ open, onClose, onCreated, prefill }:
       {/* The footer's button is outside the form; this one lets Enter in a field submit it. */}
       <button type="submit" hidden aria-hidden="true" tabIndex={-1} />
       {error && <Notice tone="danger" title={error} />}
+      {defaultsError && <Notice tone="warning" title={t("drawer.defaultsFailed")} children={t("drawer.defaultsFailedHelp")} />}
       {prefill && <Notice tone="info" title={t("drawer.fromSource", { source: prefill.source_label })} />}
       <FormField control={form.control} name="name" label={t("drawer.name")} required>
         {({ ref, ...binding }) => <Input {...binding} ref={(node) => { ref(node); nameInput.current = node; }} placeholder={t("drawer.namePlaceholder")} />}
@@ -245,7 +262,7 @@ export default function KubeClusterDrawer({ open, onClose, onCreated, prefill }:
       </FormField>
       <FormField control={form.control} name="vendor" label={t("drawer.vendor")} description={t("drawer.vendorHelp")}>
         {({ ref: _ref, onChange, ...binding }) => (
-          <OptionSelect {...binding} onChange={onChange} options={KUBE_VENDORS.map((value) => ({ value, label: tCommon(`vendor.${value}`) }))} />
+          <OptionSelect {...binding} value={binding.value || defaults?.vendor} onChange={onChange} options={(defaults?.vendors ?? []).map(({ id }) => ({ value: id, label: tCommon(`vendor.${id}`) }))} />
         )}
       </FormField>
       <FormField control={form.control} name="node_selector" label={t("drawer.nodeSelector")} description={t("drawer.nodeSelectorHelp")}>

@@ -78,6 +78,7 @@ func Router(d Deps, policies ...auth.SessionPolicy) http.Handler {
 			r.Get("/dashboard/summary", a.dashboardSummary)
 			r.With(a.managementAdmin).Post("/nodes", a.createNode)
 			r.Get("/kube/clusters", a.listKubeClusters)
+			r.Get("/kube/defaults", a.kubeDefaults)
 			r.With(a.managementAdmin).Post("/kube/clusters", a.createKubeCluster)
 			r.With(a.managementAdmin).Get("/kube/clusters/{uuid}/manifest", a.kubeClusterManifest)
 			r.With(a.managementAdmin).Post("/kube/clusters/{uuid}/revoke", a.revokeKubeCluster)

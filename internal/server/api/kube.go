@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"gpuworks.ai/gpuworks/internal/accelerator"
@@ -36,14 +37,16 @@ func kubeManifestURL(c store.KubeCluster) string {
 	return strings.TrimRight(c.ServerURL, "/") + "/kube/manifest.yaml?token=" + url.QueryEscape(c.Token)
 }
 
-func kubeClusterDTO(c store.KubeCluster, nodes int, admin bool, source *dto.KubeClusterSource) dto.KubeCluster {
+func kubeClusterDTO(c store.KubeCluster, nodes int, admin bool, source *dto.KubeClusterSource, privateAPI bool) dto.KubeCluster {
 	out := dto.KubeCluster{
 		ID: c.ID, UUID: c.UUID, Name: c.Name, Namespace: c.Namespace, ServerURL: c.ServerURL, AgentImage: c.AgentImage,
 		Vendor: c.Vendor, NodeSelector: c.NodeSelector, RuntimeClass: c.RuntimeClass, ImagePullSecret: c.ImagePullSecret,
 		ContainerdSocket: c.ContainerdSocket, StateDir: c.StateDir, APIServer: c.APIServer,
 		EnginePorts: c.EnginePorts, IdleReturnSeconds: c.IdleReturnSeconds, ClusterUID: c.ClusterUID,
 		Revoked: c.RevokedAt != nil, NodeCount: nodes, Source: source, CreatedAt: c.CreatedAt.UTC(),
+		Stalled: kubeClusterStalled(c, time.Now().UTC()),
 	}
+	out.CanApply, out.CanRemove, out.OperationBlocked = kubeClusterOperations(c, privateAPI)
 	if admin && c.RevokedAt == nil {
 		out.ApplyCommand = "kubectl apply -f '" + kubeManifestURL(c) + "'"
 	}
@@ -79,8 +82,9 @@ func (a *apiHandlers) listKubeClusters(w http.ResponseWriter, r *http.Request) {
 	admin := claims.Role == "admin" && !isAssistantRead(r)
 	items := make([]dto.KubeCluster, 0, len(rows))
 	sources := a.kubeClusterSources(rows)
+	private := a.kubePrivateAPIClusters(r.Context(), rows)
 	for _, c := range rows {
-		items = append(items, kubeClusterDTO(c, counts[c.ID], admin, sources[c.ID]))
+		items = append(items, kubeClusterDTO(c, counts[c.ID], admin, sources[c.ID], private[c.ID]))
 	}
 	writeJSON(w, http.StatusOK, dto.NewList(items))
 }
@@ -113,8 +117,8 @@ func (a *apiHandlers) createKubeCluster(w http.ResponseWriter, r *http.Request) 
 	// An empty RuntimeClass is decided on each node: managed clusters make
 	// NVIDIA's runtime the default and define no class, k3s defines
 	// "nvidia" beside a default runc. Other vendors' devices come through the
-	// agent's device plugin and need none.
-	if c.Vendor != accelerator.VendorNVIDIA {
+	// agent's device plugin and need none (GET /kube/defaults says which).
+	if profile, ok := accelerator.KubeProfileFor(c.Vendor); ok && !profile.RuntimeClass {
 		c.RuntimeClass = ""
 	}
 	if req.IdleReturnSeconds != nil {
@@ -175,7 +179,7 @@ func (a *apiHandlers) createKubeCluster(w http.ResponseWriter, r *http.Request) 
 	if a.d.Log != nil {
 		a.d.Log.Info("kubernetes cluster created", "cluster", created.Name, "uuid", created.UUID)
 	}
-	writeJSON(w, http.StatusCreated, kubeClusterDTO(*created, 0, true, a.kubeClusterSources([]store.KubeCluster{*created})[created.ID]))
+	writeJSON(w, http.StatusCreated, kubeClusterDTO(*created, 0, true, a.kubeClusterSources([]store.KubeCluster{*created})[created.ID], a.kubePrivateAPIClusters(r.Context(), []store.KubeCluster{*created})[created.ID]))
 }
 
 func (a *apiHandlers) revokeKubeCluster(w http.ResponseWriter, r *http.Request) {
@@ -194,7 +198,7 @@ func (a *apiHandlers) revokeKubeCluster(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	counts, _ := a.d.Store.KubeClusterNodeCounts()
-	writeJSON(w, http.StatusOK, kubeClusterDTO(*c, counts[c.ID], true, a.kubeClusterSources([]store.KubeCluster{*c})[c.ID]))
+	writeJSON(w, http.StatusOK, kubeClusterDTO(*c, counts[c.ID], true, a.kubeClusterSources([]store.KubeCluster{*c})[c.ID], a.kubePrivateAPIClusters(r.Context(), []store.KubeCluster{*c})[c.ID]))
 }
 
 func (a *apiHandlers) deleteKubeCluster(w http.ResponseWriter, r *http.Request) {

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { afterEach, test } from "node:test";
+import { afterEach, beforeEach, test } from "node:test";
 import React from "react";
 import { createI18n, dom } from "./helpers/dom.ts";
 import { I18nextProvider } from "react-i18next";
@@ -14,12 +14,19 @@ const { APIError } = await import("../src/apiError.ts");
 const { default: ProviderClustersTable } = await import("../src/components/ProviderClustersTable.tsx");
 const { default: ProviderInstancesTable } = await import("../src/components/ProviderInstancesTable.tsx");
 const { default: KubernetesPage } = await import("../src/pages/KubernetesPage.tsx");
-import type { KubeCluster, KubeClusterOperation, ProviderCluster, ProviderInstance } from "../src/api";
+import type { KubeCluster, KubeClusterOperation, KubeDefaults, ProviderCluster, ProviderInstance } from "../src/api";
 
 const k = locale.kubernetes;
 const p = locale.providers;
 const originals = { ...api };
 afterEach(() => { cleanup(); Object.assign(api, originals); });
+// The drawer asks the server for its defaults when it opens.
+beforeEach(() => { api.kubeDefaults = (async () => DEFAULTS) as never; });
+const DEFAULTS: KubeDefaults = {
+  vendor: "nvidia", namespace: "gpuworks-system", state_dir: "/opt/gpuworks", engine_ports: "40000-42767", idle_return_seconds: 60, idle_return_keep: -1,
+  agent_image: "gpuworks/gpuworks-agent:v1", stalled_after_seconds: 300,
+  vendors: [{ id: "nvidia", runtime_class: true }, { id: "ascend", runtime_class: false }],
+};
 
 const gpuCluster: ProviderCluster = {
   external_id: "c-gpu", name: "ack-gpu", region: "cn-shanghai", version: "1.35.7-aliyun.1", state: "running", running: true, public_api: true,
@@ -34,7 +41,7 @@ function entry(overrides: Partial<KubeCluster> = {}): KubeCluster {
     id: 5, uuid: "e-5", name: "ack-gpu", namespace: "gpuworks-system", server_url: "http://localhost", agent_image: "", node_selector: "alibabacloud.com/nodepool-id=np-l20",
     vendor: "nvidia", state_dir: "/opt/gpuworks", runtime_class: "", image_pull_secret: "", containerd_socket: "", api_server: "", engine_ports: "40000-42767",
     idle_return_seconds: 60, cluster_uid: "", revoked: false, node_count: 0, created_at: new Date().toISOString(),
-    apply_command: "kubectl apply -f 'http://localhost/kube/manifest.yaml?token=t'",
+    apply_command: "kubectl apply -f 'http://localhost/kube/manifest.yaml?token=t'", stalled: false, can_apply: true, can_remove: true,
     source: { provider_id: 3, provider_name: "ali-prod", provider_kind: "aliyun", cluster_id: "c-gpu" }, ...overrides,
   };
 }
@@ -107,8 +114,8 @@ test("connecting a pool opens the form filled from the cluster, records the sour
   await u.click(drawer.getByRole("button", { name: k.drawer.submit }));
   await waitFor(() => assert.equal(created.length, 1));
   assert.deepEqual(created[0], {
-    name: "ack-gpu", server_url: "http://localhost", vendor: "nvidia", idle_return_seconds: 60, provider_id: 3, provider_cluster_id: "c-gpu",
-    namespace: "gpuworks-system", node_selector: "alibabacloud.com/nodepool-id=np-l20", engine_ports: "40000-42767",
+    name: "ack-gpu", server_url: "http://localhost", vendor: "nvidia", provider_id: 3, provider_cluster_id: "c-gpu",
+    node_selector: "alibabacloud.com/nodepool-id=np-l20",
   });
   assert.ok(await drawer.findByText(k.created.byGpuworks));
   assert.ok(drawer.getByText(k.created.byKubectl), "kubectl stays an option");
@@ -154,7 +161,7 @@ test("a refused check names the step and the cluster's reason, and nothing can b
 });
 
 test("removing from the cluster checks first, then deletes on confirmation; an entry made by hand offers neither", async () => {
-  api.kubeClusters = (async () => list([entry(), entry({ id: 6, uuid: "e-6", name: "by-hand", source: undefined })])) as never;
+  api.kubeClusters = (async () => list([entry(), entry({ id: 6, uuid: "e-6", name: "by-hand", source: undefined, can_apply: false, can_remove: false, operation_blocked: "no_source" })])) as never;
   api.me = (async () => ({ role: "admin" })) as never;
   const ops: [string, string, boolean][] = [];
   api.kubeClusterOperation = (async (uuid: string, op: string, dryRun: boolean) => {

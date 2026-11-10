@@ -20,6 +20,7 @@ type Service struct {
 	box             *auth.Secretbox
 	readAgentBinary AgentBinaryReader
 	drivers         map[string]Driver
+	clusterLists    clusterListCache
 	// sshPrecheck replaces the SSH precheck an install precheck runs; nil is
 	// the real one (provision.NewSSHPrechecker).
 	sshPrecheck provision.Prechecker

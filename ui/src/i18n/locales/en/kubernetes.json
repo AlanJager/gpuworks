@@ -83,6 +83,8 @@
     "stateDirHelp": "The agent's directory on the host. Set a different one to let the agent run beside an agent already installed on the host. Empty means /opt/gpuworks.",
     "agentImage": "Agent image",
     "agentImagePlaceholder": "Default image",
+    "defaultsFailed": "The defaults could not be loaded",
+    "defaultsFailedHelp": "Fields left empty still take the server's defaults; the hints and the vendor list are missing.",
     "agentImageHelp": "Empty uses the default agent image.",
     "imagePullSecret": "Image pull secret",
     "imagePullSecretPlaceholder": "None",
@@ -119,11 +121,17 @@
     "byGpuworks": "Let gpuworks apply it",
     "byGpuworksHelp": "gpuworks uses short-lived cluster credentials issued to the cloud account now (valid 15 minutes, discarded after use, never stored), checks first, and lists the objects for you to confirm before applying.",
     "applyNow": "Check and apply…",
-    "byKubectl": "Or run this in the cluster yourself"
+    "byKubectl": "Or run this in the cluster yourself",
+    "applyBlocked": "gpuworks cannot apply it for you"
+  },
+  "blocked": {
+    "no_source": "This cluster was added by hand, so gpuworks has no way into it. Run the kubectl command in the cluster.",
+    "private_api": "The cloud reports this cluster's API server has no public address, so gpuworks cannot reach it. Run the kubectl command from inside the cluster's network.",
+    "revoked": "The connect token is revoked, so the manifest cannot be applied again. Removing it from the cluster still works."
   },
   "stalled": {
     "title": "No node has joined yet",
-    "intro": "The cluster was created more than {{minutes}} minutes ago and no node has joined. Look at the agent DaemonSet and its Pods in the cluster:",
+    "intro": "The cluster has waited a while for its first node and none has joined. Look at the agent DaemonSet and its Pods in the cluster:",
     "causes": "Common causes",
     "pull": "Pods in ImagePullBackOff: the agent image cannot be pulled. For a registry that needs a login, create a docker-registry Secret in the namespace and name it as the image pull secret when creating the cluster.",
     "runtimeClass": "A DaemonSet event says the RuntimeClass does not exist: the cluster has no such RuntimeClass; leave it empty and the agent decides.",

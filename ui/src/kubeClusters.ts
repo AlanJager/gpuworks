@@ -1,31 +1,23 @@
 import { useEffect, useState } from "react";
 import type { TFunction } from "i18next";
-import { api, type KubeCluster, type KubeVendor } from "./api";
-
-/** The idle_return_seconds value that keeps a borrowed card for good. */
-export const KEEP_BORROWED_CARDS = -1;
-
-/** The accelerator vendors a cluster can be connected for, the first being the server's default. */
-export const KUBE_VENDORS: readonly KubeVendor[] = ["nvidia", "ascend", "hygon", "ppu"];
+import { api, type KubeCluster, type KubeDefaults } from "./api";
 
 /**
- * The defaults the server applies to an omitted field (docs/reference/api.md, Kubernetes).
- * The containerd socket and the RuntimeClass have none: empty means the agents decide on each node.
+ * The cluster form's defaults, limits and vendors, which the server owns
+ * (GET /api/v1/kube/defaults). null until they arrive; error says why they
+ * did not, and the form then sends only what was typed.
  */
-export const KUBE_DEFAULTS = {
-  vendor: "nvidia",
-  namespace: "gpuworks-system",
-  stateDir: "/opt/gpuworks",
-  enginePorts: "40000-42767",
-  idleReturnSeconds: 60,
-} as const;
-
-/** Minutes after which a cluster no node joined from shows how to find out why. */
-export const KUBE_STALLED_MINUTES = 5;
-
-/** Whether a cluster has waited long enough for its first node to be worth troubleshooting. */
-export function kubeClusterStalled(cluster: KubeCluster, now: number = Date.now()): boolean {
-  return !cluster.cluster_uid && !cluster.revoked && now - Date.parse(cluster.created_at) > KUBE_STALLED_MINUTES * 60_000;
+export function useKubeDefaults(enabled: boolean): { defaults: KubeDefaults | null; error: Error | null } {
+  const [state, setState] = useState<{ defaults: KubeDefaults | null; error: Error | null }>({ defaults: null, error: null });
+  useEffect(() => {
+    if (!enabled) return;
+    let alive = true;
+    api.kubeDefaults()
+      .then((defaults) => { if (alive) setState({ defaults, error: null }); })
+      .catch((error: Error) => { if (alive) setState((previous) => ({ defaults: previous.defaults, error })); });
+    return () => { alive = false; };
+  }, [enabled]);
+  return state;
 }
 
 /** The kubectl commands that show why a cluster's agents did not join. */

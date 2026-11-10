@@ -25,10 +25,50 @@ type KubeCluster struct {
 	Revoked           bool   `json:"revoked"`
 	NodeCount         int    `json:"node_count"`
 	ApplyCommand      string `json:"apply_command,omitempty"`
+	// Stalled: no node has joined for longer than the dictionary's
+	// stalled_after_seconds (GET /kube/defaults), so it is worth looking at
+	// why. Never for a revoked cluster or one a node joined.
+	Stalled bool `json:"stalled"`
+	// CanApply and CanRemove say whether the server can apply the manifest
+	// to the cluster, or take it out again (POST .../apply, .../remove).
+	// OperationBlocked is why not: no_source (made by hand, so the server has
+	// no way into it), private_api (the cloud says the API server has no
+	// public address) or revoked (only applying is refused; removing still
+	// works).
+	CanApply         bool   `json:"can_apply"`
+	CanRemove        bool   `json:"can_remove"`
+	OperationBlocked string `json:"operation_blocked,omitempty"`
 	// Source is the cloud account cluster the entry was made from; the
 	// server can then apply the manifest itself (POST …/apply).
 	Source    *KubeClusterSource `json:"source,omitempty"`
 	CreatedAt time.Time          `json:"created_at"`
+}
+
+// KubeDefaults is what the cluster form needs from the server: the values an
+// omitted field takes, the one value that means "never return", and the
+// vendors with what applies to each. A client shows the defaults as hints and
+// sends only what the user typed.
+type KubeDefaults struct {
+	Vendor              string `json:"vendor"`
+	Namespace           string `json:"namespace"`
+	StateDir            string `json:"state_dir"`
+	EnginePorts         string `json:"engine_ports"`
+	IdleReturnSeconds   int    `json:"idle_return_seconds"`
+	IdleReturnKeep      int    `json:"idle_return_keep"` // the idle_return_seconds value that keeps borrowed cards
+	AgentImage          string `json:"agent_image"`
+	StalledAfterSeconds int    `json:"stalled_after_seconds"`
+	// Vendors lists the vendors a cluster can be connected for, the default
+	// first.
+	Vendors []KubeVendor `json:"vendors"`
+}
+
+// KubeVendor is one accelerator vendor of a cluster.
+type KubeVendor struct {
+	ID string `json:"id"`
+	// RuntimeClass: the agent pod of this vendor runs under a RuntimeClass,
+	// so the cluster may name one. For the others the field does not apply
+	// and the server ignores it.
+	RuntimeClass bool `json:"runtime_class"`
 }
 
 // KubeClusterRequest creates a cluster. Empty optional fields take the
