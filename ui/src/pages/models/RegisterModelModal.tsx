@@ -14,6 +14,7 @@ import { Modalities } from "../ModelsPageParts";
 import { formatBytes } from "../../format";
 import { useLocalStorageChoice } from "./useStorages";
 import NodePicker from "../../nodes/NodePicker";
+import { localRegistrationErrorText } from "./localRegistrationError";
 
 // The two-step sources are the ones whose identity cannot be typed from
 // memory: a node path and an HTTP directory are both read first and confirmed
@@ -44,7 +45,7 @@ export function RegisterModal({ open, onClose, onDone }: { open: boolean; onClos
       setPreview(result);
       form.setFieldsValue({ source_id: result.source_id, name: result.name });
     } catch (e) {
-      message.error(t("register.previewFailed", { detail: (e as Error).message }));
+      message.error(t("register.previewFailed", { detail: localRegistrationErrorText(t, e) }));
     } finally {
       setPreviewing(false);
     }
@@ -109,7 +110,7 @@ export function RegisterModal({ open, onClose, onDone }: { open: boolean; onClos
       reset();
       onDone();
     } catch (e) {
-      message.error(t("register.failed", { detail: (e as Error).message }));
+      message.error(t("register.failed", { detail: v.source === "local" ? localRegistrationErrorText(t, e) : (e as Error).message }));
     } finally {
       setSubmitting(false);
     }
