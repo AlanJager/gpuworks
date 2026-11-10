@@ -2,11 +2,12 @@ package api
 
 import (
 	"fmt"
-	"gpuworks.ai/gpuworks/internal/accelerator"
-	"gpuworks.ai/gpuworks/internal/server/deploy"
 	"net/http"
 	"sort"
 	"strings"
+
+	"gpuworks.ai/gpuworks/internal/accelerator"
+	"gpuworks.ai/gpuworks/internal/server/deploy"
 
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"gpuworks.ai/gpuworks/internal/server/chipmatch"

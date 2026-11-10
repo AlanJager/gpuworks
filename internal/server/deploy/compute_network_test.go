@@ -1,9 +1,10 @@
 package deploy
 
 import (
-	"gpuworks.ai/gpuworks/internal/server/netplan"
 	"reflect"
 	"testing"
+
+	"gpuworks.ai/gpuworks/internal/server/netplan"
 )
 
 func TestComputeNetworkEnvByType(t *testing.T) {

@@ -3,8 +3,9 @@ package app
 import (
 	"context"
 	"encoding/json"
-	"gpuworks.ai/gpuworks/internal/server/healthcheck"
 	"time"
+
+	"gpuworks.ai/gpuworks/internal/server/healthcheck"
 
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/api"

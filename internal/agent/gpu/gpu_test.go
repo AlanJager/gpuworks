@@ -4,13 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"gpuworks.ai/gpuworks/internal/accelerator"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
 	"time"
+
+	"gpuworks.ai/gpuworks/internal/accelerator"
 )
 
 func TestNVIDIAMetricsAndTopologySkipAvailabilityQuery(t *testing.T) {

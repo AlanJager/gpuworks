@@ -105,7 +105,7 @@ func (a *apiHandlers) pickAutomaticNode(r *http.Request, req *dto.DeployRequest)
 	if out.over || out.status != http.StatusOK || json.Unmarshal(out.body.Bytes(), &resp) != nil {
 		// The evaluation refused the request itself; the create's own checks
 		// below answer it with their usual error.
-		return nil
+		return nil //nolint:nilerr // Creation performs its own validation when the optional placement evaluation cannot answer.
 	}
 	if resp.SelectedNode != nil {
 		req.NodeUUID = resp.SelectedNode.UUID

@@ -3,13 +3,14 @@ package proxy
 import (
 	"bufio"
 	"encoding/json"
-	"gpuworks.ai/gpuworks/internal/server/store"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync/atomic"
 	"testing"
+
+	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
 func TestChatRejectsUnsupportedInputBeforeUpstream(t *testing.T) {

@@ -2,10 +2,11 @@ package app
 
 import (
 	"context"
-	"gpuworks.ai/gpuworks/internal/accelerator"
 	"strings"
 	"testing"
 	"time"
+
+	"gpuworks.ai/gpuworks/internal/accelerator"
 
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/aihelper"

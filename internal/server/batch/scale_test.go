@@ -33,8 +33,12 @@ func TestExecutorScaleBudget(t *testing.T) {
 	if raceEnabled {
 		requests = 200
 	}
+	gate := make(chan struct{})
 	r := newRig(t, Config{PerBatch: 8, GlobalCap: cap, MaxRunning: batches}, func(ctx context.Context, _ Owner, _ string, _ []byte) Reply {
-		time.Sleep(50 * time.Microsecond) // enough latency for the cap to be reached
+		select {
+		case <-gate:
+		case <-ctx.Done():
+		}
 		return okReply(`{"id":"x","choices":[{"finish_reason":"stop"}]}`)
 	})
 	r.start()
@@ -52,6 +56,14 @@ func TestExecutorScaleBudget(t *testing.T) {
 	var mu sync.Mutex
 	stopSampling := make(chan struct{})
 	sampled := make(chan struct{})
+	var stopOnce sync.Once
+	stopSampler := func() {
+		stopOnce.Do(func() {
+			close(stopSampling)
+			<-sampled
+		})
+	}
+	t.Cleanup(stopSampler)
 	go func() {
 		defer close(sampled)
 		tick := time.NewTicker(5 * time.Millisecond)
@@ -79,6 +91,10 @@ func TestExecutorScaleBudget(t *testing.T) {
 		ids = append(ids, b.ID)
 	}
 	started := time.Now()
+	// Hold replies until the executor fills its global allowance. A short
+	// artificial latency cannot establish this on every scheduler or CPU.
+	eventually(t, "the scale workload reaches the global cap", func() bool { return r.send.peakInFlight() == cap })
+	close(gate)
 	for _, id := range ids {
 		done := r.await(id, StatusCompleted)
 		if done.Completed != requests || done.Failed != 0 {
@@ -86,12 +102,11 @@ func TestExecutorScaleBudget(t *testing.T) {
 		}
 	}
 	elapsed := time.Since(started)
-	close(stopSampling)
-	<-sampled
+	stopSampler()
 	cpu := cpuTime(t) - cpuBefore
 
-	if peak := r.send.peakInFlight(); peak > cap || (!raceEnabled && peak < cap*3/4) {
-		t.Fatalf("peak in-flight requests = %d, want the global cap %d held and nearly reached", peak, cap)
+	if peak := r.send.peakInFlight(); peak != cap {
+		t.Fatalf("peak in-flight requests = %d, want the global cap %d reached and held", peak, cap)
 	}
 	// Row writes: each batch writes its row on a start, a finalize and a
 	// finish, plus at most a couple of checkpoints (the fake clock never

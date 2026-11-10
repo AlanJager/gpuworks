@@ -211,13 +211,12 @@ func (a *automationAdapter) WakeWaiting(deploymentID uint, uuids []string) ([]st
 	for _, uuid := range uuids {
 		want[uuid] = true
 	}
-	var named, gone []string
+	var gone []string
 	var waiting []store.Instance
 	for _, in := range insts {
 		if !want[in.UUID] {
 			continue
 		}
-		named = append(named, in.UUID)
 		if !store.HoldsSleepIntent(&in) || planning.InstanceSleepIntent(&in) == 0 {
 			gone = append(gone, in.UUID)
 			continue

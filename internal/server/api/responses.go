@@ -15,9 +15,16 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 	if resp, ok := v.(*dto.EvaluateResponse); ok {
 		prepareEvaluateResponse(w, resp)
 	}
+	// Encoding can fail for persisted RawMessage values, before any bytes
+	// reach the writer. Do not commit a successful status until it succeeds.
+	body, err := json.Marshal(v)
+	if err != nil {
+		code = http.StatusInternalServerError
+		body = []byte(`{"code":"RESPONSE_ENCODING_FAILED","error":"response data could not be encoded as JSON"}`)
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
-	_ = json.NewEncoder(w).Encode(v)
+	_, _ = w.Write(append(body, '\n'))
 }
 
 // WriteError answers err as the API does: a product error with its stable

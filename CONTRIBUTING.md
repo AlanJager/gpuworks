@@ -124,7 +124,10 @@ Notes that cost people time if skipped:
   over-subscribed machine) and count the change as verified only after a clean re-run.
 - Lint is configured in [.golangci.yml](.golangci.yml) (`govet`, `errcheck`, `staticcheck`,
   `unused`, `ineffassign`, `misspell`, `gofmt`, `goimports`, `revive`, `bodyclose`, `nilerr`).
-  Run `golangci-lint run` before submitting.
+  Run `make lint` before submitting; CI runs the same target. It builds
+  golangci-lint v1.64.8 with the repository's Go version into `bin/tools`,
+  preserving the complete rule set and reporting all findings. The first run
+  downloads the development tool and builds the embedded UI if it is missing.
 - `goimports` uses `local-prefixes: gpuworks.ai/gpuworks`, so local imports form their own
   group.
 - The layered and cloud test strategy is described in [docs/dev/testing.md](docs/dev/testing.md).

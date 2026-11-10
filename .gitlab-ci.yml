@@ -274,6 +274,12 @@ core-vet:
   script:
     - CGO_ENABLED=0 go vet ./...
 
+core-lint:
+  extends: .go-core
+  stage: core
+  script:
+    - make lint
+
 # Strict L2 contains a real Docker adoption/recovery case and L3 is entirely a
 # Docker gate. The ordinary project runners use an unprivileged Docker executor
 # with no daemon socket, so both jobs are pinned to the project's tag-only
@@ -610,6 +616,7 @@ release-docs-pdf:
       artifacts: true
     - job: core-test
     - job: core-vet
+    - job: core-lint
     - job: core-compshare-offline-contracts
   script:
     # The zstd CLI packs the embedded agents ~10% smaller than the Go
@@ -797,6 +804,7 @@ release-publish:
       artifacts: true
     - job: core-test
     - job: core-vet
+    - job: core-lint
     - job: core-compshare-offline-contracts
   rules:
     - if: '$CI_PIPELINE_SOURCE == "schedule" && $CLOUD_FULL == "1"'
@@ -937,6 +945,7 @@ l4-ascend-pool-partition-inference:
       artifacts: true
     - job: core-test
     - job: core-vet
+    - job: core-lint
     - job: core-compshare-offline-contracts
   environment:
     name: cloud-test/ascend-primary

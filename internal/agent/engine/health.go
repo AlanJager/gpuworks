@@ -85,7 +85,7 @@ func (e *Engine) probeAndReport(ctx context.Context, spec proto.InstanceDesiredS
 					modelsReq, modelsErr := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("http://127.0.0.1:%d/v1/models", spec.APIPort), nil)
 					var modelsResp *http.Response
 					if modelsErr == nil {
-						modelsResp, modelsErr = client.Do(modelsReq)
+						modelsResp, modelsErr = client.Do(modelsReq) //nolint:bodyclose // readStrataModels consumes and closes the successful response.
 					}
 					if modelsErr == nil {
 						models, valid := readStrataModels(modelsResp)
