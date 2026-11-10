@@ -30,7 +30,7 @@ Creating or changing an administrator password (install, first start, Change pas
 Changing and recovering:
 
 - While you can sign in, choose **Change password** in the account menu at the top right of the console. It changes only your own password and asks for the current one; checking the current password shares the login throttle.
-- Afterwards all of the user's management sessions end; platform API tokens and API keys keep working. When `initial-credentials` records this user, the server tries to delete it.
+- Afterwards all of the user's management sessions end; platform API tokens and API keys keep working. When `initial-credentials` records this user, the server tries to delete it (`reset-password` does the same).
 - For a forgotten password, an administrator runs `gpuworks reset-password` on the server; without `--password` it prompts twice in the terminal without echo, which keeps the password out of command history.
 - The console of the experience mode cannot change its password; the main console manages it under **Settings › General › Feature experience mode**.
 

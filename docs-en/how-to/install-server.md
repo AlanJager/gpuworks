@@ -108,7 +108,7 @@ For the password change in this section and subsequent maintenance commands, use
    Enter the new password twice at the prompt (not echoed). The command reads the data directory from the `server.yaml` next to the binary; you can also specify it explicitly with `--data`.
 
 4. Log in again with the new password and confirm that login succeeds.
-5. If you changed the password with the command, delete the `initial-credentials` file in the actual data directory (a change in the console tries to delete it). This file stores the initial credentials in plain text. Deleting it does not change the account password. See [Control Plane Installation Layout](../reference/install-layout.md#凭证文件) for credential details.
+5. Confirm that the `initial-credentials` file in the actual data directory is gone: both a change in the console and `reset-password` try to delete it after succeeding, and warn when they cannot, in which case delete it by hand. This file stores the initial credentials in plain text. Deleting it does not change the account password. See [Control Plane Installation Layout](../reference/install-layout.md#凭证文件) for credential details.
 
 Next, [connect a node and deploy your first model](../tutorials/getting-started.md). Nodes must be able to access the control plane. If you need a domain or a public endpoint, see [Give the Console a Public Address](expose-public-address.md).
 

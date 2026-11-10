@@ -109,7 +109,7 @@ bash <(curl -fsSL https://dl.gpuworks.ai/get.sh)
    按提示输入两次新密码（不回显）；该命令从二进制同目录的 `server.yaml` 读取数据目录，也可用 `--data` 显式指定。
 
 4. 使用新密码重新登录，确认登录成功。
-5. 用命令改密时，删除实际数据目录中的 `initial-credentials` 文件（在控制台改密时会自动尝试删除）。该文件保存明文初始凭据，删除它不会修改账户密码。凭证说明见[控制面安装布局](../reference/install-layout.md#凭证文件)。
+5. 确认实际数据目录中的 `initial-credentials` 文件已删除：控制台改密和 `reset-password` 都会在成功后尝试删除它，删除失败时有告警，需手动删除。该文件保存明文初始凭据，删除它不会修改账户密码。凭证说明见[控制面安装布局](../reference/install-layout.md#凭证文件)。
 
 接下来可[接入节点并部署第一个模型](../tutorials/getting-started.md)。节点需要能访问控制面；需要域名或公网入口时，见[给控制台一个公网地址](expose-public-address.md)。
 
