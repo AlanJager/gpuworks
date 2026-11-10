@@ -41,8 +41,17 @@ export default function ChangePasswordModal({ open, policy, onClose, onChanged }
     } catch (err) {
       const text = apiErrorText(tCommon, err);
       const field = err instanceof APIError ? FIELD_ERRORS[err.code] : undefined;
-      if (field) form.setFields([{ name: field, errors: [text] }]);
-      else setError(text);
+      if (!field) {
+        setError(text);
+        return;
+      }
+      const fields: { name: keyof Values; errors: string[] }[] = [{ name: field, errors: [text] }];
+      // A wrong current password carries the new password's own rejection, if any.
+      const alsoNew = err instanceof APIError ? err.params?.new_password : undefined;
+      if (err instanceof APIError && typeof alsoNew === "string") {
+        fields.push({ name: "next", errors: [apiErrorText(tCommon, new APIError(alsoNew, err.params, alsoNew, err.status))] });
+      }
+      form.setFields(fields);
     } finally {
       setSaving(false);
     }

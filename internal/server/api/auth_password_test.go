@@ -104,6 +104,19 @@ func TestChangePasswordRejections(t *testing.T) {
 			}
 		})
 	}
+	// A wrong current password and a rejected new one are reported together.
+	both := postPassword(router, cookie, passwordBody("not-the-password", "Password123"))
+	var combined struct {
+		Code   string         `json:"code"`
+		Params map[string]any `json:"params"`
+	}
+	if err := json.Unmarshal(both.Body.Bytes(), &combined); err != nil || both.Code != http.StatusBadRequest ||
+		combined.Code != ErrorCurrentPasswordInvalid || combined.Params["new_password"] != ErrorPasswordGuessable {
+		t.Fatalf("combined rejection: %d %s", both.Code, both.Body)
+	}
+	if rec := postPassword(router, cookie, passwordBody("not-the-password", "Tiger#Lake9")); strings.Contains(rec.Body.String(), "new_password") {
+		t.Fatalf("an acceptable new password was reported: %s", rec.Body)
+	}
 	// A length rejection tells the client the bounds to show.
 	rec := postPassword(router, cookie, passwordBody(testPassword, "short"))
 	var payload struct {

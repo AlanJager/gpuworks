@@ -33,10 +33,9 @@ func (a *apiHandlers) changePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
-	if err := auth.ValidateAccountPassword(claims.Username, req.NewPassword); err != nil {
-		writePasswordPolicyError(w, err)
-		return
-	}
+	// Both passwords are judged on every submission, so the form can mark
+	// both fields at once instead of revealing one problem per attempt.
+	policyErr := auth.ValidateAccountPassword(claims.Username, req.NewPassword)
 	finish, wait := a.loginThrottle.begin(time.Now().UTC(), a.loginClientIP(r), claims.Username)
 	if wait > 0 {
 		loginThrottled(w, wait)
@@ -45,11 +44,20 @@ func (a *apiHandlers) changePassword(w http.ResponseWriter, r *http.Request) {
 	_, err := a.d.Store.AuthenticateUser(claims.Username, req.CurrentPassword)
 	finish(err == nil, time.Now().UTC())
 	if errors.Is(err, store.ErrNotFound) {
-		writeProductError(w, http.StatusBadRequest, ErrorCurrentPasswordInvalid, "the current password is wrong", nil)
+		var params map[string]any
+		if policyErr != nil {
+			params = passwordPolicyParams()
+			params["new_password"] = passwordPolicyCode(policyErr)
+		}
+		writeProductError(w, http.StatusBadRequest, ErrorCurrentPasswordInvalid, "the current password is wrong", params)
 		return
 	}
 	if err != nil {
 		a.writeManagementAuthError(w, err)
+		return
+	}
+	if policyErr != nil {
+		writePasswordPolicyError(w, policyErr)
 		return
 	}
 	// Judged after the current password is known to be right, so a typo there
@@ -90,11 +98,19 @@ var passwordPolicyErrors = map[string]string{
 	auth.PolicyUsername:   ErrorPasswordUsername,
 }
 
-func writePasswordPolicyError(w http.ResponseWriter, err error) {
-	code := ErrorPasswordGuessable
+// passwordPolicyCode is the product error naming why err rejected a password.
+func passwordPolicyCode(err error) string {
 	var policy *auth.PolicyError
 	if errors.As(err, &policy) && passwordPolicyErrors[policy.Reason] != "" {
-		code = passwordPolicyErrors[policy.Reason]
+		return passwordPolicyErrors[policy.Reason]
 	}
-	writeProductError(w, http.StatusBadRequest, code, err.Error(), map[string]any{"min": auth.MinPasswordRunes, "max": auth.MaxPasswordRunes})
+	return ErrorPasswordGuessable
+}
+
+func passwordPolicyParams() map[string]any {
+	return map[string]any{"min": auth.MinPasswordRunes, "max": auth.MaxPasswordRunes}
+}
+
+func writePasswordPolicyError(w http.ResponseWriter, err error) {
+	writeProductError(w, http.StatusBadRequest, passwordPolicyCode(err), err.Error(), passwordPolicyParams())
 }
