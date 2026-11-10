@@ -204,6 +204,11 @@ match `--help` output. Relative links and anchors are checked by `make check-doc
 
 ## Commits and pull requests
 
+For branch setup, validation records, and review, follow the
+[PR / MR workflow](docs-en/dev/pull-requests.md). Use the
+[single PR template](.github/PULL_REQUEST_TEMPLATE.md), keeping its Chinese headings;
+write the body in either English or Chinese.
+
 - Branch from the current target branch, with a name that says what it does
   (`fix/pd-scaling-loop`, `docs/connect-nodes-typo`).
 - Write commit messages that state the problem and the change, not just the file touched.

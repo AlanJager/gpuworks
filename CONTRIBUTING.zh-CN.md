@@ -187,6 +187,10 @@ make check-translations
 
 ## 提交与拉取请求
 
+创建分支、记录验证结果和响应评审的步骤见 [PR / MR 操作指南](docs/dev/pull-requests.md)。
+统一使用 [PR 模板](.github/PULL_REQUEST_TEMPLATE.md)，保留「问题 / 验证 / 说明」三个标题，
+正文只需填写中文或英文中的一种。
+
 - 从当前目标分支拉出分支，名字说清做什么（`fix/pd-scaling-loop`、`docs/connect-nodes-typo`）。
 - 提交信息要说明问题与改动，而不是只写动了哪个文件。
 - 拉取请求描述里请写清楚：

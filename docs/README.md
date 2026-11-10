@@ -128,6 +128,7 @@
 - [浏览器 E2E 测试规范](../test/e2e/browser-e2e-testing-standard.md)
 - [发布与内嵌资产](dev/release.md)
 - [贡献与文档落位](dev/contributing.md)
+- [PR / MR 操作指南](dev/pull-requests.md)
 - [工程台账](dev/ledgers/engineering-log.md)、[A100 缺陷台账](dev/ledgers/a100-verification-bug-registry.md)、[PPU 缺口台账](dev/ledgers/ppu-support-gaps.md)
 
 ## 文档落位规则
