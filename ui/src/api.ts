@@ -294,7 +294,7 @@ export interface AgentRejectEvent {
 // How the server logs in to a node over SSH. platform_key is the server's own
 // key pair (see PlatformSSHKey); it needs nothing from the operator once the
 // node authorized its public key.
-export type SSHAuthMode = "platform_key" | "password" | "private_key";
+export type SSHAuthMode = "platform_key" | "password" | "private_key" | "keyboard_interactive";
 
 export interface SSHCredentialInfo {
   host: string;

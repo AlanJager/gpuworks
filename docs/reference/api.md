@@ -316,6 +316,20 @@ SSH 的 `vantage=control_plane` 描述控制面登录节点；HTTP 的 `vantage=
 
 ### SSH 检查与安装
 
+`POST /api/v1/nodes/precheck`、`POST /api/v1/nodes/install` 和 `PUT /api/v1/nodes/{uuid}/ssh` 共用以下 SSH 认证字段：
+
+| 字段/取值 | 含义 |
+|---|---|
+| `auth_mode: "platform_key"` | 仅尝试 server 的平台密钥，无需提交密码或私钥 |
+| `auth_mode: "private_key"` | 仅尝试 `private_key_pem` 中的私钥 |
+| `auth_mode: "password"` | 仅尝试 SSH `password` 协议，口令放在 `password` |
+| `auth_mode: "keyboard_interactive"` | 仅尝试 SSH `keyboard-interactive` 协议，复用 `password`；支持一次非回显密码应答及有限的无问题信息轮次，不支持多问题、多次口令或 MFA |
+| `auth_mode` 省略或为空 | 按已有凭据依次尝试平台密钥、用户私钥、用户密码、云实例密码，最后用请求或已保存的 `password` 尝试键盘交互认证；不可用的凭据跳过 |
+
+显式指定方式时不回退到其他协议。认证方式无交集时，错误会说明已配置的方式并提示核对目标 SSH 配置或选择键盘交互认证；网络及主机密钥错误保持原分类。
+
+安装成功或保存凭据时仍尝试授权平台公钥，成功后清除密码/私钥，授权失败才保留所用凭据。`GET /api/v1/nodes/{uuid}/ssh` 的 `auth_mode` 表示保存的凭据类型，不保存本次选择的协议：保留口令时为 `password`，不回传 `keyboard_interactive`；空凭据为 `platform_key`，私钥为 `private_key`。响应不含明文口令或私钥，`has_password` / `has_private_key` 表示是否保存；后续恢复使用上述自动顺序。
+
 `POST /api/v1/nodes/precheck` 检查主机环境，连通性检查按连接模式和检测结果返回，可能包含：
 
 - `Server reachability`：节点能否访问 server。

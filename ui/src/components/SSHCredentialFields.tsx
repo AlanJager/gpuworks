@@ -19,12 +19,13 @@ export default function SSHCredentialFields({
         <Radio.Group value={authMode} onChange={(event) => onAuthModeChange(event.target.value)}>
           <Radio.Button value="platform_key">{t("ssh.auth.platformKey")}</Radio.Button>
           <Radio.Button value="password">{t("ssh.auth.password")}</Radio.Button>
+          <Radio.Button value="keyboard_interactive">{t("ssh.auth.keyboardInteractive")}</Radio.Button>
           <Radio.Button value="private_key">{t("ssh.auth.key")}</Radio.Button>
         </Radio.Group>
       </Form.Item>
       {authMode === "platform_key" && <PlatformKeyAuthorization />}
-      {authMode === "password" && (
-        <Form.Item label={t("ssh.password")} name="password" extra={t("ssh.authorizesPlatformKey")} rules={[{ required: true, message: t("ssh.passwordRequired") }]}>
+      {(authMode === "password" || authMode === "keyboard_interactive") && (
+        <Form.Item label={t("ssh.password")} name="password" extra={authMode === "keyboard_interactive" ? `${t("ssh.keyboardInteractiveHelp")} ${t("ssh.authorizesPlatformKey")}` : t("ssh.authorizesPlatformKey")} rules={[{ required: true, message: t("ssh.passwordRequired") }]}>
           <Input.Password autoComplete="off" />
         </Form.Item>
       )}

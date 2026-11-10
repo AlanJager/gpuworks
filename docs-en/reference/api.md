@@ -316,6 +316,20 @@ The report excludes SSH passwords, private keys, node tokens, complete configura
 
 ### SSH Checks and Installation
 
+`POST /api/v1/nodes/precheck`, `POST /api/v1/nodes/install`, and `PUT /api/v1/nodes/{uuid}/ssh` share these SSH authentication fields:
+
+| Field/value | Meaning |
+|---|---|
+| `auth_mode: "platform_key"` | Attempts only the server's platform key; no password or private key needs to be submitted |
+| `auth_mode: "private_key"` | Attempts only the private key in `private_key_pem` |
+| `auth_mode: "password"` | Attempts only the SSH `password` protocol, using the password in `password` |
+| `auth_mode: "keyboard_interactive"` | Attempts only the SSH `keyboard-interactive` protocol, reusing `password`; supports one non-echoing password response and a bounded number of informational rounds with no questions, but not multiple questions, repeated password prompts, or MFA |
+| `auth_mode` omitted or empty | Tries available credentials in order: platform key, user private key, user password, cloud instance password, and finally keyboard-interactive with the request's or stored `password`; unavailable credentials are skipped |
+
+An explicit mode does not fall back to another protocol. If authentication methods have no overlap, the error identifies the configured methods and suggests checking the target SSH configuration or selecting keyboard-interactive. Network and host-key errors retain their existing classifications.
+
+After successful installation or when saving credentials, the server still attempts to authorize the platform public key. Success clears the password/private key; only failed authorization retains the credential used. The `auth_mode` returned by `GET /api/v1/nodes/{uuid}/ssh` identifies the stored credential type, not the protocol selected for that request: a retained password gives `password`, never `keyboard_interactive`; empty secrets give `platform_key`, and a private key gives `private_key`. The response contains no plaintext password or private key; `has_password` / `has_private_key` indicates whether each is stored. Subsequent recovery uses the automatic order above.
+
 `POST /api/v1/nodes/precheck` checks the host environment. Connectivity checks are returned according to the connection mode and detected results and may include:
 
 - `Server reachability`: Whether the node can access the server.

@@ -320,12 +320,14 @@
     "user": "用户",
     "userRequired": "请输入 SSH 用户",
     "probeAfterSave": "保存后立即探测一次",
-    "existingAuth": "现有认证：{{method}}。出于安全原因，凭证不会回显；保存时需重新输入。",
+    "existingAuth": "已保存凭据：{{method}}。出于安全原因，凭证不会回显；保存时需重新输入。",
+    "savedPasswordHelp": "恢复连接时，已保存的密码可通过密码认证或键盘交互认证尝试登录。",
     "password": "SSH 密码",
     "passwordRequired": "请输入 SSH 密码",
+    "keyboardInteractiveHelp": "适用于仅要求一次非回显密码应答的目标，不支持多步验证或 MFA 提示。",
     "privateKey": "SSH 私钥",
     "privateKeyRequired": "请输入 SSH 私钥",
-    "authorizesPlatformKey": "登录成功后平台会把平台公钥写入目标机，只保留平台密钥，这里填的密码或私钥不会保存。",
+    "authorizesPlatformKey": "登录成功后平台会尝试将平台公钥写入目标机；成功后只保留平台密钥，写入失败时保留本次凭据供恢复连接。",
     "platformKey": {
       "unavailable": "平台 SSH 密钥不可用：{{detail}}",
       "authorizeLabel": "在目标机授权平台公钥",
@@ -334,6 +336,7 @@
     "auth": {
       "label": "认证方式",
       "password": "密码",
+      "keyboardInteractive": "键盘交互认证",
       "key": "私钥",
       "platformKey": "平台密钥"
     },
