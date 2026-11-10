@@ -286,12 +286,13 @@ func (p *PPUProber) runtimeInjection(indexes []int, rows string, resolve func(in
 }
 
 // OCI exposes only the selected devices, retaining their driver enumeration
-// order. PRoot exposes the host inventory. Keep the requested compute order in
+// order; the kube runtime's device plugin hands the pod the same OCI devices.
+// PRoot exposes the host inventory. Keep the requested compute order in
 // either view, using numeric selectors understood by HGGC and inference engines.
 func ppuVisibleDeviceIndexes(indexes []int, driverName string) (string, error) {
 	visibleIndexes := append([]int(nil), indexes...)
 	switch driverName {
-	case "docker", "nerdctl":
+	case "docker", "nerdctl", "kube":
 		inventory := append([]int(nil), indexes...)
 		sort.Ints(inventory)
 		for i, index := range indexes {

@@ -73,6 +73,64 @@ func TestRunHandsAscendDevicesThroughThePlugin(t *testing.T) {
 	}
 }
 
+// ppuRig is a node of two PPUs, indexes 8 and 9, whose device plugin names
+// its devices PPU-<index>; every card has its own alixpu_ppu node and both
+// share alixpu_ctl.
+func ppuRig(t *testing.T) *rig {
+	t.Helper()
+	r := newRigFor(t, "alibabacloud.com/ppu", map[int]string{8: "GPU-ppu-8", 9: "GPU-ppu-9"}, []string{"PPU-8", "PPU-9"})
+	r.d.o.CardDevices = func(context.Context) (map[int][]string, error) {
+		ctl := "/dev/alixpu_ctl:/dev/alixpu_ctl:rwm"
+		return map[int][]string{
+			8: {"/dev/alixpu_ppu9:/dev/alixpu_ppu9:rwm", ctl},
+			9: {"/dev/alixpu_ppu10:/dev/alixpu_ppu10:rwm", ctl},
+		}, nil
+	}
+	return r
+}
+
+// TestRunHandsPPUDevicesThroughThePlugin: a PPU workload as the engine builds
+// it for the kube runtime (the PPU injection for the driver "kube": the
+// selected devices, numbered from zero) becomes a pod that asks the agent's
+// device plugin for its card and the shared node, unprivileged.
+func TestRunHandsPPUDevicesThroughThePlugin(t *testing.T) {
+	r := ppuRig(t)
+	s := spec("gpuworks-dddddddddddd", 9)
+	s.DockerArgs = []string{"--device", "/dev/alixpu_ppu10:/dev/alixpu_ppu10:rwm", "--device", "/dev/alixpu_ctl:/dev/alixpu_ctl:rwm"}
+	s.Env["NVIDIA_VISIBLE_DEVICES"] = "void"
+	s.Env["CUDA_VISIBLE_DEVICES"] = "0"
+	id, err := r.d.Run(context.Background(), s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pod := r.srv.Pod(testNS, id)
+	c := pod.Spec.Containers[0]
+	want := map[string]string{"gpuworks.ai/accelerator-9": "1", "gpuworks.ai/accelerator-shared": "1"}
+	for res, n := range want {
+		if c.Resources.Requests[res] != n || c.Resources.Limits[res] != n {
+			t.Fatalf("resources = %+v", c.Resources)
+		}
+	}
+	if len(c.Resources.Limits) != len(want) {
+		t.Fatalf("limits = %v", c.Resources.Limits)
+	}
+	if sc := c.SecurityContext; sc != nil && sc.Privileged != nil && *sc.Privileged {
+		t.Fatal("the pod is privileged: it would see every card")
+	}
+	envs := map[string]string{}
+	for _, e := range c.Env {
+		envs[e.Name] = e.Value
+	}
+	if envs["CUDA_VISIBLE_DEVICES"] != "0" || envs["NVIDIA_VISIBLE_DEVICES"] != "void" {
+		t.Fatalf("env = %v", envs)
+	}
+	// The plugin's PPU-9 is the probe's card 9: borrowed; PPU-8 given back.
+	holds := r.holdPods()
+	if len(holds) != 1 || r.kubelet.given[testNS+"/"+holds[0]] != "PPU-9" {
+		t.Fatalf("hold pods = %v, given %v", holds, r.kubelet.given)
+	}
+}
+
 // TestDevicesThePluginDoesNotServeRunPrivileged: an InfiniBand node is not a
 // card's; the pod runs privileged, as its docker twin sees the host's /dev.
 func TestDevicesThePluginDoesNotServeRunPrivileged(t *testing.T) {
