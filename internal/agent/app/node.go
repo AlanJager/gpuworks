@@ -169,6 +169,9 @@ type NodeRuntime struct {
 	// runtimeChoice is whether auto-detection picks the runtime and what
 	// it passed over (runtime_select.go).
 	runtimeChoice runtimeChoice
+	// kubeNode is set when the agent runs as a Kubernetes node (--driver=kube):
+	// its instances are pods, so the runtime is fixed (refuseRuntimeSwitch).
+	kubeNode bool
 	// accelerator is which vendor's cards this process manages and how
 	// that is changed (accelerator_choice.go).
 	accelerator acceleratorChoice
@@ -307,6 +310,7 @@ func newNodeRuntime(log *slog.Logger, driver runtime.Driver, modelsDir, forceDri
 		driver = selection.driver
 		n.runtimeChoice.reset(strings.TrimSpace(forceDriver) == "", selection.fallback)
 	}
+	n.kubeNode = forceDriver == kube.DriverName || (driver != nil && driver.Name() == kube.DriverName)
 	n.puller = n.newPuller(log, injected, registries)
 	if driver != nil {
 		// The node's puller comes first so a caller's own option can replace it.
