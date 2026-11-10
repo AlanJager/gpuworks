@@ -124,3 +124,14 @@ func ProtectInitialCredentials(dataDir string, policies ...securefile.Policy) er
 	}
 	return err
 }
+
+// RemoveInitialCredentials deletes the record once its password has been
+// replaced; it is read only when the admin account is first created. A
+// missing file is not an error.
+func RemoveInitialCredentials(dataDir string) error {
+	err := os.Remove(CredentialsPath(dataDir))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	return err
+}

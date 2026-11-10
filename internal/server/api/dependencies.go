@@ -134,6 +134,9 @@ type Deps struct {
 	ImageExists     func(ctx context.Context, ref, nodeUUID string) (bool, error)
 	CatalogPackages *packages.Store
 	ModelLogoDir    string
+	// ForgetInitialCredentials removes the install-time admin credentials
+	// file once the password it records has been changed.
+	ForgetInitialCredentials func() error
 	// FetchModelMeta reads a model's metadata from the first of candidates
 	// that serves it (modelmeta.FetchFrom); fetchModelMeta gives the
 	// candidates.

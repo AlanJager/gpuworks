@@ -348,10 +348,11 @@ func New(cfg Config, log *slog.Logger) (*App, error) {
 			Cancel: h.CancelImageTransfer,
 			Remove: h.RemoveImageFromNode,
 		},
-		InspectImage:    h.InspectImage,
-		ImageExists:     h.ImageExists,
-		CatalogPackages: catalogPackages,
-		ModelLogoDir:    modelLogoDir,
+		InspectImage:             h.InspectImage,
+		ImageExists:              h.ImageExists,
+		CatalogPackages:          catalogPackages,
+		ModelLogoDir:             modelLogoDir,
+		ForgetInitialCredentials: forgetInitialCredentials(cfg),
 		FetchModelMeta: func(ctx context.Context, source, repo, revision, subfolder string, candidates []string) (*modelmeta.Meta, error) {
 			return modelmeta.FetchFrom(ctx, source, repo, revision, subfolder, candidates, metadataClient, planning.ModelLogins(st))
 		},

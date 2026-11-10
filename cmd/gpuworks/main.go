@@ -332,7 +332,7 @@ func resetPassword(log *slog.Logger, args []string) error {
 	if password == "" {
 		return fmt.Errorf("-password is required")
 	}
-	if err := auth.ValidatePassword(password); err != nil {
+	if err := auth.ValidateAccountPassword(username, password); err != nil {
 		return err
 	}
 	dbPath, err := resetPasswordDB(dataDir, cfg.DBPath)
