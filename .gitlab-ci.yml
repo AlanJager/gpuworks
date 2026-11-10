@@ -574,7 +574,7 @@ core-l3:
   # Same rationale as core-l2: single retry for container-timing flakes.
   retry: 1
   variables:
-    DOCKER_TEST_COMMAND: "make test-l3 COVERPROFILE=coverage-l3.out"
+    DOCKER_TEST_COMMAND: "make test-l3 GO_TEST_FLAGS=-v COVERPROFILE=coverage-l3.out"
   artifacts:
     when: always
     paths:
