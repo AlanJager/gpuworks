@@ -99,6 +99,7 @@ func (a *apiHandlers) autoPlaceReplica(req *dto.DeployRequest, facts planning.Un
 		if !dynamicSpec {
 			return -1
 		}
+		candidateErr = nil
 		candidate := parallel
 		candidate.DP, candidateErr = a.automaticReplicaDP(req, nodes[0])
 		if candidateErr != nil {

@@ -135,6 +135,9 @@ func (a *apiHandlers) rankEligible(eligible []dto.EligibleNode, model *store.Mod
 	need := 0
 	if req.VRAMLimitGiB <= 0 {
 		need, _ = parallel.GPUsPerNode()
+		if !parallel.Stated() {
+			need = parallel.MinimumGPUs()
+		}
 	}
 	return planning.RankPool(candidates, strategy, need), nil
 }

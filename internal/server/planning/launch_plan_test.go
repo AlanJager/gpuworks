@@ -256,6 +256,12 @@ func TestLaunchParamsSupplyManagementInterfaceForKunlunMultiGPU(t *testing.T) {
 	if params.ComputeNetwork.Type != "host_ethernet" || params.ComputeNetwork.Interface != "br_eno1_31" {
 		t.Fatalf("multi-GPU compute network = %+v", params.ComputeNetwork)
 	}
+	for _, parallel := range []parallelism.Spec{{TP: 1, PP: 2}, {TP: 1, DP: 2}} {
+		params = launchParams(LaunchRequest{Node: node, Topology: DistTopology{NNodes: 1}}, node.GPUs[0], 0, parallel, 30000)
+		if params.ComputeNetwork.Type != "host_ethernet" || params.ComputeNetwork.Interface != "br_eno1_31" {
+			t.Fatalf("parallel %+v compute network = %+v", parallel, params.ComputeNetwork)
+		}
+	}
 	params = launchParams(LaunchRequest{Node: node, Topology: DistTopology{NNodes: 1}}, node.GPUs[0], 1, parallelism.Spec{TP: 1}, 30000)
 	if params.ComputeNetwork.Type != "" {
 		t.Fatalf("single-card network changed = %+v", params.ComputeNetwork)

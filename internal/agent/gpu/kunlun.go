@@ -218,7 +218,6 @@ func (p *KunlunProber) Probe(ctx context.Context) ([]proto.GPUInfo, error) {
 		if minorErr != nil || n < 0 || n >= 255 {
 			n = -1
 		}
-		mem, _ := kunlunValue(c.Total, "MiB")
 		limit, _ := kunlunValue(c.Limit, "W")
 		numa := -1
 		if b, e := p.read("/sys/bus/pci/devices/" + c.BDF + "/numa_node"); e == nil {
@@ -229,7 +228,7 @@ func (p *KunlunProber) Probe(ctx context.Context) ([]proto.GPUInfo, error) {
 		g := proto.GPUInfo{
 			Index: n, UUID: c.UUID, Name: c.Name, Vendor: p.Vendor(),
 			ArchID: strings.ToLower(c.Arch), PCIeBDF: c.BDF, NUMANode: numa,
-			MemoryTotalBytes: int64(mem * (1 << 20)),
+			MemoryTotalBytes: kunlunMemoryBytes(c.Total),
 			DriverVersion:    inv.Driver, PowerLimitWatts: limit,
 		}
 		code := ""
@@ -288,7 +287,7 @@ func (p *KunlunProber) Metrics(ctx context.Context) ([]Metric, error) {
 	}
 	out := make([]Metric, 0, len(i.Cards))
 	for _, c := range i.Cards {
-		if c.Minor == "-1" || strings.Contains(c.invalid, "minor_number") {
+		if strings.Contains(c.invalid, "minor_number") {
 			continue
 		}
 		n, _ := strconv.Atoi(c.Minor)

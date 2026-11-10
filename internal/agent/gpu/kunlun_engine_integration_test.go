@@ -130,6 +130,52 @@ func TestResolvedNetworkThroughEngineAndCapturedKunlun(t *testing.T) {
 	}
 }
 
+func TestSingleNodeKunlunDPThroughEngineAndCapturedKunlun(t *testing.T) {
+	eng, err := deploy.SelectEngine("vllm")
+	if err != nil {
+		t.Fatal(err)
+	}
+	launch, err := deploy.ResolveLaunch(deploy.ResolveLaunchInput{Engine: eng, Params: deploy.Params{
+		Vendor: "kunlunxin", ModelPath: "/model", AssignedGPUs: 2,
+		TensorParallel: 1, PipelineParallel: 1, DataParallel: 2, NNodes: 1,
+		Quick:          deploy.LaunchConfig{DP: 2},
+		ComputeNetwork: deploy.ComputeNetwork{Type: netplan.TypeHostEthernet, Interface: "br_eno1_31"},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	dpRendered := false
+	for i, arg := range launch.Argv {
+		if arg == "--data-parallel-size" && i+1 < len(launch.Argv) && launch.Argv[i+1] == "2" {
+			dpRendered = true
+		}
+	}
+	if !dpRendered || launch.Env["GLOO_SOCKET_IFNAME"] != "br_eno1_31" || launch.Env["NCCL_SOCKET_IFNAME"] != "br_eno1_31" {
+		t.Fatalf("single-node DP launch = %+v", launch)
+	}
+
+	spec := proto.InstanceDesiredState{
+		UUID: "kunlun-single-node-dp", DesiredState: "running", Image: "fixture:present", Engine: "vllm",
+		GPUIndexes: []int{6, 7}, NNodes: 1, HostNetwork: true, ResolvedLaunch: launch,
+	}
+	got, status := driveInjection(t, t.Context(), gpu.CapturedKunlunForTest(t, false, nil), spec)
+	if got == nil {
+		t.Fatalf("single-node DP injection rejected: %+v", status)
+	}
+	if got.Env["BKCL_SOCKET_IFNAME"] != "br_eno1_31" {
+		t.Fatalf("injected collective interface = %q", got.Env["BKCL_SOCKET_IFNAME"])
+	}
+	for _, device := range []string{"/dev/xpu6:/dev/xpu6:rwm", "/dev/xpu7:/dev/xpu7:rwm"} {
+		found := false
+		for _, arg := range got.DockerArgs {
+			found = found || arg == device
+		}
+		if !found {
+			t.Fatalf("selected device %s missing: %v", device, got.DockerArgs)
+		}
+	}
+}
+
 func TestExistingNativeBackendsThroughEngineTopologySeam(t *testing.T) {
 	for _, tc := range []struct {
 		name    string

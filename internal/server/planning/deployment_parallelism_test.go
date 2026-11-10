@@ -14,4 +14,13 @@ func TestStoredDeploymentPoolNeedIncludesDataParallel(t *testing.T) {
 	if got := ReplicaGPUNeed(dep); got != 4 {
 		t.Fatalf("explicit DP need = %d, want 4", got)
 	}
+	dep.Placement = `{}`
+	if got := ReplicaGPUNeed(dep); got != 4 {
+		t.Fatalf("automatic TP with DP4 need = %d, want 4", got)
+	}
+	dep.Placement = `{"pp":2}`
+	dep.ExtraArgs = "--data-parallel-size 2"
+	if got := ReplicaGPUNeed(dep); got != 4 {
+		t.Fatalf("automatic TP with PP2 DP2 need = %d, want 4", got)
+	}
 }

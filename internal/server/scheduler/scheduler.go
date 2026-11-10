@@ -507,15 +507,14 @@ func allowedTPs(req Request, maxGPUs int) []int {
 	if maxGPUs <= 0 {
 		maxGPUs = 8
 	}
-	// Every DP copy has PP stages with the same TP. Bound the factors before
-	// multiplication; no candidate can need more than the node's cards.
-	spec := req.Parallel.Normalized()
-	if spec.PP > maxGPUs/spec.DP {
+	// Every DP copy has PP stages with the same TP. No candidate can need
+	// more than the node's cards.
+	minimum := req.Parallel.MinimumGPUs()
+	if minimum > maxGPUs {
 		return nil
 	}
-	pp := spec.PP * spec.DP
 	tps := make([]int, 0, 5)
-	for tp := pp; tp <= maxGPUs; tp *= 2 {
+	for tp := minimum; tp <= maxGPUs; tp *= 2 {
 		tps = append(tps, tp)
 	}
 	return tps

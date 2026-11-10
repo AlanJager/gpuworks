@@ -46,3 +46,13 @@ func TestAutomaticDPRejectsIncompleteExplicitGroups(t *testing.T) {
 		}
 	}
 }
+
+func TestAutomaticTPStartsAtMinimumParallelismGroup(t *testing.T) {
+	got := allowedTPs(Request{Parallel: parallelism.Spec{PP: 2, DP: 2}}, 8)
+	if len(got) != 2 || got[0] != 4 || got[1] != 8 {
+		t.Fatalf("PP2 DP2 candidates = %v, want [4 8]", got)
+	}
+	if got := allowedTPs(Request{Parallel: parallelism.Spec{DP: 4}}, 3); len(got) != 0 {
+		t.Fatalf("DP4 on three cards produced candidates %v", got)
+	}
+}

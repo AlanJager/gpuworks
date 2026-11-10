@@ -431,7 +431,13 @@ func (a *apiHandlers) evaluate(w http.ResponseWriter, r *http.Request) {
 	}
 	nodeImageCached, quick = plan.nodeImageCached, plan.quick
 	tp := plan.tp
-	resp.Parallelism = evaluateParallelism(placement, req.NNodes, tp, plan.placementResolved, quick, launch.TemplateResidual, launch.UserResidual, eng.Name())
+	parallelismSummary, parallelismErr := evaluateParallelism(placement, req.NNodes, tp, plan.placementResolved, quick, launch.TemplateResidual, launch.UserResidual, eng.Name())
+	if parallelismErr != nil {
+		errs.add("data_parallel_size", parallelismErr)
+		writeFieldErrors()
+		return
+	}
+	resp.Parallelism = parallelismSummary
 	placementVariables, allowUnresolvedPlacement := plan.placementVariables, plan.allowUnresolved
 	dynamicTPPreview := plan.dynamicTPPreview
 
@@ -487,22 +493,22 @@ func isParallelismField(field string) bool {
 // evaluateParallelism is the split the draft launches with: the stated
 // degrees, or the TP a single-node schedule settled on. Nil while neither
 // is known.
-func evaluateParallelism(placement planning.Placement, nnodes, scheduledTP int, scheduled bool, quick deploy.LaunchConfig, templateArgs, userArgs []string, engine string) *dto.EvaluateParallelism {
+func evaluateParallelism(placement planning.Placement, nnodes, scheduledTP int, scheduled bool, quick deploy.LaunchConfig, templateArgs, userArgs []string, engine string) (*dto.EvaluateParallelism, error) {
 	spec := placement.Parallelism(nnodes)
 	dp, err := deploy.PlacementDataParallel(engine, quick.DP, templateArgs, userArgs)
 	if err != nil {
-		return nil
+		return nil, err
 	}
 	spec.DP = dp
 	if !spec.Stated() {
 		if !scheduled {
-			return nil
+			return nil, nil
 		}
 		spec.TP = scheduledTP
 	}
 	perNode, err := spec.GPUsPerNode()
 	if err != nil {
-		return nil
+		return nil, err
 	}
-	return &dto.EvaluateParallelism{TP: spec.TP, PP: spec.PP, Nodes: spec.NNodes, GPUsPerNode: perNode}
+	return &dto.EvaluateParallelism{TP: spec.TP, PP: spec.PP, Nodes: spec.NNodes, GPUsPerNode: perNode}, nil
 }

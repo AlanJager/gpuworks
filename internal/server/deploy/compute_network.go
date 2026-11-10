@@ -50,6 +50,20 @@ var rdmaDockerArgs = [][2]string{
 	{"--cap-add", "IPC_LOCK"},
 }
 
+// RequiresCollectiveInterface applies the accelerator's interface rule to
+// TP×PP×DP. Unstated PP and DP each default to one; the multi-node rule stays
+// with the accelerator.
+func RequiresCollectiveInterface(p Params) bool {
+	pp, dp := p.PipelineParallel, p.DataParallel
+	if pp < 1 {
+		pp = 1
+	}
+	if dp < 1 {
+		dp = 1
+	}
+	return accelerator.RequiresCollectiveInterface(p.Vendor, p.NNodes, p.TensorParallel*pp*dp)
+}
+
 // computeNetworkEnv is the system-layer environment for a multi-node rank or
 // a target whose single-node multi-device collective needs a real interface.
 // Host RDMA networks force the IB transport so a container that cannot see
@@ -66,7 +80,7 @@ func computeNetworkEnv(p Params) map[string]string {
 		return nil
 	}
 	if p.NNodes <= 1 {
-		if accelerator.RequiresCollectiveInterface(p.Vendor, p.NNodes, p.TensorParallel) && n.Interface != "" {
+		if RequiresCollectiveInterface(p) && n.Interface != "" {
 			return map[string]string{"NCCL_SOCKET_IFNAME": n.Interface, "GLOO_SOCKET_IFNAME": n.Interface}
 		}
 		return nil

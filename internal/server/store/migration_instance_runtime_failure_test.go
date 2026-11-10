@@ -18,7 +18,7 @@ func TestInstanceRuntimeFailureMigration(t *testing.T) {
 	if err := dropColumns(s.db, "instances", "runtime_failure"); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.db.Exec("DELETE FROM schema_migrations WHERE version = 200").Error; err != nil {
+	if err := s.db.Exec("DELETE FROM schema_migrations WHERE version = 201").Error; err != nil {
 		t.Fatal(err)
 	}
 	m := migrationByName(t, "instance_runtime_failure")
@@ -37,7 +37,7 @@ func TestInstanceRuntimeFailureMigration(t *testing.T) {
 		t.Fatal("failed transaction retained column")
 	}
 	var count int64
-	s.db.Model(&SchemaMigration{}).Where("version = 200").Count(&count)
+	s.db.Model(&SchemaMigration{}).Where("version = 201").Count(&count)
 	if count != 0 {
 		t.Fatal("failed transaction retained marker")
 	}
@@ -53,9 +53,33 @@ func TestInstanceRuntimeFailureMigration(t *testing.T) {
 	if err := dropColumns(s.db, "instances", "runtime_failure"); err != nil {
 		t.Fatal(err)
 	}
-	s.db.Exec("DELETE FROM schema_migrations WHERE version = 200")
+	s.db.Exec("DELETE FROM schema_migrations WHERE version = 201")
 	if err := migrateDB(s.db, []migration{m}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestInstanceRuntimeFailureMigrationAfterModelSourceIDIndex(t *testing.T) {
+	s := newTestStore(t)
+	if err := dropColumns(s.db, "instances", "runtime_failure"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.db.Exec("DELETE FROM schema_migrations WHERE version = 201").Error; err != nil {
+		t.Fatal(err)
+	}
+	var applied SchemaMigration
+	if err := s.db.First(&applied, 200).Error; err != nil || applied.Name != "model_source_id_index" {
+		t.Fatalf("existing v200 marker = %+v, err = %v", applied, err)
+	}
+	m := migrationByName(t, "instance_runtime_failure")
+	if m.Version != 201 {
+		t.Fatalf("runtime failure migration version = %d, want 201", m.Version)
+	}
+	if err := migrateDB(s.db, []migration{m}); err != nil {
+		t.Fatal(err)
+	}
+	if !s.db.Migrator().HasColumn(&Instance{}, "RuntimeFailure") {
+		t.Fatal("upgrade with the published v200 marker skipped runtime_failure")
 	}
 }
 

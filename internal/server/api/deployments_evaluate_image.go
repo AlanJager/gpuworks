@@ -103,19 +103,18 @@ func (a *apiHandlers) imageCacheFact(ctx context.Context, image string, node *st
 // to choose. Offering its own source would make the form send a provider
 // the template cannot accept on the next evaluation.
 func (a *apiHandlers) evaluateWeightFacts(model *store.Model, selection templateSelection, profileNode *store.Node) (acquisition.WeightFacts, error) {
-	weightFacts := acquisition.WeightFacts{
-		Providers: []acquisition.WeightSource{{
+	weightFacts := acquisition.WeightFacts{}
+	if model.Source != "local" {
+		weightFacts.Providers = []acquisition.WeightSource{{
 			Provider: model.Source, RepoID: model.SourceID, Revision: model.Revision, Suggested: true,
 			DisplayName: modelSourceHost(model),
-		}},
-	}
-	if selection.Spec != nil {
-		if model.Source == "local" {
-			weightFacts.Providers = nil
-		} else if specDeclaresProvider(selection.Spec, model.Source) {
-			weightFacts.Providers = templateAcquisitionProviders(selection)
-		} else {
-			weightFacts.Providers = nil
+		}}
+		if selection.Spec != nil {
+			if specDeclaresProvider(selection.Spec, model.Source) {
+				weightFacts.Providers = templateAcquisitionProviders(selection)
+			} else {
+				weightFacts.Providers = nil
+			}
 		}
 	}
 	var err error

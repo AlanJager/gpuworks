@@ -117,9 +117,9 @@ func TestAcquisitionProviderDeploymentMatrix(t *testing.T) {
 						return
 					}
 					var wantProviders []string
-					if !useTemplate {
+					if !useTemplate && modelSource != "local" {
 						wantProviders = []string{modelSource}
-					} else if selected == nil || slices.Contains(sources.providers, modelSource) {
+					} else if useTemplate && (selected == nil || slices.Contains(sources.providers, modelSource)) {
 						wantProviders = sources.providers
 					}
 					checkEvaluation := func(rec *httptest.ResponseRecorder) {

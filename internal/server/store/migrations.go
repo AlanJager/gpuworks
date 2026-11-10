@@ -1331,8 +1331,8 @@ var migrations = []migration{
 		// Empty until each node's next report says otherwise.
 		return db.Migrator().AddColumn(&Node{}, "PeerMemory")
 	}},
-	{Version: 200, Name: "instance_runtime_failure", Apply: addInstanceRuntimeFailure},
-	{Version: 201, Name: "model_source_id_index", Apply: createModelSourceIDIndex},
+	{Version: 200, Name: "model_source_id_index", Apply: createModelSourceIDIndex},
+	{Version: 201, Name: "instance_runtime_failure", Apply: addInstanceRuntimeFailure},
 }
 
 // modelFileNetworkColumns are the columns migrations 76 and 77 added to

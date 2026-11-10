@@ -10,6 +10,7 @@ package parallelism
 import (
 	"errors"
 	"fmt"
+	"math"
 )
 
 var (
@@ -75,20 +76,28 @@ func (s Spec) GPUsPerNode() (int, error) {
 }
 
 // Defaulted completes a multi-node spec whose TP is unstated from the GPU
-// counts of its nodes: one pipeline stage per node unless PP is stated, and
-// TP over the GPUs the fewest-GPU node has, so every node runs the same
+// counts of its nodes. Callers that validate the result should use
+// DefaultedChecked so an impossible PP×DP shape is not mistaken for missing TP.
+func (s Spec) Defaulted(nodeGPUs []int) Spec {
+	defaulted, _ := s.DefaultedChecked(nodeGPUs)
+	return defaulted
+}
+
+// DefaultedChecked completes a multi-node spec whose TP is unstated from the
+// GPU counts of its nodes: one pipeline stage per node unless PP is stated,
+// and TP over the GPUs the fewest-GPU node has, so every node runs the same
 // share and a node with more GPUs leaves the rest unused. A stated TP, a
 // single node or a node without GPUs leaves the spec as stated.
-func (s Spec) Defaulted(nodeGPUs []int) Spec {
+func (s Spec) DefaultedChecked(nodeGPUs []int) (Spec, error) {
 	if s.TP > 0 || len(nodeGPUs) < 2 {
-		return s.Normalized()
+		return s.Normalized(), nil
 	}
 	fewest := nodeGPUs[0]
 	for _, count := range nodeGPUs[1:] {
 		fewest = min(fewest, count)
 	}
 	if fewest < 1 {
-		return s.Normalized()
+		return s.Normalized(), nil
 	}
 	nodes := len(nodeGPUs)
 	pp := s.PP
@@ -108,9 +117,19 @@ func (s Spec) Defaulted(nodeGPUs []int) Spec {
 		pp = 1
 	}
 	if world%(pp*dp) != 0 || world/(pp*dp) < 1 {
-		return s.Normalized()
+		return s.Normalized(), fmt.Errorf("%w: %d GPUs over %d nodes cannot form pipeline parallel %d × data parallel %d", ErrIndivisible, world, nodes, pp, dp)
 	}
-	return Spec{TP: world / (pp * dp), PP: pp, DP: dp, NNodes: nodes}
+	return Spec{TP: world / (pp * dp), PP: pp, DP: dp, NNodes: nodes}, nil
+}
+
+// MinimumGPUs is the smallest GPU group an automatic single-node placement
+// may choose: every pipeline stage of every data-parallel replica needs one.
+func (s Spec) MinimumGPUs() int {
+	s = s.Normalized()
+	if s.PP > math.MaxInt/s.DP {
+		return math.MaxInt
+	}
+	return s.PP * s.DP
 }
 
 // Assigned completes an unstated spec from the GPU count the scheduler chose

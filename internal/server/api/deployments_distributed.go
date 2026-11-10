@@ -49,7 +49,10 @@ func (a *apiHandlers) prepareDistributedDeployRequest(req *dto.DeployRequest, dp
 	// written back, so the stored deployment always states its parallelism.
 	// The caller has already materialized the launch. Do not re-read raw
 	// template flags here: they may have been overridden or unset.
-	parallel := placement.ParallelismOnDP(gpuCounts, dp)
+	parallel, err := placement.ParallelismOnDP(gpuCounts, dp)
+	if err != nil {
+		return nil, distributedParallelismError(parallel, err)
+	}
 	perNode, err := parallelGPUsPerNode(parallel)
 	if err != nil {
 		return nil, err
@@ -89,14 +92,18 @@ func (a *apiHandlers) prepareDistributedDeployRequest(req *dto.DeployRequest, dp
 // TP and PP fields.
 func parallelGPUsPerNode(parallel planning.ParallelismSpec) (int, error) {
 	perNode, err := parallel.GPUsPerNode()
+	return perNode, distributedParallelismError(parallel, err)
+}
+
+func distributedParallelismError(parallel planning.ParallelismSpec, err error) error {
 	switch {
 	case errors.Is(err, planning.ErrParallelismTPRequired):
-		return 0, productError(ErrorDistributedTPRequired, "distributed deployments require placement.tp", nil)
+		return productError(ErrorDistributedTPRequired, "distributed deployments require placement.tp", nil)
 	case errors.Is(err, planning.ErrParallelismIndivisible):
-		return 0, productError(ErrorDistributedParallelIndivisible, err.Error(),
+		return productError(ErrorDistributedParallelIndivisible, err.Error(),
 			map[string]any{"tp": parallel.TP, "pp": parallel.PP, "nodes": parallel.NNodes})
 	}
-	return perNode, err
+	return err
 }
 
 func masterHost(addr string) (string, error) {

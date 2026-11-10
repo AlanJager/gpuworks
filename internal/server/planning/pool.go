@@ -319,5 +319,8 @@ func ReplicaGPUNeed(dep *store.Deployment) int {
 	if err != nil {
 		return 0
 	}
+	if !spec.Stated() {
+		return spec.MinimumGPUs()
+	}
 	return need
 }

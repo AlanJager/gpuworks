@@ -190,7 +190,7 @@ func runVendorQuery(q *vendorQuery, b *vendorBinary, done chan struct{}, name st
 	// meanwhile.
 	err := cmd.Run()
 	if stdoutOnly && err != nil {
-		slog.Warn("structured gpu query failed", "command", name, "stderr_tail", tail(stderr.String(), 400))
+		slog.Warn("structured gpu query failed", "command", name, "stderr_tail", stderr.String())
 	}
 	took := time.Since(start)
 	if ctx.Err() != nil {
