@@ -77,6 +77,9 @@ type cardPool struct {
 	held      map[string]string // card UUID -> hold pod name
 	users     map[string]map[string]bool
 	idleSince map[string]time.Time
+	// starting are the instances that claimed cards and whose pod Run has not
+	// created yet: they have no pod to find (see reapUsers).
+	starting map[string]bool
 	// returning are the hold pods this pool deleted and the kubelet still
 	// lists; their cards are not held, whatever the allocations say.
 	returning map[string]bool
@@ -164,7 +167,7 @@ func (p *cardPool) load(ctx context.Context) error {
 		return nil
 	}
 	p.held, p.users, p.idleSince = map[string]string{}, map[string]map[string]bool{}, map[string]time.Time{}
-	p.returning = map[string]bool{}
+	p.starting, p.returning = map[string]bool{}, map[string]bool{}
 	if p.resource != "" && p.shared == "" {
 		held, err := p.listHeld(ctx, p.resource)
 		if err != nil {
@@ -311,7 +314,18 @@ func (p *cardPool) claim(ctx context.Context, instance string, indexes []int) ([
 		}
 		p.use(card, instance)
 	}
+	if len(want) > 0 {
+		p.starting[instance] = true
+	}
 	return want, missing, nil
+}
+
+// settled says instance's pod now exists: from here on, a missing pod means
+// the instance is gone (reapUsers).
+func (p *cardPool) settled(instance string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	delete(p.starting, instance)
 }
 
 // release says instance no longer uses its cards.
@@ -322,6 +336,7 @@ func (p *cardPool) release(instance string) {
 }
 
 func (p *cardPool) releaseLocked(instance string) {
+	delete(p.starting, instance)
 	for card, users := range p.users {
 		if users[instance] {
 			delete(users, instance)
@@ -335,8 +350,55 @@ func (p *cardPool) releaseLocked(instance string) {
 	}
 }
 
-// sweep returns the cards that have been idle longer than idleReturn.
+// reapUsers drops the instances whose pod no longer exists from the users
+// of their cards. The engine calls release only through Remove, and skips it
+// for a container Status says is gone, so a pod deleted by anything else (a
+// kubectl delete, an eviction that removed it, a node drain) would keep its
+// cards borrowed for good.
+func (p *cardPool) reapUsers(ctx context.Context) {
+	p.mu.Lock()
+	if !p.loaded {
+		p.mu.Unlock()
+		return
+	}
+	// Instances still starting have no pod yet. They are skipped, and the
+	// snapshot is taken before the list so that a pod created after the list
+	// belongs to an instance that was starting at the snapshot.
+	candidates := map[string]bool{}
+	for _, users := range p.users {
+		for instance := range users {
+			if !p.starting[instance] {
+				candidates[instance] = true
+			}
+		}
+	}
+	p.mu.Unlock()
+	if len(candidates) == 0 {
+		return
+	}
+	pods, err := p.instancePods(ctx)
+	if err != nil {
+		p.log.Warn("cannot list the instance pods to find vanished ones", "err", err)
+		return
+	}
+	for _, pod := range pods.Items {
+		delete(candidates, pod.Metadata.Name)
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for instance := range candidates {
+		if p.starting[instance] {
+			continue
+		}
+		p.log.Info("the pod of an instance is gone; releasing its cards", "instance", instance)
+		p.releaseLocked(instance)
+	}
+}
+
+// sweep drops the users whose pod vanished and returns the cards that have
+// been idle longer than idleReturn.
 func (p *cardPool) sweep(ctx context.Context) {
+	p.reapUsers(ctx)
 	p.mu.Lock()
 	if !p.loaded || p.idleReturn < 0 {
 		p.mu.Unlock()

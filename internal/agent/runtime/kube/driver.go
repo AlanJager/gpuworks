@@ -384,6 +384,7 @@ func (d *Driver) Run(ctx context.Context, spec runtime.WorkloadSpec) (string, er
 		undo()
 		return "", fmt.Errorf("create pod %s: %w", spec.Name, err)
 	}
+	d.cards.settled(spec.Name)
 	deadline := time.Now().Add(d.o.StartTimeout)
 	for {
 		var p kubeapi.Pod
