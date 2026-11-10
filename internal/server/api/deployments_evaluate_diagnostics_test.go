@@ -3,13 +3,14 @@ package api
 import (
 	"encoding/json"
 	"fmt"
-	"gpuworks.ai/gpuworks/internal/server/api/dto"
-	"gpuworks.ai/gpuworks/internal/server/store"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
 	"strings"
 	"testing"
+
+	"gpuworks.ai/gpuworks/internal/server/api/dto"
+	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
 // Exercise the literal public wire response, not DTO fields: a wrong-vendor

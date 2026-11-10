@@ -5,14 +5,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"gpuworks.ai/gpuworks/internal/server/store"
-	"gpuworks.ai/gpuworks/pkg/bench/loadgen"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"gpuworks.ai/gpuworks/internal/server/store"
+	"gpuworks.ai/gpuworks/pkg/bench/loadgen"
 
 	benchmeta "gpuworks.ai/gpuworks/pkg/bench"
 )

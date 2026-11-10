@@ -12,6 +12,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"gorm.io/gorm"
+
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"gpuworks.ai/gpuworks/internal/server/bus"

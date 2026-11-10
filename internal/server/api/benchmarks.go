@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"io"
 	"net/http"
 	"os"
@@ -13,7 +12,10 @@ import (
 	"strings"
 	"time"
 
+	"gpuworks.ai/gpuworks/internal/server/api/dto"
+
 	"github.com/go-chi/chi/v5"
+
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/store"
 	benchmeta "gpuworks.ai/gpuworks/pkg/bench"

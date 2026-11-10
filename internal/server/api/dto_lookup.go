@@ -1,8 +1,9 @@
 package api
 
 import (
-	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"time"
+
+	"gpuworks.ai/gpuworks/internal/server/api/dto"
 
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/store"

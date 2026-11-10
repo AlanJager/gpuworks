@@ -2,8 +2,6 @@
 // by the executable catalog, deployment snapshots, proxy and Playground.
 package inferenceapi
 
-import ()
-
 // Contract describes the HTTP service exposed by one executable inference
 // spec. It is deliberately small: protocol details live in the operation
 // registry rather than being copied into every catalog entry.

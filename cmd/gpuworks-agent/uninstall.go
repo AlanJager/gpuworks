@@ -14,8 +14,9 @@ import (
 	"strings"
 	"syscall"
 
-	"gpuworks.ai/gpuworks/internal/agentconf"
 	"time"
+
+	"gpuworks.ai/gpuworks/internal/agentconf"
 )
 
 const agentUnitPath = "/etc/systemd/system/gpuworks-agent.service"

@@ -2,13 +2,14 @@ package app
 
 import (
 	"context"
-	"gpuworks.ai/gpuworks/internal/server/api/dto"
-	"gpuworks.ai/gpuworks/internal/server/hub"
 	"log/slog"
 	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"gpuworks.ai/gpuworks/internal/server/api/dto"
+	"gpuworks.ai/gpuworks/internal/server/hub"
 
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/selflog"
