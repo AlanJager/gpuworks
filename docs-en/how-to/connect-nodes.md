@@ -47,7 +47,7 @@ To change parameters such as the driver or state directory, see [Installation Sc
 
 1. Open **Compute Nodes → Add node**, select **SSH supported**, and enter the node name, connection direction, and corresponding addresses. You do not need to create a node first to obtain a token.
 2. For **SSH target**, enter `user@host[:port]` or paste the SSH command provided by your cloud provider. The wizard reads only the user, host, and port; options such as `-i` and port forwarding have no effect, and jump hosts using `-J` / `ProxyJump` are unsupported.
-3. Choose an authentication method. With the default **Platform key**, copy the authorization command from the form and run it on the target host as the SSH user. You can also enter a **Password** or **Private key**.
+3. Choose an authentication method. With the default **Platform key**, copy the authorization command from the form and run it on the target host as the SSH user. You can also enter a **Password** or **Private key**. If the target SSH server accepts passwords only through an interactive prompt such as PAM, select **Keyboard-interactive** and use the same password field. It is a different protocol from ordinary SSH password authentication; an explicit selection attempts only that method.
 4. Under **Advanced**, check **Installation directory** and **Start via systemd**, then click **Start precheck**. Resolve network, directory, and device permission issues according to the report, then click **Install Agent**.
 5. Review the installation results. If prompted to confirm replacement of an existing agent, first check which node is affected. **Installation command executed** does not mean the node is online; continue to [verify the connection](#确认接入结果).
 
@@ -57,7 +57,9 @@ You can also view the platform public key under **SSH Key** on the Settings page
 mkdir -p ~/.ssh && chmod 700 ~/.ssh && echo '<platform-public-key>' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys
 ```
 
-After successful installation using a password or private key, the server attempts to write the platform public key. If successful, it retains only the platform key; it saves the entered credentials only if writing the public key fails. `SSH authentication` and `Platform key` in the installation report show the authentication and public key write results. The precheck does not write the public key; it only creates and removes temporary files to probe the directory.
+Keyboard-interactive supports only one non-echoing password response, with a bounded number of informational rounds containing no questions. Multiple questions, repeated password prompts, and MFA are unsupported. When authentication methods do not match, the report points to the target SSH configuration or suggests selecting keyboard-interactive; network failures and changed host keys still require their own remedies.
+
+After successful installation using a password, keyboard-interactive, or private key, the server attempts to write the platform public key. If successful, it retains only the platform key; it saves the entered credentials only if writing the public key fails. `SSH authentication` and `Platform key` in the installation report show the authentication and public key write results. The precheck does not write the public key; it only creates and removes temporary files to probe the directory. The node SSH credential editor offers the same authentication options and also attempts to authorize the platform public key when saving. If a password is retained, reopening the editor shows **Password**, which identifies the stored credential type. Subsequent automatic recovery supports both ordinary password and keyboard-interactive authentication without saving the credentials again.
 
 ### Offline Package
 

@@ -163,7 +163,7 @@ export default function AddNodeDrawer({
     target: values.target,
     name: nodeName.trim() || undefined,
     auth_mode: authMode,
-    password: authMode === "password" ? values.password : undefined,
+    password: authMode === "password" || authMode === "keyboard_interactive" ? values.password : undefined,
     private_key_pem: authMode === "private_key" ? values.private_key_pem?.trim() || undefined : undefined,
     server_url: effectiveServerURL,
     install_dir: installDir || undefined,
@@ -214,7 +214,7 @@ export default function AddNodeDrawer({
       }
     } catch (e) {
       if (version !== requestVersion.current) return;
-      message.error(t("add.message.precheckFailed", { detail: (e as Error).message }));
+      message.error(t("add.message.precheckFailed", { detail: apiErrorText(tCommon, e) }));
     } finally {
       if (version === requestVersion.current) setChecking(false);
     }

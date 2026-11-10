@@ -196,6 +196,51 @@ test("password and private key modes require what they name", async () => {
   }
 });
 
+test("keyboard-interactive sends its password to precheck and install without a stale private key", async () => {
+  const precheck = stubAPI("precheckNode", { checks: [] });
+  const install = stubAPI("installNode", installReport);
+  try {
+    renderDrawer();
+    fireEvent.change(screen.getByPlaceholderText("root@192.0.2.10:22"), { target: { value: "root@203.0.113.7" } });
+    fireEvent.click(screen.getByRole("radio", { name: nodes.ssh.auth.key }));
+    fireEvent.change(screen.getByPlaceholderText("-----BEGIN OPENSSH PRIVATE KEY-----"), { target: { value: "STALE KEY" } });
+    fireEvent.click(screen.getByRole("radio", { name: "Keyboard-interactive" }));
+    fireEvent.change(screen.getByLabelText(nodes.ssh.password), { target: { value: "keyboard-secret" } });
+    fireEvent.click(screen.getByRole("button", { name: nodes.add.startPrecheck }));
+    await waitFor(() => assert.equal(precheck.bodies.length, 1));
+    fireEvent.click(screen.getByRole("button", { name: nodes.add.installAgent }));
+    await waitFor(() => assert.equal(install.bodies.length, 1));
+    for (const body of [precheck.bodies[0], install.bodies[0]]) {
+      assert.equal(body.auth_mode, "keyboard_interactive");
+      assert.equal(body.password, "keyboard-secret");
+      assert.equal(body.private_key_pem, undefined);
+      assert.equal(body.target, "root@203.0.113.7");
+    }
+  } finally {
+    precheck.restore();
+    install.restore();
+  }
+});
+
+test("keyboard-interactive requires a password before precheck or install", async () => {
+  const precheck = stubAPI("precheckNode", { checks: [] });
+  const install = stubAPI("installNode", installReport);
+  try {
+    renderDrawer();
+    fireEvent.change(screen.getByPlaceholderText("root@192.0.2.10:22"), { target: { value: "root@203.0.113.7" } });
+    fireEvent.click(screen.getByRole("radio", { name: "Keyboard-interactive" }));
+    fireEvent.click(screen.getByRole("button", { name: nodes.add.startPrecheck }));
+    await waitFor(() => assert.ok(screen.getByText(nodes.ssh.passwordRequired)));
+    fireEvent.click(screen.getByRole("button", { name: nodes.add.installAgent }));
+    await waitFor(() => assert.ok(screen.getByText(nodes.ssh.passwordRequired)));
+    assert.equal(precheck.bodies.length, 0);
+    assert.equal(install.bodies.length, 0);
+  } finally {
+    precheck.restore();
+    install.restore();
+  }
+});
+
 // server_dial never shows the management node address, so a value typed in
 // agent mode first must not leak into the request.
 // The server dials this agent, which never contacts the server: the install
