@@ -6,7 +6,7 @@ import "time"
 // DaemonSet. ApplyCommand carries the enrollment token and is present for
 // administrators only.
 type KubeCluster struct {
-	ID                uint   `json:"id"` // what NodeKube.ClusterID refers to
+	ID                uint   `json:"id"`
 	UUID              string `json:"uuid"`
 	Name              string `json:"name"`
 	Namespace         string `json:"namespace"`

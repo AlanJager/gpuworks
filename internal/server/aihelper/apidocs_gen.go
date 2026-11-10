@@ -94,7 +94,7 @@ var routeDocs = map[string]string{
 	"/api/v1/monitor/series":                    "指标浏览器（`metric` 必填，`range` ∈ `15m|1h|6h|24h|168h`，默认 `1h`，或 `from`+`to`（`step` 默认约 240 个点、取 10 秒整数倍）；`by` ∈ `node|deployment|instance|gpu`，`fn` ∈ `avg|sum|max|rate`，默认 `avg`；`step` 默认按 `range` 推导，且不会低于该推导值；结果超过序列/点数上限时返回 400；未知指标返回 `[]`）。带 `node` 标签的序列另带只用于显示的 `node_name`，带 `deployment` 标签的另带 `deployment_name`；节点或部署已删除时取删除时的名字，并带 `node_deleted` / `deployment_deleted` 为 `\"true\"`，两边都不认识的保持原样",
 	"/api/v1/networks":                          "网络列表（含加载关系、解析节点数、有提示的节点数）与角色/类型字典（`types`：`host_ethernet` / `host_rdma` / `accelerator_rdma` / `accelerator_hccs`；`type_roles`：每种类型可承担的角色）；第一项是管理网（`id` 0、`builtin: true`）",
 	"/api/v1/networks/{}":                       "网络详情：加载关系、解析到的节点（网卡/IP/HCA/提示，以及节点的用户标签 `labels`）、最近一次内部测试；`id` 0 是管理网，节点带 `roles_off`；不能修改、删除、加载（返回 404），可以发起内部测试",
-	"/api/v1/nodes":                             "节点列表；带 `page`/`page_size` 时分页并可按 `q`/`state`/`label` 筛选（见“错误与响应约定”）；从 Kubernetes 集群接入的节点带 `kube: {cluster_id, node_name, unschedulable}`（`cluster_id` 对应集群的 `id`）",
+	"/api/v1/nodes":                             "节点列表；带 `page`/`page_size` 时分页并可按 `q`/`state`/`label` 筛选（见“错误与响应约定”）；从 Kubernetes 集群接入的节点带系统标签 `gpuworks.ai/kubernetes-cluster` 与 `gpuworks.ai/kubernetes-node`（见“节点标签：写入的与生成的”），被 Kubernetes cordon 时 `cordon_reason` 为 `kube_unschedulable`",
 	"/api/v1/nodes/facets":                      "筛选项及节点数量分布；查询参数 `q`、`state`、`label` 同节点列表，返回用户标签、系统标签与卡型号分布（含已报告的 `arch_id`），见[节点列表](#节点列表的筛选与返回字段)",
 	"/api/v1/nodes/{}":                          "节点详情（含 GPU 列表；管理员额外含 token）",
 	"/api/v1/nodes/{}/fs":                       "节点文件系统浏览（本地模型注册用）",

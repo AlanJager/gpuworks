@@ -167,6 +167,24 @@ func (s *Store) KubeClusters() ([]KubeCluster, error) {
 	return rows, err
 }
 
+// KubeClusterRefs returns the id, UUID and name of the clusters with the
+// given ids, keyed by id; a missing id is absent. It reads only the identity
+// columns, so a label computation never loads enrollment tokens.
+func (s *Store) KubeClusterRefs(ids []uint) (map[uint]KubeCluster, error) {
+	out := map[uint]KubeCluster{}
+	if len(ids) == 0 {
+		return out, nil
+	}
+	var rows []KubeCluster
+	if err := s.db.Select("id", "uuid", "name").Where("id IN ?", ids).Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		out[row.ID] = row
+	}
+	return out, nil
+}
+
 // KubeClusterByUUID returns one cluster or ErrNotFound.
 func (s *Store) KubeClusterByUUID(uuid string) (*KubeCluster, error) {
 	var c KubeCluster

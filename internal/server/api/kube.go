@@ -323,13 +323,6 @@ func (a *apiHandlers) kubeEnroll(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, dto.KubeEnrollResponse{NodeUUID: node.UUID, NodeToken: node.Token, IdleReturnSeconds: cluster.IdleReturnSeconds})
 }
 
-func nodeKubeDTO(n *store.Node) *dto.NodeKube {
-	if n.KubeClusterID == 0 {
-		return nil
-	}
-	return &dto.NodeKube{ClusterID: n.KubeClusterID, NodeName: n.KubeNodeName, Unschedulable: n.KubeUnschedulable}
-}
-
 // upgradeKubeNode upgrades the agents of a Kubernetes node's cluster: the
 // node's agent moves its DaemonSet to this server's version, and Kubernetes
 // replaces every agent of the cluster in turn.

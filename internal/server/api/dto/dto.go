@@ -68,19 +68,9 @@ type GPU struct {
 	HealthGuide       *GPUHealthGuide  `json:"health_guide,omitempty"`
 }
 
-// NodeKube is where a node that joined from a Kubernetes cluster sits there.
-// ClusterID matches KubeCluster.ID.
-type NodeKube struct {
-	ClusterID     uint   `json:"cluster_id"`
-	NodeName      string `json:"node_name"`
-	Unschedulable bool   `json:"unschedulable"`
-}
-
 // Node is the API view of a store.Node.
 type Node struct {
 	UUID string `json:"uuid"`
-	// Kube is set for a node that joined from a Kubernetes cluster.
-	Kube *NodeKube `json:"kube,omitempty"`
 	// Scheduling is schedulable, cordoned or draining.
 	Scheduling string `json:"scheduling"`
 	// SchedulingBy is who set Scheduling: operator or platform; absent on a

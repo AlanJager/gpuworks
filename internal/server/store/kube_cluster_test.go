@@ -235,3 +235,28 @@ func TestKubeClusterImagePullSecretMigrationRollsBack(t *testing.T) {
 		t.Fatalf("retry: %v", err)
 	}
 }
+
+func TestKubeClusterRefsReadsOnlyTheRequestedIdentities(t *testing.T) {
+	st := openKubeStore(t)
+	a, err := st.CreateKubeCluster(KubeCluster{Name: "a"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := st.CreateKubeCluster(KubeCluster{Name: "b"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := st.KubeClusterRefs([]uint{a.ID, 9999})
+	if err != nil || len(got) != 1 || got[a.ID].UUID != a.UUID || got[a.ID].Name != "a" {
+		t.Fatalf("refs = %+v, %v; want cluster a alone (a missing id is absent, b not asked for)", got, err)
+	}
+	if got[a.ID].Token != "" || got[a.ID].TokenHash != "" {
+		t.Fatalf("refs loaded the enrollment token: %+v", got[a.ID])
+	}
+	if _, ok := got[b.ID]; ok {
+		t.Fatal("cluster b returned unasked")
+	}
+	if got, err := st.KubeClusterRefs(nil); err != nil || len(got) != 0 {
+		t.Fatalf("refs of no ids = %+v, %v", got, err)
+	}
+}
