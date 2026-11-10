@@ -1,7 +1,7 @@
 {
   "schema_version": 3,
-  "catalog_version": "2026-11-05.3a8b3c18",
-  "sha256": "bca97ccf7af3aef356dfd9f1d38c3a7b26e7becbe2bf86ec867449668931ad88",
+  "catalog_version": "2026-11-05.2043cf4f",
+  "sha256": "9bfc466ff298584972d3d563638652e794b86710b08c53279c85eb52358a702c",
   "series": [
     {
       "name": "MLX Audio · Metal",
@@ -467,7 +467,7 @@
             "quay.io/gpuworks/gpuworks-runner:dtk26.04-vllm0.18.1-r2",
             "swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-runner:dtk26.04-vllm0.18.1-r2"
           ],
-          "notes": "K100 等海光 DCU 的 vllm 档。**不含 omni**：厂商原件的 pip 清单是 vllm 0.18.1、 vllm-hcu 0.18.1、transformers 5.5.0、flash-attn、flash_mla，没有 vllm-omni； 海光的 omni 负载在推理目录里走厂商 custom:* 系列镜像，不依赖本档。 内置 vllm-hcu-apply-patches（推理目录的 pre_start_argv 依赖它）。 callable runtime 不烤进镜像：推理目录用 sha256 钉住同一资产并只读挂到同一路径。\nrequires: engine, hcu_patches, overlays"
+          "notes": "K100 等海光 DCU 的 vllm 档。**不含 omni**：厂商原件的 pip 清单是 vllm 0.18.1、 vllm-hcu 0.18.1、transformers 5.5.0、flash-attn、flash_mla，没有 vllm-omni； 海光的 omni 负载在推理目录里走厂商 custom:* 系列镜像，不依赖本档。 内置 vllm-hcu-apply-patches（推理目录的 pre_start_argv 依赖它）。 callable runtime 不烤进镜像：推理目录用 sha256 钉住同一资产并只读挂到同一路径。\nrequires: engine, hcu_patches, overlays, diffusion"
         },
         {
           "name": "dtk26.04-vllm0.21.0-r2",
