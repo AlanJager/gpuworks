@@ -83,7 +83,6 @@ function ModelsAlias() {
 }
 
 function AuthenticatedShell({ onLogout }: { onLogout: () => Promise<void> }) {
-  const { t } = useTranslation();
   const branding = useBranding();
   useDocumentBranding(branding);
   const [navCollapsed, setNavCollapsed] = useState(readNavCollapsed);

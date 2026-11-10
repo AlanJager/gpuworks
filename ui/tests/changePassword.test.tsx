@@ -42,8 +42,8 @@ after(() => closeChannels());
 
 const auth = locale("auth").changePassword;
 
-/** The form errors on screen; antd keeps a fading copy of a dropped error for its animation. */
-const fieldErrors = () => [...document.querySelectorAll(".ant-form-item-explain-error")].map((e) => e.textContent);
+/** The field errors on screen, in form order. */
+const fieldErrors = () => [...document.querySelectorAll('[data-slot="field-error"]')].map((e) => e.textContent);
 
 type Sent = { url: string; body: unknown };
 function answer(status: number, body: unknown, sent: Sent[]) {
@@ -103,7 +103,7 @@ test("mismatched new passwords are caught before the server is asked", async () 
   answer(200, {}, sent);
   const user = await openForm();
   await fill(user, "old-password-1", "Tiger#Lake9", "Tiger#Lake8");
-  assert.ok(await screen.findByText(auth.mismatch));
+  await waitFor(() => assert.deepEqual(fieldErrors(), [auth.mismatch]));
   assert.equal(sent.length, 0);
 });
 
@@ -113,21 +113,22 @@ test("server rejections land on the field they concern", async () => {
   let signedOut = 0;
   const user = await openForm(() => { signedOut++; });
   await fill(user, "wrong-password", "Tiger#Lake9");
-  assert.ok(await screen.findByText(locale("common").apiError.CURRENT_PASSWORD_INVALID));
+  await waitFor(() => assert.deepEqual(fieldErrors(), [locale("common").apiError.CURRENT_PASSWORD_INVALID]));
   answer(400, { code: "PASSWORD_LENGTH", error: "use 8 to 128 characters", params: { min: 8, max: 128 } }, sent);
   await user.clear(screen.getByLabelText(auth.current));
   await user.type(screen.getByLabelText(auth.current), "old-password-1");
   await user.click(screen.getByRole("button", { name: auth.submit }));
-  assert.ok(await screen.findByText("Use 8 to 128 characters."));
+  await waitFor(() => assert.deepEqual(fieldErrors(), ["The password must have 8–128 characters. Choose another."]));
   assert.equal(signedOut, 0);
-  assert.equal(screen.queryByRole("alert"), null);
+  assert.equal(document.querySelector('[data-slot="alert"]'), null, "a field error is not repeated above the form");
 });
 
 test("a refusal that is not about a field is shown above the form", async () => {
   answer(403, { code: "EXPERIENCE_UNSUPPORTED", error: "not supported" }, []);
   const user = await openForm();
   await fill(user, "old-password-1", "Tiger#Lake9");
-  assert.ok((await screen.findByRole("alert")).textContent?.includes(locale("common").apiError.EXPERIENCE_UNSUPPORTED));
+  await waitFor(() => assert.ok(document.querySelector('[data-slot="alert"]')?.textContent?.includes(locale("common").apiError.EXPERIENCE_UNSUPPORTED)));
+  assert.deepEqual(fieldErrors(), []);
 });
 
 test("the sign-in form tells how to reset a forgotten password", async () => {
@@ -142,7 +143,7 @@ test("a server rejection clears once the field is edited, and the next answer re
   answer(400, { code: "PASSWORD_GUESSABLE", error: "guessable" }, sent);
   const user = await openForm();
   await fill(user, "wrong-password", "Password123");
-  assert.ok(await screen.findByText(locale("common").apiError.PASSWORD_GUESSABLE));
+  await waitFor(() => assert.deepEqual(fieldErrors(), [locale("common").apiError.PASSWORD_GUESSABLE]));
   answer(400, { code: "CURRENT_PASSWORD_INVALID", error: "wrong" }, sent);
   for (const label of [auth.next, auth.confirm]) {
     await user.clear(screen.getByLabelText(label));
@@ -162,4 +163,22 @@ test("a wrong current password and a weak new one are marked together", async ()
     locale("common").apiError.CURRENT_PASSWORD_INVALID,
     locale("common").apiError.PASSWORD_GUESSABLE,
   ]));
+});
+
+test("a throttled change says so in the form's own words", async () => {
+  answer(429, { code: "LOGIN_THROTTLED", error: "too many" }, []);
+  const user = await openForm();
+  await fill(user, "wrong-password", "Tiger#Lake9");
+  await waitFor(() => assert.equal(document.querySelector('[data-slot="alert"]')?.textContent, auth.throttled));
+});
+
+test("the password toggle shows and hides what was typed", async () => {
+  const user = await openForm();
+  const input = screen.getByLabelText(auth.current) as HTMLInputElement;
+  assert.equal(input.type, "password");
+  const [show] = screen.getAllByRole("button", { name: locale("common").actions.showPassword });
+  await user.click(show);
+  assert.equal(input.type, "text");
+  await user.click(screen.getByRole("button", { name: locale("common").actions.hidePassword }));
+  assert.equal(input.type, "password");
 });
