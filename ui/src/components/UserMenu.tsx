@@ -1,12 +1,12 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "./ui/button";
 import { DropdownContent, DropdownMenu, DropdownSeparator, DropdownTrigger } from "./ui/dropdown";
 import { MenuItem } from "./ui/menu-item";
 import { ConsoleIcon } from "../ui-kit/consoleIcons";
 import { message } from "../ui-kit/feedback";
-import { api, type AuthUser } from "../api";
 import ChangePasswordModal from "./ChangePasswordModal";
+import { useSessionUser } from "./sessionUser";
 
 const AccountIcon = ConsoleIcon.account;
 const ChevronIcon = ConsoleIcon.chevronDown;
@@ -15,14 +15,8 @@ const ChevronIcon = ConsoleIcon.chevronDown;
 export default function UserMenu({ onLogout }: { onLogout: () => void }) {
   const { t } = useTranslation();
   const { t: tAuth } = useTranslation("auth");
-  const [user, setUser] = useState<AuthUser>();
+  const user = useSessionUser();
   const [changing, setChanging] = useState(false);
-
-  useEffect(() => {
-    let alive = true;
-    api.me().then((me) => { if (alive) setUser(me); }).catch(() => {});
-    return () => { alive = false; };
-  }, []);
 
   const name = user?.username ?? t("header.administrator");
   return (
