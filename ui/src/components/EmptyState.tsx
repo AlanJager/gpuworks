@@ -1,3 +1,4 @@
+import { Empty, EmptyMedia, EmptyDescription, EmptyActions } from "./ui/empty";
 import type { ReactNode } from "react";
 
 export type EmptyStateKind = "nodes" | "models" | "deployments" | "data";
@@ -21,10 +22,10 @@ export default function EmptyState({
   compact?: boolean;
 }) {
   return (
-    <div className={`empty-state${compact ? " empty-state-compact" : ""}`}>
-      <img className="empty-state-image" src={illustrations[kind]} alt="" aria-hidden="true" />
-      <div className="empty-state-description">{description}</div>
-      {action && <div className="empty-state-action">{action}</div>}
-    </div>
+    <Empty reason="no-data" scope={compact ? "inline" : "section"} density={compact ? "compact" : "default"}>
+      <EmptyMedia variant="illustration"><img src={illustrations[kind]} alt="" aria-hidden="true" /></EmptyMedia>
+      <EmptyDescription>{description}</EmptyDescription>
+      {action && <EmptyActions>{action}</EmptyActions>}
+    </Empty>
   );
 }

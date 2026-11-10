@@ -35,8 +35,33 @@
   "language": {
     "switch": "Switch language"
   },
-  "pullSettingReason": {"invalid_value": "Check this setting and try again", "name_required": "Enter a sync group name", "name_duplicate": "A sync group with this name already exists", "max_bytes": "Use at most {{max}} UTF-8 bytes", "nonnegative": "Use zero or a positive value", "invalid_text": "Use valid text without control characters", "requirements_invalid": "Check the node selection conditions"},
-  "pullSettingField": {"match": "match", "endpoints": "alternative addresses", "requirements": "nodes", "name": "name", "host": "host", "username": "username", "secret": "password", "order": "order", "rate_limit": "sync rate limit", "note": "note", "allow_upstream": "allow upstream", "http_proxy": "HTTP proxy", "https_proxy": "HTTPS proxy", "no_proxy": "NO_PROXY", "password": "proxy password", "control_plane": "used by the management node"},
+  "pullSettingReason": {
+    "invalid_value": "Check this setting and try again",
+    "name_required": "Enter a sync group name",
+    "name_duplicate": "A sync group with this name already exists",
+    "max_bytes": "Use at most {{max}} UTF-8 bytes",
+    "nonnegative": "Use zero or a positive value",
+    "invalid_text": "Use valid text without control characters",
+    "requirements_invalid": "Check the node selection conditions"
+  },
+  "pullSettingField": {
+    "match": "match",
+    "endpoints": "alternative addresses",
+    "requirements": "nodes",
+    "name": "name",
+    "host": "host",
+    "username": "username",
+    "secret": "password",
+    "order": "order",
+    "rate_limit": "sync rate limit",
+    "note": "note",
+    "allow_upstream": "allow upstream",
+    "http_proxy": "HTTP proxy",
+    "https_proxy": "HTTPS proxy",
+    "no_proxy": "NO_PROXY",
+    "password": "proxy password",
+    "control_plane": "used by the management node"
+  },
   "apiError": {
     "ANALYTICS_RANGE_INVALID": "Invalid time range: {{field}} {{detail}}.",
     "ANALYTICS_RANGE_TOO_LONG": "The time range is too long: {{detail}}. Shorten it, or view it by day.",
@@ -557,7 +582,11 @@
   },
   "actions": {
     "refresh": "Refresh",
-    "retry": "Retry"
+    "retry": "Retry",
+    "close": "Close",
+    "remove": "Remove",
+    "cancel": "Cancel",
+    "confirm": "Confirm"
   },
   "dataTable": {
     "empty": "No data",
@@ -575,7 +604,27 @@
     "dragColumn": "Drag to move {{name}}",
     "hideColumn": "Hide {{name}}",
     "resizeColumn": "Resize {{name}}",
-    "total": "{{count}} items"
+    "total": "{{count}} items",
+    "selectPage": "Select this page",
+    "selectRow": "Select {{name}}",
+    "expandRow": "Expand row",
+    "collapseRow": "Collapse row",
+    "filterByColumn": "Filter by {{name}}",
+    "clearFilters": "Clear filters",
+    "searchOptions": "Search options",
+    "activeFilters": "Filtered",
+    "clearFilter": "Clear filter: {{name}} {{values}}",
+    "filterValues": ": {{values}}",
+    "valueSeparator": ", ",
+    "sortAscending": "Ascending",
+    "sortDescending": "Descending",
+    "sortReset": "Clear sorting",
+    "firstPage": "First page",
+    "lastPage": "Last page",
+    "nextPage": "Next page",
+    "previousPage": "Previous page",
+    "rowsPerPage": "Rows per page",
+    "pageSummary": "Page {{current}} of {{count}}"
   },
   "errorBoundary": {
     "description": "Refresh the page and try again.",
@@ -617,7 +666,7 @@
   "header": {
     "collapseNavigation": "Collapse menu",
     "expandNavigation": "Expand menu",
-    "openNavigation": "Open navigation",
+    "navigation": "Main navigation",
     "administrator": "Administrator",
     "logout": "Log out",
     "updateAvailable": "Update available",
@@ -935,5 +984,9 @@
       "prefill_decode_disaggregation": "PD disaggregation",
       "kv_disk_tier": "KV disk tier"
     }
-  }
+  },
+  "feedback": {
+    "requestFailed": "Request failed. Please retry."
+  },
+  "upload": {"choose": "Choose file", "replace": "Choose another", "none": "No file chosen"}
 }

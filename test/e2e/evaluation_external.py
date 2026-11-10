@@ -29,7 +29,7 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeout, expect, sync_
 from benchmark_fixture import BenchmarkEndpoint
 from benchmark_evidence import validate_csv, validate_usage
 from benchmark_support import (strings, format_text, action, confirm_popconfirm,
-                               assert_point_table, finish_environment, close_browser)
+                               assert_point_table, assert_offline_report, finish_environment, close_browser)
 from local_browser_fixture import Artifacts, LocalServer, ROOT, digest
 from platform_token_read_revoke import button, check
 
@@ -194,6 +194,12 @@ def test_external_endpoint_sweep(page, context, server, artifacts, report, local
     drawer.get_by_label(wizard["concurrencyList"], exact=True).fill("1")
     drawer.get_by_text(wizard["advanced"], exact=True).click()
     drawer.get_by_label(wizard["warmupRequests"], exact=True).fill("0")
+    drawer.get_by_role("radio", name=wizard["uploadFile"], exact=True).check()
+    drawer.locator('input[type="file"]').set_input_files({
+        "name": "tokenizer.json", "mimeType": "application/json",
+        "buffer": json.dumps({"model": {"vocab": {"hello": 0, " world": 1}}}).encode(),
+    })
+    expect(page.get_by_text(wizard["tokenizerUploaded"], exact=True)).to_be_visible()
 
     held_creates = []
 
@@ -283,6 +289,7 @@ def test_external_endpoint_sweep(page, context, server, artifacts, report, local
           "CSV report content type differs")
     check(downloaded_bytes == report_response.body(), "download and report API differ")
     validate_csv(downloaded_bytes.decode("utf-8"), point, run)
+    assert_offline_report(page, ui, locale, run, point, artifacts.directory / "report.html")
     report["last_step"] = "report-read"
 
     snapshot = fixture.snapshot()

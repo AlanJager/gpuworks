@@ -2,6 +2,7 @@
 # Format: key<TAB>limit<TAB>direction[<TAB># raised: <reason>]
 #   max = measured must stay <= limit (ratchet down only)
 #   min = measured must stay >= limit (ratchet up only)
+#   warn = soft budget: over the limit only warns, never fails
 #   A loosened limit (max grew, min shrank) vs the origin/master baseline
 #   fails unless the line carries that trailing "# raised: <reason>" comment.
 # Rationale, exact measurement command and exclusion list per key:
@@ -10,6 +11,9 @@ pending_removal_literal	0	max
 deployment_state_literal	0	max
 engine_literal_server	2	max
 engine_literal_ui	5	max
+ui_antd_import_files	354	max	# raised: master added antd before this ratchet existed (ModelSourceIDField, OutboundPolicyCard, the benchmark report export in benchmarkReportExport.css and EvaluationDetailPage, and the deploy diagnostics in DeployDiagnostics and DeploySubmissionError); the per-file snapshot (ui/antd-inventory.json) starts from that tree
+ui_antd_icon_import_files	104	warn
+ui_bundle_gzip_kb	2450	warn
 setting_key_literal	0	max
 vendor_normalize_funcs	1	max
 infer_vendor_callers	0	max

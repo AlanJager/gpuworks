@@ -101,12 +101,13 @@ def versioned_fixture():
                  total_tput=5, output_tput=2, p50_ttft=1, p99_ttft=1, p50_tpot=10, p99_tpot=10,
                  p50_latency=11, p99_latency=11, started_at=start, ended_at=end,
                  long_tail=dict(approximate_tokens=False, peak_input_tokens=3, evidence=evidence))
-    run = dict(id=7, name="e2e-export", mode="grid", model="fixture-model", created_at=start, started_at=start,
+    run = dict(id=7, name="e2e-export", mode="grid", model="fixture-model", state="done", created_at=start, started_at=start,
                ended_at=end, keep_detail=False, detail_cap_mb=20, dataset=dict(kind="random", input_tokens=16,
                output_tokens=8, ignore_eos=True), search=dict(concurrency=[1], isl=[16], osl=[8],
                warmup_requests=0, requests_per_point_multiplier=1), target_snapshot={"model": "fixture-model"},
                verdict={"kind": "grid_done", "best_point_seq": 1})
     context = {"run_id": 7, "run_name": "e2e-export", "model": "fixture-model", "mode": "grid",
+               "state": "done", "failure_diagnostic": "", "warmup_attempts": None,
                "created_at": start, "started_at": start, "ended_at": end, "detail_configured": False,
                "detail_cap_mb": 20, "dataset": run["dataset"], "search": run["search"], "tokenizer": "",
                "target_snapshot": run["target_snapshot"], "warnings": [], "persisted_verdict": run["verdict"],

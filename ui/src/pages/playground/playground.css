@@ -2,15 +2,15 @@
   min-height: calc(100vh - 116px);
   margin: -20px -24px -32px;
   padding: 20px 24px 32px;
-  background: #eef4f8;
 }
 /* Chat mode fits the viewport: the negative margins above already stretch the
-   page over the whole .app-content border box, so the only chrome above is the
-   app top bar (--app-header-height in styles.css). The pane scrolls internally instead of the
+   page over the whole white page panel, so the chrome around it is the app top
+   bar, the frame gap under the panel and the panel's two 1px borders
+   (--app-header-height and --app-frame-gap in styles.css). The pane scrolls internally instead of the
    window, and the composer lives in the flow — it follows the centered content
    column by construction instead of tracking it with viewport coordinates. */
 .playground-page.playground-page--fit {
-  height: calc(100dvh - var(--app-header-height));
+  height: calc(100dvh - var(--app-header-height) - var(--app-frame-gap) - 2px);
   min-height: 0;
   padding-bottom: 12px;
   display: flex;
