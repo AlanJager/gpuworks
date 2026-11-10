@@ -355,7 +355,11 @@ func TestStorageFactsDoNotOfferSavingWhereTheModelIs(t *testing.T) {
 		}
 		return
 	}
-	p, tg := ids(h.storageFacts(model, node))
+	present, targets, err := h.storageFacts(model, node)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, tg := ids(present, targets)
 	if fmt.Sprint(p) != fmt.Sprint([]uint{holding.ID}) || fmt.Sprint(tg) != fmt.Sprint([]uint{local, empty.ID}) {
 		t.Fatalf("present=%v targets=%v, want present [%d] and targets [%d %d]", p, tg, holding.ID, local, empty.ID)
 	}
@@ -363,7 +367,11 @@ func TestStorageFactsDoNotOfferSavingWhereTheModelIs(t *testing.T) {
 	if _, err := st.UpsertModelFile(&store.ModelFile{ModelID: model.ID, StorageID: local, NodeID: node.ID, Path: "/data/models/q", State: proto.MFPresent, SizeBytes: 10}); err != nil {
 		t.Fatal(err)
 	}
-	if _, tg = ids(h.storageFacts(model, node)); fmt.Sprint(tg) != fmt.Sprint([]uint{empty.ID}) {
+	present, targets, err = h.storageFacts(model, node)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, tg = ids(present, targets); fmt.Sprint(tg) != fmt.Sprint([]uint{empty.ID}) {
 		t.Fatalf("targets with a local copy = %v, want [%d]", tg, empty.ID)
 	}
 }

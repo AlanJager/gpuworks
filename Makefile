@@ -48,6 +48,13 @@ LINT_BIN := $(CURDIR)/$(BIN)/tools/golangci-lint-$(GOLANGCI_LINT_VERSION)-$(LINT
 
 all: build
 
+.PHONY: docs-pdf
+## docs-pdf: build the bilingual site and print validated, versioned user handbooks
+docs-pdf: check-doc-links check-translations
+	bash docs-site/build.sh
+	python3 docs-site/pdf_browser_checks.py
+	python3 docs-site/export_pdf.py --version "$(VERSION)" --commit "$(COMMIT)"
+
 ## build: full release build — cross-compile agents (embedded) + UI + server + agent
 build: check-libvgpu ui cross-agents server agent
 
@@ -166,6 +173,7 @@ test-host-env-adapters:
 .PHONY: test-inference-template-assets
 test-inference-template-assets:
 	python3 -B -m unittest discover -s build/inference-templates/glm53-910c -p 'test_*.py'
+	python3 -B -m unittest discover -s test/runtime-wrapper-assets -p '*_test.py'
 
 .PHONY: test-strata-queue-assets
 test-strata-queue-assets:

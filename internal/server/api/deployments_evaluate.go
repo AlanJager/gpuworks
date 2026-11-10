@@ -339,7 +339,13 @@ func (a *apiHandlers) evaluate(w http.ResponseWriter, r *http.Request) {
 	}
 	// Computed after automatic placement so the weight networks, peers and
 	// local-path facts are the selected node's, not the unnamed request's.
-	weightFacts := a.evaluateWeightFacts(model, selection, profileNode)
+	weightFacts, weightFactsErr := a.evaluateWeightFacts(model, selection, profileNode)
+	if weightFactsErr != nil {
+		resp.Diagnostics = diagnosticsFromError(weightFactsErr)
+		errs.add("model_id", weightFactsErr)
+		writeFieldErrors()
+		return
+	}
 	// The template's weight sources with the suggested and registered facts,
 	// so the form's chooser renders a server answer too.
 	resp.WeightSources = a.evaluateWeightSourceOptions(selection)
@@ -369,6 +375,12 @@ func (a *apiHandlers) evaluate(w http.ResponseWriter, r *http.Request) {
 			}
 			resp.Acquisition.Nodes = a.evaluateNodeAcquisition(r.Context(), pinned, resp.Image, templateImageSources(selection, resp.Image), model, store.SourceRules{Pinned: store.StoragePins(req.NodeRequirements), SaveTo: a.previewSaveToStorageID(req.ModelSource, model, profileNode)}, known)
 		}
+	}
+	resp.Diagnostics, err = a.inspectDeploymentModel(r.Context(), model, store.SourceRules{Pinned: store.StoragePins(req.NodeRequirements), SaveTo: a.previewSaveToStorageID(req.ModelSource, model, profileNode)}, rankNodes, false)
+	if err != nil {
+		errs.add("model_id", err)
+		writeFieldErrors()
+		return
 	}
 	if parallelInvalid {
 		writeFieldErrors()

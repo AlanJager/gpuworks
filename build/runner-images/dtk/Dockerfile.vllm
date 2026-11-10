@@ -26,6 +26,7 @@ ARG IMAGE_REVISION=unknown
 ARG REQUIRES="engine overlays"
 ARG PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
 ARG PIP_DEFAULT_TIMEOUT=60
+ARG DIFFUSERS_VERSION=""
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -87,6 +88,18 @@ EOF
 RUN <<EOF
     set -eux
     python3 -m pip install --no-cache-dir librosa soundfile 'mistral_common[audio]'
+EOF
+
+## ERNIE-Image uses the image's Python dependencies, not the mounted wrapper.
+# Freeze the existing vendor environment: resolving Diffusers must never replace
+# DTK torch/vLLM/Transformers with upstream wheels. Conflicts fail the build.
+RUN <<EOF
+    set -eux
+    if [ -n "${DIFFUSERS_VERSION}" ]; then
+        python3 -m pip freeze --all > /tmp/diffusers-constraints.txt
+        python3 -m pip install --no-cache-dir -c /tmp/diffusers-constraints.txt "diffusers==${DIFFUSERS_VERSION}"
+        rm /tmp/diffusers-constraints.txt
+    fi
 EOF
 
 COPY overlays/ /opt/gpuworks/overlays/

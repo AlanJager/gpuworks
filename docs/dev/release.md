@@ -42,6 +42,31 @@ git diff --check
 `check-assets` 包含 `check-libvgpu` 和 `check-perftest`，不校验昇腾、PPU 或 partition probe 资产；
 发布前必须单独运行 `make runtime-assets-verify`，否则这三类资产的缺失或篡改不会被发现。
 
+## 发布文档 PDF
+
+正式版 tag 的流水线会先用该提交构建中英文文档，再由 `release-docs-pdf` 生成两份用户手册。
+手册覆盖教程、操作指南、参考手册和架构说明，不含开发者文档与 ADR；封面标明版本和源码提交，
+包含可点击目录、页码、图片和 Mermaid 图，文字可搜索、复制。文档内已收录文章的链接跳转到 PDF
+内对应章节；未收录的文章及下载链接指向在线文档，需联网访问。
+
+产物为 `dist/docs/gpuworks-<tag>-zh.pdf`、`dist/docs/gpuworks-<tag>-en.pdf` 与
+`dist/docs/SHA256SUMS`。中文字体、图片、链接、内容宽度或 PDF 完整性校验失败会阻止发布。
+正式版 tag 的 PDF artifact 永久保留；发布成功后，三份文件同时出现在各发布源的
+`releases/<tag>/docs/` 下，可单独下载并外发。文档使用独立的校验和清单，根目录的 `SHA256SUMS`
+仍只列平台压缩包。上传后会完整读回 PDF 和校验和，比对成功才切换发布通道。
+
+本地生成使用与网站相同的 Hugo，以及现有浏览器验收所用的 Playwright、Chrome/Chromium；
+另需 Noto Sans CJK 字体、Fontconfig 和 Poppler 工具（`pdftotext`、`pdfinfo`、`pdffonts`）。
+安装 `requirements-e2e.txt` 后，在待发布 tag 的 checkout 中执行：
+
+```bash
+HUGO_BIN=/path/to/hugo CHROME_PATH=/path/to/chrome make docs-pdf VERSION=v26.11.3
+```
+
+将示例版本替换为实际 tag。生成器会核对网站产物与指定源码提交一致。CI 仅在正式版 tag 时生成 PDF；
+MR 和 nightly 不生成 PDF，MR 仍运行文档站构建及相关检查。重新发布同一版本保留原始文档字节，
+历史上未附带 PDF 的版本不会被追补或替换。
+
 ## 版本号
 
 正式版本用日历版本号 `YY.M.PATCH`，tag 写作 `vYY.M.PATCH`，例如 `v26.11.0`。

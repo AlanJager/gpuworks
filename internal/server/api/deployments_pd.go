@@ -249,10 +249,23 @@ func (a *apiHandlers) evaluatePD(env evaluatePDEnv) {
 	// as for any deployment, answered for every node the placement names: the
 	// launches below run the resolved image.
 	resp.WeightSources = a.evaluateWeightSourceOptions(env.selection)
+	weightFacts, weightFactsErr := a.evaluateWeightFacts(env.model, env.selection, env.profileNode)
+	if weightFactsErr != nil {
+		resp.Diagnostics = diagnosticsFromError(weightFactsErr)
+		env.errs.add("model_id", weightFactsErr)
+		writeEvaluateFieldErrors(w, resp, env.errs)
+		return
+	}
+	resp.Diagnostics, err = a.inspectDeploymentModel(env.ctx, env.model, store.SourceRules{Pinned: store.StoragePins(req.NodeRequirements), SaveTo: a.previewSaveToStorageID(req.ModelSource, env.model, env.profileNode)}, prepared.nodes, false)
+	if err != nil {
+		env.errs.add("model_id", err)
+		writeEvaluateFieldErrors(w, resp, env.errs)
+		return
+	}
 	a.evaluateImageFacts(evaluateImageEnv{
 		ctx: env.ctx, request: req, response: resp, engine: env.engine, selection: env.selection,
 		targetVendor: env.targetVendor, profileNode: env.profileNode, node: prepared.nodes[0], nodeFound: true,
-		weightFacts: a.evaluateWeightFacts(env.model, env.selection, env.profileNode),
+		weightFacts: weightFacts,
 	})
 	if len(prepared.nodes) > 1 && resp.Acquisition != nil {
 		uuids := make([]string, len(prepared.nodes))

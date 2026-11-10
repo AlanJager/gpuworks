@@ -163,17 +163,20 @@ docs-build:
       - docs-site/public/
     expire_in: 30 days
   rules:
+    - if: '$CI_COMMIT_TAG =~ /^v[0-9]+\.[0-9]+\.[0-9]+$/'
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
       changes:
         - docs/**/*
         - docs-en/**/*
         - docs-site/**/*
+        - requirements-e2e.txt
         - .gitlab-ci.yml
     - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
       changes:
         - docs/**/*
         - docs-en/**/*
         - docs-site/**/*
+        - requirements-e2e.txt
         - .gitlab-ci.yml
     - when: never
 
@@ -565,6 +568,37 @@ core-compshare-offline-contracts:
       - coverage-compshare-contracts.out
     expire_in: 14 days
 
+release-docs-pdf:
+  extends: .go-core
+  stage: release
+  timeout: 20m
+  needs:
+    - job: docs-build
+      artifacts: true
+  script:
+    # Reuse the existing Playwright requirement; browsers are build tools only.
+    - sed -i 's|http://deb.debian.org|http://mirrors.aliyun.com|g' /etc/apt/sources.list.d/debian.sources
+    - apt-get -qq -o Acquire::http::Timeout=20 -o Acquire::Retries=2 update
+    - apt-get -qq -o Acquire::http::Timeout=20 -o Acquire::Retries=2 install -y --no-install-recommends chromium fonts-noto-cjk fontconfig python3-venv poppler-utils
+    - python3 -m venv .tmp/docs-pdf-venv
+    # Avoid slow public-PyPI wheel downloads and reuse the runner's tool cache.
+    - |
+      .tmp/docs-pdf-venv/bin/pip install --disable-pip-version-check \
+        --index-url "${GPUWORKS_PYPI_INDEX_URL:-https://mirrors.aliyun.com/pypi/simple/}" \
+        --timeout 30 --retries 2 --cache-dir /host-go-cache/tools/pip \
+        -r requirements-e2e.txt
+    - export CHROME_PATH=/usr/bin/chromium
+    - .tmp/docs-pdf-venv/bin/python docs-site/pdf_browser_checks.py
+    - .tmp/docs-pdf-venv/bin/python docs-site/export_pdf.py --version "$CI_COMMIT_TAG" --commit "$CI_COMMIT_SHA"
+  artifacts:
+    name: "gpuworks-docs-$CI_COMMIT_REF_SLUG-$CI_COMMIT_SHORT_SHA"
+    paths:
+      - dist/docs/
+    expire_in: never
+  rules:
+    - if: '$CI_COMMIT_TAG =~ /^v[0-9]+\.[0-9]+\.[0-9]+$/'
+    - when: never
+
 # One archive per job keeps each below GitLab's per-job artifact size limit
 # (an archive is ~53 MB since the server embeds a macOS agent too; two per job
 # no longer fit). The release website publishes a pipeline only after every
@@ -678,6 +712,9 @@ release-publish:
       artifacts: true
     - job: release-build-macos-arm64
       artifacts: true
+    - job: release-docs-pdf
+      artifacts: true
+      optional: true
   resource_group: distribution
   interruptible: false
   variables:

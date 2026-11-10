@@ -34,13 +34,15 @@ specs:
   - diffusers_adapter
   - --operation
   - openai.image.generate
+  - --request-timeout
+  - "600"
   - --adapter-config
-  - '{"device":"cuda"}'
+  - '{"device":"cuda","load_kwargs":{"torch_dtype":"bfloat16"}}'
   env:
     PYTHONPATH: /opt/gpuworks/runtime
   assets:
   - file: assets/gpuworks-diffusers-runtime.tar.gz
-    sha256: fc7eb9d16fd2f43d9c49b51fc1f6bd00d6cef17eab17eac4adf828528c408cec
+    sha256: a6e777b827411d117afb736bc5d8a5c9bfe36b5b2c3c843d50997aaf759cf933
     unpack_to: /opt/gpuworks/runtime
   entrypoint:
   - python3
