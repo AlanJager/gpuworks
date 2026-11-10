@@ -33,6 +33,7 @@ func TestGPUInventoryDerivesPhysicalAndVGPUAllocation(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
+	node, _ = st.NodeWithGPUs(node.UUID)
 	dep, err := st.CreateDeployment(&store.Deployment{Name: "qwen", NodeID: node.ID, State: "active"})
 	if err != nil {
 		t.Fatal(err)
@@ -175,7 +176,6 @@ func TestCardsThatTakeNoWorkAreNotShownAvailable(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	node, _ = st.NodeWithGPUs(node.UUID)
 
 	h := apiHandlers{d: Deps{Store: st}}
 	inventory, err := h.buildGPUInventory()

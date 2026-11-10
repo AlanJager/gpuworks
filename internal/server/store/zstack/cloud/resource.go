@@ -9,6 +9,7 @@ import (
 
 // CloudHost preserves the initial discovered snapshot, including reservations,
 // independently of the agent's live Node/GPU reports.
+//
 //nolint:revive // GORM derives the persisted cloud_hosts table name from this type.
 type CloudHost struct {
 	ID                    uint   `gorm:"primaryKey"`
@@ -35,6 +36,7 @@ const (
 // CloudResourceLease tracks GPUWorks resource ownership from a pending
 // reservation through its confirmed release. OperationID deduplicates requests
 // for the same ownership; pending records protect resources across restarts.
+//
 //nolint:revive // GORM derives the persisted cloud_resource_leases table name from this type.
 type CloudResourceLease struct {
 	ID           uint   `gorm:"primaryKey"`
