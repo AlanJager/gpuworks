@@ -1,5 +1,5 @@
 {
-  "README.md": "30dfe2d7e8022e84162cc18c395b161cff19d0f9e2e7ea5726c8cf58b65f328f",
+  "README.md": "cf5a38f8b6a7727f6b2114d9b46ecb55094441f7d3fb826b4c06adefc954ebfb",
   "adr/0001-image-digest-tag-pull-verify-after.md": "a6510eb2e98dba9d784c1596acd0e17ed42dcd27d3b29a988238d275ee128c54",
   "adr/0003-benchmark-engine-embedded-no-containers.md": "22f9a7a4ae72120a531c94f745d1153d159a4dfe8c3ed41e03c12b64d1bfffe8",
   "adr/0004-empty-revision-default-branch.md": "7c6bbbb35d79d97b297cf6dab71c5765c05c90a4be287e99d0efafc76c6dfd9c",
@@ -110,6 +110,7 @@
   "how-to/upgrade-and-compatibility.md": "78c7592f75b36088bd839d88e535fcf32d7daa3c54c685a3b8ed3380a810c93a",
   "how-to/use-ai-helper.md": "330144fb62efcae84971445aab5744954ecb7459ee5e958ced38f6782751575c",
   "how-to/use-mcp.md": "96d72b65ef2c22f89a8999f5447ef3ff76a091345c7eda33daa597128dbac854",
+  "how-to/use-mineru.md": "d15ff3f71b23cc9eb22ae3c970eb5cbfcb743fdd644d5dd10e8a0f179d03228c",
   "reference/api-conventions.md": "be9237a197c811a623e5bd4e1aba875de5a46b333c3def6b5ac223b7a125a551",
   "reference/api.md": "5cf13076cf083306bdab79aa186f507710dd3fc667f063fb77263a2d0438feb4",
   "reference/ascend-support-matrix.md": "b5de06ea0eccc6329be81c4273ddf7c4cc19c6a14fe2028d4a4b474138818c22",
