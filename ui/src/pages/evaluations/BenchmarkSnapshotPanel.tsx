@@ -1,6 +1,7 @@
 import { Alert, Card, Collapse, Descriptions, Space, Tag, Typography } from "antd";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import { useState } from "react";
 import type { BenchmarkDatasetProfile, BenchmarkRun, BenchmarkTargetSnapshot } from "../../api";
 import { agenticDesignPrefixReuseRate } from "./agenticWorkload";
 
@@ -54,14 +55,15 @@ export function BenchmarkTargetCard({ run }: { run: BenchmarkRun }) {
 	</Card>;
 }
 
-export function BenchmarkSnapshotPanel({ run }: { run: BenchmarkRun }) {
+export function BenchmarkSnapshotPanel({ run, expanded = false }: { run: BenchmarkRun; expanded?: boolean }) {
 	const { t } = useTranslation("evaluations");
+	const [activeKeys, setActiveKeys] = useState<string[]>([]);
 	const snapshot = run.target_snapshot;
 	const raw = { target_snapshot: snapshot, dataset: run.dataset, search: run.search, tokenizer_ref: run.tokenizer_ref, keep_detail: run.keep_detail, detail_cap_mb: run.detail_cap_mb };
 	const rawText = JSON.stringify(raw, null, 2);
-	return <Collapse items={[{
+	return <Collapse activeKey={expanded ? ["snapshot"] : activeKeys} onChange={(keys) => setActiveKeys(typeof keys === "string" ? [keys] : keys)} items={[{
 		key: "snapshot", label: t("detail.snapshot"), children: <Space direction="vertical" size={16} style={{ width: "100%" }}>
-			<Typography.Paragraph copyable={{ text: rawText }} style={{ marginBottom: 0 }}>{t("detail.snapshotCopy")}</Typography.Paragraph>
+			<Typography.Paragraph data-report-exclude copyable={{ text: rawText }} style={{ marginBottom: 0 }}>{t("detail.snapshotCopy")}</Typography.Paragraph>
 			{!snapshot ? <Alert type="info" showIcon message={t("detail.target.legacyMissing")} /> : <Descriptions title={t("detail.snapshotSection.target")} size="small" bordered column={2}>
 				<Descriptions.Item label={t("detail.target.model")}>{value(snapshot.model_source_id || snapshot.model)}</Descriptions.Item>
 				<Descriptions.Item label={t("detail.snapshotField.engine")}>{value(snapshot.engine)}</Descriptions.Item>

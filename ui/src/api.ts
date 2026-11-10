@@ -2713,6 +2713,40 @@ export interface BenchmarkCurveResponse {
     samples: BenchmarkCurveSample[];
   }>;
 }
+export interface BenchmarkTimelineRecord {
+  version: number;
+  run_id: number;
+  point_seq: number;
+  session_id: string;
+  turn: number;
+  planned_turns: number;
+  attempt: number;
+  finish_reason?: string;
+  error_text?: string;
+  canceled?: boolean;
+  error_stage?: string;
+  http_status?: number;
+  input_source: string;
+  output_source: string;
+  output_budget: number;
+  metrics: {
+    started_at: string | null;
+    first_output_at: string | null;
+    first_content_at: string | null;
+    last_output_at: string | null;
+    finished_at: string | null;
+    ttft_ms: number | null;
+    tpot_ms: number | null;
+    latency_ms: number | null;
+    completion_ms: number | null;
+    input_tokens: number;
+    output_tokens: number;
+  };
+}
+export interface BenchmarkRequestTimeline {
+  status: "complete" | "disabled" | "unavailable" | "truncated";
+  records: BenchmarkTimelineRecord[];
+}
 export interface BenchmarkViolation {
   reason?: "limit_exceeded" | "evidence_unavailable";
   metric: string;
@@ -4673,6 +4707,8 @@ export const api = {
   benchmark: (id: number) => getJSON<BenchmarkRun>(`/api/v1/benchmarks/${id}`),
   benchmarkCurve: (id: number) =>
     getJSON<BenchmarkCurveResponse>(`/api/v1/benchmarks/${id}/curve`),
+  benchmarkPointTimeline: (id: number, seq: number, signal?: AbortSignal) =>
+    getJSON<BenchmarkRequestTimeline>(`/api/v1/benchmarks/${id}/points/${seq}/timeline`, signal),
   createBenchmark: (body: unknown) =>
     sendJSON<BenchmarkRun>("POST", "/api/v1/benchmarks", body),
   benchmarkModels: (body: unknown) =>
