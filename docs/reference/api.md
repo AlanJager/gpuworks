@@ -124,6 +124,7 @@ JSON 字段按 [API 规范](api-conventions.md) 使用 snake_case，例如 `node
 | POST | `/api/v1/auth/logout` | 撤销所提交凭证对应的会话并清除 Cookie；重复退出幂等 | 无 |
 | GET | `/api/v1/auth/me` | 返回当前用户与实时权限；不延长空闲期限 | 管理会话或平台 API Token |
 | POST | `/api/v1/auth/activity` | 报告真实操作并延长空闲期限；无请求体，成功返回 204 | 管理会话 |
+| POST | `/api/v1/auth/password` | 修改当前登录用户自己的密码；成功后该用户的全部管理会话失效 | 管理会话 |
 
 ### 登录请求与响应
 
@@ -148,12 +149,36 @@ JSON 字段按 [API 规范](api-conventions.md) 使用 snake_case，例如 `node
 `token` 是后续请求使用的 JWT；`user` 包含用户 ID、用户名和角色（`admin` 或 `user`）。
 完整请求示例见[设置地址并登录](api-conventions.md#1-设置地址并登录)。
 
-`auth/me` 返回当前用户信息，结构为 `{"id":1,"username":"admin","role":"admin"}`。
+`auth/me` 返回当前用户信息和新密码的长度要求，结构为 `{"id":1,"username":"admin","role":"admin","password_policy":{"min_length":8,"max_length":128}}`。
 Cookie 设置为 `HttpOnly`、`SameSite=Lax`，其中保存的是不透明会话凭证，不是 JWT。
 请求同时带 Bearer 与 Cookie 时优先使用 Bearer；无效 Bearer 不会回退到 Cookie。
 
 用户名或密码错误返回 `401 INVALID_CREDENTIALS`；登录过于频繁返回 `429 LOGIN_THROTTLED`，
 按响应头 `Retry-After` 指定的秒数等待后重试。其他错误见[常见 HTTP 状态与错误码](api-conventions.md#常见-http-状态与错误码)。
+
+### 修改密码
+
+`POST /api/v1/auth/password` 只修改当前登录用户自己的密码，只接受登录会话（平台 API 令牌返回 `403 PLATFORM_TOKEN_NOT_ALLOWED`），并做与登录相同的来源检查。
+
+| 请求字段 | 类型与要求 | 含义 |
+|---|---|---|
+| `current_password` | 字符串，必填 | 当前密码，按原值校验 |
+| `new_password` | 字符串，必填 | 新密码，须满足[管理员密码规则](security.md#管理员密码) |
+
+成功返回 `200 {"status":"password_changed"}`，并清除当前 Cookie：该用户的全部管理会话（含本次）失效，需用新密码重新登录。若数据目录里的 `initial-credentials` 记录的正是该用户，server 尝试删除该文件，删除失败只记告警日志。
+
+两个密码在同一次请求里都会被检查，错误一律返回 400：
+
+| 情况 | 错误码 | 说明 |
+|---|---|---|
+| 当前密码错误 | `CURRENT_PASSWORD_INVALID` | 新密码同时不合规时，`params.new_password` 给出新密码的错误码 |
+| 新密码长度不在范围内 | `PASSWORD_LENGTH` | `params.min`、`params.max` 为长度上下限 |
+| 新密码是常见弱口令、整段重复或连续字符 | `PASSWORD_GUESSABLE` | |
+| 新密码与用户名相同 | `PASSWORD_USERNAME` | 忽略大小写、标点与首尾数字后比较 |
+| 新密码含控制字符或不是合法 UTF-8 | `PASSWORD_CHARACTERS` | |
+| 新密码与当前密码相同 | `PASSWORD_UNCHANGED` | 只在当前密码正确时判断 |
+
+校验当前密码与登录共用限流（按来源地址和用户名计数），过于频繁返回 `429 LOGIN_THROTTLED` 并带 `Retry-After`。
 
 ### 会话什么时候失效
 
@@ -165,7 +190,7 @@ Cookie 设置为 `HttpOnly`、`SameSite=Lax`，其中保存的是不透明会话
 |---|---|
 | 调用 `auth/me` 或被动轮询 | 不延长空闲期限 |
 | 通过登录会话执行管理写请求，或调用 `auth/activity` 报告真实操作 | 延长空闲期限，但不延长从登录起计算的绝对期限 |
-| 密码重置 | 撤销该用户的管理会话，关联的 JWT 同时失效；不撤销平台 API 令牌 |
+| 修改或重置密码（控制台或 `reset-password`） | 撤销该用户的管理会话，关联的 JWT 同时失效；不撤销平台 API 令牌和 API key |
 | 退出登录 | 撤销所提交凭证对应的会话，关联的 JWT 同时失效，并清除 Cookie；重复退出仍可成功 |
 | 升级前未绑定会话的 JWT 或旧 Cookie | 需要重新登录 |
 

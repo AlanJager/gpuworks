@@ -124,6 +124,7 @@ Event streams, log streams, file transfers, and image transfers remain unchanged
 | POST | `/api/v1/auth/logout` | Revoke the session associated with the submitted credential and clear the Cookie; repeated logout is idempotent | None |
 | GET | `/api/v1/auth/me` | Return the current user and live permissions; does not extend the idle timeout | Management session or platform API token |
 | POST | `/api/v1/auth/activity` | Report real activity and extend the idle timeout; no request body; returns 204 on success | Management session |
+| POST | `/api/v1/auth/password` | Change the signed-in user's own password; on success all of that user's management sessions end | Management session |
 
 ### Login Request and Response
 
@@ -148,12 +149,36 @@ Success returns HTTP 200 and sets `gpuworks_session` through `Set-Cookie`. Examp
 `token` is the JWT for subsequent requests; `user` contains the user ID, username, and role (`admin` or `user`).
 For a complete request example, see [Set the Address and Log In](api-conventions.md#1-设置地址并登录).
 
-`auth/me` returns current user information in the form `{"id":1,"username":"admin","role":"admin"}`.
+`auth/me` returns current user information and the length a new password must have, in the form `{"id":1,"username":"admin","role":"admin","password_policy":{"min_length":8,"max_length":128}}`.
 The Cookie is set to `HttpOnly` and `SameSite=Lax` and stores an opaque session credential, not a JWT.
 When a request includes both Bearer and Cookie credentials, Bearer takes precedence; an invalid Bearer does not fall back to the Cookie.
 
 An incorrect username or password returns `401 INVALID_CREDENTIALS`; overly frequent login attempts return `429 LOGIN_THROTTLED`.
 Wait for the number of seconds specified by the `Retry-After` response header before retrying. For other errors, see [Common HTTP Statuses and Error Codes](api-conventions.md#常见-http-状态与错误码).
+
+### Change Password
+
+`POST /api/v1/auth/password` changes only the signed-in user's own password. It accepts only a login session (a platform API token returns `403 PLATFORM_TOKEN_NOT_ALLOWED`) and applies the same origin checks as login.
+
+| Request field | Type and requirement | Meaning |
+|---|---|---|
+| `current_password` | String, required | The current password, verified as is |
+| `new_password` | String, required | The new password; it must meet the [administrator password rules](security.md#管理员密码) |
+
+Success returns `200 {"status":"password_changed"}` and clears the current Cookie: all of the user's management sessions, this one included, end, and the user signs in again with the new password. If `initial-credentials` in the data directory records this user, the server tries to delete it; a failure is only logged as a warning.
+
+Both passwords are checked in the same request, and every error returns 400:
+
+| Case | Error code | Notes |
+|---|---|---|
+| The current password is wrong | `CURRENT_PASSWORD_INVALID` | When the new password is also rejected, `params.new_password` holds its error code |
+| The new password's length is out of range | `PASSWORD_LENGTH` | `params.min` and `params.max` are the bounds |
+| The new password is a common weak password, a repetition or a sequence | `PASSWORD_GUESSABLE` | |
+| The new password is the username | `PASSWORD_USERNAME` | Compared ignoring case, punctuation and leading or trailing digits |
+| The new password has control characters or is not valid UTF-8 | `PASSWORD_CHARACTERS` | |
+| The new password is the current one | `PASSWORD_UNCHANGED` | Judged only when the current password is right |
+
+Checking the current password shares the login throttle (counted per source address and username); too many attempts return `429 LOGIN_THROTTLED` with `Retry-After`.
 
 ### When Sessions Expire
 
@@ -165,7 +190,7 @@ and must also be associated with a valid session. An unexpired JWT alone does no
 |---|---|
 | Calling `auth/me` or passive polling | Does not extend the idle timeout |
 | Performing management write requests through a login session, or calling `auth/activity` to report real activity | Extends the idle timeout but not the absolute deadline measured from login |
-| Password reset | Revokes the user's management sessions and invalidates associated JWTs; does not revoke platform API tokens |
+| Password change or reset (console or `reset-password`) | Revokes the user's management sessions and invalidates associated JWTs; does not revoke platform API tokens or API keys |
 | Logout | Revokes the session associated with the submitted credential, invalidates associated JWTs, and clears the Cookie; repeated logout still succeeds |
 | A JWT not bound to a session before the upgrade, or an old Cookie | Requires logging in again |
 
