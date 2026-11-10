@@ -38,6 +38,7 @@ see the index in [`artifacts/README.md`](../artifacts/README.md)). Chinese origi
 - [Upgrades and Version Compatibility](how-to/upgrade-and-compatibility.md)
 - [Connect Nodes and Upgrade or Uninstall the Agent](how-to/connect-nodes.md)
 - [Rent Cloud GPUs](how-to/rent-cloud-gpus.md)
+- [Onboard ZStack Cloud](how-to/onboard-zstack-cloud.md)
 - [Give the Console a Public Address](how-to/expose-public-address.md)
 - [Production Deployment](how-to/deploy-production.md)
 - [Configure Node Networks](how-to/configure-networks.md)

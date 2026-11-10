@@ -40,8 +40,6 @@ RunPod 只支持 Secure Cloud 的 Pod，不支持 Community Cloud（添加账号
 “添加失败：…”，并带上云厂商返回的原因。保存后凭据加密存储，界面不再回显。之后可在列表里点“编辑”
 更新凭据：**没填的字段保留原值**，类型不能改。
 
-ZStack Cloud 在**专有云**页（`/zstack`），使用 API Endpoint、AccessKey ID 和 AccessKey Secret，支持同步资源与安装 agent；不通过本页租用公有云实例。凭据条件见[ZStack Cloud 连接凭据](#zstack-cloud-连接凭据)。
-
 ## 同步实例并确认机型、区域和价格
 
 1. 在“已接入公有云”列表里点某个账号的“同步”（或页面上方“同步全部”一次同步所有账号）。完成后提示“同步完成，发现 N 个实例”。
@@ -294,19 +292,3 @@ server 调用 `RunCommand`，让实例以 root 执行与**添加节点**相同�
 云助手会记录执行命令，保留期限以阿里云设置和文档为准。命令包含节点接入 token，agent 之后持续用它连接 server；有权查看调用记录（`ecs:DescribeInvocations`）的阿里云用户能读到 token。节点删除后，该 token 随之失效。
 
 **开关机**：关机使用“普通停机”（继续计费），保留实例的 GPU、固定公网 IP 等资源；“节省停机模式”会释放这些资源，再开机时可能没有库存，GPUWORKS 不使用它。
-
-## ZStack Cloud 连接凭据
-
-添加专有云时填写 API Endpoint、管理员的 AccessKey ID 和 AccessKey Secret。使用 ZStack 的
-本地 AccessKey，无需保存或刷新登录 Session。AccessKey 必须处于启用状态，所属账号须有查询
-物理机、GPU 和资源配置以及执行 GPU 资源联动的权限；Cloud 的许可证与版本须支持 AccessKey 认证。
-Endpoint 支持包含 `/zstack` 上下文和可选的 `/v1` 后缀。
-
-API 沿用公共凭据字段：`public_key` 保存 AccessKey ID，`private_key` 保存 Secret；两者随整个
-凭据对象加密存储。界面根据服务端字段字典显示 AccessKey 名称，Secret 使用密码输入框。
-已经配置 Session Token 的专有云，需要通过编辑凭据填写这两个字段；原 Session 无法转换为 AccessKey。
-
-请求使用 ZStack AccessKey 签名。
-GPUWorks 与 Cloud 的系统时间需要同步。旧版 Cloud 配置 `rest.checkTimeZone=false` 时会忽略
-时区偏移，两端系统时区也须一致；签名保留 GPUWorks 进程的本地时区，与 ZStack 官方 SDK 一致。
-查询和资源变更请求都使用 AccessKey，Secret 不随请求发送。

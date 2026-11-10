@@ -40,8 +40,6 @@ When you save, the server calls the cloud provider's API once to validate these 
 **Add failed: …** with the reason returned by the provider. Saved credentials are encrypted at rest and are no longer displayed in the UI. To update them later, click **Edit**
 in the list: **fields left blank retain their existing values**. You cannot change the type.
 
-ZStack Cloud is on the **Private Clouds** page (`/zstack`). It uses an API Endpoint, AccessKey ID, and AccessKey Secret, and supports syncing resources and installing agents. You do not rent public cloud instances through that page. For credential requirements, see [ZStack Cloud Connection Credentials](#zstack-cloud-连接凭据).
-
 ## Sync Instances and Check Types, Regions, and Prices
 
 1. Click **Sync** for an account in the **Connected Public Clouds** list (or **Sync All** at the top of the page to sync all accounts at once). On completion, the message reads **Synchronization complete; N instances found**.
@@ -294,19 +292,3 @@ For an instance without the platform public key, the `SSH` row in precheck displ
 Cloud Assistant records executed commands; retention depends on Alibaba Cloud settings and documentation. The command contains the node connection token, which the agent continues using to connect to the server. Alibaba Cloud users authorized to view invocation records (`ecs:DescribeInvocations`) can read the token. Deleting the node invalidates its token.
 
 **Power control**: power-off uses **normal stop** (billing continues), preserving resources such as the instance's GPUs and fixed public IP. **Economical mode** releases those resources, and capacity may be unavailable when restarting. GPUWORKS does not use that mode.
-
-## ZStack Cloud Connection Credentials
-
-When adding a private cloud, enter the API Endpoint and the administrator's AccessKey ID and AccessKey Secret. Use ZStack's
-local AccessKey; no login session needs to be saved or refreshed. The AccessKey must be enabled, and its account must have permission to query
-hosts, GPUs, and resource configurations and to perform coordinated GPU resource operations. The Cloud license and version must support AccessKey authentication.
-The endpoint supports the `/zstack` context and an optional `/v1` suffix.
-
-The API reuses the common credential fields: `public_key` stores the AccessKey ID, and `private_key` stores the Secret. Both are encrypted at rest with the entire
-credentials object. The UI displays AccessKey names based on the server's field dictionary and uses a password input for the Secret.
-For a private cloud already configured with a Session Token, edit the credentials and enter these two fields; an existing session cannot be converted to an AccessKey.
-
-Requests use ZStack AccessKey signing.
-GPUWorks and Cloud system clocks must be synchronized. Older Cloud versions ignore
-time zone offsets when `rest.checkTimeZone=false` is configured, so both systems must also use the same time zone. Signatures preserve the GPUWorks process's local time zone, matching the official ZStack SDK.
-Both queries and resource modification requests use AccessKey authentication; the Secret is not sent with requests.
