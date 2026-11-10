@@ -182,6 +182,19 @@ secret（名字与上面的 CI 变量相同），该 environment 的部署规则
 只有维护者能推送，作用相当于 GitLab 的 protected tag。文档站构建需要仓库 secret `WEBSITE_REPO`（OINK 主题仓库带只读令牌的
 克隆地址）。
 
+### Kubernetes agent 镜像
+
+Kubernetes 集群的 agent DaemonSet 跑的镜像（`build/agent-image/Dockerfile`，见 [ADR 0052](../adr/0052-kubernetes-nodes.md)）由 CI 的
+`release-agent-image` 发布：与 `release-publish` 同在 `publish` 阶段，等 linux 的两个构建 job 成功后运行
+`make agent-image-publish`（`scripts/agent_image.sh publish`），一次构建 amd64 与 arm64，推到
+`docker.io/gpuworks/gpuworks-agent`、`quay.io/gpuworks/gpuworks-agent`、`swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-agent`。
+tag 是 server 报告的版本，也就是集群条目不填 agent 镜像时用的那个：nightly 为短提交号外加 `:nightly`，版本 tag 为 `vYY.M.PATCH` 外加 `:latest`。
+
+- 镜像里的 agent 用与内嵌 agent 相同的 `LDFLAGS` 构建；nerdctl 取自上游发布并按脚本里固定的 sha256 校验，缓存在 runner 主机上。
+- 推送凭据是 protected 的 File 类型变量 `GPUWORKS_AGENT_IMAGE_DOCKER_CONFIG`（一份含三个仓库凭据的 docker `config.json`），没有它 job 直接失败。
+- 关闭 provenance 与 SBOM：SWR 拒收带 attestation 的 OCI index。
+- 本机构建单架构：`make agent-image ARCH=amd64|arm64 AGENT_IMAGE=<名字>`。
+
 ## 内嵌原生资产
 
 内嵌原生资产包括下表中的运行库、工具和探针镜像。它们不是普通 Go 源码，
