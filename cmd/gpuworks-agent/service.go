@@ -69,19 +69,17 @@ func uninstallLaunchd(ctx context.Context, explicitState string, out io.Writer) 
 	if err != nil {
 		return err
 	}
-	stateDirs, err := host.Uninstall(ctx)
+	binary, err := os.Executable()
 	if err != nil {
 		return err
 	}
+	return uninstallLaunchdHost(ctx, explicitState, host, binary)
+}
+
+func uninstallLaunchdHost(ctx context.Context, explicitState string, host *launchd.Host, binary string) error {
+	var states []string
 	if explicitState != "" {
-		stateDirs = append(stateDirs, explicitState)
+		states = append(states, explicitState)
 	}
-	for _, dir := range stateDirs {
-		for _, name := range []string{"identity.json", agentconf.FileName} {
-			if rmErr := removeIfPresent(filepath.Join(dir, name)); rmErr != nil {
-				return rmErr
-			}
-		}
-	}
-	return err
+	return uninstallLaunchdStates(ctx, states, host, binary)
 }

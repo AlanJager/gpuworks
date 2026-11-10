@@ -86,15 +86,24 @@ func agentLaunchdChecklist(ctx context.Context, state string) []uninstallcheck.I
 	if err != nil {
 		return []uninstallcheck.Item{{ID: "agent.safety.launchd", Status: uninstallcheck.Unknown, Summary: "Launchd installation account could not be established"}}
 	}
+	binary, err := os.Executable()
+	if err != nil {
+		return []uninstallcheck.Item{{ID: "agent.safety.launchd", Status: uninstallcheck.Unknown, Summary: "Current agent executable identity is unavailable"}}
+	}
+	return agentLaunchdChecklistForHost(ctx, state, h, binary)
+}
+
+func agentLaunchdChecklistForHost(ctx context.Context, state string, h *launchd.Host, binary string) []uninstallcheck.Item {
 	items := []uninstallcheck.Item{}
-	for _, path := range []string{launchd.DaemonPlist(), launchd.AgentPlist(h.Self.Home)} {
+	eligiblePIDs := map[int]bool{}
+	for _, path := range agentLaunchdPaths(h) {
 		item := uninstallcheck.Item{ID: "agent.safety.launchd", Status: uninstallcheck.Pass, Summary: "Launchd autostart definition not installed", Details: []string{path}}
 		data, err := os.ReadFile(path)
 		if os.IsNotExist(err) {
 			items = append(items, item)
 			continue
 		}
-		job, parseErr := launchd.ReadJob(data)
+		job, parseErr := launchd.ReadOwnedAgentJob(data, binary)
 		if err != nil || parseErr != nil || job.StateDir == "" {
 			item.Status, item.Summary = uninstallcheck.Unknown, "Launchd definition ownership could not be established"
 		} else if filepath.Clean(job.StateDir) == state {
@@ -107,14 +116,25 @@ func agentLaunchdChecklist(ctx context.Context, state string) []uninstallcheck.I
 		items = append(items, item)
 		if err == nil && parseErr == nil && job.StateDir != "" {
 			domain := "system"
-			if path != launchd.DaemonPlist() {
+			if path != filepath.Join(h.Root, launchd.DaemonPlist()) {
 				domain = "gui/" + strconv.Itoa(h.Self.UID)
 			}
 			probeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 			out, probeErr := h.Launchctl(probeCtx, "print", domain+"/"+launchd.AgentLabel)
 			cancel()
-			observation := uninstallcheck.Item{ID: "agent.launchd.observation", Status: uninstallcheck.Unknown, Summary: "Launchd job live state could not be observed", Action: "Inspect launchctl status locally; uninstall must verify job shutdown before clearing identity."}
-			if probeErr == nil {
+			observation := uninstallcheck.Item{ID: "agent.safety.launchd-live", Status: uninstallcheck.Unknown, Summary: "Launchd job live state could not be observed", Action: "Inspect launchctl status locally; uninstall must verify job shutdown before clearing identity."}
+			if launchd.IsAbsentJob(out, probeErr) {
+				observation.Summary, observation.Status = "Launchd job is not registered in "+domain, uninstallcheck.Pass
+			} else if probeErr == nil {
+				pid, identityErr := launchd.AgentProgramPID(out, binary)
+				if identityErr != nil {
+					observation.Summary = "Loaded launchd executable ownership could not be established"
+					items = append(items, observation)
+					continue
+				}
+				if pid > 0 && filepath.Clean(job.StateDir) == filepath.Clean(state) {
+					eligiblePIDs[pid] = true
+				}
 				observation.Summary = "Launchd job is registered in " + domain
 				observation.Status = uninstallcheck.Warn
 				for _, line := range strings.Split(out, "\n") {
@@ -132,9 +152,23 @@ func agentLaunchdChecklist(ctx context.Context, state string) []uninstallcheck.I
 				}
 			}
 			items = append(items, observation)
+
 		}
 	}
-	return items
+	pids, inventoryErr := h.AgentProcesses(ctx, binary, state)
+	processes := uninstallcheck.Item{ID: "agent.safety.launchd-processes", Status: uninstallcheck.Pass, Summary: "Independent process table observed for the selected state", Action: "Agents without a corresponding owned launchd job must be stopped manually; resource retention does not bypass this check."}
+	if inventoryErr != nil {
+		processes.Status, processes.Summary = uninstallcheck.Unknown, "Independent agent process table could not be established"
+	} else if len(pids) > 0 {
+		processes.Status = uninstallcheck.Warn
+		for _, pid := range pids {
+			processes.Details = append(processes.Details, "PID "+strconv.Itoa(pid))
+			if !eligiblePIDs[pid] {
+				processes.Status = uninstallcheck.Blocked
+			}
+		}
+	}
+	return append(items, processes)
 }
 
 func safeServiceValue(s string) bool {

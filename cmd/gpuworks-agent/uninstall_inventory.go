@@ -30,19 +30,13 @@ func resolveAgentUninstallStates(explicit string) ([]string, error) {
 		if err != nil {
 			return nil, err
 		}
-		for _, path := range []string{launchd.DaemonPlist(), launchd.AgentPlist(h.Self.Home)} {
-			raw, err := os.ReadFile(path)
-			if os.IsNotExist(err) {
-				continue
-			}
-			if err != nil {
-				return nil, err
-			}
-			job, err := launchd.ReadJob(raw)
-			if err != nil || job.StateDir == "" {
-				return nil, fmt.Errorf("cannot identify launchd job state")
-			}
-			states = append(states, job.StateDir)
+		binary, err := os.Executable()
+		if err != nil {
+			return nil, err
+		}
+		states, err = agentLaunchdStates(h, binary)
+		if err != nil {
+			return nil, err
 		}
 	} else {
 		raw, err := os.ReadFile(agentUnitPath)

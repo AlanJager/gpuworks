@@ -12,7 +12,6 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"runtime"
 	"strings"
 	"syscall"
@@ -20,6 +19,7 @@ import (
 
 	"golang.org/x/term"
 
+	"gpuworks.ai/gpuworks/internal/launchd"
 	"gpuworks.ai/gpuworks/internal/uninstallcheck"
 )
 
@@ -50,17 +50,15 @@ func uninstall(args []string) error {
 		ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 		defer cancel()
 		if runtime.GOOS == "darwin" {
-			if err := uninstallLaunchd(ctx, "", io.Discard); err != nil {
+			host, err := launchd.NewHost(io.Discard)
+			if err != nil {
 				return err
 			}
-			for _, state := range states {
-				for _, name := range []string{"identity.json", "gpuworks-agent.conf"} {
-					if err := removeIfPresent(filepath.Join(state, name)); err != nil {
-						return err
-					}
-				}
+			binary, err := os.Executable()
+			if err != nil {
+				return err
 			}
-			return nil
+			return uninstallLaunchdStates(ctx, states, host, binary)
 		}
 		binary, err := os.Executable()
 		if err != nil {
