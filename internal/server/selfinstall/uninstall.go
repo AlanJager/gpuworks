@@ -82,7 +82,8 @@ func (i *Installer) Uninstall(ctx context.Context, req UninstallRequest, beforeS
 	if inst.ServiceUser != "" {
 		report.Kept = append(report.Kept, "service account and group: "+inst.ServiceUser+" (existing accounts may be shared)")
 	}
-	report.Checklist = i.uninstallChecklist(ctx, req, report)
+	var resources []uninstallcheck.Item
+	report.Checklist, resources = i.uninstallChecklist(ctx, req, report, inst)
 	if err := i.printUninstallChecklist(report.Checklist); err != nil {
 		return report, err
 	}
@@ -98,7 +99,7 @@ func (i *Installer) Uninstall(ctx context.Context, req UninstallRequest, beforeS
 		}
 		return report, nil
 	}
-	if err := checkUninstallResources(req, report.Checklist); err != nil {
+	if err := checkUninstallResources(req, resources); err != nil {
 		return report, err
 	}
 	if !req.Yes {
@@ -130,11 +131,11 @@ func (i *Installer) Uninstall(ctx context.Context, req UninstallRequest, beforeS
 	if err := i.validateUninstall(paths, req.Purge); err != nil {
 		return report, err
 	}
-	report.Checklist = i.uninstallChecklist(ctx, req, report)
+	report.Checklist, resources = i.uninstallChecklist(ctx, req, report, fresh)
 	if err := i.printUninstallChecklist(report.Checklist); err != nil {
 		return report, err
 	}
-	if err := checkUninstallResources(req, report.Checklist); err != nil {
+	if err := checkUninstallResources(req, resources); err != nil {
 		return report, err
 	}
 	if beforeStop != nil {

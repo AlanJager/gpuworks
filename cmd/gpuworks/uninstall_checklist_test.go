@@ -251,8 +251,23 @@ func TestUninstallCLIEmptyInventoryCanRemoveComponent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("empty inventory failed: %v %s", err, raw)
 	}
-	if strings.Contains(string(raw), `"status":"unknown"`) || strings.Contains(string(raw), `"status":"blocked"`) {
-		t.Fatalf("empty inventory not established: %s", raw)
+	var result selfinstall.UninstallReport
+	if err := json.Unmarshal(raw, &result); err != nil {
+		t.Fatal(err)
+	}
+	expected := map[string]bool{"server.nodes": false, "server.deployments": false, "server.instances": false, "server.provider_instances": false, "server.cloud_leases": false}
+	for _, item := range result.Checklist {
+		if _, exists := expected[item.ID]; exists {
+			if item.Status != "pass" {
+				t.Fatalf("empty resource inventory not established: %+v", item)
+			}
+			expected[item.ID] = true
+		}
+	}
+	for id, found := range expected {
+		if !found {
+			t.Fatalf("missing empty inventory check: %s", id)
+		}
 	}
 	if _, err := os.Stat(filepath.Join(layout.DataDir, "gpuworks.db")); err != nil {
 		t.Fatalf("ordinary uninstall removed DB: %v", err)
