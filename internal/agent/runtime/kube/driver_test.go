@@ -148,6 +148,7 @@ func newRigFor(t *testing.T, resource string, cards map[int]string, devices []st
 		IdleReturn: 10 * time.Minute, Log: slog.New(slog.DiscardHandler), Poll: time.Millisecond, StartTimeout: 200 * time.Millisecond,
 	})
 	r.d.cards.now = func() time.Time { return r.now }
+	r.d.cards.borrowRetry, r.d.cards.releaseWait = 50*time.Millisecond, 2*time.Second
 	if ok, err := r.d.Detect(context.Background()); !ok || err != nil {
 		t.Fatalf("Detect = %v, %v", ok, err)
 	}
@@ -324,8 +325,9 @@ func TestBorrowFailsWhenAnotherPodWinsTheRace(t *testing.T) {
 		}
 		admit(p)
 	}
+	// The first attempt is short of the card; the retry sees who has it.
 	_, err := r.d.Run(context.Background(), spec("gpuworks-444444444444", 0))
-	if err == nil || !strings.Contains(err.Error(), "another pod took them first") {
+	if err == nil || !strings.Contains(err.Error(), "card GPU-a is allocated to Pod ml/sneaky by Kubernetes") {
 		t.Fatalf("Run = %v", err)
 	}
 	for _, p := range r.srv.Pods() {

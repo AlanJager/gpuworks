@@ -17,6 +17,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"gpuworks.ai/gpuworks/internal/agent/runtime/kube/kubeapi"
 )
@@ -42,6 +43,11 @@ type Server struct {
 	// FailNext makes the next request whose "METHOD path" has this prefix
 	// fail with the given status code, once.
 	FailNext map[string]int
+	// TerminationDelay is how long a deleted pod stays Terminating (it
+	// keeps its deletionTimestamp and its place in lists and gets) before
+	// the kubelet has stopped its containers and the pod is gone. Zero
+	// removes it at once.
+	TerminationDelay time.Duration
 	// Requests records "METHOD path?query" of every request.
 	Requests []string
 }
@@ -435,9 +441,7 @@ func (s *Server) servePods(w http.ResponseWriter, r *http.Request, ns string, re
 		case http.MethodGet:
 			s.json(w, 200, cp)
 		case http.MethodDelete:
-			s.mu.Lock()
-			delete(s.pods, key)
-			s.mu.Unlock()
+			s.deletePod(key, &cp)
 			s.json(w, 200, cp)
 		default:
 			s.status(w, 405, "MethodNotAllowed", "method not allowed")
@@ -445,4 +449,37 @@ func (s *Server) servePods(w http.ResponseWriter, r *http.Request, ns string, re
 	default:
 		s.status(w, 404, "NotFound", "the server could not find the requested resource")
 	}
+}
+
+// deletePod deletes the pod at key. With a TerminationDelay the pod first
+// turns Terminating: it stays, with a deletionTimestamp, until the delay has
+// passed, as a pod does while its containers are being stopped. Deleting a
+// Terminating pod again does not extend the wait. cp is the pod as the
+// response shows it.
+func (s *Server) deletePod(key string, cp *kubeapi.Pod) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p := s.pods[key]
+	if p == nil {
+		return
+	}
+	if s.TerminationDelay <= 0 {
+		delete(s.pods, key)
+		return
+	}
+	if p.Metadata.DeletionTimestamp == nil {
+		ts := time.Now().UTC().Format(time.RFC3339)
+		p.Metadata.DeletionTimestamp = &ts
+		s.rv++
+		p.Metadata.ResourceVersion = strconv.Itoa(s.rv)
+		uid := p.Metadata.UID
+		time.AfterFunc(s.TerminationDelay, func() {
+			s.mu.Lock()
+			defer s.mu.Unlock()
+			if cur := s.pods[key]; cur != nil && cur.Metadata.UID == uid {
+				delete(s.pods, key)
+			}
+		})
+	}
+	*cp = *p
 }

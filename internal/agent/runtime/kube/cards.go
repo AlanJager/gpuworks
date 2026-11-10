@@ -58,7 +58,15 @@ type cardPool struct {
 	now        func() time.Time
 	log        *slog.Logger
 	poll       time.Duration
+	// releaseWait and borrowRetry bound the waits of cards_borrow.go; zero
+	// uses the defaults.
+	releaseWait, borrowRetry time.Duration
 
+	// borrowMu serializes borrows. A borrow talks to the API server and the
+	// kubelet for up to minutes, so it never runs under mu, which status
+	// reporting (holders) and instance bookkeeping take.
+	borrowMu sync.Mutex
+	// mu guards everything below.
 	mu       sync.Mutex
 	resource string // the device plugin resource; "" = none advertised
 	// shared says why the node's cards cannot be borrowed: the device
@@ -69,6 +77,9 @@ type cardPool struct {
 	held      map[string]string // card UUID -> hold pod name
 	users     map[string]map[string]bool
 	idleSince map[string]time.Time
+	// returning are the hold pods this pool deleted and the kubelet still
+	// lists; their cards are not held, whatever the allocations say.
+	returning map[string]bool
 	loaded    bool
 }
 
@@ -153,15 +164,17 @@ func (p *cardPool) load(ctx context.Context) error {
 		return nil
 	}
 	p.held, p.users, p.idleSince = map[string]string{}, map[string]map[string]bool{}, map[string]time.Time{}
+	p.returning = map[string]bool{}
 	if p.resource != "" && p.shared == "" {
-		if err := p.refreshHeld(ctx); err != nil {
+		held, err := p.listHeld(ctx, p.resource)
+		if err != nil {
 			return err
 		}
+		p.setHeld(held)
 	}
-	var pods kubeapi.PodList
-	q := kubeapi.ListQuery(LabelRole+"="+RoleInstance+","+LabelNode+"="+p.node, map[string]string{"spec.nodeName": p.node})
-	if err := p.api.Get(ctx, kubeapi.PodsPath(p.ns)+q, &pods); err != nil {
-		return fmt.Errorf("list instance pods: %w", err)
+	pods, err := p.instancePods(ctx)
+	if err != nil {
+		return err
 	}
 	for _, pod := range pods.Items {
 		for _, card := range strings.Split(pod.Metadata.Annotations[AnnotationCards], ",") {
@@ -179,6 +192,16 @@ func (p *cardPool) load(ctx context.Context) error {
 	return nil
 }
 
+// instancePods lists the instance pods on this node.
+func (p *cardPool) instancePods(ctx context.Context) (kubeapi.PodList, error) {
+	var pods kubeapi.PodList
+	q := kubeapi.ListQuery(LabelRole+"="+RoleInstance+","+LabelNode+"="+p.node, map[string]string{"spec.nodeName": p.node})
+	if err := p.api.Get(ctx, kubeapi.PodsPath(p.ns)+q, &pods); err != nil {
+		return pods, fmt.Errorf("list instance pods: %w", err)
+	}
+	return pods, nil
+}
+
 func (p *cardPool) use(card, instance string) {
 	if p.users[card] == nil {
 		p.users[card] = map[string]bool{}
@@ -187,49 +210,88 @@ func (p *cardPool) use(card, instance string) {
 	delete(p.idleSince, card)
 }
 
-// refreshHeld rebuilds held from the kubelet's allocations to this node's
-// hold pods.
-func (p *cardPool) refreshHeld(ctx context.Context) error {
+// listHeld reads, from the kubelet's allocations, which hold pod of this
+// node has which card. It touches no pool state, so it runs with or without
+// mu.
+func (p *cardPool) listHeld(ctx context.Context, resource string) (map[string]string, error) {
 	allocs, err := p.kubelet.List(ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	byIndex, err := p.cards(ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	held := map[string]string{}
 	for _, a := range allocs {
-		if a.Namespace != p.ns || !strings.HasPrefix(a.Pod, holdPrefix) || a.Resource != p.resource {
+		if a.Namespace != p.ns || !strings.HasPrefix(a.Pod, holdPrefix) || a.Resource != resource {
 			continue
 		}
 		if card := cardOf(a.DeviceID, byIndex); card != "" {
 			held[card] = a.Pod
 		}
 	}
+	return held, nil
+}
+
+// setHeld records the kubelet's view of the borrowed cards, minus the hold
+// pods this pool already deleted (the kubelet lists them until their
+// containers are gone). mu is held.
+func (p *cardPool) setHeld(seen map[string]string) {
+	present := map[string]bool{}
+	held := map[string]string{}
+	for card, pod := range seen {
+		present[pod] = true
+		if !p.returning[pod] {
+			held[card] = pod
+		}
+	}
+	for pod := range p.returning {
+		if !present[pod] {
+			delete(p.returning, pod)
+		}
+	}
 	p.held = held
-	return nil
 }
 
 const holdPrefix = "gpuworks-hold-"
 
 // acquire makes the cards at indexes the platform's for instance and
-// returns their UUIDs.
+// returns their UUIDs. Borrowing from the kubelet is slow, so the pool's
+// state is not locked across it: the instance is registered as a user of its
+// cards first (which keeps them from being returned meanwhile) and unregistered
+// again if the borrow fails.
 func (p *cardPool) acquire(ctx context.Context, instance string, indexes []int) ([]string, error) {
 	if len(indexes) == 0 {
 		return nil, nil
 	}
+	want, missing, err := p.claim(ctx, instance, indexes)
+	if err != nil {
+		return nil, err
+	}
+	if missing {
+		if err := p.borrowWithRetry(ctx, want); err != nil {
+			p.release(instance)
+			return nil, err
+		}
+	}
+	return want, nil
+}
+
+// claim registers instance as a user of the cards at indexes and reports
+// their UUIDs and whether the platform still has to borrow some of them.
+func (p *cardPool) claim(ctx context.Context, instance string, indexes []int) ([]string, bool, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if err := p.load(ctx); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if p.shared != "" {
-		return nil, errors.New(p.shared)
+		return nil, false, errors.New(p.shared)
 	}
 	byIndex, err := p.cards(ctx)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	want := make([]string, 0, len(indexes))
 	for _, i := range indexes {
@@ -238,218 +300,28 @@ func (p *cardPool) acquire(ctx context.Context, instance string, indexes []int) 
 			if p.resource == "" {
 				continue // nothing to borrow; the card is used by index
 			}
-			return nil, fmt.Errorf("card %d has no UUID on this node", i)
+			return nil, false, fmt.Errorf("card %d has no UUID on this node", i)
 		}
 		want = append(want, uuid)
 	}
-	if p.resource != "" {
-		if err := p.borrow(ctx, want); err != nil {
-			return nil, err
-		}
-	}
+	missing := false
 	for _, card := range want {
+		if p.resource != "" && p.held[card] == "" {
+			missing = true
+		}
 		p.use(card, instance)
 	}
-	return want, nil
-}
-
-// borrow takes every free card, keeps the ones in want and returns the rest.
-func (p *cardPool) borrow(ctx context.Context, want []string) error {
-	missing := 0
-	for _, card := range want {
-		if p.held[card] == "" {
-			missing++
-		}
-	}
-	if missing == 0 {
-		return nil
-	}
-	if err := p.checkHolders(ctx, want); err != nil {
-		return err
-	}
-	_, refused, err := p.takeAllFree(ctx)
-	if err != nil {
-		return err
-	}
-	var still []string
-	for _, card := range want {
-		if p.held[card] == "" {
-			still = append(still, card)
-		}
-	}
-	keep := map[string]bool{}
-	for _, card := range want {
-		keep[card] = true
-	}
-	p.returnUnused(ctx, keep)
-	if len(still) > 0 {
-		why := "another pod took them first"
-		if refused != "" {
-			why = "the kubelet refused the hold pods: " + refused
-		}
-		return fmt.Errorf("Kubernetes did not give this node's cards %s to the platform: %s", strings.Join(still, ","), why)
-	}
-	return nil
-}
-
-// checkHolders fails fast when a wanted card is allocated to a pod that is
-// not the platform's.
-func (p *cardPool) checkHolders(ctx context.Context, want []string) error {
-	holders, err := p.externalHolders(ctx)
-	if err != nil {
-		return err
-	}
-	for _, card := range want {
-		if h := holders[card]; len(h) > 0 {
-			return fmt.Errorf("card %s is allocated to %s by Kubernetes", card, h[0].Name)
-		}
-	}
-	return nil
-}
-
-// takeAllFree creates one hold pod per free card and waits for the kubelet
-// to admit them; it returns how many it got and, when some were refused,
-// the kubelet's reason (node pressure, a failed allocation).
-func (p *cardPool) takeAllFree(ctx context.Context) (int, string, error) {
-	free, err := p.freeCount(ctx)
-	if err != nil || free <= 0 {
-		return 0, "", err
-	}
-	names := make([]string, 0, free)
-	for i := 0; i < free; i++ {
-		name := holdPrefix + randomSuffix()
-		if err := p.api.Create(ctx, kubeapi.PodsPath(p.ns), p.holdPod(name), nil); err != nil {
-			p.deletePods(ctx, names)
-			return 0, "", fmt.Errorf("create hold pod: %w", err)
-		}
-		names = append(names, name)
-	}
-	admitted, refused := p.waitAdmitted(ctx, names)
-	var failed []string
-	for _, n := range names {
-		if !admitted[n] {
-			failed = append(failed, n)
-		}
-	}
-	p.deletePods(ctx, failed)
-	if err := p.refreshHeld(ctx); err != nil {
-		return 0, "", err
-	}
-	return len(names) - len(failed), refused, nil
-}
-
-// freeCount is how many of the advertised cards no pod holds.
-func (p *cardPool) freeCount(ctx context.Context) (int, error) {
-	var node kubeapi.Node
-	if err := p.api.Get(ctx, kubeapi.NodePath(p.node), &node); err != nil {
-		return 0, err
-	}
-	total, _ := strconv.Atoi(node.Status.Allocatable[p.resource])
-	allocs, err := p.kubelet.List(ctx)
-	if err != nil {
-		return 0, err
-	}
-	used := map[string]bool{}
-	for _, a := range allocs {
-		if a.Resource == p.resource {
-			used[a.DeviceID] = true
-		}
-	}
-	return total - len(used), nil
-}
-
-func (p *cardPool) holdPod(name string) kubeapi.Pod {
-	grace := int64(0)
-	pod := kubeapi.Pod{
-		APIVersion: "v1", Kind: "Pod",
-		Metadata: kubeapi.ObjectMeta{Name: name, Namespace: p.ns,
-			Labels: map[string]string{LabelManagedBy: "gpuworks", LabelRole: RoleHold, LabelNode: p.node}},
-		Spec: kubeapi.PodSpec{
-			NodeName: p.node, RestartPolicy: "Always", TerminationGracePeriodSeconds: &grace, ImagePullSecrets: p.pullSecrets,
-			PriorityClassName: "gpuworks-inference", Tolerations: []kubeapi.Toleration{{Operator: "Exists"}},
-			Containers: []kubeapi.Container{{
-				Name: "hold", Image: p.holdImage, ImagePullPolicy: "IfNotPresent", Command: p.holdCmd,
-				Resources: &kubeapi.Resources{
-					Requests: map[string]string{p.resource: "1", "cpu": "10m", "memory": "16Mi"},
-					Limits:   map[string]string{p.resource: "1"},
-				},
-			}},
-		},
-	}
-	if p.owner != nil {
-		pod.Metadata.OwnerReferences = []kubeapi.OwnerReference{*p.owner}
-	}
-	return pod
-}
-
-// waitAdmitted waits until each hold pod runs or the kubelet refused it, and
-// returns the first refusal's reason.
-func (p *cardPool) waitAdmitted(ctx context.Context, names []string) (map[string]bool, string) {
-	out, refused := map[string]bool{}, ""
-	pending := map[string]bool{}
-	for _, n := range names {
-		pending[n] = true
-	}
-	deadline := p.now().Add(60 * time.Second)
-	for len(pending) > 0 && p.now().Before(deadline) && ctx.Err() == nil {
-		for n := range pending {
-			var pod kubeapi.Pod
-			err := p.api.Get(ctx, kubeapi.PodPath(p.ns, n), &pod)
-			switch {
-			case err != nil && kubeapi.IsNotFound(err):
-				delete(pending, n)
-			case err != nil:
-			case pod.Status.Phase == "Running":
-				out[n] = true
-				delete(pending, n)
-			case pod.Status.Phase == "Failed":
-				// A failed device allocation is the race borrow already
-				// describes; anything else (eviction under node pressure)
-				// is the reason worth reporting.
-				if refused == "" && pod.Status.Reason != "UnexpectedAdmissionError" {
-					refused = strings.TrimSpace(pod.Status.Reason + ": " + pod.Status.Message)
-				}
-				delete(pending, n)
-			}
-		}
-		if len(pending) > 0 {
-			select {
-			case <-ctx.Done():
-			case <-time.After(p.poll):
-			}
-		}
-	}
-	return out, refused
-}
-
-func (p *cardPool) deletePods(ctx context.Context, names []string) {
-	zero := int64(0)
-	for _, n := range names {
-		if err := p.api.Delete(ctx, kubeapi.PodPath(p.ns, n), &zero); err != nil {
-			p.log.Warn("delete hold pod failed", "pod", n, "err", err)
-		}
-	}
-}
-
-// returnUnused deletes the hold pods of borrowed cards nobody uses, keeping
-// the ones in keep.
-func (p *cardPool) returnUnused(ctx context.Context, keep map[string]bool) {
-	for card, pod := range p.held {
-		if keep[card] || len(p.users[card]) > 0 {
-			continue
-		}
-		if _, idle := p.idleSince[card]; idle {
-			continue // borrowed earlier and still in its grace period
-		}
-		p.deletePods(ctx, []string{pod})
-		delete(p.held, card)
-	}
+	return want, missing, nil
 }
 
 // release says instance no longer uses its cards.
 func (p *cardPool) release(instance string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	p.releaseLocked(instance)
+}
+
+func (p *cardPool) releaseLocked(instance string) {
 	for card, users := range p.users {
 		if users[instance] {
 			delete(users, instance)
@@ -466,33 +338,43 @@ func (p *cardPool) release(instance string) {
 // sweep returns the cards that have been idle longer than idleReturn.
 func (p *cardPool) sweep(ctx context.Context) {
 	p.mu.Lock()
-	defer p.mu.Unlock()
 	if !p.loaded || p.idleReturn < 0 {
+		p.mu.Unlock()
 		return
 	}
+	var pods []string
 	for card, since := range p.idleSince {
 		if len(p.users[card]) > 0 || p.now().Sub(since) < p.idleReturn {
 			continue
 		}
 		if pod := p.held[card]; pod != "" {
 			p.log.Info("returning an idle card to Kubernetes", "card", card, "pod", pod)
-			p.deletePods(ctx, []string{pod})
+			pods = append(pods, pod)
+			p.returning[pod] = true
 		}
 		delete(p.held, card)
 		delete(p.idleSince, card)
 	}
+	p.mu.Unlock()
+	p.deletePods(ctx, pods)
 }
 
 // keepAll borrows every free card for good (a cluster that keeps cards).
 func (p *cardPool) keepAll(ctx context.Context) error {
+	p.borrowMu.Lock()
+	defer p.borrowMu.Unlock()
 	p.mu.Lock()
-	defer p.mu.Unlock()
-	if err := p.load(ctx); err != nil || p.resource == "" || p.shared != "" {
+	err := p.load(ctx)
+	skip := err != nil || p.resource == "" || p.shared != ""
+	p.mu.Unlock()
+	if skip {
 		return err
 	}
 	if _, _, err := p.takeAllFree(ctx); err != nil {
 		return err
 	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	for card := range p.held {
 		if len(p.users[card]) == 0 {
 			p.idleSince[card] = p.now()
