@@ -63,6 +63,12 @@ rules:
   - apiGroups: [""]
     resources: ["nodes"]
     verbs: ["get", "list", "watch"]
+  # Other namespaces' pods on the agent's own node: where HAMi or ACK GPU
+  # sharing allocates cards, their allocation annotations are the only record
+  # of who holds how much of a card.
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
   - apiGroups: [""]
     resources: ["namespaces"]
     resourceNames: ["kube-system"]

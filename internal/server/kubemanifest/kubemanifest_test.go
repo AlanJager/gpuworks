@@ -435,3 +435,38 @@ func TestRenderRefusesAPoolSelectionItCannotRenderSafely(t *testing.T) {
 		}
 	}
 }
+
+// The agent reads other namespaces' pods on its own node (the allocation
+// annotations HAMi and ACK GPU sharing write are the only record of who holds
+// how much of a card), and may create, delete and patch pods only in its own
+// namespace: the cluster-wide grant is read-only.
+func TestRenderedRBACLetsTheAgentReadPodsClusterWideButWriteOnlyItsOwn(t *testing.T) {
+	out, err := Render(sample())
+	if err != nil {
+		t.Fatal(err)
+	}
+	verbs := func(kind string) map[string][]string {
+		got := map[string][]string{}
+		for _, d := range docs(t, out) {
+			if d["kind"] != kind {
+				continue
+			}
+			for _, rule := range d["rules"].([]any) {
+				r := rule.(map[string]any)
+				for _, res := range r["resources"].([]any) {
+					for _, v := range r["verbs"].([]any) {
+						got[res.(string)] = append(got[res.(string)], v.(string))
+					}
+				}
+			}
+		}
+		return got
+	}
+	cluster, role := verbs("ClusterRole"), verbs("Role")
+	if strings.Join(cluster["pods"], ",") != "get,list" {
+		t.Fatalf("cluster-wide pod verbs = %v, want get,list only", cluster["pods"])
+	}
+	if got := strings.Join(role["pods"], ","); got != "get,list,watch,create,delete,patch" {
+		t.Fatalf("namespaced pod verbs = %s", got)
+	}
+}
