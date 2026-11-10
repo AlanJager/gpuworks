@@ -172,10 +172,17 @@ func (a *apiHandlers) syncProvider(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *apiHandlers) providerInstances(w http.ResponseWriter, r *http.Request) {
-	pis, err := a.d.Store.ProviderInstances(parseUint(chi.URLParam(r, "id")))
+	id := parseUint(chi.URLParam(r, "id"))
+	pis, err := a.d.Store.ProviderInstances(id)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err)
 		return
+	}
+	var caps provider.Capabilities
+	if a.d.Providers != nil {
+		if p, err := a.d.Store.GetProvider(id); err == nil {
+			caps, _ = a.d.Providers.KindCapabilities(p.Kind)
+		}
 	}
 	type instanceDTO struct {
 		ExternalID     string                   `json:"external_id"`
@@ -194,6 +201,10 @@ func (a *apiHandlers) providerInstances(w http.ResponseWriter, r *http.Request) 
 		// ManagedCluster: the instance is a node of this Kubernetes cluster
 		// of the account and joins through it, not by its own install.
 		ManagedCluster string `json:"managed_cluster,omitempty"`
+		// Actions are the operations the instance allows now (power_on |
+		// power_off | install | delete); empty for a cluster node. A client
+		// offers exactly these.
+		Actions []string `json:"actions"`
 	}
 	out := make([]instanceDTO, 0, len(pis))
 	for _, p := range pis {
@@ -206,6 +217,7 @@ func (a *apiHandlers) providerInstances(w http.ResponseWriter, r *http.Request) 
 			Power: p.Power, PricePerHr: p.PricePerHr, Region: p.Region, PublicIP: p.PublicIP,
 			SSHPort: p.SSHPort, SSHUser: p.SSHUser, SSHConnections: connections, Kind: p.Kind, NodeID: p.NodeID,
 			ManagedCluster: p.ManagedCluster,
+			Actions:        provider.InstanceActions(caps, p.Power, p.NodeID, p.ManagedCluster),
 		})
 	}
 	writeJSON(w, http.StatusOK, dto.NewList(out))
@@ -299,6 +311,11 @@ func (a *apiHandlers) resizeProviderInstance(w http.ResponseWriter, r *http.Requ
 const statusProviderFailed = http.StatusFailedDependency
 
 func writeProviderOpErr(w http.ResponseWriter, err error) {
+	var inCluster *provider.InstanceInClusterError
+	if errors.As(err, &inCluster) {
+		writeErr(w, http.StatusConflict, wrapProductError(ErrorProviderInstanceInCluster, err.Error(), map[string]any{"cluster": inCluster.Cluster}, err))
+		return
+	}
 	if errors.Is(err, provider.ErrUnsupported) {
 		writeErr(w, http.StatusNotImplemented, err)
 		return

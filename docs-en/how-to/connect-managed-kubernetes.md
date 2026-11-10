@@ -88,7 +88,7 @@ When the cloud account has already been added on the “Public Cloud” page, yo
 
    Removal deletes the whole `gpuworks-system` namespace, including any image pull secret created in it beforehand, so it must be created again before reconnecting.
 
-Prerequisite: the cluster's API Server has a public address (the list shows “Public API”); a cluster showing “Private API only” can only use the copied command, run from inside the cluster's network. Nodes that belong to a managed cluster are marked “Cluster node” in the “Instances” tab and cannot have an agent installed individually. Nebius has no cloud account connection yet; connect it manually as described below.
+Prerequisite: the cluster's API Server has a public address (the list shows “Public API”); a cluster showing “Private API only” can only use the copied command, run from inside the cluster's network. Nodes that belong to a managed cluster are marked “Cluster node” in the “Instances” tab and cannot have an agent installed individually, nor be powered, released or resized there (the cluster scales its node pools). Nebius has no cloud account connection yet; connect it manually as described below.
 
 ## Facts Common to All Three
 

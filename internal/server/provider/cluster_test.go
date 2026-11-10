@@ -196,3 +196,104 @@ func TestAClusterNodeIsRecordedAndNotInstalledOnItsOwn(t *testing.T) {
 		t.Fatal("KindInfos does not say the driver lists clusters")
 	}
 }
+
+// recordingClusterDriver counts what reaches the vendor.
+type recordingClusterDriver struct {
+	clusterTestDriver
+	calls []string
+}
+
+func (*recordingClusterDriver) Name() string { return "recording-cluster-provider" }
+
+func (d *recordingClusterDriver) PowerOn(_ context.Context, _ Credentials, id string) error {
+	d.calls = append(d.calls, "on:"+id)
+	return nil
+}
+
+func (d *recordingClusterDriver) PowerOff(_ context.Context, _ Credentials, id string) error {
+	d.calls = append(d.calls, "off:"+id)
+	return nil
+}
+
+func (d *recordingClusterDriver) DeleteInstance(_ context.Context, _ Credentials, id string) error {
+	d.calls = append(d.calls, "delete:"+id)
+	return nil
+}
+
+func (d *recordingClusterDriver) ResizeInstance(_ context.Context, _ Credentials, id string, _ ResizeInstanceRequest) error {
+	d.calls = append(d.calls, "resize:"+id)
+	return nil
+}
+
+// A node of a managed cluster cannot be powered, released or resized behind
+// the cluster's back: the refusal is the InstanceInClusterError the install
+// path already returns, the vendor is not called, and the instance's row
+// stays. A plain instance of the same account is unaffected.
+func TestAClusterNodeCannotBePoweredReleasedOrResized(t *testing.T) {
+	drv := &recordingClusterDriver{}
+	svc, p := clusterService(t, drv)
+	ctx := context.Background()
+	if _, err := svc.Sync(ctx, p.ID); err != nil {
+		t.Fatal(err)
+	}
+	refused := func(what string, err error) {
+		t.Helper()
+		var inCluster *InstanceInClusterError
+		if !errors.As(err, &inCluster) || inCluster.Cluster != "c-1" || !errors.Is(err, ErrInstanceInCluster) {
+			t.Fatalf("%s a cluster node = %v, want InstanceInClusterError for c-1", what, err)
+		}
+	}
+	refused("power on", svc.Power(ctx, p.ID, "i-node", true))
+	refused("power off", svc.Power(ctx, p.ID, "i-node", false))
+	refused("release", svc.DeleteInstance(ctx, p.ID, "i-node"))
+	refused("resize", svc.ResizeInstance(ctx, p.ID, "i-node", ResizeInstanceRequest{GPUCount: 1}))
+	if len(drv.calls) != 0 {
+		t.Fatalf("a refused operation reached the vendor: %v", drv.calls)
+	}
+	if row, err := svc.store.ProviderInstanceByExternalID(p.ID, "i-node"); err != nil || row == nil {
+		t.Fatalf("the cluster node's row = %v, %v; a refused release keeps it", row, err)
+	}
+
+	if err := svc.Power(ctx, p.ID, "i-plain", false); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.ResizeInstance(ctx, p.ID, "i-plain", ResizeInstanceRequest{GPUCount: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.DeleteInstance(ctx, p.ID, "i-plain"); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(drv.calls, ",") != "off:i-plain,resize:i-plain,delete:i-plain" {
+		t.Fatalf("vendor calls = %v", drv.calls)
+	}
+	// An instance the last sync did not list is not refused here: the vendor
+	// answers for it.
+	if err := svc.Power(ctx, p.ID, "i-unlisted", true); err != nil {
+		t.Fatalf("an unlisted instance = %v", err)
+	}
+}
+
+func TestInstanceActionsFollowTheKindAndTheInstance(t *testing.T) {
+	full := Capabilities{CanPowerControl: true, CanDelete: true}
+	for _, tc := range []struct {
+		name    string
+		caps    Capabilities
+		power   string
+		nodeID  uint
+		cluster string
+		want    []string
+	}{
+		{"running, no node", full, "running", 0, "", []string{ActionPowerOff, ActionInstall, ActionDelete}},
+		{"stopped, no node", full, "stopped", 0, "", []string{ActionPowerOn, ActionInstall, ActionDelete}},
+		{"unknown power offers on", full, "unknown", 0, "", []string{ActionPowerOn, ActionInstall, ActionDelete}},
+		{"onboarded", full, "running", 7, "", []string{ActionPowerOff, ActionDelete}},
+		{"no power control", Capabilities{}, "running", 0, "", []string{ActionInstall}},
+		{"cluster node", full, "running", 0, "c-1", []string{}},
+		{"onboarded cluster node", full, "stopped", 7, "c-1", []string{}},
+	} {
+		got := InstanceActions(tc.caps, tc.power, tc.nodeID, tc.cluster)
+		if got == nil || strings.Join(got, ",") != strings.Join(tc.want, ",") {
+			t.Errorf("%s: actions = %#v, want %#v", tc.name, got, tc.want)
+		}
+	}
+}

@@ -592,7 +592,7 @@
     "KUBE_CLUSTER_SOURCE_TAKEN": "Cluster {{cluster}} of the account is already connected; a cluster is connected once.",
     "KUBE_CLUSTER_NO_SOURCE": "This cluster was not connected from a cloud account (or the account was deleted), so gpuworks cannot reach it; run the kubectl command in the cluster.",
     "KUBE_CLUSTER_OPERATION_FAILED": "The cluster operation failed ({{step}}): {{reason}}",
-    "PROVIDER_INSTANCE_IN_CLUSTER": "This instance is a node of Kubernetes cluster {{cluster}}; connect the cluster from the Kubernetes clusters tab."
+    "PROVIDER_INSTANCE_IN_CLUSTER": "This instance is a node of Kubernetes cluster {{cluster}}, which owns it: it cannot get an agent of its own or be powered, released or resized here. Connect and manage the cluster from the Kubernetes clusters tab."
   },
   "httpError": {
     "proxyPage": "HTTP {{status}}: a reverse proxy or tunnel between the browser and gpuworks answered with its own error page, so the server's reason was lost. Retry from the server's own address to see it."

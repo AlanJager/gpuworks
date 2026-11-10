@@ -189,23 +189,42 @@ test("a product error before any object (no source any more) is shown as such", 
   assert.ok(modal().getByText(k.operation.failed.other));
 });
 
-test("a node of a managed cluster is marked as such and offers no install of its own", async () => {
+test("a node of a managed cluster is marked as such and offers no install, power or release of its own; the server's actions decide", async () => {
   const base: ProviderInstance = { external_id: "i-1", name: "plain", gpu_model: "NVIDIA A10", gpu_count: 1, power: "running", price_per_hr: 0, region: "cn-shanghai",
-    public_ip: "203.0.113.5", ssh_port: 22, ssh_user: "root", ssh_connections: [], kind: "vm", node_id: 0 };
-  api.providerInstances = (async () => list([base, { ...base, external_id: "i-2", name: "ack-node", managed_cluster: "c-gpu" }])) as never;
+    public_ip: "203.0.113.5", ssh_port: 22, ssh_user: "root", ssh_connections: [], kind: "vm", node_id: 0, actions: ["power_off", "install", "delete"] };
+  const stopped: ProviderInstance = { ...base, external_id: "i-3", name: "idle", power: "stopped", actions: ["power_on", "install", "delete"] };
+  const clusterNode: ProviderInstance = { ...base, external_id: "i-2", name: "ack-node", managed_cluster: "c-gpu", actions: [] };
+  api.providerInstances = (async () => list([base, clusterNode, stopped])) as never;
   wrap(<ProviderInstancesTable providerId={3} refreshKey="1" />);
   const node = (await screen.findByText("ack-node")).closest("tr") as HTMLElement;
   assert.ok(within(node).getByText(p.instances.clusterNode));
   assert.equal(within(node).queryByRole("button", { name: p.instances.installAgent }), null);
+  assert.equal(within(node).queryByRole("button", { name: p.instances.powerOff }), null);
+  assert.equal(within(node).queryByRole("button", { name: p.instances.powerOn }), null);
   const plain = screen.getByText("plain").closest("tr") as HTMLElement;
   assert.ok(within(plain).getByRole("button", { name: p.instances.installAgent }));
+  assert.ok(within(plain).getByRole("button", { name: p.instances.powerOff }));
+  assert.equal(within(plain).queryByRole("button", { name: p.instances.powerOn }), null);
+  const idle = screen.getByText("idle").closest("tr") as HTMLElement;
+  assert.ok(within(idle).getByRole("button", { name: p.instances.powerOn }));
+});
+
+test("an instance the server offers no action on shows none, even where the kind controls power", async () => {
+  const bare: ProviderInstance = { external_id: "i-9", name: "bare", gpu_model: "", gpu_count: 0, power: "running", price_per_hr: 0, region: "",
+    public_ip: "", ssh_port: 0, ssh_user: "", ssh_connections: [], kind: "vm", node_id: 4, actions: [] };
+  api.providerInstances = (async () => list([bare])) as never;
+  const kind = { kind: "aliyun", label: "Aliyun", capabilities: { can_list_instances: true, can_power_control: true, can_install_agent: true, can_create: false, can_delete: true, can_inject_user_data: false, has_pricing: false }, credential_fields: [], server_dial_supported: false, can_list_clusters: false };
+  wrap(<ProviderInstancesTable providerId={3} kindInfo={kind as never} refreshKey="1" />);
+  const row = (await screen.findByText("bare")).closest("tr") as HTMLElement;
+  assert.equal(within(row).queryByRole("button", { name: p.instances.powerOff }), null);
+  assert.ok(within(row).getByText(p.instances.onboarded));
 });
 
 test("an account whose cloud lists clusters shows Instances and Clusters tabs; the clusters are read only when their tab opens", async () => {
   const { default: CloudProvidersPage } = await import("../src/pages/CloudProvidersPage.tsx");
   const calls: number[] = [];
   const instance: ProviderInstance = { external_id: "i-1", name: "plain-host", gpu_model: "NVIDIA A10", gpu_count: 1, power: "running", price_per_hr: 0, region: "cn-shanghai",
-    public_ip: "203.0.113.5", ssh_port: 22, ssh_user: "root", ssh_connections: [], kind: "vm", node_id: 0 };
+    public_ip: "203.0.113.5", ssh_port: 22, ssh_user: "root", ssh_connections: [], kind: "vm", node_id: 0, actions: ["install"] };
   api.providers = (async () => list([{ id: 3, name: "ali-prod", kind: "aliyun", state: "valid", instance_count: 1, created_at: "", updated_at: "" }])) as never;
   api.providerKinds = (async () => list([{ kind: "aliyun", label: "Aliyun", capabilities: { can_list_instances: true, can_power_control: false, can_install_agent: true, can_create: false, can_delete: false, can_inject_user_data: false, has_pricing: false }, credential_fields: [], server_dial_supported: false, can_list_clusters: true }])) as never;
   api.providerInstances = (async () => list([instance])) as never;

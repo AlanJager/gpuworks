@@ -218,6 +218,20 @@ func (s *Store) ProviderInstances(providerID uint) ([]ProviderInstance, error) {
 	return pis, err
 }
 
+// ProviderInstanceByExternalID is one stored instance of a provider, or nil
+// when the last sync did not list it.
+func (s *Store) ProviderInstanceByExternalID(providerID uint, externalID string) (*ProviderInstance, error) {
+	var pi ProviderInstance
+	err := s.db.Where("provider_id = ? AND external_id = ?", providerID, externalID).First(&pi).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &pi, nil
+}
+
 // LinkProviderInstanceNode ties a provider instance to a gpuworks node.
 func (s *Store) LinkProviderInstanceNode(providerID uint, externalID string, nodeID uint) error {
 	return s.db.Model(&ProviderInstance{}).

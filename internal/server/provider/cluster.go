@@ -70,6 +70,22 @@ func (e *InstanceInClusterError) Error() string {
 
 func (e *InstanceInClusterError) Unwrap() error { return ErrInstanceInCluster }
 
+// refuseClusterNode refuses an operation on an instance the last sync listed
+// as a node of a managed Kubernetes cluster: powering it off, releasing or
+// resizing it is the cluster's business (its node pool), and doing it behind
+// the cluster's back leaves the DaemonSet and the pool disagreeing
+// (docs/adr/0062-apply-to-cloud-clusters.md).
+func (s *Service) refuseClusterNode(providerID uint, externalID string) error {
+	row, err := s.store.ProviderInstanceByExternalID(providerID, externalID)
+	if err != nil {
+		return err
+	}
+	if row != nil && row.ManagedCluster != "" {
+		return &InstanceInClusterError{Cluster: row.ManagedCluster}
+	}
+	return nil
+}
+
 // ErrNoClusters: the provider kind has no managed Kubernetes clusters.
 var ErrNoClusters = fmt.Errorf("%w: this provider has no Kubernetes clusters", ErrUnsupported)
 

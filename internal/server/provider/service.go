@@ -71,6 +71,15 @@ func (s *Service) SetAgentBinaryReader(reader AgentBinaryReader) {
 // AvailableKinds returns the registered provider driver schemas.
 func (s *Service) AvailableKinds() []KindInfo { return KindInfos() }
 
+// KindCapabilities are what a provider kind's driver supports.
+func (s *Service) KindCapabilities(kind string) (Capabilities, bool) {
+	drv, ok := s.driver(kind)
+	if !ok {
+		return Capabilities{}, false
+	}
+	return drv.Capabilities(), true
+}
+
 // Add validates credentials against the vendor and stores the provider with the
 // credentials encrypted.
 func (s *Service) Add(ctx context.Context, kind, name string, creds Credentials) (*store.Provider, error) {
@@ -213,6 +222,9 @@ func (s *Service) Power(ctx context.Context, providerID uint, externalID string,
 	if err != nil {
 		return err
 	}
+	if err := s.refuseClusterNode(providerID, externalID); err != nil {
+		return err
+	}
 	if on {
 		return drv.PowerOn(ctx, creds, externalID)
 	}
@@ -237,6 +249,9 @@ func (s *Service) DeleteInstance(ctx context.Context, providerID uint, externalI
 	if err != nil {
 		return err
 	}
+	if err := s.refuseClusterNode(providerID, externalID); err != nil {
+		return err
+	}
 	if err := drv.DeleteInstance(ctx, creds, externalID); err != nil {
 		return err
 	}
@@ -250,6 +265,9 @@ func (s *Service) DeleteInstance(ctx context.Context, providerID uint, externalI
 func (s *Service) ResizeInstance(ctx context.Context, providerID uint, externalID string, req ResizeInstanceRequest) error {
 	_, drv, creds, err := s.driverCreds(providerID)
 	if err != nil {
+		return err
+	}
+	if err := s.refuseClusterNode(providerID, externalID); err != nil {
 		return err
 	}
 	return drv.ResizeInstance(ctx, creds, externalID, req)

@@ -20,8 +20,9 @@ kubeconfig。
    集群级对象（PriorityClass）保留。
 4. **手动路径照旧**：每个条目仍有 `kubectl apply` 命令；API Server 没有公网地址的集群只能这样接入。手动建的条目没有来源，
    server 不会去连它。
-5. **托管集群的节点不单独装 agent**：云主机列表标出所属集群，安装接口拒绝（`PROVIDER_INSTANCE_IN_CLUSTER`），避免与
-   DaemonSet 抢同一台机器。
+5. **托管集群的节点归集群管**：云主机列表标出所属集群，安装 agent、开关机、释放与调整规格都被拒绝
+   （`PROVIDER_INSTANCE_IN_CLUSTER`），避免与 DaemonSet、节点池抢同一台机器；列表项的 `actions` 由 server 给出，集群节点为空。
+   判断依据是上次同步记下的所属集群，新加入、尚未同步的节点要先同步一次。
 
 ## 取舍
 

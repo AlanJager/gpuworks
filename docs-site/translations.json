@@ -117,7 +117,7 @@
   "how-to/use-mcp.md": "96d72b65ef2c22f89a8999f5447ef3ff76a091345c7eda33daa597128dbac854",
   "how-to/use-mineru.md": "d15ff3f71b23cc9eb22ae3c970eb5cbfcb743fdd644d5dd10e8a0f179d03228c",
   "reference/api-conventions.md": "be9237a197c811a623e5bd4e1aba875de5a46b333c3def6b5ac223b7a125a551",
-  "reference/api.md": "38c00dd35e352c92707b84725148e4d89264a8da37e7d0b22080826280989ea5",
+  "reference/api.md": "db674e77a823d53c06ebd8dfb426285afc17f5b820c029754dbd627836135711",
   "reference/ascend-support-matrix.md": "fdb5b01bad77f72e34cceebdacaf723d79cb162ddce62fcc06b7d2c4b493e665",
   "reference/cli.md": "fad7ff462fce4669dbca88006ab86cf8fc83f43de1bec01e0edad5a5a194f8b1",
   "reference/configuration.md": "81d2d7a084b0076fd8959d29c12675d3ef88d847345fe71551759aa03d9ea9fe",
@@ -147,7 +147,7 @@
   "releases/v26.11.1.md": "f2ff9ffb558d9bfb5f4217791570cec53edc226f573b47ea5ab8083c68b05d80",
   "releases/v26.11.2.md": "d4a50471ba467a6d564dff6048da2cc010132b4fd93d942cde9b47c91b52fb7f",
   "adr/0052-kubernetes-nodes.md": "3f526c0005a0046556492dc3b6501ccd7dbe81a0f8efc0d4e662c06e5aece8b2",
-  "adr/0062-apply-to-cloud-clusters.md": "d2413c9f59223dd902f4b9420d1d3442b3a0110232bbdcaac067ba82e0d5c1e3",
+  "adr/0062-apply-to-cloud-clusters.md": "a7f2213ca7444ea9ee882caed46b755d5ba6f8f650cb33298c6348a12c564c08",
   "how-to/connect-kubernetes.md": "5bf5b1ae92672ca9eafdcc1daee0f99928deea344fe787e9a9330673e7e9d4f9",
-  "how-to/connect-managed-kubernetes.md": "578a95455235c84981fcadaff110d5a9b9a17f42cf257c9e100a1f053ec2ec11"
+  "how-to/connect-managed-kubernetes.md": "924a49cacb7364b93becee816bb142f286d4dbab5616b2988841822670b2f776"
 }

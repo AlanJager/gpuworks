@@ -1636,10 +1636,10 @@ extra_args 解析（`EXTRA_ARGS_INVALID`）、挂载（`MOUNT_CONTAINER_PATH`/`M
 | POST | `/api/v1/providers/{id}/sync` | 同步该账号下的实例：列出的实例写入/更新，云端已不存在的实例行移除（关联节点保留，带外恢复置 `stopped`）；列举失败返回 424、不改动实例行 | JWT |
 | GET | `/api/v1/providers/{id}/clusters` | 该账号下的托管 Kubernetes 集群，实时向云厂商读取、不落库：`{items:[{external_id,name,region,version,state,running,public_api,gpu_pools:[{id,name,gpu_model,gpu_count,nodes,vendor,node_selector}],entry?:{uuid,name}}],total}`；`entry` 是已由它建的集群条目；驱动没有集群能力回 501，云厂商报错回 424 | JWT |
 | POST | `/api/v1/providers/{id}/instances` | 租用新实例；云厂商报错返回 424（不支持返回 501） | JWT |
-| GET | `/api/v1/providers/{id}/instances` | 该账号下的实例列表；`managed_cluster` 表示实例是该账号某个托管 Kubernetes 集群的节点（随集群接入，不能单独安装） | JWT |
-| DELETE | `/api/v1/providers/{id}/instances/{externalID}` | 释放/删除实例；云厂商确认后移除该实例行；云厂商报错返回 424（不支持返回 501），实例行不变 | JWT |
-| POST | `/api/v1/providers/{id}/instances/{externalID}/power` | 开关机；云厂商报错返回 424（不支持返回 501） | JWT |
-| POST | `/api/v1/providers/{id}/instances/{externalID}/resize` | 变更实例规格；云厂商报错返回 424（不支持返回 501） | JWT |
+| GET | `/api/v1/providers/{id}/instances` | 该账号下的实例列表；`managed_cluster` 表示实例是该账号某个托管 Kubernetes 集群的节点（随集群接入，不能单独安装、开关机、释放或调整规格）；`actions` 是实例现在允许的操作（`power_on`、`power_off`、`install`、`delete` 中的若干个，托管集群的节点为空数组），客户端按它展示、不自行推断 | JWT |
+| DELETE | `/api/v1/providers/{id}/instances/{externalID}` | 释放/删除实例；云厂商确认后移除该实例行；云厂商报错返回 424（不支持返回 501），实例行不变；托管集群的节点回 409 `PROVIDER_INSTANCE_IN_CLUSTER`（`cluster`），不调用云厂商 | JWT |
+| POST | `/api/v1/providers/{id}/instances/{externalID}/power` | 开关机；云厂商报错返回 424（不支持返回 501）；托管集群的节点回 409 `PROVIDER_INSTANCE_IN_CLUSTER` | JWT |
+| POST | `/api/v1/providers/{id}/instances/{externalID}/resize` | 变更实例规格；云厂商报错返回 424（不支持返回 501）；托管集群的节点回 409 `PROVIDER_INSTANCE_IN_CLUSTER` | JWT |
 | POST | `/api/v1/providers/{id}/install` | 在已租实例上安装 agent；连接参数同创建节点。需要重启 Pod 时先返回 409，显式允许后才修改；见[云实例安装与重启确认](#云实例安装与重启确认)；实例是托管 Kubernetes 集群的节点时回 409 `PROVIDER_INSTANCE_IN_CLUSTER`（`cluster`） | JWT |
 
 云厂商相关接口里，云厂商 API 或实例 SSH 出错一律返回 424 Failed Dependency，正文 `{error}` 是原因。不用 502/504：Cloudflare 等 CDN/隧道会把源站 502/504 的正文换成它自己的错误页，原因就丢了。

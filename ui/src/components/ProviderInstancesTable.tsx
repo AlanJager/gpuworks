@@ -145,8 +145,10 @@ export default function ProviderInstancesTable({
       width: 200,
       fixed: "right",
       render: (_: unknown, inst: ProviderInstance) => {
-        const powerAction = inst.power === "running" ? "off" : "on";
-        const powerButton = kindInfo?.capabilities.can_power_control ? (
+        // The server says what the instance allows; nothing here decides it.
+        const actions = inst.actions ?? [];
+        const powerAction = actions.includes("power_off") ? "off" : actions.includes("power_on") ? "on" : null;
+        const powerButton = powerAction ? (
           powerAction === "off" ? (
             <Popconfirm
               title={t("instances.powerOffConfirm")}
@@ -181,7 +183,7 @@ export default function ProviderInstancesTable({
               <Tooltip content={t("instances.clusterNodeHint", { cluster: inst.managed_cluster })}>
                 <ZeronBadge color="purple">{t("instances.clusterNode")}</ZeronBadge>
               </Tooltip>
-            ) : inst.node_id === 0 ? (
+            ) : actions.includes("install") ? (
               <Button type="link" size="small" onClick={() => setInstallFor(inst)}>
                 {t("instances.installAgent")}
               </Button>

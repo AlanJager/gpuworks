@@ -592,7 +592,7 @@
     "KUBE_CLUSTER_SOURCE_TAKEN": "账号下的集群 {{cluster}} 已经接入过，一个集群只能接入一次。",
     "KUBE_CLUSTER_NO_SOURCE": "这个集群不是从云账号接入的（或云账号已删除），gpuworks 无法访问它；请在集群里执行 kubectl 命令。",
     "KUBE_CLUSTER_OPERATION_FAILED": "操作集群失败（{{step}}）：{{reason}}",
-    "PROVIDER_INSTANCE_IN_CLUSTER": "这台实例是 Kubernetes 集群 {{cluster}} 的节点，请在「Kubernetes 集群」页签接入该集群。"
+    "PROVIDER_INSTANCE_IN_CLUSTER": "这台实例是 Kubernetes 集群 {{cluster}} 的节点，由集群管理：不能单独安装 agent，也不能在这里开关机、释放或调整规格。请在「Kubernetes 集群」页签接入并管理该集群。"
   },
   "httpError": {
     "proxyPage": "HTTP {{status}}：浏览器与 gpuworks 之间的反向代理或隧道返回了它自己的错误页，server 给出的原因丢失了。直接通过 server 自身地址访问并重试，可以看到原因。"

@@ -2479,6 +2479,8 @@ export interface ProviderInstance {
   node_id: number;
   /** The instance is a node of this Kubernetes cluster of the account; it joins through the cluster. */
   managed_cluster?: string;
+  /** What the instance allows now: power_on | power_off | install | delete. Empty for a cluster node. */
+  actions: string[];
 }
 
 export interface SSHConnection {
