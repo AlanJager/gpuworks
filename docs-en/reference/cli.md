@@ -190,10 +190,17 @@ gpuworks uninstall --dir /opt/gpuworks/server --purge --dry-run --json
 |---|---|---|
 | `--dir DIR` | Same as `restart` | Target installation directory; external data and log directories in the configuration are also recognized |
 | `--purge` | `false` | Delete this installation's configuration, data (including the database and `master.key`), backups, and logs; this cannot be undone |
+| `--keep-resources` | `false` | Explicitly remove only the component while retaining workloads, nodes, and cloud resources; bypasses resource gates only, never path, process, or service ownership checks |
 | `--yes` / `-y` | `false` | Skip interactive selection and final confirmation; execute according to explicit options |
 | `--dry-run` | `false` | Print only the cleanup list without stopping services or modifying files; no confirmation required |
 | `--json` | `false` | Return only a structured report on stdout; except for previews, also requires `--yes` |
 | `--quiet` | `false` | Hide ordinary explanatory output; prompts and confirmation still appear, so this does not replace `--yes` |
+
+Before uninstalling, use `--dry-run --json` to inspect the `checklist`. Each item has a stable `id`, a `status`, a summary, evidence details, and a suggested action. Statuses are `pass`, `warn`, `blocked`, or `unknown`. Completing a preview does not mean that every check passed.
+
+The checklist distinguishes local services and autostart, listening ports, installation/data/backup/log paths and retained items, and deployment, instance, node, and cloud records in the database. Persisted records do not prove that remote processes stopped, GPUs were released, or cloud billing ended. By default, active workloads or unavailable critical resource evidence block uninstallation before services stop or files are deleted. `--yes` skips interaction, not resource checks. Resources are checked again after confirmation and before stopping the service.
+
+To retain workloads while removing only the control plane, explicitly add `--keep-resources`. It does not stop inference instances, delete cloud resources, or replace node uninstallation. Combining it with `--purge` also removes management records and credentials, so first preserve the information needed to manage those resources independently. Passing resource checks does not replace the existing directory and service ownership protections.
 
 - Terminal interaction retains data by default. Without explicit `--purge`, first ask whether to clean up completely, then show the list and request confirmation. Pipelines, scripts, and CI must supply `--yes` or `--dry-run`; otherwise, the command fails before making changes.
 - Stop the server and confirm it has exited, disable automatic startup, and remove the associated systemd unit / launchd plist / nohup PID and program files. The associated expose public endpoint is also closed and its unit removed. Services for other installations are retained; cleanup is refused when ownership cannot be determined.
@@ -464,6 +471,17 @@ macOS only. Register the currently running binary as the launchd job `ai.gpuwork
 | Flag | Default | Description |
 |---|---|---|
 | `--state DIR` | On Linux, prefer the state directory from the systemd unit; without a unit, use the same default as `run`. On macOS, use the state directory in the launchd job | Agent state directory |
+
+First use `--dry-run` (or `--dry-run --json`) to inspect installation/state ownership, services and processes, autostart, runtime workload candidates, GPU observations, and retained directories. A container name in a shared runtime does not prove that it belongs to this agent. Unavailable runtime evidence is marked unknown. Unsupported or failed GPU queries do not report an idle GPU, and an exited process-group leader does not prove that all workers exited.
+
+| Option | Default | Description |
+|---|---|---|
+| `--dry-run` | `false` | Preview checks and cleanup scope without stopping services or deleting files |
+| `--json` | `false` | Output a structured checklist and result; execution requires `--yes` |
+| `--yes` / `-y` | `false` | Skip interactive confirmation, not resource or ownership checks |
+| `--keep-resources` | `false` | Explicitly retain workloads and remove only the agent; never bypass service/process ownership or cleanup safety checks |
+
+By default, active workloads and critical unknowns must be addressed before confirmation and uninstallation. Critical resources are checked again after confirmation. Unknown GPU observations are shown explicitly and cannot establish that GPUs were released. Binaries, models, and logs remain; success means that the selected component was removed.
 
 - On Linux, if the unit's state directory matches this directory, first run `disable --now gpuworks-agent.service`, then stop `run` processes with the same binary and explicit `--state` directory (including nohup), and wait for them to exit. Then delete `/etc/systemd/system/gpuworks-agent.service` and run `daemon-reload`. Finally, delete `<state>/identity.json`, the PID file, and `<state>/gpuworks-agent.conf` (which contains the token). If the unit belongs to another state directory (another agent on the same host), leave it untouched and stop only this directory's processes. Refuse to execute if the state directory cannot be read from the unit.
 - On macOS, remove the LaunchDaemon and the executor's LaunchAgent (under `sudo`, the user who invoked sudo), and delete `identity.json` and `gpuworks-agent.conf` from their respective state directories. If a LaunchDaemon exists but root permissions are unavailable, report an error and exit with 1.

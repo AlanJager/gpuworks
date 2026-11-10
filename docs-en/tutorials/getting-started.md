@@ -10,6 +10,8 @@ Screenshots in this tutorial show the English UI.
 
 ## Before You Begin
 
+If these hosts already run another inference platform, or you plan to reuse its GPUs, first follow [Replace an Existing Inference Platform](../how-to/install-server.md#替换已有推理平台) to back up the environment, stop the old services, and check port and GPU occupancy. Then begin this tutorial. The installation command does not automatically take over the old platform.
+
 | What you need | Description |
 |---|---|
 | Control plane host | Linux x86_64 + systemd, with Bash, curl, tar, sha256sum, and sudo privileges. The browser and GPU node must be able to reach port 8800 on this host. The control plane provides resource management, the web console, and the inference endpoint |
