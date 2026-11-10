@@ -26,7 +26,7 @@ const (
 	defaultAgentImage   = "gpuworks/gpuworks-agent:l3kind"
 	defaultKindNodeImg  = "kindest/node:v1.34.0"
 	kubeNamespace       = "gpuworks-system"
-	adminPassword       = "password"
+	adminPassword       = "gpuworks-test-password-2026"
 	servedName          = "kind-chat"
 	fakeGPUEnv          = "GPUWORKS_FAKE_GPU=A100x1,24576"
 	nodeKubeconfig      = "/etc/kubernetes/admin.conf"
