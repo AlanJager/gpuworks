@@ -36,6 +36,9 @@ const Namespace = "gpuworks"
 // Driver runs containers via `nerdctl -n <namespace>`.
 type Driver struct {
 	ns string
+	// authDir is where a pull's private registry login is written; "" is the
+	// system temp directory.
+	authDir string
 }
 
 // New returns a nerdctl driver pinned to the GPUWorks namespace.
@@ -45,6 +48,15 @@ func New() *Driver { return &Driver{ns: Namespace} }
 // The Kubernetes runtime uses it for kubelet's "k8s.io" namespace, where the
 // images its pods run from must live; nothing else should need it.
 func NewInNamespace(ns string) *Driver { return &Driver{ns: ns} }
+
+// WithAuthDir makes pulls write their private registry login under dir
+// instead of the system temp directory. The kube runtime runs nerdctl in the
+// node's mount namespace, where only paths shared with the agent (its state
+// directory) exist.
+func (d *Driver) WithAuthDir(dir string) *Driver {
+	d.authDir = dir
+	return d
+}
 
 // Name implements runtime.Driver.
 func (d *Driver) Name() string { return "nerdctl" }
@@ -171,7 +183,7 @@ func (d *Driver) PullImage(ctx context.Context, image string, onLine func(string
 	slog.Info("runtime command", "runtime", "nerdctl", "args", []string{"-n", d.ns, "pull", image})
 	// A registry login rides in a private docker config directory for this
 	// pull only, never in the arguments or the user's own docker config.
-	env, cleanupAuth, err := runtime.PullAuthEnv(ctx, image, runtime.PullProxyEnv(ctx, os.Environ()))
+	env, cleanupAuth, err := runtime.PullAuthEnvIn(ctx, image, runtime.PullProxyEnv(ctx, os.Environ()), d.authDir)
 	if err != nil {
 		return err
 	}

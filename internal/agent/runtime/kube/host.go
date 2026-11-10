@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"gpuworks.ai/gpuworks/internal/agent/runtime/nerdctl"
 )
 
 // The agent pod shares the host's PID namespace, so PID 1's root is the
@@ -251,4 +253,16 @@ func shimSocket(proc string, pid int) string {
 		}
 	}
 	return ""
+}
+
+// authSubdir is where the image store writes a pull's private registry login,
+// under the state directory: nerdctl runs in the node's mount namespace
+// (host.go), where the agent container's /tmp does not exist but its state
+// directory does, at the same path.
+var authSubdir = filepath.Join("kube-tools", "pull-auth")
+
+// newImageStore is the node's containerd in kubelet's namespace, pulling with
+// logins staged under the state directory.
+func newImageStore(stateDir string) ImageStore {
+	return nerdctl.NewInNamespace("k8s.io").WithAuthDir(filepath.Join(stateDir, authSubdir))
 }

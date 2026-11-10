@@ -113,7 +113,7 @@ func FromEnvironment(stateDir string, cards func(context.Context) (map[int]strin
 		return nil, err
 	}
 	o := Options{
-		API: api, Kubelet: podresources.New(podresources.DefaultSocket), Images: nerdctl.NewInNamespace("k8s.io"),
+		API: api, Kubelet: podresources.New(podresources.DefaultSocket), Images: newImageStore(stateDir),
 		Namespace: os.Getenv("GPUWORKS_KUBE_NAMESPACE"), NodeName: os.Getenv("GPUWORKS_KUBE_NODE_NAME"),
 		PodName: os.Getenv("GPUWORKS_KUBE_POD_NAME"), RuntimeClass: os.Getenv("GPUWORKS_KUBE_RUNTIME_CLASS"),
 		Cards: cards, IdleReturn: time.Minute, Log: log,
