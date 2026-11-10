@@ -146,8 +146,8 @@
   "releases/v26.11.0.md": "1024d13263f5bf6ee9eb28af35d0640f6cc3f85e01070503e6df715b197c2000",
   "releases/v26.11.1.md": "f2ff9ffb558d9bfb5f4217791570cec53edc226f573b47ea5ab8083c68b05d80",
   "releases/v26.11.2.md": "d4a50471ba467a6d564dff6048da2cc010132b4fd93d942cde9b47c91b52fb7f",
-  "adr/0052-kubernetes-nodes.md": "3f526c0005a0046556492dc3b6501ccd7dbe81a0f8efc0d4e662c06e5aece8b2",
+  "adr/0052-kubernetes-nodes.md": "1db5c77cad64f817eeada69f0410b00a285e03dc29778d4aaf60cf81d8f949cf",
   "adr/0062-apply-to-cloud-clusters.md": "28477e1d7aa4d1489cc12e42caaf46f64d4a6efdf018416f0b8b0cfef1f6847f",
-  "how-to/connect-kubernetes.md": "f245a20e5a9f753e743a7b9e746c78a51521663f1cfa4e99d60833879db65476",
+  "how-to/connect-kubernetes.md": "c91acfc572b70e7a161184c86a62aafbd017e95cd7e6da7751efd7910830993c",
   "how-to/connect-managed-kubernetes.md": "71c4b37ac803e88873edaa2b7cff80ad4ca5122c457f56f5c7df381cc01b5d50"
 }

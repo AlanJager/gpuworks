@@ -31,9 +31,16 @@ server 里有 30 余处依赖“节点后面有一个 agent”，agent 承担探
    条目指定 RuntimeClass 时 agent 在其下运行；不指定时（默认）agent 容器用节点的默认运行时，托管 Kubernetes 的默认运行时就是
    NVIDIA 的，注入了 `nvidia-smi`，没注入时（k3s 默认 runc）agent 在节点上运行它；实例 Pod 用集群的 `nvidia` RuntimeClass，
    没有就用默认运行时。kubelet 用的 containerd 按 agent 容器的 shim 的 `-address` 认定，不按 socket 位置猜。
-   一个集群条目一个厂商。device plugin 以非整卡分配（time-slicing、MIG、HAMi、vNPU）时不借卡，卡报为外部占用并带原因。
+   一个集群条目一个厂商。device plugin 以非整卡分配（time-slicing、MIG、没有 HAMi 登记的 vNPU）时不借卡，卡报为外部占用并带原因；HAMi 与 ACK 共享 GPU 见第 7 条。
 6. **生命周期跟随 Kubernetes**：节点 cordon 时平台同样 cordon；升级是把 agent DaemonSet 换到 server 同版本的镜像；离线
    15 分钟的节点经同集群在线 agent 确认已不存在且无实例时移除；节点自报引擎端口段，避开 NodePort 范围。
+7. **借卡方式随节点上的分配者而定**（2026-11-10 补充）：HAMi 与 ACK 共享 GPU 不是"一份一张卡"，按下面的办法借整卡，其余切分仍拒绝并写明原因（MIG、time-slicing、没有 HAMi 登记的 vNPU 模板）。
+   - HAMi（节点有 `hami.io/node-*-register` 注解）：占位 Pod 写 `schedulerName`（默认 `hami-scheduler`，环境变量 `GPUWORKS_KUBE_HAMI_SCHEDULER` 覆盖）与 `nodeSelector kubernetes.io/hostname`，不写 `nodeName`（绕过调度器的 Pod HAMi 的 device plugin 不分配）；
+     申请整张并按 UUID 指定，所以要哪张借哪张，不再先借全部再退。卡的归属以 HAMi 写在占位 Pod 上的 `hami.io/vgpu-devices-allocated` 为准并核对是整卡（kubelet 的设备 ID 是 `<UUID>-<份额号>`，不能按卡号解析）。
+   - ACK 共享 GPU（有 `aliyun.com/gpu-mem` 资源，或标签 `ack.node.gpu.schedule` 为 `share` / `cgpu` / `core_mem`）：占位 Pod 申请一张卡的 GiB 数；没有指定卡的办法，借到哪张读 `scheduler.framework.gpushare.allocation`，沿用"借全部空闲卡、留要的、退其余"。
+   - 外部占用来自同节点其他 Pod 上的分配注解（需要 agent 读本节点所有 namespace 的 Pod）；占位 Pod 被调度器留在 Pending 时，借卡失败并带调度器的原因与占着卡的 Pod。
+   - 平台借着卡时节点换了模式，新调度器的账本里没有旧占位 Pod，会把同一张卡再分出去：这些卡报为外部占用并写明原因，不再按旧模式借卡，旧占位 Pod 在卡上没有实例后删除。
+   - NVIDIA 的 HAMi 2.11 与 ACK 共享 GPU 的行为在阿里云 ACK 集群（k8s 1.36）上核对过；昇腾的 HAMi 只按 HAMi 文档的形态用夹具验证过，未上真机。
 
 ## 取舍
 
