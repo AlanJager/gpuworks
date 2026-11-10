@@ -431,6 +431,22 @@ When a template creates a deployment, if the deployment's model does not yet hav
 on the model. Existing nonempty operations are not overwritten by subsequent deployments. An empty list, including `[]` explicitly cleared on the model page, is populated from the next deployed template that declares operations.
 Preview (evaluate) does not write to the model.
 
+### api.tokenizer_ref: Independent Tokenizer Source
+
+When the weight repository lacks independent tokenizer files, declare a verified tokenizer repository for the evaluation's **Automatic** source:
+
+```yaml
+api:
+  tokenizer_ref: ms://Qwen/Qwen3.8-Flash-Next@2741eec155d03a8ce151b993ccce1a7b1e398d6b
+  operations:
+  - type: openai.chat
+```
+
+Only `hf://org/repo@<40-hex-commit>` or `ms://org/repo@<40-hex-commit>` is accepted; arbitrary URLs, file paths, and mutable branches are not allowed.
+Automatic resolution still tries the inference service's tokenize endpoints and the node's existing vocabulary first. Without a node vocabulary, it uses this declaration, or the weight repository if none is declared. Manually selected sources are unaffected.
+
+New deployments save the declaration in their snapshot, and an existing snapshot's declaration takes precedence. Deployments that have deviated from the template do not automatically use template declarations, including those in the snapshot. If an old snapshot lacks one, a declaration added to the current template applies only when the model, spec and source, engine, image, and the actual weights' provider, repository, revision, and subfolder all match. Managed evaluations from legacy clients that omit the source and leave the reference empty also use this declaration; tokenizer repositories are never guessed from model names or READMEs.
+
 ### api.metrics: Engine Metric Mapping
 
 Declare the engine's metrics endpoint and how engine metrics map to the platform's [inference metric vocabulary](inference-metrics.md). For syntax, ways to inspect raw metrics, and examples, see
