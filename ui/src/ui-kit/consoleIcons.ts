@@ -32,6 +32,12 @@ import ArrowRight01 from "@hugeicons/core-free-icons/ArrowRight01Icon";
 import User from "@hugeicons/core-free-icons/UserIcon";
 import View from "@hugeicons/core-free-icons/ViewIcon";
 import ViewOff from "@hugeicons/core-free-icons/ViewOffIcon";
+import Add01 from "@hugeicons/core-free-icons/Add01Icon";
+import Blocked from "@hugeicons/core-free-icons/BlockedIcon";
+import CloudUpload from "@hugeicons/core-free-icons/CloudUploadIcon";
+import Delete02 from "@hugeicons/core-free-icons/Delete02Icon";
+import File02 from "@hugeicons/core-free-icons/File02Icon";
+import Unlink01 from "@hugeicons/core-free-icons/Unlink01Icon";
 
 /**
  * The console's own icons (side menu, top bar), drawn from the same
@@ -73,4 +79,10 @@ export const ConsoleIcon = {
   account: createHugeIcon(User),
   show: createHugeIcon(View),
   hide: createHugeIcon(ViewOff),
+  add: createHugeIcon(Add01),
+  delete: createHugeIcon(Delete02),
+  block: createHugeIcon(Blocked),
+  upload: createHugeIcon(CloudUpload),
+  unlink: createHugeIcon(Unlink01),
+  manifest: createHugeIcon(File02),
 };

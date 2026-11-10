@@ -99,6 +99,7 @@
     "enginePorts": "Engine port range",
     "enginePortsHelp": "Host ports the inference engines listen on. It must not overlap the cluster's NodePort range (30000-32767 by default).",
     "idleReturn": "Idle return",
+    "secondsUnit": "s",
     "idleReturnSeconds": "Seconds idle before a card is returned",
     "idleReturnHelp": "A card borrowed from Kubernetes goes back to it after sitting idle for this long.",
     "keepCards": "Keep borrowed cards",

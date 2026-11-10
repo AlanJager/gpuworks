@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
-import { Alert, Badge, Button, Popconfirm, Space, Table, Tag, Tooltip, Typography, message } from "antd";
+import { Alert, Badge, Button, Popconfirm, Space, Table, Tag, Typography, message } from "antd";
+import { Badge as ZeronBadge } from "./ui/badge";
+import { Tooltip } from "./ui/tooltip";
 import type { ColumnsType } from "antd/es/table";
 import { localizedText } from "../i18n/localizedText";
 import { isCommandChannel } from "../providerConnections";
@@ -176,8 +178,8 @@ export default function ProviderInstancesTable({
           <>
             {powerButton}
             {inst.managed_cluster ? (
-              <Tooltip title={t("instances.clusterNodeHint", { cluster: inst.managed_cluster })}>
-                <Tag color="purple">{t("instances.clusterNode")}</Tag>
+              <Tooltip content={t("instances.clusterNodeHint", { cluster: inst.managed_cluster })}>
+                <ZeronBadge color="purple">{t("instances.clusterNode")}</ZeronBadge>
               </Tooltip>
             ) : inst.node_id === 0 ? (
               <Button type="link" size="small" onClick={() => setInstallFor(inst)}>

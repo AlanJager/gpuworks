@@ -10,7 +10,6 @@ const { MemoryRouter } = await import("react-router-dom");
 const { cleanup, render, screen, waitFor, within } = await import("@testing-library/react");
 const { default: userEvent } = await import("@testing-library/user-event");
 const { api } = await import("../src/api.ts");
-const { ConfigProvider } = await import("antd");
 const { APIError } = await import("../src/apiError.ts");
 const { default: ProviderClustersTable } = await import("../src/components/ProviderClustersTable.tsx");
 const { default: ProviderInstancesTable } = await import("../src/components/ProviderInstancesTable.tsx");
@@ -51,13 +50,16 @@ const plan: KubeClusterOperation = {
 
 function wrap(node: React.ReactNode) {
   return render(
-    <ConfigProvider theme={{ token: { motion: false } }}><I18nextProvider i18n={i18n}>
+    <I18nextProvider i18n={i18n}>
       <MemoryRouter>{node}</MemoryRouter>
-    </I18nextProvider></ConfigProvider>,
+    </I18nextProvider>,
   );
 }
 const user = () => userEvent.setup({ document: dom.window.document });
-const modal = () => within(document.querySelector(".ant-modal-content") as HTMLElement);
+// The operation dialog opens over the drawer: the last dialog is the one on top.
+const modal = () => within(screen.getAllByRole("dialog").at(-1) as HTMLElement);
+// A label's required mark ("Name *") is part of its text.
+const field = (text: string) => new RegExp(`^${text}( \\*)?$`);
 
 test("a cloud account lists its clusters: GPU pools to connect, ones already connected, private APIs and clusters not ready", async () => {
   const calls: number[] = [];
@@ -71,7 +73,7 @@ test("a cloud account lists its clusters: GPU pools to connect, ones already con
   const priv = screen.getByText("ack-private").closest("tr") as HTMLElement;
   assert.ok(within(priv).getByText(p.clusters.privateAPI));
   assert.ok(within(priv).getByText(p.clusters.noGPUPools));
-  const done = screen.getByText("ack-done", { selector: "strong" }).closest("tr") as HTMLElement;
+  const done = screen.getAllByText("ack-done")[0].closest("tr") as HTMLElement;
   assert.ok(within(done).getByText(p.clusters.connected));
   assert.equal(within(done).queryByRole("button", { name: p.clusters.connect }), null, "connected once only");
   assert.ok(within(screen.getByText("ack-new").closest("tr") as HTMLElement).getByText(p.clusters.notRunning));
@@ -98,9 +100,9 @@ test("connecting a pool opens the form filled from the cluster, records the sour
   const u = user();
   wrap(<ProviderClustersTable providerId={3} providerName="ali-prod" />);
   await u.click(await screen.findByRole("button", { name: p.clusters.connect }));
-  const drawer = within(document.querySelector(".ant-drawer") as HTMLElement);
+  const drawer = within(await screen.findByRole("dialog"));
   assert.ok(await drawer.findByText(k.drawer.fromSource.replace("{{source}}", "ali-prod · ack-gpu (c-gpu)")));
-  assert.equal((drawer.getByLabelText(k.drawer.name) as HTMLInputElement).value, "ack-gpu");
+  assert.equal((drawer.getByLabelText(field(k.drawer.name)) as HTMLInputElement).value, "ack-gpu");
   assert.equal((drawer.getByPlaceholderText("nvidia.com/gpu.present=true") as HTMLInputElement).value, "alibabacloud.com/nodepool-id=np-l20");
   await u.click(drawer.getByRole("button", { name: k.drawer.submit }));
   await waitFor(() => assert.equal(created.length, 1));
@@ -139,7 +141,7 @@ test("a refused check names the step and the cluster's reason, and nothing can b
   }) as never;
   const u = user();
   wrap(<KubernetesPage />);
-  const row = (await screen.findByText("ack-gpu", { selector: "strong" })).closest("tr") as HTMLElement;
+  const row = (await screen.findByText("ack-gpu")).closest("tr") as HTMLElement;
   assert.ok(within(row).getByText("ali-prod"), "the source account");
   assert.ok(within(row).getByText("c-gpu"));
   await u.click(within(row).getByRole("button", { name: k.actions.apply }));
@@ -162,11 +164,11 @@ test("removing from the cluster checks first, then deletes on confirmation; an e
   }) as never;
   const u = user();
   wrap(<KubernetesPage />);
-  const hand = (await screen.findByText("by-hand", { selector: "strong" })).closest("tr") as HTMLElement;
+  const hand = (await screen.findByText("by-hand")).closest("tr") as HTMLElement;
   assert.ok(within(hand).getByText(k.source.byHand));
   assert.equal(within(hand).queryByRole("button", { name: k.actions.remove }), null);
   assert.equal(within(hand).queryByRole("button", { name: k.actions.apply }), null);
-  const row = screen.getByText("ack-gpu", { selector: "strong" }).closest("tr") as HTMLElement;
+  const row = screen.getByText("ack-gpu").closest("tr") as HTMLElement;
   await u.click(within(row).getByRole("button", { name: k.actions.remove }));
   assert.ok(await modal().findByText(k.operation.checkedRemove));
   assert.ok(modal().getByText("used by gpuworks in namespace gpuworks-npu"));
@@ -181,7 +183,7 @@ test("a product error before any object (no source any more) is shown as such", 
   api.kubeClusterOperation = (async () => { throw new APIError("KUBE_CLUSTER_NO_SOURCE", undefined, "no source", 409); }) as never;
   const u = user();
   wrap(<KubernetesPage />);
-  const row = (await screen.findByText("ack-gpu", { selector: "strong" })).closest("tr") as HTMLElement;
+  const row = (await screen.findByText("ack-gpu")).closest("tr") as HTMLElement;
   await u.click(within(row).getByRole("button", { name: k.actions.apply }));
   assert.ok(await modal().findByText(locale.common.apiError.KUBE_CLUSTER_NO_SOURCE));
   assert.ok(modal().getByText(k.operation.failed.other));
@@ -197,4 +199,41 @@ test("a node of a managed cluster is marked as such and offers no install of its
   assert.equal(within(node).queryByRole("button", { name: p.instances.installAgent }), null);
   const plain = screen.getByText("plain").closest("tr") as HTMLElement;
   assert.ok(within(plain).getByRole("button", { name: p.instances.installAgent }));
+});
+
+test("an account whose cloud lists clusters shows Instances and Clusters tabs; the clusters are read only when their tab opens", async () => {
+  const { default: CloudProvidersPage } = await import("../src/pages/CloudProvidersPage.tsx");
+  const calls: number[] = [];
+  const instance: ProviderInstance = { external_id: "i-1", name: "plain-host", gpu_model: "NVIDIA A10", gpu_count: 1, power: "running", price_per_hr: 0, region: "cn-shanghai",
+    public_ip: "203.0.113.5", ssh_port: 22, ssh_user: "root", ssh_connections: [], kind: "vm", node_id: 0 };
+  api.providers = (async () => list([{ id: 3, name: "ali-prod", kind: "aliyun", state: "valid", instance_count: 1, created_at: "", updated_at: "" }])) as never;
+  api.providerKinds = (async () => list([{ kind: "aliyun", label: "Aliyun", capabilities: { can_list_instances: true, can_power_control: false, can_install_agent: true, can_create: false, can_delete: false, can_inject_user_data: false, has_pricing: false }, credential_fields: [], server_dial_supported: false, can_list_clusters: true }])) as never;
+  api.providerInstances = (async () => list([instance])) as never;
+  api.providerClusters = (async (id: number) => { calls.push(id); return list([gpuCluster]); }) as never;
+  const u = user();
+  wrap(<CloudProvidersPage scope="public" />);
+  await screen.findByText("ali-prod");
+  await u.click(screen.getByRole("button", { name: /expand row/i }));
+  assert.ok(await screen.findByText("plain-host"), "the instances tab is the first");
+  const tabs = screen.getAllByRole("tab");
+  assert.deepEqual(tabs.map((tab) => tab.textContent), [p.tabs.instances, p.tabs.clusters]);
+  assert.equal(tabs[0].getAttribute("aria-selected"), "true");
+  assert.deepEqual(calls, [], "nothing is asked of the cloud before the tab opens");
+  await u.click(screen.getByRole("tab", { name: p.tabs.clusters }));
+  assert.ok(await screen.findByText("ack-gpu"));
+  assert.deepEqual(calls, [3]);
+  await waitFor(() => assert.ok(!screen.queryByText("plain-host"), "the inactive tab is unmounted"));
+  await u.click(screen.getByRole("tab", { name: p.tabs.instances }));
+  assert.ok(await screen.findByText("plain-host"));
+  await waitFor(() => assert.ok(!screen.queryByText("ack-gpu"), "the clusters tab is unmounted again"));
+});
+
+test("a cloud account's clusters show a loading status until the cloud answers", async () => {
+  let release: (rows: unknown) => void = () => {};
+  api.providerClusters = (() => new Promise((resolve) => { release = resolve as never; })) as never;
+  wrap(<ProviderClustersTable providerId={3} providerName="ali-prod" />);
+  assert.ok(screen.getByRole("status"), "a spinner while the first listing runs");
+  release(list([gpuCluster]));
+  assert.ok(await screen.findByText("ack-gpu"));
+  await waitFor(() => assert.ok(!screen.queryByRole("status")));
 });

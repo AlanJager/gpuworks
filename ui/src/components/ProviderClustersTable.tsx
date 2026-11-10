@@ -1,10 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
-import { Alert, Button, Space, Table, Tag, Tooltip, Typography } from "antd";
-import type { ColumnsType } from "antd/es/table";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { api, type ProviderCluster, type ProviderClusterPool } from "../api";
 import KubeClusterDrawer, { type KubeClusterPrefill } from "../pages/kubernetes/KubeClusterDrawer";
+import { Badge } from "./ui/badge";
+import { Button } from "./ui/button";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
+import { Tooltip } from "./ui/tooltip";
+import { Notice } from "../ui-kit/Notice";
+import { Spinner } from "../ui-kit/Spinner";
 
 /**
  * A cloud account's managed Kubernetes clusters, read live from the cloud.
@@ -35,87 +39,80 @@ export default function ProviderClustersTable({ providerId, providerName }: { pr
     source_label: `${providerName} · ${c.name} (${c.external_id})`,
   });
 
-  const columns: ColumnsType<ProviderCluster> = [
-    {
-      title: t("clusters.column.name"),
-      key: "name",
-      width: 240,
-      render: (_, c) => (
-        <Space direction="vertical" size={0}>
-          <Typography.Text strong>{c.name}</Typography.Text>
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>{c.external_id}</Typography.Text>
-        </Space>
-      ),
-    },
-    { title: t("clusters.column.region"), dataIndex: "region", width: 130 },
-    { title: t("clusters.column.version"), dataIndex: "version", width: 150, render: (v: string) => v || "—" },
-    {
-      title: t("clusters.column.state"),
-      key: "state",
-      width: 170,
-      render: (_, c) => (
-        <Space size={4} wrap>
-          <Tag color={c.running ? "green" : "default"}>{c.running ? t("clusters.running") : c.state}</Tag>
-          <Tooltip title={c.public_api ? undefined : t("clusters.privateAPIHint")}>
-            <Tag color={c.public_api ? "blue" : "gold"}>{c.public_api ? t("clusters.publicAPI") : t("clusters.privateAPI")}</Tag>
-          </Tooltip>
-        </Space>
-      ),
-    },
-    {
-      title: t("clusters.column.gpuPools"),
-      key: "pools",
-      render: (_, c) => {
-        const pools = c.gpu_pools.map((p) => (
-          <Typography.Text key={p.id}>
-            {t("clusters.pool", { name: p.name, model: p.gpu_model || t("clusters.mixedModels"), count: p.gpu_count, nodes: p.nodes })}
-          </Typography.Text>
-        ));
-        if (c.entry) {
-          return (
-            <Space direction="vertical" size={4}>
-              {pools}
-              <Space size={6} wrap>
-                <Tag color="green">{t("clusters.connected")}</Tag>
-                <Link to="/kubernetes">{c.entry.name}</Link>
-              </Space>
-            </Space>
-          );
-        }
-        if (!c.running) return <Typography.Text type="secondary">{t("clusters.notRunning")}</Typography.Text>;
-        if (c.gpu_pools.length === 0) return <Typography.Text type="secondary">{t("clusters.noGPUPools")}</Typography.Text>;
-        return (
-          <Space direction="vertical" size={4}>
-            {c.gpu_pools.map((p) => (
-              <Space key={p.id} size={8} wrap>
-                <Typography.Text>
-                  {t("clusters.pool", { name: p.name, model: p.gpu_model || t("clusters.mixedModels"), count: p.gpu_count, nodes: p.nodes })}
-                </Typography.Text>
-                <Button size="small" type="primary" onClick={() => connect(c, p)}>{t("clusters.connect")}</Button>
-              </Space>
-            ))}
-          </Space>
-        );
-      },
-    },
-  ];
+  const poolText = (p: ProviderClusterPool) => t("clusters.pool", { name: p.name, model: p.gpu_model || t("clusters.mixedModels"), count: p.gpu_count, nodes: p.nodes });
 
+  const pools = (c: ProviderCluster) => {
+    if (c.entry) {
+      return (
+        <div className="flex flex-col gap-1">
+          {c.gpu_pools.map((p) => <span key={p.id}>{poolText(p)}</span>)}
+          <div className="flex flex-wrap items-center gap-1.5">
+            <Badge status="success">{t("clusters.connected")}</Badge>
+            <Link to="/kubernetes">{c.entry.name}</Link>
+          </div>
+        </div>
+      );
+    }
+    if (!c.running) return <span className="text-fg-muted">{t("clusters.notRunning")}</span>;
+    if (c.gpu_pools.length === 0) return <span className="text-fg-muted">{t("clusters.noGPUPools")}</span>;
+    return (
+      <div className="flex flex-col gap-1">
+        {c.gpu_pools.map((p) => (
+          <div key={p.id} className="flex flex-wrap items-center gap-2">
+            <span>{poolText(p)}</span>
+            <Button size="sm" variant="primary" onClick={() => connect(c, p)}>{t("clusters.connect")}</Button>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  const items = rows ?? [];
   return (
     <>
-      <Space style={{ marginBottom: 12 }} wrap>
-        <Typography.Text type="secondary">{t("clusters.intro")}</Typography.Text>
-        <Button size="small" onClick={load} loading={rows === null}>{t("clusters.refresh")}</Button>
-      </Space>
-      {loadError && <Alert type="error" showIcon style={{ marginBottom: 12 }} message={t("clusters.loadFailed")} description={loadError} />}
-      <Table<ProviderCluster>
-        rowKey="external_id"
-        size="small"
-        columns={columns}
-        dataSource={rows ?? []}
-        loading={rows === null}
-        pagination={false}
-        locale={{ emptyText: t("clusters.empty") }}
-      />
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <span className="text-fg-muted">{t("clusters.intro")}</span>
+        <Button size="sm" variant="secondary" onClick={load} loading={rows === null}>{t("clusters.refresh")}</Button>
+      </div>
+      {loadError && <div className="mb-3"><Notice tone="danger" title={t("clusters.loadFailed")} children={loadError} /></div>}
+      {rows === null && <Spinner label={t("clusters.refresh")} />}
+      <Table variant="bordered" size="sm" aria-busy={rows === null}>
+        <TableHeader>
+          <TableRow>
+            <TableHead style={{ width: 240 }}>{t("clusters.column.name")}</TableHead>
+            <TableHead style={{ width: 130 }}>{t("clusters.column.region")}</TableHead>
+            <TableHead style={{ width: 150 }}>{t("clusters.column.version")}</TableHead>
+            <TableHead style={{ width: 170 }}>{t("clusters.column.state")}</TableHead>
+            <TableHead>{t("clusters.column.gpuPools")}</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {items.map((c, index) => (
+            <TableRow key={c.external_id} index={index}>
+              <TableCell>
+                <div className="flex min-w-0 flex-col">
+                  <span>{c.name}</span>
+                  <span className="text-label text-fg-muted">{c.external_id}</span>
+                </div>
+              </TableCell>
+              <TableCell>{c.region}</TableCell>
+              <TableCell>{c.version || "—"}</TableCell>
+              <TableCell>
+                <div className="flex flex-wrap items-center gap-1">
+                  <Badge status={c.running ? "success" : "neutral"}>{c.running ? t("clusters.running") : c.state}</Badge>
+                  {c.public_api
+                    ? <Badge status="info">{t("clusters.publicAPI")}</Badge>
+                    : <Tooltip content={t("clusters.privateAPIHint")}><Badge status="warning">{t("clusters.privateAPI")}</Badge></Tooltip>}
+                </div>
+              </TableCell>
+              <TableCell>{pools(c)}</TableCell>
+            </TableRow>
+          ))}
+          {rows !== null && items.length === 0 && (
+            <TableRow><TableCell colSpan={5} className="text-center text-fg-muted">{t("clusters.empty")}</TableCell></TableRow>
+          )}
+        </TableBody>
+      </Table>
       <KubeClusterDrawer
         open={connecting !== null}
         prefill={connecting ?? undefined}

@@ -1,6 +1,7 @@
-import { Tag, Tooltip } from "antd";
 import { useTranslation } from "react-i18next";
 import type { Node } from "../api";
+import { Badge } from "./ui/badge";
+import { Tooltip } from "./ui/tooltip";
 
 /**
  * Where a node sits in Kubernetes: the cluster and the Kubernetes node name,
@@ -16,10 +17,10 @@ export default function NodeKubeTags({ node, clusterNames }: { node: Pick<Node, 
   const place = cluster ? `${cluster}/${kube.node_name}` : kube.node_name;
   return (
     <>
-      <Tag color="geekblue" style={{ marginInlineEnd: 4 }}>{t("kube.tag", { place })}</Tag>
+      <Badge color="indigo" className="me-1">{t("kube.tag", { place })}</Badge>
       {kube.unschedulable && (
-        <Tooltip title={t("kube.cordonedHint")}>
-          <Tag color="warning" style={{ marginInlineEnd: 4 }}>{t("kube.cordoned")}</Tag>
+        <Tooltip content={t("kube.cordonedHint")}>
+          <Badge status="warning" className="me-1">{t("kube.cordoned")}</Badge>
         </Tooltip>
       )}
     </>

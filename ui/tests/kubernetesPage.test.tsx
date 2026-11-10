@@ -10,7 +10,6 @@ const { MemoryRouter } = await import("react-router-dom");
 const { cleanup, fireEvent, render, screen, waitFor, within } = await import("@testing-library/react");
 const { default: userEvent } = await import("@testing-library/user-event");
 const { api } = await import("../src/api.ts");
-const { ConfigProvider } = await import("antd");
 const { APIError } = await import("../src/apiError.ts");
 const { default: KubernetesPage } = await import("../src/pages/KubernetesPage.tsx");
 const { cardReturnText } = await import("../src/kubeClusters.ts");
@@ -54,16 +53,17 @@ function stubApi(options: { clusters?: KubeCluster[] | Error; admin?: boolean } 
 
 function renderPage() {
   const view = render(
-    <ConfigProvider theme={{ token: { motion: false } }}><I18nextProvider i18n={i18n}>
+    <I18nextProvider i18n={i18n}>
       <MemoryRouter initialEntries={["/kubernetes"]}><KubernetesPage /></MemoryRouter>
-    </I18nextProvider></ConfigProvider>,
+    </I18nextProvider>,
   );
   return { view, user: userEvent.setup({ document: dom.window.document }) };
 }
 const rowOf = async (name: string) => (await screen.findByText(name)).closest("tr") as HTMLElement;
+// The confirmation is a popover beside the row's button; its buttons are found inside the popup.
 const confirm = async (user: ReturnType<typeof userEvent.setup>, label: string) => {
   const ok = await waitFor(() => {
-    const found = [...document.querySelectorAll(".ant-popover:not(.ant-popover-hidden)")]
+    const found = [...document.querySelectorAll('[data-slot="popover-content"]')]
       .flatMap((pop) => within(pop as HTMLElement).queryAllByRole("button", { name: new RegExp(`${label}$`) }));
     assert.ok(found.length > 0);
     return found.at(-1) as HTMLElement;
@@ -71,14 +71,19 @@ const confirm = async (user: ReturnType<typeof userEvent.setup>, label: string) 
   await user.click(ok);
 };
 const add = k.page.add;
-const dialog = () => within(document.querySelector(".ant-drawer") as HTMLElement);
+const dialog = () => within(screen.getByRole("dialog"));
+// A label's required mark ("Name *") is part of its text.
+const field = (text: string) => new RegExp(`^${text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}( \\*)?$`);
+// user-event does not set keyCode, which the dialogs read; the focused element receives the key.
+const escape = () => fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape", code: "Escape", keyCode: 27 });
+const noDialog = () => waitFor(() => assert.ok(!screen.queryByRole("dialog"), "the dialog closed"));
 
 test("while loading it shows a spinner; an empty system invites connecting the first cluster; a failed load offers retry", async () => {
   let release: (rows: unknown) => void = () => {};
   stubApi();
   api.kubeClusters = (() => new Promise((resolve) => { release = resolve as never; })) as never;
   const first = renderPage();
-  assert.ok(document.querySelector(".ant-spin-spinning"), "a spinner while the first load runs");
+  assert.ok(screen.getByRole("status"), "a spinner while the first load runs");
   release(list([]));
   assert.ok(await screen.findByText(k.page.empty));
   assert.ok(screen.getAllByRole("button", { name: new RegExp(`${add}$`) }).length >= 2, "header and empty state both offer connecting");
@@ -158,8 +163,8 @@ test("the manifest opens in a dialog with a copy button; a failed load says so",
   assert.deepEqual(calls.kubeManifest, [["c-1"]]);
   await user.click(modal.getByRole("button", { name: k.manifest.copy }));
   assert.equal(await navigator.clipboard.readText(), "apiVersion: apps/v1\nkind: DaemonSet\n");
-  await user.click(within(document.querySelector(".ant-modal-footer") as HTMLElement).getByRole("button", { name: k.manifest.close }));
-  await waitFor(() => assert.ok(document.querySelector(".ant-modal-wrap:not([style*='display: none'])") === null));
+  await user.click(modal.getAllByRole("button", { name: k.manifest.close }).at(-1) as HTMLElement);
+  await noDialog();
 
   api.kubeManifest = (async () => { throw new Error("manifest 404"); }) as never;
   await user.click(within(await rowOf("lab")).getByRole("button", { name: k.actions.manifest }));
@@ -225,22 +230,23 @@ test("connecting opens a form with the server address prefilled and the defaults
   const { user } = renderPage();
   await user.click((await screen.findAllByRole("button", { name: new RegExp(`${add}$`) }))[0]);
   const form = dialog();
-  assert.equal((await form.findByLabelText(k.drawer.serverUrl) as HTMLInputElement).value, "http://localhost", "the origin of this page, stated explicitly");
+  assert.equal((await form.findByLabelText(field(k.drawer.serverUrl)) as HTMLInputElement).value, "http://localhost", "the origin of this page, stated explicitly");
   assert.ok(form.getByPlaceholderText("nvidia.com/gpu.present=true"));
-  assert.equal((form.getByLabelText(k.drawer.namespace) as HTMLInputElement).value, "gpuworks-system");
-  const runtimeClass = form.getByLabelText(k.drawer.runtimeClass) as HTMLInputElement;
+  await user.click(form.getByText(k.drawer.advanced));
+  assert.equal((form.getByLabelText(field(k.drawer.namespace)) as HTMLInputElement).value, "gpuworks-system");
+  const runtimeClass = form.getByLabelText(field(k.drawer.runtimeClass)) as HTMLInputElement;
   assert.equal(runtimeClass.value, "", "empty: each node decides");
   assert.equal(runtimeClass.placeholder, k.drawer.runtimeClassPlaceholder);
-  assert.equal((form.getByLabelText(k.drawer.imagePullSecret) as HTMLInputElement).value, "");
+  assert.equal((form.getByLabelText(field(k.drawer.imagePullSecret)) as HTMLInputElement).value, "");
   assert.ok(form.getByText(k.drawer.imagePullSecretHelp));
-  const socket = form.getByLabelText(k.drawer.containerdSocket) as HTMLInputElement;
+  const socket = form.getByLabelText(field(k.drawer.containerdSocket)) as HTMLInputElement;
   assert.equal(socket.value, "", "empty means the agents detect the socket themselves");
   assert.equal(socket.placeholder, k.drawer.containerdSocketPlaceholder);
-  assert.equal((form.getByLabelText(k.drawer.stateDir) as HTMLInputElement).placeholder, "/opt/gpuworks");
+  assert.equal((form.getByLabelText(field(k.drawer.stateDir)) as HTMLInputElement).placeholder, "/opt/gpuworks");
   assert.ok(form.getByText(k.drawer.stateDirHelp));
-  assert.equal(form.getByTitle(locale.common.vendor.nvidia).textContent, locale.common.vendor.nvidia, "NVIDIA is the default vendor");
-  assert.equal((form.getByLabelText(k.drawer.enginePorts) as HTMLInputElement).value, "40000-42767");
-  assert.equal((form.getByLabelText(k.drawer.idleReturnSeconds) as HTMLInputElement).value, "60");
+  assert.equal(form.getByRole("combobox", { name: field(k.drawer.vendor) }).textContent, locale.common.vendor.nvidia, "NVIDIA is the default vendor");
+  assert.equal((form.getByLabelText(field(k.drawer.enginePorts)) as HTMLInputElement).value, "40000-42767");
+  assert.equal((form.getByLabelText(field(k.drawer.idleReturnSeconds)) as HTMLInputElement).value, "60");
   assert.ok(form.getByText(k.drawer.containerdSocketHelp), "the auto-detect hint");
   assert.ok(form.getByText(k.drawer.enginePortsHelp), "the NodePort hint");
 });
@@ -252,9 +258,9 @@ test("a form without a name or with a server address that is no URL is refused b
   const form = dialog();
   await user.click(await form.findByRole("button", { name: k.drawer.submit }));
   assert.ok(await form.findByText(k.drawer.nameRequired));
-  await user.type(form.getByLabelText(k.drawer.name), "edge");
-  await user.clear(form.getByLabelText(k.drawer.serverUrl));
-  await user.type(form.getByLabelText(k.drawer.serverUrl), "gpuworks.example");
+  await user.type(form.getByLabelText(field(k.drawer.name)), "edge");
+  await user.clear(form.getByLabelText(field(k.drawer.serverUrl)));
+  await user.type(form.getByLabelText(field(k.drawer.serverUrl)), "gpuworks.example");
   await user.click(form.getByRole("button", { name: k.drawer.submit }));
   assert.ok(await form.findByText(k.drawer.serverUrlInvalid));
   assert.equal(calls.createKubeCluster, undefined);
@@ -265,7 +271,7 @@ test("submitting sends exactly what the form shows, then presents the command to
   const { user } = renderPage();
   await user.click((await screen.findAllByRole("button", { name: new RegExp(`${add}$`) }))[0]);
   const form = dialog();
-  await user.type(await form.findByLabelText(k.drawer.name), "edge");
+  await user.type(await form.findByLabelText(field(k.drawer.name)), "edge");
   await user.type(form.getByPlaceholderText("nvidia.com/gpu.present=true"), "gpu=a100,zone=b");
   const before = calls.kubeClusters.length;
   await user.click(form.getByRole("button", { name: k.drawer.submit }));
@@ -287,15 +293,18 @@ test("advanced choices travel: a named RuntimeClass, an image pull secret, a res
   const { user } = renderPage();
   await user.click((await screen.findAllByRole("button", { name: new RegExp(`${add}$`) }))[0]);
   const form = dialog();
-  await user.type(await form.findByLabelText(k.drawer.name), "k3s");
+  await user.type(await form.findByLabelText(field(k.drawer.name)), "k3s");
   await user.click(form.getByText(k.drawer.advanced));
-  await user.type(form.getByLabelText(k.drawer.runtimeClass), "nvidia");
-  await user.type(form.getByLabelText(k.drawer.imagePullSecret), " regcred ");
-  await user.clear(form.getByLabelText(k.drawer.containerdSocket));
-  await user.type(form.getByLabelText(k.drawer.containerdSocket), "/run/k3s/containerd/containerd.sock");
-  await user.type(form.getByLabelText(k.drawer.apiServer), "https://10.0.0.5:6443");
-  await user.click(form.getByRole("switch", { name: k.drawer.keepCards }));
-  assert.ok((form.getByLabelText(k.drawer.idleReturnSeconds) as HTMLInputElement).disabled, "no seconds to enter once cards are kept");
+  await user.type(form.getByLabelText(field(k.drawer.runtimeClass)), "nvidia");
+  await user.type(form.getByLabelText(field(k.drawer.imagePullSecret)), " regcred ");
+  await user.clear(form.getByLabelText(field(k.drawer.containerdSocket)));
+  await user.type(form.getByLabelText(field(k.drawer.containerdSocket)), "/run/k3s/containerd/containerd.sock");
+  await user.type(form.getByLabelText(field(k.drawer.apiServer)), "https://10.0.0.5:6443");
+  const keep = form.getByRole("switch", { name: k.drawer.keepCards });
+  keep.focus();
+  await user.keyboard(" ");
+  await waitFor(() => assert.equal(keep.getAttribute("aria-checked"), "true"));
+  assert.ok((form.getByLabelText(field(k.drawer.idleReturnSeconds)) as HTMLInputElement).disabled, "no seconds to enter once cards are kept");
   await user.click(form.getByRole("button", { name: k.drawer.submit }));
   await waitFor(() => assert.equal(calls.createKubeCluster?.length, 1));
   const body = calls.createKubeCluster[0][0] as Record<string, unknown>;
@@ -317,13 +326,13 @@ test("a refused cluster shows the reason at the field; a taken name shows at the
   const { user } = renderPage();
   await user.click((await screen.findAllByRole("button", { name: new RegExp(`${add}$`) }))[0]);
   const form = dialog();
-  await user.type(await form.findByLabelText(k.drawer.name), "prod-gpu");
+  await user.type(await form.findByLabelText(field(k.drawer.name)), "prod-gpu");
   await user.click(form.getByRole("button", { name: k.drawer.submit }));
   assert.ok(await form.findByText(locale.common.apiError.KUBE_CLUSTER_NAME_TAKEN.replace("{{name}}", "prod-gpu")));
   assert.ok(form.queryByText(k.created.note) === null, "nothing was created");
 
-  await user.clear(form.getByLabelText(k.drawer.name));
-  await user.type(form.getByLabelText(k.drawer.name), "other");
+  await user.clear(form.getByLabelText(field(k.drawer.name)));
+  await user.type(form.getByLabelText(field(k.drawer.name)), "other");
   await user.click(form.getByRole("button", { name: k.drawer.submit }));
   assert.ok(await form.findByText(locale.common.apiError.KUBE_CLUSTER_INVALID.replace("{{field}}", "engine_ports").replace("{{reason}}", "overlaps the NodePort range")));
 });
@@ -333,34 +342,33 @@ test("the drawer works from the keyboard: the name is focused on open, Enter sub
   const { user } = renderPage();
   await user.click((await screen.findAllByRole("button", { name: new RegExp(`${add}$`) }))[0]);
   const form = dialog();
-  const name = await form.findByLabelText(k.drawer.name);
+  const name = await form.findByLabelText(field(k.drawer.name));
   await waitFor(() => assert.ok(document.activeElement === name, "focus starts in the first field"));
   await user.keyboard("kbd{Enter}");
   await waitFor(() => assert.equal(calls.createKubeCluster?.length, 1));
   assert.equal((calls.createKubeCluster[0][0] as { name: string }).name, "kbd");
   await dialog().findByText(k.created.note);
-  fireEvent.keyDown(document.querySelector(".ant-drawer-content-wrapper") as HTMLElement, { key: "Escape", keyCode: 27 });
-  await waitFor(() => assert.ok(document.querySelector(".ant-drawer-open") === null));
+  escape();
+  await noDialog();
 });
 
 test("Escape closes the form without sending anything", async () => {
   const calls = stubApi();
   const { user } = renderPage();
   await user.click((await screen.findAllByRole("button", { name: new RegExp(`${add}$`) }))[0]);
-  await dialog().findByLabelText(k.drawer.name);
-  fireEvent.keyDown(document.querySelector(".ant-drawer-content-wrapper") as HTMLElement, { key: "Escape", keyCode: 27 });
-  await waitFor(() => assert.ok(document.querySelector(".ant-drawer-open") === null));
+  await dialog().findByLabelText(field(k.drawer.name));
+  escape();
+  await noDialog();
   assert.equal(calls.createKubeCluster, undefined);
 });
 
 async function selectVendor(user: ReturnType<typeof userEvent.setup>, form: ReturnType<typeof dialog>, label: string) {
-  fireEvent.mouseDown(form.getByLabelText(k.drawer.vendor).closest(".ant-select")!.querySelector(".ant-select-selector") as HTMLElement);
-  const option = await waitFor(() => {
-    const found = [...document.querySelectorAll(".ant-select-dropdown:not(.ant-select-dropdown-hidden) .ant-select-item-option")].find((el) => el.textContent === label);
-    assert.ok(found, `option ${label}`);
-    return found as HTMLElement;
-  });
-  await user.click(option);
+  const trigger = form.getByRole("combobox", { name: field(k.drawer.vendor) });
+  trigger.focus();
+  await user.keyboard("{Enter}");
+  await waitFor(() => assert.equal(trigger.getAttribute("aria-expanded"), "true"));
+  await user.click(await screen.findByRole("option", { name: label }));
+  await waitFor(() => assert.ok(!screen.queryByRole("listbox"), "the options closed"));
 }
 
 test("the vendor choice offers the four vendors; an Ascend cluster sends its vendor and state directory, and no RuntimeClass or socket", async () => {
@@ -368,12 +376,18 @@ test("the vendor choice offers the four vendors; an Ascend cluster sends its ven
   const { user } = renderPage();
   await user.click((await screen.findAllByRole("button", { name: new RegExp(`${add}$`) }))[0]);
   const form = dialog();
-  await user.type(await form.findByLabelText(k.drawer.name), "npu");
+  await user.type(await form.findByLabelText(field(k.drawer.name)), "npu");
   await user.click(form.getByText(k.drawer.advanced));
-  assert.ok(form.getByLabelText(k.drawer.runtimeClass), "NVIDIA clusters pick a RuntimeClass");
+  assert.ok(form.getByLabelText(field(k.drawer.runtimeClass)), "NVIDIA clusters pick a RuntimeClass");
+  const vendors = form.getByRole("combobox", { name: field(k.drawer.vendor) });
+  vendors.focus();
+  await user.keyboard("{Enter}");
+  assert.deepEqual((await screen.findAllByRole("option")).map((option) => option.textContent), ["nvidia", "ascend", "hygon", "ppu"].map((v) => locale.common.vendor[v as "nvidia"]));
+  await user.keyboard("{Escape}");
+  await waitFor(() => assert.ok(!screen.queryByRole("listbox"), "the options closed"));
   await selectVendor(user, form, locale.common.vendor.ascend);
   await waitFor(() => assert.ok(form.queryByLabelText(k.drawer.runtimeClass) === null, "devices come through CDI, so no RuntimeClass"));
-  await user.type(form.getByLabelText(k.drawer.stateDir), "/opt/gpuworks-k8s");
+  await user.type(form.getByLabelText(field(k.drawer.stateDir)), "/opt/gpuworks-k8s");
   await user.click(form.getByRole("button", { name: k.drawer.submit }));
   await waitFor(() => assert.equal(calls.createKubeCluster?.length, 1));
   assert.deepEqual(calls.createKubeCluster[0], [{
@@ -387,15 +401,15 @@ test("every vendor can be chosen, and going back to NVIDIA brings the RuntimeCla
   const { user } = renderPage();
   await user.click((await screen.findAllByRole("button", { name: new RegExp(`${add}$`) }))[0]);
   const form = dialog();
-  await form.findByLabelText(k.drawer.name);
+  await form.findByLabelText(field(k.drawer.name));
   await user.click(form.getByText(k.drawer.advanced));
   for (const vendor of ["hygon", "ppu"] as const) {
     await selectVendor(user, form, locale.common.vendor[vendor]);
-    await waitFor(() => assert.ok(form.getByTitle(locale.common.vendor[vendor])));
+    await waitFor(() => assert.equal(form.getByRole("combobox", { name: field(k.drawer.vendor) }).textContent, locale.common.vendor[vendor]));
     assert.ok(form.queryByLabelText(k.drawer.runtimeClass) === null);
   }
   await selectVendor(user, form, locale.common.vendor.nvidia);
-  assert.equal((await form.findByLabelText(k.drawer.runtimeClass) as HTMLInputElement).value, "");
+  assert.equal((await form.findByLabelText(field(k.drawer.runtimeClass)) as HTMLInputElement).value, "");
 });
 
 test("a cluster no node joined from for minutes offers the commands and causes to look at; a fresh one does not", async () => {

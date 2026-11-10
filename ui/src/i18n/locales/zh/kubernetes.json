@@ -99,6 +99,7 @@
     "enginePorts": "引擎端口段",
     "enginePortsHelp": "推理引擎监听的主机端口，须避开集群的 NodePort 端口段（默认 30000-32767）。",
     "idleReturn": "空闲归还",
+    "secondsUnit": "s",
     "idleReturnSeconds": "空闲多少秒后归还卡",
     "idleReturnHelp": "向 Kubernetes 借来的卡，空闲这么久后还给它。",
     "keepCards": "常驻",

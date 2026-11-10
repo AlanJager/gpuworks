@@ -1,19 +1,22 @@
 import { useEffect, useState } from "react";
-import { Alert, Button, Modal, Space, Table, Tag, Typography } from "antd";
-import type { ColumnsType } from "antd/es/table";
 import { useTranslation } from "react-i18next";
 import { api, type KubeCluster, type KubeClusterOperation, type KubeObjectAction, type KubeObjectResult } from "../../api";
 import { apiErrorText } from "../../apiError";
+import { Badge, type BadgeStatus } from "../../components/ui/badge";
+import { Button } from "../../components/ui/button";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "../../components/ui/dialog";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../components/ui/table";
+import { Notice } from "../../ui-kit/Notice";
 
-const ACTION_COLOR: Record<KubeObjectAction, string> = {
-  create: "green",
-  update: "blue",
-  delete: "red",
-  absent: "default",
-  kept: "gold",
-  failed: "red",
-  not_tried: "default",
-  dependent: "default",
+const ACTION_STATUS: Record<KubeObjectAction, BadgeStatus> = {
+  create: "success",
+  update: "info",
+  delete: "danger",
+  absent: "neutral",
+  kept: "warning",
+  failed: "danger",
+  not_tried: "neutral",
+  dependent: "neutral",
 };
 
 type Stage = "checking" | "checked" | "running" | "done";
@@ -64,76 +67,79 @@ export default function KubeClusterOperationModal({ cluster, op, onClose, onDone
 
   const failed = Boolean(error || result?.code);
   const source = cluster.source;
-  const columns: ColumnsType<KubeObjectResult> = [
-    { title: t("operation.column.kind"), dataIndex: "kind", width: 170 },
-    {
-      title: t("operation.column.name"),
-      key: "name",
-      render: (_, r) => <Typography.Text code>{r.namespace ? `${r.namespace}/${r.name}` : r.name}</Typography.Text>,
-    },
-    {
-      title: t("operation.column.action"),
-      key: "action",
-      width: 260,
-      render: (_, r) => (
-        <Space direction="vertical" size={2}>
-          <Tag color={ACTION_COLOR[r.action] ?? "default"}>{t(`operation.${stage === "done" ? "done" : "plan"}.${r.action}`, { defaultValue: r.action })}</Tag>
-          {(r.error || r.reason) && <Typography.Text type={r.error ? "danger" : "secondary"} style={{ fontSize: 12 }}>{r.error || r.reason}</Typography.Text>}
-        </Space>
-      ),
-    },
-  ];
   const rows = result?.results ?? [];
+  const running = stage === "running";
 
   const title = t(op === "apply" ? "operation.applyTitle" : "operation.removeTitle", { name: cluster.name });
   const footer = stage === "done" || (stage === "checked" && failed) ? (
-    <Space>
-      {stage === "checked" && failed && <Button onClick={() => setAttempt((n) => n + 1)}>{t("operation.retry")}</Button>}
-      <Button type="primary" onClick={onClose}>{t("operation.close")}</Button>
-    </Space>
+    <>
+      {stage === "checked" && failed && <Button variant="secondary" onClick={() => setAttempt((n) => n + 1)}>{t("operation.retry")}</Button>}
+      <Button variant="primary" onClick={onClose}>{t("operation.close")}</Button>
+    </>
   ) : (
-    <Space>
-      <Button onClick={onClose} disabled={stage === "running"}>{t("operation.cancel")}</Button>
-      <Button type="primary" danger={op === "remove"} disabled={stage !== "checked"} loading={stage === "running"} onClick={() => void run()}>
+    <>
+      <Button variant="ghost" onClick={onClose} disabled={running}>{t("operation.cancel")}</Button>
+      <Button variant={op === "remove" ? "destructive" : "primary"} disabled={stage !== "checked"} loading={running} onClick={() => void run()}>
         {t(op === "apply" ? "operation.confirmApply" : "operation.confirmRemove")}
       </Button>
-    </Space>
+    </>
   );
 
   return (
-    <Modal open title={title} onCancel={stage === "running" ? undefined : onClose} footer={footer} width={760} destroyOnClose maskClosable={false}>
-      <Space direction="vertical" size={12} style={{ width: "100%" }}>
-        <Typography.Paragraph style={{ marginBottom: 0 }}>
-          {t(op === "apply" ? "operation.applyIntro" : "operation.removeIntro", {
-            account: source?.provider_name || source?.provider_kind || "",
-            cluster: source?.cluster_id ?? "",
-          })}
-        </Typography.Paragraph>
-        {stage === "checking" && <Alert type="info" showIcon message={t("operation.checking")} />}
-        {stage === "checked" && !failed && <Alert type="info" showIcon message={t(op === "apply" ? "operation.checkedApply" : "operation.checkedRemove")} />}
-        {stage === "running" && <Alert type="info" showIcon message={t(op === "apply" ? "operation.applying" : "operation.removing")} />}
-        {stage === "done" && !failed && (
-          <Alert type="success" showIcon message={t(op === "apply" ? "operation.applied" : "operation.removed")} description={op === "apply" ? t("operation.appliedNext") : undefined} />
-        )}
-        {failed && (
-          <Alert
-            type="error"
-            showIcon
-            message={result?.params ? t(`operation.failed.${result.params.step}`) : t("operation.failed.other")}
-            description={result?.params?.reason ?? error}
-          />
-        )}
-        {rows.length > 0 && (
-          <Table<KubeObjectResult>
-            rowKey={(r) => `${r.kind}/${r.namespace ?? ""}/${r.name}`}
-            size="small"
-            pagination={false}
-            columns={columns}
-            dataSource={rows}
-            title={() => t(stage === "done" ? "operation.resultTitle" : "operation.planTitle")}
-          />
-        )}
-      </Space>
-    </Modal>
+    <Dialog open onOpenChange={(open) => { if (!open && !running) onClose(); }} disablePointerDismissal>
+      <DialogContent closeButtonLabel={tCommon("actions.close")} closeButtonDisabled={running} style={{ width: "min(760px, calc(100vw - 32px))", maxWidth: "calc(100vw - 32px)" }} className="flex max-h-[calc(100dvh-32px)] flex-col gap-4">
+        <DialogHeader><DialogTitle>{title}</DialogTitle></DialogHeader>
+        <div className="flex min-h-0 min-w-0 flex-col gap-3 overflow-auto">
+          <p>
+            {t(op === "apply" ? "operation.applyIntro" : "operation.removeIntro", {
+              account: source?.provider_name || source?.provider_kind || "",
+              cluster: source?.cluster_id ?? "",
+            })}
+          </p>
+          {stage === "checking" && <Notice tone="info" title={t("operation.checking")} />}
+          {stage === "checked" && !failed && <Notice tone="info" title={t(op === "apply" ? "operation.checkedApply" : "operation.checkedRemove")} />}
+          {running && <Notice tone="info" title={t(op === "apply" ? "operation.applying" : "operation.removing")} />}
+          {stage === "done" && !failed && (
+            <Notice tone="info" title={t(op === "apply" ? "operation.applied" : "operation.removed")}>
+              {op === "apply" ? t("operation.appliedNext") : undefined}
+            </Notice>
+          )}
+          {failed && (
+            <Notice tone="danger" title={result?.params ? t(`operation.failed.${result.params.step}`) : t("operation.failed.other")}>
+              {result?.params?.reason ?? error}
+            </Notice>
+          )}
+          {rows.length > 0 && (
+            <div className="flex min-w-0 flex-col gap-2">
+              <strong className="font-semibold text-fg-default">{t(stage === "done" ? "operation.resultTitle" : "operation.planTitle")}</strong>
+              <Table variant="bordered" size="sm">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead style={{ width: 170 }}>{t("operation.column.kind")}</TableHead>
+                    <TableHead>{t("operation.column.name")}</TableHead>
+                    <TableHead style={{ width: 260 }}>{t("operation.column.action")}</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {rows.map((r: KubeObjectResult, index) => (
+                    <TableRow key={`${r.kind}/${r.namespace ?? ""}/${r.name}`} index={index}>
+                      <TableCell>{r.kind}</TableCell>
+                      <TableCell><code>{r.namespace ? `${r.namespace}/${r.name}` : r.name}</code></TableCell>
+                      <TableCell>
+                        <div className="flex flex-col items-start gap-1">
+                          <Badge status={ACTION_STATUS[r.action] ?? "neutral"}>{t(`operation.${stage === "done" ? "done" : "plan"}.${r.action}`, { defaultValue: r.action })}</Badge>
+                          {(r.error || r.reason) && <span className={`text-label ${r.error ? "text-fg-danger" : "text-fg-muted"}`}>{r.error || r.reason}</span>}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </div>
+        <DialogFooter>{footer}</DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

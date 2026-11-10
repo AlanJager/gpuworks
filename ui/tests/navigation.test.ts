@@ -21,7 +21,7 @@ test("the overview sits above the groups, which run from monitoring through reso
   ]);
   assert.deepEqual(keysIn("navigation.groups.inference"), ["/deployments", "/batches", "/playground/chat", "/evaluations"]);
   assert.deepEqual(keysIn("navigation.groups.models"), ["/models", "/inference-templates", "/images"]);
-  assert.deepEqual(keysIn("navigation.groups.compute"), ["/providers", "/nodes", "/gpus", "/storage", "/networks"]);
+  assert.deepEqual(keysIn("navigation.groups.compute"), ["/providers", "/kubernetes", "/nodes", "/gpus", "/storage", "/networks"]);
   assert.deepEqual(keysIn("navigation.groups.observability"), ["/monitor", "/scheduling", "/analytics"]);
   assert.deepEqual(keysIn("navigation.groups.admin"), ["/apikeys", "/logs", "/settings"]);
 });

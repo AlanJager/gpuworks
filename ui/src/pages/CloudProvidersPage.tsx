@@ -5,7 +5,6 @@ import {
   Popconfirm,
   Space,
   Tag,
-  Tabs,
   Tooltip,
   Typography,
   message,
@@ -23,6 +22,7 @@ import ResourceTable, { type ResourceColumn } from "../components/resourceTable/
 import ProviderConfigModal from "../components/ProviderConfigModal";
 import ProviderInstancesTable from "../components/ProviderInstancesTable";
 import ProviderClustersTable from "../components/ProviderClustersTable";
+import { Tabs, TabsList, TabItem, TabPanel } from "../components/ui/tabs";
 import { formatTime } from "../i18n/datetime";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
@@ -334,14 +334,14 @@ export default function CloudProvidersPage() {
               if (!kindInfo?.can_list_clusters) return instances;
               // Clusters are read from the cloud when their tab is opened.
               return (
-                <Tabs
-                  size="small"
-                  destroyInactiveTabPane
-                  items={[
-                    { key: "instances", label: t("tabs.instances"), children: instances },
-                    { key: "clusters", label: t("tabs.clusters"), children: <ProviderClustersTable providerId={p.id} providerName={p.name} /> },
-                  ]}
-                />
+                <Tabs defaultValue="instances" variant="underline">
+                  <TabsList>
+                    <TabItem value="instances" label={t("tabs.instances")} />
+                    <TabItem value="clusters" label={t("tabs.clusters")} />
+                  </TabsList>
+                  <TabPanel value="instances" className="pt-4">{instances}</TabPanel>
+                  <TabPanel value="clusters" className="pt-4"><ProviderClustersTable providerId={p.id} providerName={p.name} /></TabPanel>
+                </Tabs>
               );
             },
           }}
