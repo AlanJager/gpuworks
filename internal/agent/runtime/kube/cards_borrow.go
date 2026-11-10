@@ -263,7 +263,7 @@ func (p *cardPool) returnUnused(ctx context.Context, keep map[string]bool) {
 	p.mu.Lock()
 	var pods []string
 	for card, pod := range p.held {
-		if keep[card] || len(p.users[card]) > 0 {
+		if keep[card] || len(p.users[card]) > 0 || p.pins[card] > 0 {
 			continue
 		}
 		if _, idle := p.idleSince[card]; idle {

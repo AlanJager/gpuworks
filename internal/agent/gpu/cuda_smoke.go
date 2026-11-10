@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"strings"
 	"time"
 
@@ -74,11 +73,11 @@ func cudaSmokeVerdict(out []byte, err error) error {
 // the usual place. Saying so is the honest answer — a check that cannot run
 // is not a card that failed.
 func CUDASmokePrerequisite() string {
-	if _, err := exec.LookPath("python3"); err != nil {
+	if _, err := lookCLI("python3"); err != nil {
 		return "the runtime check needs python3, which is not installed on this node"
 	}
 	for _, path := range cudaLibraryPaths {
-		if _, err := os.Stat(path); err == nil {
+		if _, err := statTool(path); err == nil {
 			return ""
 		}
 	}

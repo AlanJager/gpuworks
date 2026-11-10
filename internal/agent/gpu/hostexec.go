@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 )
 
@@ -49,6 +50,29 @@ func lookCLI(name string) (string, error) {
 		}
 	}
 	return "", &exec.Error{Name: name, Err: exec.ErrNotFound}
+}
+
+// statTool stats a file a runtime check needs (a driver library, a toolkit),
+// where the check will run: on the host when the CLIs do.
+func statTool(path string) (os.FileInfo, error) {
+	if cliOnHost.Load() {
+		return statOnHost(path)
+	}
+	return os.Stat(path)
+}
+
+// globTool is filepath.Glob where the check will run.
+func globTool(pattern string) []string {
+	if !cliOnHost.Load() {
+		matches, _ := filepath.Glob(pattern)
+		return matches
+	}
+	matches, _ := filepath.Glob(filepath.Join(hostRoot, pattern))
+	out := make([]string, 0, len(matches))
+	for _, m := range matches {
+		out = append(out, strings.TrimPrefix(m, strings.TrimSuffix(hostRoot, "/")))
+	}
+	return out
 }
 
 // statOnHost stats a host path, following its symbolic links on the host:

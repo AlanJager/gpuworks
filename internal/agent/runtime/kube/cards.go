@@ -83,7 +83,10 @@ type cardPool struct {
 	// returning are the hold pods this pool deleted and the kubelet still
 	// lists; their cards are not held, whatever the allocations say.
 	returning map[string]bool
-	loaded    bool
+	// pins are the cards in use outside any instance (holdForCheck), by how
+	// many users; they are not returned meanwhile.
+	pins   map[string]int
+	loaded bool
 }
 
 var deviceIndexSuffix = regexp.MustCompile(`-(\d+)$`)
@@ -406,7 +409,7 @@ func (p *cardPool) sweep(ctx context.Context) {
 	}
 	var pods []string
 	for card, since := range p.idleSince {
-		if len(p.users[card]) > 0 || p.now().Sub(since) < p.idleReturn {
+		if len(p.users[card]) > 0 || p.pins[card] > 0 || p.now().Sub(since) < p.idleReturn {
 			continue
 		}
 		if pod := p.held[card]; pod != "" {
