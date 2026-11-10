@@ -194,7 +194,7 @@ func (i *Installer) checkDisk() error {
 	if err != nil {
 		// Space is a helpful hint, not a correctness check: an unsupported
 		// filesystem must not block the install.
-		return nil
+		return nil //nolint:nilerr // Free-space measurement is advisory on unsupported filesystems.
 	}
 	if free < minFreeBytes {
 		return fmt.Errorf("%s has %.1f GiB free; at least 2 GiB is required", probe, float64(free)/(1<<30))
