@@ -234,6 +234,8 @@ When a node goes offline unexpectedly, its replicas move to other nodes automati
 
 ## Uninstall
 
+Before manual uninstallation, add `--dry-run --json` to the same command to inspect the detailed checklist. Active workloads or critical unknowns must be addressed by default, and checks run again after confirmation. Noninteractive execution requires `--yes`. Use `--keep-resources` only when deliberately removing the agent while retaining workloads; it does not release GPUs or delete models for you. See the [agent uninstall reference](../reference/cli.md#gpuworks-agent-uninstall).
+
 1. Stop or move the deployment instances off the node first.
 2. Select **More → Delete** in the node list. Normal removal uninstalls the corresponding agent using saved SSH credentials, then deletes the management record only after success is confirmed. Other nodes on the same host are unaffected.
 3. Confirm that the node is removed from the list. If SSH is unreachable, credentials are missing, or the uninstall result cannot be confirmed, the node and credentials are retained. Fix the issue and retry.

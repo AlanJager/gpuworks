@@ -190,10 +190,17 @@ gpuworks uninstall --dir /opt/gpuworks/server --purge --dry-run --json
 |---|---|---|
 | `--dir DIR` | 同 `restart` | 目标安装目录；配置中的外置数据、日志目录也会识别 |
 | `--purge` | `false` | 删除本安装的配置、数据（含数据库及 `master.key`）、备份和日志；无法恢复 |
+| `--keep-resources` | `false` | 明确选择仅卸载组件，保留实例、节点和云资源；只允许越过资源检查，不越过目录、进程和服务归属校验 |
 | `--yes` / `-y` | `false` | 跳过交互选择和最终确认，按显式参数执行 |
 | `--dry-run` | `false` | 只打印清理清单，不停服务、不修改文件，无需确认 |
 | `--json` | `false` | 标准输出只返回结构化报告；除预览外必须同时传 `--yes` |
 | `--quiet` | `false` | 隐藏普通说明；仍会询问和确认，不代替 `--yes` |
+
+卸载前先用 `--dry-run --json` 查看 `checklist`。每项包含稳定的 `id`、`status`、说明、证据细节和处理建议；状态为 `pass`、`warn`、`blocked` 或 `unknown`。预览完成不表示所有检查通过。
+
+清单区分本机服务及自启、监听端口、安装/数据/备份/日志目录与保留项，以及数据库记录中的部署、实例、节点和云资源。数据库记录是持久化状态，不能证明远端进程已停止、GPU 已释放或租机已停止计费。默认遇到活动负载或关键资源信息无法确认时，在停服和删除前拒绝卸载；`--yes` 只跳过交互，不跳过资源检查。确认后、实际停服前还会重新检查资源。
+
+需保留业务、只移除控制面时，明确加 `--keep-resources`。它不会停止推理实例、删除云资源或替代节点卸载。若同时选择 `--purge`，管理记录和凭据也会随数据清理，应先保存后续独立管理这些资源所需的信息。资源检查通过也不替代原有的目录和服务归属保护。
 
 - 终端交互默认保留数据；未显式传 `--purge` 时会先询问是否彻底清理，再展示清单并确认。管道、脚本和 CI 必须传 `--yes` 或 `--dry-run`，否则在修改前失败。
 - 停止并确认 server 退出，取消自启，清理所属 systemd unit / launchd plist / nohup PID 和程序文件。所属 expose 公网入口也会关闭并清理其 unit；其他安装的服务保留，无法确认归属时拒绝清理。
@@ -464,6 +471,17 @@ gpuworks-agent doctor --connectivity --state /opt/gpuworks --json
 | flag | 默认值 | 说明 |
 |---|---|---|
 | `--state DIR` | Linux 优先取 systemd unit 的 state，无 unit 时同 `run`；macOS 取 launchd 任务里的 state 目录 | agent state 目录 |
+
+先以 `--dry-run`（或 `--dry-run --json`）查看清单；确认安装与 state 归属、服务/进程、自启、运行时负载候选、GPU 观测和保留目录。共享运行时中仅名称匹配的容器不能证明属于该 agent；缺失的运行时证据标为未知。GPU 查询不支持或失败时不会报告空闲，也不能仅凭进程组长退出证明所有 worker 已退出。
+
+| 参数 | 默认值 | 说明 |
+|---|---|---|
+| `--dry-run` | `false` | 仅预览检查与清理范围，不停止服务或删除文件 |
+| `--json` | `false` | 输出结构化清单和结果；执行卸载时需 `--yes` |
+| `--yes` / `-y` | `false` | 跳过交互确认；不跳过资源和归属检查 |
+| `--keep-resources` | `false` | 明确保留负载，只移除 agent；不绕过服务/进程归属和清理安全检查 |
+
+默认先要求处理活动负载和关键未知项，再确认并卸载；关键资源在确认后重新检查。GPU 观测未知会明确展示，不能据此承诺 GPU 已释放。二进制、模型和日志仍保留，卸载成功只表示所选组件移除完成。
 
 - Linux 上 unit 的 state 就是这个目录时先 `disable --now gpuworks-agent.service`，再停止相同二进制及显式 `--state` 目录的 `run` 进程（包括 nohup），等待进程退出；随后删除 `/etc/systemd/system/gpuworks-agent.service` 并 `daemon-reload`，最后删除 `<state>/identity.json`、PID 文件和 `<state>/gpuworks-agent.conf`（里面有 token）。unit 属于另一个 state 目录（同一主机上的另一个 agent）时不动它，只停这个目录的进程；unit 里读不出 state 时拒绝执行。
 - macOS 上移除 LaunchDaemon 与（执行者的，`sudo` 下是发起 sudo 的用户的）LaunchAgent，并删除各自 state 目录里的 `identity.json` 和 `gpuworks-agent.conf`；存在 LaunchDaemon 而没有 root 权限时报错并以 1 退出。

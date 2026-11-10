@@ -256,6 +256,8 @@ The new agent is embedded in the server, so you can still click **Upgrade Agent*
 
 ## Uninstall
 
+First review check statuses, resource evidence, retained items, and suggested actions. Active workloads or unavailable critical evidence block uninstallation by default; `--yes` does not bypass checks. To retain workloads while removing only the control plane, explicitly use `--keep-resources`; see [CLI uninstall checks](../reference/cli.md#gpuworks-uninstall). Database records do not prove that remote GPUs were released or cloud billing ended.
+
 To preview the full cleanup scope first, run `./gpuworks uninstall --purge --dry-run --json` from the actual installation directory. This preview does not stop services or delete files. Review the list before following the steps below.
 
 1. Run the following in the actual installation directory on the control plane host:

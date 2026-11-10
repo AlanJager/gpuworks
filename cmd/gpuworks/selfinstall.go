@@ -473,7 +473,8 @@ const installUsage = `  gpuworks install [--dir DIR] [--data DIR] [--logs DIR] [
                    [--keep 3] [--force] [--check] [--quiet]
   gpuworks restart [--dir DIR]
   gpuworks stop [--dir DIR]
-  gpuworks uninstall [--dir DIR] [--purge] [--yes|-y] [--dry-run] [--json] [--quiet]
+  gpuworks uninstall [--dir DIR] [--purge] [--keep-resources] [--yes|-y]
+                     [--dry-run] [--json] [--quiet]
 
 install defaults to /opt/gpuworks/server and a systemd unit on Linux, and to ~/gpuworks/server
 run detached (no launch daemon unless --autostart) on macOS.
@@ -481,6 +482,8 @@ upgrade, restart, stop and uninstall act on the installation the binary belongs 
 whose directory holds it and its server.yaml), else the default directory.
 uninstall retains configuration and data by default; --purge deletes them.
 Unattended uninstall requires --yes; --dry-run only displays the checklist.
+Active or unverified resources block uninstall unless --keep-resources is explicit;
+--yes never bypasses resource or installation ownership checks.
 `
 
 // tildePath shows a directory under the operator's home as ~/..., the way the
