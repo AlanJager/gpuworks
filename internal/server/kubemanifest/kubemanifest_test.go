@@ -333,3 +333,105 @@ func TestRenderWithoutAPIServer(t *testing.T) {
 		t.Fatal("API server override rendered without one")
 	}
 }
+
+func poolSample() Params {
+	p := sample()
+	p.NodeSelector = nil
+	p.PoolLabel = "alibabacloud.com/nodepool-id"
+	p.PoolIDs = []string{"np-l20", "np-a10", "np-h20"} // deliberately unsorted: the manifest must not depend on the order
+	return p
+}
+
+// An entry made from a cloud cluster selects its node pools with a required
+// nodeAffinity over the pool-id label; the manifest is the same whatever order
+// the pools were stored in.
+func TestRenderPoolsGolden(t *testing.T) {
+	got, err := Render(poolSample())
+	if err != nil {
+		t.Fatal(err)
+	}
+	reordered := poolSample()
+	reordered.PoolIDs = []string{"np-h20", "np-l20", "np-a10"}
+	again, err := Render(reordered)
+	if err != nil || again != got {
+		t.Fatalf("the manifest depends on the order of the pools (err %v)", err)
+	}
+	golden := filepath.Join("testdata", "manifest_pools.golden")
+	if *update {
+		if err := os.WriteFile(golden, []byte(got), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	want, err := os.ReadFile(golden)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal([]byte(got), want) {
+		t.Fatalf("manifest differs from %s (run with -update after checking):\n%s", golden, got)
+	}
+}
+
+func TestRenderPoolsSelectWithRequiredNodeAffinityBesideTheSelector(t *testing.T) {
+	spec := func(p Params) map[string]any {
+		out, err := Render(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, d := range docs(t, out) {
+			if d["kind"] == "DaemonSet" {
+				return dig(t, d, "spec", "template", "spec").(map[string]any)
+			}
+		}
+		t.Fatal("no DaemonSet")
+		return nil
+	}
+	pools := spec(poolSample())
+	if _, ok := pools["nodeSelector"]; ok {
+		t.Fatal("an entry of pools renders a nodeSelector it does not have")
+	}
+	term := dig(t, pools, "affinity", "nodeAffinity", "requiredDuringSchedulingIgnoredDuringExecution", "nodeSelectorTerms", 0, "matchExpressions", 0)
+	if dig(t, term, "key") != "alibabacloud.com/nodepool-id" || dig(t, term, "operator") != "In" {
+		t.Fatalf("expression = %#v", term)
+	}
+	values := dig(t, term, "values").([]any)
+	if len(values) != 3 || values[0] != "np-a10" || values[1] != "np-h20" || values[2] != "np-l20" {
+		t.Fatalf("values = %v, want the pools sorted", values)
+	}
+	if n := len(dig(t, pools, "affinity", "nodeAffinity", "requiredDuringSchedulingIgnoredDuringExecution", "nodeSelectorTerms").([]any)); n != 1 {
+		t.Fatalf("%d terms; one term means every expression must hold", n)
+	}
+
+	both := poolSample()
+	both.NodeSelector = map[string]string{"gpuworks.ai/pool": "a"}
+	if got := spec(both); dig(t, got, "nodeSelector", "gpuworks.ai/pool") != "a" || dig(t, got, "affinity", "nodeAffinity") == nil {
+		t.Fatalf("a selector and pools both apply: %#v", got)
+	}
+	if _, ok := spec(sample())["affinity"]; ok {
+		t.Fatal("an entry by hand got an affinity")
+	}
+}
+
+func TestRenderRefusesAPoolSelectionItCannotRenderSafely(t *testing.T) {
+	for name, mutate := range map[string]func(*Params){
+		"pools without a label":              func(p *Params) { p.PoolLabel = "" },
+		"a label without pools":              func(p *Params) { p.PoolIDs = nil },
+		"a label that is no key":             func(p *Params) { p.PoolLabel = "not a key" },
+		"a prefix that is no DNS name":       func(p *Params) { p.PoolLabel = "Bad_Prefix/np-id" },
+		"a pool id with a space":             func(p *Params) { p.PoolIDs = []string{"np 1"} },
+		"a pool id that closes the document": func(p *Params) { p.PoolIDs = []string{"x\n---\nkind: Pod"} },
+		"a pool id past 63 bytes":            func(p *Params) { p.PoolIDs = []string{strings.Repeat("a", 64)} },
+	} {
+		p := poolSample()
+		mutate(&p)
+		if out, err := Render(p); err == nil {
+			t.Errorf("%s was rendered:\n%s", name, out)
+		}
+	}
+	for _, ok := range []string{"alibabacloud.com/nodepool-id", "doks.digitalocean.com/node-pool-id", "plain-key"} {
+		p := poolSample()
+		p.PoolLabel = ok
+		if _, err := Render(p); err != nil {
+			t.Errorf("label %q refused: %v", ok, err)
+		}
+	}
+}

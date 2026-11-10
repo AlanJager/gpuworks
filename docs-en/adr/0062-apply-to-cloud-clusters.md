@@ -14,6 +14,16 @@ When connecting managed Kubernetes (Alibaba Cloud ACK, DigitalOcean DOKS), users
 4. **The manual path is unchanged.** Every entry still has a `kubectl apply` command; a cluster whose API Server has no public address can be connected only this way. An entry created by hand has no source, and the server never connects to it.
 5. **Nodes of a managed cluster belong to the cluster.** The cloud host list marks the cluster each belongs to, and installing an agent, powering, releasing and resizing are all refused (`PROVIDER_INSTANCE_IN_CLUSTER`), to avoid contending with the DaemonSet and the node pool for the same machine. The server gives each list entry its `actions`, empty for a cluster node. The decision rests on the cluster recorded by the last sync, so a node that just joined must be synced once first.
 
+## Amendment (2026-11-10): One Entry per Cloud Cluster, Holding Several GPU Node Pools of One Vendor
+
+Item 1's “the user picks one GPU node pool to connect, and the node selector is generated from the node pool” becomes:
+
+1. **An entry holds a set of the cluster's node pools.** The selected pools are rows of the child table `kube_cluster_pools` (the entry, the cloud's node pool ID, and the key of the node label the cloud puts the pool ID on), not a JSON column. The DaemonSet selects nodes with a required `nodeAffinity` (`In`, the values being those pool IDs); the driver supplies the label key: `alibabacloud.com/nodepool-id` on ACK and `doks.digitalocean.com/node-pool-id` on DOKS. The label key is stored with the pool, so the manifest still renders after the cloud account is deleted.
+2. **A cluster still has only one entry** (the decision is unchanged). To use more of its node pools, edit that entry's node pools (`PUT /kube/clusters/{uuid}/pools`) and apply the manifest again for the change to take effect in the cluster; agents on pools taken away exit as the DaemonSet shrinks, and their nodes stay on the nodes page and are cleaned up as offline Kubernetes nodes usually are.
+3. **The node pools of one entry must be of one vendor** (the vendor decides which host paths the agent mounts); mixing them returns `KUBE_CLUSTER_MIXED_VENDORS`. Connecting cards of two vendors in the same cloud cluster would first need an entry that can hold several vendors, which is a later step and is not supported now.
+4. **A manual entry is unchanged**: it uses the free-form node selector and has no node pool rows; a cloud entry no longer accepts a node selector.
+5. **Migration of old entries** (migration 204): an entry whose source is a cloud account's cluster and whose node selector is exactly one `key=value` pair has that pair turned into one node pool row and the selector cleared; an entry with a selector of any other shape is left as it is and keeps selecting by that selector until its node pools are edited (afterwards it selects by the pools alone). Because the selection became a `nodeAffinity`, the DaemonSet's Pod template changes the next time such an entry is applied again, and the agents restart once in a rolling update.
+
 ## Trade-offs
 
 - Not storing the kubeconfig costs one extra cloud API call per operation, and the cloud account must have permission to issue cluster credentials (ACK also requires the sub-account to have permissions in the cluster's RBAC).

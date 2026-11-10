@@ -1051,6 +1051,8 @@ export interface KubeCluster {
   apply_command?: string;
   /** No node joined for longer than the dictionary's stalled_after_seconds: worth troubleshooting. */
   stalled: boolean;
+  /** The cloud node pools a cloud entry holds, ascending; empty for an entry made by hand. */
+  pool_ids: string[];
   /** Whether the server can apply the manifest to the source cluster, or delete it from there. */
   can_apply: boolean;
   can_remove: boolean;
@@ -1135,6 +1137,8 @@ export interface KubeClusterRequest {
   /** The cloud account cluster the entry is made from; both or neither. */
   provider_id?: number;
   provider_cluster_id?: string;
+  /** The cluster's GPU node pools the entry holds (required with a source, one vendor). */
+  provider_pool_ids?: string[];
 }
 
 // Every collection endpoint answers an envelope, never a bare array
@@ -2487,8 +2491,8 @@ export interface ProviderClusterPool {
   gpu_count: number;
   nodes: number;
   vendor: KubeVendor;
-  /** "key=value" pairs selecting the pool's nodes, as a cluster entry takes them. */
-  node_selector: string;
+  /** The cluster's entry holds this pool: the DaemonSet runs on its nodes. */
+  in_entry: boolean;
 }
 
 export interface ProviderInstance {
@@ -5037,6 +5041,9 @@ export const api = {
 
   kubeClusters: () => getJSON<List<KubeCluster>>("/api/v1/kube/clusters"),
   kubeDefaults: () => getJSON<KubeDefaults>("/api/v1/kube/defaults"),
+  /** Replaces the node pools a cloud entry holds; the cluster follows when the manifest is applied again. */
+  setKubeClusterPools: (uuid: string, poolIds: string[]) =>
+    sendJSON<KubeCluster>("PUT", `/api/v1/kube/clusters/${encodeURIComponent(uuid)}/pools`, { provider_pool_ids: poolIds }),
   createKubeCluster: (body: KubeClusterRequest) => sendJSON<KubeCluster>("POST", "/api/v1/kube/clusters", body),
   kubeManifest: (uuid: string) => getText(`/api/v1/kube/clusters/${encodeURIComponent(uuid)}/manifest`),
   revokeKubeCluster: (uuid: string) => sendJSON<KubeCluster>("POST", `/api/v1/kube/clusters/${encodeURIComponent(uuid)}/revoke`),

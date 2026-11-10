@@ -19,6 +19,7 @@ import { formatTime } from "../i18n/datetime";
 import { cardReturnText, kubeTroubleshootCommands } from "../kubeClusters";
 import KubeClusterDrawer from "./kubernetes/KubeClusterDrawer";
 import KubeManifestModal from "./kubernetes/KubeManifestModal";
+import KubePoolsDrawer from "./kubernetes/KubePoolsDrawer";
 import KubeClusterOperationModal from "./kubernetes/KubeClusterOperationModal";
 
 /** Why a cluster's agents may not have joined, and the commands that tell which. */
@@ -49,6 +50,7 @@ export default function KubernetesPage() {
   const clusters = usePolling<List<KubeCluster>>(api.kubeClusters, 15000);
   const [adding, setAdding] = useState(false);
   const [manifestOf, setManifestOf] = useState<KubeCluster | null>(null);
+  const [poolsOf, setPoolsOf] = useState<KubeCluster | null>(null);
   const [operation, setOperation] = useState<{ cluster: KubeCluster; op: "apply" | "remove" } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -83,6 +85,7 @@ export default function KubernetesPage() {
           <div className="flex min-w-0 flex-col">
             <span className="truncate">{c.source.provider_name || tProviders(`kind.${c.source.provider_kind}`, { defaultValue: c.source.provider_kind })}</span>
             <span className="truncate text-label text-fg-muted">{c.source.cluster_id}</span>
+            {c.pool_ids.length > 0 && <span className="truncate text-label text-fg-muted">{t("source.pools", { count: c.pool_ids.length })}</span>}
           </div>
         )
         : <span className="text-fg-muted">{t("source.byHand")}</span>,
@@ -128,6 +131,9 @@ export default function KubernetesPage() {
         <div className="flex items-center gap-0.5">
           {c.source && (
             <>
+              {rowAction(t("actions.pools"), (
+                <Button variant="ghost" size="sm" iconOnly aria-label={t("actions.pools")} onClick={() => setPoolsOf(c)}><ConsoleIcon.gpus size={16} /></Button>
+              ))}
               {rowAction(c.can_apply || !c.operation_blocked ? t("actions.apply") : t(`blocked.${c.operation_blocked}`), (
                 <Button variant="ghost" size="sm" iconOnly aria-label={t("actions.apply")} disabled={!c.can_apply} onClick={() => setOperation({ cluster: c, op: "apply" })}><ConsoleIcon.upload size={16} /></Button>
               ))}
@@ -194,6 +200,7 @@ export default function KubernetesPage() {
         </div>
       </PageBody></PageContent>
       <KubeClusterDrawer open={adding} onClose={() => setAdding(false)} onCreated={() => void clusters.refetch()} />
+      <KubePoolsDrawer cluster={poolsOf} onClose={() => setPoolsOf(null)} onSaved={() => void clusters.refetch()} />
       {manifestOf && <KubeManifestModal cluster={manifestOf} onClose={() => setManifestOf(null)} />}
       {operation && <KubeClusterOperationModal cluster={operation.cluster} op={operation.op} onClose={() => setOperation(null)} onDone={() => void clusters.refetch()} />}
     </PageLayout>

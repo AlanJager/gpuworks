@@ -5,7 +5,7 @@ import { createI18n, dom } from "./helpers/dom.ts";
 import { I18nextProvider } from "react-i18next";
 import { list } from "./helpers/listPage.ts";
 
-const { i18n, locale } = await createI18n(["kubernetes"]);
+const { i18n, locale } = await createI18n(["kubernetes", "providers"]);
 const { MemoryRouter } = await import("react-router-dom");
 const { cleanup, fireEvent, render, screen, waitFor, within } = await import("@testing-library/react");
 const { default: userEvent } = await import("@testing-library/user-event");
@@ -34,7 +34,7 @@ function cluster(overrides: Partial<KubeCluster> = {}): KubeCluster {
     vendor: "nvidia", state_dir: "/opt/gpuworks", agent_image: "", node_selector: "nvidia.com/gpu.present=true", runtime_class: "", image_pull_secret: "",
     containerd_socket: "", api_server: "", engine_ports: "40000-42767", idle_return_seconds: 600,
     cluster_uid: "7f3c2a10-aaaa-bbbb-cccc-0123456789ab", revoked: false, node_count: 3,
-    created_at: "2026-10-19T08:30:00Z", apply_command: APPLY, stalled: false, can_apply: false, can_remove: false, operation_blocked: "no_source", ...overrides,
+    created_at: "2026-10-19T08:30:00Z", apply_command: APPLY, stalled: false, pool_ids: [], can_apply: false, can_remove: false, operation_blocked: "no_source", ...overrides,
   };
 }
 const prod = cluster();

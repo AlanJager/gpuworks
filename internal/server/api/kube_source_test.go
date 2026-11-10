@@ -38,10 +38,20 @@ func (d *apiClusterDriver) ListClusters(context.Context, provider.Credentials) (
 	if d.listErr != nil {
 		return nil, d.listErr
 	}
+	const label = "alibabacloud.com/nodepool-id"
 	return []provider.Cluster{
+		// Three GPU node pools, two of NVIDIA cards and one of PPU cards.
 		{ExternalID: "c-gpu", Name: "ack-gpu", Region: "cn-shanghai", Version: "1.35.7", State: "running", Running: true, PublicAPI: true,
-			GPUPools: []provider.ClusterPool{{ID: "np-1", Name: "l20", GPUModel: "NVIDIA L20", GPUCount: 1, Nodes: 1, Vendor: "nvidia", NodeSelector: "alibabacloud.com/nodepool-id=np-1"}}},
-		{ExternalID: "c-private", Name: "ack-private", Region: "cn-hangzhou", State: "running", Running: true, GPUPools: []provider.ClusterPool{}},
+			GPUPools: []provider.ClusterPool{
+				{ID: "np-1", Name: "l20", GPUModel: "NVIDIA L20", GPUCount: 1, Nodes: 1, Vendor: "nvidia", LabelKey: label},
+				{ID: "np-2", Name: "a10", GPUModel: "NVIDIA A10", GPUCount: 1, Nodes: 2, Vendor: "nvidia", LabelKey: label},
+				{ID: "np-ppu", Name: "ppu", GPUModel: "PPU-ZW810E", GPUCount: 1, Nodes: 1, Vendor: "ppu", LabelKey: label},
+			}},
+		{ExternalID: "c-private", Name: "ack-private", Region: "cn-hangzhou", State: "running", Running: true,
+			GPUPools: []provider.ClusterPool{{ID: "np-p", Name: "l20", GPUModel: "NVIDIA L20", GPUCount: 1, Nodes: 1, Vendor: "nvidia", LabelKey: label}}},
+		{ExternalID: "c-other", Name: "ack-other", Region: "cn-beijing", State: "running", Running: true, PublicAPI: true,
+			GPUPools: []provider.ClusterPool{{ID: "np-o", Name: "l20", GPUModel: "NVIDIA L20", GPUCount: 1, Nodes: 1, Vendor: "nvidia", LabelKey: label}}},
+		{ExternalID: "c-empty", Name: "ack-empty", Region: "cn-hangzhou", State: "running", Running: true, PublicAPI: true, GPUPools: []provider.ClusterPool{}},
 	}, nil
 }
 
@@ -110,6 +120,7 @@ type kubeSourceRig struct {
 	drv      *apiClusterDriver
 	api      *objectAPI
 	provider uint
+	signer   *auth.TokenSigner
 }
 
 func newKubeSourceRig(t *testing.T) *kubeSourceRig {
@@ -143,7 +154,7 @@ func newKubeSourceRig(t *testing.T) *kubeSourceRig {
 		t.Fatal(err)
 	}
 	rig := &tokenRig{t: t, h: Router(Deps{AuthSigner: signer, Store: st, Providers: svc, AI: &fakeAI{available: true}}), st: st, session: session}
-	return &kubeSourceRig{tokenRig: rig, drv: drv, api: fake, provider: p.ID}
+	return &kubeSourceRig{tokenRig: rig, drv: drv, api: fake, provider: p.ID, signer: signer}
 }
 
 func decodeKube[T any](t *testing.T, rec *httptest.ResponseRecorder) T {
@@ -162,7 +173,7 @@ func TestAClusterOfACloudAccountBecomesAnEntryOnce(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("clusters = %d %s", rec.Code, rec.Body)
 	}
-	for _, want := range []string{`"external_id":"c-gpu"`, `"public_api":true`, `"node_selector":"alibabacloud.com/nodepool-id=np-1"`, `"gpu_model":"NVIDIA L20"`, `"external_id":"c-private"`, `"public_api":false`, `"gpu_pools":[]`} {
+	for _, want := range []string{`"external_id":"c-gpu"`, `"public_api":true`, `"id":"np-1","name":"l20"`, `"in_entry":false`, `"gpu_model":"NVIDIA L20"`, `"external_id":"c-private"`, `"public_api":false`, `"gpu_pools":[]`} {
 		if !strings.Contains(rec.Body.String(), want) {
 			t.Fatalf("clusters lack %s: %s", want, rec.Body)
 		}
@@ -171,25 +182,61 @@ func TestAClusterOfACloudAccountBecomesAnEntryOnce(t *testing.T) {
 		t.Fatal("an entry before any was made")
 	}
 
-	body := fmt.Sprintf(`{"name":"ack-gpu","server_url":"https://gw.example","node_selector":"alibabacloud.com/nodepool-id=np-1","provider_id":%d,"provider_cluster_id":"c-gpu"}`, rig.provider)
+	body := fmt.Sprintf(`{"name":"ack-gpu","server_url":"https://gw.example","provider_pool_ids":["np-2","np-1"],"provider_id":%d,"provider_cluster_id":"c-gpu"}`, rig.provider)
 	rec = rig.do(rig.session, http.MethodPost, "/api/v1/kube/clusters", body)
 	created := decodeKube[map[string]any](t, rec)
 	src, _ := created["source"].(map[string]any)
 	if rec.Code != http.StatusCreated || src["provider_id"] != float64(rig.provider) || src["provider_name"] != "ali" || src["provider_kind"] != "api-cluster-provider" || src["cluster_id"] != "c-gpu" {
 		t.Fatalf("create from a cluster = %d %s", rec.Code, rec.Body)
 	}
-	if rec := rig.do(rig.session, http.MethodGet, path, ""); !strings.Contains(rec.Body.String(), `"entry":{"uuid":"`+created["uuid"].(string)+`","name":"ack-gpu"}`) {
-		t.Fatalf("clusters after the entry: %s", rec.Body)
+	if pools, _ := json.Marshal(created["pool_ids"]); string(pools) != `["np-1","np-2"]` || created["vendor"] != "nvidia" || created["node_selector"] != "" {
+		t.Fatalf("the entry holds pools %s, vendor %v, selector %q", pools, created["vendor"], created["node_selector"])
+	}
+	after := rig.do(rig.session, http.MethodGet, path, "")
+	if !strings.Contains(after.Body.String(), `"entry":{"uuid":"`+created["uuid"].(string)+`","name":"ack-gpu"}`) {
+		t.Fatalf("clusters after the entry: %s", after.Body)
+	}
+	var listed struct {
+		Items []struct {
+			ExternalID string `json:"external_id"`
+			GPUPools   []struct {
+				ID      string `json:"id"`
+				InEntry bool   `json:"in_entry"`
+			} `json:"gpu_pools"`
+		} `json:"items"`
+	}
+	listed = decodeKube[struct {
+		Items []struct {
+			ExternalID string `json:"external_id"`
+			GPUPools   []struct {
+				ID      string `json:"id"`
+				InEntry bool   `json:"in_entry"`
+			} `json:"gpu_pools"`
+		} `json:"items"`
+	}](t, after)
+	for _, c := range listed.Items {
+		for _, p := range c.GPUPools {
+			if want := c.ExternalID == "c-gpu" && (p.ID == "np-1" || p.ID == "np-2"); p.InEntry != want {
+				t.Errorf("pool %s of %s: in_entry = %v, want %v; only the pools the entry holds are in it", p.ID, c.ExternalID, p.InEntry, want)
+			}
+		}
 	}
 	again := strings.Replace(body, `"name":"ack-gpu"`, `"name":"ack-gpu-2"`, 1)
 	if rec := rig.do(rig.session, http.MethodPost, "/api/v1/kube/clusters", again); rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), ErrorKubeClusterSourceTaken) || !strings.Contains(rec.Body.String(), `"cluster":"c-gpu"`) {
 		t.Fatalf("second entry from the cluster = %d %s", rec.Code, rec.Body)
 	}
 	for name, bad := range map[string]string{
-		"id without cluster": fmt.Sprintf(`{"name":"x","server_url":"https://gw","provider_id":%d}`, rig.provider),
-		"cluster without id": `{"name":"x","server_url":"https://gw","provider_cluster_id":"c-gpu"}`,
-		"unknown account":    `{"name":"x","server_url":"https://gw","provider_id":999,"provider_cluster_id":"c-gpu"}`,
-		"blank cluster":      fmt.Sprintf(`{"name":"x","server_url":"https://gw","provider_id":%d,"provider_cluster_id":"  "}`, rig.provider),
+		"id without cluster":                fmt.Sprintf(`{"name":"x","server_url":"https://gw","provider_id":%d}`, rig.provider),
+		"cluster without id":                `{"name":"x","server_url":"https://gw","provider_cluster_id":"c-gpu"}`,
+		"unknown account":                   `{"name":"x","server_url":"https://gw","provider_id":999,"provider_cluster_id":"c-gpu"}`,
+		"blank cluster":                     fmt.Sprintf(`{"name":"x","server_url":"https://gw","provider_id":%d,"provider_cluster_id":"  "}`, rig.provider),
+		"no pool chosen":                    fmt.Sprintf(`{"name":"x","server_url":"https://gw","provider_id":%d,"provider_cluster_id":"c-other"}`, rig.provider),
+		"only blank pools":                  fmt.Sprintf(`{"name":"x","server_url":"https://gw","provider_id":%d,"provider_cluster_id":"c-other","provider_pool_ids":[" "]}`, rig.provider),
+		"a pool of another cluster":         fmt.Sprintf(`{"name":"x","server_url":"https://gw","provider_id":%d,"provider_cluster_id":"c-other","provider_pool_ids":["np-1"]}`, rig.provider),
+		"a cluster the account lacks":       fmt.Sprintf(`{"name":"x","server_url":"https://gw","provider_id":%d,"provider_cluster_id":"c-nope","provider_pool_ids":["np-1"]}`, rig.provider),
+		"pools without a source":            `{"name":"x","server_url":"https://gw","provider_pool_ids":["np-1"]}`,
+		"a free-form selector beside pools": fmt.Sprintf(`{"name":"x","server_url":"https://gw","node_selector":"a=b","provider_id":%d,"provider_cluster_id":"c-other","provider_pool_ids":["np-o"]}`, rig.provider),
+		"a vendor other than the pools'":    fmt.Sprintf(`{"name":"x","server_url":"https://gw","vendor":"ppu","provider_id":%d,"provider_cluster_id":"c-other","provider_pool_ids":["np-o"]}`, rig.provider),
 	} {
 		if rec := rig.do(rig.session, http.MethodPost, "/api/v1/kube/clusters", bad); rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), ErrorKubeClusterInvalid) {
 			t.Fatalf("%s = %d %s", name, rec.Code, rec.Body)
@@ -216,7 +263,7 @@ func TestAClusterOfACloudAccountBecomesAnEntryOnce(t *testing.T) {
 
 func TestApplyAndRemoveAnEntryOnItsCluster(t *testing.T) {
 	rig := newKubeSourceRig(t)
-	rec := rig.do(rig.session, http.MethodPost, "/api/v1/kube/clusters", fmt.Sprintf(`{"name":"ack","server_url":"https://gw.example","provider_id":%d,"provider_cluster_id":"c-gpu"}`, rig.provider))
+	rec := rig.do(rig.session, http.MethodPost, "/api/v1/kube/clusters", fmt.Sprintf(`{"name":"ack","server_url":"https://gw.example","provider_id":%d,"provider_cluster_id":"c-gpu","provider_pool_ids":["np-1"]}`, rig.provider))
 	uuid := decodeKube[map[string]any](t, rec)["uuid"].(string)
 	base := "/api/v1/kube/clusters/" + uuid
 

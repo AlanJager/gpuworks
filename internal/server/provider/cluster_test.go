@@ -37,7 +37,7 @@ func (*clusterTestDriver) ListInstances(context.Context, Credentials) ([]Instanc
 
 func (*clusterTestDriver) ListClusters(context.Context, Credentials) ([]Cluster, error) {
 	return []Cluster{{ExternalID: "c-1", Name: "ack", Region: "cn-shanghai", Running: true, PublicAPI: true,
-		GPUPools: []ClusterPool{{ID: "np-1", Name: "gpu", GPUModel: "L20", GPUCount: 1, Nodes: 1, Vendor: "nvidia", NodeSelector: "alibabacloud.com/nodepool-id=np-1"}}}}, nil
+		GPUPools: []ClusterPool{{ID: "np-1", Name: "gpu", GPUModel: "L20", GPUCount: 1, Nodes: 1, Vendor: "nvidia", LabelKey: "alibabacloud.com/nodepool-id"}}}}, nil
 }
 
 func (d *clusterTestDriver) ClusterKubeconfig(_ context.Context, _ Credentials, id string) ([]byte, error) {
@@ -107,7 +107,7 @@ func TestApplyToClusterUsesAFreshKubeconfigAndReportsEachObject(t *testing.T) {
 	svc, p := clusterService(t, drv)
 	ctx := context.Background()
 	clusters, err := svc.Clusters(ctx, p.ID)
-	if err != nil || len(clusters) != 1 || clusters[0].GPUPools[0].NodeSelector != "alibabacloud.com/nodepool-id=np-1" {
+	if err != nil || len(clusters) != 1 || clusters[0].GPUPools[0].LabelKey != "alibabacloud.com/nodepool-id" {
 		t.Fatalf("Clusters = %+v, %v", clusters, err)
 	}
 	results, err := svc.ApplyToCluster(ctx, p.ID, "c-1", joinManifest(t), false)

@@ -30,17 +30,17 @@ const DEFAULTS: KubeDefaults = {
 
 const gpuCluster: ProviderCluster = {
   external_id: "c-gpu", name: "ack-gpu", region: "cn-shanghai", version: "1.35.7-aliyun.1", state: "running", running: true, public_api: true,
-  gpu_pools: [{ id: "np-l20", name: "l20", gpu_model: "NVIDIA L20", gpu_count: 1, nodes: 2, vendor: "nvidia", node_selector: "alibabacloud.com/nodepool-id=np-l20" }],
+  gpu_pools: [{ id: "np-l20", name: "l20", gpu_model: "NVIDIA L20", gpu_count: 1, nodes: 2, vendor: "nvidia", in_entry: false }],
 };
 const privateCluster: ProviderCluster = { ...gpuCluster, external_id: "c-private", name: "ack-private", public_api: false, gpu_pools: [] };
-const connectedCluster: ProviderCluster = { ...gpuCluster, external_id: "c-done", name: "ack-done", entry: { uuid: "e-1", name: "ack-done" } };
+const connectedCluster: ProviderCluster = { ...gpuCluster, external_id: "c-done", name: "ack-done", entry: { uuid: "e-1", name: "ack-done" }, gpu_pools: gpuCluster.gpu_pools.map((p) => ({ ...p, in_entry: true })) };
 const newCluster: ProviderCluster = { ...gpuCluster, external_id: "c-new", name: "ack-new", running: false, state: "initial", gpu_pools: [] };
 
 function entry(overrides: Partial<KubeCluster> = {}): KubeCluster {
   return {
-    id: 5, uuid: "e-5", name: "ack-gpu", namespace: "gpuworks-system", server_url: "http://localhost", agent_image: "", node_selector: "alibabacloud.com/nodepool-id=np-l20",
+    id: 5, uuid: "e-5", name: "ack-gpu", namespace: "gpuworks-system", server_url: "http://localhost", agent_image: "", node_selector: "",
     vendor: "nvidia", state_dir: "/opt/gpuworks", runtime_class: "", image_pull_secret: "", containerd_socket: "", api_server: "", engine_ports: "40000-42767",
-    idle_return_seconds: 60, cluster_uid: "", revoked: false, node_count: 0, created_at: new Date().toISOString(),
+    idle_return_seconds: 60, cluster_uid: "", revoked: false, node_count: 0, created_at: new Date().toISOString(), pool_ids: ["np-l20"],
     apply_command: "kubectl apply -f 'http://localhost/kube/manifest.yaml?token=t'", stalled: false, can_apply: true, can_remove: true,
     source: { provider_id: 3, provider_name: "ali-prod", provider_kind: "aliyun", cluster_id: "c-gpu" }, ...overrides,
   };
@@ -77,12 +77,15 @@ test("a cloud account lists its clusters: GPU pools to connect, ones already con
   assert.ok(within(row).getByText("l20 · NVIDIA L20 ×1 · 2 nodes"));
   assert.ok(within(row).getByText(p.clusters.publicAPI));
   assert.ok(within(row).getByRole("button", { name: p.clusters.connect }));
+  assert.equal((within(row).getByRole("checkbox", { name: "l20 · NVIDIA L20 ×1 · 2 nodes" }) as HTMLElement).getAttribute("aria-checked"), "true", "a cluster with one pool offers it ticked");
   const priv = screen.getByText("ack-private").closest("tr") as HTMLElement;
   assert.ok(within(priv).getByText(p.clusters.privateAPI));
   assert.ok(within(priv).getByText(p.clusters.noGPUPools));
   const done = screen.getAllByText("ack-done")[0].closest("tr") as HTMLElement;
   assert.ok(within(done).getByText(p.clusters.connected));
-  assert.equal(within(done).queryByRole("button", { name: p.clusters.connect }), null, "connected once only");
+  assert.ok(within(done).getByText(p.clusters.inEntry), "the pool the entry holds says so");
+  assert.equal(within(done).queryByRole("button", { name: p.clusters.connect }), null, "a cluster has one entry: no second connect");
+  assert.ok(within(done).getByRole("button", { name: p.clusters.savePools }), "its pools are edited instead");
   assert.ok(within(screen.getByText("ack-new").closest("tr") as HTMLElement).getByText(p.clusters.notRunning));
 });
 
@@ -110,12 +113,13 @@ test("connecting a pool opens the form filled from the cluster, records the sour
   const drawer = within(await screen.findByRole("dialog"));
   assert.ok(await drawer.findByText(k.drawer.fromSource.replace("{{source}}", "ali-prod · ack-gpu (c-gpu)")));
   assert.equal((drawer.getByLabelText(field(k.drawer.name)) as HTMLInputElement).value, "ack-gpu");
-  assert.equal((drawer.getByPlaceholderText("nvidia.com/gpu.present=true") as HTMLInputElement).value, "alibabacloud.com/nodepool-id=np-l20");
+  assert.equal(drawer.queryByPlaceholderText("nvidia.com/gpu.present=true"), null, "an entry from a cloud cluster selects by node pool, not by a selector");
+  assert.equal(drawer.queryByRole("combobox", { name: field(k.drawer.vendor) }), null, "and has the vendor of its pools");
+  assert.equal((drawer.getByRole("checkbox", { name: "l20 · NVIDIA L20 ×1 · 2 nodes" }) as HTMLElement).getAttribute("aria-checked"), "true");
   await u.click(drawer.getByRole("button", { name: k.drawer.submit }));
   await waitFor(() => assert.equal(created.length, 1));
   assert.deepEqual(created[0], {
-    name: "ack-gpu", server_url: "http://localhost", vendor: "nvidia", provider_id: 3, provider_cluster_id: "c-gpu",
-    node_selector: "alibabacloud.com/nodepool-id=np-l20",
+    name: "ack-gpu", server_url: "http://localhost", provider_id: 3, provider_cluster_id: "c-gpu", provider_pool_ids: ["np-l20"],
   });
   assert.ok(await drawer.findByText(k.created.byGpuworks));
   assert.ok(drawer.getByText(k.created.byKubectl), "kubectl stays an option");
@@ -262,4 +266,169 @@ test("a cloud account's clusters show a loading status until the cloud answers",
   release(list([gpuCluster]));
   assert.ok(await screen.findByText("ack-gpu"));
   await waitFor(() => assert.ok(!screen.queryByRole("status")));
+});
+
+const multiCluster: ProviderCluster = {
+  ...gpuCluster, external_id: "c-multi", name: "ack-multi",
+  gpu_pools: [
+    { id: "np-a", name: "a10", gpu_model: "NVIDIA A10", gpu_count: 1, nodes: 2, vendor: "nvidia", in_entry: false },
+    { id: "np-l", name: "l20", gpu_model: "NVIDIA L20", gpu_count: 1, nodes: 1, vendor: "nvidia", in_entry: false },
+    { id: "np-p", name: "ppu", gpu_model: "PPU-ZW810E", gpu_count: 1, nodes: 1, vendor: "ppu", in_entry: false },
+  ],
+};
+const poolBox = (scope: HTMLElement | ReturnType<typeof within>, name: string) =>
+  (scope instanceof dom.window.HTMLElement ? within(scope) : scope).getByRole("checkbox", { name }) as HTMLElement;
+const checked = (box: HTMLElement) => box.getAttribute("aria-checked") === "true";
+const A10 = "a10 · NVIDIA A10 ×1 · 2 nodes";
+const L20 = "l20 · NVIDIA L20 ×1 · 1 nodes";
+const PPU = "ppu · PPU-ZW810E ×1 · 1 nodes";
+
+test("several pools of one cluster are ticked and connected as one entry; connecting waits for a pool; the server's refusal of mixed vendors is shown", async () => {
+  api.providerClusters = (async () => list([multiCluster])) as never;
+  const created: unknown[] = [];
+  api.createKubeCluster = (async (body: unknown) => {
+    created.push(body);
+    if ((body as { provider_pool_ids: string[] }).provider_pool_ids.includes("np-p")) {
+      throw new APIError("KUBE_CLUSTER_MIXED_VENDORS", { vendors: "nvidia, ppu" }, "mixed", 400);
+    }
+    return entry({ name: "ack-multi", pool_ids: ["np-a", "np-l"] });
+  }) as never;
+  const u = user();
+  wrap(<ProviderClustersTable providerId={3} providerName="ali-prod" />);
+  const row = (await screen.findByText("c-multi")).closest("tr") as HTMLElement;
+  assert.equal(checked(poolBox(row, A10)) || checked(poolBox(row, L20)) || checked(poolBox(row, PPU)), false, "with several pools none is ticked for you");
+  const connect = within(row).getByRole("button", { name: p.clusters.connect }) as HTMLButtonElement;
+  assert.equal(connect.disabled, true, "nothing to connect yet");
+  await u.click(poolBox(row, A10));
+  await u.click(poolBox(row, L20));
+  assert.equal(connect.disabled, false);
+  await u.click(connect);
+  const drawer = within(await screen.findByRole("dialog"));
+  assert.equal(checked(poolBox(drawer, A10)) && checked(poolBox(drawer, L20)), true, "the drawer opens with the pools ticked in the row");
+  assert.equal(checked(poolBox(drawer, PPU)), false);
+  await u.click(drawer.getByRole("button", { name: k.drawer.submit }));
+  await waitFor(() => assert.equal(created.length, 1));
+  assert.deepEqual(created[0], { name: "ack-multi", server_url: "http://localhost", provider_id: 3, provider_cluster_id: "c-multi", provider_pool_ids: ["np-a", "np-l"] });
+  assert.ok(await drawer.findByText(k.created.byGpuworks));
+  await u.click(drawer.getAllByRole("button", { name: k.drawer.close }).at(-1) as HTMLElement);
+
+  // Changing the choice in the drawer is allowed; the server judges the mix.
+  api.providerClusters = (async () => list([multiCluster])) as never;
+  await u.click(within(document.body).getByRole("button", { name: p.clusters.refresh }));
+  const again = (await screen.findByText("c-multi")).closest("tr") as HTMLElement;
+  await u.click(poolBox(again, A10));
+  await u.click(within(again).getByRole("button", { name: p.clusters.connect }));
+  const second = within(await screen.findByRole("dialog"));
+  await u.click(poolBox(second, PPU));
+  await u.click(second.getByRole("button", { name: k.drawer.submit }));
+  assert.ok(await second.findByText(locale.common.apiError.KUBE_CLUSTER_MIXED_VENDORS.replace("{{vendors}}", "nvidia, ppu")));
+  assert.deepEqual((created[1] as { provider_pool_ids: string[] }).provider_pool_ids.sort(), ["np-a", "np-p"]);
+});
+
+test("an entry's pools are edited in the cloud row: the held ones are ticked and marked, saving sends the set, and applying again is offered", async () => {
+  const held: ProviderCluster = {
+    ...multiCluster, entry: { uuid: "e-5", name: "ack-multi" },
+    gpu_pools: multiCluster.gpu_pools.map((q) => ({ ...q, in_entry: q.id === "np-a" })),
+  };
+  api.providerClusters = (async () => list([held])) as never;
+  const saves: [string, string[]][] = [];
+  api.setKubeClusterPools = (async (uuid: string, ids: string[]) => { saves.push([uuid, ids]); return entry({ uuid, name: "ack-multi", pool_ids: ids }); }) as never;
+  const ops: [string, string, boolean][] = [];
+  api.kubeClusterOperation = (async (uuid: string, op: string, dryRun: boolean) => { ops.push([uuid, op, dryRun]); return dryRun ? plan : { dry_run: false, results: plan.results }; }) as never;
+  const u = user();
+  wrap(<ProviderClustersTable providerId={3} providerName="ali-prod" />);
+  const row = (await screen.findByText("c-multi")).closest("tr") as HTMLElement;
+  assert.deepEqual([A10, L20, PPU].map((n) => checked(poolBox(row, n))), [true, false, false], "the entry's pool is ticked");
+  assert.equal(within(row).getAllByText(p.clusters.inEntry).length, 1, "and the only one marked");
+  assert.equal(within(row).queryByRole("button", { name: p.clusters.connect }), null);
+  const save = within(row).getByRole("button", { name: p.clusters.savePools }) as HTMLButtonElement;
+  assert.equal(save.disabled, true, "nothing changed yet");
+  await u.click(poolBox(row, A10));
+  assert.equal(save.disabled, true, "an entry cannot be left without a pool");
+  await u.click(poolBox(row, L20));
+  await u.click(poolBox(row, A10));
+  assert.equal(save.disabled, false);
+  await u.click(save);
+  await waitFor(() => assert.equal(saves.length, 1));
+  assert.deepEqual(saves[0][0], "e-5");
+  assert.deepEqual([...saves[0][1]].sort(), ["np-a", "np-l"]);
+  assert.ok(await screen.findByText(k.pools.saved.replace("{{name}}", "ack-multi")));
+  assert.ok(screen.getByText(new RegExp(k.pools.savedHelp.slice(0, 30))));
+  assert.equal(ops.length, 0, "saving applies nothing");
+  await u.click(screen.getByRole("button", { name: k.pools.applyNow }));
+  assert.ok(await modal().findByText(k.operation.checkedApply));
+  assert.deepEqual(ops, [["e-5", "apply", true]], "a checked plan comes first");
+});
+
+test("a refused pool edit shows the server's reason and nothing is offered to apply", async () => {
+  const held: ProviderCluster = { ...multiCluster, entry: { uuid: "e-5", name: "ack-multi" }, gpu_pools: multiCluster.gpu_pools.map((q) => ({ ...q, in_entry: q.id === "np-a" })) };
+  api.providerClusters = (async () => list([held])) as never;
+  api.setKubeClusterPools = (async () => { throw new APIError("KUBE_CLUSTER_MIXED_VENDORS", { vendors: "nvidia, ppu" }, "mixed", 400); }) as never;
+  const u = user();
+  wrap(<ProviderClustersTable providerId={3} providerName="ali-prod" />);
+  const row = (await screen.findByText("c-multi")).closest("tr") as HTMLElement;
+  await u.click(poolBox(row, PPU));
+  await u.click(within(row).getByRole("button", { name: p.clusters.savePools }));
+  assert.ok(await screen.findByText(locale.common.apiError.KUBE_CLUSTER_MIXED_VENDORS.replace("{{vendors}}", "nvidia, ppu")));
+  assert.equal(screen.queryByRole("button", { name: k.pools.applyNow }), null);
+});
+
+test("the Kubernetes page edits an entry's pools in a drawer: the cloud's pools are listed, the held ones ticked, and a saved set offers applying again", async () => {
+  api.me = (async () => ({ role: "admin" })) as never;
+  const held = entry({ pool_ids: ["np-a"] });
+  api.kubeClusters = (async () => list([held, entry({ id: 6, uuid: "e-6", name: "by-hand", source: undefined, pool_ids: [], can_apply: false, can_remove: false, operation_blocked: "no_source" })])) as never;
+  api.providerClusters = (async () => list([{ ...multiCluster, external_id: "c-gpu" }])) as never;
+  const saves: [string, string[]][] = [];
+  api.setKubeClusterPools = (async (uuid: string, ids: string[]) => { saves.push([uuid, ids]); return { ...held, pool_ids: ids }; }) as never;
+  const u = user();
+  wrap(<KubernetesPage />);
+  const hand = (await screen.findByText("by-hand")).closest("tr") as HTMLElement;
+  assert.equal(within(hand).queryByRole("button", { name: k.actions.pools }), null, "an entry made by hand has no pools to edit");
+  const row = screen.getByText("ack-gpu").closest("tr") as HTMLElement;
+  assert.ok(within(row).getByText("1 node pool"));
+  await u.click(within(row).getByRole("button", { name: k.actions.pools }));
+  const drawer = within(await screen.findByRole("dialog"));
+  assert.ok(await drawer.findByText(k.pools.title.replace("{{name}}", "ack-gpu")));
+  assert.deepEqual(await waitFor(() => [A10, L20, PPU].map((n) => checked(poolBox(drawer, n)))), [true, false, false]);
+  const save = drawer.getByRole("button", { name: k.pools.save }) as HTMLButtonElement;
+  assert.equal(save.disabled, true);
+  await u.click(poolBox(drawer, L20));
+  await u.click(save);
+  await waitFor(() => assert.equal(saves.length, 1));
+  assert.deepEqual(saves[0][0], "e-5");
+  assert.deepEqual([...saves[0][1]].sort(), ["np-a", "np-l"]);
+  assert.ok(await drawer.findByText(k.pools.saved.replace("{{name}}", "ack-gpu")));
+  assert.ok(drawer.getByRole("button", { name: k.pools.applyNow }));
+});
+
+test("an entry from before node pools says it selects by a node selector, and saving pools replaces it", async () => {
+  api.me = (async () => ({ role: "admin" })) as never;
+  api.kubeClusters = (async () => list([entry({ pool_ids: [], node_selector: "alibabacloud.com/nodepool-id=np-a,gpu=a10" })])) as never;
+  api.providerClusters = (async () => list([{ ...multiCluster, external_id: "c-gpu" }])) as never;
+  const u = user();
+  wrap(<KubernetesPage />);
+  const row = (await screen.findByText("ack-gpu")).closest("tr") as HTMLElement;
+  assert.equal(within(row).queryByText(/node pool/), null, "no pool count when it holds none");
+  await u.click(within(row).getByRole("button", { name: k.actions.pools }));
+  const drawer = within(await screen.findByRole("dialog"));
+  assert.ok(await drawer.findByText(k.pools.legacy));
+  assert.ok(drawer.getByText(k.pools.legacyHelp.replace("{{selector}}", "alibabacloud.com/nodepool-id=np-a,gpu=a10")));
+  await waitFor(() => assert.equal(checked(poolBox(drawer, A10)), false));
+  assert.equal((drawer.getByRole("button", { name: k.pools.save }) as HTMLButtonElement).disabled, true, "nothing chosen yet");
+});
+
+test("when the cluster is gone from the account, or the cloud cannot be read, the pools drawer says so", async () => {
+  api.me = (async () => ({ role: "admin" })) as never;
+  api.kubeClusters = (async () => list([entry({ pool_ids: ["np-a"] })])) as never;
+  const u = user();
+  api.providerClusters = (async () => list([])) as never;
+  wrap(<KubernetesPage />);
+  await u.click(within((await screen.findByText("ack-gpu")).closest("tr") as HTMLElement).getByRole("button", { name: k.actions.pools }));
+  assert.ok(await screen.findByText(k.pools.clusterGone));
+  assert.equal((screen.getByRole("button", { name: k.pools.save }) as HTMLButtonElement).disabled, true);
+  cleanup();
+  api.providerClusters = (async () => { throw new APIError("PROVIDER_FAILED", undefined, "aliyun: Forbidden.RAM", 424); }) as never;
+  wrap(<KubernetesPage />);
+  await u.click(within((await screen.findByText("ack-gpu")).closest("tr") as HTMLElement).getByRole("button", { name: k.actions.pools }));
+  assert.ok(await screen.findByText(k.pools.loadFailed));
 });

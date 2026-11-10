@@ -128,7 +128,7 @@ func TestListClustersFindsGPUNodePoolsAndSkipsVirtualNodeClusters(t *testing.T) 
 		t.Fatalf("gpu cluster = %+v", gpu)
 	}
 	l20 := gpu.GPUPools[0]
-	if l20.ID != "np-l20" || l20.GPUModel != "NVIDIA L20" || l20.GPUCount != 1 || l20.Nodes != 1 || l20.Vendor != "nvidia" || l20.NodeSelector != "alibabacloud.com/nodepool-id=np-l20" {
+	if l20.ID != "np-l20" || l20.GPUModel != "NVIDIA L20" || l20.GPUCount != 1 || l20.Nodes != 1 || l20.Vendor != "nvidia" || l20.LabelKey != "alibabacloud.com/nodepool-id" {
 		t.Fatalf("L20 pool = %+v", l20)
 	}
 	if mixed := gpu.GPUPools[1]; mixed.ID != "np-mixed" || mixed.GPUModel != "" || mixed.Vendor != "nvidia" {

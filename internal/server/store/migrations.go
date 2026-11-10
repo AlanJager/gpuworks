@@ -1336,6 +1336,7 @@ var migrations = []migration{
 	{Version: 202, Name: "kube_clusters", Apply: createKubeClusters},
 	{Version: 203, Name: "kube_cluster_image_pull_secret", Apply: addKubeClusterImagePullSecret},
 	{Version: 204, Name: "cloud_kubernetes_sources", Apply: addCloudKubernetesSources},
+	{Version: 205, Name: "kube_cluster_pools", Apply: createKubeClusterPools},
 }
 
 // modelFileNetworkColumns are the columns migrations 76 and 77 added to

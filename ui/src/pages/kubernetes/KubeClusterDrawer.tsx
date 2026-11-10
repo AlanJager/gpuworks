@@ -3,7 +3,7 @@ import { useForm, useWatch } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useTranslation } from "react-i18next";
-import { api, type KubeCluster, type KubeClusterRequest, type KubeDefaults, type KubeVendor } from "../../api";
+import { api, type KubeCluster, type KubeClusterRequest, type KubeDefaults, type KubeVendor, type ProviderClusterPool } from "../../api";
 import { APIError, apiErrorText } from "../../apiError";
 import { useKubeDefaults } from "../../kubeClusters";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "../../components/ui/accordion";
@@ -17,13 +17,20 @@ import { NumberInput } from "../../ui-kit/NumberInput";
 import { OptionSelect } from "../../ui-kit/OptionSelect";
 import { SideDrawer } from "../../ui-kit/SideDrawer";
 import ApplyCommand from "./ApplyCommand";
+import KubePoolPicker from "./KubePoolPicker";
 import KubeClusterOperationModal from "./KubeClusterOperationModal";
 
-/** A cluster entry made from a cloud account's cluster: what the form starts with, and the source it records. */
+/**
+ * A cluster entry made from a cloud account's cluster: what the form starts
+ * with, and the source it records. The entry holds node pools of that cluster
+ * and takes their vendor, so neither the vendor nor a node selector is asked.
+ */
 export interface KubeClusterPrefill {
   name: string;
-  vendor: KubeVendor;
-  node_selector: string;
+  /** The cluster's GPU node pools, to choose from. */
+  pools: ProviderClusterPool[];
+  /** The pools chosen when the form opens. */
+  pool_ids: string[];
   provider_id: number;
   provider_cluster_id: string;
   /** "Account · cluster" as the drawer names the source. */
@@ -88,8 +95,8 @@ function defaultsOf(prefill?: KubeClusterPrefill): FormValues {
   return {
     name: prefill?.name ?? "",
     server_url: window.location.origin,
-    vendor: prefill?.vendor ?? "",
-    node_selector: prefill?.node_selector ?? "",
+    vendor: "",
+    node_selector: "",
     namespace: "",
     state_dir: "",
     agent_image: "",
@@ -103,27 +110,34 @@ function defaultsOf(prefill?: KubeClusterPrefill): FormValues {
   };
 }
 
-function requestOf(values: FormValues, defaults: KubeDefaults | null, prefill?: KubeClusterPrefill): KubeClusterRequest {
+function requestOf(values: FormValues, defaults: KubeDefaults | null, poolIds: string[], prefill?: KubeClusterPrefill): KubeClusterRequest {
   const request: KubeClusterRequest = {
     name: values.name.trim(),
     server_url: values.server_url.trim(),
   };
-  if (values.vendor) request.vendor = values.vendor as KubeVendor;
+  // An entry from a cloud cluster has the vendor of its pools, which the server reads from the cloud.
+  if (values.vendor && !prefill) request.vendor = values.vendor as KubeVendor;
   // A cleared number takes the server's default, like every other empty field.
   if (values.keep_cards && defaults) request.idle_return_seconds = defaults.idle_return_keep;
   else if (values.idle_return_seconds !== null) request.idle_return_seconds = values.idle_return_seconds;
   if (prefill) {
     request.provider_id = prefill.provider_id;
     request.provider_cluster_id = prefill.provider_cluster_id;
+    request.provider_pool_ids = poolIds;
   }
   // Only a vendor the server says takes a RuntimeClass gets one (the others have their devices through the agent's
   // device plugin). Every empty field takes the server's default; an empty RuntimeClass is decided on each node.
-  const optional = { runtime_class: runtimeClassApplies(defaults, values.vendor) ? values.runtime_class : "", image_pull_secret: values.image_pull_secret, namespace: values.namespace, state_dir: values.state_dir, agent_image: values.agent_image, node_selector: values.node_selector, containerd_socket: values.containerd_socket, api_server: values.api_server, engine_ports: values.engine_ports } as const;
+  const optional = { runtime_class: runtimeClassApplies(defaults, formVendor(values.vendor, poolIds, prefill)) ? values.runtime_class : "", image_pull_secret: values.image_pull_secret, namespace: values.namespace, state_dir: values.state_dir, agent_image: values.agent_image, node_selector: prefill ? "" : values.node_selector, containerd_socket: values.containerd_socket, api_server: values.api_server, engine_ports: values.engine_ports } as const;
   for (const [key, value] of Object.entries(optional)) {
     const text = (value ?? "").trim();
     if (text) (request as unknown as Record<string, string>)[key] = text;
   }
   return request;
+}
+
+/** The vendor the form is for: the chosen one, or for a cloud entry the vendor of its first chosen pool; empty means the server's default. */
+function formVendor(vendor: string, poolIds: string[], prefill?: KubeClusterPrefill): string {
+  return prefill ? (prefill.pools.find((p) => poolIds.includes(p.id))?.vendor ?? "") : vendor;
 }
 
 /** Whether the vendor (empty: the server's default one) takes a RuntimeClass; true while the dictionary is unknown, the server ignores it where it does not apply. */
@@ -150,6 +164,7 @@ export default function KubeClusterDrawer({ open, onClose, onCreated, prefill }:
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [created, setCreated] = useState<KubeCluster | null>(null);
+  const [poolIds, setPoolIds] = useState<string[]>(prefill?.pool_ids ?? []);
   const [applying, setApplying] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
 
@@ -157,6 +172,7 @@ export default function KubeClusterDrawer({ open, onClose, onCreated, prefill }:
   useEffect(() => {
     if (!open) return;
     form.reset(defaultsOf(prefill));
+    setPoolIds(prefill?.pool_ids ?? []);
     setCreated(null);
     setError(null);
     setApplying(false);
@@ -170,7 +186,7 @@ export default function KubeClusterDrawer({ open, onClose, onCreated, prefill }:
     setSaving(true);
     setError(null);
     try {
-      const cluster = await api.createKubeCluster(requestOf(values, defaults, prefill));
+      const cluster = await api.createKubeCluster(requestOf(values, defaults, poolIds, prefill));
       setCreated(cluster);
       onCreated();
     } catch (e) {
@@ -201,7 +217,7 @@ export default function KubeClusterDrawer({ open, onClose, onCreated, prefill }:
       <FormField control={form.control} name="state_dir" label={t("drawer.stateDir")} description={t("drawer.stateDirHelp")}>
         {(binding) => <Input {...binding} placeholder={defaults?.state_dir} />}
       </FormField>
-      {runtimeClassApplies(defaults, vendor) && (
+      {runtimeClassApplies(defaults, formVendor(vendor, poolIds, prefill)) && (
         <FormField control={form.control} name="runtime_class" label={t("drawer.runtimeClass")} description={t("drawer.runtimeClassHelp")}>
           {(binding) => <Input {...binding} placeholder={t("drawer.runtimeClassPlaceholder")} />}
         </FormField>
@@ -260,14 +276,21 @@ export default function KubeClusterDrawer({ open, onClose, onCreated, prefill }:
       <FormField control={form.control} name="server_url" label={t("drawer.serverUrl")} description={t("drawer.serverUrlHelp")} required>
         {(binding) => <Input {...binding} />}
       </FormField>
-      <FormField control={form.control} name="vendor" label={t("drawer.vendor")} description={t("drawer.vendorHelp")}>
+      {prefill && (
+        <div className="flex flex-col gap-1.5">
+          <strong className="font-semibold text-fg-default">{t("drawer.pools")}</strong>
+          <span className="text-fg-muted">{t("drawer.poolsHelp")}</span>
+          <KubePoolPicker pools={prefill.pools} selected={poolIds} onChange={setPoolIds} disabled={saving} label={t("drawer.pools")} />
+        </div>
+      )}
+      {!prefill && <FormField control={form.control} name="vendor" label={t("drawer.vendor")} description={t("drawer.vendorHelp")}>
         {({ ref: _ref, onChange, ...binding }) => (
           <OptionSelect {...binding} value={binding.value || defaults?.vendor} onChange={onChange} options={(defaults?.vendors ?? []).map(({ id }) => ({ value: id, label: tCommon(`vendor.${id}`) }))} />
         )}
-      </FormField>
-      <FormField control={form.control} name="node_selector" label={t("drawer.nodeSelector")} description={t("drawer.nodeSelectorHelp")}>
+      </FormField>}
+      {!prefill && <FormField control={form.control} name="node_selector" label={t("drawer.nodeSelector")} description={t("drawer.nodeSelectorHelp")}>
         {(binding) => <Input {...binding} placeholder={t("drawer.nodeSelectorPlaceholder")} />}
-      </FormField>
+      </FormField>}
       <Accordion type="single" collapsible value={advancedOpen ? "advanced" : ""} onValueChange={(next: string) => setAdvancedOpen(next === "advanced")}>
         <AccordionItem value="advanced">
           <AccordionTrigger>{t("drawer.advanced")}</AccordionTrigger>

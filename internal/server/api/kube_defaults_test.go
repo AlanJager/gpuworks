@@ -131,7 +131,7 @@ func TestKubeClusterOperationsAreDecidedByTheServer(t *testing.T) {
 		return decodeKube[map[string]any](t, rec)
 	}
 	from := func(cluster string) string {
-		return fmt.Sprintf(`,"provider_id":%d,"provider_cluster_id":%q`, rig.provider, cluster)
+		return fmt.Sprintf(`,"provider_id":%d,"provider_cluster_id":%q,"provider_pool_ids":[%q]`, rig.provider, cluster, map[string]string{"c-gpu": "np-1", "c-private": "np-p", "c-other": "np-o"}[cluster])
 	}
 	pub := create("pub", from("c-gpu"))
 	priv := create("priv", from("c-private"))
@@ -187,18 +187,21 @@ func TestKubeClusterOperationsAreDecidedByTheServer(t *testing.T) {
 
 func TestKubeClusterOperationsWhenTheCloudCannotBeAsked(t *testing.T) {
 	rig := newKubeSourceRig(t)
+	// An entry made while the cloud answered, read while it does not.
+	provider := rig.provider
+	if _, err := rig.st.CreateKubeCluster(store.KubeCluster{Name: "unsure", Namespace: "gpuworks-system", ProviderID: &provider, ProviderClusterID: "c-private"},
+		store.KubeClusterPool{PoolID: "np-p", LabelKey: "alibabacloud.com/nodepool-id"}); err != nil {
+		t.Fatal(err)
+	}
 	rig.drv.listErr = errors.New("aliyun: Forbidden.RAM")
-	rec := rig.do(rig.session, http.MethodPost, "/api/v1/kube/clusters",
-		fmt.Sprintf(`{"name":"unsure","server_url":"https://gw.example","provider_id":%d,"provider_cluster_id":"c-private"}`, rig.provider))
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("create = %d %s", rec.Code, rec.Body)
-	}
-	got := decodeKube[map[string]any](t, rec)
-	if got["can_apply"] != true || got["can_remove"] != true || got["operation_blocked"] != nil {
-		t.Fatalf("without the cloud's word the entry stays applicable: %s", rec.Body)
-	}
 	list := rig.do(rig.session, http.MethodGet, "/api/v1/kube/clusters", "")
-	if list.Code != http.StatusOK || !strings.Contains(list.Body.String(), `"can_apply":true`) {
-		t.Fatalf("list with the cloud failing = %d %s", list.Code, list.Body)
+	if list.Code != http.StatusOK || !strings.Contains(list.Body.String(), `"can_apply":true,"can_remove":true`) || strings.Contains(list.Body.String(), "operation_blocked") {
+		t.Fatalf("without the cloud's word the entry stays applicable: %d %s", list.Code, list.Body)
+	}
+	// Making an entry needs the cloud: its pools are checked against it.
+	rec := rig.do(rig.session, http.MethodPost, "/api/v1/kube/clusters",
+		fmt.Sprintf(`{"name":"new","server_url":"https://gw.example","provider_id":%d,"provider_cluster_id":"c-gpu","provider_pool_ids":["np-1"]}`, rig.provider))
+	if rec.Code != http.StatusFailedDependency || !strings.Contains(rec.Body.String(), "Forbidden.RAM") {
+		t.Fatalf("create while the cloud cannot be asked = %d %s", rec.Code, rec.Body)
 	}
 }

@@ -42,6 +42,7 @@
   },
   "actions": {
     "copyCommand": "Copy connect command",
+    "pools": "Node pools",
     "manifest": "View manifest",
     "revoke": "Revoke",
     "revokeConfirm": "Revoke the connect token of {{name}}?",
@@ -73,6 +74,8 @@
     "serverUrlInvalid": "Enter an http:// or https:// address",
     "vendor": "Accelerator vendor",
     "vendorHelp": "The vendor of the cards on the cluster's GPU nodes. A cluster has one.",
+    "pools": "GPU node pools",
+    "poolsHelp": "The entry runs on the nodes of the pools ticked here, which must all be of one vendor; the entry takes their vendor.",
     "nodeSelector": "Node selector",
     "nodeSelectorPlaceholder": "nvidia.com/gpu.present=true",
     "nodeSelectorHelp": "Optional. Comma-separated key=value pairs; only Kubernetes nodes with all of these labels join. Empty means every node.",
@@ -140,7 +143,24 @@
     "copy": "Copy commands"
   },
   "source": {
-    "byHand": "Added by hand"
+    "byHand": "Added by hand",
+    "pools_one": "{{count}} node pool",
+    "pools_other": "{{count}} node pools"
+  },
+  "pools": {
+    "title": "Node pools of {{name}}",
+    "group": "GPU node pools",
+    "intro": "The entry runs on the nodes of the ticked GPU node pools of its cloud cluster. Saving changes gpuworks's record; the cluster follows when the manifest is applied again.",
+    "legacy": "This entry selects nodes by a node selector",
+    "legacyHelp": "It was made before node pools were chosen: it selects nodes with \"{{selector}}\". Saving node pools replaces that selector, and the entry then runs on those pools alone.",
+    "loading": "Loading the cluster's node pools",
+    "loadFailed": "Cannot read the cluster's node pools",
+    "clusterGone": "The cloud account no longer lists this cluster.",
+    "none": "The cluster has no GPU node pool to choose from.",
+    "save": "Save node pools",
+    "saved": "Node pools of {{name}} saved",
+    "savedHelp": "Apply the manifest again so the cluster follows (or run kubectl apply again). Agents on node pools taken away exit; their nodes stay in the node list until they are cleaned up as offline.",
+    "applyNow": "Check and apply…"
   },
   "operation": {
     "applyTitle": "Apply to the cluster · {{name}}",

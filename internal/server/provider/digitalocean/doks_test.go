@@ -43,9 +43,9 @@ func TestListClustersFindsNVIDIAPoolsOnly(t *testing.T) {
 	}
 	gpu := got[2]
 	wantPools := []provider.ClusterPool{
-		{ID: "np-h100", Name: "h100", GPUModel: "NVIDIA H100", GPUCount: 1, Nodes: 2, Vendor: "nvidia", NodeSelector: "doks.digitalocean.com/node-pool-id=np-h100"},
-		{ID: "np-ada", Name: "ada", GPUModel: "NVIDIA RTX 6000 Ada", GPUCount: 1, Nodes: 1, Vendor: "nvidia", NodeSelector: "doks.digitalocean.com/node-pool-id=np-ada"},
-		{ID: "np-8x", Name: "eight", GPUModel: "NVIDIA H100", GPUCount: 8, Nodes: 1, Vendor: "nvidia", NodeSelector: "doks.digitalocean.com/node-pool-id=np-8x"},
+		{ID: "np-h100", Name: "h100", GPUModel: "NVIDIA H100", GPUCount: 1, Nodes: 2, Vendor: "nvidia", LabelKey: "doks.digitalocean.com/node-pool-id"},
+		{ID: "np-ada", Name: "ada", GPUModel: "NVIDIA RTX 6000 Ada", GPUCount: 1, Nodes: 1, Vendor: "nvidia", LabelKey: "doks.digitalocean.com/node-pool-id"},
+		{ID: "np-8x", Name: "eight", GPUModel: "NVIDIA H100", GPUCount: 8, Nodes: 1, Vendor: "nvidia", LabelKey: "doks.digitalocean.com/node-pool-id"},
 	}
 	if !reflect.DeepEqual(gpu.GPUPools, wantPools) {
 		t.Errorf("pools =\n%+v\nwant\n%+v", gpu.GPUPools, wantPools)

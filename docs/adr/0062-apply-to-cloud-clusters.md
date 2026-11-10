@@ -24,6 +24,22 @@ kubeconfig。
    （`PROVIDER_INSTANCE_IN_CLUSTER`），避免与 DaemonSet、节点池抢同一台机器；列表项的 `actions` 由 server 给出，集群节点为空。
    判断依据是上次同步记下的所属集群，新加入、尚未同步的节点要先同步一次。
 
+## 修订（2026-11-10）：一个云集群一个条目，持有它的多个同厂商 GPU 节点池
+
+决策 1 里“用户选一个 GPU 节点池接入、节点选择器按节点池生成”改为：
+
+1. **条目持有该集群的一组节点池。** 选中的节点池记在子表 `kube_cluster_pools`（条目、云厂商的节点池 ID、云厂商放节点池 ID 的节点标签键），
+   不用 JSON 列。DaemonSet 用必需的 `nodeAffinity`（`In`，值为这些池的 ID）选节点；标签键由驱动给出：ACK 是
+   `alibabacloud.com/nodepool-id`，DOKS 是 `doks.digitalocean.com/node-pool-id`。标签键随池一起存，云账号删除后 manifest 仍能渲染。
+2. **一个集群仍只有一个条目**（决策不变）。要用它的更多节点池，改这个条目的节点池（`PUT /kube/clusters/{uuid}/pools`），再重新应用 manifest
+   才在集群里生效；去掉的池上的 agent 随 DaemonSet 收缩而退出，其节点按 Kubernetes 节点的常规规则留在节点页、离线后清理。
+3. **一个条目的节点池必须同一厂商**（厂商决定 agent 挂载哪些宿主机路径），混选返回 `KUBE_CLUSTER_MIXED_VENDORS`。同一个云集群里两种厂商的卡
+   要同时接入，需要先让一个条目能含多个厂商，这是后面的事，现在不支持。
+4. **手动条目照旧**用自由格式的节点选择器，没有节点池记录；云条目不再接受节点选择器。
+5. **旧条目迁移**（迁移 204）：来源是云账号集群、节点选择器恰好是一对 `key=value` 的条目，把这一对转成一条节点池记录并清空选择器；
+   选择器是别的形状的条目保持原样，仍按选择器选节点，直到改它的节点池（改后只按节点池选节点）。
+   因为改成了 `nodeAffinity`，旧条目下一次重新应用时 DaemonSet 的 Pod 模板会变，agent 滚动重启一次。
+
 ## 取舍
 
 - 不保存 kubeconfig，换来的是每次操作多一次云 API 调用，以及云账号必须有签发集群凭据的权限（ACK 还要求子账号在集群 RBAC 里

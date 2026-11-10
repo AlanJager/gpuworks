@@ -41,13 +41,29 @@ func (a *apiHandlers) providerClusters(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
+	entryIDs := make([]uint, 0, len(entries))
+	for _, e := range entries {
+		entryIDs = append(entryIDs, e.ID)
+	}
+	heldBy, err := a.d.Store.KubeClusterPools(entryIDs...)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	held := map[string]map[string]bool{} // cloud cluster -> pool ids its entry holds
+	for cluster, e := range entries {
+		held[cluster] = map[string]bool{}
+		for _, p := range heldBy[e.ID] {
+			held[cluster][p.PoolID] = true
+		}
+	}
 	out := make([]dto.ProviderCluster, 0, len(clusters))
 	for _, c := range clusters {
 		pc := dto.ProviderCluster{ExternalID: c.ExternalID, Name: c.Name, Region: c.Region, Version: c.Version, State: c.State,
 			Running: c.Running, PublicAPI: c.PublicAPI, GPUPools: make([]dto.ProviderClusterPool, 0, len(c.GPUPools))}
 		for _, p := range c.GPUPools {
 			pc.GPUPools = append(pc.GPUPools, dto.ProviderClusterPool{ID: p.ID, Name: p.Name, GPUModel: p.GPUModel, GPUCount: p.GPUCount,
-				Nodes: p.Nodes, Vendor: p.Vendor, NodeSelector: p.NodeSelector})
+				Nodes: p.Nodes, Vendor: p.Vendor, InEntry: held[c.ExternalID][p.ID]})
 		}
 		if e, ok := entries[c.ExternalID]; ok {
 			pc.Entry = &dto.KubeClusterRef{UUID: e.UUID, Name: e.Name}
@@ -140,7 +156,7 @@ func (a *apiHandlers) kubeClusterOperation(w http.ResponseWriter, r *http.Reques
 		kubeInvalid(w, "uuid", "the cluster's enrollment token is revoked")
 		return
 	}
-	params, err := kubeManifestParams(*c)
+	params, err := a.kubeClusterParams(*c)
 	var manifest string
 	if err == nil {
 		manifest, err = kubemanifest.Render(params)

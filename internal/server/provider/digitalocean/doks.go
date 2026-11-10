@@ -137,7 +137,7 @@ func (d *Driver) ListClusters(ctx context.Context, creds provider.Credentials) (
 			}
 			cluster.GPUPools = append(cluster.GPUPools, provider.ClusterPool{
 				ID: p.ID, Name: p.Name, GPUModel: facts.Model, GPUCount: facts.Count,
-				Nodes: p.Count, Vendor: "nvidia", NodeSelector: doksPoolLabel + "=" + p.ID,
+				Nodes: p.Count, Vendor: "nvidia", LabelKey: doksPoolLabel,
 			})
 		}
 		out = append(out, cluster)

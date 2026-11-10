@@ -49,6 +49,12 @@ type Params struct {
 	// decides which host paths the agent mounts (accelerator.KubeProfile).
 	Vendor       string
 	NodeSelector map[string]string
+	// PoolLabel and PoolIDs select the nodes of the node pools an entry made
+	// from a cloud cluster holds: the DaemonSet requires the node's PoolLabel
+	// label to be one of PoolIDs (a nodeAffinity "In"), beside NodeSelector.
+	// Both or neither.
+	PoolLabel string
+	PoolIDs   []string
 	// RuntimeClass is the class that injects NVIDIA devices; empty lets each
 	// agent decide (the cluster's "nvidia" class when there is one, the
 	// node's default runtime otherwise) and run nvidia-smi on the host when
@@ -143,6 +149,10 @@ func (p Params) Validate() error {
 		return fmt.Errorf("runtime class %q is not a DNS label", p.RuntimeClass)
 	case p.ImagePullSecret != "" && !ValidSecretName(p.ImagePullSecret):
 		return fmt.Errorf("image pull secret %q is not a Secret name", p.ImagePullSecret)
+	case (p.PoolLabel == "") != (len(p.PoolIDs) == 0):
+		return fmt.Errorf("a node pool selection needs both the label that carries the pool id and the pool ids")
+	case p.PoolLabel != "" && !validLabelKey(p.PoolLabel):
+		return fmt.Errorf("node pool label %q is not a label key", p.PoolLabel)
 	case p.ContainerdSocket != "" && !cleanAbs(p.ContainerdSocket):
 		return fmt.Errorf("containerd socket %q must be an absolute path", p.ContainerdSocket)
 	case p.StateDir != "" && (!cleanAbs(p.StateDir) || p.StateDir == "/"):
@@ -153,10 +163,27 @@ func (p Params) Validate() error {
 			return err
 		}
 	}
+	for _, id := range p.PoolIDs {
+		if len(id) > 63 || !labelPart.MatchString(id) {
+			return fmt.Errorf("node pool id %q cannot be a label value", id)
+		}
+	}
 	if _, ok := accelerator.KubeProfileFor(p.Vendor); !ok {
 		return fmt.Errorf("vendor %q cannot run on Kubernetes (supported: %s)", p.Vendor, strings.Join(accelerator.KubeVendors(), ", "))
 	}
 	return nil
+}
+
+// validLabelKey says whether s is a label key: a name, optionally behind a
+// DNS subdomain prefix and a slash.
+func validLabelKey(s string) bool {
+	prefix, name, hasPrefix := strings.Cut(s, "/")
+	if !hasPrefix {
+		name = prefix
+	} else if len(prefix) > 253 || !dnsName.MatchString(prefix) {
+		return false
+	}
+	return len(name) <= 63 && labelPart.MatchString(name)
 }
 
 // ValidSecretName says whether s can name a Secret (a DNS subdomain).
@@ -181,6 +208,8 @@ func Render(p Params) (string, error) {
 	for _, k := range keys {
 		selector = append(selector, kv{k, p.NodeSelector[k]})
 	}
+	poolIDs := append([]string(nil), p.PoolIDs...)
+	sort.Strings(poolIDs)
 	profile, _ := accelerator.KubeProfileFor(p.Vendor)
 	env := make([]kv, 0, len(profile.Env))
 	for k, v := range profile.Env {
@@ -214,7 +243,7 @@ func Render(p Params) (string, error) {
 	var buf bytes.Buffer
 	err := manifest.Execute(&buf, map[string]any{
 		"APIHost": apiHost, "APIPort": apiPort,
-		"P": p, "Selector": selector, "Agent": AgentName, "Secret": EnrollSecret,
+		"P": p, "Selector": selector, "PoolIDs": poolIDs, "Agent": AgentName, "Secret": EnrollSecret,
 		"Priority": PriorityClassName, "StateDir": p.stateDir(), "PodResources": PodResourcesDir,
 		"DevicePlugins": DevicePluginDir, "Env": env, "HostPaths": hostPaths, "AgentRuntimeClass": runtimeClass, "HostCLIs": hostCLIs,
 	})
@@ -359,6 +388,19 @@ spec:
       nodeSelector:
 {{- range .Selector}}
         {{q .K}}: {{q .V}}
+{{- end}}
+{{- end}}
+{{- if .PoolIDs}}
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: {{q .P.PoolLabel}}
+                    operator: In
+                    values:
+{{- range .PoolIDs}}
+                      - {{q .}}
 {{- end}}
 {{- end}}
       tolerations:

@@ -42,6 +42,7 @@
   },
   "actions": {
     "copyCommand": "复制接入命令",
+    "pools": "节点池",
     "manifest": "查看 manifest",
     "revoke": "吊销",
     "revokeConfirm": "吊销 {{name}} 的接入令牌？",
@@ -73,6 +74,8 @@
     "serverUrlInvalid": "请输入 http:// 或 https:// 开头的地址",
     "vendor": "加速卡厂商",
     "vendorHelp": "集群 GPU 节点上卡的厂商，一个集群只能接入一种。",
+    "pools": "GPU 节点池",
+    "poolsHelp": "条目只在这里勾选的节点池的节点上运行，须同一厂商；条目的厂商就是它们的厂商。",
     "nodeSelector": "节点选择器",
     "nodeSelectorPlaceholder": "nvidia.com/gpu.present=true",
     "nodeSelectorHelp": "可选。以逗号分隔的 key=value，只有同时带有这些标签的 Kubernetes 节点才会接入；留空表示所有节点。",
@@ -140,7 +143,24 @@
     "copy": "复制命令"
   },
   "source": {
-    "byHand": "手动接入"
+    "byHand": "手动接入",
+    "pools_one": "{{count}} 个节点池",
+    "pools_other": "{{count}} 个节点池"
+  },
+  "pools": {
+    "title": "{{name}} 的节点池",
+    "group": "GPU 节点池",
+    "intro": "条目只在其云集群里勾选的 GPU 节点池的节点上运行。保存只改 gpuworks 里的记录，重新应用 manifest 后集群才跟着变。",
+    "legacy": "这个条目用节点选择器选节点",
+    "legacyHelp": "它建于可选节点池之前，用「{{selector}}」选节点。保存节点池会替换这个选择器，之后条目只在这些节点池上运行。",
+    "loading": "正在读取集群的节点池",
+    "loadFailed": "无法读取集群的节点池",
+    "clusterGone": "云账号里已经没有这个集群了。",
+    "none": "这个集群没有可选的 GPU 节点池。",
+    "save": "保存节点池",
+    "saved": "{{name}} 的节点池已保存",
+    "savedHelp": "请再应用一次 manifest，集群才跟着变（或重新执行 kubectl apply）。去掉的节点池上的 agent 会退出，对应节点留在节点列表里，直到按离线节点清理。",
+    "applyNow": "检查并应用…"
   },
   "operation": {
     "applyTitle": "应用到集群 · {{name}}",

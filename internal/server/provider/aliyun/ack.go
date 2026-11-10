@@ -158,7 +158,7 @@ func gpuPool(p ackNodePool, known map[string]ecsInstanceType) (provider.ClusterP
 		vendor = "nvidia"
 	}
 	pool.ID, pool.Name, pool.Nodes, pool.Vendor = p.NodePoolInfo.NodePoolID, p.NodePoolInfo.Name, p.Status.TotalNodes, vendor
-	pool.NodeSelector = ackNodePoolLabel + "=" + p.NodePoolInfo.NodePoolID
+	pool.LabelKey = ackNodePoolLabel
 	return pool, true
 }
 

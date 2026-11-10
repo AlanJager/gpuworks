@@ -35,9 +35,13 @@ type KubeCluster struct {
 	// no way into it), private_api (the cloud says the API server has no
 	// public address) or revoked (only applying is refused; removing still
 	// works).
-	CanApply         bool   `json:"can_apply"`
-	CanRemove        bool   `json:"can_remove"`
-	OperationBlocked string `json:"operation_blocked,omitempty"`
+	// PoolIDs are the cloud node pools an entry made from a cloud cluster
+	// holds, sorted; the DaemonSet runs on the nodes of those pools. Empty for
+	// an entry made by hand, which selects nodes by NodeSelector.
+	PoolIDs          []string `json:"pool_ids"`
+	CanApply         bool     `json:"can_apply"`
+	CanRemove        bool     `json:"can_remove"`
+	OperationBlocked string   `json:"operation_blocked,omitempty"`
 	// Source is the cloud account cluster the entry was made from; the
 	// server can then apply the manifest itself (POST …/apply).
 	Source    *KubeClusterSource `json:"source,omitempty"`
@@ -91,6 +95,15 @@ type KubeClusterRequest struct {
 	// entry is made from (GET /providers/{id}/clusters); both or neither.
 	ProviderID        *uint  `json:"provider_id,omitempty"`
 	ProviderClusterID string `json:"provider_cluster_id,omitempty"`
+	// ProviderPoolIDs are the cluster's GPU node pools the entry holds:
+	// required, and only, with a source. They must all be of one vendor.
+	ProviderPoolIDs []string `json:"provider_pool_ids,omitempty"`
+}
+
+// KubeClusterPoolsRequest replaces the node pools an entry made from a cloud
+// cluster holds.
+type KubeClusterPoolsRequest struct {
+	ProviderPoolIDs []string `json:"provider_pool_ids"`
 }
 
 // KubeEnrollRequest is what an agent of a cluster's DaemonSet sends to trade
@@ -132,13 +145,15 @@ type ProviderCluster struct {
 
 // ProviderClusterPool is one GPU node pool of a ProviderCluster.
 type ProviderClusterPool struct {
-	ID           string `json:"id"`
-	Name         string `json:"name"`
-	GPUModel     string `json:"gpu_model"`
-	GPUCount     int    `json:"gpu_count"`
-	Nodes        int    `json:"nodes"`
-	Vendor       string `json:"vendor"`
-	NodeSelector string `json:"node_selector"`
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	GPUModel string `json:"gpu_model"`
+	GPUCount int    `json:"gpu_count"`
+	Nodes    int    `json:"nodes"`
+	Vendor   string `json:"vendor"`
+	// InEntry: the cluster's entry holds this pool, so the DaemonSet runs on
+	// its nodes.
+	InEntry bool `json:"in_entry"`
 }
 
 // KubeClusterRef names a cluster entry.

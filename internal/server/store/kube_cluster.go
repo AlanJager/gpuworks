@@ -124,8 +124,12 @@ func addKubeClusterImagePullSecret(db *gorm.DB) error {
 	return db.Migrator().AddColumn(&KubeCluster{}, "ImagePullSecret")
 }
 
-// CreateKubeCluster stores a cluster with a fresh enrollment token.
-func (s *Store) CreateKubeCluster(c KubeCluster) (*KubeCluster, error) {
+// CreateKubeCluster stores a cluster with a fresh enrollment token, and the
+// node pools it selects (only an entry made from a cloud cluster has any).
+func (s *Store) CreateKubeCluster(c KubeCluster, pools ...KubeClusterPool) (*KubeCluster, error) {
+	if err := checkPoolLabels(pools); err != nil {
+		return nil, err
+	}
 	c.ID = 0
 	c.UUID = auth.NewUUID()
 	c.Token = auth.NewToken(24)
@@ -145,7 +149,10 @@ func (s *Store) CreateKubeCluster(c KubeCluster) (*KubeCluster, error) {
 				return ErrKubeClusterSourceTaken
 			}
 		}
-		return tx.Create(&c).Error
+		if err := tx.Create(&c).Error; err != nil {
+			return err
+		}
+		return insertKubeClusterPools(tx, c.ID, pools)
 	})
 	if err != nil {
 		return nil, err
@@ -235,6 +242,9 @@ func (s *Store) DeleteKubeCluster(uuid string) error {
 		}
 		if n > 0 {
 			return ErrKubeClusterHasNodes
+		}
+		if err := tx.Where("kube_cluster_id = ?", c.ID).Delete(&KubeClusterPool{}).Error; err != nil {
+			return err
 		}
 		return tx.Delete(&c).Error
 	})

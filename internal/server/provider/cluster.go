@@ -37,9 +37,10 @@ type ClusterPool struct {
 	// Vendor is the accelerator vendor of the pool's cards (accelerator
 	// vendor names).
 	Vendor string `json:"vendor"`
-	// NodeSelector selects the pool's nodes, "key=value" pairs joined by
-	// commas as a cluster entry takes them.
-	NodeSelector string `json:"node_selector"`
+	// LabelKey is the node label the cloud puts the pool's ID on: every node
+	// of the pool carries LabelKey=ID, which is how a cluster entry selects
+	// the pools it holds (store.KubeClusterPool).
+	LabelKey string `json:"label_key"`
 }
 
 // ClusterProvider is implemented by drivers whose accounts hold managed

@@ -37,28 +37,35 @@ func kubeManifestURL(c store.KubeCluster) string {
 	return strings.TrimRight(c.ServerURL, "/") + "/kube/manifest.yaml?token=" + url.QueryEscape(c.Token)
 }
 
-func kubeClusterDTO(c store.KubeCluster, nodes int, admin bool, source *dto.KubeClusterSource, privateAPI bool) dto.KubeCluster {
+func kubeClusterDTO(c store.KubeCluster, v kubeEntryView) dto.KubeCluster {
 	out := dto.KubeCluster{
 		ID: c.ID, UUID: c.UUID, Name: c.Name, Namespace: c.Namespace, ServerURL: c.ServerURL, AgentImage: c.AgentImage,
 		Vendor: c.Vendor, NodeSelector: c.NodeSelector, RuntimeClass: c.RuntimeClass, ImagePullSecret: c.ImagePullSecret,
 		ContainerdSocket: c.ContainerdSocket, StateDir: c.StateDir, APIServer: c.APIServer,
 		EnginePorts: c.EnginePorts, IdleReturnSeconds: c.IdleReturnSeconds, ClusterUID: c.ClusterUID,
-		Revoked: c.RevokedAt != nil, NodeCount: nodes, Source: source, CreatedAt: c.CreatedAt.UTC(),
-		Stalled: kubeClusterStalled(c, time.Now().UTC()),
+		Revoked: c.RevokedAt != nil, NodeCount: v.nodes, Source: v.source, CreatedAt: c.CreatedAt.UTC(),
+		Stalled: kubeClusterStalled(c, time.Now().UTC()), PoolIDs: append([]string{}, v.poolIDs...),
 	}
-	out.CanApply, out.CanRemove, out.OperationBlocked = kubeClusterOperations(c, privateAPI)
-	if admin && c.RevokedAt == nil {
+	out.CanApply, out.CanRemove, out.OperationBlocked = kubeClusterOperations(c, v.privateAPI)
+	if v.admin && c.RevokedAt == nil {
 		out.ApplyCommand = "kubectl apply -f '" + kubeManifestURL(c) + "'"
 	}
 	return out
 }
 
-func kubeManifestParams(c store.KubeCluster) (kubemanifest.Params, error) {
+// kubeManifestParams are the manifest parameters of an entry holding pools
+// (none for an entry made by hand).
+func kubeManifestParams(c store.KubeCluster, pools []store.KubeClusterPool) (kubemanifest.Params, error) {
 	sel, err := kubemanifest.ParseNodeSelector(c.NodeSelector)
 	if err != nil {
 		return kubemanifest.Params{}, err
 	}
+	var poolLabel string
+	if len(pools) > 0 {
+		poolLabel = pools[0].LabelKey
+	}
 	return kubemanifest.Params{
+		PoolLabel: poolLabel, PoolIDs: kubePoolIDs(pools),
 		ClusterName: c.Name, Namespace: c.Namespace, ServerURL: c.ServerURL, Token: c.Token,
 		AgentImage: c.AgentImage, Vendor: firstNonEmpty(c.Vendor, kubeDefaultVendor), NodeSelector: sel, RuntimeClass: c.RuntimeClass,
 		ImagePullSecret: c.ImagePullSecret, ContainerdSocket: c.ContainerdSocket, EnginePorts: c.EnginePorts, StateDir: c.StateDir, APIServer: c.APIServer,
@@ -71,20 +78,18 @@ func (a *apiHandlers) listKubeClusters(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
-	counts, err := a.d.Store.KubeClusterNodeCounts()
-	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err)
-		return
-	}
 	claims, _ := a.claimsFromRequest(r)
 	// The assistant reads this list as the asking administrator but never
 	// gets the apply command: it carries the enrollment token.
 	admin := claims.Role == "admin" && !isAssistantRead(r)
+	views, err := a.kubeEntryViews(r.Context(), rows, admin)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
 	items := make([]dto.KubeCluster, 0, len(rows))
-	sources := a.kubeClusterSources(rows)
-	private := a.kubePrivateAPIClusters(r.Context(), rows)
 	for _, c := range rows {
-		items = append(items, kubeClusterDTO(c, counts[c.ID], admin, sources[c.ID], private[c.ID]))
+		items = append(items, kubeClusterDTO(c, views[c.ID]))
 	}
 	writeJSON(w, http.StatusOK, dto.NewList(items))
 }
@@ -127,9 +132,34 @@ func (a *apiHandlers) createKubeCluster(w http.ResponseWriter, r *http.Request) 
 	if !a.kubeClusterSource(w, req, &c) {
 		return
 	}
+	if c.ProviderID == nil && len(req.ProviderPoolIDs) > 0 {
+		kubeInvalid(w, "provider_pool_ids", "node pools belong to a cluster of a cloud account; give provider_id and provider_cluster_id")
+		return
+	}
 	if c.Name == "" || len(c.Name) > 128 {
 		kubeInvalid(w, "name", "must be 1 to 128 bytes")
 		return
+	}
+	var pools []store.KubeClusterPool
+	if c.ProviderID != nil {
+		// The entry selects nodes by the node pools it holds, and has the
+		// vendor they have.
+		if c.NodeSelector != "" {
+			kubeInvalid(w, "node_selector", "an entry made from a cloud cluster selects its nodes by node pool")
+			return
+		}
+		selected, vendor, ok := a.kubePoolSelection(w, r, *c.ProviderID, c.ProviderClusterID, req.ProviderPoolIDs, "")
+		if !ok {
+			return
+		}
+		if given := strings.TrimSpace(req.Vendor); given != "" && accelerator.NormalizeVendor(given) != vendor {
+			kubeInvalid(w, "vendor", "the selected node pools are "+vendor)
+			return
+		}
+		pools, c.Vendor = selected, vendor
+		if profile, ok := accelerator.KubeProfileFor(c.Vendor); ok && !profile.RuntimeClass {
+			c.RuntimeClass = ""
+		}
 	}
 	if _, ok := accelerator.KubeProfileFor(c.Vendor); !ok {
 		kubeInvalid(w, "vendor", "must be one of "+strings.Join(accelerator.KubeVendors(), ", "))
@@ -151,7 +181,7 @@ func (a *apiHandlers) createKubeCluster(w http.ResponseWriter, r *http.Request) 
 	// the cluster exists.
 	probe := c
 	probe.Token = "x"
-	params, err := kubeManifestParams(probe)
+	params, err := kubeManifestParams(probe, pools)
 	if err == nil {
 		_, err = kubemanifest.Render(params)
 	}
@@ -167,7 +197,7 @@ func (a *apiHandlers) createKubeCluster(w http.ResponseWriter, r *http.Request) 
 			}
 		}
 	}
-	created, err := a.d.Store.CreateKubeCluster(c)
+	created, err := a.d.Store.CreateKubeCluster(c, pools...)
 	if errors.Is(err, store.ErrKubeClusterSourceTaken) {
 		writeProductError(w, http.StatusConflict, ErrorKubeClusterSourceTaken, err.Error(), map[string]any{"cluster": c.ProviderClusterID})
 		return
@@ -179,7 +209,12 @@ func (a *apiHandlers) createKubeCluster(w http.ResponseWriter, r *http.Request) 
 	if a.d.Log != nil {
 		a.d.Log.Info("kubernetes cluster created", "cluster", created.Name, "uuid", created.UUID)
 	}
-	writeJSON(w, http.StatusCreated, kubeClusterDTO(*created, 0, true, a.kubeClusterSources([]store.KubeCluster{*created})[created.ID], a.kubePrivateAPIClusters(r.Context(), []store.KubeCluster{*created})[created.ID]))
+	views, err := a.kubeEntryViews(r.Context(), []store.KubeCluster{*created}, true)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, kubeClusterDTO(*created, views[created.ID]))
 }
 
 func (a *apiHandlers) revokeKubeCluster(w http.ResponseWriter, r *http.Request) {
@@ -197,8 +232,12 @@ func (a *apiHandlers) revokeKubeCluster(w http.ResponseWriter, r *http.Request) 
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
-	counts, _ := a.d.Store.KubeClusterNodeCounts()
-	writeJSON(w, http.StatusOK, kubeClusterDTO(*c, counts[c.ID], true, a.kubeClusterSources([]store.KubeCluster{*c})[c.ID], a.kubePrivateAPIClusters(r.Context(), []store.KubeCluster{*c})[c.ID]))
+	views, err := a.kubeEntryViews(r.Context(), []store.KubeCluster{*c}, true)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, kubeClusterDTO(*c, views[c.ID]))
 }
 
 func (a *apiHandlers) deleteKubeCluster(w http.ResponseWriter, r *http.Request) {
@@ -214,8 +253,8 @@ func (a *apiHandlers) deleteKubeCluster(w http.ResponseWriter, r *http.Request) 
 	}
 }
 
-func writeKubeManifest(w http.ResponseWriter, c store.KubeCluster) {
-	params, err := kubeManifestParams(c)
+func (a *apiHandlers) writeKubeManifest(w http.ResponseWriter, c store.KubeCluster) {
+	params, err := a.kubeClusterParams(c)
 	var body string
 	if err == nil {
 		body, err = kubemanifest.Render(params)
@@ -240,7 +279,7 @@ func (a *apiHandlers) kubeClusterManifest(w http.ResponseWriter, r *http.Request
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
-	writeKubeManifest(w, *c)
+	a.writeKubeManifest(w, *c)
 }
 
 // kubeManifestByToken serves the manifest to whoever holds the enrollment
@@ -256,7 +295,7 @@ func (a *apiHandlers) kubeManifestByToken(w http.ResponseWriter, r *http.Request
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
-	writeKubeManifest(w, *c)
+	a.writeKubeManifest(w, *c)
 }
 
 // kubeEnroll trades an enrollment token for the calling node's node token.

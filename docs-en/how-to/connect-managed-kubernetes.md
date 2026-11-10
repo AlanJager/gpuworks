@@ -75,7 +75,7 @@ When the cloud account has already been added on the “Public Cloud” page, yo
 
    ![The “Kubernetes clusters” tab of a cloud account](../assets/screenshots/k8s-cloud-clusters.png)
 
-2. Click “Connect” next to the GPU node pool you want. In the drawer, the name, vendor, and node selector are already filled in from the node pool; the requirements for Server address, agent image, and image pull secret are the same as in steps 0, 2, and 3 below (the agent image must be pullable by the nodes). Click “Connect”.
+2. Tick the GPU node pools you want (a cluster may have several ticked, of one vendor) and click “Connect” on that cluster. In the drawer, the name and vendor are already filled in from the node pools and the selected pools are listed, which you can change; the requirements for Server address, agent image, and image pull secret are the same as in steps 0, 2, and 3 below (the agent image must be pullable by the nodes). Click “Connect”. A cloud cluster has only one entry: to use more of its node pools later, edit that entry's node pools instead of connecting again, and node pools of different vendors cannot be mixed in one entry.
 3. The drawer offers two choices:
    - **Check and apply**: gpuworks uses temporary cluster credentials it fetches from the cloud account on the spot (valid for 15 minutes, discarded after use, never stored) to first have the cluster run a check (dry run), lists each object to be created or updated, and applies for real only after you click “Apply”:
 
@@ -87,6 +87,8 @@ When the cloud account has already been added on the “Public Cloud” page, yo
    ![The Source column of the Kubernetes page, with “Apply to the cluster” and “Remove from the cluster”](../assets/screenshots/k8s-cloud-source.png)
 
    Removal deletes the whole `gpuworks-system` namespace, including any image pull secret created in it beforehand, so it must be created again before reconnecting.
+
+5. To add or remove node pools later, change the ticks on the cluster's row on the “Public Cloud” page and click “Save node pools”, or use the entry's “Node pools” action on the “Kubernetes” page. Saving changes only gpuworks's record: click “Apply to the cluster” again (or re-run `kubectl apply`) for the DaemonSet to follow. Agents on node pools taken away exit, and their nodes stay on the nodes page and are cleaned up like any offline Kubernetes node. The cluster's row shows whether each node pool is already in the entry.
 
 Prerequisite: the cluster's API Server has a public address (the list shows “Public API”); a cluster showing “Private API only” can only use the copied command, run from inside the cluster's network. Nodes that belong to a managed cluster are marked “Cluster node” in the “Instances” tab and cannot have an agent installed individually, nor be powered, released or resized there (the cluster scales its node pools). Nebius has no cloud account connection yet; connect it manually as described below.
 
