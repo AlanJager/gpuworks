@@ -541,7 +541,10 @@ func writeTail(w io.Writer, path string, n int) (int64, error) {
 	}
 	info, err := os.Stat(path)
 	if err != nil {
-		return 0, nil
+		if os.IsNotExist(err) {
+			return 0, nil // Rotation can remove the path before the next follow pass.
+		}
+		return 0, err
 	}
 	return info.Size(), nil
 }
@@ -557,7 +560,7 @@ func copyNew(w io.Writer, path string, offset int64) (int64, error) {
 	defer f.Close()
 	info, err := f.Stat()
 	if err != nil {
-		return offset, nil
+		return offset, err
 	}
 	if info.Size() < offset {
 		offset = 0
