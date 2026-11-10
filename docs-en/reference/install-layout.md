@@ -91,7 +91,7 @@ Password precedence during install:
 3. An interactive prompt (with echo disabled; pressing Enter generates a random password; no prompt if an admin account already exists);
 4. A randomly generated password when `--quiet` is set or stdin is not a terminal.
 
-When the service starts for the first time, password precedence for creating the admin account is `GPUWORKS_ADMIN_PASSWORD` > the `initial-credentials` file > random generation. If you run `gpuworks serve` directly without install, you can set the initial password through the environment variable. The password ultimately used is written back to that file. `GPUWORKS_ADMIN_PASSWORD` is read only when creating the admin account. After a password change in the console, the server deletes the file, whose password no longer works; `reset-password` does not delete it, so remove it by hand.
+When the service starts for the first time, password precedence for creating the admin account is `GPUWORKS_ADMIN_PASSWORD` > the `initial-credentials` file > random generation. If you run `gpuworks serve` directly without install, you can set the initial password through the environment variable. The password ultimately used is written back to that file. `GPUWORKS_ADMIN_PASSWORD` is read only when creating the admin account. After the account it records changes its password in the console, the server tries to delete the file, whose password no longer works (a failure is logged as a warning); `reset-password` does not delete it, so remove it by hand.
 
 If `gpuworks.db` already exists in the data directory, the admin account is considered to exist: password processing is skipped, the database and accounts remain unchanged, and `--password` is ignored with a prompt to use `gpuworks reset-password` instead.
 

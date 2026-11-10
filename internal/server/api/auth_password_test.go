@@ -45,9 +45,9 @@ func TestChangePasswordEndsEverySessionAndForgetsInitialCredentials(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	forgotten := 0
-	router := Router(Deps{Store: st, Bus: st.Bus, AuthSigner: signer, ForgetInitialCredentials: func() error {
-		forgotten++
+	var forgotten []string
+	router := Router(Deps{Store: st, Bus: st.Bus, AuthSigner: signer, ForgetInitialCredentials: func(username string) error {
+		forgotten = append(forgotten, username)
 		return errors.New("read-only data directory") // logged, never fails the change
 	}})
 	cookie, _ := sessionLogin(t, router, testPassword)
@@ -64,8 +64,8 @@ func TestChangePasswordEndsEverySessionAndForgetsInitialCredentials(t *testing.T
 	for _, c := range rec.Result().Cookies() {
 		cleared = cleared || (c.Name == managementCookie && c.MaxAge < 0)
 	}
-	if !cleared || forgotten != 1 {
-		t.Fatalf("cookie cleared=%v, initial credentials forgotten %d times", cleared, forgotten)
+	if !cleared || len(forgotten) != 1 || forgotten[0] != "admin" {
+		t.Fatalf("cookie cleared=%v, initial credentials forgotten for %v", cleared, forgotten)
 	}
 	for _, got := range []*httptest.ResponseRecorder{
 		sessionRequest(router, http.MethodGet, "/api/v1/auth/me", cookie, ""),
@@ -94,6 +94,7 @@ func TestChangePasswordRejections(t *testing.T) {
 		{"guessable", passwordBody(testPassword, "Password123"), ErrorPasswordGuessable, http.StatusBadRequest},
 		{"control", passwordBody(testPassword, "tab\tseparated"), ErrorPasswordCharacters, http.StatusBadRequest},
 		{"unchanged", passwordBody(testPassword, testPassword), ErrorPasswordUnchanged, http.StatusBadRequest},
+		{"unchanged but the current password is wrong", passwordBody("Tiger#Lake9", "Tiger#Lake9"), ErrorCurrentPasswordInvalid, http.StatusBadRequest},
 		{"malformed", `{"current_password":`, "", http.StatusBadRequest},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

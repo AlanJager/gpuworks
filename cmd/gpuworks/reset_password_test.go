@@ -182,3 +182,36 @@ func copyFile(t *testing.T, from, to string) {
 		t.Fatal(err)
 	}
 }
+
+func TestResetPasswordPromptsWhenNoneIsGiven(t *testing.T) {
+	original := promptNewPassword
+	t.Cleanup(func() { promptNewPassword = original })
+	data := t.TempDir()
+	db := seedAdmin(t, data)
+
+	promptNewPassword = func() (string, error) { return "", errPasswordMismatch }
+	if err := resetPassword(discardLog(), []string{"--data", data}); !errors.Is(err, errPasswordMismatch) {
+		t.Fatalf("a failed prompt: %v", err)
+	}
+	promptNewPassword = func() (string, error) { return "short", nil }
+	if err := resetPassword(discardLog(), []string{"--data", data}); !errors.Is(err, auth.ErrPasswordPolicy) {
+		t.Fatalf("a weak prompted password: %v", err)
+	}
+	if !verifyPassword(t, db, "old-admin-password-2026") {
+		t.Fatal("a refused reset changed the password")
+	}
+	promptNewPassword = func() (string, error) { return "Tiger#Lake9", nil }
+	if err := resetPassword(discardLog(), []string{"--data", data}); err != nil {
+		t.Fatal(err)
+	}
+	if !verifyPassword(t, db, "Tiger#Lake9") {
+		t.Fatal("the prompted password does not log in")
+	}
+}
+
+func TestResetPasswordWithoutATerminalNeedsTheFlag(t *testing.T) {
+	// go test's stdin is not a terminal, so the real prompt refuses.
+	if _, err := promptNewPassword(); err == nil || !strings.Contains(err.Error(), "-password is required") {
+		t.Fatalf("prompt without a terminal: %v", err)
+	}
+}

@@ -259,7 +259,7 @@ gpuworks uninstall --dir /opt/gpuworks/server --purge --dry-run --json
 
 | flag | 默认值 | 说明 |
 |---|---|---|
-| `--password PASSWORD` | 无（必填） | 新密码，空值被拒绝 |
+| `--password PASSWORD` | 无：在终端里提示输入两次（不回显） | 新密码；stdin 不是终端时必填 |
 | `--user USER` | `admin` | 用户名 |
 | `--data DIR` | 见下 | 数据目录 |
 | `--db PATH` | `<data>/gpuworks.db` | SQLite 路径 |

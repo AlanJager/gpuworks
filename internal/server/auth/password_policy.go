@@ -10,10 +10,10 @@ import (
 	"unicode/utf8"
 )
 
-// The length bounds follow NIST SP 800-63B: at least 8 characters with no
-// composition rules, and a blocklist of guessable passwords instead. Login
-// attempts are throttled per address and account, which is what keeps an
-// 8-character password out of reach of online guessing.
+// At least 8 characters with no composition rules, and a short blocklist of
+// guessable passwords instead. Login attempts are throttled per address and
+// account, which keeps online guessing slow; the blocklist is not a list of
+// breached passwords.
 const (
 	MinPasswordRunes = 8
 	MaxPasswordRunes = 128

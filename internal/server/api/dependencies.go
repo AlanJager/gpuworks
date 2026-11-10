@@ -135,8 +135,8 @@ type Deps struct {
 	CatalogPackages *packages.Store
 	ModelLogoDir    string
 	// ForgetInitialCredentials removes the install-time admin credentials
-	// file once the password it records has been changed.
-	ForgetInitialCredentials func() error
+	// file once the account it records has changed its password.
+	ForgetInitialCredentials func(username string) error
 	// FetchModelMeta reads a model's metadata from the first of candidates
 	// that serves it (modelmeta.FetchFrom); fetchModelMeta gives the
 	// candidates.

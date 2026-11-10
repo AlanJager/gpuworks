@@ -37,10 +37,6 @@ func (a *apiHandlers) changePassword(w http.ResponseWriter, r *http.Request) {
 		writePasswordPolicyError(w, err)
 		return
 	}
-	if req.NewPassword == req.CurrentPassword {
-		writeProductError(w, http.StatusBadRequest, ErrorPasswordUnchanged, "the new password is the current password", nil)
-		return
-	}
 	finish, wait := a.loginThrottle.begin(time.Now().UTC(), a.loginClientIP(r), claims.Username)
 	if wait > 0 {
 		loginThrottled(w, wait)
@@ -56,6 +52,12 @@ func (a *apiHandlers) changePassword(w http.ResponseWriter, r *http.Request) {
 		a.writeManagementAuthError(w, err)
 		return
 	}
+	// Judged after the current password is known to be right, so a typo there
+	// is reported as such rather than as an unchanged password.
+	if req.NewPassword == req.CurrentPassword {
+		writeProductError(w, http.StatusBadRequest, ErrorPasswordUnchanged, "the new password is the current password", nil)
+		return
+	}
 	if err := a.d.Store.SetUserPassword(claims.Username, req.NewPassword); err != nil {
 		if errors.Is(err, auth.ErrPasswordPolicy) {
 			writePasswordPolicyError(w, err)
@@ -66,7 +68,7 @@ func (a *apiHandlers) changePassword(w http.ResponseWriter, r *http.Request) {
 	}
 	// The install-time record now holds a password that no longer works.
 	if a.d.ForgetInitialCredentials != nil {
-		if err := a.d.ForgetInitialCredentials(); err != nil && a.d.Log != nil {
+		if err := a.d.ForgetInitialCredentials(claims.Username); err != nil && a.d.Log != nil {
 			a.d.Log.Warn("initial admin credentials file not removed after a password change; delete it by hand", "err", err)
 		}
 	}
