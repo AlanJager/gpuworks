@@ -143,6 +143,7 @@ type PodStatus struct {
 type ContainerStatus struct {
 	Name        string         `json:"name"`
 	ContainerID string         `json:"containerID,omitempty"` // containerd://<id>
+	ImageID     string         `json:"imageID,omitempty"`     // the image the container runs: "repo@sha256:<manifest>" or CRI's image id
 	Ready       bool           `json:"ready"`
 	State       ContainerState `json:"state"`
 }

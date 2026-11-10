@@ -197,7 +197,7 @@ func TestRunStatusLogsRemoveWithoutADevicePlugin(t *testing.T) {
 	if string(b) != "two\nthree\n" {
 		t.Fatalf("Logs = %q", b)
 	}
-	if out, err := r.d.Exec(ctx, id, []string{"true"}); err != nil || string(out) != "ok" || r.images.execs[0][0] != pod.Metadata.UID {
+	if out, err := r.d.Exec(ctx, id, []string{"true"}); err != nil || string(out) != "ok" || r.images.execs[0][0] != strings.TrimPrefix(pod.Status.ContainerStatuses[0].ContainerID, "containerd://") {
 		t.Fatalf("Exec = %q %v %v", out, err, r.images.execs)
 	}
 	if err := r.d.Remove(ctx, id); err != nil {

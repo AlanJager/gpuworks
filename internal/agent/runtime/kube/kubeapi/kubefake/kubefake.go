@@ -163,9 +163,15 @@ func (s *Server) DaemonSetImage() string {
 func Running(p *kubeapi.Pod) {
 	p.Status.Phase = "Running"
 	p.Status.ContainerStatuses = []kubeapi.ContainerStatus{{
-		Name: p.Spec.Containers[0].Name, ContainerID: "containerd://" + p.Metadata.UID, Ready: true,
-		State: kubeapi.ContainerState{Running: &kubeapi.StateRunning{StartedAt: "2026-10-19T00:00:00Z"}},
+		Name: p.Spec.Containers[0].Name, ContainerID: "containerd://" + containerID(p.Metadata.UID), Ready: true,
+		ImageID: "docker.io/library/" + p.Spec.Containers[0].Image + "@sha256:" + strings.Repeat("ab", 32),
+		State:   kubeapi.ContainerState{Running: &kubeapi.StateRunning{StartedAt: "2026-10-19T00:00:00Z"}},
 	}}
+}
+
+// containerID is a containerd container id (64 hex digits) derived from the pod uid.
+func containerID(uid string) string {
+	return fmt.Sprintf("%064x", []byte(uid))[:64]
 }
 
 var dns1123 = regexp.MustCompile(`^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$`)
