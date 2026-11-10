@@ -117,7 +117,9 @@ git diff --check
   验证通过。
 - Lint 配置在 [.golangci.yml](.golangci.yml)（`govet`、`errcheck`、`staticcheck`、`unused`、
   `ineffassign`、`misspell`、`gofmt`、`goimports`、`revive`、`bodyclose`、`nilerr`）。
-  提交前跑一次 `golangci-lint run`。
+  提交前运行 `make lint`，CI 执行同一目标。该目标使用仓库的 Go 版本将
+  golangci-lint v1.64.8 编译到 `bin/tools`，执行完整规则并展示全部诊断。
+  首次运行会下载开发工具；缺少内嵌 UI 时会先构建 UI。
 - `goimports` 配了 `local-prefixes: gpuworks.ai/gpuworks`，本地包单独成组。
 - 分层测试与云端测试策略见 [docs/dev/testing.md](docs/dev/testing.md)。
 

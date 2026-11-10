@@ -271,6 +271,12 @@ core-vet:
   script:
     - CGO_ENABLED=0 go vet ./...
 
+core-lint:
+  extends: .go-core
+  stage: core
+  script:
+    - make lint
+
 # Strict L2 contains a real Docker adoption/recovery case and L3 is entirely a
 # Docker gate. The ordinary project runners use an unprivileged Docker executor
 # with no daemon socket, so both jobs are pinned to the project's tag-only
