@@ -3,9 +3,9 @@
 | 厂商/框架 | 探测 | 整卡部署 | dGPU | 拓扑/备注 |
 |---|---|---|---|---|
 | NVIDIA / CUDA | nvidia-smi、sysfs | Docker、runveil、nerdctl | HAMi libvgpu.so（x86_64，glibc ≥ 2.17） | 支持 CUDA/NCCL 拓扑；驱动库由宿主机提供 |
-| 昇腾 / CANN | npu-smi、驱动和 CANN 事实 | Docker + Ascend runtime；部分环境 runveil | vCANN；能力取决于宿主机 device-share 权限 | 外层/内层 CANN 版本不能混为一个结论 |
-| AMD / ROCm | amdgpu sysfs、KFD | Linux amd64、Docker/nerdctl/runveil；上游 vLLM ROCm 镜像已在 MI325X（gfx942）与 AMD395（gfx1151）单卡 BF16 文本推理实测，其余组合逐档待验 | amd-dgpu 显存配额（libvrocm，用户态；已在 MI300X/gfx942 的 Docker 与 runveil 下实测，Docker/nerdctl/runveil） | 多机与 PP 经 vLLM mp 后端运行（RCCL 读取 NCCL_* 网络变量，已在两台 MI325X 上实测 PP=2 与跨机 TP=2）；vLLM sleep/wake（L1/L2）与 PD（`vllm-nixl`，以太网 UCX TCP）已在 MI300X 上实测；这不是对所有 AMD 卡或 ROCm 组合的兼容性承诺 |
-| PPU / HGGC | ppu-smi | provider/runtime 依赖 | HGGC 显存与加权 QoS | 20/80 长负载已证明繁忙时吞吐权重，不是硬 SM 分区 |
+| 昇腾 / CANN | npu-smi、驱动和 CANN 事实 | Docker + Ascend runtime；部分环境 runveil | vcann-rt；能力取决于宿主机 device-share 权限 | 外层/内层 CANN 版本不能混为一个结论 |
+| AMD / ROCm | amdgpu sysfs、KFD | Linux amd64、Docker/nerdctl/runveil；上游 vLLM ROCm 镜像已在 MI325X（gfx942）与 AMD395（gfx1151）单卡 BF16 文本推理实测，其余组合逐档待验 | amd-dgpu 显存配额（rocm-slicing-shim，用户态；已在 MI300X/gfx942 的 Docker 与 runveil 下实测，Docker/nerdctl/runveil） | 多机与 PP 经 vLLM mp 后端运行（RCCL 读取 NCCL_* 网络变量，已在两台 MI325X 上实测 PP=2 与跨机 TP=2）；vLLM sleep/wake（L1/L2）与 PD（`vllm-nixl`，以太网 UCX TCP）已在 MI300X 上实测；这不是对所有 AMD 卡或 ROCm 组合的兼容性承诺 |
+| PPU / HGGC | ppu-smi | provider/runtime 依赖 | ppu-slicing-shim 显存配额与加权 QoS | 20/80 长负载已证明繁忙时吞吐权重，不是硬 SM 分区 |
 | 海光 / DTK | hy-smi | 由目录 spec 和 runtime 决定 | Z100 / K100_AI / BW 原生 vdev（实验性，x86_64，Docker 或 runveil/udocker） | 需可选原生 helper、宿主库和逐卡行为探针；其他型号仍只支持整卡 |
 | Apple / Metal | sysctl、ioreg（macOS 15+，Apple silicon） | host（引擎为宿主机进程，镜像是 darwin 环境包） | 无；一台 Mac 按统一内存同时跑多个实例 | 1 张统一内存卡，显存为 Metal 工作集；不支持引擎休眠、多机、KV 磁盘层；见 [ADR 0044](../adr/0044-mac-engines-as-host-processes.md) |
 
@@ -23,10 +23,10 @@ dGPU 不可用时，节点仍可使用整卡部署；平台不会把不满足 dG
 | 后端 | 显存限制 | 算力语义 | 修改显存配额 | 行为探针 |
 |---|---|---|---|---|
 | NVIDIA HAMi-core | 硬显存上限 | 平台不开放算力上限；CUDA graph、cuBLAS 不受 HAMi 发射限流约束 | 支持安全在线调整；引擎可能仍需重启才能利用新额度 | 依赖内嵌资产校验与准入检查，豁免行为探针 |
-| 昇腾 vCANN | 显存配额，依赖宿主 device-share 权限 | 受 vCANN 与宿主组合影响，不据此承诺固定吞吐比例 | 重启实例生效 | 必须逐卡通过 |
-| PPU HGGC | 显存配额 | 繁忙时加权 QoS，空闲时可借用余量；非硬 SM 分区 | 重启实例生效 | 必须逐卡通过；当前仅 Docker |
+| 昇腾 vcann-rt | 显存配额，依赖宿主 device-share 权限 | 受 vcann-rt 与宿主组合影响，不据此承诺固定吞吐比例 | 重启实例生效 | 必须逐卡通过 |
+| PPU ppu-slicing-shim | 显存配额 | 繁忙时加权 QoS，空闲时可借用余量；非硬 SM 分区 | 重启实例生效 | 必须逐卡通过；当前仅 Docker |
 | 海光 Z100 / K100_AI / BW 原生 vdev（实验性） | 原生 vdev 显存配额；每实例一张卡 | CU 随显存比例分配，不支持独立设置算力配额 | 重启实例生效，并按新显存配额重建 vdev | 必须逐卡通过；x86_64 上的 Docker 或 runveil/udocker |
-| AMD libvrocm（用户态） | HIP 运行时层拦截的硬显存上限 | 平台不开放算力上限；ROCm 通过 `HSA_CU_MASK` 在硬件层实施算力配额，低于预加载库能看到或校验的层面 | 重启实例生效（限额只在 HIP 运行时初始化时读取一次） | 豁免行为探针（宿主与轻量探针镜像都不保证有 ROCm 用户态运行库可供探针调用），依赖内嵌资产校验；Docker/nerdctl/runveil |
+| AMD rocm-slicing-shim（用户态） | HIP 运行时层拦截的硬显存上限 | 平台不开放算力上限；ROCm 通过 `HSA_CU_MASK` 在硬件层实施算力配额，低于预加载库能看到或校验的层面 | 重启实例生效（限额只在 HIP 运行时初始化时读取一次） | 豁免行为探针（宿主与轻量探针镜像都不保证有 ROCm 用户态运行库可供探针调用），依赖内嵌资产校验；Docker/nerdctl/runveil |
 
 在线调整的安全条件与待重启原因见[调整 dGPU 配额](../how-to/dgpu.md#调整-dgpu-配额)。
 表中能力不代表任意推理镜像均已验证；节点是否可用仍以该卡的 `status` / `reason` 为准。
@@ -39,7 +39,7 @@ dGPU 不可用时，节点仍可使用整卡部署；平台不会把不满足 dG
 
 ## AMD dGPU 显存配额
 
-`amd-dgpu` 后端用 libvrocm.so（gpustack-operator 的 rocm-slicing-shim，`build/runtime-assets/amd/`）在 HIP 运行时层拦截分配与容量查询接口，只链接 libc，一份构建适配任意 ROCm 版本。注入在 AMD 整卡设备选择（render 节点 + `/dev/kfd`）之上叠加：`LD_PRELOAD` 指向挂载的 `/opt/gpuworks/partition/libvrocm.so`，`VROCM_DEVICE_MEMORY_LIMIT_<N>`（MiB，`N` 为容器自身可见设备列表里的位次，不是物理序号）按所选每张卡写入，`VROCM_LEDGER_PATH` 指向 `/dev/shm` 下的实例专属账本（容器需 `--ipc=host` 才能与宿主侧清理共享该路径，做法同 PPU）。限额只在 HIP 运行时初始化时读取一次，调小配额需重启实例才生效。
+`amd-dgpu` 后端用 libvrocm.so（rocm-slicing-shim，`build/runtime-assets/amd/`）在 HIP 运行时层拦截分配与容量查询接口，只链接 libc，一份构建适配任意 ROCm 版本。注入在 AMD 整卡设备选择（render 节点 + `/dev/kfd`）之上叠加：`LD_PRELOAD` 指向挂载的 `/opt/gpuworks/partition/libvrocm.so`，`VROCM_DEVICE_MEMORY_LIMIT_<N>`（MiB，`N` 为容器自身可见设备列表里的位次，不是物理序号）按所选每张卡写入，`VROCM_LEDGER_PATH` 指向 `/dev/shm` 下的实例专属账本（容器需 `--ipc=host` 才能与宿主侧清理共享该路径，做法同 PPU）。限额只在 HIP 运行时初始化时读取一次，调小配额需重启实例才生效。
 
 没有算力（SM/CU）配额：ROCm 用 `HSA_CU_MASK` 在硬件层强制算力配额，低于任何预加载库能看到或校验的层面，因此该后端只做显存、永不暴露算力上限。
 

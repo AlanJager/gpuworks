@@ -1157,7 +1157,7 @@
     },
     {
       "term_en": "dGPU",
-      "definition": "dynamic GPU; the product term for GPU partitioning. Implemented by HAMi-core libvgpu (NVIDIA), vCANN (Ascend), and HGGC (PPU) — implementation names stay in engineering docs, never in UI copy.",
+      "definition": "dynamic GPU; the product term for GPU partitioning. Implemented by HAMi-core libvgpu (NVIDIA), vcann-rt from openEuler ubs-virt (Ascend), ppu-slicing-shim (PPU), rocm-slicing-shim (AMD), and native vdevs (Hygon) — implementation names stay in engineering docs, never in UI copy.",
       "translations": {
         "zh": "dGPU"
       },

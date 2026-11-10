@@ -23,15 +23,15 @@ _Avoid_: 双进程测试
 ### dGPU
 
 **dGPU — dGPU**:
-dynamic GPU 的缩写，产品对「GPU 切分」功能的唯一叫法：把整张物理加速卡呈现为带显存或算力限额的逻辑资源。UI 与用户文案统一用 dGPU，不再出现 HAMi、vGPU、切分、显存切分等历史叫法；实现名（NVIDIA 由 HAMi-core libvgpu、昇腾由 vCANN、PPU 由 HGGC 实现）只出现在工程文档与代码里。
-_Avoid_: vGPU、HAMi、切分、显存切分、虚拟化（把逻辑限额误写成虚拟设备）
+dynamic GPU 的缩写，产品对「GPU 切分」功能的唯一叫法：把整张物理加速卡呈现为带显存或算力限额的逻辑资源。UI 与用户文案统一用 dGPU，不再出现 HAMi、vGPU、切分、显存切分等历史叫法；实现名只出现在工程文档与代码里，写上游项目名而不是自造简称：NVIDIA 用 HAMi-core（`libvgpu.so`）；昇腾用 openEuler ubs-virt 的 vcann-rt（`libvruntime.so`，软件层逻辑限额）；PPU 用 ppu-slicing-shim（`hggc_quota.so` + `hgml_dlsym_hook.so`，拦截 PPU 的 HGGC 运行时与 HGML 管理库）；AMD 用 rocm-slicing-shim（`libvrocm.so`，HIP 运行时层拦截）；海光用驱动原生 vdev（可选 helper 经 hcu-dcgm 创建）。HGGC 是 PPU 的运行时（对应 CUDA），不是切分实现；平台不使用昇腾 vNPU（`npu-smi` 按模板的驱动层切分）。
+_Avoid_: vGPU、HAMi、切分、显存切分、虚拟化（把逻辑限额误写成虚拟设备）；工程文档里的 vCANN（不是公开名称，指 vcann-rt）、「PPU HGGC 切分」（HGGC 是运行时）、vNPU（未使用）
 
 **dGPU 后端 — dGPU Backend**:
 一种把整张物理加速卡呈现为带显存或算力限额的逻辑资源的实现合同。后端描述适用硬件、成熟度、所需资产、注入合同、展示信息和实例清理要求；是否允许某次部署仍由平台准入规则决定。
 _Avoid_: partitioner（容易误指一次切分动作）、把准入策略叫后端能力
 
 **dGPU 能力 — dGPU Capability**:
-某张物理加速卡在当前节点事实下可选择的 dGPU 后端集合；每项只有 ready / unavailable 两种状态，并附兼容范围或不可用原因。除豁免行为探针的后端（NVIDIA）外，ready 的唯一依据是[[dGPU 探针]]通过（豁免后端只看运行时约束与资产，由 `accelerator.SkipsBehaviorProbe` 声明）；版本/平台组合只产生兼容性警告，不产生 unavailable。它是 dGPU 可用性的唯一事实源，节点级展示只是对各卡能力的汇总。
+某张物理加速卡在当前节点事实下可选择的 dGPU 后端集合；每项只有 ready / unavailable 两种状态，并附兼容范围或不可用原因。除豁免行为探针的后端（NVIDIA、AMD）外，ready 的唯一依据是[[dGPU 探针]]通过（豁免后端只看运行时约束与资产，由 `accelerator.SkipsBehaviorProbe` 声明）；版本/平台组合只产生兼容性警告，不产生 unavailable。它是 dGPU 可用性的唯一事实源，节点级展示只是对各卡能力的汇总。
 _Avoid_: `partition_mode`（已删除的单值推断）、从厂商名、MIG 状态或健康状态反推 dGPU 能力、用版本组合表作硬门（探测缺口 × 硬门 = 假阴性）
 
 **dGPU 探针 — dGPU Probe**:
