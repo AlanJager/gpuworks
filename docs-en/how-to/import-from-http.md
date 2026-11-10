@@ -81,8 +81,10 @@ After import, the image is `present` on the node and is used directly during dep
 | `HTTP_DIRECTORY_TOO_LARGE` | The file count or directory depth exceeds the limit. Point to the model's own directory |
 | `MODEL_SOURCE_REQUIRES_NEWER_AGENT` | The target node's agent is too old. Upgrade it first |
 | `IMAGE_ARCHIVE_URL_INVALID` | The archive URL is invalid. It must use `http`/`https` without embedded credentials |
-| `IMAGE_ARCHIVE_URL_POLICY_DENIED` | The management node's outbound policy rejected this source. Ordinary private and local loopback destinations need no allowlist by default. In strict mode, a platform administrator can authorize the source under Settings → Security & access → Outbound access policy, then save and retry; editing `outbound_allow_private_hosts` in `server.yaml` directly is also supported. A missing, unreadable, invalid, or over-1-MiB configuration file also denies private requests; repair the configuration first. Special metadata, link-local, and reserved addresses always remain prohibited |
-| `IMAGE_ARCHIVE_URL_UNREACHABLE` | The server cannot read the archive. Check the address, network, TLS, and whether the file exists. If a direct node connection fails, also check connectivity from the node to the source |
+| `IMAGE_ARCHIVE_URL_POLICY_DENIED` | This host is not allowed yet. Ordinary private addresses need no allow list by default. In strict mode, check “Automatically add this host to the allow list” beside the address; that resolve writes the host and reads the archive again. Leave it unchecked and the failure stays a message. Settings → Security & access → Outbound access policy still edits the whole list |
+| `IMAGE_ARCHIVE_URL_POLICY_BLOCKED` | This address cannot be permitted through the allow list, for example a reserved or link-local address |
+| `IMAGE_ARCHIVE_URL_UPSTREAM_STATUS` | The archive server returned a specific HTTP status, such as 404. Check the path; this is not a network failure |
+| `IMAGE_ARCHIVE_URL_UNREACHABLE` | The server did not connect to the archive. Check the address, network, and TLS. A direct node fetch can also fail when the node cannot reach the source |
 | `IMAGE_ARCHIVE_URL_NOT_DECLARED` | The URL is not in this image's acquisition addresses. Add it before syncing |
 
 ## Related Information

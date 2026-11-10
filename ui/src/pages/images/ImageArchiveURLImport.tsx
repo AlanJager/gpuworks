@@ -1,8 +1,11 @@
 import { Alert, Button, Card, Descriptions, Input, Space, Tag, Typography } from "antd";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { api, type ImageArchivePreview, type ImageCatalogEntry } from "../../api";
-import { APIError, apiErrorText } from "../../apiError";
+import { type ImageArchivePreview, type ImageCatalogEntry } from "../../api";
+import { APIError } from "../../apiError";
+import ArchiveAllowCheckbox from "./ArchiveAllowCheckbox";
+import ArchiveURLResolveAlert from "./ArchiveURLResolveAlert";
+import { ArchiveAllowError, httpURLHost, previewArchiveURL } from "./archiveURLAllow";
 import { bytes } from "./ImagePageHelpers";
 
 const { Text } = Typography;
@@ -29,8 +32,8 @@ type Props = {
  */
 export default function ImageArchiveURLImport({ versions, onMatched, onPrefill }: Props) {
   const { t } = useTranslation("images");
-  const { t: tCommon } = useTranslation("common");
   const [url, setUrl] = useState("");
+  const [consentHost, setConsentHost] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const [preview, setPreview] = useState<ImageArchivePreview | null>(null);
@@ -47,8 +50,9 @@ export default function ImageArchiveURLImport({ versions, onMatched, onPrefill }
     setLoading(true);
     setError(null);
     setPreview(null);
+    const host = httpURLHost(address);
     try {
-      const result = await api.previewImageArchiveURL(address);
+      const result = await previewArchiveURL(address, host !== "" && consentHost === host);
       setPreview(result);
       const match = matchedVersion(result.repo_tags || []);
       if (match) {
@@ -57,7 +61,7 @@ export default function ImageArchiveURLImport({ versions, onMatched, onPrefill }
       }
       if (result.repo_tags?.length) onPrefill(result);
     } catch (e) {
-      setError(e instanceof APIError ? e : new Error(t("import.url.failed")));
+      setError(e instanceof ArchiveAllowError ? new Error(t("import.url.allowFailed")) : e instanceof APIError ? e : new Error(t("import.url.failed")));
     } finally {
       setLoading(false);
     }
@@ -83,10 +87,12 @@ export default function ImageArchiveURLImport({ versions, onMatched, onPrefill }
             {t("import.url.resolve")}
           </Button>
         </Space.Compact>
-        {error ? <Alert type="error" showIcon message={error instanceof APIError
-          ? apiErrorText((key, options) => tCommon(key, { ...options, defaultValue: t("import.url.failed") }), error)
-          : error.message}
-          description={error instanceof APIError ? `HTTP ${error.status} · ${error.code}` : undefined} /> : null}
+        <ArchiveAllowCheckbox
+          host={httpURLHost(url)}
+          checked={httpURLHost(url) !== "" && consentHost === httpURLHost(url)}
+          onChange={(checked) => setConsentHost(checked ? httpURLHost(url) : "")}
+        />
+        {error ? <ArchiveURLResolveAlert error={error} fallback={t("import.url.failed")} /> : null}
         {preview ? (
           <Descriptions size="small" column={1} bordered>
             <Descriptions.Item label={t("import.url.size")}>{bytes(preview.size_bytes)}</Descriptions.Item>

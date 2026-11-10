@@ -228,6 +228,8 @@
       "required": "Enter the image archive URL first.",
       "resolve": "Resolve",
       "failed": "The image archive could not be read.",
+      "allowAuto": "Automatically add {{host}} to the allow list",
+      "allowFailed": "This address could not be allowed.",
       "size": "Archive size",
       "tags": "References in the archive",
       "tagsUnknown": "The references could not be read from this archive.",

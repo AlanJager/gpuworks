@@ -81,8 +81,10 @@
 | `HTTP_DIRECTORY_TOO_LARGE` | 文件数或层级超出上限，请指向模型自身的目录 |
 | `MODEL_SOURCE_REQUIRES_NEWER_AGENT` | 目标节点 agent 过旧，先升级 agent |
 | `IMAGE_ARCHIVE_URL_INVALID` | 归档地址不可用：必须是无内嵌凭据的 `http`/`https` |
-| `IMAGE_ARCHIVE_URL_POLICY_DENIED` | 管理节点出站策略拒绝该来源。普通私网及本机回环默认无需白名单；开启严格模式时，由平台管理员在设置 → 安全与访问 → 出站访问策略添加授权，保存后重试，也可直接编辑 `server.yaml` 的 `outbound_allow_private_hosts`。配置文件缺失、不可读、无效或超过 1 MiB 也会拒绝私网请求，先修复配置；特殊元数据、链路本地与保留地址始终不能放行 |
-| `IMAGE_ARCHIVE_URL_UNREACHABLE` | server 读不到归档，检查地址、网络、TLS 与文件是否存在；节点直连失败还需检查节点到来源的网络 |
+| `IMAGE_ARCHIVE_URL_POLICY_DENIED` | 该主机还没被允许。普通私网默认无需允许。严格模式下，地址旁勾选「自动加入该主机的白名单」后，同一次解析会把主机写入允许列表；未勾选则只提示。设置 → 安全与访问 → 出站访问策略仍可管理整份列表 |
+| `IMAGE_ARCHIVE_URL_POLICY_BLOCKED` | 该地址不能通过允许列表放行，例如保留地址、链路本地地址 |
+| `IMAGE_ARCHIVE_URL_UPSTREAM_STATUS` | 归档服务器返回了具体 HTTP 状态（如 404）。核对路径，这不是网络故障 |
+| `IMAGE_ARCHIVE_URL_UNREACHABLE` | server 没连上归档，检查地址、网络和 TLS；节点直连失败还需检查节点到来源的网络 |
 | `IMAGE_ARCHIVE_URL_NOT_DECLARED` | 该 URL 不在这个镜像的「获取地址」里，先把它加进去再同步 |
 
 ## 相关
