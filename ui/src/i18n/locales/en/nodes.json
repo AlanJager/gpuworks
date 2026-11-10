@@ -903,6 +903,7 @@
       "busy": "The card is serving",
       "foreign": "Used outside the platform",
       "deferred": "The platform does not yet know what the node runs",
+      "not_held": "Kubernetes has not lent this card to the platform",
       "unavailable": "The host cannot be asked right now",
       "probe_failed": "The vendor tool did not answer this round"
     },

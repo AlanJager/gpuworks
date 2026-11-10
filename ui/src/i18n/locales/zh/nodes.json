@@ -903,6 +903,7 @@
       "busy": "卡正在服务",
       "foreign": "被平台外进程占用",
       "deferred": "平台还不知道节点在跑什么",
+      "not_held": "这张卡没有借给平台（归 Kubernetes 调度）",
       "unavailable": "宿主暂时不能检查",
       "probe_failed": "厂商工具本轮没应答"
     },
