@@ -134,8 +134,12 @@ test("a local model with no template sources clears the provider and preserves t
   assert.equal(screen.queryByRole("combobox", { name: text("modelProvider") }), null);
   assert.equal(buildPayload({ engine: "vllm", model_id: 1, ...form.getFieldsValue(true) }).payload.model_id, 1);
 
+  // Losing all candidates must not silently discard an explicit destination.
   view.rerender(tree(acq({ providers: [] }), "local"));
-  await waitFor(() => assert.equal(requested(), undefined));
+  await waitFor(() => assert.deepEqual(requested(), { storage_id: 7 }));
+  assert.equal(form.getFieldValue(["model_source", "provider"]), undefined);
+  assert.equal(form.getFieldValue(["model_source", "storage_picked"]), true);
+  assert.equal((await screen.findByRole("alert")).textContent, text("storageGone"));
 });
 
 // ---------------------------------------------------------------- where a fetched model is saved
