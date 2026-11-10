@@ -677,6 +677,8 @@
     "navigation": "主导航",
     "administrator": "管理员",
     "logout": "退出登录",
+    "changePassword": "修改密码",
+    "account": "账户：{{name}}",
     "updateAvailable": "有可用更新",
     "updateAvailableHint": "服务端或官方目录有新版本，在设置页「版本与更新」中查看"
   },

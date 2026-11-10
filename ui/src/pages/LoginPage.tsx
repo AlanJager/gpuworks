@@ -1,5 +1,5 @@
 import { CloudServerOutlined, LockOutlined, UserOutlined } from "@ant-design/icons";
-import { Alert, Button, Form, Input, Typography } from "antd";
+import { Alert, Button, Form, Input, Popover, Typography } from "antd";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "../api";
@@ -87,6 +87,18 @@ export function LoginForm({ onLogin }: { onLogin: () => void }) {
       <Button className="auth-submit" type="primary" htmlType="submit" loading={loading}>
         {t("submit")}
       </Button>
+      <div className="auth-forgot">
+        <Popover
+          trigger="click"
+          placement="bottom"
+          content={<div className="auth-forgot-help">
+            <Typography.Paragraph>{t("forgotPasswordHelp")}</Typography.Paragraph>
+            <Typography.Text code copyable>{t("forgotPasswordCommand")}</Typography.Text>
+          </div>}
+        >
+          <Typography.Link>{t("forgotPassword")}</Typography.Link>
+        </Popover>
+      </div>
     </Form>
   );
 }

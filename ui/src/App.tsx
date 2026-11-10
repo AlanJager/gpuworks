@@ -5,7 +5,6 @@ import { SidebarProvider } from "@/components/ui/sidebar";
 import AppSidebar from "./app/AppSidebar";
 import { ConsoleIcon } from "./ui-kit/consoleIcons";
 
-const LogoutIcon = ConsoleIcon.logout;
 const AssistantIcon = ConsoleIcon.assistant;
 import UpdateNotice from "./components/UpdateNotice";
 import NoticeBell from "./components/NoticeBell";
@@ -34,6 +33,7 @@ import CloudProvidersPage from "./pages/CloudProvidersPage";
 import SettingsPage from "./pages/SettingsPage";
 import LogsPage from "./pages/LogsPage";
 import SessionBoundary from "./components/SessionBoundary";
+import UserMenu from "./components/UserMenu";
 import NotFoundPage from "./pages/NotFoundPage";
 import ImagesPage from "./pages/ImagesPage";
 import StoragePage from "./pages/StoragePage";
@@ -104,10 +104,7 @@ function AuthenticatedShell({ onLogout }: { onLogout: () => Promise<void> }) {
           <NoticeBell />
           <AssistantHeaderButton />
           <LanguageSwitcher light />
-          <span className="app-header-user">{t("header.administrator")}</span>
-          <Tooltip content={t("header.logout")}>
-            <Button variant="ghost" size="md" iconOnly onClick={onLogout} aria-label={t("header.logout")}><LogoutIcon /></Button>
-          </Tooltip>
+          <UserMenu onLogout={onLogout} />
         </div>
       </header>
       <SidebarProvider open={!navCollapsed} onOpenChange={setNavOpen} breakpointBehavior="collapse">

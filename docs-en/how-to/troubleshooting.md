@@ -1168,7 +1168,7 @@ Not every write fails once the disk fills: SQLite first uses up the space it alr
 
 ## Forgotten Admin Password
 
-**Symptoms**: You cannot sign in.
+**Symptoms**: You cannot sign in. (To change a password while you can still sign in, choose **Change password** in the console's account menu at the top right.)
 
 **Resolution**
 
@@ -1181,7 +1181,7 @@ Not every write fails once the disk fills: SQLite first uses up the space it alr
 
 2. Sign in again with the new password and confirm that access is restored. Changing the password invalidates this user's existing management sessions; inference tokens are unaffected.
 
-`--user` defaults to `admin`. Without `--data`, the command reads `data_dir` from the `server.yaml` next to the binary, then from the default installation's `server.yaml`, and uses `./data` only if neither exists (you can specify the database path directly with `--db`). `--password` cannot be empty. New or changed administrator passwords must contain 15–128 Unicode characters and at most 512 bytes. Common guessable values, whole-value repetitions and sequences are rejected; character-class mixtures are not required and passphrases are supported. Existing accounts can still authenticate with their current passwords.
+`--user` defaults to `admin`. Without `--data`, the command reads `data_dir` from the `server.yaml` next to the binary, then from the default installation's `server.yaml`, and uses `./data` only if neither exists (you can specify the database path directly with `--db`). `--password` cannot be empty. New or changed administrator passwords must contain 8–128 Unicode characters and at most 512 bytes, and must not be the username. Common guessable values, whole-value repetitions and sequences are rejected; character-class mixtures are not required and passphrases are supported. Existing accounts can still authenticate with their current passwords.
 If it reports `database ... does not exist`, use `--data` to specify the server's actual data directory as instructed.
 If the user does not exist, the command returns `not found`; first check the username and data directory. For permission errors, check the current user's access to the database.
 See [CLI](../reference/cli.md).

@@ -1374,6 +1374,8 @@ export interface AuthUser {
   id: number;
   username: string;
   role: string;
+  /** The length a new password must have; /auth/me only. */
+  password_policy?: { min_length: number; max_length: number };
 }
 
 /** One built-in (or administrator-configured) community repository card. */
@@ -4261,6 +4263,9 @@ export const api = {
     sendJSON<RecoveryOutcome>("POST", `/api/v1/nodes/${uuid}/recovery/probe`),
 
   me: () => getJSON<AuthUser>("/api/v1/auth/me"),
+  /** Replaces the signed-in user's password and ends all of their sessions. */
+  changePassword: (currentPassword: string, newPassword: string) =>
+    sendJSON<{ status: string }>("POST", "/api/v1/auth/password", { current_password: currentPassword, new_password: newPassword }),
   models: () => getJSON<List<Model>>("/api/v1/models"),
   modelsPage: (query: ListQuery) => getJSON<ModelPage>(`/api/v1/models?${listQueryString(query)}`),
   model: (id: number) => getJSON<Model>(`/api/v1/models/${id}`),
