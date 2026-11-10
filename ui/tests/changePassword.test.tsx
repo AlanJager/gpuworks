@@ -42,6 +42,9 @@ after(() => closeChannels());
 
 const auth = locale("auth").changePassword;
 
+/** The form errors on screen; antd keeps a fading copy of a dropped error for its animation. */
+const fieldErrors = () => [...document.querySelectorAll(".ant-form-item-explain-error")].map((e) => e.textContent);
+
 type Sent = { url: string; body: unknown };
 function answer(status: number, body: unknown, sent: Sent[]) {
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -53,7 +56,7 @@ function answer(status: number, body: unknown, sent: Sent[]) {
 async function openForm(onLogout: () => void = () => {}) {
   apiModule.api.me = async () => ({ id: 1, username: "admin", role: "admin", password_policy: { min_length: 8, max_length: 128 } });
   render(<I18nextProvider i18n={i18n}><UserMenu onLogout={onLogout} /></I18nextProvider>);
-  const user = userEvent.setup();
+  const user = userEvent.setup({ delay: null });
   await user.click(await screen.findByRole("button", { name: "Account: admin" }));
   await user.click(await screen.findByText("Change password"));
   await screen.findByText(auth.description);
@@ -71,7 +74,7 @@ test("the account menu names the user and signs out", async () => {
   apiModule.api.me = async () => ({ id: 1, username: "ops", role: "admin" });
   let signedOut = 0;
   render(<I18nextProvider i18n={i18n}><UserMenu onLogout={() => { signedOut++; }} /></I18nextProvider>);
-  const user = userEvent.setup();
+  const user = userEvent.setup({ delay: null });
   await user.click(await screen.findByRole("button", { name: "Account: ops" }));
   assert.ok(await screen.findByText("Change password"));
   await user.click(screen.getByText("Log out"));
@@ -89,7 +92,7 @@ test("the form states the server's rule and signs out after a change", async () 
   answer(200, { status: "password_changed" }, sent);
   let signedOut = 0;
   const user = await openForm(() => { signedOut++; });
-  assert.ok(screen.getByText(/^8 to 128 characters\./));
+  assert.ok(screen.getByText("8–128 characters. Avoid weak passwords to keep the account secure."));
   await fill(user, "old-password-1", "Tiger#Lake9");
   await waitFor(() => assert.equal(signedOut, 1));
   assert.deepEqual(sent, [{ url: "/api/v1/auth/password", body: { current_password: "old-password-1", new_password: "Tiger#Lake9" } }]);
@@ -129,7 +132,7 @@ test("a refusal that is not about a field is shown above the form", async () => 
 
 test("the sign-in form tells how to reset a forgotten password", async () => {
   render(<I18nextProvider i18n={i18n}><LoginForm onLogin={() => {}} /></I18nextProvider>);
-  const user = userEvent.setup();
+  const user = userEvent.setup({ delay: null });
   await user.click(screen.getByText(locale("auth").forgotPassword));
   assert.ok(await screen.findByText(locale("auth").forgotPasswordCommand));
 });
@@ -145,9 +148,8 @@ test("a server rejection clears once the field is edited, and the next answer re
     await user.clear(screen.getByLabelText(label));
     await user.type(screen.getByLabelText(label), "Tiger#Lake9");
   }
-  await waitFor(() => assert.equal(screen.queryByText(locale("common").apiError.PASSWORD_GUESSABLE), null));
+  await waitFor(() => assert.deepEqual(fieldErrors(), []));
   await user.click(screen.getByRole("button", { name: auth.submit }));
-  assert.ok(await screen.findByText(locale("common").apiError.CURRENT_PASSWORD_INVALID));
-  assert.equal(screen.queryByText(locale("common").apiError.PASSWORD_GUESSABLE), null);
+  await waitFor(() => assert.deepEqual(fieldErrors(), [locale("common").apiError.CURRENT_PASSWORD_INVALID]));
   assert.equal(sent.length, 2);
 });
