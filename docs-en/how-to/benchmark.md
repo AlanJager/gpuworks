@@ -28,7 +28,9 @@ For external endpoints, prepare the address, model name, and required API key. S
    To import a dataset, first upload JSONL. Multi-turn conversations send requests in session order, and the output length is an upper limit.
    Random token-length and Agentic datasets require a loadable tokenizer. **Automatic** tries, in order: the inference service's own `/v1/tokenize` and `/v1/detokenize`
    (served by vLLM and SGLang and on by default for a deployment; sampling uses the engine's tokenizer, so lengths match the engine's count whatever the tokenizer format),
-   the `tokenizer.json` or `tiktoken.model` already on the target machine, and finally the model repository. For an external endpoint, **Automatic** uses only the endpoint's own tokenize endpoints.
+   the `tokenizer.json` or `tiktoken.model` already on the target machine, then the tokenizer repository explicitly declared by the template; without that declaration, it uses the weight repository.
+   A GGUF weight repository may lack independent tokenizer files. For example, the Strata template uses a commit-pinned `api.tokenizer_ref` to name the base model's tokenizer.
+   The evaluation saves the resolved reference; a template never overrides a manually selected source. For an external endpoint, **Automatic** uses only the endpoint's own tokenize endpoints.
    You can also use only the **Inference service (de)tokenize endpoints** (if it is unavailable the evaluation stops before inference rather than switching sources), name a model repository (`org/repo`),
    or upload `tokenizer.json` / `tiktoken.model`.
 4. Review warmup, request timeout, output policy, experience thresholds, and per-request details in **Advanced Settings**. To view individual timelines in the report, enable **Keep per-request details** and set the capacity.

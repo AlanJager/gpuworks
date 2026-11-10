@@ -255,6 +255,7 @@ func specSchema(operationTypes, engineNames []any) map[string]any {
 				"additionalProperties": false,
 				"properties": map[string]any{
 					"health_endpoint": map[string]any{"type": "string", "description": "HTTP health path, e.g. /health."},
+					"tokenizer_ref":   map[string]any{"type": "string", "description": "Verified tokenizer repository, independent of weights: hf://org/repo@<40-hex-commit> or ms://org/repo@<40-hex-commit>. Used by benchmark auto resolution when no node vocabulary is available."},
 					"operations": map[string]any{
 						"type":        "array",
 						"description": "Declared inference operations; endpoints/modes get registry defaults.",

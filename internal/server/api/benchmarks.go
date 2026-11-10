@@ -217,10 +217,13 @@ func (a *apiHandlers) createBenchmark(w http.ResponseWriter, r *http.Request) {
 	}
 	if strings.TrimSpace(req.TokenizerSource) == "" {
 		// No source named: the client's own reference stands, and a managed
-		// target with no reference still defaults to the model repository.
+		// target with no reference uses its declared tokenizer or model repository.
 		if req.TargetKind == "instance" && strings.TrimSpace(req.TokenizerRef) == "" && targetDeployment != nil {
 			if model, e := a.d.Store.GetModel(targetDeployment.ModelID); e == nil {
 				req.TokenizerRef = tokenizerRefForModel(model)
+				if declared := a.declaredBenchmarkTokenizer(targetDeployment, model); declared != "" {
+					req.TokenizerRef = declared
+				}
 			}
 		}
 	} else {

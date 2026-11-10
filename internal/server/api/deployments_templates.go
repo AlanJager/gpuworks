@@ -191,6 +191,10 @@ func applyCurrentModelAPIContract(selection *templateSelection, model *store.Mod
 		return
 	}
 	contract := inferenceapi.ModelContract(model)
+	var templateContract inferenceapi.Contract
+	if json.Unmarshal(selection.APIContract, &templateContract) == nil {
+		contract.TokenizerRef = templateContract.TokenizerRef
+	}
 	encoded, err := json.Marshal(contract)
 	if err == nil {
 		selection.APIContract = encoded

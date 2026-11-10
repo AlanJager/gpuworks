@@ -192,6 +192,10 @@ func Definitions() []Definition {
 // NormalizeContract validates and fills the registered endpoint/mode defaults.
 func NormalizeContract(contract Contract) (Contract, error) {
 	contract.Operations = append([]Operation(nil), contract.Operations...)
+	contract.TokenizerRef = strings.TrimSpace(contract.TokenizerRef)
+	if contract.TokenizerRef != "" && !catalogTokenizerReference.MatchString(contract.TokenizerRef) {
+		return Contract{}, fmt.Errorf("api.tokenizer_ref must name a commit-pinned hf://org/repo@<40-hex-commit> or ms://org/repo@<40-hex-commit> repository")
+	}
 	contract.HealthEndpoint = strings.TrimSpace(contract.HealthEndpoint)
 	if contract.HealthEndpoint != "" && !validEndpoint(contract.HealthEndpoint) {
 		return Contract{}, fmt.Errorf("invalid API health_endpoint %q", contract.HealthEndpoint)

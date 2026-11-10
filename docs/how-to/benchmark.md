@@ -28,7 +28,9 @@
    导入数据集时先上传 JSONL；多轮对话按会话顺序发请求，输出长度是上限。
    使用随机定长或 Agentic 数据集必须提供可加载的 tokenizer。**自动**依次尝试：推理服务自己的 `/v1/tokenize`、`/v1/detokenize`
    （vLLM、SGLang 提供，部署默认开启；用引擎的分词器采样，长度与引擎计数一致，任何 tokenizer 格式都适用），
-   目标机上已有的 `tokenizer.json` 或 `tiktoken.model`，最后是模型仓库。外部端点的**自动**只用端点自己的分词接口。
+   目标机上已有的 `tokenizer.json` 或 `tiktoken.model`，随后使用模板明确声明的 Tokenizer 仓库；未声明时使用权重仓库。
+   GGUF 权重仓库可能不含独立 Tokenizer 文件；例如 Strata 模板通过固定版本的 `api.tokenizer_ref` 指向基础模型的 Tokenizer。
+   评测保存解析后的引用；手动指定的来源不会被模板覆盖。外部端点的**自动**只用端点自己的分词接口。
    也可以只用**推理服务 (de)tokenize 接口**（不可用时在推理前终止，不改用其他来源）、指定模型仓库（填 `org/repo`），
    或上传 `tokenizer.json` / `tiktoken.model`。
 4. 检查**高级设置**中的预热、单请求超时、输出策略、体验门槛和逐请求明细。若要在报告里查看逐条时间线，开启**保留逐请求明细**并设置容量。
