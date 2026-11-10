@@ -43,7 +43,7 @@ NVIDIA、AMD Instinct 与 Ryzen AI Max、华为昇腾、平头哥 PPU、海光 D
   在阿里云的一次演练中，一个 server 纳管了 7 个地域租来的 1,003 台 GPU 机器：500 多个副本在 4 分钟内放置并全部跑起来，
   网关承接 2,000 并发，server 峰值只用了 9 个 CPU 核、1.6 GB 内存。
 - **先估算显存，再解释放置。** 启动前就能看到权重、KV cache 和引擎开销各要多少显存，调度器选了哪些卡、其他卡为什么没选。
-- **一张卡跑多个模型。** dGPU 给每个实例加显存限额，让多个模型共用一张卡（NVIDIA 基于 HAMi-core，昇腾基于 vCANN，PPU 基于 HGGC，AMD 基于 libvrocm，海光基于原生 vdev）；支持型号、运行时和就绪条件见[厂商支持矩阵](docs/reference/support-matrix.md)。
+- **一张卡跑多个模型。** dGPU 给每个实例加显存限额，让多个模型共用一张卡（NVIDIA 基于 HAMi-core，昇腾基于 vcann-rt，PPU 基于 ppu-slicing-shim，AMD 基于 rocm-slicing-shim，海光基于原生 vdev）；支持型号、运行时和就绪条件见[厂商支持矩阵](docs/reference/support-matrix.md)。
   sleep/wake 让可休眠的 vLLM 模型轮流使用同一批卡；已验证的厂商与镜像组合见[功能选择指南](docs/explanation/choosing-features.md#sleepwake多个模型轮流用一张卡)。
 - **横向扩展。** 跨节点多副本、多机张量 / 流水线并行，以及 PD 分离（NVIDIA 上 vLLM + NIXL，昇腾上 vLLM-Ascend + Mooncake，PPU 上 SGLang 或 vLLM + Mooncake，同机或经 RDMA，海光上 vLLM + Mooncake 为实验性）。
 - **OpenAI 兼容网关。** `/v1` 下提供 chat、completions、embeddings、rerank、音频、图像、视频和 realtime；
@@ -102,8 +102,8 @@ curl http://<server>:8800/v1/chat/completions \
 |---|---|---|---|---|---|
 | **NVIDIA**（CUDA） | ✅ Docker、Containerd 或 runveil（内置免 root 运行时） | ✅ 显存 MiB 级限额 | ✅ vLLM | ✅ | ✅ vLLM + NIXL |
 | **AMD**（ROCm：Instinct MI300 系列、Ryzen AI Max） | ✅ Docker、Containerd 或 runveil（内置免 root 运行时） | 🧪 libvrocm 显存配额；MI300X 的 Docker/runveil 已验证 | ✅ vLLM | ✅ vLLM | ✅ vLLM + NIXL |
-| **华为昇腾**（CANN） | ✅ Docker、Containerd 或 runveil（内置免 root 运行时） | 🧪 vCANN 显存配额；需 device-share 权限和逐卡探针 | ✅ vLLM-Ascend | ✅ | ✅ vLLM-Ascend + Mooncake |
-| **平头哥 PPU**（HGGC） | ✅ Docker、Containerd 或 runveil（内置免 root 运行时） | 🧪 HGGC 显存配额及加权 QoS；仅 Docker | ✅ vLLM | ✅ | ✅ SGLang + Mooncake（同机或经 RDMA）、vLLM + Mooncake（RDMA） |
+| **华为昇腾**（CANN） | ✅ Docker、Containerd 或 runveil（内置免 root 运行时） | 🧪 vcann-rt 显存配额；需 device-share 权限和逐卡探针 | ✅ vLLM-Ascend | ✅ | ✅ vLLM-Ascend + Mooncake |
+| **平头哥 PPU**（HGGC） | ✅ Docker、Containerd 或 runveil（内置免 root 运行时） | 🧪 ppu-slicing-shim 显存配额及加权 QoS；仅 Docker | ✅ vLLM | ✅ | ✅ SGLang + Mooncake（同机或经 RDMA）、vLLM + Mooncake（RDMA） |
 | **海光 DCU**（DTK） | ✅ Docker、Containerd 或 runveil（内置免 root 运行时） | 🧪 Z100 / K100_AI / BW 原生 vdev；Docker 或 runveil | ✅ vLLM | ✅ | 🧪 vLLM 0.21 + Mooncake |
 | **Apple Silicon**（M1–M5，macOS 15+） | ✅ vllm-metal、MLX、llama.cpp 以本机进程运行 | — | — | — | — |
 

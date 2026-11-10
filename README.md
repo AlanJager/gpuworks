@@ -54,7 +54,7 @@ fine-tuning and training jobs on the same accelerators.
 - **Memory estimate and explained placement.** Before anything starts, you see how much GPU memory weights, KV
   cache and engine overhead need, which GPUs the scheduler picked and why the others were rejected.
 - **Share a GPU between models.** dGPU puts a memory quota on each instance so several models fit on one card
-  (NVIDIA via HAMi-core, Ascend via vCANN, PPU via HGGC, AMD via libvrocm, Hygon via native vdevs); supported models,
+  (NVIDIA via HAMi-core, Ascend via vcann-rt, PPU via ppu-slicing-shim, AMD via rocm-slicing-shim, Hygon via native vdevs); supported models,
   runtimes, and readiness requirements are in the [Vendor Support Matrix](docs-en/reference/support-matrix.md).
   Sleep/wake lets sleep-capable vLLM models take turns on the same GPUs; verified vendor and image combinations
   are listed in [choosing features](docs-en/explanation/choosing-features.md#sleepwake-models-take-turns-on-one-gpu).
@@ -123,8 +123,8 @@ Install the GPUWorks control plane on this host and verify it.
 |---|---|---|---|---|---|
 | **NVIDIA** (CUDA) | ✅ Docker, containerd or runveil (built-in rootless runtime) | ✅ memory quota at MiB granularity | ✅ vLLM | ✅ | ✅ vLLM + NIXL |
 | **AMD** (ROCm: Instinct MI300 series, Ryzen AI Max) | ✅ Docker, containerd or runveil (built-in rootless runtime) | 🧪 libvrocm memory quota; tested on MI300X under Docker/runveil | ✅ vLLM | ✅ vLLM | ✅ vLLM + NIXL |
-| **Huawei Ascend** (CANN) | ✅ Docker, containerd or runveil (built-in rootless runtime) | 🧪 vCANN memory quota; requires device-share permissions and a per-GPU probe | ✅ vLLM-Ascend | ✅ | ✅ vLLM-Ascend + Mooncake |
-| **T-Head PPU** (HGGC) | ✅ Docker, containerd or runveil (built-in rootless runtime) | 🧪 HGGC memory quota and weighted QoS; Docker only | ✅ vLLM | ✅ | ✅ SGLang + Mooncake (same node or over RDMA), vLLM + Mooncake (RDMA) |
+| **Huawei Ascend** (CANN) | ✅ Docker, containerd or runveil (built-in rootless runtime) | 🧪 vcann-rt memory quota; requires device-share permissions and a per-GPU probe | ✅ vLLM-Ascend | ✅ | ✅ vLLM-Ascend + Mooncake |
+| **T-Head PPU** (HGGC) | ✅ Docker, containerd or runveil (built-in rootless runtime) | 🧪 ppu-slicing-shim memory quota and weighted QoS; Docker only | ✅ vLLM | ✅ | ✅ SGLang + Mooncake (same node or over RDMA), vLLM + Mooncake (RDMA) |
 | **Hygon DCU** (DTK) | ✅ Docker, containerd or runveil (built-in rootless runtime) | 🧪 Z100 / K100_AI / BW native vdev; Docker or runveil | ✅ vLLM | ✅ | 🧪 vLLM 0.21 + Mooncake |
 | **Apple Silicon** (M1–M5, macOS 15+) | ✅ vllm-metal, MLX, llama.cpp as native processes | — | — | — | — |
 

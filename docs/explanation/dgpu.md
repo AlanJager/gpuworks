@@ -3,15 +3,17 @@
 dGPU（dynamic GPU）把显存预算和必要的运行库注入容器，使同一物理卡上的多个实例互相受到显存上限约束。
 它不是虚拟出两张拥有独立故障域、固定带宽和固定算力的 PCIe 设备。
 
+各后端用的实现与上游：NVIDIA 是 [HAMi-core](https://github.com/Project-HAMi/HAMi-core)（`libvgpu.so`）；昇腾是 openEuler [ubs-virt](https://atomgit.com/openeuler/ubs-virt) 的 vcann-rt（`libvruntime.so`），属于软件层的逻辑限额，不是昇腾 `npu-smi` 的 vNPU 驱动层切分；PPU 与 AMD 分别是 [gpustack-operator](https://github.com/gpustack/gpustack-operator) 的 ppu-slicing-shim（拦截 PPU 的 HGGC 运行时与 HGML）和 rocm-slicing-shim（`libvrocm.so`）；海光用驱动原生的 vdev。上游源码版本与本仓库的补丁见 `build/runtime-assets/manifest.json`。
+
 - NVIDIA 由 HAMi-core 实现：libvgpu.so 与 CUDA 环境变量；配额是硬显存限制。HAMi 的算力上限按 kernel 发射限流，
   对普通 kernel 是封顶，但 vLLM 默认的 CUDA graph 与 cuBLAS 不受它限制，多个推理实例同卡时不能靠它按比例分配算力，
   平台因此不开放算力上限。
-- PPU HGGC 在长上下文、高并发负载下能把 20/80 配置落实为接近目标的繁忙时吞吐权重；对端
+- PPU ppu-slicing-shim 在长上下文、高并发负载下能把 20/80 配置落实为接近目标的繁忙时吞吐权重；对端
   空闲时会借用余量，因此不是固定 SM 分区。
-- 昇腾 vCANN/device-share 受宿主机权限和 runtime 组合影响。当前 Gitee 云环境只能证明节点
+- 昇腾 vcann-rt/device-share 受宿主机权限和 runtime 组合影响。当前 Gitee 云环境只能证明节点
   探针或整卡对话，不能把云侧拒绝写成 dGPU 通过。
 - 海光 Z100 / K100_AI / BW 使用原生 vdev（实验性）：每实例一张卡，显存配额同时决定分配的 CU 数；不能独立调整算力，也不保证推理吞吐与显存配额成比例。支持 x86_64 上的 Docker 或 runveil/udocker，需原生 helper、宿主库并通过逐卡行为探针；仅报告 K100 或其他未适配型号时仍只支持整卡。
-- AMD 由 libvrocm.so 实现（实验性，用户态，HIP 运行时层拦截）：配额是硬显存限制。ROCm 的算力配额由
+- AMD 由 rocm-slicing-shim（libvrocm.so）实现（实验性，用户态，HIP 运行时层拦截）：配额是硬显存限制。ROCm 的算力配额由
   `HSA_CU_MASK` 在硬件层实施，低于任何预加载库能看到或校验的层面，平台因此不对 AMD 开放算力上限——
   这与 NVIDIA 的「技术上开放不了」是同一类限制，但实现机制不同。支持 x86_64 上的 Docker、nerdctl 或 runveil；
   dGPU 已在 MI300X（gfx942）的 Docker 和 runveil 下实测，其他型号与组合未验证。
@@ -29,7 +31,7 @@ HAMi 每次分配、每次回答「显存总量多少」都现读实例共享区
 vLLM、SGLang 只在启动时按看到的上限切一次 KV 缓存，调大要重启实例才用得上；按需分配的引擎直接用上。调低到引擎已占用量
 以下会让它下一次分配失败而退出，所以这种实例保持原上限，到重启时再按新上限启动。
 
-昇腾 vCANN、PPU HGGC 与 AMD libvrocm 只在容器启动时
+昇腾 vcann-rt、PPU ppu-slicing-shim 与 AMD rocm-slicing-shim 只在容器启动时
 读上限，实例同样要重启。海光 Z100 / K100_AI / BW 也需重启实例，先释放旧 vdev，再按新的显存配额与 CU 数重新创建。
 
 ## 调度怎么算一个 dGPU 实例

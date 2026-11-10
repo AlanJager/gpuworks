@@ -216,7 +216,7 @@ The evaluation API attaches these errors to the docker arguments or shared memor
 
 Two types of additions follow: SGLang logging configuration and the agent's multi-node network interface selection fill in missing values; the agent's device and dGPU env override all layers above.
 
-Image-built-in ENV is inherited by the container runtime; only keys explicitly set by `-e` are replaced (for example, Ascend vCANN first reads the image's
+Image-built-in ENV is inherited by the container runtime; only keys explicitly set by `-e` are replaced (for example, Ascend vcann-rt first reads the image's
 `LD_LIBRARY_PATH` and then appends the driver paths).
 
 For non-Chinese GPUs, the udocker runtime (both the runveil and udocker CLI launchers) includes
@@ -247,7 +247,7 @@ The agent does not reconstruct catalog, image, or command semantics. It only mak
    - PPU: `/dev/alixpu*` devices, `NVIDIA_VISIBLE_DEVICES=void`, `CUDA_VISIBLE_DEVICES`
 7. **dGPU partitioning**: the server sends only the GPU memory limit, compute percentage, and backend name; all injection happens in the agent:
    - HAMi-core: mounts `libvgpu.so`; sets `LD_PRELOAD`, `CUDA_DEVICE_MEMORY_LIMIT_<i>`, and `CUDA_DEVICE_SM_LIMIT` when the deployment carries a compute percentage (deployment requests currently do not accept a compute percentage; see [dGPU Explained](../explanation/dgpu.md))
-   - vCANN: mounts `libvruntime.so`, etc.; sets `ENPU_DSMI_HOOK=1` and `LD_LIBRARY_PATH`
+   - vcann-rt: mounts `libvruntime.so`, etc.; sets `ENPU_DSMI_HOOK=1` and `LD_LIBRARY_PATH`
    - HGGC: mounts `hggc_quota.so`, etc.; sets `LD_PRELOAD` and `HGGC_DEVICE_MEMORY_LIMIT_<i>`
 
 For details, see [dGPU Explained](../explanation/dgpu.md).

@@ -1,6 +1,6 @@
 # gpuworks — 开发规约
 
-轻量易用的 GPU 集群管理平台：节点接入、GPU 探测、模型部署（vLLM/SGLang）、显存估算与调度、dGPU 动态 GPU（NVIDIA HAMi-core / Ascend vCANN / PPU HGGC）、sleep/wake、监控日志、云厂商租机、多机推理、评测与 AI 助手。当前进行中的工作与 backlog 见 `artifacts/plan.md`（生成区块）与 `artifacts/README.md`（v1/v2 原文存档 `artifacts/archive/2026-08-18-roadmap/plan-v1.md`、`artifacts/archive/2026-08-18-roadmap/plan-v2.md`）。全部文档的索引与目录约定见 `docs/README.md`；领域词汇表（L1–L4 测试分层、dGPU 后端/能力/探针等术语的权威定义）见 `CONTEXT.md`。`AGENTS.md` 是本文件的符号链接，只改本文件。
+轻量易用的 GPU 集群管理平台：节点接入、GPU 探测、模型部署（vLLM/SGLang）、显存估算与调度、dGPU 动态 GPU（NVIDIA HAMi-core / 昇腾 vcann-rt / PPU ppu-slicing-shim / AMD rocm-slicing-shim / 海光原生 vdev，命名见 `CONTEXT.md`）、sleep/wake、监控日志、云厂商租机、多机推理、评测与 AI 助手。当前进行中的工作与 backlog 见 `artifacts/plan.md`（生成区块）与 `artifacts/README.md`（v1/v2 原文存档 `artifacts/archive/2026-08-18-roadmap/plan-v1.md`、`artifacts/archive/2026-08-18-roadmap/plan-v2.md`）。全部文档的索引与目录约定见 `docs/README.md`；领域词汇表（L1–L4 测试分层、dGPU 后端/能力/探针等术语的权威定义）见 `CONTEXT.md`。`AGENTS.md` 是本文件的符号链接，只改本文件。
 
 ## 架构总览
 

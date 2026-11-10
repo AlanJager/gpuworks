@@ -23,8 +23,8 @@
   {
     "path": "dev/release.md",
     "block_index": 1,
-    "source_sha256": "d4fe9e378770454833b5e14d07395cbb70e032bf26b7fb5c7c6ed6d8ba57197e",
-    "translation_sha256": "717d64af809835f03c64cccb51dd54be3cd3ab3de0e7d93ce47f354fd4b6d1f7",
+    "source_sha256": "957acfe4b88a2bb0b730fab70c725bbbdaf2e1536f84f94d12918def820c5a7c",
+    "translation_sha256": "cac397a0dea3afc07b0e87be5f17fd4204658d3b070919f828730dc6f0f4992d",
     "reason": "Translate release validation command comments"
   },
   {
