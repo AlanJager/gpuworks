@@ -94,6 +94,9 @@ func (e *APIError) Error() string {
 // IsNotFound reports a 404.
 func IsNotFound(err error) bool { return hasCode(err, http.StatusNotFound) }
 
+// IsForbidden reports a 403: the service account may not do this.
+func IsForbidden(err error) bool { return hasCode(err, http.StatusForbidden) }
+
 // IsAlreadyExists reports a 409 AlreadyExists.
 func IsAlreadyExists(err error) bool {
 	var e *APIError

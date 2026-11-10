@@ -9,6 +9,7 @@
 package kube
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -94,6 +95,9 @@ type Options struct {
 	CardDevices func(context.Context) (map[int][]string, error)
 	// PluginDir is the kubelet's device plugin directory; "" serves none.
 	PluginDir string
+	// HAMiScheduler is the name of HAMi's scheduler, which the hold pods of a
+	// node served by HAMi go through; "" is DefaultHAMiScheduler.
+	HAMiScheduler string
 }
 
 // Driver implements runtime.Driver on Kubernetes.
@@ -119,6 +123,7 @@ func FromEnvironment(stateDir string, cards func(context.Context) (map[int]strin
 		Cards: cards, IdleReturn: time.Minute, Log: log,
 		HostRoot: HostRoot, StateDir: stateDir, ContainerdSocket: os.Getenv("GPUWORKS_KUBE_CONTAINERD_SOCKET"),
 		CardDevices: cardDevices, PluginDir: deviceplugin.DefaultDir,
+		HAMiScheduler: os.Getenv("GPUWORKS_KUBE_HAMI_SCHEDULER"),
 	}
 	if o.Namespace == "" || o.NodeName == "" || o.PodName == "" {
 		return nil, errors.New("GPUWORKS_KUBE_NAMESPACE, GPUWORKS_KUBE_NODE_NAME and GPUWORKS_KUBE_POD_NAME must be set (the DaemonSet manifest sets them)")
@@ -141,6 +146,7 @@ func New(o Options) *Driver {
 	d.cards = &cardPool{
 		api: o.API, kubelet: o.Kubelet, ns: o.Namespace, node: o.NodeName, cards: o.Cards,
 		idleReturn: o.IdleReturn, now: time.Now, log: o.Log, poll: o.Poll,
+		hamiScheduler: cmp.Or(o.HAMiScheduler, DefaultHAMiScheduler), podsTTL: 10 * time.Second,
 	}
 	return d
 }

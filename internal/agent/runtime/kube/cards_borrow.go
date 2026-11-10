@@ -32,15 +32,28 @@ const (
 type errCardsNotGiven struct {
 	cards   []string
 	refused string // the kubelet's reason when it refused hold pods; "" when another pod won the race
+	// detail replaces the default account of why, where a scheduler gave the
+	// reason (HAMi, ACK GPU sharing).
+	detail string
+	// final: trying again will not help (another pod holds the card, or the
+	// scheduler gave something else than asked).
+	final bool
 }
 
 func (e *errCardsNotGiven) Error() string {
 	why := "another pod took them first"
-	if e.refused != "" {
+	switch {
+	case e.detail != "":
+		why = e.detail
+	case e.refused != "":
 		why = "the kubelet refused the hold pods: " + e.refused
 	}
 	return fmt.Sprintf("Kubernetes did not give this node's cards %s to the platform: %s", strings.Join(e.cards, ","), why)
 }
+
+// retryable: a shortage that is not a refusal may be a card the kubelet or
+// scheduler had not yet freed.
+func (e *errCardsNotGiven) retryable() bool { return e.refused == "" && !e.final }
 
 // borrowWithRetry borrows the cards in want. A card the kubelet had not yet
 // freed shows up on a later attempt, so a shortage that is not a refusal is
@@ -56,7 +69,7 @@ func (p *cardPool) borrowWithRetry(ctx context.Context, want []string) error {
 	for {
 		err := p.borrow(ctx, want)
 		var short *errCardsNotGiven
-		if err == nil || !errors.As(err, &short) || short.refused != "" || !time.Now().Before(deadline) || ctx.Err() != nil {
+		if err == nil || !errors.As(err, &short) || !short.retryable() || !time.Now().Before(deadline) || ctx.Err() != nil {
 			return err
 		}
 		select {
@@ -67,11 +80,30 @@ func (p *cardPool) borrowWithRetry(ctx context.Context, want []string) error {
 	}
 }
 
-// borrow takes every free card, keeps the ones in want and returns the rest.
+// borrow takes the wanted cards that no hold pod holds, the way the node's
+// mode allows: through a plain device plugin every free card is taken, the
+// wanted ones kept and the rest returned; through HAMi the wanted cards are
+// named; through ACK GPU sharing the free cards are taken like a plugin's.
 // The caller holds borrowMu and not mu.
 func (p *cardPool) borrow(ctx context.Context, want []string) error {
 	if len(p.unheld(want)) == 0 {
 		return nil
+	}
+	v, err := p.refresh(ctx)
+	if err != nil {
+		return err
+	}
+	if v.shared != "" {
+		return errors.New(v.shared)
+	}
+	if err := p.checkStale(want); err != nil {
+		return err
+	}
+	switch v.mode {
+	case modeHAMi:
+		return p.borrowHAMi(ctx, v, want)
+	case modeACK:
+		return p.borrowACK(ctx, v, want)
 	}
 	if err := p.checkHolders(ctx, want); err != nil {
 		return err
@@ -88,6 +120,20 @@ func (p *cardPool) borrow(ctx context.Context, want []string) error {
 	p.returnUnused(ctx, keep)
 	if len(still) > 0 {
 		return &errCardsNotGiven{cards: still, refused: refused}
+	}
+	return nil
+}
+
+// checkStale fails when a wanted card is held for another mode than the
+// node's now: the node changed under it, and borrowing it again as if it were
+// the platform's is what must not happen.
+func (p *cardPool) checkStale(want []string) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for _, card := range want {
+		if p.isStale(card) {
+			return errors.New("card " + card + " cannot be borrowed: " + p.staleReason(card))
+		}
 	}
 	return nil
 }
@@ -109,13 +155,13 @@ func (p *cardPool) unheld(want []string) []string {
 func (p *cardPool) currentResource() string {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	return p.resource
+	return p.view.resource
 }
 
 // checkHolders fails fast when a wanted card is allocated to a pod that is
 // not the platform's.
 func (p *cardPool) checkHolders(ctx context.Context, want []string) error {
-	holders, err := p.externalHolders(ctx)
+	holders, err := p.externalHolders(ctx, p.snapshot(), true)
 	if err != nil {
 		return err
 	}
@@ -184,26 +230,11 @@ func (p *cardPool) freeCount(ctx context.Context, resource string) (int, error) 
 }
 
 func (p *cardPool) holdPod(name, resource string) kubeapi.Pod {
-	grace := int64(0)
-	pod := kubeapi.Pod{
-		APIVersion: "v1", Kind: "Pod",
-		Metadata: kubeapi.ObjectMeta{Name: name, Namespace: p.ns,
-			Labels: map[string]string{LabelManagedBy: "gpuworks", LabelRole: RoleHold, LabelNode: p.node}},
-		Spec: kubeapi.PodSpec{
-			NodeName: p.node, RestartPolicy: "Always", TerminationGracePeriodSeconds: &grace, ImagePullSecrets: p.pullSecrets,
-			PriorityClassName: "gpuworks-inference", Tolerations: []kubeapi.Toleration{{Operator: "Exists"}},
-			Containers: []kubeapi.Container{{
-				Name: "hold", Image: p.holdImage, ImagePullPolicy: "IfNotPresent", Command: p.holdCmd,
-				Resources: &kubeapi.Resources{
-					Requests: map[string]string{resource: "1", "cpu": "10m", "memory": "16Mi"},
-					Limits:   map[string]string{resource: "1"},
-				},
-			}},
-		},
-	}
-	if p.owner != nil {
-		pod.Metadata.OwnerReferences = []kubeapi.OwnerReference{*p.owner}
-	}
+	pod := p.baseHoldPod(name)
+	pod.Spec.NodeName = p.node
+	c := &pod.Spec.Containers[0]
+	c.Resources.Requests[resource] = "1"
+	c.Resources.Limits = map[string]string{resource: "1"}
 	return pod
 }
 
@@ -282,6 +313,10 @@ func (p *cardPool) returnUnused(ctx context.Context, keep map[string]bool) {
 // an allocation to any of the deleted hold pods.
 func (p *cardPool) waitReleased(ctx context.Context, pods []string) {
 	if len(pods) == 0 {
+		return
+	}
+	if v := p.snapshot(); v.mode == modeHAMi || v.mode == modeACK {
+		p.waitGone(ctx, pods) // their schedulers count a pod until it is gone
 		return
 	}
 	gone := map[string]bool{}

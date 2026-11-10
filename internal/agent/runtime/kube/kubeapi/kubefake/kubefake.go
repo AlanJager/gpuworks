@@ -48,6 +48,9 @@ type Server struct {
 	// the kubelet has stopped its containers and the pod is gone. Zero
 	// removes it at once.
 	TerminationDelay time.Duration
+	// DenyClusterPods makes the cluster-wide pod list answer 403 Forbidden, as
+	// it does for a service account without a ClusterRole that lists pods.
+	DenyClusterPods bool
 	// Requests records "METHOD path?query" of every request.
 	Requests []string
 }
@@ -91,6 +94,48 @@ func (s *Server) SetAllocatable(node, resource, qty string) {
 	defer s.mu.Unlock()
 	s.nodes[node].Status.Allocatable[resource] = qty
 	s.nodes[node].Status.Capacity[resource] = qty
+}
+
+// UpdateNode changes a stored node (what a device plugin, a scheduler
+// installer or an operator does to it over time).
+func (s *Server) UpdateNode(name string, fn func(*kubeapi.Node)) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	fn(s.nodes[name])
+}
+
+// SetNodeLabel sets a node label.
+func (s *Server) SetNodeLabel(node, key, value string) {
+	s.UpdateNode(node, func(n *kubeapi.Node) {
+		if n.Metadata.Labels == nil {
+			n.Metadata.Labels = map[string]string{}
+		}
+		n.Metadata.Labels[key] = value
+	})
+}
+
+// SetNodeAnnotation sets a node annotation; an empty value removes it.
+func (s *Server) SetNodeAnnotation(node, key, value string) {
+	s.UpdateNode(node, func(n *kubeapi.Node) {
+		if value == "" {
+			delete(n.Metadata.Annotations, key)
+			return
+		}
+		if n.Metadata.Annotations == nil {
+			n.Metadata.Annotations = map[string]string{}
+		}
+		n.Metadata.Annotations[key] = value
+	})
+}
+
+// SetCapacity sets a node's capacity and allocatable of resource apart, as
+// a node reads when a plugin's devices are withdrawn (ACK's sharing mode
+// keeps nvidia.com/gpu capacity 1 and makes allocatable 0).
+func (s *Server) SetCapacity(node, resource, capacity, allocatable string) {
+	s.UpdateNode(node, func(n *kubeapi.Node) {
+		n.Status.Capacity[resource] = capacity
+		n.Status.Allocatable[resource] = allocatable
+	})
 }
 
 // SetRuntime sets the container runtime the node's kubelet reports.
@@ -234,6 +279,8 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.json(w, 200, map[string]any{"apiVersion": "node.k8s.io/v1", "kind": "RuntimeClass", "metadata": map[string]any{"name": parts[4]}, "handler": parts[4]})
+	case len(parts) == 3 && parts[0] == "api" && parts[2] == "pods" && r.Method == http.MethodGet:
+		s.listAllPods(w, r)
 	case len(parts) == 7 && parts[0] == "apis" && parts[5] == "daemonsets":
 		s.serveDaemonSet(w, r, parts[6])
 	case len(parts) >= 5 && parts[0] == "api" && parts[2] == "namespaces" && parts[4] == "pods":
@@ -241,6 +288,24 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 	default:
 		s.status(w, 404, "NotFound", "the server could not find the requested resource")
 	}
+}
+
+// listAllPods answers the cluster-wide pod list.
+func (s *Server) listAllPods(w http.ResponseWriter, r *http.Request) {
+	s.mu.Lock()
+	deny := s.DenyClusterPods
+	list := kubeapi.PodList{Items: []kubeapi.Pod{}}
+	for _, p := range s.pods {
+		if matches(p, r.URL.Query().Get("labelSelector"), r.URL.Query().Get("fieldSelector")) {
+			list.Items = append(list.Items, *p)
+		}
+	}
+	s.mu.Unlock()
+	if deny {
+		s.status(w, 403, "Forbidden", `pods is forbidden: User "system:serviceaccount:gpuworks-system:gpuworks-agent" cannot list resource "pods" in API group "" at the cluster scope`)
+		return
+	}
+	s.json(w, 200, list)
 }
 
 func (s *Server) serveDaemonSet(w http.ResponseWriter, r *http.Request, name string) {

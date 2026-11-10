@@ -32,7 +32,23 @@ type fakeKubelet struct {
 	devices  []string
 	given    map[string]string // pod key -> device
 	extra    []podresources.Allocation
-	listErr  error
+	// dyn are the allocations of a scheduler's pods (cards_modes_fake_test.go),
+	// by pod key; like given they last as long as the pod does.
+	dyn     map[string][]podresources.Allocation
+	listErr error
+}
+
+// allocate records the devices the kubelet gave a pod of a resource a
+// scheduler placed.
+func (k *fakeKubelet) allocate(ns, pod, resource string, ids []string) {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	if k.dyn == nil {
+		k.dyn = map[string][]podresources.Allocation{}
+	}
+	for _, id := range ids {
+		k.dyn[ns+"/"+pod] = append(k.dyn[ns+"/"+pod], podresources.Allocation{Namespace: ns, Pod: pod, Container: "hold", Resource: resource, DeviceID: id})
+	}
 }
 
 func (k *fakeKubelet) admit(p *kubeapi.Pod) {
@@ -71,6 +87,11 @@ func (k *fakeKubelet) allocationsLocked() []podresources.Allocation {
 		}
 		ns, name, _ := strings.Cut(key, "/")
 		out = append(out, podresources.Allocation{Namespace: ns, Pod: name, Container: "hold", Resource: k.res(), DeviceID: dev})
+	}
+	for key, allocs := range k.dyn {
+		if live[key] {
+			out = append(out, allocs...)
+		}
 	}
 	return out
 }

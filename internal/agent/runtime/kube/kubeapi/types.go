@@ -38,20 +38,22 @@ type Pod struct {
 
 // PodSpec is the part of a pod spec the agent sets.
 type PodSpec struct {
-	NodeName                      string       `json:"nodeName,omitempty"`
-	RestartPolicy                 string       `json:"restartPolicy,omitempty"`
-	HostNetwork                   bool         `json:"hostNetwork,omitempty"`
-	HostIPC                       bool         `json:"hostIPC,omitempty"`
-	HostPID                       bool         `json:"hostPID,omitempty"`
-	DNSPolicy                     string       `json:"dnsPolicy,omitempty"`
-	RuntimeClassName              *string      `json:"runtimeClassName,omitempty"`
-	ImagePullSecrets              []LocalRef   `json:"imagePullSecrets,omitempty"`
-	PriorityClassName             string       `json:"priorityClassName,omitempty"`
-	TerminationGracePeriodSeconds *int64       `json:"terminationGracePeriodSeconds,omitempty"`
-	Tolerations                   []Toleration `json:"tolerations,omitempty"`
-	Containers                    []Container  `json:"containers"`
-	Volumes                       []Volume     `json:"volumes,omitempty"`
-	SecurityContext               *PodSecurity `json:"securityContext,omitempty"`
+	NodeName                      string            `json:"nodeName,omitempty"`
+	NodeSelector                  map[string]string `json:"nodeSelector,omitempty"`
+	SchedulerName                 string            `json:"schedulerName,omitempty"`
+	RestartPolicy                 string            `json:"restartPolicy,omitempty"`
+	HostNetwork                   bool              `json:"hostNetwork,omitempty"`
+	HostIPC                       bool              `json:"hostIPC,omitempty"`
+	HostPID                       bool              `json:"hostPID,omitempty"`
+	DNSPolicy                     string            `json:"dnsPolicy,omitempty"`
+	RuntimeClassName              *string           `json:"runtimeClassName,omitempty"`
+	ImagePullSecrets              []LocalRef        `json:"imagePullSecrets,omitempty"`
+	PriorityClassName             string            `json:"priorityClassName,omitempty"`
+	TerminationGracePeriodSeconds *int64            `json:"terminationGracePeriodSeconds,omitempty"`
+	Tolerations                   []Toleration      `json:"tolerations,omitempty"`
+	Containers                    []Container       `json:"containers"`
+	Volumes                       []Volume          `json:"volumes,omitempty"`
+	SecurityContext               *PodSecurity      `json:"securityContext,omitempty"`
 }
 
 // LocalRef names an object in the pod's namespace.
@@ -136,7 +138,28 @@ type PodStatus struct {
 	Phase             string            `json:"phase,omitempty"` // Pending | Running | Succeeded | Failed | Unknown
 	Reason            string            `json:"reason,omitempty"`
 	Message           string            `json:"message,omitempty"`
+	Conditions        []PodCondition    `json:"conditions,omitempty"`
 	ContainerStatuses []ContainerStatus `json:"containerStatuses,omitempty"`
+}
+
+// PodCondition is one of a pod's conditions. A pod no scheduler could place
+// is Pending with PodScheduled False, reason Unschedulable and the
+// scheduler's message.
+type PodCondition struct {
+	Type    string `json:"type"`
+	Status  string `json:"status"`
+	Reason  string `json:"reason,omitempty"`
+	Message string `json:"message,omitempty"`
+}
+
+// Condition returns the pod's condition of this type.
+func (s PodStatus) Condition(typ string) (PodCondition, bool) {
+	for _, c := range s.Conditions {
+		if c.Type == typ {
+			return c, true
+		}
+	}
+	return PodCondition{}, false
 }
 
 // ContainerStatus is one container's state.
@@ -215,6 +238,10 @@ type DaemonSet struct {
 
 // PodsPath is a namespace's pod collection.
 func PodsPath(ns string) string { return "/api/v1/namespaces/" + url.PathEscape(ns) + "/pods" }
+
+// AllPodsPath is every namespace's pod collection (the cluster-wide list
+// needs a ClusterRole, unlike PodsPath).
+const AllPodsPath = "/api/v1/pods"
 
 // PodPath is one pod.
 func PodPath(ns, name string) string { return PodsPath(ns) + "/" + url.PathEscape(name) }

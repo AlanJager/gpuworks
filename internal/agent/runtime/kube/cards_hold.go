@@ -19,11 +19,14 @@ func (p *cardPool) holdForCheck(ctx context.Context, card string) (release func(
 	if err := p.load(ctx); err != nil {
 		return nil, fmt.Sprintf("which cards the platform holds on this node cannot be read: %v", err)
 	}
-	if p.shared != "" {
-		return nil, p.shared
+	if p.view.shared != "" {
+		return nil, p.view.shared
 	}
-	if p.resource == "" {
+	if p.view.resource == "" {
 		return func() {}, ""
+	}
+	if p.isStale(card) {
+		return nil, p.staleReason(card)
 	}
 	if p.held[card] == "" && !p.settledUser(card) {
 		return nil, fmt.Sprintf("Kubernetes allocates card %s: the platform holds it only while an instance runs on it or it is kept for one, and the runtime check never asks a card Kubernetes may give to another pod", card)

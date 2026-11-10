@@ -14,10 +14,8 @@ import (
 	"sync"
 	"time"
 
-	"gpuworks.ai/gpuworks/internal/accelerator"
 	"gpuworks.ai/gpuworks/internal/agent/runtime/kube/kubeapi"
 	"gpuworks.ai/gpuworks/internal/agent/runtime/kube/podresources"
-	"gpuworks.ai/gpuworks/internal/proto"
 )
 
 // Borrowing cards from the kubelet.
@@ -58,23 +56,34 @@ type cardPool struct {
 	now        func() time.Time
 	log        *slog.Logger
 	poll       time.Duration
-	// releaseWait and borrowRetry bound the waits of cards_borrow.go; zero
-	// uses the defaults.
-	releaseWait, borrowRetry time.Duration
+	// releaseWait and borrowRetry bound the waits of cards_borrow.go, and
+	// scheduleWait that of cards_sched.go; zero uses the defaults.
+	releaseWait, borrowRetry, scheduleWait time.Duration
+	// hamiScheduler is the name of HAMi's scheduler (DefaultHAMiScheduler
+	// unless the cluster renamed it).
+	hamiScheduler string
+	// podsMu guards the cache of the node's pods (cards_holders.go).
+	podsMu        sync.Mutex
+	podsCache     []kubeapi.Pod
+	podsAt        time.Time
+	podsTTL       time.Duration
+	podsForbidden bool
 
 	// borrowMu serializes borrows. A borrow talks to the API server and the
 	// kubelet for up to minutes, so it never runs under mu, which status
 	// reporting (holders) and instance bookkeeping take.
 	borrowMu sync.Mutex
 	// mu guards everything below.
-	mu       sync.Mutex
-	resource string // the device plugin resource; "" = none advertised
-	// shared says why the node's cards cannot be borrowed: the device
-	// plugin hands out parts of cards (time-slicing, MIG, HAMi, vNPU), so a
-	// unit Kubernetes allocates is not a card the platform could own. The
-	// cards are then reported as used outside the platform. "" = whole cards.
-	shared    string
-	held      map[string]string // card UUID -> hold pod name
+	mu sync.Mutex
+	// view is how the node allocates its cards as of the last load
+	// (cards_mode.go).
+	view cardView
+	// sig is the signature of the view the held and stale maps were read for.
+	sig  string
+	held map[string]string // card UUID -> hold pod name
+	// stale are the cards held by hold pods created for another mode than the
+	// node's now (cards_switch.go).
+	stale     map[string]staleHold
 	users     map[string]map[string]bool
 	idleSince map[string]time.Time
 	// starting are the instances that claimed cards and whose pod Run has not
@@ -89,17 +98,33 @@ type cardPool struct {
 	loaded bool
 }
 
-var deviceIndexSuffix = regexp.MustCompile(`-(\d+)$`)
+var (
+	deviceIndexSuffix = regexp.MustCompile(`-(\d+)$`)
+	// ackDeviceID is ACK GPU sharing's device ID: one per GiB of a card's
+	// memory, "gpu<card number>_mem_<n>".
+	ackDeviceID = regexp.MustCompile(`^gpu(\d+)_mem_\d+$`)
+)
 
 // cardOf maps a device plugin's device ID to a card UUID: NVIDIA's are the
-// UUIDs themselves, others end in the device index.
+// UUIDs themselves, HAMi's are the UUID and a share number ("GPU-5b6f...-9"),
+// ACK's name the card number, others end in the device index.
 func cardOf(id string, byIndex map[int]string) string {
 	for _, uuid := range byIndex {
 		if uuid == id {
 			return uuid
 		}
 	}
+	if m := ackDeviceID.FindStringSubmatch(id); m != nil {
+		n, _ := strconv.Atoi(m[1])
+		return byIndex[n]
+	}
 	if m := deviceIndexSuffix.FindStringSubmatch(id); m != nil {
+		base := strings.TrimSuffix(id, m[0])
+		for _, uuid := range byIndex {
+			if uuid == base {
+				return uuid
+			}
+		}
 		if n, err := strconv.Atoi(m[1]); err == nil {
 			return byIndex[n]
 		}
@@ -113,70 +138,36 @@ func randomSuffix() string {
 	return hex.EncodeToString(b)
 }
 
-// classify reads which device resource the node advertises, and whether it
-// advertises whole cards. It runs on every load, so a device plugin installed
-// or reconfigured after the agent started is noticed.
-func (p *cardPool) classify(ctx context.Context) error {
-	var node kubeapi.Node
-	if err := p.api.Get(ctx, kubeapi.NodePath(p.node)+"?resourceVersion=0", &node); err != nil {
-		return fmt.Errorf("read node %s: %w", p.node, err)
-	}
-	capacity := node.Status.Capacity
-	if len(capacity) == 0 {
-		capacity = node.Status.Allocatable
-	}
-	var whole, parts []string
-	for name, qty := range capacity {
-		if qty == "0" {
-			continue
-		}
-		switch kind, _ := accelerator.ClassifyKubeResource(name); kind {
-		case accelerator.KubeResourceCard:
-			whole = append(whole, name)
-		case accelerator.KubeResourceShared:
-			parts = append(parts, name)
-		}
-	}
-	sort.Strings(whole)
-	sort.Strings(parts)
-	p.resource, p.shared = "", ""
-	if len(whole) > 0 {
-		p.resource = whole[0]
-	}
-	if len(parts) > 0 {
-		p.shared = "Kubernetes hands out parts of this node's cards (" + strings.Join(parts, ", ") + "); the platform borrows whole cards only"
-		return nil
-	}
-	if p.resource != "" {
-		byIndex, err := p.cards(ctx)
-		if err != nil {
-			return err
-		}
-		if n, _ := strconv.Atoi(capacity[p.resource]); len(byIndex) > 0 && n > len(byIndex) {
-			p.shared = fmt.Sprintf("Kubernetes advertises %d %s on %d cards (time-slicing or MPS shares them); the platform borrows whole cards only", n, p.resource, len(byIndex))
-		}
-	}
-	return nil
-}
-
 // load classifies the node's cards and, the first time, rebuilds the pool
 // from the hold pods and instance pods already on the node, so a restarted
-// agent picks up where it left off.
+// agent picks up where it left off. When the node's mode changed since, or
+// hold pods of an earlier mode are still around, which cards the platform
+// holds is read again (cards_switch.go).
 func (p *cardPool) load(ctx context.Context) error {
-	if err := p.classify(ctx); err != nil {
+	view, err := p.classify(ctx)
+	if err != nil {
 		return err
 	}
+	p.view = view
+	sig := view.signature()
 	if p.loaded {
+		if sig != p.sig || len(p.stale) > 0 {
+			if err := p.resync(ctx, false); err != nil {
+				return err
+			}
+			p.sig = sig
+			for card := range p.held {
+				if _, idle := p.idleSince[card]; !idle && len(p.users[card]) == 0 {
+					p.idleSince[card] = p.now()
+				}
+			}
+		}
 		return nil
 	}
 	p.held, p.users, p.idleSince = map[string]string{}, map[string]map[string]bool{}, map[string]time.Time{}
-	p.starting, p.returning = map[string]bool{}, map[string]bool{}
-	if p.resource != "" && p.shared == "" {
-		held, err := p.listHeld(ctx, p.resource)
-		if err != nil {
-			return err
-		}
-		p.setHeld(held)
+	p.starting, p.returning, p.stale = map[string]bool{}, map[string]bool{}, map[string]staleHold{}
+	if err := p.resync(ctx, true); err != nil {
+		return err
 	}
 	pods, err := p.instancePods(ctx)
 	if err != nil {
@@ -194,6 +185,7 @@ func (p *cardPool) load(ctx context.Context) error {
 			p.idleSince[card] = p.now()
 		}
 	}
+	p.sig = sig
 	p.loaded = true
 	return nil
 }
@@ -292,8 +284,8 @@ func (p *cardPool) claim(ctx context.Context, instance string, indexes []int) ([
 	if err := p.load(ctx); err != nil {
 		return nil, false, err
 	}
-	if p.shared != "" {
-		return nil, false, errors.New(p.shared)
+	if p.view.shared != "" {
+		return nil, false, errors.New(p.view.shared)
 	}
 	byIndex, err := p.cards(ctx)
 	if err != nil {
@@ -303,16 +295,19 @@ func (p *cardPool) claim(ctx context.Context, instance string, indexes []int) ([
 	for _, i := range indexes {
 		uuid := byIndex[i]
 		if uuid == "" {
-			if p.resource == "" {
+			if p.view.resource == "" {
 				continue // nothing to borrow; the card is used by index
 			}
 			return nil, false, fmt.Errorf("card %d has no UUID on this node", i)
+		}
+		if p.isStale(uuid) {
+			return nil, false, errors.New("card " + uuid + " cannot be used: " + p.staleReason(uuid))
 		}
 		want = append(want, uuid)
 	}
 	missing := false
 	for _, card := range want {
-		if p.resource != "" && p.held[card] == "" {
+		if p.view.resource != "" && p.held[card] == "" {
 			missing = true
 		}
 		p.use(card, instance)
@@ -403,11 +398,27 @@ func (p *cardPool) reapUsers(ctx context.Context) {
 func (p *cardPool) sweep(ctx context.Context) {
 	p.reapUsers(ctx)
 	p.mu.Lock()
-	if !p.loaded || p.idleReturn < 0 {
+	if !p.loaded {
 		p.mu.Unlock()
 		return
 	}
+	// A hold pod made for another mode than the node's now is of no use to
+	// the platform; it goes as soon as no instance runs on its card.
 	var pods []string
+	for card, st := range p.stale {
+		if len(p.users[card]) > 0 || p.pins[card] > 0 || p.returning[st.pod] {
+			continue
+		}
+		p.log.Info("returning a card held for the node's earlier mode", "card", card, "pod", st.pod)
+		pods = append(pods, st.pod)
+		p.returning[st.pod] = true
+		delete(p.stale, card)
+	}
+	if p.idleReturn < 0 {
+		p.mu.Unlock()
+		p.deletePods(ctx, pods)
+		return
+	}
 	for card, since := range p.idleSince {
 		if len(p.users[card]) > 0 || p.pins[card] > 0 || p.now().Sub(since) < p.idleReturn {
 			continue
@@ -430,12 +441,32 @@ func (p *cardPool) keepAll(ctx context.Context) error {
 	defer p.borrowMu.Unlock()
 	p.mu.Lock()
 	err := p.load(ctx)
-	skip := err != nil || p.resource == "" || p.shared != ""
+	view := p.view
+	skip := err != nil || view.resource == "" || view.shared != ""
+	var all []string
+	if !skip && (view.mode == modeHAMi || view.mode == modeACK) {
+		byIndex, cerr := p.cards(ctx)
+		if cerr != nil {
+			p.mu.Unlock()
+			return cerr
+		}
+		for _, uuid := range byIndex {
+			if !p.isStale(uuid) {
+				all = append(all, uuid)
+			}
+		}
+		sort.Strings(all)
+	}
 	p.mu.Unlock()
 	if skip {
 		return err
 	}
-	if _, _, err := p.takeAllFree(ctx); err != nil {
+	if view.mode == modeHAMi || view.mode == modeACK {
+		err = p.borrow(ctx, all)
+	} else {
+		_, _, err = p.takeAllFree(ctx)
+	}
+	if err != nil {
 		return err
 	}
 	p.mu.Lock()
@@ -446,50 +477,4 @@ func (p *cardPool) keepAll(ctx context.Context) error {
 		}
 	}
 	return nil
-}
-
-// holders answers the agent's question "who outside the platform uses
-// which card": the pods the kubelet gave a card to, or, when the node's
-// cards are shared out in parts, every card, since any of them may be.
-func (p *cardPool) holders(ctx context.Context) (map[string][]proto.CardProcess, error) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if err := p.load(ctx); err != nil {
-		return nil, err
-	}
-	if p.shared == "" {
-		return p.externalHolders(ctx)
-	}
-	byIndex, err := p.cards(ctx)
-	if err != nil {
-		return nil, err
-	}
-	out := map[string][]proto.CardProcess{}
-	for _, uuid := range byIndex {
-		out[uuid] = []proto.CardProcess{{Name: p.shared}}
-	}
-	return out, nil
-}
-
-// externalHolders maps card UUID to the pods outside the platform the
-// kubelet gave it to, shaped as the foreign processes a card reports.
-func (p *cardPool) externalHolders(ctx context.Context) (map[string][]proto.CardProcess, error) {
-	allocs, err := p.kubelet.List(ctx)
-	if err != nil {
-		return nil, err
-	}
-	byIndex, err := p.cards(ctx)
-	if err != nil {
-		return nil, err
-	}
-	out := map[string][]proto.CardProcess{}
-	for _, a := range allocs {
-		if kind, _ := accelerator.ClassifyKubeResource(a.Resource); kind == accelerator.KubeResourceOther || (a.Namespace == p.ns && strings.HasPrefix(a.Pod, holdPrefix)) {
-			continue
-		}
-		if card := cardOf(a.DeviceID, byIndex); card != "" {
-			out[card] = append(out[card], proto.CardProcess{Name: "Pod " + a.Namespace + "/" + a.Pod})
-		}
-	}
-	return out, nil
 }
