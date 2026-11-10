@@ -40,10 +40,19 @@ func TestKubeDefaultsAreWhatAnEmptyRequestTakes(t *testing.T) {
 	}
 	got := decodeKube[map[string]any](t, rec)
 	dict := decodeKube[map[string]any](t, rig.do(rig.session, http.MethodGet, "/api/v1/kube/defaults", ""))
-	for _, key := range []string{"vendor", "namespace", "state_dir", "engine_ports", "idle_return_seconds", "agent_image"} {
+	for _, key := range []string{"vendor", "namespace", "state_dir", "engine_ports", "idle_return_seconds"} {
 		if got[key] != dict[key] {
 			t.Errorf("%s: a bare request got %v, the dictionary says %v", key, got[key], dict[key])
 		}
+	}
+	// The agent image is not frozen into the entry: it stays empty and the
+	// manifest runs the dictionary's image, the server's own version.
+	if got["agent_image"] != "" {
+		t.Errorf("agent_image: a bare request stored %v, want it left empty", got["agent_image"])
+	}
+	manifest := rig.do(rig.session, http.MethodGet, "/api/v1/kube/clusters/"+got["uuid"].(string)+"/manifest", "")
+	if manifest.Code != http.StatusOK || !strings.Contains(manifest.Body.String(), fmt.Sprintf("image: %q", dict["agent_image"])) {
+		t.Errorf("manifest of a bare entry = %d, want it to run %v:\n%s", manifest.Code, dict["agent_image"], manifest.Body)
 	}
 	// The vendors that take no RuntimeClass drop one; the dictionary names
 	// which they are.
@@ -203,5 +212,30 @@ func TestKubeClusterOperationsWhenTheCloudCannotBeAsked(t *testing.T) {
 		fmt.Sprintf(`{"name":"new","server_url":"https://gw.example","provider_id":%d,"provider_cluster_id":"c-gpu","provider_pool_ids":["np-1"]}`, rig.provider))
 	if rec.Code != http.StatusFailedDependency || !strings.Contains(rec.Body.String(), "Forbidden.RAM") {
 		t.Fatalf("create while the cloud cannot be asked = %d %s", rec.Code, rec.Body)
+	}
+}
+
+// An entry that names no agent image follows the server across an upgrade:
+// the manifest rendered after it runs the new version, so applying it again
+// never moves the DaemonSet back to the version the entry was made under.
+func TestABareEntryFollowsTheServersVersion(t *testing.T) {
+	rig := newTokenRig(t)
+	old := version.Version
+	t.Cleanup(func() { version.Version = old })
+	version.Version = "v26.11.1"
+	created := decodeKube[map[string]any](t, rig.do(rig.session, http.MethodPost, "/api/v1/kube/clusters", `{"name":"follow","server_url":"https://gw.example"}`))
+	pinned := decodeKube[map[string]any](t, rig.do(rig.session, http.MethodPost, "/api/v1/kube/clusters",
+		`{"name":"pinned","server_url":"https://gw.example","agent_image":"registry.example/gpuworks-agent:mine"}`))
+	version.Version = "v26.11.2"
+	for _, tc := range []struct {
+		uuid, want string
+	}{
+		{created["uuid"].(string), `image: "gpuworks/gpuworks-agent:v26.11.2"`},
+		{pinned["uuid"].(string), `image: "registry.example/gpuworks-agent:mine"`},
+	} {
+		rec := rig.do(rig.session, http.MethodGet, "/api/v1/kube/clusters/"+tc.uuid+"/manifest", "")
+		if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), tc.want) {
+			t.Errorf("manifest = %d, want %q:\n%s", rec.Code, tc.want, rec.Body)
+		}
 	}
 }

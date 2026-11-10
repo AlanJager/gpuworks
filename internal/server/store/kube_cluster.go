@@ -47,7 +47,8 @@ type KubeCluster struct {
 	// ServerURL is the address the agents connect to (ADR 0025: stated by the
 	// operator, never inferred).
 	ServerURL string `gorm:"size:512"`
-	// AgentImage is the image the DaemonSet runs.
+	// AgentImage is the image the DaemonSet runs; empty runs the server's
+	// own version of the default image, decided when the manifest is rendered.
 	AgentImage string `gorm:"size:512"`
 	// Vendor is the accelerator vendor of the selected nodes; it decides the
 	// host paths the agents mount. A cluster with cards of two vendors joins

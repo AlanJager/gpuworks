@@ -31,6 +31,9 @@ const (
 	kubeAgentImageRepo     = "gpuworks/gpuworks-agent"
 )
 
+// kubeDefaultAgentImage is the image an entry without one of its own runs:
+// this server's version, read when the manifest is rendered, so an upgraded
+// server's manifest moves the DaemonSet along instead of back.
 func kubeDefaultAgentImage() string { return kubeAgentImageRepo + ":" + version.Version }
 
 func kubeManifestURL(c store.KubeCluster) string {
@@ -67,7 +70,7 @@ func kubeManifestParams(c store.KubeCluster, pools []store.KubeClusterPool) (kub
 	return kubemanifest.Params{
 		PoolLabel: poolLabel, PoolIDs: kubePoolIDs(pools),
 		ClusterName: c.Name, Namespace: c.Namespace, ServerURL: c.ServerURL, Token: c.Token,
-		AgentImage: c.AgentImage, Vendor: firstNonEmpty(c.Vendor, kubeDefaultVendor), NodeSelector: sel, RuntimeClass: c.RuntimeClass,
+		AgentImage: firstNonEmpty(c.AgentImage, kubeDefaultAgentImage()), Vendor: firstNonEmpty(c.Vendor, kubeDefaultVendor), NodeSelector: sel, RuntimeClass: c.RuntimeClass,
 		ImagePullSecret: c.ImagePullSecret, ContainerdSocket: c.ContainerdSocket, EnginePorts: c.EnginePorts, StateDir: c.StateDir, APIServer: c.APIServer,
 	}, nil
 }
@@ -108,7 +111,7 @@ func (a *apiHandlers) createKubeCluster(w http.ResponseWriter, r *http.Request) 
 		Name:              strings.TrimSpace(req.Name),
 		Namespace:         firstNonEmpty(strings.TrimSpace(req.Namespace), kubeDefaultNamespace),
 		ServerURL:         strings.TrimRight(strings.TrimSpace(req.ServerURL), "/"),
-		AgentImage:        firstNonEmpty(strings.TrimSpace(req.AgentImage), kubeDefaultAgentImage()),
+		AgentImage:        strings.TrimSpace(req.AgentImage),
 		Vendor:            accelerator.NormalizeVendor(firstNonEmpty(strings.TrimSpace(req.Vendor), kubeDefaultVendor)),
 		NodeSelector:      strings.TrimSpace(req.NodeSelector),
 		RuntimeClass:      strings.TrimSpace(req.RuntimeClass),
