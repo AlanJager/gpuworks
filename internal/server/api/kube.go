@@ -74,10 +74,13 @@ func (a *apiHandlers) listKubeClusters(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	claims, _ := a.claimsFromRequest(r)
+	// The assistant reads this list as the asking administrator but never
+	// gets the apply command: it carries the enrollment token.
+	admin := claims.Role == "admin" && !isAssistantRead(r)
 	items := make([]dto.KubeCluster, 0, len(rows))
 	sources := a.kubeClusterSources(rows)
 	for _, c := range rows {
-		items = append(items, kubeClusterDTO(c, counts[c.ID], claims.Role == "admin", sources[c.ID]))
+		items = append(items, kubeClusterDTO(c, counts[c.ID], admin, sources[c.ID]))
 	}
 	writeJSON(w, http.StatusOK, dto.NewList(items))
 }

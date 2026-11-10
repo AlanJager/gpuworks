@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-chi/chi/v5"
+
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/auth"
 	"gpuworks.ai/gpuworks/internal/server/store"
@@ -238,5 +240,36 @@ func TestKubeNodeUpgradeMovesTheDaemonSetAndDeleteNeedsNoSSH(t *testing.T) {
 	rec = rig.do(rig.session, http.MethodDelete, "/api/v1/nodes/"+node.UUID, "")
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"status":"deleted"`) {
 		t.Fatalf("delete kube node = %d %s", rec.Code, rec.Body)
+	}
+}
+
+// The assistant reads GET /kube/clusters as the asking administrator but
+// must never see the enrollment token: the same request carries the apply
+// command for the UI and omits it for the assistant's reader.
+func TestAssistantReadOfKubeClustersOmitsTheEnrollmentToken(t *testing.T) {
+	rig := newTokenRig(t)
+	if rec := rig.do(rig.session, http.MethodPost, "/api/v1/kube/clusters", kubeCreateBody); rec.Code != http.StatusCreated {
+		t.Fatalf("create = %d %s", rec.Code, rec.Body)
+	}
+	if rec := rig.do(rig.session, http.MethodGet, "/api/v1/kube/clusters", ""); !strings.Contains(rec.Body.String(), `"apply_command":"kubectl apply -f`) {
+		t.Fatalf("the UI's list lost the apply command: %s", rec.Body)
+	}
+
+	reader := &aiReader{mux: rig.h.(*chi.Mux), header: http.Header{"Authorization": {"Bearer " + rig.session}}}
+	status, body, err := reader.Get(context.Background(), "/api/v1/kube/clusters", nil)
+	if err != nil || status != http.StatusOK {
+		t.Fatalf("assistant read = %d %v %s", status, err, body)
+	}
+	var list struct {
+		Items []map[string]any `json:"items"`
+	}
+	if err := json.Unmarshal(body, &list); err != nil || len(list.Items) != 1 {
+		t.Fatalf("body = %s err=%v", body, err)
+	}
+	if list.Items[0]["name"] != "prod" {
+		t.Fatalf("the assistant should still see the cluster: %s", body)
+	}
+	if _, ok := list.Items[0]["apply_command"]; ok || strings.Contains(string(body), "token=") {
+		t.Fatalf("the assistant read carries the enrollment token: %s", body)
 	}
 }
