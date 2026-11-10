@@ -204,7 +204,7 @@ func serve(log *slog.Logger, args []string) (err error) {
 		// Keep the log beside the data dir it belongs to.
 		logFile = defaultLogFile(cfg.DataDir)
 	}
-	log, closeLog := serverLogger(log, logFile, logMaxSize, logKeep, parseLogLevel(level))
+	log, closeLog := serverLogger(logFile, logMaxSize, logKeep, parseLogLevel(level))
 	defer closeLog()
 	// From here on the reason the server stops goes to its log file as well:
 	// a detached (nohup) server's stderr is /dev/null, and the file is where
@@ -405,8 +405,8 @@ func defaultLogFile(dataDir string) string {
 // refusal's reason, and an access log line's method, path and status.
 var serverLogIdentity = []string{"code", "reason", "method", "path", "status"}
 
-func serverLogger(base *slog.Logger, path, maxSize string, keep int, level slog.Level) (*slog.Logger, func()) {
-	base = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level}))
+func serverLogger(path, maxSize string, keep int, level slog.Level) (*slog.Logger, func()) {
+	base := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level}))
 	if strings.TrimSpace(path) == "" {
 		return base, func() {}
 	}

@@ -93,7 +93,6 @@ func (w *imageWaits) waiting(image uint) []uint {
 // is being copied from a node of the same sync group and the launch waits.
 type imageDelivery struct {
 	present bool
-	failure *scheduler.Reason
 }
 
 // deploymentImageDelivery gets a deployment's image onto node the cheapest

@@ -174,14 +174,6 @@ func masterSecret(cfg Config, policies ...securefile.Policy) (string, error) {
 	return secret, nil
 }
 
-func randHex(n int) string {
-	b := make([]byte, n)
-	if _, err := rand.Read(b); err != nil {
-		return "gpuworks-fallback-master-secret"
-	}
-	return hex.EncodeToString(b)
-}
-
 func normalizeRuntimeConfig(cfg Config) Config {
 	policy := (auth.SessionPolicy{IdleTimeout: cfg.SessionIdleTimeout, MaxLifetime: cfg.SessionMaxLifetime}).Normalized()
 	cfg.SessionIdleTimeout, cfg.SessionMaxLifetime = policy.IdleTimeout, policy.MaxLifetime

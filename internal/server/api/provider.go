@@ -461,18 +461,4 @@ func (a *apiHandlers) putSetting(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "saved"})
 }
 
-func validRegistrySourceLabel(value string) bool {
-	value = strings.TrimSpace(value)
-	if value == "" || len(value) > 64 {
-		return false
-	}
-	for _, r := range value {
-		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '.' || r == '_' || r == '-' {
-			continue
-		}
-		return false
-	}
-	return true
-}
-
 const errNoProviders = staticErr("cloud providers not available")

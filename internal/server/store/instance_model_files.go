@@ -94,15 +94,6 @@ func (s *Store) DeploymentsReadingFiles(storageID uint) (map[uint][]uint, error)
 	return out, nil
 }
 
-// liveReadersOfFile lists the deployments with a live instance reading one
-// model file row.
-func liveReadersOfFile(db *gorm.DB, modelFileID uint) ([]uint, error) {
-	var ids []uint
-	err := liveReads(db).Where("instance_model_files.model_file_id = ?", modelFileID).
-		Distinct().Order("instances.deployment_id asc").Pluck("instances.deployment_id", &ids).Error
-	return ids, err
-}
-
 // touchInstanceModelFiles records that an instance started or stopped on its
 // model files, which is what "least recently used" orders node caches by.
 func (s *Store) touchInstanceModelFiles(inst *Instance) {
