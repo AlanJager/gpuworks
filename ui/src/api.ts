@@ -244,6 +244,8 @@ export interface Node {
   }>;
   runtime_driver?: string;
   runtime_preference?: string;
+  /** The runtime preferences the operator may set, in the order to offer; absent when the node has no choice (a Kubernetes node). */
+  runtime_choices?: string[];
   /** The operator's choice of which vendor's cards the node manages: auto or a vendor; absent is auto. */
   accelerator_preference?: string;
   /** Every vendor whose cards the agent saw on the host's bus, the managed one included. */

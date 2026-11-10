@@ -273,3 +273,65 @@ func TestAssistantReadOfKubeClustersOmitsTheEnrollmentToken(t *testing.T) {
 		t.Fatalf("the assistant read carries the enrollment token: %s", body)
 	}
 }
+
+// A Kubernetes node's instances are pods of its cluster, so there is no
+// runtime to pick: the node says it offers no choices (the UI hides the
+// selector on that), and the switch itself is refused before it reaches the
+// agent or the store. A Mac still offers only auto; any other node, every
+// driver.
+func TestKubeNodeOffersNoRuntimeChoiceAndRefusesTheSwitch(t *testing.T) {
+	rig := newTokenRig(t)
+	c, err := rig.st.CreateKubeCluster(store.KubeCluster{Name: "c"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	node, _, err := rig.st.EnrollKubeNode(c.Token, "uid", "gpu-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	plain, _, err := rig.st.CreateNodePending("plain")
+	if err != nil {
+		t.Fatal(err)
+	}
+	called := false
+	signer, err := auth.NewTokenSigner("platform-token-test-secret", time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rig.h = Router(Deps{AuthSigner: signer, Store: rig.st, CallNode: func(_ context.Context, _, _ string, _ any) (json.RawMessage, error) {
+		called = true
+		return json.RawMessage(`{"runtime":"docker"}`), nil
+	}})
+
+	rec := rig.do(rig.session, http.MethodPatch, "/api/v1/nodes/"+node.UUID+"/runtime", `{"runtime":"docker"}`)
+	if rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), `"code":"NODE_RUNTIME_KUBE_NODE"`) {
+		t.Fatalf("runtime switch on a Kubernetes node = %d %s", rec.Code, rec.Body)
+	}
+	if called {
+		t.Fatal("the refused switch reached the agent")
+	}
+	if stored, _ := rig.st.NodeByUUID(node.UUID); stored.RuntimePreference == proto.RuntimePreferenceDocker {
+		t.Fatal("the refused switch was stored")
+	}
+
+	choices := func(uuid string) any {
+		rec := rig.do(rig.session, http.MethodGet, "/api/v1/nodes/"+uuid, "")
+		if rec.Code != http.StatusOK {
+			t.Fatalf("node %s = %d %s", uuid, rec.Code, rec.Body)
+		}
+		var body map[string]any
+		if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+			t.Fatal(err)
+		}
+		return body["runtime_choices"]
+	}
+	if got := choices(node.UUID); got != nil {
+		t.Fatalf("a Kubernetes node's runtime_choices = %v, want absent", got)
+	}
+	if got, _ := json.Marshal(choices(plain.UUID)); string(got) != `["auto","docker","nerdctl","udocker"]` {
+		t.Fatalf("a plain node's runtime_choices = %s", got)
+	}
+	if got := nodeDTORuntimeChoices(&store.Node{OS: "darwin"}); len(got) != 1 || got[0] != proto.RuntimePreferenceAuto {
+		t.Fatalf("a Mac's runtime choices = %v", got)
+	}
+}

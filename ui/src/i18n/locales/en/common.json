@@ -111,6 +111,7 @@
     "NODE_OFFLINE": "The node is offline.",
     "NODE_SCHEDULABLE": "Cordon or drain the node before evicting its replicas.",
     "NODE_RUNTIME_INVALID": "Runtime must be auto, Docker, nerdctl, or runveil (API value udocker).",
+    "NODE_RUNTIME_KUBE_NODE": "A Kubernetes node's runtime is its cluster's and cannot be switched.",
     "NODE_ACCELERATOR_INVALID": "Accelerator must be auto or a vendor whose cards this machine has.",
     "CARD_CHECKS_UNSUPPORTED": "This node's agent predates card health checks; upgrade the agent first.",
     "CARD_NOT_OWNED": "This card is not this node's to use (passed through to a virtual machine, or without a driver), so it cannot be made schedulable.",

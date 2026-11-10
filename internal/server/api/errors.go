@@ -18,6 +18,7 @@ const (
 	ErrorNodeOffline              = "NODE_OFFLINE"
 	ErrorNodeSchedulable          = "NODE_SCHEDULABLE"
 	ErrorNodeRuntimeInvalid       = "NODE_RUNTIME_INVALID"
+	ErrorNodeRuntimeKube          = "NODE_RUNTIME_KUBE_NODE" // a Kubernetes node's runtime is its cluster's, not a choice
 	ErrorNodeDeleteForceInvalid   = "NODE_DELETE_FORCE_INVALID"
 	ErrorNodeAcceleratorInvalid   = "NODE_ACCELERATOR_INVALID"
 	ErrorNodeAcceleratorNotOnHost = "NODE_ACCELERATOR_NOT_ON_HOST"

@@ -121,6 +121,11 @@ type Node struct {
 	PathUsage         any        `json:"path_usage,omitempty"`
 	RuntimeDriver     string     `json:"runtime_driver,omitempty"`
 	RuntimePreference string     `json:"runtime_preference,omitempty"`
+	// RuntimeChoices are the runtime preferences the operator may set on
+	// this node (PATCH /nodes/{uuid}/runtime), in the order to offer them;
+	// absent when the node has no choice to make (a Kubernetes node runs
+	// its instances as pods of its cluster). A Mac offers only auto.
+	RuntimeChoices []string `json:"runtime_choices,omitempty"`
 	// RuntimePlugin is the installed vendor container plugin, for display
 	// ("NVIDIA Container Toolkit 1.17.4"); absent when none is installed.
 	RuntimePlugin string `json:"runtime_plugin,omitempty"`

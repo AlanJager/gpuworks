@@ -83,7 +83,7 @@ await requestI18n.changeLanguage("en");
 const originalFetch = globalThis.fetch;
 const { default: NodesPage } = await import("../src/pages/NodesPage.tsx");
 const { DETAIL_DRAWER_WIDTH } = await import("../src/components/detail/DetailDrawer.tsx");
-const { runtimeChoices, runtimeLabel } = await import("../src/nodeDisplay.ts");
+const { runtimeLabel } = await import("../src/nodeDisplay.ts");
 import type { ListQuery, Node, NodePage } from "../src/api";
 import { list } from "./helpers/listPage.ts";
 
@@ -95,6 +95,8 @@ const onlineNode: Node = {
   os: "linux", kernel: "5.15.0", arch: "amd64", cpu_model: "EPYC 7543",
   cpu_cores: 128, mem_total_gib: 1024, disk_total_gib: 2048, gpu_count: 8,
   agent_version: "0.9.7", has_ssh_credential: true, gpus: [],
+  // What the server offers a plain Linux node (the runtime selector renders exactly these).
+  runtime_choices: ["auto", "docker", "nerdctl", "udocker"],
 };
 
 const offlineNode: Node = {
@@ -626,15 +628,25 @@ test("the detail drawer lists the node labels where the resource group used to b
   assert.ok(drawer.queryByText("Resource group") === null, "Expected the element to be absent");
 });
 
-test("a Mac offers only the automatic runtime, which picks its host driver", () => {
-  assert.deepEqual(runtimeChoices("darwin"), ["auto"]);
-  assert.deepEqual(runtimeChoices("linux"), ["auto", "docker", "nerdctl", "udocker"]);
-  assert.deepEqual(runtimeChoices(undefined), ["auto", "docker", "nerdctl", "udocker"]);
+test("a Mac's host driver label is shown as is", () => {
   assert.equal(runtimeLabel("host"), "host");
 });
 
+test("a Kubernetes node has no runtime selector, only the runtime it runs", async () => {
+  const kube = { ...onlineNode, name: "kube-gpu-1", runtime_driver: "kube", runtime_choices: undefined, kube: { cluster_id: 1, node_name: "gpu-1", unschedulable: false } };
+  stubApi([kube]);
+  api.node = async () => kube as never;
+  renderPage();
+  await waitFor(() => assert.ok(screen.getByText("kube-gpu-1")));
+  screen.getByRole("button", { name: "kube-gpu-1" }).click();
+  await waitFor(() => assert.ok(screen.queryByRole("dialog")));
+  const drawer = within(screen.queryByRole("dialog") as HTMLElement);
+  await waitFor(() => assert.ok(drawer.getByText("kube")));
+  assert.equal(screen.queryByRole("dialog")?.querySelector(".ant-select-selection-item")?.textContent ?? null, null);
+});
+
 test("the runtime selector of a Mac node offers only the automatic choice", async () => {
-  const mac = { ...onlineNode, os: "darwin", arch: "arm64", name: "mac-studio-01" };
+  const mac = { ...onlineNode, os: "darwin", arch: "arm64", name: "mac-studio-01", runtime_choices: ["auto"] };
   stubApi([mac]);
   api.node = async () => mac as never;
   renderPage();
