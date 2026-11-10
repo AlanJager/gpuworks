@@ -12,8 +12,11 @@ import {
 } from "antd";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { api, type ImageArchivePreview, type ImageCatalogEntry } from "../../api";
+import { type ImageArchivePreview, type ImageCatalogEntry } from "../../api";
 import { APIError, apiErrorText } from "../../apiError";
+import ArchiveAllowCheckbox from "./ArchiveAllowCheckbox";
+import ArchiveURLResolveAlert from "./ArchiveURLResolveAlert";
+import { ArchiveAllowError, httpURLHost, previewArchiveURL } from "./archiveURLAllow";
 import { bytes } from "./ImagePageHelpers";
 
 const { Text } = Typography;
@@ -57,6 +60,7 @@ export default function ImageArchiveURLDialog({
   const { t } = useTranslation("images");
   const { t: tCommon } = useTranslation("common");
   const [url, setUrl] = useState(initialURL);
+  const [consentHost, setConsentHost] = useState("");
   const [relay, setRelay] = useState(false);
   const [resolving, setResolving] = useState(false);
   const [starting, setStarting] = useState(false);
@@ -64,7 +68,7 @@ export default function ImageArchiveURLDialog({
   const [resolveError, setResolveError] = useState<Error | null>(null);
   const [startError, setStartError] = useState<Error | null>(null);
 
-  const resolve = async (address: string) => {
+  const resolve = async (address: string, allow: boolean) => {
     const trimmed = address.trim();
     if (!trimmed) {
       setResolveError(new Error(t("import.url.required")));
@@ -74,10 +78,10 @@ export default function ImageArchiveURLDialog({
     setResolving(true);
     setResolveError(null);
     try {
-      setPreview(await api.previewImageArchiveURL(trimmed));
+      setPreview(await previewArchiveURL(trimmed, allow));
     } catch (e) {
       setPreview(null);
-      setResolveError(e instanceof APIError ? e : new Error(t("import.url.failed")));
+      setResolveError(e instanceof ArchiveAllowError ? new Error(t("import.url.allowFailed")) : e instanceof APIError ? e : new Error(t("import.url.failed")));
     } finally {
       setResolving(false);
     }
@@ -89,13 +93,14 @@ export default function ImageArchiveURLDialog({
   useEffect(() => {
     if (!open) return;
     setUrl(initialURL);
+    setConsentHost("");
     setRelay(false);
     setPreview(null);
     setResolveError(null);
     setStartError(null);
     setResolving(false);
     setStarting(false);
-    if (initialURL.trim()) void resolve(initialURL);
+    if (initialURL.trim()) void resolve(initialURL, false);
   }, [open, initialURL]);
 
   const errorMessage = (error: Error, fallback: string) => error instanceof APIError
@@ -156,12 +161,17 @@ export default function ImageArchiveURLDialog({
               setResolveError(null);
               setStartError(null);
             }}
-            onPressEnter={() => void resolve(url)}
+            onPressEnter={() => void resolve(url, httpURLHost(url) !== "" && consentHost === httpURLHost(url))}
           />
-          <Button loading={resolving} onClick={() => void resolve(url)}>
+          <Button loading={resolving} onClick={() => void resolve(url, httpURLHost(url) !== "" && consentHost === httpURLHost(url))}>
             {t("import.url.resolve")}
           </Button>
         </Space.Compact>
+        <ArchiveAllowCheckbox
+          host={httpURLHost(url)}
+          checked={httpURLHost(url) !== "" && consentHost === httpURLHost(url)}
+          onChange={(checked) => setConsentHost(checked ? httpURLHost(url) : "")}
+        />
         {!declared && url.trim() ? (
           <Text type="secondary">
             {t("nodeTable.archiveDialog.recordNote", { ref: version?.image_ref ?? "" })}
@@ -207,12 +217,7 @@ export default function ImageArchiveURLDialog({
           />
         ) : null}
         {!mismatch && !preview && resolveError ? (
-          <Alert
-            type={resolveError instanceof APIError && resolveError.code === "IMAGE_ARCHIVE_URL_POLICY_DENIED" ? "error" : "warning"}
-            showIcon
-            message={errorMessage(resolveError, t("import.url.failed"))}
-            description={resolveError instanceof APIError ? `HTTP ${resolveError.status} · ${resolveError.code}` : undefined}
-          />
+          <ArchiveURLResolveAlert error={resolveError} fallback={t("import.url.failed")} />
         ) : null}
         {startError ? <Alert type="error" showIcon message={errorMessage(startError, t("action.pullFailed"))}
           description={startError instanceof APIError ? `HTTP ${startError.status} · ${startError.code}` : undefined} /> : null}

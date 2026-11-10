@@ -228,6 +228,8 @@
       "required": "请先填写镜像归档 URL。",
       "resolve": "解析",
       "failed": "无法读取该镜像归档。",
+      "allowAuto": "自动加入 {{host}} 的白名单",
+      "allowFailed": "没能允许这个地址。",
       "size": "归档大小",
       "tags": "归档内的引用",
       "tagsUnknown": "无法从该归档读出引用。",
