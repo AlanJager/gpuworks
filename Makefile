@@ -42,6 +42,13 @@ PLATFORMS := linux/amd64 linux/arm64 darwin/arm64
 
 all: build
 
+.PHONY: docs-pdf
+## docs-pdf: build the bilingual site and print validated, versioned user handbooks
+docs-pdf: check-doc-links check-translations
+	bash docs-site/build.sh
+	python3 docs-site/pdf_browser_checks.py
+	python3 docs-site/export_pdf.py --version "$(VERSION)" --commit "$(COMMIT)"
+
 ## build: full release build — cross-compile agents (embedded) + UI + server + agent
 build: check-libvgpu ui cross-agents server agent
 

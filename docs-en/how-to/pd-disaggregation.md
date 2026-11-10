@@ -8,7 +8,7 @@ After completing this guide, you can call the model through a single service nam
 
 - You are familiar with ordinary deployment. See [Deploy Models, Select GPUs, and Interpret Scheduling Results](deploy-models.md).
 - Your hardware and engine meet the requirements of the selected PD mode: `vllm-nixl` targets NVIDIA and AMD, `vllm-ascend-mooncake` targets Ascend, `vllm-mooncake` targets Hygon DCU (it needs the Hygon vLLM 0.21 image; see [Hygon DCU](#海光-dcu)), `sglang-ppu-ipc` targets PPU (P and D must be on the same node), `sglang-ppu-mooncake` and `vllm-ppu-mooncake` target PPU with the KV over RoCE NICs (across nodes too), and `sglang-nixl` is unverified.
-- PPU Mooncake modes: the nodes are on a host RDMA compute network and have `alixpu_peermem` loaded (see [PPU KV over RDMA](#ppu-kv-over-rdma)).
+- PPU Mooncake modes: the nodes are on a host RDMA compute network and have `alixpu_peermem` loaded (see [PPU KV over RDMA](#ppu-经-rdma-传-kv)).
 - In the NVIDIA and Hygon modes, KV travels over the compute network when P and D are on different machines; RDMA or Ethernet can be used. In Ascend mode, cross-machine deployments require a shared Accelerator RDMA or Accelerator HCCS network, and the NPUs hosting prefill and decode must be mutually reachable over that accelerator network. For configuration and validation, see [Configure Node Networks](configure-networks.md).
 
 PD disaggregation splits inference for one model into two instance groups: prefill instances process only the prompt, and decode instances retrieve their KV and then generate tokens one by one. Externally, it remains

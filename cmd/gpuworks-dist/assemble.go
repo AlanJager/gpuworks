@@ -96,6 +96,10 @@ func assemble(in assembleInput) (distribution.Index, error) {
 	if err != nil {
 		return distribution.Index{}, err
 	}
+	docs, err := readReleaseDocs(in.DistDir, releaseID)
+	if err != nil {
+		return distribution.Index{}, err
+	}
 	index := distribution.Index{
 		Schema: distribution.IndexSchema, Channel: in.Channel, PublishedAt: in.PublishedAt.UTC(),
 		Server: distribution.ServerRelease{ReleaseID: releaseID, Commit: in.Commit, BuiltAt: in.BuiltAt},
@@ -117,6 +121,11 @@ func assemble(in assembleInput) (distribution.Index, error) {
 	}
 	if _, err := writeBlob(in.OutDir, releaseDir+"/SHA256SUMS", []byte(sums.String())); err != nil {
 		return distribution.Index{}, err
+	}
+	for name, data := range docs {
+		if _, err := writeBlob(in.OutDir, releaseDir+"/docs/"+name, data); err != nil {
+			return distribution.Index{}, err
+		}
 	}
 
 	images, err := manifest.Parse(in.ImageCatalog)
