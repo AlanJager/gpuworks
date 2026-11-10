@@ -28,8 +28,9 @@ export class ArchiveAllowError extends Error {
   }
 }
 
-async function allowPrivateHost(host: string): Promise<void> {
+async function allowPrivateHost(host: string): Promise<boolean> {
   const policy = await outboundPolicyApi.get();
+  if (!policy.restrict_private_hosts) return false;
   const hosts = policy.allow_private_hosts.some((item) => item.toLowerCase() === host.toLowerCase())
     ? policy.allow_private_hosts
     : [...policy.allow_private_hosts, host];
@@ -38,6 +39,7 @@ async function allowPrivateHost(host: string): Promise<void> {
     allow_private_hosts: hosts,
     revision: policy.revision,
   });
+  return true;
 }
 
 /**
@@ -52,7 +54,8 @@ export async function previewArchiveURL(address: string, allow: boolean): Promis
     const host = approvableHost(error);
     if (!allow || !host) throw error;
     try {
-      await allowPrivateHost(host);
+      const wrote = await allowPrivateHost(host);
+      if (!wrote) return await api.previewImageArchiveURL(address);
     } catch (failure) {
       if (failure instanceof APIError) throw failure;
       throw new ArchiveAllowError();

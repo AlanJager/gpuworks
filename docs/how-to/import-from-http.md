@@ -81,7 +81,7 @@
 | `HTTP_DIRECTORY_TOO_LARGE` | 文件数或层级超出上限，请指向模型自身的目录 |
 | `MODEL_SOURCE_REQUIRES_NEWER_AGENT` | 目标节点 agent 过旧，先升级 agent |
 | `IMAGE_ARCHIVE_URL_INVALID` | 归档地址不可用：必须是无内嵌凭据的 `http`/`https` |
-| `IMAGE_ARCHIVE_URL_POLICY_DENIED` | 该主机还没被允许。普通私网默认无需允许。严格模式下，地址旁勾选「自动加入该主机的白名单」后，同一次解析会把主机写入允许列表；未勾选则只提示。设置 → 安全与访问 → 出站访问策略仍可管理整份列表 |
+| `IMAGE_ARCHIVE_URL_POLICY_DENIED` | 该主机还没被允许。普通私网默认无需允许，关闭「限制私网主机」时地址旁没有加入白名单的勾选。开启后，勾选「自动加入该主机的白名单」，同一次解析会把主机写入允许列表；未勾选则只提示。设置 → 安全与访问 → 出站访问策略仍可管理整份列表 |
 | `IMAGE_ARCHIVE_URL_POLICY_BLOCKED` | 该地址不能通过允许列表放行，例如保留地址、链路本地地址 |
 | `IMAGE_ARCHIVE_URL_UPSTREAM_STATUS` | 归档服务器返回了具体 HTTP 状态（如 404）。核对路径，这不是网络故障 |
 | `IMAGE_ARCHIVE_URL_UNREACHABLE` | server 没连上归档，检查地址、网络和 TLS；节点直连失败还需检查节点到来源的网络 |
