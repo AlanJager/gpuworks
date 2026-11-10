@@ -10,6 +10,7 @@ import App from "./App";
 import "./i18n";
 import { themeConfig } from "./theme/tokens";
 import "./styles.css";
+import "./pages/evaluations/benchmarkReportExport.css";
 
 function Root() {
   const { i18n } = useTranslation();

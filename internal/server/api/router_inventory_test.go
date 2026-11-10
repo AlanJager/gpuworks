@@ -140,6 +140,7 @@ GET /api/v1/benchmarks/meta
 GET /api/v1/benchmarks/{id}
 GET /api/v1/benchmarks/{id}/curve
 GET /api/v1/benchmarks/{id}/points/{seq}/detail
+GET /api/v1/benchmarks/{id}/points/{seq}/timeline
 GET /api/v1/benchmarks/{id}/report
 GET /api/v1/branding
 GET /api/v1/dashboard/summary

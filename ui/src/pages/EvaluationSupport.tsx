@@ -1,6 +1,6 @@
 import { DownloadOutlined } from "@ant-design/icons";
 import { Button, Card, Col, Collapse, Descriptions, Statistic, Table } from "antd";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { BenchmarkPoint, BenchmarkRun } from "../api";
 import { pointTimingValue } from "./evaluations/evaluationUtils";
@@ -16,7 +16,8 @@ export function fmtMs(value?: number) {
 }
 
 
-export function AdvancedResult({ run, point }: { run: BenchmarkRun; point?: BenchmarkPoint }) {
+export function AdvancedResult({ run, point, expanded = false }: { run: BenchmarkRun; point?: BenchmarkPoint; expanded?: boolean }) {
+	const [activeKeys, setActiveKeys] = useState<string[]>([]);
 	const { t } = useTranslation("evaluations");
 	const long = point?.long_tail;
 	const evidence = long?.evidence?.version === 1 ? long.evidence : undefined;
@@ -33,7 +34,7 @@ export function AdvancedResult({ run, point }: { run: BenchmarkRun; point?: Benc
 		return pointTimingValue(point, `${percentile === "50" ? "p50" : "p99"}_${metric}`);
 	};
 	const rows = ["1", "5", "10", "25", "50", "75", "90", "95", "99"].map((percentile) => ({ p: `P${percentile}`, ttft: timingPercentile("ttft", percentile), tpot: timingPercentile("tpot", percentile), latency: timingPercentile("latency", percentile), itl: evidence ? undefined : long?.itl_ms?.[percentile] }));
-	return <Collapse items={[{
+	return <Collapse activeKey={expanded ? ["advanced"] : activeKeys} onChange={(keys) => setActiveKeys(typeof keys === "string" ? [keys] : keys)} items={[{
 		key: "advanced",
 		label: t("support.advanced"),
 		children: <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -41,7 +42,7 @@ export function AdvancedResult({ run, point }: { run: BenchmarkRun; point?: Benc
 				{ key: "kv", label: t(evidence ? "evidence.cacheWeighted" : "support.kv"), children: cacheRate == null ? t(evidence ? "evidence.unknown" : "support.kvMissing") : `${fmt(cacheRate * 100)}%` },
 				{ key: "spec", label: t("support.speculative"), children: speculative ? <><span>{t("support.speculativeValue", { tokens: fmt(speculative.tokens_per_iteration, 2), rate: fmt(speculative.acceptance_rate * 100) })}</span><br />{t("evidence.legacySpeculative")}</> : t(evidence ? "evidence.unknown" : "support.speculativeMissing") },
 				{ key: "length", label: t("support.lengthMethod"), children: evidence ? <><span>{t("evidence.input")}: {tokenSources(evidence.all.tokens?.input_sources)}</span><br /><span>{t("evidence.output")}: {tokenSources(evidence.all.tokens?.output_sources)}</span></> : long?.approximate_tokens ? t("support.estimated") : t("support.exact") },
-				{ key: "detail", label: t("support.detail"), children: point?.detail_path ? <Button size="small" icon={<DownloadOutlined />} href={`/api/v1/benchmarks/${run.id}/points/${point.seq}/detail`}>{t("support.download")}</Button> : t("support.detailMissing") },
+				{ key: "detail", label: t("support.detail"), children: point?.detail_path ? <Button data-report-exclude size="small" icon={<DownloadOutlined />} href={`/api/v1/benchmarks/${run.id}/points/${point.seq}/detail`}>{t("support.download")}</Button> : t("support.detailMissing") },
 			]} />
 			<Table size="small" rowKey="p" pagination={false} dataSource={rows} columns={[
 				{ title: t("support.percentile"), dataIndex: "p" },

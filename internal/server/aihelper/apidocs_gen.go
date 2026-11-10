@@ -29,6 +29,7 @@ var routeDocs = map[string]string{
 	"/api/v1/benchmarks/{}":                     "评测任务详情",
 	"/api/v1/benchmarks/{}/curve":               "评测负载曲线数据",
 	"/api/v1/benchmarks/{}/points/{}/detail":    "下载某负载点的明细数据",
+	"/api/v1/benchmarks/{}/points/{}/timeline":  "读取点位请求时间线（有界、脱敏的计时与请求身份）",
 	"/api/v1/benchmarks/{}/report":              "下载评测报告",
 	"/api/v1/branding":                          "品牌外观：`product_name`、`console_title`、`login_description`、`logo`（base64 `data:` URL，PNG/JPEG/WebP/SVG），四个字段总是出现，空串表示用内置默认值（默认文案由客户端按界面语言渲染）。登录页在登录前就要显示，所以不需登录",
 	"/api/v1/dashboard/summary":                 "仪表盘汇总：节点按状态计数与硬件合计、部署按状态计数、按厂商与按标签（`label_key`，缺省或无节点带该 key 时取最常用的 key）分组的容量",

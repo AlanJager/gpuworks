@@ -1486,6 +1486,7 @@ Scripts and third-party clients cannot directly reuse vLLM parameters for SGLang
 | GET | `/api/v1/benchmarks/{id}/report` | Download the benchmark report | JWT |
 | DELETE | `/api/v1/benchmarks/{id}` | Delete a benchmark task | JWT |
 | GET | `/api/v1/benchmarks/{id}/points/{seq}/detail` | Download detailed data for a load point | JWT |
+| GET | `/api/v1/benchmarks/{id}/points/{seq}/timeline` | Read a point request timeline (bounded, redacted timings and request identities) | JWT |
 | POST | `/api/v1/benchmarks/{id}/cancel` | Cancel a running benchmark | JWT |
 
 ## Profiles / GPUs (Estimation Calibration and GPU Inventory)
