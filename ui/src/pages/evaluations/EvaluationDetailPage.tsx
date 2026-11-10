@@ -79,7 +79,7 @@ export default function EvaluationDetailPage() {
 	const curveSeriesName = useCallback((labels: Record<string, string>, index: number) => run ? benchmarkSeriesName(run, labels, index, t) : t("common.point", { value: index + 1 }), [run, t]);
 	const chart = useMemo<MetricSeries[]>(() => {
 		const field = curveFields[chartMetric];
-		return (curve.data?.points || []).map((point) => ({ labels: { benchmark: String(id), point: String(point.seq) }, points: point.samples.map((sample): MetricPoint => [sample.t, Number(sample[field])]) }));
+		return (curve.data?.points || []).map((point) => ({ labels: { benchmark: String(id), point: String(point.seq) }, points: point.samples.map((sample): MetricPoint => [sample.t, sample[field] ?? Number.NaN]) }));
 	}, [chartMetric, curve.data?.points, id]);
 	const curveHasSamples = chart.some((series) => series.points.length > 0);
 	const exportVisual = async (format: BenchmarkVisualFormat) => {
@@ -123,7 +123,7 @@ export default function EvaluationDetailPage() {
 				</Row>
 			</Card>
 			<Row gutter={[16, 16]}>
-					<Col xs={24} xl={12}><Card title={t("detail.curve")} extra={<Segmented size="small" value={chartMetric} onChange={(value) => setChartMetric(String(value))} options={curveMetrics.map(({ value, label }) => ({ value, label }))} />}><BenchmarkCurveNotice warmup={run.progress?.current_point?.warmup} active={active} loading={curve.loading} hasResponse={curve.data != null} hasSamples={curveHasSamples} runState={run.state} completed={run.progress?.completed ?? 0} runError={run.error} error={curve.error} onRetry={() => { void curve.refetch(); }} />{!(curve.loading && curve.data == null) && <TimeSeriesChart series={chart} height={280} unit={curveMetrics.find((item) => item.value === chartMetric)?.unit} seriesName={curveSeriesName} resetKey={`${id}:${chartMetric}`} />}</Card></Col>
+					<Col xs={24} xl={12}><Card title={t("detail.curve")} extra={<Segmented size="small" value={chartMetric} onChange={(value) => setChartMetric(String(value))} options={curveMetrics.map(({ value, label }) => ({ value, label }))} />}><BenchmarkCurveNotice warmup={run.progress?.current_point?.warmup} active={active} loading={curve.loading} hasResponse={curve.data != null} hasSamples={curveHasSamples} runState={run.state} completed={run.progress?.completed ?? 0} runError={run.error} error={curve.error} onRetry={() => { void curve.refetch(); }} />{!(curve.loading && curve.data == null) && <TimeSeriesChart series={chart} connectNulls={false} height={280} unit={curveMetrics.find((item) => item.value === chartMetric)?.unit} seriesName={curveSeriesName} resetKey={`${id}:${chartMetric}`} />}</Card></Col>
 				<Col xs={24} xl={12}><Card title={<MetricLabel label={t("detail.pareto")} help="pareto" />}><ParetoChart points={run.points || []} selectedSeq={selected?.seq} onSelect={(point) => setSelectedSeq(point.seq)} /></Card></Col>
 			</Row>
 			<PointResultsTable run={run} selectedSeq={selected?.seq} onSelect={(point) => setSelectedSeq(point.seq)} />

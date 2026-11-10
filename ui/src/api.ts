@@ -2699,12 +2699,12 @@ export interface BenchmarkTargetSnapshot {
 }
 export interface BenchmarkCurveSample {
   t: number;
-  output_tput: number;
-  total_tput: number;
-  request_tput: number;
-  ttft_p50: number;
-  tpot_p50: number;
-  latency_p99: number;
+  output_tput?: number | null;
+  total_tput?: number | null;
+  request_tput?: number | null;
+  ttft_p50?: number | null;
+  tpot_p50?: number | null;
+  latency_p99?: number | null;
 }
 export interface BenchmarkCurveResponse {
   points: Array<{

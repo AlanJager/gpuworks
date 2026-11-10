@@ -19,6 +19,8 @@ export interface ChartMarkLine {
 
 interface Props {
   series: MetricSeries[];
+  // Leave unavailable observations as gaps when false.
+  connectNulls?: boolean;
   height?: number;
   unit?: string;
   valueFmt?: (v: number) => string;
@@ -125,7 +127,8 @@ export function buildTimeSeriesOption(
     integer,
     leftName,
     rightAxis,
-  }: { unit?: string; valueFmt?: (v: number) => string; seriesName?: (labels: Record<string, string>, index: number) => string; markLines?: ChartMarkLine[]; yRange?: [number, number]; integer?: boolean; leftName?: string; rightAxis?: RightAxis },
+    connectNulls = true,
+  }: { unit?: string; valueFmt?: (v: number) => string; seriesName?: (labels: Record<string, string>, index: number) => string; markLines?: ChartMarkLine[]; yRange?: [number, number]; integer?: boolean; leftName?: string; rightAxis?: RightAxis; connectNulls?: boolean },
 ): EChartsOption {
   const legend = visibleSeries.map((entry, index) => seriesName(entry.labels, index));
   // About five time labels whatever the window or width: ECharts' time axis
@@ -187,7 +190,7 @@ export function buildTimeSeriesOption(
       ...(dualAxis ? { yAxisIndex: onRight[index] ? 1 : 0 } : {}),
       showSymbol: false,
       smooth: false,
-      connectNulls: true,
+      connectNulls,
       emphasis: { focus: "series" },
       data: entry.points.map((point) => [point[0], point[1]]),
       // Only the first series carries the markLine - one set of vertical
@@ -224,7 +227,7 @@ export function spacedTimeLabels(span: number): (value: number) => string {
   };
 }
 
-export default function TimeSeriesChart({ series, height = 200, unit, valueFmt = defaultValueFmt, seriesName = defaultSeriesName, resetKey, group, markLines, yRange, integer, leftName, rightAxis }: Props) {
+export default function TimeSeriesChart({ series, height = 200, unit, valueFmt = defaultValueFmt, seriesName = defaultSeriesName, resetKey, group, markLines, yRange, integer, leftName, rightAxis, connectNulls }: Props) {
   const { t } = useTranslation("common");
   const hostRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<ReturnType<typeof echarts.init> | null>(null);
@@ -258,9 +261,9 @@ export default function TimeSeriesChart({ series, height = 200, unit, valueFmt =
       chart.clear();
       previousResetKey.current = resetKey;
     }
-    const option = buildTimeSeriesOption(visibleSeries, { unit, valueFmt, seriesName, markLines, yRange, integer, leftName, rightAxis });
+    const option = buildTimeSeriesOption(visibleSeries, { unit, valueFmt, seriesName, markLines, yRange, integer, leftName, rightAxis, connectNulls });
     chart.setOption(option, { notMerge: false, lazyUpdate: true, replaceMerge: ["series", "legend", "yAxis"] });
-  }, [resetKey, seriesName, unit, valueFmt, visibleSeries, markLines, yRange?.[0], yRange?.[1], integer, leftName, rightAxis]);
+  }, [resetKey, seriesName, unit, valueFmt, visibleSeries, markLines, yRange?.[0], yRange?.[1], integer, leftName, rightAxis, connectNulls]);
 
   return <div style={{ position: "relative", height }}>
     <div ref={hostRef} role="img" aria-label={t("timeSeries.ariaLabel")} style={{ width: "100%", height }} />
