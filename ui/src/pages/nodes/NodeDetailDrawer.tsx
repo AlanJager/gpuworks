@@ -30,7 +30,6 @@ export type NodeDetailTab = "basic" | "accelerators" | "health" | "doctor";
 export default function NodeDetailDrawer({
   node,
   engines,
-  kubeClusterNames,
   initialTab,
   highlight,
   upgradePhase,
@@ -39,7 +38,6 @@ export default function NodeDetailDrawer({
 }: {
   node: Node | null;
   engines?: EngineProfile[] | null;
-  kubeClusterNames?: ReadonlyMap<number, string>;
   initialTab?: NodeDetailTab;
   highlight?: TopoHighlight;
   upgradePhase?: UpgradePhase;
@@ -151,7 +149,6 @@ export default function NodeDetailDrawer({
                   <NodeBasicTab
                     node={shown}
                     engines={engines}
-                    kubeClusterNames={kubeClusterNames}
                     upgradePhase={upgradePhase}
                     runtimeLoading={runtimeLoading}
                     onRename={() => {

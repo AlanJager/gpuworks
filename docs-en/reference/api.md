@@ -210,7 +210,7 @@ Login, logout, and management write requests using login sessions check the requ
 | GET | `/api/v1/healthz` | Health check (control plane) | JWT |
 | GET | `/healthz` | Health check (no login required, for liveness/load balancing) | None |
 | GET | `/api/v1/engines?target_vendor=amd` | Engine parameter dictionary for a target vendor (uses the general profile when `target_vendor` is omitted); the AMD profile describes implementation admission scope, not validation on a specific GPU/ROCm version | JWT |
-| GET | `/api/v1/nodes` | List nodes; paginate with `page`/`page_size` and filter by `q`/`state`/`label` (see “Error and Response Conventions”); nodes connected from a Kubernetes cluster carry `kube: {cluster_id, node_name, unschedulable}` (`cluster_id` is the cluster's `id`) | JWT |
+| GET | `/api/v1/nodes` | List nodes; paginate with `page`/`page_size` and filter by `q`/`state`/`label` (see “Error and Response Conventions”); nodes connected from a Kubernetes cluster carry the system labels `gpuworks.ai/kubernetes-cluster` and `gpuworks.ai/kubernetes-node` (see “Node Labels: Written and Generated”), and `cordon_reason` is `kube_unschedulable` while Kubernetes has them cordoned | JWT |
 | GET | `/api/v1/nodes/facets` | Filter options and node count distributions; the `q`, `state`, and `label` query parameters are the same as for the node list. Returns distributions of user labels, system labels, and GPU models (including reported `arch_id`); see [Node List](#节点列表的筛选与返回字段) | JWT |
 | GET | `/api/v1/dashboard/summary` | Dashboard summary: node counts by state and hardware totals, deployment counts by state, and capacity grouped by vendor and label (`label_key`; uses the most common key when omitted or when no node has that key); also current GPU metrics, card occupancy and tasks in flight, see [Dashboard summary](#dashboard-summary-response-fields) | JWT |
 | POST | `/api/v1/nodes` | Create a node awaiting connection and return the installation command and token; see [Connection Parameters for Node Creation](#创建节点的连接参数) for all fields and conditions | JWT(admin) |
@@ -434,6 +434,8 @@ are not scheduled to any node until someone modifies them.
 | `gpuworks.ai/compute-network` | Network ID; `management` when the management network handles the role | Omitted if the role has no network |
 | `gpuworks.ai/storage-sync-network` | Same as above | |
 | `gpuworks.ai/serving-network` | Same as above | |
+| `gpuworks.ai/kubernetes-cluster` | Cluster UUID | Only nodes connected from a Kubernetes cluster; `display` is the cluster name, and a rename does not affect matching |
+| `gpuworks.ai/kubernetes-node` | Node name in Kubernetes | Same as above; `display` is the same value |
 
 The same key can have multiple entries (the values form a set). Each entry is `{key, value, display, display_code}`: `value` is the literal value
 used for matching, `display` is display text, and `display_code` is provided only when the value is platform terminology (vendor or management network), referring to

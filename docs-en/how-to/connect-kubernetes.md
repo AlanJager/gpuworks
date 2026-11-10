@@ -39,7 +39,7 @@ The agent uses the node's own DNS (`dnsPolicy: Default`), like an agent installe
    kubectl apply -f 'https://server.example/kube/manifest.yaml?token=…'
    ```
 
-   The selected nodes appear on the Nodes page automatically, tagged “K8s · cluster/node name”; nodes added later by scale-out join automatically as well. If no node has joined 5 minutes after creation, “Troubleshoot” in the list gives the `kubectl` commands to run and common causes (the agent image cannot be pulled, the RuntimeClass does not exist, the node selector selects no node, the agent cannot reach the server).
+   The selected nodes appear on the Nodes page automatically, carrying the system labels `gpuworks.ai/kubernetes-cluster` (the value is the cluster UUID, shown as the cluster name) and `gpuworks.ai/kubernetes-node` (the node name in Kubernetes); filter the Nodes page by them, or use them in a deployment's node requirements to keep it on one cluster. Nodes added later by scale-out join automatically as well. If no node has joined 5 minutes after creation, “Troubleshoot” in the list gives the `kubectl` commands to run and common causes (the agent image cannot be pulled, the RuntimeClass does not exist, the node selector selects no node, the agent cannot reach the server).
 
 The command contains the cluster's connect token and is shown only to administrators. After the connect token is revoked, new nodes can no longer join, and nodes already joined are unaffected.
 
@@ -47,7 +47,7 @@ The command contains the cluster's connect token and is shown only to administra
 
 | Scenario | What to do |
 |---|---|
-| Maintain a node | Run `kubectl cordon` in Kubernetes: at the next status report (within a minute) gpuworks likewise stops placing new replicas on that node, and `uncordon` restores it in the same way |
+| Maintain a node | Run `kubectl cordon` in Kubernetes: at the next status report (within a minute) gpuworks likewise stops placing new replicas on that node, and `uncordon` restores it in the same way; the node's scheduling status shows as stopped by the platform, with the reason “Kubernetes stopped scheduling onto this node” |
 | Upgrade the agent | Click “Upgrade Agent” in the node details: this switches the cluster's agent DaemonSet to the image of the same version as the server, Kubernetes replaces the agents on the nodes in turn, and instance Pods are unaffected. You can also run `kubectl -n gpuworks-system set image ds/gpuworks-agent agent=<image>` yourself |
 | A node is deleted or scaled in | After a node has been offline for 15 minutes, gpuworks asks another online node of the same cluster to confirm; when the node no longer exists in Kubernetes and has no instances, it is removed automatically |
 | Delete a node from gpuworks | Only the record is deleted and the agent is not uninstalled; if the DaemonSet still selects the node, it rejoins, so adjust the node selector first |

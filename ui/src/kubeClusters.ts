@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { TFunction } from "i18next";
-import { api, type KubeCluster, type KubeDefaults } from "./api";
+import { api, type KubeDefaults } from "./api";
 
 /**
  * The cluster form's defaults, limits and vendors, which the server owns
@@ -38,22 +38,4 @@ export function cardReturnText(t: TFunction<"kubernetes">, idleReturnSeconds: nu
     : idleReturnSeconds > 0 && idleReturnSeconds % 60 === 0 ? t("duration.minutes", { count: idleReturnSeconds / 60 })
     : t("duration.seconds", { count: idleReturnSeconds });
   return t("returnPolicy.afterIdle", { duration });
-}
-
-/**
- * The clusters' names by id, for a list of nodes that says which cluster each
- * Kubernetes node is in. One request when the page opens: a failure (a viewer
- * without the right, an old server) leaves the map empty and the nodes show
- * their Kubernetes node name alone.
- */
-export function useKubeClusterNames(): Map<number, string> {
-  const [names, setNames] = useState<Map<number, string>>(() => new Map());
-  useEffect(() => {
-    let alive = true;
-    api.kubeClusters()
-      .then((clusters) => { if (alive) setNames(new Map((clusters.items ?? []).map((cluster: KubeCluster) => [cluster.id, cluster.name]))); })
-      .catch(() => {});
-    return () => { alive = false; };
-  }, []);
-  return names;
 }

@@ -24,7 +24,6 @@ import { useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import ResourceTable, { storedPageSize, type ServerSort } from "../components/resourceTable/ResourceTable";
 import { NODE_TABLE_ID, nodeColumns } from "./nodes/nodeColumns";
-import { useKubeClusterNames } from "../kubeClusters";
 import NodeDetailDrawer, { type NodeDetailTab } from "./nodes/NodeDetailDrawer";
 import { usePagedList } from "../pagedList";
 import PageHeader from "../components/PageHeader";
@@ -74,7 +73,6 @@ export default function NodesPage() {
   // Node events refresh in the background: with a fleet reporting status
   // every minute a foreground reload would keep the table spinning.
   useEvents("node", refresh);
-  const kubeClusterNames = useKubeClusterNames();
   const [detail, setDetail] = useState<Node | null>(null);
   const [scheduling, setScheduling] = useState<Node | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState<Node | null>(null);
@@ -184,7 +182,6 @@ export default function NodesPage() {
     serverVersion: serverHealth.data?.version,
     upgradeErrors: upgradeErrors.data,
     upgradePhase: upgrades.phaseOf,
-    kubeClusterNames,
     onOpen: setDetail,
     onEditLabels: setEditingLabels,
     onScheduling: setScheduling,
@@ -275,7 +272,6 @@ export default function NodesPage() {
       <NodeDetailDrawer
         node={detail}
         engines={engines.data?.items}
-        kubeClusterNames={kubeClusterNames}
         // The deep link's tab and highlight belong to the node it names, not to
         // one opened from the list afterwards.
         initialTab={detail && detail.uuid === incoming?.nodeUUID ? incoming.tab : undefined}

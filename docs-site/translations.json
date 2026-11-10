@@ -117,7 +117,7 @@
   "how-to/use-mcp.md": "96d72b65ef2c22f89a8999f5447ef3ff76a091345c7eda33daa597128dbac854",
   "how-to/use-mineru.md": "d15ff3f71b23cc9eb22ae3c970eb5cbfcb743fdd644d5dd10e8a0f179d03228c",
   "reference/api-conventions.md": "be9237a197c811a623e5bd4e1aba875de5a46b333c3def6b5ac223b7a125a551",
-  "reference/api.md": "936d6fd89a065a05b6c679f729ee07a892d4fab69aa3874251bed5577a319005",
+  "reference/api.md": "afffade7005792d4ecbe481d1bc308e1cb1701a9b808c278fc04574d79ac2d80",
   "reference/ascend-support-matrix.md": "fdb5b01bad77f72e34cceebdacaf723d79cb162ddce62fcc06b7d2c4b493e665",
   "reference/cli.md": "fad7ff462fce4669dbca88006ab86cf8fc83f43de1bec01e0edad5a5a194f8b1",
   "reference/configuration.md": "81d2d7a084b0076fd8959d29c12675d3ef88d847345fe71551759aa03d9ea9fe",
@@ -134,7 +134,7 @@
   "reference/security.md": "7054bdabb6324c0f0953129f7d6c993e1177fe805de3dae3fd3afe46614d043d",
   "reference/support-matrix.md": "f04a0c5a399dbabf853a46f243ee7c35099fd8edd22252c326fe3d2f2a9ea7b8",
   "reference/usage-report.md": "ee3391351bad92ba79f30b8941f771de244963cb47d94765fdce32d677f3de12",
-  "reference/web-ui-tour.md": "b2e6c861d2d9ddae422bb8a9ba859da50a4f418c36b36ebcc723a2459354ad43",
+  "reference/web-ui-tour.md": "24bb1332b86fffb1a41a99f49928684a3ba54bb692a196044f6eaa668db2f47b",
   "tutorials/benchmark-concurrency.md": "c873e6bbcd8d978ed2dd190adeba66b06440f91b3f7886e81480a2d853cca309",
   "tutorials/first-pd-deployment.md": "68a85b73db6b96c37c263fd87290548eaf9e30a8ff9d9eb4fa6236811cc904c6",
   "tutorials/getting-started.md": "f6c7b88ddb27615b828e6eb71b25afaac56d70c28a6358c6cfe55499c6db52e3",
@@ -148,6 +148,6 @@
   "releases/v26.11.2.md": "d4a50471ba467a6d564dff6048da2cc010132b4fd93d942cde9b47c91b52fb7f",
   "adr/0052-kubernetes-nodes.md": "3f526c0005a0046556492dc3b6501ccd7dbe81a0f8efc0d4e662c06e5aece8b2",
   "adr/0062-apply-to-cloud-clusters.md": "28477e1d7aa4d1489cc12e42caaf46f64d4a6efdf018416f0b8b0cfef1f6847f",
-  "how-to/connect-kubernetes.md": "5bf5b1ae92672ca9eafdcc1daee0f99928deea344fe787e9a9330673e7e9d4f9",
+  "how-to/connect-kubernetes.md": "f245a20e5a9f753e743a7b9e746c78a51521663f1cfa4e99d60833879db65476",
   "how-to/connect-managed-kubernetes.md": "71c4b37ac803e88873edaa2b7cff80ad4ca5122c457f56f5c7df381cc01b5d50"
 }

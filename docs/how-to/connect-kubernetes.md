@@ -68,7 +68,7 @@ agent 用节点自己的 DNS（`dnsPolicy: Default`），与直接装在主机�
    kubectl apply -f 'https://server.example/kube/manifest.yaml?token=…'
    ```
 
-   被选中的节点会自动出现在节点页，带「K8s · 集群/节点名」标签；扩容出来的节点同样自动加入。创建 5 分钟后仍没有
+   被选中的节点会自动出现在节点页，带系统标签 `gpuworks.ai/kubernetes-cluster`（值是集群的 UUID，显示集群名）和 `gpuworks.ai/kubernetes-node`（Kubernetes 里的节点名），节点页可据此筛选，部署的节点条件也可以用它们限定在某个集群上；扩容出来的节点同样自动加入。创建 5 分钟后仍没有
    节点加入时，列表上的「排查」给出要执行的 `kubectl` 命令和常见原因（拉不到 agent 镜像、RuntimeClass 不存在、节点
    选择器没选中节点、agent 连不上 server）。
 
@@ -78,7 +78,7 @@ agent 用节点自己的 DNS（`dnsPolicy: Default`），与直接装在主机�
 
 | 场景 | 做法 |
 |---|---|
-| 维护节点 | 在 Kubernetes 里 `kubectl cordon`：gpuworks 在下一次状态上报（一分钟内）跟着停止往该节点放新副本，`uncordon` 后同样恢复 |
+| 维护节点 | 在 Kubernetes 里 `kubectl cordon`：gpuworks 在下一次状态上报（一分钟内）跟着停止往该节点放新副本，`uncordon` 后同样恢复；节点的调度状态显示为平台停止调度，原因为「Kubernetes 已停止向该节点调度」 |
 | 升级 agent | 节点详情里点「升级」：把该集群的 agent DaemonSet 换到与 server 同版本的镜像，Kubernetes 依次替换各节点的 agent，实例 Pod 不受影响。也可以自己 `kubectl -n gpuworks-system set image ds/gpuworks-agent agent=<镜像>` |
 | 节点被删除或缩容 | 节点离线 15 分钟后，gpuworks 请同集群另一台在线节点确认；Kubernetes 里已没有该节点且其上没有实例时自动移除 |
 | 从 gpuworks 删除节点 | 只删除记录，不卸载 agent；DaemonSet 仍选中该节点时它会重新加入，需要先调整节点选择器 |

@@ -539,7 +539,9 @@
       "compute-network": "Compute network",
       "storage-sync-network": "Storage sync network",
       "serving-network": "Serving network",
-      "storage": "Storage"
+      "storage": "Storage",
+      "kubernetes-cluster": "Kubernetes cluster",
+      "kubernetes-node": "Kubernetes node"
     }
   },
   "diskUsage": {
@@ -1159,10 +1161,5 @@
       "elapsed": "Observed stage duration",
       "milliseconds": "{{count}} ms"
     }
-  },
-  "kube": {
-    "tag": "K8s · {{place}}",
-    "cordoned": "K8s cordoned",
-    "cordonedHint": "Kubernetes has this node cordoned. gpuworks places no new instances on it until it is uncordoned there."
   }
 }

@@ -165,19 +165,8 @@ export interface AcceleratorPresence {
   model?: string;
 }
 
-/** Where a node that joined from a Kubernetes cluster sits there (dto.NodeKube). */
-export interface NodeKube {
-  /** The id of the KubeCluster the node joined through. */
-  cluster_id: number;
-  node_name: string;
-  /** Kubernetes has the node cordoned. */
-  unschedulable: boolean;
-}
-
 export interface Node {
   uuid: string;
-  /** Set for a node that joined from a Kubernetes cluster. */
-  kube?: NodeKube;
   // scheduling is whether the node takes new replicas: cordoned takes none,
   // draining also moves the replicas a pool placed there.
   scheduling?: NodeScheduling;
@@ -1016,7 +1005,6 @@ export type KubeVendor = "nvidia" | "ascend" | "hygon" | "ppu";
 
 /** A Kubernetes cluster whose GPU nodes join through one DaemonSet (dto.KubeCluster). */
 export interface KubeCluster {
-  /** What NodeKube.cluster_id refers to. */
   id: number;
   uuid: string;
   name: string;

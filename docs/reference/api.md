@@ -210,7 +210,7 @@ Cookie 设置为 `HttpOnly`、`SameSite=Lax`，其中保存的是不透明会话
 | GET | `/api/v1/healthz` | 健康检查（管理面） | JWT |
 | GET | `/healthz` | 健康检查（无需登录，供探活/负载均衡） | 无 |
 | GET | `/api/v1/engines?target_vendor=amd` | 面向指定厂商的引擎参数字典（省略 `target_vendor` 时使用通用 profile，未知厂商返回 400）；AMD profile 只表示实现准入范围，不证明特定 GPU/ROCm 版本已通过真机验收 | JWT |
-| GET | `/api/v1/nodes` | 节点列表；带 `page`/`page_size` 时分页并可按 `q`/`state`/`label` 筛选（见“错误与响应约定”）；从 Kubernetes 集群接入的节点带 `kube: {cluster_id, node_name, unschedulable}`（`cluster_id` 对应集群的 `id`） | JWT |
+| GET | `/api/v1/nodes` | 节点列表；带 `page`/`page_size` 时分页并可按 `q`/`state`/`label` 筛选（见“错误与响应约定”）；从 Kubernetes 集群接入的节点带系统标签 `gpuworks.ai/kubernetes-cluster` 与 `gpuworks.ai/kubernetes-node`（见“节点标签：写入的与生成的”），被 Kubernetes cordon 时 `cordon_reason` 为 `kube_unschedulable` | JWT |
 | GET | `/api/v1/nodes/facets` | 筛选项及节点数量分布；查询参数 `q`、`state`、`label` 同节点列表，返回用户标签、系统标签与卡型号分布（含已报告的 `arch_id`），见[节点列表](#节点列表的筛选与返回字段) | JWT |
 | GET | `/api/v1/dashboard/summary` | 仪表盘汇总：节点按状态计数与硬件合计、部署按状态计数、按厂商与按标签（`label_key`，缺省或无节点带该 key 时取最常用的 key）分组的容量；另含当前 GPU 指标、卡占用、在途任务，字段见[仪表盘汇总](#仪表盘汇总的返回字段) | JWT |
 | POST | `/api/v1/nodes` | 创建待接入节点，返回安装命令与 token；完整字段与条件见[创建节点的连接参数](#创建节点的连接参数) | JWT(admin) |
@@ -433,6 +433,8 @@ macOS 忽略 `no_systemd`。
 | `gpuworks.ai/compute-network` | 网络 ID；管理网承担时为 `management` | 该角色无网络时不出这条 |
 | `gpuworks.ai/storage-sync-network` | 同上 | |
 | `gpuworks.ai/serving-network` | 同上 | |
+| `gpuworks.ai/kubernetes-cluster` | 集群 UUID | 仅从 Kubernetes 集群接入的节点；`display` 是集群名，改名不影响匹配 |
+| `gpuworks.ai/kubernetes-node` | Kubernetes 里的节点名 | 同上；`display` 同值 |
 
 同一个键可以有多条（值是集合）。每条是 `{key, value, display, display_code}`：`value` 是用于匹配的
 字面值，`display` 是展示文本，`display_code` 只在值是平台词汇（厂商、管理网）时给出，指向客户端
