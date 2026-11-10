@@ -47,7 +47,7 @@ To specify another installation directory, append `--dir /path/to/installation` 
 | | [`doctor`](#gpuworks-agent-doctor) | Print node environment self-check results | Troubleshooting node connection, GPU, or runtime issues |
 | | [`grant-device-access`](#gpuworks-agent-grant-device-access) | Give a non-root runtime user access to accelerator device nodes | Called automatically by the installation script; used to manually grant missing permissions on rootless runveil nodes |
 | | [`bench`](#gpuworks-agent-bench) | Load-test an OpenAI-compatible endpoint | Performance evaluation; the command-line equivalent of the Benchmarks page |
-| | [`runveil`](#gpuworks-agent-runveil) | Inspect or enter runveil containers | Troubleshooting on runveil nodes |
+| | [`runveil`](#gpuworks-agent-runveil) | Inspect or enter runveil containers, import image archives | Troubleshooting on runveil nodes; importing an image archive copied onto the node |
 | | [`install-service`](#gpuworks-agent-install-service) | Register this binary as a macOS launchd job | Called by the installation script on Mac |
 | | [`uninstall`](#gpuworks-agent-uninstall) | Stop and remove the agent service | Decommissioning a node |
 | | `version` | Print the version | Anyone |
@@ -143,7 +143,7 @@ Fetch the current version from a [release channel](../adr/0040-signed-multi-sour
 | `--data DIR` / `--logs DIR` | Directories recorded at installation | Override the data/log directories |
 | `--channel NAME` | `update_channel` in `server.yaml`, or the build-time channel if absent (`nightly` for master builds, `release` for `v*` tag builds) | Channel whose release index to read: `release` (stable releases) or `nightly` (rolling previews); applies only to release channels |
 | `--source URL` | Three built-in public sources | Source in release channel format (`<URL>/<channel>/index.json`); repeatable, replaces the built-in sources; used for customer-hosted mirrors |
-| `--base-url URL` | Empty | Read from a release site instead (`<URL>/data/release.json` and `<URL>/downloads/`), such as the internal `https://gpuworks.zstack.ai` |
+| `--base-url URL` | Empty | Read from a release site instead (`<URL>/data/release.json` and `<URL>/downloads/`), such as one hosted on an internal network |
 | `--archive FILE` | Empty | Local release archive `gpuworks-<release_id>-<os>-<arch>.tar.gz`; makes no network requests |
 | `--version ID` | Empty | Expected release ID; error if it differs from the current channel/site version or the archive version, rather than silently upgrading to another version |
 | `--keep N` | `3` | Number of pre-upgrade backup sets to retain |
@@ -190,10 +190,17 @@ gpuworks uninstall --dir /opt/gpuworks/server --purge --dry-run --json
 |---|---|---|
 | `--dir DIR` | Same as `restart` | Target installation directory; external data and log directories in the configuration are also recognized |
 | `--purge` | `false` | Delete this installation's configuration, data (including the database and `master.key`), backups, and logs; this cannot be undone |
+| `--keep-resources` | `false` | Explicitly remove only the component while retaining workloads, nodes, and cloud resources; bypasses resource gates only, never path, process, or service ownership checks |
 | `--yes` / `-y` | `false` | Skip interactive selection and final confirmation; execute according to explicit options |
 | `--dry-run` | `false` | Print only the cleanup list without stopping services or modifying files; no confirmation required |
 | `--json` | `false` | Return only a structured report on stdout; except for previews, also requires `--yes` |
 | `--quiet` | `false` | Hide ordinary explanatory output; prompts and confirmation still appear, so this does not replace `--yes` |
+
+Before uninstalling, use `--dry-run --json` to inspect the `checklist`. Each item has a stable `id`, a `status`, a summary, evidence details, and a suggested action. Statuses are `pass`, `warn`, `blocked`, or `unknown`. Completing a preview does not mean that every check passed.
+
+The checklist distinguishes local services and autostart, listening ports, installation/data/backup/log paths and retained items, and deployment, instance, node, and cloud records in the database. Persisted records do not prove that remote processes stopped, GPUs were released, or cloud billing ended. By default, active workloads or unavailable critical resource evidence block uninstallation before services stop or files are deleted. `--yes` skips interaction, not resource checks. Resources are checked again after confirmation and before stopping the service.
+
+To retain workloads while removing only the control plane, explicitly add `--keep-resources`. It does not stop inference instances, delete cloud resources, or replace node uninstallation. Combining it with `--purge` also removes management records and credentials, so first preserve the information needed to manage those resources independently. Passing resource checks does not replace the existing directory and service ownership protections.
 
 - Terminal interaction retains data by default. Without explicit `--purge`, first ask whether to clean up completely, then show the list and request confirmation. Pipelines, scripts, and CI must supply `--yes` or `--dry-run`; otherwise, the command fails before making changes.
 - Stop the server and confirm it has exited, disable automatic startup, and remove the associated systemd unit / launchd plist / nohup PID and program files. The associated expose public endpoint is also closed and its unit removed. Services for other installations are retained; cleanup is refused when ownership cannot be determined.
@@ -252,7 +259,7 @@ Reset a user's password by modifying the database directly, without going throug
 
 | Flag | Default | Description |
 |---|---|---|
-| `--password PASSWORD` | None (required) | New password; empty values are rejected |
+| `--password PASSWORD` | None: prompts twice in the terminal without echo | New password; required when stdin is not a terminal |
 | `--user USER` | `admin` | Username |
 | `--data DIR` | See below | Data directory |
 | `--db PATH` | `<data>/gpuworks.db` | SQLite path |
@@ -264,7 +271,7 @@ Reset a user's password by modifying the database directly, without going throug
 
 ## gpuworks support-bundle
 
-Collects diagnostics without the server, for when the server does not start or the console cannot be reached; the content matches the console's [Collect diagnostics](../how-to/troubleshooting.md#when-you-cannot-log-in-on-site-debug-collection-and-collecting-diagnostics), except that the nodes' part cannot be collected (the manifest marks them offline). Prints the archive's path when done.
+Collects diagnostics without the server, for when the server does not start or the console cannot be reached; the content matches the console's [Collect diagnostics](../how-to/troubleshooting.md#无法登录现场时调试采集与收集诊断信息), except that the nodes' part cannot be collected (the manifest marks them offline). Prints the archive's path when done. The archive is assembled in the directory of `--out`, not in the data directory, so with `--out` on another disk it still works when the server's disk is full.
 
 | flag | Default | Description |
 |---|---|---|
@@ -312,7 +319,7 @@ Each configuration item is resolved in this order: **command-line flag > environ
 | `--listen ADDR` | `$GPUWORKS_SERVER_DIAL_LISTEN`; defaults to `0.0.0.0:18800` for `server_dial` | Listen address in `server_dial` mode |
 | None | `$GPUWORKS_RUNTIME_MOUNT_ROOT`, `$GPUWORKS_UDOCKER_BUNDLE` | Can only come from environment variables or the configuration file's `MOUNT_ROOT` and `UDOCKER_BUNDLE`; the agent sets them for the runtime at startup |
 | `--data-lane BOOL` | None | Defaults to `true`. Enable a dedicated high-throughput data channel; set to `false` behind a proxy that only supports a single connection |
-| `--image-pull-max-connections N` | `$GPUWORKS_IMAGE_PULL_MAX_CONNECTIONS` | Upper limit of simultaneous connections a runveil (udocker) node opens to each registry host (to the proxy when going through one) when pulling images; `0` or unset means automatic (up to 16), `1` means a single connection, and the largest value is 32; a value out of range makes the agent refuse to start. For registries and proxies that allow only a few connections or rate-limit many; not an everyday setting. See [Limit Connections for Image Pulls](../how-to/configure-pull-settings.md#limit-connections-for-image-pulls-runveil-nodes) |
+| `--image-pull-max-connections N` | `$GPUWORKS_IMAGE_PULL_MAX_CONNECTIONS` | Upper limit of simultaneous connections a runveil (udocker) node opens to each registry host (to the proxy when going through one) when pulling images; `0` or unset means automatic (up to 16), `1` means a single connection, and the largest value is 32; a value out of range makes the agent refuse to start. For registries and proxies that allow only a few connections or rate-limit many; not an everyday setting. See [Limit Connections for Image Pulls](../how-to/configure-pull-settings.md#限制镜像拉取的连接数runveil-节点) |
 | `--dcgm MODE` | `$GPUWORKS_DCGM`; defaults to `off` | Optional DCGM SM utilization probe: `off` / `auto` (enabled only when `dcgmi` is on PATH) |
 
 - Default for `--state`: `$GPUWORKS_STATE_DIR`, otherwise `/opt/gpuworks` (if it exists); on macOS, then `~/gpuworks` (if it contains `gpuworks-agent.conf`) and `~/.gpuworks` (if it exists); otherwise `gpuworks` under the user's configuration directory, and finally `./gpuworks-state`.
@@ -320,7 +327,7 @@ Each configuration item is resolved in this order: **command-line flag > environ
 - `--driver udocker` selects runveil: `udocker` is the retained driver name (still used in node records and APIs). Its implementation uses native image handling and a launcher that directly invokes the embedded PRoot; the UI displays runveil.
 - `--driver host` runs the engine as a host process for macOS (Apple silicon) nodes: Linux containers on macOS run in a virtual machine and cannot access the Metal GPU. The image is a darwin/arm64 environment bundle, which the agent starts directly after extraction.
 - If no driver is specified, macOS selects host directly (even if Docker Desktop is available). Other systems detect runtimes in this order: docker (daemon available) > nerdctl > runveil. If none is available, deployments are disabled on the node. An unknown `--driver` value or a runtime unavailable on the current system (`host` on Linux or `udocker` on macOS) logs an error and leaves all runtimes disabled.
-- Logs are written to both stderr and `<state>/agent.log` (rotated at 10 MiB, retaining the previous generation as `agent.log.1`). Records at warning level or above are sent to the server's log center. Only the `GPUWORKS_LOG_LEVEL` environment variable controls the log level, which filters both the file and stderr; repeated records are compressed, see [The server's and agent's own logs](../how-to/monitor-and-logs.md#the-servers-and-agents-own-logs).
+- Logs are written to both stderr and `<state>/agent.log` (rotated at 10 MiB, retaining the previous generation as `agent.log.1`). Records at warning level or above are sent to the server's log center. Only the `GPUWORKS_LOG_LEVEL` environment variable controls the log level, which filters both the file and stderr; repeated records are compressed, see [The server's and agent's own logs](../how-to/monitor-and-logs.md#server-与-agent-自身的日志).
 - The merged configuration is validated with the same set of rules. A failure immediately reports an error and exits, indicating the configuration file path: a missing token; a missing server for `agent_dial`; a server URL without a scheme or containing credentials, a query string, or a fragment; or an invalid port in the listen address for `server_dial`. A `server_dial` agent only needs a token and listen address. It never connects to the server and neither requires nor uses a server address.
 
 ## gpuworks-agent smoke
@@ -411,6 +418,7 @@ Load-test an OpenAI-compatible endpoint (the Benchmarks page uses the same built
 | `--max-in-flight N` | `0` | Maximum in-flight requests in open-loop mode; 0 means unlimited |
 | `--point-duration S` | `60` | Arrival duration per open-loop point (seconds); request count = arrival rate × duration, with a minimum of 20 |
 | `--warmup-requests N` | `1` | Warmup requests sent and discarded before the first point; 0 disables warmup |
+| `--request-timeout S` | `600` | Seconds each request, warmup included, may take before it fails; 10–7200 |
 | `--ignore-eos BOOL` | `true` | Include `ignore_eos` in random / agentic requests to generate up to the target output length |
 | `--dataset KIND` | `random` | `random` / `multiturn` / `agentic` |
 | `--preset NAME` | `agentic-80k-v1` | Agentic input preset: `agentic-{10k,20k,40k,80k,128k,256k,512k,1m}-v1` |
@@ -426,7 +434,7 @@ Load-test an OpenAI-compatible endpoint (the Benchmarks page uses the same built
 
 ## gpuworks-agent runveil
 
-Troubleshoot runveil nodes by reading the agent's state directory directly, without going through the agent or requiring Python.
+Troubleshoot runveil nodes and import images by reading and writing the agent's state directory directly, without going through the agent or requiring Python.
 
 Usage: `gpuworks-agent runveil [--state DIR] <command>`. `--state` must appear before the command and has the same default as `run` (including `GPUWORKS_STATE_DIR`).
 
@@ -434,11 +442,13 @@ Usage: `gpuworks-agent runveil [--state DIR] <command>`. `--state` must appear b
 |---|---|
 | `ps [-a]` | List containers (NAME/IMAGE/STATUS/PID/CREATED); only running containers by default; `-a` (`--all`) lists all |
 | `images` | List images (REPOSITORY/TAG/IMAGE ID/SIZE) |
+| `load -i FILE REF` | Register a `docker save` or OCI archive (`.tar` or `.tar.gz`) as the image `REF`; `-i` may also be written `--input` and may come before or after `REF` |
 | `exec NAME [CMD [ARG...]]` | Execute a command inside a container with the workload's environment variables, mounts, and GPUs; defaults to `/bin/sh -l`, with the exit code passed through |
 | `logs [-f] [-n N] NAME` | Print container output; `-n` (`--tail`) selects the number of trailing lines, defaulting to all; `-f` (`--follow`) follows until the container stops |
 
 - `NAME` can be a unique prefix of a container name. Multiple matches list the candidates and fail.
 - Any user who can read the state directory can execute `ps`/`images`/`logs`, with the same results as root. `exec` must run as root or the agent's runtime user (the owner of the container spec file recorded by the agent).
+- `REF` is required for `load`: give the full image reference the Images page shows (such as `gpuworks/gpuworks-runner:cuda13.0-sglang0.5.22-r1`). The platform decides whether a node has an image by this reference; the tag recorded in the archive may differ and is not registered separately. Digest references are not accepted. Run it as root or as the owner of `udocker/` in the state directory; new files are given to that owner so the runtime user can read and replace them. The agent need not be stopped: after its next image status report (about one minute) the Images page shows “Present.” On failure no image is registered and the layers already written are removed.
 - SIZE in `images` is the compressed size actually stored on the node. Images registered by the old udocker CLI have no manifest, so ID and SIZE display `-`.
 - If the state directory contains no runveil state, report an error prompting you to pass `--state` (if the agent's state directory is specified through `GPUWORKS_STATE_DIR` in the unit, set it here as well).
 - Exit codes: `0` success; `1` runtime error; `2` usage error.
@@ -461,6 +471,17 @@ macOS only. Register the currently running binary as the launchd job `ai.gpuwork
 | Flag | Default | Description |
 |---|---|---|
 | `--state DIR` | On Linux, prefer the state directory from the systemd unit; without a unit, use the same default as `run`. On macOS, use the state directory in the launchd job | Agent state directory |
+
+First use `--dry-run` (or `--dry-run --json`) to inspect installation/state ownership, services and processes, autostart, runtime workload candidates, GPU observations, and retained directories. A container name in a shared runtime does not prove that it belongs to this agent. Unavailable runtime evidence is marked unknown. Unsupported or failed GPU queries do not report an idle GPU, and an exited process-group leader does not prove that all workers exited.
+
+| Option | Default | Description |
+|---|---|---|
+| `--dry-run` | `false` | Preview checks and cleanup scope without stopping services or deleting files |
+| `--json` | `false` | Output a structured checklist and result; execution requires `--yes` |
+| `--yes` / `-y` | `false` | Skip interactive confirmation, not resource or ownership checks |
+| `--keep-resources` | `false` | Explicitly retain workloads and remove only the agent; never bypass service/process ownership or cleanup safety checks |
+
+By default, active workloads and critical unknowns must be addressed before confirmation and uninstallation. Critical resources are checked again after confirmation. Unknown GPU observations are shown explicitly and cannot establish that GPUs were released. Binaries, models, and logs remain; success means that the selected component was removed.
 
 - On Linux, if the unit's state directory matches this directory, first run `disable --now gpuworks-agent.service`, then stop `run` processes with the same binary and explicit `--state` directory (including nohup), and wait for them to exit. Then delete `/etc/systemd/system/gpuworks-agent.service` and run `daemon-reload`. Finally, delete `<state>/identity.json`, the PID file, and `<state>/gpuworks-agent.conf` (which contains the token). If the unit belongs to another state directory (another agent on the same host), leave it untouched and stop only this directory's processes. Refuse to execute if the state directory cannot be read from the unit.
 - On macOS, remove the LaunchDaemon and the executor's LaunchAgent (under `sudo`, the user who invoked sudo), and delete `identity.json` and `gpuworks-agent.conf` from their respective state directories. If a LaunchDaemon exists but root permissions are unavailable, report an error and exit with 1.
@@ -511,7 +532,7 @@ and the CI `release-publish` job. rclone handles uploads; this tool does not hol
 | `adopt -dir DIR -release-id ID` | Verify `releases/<id>/` copied back from a source: each package must match `SHA256SUMS` and belong to `ID`. Print the build time recorded in the package's `INSTALL.txt`; exit with a nonzero status on a mismatch |
 | `verify -channel C -source URL … [-release-id ID] [-index FILE] [-full]` | Read the index from each source and verify its signature, check the release ID, and send a HEAD request for each file to check its size. With `-full`, download the files and check their sha256 instead. With `-index`, use a local, unpublished signed index to verify files on each source (without reading the source's own index), for checks before switching channels. Exit with a nonzero status if any source fails |
 | `newer -channel C -built-at TIME [-source URL …]` | If a source serves a version in the same channel with a build time later than `TIME`, print it and exit with status 0. Exit with status 1 if none exists, or 2 for other errors. The publish script uses this result to skip older pipelines that finish out of order |
-| `prune -keep N [-protect ID …] < listing.json` | Read the output of `rclone lsjson -R --files-only <remote>/releases` and print version directories that can be deleted, excluding the latest N versions and protected versions |
+| `prune [-keep N] [-protect ID …] < listing.json` | Read the output of `rclone lsjson -R --files-only <remote>/releases` and print version directories that can be deleted: version tag (`vYY.M.PATCH`) directories are never deleted; of the other (nightly) directories, the latest N (default 30) and protected versions are kept |
 
 ### gpuworks-image-manifest
 

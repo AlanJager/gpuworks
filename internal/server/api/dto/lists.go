@@ -186,6 +186,11 @@ type DashboardSummary struct {
 	CurrentMetrics DashboardCurrentMetrics `json:"current_metrics"`
 	Nodes          DashboardNodes          `json:"nodes"`
 	Deployments    DashboardDeployments    `json:"deployments"`
+	// Cards counts the fleet's cards by the scheduling overview's states,
+	// the same buckets GET /scheduling/overview sums; null when the overview
+	// cannot be built.
+	Cards *DashboardCards `json:"cards"`
+	Tasks DashboardTasks  `json:"tasks"`
 	// ByVendor groups nodes by accelerator vendor, most GPUs first.
 	ByVendor []CapacityGroup `json:"by_vendor"`
 	// LabelKeys are the user label keys in use, most widely used first.
@@ -194,6 +199,17 @@ type DashboardSummary struct {
 	// node carries it, else the most widely used; empty without labels.
 	LabelKey string          `json:"label_key"`
 	ByLabel  []CapacityGroup `json:"by_label"`
+}
+
+// DashboardCards is the scheduling overview's summary (its fields inline)
+// and Allocated, the cards a deployment holds: Awake+Asleep, a card a
+// sleeper keeps counting as allocated because its memory is reserved for
+// the wake. Cards held outside the platform, unhealthy or offline are not
+// allocated, so Allocated/Cards is the share of the fleet given to
+// deployments.
+type DashboardCards struct {
+	OverviewSummary
+	Allocated int `json:"allocated"`
 }
 
 // DashboardNodes counts nodes by state and sums their hardware.
@@ -208,21 +224,42 @@ type DashboardNodes struct {
 	MemoryGiB    float64 `json:"memory_gib"`
 }
 
-// DashboardDeployments counts deployments by their effective state.
-//
-// Total does not equal Running+Warming, and the difference is deliberate: a
-// sleeping or asleep deployment serves nothing, so it is counted as running
-// only when it can serve, and it is not warming either. Sleeping deployments
-// therefore fall into neither bucket and read as another state, exactly as a
-// stopped, failed or offline one does. Sleepable counts the deployments that
-// could sleep at all, so a client that wants a sleep total reads
-// Total-Running-Warming rather than inventing a bucket the wire does not carry.
+// DashboardDeployments counts deployments by their effective state. Each
+// deployment is in exactly one of Running, Warming, Sleeping, Pending and
+// Other, so they add up to Total. A sleeping deployment serves nothing and
+// is not counted as running. Sleepable counts the deployments that could
+// sleep at all, whatever their state.
 type DashboardDeployments struct {
 	Total   int `json:"total"`
 	Running int `json:"running"`
 	// Warming are deployments pulling an image or starting.
-	Warming   int `json:"warming"`
+	Warming int `json:"warming"`
+	// Sleeping are deployments asleep, or going to sleep, as a whole.
+	Sleeping int `json:"sleeping"`
+	// Pending are deployments waiting for a placement.
+	Pending int `json:"pending"`
+	// Other are the deployments in none of the buckets above: stopped,
+	// failed, offline and the like.
+	Other     int `json:"other"`
 	Sleepable int `json:"sleepable"`
+}
+
+// DashboardTasks counts the work in flight besides the deployments.
+type DashboardTasks struct {
+	// Batches counts only the batches the caller may see (every user's for an
+	// administrator, the caller's own otherwise); null when the Batch API is
+	// not served or the count failed.
+	Batches *DashboardBatches `json:"batches"`
+	// Benchmarks are the evaluation runs pending or running, of every user:
+	// evaluation runs are not owned per user.
+	Benchmarks int `json:"benchmarks"`
+}
+
+// DashboardBatches counts the batches the caller may see: Active are in
+// progress or finalizing, Waiting are still validating their input.
+type DashboardBatches struct {
+	Active  int `json:"active"`
+	Waiting int `json:"waiting"`
 }
 
 // CapacityGroup is the capacity of the nodes sharing one value. For a label
@@ -275,8 +312,36 @@ type ModelListSummary struct {
 // DashboardCurrentMetrics contains fresh measurements from existing online
 // hardware. Null means no sample; a measured zero remains zero.
 type DashboardCurrentMetrics struct {
-	UtilizationPct  *float64 `json:"utilization_pct"`
-	TemperatureC    *float64 `json:"temperature_c"`
-	PowerWatts      *float64 `json:"power_watts"`
+	UtilizationPct *float64 `json:"utilization_pct"`
+	TemperatureC   *float64 `json:"temperature_c"`
+	PowerWatts     *float64 `json:"power_watts"`
+	// MemoryUsedBytes is the host memory the online nodes use.
 	MemoryUsedBytes *float64 `json:"memory_used_bytes"`
+	// VRAMUsedBytes and VRAMTotalBytes are the GPU memory the online nodes'
+	// own cards use and have, summed over the same cards: those with a fresh
+	// sample of both, so their ratio is the fleet's VRAM utilization. Both
+	// are null when no card has both.
+	VRAMUsedBytes  *float64 `json:"vram_used_bytes"`
+	VRAMTotalBytes *float64 `json:"vram_total_bytes"`
+}
+
+// TemplateWeightModels answers GET /inference-templates/weight-models: the
+// registered models that serve one spec's declared weight sources, matched
+// by the server's repository identity rule (the deploy create path's).
+type TemplateWeightModels struct {
+	// Models is every registered model serving at least one source, newest
+	// first, each once.
+	Models  []ModelListItem       `json:"models"`
+	Sources []TemplateWeightMatch `json:"sources"`
+}
+
+// TemplateWeightMatch is one declared source, in the spec's order, and the
+// registered model a choice of that source reuses: the newest one from the
+// same provider that serves it. Absent when the source would be registered.
+type TemplateWeightMatch struct {
+	Provider     string `json:"provider"`
+	RepoID       string `json:"repo_id"`
+	Revision     string `json:"revision,omitempty"`
+	Subfolder    string `json:"subfolder,omitempty"`
+	ReuseModelID uint   `json:"reuse_model_id,omitempty"`
 }

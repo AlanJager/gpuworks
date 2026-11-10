@@ -140,6 +140,7 @@ GET /api/v1/benchmarks/meta
 GET /api/v1/benchmarks/{id}
 GET /api/v1/benchmarks/{id}/curve
 GET /api/v1/benchmarks/{id}/points/{seq}/detail
+GET /api/v1/benchmarks/{id}/points/{seq}/timeline
 GET /api/v1/benchmarks/{id}/report
 GET /api/v1/branding
 GET /api/v1/dashboard/summary
@@ -176,6 +177,7 @@ GET /api/v1/inference-templates/my-chips
 GET /api/v1/inference-templates/organizations
 GET /api/v1/inference-templates/schema
 GET /api/v1/inference-templates/summary
+GET /api/v1/inference-templates/weight-models
 GET /api/v1/inference-templates/yaml
 GET /api/v1/instances
 GET /api/v1/instances/{uuid}
@@ -237,6 +239,7 @@ GET /api/v1/scheduling/timeline
 GET /api/v1/scheduling/yield-policies
 GET /api/v1/security/settings
 GET /api/v1/server/listen
+GET /api/v1/server/outbound-policy
 GET /api/v1/settings
 GET /api/v1/ssh-key
 GET /api/v1/storages
@@ -257,6 +260,7 @@ PATCH /api/v1/ai/configs/{id}
 PATCH /api/v1/branding
 PATCH /api/v1/images/versions/{id}
 PATCH /api/v1/images/{id}
+PATCH /api/v1/models/{id}
 PATCH /api/v1/models/{id}/inference-config
 PATCH /api/v1/nodes/management-roles
 PATCH /api/v1/nodes/{uuid}/accelerator
@@ -278,6 +282,7 @@ POST /api/v1/apikeys
 POST /api/v1/auth/activity
 POST /api/v1/auth/login
 POST /api/v1/auth/logout
+POST /api/v1/auth/password
 POST /api/v1/batches
 POST /api/v1/batches/{id}/cancel
 POST /api/v1/benchmarks
@@ -415,6 +420,7 @@ PUT /api/v1/pull/source-rules/order
 PUT /api/v1/pull/source-rules/{id}
 PUT /api/v1/pull/sync-groups/{id}
 PUT /api/v1/server/listen
+PUT /api/v1/server/outbound-policy
 PUT /api/v1/settings/{key}
 PUT /api/v1/ssh-key
 PUT /api/v1/storages/{id}/files/upload

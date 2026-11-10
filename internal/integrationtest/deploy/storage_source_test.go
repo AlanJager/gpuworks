@@ -93,7 +93,7 @@ func TestReplicasReadWhicheverCopyTheirNodeHas(t *testing.T) {
 	want := map[uint]string{teamNode.ID: teamCopy, otherNode.ID: ownCopy}
 	var running []store.Instance
 	// Both logical nodes share this host's ports: a replica can lose its port
-	// to the other node's engine (ENGINE_PORT_IN_USE) and is placed again, so
+	// to the other node's engine (ENGINE_PORT_REFUSED) and is placed again, so
 	// only the running ones count.
 	ok := env.EventuallyNoFail(45*time.Second, func() bool {
 		rows, err := env.Store().InstancesForDeployment(dep.ID)

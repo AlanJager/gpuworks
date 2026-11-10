@@ -110,6 +110,10 @@ specs:
           # non-dGPU instance owns its whole cards in the scheduler's ledger.
           return accept(gpu_memory_mib_per_device=12288)
   api:
+    # The GGUF-only weights have no independent vocabulary, and Strata does
+    # not expose tokenize. This pinned file matches the working GWKS-217
+    # tokenizer: sha256 0997f410c57a1f4e53b09e4be8f4a172d90edd9564368fb0847030937229b9f3.
+    tokenizer_ref: ms://Qwen/Qwen3.8-Flash-Next@2741eec155d03a8ce151b993ccce1a7b1e398d6b
     health_endpoint: /health
     operations:
     - type: openai.chat

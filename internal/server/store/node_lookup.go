@@ -1,6 +1,10 @@
 package store
 
-import "time"
+import (
+	"time"
+
+	"gorm.io/gorm"
+)
 
 // NodesByUUID reads the named nodes as ListNodes reads every node: with their
 // GPUs and credential flags, newest first. A UUID with no node is skipped.
@@ -9,7 +13,7 @@ func (s *Store) NodesByUUID(uuids []string) ([]Node, error) {
 		return nil, nil
 	}
 	var nodes []Node
-	err := preloadCards(s.reader()).Where("uuid IN ?", uuids).Order("id desc").Find(&nodes).Error
+	err := s.withCards(s.reader(), func(q *gorm.DB) error { return q.Where("uuid IN ?", uuids).Order("id desc").Find(&nodes).Error })
 	if err == nil {
 		err = s.markNodeCredentialFlags(nodes)
 	}
@@ -44,12 +48,11 @@ var labelNodeColumns = append([]string{"gpu_vendor", "framework", "arch"}, netwo
 // of the request. Only the card labels need the GPUs.
 func (s *Store) NodesForLabels(withGPUs bool) ([]Node, error) {
 	var nodes []Node
-	q := s.reader().Select(labelNodeColumns).Order("id desc")
+	find := func(q *gorm.DB) error { return q.Select(labelNodeColumns).Order("id desc").Find(&nodes).Error }
 	if withGPUs {
-		q = preloadCards(q)
+		return nodes, s.withCards(s.reader(), find)
 	}
-	err := q.Find(&nodes).Error
-	return nodes, err
+	return nodes, find(s.reader())
 }
 
 // NodeNamesByID is the display name (Node.DisplayName) of the nodes of ids,
@@ -75,10 +78,11 @@ func (s *Store) NodesForLabelsByID(ids []uint, withGPUs bool) ([]Node, error) {
 		return nil, nil
 	}
 	var nodes []Node
-	q := s.reader().Select(labelNodeColumns).Where("id IN ?", ids).Order("id")
-	if withGPUs {
-		q = preloadCards(q)
+	find := func(q *gorm.DB) error {
+		return q.Select(labelNodeColumns).Where("id IN ?", ids).Order("id").Find(&nodes).Error
 	}
-	err := q.Find(&nodes).Error
-	return nodes, err
+	if withGPUs {
+		return nodes, s.withCards(s.reader(), find)
+	}
+	return nodes, find(s.reader())
 }

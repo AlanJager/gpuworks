@@ -16,26 +16,6 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
-// catalogKVBytesPerToken reads the KV cost this deployment runs on, for the
-// engine it will run. It comes from the catalog entry, not the model row: the
-// row is the weight artifact, which several presets can share, while the figure
-// belongs to the catalog model.
-//
-// The same catalog model is reachable two ways - by picking one of its presets,
-// which carries the entry with it, or by deploying a registered model whose
-// upstream identity is that entry. Both must answer the same, or the estimate
-// depends on which door the user came through: the same Qwen3.5-0.8B reported
-// 49152 bytes per token by template and nothing at all by model id. A registered
-// model is resolved through the catalog by its own upstream id, which is what
-// the catalog keys on. The engines disagree on models with recurrent layers, so
-// the engine picks the key.
-func (a *apiHandlers) catalogKVBytesPerToken(selection templateSelection, model *store.Model, engine string) int64 {
-	// The catalog row the selection already resolved is the direct answer; the
-	// lookup chain lives in planning so the preview and the controller read the
-	// same fact the same way.
-	return planning.CatalogKVBytesPerToken(a.d.Store, selection.Model, model, engine)
-}
-
 func acquisitionDTO(r acquisition.Result) dto.AcquisitionResult {
 	to := func(c acquisition.Candidate) dto.AcquisitionCandidate {
 		return dto.AcquisitionCandidate{Key: c.Key, Label: c.Label, DisplayName: c.DisplayName, Reason: c.Reason, Recommended: c.Recommended,
@@ -367,7 +347,13 @@ func (a *apiHandlers) evaluate(w http.ResponseWriter, r *http.Request) {
 	}
 	// Computed after automatic placement so the weight networks, peers and
 	// local-path facts are the selected node's, not the unnamed request's.
-	weightFacts := a.evaluateWeightFacts(model, selection, profileNode)
+	weightFacts, weightFactsErr := a.evaluateWeightFacts(model, selection, profileNode)
+	if weightFactsErr != nil {
+		resp.Diagnostics = diagnosticsFromError(weightFactsErr)
+		errs.add("model_id", weightFactsErr)
+		writeFieldErrors()
+		return
+	}
 	// The template's weight sources with the suggested and registered facts,
 	// so the form's chooser renders a server answer too.
 	resp.WeightSources = a.evaluateWeightSourceOptions(selection)
@@ -397,6 +383,12 @@ func (a *apiHandlers) evaluate(w http.ResponseWriter, r *http.Request) {
 			}
 			resp.Acquisition.Nodes = a.evaluateNodeAcquisition(r.Context(), pinned, resp.Image, templateImageSources(selection, resp.Image), model, store.SourceRules{Pinned: store.StoragePins(req.NodeRequirements), SaveTo: a.previewSaveToStorageID(req.ModelSource, model, profileNode)}, known)
 		}
+	}
+	resp.Diagnostics, err = a.inspectDeploymentModel(r.Context(), model, store.SourceRules{Pinned: store.StoragePins(req.NodeRequirements), SaveTo: a.previewSaveToStorageID(req.ModelSource, model, profileNode)}, rankNodes, false)
+	if err != nil {
+		errs.add("model_id", err)
+		writeFieldErrors()
+		return
 	}
 	if parallelInvalid {
 		writeFieldErrors()
@@ -437,7 +429,7 @@ func (a *apiHandlers) evaluate(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	nodeImageCached, quick, gpuCount = plan.nodeImageCached, plan.quick, plan.gpuCount
+	nodeImageCached, quick = plan.nodeImageCached, plan.quick
 	tp := plan.tp
 	resp.Parallelism = evaluateParallelism(placement, req.NNodes, tp, plan.placementResolved, quick, launch.TemplateResidual, launch.UserResidual, eng.Name())
 	placementVariables, allowUnresolvedPlacement := plan.placementVariables, plan.allowUnresolved

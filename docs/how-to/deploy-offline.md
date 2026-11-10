@@ -60,7 +60,13 @@ docker load -i gpuworks-runner_<tag>_linux-amd64.tar.gz
 gunzip -c gpuworks-runner_<tag>_linux-arm64.tar.gz | nerdctl -n gpuworks load
 ```
 
-约一分钟后，镜像页对应节点显示「已存在」。udocker（runveil）节点没有 load 命令，改用[经管理节点中转](#经管理节点中转导入镜像)。
+约一分钟后，镜像页对应节点显示「已存在」。udocker（runveil）节点用 agent 自带的命令导入，`<image-ref>` 填镜像页上显示的完整镜像引用：
+
+```bash
+sudo gpuworks-agent runveil load -i gpuworks-runner_<tag>_linux-amd64.tar.gz <image-ref>
+```
+
+不方便登录节点时，也可以[经管理节点中转](#经管理节点中转导入镜像)。
 
 **模型**：把模型目录拷到节点的本地存储目录下，例如 `/opt/gpuworks/models/Qwen/Qwen3-8B`，然后在模型页「注册模型」→ 来源选
 「计算节点本地」→ 选节点、填这个目录 → 预览后注册。平台从 `config.json` 读出架构、精度和上下文长度。本地存储不支持批量扫描，
@@ -106,7 +112,7 @@ docker save "$REF" | gzip > gpuworks-runner_cuda13.0-sglang0.5.21-r2_linux-amd64
 
 udocker（runveil）节点，或不方便登录节点时，可以在控制台里导入。节点须保持与 server 连接；即使节点不能访问归档来源，也可由 server 中转。
 
-开始前，确认 server 能读取归档。内网来源须在 `server.yaml` 的 `outbound_allow_private_hosts` 中显式授权，并重启 server；下面的环回地址同样需要授权，见[HTTP 导入前提](import-from-http.md)。
+开始前，确认 server 能读取归档。普通内网来源及下面的本机回环地址默认无需白名单；仅当开启严格模式时才需要白名单；平台管理员可在**设置 → 安全与访问 → 出站访问策略**管理，或由主机管理员直接编辑 `server.yaml` 的 `outbound_restrict_private_hosts` 和 `outbound_allow_private_hosts` 授权来源。两个字段保存后下一次请求生效，无需重启 server，见[HTTP 导入前提](import-from-http.md)。
 
 1. 把归档放到管理节点能访问的 HTTP 地址。最简单的是拷到管理节点上，就地起一个临时文件服务：
 

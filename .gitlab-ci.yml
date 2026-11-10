@@ -99,7 +99,13 @@ core-ui:
         sleep 15
       done
     - npm run lint:i18n
+    # Per-file antd ratchet (ui/antd-inventory.json): no file may use more antd
+    # than the snapshot records; core-test's architecture check runs without
+    # Node, so the check lives here.
+    - node ../scripts/ui_antd_inventory.mjs --check
     - npm run build
+    # Warns (never fails) when the compressed UI outgrows its budget.
+    - (cd .. && ./scripts/check_ui_bundle_size.sh)
   artifacts:
     # Vite writes directly to the directory embedded by the Go server.
     paths:
@@ -163,17 +169,20 @@ docs-build:
       - docs-site/public/
     expire_in: 30 days
   rules:
+    - if: '$CI_COMMIT_TAG =~ /^v[0-9]+\.[0-9]+\.[0-9]+$/'
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
       changes:
         - docs/**/*
         - docs-en/**/*
         - docs-site/**/*
+        - requirements-e2e.txt
         - .gitlab-ci.yml
     - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
       changes:
         - docs/**/*
         - docs-en/**/*
         - docs-site/**/*
+        - requirements-e2e.txt
         - .gitlab-ci.yml
     - when: never
 
@@ -185,6 +194,11 @@ core-ui-test:
   # hard-requiring this job (see .l4-acceptance) but the nightly report still
   # reads pipeline status, so a single flake stays worth absorbing.
   retry: 1
+  # The suite is CPU-bound: one run takes ~4 min on the 192-core runner but
+  # ~16 on the 20-core ones, and a pipeline lands wherever a slot is free.
+  # Three shards (node --test-shard, see TEST_SHARD in ui/package.json) keep
+  # the slow-runner case near the fast one instead of on the critical path.
+  parallel: 3
   image:
     name: node:22-bookworm@sha256:0557ac14e0d45d02ed563067b82856ca5e7aa3437fa28d98d4350ea9c3d9494a
   variables:
@@ -202,9 +216,9 @@ core-ui-test:
     policy: pull
   needs: []
   script:
-    # The macOS serve adapters' tests need only the image's python3.
-    - make test-host-env-adapters
-    - make test-strata-queue-assets
+    # The macOS serve adapters' tests need only the image's python3. They are
+    # not part of the UI suite, so only the first shard runs them.
+    - if [ "$CI_NODE_INDEX" = 1 ]; then make test-host-env-adapters && make test-strata-queue-assets; fi
     - cd ui
     # See core-ui: registry.npmmirror.com occasionally stalls mid-transfer and
     # resets the connection instead of failing fast, so retry the install.
@@ -220,7 +234,7 @@ core-ui-test:
         rm -rf node_modules
         sleep 15
       done
-    - npm run test:coverage
+    - TEST_SHARD="$CI_NODE_INDEX/$CI_NODE_TOTAL" npm run test:coverage
   artifacts:
     when: always
     # Only the reports: coverage/tmp holds c8's raw V8 dumps (one per test
@@ -229,6 +243,82 @@ core-ui-test:
     paths:
       - ui/coverage/lcov.info
       - ui/coverage/lcov-report/
+    expire_in: 14 days
+
+# Walks the console in Chromium against a disposable experience environment
+# and fails on what a person would see as broken: covered or overlapping text,
+# stretched controls, controls an invisible layer blocks, sideways scrolling,
+# console errors (scripts/ui_check_ci.sh, ui/tests/browser/ui-check.mjs). Only
+# when the UI changed, and on a merge request only the pages the change
+# reaches; shared files and the nightly schedule walk every page. The report
+# (screenshots, and the target branch's for the states that look different)
+# is attached to the job for a reviewer.
+ui-check:
+  extends: .go-core
+  stage: core
+  # Until a prebuilt image replaces the apt step its download alone can take
+  # 17–40 minutes; a walk with the comparison takes about 18 s a state.
+  timeout: 60m
+  retry: 1
+  variables:
+    NPM_REGISTRY: "https://registry.npmmirror.com"
+    npm_config_cache: "$CI_PROJECT_DIR/.cache/npm"
+    UI_CHECK_COMPARE: "1"
+  cache:
+    - key:
+        files:
+          - ui/package-lock.json
+        prefix: npm-node22
+      paths:
+        - .cache/npm/
+      policy: pull
+    # The Chromium and font packages: downloading them took about 17 minutes
+    # even through the mirror; from the cache apt only unpacks them.
+    - key: ui-check-apt-bookworm
+      paths:
+        - .cache/apt/
+      # Keep the download even when the check fails or times out.
+      when: always
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes:
+        - ui/**/*
+        - scripts/ui_check_ci.sh
+        - scripts/ui_antd_inventory.mjs
+        - .gitlab-ci.yml
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+    - if: '$CI_PIPELINE_SOURCE == "web"'
+    - when: never
+  before_script:
+    # Chromium and CJK fonts from Debian, through the mirror docs-pdf uses: the
+    # runners reach deb.debian.org too slowly. Node 22 (Debian ships 18,
+    # Playwright needs 20+) as the pinned, checksummed tarball from the npm
+    # mirror the UI jobs already use.
+    - sed -i 's|http://deb.debian.org|http://mirrors.aliyun.com|g' /etc/apt/sources.list.d/debian.sources
+    - mkdir -p .cache/apt/archives/partial && rm -f /etc/apt/apt.conf.d/docker-clean
+    - apt-get -qq -o Acquire::http::Timeout=20 -o Acquire::Retries=2 update
+    - apt-get -qq -o Acquire::http::Timeout=20 -o Acquire::Retries=2 -o Dir::Cache::Archives="$CI_PROJECT_DIR/.cache/apt/archives" install -y --no-install-recommends chromium fonts-noto-cjk xz-utils >/dev/null
+    - export CHROME_PATH=$(command -v chromium)
+    - |
+      node_tar=node-v22.16.0-linux-x64.tar.xz
+      curl -fsSL --retry 3 -o "/tmp/$node_tar" "https://registry.npmmirror.com/-/binary/node/v22.16.0/$node_tar"
+      echo "f4cb75bb036f0d0eddf6b79d9596df1aaab9ddccd6a20bf489be5abe9467e84e  /tmp/$node_tar" | sha256sum -c -
+      tar -xJf "/tmp/$node_tar" -C /usr/local --strip-components=1
+    - (cd ui && npm ci --registry="$NPM_REGISTRY" --prefer-offline --no-audit --no-fund)
+  script:
+    - |
+      if [ "$CI_PIPELINE_SOURCE" = "merge_request_event" ]; then
+        git fetch -q origin "$CI_MERGE_REQUEST_TARGET_BRANCH_NAME"
+        export UI_CHECK_BASE_REF="origin/$CI_MERGE_REQUEST_TARGET_BRANCH_NAME"
+        # A merge request walks both languages at 1024, where layouts break
+        # first and English labels run longest; scheduled runs walk 1440 too.
+        export UI_CHECK_WIDTHS=1024
+      fi
+    - ./scripts/ui_check_ci.sh
+  artifacts:
+    when: always
+    paths:
+      - ui-check-report/
     expire_in: 14 days
 
 core-test:
@@ -265,6 +355,12 @@ core-vet:
   stage: core
   script:
     - CGO_ENABLED=0 go vet ./...
+
+core-lint:
+  extends: .go-core
+  stage: core
+  script:
+    - make lint
 
 # Strict L2 contains a real Docker adoption/recovery case and L3 is entirely a
 # Docker gate. The ordinary project runners use an unprivileged Docker executor
@@ -406,6 +502,8 @@ core-vet:
       -v /usr/bin/docker:/usr/bin/docker:ro
       -v "$CI_PROJECT_DIR:$CI_PROJECT_DIR"
       -v "$GPUWORKS_CI_SOCKET_DIR:/run/gpuworks-e2e"
+      --tmpfs /run/gpuworks-full-disk:rw,size=64m,mode=1777
+      -e GPUWORKS_TEST_FULL_DISK_TMPFS=/run/gpuworks-full-disk
       -v "$DOCKER_HOST_CACHE/go-mod:/go-cache/mod"
       -v "$DOCKER_HOST_CACHE/go-build:/go-cache/build"
       -w "$CI_PROJECT_DIR"
@@ -419,6 +517,8 @@ core-vet:
       -e GOSUMDB=sum.golang.google.cn
       -e GOTOOLCHAIN=local
       -e GPUWORKS_TEST_STRICT=1
+      -e CI_NODE_INDEX
+      -e CI_NODE_TOTAL
       -e GPUWORKS_L3_RUNTIME_BASE_IMAGE="$GPUWORKS_L3_RUNTIME_BASE_IMAGE"
       -e GPUWORKS_L3_SHELL_BASE_IMAGE="$GPUWORKS_L3_SHELL_BASE_IMAGE"
       -e GPUWORKS_L3_NO_PYTHON_IMAGE="$GPUWORKS_L3_NO_PYTHON_IMAGE"
@@ -456,8 +556,13 @@ core-l2:
   # the nightly report even though the L4 lanes no longer depend on this job.
   # A persistent failure still fails: only one retry.
   retry: 1
+  # The suite is one package whose ~70 cases run one after another for
+  # 14-23 min. Three round-robin shards by test name (L2_SHARD, see
+  # scripts/go_test_shard.sh) each carry about a third; -v puts every case's
+  # duration in the trace for rebalancing.
+  parallel: 3
   variables:
-    DOCKER_TEST_COMMAND: "make test-l2 COVERPROFILE=coverage-l2.out"
+    DOCKER_TEST_COMMAND: "make test-l2 GO_TEST_FLAGS=-v L2_SHARD=$CI_NODE_INDEX/$CI_NODE_TOTAL COVERPROFILE=coverage-l2.out"
   artifacts:
     when: always
     paths:
@@ -469,7 +574,7 @@ core-l3:
   # Same rationale as core-l2: single retry for container-timing flakes.
   retry: 1
   variables:
-    DOCKER_TEST_COMMAND: "make test-l3 COVERPROFILE=coverage-l3.out"
+    DOCKER_TEST_COMMAND: "make test-l3 GO_TEST_FLAGS=-v COVERPROFILE=coverage-l3.out"
   artifacts:
     when: always
     paths:
@@ -545,6 +650,37 @@ core-compshare-offline-contracts:
       - coverage-compshare-contracts.out
     expire_in: 14 days
 
+release-docs-pdf:
+  extends: .go-core
+  stage: release
+  timeout: 20m
+  needs:
+    - job: docs-build
+      artifacts: true
+  script:
+    # Reuse the existing Playwright requirement; browsers are build tools only.
+    - sed -i 's|http://deb.debian.org|http://mirrors.aliyun.com|g' /etc/apt/sources.list.d/debian.sources
+    - apt-get -qq -o Acquire::http::Timeout=20 -o Acquire::Retries=2 update
+    - apt-get -qq -o Acquire::http::Timeout=20 -o Acquire::Retries=2 install -y --no-install-recommends chromium fonts-noto-cjk fontconfig python3-venv poppler-utils
+    - python3 -m venv .tmp/docs-pdf-venv
+    # Avoid slow public-PyPI wheel downloads and reuse the runner's tool cache.
+    - |
+      .tmp/docs-pdf-venv/bin/pip install --disable-pip-version-check \
+        --index-url "${GPUWORKS_PYPI_INDEX_URL:-https://mirrors.aliyun.com/pypi/simple/}" \
+        --timeout 30 --retries 2 --cache-dir /host-go-cache/tools/pip \
+        -r requirements-e2e.txt
+    - export CHROME_PATH=/usr/bin/chromium
+    - .tmp/docs-pdf-venv/bin/python docs-site/pdf_browser_checks.py
+    - .tmp/docs-pdf-venv/bin/python docs-site/export_pdf.py --version "$CI_COMMIT_TAG" --commit "$CI_COMMIT_SHA"
+  artifacts:
+    name: "gpuworks-docs-$CI_COMMIT_REF_SLUG-$CI_COMMIT_SHORT_SHA"
+    paths:
+      - dist/docs/
+    expire_in: never
+  rules:
+    - if: '$CI_COMMIT_TAG =~ /^v[0-9]+\.[0-9]+\.[0-9]+$/'
+    - when: never
+
 # One archive per job keeps each below GitLab's per-job artifact size limit
 # (an archive is ~53 MB since the server embeds a macOS agent too; two per job
 # no longer fit). The release website publishes a pipeline only after every
@@ -562,6 +698,7 @@ core-compshare-offline-contracts:
       artifacts: true
     - job: core-test
     - job: core-vet
+    - job: core-lint
     - job: core-compshare-offline-contracts
   script:
     # The zstd CLI packs the embedded agents ~10% smaller than the Go
@@ -657,6 +794,9 @@ release-publish:
       artifacts: true
     - job: release-build-macos-arm64
       artifacts: true
+    - job: release-docs-pdf
+      artifacts: true
+      optional: true
   resource_group: distribution
   interruptible: false
   variables:
@@ -746,6 +886,7 @@ release-publish:
       artifacts: true
     - job: core-test
     - job: core-vet
+    - job: core-lint
     - job: core-compshare-offline-contracts
   rules:
     - if: '$CI_PIPELINE_SOURCE == "schedule" && $CLOUD_FULL == "1"'
@@ -886,6 +1027,7 @@ l4-ascend-pool-partition-inference:
       artifacts: true
     - job: core-test
     - job: core-vet
+    - job: core-lint
     - job: core-compshare-offline-contracts
   environment:
     name: cloud-test/ascend-primary

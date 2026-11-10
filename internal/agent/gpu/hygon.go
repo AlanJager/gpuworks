@@ -56,7 +56,7 @@ func (p *HygonProber) Available() bool {
 
 func (p *HygonProber) Probe(ctx context.Context) ([]proto.GPUInfo, error) {
 	if _, err := p.lookup("hy-smi"); err != nil {
-		return p.roster(nil, false), nil
+		return p.roster(nil, false), nil //nolint:nilerr // Absence of this vendor CLI is an unavailable probe, not a node failure.
 	}
 	out, err := p.run(ctx, hygonInventoryArgs()...)
 	if err != nil {

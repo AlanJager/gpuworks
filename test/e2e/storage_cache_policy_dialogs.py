@@ -459,7 +459,7 @@ def exercise_server_limit_range(page, base, path, targets, evidence):
                          'code': (detail or {}).get('code')})
         check(response.status == 400,
               f'the server accepted a {label} cache limit: HTTP {response.status}')
-        check((detail or {}).get('code') == 'STORAGE_PATH_INVALID',
+        check((detail or {}).get('code') == 'STORAGE_CACHE_LIMIT_NEGATIVE',
               f'the {label} refusal used an unexpected code: {(detail or {}).get("code")}')
     after = targets()['cache-node-01']['cache_max_bytes']
     check(after == before,

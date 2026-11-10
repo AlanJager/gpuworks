@@ -19,7 +19,7 @@ func (a *apiHandlers) evaluateWeightSourceOptions(selection templateSelection) [
 	if len(sources) == 0 {
 		return nil
 	}
-	models, err := a.d.Store.ListModels()
+	models, err := a.d.Store.ModelArtifactsBySourceIDs(weightSourceRepoIDs(sources)...)
 	if err != nil {
 		models = nil
 	}

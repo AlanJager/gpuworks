@@ -93,7 +93,7 @@ func (c *Controller) syncModelWithin(ctx context.Context, dstNode *store.Node, m
 	}
 	sources, err := c.peerSources(model.ID, dstNode.ID, dstMF.TransferSourceNodeID)
 	if err != nil {
-		return true, nil
+		return true, nil //nolint:nilerr // An unavailable peer lookup leaves this acquisition pending for subsequent reconciliation.
 	}
 	// Without an explicit source choice a holder of the target's sync groups
 	// may serve the copy, and a failed attempt falls back to a public
@@ -124,7 +124,7 @@ func (c *Controller) syncModelWithin(ctx context.Context, dstNode *store.Node, m
 		c.syncMu.Unlock()
 		if err := c.store.BeginModelSync(refOf(dstMF), src.node.ID, transferID, src.sizeBytes); err != nil {
 			c.clearModelSync(key, run)
-			return true, nil
+			return true, nil //nolint:nilerr // Failed peer setup clears the active sync and leaves acquisition for reconciliation.
 		}
 		c.log.Info("starting direct model sync", "model", model.ID, "src", src.node.UUID, "dst", dstNode.UUID, "transfer", transferID)
 		go c.runModelSync(copyCtx, key, run, src, dstNode, dstMF, path)
@@ -296,7 +296,7 @@ func (c *Controller) fallbackModelDownload(model *store.Model, node *store.Node,
 	if current != nil && current.State == proto.MFFailed {
 		return true, nil
 	}
-	if model != nil && strings.TrimSpace(model.Source) != "" && strings.TrimSpace(model.SourceID) != "" {
+	if strings.TrimSpace(model.Source) != "" && strings.TrimSpace(model.SourceID) != "" {
 		if _, err := planning.ModelWeightsFetch(c.store, c.networks.Resolve, node, model); errors.Is(err, sourceurl.ErrNoAllowedSource) {
 			return true, err
 		}
@@ -305,7 +305,7 @@ func (c *Controller) fallbackModelDownload(model *store.Model, node *store.Node,
 	if current != nil {
 		ref = refOf(current)
 	}
-	if model != nil && strings.TrimSpace(model.Source) != "" && strings.TrimSpace(model.SourceID) != "" {
+	if strings.TrimSpace(model.Source) != "" && strings.TrimSpace(model.SourceID) != "" {
 		path := relModelPath(model)
 		if current != nil {
 			path = peerSyncTargetPath(current.Path, path)

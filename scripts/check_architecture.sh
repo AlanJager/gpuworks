@@ -17,6 +17,10 @@ set -eu
 #      comment. New or removed keys are not a regression. When no baseline can
 #      be resolved (shallow clone, no origin remote, already on the default
 #      branch) this prints a NOTE and is skipped, never failed.
+#      A third direction, "warn", is a soft budget: over the limit prints a
+#      WARNING and never fails, and the baseline comparison ignores it.
+#      ui_bundle_gzip_kb is a warn key measured by scripts/check_ui_bundle_size.sh
+#      after a UI build; this script only skips it.
 #   3. Dependency direction — hard structural rules (plan §5.3). These are not
 #      budgets: any violation fails immediately.
 #
@@ -127,6 +131,21 @@ measure() {
     grep -rnE "'vllm'|\"vllm\"|'sglang'|\"sglang\"" ui/src \
       --include='*.ts' --include='*.tsx' 2>/dev/null \
       | grep -v '\.test\.' | grep -v '^ui/src/i18n/' | grep -c . || true
+    ;;
+  ui_antd_import_files)
+    # Count source files, including re-exports, dynamic imports and subpaths.
+    grep -rlE "['\"]antd(/[^'\"]*)?['\"]" ui/src \
+      --include='*.ts' --include='*.tsx' 2>/dev/null \
+      | grep -v '\.test\.' | grep -c . || true
+    ;;
+  ui_antd_icon_import_files)
+    grep -rlE "['\"]@ant-design/icons(/[^'\"]*)?['\"]" ui/src \
+      --include='*.ts' --include='*.tsx' 2>/dev/null \
+      | grep -v '\.test\.' | grep -v '^ui/src/components/ui/' | grep -c . || true
+    ;;
+  ui_bundle_gzip_kb)
+    # Needs a fresh UI build; measured by scripts/check_ui_bundle_size.sh.
+    echo "EXTERNAL"
     ;;
   setting_key_literal)
     grep -rnE '(Get|Set)Setting\("' internal --include='*.go' 2>/dev/null \
@@ -245,6 +264,13 @@ neutralize_known_tokens() {
     # catalogs, like the udocker P1 case above.
     sed -E 's/P40/TESLA_P40/g'
     ;;
+  ui/src/components/ui/*)
+    # Zeron-managed components (installed by the Zeron CLI) spell SVG paths
+    # inside JSX props and string constants, beyond the d="M..." form that the
+    # shared filter below recognises: an "M4"/"M28" there is a path command,
+    # not a milestone. Scoped to the vendored directory, like the cases above.
+    sed -E 's/"M[0-9][^"]*"/"SVGPATH"/g'
+    ;;
   *)
     cat
     ;;
@@ -267,6 +293,13 @@ process_name_hits() {
       echo "$f:0:filename carries a process label"
     fi
   done
+}
+
+# soft_budget_hint prints what to do instead when a warn key is over budget.
+soft_budget_hint() {
+  case "$1" in
+  ui_antd_icon_import_files) printf '%s' ": use ui/src/ui-kit/consoleIcons.ts instead of @ant-design/icons" ;;
+  esac
 }
 
 # --- budget loop -----------------------------------------------------------
@@ -292,8 +325,15 @@ while IFS= read -r line || [ -n "$line" ]; do
     failures=$((failures + 1))
     continue
   fi
+  if [ "$measured" = "EXTERNAL" ]; then
+    echo "  $key -/$limit ($direction; measured by scripts/check_ui_bundle_size.sh)"
+    continue
+  fi
   [ -n "$measured" ] || measured=0
   echo "  $key $measured/$limit ($direction)"
+  if [ "$key" = "ui_antd_import_files" ] && [ "$measured" -eq 0 ]; then
+    echo "WARNING: antd 已清零：请在 scripts/arch-constraints.txt 加上 ui_raw_color / ui_raw_radius 计数规则，见 docs/dev/ui.md 的迁移收尾清单"
+  fi
   case "$direction" in
   max)
     if [ "$measured" -gt "$limit" ]; then
@@ -310,12 +350,40 @@ while IFS= read -r line || [ -n "$line" ]; do
       failures=$((failures + 1))
     fi
     ;;
+  warn)
+    # Soft budget: reported, never failed.
+    if [ "$measured" -gt "$limit" ]; then
+      echo "    WARNING: $key is above its soft budget ($measured > $limit)$(soft_budget_hint "$key")" >&2
+      warnings=$((warnings + 1))
+    elif [ "$measured" -lt "$limit" ]; then
+      echo "    WARNING: $key is below its soft budget ($measured < $limit); budget can be tightened" >&2
+      warnings=$((warnings + 1))
+    fi
+    ;;
   *)
     echo "    FAIL: unknown direction '$direction' for $key" >&2
     failures=$((failures + 1))
     ;;
   esac
 done < "$BUDGET_FILE"
+
+# --- antd per-file ratchet -------------------------------------------------
+# ui_antd_import_files only counts files; ui/antd-inventory.json records each
+# file's antd usage (sites, imported names, icons, .ant-* rules) and the
+# inventory fails when any file grew or a new file started using antd.
+# Shrinking passes; the snapshot is refreshed with --write in the same MR.
+echo "antd per-file ratchet (ui/antd-inventory.json):"
+if command -v node >/dev/null 2>&1; then
+  if inventory_out=$(node scripts/ui_antd_inventory.mjs --check ui/antd-inventory.json 2>&1); then
+    printf '%s\n' "$inventory_out" | sed 's/^/  /'
+  else
+    printf '%s\n' "$inventory_out" | sed 's/^/  /' >&2
+    echo "  FAIL: antd usage grew against ui/antd-inventory.json" >&2
+    failures=$((failures + 1))
+  fi
+else
+  echo "  NOTE: node not found; skipping the antd per-file ratchet"
+fi
 
 # --- budget regressions vs baseline -----------------------------------------
 # Part 1 above is a ratchet on THIS tree; it cannot by itself stop someone

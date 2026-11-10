@@ -1,3 +1,4 @@
+import type { JSX } from "react";
 import { Space, Tag, Typography } from "antd";
 import type { GPU, Topology, TopoHighlight } from "../api";
 import { colors } from "../theme/tokens";

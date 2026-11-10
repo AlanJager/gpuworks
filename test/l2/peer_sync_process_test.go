@@ -61,7 +61,13 @@ func startPeerSyncCluster(t *testing.T, absentImage string, names ...string) *pe
 		}
 		t.Cleanup(func() { stopProcess(agent) })
 		c.agents[name] = agent
-		c.nodes[name] = waitNode(t, base, c.token, func(n processNode) bool { return n.UUID == seed.UUID && n.State == "online" })
+		// Online is set at the handshake, before the agent's first status
+		// reports its management address; a peer copy needs that address on
+		// both ends (netplan.StoragePathBetween), and a probe asked in
+		// between is refused with NO_STORAGE_PATH.
+		c.nodes[name] = waitNode(t, base, c.token, func(n processNode) bool {
+			return n.UUID == seed.UUID && n.State == "online" && n.ManagementAddress != ""
+		})
 	}
 	return c
 }

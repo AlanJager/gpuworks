@@ -88,7 +88,13 @@ export default function AddNodeDrawer({
 
   const handleClose = () => { resetForm(); onClose(); };
 
-  useEffect(() => { if (!open) resetForm(); }, [open]);
+  const previouslyOpen = useRef(open);
+  useEffect(() => {
+    // A never-opened drawer has no mounted Form to reset. Initial state is
+    // already empty; reset only when an open drawer is closed externally.
+    if (previouslyOpen.current && !open) resetForm();
+    previouslyOpen.current = open;
+  }, [open]);
 
   useEffect(() => {
     if (!open || !pendingNodeUUID) return;
@@ -157,7 +163,7 @@ export default function AddNodeDrawer({
     target: values.target,
     name: nodeName.trim() || undefined,
     auth_mode: authMode,
-    password: authMode === "password" ? values.password : undefined,
+    password: authMode === "password" || authMode === "keyboard_interactive" ? values.password : undefined,
     private_key_pem: authMode === "private_key" ? values.private_key_pem?.trim() || undefined : undefined,
     server_url: effectiveServerURL,
     install_dir: installDir || undefined,
@@ -208,7 +214,7 @@ export default function AddNodeDrawer({
       }
     } catch (e) {
       if (version !== requestVersion.current) return;
-      message.error(t("add.message.precheckFailed", { detail: (e as Error).message }));
+      message.error(t("add.message.precheckFailed", { detail: apiErrorText(tCommon, e) }));
     } finally {
       if (version === requestVersion.current) setChecking(false);
     }
@@ -282,7 +288,7 @@ export default function AddNodeDrawer({
   );
 
   return (
-    <Drawer title={t("action.add")} open={open} onClose={handleClose} width={640} destroyOnClose>
+    <Drawer title={t("action.add")} open={open} onClose={handleClose} width={640} destroyOnHidden>
       {copyHolder}
       {pendingNodeUUID && <Alert type="info" showIcon message={t("add.waitingForConnection")} description={t("add.waitingForConnectionHelp")} style={{ marginBottom: 16 }} />}
       <Space direction="vertical" size={16} style={{ width: "100%" }}>

@@ -4,7 +4,7 @@
   "organization": { "other": "Other", "title": "Model Organizations", "aria": "Model organizations" },
   "models": { "view": "View {{title}}", "count": "{{count}} models" },
   "chips": { "mine": "My Chips", "add": "Add Chip", "selectToFilter": "Select one to filter", "noOnlineNode": "No detected or hypothetical chips" },
-  "filters": { "all": "All" },
+  "filters": { "all": "All", "operationAria": "Filter by task type" },
   "columns": { "model": "Model", "inputModalities": "Input modalities", "weightVariants": "Weight artifacts", "vendor": "GPU vendor", "engine": "Engine" },
   "vendor": { "nvidia": "NVIDIA", "amd": "AMD", "ascend": "Ascend", "hygon": "Hygon", "ppu": "PPU", "kunlunxin": "Kunlunxin", "apple": "Apple", "hygonAlt": "Hygon" },
   "scenario": { "general": "General" },

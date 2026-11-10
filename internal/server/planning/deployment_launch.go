@@ -246,7 +246,7 @@ func PlanTemplateLaunch(ctx context.Context, st *store.Store, networks Networks,
 				return plan, nil, gpuErr
 			}
 			if err := validateGPU(candidate); err != nil {
-				return plan, &scheduler.Reason{Code: scheduler.ReasonPlacementRejected, Params: map[string]any{"detail": err.Error()}}, nil
+				return plan, &scheduler.Reason{Code: scheduler.ReasonPlacementRejected, Params: map[string]any{"detail": err.Error()}}, nil //nolint:nilerr // GPU rejection is returned in the placement reason, not as an internal planning failure.
 			}
 		}
 	}

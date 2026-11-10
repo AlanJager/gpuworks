@@ -19,6 +19,7 @@ import ServerListenCard from "./settings/ServerListenCard";
 import PlatformSSHKeyCard from "./settings/PlatformSSHKeyCard";
 import DeploymentPolicyCard from "./settings/DeploymentPolicyCard";
 import SecurityCard from "./settings/SecurityCard";
+import OutboundPolicyCard, { OUTBOUND_POLICY_ANCHOR } from "./settings/OutboundPolicyCard";
 import UpdatesCard from "./settings/UpdatesCard";
 import MCPCard from "./settings/MCPCard";
 import TelemetryCard from "./settings/TelemetryCard";
@@ -56,8 +57,8 @@ const SETTINGS_TABS: { key: string; anchors: string[]; cards: () => ReactNode }[
   },
   {
     key: "access",
-    anchors: [SECURITY_ANCHOR],
-    cards: () => <><SecurityCard /><TerminalCard /><MCPCard /></>,
+    anchors: [SECURITY_ANCHOR, OUTBOUND_POLICY_ANCHOR],
+    cards: () => <><SecurityCard /><OutboundPolicyCard /><TerminalCard /><MCPCard /></>,
   },
   { key: "integrations", anchors: [TELEMETRY_ANCHOR], cards: () => <><AICard /><TelemetryCard /></> },
   { key: "data", anchors: [DATA_RETENTION_ANCHOR], cards: () => <DataRetentionCard /> },

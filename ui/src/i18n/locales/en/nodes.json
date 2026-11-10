@@ -320,12 +320,14 @@
     "user": "User",
     "userRequired": "Enter the SSH user",
     "probeAfterSave": "Run a probe immediately after saving",
-    "existingAuth": "Current authentication: {{method}}. Credentials are never displayed for security reasons and must be entered again when saving.",
+    "existingAuth": "Saved credential: {{method}}. Credentials are never displayed for security reasons and must be entered again when saving.",
+    "savedPasswordHelp": "During recovery, a saved password can be tried with password or keyboard-interactive authentication.",
     "password": "SSH password",
     "passwordRequired": "Enter the SSH password",
+    "keyboardInteractiveHelp": "For targets that ask for one hidden password prompt. Multi-step verification and MFA prompts are not supported.",
     "privateKey": "SSH private key",
     "privateKeyRequired": "Enter the SSH private key",
-    "authorizesPlatformKey": "After signing in, the server adds its platform key to the target and keeps only that; this password or key is not stored.",
+    "authorizesPlatformKey": "After signing in, the server tries to authorize its platform key. If that succeeds, only the platform key is kept; otherwise, the supplied credential is retained for recovery.",
     "platformKey": {
       "unavailable": "The platform SSH key is not available: {{detail}}",
       "authorizeLabel": "Authorize the platform key on the target",
@@ -334,6 +336,7 @@
     "auth": {
       "label": "Authentication",
       "password": "Password",
+      "keyboardInteractive": "Keyboard-interactive",
       "key": "Private key",
       "platformKey": "Platform key"
     },

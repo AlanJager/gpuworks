@@ -30,10 +30,17 @@ var accessLogSensitiveFields = map[string]struct{}{
 // lived SSE and WebSocket requests additionally get an opening record so an
 // active connection is visible before it eventually closes.
 func accessLogHandler(log *slog.Logger, next http.Handler) http.Handler {
+	return accessLogHandlerFor(log, "", next)
+}
+
+// accessLogHandlerFor is accessLogHandler for a server whose data directory
+// is dataDir: an error answering a full disk names it (api.writeErr).
+func accessLogHandlerFor(log *slog.Logger, dataDir string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		started := time.Now()
 		requestID := "r" + strconv.FormatUint(middleware.NextRequestID(), 10)
 		r.Header.Set("X-Request-ID", requestID)
+		w.Header().Set("X-Request-ID", requestID)
 		params := accessLogParams(r)
 		stream := isStreamingRequest(r)
 		if stream {
@@ -41,7 +48,7 @@ func accessLogHandler(log *slog.Logger, next http.Handler) http.Handler {
 				"path", r.URL.Path, "remote", r.RemoteAddr)
 		}
 
-		rw := &accessResponseWriter{ResponseWriter: w}
+		rw := &accessResponseWriter{ResponseWriter: w, dataDir: dataDir}
 		defer func() {
 			message := "http request"
 			if stream {
@@ -51,6 +58,9 @@ func accessLogHandler(log *slog.Logger, next http.Handler) http.Handler {
 				"status", rw.statusCode(), "bytes", rw.bytes, "duration_ms", time.Since(started).Seconds() * 1000}
 			if params != "" {
 				attrs = append(attrs, "params", params)
+			}
+			if rw.evaluationOK != nil {
+				attrs = append(attrs, "business_ok", *rw.evaluationOK, "evaluation_skipped", rw.evaluationSkipped)
 			}
 			if rw.errorCode != "" {
 				attrs = append(attrs, "code", rw.errorCode)
@@ -167,9 +177,19 @@ type accessResponseWriter struct {
 	written bool
 	// errorCode and errorParams are the product error the response carries
 	// (api.noteProductError).
-	errorCode   string
-	errorParams map[string]any
+	errorCode         string
+	errorParams       map[string]any
+	dataDir           string
+	evaluationOK      *bool
+	evaluationSkipped bool
 }
+
+func (w *accessResponseWriter) NoteEvaluationOutcome(ok, skipped bool) {
+	w.evaluationOK, w.evaluationSkipped = &ok, skipped
+}
+
+// ServerDataDir is the data directory of the server answering.
+func (w *accessResponseWriter) ServerDataDir() string { return w.dataDir }
 
 // NoteProductError records the product error the response carries.
 func (w *accessResponseWriter) NoteProductError(code string, params map[string]any) {

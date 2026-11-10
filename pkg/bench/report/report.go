@@ -444,7 +444,7 @@ func runProperties(run Run, dataset datasetConfig, target targetSnapshot) [][2]s
 	}
 	properties = append(properties, [2]string{"Tokenizer", tokenizer})
 	doc, _ := benchsearch.ParseDocument(run.Search)
-	properties = append(properties, [2]string{"Objective", first(doc.Objective, "output_tps (default)")}, [2]string{"Experience constraints", constraintDescription(doc)}, [2]string{"Measurement regime", "fixed session count"}, [2]string{"Configured warmup requests", strconv.Itoa(doc.WarmupRequests)}, [2]string{"Detail configured", strconv.FormatBool(run.KeepDetail)}, [2]string{"Repetition evidence", "point repeat IDs retained; no uncertainty estimate"})
+	properties = append(properties, [2]string{"Objective", first(doc.Objective, "output_tps (default)")}, [2]string{"Experience constraints", constraintDescription(doc)}, [2]string{"Measurement regime", "fixed session count"}, [2]string{"Configured warmup requests", strconv.Itoa(doc.WarmupRequests)}, [2]string{"Configured request timeout", configuredRequestTimeout(doc)}, [2]string{"Detail configured", strconv.FormatBool(run.KeepDetail)}, [2]string{"Repetition evidence", "point repeat IDs retained; no uncertainty estimate"})
 	if doc.OpenLoop() {
 		for i := range properties {
 			if properties[i][0] == "Measurement regime" {
@@ -551,4 +551,14 @@ func maxInt(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// configuredRequestTimeout names the run's stored per-request timeout. A run
+// stored without one predates the setting, and what bounded its requests is
+// not recorded.
+func configuredRequestTimeout(doc benchsearch.Document) string {
+	if doc.RequestTimeoutSeconds <= 0 {
+		return "not recorded"
+	}
+	return strconv.Itoa(doc.RequestTimeoutSeconds) + " seconds"
 }

@@ -43,7 +43,7 @@ func TestCoordinateModelCopyUsesDirectAgentRPCs(t *testing.T) {
 	if len(calls) != 2 || calls[0].method != proto.RPCModelSyncListen || calls[1].method != proto.RPCModelSyncSend {
 		t.Fatalf("RPC calls = %+v", calls)
 	}
-	if calls[0].long || !calls[1].long {
+	if !calls[0].long || !calls[1].long {
 		t.Fatalf("RPC timeout modes = listen:%v send:%v", calls[0].long, calls[1].long)
 	}
 	listen := calls[0].params.(proto.ModelSyncListenParams)

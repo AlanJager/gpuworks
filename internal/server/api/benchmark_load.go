@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"math"
+	"time"
 
 	"gpuworks.ai/gpuworks/internal/proto"
 	benchmeta "gpuworks.ai/gpuworks/pkg/bench"
@@ -11,7 +12,7 @@ import (
 )
 
 // validateBenchmarkLoad checks the advanced load settings of a new run:
-// warmup, and open-loop arrivals, which only the parameter-scan mode drives.
+// warmup, the request timeout, and open-loop arrivals, which only the parameter-scan mode drives.
 // The adaptive modes bisect on concurrency, which an arrival rate replaces.
 func validateBenchmarkLoad(mode string, raw json.RawMessage, dc dataset.Config) error {
 	doc, err := validateBenchmarkSearch(mode, raw, dc)
@@ -23,6 +24,9 @@ func validateBenchmarkLoad(mode string, raw json.RawMessage, dc dataset.Config) 
 	}
 	if doc.WarmupRequests < 0 || doc.WarmupRequests > benchmeta.MaxWarmupRequests {
 		return outOfRange("warmup_requests", 0, benchmeta.MaxWarmupRequests)
+	}
+	if doc.RequestTimeoutSeconds != 0 && (doc.RequestTimeoutSeconds < benchmeta.MinRequestTimeoutSeconds || doc.RequestTimeoutSeconds > benchmeta.MaxRequestTimeoutSeconds) {
+		return outOfRange("request_timeout_s", benchmeta.MinRequestTimeoutSeconds, benchmeta.MaxRequestTimeoutSeconds)
 	}
 	if doc.MinSessionCompletion > 0 && mode != "" && mode != string(search.Grid) && mode != string(search.SLA) {
 		return benchmarkParameterError("search.min_session_completion", "session completion constraints require parameter-scan or SLA mode")
@@ -58,7 +62,8 @@ func validateBenchmarkLoad(mode string, raw json.RawMessage, dc dataset.Config) 
 // CapBenchArrival it would run an open-loop grid closed loop, and without
 // CapBenchInteractivity it would search past an interactivity floor it never
 // checks; both are refused. Without CapBenchWarmup it only skips warmup, which
-// costs the first point its cold start, so that is admitted with a run
+// costs the first point its cold start, and without CapBenchRequestTimeout it
+// bounds each request by its fixed five minutes; both are admitted with a run
 // warning. The server supports all of them.
 func (a *apiHandlers) benchmarkLoadSupport(origin string, raw json.RawMessage) (warnings []string, err error) {
 	if origin == "" || origin == "server" || a.d.NodeCaps == nil {
@@ -76,7 +81,14 @@ func (a *apiHandlers) benchmarkLoadSupport(origin string, raw json.RawMessage) (
 		return nil, productError(ErrorBenchmarkAgentInteractivityUnsupported, "the load-origin agent predates the interactivity constraint; upgrade it first", map[string]any{"node": origin})
 	}
 	if doc.WarmupRequests > 0 && !hasCap(caps, proto.CapBenchWarmup) {
-		return []string{proto.BenchmarkWarningWarmupUnsupported}, nil
+		warnings = append(warnings, proto.BenchmarkWarningWarmupUnsupported)
 	}
-	return nil, nil
+	if doc.RequestTimeout() != legacyAgentRequestTimeout && !hasCap(caps, proto.CapBenchRequestTimeout) {
+		warnings = append(warnings, proto.BenchmarkWarningRequestTimeoutUnsupported)
+	}
+	return warnings, nil
 }
+
+// legacyAgentRequestTimeout is the fixed per-request bound of an agent
+// without CapBenchRequestTimeout.
+const legacyAgentRequestTimeout = 5 * time.Minute

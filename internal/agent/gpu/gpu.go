@@ -216,13 +216,6 @@ func firstAvailableWithBus(probers []Prober, onBus func(string) bool) Prober {
 	return nil
 }
 
-// cardsOnBus reports, per vendor, whether the host's PCI bus has one of its
-// cards. The bus is read once, on the first question.
-func cardsOnBus(hostRoot string) func(vendor string) bool {
-	all, _ := pciBusVendors(hostRoot)
-	return all
-}
-
 // pciBusVendors shares one scan between fallback evidence and managed choices.
 func pciBusVendors(hostRoot string) (func(string) bool, func(string) bool) {
 	var once sync.Once

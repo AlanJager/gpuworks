@@ -183,17 +183,6 @@ func (a *apiHandlers) downloadIntoShared(w http.ResponseWriter, m *store.Model, 
 	writeJSON(w, http.StatusAccepted, map[string]string{"status": "downloading", "writer": started.UUID})
 }
 
-// startSharedDownload starts a public download of a model into a shared
-// storage, through one online node that can write it, over that node's own
-// network settings. Both
-// the models page and a create start downloads here. A copy already there
-// returns a nil writer and nothing happens; a write already under way is left
-// running and returns its writer. A node that misses the push gets the task
-// with its next desired state.
-func (a *apiHandlers) startSharedDownload(m *store.Model, storage *store.Storage) (*store.Node, int, error) {
-	return a.startSharedDownloadOn(m, storage, "")
-}
-
 func (a *apiHandlers) startSharedDownloadOn(m *store.Model, storage *store.Storage, writerUUID string, owner ...uint) (*store.Node, int, error) {
 	deploymentID := uint(0)
 	if len(owner) > 0 {

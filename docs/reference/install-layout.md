@@ -91,7 +91,7 @@ install 时的密码优先级：
 3. 交互模式提问（关闭回显，回车则随机生成；已有 admin 账户时不提问）；
 4. `--quiet` 或 stdin 不是终端时，随机生成。
 
-服务首启时创建 admin 账户的优先级是 `GPUWORKS_ADMIN_PASSWORD` > `initial-credentials` 文件 > 随机生成（不经 install、直接 `gpuworks serve` 时可用环境变量指定初始密码），并把最终使用的密码写回该文件。`GPUWORKS_ADMIN_PASSWORD` 只在创建 admin 时读取。
+服务首启时创建 admin 账户的优先级是 `GPUWORKS_ADMIN_PASSWORD` > `initial-credentials` 文件 > 随机生成（不经 install、直接 `gpuworks serve` 时可用环境变量指定初始密码），并把最终使用的密码写回该文件。`GPUWORKS_ADMIN_PASSWORD` 只在创建 admin 时读取。该文件记录的账户在控制台修改密码后，server 尝试删除该文件（其中的密码已失效，删除失败时记告警日志）；用 `reset-password` 改密时不删除，需手动删除。
 
 数据目录已有 `gpuworks.db` 时视为已有 admin 账户：不再解析密码，数据库和账户不会被改动，`--password` 被忽略并提示改用 `gpuworks reset-password`。
 
@@ -143,6 +143,8 @@ macOS 上 systemd 单元的对应物是 system 域的 launch daemon `/Library/La
 server 同时写 stderr 和文件：`<dir>/logs/gpuworks-server.log`，按 10 MB 轮转、保留 20 代（install 的 `--log-max-size` / `--log-keep` 可调；直接跑 `serve` 时对应 `--log-file`，传空串则只写 stderr）。轮转是原生实现，不依赖 logrotate；systemd 部署下 `journalctl -u gpuworks` 也能看到同一份输出。
 
 launchd 部署下，stderr 指向的文件没有轮转机制。server 发现 stderr 是普通文件时，正常日志只写入可轮转的日志文件（见上节）。日志目录不可写时退回 stderr，不影响启动。
+
+日志文件写失败时（例如磁盘已满）停写，记录仍写进 stderr。之后每 30 秒重试一次，成功后先写一行 `log file writes resumed`，带丢弃的条数（`dropped`）、停写的起点（`since`）和原因（`err`），不用重启。agent 的日志文件也是这样。
 
 server 因错误退出（如监听地址被占用）时，原因以 `msg="server exited"` 写进同一份日志；nohup 模式的 stderr 指向 `/dev/null`，这是唯一能看到原因的地方。
 

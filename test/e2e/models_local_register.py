@@ -323,9 +323,12 @@ def test_models_local_register(page, context, server, artifacts, report, locale,
     expect(tile).to_be_visible()
     tile.click()
     files = page.get_by_role("dialog").last
-    expect(files.get_by_text(str(MODEL_DIR), exact=True)).to_be_visible()
-    expect(files.get_by_text(node["name"], exact=True).first).to_be_visible()
-    expect(files.get_by_text(models["presence"]["registered"], exact=True).first).to_be_visible()
+    node_row = files.locator("#model-files").get_by_role("row").filter(
+        has=page.get_by_text(node["name"], exact=True))
+    expect(node_row.get_by_text(models["presence"]["registered"], exact=True)).to_be_visible()
+    node_row.get_by_role("button", expanded=False).click()
+    expect(node_row.locator("xpath=following-sibling::tr[1]").get_by_text(
+        str(MODEL_DIR), exact=True)).to_be_visible()
     viewport = page.viewport_size
     box = files.bounding_box()
     check(box and box["x"] >= 0 and box["y"] >= 0

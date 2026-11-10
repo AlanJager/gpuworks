@@ -28,7 +28,7 @@ func (s *Store) EnsureAdmin(username, password string) (string, string, bool, er
 			return "", "", false, err
 		}
 	}
-	if err := auth.ValidatePassword(password); err != nil {
+	if err := auth.ValidateAccountPassword(username, password); err != nil {
 		return "", "", false, err
 	}
 	hash, err := auth.HashPassword(password)
@@ -62,7 +62,7 @@ func (s *Store) AuthenticateUser(username, password string) (*User, error) {
 
 // SetUserPassword replaces a user's password hash.
 func (s *Store) SetUserPassword(username, password string) error {
-	if err := auth.ValidatePassword(password); err != nil {
+	if err := auth.ValidateAccountPassword(username, password); err != nil {
 		return err
 	}
 	hash, err := auth.HashPassword(password)

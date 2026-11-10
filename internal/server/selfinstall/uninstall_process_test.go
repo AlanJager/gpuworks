@@ -24,7 +24,7 @@ func TestUninstallNohupStopsItsRealProcessBeforeDeletingProgram(t *testing.T) {
 	}
 	// Allow the kernel and exec.Cmd.Wait to observe the real child exit.
 	h.installer.deps.Sleep = func(_ context.Context, duration time.Duration) { time.Sleep(duration / 10) }
-	report, err := h.installer.Uninstall(context.Background(), UninstallRequest{Yes: true}, nil)
+	report, err := h.installer.Uninstall(context.Background(), UninstallRequest{Resources: emptyUninstallResources, Yes: true}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -44,7 +44,7 @@ func TestUninstallNohupLeavesReusedPIDRunning(t *testing.T) {
 	if err := writePID(h.layout.PIDFile(), pid); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := h.installer.Uninstall(context.Background(), UninstallRequest{Yes: true}, nil); err != nil {
+	if _, err := h.installer.Uninstall(context.Background(), UninstallRequest{Resources: emptyUninstallResources, Yes: true}, nil); err != nil {
 		t.Fatal(err)
 	}
 	if !processAlive(pid) {
@@ -81,7 +81,7 @@ func TestUninstallRefusesLiveExecutableThroughOtherNames(t *testing.T) {
 				}
 			}
 			h.run.output["ps -ww -axo pid=,command="] = childProcessTable(t, cmd.Process.Pid)
-			if _, err := h.installer.Uninstall(t.Context(), UninstallRequest{Yes: true, Purge: true}, nil); err == nil {
+			if _, err := h.installer.Uninstall(t.Context(), UninstallRequest{Resources: emptyUninstallResources, Yes: true, Purge: true}, nil); err == nil {
 				t.Fatal("purge deleted a running executable's installation")
 			}
 			if !processAlive(cmd.Process.Pid) {

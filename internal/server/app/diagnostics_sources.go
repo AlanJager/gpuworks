@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"runtime"
 	"sort"
 	"strconv"
@@ -27,6 +28,10 @@ type diagnosticsSources struct {
 	logs    logstore.Store
 	ux      *uxstore.Store
 	logFile string
+	dataDir string
+	// backupsDir is the installation's upgrade backups; empty when the server
+	// was not installed with a server.yaml beside them.
+	backupsDir string
 }
 
 // Per-collection bounds on the records read from the databases.
@@ -138,7 +143,9 @@ func (s diagnosticsSources) Snapshot(ctx context.Context, scope diagnostics.Snap
 	docs["instances"] = instances
 	deps := []store.Deployment{}
 	events := []store.InstanceEvent{}
-	inWindow := func(e store.InstanceEvent) bool { return !e.CreatedAt.Before(scope.From) && !e.CreatedAt.After(scope.To) }
+	inWindow := func(e store.InstanceEvent) bool {
+		return !e.CreatedAt.Before(scope.From) && !e.CreatedAt.After(scope.To)
+	}
 	depIDs := make([]uint, 0, len(deployments))
 	for id := range deployments {
 		depIDs = append(depIDs, id)
@@ -219,6 +226,30 @@ func (s diagnosticsSources) ServerLogFiles() []string {
 		}
 		out = append(out, name)
 	}
+}
+
+// ServerDirs are the data directory, the log file's directory, the
+// installation's backups and SQLite's temporary directory: each one a full
+// filesystem stops the server from writing.
+func (s diagnosticsSources) ServerDirs() []diagnostics.ServerDir {
+	var out []diagnostics.ServerDir
+	seen := map[string]bool{}
+	add := func(kind, dir string) {
+		if dir == "" || seen[dir] {
+			return
+		}
+		seen[dir] = true
+		out = append(out, diagnostics.ServerDir{Kind: kind, Path: dir})
+	}
+	add("data", s.dataDir)
+	if s.logFile != "" {
+		add("logs", filepath.Dir(s.logFile))
+	}
+	add("backups", s.backupsDir)
+	if dir, err := filepath.Abs(diagnostics.SQLiteTempDir()); err == nil {
+		add("sqlite_tmp", dir)
+	}
+	return out
 }
 
 func (s diagnosticsSources) Version() string { return version.String() }

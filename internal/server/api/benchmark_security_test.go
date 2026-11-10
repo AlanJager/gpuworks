@@ -5,14 +5,17 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"gpuworks.ai/gpuworks/internal/server/store"
-	"gpuworks.ai/gpuworks/pkg/bench/loadgen"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"gpuworks.ai/gpuworks/internal/server/store"
+	"gpuworks.ai/gpuworks/pkg/bench/loadgen"
+
+	benchmeta "gpuworks.ai/gpuworks/pkg/bench"
 )
 
 func TestBenchmarkHTTPClientsKeepPerRequestDeadline(t *testing.T) {
@@ -29,7 +32,7 @@ func TestBenchmarkHTTPClientsKeepPerRequestDeadline(t *testing.T) {
 			client.Transport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
 				deadline, ok := req.Context().Deadline()
 				remaining := time.Until(deadline)
-				if !ok || remaining < 4*time.Minute || remaining > 5*time.Minute {
+				if !ok || remaining < benchmeta.DefaultRequestTimeoutSeconds*time.Second-time.Minute || remaining > benchmeta.DefaultRequestTimeoutSeconds*time.Second {
 					t.Fatalf("default per-request deadline missing: present=%v remaining=%s", ok, remaining)
 				}
 				return &http.Response{StatusCode: 204, Header: make(http.Header), Body: http.NoBody}, nil

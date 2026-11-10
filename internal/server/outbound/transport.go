@@ -29,6 +29,15 @@ func Transport(readProxy func() (proto.NetworkConfig, error), allowPrivateHosts 
 	}
 	tr.DialContext = pinnedDial
 	tr.DialTLSContext = nil
-	tr.DialTLS = nil
+	tr.DialTLS = nil //nolint:staticcheck // SA1019: clear inherited legacy TLS hooks so they cannot bypass address pinning.
 	return &SafeTransport{Transport: tr, policy: policy{allowed: append([]string(nil), allowPrivateHosts...)}}
+}
+
+// TransportWithPrivateHosts reads administrator permissions for every request,
+// including redirects and requests reusing an idle connection. A nil or empty
+// answer grants no private exceptions. The reader must support concurrent calls.
+func TransportWithPrivateHosts(readProxy func() (proto.NetworkConfig, error), readHosts func() []string) *SafeTransport {
+	tr := Transport(readProxy)
+	tr.policy.readAllowed = readHosts
+	return tr
 }

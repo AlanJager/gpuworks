@@ -13,7 +13,7 @@ const useSource = (await import("../src/pages/deploy/useTemplateWeightSource.ts"
 const Fields = (await import("../src/pages/deploy/DeployWeightSourceFields.tsx")).default;
 const Modal = (await import("../src/pages/deploy/DeployWeightSourceModal.tsx")).default;
 const { i18n, locale } = await createI18n(["deploy"]);
-const originals = { evaluate: api.evaluate, modelsPage: api.modelsPage };
+const originals = { evaluate: api.evaluate, modelsPage: api.modelsPage, templateWeightModels: api.templateWeightModels };
 afterEach(() => { cleanup(); Object.assign(api, originals); });
 after(() => dom.window.close());
 const selection = { spec: { name: "browser-vllm", source: "user", engine: "vllm", image: "fake", weight_sources: [{ provider: "huggingface", repo_id: "org/model" }] } };
@@ -48,7 +48,10 @@ const pause = (ms: number) => act(() => new Promise(resolve => setTimeout(resolv
 test("selecting a spec invalidates the old acquisition before child effects and never sends its local provider", async () => {
   firstFrame.length = 0;
   const requests: Record<string, any>[] = [];
-  api.modelsPage = fakeModels([{ id: 7, source: "local", source_id: "org/model", name: "Local copy" }]).modelsPage;
+  const models = fakeModels([{ id: 7, source: "local", source_id: "org/model", name: "Local copy" }]);
+  api.modelsPage = models.modelsPage;
+  api.templateWeightModels = models.templateWeightModels((templateID, source, name) =>
+    templateID === 3 && source === selection.spec.source && name === selection.spec.name ? selection.spec.weight_sources : undefined);
   api.evaluate = async (payload) => {
     const wire = JSON.parse(JSON.stringify(payload)); requests.push(wire);
     if (wire.template_id && wire.model_source?.provider === "local") throw new APIError("ACQUISITION_CANDIDATE_STALE", { provider: "local" }, "selected provider is not declared by this spec", 400);

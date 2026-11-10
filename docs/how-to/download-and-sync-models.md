@@ -54,6 +54,8 @@ HTTP 目录来源只从自己的目录下载，不受站点规则改写，但会
 
 登记路径还会用该目录补齐模型缺失的元数据（config、README、大小），已有的元数据不覆盖。目录是用 `huggingface-cli download --local-dir` 下载的、`.cache/huggingface/download/*.metadata` 全部指向同一个 commit，并且这是该模型唯一的一份副本时，模型会固定到这个 commit。这是离线导入的做法，见[离线导入模型](configure-pull-settings.md#离线导入模型)。
 
+本地目录或 HTTP 目录登记的模型，来源 ID 默认取目录名，可能和推理模板声明的仓库 ID（如 `Qwen/Qwen3-0.6B`）对不上，模板就认不出这个模型。在模型详情的**来源 ID** 旁点击编辑，改成仓库 ID 即可；Hugging Face / ModelScope 模型的来源 ID 就是仓库本身，不能修改，需要的话重新登记。已有副本的路径不变，之后新复制或下载的副本按新的来源 ID 命名目录；模型有进行中的复制、下载或删除，或者已有模型用了同一个来源 ID 时，修改会被拒绝。API 为 `PATCH /api/v1/models/{id}`。
+
 ## 部署时怎么取到模型和镜像
 
 部署时确认两项：

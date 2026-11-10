@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"strconv"
+	"time"
 
 	benchmeta "gpuworks.ai/gpuworks/pkg/bench"
 )
@@ -38,6 +39,9 @@ type Document struct {
 	// WarmupRequests run once before the first point; their results are
 	// discarded.
 	WarmupRequests int `json:"warmup_requests,omitempty"`
+	// RequestTimeoutSeconds bounds each request, warmup included; 0 is
+	// benchmeta.DefaultRequestTimeoutSeconds (see RequestTimeout).
+	RequestTimeoutSeconds int `json:"request_timeout_s,omitempty"`
 
 	MaxAvgTTFT           float64 `json:"max_avg_ttft,omitempty"`
 	MaxP99TTFT           float64 `json:"max_p99_ttft,omitempty"`
@@ -72,6 +76,15 @@ func ParseDocument(raw []byte) (Document, error) {
 		return Document{}, err
 	}
 	return d, nil
+}
+
+// RequestTimeout is the per-request timeout the run applies. A run stored
+// without one, created before it was configurable, runs with today's default.
+func (d Document) RequestTimeout() time.Duration {
+	if d.RequestTimeoutSeconds > 0 {
+		return time.Duration(d.RequestTimeoutSeconds) * time.Second
+	}
+	return benchmeta.DefaultRequestTimeoutSeconds * time.Second
 }
 
 // Concurrencies decodes the scalar-or-list concurrency field. A scalar of 0

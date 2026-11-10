@@ -46,6 +46,7 @@ import useTemplateWeightSource from "./deploy/useTemplateWeightSource";
 import useDeployImageState from "./deploy/useDeployImageState";
 import DeployExpertTabs from "./deploy/DeployExpertTabs";
 import DeploySubmitBar from "./deploy/DeploySubmitBar";
+import DeploySubmissionError from "./deploy/DeploySubmissionError";
 import useDeploymentIdentity from "./deploy/useDeploymentIdentity";
 import useDeployFormChanges from "./deploy/useDeployFormChanges";
 import HealthCheckFields from "./deploy/HealthCheckFields";
@@ -237,7 +238,7 @@ function DeployForm({ opened }: { opened?: OpenedDeployment }) {
     modalities: selectedModel?.input_modalities ?? [],
     settled: Boolean(opened) && !engines.loading && !selectedModelRead.loading,
   });
-  const bodyOfRef = useRef<(values: Record<string, unknown>) => Record<string, unknown> | null>();
+  const bodyOfRef = useRef<(values: Record<string, unknown>) => Record<string, unknown> | null>(undefined);
   const evaluationSignal = useMemo(
     () => ({ values: formValues, ready: !opened || draftReady }),
     [formValues, opened, draftReady],
@@ -352,7 +353,7 @@ function DeployForm({ opened }: { opened?: OpenedDeployment }) {
     fromDraft: Boolean(opened),
   });
 
-  const { submit, submitting } = useDeploySubmit({
+  const { submit, submitting, submitError } = useDeploySubmit({
     form,
     nodes: knownList,
     engineProfile,
@@ -484,6 +485,7 @@ function DeployForm({ opened }: { opened?: OpenedDeployment }) {
               <DeployStepSummary
                 result={evalResult}
                 error={evalErr}
+                failure={evaluation.failure}
                 loading={evaluating}
                 onReevaluate={evaluation.reevaluate}
               />
@@ -502,6 +504,7 @@ function DeployForm({ opened }: { opened?: OpenedDeployment }) {
           disabled={evaluating || !!evalErr || !evalResult || !selectedModelID || !form.getFieldValue("target_vendor")}
           edit={editMode.editing ? { changes: editMode.changes.length } : undefined}
         />
+        {!editMode.editing && <DeploySubmissionError error={submitError} />}
       </Form>
       </EngineDecidesContext.Provider>
       </DeployEditContext.Provider>

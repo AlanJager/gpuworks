@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"net/http"
 
@@ -63,7 +64,15 @@ func (a *apiHandlers) resolveSaveToStorage(source *dto.ModelSource, model *store
 		if errors.Is(err, store.ErrStorageNotWritable) {
 			code = ErrorStorageNotWritable
 		}
-		return nil, productError(code, "storage "+storage.Name+" does not accept new model files", map[string]any{"storage": storage.Name})
+		report, _ := a.inspectDeploymentModel(context.Background(), model, store.SourceRules{SaveTo: storage.ID}, nodes, false)
+		reason := store.LocationStorageDisabled
+		if code == ErrorStorageNotWritable {
+			reason = "storage_not_writable"
+		}
+		check := modelDiagnostic(model, nil, store.ModelSource{Location: store.ModelLocation{Storage: *storage}}, "write", "failed", reason, "The requested storage does not accept new model files")
+		check.Message.Code = code
+		report.Checks = append(report.Checks, check)
+		return nil, withDiagnostics(productError(code, "storage "+storage.Name+" does not accept new model files", map[string]any{"storage": storage.Name, "storage_id": storage.ID}), report)
 	}
 	return storage, nil
 }
@@ -86,11 +95,23 @@ func (a *apiHandlers) storageHoldsModel(storage *store.Storage, model *store.Mod
 // for a local storage, in the storage for a shared one (an nfs_cache storage
 // copies it into the node cache at launch).
 func (a *apiHandlers) checkStorageServes(storage *store.Storage, model *store.Model, nodes []*store.Node, present bool) error {
-	for _, node := range nodes {
+	var firstErr error
+	report := &dto.DiagnosticReport{}
+	for _, node := range uniqueNodes(nodes) {
 		loc, err := a.d.Store.ModelLocation(model.ID, storage.ID, node.ID)
 		if err != nil {
-			return err
+			check := modelDiagnostic(model, node, store.ModelSource{Location: loc}, "facts", "unknown", "facts_unavailable", "Model location facts could not be read")
+			report.Checks = append(report.Checks, check)
+			if firstErr == nil {
+				firstErr = wrapProductError(ErrorModelSourceUnavailable, check.Message.Message, check.Message.Params, err)
+			}
+			continue
 		}
+		src := store.ModelSource{Action: store.SourceRefused, Location: loc, Reason: loc.Reason}
+		if loc.Ready {
+			src.Action = store.SourceReady
+		}
+		appendModelLocationChecks(report, model, node, src)
 		switch loc.Reason {
 		case "":
 			continue
@@ -100,14 +121,19 @@ func (a *apiHandlers) checkStorageServes(storage *store.Storage, model *store.Mo
 			}
 			fallthrough
 		case store.LocationStorageUnavailable, store.LocationStorageNotFound:
-			return productError(ErrorStorageUnavailableOnNode, "storage "+storage.Name+" is not usable on node "+nodeDisplayName(node), map[string]any{"storage": storage.Name, "node": node.UUID, "reason": loc.Reason})
+			if firstErr == nil {
+				firstErr = productError(ErrorStorageUnavailableOnNode, "storage "+storage.Name+" is not usable on node "+nodeDisplayName(node), map[string]any{"storage": storage.Name, "storage_id": storage.ID, "node": node.UUID, "node_id": node.ID, "reason": loc.Reason})
+			}
 		case store.LocationNotCached:
 			continue
 		default:
-			if present {
-				return productError(ErrorAcquisitionCandidateStale, "the model is no longer complete in the selected storage; choose another source", map[string]any{"node": node.UUID, "model_id": model.ID, "storage": storage.Name})
+			if present && firstErr == nil {
+				firstErr = productError(ErrorAcquisitionCandidateStale, "the model is no longer complete in the selected storage; choose another source", map[string]any{"node": node.UUID, "node_id": node.ID, "model_id": model.ID, "storage": storage.Name, "storage_id": storage.ID, "reason": loc.Reason})
 			}
 		}
+	}
+	if firstErr != nil {
+		return withDiagnostics(firstErr, report)
 	}
 	return nil
 }

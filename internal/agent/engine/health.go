@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/agent/runtime"
+	"gpuworks.ai/gpuworks/internal/engines"
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/pkg/enginelog"
 )
@@ -63,6 +64,14 @@ func (e *Engine) probeAndReport(ctx context.Context, spec proto.InstanceDesiredS
 		if err == nil {
 			lastResult = fmt.Sprintf("HTTP %d", resp.StatusCode)
 			readiness, decodeErr := readEngineReadiness(resp)
+			if spec.Engine == engines.Callable && decodeErr == nil {
+				if failure := callableStartupFailure(resp, readiness); failure != "" {
+					if ctx.Err() == nil {
+						e.failAfterContainer(ctx, spec, failure)
+					}
+					return false
+				}
+			}
 			ready := resp.StatusCode == http.StatusOK
 			if ready && readiness.Service == "strata" {
 				ready = decodeErr == nil && readiness.Loaded != nil && *readiness.Loaded
@@ -76,7 +85,7 @@ func (e *Engine) probeAndReport(ctx context.Context, spec proto.InstanceDesiredS
 					modelsReq, modelsErr := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("http://127.0.0.1:%d/v1/models", spec.APIPort), nil)
 					var modelsResp *http.Response
 					if modelsErr == nil {
-						modelsResp, modelsErr = client.Do(modelsReq)
+						modelsResp, modelsErr = client.Do(modelsReq) //nolint:bodyclose // readStrataModels consumes and closes the successful response.
 					}
 					if modelsErr == nil {
 						models, valid := readStrataModels(modelsResp)

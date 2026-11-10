@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/bus"
 	"gpuworks.ai/gpuworks/internal/server/store"

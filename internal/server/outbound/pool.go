@@ -5,19 +5,43 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"sort"
+	"strings"
 )
 
-// Proxy changes select a different pool; the destination stays in the request
-// context, so dialing never resolves it a second time. Bound cached proxy
-// configurations rather than retaining every configuration the administrator
-// has ever tried. In-flight requests keep their transport until they finish.
+// Proxy routes and validated DNS targets select different pools. A request
+// must never reuse a connection to an address absent from its validated DNS
+// result, even if that connection was permitted when originally dialed.
+// In-flight requests keep their transport until they finish.
 const maxTransportPools = 8
 
-func (t *SafeTransport) requestTransport(proxy *url.URL) *http.Transport {
-	key := ""
+func transportPoolKey(proxy *url.URL, target pinnedTarget) string {
+	var key strings.Builder
 	if proxy != nil {
-		key = proxy.String()
+		key.WriteString(proxy.String())
 	}
+	key.WriteByte(0)
+	key.WriteString(strings.ToLower(target.host))
+	key.WriteByte(0)
+	key.WriteString(target.port)
+	addresses := make([]string, 0, len(target.addresses))
+	for _, ip := range target.addresses {
+		addresses = append(addresses, ip.Unmap().String())
+	}
+	sort.Strings(addresses)
+	previous := ""
+	for _, address := range addresses {
+		if address != previous {
+			key.WriteByte(0)
+			key.WriteString(address)
+		}
+		previous = address
+	}
+	return key.String()
+}
+
+func (t *SafeTransport) requestTransport(proxy *url.URL, target pinnedTarget) *http.Transport {
+	key := transportPoolKey(proxy, target)
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if existing := t.transports[key]; existing != nil {
@@ -26,7 +50,7 @@ func (t *SafeTransport) requestTransport(proxy *url.URL) *http.Transport {
 	transport := t.Transport.Clone()
 	transport.Proxy = nil
 	transport.DialTLSContext = nil
-	transport.DialTLS = nil
+	transport.DialTLS = nil //nolint:staticcheck // SA1019: clear inherited legacy TLS hooks so they cannot bypass address pinning.
 	transport.DialContext = pinnedDial
 	if proxy != nil {
 		transport.DialContext = func(ctx context.Context, network, address string) (net.Conn, error) {

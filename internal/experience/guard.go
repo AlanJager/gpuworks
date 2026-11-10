@@ -51,6 +51,7 @@ var allowedWrites = map[string]bool{
 	"POST /api/v1/models":                        true,
 	"POST /api/v1/models/quick-register":         true,
 	"DELETE /api/v1/models/{id}":                 true,
+	"PATCH /api/v1/models/{id}":                  true,
 	"PATCH /api/v1/models/{id}/inference-config": true,
 	"POST /api/v1/models/{id}/metadata/refresh":  true,
 	"POST /api/v1/inference-templates/clone":     true,

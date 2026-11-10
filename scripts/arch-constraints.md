@@ -15,6 +15,12 @@
   default branch 上）时打印 NOTE 并跳过，不算失败。被判定为上调的行必须在行尾追加 Tab 分隔的
   `# raised: <原因>` 注释（`min` 键同一标记），否则直接 FAIL；新增或删除的键不算上调。该注释
   是第 4 个 Tab 分隔字段，不影响 `key<TAB>limit<TAB>direction` 的既有解析。
+- **`warn` 是软预算**：实测超过限额只打印 WARNING（附该键的替代做法提示），实测低于限额提示可收紧，
+  **从不失败**；基线比较也不检查 `warn` 键。用于不宜硬拦、但需要在评审里被看见的趋势
+  （`ui_antd_icon_import_files`、`ui_bundle_gzip_kb`）。收紧或上调 `warn` 限额同样在行尾写
+  `# raised: <原因>` 说明上调理由（约定，不由脚本强制）。
+- 需要额外前置条件才能测的键（如 `ui_bundle_gzip_kb` 需要先构建 UI），在 `measure()` 里返回
+  `EXTERNAL`，预算循环只打印并跳过，由专门脚本测量。
 
 初值取 2026-09-09 `refactor/refactor-2` 分支上的实测结果，不是计划正文里的人工估算值。
 
@@ -97,6 +103,77 @@ grep -rnE "'vllm'|\"vllm\"|'sglang'|\"sglang\"" ui/src --include='*.ts' --includ
 ```
 
 排除：`*.test.*`；`ui/src/i18n/**`（引擎名作为展示文案出现在 locale 里是合理的）。
+
+### ui_antd_import_files（迁移基线 349，2026-11-09）
+
+意图：antd 与 Zeron 并存期间，引用 antd 的源文件数只降不升（迁移收尾清单见 `docs/dev/ui.md`）。计数单位是**文件**，
+含 re-export、动态 import 与 `antd/es/...`、`antd/locale/...` 子路径。
+
+```sh
+grep -rlE "['\"]antd(/[^'\"]*)?['\"]" ui/src --include='*.ts' --include='*.tsx' \
+  | grep -v '\.test\.' | grep -c .
+```
+
+排除：`*.test.*`。降到 0 时脚本额外提示加 `ui_raw_color` / `ui_raw_radius` 规则。
+
+文件数只能拦"新文件引入 antd"，拦不住已有文件里继续加 antd 用法；逐文件的棘轮由下面的
+`ui/antd-inventory.json` 负责。
+
+### antd 逐文件棘轮（`ui/antd-inventory.json`，硬检查，非预算行）
+
+`check_architecture.sh` 在预算循环后运行
+`node scripts/ui_antd_inventory.mjs --check ui/antd-inventory.json`，与提交的快照逐文件比较，以下任一情况 FAIL：
+
+- 某文件的 antd 使用点（sites）变多；
+- 某文件新引入了快照里没有的 antd 名字（含 `import type`）；
+- 某文件的 `@ant-design/icons` 引入数变多，或 CSS 的 `.ant-*` 规则数变多；
+- 快照里没有的文件开始使用 antd / `@ant-design/icons` / `.ant-*` 选择器。
+
+减少一律通过（打印 NOTE 提示刷新快照）。迁移 MR 在同一提交里运行
+`node scripts/ui_antd_inventory.mjs --write` 刷新快照；快照每个文件一行，diff 只显示动到的文件。
+机器上没有 `node` 时打印 NOTE 并跳过（CI 的 `core-test` 跑在 golang 镜像里，需在有 node 的 job 里执行）。
+
+计量口径（`scripts/ui_antd_inventory.mjs`，只用 Node 内置模块）：
+
+- 范围：`ui/src` 下 `*.ts(x)`、`*.js(x)`、`*.css`；排除 Zeron 托管代码 `src/components/ui/`、`src/lib/`、
+  `src/hooks/use-*`，以及 `*.test.*` 与 `src/i18n/`。
+- 使用点 sites = JSX `<Name` / `<Name.Sub` + 静态调用 `name.fn(`（`message.success(`、`Modal.confirm(`、
+  `Form.useForm(`），按 import 的本地别名匹配；`const { Text } = Typography` 解构出的名字记到 `Typography`。
+- 只识别行首注释（`//`、`/* */`、`{/* */}`），行尾注释里的 `<Name` 会被计入；作为值传递
+  （`component={Table}`）、仅用于类型位置的名字不计 sites，但计入 imports/types，新增照样被拦。
+- `@ant-design/icons` 按引入的名字数计；CSS 按选择器含 `.ant-` 的规则块计（`@media` 内的规则同样计）。
+
+另有页面归属（`--json` 的 `attribution`、`--affected <file...>`、`--base <ref>`），供浏览器检查按改动文件
+挑页面重查：`App.tsx` 的 `<Route path element={<X`> 解析出路由元素模块，按 `navigation.tsx` 菜单项
+（含 `also`）的首段路径归到菜单 key；某文件归属每个能经 import 图（静态、re-export、`import()`、CSS `@import`）
+传递到达它的页面。从 `main.tsx` / `App.tsx` 外壳（不走 App 到路由元素的边）能到达的文件记为 `shared`，
+改动时输出 `["*"]`；`styles.css`、`app.css`、`theme/`、`main/App/navigation.tsx` 与 UI 构建配置同样输出 `["*"]`。
+已知缺口：`App.tsx` 全局引入的页面 CSS（如 `pages/batches/batches.css`）因此记为 `shared`；
+不被任何页面引用的文件（死代码）输出空；不在 import 图里的现存非 md 文件（如静态资源）保守输出 `["*"]`。
+
+### ui_antd_icon_import_files（软预算 warn，初值 103，2026-11-09）
+
+意图：外壳与新页面的图标统一走 `ui/src/ui-kit/consoleIcons.ts`（HugeIcons），`@ant-design/icons` 的引用
+只减不增。软预算：超出只告警（提示改用 `consoleIcons.ts`），不失败；新文件引入 antd 图标由上面的逐文件棘轮硬拦。
+
+```sh
+grep -rlE "['\"]@ant-design/icons(/[^'\"]*)?['\"]" ui/src --include='*.ts' --include='*.tsx' \
+  | grep -v '\.test\.' | grep -v '^ui/src/components/ui/' | grep -c .
+```
+
+排除：`*.test.*`；`ui/src/components/ui/`（Zeron 托管代码）。
+
+### ui_bundle_gzip_kb（软预算 warn，初值 2450，2026-11-09）
+
+意图：内嵌 Web UI 的发布体积可见。由 `scripts/check_ui_bundle_size.sh` 在 `make ui` 末尾测量
+（`check_architecture.sh` 不构建 UI，跳过该键）：
+
+```sh
+tar -C internal/server/webui/dist -czf - . | wc -c   # 字节，向上取整到 KB
+```
+
+与 `scripts/package_release.sh` 打包方式一致。超出只告警并列出最大的 5 个资产（原始 / gzip KB），从不失败。
+初值为 2026-11-09 实测 2400 KB（macOS bsdtar，含其 10 KiB 块填充；GNU tar 略小）向上取到下一个 50 KB。
 
 ### setting_key_literal（初值 27）
 

@@ -63,7 +63,7 @@ const meta = {
   datasets: [{ value: "random", label: { en: "Random", zh: "随机" } }],
   sla_constraints: [],
   detail_cap_mb: { default: 20, min: 1, max: 50 },
-  load_defaults: { warmup_requests: 1, max_warmup_requests: 1000, burstiness: 1, point_duration_s: 60, min_point_duration_s: 5, max_point_duration_s: 3600, min_open_loop_requests: 20, max_request_rate: 10000, max_request_rates: 32, max_burstiness: 100, max_in_flight: 100000, ignore_eos: true, ignore_eos_datasets: ["random", "agentic"] },
+  load_defaults: { warmup_requests: 1, max_warmup_requests: 1000, request_timeout_s: 600, min_request_timeout_s: 10, max_request_timeout_s: 7200, burstiness: 1, point_duration_s: 60, min_point_duration_s: 5, max_point_duration_s: 3600, min_open_loop_requests: 20, max_request_rate: 10000, max_request_rates: 32, max_burstiness: 100, max_in_flight: 100000, ignore_eos: true, ignore_eos_datasets: ["random", "agentic"] },
   tokenizer_schemes: { huggingface: "hf", modelscope: "ms" },
   agentic_presets: [{ value: "agentic-80k-v1", label: "80K", mean_input_tokens: 80_000, first_turn_input_tokens: 74_162, peak_input_tokens: 85_838, required_context_tokens: 90_000, recommended: true }],
   agentic_defaults: { preset: "agentic-80k-v1", turns: 13, subsequent_turn_input_tokens: 753, output_tokens: 220, seed: 42, concurrency: [1, 2, 4, 8], sessions_per_point: { "1": 4 }, sessions_per_concurrency: 2, min_sessions_per_point: 4 },
@@ -197,6 +197,6 @@ test("a failed choice lookup leaves the wizard usable with no choices", async ()
   wrap("/evaluations?create=saturation", <EvaluationsPage />);
   await waitFor(() => assert.ok(deploymentQueries.length > 0));
   // The wizard still opens on its first step; the service list is just empty.
-  await waitFor(() => assert.ok(document.querySelector(".ant-drawer-open")));
-  assert.ok(within(document.querySelector(".ant-drawer-open") as HTMLElement).getAllByText(evaluations.wizard.title).length > 0);
+  await waitFor(() => assert.ok(document.querySelector('[role="dialog"]')));
+  assert.ok(within(document.querySelector('[role="dialog"]') as HTMLElement).getAllByText(evaluations.wizard.title).length > 0);
 });

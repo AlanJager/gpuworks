@@ -36,8 +36,33 @@
   "language": {
     "switch": "切换语言"
   },
-  "pullSettingReason": {"invalid_value": "请检查该设置后重试", "name_required": "请输入同步组名称", "name_duplicate": "该同步组名称已存在", "max_bytes": "最多允许 {{max}} 个 UTF-8 字节", "nonnegative": "请输入零或正数", "invalid_text": "请输入有效文本，且不要包含控制字符", "requirements_invalid": "请检查适用节点条件"},
-  "pullSettingField": {"match": "匹配", "endpoints": "替代地址", "requirements": "适用节点", "name": "组名", "host": "站点或仓库", "username": "用户名", "secret": "密码", "order": "顺序", "rate_limit": "同步限速", "note": "备注", "allow_upstream": "允许回源", "http_proxy": "HTTP 代理", "https_proxy": "HTTPS 代理", "no_proxy": "NO_PROXY", "password": "代理密码", "control_plane": "用于管理节点"},
+  "pullSettingReason": {
+    "invalid_value": "请检查该设置后重试",
+    "name_required": "请输入同步组名称",
+    "name_duplicate": "该同步组名称已存在",
+    "max_bytes": "最多允许 {{max}} 个 UTF-8 字节",
+    "nonnegative": "请输入零或正数",
+    "invalid_text": "请输入有效文本，且不要包含控制字符",
+    "requirements_invalid": "请检查适用节点条件"
+  },
+  "pullSettingField": {
+    "match": "匹配",
+    "endpoints": "替代地址",
+    "requirements": "适用节点",
+    "name": "组名",
+    "host": "站点或仓库",
+    "username": "用户名",
+    "secret": "密码",
+    "order": "顺序",
+    "rate_limit": "同步限速",
+    "note": "备注",
+    "allow_upstream": "允许回源",
+    "http_proxy": "HTTP 代理",
+    "https_proxy": "HTTPS 代理",
+    "no_proxy": "NO_PROXY",
+    "password": "代理密码",
+    "control_plane": "用于管理节点"
+  },
   "apiError": {
     "ANALYTICS_RANGE_INVALID": "时间段无效：{{field}} {{detail}}。",
     "ANALYTICS_RANGE_TOO_LONG": "时间段太长：{{detail}}。请缩短时间段，或改为按天查看。",
@@ -63,6 +88,7 @@
     "SERVER_LISTEN_LOCKOUT": "你正通过 {{address}} 访问，重启后该地址将不再提供控制台。请把它保留在控制台监听地址中。",
     "SERVER_LISTEN_READ_ONLY": "本服务的监听地址不能在控制台修改。",
     "SERVER_RESTART_MANUAL": "没有服务管理器会自动拉起本服务，请在服务器上执行：{{command}}",
+    "SERVER_STORAGE_FULL": "服务端主机的磁盘已满，本次操作未能保存。请清理服务端数据目录所在磁盘后重试。",
     "NODE_LABELS_INVALID": "节点标签无效：{{detail}}",
     "NODE_REQUIREMENTS_INVALID": "节点条件无效：{{detail}}",
     "NODE_REQUIREMENTS_UNMET": "节点不满足部署的节点条件：{{detail}}",
@@ -94,6 +120,12 @@
     "AUTH_NOT_CONFIGURED": "管理端身份认证尚未配置。",
     "INVALID_CREDENTIALS": "用户名或密码错误。",
     "LOGIN_THROTTLED": "登录尝试次数过多，请稍后重试。",
+    "PASSWORD_LENGTH": "密码需为 {{min}}–{{max}} 个字符，请更换。",
+    "PASSWORD_CHARACTERS": "密码不能包含换行、制表符，请更换。",
+    "PASSWORD_GUESSABLE": "检测到弱密码，请更换。",
+    "PASSWORD_USERNAME": "密码不能与用户名相同，请更换。",
+    "PASSWORD_UNCHANGED": "新密码不能与当前密码相同，请更换。",
+    "CURRENT_PASSWORD_INVALID": "当前密码不正确，请重新输入。",
     "MANAGEMENT_ORIGIN_REJECTED": "不允许跨来源访问管理接口。",
     "AUTHENTICATION_REQUIRED": "需要登录后才能执行此操作。",
     "ADMINISTRATOR_REQUIRED": "此操作需要管理员权限。",
@@ -178,6 +210,11 @@
     "LIST_FILTER_INVALID": "未知的 {{name}} 筛选值“{{value}}”。",
     "MODEL_IN_USE": "模型正被部署引用，请先删除相关部署。",
     "MODEL_INFERENCE_CONFIG_INVALID": "模型推理能力或输入模态无效：{{detail}}",
+    "MODEL_SOURCE_ID_INVALID": "来源 ID 无效：{{detail}}",
+    "MODEL_SOURCE_ID_FIXED": "来自公共仓库的模型不能修改来源 ID，请重新登记",
+    "MODEL_SOURCE_ID_TAKEN": "已有模型使用这个来源 ID（模型 {{model_id}}）",
+    "MODEL_TRANSFER_ACTIVE": "该模型有正在进行的拷贝、下载或删除，完成后再修改",
+    "TEMPLATE_WEIGHT_MODELS_QUERY_INVALID": "查询模板已登记权重需要 template_id、spec_source 和 spec_name",
     "LOCAL_MODEL_PUBLIC_DOWNLOAD": "本地模型不能从公共仓库下载。",
     "PEER_SYNC_ACTIVE": "请先取消正在进行的节点间同步，再开始公共源下载。",
     "MODEL_SYNC_UNAVAILABLE": "模型同步功能尚未配置。",
@@ -270,7 +307,11 @@
     "STORAGE_EXPORT_INVALID": "导出地址格式应为 主机:/路径。",
     "STORAGE_OPTIONS_INVALID": "挂载选项必须是不含空格的逗号分隔列表，且只能使用允许的选项。",
     "STORAGE_TYPE_INVALID": "这个操作不适用于该类型的存储。",
-    "STORAGE_PATH_INVALID": "路径或限额无效：路径必须是绝对路径，大小不能为负。",
+    "STORAGE_PATH_INVALID": "路径无效：{{path}} 必须是绝对路径，不能是 /，也不能含 .、.. 或控制字符。",
+    "STORAGE_PATH_DENIED": "{{path}} 位于禁止用作存储的目录下（默认禁止系统目录）。如确需使用，请主机管理员修改 server.yaml 的 storage_denied_paths 并重启 server。",
+    "STORAGE_PATH_REQUIRED": "请填写目录。",
+    "STORAGE_CACHE_LIMIT_NEGATIVE": "缓存上限不能为负数。",
+    "STORAGE_IMPORT_COUNT_INVALID": "每次导入 1 到 {{max}} 个目录。",
     "STORAGE_PROBE_FAILED": "在节点上试挂或访问检查失败。",
     "STORAGE_UNAVAILABLE_ON_NODE": "该存储在这台节点上不可用。",
     "STORAGE_SCAN_FAILED": "扫描存储失败。",
@@ -360,6 +401,13 @@
     "IMAGE_ARCHIVE_URL_REQUIRED": "请填写镜像归档 URL。",
     "IMAGE_ARCHIVE_URL_INVALID": "该镜像归档 URL 不可用。请使用不含内嵌凭据的 http 或 https 地址。",
     "IMAGE_ARCHIVE_URL_UNREACHABLE": "无法读取 {{host}} 上的镜像归档。",
+    "IMAGE_ARCHIVE_URL_UPSTREAM_STATUS": "{{host}} 返回了 HTTP {{upstream_status}}。请核对归档路径是否存在。",
+    "IMAGE_ARCHIVE_URL_POLICY_DENIED": "{{host}} 需要允许后才能访问。",
+    "IMAGE_ARCHIVE_URL_POLICY_BLOCKED": "{{host}} 不能通过允许列表访问。",
+    "SERVER_OUTBOUND_POLICY_INVALID": "出站策略无效，请检查主机名、IP 地址及 CIDR 网段。",
+    "SERVER_OUTBOUND_POLICY_CONFLICT": "出站策略已被其他操作修改，当前草稿已保留；请重新加载最新配置后再保存。",
+    "SERVER_OUTBOUND_POLICY_READ_ONLY": "服务配置无法修改，当前草稿已保留；请管理员检查配置文件写权限。",
+    "SERVER_OUTBOUND_POLICY_UNAVAILABLE": "出站策略暂时不可用，当前草稿已保留，请稍后重试。",
     "IMAGE_ARCHIVE_URL_NOT_DECLARED": "该归档 URL 未声明在此镜像上，请先把它加入镜像的获取地址。",
     "QUERY_WINDOW_INVALID": "请求的时间范围无效：start 必须早于 end。",
     "MONITOR_RANGE_INVALID": "时间范围必须是 15m、1h、6h、24h 或 7d 之一。",
@@ -547,8 +595,14 @@
     "title": "页面不存在"
   },
   "actions": {
+    "showPassword": "显示密码",
+    "hidePassword": "隐藏密码",
     "refresh": "刷新",
-    "retry": "重试"
+    "retry": "重试",
+    "close": "关闭",
+    "remove": "移除",
+    "cancel": "取消",
+    "confirm": "确认"
   },
   "dataTable": {
     "empty": "暂无数据",
@@ -566,7 +620,27 @@
     "dragColumn": "拖动调整「{{name}}」的位置",
     "hideColumn": "隐藏「{{name}}」",
     "resizeColumn": "调整「{{name}}」列宽",
-    "total": "共 {{count}} 项"
+    "total": "共 {{count}} 项",
+    "selectPage": "选择当前页",
+    "selectRow": "选择 {{name}}",
+    "expandRow": "展开行",
+    "collapseRow": "收起行",
+    "filterByColumn": "按「{{name}}」筛选",
+    "clearFilters": "清除筛选",
+    "searchOptions": "搜索选项",
+    "activeFilters": "已筛选",
+    "clearFilter": "清除筛选：{{name}} {{values}}",
+    "filterValues": "：{{values}}",
+    "valueSeparator": "、",
+    "sortAscending": "升序",
+    "sortDescending": "降序",
+    "sortReset": "取消排序",
+    "firstPage": "第一页",
+    "lastPage": "最后一页",
+    "nextPage": "下一页",
+    "previousPage": "上一页",
+    "rowsPerPage": "每页条数",
+    "pageSummary": "第 {{current}} 页，共 {{count}} 页"
   },
   "errorBoundary": {
     "description": "请刷新页面重试。",
@@ -608,9 +682,11 @@
   "header": {
     "collapseNavigation": "收起菜单",
     "expandNavigation": "展开菜单",
-    "openNavigation": "打开导航",
+    "navigation": "主导航",
     "administrator": "管理员",
     "logout": "退出登录",
+    "changePassword": "修改密码",
+    "account": "账户：{{name}}",
     "updateAvailable": "有可用更新",
     "updateAvailableHint": "服务端或官方目录有新版本，在设置页「版本与更新」中查看"
   },
@@ -928,6 +1004,9 @@
     "commit": "Commit：{{commit}}",
     "channel": "构建渠道：{{channel}}"
   },
+  "serverStorageFull": {
+    "at": "服务端主机的磁盘已满，本次操作未能保存：数据目录 {{path}} 所在磁盘剩余 {{available}}（共 {{total}}）。请清理这块磁盘后重试。"
+  },
   "acceleratorFeature": {
     "unsupported": "{{vendor}} 不支持{{feature}}。请关闭此能力或选择其他加速卡。",
     "names": {
@@ -938,5 +1017,9 @@
       "prefill_decode_disaggregation": "PD 解耦",
       "kv_disk_tier": "KV 磁盘层"
     }
-  }
+  },
+  "feedback": {
+    "requestFailed": "请求失败，请重试。"
+  },
+  "upload": {"choose": "选择文件", "replace": "重新选择", "none": "未选择文件"}
 }

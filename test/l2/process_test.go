@@ -26,6 +26,7 @@ type processNode struct {
 	UUID                  string              `json:"uuid"`
 	State                 string              `json:"state"`
 	GPUCount              int                 `json:"gpu_count"`
+	ManagementAddress     string              `json:"management_address"`
 	PartitionCapabilities []processCapability `json:"partition_capabilities"`
 	GPUs                  []struct {
 		PartitionCapabilities []processCapability `json:"partition_capabilities"`
@@ -274,7 +275,7 @@ func authedPost(t *testing.T, base, token, path string, body []byte) (*http.Resp
 
 func waitInstance(t *testing.T, base, token string, match func(processInstance) bool) processInstance {
 	t.Helper()
-	deadline := time.Now().Add(60 * time.Second)
+	deadline := time.Now().Add(instanceRunningDeadline)
 	for time.Now().Before(deadline) {
 		req, _ := http.NewRequest(http.MethodGet, base+"/api/v1/instances", nil)
 		req.Header.Set("Authorization", "Bearer "+token)

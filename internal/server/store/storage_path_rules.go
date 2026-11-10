@@ -2,8 +2,20 @@ package store
 
 import "gpuworks.ai/gpuworks/internal/storagerules"
 
-// CheckStoragePath applies the path safety rules shared with the agent.
-func CheckStoragePath(p string) error { return storagerules.ValidatePath(p) }
+// CheckStoragePath applies the path form rules shared with the agent and
+// refuses p at or below any of the denied directories.
+func CheckStoragePath(p string, denied []string) error { return storagerules.ValidatePath(p, denied) }
+
+// ErrStorageDeniedPath is what CheckStoragePath returns for a path at or
+// below a denied directory.
+var ErrStorageDeniedPath = storagerules.ErrDeniedPath
+
+// CheckStoragePathForm applies only the form rules: absolute, no dot segments
+// or control characters, not the filesystem root.
+func CheckStoragePathForm(p string) error { return storagerules.CheckPathForm(p) }
+
+// DefaultStorageDeniedPaths is the built-in directory denylist.
+func DefaultStorageDeniedPaths() []string { return storagerules.DefaultDeniedPaths() }
 
 // StoragePathWithin checks whole path components for local storage policy.
 func StoragePathWithin(root, p string) bool { return storagerules.Within(root, p) }
@@ -17,7 +29,7 @@ func StoragePathAllowed(roots []string, p string) bool {
 		return true
 	}
 	for _, root := range roots {
-		if CheckStoragePath(root) == nil && StoragePathWithin(root, p) {
+		if storagerules.CheckPathForm(root) == nil && StoragePathWithin(root, p) {
 			return true
 		}
 	}

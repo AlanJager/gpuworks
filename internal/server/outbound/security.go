@@ -15,13 +15,21 @@ import (
 )
 
 // ErrTargetDenied deliberately reveals neither DNS answers nor network errors.
+// Reserved, link-local and non-global addresses use this error: an allow-list
+// entry does not make them reachable.
 var ErrTargetDenied = errors.New("outbound URL is not permitted")
+
+// ErrTargetNeedsAllow is a private or loopback target the allow list can
+// permit. Callers can offer that approval without treating it as a reserved
+// address.
+var ErrTargetNeedsAllow = fmt.Errorf("%w: private host is not allowed", ErrTargetDenied)
 
 // policy applies only to user-configurable HTTP sources, never node RPC/SSH.
 // Exceptions are administrator configuration, not fields accepted by the API.
 type policy struct {
-	allowed []string
-	lookup  func(context.Context, string, string) ([]netip.Addr, error)
+	allowed     []string
+	readAllowed func() []string
+	lookup      func(context.Context, string, string) ([]netip.Addr, error)
 }
 
 func (p policy) addresses(ctx context.Context, host string) ([]netip.Addr, error) {
@@ -53,14 +61,37 @@ func (p policy) addresses(ctx context.Context, host string) ([]netip.Addr, error
 	if len(addresses) == 0 {
 		return nil, ErrTargetDenied
 	}
+	if p.readAllowed != nil {
+		p.allowed = p.readAllowed()
+	}
 	// Validate the entire DNS answer before any dial. Mixed public/private
 	// answers must not allow a public first address to hide a private fallback.
 	for _, address := range addresses {
-		if !p.permits(host, address.Unmap()) {
+		address = address.Unmap()
+		if addressUnallowable(address) {
 			return nil, ErrTargetDenied
+		}
+		if !p.permits(host, address) {
+			return nil, ErrTargetNeedsAllow
 		}
 	}
 	return addresses, nil
+}
+
+// addressUnallowable reports addresses the allow list is not allowed to permit.
+func addressUnallowable(address netip.Addr) bool {
+	address = address.Unmap()
+	if !address.IsValid() || (!address.IsGlobalUnicast() && !address.IsLoopback()) || address.IsLinkLocalUnicast() {
+		return true
+	}
+	for _, prefix := range forbiddenRanges {
+		// ::/96 covers IPv4-compatible wrappers and genuine ::1. Only the
+		// latter follows the explicit loopback exception policy below.
+		if prefix.Contains(address) && address != netip.IPv6Loopback() {
+			return true
+		}
+	}
+	return false
 }
 
 var forbiddenRanges = []netip.Prefix{
@@ -78,15 +109,8 @@ var forbiddenRanges = []netip.Prefix{
 
 func (p policy) permits(host string, address netip.Addr) bool {
 	address = address.Unmap()
-	if !address.IsValid() || (!address.IsGlobalUnicast() && !address.IsLoopback()) || address.IsLinkLocalUnicast() {
+	if addressUnallowable(address) {
 		return false
-	}
-	for _, prefix := range forbiddenRanges {
-		// ::/96 covers IPv4-compatible wrappers and genuine ::1. Only the
-		// latter follows the explicit loopback exception policy below.
-		if prefix.Contains(address) && address != netip.IPv6Loopback() {
-			return false
-		}
 	}
 	if !address.IsPrivate() && !address.IsLoopback() {
 		return true
@@ -158,7 +182,7 @@ func (t *SafeTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	if proxy != nil && proxy.Scheme != "http" && proxy.Scheme != "https" && proxy.Scheme != "socks5" && proxy.Scheme != "socks5h" {
 		return nil, ErrTargetDenied
 	}
-	transport := t.requestTransport(proxy)
+	transport := t.requestTransport(proxy, pinned)
 	resp, err := transport.RoundTrip(clone)
 	if resp != nil && resp.Body != nil {
 		resp.Body = &closeTransportBody{ReadCloser: resp.Body, transport: transport, owner: t}

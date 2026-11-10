@@ -11,7 +11,6 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"golang.org/x/crypto/ssh"
@@ -122,109 +121,6 @@ func installAgent(ctx context.Context, host string, port int, username string, a
 	return nil
 }
 
-// RemoteForward exposes localAddr as an HTTP endpoint bound to loopback on the
-// SSH server. Closing it tears down the listener and SSH transport.
-type RemoteForward struct {
-	client   *ssh.Client
-	listener net.Listener
-	done     chan struct{}
-	once     sync.Once
-}
-
-// ServerDialTunnel exposes a local listener whose connections are carried
-// over SSH to the agent's loopback server_dial listener.
-type ServerDialTunnel struct {
-	client   *ssh.Client
-	listener net.Listener
-	done     chan struct{}
-	once     sync.Once
-}
-
-func NewServerDialTunnel(ctx context.Context, host string, port int, username string, privateKey []byte, remoteAddr string) (*ServerDialTunnel, error) {
-	return newServerDialTunnel(ctx, host, port, username, []ssh.AuthMethod{publicKeyAuth(privateKey)}, remoteAddr)
-}
-
-func NewServerDialTunnelPassword(ctx context.Context, host string, port int, username, password, remoteAddr string) (*ServerDialTunnel, error) {
-	return newServerDialTunnel(ctx, host, port, username, []ssh.AuthMethod{ssh.Password(password)}, remoteAddr)
-}
-
-func newServerDialTunnel(ctx context.Context, host string, port int, username string, auth []ssh.AuthMethod, remoteAddr string) (*ServerDialTunnel, error) {
-	if _, _, err := net.SplitHostPort(remoteAddr); err != nil {
-		return nil, fmt.Errorf("invalid server_dial remote address %q: %w", remoteAddr, err)
-	}
-	client, err := dialAuth(ctx, host, port, username, auth)
-	if err != nil {
-		return nil, err
-	}
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		client.Close()
-		return nil, fmt.Errorf("listen for server_dial tunnel: %w", err)
-	}
-	tunnel := &ServerDialTunnel{client: client, listener: listener, done: make(chan struct{})}
-	go maintainSSHConnection(tunnel.done, client, sshKeepaliveInterval)
-	go tunnel.serve(remoteAddr)
-	return tunnel, nil
-}
-
-func (t *ServerDialTunnel) Addr() string { return t.listener.Addr().String() }
-
-func (t *ServerDialTunnel) Close() error {
-	var err error
-	t.once.Do(func() {
-		close(t.done)
-		err = t.listener.Close()
-		_ = t.client.Close()
-	})
-	return err
-}
-
-func (t *ServerDialTunnel) serve(remoteAddr string) {
-	for {
-		local, err := t.listener.Accept()
-		if err != nil {
-			return
-		}
-		go func() {
-			remote, err := t.client.Dial("tcp", remoteAddr)
-			if err != nil {
-				_ = local.Close()
-				return
-			}
-			proxyPair(local, remote)
-		}()
-	}
-}
-
-func ForwardServer(ctx context.Context, host string, port int, username string, privateKey []byte, localAddr string) (*RemoteForward, error) {
-	return forwardServer(ctx, host, port, username, []ssh.AuthMethod{publicKeyAuth(privateKey)}, localAddr)
-}
-
-func ForwardServerPassword(ctx context.Context, host string, port int, username, password, localAddr string) (*RemoteForward, error) {
-	return forwardServer(ctx, host, port, username, []ssh.AuthMethod{ssh.Password(password)}, localAddr)
-}
-
-func forwardServer(ctx context.Context, host string, port int, username string, auth []ssh.AuthMethod, localAddr string) (*RemoteForward, error) {
-	var err error
-	localAddr, err = forwardTarget(localAddr)
-	if err != nil {
-		return nil, err
-	}
-	client, err := dialAuth(ctx, host, port, username, auth)
-	if err != nil {
-		return nil, err
-	}
-	listener, err := client.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		client.Close()
-		return nil, fmt.Errorf("listen on SSH server: %w", err)
-	}
-	f := &RemoteForward{client: client, listener: listener, done: make(chan struct{})}
-	go maintainSSHConnection(f.done, client, sshKeepaliveInterval)
-	go f.serve(localAddr)
-	return f, nil
-}
-
 // maintainSSHConnection emits protocol-level traffic even when an agent has
 // no control messages to send. Some cloud SSH gateways reap otherwise healthy
 // forwarding sessions after roughly 15 minutes of perceived inactivity. A
@@ -273,37 +169,6 @@ func forwardTarget(raw string) (string, error) {
 	return raw, nil
 }
 
-func (f *RemoteForward) URL() string { return "http://" + f.listener.Addr().String() }
-
-func (f *RemoteForward) Close() error {
-	var err error
-	f.once.Do(func() {
-		close(f.done)
-		err = f.listener.Close()
-		_ = f.client.Close()
-	})
-	return err
-}
-
-func (f *RemoteForward) serve(localAddr string) {
-	for {
-		remoteConn, err := f.listener.Accept()
-		if err != nil {
-			return
-		}
-		go proxy(remoteConn, localAddr)
-	}
-}
-
-func proxy(remoteConn net.Conn, localAddr string) {
-	localConn, err := net.DialTimeout("tcp", localAddr, 10*time.Second)
-	if err != nil {
-		_ = remoteConn.Close()
-		return
-	}
-	proxyPair(remoteConn, localConn)
-}
-
 func proxyPair(left, right net.Conn) {
 	defer left.Close()
 	defer right.Close()
@@ -315,10 +180,6 @@ func proxyPair(left, right net.Conn) {
 	// not close both connections on that first completion or short HTTP
 	// requests will be truncated as "empty reply" by the caller.
 	<-done
-}
-
-func dial(ctx context.Context, host string, port int, privateKey []byte, username string) (*ssh.Client, error) {
-	return dialAuth(ctx, host, port, username, []ssh.AuthMethod{publicKeyAuth(privateKey)})
 }
 
 func publicKeyAuth(privateKey []byte) ssh.AuthMethod {
@@ -347,10 +208,6 @@ func dialAuth(ctx context.Context, host string, port int, username string, auth 
 		return nil, fmt.Errorf("handshake SSH %s: %w", addr, err)
 	}
 	return ssh.NewClient(sshConn, channels, requests), nil
-}
-
-func run(client *ssh.Client, command string) (string, error) {
-	return runContext(context.Background(), client, command)
 }
 
 type sessionOutput struct {

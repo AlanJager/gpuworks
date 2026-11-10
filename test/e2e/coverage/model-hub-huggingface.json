@@ -27,6 +27,7 @@
     "ui/src/modelmeta.ts",
     "ui/src/pages/models/modelMetadataRefresh.ts",
     "ui/src/pages/deploy/useTemplateWeightSource.ts",
+    "internal/server/api/inference_template_weight_models.go",
     "internal/server/api/models.go",
     "internal/server/api/model_quick_register.go",
     "internal/server/api/model_metadata.go",

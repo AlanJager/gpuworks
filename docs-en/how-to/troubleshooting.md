@@ -828,7 +828,7 @@ The node probes `https://<host>/v2/` for the image's own copies and sorts them b
 On nerdctl, layers larger than 1 GiB report progress in 0.1 GiB increments, so the stall timeout is extended to approximately 17.5 minutes. If `Progress output not understood, stall check off` appears, stall detection is disabled for that attempt. The agent log preserves the original line to help investigate formatting changes between runtime versions.
 
 - Download byte progress has been reported, the download is incomplete, and no progress occurs for 3 consecutive minutes: switch candidates. Docker usually reports per-layer byte progress and is also subject to this check.
-- A download that makes progress but stays very slow: if it averages under 64 KiB/s over any 5 consecutive minutes and another candidate remains, the node switches candidates; the last candidate is never abandoned for this. Large nerdctl layers that show progress in coarse steps are not judged this way. On runveil nodes the connection level acts first: a single connection that falls clearly behind is replaced (see [Registry Rate Limits or Refused Connections](#registry-rate-limits-or-refused-connections)).
+- A download that makes progress but stays very slow: if it averages under 64 KiB/s over any 5 consecutive minutes and another candidate remains, the node switches candidates; the last candidate is never abandoned for this. Large nerdctl layers that show progress in coarse steps are not judged this way. On runveil nodes the connection level acts first: a single connection that falls clearly behind is replaced (see [Registry Rate Limits or Refused Connections](#仓库限流或连接被拒)).
 - No byte progress is available, unpacking is in progress, or image registration is in progress after all bytes have arrived: the 3-minute check above does not apply. Each candidate has up to 60 minutes from the start of pulling to completion of unpacking.
 - Network or transfer failure, or a stall: the registry enters a 30-minute cooldown on that node and is placed last among latency-tested candidates, but is not removed. Missing images and authentication or permission denials also trigger candidate switching, but do not put the entire registry into cooldown. Fix the reference or credentials first; there is no need to wait for cooldown. An unavailable runtime immediately ends the pull; restore the runtime first.
 
@@ -839,7 +839,7 @@ When a runveil (udocker) node pulls an image, the agent log (`<state>/agent.log`
 - `download connections backed off` appears repeatedly, with the reason `throttled` (the registry answered 429/503 or refused connections; refused connections are waited on and retried) or `connection resets`: the registry or a proxy is limiting the source address, and the agent has already halved the connections and is waiting. Usually nothing needs to be done. If the pull is noticeably slower but keeps making progress, the budget has dropped to a level the registry accepts.
 - The pull fails with an error containing `429` or `503` after several retries: the registry keeps refusing. Check the per-address connection and request-rate limits of the private registry (Harbor, SWR, ACR) or the proxy and raise them if needed, or cap the node with `--image-pull-max-connections 2` (range 0 to 32) and restart the agent. When there are several candidate sources, the next one is tried after a failure.
 - `registry ignores Range: reading the layer whole` appears: the registry or proxy does not support Range requests for this layer, so it is read whole over one connection and is limited to the speed of a single connection. Use a source that supports Range or adjust the proxy.
-- `download connection recycled` appears (only after the same reason holds in two windows in a row) with the reason `far below its siblings`, `collapsed from its own peak` or `below the absolute floor`: one connection was clearly slower than the others of the same pull and was replaced by a new one that continues from the same position. This is normal self-healing. A slow link as a whole does not trigger replacement; then the slowness is the speed of the link itself, see [Why Candidates Switch and When Pulls Are Considered Stalled](#why-candidates-switch-and-when-pulls-are-considered-stalled).
+- `download connection recycled` appears (only after the same reason holds in two windows in a row) with the reason `far below its siblings`, `collapsed from its own peak` or `below the absolute floor`: one connection was clearly slower than the others of the same pull and was replaced by a new one that continues from the same position. This is normal self-healing. A slow link as a whole does not trigger replacement; then the slowness is the speed of the link itself, see [Why Candidates Switch and When Pulls Are Considered Stalled](#候选为何切换何时判定卡住).
 
 ### Additional Checks for Digest References
 
@@ -972,6 +972,7 @@ Containers of sleeping instances are still running and are not treated as exited
 
 The platform recreates instances through the controller. Containers use `--restart no` and do not rely on Docker restart policies.
 Each unit allows up to 3 attempts, with each new attempt created at least 15 seconds after the previous one. Each attempt uses a new UUID and retains the previous failure record.
+An attempt refused before starting because another process holds one of its host ports (`ENGINE_PORT_REFUSED`; nothing has started) is the exception: it is retried at once on other ports, and a unit's first 10 such refusals do not count toward the 3.
 When the budget is exhausted, `UNIT_RETRY_EXHAUSTED` is emitted (`params` contains `attempts` and `reason`), and automatic recreation stops.
 
 After resolving the cause, call `POST /api/v1/deployments/{id}/units/retry` with body `{"role":"","index":0}` (`role` is empty for a regular deployment).
@@ -1148,9 +1149,26 @@ Use `stream: true` to receive output incrementally. Long non-streaming requests 
 4. You are using a temporary public address from `cloudflare-quick`, which does not support SSE. See [Give the Console a Public Address](expose-public-address.md).
 5. A server restart, upgrade, or node agent disconnection interrupts in-flight streams without retrying them.
 
+## An Operation Reports "The Server Host's Disk Is Full"
+
+When an operation that saves data (registering a model, creating a deployment, changing a setting) returns HTTP 507 with error code `SERVER_STORAGE_FULL`, the full disk is the **server host's**, not the target node's. SQLite reports it this way whenever its database file, WAL or a temporary file has no room, and the message names the data directory with the free space and size of its disk.
+
+Not every write fails once the disk fills: SQLite first uses up the space it already holds, so in the same stretch of time some operations succeed and others are refused. Every console operation that changes something (signing in included) writes the database, and any of them can be refused.
+
+1. Find the full disk on the server host. The directories to check are the data directory, the log directory, `backups/` under the installation directory, and SQLite's temporary directory. That is the first writable one of `SQLITE_TMPDIR`, `TMPDIR`, `/var/tmp`, `/usr/tmp` and `/tmp`.
+
+   ```bash
+   df -h <data> <data>/logs /var/tmp /tmp
+   du -xsh <data>/* | sort -h
+   ```
+
+   While the disk is full, the console's "Collect diagnostics" cannot write either, and the list shows the collection as failed (`no space left on device`). Run [`gpuworks support-bundle`](../reference/cli.md#gpuworks-support-bundle) on the server host instead, with `--out` on another disk that has room. `server/disk.json` in it records the size and free space of these directories' filesystems, and the size of each entry in every directory. `disk.json` lists only what these directories hold: when free space is 0 but their contents add up to far less than the size, the space is taken by another directory on the same filesystem (such as `/var/log` on the same root partition); keep looking with `du -xsh /*`.
+2. Retry once space is freed; the server does not need a restart. While writes fail, the server log file stops, and records still go to stderr (`journalctl -u gpuworks` under systemd). Within 30 seconds of space coming back the log file resumes, starting with a `log file writes resumed` line that carries the number of records dropped (`dropped`) and when writing stopped (`since`).
+3. Do not restart the server before freeing space: with 0 bytes free it cannot start, since SQLite cannot even create its shared-memory file. The exit reason, `msg="server exited"`, then adds to the original error how much the data directory's disk has left (`the disk holding the data directory … has 0 B free of …`). Start it again once there is room.
+
 ## Forgotten Admin Password
 
-**Symptoms**: You cannot sign in.
+**Symptoms**: You cannot sign in. (To change a password while you can still sign in, choose **Change password** in the console's account menu at the top right.)
 
 **Resolution**
 
@@ -1158,12 +1176,12 @@ Use `stream: true` to receive output incrementally. Long non-streaming requests 
    Run it as an operator with database access. You do not need to stop the server:
 
    ```bash
-   gpuworks reset-password --password '<new-password>' --data /opt/gpuworks/server/data
+   gpuworks reset-password --data /opt/gpuworks/server/data
    ```
 
 2. Sign in again with the new password and confirm that access is restored. Changing the password invalidates this user's existing management sessions; inference tokens are unaffected.
 
-`--user` defaults to `admin`. Without `--data`, the command reads `data_dir` from the `server.yaml` next to the binary, then from the default installation's `server.yaml`, and uses `./data` only if neither exists (you can specify the database path directly with `--db`). `--password` cannot be empty. New or changed administrator passwords must contain 15–128 Unicode characters and at most 512 bytes. Common guessable values, whole-value repetitions and sequences are rejected; character-class mixtures are not required and passphrases are supported. Existing accounts can still authenticate with their current passwords.
+`--user` defaults to `admin`. Without `--data`, the command reads `data_dir` from the `server.yaml` next to the binary, then from the default installation's `server.yaml`, and uses `./data` only if neither exists (you can specify the database path directly with `--db`). Without `--password`, the command prompts twice in the terminal without echo, which keeps the password out of command history; when stdin is not a terminal, `--password` is required. New or changed administrator passwords must contain 8–128 Unicode characters and at most 512 bytes, and must not be the username. Common guessable values, whole-value repetitions and sequences are rejected; character-class mixtures are not required and passphrases are supported. Existing accounts can still authenticate with their current passwords.
 If it reports `database ... does not exist`, use `--data` to specify the server's actual data directory as instructed.
 If the user does not exist, the command returns `not found`; first check the username and data directory. For permission errors, check the current user's access to the database.
 See [CLI](../reference/cli.md).
@@ -1177,6 +1195,7 @@ When you cannot log in to the customer's servers, have an administrator work in 
 | Path | Content |
 |---|---|
 | `manifest.json` | The collection's scope, the server version, and whether each part was collected, skipped (node offline, agent version without support) or failed |
+| `server/disk.json` | The server's data, log and backup directories and SQLite's temporary directory: their filesystems' size and free space, and the size of each entry in every directory (largest first) |
 | `server/gpuworks-server.log` | The server log in the time range (info included; the Logs page has warn and above only) |
 | `nodes/<uuid>/agent.log`, `doctor.json` | The chosen nodes' (without a choice, the nodes of the chosen deployments' instances) agent logs and diagnosis reports |
 | `instances/<uuid>.log` | The chosen deployments' instance logs |
@@ -1196,7 +1215,7 @@ When the server does not start, run [`gpuworks support-bundle`](../reference/cli
 
 ## Still Unresolved?
 
-When filing an issue or asking for help, attach a [diagnostics archive](#when-you-cannot-log-in-on-site-debug-collection-and-collecting-diagnostics) first; without one, include the following information to reduce back-and-forth:
+When filing an issue or asking for help, attach a [diagnostics archive](#无法登录现场时调试采集与收集诊断信息) first; without one, include the following information to reduce back-and-forth:
 
 1. Versions: `gpuworks version` (server) and `gpuworks-agent version` (the affected node).
 2. The affected instance UUID and its event timeline: `GET /api/v1/instances/<uuid>/events` (add

@@ -134,7 +134,7 @@ test("an empty ?network= opens no detail, while ?network=0 is the management net
   renderAt("/networks?network=", <NetworksPage />, "/networks");
   await waitFor(() => assert.ok(screen.getByText(n.empty)));
   assert.deepEqual(asked, [], "an empty value is no network");
-  assert.equal(document.querySelector(".ant-drawer-open"), null);
+  assert.equal(document.querySelector('[role="dialog"]'), null);
   cleanup();
   renderAt("/networks?network=0", <NetworksPage />, "/networks");
   await waitFor(() => assert.deepEqual(asked, [0]));

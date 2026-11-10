@@ -62,7 +62,7 @@ func (l *launchFlags) resolve(getenv func(string) string) (conf agentconf.Config
 	case err == nil:
 		fromFile = true
 	case errors.Is(err, os.ErrNotExist):
-		conf, err = agentconf.Config{}, nil
+		conf = agentconf.Config{}
 	default:
 		return agentconf.Config{}, "", false, fmt.Errorf("read %s: %w", agentconf.Path(stateDir), err)
 	}

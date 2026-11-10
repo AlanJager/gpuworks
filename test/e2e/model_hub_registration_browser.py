@@ -14,6 +14,7 @@ from local_browser_fixture import ROOT, http
 from platform_token_read_revoke import button, check
 from model_hub_fixture import CONFIG, INDEX, README, SHA, WEIGHT_BYTES
 from model_hub_fixture_setup import MODELS, SPEC
+from model_detail_dialog import model_detail_dialog
 from model_hub_quick_inventory import exercise_quick_weight_inventory
 from model_hub_register_inventory import exercise_hub_register_inventory, expect_hub_source_selected
 
@@ -276,9 +277,9 @@ def hold_quick(page, submit, report, path, body):
 
 def saved_ui(page, server, labels, data, ident, source, revision, token):
     page.goto(server.base + "/models?detail=" + str(ident))
-    dialog = page.get_by_role("dialog", name=data["name"], exact=True)
+    dialog = model_detail_dialog(page, labels, data["name"])
     expect(dialog).to_be_in_viewport(ratio=1)
-    heading_repo = dialog.locator(".model-detail-heading span.ant-typography-secondary")
+    heading_repo = dialog.get_by_title(labels["column"]["sourceID"], exact=True)
     expect(heading_repo).to_have_text(data["repo"])
     expect(heading_repo).to_be_visible()
     expect(dialog.get_by_text(revision, exact=True)).to_be_visible()
@@ -487,9 +488,9 @@ def test_huggingface(page, context, server, artifacts, report, locale, data, tok
           "omitted display name was not stored as the repository id")
     report["last_step"] = "hub-minimal-detail"
     page.goto(server.base + "/models?detail=" + str(omitted["id"]))
-    detail = page.get_by_role("dialog", name=data["repo"], exact=True)
+    detail = model_detail_dialog(page, labels, data["repo"])
     expect(detail).to_be_in_viewport(ratio=1)
-    heading_repo = detail.locator(".model-detail-heading span.ant-typography-secondary")
+    heading_repo = detail.get_by_title(labels["column"]["sourceID"], exact=True)
     expect(heading_repo).to_have_text(data["repo"])
     expect(detail.get_by_text(SHA, exact=True)).to_be_visible()
     expect(detail.get_by_text("Qwen2ForCausalLM", exact=True)).to_be_visible()
@@ -509,9 +510,9 @@ def test_huggingface(page, context, server, artifacts, report, locale, data, tok
     expect(source_tag).to_have_text("HF")
     report["source_tag_gold"] = True
     page.goto(server.base + "/models?detail=" + str(omitted["id"]))
-    reloaded = page.get_by_role("dialog", name=data["repo"], exact=True)
+    reloaded = model_detail_dialog(page, labels, data["repo"])
     expect(reloaded).to_be_visible(timeout=12000)
-    expect(reloaded.locator(".model-detail-heading span.ant-typography-secondary")).to_have_text(data["repo"])
+    expect(reloaded.get_by_title(labels["column"]["sourceID"], exact=True)).to_have_text(data["repo"])
     expect(reloaded.get_by_text(SHA, exact=True)).to_be_visible()
     expect(reloaded.get_by_text("Qwen2ForCausalLM", exact=True)).to_be_visible()
     expect(reloaded.get_by_text("float16", exact=True)).to_be_visible()
@@ -582,7 +583,7 @@ def test_modelscope(page, context, server, artifacts, report, locale, data, toke
     strict(sorted(r["target"] for r in outage_reads), sorted(failed_targets), "MS create outage exact nonempty source reads")
     check(all(r["status"] == 503 and r["origin"] == "" for r in outage_reads), "MS outage did not reach real server-side source")
     page.goto(server.base + "/models?detail=" + str(ident))
-    detail = page.get_by_role("dialog", name=data["name"], exact=True)
+    detail = model_detail_dialog(page, labels, data["name"])
     refresh = visible_action(detail, labels["detail"]["refreshMetadata"])
     path = MODELS + f"/{ident}/metadata/refresh"
     failure_offset = len(data["hub"].audit())
@@ -657,9 +658,9 @@ def test_modelscope(page, context, server, artifacts, report, locale, data, toke
           "omitted display name was not stored as the repository id")
     report["last_step"] = "hub-minimal-detail"
     page.goto(server.base + "/models?detail=" + str(omitted["id"]))
-    detail = page.get_by_role("dialog", name=data["repo"], exact=True)
+    detail = model_detail_dialog(page, labels, data["repo"])
     expect(detail).to_be_in_viewport(ratio=1)
-    heading_repo = detail.locator(".model-detail-heading span.ant-typography-secondary")
+    heading_repo = detail.get_by_title(labels["column"]["sourceID"], exact=True)
     expect(heading_repo).to_have_text(data["repo"])
     expect(detail.get_by_text(SHA, exact=True)).to_be_visible()
     expect(detail.get_by_text("Qwen2ForCausalLM", exact=True)).to_be_visible()
@@ -679,9 +680,9 @@ def test_modelscope(page, context, server, artifacts, report, locale, data, toke
     expect(source_tag).to_have_text("MS")
     report["source_tag_blue"] = True
     page.goto(server.base + "/models?detail=" + str(omitted["id"]))
-    reloaded = page.get_by_role("dialog", name=data["repo"], exact=True)
+    reloaded = model_detail_dialog(page, labels, data["repo"])
     expect(reloaded).to_be_visible(timeout=12000)
-    expect(reloaded.locator(".model-detail-heading span.ant-typography-secondary")).to_have_text(data["repo"])
+    expect(reloaded.get_by_title(labels["column"]["sourceID"], exact=True)).to_have_text(data["repo"])
     expect(reloaded.get_by_text(SHA, exact=True)).to_be_visible()
     expect(reloaded.get_by_text("Qwen2ForCausalLM", exact=True)).to_be_visible()
     expect(reloaded.get_by_text("float16", exact=True)).to_be_visible()
@@ -829,9 +830,9 @@ def test_quick(page, context, server, artifacts, report, locale, data, token, ho
     row = page.get_by_role("row").filter(has_text=data["repo"])
     expect(row).to_have_count(1)
     page.goto(server.base + "/models?detail=" + str(ident))
-    reloaded = page.get_by_role("dialog", name=data["repo"], exact=True)
+    reloaded = model_detail_dialog(page, labels, data["repo"])
     expect(reloaded).to_be_visible(timeout=12000)
-    expect(reloaded.locator(".model-detail-heading span.ant-typography-secondary")).to_have_text(data["repo"])
+    expect(reloaded.get_by_title(labels["column"]["sourceID"], exact=True)).to_have_text(data["repo"])
     expect(reloaded.get_by_text("master", exact=True)).to_be_visible()
     expect(reloaded.get_by_text("Qwen2ForCausalLM", exact=True)).to_be_visible()
     expect(reloaded.get_by_text("float16", exact=True)).to_be_visible()

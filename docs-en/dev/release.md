@@ -42,6 +42,33 @@ git diff --check
 `check-assets` includes `check-libvgpu` and `check-perftest`; it does not validate Ascend, PPU, or partition probe assets.
 You must run `make runtime-assets-verify` separately before release, or missing or tampered assets in these three categories go undetected.
 
+## Release Documentation PDFs
+
+For a formal version tag, the pipeline first builds the Chinese and English documentation from that commit,
+then `release-docs-pdf` generates two user guides. They cover tutorials, how-to guides, reference, and architecture,
+excluding developer documentation and ADRs. The cover identifies the version and source commit. The guides include
+a clickable table of contents, page numbers, images, Mermaid diagrams, and searchable, copyable text. Links to included
+articles point to their PDF chapters; links to omitted articles and downloads point to online documentation and require network access.
+
+The outputs are `dist/docs/gpuworks-<tag>-zh.pdf`, `dist/docs/gpuworks-<tag>-en.pdf`, and
+`dist/docs/SHA256SUMS`. Failed checks for Chinese fonts, images, links, content width, or PDF completeness block publication.
+PDF artifacts for formal version tags are retained permanently. Once publication succeeds, all three files are available under
+`releases/<tag>/docs/` on each distribution source for separate download and sharing. Documentation has its own checksum
+list; the root `SHA256SUMS` continues to list only platform archives. Uploaded PDFs and checksums are read back in full
+and compared before switching the distribution channel.
+
+Local generation uses the website's Hugo and the existing browser acceptance tools, Playwright and Chrome/Chromium,
+plus Noto Sans CJK fonts, Fontconfig, and Poppler tools (`pdftotext`, `pdfinfo`, `pdffonts`).
+Install `requirements-e2e.txt`, then run in a checkout of the version tag:
+
+```bash
+HUGO_BIN=/path/to/hugo CHROME_PATH=/path/to/chrome make docs-pdf VERSION=v26.11.3
+```
+
+Replace the example version with the actual tag. The generator checks that the website output matches the requested source commit.
+CI generates PDFs only for formal version tags. MRs and nightly builds do not generate PDFs; MRs still build the documentation site and run related checks.
+Republishing the same version preserves the original documentation bytes. Historical versions without PDFs are not backfilled or replaced.
+
 ## Version Numbers
 
 Releases use calendar versions `YY.M.PATCH`, tagged as `vYY.M.PATCH`, for example `v26.11.0`.
@@ -50,6 +77,8 @@ Releases use calendar versions `YY.M.PATCH`, tagged as `vYY.M.PATCH`, for exampl
   each later bug-fix-only patch version increments it by one.
 - Each release line has one branch, `release/YY.M`, cut from a chosen commit on master. Only bug fixes go onto the branch: a fix is merged into master first, then
   applied to the release branch with `git cherry-pick -x`.
+- Before tagging, add the version's release notes under `docs/releases/` (`vYY.M.PATCH.md`, with upgrade notes, additions, changes, fixes, security, and download checksums),
+  add a row at the top of the version list in `docs/releases/README.md`, and update the translation under `docs-en/releases/`; merge into master first, then backport to the release branch. A `release` channel build has `scripts/package_release.sh` check that both language pages exist and the version list has the row; if any is missing, the build fails before it starts.
 - Create an annotated tag on the release branch and push it (`git tag -a v26.11.0 -m "GPUWorks 26.11.0"`, `git push origin v26.11.0`).
   Only tags that match `^v[0-9]+\.[0-9]+\.[0-9]+$` create a pipeline and publish to the `release` channel; tags such as `v26.11.0-rc.1` create no pipeline.
 - `v*` must be a protected tag in GitLab: the signing private key and the distribution source credentials are protected variables, so a pipeline for an unprotected tag cannot read them and the publish job fails.
@@ -100,7 +129,7 @@ It runs in a separate `publish` stage because GitLab 14.0 allows needs to refere
 5. Before switching, `gpuworks-dist verify -index` uses the new index to check the size of each file at all three public addresses, including the CDN. If any size differs, it stops and the channel continues to point to the previous version;
 6. It saves the current index, `latest`, and `manifest.json` from each source, switches to the new version, then reads them back from all three public addresses to verify them. If the switch or readback fails, it restores each source's previous pointers and exits;
 7. Upload `scripts/get.sh` to the root of every source as `get.sh` with `Cache-Control: no-cache`.
-8. Each source retains only the most recent 20 version directories, plus the versions referenced by `latest` in the two channels.
+8. Version tag (`vYY.M.PATCH`) directories are kept on every source permanently; each source keeps only the most recent 30 nightly directories (`GPUWORKS_DIST_KEEP`), plus the versions referenced by `latest` in the two channels.
 
 If a source's `releases/<id>/` does not match its own `SHA256SUMS` (for example, it was overwritten before this rule existed), publishing fails at step 4 without switching versions. To resolve this, determine which source
 has the correct copy, delete the incorrect copy or replace it with the correct one, clear the CDN cache for `releases/<id>/`, then rerun publishing.

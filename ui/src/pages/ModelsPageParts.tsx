@@ -2,8 +2,9 @@ import { useEffect, useRef, useState, type MouseEvent } from "react";
 import {
   Button,
   Card,
-  Collapse,
   Descriptions,
+  Flex,
+  Form,
   Input,
   Modal,
   Popconfirm,
@@ -25,6 +26,7 @@ import {
 } from "@ant-design/icons";
 import { formatDate } from "../i18n/datetime";
 import { useTranslation } from "react-i18next";
+import ModelSourceIDField from "./models/ModelSourceIDField";
 import {
   api,
   type FSEntry,
@@ -179,6 +181,7 @@ export function ModelDetailModal({
   const { t } = useTranslation("models");
   const [refreshing, setRefreshing] = useState(false);
   const modelId = model?.id;
+  const displayName = model?.name || model?.source_id;
   useEffect(() => {
     if (!focusFiles || modelId == null) return;
     // The dialog body mounts with the open animation; wait a frame for it.
@@ -235,74 +238,82 @@ export function ModelDetailModal({
 
   return (
     <Modal
-      title={model?.name || model?.source_id || t("detail.title")}
+      title={t("detail.title")}
       open={!!model}
+      className="model-detail-modal"
       onCancel={onClose}
       width={720}
       footer={model ? [
         <Button key="close" onClick={onClose}>{t("action.close")}</Button>,
 		<Button key="template" icon={<RocketOutlined />} onClick={() => location.assign(`/deploy?model=${model.id}`)}>{t("action.deployInferenceTemplate")}</Button>,
-        model.source !== "local" ? <Button key="refresh" icon={<ReloadOutlined />} loading={refreshing} onClick={refreshMetadata}>{t("detail.refreshMetadata")}</Button> : null,
         <Button key="path" icon={<FolderAddOutlined />} onClick={() => onRegisterPath(model)}>{t("action.registerPath")}</Button>,
         <Button key="copy" icon={<CopyOutlined />} onClick={() => onCopy(model)}>{t("action.copyTo")}</Button>,
         model.source !== "local" ? <Button key="download" type="primary" icon={<CloudDownloadOutlined />} onClick={() => onDownload(model)}>{t("action.downloadToNode")}</Button> : null,
       ] : null}
     >
       {model && (
-        <><div className="model-detail-heading"><ModelLogo model={model} /><div><Typography.Title level={4}>{model.name || model.source_id}</Typography.Title><Typography.Text type="secondary">{model.source_id}</Typography.Text></div></div><Descriptions bordered size="small" column={{ xs: 1, sm: 2 }}>
-          <Descriptions.Item label={t("column.source")}>{sourceLabel[model.source] ? t(sourceLabel[model.source]) : model.source}</Descriptions.Item>
-          <Descriptions.Item label={t("detail.revision")}>
-            {model.revision || t("detail.defaultBranch")}
-            {hasUnpinnedLocalCopy(model) && <Tooltip title={t("detail.unpinnedHint")}><Tag color="orange" style={{ marginLeft: 8 }}>{t("detail.unpinned")}</Tag></Tooltip>}
-          </Descriptions.Item>
-          <Descriptions.Item label={t("column.sourceID")} span={2}>{model.source_id}</Descriptions.Item>
-          <Descriptions.Item label={t("detail.architecture")}>{model.arch || t("unrecognized")}</Descriptions.Item>
-          <Descriptions.Item label={t("column.weight")}>{model.weight_gib ? `${model.weight_gib.toFixed(1)} GiB` : "—"}</Descriptions.Item>
-          <Descriptions.Item label={t("detail.precision")}>{model.precision || t("unrecognized")}</Descriptions.Item>
-          <Descriptions.Item label={t("detail.contextLength")}>{model.context_length ? model.context_length.toLocaleString() : t("unrecognized")}</Descriptions.Item>
-          <Descriptions.Item label={t("detail.originCreatedAt")}>{modelDate(modelPublishedAt(model))}</Descriptions.Item>
-          <Descriptions.Item label={t("detail.originUpdatedAt")}>{model.origin_updated_at ? modelDate(model.origin_updated_at) : "—"}</Descriptions.Item>
-          <Descriptions.Item label={t("column.operations")} span={2}>
-            <Select
-              mode="multiple"
-              aria-label={t("detail.operations")}
-              style={{ width: "100%" }}
-              value={selectedOperations}
-              onChange={(values) => setSelectedOperations(values as OperationType[])}
-              options={operationTypes.map((value) => ({ value, label: t(operationLabelKey[value]) }))}
-              placeholder={t("detail.operationsPlaceholder")}
-            />
-          </Descriptions.Item>
-          <Descriptions.Item label={t("column.inputModalities")} span={2}>
-            <Select
-              mode="multiple"
-              aria-label={t("detail.inputModalities")}
-              style={{ width: "100%" }}
-              value={selectedInputModalities}
-              onChange={(values) => setSelectedInputModalities(values)}
-              options={inputModalityTypes.map((value) => ({ value, label: modalityLabel[value] ? t(modalityLabel[value].labelKey) : value }))}
-              placeholder={t("detail.inputModalitiesPlaceholder")}
-            />
-          </Descriptions.Item>
-          <Descriptions.Item label="" span={2}>
-            <Button size="small" loading={savingInferenceConfig} onClick={saveInferenceConfig}>{t("action.save")}</Button>
-          </Descriptions.Item>
-          <Descriptions.Item label={t("detail.createdAt")}>{modelDate(model.created_at)}</Descriptions.Item>
-          <Descriptions.Item label={t("files.count")}>{(model.nodes ?? []).filter((item) => !item.cache && isModelFileReady(item.state)).length + (model.storages ?? []).filter((item) => isModelFileReady(item.state)).length}</Descriptions.Item>
-        </Descriptions></>
+        <>
+          <Flex vertical gap={8} className="model-detail-heading">
+            <Flex align="center" gap={12}>
+              <ModelLogo model={model} />
+              <div>
+                <Typography.Title level={4}>{displayName}</Typography.Title>
+                <Typography.Paragraph type="secondary" title={t("column.sourceID")} style={{ marginBottom: 0 }}>
+                  <ModelSourceIDField key={model.id} model={model} onChanged={onChanged} />
+                </Typography.Paragraph>
+              </div>
+            </Flex>
+            <Flex gap={8} style={{ alignItems: "last baseline" }}>
+              <div className="model-detail-specs">
+                <Tag>{t("detail.contextLength")} <span>{model.context_length ? model.context_length.toLocaleString() : t("unrecognized")}</span></Tag>
+                <Tag>{t("column.weight")} <span>{model.weight_gib ? `${model.weight_gib.toFixed(1)} GiB` : "—"}</span></Tag>
+                <Tag>{t("detail.precision")} <span>{model.precision || t("unrecognized")}</span></Tag>
+              </div>
+              {model.source !== "local" && (
+                <Button type="text" icon={<ReloadOutlined />} loading={refreshing} onClick={refreshMetadata}>{t("detail.refreshMetadata")}</Button>
+              )}
+            </Flex>
+          </Flex>
+          <Descriptions bordered size="small" column={{ xs: 1, sm: 2, md: 2, lg: 2, xl: 2, xxl: 2 }}
+            styles={{ label: { paddingInline: 8, whiteSpace: "nowrap" }, content: { paddingInline: 8 } }}>
+            <Descriptions.Item label={t("column.source")}>{sourceLabel[model.source] ? t(sourceLabel[model.source]) : model.source}</Descriptions.Item>
+            <Descriptions.Item label={t("detail.architecture")}>{model.arch || t("unrecognized")}</Descriptions.Item>
+            <Descriptions.Item label={t("detail.originCreatedAt")}>{modelDate(modelPublishedAt(model))}</Descriptions.Item>
+            <Descriptions.Item label={t("detail.originUpdatedAt")}>{modelDate(model.origin_updated_at)}</Descriptions.Item>
+            <Descriptions.Item label={t("detail.createdAt")}>{modelDate(model.created_at)}</Descriptions.Item>
+            <Descriptions.Item label={t("files.count")}>{(model.nodes ?? []).filter((item) => !item.cache && isModelFileReady(item.state)).length + (model.storages ?? []).filter((item) => isModelFileReady(item.state)).length}</Descriptions.Item>
+            <Descriptions.Item label={t("detail.requestedRevision")}>
+              {model.revision || t("detail.defaultBranch")}
+              {hasUnpinnedLocalCopy(model) && <Tooltip title={t("detail.unpinnedHint")}><Tag color="orange" style={{ marginLeft: 8 }}>{t("detail.unpinned")}</Tag></Tooltip>}
+            </Descriptions.Item>
+          </Descriptions>
+          <Form component="div" layout="vertical" className="model-detail-inference-form">
+            <Form.Item label={t("column.operations")} htmlFor="model-detail-operations">
+              <Select
+                id="model-detail-operations"
+                mode="multiple"
+                aria-label={t("detail.operations")}
+                value={selectedOperations}
+                onChange={(values) => setSelectedOperations(values as OperationType[])}
+                options={operationTypes.map((value) => ({ value, label: t(operationLabelKey[value]) }))}
+                placeholder={t("detail.operationsPlaceholder")}
+              />
+            </Form.Item>
+            <Form.Item label={t("column.inputModalities")} htmlFor="model-detail-modalities">
+              <Select
+                id="model-detail-modalities"
+                mode="multiple"
+                aria-label={t("detail.inputModalities")}
+                value={selectedInputModalities}
+                onChange={setSelectedInputModalities}
+                options={inputModalityTypes.map((value) => ({ value, label: modalityLabel[value] ? t(modalityLabel[value].labelKey) : value }))}
+                placeholder={t("detail.inputModalitiesPlaceholder")}
+              />
+            </Form.Item>
+            <Button loading={savingInferenceConfig} onClick={saveInferenceConfig}>{t("action.save")}</Button>
+          </Form>
+        </>
       )}
-      {model && <Collapse size="small" ghost style={{ marginTop: 8 }} items={[{
-        key: "advanced",
-        label: t("detail.advancedInfo"),
-        children: <Descriptions size="small" column={1}>
-          <Descriptions.Item label={t("detail.requestedRevision")}>{model.revision || t("detail.defaultBranch")}</Descriptions.Item>
-          <Descriptions.Item label={t("detail.nodePinnedRevision")}>
-            {(model.nodes ?? []).some((item) => item.revision)
-              ? <Space size={[4, 4]} wrap>{(model.nodes ?? []).filter((item) => item.revision).map((item) => <Tooltip key={item.node_uuid} title={item.node_uuid}><Tag>{nodeDisplayName({ uuid: item.node_uuid, name: item.node_name })} · {item.revision?.slice(0, 12)}</Tag></Tooltip>)}</Space>
-              : t("detail.noResolvedRevision")}
-          </Descriptions.Item>
-        </Descriptions>,
-      }]} />}
       {model && <ModelFilesSection model={model} onChanged={onChanged} />}
       {model?.readme && <Card size="small" title="README" style={{ marginTop: 16, maxHeight: 360, overflow: "auto" }}><MarkdownContent content={model.readme} allowHtml /></Card>}
     </Modal>

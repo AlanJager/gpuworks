@@ -5,7 +5,6 @@ import type {
   EvaluateResponse,
   InferenceSpec,
   InferenceTemplate,
-  Model,
   Node,
   PartitionCapability,
 } from "../../api";
@@ -355,24 +354,6 @@ export function submittedImage(
   if (explicit) return explicit;
   const evaluated = String(evaluatedImage ?? "").trim();
   return evaluated || undefined;
-}
-
-export function modelServesWeightSource(
-  model: Pick<Model, "source_id" | "artifact_subfolder">,
-  option: { repo_id?: string; subfolder?: string },
-): boolean {
-  const actualSubfolder = String(model.artifact_subfolder || "").trim();
-  const requestedSubfolder = String(option.subfolder || "").trim();
-  return (
-    String(model.source_id || "")
-      .trim()
-      .toLowerCase() ===
-      String(option.repo_id || "")
-        .trim()
-        .toLowerCase() &&
-    (actualSubfolder === requestedSubfolder ||
-      (actualSubfolder === "" && requestedSubfolder !== ""))
-  );
 }
 
 // applyEvaluateFormValues puts the server's display instruction on the form:

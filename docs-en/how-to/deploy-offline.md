@@ -60,7 +60,13 @@ docker load -i gpuworks-runner_<tag>_linux-amd64.tar.gz
 gunzip -c gpuworks-runner_<tag>_linux-arm64.tar.gz | nerdctl -n gpuworks load
 ```
 
-After about one minute, the corresponding node on the Images page shows “Present.” udocker (runveil) nodes have no load command; use [Import Images Through the Control Plane Node](#经管理节点中转导入镜像) instead.
+After about one minute, the corresponding node on the Images page shows “Present.” On udocker (runveil) nodes, import with the agent's own command, with `<image-ref>` set to the full image reference shown on the Images page:
+
+```bash
+sudo gpuworks-agent runveil load -i gpuworks-runner_<tag>_linux-amd64.tar.gz <image-ref>
+```
+
+When logging in to the node is inconvenient, you can also [import through the control plane node](#经管理节点中转导入镜像).
 
 **Models**: Copy the model directory into the node's local storage directory, such as `/opt/gpuworks/models/Qwen/Qwen3-8B`. Then, on the Models page, click “Register model” → select
 “Local path on node” as the source → select the node and enter the directory → preview and register. The platform reads the architecture, precision, and context length from `config.json`. Local storage does not support batch scanning;
@@ -106,7 +112,7 @@ If the archive contains only the replica address tag, the platform does not reco
 
 For udocker (runveil) nodes, or when logging in to a node is inconvenient, import through the console. The node must remain connected to the server. Even if the node cannot access the archive source, the server can relay it.
 
-Before starting, confirm that the server can read the archive. Explicitly authorize private network sources in `outbound_allow_private_hosts` in `server.yaml`, then restart the server. The loopback address below also requires authorization. See [HTTP Import Prerequisites](import-from-http.md).
+Before starting, confirm that the server can read the archive. Ordinary private sources and the local loopback address below need no allowlist by default. An allowlist is needed only in strict mode. Platform administrators can authorize the source under **Settings → Security & access → Outbound access policy**; host administrators can also edit `outbound_restrict_private_hosts` and `outbound_allow_private_hosts` directly in `server.yaml`. Changes to either field apply to the next request after saving, without restarting the server. See [HTTP Import Prerequisites](import-from-http.md).
 
 1. Place the archive at an HTTP URL accessible to the control plane node. The simplest approach is to copy it to that node and start a temporary file server there:
 

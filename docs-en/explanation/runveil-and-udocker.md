@@ -22,7 +22,7 @@ This implementation is runveil. The runtime value in node records, APIs, and com
 | Pulling, importing, and exporting images | Native implementation in the agent: concurrent layers, segmented downloads for large layers, and decompression during download | `runtime/udocker/native` |
 | Creating the container rootfs | Native extraction into the udocker-compatible `containers/<name>/ROOT` layout | `runtime/udocker/native` |
 | Launch, exec, terminal, and deletion | The agent calls the embedded patched PRoot directly, constructs arguments and environment variables using udocker P1 semantics, and ports `setup --nvidia` | `runtime/runveil` |
-| Troubleshooting | `gpuworks-agent runveil ps / images / exec / logs` reads state directly from disk without going through the agent | `runveilcli` |
+| Troubleshooting and manual import | `gpuworks-agent runveil ps / images / load / exec / logs` reads and writes state directly on disk without going through the agent | `runveilcli` |
 
 The udocker CLI is still embedded in the agent as an offline package containing the udocker source, englib, and the same patched PRoot. It is extracted on demand
 only in the following cases, which require python3 on the node:

@@ -43,6 +43,7 @@ type Values = {
 	keep_detail: boolean;
 	detail_cap_mb: number;
 	warmup_requests: number;
+	request_timeout_s: number;
 	ignore_eos: boolean;
 	load_mode: "closed" | "open";
 	request_rates?: string;
@@ -178,6 +179,7 @@ export default function BenchmarkWizard({ open, meta, deployments, nodes, onSear
 			// Runs created before these settings existed rerun with today's
 			// defaults rather than their implicit old behaviour.
 			warmup_requests: source?.search?.warmup_requests ?? meta.load_defaults.warmup_requests,
+			request_timeout_s: source?.search?.request_timeout_s || meta.load_defaults.request_timeout_s,
 			ignore_eos: source?.dataset?.ignore_eos ?? meta.load_defaults.ignore_eos,
 			load_mode: source?.search?.request_rates?.length ? "open" : "closed",
 			request_rates: source?.search?.request_rates?.join(",") || "",
@@ -372,6 +374,7 @@ export default function BenchmarkWizard({ open, meta, deployments, nodes, onSear
 				? { concurrency, isl: searchISL, osl: searchOSL }
 				: { concurrency: concurrency[0], max_concurrency: dataset === "agentic" ? Math.max(...concurrency) : values.max_concurrency, isl: [searchISL[0]], osl: [searchOSL[0]] };
 			search.warmup_requests = values.warmup_requests ?? 0;
+			search.request_timeout_s = values.request_timeout_s || meta.load_defaults.request_timeout_s;
 			if (mode === "sla" || mode === "grid") for (const field of meta.sla_constraints) if (values[field.key] != null) search[field.key] = values[field.key];
 			Object.assign(search, { min_throughput_gain: values.min_throughput_gain, objective: values.objective, requests_per_point_multiplier: values.requests_per_point_multiplier });
 			if (dataset === "agentic" && !openLoop) Object.assign(search, { fixed_concurrency: concurrency, sessions_per_point: agenticSessionsPerPoint(meta, concurrency) });
@@ -408,7 +411,7 @@ export default function BenchmarkWizard({ open, meta, deployments, nodes, onSear
 	};
 
 	return (
-			<Drawer title={t("wizard.title")} width={760} open={open} onClose={onClose} destroyOnClose={false} footer={<Space style={{ width: "100%", justifyContent: "space-between" }}><Typography.Text type="secondary">{estimateText}</Typography.Text><Space><Button disabled={step === 0} onClick={() => setStep(step - 1)}>{t("wizard.previous")}</Button>{step < 2 ? <Button type="primary" onClick={async () => { try { if (step === 1) await form.validateFields(targetKind === "instance" ? ["deployment_id", "load_origin"] : ["base_url", "model", "load_origin"]); setStep(step + 1); } catch { /* form renders errors */ } }}>{t("wizard.next")}</Button> : <Button type="primary" loading={submitting} onClick={() => { void submit(); }}>{t("wizard.start")}</Button>}</Space></Space>}>
+			<Drawer title={t("wizard.title")} width={760} open={open} onClose={onClose} destroyOnHidden={false} footer={<Space style={{ width: "100%", justifyContent: "space-between" }}><Typography.Text type="secondary">{estimateText}</Typography.Text><Space><Button disabled={step === 0} onClick={() => setStep(step - 1)}>{t("wizard.previous")}</Button>{step < 2 ? <Button type="primary" onClick={async () => { try { if (step === 1) await form.validateFields(targetKind === "instance" ? ["deployment_id", "load_origin"] : ["base_url", "model", "load_origin"]); setStep(step + 1); } catch { /* form renders errors */ } }}>{t("wizard.next")}</Button> : <Button type="primary" loading={submitting} onClick={() => { void submit(); }}>{t("wizard.start")}</Button>}</Space></Space>}>
 			<Steps current={step} items={[{ title: t("wizard.step.question") }, { title: t("wizard.step.target") }, { title: t("wizard.step.load") }]} style={{ marginBottom: 24 }} />
 			<Form form={form} layout="vertical">
 				<Form.Item name="mode" hidden><Input /></Form.Item>
@@ -465,7 +468,7 @@ export default function BenchmarkWizard({ open, meta, deployments, nodes, onSear
 					<Collapse items={[{ key: "advanced", label: t("wizard.advanced"), forceRender: true, children: <>
 						{mode === "grid" && <Form.Item name="load_mode" label={<Space size={4}>{t("wizard.loadMode")}<Tooltip title={t("wizard.loadModeHelp")}><QuestionCircleOutlined /></Tooltip></Space>}><Radio.Group optionType="button" options={[{ value: "closed", label: t("wizard.loadModeClosed") }, { value: "open", label: t("wizard.loadModeOpen") }]} /></Form.Item>}
 						{openLoop && <Row gutter={12}><Col span={12}><Form.Item name="burstiness" label={<Space size={4}>{t("wizard.burstiness")}<Tooltip title={t("wizard.burstinessHelp")}><QuestionCircleOutlined /></Tooltip></Space>}><InputNumber min={0.01} max={meta.load_defaults.max_burstiness} step={0.1} style={{ width: "100%" }} /></Form.Item></Col><Col span={12}><Form.Item name="max_in_flight" label={<Space size={4}>{t("wizard.maxInFlight")}<Tooltip title={t("wizard.maxInFlightHelp")}><QuestionCircleOutlined /></Tooltip></Space>}><InputNumber min={0} max={meta.load_defaults.max_in_flight} style={{ width: "100%" }} /></Form.Item></Col></Row>}
-						<Row gutter={12}><Col span={12}><Form.Item name="warmup_requests" label={<Space size={4}>{t("wizard.warmupRequests")}<Tooltip title={t("wizard.warmupRequestsHelp")}><QuestionCircleOutlined /></Tooltip></Space>}><InputNumber min={0} max={meta.load_defaults.max_warmup_requests} style={{ width: "100%" }} /></Form.Item></Col></Row>
+						<Row gutter={12}><Col span={12}><Form.Item name="warmup_requests" label={<Space size={4}>{t("wizard.warmupRequests")}<Tooltip title={t("wizard.warmupRequestsHelp")}><QuestionCircleOutlined /></Tooltip></Space>}><InputNumber min={0} max={meta.load_defaults.max_warmup_requests} style={{ width: "100%" }} /></Form.Item></Col><Col span={12}><Form.Item name="request_timeout_s" label={<Space size={4}>{t("wizard.requestTimeout")}<Tooltip title={t("wizard.requestTimeoutHelp")}><QuestionCircleOutlined /></Tooltip></Space>}><InputNumber min={meta.load_defaults.min_request_timeout_s} max={meta.load_defaults.max_request_timeout_s} addonAfter="s" style={{ width: "100%" }} /></Form.Item></Col></Row>
 						{ignoreEOSOffered && !importedDataset && <Form.Item name="ignore_eos" valuePropName="checked"><Checkbox>{t("wizard.ignoreEOS")} <Tooltip title={t("wizard.ignoreEOSHelp")}><QuestionCircleOutlined /></Tooltip></Checkbox></Form.Item>}
 						{dataset === "agentic" && <Row gutter={12}><Col span={12}><Form.Item name="agentic_turns" label={t("agentic.turns")} rules={[{ validator: (_, value) => summarizeAgenticLoad(agenticMeanInput, value, meta).firstPromptTokens > 0 ? Promise.resolve() : Promise.reject(new Error(t("agentic.turnsTooHigh"))) }]}><InputNumber min={2} max={64} style={{ width: "100%" }} /></Form.Item></Col><Col span={12}><Form.Item label={t("agentic.seed")}><InputNumber value={meta.agentic_defaults.seed} disabled style={{ width: "100%" }} /></Form.Item></Col></Row>}
 						{dataset !== "agentic" && mode === "saturation" && <Form.Item name="min_throughput_gain" label={t("wizard.minGain")} extra={t("wizard.minGainHelp")}><InputNumber min={.001} max={1} step={.01} addonAfter={t("wizard.ratio")} /></Form.Item>}

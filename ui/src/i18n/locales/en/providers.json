@@ -40,6 +40,7 @@
     "deleteFailed": "Delete failed: {{detail}}"
   },
   "config": {
+    "requirements": { "zstack": "Requires ZStack Cloud 5.4.2 or later." },
     "autodlProOnly": "AutoDL's API lists only Pro container instances (容器实例Pro); other instances do not appear here.",
     "runpodSecureOnly": "Only Secure Cloud pods are supported; Community Cloud pods are not.",
     "loadFailed": "Unable to load saved configuration. Close this dialog and try again.",

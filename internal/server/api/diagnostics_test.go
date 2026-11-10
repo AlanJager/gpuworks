@@ -152,8 +152,9 @@ func (s apiBundleSources) DeploymentInstances([]uint) ([]string, error) { return
 func (s apiBundleSources) Snapshot(context.Context, diagnostics.SnapshotScope) (map[string]any, error) {
 	return map[string]any{"settings": map[string]string{"k": "v"}}, nil
 }
-func (s apiBundleSources) ServerLogFiles() []string { return []string{s.logFile} }
-func (s apiBundleSources) Version() string          { return "v-api" }
+func (s apiBundleSources) ServerLogFiles() []string            { return []string{s.logFile} }
+func (s apiBundleSources) ServerDirs() []diagnostics.ServerDir { return nil }
+func (s apiBundleSources) Version() string                     { return "v-api" }
 
 func TestDiagnosticsBundleRoutes(t *testing.T) {
 	st, err := store.Open("file:"+t.Name()+"?mode=memory&cache=shared", bus.New())

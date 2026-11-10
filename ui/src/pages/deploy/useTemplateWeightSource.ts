@@ -8,43 +8,41 @@ import {
   type InferenceTemplate,
   type ModelCore,
   type ModelPresenceSummary,
+  type TemplateWeightModels,
   type WeightSource,
 } from "../../api";
-import { modelServesWeightSource } from "./deployHelpers";
 
 /** A registered model as the lookup lists it; presence says where its files are. */
 export type WeightModel = ModelCore & { presence?: ModelPresenceSummary };
 
-/** How many registered models one weight source lookup reads. */
-const LOOKUP_PAGE_SIZE = 50;
 const LOOKUP_RETRY_MS = 15000;
 
 /**
- * findWeightSourceModels reads the registered models whose source id is one
- * of the sources' repo ids (GET /models?source_id=, exact and ignoring case);
- * the subfolder and provider are judged here by the caller.
+ * The registered model the server says a choice of this declared source
+ * reuses, if any. The source is found by its declared fields, which the
+ * answer echoes; which model serves it is the server's judgement.
  */
-export async function findWeightSourceModels(
-  sources: WeightSource[],
-): Promise<WeightModel[]> {
-  const ids = [
-    ...new Set(
-      sources.map((source) => String(source.repo_id || "").trim()).filter(Boolean),
-    ),
-  ];
-  if (!ids.length) return [];
-  const page = await api.modelsPage({
-    page: 1,
-    page_size: LOOKUP_PAGE_SIZE,
-    extra: { source_id: ids },
-  });
-  return page.items;
+export function reusedModel(
+  answer: { models: WeightModel[]; sources: TemplateWeightModels["sources"] },
+  source: WeightSource,
+): WeightModel | undefined {
+  const same = (a?: string, b?: string) => (a || "") === (b || "");
+  const declared = answer.sources.find(
+    (item) =>
+      same(item.provider, source.provider) &&
+      same(item.repo_id, source.repo_id) &&
+      same(item.revision, source.revision) &&
+      same(item.subfolder, source.subfolder),
+  );
+  if (!declared?.reuse_model_id) return undefined;
+  return answer.models.find((model) => model.id === declared.reuse_model_id);
 }
 
 // useTemplateWeightSource owns the template's weight artifact choice: the
 // spec's declared mirrors, the explicit source choice in the modal, and the
-// one registration action through the existing register API. Its model
-// matching is the server's repo-identity judgement.
+// one registration action through the existing register API. Which registered
+// models serve the spec, and which one a declared source reuses, is asked of
+// the server (GET /inference-templates/weight-models).
 export default function useTemplateWeightSource({
   form,
   template,
@@ -69,13 +67,13 @@ export default function useTemplateWeightSource({
   // The registered models serving the selected spec's sources, once the
   // lookup for that spec (key) has answered; a pending or failed lookup
   // leaves it on another key, and nothing is registered meanwhile.
-  const [lookup, setLookup] = useState<{ key: string; models: WeightModel[] }>();
+  const [lookup, setLookup] = useState<{ key: string; models: WeightModel[]; sources: TemplateWeightModels["sources"] }>();
   // A failed lookup is retried at the pace the model list used to poll.
   const [lookupRetry, setLookupRetry] = useState(0);
   const stateRef = useRef({ applied: adoptedKey ?? "", prompted: "", registering: "" });
   // What the user settled on for this spec: a registered model or a declared
   // source (whose model, registered now or already there, is then applied).
-  const pickedRef = useRef<{ key: string; model?: WeightModel; source?: WeightSource }>();
+  const pickedRef = useRef<{ key: string; model?: WeightModel; source?: WeightSource }>(undefined);
   // The registered models matching a declared source, listed for the user to
   // confirm (5.13), and which one (or the template's own source) they picked.
   const [matches, setMatches] = useState<WeightModel[]>([]);
@@ -101,12 +99,12 @@ export default function useTemplateWeightSource({
 
 
   useEffect(() => {
-    if (!key || key === adoptedKey || !sources.length || !sources[0]?.repo_id) return;
+    if (!key || key === adoptedKey || !template || !selection || !sources.length || !sources[0]?.repo_id) return;
     let alive = true;
     let retry: ReturnType<typeof setTimeout> | undefined;
-    findWeightSourceModels(sources).then(
-      (models) => {
-        if (alive) setLookup({ key, models });
+    api.templateWeightModels(template.id, selection.spec.source, selection.spec.name).then(
+      (answer) => {
+        if (alive) setLookup({ key, ...answer });
       },
       (reason: Error) => {
         if (!alive) return;
@@ -143,7 +141,7 @@ export default function useTemplateWeightSource({
       // to the form as for a model that was already registered.
       setLookup((prev) =>
         prev?.key === registrationKey
-          ? { key: registrationKey, models: [...prev.models, model] }
+          ? { ...prev, models: [...prev.models, model] }
           : prev,
       );
       setModalOpen(false);
@@ -161,13 +159,6 @@ export default function useTemplateWeightSource({
     }
   };
 
-  const modelFor = (source: WeightSource, models: WeightModel[]) =>
-    models.find(
-      (item) =>
-        item.source?.toLowerCase() === source.provider.toLowerCase() &&
-        modelServesWeightSource(item, source),
-    );
-
   useEffect(() => {
     if (!template || !selection || !key) return;
     if (stateRef.current.applied === key) return;
@@ -178,11 +169,9 @@ export default function useTemplateWeightSource({
     const picked =
       pickedRef.current?.key === key ? pickedRef.current : undefined;
     if (!picked) {
-      // A registered model whose repo id is one the template declares is
-      // never taken silently: the user confirms it, or picks a source.
-      const found = lookup.models.filter((item) =>
-        sources.some((candidate) => modelServesWeightSource(item, candidate)),
-      );
+      // A registered model serving a declared source is never taken
+      // silently: the user confirms it, or picks a source.
+      const found = lookup.models;
       // Several sources with nothing registered: the user chooses, with no
       // default. One source with nothing registered: nothing to ask.
       if (found.length || sources.length > 1) {
@@ -199,7 +188,7 @@ export default function useTemplateWeightSource({
     // A chosen source is served only by its own provider's model.
     const model =
       picked?.model ??
-      (picked?.source ? modelFor(picked.source, lookup.models) : undefined);
+      (picked?.source ? reusedModel(lookup, picked.source) : undefined);
     if (model) {
       if (!engineProfile || engineProfile.name !== selection.spec.engine)
         return;
@@ -238,6 +227,7 @@ export default function useTemplateWeightSource({
       setLookup((prev) => ({
         key: confirmKey,
         models: prev?.key === confirmKey ? prev.models : [picked],
+        sources: prev?.key === confirmKey ? prev.sources : [],
       }));
       setModalOpen(false);
       setChoice(undefined);
@@ -247,19 +237,19 @@ export default function useTemplateWeightSource({
     pickedRef.current = { key: confirmKey, source: choice };
     // The choice is matched against a fresh lookup, never a missing one: a
     // failed lookup registers nothing.
-    let models: WeightModel[];
+    let answer: TemplateWeightModels;
     try {
-      models = await findWeightSourceModels([choice]);
+      answer = await api.templateWeightModels(template?.id || 0, selection.spec.source, selection.spec.name);
     } catch (reason) {
       message.error(t("action.modelLookupFailed", { detail: (reason as Error).message }));
       return;
     }
-    const existing = modelFor(choice, models);
+    const existing = reusedModel(answer, choice);
     if (existing) {
       form.setFieldValue("model_id", existing.id);
       // The chosen source's model applies the template, as a single
       // source's would.
-      setLookup({ key: confirmKey, models });
+      setLookup({ key: confirmKey, ...answer });
       setModalOpen(false);
       setChoice(undefined);
       return;

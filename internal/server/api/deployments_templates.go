@@ -191,6 +191,10 @@ func applyCurrentModelAPIContract(selection *templateSelection, model *store.Mod
 		return
 	}
 	contract := inferenceapi.ModelContract(model)
+	var templateContract inferenceapi.Contract
+	if json.Unmarshal(selection.APIContract, &templateContract) == nil {
+		contract.TokenizerRef = templateContract.TokenizerRef
+	}
 	encoded, err := json.Marshal(contract)
 	if err == nil {
 		selection.APIContract = encoded
@@ -240,7 +244,7 @@ func (a *apiHandlers) applyTemplateDefaults(req *dto.DeployRequest, hardware tem
 		return selection, fmt.Errorf("target node did not report a GPU for inference spec matching")
 	}
 	requestedEngine, requestedScenario := req.Engine, req.Scenario
-	requestedImage, requestedSpec := req.Image, req.TemplateSpecName
+	requestedSpec := req.TemplateSpecName
 	spec, match, err := selectInferenceSpec(*model, req.TemplateSpecSource, requestedSpec, hardware.GPU, requestedEngine, requestedScenario)
 	if err != nil {
 		return selection, err
@@ -320,7 +324,7 @@ func (a *apiHandlers) applyTemplateDefaults(req *dto.DeployRequest, hardware tem
 	}
 	req.TemplateSpecName = spec.Name
 	req.TemplateSpecSource = spec.Source
-	requestedImage = strings.TrimSpace(req.Image)
+	requestedImage := strings.TrimSpace(req.Image)
 	req.Engine, req.Scenario = spec.Engine, spec.Scenario
 	// Keep an explicit image override intact. The deployment resolver performs
 	// the engine/GPU compatibility check and returns 400 for an incompatible
@@ -405,7 +409,7 @@ func (a *apiHandlers) selectWeightSource(spec store.InferenceSpecRow, nodeID uin
 		return weightSource{}, fmt.Errorf("inference spec %s has no weight source", spec.Name)
 	}
 	if nodeID != 0 {
-		models, err := a.d.Store.ListModels()
+		models, err := a.d.Store.ModelArtifactsBySourceIDs(weightSourceRepoIDs(sources)...)
 		if err != nil {
 			return weightSource{}, err
 		}

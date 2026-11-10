@@ -124,6 +124,7 @@ JSON 字段按 [API 规范](api-conventions.md) 使用 snake_case，例如 `node
 | POST | `/api/v1/auth/logout` | 撤销所提交凭证对应的会话并清除 Cookie；重复退出幂等 | 无 |
 | GET | `/api/v1/auth/me` | 返回当前用户与实时权限；不延长空闲期限 | 管理会话或平台 API Token |
 | POST | `/api/v1/auth/activity` | 报告真实操作并延长空闲期限；无请求体，成功返回 204 | 管理会话 |
+| POST | `/api/v1/auth/password` | 修改当前登录用户自己的密码；成功后该用户的全部管理会话失效 | 管理会话 |
 
 ### 登录请求与响应
 
@@ -148,12 +149,36 @@ JSON 字段按 [API 规范](api-conventions.md) 使用 snake_case，例如 `node
 `token` 是后续请求使用的 JWT；`user` 包含用户 ID、用户名和角色（`admin` 或 `user`）。
 完整请求示例见[设置地址并登录](api-conventions.md#1-设置地址并登录)。
 
-`auth/me` 返回当前用户信息，结构为 `{"id":1,"username":"admin","role":"admin"}`。
+`auth/me` 返回当前用户信息和新密码的长度要求，结构为 `{"id":1,"username":"admin","role":"admin","password_policy":{"min_length":8,"max_length":128}}`。
 Cookie 设置为 `HttpOnly`、`SameSite=Lax`，其中保存的是不透明会话凭证，不是 JWT。
 请求同时带 Bearer 与 Cookie 时优先使用 Bearer；无效 Bearer 不会回退到 Cookie。
 
 用户名或密码错误返回 `401 INVALID_CREDENTIALS`；登录过于频繁返回 `429 LOGIN_THROTTLED`，
 按响应头 `Retry-After` 指定的秒数等待后重试。其他错误见[常见 HTTP 状态与错误码](api-conventions.md#常见-http-状态与错误码)。
+
+### 修改密码
+
+`POST /api/v1/auth/password` 只修改当前登录用户自己的密码，只接受登录会话（平台 API 令牌返回 `403 PLATFORM_TOKEN_NOT_ALLOWED`），并做与登录相同的来源检查。
+
+| 请求字段 | 类型与要求 | 含义 |
+|---|---|---|
+| `current_password` | 字符串，必填 | 当前密码，按原值校验 |
+| `new_password` | 字符串，必填 | 新密码，须满足[管理员密码规则](security.md#管理员密码) |
+
+成功返回 `200 {"status":"password_changed"}`，并清除当前 Cookie：该用户的全部管理会话（含本次）失效，需用新密码重新登录。若数据目录里的 `initial-credentials` 记录的正是该用户，server 尝试删除该文件，删除失败只记告警日志。
+
+两个密码在同一次请求里都会被检查，错误一律返回 400：
+
+| 情况 | 错误码 | 说明 |
+|---|---|---|
+| 当前密码错误 | `CURRENT_PASSWORD_INVALID` | 新密码同时不合规时，`params.new_password` 给出新密码的错误码 |
+| 新密码长度不在范围内 | `PASSWORD_LENGTH` | `params.min`、`params.max` 为长度上下限 |
+| 新密码是常见弱口令、整段重复或连续字符 | `PASSWORD_GUESSABLE` | |
+| 新密码与用户名相同 | `PASSWORD_USERNAME` | 忽略大小写、标点与首尾数字后比较 |
+| 新密码含控制字符或不是合法 UTF-8 | `PASSWORD_CHARACTERS` | |
+| 新密码与当前密码相同 | `PASSWORD_UNCHANGED` | 只在当前密码正确时判断 |
+
+校验当前密码与登录共用限流（按来源地址和用户名计数），过于频繁返回 `429 LOGIN_THROTTLED` 并带 `Retry-After`。
 
 ### 会话什么时候失效
 
@@ -165,7 +190,7 @@ Cookie 设置为 `HttpOnly`、`SameSite=Lax`，其中保存的是不透明会话
 |---|---|
 | 调用 `auth/me` 或被动轮询 | 不延长空闲期限 |
 | 通过登录会话执行管理写请求，或调用 `auth/activity` 报告真实操作 | 延长空闲期限，但不延长从登录起计算的绝对期限 |
-| 密码重置 | 撤销该用户的管理会话，关联的 JWT 同时失效；不撤销平台 API 令牌 |
+| 修改或重置密码（控制台或 `reset-password`） | 撤销该用户的管理会话，关联的 JWT 同时失效；不撤销平台 API 令牌和 API key |
 | 退出登录 | 撤销所提交凭证对应的会话，关联的 JWT 同时失效，并清除 Cookie；重复退出仍可成功 |
 | 升级前未绑定会话的 JWT 或旧 Cookie | 需要重新登录 |
 
@@ -187,7 +212,7 @@ Cookie 设置为 `HttpOnly`、`SameSite=Lax`，其中保存的是不透明会话
 | GET | `/api/v1/engines?target_vendor=amd` | 面向指定厂商的引擎参数字典（省略 `target_vendor` 时使用通用 profile，未知厂商返回 400）；AMD profile 只表示实现准入范围，不证明特定 GPU/ROCm 版本已通过真机验收 | JWT |
 | GET | `/api/v1/nodes` | 节点列表；带 `page`/`page_size` 时分页并可按 `q`/`state`/`label` 筛选（见“错误与响应约定”） | JWT |
 | GET | `/api/v1/nodes/facets` | 筛选项及节点数量分布；查询参数 `q`、`state`、`label` 同节点列表，返回用户标签、系统标签与卡型号分布（含已报告的 `arch_id`），见[节点列表](#节点列表的筛选与返回字段) | JWT |
-| GET | `/api/v1/dashboard/summary` | 仪表盘汇总：节点按状态计数与硬件合计、部署按状态计数、按厂商与按标签（`label_key`，缺省或无节点带该 key 时取最常用的 key）分组的容量 | JWT |
+| GET | `/api/v1/dashboard/summary` | 仪表盘汇总：节点按状态计数与硬件合计、部署按状态计数、按厂商与按标签（`label_key`，缺省或无节点带该 key 时取最常用的 key）分组的容量；另含当前 GPU 指标、卡占用、在途任务，字段见[仪表盘汇总](#仪表盘汇总的返回字段) | JWT |
 | POST | `/api/v1/nodes` | 创建待接入节点，返回安装命令与 token；完整字段与条件见[创建节点的连接参数](#创建节点的连接参数) | JWT(admin) |
 | GET | `/api/v1/agent/rejects` | 最近被拒绝的连接尝试 | JWT |
 | GET | `/api/v1/agent/upgrade-errors` | 最近 agent 升级失败记录 | JWT |
@@ -279,6 +304,19 @@ Cookie 设置为 `HttpOnly`、`SameSite=Lax`，其中保存的是不透明会话
 | 卡型号 | `vendor`、`name`、`cc` 描述厂商、名称、计算能力；已报告时含 `arch_id`，不同架构分别统计；`model` 对应系统标签 `gpuworks.ai/gpu-model` 的值 |
 | 每种卡型号的数量与显存 | 节点数，以及 `cards`（卡数）、`memory_bytes`（最大单卡显存） |
 
+### 仪表盘汇总的返回字段
+
+`GET /api/v1/dashboard/summary` 的计数都由 server 算好，仪表盘只做展示。除节点计数和容量分组外，主要字段如下：
+
+| 字段 | 含义 |
+|---|---|
+| `current_metrics.vram_used_bytes`、`current_metrics.vram_total_bytes` | 在线节点自有卡的显存已用与总量，只累加最近两分钟内两项都有采样的卡，两者之比即显存利用率；没有这样的卡时均为 `null` |
+| `deployments.running`、`warming`、`sleeping`、`pending`、`other` | 部署按有效状态分桶，每个部署只落一个桶，相加等于 `total`。`warming` 为拉镜像或启动中，`sleeping` 为整体休眠或正在休眠，`pending` 为等待放置，`other` 为不属于前述各桶的部署（已停止、失败、离线等） |
+| `cards` | 与 `GET /api/v1/scheduling/overview` 的 `summary` 相同的卡状态计数，另加 `allocated`；调度总览无法构建时为 `null`，表示未知而非没有卡 |
+| `cards.allocated` | 部署占用的卡数，即 `awake + asleep`：休眠部署的卡仍为唤醒保留，算作已分配；平台外占用、不健康和离线的卡不算。`allocated / cards` 即分配率 |
+| `tasks.batches` | 调用者可见的批处理数（管理员为全部用户，其他用户只算自己的）：`active` 为执行或收尾中，`waiting` 为校验输入中；未启用 Batch API 或计数失败时为 `null` |
+| `tasks.benchmarks` | 等待或运行中的评测数，统计全部用户（评测不按用户归属） |
+
 ### 节点连接诊断
 
 `POST /api/v1/nodes/{uuid}/connection-diagnostics` 由管理员手动触发，接受空请求或 `{}`，拒绝自定义 URL、SSH 参数与其他字段。通过指定节点的既有会话读取运行态；SSH 旁路仅使用该节点已存身份与地址。不执行恢复、不修改地址/token/安装配置，也不重启或重装 Agent；SSH 沿用现有主机密钥策略。
@@ -315,6 +353,20 @@ SSH 的 `vantage=control_plane` 描述控制面登录节点；HTTP 的 `vantage=
 - **监听地址**：`server_dial_listen` 缺省为 `0.0.0.0:18800`；必须是有效的 `host:port` / `:port`，端口在 1–65535 之间，否则返回 400 `SERVER_DIAL_LISTEN_INVALID`（`address`）。
 
 ### SSH 检查与安装
+
+`POST /api/v1/nodes/precheck`、`POST /api/v1/nodes/install` 和 `PUT /api/v1/nodes/{uuid}/ssh` 共用以下 SSH 认证字段：
+
+| 字段/取值 | 含义 |
+|---|---|
+| `auth_mode: "platform_key"` | 仅尝试 server 的平台密钥，无需提交密码或私钥 |
+| `auth_mode: "private_key"` | 仅尝试 `private_key_pem` 中的私钥 |
+| `auth_mode: "password"` | 仅尝试 SSH `password` 协议，口令放在 `password` |
+| `auth_mode: "keyboard_interactive"` | 仅尝试 SSH `keyboard-interactive` 协议，复用 `password`；支持一次非回显密码应答及有限的无问题信息轮次，不支持多问题、多次口令或 MFA |
+| `auth_mode` 省略或为空 | 按已有凭据依次尝试平台密钥、用户私钥、用户密码、云实例密码，最后用请求或已保存的 `password` 尝试键盘交互认证；不可用的凭据跳过 |
+
+显式指定方式时不回退到其他协议。认证方式无交集时，错误会说明已配置的方式并提示核对目标 SSH 配置或选择键盘交互认证；网络及主机密钥错误保持原分类。
+
+安装成功或保存凭据时仍尝试授权平台公钥，成功后清除密码/私钥，授权失败才保留所用凭据。`GET /api/v1/nodes/{uuid}/ssh` 的 `auth_mode` 表示保存的凭据类型，不保存本次选择的协议：保留口令时为 `password`，不回传 `keyboard_interactive`；空凭据为 `platform_key`，私钥为 `private_key`。响应不含明文口令或私钥，`has_password` / `has_private_key` 表示是否保存；后续恢复使用上述自动顺序。
 
 `POST /api/v1/nodes/precheck` 检查主机环境，连通性检查按连接模式和检测结果返回，可能包含：
 
@@ -397,6 +449,7 @@ macOS 忽略 `no_systemd`。
 | POST | `/api/v1/models/local` | 注册节点本地模型 | JWT |
 | GET | `/api/v1/models/{id}/logo` | 模型 logo 图片 | JWT |
 | GET | `/api/v1/models/{id}` | 模型详情 | JWT |
+| PATCH | `/api/v1/models/{id}` | 修改本地 / HTTP 目录模型的来源 ID（`{"source_id"}`，详情的 `source_id_editable` 表示可改）；公共仓库模型 400 `MODEL_SOURCE_ID_FIXED`，与已有模型重名 409 `MODEL_SOURCE_ID_TAKEN`，有进行中的复制、下载或删除 409 `MODEL_TRANSFER_ACTIVE`；已有副本路径不变 | JWT |
 | DELETE | `/api/v1/models/{id}` | 删除模型 | JWT(admin) |
 | POST | `/api/v1/models/{id}/metadata/refresh` | 重新拉取模型元数据（config/README/logo） | JWT |
 | POST | `/api/v1/models/{id}/download` | 发起公共仓库下载：`storage_id` 选存储（省略为默认存储），本地存储再给 `node_uuid` 或 `node_uuids`，共享存储由一台写入节点下载一次 | JWT |
@@ -468,7 +521,7 @@ macOS 忽略 `no_systemd`。
 | POST | `/api/v1/images/{id}/nodes/{uuid}/inspect` | 读取节点上镜像的 OCI 配置（`entrypoint`/`cmd`/`env`/`volumes`）与镜像 id；配置只在响应里返回，不写回目录 | JWT(admin) |
 | GET | `/api/v1/storages` | 存储列表（类型、路径或导出、节点汇总与问题节点、模型数、在用部署） | JWT |
 | GET | `/api/v1/storages/{id}` | 单个存储；`?all_nodes=1` 返回每个节点的状态 | JWT |
-| POST | `/api/v1/storages` | 添加存储；NFS 类先在一台节点上试挂，写不进去的保存为停用（只读） | admin |
+| POST | `/api/v1/storages` | 添加存储；NFS 类先在一台节点上试挂，写不进去的保存为停用（只读）。校验错误按原因区分，均为 400：`STORAGE_PATH_INVALID`（路径格式不对，`params.path`）、`STORAGE_PATH_DENIED`（位于 `storage_denied_paths` 下，`params.path`）、`STORAGE_PATH_REQUIRED`（缺目录）、`STORAGE_CACHE_LIMIT_NEGATIVE`（缓存上限为负）；修改、试挂与节点覆盖同样适用 | admin |
 | PATCH | `/api/v1/storages/{id}` | 修改名称、启用、默认、节点范围、路径、挂载选项、缓存目录与上限、`nfs`↔`nfs_cache` 类型；可带读取时的 `expected_updated_at` 防止覆盖并发修改，版本变化返回409 `STORAGE_CONFIG_CHANGED` | admin |
 | DELETE | `/api/v1/storages/{id}` | 移除存储对象（不删文件），并从模型列表移除只存放在此存储上的模型；有部署绑定、或部署所用模型只存放在此存储上时 409 `STORAGE_IN_USE` | admin |
 | POST | `/api/v1/storages/probe` | 在一台节点上试挂一个存储定义，不留下挂载。结果含实际 `node_uuid`、`node_name`、`target`（本次实际检查的 export 或目录 path）及 `checked_at`（控制面收到并解码结果的时间），只说明这台节点这次检查的结果；旧版本响应可缺后两字段 | admin |
@@ -540,6 +593,7 @@ macOS 忽略 `no_systemd`。
 | GET | `/api/v1/inference-templates/chips` | 模板声明支持的静态加速卡目录；可选 `arch_id` 表示模板需要的架构 ID，其他厂商字段保持原样 | JWT |
 | GET | `/api/v1/inference-templates/my-chips` | 当前集群实际探测到的加速卡列表，含 `vendor`、`name`、可选 `cc` 和已报告的 `arch_id`；未报告架构时省略 `arch_id` | JWT |
 | GET | `/api/v1/inference-templates/summary` | 模板统计摘要 | JWT |
+| GET | `/api/v1/inference-templates/weight-models` | 某个 spec 声明的权重来源对应的已登记模型（`template_id`、`spec_source`、`spec_name` 必填，缺一 400 `TEMPLATE_WEIGHT_MODELS_QUERY_INVALID`，spec 不存在 404）：`models` 为服务任一来源的模型（按 repo id 不区分大小写匹配，完整仓库可服务子目录请求，新的在前，各一次，行格式同分页列表）；`sources` 按声明顺序列出各来源，`reuse_model_id` 是选择该来源时复用的同 provider 最新模型 | JWT |
 | GET | `/api/v1/inference-templates/export/{digest}` | 按内容摘要导出可执行模板包 | JWT(admin) |
 | GET | `/api/v1/inference-templates/model/*` | 按模型路径获取模板详情（通配路径） | JWT |
 | GET | `/api/v1/inference-templates/yaml?model_id=…` | 模板编辑器里的平铺 YAML：server 用导入同一套目录类型写出，可加 `spec_source=user`（或 `upstream`）只留该来源的 spec，`readme_*` 字段只在 spec 全部列出或模板本身归用户时写出；原样保存（`import?overwrite=true`）不丢字段 | JWT |
@@ -1492,6 +1546,7 @@ extra_args 解析（`EXTRA_ARGS_INVALID`）、挂载（`MOUNT_CONTAINER_PATH`/`M
 | GET | `/api/v1/benchmarks/{id}/report` | 下载评测报告 | JWT |
 | DELETE | `/api/v1/benchmarks/{id}` | 删除评测任务 | JWT |
 | GET | `/api/v1/benchmarks/{id}/points/{seq}/detail` | 下载某负载点的明细数据 | JWT |
+| GET | `/api/v1/benchmarks/{id}/points/{seq}/timeline` | 读取点位请求时间线（有界、脱敏的计时与请求身份） | JWT |
 | POST | `/api/v1/benchmarks/{id}/cancel` | 取消运行中的评测 | JWT |
 
 ## Profiles / GPUs（估算校准与 GPU 清单）
@@ -1663,6 +1718,8 @@ RunPod 需要开放端口或补平台公钥时，先返回 409 `INSTANCE_RESTART
 | POST | `/api/v1/pull/credentials/{id}/test` | 从管理节点（经它的出站代理）试用凭据：有用户名的按镜像仓库登录 `/v2/`，只有令牌的按 Hugging Face 的 `GET /api/whoami-v2` 校验；200 `{ok, message}`，被拒 422 `CREDENTIAL_LOGIN_REJECTED`（`host`），连不上 502 `CREDENTIAL_LOGIN_FAILED`（`host`、`detail`） | JWT(admin) |
 | GET | `/api/v1/pull/registry-credentials` | 已删除：本路由及其 `POST`、`PUT/DELETE {id}`、`POST {id}/test` 回 410 `SETTING_REMOVED`（`route` 为 `/api/v1/pull/credentials`） | JWT(admin) |
 | GET | `/api/v1/server/listen` | server 的监听地址：已保存的 `console`/`agent`/`gateway` 地址、当前实际打开的 `running` 套接字、`restart_pending`（保存的地址要重启才生效）、`config_path`，以及 `editable`/`overridden`（未用 server.yaml 启动或被 `--addr` 覆盖时不可编辑） | JWT(admin) |
+| GET | `/api/v1/server/outbound-policy` | 出站私网访问策略：原始 `restrict_private_hosts`（默认 false）、`allow_private_hosts`、`editable` 与仅基于策略值的 `revision`；不返回配置文件其他字段 | JWT(admin) |
+| PUT | `/api/v1/server/outbound-policy` | 原子保存全部必填的 `restrict_private_hosts`、`allow_private_hosts` 与 `revision`，返回更新后的策略；写入 server.yaml 后立即生效。400 `SERVER_OUTBOUND_POLICY_INVALID`，409 `SERVER_OUTBOUND_POLICY_CONFLICT` / `SERVER_OUTBOUND_POLICY_READ_ONLY`，503 `SERVER_OUTBOUND_POLICY_UNAVAILABLE`；保留其他配置及注释，不支持安全编辑的文件保持原样 | JWT(admin) |
 
 同步组创建和改名的名称按 trim 后精确文本唯一（区分大小写，最多 64 个 UTF-8 字节）。重复名为 400 `PULL_SETTING_INVALID`，`params.field=name`、`params.reason=name_duplicate`。校验错误提供稳定 `reason` 和参数（如 `max`），英文 `detail` 保留供旧客户端和诊断；界面按 `reason` 本地化。
 

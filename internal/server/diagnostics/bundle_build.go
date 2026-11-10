@@ -66,6 +66,11 @@ func (m *Manager) buildBundle(ctx context.Context, b Bundle) (Bundle, error) {
 		add(BundleItem{Name: name, State: "collected", Bytes: n, Truncated: truncated}, &stagedEntry{name: name, path: local})
 	}
 
+	// The server's disks first: when one is full, nothing later may fit.
+	stage("server/disk.json", func(w io.Writer) (int64, bool, error) {
+		return writeServerDisk(w, m.sources.ServerDirs())
+	})
+
 	// The server's log in the window.
 	stage("server/gpuworks-server.log", func(w io.Writer) (int64, bool, error) {
 		return m.serverLogWindow(w, b.From, b.To)
@@ -78,7 +83,7 @@ func (m *Manager) buildBundle(ctx context.Context, b Bundle) (Bundle, error) {
 		dir := filepath.Join(m.DebugDir(), s)
 		_ = filepath.WalkDir(dir, func(p string, d os.DirEntry, err error) error {
 			if err != nil || d.IsDir() {
-				return nil
+				return nil //nolint:nilerr // A diagnostics bundle skips unreadable files and retains the available evidence.
 			}
 			rel, _ := filepath.Rel(m.DebugDir(), p)
 			info, _ := d.Info()
@@ -355,4 +360,3 @@ func (c *countingWriter) Write(p []byte) (int, error) {
 	c.n += int64(n)
 	return n, err
 }
-

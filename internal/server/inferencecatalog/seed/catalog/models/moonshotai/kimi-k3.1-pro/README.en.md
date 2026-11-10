@@ -40,6 +40,12 @@ The PPU profiles leave out three settings of the upstream recipe: `NCCL_SOCKET_I
 
 Kimi's tokenizer is tiktoken (`tiktoken.model`), so a benchmark's automatic tokenizer finds no `tokenizer.json`; converting it with transformers' `TikTokenConverter` gives identical token ids and can be imported as the benchmark tokenizer.
 
+## 910C (A3) · W4A8
+
+The `w4a8-vllm-ascend-a3-multinode-16npu` profile uses the official `kimi-k3.1-pro-a3` image and W4A8 checkpoint (about 1.47 TB on disk and 1.34 TiB in device memory). It runs one co-located multi-node instance: TP16 within a node and one pipeline stage per node. Two nodes are the fewest that hold the weights; four match upstream's Prefill stage count. Cache dtypes, block size, parsers and MLAPO come from upstream's Decode role; DCP, PCP and the interleave size belong to the separated roles and are left out. The co-located profile does not enable the Decode-only `recompute_scheduler_enable` flag.
+
+The profile has been validated on two 910C nodes with 16 dies each, using TP16 per node and PP2 across the nodes: real conversations, tool calling, and random-length, Agentic 80K and 200K multi-turn load all succeeded. `--max-model-len 210000`, `--max-num-seqs 64` and `--gpu-memory-utilization 0.90` are the validated values; raising memory utilisation to 0.95 or 0.98 runs out of device memory under 200K load. Reasoning and tool calling require `--tokenizer-mode`, both parsers and `--enable-auto-tool-choice`, which the profile configures. Ascend multi-node runs on an accelerator RDMA or HCCS network, so a deployment needs one covering every node it spans. 950DT has not been validated yet, so no profile is stated for it.
+
 ## Not supported
 
 - **Hopper (H100 / H200)**: with the current images, SGLang runs out of memory while loading (the routed experts are not loaded as MXFP4 on sm90), and vLLM stalls in the Triton fallback of the `attn_res` kernel, which has a native implementation only on Blackwell. Upstream marks these commands as unverified; the profile returns once an image runs on Hopper.

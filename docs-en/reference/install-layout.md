@@ -91,7 +91,7 @@ Password precedence during install:
 3. An interactive prompt (with echo disabled; pressing Enter generates a random password; no prompt if an admin account already exists);
 4. A randomly generated password when `--quiet` is set or stdin is not a terminal.
 
-When the service starts for the first time, password precedence for creating the admin account is `GPUWORKS_ADMIN_PASSWORD` > the `initial-credentials` file > random generation. If you run `gpuworks serve` directly without install, you can set the initial password through the environment variable. The password ultimately used is written back to that file. `GPUWORKS_ADMIN_PASSWORD` is read only when creating the admin account.
+When the service starts for the first time, password precedence for creating the admin account is `GPUWORKS_ADMIN_PASSWORD` > the `initial-credentials` file > random generation. If you run `gpuworks serve` directly without install, you can set the initial password through the environment variable. The password ultimately used is written back to that file. `GPUWORKS_ADMIN_PASSWORD` is read only when creating the admin account. After the account it records changes its password in the console, the server tries to delete the file, whose password no longer works (a failure is logged as a warning); `reset-password` does not delete it, so remove it by hand.
 
 If `gpuworks.db` already exists in the data directory, the admin account is considered to exist: password processing is skipped, the database and accounts remain unchanged, and `--password` is ignored with a prompt to use `gpuworks reset-password` instead.
 
@@ -143,6 +143,8 @@ On macOS, the systemd unit's equivalent is the launch daemon `/Library/LaunchDae
 The server writes to both stderr and `<dir>/logs/gpuworks-server.log`. Logs rotate at 10 MB and retain 20 rotations (adjustable through install's `--log-max-size` / `--log-keep`; when running `serve` directly, use `--log-file`, with an empty string to write only to stderr). Rotation is implemented natively and does not depend on logrotate. In systemd deployments, `journalctl -u gpuworks` shows the same output.
 
 In launchd deployments, the file receiving stderr has no rotation mechanism. When the server detects that stderr is a regular file, it writes normal logs only to the rotating log file (see the previous section). If the log directory is not writable, it falls back to stderr without preventing startup.
+
+When a write to the log file fails (for example, on a full disk), the file stops and records still go to stderr. The file is retried every 30 seconds; once that works, a `log file writes resumed` line comes first, carrying the number of records dropped (`dropped`), when writing stopped (`since`) and why (`err`), with no restart needed. The agent's log file behaves the same way.
 
 When the server exits because of an error, such as an occupied listen address, it records the reason in the same log with `msg="server exited"`. In nohup mode, stderr points to `/dev/null`, so this log is the only place to see the reason.
 

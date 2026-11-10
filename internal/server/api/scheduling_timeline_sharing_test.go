@@ -78,6 +78,7 @@ func TestSharingStatsCountADeletedDeploymentsYields(t *testing.T) {
 
 	views := map[string]string{"fleet": "?sharing=1&hours=6", "node": "?node=" + r.node.UUID + "&hours=6"}
 	rows := map[string][2]map[string]any{}
+	asked := time.Now()
 	for view, query := range views {
 		status, body := r.get(query)
 		if status != http.StatusOK {
@@ -109,12 +110,18 @@ func TestSharingStatsCountADeletedDeploymentsYields(t *testing.T) {
 		rows[view] = [2]map[string]any{shared, deleted}
 	}
 	// Every instance is on the one node, so the two views agree on every
-	// switch count and on the time present.
+	// switch count and on the time present. Each request reads the clock for
+	// itself, in whole seconds, so what is still present when asked differs
+	// by the seconds that went by between the two requests, at most.
+	slack := float64(int(time.Since(asked)/time.Second) + 1)
 	for i, name := range []string{"shared", "deleted"} {
-		for _, key := range []string{"switches", "yielded", "yielded_to", "wakes", "present_seconds"} {
+		for _, key := range []string{"switches", "yielded", "yielded_to", "wakes"} {
 			if f, n := rows["fleet"][i][key], rows["node"][i][key]; f != n {
 				t.Errorf("%s %s: fleet %v, node %v", name, key, f, n)
 			}
+		}
+		if f, n := rows["fleet"][i]["present_seconds"].(float64), rows["node"][i]["present_seconds"].(float64); f > n+slack || n > f+slack {
+			t.Errorf("%s present_seconds: fleet %v, node %v, more than %v s apart", name, f, n, slack)
 		}
 	}
 	// An existing deployment's row says nothing about deletion.

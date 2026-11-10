@@ -1,4 +1,4 @@
-import { cloneElement, useId, type ReactElement } from "react";
+import { cloneElement, useId, type ReactElement, type CSSProperties } from "react";
 import { Button, Dropdown, Popconfirm, Space, Tooltip } from "antd";
 import { DeleteOutlined, DownloadOutlined, DownOutlined, EditOutlined } from "@ant-design/icons";
 import { useTranslation } from "react-i18next";
@@ -12,7 +12,7 @@ import { itemReadonlyReason, startDownload } from "./storageBrowse";
  * shows on hover and on keyboard focus, and the control's accessible
  * description carries the same text for a screen reader.
  */
-export function WithReason({ reason, children }: { reason?: string | null; children: ReactElement }) {
+export function WithReason({ reason, children }: { reason?: string | null; children: ReactElement<{ disabled?: boolean; "aria-describedby"?: string; style?: CSSProperties }> }) {
   const id = useId();
   if (!reason) return children;
   return (

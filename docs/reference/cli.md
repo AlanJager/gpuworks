@@ -47,7 +47,7 @@ gpuworks restarted (systemd)
 | | [`doctor`](#gpuworks-agent-doctor) | 打印节点环境自检 | 排查节点接入、GPU、运行时问题 |
 | | [`grant-device-access`](#gpuworks-agent-grant-device-access) | 让非 root 运行时用户获得加速卡设备节点的访问权 | 安装脚本自动调用；无 root 的 runveil 节点手工补权限 |
 | | [`bench`](#gpuworks-agent-bench) | 对 OpenAI 兼容端点做压测 | 性能评估；评测页的命令行等价入口 |
-| | [`runveil`](#gpuworks-agent-runveil) | 查看/进入 runveil 容器 | 在 runveil 节点上排障 |
+| | [`runveil`](#gpuworks-agent-runveil) | 查看/进入 runveil 容器，导入镜像归档 | 在 runveil 节点上排障；把拷到节点上的镜像归档导入 |
 | | [`install-service`](#gpuworks-agent-install-service) | 把本二进制注册为 macOS 的 launchd 任务 | 安装脚本在 Mac 上调用 |
 | | [`uninstall`](#gpuworks-agent-uninstall) | 停止并移除 agent 服务 | 节点下线 |
 | | `version` | 打印版本 | 任何人 |
@@ -143,7 +143,7 @@ gpuworks restarted (systemd)
 | `--data DIR` / `--logs DIR` | 安装时记录的目录 | 覆盖数据/日志目录 |
 | `--channel NAME` | `server.yaml` 的 `update_channel`，没有时为构建时的渠道（master 构建 `nightly`，`v*` tag 构建 `release`） | 读哪个渠道的发布索引：`release`（正式发布版）或 `nightly`（滚动预览版）；只用于发布通道 |
 | `--source URL` | 内置的三个公共源 | 发布通道格式的源（`<URL>/<channel>/index.json`），可重复，替换内置源；用于客户自建镜像站 |
-| `--base-url URL` | 空 | 改读发布站（`<URL>/data/release.json` 与 `<URL>/downloads/`），如内网的 `https://gpuworks.zstack.ai` |
+| `--base-url URL` | 空 | 改读发布站（`<URL>/data/release.json` 与 `<URL>/downloads/`），例如自建在内网的发布站 |
 | `--archive FILE` | 空 | 本地发布包 `gpuworks-<release_id>-<os>-<arch>.tar.gz`，不发任何网络请求 |
 | `--version ID` | 空 | 期望的 release id；与渠道或站点当前版本（或发布包里的版本）不一致时报错，不会静默升到别的版本 |
 | `--keep N` | `3` | 保留的升级前备份组数 |
@@ -190,10 +190,17 @@ gpuworks uninstall --dir /opt/gpuworks/server --purge --dry-run --json
 |---|---|---|
 | `--dir DIR` | 同 `restart` | 目标安装目录；配置中的外置数据、日志目录也会识别 |
 | `--purge` | `false` | 删除本安装的配置、数据（含数据库及 `master.key`）、备份和日志；无法恢复 |
+| `--keep-resources` | `false` | 明确选择仅卸载组件，保留实例、节点和云资源；只允许越过资源检查，不越过目录、进程和服务归属校验 |
 | `--yes` / `-y` | `false` | 跳过交互选择和最终确认，按显式参数执行 |
 | `--dry-run` | `false` | 只打印清理清单，不停服务、不修改文件，无需确认 |
 | `--json` | `false` | 标准输出只返回结构化报告；除预览外必须同时传 `--yes` |
 | `--quiet` | `false` | 隐藏普通说明；仍会询问和确认，不代替 `--yes` |
+
+卸载前先用 `--dry-run --json` 查看 `checklist`。每项包含稳定的 `id`、`status`、说明、证据细节和处理建议；状态为 `pass`、`warn`、`blocked` 或 `unknown`。预览完成不表示所有检查通过。
+
+清单区分本机服务及自启、监听端口、安装/数据/备份/日志目录与保留项，以及数据库记录中的部署、实例、节点和云资源。数据库记录是持久化状态，不能证明远端进程已停止、GPU 已释放或租机已停止计费。默认遇到活动负载或关键资源信息无法确认时，在停服和删除前拒绝卸载；`--yes` 只跳过交互，不跳过资源检查。确认后、实际停服前还会重新检查资源。
+
+需保留业务、只移除控制面时，明确加 `--keep-resources`。它不会停止推理实例、删除云资源或替代节点卸载。若同时选择 `--purge`，管理记录和凭据也会随数据清理，应先保存后续独立管理这些资源所需的信息。资源检查通过也不替代原有的目录和服务归属保护。
 
 - 终端交互默认保留数据；未显式传 `--purge` 时会先询问是否彻底清理，再展示清单并确认。管道、脚本和 CI 必须传 `--yes` 或 `--dry-run`，否则在修改前失败。
 - 停止并确认 server 退出，取消自启，清理所属 systemd unit / launchd plist / nohup PID 和程序文件。所属 expose 公网入口也会关闭并清理其 unit；其他安装的服务保留，无法确认归属时拒绝清理。
@@ -252,7 +259,7 @@ gpuworks uninstall --dir /opt/gpuworks/server --purge --dry-run --json
 
 | flag | 默认值 | 说明 |
 |---|---|---|
-| `--password PASSWORD` | 无（必填） | 新密码，空值被拒绝 |
+| `--password PASSWORD` | 无：在终端里提示输入两次（不回显） | 新密码；stdin 不是终端时必填 |
 | `--user USER` | `admin` | 用户名 |
 | `--data DIR` | 见下 | 数据目录 |
 | `--db PATH` | `<data>/gpuworks.db` | SQLite 路径 |
@@ -264,7 +271,7 @@ gpuworks uninstall --dir /opt/gpuworks/server --purge --dry-run --json
 
 ## gpuworks support-bundle
 
-不经过 server 收集诊断信息，用于 server 起不来或控制台打不开时；内容与控制台的[收集诊断信息](../how-to/troubleshooting.md#无法登录现场时调试采集与收集诊断信息)相同，但节点那部分收不到（manifest 里标为离线）。完成后打印压缩包路径。
+不经过 server 收集诊断信息，用于 server 起不来或控制台打不开时；内容与控制台的[收集诊断信息](../how-to/troubleshooting.md#无法登录现场时调试采集与收集诊断信息)相同，但节点那部分收不到（manifest 里标为离线）。完成后打印压缩包路径。压缩包在 `--out` 所在的目录组装，不写数据目录，所以 server 所在磁盘写满时，把 `--out` 指到另一块盘照样能收集。
 
 | flag | 默认值 | 说明 |
 |---|---|---|
@@ -411,6 +418,7 @@ gpuworks-agent doctor --connectivity --state /opt/gpuworks --json
 | `--max-in-flight N` | `0` | 开环在途请求上限，0 为不限 |
 | `--point-duration S` | `60` | 开环每个点位的到达时长（秒）；请求数 = 到达率 × 时长，至少 20 |
 | `--warmup-requests N` | `1` | 第一个点位前发送并丢弃的预热请求数，0 为不预热 |
+| `--request-timeout S` | `600` | 每个请求（含预热）的超时秒数，范围 10–7200 |
 | `--ignore-eos BOOL` | `true` | random / agentic 请求带 `ignore_eos`，生成到目标输出长度 |
 | `--dataset KIND` | `random` | `random` / `multiturn` / `agentic` |
 | `--preset NAME` | `agentic-80k-v1` | agentic 输入预设：`agentic-{10k,20k,40k,80k,128k,256k,512k,1m}-v1` |
@@ -426,7 +434,7 @@ gpuworks-agent doctor --connectivity --state /opt/gpuworks --json
 
 ## gpuworks-agent runveil
 
-在 runveil 节点上排障：直接读 agent 的 state 目录，不经过 agent，也不需要 Python。
+在 runveil 节点上排障和导入镜像：直接读写 agent 的 state 目录，不经过 agent，也不需要 Python。
 
 用法：`gpuworks-agent runveil [--state DIR] <命令>`。`--state` 必须写在命令之前，默认同 `run`（含 `GPUWORKS_STATE_DIR`）。
 
@@ -434,11 +442,13 @@ gpuworks-agent doctor --connectivity --state /opt/gpuworks --json
 |---|---|
 | `ps [-a]` | 列容器（NAME/IMAGE/STATUS/PID/CREATED）；默认只列运行中的，`-a`（`--all`）列全部 |
 | `images` | 列镜像（REPOSITORY/TAG/IMAGE ID/SIZE） |
+| `load -i FILE REF` | 把 `docker save` 或 OCI 归档（`.tar` 或 `.tar.gz`）以 `REF` 登记为镜像；`-i` 也可写作 `--input`，可放在 `REF` 前后 |
 | `exec NAME [CMD [ARG...]]` | 在容器里执行命令，带上工作负载的环境变量、挂载与 GPU；默认 `/bin/sh -l`，退出码透传 |
 | `logs [-f] [-n N] NAME` | 打印容器输出；`-n`（`--tail`）取末尾行数，默认全部；`-f`（`--follow`）跟随至容器停止 |
 
 - `NAME` 可以是容器名的唯一前缀；匹配多个时列出候选并失败。
 - `ps`/`images`/`logs` 任意能读 state 目录的用户都能执行，结果与 root 相同；`exec` 必须以 root 或 agent 的运行用户（agent 记录该容器 spec 文件的属主）执行。
+- `load` 的 `REF` 必填，填镜像页显示的完整镜像引用（如 `gpuworks/gpuworks-runner:cuda13.0-sglang0.5.22-r1`）：平台按这个引用判断节点上有没有镜像，归档里自带的 tag 可以不同，也不会另外登记。不接受 digest 引用。必须以 root 或 state 目录里 `udocker/` 的属主执行，新文件交给该属主，运行用户能读取和替换。不需要停 agent，agent 下一次上报镜像状态（约一分钟）后镜像页显示「已存在」。失败时不登记镜像，已写入的层随之删除。
 - `images` 的 SIZE 是节点实际存储的压缩大小；旧 udocker CLI 登记的镜像没有 manifest，ID 与 SIZE 显示为 `-`。
 - state 目录里没有 runveil 状态时报错并提示传 `--state`（agent 的 state 目录若由单元里的 `GPUWORKS_STATE_DIR` 指定，这里需要同样设置）。
 - 退出码：`0` 成功；`1` 运行错误；`2` 用法错误。
@@ -461,6 +471,17 @@ gpuworks-agent doctor --connectivity --state /opt/gpuworks --json
 | flag | 默认值 | 说明 |
 |---|---|---|
 | `--state DIR` | Linux 优先取 systemd unit 的 state，无 unit 时同 `run`；macOS 取 launchd 任务里的 state 目录 | agent state 目录 |
+
+先以 `--dry-run`（或 `--dry-run --json`）查看清单；确认安装与 state 归属、服务/进程、自启、运行时负载候选、GPU 观测和保留目录。共享运行时中仅名称匹配的容器不能证明属于该 agent；缺失的运行时证据标为未知。GPU 查询不支持或失败时不会报告空闲，也不能仅凭进程组长退出证明所有 worker 已退出。
+
+| 参数 | 默认值 | 说明 |
+|---|---|---|
+| `--dry-run` | `false` | 仅预览检查与清理范围，不停止服务或删除文件 |
+| `--json` | `false` | 输出结构化清单和结果；执行卸载时需 `--yes` |
+| `--yes` / `-y` | `false` | 跳过交互确认；不跳过资源和归属检查 |
+| `--keep-resources` | `false` | 明确保留负载，只移除 agent；不绕过服务/进程归属和清理安全检查 |
+
+默认先要求处理活动负载和关键未知项，再确认并卸载；关键资源在确认后重新检查。GPU 观测未知会明确展示，不能据此承诺 GPU 已释放。二进制、模型和日志仍保留，卸载成功只表示所选组件移除完成。
 
 - Linux 上 unit 的 state 就是这个目录时先 `disable --now gpuworks-agent.service`，再停止相同二进制及显式 `--state` 目录的 `run` 进程（包括 nohup），等待进程退出；随后删除 `/etc/systemd/system/gpuworks-agent.service` 并 `daemon-reload`，最后删除 `<state>/identity.json`、PID 文件和 `<state>/gpuworks-agent.conf`（里面有 token）。unit 属于另一个 state 目录（同一主机上的另一个 agent）时不动它，只停这个目录的进程；unit 里读不出 state 时拒绝执行。
 - macOS 上移除 LaunchDaemon 与（执行者的，`sudo` 下是发起 sudo 的用户的）LaunchAgent，并删除各自 state 目录里的 `identity.json` 和 `gpuworks-agent.conf`；存在 LaunchDaemon 而没有 root 权限时报错并以 1 退出。
@@ -511,7 +532,7 @@ server 在 `/install.sh` 提供的引导脚本，添加节点时界面生成 `cu
 | `adopt -dir DIR -release-id ID` | 核对从某个源拷回的 `releases/<id>/`：包与 `SHA256SUMS` 逐个一致、都属于 `ID`，打印包内 `INSTALL.txt` 记录的构建时间；不一致时非零退出 |
 | `verify -channel C -source URL … [-release-id ID] [-index FILE] [-full]` | 逐个源读取并验签索引，核对 release id，并对每个文件发 HEAD 核对大小；`-full` 改为下载并核对 sha256；`-index` 改用本地尚未发布的签名索引核对各源上的文件（不读源自己的索引），用于切换通道前。任一源失败即非零退出 |
 | `newer -channel C -built-at TIME [-source URL …]` | 有源在服务构建时间晚于 `TIME` 的同渠道版本时打印它并以 0 退出，没有时以 1 退出，其他错误以 2 退出；发布脚本据此跳过乱序完成的旧流水线 |
-| `prune -keep N [-protect ID …] < listing.json` | 读 `rclone lsjson -R --files-only <remote>/releases` 的输出，打印最新 N 个与受保护版本之外、可以删除的版本目录 |
+| `prune [-keep N] [-protect ID …] < listing.json` | 读 `rclone lsjson -R --files-only <remote>/releases` 的输出，打印可以删除的版本目录：版本 tag（`vYY.M.PATCH`）的目录永不删除，其余（nightly）目录保留最新 N 个（默认 30）与受保护的版本 |
 
 ### gpuworks-image-manifest
 

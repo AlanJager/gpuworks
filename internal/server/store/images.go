@@ -49,14 +49,6 @@ func migrateImageRegistryMirrors(raw string) string {
 	return string(b)
 }
 
-func imageJSON(v any) string {
-	if v == nil {
-		return ""
-	}
-	b, _ := json.Marshal(v)
-	return string(b)
-}
-
 // emptyJSONList reports whether a catalog payload omitted a candidate list.
 // Community/custom imports use omission to mean "keep the operator's current
 // candidates"; an explicit PATCH is the supported way to clear them.

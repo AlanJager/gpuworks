@@ -105,6 +105,9 @@ const (
 	// CapBenchEvidence supports versioned request/session facts and the
 	// min_session_completion constraint. Older engines ignore that floor.
 	CapBenchEvidence = "bench.evidence"
+	// CapBenchRequestTimeout applies the search document's request_timeout_s.
+	// Older engines bound every request by a fixed five minutes.
+	CapBenchRequestTimeout = "bench.request_timeout"
 	// CapUpgradePush: the agent accepts StreamAgentUpgrade. Older agents only
 	// upgrade by pulling /dl/ after the agent.upgrade RPC.
 	CapUpgradePush = "upgrade.push"

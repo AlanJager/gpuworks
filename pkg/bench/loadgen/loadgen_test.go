@@ -98,44 +98,53 @@ func TestParseSSEMeasuresCompletionAtLastContent(t *testing.T) {
 	}
 }
 
+// SGLang and older vLLM stream reasoning_content, vLLM 0.34 streams reasoning.
 func TestParseSSECountsReasoningOnlyOutput(t *testing.T) {
-	started := time.Unix(100, 0)
-	clockIndex := 0
-	eventTimes := []time.Time{started.Add(5 * time.Millisecond), started.Add(25 * time.Millisecond), started.Add(30 * time.Millisecond)}
-	now := func() time.Time {
-		if clockIndex >= len(eventTimes) {
-			t.Fatalf("SSE parser requested unexpected clock sample %d", clockIndex)
-		}
-		value := eventTimes[clockIndex]
-		clockIndex++
-		return value
-	}
-	stream := strings.NewReader(
-		"data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"think\"}}]}\n\n" +
-			"data: {\"choices\":[],\"usage\":{\"prompt_tokens\":4,\"completion_tokens\":8}}\n\n" +
-			"data: [DONE]\n\n",
-	)
-	res, err := parseSSEWithClock(stream, started, now)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if res.Text != "" {
-		t.Fatalf("reasoning must not become visible follow-up text: %q", res.Text)
-	}
-	if res.Metrics.StartedAt.IsZero() || res.Metrics.TTFT != 5*time.Millisecond || res.Metrics.Latency != 5*time.Millisecond || res.Metrics.OutputTokens != 8 || res.Metrics.Chunks != 1 {
-		t.Fatalf("reasoning-only metrics = %+v", res.Metrics)
+	for _, field := range []string{"reasoning_content", "reasoning"} {
+		t.Run(field, func(t *testing.T) {
+			started := time.Unix(100, 0)
+			clockIndex := 0
+			eventTimes := []time.Time{started.Add(5 * time.Millisecond), started.Add(25 * time.Millisecond), started.Add(30 * time.Millisecond)}
+			now := func() time.Time {
+				if clockIndex >= len(eventTimes) {
+					t.Fatalf("SSE parser requested unexpected clock sample %d", clockIndex)
+				}
+				value := eventTimes[clockIndex]
+				clockIndex++
+				return value
+			}
+			stream := strings.NewReader(
+				"data: {\"choices\":[{\"delta\":{\"" + field + "\":\"think\"}}]}\n\n" +
+					"data: {\"choices\":[],\"usage\":{\"prompt_tokens\":4,\"completion_tokens\":8}}\n\n" +
+					"data: [DONE]\n\n",
+			)
+			res, err := parseSSEWithClock(stream, started, now)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if res.Text != "" {
+				t.Fatalf("reasoning must not become visible follow-up text: %q", res.Text)
+			}
+			if res.Metrics.StartedAt.IsZero() || res.Metrics.TTFT != 5*time.Millisecond || res.Metrics.Latency != 5*time.Millisecond || res.Metrics.OutputTokens != 8 || res.Metrics.Chunks != 1 {
+				t.Fatalf("reasoning-only metrics = %+v", res.Metrics)
+			}
+		})
 	}
 }
 
 func TestParseSSEUsesReasoningForApproximateOutputTokens(t *testing.T) {
-	started := time.Unix(100, 0)
-	stream := strings.NewReader("data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"abcdefgh\"}}]}\n\ndata: [DONE]\n\n")
-	res, err := parseSSEWithClock(stream, started, func() time.Time { return started.Add(time.Millisecond) })
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !res.Metrics.ApproximateTokens || res.Metrics.OutputTokens == 0 {
-		t.Fatalf("reasoning-only fallback metrics = %+v", res.Metrics)
+	for _, field := range []string{"reasoning_content", "reasoning"} {
+		t.Run(field, func(t *testing.T) {
+			started := time.Unix(100, 0)
+			stream := strings.NewReader("data: {\"choices\":[{\"delta\":{\"" + field + "\":\"abcdefgh\"}}]}\n\ndata: [DONE]\n\n")
+			res, err := parseSSEWithClock(stream, started, func() time.Time { return started.Add(time.Millisecond) })
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !res.Metrics.ApproximateTokens || res.Metrics.OutputTokens == 0 {
+				t.Fatalf("reasoning-only fallback metrics = %+v", res.Metrics)
+			}
+		})
 	}
 }
 

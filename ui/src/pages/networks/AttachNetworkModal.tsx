@@ -113,7 +113,7 @@ export default function AttachNetworkModal({
       confirmLoading={saving}
       okText={t("actions.save")}
       cancelText={t("actions.cancel")}
-      destroyOnClose
+      destroyOnHidden
       width={620}
     >
       <Form form={form} layout="vertical">

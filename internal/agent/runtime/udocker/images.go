@@ -435,7 +435,7 @@ func (d *Driver) pinnedImageVerified(image string) (bool, error) {
 	}
 	var marker pinnedImageVerification
 	if err := json.Unmarshal(data, &marker); err != nil {
-		return false, nil
+		return false, nil //nolint:nilerr // A corrupt verification marker requires verification again, not a failed pull.
 	}
 	cliImage, pinned := udockerCLIImage(image)
 	if !pinned || marker.Version != 1 || marker.Image != strings.TrimSpace(image) || marker.CLIImage != cliImage {

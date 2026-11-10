@@ -38,9 +38,22 @@ BIN       := bin
 TEST_LOG_DIR ?= .testlogs
 PLATFORMS := linux/amd64 linux/arm64 darwin/arm64
 
+# Build the lint tool with the same Go version that loads this module. A
+# globally installed binary can be too old to analyze the repo's Go syntax.
+GOLANGCI_LINT_VERSION := v1.64.8
+LINT_GO_VERSION := $(shell $(GO) env GOVERSION)
+LINT_BIN := $(CURDIR)/$(BIN)/tools/golangci-lint-$(GOLANGCI_LINT_VERSION)-$(LINT_GO_VERSION)/golangci-lint
+
 .PHONY: all build test-host-env-adapters server server-linux-amd64 server-linux-amd64-prebuilt-ui server-linux-arm64 server-linux-arm64-prebuilt-ui server-darwin-amd64-prebuilt-ui server-darwin-arm64-prebuilt-ui agent ui test test-unit test-ui test-integration test-fleet-perf-processes test-fleet-log-scale-processes test-fleet-benchmark-processes test-coverage-report test-l2 test-l3 test-l4 test-l4-runpod-server-dial-node-onboarding test-l4-runpod-huggingface-public-download test-l4-runpod-vllm-sglang-lifecycle test-l4-autodl-node-onboarding test-l4-vast-node-onboarding test-l4-vast-server-dial-node-onboarding test-l4-gitee-ascend-partition-capability test-l4-gitee-ascend-deploy-chat test-l4-ascend-pool-partition-inference test-l4-ascend-primary test-l4-ascend-preflight test-l4-ascend-nerdctl-devinject test-l4-compshare-modelscope-public-download test-l4-compshare-offline-contracts test-l4-compshare-single-vm-tp2-dgpu test-l4-compshare-provisioning-matrix test-l4-compshare-server-dial-node-onboarding-container test-l4-compshare-two-vm-udocker-distributed test-l4-compshare-two-vm-docker-distributed test-l4-compshare-one-vm-two-logical-nodes test-l4-compshare-pd-deploy-chat-two-vm-docker prepare-compshare-golden-image test-l4-runpod test-l4-compshare test-l4-cleanup-leaked vet check-assets check-libvgpu check-perftest check-time-policy check-architecture check-tagged-build check-api-conventions check-ci-yaml check-artifacts githooks check-doc-links check-translations i18n-check i18n-translate i18n-review runtime-assets runtime-assets-probe runtime-assets-verify image-manifest image-manifest-verify fake-engine fake-engine-image fake-model clean demo run-server tidy cross release-packages dist-publish test-l4-runpod-node-onboarding test-l4-aliyun test-l4-aliyun-provisioning-matrix test-l4-aliyun-modelscope-public-download test-l4-aliyun-single-vm-tp2-dgpu test-l4-aliyun-one-vm-two-logical-nodes test-l4-aliyun-two-vm-docker-distributed test-l4-aliyun-two-vm-udocker-distributed test-l4-aliyun-pd-deploy-chat-two-vm-docker prepare-aliyun-golden-image
 
 all: build
+
+.PHONY: docs-pdf
+## docs-pdf: build the bilingual site and print validated, versioned user handbooks
+docs-pdf: check-doc-links check-translations
+	bash docs-site/build.sh
+	python3 docs-site/pdf_browser_checks.py
+	python3 docs-site/export_pdf.py --version "$(VERSION)" --commit "$(COMMIT)"
 
 ## build: full release build — cross-compile agents (embedded) + UI + server + agent
 build: check-libvgpu ui cross-agents server agent
@@ -118,12 +131,13 @@ cross-agents: check-libvgpu
 ## cross: alias kept for the demo (the plain agents are in $(BIN)/dl)
 cross: cross-agents
 
-## ui: install deps (if needed) and build the frontend into the embed dir
+## ui: install or refresh deps when package-lock.json changed (ui/ensure-deps.mjs), then build the frontend into the embed dir
 ui: i18n-check
 	@if [ -f secrets/i18n-llm.env ]; then echo "  i18n LLM config detected; run 'make i18n-translate' to fill new missing keys"; fi
-	@if [ ! -d ui/node_modules ]; then cd ui && npm install; fi
+	@cd ui && node ensure-deps.mjs
 	cd ui && npm run lint:i18n
 	cd ui && npm run build
+	./scripts/check_ui_bundle_size.sh
 
 i18n-check:
 	node scripts/i18n-check.mjs
@@ -160,6 +174,7 @@ test-host-env-adapters:
 .PHONY: test-inference-template-assets
 test-inference-template-assets:
 	python3 -B -m unittest discover -s build/inference-templates/glm53-910c -p 'test_*.py'
+	python3 -B -m unittest discover -s test/runtime-wrapper-assets -p '*_test.py'
 
 .PHONY: test-strata-queue-assets
 test-strata-queue-assets:
@@ -424,23 +439,33 @@ fake-model:
 ## limit stays well inside the job's own 45m so a real hang still fails here.
 L2_TIMEOUT ?= 30m
 
+## L2_SHARD=<index>/<total> runs one round-robin share of the suite's
+## top-level tests (scripts/go_test_shard.sh); CI splits the suite this way.
+L2_SHARD ?=
+
 test-l2:
 	@set -eu; \
 	mkdir -p $(TEST_LOG_DIR); \
+	run_flag=""; \
+	if [ -n "$(L2_SHARD)" ]; then \
+		pattern="$$(GO="$(GO)" CGO_ENABLED=0 ./scripts/go_test_shard.sh "$(L2_SHARD)" -tags=multiproc ./test/l2/...)"; \
+		run_flag="-run=$$pattern"; \
+		echo "l2 shard $(L2_SHARD): $$pattern"; \
+	fi; \
 	log="$(TEST_LOG_DIR)/l2.log"; status_file="$$(mktemp)"; \
 	trap 'rm -f "$$status_file"' EXIT; \
 	echo 70 >"$$status_file"; \
 	if [ -n "$(COVERPROFILE)" ]; then \
 		cover_dir="$$(mktemp -d)"; \
 		trap 'rm -rf "$$cover_dir"; rm -f "$$status_file"' EXIT; \
-		{ if GOCOVERDIR="$$cover_dir" CGO_ENABLED=0 $(GO) test $(GO_TEST_FLAGS) -timeout=$(L2_TIMEOUT) -tags=multiproc ./test/l2/...; then echo 0 >"$$status_file"; else echo $$? >"$$status_file"; fi; } 2>&1 | tee "$$log"; \
+		{ if GOCOVERDIR="$$cover_dir" CGO_ENABLED=0 $(GO) test $(GO_TEST_FLAGS) $$run_flag -timeout=$(L2_TIMEOUT) -tags=multiproc ./test/l2/...; then echo 0 >"$$status_file"; else echo $$? >"$$status_file"; fi; } 2>&1 | tee "$$log"; \
 		status="$$(cat "$$status_file")"; \
 		if [ "$$status" != 0 ]; then echo "l2 failed (status $$status); full output: $$log"; exit "$$status"; fi; \
 		$(GO) tool covdata textfmt -i="$$cover_dir" -o="$(COVERPROFILE)"; \
 		test -s "$(COVERPROFILE)"; \
 		$(GO) tool cover -func="$(COVERPROFILE)" | tail -1; \
 	else \
-		{ if CGO_ENABLED=0 $(GO) test $(GO_TEST_FLAGS) -timeout=$(L2_TIMEOUT) -tags=multiproc ./test/l2/...; then echo 0 >"$$status_file"; else echo $$? >"$$status_file"; fi; } 2>&1 | tee "$$log"; \
+		{ if CGO_ENABLED=0 $(GO) test $(GO_TEST_FLAGS) $$run_flag -timeout=$(L2_TIMEOUT) -tags=multiproc ./test/l2/...; then echo 0 >"$$status_file"; else echo $$? >"$$status_file"; fi; } 2>&1 | tee "$$log"; \
 		status="$$(cat "$$status_file")"; \
 		if [ "$$status" != 0 ]; then echo "l2 failed (status $$status); full output: $$log"; exit "$$status"; fi; \
 	fi
@@ -647,6 +672,16 @@ check-perftest:
 ## vet: static analysis
 vet:
 	CGO_ENABLED=0 $(GO) vet ./...
+
+.PHONY: lint
+## lint: run the complete pinned Go lint rule set, including tests.
+lint: $(LINT_BIN)
+	@test -f internal/server/webui/dist/index.html || $(MAKE) ui
+	CGO_ENABLED=0 $(LINT_BIN) run --concurrency=4 --timeout=12m --max-issues-per-linter=0 --max-same-issues=0
+
+$(LINT_BIN):
+	mkdir -p $(dir $(LINT_BIN))
+	GOMAXPROCS=4 GOTOOLCHAIN=$(LINT_GO_VERSION) GOBIN=$(dir $(LINT_BIN)) $(GO) install -p=4 github.com/golangci/golangci-lint/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
 
 ## tidy: sync go.mod/go.sum
 tidy:

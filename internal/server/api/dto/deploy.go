@@ -12,6 +12,9 @@ type Model struct {
 	ID       uint   `json:"id"`
 	Source   string `json:"source"`
 	SourceID string `json:"source_id"`
+	// SourceIDEditable is set when PATCH /models/{id} may change SourceID: a
+	// local or URL model, whose source id is a label chosen at registration.
+	SourceIDEditable bool `json:"source_id_editable,omitempty"`
 	// SourceURL is the HTTP directory a Source="url" model is served from. It
 	// is absent for every other source, which has no directory of its own.
 	SourceURL         string                   `json:"source_url,omitempty"`

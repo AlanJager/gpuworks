@@ -69,7 +69,7 @@ export default function CardTestResult({ run }: { run: NetworkTestRun }) {
         {run.pairs.length > 1 && <ShapeLegend matrix={matrix} />}
       </Card>
       {open && (
-        <Modal open title={`${open.source_name} ↔ ${open.target_name}`} onCancel={() => setOpen(null)} footer={null} width={860} destroyOnClose>
+        <Modal open title={`${open.source_name} ↔ ${open.target_name}`} onCancel={() => setOpen(null)} footer={null} width={860} destroyOnHidden>
           <CardPairView run={run} pair={open} />
           <Space style={{ marginTop: 12, width: "100%", justifyContent: "flex-end" }}><Button onClick={() => setOpen(null)}>{t("actions.close")}</Button></Space>
         </Modal>

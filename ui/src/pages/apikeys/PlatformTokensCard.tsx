@@ -137,7 +137,7 @@ function CreateModal({ open, onClose, onCreated }: { open: boolean; onClose: () 
   };
 
   return (
-    <Modal title={t("platform.createTitle")} open={open} onCancel={onClose} onOk={submit} confirmLoading={submitting} okText={t("actions.create")} cancelText={t("actions.cancel")} destroyOnClose>
+    <Modal title={t("platform.createTitle")} open={open} onCancel={onClose} onOk={submit} confirmLoading={submitting} okText={t("actions.create")} cancelText={t("actions.cancel")} destroyOnHidden>
       <Form form={form} layout="vertical" initialValues={{ scope: "read", expires_in_days: 0 }}>
         <Form.Item label={t("table.name")} name="name" rules={[
           { required: true, whitespace: true, message: t("create.nameRequired") },

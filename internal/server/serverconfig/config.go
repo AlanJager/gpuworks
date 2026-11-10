@@ -20,6 +20,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"gpuworks.ai/gpuworks/internal/server/distribution"
+	"gpuworks.ai/gpuworks/internal/storagerules"
 )
 
 // FileName is the configuration file kept in the install directory. It is not
@@ -44,10 +45,18 @@ type File struct {
 	// remain HTTP and are reachable only from this host.
 	TLSCertFile string `yaml:"tls_cert_file,omitempty"`
 	TLSKeyFile  string `yaml:"tls_key_file,omitempty"`
-	// Exceptions for private HTTP model/registry/AI/telemetry destinations.
+	// OutboundRestrictPrivateHosts requires explicit exceptions for ordinary private
+	// HTTP destinations; false keeps them accessible. Special targets remain
+	// forbidden by the outbound transport in either mode.
+	OutboundRestrictPrivateHosts bool `yaml:"outbound_restrict_private_hosts,omitempty"`
+	// Exceptions when ordinary private HTTP destinations are restricted.
 	OutboundAllowPrivateHosts []string `yaml:"outbound_allow_private_hosts,omitempty"`
-	// StorageProbeRoots limits new storage paths and probes on managed nodes.
+	// StorageProbeRoots are the roots the startup check compares stored storage
+	// paths against. They do not limit new storage paths or probes.
 	StorageProbeRoots []string `yaml:"storage_probe_roots,omitempty"`
+	// StorageDeniedPaths replaces the built-in list of directories no storage
+	// may use. Absent keeps the built-in list; an empty list denies none.
+	StorageDeniedPaths *[]string `yaml:"storage_denied_paths,omitempty"`
 	// MetricsRetention bounds raw metric and log samples (a Go duration).
 	MetricsRetention string `yaml:"metrics_retention,omitempty"`
 	// Management session deadlines (Go durations).
@@ -95,6 +104,12 @@ func Load(path string) (File, error) {
 	if err != nil {
 		return File{}, err
 	}
+	return decodeFile(path, raw)
+}
+
+// decodeFile shares strict parsing and validation with readers that already
+// hold a file descriptor and must keep its identity tied to the contents.
+func decodeFile(path string, raw []byte) (File, error) {
 	var f File
 	dec := yaml.NewDecoder(bytes.NewReader(raw))
 	dec.KnownFields(true)
@@ -113,6 +128,13 @@ func Load(path string) (File, error) {
 	for _, root := range f.StorageProbeRoots {
 		if !filepath.IsAbs(root) || filepath.Clean(root) == string(filepath.Separator) {
 			return File{}, fmt.Errorf("%s: storage_probe_roots must contain absolute directories below the filesystem root", path)
+		}
+	}
+	if f.StorageDeniedPaths != nil {
+		for _, p := range *f.StorageDeniedPaths {
+			if err := storagerules.CheckPathForm(p); err != nil {
+				return File{}, fmt.Errorf("%s: storage_denied_paths entry %q: %w", path, p, err)
+			}
 		}
 	}
 	return f, nil
@@ -214,6 +236,8 @@ func SetListen(path string, l Listen) error {
 // writes the file back atomically with its mode, keeping comments and the
 // keys change does not touch.
 func editDocument(path string, change func(root *yaml.Node) error) error {
+	configDocumentMu.Lock()
+	defer configDocumentMu.Unlock()
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return err
@@ -261,7 +285,7 @@ func setKey(m *yaml.Node, key string, value *yaml.Node) {
 	for i := 0; i+1 < len(m.Content); i += 2 {
 		if m.Content[i].Value == key {
 			// Keep comments attached to the old value's node.
-			value.HeadComment, value.LineComment = m.Content[i+1].HeadComment, m.Content[i+1].LineComment
+			value.HeadComment, value.LineComment, value.FootComment = m.Content[i+1].HeadComment, m.Content[i+1].LineComment, m.Content[i+1].FootComment
 			m.Content[i+1] = value
 			return
 		}

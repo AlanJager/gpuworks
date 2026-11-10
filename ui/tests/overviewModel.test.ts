@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { arrange, buildModel, compareNames, countStates, freeMiB, NO_FILTERS, type OverviewModel } from "../src/pages/scheduling/overviewModel.ts";
 import { awakeFill, fillOf, mix, stateFill } from "../src/pages/scheduling/cellColor.ts";
 import { colors } from "../src/theme/tokens.ts";
+import { cpuClock } from "./helpers/cpuClock.ts";
 import { bigFleet, card, overviewOf, smallFleet, STATES } from "./helpers/overviewFixtures.ts";
 
 // The overview's decoding, filtering, grouping and sorting, with no DOM.
@@ -125,16 +126,17 @@ test("the states of an arrangement are counted over what is shown", () => {
 
 test("a large fleet decodes and arranges quickly", () => {
   const overview = bigFleet(1000, 8);
-  const started = performance.now();
+  const took = cpuClock();
   const decoded = buildModel(overview);
   const arranged = arrange(decoded.model, { ...NO_FILTERS, search: "beta" }, "label:zone", "contention");
-  const took = performance.now() - started;
+  const decodeCPU = took();
   assert.equal(arranged.cards, 8000);
-  assert.ok(took < 1500, `decoding and arranging 8000 cards took ${Math.round(took)} ms`);
-  const again = performance.now();
+  assert.ok(decodeCPU < 1500, `decoding and arranging 8000 cards took ${Math.round(decodeCPU)} ms of CPU`);
+  const again = cpuClock();
   const next = buildModel(bigFleet(1000, 8), decoded.seen);
   assert.ok(next.model.nodes.every((n, i) => n === decoded.model.nodes[i]));
-  assert.ok(performance.now() - again < 1500);
+  const rebuildCPU = again();
+  assert.ok(rebuildCPU < 1500, `rebuilding with the seen identities took ${Math.round(rebuildCPU)} ms of CPU`);
 });
 
 test("colours come from the theme: one per state, and an awake card deepens with its claim", () => {

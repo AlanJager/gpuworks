@@ -608,7 +608,8 @@ items:
     args:
       VLLM_OMNI_VERSION: ""
       MOONCAKE: ""
-    requires: [engine, hcu_patches, overlays]
+      DIFFUSERS_VERSION: "0.38.0"
+    requires: [engine, hcu_patches, overlays, diffusion]
     note: >-
       K100 等海光 DCU 的 vllm 档。**不含 omni**：厂商原件的 pip 清单是 vllm 0.18.1、
       vllm-hcu 0.18.1、transformers 5.5.0、flash-attn、flash_mla，没有 vllm-omni；

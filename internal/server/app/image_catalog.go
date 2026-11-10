@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/proto"
@@ -87,15 +88,27 @@ func SyncImageCatalog(st *store.Store, log *slog.Logger) error {
 // outsideSources builds what the API reads from outside: one community
 // browser for the process, so its tag cache is shared by every request, and
 // the distribution channel on its built-in sources.
-func outsideSources(st *store.Store, allowedPrivateHosts ...string) api.OutsideSources {
-	transport := outbound.Transport(func() (proto.NetworkConfig, error) { return planning.ControlPlaneNetwork(st) }, allowedPrivateHosts...)
-	channelTransport := outbound.Transport(func() (proto.NetworkConfig, error) { return planning.ControlPlaneNetwork(st) }, allowedPrivateHosts...)
+func outsideSources(st *store.Store, readPrivateHosts func() []string) api.OutsideSources {
+	transport := outbound.TransportWithPrivateHosts(func() (proto.NetworkConfig, error) { return planning.ControlPlaneNetwork(st) }, readPrivateHosts)
+	channelTransport := outbound.TransportWithPrivateHosts(func() (proto.NetworkConfig, error) { return planning.ControlPlaneNetwork(st) }, readPrivateHosts)
 	channelTransport.TLSHandshakeTimeout = 10 * time.Second
 	channelTransport.ResponseHeaderTimeout = 15 * time.Second
+	browser := community.NewBrowser(&http.Client{Transport: transport})
+	browser.Credentials = func(host string) (string, string, error) {
+		logins, err := st.SourceAuths()
+		if err != nil {
+			return "", "", err
+		}
+		for _, login := range logins {
+			if strings.EqualFold(login.Host, host) && login.Username != "" {
+				return login.Username, login.Secret, nil
+			}
+		}
+		return "", "", nil
+	}
 	return api.OutsideSources{
-		AllowPrivateHosts: append([]string(nil), allowedPrivateHosts...),
-		Community:         community.NewBrowser(&http.Client{Transport: transport}),
-		Channel:           &distribution.Client{HTTP: &http.Client{Transport: channelTransport}},
+		Community: browser,
+		Channel:   &distribution.Client{HTTP: &http.Client{Transport: channelTransport}},
 	}
 }
 

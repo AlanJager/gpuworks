@@ -42,6 +42,31 @@ git diff --check
 `check-assets` 包含 `check-libvgpu` 和 `check-perftest`，不校验昇腾、PPU 或 partition probe 资产；
 发布前必须单独运行 `make runtime-assets-verify`，否则这三类资产的缺失或篡改不会被发现。
 
+## 发布文档 PDF
+
+正式版 tag 的流水线会先用该提交构建中英文文档，再由 `release-docs-pdf` 生成两份用户手册。
+手册覆盖教程、操作指南、参考手册和架构说明，不含开发者文档与 ADR；封面标明版本和源码提交，
+包含可点击目录、页码、图片和 Mermaid 图，文字可搜索、复制。文档内已收录文章的链接跳转到 PDF
+内对应章节；未收录的文章及下载链接指向在线文档，需联网访问。
+
+产物为 `dist/docs/gpuworks-<tag>-zh.pdf`、`dist/docs/gpuworks-<tag>-en.pdf` 与
+`dist/docs/SHA256SUMS`。中文字体、图片、链接、内容宽度或 PDF 完整性校验失败会阻止发布。
+正式版 tag 的 PDF artifact 永久保留；发布成功后，三份文件同时出现在各发布源的
+`releases/<tag>/docs/` 下，可单独下载并外发。文档使用独立的校验和清单，根目录的 `SHA256SUMS`
+仍只列平台压缩包。上传后会完整读回 PDF 和校验和，比对成功才切换发布通道。
+
+本地生成使用与网站相同的 Hugo，以及现有浏览器验收所用的 Playwright、Chrome/Chromium；
+另需 Noto Sans CJK 字体、Fontconfig 和 Poppler 工具（`pdftotext`、`pdfinfo`、`pdffonts`）。
+安装 `requirements-e2e.txt` 后，在待发布 tag 的 checkout 中执行：
+
+```bash
+HUGO_BIN=/path/to/hugo CHROME_PATH=/path/to/chrome make docs-pdf VERSION=v26.11.3
+```
+
+将示例版本替换为实际 tag。生成器会核对网站产物与指定源码提交一致。CI 仅在正式版 tag 时生成 PDF；
+MR 和 nightly 不生成 PDF，MR 仍运行文档站构建及相关检查。重新发布同一版本保留原始文档字节，
+历史上未附带 PDF 的版本不会被追补或替换。
+
 ## 版本号
 
 正式版本用日历版本号 `YY.M.PATCH`，tag 写作 `vYY.M.PATCH`，例如 `v26.11.0`。
@@ -50,6 +75,8 @@ git diff --check
   之后只修缺陷的补丁版本依次加一。
 - 每条发布线一个分支 `release/YY.M`，从 master 上选定的提交切出。分支上只合缺陷修复：修复先合进 master，再
   `git cherry-pick -x` 到发布分支。
+- 打 tag 前，在 `docs/releases/` 新增该版本的发布说明（`vYY.M.PATCH.md`，含升级须知、新增、变更、修复、安全与下载校验和），
+  在 `docs/releases/README.md` 的版本列表顶部加一行，并同步 `docs-en/releases/` 的译文；先合入 master，再回合到发布分支。`release` 渠道构建时，`scripts/package_release.sh` 检查中英文版本页都存在、版本列表里有这一行，缺任何一项都在构建前失败。
 - 在发布分支上打带注释的 tag 并推送（`git tag -a v26.11.0 -m "GPUWorks 26.11.0"`、`git push origin v26.11.0`）。
   只有匹配 `^v[0-9]+\.[0-9]+\.[0-9]+$` 的 tag 会创建 pipeline 并发布到 `release` 渠道；`v26.11.0-rc.1` 这类 tag 不创建 pipeline。
 - `v*` 必须在 GitLab 里设为 protected tag：签名私钥和发布源凭据是受保护变量，不受保护的 tag 的 pipeline 读不到它们，发布 job 会失败。
@@ -100,7 +127,7 @@ CI 的 `release-publish` 在 master 或版本 tag 的四个构建 job 全部成�
 5. 切换前，`gpuworks-dist verify -index` 用新索引逐个核对三个公开地址（含 CDN）上的文件大小，任一不符就停下，通道仍指向上一版；
 6. 先存下各源当前的索引、`latest` 与 `manifest.json`，再切换到新版本，并从三个公开地址读回核对；切换或读回失败时把各源恢复到原来的指针后退出；
 7. 把 `scripts/get.sh` 以 `Cache-Control: no-cache` 传到每个源的根目录 `get.sh`；
-8. 每个源只保留最近 20 个版本目录，以及两个渠道 `latest` 指向的版本。
+8. 版本 tag（`vYY.M.PATCH`）的目录在每个源上永久保留；nightly 目录每个源只保留最近 30 个（`GPUWORKS_DIST_KEEP`），以及两个渠道 `latest` 指向的版本。
 
 源上的 `releases/<id>/` 与它自己的 `SHA256SUMS` 对不上（例如本规则之前被覆盖过）时，发布会在第 4 步失败而不切换。处理方式：确认哪个源上的
 那份是对的，把错的那份删掉或换成对的，并清掉 CDN 上 `releases/<id>/` 的缓存，再重跑发布。

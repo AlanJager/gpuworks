@@ -20,6 +20,7 @@ import type { AgentUpgradeCreate, AgentUpgradeItem, AgentUpgradePage, AgentUpgra
 export type * from "./agentUpgradesTypes";
 import i18n from "./i18n";
 import { APIError, apiErrorText, apiResponseError, ProxyErrorPage, type ProductMessage } from "./apiError";
+import type { DiagnosticReport } from "./diagnosticChecks";
 import { readSSE } from "./sse";
 import { isSessionExpired, subscribeSessionChanges } from "./session";
 import type { LocalizedText } from "./i18n/localizedText";
@@ -293,7 +294,7 @@ export interface AgentRejectEvent {
 // How the server logs in to a node over SSH. platform_key is the server's own
 // key pair (see PlatformSSHKey); it needs nothing from the operator once the
 // node authorized its public key.
-export type SSHAuthMode = "platform_key" | "password" | "private_key";
+export type SSHAuthMode = "platform_key" | "password" | "private_key" | "keyboard_interactive";
 
 export interface SSHCredentialInfo {
   host: string;
@@ -802,6 +803,8 @@ export interface Model {
   id: number;
   source: string;
   source_id: string;
+  /** Set when PATCH /models/{id} may change source_id (a local or URL model). */
+  source_id_editable?: boolean;
   /** The HTTP directory a source="url" model is served from; absent for every other source. */
   source_url?: string;
   revision: string;
@@ -1034,6 +1037,14 @@ export type ModelCore = Omit<Model, "nodes" | "storages" | "readme">;
 /** A model as a list row: no README and no per-location presence, which GET /models/{id} carries. */
 export type ModelListItem = ModelCore & { presence: ModelPresenceSummary };
 
+/** GET /inference-templates/weight-models: the registered models serving a spec's weight sources. */
+export interface TemplateWeightModels {
+  /** Every model serving at least one source, newest first, each once. */
+  models: ModelListItem[];
+  /** The spec's sources in order; reuse_model_id is the model a choice of that source reuses. */
+  sources: Array<WeightSource & { reuse_model_id?: number }>;
+}
+
 /** One page of GET /models?page=…, with the summary of every model. */
 export interface ModelPage extends ListPage<ModelListItem> {
   summary: { registered: number; ready_files: number; sources: number; weight_gib: number };
@@ -1184,12 +1195,29 @@ export interface CapacityGroup {
   unusable_gpus: number;
 }
 
+/** The fleet's cards counted once each, in the scheduling overview's states. */
+export interface SchedulingCardSummary {
+  nodes: number;
+  online_nodes: number;
+  cards: number;
+  awake: number;
+  asleep: number;
+  free: number;
+  held_outside: number;
+  unhealthy: number;
+  offline: number;
+  contention: { waiting_wakes: number; held_requests: number; yields_last_hour: number };
+}
+
 export interface DashboardSummary {
   current_metrics?: {
     utilization_pct: number | null;
     temperature_c: number | null;
     power_watts: number | null;
     memory_used_bytes: number | null;
+    /** VRAM used and owned by the online nodes' cards, summed over the cards with both samples fresh; null when none has. */
+    vram_used_bytes?: number | null;
+    vram_total_bytes?: number | null;
   };
   nodes: {
     total: number;
@@ -1201,7 +1229,12 @@ export interface DashboardSummary {
     vram_gib: number;
     memory_gib: number;
   };
-  deployments: { total: number; running: number; warming: number; sleepable: number };
+  /** Every deployment falls in exactly one bucket; other is the ones in no named bucket. */
+  deployments: { total: number; running: number; warming: number; sleeping?: number; pending?: number; other?: number; sleepable: number };
+  /** The scheduling overview's card summary; null when it cannot be built. */
+  /** allocated = cards a deployment holds (awake + asleep), counted by the server. */
+  cards?: (SchedulingCardSummary & { allocated: number }) | null;
+  tasks?: { batches: { active: number; waiting: number } | null; benchmarks: number };
   by_vendor: CapacityGroup[];
   label_keys: string[];
   label_key: string;
@@ -1341,6 +1374,8 @@ export interface AuthUser {
   id: number;
   username: string;
   role: string;
+  /** The length a new password must have; /auth/me only. */
+  password_policy?: { min_length: number; max_length: number };
 }
 
 /** One built-in (or administrator-configured) community repository card. */
@@ -1355,7 +1390,11 @@ export interface CommunityRepo {
 
 export interface CommunityTag {
   tag: string;
+  engine?: string;
   engine_version?: string;
+  framework?: string;
+  framework_version?: string;
+  arch?: string;
   rolling_tag?: boolean;
   upstream_gone?: boolean;
   /** When the registry last saw the tag move (RFC 3339); absent for plain OCI registries. */
@@ -2616,6 +2655,7 @@ export interface BenchmarkRun {
     max_in_flight?: number;
     point_duration_s?: number;
     warmup_requests?: number;
+    request_timeout_s?: number;
   };
   keep_detail: boolean;
   detail_cap_mb: number;
@@ -2689,12 +2729,12 @@ export interface BenchmarkTargetSnapshot {
 }
 export interface BenchmarkCurveSample {
   t: number;
-  output_tput: number;
-  total_tput: number;
-  request_tput: number;
-  ttft_p50: number;
-  tpot_p50: number;
-  latency_p99: number;
+  output_tput?: number | null;
+  total_tput?: number | null;
+  request_tput?: number | null;
+  ttft_p50?: number | null;
+  tpot_p50?: number | null;
+  latency_p99?: number | null;
 }
 export interface BenchmarkCurveResponse {
   points: Array<{
@@ -2702,6 +2742,40 @@ export interface BenchmarkCurveResponse {
     concurrency: number;
     samples: BenchmarkCurveSample[];
   }>;
+}
+export interface BenchmarkTimelineRecord {
+  version: number;
+  run_id: number;
+  point_seq: number;
+  session_id: string;
+  turn: number;
+  planned_turns: number;
+  attempt: number;
+  finish_reason?: string;
+  error_text?: string;
+  canceled?: boolean;
+  error_stage?: string;
+  http_status?: number;
+  input_source: string;
+  output_source: string;
+  output_budget: number;
+  metrics: {
+    started_at: string | null;
+    first_output_at: string | null;
+    first_content_at: string | null;
+    last_output_at: string | null;
+    finished_at: string | null;
+    ttft_ms: number | null;
+    tpot_ms: number | null;
+    latency_ms: number | null;
+    completion_ms: number | null;
+    input_tokens: number;
+    output_tokens: number;
+  };
+}
+export interface BenchmarkRequestTimeline {
+  status: "complete" | "disabled" | "unavailable" | "truncated";
+  records: BenchmarkTimelineRecord[];
 }
 export interface BenchmarkViolation {
   reason?: "limit_exceeded" | "evidence_unavailable";
@@ -2786,6 +2860,9 @@ export interface BenchmarkLoadDefaults {
   max_request_rates: number;
   max_burstiness: number;
   max_in_flight: number;
+  request_timeout_s: number;
+  min_request_timeout_s: number;
+  max_request_timeout_s: number;
   ignore_eos: boolean;
   ignore_eos_datasets: string[];
 }
@@ -3179,6 +3256,8 @@ export interface PreflightSummary {
 
 export interface EvaluateResponse {
   schema_version?: number;
+  diagnostics?: DiagnosticReport;
+  request_id?: string;
   // Request errors attributed to form fields. A response with errors has
   // ok=false and stays HTTP 200; the codes match the create 400 path.
   errors?: EvaluateFieldError[];
@@ -4185,9 +4264,16 @@ export const api = {
     sendJSON<RecoveryOutcome>("POST", `/api/v1/nodes/${uuid}/recovery/probe`),
 
   me: () => getJSON<AuthUser>("/api/v1/auth/me"),
+  /** Replaces the signed-in user's password and ends all of their sessions. */
+  changePassword: (currentPassword: string, newPassword: string) =>
+    sendJSON<{ status: string }>("POST", "/api/v1/auth/password", { current_password: currentPassword, new_password: newPassword }),
   models: () => getJSON<List<Model>>("/api/v1/models"),
   modelsPage: (query: ListQuery) => getJSON<ModelPage>(`/api/v1/models?${listQueryString(query)}`),
   model: (id: number) => getJSON<Model>(`/api/v1/models/${id}`),
+  templateWeightModels: (templateID: number, specSource: string, specName: string) =>
+    getJSON<TemplateWeightModels>(
+      `/api/v1/inference-templates/weight-models?${new URLSearchParams({ template_id: String(templateID), spec_source: specSource, spec_name: specName })}`,
+    ),
   inferenceTemplates: (query: ListQuery) =>
     getJSON<InferenceTemplatePage>(`/api/v1/inference-templates?${listQueryString(query)}`),
   inferenceTemplateIndex: (scope?: { vendor: string; node_uuid?: string }) =>
@@ -4308,6 +4394,8 @@ export const api = {
     },
   ) =>
     sendJSON<Model>("POST", `/api/v1/models/${id}/metadata/refresh`, metadata),
+  updateModelSourceID: (id: number, sourceID: string) =>
+    sendJSON<Model>("PATCH", `/api/v1/models/${id}`, { source_id: sourceID }),
   updateModelInferenceConfig: (
     id: number,
     operations: Pick<InferenceAPIOperation, "type">[],
@@ -4654,6 +4742,8 @@ export const api = {
   benchmark: (id: number) => getJSON<BenchmarkRun>(`/api/v1/benchmarks/${id}`),
   benchmarkCurve: (id: number) =>
     getJSON<BenchmarkCurveResponse>(`/api/v1/benchmarks/${id}/curve`),
+  benchmarkPointTimeline: (id: number, seq: number, signal?: AbortSignal) =>
+    getJSON<BenchmarkRequestTimeline>(`/api/v1/benchmarks/${id}/points/${seq}/timeline`, signal),
   createBenchmark: (body: unknown) =>
     sendJSON<BenchmarkRun>("POST", "/api/v1/benchmarks", body),
   benchmarkModels: (body: unknown) =>

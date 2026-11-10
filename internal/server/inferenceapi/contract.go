@@ -2,14 +2,16 @@
 // by the executable catalog, deployment snapshots, proxy and Playground.
 package inferenceapi
 
-import ()
-
 // Contract describes the HTTP service exposed by one executable inference
 // spec. It is deliberately small: protocol details live in the operation
 // registry rather than being copied into every catalog entry.
 type Contract struct {
 	HealthEndpoint string      `yaml:"health_endpoint,omitempty" json:"health_endpoint,omitempty"`
 	Operations     []Operation `yaml:"operations" json:"operations"`
+	// TokenizerRef names a verified, commit-pinned tokenizer repository when
+	// the served weights do not include an independent tokenizer vocabulary.
+	// Benchmark auto resolution prefers an available node copy to this source.
+	TokenizerRef string `yaml:"tokenizer_ref,omitempty" json:"tokenizer_ref,omitempty"`
 	// Metrics is the engine's Prometheus endpoint and mapping (metrics.go).
 	// It is observation, not serving: launch never reads it, and a deployment
 	// takes it from its template's current spec rather than from its snapshot.

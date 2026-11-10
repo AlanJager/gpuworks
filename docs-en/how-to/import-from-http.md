@@ -6,7 +6,7 @@ Before you start, confirm the following:
 
 - Use an account with `managementAdmin` permission. When downloading or importing to a node, the target node must be online. Model downloads also require an agent that supports HTTP directory sources (see the error handling below for outdated agents).
 - The URL uses `http` / `https` without embedded credentials. For models, it points to the directory containing the weights; for images, it points to the archive file.
-- **The server can read the source** for parsing. Internal sources also require explicit authorization in `outbound_allow_private_hosts` in `server.yaml`, followed by a server restart. For configuration instructions, see [Outbound HTTP Proxy Policy](../reference/configuration.md#出站-http-代理策略).
+- **The server can read the source** for parsing. Ordinary private and local loopback destinations need no allowlist by default. An allowlist is needed only in strict mode. Platform administrators can save authorization under **Settings → Security & access → Outbound access policy**; host administrators can also edit `outbound_restrict_private_hosts` and `outbound_allow_private_hosts` directly in `server.yaml`. Changes apply to the next request after saving, without restarting the server. See [Outbound HTTP Proxy Policy](../reference/configuration.md#出站-http-代理策略).
 - **The target node downloads models**, so the node must also be able to access the directory. Image archives can be downloaded directly by the node or relayed through a server that can read the archive.
 
 Up to 5 redirects are allowed. Each redirect for a model directory must also remain on the host used at registration. The management node and agent each use their respective pull proxy. If internal addresses need to bypass the proxy, add them to `no_proxy` in the corresponding proxy entry.
@@ -81,7 +81,10 @@ After import, the image is `present` on the node and is used directly during dep
 | `HTTP_DIRECTORY_TOO_LARGE` | The file count or directory depth exceeds the limit. Point to the model's own directory |
 | `MODEL_SOURCE_REQUIRES_NEWER_AGENT` | The target node's agent is too old. Upgrade it first |
 | `IMAGE_ARCHIVE_URL_INVALID` | The archive URL is invalid. It must use `http`/`https` without embedded credentials |
-| `IMAGE_ARCHIVE_URL_UNREACHABLE` | The server cannot read the archive. Check the address, network, and outbound authorization for the internal network. If a direct node connection fails, also check connectivity from the node to the source |
+| `IMAGE_ARCHIVE_URL_POLICY_DENIED` | This host is not allowed yet. Ordinary private addresses need no allow list by default, and the allow checkbox is absent while “Restrict private host access” is off. When it is on, check “Automatically add this host to the allow list” beside the address; that resolve writes the host and reads the archive again. Leave it unchecked and the failure stays a message. Settings → Security & access → Outbound access policy still edits the whole list |
+| `IMAGE_ARCHIVE_URL_POLICY_BLOCKED` | This address cannot be permitted through the allow list, for example a reserved or link-local address |
+| `IMAGE_ARCHIVE_URL_UPSTREAM_STATUS` | The archive server returned a specific HTTP status, such as 404. Check the path; this is not a network failure |
+| `IMAGE_ARCHIVE_URL_UNREACHABLE` | The server did not connect to the archive. Check the address, network, and TLS. A direct node fetch can also fail when the node cannot reach the source |
 | `IMAGE_ARCHIVE_URL_NOT_DECLARED` | The URL is not in this image's acquisition addresses. Add it before syncing |
 
 ## Related Information

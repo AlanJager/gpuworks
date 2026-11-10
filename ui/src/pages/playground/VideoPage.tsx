@@ -24,7 +24,7 @@ export default function VideoPage({ catalog }: { catalog: PlaygroundCatalog }) {
   const [videoURL, setVideoURL] = useState("");
   const [inputValues, setInputValues] = useState<Record<string, unknown>>({});
   const [loading, setLoading] = useState(false);
-  const abortRef = useRef<AbortController>();
+  const abortRef = useRef<AbortController>(undefined);
 
   useEffect(() => {
     if (!modelID || requested === modelID) return;

@@ -111,4 +111,5 @@ var refusedCaps = map[string]bool{
 	proto.CapBenchArrival:            true,
 	proto.CapBenchInteractivity:      true,
 	proto.CapBenchEvidence:           true,
+	proto.CapBenchRequestTimeout:     true,
 }

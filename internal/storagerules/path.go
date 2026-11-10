@@ -7,10 +7,18 @@ import (
 	"unicode"
 )
 
-// ValidatePath refuses operating-system roots, regardless of who configured
-// the storage. Mounting or probing them can expose credentials or obscure the
-// host's running system. The check is shared by the API and agent.
-func ValidatePath(p string) error {
+// defaultDeniedPaths are the operating-system directories a storage cannot
+// use unless server.yaml replaces this list. Mounting or probing them can
+// expose credentials or obscure the host's running system.
+var defaultDeniedPaths = []string{"/etc", "/proc", "/sys", "/dev", "/boot", "/bin", "/sbin", "/lib", "/lib64", "/usr", "/run", "/var/run", "/var/lib/docker", "/var/lib/containerd"}
+
+// DefaultDeniedPaths returns the built-in denylist.
+func DefaultDeniedPaths() []string { return append([]string(nil), defaultDeniedPaths...) }
+
+// CheckPathForm refuses paths no storage can use, whatever the denylist:
+// relative paths, control characters, dot segments and the filesystem root.
+// The agent applies only this check; the denylist is server policy.
+func CheckPathForm(p string) error {
 	if !path.IsAbs(p) || strings.IndexFunc(p, unicode.IsControl) >= 0 {
 		return errors.New("storage paths must be absolute directories without control characters")
 	}
@@ -22,13 +30,25 @@ func ValidatePath(p string) error {
 			return errors.New("storage paths cannot contain . or .. path components")
 		}
 	}
-	p = path.Clean(p)
-	if p == "/" {
+	if path.Clean(p) == "/" {
 		return errors.New("the filesystem root cannot be used as storage")
 	}
-	for _, root := range []string{"/etc", "/proc", "/sys", "/dev", "/boot", "/bin", "/sbin", "/lib", "/lib64", "/usr", "/run", "/var/run", "/var/lib/docker", "/var/lib/containerd"} {
+	return nil
+}
+
+// ErrDeniedPath is the refusal of a path at or below a denied directory; any
+// other ValidatePath error is a malformed path.
+var ErrDeniedPath = errors.New("operating-system directories cannot be used as storage")
+
+// ValidatePath applies CheckPathForm and refuses p at or below any denied
+// directory.
+func ValidatePath(p string, denied []string) error {
+	if err := CheckPathForm(p); err != nil {
+		return err
+	}
+	for _, root := range denied {
 		if Within(root, p) {
-			return errors.New("operating-system directories cannot be used as storage")
+			return ErrDeniedPath
 		}
 	}
 	return nil

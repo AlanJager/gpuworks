@@ -8,6 +8,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 from playwright.sync_api import expect
+from model_detail_dialog import model_detail_dialog
 from local_browser_fixture import ROOT
 from local_business_runner import checked
 from model_files_fixture import MODELS, file_facts
@@ -160,10 +161,10 @@ def exercise_node_delete_blocks(page, report, server, token, labels, locale, dat
 
 def delete_present_node_copy(page, report, server, token, labels, locale, data, target, document, presence, mutate):
     """Refuse a present node copy, then delete it once both blocks are gone."""
-    dialog = page.get_by_role('dialog', name=data['name'], exact=True)
+    dialog = model_detail_dialog(page, labels, data['name'])
     files = dialog.locator('#model-files')
-    group = files.locator(':scope > div').filter(has_text=target['name'])
-    remove = group.get_by_role('button', name=labels['files']['deleteOnNode'], exact=True)
+    target_row = files.locator('tr.ant-table-row').filter(has_text=target['name'] + ' · ')
+    remove = target_row.get_by_role('button', name=labels['files']['deleteOnNode'], exact=True)
     path = f"{MODELS}/{data['model']['id']}/nodes/{data['node']['uuid']}"
     exercise_node_delete_blocks(page, report, server, token, labels, locale, data, target, remove, path,
                                 document, presence)
@@ -180,5 +181,5 @@ def delete_present_node_copy(page, report, server, token, labels, locale, data, 
     current = document(server, token, data)
     checked(presence(current, data, target) is None, 'present file row remains')
     page.reload()
-    expect(page.get_by_role('dialog', name=data['name'], exact=True).locator(
+    expect(model_detail_dialog(page, labels, data['name']).locator(
         '#model-files tr.ant-table-row')).to_have_count(0)

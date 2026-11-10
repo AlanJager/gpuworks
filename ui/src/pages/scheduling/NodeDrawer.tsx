@@ -16,7 +16,7 @@ const NODE_POLL_MS = 10_000;
 export default function NodeDrawer({ uuid, name, onClose }: { uuid: string | null; name: string; onClose: () => void }) {
   const { t } = useTranslation("scheduling");
   return (
-    <Drawer open={uuid != null} onClose={onClose} width={820} title={name} destroyOnClose aria-label={t("drawer.aria", { node: name })}>
+    <Drawer open={uuid != null} onClose={onClose} width={820} title={name} destroyOnHidden aria-label={t("drawer.aria", { node: name })}>
       {uuid != null && <NodeDetail key={uuid} uuid={uuid} />}
     </Drawer>
   );

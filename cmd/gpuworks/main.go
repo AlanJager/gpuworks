@@ -204,7 +204,7 @@ func serve(log *slog.Logger, args []string) (err error) {
 		// Keep the log beside the data dir it belongs to.
 		logFile = defaultLogFile(cfg.DataDir)
 	}
-	log, closeLog := serverLogger(log, logFile, logMaxSize, logKeep, parseLogLevel(level))
+	log, closeLog := serverLogger(logFile, logMaxSize, logKeep, parseLogLevel(level))
 	defer closeLog()
 	// From here on the reason the server stops goes to its log file as well:
 	// a detached (nohup) server's stderr is /dev/null, and the file is where
@@ -212,6 +212,7 @@ func serve(log *slog.Logger, args []string) (err error) {
 	// port another process holds being the usual case.
 	defer func() {
 		if err != nil {
+			err = explainFullDisk(err, cfg.DataDir)
 			log.Error("server exited", "err", err)
 			err = fmt.Errorf("%w: %w", errServeLogged, err)
 		}
@@ -324,14 +325,17 @@ func resetPassword(log *slog.Logger, args []string) error {
 	fs.StringVar(&dataDir, "data", "", "data directory (default: data_dir of server.yaml next to the binary, then of the default installation, then ./data)")
 	fs.StringVar(&cfg.DBPath, "db", cfg.DBPath, "sqlite database path")
 	fs.StringVar(&username, "user", cfg.AdminUser, "username")
-	fs.StringVar(&password, "password", "", "new password")
+	fs.StringVar(&password, "password", "", "new password (default: prompt without echo)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	if password == "" {
-		return fmt.Errorf("-password is required")
+		var err error
+		if password, err = promptNewPassword(); err != nil {
+			return err
+		}
 	}
-	if err := auth.ValidatePassword(password); err != nil {
+	if err := auth.ValidateAccountPassword(username, password); err != nil {
 		return err
 	}
 	dbPath, err := resetPasswordDB(dataDir, cfg.DBPath)
@@ -404,8 +408,8 @@ func defaultLogFile(dataDir string) string {
 // refusal's reason, and an access log line's method, path and status.
 var serverLogIdentity = []string{"code", "reason", "method", "path", "status"}
 
-func serverLogger(base *slog.Logger, path, maxSize string, keep int, level slog.Level) (*slog.Logger, func()) {
-	base = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level}))
+func serverLogger(path, maxSize string, keep int, level slog.Level) (*slog.Logger, func()) {
+	base := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level}))
 	if strings.TrimSpace(path) == "" {
 		return base, func() {}
 	}
@@ -448,7 +452,7 @@ usage:
   gpuworks serve [--config server.yaml] [--addr :8800] [--data ./data]
                  [--trusted-proxies CIDRS] [--log-file PATH] [--log-max-size 10MB] [--log-keep 20]
                  [--log-level info] [--supervise]
-  gpuworks reset-password --user admin --password NEW_PASSWORD [--data DIR] [--db PATH]
+  gpuworks reset-password [--user admin] [--password NEW_PASSWORD] [--data DIR] [--db PATH]
   gpuworks migrate [--data ./data] [--db PATH]
   gpuworks support-bundle [--data DIR] [--since 1h | --from T --to T]
                           [--deployments IDS] [--instances UUIDS] [--out PATH]

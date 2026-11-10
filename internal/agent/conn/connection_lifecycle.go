@@ -52,6 +52,7 @@ func (c *Conn) Run(ctx context.Context) (err error) {
 	client, dialedFrom, transportTrace := c.observedControlClient()
 	dialCtx = transportTrace.context(dialCtx)
 	endDial := c.smokeStage("dial")
+	//nolint:bodyclose // coder/websocket.Dial owns handshake bodies; NetConn below owns the upgraded connection.
 	ws, response, err := websocket.Dial(dialCtx, wsURL, &websocket.DialOptions{
 		HTTPClient: client,
 		HTTPHeader: http.Header{"User-Agent": []string{"gpuworks-agent/" + version.Version}},
@@ -156,7 +157,7 @@ func (c *Conn) runYamuxClient(ctx context.Context, netConn net.Conn, lane string
 	// Bind the persistent handlers to this connection's sender so the engine and
 	// downloader can report status; unbind when the connection ends.
 	if c.handlers != nil {
-		c.handlers.Bind(func(t string, d any) error { return c.send(t, 0, d) })
+		c.handlers.Bind(c.handlerSend(ctx))
 		defer c.handlers.Unbind()
 	}
 

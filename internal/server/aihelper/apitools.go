@@ -160,7 +160,7 @@ func callAPI(ctx context.Context, env ToolEnv, args json.RawMessage) (string, er
 	}
 	var data any
 	if err := json.Unmarshal(body, &data); err != nil {
-		return clipToFit(string(body), maxAnswerChars), nil // a text answer, such as a report
+		return clipToFit(string(body), maxAnswerChars), nil //nolint:nilerr // Non-JSON API responses are successful text answers, including reports.
 	}
 	// Secrets go before jq can reach them; times are aged after it, so a
 	// filter still compares time_ms as the number it is.

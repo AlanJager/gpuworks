@@ -1,8 +1,9 @@
 package api
 
 import (
-	"gpuworks.ai/gpuworks/internal/server/store"
 	"testing"
+
+	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
 func TestReportedGPUFactsPreservesReportedArch(t *testing.T) {
