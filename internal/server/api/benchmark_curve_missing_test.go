@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -13,7 +14,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
-func benchmarkCurveHTTPFixture(t *testing.T, curves ...string) (http.Handler, string, string) {
+func benchmarkCurveHTTPFixture(t *testing.T, log *slog.Logger, curves ...string) (http.Handler, string, string) {
 	t.Helper()
 	st, err := store.Open("file:"+t.Name()+"?mode=memory&cache=shared", bus.New())
 	if err != nil {
@@ -34,7 +35,7 @@ func benchmarkCurveHTTPFixture(t *testing.T, curves ...string) (http.Handler, st
 		t.Fatal(err)
 	}
 	token, _ := managementSessionTestToken(t, st, signer, auth.Claims{UserID: 1, Username: "admin", Role: "admin"})
-	return Router(Deps{Store: st, Bus: bus.New(), AuthSigner: signer}), fmt.Sprintf("/api/v1/benchmarks/%d/curve", run.ID), token
+	return Router(Deps{Store: st, Bus: bus.New(), AuthSigner: signer, Log: log}), fmt.Sprintf("/api/v1/benchmarks/%d/curve", run.ID), token
 }
 
 func readBenchmarkCurveHTTP(t *testing.T, handler http.Handler, path, token string) map[string]json.RawMessage {
@@ -54,7 +55,7 @@ func readBenchmarkCurveHTTP(t *testing.T, handler http.Handler, path, token stri
 }
 
 func TestBenchmarkCurvePreservesUnknownMetricsAndObservedZero(t *testing.T) {
-	handler, path, token := benchmarkCurveHTTPFixture(t, `[
+	handler, path, token := benchmarkCurveHTTPFixture(t, nil, `[
   {"t":1000},
   {"t":2000,"output_tput":null,"total_tput":null,"request_tput":null,"ttft_p50":null,"tpot_p50":null,"latency_p99":null},
   {"t":3000,"output_tput":0,"total_tput":0,"request_tput":0,"ttft_p50":0,"tpot_p50":0,"latency_p99":0},

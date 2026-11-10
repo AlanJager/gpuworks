@@ -9,14 +9,12 @@ import (
 )
 
 func TestBenchmarkCurveKeepsValidSamplesAroundCorruptMeasurement(t *testing.T) {
-	handler, path, token := benchmarkCurveHTTPFixture(t,
+	var diagnostics bytes.Buffer
+	log := slog.New(slog.NewJSONHandler(&diagnostics, nil))
+	handler, path, token := benchmarkCurveHTTPFixture(t, log,
 		`[{"t":1000,"output_tput":11,"ttft_p50":10},{"t":2000,"output_tput":22,"ttft_p50":"PRIVATE_BENCHMARK_TOKEN"},{"t":3000,"output_tput":33,"ttft_p50":30}]`,
 		`[{"t":4000,"output_tput":44,"ttft_p50":40}]`,
 	)
-	var diagnostics bytes.Buffer
-	previous := slog.Default()
-	slog.SetDefault(slog.New(slog.NewJSONHandler(&diagnostics, nil)))
-	t.Cleanup(func() { slog.SetDefault(previous) })
 
 	wire := readBenchmarkCurveHTTP(t, handler, path, token)
 	var points []struct {
