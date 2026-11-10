@@ -1,4 +1,4 @@
-import { Button, Flex, Popconfirm, Progress, Space, Tag, Tooltip, Typography, message } from "antd";
+import { Button, Flex, Popconfirm, Progress, Space, Tag, Tooltip, Typography, message, theme } from "antd";
 import { CheckCircleFilled, CloudDownloadOutlined, ReloadOutlined, StopOutlined } from "@ant-design/icons";
 import { useTranslation } from "react-i18next";
 import { api, type Model, type ModelNodePresence } from "../../api";
@@ -122,6 +122,8 @@ function NodeFileActions({ model, row, isAdmin, onChanged }: { model: Model; row
 function FileDetails({ row }: { row: ModelFile }) {
   const { t } = useTranslation("models");
   const node = "node_uuid" in row;
+  const { token } = theme.useToken();
+  const tagTextColors: Record<string, string> = { red: token.red7, orange: token.orange7 };
   const statusNote = row.state === "missing" && !node ? t("files.missingHint")
     : ["failed", "download_required", "canceled"].includes(row.state) ? row.message : undefined;
   return <dl className="detail-extra">
@@ -143,7 +145,8 @@ function FileDetails({ row }: { row: ModelFile }) {
       </>
     )}
     {statusNote && <div style={{ gridColumn: "1 / -1" }}>
-      <dt>{t("files.statusNote")}</dt><dd>{statusNote}</dd>
+      <dt>{t("files.statusNote")}</dt>
+      <dd style={{ color: tagTextColors[presenceVisual[row.state].color] ?? token.colorText }}>{statusNote}</dd>
     </div>}
   </dl>;
 }
