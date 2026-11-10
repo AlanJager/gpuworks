@@ -1104,9 +1104,12 @@ def exercise_download_delete(page, context, server, artifacts, report, locale, d
     checked(held['size_bytes'] == sum(map(len, hub.files.values())), 'in-flight total is not the fixture payload')
     checked(part.is_file() and not part.is_symlink(), 'no real in-progress partial file')
     detail = open_detail(page, server, labels, data)
-    busy = detail.locator('#model-files').locator(':scope > div').filter(has_text=guard['name'])
-    expect(busy.locator('tr.ant-table-row')).to_have_count(1)
-    bar = busy.locator('tr.ant-table-row').get_by_role('progressbar')
+    # The files are a ResourceTable (ModelFilesSection.tsx:200-212): one row per
+    # storage, so the transfer's row is the table row naming this storage. The
+    # previous :scope > div wrapper no longer exists.
+    busy = detail.locator('#model-files tr.ant-table-row').filter(has_text=guard['name'])
+    expect(busy).to_have_count(1)
+    bar = busy.get_by_role('progressbar')
     expect(bar).to_have_count(1)
     shown = int(bar.get_attribute('aria-valuenow'))
     # 16.3: the row the operator sees while bytes are still arriving has to report the transfer's
@@ -1120,8 +1123,7 @@ def exercise_download_delete(page, context, server, artifacts, report, locale, d
     checked(shown == int(api_percent),
             f'the in-flight bar disagrees with the reported progress: {shown} vs {api_percent}')
     checked(0 < shown < 100, f'the held transfer is rendered as finished or empty: {shown}')
-    expect(busy.locator('tr.ant-table-row').get_by_text(labels['presence']['downloading'],
-                                                        exact=True)).to_be_visible()
+    expect(busy.get_by_text(labels['presence']['downloading'], exact=True)).to_be_visible()
     # 16.6: a refresh in the middle of the transfer has to read the task back instead of resetting
     # it. The source is still held, so nothing can move underneath the reload, and the reopened
     # detail must show the same in-flight progress rather than a zeroed or a finished row.
@@ -1134,8 +1136,9 @@ def exercise_download_delete(page, context, server, artifacts, report, locale, d
             'a refresh zeroed or finished the in-flight transfer')
     reopened = model_detail_dialog(page, labels, data['name'])
     expect(reopened.locator('#model-files')).to_be_visible()
-    regrouped = reopened.locator('#model-files').locator(':scope > div').filter(has_text=guard['name'])
-    reload_bar = regrouped.locator('tr.ant-table-row').get_by_role('progressbar')
+    regrouped = reopened.locator('#model-files tr.ant-table-row').filter(has_text=guard['name'])
+    expect(regrouped).to_have_count(1)
+    reload_bar = regrouped.get_by_role('progressbar')
     expect(reload_bar).to_have_count(1)
     replayed_bar = int(reload_bar.get_attribute('aria-valuenow'))
     checked(replayed_bar == shown,
