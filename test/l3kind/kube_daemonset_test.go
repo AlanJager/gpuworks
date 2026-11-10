@@ -188,15 +188,15 @@ func TestKubeDaemonSetDeployChatKind(t *testing.T) {
 	eventually(t, "node online in the API with 1 GPU, runtime_driver kube and kube.node_name "+node, 3*time.Minute, time.Second, func() (bool, string) {
 		nodes := api.nodes()
 		for _, n := range nodes {
-			if n.Kube != nil && n.Kube.NodeName == node {
+			if n.label(labelKubeNode) == node {
 				nodeInfo = n
-				return n.State == "online" && n.GPUCount == 1 && n.RuntimeDriver == "kube" && n.Kube.ClusterID == created.ID,
-					fmt.Sprintf("state=%s gpu_count=%d runtime_driver=%q cluster_id=%d", n.State, n.GPUCount, n.RuntimeDriver, n.Kube.ClusterID)
+				return n.State == "online" && n.GPUCount == 1 && n.RuntimeDriver == "kube" && n.label(labelKubeCluster) == created.UUID,
+					fmt.Sprintf("state=%s gpu_count=%d runtime_driver=%q cluster=%q", n.State, n.GPUCount, n.RuntimeDriver, n.label(labelKubeCluster))
 			}
 		}
-		return false, fmt.Sprintf("no node with kube.node_name=%s among %d node(s)", node, len(nodes))
+		return false, fmt.Sprintf("no node with system label %s=%s among %d node(s)", labelKubeNode, node, len(nodes))
 	})
-	if nodeInfo.Scheduling != "schedulable" || nodeInfo.Kube.Unschedulable {
+	if nodeInfo.Scheduling != "schedulable" {
 		t.Fatalf("freshly enrolled node should be schedulable: %+v", nodeInfo)
 	}
 
@@ -298,21 +298,22 @@ func TestKubeDaemonSetDeployChatKind(t *testing.T) {
 	// ---- 12. cordon / uncordon.
 	step(t, "kubectl cordon %s", node)
 	k.mustRun(time.Minute, "cordon", node)
-	waitScheduling := func(want string, unschedulable bool) {
+	// Kubernetes' cordon is the platform's own cordon reason.
+	waitScheduling := func(want, reason string) {
 		eventually(t, "node scheduling "+want, 90*time.Second, time.Second, func() (bool, string) {
 			for _, n := range api.nodes() {
-				if n.UUID == nodeInfo.UUID && n.Kube != nil {
-					return n.Scheduling == want && n.Kube.Unschedulable == unschedulable,
-						fmt.Sprintf("scheduling=%s kube.unschedulable=%v", n.Scheduling, n.Kube.Unschedulable)
+				if n.UUID == nodeInfo.UUID {
+					return n.Scheduling == want && n.CordonReason == reason,
+						fmt.Sprintf("scheduling=%s cordon_reason=%q", n.Scheduling, n.CordonReason)
 				}
 			}
 			return false, "node missing"
 		})
 	}
-	waitScheduling("cordoned", true)
+	waitScheduling("cordoned", "kube_unschedulable")
 	step(t, "kubectl uncordon %s", node)
 	k.mustRun(time.Minute, "uncordon", node)
-	waitScheduling("schedulable", false)
+	waitScheduling("schedulable", "")
 
 	// ---- 13. delete the deployment; the instance pod goes away.
 	step(t, "delete the deployment")
@@ -675,12 +676,29 @@ type apiNode struct {
 	Scheduling    string `json:"scheduling"`
 	GPUCount      int    `json:"gpu_count"`
 	RuntimeDriver string `json:"runtime_driver"`
-	Kube          *struct {
-		ClusterID     uint   `json:"cluster_id"`
-		NodeName      string `json:"node_name"`
-		Unschedulable bool   `json:"unschedulable"`
-	} `json:"kube"`
+	CordonReason  string `json:"cordon_reason"`
+	// SystemLabels carry the node's Kubernetes placement
+	// (gpuworks.ai/kubernetes-cluster, gpuworks.ai/kubernetes-node).
+	SystemLabels []struct {
+		Key   string `json:"key"`
+		Value string `json:"value"`
+	} `json:"system_labels"`
 }
+
+// label is the node's system label value for key, or "".
+func (n apiNode) label(key string) string {
+	for _, l := range n.SystemLabels {
+		if l.Key == key {
+			return l.Value
+		}
+	}
+	return ""
+}
+
+const (
+	labelKubeCluster = "gpuworks.ai/kubernetes-cluster"
+	labelKubeNode    = "gpuworks.ai/kubernetes-node"
+)
 
 type apiInstance struct {
 	UUID         string `json:"uuid"`
