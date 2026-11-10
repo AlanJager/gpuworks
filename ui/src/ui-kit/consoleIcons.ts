@@ -29,6 +29,9 @@ import Cancel01 from "@hugeicons/core-free-icons/Cancel01Icon";
 import Refresh01 from "@hugeicons/core-free-icons/Refresh01Icon";
 import ArrowDown01 from "@hugeicons/core-free-icons/ArrowDown01Icon";
 import ArrowRight01 from "@hugeicons/core-free-icons/ArrowRight01Icon";
+import User from "@hugeicons/core-free-icons/UserIcon";
+import View from "@hugeicons/core-free-icons/ViewIcon";
+import ViewOff from "@hugeicons/core-free-icons/ViewOffIcon";
 
 /**
  * The console's own icons (side menu, top bar), drawn from the same
@@ -67,4 +70,7 @@ export const ConsoleIcon = {
   refresh: createHugeIcon(Refresh01),
   chevronDown: createHugeIcon(ArrowDown01),
   chevronRight: createHugeIcon(ArrowRight01),
+  account: createHugeIcon(User),
+  show: createHugeIcon(View),
+  hide: createHugeIcon(ViewOff),
 };

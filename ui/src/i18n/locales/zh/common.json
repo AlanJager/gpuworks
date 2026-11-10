@@ -119,6 +119,12 @@
     "AUTH_NOT_CONFIGURED": "管理端身份认证尚未配置。",
     "INVALID_CREDENTIALS": "用户名或密码错误。",
     "LOGIN_THROTTLED": "登录尝试次数过多，请稍后重试。",
+    "PASSWORD_LENGTH": "密码需为 {{min}}–{{max}} 个字符，请更换。",
+    "PASSWORD_CHARACTERS": "密码不能包含换行、制表符，请更换。",
+    "PASSWORD_GUESSABLE": "检测到弱密码，请更换。",
+    "PASSWORD_USERNAME": "密码不能与用户名相同，请更换。",
+    "PASSWORD_UNCHANGED": "新密码不能与当前密码相同，请更换。",
+    "CURRENT_PASSWORD_INVALID": "当前密码不正确，请重新输入。",
     "MANAGEMENT_ORIGIN_REJECTED": "不允许跨来源访问管理接口。",
     "AUTHENTICATION_REQUIRED": "需要登录后才能执行此操作。",
     "ADMINISTRATOR_REQUIRED": "此操作需要管理员权限。",
@@ -583,6 +589,8 @@
     "title": "页面不存在"
   },
   "actions": {
+    "showPassword": "显示密码",
+    "hidePassword": "隐藏密码",
     "refresh": "刷新",
     "retry": "重试",
     "close": "关闭",
@@ -671,6 +679,8 @@
     "navigation": "主导航",
     "administrator": "管理员",
     "logout": "退出登录",
+    "changePassword": "修改密码",
+    "account": "账户：{{name}}",
     "updateAvailable": "有可用更新",
     "updateAvailableHint": "服务端或官方目录有新版本，在设置页「版本与更新」中查看"
   },

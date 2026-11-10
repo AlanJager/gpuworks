@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "../api";
 import LanguageSwitcher from "../components/LanguageSwitcher";
+import ForgotPasswordHint from "../components/ForgotPasswordHint";
 import { BrandMark, useBranding, useDocumentBranding } from "../branding";
 
 const { Title } = Typography;
@@ -87,6 +88,7 @@ export function LoginForm({ onLogin }: { onLogin: () => void }) {
       <Button className="auth-submit" type="primary" htmlType="submit" loading={loading}>
         {t("submit")}
       </Button>
+      <ForgotPasswordHint />
     </Form>
   );
 }

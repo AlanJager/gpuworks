@@ -119,6 +119,12 @@
     "AUTH_NOT_CONFIGURED": "Management authentication is not configured.",
     "INVALID_CREDENTIALS": "The username or password is incorrect.",
     "LOGIN_THROTTLED": "Too many login attempts. Please try again later.",
+    "PASSWORD_LENGTH": "The password must have {{min}}–{{max}} characters. Choose another.",
+    "PASSWORD_CHARACTERS": "The password cannot contain line breaks or tabs. Choose another.",
+    "PASSWORD_GUESSABLE": "Weak password detected. Choose another.",
+    "PASSWORD_USERNAME": "The password cannot be the username. Choose another.",
+    "PASSWORD_UNCHANGED": "The new password cannot be the current one. Choose another.",
+    "CURRENT_PASSWORD_INVALID": "The current password is incorrect. Enter it again.",
     "MANAGEMENT_ORIGIN_REJECTED": "Cross-origin management requests are not allowed.",
     "AUTHENTICATION_REQUIRED": "Authentication is required.",
     "ADMINISTRATOR_REQUIRED": "Administrator permissions are required.",
@@ -583,6 +589,8 @@
     "title": "Page not found"
   },
   "actions": {
+    "showPassword": "Show password",
+    "hidePassword": "Hide password",
     "refresh": "Refresh",
     "retry": "Retry",
     "close": "Close",
@@ -671,6 +679,8 @@
     "navigation": "Main navigation",
     "administrator": "Administrator",
     "logout": "Log out",
+    "changePassword": "Change password",
+    "account": "Account: {{name}}",
     "updateAvailable": "Update available",
     "updateAvailableHint": "A newer server or official catalog is available; see Version and updates in Settings"
   },

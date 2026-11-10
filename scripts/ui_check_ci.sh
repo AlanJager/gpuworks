@@ -66,7 +66,12 @@ compare_arg=()
 if [ "${UI_CHECK_COMPARE:-0}" = "1" ] && [ -n "${UI_CHECK_BASE_REF:-}" ]; then
   echo "ui-check: building the UI of $UI_CHECK_BASE_REF for comparison"
   git worktree add --detach -q "$work/base" "$UI_CHECK_BASE_REF"
-  (cd "$work/base/ui" && ln -s "$root/ui/node_modules" node_modules && npx vite build --outDir "$work/base-dist" --emptyOutDir > "$work/base-build.log" 2>&1) \
+  # The offline benchmark report is built first (ui/package.json "build"); the
+  # console imports it from node_modules/.cache, here the shared install's, which
+  # every build of this checkout rebuilds before use.
+  (cd "$work/base/ui" && ln -s "$root/ui/node_modules" node_modules \
+    && { [ ! -f vite.report.config.ts ] || npx vite build --config vite.report.config.ts; } \
+    && npx vite build --outDir "$work/base-dist" --emptyOutDir) > "$work/base-build.log" 2>&1 \
     || { echo "ui-check: could not build $UI_CHECK_BASE_REF; comparing skipped" >&2; tail -20 "$work/base-build.log" >&2; }
   if [ -f "$work/base-dist/index.html" ]; then
     # Inside ui/node_modules so the script resolves vite from the UI's own install.

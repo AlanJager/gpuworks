@@ -325,14 +325,17 @@ func resetPassword(log *slog.Logger, args []string) error {
 	fs.StringVar(&dataDir, "data", "", "data directory (default: data_dir of server.yaml next to the binary, then of the default installation, then ./data)")
 	fs.StringVar(&cfg.DBPath, "db", cfg.DBPath, "sqlite database path")
 	fs.StringVar(&username, "user", cfg.AdminUser, "username")
-	fs.StringVar(&password, "password", "", "new password")
+	fs.StringVar(&password, "password", "", "new password (default: prompt without echo)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	if password == "" {
-		return fmt.Errorf("-password is required")
+		var err error
+		if password, err = promptNewPassword(); err != nil {
+			return err
+		}
 	}
-	if err := auth.ValidatePassword(password); err != nil {
+	if err := auth.ValidateAccountPassword(username, password); err != nil {
 		return err
 	}
 	dbPath, err := resetPasswordDB(dataDir, cfg.DBPath)
@@ -449,7 +452,7 @@ usage:
   gpuworks serve [--config server.yaml] [--addr :8800] [--data ./data]
                  [--trusted-proxies CIDRS] [--log-file PATH] [--log-max-size 10MB] [--log-keep 20]
                  [--log-level info] [--supervise]
-  gpuworks reset-password --user admin --password NEW_PASSWORD [--data DIR] [--db PATH]
+  gpuworks reset-password [--user admin] [--password NEW_PASSWORD] [--data DIR] [--db PATH]
   gpuworks migrate [--data ./data] [--db PATH]
   gpuworks support-bundle [--data DIR] [--since 1h | --from T --to T]
                           [--deployments IDS] [--instances UUIDS] [--out PATH]

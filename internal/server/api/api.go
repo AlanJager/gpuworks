@@ -51,6 +51,7 @@ func Router(d Deps, policies ...auth.SessionPolicy) http.Handler {
 		r.Get("/branding", a.getBranding)
 		r.With(a.managementAuth).Get("/auth/me", a.me)
 		r.With(a.managementAuth, sessionOnly).Post("/auth/activity", a.activity)
+		r.With(a.managementAuth, sessionOnly).Post("/auth/password", a.changePassword)
 		// Platform tokens are managed from a login session only, so no token
 		// can mint itself a wider one.
 		r.Group(func(r chi.Router) {

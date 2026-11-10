@@ -282,6 +282,7 @@ POST /api/v1/apikeys
 POST /api/v1/auth/activity
 POST /api/v1/auth/login
 POST /api/v1/auth/logout
+POST /api/v1/auth/password
 POST /api/v1/batches
 POST /api/v1/batches/{id}/cancel
 POST /api/v1/benchmarks

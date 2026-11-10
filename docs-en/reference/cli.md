@@ -259,7 +259,7 @@ Reset a user's password by modifying the database directly, without going throug
 
 | Flag | Default | Description |
 |---|---|---|
-| `--password PASSWORD` | None (required) | New password; empty values are rejected |
+| `--password PASSWORD` | None: prompts twice in the terminal without echo | New password; required when stdin is not a terminal |
 | `--user USER` | `admin` | Username |
 | `--data DIR` | See below | Data directory |
 | `--db PATH` | `<data>/gpuworks.db` | SQLite path |
