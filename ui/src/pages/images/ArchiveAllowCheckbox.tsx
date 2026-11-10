@@ -1,4 +1,4 @@
-import { Checkbox } from "antd";
+import { Checkbox } from "../../components/ui/checkbox";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { outboundPolicyApi } from "../../outboundPolicyApi";
@@ -26,8 +26,9 @@ export default function ArchiveAllowCheckbox({ host, checked, onChange }: Props)
   }, []);
   if (!host || !restricted) return null;
   return (
-    <Checkbox checked={checked} onChange={(event) => onChange(event.target.checked)}>
+    <label className="flex items-center gap-2 px-1.5">
+      <Checkbox checked={checked} onCheckedChange={(value) => onChange(value === true)} />
       {t("import.url.allowAuto", { host })}
-    </Checkbox>
+    </label>
   );
 }

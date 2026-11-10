@@ -253,7 +253,9 @@ test("a checked archive address writes an approvable host during resolve", async
   assert.equal(alert.textContent?.includes("白名单"), false);
   assert.equal(screen.queryByText(/RAW|private-query|server\.yaml|outbound_allow_private_hosts/), null);
   assert.equal(writes, 0, "an unchecked address is not written");
-  await user.click(allow);
+  allow.focus();
+  await user.keyboard("[Space]");
+  assert.equal(allow.getAttribute("aria-checked") ?? String((allow as HTMLInputElement).checked), "true", "the opt-in can be checked from the keyboard");
   await user.click(screen.getByRole("button", { name: /解\s*析/ }));
   await screen.findByText("example/app:v1");
   assert.equal(writes, 1);

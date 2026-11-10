@@ -1,13 +1,13 @@
 {
   "components": {
-    "Alert": 360,
+    "Alert": 359,
     "AutoComplete": 5,
     "Avatar": 2,
     "Badge": 14,
     "Breadcrumb": 1,
     "Button": 537,
     "Card": 120,
-    "Checkbox": 36,
+    "Checkbox": 35,
     "Col": 127,
     "Collapse": 25,
     "ConfigProvider": 2,
@@ -269,8 +269,6 @@
     "ui/src/pages/evaluations/benchmarkReportExport.css": {"antRules":2},
     "ui/src/pages/evaluations/report.css": {"antRules":4},
     "ui/src/pages/gpus/GPUDetailDrawers.tsx": {"components":{"Descriptions":23,"Segmented":2,"Space":1,"Tag":1,"Typography":5},"icons":5,"imports":["Descriptions","Segmented","Space","Tag","Typography"],"sites":32,"types":[]},
-    "ui/src/pages/images/ArchiveAllowCheckbox.tsx": {"components":{"Checkbox":1},"icons":0,"imports":["Checkbox"],"sites":1,"types":[]},
-    "ui/src/pages/images/ArchiveURLResolveAlert.tsx": {"components":{"Alert":1},"icons":0,"imports":["Alert"],"sites":1,"types":[]},
     "ui/src/pages/images/ImageArchiveURLDialog.tsx": {"components":{"Alert":3,"Button":1,"Checkbox":1,"Descriptions":3,"Input":1,"Modal":1,"Space":3,"Tag":1,"Tooltip":1,"Typography":3},"icons":0,"imports":["Alert","Button","Checkbox","Descriptions","Input","Modal","Space","Tag","Tooltip","Typography"],"sites":18,"types":[]},
     "ui/src/pages/images/ImageArchiveURLImport.tsx": {"components":{"Alert":3,"Button":1,"Card":1,"Descriptions":3,"Input":1,"Space":3,"Tag":1,"Typography":2},"icons":0,"imports":["Alert","Button","Card","Descriptions","Input","Space","Tag","Typography"],"sites":15,"types":[]},
     "ui/src/pages/images/ImageBuiltInConfig.tsx": {"components":{"Card":1,"Space":1,"Tag":1,"Typography":10},"icons":0,"imports":["Card","Space","Tag","Typography"],"sites":13,"types":[]},
@@ -431,5 +429,5 @@
     "ui/src/ui-kit/Spinner.tsx": {"components":{},"icons":1,"imports":[],"sites":0,"types":[]},
     "ui/src/ui-kit/feedback/index.tsx": {"components":{},"icons":1,"imports":[],"sites":0,"types":[]}
   },
-  "summary": {"antRules":202,"antdFiles":356,"cssFilesWithAntRules":13,"iconFiles":104,"iconImports":249,"sites":5354}
+  "summary": {"antRules":202,"antdFiles":354,"cssFilesWithAntRules":13,"iconFiles":104,"iconImports":249,"sites":5352}
 }
