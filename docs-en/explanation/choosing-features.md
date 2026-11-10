@@ -64,8 +64,8 @@ Compute semantics vary by vendor, as shown below (for details, see [dGPU Semanti
 | NVIDIA | Supported | stable | x86_64, glibc ≥ 2.17; the host driver provides `libcuda.so.1` and `libnvidia-ml.so.1` | GPU memory has a hard limit; no compute limit is provided (HAMi throttling cannot constrain vLLM; see [semantics](dgpu.md)) |
 | Ascend | Supported | experimental | Required host device-share permissions; inference image requires glibc ≥ 2.33 | On 910B4 in a self-owned environment, Docker passes platform dGPU inference and over-allocation rejection validation; nerdctl passes only the node-level dGPU behavioral probe. Rented cloud machines (the Gitee environment in the matrix) lack permission to execute device-share, so they prove only detection and full GPU chat, not a dGPU pass. These results do not establish a 20/80 throughput guarantee for `aicore-quota` |
 | PPU | Supported | experimental | HGGC 13.x, x86_64, and **Docker runtime only** | A 20/80 configuration behaves as weighted QoS under load (borrowing spare capacity when the other instance is idle), not hard SM partitioning |
-| Hygon (DTK) | No backend | — | — | Detection and full GPU deployment depend on the catalog spec and runtime; Hygon is absent from the dGPU backend registry, so use full GPUs |
-| AMD (ROCm) | Unsupported | — | — | This table covers dGPU partitioning only; see the [Vendor Support Matrix](../reference/support-matrix.md) for full-GPU implementation scope |
+| Hygon (DTK) | Supported | experimental | Z100 / K100_AI / BW, x86_64, Docker or runveil/udocker; requires the native helper, host libraries, and a per-GPU behavioral probe | Native vdev, one GPU per instance; CUs follow the memory ratio, with no independent compute quota. Devices reporting only K100, or other unsupported models, remain full-GPU only |
+| AMD (ROCm) | Supported | experimental | x86_64, Docker, nerdctl, or runveil; requires libvrocm assets | A hard GPU memory limit in user space, with no compute cap. dGPU has been tested on MI300X (gfx942) under Docker and runveil; other models and combinations remain unverified |
 
 The server derives capability availability as `ready` or `unavailable` (with a `reason`); the agent does not declare it independently. If the requirements are not met,
 the node can still deploy with full GPUs, but requests with a dGPU memory limit fail explicitly (for example, `partition_unavailable`).
@@ -73,15 +73,15 @@ They **never silently fall back to unlimited GPU memory**.
 
 **Costs and limitations**:
 
-- An instance's scheduling allocation is its GPU memory limit plus the backend reservation outside that limit. On NVIDIA, engine overhead is included in the limit, and scheduling adds 512 MiB for the CUDA context. Ascend and PPU conservatively add the full engine reservation. The limit must cover weights, KV cache, and engine overhead; if it is too small, startup fails. See [dGPU: Isolation and Limits](dgpu.md).
-- Ascend and PPU backends become `ready` only after passing the container-level probe automatically run by the agent on that node (15-second timeout per run). It runs once after agent startup and reruns when assets, GPUs, or the runtime change. NVIDIA does not run a behavioral probe; it becomes `ready` when embedded asset validation passes.
+- An instance's scheduling allocation is its GPU memory limit plus the backend reservation outside that limit. On NVIDIA, engine overhead is included in the limit, and scheduling adds 512 MiB for the CUDA context. Ascend, PPU, Hygon, and AMD conservatively add the full engine reservation. The limit must cover weights, KV cache, and engine overhead; if it is too small, startup fails. See [dGPU: Isolation and Limits](dgpu.md).
+- Ascend, PPU, and Hygon backends must also pass the behavioral probe run by the agent on that GPU; it reruns when assets, GPUs, or the runtime change. NVIDIA and AMD are exempt from behavioral probes but must still meet asset validation, architecture, and runtime requirements. Check that GPU's `status` and `reason`.
 - Combining dGPU with PD produces an "unverified" warning during evaluation (see the [Combination Quick Reference](#组合速查)); multi-node + dGPU has no validation result.
 
 **When not to use it**:
 
 - You need hard compute isolation, independent failure domains, or fixed bandwidth: dGPU guarantees none of these.
 - The model already needs an entire GPU.
-- The node uses Hygon or AMD, or uses PPU with a runtime other than Docker.
+- That GPU's dGPU capability is `unavailable`, for example because its Hygon model is unsupported, assets are missing, a probe has not passed, or its PPU runtime is not Docker.
 - You only want several models to take turns on one GPU, with no need to be online simultaneously: sleep/wake is simpler and avoids fragmentation from fixed quotas.
 
 **Learn more**: [Enable and Troubleshoot dGPU](../how-to/dgpu.md), [Run Two Models on One GPU](../tutorials/one-gpu-two-models.md),
@@ -105,9 +105,9 @@ They **never silently fall back to unlimited GPU memory**.
 
 - Wake time: L1 (moves weights to host memory) takes one step and a few seconds, but measured it pins about 1.9 times the weight size in host RAM, and keeps it pinned after the wake. L2 (discards weights)
   reloads them from the model directory on wake: a few seconds while the model files are in page cache, tens of seconds to several minutes when they are read from disk, without consuming host RAM. Both levels discard the KV cache.
-- If a sleep you ordered receives a request, the gateway returns HTTP 503 (`model is asleep; wake it first`); a deployment the platform put to sleep (
-  yielding by [yield policy](service-levels.md)) is woken on demand: the gateway holds the request while it wakes. Both on-demand and agreed switches belong to the [Scheduling Analysis](../how-to/scheduling-center.md):
-  schedules sleep and wake on chosen weekdays and times, the yield policy (never yield automatically, yield when idle, yield on a turn, yield anytime) lets deployments sharing GPUs take turns by request, and a wake that does not fit can wait for room.
+- When putting instances to sleep manually, **Wake it when a request arrives** determines what happens next: if selected, the gateway holds requests and wakes the instances automatically; otherwise, the selected instances are held asleep and requests do not wake them. HTTP 503 is returned when all sleeping replicas are held and no awake replica can serve the request. The default follows the yield policy: unselected for `never`, selected for other policies. See [sleep / wake](../how-to/sleep-wake.md#休眠时在途请求怎么办).
+- After the platform puts an instance to sleep through its [yield policy](service-levels.md), requests wake it automatically. The policies are never yield automatically (`never`), yield when idle (`idle`), yield on a turn (`timeslice`), and yield anytime (`anytime`); deployments sharing GPUs take turns through sleep/wake, and a wake that does not fit can wait for room. [Scheduling Analysis](../how-to/scheduling-center.md) also supports scheduled sleep and wake.
+- Automatic yielding (a policy other than `never`) requires a deployment with **Sleep Capable** enabled and an engine that supports sleep. It applies only to single-node, non-PD deployments. Multi-node deployments can be put to sleep manually but cannot use automatic yielding.
 - Waking requires admission first: if a new deployment occupies the GPU, it returns 409 `WAKE_INSUFFICIENT_GPU_MEMORY`. Stop or
   sleep the occupying instance first, or choose to wait for room or to put the occupant to sleep and then wake; a GPU held by a process outside the platform is refused outright (`WAKE_GPU_HELD_OUTSIDE`).
 - When putting an instance to sleep, choose "Finish in-flight requests first (recommended)" (default; finishes in-flight requests first) or "Abort in-flight requests now."

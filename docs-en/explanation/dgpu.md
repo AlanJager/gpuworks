@@ -10,15 +10,15 @@ It does not virtualize the GPU into two PCIe devices with independent failure do
   is idle, so this is not fixed SM partitioning.
 - Ascend vCANN/device-share depends on the combination of host permissions and runtime. The current Gitee cloud environment proves only node
   probes or full GPU chat; a cloud-side rejection cannot be reported as a dGPU pass.
-- Hygon Z100 uses native vdevs (experimental), with one GPU per instance. The memory quota also determines the CU allocation; compute cannot be adjusted independently, and inference throughput is not guaranteed to scale with the memory quota. Only x86_64 + Docker is supported; other models, including K100, are outside this scope.
-- AMD uses libvrocm.so (user space, interposed at the HIP runtime layer). The quota is a hard GPU memory limit. ROCm enforces its compute quota in hardware
+- Hygon Z100 / K100_AI / BW uses native vdevs (experimental), with one GPU per instance. The memory quota also determines the CU allocation; compute cannot be adjusted independently, and inference throughput is not guaranteed to scale with the memory quota. Docker or runveil/udocker on x86_64 is supported, with the native helper, host libraries, and a passing per-GPU behavioral probe. Devices reporting only K100, or other unsupported models, remain full-GPU only.
+- AMD uses libvrocm.so (experimental, user space, interposed at the HIP runtime layer). The quota is a hard GPU memory limit. ROCm enforces its compute quota in hardware
   through `HSA_CU_MASK`, below anything a preloaded library can see or verify, so the platform does not expose a compute cap for AMD either — the same
-  outcome as NVIDIA's "cannot be enforced proportionally," reached by a different mechanism. Only x86_64 + Docker/nerdctl is supported, and only MI300X
-  (gfx942) has been tested so far.
+  outcome as NVIDIA's "cannot be enforced proportionally," reached by a different mechanism. Docker, nerdctl, or runveil on x86_64 is supported.
+  dGPU has been tested on MI300X (gfx942) under Docker and runveil; other models and combinations remain unverified.
 
 The server derives partition capability status/reason from hardware facts, assets, and behavioral probes; the agent does not declare
 ready on its own. When the capability requirements are not met, full GPU deployment remains available, but a request with a dGPU memory limit must fail explicitly (for example, the scheduler returns
-partition_unavailable), rather than silently dropping the quota. For platform and environment boundaries, see reference/support-matrix.md.
+partition_unavailable), rather than silently dropping the quota. NVIDIA and AMD are exempt from behavioral probes but must still meet asset, architecture, and runtime requirements; Ascend, PPU, and Hygon must pass a per-GPU behavioral probe. For platform and environment boundaries, see the [Support Matrix](../reference/support-matrix.md).
 
 ## Quota Changes: Immediate on the Platform, Engine-Dependent in Use
 
@@ -30,7 +30,7 @@ vLLM and SGLang size the KV cache once at startup based on the limit they see, s
 would cause its next allocation to fail and the engine to exit, so such instances retain their original limit until they restart with the new one.
 
 Ascend vCANN, PPU HGGC, and AMD libvrocm read the limit only when the container
-starts, so their instances also require a restart. Hygon Z100 also requires an instance restart, releasing the old vdev before creating one with the new memory quota and CU count.
+starts, so their instances also require a restart. Hygon Z100 / K100_AI / BW also requires an instance restart, releasing the old vdev before creating one with the new memory quota and CU count.
 
 ## How Scheduling Accounts for a dGPU Instance
 
