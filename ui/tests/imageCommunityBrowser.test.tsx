@@ -41,10 +41,10 @@ test("a shortened community tag remains readable and keyboard selection preserve
   await user.unhover(button);
   await user.click(screen.getByRole("textbox", { name: zhImages.import.community.search }));
   await user.tab();
-  assert.equal(document.activeElement, button);
+  assert.equal(document.activeElement === button, true);
   await waitFor(() => assert.equal(within(screen.getByRole("tooltip")).getByText(tag).textContent, tag));
   await user.keyboard("{Enter}");
   assert.deepEqual(picked, [{
-    imageRef: `${repo.repo}:${tag}`, engine: "vllm", framework: "cuda", engineVersion: "0.30.0", rollingTag: true,
+    imageRef: `${repo.repo}:${tag}`, engine: "vllm", framework: "cuda", engineVersion: "0.30.0", frameworkVersion: "", arch: "", rollingTag: true,
   }]);
 });

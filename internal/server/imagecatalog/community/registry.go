@@ -30,7 +30,7 @@ const (
 )
 
 // errCredentials reports a registry that refused an anonymous tag
-// list. Credentials for community registries are not managed yet.
+// list, or rejected the configured login.
 var errCredentials = errors.New("community registry requires credentials")
 
 // ErrRepositoryNotFound identifies a repository the upstream registry cannot find.
@@ -90,7 +90,7 @@ func (b *Browser) listDockerHubTags(ctx context.Context, row Repo) ([]upstreamTa
 	next := strings.TrimSpace(row.UpstreamAPI)
 	if next == "" {
 		_, path := splitHost(row.Repo)
-		next = "https://registry.hub.docker.com/v2/repositories/" + path + "/tags"
+		next = "https://hub.docker.com/v2/repositories/" + path + "/tags"
 	}
 	if !strings.Contains(next, "?") {
 		next += "?page_size=100"
@@ -164,9 +164,17 @@ func (b *Browser) listOCITags(ctx context.Context, row Repo) ([]upstreamTag, err
 		host, path := splitHost(row.Repo)
 		next = "https://" + host + "/v2/" + path + "/tags/list?n=1000"
 	}
+	origin, err := url.Parse(next)
+	if err != nil {
+		return nil, err
+	}
 	var out []upstreamTag
 	var authorization string
 	for page := 0; page < maxPages && next != ""; page++ {
+		pageURL, err := url.Parse(next)
+		if err != nil || !sameOrigin(origin, pageURL) || pageURL.User != nil {
+			return nil, errors.New("registry pagination changed origin")
+		}
 		var payload struct {
 			Tags []string `json:"tags"`
 		}
@@ -249,6 +257,7 @@ func (b *Browser) do(ctx context.Context, target string, bearer *string) (*http.
 		return nil, err
 	}
 	request.Header.Set("Accept", "application/json")
+	applyRegistryLogin(request)
 	if bearer != nil && *bearer != "" {
 		request.Header.Set("Authorization", *bearer)
 	}

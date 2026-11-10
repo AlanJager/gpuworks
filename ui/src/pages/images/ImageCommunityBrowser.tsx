@@ -13,6 +13,8 @@ export type CommunityPick = {
   engine: string;
   framework: string;
   engineVersion: string;
+  frameworkVersion: string;
+  arch: string;
   rollingTag: boolean;
 };
 
@@ -38,6 +40,7 @@ export default function ImageCommunityBrowser({ onPick }: Props) {
   const [reposError, setReposError] = useState("");
   const [manualRepo, setManualRepo] = useState("");
   const [browse, setBrowse] = useState<Browse>({ state: "idle" });
+  const [repoBrowses, setRepoBrowses] = useState<Record<string, Browse>>({});
   const [query, setQuery] = useState("");
   const [picked, setPicked] = useState("");
 
@@ -45,7 +48,29 @@ export default function ImageCommunityBrowser({ onPick }: Props) {
     let alive = true;
     api
       .communityRepos()
-      .then((rows) => alive && setRepos(rows.items))
+      .then(async (rows) => {
+        if (!alive) return;
+        setRepos(rows.items);
+        // Mixed repositories have no single default. Their badges come from
+        // actual tags, with at most two background metadata requests at once.
+        const pending = rows.items.filter((card) => !card.engine || !card.framework);
+        let next = 0;
+        const load = async () => {
+          while (alive && next < pending.length) {
+            const card = pending[next++];
+            setRepoBrowses((current) => ({ ...current, [card.repo]: { state: "loading", repo: card.repo } }));
+            try {
+              const result = await api.browseCommunity(card.repo);
+              if (alive) setRepoBrowses((current) => ({ ...current, [card.repo]: { state: "done", repo: card.repo, result } }));
+            } catch (error) {
+              if (alive) setRepoBrowses((current) => ({ ...current, [card.repo]: {
+                state: "error", repo: card.repo, message: error instanceof Error ? error.message : String(error),
+              } }));
+            }
+          }
+        };
+        await Promise.all([load(), load()]);
+      })
       .catch((e) => {
         if (!alive) return;
         setRepos([]);
@@ -63,6 +88,7 @@ export default function ImageCommunityBrowser({ onPick }: Props) {
     setQuery("");
     try {
       const result = await api.browseCommunity(target);
+      setRepoBrowses((current) => ({ ...current, [target]: { state: "done", repo: target, result } }));
       // A sibling path lists its own tags but belongs to its card, so the
       // card's engine and framework stand in when the answer leaves them out.
       setBrowse({
@@ -89,9 +115,11 @@ export default function ImageCommunityBrowser({ onPick }: Props) {
     setPicked(imageRef);
     onPick({
       imageRef,
-      engine: result.engine,
-      framework: result.framework,
+      engine: tag.engine || result.engine,
+      framework: tag.framework || result.framework,
       engineVersion: tag.engine_version || "",
+      frameworkVersion: tag.framework_version || "",
+      arch: tag.arch || "",
       rollingTag: Boolean(tag.rolling_tag),
     });
   };
@@ -110,27 +138,37 @@ export default function ImageCommunityBrowser({ onPick }: Props) {
           <Alert type="error" showIcon message={t("import.community.reposFailed")} description={reposError} />
         ) : (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 8 }}>
-            {repos.map((card) => (
-              <Card key={card.repo} size="small" styles={{ body: { padding: 8 } }}>
-                <Space direction="vertical" size={2} style={{ width: "100%" }}>
-                  {[card.repo, ...(card.siblings ?? [])].map((path) => (
-                    <Button
-                      key={path}
-                      type={activeRepo === path ? "primary" : "link"}
-                      size="small"
-                      style={{ padding: activeRepo === path ? undefined : 0, maxWidth: "100%", whiteSpace: "normal", textAlign: "left", height: "auto" }}
-                      onClick={() => void open(path, card)}
-                    >
-                      {path}
-                    </Button>
-                  ))}
-                  <Space size={4}>
-                    <Tag color="blue">{card.engine}</Tag>
-                    <Tag>{card.framework}</Tag>
+            {repos.map((card) => {
+              const details = repoBrowses[card.repo];
+              const tags = details?.state === "done" ? (details.result.tags ?? []).filter((tag) => !tag.upstream_gone) : [];
+              const engines = [...new Set([card.engine, ...tags.map((tag) => tag.engine)].filter((value): value is string => Boolean(value)))];
+              const frameworks = [...new Set([card.framework, ...tags.map((tag) => tag.framework)].filter((value): value is string => Boolean(value)))];
+              return (
+                <Card key={card.repo} size="small" styles={{ body: { padding: 8 } }}>
+                  <Space direction="vertical" size={2} style={{ width: "100%" }}>
+                    {[card.repo, ...(card.siblings ?? [])].map((path) => (
+                      <Button
+                        key={path}
+                        type={activeRepo === path ? "primary" : "link"}
+                        size="small"
+                        style={{ padding: activeRepo === path ? undefined : 0, maxWidth: "100%", whiteSpace: "normal", textAlign: "left", height: "auto" }}
+                        onClick={() => void open(path, card)}
+                      >
+                        {path}
+                      </Button>
+                    ))}
+                    <Space size={[4, 4]} wrap>
+                      {engines.map((engine) => <Tag key={engine} color="blue">{engine}</Tag>)}
+                      {frameworks.map((framework) => <Tag key={framework}>{framework}</Tag>)}
+                      {details?.state === "loading" && <Spin size="small" />}
+                    </Space>
+                    {details?.state === "error" && (
+                      <Text type="secondary" title={details.message}>{t("import.community.tagsFailed", { repo: card.repo })}</Text>
+                    )}
                   </Space>
-                </Space>
-              </Card>
-            ))}
+                </Card>
+              );
+            })}
           </div>
         )}
         <Space.Compact style={{ width: "100%" }}>

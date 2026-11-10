@@ -1366,7 +1366,11 @@ export interface CommunityRepo {
 
 export interface CommunityTag {
   tag: string;
+  engine?: string;
   engine_version?: string;
+  framework?: string;
+  framework_version?: string;
+  arch?: string;
   rolling_tag?: boolean;
   upstream_gone?: boolean;
   /** When the registry last saw the tag move (RFC 3339); absent for plain OCI registries. */

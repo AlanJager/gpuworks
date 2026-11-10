@@ -83,6 +83,8 @@ export default function ImageImportDrawer({
                 engine: pick.engine || undefined,
                 framework: pick.framework || undefined,
                 engine_version: pick.engineVersion,
+                framework_version: pick.frameworkVersion,
+                arch: pick.arch || "multi",
                 rolling_tag: pick.rollingTag,
               });
             }}
