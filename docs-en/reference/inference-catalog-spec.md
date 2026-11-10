@@ -104,7 +104,7 @@ models:                       # FlatCatalog: a single top-level models list
 | Field | Constraints | Description |
 |---|---|---|
 | `name` | Required; unique within the model | |
-| `display_name_zh_cn` / `display_name_en` | Optional; one line, at most 56 / 72 characters respectively; each unique within the model and engine (ignoring case and extra spaces) | The spec's Chinese and English display names. The UI shows the one for its language, falls back to the other, and shows `name` when there is neither. Built-in specs set both. See [Display Names](#display-names) |
+| `display_name_zh_cn` / `display_name_en` | Optional; one line, at most 56 / 72 characters respectively; each unique within the model and engine (ignoring case and extra spaces) | The spec's Chinese and English display names. The UI shows the one for its language, falls back to the other, and shows `name` when there is neither. Built-in specs set both. See [Display Names](#显示名) |
 | `scenario` | `latency` \| `balanced` \| `throughput` | |
 | `engine` | Required; resolved through the registry at deployment time; valid values are `vllm` / `sglang` / `callable` (`internal/engines` is the sole source) | `callable` runs the Serve Adapter bundled with the catalog, with no log dialect or parameter dictionary; **the template controls the entire command line**. The engine appends no arguments. The template places platform facts such as model paths, ports, and multi-node ranks using [variables](#变量展开), and must reference `${API_PORT}` (ADR 0036) |
 | `image` | Required | For image reference syntax and drift, see [Image Families](image-families.md) and todo.md T2 |
@@ -228,7 +228,7 @@ writes only the normalized list.
 
 For example, GLM-5.3-Flash's two vLLM Hopper specs are "H20 / H200 141G · FP8 · 8 GPUs · 1M context" and "H100 / H20 96G · FP8 · 8 GPUs · 256K context".
 
-The `display_profile` and `gpus.display_target` keys of earlier templates are no longer used: an import still reads them, ignores them and raises the `CATALOG_DISPLAY_PROFILE_RETIRED` warning (see [Pre-Import Checks and Warnings](#pre-import-checks-and-warnings)).
+The `display_profile` and `gpus.display_target` keys of earlier templates are no longer used: an import still reads them, ignores them and raises the `CATALOG_DISPLAY_PROFILE_RETIRED` warning (see [Pre-Import Checks and Warnings](#导入前检查与警告)).
 
 ### assets[]
 

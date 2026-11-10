@@ -42,6 +42,33 @@ git diff --check
 `check-assets` includes `check-libvgpu` and `check-perftest`; it does not validate Ascend, PPU, or partition probe assets.
 You must run `make runtime-assets-verify` separately before release, or missing or tampered assets in these three categories go undetected.
 
+## Release Documentation PDFs
+
+For a formal version tag, the pipeline first builds the Chinese and English documentation from that commit,
+then `release-docs-pdf` generates two user guides. They cover tutorials, how-to guides, reference, and architecture,
+excluding developer documentation and ADRs. The cover identifies the version and source commit. The guides include
+a clickable table of contents, page numbers, images, Mermaid diagrams, and searchable, copyable text. Links to included
+articles point to their PDF chapters; links to omitted articles and downloads point to online documentation and require network access.
+
+The outputs are `dist/docs/gpuworks-<tag>-zh.pdf`, `dist/docs/gpuworks-<tag>-en.pdf`, and
+`dist/docs/SHA256SUMS`. Failed checks for Chinese fonts, images, links, content width, or PDF completeness block publication.
+PDF artifacts for formal version tags are retained permanently. Once publication succeeds, all three files are available under
+`releases/<tag>/docs/` on each distribution source for separate download and sharing. Documentation has its own checksum
+list; the root `SHA256SUMS` continues to list only platform archives. Uploaded PDFs and checksums are read back in full
+and compared before switching the distribution channel.
+
+Local generation uses the website's Hugo and the existing browser acceptance tools, Playwright and Chrome/Chromium,
+plus Noto Sans CJK fonts, Fontconfig, and Poppler tools (`pdftotext`, `pdfinfo`, `pdffonts`).
+Install `requirements-e2e.txt`, then run in a checkout of the version tag:
+
+```bash
+HUGO_BIN=/path/to/hugo CHROME_PATH=/path/to/chrome make docs-pdf VERSION=v26.11.3
+```
+
+Replace the example version with the actual tag. The generator checks that the website output matches the requested source commit.
+CI generates PDFs only for formal version tags. MRs and nightly builds do not generate PDFs; MRs still build the documentation site and run related checks.
+Republishing the same version preserves the original documentation bytes. Historical versions without PDFs are not backfilled or replaced.
+
 ## Version Numbers
 
 Releases use calendar versions `YY.M.PATCH`, tagged as `vYY.M.PATCH`, for example `v26.11.0`.
