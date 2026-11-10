@@ -179,7 +179,7 @@ func ReadPackageArchive(reader io.Reader) (Archive, error) {
 		if header.Typeflag == tar.TypeDir {
 			continue
 		}
-		if header.Typeflag != tar.TypeReg && header.Typeflag != tar.TypeRegA {
+		if header.Typeflag != tar.TypeReg {
 			return Archive{}, fmt.Errorf("inference catalog package entry %s is not a regular file", name)
 		}
 		if _, duplicate := files[name]; duplicate {
