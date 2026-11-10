@@ -124,6 +124,11 @@ func agentRuntimeChecklist(ctx context.Context, state string) []uninstallcheck.I
 			candidates = append(candidates, candidate{entry.driver, true, true})
 		}
 	}
+	localStateMissing := (cfg.RuntimeDriver == "udocker" || cfg.RuntimeDriver == "runveil") && !hasAgentState(state, "udocker") && !hasAgentState(state, "udocker-state")
+	localStateMissing = localStateMissing || (cfg.RuntimeDriver == hostproc.DriverName && !hasAgentState(state, "host-state"))
+	if localStateMissing {
+		items = append(items, uninstallcheck.Item{ID: "runtime.configured-state", Status: uninstallcheck.Unknown, Summary: "Configured local runtime state is unavailable", Action: "Establish the configured backend's state location; absent state cannot prove that its workloads stopped."})
+	}
 	inspected := 0
 	for _, c := range candidates {
 		if !c.required {

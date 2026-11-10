@@ -18,6 +18,7 @@ func TestAgentUninstallCLIUsesRuntimeEvidenceAndRetainsSecrets(t *testing.T) {
 	}{
 		{"auto_without_backend", "", "", "unknown", "No workload runtime could be inventoried"},
 		{"configured_backend_missing", "docker", "", "unknown", "Runtime inventory could not be read"},
+		{"configured_local_backend_missing", "udocker", "", "unknown", "Configured local runtime state is unavailable"},
 		{"shared_candidate", "docker", "candidate", "unknown", "state ownership unknown"},
 		{"daemon_failure", "docker", "failure", "unknown", "Runtime inventory could not be read"},
 		{"partial_running_list", "docker", "partial", "unknown", "absent from inventory"},
