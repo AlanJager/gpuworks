@@ -1,5 +1,7 @@
 import { CloseOutlined, HolderOutlined, LockOutlined } from "@ant-design/icons";
-import { Button, Checkbox, Drawer, Typography } from "antd";
+import { Button } from "../ui/button";
+import { Checkbox } from "../ui/checkbox";
+import { SideDrawer } from "../../ui-kit/SideDrawer";
 import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -25,7 +27,7 @@ function SelectedItem({ column, onRemove }: { column: SettingsColumn; onRemove: 
         <HolderOutlined />
       </span>
       <span className="resource-table-settings-label">{column.label}</span>
-      <Button type="text" size="small" icon={<CloseOutlined />} onClick={onRemove} aria-label={t("resourceTable.hideColumn", { name: column.label })} />
+      <Button variant="ghost" size="sm" iconOnly onClick={onRemove} aria-label={t("resourceTable.hideColumn", { name: column.label })}><CloseOutlined /></Button>
     </div>
   );
 }
@@ -74,7 +76,7 @@ export default function ColumnSettingsDrawer({ open, columns, prefs, onChange, o
   const total = columns.length;
   const shownCount = leading.length + shown.length + trailing.length;
   return (
-    <Drawer
+    <SideDrawer
       open={open}
       onClose={onClose}
       width={560}
@@ -84,7 +86,7 @@ export default function ColumnSettingsDrawer({ open, columns, prefs, onChange, o
     >
       <div className="resource-table-settings-panes">
         <section aria-label={t("resourceTable.selected", { count: shownCount })}>
-          <Typography.Text strong className="resource-table-settings-heading">{t("resourceTable.selected", { count: shownCount })}</Typography.Text>
+          <strong className="resource-table-settings-heading">{t("resourceTable.selected", { count: shownCount })}</strong>
           <div className="resource-table-settings-selected">
             {leading.map((column) => <LockedItem key={column.key} column={column} />)}
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={dragEnd}>
@@ -98,16 +100,16 @@ export default function ColumnSettingsDrawer({ open, columns, prefs, onChange, o
           </div>
         </section>
         <section aria-label={t("resourceTable.all", { shown: shownCount, total })}>
-          <Typography.Text strong className="resource-table-settings-heading">{t("resourceTable.all", { shown: shownCount, total })}</Typography.Text>
+          <strong className="resource-table-settings-heading">{t("resourceTable.all", { shown: shownCount, total })}</strong>
           <div className="resource-table-settings-all">
-            {leading.map((column) => <Checkbox key={column.key} checked disabled>{column.label}</Checkbox>)}
+            {leading.map((column) => <label key={column.key} className="flex items-center gap-2"><Checkbox checked disabled />{column.label}</label>)}
             {prefs.order.map((key) => byKey.get(key)).filter((column): column is SettingsColumn => !!column).map((column) => (
-              <Checkbox key={column.key} checked={!hidden.has(column.key)} onChange={(event) => setHidden(column.key, !event.target.checked)}>{column.label}</Checkbox>
+              <label key={column.key} className="flex items-center gap-2"><Checkbox checked={!hidden.has(column.key)} onCheckedChange={(checked) => setHidden(column.key, !checked)} />{column.label}</label>
             ))}
-            {trailing.map((column) => <Checkbox key={column.key} checked disabled>{column.label}</Checkbox>)}
+            {trailing.map((column) => <label key={column.key} className="flex items-center gap-2"><Checkbox checked disabled />{column.label}</label>)}
           </div>
         </section>
       </div>
-    </Drawer>
+    </SideDrawer>
   );
 }

@@ -68,7 +68,7 @@ function columnValues(container: HTMLElement, title: string) {
 	const headers = headerTitles(container);
 	const index = headers.findIndex((header) => header.startsWith(title));
 	assert.ok(index >= 0, `column ${title} in ${headers.join(" | ")}`);
-	return [...container.querySelectorAll<HTMLElement>("tr.ant-table-row")].map((row) => within(row).getAllByRole("cell")[index].textContent);
+	return [...container.querySelectorAll<HTMLElement>("tr[data-row-key]")].map((row) => within(row).getAllByRole("cell")[index].textContent);
 }
 
 test("interactivity is 1000 / TPOT P50 and E2E latency is a default column", () => {

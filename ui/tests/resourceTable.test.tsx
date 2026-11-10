@@ -32,6 +32,7 @@ const { cleanup, fireEvent, render, screen, waitFor, within } = await import("@t
 const userEvent = (await import("@testing-library/user-event")).default;
 const { default: ResourceTable, compareSortValues } = await import("../src/components/resourceTable/ResourceTable.tsx");
 const { parseColumnPrefs, arrangeColumns, defaultColumnPrefs, storageKey } = await import("../src/components/resourceTable/columnPrefs.ts");
+import { sortColumn } from "./helpers/sortColumn";
 import type { ResourceColumn } from "../src/components/resourceTable/ResourceTable";
 
 beforeEach(() => localStorage.clear());
@@ -59,16 +60,16 @@ function renderTable(props: Partial<React.ComponentProps<typeof ResourceTable<Ro
   );
 }
 
-const headerTexts = () => screen.getAllByRole("columnheader").map((cell) => cell.textContent);
+const headerTexts = () => screen.getAllByRole("columnheader", { hidden: true }).map((cell) => cell.getAttribute("aria-label") ?? cell.textContent);
 const firstCells = () => screen.getAllByRole("row").slice(1).map((row) => within(row).getAllByRole("cell")[0].textContent);
 
 test("the name column leads frozen left and the actions column trails frozen right under its own header", () => {
   renderTable();
   const headers = screen.getAllByRole("columnheader");
   assert.deepEqual(headerTexts(), ["Name", "GPUs", "State", "Actions"]);
-  assert.ok(headers[0].className.includes("ant-table-cell-fix-left"));
-  assert.ok(headers.at(-1)!.className.includes("ant-table-cell-fix-right"));
-  const table = document.querySelector(".ant-table-content table") as HTMLTableElement;
+  assert.ok(headers[0].style.position === "sticky" && headers[0].style.left === "0px");
+  assert.ok(headers.at(-1)!.style.position === "sticky" && headers.at(-1)!.style.right === "0px");
+  const table = screen.getByRole("table") as HTMLTableElement;
   assert.equal(table.style.tableLayout, "fixed");
   assert.equal(table.style.width, "510px", "the scroll width is the sum of the shown columns");
 });
@@ -76,13 +77,8 @@ test("the name column leads frozen left and the actions column trails frozen rig
 test("the page size can be changed and is remembered", async () => {
   renderTable();
   assert.equal(firstCells().length, 20);
-  fireEvent.mouseDown(document.querySelector(".ant-pagination-options .ant-select-selector")!);
-  const option = await waitFor(() => {
-    const found = Array.from(document.querySelectorAll(".ant-select-item-option")).find((item) => item.textContent === "50 / page");
-    assert.ok(found);
-    return found;
-  });
-  fireEvent.click(option);
+  await userEvent.setup().click(screen.getByRole("combobox", { name: "Rows per page" }));
+  await userEvent.setup().click(await screen.findByRole("option", { name: "50", exact: true }));
   await waitFor(() => assert.equal(firstCells().length, 45));
   assert.equal(JSON.parse(localStorage.getItem(storageKey("test"))!).pageSize, 50);
   cleanup();
@@ -92,16 +88,28 @@ test("the page size can be changed and is remembered", async () => {
 
 test("a client list sorts by the column's value and filters from the header", async () => {
   renderTable({ data: rows.slice(0, 6) });
-  fireEvent.click(screen.getByRole("columnheader", { name: /GPUs/ }));
+  await sortColumn("GPUs", "Ascending");
   const gpus = () => screen.getAllByRole("row").slice(1).map((row) => Number(within(row).getAllByRole("cell")[1].textContent));
   assert.deepEqual(gpus(), [...gpus()].sort((a, b) => a - b));
-  fireEvent.click(screen.getByRole("columnheader", { name: /GPUs/ }));
+  await sortColumn("GPUs", "Descending");
   assert.deepEqual(gpus(), [...gpus()].sort((a, b) => b - a));
 
-  fireEvent.click(screen.getByRole("columnheader", { name: /State/ }).querySelector(".ant-table-filter-trigger")!);
-  fireEvent.click(await screen.findByRole("menuitem", { name: /Offline/ }));
-  fireEvent.click(screen.getByRole("button", { name: "OK" }));
+  await userEvent.setup().click(screen.getByRole("button", { name: "Filter by State" }));
+  await userEvent.setup().click(await screen.findByRole("checkbox", { name: /Offline/ }));
   await waitFor(() => assert.deepEqual(firstCells().sort(), ["node-01", "node-04"]));
+});
+
+test("filters in effect are listed by column above the table and clear one by one", async () => {
+  renderTable({ data: rows.slice(0, 6) });
+  assert.equal(screen.queryByRole("group", { name: "Filtered" }), null, "no row while nothing is filtered");
+  await userEvent.setup().click(screen.getByRole("button", { name: "Filter by State" }));
+  await userEvent.setup().click(await screen.findByRole("checkbox", { name: /Offline/ }));
+  const active = await screen.findByRole("group", { name: "Filtered" });
+  const chip = within(active).getByRole("button", { name: /^Clear filter: State Offline/ });
+  assert.equal(chip.textContent, "State: Offline");
+  await userEvent.setup().click(chip);
+  await waitFor(() => assert.equal(screen.queryByRole("group", { name: "Filtered" }), null));
+  assert.equal(firstCells().length, 6, "every row is back");
 });
 
 test("columns can be hidden, shown and restored from the settings drawer", async () => {
@@ -113,7 +121,7 @@ test("columns can be hidden, shown and restored from the settings drawer", async
   await waitFor(() => assert.deepEqual(headerTexts(), ["Name", "State", "Actions"]));
   await user.click(within(drawer).getByRole("checkbox", { name: "Zone" }));
   await waitFor(() => assert.deepEqual(headerTexts(), ["Name", "State", "Zone", "Actions"]));
-  assert.equal((within(drawer).getByRole("checkbox", { name: "Name" }) as HTMLInputElement).disabled, true, "the name column never hides");
+  assert.equal(within(drawer).getByRole("checkbox", { name: "Name" }).getAttribute("aria-disabled"), "true", "the name column never hides");
   const saved = JSON.parse(localStorage.getItem(storageKey("test"))!);
   assert.deepEqual(saved.hidden, ["gpus"]);
 
@@ -136,14 +144,14 @@ test("a server-sorted list hands the sort to its owner instead of sorting the pa
   const sorts: unknown[] = [];
   const cols = columns().map((column) => (column.key === "name" ? { ...column, sortValue: undefined, serverSort: true } : column));
   renderTable({ columns: cols, data: rows.slice(0, 3).reverse(), sort: null, onSortChange: (sort) => sorts.push(sort), pagination: { current: 1, pageSize: 20, total: 3 } });
-  fireEvent.click(screen.getByRole("columnheader", { name: /Name/ }));
+  await sortColumn("Name", "Ascending");
   assert.deepEqual(sorts, [{ key: "name", order: "asc" }]);
   assert.deepEqual(firstCells(), ["node-03", "node-02", "node-01"], "the rows stay as the server sent them");
 });
 
 test("loading shows no false empty state; an error offers a keyboard-operable retry", async () => {
-  const { container } = renderTable({ data: [], loading: true, emptyDescription: "Nothing here" });
-  assert.ok(container.querySelector(".ant-spin-spinning"));
+  renderTable({ data: [], loading: true, emptyDescription: "Nothing here" });
+  assert.ok(screen.getByRole("status"));
   assert.equal(screen.queryByText("Nothing here"), null);
   cleanup();
   renderTable({ data: [], emptyDescription: "Nothing here" });
@@ -177,4 +185,35 @@ test("sort values put missing values first ascending and compare names naturally
   const sorted = (values: Array<string | number | null | undefined>) => values.map((v) => ({ v })).sort((a, b) => compareSortValues(a.v, b.v)).map(({ v }) => v);
   assert.deepEqual(sorted(["node-10", "node-9", undefined, "Node-1"]), [undefined, "Node-1", "node-9", "node-10"]);
   assert.deepEqual(sorted([3, null, 1, ""]), [null, "", 1, 3]);
+});
+
+test("server paging keeps selected stable IDs across pages and never treats a page as the total", async () => {
+  const changes: unknown[] = [];
+  const pages: unknown[] = [];
+  renderTable({ data: rows.slice(20, 23), pagination: { current: 2, pageSize: 20, total: 65, onChange: (page, size) => pages.push([page, size]) }, rowSelection: { selectedRowKeys: [1], preserveSelectedRowKeys: true, onChange: (keys) => changes.push(keys), getCheckboxProps: (row) => ({ disabled: row.id === 22 }) } });
+  await userEvent.setup().click(screen.getByRole("checkbox", { name: "Select this page" }));
+  assert.deepEqual(changes, [[1, 21, 23]]);
+  assert.ok(screen.getByText("65 items"));
+  await userEvent.setup().click(screen.getByRole("button", { name: "Next page" }));
+  assert.deepEqual(pages, [[3, 20]]);
+});
+
+test("row presentation and expandable details survive refresh without nested actions expanding", async () => {
+  renderTable({ data: rows.slice(0, 2), pagination: false, onRow: (row) => ({ title: row.name, style: { opacity: row.id === 1 ? 0.5 : 1 } }), expandable: { rowExpandable: (row) => row.id === 1, expandRowByClick: true, expandedRowRender: (row) => <div>Details {row.name}</div> } });
+  assert.equal(screen.getByTitle("node-01").style.opacity, "0.5");
+  await userEvent.setup().click(screen.getByRole("button", { name: "Open node-01" }));
+  assert.ok(!screen.queryByText("Details node-01"));
+  await userEvent.setup().click(screen.getByRole("button", { name: "Expand row" }));
+  assert.ok(screen.getByText("Details node-01"));
+  assert.equal(screen.getAllByRole("button", { name: "Collapse row" }).length, 1);
+});
+
+test("refreshing inline column callbacks preserves the focused row action", () => {
+  const tree = () => <I18nextProvider i18n={i18n}><ResourceTable<Row> tableId="stable-actions" rowKey="id" data={rows.slice(0, 1)} columns={columns()} pagination={false} /></I18nextProvider>;
+  const view = render(tree());
+  const action = screen.getByRole("button", { name: "Open node-01" });
+  action.focus();
+  view.rerender(tree());
+  assert.ok(action.isConnected, "a new callback must not remount the cell");
+  assert.ok(document.activeElement === action, "focus survives data/route-driven rerenders");
 });

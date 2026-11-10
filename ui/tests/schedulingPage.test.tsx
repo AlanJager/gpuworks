@@ -337,13 +337,13 @@ test("the open node is in the URL: opening sets ?node=, closing clears it, and t
   assert.equal(screen.getByTestId("loc").textContent, "/scheduling?node=node-a");
   await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Close" }));
   await waitFor(() => assert.equal(screen.getByTestId("loc").textContent, "/scheduling"));
-  await waitFor(() => assert.equal(document.querySelector(".ant-drawer-open"), null));
+  await waitFor(() => assert.equal(document.querySelector('[role="dialog"]'), null));
   await user.click(screen.getByRole("button", { name: "browser back" }));
   assert.equal(screen.getByTestId("loc").textContent, "/scheduling?node=node-a");
   await within(await screen.findByRole("dialog")).findByRole("region", { name: "gpu-a" });
   await user.click(screen.getByRole("button", { name: "browser back" }));
   assert.equal(screen.getByTestId("loc").textContent, "/scheduling");
-  await waitFor(() => assert.equal(document.querySelector(".ant-drawer-open"), null));
+  await waitFor(() => assert.equal(document.querySelector('[role="dialog"]'), null));
 });
 
 test("a link to /scheduling?node= opens that node's drawer, titled with its name", async () => {

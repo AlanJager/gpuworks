@@ -137,6 +137,7 @@ ui: i18n-check
 	@cd ui && node ensure-deps.mjs
 	cd ui && npm run lint:i18n
 	cd ui && npm run build
+	./scripts/check_ui_bundle_size.sh
 
 i18n-check:
 	node scripts/i18n-check.mjs

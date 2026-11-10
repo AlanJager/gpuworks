@@ -99,7 +99,13 @@ core-ui:
         sleep 15
       done
     - npm run lint:i18n
+    # Per-file antd ratchet (ui/antd-inventory.json): no file may use more antd
+    # than the snapshot records; core-test's architecture check runs without
+    # Node, so the check lives here.
+    - node ../scripts/ui_antd_inventory.mjs --check
     - npm run build
+    # Warns (never fails) when the compressed UI outgrows its budget.
+    - (cd .. && ./scripts/check_ui_bundle_size.sh)
   artifacts:
     # Vite writes directly to the directory embedded by the Go server.
     paths:
@@ -237,6 +243,82 @@ core-ui-test:
     paths:
       - ui/coverage/lcov.info
       - ui/coverage/lcov-report/
+    expire_in: 14 days
+
+# Walks the console in Chromium against a disposable experience environment
+# and fails on what a person would see as broken: covered or overlapping text,
+# stretched controls, controls an invisible layer blocks, sideways scrolling,
+# console errors (scripts/ui_check_ci.sh, ui/tests/browser/ui-check.mjs). Only
+# when the UI changed, and on a merge request only the pages the change
+# reaches; shared files and the nightly schedule walk every page. The report
+# (screenshots, and the target branch's for the states that look different)
+# is attached to the job for a reviewer.
+ui-check:
+  extends: .go-core
+  stage: core
+  # Until a prebuilt image replaces the apt step its download alone can take
+  # 17–40 minutes; a walk with the comparison takes about 18 s a state.
+  timeout: 60m
+  retry: 1
+  variables:
+    NPM_REGISTRY: "https://registry.npmmirror.com"
+    npm_config_cache: "$CI_PROJECT_DIR/.cache/npm"
+    UI_CHECK_COMPARE: "1"
+  cache:
+    - key:
+        files:
+          - ui/package-lock.json
+        prefix: npm-node22
+      paths:
+        - .cache/npm/
+      policy: pull
+    # The Chromium and font packages: downloading them took about 17 minutes
+    # even through the mirror; from the cache apt only unpacks them.
+    - key: ui-check-apt-bookworm
+      paths:
+        - .cache/apt/
+      # Keep the download even when the check fails or times out.
+      when: always
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes:
+        - ui/**/*
+        - scripts/ui_check_ci.sh
+        - scripts/ui_antd_inventory.mjs
+        - .gitlab-ci.yml
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+    - if: '$CI_PIPELINE_SOURCE == "web"'
+    - when: never
+  before_script:
+    # Chromium and CJK fonts from Debian, through the mirror docs-pdf uses: the
+    # runners reach deb.debian.org too slowly. Node 22 (Debian ships 18,
+    # Playwright needs 20+) as the pinned, checksummed tarball from the npm
+    # mirror the UI jobs already use.
+    - sed -i 's|http://deb.debian.org|http://mirrors.aliyun.com|g' /etc/apt/sources.list.d/debian.sources
+    - mkdir -p .cache/apt/archives/partial && rm -f /etc/apt/apt.conf.d/docker-clean
+    - apt-get -qq -o Acquire::http::Timeout=20 -o Acquire::Retries=2 update
+    - apt-get -qq -o Acquire::http::Timeout=20 -o Acquire::Retries=2 -o Dir::Cache::Archives="$CI_PROJECT_DIR/.cache/apt/archives" install -y --no-install-recommends chromium fonts-noto-cjk xz-utils >/dev/null
+    - export CHROME_PATH=$(command -v chromium)
+    - |
+      node_tar=node-v22.16.0-linux-x64.tar.xz
+      curl -fsSL --retry 3 -o "/tmp/$node_tar" "https://registry.npmmirror.com/-/binary/node/v22.16.0/$node_tar"
+      echo "f4cb75bb036f0d0eddf6b79d9596df1aaab9ddccd6a20bf489be5abe9467e84e  /tmp/$node_tar" | sha256sum -c -
+      tar -xJf "/tmp/$node_tar" -C /usr/local --strip-components=1
+    - (cd ui && npm ci --registry="$NPM_REGISTRY" --prefer-offline --no-audit --no-fund)
+  script:
+    - |
+      if [ "$CI_PIPELINE_SOURCE" = "merge_request_event" ]; then
+        git fetch -q origin "$CI_MERGE_REQUEST_TARGET_BRANCH_NAME"
+        export UI_CHECK_BASE_REF="origin/$CI_MERGE_REQUEST_TARGET_BRANCH_NAME"
+        # A merge request walks both languages at 1024, where layouts break
+        # first and English labels run longest; scheduled runs walk 1440 too.
+        export UI_CHECK_WIDTHS=1024
+      fi
+    - ./scripts/ui_check_ci.sh
+  artifacts:
+    when: always
+    paths:
+      - ui-check-report/
     expire_in: 14 days
 
 core-test:

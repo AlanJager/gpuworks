@@ -187,7 +187,7 @@ Login, logout, and management write requests using login sessions check the requ
 | GET | `/api/v1/engines?target_vendor=amd` | Engine parameter dictionary for a target vendor (uses the general profile when `target_vendor` is omitted); the AMD profile describes implementation admission scope, not validation on a specific GPU/ROCm version | JWT |
 | GET | `/api/v1/nodes` | List nodes; paginate with `page`/`page_size` and filter by `q`/`state`/`label` (see “Error and Response Conventions”) | JWT |
 | GET | `/api/v1/nodes/facets` | Filter options and node count distributions; the `q`, `state`, and `label` query parameters are the same as for the node list. Returns distributions of user labels, system labels, and GPU models (including reported `arch_id`); see [Node List](#节点列表的筛选与返回字段) | JWT |
-| GET | `/api/v1/dashboard/summary` | Dashboard summary: node counts by state and hardware totals, deployment counts by state, and capacity grouped by vendor and label (`label_key`; uses the most common key when omitted or when no node has that key) | JWT |
+| GET | `/api/v1/dashboard/summary` | Dashboard summary: node counts by state and hardware totals, deployment counts by state, and capacity grouped by vendor and label (`label_key`; uses the most common key when omitted or when no node has that key); also current GPU metrics, card occupancy and tasks in flight, see [Dashboard summary](#dashboard-summary-response-fields) | JWT |
 | POST | `/api/v1/nodes` | Create a node awaiting connection and return the installation command and token; see [Connection Parameters for Node Creation](#创建节点的连接参数) for all fields and conditions | JWT(admin) |
 | GET | `/api/v1/agent/rejects` | Recent rejected connection attempts | JWT |
 | GET | `/api/v1/agent/upgrade-errors` | Recent agent upgrade failures | JWT |
@@ -278,6 +278,19 @@ Deployment forms and placement condition editors can use it directly to generate
 | User label values and system label values | Each value includes the number of nodes carrying it; system labels include server-provided display text and exclude the node's own `gpuworks.ai/node` label |
 | GPU model | `vendor`, `name`, and `cc` describe the vendor, name, and compute capability; reported `arch_id` is included and distinct architectures are counted separately; `model` corresponds to the value of the `gpuworks.ai/gpu-model` system label |
 | Count and GPU memory for each GPU model | Node count, plus `cards` (card count) and `memory_bytes` (maximum GPU memory per card) |
+
+### Dashboard Summary Response Fields
+
+Every count in `GET /api/v1/dashboard/summary` is computed by the server; the dashboard only displays it. Besides the node counts and capacity groups, the main fields are:
+
+| Field | Meaning |
+|---|---|
+| `current_metrics.vram_used_bytes`, `current_metrics.vram_total_bytes` | VRAM used and total of the online nodes' own cards, summed only over cards with a sample of both in the last two minutes, so their ratio is the VRAM utilization; both are `null` when no card has both |
+| `deployments.running`, `warming`, `sleeping`, `pending`, `other` | Deployments bucketed by effective state; each deployment is in exactly one bucket and they add up to `total`. `warming` is pulling an image or starting, `sleeping` is asleep or going to sleep as a whole, `pending` is waiting for a placement, and `other` is every deployment in none of these (stopped, failed, offline and the like) |
+| `cards` | The same card state counts as the `summary` of `GET /api/v1/scheduling/overview`, plus `allocated`; `null` when the scheduling overview cannot be built, meaning unknown rather than no cards |
+| `cards.allocated` | Cards held by deployments, i.e. `awake + asleep`: a sleeping deployment's cards stay reserved for its wake and count as allocated; cards held outside the platform, unhealthy or offline do not. `allocated / cards` is the allocation rate |
+| `tasks.batches` | Batches the caller may see (every user's for an administrator, otherwise the caller's own): `active` are in progress or finalizing, `waiting` are validating their input; `null` when the Batch API is not served or the count failed |
+| `tasks.benchmarks` | Evaluation runs pending or running, of every user (evaluation runs are not owned per user) |
 
 ### Node Connection Diagnostics
 

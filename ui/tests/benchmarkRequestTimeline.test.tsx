@@ -17,6 +17,7 @@ await i18n.use(initReactI18next).init({ lng: 'en', defaultNS: 'evaluations', int
 } } } } });
 const { cleanup, render, screen, fireEvent } = await import('@testing-library/react');
 const { default: BenchmarkRequestTimeline } = await import('../src/pages/evaluations/BenchmarkRequestTimeline.tsx');
+const { colors: themeColors } = await import('../src/theme/tokens.ts');
 afterEach(cleanup);
 after(() => dom.window.close());
 function record(overrides: Partial<BenchmarkTimelineRecord> = {}): BenchmarkTimelineRecord {
@@ -46,7 +47,7 @@ test('failed request without output uses a red send-to-finish bar', () => {
   failed.metrics.first_content_at = null;
   const { container } = view({ status: 'complete', records: [failed] });
   const bar = container.querySelector('[data-phase="failure"]');
-  assert.equal(bar?.getAttribute('fill'), '#f93940');
+  assert.equal(bar?.getAttribute('fill'), themeColors.danger, 'the theme danger color');
   assert.equal(bar?.getAttribute('width'), '745');
   assert.equal(container.querySelector('[data-phase="wait"]'), null);
   fireEvent.keyDown(screen.getByRole('button', { name: /Session session-1/ }), { key: ' ' });

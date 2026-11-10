@@ -63,11 +63,11 @@ def set_policy(owner, page, locale, value):
 def node_row(page, owner, node, locale):
     text = labels(locale, 'nodes')
     page.goto(owner.server.base + '/nodes')
-    nav = page.locator('.desktop-sider .app-nav').get_by_role('link', name=labels(locale, 'common')['navigation']['nodes'], exact=True)
+    nav = page.get_by_role('complementary', name=labels(locale, 'common')['header']['navigation']).get_by_role('link', name=labels(locale, 'common')['navigation']['nodes'], exact=True)
     expect(nav).to_have_attribute('href', '/nodes')
     nav.click()
     expect(page).to_have_url(owner.server.base + '/nodes')
-    expect(nav.locator('xpath=ancestor::*[@role="menuitem"][1]')).to_have_class(re.compile(r'\bant-menu-item-selected\b'))
+    expect(nav).to_have_attribute('aria-current', 'page')
     row = page.get_by_role('row').filter(has_text=node['name'])
     expect(row).to_have_count(1)
     control = row.get_by_role('button', name=text['action']['terminal'], exact=True)
