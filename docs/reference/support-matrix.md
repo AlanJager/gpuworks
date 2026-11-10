@@ -39,7 +39,7 @@ dGPU 不可用时，节点仍可使用整卡部署；平台不会把不满足 dG
 
 ## AMD dGPU 显存配额
 
-`amd-dgpu` 后端用 libvrocm.so（gpustack-operator 的 rocm-slicing-shim，`build/runtime-assets/amd/`）在 HIP 运行时层拦截分配与容量查询接口，只链接 libc，一份构建适配任意 ROCm 版本。注入在 AMD 整卡设备选择（render 节点 + `/dev/kfd`）之上叠加：`LD_PRELOAD` 指向挂载的 `/opt/gpuworks/partition/libvrocm.so`，`VROCM_DEVICE_MEMORY_LIMIT_<N>`（MiB，`N` 为容器自身可见设备列表里的位次，不是物理序号）按所选每张卡写入，`VROCM_LEDGER_PATH` 指向 `/dev/shm` 下的实例专属账本（容器需 `--ipc=host` 才能与宿主侧清理共享该路径，做法同 PPU）。限额只在 HIP 运行时初始化时读取一次，调小配额需重启实例才生效。
+`amd-dgpu` 后端用 libvrocm.so（rocm-slicing-shim，`build/runtime-assets/amd/`）在 HIP 运行时层拦截分配与容量查询接口，只链接 libc，一份构建适配任意 ROCm 版本。注入在 AMD 整卡设备选择（render 节点 + `/dev/kfd`）之上叠加：`LD_PRELOAD` 指向挂载的 `/opt/gpuworks/partition/libvrocm.so`，`VROCM_DEVICE_MEMORY_LIMIT_<N>`（MiB，`N` 为容器自身可见设备列表里的位次，不是物理序号）按所选每张卡写入，`VROCM_LEDGER_PATH` 指向 `/dev/shm` 下的实例专属账本（容器需 `--ipc=host` 才能与宿主侧清理共享该路径，做法同 PPU）。限额只在 HIP 运行时初始化时读取一次，调小配额需重启实例才生效。
 
 没有算力（SM/CU）配额：ROCm 用 `HSA_CU_MASK` 在硬件层强制算力配额，低于任何预加载库能看到或校验的层面，因此该后端只做显存、永不暴露算力上限。
 

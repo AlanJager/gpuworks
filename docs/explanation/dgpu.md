@@ -3,7 +3,7 @@
 dGPU（dynamic GPU）把显存预算和必要的运行库注入容器，使同一物理卡上的多个实例互相受到显存上限约束。
 它不是虚拟出两张拥有独立故障域、固定带宽和固定算力的 PCIe 设备。
 
-各后端用的实现与上游：NVIDIA 是 [HAMi-core](https://github.com/Project-HAMi/HAMi-core)（`libvgpu.so`）；昇腾是 openEuler [ubs-virt](https://atomgit.com/openeuler/ubs-virt) 的 vcann-rt（`libvruntime.so`），属于软件层的逻辑限额，不是昇腾 `npu-smi` 的 vNPU 驱动层切分；PPU 与 AMD 分别是 [gpustack-operator](https://github.com/gpustack/gpustack-operator) 的 ppu-slicing-shim（拦截 PPU 的 HGGC 运行时与 HGML）和 rocm-slicing-shim（`libvrocm.so`）；海光用驱动原生的 vdev。上游源码版本与本仓库的补丁见 `build/runtime-assets/manifest.json`。
+各后端用的实现与上游：NVIDIA 是 [HAMi-core](https://github.com/Project-HAMi/HAMi-core)（`libvgpu.so`）；昇腾是 openEuler [ubs-virt](https://atomgit.com/openeuler/ubs-virt) 的 vcann-rt（`libvruntime.so`），属于软件层的逻辑限额，不是昇腾 `npu-smi` 的 vNPU 驱动层切分；PPU 与 AMD 分别是 ppu-slicing-shim（拦截 PPU 的 HGGC 运行时与 HGML）和 rocm-slicing-shim（`libvrocm.so`）；海光用驱动原生的 vdev。上游源码版本与本仓库的补丁见 `build/runtime-assets/manifest.json`。
 
 - NVIDIA 由 HAMi-core 实现：libvgpu.so 与 CUDA 环境变量；配额是硬显存限制。HAMi 的算力上限按 kernel 发射限流，
   对普通 kernel 是封顶，但 vLLM 默认的 CUDA graph 与 cuBLAS 不受它限制，多个推理实例同卡时不能靠它按比例分配算力，

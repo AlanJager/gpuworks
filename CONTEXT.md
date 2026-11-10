@@ -23,7 +23,7 @@ _Avoid_: 双进程测试
 ### dGPU
 
 **dGPU — dGPU**:
-dynamic GPU 的缩写，产品对「GPU 切分」功能的唯一叫法：把整张物理加速卡呈现为带显存或算力限额的逻辑资源。UI 与用户文案统一用 dGPU，不再出现 HAMi、vGPU、切分、显存切分等历史叫法；实现名只出现在工程文档与代码里，写上游项目名而不是自造简称：NVIDIA 用 HAMi-core（`libvgpu.so`）；昇腾用 openEuler ubs-virt 的 vcann-rt（`libvruntime.so`，软件层逻辑限额）；PPU 用 GPUStack gpustack-operator 的 ppu-slicing-shim（`hggc_quota.so` + `hgml_dlsym_hook.so`，拦截 PPU 的 HGGC 运行时与 HGML 管理库）；AMD 用同一仓库的 rocm-slicing-shim（`libvrocm.so`，HIP 运行时层拦截）；海光用驱动原生 vdev（可选 helper 经 hcu-dcgm 创建）。HGGC 是 PPU 的运行时（对应 CUDA），不是切分实现；平台不使用昇腾 vNPU（`npu-smi` 按模板的驱动层切分）。
+dynamic GPU 的缩写，产品对「GPU 切分」功能的唯一叫法：把整张物理加速卡呈现为带显存或算力限额的逻辑资源。UI 与用户文案统一用 dGPU，不再出现 HAMi、vGPU、切分、显存切分等历史叫法；实现名只出现在工程文档与代码里，写上游项目名而不是自造简称：NVIDIA 用 HAMi-core（`libvgpu.so`）；昇腾用 openEuler ubs-virt 的 vcann-rt（`libvruntime.so`，软件层逻辑限额）；PPU 用 ppu-slicing-shim（`hggc_quota.so` + `hgml_dlsym_hook.so`，拦截 PPU 的 HGGC 运行时与 HGML 管理库）；AMD 用 rocm-slicing-shim（`libvrocm.so`，HIP 运行时层拦截）；海光用驱动原生 vdev（可选 helper 经 hcu-dcgm 创建）。HGGC 是 PPU 的运行时（对应 CUDA），不是切分实现；平台不使用昇腾 vNPU（`npu-smi` 按模板的驱动层切分）。
 _Avoid_: vGPU、HAMi、切分、显存切分、虚拟化（把逻辑限额误写成虚拟设备）；工程文档里的 vCANN（不是公开名称，指 vcann-rt）、「PPU HGGC 切分」（HGGC 是运行时）、vNPU（未使用）
 
 **dGPU 后端 — dGPU Backend**:
