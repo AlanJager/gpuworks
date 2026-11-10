@@ -52,6 +52,7 @@ func (c *Conn) Run(ctx context.Context) (err error) {
 	client, dialedFrom, transportTrace := c.observedControlClient()
 	dialCtx = transportTrace.context(dialCtx)
 	endDial := c.smokeStage("dial")
+	//nolint:bodyclose // coder/websocket.Dial owns handshake bodies; NetConn below owns the upgraded connection.
 	ws, response, err := websocket.Dial(dialCtx, wsURL, &websocket.DialOptions{
 		HTTPClient: client,
 		HTTPHeader: http.Header{"User-Agent": []string{"gpuworks-agent/" + version.Version}},

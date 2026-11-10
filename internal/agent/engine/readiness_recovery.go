@@ -127,7 +127,8 @@ func requestStrataLoad(ctx context.Context, client *http.Client, port int) <-cha
 		req.Header.Set("Content-Type", "application/json")
 		resp, err := client.Do(req)
 		if resp != nil {
-			io.Copy(io.Discard, io.LimitReader(resp.Body, 64<<10))
+			// Readiness determines the outcome; this drain only permits socket reuse.
+			_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 64<<10))
 			resp.Body.Close()
 		}
 		detail := ""

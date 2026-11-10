@@ -54,7 +54,7 @@ const ppuProbeFields = "index,name,architecture,uuid,minor_number,pci.bus_id,mem
 
 func (p *PPUProber) Probe(ctx context.Context) ([]proto.GPUInfo, error) {
 	if _, err := exec.LookPath("ppu-smi"); err != nil {
-		return p.roster(nil, false), nil
+		return p.roster(nil, false), nil //nolint:nilerr // Absence of this vendor CLI is an unavailable probe, not a node failure.
 	}
 	out, err := queryPPU(ctx, "--query-ppu="+ppuProbeFields, "--format=csv,noheader,nounits")
 	if err != nil {
