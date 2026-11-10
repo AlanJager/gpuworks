@@ -10,6 +10,18 @@ This guide explains how to install, verify, upgrade, and uninstall the GPUWorks 
 - You need a release package to install or upgrade. If the host cannot download it from the internet, download it on another machine and copy it to the host. For upgrades, see [Offline Upgrade](#离线升级).
 - Using systemd on Linux or launchd on Mac requires root or sudo. Without sudo, install to a user directory; see [Systemd and Nohup](#systemd-与-nohup). For container environments, first read the persistence requirements in [Run in a Container](#在容器里运行).
 
+## Replace an Existing Inference Platform
+
+When replacing another inference platform on the same host or reusing its GPU nodes, complete this manual handover before running the installation command. To update an existing GPUWorks installation, use the [Upgrade](#升级) procedure in this guide.
+
+The GPUWorks installer checks whether it can bind the configured listening addresses. This check does not identify other inference platforms, stop their services, or migrate their configuration. An available port does not mean that the selected GPU has been released.
+
+1. **Record and back up the old environment.** Identify the old platform's control plane, node services, inference processes or containers, service management method, listening ports, and installation and data directories. Back up its configuration and data, and record the current application endpoint, models, and settings needed for a rollback.
+2. **Stop the services being replaced.** During an agreed cutover window, pause the affected application requests. Use the old platform's management tools to stop its control plane, its node services on the selected nodes, and their inference processes or containers. Also handle their boot startup, container restart policies, or supervisors, and confirm that the services will not restart automatically. Act on each identified service, process, or container individually, and retain the old data.
+3. **Confirm port and GPU availability.** Check that the listening addresses and ports selected for GPUWorks (port `8800` by default) are available. Confirm that the old inference processes have exited and that resource usage on the selected GPUs is as expected. Investigate and resolve any remaining occupancy before installing.
+4. **Install into separate directories.** Choose GPUWorks installation and data directories separate from the old platform. Do not use the old platform's database or state directory as the GPUWorks data directory. Install the control plane as described below, then [connect the nodes](connect-nodes.md), register models, and create deployments and inference tokens. To reuse old model files, first confirm their format, paths, and read permissions, then follow the model registration procedure. Installation does not automatically import model records, deployments, or tokens from the old platform.
+5. **Verify before switching the endpoint.** Complete the health check below, confirm that the nodes are online, and [verify an actual inference request](../tutorials/getting-started.md#6-调用并验证回答). Then update the API address, model names, and tokens used by the application. To roll back, first stop the relevant GPUWorks deployments and conflicting services, then restore the old services and application endpoint from the backups and records. Avoid having both platforms compete for the same port or GPU.
+
 ## Installation
 
 ### One-Line Install
