@@ -74,13 +74,16 @@ def _ratio(numerator, denominator):
 def _context(value, run, point):
     expected_keys = """created_at dataset detail_cap_mb detail_configured ended_at mode model persisted_verdict
         point_eligibility recommendation recommendation_scope repeats run_id run_name search started_at target_snapshot
-        tokenizer warnings""".split()
+        tokenizer warnings state failure_diagnostic warmup_attempts""".split()
     assert set(value) == set(expected_keys), "CSV report context schema differs"
     assert value["recommendation_scope"] == "best measured point in this run; no capacity upper bound"
     assert value["repeats"] == "see point repeat; no uncertainty estimate"
     assert isinstance(value["warnings"], list) and all(isinstance(item, str) for item in value["warnings"])
     if run is None:
         return
+    assert value["state"] == run["state"]
+    assert value["failure_diagnostic"] == run.get("error", "")
+    assert not value["warmup_attempts"] and run["search"]["warmup_requests"] == 0
     for field, source in {"run_id": "id", "run_name": "name", "model": "model", "mode": "mode",
             "created_at": "created_at", "started_at": "started_at", "ended_at": "ended_at",
             "detail_configured": "keep_detail", "detail_cap_mb": "detail_cap_mb", "dataset": "dataset",

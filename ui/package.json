@@ -4,10 +4,10 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "predev": "node ensure-deps.mjs",
+    "predev": "node ensure-deps.mjs && vite build --config vite.report.config.ts",
     "dev": "vite",
     "prebuild": "node ensure-deps.mjs",
-    "build": "tsc -b && vite build",
+    "build": "vite build --config vite.report.config.ts && tsc -b && vite build",
     "lint:i18n": "eslint",
     "preview": "vite preview",
     "pretest": "node ensure-deps.mjs",
