@@ -38,6 +38,7 @@
 - [升级与版本兼容](how-to/upgrade-and-compatibility.md)
 - [接入节点、升级与卸载 agent](how-to/connect-nodes.md)
 - [租用云 GPU](how-to/rent-cloud-gpus.md)
+- [接入 ZStack Cloud](how-to/onboard-zstack-cloud.md)
 - [给控制台一个公网地址](how-to/expose-public-address.md)
 - [生产环境部署](how-to/deploy-production.md)
 - [配置节点网络](how-to/configure-networks.md)

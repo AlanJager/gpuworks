@@ -105,7 +105,7 @@ Web 控制台是一个单页应用，随 server 二进制一起提供。本页�
 | 网络 | `/networks` | 声明存储同步、参数、服务网络并加载到节点或节点标签；列表含内置的「管理网」；页面下方的「网络拓扑与配置」图解各类流量走哪条网络 | [配置节点网络](../how-to/configure-networks.md) |
 | 网络详情（二级，标题为网络名） | `/networks/:id` | 三个标签：「概览」（各节点解析到的网卡/地址，可编辑、删除，内置管理网只读并可逐节点开关角色）、「内部测试」（TCP 测试；RDMA 网络另有 RDMA 带宽测试）、「监控」 | [配置节点网络](../how-to/configure-networks.md) |
 | 公有云 | `/providers` | 接入公有云账号（凭据字段由后端 schema 下发），「同步全部」实例，给云主机「一键装 Agent」；页面上统计有效/异常接入数与实例规模 | [租用云 GPU](../how-to/rent-cloud-gpus.md) |
-| 专有云 | `/zstack` | 与「公有云」同一个页面组件，范围换成专有云（当前仅支持 ZStack Cloud） | [租用云 GPU](../how-to/rent-cloud-gpus.md) |
+| 专有云 | `/zstack` | 与「公有云」同一个页面组件，范围换成专有云（当前仅支持 ZStack Cloud） | [接入 ZStack Cloud](../how-to/onboard-zstack-cloud.md) |
 | Kubernetes | `/kubernetes` | 占位页：说明当前做法是在 Kubernetes 工作节点内安装 agent，当作普通计算节点纳管；页面上的「打开接入向导」跳到「计算节点」并打开添加抽屉，其余能力标注为规划中 | [接入、升级和卸载节点](../how-to/connect-nodes.md) |
 
 ## 管理
