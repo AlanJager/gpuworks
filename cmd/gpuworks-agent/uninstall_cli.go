@@ -19,7 +19,6 @@ import (
 
 	"golang.org/x/term"
 
-	"gpuworks.ai/gpuworks/internal/launchd"
 	"gpuworks.ai/gpuworks/internal/uninstallcheck"
 )
 
@@ -50,15 +49,7 @@ func uninstall(args []string) error {
 		ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 		defer cancel()
 		if runtime.GOOS == "darwin" {
-			host, err := launchd.NewHost(io.Discard)
-			if err != nil {
-				return err
-			}
-			binary, err := os.Executable()
-			if err != nil {
-				return err
-			}
-			return uninstallLaunchdStates(ctx, states, host, binary)
+			return uninstallLaunchd(ctx, states, io.Discard)
 		}
 		binary, err := os.Executable()
 		if err != nil {

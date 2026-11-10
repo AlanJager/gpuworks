@@ -108,7 +108,7 @@ func TestAgentUninstallCLIMacOwnershipAndShutdown(t *testing.T) {
 				return dirs, err
 			}, observe: func(ctx context.Context, state string) []uninstallcheck.Item {
 				return agentLaunchdChecklistForHost(ctx, state, h, binary)
-			}, remove: func(ctx context.Context, _ []string) error { return uninstallLaunchdHost(ctx, state, h, binary) }}
+			}, remove: func(ctx context.Context, dirs []string) error { return uninstallLaunchdStates(ctx, dirs, h, binary) }}
 			err := runAgentUninstall(context.Background(), []string{"--yes", "--keep-resources", "--json"}, strings.NewReader(""), &out, false, d)
 			success := behavior == "success" || behavior == "no_plist_empty"
 			if (err == nil) != success {
@@ -198,7 +198,7 @@ func TestAgentUninstallCLIMacTwoJobsRemainDiscoverableAfterPartialStop(t *testin
 	}
 	d := agentUninstallDeps{resolve: func(string) ([]string, error) { return agentLaunchdStates(h, binary) }, observe: func(ctx context.Context, state string) []uninstallcheck.Item {
 		return agentLaunchdChecklistForHost(ctx, state, h, binary)
-	}, remove: func(ctx context.Context, _ []string) error { return uninstallLaunchdHost(ctx, "", h, binary) }}
+	}, remove: func(ctx context.Context, dirs []string) error { return uninstallLaunchdStates(ctx, dirs, h, binary) }}
 	var out bytes.Buffer
 	if err := runAgentUninstall(context.Background(), []string{"--yes", "--keep-resources", "--json"}, strings.NewReader(""), &out, false, d); err == nil {
 		t.Fatal("second job stop failure was ignored")
