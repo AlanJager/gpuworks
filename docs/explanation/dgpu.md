@@ -10,15 +10,15 @@ dGPU（dynamic GPU）把显存预算和必要的运行库注入容器，使同�
   空闲时会借用余量，因此不是固定 SM 分区。
 - 昇腾 vCANN/device-share 受宿主机权限和 runtime 组合影响。当前 Gitee 云环境只能证明节点
   探针或整卡对话，不能把云侧拒绝写成 dGPU 通过。
-- 海光 Z100 使用原生 vdev（实验性）：每实例一张卡，显存配额同时决定分配的 CU 数；不能独立调整算力，也不保证推理吞吐与显存配额成比例。仅支持 x86_64 + Docker，K100 等其他型号不在支持范围内。
-- AMD 由 libvrocm.so 实现（用户态，HIP 运行时层拦截）：配额是硬显存限制。ROCm 的算力配额由
+- 海光 Z100 / K100_AI / BW 使用原生 vdev（实验性）：每实例一张卡，显存配额同时决定分配的 CU 数；不能独立调整算力，也不保证推理吞吐与显存配额成比例。支持 x86_64 上的 Docker 或 runveil/udocker，需原生 helper、宿主库并通过逐卡行为探针；仅报告 K100 或其他未适配型号时仍只支持整卡。
+- AMD 由 libvrocm.so 实现（实验性，用户态，HIP 运行时层拦截）：配额是硬显存限制。ROCm 的算力配额由
   `HSA_CU_MASK` 在硬件层实施，低于任何预加载库能看到或校验的层面，平台因此不对 AMD 开放算力上限——
-  这与 NVIDIA 的「技术上开放不了」是同一类限制，但实现机制不同。仅支持 x86_64 + Docker/nerdctl；
-  当前只在 MI300X（gfx942）上实测过。
+  这与 NVIDIA 的「技术上开放不了」是同一类限制，但实现机制不同。支持 x86_64 上的 Docker、nerdctl 或 runveil；
+  dGPU 已在 MI300X（gfx942）的 Docker 和 runveil 下实测，其他型号与组合未验证。
 
 server 从硬件事实、资产和行为探针推导 partition capability 的 status/reason；agent 不自行
 宣布 ready。能力不满足时仍可整卡部署，但带 dGPU 显存限额的请求必须明确失败（如调度器返回
-partition_unavailable），不能静默去掉配额。平台和环境边界见 reference/support-matrix.md。
+partition_unavailable），不能静默去掉配额。NVIDIA 与 AMD 豁免行为探针，仍须满足资产、架构和运行时条件；昇腾、PPU 与海光须逐卡通过行为探针。平台和环境边界见[支持矩阵](../reference/support-matrix.md)。
 
 ## 改配额：平台立即生效，引擎看自己
 
@@ -30,7 +30,7 @@ vLLM、SGLang 只在启动时按看到的上限切一次 KV 缓存，调大要�
 以下会让它下一次分配失败而退出，所以这种实例保持原上限，到重启时再按新上限启动。
 
 昇腾 vCANN、PPU HGGC 与 AMD libvrocm 只在容器启动时
-读上限，实例同样要重启。海光 Z100 也需重启实例，先释放旧 vdev，再按新的显存配额与 CU 数重新创建。
+读上限，实例同样要重启。海光 Z100 / K100_AI / BW 也需重启实例，先释放旧 vdev，再按新的显存配额与 CU 数重新创建。
 
 ## 调度怎么算一个 dGPU 实例
 

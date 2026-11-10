@@ -24,7 +24,7 @@
 
 能力以页面返回的 `status` 和 `reason` 为准：
 
-- `ready`：运行时、dGPU 资产、（非 NVIDIA 后端还需）dGPU 探针条件全部满足，可以创建带配额的实例。
+- `ready`：运行时、dGPU 资产及该后端要求的逐卡探针条件全部满足，可以创建带配额的实例；NVIDIA 与 AMD 豁免行为探针。
 - `unavailable`：任一条件不满足，`reason` 说明具体原因，例如 agent 版本过旧未上报探针、
   缺少 dGPU 资产、运行时未验证容器推理、探针尚未完成或探针失败。
 
@@ -59,7 +59,7 @@
 
 | `reason` | 情况 |
 |---|---|
-| `backend` | 后端需重启实例才能应用新上限（昇腾 vCANN、PPU HGGC、AMD libvrocm、海光 Z100 / K100_AI 原生 vdev） |
+| `backend` | 后端需重启实例才能应用新上限（昇腾 vCANN、PPU HGGC、AMD libvrocm、海光 Z100 / K100_AI / BW 原生 vdev） |
 | `in_use` | 调低时，实例已占用的显存超过新上限——当场调低会让引擎下一次分配失败而退出 |
 | `starting` / `asleep` | 调低时实例正在启动或休眠，之后需要的显存可能比现在多 |
 | `no_usage` | 调低时实例没有上报显存用量 |

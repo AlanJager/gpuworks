@@ -24,7 +24,7 @@ For each vendor's supported scope, see the [Support Matrix](../reference/support
 
 The `status` and `reason` returned on the page determine capability:
 
-- `ready`: All runtime, dGPU asset, and (for non-NVIDIA backends) dGPU probe requirements are met, so instances with quotas can be created.
+- `ready`: All runtime, dGPU asset, and per-GPU probe requirements for that backend are met, so instances with quotas can be created; NVIDIA and AMD are exempt from behavioral probes.
 - `unavailable`: At least one requirement is not met. `reason` explains why, such as an agent version too old to report a probe,
   missing dGPU assets, a runtime that has not verified container inference, or a pending or failed probe.
 
@@ -58,7 +58,7 @@ The following instances keep their original limits and use the new limit only af
 
 | `reason` | Condition |
 |---|---|
-| `backend` | The backend requires an instance restart to apply the new limit (Ascend vCANN, PPU HGGC, AMD libvrocm, Hygon Z100 / K100_AI native vdev) |
+| `backend` | The backend requires an instance restart to apply the new limit (Ascend vCANN, PPU HGGC, AMD libvrocm, Hygon Z100 / K100_AI / BW native vdev) |
 | `in_use` | When lowering the limit, the instance already uses more GPU memory than the new limit—lowering it immediately would cause the engine's next allocation to fail and the engine to exit |
 | `starting` / `asleep` | When lowering the limit, the instance is starting or asleep and may need more GPU memory later than it does now |
 | `no_usage` | When lowering the limit, the instance has not reported GPU memory usage |
