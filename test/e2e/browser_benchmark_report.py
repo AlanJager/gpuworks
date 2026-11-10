@@ -71,6 +71,51 @@ def compare_pixels(page, reference, rendered):
     }''', [png_data(reference), png_data(rendered)])
 
 
+def check_legacy_tables(page, original):
+    # Localized headers carry their original field name in the title attribute.
+    result = page.evaluate("""source => {
+      const doc = new DOMParser().parseFromString(source, 'text/html');
+      const text = cell => cell.textContent.replace(/\\s+/g, ' ').trim();
+      const tables = [...document.querySelectorAll('table')].map(t => [...t.rows].map(row => {
+        const full = [...row.cells].filter(c => c.classList.contains('full-metric'));
+        return full.length ? full : [...row.cells];
+      }));
+      let rows = 0, cells = 0;
+      for (const table of doc.querySelectorAll('table')) {
+        const expected = [...table.rows].map(row => [...row.cells].map(text));
+        const match = tables.findIndex(candidate => candidate[0]?.some((_, offset) => {
+          let previous = -1;
+          return expected.every(row => {
+            previous = candidate.findIndex((r,i) => i > previous && r.length >= row.length + offset &&
+              row.every((v,j) => { const c = r[offset+j]; return text(c) === v ||
+                c.getAttribute('title') === v || (!v && text(c) === '—'); }));
+            return previous >= 0;
+          });
+        }));
+        if (match < 0) throw Error('Missing legacy rows or values in ' + expected[0].join(', '));
+        tables.splice(match, 1);
+        rows += expected.length;
+        cells += expected.reduce((count, row) => count + row.length, 0);
+      }
+      for (const anchor of doc.querySelectorAll('[id]')) {
+        if (document.querySelectorAll('#'+CSS.escape(anchor.id)).length !== 1) throw Error('Missing/duplicate anchor '+anchor.id);
+      }
+      return { tables: doc.querySelectorAll('table').length, rows, cells };
+    }""", original)
+    return result
+
+
+def preview_text(root):
+    # These fields have separate export contracts: redacted configuration and
+    # the additional control for showing historical point columns.
+    return root.evaluate("""element => {
+      const nodes = [...element.querySelectorAll('[data-report-config],[data-report-endpoint],.offline-table-controls')];
+      const previous = nodes.map(node => node.style.cssText);
+      try { nodes.forEach(node => node.style.setProperty('display','none','important')); return element.innerText; }
+      finally { nodes.forEach((node,i) => node.style.cssText = previous[i]); }
+    }""")
+
+
 def run_case(args, report, secrets):
     labels = json.loads((ROOT / f'ui/src/i18n/locales/{args.locale}/evaluations.json').read_text())['agentic']['export']
     base = args.base_url.rstrip('/')
@@ -125,6 +170,8 @@ def run_case(args, report, secrets):
             selected_seq = points[1 if len(points) > 1 else 0]['seq']
             timeline_path = f'{benchmark_path}/points/{selected_seq}/timeline'
             timeline = request('GET', timeline_path).json()
+            source_curves = request('GET', benchmark_path + '/curve').json()['points'] or []
+            legacy_html = request('GET', benchmark_path + '/report?format=html').text()
             assert timeline.get('status') in ('complete', 'disabled', 'unavailable', 'truncated')
             assert isinstance(timeline.get('records'), list)
             if args.require_timeline:
@@ -181,7 +228,7 @@ def run_case(args, report, secrets):
             }''')
             reference = cropped_reference(page, page.screenshot(full_page=True), bounds)
             (args.output / 'reference.png').write_bytes(reference)
-            source_text = root.inner_text()
+            source_text = preview_text(root)
             if args.require_timeline:
                 assert timeline['records'][0]['session_id'] in source_text, 'The timeline session identity is missing from the rendered report'
             with page.expect_download() as download:
@@ -211,23 +258,61 @@ def run_case(args, report, secrets):
             external_requests = []
             html.on('request', lambda req: external_requests.append(urlsplit(req.url).scheme)
                     if urlsplit(req.url).scheme in ('http', 'https') else None)
+            html.on('pageerror', lambda error: page_errors.append(str(error)))
             html.goto(html_path.resolve().as_uri())
             expect(html.get_by_role('heading', name=title, exact=True)).to_be_visible()
-            assert html.locator('script, link, canvas').count() == 0, 'HTML needs executable or external resources'
-            assert html.locator('img').count() >= 2, 'Report charts were not embedded'
-            assert html.locator('img').evaluate_all('''images => images.every(img =>
-                img.complete && img.naturalWidth > 0 && img.src.startsWith('data:image/png'))'''), 'An embedded image is missing'
-            assert html.locator('.benchmark-report-export').inner_text() == source_text, 'Offline report text differs from source'
+            assert html.locator('script[src], link[rel=stylesheet]').count() == 0
+            legacy_counts = check_legacy_tables(html, legacy_html)
+            empty_sections = html.locator('.report-archive > details').evaluate_all("""groups => groups.flatMap(group => {
+                const content = group.cloneNode(true);
+                const title = content.querySelector('summary');
+                title.remove();
+                return content.textContent.trim() || content.querySelector('table, [id], canvas, img') ? [] : [title.textContent];
+            })""")
+            assert not empty_sections, f'Empty detailed sections: {empty_sections}'
+            if source_curves:
+                expect(html.locator('.native-curve canvas')).to_be_visible()
+            assert preview_text(html.locator('.benchmark-report-export')) == source_text, 'Offline report text differs from source'
             assert not external_requests, 'Offline HTML attempted external HTTP(S) requests'
             rendered = html.locator('.benchmark-report-export').screenshot(path=str(args.output / 'offline-html.png'))
             html_difference = compare_pixels(html, reference, rendered)
             png_difference = compare_pixels(html, reference, png)
             assert html_difference < 3, f'HTML mean pixel difference {html_difference:.3f} exceeds 3/255'
             assert png_difference < 4, f'PNG mean pixel difference {png_difference:.3f} exceeds 4/255'
+            # Changing the chosen metric must actually redraw the offline ECharts canvas.
+            if source_curves:
+                curve = html.locator('.native-curve canvas').first
+                before = curve.evaluate('c => c.toDataURL()')
+                radio = html.locator('[data-report-curve] input[value="output_tput"]')
+                radio.locator('..').click()
+                expect(radio).to_be_checked()
+                assert curve.evaluate('c => c.toDataURL()') != before, 'Switching the offline metric did not redraw the chart'
+            payload_element = html.locator('#benchmark-chart-data')
+            payload = json.loads(payload_element.text_content()) if payload_element.count() else {}
+            assert [
+                (p['seq'], p['samples']) for p in payload.get('curves', [])
+            ] == [(p['seq'], p['samples']) for p in source_curves], 'Exported samples differ from the independent curve API'
+            toggle = html.locator('#full-point-columns')
+            toggle.check()
+            full_rows = html.locator('#all-points tr[data-seq]:visible')
+            sequences = full_rows.evaluate_all("rows => rows.map(row => row.dataset.seq)")
+            assert len(sequences) == len(set(sequences)), 'Full results repeat a point'
+            first_row = full_rows.first
+            header = first_row.locator('xpath=ancestor::table[1]').locator('thead th.full-metric:visible')
+            expect(header.first).to_be_visible()
+            assert header.count() == first_row.locator('.full-metric:visible').count(), 'Full results columns lack headers'
+            toggle.uncheck()
+            if payload.get('pareto'):
+                expect(html.locator('.native-pareto canvas')).to_be_visible()
+                seq = next((p['seq'] for p in payload['pareto'] if p['seq'] != selected_seq), selected_seq)
+                html.locator(f'#all-points tr[data-seq="{seq}"] td').first.click()
+                expect(html.locator(f'#all-points tr[data-seq="{seq}"]')).to_have_attribute('data-offline-selected','')
+                expect(html.locator('[data-report-pareto] .ant-descriptions-item-content').first).to_contain_text(f'#{seq}')
+            assert not external_requests, 'Chart interaction attempted an external request'
             assert not page_errors, f'Browser errors: {page_errors}'
             report['checks'] = {'html_pixel_difference': html_difference, 'png_pixel_difference': png_difference,
                                 'png_dimensions': [width, height], 'offline_http_requests': 0,
-                                'persisted_run_unchanged': True, 'source_text_preserved': True}
+                                'persisted_run_unchanged': True, 'source_text_preserved': True, 'legacy': legacy_counts}
             report['files'] = {path.name: {'sha256': hashlib.sha256(path.read_bytes()).hexdigest(),
                                          'bytes': path.stat().st_size}
                                for path in (png_path, html_path, args.output / 'reference.png', args.output / 'offline-html.png')}

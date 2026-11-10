@@ -22,6 +22,8 @@ await i18n.use(initReactI18next).init({ lng: "zh", defaultNS: "evaluations", int
 const { cleanup, render, screen, within } = await import("@testing-library/react");
 const userEvent = (await import("@testing-library/user-event")).default;
 const { default: PointResultsTable } = await import("../src/pages/evaluations/PointResultsTable.tsx");
+const { addFullPointColumns } = await import("../src/pages/evaluations/reportPointTable.ts");
+const { POINT_COLUMNS_STORAGE_KEY, POINT_COLUMN_KEYS } = await import("../src/pages/evaluations/pointColumnPrefs.ts");
 
 afterEach(() => {
 	cleanup();
@@ -40,6 +42,27 @@ function renderTable(run: BenchmarkRun) {
 function headerTitles(container: HTMLElement) {
 	return within(container).getAllByRole("columnheader").map((cell) => cell.textContent || "");
 }
+
+test("offline points retain the preview column order, selected row and detail navigation", () => {
+	const visible = ["point", "max_output", "request", "detail"];
+	const order = [...visible, ...POINT_COLUMN_KEYS.filter(key => !visible.includes(key))];
+	localStorage.setItem(POINT_COLUMNS_STORAGE_KEY, JSON.stringify({ order, visible }));
+	const run = { id: 4, mode: "grid", state: "done", points: [
+		point({seq: 1, max_output_tput: 321.5, request_tput: 7.5, detail_path: "/private/retained.gz"}),
+		point({seq: 2}),
+	] } as BenchmarkRun;
+	const live = renderTable(run);
+	const titles = headerTitles(live);
+	const offline = live.cloneNode(true) as HTMLElement;
+	const full = document.createElement("section");
+	full.innerHTML = '<table><thead><tr><th>output_tok_s</th></tr></thead><tbody><tr data-seq="1"><td>321.500</td></tr><tr data-seq="2"><td>—</td></tr></tbody></table>';
+	assert.ok(addFullPointColumns(offline, full, zh.pointTable.showFullMetrics));
+	assert.deepEqual(Array.from(offline.querySelectorAll("thead th:not(.full-metric)"), c => c.textContent), titles);
+	const row = offline.querySelector<HTMLTableRowElement>('tr[data-seq="1"]')!;
+	assert.deepEqual(Array.from(row.cells).slice(0, 3).map(c => c.textContent), ["#1", "321.5 tok/s", "7.5 req/s"]);
+	assert.equal(row.cells[0].querySelector("a")?.getAttribute("href"), "#point-1");
+	assert.equal(row.querySelector(".full-metric")?.textContent, "321.500");
+});
 
 function columnValues(container: HTMLElement, title: string) {
 	const headers = headerTitles(container);
