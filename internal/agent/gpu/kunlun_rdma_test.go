@@ -86,26 +86,36 @@ func TestKunlunDeviceInspectorDoesNotFollowSymlinks(t *testing.T) {
 
 func TestKunlunLaunchInjectionIsAtomic(t *testing.T) {
 	p, _ := kunlunFixture(t)
-	if got := p.RuntimeInjectionForLaunch(context.Background(), nil, "docker", 2, nil); got.UnsupportedReason != "" || len(got.DockerArgs) != 0 {
+	if got := p.RuntimeInjectionForLaunch(context.Background(), InjectionRequest{DriverName: "docker", NNodes: 2}); got.UnsupportedReason != "" || len(got.DockerArgs) != 0 {
 		t.Fatalf("empty selection should expose nothing: %+v", got)
 	}
+	if _, err := p.Probe(t.Context()); err != nil {
+		t.Fatal(err)
+	}
 	// Single-node selected cards do not require a distributed driver.
-	if got := p.RuntimeInjectionForLaunch(context.Background(), []int{1}, "docker", 1, nil); got.UnsupportedReason != "" {
+	if got := p.RuntimeInjectionForLaunch(context.Background(), InjectionRequest{Indexes: []int{1}, DriverName: "docker", NNodes: 1}); got.UnsupportedReason != "" {
 		t.Fatal(got)
 	}
-	if got := p.RuntimeInjectionForLaunch(context.Background(), []int{1}, "docker", 2, []string{"--device", "/dev/infiniband", "--ulimit", "memlock=-1", "--cap-add", "IPC_LOCK"}); got.UnsupportedReason == "" || len(got.DockerArgs) != 0 {
+	req := InjectionRequest{Indexes: []int{1}, DriverName: "docker", NNodes: 2, DockerArgs: []string{"--device", "/dev/infiniband", "--ulimit", "memlock=-1", "--cap-add", "IPC_LOCK"}, Env: validKunlunMultiNodeEnv()}
+	if got := p.RuntimeInjectionForLaunch(context.Background(), req); got.UnsupportedReason == "" || len(got.DockerArgs) != 0 {
 		t.Fatalf("partial injection: %+v", got)
 	}
 	withKunlunXDR(p, os.ModeDevice|os.ModeCharDevice)
-	got := p.RuntimeInjectionForLaunch(context.Background(), []int{1}, "docker", 2, []string{"--device", "/dev/infiniband", "--ulimit", "memlock=-1", "--cap-add", "IPC_LOCK"})
+	got := p.RuntimeInjectionForLaunch(context.Background(), req)
 	args := strings.Join(got.DockerArgs, " ")
 	if got.UnsupportedReason != "" || !strings.Contains(args, "/dev/xpu1") || !strings.Contains(args, "/dev/xdrdrv") || strings.Contains(args, "/dev/xpu0") {
 		t.Fatal(got)
+	}
+	if got.ManagedSelection == nil || !strings.Contains(strings.Join(got.ManagedSelection.DevicePaths, ","), "/dev/xdrdrv") {
+		t.Fatalf("XDR is not cleaned up with the managed selection: %+v", got.ManagedSelection)
 	}
 }
 
 func TestKunlunInjectionCanceledDuringXDRValidation(t *testing.T) {
 	p, _ := kunlunFixture(t)
+	if _, err := p.Probe(t.Context()); err != nil {
+		t.Fatal(err)
+	}
 	withKunlunXDR(p, os.ModeDevice|os.ModeCharDevice)
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
@@ -117,8 +127,10 @@ func TestKunlunInjectionCanceledDuringXDRValidation(t *testing.T) {
 		}
 		return info, err
 	}
-	injection := p.RuntimeInjectionForLaunch(ctx, []int{1}, "docker", 2, []string{
-		"--device", "/dev/infiniband", "--ulimit", "memlock=-1", "--cap-add", "IPC_LOCK",
+	injection := p.RuntimeInjectionForLaunch(ctx, InjectionRequest{
+		Indexes: []int{1}, DriverName: "docker", NNodes: 2,
+		DockerArgs: []string{"--device", "/dev/infiniband", "--ulimit", "memlock=-1", "--cap-add", "IPC_LOCK"},
+		Env:        validKunlunMultiNodeEnv(),
 	})
 	if !strings.Contains(injection.UnsupportedReason, "context canceled") || len(injection.DockerArgs) != 0 {
 		t.Fatalf("canceled XDR validation exposed devices: %+v", injection)

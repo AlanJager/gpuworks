@@ -185,20 +185,35 @@ func TestMixedNodeKeepsTemplateContractBeforeCapabilityFiltering(t *testing.T) {
 }
 
 // Supported whole-card modes must reach placement in both preview and launch.
-func TestKunlunPipelineParallelReachesPlacement(t *testing.T) {
+func TestKunlunSupportedParallelModesReachPlacement(t *testing.T) {
 	st, err := store.Open("file:kunlun-parallel-modes?mode=memory&cache=shared", bus.New())
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { st.Close() })
-	for _, preview := range []bool{false, true} {
-		r := kunlunReviewRequest(t)
-		r.Preview = preview
-		r.Node.GPUs = append(r.Node.GPUs, store.GPU{Index: 1, UUID: "k1", Name: "P800 PCIe", Vendor: "kunlunxin", ArchID: "kl3", MemoryTotal: 96 << 30})
-		r.Placement = Placement{GPUIndexes: []int{0, 1}, TP: 1, PP: 2}
-		plan, reason, err := PlanTemplateLaunch(t.Context(), st, storeNetworks(st), r.Node, r, deploy.CatalogSelection{})
-		if err != nil || reason != nil || !plan.Output.Result.OK || !slices.Equal(plan.Output.Result.Plan.GPUIndexes, []int{0, 1}) {
-			t.Fatalf("preview=%v: plan=%+v reason=%+v err=%v", preview, plan.Output.Result, reason, err)
+	for _, tc := range []struct {
+		name           string
+		pipeline, data int
+	}{
+		{name: "pipeline parallel", pipeline: 2},
+		{name: "engine data parallel", data: 2},
+	} {
+		for _, preview := range []bool{false, true} {
+			t.Run(tc.name, func(t *testing.T) {
+				r := kunlunReviewRequest(t)
+				r.Preview = preview
+				r.Node.GPUs = append(r.Node.GPUs, store.GPU{Index: 1, UUID: "k1", Name: "P800 PCIe", Vendor: "kunlunxin", ArchID: "kl3", MemoryTotal: 96 << 30})
+				r.Placement = Placement{GPUIndexes: []int{0, 1}, TP: 1, PP: tc.pipeline}
+				r.Quick.DP = tc.data
+				plan, reason, err := PlanTemplateLaunch(t.Context(), st, storeNetworks(st), r.Node, r, deploy.CatalogSelection{})
+				if err != nil || reason != nil || !plan.Output.Result.OK || !slices.Equal(plan.Output.Result.Plan.GPUIndexes, []int{0, 1}) {
+					t.Fatalf("preview=%v: plan=%+v reason=%+v err=%v", preview, plan.Output.Result, reason, err)
+				}
+				features := plan.Resolved.RequestedFeatures
+				if features == nil || features.PipelineParallel != (tc.pipeline > 1) || features.DataParallel != (tc.data > 1) {
+					t.Fatalf("preview=%v: resolved features=%+v", preview, features)
+				}
+			})
 		}
 	}
 }

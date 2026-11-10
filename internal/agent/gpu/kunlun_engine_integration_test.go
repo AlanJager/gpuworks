@@ -85,6 +85,7 @@ func TestResolvedNetworkThroughEngineAndCapturedKunlun(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			launch.Env["BKCL_RDMA_NICS"] = "bond0,bond0"
 			indexes := []int{7}
 			if mode == "duplicate-selection" {
 				indexes = []int{7, 7}

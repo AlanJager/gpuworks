@@ -46,6 +46,9 @@ func TestKunlunLargePCIDomainIsNotTruncated(t *testing.T) {
 func TestKunlunMissingUUIDRetainsIndexMetricsButNotLaunchPermission(t *testing.T) {
 	p, raw := kunlunFixture(t)
 	*raw = strings.Replace(*raw, "<uuid>GPU-fixture-1</uuid>", "<uuid></uuid>", 1)
+	if _, err := p.Probe(t.Context()); err != nil {
+		t.Fatal(err)
+	}
 	metrics, err := p.Metrics(t.Context())
 	if err != nil || len(metrics) != 2 || metrics[0].Index != 0 || metrics[0].UUID != "" || metrics[0].Values["gpuworks_gpu_memory_total_bytes"] != 96<<30 {
 		t.Fatalf("metrics lost: %+v %v", metrics, err)
@@ -54,5 +57,35 @@ func TestKunlunMissingUUIDRetainsIndexMetricsButNotLaunchPermission(t *testing.T
 	// pass this assertion without ever reaching the identity check.
 	if inj := p.RuntimeInjectionForDriver([]int{0}, "docker"); inj.UnsupportedReason != "invalid or duplicate Kunlun device selection" || len(inj.DockerArgs) != 0 {
 		t.Fatalf("unidentified card was authorized: %+v", inj)
+	}
+}
+
+func TestKunlunAvailableRequiresExplicitBrand(t *testing.T) {
+	p, raw := kunlunFixture(t)
+	*raw = strings.ReplaceAll(*raw, "KUNLUNXIN", "INTEL")
+	if p.Available() {
+		t.Fatal("a non-Kunlun brand was claimed by the Kunlun prober")
+	}
+}
+
+func TestKunlunInjectionRequiresProbeBaselineAndManagesWholeInventory(t *testing.T) {
+	p, _ := kunlunFixture(t)
+	inj := p.RuntimeInjectionForDriver([]int{1}, "docker")
+	if inj.UnsupportedReason != "Kunlun injection requires a successful probe baseline" || inj.Failure == nil || len(inj.DockerArgs) != 0 || inj.ManagedSelection != nil {
+		t.Fatalf("injection without probe baseline: %+v", inj)
+	}
+
+	if _, err := p.Probe(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	inj = p.RuntimeInjectionForDriver([]int{1}, "docker")
+	if inj.UnsupportedReason != "" {
+		t.Fatal(inj.UnsupportedReason)
+	}
+	if inj.ManagedSelection == nil || strings.Join(inj.ManagedSelection.DevicePaths, ",") != "/dev/xpu0,/dev/xpu1,/dev/xpuctrl" {
+		t.Fatalf("managed device paths = %+v", inj.ManagedSelection)
+	}
+	if len(inj.ManagedSelection.Env) != 1 || inj.ManagedSelection.Env[0] != "XPU_VISIBLE_DEVICES" {
+		t.Fatalf("managed environment = %+v", inj.ManagedSelection.Env)
 	}
 }

@@ -79,7 +79,7 @@ specs:
 	}
 }
 
-func TestImportableP800PackageUsesReviewedDigest(t *testing.T) {
+func TestImportableP800PackageMatchesImageLock(t *testing.T) {
 	root := filepath.Join("..", "..", "..", "..", "build", "inference-templates", "kunlun-p800", "catalog")
 	// The reviewed release is owned by the package lock. A second literal in
 	// this test goes stale when the single-node image gains its RDMA layer.
@@ -90,6 +90,7 @@ func TestImportableP800PackageUsesReviewedDigest(t *testing.T) {
 	var lock struct {
 		ImageRef       string `json:"image_ref"`
 		ManifestDigest string `json:"manifest_digest"`
+		Interpreter    string `json:"interpreter"`
 	}
 	if err := json.Unmarshal(lockBytes, &lock); err != nil {
 		t.Fatal(err)
@@ -103,10 +104,11 @@ func TestImportableP800PackageUsesReviewedDigest(t *testing.T) {
 	if tag := strings.LastIndex(repository, ":"); tag > strings.LastIndex(repository, "/") {
 		repository = repository[:tag]
 	}
-	if repository == "" {
-		t.Fatal("package lock has no image repository")
+	if repository == "" || !strings.HasSuffix(lock.Interpreter, "/python") {
+		t.Fatalf("incomplete package lock: %+v", lock)
 	}
 	digest := repository + "@" + lock.ManifestDigest
+	entrypoint := []string{strings.TrimSuffix(lock.Interpreter, "python") + "vllm", "serve"}
 	var packed bytes.Buffer
 	if err := inferencecatalog.PackPackage(&packed, os.DirFS(root)); err != nil {
 		t.Fatal(err)
@@ -127,6 +129,9 @@ func TestImportableP800PackageUsesReviewedDigest(t *testing.T) {
 			}
 			if spec.Image != digest {
 				t.Fatalf("%s image = %s, want locked image %s", model.ModelID, spec.Image, digest)
+			}
+			if !reflect.DeepEqual(spec.Entrypoint, entrypoint) {
+				t.Fatalf("%s entrypoint = %v, want direct vllm entrypoint %v", model.ModelID, spec.Entrypoint, entrypoint)
 			}
 			if strings.TrimSpace(spec.Placement.Resolver) == "" {
 				t.Fatalf("%s has no resolver", model.ModelID)

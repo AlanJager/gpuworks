@@ -34,7 +34,7 @@ func (e *Engine) applyDeviceInjectionForLaunch(ctx context.Context, ws *runtime.
 		}
 		return nil
 	}
-	inj := gpu.ResolveInjection(ctx, e.prober, gpu.InjectionRequest{Indexes: indexes, DriverName: driverName, NNodes: nNodes, DockerArgs: ws.DockerArgs})
+	inj := gpu.ResolveInjection(ctx, e.prober, gpu.InjectionRequest{Indexes: indexes, DriverName: driverName, NNodes: nNodes, DockerArgs: ws.DockerArgs, Env: ws.Env})
 	if inj.Failure != nil {
 		return &gpu.InjectionError{Failure: *inj.Failure, Reason: inj.UnsupportedReason}
 	}
@@ -93,8 +93,8 @@ func applyRuntimeInjection(ws *runtime.WorkloadSpec, inj gpu.RuntimeInjection, i
 
 // removeDockerDevicePaths removes only --device mappings whose host source
 // names a prober-managed device path. Other devices and malformed options are
-// preserved; AMD needs to replace GPU nodes without dropping unrelated device
-// access such as /dev/infiniband.
+// preserved; device backends replace their accelerator nodes without dropping
+// unrelated access such as /dev/infiniband.
 func removeDockerDevicePaths(args, paths []string) []string {
 	managed := make(map[string]bool, len(paths))
 	for _, path := range paths {

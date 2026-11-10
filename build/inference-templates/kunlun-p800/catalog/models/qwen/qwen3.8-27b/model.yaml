@@ -84,7 +84,8 @@ input_modalities:
 - text
 specs:
 - name: bf16-vllm-kunlun-p800
-  display_profile: general
+  display_name_zh_cn: 昆仑 P800 · BF16
+  display_name_en: Kunlun P800 · BF16
   scenario: balanced
   engine: vllm
   image: registry.zstack.ai/gpuworks/gpuworks-runner@sha256:33d94768ff9a895bdc8874cae09940aede1b0e88218e52ed52231b8f86a91beb
@@ -98,24 +99,9 @@ specs:
   gpus:
     vendor: kunlunxin
     name: ^P800 PCIe$
-    display_target: kunlunxin
   pre_start_script: |
     set -eu
-    if [ "${NNODES}" -gt 1 ]; then
-        : "${BKCL_RDMA_NICS:?set BKCL_RDMA_NICS to the verified RDMA netdev list for this node}"
-        if [ -z "${GLOO_SOCKET_IFNAME:-}" ] || [ "$GLOO_SOCKET_IFNAME" = lo ]; then
-            echo "Kunlun multi-node inference requires a selected compute network" >&2
-            exit 1
-        fi
-        export BKCL_ENABLE_XDR=1 BKCL_RDMA_VERBS=1 BKCL_ENABLE_IBGDA=0
-        export BKCL_SOCKET_IFNAME="$GLOO_SOCKET_IFNAME"
-    else
-        # Local TP must not inherit the image build interface (eth0).
-        # This BKCL version excludes lo; discover an active host interface.
-        unset BKCL_SOCKET_IFNAME
-    fi
     unset XPU_VISIBLE_DEVICES
-    export CUDA_VISIBLE_DEVICES=${LOCAL_VISIBLE_DEVICES}
   entrypoint:
   - /opt/vllm025-venv/bin/vllm
   - serve
@@ -136,6 +122,7 @@ specs:
   - --language-model-only
   env:
     BKCL_CHECK_AW: '0'
+    CUDA_VISIBLE_DEVICES: ${LOCAL_VISIBLE_DEVICES}
   placement:
     language: starlark
     resolver: |

@@ -9,7 +9,7 @@ import TemplateWarnings from "../components/TemplateWarnings";
 import { fetchAllPages } from "../pagedList";
 import PageHeader from "../components/PageHeader";
 import VendorLogo from "../components/VendorLogo";
-import { compareVendors, frameworkForVendor } from "../vendors";
+import { compareVendors } from "../vendors";
 import { chipDisplayLabel, chipKey, compactModelMetadata } from "./inferenceTemplateFlat.ts";
 import { inputModalityLabelKey, inputModalitiesOf, operationLabelKey, operationTypes } from "../modelInference";
 import type { OperationType } from "../inferenceApi";
@@ -82,7 +82,7 @@ function ModelVendorMarks({ model }: { model: InferenceTemplate }) {
   const vendors = modelVendors(model);
   if (!vendors.length) return <Typography.Text type="secondary">—</Typography.Text>;
   return <div className="template-model-vendors">{vendors.map((vendor) => <Tooltip title={t(`vendor.${vendor}`, { defaultValue: vendor })} key={vendor}>
-    <span className={`template-model-vendor is-${vendor}`}><VendorLogo framework={frameworkForVendor(vendor)} size={18} /></span>
+    <span className={`template-model-vendor is-${vendor}`}><VendorLogo vendor={vendor} size={18} /></span>
   </Tooltip>)}</div>;
 }
 

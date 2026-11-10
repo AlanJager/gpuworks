@@ -66,19 +66,21 @@ type DriverAwareInjector interface {
 // The input slices are borrowed read-only for this call. The caller owns the
 // returned resources; implementations must not retain or modify its inputs.
 type TopologyAwareInjector interface {
-	RuntimeInjectionForLaunch(ctx context.Context, indexes []int, driverName string, nNodes int, dockerArgs []string) RuntimeInjection
+	RuntimeInjectionForLaunch(ctx context.Context, req InjectionRequest) RuntimeInjection
 }
 
 // InjectionRequest is what the caller knows about the workload whose devices
 // it is asking for. DriverName is the container runtime driver that will start
 // it, NNodes its rank count, and DockerArgs the options already resolved for
 // it (the compute network's, among others), which a backend may require but
-// must not duplicate.
+// must not duplicate. Env and the other request fields are read-only for the
+// prober.
 type InjectionRequest struct {
 	Indexes    []int
 	DriverName string
 	NNodes     int
 	DockerArgs []string
+	Env        map[string]string
 }
 
 // ResolveInjection asks a prober for its device injection through the most
@@ -95,7 +97,7 @@ func ResolveInjection(ctx context.Context, p Prober, req InjectionRequest) Runti
 	case nil:
 		return RuntimeInjection{}
 	case TopologyAwareInjector:
-		return injector.RuntimeInjectionForLaunch(ctx, req.Indexes, req.DriverName, req.NNodes, req.DockerArgs)
+		return injector.RuntimeInjectionForLaunch(ctx, req)
 	case DriverAwareInjector:
 		return injector.RuntimeInjectionForDriver(req.Indexes, req.DriverName)
 	default:

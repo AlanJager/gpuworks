@@ -11,6 +11,9 @@ import (
 // while the selected device identities are being checked against sysfs.
 func TestKunlunInjectionCanceledDuringDeviceValidation(t *testing.T) {
 	p, _ := kunlunFixture(t)
+	if _, err := p.Probe(t.Context()); err != nil {
+		t.Fatal(err)
+	}
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	inspect := p.stat

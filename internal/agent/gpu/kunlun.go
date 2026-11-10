@@ -192,7 +192,15 @@ func (p *KunlunProber) Available() bool {
 		return false
 	}
 	i, e := p.inventory(context.Background())
-	return e == nil && len(i.Cards) > 0
+	if e != nil {
+		return false
+	}
+	for _, card := range i.Cards {
+		if strings.EqualFold(strings.TrimSpace(card.Brand), "KUNLUNXIN") {
+			return true
+		}
+	}
+	return false
 }
 func (p *KunlunProber) Probe(ctx context.Context) ([]proto.GPUInfo, error) {
 	if _, e := p.executable(); e != nil {

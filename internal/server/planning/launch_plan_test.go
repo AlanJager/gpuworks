@@ -9,6 +9,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/bus"
 	"gpuworks.ai/gpuworks/internal/server/deploy"
 	"gpuworks.ai/gpuworks/internal/server/network"
+	"gpuworks.ai/gpuworks/internal/server/parallelism"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -243,6 +244,31 @@ func TestLaunchInputBuildsCommandFeaturesOnlyForOwnedAMD(t *testing.T) {
 			}
 
 		})
+	}
+}
+
+func TestLaunchParamsSupplyManagementInterfaceForKunlunMultiGPU(t *testing.T) {
+	node := &store.Node{
+		GPUVendor: "kunlunxin", NetworkInventory: `{"management":{"interface":"br_eno1_31","ip":"172.25.17.112"}}`,
+		GPUs: []store.GPU{{Index: 0, Vendor: "kunlunxin"}, {Index: 1, Vendor: "kunlunxin"}},
+	}
+	params := launchParams(LaunchRequest{Node: node, Topology: DistTopology{NNodes: 1}}, node.GPUs[0], 2, parallelism.Spec{TP: 2}, 30000)
+	if params.ComputeNetwork.Type != "host_ethernet" || params.ComputeNetwork.Interface != "br_eno1_31" {
+		t.Fatalf("multi-GPU compute network = %+v", params.ComputeNetwork)
+	}
+	params = launchParams(LaunchRequest{Node: node, Topology: DistTopology{NNodes: 1}}, node.GPUs[0], 1, parallelism.Spec{TP: 1}, 30000)
+	if params.ComputeNetwork.Type != "" {
+		t.Fatalf("single-card network changed = %+v", params.ComputeNetwork)
+	}
+	selected := deploy.ComputeNetwork{Type: "host_rdma", Interface: "bond0"}
+	params = launchParams(LaunchRequest{Node: node, Topology: DistTopology{NNodes: 1, Network: selected}}, node.GPUs[0], 2, parallelism.Spec{TP: 2}, 30000)
+	if !reflect.DeepEqual(params.ComputeNetwork, selected) {
+		t.Fatalf("selected network replaced = %+v", params.ComputeNetwork)
+	}
+	nvidia := &store.Node{GPUVendor: "nvidia", NetworkInventory: node.NetworkInventory, GPUs: []store.GPU{{Index: 0, Vendor: "nvidia"}, {Index: 1, Vendor: "nvidia"}}}
+	params = launchParams(LaunchRequest{Node: nvidia, Topology: DistTopology{NNodes: 1}}, nvidia.GPUs[0], 2, parallelism.Spec{TP: 2}, 30000)
+	if params.ComputeNetwork.Type != "" {
+		t.Fatalf("NVIDIA network changed = %+v", params.ComputeNetwork)
 	}
 }
 

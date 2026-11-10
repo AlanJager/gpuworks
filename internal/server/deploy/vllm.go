@@ -107,7 +107,8 @@ func BuildVLLM(p Params) ResolvedLaunch {
 		// Force loopback for vllm's intra-node IPC (V1 EngineCore uses gloo/NCCL
 		// over TCP); without this the engine subprocess can fail hostname
 		// resolution (gloo getaddrinfo -2), especially under a dGPU/host-network
-		// container. Loopback is correct for single-node tp/pp.
+		// container. Targets with multi-device collectives override this default
+		// through computeNetworkEnv.
 		"VLLM_HOST_IP":       "127.0.0.1",
 		"GLOO_SOCKET_IFNAME": "lo",
 		"NCCL_SOCKET_IFNAME": "lo",

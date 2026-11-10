@@ -11,9 +11,12 @@ import (
 	"fmt"
 	"strings"
 
+	"gpuworks.ai/gpuworks/internal/accelerator"
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/deploy"
 	"gpuworks.ai/gpuworks/internal/server/messages"
+	"gpuworks.ai/gpuworks/internal/server/netplan"
+	"gpuworks.ai/gpuworks/internal/server/network"
 	"gpuworks.ai/gpuworks/internal/server/parallelism"
 	"gpuworks.ai/gpuworks/internal/server/placement"
 	"gpuworks.ai/gpuworks/internal/server/scheduler"
@@ -185,7 +188,7 @@ func launchParams(req LaunchRequest, gpu store.GPU, assigned int, parallel paral
 		modelType = req.Model.Arch
 	}
 	arch := req.Node.ArchOf(gpu)
-	return deploy.Params{
+	params := deploy.Params{
 		ModelPath: req.ModelMount, ServedName: req.ServedName, APIPort: apiPort,
 		AssignedGPUs: assigned, TensorParallel: parallel.TP, PipelineParallel: parallel.PP,
 		Sleepable: req.Sleepable, Quick: req.Quick,
@@ -201,6 +204,12 @@ func launchParams(req LaunchRequest, gpu store.GPU, assigned int, parallel paral
 		Host:           deploy.RuntimeBindHost(req.Node.RuntimeDriver),
 		RuntimeDriver:  req.Node.RuntimeDriver, VRAMLimitBytes: req.VRAMLimitBytes, Partitioned: req.PartitionBackend != "", PartitionBackend: req.PartitionBackend,
 	}
+	if params.NNodes <= 1 && params.ComputeNetwork.Type == "" && accelerator.RequiresCollectiveInterface(params.Vendor, params.NNodes, params.TensorParallel) {
+		if management, ok := network.ManagementAddress(*req.Node); ok {
+			params.ComputeNetwork = deploy.ComputeNetwork{Type: netplan.TypeHostEthernet, Interface: management.Interface}
+		}
+	}
+	return params
 }
 
 func previewRequestedFeatures(req LaunchRequest) (*proto.RequestedFeatures, error) {

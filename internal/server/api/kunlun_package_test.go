@@ -5,12 +5,10 @@ import (
 	"context"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
-	"time"
 
 	"gpuworks.ai/gpuworks/internal/server/chipmatch"
 	"gpuworks.ai/gpuworks/internal/server/deploy"
@@ -135,6 +133,9 @@ func TestKunlunQwenPackageImportsAndResolvesLaunches(t *testing.T) {
 				if err != nil {
 					t.Fatalf("launch %+v: %v", shape, err)
 				}
+				if launch.RequestedFeatures == nil || !launch.RequestedFeatures.CommandKnown || launch.RequestedFeatures.MultiNode != (shape.nodes > 1) {
+					t.Fatalf("direct entrypoint features = %+v", launch.RequestedFeatures)
+				}
 				for flag, want := range map[string]string{"--dtype": "float16", "--tensor-parallel-size": strconv.Itoa(shape.tp), "--max-model-len": "2048"} {
 					if got, ok := deploy.LaunchFlag(launch.Argv, flag); !ok || got != want {
 						t.Fatalf("%s=%q, want %q", flag, got, want)
@@ -145,8 +146,11 @@ func TestKunlunQwenPackageImportsAndResolvesLaunches(t *testing.T) {
 				for i := range visible {
 					visible[i] = strconv.Itoa(i)
 				}
-				if !strings.Contains(launch.PreStartScript, "CUDA_VISIBLE_DEVICES="+strings.Join(visible, ",")) || entry != "/opt/vllm025-venv/bin/vllm serve" || strings.Contains(launch.PreStartScript, "${NNODES}") {
+				if entry != "/opt/vllm025-venv/bin/vllm serve" {
 					t.Fatalf("wrong native entrypoint: %q", entry)
+				}
+				if got := launch.Env["CUDA_VISIBLE_DEVICES"]; got != strings.Join(visible, ",") {
+					t.Fatalf("CUDA_VISIBLE_DEVICES = %q, want %q", got, strings.Join(visible, ","))
 				}
 				if _, found := deploy.LaunchFlag(launch.Argv, "--enable-sleep-mode"); found {
 					t.Fatal("sleep leaked into native template")
@@ -159,42 +163,5 @@ func TestKunlunQwenPackageImportsAndResolvesLaunches(t *testing.T) {
 				}
 			}
 		})
-	}
-}
-
-// The missing-network paths must fail before invoking the image interpreter.
-// These are launcher preflight tests; they do not simulate a successful model.
-func TestKunlunTemplateMultiNodePreflight(t *testing.T) {
-	bash, err := exec.LookPath("bash")
-	if err != nil {
-		t.Skip("launcher requires bash")
-	}
-	root := filepath.Join("..", "..", "..", "build", "inference-templates", "kunlun-p800", "catalog")
-	pkg, err := inferencecatalog.LoadPackageDirectory(root)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, model := range pkg.Catalog.Models {
-		entry, err := placement.Expand([]string{model.Specs[0].PreStartScript}, map[string]any{"NNODES": 2, "LOCAL_VISIBLE_DEVICES": "0,1"}, false)
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, tc := range []struct {
-			env  []string
-			want string
-		}{
-			{nil, "set BKCL_RDMA_NICS"},
-			{[]string{"BKCL_RDMA_NICS=net0,net0"}, "requires a selected compute network"},
-			{[]string{"BKCL_RDMA_NICS=net0,net0", "GLOO_SOCKET_IFNAME=lo"}, "requires a selected compute network"},
-		} {
-			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
-			cmd := exec.CommandContext(ctx, bash, "-c", entry[0])
-			cmd.Env = append([]string{"PATH=/usr/bin:/bin"}, tc.env...)
-			output, err := cmd.CombinedOutput()
-			cancel()
-			if err == nil || !strings.Contains(string(output), tc.want) {
-				t.Fatalf("preflight %s: %s %v", model.ModelID, output, err)
-			}
-		}
 	}
 }

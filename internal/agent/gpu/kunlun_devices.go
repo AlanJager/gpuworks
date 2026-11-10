@@ -52,13 +52,18 @@ func (p *KunlunProber) runtimeInjectionForDriver(ctx context.Context, indexes []
 		return rejectedInjection(proto.RuntimeFailure{Code: proto.ErrorAcceleratorInventoryUnavailable, Vendor: p.Vendor()}, "cannot verify Kunlun inventory: "+e.Error())
 	}
 	cards := map[int]kunlunCard{}
+	managedPaths := make([]string, 0, len(inv.Cards)+1)
 	for _, c := range inv.Cards {
+		if n, err := strconv.Atoi(c.Minor); err == nil && n >= 0 && n < 255 {
+			managedPaths = append(managedPaths, "/dev/xpu"+strconv.Itoa(n))
+		}
 		if c.invalid != "" {
 			continue
 		}
 		n, _ := strconv.Atoi(c.Minor)
 		cards[n] = c
 	}
+	managedPaths = append(managedPaths, "/dev/xpuctrl")
 	// Probe publishes a new immutable map. Retain one generation for all
 	// selected cards without holding its publication lock during filesystem I/O.
 	p.mu.RLock()
@@ -79,7 +84,11 @@ func (p *KunlunProber) runtimeInjectionForDriver(ctx context.Context, indexes []
 			return fail("selected Kunlun card health is not ready")
 		}
 		seen[n] = true
-		if old, had := previous[n]; had && (old.UUID != c.UUID || old.PCIeBDF != c.BDF) {
+		old, had := previous[n]
+		if !had {
+			return fail("Kunlun injection requires a successful probe baseline")
+		}
+		if old.UUID != c.UUID || old.PCIeBDF != c.BDF {
 			return fail("Kunlun device identity changed since probe")
 		}
 		node, err := p.verifyKunlunDevice(c.BDF, n)
@@ -95,7 +104,10 @@ func (p *KunlunProber) runtimeInjectionForDriver(ctx context.Context, indexes []
 		return fail(err.Error())
 	}
 	args = append(args, "--device", "/dev/xpuctrl:/dev/xpuctrl:rwm")
-	return RuntimeInjection{DockerArgs: args}
+	return RuntimeInjection{
+		ManagedSelection: &RuntimeSelectionCleanup{Env: []string{"XPU_VISIBLE_DEVICES"}, DevicePaths: managedPaths},
+		DockerArgs:       args,
+	}
 }
 
 // verifyKunlunDevice binds the inventory identity to the driver mapping and

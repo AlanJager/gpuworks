@@ -14,6 +14,9 @@ func TestKunlunSingleNodeUsesOnlyNativeDevices(t *testing.T) {
 	for _, indexes := range [][]int{{1}, {0, 1}} {
 		t.Run(fmt.Sprint(indexes), func(t *testing.T) {
 			p, _ := kunlunFixture(t)
+			if _, err := p.Probe(t.Context()); err != nil {
+				t.Fatal(err)
+			}
 			inspect := p.stat
 			p.stat = func(path string) (os.FileInfo, error) {
 				if path == "/dev/xdrdrv" || strings.HasPrefix(path, "/dev/infiniband") {

@@ -78,3 +78,9 @@ func RequiresDeviceSelection(vendor string) bool {
 func RequiresKnownLaunchFeatures(vendor string) bool {
 	return len(targetConstraints[NormalizeVendor(vendor)].unsupported) > 0
 }
+
+// RequiresCollectiveInterface reports whether the target's collective runtime
+// needs a real host interface rather than the single-process loopback default.
+func RequiresCollectiveInterface(vendor string, nNodes, devices int) bool {
+	return NormalizeVendor(vendor) == VendorKunlunxin && (nNodes > 1 || devices > 1)
+}

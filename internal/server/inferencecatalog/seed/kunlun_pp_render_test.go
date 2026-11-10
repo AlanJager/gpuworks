@@ -13,8 +13,8 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/placement"
 )
 
-// This checks the launch assembled from the importable P800 profile. It does
-// not claim that the Kunlun runtime can execute pipeline parallelism.
+// This checks the supported pipeline-parallel launches assembled from the
+// importable P800 profile.
 func TestKunlunP800ProfileRendersPipelineParallelTopologies(t *testing.T) {
 	root := filepath.Join("..", "..", "..", "..", "build", "inference-templates", "kunlun-p800", "catalog")
 	var packed bytes.Buffer
@@ -72,8 +72,8 @@ func TestKunlunP800ProfileRendersPipelineParallelTopologies(t *testing.T) {
 				if err != nil {
 					t.Fatalf("rank %d launch: %v", rank, err)
 				}
-				if launch.RequestedFeatures == nil || !launch.RequestedFeatures.CommandKnown {
-					t.Fatal("catalog launch must expose recognizable engine argv")
+				if launch.RequestedFeatures == nil || !launch.RequestedFeatures.CommandKnown || !launch.RequestedFeatures.PipelineParallel {
+					t.Fatalf("catalog launch must expose recognizable PP engine argv: %+v", launch.RequestedFeatures)
 				}
 				command := append(append([]string{}, launch.Entrypoint...), launch.Argv...)
 				for flag, want := range map[string]string{
