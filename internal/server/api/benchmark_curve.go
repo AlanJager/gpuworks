@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -50,9 +51,20 @@ func (a *apiHandlers) getBenchmarkCurve(w http.ResponseWriter, r *http.Request) 
 		if point.Curve == "" {
 			continue
 		}
-		var samples []benchmarkCurveSampleDTO
-		if err := json.Unmarshal([]byte(point.Curve), &samples); err != nil {
+		var rawSamples []json.RawMessage
+		if err := json.Unmarshal([]byte(point.Curve), &rawSamples); err != nil {
+			slog.WarnContext(r.Context(), "benchmark curve discarded", "run_id", runID, "point_seq", point.Seq)
 			continue
+		}
+		samples := make([]benchmarkCurveSampleDTO, 0, len(rawSamples))
+		for i, raw := range rawSamples {
+			var sample *benchmarkCurveSampleDTO
+			if err := json.Unmarshal(raw, &sample); err != nil || sample == nil {
+				// Identify the damaged observation without logging stored payloads.
+				slog.WarnContext(r.Context(), "benchmark curve sample discarded", "run_id", runID, "point_seq", point.Seq, "sample_index", i)
+				continue
+			}
+			samples = append(samples, *sample)
 		}
 		out.Points = append(out.Points, benchmarkPointCurveDTO{Seq: point.Seq, Concurrency: point.Concurrency, Samples: samples})
 	}
