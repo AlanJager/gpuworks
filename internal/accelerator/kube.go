@@ -71,7 +71,7 @@ const (
 	// KubeResourceCard is one whole card per unit.
 	KubeResourceCard
 	// KubeResourceShared hands out parts of cards (time-slicing, MIG, HAMi,
-	// vNPU): a unit is not a card the platform could own.
+	// vNPU, ACK GPU sharing): a unit is not a card the platform could own.
 	KubeResourceShared
 )
 
@@ -99,6 +99,14 @@ func ClassifyKubeResource(resource string) (KubeResourceKind, string) {
 		vendor = VendorAMD
 	case "alibabacloud.com":
 		vendor = VendorPPU
+	case "aliyun.com":
+		// ACK's GPU sharing counts GiB of card memory, a card count and a
+		// compute share, never cards.
+		switch name {
+		case "gpu-mem", "gpu-count", "gpu-core.percentage":
+			return KubeResourceShared, VendorNVIDIA
+		}
+		return KubeResourceOther, ""
 	default:
 		return KubeResourceOther, ""
 	}
