@@ -19,8 +19,8 @@ func explainDiskRefusal(st *store.Store, in Input, req scheduler.Request, snap s
 	params := map[string]any{}
 	if result.Message.Code == scheduler.ReasonInsufficientRuntimeDisk {
 		params["required_bytes"], params["available_bytes"] = req.RuntimeDiskNeedBytes, snap.RuntimeDiskAvailBytes
-	} else if req.DiskNeedBytes > 0 && snap.DiskAvailBytes > 0 {
-		params["required_bytes"], params["available_bytes"] = req.DiskNeedBytes, snap.DiskAvailBytes
+	} else if req.DiskNeedBytes > 0 {
+		params["required_bytes"] = req.DiskNeedBytes
 	}
 	for key, value := range result.Message.Params {
 		params[key] = value
@@ -44,9 +44,10 @@ func explainDiskRefusal(st *store.Store, in Input, req scheduler.Request, snap s
 			// An aggregate that also budgets unidentified components cannot be
 			// attributed to this model's directory or registration action.
 			if modelDiskNeed(st, in.Model, in.Node, src.Location.Storage.ID, primaryBytes) == req.DiskNeedBytes {
-				params["model"], params["model_id"] = in.Model.DisplayName(), in.Model.ID
-				params["storage"], params["storage_id"], params["storage_type"] = src.Location.Storage.Name, src.Location.Storage.ID, src.Location.Storage.Type
-				if target := acquisitionTarget(st, in.Node, in.Model, src); target != "" {
+				if target := acquisitionTarget(st, in.Node, in.Model, src, snap.DiskAvailBytes); target != "" {
+					params["available_bytes"] = snap.DiskAvailBytes
+					params["model"], params["model_id"] = in.Model.DisplayName(), in.Model.ID
+					params["storage"], params["storage_id"], params["storage_type"] = src.Location.Storage.Name, src.Location.Storage.ID, src.Location.Storage.Type
 					params["path"] = target
 				}
 			}
@@ -60,16 +61,9 @@ func explainDiskRefusal(st *store.Store, in Input, req scheduler.Request, snap s
 	}
 }
 
-func acquisitionTarget(st *store.Store, node *store.Node, model *store.Model, src store.ModelSource) string {
-	rel := store.ModelArtifactPath(model)
-	if file := src.Location.File; file != nil && strings.TrimSpace(file.Path) != "" {
-		rel = strings.TrimSpace(file.Path)
-		if path.IsAbs(rel) {
-			return path.Clean(rel)
-		}
-	}
+func acquisitionTarget(st *store.Store, node *store.Node, model *store.Model, src store.ModelSource, available int64) string {
 	eff, applies, err := st.EffectiveStorageForNode(&src.Location.Storage, node)
-	if err != nil || !applies {
+	if err != nil || !applies || available <= 0 {
 		return ""
 	}
 	root := strings.TrimSpace(eff.Path)
@@ -78,6 +72,29 @@ func acquisitionTarget(st *store.Store, node *store.Node, model *store.Model, sr
 	}
 	if !path.IsAbs(root) {
 		return ""
+	}
+	root = path.Clean(root)
+	if usage, reported := nodePathUsage(node, "storage", src.Location.Storage.ID); reported {
+		// A storage can be reconfigured before its next observation arrives.
+		// Neither an old directory nor a missing path identifies this target.
+		if usage.AvailableBytes != available || !path.IsAbs(usage.Path) || path.Clean(usage.Path) != root {
+			return ""
+		}
+	} else if observedPath(node, "models", 0) != root || modelDiskAvailable(node) != available {
+		// Preserve the legacy admission guard without relabeling its default
+		// models-disk observation as free space on an unreported custom disk.
+		return ""
+	}
+	rel := store.ModelArtifactPath(model)
+	if file := src.Location.File; file != nil && strings.TrimSpace(file.Path) != "" {
+		rel = strings.TrimSpace(file.Path)
+		if path.IsAbs(rel) {
+			target := path.Clean(rel)
+			if target == root || strings.HasPrefix(target, root+"/") {
+				return target
+			}
+			return ""
+		}
 	}
 	target, ok := store.SharedHostPath(root, rel)
 	if !ok {

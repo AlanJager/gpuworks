@@ -113,10 +113,10 @@ func TestEvaluateCompositeDiskRefusalDoesNotInventOneModelTarget(t *testing.T) {
 		t.Fatalf("expected disk refusal: %+v", out.Result)
 	}
 	params := out.Result.Message.Params
-	if params["required_bytes"] != int64(3<<30) || params["available_bytes"] != int64(1<<20) {
+	if params["required_bytes"] != int64(3<<30) {
 		t.Fatalf("composite capacity=%#v", params)
 	}
-	for _, key := range []string{"model_id", "storage_id", "storage_type", "path"} {
+	for _, key := range []string{"available_bytes", "model_id", "storage_id", "storage_type", "path"} {
 		if _, present := params[key]; present {
 			t.Fatalf("aggregate component demand misidentified as one known target: %#v", params)
 		}
@@ -166,5 +166,46 @@ func TestEvaluateRuntimeDiskRefusalDoesNotGuessAnUnreportedPath(t *testing.T) {
 		if _, present := params[key]; present {
 			t.Fatalf("runtime context invented %s: %#v", key, params)
 		}
+	}
+}
+
+func TestEvaluateDiskRefusalDoesNotAttributeAnotherDisksCapacity(t *testing.T) {
+	for _, stalePath := range []string{"", "/previous-disk"} {
+		name := "unreported-storage"
+		if stalePath != "" {
+			name = "storage-path-changed"
+		}
+		t.Run(name, func(t *testing.T) {
+			f := newStorageAdmissionFixture(t)
+			if err := f.st.DeleteModelFileRow(f.localModel.ID); err != nil {
+				t.Fatal(err)
+			}
+			storage, err := f.st.CreateStorage(&store.Storage{Name: "large-disk", Type: proto.StorageLocal, Enabled: true, AllNodes: true, Path: "/large-disk"}, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			paths := []proto.PathUsage{{Kind: "models", Path: "/opt/gpuworks/models", AvailableBytes: 1 << 20, TotalBytes: 4 << 30}}
+			if stalePath != "" {
+				paths = append(paths, proto.PathUsage{Kind: "storage", StorageID: storage.ID, Path: stalePath, AvailableBytes: 1 << 20, TotalBytes: 4 << 30})
+			}
+			encoded, err := json.Marshal(paths)
+			if err != nil {
+				t.Fatal(err)
+			}
+			f.outOfTeam.PathUsage = string(encoded)
+			out := (Input{Model: f.model, Node: f.outOfTeam, Engine: "vllm", ModelRules: store.SourceRules{SaveTo: storage.ID}}).Evaluate(f.st)
+			if out.Result.OK || out.Result.Message.Code != scheduler.ReasonInsufficientDisk {
+				t.Fatalf("existing disk guard changed: %+v", out.Result)
+			}
+			params := out.Result.Message.Params
+			if params["required_bytes"] != int64(1073741824) || params["node_uuid"] != f.outOfTeam.UUID {
+				t.Fatalf("known request facts lost: %#v", params)
+			}
+			for _, key := range []string{"available_bytes", "model", "model_id", "storage", "storage_id", "storage_type", "path"} {
+				if _, present := params[key]; present {
+					t.Fatalf("unobserved target falsely attributed %s: %#v", key, params)
+				}
+			}
+		})
 	}
 }
