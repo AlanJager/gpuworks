@@ -293,6 +293,14 @@ applies to `.gitlab-ci.yml` only.
 - On a 2-core runner the UI suite runs one test file at a time and takes over an hour unsplit; it runs as 4
   parallel shards, with `npm run test:coverage` passing an optional `TEST_SHARD` (such as `2/4`) to
   `--test-shard`. Unset, the command is the original one.
+- The untagged Go suite runs in 3 shards of whole packages: `scripts/go_package_shard.sh <i>/<n> ./...` sorts
+  the packages `go list` prints by import path and deals them round-robin, which puts the heaviest ones,
+  `server/api` and two integrationtest packages, in different shards. L2 runs in 3 shards by `L2_SHARD`, as
+  GitLab's `core-l2` does. The check scripts, `go vet`, `make lint`, the CompShare offline contracts and
+  `check-tagged-build` share one `checks` job: the organization's hosted runners have a concurrent-job limit,
+  and each of these takes seconds to a few minutes, so a job apiece would only hold more runners.
+- The full-disk L2 case needs a tmpfs of its own: the suite's container cannot create a user namespace, so,
+  as on GitLab, `docker run --tmpfs` mounts one and passes it in through `GPUWORKS_TEST_FULL_DISK_TMPFS`.
 
 ## Cost and Caching
 

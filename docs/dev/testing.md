@@ -281,6 +281,12 @@ secret 拉 OINK 主题）、`ui-check.yml`（UI 巡检，改到 UI 的 PR 与每
   当成服务管理器；真实终端用例只接受专用 daemon。fixture 基础镜像在 suite 前预拉进 DinD。
 - UI suite 在 2 核 runner 上一次只跑一个测试文件，不拆要一个多小时；按 4 片并行，`npm run test:coverage`
   读可选的 `TEST_SHARD`（如 `2/4`）传给 `--test-shard`，不设时与原命令相同。
+- untagged Go suite 按包分 3 片：`scripts/go_package_shard.sh <i>/<n> ./...` 把 `go list` 的包按导入路径排序后
+  轮流分配，最重的 `server/api` 与两个 integrationtest 包恰好落在不同片里。L2 与 GitLab 的 `core-l2` 一样按
+  `L2_SHARD` 分 3 片。check 脚本、`go vet`、`make lint`、CompShare 离线契约与 `check-tagged-build` 合在一个
+  `checks` job 里：组织的托管 runner 有并发 job 上限，每项只跑几十秒到几分钟，单开 job 只会多占 runner。
+- 满盘 L2 用例需要一个专门的 tmpfs：suite 所在容器不能建 user namespace，所以和 GitLab 一样由 `docker run
+  --tmpfs` 挂好并经 `GPUWORKS_TEST_FULL_DISK_TMPFS` 传入。
 
 ## 成本和缓存
 
