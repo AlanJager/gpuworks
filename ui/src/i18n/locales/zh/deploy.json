@@ -218,7 +218,7 @@
     "holders_give_way": "其余占卡的部署会让卡：{{holders}}。",
     "disk_node": "节点：{{node}}。",
     "disk_storage": "存储：{{storage}}。",
-    "disk_path": "目标目录：{{path}}。",
+    "disk_path": "磁盘检查目录：{{path}}。",
     "disk_capacity": "所需可用空间 {{required}}，当前可用 {{available}}。",
     "disk_required": "所需可用空间 {{required}}。",
     "disk_available": "可用空间 {{available}}。",
