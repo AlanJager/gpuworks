@@ -1666,7 +1666,7 @@ export interface Instance {
   dist_role?: "leader" | "follower" | string;
   dist_group?: string;
   dist_attempt?: number;
-  schedule?: { explain?: any; breakdown?: Breakdown; network?: { compute?: InstanceComputeNetwork } };
+  schedule?: { explain?: any; breakdown?: Breakdown; network?: { compute?: InstanceComputeNetwork }; unit?: { key?: string } };
   measured?: Measured;
   entrypoint?: string[];
   argv?: string[];

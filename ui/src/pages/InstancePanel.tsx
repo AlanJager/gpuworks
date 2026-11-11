@@ -60,7 +60,7 @@ function phaseLabel(phase: string | undefined, t: TFunction): string {
 // a multi-node replica (leader or follower, and a follower's leader); actions
 // are the replica's restart and remove controls. imageDiffers marks a replica
 // whose image ID differs from the others' (see instanceImage.ts).
-export default function InstancePanel({ inst, params, rank, actions, imageDiffers }: { inst: Instance; params?: Record<string, unknown>; rank?: DistRank; actions?: ReactNode; imageDiffers?: boolean }) {
+export default function InstancePanel({ inst, params, rank, actions, imageDiffers, previousAttempt }: { inst: Instance; params?: Record<string, unknown>; rank?: DistRank; actions?: ReactNode; imageDiffers?: boolean; previousAttempt?: boolean }) {
   const { t } = useTranslation("deployments");
   const { t: tCommon } = useTranslation("common");
   const messageText = inst.runtime_failure ? productMessageText(tCommon, inst.runtime_failure) : inst.message;
@@ -96,6 +96,8 @@ export default function InstancePanel({ inst, params, rank, actions, imageDiffer
         <Descriptions.Item label={t("instance.field.state")}>
           <Space size={4} wrap>
             <Badge status={s.status} text={s.text} />
+            {/* Plain text: another antd Tag grows the usage inventory. */}
+            {previousAttempt && <span>{t("instance.previousAttempt")}</span>}
             {inst.role && (
               <Tag color="geekblue">
                 {t(`detail.pd.role.${inst.role}`, { defaultValue: inst.role })}
