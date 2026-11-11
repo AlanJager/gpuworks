@@ -152,6 +152,9 @@ case "$mode" in
         docker buildx create --name "$builder" --driver docker-container --driver-opt "image=$BUILDKIT_IMAGE" --driver-opt network=host \
           ${hp:+--driver-opt "env.http_proxy=$hp"} ${sp:+--driver-opt "env.https_proxy=$sp"} ${np:+--driver-opt "\"env.no_proxy=$np\""} >/dev/null
         trap "docker buildx rm -f \"$builder\" >/dev/null 2>&1 || true" EXIT
+        # The registries'"'"' tokens are fetched by this client for buildkit, so it
+        # needs the proxy too.
+        export HTTP_PROXY="$hp" HTTPS_PROXY="$sp" NO_PROXY="$np"
         docker buildx build --builder "$builder" --platform linux/amd64,linux/arm64 \
           --provenance=false --sbom=false --build-arg DEBIAN_MIRROR="$DEBIAN_MIRROR" \
           "$@" --push .
