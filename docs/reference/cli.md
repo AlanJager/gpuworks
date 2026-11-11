@@ -120,10 +120,11 @@ gpuworks restarted (systemd)
 | `--quiet` | `false` | 不打印 banner、不提问，未给密码则随机生成（结束摘要仍会打印） |
 | `--autostart` | Linux 上 `true`，macOS 上 `false` | 安装开机启动的 systemd 单元（macOS 上是 launch daemon）；与 `--no-systemd` 同给时报错 |
 | `--no-systemd` | `false` | 不用服务管理器（systemd，macOS 上是 launchd），改为 nohup 后台启动 |
+| `--skip-check` | `false` | 把预检中预判 server 能否运行的检查（端口占用、磁盘空间、服务账户能否进入安装目录）降为告警继续安装；保护主机的检查不受影响 |
 
 行为要点：
 
-- 预检：需要 root 或可用的 `sudo`（否则降级为 nohup 并告警）；目标端口被别的进程占用则失败（被当前安装占用除外）；安装目录所在文件系统至少要有 2 GiB 空闲。
+- 预检：需要 root 或可用的 `sudo`（否则降级为 nohup 并告警）；目标端口被别的进程占用则失败（被当前安装占用除外）；安装目录所在文件系统至少要有 2 GiB 空闲；systemd 模式下，安装目录、数据目录和日志目录之上已存在的每一级目录都必须允许 `--service-user` 进入（`x` 位，按属主/属组/其他判定；带 ACL 的目录不拒绝），否则失败，例如装在 `/root`（`0700`）下。这三项可用 `--skip-check` 降为告警；拒绝对 `/`、`/var`、主目录等宽泛目录递归改权限、以及会放宽敏感文件 ACL 的检查不能跳过。
 - 提权：install/upgrade/reset-password 以操作员身份运行，特权步骤（建目录、建账户、写单元、`systemctl`）各自以 `sudo` 命令执行；`sudo` 首次问一次密码并缓存，无终端又没有缓存的 `sudo` 会直接失败而不是挂起。
 - systemd 模式：创建 `--service-user` 系统账户（已存在则复用），并把操作员加入该组（当前终端需 `newgrp` 或重新登录）；此后 upgrade 备份和替换二进制不再需要 `sudo`，但 `systemctl` 和收尾的 `chown`/`chmod` 仍需要；reset-password 不需要。
 - nohup 模式（`--no-systemd`、没有运行中的 systemd、没有 root/`sudo`，或 macOS 上未给 `--autostart`）：忽略 `--service-user`（只在显式给出时告警），以调用用户在后台运行 `serve --supervise --config <dir>/server.yaml`，server 退出后由它重新拉起（因此支持控制台升级）；重启机器或容器后不会自动恢复，用 `<dir>/gpuworks restart` 拉起、`<dir>/gpuworks stop` 停止，或把这条命令设为容器的启动命令，见[在容器里运行](../how-to/install-server.md#在容器里运行)；macOS 上可再执行 `<dir>/gpuworks install --autostart` 改为开机启动。安装摘要会打印这些命令。

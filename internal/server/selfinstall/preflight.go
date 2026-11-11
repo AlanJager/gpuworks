@@ -91,14 +91,28 @@ func (i *Installer) preflight(ctx context.Context, req InstallRequest, listen se
 		}
 	}
 	for _, b := range serverconfig.Bindings(listen) {
-		if err := i.checkPort(ctx, pf, b.Addr); err != nil {
+		if err := skippable(&pf, req, i.checkPort(ctx, pf, b.Addr)); err != nil {
 			return Preflight{}, err
 		}
 	}
-	if err := i.checkDisk(); err != nil {
+	if err := skippable(&pf, req, i.checkDisk()); err != nil {
 		return Preflight{}, err
 	}
 	return pf, nil
+}
+
+// skippable returns a failed host check, or under --skip-check records it as a
+// warning and lets the install go on. Only checks that predict a broken
+// server, not ones that protect the host, go through here.
+func skippable(pf *Preflight, req InstallRequest, err error) error {
+	if err == nil {
+		return nil
+	}
+	if !req.SkipCheck {
+		return fmt.Errorf("%w (pass --skip-check to install anyway)", err)
+	}
+	pf.Warnings = append(pf.Warnings, fmt.Sprintf("ignored because of --skip-check: %v", err))
+	return nil
 }
 
 // serviceMode picks the supervisor. systemd is used only when it is really

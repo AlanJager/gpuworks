@@ -301,6 +301,7 @@ sudo ./gpuworks uninstall --purge --yes --json   # 清理数据并输出报告
 | 安装或升级后无法访问 | 查看 `<安装目录>/logs/gpuworks-server.log`，修复错误后重试；再次调用 `/healthz` 并核对版本。日志位置自定义时以实际配置为准 |
 | `cannot listen on :8800` | 端口被其他进程占用；先用 `systemctl status gpuworks` 确认是否为旧服务，不要直接重复安装 |
 | `create /opt/gpuworks/server needs root` | 使用有 sudo 权限的账户，或改为 `--dir ~/gpuworks/server --no-systemd` |
+| `the service account gpuworks cannot enter /root` | 服务账户进不了安装目录的上级目录，systemd 无法启动服务。改装到默认的 `/opt/gpuworks/server` 或其他每级都可进入的目录；确需以 root 运行时加 `--service-user root` |
 | 修改初始密码或忘记密码 | 能登录时在控制台右上角账户菜单选择「修改密码」；忘记密码时执行 `./gpuworks reset-password`，按提示输入两次新密码（不回显），数据目录从二进制同目录的 `server.yaml` 读取（也可用 `--data` 指定）；不要将真实密码留在命令历史或日志中。改密后重新登录验证 |
 | 升级或重置密码报权限错误 | 当前终端可能还没取得 `gpuworks` 组权限，执行 `newgrp gpuworks` 或重新登录后重试；数据目录仍不可写时检查其权限 |
 | 控制台提示渠道尚无版本 | 切换到已有发布的渠道，或等待该渠道发布后重新检查 |
