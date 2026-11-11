@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { api, type CommunityRepo, type CommunityRepoBrowse, type CommunityTag } from "../../api";
 import { formatTime } from "../../i18n/datetime";
 import { searchCommunityTags } from "./tagFilter";
+import { OutboundHostAccess, useOutboundHostAccess } from "../../components/OutboundHostAccess";
 
 const { Text } = Typography;
 
@@ -28,6 +29,17 @@ type Browse =
   | { state: "error"; repo: string; message: string }
   | { state: "done"; repo: string; result: CommunityRepoBrowse };
 
+// Match the community API's default tag-list route, not a node's image pull:
+// unqualified Docker references are read from hub.docker.com.
+function repositoryAPIAddress(repo: string): string {
+  const value = repo.trim();
+  if (!value || value.includes("://") || /[\s?#@\\]/.test(value)) return "";
+  const head = value.split("/", 1)[0];
+  const explicit = value.includes("/") && (head.includes(".") || head.includes(":") || head === "localhost");
+  const host = !explicit || head === "index.docker.io" || head === "registry-1.docker.io" ? "docker.io" : head.toLowerCase();
+  return `https://${host === "docker.io" ? "hub.docker.com" : host}`;
+}
+
 /**
  * ImageCommunityBrowser lists the built-in community repositories as cards
  * and every tag upstream holds for the one chosen — release, nightly and
@@ -36,6 +48,7 @@ type Browse =
  */
 export default function ImageCommunityBrowser({ onPick }: Props) {
   const { t } = useTranslation("images");
+  const { t: tCommon } = useTranslation("common");
   const [repos, setRepos] = useState<CommunityRepo[] | null>(null);
   const [reposError, setReposError] = useState("");
   const [manualRepo, setManualRepo] = useState("");
@@ -43,6 +56,11 @@ export default function ImageCommunityBrowser({ onPick }: Props) {
   const [repoBrowses, setRepoBrowses] = useState<Record<string, Browse>>({});
   const [query, setQuery] = useState("");
   const [picked, setPicked] = useState("");
+  const configured = repos?.find((repo) => repo.repo.trim() === manualRepo.trim());
+  const reposReady = repos !== null && !reposError;
+  const accessUnknown = Boolean(manualRepo.trim()) && (!reposReady || Boolean(configured && !configured.access_host));
+  const accessAddress = reposReady ? (configured ? configured.access_host || "" : repositoryAPIAddress(manualRepo)) : "";
+  const access = useOutboundHostAccess([accessAddress], !accessUnknown);
 
   useEffect(() => {
     let alive = true;
@@ -81,12 +99,13 @@ export default function ImageCommunityBrowser({ onPick }: Props) {
     };
   }, []);
 
-  const open = async (repo: string, card?: CommunityRepo) => {
+  const open = async (repo: string, card?: CommunityRepo, authorize = false) => {
     const target = repo.trim();
     if (!target) return;
     setBrowse({ state: "loading", repo: target });
     setQuery("");
     try {
+      if (authorize) await access.authorize();
       const result = await api.browseCommunity(target);
       setRepoBrowses((current) => ({ ...current, [target]: { state: "done", repo: target, result } }));
       // A sibling path lists its own tags but belongs to its card, so the
@@ -179,12 +198,17 @@ export default function ImageCommunityBrowser({ onPick }: Props) {
             placeholder={t("import.community.otherRepoPlaceholder")}
             value={manualRepo}
             onChange={(event) => setManualRepo(event.target.value)}
-            onPressEnter={() => void open(manualRepo)}
+            onPressEnter={() => void open(manualRepo, undefined, true)}
           />
-          <Button onClick={() => void open(manualRepo)} disabled={!manualRepo.trim()}>
+          <Button onClick={() => void open(manualRepo, undefined, true)} disabled={!manualRepo.trim()}>
             {t("import.community.browse")}
           </Button>
         </Space.Compact>
+        {accessUnknown && <p className="text-sm text-fg-muted">
+          {t("import.community.accessUnknown")}{" "}
+          <a className="underline" href="/settings#outbound-policy">{tCommon("outboundAccess.settings")}</a>
+        </p>}
+        <OutboundHostAccess access={access} />
         {browse.state === "loading" && (
           <Space>
             <Spin size="small" />

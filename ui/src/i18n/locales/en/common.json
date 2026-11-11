@@ -1022,5 +1022,26 @@
   "feedback": {
     "requestFailed": "Request failed. Please retry."
   },
-  "upload": {"choose": "Choose file", "replace": "Choose another", "none": "No file chosen"}
+  "upload": {
+    "choose": "Choose file",
+    "replace": "Choose another",
+    "none": "No file chosen"
+  },
+  "outboundAccess": {
+    "internationalHost": "Use these ASCII/Punycode hostnames in the source addresses: {{hosts}}.",
+    "settings": "Outbound access policy",
+    "adminOnly": "An administrator can allow private source hosts.",
+    "checking": "Checking host access…",
+    "scope": "Access is checked from the management node.",
+    "readOnly": "The outbound policy is read-only on this server.",
+    "allow": "Automatically add {{host}} to the allowlist",
+    "appliedOnAction": "Applied when you save or run this action. The permission also applies to other features using this host.",
+    "allowed": "Access to {{host}} is allowed.",
+    "blocked": "{{host}} cannot be allowed by the outbound policy.",
+    "unresolved": "Host access could not be checked for {{host}}.",
+    "retry": "Check again",
+    "changed": "The host or its selection changed. Review the address and select it again.",
+    "cannotAllow": "A selected host cannot be allowed by the outbound policy.",
+    "checkFailed": "A selected host could not be checked. Check the address and try again."
+  }
 }

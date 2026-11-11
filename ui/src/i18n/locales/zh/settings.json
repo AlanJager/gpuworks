@@ -211,6 +211,7 @@
       "endpointsHelpUrl": "节点按顺序尝试这些站点，然后才是原站点。",
       "controlPlane": "用于管理节点获取模型元数据",
       "controlPlaneHelp": "管理节点登记模型、取元数据与 logo、部署准入时也按此规则找地址。",
+      "managementTestScope": "此连通性测试从所选计算节点执行，不验证管理节点的出站访问权限。",
       "controlPlaneMark": "管理节点也用",
       "test": {"title": "测试连通", "help": "让所选节点按真实下载的路径（节点代理、no_proxy、凭据）访问上面的地址，不会保存规则。", "nodes": "测试节点", "nodesHelp": "选 1–{{max}} 台在线节点。", "nodesPlaceholder": "选择在线节点", "noOnlineNodes": "没有在线节点", "repo": "测试仓库", "repoHelp": "用一个公开的小仓库试；要部署带门禁的模型时，可改成它的仓库名。", "run": "测试连通", "resultLabel": "连通测试结果", "node": "节点", "address": "地址", "result": "结果", "latency": "耗时", "ok": "可用", "authRequired": "需要凭据", "authHelp": "站点回了 {{code}}：需要在「凭据」中为这个站点配置令牌，地址本身是通的。", "httpError": "HTTP {{code}}", "unreachable": "不可达", "ms": "{{ms}} ms", "empty": "没有返回任何结果", "noAnswer": "该节点没有应答", "pending": "测试中…"},
       "docsHint": "常见网络配置示例见文档 docs/how-to/configure-pull-settings.md 的「常见网络配置示例」一节"

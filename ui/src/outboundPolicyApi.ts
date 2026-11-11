@@ -7,8 +7,15 @@ export interface OutboundPolicy {
   revision: string;
 }
 
+export interface OutboundHostCheck {
+  host: string;
+  status: "allowed" | "needs_allow" | "blocked" | "unresolved";
+}
+
 export const outboundPolicyApi = {
-  get: () => getJSON<OutboundPolicy>("/api/v1/server/outbound-policy"),
+  get: (signal?: AbortSignal) => getJSON<OutboundPolicy>("/api/v1/server/outbound-policy", signal),
+  checkHosts: (hosts: readonly string[], signal?: AbortSignal) =>
+    sendJSON<OutboundHostCheck[]>("POST", "/api/v1/server/outbound-policy/check", { hosts }, signal),
   put: (value: Pick<OutboundPolicy, "restrict_private_hosts" | "allow_private_hosts" | "revision">) =>
     sendJSON<OutboundPolicy>("PUT", "/api/v1/server/outbound-policy", value),
 };

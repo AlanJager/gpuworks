@@ -247,6 +247,7 @@
       "reposFailed": "The community repository list could not be loaded",
       "otherRepo": "Other repository",
       "otherRepoPlaceholder": "Any repository, for example vllm/vllm-openai",
+      "accessUnknown": "The access host for this repository is unavailable. Review the outbound access policy.",
       "browse": "List tags",
       "tagsLoading": "Listing the tags of {{repo}}…",
       "tagsFailed": "The tags of {{repo}} could not be listed",
