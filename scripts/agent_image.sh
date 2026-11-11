@@ -9,6 +9,8 @@
 # built exactly like the one the server embeds. nerdctl comes from its GitHub
 # release, verified against the checksums below and kept in a cache directory:
 # CI runners reach GitHub poorly, and a cached tarball is never fetched twice.
+# NERDCTL_URL_BASE may list several download bases, tried in order; the
+# checksum makes any mirror of the release as good as GitHub.
 #
 # Environment:
 #   VERSION                    image tag, the server's version (required)
@@ -55,13 +57,23 @@ fetch_nerdctl() {
   want="$(nerdctl_sha256 "$arch")"
   mkdir -p "$cache"
   if [ ! -f "$cache/$name" ] || [ "$(sha256sum "$cache/$name" | cut -d' ' -f1)" != "$want" ]; then
-    local tmp
+    local tmp base ok=""
     tmp="$(mktemp "$cache/.$name.XXXXXX")"
-    curl -fsSL --retry 3 --connect-timeout 20 -o "$tmp" "$NERDCTL_URL_BASE/v$NERDCTL_VERSION/$name"
-    got="$(sha256sum "$tmp" | cut -d' ' -f1)"
-    if [ "$got" != "$want" ]; then
+    for base in $NERDCTL_URL_BASE; do
+      if ! curl -fsSL --retry 2 --connect-timeout 20 -o "$tmp" "$base/v$NERDCTL_VERSION/$name"; then
+        echo "$name: download from $base failed" >&2
+        continue
+      fi
+      got="$(sha256sum "$tmp" | cut -d' ' -f1)"
+      if [ "$got" = "$want" ]; then
+        ok=1
+        break
+      fi
+      echo "$name from $base: sha256 $got, want $want" >&2
+    done
+    if [ -z "$ok" ]; then
       rm -f "$tmp"
-      echo "$name: sha256 $got, want $want" >&2
+      echo "$name: no download base gave the release ($NERDCTL_URL_BASE)" >&2
       exit 1
     fi
     mv -f "$tmp" "$cache/$name"
