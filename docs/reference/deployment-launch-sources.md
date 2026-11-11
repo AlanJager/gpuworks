@@ -216,7 +216,7 @@ vLLM 把 CPU 内存层（字典参数 `kv_offloading_size`，GiB）放在 `/dev/
 
 之后还有两类补充：SGLang 日志配置与 agent 的多机网卡填充都是补缺；agent 的设备与 dGPU env 覆盖以上所有层。
 
-镜像内置 ENV 在容器运行时继承，只有被 `-e` 显式设置的键会被替换（例如昇腾 vCANN 会先读出镜像的
+镜像内置 ENV 在容器运行时继承，只有被 `-e` 显式设置的键会被替换（例如昇腾 vcann-rt 会先读出镜像的
 `LD_LIBRARY_PATH` 再追加驱动路径）。
 
 udocker 运行时（runveil 与 udocker CLI 两种启动器）在非国产卡上自带
@@ -248,7 +248,7 @@ agent 不重建目录、镜像或命令语义，只做以下节点事实相关�
    - 昆仑芯：Linux amd64 / Docker 整卡 TP；逐卡重新核对 UUID/BDF/minor 与 sysfs 后，注入所选 `/dev/xpuN` 和一个 `/dev/xpuctrl`。设备占用由公共计算进程清单上报，不以显存用量替代占用检查。模板参数遵循公共管理员契约，不另设厂商专属 Docker 参数过滤器。多机原生通信依赖见[厂商支持矩阵](support-matrix.md)。
 7. **dGPU 分区**：服务端只下发显存上限、算力百分比与后端名，注入全部在 agent：
    - HAMi-core：挂载 `libvgpu.so`，`LD_PRELOAD`、`CUDA_DEVICE_MEMORY_LIMIT_<i>`，以及部署带算力百分比时的 `CUDA_DEVICE_SM_LIMIT`（部署请求目前不接受算力百分比，见 [dGPU 说明](../explanation/dgpu.md)）
-   - vCANN：挂载 `libvruntime.so` 等，`ENPU_DSMI_HOOK=1`、`LD_LIBRARY_PATH`
+   - vcann-rt：挂载 `libvruntime.so` 等，`ENPU_DSMI_HOOK=1`、`LD_LIBRARY_PATH`
    - HGGC：挂载 `hggc_quota.so` 等，`LD_PRELOAD`、`HGGC_DEVICE_MEMORY_LIMIT_<i>`
 
 详见 [dGPU 说明](../explanation/dgpu.md)。

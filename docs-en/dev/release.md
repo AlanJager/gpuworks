@@ -33,7 +33,7 @@ Both runtime binaries must keep `CGO_ENABLED=0`. Run these checks before release
 
 ```bash
 make check-assets          # HAMi libvgpu.so glibc baseline; ib_write_bw library/symbol baseline and hashes
-make runtime-assets-verify # Ascend vCANN, PPU HGGC, and partition probe manifest integrity and per-file sha256
+make runtime-assets-verify # Ascend vcann-rt, PPU ppu-slicing-shim, and partition probe manifest integrity and per-file sha256
 make test
 make vet
 git diff --check
@@ -174,8 +174,8 @@ so rebuilding only the server does not incorporate updates to them. Validate or 
 |---|---|---|---|
 | NVIDIA HAMi | `internal/assets/bin/libvgpu.so` | One copy, compiled against the oldest supported glibc baseline | `make check-libvgpu` (`scripts/check_libvgpu_compat.sh`) |
 | RDMA bandwidth test tool | `internal/assets/bin/ib_write_bw-{x86_64,arm64}` | x86_64 + arm64; uses the host's RDMA userspace libraries at runtime | `make check-perftest` (`scripts/check_perftest_compat.sh`); see `build/runtime-assets/perftest/README.md` for build instructions |
-| Ascend vCANN | `internal/assets/bin/runtime-assets/ascend/linux-{amd64,arm64}/libvruntime.so` | One copy each for amd64 + arm64 | `make runtime-assets-verify`; rebuild with `make runtime-assets` |
-| PPU HGGC | `internal/assets/bin/runtime-assets/ppu/linux-amd64/hggc-13.0/{hggc_quota.so,hgml_dlsym_hook.so}` | Currently amd64 only | Same as above |
+| Ascend vcann-rt | `internal/assets/bin/runtime-assets/ascend/linux-{amd64,arm64}/libvruntime.so` | One copy each for amd64 + arm64 | `make runtime-assets-verify`; rebuild with `make runtime-assets` |
+| PPU ppu-slicing-shim | `internal/assets/bin/runtime-assets/ppu/linux-amd64/hggc-13.0/{hggc_quota.so,hgml_dlsym_hook.so}` | Currently amd64 only | Same as above |
 | partition probe | `internal/assets/bin/runtime-assets/probe/partition-probe-linux-{amd64,arm64}.tar.gz` | amd64 + arm64 | Same as above; rebuild the images separately with `make runtime-assets-probe` |
 | udocker PRoot | `internal/assets/bin/proot-{x86_64,arm64}-static-nofd` | x86_64 + arm64 | Covered by neither `check-assets` nor `runtime-assets-verify`; verify manually against `internal/assets/bin/manifest.sha256`. `build/runtime-assets/proot/reproduce-embedded-x86_64.sh` rebuilds the x86_64 binary byte for byte; `build/runtime-assets/proot/README.md` records the source of each binary |
 
