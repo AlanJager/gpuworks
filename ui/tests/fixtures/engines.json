@@ -3410,8 +3410,7 @@
         "kv_load_failures": [
           "fail",
           "recompute"
-        ],
-        "unverified": true
+        ]
       },
       {
         "name": "vllm-nixl",

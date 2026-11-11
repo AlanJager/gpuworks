@@ -366,7 +366,7 @@ var modes = map[string]Mode{
 	// HIP transport), patched by vllm-hcu, so the KV moves over whatever host
 	// network the group shares. A decoder given no handoff computes the
 	// prefill itself. The vllm-hcu patch is about heterogeneous TP/PP; only
-	// equal TP was tried. The mode is experimental and marked unverified. It
+	// equal TP was tried. Verified on K100, two cards in one host at TP 1. It
 	// needs the image's r2 or later: r1's connector reported a failed pull as
 	// finished, so the decoder answered from KV it never received and the
 	// load failure policy did not apply.
@@ -388,7 +388,6 @@ var modes = map[string]Mode{
 		KVLoadFailures:      []string{KVLoadFail, KVLoadRecompute},
 		ExtraPortsFixed:     map[string]int{RolePrefill: 1},
 		SynthesizedHandoff:  true,
-		Unverified:          true,
 		Transport:           TransportMooncake,
 	},
 	// SGLang on T-Head PPU with the mooncake backend: Mooncake's NVLink
