@@ -83,12 +83,13 @@ core-ui:
     - node scripts/i18n-check.mjs
     - cd ui
     # registry.npmmirror.com occasionally stalls mid-transfer from this runner
-    # and resets the connection after 15-20 minutes instead of failing fast.
-    # Retry the whole install a few times rather than let one flaky fetch
-    # fail the job.
+    # and resets the connection after 15-20 minutes instead of failing fast,
+    # and has hung an install for the whole job timeout. A warm-cache install
+    # takes ~10 s, so cut an attempt off at 5 minutes and retry the whole
+    # install a few times rather than let one flaky fetch fail the job.
     - |
       for attempt in 1 2 3; do
-        npm ci --registry="$NPM_REGISTRY" --prefer-offline --no-audit --no-fund \
+        timeout 300 npm ci --registry="$NPM_REGISTRY" --prefer-offline --no-audit --no-fund \
           --fetch-retries=5 --fetch-retry-mintimeout=5000 --fetch-retry-maxtimeout=60000 \
           && break
         echo "npm ci attempt $attempt failed" >&2
@@ -199,6 +200,11 @@ core-ui-test:
   # Three shards (node --test-shard, see TEST_SHARD in ui/package.json) keep
   # the slow-runner case near the fast one instead of on the critical path.
   parallel: 3
+  # A shard takes ~4 min on the fast runner and under 25 on the slow ones. A
+  # test file that never exits used to hold a slot for the full hour; the
+  # suite now bounds each test (--test-timeout in ui/package.json), and this
+  # catches anything that still hangs well before the runner default.
+  timeout: 30m
   image:
     name: node:22-bookworm@sha256:0557ac14e0d45d02ed563067b82856ca5e7aa3437fa28d98d4350ea9c3d9494a
   variables:
@@ -224,7 +230,7 @@ core-ui-test:
     # resets the connection instead of failing fast, so retry the install.
     - |
       for attempt in 1 2 3; do
-        npm ci --registry="$NPM_REGISTRY" --prefer-offline --no-audit --no-fund \
+        timeout 300 npm ci --registry="$NPM_REGISTRY" --prefer-offline --no-audit --no-fund \
           --fetch-retries=5 --fetch-retry-mintimeout=5000 --fetch-retry-maxtimeout=60000 \
           && break
         echo "npm ci attempt $attempt failed" >&2
