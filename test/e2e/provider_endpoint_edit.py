@@ -244,31 +244,20 @@ def exercise_column_preferences(page, common, copy, report, writes, errors):
     expect(drawer).to_be_visible()
     drawer.get_by_role("checkbox", name=columns["status"], exact=True).check()
     expect(drawer.get_by_role("checkbox", name=columns["status"], exact=True)).to_be_checked()
-    # A keyboard drag on the type column's handle moves it one slot later in the shown order.
-    # The drag handle is a span carrying dnd-kit's attributes (ColumnSettingsDrawer.tsx:26),
-    # not a button, so it is matched by its accessible name rather than by role.
-    drag_handle = drawer.locator(
-        f'[aria-label="{labels["dragColumn"].replace("{{name}}", columns["type"])}"]')
+    # The drawer reorders with Zeron's SortableCollection (components/ui/sortable-collection.tsx),
+    # whose handle is a button named "Reorder <title>" that lifts on Space/Enter and moves with
+    # the arrow keys (:220, :239-244). One ArrowDown moves the type column one slot later.
+    drag_handle = drawer.get_by_role(
+        "button",
+        name=labels["dragColumn"].replace("{{name}}", columns["type"]),
+        exact=True)
     expect(drag_handle).to_have_count(1)
-    # The drawer sorts with dnd-kit (ColumnSettingsDrawer.tsx:58-62). Its KeyboardSensor
-    # announces a move but does not relocate the item under sortableKeyboardCoordinates in
-    # this list, so the drag is driven with the pointer, which is also what a user does. The
-    # PointerSensor activates after 4px (activationConstraint.distance), so the move starts
-    # with a small step before travelling to the row below.
-    source = drag_handle.bounding_box()
-    target = drawer.locator(
-        f'[aria-label="{labels["dragColumn"].replace("{{name}}", columns["instances"])}"]'
-    ).bounding_box()
-    check(source is not None and target is not None, "the drag handles have no geometry")
-    page.mouse.move(source["x"] + source["width"] / 2, source["y"] + source["height"] / 2)
-    page.mouse.down()
-    page.mouse.move(source["x"] + source["width"] / 2, source["y"] + source["height"] / 2 + 6,
-                    steps=4)
-    page.wait_for_timeout(200)
-    page.mouse.move(target["x"] + target["width"] / 2,
-                    target["y"] + target["height"] / 2 + 8, steps=12)
+    drag_handle.focus()
+    page.keyboard.press("Space")
     page.wait_for_timeout(300)
-    page.mouse.up()
+    page.keyboard.press("ArrowDown")
+    page.wait_for_timeout(300)
+    page.keyboard.press("Space")
     page.wait_for_timeout(600)
     order = (stored() or {}).get("order") or []
     check(order.index(keys_of[columns["type"]]) == order.index(keys_of[columns["instances"]]) + 1,
