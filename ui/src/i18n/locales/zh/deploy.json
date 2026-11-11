@@ -821,6 +821,20 @@
       "storageGone": "你选择的存储已不再适用于这次部署，请重新选择存储。",
       "storageTarget": "{{name}}（{{type}}）"
     },
+    "componentAcquisition": {
+      "title": "组件权重",
+      "heading": "{{name}} · {{model}} · {{size}}",
+      "sizeUnknown": "大小未知",
+      "ready": "{{nodes}} 个目标节点都已有，无需下载",
+      "sharedFollowsPrimary": "将下载到共享存储「{{storage}}」（主模型所在的存储），由一个节点写入一次，{{nodes}} 个目标节点共用这一份",
+      "sharedChosen": "将下载到所选的共享存储「{{storage}}」，由一个节点写入一次，{{nodes}} 个目标节点共用这一份",
+      "sharedUsage": "占用「{{storage}}」{{size}}；删除部署不会删除这份文件",
+      "sharedAvoid": "不想写入这个存储：在节点条件里限定存储，或在「保存到」中选择本地存储",
+      "nodeDownload_one": "{{count}} 个节点各自下载到本地存储（共 {{total}}），首次启动需等下载完成",
+      "nodeDownload_other": "{{count}} 个节点各自下载到本地存储（共 {{total}}），首次启动需等下载完成",
+      "someReady_one": "其中 {{count}} 个节点已有，直接读取",
+      "someReady_other": "其中 {{count}} 个节点已有，直接读取"
+    },
     "resource": {
       "title": "资源",
       "tp": "张量并行 TP",

@@ -76,7 +76,7 @@ func deploymentModelProgress(rows dtoLookup, dep *store.Deployment) (shown, reco
 	if err != nil {
 		return nil, nil
 	}
-	rules := store.SourceRules{Pinned: store.StoragePins(rows.requirements(dep.ID)), SaveTo: dep.SaveToStorageID}
+	rules := store.SourceRules{Pinned: store.StoragePins(rows.requirements(dep.ID)), SaveTo: dep.SaveToStorageID, Deployment: dep.ID}
 	for _, nodeID := range rows.preparationNodes(dep) {
 		node := rows.node(nodeID)
 		if node == nil {

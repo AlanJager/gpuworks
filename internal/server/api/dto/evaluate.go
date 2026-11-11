@@ -289,6 +289,31 @@ type AcquisitionResult struct {
 	// the weights if it started now. It is a forecast, not a choice: the node
 	// decides again when it starts.
 	Nodes []AcquisitionNode `json:"nodes,omitempty"`
+	// Components is, for each template component other than the primary (a
+	// separately published text encoder, a speculative draft), how the
+	// target nodes would get it if the deployment were created now. It
+	// appears once the target nodes are known.
+	Components []AcquisitionComponent `json:"components,omitempty"`
+}
+
+// AcquisitionComponent is one template component's forecast. Plan is "ready"
+// (every target node reads it already), "shared_download" (the create
+// downloads it once into the shared storage Storage, through one writer node,
+// and the target nodes read that copy; FollowsPrimary says the request named
+// no storage and Storage is the one the primary sits on) or "node_download"
+// (each target node without it downloads it into its own storage). Nodes
+// counts the target nodes, ReadyNodes those that read it now.
+type AcquisitionComponent struct {
+	Name           string `json:"name"`
+	Role           string `json:"role"`
+	Model          string `json:"model"`
+	SizeBytes      int64  `json:"size_bytes,omitempty"`
+	Plan           string `json:"plan"`
+	Nodes          int    `json:"nodes"`
+	ReadyNodes     int    `json:"ready_nodes"`
+	StorageID      uint   `json:"storage_id,omitempty"`
+	Storage        string `json:"storage,omitempty"`
+	FollowsPrimary bool   `json:"follows_primary,omitempty"`
 }
 
 // AcquisitionNode is one node's forecast. ImagePlan is "present" (the node

@@ -390,6 +390,9 @@ func (a *apiHandlers) evaluate(w http.ResponseWriter, r *http.Request) {
 		writeFieldErrors()
 		return
 	}
+	if resp.Acquisition != nil {
+		resp.Acquisition.Components = a.evaluateComponentAcquisition(req.ModelSource, model, selection.Components, store.StoragePins(req.NodeRequirements), rankNodes)
+	}
 	if parallelInvalid {
 		writeFieldErrors()
 		return

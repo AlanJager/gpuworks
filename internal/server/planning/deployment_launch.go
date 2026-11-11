@@ -188,7 +188,7 @@ func DeploymentLaunch(dep *store.Deployment, reqs map[string][]string, node *sto
 		YieldPolicy:    dep.YieldPolicy,
 		VRAMLimitBytes: dep.VRAMLimitBytes, PartitionBackend: dep.PartitionBackend,
 		APIContract: DeploymentAPIContract(model, templateLayer.APIContract),
-		ModelRules:  store.SourceRules{Pinned: store.StoragePins(reqs), SaveTo: dep.SaveToStorageID},
+		ModelRules:  store.SourceRules{Pinned: store.StoragePins(reqs), SaveTo: dep.SaveToStorageID, Deployment: dep.ID},
 	}, templateLayer, modelHostPath, nil
 }
 

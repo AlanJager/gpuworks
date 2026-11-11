@@ -402,6 +402,7 @@
       "DEPLOYMENT_ROLLING_RESTARTED": "已请求滚动重启，共 {{replicas}} 个副本",
       "DEPLOYMENT_ROLLING_STALLED": "滚动重启暂停：副本 {{replica}} 连续失败 {{attempts}} 次已放弃，重试该副本后继续",
       "DEPLOYMENT_DGPU_QUOTA_CHANGED": "dGPU 显存上限 {{from}} → {{to}}：{{live}} 个实例立即生效，{{pending}} 个重启后生效",
+      "DEPLOYMENT_COMPONENT_DOWNLOAD": "组件 {{component}}（{{model}}，{{bytes}}）开始下载到共享存储「{{storage}}」，由 {{node}} 写入一次，各节点共用这一份",
       "DEPLOYMENT_EDITED": "配置已修改（{{count}} 项：{{fields}}）；生效方式：{{apply}}",
       "REPLICA_RESTARTED": "已请求重启实例 {{instance}} 所在的副本",
       "UNIT_RETRY_EXHAUSTED": "已放弃重试：连续失败 {{attempts}} 次（{{reason}}）",

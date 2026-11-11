@@ -3038,6 +3038,32 @@ export interface AcquisitionResult {
    * multi-node draft, in rank order); absent for automatic placement.
    */
   nodes?: AcquisitionNodeFact[];
+  /**
+   * How each template component other than the primary (a separate text
+   * encoder, a speculative draft) reaches the target nodes; present once the
+   * nodes are known.
+   */
+  components?: AcquisitionComponent[];
+}
+
+/**
+ * One template component's forecast. plan "ready": every target node reads it
+ * already; "shared_download": the create downloads it once into the shared
+ * storage `storage`, through one writer node (follows_primary: no storage was
+ * chosen and it is the one the primary sits on); "node_download": each target
+ * node without it downloads it into its own storage.
+ */
+export interface AcquisitionComponent {
+  name: string;
+  role: string;
+  model: string;
+  size_bytes?: number;
+  plan: "ready" | "shared_download" | "node_download";
+  nodes: number;
+  ready_nodes: number;
+  storage_id?: number;
+  storage?: string;
+  follows_primary?: boolean;
 }
 
 export type ImagePlan = "present" | "copy" | "pull";
