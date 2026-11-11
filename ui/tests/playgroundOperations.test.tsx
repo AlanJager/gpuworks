@@ -94,6 +94,10 @@ const catalog: PlaygroundCatalog = {
     model("audio-model", [operation("openai.audio.transcribe", "/v1/audio/transcriptions", "audio", "json"), operation("openai.audio.speech", "/v1/audio/speech", "audio", "audio")]),
     model("image-model", [operation("openai.image.generate", "/v1/images/generations", "image", "image")]),
     model("image-dual-model", [operation("openai.image.generate", "/v1/images/generations", "image", "image"), { ...operation("openai.image.edit", "/v1/images/edits", "image", "image"), request_encoding: "multipart", request_encodings: ["multipart"] }]),
+    model("image-canvas-model", [
+      { ...operation("openai.image.generate", "/v1/images/generations", "image", "image"), inputs: [{ name: "size", kind: "select" as const, options: ["1024x1024", "2048x2048", "2720x1536"], default: "2048x2048" }] },
+      { ...operation("openai.image.edit", "/v1/images/edits", "image", "image"), request_encoding: "multipart", request_encodings: ["multipart"], inputs: [{ name: "size", kind: "select" as const, options: ["2048x2048", "2720x1536"], default: "2720x1536" }] },
+    ]),
     model("image-edit-model", [{ ...operation("openai.image.edit", "/v1/images/edits", "image", "image"), request_encoding: "multipart", request_encodings: ["multipart"] }]),
     model("video-model", [{ ...operation("openai.video.generate", "/v1/videos", "video", "video", "async"), async: asyncVideo }]),
     model("realtime-model", [{ ...operation("openai.realtime", "/v1/realtime", "realtime", "websocket", "realtime"), request_encodings: ["websocket"] }]),
@@ -242,6 +246,26 @@ test("Image editing uploads the source image through the declared multipart rout
   assert.equal(request!.body.get("prompt"), "A sunrise over mountains");
   assert.ok(request!.body.get("image") instanceof dom.window.Blob);
   await waitFor(() => assert.ok(page.container.querySelector('img[src^="data:image/png;base64"]')));
+});
+
+test("Image sizes come from the operation's declared options and default", async () => {
+  const bodies: Array<Record<string, unknown>> = [];
+  globalThis.fetch = (async (_input, init) => {
+    if (typeof init?.body === "string") bodies.push(JSON.parse(init.body) as Record<string, unknown>);
+    return jsonResponse({ data: [{ b64_json: "iVBORw0KGgo=" }] });
+  }) as typeof fetch;
+  const user = userEvent.setup();
+  renderAt(<ImagePage catalog={catalog} />, "/playground/image?model=image-canvas-model");
+  const size = screen.getByRole("combobox", { name: "Image size" });
+  assert.ok(size.closest(".ant-select")?.textContent?.includes("2048x2048"));
+  await user.click(size);
+  assert.equal((await screen.findAllByTitle("2720x1536")).length, 1);
+  assert.equal(screen.queryByTitle("512x512"), null);
+  await user.click(screen.getByTitle("2720x1536"));
+  await user.click(screen.getByRole("button", { name: "Generate Image" }));
+  await waitFor(() => assert.equal(bodies[0]?.size, "2720x1536"));
+  await user.click(screen.getByText("Image editing"));
+  await waitFor(() => assert.ok(screen.getByRole("combobox", { name: "Image size" }).closest(".ant-select")?.textContent?.includes("2720x1536")));
 });
 
 test("A model declaring both image operations switches from generation to editing", async () => {
