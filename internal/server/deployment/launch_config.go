@@ -2,6 +2,7 @@ package deployment
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"reflect"
 	"slices"
@@ -24,13 +25,18 @@ import (
 // request runs (requestEngineVersion): a flag that release may refuse gets no
 // default.
 func materializeDeployRequest(engine string, req *dto.DeployRequest, selection templateSelection, cards []deploy.CardFacts, engineVersion string) (deploy.Materialized, error) {
-	return materializeDeployRequestWithStoredArgs(engine, req, selection, cards, engineVersion, nil)
+	return materializeDeployRequestWithBase(engine, req, selection, cards, engineVersion, nil)
 }
 
-// An edit preview may keep the exact residual argv of a stored deployment.
-// The historical allowance belongs to that engine and those tokens only;
-// new creates and changed arguments still go through request validation.
-func materializeDeployRequestWithStoredArgs(engine string, req *dto.DeployRequest, selection templateSelection, cards []deploy.CardFacts, engineVersion string, stored *deploy.StoredLaunchConfig) (deploy.Materialized, error) {
+// An edit's complete draft includes unchanged stored fields. Base keeps those
+// below newly stated extra_args, and only the changed fields are validated as
+// new choices, just as in editedDeployment.
+func materializeDeployRequestWithBase(engine string, req *dto.DeployRequest, selection templateSelection, cards []deploy.CardFacts, engineVersion string, base *editLaunchBase) (deploy.Materialized, error) {
+	var quickBase *deploy.LaunchConfig
+	var stored *deploy.StoredLaunchConfig
+	if base != nil {
+		quickBase, stored = &base.Quick, &base.Args
+	}
 	extra, err := deploy.ParseArgsText(req.ExtraArgs)
 	if err != nil {
 		return deploy.Materialized{}, wrapProductError(messages.ErrorExtraArgsInvalid, "extra_args cannot be parsed", map[string]any{"detail": err.Error()}, err)
@@ -62,12 +68,20 @@ func materializeDeployRequestWithStoredArgs(engine string, req *dto.DeployReques
 	}
 	out, err := deploy.Materialize(deploy.MaterializeInput{
 		Engine: engine, Command: &command, Raw: req.QuickParams, Unset: req.QuickParamsUnset, TemplateArgs: templateArgs, ExtraArgs: extra, Cards: cards,
-		EngineVersion: engineVersion,
+		EngineVersion: engineVersion, Base: quickBase,
 	})
 	if err != nil {
 		return deploy.Materialized{}, err
 	}
-	if err := ValidateRequestedLaunchConfig(engine, req, extra); err != nil {
+	validationRequest := req
+	if base != nil {
+		edited, removed, err := deploy.EditedParams(engine, *quickBase, req.QuickParams, req.QuickParamsUnset)
+		if err != nil {
+			return deploy.Materialized{}, err
+		}
+		validationRequest = &dto.DeployRequest{QuickParams: edited, QuickParamsUnset: removed}
+	}
+	if err := ValidateRequestedLaunchConfig(engine, validationRequest, extra); err != nil {
 		return deploy.Materialized{}, err
 	}
 	return out, nil
@@ -283,4 +297,44 @@ func DeployTargetCards(node *store.Node, placement any) []deploy.CardFacts {
 		}
 	}
 	return cards
+}
+
+// editLaunchBase keeps the two edit allowances from the same stored row:
+// unchanged fields yield to new arguments, and unchanged historical arguments
+// retain their original engine's validation allowance. It lives for one request.
+type editLaunchBase struct {
+	Quick deploy.LaunchConfig
+	Args  deploy.StoredLaunchConfig
+}
+
+// evaluationLaunchBase keeps deployment_id's historical missing-ID behavior:
+// without a stored row this is a create preview. Real read/decoding failures
+// cannot safely supply edit precedence and must reach the caller as errors.
+func (s *Service) evaluationLaunchBase(id uint) (*editLaunchBase, error) {
+	if id == 0 {
+		return nil, nil
+	}
+	stored, err := s.d.Store.GetDeployment(id)
+	if errors.Is(err, store.ErrNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	quick, err := StoredLaunchConfig(stored)
+	if err != nil {
+		return nil, err
+	}
+	return &editLaunchBase{Quick: quick, Args: deploy.StoredLaunchConfig{Engine: stored.Engine, ExtraArgsText: stored.ExtraArgs}}, nil
+}
+
+// StoredLaunchConfig decodes the typed configuration used by both the edit
+// draft and evaluation. Old rows without quick parameters remain valid.
+func StoredLaunchConfig(dep *store.Deployment) (deploy.LaunchConfig, error) {
+	var quick deploy.LaunchConfig
+	if strings.TrimSpace(dep.QuickParams) == "" {
+		return quick, nil
+	}
+	err := json.Unmarshal([]byte(dep.QuickParams), &quick)
+	return quick, err
 }

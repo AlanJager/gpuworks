@@ -7,32 +7,12 @@ import (
 	"strings"
 
 	"gpuworks.ai/gpuworks/internal/accelerator"
-	"gpuworks.ai/gpuworks/internal/server/acquisition"
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"gpuworks.ai/gpuworks/internal/server/deploy"
 	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/internal/server/planning"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
-
-func acquisitionDTO(r acquisition.Result) dto.AcquisitionResult {
-	to := func(c acquisition.Candidate) dto.AcquisitionCandidate {
-		return dto.AcquisitionCandidate{Key: c.Key, Label: c.Label, DisplayName: c.DisplayName, Reason: c.Reason, Recommended: c.Recommended,
-			StorageID: c.StorageID, StorageType: c.StorageType, SizeBytes: c.SizeBytes, CacheBytes: c.CacheBytes,
-			OnNode: c.OnNode, Unavailable: c.Unavailable, Default: c.Default}
-	}
-	out := dto.AcquisitionResult{Image: dto.AcquisitionImage{Image: r.Image.Canonical, Cached: r.Image.Cached}}
-	for _, c := range r.Present {
-		out.Present = append(out.Present, to(c))
-	}
-	for _, c := range r.Targets {
-		out.Targets = append(out.Targets, to(c))
-	}
-	for _, c := range r.Providers {
-		out.Providers = append(out.Providers, to(c))
-	}
-	return out
-}
 
 // persistCatalogWeight records the catalog spec's weight total on a legacy
 // model row that has none. The estimator used this value for the preview it
@@ -246,16 +226,15 @@ func (s *Service) evaluate(ctx context.Context, out *evaluation, evaluateReq dto
 	if strings.Contains(strings.ToLower(strings.TrimSpace(req.Image)), "@sha256:") {
 		resp.Warnings = append(resp.Warnings, messages.NewWarning(messages.WarningImageDigestUnverified, map[string]any{"image": req.Image}))
 	}
+	base, err := s.evaluationLaunchBase(evaluateReq.DeploymentID)
+	if err != nil {
+		out.err = internal(err)
+		return
+	}
 	// One materialization decides this deployment's launch configuration. The
 	// preview below, the estimate, and a create submitted from this form all
 	// read the same object.
-	var storedArgs *deploy.StoredLaunchConfig
-	if evaluateReq.DeploymentID != 0 {
-		if stored, err := s.d.Store.GetDeployment(evaluateReq.DeploymentID); err == nil {
-			storedArgs = &deploy.StoredLaunchConfig{Engine: stored.Engine, ExtraArgsText: stored.ExtraArgs}
-		}
-	}
-	launch, err := materializeDeployRequestWithStoredArgs(eng.Name(), req, selection, DeployTargetCards(profileNode, req.Placement), s.requestEngineVersion(eng.Name(), req, selection, targetVendor, profileNode), storedArgs)
+	launch, err := materializeDeployRequestWithBase(eng.Name(), req, selection, DeployTargetCards(profileNode, req.Placement), s.requestEngineVersion(eng.Name(), req, selection, targetVendor, profileNode), base)
 	if err != nil {
 		// ProductErrors that name a key land on that key's control; the
 		// extra-args parse error is the one that starts on the text box.
@@ -268,6 +247,10 @@ func (s *Service) evaluate(ctx context.Context, out *evaluation, evaluateReq dto
 	// Materialization parsed this text already. Compare the original user
 	// tokens before any flags moved into fields or were derived for a task.
 	submittedExtra, _ := deploy.ParseArgsText(req.ExtraArgs)
+	var storedArgs *deploy.StoredLaunchConfig
+	if base != nil {
+		storedArgs = &base.Args
+	}
 	if command, err := effectiveRequestCommand(req, selection); err == nil && command.InterpretEngineDialect && !sameStoredExtraArgs(eng.Name(), submittedExtra, storedArgs) {
 		resp.Warnings = append(resp.Warnings, deploy.ExtraArgsEngineWarnings(eng.Name(), userExtraArgs)...)
 	}
@@ -532,7 +515,7 @@ func (s *Service) evaluate(ctx context.Context, out *evaluation, evaluateReq dto
 	// memory-limited draft can get fewer cards than it states. The same
 	// preflight here makes what the create would refuse a blocking error.
 	if errs.empty() {
-		if err := s.evaluateLaunchPreflight(eng, req, preflightSelection, targetVendor, profileNode, rankNodes, &resp, storedArgs); err != nil {
+		if err := s.evaluateLaunchPreflight(eng, req, preflightSelection, targetVendor, profileNode, rankNodes, &resp, base); err != nil {
 			errs.add("", err)
 			writeFieldErrors()
 			return
