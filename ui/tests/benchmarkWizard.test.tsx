@@ -72,7 +72,7 @@ function externalServerFixture() {
 		if (path === "/api/v1/auth/me") return json(200, { id: 1, username: "admin", role: "admin" });
 		if (path === "/api/v1/nodes/load-node") return json(200, { uuid: "load-node", name: "Bench node", state: "online", caps: ["bench"] });
 		if (path === "/api/v1/server/outbound-policy" && method === "GET") return json(200, { restrict_private_hosts: true, allow_private_hosts: ["existing.internal"], editable: true, revision: "r1" });
-		if (path.endsWith("/outbound-policy/check")) return json(200, [{ host: "bench.internal", status: allowed ? "allowed" : "needs_allow" }]);
+		if (path.endsWith("/outbound-policy/check")) return json(200, { items: [{ host: "bench.internal", status: allowed ? "allowed" : "needs_allow" }], total: 1 });
 		if (path === "/api/v1/server/outbound-policy" && method === "PUT") {
 			assert.deepEqual(body, { restrict_private_hosts: true, allow_private_hosts: ["existing.internal", "bench.internal"], revision: "r1" });
 			allowed = true;

@@ -53,5 +53,5 @@ func (a *apiHandlers) checkServerOutboundPolicy(w http.ResponseWriter, r *http.R
 		}
 		results = append(results, dto.ServerOutboundHostCheck{Host: host, Status: status})
 	}
-	writeJSON(w, http.StatusOK, results)
+	writeJSON(w, http.StatusOK, dto.NewList(results))
 }

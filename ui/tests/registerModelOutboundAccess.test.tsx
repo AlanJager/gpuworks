@@ -39,10 +39,10 @@ function fixture(options: FixtureOptions = {}) {
     if (path === "/api/v1/server/outbound-policy/check" && call.method === "POST") {
       const hosts = (call.body as { hosts: string[] }).hosts;
       if (++checks === 2 && options.concurrentChange) policy = { ...policy, allow_private_hosts: ["retained.corp", "concurrent.corp"], revision: "r2" };
-      return json(200, hosts.map((requested) => {
+      return json(200, { items: hosts.map((requested) => {
         const host = requested === "::ffff:7f00:1" ? "127.0.0.1" : requested;
         return { host, status: !policy.restrict_private_hosts || policy.allow_private_hosts.includes(host) ? "allowed" : options.status ?? "needs_allow" };
-      }));
+      }), total: hosts.length });
     }
     if (path === "/api/v1/server/outbound-policy" && call.method === "PUT") {
       const next = call.body as typeof policy;

@@ -56,7 +56,7 @@ test("browsing a private community repository grants only the host explicitly ch
     if (call.path === "/api/v1/images/community/repos") return json(200, { items: [], total: 0 });
     if (call.path === "/api/v1/server/outbound-policy/check") {
       const { hosts } = JSON.parse(call.body || "{}");
-      return json(200, hosts.map((host: string) => ({ host, status: host === "registry.internal" && !allowed ? "needs_allow" : "allowed" })));
+      return json(200, { items: hosts.map((host: string) => ({ host, status: host === "registry.internal" && !allowed ? "needs_allow" : "allowed" })), total: hosts.length });
     }
     if (call.path === "/api/v1/server/outbound-policy" && call.method === "GET") return json(200, { restrict_private_hosts: true, allow_private_hosts: ["existing.internal"], editable: true, revision: "r1" });
     if (call.path === "/api/v1/server/outbound-policy" && call.method === "PUT") {
@@ -90,7 +90,7 @@ test("community access checks follow the server's case-sensitive Docker alias no
     if (call.path === "/api/v1/auth/me") return json(200, { id: 1, username: "admin", role: "admin" });
     if (call.path === "/api/v1/images/community/repos") return json(200, { items: [], total: 0 });
     if (call.path === "/api/v1/server/outbound-policy") return json(200, { restrict_private_hosts: true, allow_private_hosts: [], editable: true, revision: "r1" });
-    if (call.path.endsWith("/outbound-policy/check")) return json(200, JSON.parse(call.body!).hosts.map((host: string) => ({ host, status: "allowed" })));
+    if (call.path.endsWith("/outbound-policy/check")) return json(200, { items: JSON.parse(call.body!).hosts.map((host: string) => ({ host, status: "allowed" })), total: JSON.parse(call.body!).hosts.length });
     return undefined;
   });
   restoreFetch = stub.restore;
@@ -110,7 +110,7 @@ test("a configured community repository authorizes its server-projected API host
     if (call.path === "/api/v1/auth/me") return json(200, { id: 1, username: "admin", role: "admin" });
     if (call.path === "/api/v1/images/community/repos") return json(200, { items: [{ repo: "registry.corp/team/runner", registry: "oci", engine: "vllm", framework: "cuda", access_host: "tags.corp" }], total: 1 });
     if (call.path === "/api/v1/server/outbound-policy" && call.method === "GET") return json(200, { restrict_private_hosts: true, allow_private_hosts: ["existing.internal"], editable: true, revision: "r1" });
-    if (call.path.endsWith("/outbound-policy/check")) return json(200, JSON.parse(call.body!).hosts.map((host: string) => ({ host, status: allowed && host === "tags.corp" ? "allowed" : "needs_allow" })));
+    if (call.path.endsWith("/outbound-policy/check")) return json(200, { items: JSON.parse(call.body!).hosts.map((host: string) => ({ host, status: allowed && host === "tags.corp" ? "allowed" : "needs_allow" })), total: JSON.parse(call.body!).hosts.length });
     if (call.path === "/api/v1/server/outbound-policy" && call.method === "PUT") {
       assert.deepEqual(JSON.parse(call.body!), { restrict_private_hosts: true, allow_private_hosts: ["existing.internal", "tags.corp"], revision: "r1" });
       allowed = true;
@@ -140,7 +140,7 @@ test("community access waits for repository metadata before offering an authoriz
     if (call.path === "/api/v1/auth/me") return json(200, { id: 1, username: "admin", role: "admin" });
     if (call.path === "/api/v1/images/community/repos") return pendingRepos;
     if (call.path === "/api/v1/server/outbound-policy" && call.method === "GET") return json(200, { restrict_private_hosts: true, allow_private_hosts: [], editable: true, revision: "r1" });
-    if (call.path.endsWith("/outbound-policy/check")) return json(200, JSON.parse(call.body!).hosts.map((host: string) => ({ host, status: allowed && host === "tags.corp" ? "allowed" : "needs_allow" })));
+    if (call.path.endsWith("/outbound-policy/check")) return json(200, { items: JSON.parse(call.body!).hosts.map((host: string) => ({ host, status: allowed && host === "tags.corp" ? "allowed" : "needs_allow" })), total: JSON.parse(call.body!).hosts.length });
     if (call.path === "/api/v1/server/outbound-policy" && call.method === "PUT") {
       assert.deepEqual(JSON.parse(call.body!), { restrict_private_hosts: true, allow_private_hosts: ["tags.corp"], revision: "r1" });
       allowed = true;
@@ -179,7 +179,7 @@ for (const metadata of ["missing access host", "catalog failure"] as const) {
         ? json(503, { error: "catalog unavailable" })
         : json(200, { items: [{ repo: "registry.corp/team/runner", engine: "vllm", framework: "cuda" }], total: 1 });
       if (call.path === "/api/v1/server/outbound-policy" && call.method === "GET") return json(200, { restrict_private_hosts: true, allow_private_hosts: [], editable: true, revision: "r1" });
-      if (call.path.endsWith("/outbound-policy/check")) return json(200, JSON.parse(call.body!).hosts.map((host: string) => ({ host, status: "needs_allow" })));
+      if (call.path.endsWith("/outbound-policy/check")) return json(200, { items: JSON.parse(call.body!).hosts.map((host: string) => ({ host, status: "needs_allow" })), total: JSON.parse(call.body!).hosts.length });
       if (call.path === "/api/v1/images/community/browse?repo=registry.corp%2Fteam%2Frunner") return json(403, { error: "outbound URL is not permitted" });
       return undefined;
     });

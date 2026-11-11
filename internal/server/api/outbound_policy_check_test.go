@@ -49,7 +49,7 @@ func TestOutboundPolicyCheckExplainsPrivateHostWithoutGrantingIt(t *testing.T) {
 	router := Router(Deps{Store: st, AuthSigner: signer, Server: settings})
 	before := serverSettingsCall(router, http.MethodGet, "/api/v1/server/outbound-policy", admin, "")
 	checked := serverSettingsCall(router, http.MethodPost, "/api/v1/server/outbound-policy/check", admin, `{"hosts":["127.0.0.1"]}`)
-	if checked.Code != http.StatusOK || strings.TrimSpace(checked.Body.String()) != `[{"host":"127.0.0.1","status":"needs_allow"}]` {
+	if checked.Code != http.StatusOK || strings.TrimSpace(checked.Body.String()) != `{"items":[{"host":"127.0.0.1","status":"needs_allow"}],"total":1}` {
 		t.Fatalf("check status=%d body=%s", checked.Code, checked.Body)
 	}
 	after := serverSettingsCall(router, http.MethodGet, "/api/v1/server/outbound-policy", admin, "")

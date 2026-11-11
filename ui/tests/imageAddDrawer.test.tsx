@@ -65,7 +65,7 @@ test("custom archive acquisition addresses are authorized only after the image f
   const { calls, user } = renderPage((call) => {
     if (call.path === "/api/v1/auth/me") return json(200, { id: 1, username: "admin", role: "admin" });
     if (call.path === "/api/v1/server/outbound-policy" && call.method === "GET") return json(200, { restrict_private_hosts: true, allow_private_hosts: ["existing.internal"], editable: true, revision: "r1" });
-    if (call.path === "/api/v1/server/outbound-policy/check") return json(200, [{ host: "archive.internal", status: allowed ? "allowed" : "needs_allow" }]);
+    if (call.path === "/api/v1/server/outbound-policy/check") return json(200, { items: [{ host: "archive.internal", status: allowed ? "allowed" : "needs_allow" }], total: 1 });
     if (call.path === "/api/v1/server/outbound-policy" && call.method === "PUT") {
       assert.deepEqual(JSON.parse(call.body || "{}"), { restrict_private_hosts: true, allow_private_hosts: ["existing.internal", "archive.internal"], revision: "r1" });
       allowed = true;

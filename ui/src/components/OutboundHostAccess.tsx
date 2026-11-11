@@ -40,7 +40,6 @@ export interface OutboundHostAccessState {
 /** Permission belongs to the current host, and is saved only by a form action. */
 export function useOutboundHostAccess(addresses: readonly string[], enabled = true): OutboundHostAccessState {
   const { t } = useTranslation("common");
-  const admin = useIsAdmin();
   const key = [...new Set(addresses.map(hostname).filter(Boolean))].join("\n");
   const hosts = useMemo(() => key ? key.split("\n") : [], [key]);
   const internationalKey = [...new Set(addresses.filter((raw) => {
@@ -49,6 +48,7 @@ export function useOutboundHostAccess(addresses: readonly string[], enabled = tr
   }).map(hostname).filter(Boolean))].join("\n");
   const internationalHosts = internationalKey ? internationalKey.split("\n") : [];
   const canCheck = enabled && !internationalKey;
+  const admin = useIsAdmin(canCheck && hosts.length > 0);
   const [policy, setPolicy] = useState<OutboundPolicy | null>(null);
   const [checks, setChecks] = useState<OutboundHostCheck[]>([]);
   const [selected, setSelected] = useState<string[]>([]);

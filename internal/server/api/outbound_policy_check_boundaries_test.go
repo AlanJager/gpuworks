@@ -37,7 +37,7 @@ func TestOutboundPolicyCheckRequiresAnAdministratorAndPOST(t *testing.T) {
 func TestOutboundPolicyCheckAcceptsAnEmptyOrMaximumList(t *testing.T) {
 	router, admin, _, _ := outboundCheckRouter(t)
 	const path = "/api/v1/server/outbound-policy/check"
-	if reply := serverSettingsCall(router, http.MethodPost, path, admin, `{"hosts":[]}`); reply.Code != 200 || strings.TrimSpace(reply.Body.String()) != `[]` {
+	if reply := serverSettingsCall(router, http.MethodPost, path, admin, `{"hosts":[]}`); reply.Code != 200 || strings.TrimSpace(reply.Body.String()) != `{"items":[],"total":0}` {
 		t.Fatalf("empty list status=%d body=%s", reply.Code, reply.Body)
 	}
 	hosts := make([]string, 32)
@@ -49,11 +49,11 @@ func TestOutboundPolicyCheckAcceptsAnEmptyOrMaximumList(t *testing.T) {
 		t.Fatal(err)
 	}
 	reply := serverSettingsCall(router, http.MethodPost, path, admin, string(body))
-	var checked []dto.ServerOutboundHostCheck
-	if reply.Code != 200 || json.Unmarshal(reply.Body.Bytes(), &checked) != nil || len(checked) != 32 || checked[31].Host != "8.8.8.32" {
+	var checked dto.List[dto.ServerOutboundHostCheck]
+	if reply.Code != 200 || json.Unmarshal(reply.Body.Bytes(), &checked) != nil || len(checked.Items) != 32 || checked.Total != 32 || checked.Items[31].Host != "8.8.8.32" {
 		t.Fatalf("maximum list status=%d body=%s", reply.Code, reply.Body)
 	}
-	for _, item := range checked {
+	for _, item := range checked.Items {
 		if item.Status != "allowed" {
 			t.Errorf("public literal=%+v", item)
 		}
@@ -91,7 +91,7 @@ func TestOutboundPolicyCheckCanonicalizesHostsAndKeepsDNSFailurePrivate(t *testi
 		t.Fatal(err)
 	}
 	reply := serverSettingsCall(router, http.MethodPost, "/api/v1/server/outbound-policy/check", admin, string(body))
-	want := `[{"host":"canonical.gwks.test","status":"needs_allow"},{"host":"127.0.0.1","status":"needs_allow"},{"host":"2001:4860:4860::8888","status":"allowed"},{"host":"fd00:ec2::254","status":"blocked"},{"host":"missing.gwks.test","status":"unresolved"},{"host":"` + longHost + `","status":"needs_allow"}]`
+	want := `{"items":[{"host":"canonical.gwks.test","status":"needs_allow"},{"host":"127.0.0.1","status":"needs_allow"},{"host":"2001:4860:4860::8888","status":"allowed"},{"host":"fd00:ec2::254","status":"blocked"},{"host":"missing.gwks.test","status":"unresolved"},{"host":"` + longHost + `","status":"needs_allow"}],"total":6}`
 	if reply.Code != 200 || strings.TrimSpace(reply.Body.String()) != want {
 		t.Fatalf("normalized list status=%d body=%s, want=%s", reply.Code, reply.Body, want)
 	}
@@ -108,12 +108,12 @@ func TestOutboundPolicyCheckReflectsOnlyExplicitPolicyWrites(t *testing.T) {
 			t.Fatalf("policy check status=%d body=%s want=%s", reply.Code, reply.Body, want)
 		}
 	}
-	check(`[{"host":"127.0.0.1","status":"needs_allow"},{"host":"10.1.2.3","status":"needs_allow"},{"host":"169.254.169.254","status":"blocked"},{"host":"fd00:ec2::254","status":"blocked"}]`)
+	check(`{"items":[{"host":"127.0.0.1","status":"needs_allow"},{"host":"10.1.2.3","status":"needs_allow"},{"host":"169.254.169.254","status":"blocked"},{"host":"fd00:ec2::254","status":"blocked"}],"total":4}`)
 	write := serverSettingsCall(router, http.MethodPut, policy, admin, `{"restrict_private_hosts":true,"allow_private_hosts":["127.0.0.1"],"revision":"initial"}`)
 	if write.Code != 200 {
 		t.Fatalf("explicit allow status=%d body=%s", write.Code, write.Body)
 	}
-	check(`[{"host":"127.0.0.1","status":"allowed"},{"host":"10.1.2.3","status":"needs_allow"},{"host":"169.254.169.254","status":"blocked"},{"host":"fd00:ec2::254","status":"blocked"}]`)
+	check(`{"items":[{"host":"127.0.0.1","status":"allowed"},{"host":"10.1.2.3","status":"needs_allow"},{"host":"169.254.169.254","status":"blocked"},{"host":"fd00:ec2::254","status":"blocked"}],"total":4}`)
 	before := serverSettingsCall(router, http.MethodGet, policy, admin, "")
 	if reply := serverSettingsCall(router, http.MethodPut, policy, admin, `{"restrict_private_hosts":false,"allow_private_hosts":[],"revision":"initial"}`); reply.Code != 409 {
 		t.Fatalf("stale revision status=%d body=%s", reply.Code, reply.Body)
@@ -126,12 +126,12 @@ func TestOutboundPolicyCheckReflectsOnlyExplicitPolicyWrites(t *testing.T) {
 	if reply := serverSettingsCall(router, http.MethodPut, policy, admin, `{"restrict_private_hosts":false,"allow_private_hosts":[],"revision":"updated-1"}`); reply.Code != 409 {
 		t.Fatalf("read-only write status=%d body=%s", reply.Code, reply.Body)
 	}
-	check(`[{"host":"127.0.0.1","status":"allowed"},{"host":"10.1.2.3","status":"needs_allow"},{"host":"169.254.169.254","status":"blocked"},{"host":"fd00:ec2::254","status":"blocked"}]`)
+	check(`{"items":[{"host":"127.0.0.1","status":"allowed"},{"host":"10.1.2.3","status":"needs_allow"},{"host":"169.254.169.254","status":"blocked"},{"host":"fd00:ec2::254","status":"blocked"}],"total":4}`)
 	settings.value.Editable = true
 	if reply := serverSettingsCall(router, http.MethodPut, policy, admin, `{"restrict_private_hosts":false,"allow_private_hosts":["127.0.0.1"],"revision":"updated-1"}`); reply.Code != 200 {
 		t.Fatalf("open mode write status=%d body=%s", reply.Code, reply.Body)
 	}
-	check(`[{"host":"127.0.0.1","status":"allowed"},{"host":"10.1.2.3","status":"allowed"},{"host":"169.254.169.254","status":"blocked"},{"host":"fd00:ec2::254","status":"blocked"}]`)
+	check(`{"items":[{"host":"127.0.0.1","status":"allowed"},{"host":"10.1.2.3","status":"allowed"},{"host":"169.254.169.254","status":"blocked"},{"host":"fd00:ec2::254","status":"blocked"}],"total":4}`)
 	got := serverSettingsCall(router, http.MethodGet, policy, admin, "")
 	if !strings.Contains(got.Body.String(), `"allow_private_hosts":["127.0.0.1"]`) {
 		t.Fatalf("disabling strict mode erased configured hosts: %s", got.Body)
@@ -167,7 +167,7 @@ func TestOutboundPolicyCheckNeverContactsTheUpstreamHTTPProxy(t *testing.T) {
 		t.Fatalf("HTTP probe fixture ineffective: body=%s err=%v requests=%d", body, err, requests.Load())
 	}
 	checked := serverSettingsCall(router, http.MethodPost, "/api/v1/server/outbound-policy/check", admin, `{"hosts":["8.8.8.8","127.0.0.1"]}`)
-	if checked.Code != 200 || strings.TrimSpace(checked.Body.String()) != `[{"host":"8.8.8.8","status":"allowed"},{"host":"127.0.0.1","status":"needs_allow"}]` || requests.Load() != 1 {
+	if checked.Code != 200 || strings.TrimSpace(checked.Body.String()) != `{"items":[{"host":"8.8.8.8","status":"allowed"},{"host":"127.0.0.1","status":"needs_allow"}],"total":2}` || requests.Load() != 1 {
 		t.Fatalf("check contacted upstream: status=%d body=%s requests=%d", checked.Code, checked.Body, requests.Load())
 	}
 }

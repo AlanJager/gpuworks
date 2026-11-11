@@ -41,7 +41,7 @@ func TestOutboundPolicyCheckRejectsAnyPermanentlyBlockedDNSAnswer(t *testing.T) 
 			if err != nil {
 				t.Fatal(err)
 			}
-			want := `[{"host":"` + tc.host + `","status":"` + tc.status + `"}]`
+			want := `{"items":[{"host":"` + tc.host + `","status":"` + tc.status + `"}],"total":1}`
 			if response.StatusCode != http.StatusOK || strings.TrimSpace(string(body)) != want {
 				t.Fatalf("check status=%d body=%s, want %s", response.StatusCode, body, want)
 			}
@@ -74,7 +74,7 @@ func TestOutboundPolicyCheckBoundsAnUnresponsiveDNSBatch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := `[{"host":"silent.gwks.test","status":"unresolved"},{"host":"silent-two.gwks.test","status":"unresolved"}]`
+	want := `{"items":[{"host":"silent.gwks.test","status":"unresolved"},{"host":"silent-two.gwks.test","status":"unresolved"}],"total":2}`
 	if response.StatusCode != 200 || strings.TrimSpace(string(body)) != want || time.Since(started) > 15*time.Second || queries.Load() == 0 {
 		t.Fatalf("DNS batch status=%d body=%s elapsed=%s questions=%d", response.StatusCode, body, time.Since(started), queries.Load())
 	}

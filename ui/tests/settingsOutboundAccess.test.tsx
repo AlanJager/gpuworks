@@ -31,7 +31,8 @@ function outboundFixture(reply?: (call: Call, policy: Policy) => Response | unde
     if (path === "/api/v1/server/outbound-policy" && method === "GET") return json(policy);
     if (path === "/api/v1/server/outbound-policy/check" && method === "POST") {
       assert.ok(Array.isArray(body?.hosts));
-      return json((body.hosts as string[]).map((host) => ({ host, status: host === "169.254.169.254" ? "blocked" : (host.endsWith(".internal") || privateHosts.includes(host)) && !policy.allow_private_hosts.includes(host) ? "needs_allow" : "allowed" })));
+      const hosts = body.hosts as string[];
+      return json({ items: hosts.map((host) => ({ host, status: host === "169.254.169.254" ? "blocked" : (host.endsWith(".internal") || privateHosts.includes(host)) && !policy.allow_private_hosts.includes(host) ? "needs_allow" : "allowed" })), total: hosts.length });
     }
     if (path === "/api/v1/server/outbound-policy" && method === "PUT") {
       assert.equal(body?.revision, policy.revision);
