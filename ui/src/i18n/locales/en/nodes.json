@@ -369,6 +369,7 @@
     },
     "phase": {
       "probing": "Probing",
+      "probeFailed": "Recovery probe failed",
       "artifactCheck": "Checking the agent package",
       "uploading": "Uploading the agent",
       "verifying": "Verifying the agent",

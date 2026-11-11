@@ -275,6 +275,7 @@ func TestRecoveryInFlightReadsAsConnectingWithoutRewritingTheColumn(t *testing.T
 		{NodeStateOffline, RecoveryPhaseReconnecting, NodeStateConnecting},
 		// An attempt that ended is not underway, even one the loop retries.
 		{NodeStateOffline, RecoveryPhaseUnreachable, NodeStateOffline},
+		{NodeStateOffline, RecoveryPhaseProbeFailed, NodeStateOffline},
 		{NodeStateOffline, RecoveryPhaseBlocked, NodeStateOffline},
 		{NodeStateOffline, RecoveryPhaseStopped, NodeStateOffline},
 		{NodeStateOffline, "", NodeStateOffline},
