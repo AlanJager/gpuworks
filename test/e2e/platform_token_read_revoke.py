@@ -108,11 +108,33 @@ def exercise_create_dialog(page, create, platform, k, mutations, report):
         "dismissals": ["cancel", "escape", "close", "mask"], "post_requests": 0})
 
 
-def theme_color(locator, property_name, token_name):
+def theme_color_source(token_name, mode="light"):
+    """Resolve a named color to its hex value from the generated theme tokens.
+
+    tokens.ts stopped holding literal hex: each entry of `colors` now names a
+    semantic token in the generated Zeron set (tokens.ts:22-36, e.g.
+    `primary: semantic["brand"]`). Read the mapping, then the value it points at,
+    for the mode the page is actually showing.
+    """
     source = (ROOT / "ui/src/theme/tokens.ts").read_text()
-    match = re.search(rf'^  {re.escape(token_name)}: "(#[0-9a-fA-F]{{6}})"', source, re.M)
-    check(match is not None, f"theme color {token_name} absent")
-    expected = [int(match[1][i:i + 2], 16) for i in (1, 3, 5)] + [255]
+    mapped = re.search(rf'^  {re.escape(token_name)}: semantic\["([^"]+)"\]', source, re.M)
+    if mapped is not None:
+        generated = (ROOT / "ui/src/theme/zeron.generated.ts").read_text()
+        value = re.search(rf'"{re.escape(mapped[1])}": "(#[0-9a-fA-F]{{6}})"',
+                          generated.split(f'"{mode}": {{', 1)[-1], re.M)
+        check(value is not None, f"theme color {token_name} absent from the {mode} generated tokens")
+        return value[1]
+    # A literal hex in tokens.ts still resolves directly.
+    literal = re.search(rf'^  {re.escape(token_name)}: "(#[0-9a-fA-F]{{6}})"', source, re.M)
+    check(literal is not None, f"theme color {token_name} absent")
+    return literal[1]
+
+
+def theme_color(locator, property_name, token_name):
+    mode = locator.page.evaluate(
+        "() => document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light'")
+    hex_value = theme_color_source(token_name, mode)
+    expected = [int(hex_value[i:i + 2], 16) for i in (1, 3, 5)] + [255]
     # Normalize CSS Color serialization without inserting or changing UI DOM.
     locator.page.wait_for_function("""({el, property, expected}) => {
         const ctx = new OffscreenCanvas(1, 1).getContext('2d');

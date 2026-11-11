@@ -32,13 +32,16 @@ def confirm_popconfirm(page):
 
 
 def assert_point_table(page, ui, point):
-    table = page.locator(".ant-table-wrapper").filter(
+    # The points table is a ResourceTable (components/resourceTable/ResourceTable.tsx),
+    # whose container is [data-slot=table-container] and whose body cells are
+    # [data-slot=table-cell] with no antd wrapper.
+    table = page.locator('[data-slot="table-container"]').filter(
         has=page.get_by_text(ui["pointTable"]["title"], exact=True))
     expect(table).to_have_count(1)
-    row = table.locator("tbody tr.ant-table-row").filter(
+    row = table.locator('[data-slot="table-body"] [data-proximity-index]').filter(
         has=page.get_by_role("cell", name=f"#{point['seq']}", exact=True))
     expect(row).to_have_count(1)
-    headers = table.locator("thead").first.locator("th").all_text_contents()
+    headers = table.locator('[data-slot="table-head"]').all_text_contents()
     cells = row.get_by_role("cell")
     index = headers.index("ISL / OSL")
     expect(cells.nth(index)).to_have_text(f"{point['actual_isl']:g} / {point['actual_osl']:g}")

@@ -769,20 +769,30 @@ def exercise_storage_pagination_10_6(page, server, artifacts, report, locale, k)
         expect(page.get_by_role("heading", name=k["title"], exact=True)).to_be_visible()
         card = page.locator(".ant-card").filter(has_text=k["overview"]["storageCapacity"]).first
         rows = card.locator(".dashboard-overview-storage-row")
-        pagination = card.locator(".ant-pagination")
+        # The storage panel pages itself with a small nav (DashboardPage.tsx:238): two named
+        # buttons and a "current / total" span, not antd's pagination.
+        pagination = card.locator(".dashboard-overview-storage-pagination")
         expect(pagination).to_have_count(1)
 
         def names():
             return [rows.nth(index).locator("a").first.inner_text().strip() for index in range(rows.count())]
 
+        page_span = pagination.locator("span")
+
         def active():
-            return pagination.locator("li.ant-pagination-item-active").get_attribute("title")
+            return page_span.inner_text().strip().split("/")[0].strip()
+
+        def prev_button():
+            return pagination.locator("button").first
+
+        def next_button():
+            return pagination.locator("button").last
 
         def prev_disabled():
-            return pagination.locator("li.ant-pagination-prev").get_attribute("aria-disabled") == "true"
+            return prev_button().is_disabled()
 
         def next_disabled():
-            return pagination.locator("li.ant-pagination-next").get_attribute("aria-disabled") == "true"
+            return next_button().is_disabled()
 
         created = [storage_name(report, index) for index in range(3)]
         count_text = format_text(k["overview"]["storageCount"], count=3)
@@ -797,7 +807,7 @@ def exercise_storage_pagination_10_6(page, server, artifacts, report, locale, k)
               f"the first page does not hold the first two storages: {first_page} vs {created}")
         collected = list(first_page)
 
-        pagination.locator("li.ant-pagination-next").click()
+        next_button().click()
         page.wait_for_timeout(400)
         check(active() == "2", f"next did not reach the second page: {active()}")
         check(next_disabled(), "the next control is usable on the last page")
@@ -807,13 +817,13 @@ def exercise_storage_pagination_10_6(page, server, artifacts, report, locale, k)
               f"the last page does not hold the remaining storage: {last_page} vs {created[STORAGE_PAGE_SIZE:]}")
         collected.extend(last_page)
 
-        pagination.locator("li[title='1']").click()
+        prev_button().click()
         page.wait_for_timeout(400)
-        check(active() == "1", f"the first-page link did not return to page one: {active()}")
+        check(active() == "1", f"previous did not return to the first page: {active()}")
         check(names() == first_page, f"returning to the first page changed its rows: {names()} vs {first_page}")
-        pagination.locator("li.ant-pagination-next").click()
+        next_button().click()
         page.wait_for_timeout(400)
-        pagination.locator("li.ant-pagination-prev").click()
+        prev_button().click()
         page.wait_for_timeout(400)
         check(active() == "1", f"previous did not return to the first page: {active()}")
         check(names() == first_page, f"previous changed the first page's rows: {names()} vs {first_page}")

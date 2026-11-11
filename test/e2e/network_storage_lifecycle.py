@@ -122,13 +122,13 @@ def exercise_list_states(page, server, t, prefix, report, locale, bad_http, cons
     expect(alert_box).to_contain_text(table['loadFailed'])
     expect(alert_box).to_contain_text('list probe down')
     resource = page.locator('.resource-table')
-    list_table = resource.locator('.ant-table').first
-    rows_now = list_table.locator('.ant-table-row').count()
+    list_table = resource.locator('[data-slot="table-container"]').first
+    rows_now = list_table.locator('[data-proximity-index]').count()
     check(rows_now == 0,
           f'a failed list still rendered rows: {rows_now} rows, '
           f'resource-tables={resource.count()}, '
-          f'all-tables={page.locator(".ant-table").count()}, '
-          f'row-texts={page.locator(".ant-table-row").all_inner_texts()[:4]}')
+          f'all-tables={page.locator('[data-slot="table-container"]').count()}, '
+          f'row-texts={page.locator('[data-proximity-index]').all_inner_texts()[:4]}')
     states['failure'] = {'message': table['loadFailed'], 'rows': 0}
     page.unroute(pattern, refuse_logged)
     # The 503 is injected on purpose; record that it surfaced and clear it so the
@@ -142,8 +142,8 @@ def exercise_list_states(page, server, t, prefix, report, locale, bad_http, cons
     check(again.value.status == 200, f"retry HTTP {again.value.status}")
     # The response arriving is not the same moment as the rows rendering, so wait
     # for the row rather than counting immediately after the response.
-    expect(list_table.locator('.ant-table-row').first).to_be_visible()
-    states['retry_rows'] = list_table.locator('.ant-table-row').count()
+    expect(list_table.locator('[data-proximity-index]').first).to_be_visible()
+    states['retry_rows'] = list_table.locator('[data-proximity-index]').count()
     check(states['retry_rows'] > 0, 'retry recovered no rows')
 
     page.route(pattern, empty)
@@ -155,12 +155,12 @@ def exercise_list_states(page, server, t, prefix, report, locale, bad_http, cons
         refresh.click()
     # Each page supplies its own empty copy; only some also offer an action from
     # the empty frame, so the copy is required and the action is optional.
-    placeholder = list_table.locator('.ant-table-placeholder')
+    placeholder = list_table.locator('[data-slot="empty-description"]')
     expect(placeholder).to_contain_text(empty_copy)
     if empty_action:
         empty_add = page.get_by_role('button').filter(has=page.get_by_text(empty_action, exact=True))
         expect(empty_add.first).to_be_visible()
-    empty_rows = list_table.locator('.ant-table-row')
+    empty_rows = list_table.locator('[data-proximity-index]')
     check(empty_rows.count() == 0,
           'an empty list still rendered rows: ' + str(empty_rows.all_inner_texts()[:3]))
     states['empty'] = {'message': empty_copy, 'action': empty_action, 'rows': 0}
@@ -168,10 +168,10 @@ def exercise_list_states(page, server, t, prefix, report, locale, bad_http, cons
 
     with page.expect_response(lambda r: urlsplit(r.url).path == prefix and r.request.method == 'GET'):
         refresh.click()
-    expect(list_table.locator('.ant-table-row').first).to_be_visible()
-    check(not list_table.locator('.ant-table-placeholder').is_visible(),
+    expect(list_table.locator('[data-proximity-index]').first).to_be_visible()
+    check(not list_table.locator('[data-slot="empty-description"]').is_visible(),
           'the empty frame survived real data')
-    states['populated_rows'] = list_table.locator('.ant-table-row').count()
+    states['populated_rows'] = list_table.locator('[data-proximity-index]').count()
     report['list_states'] = states
     return states
 

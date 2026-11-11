@@ -128,7 +128,7 @@ class AccountFlow:
         expect(row).to_have_count(1)
         # CSS/accessibility text normalizes whitespace; textContent preserves
         # the actual raw name, including an account named only three spaces.
-        expect(row.locator('.resource-table-name-cell button')).to_have_js_property('textContent', account['name'])
+        expect(row.locator('.resource-table-name button')).to_have_js_property('textContent', account['name'])
         return row
 
     def new(self, name, endpoint, secret):

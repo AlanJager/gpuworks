@@ -539,14 +539,14 @@ def exercise_navigation_tabs_22(page, labels, server, token, report):
     expect(page.get_by_role("heading", name=labels["page"]["title"], exact=True)).to_be_visible()
     # The nav keeps its selected state consistent with the page it is showing.
     selected_nav = page.evaluate(
-        "() => [...document.querySelectorAll('.app-sider .ant-menu-item-selected')]"
+        "() => [...document.querySelectorAll(\"[data-slot='nav-item'][data-active='true']\")]"
         ".map((el) => el.textContent.trim())")
     check(bool(selected_nav), "the deep link left no navigation item selected")
     # A refresh keeps the page rather than falling back to the root.
     page.reload()
     expect(page.get_by_role("heading", name=labels["page"]["title"], exact=True)).to_be_visible()
     refreshed_nav = page.evaluate(
-        "() => [...document.querySelectorAll('.app-sider .ant-menu-item-selected')]"
+        "() => [...document.querySelectorAll(\"[data-slot='nav-item'][data-active='true']\")]"
         ".map((el) => el.textContent.trim())")
     check(refreshed_nav == selected_nav,
           f"the selected navigation changed across a refresh: {selected_nav} -> {refreshed_nav}")

@@ -186,16 +186,18 @@ def test_batch_selection(page, context, server, artifacts, report, locale, fixtu
                   "JSON.stringify({pageSize: size}))", PAGE_SIZE)
     page.reload()
     expect(page.get_by_role("heading", name=title, exact=True)).to_be_visible()
-    rows = page.locator(".ant-table-tbody tr[data-row-key]")
+    rows = page.locator('[data-slot="table-body"] [data-row-key]')
     expect(rows.first).to_be_visible(timeout=25000)
-    total_text = page.locator(".ant-pagination-total-text")
     total_rows = report["seeded"]["total"]
-    expect(total_text).to_have_text(format_text(total_template, count=total_rows))
+    total_text = page.get_by_text(
+        format_text(total_template, count=total_rows), exact=True)
+    expect(total_text).to_be_visible()
     prefix, suffix = compare_template.split("{{count}}")
     compare = page.locator("button", has_text=re.compile(
         r"^" + re.escape(prefix) + r"\d+" + re.escape(suffix) + "$"))
     expect(compare.first).to_be_visible()
-    page_size_item = page.locator(".ant-pagination-options .ant-select-selection-item")
+    page_size_trigger = page.get_by_role(
+        "combobox", name=common["resourceTable"]["rowsPerPage"], exact=True)
 
     def compare_count():
         """The count the product itself shows for the current selection."""
@@ -208,16 +210,16 @@ def test_batch_selection(page, context, server, artifacts, report, locale, fixtu
         return [int(key) for key in rows.evaluate_all("els => els.map(e => e.dataset.rowKey)")]
 
     def box(run_id):
-        return page.locator('.ant-table-tbody tr[data-row-key="%s"]' % run_id
+        return page.locator('[data-slot="table-body"] [data-row-key="%s"]' % run_id
                             ).get_by_role("checkbox")
 
     def checked_rows():
         return [int(key) for key in rows.evaluate_all(
-            "els => els.filter(e => e.querySelector('input.ant-checkbox-input').checked)"
-            ".map(e => e.dataset.rowKey)")]
+            "els => els.filter(e => {const c=e.querySelector('[data-slot=\"checkbox\"]');"
+            "return c && c.getAttribute('data-state')==='checked';}).map(e => e.dataset.rowKey)")]
 
     def header():
-        return page.locator(".ant-table-thead").get_by_role("checkbox").first
+        return page.locator('[data-slot="table-header"]').get_by_role("checkbox").first
 
     def emitted_ids():
         query = unquote(urlsplit(page.url).query)
@@ -225,7 +227,7 @@ def test_batch_selection(page, context, server, artifacts, report, locale, fixtu
         return [int(value) for value in query.split("ids=")[1].split(",")]
 
     def filter_menu(column):
-        page.locator(".ant-table-thead th").filter(
+        page.locator('[data-slot="table-head"]').filter(
             has=page.get_by_role("button", name="filter", exact=True)
         ).nth(column).get_by_role("button", name="filter", exact=True).click()
         menu = page.get_by_role("menu").filter(has=page.get_by_role("checkbox"))
@@ -246,7 +248,7 @@ def test_batch_selection(page, context, server, artifacts, report, locale, fixtu
 
     page1 = row_keys()
     check(len(page1) == PAGE_SIZE, f"the first page holds {len(page1)} rows, not {PAGE_SIZE}")
-    check(page_size_item.inner_text().strip().startswith(str(PAGE_SIZE)),
+    check(page_size_trigger.inner_text().strip() == str(PAGE_SIZE),
           "the stored page size was not applied")
     check(compare.first.inner_text() == format_text(compare_template, count=0),
           "an empty selection does not read as zero")
@@ -356,7 +358,7 @@ def test_batch_selection(page, context, server, artifacts, report, locale, fixtu
         page.wait_for_timeout(120)
     kept = checked_rows()
     check(kept == page1[4:6], f"the paging setup left {kept}")
-    page.locator(".ant-pagination-item-2").click()
+    page.get_by_role("button", name=common["resourceTable"]["nextPage"], exact=True).click()
     page.wait_for_timeout(500)
     page2 = row_keys()
     check(set(page2) & set(page1) == set(), "page two repeats rows of page one")
@@ -367,7 +369,7 @@ def test_batch_selection(page, context, server, artifacts, report, locale, fixtu
     box(added).check()
     page.wait_for_timeout(300)
     check(compare_count() == len(kept) + 1, "a page-two row did not join the selection")
-    page.locator(".ant-pagination-item-1").click()
+    page.get_by_role("button", name=common["resourceTable"]["previousPage"], exact=True).click()
     page.wait_for_timeout(500)
     check(row_keys() == page1, "returning to page one did not restore its rows")
     back_selected = checked_rows()
@@ -522,7 +524,7 @@ def test_batch_selection(page, context, server, artifacts, report, locale, fixtu
     page.wait_for_timeout(700)
     check(compare_count() == 0, "a reload kept the old selection")
     check(checked_rows() == [], "a reload restored checked rows")
-    check(page_size_item.inner_text().strip().startswith(str(PAGE_SIZE)),
+    check(page_size_trigger.inner_text().strip() == str(PAGE_SIZE),
           "the page size did not survive the reload")
     report["reload"] = {"compare": compare.first.inner_text(), "page_size": PAGE_SIZE}
 

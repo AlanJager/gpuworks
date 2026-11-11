@@ -220,14 +220,14 @@ def exercise_history_and_query_state(page, server, report):
     shows the same view. That makes every move below observable in two independent places
     at once: the address, and which tab reports itself selected.
     """
-    # .app-nav exists twice - the desktop sider and the mobile drawer - so the desktop one is
-    # named explicitly, and its visibility is awaited because a fresh document has not
-    # mounted the shell yet.
-    nav = page.locator(".app-sider .app-nav")
+    # The shell's sidebar is a SidebarProvider panel (components/ui/sidebar.tsx) and the
+    # mobile drawer renders a second copy, so the desktop panel is named explicitly and its
+    # visibility awaited because a fresh document has not mounted the shell yet.
+    nav = page.locator('[data-slot="sidebar"]')
     expect(nav).to_be_visible()
 
     def selected_entry():
-        chosen = nav.locator(".ant-menu-item-selected")
+        chosen = nav.locator('[data-slot="nav-item"][data-active="true"]')
         expect(chosen).to_have_count(1)
         return chosen.first.inner_text().strip()
 

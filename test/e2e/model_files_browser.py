@@ -532,7 +532,7 @@ def download(page, labels, data, storage, report, server=None, token=None, refus
         return opened
 
     # The list table stays mounted. This dialog is not nested in another dialog.
-    dialog = assert_nested_dismissals(reopen(), page.locator('.ant-table').first, reopen, [
+    dialog = assert_nested_dismissals(reopen(), page.locator('[data-slot="table"]').first, reopen, [
         ('cancel', cancel_button(labels['action']['cancel'])), ('escape', escape),
         ('close', close_button), ('mask', mask)], lambda: len(posts), trigger)
     checked(posts == [], 'download dialog dismissal started a download')
@@ -647,7 +647,7 @@ def assert_ready(page, server, token, labels, data, storage, report, *, reload=T
         dialog = open_detail(page, server, labels, data)
     files = dialog.locator('#model-files')
     place = storage['name'] + ' · ' + strings(report['locale'], 'common')['storageType']['local']
-    visible = files.locator('tr.ant-table-row').filter(has=page.get_by_text(place, exact=True))
+    visible = files.locator('[data-slot="table-body"] [data-proximity-index]').filter(has=page.get_by_text(place, exact=True))
     expect(visible).to_have_count(1)
     expect(visible.get_by_text(data['node']['name'], exact=True)).to_be_visible()
     expect(visible.get_by_text(labels['presence']['present'], exact=True)).to_be_visible()
@@ -931,7 +931,7 @@ def exercise_cancel_transfer(page, labels, data, server, token, report, storage)
     part = Path(storage['payload_path']) / 'model.safetensors.part'
     checked(part.is_file() and not part.is_symlink(), 'no real partial file to keep for a retry')
     detail = open_detail(page, server, labels, data)
-    row = detail.locator('#model-files').locator('tr.ant-table-row')
+    row = detail.locator('#model-files').locator('[data-slot="table-body"] [data-proximity-index]')
     expect(row).to_have_count(1)
     expect(row.get_by_text(labels['presence']['downloading'], exact=True)).to_be_visible()
     trigger = button(row, labels['presenceAction']['cancelDownload'])
@@ -1060,7 +1060,7 @@ def exercise_download_delete(page, context, server, artifacts, report, locale, d
     # 16.8, failure half: the refused weight is not persisted as an error page or a substitute.
     refused_weight_left_no_substitute(target, hub, report)
     dialog = open_detail(page, server, labels, data)
-    row = dialog.locator('#model-files tr.ant-table-row')
+    row = dialog.locator('#model-files [data-slot="table-body"] [data-proximity-index]')
     expect(row).to_have_count(1)
     expect(row.get_by_text(labels['presence']['failed'], exact=True)).to_be_visible()
     # Same as the canceled row above: the page renders the localized failed state
@@ -1069,7 +1069,7 @@ def exercise_download_delete(page, context, server, artifacts, report, locale, d
     checked(failed['message'] not in row.inner_text(),
             'the failed row renders the raw server cause instead of the localized state')
     page.reload()
-    row = model_detail_dialog(page, labels, data['name']).locator('#model-files tr.ant-table-row')
+    row = model_detail_dialog(page, labels, data['name']).locator('#model-files [data-slot="table-body"] [data-proximity-index]')
     expect(row.get_by_text(labels['presence']['failed'], exact=True)).to_be_visible()
     hub.set_weight_failure(False)
     before_retry = len(report['mutations'])
@@ -1107,7 +1107,7 @@ def exercise_download_delete(page, context, server, artifacts, report, locale, d
     # The files are a ResourceTable (ModelFilesSection.tsx:200-212): one row per
     # storage, so the transfer's row is the table row naming this storage. The
     # previous :scope > div wrapper no longer exists.
-    busy = detail.locator('#model-files tr.ant-table-row').filter(has_text=guard['name'])
+    busy = detail.locator('#model-files [data-slot="table-body"] [data-proximity-index]').filter(has_text=guard['name'])
     expect(busy).to_have_count(1)
     bar = busy.get_by_role('progressbar')
     expect(bar).to_have_count(1)
@@ -1136,7 +1136,7 @@ def exercise_download_delete(page, context, server, artifacts, report, locale, d
             'a refresh zeroed or finished the in-flight transfer')
     reopened = model_detail_dialog(page, labels, data['name'])
     expect(reopened.locator('#model-files')).to_be_visible()
-    regrouped = reopened.locator('#model-files tr.ant-table-row').filter(has_text=guard['name'])
+    regrouped = reopened.locator('#model-files [data-slot="table-body"] [data-proximity-index]').filter(has_text=guard['name'])
     expect(regrouped).to_have_count(1)
     reload_bar = regrouped.get_by_role('progressbar')
     expect(reload_bar).to_have_count(1)
@@ -1167,7 +1167,7 @@ def exercise_download_delete(page, context, server, artifacts, report, locale, d
     before = file_facts(guard['payload_path'], data['hub'].files)
     files = dialog.locator('#model-files')
     local_label = strings(locale, 'common')['storageType']['local']
-    target_row = files.locator('tr.ant-table-row').filter(has=page.get_by_text(target['name'] + ' · ' + local_label, exact=True))
+    target_row = files.locator('[data-slot="table-body"] [data-proximity-index]').filter(has=page.get_by_text(target['name'] + ' · ' + local_label, exact=True))
     remove = target_row.get_by_role('button', name=labels['files']['deleteOnNode'], exact=True)
     remove.click()
     title = labels['files']['deleteOnNodeConfirm'].replace('{{node}}', data['node']['name'])
@@ -1193,10 +1193,10 @@ def exercise_download_delete(page, context, server, artifacts, report, locale, d
     checked(presence(current, data, target) is None, 'deleted storage/node row remains')
     strict(file_facts(guard['payload_path'], data['hub'].files), before, 'guard replica unchanged')
     checked(presence(current, data, guard)['state'] == 'present', 'guard replica not present')
-    expect(files.locator('tr.ant-table-row')).to_have_count(1)
+    expect(files.locator('[data-slot="table-body"] [data-proximity-index]')).to_have_count(1)
     expect(files.get_by_text(guard['name'] + ' · ' + local_label, exact=True)).to_be_visible()
     page.reload()
-    expect(model_detail_dialog(page, labels, data['name']).locator('#model-files tr.ant-table-row')).to_have_count(1)
+    expect(model_detail_dialog(page, labels, data['name']).locator('#model-files [data-slot="table-body"] [data-proximity-index]')).to_have_count(1)
     strict(file_facts(guard['payload_path'], data['hub'].files), before, 'guard survives reload')
     report['deletion'] = {'node_uuid': data['node']['uuid'], 'storage_id': target['id'],
                           'target_absent': True, 'guard_files': before, 'model_still_exists': current['id']}
@@ -1254,7 +1254,7 @@ def exercise_failure_retry(page, context, server, artifacts, report, locale, dat
     # 16.8, failure half: a refused weight must not be saved as the error page or any other substitute.
     refused_weight_left_no_substitute(target, hub, report)
     dialog = open_detail(page, server, labels, data)
-    row = dialog.locator('#model-files tr.ant-table-row')
+    row = dialog.locator('#model-files [data-slot="table-body"] [data-proximity-index]')
     expect(row).to_have_count(1)
     state = row.get_by_text(labels['presence']['failed'], exact=True)
     expect(state).to_be_visible()
@@ -1265,7 +1265,7 @@ def exercise_failure_retry(page, context, server, artifacts, report, locale, dat
     details = row.locator('xpath=following-sibling::tr[1]')
     expect(details.get_by_text(failed['message'], exact=True)).to_be_visible()
     page.reload()
-    row = model_detail_dialog(page, labels, data['name']).locator('#model-files tr.ant-table-row')
+    row = model_detail_dialog(page, labels, data['name']).locator('#model-files [data-slot="table-body"] [data-proximity-index]')
     expect(row.get_by_text(labels['presence']['failed'], exact=True)).to_be_visible()
     hub.set_weight_failure(False)
     before = len(report['mutations'])
@@ -1315,7 +1315,7 @@ def exercise_interrupted_recovery(page, context, server, artifacts, report, loca
     # whatever the previous transfer left; requiring it to move would be testing a
     # behaviour the product does not offer. The moving numbers are asserted against
     # the API below, which is where this product actually reports them.
-    held_bar = dialog.locator('#model-files tr.ant-table-row').get_by_role('progressbar')
+    held_bar = dialog.locator('#model-files [data-slot="table-body"] [data-proximity-index]').get_by_role('progressbar')
     held_value = int(held_bar.get_attribute('aria-valuenow')) if held_bar.count() == 1 else None
     api_percent = 100.0 * moving['downloaded'] / moving['size_bytes']
     report['held_bar'] = {'count': held_bar.count(), 'aria_valuenow': held_value,
@@ -1345,7 +1345,7 @@ def exercise_interrupted_recovery(page, context, server, artifacts, report, loca
             'a refresh zeroed or finished the in-flight transfer')
     reopened = model_detail_dialog(page, labels, data['name'])
     expect(reopened.locator('#model-files')).to_be_visible()
-    reload_bar = reopened.locator('#model-files tr.ant-table-row').get_by_role('progressbar')
+    reload_bar = reopened.locator('#model-files [data-slot="table-body"] [data-proximity-index]').get_by_role('progressbar')
     expect(reload_bar).to_have_count(1)
     replayed_bar = int(reload_bar.get_attribute('aria-valuenow'))
     checked(replayed_bar == held_value,

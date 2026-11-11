@@ -520,33 +520,45 @@ def exercise_sorting_and_pagination(page, server, k, platform, common, report):
     tables = page.locator(".resource-table")
     found = [index for index in range(tables.count())
              if platform["expiresAt"] in
-             [th.inner_text().strip() for th in tables.nth(index).locator("thead th").all()]]
+             [th.inner_text().strip() for th in tables.nth(index).locator('[data-slot="table-head"]').all()]]
     check(len(found) == 1, f"the platform token table was not found exactly once: {found}")
     table = tables.nth(found[0])
-    rows = table.locator("tbody tr.ant-table-row")
-    size_control = table.locator(".ant-pagination-options .ant-select")
+    rows = table.locator('[data-slot="table-body"] [data-proximity-index]')
+    # The card's table is a ResourceTable; its footer is DataTablePagination
+    # (components/ui/data-table.tsx:657+), whose size changer is a Select named by
+    # labels.rowsPerPage and whose position is a "Page X of N" summary.
+    size_control = table.get_by_role(
+        "combobox", name=common["resourceTable"]["rowsPerPage"], exact=True)
     expect(size_control).to_have_count(1)
 
     def names():
         return [row.locator("td").first.inner_text().strip() for row in rows.all()]
 
     def total_text():
-        return table.locator(".ant-pagination-total-text").inner_text().strip()
+        return table.get_by_text(
+            re.compile(r"^\d+ (items?|条)$")).first.inner_text().strip()
+
+    page_summary = re.compile(r"^Page\s+(\d+)\s+of\s+(\d+)$")
 
     def active_page():
-        return table.locator("li.ant-pagination-item-active").get_attribute("title")
+        text = table.get_by_text(page_summary).first.inner_text().strip()
+        matched = page_summary.match(text)
+        return matched.group(1) if matched else None
+
+    def page_count():
+        text = table.get_by_text(page_summary).first.inner_text().strip()
+        matched = page_summary.match(text)
+        return int(matched.group(2)) if matched else 0
 
     def sort_by(header):
         header.click()
         page.wait_for_timeout(300)
 
     def choose_page_size(size):
-        # The option text is localised ("10 / page" or "10 条/页"), so the size is matched as the
-        # leading number instead of the whole label.
+        # The options are the bare numbers of PAGE_SIZE_OPTIONS, so the label is exact.
         size_control.click()
         page.wait_for_timeout(300)
-        option = page.locator(".ant-select-dropdown:visible .ant-select-item-option").filter(
-            has_text=re.compile(r"^\s*" + str(size) + r"\b")).first
+        option = page.get_by_role("option", name=str(size), exact=True)
         expect(option).to_have_count(1)
         option.click()
         page.wait_for_timeout(500)
@@ -694,8 +706,8 @@ def exercise_sorting_and_pagination(page, server, k, platform, common, report):
           "the ascending order is identical to the server order, so this check cannot prove ordering")
     choose_page_size(10)
     check(len(names()) == 10, f"ten rows per page did not cut the list: {len(names())}")
-    titles = [entry.get_attribute("title") for entry in table.locator(".ant-pagination li").all()]
-    check(titles[2:5] == ["1", "2", "3"], f"a 21 row list does not offer three pages: {titles}")
+    check(page_count() == 3,
+          f"a {len(unsorted)} row list at ten per page does not report three pages: {page_count()}")
     first_page = names()
     check(first_page == full_ascending[:10],
           f"page one is not the first ten rows of the sorted collection: {first_page}")

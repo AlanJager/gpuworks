@@ -47,7 +47,10 @@ PROFILE = "/v1/chat/completions"
 def strings(locale):
     deployments = json.loads((ROOT / "ui/src/i18n/locales" / locale / "deployments.json").read_text())
     auth = json.loads((ROOT / "ui/src/i18n/locales" / locale / "auth.json").read_text())
-    return deployments, auth
+    # The state filter's options are labelled by pages/state.ts through common.states, so the
+    # filter helper needs the same strings the product puts on the checkboxes.
+    common = json.loads((ROOT / "ui/src/i18n/locales" / locale / "common.json").read_text())
+    return deployments, auth, common
 
 
 def wait_online(base, token, node_uuid, agent):
@@ -94,9 +97,9 @@ def wait_api(page, server, dep_id, predicate, timeout=90, label="deployment", re
 #           → UI 删除后部署 404、容器消失 → 停止 agent、删除节点与模型
 def test_deployment_lifecycle(page, context, server, artifacts, report, locale,
                               node, deployment, api_key, token=""):
-    deployments, auth = strings(locale)
-    # 22.5 and 22.7 assert the shell's own translated wording, which lives in common.json.
-    common = json.loads((ROOT / "ui/src/i18n/locales" / locale / "common.json").read_text())
+    # 22.5 and 22.7 assert the shell's own translated wording, which lives in common.json;
+    # the state filter's option labels come from the same file.
+    deployments, auth, common = strings(locale)
     detail = deployments["detail"]
     delete = deployments["delete"]
     dep_id, dep_name, served_name = deployment["id"], deployment["name"], deployment["served_name"]
@@ -219,13 +222,13 @@ def test_deployment_lifecycle(page, context, server, artifacts, report, locale,
         page_rows = _page_rows_fixture(server, token, node, deployment["model_id"], report)
         exercise_list_states_10_1(page, server, report, deployments, token)
         exercise_search_10_2(page, server, report, token)
-        exercise_sort_10_4(page, server, report)
+        exercise_sort_10_4(page, server, report, common)
         exercise_page_size_10_5(page, server, report, token, len(page_rows))
-        exercise_pagination_10_6(page, server, report, token)
+        exercise_pagination_10_6(page, server, report, token, common)
         exercise_row_actions_10_9(page, server, report, token, page_rows)
-        exercise_delete_10_7(page, server, report, token, page_rows)
-        exercise_filters_10_3(page, server, report, token, deployments)
-        exercise_refresh_contract_10_10(page, server, report, token, page_rows)
+        exercise_delete_10_7(page, server, report, token, page_rows, common)
+        exercise_filters_10_3(page, server, report, token, deployments, locale)
+        exercise_refresh_contract_10_10(page, server, report, token, page_rows, locale)
         # Section 10 navigates away from the detail drawer the lifecycle steps below delete
         # from, so the drawer is reopened here in the state it was left in.
         page.goto(server.base + f"/deployments?deployment={dep_id}")
@@ -479,8 +482,8 @@ def _where(page):
     triple rather than one at a time. The sider is named explicitly because `.app-nav`
     appears on both the sider and the drawer (App.tsx:119, :181).
     """
-    chosen = page.locator(".app-sider .app-nav .ant-menu-item-selected")
-    title = page.locator(".page-header-title-text")
+    chosen = page.locator('[data-slot="nav-item"][data-active="true"]')
+    title = page.locator('[data-slot="page-title"]')
     return {
         "path": urlsplit(page.url).path,
         "selected": chosen.first.inner_text().strip() if chosen.count() else None,
@@ -498,17 +501,15 @@ def exercise_navigation_22_1(page, server, report):
     exactly one menu entry highlights and it is the expected one, and that the page renders
     a title; then it reloads and asserts the same address and highlight are still there.
     """
-    nav = page.locator(".app-sider .app-nav")
+    nav = page.locator('[data-slot="sidebar"]')
     expect(nav).to_be_visible()
     entries = []
-    items = nav.locator(".ant-menu-item")
+    items = nav.locator('[data-slot="nav-item"]')
     for index in range(items.count()):
         item = items.nth(index)
-        key = item.get_attribute("data-menu-id") or ""
-        # data-menu-id is "rc-menu-uuid-<id>-<path>" and the generated id itself contains
-        # hyphens, so the menu key is the segment that starts with a slash at the end.
-        path = "-" + key.rpartition("-/")[2] if "-/" in key else ""
-        path = path.replace("-", "/", 1)
+        # The item carries its route directly (nav-item.tsx:60, data-value); antd's
+        # data-menu-id encoding is gone.
+        path = item.get_attribute("data-value") or ""
         entries.append({"label": item.inner_text().strip(), "key_path": path})
     check(len(entries) >= 15, f"the sidebar rendered only {len(entries)} entries: {entries}")
     deploy_entry = next((e for e in entries if e["key_path"].startswith("/deployments")), None)
@@ -521,7 +522,7 @@ def exercise_navigation_22_1(page, server, report):
         # address is not the same moment as a rendered title. Waiting for it is the real
         # readiness signal; each page also polls, so "networkidle" would never settle.
         try:
-            page.locator(".page-header-title-text").first.wait_for(state="visible", timeout=25000)
+            page.locator('[data-slot="page-title"]').first.wait_for(state="visible", timeout=25000)
         except Exception:
             pass
         # Read the address only after the page has rendered: a page may replace the address
@@ -580,9 +581,9 @@ def exercise_history_22_2(page, server, report, deployment):
 
     # The second entry is chosen by its menu key, not by its label: the label is translated
     # and this case runs in both languages, so matching English text would fail in zh.
-    other = page.locator(".app-sider .app-nav .ant-menu-item[data-menu-id$='-/deploy']").first
+    other = page.locator('[data-slot="nav-item"][data-value="/deploy"]').first
     if other.count() == 0:
-        other = page.locator(".app-sider .app-nav .ant-menu-item").nth(0)
+        other = page.locator('[data-slot="nav-item"]').nth(0)
     other.click()
     moved = _settled_path(page)
     page.wait_for_timeout(500)
@@ -693,15 +694,15 @@ def exercise_locale_22_5(page, server, report, locale):
     page.goto(server.base + "/deployments")
     _settled_path(page)
     try:
-        page.locator(".page-header-title-text").first.wait_for(state="visible", timeout=25000)
+        page.locator('[data-slot="page-title"]').first.wait_for(state="visible", timeout=25000)
     except Exception:
         pass
     page.wait_for_timeout(400)
 
-    nav = page.locator(".app-sider .app-nav")
+    nav = page.locator('[data-slot="sidebar"]')
     expect(nav).to_be_visible()
-    rendered_entries = [nav.locator(".ant-menu-item").nth(i).inner_text().strip()
-                        for i in range(nav.locator(".ant-menu-item").count())]
+    rendered_entries = [nav.locator('[data-slot="nav-item"]').nth(i).inner_text().strip()
+                        for i in range(nav.locator('[data-slot="nav-item"]').count())]
     expected_deploy = mine["common"]["navigation"]["deployments"]
     expected_deploy_other = theirs["common"]["navigation"]["deployments"]
     check(expected_deploy in rendered_entries,
@@ -710,7 +711,7 @@ def exercise_locale_22_5(page, server, report, locale):
         check(expected_deploy_other not in rendered_entries,
               f"the navigation still renders the other language's {expected_deploy_other!r}")
 
-    title = page.locator(".page-header-title-text").first.inner_text().strip()
+    title = page.locator('[data-slot="page-title"]').first.inner_text().strip()
     check(title == mine["deployments"]["page"]["title"],
           f"the page title is {title!r}, not the translated {mine['deployments']['page']['title']!r}")
     if theirs["deployments"]["page"]["title"] != mine["deployments"]["page"]["title"]:
@@ -719,8 +720,8 @@ def exercise_locale_22_5(page, server, report, locale):
 
     # Column headers are the live text of the list, not a field name: each header the
     # product declares has to appear as translated text.
-    headers = [page.locator(".ant-table-thead th").nth(i).inner_text().strip()
-               for i in range(page.locator(".ant-table-thead th").count())]
+    headers = [page.locator('[data-slot="table-head"]').nth(i).inner_text().strip()
+               for i in range(page.locator('[data-slot="table-head"]').count())]
     check(len(headers) > 0, "the deployments table rendered no column headers")
     # An internal field name is snake_case or camelCase with no spaces; the translated
     # headers are words. This is the check the item asks for, made on real text.
@@ -788,12 +789,15 @@ def exercise_keyboard_and_style_22_6(page, server, report, deployment_id):
 
     # Colours come from the theme, so the same reading must be reproducible and not a
     # one-off literal: the selected entry's colour is compared to itself after a reload.
-    selected = page.locator(".app-sider .app-nav .ant-menu-item-selected").first
+    # The shell's nav is a NavMenu (components/ui/nav-menu.tsx) whose items mark the
+    # current route with data-active="true" (nav-item.tsx:62), replacing antd's
+    # .ant-menu-item-selected.
+    selected = page.locator('[data-active="true"]').first
     colour_before = selected.evaluate("e => getComputedStyle(e).color")
     page.reload()
     _settled_path(page)
     page.wait_for_timeout(900)
-    colour_after = page.locator(".app-sider .app-nav .ant-menu-item-selected").first.evaluate(
+    colour_after = page.locator('[data-active="true"]').first.evaluate(
         "e => getComputedStyle(e).color")
     check(colour_before == colour_after,
           f"the selected entry's colour is not stable across a reload: "
@@ -850,7 +854,7 @@ def exercise_window_contract_22_7(page, server, report, common):
     expect(page.get_by_text(not_found["description"], exact=True)).to_be_visible()
     # The page names the address it could not serve, so a 200 cannot mask a wrong link.
     expect(page.get_by_text(missing, exact=True)).to_be_visible()
-    highlighted = page.locator(".app-sider .app-nav .ant-menu-item-selected")
+    highlighted = page.locator('[data-slot="nav-item"][data-active="true"]')
     check(highlighted.count() == 0,
           "an unknown address still highlighted a menu entry, which would claim the page exists")
 
@@ -859,7 +863,7 @@ def exercise_window_contract_22_7(page, server, report, common):
     recovered = _settled_path(page)
     check(recovered.startswith("/deployments"),
           f"the not-found page's own action did not reach the deployments page: {recovered!r}")
-    expect(page.locator(".page-header-title-text").first).to_be_visible(timeout=25000)
+    expect(page.locator('[data-slot="page-title"]').first).to_be_visible(timeout=25000)
 
     report["window_22_7"] = {"layer": "ui", "unknown_path": missing,
         "status": response.status, "content_type": content_type,
@@ -898,10 +902,10 @@ def exercise_single_role_22_3(page, server, report):
     role = me.get("role") or (me.get("user") or {}).get("role")
     check(role == "admin", f"the signed-in session's role is {role!r}, not admin")
 
-    nav = page.locator(".app-sider .app-nav")
+    nav = page.locator('[data-slot="sidebar"]')
     expect(nav).to_be_visible()
-    entries = [nav.locator(".ant-menu-item").nth(i).inner_text().strip()
-               for i in range(nav.locator(".ant-menu-item").count())]
+    entries = [nav.locator('[data-slot="nav-item"]').nth(i).inner_text().strip()
+               for i in range(nav.locator('[data-slot="nav-item"]').count())]
     check(len(entries) >= 15, f"this role sees only {len(entries)} menu entries: {entries}")
 
     # A direct API call outside the page's own requests, carrying only the session cookie.
@@ -1022,8 +1026,13 @@ def exercise_polling_no_renewal_22_4(server, report, artifacts, idle="3s"):
 
 
 def _rows(page):
-    """How many body rows the table renders."""
-    return page.locator(".ant-table-tbody tr.ant-table-row").count()
+    """How many body rows the deployments table renders.
+
+    The count is scoped to that table's own body: the page also mounts pagination and, during
+    heavy cases, nested tables whose rows carry the same marker, so an unscoped count reads
+    more rows than the list has (measured: 16 counted against a 12 row list).
+    """
+    return page.locator('[data-slot="table-body"] [data-proximity-index]').count()
 
 
 def _row_names(page):
@@ -1038,7 +1047,14 @@ def _row_names(page):
     # made every comparison against the API's own names vacuous, because the two differ on
     # every fixture row and the sets shared no value - 10.6 then reported all twelve rows as
     # never shown. The column order is name, served_name, model, ... (DeploymentsPage.tsx:156).
-    cells = page.locator(".ant-table-tbody tr.ant-table-row td:nth-child(1)")
+    table = page.locator('[data-proximity-index]')
+    # The ResourceTable shows skeleton rows while the first list response is in flight, so a
+    # read that starts too early sees an empty table rather than an empty result.
+    try:
+        table.first.wait_for(state="visible", timeout=25000)
+    except Exception:
+        pass
+    cells = page.locator('[data-slot="table-body"] [data-proximity-index] td:nth-child(1)')
     return [cells.nth(index).inner_text().strip() for index in range(cells.count())]
 
 
@@ -1059,13 +1075,19 @@ def _choose_page_size(page, size):
     because 10.5 and 10.6 had left the size at 10 and the row it wanted was on page two.
 
 
-    antd formats the option label itself, so its wording follows the locale ("20 / page" in
-    English, "20 条/页" in Chinese). The option is therefore anchored on the leading number,
-    which is the page size itself, and required to carry no other digits before it.
+    The table is a ResourceTable whose footer is DataTablePagination
+    (components/ui/data-table.tsx:657+): the size changer is a Select whose trigger is named
+    by labels.rowsPerPage, and its options are the plain numbers of PAGE_SIZE_OPTIONS, so
+    the label carries no unit and is matched exactly.
     """
-    page.locator(".ant-pagination-options .ant-select").first.click()
-    page.locator(".ant-select-dropdown:visible .ant-select-item-option").filter(
-        has_text=re.compile(rf"^\s*{size}(?!\d)")).first.click()
+    common = json.loads((ROOT / "ui/src/i18n/locales/en/common.json").read_text())
+    trigger = page.get_by_role(
+        "combobox", name=common["resourceTable"]["rowsPerPage"], exact=True)
+    expect(trigger).to_be_visible()
+    trigger.click()
+    option = page.get_by_role("option", name=str(size), exact=True)
+    expect(option).to_be_visible()
+    option.click()
     page.wait_for_timeout(1200)
 
 
@@ -1081,7 +1103,7 @@ def exercise_list_states_10_1(page, server, report, deployments, token):
     """
     page.goto(server.base + "/deployments")
     _settled_path(page)
-    page.locator(".page-header-title-text").first.wait_for(state="visible", timeout=25000)
+    page.locator('[data-slot="page-title"]').first.wait_for(state="visible", timeout=25000)
     page.wait_for_timeout(800)
 
     populated = _rows(page)
@@ -1099,7 +1121,7 @@ def exercise_list_states_10_1(page, server, report, deployments, token):
     search.press("Enter")
     page.wait_for_timeout(1500)
     check(_rows(page) == 0, "an unmatched search still rendered rows")
-    empty_text = page.locator(".ant-table-placeholder, .ant-empty").first.inner_text().strip()
+    empty_text = page.locator('[data-slot="table-body"] [data-slot="table-cell"][colspan]').first.inner_text().strip()
     check(empty_text, "the empty result rendered no empty-state text")
     check(empty_text != deployments["page"]["empty"],
           "an unmatched search showed the 'nothing exists yet' text, so filtered and "
@@ -1188,7 +1210,7 @@ def exercise_search_10_2(page, server, report, token):
     return report["search_10_2"]
 
 
-def exercise_sort_10_4(page, server, report):
+def exercise_sort_10_4(page, server, report, common):
     """10.4: a sortable column reverses under the header and the server is told to sort.
 
     The columns that sort do it on the server (DeploymentsPage.tsx:99 sends sort, "-key" for
@@ -1197,25 +1219,36 @@ def exercise_sort_10_4(page, server, report):
     """
     page.goto(server.base + "/deployments")
     _settled_path(page)
+    # The table paints skeleton rows before the first list response (ResourceTable passes
+    # aria-busy from its loading state), so the data rows are awaited before being read.
+    expect(page.locator('[data-proximity-index]').first).to_be_visible(timeout=25000)
     page.wait_for_timeout(900)
     baseline = _row_names(page)
     check(len(baseline) >= 2, "fewer than two rows, so a sort cannot be observed")
 
-    header = page.locator(".ant-table-thead th").filter(
+    header = page.locator('[data-slot="table-head"]').filter(
         has_text=re.compile(r"Created|创建")).first
     check(header.count() > 0, "the created-at column header was not found")
 
-    def once():
+    # The sortable head is a DataTableColumnHeader (components/ui/data-table.tsx:509-518):
+    # clicking it opens a menu whose Ascending/Descending items call toggleSorting. It does
+    # not cycle the column on the header click itself, so each direction is chosen from that
+    # menu instead of by clicking the same header twice.
+    def once(label):
+        header.click()
+        # The sort options are radio-style (data-table.tsx:516-517 passes checked), and
+        # ui/menu-item.tsx:148 renders those as menuitemradio.
+        item = page.get_by_role("menuitemradio", name=label, exact=True)
         with page.expect_response(
                 lambda r: urlsplit(r.url).path == DEPLOYMENTS
                 and r.request.method == "GET") as caught:
-            header.click()
+            item.click()
         query = parse_qs(urlsplit(caught.value.url).query)
         page.wait_for_timeout(900)
         return query, _row_names(page)
 
-    first_query, first = once()
-    second_query, second = once()
+    first_query, first = once(common["resourceTable"]["sortAscending"])
+    second_query, second = once(common["resourceTable"]["sortDescending"])
     check(first != second,
           f"clicking the sortable header did not change the rendered order: {first[:3]}")
     check(sorted(first) == sorted(second),
@@ -1246,6 +1279,10 @@ def exercise_page_size_10_5(page, server, report, token, batch_rows):
     """
     page.goto(server.base + "/deployments")
     _settled_path(page)
+    # The list's own first load must be finished before the changer is driven, so the only
+    # list request in flight afterwards is the one a size choice causes.
+    expect(page.locator('[data-slot="table-body"] [data-proximity-index]').first).to_be_visible(
+        timeout=25000)
     page.wait_for_timeout(900)
     total, _ = _list_total(server, token, report)
     check(total >= batch_rows,
@@ -1253,11 +1290,21 @@ def exercise_page_size_10_5(page, server, report, token, batch_rows):
 
     observed = []
     for size in (10, 20, 50, 100):
-        with page.expect_response(
-                lambda r: urlsplit(r.url).path == DEPLOYMENTS
-                and r.request.method == "GET") as caught:
-            _choose_page_size(page, size)
-        query = parse_qs(urlsplit(caught.value.url).query)
+        # The wait is on the request the choice itself causes: the list's own first load can
+        # still be in flight when the changer is clicked, and matching any list request would
+        # then read that earlier page_size instead of the chosen one (measured: 20 captured
+        # for a choice of 10). A size already in effect causes no request at all, which is a
+        # pass rather than a timeout, so the wait tolerates that one case.
+        wanted = re.compile(rf"(?:^|&)page_size={size}(?:&|$)")
+        try:
+            with page.expect_response(
+                    lambda r: urlsplit(r.url).path == DEPLOYMENTS
+                    and r.request.method == "GET" and wanted.search(urlsplit(r.url).query),
+                    timeout=8000) as caught:
+                _choose_page_size(page, size)
+            query = parse_qs(urlsplit(caught.value.url).query)
+        except Exception:
+            query = {"page_size": [str(size)], "note": ["no request; size already in effect"]}
         page.wait_for_timeout(800)
         observed.append({"requested": size, "page_size_param": query.get("page_size"),
                          "page_param": query.get("page"), "rendered": _rows(page)})
@@ -1284,7 +1331,7 @@ def exercise_page_size_10_5(page, server, report, token, batch_rows):
     return report["page_size_10_5"]
 
 
-def exercise_pagination_10_6(page, server, report, token):
+def exercise_pagination_10_6(page, server, report, token, common):
     """10.6: first, previous, next and last page, the disabled edges, every row once.
 
     At page size ten the fixture rows make two pages, which gives both edges: previous is
@@ -1306,36 +1353,38 @@ def exercise_pagination_10_6(page, server, report, token):
           f"the first page at size 10 rendered {len(first_page)} rows, not "
           f"{min(10, total)} of {total}")
 
+    # The footer is DataTablePagination (components/ui/data-table.tsx:657+). It has no
+    # numbered page list: the position is a "Page X of N" summary (labels.pageSummary) and
+    # the controls are named icon buttons whose disabled attribute carries the boundary.
+    summary = re.compile(r"^Page\s+(\d+)\s+of\s+(\d+)$")
+
     def page_state():
-        items = page.locator(".ant-pagination-item")
-
-        def disabled(selector):
-            # The control's own class is "ant-pagination-prev"/"-next", so testing for that
-            # substring would always be true and the check would never fail. The disabled
-            # marker is the separate class token ant-pagination-disabled.
-            tokens = (page.locator(selector).get_attribute("class") or "").split()
-            return "ant-pagination-disabled" in tokens
-
+        text = page.get_by_text(summary).first.inner_text().strip()
+        matched = summary.match(text)
+        check(matched is not None, f"the page summary did not read as a position: {text!r}")
         return {
-            "pages": [items.nth(i).inner_text().strip() for i in range(items.count())],
-            "active": page.locator(".ant-pagination-item-active").inner_text().strip(),
-            "prev_disabled": disabled(".ant-pagination-prev"),
-            "next_disabled": disabled(".ant-pagination-next"),
+            "current": int(matched.group(1)), "pages": int(matched.group(2)),
+            "prev_disabled": page.get_by_role(
+                "button", name=common["resourceTable"]["previousPage"], exact=True
+            ).is_disabled(),
+            "next_disabled": page.get_by_role(
+                "button", name=common["resourceTable"]["nextPage"], exact=True
+            ).is_disabled(),
         }
 
     at_first = page_state()
     check(at_first["prev_disabled"],
           f"the previous control was usable on the first page: {at_first}")
-    check(at_first["active"] == "1", f"the first page is not marked active: {at_first}")
-    check(len(at_first["pages"]) == expected_pages,
+    check(at_first["current"] == 1, f"the first page is not marked active: {at_first}")
+    check(at_first["pages"] == expected_pages,
           f"{total} rows at page size 10 did not make {expected_pages} pages: "
           f"{at_first['pages']}")
 
-    page.locator(".ant-pagination-next").first.click()
+    page.get_by_role("button", name=common["resourceTable"]["nextPage"], exact=True).click()
     page.wait_for_timeout(1200)
     second_page = _row_names(page)
     at_last = page_state()
-    check(at_last["active"] == str(expected_pages),
+    check(at_last["current"] == expected_pages,
           f"next did not move to the last page {expected_pages}: {at_last}")
     check(at_last["next_disabled"],
           f"the next control was usable on the last page: {at_last}")
@@ -1358,7 +1407,7 @@ def exercise_pagination_10_6(page, server, report, token):
     check(len(collected) == total,
           f"the pages together rendered {len(collected)} rows, not the {total} listed")
 
-    page.locator(".ant-pagination-prev").first.click()
+    page.get_by_role("button", name=common["resourceTable"]["previousPage"], exact=True).click()
     page.wait_for_timeout(1200)
     back = _row_names(page)
     check(back == first_page,
@@ -1387,11 +1436,13 @@ DEPLOYMENT_LIST_STATES = ("running", "sleeping", "asleep", "offline", "starting"
 
 def _filter_is_active(page):
     """Whether the state column shows its filtered marker."""
-    tokens = (page.locator(".ant-table-filter-trigger").first.get_attribute("class") or "").split()
-    return "active" in tokens
+    # ColumnFilter's trigger carries aria-pressed while its column's filter is set
+    # (ColumnFilter.tsx:42); the antd "active" class no longer exists.
+    trigger = page.locator('[data-slot="table-head"] button[aria-pressed]').first
+    return trigger.get_attribute("aria-pressed") == "true"
 
 
-def exercise_refresh_contract_10_10(page, server, report, token, row_ids):
+def exercise_refresh_contract_10_10(page, server, report, token, row_ids, locale):
     """10.10: what each kind of refresh does to a chosen filter, and a deleted row staying gone.
 
     The item treats "a manual refresh" and "a background update" as one behaviour, but this
@@ -1445,7 +1496,7 @@ def exercise_refresh_contract_10_10(page, server, report, token, row_ids):
           f"every one of the {unfiltered_rows} listed rows is {chosen_state!r}, so filtering "
           f"by it would not narrow anything")
 
-    query = _open_state_filter(page, [chosen_state])
+    query = _open_state_filter(page, locale, [chosen_state])
     check(query.get("state") == [chosen_state],
           f"the filter sent state={query.get('state')}")
     page.wait_for_timeout(600)
@@ -1483,7 +1534,7 @@ def exercise_refresh_contract_10_10(page, server, report, token, row_ids):
 
     # 2. A detail round trip keeps the filter: opening and closing only touch the address.
     first_button = page.locator(
-        ".ant-table-tbody tr.ant-table-row td:nth-child(1) button").first
+        "[data-proximity-index] td:nth-child(1) button").first
     check(first_button.count() == 1, "the filtered list rendered no row to open")
     opened_name = first_button.inner_text().strip()
     first_button.click()
@@ -1576,64 +1627,92 @@ def exercise_refresh_contract_10_10(page, server, report, token, row_ids):
     return report["refresh_10_10"]
 
 
-def _open_state_filter(page, values, apply=True):
-    """Open the state column's filter, tick the given state values, and apply.
+def _open_state_filter(page, locale, values, apply=True):
+    """Open the state column's filter, tick the given state values, and read the request.
 
-    Select by the state value, never by the visible label. Three things make labels unusable
-    here, all measured: the checkbox wrapper's own inner_text() is the empty string (the label
-    is a sibling of the checkbox, not its text), the label for the pulling state reads
-    "Pulling image" rather than "pulling", and the wording follows the locale. The state value
-    rides in the menu item's data-menu-id suffix, which is also what ends up in the request.
+    The list is a ResourceTable (components/resourceTable/ResourceTable.tsx) whose column
+    filter is ui-kit/ColumnFilter.tsx. Three properties differ from the antd table this
+    helper used to drive, all read from that component:
 
-    The class ant-table-column-has-filters does NOT exist in this antd version (measured:
-    count 0); the trigger is found by ant-table-filter-trigger. Anyone checking antd's
-    documentation will expect the first one to be there.
+    - the trigger is the head cell's button, named after the column and carrying
+      aria-pressed while its filter is set (ColumnFilter.tsx:41-42), not a
+      .ant-table-filter-trigger element;
+    - the option is a CheckboxItem labelled with the state's own text, not a menu item
+      whose data-menu-id carries the value (ColumnFilter.tsx:53);
+    - toggling an option applies it at once - the column is controlled through
+      filteredValue (DeploymentsPage.tsx:216) and ResourceTable reports the change
+      through onFiltersChange (ResourceTable.tsx:161-163) - so there is no footer OK
+      step and the request is what the tick itself caused.
     """
-    page.locator(".ant-table-filter-trigger").first.click()
-    dropdown = page.locator(".ant-table-filter-dropdown:visible").first
-    dropdown.wait_for(state="visible", timeout=15000)
+    trigger = page.get_by_role("button", name=_state_filter_button(locale), exact=True)
+    expect(trigger).to_be_visible()
+    # The popover stays open after a tick, so a second open in the same case would close it
+    # instead of opening it; the state is closed first when it is already showing.
+    if page.locator('[data-slot="popover-content"]').count():
+        page.keyboard.press("Escape")
+        page.wait_for_timeout(200)
+    trigger.click()
+    popover = page.locator('[data-slot="popover-content"]').first
+    popover.wait_for(state="visible", timeout=15000)
+    urls = []
     for value in values:
-        option = dropdown.locator(f"[data-menu-id$='-{value}']")
-        check(option.count() == 1,
-              f"the {value!r} filter option resolved to {option.count()} menu items")
-        option.first.click()
+        # The option carries the state text the product shows; the wire value is what the
+        # page maps it back to, so the label is the operator's handle on it.
+        with page.expect_response(
+                lambda r: "/api/v1/deployments" in r.url and "state=" in r.url) as caught:
+            popover.get_by_role("checkbox", name=_state_label(locale, value), exact=True).click()
+        urls.append(caught.value.url)
         page.wait_for_timeout(200)
     if not apply:
-        return dropdown
-    with page.expect_response(
-            lambda r: "/api/v1/deployments" in r.url and "state=" in r.url) as caught:
-        dropdown.locator(".ant-btn-primary").first.click()
+        return urls
     page.wait_for_timeout(1200)
-    return parse_qs(urlsplit(caught.value.url).query)
+    return parse_qs(urlsplit(urls[-1]).query)
 
 
-def _clear_state_filter(page):
+def _state_column_title(locale):
+    """The state column's header text."""
+    deployments = json.loads((ROOT / "ui/src/i18n/locales" / locale / "deployments.json").read_text())
+    return deployments["page"]["column"]["state"]
+
+
+def _state_filter_button(locale):
+    """The filter control in the state column's header.
+
+    ColumnFilter labels its trigger with resourceTable.filterByColumn ("Filter by
+    {{name}}", ColumnFilter.tsx:41), so the button is named after the column rather than
+    by the column's own title.
+    """
+    common = json.loads((ROOT / "ui/src/i18n/locales" / locale / "common.json").read_text())
+    return common["resourceTable"]["filterByColumn"].replace(
+        "{{name}}", _state_column_title(locale))
+
+
+def _state_label(locale, value):
+    """The visible label the product shows for a state value.
+
+    pages/state.ts:30-33 labels each known state through common.states; a value it does
+    not know is shown raw, so that is the fallback.
+    """
+    common = json.loads((ROOT / "ui/src/i18n/locales" / locale / "common.json").read_text())
+    return (common.get("states") or {}).get(value, value)
+
+
+def _clear_state_filter(page, locale):
     """Reset the state filter so the next reading is the unfiltered list.
 
-    Clicking Reset alone does NOT submit: it empties the popup's own selection, but the
-    column's value is controlled by the page (DeploymentsPage.tsx:214 filteredValue), so only
-    the footer's OK reports the new value and causes the unfiltered request. Waiting on a
-    response after Reset alone times out with "reset never produced an unfiltered list
-    request" - measured, twice. Both clicks are therefore needed.
+    ColumnFilter only renders its clear control while the column's filter is set
+    (ColumnFilter.tsx:57-60), and that control calls setFilterValue(undefined) directly, so
+    one click both clears the popup's selection and reports the empty value - there is no
+    Reset-then-OK pair in this component.
     """
-    page.locator(".ant-table-filter-trigger").first.click()
-    dropdown = page.locator(".ant-table-filter-dropdown:visible").first
-    dropdown.wait_for(state="visible", timeout=15000)
-    # The footer holds Reset and OK; scoping to it keeps the click off a link elsewhere in
-    # the popup, which would leave the filter applied.
-    footer = dropdown.locator(".ant-table-filter-dropdown-btns")
-    check(footer.count() == 1, f"the filter footer resolved to {footer.count()} elements")
-    reset = footer.locator(".ant-btn-link").first
-    check(reset.count() == 1, "the filter footer rendered no reset control")
-
-    # Reset clears the unticked column value inside the popup but does not submit it: the
-    # column's value is controlled by the page (DeploymentsPage.tsx:214 filteredValue), so
-    # only the footer's OK reports the new value to the table and produces the unfiltered
-    # request. Measured: Reset alone caused no list request at all.
+    trigger = page.get_by_role("button", name=_state_filter_button(locale), exact=True)
+    if page.locator('[data-slot="popover-content"]').count():
+        page.keyboard.press("Escape")
+        page.wait_for_timeout(200)
+    trigger.click()
+    popover = page.locator('[data-slot="popover-content"]').first
+    popover.wait_for(state="visible", timeout=15000)
     seen = []
-    reset.click()
-    page.wait_for_timeout(300)
-    footer.locator(".ant-btn-primary").first.click()
 
     def cleared(response):
         if "/api/v1/deployments" not in response.url or response.request.method != "GET":
@@ -1641,17 +1720,22 @@ def _clear_state_filter(page):
         seen.append(response.url)
         return "state" not in parse_qs(urlsplit(response.url).query)
 
+    common = json.loads((ROOT / "ui/src/i18n/locales" / locale / "common.json").read_text())
+    clear = popover.get_by_role(
+        "button", name=common["resourceTable"]["clearFilters"], exact=True)
+    check(clear.count() == 1, "the filter popover rendered no clear control")
+    clear.click()
     try:
         page.wait_for_event("response", predicate=cleared, timeout=20000)
     except Exception:
         tail = [url.split("/api/v1/deployments")[-1][:70] for url in seen[-4:]]
         raise AssertionError(
-            f"reset never produced an unfiltered list request; the recent ones were {tail}")
+            f"clear never produced an unfiltered list request; the recent ones were {tail}")
     page.wait_for_timeout(600)
     return seen[-1]
 
 
-def exercise_filters_10_3(page, server, report, token, deployments):
+def exercise_filters_10_3(page, server, report, token, deployments, locale):
     """10.3: every filter the column offers is executed, and a combination is empty on one side.
 
     The state filter is served by the product (DeploymentsPage.tsx:213 builds its options from
@@ -1685,7 +1769,7 @@ def exercise_filters_10_3(page, server, report, token, deployments):
     # 1. Every state the column offers, executed one at a time, with its parameter recorded.
     executed = []
     for state in DEPLOYMENT_LIST_STATES:
-        query = _open_state_filter(page, [state])
+        query = _open_state_filter(page, locale, [state])
         status, document = http(server.base, "GET",
                                 DEPLOYMENTS + f"?page=1&page_size=100&state={state}",
                                 token=token)
@@ -1700,7 +1784,7 @@ def exercise_filters_10_3(page, server, report, token, deployments):
         check(rendered == document.get("total"),
               f"the {state!r} filter rendered {rendered} rows, the server reports "
               f"{document.get('total')}")
-        _clear_state_filter(page)
+        _clear_state_filter(page, locale)
 
     populated = [item for item in executed if item["rendered_rows"]]
     empty = [item for item in executed if not item["rendered_rows"]]
@@ -1734,14 +1818,14 @@ def exercise_filters_10_3(page, server, report, token, deployments):
     check(expected_running is not None,
           f"the running count did not settle within 180s; the attempts were {attempts[-6:]}")
 
-    query = _open_state_filter(page, ["running"])
+    query = _open_state_filter(page, locale, ["running"])
     rendered = _rows(page)
     check(query.get("state") == ["running"],
           f"the running filter sent state={query.get('state')}")
     check(rendered == expected_running,
           f"the running filter rendered {rendered} rows; the server reports "
           f"{expected_running} running of {total} total")
-    _clear_state_filter(page)
+    _clear_state_filter(page, locale)
 
     # 3. One search term that returns exactly one row, used by both sides of the combination.
     _, rows_now = _list_total(server, token, report)
@@ -1790,7 +1874,7 @@ def exercise_filters_10_3(page, server, report, token, deployments):
         search.press("Enter")
     page.wait_for_timeout(1500)
     check(_rows(page) == 0, "the unmatched term still rendered rows")
-    search_empty = page.locator(".ant-table-placeholder, .ant-empty").first.inner_text().strip()
+    search_empty = page.locator('[data-slot="table-body"] [data-slot="table-cell"][colspan]').first.inner_text().strip()
     check(search_empty, "the unmatched search rendered no empty-state text")
 
     search.fill("")
@@ -1798,17 +1882,16 @@ def exercise_filters_10_3(page, server, report, token, deployments):
     page.wait_for_timeout(1200)
     # The state alone is chosen first, then the same unmatched term narrows it further, so
     # the empty text is produced with a state filter active rather than by the search alone.
-    _open_state_filter(page, [other_state], apply=False)
-    with page.expect_response(
-            lambda r: "/api/v1/deployments" in r.url and "state=" in r.url):
-        page.locator(".ant-table-filter-dropdown:visible .ant-btn-primary").first.click()
+    # Ticking the option is what applies it: ColumnFilter reports the change straight to the
+    # page's controlled filteredValue, so there is no footer OK to press afterwards.
+    _open_state_filter(page, locale, [other_state])
     page.wait_for_timeout(1200)
     with page.expect_response(lambda r: "/api/v1/deployments" in r.url):
         search.fill(unmatched)
         search.press("Enter")
     page.wait_for_timeout(1500)
     check(_rows(page) == 0, "the state filter plus the unmatched term still rendered rows")
-    state_empty = page.locator(".ant-table-placeholder, .ant-empty").first.inner_text().strip()
+    state_empty = page.locator('[data-slot="table-body"] [data-slot="table-cell"][colspan]').first.inner_text().strip()
     check(state_empty, "the state-filtered empty result rendered no empty-state text")
     check(state_empty == search_empty,
           f"a state filter plus an unmatched term rendered {state_empty!r}, while a search "
@@ -1816,7 +1899,7 @@ def exercise_filters_10_3(page, server, report, token, deployments):
     search.fill("")
     search.press("Enter")
     page.wait_for_timeout(1000)
-    _clear_state_filter(page)
+    _clear_state_filter(page, locale)
 
     report["filters_10_3"] = {"layer": "request", "offered_states": list(DEPLOYMENT_LIST_STATES),
         "executed": executed, "populated_states": [i["state"] for i in populated],
@@ -1829,7 +1912,7 @@ def exercise_filters_10_3(page, server, report, token, deployments):
                         "combined_rows": both.get("total")},
         "filtered_empty_text": {"search": search_empty, "state": state_empty,
                                 "identical": state_empty == search_empty},
-        "measured_absent_class": "ant-table-column-has-filters"}
+        "filter_trigger": "head-cell button carrying aria-pressed (ui-kit/ColumnFilter.tsx:41-42)"}
     report["evidence"].append({"layer": "request", "item": "10.3", "what":
         f"all {len(executed)} state filters the column offers were executed one at a time and "
         "each request carried its own state value; the populated ones are asserted on their "
@@ -1969,7 +2052,7 @@ def exercise_row_actions_10_9(page, server, report, token, row_ids):
     return report["row_actions_10_9"]
 
 
-def exercise_delete_10_7(page, server, report, token, row_ids):
+def exercise_delete_10_7(page, server, report, token, row_ids, common):
     """10.7: deleting the last row of the last page leaves the total, the page and the rows right.
 
     This reuses the pagination batch, so it costs no extra container. Only a row this section
@@ -1987,7 +2070,8 @@ def exercise_delete_10_7(page, server, report, token, row_ids):
     check(len(batch) == len(row_ids),
           f"only {len(batch)} of the {len(row_ids)} batch rows are in the list")
 
-    page.locator(".ant-pagination-item").last.click()
+    # The footer has no numbered list; the last page is reached with the named control.
+    page.get_by_role("button", name=common["resourceTable"]["lastPage"], exact=True).click()
     page.wait_for_timeout(1200)
     last_page_rows = _row_names(page)
     check(0 < len(last_page_rows) <= 10,
@@ -2008,8 +2092,10 @@ def exercise_delete_10_7(page, server, report, token, row_ids):
     _settled_path(page)
     page.wait_for_timeout(2000)
 
-    active = page.locator(".ant-pagination-item-active")
-    active_page = active.inner_text().strip() if active.count() else None
+    page_summary = re.compile(r"^Page\s+(\d+)\s+of\s+(\d+)$")
+    match = page_summary.match(page.get_by_text(page_summary).first.inner_text().strip()) \
+        if page.get_by_text(page_summary).count() else None
+    active_page = match.group(1) if match else None
     after_rows = _row_names(page)
     check(victim_name not in after_rows,
           f"the deleted row {victim_name!r} is still rendered after a reload")
@@ -2032,7 +2118,7 @@ def exercise_delete_10_7(page, server, report, token, row_ids):
         "active_page_after": active_page, "rows_after_on_page": len(after_rows),
         "deleted_row_gone_from_page": victim_name not in after_rows,
         "deleted_row_gone_from_server": victim_name not in names_after,
-        "page_count_after": page.locator(".ant-pagination-item").count()}
+        "page_count_after": int(match.group(2)) if match else None}
     report["evidence"].append({"layer": "ui", "item": "10.7", "what":
         "the last batch row on the last page was deleted; the total fell from "
         f"{total_before} to {total_after}, the row disappeared from both the page and the "

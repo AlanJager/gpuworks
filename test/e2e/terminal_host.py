@@ -147,7 +147,11 @@ def exercise_localization(page, server, nodes, settings, auth, node, open_termin
 
     # Navigation and table headers carry Chinese and no internal identifiers.
     nav_text = page.get_by_role("navigation").first.inner_text()
-    headers_text = " ".join(page.locator(".ant-table-thead th").all_inner_texts())
+    # The page under inspection may render either the antd table or the ResourceTable
+    # (components/resourceTable/ResourceTable.tsx), whose heads are
+    # [data-slot=table-head]; read whichever is present so the leak check still has text.
+    headers = page.locator('[data-slot="table-head"], .ant-table-thead th')
+    headers_text = " ".join(headers.all_inner_texts())
     for label, text in (("navigation", nav_text), ("table_headers", headers_text)):
         leaked = _internal_identifiers(text)
         check(not leaked, f"{label} shows internal identifiers instead of a translation: {leaked}")

@@ -69,13 +69,13 @@ def exercise_navigation_entries(page, server, report):
     page actually shows, not a copy of the route table, so an entry that quietly
     disappears or gains a wrong target shows up as a missing or mismatched row."""
     # The shell mounts the same menu twice: once inside the desktop sider and once inside the
-    # mobile drawer, and the drawer stays in the document while closed. A bare .app-nav
+    # mobile drawer, and the drawer stays in the document while closed. A bare sidebar
     # therefore resolves to two menus, and the selection read below then matches nothing.
     # The desktop one is named explicitly, which is also the one this case drives.
-    nav = page.locator(".app-sider .app-nav")
+    nav = page.locator('[data-slot="sidebar"]')
     expect(nav).to_be_visible()
-    labels = [item.strip() for item in nav.locator(".ant-menu-item").all_inner_texts()]
-    entries = [{ "label": label, "href": nav.locator(".ant-menu-item a").nth(index).get_attribute("href") }
+    labels = [item.strip() for item in nav.locator('[data-slot="nav-item"]').all_inner_texts()]
+    entries = [{ "label": label, "href": nav.locator('[data-slot="nav-item"] a').nth(index).get_attribute("href") }
                for index, label in enumerate(labels)]
     check(len(entries) >= 15, f"the sidebar rendered only {len(entries)} entries")
     rows = []
@@ -107,7 +107,7 @@ def exercise_navigation_entries(page, server, report):
               f"{entry['href']} settled on {landed}, which is outside that entry")
         # The entry that lights up must be this one, and it must be exactly one: a page
         # that highlights two entries, or none, is not navigable.
-        selected = nav.locator(".ant-menu-item-selected")
+        selected = nav.locator('[data-slot="nav-item"][data-active="true"]')
         expect(selected).to_have_count(1)
         expect(selected).to_contain_text(entry["label"])
         heading = page.get_by_role("heading").first
@@ -117,8 +117,8 @@ def exercise_navigation_entries(page, server, report):
         # Reloading keeps both the address and the highlighted entry.
         page.reload()
         expect(page).to_have_url(re.compile(re.escape(server.base + landed) + r"(?:\?.*)?$"))
-        expect(nav.locator(".ant-menu-item-selected")).to_have_count(1)
-        expect(nav.locator(".ant-menu-item-selected")).to_contain_text(entry["label"])
+        expect(nav.locator('[data-slot="nav-item"][data-active="true"]')).to_have_count(1)
+        expect(nav.locator('[data-slot="nav-item"][data-active="true"]')).to_contain_text(entry["label"])
         expect(page.get_by_role("heading").first).to_contain_text(title)
         # The heading is real copy, not an unresolved key or an internal field name.
         check(not _INTERNAL_IDENTIFIER(title),
