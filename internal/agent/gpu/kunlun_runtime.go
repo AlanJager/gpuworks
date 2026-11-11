@@ -105,7 +105,11 @@ func (p *KunlunProber) RuntimeInjectionForLaunch(ctx context.Context, req Inject
 	if err := ctx.Err(); err != nil {
 		return rejectedInjection(proto.RuntimeFailure{Code: proto.ErrorAcceleratorDeviceUnavailable, Vendor: p.Vendor()}, err.Error())
 	}
-	inj.Env = make(map[string]string, 4)
+	selection := inj.Env
+	inj.Env = make(map[string]string, len(selection)+4)
+	for key, value := range selection {
+		inj.Env[key] = value
+	}
 	if req.NNodes > 1 {
 		inj.Env["BKCL_ENABLE_XDR"] = "1"
 		inj.Env["BKCL_RDMA_VERBS"] = "1"

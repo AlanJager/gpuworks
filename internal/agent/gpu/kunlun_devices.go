@@ -70,6 +70,7 @@ func (p *KunlunProber) runtimeInjectionForDriver(ctx context.Context, indexes []
 	previous := p.lastSeen
 	p.mu.RUnlock()
 	args := []string{"--runtime", "runc"}
+	logical := make([]string, 0, len(indexes))
 	seen := map[int]bool{}
 	for _, n := range indexes {
 		c, ok := cards[n]
@@ -84,6 +85,7 @@ func (p *KunlunProber) runtimeInjectionForDriver(ctx context.Context, indexes []
 			return fail("selected Kunlun card health is not ready")
 		}
 		seen[n] = true
+		logical = append(logical, strconv.Itoa(len(logical)))
 		old, had := previous[n]
 		if !had {
 			return fail("Kunlun injection requires a successful probe baseline")
@@ -107,6 +109,7 @@ func (p *KunlunProber) runtimeInjectionForDriver(ctx context.Context, indexes []
 	return RuntimeInjection{
 		ManagedSelection: &RuntimeSelectionCleanup{Env: []string{"XPU_VISIBLE_DEVICES"}, DevicePaths: managedPaths},
 		DockerArgs:       args,
+		Env:              map[string]string{"XPU_VISIBLE_DEVICES": strings.Join(logical, ",")},
 	}
 }
 

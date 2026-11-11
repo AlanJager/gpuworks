@@ -65,7 +65,7 @@ func TestKunlunConsumesResolvedHostRDMA(t *testing.T) {
 		if launch.Env["NCCL_IB_HCA"] != "mlx5_1:1" {
 			t.Fatalf("selected rail changed: %v", launch.Env)
 		}
-		wantEnv := map[string]string{"BKCL_ENABLE_XDR": "1", "BKCL_RDMA_VERBS": "1", "BKCL_ENABLE_IBGDA": "0", "BKCL_SOCKET_IFNAME": "bond0"}
+		wantEnv := map[string]string{"BKCL_ENABLE_XDR": "1", "BKCL_RDMA_VERBS": "1", "BKCL_ENABLE_IBGDA": "0", "BKCL_SOCKET_IFNAME": "bond0", "XPU_VISIBLE_DEVICES": "0"}
 		if !reflect.DeepEqual(inj.Env, wantEnv) {
 			t.Fatalf("injected environment = %v, want %v", inj.Env, wantEnv)
 		}
@@ -110,8 +110,8 @@ func TestKunlunSingleNodeDoesNotInjectBKCLEnvironment(t *testing.T) {
 	if inj.UnsupportedReason != "" {
 		t.Fatal(inj.UnsupportedReason)
 	}
-	if len(inj.Env) != 0 {
-		t.Fatalf("single-node BKCL environment = %v", inj.Env)
+	if len(inj.Env) != 1 || inj.Env["XPU_VISIBLE_DEVICES"] != "0" {
+		t.Fatalf("single-node environment = %v", inj.Env)
 	}
 }
 
@@ -125,7 +125,7 @@ func TestKunlunSingleNodeMultiGPURequiresAndInjectsInterface(t *testing.T) {
 	if inj.UnsupportedReason != "" {
 		t.Fatal(inj.UnsupportedReason)
 	}
-	if len(inj.Env) != 1 || inj.Env["BKCL_SOCKET_IFNAME"] != "br_eno1_31" {
+	if len(inj.Env) != 2 || inj.Env["BKCL_SOCKET_IFNAME"] != "br_eno1_31" || inj.Env["XPU_VISIBLE_DEVICES"] != "0,1" {
 		t.Fatalf("single-node multi-GPU environment = %v", inj.Env)
 	}
 	req.Env["GLOO_SOCKET_IFNAME"] = "lo"

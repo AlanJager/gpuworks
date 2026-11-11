@@ -2,7 +2,7 @@
 
 ## 当前能力
 
-P800 PCIe / KL3 使用 `kunlunxin` 厂商和 `xre` 框架，已验证的运行时为 Linux amd64、Docker；需求列表或适配器条目不代表 nerdctl 已受支持。该组合支持整卡 TP（Tensor Parallelism，张量并行）、PP（Pipeline Parallelism，流水线并行）和引擎 DP（Data Parallelism，数据并行）。镜像与模型须支持所选组合；跨节点部署另须满足下文通信前提。PD、分区和 sleep 尚未开放。多个平台副本、引擎 DP 和跨机 TP 是不同拓扑。
+P800 PCIe / KL3 使用 `kunlunxin` 厂商和 `xre` 框架，已验证的运行时为 Linux amd64 上的 Docker 和 nerdctl；runveil 尚未开放。该组合支持整卡 TP（Tensor Parallelism，张量并行）、PP（Pipeline Parallelism，流水线并行）和引擎 DP（Data Parallelism，数据并行）。镜像与模型须支持所选组合；跨节点部署另须满足下文通信前提。PD、分区和 sleep 尚未开放。多个平台副本、引擎 DP 和跨机 TP 是不同拓扑。
 
 复用宿主已有 Docker daemon。独立 socket/data-root 不隔离宿主网络；不要在同一网络命名空间另起使用 `--bridge=none` 的 dockerd，这可能删除已有 `docker0`。镜像或推理测试不需要重启现有 Docker，离线探针使用容器级 `--network none`。
 
@@ -21,7 +21,7 @@ Qwen3-0.6B 和 Qwen3.8-27B 可使用仓库内的[可导入模板包](../../build
 1. 在两节点准备相同的已验证镜像。记录不可变摘要、引擎版本及镜像中的实际 Python/入口路径，不以同名 CUDA 兼容字段判断原生运行能力。
 2. 登记本地权重时填写完整仓库标识，例如 `deepseek-ai/DeepSeek-R1-Distill-Qwen-7B`。目录短名不是仓库标识；已有相同文件可以登记规范身份，无需复制或下载。
 3. 导入 spec 时，`weights.sources[].repo_id` 必须与模型 `source_id` 对应，`gpus.vendor` 为 `kunlunxin`，卡名谓词匹配 `P800 PCIe`。缺少 spec 或身份不对应会导致 Web 无兼容档位。
-4. spec 使用镜像中已验证的直接入口 `/opt/vllm025-venv/bin/vllm serve`，明确 dtype、上下文和显存参数。启动前脚本只清除 `XPU_VISIBLE_DEVICES`，容器逻辑编号由 `CUDA_VISIBLE_DEVICES=${LOCAL_VISIBLE_DEVICES}` 传入；不能把宿主编号当作容器逻辑编号。
+4. spec 使用镜像中已验证的直接入口 `/opt/vllm025-venv/bin/vllm serve`，明确 dtype、上下文和显存参数。agent 统一注入容器逻辑编号的 `XPU_VISIBLE_DEVICES`，模板中的 `CUDA_VISIBLE_DEVICES=${LOCAL_VISIBLE_DEVICES}` 也使用容器逻辑编号，不能把宿主编号当作容器逻辑编号。
 5. 单卡 spec 可明确固定 TP=1；跨机 spec 的 placement resolver 应核对每节点卡数，并把全局 TP 留给部署。两节点各两卡的请求使用 TP=4、PP=1、nnodes=2，而不是在 resolver 返回 TP=2。
 
 ## 单机 PP 与 DP
@@ -44,6 +44,8 @@ DP 镜像必须正确处理每个 rank 已分片的设备映射：当 `assigned_
 ## 验证与边界
 
 2026-11-10 的验收仅覆盖双 P800 宿主上的单卡生产 evaluate/create、网关 chat、旧设备映射清理和 agent 重启，这些检查均通过。单机多卡越过 loopback 接口问题后，仍被该环境的 XRE OAM/XLink 初始化错误阻断；跨机未测。PP 和引擎 DP 是已开放能力，不代表这些多卡拓扑已完成真机验收。
+
+2026-11-11 使用最终 `33d947…` 镜像再次通过 Docker 和 nerdctl 的单卡 evaluate/create、health 和 chat。该镜像的昆仑 vLLM 平台在模型加载前明确拒绝 `--enable-sleep-mode`，因此 sleep/wake 仍不可用。补入 NIXL 后，UCX agent 虽能初始化，但在注册 P800 KV 显存时将 VRAM 识别为 host memory 并返回 `NIXL_ERR_BACKEND`，因此 PD 也不可用；不能靠放开 GPUWorks 门禁绕过这些引擎限制。runveil 能完成选卡和模型加载，但当前镜像缺少 JITC 所需的昆仑 XTDK/`CLANG_PATH` 工具链，默认制品尚不能完成推理，故未开放。
 
 真实硬件验收应先验证每机单卡，再验证集体通信和双机部署。Web 创建时选择正确档位、两个节点和 TP=4/PP=1；核对每 rank 命令、模型/镜像获取来源，再验证 health、普通 HTTP、SSE DONE 和网页文本。仅握手成功或收到 HTTP 200 不等于返回有效文本。
 
