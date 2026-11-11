@@ -42,13 +42,7 @@ func (rig *kubeSourceRig) manifest(token string) string {
 func (rig *kubeSourceRig) poolsOf(uuid string) string {
 	rig.t.Helper()
 	rec := rig.do(rig.session, http.MethodGet, "/api/v1/kube/clusters", "")
-	var list struct {
-		Items []struct {
-			UUID    string   `json:"uuid"`
-			PoolIDs []string `json:"pool_ids"`
-		} `json:"items"`
-	}
-	list = decodeKube[struct {
+	list := decodeKube[struct {
 		Items []struct {
 			UUID    string   `json:"uuid"`
 			PoolIDs []string `json:"pool_ids"`
@@ -150,16 +144,7 @@ func TestEditingTheNodePoolsOfAnEntry(t *testing.T) {
 	}
 	inEntry := func() string {
 		rec := rig.do(rig.session, http.MethodGet, fmt.Sprintf("/api/v1/providers/%d/clusters", rig.provider), "")
-		var list struct {
-			Items []struct {
-				ExternalID string `json:"external_id"`
-				GPUPools   []struct {
-					ID      string `json:"id"`
-					InEntry bool   `json:"in_entry"`
-				} `json:"gpu_pools"`
-			} `json:"items"`
-		}
-		list = decodeKube[struct {
+		list := decodeKube[struct {
 			Items []struct {
 				ExternalID string `json:"external_id"`
 				GPUPools   []struct {

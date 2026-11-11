@@ -1,10 +1,11 @@
 package digitalocean
 
 import (
-	"gpuworks.ai/gpuworks/internal/server/provider"
 	"net/http"
 	"strings"
 	"testing"
+
+	"gpuworks.ai/gpuworks/internal/server/provider"
 )
 
 func TestAuthorizePublicKeyRegistersTheKeyAndKeepsTheOthers(t *testing.T) {

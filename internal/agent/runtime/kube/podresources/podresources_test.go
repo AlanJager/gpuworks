@@ -37,7 +37,7 @@ func device(resource string, ids ...string) []byte {
 		parts = append(parts, str(2, id))
 	}
 	// a topology field (3) the decoder must skip
-	parts = append(parts, field(3, field(1, concat(varint(1<<3|0), varint(0)))))
+	parts = append(parts, field(3, field(1, concat(varint(1<<3), varint(0)))))
 	return concat(parts...)
 }
 
@@ -47,7 +47,7 @@ func container(name string, devices ...[]byte) []byte {
 		parts = append(parts, field(2, d))
 	}
 	// cpu_ids (3) as packed varints and a varint field the decoder skips
-	parts = append(parts, field(3, concat(varint(2), varint(3))), concat(varint(9<<3|0), varint(7)))
+	parts = append(parts, field(3, concat(varint(2), varint(3))), concat(varint(9<<3), varint(7)))
 	return concat(parts...)
 }
 

@@ -196,16 +196,7 @@ func TestAClusterOfACloudAccountBecomesAnEntryOnce(t *testing.T) {
 	if !strings.Contains(after.Body.String(), `"entry":{"uuid":"`+created["uuid"].(string)+`","name":"ack-gpu"}`) {
 		t.Fatalf("clusters after the entry: %s", after.Body)
 	}
-	var listed struct {
-		Items []struct {
-			ExternalID string `json:"external_id"`
-			GPUPools   []struct {
-				ID      string `json:"id"`
-				InEntry bool   `json:"in_entry"`
-			} `json:"gpu_pools"`
-		} `json:"items"`
-	}
-	listed = decodeKube[struct {
+	listed := decodeKube[struct {
 		Items []struct {
 			ExternalID string `json:"external_id"`
 			GPUPools   []struct {

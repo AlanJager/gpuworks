@@ -427,16 +427,6 @@ func (f *fakeDO) addKey(t *testing.T, name, line string) int64 {
 	return f.nextID
 }
 
-func (f *fakeDO) keyNames() []string {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	var names []string
-	for _, k := range f.keys {
-		names = append(names, k["name"].(string))
-	}
-	return names
-}
-
 func (f *fakeDO) failPage(page string, status int) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

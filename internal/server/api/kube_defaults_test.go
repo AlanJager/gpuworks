@@ -99,13 +99,7 @@ func TestKubeClusterStalledIsComputedByTheServer(t *testing.T) {
 	}
 
 	rec := rig.do(rig.session, http.MethodGet, "/api/v1/kube/clusters", "")
-	var list struct {
-		Items []struct {
-			Name    string `json:"name"`
-			Stalled bool   `json:"stalled"`
-		} `json:"items"`
-	}
-	list = decodeKube[struct {
+	list := decodeKube[struct {
 		Items []struct {
 			Name    string `json:"name"`
 			Stalled bool   `json:"stalled"`
@@ -164,10 +158,7 @@ func TestKubeClusterOperationsAreDecidedByTheServer(t *testing.T) {
 	}
 
 	rec := rig.do(rig.session, http.MethodGet, "/api/v1/kube/clusters", "")
-	var list struct {
-		Items []map[string]any `json:"items"`
-	}
-	list = decodeKube[struct {
+	list := decodeKube[struct {
 		Items []map[string]any `json:"items"`
 	}](t, rec)
 	byName := map[string]string{}
