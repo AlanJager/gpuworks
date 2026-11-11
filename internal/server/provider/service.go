@@ -20,6 +20,9 @@ type Service struct {
 	box             *auth.Secretbox
 	readAgentBinary AgentBinaryReader
 	drivers         map[string]Driver
+	// sshPrecheck replaces the SSH precheck an install precheck runs; nil is
+	// the real one (provision.NewSSHPrechecker).
+	sshPrecheck provision.Prechecker
 }
 
 // NewService builds the provider service. box encrypts stored credentials.
@@ -36,6 +39,14 @@ func (s *Service) SetDriver(driver Driver) {
 		s.drivers = make(map[string]Driver)
 	}
 	s.drivers[driver.Name()] = driver
+}
+
+// SetSSHPrechecker replaces the SSH precheck that runs before an install,
+// before requests are served. A server keeps the real one; a harness whose
+// instances are fixtures, with no SSH server behind their addresses, answers
+// for them instead of waiting out a connection timeout per install.
+func (s *Service) SetSSHPrechecker(p provision.Prechecker) {
+	s.sshPrecheck = p
 }
 
 func (s *Service) driver(kind string) (Driver, bool) {
