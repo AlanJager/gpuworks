@@ -250,6 +250,14 @@ func NormalizeContract(contract Contract) (Contract, error) {
 		if !contains(definition.RequestEncodings, operation.RequestEncoding) {
 			return Contract{}, fmt.Errorf("API operation %s does not support request encoding %q", operation.Type, operation.RequestEncoding)
 		}
+		if operation.MaxReferenceImages != 0 {
+			if operation.Type != OperationImageEdit {
+				return Contract{}, fmt.Errorf("API operation %s: max_reference_images is only valid for %s", operation.Type, OperationImageEdit)
+			}
+			if operation.MaxReferenceImages < 1 || operation.MaxReferenceImages > maxReferenceImagesCeiling {
+				return Contract{}, fmt.Errorf("API operation %s: max_reference_images must be between 1 and %d", operation.Type, maxReferenceImagesCeiling)
+			}
+		}
 		if err := normalizeRequestDeclaration(operation, definition); err != nil {
 			return Contract{}, fmt.Errorf("API operation %s: %w", operation.Type, err)
 		}

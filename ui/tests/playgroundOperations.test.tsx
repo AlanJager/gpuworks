@@ -98,6 +98,7 @@ const catalog: PlaygroundCatalog = {
       { ...operation("openai.image.generate", "/v1/images/generations", "image", "image"), inputs: [{ name: "size", kind: "select" as const, options: ["1024x1024", "2048x2048", "2720x1536"], default: "2048x2048" }] },
       { ...operation("openai.image.edit", "/v1/images/edits", "image", "image"), request_encoding: "multipart", request_encodings: ["multipart"], inputs: [{ name: "size", kind: "select" as const, options: ["2048x2048", "2720x1536"], default: "2720x1536" }] },
     ]),
+    model("image-multi-edit-model", [{ ...operation("openai.image.edit", "/v1/images/edits", "image", "image"), request_encoding: "multipart", request_encodings: ["multipart"], max_reference_images: 3 }]),
     model("image-edit-model", [{ ...operation("openai.image.edit", "/v1/images/edits", "image", "image"), request_encoding: "multipart", request_encodings: ["multipart"] }]),
     model("video-model", [{ ...operation("openai.video.generate", "/v1/videos", "video", "video", "async"), async: asyncVideo }]),
     model("realtime-model", [{ ...operation("openai.realtime", "/v1/realtime", "realtime", "websocket", "realtime"), request_encodings: ["websocket"] }]),
@@ -266,6 +267,42 @@ test("Image sizes come from the operation's declared options and default", async
   await waitFor(() => assert.equal(bodies[0]?.size, "2720x1536"));
   await user.click(screen.getByText("Image editing"));
   await waitFor(() => assert.ok(screen.getByRole("combobox", { name: "Image size" }).closest(".ant-select")?.textContent?.includes("2720x1536")));
+});
+
+test("An edit that takes several reference images sends them in the chosen order, up to the server's limit", async () => {
+  let request: FormData | undefined;
+  globalThis.fetch = (async (input, init) => {
+    if (String(input).endsWith("/v1/images/edits")) request = init?.body as FormData;
+    return jsonResponse({ data: [{ b64_json: "iVBORw0KGgo=" }] });
+  }) as typeof fetch;
+  const user = userEvent.setup();
+  const file = (name: string, byte: number) => new File([Uint8Array.from([137, 80, 78, 71, byte])], name, { type: "image/png" });
+  renderAt(<ImagePage catalog={catalog} />, "/playground/image?model=image-multi-edit-model");
+  const picker = screen.getByLabelText("Input image") as HTMLInputElement;
+  assert.equal(picker.multiple, true);
+  assert.ok(screen.getByText(/Up to 3 images/));
+  await user.upload(picker, [file("cabin.png", 1), file("cat.png", 2)]);
+  const list = await screen.findByRole("list", { name: "Reference images" });
+  await waitFor(() => assert.equal(list.querySelectorAll("li").length, 2));
+  assert.deepEqual([...list.querySelectorAll("img")].map((image) => image.getAttribute("alt")), ["Picture 1", "Picture 2"]);
+  assert.equal((screen.getByRole("button", { name: "Move Picture 1 earlier" }) as HTMLButtonElement).disabled, true);
+  // cat.png becomes Picture 1.
+  await user.click(screen.getByRole("button", { name: "Move Picture 2 earlier" }));
+  await waitFor(() => assert.ok(list.querySelectorAll("li")[0].textContent?.includes("cat.png")));
+  // Two more would make four; the third is kept and the fourth refused.
+  await user.upload(picker, [file("lake.png", 3), file("extra.png", 4)]);
+  await waitFor(() => assert.equal(list.querySelectorAll("li").length, 3));
+  assert.ok(!list.textContent?.includes("extra.png"));
+  assert.equal(picker.disabled, true);
+  await user.click(screen.getByRole("button", { name: "Remove Picture 2" }));
+  await waitFor(() => assert.equal(list.querySelectorAll("li").length, 2));
+  assert.equal(picker.disabled, false);
+  await user.click(screen.getByRole("button", { name: "Edit Image" }));
+  await waitFor(() => assert.ok(request));
+  const parts = request!.getAll("image");
+  assert.equal(parts.length, 2);
+  const bytes = await Promise.all(parts.map(async (part) => new Uint8Array(await (part as Blob).arrayBuffer())[4]));
+  assert.deepEqual(bytes, [2, 3], "cat.png then lake.png, in the order shown");
 });
 
 test("A model declaring both image operations switches from generation to editing", async () => {

@@ -118,6 +118,7 @@ specs:
       endpoint: /v1/images/edits
       mode: sync
       request_encoding: multipart
+      max_reference_images: 9
       inputs:
       - name: size
         kind: select
@@ -244,6 +245,7 @@ specs:
       endpoint: /v1/images/edits
       mode: sync
       request_encoding: multipart
+      max_reference_images: 9
       inputs:
       - name: size
         kind: select
@@ -369,6 +371,7 @@ specs:
       endpoint: /v1/images/edits
       mode: sync
       request_encoding: multipart
+      max_reference_images: 9
       inputs:
       - name: size
         kind: select
@@ -495,6 +498,7 @@ specs:
       endpoint: /v1/images/edits
       mode: sync
       request_encoding: multipart
+      max_reference_images: 9
       inputs:
       - name: size
         kind: select
@@ -620,6 +624,7 @@ specs:
       endpoint: /v1/images/edits
       mode: sync
       request_encoding: multipart
+      max_reference_images: 9
       inputs:
       - name: size
         kind: select
@@ -745,6 +750,7 @@ specs:
       endpoint: /v1/images/edits
       mode: sync
       request_encoding: multipart
+      max_reference_images: 9
       inputs:
       - name: size
         kind: select
