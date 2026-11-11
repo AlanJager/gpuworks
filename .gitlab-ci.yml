@@ -855,7 +855,7 @@ release-agent-image:
   interruptible: false
   timeout: 30m
   variables:
-    DOCKER_GO_IMAGE: "golang:1.26@sha256:670bb5aa5349ae03b8516764718486f4f16399134bdc9acd0c46a23f043ab05c"
+    DOCKER_GO_IMAGE: "golang:1.26.11@sha256:7af425da11f4fc1a9308eb704369e3f6d1c44e35bac0f874a59ade3f20fdc07e"
     GPUWORKS_AGENT_IMAGE_REPOS: "docker.io/gpuworks/gpuworks-agent quay.io/gpuworks/gpuworks-agent swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-agent"
   script:
     # Mounted at its own host path: the docker CLI image that pushes is started
