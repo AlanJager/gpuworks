@@ -96,7 +96,10 @@ function NodeFileActions({ model, row, isAdmin, onChanged }: { model: Model; row
         ? api.downloadModelToStorage(model.id, { storage_id: row.storage_id, node_uuids: [row.node_uuid] })
         : api.downloadModel(model.id, row.node_uuid), t("presenceMessage.downloadStarted"));
     }
-    return run(() => api.syncModel(model.id, row.node_uuid, row.source_node_uuid, row.last_rate_limit_kib_s ?? 0), t("presenceMessage.syncStarted"));
+    // Disk-blocked transfers retain their current limit; its omitted zero
+    // means unlimited, not permission to restore an older archived limit.
+    const rateLimit = row.state === "insufficient_disk_space" ? row.rate_limit_kib_s ?? 0 : row.last_rate_limit_kib_s ?? 0;
+    return run(() => api.syncModel(model.id, row.node_uuid, row.source_node_uuid, rateLimit), t("presenceMessage.syncStarted"));
   };
   return <Flex wrap>
     {row.state === "download_required" && <Tooltip title={t("action.internetDownload")} trigger={["hover", "focus"]}>

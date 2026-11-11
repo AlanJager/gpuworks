@@ -435,7 +435,9 @@ test("download cancellation errors preserve the task and do not announce a chang
 for (const scenario of [
   { name: "a public download into its selected storage", row: { storage_id: 7, node_uuid: "n-selected", cache: false, acquisition: "download" }, path: "/api/v1/models/9/download", body: { storage_id: 7, node_uuids: ["n-selected"] } },
   { name: "a legacy public download on its original node", row: { node_uuid: "n-legacy", cache: false, acquisition: "download" }, path: "/api/v1/models/9/download", body: { node_uuid: "n-legacy" } },
-  { name: "a peer transfer from its original source and rate", row: { storage_id: 7, node_uuid: "n-selected", cache: false, acquisition: "peer", source_node_uuid: "n-origin", last_rate_limit_kib_s: 512 }, path: "/api/v1/models/9/nodes/n-selected/sync", body: { source_node: "n-origin", rate_limit_kib_s: 512 } },
+  { name: "a peer transfer with its current rate and no archived rate", row: { storage_id: 7, node_uuid: "n-selected", cache: false, acquisition: "peer", source_node_uuid: "n-origin", rate_limit_kib_s: 512 }, path: "/api/v1/models/9/nodes/n-selected/sync", body: { source_node: "n-origin", rate_limit_kib_s: 512 } },
+  { name: "a peer transfer with its current rate ahead of an old archived rate", row: { storage_id: 7, node_uuid: "n-selected", cache: false, acquisition: "peer", source_node_uuid: "n-origin", rate_limit_kib_s: 512, last_rate_limit_kib_s: 1024 }, path: "/api/v1/models/9/nodes/n-selected/sync", body: { source_node: "n-origin", rate_limit_kib_s: 512 } },
+  { name: "an unlimited peer transfer whose omitted current rate must not reuse an old limit", row: { storage_id: 7, node_uuid: "n-selected", cache: false, acquisition: "peer", source_node_uuid: "n-origin", last_rate_limit_kib_s: 512 }, path: "/api/v1/models/9/nodes/n-selected/sync", body: { source_node: "n-origin", rate_limit_kib_s: 0 } },
 ]) {
   test(`disk-space Retry preserves ${scenario.name} on the HTTP wire`, async () => {
     stubMe("admin");
