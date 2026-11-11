@@ -18,6 +18,8 @@ After=network-online.target
 EnvironmentFile=/etc/gitsync.env
 ExecStart=/usr/local/bin/gitsync -cache /var/lib/gitsync/repo.git
 StateDirectory=gitsync
+# git reads its per-user config from HOME; the system user has none.
+Environment=HOME=/var/lib/gitsync
 Restart=always
 RestartSec=30
 User=gitsync
