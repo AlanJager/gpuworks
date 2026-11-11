@@ -172,6 +172,7 @@
     "placement": {
       "preparingModel": "正在准备模型，{{count}} 个副本尚未启动",
       "preparationFailed": "模型准备失败，{{count}} 个副本尚未启动",
+      "diskFull": "模型存储空间不足，{{count}} 个副本尚未启动",
       "waiting": "{{count}} 个副本正在等待节点",
       "candidates": "候选节点",
       "requirements": "节点条件",
@@ -685,7 +686,7 @@
     "reason": {
       "MODEL_PREPARATION_WAITING": "等待准备进度更新",
       "MODEL_NODE_OFFLINE": "节点连接已断开",
-      "MODEL_CACHE_DISK_FULL": "缓存磁盘空间不足",
+      "MODEL_CACHE_DISK_FULL": "模型存储空间不足",
       "MODEL_PREPARATION_FAILED": "模型准备失败",
       "MODEL_STORAGE_UNRESPONSIVE": "存储无响应",
       "MODEL_COPY_STALLED": "复制长时间无进展",

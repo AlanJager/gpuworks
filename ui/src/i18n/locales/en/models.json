@@ -261,6 +261,7 @@
     "present": "Available",
     "registered": "Registered",
     "failed": "Failed",
+    "insufficientDisk": "Insufficient disk space",
     "downloadRequired": "Action required",
     "notDownloaded": "Not downloaded",
     "missing": "Missing"

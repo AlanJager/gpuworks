@@ -4159,7 +4159,7 @@ export const api = {
   renameNode: (uuid: string, name: string) =>
     sendJSON<Node>("PATCH", `/api/v1/nodes/${uuid}/name`, { name }),
   deleteNode: (uuid: string, force = false) =>
-    sendJSON<void>("DELETE", `/api/v1/nodes/${encodeURIComponent(uuid)}${force ? "?force=true" : ""}`),
+    sendJSON<{ status: "deleted"; agent_uninstalled: boolean }>("DELETE", `/api/v1/nodes/${encodeURIComponent(uuid)}${force ? "?force=true" : ""}`),
   upgradeNode: (uuid: string) =>
     sendJSON<{ status: string; run_id?: number }>("POST", `/api/v1/nodes/${uuid}/upgrade`),
   precheckNode: (body: SSHPrecheckRequest) =>

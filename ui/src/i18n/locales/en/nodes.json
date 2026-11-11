@@ -86,6 +86,7 @@
     "confirm": "Delete this node?",
     "description": "Stop deployment instances on this node first.",
     "uninstallDescription": "Normal removal uninstalls the agent over SSH before deleting the node record.",
+    "noSSHDescription": "This node has no saved SSH credentials. Configure SSH credentials for normal deletion, or uninstall the agent manually and then select Force removal to delete its management record.",
     "force": "Force removal: only delete management records",
     "forceWarning": "The agent may still be running on the node. Stop it manually when the node is accessible."
   },

@@ -74,8 +74,13 @@ await i18n.use(initReactI18next).init({
 
 const { MemoryRouter } = await import("react-router-dom");
 const { act, cleanup, fireEvent, render, screen, waitFor, within } = await import("@testing-library/react");
+const { message } = await import("antd");
 const { default: userEvent } = await import("@testing-library/user-event");
 const { api } = await import("../src/api.ts");
+const { default: requestI18n } = await import("../src/i18n/index.ts");
+requestI18n.addResourceBundle("en", "common", i18n.getResourceBundle("en", "common"), true, true);
+await requestI18n.changeLanguage("en");
+const originalFetch = globalThis.fetch;
 const { default: NodesPage } = await import("../src/pages/NodesPage.tsx");
 const { DETAIL_DRAWER_WIDTH } = await import("../src/components/detail/DetailDrawer.tsx");
 const { runtimeChoices, runtimeLabel } = await import("../src/nodeDisplay.ts");
@@ -89,7 +94,7 @@ const onlineNode: Node = {
   name: "gpu-a100-node-01",
   os: "linux", kernel: "5.15.0", arch: "amd64", cpu_model: "EPYC 7543",
   cpu_cores: 128, mem_total_gib: 1024, disk_total_gib: 2048, gpu_count: 8,
-  agent_version: "0.9.7", gpus: [],
+  agent_version: "0.9.7", has_ssh_credential: true, gpus: [],
 };
 
 const offlineNode: Node = {
@@ -187,9 +192,13 @@ function stubApi(nodes: Node[]) {
   api.engines = async () => list([]);
 }
 
-afterEach(() => {
-  cleanup();
+afterEach(async () => {
+  await act(async () => {
+    cleanup();
+    message.destroy();
+  });
   Object.assign(api, originals);
+  globalThis.fetch = originalFetch;
 });
 
 function renderPage() {
@@ -281,9 +290,12 @@ test("the name opens the detail; row actions are Terminal and a More dropdown; T
 });
 
 test("delete lives behind the More dropdown and asks for confirmation", async () => {
-  stubApi([onlineNode]);
+  stubApi([{ ...onlineNode, has_ssh_credential: undefined } as unknown as Node]);
   let deleted: string | undefined;
-  api.deleteNode = async (uuid: string) => { deleted = uuid; };
+  api.deleteNode = async (uuid: string) => {
+    deleted = uuid;
+    return { status: "deleted", agent_uninstalled: true };
+  };
   renderPage();
   await waitFor(() => assert.ok(screen.getByText("gpu-a100-node-01")));
   const row = rowOf("gpu-a100-node-01");
@@ -292,6 +304,8 @@ test("delete lives behind the More dropdown and asks for confirmation", async ()
   menuItem.click();
   await waitFor(() => assert.ok(deleteModal()));
   assert.ok(screen.getByText("Stop deployment instances on this node first."));
+  assert.ok(screen.getByText("Normal removal uninstalls the agent over SSH before deleting the node record."));
+  assert.ok(screen.getByRole("checkbox", { name: /Force removal/ }));
   // Cancel must leave the node untouched. (Whether the dialog's leave motion
   // finishes is antd's own concern in jsdom; assert only the functional bit.)
   deleteModalButtons().find((b) => b.textContent === "Cancel")!.click();
@@ -301,7 +315,10 @@ test("delete lives behind the More dropdown and asks for confirmation", async ()
 test("confirming the dialog deletes the node and reports success", async () => {
   stubApi([onlineNode]);
   let deleted: string | undefined;
-  api.deleteNode = async (uuid: string) => { deleted = uuid; };
+  api.deleteNode = async (uuid: string) => {
+    deleted = uuid;
+    return { status: "deleted", agent_uninstalled: true };
+  };
   renderPage();
   await waitFor(() => assert.ok(screen.getByText("gpu-a100-node-01")));
   const row = rowOf("gpu-a100-node-01");
@@ -316,7 +333,10 @@ test("confirming the dialog deletes the node and reports success", async () => {
 test("force removal is explicit and warns that the remote agent may still run", async () => {
   stubApi([onlineNode]);
   let request: { uuid: string; force: boolean } | undefined;
-  api.deleteNode = async (uuid: string, force = false) => { request = { uuid, force }; };
+  api.deleteNode = async (uuid: string, force = false) => {
+    request = { uuid, force };
+    return { status: "deleted", agent_uninstalled: false };
+  };
   renderPage();
   await waitFor(() => screen.getByText("gpu-a100-node-01"));
   rowOf("gpu-a100-node-01").getByRole("button", { name: "More" }).click();
@@ -332,12 +352,73 @@ test("force removal is explicit and warns that the remote agent may still run", 
   await waitFor(() => screen.getByText("Management records deleted; the agent may still be running"));
 });
 
+test("normal deletion without SSH retains the dialog and offers an explicit force retry", async () => {
+  stubApi([{ ...onlineNode, has_ssh_credential: false }]);
+  const requests: string[] = [];
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    assert.equal(init?.method, "DELETE");
+    const url = String(input);
+    requests.push(url);
+    if (url.endsWith("?force=true")) return Response.json({ status: "deleted", agent_uninstalled: false });
+    return new Response('{"code":"NODE_DELETE_SSH_REQUIRED","error":"normal deletion requires saved SSH credentials to uninstall the agent; node retained. Configure SSH and retry, or uninstall the agent manually and use force=true to remove only its management record"}', { status: 409, headers: { "Content-Type": "application/json" } });
+  }) as typeof fetch;
+  renderPage();
+  await waitFor(() => screen.getByText("gpu-a100-node-01"));
+  rowOf("gpu-a100-node-01").getByRole("button", { name: "More" }).click();
+  (await waitFor(() => screen.getByRole("menuitem", { name: /Delete/ }))).click();
+  const dialog = within(await waitFor(() => deleteModal()));
+  assert.match(dialog.getByRole("alert").textContent ?? "", /Configure SSH credentials for normal deletion/);
+  assert.ok(dialog.getByText("Normal removal uninstalls the agent over SSH before deleting the node record."));
+  const checkbox = dialog.getByRole("checkbox", { name: /Force removal/ }) as HTMLInputElement;
+  assert.equal(checkbox.checked, false);
+  dialog.getByRole("button", { name: "Delete", exact: true }).click();
+  const explanation = "Normal deletion requires SSH to uninstall the agent, but this node has no saved SSH credentials. The node record was retained. Configure SSH credentials and retry, or uninstall the agent manually and then select Force removal to delete its management record.";
+  await screen.findByText(`Failed to delete node: ${explanation}`);
+  assert.deepEqual(requests, [`/api/v1/nodes/${onlineNode.uuid}`]);
+  assert.ok(deleteModal());
+  const retainedRow = within(screen.getByRole("table", { hidden: true })).getByText("gpu-a100-node-01").closest("tr");
+  assert.ok(retainedRow, "failed deletion retained the node row");
+  checkbox.click();
+  await waitFor(() => assert.equal(checkbox.checked, true));
+  assert.ok(dialog.getByText("The agent may still be running on the node. Stop it manually when the node is accessible."));
+  const previousMessages = new Set(screen.queryAllByText("Management records deleted; the agent may still be running"));
+  dialog.getByRole("button", { name: "Delete", exact: true }).click();
+  await waitFor(() => assert.deepEqual(requests, [`/api/v1/nodes/${onlineNode.uuid}`, `/api/v1/nodes/${onlineNode.uuid}?force=true`]));
+  await waitFor(() => {
+    const newMessage = screen.queryAllByText("Management records deleted; the agent may still be running")
+      .find((element) => !previousMessages.has(element));
+    assert.ok(newMessage, "the current deletion reported that its agent remains installed");
+  });
+});
+
+test("SSH uninstall failure explains recovery steps while keeping the deletion dialog open", async () => {
+  stubApi([onlineNode]);
+  const requests: string[] = [];
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    assert.equal(init?.method, "DELETE");
+    requests.push(String(input));
+    return new Response('{"code":"NODE_UNINSTALL_UNCONFIRMED","error":"agent uninstall over SSH was not confirmed; node and SSH credentials retained. Fix SSH and retry, or uninstall the agent manually and use force=true to remove only its management record: SSH unreachable","params":{"detail":"SSH unreachable"}}', { status: 409, headers: { "Content-Type": "application/json" } });
+  }) as typeof fetch;
+  renderPage();
+  await waitFor(() => screen.getByText("gpu-a100-node-01"));
+  rowOf("gpu-a100-node-01").getByRole("button", { name: "More" }).click();
+  (await waitFor(() => screen.getByRole("menuitem", { name: /Delete/ }))).click();
+  within(await waitFor(() => deleteModal())).getByRole("button", { name: "Delete", exact: true }).click();
+  const explanation = "Normal deletion could not confirm that the agent was uninstalled over SSH. The node and SSH credentials were retained. Fix the SSH connection or credentials and retry, or uninstall the agent manually and then select Force removal to delete its management record. Details: SSH unreachable";
+  await screen.findByText(`Failed to delete node: ${explanation}`);
+  assert.deepEqual(requests, [`/api/v1/nodes/${onlineNode.uuid}`]);
+  assert.ok(deleteModal());
+  const retainedRow = within(screen.getByRole("table", { hidden: true })).getByText("gpu-a100-node-01").closest("tr");
+  assert.ok(retainedRow, "failed deletion retained the node row");
+});
+
 test("uninstall failure keeps the dialog open and allows an explicit force retry", async () => {
   stubApi([onlineNode]);
   const requests: boolean[] = [];
   api.deleteNode = async (_uuid: string, force = false) => {
     requests.push(force);
     if (!force) throw new Error("SSH unreachable; node retained");
+    return { status: "deleted", agent_uninstalled: false };
   };
   renderPage();
   await waitFor(() => screen.getByText("gpu-a100-node-01"));
@@ -357,7 +438,11 @@ test("the delete dialog prevents duplicate submissions while SSH uninstall is pe
   stubApi([onlineNode]);
   let finish!: () => void;
   let requests = 0;
-  api.deleteNode = async () => { requests++; await new Promise<void>((resolve) => { finish = resolve; }); };
+  api.deleteNode = async () => {
+    requests++;
+    await new Promise<void>((resolve) => { finish = resolve; });
+    return { status: "deleted", agent_uninstalled: true };
+  };
   renderPage();
   await waitFor(() => screen.getByText("gpu-a100-node-01"));
   rowOf("gpu-a100-node-01").getByRole("button", { name: "More" }).click();

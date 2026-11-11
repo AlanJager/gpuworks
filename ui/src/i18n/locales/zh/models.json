@@ -261,6 +261,7 @@
     "present": "可用",
     "registered": "已登记",
     "failed": "失败",
+    "insufficientDisk": "磁盘空间不足",
     "downloadRequired": "等待选择",
     "notDownloaded": "未下载",
     "missing": "已丢失"

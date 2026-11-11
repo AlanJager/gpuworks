@@ -30,6 +30,7 @@ const (
 	ErrorNodeAcceleratorHasInstances            = "NODE_ACCELERATOR_HAS_INSTANCES"
 	ErrorNodeDeleteHasInstances                 = "NODE_DELETE_HAS_INSTANCES"
 	ErrorNodeDeleteCacheBusy                    = "NODE_DELETE_CACHE_BUSY"
+	ErrorNodeDeleteSSHRequired                  = "NODE_DELETE_SSH_REQUIRED"
 	ErrorNodeUninstallUnconfirmed               = "NODE_UNINSTALL_UNCONFIRMED"
 	ErrorNodeDeleteCleanupFailed                = "NODE_DELETE_CLEANUP_FAILED"
 	ErrorAuthNotConfigured                      = "AUTH_NOT_CONFIGURED"

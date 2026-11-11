@@ -238,7 +238,7 @@ Before manual uninstallation, add `--dry-run --json` to the same command to insp
 
 1. Stop or move the deployment instances off the node first.
 2. Select **More → Delete** in the node list. Normal removal uninstalls the corresponding agent using saved SSH credentials, then deletes the management record only after success is confirmed. Other nodes on the same host are unaffected.
-3. Confirm that the node is removed from the list. If SSH is unreachable, credentials are missing, or the uninstall result cannot be confirmed, the node and credentials are retained. Fix the issue and retry.
+3. Confirm that the node is removed from the list. Normal removal requires saved SSH credentials. If none are configured, the platform retains the node and prompts you to configure SSH and retry. For manually registered nodes that do not support SSH, uninstall the agent manually on the node, then select **Force removal: only delete management records**. If SSH fails or uninstallation cannot be confirmed, the node and credentials are also retained. Fix SSH and retry, or confirm that manual uninstallation has completed before force removal.
 
 If the node is unreachable, you can explicitly select **Force removal: only delete management records**. This skips remote uninstallation, so the agent may still be running.
 Uninstall it manually after you regain access to the node. Force removal still cannot delete a node that has instances. If an older agent on the node cannot stop

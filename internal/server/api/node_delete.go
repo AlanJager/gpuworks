@@ -77,9 +77,14 @@ func (a *apiHandlers) deleteNode(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if !force {
+		if !node.HasSSHCredential {
+			writeProductError(w, http.StatusConflict, ErrorNodeDeleteSSHRequired,
+				"normal deletion requires saved SSH credentials to uninstall the agent; node retained. Configure SSH and retry, or uninstall the agent manually and use force=true to remove only its management record", nil)
+			return
+		}
 		if err := a.uninstallNode(r.Context(), node); err != nil {
 			writeProductError(w, http.StatusConflict, ErrorNodeUninstallUnconfirmed,
-				"agent uninstall was not confirmed; node retained: "+err.Error(), map[string]any{"detail": err.Error()})
+				"agent uninstall over SSH was not confirmed; node and SSH credentials retained. Fix SSH and retry, or uninstall the agent manually and use force=true to remove only its management record: "+err.Error(), map[string]any{"detail": err.Error()})
 			return
 		}
 	}
