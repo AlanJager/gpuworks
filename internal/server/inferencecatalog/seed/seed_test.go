@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"io/fs"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"testing"
 
@@ -269,5 +270,62 @@ func TestEmbeddedCatalogNamesEverySpecInBothLanguages(t *testing.T) {
 				t.Errorf("%s spec %s still sets the retired display_profile / display_target", model.ModelID, spec.Name)
 			}
 		}
+	}
+}
+
+// The catalog every caller gets is decoded from the copy loaded once per
+// process. It must be exactly what loading the embedded package yields, and
+// no caller's edits may reach the next caller.
+func TestEmbeddedCatalogCopyIsExact(t *testing.T) {
+	loaded, err := embeddedPackage()
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, digest, err := CatalogWithDigest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(first, loaded.Catalog) {
+		t.Fatal("the cached catalog differs from the embedded package's: a catalog field does not survive JSON")
+	}
+	root, err := embeddedPackageFS()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want, err := inferencecatalog.PackageDigest(root); err != nil || digest != want {
+		t.Fatalf("digest = %q, want %q (%v)", digest, want, err)
+	}
+	if len(first.Models) == 0 || len(first.Models[0].Specs) == 0 {
+		t.Fatal("the embedded catalog has no model with a spec")
+	}
+	first.Models[0].ModelID = "edited"
+	first.Models[0].Specs[0].Engine = "edited"
+	first.Models = append(first.Models[:1], first.Models[2:]...)
+	second, err := Catalog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(second, loaded.Catalog) {
+		t.Fatal("an edit to one caller's catalog reached the next caller")
+	}
+
+	archive, err := Archive()
+	if err != nil {
+		t.Fatal(err)
+	}
+	archive[0] ^= 0xff
+	published, publishedDigest, _, err := Published()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if published[0] == archive[0] || publishedDigest != digest {
+		t.Fatal("an edit to one caller's archive reached the next caller")
+	}
+	unpacked, err := inferencecatalog.ReadPackageArchive(bytes.NewReader(published))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := inferencecatalog.PackageDigest(unpacked.FS); err != nil || got != digest {
+		t.Fatalf("archive digest = %q, want %q (%v)", got, digest, err)
 	}
 }
