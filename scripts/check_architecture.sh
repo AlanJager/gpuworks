@@ -426,9 +426,8 @@ fi
 # from raising a limit in scripts/arch-constraints.txt without saying why,
 # since a raised limit still "passes" its own new value. This section catches
 # that by comparing the file against the copy at the merge base with
-# origin/master (or, on a GitLab merge-request pipeline, against
-# $CI_MERGE_REQUEST_DIFF_BASE_SHA — see core-test in .gitlab-ci.yml for the
-# checkout this runs in). A key that loosened without a trailing
+# origin/master (or, when CI names the merge request's base commit, against
+# $GPUWORKS_ARCH_BASELINE; the checkout must then hold that commit). A key that loosened without a trailing
 # `# raised: <reason>` comment fails; a key added or removed on this branch is
 # not a regression.
 echo "budget regressions vs baseline (scripts/arch-constraints.txt):"
@@ -438,9 +437,9 @@ echo "budget regressions vs baseline (scripts/arch-constraints.txt):"
 # a failed git call escape under `set -e`: every risky command sits in an
 # `if`/`||` so this function's own failure path is the only way out.
 resolve_arch_baseline() {
-  if [ -n "${CI_MERGE_REQUEST_DIFF_BASE_SHA:-}" ]; then
-    if git cat-file -e "${CI_MERGE_REQUEST_DIFF_BASE_SHA}^{commit}" 2>/dev/null; then
-      printf '%s\n' "$CI_MERGE_REQUEST_DIFF_BASE_SHA"
+  if [ -n "${GPUWORKS_ARCH_BASELINE:-}" ]; then
+    if git cat-file -e "${GPUWORKS_ARCH_BASELINE}^{commit}" 2>/dev/null; then
+      printf '%s\n' "$GPUWORKS_ARCH_BASELINE"
       return 0
     fi
   fi

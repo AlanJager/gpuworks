@@ -165,6 +165,31 @@ Wait for installed servers to upgrade before switching to the new private key fo
 
 When creating buckets, note that both object storage providers enable bucket-level “Block public access” by default. Disable it and set the bucket to public read.
 
+### GitHub Actions Releases
+
+`.github/workflows/release.yml` implements the same flow on GitHub, with the same triggers and channel
+rules: every push to master builds `nightly` (the release id is the 8-character short commit), a
+`vYY.M.PATCH` tag builds `release`, and any other tag fails.
+
+1. The `meta` job fixes the release id, the channel and one build time for the whole run
+   (`GPUWORKS_BUILT_AT`, the counterpart of GitLab's pipeline creation time);
+2. The gates call `ci.yml` in `release_gates` mode, which runs only the UI build, unit, vet, lint and the
+   CompShare offline contracts, matching the needs of GitLab's `.release-build`; the UI suite and L2/L3 are
+   not waited for;
+3. Four build jobs package one archive each by OS and architecture, embedding the UI the gates built;
+4. A version tag also calls `docs.yml` to build the docs site, then prints the handbooks in both languages;
+5. The `publish` job merges the four outputs (plus the PDFs for a tag) and runs `scripts/publish_dist.sh`;
+6. A version tag also gets a GitHub release carrying the four archives, a `SHA256SUMS` covering all of them
+   and the PDFs, with notes from `docs-en/releases/<tag>.md`.
+
+GitLab remains the only publisher to the distribution sources. The `publish` job runs only when the
+repository variable `GPUWORKS_DIST_PUBLISH` is `true`; at the switch, turn off GitLab's `release-publish`
+first and then set the variable, so the two never publish the same channel at once. The publish
+credentials and the signing key are secrets of the `distribution` environment (named as the CI variables
+above), whose deployment rules admit only master and `v*` tags; a tag ruleset must also restrict pushing
+`v*` tags to maintainers, the counterpart of GitLab's protected tags. The docs site build needs the
+repository secret `WEBSITE_REPO` (a clone URL of the OINK theme repository carrying a read-only token).
+
 ## Embedded Native Assets
 
 Embedded native assets include the runtime libraries, tools, and probe images listed below. They are not ordinary Go source code,

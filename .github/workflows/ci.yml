@@ -5,13 +5,24 @@
 # the mainland mirrors or host-side caches the GitLab runners need apply.
 #
 # Nothing here uses a secret or a self-hosted runner, so a pull request from a
-# fork runs with the same read-only token as any other. Cloud and hardware
-# acceptance (L4), release publishing and the docs build stay in GitLab.
+# fork runs with the same read-only token as any other. The docs build and the
+# UI walk have workflows of their own (docs.yml, ui-check.yml), the release
+# packages release.yml, which calls this workflow for its gates. Cloud and
+# hardware acceptance (L4) stays in GitLab.
 name: ci
 
 on:
   pull_request:
   workflow_dispatch:
+  # release.yml: with release_gates only the fast deterministic gates run, the
+  # ones .release-build needs in .gitlab-ci.yml. The UI suite and L2/L3 flake
+  # often enough that requiring them would skip nightly packages over a
+  # local-timing failure.
+  workflow_call:
+    inputs:
+      release_gates:
+        type: boolean
+        default: false
   # While GitLab stays authoritative only master reaches this mirror, so a
   # nightly run on it is what gets compared with GitLab's pipeline for the
   # same commit. 03:07 Asia/Shanghai: just after GitLab's nightly starts and
@@ -22,8 +33,10 @@ on:
 permissions:
   contents: read
 
+# github.workflow names the caller under workflow_call, so the release run on
+# master never cancels the nightly run of this workflow on it, or the reverse.
 concurrency:
-  group: ci-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 env:
@@ -59,6 +72,7 @@ jobs:
   # The suite runs one test file at a time on a 2-core runner and takes
   # over an hour unsplit; four shards each finish in about a quarter.
   ui-test:
+    if: ${{ !inputs.release_gates }}
     strategy:
       fail-fast: false
       matrix:
@@ -127,6 +141,21 @@ jobs:
           path: internal/server/webui/dist/
       - run: CGO_ENABLED=0 go vet ./...
 
+  lint:
+    needs: ui
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - uses: actions/download-artifact@v5
+        with:
+          name: webui-dist
+          path: internal/server/webui/dist/
+      - run: make lint
+
   compshare-offline-contracts:
     needs: ui
     runs-on: ubuntu-24.04
@@ -147,6 +176,7 @@ jobs:
   # any other daemon) and the suite in a golang container, which also keeps
   # the upgrade cases off the runner VM's systemd.
   docker-suite:
+    if: ${{ !inputs.release_gates }}
     needs: ui
     strategy:
       fail-fast: false

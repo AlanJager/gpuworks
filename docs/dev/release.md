@@ -163,6 +163,25 @@ Cloudflare 区域 `gpuworks.ai` 上为 `dl.gpuworks.ai` 配了两条缓存规则
 
 新建桶时注意两家对象存储默认打开桶级「阻止公共访问」，要关掉并设为公共读。
 
+### GitHub Actions 发布
+
+`.github/workflows/release.yml` 是同一流程在 GitHub 上的实现，触发条件与渠道规则相同：master 的每次推送构建
+`nightly`（release id 是 8 位短提交号），`vYY.M.PATCH` tag 构建 `release`，其他 tag 直接失败。
+
+1. `meta` job 定下 release id、渠道和整次运行共用的构建时间（`GPUWORKS_BUILT_AT`，对应 GitLab 的流水线创建时间）；
+2. 门禁调用 `ci.yml` 的 `release_gates` 模式，只跑 UI 构建、unit、vet、lint 与 CompShare 离线契约，与 GitLab `.release-build`
+   的 needs 一致，不等 UI suite 与 L2/L3；
+3. 四个构建 job 按 OS 与架构各打一个包，直接嵌入门禁构建的 UI；
+4. 版本 tag 另外调用 `docs.yml` 构建文档站，再打印两种语言的 PDF 手册；
+5. `publish` job 合并四份产物（tag 时加上 PDF）运行 `scripts/publish_dist.sh`；
+6. 版本 tag 再建一个 GitHub release，附四个压缩包、覆盖全部压缩包的 `SHA256SUMS` 与 PDF，说明取 `docs-en/releases/<tag>.md`。
+
+GitLab 仍是发布源的唯一发布者。`publish` job 只在仓库变量 `GPUWORKS_DIST_PUBLISH` 为 `true` 时运行，切换时先关掉 GitLab
+的 `release-publish`，再打开这个变量，两边不会同时往同一渠道发布。发布凭据与签名私钥是 `distribution` environment 的
+secret（名字与上面的 CI 变量相同），该 environment 的部署规则只放行 master 与 `v*` tag；`v*` tag 还要用 tag ruleset 限制
+只有维护者能推送，作用相当于 GitLab 的 protected tag。文档站构建需要仓库 secret `WEBSITE_REPO`（OINK 主题仓库带只读令牌的
+克隆地址）。
+
 ## 内嵌原生资产
 
 内嵌原生资产包括下表中的运行库、工具和探针镜像。它们不是普通 Go 源码，

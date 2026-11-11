@@ -36,6 +36,12 @@ variables:
   GIT_CLEAN_FLAGS: "-ffdx -e .tmp/"
   # Servers started by CI jobs never send usage reports (ADR 0054).
   GPUWORKS_USAGE_REPORT: "off"
+  # The scripts read CI-neutral names (the GitHub workflows set the same):
+  # the commit, one build time shared by every job of the pipeline, and the
+  # commit check_architecture.sh compares the budget file against.
+  GPUWORKS_BUILD_COMMIT: "$CI_COMMIT_SHA"
+  GPUWORKS_BUILT_AT: "$CI_PIPELINE_CREATED_AT"
+  GPUWORKS_ARCH_BASELINE: "$CI_MERGE_REQUEST_DIFF_BASE_SHA"
 
 .go-core:
   image:
