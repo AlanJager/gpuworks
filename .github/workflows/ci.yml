@@ -189,6 +189,18 @@ jobs:
         with:
           name: webui-dist
           path: internal/server/webui/dist/
+      # The suites run in a golang container, so setup-go's cache does not
+      # reach them: keep their module and build caches here, as the GitLab
+      # lanes keep theirs on the runner host. Keyed by go.sum like setup-go's;
+      # the L2 shards build the same binaries and share one entry.
+      - uses: actions/cache@v4
+        with:
+          path: |
+            .cache/go-mod
+            .cache/go-build
+          key: go-docker-${{ matrix.suite }}-${{ hashFiles('go.sum') }}
+          restore-keys: |
+            go-docker-${{ matrix.suite }}-
       - name: Start the isolated Docker daemon
         run: |
           mkdir -p .tmp/gpuworks-e2e .cache/home .cache/go-mod .cache/go-build
