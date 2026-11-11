@@ -35,7 +35,7 @@ test("a node being restored reads as connecting with the phase as a note", () =>
 // Once recovery has failed or been given up the node arrives offline; the
 // reason stays as a note rather than becoming a state.
 test("a recovery that gave up reads as offline with the reason kept", () => {
-  for (const [phase, text] of [["unreachable", "不可达"], ["recovery_blocked", "恢复受阻"], ["stopped", "实例已销毁"]]) {
+  for (const [phase, text] of [["unreachable", "不可达"], ["probe_failed", "恢复探测失败"], ["recovery_blocked", "恢复受阻"], ["stopped", "实例已销毁"]]) {
     const { container } = show({ state: "offline", recovery_phase: phase });
     assert.ok(container.textContent?.includes("离线"), `phase ${phase} reads as offline`);
     assert.equal(screen.queryByText("连接中"), null);

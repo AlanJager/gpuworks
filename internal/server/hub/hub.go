@@ -83,6 +83,9 @@ type Hub struct {
 	upgradeObserver func(agentupgrade.Observation)
 	reconnectMu     sync.Mutex
 	reconnect       map[string]reconnectState
+
+	reconnectAttempts map[string]*serverDialReconnectAttempt
+
 	// usage counts agent-link failures for the usage report; nil counts
 	// nothing.
 	usage *usagereport.Counters
@@ -303,6 +306,12 @@ func (h *Hub) DialAgentWithSecret(ctx context.Context, addr, secret string) erro
 	if err != nil {
 		return fmt.Errorf("server_dial tcp dial: %w", err)
 	}
+	closed := make(chan struct{})
+	stopClose := context.AfterFunc(ctx, func() {
+		_ = netConn.Close()
+		close(closed)
+	})
+	defer stopClose()
 	if err := netConn.SetDeadline(time.Now().Add(15 * time.Second)); err != nil {
 		_ = netConn.Close()
 		return err
@@ -322,6 +331,11 @@ func (h *Hub) DialAgentWithSecret(ctx context.Context, addr, secret string) erro
 	if err != nil {
 		_ = netConn.Close()
 		return err
+	}
+	if !stopClose() {
+		<-closed
+		cleanup()
+		return ctx.Err()
 	}
 	if sess.NodeUUID != "" {
 		if err := h.store.SetNodeServerDialAddress(sess.NodeUUID, addr); err != nil {
@@ -359,45 +373,7 @@ func (h *Hub) reconnectServerDial(ctx context.Context) {
 		return
 	}
 	for i := range nodes {
-		node := &nodes[i]
-		if h.Online(node.UUID) {
-			h.reconnectMu.Lock()
-			delete(h.reconnect, node.UUID)
-			h.reconnectMu.Unlock()
-			continue
-		}
-		h.reconnectMu.Lock()
-		state := h.reconnect[node.UUID]
-		if !state.next.IsZero() && time.Now().Before(state.next) {
-			h.reconnectMu.Unlock()
-			continue
-		}
-		h.reconnectMu.Unlock()
-		secret, ok := node.PlaintextToken()
-		if !ok {
-			// Legacy rows have no recoverable plaintext token. They must be
-			// re-enrolled through the pending-node flow before server_dial can
-			// reconnect.
-			h.log.Warn("server_dial reconnect skipped: plaintext token unavailable", "node", node.UUID, "state", node.State)
-			continue
-		}
-		attemptCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		err := h.DialAgentWithSecret(attemptCtx, node.ServerDialAddress, secret)
-		cancel()
-		if err != nil {
-			h.reconnectMu.Lock()
-			state.failures++
-			delay := serverDialReconnectDelay(state.failures)
-			state.next = time.Now().Add(delay)
-			h.reconnect[node.UUID] = state
-			h.reconnectMu.Unlock()
-			h.log.Debug("server_dial reconnect failed", "node", node.UUID, "addr", node.ServerDialAddress, "err", err)
-			continue
-		}
-		h.reconnectMu.Lock()
-		delete(h.reconnect, node.UUID)
-		h.reconnectMu.Unlock()
-		h.log.Info("server_dial reconnected", "node", node.UUID, "addr", node.ServerDialAddress)
+		_ = h.reconnectServerDialNode(ctx, &nodes[i], false)
 	}
 }
 
@@ -410,6 +386,9 @@ func serverDialReconnectDelay(failures int) time.Duration {
 func (h *Hub) ResetServerDialBackoff(uuid string) {
 	h.reconnectMu.Lock()
 	delete(h.reconnect, uuid)
+	if attempt := h.reconnectAttempts[uuid]; attempt != nil {
+		attempt.reset = true
+	}
 	h.reconnectMu.Unlock()
 }
 
@@ -495,6 +474,7 @@ func (h *Hub) acceptYamuxServer(netConn net.Conn, lane string, remoteOpt ...stri
 		// go-yamux does not flush queued frames on Close; give the agent a
 		// chance to read the reject/smoke reply written during handshake.
 		sess.flushCtrlBeforeClose()
+		h.deregister(sess)
 		_ = ysess.Close()
 		return nil, nil, err
 	}

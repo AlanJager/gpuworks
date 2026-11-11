@@ -369,6 +369,7 @@
     },
     "phase": {
       "probing": "探测中",
+      "probeFailed": "恢复探测失败",
       "artifactCheck": "检查 Agent 安装包",
       "uploading": "上传 Agent",
       "verifying": "校验 Agent",
