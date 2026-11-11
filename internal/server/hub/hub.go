@@ -298,10 +298,16 @@ func (h *Hub) ServeWS(w http.ResponseWriter, r *http.Request) {
 // DialAgentWithSecret connects to an agent running in server_dial listen mode,
 // proving knowledge of the install token that the agent was started with.
 func (h *Hub) DialAgentWithSecret(ctx context.Context, addr, secret string) error {
+	return h.dialAgentWithSecret(ctx, addr, secret, 10*time.Second)
+}
+
+// tcpTimeout only bounds opening the socket. Authentication keeps its own
+// deadline; the caller's context can cancel either stage of the handshake.
+func (h *Hub) dialAgentWithSecret(ctx context.Context, addr, secret string, tcpTimeout time.Duration) error {
 	if strings.TrimSpace(secret) == "" {
 		return errors.New("server_dial requires node token")
 	}
-	dialer := net.Dialer{Timeout: 10 * time.Second}
+	dialer := net.Dialer{Timeout: tcpTimeout}
 	netConn, err := dialer.DialContext(ctx, "tcp", addr)
 	if err != nil {
 		return fmt.Errorf("server_dial tcp dial: %w", err)

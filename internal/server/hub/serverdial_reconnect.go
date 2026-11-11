@@ -65,12 +65,10 @@ func (h *Hub) reconnectServerDialNode(ctx context.Context, node *store.Node, for
 	h.reconnectAttempts[node.UUID] = attempt
 	h.reconnectMu.Unlock()
 
-	attemptCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	err := h.DialAgentWithSecret(attemptCtx, node.ServerDialAddress, secret)
-	if err != nil && attemptCtx.Err() != nil {
-		err = attemptCtx.Err()
+	err := h.dialAgentWithSecret(ctx, node.ServerDialAddress, secret, 5*time.Second)
+	if err != nil && ctx.Err() != nil {
+		err = ctx.Err()
 	}
-	cancel()
 
 	h.reconnectMu.Lock()
 	if !attempt.reset {
