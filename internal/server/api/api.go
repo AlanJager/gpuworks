@@ -380,6 +380,7 @@ func Router(d Deps, policies ...auth.SessionPolicy) http.Handler {
 			r.Post("/notices/read", a.postNoticesRead)
 			r.With(a.managementAdmin).Get("/server/outbound-policy", a.getServerOutboundPolicy)
 			r.With(a.managementAdmin).Put("/server/outbound-policy", a.putServerOutboundPolicy)
+			r.With(a.managementAdmin).Post("/server/outbound-policy/check", a.checkServerOutboundPolicy)
 			r.With(a.managementAdmin).Get("/server/listen", a.getServerListen)
 			r.With(a.managementAdmin).Put("/server/listen", a.putServerListen)
 			r.With(a.managementAdmin).Post("/server/restart", a.restartServer)

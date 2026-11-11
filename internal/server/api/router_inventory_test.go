@@ -374,6 +374,7 @@ POST /api/v1/pull/registry-credentials/{id}/test
 POST /api/v1/pull/source-rules
 POST /api/v1/pull/source-rules/test
 POST /api/v1/pull/sync-groups
+POST /api/v1/server/outbound-policy/check
 POST /api/v1/server/restart
 POST /api/v1/ssh-key/rotate
 POST /api/v1/storages

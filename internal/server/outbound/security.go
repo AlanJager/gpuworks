@@ -71,6 +71,10 @@ func (p policy) addresses(ctx context.Context, host string) ([]netip.Addr, error
 		if addressUnallowable(address) {
 			return nil, ErrTargetDenied
 		}
+	}
+	// An allow-list miss must not hide a permanently forbidden later answer.
+	for _, address := range addresses {
+		address = address.Unmap()
 		if !p.permits(host, address) {
 			return nil, ErrTargetNeedsAllow
 		}
