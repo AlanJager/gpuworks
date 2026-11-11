@@ -1592,7 +1592,7 @@ After trimming leading and trailing whitespace, a name must be 1–128 UTF-8 byt
 | Method | Path | Description | Authentication |
 |---|---|---|---|
 | GET | `/api/v1/providers/kinds` | Supported cloud provider types, including each provider's credential fields (`credential_fields[].default_value` is an optional creation default for a non-sensitive field; `placeholder` is only a hint), default `server_dial` listening address, `server_dial_supported` (false for AutoDL: Pro instances expose only HTTP ports), and `server_dial_auto_port` (true for Vast and RunPod: the driver automatically chooses the listening port and connection address according to the platform's port mappings) | JWT |
-| GET | `/api/v1/providers` | List configured cloud provider accounts | JWT |
+| GET | `/api/v1/providers` | List configured cloud provider accounts; each item's `category` is the platform type its kind connects (`private_cloud` for ZStack Cloud, `public_cloud` for the public cloud vendors), derived from `kind` and not stored separately | JWT |
 | POST | `/api/v1/providers` | Add a cloud provider account | JWT |
 | GET | `/api/v1/providers/{id}` | Read back for editing: saved endpoint/public_key and non-secret extra fields declared in the dictionary. Does not fill in provider defaults or return secrets. Credential read failures return 500; the list remains available | Login session (platform tokens and AI/MCP cannot read) |
 | PUT | `/api/v1/providers/{id}` | Update a cloud provider account | JWT |

@@ -36,6 +36,17 @@ var kindHomepages = map[string]string{
 	"zstack":    "https://www.zstack.io",
 }
 
+// kindCategories is the platform each known kind connects: ZStack Cloud is
+// deployed on the customer's premises, the rental vendors are public clouds.
+var kindCategories = map[string]Category{
+	"aliyun":    CategoryPublicCloud,
+	"autodl":    CategoryPublicCloud,
+	"compshare": CategoryPublicCloud,
+	"runpod":    CategoryPublicCloud,
+	"vast":      CategoryPublicCloud,
+	"zstack":    CategoryPrivateCloud,
+}
+
 var knownCredentialFields = []string{"access_key_id", "access_key_secret", "api_key", "endpoint", "private_key", "public_key", "regions", "role_arn", "ssh_password"}
 var knownSSHConnectionTypes = []string{"cloud_assistant", "direct", "proxy"}
 

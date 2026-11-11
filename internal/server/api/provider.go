@@ -36,13 +36,15 @@ func (a *apiHandlers) listProviders(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	type providerDTO struct {
-		ID            uint   `json:"id"`
-		Name          string `json:"name"`
-		Kind          string `json:"kind"`
-		State         string `json:"state"`
-		InstanceCount int    `json:"instance_count"`
-		CreatedAt     string `json:"created_at"`
-		UpdatedAt     string `json:"updated_at"`
+		ID   uint   `json:"id"`
+		Name string `json:"name"`
+		Kind string `json:"kind"`
+		// Category is derived from the kind on every read, never stored.
+		Category      provider.Category `json:"category"`
+		State         string            `json:"state"`
+		InstanceCount int               `json:"instance_count"`
+		CreatedAt     string            `json:"created_at"`
+		UpdatedAt     string            `json:"updated_at"`
 	}
 	out := make([]providerDTO, 0, len(ps))
 	for _, p := range ps {
@@ -55,6 +57,7 @@ func (a *apiHandlers) listProviders(w http.ResponseWriter, r *http.Request) {
 			ID:            p.ID,
 			Name:          p.Name,
 			Kind:          p.Kind,
+			Category:      provider.CategoryOf(p.Kind),
 			State:         p.State,
 			InstanceCount: len(insts),
 			CreatedAt:     p.CreatedAt.UTC().Format(time.RFC3339),
