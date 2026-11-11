@@ -235,7 +235,11 @@ test("A video model that requires a reference image takes it from the page befor
   let request: { url: string; body: FormData } | undefined;
   globalThis.fetch = (async (input, init) => {
     if (String(input).endsWith("/v1/videos/sync")) request = { url: String(input), body: init?.body as FormData };
-    return new Response(new nativeBlob(["video"]), { headers: { "Content-Type": "video/mp4" } });
+    // A browser's Response.blob() yields the page's own Blob, which is what the
+    // page checks for; Node's yields its native Blob, so hand back the DOM one.
+    const response = new Response(new nativeBlob(["video"]), { headers: { "Content-Type": "video/mp4" } });
+    Object.defineProperty(response, "blob", { value: async () => new dom.window.Blob(["video"], { type: "video/mp4" }) });
+    return response;
   }) as typeof fetch;
 
   const page = renderAt(<VideoPage catalog={catalog} />, "/playground/video?model=video-reference-model");
