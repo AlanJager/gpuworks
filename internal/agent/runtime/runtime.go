@@ -358,6 +358,16 @@ type ImageArchiver interface {
 	SaveImage(ctx context.Context, image string, w io.Writer) error
 }
 
+// LocalImageSource is a runtime on this node that another runtime can copy a
+// local image from, so switching runtimes does not download what the node
+// already holds. HoldsImage must answer without setting the runtime up or
+// fetching anything: it is asked of runtimes the node is not using.
+type LocalImageSource interface {
+	Name() string
+	HoldsImage(ctx context.Context, image string) (bool, error)
+	SaveImage(ctx context.Context, image string, w io.Writer) error
+}
+
 // ImageFileLoader loads an image archive that is already a complete file on
 // the node's disk. It exists alongside ImageLoader because a node that
 // downloaded an archive itself must not pay for a second full-size copy just

@@ -239,6 +239,12 @@ func (d *Driver) TagImage(ctx context.Context, source, canonical string) error {
 	return exec.CommandContext(ctx, "nerdctl", "-n", Namespace, "tag", source, canonical).Run()
 }
 
+// HoldsImage reports whether the gpuworks namespace holds image, for a node
+// switching from nerdctl to another runtime.
+func (d *Driver) HoldsImage(ctx context.Context, image string) (bool, error) {
+	return d.ImageExists(ctx, image)
+}
+
 func (d *Driver) SaveImage(ctx context.Context, image string, w io.Writer) error {
 	slog.Debug("runtime command", "runtime", "nerdctl", "args", []string{"-n", Namespace, "save", image})
 	cmd := exec.CommandContext(ctx, "nerdctl", "-n", Namespace, "save", image)
@@ -298,6 +304,7 @@ var (
 	_ runtime.LoadedRefReporter   = (*Driver)(nil)
 	_ runtime.StreamedRefReporter = (*Driver)(nil)
 	_ runtime.ImageTagger         = (*Driver)(nil)
+	_ runtime.LocalImageSource    = (*Driver)(nil)
 )
 
 // Prepare is a no-op for nerdctl (image pull handled separately).

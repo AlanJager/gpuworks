@@ -396,6 +396,8 @@ agent 不会再启动第二个检查去排在同一把驱动锁后面。这期�
 agent 每分钟复查一次：被跳过的运行时能用了，节点上没有实例时自动切回；有实例时提示「Docker 已可用，可切换」（`gpu_ready`），
 可在「运行时」下拉框手动切换。昇腾节点不做这种回退（ARM 910B 上 runveil 跑不起 CANN）。
 
+切换运行时（手动或自动）后，实例在新运行时里重建。新运行时缺镜像时，agent 先看节点上其他还能用的运行时（docker、nerdctl、runveil）有没有同名镜像，有就在本机导出、直接导入新运行时，不重新下载；进度显示为「copying the image from the local … runtime」。导入失败或都没有时照常下载。按 digest 固定的镜像（`repo@sha256:…`）不走这条路：导入的归档带不回仓库 digest，只能重新拉取；runveil 只能导出其原生存储里的镜像，老版 udocker CLI 登记的镜像也照常下载。
+
 **Docker 装了但 agent 启动时没响应**
 
 开机时 agent 早于 dockerd 启动，或 dockerd 正忙着拉大镜像、5 秒内没有应答时，自动选择运行时的 agent 在启动阶段最多再等 2 分钟；

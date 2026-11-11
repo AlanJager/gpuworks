@@ -104,6 +104,9 @@ type Engine struct {
 	// puller pulls images from an instance's candidate sources; the node's
 	// image.pull RPC shares it (see WithImagePuller).
 	puller *imagepull.Puller
+	// otherRuntimes lists the node's runtimes besides the active one, to copy
+	// a missing image from (WithOtherRuntimes).
+	otherRuntimes func(ctx context.Context, active string) []runtime.LocalImageSource
 	// cardGate is what a start waits on before launching (SetCardGate).
 	cardGate func(ctx context.Context, idents []string, limit time.Duration) bool
 }

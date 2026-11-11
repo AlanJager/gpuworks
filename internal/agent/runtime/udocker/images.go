@@ -130,11 +130,19 @@ func imageRepository(image string) string {
 }
 
 var (
-	_ runtime.ImageLoader     = (*Driver)(nil)
-	_ runtime.ImageFileLoader = (*Driver)(nil)
-	_ runtime.ImageArchiver   = (*Driver)(nil)
-	_ runtime.ImageRemover    = (*Driver)(nil)
+	_ runtime.ImageLoader      = (*Driver)(nil)
+	_ runtime.ImageFileLoader  = (*Driver)(nil)
+	_ runtime.ImageArchiver    = (*Driver)(nil)
+	_ runtime.LocalImageSource = (*Driver)(nil)
+	_ runtime.ImageRemover     = (*Driver)(nil)
 )
+
+// HoldsImage reports whether the native image store holds image, the only
+// images SaveImage can stream. It reads the store on disk and does not set
+// udocker up, so a node that never used this runtime pays nothing for asking.
+func (d *Driver) HoldsImage(_ context.Context, image string) (bool, error) {
+	return d.nativeImageComplete(image), nil
+}
 
 // SaveImage writes image as an archive that Docker, nerdctl and another
 // runveil node load, which makes this runtime a source for node-to-node image
