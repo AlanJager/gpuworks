@@ -140,7 +140,17 @@ case "$mode" in
         # buildx keeps its state in DOCKER_CONFIG: a directory of the
         # container, so nothing is left on the runner.
         mkdir -p /root/.docker && cp /run/gpuworks-registry-auth.json /root/.docker/config.json
-        docker buildx create --name "$builder" --driver docker-container --driver-opt "image=$BUILDKIT_IMAGE" --driver-opt network=host >/dev/null
+        # buildkit runs in a container of its own and does not inherit the
+        # daemon'"'"'s proxy; hand it the same one, so pulling the base and pushing
+        # reach the registries the way the daemon does. The values are quoted
+        # because buildx reads each --driver-opt as CSV and the no-proxy list
+        # has commas; none of them holds a space.
+        hp="$(docker info --format "{{.HTTPProxy}}")"
+        sp="$(docker info --format "{{.HTTPSProxy}}")"
+        np="$(docker info --format "{{.NoProxy}}")"
+        # shellcheck disable=SC2086
+        docker buildx create --name "$builder" --driver docker-container --driver-opt "image=$BUILDKIT_IMAGE" --driver-opt network=host \
+          ${hp:+--driver-opt "env.http_proxy=$hp"} ${sp:+--driver-opt "env.https_proxy=$sp"} ${np:+--driver-opt "\"env.no_proxy=$np\""} >/dev/null
         trap "docker buildx rm -f \"$builder\" >/dev/null 2>&1 || true" EXIT
         docker buildx build --builder "$builder" --platform linux/amd64,linux/arm64 \
           --provenance=false --sbom=false --build-arg DEBIAN_MIRROR="$DEBIAN_MIRROR" \
