@@ -300,6 +300,11 @@ func newNodeRuntime(log *slog.Logger, driver runtime.Driver, modelsDir, forceDri
 		options = append(options, engine.WithRuntimeObservationReporter(n.captureObservationConnection, n.reportRuntimeObservation))
 		options = append(options, engine.WithNetworkConfig(n.network))
 		options = append(options, engine.WithLogDrain(n.drainInstanceLogs))
+		if !injected {
+			// A test harness's runtime is not the host's: the host's docker
+			// images are no source for it.
+			options = append(options, engine.WithOtherRuntimes(n.otherRuntimes))
+		}
 		n.engine = engine.NewWithProber(driver, n.reportInstance, log, filepath.Dir(modelsDir), prober, options...)
 		n.partitionProbe = partitionprobe.New(driver, n.engine, prober.Vendor())
 	} else if hasPartitionBackendForVendor(prober.Vendor()) {

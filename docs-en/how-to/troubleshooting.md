@@ -395,6 +395,8 @@ The node can continue scheduling with runveil; the “Runtime” row in node det
 The agent rechecks every minute: when a skipped runtime becomes usable, it switches back automatically if the node has no instances. If instances are present, it shows “Docker is ready and can be switched to” (`gpu_ready`),
 and you can switch manually in the “Runtime” dropdown. Ascend nodes do not use this fallback (runveil cannot run CANN on ARM 910B).
 
+After a runtime switch (manual or automatic), instances are recreated in the new runtime. When the new runtime lacks an image, the agent first checks the node's other runtimes that still answer (docker, nerdctl, runveil) for the same image; if one holds it, the image is exported and loaded into the new runtime locally instead of being downloaded again, shown as “copying the image from the local … runtime”. If the copy fails or no runtime holds it, the image is downloaded as usual. Digest-pinned images (`repo@sha256:…`) are always pulled again: a loaded archive cannot carry the registry digest. runveil can export only images in its native store; images registered by the old udocker CLI are downloaded as usual.
+
 **Docker is installed but did not answer when the agent started**
 
 When the agent starts before dockerd at boot, or dockerd is busy pulling a large image and does not answer within 5 seconds, an agent that picks its own runtime waits up to 2 more minutes at startup;
