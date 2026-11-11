@@ -59,6 +59,9 @@ func TestEvaluateRuntimeDiskRefusalDoesNotSuggestModelRegistration(t *testing.T)
 
 func TestEvaluateCacheDiskRefusalKeepsTheCacheStorage(t *testing.T) {
 	f := newStorageAdmissionFixture(t)
+	if err := f.st.SetStoragePolicy(store.StoragePolicy{ReserveFreeBytes: 64 << 20}); err != nil {
+		t.Fatal(err)
+	}
 	if err := f.st.DeleteModelFileRow(f.localModel.ID); err != nil {
 		t.Fatal(err)
 	}
@@ -95,7 +98,7 @@ func TestEvaluateCacheDiskRefusalKeepsTheCacheStorage(t *testing.T) {
 	if _, present := params["model_id"]; present {
 		t.Fatalf("cache refusal incorrectly offers to register the primary model locally: %#v", params)
 	}
-	if params["available_bytes"] != int64(1<<20) || params["required_bytes"] == nil || params["need_disk_bytes"] == nil || params["model_bytes"] != int64(2<<30) {
+	if params["available_bytes"] != int64(1<<20) || params["required_bytes"] != int64(2214592512) || params["need_disk_bytes"] != int64(2213543936) || params["model_bytes"] != int64(2<<30) {
 		t.Fatalf("cache failure lost capacity or legacy facts: %#v", params)
 	}
 }
@@ -153,7 +156,7 @@ func TestEvaluateDiskRefusalUsesPartialCopyAndNodeStorageOverride(t *testing.T) 
 func TestEvaluateRuntimeDiskRefusalDoesNotGuessAnUnreportedPath(t *testing.T) {
 	f := newStorageAdmissionFixture(t)
 	f.outOfTeam.RuntimeDriver = "docker"
-	f.outOfTeam.PathUsage = `[{"kind":"docker","available_bytes":1048576,"total_bytes":4294967296}]`
+	f.outOfTeam.PathUsage = `[{"kind":"docker","available_bytes":1048576,"total_bytes":4294967296},{"kind":"docker","path":"/different-runtime","available_bytes":2097152,"total_bytes":4294967296}]`
 	out := (Input{Model: f.model, Node: f.outOfTeam, Engine: "vllm", RuntimeImageBytes: 1073741824}).Evaluate(f.st)
 	params := out.Result.Message.Params
 	if out.Result.OK || out.Result.Message.Code != scheduler.ReasonInsufficientRuntimeDisk || params["available_bytes"] != int64(1048576) {

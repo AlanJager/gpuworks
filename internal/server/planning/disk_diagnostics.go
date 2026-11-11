@@ -97,7 +97,12 @@ func observedPath(node *store.Node, kind string, storageID uint) string {
 		return ""
 	}
 	for _, usage := range paths {
-		if usage.Kind == kind && usage.StorageID == storageID && usage.AvailableBytes > 0 && path.IsAbs(usage.Path) {
+		if usage.Kind == kind && usage.StorageID == storageID && usage.AvailableBytes > 0 {
+			// Match the same first usable snapshot capacity selection uses;
+			// a later record's directory may belong to a different disk.
+			if !path.IsAbs(usage.Path) {
+				return ""
+			}
 			return path.Clean(usage.Path)
 		}
 	}
