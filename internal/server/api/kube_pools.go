@@ -16,7 +16,7 @@ import (
 
 // An entry made from a cloud cluster holds a set of that cluster's GPU node
 // pools, all of one vendor for now: the DaemonSet runs on the nodes of those
-// pools and nowhere else (docs/adr/0062-apply-to-cloud-clusters.md).
+// pools and nowhere else (docs/adr/0063-apply-to-cloud-clusters.md).
 
 // kubeEntryView is what the DTO of one entry needs beyond its row.
 type kubeEntryView struct {

@@ -1,4 +1,4 @@
-# ADR 0062: 经用户确认，server 用云厂商现发的短期 kubeconfig 把接入 manifest 应用到托管集群
+# ADR 0063: 经用户确认，server 用云厂商现发的短期 kubeconfig 把接入 manifest 应用到托管集群
 
 日期：2026-10-22 · 状态：已接受（修订 [ADR 0052](0052-kubernetes-nodes.md) 第 2 条"server 不持有 kubeconfig、不连 apiserver"）
 

@@ -75,7 +75,7 @@ func (e *InstanceInClusterError) Unwrap() error { return ErrInstanceInCluster }
 // as a node of a managed Kubernetes cluster: powering it off, releasing or
 // resizing it is the cluster's business (its node pool), and doing it behind
 // the cluster's back leaves the DaemonSet and the pool disagreeing
-// (docs/adr/0062-apply-to-cloud-clusters.md).
+// (docs/adr/0063-apply-to-cloud-clusters.md).
 func (s *Service) refuseClusterNode(providerID uint, externalID string) error {
 	row, err := s.store.ProviderInstanceByExternalID(providerID, externalID)
 	if err != nil {

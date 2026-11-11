@@ -1,6 +1,6 @@
 // Package kubeapply applies a cluster's join manifest (kubemanifest) to a
 // Kubernetes API server, or removes it, with a kubeconfig the cloud issued
-// for that one operation (ADR 0062). It is a leaf: kubeconfig and manifest
+// for that one operation (ADR 0063). It is a leaf: kubeconfig and manifest
 // in, per-object results out; it keeps nothing.
 package kubeapply
 

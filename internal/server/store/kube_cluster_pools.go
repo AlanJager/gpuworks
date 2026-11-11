@@ -10,7 +10,7 @@ import (
 
 // A cluster entry made from a cloud account's cluster selects its nodes by
 // node pool, and may select several pools of the cluster (all of one vendor,
-// see docs/adr/0062-apply-to-cloud-clusters.md). The selected pools are rows
+// see docs/adr/0063-apply-to-cloud-clusters.md). The selected pools are rows
 // of kube_cluster_pools; an entry made by hand has none and keeps the
 // free-form KubeCluster.NodeSelector.
 

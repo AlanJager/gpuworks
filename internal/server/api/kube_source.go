@@ -14,7 +14,7 @@ import (
 
 // Clusters of a cloud account become cluster entries, and the server can
 // apply an entry's manifest to its cluster with a kubeconfig the cloud
-// issues for that one operation, on the operator's confirmation (ADR 0062).
+// issues for that one operation, on the operator's confirmation (ADR 0063).
 
 // providerClusters lists a cloud account's managed Kubernetes clusters, live,
 // with the entry already made from each.

@@ -1,4 +1,4 @@
-# ADR 0062: After User Confirmation, the Server Applies the Connect Manifest to a Managed Cluster with a Short-Lived kubeconfig Issued on the Spot by the Cloud Provider
+# ADR 0063: After User Confirmation, the Server Applies the Connect Manifest to a Managed Cluster with a Short-Lived kubeconfig Issued on the Spot by the Cloud Provider
 
 Date: 2026-10-22. Status: Accepted (amends item 2 of [ADR 0052](0052-kubernetes-nodes.md), “the server holds no kubeconfig and does not connect to the apiserver”).
 
