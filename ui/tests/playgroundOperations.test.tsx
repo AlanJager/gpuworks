@@ -101,6 +101,10 @@ const catalog: PlaygroundCatalog = {
     model("image-multi-edit-model", [{ ...operation("openai.image.edit", "/v1/images/edits", "image", "image"), request_encoding: "multipart", request_encodings: ["multipart"], max_reference_images: 3 }]),
     model("image-edit-model", [{ ...operation("openai.image.edit", "/v1/images/edits", "image", "image"), request_encoding: "multipart", request_encodings: ["multipart"] }]),
     model("video-model", [{ ...operation("openai.video.generate", "/v1/videos", "video", "video", "async"), async: asyncVideo }]),
+    model("video-reference-model", [{ ...operation("openai.video.generate", "/v1/videos/sync", "video", "video"), request_encoding: "multipart", request_encodings: ["multipart"], inputs: [
+      { name: "input_reference", kind: "image" as const, encoding: "data_url", required: true },
+      { name: "aspect_ratio", kind: "select" as const, options: ["16:9"], default: "16:9" },
+    ] }]),
     model("realtime-model", [{ ...operation("openai.realtime", "/v1/realtime", "realtime", "websocket", "realtime"), request_encodings: ["websocket"] }]),
     model("translate-model", [{ ...operation("openai.completions", "/v1/completions", "completion", "sse", "stream"), request_defaults: { stop: ["<|plamo:op|>"], temperature: 0 } }]),
   ],
@@ -225,6 +229,31 @@ test("Audio speech, image generation, and async video render binary or visual re
   assert.deepEqual(calls[0].body, { model: "audio-model", input: "Hello from GPUWorks" });
   assert.deepEqual(calls[1].body, { model: "image-model", prompt: "A sunrise over mountains", size: "1024x1024", response_format: "b64_json" });
   assert.deepEqual(calls[2].body, { model: "video-model", prompt: "A sunrise over mountains", seconds: 4 });
+});
+
+test("A video model that requires a reference image takes it from the page before generating", async () => {
+  let request: { url: string; body: FormData } | undefined;
+  globalThis.fetch = (async (input, init) => {
+    if (String(input).endsWith("/v1/videos/sync")) request = { url: String(input), body: init?.body as FormData };
+    return new Response(new nativeBlob(["video"]), { headers: { "Content-Type": "video/mp4" } });
+  }) as typeof fetch;
+
+  const page = renderAt(<VideoPage catalog={catalog} />, "/playground/video?model=video-reference-model");
+  const generate = screen.getByRole("button", { name: "Generate Video" });
+  assert.equal((generate as HTMLButtonElement).disabled, true);
+  const reference = new File([Uint8Array.from([137, 80, 78, 71])], "reference.png", { type: "image/png" });
+  await userEvent.setup().upload(screen.getByLabelText("input_reference"), reference);
+  await waitFor(() => assert.equal((generate as HTMLButtonElement).disabled, false));
+  await userEvent.setup().click(generate);
+
+  await waitFor(() => assert.ok(request));
+  assert.equal(request?.url, "/api/v1/playground/v1/videos/sync");
+  assert.equal(request!.body.get("model"), "video-reference-model");
+  assert.equal(request!.body.get("aspect_ratio"), "16:9");
+  const image = request!.body.get("input_reference");
+  assert.ok(image instanceof dom.window.Blob);
+  assert.equal((image as Blob).type, "image/png");
+  await waitFor(() => assert.ok(page.container.querySelector('video[src="blob:playground-result"]')));
 });
 
 test("Image editing uploads the source image through the declared multipart route", async () => {

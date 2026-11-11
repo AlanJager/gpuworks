@@ -173,6 +173,8 @@ sources:
     subfolder: sub/dir                      # Optional; normalized (no leading / or ..)
 ```
 
+`subfolder` selects one subtree of the repository by directory prefix, and the download keeps the repository-relative paths. When no directory has that name, it can name a single file in the repository and only that file is downloaded (for example, one adapter from a repository that keeps many LoRA files at its root); when a directory and a file share the name, the directory is selected.
+
 Multiple sources in the same spec mean that any one can be pulled. The deployment's `model_source.provider` selects which provider's weights to run; [pull settings](../how-to/configure-pull-settings.md) determine how the node obtains them (already present, copied within a sync group, read from shared storage, or downloaded).
 
 ### image_sources: Image Sources Declared by the Template
