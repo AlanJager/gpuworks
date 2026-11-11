@@ -264,16 +264,29 @@ suite 相差约 4 倍），job 落在哪台机器取决于哪里有空位。所�
 ## GitHub Actions 镜像门禁
 
 `.github/workflows/ci.yml` 在 GitHub 托管 runner 上跑与 GitLab core 阶段相同的检查：UI 构建与测试、
-untagged Go suite 与各 check 脚本、`go vet`、CompShare 离线契约、严格模式的 L2/L3。权威流水线仍是 GitLab；
+untagged Go suite 与各 check 脚本、`go vet`、`make lint`、CompShare 离线契约、严格模式的 L2/L3。权威流水线仍是 GitLab；
 GitHub 镜像只收到 master，所以这条 workflow 由 PR、手动触发与每晚 03:07（Asia/Shanghai，紧随 GitLab 的
-nightly）在 master 上运行，用来与 GitLab 同一提交的结果对比。L4、发布与文档构建不在这里跑，也不使用任何
-secret 或自托管 runner。
+nightly）在 master 上运行，用来与 GitLab 同一提交的结果对比。它不使用任何 secret 或自托管 runner。
+另外三条 workflow 对应 GitLab 的其余非 L4 job：`docs.yml`（文档站构建，改到文档的 PR 触发，需要 `WEBSITE_REPO`
+secret 拉 OINK 主题）、`ui-check.yml`（UI 巡检，改到 UI 的 PR 与每晚触发，报告作为 artifact 上传）、
+`release.yml`（发布包，见[发布指南](release.md#github-actions-发布)）。L4 仍只在 GitLab 跑。
+
+脚本只读与 CI 无关的变量名：`GPUWORKS_BUILD_COMMIT`（构建提交）、`GPUWORKS_BUILT_AT`（同一次运行所有 job
+共用的构建时间）、`GPUWORKS_ARCH_BASELINE`（`check_architecture.sh` 比较预算文件用的合并请求基线），由
+`.gitlab-ci.yml` 与 GitHub workflow 各自从自己的内置变量赋值；不设时脚本退回本地的 `git` 与当前时间。
+`check_ci_yaml.sh` 对两边的 CI 定义都做 folded 标量注释检查，stage 顺序检查只针对 `.gitlab-ci.yml`。
 
 - L2/L3 与 GitLab 的 `.docker-core` 同形：每个 job 一个 DinD daemon，暴露在专用的 `gpuworks-e2e` socket
   上，suite 跑在 golang 容器里。直接用 runner VM 的 Docker 不行：VM 有 systemd，console upgrade 用例会把它
   当成服务管理器；真实终端用例只接受专用 daemon。fixture 基础镜像在 suite 前预拉进 DinD。
 - UI suite 在 2 核 runner 上一次只跑一个测试文件，不拆要一个多小时；按 4 片并行，`npm run test:coverage`
   读可选的 `TEST_SHARD`（如 `2/4`）传给 `--test-shard`，不设时与原命令相同。
+- untagged Go suite 按包分 3 片：`scripts/go_package_shard.sh <i>/<n> ./...` 把 `go list` 的包按导入路径排序后
+  轮流分配，最重的 `server/api` 与两个 integrationtest 包恰好落在不同片里。L2 与 GitLab 的 `core-l2` 一样按
+  `L2_SHARD` 分 3 片。check 脚本、`go vet`、`make lint`、CompShare 离线契约与 `check-tagged-build` 合在一个
+  `checks` job 里：组织的托管 runner 有并发 job 上限，每项只跑几十秒到几分钟，单开 job 只会多占 runner。
+- 满盘 L2 用例需要一个专门的 tmpfs：suite 所在容器不能建 user namespace，所以和 GitLab 一样由 `docker run
+  --tmpfs` 挂好并经 `GPUWORKS_TEST_FULL_DISK_TMPFS` 传入。
 
 ## 成本和缓存
 

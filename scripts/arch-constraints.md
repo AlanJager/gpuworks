@@ -10,7 +10,7 @@
 - `max` 键实测**严格低于**限额时打印 WARNING（不失败），提示在同一个 MR 里把限额收紧到新实测值。
 - 误报以**修模式为先**，不以调预算为先。每条排除项都记录在本文；改脚本时必须同步本文。
 - **上调（`max` 变大、`min` 变小）必须带理由**：`check_architecture.sh` 把本文件与基线版本
-  比较——基线优先取 GitLab MR 流水线的 `$CI_MERGE_REQUEST_DIFF_BASE_SHA`，否则取
+  比较——基线优先取 CI 给出的合并请求基线 `$GPUWORKS_ARCH_BASELINE`，否则取
   `git merge-base HEAD origin/master`；解析不出基线（浅克隆、没有 `origin` remote、当前就在
   default branch 上）时打印 NOTE 并跳过，不算失败。被判定为上调的行必须在行尾追加 Tab 分隔的
   `# raised: <原因>` 注释（`min` 键同一标记），否则直接 FAIL；新增或删除的键不算上调。该注释

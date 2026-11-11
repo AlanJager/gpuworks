@@ -60,8 +60,8 @@ export GPUWORKS_DIST_SIGNING_KEY GPUWORKS_DIST_SIGNING_KEY_ID
 rclone=${RCLONE:-rclone}
 keep=${GPUWORKS_DIST_KEEP:-30}
 
-built_at=${CI_PIPELINE_CREATED_AT:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}
-commit=${CI_COMMIT_SHA:-$(git rev-parse HEAD)}
+built_at=${GPUWORKS_BUILT_AT:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}
+commit=${GPUWORKS_BUILD_COMMIT:-$(git rev-parse HEAD)}
 
 work=$(mktemp -d "${TMPDIR:-/tmp}/gpuworks-dist.XXXXXX")
 trap 'rm -rf "$work"' EXIT INT TERM

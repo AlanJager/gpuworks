@@ -269,11 +269,22 @@ that already hold tables, always run the real migrations, so upgrade paths are u
 ## GitHub Actions Mirror Gates
 
 `.github/workflows/ci.yml` runs the same checks as GitLab's core stage on GitHub-hosted runners: the UI
-build and tests, the untagged Go suite with the check scripts, `go vet`, the CompShare offline contracts,
-and strict L2/L3. GitLab remains the authoritative pipeline; the GitHub mirror only receives master, so this
-workflow runs on pull requests, on manual dispatch, and nightly at 03:07 (Asia/Shanghai, just after GitLab's
-nightly) on master, for comparison with GitLab's result for the same commit. L4, releases and the docs build
-do not run here, and no secret or self-hosted runner is used.
+build and tests, the untagged Go suite with the check scripts, `go vet`, `make lint`, the CompShare offline
+contracts, and strict L2/L3. GitLab remains the authoritative pipeline; the GitHub mirror only receives master,
+so this workflow runs on pull requests, on manual dispatch, and nightly at 03:07 (Asia/Shanghai, just after
+GitLab's nightly) on master, for comparison with GitLab's result for the same commit. It uses no secret or
+self-hosted runner. Three more workflows cover GitLab's other non-L4 jobs: `docs.yml` (the docs site build,
+triggered by pull requests that touch the docs; it needs the `WEBSITE_REPO` secret to fetch the OINK theme),
+`ui-check.yml` (the UI walk, triggered by pull requests that touch the UI and nightly, with the report
+uploaded as an artifact) and `release.yml` (release packages, see the
+[release guide](release.md#github-actions-releases)). L4 still runs only in GitLab.
+
+The scripts read CI-neutral variable names: `GPUWORKS_BUILD_COMMIT` (the commit built), `GPUWORKS_BUILT_AT`
+(one build time shared by every job of a run) and `GPUWORKS_ARCH_BASELINE` (the merge request's base commit,
+against which `check_architecture.sh` compares the budget file). `.gitlab-ci.yml` and the GitHub workflows
+each set them from their own built-in variables; unset, the scripts fall back to local `git` and the current
+time. `check_ci_yaml.sh` runs the folded-scalar comment check over both CI definitions; the stage-order check
+applies to `.gitlab-ci.yml` only.
 
 - L2/L3 take the shape of GitLab's `.docker-core`: one DinD daemon per job, exposed on a dedicated
   `gpuworks-e2e` socket, with the suite in a golang container. The runner VM's own Docker does not work: the
@@ -282,6 +293,14 @@ do not run here, and no secret or self-hosted runner is used.
 - On a 2-core runner the UI suite runs one test file at a time and takes over an hour unsplit; it runs as 4
   parallel shards, with `npm run test:coverage` passing an optional `TEST_SHARD` (such as `2/4`) to
   `--test-shard`. Unset, the command is the original one.
+- The untagged Go suite runs in 3 shards of whole packages: `scripts/go_package_shard.sh <i>/<n> ./...` sorts
+  the packages `go list` prints by import path and deals them round-robin, which puts the heaviest ones,
+  `server/api` and two integrationtest packages, in different shards. L2 runs in 3 shards by `L2_SHARD`, as
+  GitLab's `core-l2` does. The check scripts, `go vet`, `make lint`, the CompShare offline contracts and
+  `check-tagged-build` share one `checks` job: the organization's hosted runners have a concurrent-job limit,
+  and each of these takes seconds to a few minutes, so a job apiece would only hold more runners.
+- The full-disk L2 case needs a tmpfs of its own: the suite's container cannot create a user namespace, so,
+  as on GitLab, `docker run --tmpfs` mounts one and passes it in through `GPUWORKS_TEST_FULL_DISK_TMPFS`.
 
 ## Cost and Caching
 

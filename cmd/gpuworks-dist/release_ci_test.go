@@ -44,3 +44,61 @@ func TestReleaseDocsArtifactRetention(t *testing.T) {
 		t.Fatal("release PDFs must use the formal version tag")
 	}
 }
+
+// The GitHub release workflow keeps the same contract, and never publishes to
+// the distribution sources unless the repository switches it on: until then
+// GitLab is the only publisher of every channel.
+func TestReleaseWorkflowContract(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", "release.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var workflow struct {
+		Jobs map[string]struct {
+			If          string
+			Needs       []string
+			Environment string
+			Concurrency struct {
+				Group            string
+				CancelInProgress bool `yaml:"cancel-in-progress"`
+			}
+			Steps []struct {
+				Run  string
+				With map[string]string
+			}
+		}
+	}
+	if err := yaml.Unmarshal(data, &workflow); err != nil {
+		t.Fatal(err)
+	}
+	if got := workflow.Jobs["docs-pdf"].If; got != "github.ref_type == 'tag'" {
+		t.Fatalf("docs-pdf if = %q: permanent handbooks must only print for version tags", got)
+	}
+	pdf := ""
+	for _, step := range workflow.Jobs["docs-pdf"].Steps {
+		pdf += step.Run
+	}
+	if !strings.Contains(pdf, `--version "$VERSION"`) {
+		t.Fatal("release PDFs must use the formal version tag")
+	}
+	publish := workflow.Jobs["publish"]
+	if !strings.Contains(publish.If, "vars.GPUWORKS_DIST_PUBLISH == 'true'") {
+		t.Fatalf("publish if = %q: publishing must stay behind the GPUWORKS_DIST_PUBLISH switch", publish.If)
+	}
+	if !strings.Contains(publish.If, "needs.build.result == 'success'") {
+		t.Fatalf("publish if = %q: every build must succeed before a publish", publish.If)
+	}
+	if publish.Environment != "distribution" {
+		t.Fatalf("publish environment = %q, want distribution (its secrets and ref rules)", publish.Environment)
+	}
+	if publish.Concurrency.Group != "distribution" || publish.Concurrency.CancelInProgress {
+		t.Fatalf("publish concurrency = %+v: publishes must queue, never cancel one another", publish.Concurrency)
+	}
+	script := ""
+	for _, step := range publish.Steps {
+		script += step.Run
+	}
+	if !strings.Contains(script, `./scripts/publish_dist.sh "$CHANNEL" dist`) {
+		t.Fatal("publish must go through scripts/publish_dist.sh")
+	}
+}

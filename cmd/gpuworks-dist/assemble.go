@@ -54,8 +54,8 @@ func assembleCommand(args []string, stdout io.Writer) error {
 	fs.StringVar(&in.DistDir, "dist", "dist", "directory holding gpuworks-<id>-<os>-<arch>.tar.gz")
 	fs.StringVar(&in.OutDir, "out", "", "directory to write the tree into (must not exist)")
 	fs.StringVar(&in.ReleaseID, "release-id", "", "expected release id (default: the one the archive names carry)")
-	fs.StringVar(&in.Commit, "commit", os.Getenv("CI_COMMIT_SHA"), "commit the release was built from")
-	fs.StringVar(&in.BuiltAt, "built-at", os.Getenv("CI_PIPELINE_CREATED_AT"), "build time")
+	fs.StringVar(&in.Commit, "commit", os.Getenv("GPUWORKS_BUILD_COMMIT"), "commit the release was built from")
+	fs.StringVar(&in.BuiltAt, "built-at", os.Getenv("GPUWORKS_BUILT_AT"), "build time")
 	fs.StringVar(&in.KeyID, "key-id", envOr("GPUWORKS_DIST_SIGNING_KEY_ID", "gpuworks-dist-1"), "signing key id")
 	fs.StringVar(&keyEnv, "key-env", "GPUWORKS_DIST_SIGNING_KEY", "environment variable holding the base64 ed25519 seed")
 	if err := fs.Parse(args); err != nil {

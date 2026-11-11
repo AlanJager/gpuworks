@@ -8,39 +8,53 @@ set -eu
 # "docker run" with no image (job 152755). The failure only appears when the
 # job actually runs, which for a manual L4 lane can be weeks later, so keep the
 # check mechanical here.
+#
+# Both CI definitions are checked for that: .gitlab-ci.yml (the L4 lanes) and
+# the GitHub workflows. The stage-order check further down is GitLab's alone.
 python3 - "$@" <<'PY'
 import pathlib
 import sys
 
-path = pathlib.Path(".gitlab-ci.yml")
-lines = path.read_text().splitlines()
-violations = []
-
-index = 0
-while index < len(lines):
-    line = lines[index]
-    stripped = line.strip()
-    # Folded scalars only: "|" keeps newlines, so '#' there is a real comment.
-    if stripped == "- >" or stripped.endswith(": >") or stripped == ">":
-        indent = len(line) - len(line.lstrip())
-        index += 1
-        while index < len(lines):
-            body = lines[index]
-            if body.strip() and (len(body) - len(body.lstrip())) <= indent:
-                break
-            if body.lstrip().startswith("#"):
-                violations.append((index + 1, body.strip()))
+def folded_comment_violations(path):
+    lines = path.read_text().splitlines()
+    found = []
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        stripped = line.strip()
+        # Folded scalars only: "|" keeps newlines, so '#' there is a real comment.
+        if stripped == "- >" or stripped.endswith(": >") or stripped == ">":
+            indent = len(line) - len(line.lstrip())
             index += 1
-        continue
-    index += 1
+            while index < len(lines):
+                body = lines[index]
+                if body.strip() and (len(body) - len(body.lstrip())) <= indent:
+                    break
+                if body.lstrip().startswith("#"):
+                    found.append((path, index + 1, body.strip()))
+                index += 1
+            continue
+        index += 1
+    return found
+
+path = pathlib.Path(".gitlab-ci.yml")
+workflows = sorted(pathlib.Path(".github/workflows").glob("*.y*ml"))
+violations = []
+for ci_file in ([path] if path.exists() else []) + workflows:
+    violations += folded_comment_violations(ci_file)
 
 if violations:
-    print("%s: '#' comment inside a folded (>) scalar; it becomes a shell" % path, file=sys.stderr)
+    print("'#' comment inside a folded (>) scalar; it becomes a shell", file=sys.stderr)
     print("comment in the joined command and swallows the rest of the line.", file=sys.stderr)
     print("Move the note above the '- >' instead.", file=sys.stderr)
-    for number, text in violations:
-        print("  %s:%d: %s" % (path, number, text), file=sys.stderr)
+    for ci_file, number, text in violations:
+        print("  %s:%d: %s" % (ci_file, number, text), file=sys.stderr)
     raise SystemExit(1)
+
+if not path.exists():
+    print("ci yaml check passed (%d workflows, no .gitlab-ci.yml)" % len(workflows))
+    raise SystemExit(0)
+lines = path.read_text().splitlines()
 
 # GitLab 14.0 (the instance's version) only lets needs name a job of an
 # earlier stage; a job in the same stage fails the whole pipeline at creation
