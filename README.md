@@ -59,7 +59,7 @@ fine-tuning and training jobs on the same accelerators.
   Sleep/wake lets sleep-capable vLLM models take turns on the same GPUs; verified vendor and image combinations
   are listed in [choosing features](docs-en/explanation/choosing-features.md#sleepwake-models-take-turns-on-one-gpu).
 - **Scale out.** Replicas across nodes, multi-node tensor/pipeline parallel, and prefill/decode disaggregation
-  (vLLM + NIXL on NVIDIA, vLLM-Ascend + Mooncake on Ascend, SGLang or vLLM + Mooncake on PPU, within one host or over RDMA, and experimental vLLM + Mooncake on Hygon).
+  (vLLM + NIXL on NVIDIA, vLLM-Ascend + Mooncake on Ascend, SGLang or vLLM + Mooncake on PPU, within one host or over RDMA, and vLLM + Mooncake on Hygon).
 - **OpenAI-compatible gateway.** Chat, completions, embeddings, rerank, audio, images, video and realtime under
   `/v1`; `/v1/messages` and `/v1/responses` pass through. Least-request, prefix-affinity or failover routing, API
   keys, per-key token usage.
@@ -125,7 +125,7 @@ Install the GPUWorks control plane on this host and verify it.
 | **AMD** (ROCm: Instinct MI300 series, Ryzen AI Max) | ✅ Docker, containerd or runveil (built-in rootless runtime) | 🧪 libvrocm memory quota; tested on MI300X under Docker/runveil | ✅ vLLM | ✅ vLLM | ✅ vLLM + NIXL |
 | **Huawei Ascend** (CANN) | ✅ Docker, containerd or runveil (built-in rootless runtime) | 🧪 vcann-rt memory quota; requires device-share permissions and a per-GPU probe | ✅ vLLM-Ascend | ✅ | ✅ vLLM-Ascend + Mooncake |
 | **T-Head PPU** (HGGC) | ✅ Docker, containerd or runveil (built-in rootless runtime) | 🧪 ppu-slicing-shim memory quota and weighted QoS; Docker only | ✅ vLLM | ✅ | ✅ SGLang + Mooncake (same node or over RDMA), vLLM + Mooncake (RDMA) |
-| **Hygon DCU** (DTK) | ✅ Docker, containerd or runveil (built-in rootless runtime) | 🧪 Z100 / K100_AI / BW native vdev; Docker or runveil | ✅ vLLM | ✅ | 🧪 vLLM 0.21 + Mooncake |
+| **Hygon DCU** (DTK) | ✅ Docker, containerd or runveil (built-in rootless runtime) | 🧪 Z100 / K100_AI / BW native vdev; Docker or runveil | ✅ vLLM | ✅ | ✅ vLLM 0.21 + Mooncake |
 | **Apple Silicon** (M1–M5, macOS 15+) | ✅ vllm-metal, MLX, llama.cpp as native processes | — | — | — | — |
 
 ✅ verified on real hardware · 🧪 experimental · — not supported or not validated. Sleep/wake beyond NVIDIA is
