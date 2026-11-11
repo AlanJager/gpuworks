@@ -288,6 +288,7 @@ func (in Input) Evaluate(st *store.Store) Output {
 		}
 	}
 	out.Result = scheduler.Schedule(req, snap)
+	explainDiskRefusal(st, in, req, snap, &out.Result)
 	if candidateError != nil && !out.Result.OK {
 		out.PlacementError = candidateError
 	}

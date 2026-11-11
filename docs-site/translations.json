@@ -93,7 +93,7 @@
   "how-to/deploy-offline.md": "e74bf12bdaea4f05b7a3a9f3764e2d32e18258d99f9ba813f6c73c22a30f1172",
   "how-to/deploy-production.md": "b7375ba8e786bc8780164cbdcdcd22399b8dfc326d039d3843ab80537df4c7a5",
   "how-to/dgpu.md": "fd0c2fe315707309f24d37c9101e51dc966e65b87d59eabdc00d7c15601a7c57",
-  "how-to/download-and-sync-models.md": "f4732619516ca627f4a19f1a641db63a8bdfe9ecfdf6b0b789baf2c734ba499b",
+  "how-to/download-and-sync-models.md": "d0760d57e41f54499b2b2e3ccc8e23cbe69c47a6cdcb3c015b03c4ea1dc3977b",
   "how-to/export-request-traces.md": "a1537f39aac27dc21786ca1470ac000bcfeba1f5b517ee5cbdfc238667910eb4",
   "how-to/expose-public-address.md": "5dd2b0f7efb514af1c8c79d4f3d8e70159155087c53bf5baa0b97a56f0161485",
   "how-to/import-from-http.md": "a228ba8d97d0ecf62a3dd672123a8a28d5952bb3759b3ef6fbaca59cc99efa43",
