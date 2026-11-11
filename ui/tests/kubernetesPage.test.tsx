@@ -112,22 +112,24 @@ test("the header explains how a cluster joins", async () => {
   assert.ok(await screen.findByText(k.page.description));
 });
 
-test("one row per cluster: namespace, node count, cluster UID or not-connected, card return policy, status and creation time", async () => {
+test("one row per cluster: vendor, node count, card return policy and status; namespace, cluster UID and creation time are off by default", async () => {
   stubApi();
   renderPage();
   const row = await rowOf("prod-gpu");
   assert.equal(screen.getAllByRole("row").length, 1 + 3, "header plus a row per cluster");
-  assert.ok(within(row).getByText("gpuworks-system"));
   assert.ok(within(row).getByText(locale.common.vendor.nvidia), "the cluster's accelerator vendor");
   assert.ok(within(await rowOf("retired")).getByText(locale.common.vendor.ascend));
   assert.ok(within(row).getByText("3"));
-  assert.ok(within(row).getByText("7f3c2a10-aaaa-bbbb-cccc-0123456789ab"));
   assert.ok(within(row).getByText("Returned after 10 min idle"));
   assert.ok(within(row).getByText(k.status.active));
-  assert.ok(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(within(row).getByText(/^\d{4}-\d{2}-\d{2} /).textContent ?? ""));
+  // The columns that rarely matter are a column-settings choice away, so the
+  // rest fits the page without a sideways scroll.
+  assert.ok(!within(row).queryByText("gpuworks-system"), "namespace is hidden by default");
+  assert.ok(!within(row).queryByText("7f3c2a10-aaaa-bbbb-cccc-0123456789ab"), "cluster UID is hidden by default");
+  assert.ok(!within(row).queryByText(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/), "creation time is hidden by default");
 
   const fresh = await rowOf("lab");
-  assert.ok(within(fresh).getByText(k.clusterUid.notEnrolled));
+  assert.ok(within(fresh).getByText(k.clusterUid.notEnrolled), "a cluster no node joined yet says so in its status");
   assert.ok(within(fresh).getByText(k.returnPolicy.keep));
   assert.ok(within(await rowOf("retired")).getByText(k.status.revoked));
   assert.ok(within(await rowOf("retired")).getByText("Returned after 2 h idle"));

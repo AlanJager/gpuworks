@@ -1,7 +1,7 @@
 {
   "page": {
     "title": "Kubernetes",
-    "description": "A Kubernetes cluster joins gpuworks as one DaemonSet: every GPU node the DaemonSet selects becomes a node here by itself, and instances run as Pods on their node. Cards are borrowed from Kubernetes while an instance uses them and handed back after the idle period.",
+    "description": "Connect a Kubernetes cluster with one DaemonSet; its GPU nodes become nodes here.",
     "breadcrumb": {
       "platform": "AI Compute Platform",
       "resources": "Resources",
@@ -83,7 +83,7 @@
     "namespace": "Namespace",
     "namespaceHelp": "Where the DaemonSet and its resources are created.",
     "stateDir": "State directory",
-    "stateDirHelp": "The agent's directory on the host. Set a different one to let the agent run beside an agent already installed on the host. Empty means /opt/gpuworks.",
+    "stateDirHelp": "The agent's directory on the host. Set a different one to let the agent run beside an agent already installed on the host; empty uses the default shown in the box.",
     "agentImage": "Agent image",
     "agentImagePlaceholder": "Default image",
     "defaultsFailed": "The defaults could not be loaded",

@@ -74,12 +74,12 @@ export default function KubernetesPage() {
   );
 
   const columns: ResourceColumn<KubeCluster>[] = [
-    { key: "name", role: "name", title: t("column.name"), width: 200, sortValue: (c) => c.name, render: (_, c) => c.name },
+    { key: "name", role: "name", title: t("column.name"), width: 160, sortValue: (c) => c.name, render: (_, c) => c.name },
     { key: "vendor", title: t("column.vendor"), width: 110, sortValue: (c) => c.vendor, render: (_, c) => c.vendor ? tCommon(`vendor.${c.vendor}`, { defaultValue: c.vendor }) : "-" },
     {
       key: "source",
       title: t("column.source"),
-      width: 220,
+      width: 170,
       render: (_, c) => c.source
         ? (
           <div className="flex min-w-0 flex-col">
@@ -90,43 +90,51 @@ export default function KubernetesPage() {
         )
         : <span className="text-fg-muted">{t("source.byHand")}</span>,
     },
-    { key: "namespace", title: t("column.namespace"), width: 160, sortValue: (c) => c.namespace, render: (_, c) => <code>{c.namespace}</code> },
+    { key: "namespace", title: t("column.namespace"), width: 160, defaultHidden: true, sortValue: (c) => c.namespace, render: (_, c) => <code>{c.namespace}</code> },
     { key: "nodes", title: t("column.nodes"), width: 90, align: "right", sortValue: (c) => c.node_count, render: (_, c) => c.node_count },
     {
       key: "cluster_uid",
+      defaultHidden: true,
       title: t("column.clusterUid"),
       width: 300,
-      render: (_, c) => c.cluster_uid
-        ? <code>{c.cluster_uid}</code>
-        : c.stalled ? (
-          <div className="flex items-center gap-1">
-            <Badge status="warning">{t("clusterUid.notEnrolled")}</Badge>
-            <Popover>
-              <PopoverTrigger render={<Button variant="link" size="sm">{t("clusterUid.troubleshoot")}</Button>} />
-              <PopoverContent align="start">
-                <PopoverTitle className="mb-2">{t("stalled.title")}</PopoverTitle>
-                <StalledHelp cluster={c} />
-              </PopoverContent>
-            </Popover>
-          </div>
-        ) : <Tooltip content={t("clusterUid.notEnrolledHint")}><Badge status="neutral">{t("clusterUid.notEnrolled")}</Badge></Tooltip>,
+      render: (_, c) => c.cluster_uid ? <code>{c.cluster_uid}</code> : "-",
     },
-    { key: "card_return", title: t("column.cardReturn"), width: 200, sortValue: (c) => c.idle_return_seconds, render: (_, c) => cardReturnText(t, c.idle_return_seconds) },
+    { key: "card_return", title: t("column.cardReturn"), width: 180, sortValue: (c) => c.idle_return_seconds, render: (_, c) => cardReturnText(t, c.idle_return_seconds) },
     {
       key: "status",
       title: t("column.status"),
-      width: 110,
-      sortValue: (c) => (c.revoked ? 1 : 0),
-      render: (_, c) => c.revoked ? <Badge status="danger">{t("status.revoked")}</Badge> : <Badge status="success">{t("status.active")}</Badge>,
+      width: 180,
+      sortValue: (c) => (c.revoked ? 2 : c.stalled ? 1 : 0),
+      render: (_, c) => {
+        if (c.revoked) return <Badge status="danger">{t("status.revoked")}</Badge>;
+        // No node has joined for longer than the server allows: say how to
+        // find out why, here where the cluster's state is read.
+        if (c.stalled) {
+          return (
+            <div className="flex items-center gap-1">
+              <Badge status="warning">{t("clusterUid.notEnrolled")}</Badge>
+              <Popover>
+                <PopoverTrigger render={<Button variant="link" size="sm">{t("clusterUid.troubleshoot")}</Button>} />
+                <PopoverContent align="end" className="w-[560px] max-w-[calc(100vw-32px)]">
+                  <PopoverTitle className="mb-2">{t("stalled.title")}</PopoverTitle>
+                  <StalledHelp cluster={c} />
+                </PopoverContent>
+              </Popover>
+            </div>
+          );
+        }
+        if (!c.cluster_uid) return <Tooltip content={t("clusterUid.notEnrolledHint")}><Badge status="neutral">{t("clusterUid.notEnrolled")}</Badge></Tooltip>;
+        return <Badge status="success">{t("status.active")}</Badge>;
+      },
     },
-    { key: "created_at", title: t("column.createdAt"), width: 170, sortValue: (c) => c.created_at, render: (_, c) => formatTime(c.created_at) },
+    { key: "created_at", title: t("column.createdAt"), width: 170, defaultHidden: true, sortValue: (c) => c.created_at, render: (_, c) => formatTime(c.created_at) },
   ];
   if (isAdmin) {
     columns.push({
       key: "actions",
       role: "actions",
       title: t("column.actions"),
-      width: 230,
+      width: 240,
       render: (_, c) => (
         <div className="flex items-center gap-0.5">
           {c.source && (

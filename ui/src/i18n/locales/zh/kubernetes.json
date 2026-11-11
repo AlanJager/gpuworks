@@ -1,7 +1,7 @@
 {
   "page": {
     "title": "Kubernetes",
-    "description": "Kubernetes 集群以一个 DaemonSet 接入 gpuworks：DaemonSet 选中的每个 GPU 节点会自动成为这里的节点，实例以 Pod 的形式运行在各自的节点上。卡在实例使用期间向 Kubernetes 借用，空闲一段时间后归还。",
+    "description": "以 DaemonSet 接入 Kubernetes 集群，选中的 GPU 节点自动成为计算节点。",
     "breadcrumb": {
       "platform": "AI 算力平台",
       "resources": "资源",
@@ -83,7 +83,7 @@
     "namespace": "命名空间",
     "namespaceHelp": "DaemonSet 及其资源创建在哪个命名空间。",
     "stateDir": "状态目录",
-    "stateDirHelp": "agent 在主机上的目录。改成别的目录，可以让 agent 与主机上已安装的 agent 共存；留空使用 /opt/gpuworks。",
+    "stateDirHelp": "agent 在主机上的目录。改成别的目录，可以让 agent 与主机上已安装的 agent 共存；留空使用框里显示的默认目录。",
     "agentImage": "agent 镜像",
     "agentImagePlaceholder": "默认镜像",
     "defaultsFailed": "默认值没有加载成功",
