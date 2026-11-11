@@ -368,14 +368,18 @@ tbody tr:hover > .resource-table-pinned { background-image: linear-gradient(var(
 .resource-stat-danger .resource-stat-value { color: var(--fg-danger); }
 .provider-connected-heading { display: flex; align-items: baseline; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
 .provider-kind-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+/* The logo sits beside the name and the homepage, which stack in one block. */
 .provider-kind-card {
+  position: relative;
   display: flex;
   min-width: 0;
   flex-direction: column;
-  gap: 6px;
-  padding: 12px;
+  justify-content: center;
+  gap: 2px;
+  min-height: 56px;
+  padding: 8px 12px 8px 52px;
   border: 1px solid var(--border-subtle);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   background: var(--surface-floating);
   transition: border-color .15s ease, background-color .15s ease;
 }
@@ -383,7 +387,6 @@ tbody tr:hover > .resource-table-pinned { background-image: linear-gradient(var(
 .provider-kind-add {
   display: flex;
   align-items: center;
-  gap: 10px;
   padding: 0;
   border: 0;
   background: none;
@@ -391,9 +394,14 @@ tbody tr:hover > .resource-table-pinned { background-image: linear-gradient(var(
   text-align: left;
   cursor: pointer;
 }
-.provider-kind-logo { flex: none; width: 32px; height: 32px; border-radius: 6px; object-fit: contain; }
+/* The whole card adds the platform, logo and padding included; the focus ring is the card's. */
+.provider-kind-add::after { content: ""; position: absolute; inset: 0; border-radius: inherit; }
+.provider-kind-add:focus-visible { outline: none; }
+.provider-kind-add:focus-visible::after { outline: 2px solid var(--focus-ring); outline-offset: 1px; border-radius: var(--radius-sm); }
+.provider-kind-logo { position: absolute; top: 50%; left: 12px; width: 32px; height: 32px; border-radius: var(--radius-md); object-fit: contain; transform: translateY(-50%); }
 .provider-kind-logo-fallback { display: grid; place-items: center; background: var(--info-surface); color: var(--brand); font-weight: 600; }
-.provider-kind-homepage { padding-left: 42px; font-size: 12px; }
+/* Above the card-wide add target, so the link keeps its own click. */
+.provider-kind-homepage { position: relative; z-index: 1; align-self: flex-start; font-size: 12px; }
 .mono-value, .ant-statistic-content-value, .ant-table-cell code { font-variant-numeric: tabular-nums; }
 .image-version-disabled > td { color: var(--fg-subtle) !important; background: var(--surface-base); }
 .image-version-disabled a { opacity: 0.65; }

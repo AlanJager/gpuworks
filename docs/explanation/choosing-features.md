@@ -246,7 +246,7 @@ prefill TP ≥ decode TP，`vllm-mooncake`、`sglang-nixl`、`sglang-ppu-ipc` �
 
 ## 云厂商租机与自有节点
 
-**云厂商租机**解决"现在就要算力、不想买机器"：在"云厂商"页配置 provider 凭证（RunPod、CompShare、
+**云厂商租机**解决"现在就要算力、不想买机器"：在"外部平台"页配置 provider 凭证（RunPod、CompShare、
 AutoDL、Vast、ZStack），列出实例、确认型号/卡数/区域/价格后，创建、做 SSH 预检查并自动安装 agent。
 凭证由 server 加密存储，不写入 install script 或日志。
 
@@ -262,7 +262,7 @@ AutoDL、Vast、ZStack），列出实例、确认型号/卡数/区域/价格后�
   Docker（或 NVIDIA 节点上 Docker 没有 NVIDIA Container Toolkit 支持）时 agent 使用 runveil，而 RDMA 参数网络与 PPU dGPU 都不支持 runveil。
 - 各 provider 的 API 字段、区域约束和清理方式由各自的实现决定。文档与验收只覆盖"租机 → SSH → agent
   上线 → inventory"；云实例上的多机 RDMA、dGPU 没有系统化的验收记录，以节点页的实际探测结果为准。
-- 租来的实例按厂商计价（创建前先确认价格），用完后要在云厂商页或厂商控制台确认已经释放。
+- 租来的实例按厂商计价（创建前先确认价格），用完后要在"外部平台"页或厂商控制台确认已经释放。
 
 **什么时候该用自有节点**：需要稳定的多机 RDMA 集群、长期常驻、或合规要求数据不出内网。
 

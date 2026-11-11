@@ -181,7 +181,7 @@ def test_provider_endpoint_edit(page, context, server, artifacts, report, locale
     check(login.value.status == 200, "login failed")
     for cookie in context.cookies():
         artifacts.remember(cookie["value"])
-    expect(page.get_by_role("heading", name=copy["scope"]["public"]["title"], exact=True)).to_be_visible()
+    expect(page.get_by_role("heading", name=copy["platforms"]["title"], exact=True)).to_be_visible()
     report["preflight"] = "PASS"
     page.on("console", lambda msg: console_errors.append(msg.text) if msg.type == "error" else None)
     page.on("response", lambda r: bad_http.append({"path": urlsplit(r.url).path, "status": r.status, "method": r.request.method}) if r.status >= 400 else None)

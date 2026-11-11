@@ -77,7 +77,7 @@ const common = locale.common;
 
 const { act, cleanup, render, screen, waitFor, within } = await import("@testing-library/react");
 const userEvent = (await import("@testing-library/user-event")).default;
-const { MemoryRouter } = await import("react-router-dom");
+const { MemoryRouter, RouterProvider, createMemoryRouter } = await import("react-router-dom");
 const { ConfigProvider } = await import("antd");
 const { default: App } = await import("../src/App.tsx");
 const { navGroups } = await import("../src/navigation.tsx");
@@ -302,6 +302,37 @@ test("a menu page has no breadcrumb; a page below one names its section and pare
 test("the old models address lands on the models entry with its query", async () => {
   await mountApp("/ai-store/ai-model?detail=7");
   await waitFor(() => assert.equal(within(menu()).getByRole("link", { name: common.navigation.models }).getAttribute("aria-current"), "page"));
+});
+
+// The private cloud page became the external platforms list (ui/src/pages/CloudProvidersPage.tsx) opened on private clouds.
+const platforms = {
+  "/api/v1/providers": () => Response.json({ items: [
+    { id: 1, name: "Pods", kind: "runpod", category: "public_cloud", state: "valid", instance_count: 3, created_at: "", updated_at: "" },
+    { id: 2, name: "Hosts", kind: "zstack", category: "private_cloud", state: "valid", instance_count: 2, created_at: "", updated_at: "" },
+  ], total: 2 }),
+  "/api/v1/providers/kinds": () => Response.json({ items: [], total: 0 }),
+};
+
+test("the old private cloud address opens the external platforms page on the private clouds", async () => {
+  serve(platforms);
+  await mountApp("/zstack");
+  assert.ok(await screen.findByRole("heading", { level: 2, name: locale.providers.platforms.title }));
+  assert.ok(await screen.findByText("Hosts"));
+  // What the old page listed: private clouds, without the public ones.
+  assert.equal(screen.queryAllByText("Pods").length, 0);
+  assert.ok(within(screen.getByRole("group", { name: "Filtered" })).getByRole("button", { name: /^Clear filter: Platform type Private cloud/ }));
+  assert.equal(within(menu()).getByRole("link", { name: common.navigation.platforms }).getAttribute("aria-current"), "page");
+});
+
+test("going back from the old private cloud address returns to the page before it, not to the old address", async () => {
+  serve(platforms);
+  const router = createMemoryRouter([{ path: "*", element: <App /> }], { initialEntries: ["/apikeys", "/zstack"], initialIndex: 1 });
+  render(<I18nextProvider i18n={i18n}><ConfigProvider theme={{ token: { motion: false } }}><RouterProvider router={router} /></ConfigProvider></I18nextProvider>);
+  await screen.findByRole("heading", { level: 2, name: locale.providers.platforms.title });
+  assert.equal(router.state.location.pathname + router.state.location.search, "/providers?category=private_cloud");
+  await act(() => router.navigate(-1));
+  assert.equal(router.state.location.pathname, "/apikeys");
+  assert.ok(await screen.findByRole("heading", { level: 2, name: locale.apikeys.title }));
 });
 
 test("without a session the frame is not shown, only the sign-in form", async () => {

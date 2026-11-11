@@ -20,8 +20,8 @@ Cloud hosts can also use the manual command or SSH wizard. When installation sta
 | Manual command | You can run commands in the node's terminal, and the node can reach the server's download address | **Add node → SSH unavailable** generates an installation command |
 | SSH wizard | The server can sign in to the host through SSH | **Add node → SSH supported** installs after a precheck |
 | Offline package | Manual installation with a server-initiated connection, including when the node cannot download from the server | **Add node → SSH unavailable → Server-initiated connection** |
-| One-click public cloud instance installation | The public cloud account has been added and the target instance synchronized | Click **Install Agent** in the instance list under **Public Cloud**; see [Public Cloud Instance Installation](rent-cloud-gpus.md#安装-agent让实例出现在计算节点) |
-| One-click ZStack Cloud host installation | The ZStack Cloud environment has been added and the target host synchronized | Expand the environment under **Private Cloud** and click **Install Agent** for the target host; see [ZStack Cloud Installation](onboard-zstack-cloud.md#安装-agent-并确认接入) |
+| One-click public cloud instance installation | The public cloud account has been added and the target instance synchronized | Expand the account under **External Platforms** and click **Install Agent** in its instance list; see [Public Cloud Instance Installation](rent-cloud-gpus.md#安装-agent让实例出现在计算节点) |
+| One-click ZStack Cloud host installation | The ZStack Cloud environment has been added and the target host synchronized | Expand the environment under **External Platforms** and click **Install Agent** for the target host; see [ZStack Cloud Installation](onboard-zstack-cloud.md#安装-agent-并确认接入) |
 
 ### agent_dial and server_dial
 

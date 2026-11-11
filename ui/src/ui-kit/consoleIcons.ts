@@ -3,7 +3,6 @@ import Activity01 from "@hugeicons/core-free-icons/Activity01Icon";
 import AiMagic from "@hugeicons/core-free-icons/AiMagicIcon";
 import ChartHistogram from "@hugeicons/core-free-icons/ChartHistogramIcon";
 import ChartLineData01 from "@hugeicons/core-free-icons/ChartLineData01Icon";
-import CloudServer from "@hugeicons/core-free-icons/CloudServerIcon";
 import Cloud from "@hugeicons/core-free-icons/CloudIcon";
 import Container from "@hugeicons/core-free-icons/ContainerIcon";
 import Cube from "@hugeicons/core-free-icons/CubeIcon";
@@ -56,8 +55,7 @@ export const ConsoleIcon = {
   gpus: createHugeIcon(Gpu),
   storage: createHugeIcon(Database01),
   networks: createHugeIcon(ConnectIcon),
-  publicCloud: createHugeIcon(Cloud),
-  privateCloud: createHugeIcon(CloudServer),
+  platforms: createHugeIcon(Cloud),
   apiKeys: createHugeIcon(Key01),
   settings: createHugeIcon(Settings01),
   notifications: createHugeIcon(Notification01),

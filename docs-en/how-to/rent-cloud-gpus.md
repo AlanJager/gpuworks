@@ -10,15 +10,15 @@ Connect GPU instances from Alibaba Cloud, RunPod, CompShare, AutoDL, or Vast.ai 
 - For an agent-initiated connection with the server behind NAT, provide a stable domain name or reverse proxy address reachable from the instance. Do not use a quick tunnel address (see [Public Access](expose-public-address.md)).
 
 GPUWORKS handles cloud instances as follows: save cloud account credentials (encrypted at rest) → sync the instance inventory → install the
-agent over SSH (prefer Cloud Assistant for Alibaba Cloud) → bring the instance online as a compute node. **The console's Public Clouds page does not provide an interface for selecting an instance type, region, or placing an order**:
+agent over SSH (prefer Cloud Assistant for Alibaba Cloud) → bring the instance online as a compute node. **The console's External Platforms page does not provide an interface for selecting an instance type, region, or placing an order**:
 first rent an instance (select its type, region, and image) in the cloud provider's console, then return to GPUWORKS to sync and connect it. For REST APIs
 to create or delete instances, see [Create and Release Instances Through the API](#用-api-创建和释放实例).
 
 ## Add a Cloud Account
 
-1. Open **Public Cloud** under **Resources** in the left menu (path: `/providers`).
-2. Click **Add Public Clouds**, or click a provider card under **Quick Connect** in the center of the page to preselect its type. Links to the providers' official websites appear below the cards.
-3. Select a type, enter a **Name** (required; choose your own) and the fields under **Credentials**, then click **Add**.
+1. Open **External Platforms** under **Compute** in the left menu (path: `/providers`).
+2. Click **Add External Platform**, or click a provider card under **Quick Connect** in the center of the page to preselect its type. Links to the providers' official websites appear below the cards.
+3. Select the vendor in the **External platform** field, enter a **Name** (required; choose your own) and the fields under **Credentials**, then click **Add**.
 
 Credential fields for each type (the UI is authoritative; optional fields can be left blank):
 
@@ -42,19 +42,19 @@ in the list: **fields left blank retain their existing values**. You cannot chan
 
 ## Sync Instances and Check Types, Regions, and Prices
 
-1. Click **Sync** for an account in the **Connected Public Clouds** list (or **Sync All** at the top of the page to sync all accounts at once). On completion, the message reads **Synchronization complete; N instances found**.
+1. Click **Sync** for an account in the **Connected external platforms** list (or **Sync All** at the top of the page to sync all external platforms at once). The list's **External platform** column shows the provider (such as Alibaba Cloud or RunPod), and its **Platform type** column shows **Public cloud**. On completion, the message reads **Synchronization complete; N instances found**.
 2. Click the expand arrow on the left of the account row to view its instance table:
 
    | Column | Meaning |
    |---|---|
    | Instance name / Instance ID | Name and ID at the cloud provider |
    | GPU model / GPUs | Specifications returned by the provider; **Not returned** if unavailable |
-   | Connection | Endpoints offered by the provider: **Direct** or **Provider proxy** (SSH, with a copyable `ssh` command; endpoints marked **Terminal only** support connections but cannot install the agent). Alibaba Cloud also offers **Cloud Assistant** (no SSH needed) |
+   | Connection | Endpoints offered by the provider: **Direct** or **External platform proxy** (SSH, with a copyable `ssh` command; endpoints marked **Terminal only** support connections but cannot install the agent). Alibaba Cloud also offers **Cloud Assistant** (no SSH needed) |
    | Status | Running / Stopped / Unknown |
    | Price | Hourly price (for example, `¥1.98/hr`); if the provider returns no price, this may display `¥0.00/hr`, which does not mean it is free |
    | Region, Type | Region; type is **Container** or **Virtual machine** |
 
-3. Account status changes with sync results. A failed sync marks the account as **Error** and displays **Some Public Clouds providers have errors** at the top of the page. Follow the prompt to check credentials and provider API availability, then sync again.
+3. Account status changes with sync results. A failed sync marks the account as **Error** and displays **Some external platforms have errors** at the top of the page. Follow the prompt to check credentials and provider API availability, then sync again.
 
 The list automatically refreshes account status every 15 seconds, but the instance inventory comes from the last sync. Click **Sync** again for the latest cloud state. Container instances usually have no usable Docker daemon; the agent uses the built-in runveil when Docker is unavailable. Being root inside a container does not mean you can run the host's Docker.
 
@@ -128,7 +128,7 @@ To place orders or release instances directly through GPUWORKS without opening t
 - `DELETE /api/v1/providers/{id}/instances/{externalID}`: release an instance.
 - `POST /api/v1/providers/{id}/instances/{externalID}/power`: use the request body `{"action":"on"}` or `{"action":"off"}`.
 
-After creation, click **Sync** on the **Public Clouds** page for the instance to appear in the list. Requirements differ by type:
+After creation, click **Sync** on the **External Platforms** page for the instance to appear in the list. Requirements differ by type:
 
 | Type | Creation Requirements |
 |---|---|
@@ -180,7 +180,7 @@ To install the agent on a compatible persistent volume or data disk, enter the i
 
 **Other installation checks**
 
-- **SSH authentication fails after trying only the platform key**: the instance does not yet have the platform public key. For a RunPod pod started before the server registered its public key, installation from **Public Clouds** asks whether to restart to add the key. You can also provide a private key or password once under **Advanced Settings**, or authorize it on the instance as instructed by the error.
+- **SSH authentication fails after trying only the platform key**: the instance does not yet have the platform public key. For a RunPod pod started before the server registered its public key, installation from **External Platforms** asks whether to restart to add the key. You can also provide a private key or password once under **Advanced Settings**, or authorize it on the instance as instructed by the error.
 - **The provider returns no SSH endpoint**: the instance may still be starting. Click **Sync** again later.
 - **agent_dial warning**: the agent has started but is not connected to the server, usually because `server_url` is unreachable from the instance. Follow the next item.
 

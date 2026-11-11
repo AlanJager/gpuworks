@@ -30,18 +30,18 @@ The endpoint supports the `/zstack` context and an optional `/v1` suffix. Use a 
 
 GPUWorks and Cloud system clocks must be synchronized. When `rest.checkTimeZone=false`, Cloud ignores time zone offsets, so both systems must also use the same time zone. Queries and resource modification requests use AccessKey signing; the Secret is not sent with requests.
 
-## Add a Private Cloud
+## Add a ZStack Cloud Environment
 
-1. Open **Private Clouds** under **Resources** in the sidebar (`/zstack`).
-2. Click **Add Private Clouds**, or select the **ZStack Cloud** card under Quick Connect.
-3. Select ZStack Cloud, review the version notice, and enter the name, API Endpoint, AccessKey ID, and AccessKey Secret.
+1. Open **External Platforms** under **Compute** in the sidebar (`/providers`).
+2. Click **Add External Platform**, or select the **ZStack Cloud** card under Quick Connect.
+3. Select ZStack Cloud in the **External platform** field, review the version notice, and enter the name, API Endpoint, AccessKey ID, and AccessKey Secret.
 4. Click **Add**. GPUWorks calls the Cloud API to validate the credentials and saves the environment only if validation succeeds.
 
 Successful credential validation confirms access to the API checked at that step. Resource synchronization and agent installation also require their corresponding permissions and network connectivity. If adding the environment fails, use the displayed reason to check the endpoint, key state, permissions, version, and system clocks before retrying.
 
 ## Synchronize Hosts and GPUs
 
-1. Click **Sync** for the environment in the connected private clouds list. Use **Sync All** for multiple environments.
+1. In the **Connected external platforms** list, find the environment (its External platform column shows ZStack Cloud and its Platform type column shows Private cloud) and click **Sync**. **Sync All** synchronizes every platform in the list that supports it, public cloud accounts included.
 2. Expand the environment row and check the synchronized hosts, management addresses, and GPU models and counts. Instances in this list represent KVM hosts managed by Cloud.
 3. If synchronization fails, inspect the account state and error message, fix API, permission, or version issues, and synchronize again.
 
@@ -58,6 +58,6 @@ See [Connect Nodes and Upgrade or Uninstall the Agent](connect-nodes.md) for ins
 
 ## Update Connection Credentials
 
-Click **Edit** in the private clouds list to update the name, endpoint, or AccessKey. Credential fields left blank retain their existing values; the type cannot be changed. After saving, synchronize again to confirm that the new credentials can query resources.
+Click **Edit** for the environment in the **Connected external platforms** list to update the name, endpoint, or AccessKey. Credential fields left blank retain their existing values; the **External platform** field cannot be changed. After saving, synchronize again to confirm that the new credentials can query resources.
 
 Credentials are encrypted at rest, and the Secret is not displayed in the edit form.

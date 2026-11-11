@@ -100,7 +100,8 @@ export default function ResourceTable<T extends object>({ tableId, columns, data
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [localPage, setLocalPage] = useState({ pageIndex: 0, pageSize: prefs.pageSize ?? 20 });
   const [localSort, setLocalSort] = useState<SortingState>([]);
-  const [filters, setFilters] = useState<ColumnFiltersState>([]);
+  // A column's defaultFilteredValue is where its filter starts; the user changes it from there.
+  const [filters, setFilters] = useState<ColumnFiltersState>(() => columns.filter((column) => column.defaultFilteredValue?.length).map((column) => ({ id: column.key, value: column.defaultFilteredValue })));
   const [localSelection, setLocalSelection] = useState<RowSelectionState>({});
   const [expanded, setExpanded] = useState<ExpandedState>(() => Object.fromEntries((expandable?.defaultExpandedRowKeys ?? []).map((key) => [String(key), true])));
   const columnKeys = columns.map((column) => column.key).join("|");

@@ -20,8 +20,8 @@
 | 手工命令 | 能在节点终端执行命令，节点可访问 server 的下载地址 | **添加节点 → 不支持 SSH**，生成安装命令 |
 | SSH 向导 | server 可通过 SSH 登录主机 | **添加节点 → 支持 SSH**，预检查后安装 |
 | 离线包 | 使用 Server 发起连接时手工安装，包括节点无法从 server 下载的情况 | **添加节点 → 不支持 SSH → Server 发起连接** |
-| 公有云实例一键安装 | 已添加公有云账号并同步目标实例 | 在**公有云**的实例列表点击**一键装 Agent**，见[公有云实例安装步骤](rent-cloud-gpus.md#安装-agent让实例出现在计算节点) |
-| ZStack Cloud 物理机一键安装 | 已添加 ZStack Cloud 环境并同步目标物理机 | 在**专有云**展开环境，点击目标物理机的**一键装 Agent**，见[ZStack Cloud 安装步骤](onboard-zstack-cloud.md#安装-agent-并确认接入) |
+| 公有云实例一键安装 | 已添加公有云账号并同步目标实例 | 在**外部平台**展开该账号，在实例列表点击**一键装 Agent**，见[公有云实例安装步骤](rent-cloud-gpus.md#安装-agent让实例出现在计算节点) |
+| ZStack Cloud 物理机一键安装 | 已添加 ZStack Cloud 环境并同步目标物理机 | 在**外部平台**展开该环境，点击目标物理机的**一键装 Agent**，见[ZStack Cloud 安装步骤](onboard-zstack-cloud.md#安装-agent-并确认接入) |
 
 ### agent_dial 与 server_dial
 

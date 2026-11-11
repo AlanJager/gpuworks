@@ -1,40 +1,38 @@
 {
   "kind": { "aliyun": "Alibaba Cloud", "autodl": "AutoDL", "compshare": "CompShare", "runpod": "RunPod", "vast": "Vast.ai", "zstack": "ZStack Cloud" },
-  "scope": {
-    "public": { "title": "Public Clouds", "description": "Connect and manage public-cloud GPU resources, synchronize instances, and install the agent according to platform capabilities.", "empty": "No public cloud provider. Add one to get started." },
-    "private": { "title": "Private Clouds", "description": "Connect and manage private-cloud GPU resources. ZStack Cloud is currently supported.", "empty": "No private cloud provider. Add ZStack Cloud to get started." }
-  },
+  "platforms": { "title": "External Platforms", "description": "Connect public and private clouds, sync their GPU instances, and install the agent to make them compute nodes.", "empty": "No external platform yet. Pick one above to connect it.", "label": "External Platform" },
+  "category": { "public_cloud": "Public cloud", "private_cloud": "Private cloud" },
   "page": {
     "resourceBreadcrumb": "Resources",
-    "count": "{{count}} {{scope}}",
-    "add": "Add {{scope}}",
+    "count": "External platforms: {{count}}",
+    "add": "Add External Platform",
     "syncAll": "Sync All",
-    "invalidMessage": "Some {{scope}} providers have errors",
-    "invalidDescription": "Review provider status or synchronize again to verify credentials and API availability.",
+    "invalidMessage": "Some external platforms have errors",
+    "invalidDescription": "Review the external platform's status or synchronize again to verify credentials and API availability.",
     "summary": "Accounts: {{count}} · Instances: {{instances}}",
     "summaryInvalid": "Invalid: {{count}}",
     "addKind": "Add {{kind}}",
     "supportedTypes": "Quick Connect",
-    "listFailed": "Failed to load {{scope}} providers",
+    "listFailed": "Failed to load external platforms",
     "schemaMissing": "Provider schema was not loaded",
     "schemaMissingDescription": "Retry later or refresh the page.",
-    "connected": "Connected {{scope}}",
+    "connected": "Connected external platforms",
     "refresh": "Refresh"
   },
   "table": {
-    "column": { "name": "Name", "type": "Type", "instances": "Instances", "updatedAt": "Updated", "status": "Status" },
+    "column": { "name": "Name", "type": "External platform", "category": "Platform type", "instances": "Instances", "updatedAt": "Updated", "status": "Status" },
     "state": { "valid": "Valid", "invalid": "Error" },
     "edit": "Edit",
     "comingSoon": "Coming Soon",
     "sync": "Sync",
-    "deleteConfirm": "Delete this {{scope}} provider?",
+    "deleteConfirm": "Delete this external platform?",
     "delete": "Delete",
     "cancel": "Cancel"
   },
   "message": {
     "syncDone": "Synchronization complete; {{count}} instances found",
     "syncFailed": "Synchronization failed: {{detail}}",
-    "syncAllDone": "Synchronized {{count}} supported {{scope}} providers",
+    "syncAllDone": "Synchronized {{count}} external platforms that support synchronization",
     "syncAllPartial": "Synchronization complete: {{ok}} succeeded and {{failed}} failed",
     "deleted": "Deleted",
     "deleteFailed": "Delete failed: {{detail}}"
@@ -52,8 +50,8 @@
     "add": "Add",
     "cancel": "Cancel",
     "basic": "Basic Information",
-    "type": "Type",
-    "typeRequired": "Select a type",
+    "type": "External platform",
+    "typeRequired": "Select an external platform",
     "name": "Name",
     "nameRequired": "Enter a name",
     "namePlaceholder": "For example, My {{kind}}",
@@ -64,16 +62,16 @@
   },
   "install": {
     "autoAuth": {
-      "aliyun": "The server runs the install as root through Alibaba Cloud Cloud Assistant, so no SSH credential or public address is needed. When Cloud Assistant is offline it falls back to SSH on the public address; give a password or key under Advanced for that.",
-      "runpod": "The server signs in with its platform SSH key, which it adds to your RunPod account's SSH keys when the account is added; RunPod writes account keys into a Pod when it starts, so Pods started from then on need nothing else. A Pod that was already running does not accept the key yet: the install asks whether to change the Pod's configuration to add it (which restarts the Pod), or you can give its private key under Advanced once.",
-      "vast": "The server attaches its platform SSH key to the instance through the Vast API and signs in with it; nothing to enter here.",
-      "compshare": "CompShare instances only offer password login: the server signs in once with the password the CompShare API issued, adds its platform SSH key, and uses the key from then on. Nothing to enter here.",
-      "autodl": "The server signs in once with the root password AutoDL issued for the instance, adds its platform SSH key, and uses the key from then on. Nothing to enter here.",
-      "other": "The server signs in with its platform SSH key. If the instance does not accept it yet, give a private key or password under Advanced once; the key is added during the install."
+      "aliyun": "GPUWorks runs the install as root through Alibaba Cloud Cloud Assistant, so no SSH credential or public address is needed. When Cloud Assistant is offline it falls back to SSH on the public address; give a password or key under Advanced for that.",
+      "runpod": "GPUWorks signs in with its platform SSH key (its public key is under Settings → Nodes & deployments → SSH Key), which it adds to your RunPod account's SSH keys when the account is added; RunPod writes account keys into a Pod when it starts, so Pods started from then on need nothing else. A Pod that was already running does not accept the key yet: the install asks whether to change the Pod's configuration to add it (which restarts the Pod), or you can give its private key under Advanced once.",
+      "vast": "GPUWorks attaches its platform SSH key (its public key is under Settings → Nodes & deployments → SSH Key) to the instance through the Vast API and signs in with it; nothing to enter here.",
+      "compshare": "CompShare instances only offer password login: GPUWorks signs in once with the password the CompShare API issued, adds its platform SSH key (its public key is under Settings → Nodes & deployments → SSH Key), and uses the key from then on. Nothing to enter here.",
+      "autodl": "GPUWorks signs in once with the root password AutoDL issued for the instance, adds its platform SSH key (its public key is under Settings → Nodes & deployments → SSH Key), and uses the key from then on. Nothing to enter here.",
+      "other": "GPUWorks signs in with its platform SSH key (its public key is under Settings → Nodes & deployments → SSH Key). If the instance does not accept it yet, give a private key or password under Advanced once; the key is added during the install."
     },
     "details": "Install details",
     "credentialOverride": "SSH credentials (optional)",
-    "credentialOverrideHelp": "Only needed when the platform key and the provider's own login do not work. After a successful login the platform key is added and these are not kept.",
+    "credentialOverrideHelp": "Only needed when the GPUWorks platform key and the external platform's own login do not work. After a successful login the GPUWorks platform key is added and these are not kept.",
     "privateKey": "SSH private key",
     "password": "SSH password",
     "precheckDetails": "Precheck details",
@@ -109,13 +107,13 @@
     "connection": "Connection",
     "autoConnection": "Automatic",
     "direct": "Direct",
-    "proxy": "Provider proxy",
+    "proxy": "External platform proxy",
     "terminalOnly": "(terminal only)",
     "agentDial": "Agent-initiated connection",
     "serverDial": "Server-initiated connection",
     "serverURL": "Management node address",
     "agentAddress": "Compute node address",
-    "agentAddressHelp": "The address the server connects to this instance at. With a host only, the port is the listen port; when a platform maps the port to another number, give the mapped address and port.",
+    "agentAddressHelp": "The address the server connects to this instance at. With a host only, the port is the listen port; when the external platform maps the port to another number, give the mapped address and port.",
     "addressPlaceholder": "For example 203.0.113.8 or connect.example.com:37145",
     "autodlAgentDialOnly": "The AutoDL one-click install supports agent-initiated connections only. For a server-initiated connection, follow",
     "autodlPortDocs": "the AutoDL documentation to open a TCP port, then add the node by hand under Add compute node",
@@ -124,8 +122,8 @@
     "restartConfirm": {
       "title": "Restart the pod?",
       "content": "RunPod opens a port only by changing the pod's configuration, which restarts its container and clears what is not on a volume. Add the port automatically?",
-      "contentSSHKey": "This pod started before the platform key was added to the RunPod account, so it does not accept the key yet. RunPod adds a key only by changing the pod's configuration, which restarts its container and clears what is not on a volume. Add it automatically?",
-      "contentSSHKeyPort": "This pod does not accept the platform key yet and has no TCP port to use. RunPod adds a key and opens a port only by changing the pod's configuration, which restarts its container and clears what is not on a volume. Add both automatically?",
+      "contentSSHKey": "This pod started before the GPUWorks platform key was added to the RunPod account, so it does not accept the key yet. RunPod adds a key only by changing the pod's configuration, which restarts its container and clears what is not on a volume. Add it automatically?",
+      "contentSSHKeyPort": "This pod does not accept the GPUWorks platform key yet and has no TCP port to use. RunPod adds a key and opens a port only by changing the pod's configuration, which restarts its container and clears what is not on a volume. Add both automatically?",
       "ok": "Confirm and restart the pod"
     },
     "advanced": "Advanced Settings",
@@ -173,7 +171,7 @@
     },
     "connection": {
       "direct": "Direct",
-      "proxy": "Provider proxy",
+      "proxy": "External platform proxy",
       "terminalOnly": "Terminal only", "noSSH": "no SSH needed"
     },
     "type": {

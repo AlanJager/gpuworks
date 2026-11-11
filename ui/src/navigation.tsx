@@ -18,10 +18,11 @@ export interface NavGroup {
 
 // The side menu, also read by PageHeader so a page's breadcrumb names the
 // same section the menu files it under. Monitoring and analysis come first,
-// then daily work (serving, models), then the platform (compute,
-// administration). New features go to the end of their group so existing
-// entries keep their place; monitoring and analysis holds at most five
-// entries (alerts would be the fifth), and further views become tabs.
+// then the resources work builds on (compute, models), then serving, and
+// administration last, where the log search sits with the API keys. New
+// features go to the end of their group so existing entries keep their
+// place; monitoring and analysis holds at most five entries (alerts would
+// be the fourth), and further views become tabs.
 // Menu icons: the HugeIcons stroke set Zeron uses, 16px, thin stroke (ui-guidelines 9.2).
 const icon = (Icon: (typeof ConsoleIcon)[keyof typeof ConsoleIcon]) => createElement(Icon, { size: 16, strokeWidth: 1.5 });
 
@@ -33,7 +34,20 @@ export const navGroups: NavGroup[] = [
     { key: "/monitor", icon: icon(ConsoleIcon.monitor), labelKey: "navigation.monitor" },
     { key: "/scheduling", icon: icon(ConsoleIcon.scheduling), labelKey: "navigation.scheduling" },
     { key: "/analytics", icon: icon(ConsoleIcon.analytics), labelKey: "navigation.analytics" },
-    { key: "/logs", icon: icon(ConsoleIcon.logs), labelKey: "navigation.logs" },
+  ] },
+  { labelKey: "navigation.groups.compute", items: [
+    // External platforms provide nodes, so they sit above them. Public and
+    // private clouds share one list; /zstack redirects to it.
+    { key: "/providers", icon: icon(ConsoleIcon.platforms), labelKey: "navigation.platforms" },
+    { key: "/nodes", icon: icon(ConsoleIcon.nodes), labelKey: "navigation.nodes" },
+    { key: "/gpus", icon: icon(ConsoleIcon.gpus), labelKey: "navigation.gpus" },
+    { key: "/storage", icon: icon(ConsoleIcon.storage), labelKey: "navigation.storage" },
+    { key: "/networks", icon: icon(ConsoleIcon.networks), labelKey: "navigation.networks" },
+  ] },
+  { labelKey: "navigation.groups.models", items: [
+    { key: "/models", icon: icon(ConsoleIcon.models), labelKey: "navigation.models" },
+    { key: "/inference-templates", icon: icon(ConsoleIcon.inferenceTemplates), labelKey: "navigation.inferenceTemplates" },
+    { key: "/images", icon: icon(ConsoleIcon.images), labelKey: "navigation.images" },
   ] },
   { labelKey: "navigation.groups.inference", items: [
     // Deploying is the list's create action, so /deploy highlights the list.
@@ -42,21 +56,9 @@ export const navGroups: NavGroup[] = [
     { key: "/playground/chat", icon: icon(ConsoleIcon.playground), labelKey: "navigation.playground" },
     { key: "/evaluations", icon: icon(ConsoleIcon.evaluations), labelKey: "navigation.evaluations" },
   ] },
-  { labelKey: "navigation.groups.models", items: [
-    { key: "/models", icon: icon(ConsoleIcon.models), labelKey: "navigation.models" },
-    { key: "/inference-templates", icon: icon(ConsoleIcon.inferenceTemplates), labelKey: "navigation.inferenceTemplates" },
-    { key: "/images", icon: icon(ConsoleIcon.images), labelKey: "navigation.images" },
-  ] },
-  { labelKey: "navigation.groups.compute", items: [
-    { key: "/nodes", icon: icon(ConsoleIcon.nodes), labelKey: "navigation.nodes" },
-    { key: "/gpus", icon: icon(ConsoleIcon.gpus), labelKey: "navigation.gpus" },
-    { key: "/storage", icon: icon(ConsoleIcon.storage), labelKey: "navigation.storage" },
-    { key: "/networks", icon: icon(ConsoleIcon.networks), labelKey: "navigation.networks" },
-    { key: "/providers", icon: icon(ConsoleIcon.publicCloud), labelKey: "navigation.publicCloud" },
-    { key: "/zstack", icon: icon(ConsoleIcon.privateCloud), labelKey: "navigation.privateCloud" },
-  ] },
   { labelKey: "navigation.groups.admin", items: [
     { key: "/apikeys", icon: icon(ConsoleIcon.apiKeys), labelKey: "navigation.apiKeys" },
+    { key: "/logs", icon: icon(ConsoleIcon.logs), labelKey: "navigation.logs" },
     { key: "/settings", icon: icon(ConsoleIcon.settings), labelKey: "navigation.settings" },
   ] },
 ];
