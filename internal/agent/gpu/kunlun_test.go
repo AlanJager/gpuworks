@@ -320,12 +320,14 @@ func TestKunlunSelectedDevicesIsolation(t *testing.T) {
 			}
 
 			want := []string{"--runtime", "runc", "--device", "/dev/xpu1:/dev/xpu1:rwm"}
+			wantEnv := map[string]string{"XPU_VISIBLE_DEVICES": "0"}
 			if kind == "multi" {
 				want = append(want, "--device", "/dev/xpu0:/dev/xpu0:rwm")
+				wantEnv["XPU_VISIBLE_DEVICES"] = "0,1"
 			}
 			want = append(want, "--device", "/dev/xpuctrl:/dev/xpuctrl:rwm")
-			if !reflect.DeepEqual(got.DockerArgs, want) || len(got.Env) != 0 {
-				t.Fatal(got, want)
+			if !reflect.DeepEqual(got.DockerArgs, want) || !reflect.DeepEqual(got.Env, wantEnv) {
+				t.Fatal(got, want, wantEnv)
 			}
 		})
 	}

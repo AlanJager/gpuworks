@@ -2,7 +2,7 @@
 
 ## Current Capabilities
 
-P800 PCIe / KL3 uses vendor `kunlunxin` and framework `xre`. On Linux amd64, only Docker runtime has been validated; a runtime requirement or adapter listing does not establish nerdctl support. This combination supports whole-card TP (Tensor Parallelism), PP (Pipeline Parallelism) and engine DP (Data Parallelism). The image and model must support the chosen combination; cross-node deployments also require the communication prerequisites below. PD, partitions and sleep remain unavailable. Platform replicas, engine DP and cross-node TP are distinct topologies.
+P800 PCIe / KL3 uses vendor `kunlunxin` and framework `xre`. Validated runtimes are Docker and nerdctl on Linux amd64; runveil is not enabled. This combination supports whole-card TP (Tensor Parallelism), PP (Pipeline Parallelism) and engine DP (Data Parallelism). The image and model must support the chosen combination; cross-node deployments also require the communication prerequisites below. PD, partitions and sleep remain unavailable. Platform replicas, engine DP and cross-node TP are distinct topologies.
 
 Reuse the host’s existing Docker daemon. Independent sockets/data roots do not isolate host networking. Do not launch another dockerd with `--bridge=none` in the same network namespace: it can remove the existing `docker0`. Image and inference testing does not require restarting Docker; offline probes use container-level `--network none`.
 
@@ -21,7 +21,7 @@ Qwen3-0.6B and Qwen3.8-27B are available as an [importable template package](../
 1. Prepare the same verified image on both nodes. Record immutable digests, engine version and the actual Python/entrypoint paths. CUDA-compatible fields do not establish native runtime support.
 2. Register local weights with their full repository identity, such as `deepseek-ai/DeepSeek-R1-Distill-Qwen-7B`. A short directory name is not a repository identity. Existing files can be registered correctly without copying or downloading them.
 3. A spec’s `weights.sources[].repo_id` must match the model’s `source_id`; set `gpus.vendor` to `kunlunxin` and match the `P800 PCIe` card name. Missing specs or mismatched identities leave the Web form without a compatible profile.
-4. Use the image's verified direct entrypoint `/opt/vllm025-venv/bin/vllm serve` with explicit dtype, context and memory settings. The pre-start script only unsets `XPU_VISIBLE_DEVICES`; container-logical indexes come from `CUDA_VISIBLE_DEVICES=${LOCAL_VISIBLE_DEVICES}`. Do not mistake host indexes for container-logical indexes.
+4. Use the image's verified direct entrypoint `/opt/vllm025-venv/bin/vllm serve` with explicit dtype, context and memory settings. The agent injects container-logical `XPU_VISIBLE_DEVICES`, and the template's `CUDA_VISIBLE_DEVICES=${LOCAL_VISIBLE_DEVICES}` also uses container-logical indexes. Do not mistake host indexes for container-logical indexes.
 5. A single-card spec may fix TP=1. A cross-node placement resolver checks local card count but leaves global TP to the deployment: two nodes with two cards each use TP=4, PP=1, nnodes=2, not TP=2 from the resolver.
 
 ## Single-Node PP and DP
@@ -44,6 +44,8 @@ Images must supply the corresponding RDMA userspace libraries and verified commu
 ## Validation and Boundaries
 
 Acceptance on 2026-11-10 covered only production single-GPU evaluate/create on two P800 hosts, gateway chat, stale-device cleanup and agent restart; all of these checks passed. Single-node multi-GPU moved past the loopback-interface failure but remains blocked by that environment's XRE OAM/XLink initialization error. Cross-node operation was not tested. PP and engine DP are enabled capabilities, not evidence that these multi-GPU topologies have completed hardware acceptance.
+
+On 2026-11-11, single-GPU evaluate/create, health and chat passed with the final `33d947…` image on both Docker and nerdctl. Its Kunlun vLLM platform rejects `--enable-sleep-mode` before loading the model, so sleep/wake remains unavailable. With NIXL added experimentally, the UCX agent initialized but identified P800 KV VRAM as host memory and returned `NIXL_ERR_BACKEND` during registration, so PD is also unavailable. Opening GPUWorks gates cannot bypass these engine limitations. Runveil completed device selection and model loading, but the current image lacks the Kunlun XTDK/`CLANG_PATH` toolchain required by JITC, so inference does not complete with the default artifacts and runveil remains disabled.
 
 For real-hardware acceptance, verify each node on one card first, then collective communication and two-node deployment. In Web, choose the correct profile, two nodes and TP=4/PP=1; check each rank’s command and model/image acquisition source, then health, ordinary HTTP, SSE DONE and visible response text. A handshake or HTTP 200 alone does not prove a valid text response.
 

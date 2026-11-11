@@ -99,9 +99,6 @@ specs:
   gpus:
     vendor: kunlunxin
     name: ^P800 PCIe$
-  pre_start_script: |
-    set -eu
-    unset XPU_VISIBLE_DEVICES
   entrypoint:
   - /opt/vllm025-venv/bin/vllm
   - serve

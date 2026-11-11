@@ -5,9 +5,9 @@ This optional package adds Qwen3-0.6B and Qwen3.8-27B text inference profiles to
 ## Import
 
 1. Build the small catalog archive: `python3 build/inference-templates/kunlun-p800/build.py --output /tmp/kunlun-p800-qwen.tgz`.
-2. Make the reviewed private-registry image available to the selected Docker nodes, with registry credentials if required. The specs pin its manifest digest directly. No separate image catalog import is needed: the specs use the locked image directly.
+2. Make the reviewed private-registry image available to the selected Docker/nerdctl nodes, with registry credentials if required. The specs pin its manifest digest directly. No separate image catalog import is needed: the specs use the locked image directly.
 3. In **Inference templates → Import**, upload `kunlun-p800-qwen.tgz`. Both specs are user profiles named `bf16-vllm-kunlun-p800`; existing profiles are retained.
-4. Select the profile under Qwen3-0.6B or Qwen3.8-27B. Use Linux amd64, Docker, whole P800 PCIe/KL3 cards. Start with one card and the package defaults. Qwen3.8 is text-only here.
+4. Select the profile under Qwen3-0.6B or Qwen3.8-27B. Use Linux amd64, Docker/nerdctl and whole P800 PCIe/KL3 cards. Start with one card and the package defaults. Qwen3.8 is text-only here.
 
 The template uses the reviewed private-registry K26 vLLM 0.25.1 build, with Qwen3.8 compatibility and PP/DP worker-rank/device-mapping fixes, recorded as manifest `sha256:33d94768ff9a895bdc8874cae09940aede1b0e88218e52ed52231b8f86a91beb`. The specs use the direct entrypoint `/opt/vllm025-venv/bin/vllm serve`; image-lock records the actual interpreter `/opt/vllm025-venv/bin/python`. Registry publication to the upstream runner matrix is a separate step; this package does not invent public mirror references.
 

@@ -88,4 +88,7 @@ func TestKunlunInjectionRequiresProbeBaselineAndManagesWholeInventory(t *testing
 	if len(inj.ManagedSelection.Env) != 1 || inj.ManagedSelection.Env[0] != "XPU_VISIBLE_DEVICES" {
 		t.Fatalf("managed environment = %+v", inj.ManagedSelection.Env)
 	}
+	if inj.Env["XPU_VISIBLE_DEVICES"] != "0" {
+		t.Fatalf("Docker must use compact container-logical XPU indexes: %+v", inj.Env)
+	}
 }

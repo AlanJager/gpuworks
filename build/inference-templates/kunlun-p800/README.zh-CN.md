@@ -5,9 +5,9 @@
 ## 导入与单卡启动
 
 1. 在仓库根目录执行 `python3 build/inference-templates/kunlun-p800/build.py --output /tmp/kunlun-p800-qwen.tgz`。
-2. 将已审核的私有仓库镜像准备到所选 Docker 节点，按环境配置仓库登录。spec 直接锁定 manifest digest。无需另行导入镜像目录：模板直接使用锁定的镜像摘要。
+2. 将已审核的私有仓库镜像准备到所选 Docker/nerdctl 节点，按环境配置仓库登录。spec 直接锁定 manifest digest。无需另行导入镜像目录：模板直接使用锁定的镜像摘要。
 3. Web 的“推理模板 → 导入模板”上传 tgz；在模型中选择上述 P800 档位。已有档位不会被删除。
-4. 使用 Linux amd64、Docker 和 P800 PCIe/KL3 整卡，先保留包内默认参数做单卡验证。Qwen3.8 的此档位只开放文本。
+4. 使用 Linux amd64、Docker/nerdctl 和 P800 PCIe/KL3 整卡，先保留包内默认参数做单卡验证。Qwen3.8 的此档位只开放文本。
 
 镜像引用对应已记录的 K26 vLLM 0.25.1 的 manifest `sha256:33d94768ff9a895bdc8874cae09940aede1b0e88218e52ed52231b8f86a91beb`，含 Qwen3.8 适配与 PP/DP worker rank、设备映射修正；spec 使用直接入口 `/opt/vllm025-venv/bin/vllm serve`，image-lock 记录实际解释器 `/opt/vllm025-venv/bin/python`。正式公开镜像发布后再接入 upstream 内置目录，当前不声明不存在的公共镜像源。
 

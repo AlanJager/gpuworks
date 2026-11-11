@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -35,7 +36,12 @@ func TestKunlunSingleNodeUsesOnlyNativeDevices(t *testing.T) {
 				want = append(want, "--device", path+":"+path+":rwm")
 			}
 			want = append(want, "--device", "/dev/xpuctrl:/dev/xpuctrl:rwm")
-			if !reflect.DeepEqual(injection.DockerArgs, want) || len(injection.Env) != 0 || len(injection.Mounts) != 0 {
+			logical := make([]string, len(indexes))
+			for i := range indexes {
+				logical[i] = strconv.Itoa(i)
+			}
+			wantEnv := map[string]string{"XPU_VISIBLE_DEVICES": strings.Join(logical, ",")}
+			if !reflect.DeepEqual(injection.DockerArgs, want) || !reflect.DeepEqual(injection.Env, wantEnv) || len(injection.Mounts) != 0 {
 				t.Fatalf("unexpected local device contract: %+v", injection)
 			}
 		})

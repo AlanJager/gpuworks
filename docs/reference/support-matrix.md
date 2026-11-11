@@ -8,7 +8,7 @@
 | PPU / HGGC | ppu-smi | provider/runtime 依赖 | ppu-slicing-shim 显存配额与加权 QoS | 20/80 长负载已证明繁忙时吞吐权重，不是硬 SM 分区 |
 | 海光 / DTK | hy-smi | 由目录 spec 和 runtime 决定 | Z100 / K100_AI / BW 原生 vdev（实验性，x86_64，Docker 或 runveil/udocker） | 需可选原生 helper、宿主库和逐卡行为探针；其他型号仍只支持整卡 |
 | Apple / Metal | sysctl、ioreg（macOS 15+，Apple silicon） | host（引擎为宿主机进程，镜像是 darwin 环境包） | 无；一台 Mac 按统一内存同时跑多个实例 | 1 张统一内存卡，显存为 Metal 工作集；不支持引擎休眠、多机、KV 磁盘层；见 [ADR 0044](../adr/0044-mac-engines-as-host-processes.md) |
-| 昆仑芯 / XRE | xpu-smi XML、PCI/sysfs 设备身份 | Linux amd64、Docker、P800 PCIe / KL3、整卡 TP / PP / DP | 不支持 | TP、PP、引擎 DP；跨节点须满足通信前提；不开放 PD、sleep；镜像和模型使用显式目录 spec |
+| 昆仑芯 / XRE | xpu-smi XML、PCI/sysfs 设备身份 | Linux amd64、Docker/nerdctl、P800 PCIe / KL3、整卡 TP / PP / DP | 不支持 | TP、PP、引擎 DP；跨节点须满足通信前提；不开放 PD、sleep、runveil；镜像和模型使用显式目录 spec |
 
 上表的 dGPU 能力状态由 server 的 partition capability（分区能力判定）推导：
 
@@ -99,7 +99,7 @@ server 收到节点上报时把型号名规范化后再存（`accelerator.Normal
 agent 探测不到任何加速卡（各厂商 CLI 都不应答、都没装、也没有厂商设备文件）时节点厂商为空，不再按 NVIDIA 上报。
 
 昆仑芯使用 `kunlunxin` 厂商与 `xre` framework；CUDA 兼容版本不作为 CUDA 身份或 XRE 版本。
-能力由 `internal/accelerator` 统一声明，按候选卡及所选卡判断。P800 支持整卡 TP、PP 和引擎 DP，不开放 PD、分区或 sleep；所需宿主为 Linux amd64 和 Docker。不兼容的卡返回结构化放置拒绝，不阻止继续尝试其他候选。2026-11-10 已实测单卡生产启动、网关 chat、设备覆盖清理与 agent 重启并通过；单机多卡越过 loopback 接口问题后仍受测试环境 XRE OAM/XLink 初始化错误阻断，跨机未测，不能据此声明多卡或跨机已验收。
+能力由 `internal/accelerator` 统一声明，按候选卡及所选卡判断。P800 支持整卡 TP、PP 和引擎 DP，不开放 PD、分区或 sleep；所需宿主为 Linux amd64 和 Docker/nerdctl，runveil 尚未开放。不兼容的卡返回结构化放置拒绝，不阻止继续尝试其他候选。2026-11-10 已实测单卡生产启动、网关 chat、设备覆盖清理与 agent 重启并通过；单机多卡越过 loopback 接口问题后仍受测试环境 XRE OAM/XLink 初始化错误阻断，跨机未测，不能据此声明多卡或跨机已验收。
 
 昆仑必须显式选择非空卡组；手写未知命令按 `LAUNCH_FEATURES_UNKNOWN` / `launch_features_unknown` fail closed。启动时先清理模板或用户参数中由后端接管的 XPU/XDR 设备映射与冲突 runtime 选项，再注入本次选卡，保留无关设备映射。单机多卡还需非 loopback 集合通信接口，启动装配使用节点管理网络上报的真实接口，agent 派生 `BKCL_SOCKET_IFNAME`；缺失时在容器创建前拒绝，单卡不受此限制。
 
@@ -108,4 +108,4 @@ agent 探测不到任何加速卡（各厂商 CLI 都不应答、都没装、也
 单机设备接入不要求 XDR 或 RDMA。多机 TP 要求每个 rank 的宿主都有 XDR（`/dev/xdrdrv` 为真实字符设备），缺失则该 rank 在设备注入阶段失败；`/dev/infiniband`、无限 memlock、`IPC_LOCK` 与 `GLOO_SOCKET_IFNAME` 由主机 RDMA 计算网络提供；昆仑探针追加所选 XPU、控制设备与 XDR 字符设备，并派生 BKCL 开关和 `BKCL_SOCKET_IFNAME`，不枚举 HCA，也不重复添加网络已解析的参数。部署环境另需提供 `BKCL_RDMA_NICS`。已解析参数缺少这些资源或 netdev、或把 memlock 设成有限值时，多机启动直接拒绝而非补注入。平台不加载驱动或变更宿主网络。
 
 容器参数遵循公共管理员模板契约；平台选卡注入不是对任意特权参数、镜像或宿主挂载的安全沙箱。
-agent 不设置 `XPU_VISIBLE_DEVICES`，镜像入口须遵循自己的容器逻辑编号契约。镜像和模型需显式导入适配的目录 spec，详见 [昆仑 P800 部署](../how-to/kunlun-p800.md)。
+agent 注入容器逻辑编号的 `XPU_VISIBLE_DEVICES`，镜像入口的 `CUDA_VISIBLE_DEVICES` 也使用容器逻辑编号。镜像和模型需显式导入适配的目录 spec，详见 [昆仑 P800 部署](../how-to/kunlun-p800.md)。

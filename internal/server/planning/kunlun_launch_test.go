@@ -22,7 +22,7 @@ func TestKunlunLaunchRestrictionsAreRefusals(t *testing.T) {
 		change     func(*LaunchRequest)
 	}{
 		{"runtime pending", "runtime_unreported", func(r *LaunchRequest) { r.Node.RuntimeDriver = "" }},
-		{"runtime", "runtime_unsupported", func(r *LaunchRequest) { r.Node.RuntimeDriver = "udocker" }},
+		{"runtime", "runtime_unsupported", func(r *LaunchRequest) { r.Node.RuntimeDriver = "containerd" }},
 		{"arch", "runtime_unsupported", func(r *LaunchRequest) { r.Node.Arch = "arm64" }},
 		{"OS", "runtime_unsupported", func(r *LaunchRequest) { r.Node.OS = "windows" }},
 		{"sleep", "sleep_unsupported_on_node", func(r *LaunchRequest) { r.Sleepable = true }},
@@ -47,7 +47,7 @@ func TestKunlunLaunchRestrictionsAreRefusals(t *testing.T) {
 					t.Fatalf("plan=%+v reason=%+v err=%v", plan.Output.Result, reason, err)
 				}
 				if tc.code == "runtime_unsupported" {
-					if reason.Params["required_os"] != "linux" || reason.Params["required_arch"] != "amd64" || reason.Params["required_runtime"] != "docker" {
+					if reason.Params["required_os"] != "linux" || reason.Params["required_arch"] != "amd64" || reason.Params["required_runtime"] != "docker/nerdctl" {
 						t.Fatal(reason)
 					}
 				}

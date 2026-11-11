@@ -123,8 +123,8 @@ func TestResolvedNetworkThroughEngineAndCapturedKunlun(t *testing.T) {
 			if got.Env["NCCL_IB_HCA"] != "mlx5_1:1" {
 				t.Fatalf("network rail overwritten: %v", got.Env)
 			}
-			if _, exists := got.Env["XPU_VISIBLE_DEVICES"]; exists {
-				t.Fatal("agent invented image-local GPU indexes")
+			if got.Env["XPU_VISIBLE_DEVICES"] != "0" {
+				t.Fatalf("container-logical XPU selection = %+v", got.Env)
 			}
 		})
 	}
