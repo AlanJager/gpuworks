@@ -1,13 +1,16 @@
-import { Empty, EmptyMedia, EmptyDescription, EmptyActions } from "./ui/empty";
+import { Empty, EmptyMedia, EmptyDescription, EmptyActions, EmptyIllustration, type EmptyIllustrationVariant } from "./ui/empty";
 import type { ReactNode } from "react";
 
 export type EmptyStateKind = "nodes" | "models" | "deployments" | "data";
 
-const illustrations: Record<EmptyStateKind, string> = {
-  nodes: "/assets/empty-nodes.webp",
-  models: "/assets/empty-models.webp",
-  deployments: "/assets/empty-deployments.webp",
-  data: "/assets/empty-data.webp",
+// Zeron's built-in illustrations, so every empty list draws the same way
+// and follows the theme: resource lists show the resource stack, others the
+// general one.
+const illustrations: Record<EmptyStateKind, Exclude<EmptyIllustrationVariant, "preview">> = {
+  nodes: "resources",
+  models: "resources",
+  deployments: "resources",
+  data: "general",
 };
 
 export default function EmptyState({
@@ -23,7 +26,7 @@ export default function EmptyState({
 }) {
   return (
     <Empty reason="no-data" scope={compact ? "inline" : "section"} density={compact ? "compact" : "default"}>
-      <EmptyMedia variant="illustration"><img src={illustrations[kind]} alt="" aria-hidden="true" /></EmptyMedia>
+      <EmptyMedia variant="illustration"><EmptyIllustration variant={illustrations[kind]} /></EmptyMedia>
       <EmptyDescription>{description}</EmptyDescription>
       {action && <EmptyActions>{action}</EmptyActions>}
     </Empty>

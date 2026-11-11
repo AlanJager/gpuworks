@@ -2263,10 +2263,14 @@ export interface DataRetentionStatus {
   usage_flush: { at_ms: number; rows: number; ms: number; error?: string };
 }
 
+export type ProviderCategory = "public_cloud" | "private_cloud";
+
 export interface CloudProvider {
   id: number;
   name: string;
   kind: string;
+  // The platform the kind connects, which the server derives; the platform type column shows it.
+  category: ProviderCategory;
   state: string;
   instance_count: number;
   created_at: string;

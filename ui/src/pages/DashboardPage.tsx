@@ -100,8 +100,8 @@ export default function DashboardPage() {
 
   const fleet = summary.data;
   const cloudList = providers.data?.items ?? [];
-  const publicClouds = cloudList.filter((cloud) => cloud.kind !== "zstack");
-  const privateClouds = cloudList.filter((cloud) => cloud.kind === "zstack");
+  const publicClouds = cloudList.filter((cloud) => cloud.category === "public_cloud");
+  const privateClouds = cloudList.filter((cloud) => cloud.category === "private_cloud");
   const invalidClouds = cloudList.filter((cloud) => cloud.state === "invalid");
   const deployments = fleet?.deployments;
   const replicaSignal = monitor.data?.signals?.find((signal) => signal.key === "ready_replicas");
@@ -136,8 +136,8 @@ export default function DashboardPage() {
     { label: t("overview.failedServicesGroup", { count: fmt(failedServices.length) }), count: failedServices.length, to: "/monitor" },
     { label: t(modelIssuesIncomplete ? "overview.failedModelsGroupPartial" : "overview.failedModelsGroup", { count: fmt(failedModelCount) }), count: failedModelCount, to: "/models" },
     { label: t("overview.problemStoragesGroup", { count: fmt(storage.data?.problems.length ?? 0) }), count: storage.data?.problems.length ?? 0, to: "/storage" },
-    { label: t("overview.invalidPublicCloudsGroup", { count: fmt(invalidClouds.filter((cloud) => cloud.kind !== "zstack").length) }), count: invalidClouds.filter((cloud) => cloud.kind !== "zstack").length, to: "/providers" },
-    { label: t("overview.invalidPrivateCloudsGroup", { count: fmt(invalidClouds.filter((cloud) => cloud.kind === "zstack").length) }), count: invalidClouds.filter((cloud) => cloud.kind === "zstack").length, to: "/zstack" },
+    { label: t("overview.invalidPublicCloudsGroup", { count: fmt(invalidClouds.filter((cloud) => cloud.category === "public_cloud").length) }), count: invalidClouds.filter((cloud) => cloud.category === "public_cloud").length, to: "/providers?category=public_cloud" },
+    { label: t("overview.invalidPrivateCloudsGroup", { count: fmt(invalidClouds.filter((cloud) => cloud.category === "private_cloud").length) }), count: invalidClouds.filter((cloud) => cloud.category === "private_cloud").length, to: "/providers?category=private_cloud" },
   ].filter((group) => group.count > 0);
   const attentionCount = attentionGroups.reduce((sum, group) => sum + group.count, 0);
   const issues: Issue[] = attentionCount <= ATTENTION_DETAIL_LIMIT ? [
@@ -146,7 +146,7 @@ export default function DashboardPage() {
     ...failedServices.map((service) => ({ kind: t("overview.issueService"), name: service.name, reason: t("overview.probeFailed"), to: `/monitor/d/${service.deployment_id}` })),
     ...failedModels.map((model) => ({ kind: t("overview.models"), name: model.name, reason: t("overview.fileFailed"), to: `/models?detail=${model.id}` })),
     ...(storage.data?.problems ?? []).map((problem) => ({ kind: t("overview.storageTitle"), name: problem.name, reason: t("overview.storageProblem", { count: problem.count }), to: storageDetailPath(problem.id, "nodes") })),
-    ...invalidClouds.map((cloud) => ({ kind: t("overview.clouds"), name: cloud.name, reason: t("overview.cloudProblem"), to: cloud.kind === "zstack" ? "/zstack" : "/providers" })),
+    ...invalidClouds.map((cloud) => ({ kind: t("overview.clouds"), name: cloud.name, reason: t("overview.cloudProblem"), to: `/providers?category=${cloud.category}` })),
   ] : [];
   const groupedAttention = attentionCount > ATTENTION_DETAIL_LIMIT || issues.length !== attentionCount || modelIssuesIncomplete;
   const attentionEntries = groupedAttention
@@ -239,8 +239,8 @@ export default function DashboardPage() {
     </Panel>
     <Panel title={t("overview.resourceAccess")}>
       <div className="dashboard-sources">
-        <Source count={providers.data ? publicClouds.length : undefined} label={t("overview.publicCloud")} to="/providers" />
-        <Source count={providers.data ? privateClouds.length : undefined} label={t("overview.privateCloud")} to="/zstack" />
+        <Source count={providers.data ? publicClouds.length : undefined} label={t("overview.publicCloud")} to="/providers?category=public_cloud" />
+        <Source count={providers.data ? privateClouds.length : undefined} label={t("overview.privateCloud")} to="/providers?category=private_cloud" />
       </div>
     </Panel>
   </Block>;

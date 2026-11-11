@@ -24,7 +24,7 @@ const instance: ProviderInstance = {
 function fixture(kind: string) {
   Object.assign(api, {
     // The list endpoints answer with the collection envelope {items, total}.
-    providers: async () => ({ items: [{ id: 1, name: "Test cloud", kind, state: "valid", instance_count: 1, created_at: "", updated_at: "" }], total: 1 }),
+    providers: async () => ({ items: [{ id: 1, name: "Test cloud", kind, category: kind === "zstack" ? "private_cloud" : "public_cloud", state: "valid", instance_count: 1, created_at: "", updated_at: "" }], total: 1 }),
     providerKinds: async () => ({ items: [], total: 0 }),
     providerInstances: async () => ({ items: [instance], total: 1 }),
   });
@@ -32,7 +32,7 @@ function fixture(kind: string) {
 
 test("private cloud resource list omits region but retains other columns and onboarding", async () => {
   fixture("zstack");
-  render(<I18nextProvider i18n={i18n}><MemoryRouter><CloudProvidersPage scope="private" /></MemoryRouter></I18nextProvider>);
+  render(<I18nextProvider i18n={i18n}><MemoryRouter><CloudProvidersPage /></MemoryRouter></I18nextProvider>);
   await screen.findByText("Test cloud");
   fireEvent.click(screen.getByRole("button", { name: /expand row/i }));
   await screen.findByText("GPU host");
@@ -44,7 +44,7 @@ test("private cloud resource list omits region but retains other columns and onb
 
 test("public cloud resource list retains region", async () => {
   fixture("runpod");
-  render(<I18nextProvider i18n={i18n}><MemoryRouter><CloudProvidersPage scope="public" /></MemoryRouter></I18nextProvider>);
+  render(<I18nextProvider i18n={i18n}><MemoryRouter><CloudProvidersPage /></MemoryRouter></I18nextProvider>);
   await screen.findByText("Test cloud");
   fireEvent.click(screen.getByRole("button", { name: /expand row/i }));
   await screen.findByText("GPU host");

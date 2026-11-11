@@ -119,8 +119,9 @@ function AuthenticatedShell({ onLogout }: { onLogout: () => Promise<void> }) {
             <Route path="/analytics/:tab?" element={<AnalyticsPage />} />
             <Route path="/nodes" element={<NodesPage />} />
             <Route path="/gpus" element={<GPUPage />} />
-            <Route path="/providers" element={<CloudProvidersPage scope="public" />} />
-            <Route path="/zstack" element={<CloudProvidersPage scope="private" />} />
+            <Route path="/providers" element={<CloudProvidersPage />} />
+            {/* The private cloud page became the external platforms list, opened on private clouds. */}
+            <Route path="/zstack" element={<Navigate to="/providers?category=private_cloud" replace />} />
             <Route path="/models" element={<ModelsPage />} />
 			<Route path="/inference-templates" element={<InferenceTemplatesPage />} />
 			<Route path="/inference-templates/*" element={<InferenceTemplateDetailPage />} />

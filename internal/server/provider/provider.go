@@ -406,6 +406,18 @@ func KindInfos() []KindInfo {
 	return infos
 }
 
+// Category groups provider kinds by the platform they connect.
+type Category string
+
+const (
+	CategoryPublicCloud  Category = "public_cloud"
+	CategoryPrivateCloud Category = "private_cloud"
+)
+
+// CategoryOf reports the platform a kind connects. Each known kind declares
+// its category (kindCategories); a kind that declares none has no category.
+func CategoryOf(kind string) Category { return kindCategories[kind] }
+
 func isPortMapper(drv Driver) bool {
 	_, ok := drv.(ServerDialPortMapper)
 	return ok

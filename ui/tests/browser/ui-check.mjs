@@ -146,6 +146,14 @@ const ruleScript = () => {
     const content = range.getBoundingClientRect().width;
     if (r.width > 260 && r.width > content * 4 + 48) add("stretched-control", el, `${Math.round(r.width)}px for ${Math.round(content)}px of content`);
   }
+  // 3b. An empty list's placeholder off the middle of what is shown: a table wider than its
+  // container centers it across columns scrolled out of view unless it holds to the visible part.
+  for (const el of root.querySelectorAll("[data-slot=table-container] [data-slot=empty]")) {
+    if (!visible(el)) continue;
+    const box = el.closest("[data-slot=table-container]").getBoundingClientRect(), media = (el.querySelector("[data-slot=empty-media]") ?? el).getBoundingClientRect();
+    const off = Math.round(media.left + media.width / 2 - (box.left + box.width / 2));
+    if (Math.abs(off) > 8) add("empty-off-center", el, `${off}px from the middle of the visible table`);
+  }
   // 4. Sideways scrolling.
   if (document.documentElement.scrollWidth > innerWidth + 1) add("page-overflow-x", document.documentElement, `${document.documentElement.scrollWidth}px > ${innerWidth}px`);
   for (const d of dialogs) if (d.scrollWidth > d.clientWidth + 1 && getComputedStyle(d).overflowX !== "visible") add("dialog-overflow-x", d, `${d.scrollWidth}px > ${d.clientWidth}px`);

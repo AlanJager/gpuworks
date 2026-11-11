@@ -1469,6 +1469,11 @@
       "translations": { "zh": "平台密钥" }
     },
     {
+      "term_en": "External Platform",
+      "translations": { "zh": "外部平台" },
+      "forbidden": { "zh": ["第三方平台", "接入平台", "算力来源"] }
+    },
+    {
       "term_en": "Compute Node Address",
       "translations": { "zh": "计算节点接入地址" },
       "forbidden": { "zh": ["直连地址", "主机接入地址"] }

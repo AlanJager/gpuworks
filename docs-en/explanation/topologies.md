@@ -280,7 +280,7 @@ flowchart LR
 ```
 
 **Use cases**: You have no GPU machines available or need compute capacity only temporarily. Configure provider credentials (RunPod, CompShare, AutoDL, Vast,
-or ZStack) on the Cloud Providers page. List instances and confirm the model, card count, region, and price, then create the instance, run SSH preflight checks, and install the agent.
+or ZStack) on the External Platforms page. List instances and confirm the model, card count, region, and price, then create the instance, run SSH preflight checks, and install the agent.
 
 **Ports and directions**:
 

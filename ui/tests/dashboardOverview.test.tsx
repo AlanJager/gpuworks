@@ -71,7 +71,7 @@ function stub() {
   summaryRequests = [];
   api.health = async () => ({ status: "ok", sessions: 3, version: "v0.9.0" }) as never;
   api.dashboardSummary = async (...args: unknown[]) => { summaryRequests.push(args); return summary; };
-  api.providers = async () => ({ items: [{ id: 1, name: "zs", kind: "zstack", state: "valid" }], total: 1 }) as never;
+  api.providers = async () => ({ items: [{ id: 1, name: "zs", kind: "zstack", category: "private_cloud", state: "valid" }], total: 1 }) as never;
   api.modelsPage = async () => ({ items: [], total: 0, summary: { registered: 0, ready_files: 0, sources: 0, weight_gib: 0 } }) as never;
   api.gpus = async () => ({ items: [card("gpu-1", "H100", "nvidia", 80)], overview: { total: 1, allocation: { allocatable: 1, unusable: 0 } } }) as never;
   api.nodesPage = async () => ({ items: [], total: 0 }) as never;
@@ -89,7 +89,8 @@ function stub() {
 }
 afterEach(() => { cleanup(); Object.assign(api, originals); analyticsApi.usage = originals.usage; });
 let seenPath = "";
-function LocationProbe() { seenPath = useLocation().pathname; return null; }
+// The address with its query, so a link that opens a list filtered is told from one that does not.
+function LocationProbe() { const { pathname, search } = useLocation(); seenPath = pathname + search; return null; }
 function renderPage() { render(<I18nextProvider i18n={i18n}><MemoryRouter><DashboardPage /><LocationProbe /></MemoryRouter></I18nextProvider>); }
 // node:assert parses this whole file to word a failed assert.ok without a
 // message, and waitFor fails it on every poll until the page settles; a
@@ -225,7 +226,7 @@ test("tasks count batches and evaluations, a zero is not a link and unknown batc
   await waitFor(() => assert.equal(document.querySelector(".dashboard-tasks .dashboard-task-count")?.textContent, "—"));
 });
 
-test("every panel arrow goes to a real page and both clouds link to their own page", async () => {
+test("every panel arrow goes to a real page and both clouds link to the connected platforms", async () => {
   stub(); renderPage();
   await waitFor(() => ok(panel("Token usage")));
   ok(arrow(panel("Token usage"))?.startsWith("/analytics/usage"));
@@ -233,7 +234,7 @@ test("every panel arrow goes to a real page and both clouds link to their own pa
   assert.equal(arrow(panel("Shared storage used / total")), "/storage");
   assert.equal(arrow(panel("Resource connections")), undefined);
   const sources = await waitFor(() => { const links = [...panel("Resource connections").querySelectorAll<HTMLAnchorElement>(".dashboard-source")]; assert.equal(links.length, 2); return links; });
-  assert.deepEqual(sources.map((link) => [link.querySelector(".dashboard-source-value")?.textContent, link.querySelector(".dashboard-source-label")?.textContent, link.getAttribute("href")]), [["0", "Public clouds", null], ["1", "Private clouds", "/zstack"]]);
+  assert.deepEqual(sources.map((link) => [link.querySelector(".dashboard-source-value")?.textContent, link.querySelector(".dashboard-source-label")?.textContent, link.getAttribute("href")]), [["0", "Public clouds", null], ["1", "Private clouds", "/providers?category=private_cloud"]]);
   ok(sources[0].querySelector(".dashboard-source-value")?.classList.contains("is-zero"));
 });
 
@@ -351,8 +352,8 @@ test("hundreds of issues across every category remain a seven-category strip wit
   api.storages = async () => ({ items: Array.from({ length: 40 }, (_, index) => ({ id: index + 1, name: `storage-${index}`, type: index % 2 ? "nfs" : "local", nodes: { problems: [{ state: "failed" }] } })), total: 40 }) as never;
   api.storage = async (id: number) => ({ id, name: `storage-${id - 1}`, type: "nfs", nodes: { all: [], problems: [{ state: "failed" }] } }) as never;
   api.providers = async () => ({ items: [
-    ...Array.from({ length: 20 }, (_, index) => ({ id: index + 1, name: `public-${index}`, kind: "runpod", state: "invalid" })),
-    ...Array.from({ length: 20 }, (_, index) => ({ id: index + 21, name: `private-${index}`, kind: "zstack", state: "invalid" })),
+    ...Array.from({ length: 20 }, (_, index) => ({ id: index + 1, name: `public-${index}`, kind: "runpod", category: "public_cloud", state: "invalid" })),
+    ...Array.from({ length: 20 }, (_, index) => ({ id: index + 21, name: `private-${index}`, kind: "zstack", category: "private_cloud", state: "invalid" })),
   ], total: 40 }) as never;
   renderPage();
   await waitFor(() => ok(screen.getByRole("button", { name: "5 more categories" })));
@@ -363,7 +364,7 @@ test("hundreds of issues across every category remain a seven-category strip wit
   fireEvent.click(screen.getByRole("button", { name: "5 more categories" }));
   const labels = ["Inference service issues 60", "Model file issues 70", "Storage issues 40", "Public cloud issues 20", "Private cloud issues 20"];
   await waitFor(() => assert.deepEqual(screen.getAllByRole("menuitem").map(item => item.textContent), labels));
-  for (const [index, to] of ["/monitor", "/models", "/storage", "/providers", "/zstack"].entries()) {
+  for (const [index, to] of ["/monitor", "/models", "/storage", "/providers?category=public_cloud", "/providers?category=private_cloud"].entries()) {
     if (index) fireEvent.click(screen.getByRole("button", { name: "5 more categories" }));
     fireEvent.click(await screen.findByRole("menuitem", { name: labels[index] }));
     await waitFor(() => assert.equal(seenPath, to));

@@ -1,6 +1,6 @@
 {
   "contract_id": "gpuworks/providers/endpoint-edit-roundtrip",
-  "name": "公有云 / 编辑已保存代理地址、仅改名称保留密钥、验证失败恢复和刷新回显",
+  "name": "外部平台 / 编辑已保存代理地址、仅改名称保留密钥、验证失败恢复和刷新回显",
   "priority": "P1",
   "page_id": "providers",
   "test_file": "test/e2e/provider_endpoint_edit.py",

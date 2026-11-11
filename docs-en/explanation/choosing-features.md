@@ -247,7 +247,7 @@ traffic, it records `PD_HANDOFF_NOT_RDMA`. The service page also shows PD effect
 ## Rented Cloud Machines and Your Own Nodes
 
 **Renting from a cloud provider** addresses an immediate need for compute without buying hardware. Configure provider credentials (RunPod, CompShare,
-AutoDL, Vast, ZStack) on the "Cloud Providers" page, list instances, and confirm GPU model/count, region, and price. Then create the instance, run SSH prechecks, and install the agent automatically.
+AutoDL, Vast, ZStack) on the "External Platforms" page, list instances, and confirm GPU model/count, region, and price. Then create the instance, run SSH prechecks, and install the agent automatically.
 The server stores credentials encrypted; they are not written to installation scripts or logs.
 
 **Your own nodes** suit long-term stable operation and networks you can plan yourself. You control drivers, network adapters, and switches, so you can configure
@@ -262,7 +262,7 @@ The server stores credentials encrypted; they are not written to installation sc
   Docker (or NVIDIA nodes where Docker lacks NVIDIA Container Toolkit support), the agent uses runveil, which supports neither RDMA compute networks nor PPU dGPU.
 - Each provider implementation determines API fields, region constraints, and cleanup. Documentation and acceptance cover only "rent machine → SSH → agent
   online → inventory." Multi-node RDMA and dGPU on cloud instances have no systematic acceptance records; use the actual detection results on the node page.
-- Rented instances are billed by the provider (confirm the price before creation). After use, confirm they have been released on the Cloud Providers page or in the provider's console.
+- Rented instances are billed by the provider (confirm the price before creation). After use, confirm they have been released on the External Platforms page or in the provider's console.
 
 **When to use your own nodes**: You need a stable multi-node RDMA cluster, long-term availability, or compliance requires data to remain on the internal network.
 

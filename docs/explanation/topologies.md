@@ -279,7 +279,7 @@ flowchart LR
   S -.->|"server_dial 可选"| V
 ```
 
-**适用场景**：没有现成的 GPU 机器，或只要短期算力。在"云厂商"页配置 provider 凭证（RunPod、CompShare、AutoDL、Vast、
+**适用场景**：没有现成的 GPU 机器，或只要短期算力。在"外部平台"页配置 provider 凭证（RunPod、CompShare、AutoDL、Vast、
 ZStack），列出实例并确认型号、卡数、区域、价格后，创建、SSH 预检查并安装 agent。
 
 **端口与方向**：

@@ -531,6 +531,10 @@ _Avoid_: agent 监听端口、agent 接入地址、节点端口
 多机推理和节点间模型同步使用的节点互达地址，与 SSH 和 server_dial 寻址无关。
 _Avoid_: agent 互联地址、SSH 地址、agent 接入地址
 
+**外部平台 — External Platform**:
+GPUWorks 之外、把机器交给 GPUWorks 纳管的平台：公有云厂商的账号、ZStack Cloud 专有云环境，以及以后的 Kubernetes 集群。控制台在“外部平台”页把它们列在一起，用平台类型（公有云、专有云）区分。界面上单说“平台”分不清指谁：指这些对象写“外部平台”，指 GPUWorks 自己的密钥写“GPUWorks 平台密钥”。
+_Avoid_: 第三方平台（ZStack Cloud 与客户自己的私有云不是第三方）、接入平台、算力来源
+
 ### 控制面安装与升级
 
 **初始密码 — Initial Password**:

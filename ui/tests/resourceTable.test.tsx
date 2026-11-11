@@ -112,6 +112,15 @@ test("filters in effect are listed by column above the table and clear one by on
   assert.equal(firstCells().length, 6, "every row is back");
 });
 
+test("a column's default filter starts the list filtered, shows as a chip and clears like any other", async () => {
+  const filtered = columns().map((column) => column.key === "state" ? { ...column, defaultFilteredValue: ["offline"] } : column);
+  renderTable({ data: rows.slice(0, 6), columns: filtered });
+  assert.deepEqual(firstCells(), ["node-01", "node-04"]);
+  const chip = within(screen.getByRole("group", { name: "Filtered" })).getByRole("button", { name: /^Clear filter: State Offline/ });
+  await userEvent.setup().click(chip);
+  await waitFor(() => assert.equal(firstCells().length, 6, "the default is a start, not a lock"));
+});
+
 test("columns can be hidden, shown and restored from the settings drawer", async () => {
   const user = userEvent.setup();
   renderTable();
