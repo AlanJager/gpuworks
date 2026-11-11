@@ -752,13 +752,6 @@ tbody tr:hover > .resource-table-pinned { background-image: linear-gradient(var(
 .resource-table-sub { display: block; overflow: hidden; color: var(--fg-subtle); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .resource-table-settings-panes { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .resource-table-settings-heading { display: block; margin-bottom: 8px; }
-.resource-table-settings-selected { padding: 4px; border-radius: var(--radius-sm); background: var(--surface-base); }
-.resource-table-settings-item { display: flex; align-items: center; gap: 8px; min-height: 30px; padding: 0 4px 0 8px; border-radius: var(--radius-sm); background: var(--surface-base); }
-.resource-table-settings-item:hover { background: #e9ecf0; }
-.resource-table-settings-handle { color: var(--fg-subtle); cursor: grab; }
-.resource-table-settings-locked { color: var(--fg-subtle); }
-.resource-table-settings-locked .resource-table-settings-handle { cursor: default; }
-.resource-table-settings-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .resource-table-settings-all { display: flex; flex-direction: column; gap: 8px; padding-top: 4px; }
 .resource-table-settings-all .ant-checkbox-wrapper { margin-inline-start: 0; }
 @media (max-width: 640px) { .resource-table-settings-panes { grid-template-columns: 1fr; } }

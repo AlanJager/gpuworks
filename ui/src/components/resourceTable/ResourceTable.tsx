@@ -114,7 +114,10 @@ export default function ResourceTable<T extends object>({ tableId, columns, data
   const allFilters = [...filters.filter((item) => !controlledFilters.some((other) => other.id === item.id)), ...controlledFilters];
   const page = pagination ? { pageIndex: (pagination.current ?? 1) - 1, pageSize: pagination.pageSize ?? prefs.pageSize ?? 20 } : localPage;
   const sorting = onSortChange ? sort ? [{ id: sort.key, desc: sort.order === "desc" }] : [] : localSort;
-  const defs: ColumnDef<T, unknown>[] = arranged.map((column) => ({
+  // Hidden columns stay in the table, invisible, so a filter set on one before
+  // it was hidden keeps filtering the rows its chip says it does.
+  const hiddenColumns = columns.filter((column) => !arranged.includes(column));
+  const defs: ColumnDef<T, unknown>[] = [...arranged, ...hiddenColumns].map((column) => ({
     id: column.key, size: widthOf(column, prefs), minSize: minWidthOf(column),
     accessorFn: (record) => {
       if (column.sortValue) return column.sortValue(record);
@@ -139,6 +142,7 @@ export default function ResourceTable<T extends object>({ tableId, columns, data
     enableRowSelection: (row) => !rowSelection?.getCheckboxProps?.(row.original).disabled,
     getRowCanExpand: (row) => !!expandable && (expandable.rowExpandable?.(row.original) ?? true),
     state: { pagination: page, sorting, columnFilters: allFilters, rowSelection: selection,
+      columnVisibility: Object.fromEntries(hiddenColumns.map((column) => [column.key, false])),
       expanded: expandable?.expandedRowKeys ? Object.fromEntries(expandable.expandedRowKeys.map((key) => [String(key), true])) : expanded },
     onExpandedChange: (updater) => {
       const next = typeof updater === "function" ? updater(table.getState().expanded) : updater;

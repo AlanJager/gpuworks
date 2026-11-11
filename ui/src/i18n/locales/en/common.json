@@ -618,7 +618,7 @@
     "reset": "Restore defaults",
     "selected": "Shown ({{count}})",
     "all": "All columns ({{shown}}/{{total}})",
-    "dragColumn": "Drag to move {{name}}",
+    "dragColumn": "Reorder {{name}}",
     "hideColumn": "Hide {{name}}",
     "resizeColumn": "Resize {{name}}",
     "total": "{{count}} items",

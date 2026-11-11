@@ -618,7 +618,7 @@
     "reset": "恢复默认",
     "selected": "已选（{{count}}）",
     "all": "全部列（{{shown}}/{{total}}）",
-    "dragColumn": "拖动调整「{{name}}」的位置",
+    "dragColumn": "调整「{{name}}」的位置",
     "hideColumn": "隐藏「{{name}}」",
     "resizeColumn": "调整「{{name}}」列宽",
     "total": "共 {{count}} 项",

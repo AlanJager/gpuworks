@@ -44,12 +44,12 @@
     "Tag": 315,
     "Timeline": 2,
     "Tooltip": 164,
-    "Typography": 1074,
+    "Typography": 1073,
     "Upload": 8,
     "antd/locale/en_US": 0,
     "antd/locale/zh_CN": 0,
     "message": 324,
-    "theme": 5
+    "theme": 4
   },
   "files": {
     "ui/src/assistant/AssistantPanel.tsx": {"components":{"Alert":4,"Button":8,"Drawer":1,"Empty":1,"Input":1,"Space":12,"Spin":2,"Tag":1,"Tooltip":1,"Typography":12},"icons":5,"imports":["Alert","Button","Drawer","Empty","Input","Space","Spin","Tag","Tooltip","Typography"],"sites":43,"types":[]},
@@ -117,7 +117,7 @@
     "ui/src/components/detail/DetailSection.tsx": {"components":{"Typography":1},"icons":0,"imports":["Typography"],"sites":1,"types":[]},
     "ui/src/components/detail/detailDrawer.css": {"antRules":23},
     "ui/src/components/resourceTable/CellTags.tsx": {"components":{"Tag":2,"Tooltip":2},"icons":0,"imports":["Tag","Tooltip"],"sites":4,"types":[]},
-    "ui/src/components/resourceTable/ColumnSettingsDrawer.tsx": {"components":{},"icons":3,"imports":[],"sites":0,"types":[]},
+    "ui/src/components/resourceTable/ColumnSettingsDrawer.tsx": {"components":{},"icons":2,"imports":[],"sites":0,"types":[]},
     "ui/src/components/resourceTable/ResourceTable.tsx": {"components":{},"icons":0,"imports":[],"sites":0,"types":["ColumnType","TablePaginationConfig","TableProps"]},
     "ui/src/main.tsx": {"components":{"ConfigProvider":1,"antd/locale/en_US":0,"antd/locale/zh_CN":0,"theme":0},"icons":0,"imports":["ConfigProvider","antd/locale/en_US","antd/locale/zh_CN","theme"],"sites":1,"types":[]},
     "ui/src/nodes/NodePicker.tsx": {"components":{"Select":1},"icons":0,"imports":["Select"],"sites":1,"types":["RefSelectProps","SelectProps"]},
@@ -287,7 +287,7 @@
     "ui/src/pages/inferenceTemplateOrganizationCatalog.css": {"antRules":8},
     "ui/src/pages/models/ModelCopyModal.tsx": {"components":{"Alert":3,"Button":1,"Form":5,"InputNumber":1,"Modal":1,"Select":2,"Spin":1,"Typography":1,"message":1},"icons":0,"imports":["Alert","Button","Form","InputNumber","Modal","Select","Spin","Typography","message"],"sites":16,"types":[]},
     "ui/src/pages/models/ModelDownloadModal.tsx": {"components":{"Alert":4,"Button":1,"Form":3,"Modal":1,"Select":1,"Spin":1,"message":3},"icons":0,"imports":["Alert","Button","Form","Modal","Select","Spin","message"],"sites":14,"types":[]},
-    "ui/src/pages/models/ModelFilesSection.tsx": {"components":{"Button":4,"Flex":2,"Popconfirm":2,"Progress":1,"Space":3,"Tag":2,"Tooltip":7,"Typography":5,"message":4,"theme":1},"icons":4,"imports":["Button","Flex","Popconfirm","Progress","Space","Tag","Tooltip","Typography","message","theme"],"sites":31,"types":[]},
+    "ui/src/pages/models/ModelFilesSection.tsx": {"components":{"Button":4,"Flex":2,"Popconfirm":2,"Progress":1,"Space":3,"Tag":2,"Tooltip":7,"Typography":5,"message":4},"icons":4,"imports":["Button","Flex","Popconfirm","Progress","Space","Tag","Tooltip","Typography","message"],"sites":30,"types":[]},
     "ui/src/pages/models/ModelNodeFileDelete.tsx": {"components":{"Button":1,"Popconfirm":1,"Tooltip":1,"message":2},"icons":1,"imports":["Button","Popconfirm","Tooltip","message"],"sites":5,"types":[]},
     "ui/src/pages/models/ModelPresenceSummary.tsx": {"components":{"Button":1,"Space":1,"Tag":2,"Tooltip":1,"Typography":1},"icons":0,"imports":["Button","Space","Tag","Tooltip","Typography"],"sites":6,"types":[]},
     "ui/src/pages/models/ModelSourceIDField.tsx": {"components":{"Typography":2,"message":2},"icons":0,"imports":["Typography","message"],"sites":4,"types":[]},
@@ -341,7 +341,7 @@
     "ui/src/pages/playground/CompletionPage.tsx": {"components":{"Alert":1,"Button":2,"Empty":2,"Input":1,"InputNumber":1,"Select":1,"Space":3,"Typography":4},"icons":0,"imports":["Alert","Button","Empty","Input","InputNumber","Select","Space","Typography"],"sites":15,"types":[]},
     "ui/src/pages/playground/ConversationSidebar.tsx": {"components":{"Button":5,"Dropdown":1,"Input":1,"Modal":1,"Tooltip":4,"Typography":1},"icons":7,"imports":["Button","Dropdown","Input","Modal","Tooltip","Typography"],"sites":13,"types":[]},
     "ui/src/pages/playground/HtmlPreview.tsx": {"components":{"Alert":2,"Button":4,"Drawer":1,"Modal":1,"Segmented":1,"Space":2,"Tag":1,"Tooltip":4,"Typography":3},"icons":5,"imports":["Alert","Button","Drawer","Modal","Segmented","Space","Tag","Tooltip","Typography"],"sites":19,"types":[]},
-    "ui/src/pages/playground/ImagePage.tsx": {"components":{"Button":1,"Empty":2,"Input":1,"Segmented":1,"Select":2,"Space":1,"Typography":3,"message":3},"icons":0,"imports":["Button","Empty","Input","Segmented","Select","Space","Typography","message"],"sites":14,"types":[]},
+    "ui/src/pages/playground/ImagePage.tsx": {"components":{"Button":1,"Empty":2,"Input":1,"Segmented":1,"Select":2,"Space":1,"Typography":2,"message":3},"icons":0,"imports":["Button","Empty","Input","Segmented","Select","Space","Typography","message"],"sites":13,"types":[]},
     "ui/src/pages/playground/InputsForm.tsx": {"components":{"Input":2,"InputNumber":1,"Select":1,"Space":1,"Typography":1},"icons":0,"imports":["Input","InputNumber","Select","Space","Typography"],"sites":6,"types":[]},
     "ui/src/pages/playground/MessageBubble.tsx": {"components":{"Alert":2,"Collapse":1,"Space":2,"Spin":1,"Tag":1,"Tooltip":1,"Typography":1},"icons":0,"imports":["Alert","Collapse","Space","Spin","Tag","Tooltip","Typography"],"sites":9,"types":[]},
     "ui/src/pages/playground/ParametersPanel.tsx": {"components":{"Checkbox":2,"Input":3,"InputNumber":1,"Space":2,"Tooltip":2,"Typography":3},"icons":1,"imports":["Checkbox","Input","InputNumber","Space","Tooltip","Typography"],"sites":13,"types":[]},
@@ -429,5 +429,5 @@
     "ui/src/ui-kit/Spinner.tsx": {"components":{},"icons":1,"imports":[],"sites":0,"types":[]},
     "ui/src/ui-kit/feedback/index.tsx": {"components":{},"icons":1,"imports":[],"sites":0,"types":[]}
   },
-  "summary": {"antRules":202,"antdFiles":354,"cssFilesWithAntRules":13,"iconFiles":104,"iconImports":249,"sites":5352}
+  "summary": {"antRules":202,"antdFiles":354,"cssFilesWithAntRules":13,"iconFiles":104,"iconImports":248,"sites":5350}
 }
