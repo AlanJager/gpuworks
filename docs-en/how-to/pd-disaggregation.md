@@ -139,7 +139,7 @@ When the cards a manual placement pins are held by other deployments, the instan
   If the query fails or some TP rank has not registered yet, the gateway skips that prefill instance; when no instance is usable, it applies `fallback` and records the reason `prefill_no_bootstrap`.
 - **Self-check**: The connector does not export transferred bytes, so the handoff self-check judges only whether decode answers normally, and records the transport as `unmeasured`.
 - **Sleep**: As with NIXL, a sleepable deployment cannot use a host RDMA compute network.
-- **Verification status**: Verified on Hygon K100 (two cards in one node, TP 1, runveil); cross-node, the `rdma` protocol and TP > 1 are not verified.
+- **Verification status**: Verified on Hygon K100 (two cards in one node, TP 1, Docker and runveil); cross-node, the `rdma` protocol and TP > 1 are not verified.
 
 ## During Operation
 

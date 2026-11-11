@@ -58,6 +58,8 @@ PPU 使用 `ppu-smi` 查询并经设备节点校验的身份，按选卡顺序�
 
 选卡变量 `HIP_VISIBLE_DEVICES` 与 `HYGON_VISIBLE_DEVICES` 按容器内 HIP 看到的编号填写。Docker 与 nerdctl 只传入所选卡的 DRM 节点，HIP 在容器里把它们编为 0..N-1，因此填容器内序号：宿主第 2 张卡在单卡容器里是 `0`。udocker/runveil 绑定宿主整个 `/dev` 与 `/sys`，HIP 能看到全部卡，因此保留宿主序号。升级 Agent 后需重新创建工作负载才会使用新的编号。
 
+两张卡之间不能 P2P 时（例如只经 PCIe、跨 root complex），海光 vLLM 默认启用的 custom all-reduce 在 TP > 1 启动时报 `HIP error: invalid device pointer`，随后以 `'CustomAllreduce' object has no attribute '_ptr'` 退出；这与容器权限无关（`--privileged` 同样失败）。在部署的额外参数里加 `--disable-custom-all-reduce` 后改走 RCCL，可正常推理。K100 上已实测 TP 2。
+
 ## 海光 Z100 / K100_AI / BW dGPU
 
 Z100、明确识别为 `K100AI` 的 K100_AI，以及型号原样报告为 `BW` 的卡使用 `hygon-dgpu` 后端；`K100_AI`、`K100 AI` 是同一 SKU 的别名。`BW` 不被改写为 `BW1000`，只报告系列 `K100` 时仍不能据此启用 dGPU。agent 通过 `hy-smi virtual -d N --show-device-info` 读取所选物理卡的 CU 总数，再按显存比例向上取整分配 CU；查询失败或结果不完整时拒绝创建 vdev，不回退到固定 CU 数。启用前，在节点构建并安装可选的 `gpuworks-hygon-vdev-helper`（构建步骤见源码的 `build/runtime-assets/hygon-vdev-helper/README.md`），并提供宿主 DTK、HYHAL 和 DCGM 库。DTK 26 环境的 RSMI 库可以位于 HYHAL 的 `lib` 目录。agent 本身仍是静态二进制。支持 x86_64 上的 Docker 和 runveil/udocker；nerdctl 及其他型号不会自动获得此能力。
