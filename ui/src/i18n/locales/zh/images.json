@@ -247,6 +247,7 @@
       "reposFailed": "无法读取社区仓库列表",
       "otherRepo": "其他仓库",
       "otherRepoPlaceholder": "任意仓库，例如 vllm/vllm-openai",
+      "accessUnknown": "此仓库的访问主机暂不可用，请在出站访问策略中核对。",
       "browse": "列出 tag",
       "tagsLoading": "正在列出 {{repo}} 的 tag…",
       "tagsFailed": "无法列出 {{repo}} 的 tag",

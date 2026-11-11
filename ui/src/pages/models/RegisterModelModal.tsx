@@ -15,6 +15,7 @@ import { formatBytes } from "../../format";
 import { useLocalStorageChoice } from "./useStorages";
 import NodePicker from "../../nodes/NodePicker";
 import { localRegistrationErrorText } from "./localRegistrationError";
+import { OutboundHostAccess, useOutboundHostAccess } from "../../components/OutboundHostAccess";
 
 // The two-step sources are the ones whose identity cannot be typed from
 // memory: a node path and an HTTP directory are both read first and confirmed
@@ -30,6 +31,8 @@ export function RegisterModal({ open, onClose, onDone }: { open: boolean; onClos
   const [preview, setPreview] = useState<LocalModelPreview | null>(null);
   const [urlPreview, setURLPreview] = useState<URLModelPreview | null>(null);
   const source = Form.useWatch("source", form) as string | undefined;
+  const directoryURL = Form.useWatch("source_url", form) as string | undefined;
+  const outbound = useOutboundHostAccess([directoryURL ?? ""], open && source === "url");
   // Which local storage a registered path belongs to is only asked when there
   // is more than one; otherwise the request carries no storage_id, as before.
   const localStorages = useLocalStorageChoice(open && source === "local");
@@ -61,6 +64,7 @@ export function RegisterModal({ open, onClose, onDone }: { open: boolean; onClos
     }
     setPreviewing(true);
     try {
+      await outbound.authorize();
       const result = await api.previewURLModel(values.source_url);
       setURLPreview(result);
       form.setFieldsValue({ source_url: result.source_url, source_id: result.source_id, name: result.name });
@@ -78,7 +82,10 @@ export function RegisterModal({ open, onClose, onDone }: { open: boolean; onClos
     try {
       let registered: Model | undefined;
       if (v.source === "local") await api.registerLocalModel({ node_uuid: v.node_uuid, path: v.path, source_id: v.source_id, name: v.name, ...(effectiveStorageId ? { storage_id: effectiveStorageId } : {}) });
-      else if (v.source === "url") registered = await api.registerURLModel({ source_url: v.source_url, source_id: v.source_id, name: v.name });
+      else if (v.source === "url") {
+        await outbound.authorize();
+        registered = await api.registerURLModel({ source_url: v.source_url, source_id: v.source_id, name: v.name });
+      }
       else {
         let metadata: Awaited<ReturnType<typeof fetchHuggingFaceMetadata>> | undefined;
         if (v.source === "huggingface") {
@@ -138,9 +145,10 @@ export function RegisterModal({ open, onClose, onDone }: { open: boolean; onClos
         <Form.Item label={t("register.directoryURL")} name="source_url" rules={[{ required: true, message: t("register.directoryURLRequired") }]} extra={t("register.directoryURLHelp")}>
           <Input placeholder="https://hf-mirror.example.com/Qwen/Qwen3-0.6B" onPressEnter={(event) => { event.preventDefault(); void previewURL(); }} />
         </Form.Item>
-        <Form.Item>
+        <OutboundHostAccess access={outbound} />
+        <div className="mb-6">
           <Button loading={previewing} onClick={() => { void previewURL(); }}>{t("register.parseDirectory")}</Button>
-        </Form.Item>
+        </div>
       </> : <>
         <Form.Item label={t("column.sourceID")} name="source_id" rules={[{ required: true }]}><Input placeholder="Qwen/Qwen3-8B" /></Form.Item>
         <Collapse size="small" ghost items={[{ key: "advanced", label: t("register.advanced"), children: <Form.Item label={t("detail.revision")} name="revision" extra={t("register.revisionHelp")}><Input placeholder={t("register.revisionPlaceholder")} /></Form.Item> }]} />

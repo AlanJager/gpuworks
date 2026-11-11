@@ -162,6 +162,11 @@ By default, user-configurable HTTP sources on the management node do not restric
 
 Platform administrators can view and change the policy under **Settings → Security & access → Outbound access policy**. **Restrict access to private hosts** is off by default. When enabled, enter one exact hostname, IP address, or CIDR per line under **Allowed private hosts**. Turning the switch off preserves the entered list. **Save** writes both fields to the active `server.yaml` and applies them to the next request or redirect without restarting.
 
+
+With strict mode enabled, HTTP model directories, community repository browsing, manually entered image archive sources, AI services, collectors, credential login tests, model site rules used by the management node, and external benchmarks run from the server offer **Automatically add this host to the allowlist** beside the source address. Create and edit use the same authorization action. Selecting it alone does not save anything. On Save, Parse, Test, or the corresponding action, the platform checks the target again, appends only the selected eligible host to the existing list, and continues the original action. Unselected hosts do not change the list; changing the hostname requires selecting it again.
+
+This permission applies to every management-node feature using that host, independently of whether the resource itself is saved successfully. Other entries are preserved; a concurrent policy edit is rejected rather than overwritten, so review the current policy before trying again. Users without administrator permission, read-only configurations, unresolved hosts, and permanently prohibited addresses cannot authorize from a form. A read-only check does not connect to the source or prove credentials, directory readability, or node download access. Direct node access and browser links do not use this management-node allowlist; node connectivity tests for source rules do not check management-node permission either.
+
 Host administrators can also edit the file directly: set `outbound_restrict_private_hosts` to `true` and authorize necessary hosts or network ranges in `outbound_allow_private_hosts`. For example, this configuration enables strict mode:
 
 ```yaml

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Alert, Button, Drawer, Form, Input, Radio, Space, Typography } from "antd";
 import { useTranslation } from "react-i18next";
 import { api, type Credential } from "../../../api";
+import { OutboundHostAccess, useOutboundHostAccess } from "../../../components/OutboundHostAccess";
 import { useLoginTests } from "./loginTest";
 import { pullErrorField, pullErrorText } from "./pullFormat";
 
@@ -35,6 +36,11 @@ export default function CredentialDrawer({
   const [hadSecret, setHadSecret] = useState(credential?.has_secret ?? false);
   const [kind, setKind] = useState<CredentialKind>(credential && isSiteToken(credential) ? "site" : "registry");
   const [host, setHost] = useState(credential?.host ?? "");
+  // Match store.NormalizeCredentialHost before registryAPIHost selects the login endpoint.
+  const enteredHost = host.trim().toLowerCase().replace(/^https:\/\//, "").replace(/^http:\/\//, "").replace(/\/$/, "");
+  const credentialHost = ["index.docker.io", "registry-1.docker.io", "registry.hub.docker.com"].includes(enteredHost) ? "docker.io" : enteredHost;
+  const loginHost = kind === "registry" && credentialHost === "docker.io" ? "registry-1.docker.io" : credentialHost;
+  const outboundAccess = useOutboundHostAccess([loginHost]);
   const [username, setUsername] = useState(credential?.username ?? "");
   const [secret, setSecret] = useState("");
   const [revealed, setRevealed] = useState(false);
@@ -53,6 +59,7 @@ export default function CredentialDrawer({
     }
     const body = { host: host.trim(), username: kind === "site" ? "" : username.trim(), secret };
     try {
+      await outboundAccess.authorize();
       const saved = savedId != null ? await api.updateCredential(savedId, body) : await api.createCredential(body);
       setSavedId(saved.id);
       setHadSecret(saved.has_secret);
@@ -134,6 +141,7 @@ export default function CredentialDrawer({
             onPressEnter={() => void save()}
           />
         </Form.Item>
+        <OutboundHostAccess access={outboundAccess} />
         {!site && (
           <Form.Item label={t("pull.credentials.username")} htmlFor="pull-credential-username" validateStatus={fieldStatus("username")} help={fieldHelp("username")}>
             <Input

@@ -6,22 +6,24 @@ import (
 	"testing"
 )
 
-func TestCommunityTagMetadataWireContract(t *testing.T) {
-	const wire = `{"tag":"cann9.0-sglang0.5.15.post1-arm64-diffusion-slot16","engine":"sglang","engine_version":"0.5.15.post1","framework":"cann","framework_version":"9.0","arch":"arm64"}`
-	var tag CommunityTag
-	if err := json.Unmarshal([]byte(wire), &tag); err != nil {
+func TestCommunityRepoAccessHostWireContract(t *testing.T) {
+	const wire = `{"repo":"registry.corp/team/image","registry":"oci","access_host":"tags.corp","engine":"vllm"}`
+	original := CommunityRepo{Repo: "registry.corp/team/image", Registry: "oci", AccessHost: "tags.corp", Engine: "vllm"}
+	raw, err := json.Marshal(original)
+	if err != nil || string(raw) != wire {
+		t.Fatalf("wire=%s err=%v", raw, err)
+	}
+	var decoded CommunityRepo
+	if err := json.Unmarshal([]byte(wire), &decoded); err != nil || !reflect.DeepEqual(original, decoded) {
+		t.Fatalf("round trip=%+v err=%v", decoded, err)
+	}
+	const legacy = `{"repo":"registry.corp/team/image","registry":"oci","engine":"vllm"}`
+	var legacyDecoded CommunityRepo
+	if err := json.Unmarshal([]byte(legacy), &legacyDecoded); err != nil {
 		t.Fatal(err)
 	}
-	want := CommunityTag{Tag: "cann9.0-sglang0.5.15.post1-arm64-diffusion-slot16", Engine: "sglang", EngineVersion: "0.5.15.post1", Framework: "cann", FrameworkVersion: "9.0", Arch: "arm64"}
-	if !reflect.DeepEqual(tag, want) {
-		t.Fatalf("decoded=%+v want=%+v", tag, want)
-	}
-	encoded, err := json.Marshal(tag)
-	if err != nil || string(encoded) != wire {
-		t.Fatalf("encoded=%s error=%v", encoded, err)
-	}
-	encoded, err = json.Marshal(CommunityTag{Tag: "latest", RollingTag: true})
-	if err != nil || string(encoded) != `{"tag":"latest","rolling_tag":true}` {
-		t.Fatalf("unknown metadata must be absent: %s error=%v", encoded, err)
+	raw, err = json.Marshal(legacyDecoded)
+	if err != nil || string(raw) != legacy {
+		t.Fatalf("unknown host wire=%s err=%v", raw, err)
 	}
 }

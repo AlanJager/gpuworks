@@ -1022,5 +1022,26 @@
   "feedback": {
     "requestFailed": "请求失败，请重试。"
   },
-  "upload": {"choose": "选择文件", "replace": "重新选择", "none": "未选择文件"}
+  "upload": {
+    "choose": "选择文件",
+    "replace": "重新选择",
+    "none": "未选择文件"
+  },
+  "outboundAccess": {
+    "internationalHost": "请先在来源地址中将域名写为 Punycode：{{hosts}}，再授权访问。",
+    "settings": "出站访问策略",
+    "adminOnly": "私网来源主机需要授权时，请联系管理员。",
+    "checking": "正在检查主机访问权限…",
+    "scope": "从管理节点检查这些来源的访问权限。",
+    "readOnly": "此服务的出站策略只读，无法在此修改。",
+    "allow": "自动加入 {{host}} 的白名单",
+    "appliedOnAction": "保存或执行本次操作时生效，其他功能也能使用对该主机的授权。",
+    "allowed": "允许访问 {{host}}。",
+    "blocked": "{{host}} 不能通过出站白名单放行。",
+    "unresolved": "未能确认 {{host}} 的访问权限。",
+    "retry": "重新检查",
+    "changed": "主机或勾选项已改变，请核对地址并重新勾选。",
+    "cannotAllow": "选中的主机不能通过出站白名单放行。",
+    "checkFailed": "未能确认选中主机的访问权限，请检查地址后重试。"
+  }
 }

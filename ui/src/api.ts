@@ -1380,6 +1380,7 @@ export interface AuthUser {
 
 /** One built-in (or administrator-configured) community repository card. */
 export interface CommunityRepo {
+  access_host?: string;
   repo: string;
   registry: "docker-hub" | "quay" | "oci" | string;
   engine: string;

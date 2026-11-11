@@ -20,6 +20,8 @@ Up to 5 redirects are allowed. Each redirect for a model directory must also rem
 
 Directory URL sources download only from their own directories; site rules in pull settings do not apply to them. Node downloads still use the node's pull proxy. Directory sources have no revision concept. To retain a reproducible version, point to a directory that remains unchanged after publication.
 
+In strict mode, select **Automatically add this host to the allowlist** beside the directory address. The current host is appended only when you parse or confirm registration. Existing entries are preserved; changing the hostname requires selecting it again. Reserved addresses cannot be authorized. This permission also applies to other management-node source requests, and a failed registration does not revoke host permission that was explicitly saved.
+
 ### Parsing Results and Directory Limits
 
 Parsing reads the directory listing page on the source server, subject to these rules:

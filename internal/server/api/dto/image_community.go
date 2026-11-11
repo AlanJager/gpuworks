@@ -5,9 +5,11 @@ package dto
 type CommunityRepo struct {
 	Repo string `json:"repo"`
 	// Registry is the tag-list API: docker-hub, quay, or oci.
-	Registry  string `json:"registry"`
-	Engine    string `json:"engine"`
-	Framework string `json:"framework,omitempty"`
+	Registry string `json:"registry"`
+	// AccessHost is the first tag API's host, with no credentials, path or port.
+	AccessHost string `json:"access_host,omitempty"`
+	Engine     string `json:"engine"`
+	Framework  string `json:"framework,omitempty"`
 	// Siblings are further repositories on the same card; each is browsed
 	// on its own and inherits the card's engine and framework.
 	Siblings []string       `json:"siblings,omitempty"`
