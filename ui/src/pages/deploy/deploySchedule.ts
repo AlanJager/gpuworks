@@ -1,3 +1,4 @@
+import { acceleratorMessageParams } from "../../acceleratorMessages";
 import type { TFunction } from "i18next";
 
 import type { GPUPredicate, ScheduleMessageLike } from "../../api";
@@ -13,8 +14,7 @@ export function scheduleText(
 
   const code = value.code?.trim() ?? "";
   if (code === "accelerator_feature_unsupported") {
-    const feature = String(value.params?.feature ?? "");
-    return t("schedule.accelerator_feature_unsupported", { ...value.params, feature: t(`common:acceleratorFeature.names.${feature}`, { defaultValue: feature }) });
+    return t("schedule.accelerator_feature_unsupported", acceleratorMessageParams(t, value.params));
   }
   if (code) {
     // A storage reason says which storage and why; the more specific text

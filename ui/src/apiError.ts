@@ -1,3 +1,4 @@
+import { acceleratorMessageParams } from "./acceleratorMessages";
 import { formatBytes } from "./format";
 import { notifySessionExpired } from "./session";
 import { diagnosticReport, type DiagnosticReport } from "./diagnosticChecks";
@@ -41,8 +42,7 @@ export function apiErrorText(t: APIErrorTranslator, error: unknown): string {
     params.detail = pullSettingErrorDetail(t, error);
   }
   if (error.code === "ACCELERATOR_FEATURE_UNSUPPORTED") {
-    const feature = String(params.feature ?? "");
-    return t("acceleratorFeature.unsupported", { ...params, feature: t(`acceleratorFeature.names.${feature}`, { defaultValue: feature }), defaultValue: error.fallback || error.code });
+    return t("acceleratorFeature.unsupported", { ...acceleratorMessageParams(t, params), defaultValue: error.fallback || error.code });
   }
   if (error.code === "SERVER_STORAGE_FULL" && typeof params.path === "string" && typeof params.available_bytes === "number" && typeof params.total_bytes === "number") {
     return t("serverStorageFull.at", { path: params.path, available: formatBytes(params.available_bytes), total: formatBytes(params.total_bytes), defaultValue: error.fallback || error.code });

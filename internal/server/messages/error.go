@@ -1,5 +1,7 @@
 package messages
 
+import "gpuworks.ai/gpuworks/internal/proto"
+
 // ProductError is a language-neutral API error. Fallback is an English message
 // retained for older clients and scripts that only read the error field.
 type ProductError struct {
@@ -11,11 +13,12 @@ type ProductError struct {
 
 // Product error codes shared by domain services and the API layer.
 const (
+	ErrorSleepEngineUnsupported             = "SLEEP_ENGINE_UNSUPPORTED"
 	ErrorAgentUpgradeRequired               = "AGENT_UPGRADE_REQUIRED"
 	ErrorLaunchFeaturesUnknown              = "LAUNCH_FEATURES_UNKNOWN"
 	ErrorSleepTargetUnresolved              = "SLEEP_TARGET_UNRESOLVED"
 	ErrorAcceleratorFeatureUnsupported      = "ACCELERATOR_FEATURE_UNSUPPORTED"
-	ErrorAcceleratorDeviceSelectionRequired = "ACCELERATOR_DEVICE_SELECTION_REQUIRED"
+	ErrorAcceleratorDeviceSelectionRequired = proto.ErrorAcceleratorDeviceSelectionRequired
 	// ErrorAcceleratorSMLimitUnsupported reports a compute/SM limit requested
 	// on a vendor whose logical partition backend (if any) enforces GPU
 	// memory only, such as AMD's amd-dgpu (ROCm enforces compute quotas in

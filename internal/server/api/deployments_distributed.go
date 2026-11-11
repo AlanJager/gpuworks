@@ -13,7 +13,7 @@ import (
 // prepareDistributedDeployRequest checks a multi-node request's nodes - one
 // per rank, distinct, online - and its parallelism and master port, and
 // points the request's leader fields at its first node.
-func (a *apiHandlers) prepareDistributedDeployRequest(req *dto.DeployRequest) ([]*store.Node, error) {
+func (a *apiHandlers) prepareDistributedDeployRequest(req *dto.DeployRequest, dp int) ([]*store.Node, error) {
 	if len(req.NodeUUIDs) != req.NNodes {
 		return nil, productError(ErrorDistributedNodeCount, "node_uuids count must equal nnodes", map[string]any{"actual": len(req.NodeUUIDs), "required": req.NNodes})
 	}
@@ -47,7 +47,12 @@ func (a *apiHandlers) prepareDistributedDeployRequest(req *dto.DeployRequest) ([
 	}
 	// An unstated TP and PP default from the nodes; what takes effect is
 	// written back, so the stored deployment always states its parallelism.
-	parallel := placement.ParallelismOn(gpuCounts)
+	// The caller has already materialized the launch. Do not re-read raw
+	// template flags here: they may have been overridden or unset.
+	parallel, err := placement.ParallelismOnDP(gpuCounts, dp)
+	if err != nil {
+		return nil, distributedParallelismError(parallel, err)
+	}
 	perNode, err := parallelGPUsPerNode(parallel)
 	if err != nil {
 		return nil, err
@@ -87,14 +92,18 @@ func (a *apiHandlers) prepareDistributedDeployRequest(req *dto.DeployRequest) ([
 // TP and PP fields.
 func parallelGPUsPerNode(parallel planning.ParallelismSpec) (int, error) {
 	perNode, err := parallel.GPUsPerNode()
+	return perNode, distributedParallelismError(parallel, err)
+}
+
+func distributedParallelismError(parallel planning.ParallelismSpec, err error) error {
 	switch {
 	case errors.Is(err, planning.ErrParallelismTPRequired):
-		return 0, productError(ErrorDistributedTPRequired, "distributed deployments require placement.tp", nil)
+		return productError(ErrorDistributedTPRequired, "distributed deployments require placement.tp", nil)
 	case errors.Is(err, planning.ErrParallelismIndivisible):
-		return 0, productError(ErrorDistributedParallelIndivisible, err.Error(),
+		return productError(ErrorDistributedParallelIndivisible, err.Error(),
 			map[string]any{"tp": parallel.TP, "pp": parallel.PP, "nodes": parallel.NNodes})
 	}
-	return perNode, err
+	return err
 }
 
 func masterHost(addr string) (string, error) {

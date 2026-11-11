@@ -391,7 +391,7 @@ func doctorDeviceFacts(ctx context.Context, r *proto.DoctorReport, p gpu.Prober,
 	}
 	if diagnostic, ok := driver.(runtime.DeviceAccessDiagnoser); ok {
 		value := ""
-		if spec, err := doctorWorkloadSpec(p, driver.Name(), gpus); err != nil {
+		if spec, err := doctorWorkloadSpec(ctx, p, driverName, gpus); err != nil {
 			value = "device access: unavailable (" + err.Error() + ")"
 		} else {
 			value = diagnostic.DeviceAccessDiagnostics(spec)
@@ -403,7 +403,12 @@ func doctorDeviceFacts(ctx context.Context, r *proto.DoctorReport, p gpu.Prober,
 			continue
 		}
 		value := "explicit"
-		if inj := p.RuntimeInjection([]int{g.Index}); inj.UnsupportedReason != "" {
+		// The same question a launch asks, through the same seam: a backend
+		// whose injection depends on the container runtime must be asked
+		// about this host's runtime, or the report says a deployment will
+		// work where the server will refuse it.
+		inj := gpu.ResolveInjection(ctx, p, gpu.InjectionRequest{Indexes: []int{g.Index}, DriverName: driverName, NNodes: 1})
+		if inj.UnsupportedReason != "" {
 			value = "unavailable: " + inj.UnsupportedReason
 		}
 		r.Facts = append(r.Facts, proto.DoctorFact{Code: proto.DoctorFactDeviceInjection, Value: value})
@@ -426,7 +431,7 @@ func doctorDetectedRuntime(ctx context.Context) string {
 	return ""
 }
 
-func doctorWorkloadSpec(p gpu.Prober, driverName string, gpus []proto.GPUInfo) (runtime.WorkloadSpec, error) {
+func doctorWorkloadSpec(ctx context.Context, p gpu.Prober, driverName string, gpus []proto.GPUInfo) (runtime.WorkloadSpec, error) {
 	indexes := make([]int, 0, len(gpus))
 	for _, g := range gpus {
 		if g.Healthy {
@@ -436,10 +441,7 @@ func doctorWorkloadSpec(p gpu.Prober, driverName string, gpus []proto.GPUInfo) (
 	if len(indexes) == 0 {
 		return runtime.WorkloadSpec{}, fmt.Errorf("no healthy accelerator is available")
 	}
-	inj := p.RuntimeInjection(indexes)
-	if aware, ok := p.(gpu.DriverAwareInjector); ok {
-		inj = aware.RuntimeInjectionForDriver(indexes, driverName)
-	}
+	inj := gpu.ResolveInjection(ctx, p, gpu.InjectionRequest{Indexes: indexes, DriverName: driverName, NNodes: 1})
 	if inj.UnsupportedReason != "" {
 		return runtime.WorkloadSpec{}, fmt.Errorf("%s", inj.UnsupportedReason)
 	}
@@ -463,7 +465,7 @@ func GrantDeviceAccess(ctx context.Context, p gpu.Prober, driver runtime.DeviceA
 	if err != nil {
 		return "", fmt.Errorf("probe accelerators: %w", err)
 	}
-	spec, err := doctorWorkloadSpec(p, driverName, gpus)
+	spec, err := doctorWorkloadSpec(ctx, p, driverName, gpus)
 	if err != nil {
 		return "", err
 	}

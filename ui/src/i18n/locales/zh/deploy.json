@@ -316,7 +316,8 @@
       "nvidia": "NVIDIA",
       "ascend": "昇腾",
       "hygon": "海光",
-      "ppu": "平头哥 PPU"
+      "ppu": "平头哥 PPU",
+      "kunlunxin": "昆仑芯"
     },
     "recommendedInferenceTemplate": "推荐推理模板",
     "selected": "已选择",

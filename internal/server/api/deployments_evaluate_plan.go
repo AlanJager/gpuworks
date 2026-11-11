@@ -119,7 +119,7 @@ func (a *apiHandlers) evaluatePlan(env evaluatePlanEnv) (evaluatePlanResult, boo
 		}
 		if previewPlan.Output.Result.OK && previewPlan.Output.Result.Plan != nil {
 			out.gpuCount = len(previewPlan.Output.Result.Plan.GPUIndexes)
-			out.tp = env.placement.Parallelism(req.NNodes).Assigned(out.gpuCount).TP
+			out.tp = previewPlan.Input.Parallel.Assigned(out.gpuCount).TP
 			out.placementResolved = true
 		}
 		out.quick.CPUCores = node.CPUCores

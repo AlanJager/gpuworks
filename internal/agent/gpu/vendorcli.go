@@ -98,7 +98,9 @@ func RunTracked(ctx context.Context, key string, timeout time.Duration, build fu
 	cmd := build(runCtx)
 	var out bytes.Buffer
 	cmd.Stdout = &out
-	cmd.Stderr = &out
+	if cmd.Stderr == nil {
+		cmd.Stderr = &out
+	}
 	killGroupOnCancel(cmd)
 	// Bounds the wait for output pipes held open by a child of the command.
 	cmd.WaitDelay = time.Second

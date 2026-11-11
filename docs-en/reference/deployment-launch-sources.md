@@ -245,6 +245,7 @@ The agent does not reconstruct catalog, image, or command semantics. It only mak
    - Hygon: `--device` kfd/DRM, `/opt/hyhal`, `--group-add video`, `HIP/ROCR/HYGON_VISIBLE_DEVICES`
    - Ascend docker: `--runtime ascend` + `ASCEND_VISIBLE_DEVICES`, etc.; Ascend nerdctl: `/dev/davinci*` devices and driver mounts
    - PPU: `/dev/alixpu*` devices, `NVIDIA_VISIBLE_DEVICES=void`, `CUDA_VISIBLE_DEVICES`
+   - Kunlunxin: Linux amd64 / Docker whole-card TP. Recheck each selected card’s UUID/BDF/minor and sysfs identity, then inject only its `/dev/xpuN` plus `/dev/xpuctrl`. Occupancy comes from the common compute-process inventory, not memory usage alone. Template options use the common administrator contract, with no vendor-specific Docker option filter. See the [support matrix](support-matrix.md) for native multi-node requirements.
 7. **dGPU partitioning**: the server sends only the GPU memory limit, compute percentage, and backend name; all injection happens in the agent:
    - HAMi-core: mounts `libvgpu.so`; sets `LD_PRELOAD`, `CUDA_DEVICE_MEMORY_LIMIT_<i>`, and `CUDA_DEVICE_SM_LIMIT` when the deployment carries a compute percentage (deployment requests currently do not accept a compute percentage; see [dGPU Explained](../explanation/dgpu.md))
    - vcann-rt: mounts `libvruntime.so`, etc.; sets `ENPU_DSMI_HOOK=1` and `LD_LIBRARY_PATH`

@@ -40,7 +40,13 @@ func (a *apiHandlers) evaluateAutomaticPlacement(ctx context.Context, req *dto.D
 		}
 		candidates = append(candidates, dto.PlacementCandidate{NodeUUID: entry.UUID, NodeName: entry.Name, Reason: reason})
 	}
-	ranked, err := a.rankEligible(eligible, model, req, placement)
+	dp, err := deploy.PlacementDataParallel(engine.Name(), quick.DP, selection.ExtraArgs, userExtraArgs)
+	if err != nil {
+		return nil, candidates
+	}
+	parallel := placement.Parallelism(1)
+	parallel.DP = dp
+	ranked, err := a.rankEligible(eligible, model, req, parallel)
 	if err != nil {
 		return nil, candidates
 	}
@@ -95,7 +101,7 @@ func (a *apiHandlers) evaluateAutomaticPlacement(ctx context.Context, req *dto.D
 // rankEligible orders the eligible nodes the way the controller orders a
 // pool, from one read each of the nodes, the GPUs awake instances hold and
 // the model's files.
-func (a *apiHandlers) rankEligible(eligible []dto.EligibleNode, model *store.Model, req *dto.DeployRequest, placement planning.Placement) ([]planning.PoolCandidate, error) {
+func (a *apiHandlers) rankEligible(eligible []dto.EligibleNode, model *store.Model, req *dto.DeployRequest, parallel planning.ParallelismSpec) ([]planning.PoolCandidate, error) {
 	nodes, err := a.d.Store.ListNodes()
 	if err != nil {
 		return nil, err
@@ -128,7 +134,10 @@ func (a *apiHandlers) rankEligible(eligible []dto.EligibleNode, model *store.Mod
 	strategy, _ := planning.PlacementStrategyOf(req.PlacementStrategy)
 	need := 0
 	if req.VRAMLimitGiB <= 0 {
-		need, _ = placement.Parallelism(1).GPUsPerNode()
+		need, _ = parallel.GPUsPerNode()
+		if !parallel.Stated() {
+			need = parallel.MinimumGPUs()
+		}
 	}
 	return planning.RankPool(candidates, strategy, need), nil
 }

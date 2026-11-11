@@ -258,7 +258,7 @@ _Avoid_: 芯片类/Chip Class(旧具名类注册表与 `<vendor>_sm<NN>_plus` �
 目录生产时对真机 PASS recipe 执行的有向兼容规则:K100/K100AI PASS 默认同样适用于 BW1000/BW1100;910B/910B4 PASS 默认同样适用于 910C/950DT/950PR。继承结果写入档位的[[GPU 适配谓词]],不在 chipmatch 中隐式猜测;同一精确配置在后继卡上的明确 FAIL 优先,中止该卡继承。
 
 **厂商目录镜像必需 — Vendor Catalog Image Required**:
-`accelerator.RequiresVendorCatalogImage(vendor) bool` 是镜像解析的唯一判定依据，表示该 vendor 的镜像不能安全继承 CUDA/ROCm 引擎默认镜像，必须在镜像目录中有对应条目。当前命中范围：ascend、ppu（`IsDomestic` 子集）以及 hygon（DTK 镜像与 ROCm 引擎默认镜像不兼容）。`IsDomestic` 是更窄的子集（仅 ascend/ppu），用于 dGPU 后端与原生资产选择；两者含义不同，不可互换。所有镜像目录键、hardwarecatalog 的 vendor 字段、agent 探测器的 `Vendor()` 返回值都必须在 `accelerator.KnownVendors()` 范围内，由测试机械化断言。
+`accelerator.RequiresVendorCatalogImage(vendor) bool` 是镜像解析的唯一判定依据，表示该 vendor 的镜像不能安全继承 CUDA/ROCm 引擎默认镜像，必须在镜像目录中有对应条目。当前命中范围：ascend、ppu、kunlunxin（`IsDomestic` 子集）、hygon（DTK 镜像与 ROCm 引擎默认镜像不兼容）以及 apple（使用 macOS 环境包，不继承 Linux 引擎镜像）。`IsDomestic` 是更窄的子集（ascend/ppu/kunlunxin），用于 dGPU 后端与原生资产选择；两者含义不同，不可互换。所有镜像目录键、hardwarecatalog 的 vendor 字段、agent 探测器的 `Vendor()` 返回值都必须在 `accelerator.KnownVendors()` 范围内，由测试机械化断言。
 _Avoid_: 在镜像解析路径中自行判断"是否国产"、用 `IsDomestic` 代替 `RequiresVendorCatalogImage` 做镜像目录必需判断、在 deploy/imagecatalog/hub 中重新实现 vendor 规范化逻辑
 
 _Avoid_: 将 K100 继承扩大到 K500、将非 PASS 文档声明当成继承源、在匹配器代码中写死代际关系
@@ -314,7 +314,7 @@ supported/unsupported 自由文本标签。镜像目录描述 framework、引擎
 _Avoid_: 在镜像上填写 GPU 型号兼容标签、把目录经验当成节点硬件事实
 
 **厂商 / 框架 — Vendor / Framework**:
-框架(cuda/rocm/cann/hggc/dtk)是系列级单值事实属性(一系列一框架,不混排);厂商(nvidia/amd/ascend/ppu/hygon)由 framework→vendor 映射派生,仅用于展示(logo)与过滤,不独立存储在镜像上。
+框架(cuda/rocm/cann/hggc/dtk/xre)是系列级单值事实属性(一系列一框架,不混排);厂商(nvidia/amd/ascend/ppu/hygon/kunlunxin)由 framework→vendor 映射派生,仅用于展示(logo)与过滤,不独立存储在镜像上。
 _Avoid_: 把厂商当镜像的独立必填字段、一个系列混多框架
 
 **校验 — Verification**:

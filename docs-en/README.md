@@ -55,6 +55,7 @@ see the index in [`artifacts/README.md`](../artifacts/README.md)). Chinese origi
 **Deployment and Inference**
 
 - [Deploy Models, Select GPUs, and Interpret Scheduling Results](how-to/deploy-models.md)
+- [Deploy Models on Kunlun P800](how-to/kunlun-p800.md)
 - [Multi-Node Inference](how-to/multi-node-inference.md)
 - [Connect MinerU to a Remote Vision Model](how-to/use-mineru.md)
 - [PD Disaggregation Deployment](how-to/pd-disaggregation.md)

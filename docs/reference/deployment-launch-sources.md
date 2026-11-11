@@ -245,6 +245,7 @@ agent 不重建目录、镜像或命令语义，只做以下节点事实相关�
    - 海光：`--device` kfd/DRM、`/opt/hyhal`、`--group-add video`、`HIP/ROCR/HYGON_VISIBLE_DEVICES`
    - 昇腾 docker：`--runtime ascend` + `ASCEND_VISIBLE_DEVICES` 等；昇腾 nerdctl：`/dev/davinci*` 设备与驱动挂载
    - PPU：`/dev/alixpu*` 设备、`NVIDIA_VISIBLE_DEVICES=void`、`CUDA_VISIBLE_DEVICES`
+   - 昆仑芯：Linux amd64 / Docker 整卡 TP；逐卡重新核对 UUID/BDF/minor 与 sysfs 后，注入所选 `/dev/xpuN` 和一个 `/dev/xpuctrl`。设备占用由公共计算进程清单上报，不以显存用量替代占用检查。模板参数遵循公共管理员契约，不另设厂商专属 Docker 参数过滤器。多机原生通信依赖见[厂商支持矩阵](support-matrix.md)。
 7. **dGPU 分区**：服务端只下发显存上限、算力百分比与后端名，注入全部在 agent：
    - HAMi-core：挂载 `libvgpu.so`，`LD_PRELOAD`、`CUDA_DEVICE_MEMORY_LIMIT_<i>`，以及部署带算力百分比时的 `CUDA_DEVICE_SM_LIMIT`（部署请求目前不接受算力百分比，见 [dGPU 说明](../explanation/dgpu.md)）
    - vcann-rt：挂载 `libvruntime.so` 等，`ENPU_DSMI_HOOK=1`、`LD_LIBRARY_PATH`

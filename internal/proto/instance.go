@@ -292,19 +292,20 @@ const (
 
 // InstanceStatus is reported by the agent (status.instance).
 type InstanceStatus struct {
-	UUID        string          `json:"uuid"`
-	State       string          `json:"state"`
-	ContainerID string          `json:"container_id,omitempty"`
-	Ports       []int           `json:"ports,omitempty"`
-	Message     string          `json:"message,omitempty"`  // error/detail
-	Phase       string          `json:"phase,omitempty"`    // image_verify | image_pull | image_extract | container_unpack | container_prepare | container_launch | health_check | optimizing | sleep
-	Progress    float64         `json:"progress,omitempty"` // 0..1 when known
-	BytesDone   int64           `json:"bytes_done,omitempty"`
-	BytesTotal  int64           `json:"bytes_total,omitempty"`
-	RateBPS     int64           `json:"rate_bps,omitempty"`
-	Measured    json.RawMessage `json:"measured,omitempty"`    // vllm log parse
-	DirectAddr  string          `json:"direct_addr,omitempty"` // host:port for direct proxy
-	SleepLevel  int             `json:"sleep_level,omitempty"` // 0 awake, 1 L1, 2 L2
+	RuntimeFailure *RuntimeFailure `json:"runtime_failure,omitempty"`
+	UUID           string          `json:"uuid"`
+	State          string          `json:"state"`
+	ContainerID    string          `json:"container_id,omitempty"`
+	Ports          []int           `json:"ports,omitempty"`
+	Message        string          `json:"message,omitempty"`  // error/detail
+	Phase          string          `json:"phase,omitempty"`    // image_verify | image_pull | image_extract | container_unpack | container_prepare | container_launch | health_check | optimizing | sleep
+	Progress       float64         `json:"progress,omitempty"` // 0..1 when known
+	BytesDone      int64           `json:"bytes_done,omitempty"`
+	BytesTotal     int64           `json:"bytes_total,omitempty"`
+	RateBPS        int64           `json:"rate_bps,omitempty"`
+	Measured       json.RawMessage `json:"measured,omitempty"`    // vllm log parse
+	DirectAddr     string          `json:"direct_addr,omitempty"` // host:port for direct proxy
+	SleepLevel     int             `json:"sleep_level,omitempty"` // 0 awake, 1 L1, 2 L2
 	// SleepTarget is populated on a failed sleep/wake report. The server uses
 	// it to roll the deployment intent back only when the failed order is still
 	// the current intent.

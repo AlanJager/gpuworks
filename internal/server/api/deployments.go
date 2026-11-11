@@ -189,9 +189,14 @@ func (a *apiHandlers) createDeploymentOnce(w http.ResponseWriter, r *http.Reques
 	// A multi-node group settles its nodes and parallelism first: an
 	// unstated TP and PP default from the nodes, and the launch preflight
 	// below measures the result. Nothing is persisted by this step.
+	dp, err := deploy.PlacementDataParallel(eng.Name(), launch.Quick.DP, launch.TemplateResidual, launch.UserResidual)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
 	var distNodes []*store.Node
 	if req.NNodes > 1 {
-		distNodes, err = a.prepareDistributedDeployRequest(&req)
+		distNodes, err = a.prepareDistributedDeployRequest(&req, dp)
 		if err != nil {
 			writeErr(w, http.StatusBadRequest, err)
 			return
@@ -207,6 +212,7 @@ func (a *apiHandlers) createDeploymentOnce(w http.ResponseWriter, r *http.Reques
 		nnodes = 1
 	}
 	parallel := placement.Parallelism(nnodes)
+	parallel.DP = dp
 	perNode, err := parallelGPUsPerNode(parallel)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err)

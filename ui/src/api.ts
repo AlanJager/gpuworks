@@ -1624,6 +1624,7 @@ export interface Instance {
   image: string;
   image_digest_id?: string;
   message: string;
+  runtime_failure?: { code: string; params?: Record<string, unknown>; message: string };
   container_id?: string;
   phase?: string;
   progress?: number;

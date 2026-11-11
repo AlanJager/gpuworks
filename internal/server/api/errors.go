@@ -109,7 +109,7 @@ const (
 	ErrorRoutingPolicyInvalid                   = "ROUTING_POLICY_INVALID"
 	ErrorDistributedReplicaCount                = "DISTRIBUTED_REPLICA_COUNT"
 	ErrorSleepNotEnabled                        = "SLEEP_NOT_ENABLED"
-	ErrorSleepEngineUnsupported                 = "SLEEP_ENGINE_UNSUPPORTED"
+	ErrorSleepEngineUnsupported                 = messages.ErrorSleepEngineUnsupported
 	ErrorSleepInvalidLevel                      = "SLEEP_INVALID_LEVEL"
 	ErrorSleepInvalidMode                       = "SLEEP_INVALID_MODE"
 	ErrorSleepInvalidWakeOnRequest              = "SLEEP_INVALID_WAKE_ON_REQUEST"

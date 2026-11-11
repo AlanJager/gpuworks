@@ -323,13 +323,14 @@ const (
 
 // Instance is the API view of a running replica.
 type Instance struct {
-	PreStartArgv   []string `json:"pre_start_argv,omitempty"`
-	PreStartScript string   `json:"pre_start_script,omitempty"`
-	UUID           string   `json:"uuid"`
-	DeploymentID   uint     `json:"deployment_id"`
-	NodeUUID       string   `json:"node_uuid"`
-	State          string   `json:"state"`
-	GPUIndexes     []int    `json:"gpu_indexes"`
+	RuntimeFailure *ProductMessage `json:"runtime_failure,omitempty"`
+	PreStartArgv   []string        `json:"pre_start_argv,omitempty"`
+	PreStartScript string          `json:"pre_start_script,omitempty"`
+	UUID           string          `json:"uuid"`
+	DeploymentID   uint            `json:"deployment_id"`
+	NodeUUID       string          `json:"node_uuid"`
+	State          string          `json:"state"`
+	GPUIndexes     []int           `json:"gpu_indexes"`
 	// VRAMLimitBytes is the dGPU memory limit the instance runs under on each
 	// of its GPUs; absent for an instance that holds its GPUs whole.
 	VRAMLimitBytes int64              `json:"vram_limit_bytes,omitempty"`

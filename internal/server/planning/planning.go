@@ -298,13 +298,13 @@ func (in Input) Evaluate(st *store.Store) Output {
 		}
 	}
 
-	// The breakdown is per GPU: the weights are spread over every GPU of
-	// the deployment, across nodes too.
+	// The breakdown is per GPU within one DP replica, using the same
+	// completed TP × PP topology as scheduling and launch assembly.
 	tp := 1
 	if in.Parallel.Stated() {
 		tp = in.Parallel.World()
 	} else if out.Result.OK && out.Result.Plan != nil {
-		tp = out.Result.Plan.TP
+		tp = in.Parallel.Assigned(out.Result.Plan.TP).World()
 	}
 	runtimeMemoryBytesPerGPU := int64(0)
 	if out.Placement.GPUMemoryMiBPerDevice > 0 {

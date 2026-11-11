@@ -55,6 +55,7 @@
 **部署与推理**
 
 - [部署模型、选卡与解释调度结果](how-to/deploy-models.md)
+- [在昆仑 P800 上部署模型](how-to/kunlun-p800.md)
 - [多机推理](how-to/multi-node-inference.md)
 - [用 MinerU 连接远程视觉模型](how-to/use-mineru.md)
 - [PD 分离部署](how-to/pd-disaggregation.md)

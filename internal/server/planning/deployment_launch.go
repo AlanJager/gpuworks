@@ -133,17 +133,9 @@ type ModelPaths struct {
 // index names a card on one machine, and a replica the pool places elsewhere
 // lets the scheduler pick its cards.
 func DeploymentLaunch(dep *store.Deployment, reqs map[string][]string, node *store.Node, model *store.Model, paths *ModelPaths) (LaunchRequest, deploy.CatalogSelection, string, error) {
-	var quick deploy.LaunchConfig
-	if dep.QuickParams != "" {
-		_ = json.Unmarshal([]byte(dep.QuickParams), &quick)
-	}
-	var extra []string
-	if dep.ExtraArgs != "" {
-		var err error
-		extra, err = deploy.ParseArgsText(dep.ExtraArgs)
-		if err != nil {
-			return LaunchRequest{}, deploy.CatalogSelection{}, "", fmt.Errorf("deployment %d extra_args: %w", dep.ID, err)
-		}
+	quick, extra, err := deploymentLaunchSettings(dep)
+	if err != nil {
+		return LaunchRequest{}, deploy.CatalogSelection{}, "", err
 	}
 	templateLayer, err := DeploymentTemplate(dep)
 	if err != nil {
@@ -259,4 +251,22 @@ func PlanTemplateLaunch(ctx context.Context, st *store.Store, networks Networks,
 		}
 	}
 	return plan, nil, nil
+}
+
+// deploymentLaunchSettings is the compatibility reader shared by launch and
+// capacity planning. Malformed legacy quick_params has always read as zero
+// values; extra_args parsing remains an explicit error.
+func deploymentLaunchSettings(dep *store.Deployment) (deploy.LaunchConfig, []string, error) {
+	var quick deploy.LaunchConfig
+	if dep.QuickParams != "" {
+		_ = json.Unmarshal([]byte(dep.QuickParams), &quick)
+	}
+	if dep.ExtraArgs == "" {
+		return quick, nil, nil
+	}
+	extra, err := deploy.ParseArgsText(dep.ExtraArgs)
+	if err != nil {
+		return quick, nil, fmt.Errorf("deployment %d extra_args: %w", dep.ID, err)
+	}
+	return quick, extra, nil
 }

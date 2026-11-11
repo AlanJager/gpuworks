@@ -1,3 +1,4 @@
+import { productMessageText } from "../apiError";
 import { useState, type ReactNode } from "react";
 import { storageDetailPath } from "./storage/storageLinks";
 import { launchCommand } from "./deploy/launchCommand";
@@ -62,6 +63,7 @@ function phaseLabel(phase: string | undefined, t: TFunction): string {
 export default function InstancePanel({ inst, params, rank, actions, imageDiffers }: { inst: Instance; params?: Record<string, unknown>; rank?: DistRank; actions?: ReactNode; imageDiffers?: boolean }) {
   const { t } = useTranslation("deployments");
   const { t: tCommon } = useTranslation("common");
+  const messageText = inst.runtime_failure ? productMessageText(tCommon, inst.runtime_failure) : inst.message;
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("logs");
   const [followLogs, setFollowLogs] = useState(true);
@@ -191,7 +193,7 @@ export default function InstancePanel({ inst, params, rank, actions, imageDiffer
         {inst.message && (
           <Descriptions.Item label={t("instance.field.message")} span={2}>
             <Typography.Text type={inst.state === "failed" ? "danger" : undefined}>
-              {inst.message}
+              {messageText}
             </Typography.Text>
           </Descriptions.Item>
         )}
@@ -223,7 +225,7 @@ export default function InstancePanel({ inst, params, rank, actions, imageDiffer
               <Progress percent={percent} status={inst.state === "failed" ? "exception" : "active"} showInfo={false} />
             )}
             <InstanceProgressLine
-              message={inst.message}
+              message={messageText}
               bytesDone={inst.bytes_done}
               bytesTotal={inst.bytes_total}
               rateBps={inst.rate_bps}
