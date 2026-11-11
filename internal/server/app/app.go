@@ -3,7 +3,6 @@
 package app
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"log/slog"
@@ -145,12 +144,12 @@ func New(cfg Config, log *slog.Logger) (*App, error) {
 	// Materialize the exact package embedded in this binary before updating the
 	// database projection. A later server version then keeps this directory as
 	// long as an older deployment or instance snapshot still references it.
-	embeddedCatalogArchive, err := seed.Archive()
+	embeddedCatalog, embeddedDigest, err := seed.Package()
 	if err != nil {
 		_ = st.Close()
 		return nil, err
 	}
-	if _, _, err := catalogPackages.PutArchive(bytes.NewReader(embeddedCatalogArchive)); err != nil {
+	if _, err := catalogPackages.PutLoaded(embeddedCatalog, embeddedDigest); err != nil {
 		_ = st.Close()
 		return nil, err
 	}
