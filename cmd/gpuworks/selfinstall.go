@@ -35,6 +35,7 @@ func installCommand(ctx context.Context, args []string) error {
 	fs.StringVar(&req.LogMaxSize, "log-max-size", selfinstall.DefaultLogMaxSize, "rotate the log after this size (KB/MB/GB, 1024-based)")
 	fs.IntVar(&req.LogKeep, "log-keep", selfinstall.DefaultLogKeep, "rotated log files to keep")
 	fs.BoolVar(&req.Quiet, "quiet", false, "never prompt; generate a password unless one was given")
+	fs.BoolVar(&req.SkipCheck, "skip-check", false, "install even when the address is in use, space is short or the service account cannot reach the install directory (the run will likely fail)")
 	fs.BoolVar(&req.NoSystemd, "no-systemd", false, "run detached instead of installing a systemd unit (a launch daemon on macOS)")
 	fs.BoolVar(&autostart, "autostart", false, "install a systemd unit (a launch daemon on macOS) that starts the server at boot; the default on Linux, while macOS runs it detached unless this is given")
 	if err := fs.Parse(args); err != nil {
@@ -467,7 +468,7 @@ var installedDirUsage = "install directory (default: the installation this binar
 const installUsage = `  gpuworks install [--dir DIR] [--data DIR] [--logs DIR] [--addr IP:PORT]
                    [--trusted-proxies CIDRS] [--password PW]
                    [--service-user gpuworks] [--log-max-size 10MB] [--log-keep 20]
-                   [--quiet] [--autostart | --no-systemd]
+                   [--quiet] [--autostart | --no-systemd] [--skip-check]
   gpuworks upgrade [--dir DIR] [--channel nightly|release]
                    [--source URL ... | --base-url URL | --archive FILE] [--version ID]
                    [--keep 3] [--force] [--check] [--quiet]
