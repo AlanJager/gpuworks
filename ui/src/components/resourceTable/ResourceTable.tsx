@@ -227,7 +227,7 @@ export default function ResourceTable<T extends object>({ tableId, columns, data
           never falls back to 12px; second lines are 12px by their own class. */}
       {/* Separate borders: with collapsed ones Chrome paints row rules under the
           opaque sticky cells, so the name and action columns lost them. */}
-      <Table variant="bordered" size="md" className="border-separate border-spacing-0" containerClassName="max-w-full overflow-x-auto" style={{ tableLayout: "fixed", width: totalWidth, minWidth: "100%" }} aria-busy={loading}>
+      <Table variant="bordered" size="md" className="border-separate border-spacing-0" containerClassName="max-w-full overflow-x-auto [container-type:inline-size]" style={{ tableLayout: "fixed", width: totalWidth, minWidth: "100%" }} aria-busy={loading}>
         <TableHeader><TableRow>
           {rowSelection && <TableHead style={{ width: 48, position: "sticky", left: 0, zIndex: 2, background: "var(--surface-raised)" }}><Checkbox aria-label={t("resourceTable.selectPage")} checked={table.getIsAllPageRowsSelected()} indeterminate={table.getIsSomePageRowsSelected()} onCheckedChange={(checked) => table.toggleAllPageRowsSelected(checked)} /></TableHead>}
           {expandable && <TableHead style={{ width: 36, position: "sticky", left: rowSelection ? 48 : 0, zIndex: 2, background: "var(--surface-raised)" }} />}
@@ -270,7 +270,9 @@ export default function ResourceTable<T extends object>({ tableId, columns, data
               {row.getVisibleCells().map((cell, cellIndex) => <TableCell key={cell.id} className={["resource-table-cell whitespace-nowrap", arranged[cellIndex].role === "actions" ? "" : "overflow-hidden text-ellipsis", arranged[cellIndex].role === "name" ? "resource-table-name" : "", arranged[cellIndex].role === "name" || arranged[cellIndex].role === "actions" ? "resource-table-pinned" : "", arranged[cellIndex].className].filter(Boolean).join(" ")} style={{ ...pinnedStyle(arranged[cellIndex], cellIndex), ...(row.getIsSelected() ? { background: "var(--selection)" } : {}) }}>{typeof cell.column.columnDef.cell === "function" ? cell.column.columnDef.cell(cell.getContext()) : cell.column.columnDef.cell}</TableCell>)}
             </TableRow>{row.getIsExpanded() && expandable?.expandedRowRender && <TableRow><TableCell colSpan={arranged.length + (rowSelection ? 1 : 0) + 1}>{expandable.expandedRowRender(row.original, row.index, 0, true)}</TableCell></TableRow>}</Fragment>;
           })}
-          {!table.getRowModel().rows.length && <TableRow><TableCell colSpan={arranged.length + (rowSelection ? 1 : 0) + (expandable ? 1 : 0)}>{!loading && <EmptyState kind={emptyKind} description={emptyDescription ?? t("dataTable.empty")} action={emptyAction} />}</TableCell></TableRow>}
+          {!table.getRowModel().rows.length && <TableRow><TableCell colSpan={arranged.length + (rowSelection ? 1 : 0) + (expandable ? 1 : 0)}>{/* The empty state holds to the visible part of a table wider than its container (100cqw
+              is the container's width, the cell pads 12px a side), so it centers in what the user sees. */}
+            {!loading && <div className="sticky left-3 w-[calc(100cqw-1.5rem)]"><EmptyState kind={emptyKind} description={emptyDescription ?? t("dataTable.empty")} action={emptyAction} /></div>}</TableCell></TableRow>}
         </TableBody>
       </Table>
       {/* One footer row: the total on the left, Zeron's pager on the right, both in its 12px label size. */}
