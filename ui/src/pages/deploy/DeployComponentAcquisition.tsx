@@ -2,6 +2,7 @@ import { useTranslation } from "react-i18next";
 import type { AcquisitionComponent, AcquisitionResult } from "../../api";
 import { Alert, AlertDescription, AlertTitle, type AlertStatus } from "../../components/ui/alert";
 import { formatBytes } from "../../format";
+import { askSaveTo } from "./deployWeightChoices";
 
 // How each template component other than the primary reaches the target
 // nodes, as the server forecasts it: the create acts on the same plan, so a
@@ -10,7 +11,8 @@ import { formatBytes } from "../../format";
 export default function DeployComponentAcquisition({ acquisition }: { acquisition?: AcquisitionResult }) {
   const { t } = useTranslation("deploy");
   const components = acquisition?.components || [];
-  if (!components.length) return null;
+  if (!acquisition || !components.length) return null;
+  const saveToAsked = askSaveTo(acquisition);
   return (
     <div className="deploy-workbench-row">
       <div className="deploy-workbench-label">{t("workbench.componentAcquisition.title")}</div>
@@ -26,7 +28,7 @@ export default function DeployComponentAcquisition({ acquisition }: { acquisitio
                 })}
               </AlertTitle>
               <AlertDescription>
-                {planLines(component).map(([key, values]) => (
+                {planLines(component, saveToAsked).map(([key, values]) => (
                   <span key={key} className="deploy-component-acquisition-line">{t(key, values)}</span>
                 ))}
               </AlertDescription>
@@ -46,22 +48,24 @@ function status(component: AcquisitionComponent): AlertStatus {
 
 type Line = [string, Record<string, string | number>];
 
-function planLines(component: AcquisitionComponent): Line[] {
+// saveToAsked says the form shows the Save to question, so the avoid hint can
+// point at it.
+function planLines(component: AcquisitionComponent, saveToAsked: boolean): Line[] {
   const prefix = "workbench.componentAcquisition.";
   const size = component.size_bytes ? formatBytes(component.size_bytes) : "";
   const missing = component.nodes - component.ready_nodes;
   const lines: Line[] = [];
   switch (component.plan) {
     case "ready":
-      lines.push([`${prefix}ready`, { nodes: component.nodes }]);
+      lines.push([`${prefix}ready`, { count: component.nodes }]);
       break;
     case "shared_download":
       lines.push([
         `${prefix}${component.follows_primary ? "sharedFollowsPrimary" : "sharedChosen"}`,
-        { storage: component.storage || "", nodes: component.nodes },
+        { storage: component.storage || "", count: component.nodes },
       ]);
       if (size) lines.push([`${prefix}sharedUsage`, { storage: component.storage || "", size }]);
-      if (component.follows_primary) lines.push([`${prefix}sharedAvoid`, {}]);
+      if (component.follows_primary) lines.push([`${prefix}${saveToAsked ? "sharedAvoidOrSaveTo" : "sharedAvoid"}`, {}]);
       break;
     case "node_download":
       lines.push([

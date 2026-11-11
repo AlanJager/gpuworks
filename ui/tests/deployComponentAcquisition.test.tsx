@@ -50,8 +50,20 @@ test("a component that follows the primary into a shared storage says where, how
   within(entry).getByText("text-encoder · MiniMax/MiniMax-H3 · 62.1 GiB");
   within(entry).getByText(/Will be downloaded into the shared storage "models-nfs" \(where the primary model is\), written once by one node and shared by the 2 target nodes/);
   within(entry).getByText(/Uses 62.1 GiB of "models-nfs"; deleting the deployment does not delete this copy/);
-  within(entry).getByText(/limit the storage in the node requirements/);
+  // The form asks no Save to here (the primary already sits on the storage),
+  // so the hint points only at the node requirements.
+  within(entry).getByText("To keep it out of this storage, limit the storage in the node requirements");
   assert.equal(within(entry).getByRole("status").dataset.status, "info");
+});
+
+test("the avoid hint names Save to only when the form asks it, and one node reads as one", () => {
+  const targets = [
+    { key: "storage:1", label: "default", reason: "", recommended: true, storage_id: 1 },
+    { key: "storage:2", label: "scratch", reason: "", recommended: false, storage_id: 2 },
+  ];
+  show({ targets, components: [{ ...encoder, plan: "shared_download", nodes: 1, ready_nodes: 0, storage: "models-nfs", follows_primary: true }] });
+  within(item()).getByText(/written once by one node; the target node reads that copy/);
+  within(item()).getByText("To keep it out of this storage, limit the storage in the node requirements, or choose a local storage under Save to");
 });
 
 test("a shared storage the person chose is stated without the avoid hint", () => {
@@ -70,6 +82,9 @@ test("nodes that download the component themselves are counted with the total si
 test("a component every node has needs no download", () => {
   show({ components: [{ ...encoder, plan: "ready", nodes: 2, ready_nodes: 2 }] });
   within(item()).getByText("All 2 target nodes already have it; nothing to download");
+  cleanup();
+  show({ components: [{ ...encoder, plan: "ready", nodes: 1, ready_nodes: 1 }] });
+  within(item()).getByText("The target node already has it; nothing to download");
   assert.equal(within(item()).getByRole("status").dataset.status, "default");
 });
 
