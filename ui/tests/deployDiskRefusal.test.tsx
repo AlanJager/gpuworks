@@ -39,7 +39,7 @@ for (const [name, message] of [
     const { i18n } = await createI18n(["deploy"]);
     const items = nodeRefusals(i18n.getFixedT("en", "deploy"), result(message));
     const view = render(<I18nextProvider i18n={i18n}><View refusals={items} conditions={null} /></I18nextProvider>);
-    assert.equal(screen.queryByRole("link"), null);
+    assert.equal(screen.queryByRole("link") === null, true);
     assert.doesNotMatch(view.container.textContent ?? "", /\{\{|undefined|NaN/);
   });
 }
@@ -66,3 +66,19 @@ for (const language of ["en", "zh"] as const) {
     assert.doesNotMatch(view.container.textContent ?? "", /\{\{|undefined|NaN/);
   });
 }
+
+test("a final runtime refusal cannot inherit a registration action from an older model plan", async () => {
+  const { i18n } = await createI18n(["deploy"]);
+  const evaluation = { ok: true, candidates: [{ node_uuid: "node-a", node_name: "gpu-a", ok: false,
+    reason: { code: "insufficient_runtime_disk" }, plan: { ok: false, message: reason } }] } as never;
+  render(<I18nextProvider i18n={i18n}><View refusals={nodeRefusals(i18n.getFixedT("en", "deploy"), evaluation)} conditions={null} /></I18nextProvider>);
+  assert.equal(screen.queryByRole("link") === null, true, "the final refusal controls the offered action");
+});
+
+test("a legacy candidate with only a model plan still exposes the registration action", async () => {
+  const { i18n } = await createI18n(["deploy"]);
+  const evaluation = { ok: true, candidates: [{ node_uuid: "node-a", node_name: "gpu-a", ok: false,
+    plan: { ok: false, message: reason } }] } as never;
+  render(<I18nextProvider i18n={i18n}><View refusals={nodeRefusals(i18n.getFixedT("en", "deploy"), evaluation)} conditions={null} /></I18nextProvider>);
+  assert.equal(screen.getByRole("link").getAttribute("href"), "/models?detail=42");
+});

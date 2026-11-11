@@ -54,13 +54,14 @@ export function nodeRefusals(
     .sort((a, b) => Number(eligibility.get(b.candidate.node_uuid)?.requirements_match === true) - Number(eligibility.get(a.candidate.node_uuid)?.requirements_match === true)
       || Number(eligibilityOnly(a.candidate)) - Number(eligibilityOnly(b.candidate)) || a.index - b.index)
     .map(({ candidate }) => {
-      const modelId = diskRegistrationModelID(candidate.reason) ?? diskRegistrationModelID(candidate.plan?.message);
+      const primaryReason = placementRefusalText(t, candidate.reason);
+      const modelId = diskRegistrationModelID(primaryReason ? candidate.reason : candidate.plan?.message);
       return {
         uuid: candidate.node_uuid,
         name: candidate.node_name || candidate.node_uuid,
         ...(modelId !== undefined ? { modelId } : {}),
         reason: [...new Set([
-          placementRefusalText(t, candidate.reason) || placementRefusalText(t, candidate.plan?.message),
+          primaryReason || placementRefusalText(t, candidate.plan?.message),
           ...(eligibility.get(candidate.node_uuid)?.reasons ?? []).map((reason) => placementRefusalText(t, reason)),
         ].filter(Boolean))].join(" "),
       };

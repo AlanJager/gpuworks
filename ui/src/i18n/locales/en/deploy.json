@@ -218,7 +218,7 @@
     "holders_give_way": "The other holders give way: {{holders}}.",
     "disk_node": "Node: {{node}}.",
     "disk_storage": "Storage: {{storage}}.",
-    "disk_path": "Directory: {{path}}.",
+    "disk_path": "Target directory: {{path}}.",
     "disk_capacity": "Required additional space: {{required}}; available: {{available}}.",
     "disk_required": "Required additional space: {{required}}.",
     "disk_available": "Available space: {{available}}.",
