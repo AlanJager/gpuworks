@@ -324,7 +324,7 @@ This section corresponds to steps 4 to 6 of the overview and moves back and fort
 
 ### Step 4: Create the Cluster Entry and Copy the Command
 
-1. Open “Kubernetes” under “Resources” in the left navigation and click “Connect cluster” at the top right. Connected clusters are listed here (for a cluster created more than 5 minutes ago with no node joined yet, “Troubleshoot” appears next to “Not connected yet”; see [When No Node Appears](#没有节点出现时)):
+1. Open “Kubernetes” under “Compute” in the left navigation and click “Connect cluster” at the top right. Connected clusters are listed here (for a cluster created more than 5 minutes ago with no node joined yet, “Troubleshoot” appears next to “Not connected yet”; see [When No Node Appears](#没有节点出现时)):
 
    ![The Kubernetes page: the cluster list and the “Connect cluster” button](../assets/screenshots/k8s-clusters.png)
 

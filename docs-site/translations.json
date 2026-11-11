@@ -134,7 +134,7 @@
   "reference/security.md": "7054bdabb6324c0f0953129f7d6c993e1177fe805de3dae3fd3afe46614d043d",
   "reference/support-matrix.md": "f04a0c5a399dbabf853a46f243ee7c35099fd8edd22252c326fe3d2f2a9ea7b8",
   "reference/usage-report.md": "ee3391351bad92ba79f30b8941f771de244963cb47d94765fdce32d677f3de12",
-  "reference/web-ui-tour.md": "43c53e4354881f06632c073b8ad007cc0009e567f19b179ff7e0137964cc77ed",
+  "reference/web-ui-tour.md": "a5573b35ab41bc62de9cf9e93e4953df7aa6826761883035c0f7eb738f11e9f1",
   "tutorials/benchmark-concurrency.md": "c873e6bbcd8d978ed2dd190adeba66b06440f91b3f7886e81480a2d853cca309",
   "tutorials/first-pd-deployment.md": "68a85b73db6b96c37c263fd87290548eaf9e30a8ff9d9eb4fa6236811cc904c6",
   "tutorials/getting-started.md": "f6c7b88ddb27615b828e6eb71b25afaac56d70c28a6358c6cfe55499c6db52e3",
@@ -148,6 +148,6 @@
   "releases/v26.11.2.md": "d4a50471ba467a6d564dff6048da2cc010132b4fd93d942cde9b47c91b52fb7f",
   "adr/0052-kubernetes-nodes.md": "0051275d7cd102970942544b948db11795a4a0a4154ddef679aa0b2f4abdb94a",
   "how-to/connect-kubernetes.md": "c91acfc572b70e7a161184c86a62aafbd017e95cd7e6da7751efd7910830993c",
-  "how-to/connect-managed-kubernetes.md": "71c4b37ac803e88873edaa2b7cff80ad4ca5122c457f56f5c7df381cc01b5d50",
+  "how-to/connect-managed-kubernetes.md": "f89c225916ea2481bac59a07f28000c7f5fe9878eb414383121d24dc7bdad164",
   "adr/0063-apply-to-cloud-clusters.md": "2e06d6da2bcbf7e2933ba7d25041dfc61cca7fadd3dc58ec82e5a27a9b0f151d"
 }

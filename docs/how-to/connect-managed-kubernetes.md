@@ -350,7 +350,7 @@ kubectl -n gpuworks-system create secret docker-registry nebius-cred \
 
 ### 第 4 步：创建集群条目，复制命令
 
-1. 打开左侧「资源」下的「Kubernetes」页，点右上角「接入集群」。已经接入的集群列在这里（创建超过 5 分钟、还没有节点加入的集群，「未接入」旁会出现「排查」，见 [没有节点出现时](#没有节点出现时)）：
+1. 打开左侧「算力资源」下的「Kubernetes」页，点右上角「接入集群」。已经接入的集群列在这里（创建超过 5 分钟、还没有节点加入的集群，「未接入」旁会出现「排查」，见 [没有节点出现时](#没有节点出现时)）：
 
    ![Kubernetes 页：集群列表与「接入集群」按钮](../assets/screenshots/k8s-clusters.png)
 
