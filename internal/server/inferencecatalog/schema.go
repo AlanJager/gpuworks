@@ -422,7 +422,7 @@ func weightSourcesSchema() map[string]any {
 				"properties": map[string]any{
 					"repo_id":   map[string]any{"type": "string", "minLength": 1, "description": "Organization/repository identity."},
 					"revision":  map[string]any{"type": "string", "description": "Pinned commit hash."},
-					"subfolder": map[string]any{"type": "string", "description": "Repository subpath when weights are nested."},
+					"subfolder": map[string]any{"type": "string", "description": "Repository subpath when weights are nested: a directory, or a single file when no directory has that name."},
 				},
 			},
 		},
