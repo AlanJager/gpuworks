@@ -34,6 +34,18 @@ if [ ! -f "$BUDGET_FILE" ]; then
   exit 1
 fi
 
+# Every import-graph measurement below reads `go list -e ... 2>/dev/null`. -e
+# keeps per-package errors (a missing webui dist) out of the exit status, but a
+# toolchain that cannot load the module at all — older than go.mod's go line
+# under GOTOOLCHAIN=local — then yields empty output: import counts drop to
+# zero and waivers look stale, reported as violations that are not there.
+# Stop on that up front with go's own error.
+if ! go_list_err=$(go list -e -f '{{.ImportPath}}' ./... 2>&1 >/dev/null); then
+  echo "go list cannot load the module, so the import-graph checks cannot run:" >&2
+  printf '%s\n' "$go_list_err" | sed 's/^/  /' >&2
+  exit 1
+fi
+
 failures=0
 warnings=0
 waivers=0
