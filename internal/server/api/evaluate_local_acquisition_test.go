@@ -74,13 +74,15 @@ func TestEvaluateLocalModelThenTemplateAcquisition(t *testing.T) {
 		t.Fatalf("registered files must remain available: %+v", before.Acquisition)
 	}
 	body := fmt.Sprintf(`{"model_id":%d,"template_id":%d,"template_spec_source":"upstream","template_spec_name":"fp8-balanced","node_uuid":"fixture-node"`, model.ID, templateID)
- // Switching to manual placement evaluates once before a node is selected.
- // There are no Present candidates then, so the browser would select the
- // first public provider if the API mistakenly returned "local".
- manual := fmt.Sprintf(`{"model_id":%d,"template_id":%d,"template_spec_source":"upstream","template_spec_name":"fp8-balanced","placement_mode":"manual"}`,model.ID,templateID)
- noNode := evaluate(manual,http.StatusOK)
- if noNode.Acquisition == nil || len(noNode.Acquisition.Providers) != 0 {t.Fatalf("manual draft offered providers: %+v",noNode.Acquisition)}
- after := evaluate(body+"}", http.StatusOK)
+	// Switching to manual placement evaluates once before a node is selected.
+	// There are no Present candidates then, so the browser would select the
+	// first public provider if the API mistakenly returned "local".
+	manual := fmt.Sprintf(`{"model_id":%d,"template_id":%d,"template_spec_source":"upstream","template_spec_name":"fp8-balanced","placement_mode":"manual"}`, model.ID, templateID)
+	noNode := evaluate(manual, http.StatusOK)
+	if noNode.Acquisition == nil || len(noNode.Acquisition.Providers) != 0 {
+		t.Fatalf("manual draft offered providers: %+v", noNode.Acquisition)
+	}
+	after := evaluate(body+"}", http.StatusOK)
 	if !after.OK || after.Acquisition == nil || len(after.Acquisition.Providers) != 0 ||
 		len(after.Acquisition.Present) != 1 || !after.Acquisition.Present[0].OnNode {
 		t.Fatalf("template selection must reuse local files without offering a local download provider: %+v", after)

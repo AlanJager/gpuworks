@@ -204,7 +204,7 @@ func (p *KunlunProber) Available() bool {
 }
 func (p *KunlunProber) Probe(ctx context.Context) ([]proto.GPUInfo, error) {
 	if _, e := p.executable(); e != nil {
-		return Roster(p.Vendor(), p.hostRoot, nil, false), nil
+		return Roster(p.Vendor(), p.hostRoot, nil, false), nil //nolint:nilerr // Absence of this vendor CLI is an unavailable probe, not a node failure.
 	}
 	inv, e := p.inventory(ctx)
 	if e != nil {

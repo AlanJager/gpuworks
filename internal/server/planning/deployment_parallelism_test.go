@@ -1,8 +1,9 @@
 package planning
 
 import (
-	"gpuworks.ai/gpuworks/internal/server/store"
 	"testing"
+
+	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
 func TestStoredDeploymentPoolNeedIncludesDataParallel(t *testing.T) {
