@@ -1,4 +1,17 @@
 {
+  "gpu_candidates": {
+    "node_uuid": "fixture-node",
+    "items": [
+      {
+        "index": 0,
+        "available": true
+      },
+      {
+        "index": 1,
+        "available": true
+      }
+    ]
+  },
   "schema_version": 1,
   "diagnostics": {
     "checks": [

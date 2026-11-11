@@ -146,8 +146,8 @@ test("the deploy GPU select greys out cards that cannot be picked and says why",
   const node = { uuid: "n1", hostname: "gpu-a", state: "online", gpu_count: 2, gpus } as unknown as NodeT;
   render(
     <I18nextProvider i18n={i18n}>
-      <Form layout="vertical" initialValues={{ node_selection_mode: "auto", nnodes: 1 }}>
-        <DeployResourceStep selectedNode={node} result={null} />
+      <Form layout="vertical" initialValues={{ node_selection_mode: "manual", nnodes: 1 }}>
+        <DeployResourceStep selectedNode={node} result={{ gpu_candidates: { node_uuid: node.uuid, items: [{ index: 0, available: true }, { index: 1, available: false, reason: { code: "gpus_held_outside_platform" } }] } } as import("../src/api.ts").EvaluateResponse} />
       </Form>
     </I18nextProvider>,
   );

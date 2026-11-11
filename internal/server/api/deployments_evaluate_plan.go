@@ -77,6 +77,16 @@ func (a *apiHandlers) evaluatePlan(env evaluatePlanEnv) (evaluatePlanResult, boo
 		request.ModelRules.SaveTo = a.previewSaveToStorageID(req.ModelSource, env.model, node)
 		previewPlan, planErr := planning.PlanLaunch(env.ctx, a.d.Store, a.networks(), request)
 
+		if items := previewPlan.Output.GPUCandidates; !isAutomaticPlacement(req) && req.NNodes <= 1 && items != nil {
+			resp.GPUCandidates = &dto.GPUCandidates{NodeUUID: node.UUID, Items: make([]dto.GPUCandidate, 0, len(items))}
+			for _, item := range items {
+				card := dto.GPUCandidate{Index: item.Index, Available: item.Available}
+				if reason := item.Reason; reason != nil {
+					card.Reason = &dto.ScheduleReason{Code: reason.Code, Params: reason.Params, Message: reason.Message}
+				}
+				resp.GPUCandidates.Items = append(resp.GPUCandidates.Items, card)
+			}
+		}
 		if planErr != nil {
 			// Launch-assembly failures name no form control; they belong on the
 			// page-level error line, not beside a parameter.

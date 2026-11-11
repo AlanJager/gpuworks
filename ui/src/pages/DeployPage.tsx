@@ -478,6 +478,7 @@ function DeployForm({ opened }: { opened?: OpenedDeployment }) {
                   autoResolutionText={autoResolutionText}
                   runtimeSeries={runtimeSeries}
                   evalResult={evalResult}
+                  evaluating={evaluating}
                 />
               )}
             </div>
