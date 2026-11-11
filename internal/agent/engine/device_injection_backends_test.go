@@ -22,6 +22,7 @@ func TestExistingBackendInjectionPreservedWithTopology(t *testing.T) {
 		env    map[string]string
 	}{
 		{"nvidia-docker", &gpu.SMIProber{}, "docker", []string{"--gpus", `"device=3,7"`}, map[string]string{"CUDA_VISIBLE_DEVICES": "0,1"}},
+		{"nvidia-nerdctl", &gpu.SMIProber{}, "nerdctl", []string{"--gpus", `"device=3,7"`}, map[string]string{"CUDA_VISIBLE_DEVICES": "0,1"}},
 		{"nvidia-udocker", &gpu.SMIProber{}, "udocker", []string{"--gpus", `"device=3,7"`}, map[string]string{"CUDA_VISIBLE_DEVICES": "3,7"}},
 		{"ascend-docker", &gpu.AscendProber{}, "docker", []string{"--runtime", "ascend"}, map[string]string{"ASCEND_VISIBLE_DEVICES": "3,7", "ASCEND_RT_VISIBLE_DEVICES": "0,1", "NPU_VISIBLE_DEVICES": "0,1"}},
 	} {

@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"syscall"
 	"testing"
@@ -211,6 +212,51 @@ func TestHygonRuntimeInjectionResolvesDRMFromPCI(t *testing.T) {
 	wantMounts := []RuntimeMount{{Source: "/opt/hyhal", Target: "/opt/hyhal", ReadOnly: true}}
 	if !reflect.DeepEqual(inj.Mounts, wantMounts) {
 		t.Fatalf("driver library mounts = %#v, want %#v", inj.Mounts, wantMounts)
+	}
+}
+
+// Docker and nerdctl hand the container only the selected cards' DRM nodes,
+// so HIP numbers them 0..N-1 there; a host index past the first card would
+// hide every card. runveil binds the whole host /dev and keeps host indexes.
+func TestHygonRuntimeInjectionForDriverNumbersCardsAsHIPSeesThem(t *testing.T) {
+	for _, tc := range []struct {
+		driver  string
+		indexes []int
+		visible string
+	}{
+		{"docker", []int{1}, "0"},
+		{"nerdctl", []int{1}, "0"},
+		{"udocker", []int{1}, "1"},
+		{"docker", []int{1, 0}, "0,1"},
+		{"nerdctl", []int{1, 0}, "0,1"},
+		{"udocker", []int{1, 0}, "1,0"},
+	} {
+		p := testHygonProber(t, readHygonFixture(t))
+		p.lastSeen = map[int]hygonIdentity{
+			0: {uuid: "GPU-a", bdf: "0000:19:00.0"},
+			1: {uuid: "GPU-b", bdf: "0000:67:00.0"},
+		}
+		inj := ResolveInjection(t.Context(), p, InjectionRequest{Indexes: tc.indexes, DriverName: tc.driver})
+		if inj.UnsupportedReason != "" {
+			t.Fatalf("%s %v: injection failed: %s", tc.driver, tc.indexes, inj.UnsupportedReason)
+		}
+		wantEnv := map[string]string{"HYGON_VISIBLE_DEVICES": tc.visible, "HIP_VISIBLE_DEVICES": tc.visible}
+		if !reflect.DeepEqual(inj.Env, wantEnv) {
+			t.Fatalf("%s %v: env = %+v, want %+v", tc.driver, tc.indexes, inj.Env, wantEnv)
+		}
+		// The selected cards' nodes are still the host's own, whatever HIP calls them.
+		if !slices.Contains(inj.DockerArgs, "/dev/dri/renderD129:/dev/dri/renderD129:rwm") {
+			t.Fatalf("%s %v: selected render node missing: %#v", tc.driver, tc.indexes, inj.DockerArgs)
+		}
+	}
+}
+
+func TestHygonRuntimeInjectionForDriverKeepsRefusals(t *testing.T) {
+	p := testHygonProber(t, readHygonFixture(t))
+	p.lastSeen = map[int]hygonIdentity{1: {uuid: "GPU-b", bdf: "0000:19:00.0"}}
+	inj := p.RuntimeInjectionForDriver([]int{1}, "docker")
+	if !strings.Contains(inj.UnsupportedReason, "changed from PCI") || inj.Env != nil || inj.DockerArgs != nil {
+		t.Fatalf("refused injection = %+v", inj)
 	}
 }
 
