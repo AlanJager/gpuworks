@@ -18,7 +18,7 @@ afterEach(() => { cleanup(); Object.assign(api, original); });
 const instance: ProviderInstance = {
   external_id: "host-1", name: "GPU host", gpu_model: "Test GPU", gpu_count: 1,
   power: "running", price_per_hr: 0, region: "Test region", public_ip: "192.0.2.1",
-  ssh_port: 22, ssh_user: "root", ssh_connections: [], kind: "", node_id: 0,
+  ssh_port: 22, ssh_user: "root", ssh_connections: [], kind: "", node_id: 0, actions: ["install"],
 };
 
 function fixture(kind: string) {

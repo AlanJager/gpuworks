@@ -284,6 +284,10 @@ go list -e -f '{{join .Imports "\n"}}' ./internal/server/api \
 计入叶子包 `internal/server/usagereport`，更新检查附带的装机规模参数（原 `distribution.Report`）也搬进该包，`distribution`
 因此仍不依赖本仓库任何包。
 
+2026-11-10：Kubernetes 集群接入（[ADR 0052](../docs/adr/0052-kubernetes-nodes.md)）。`api_fanout` 48→49：集群的接入 manifest
+由纯叶子包 `internal/server/kubemanifest` 渲染（不依赖 store，参数进、YAML 出），api 直接依赖它返回 manifest；`api_deps_fields`
+不变（manifest 不经 Deps 注入）。
+
 ### api_opaque_response_fields（初值 40，2026-10-11）
 
 意图：API 响应里类型为 `any`、`map[string]any`、`json.RawMessage` 的字段，`scripts/apiconv` 看不到其中的字段名，

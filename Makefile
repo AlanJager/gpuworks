@@ -44,7 +44,7 @@ GOLANGCI_LINT_VERSION := v1.64.8
 LINT_GO_VERSION := $(shell $(GO) env GOVERSION)
 LINT_BIN := $(CURDIR)/$(BIN)/tools/golangci-lint-$(GOLANGCI_LINT_VERSION)-$(LINT_GO_VERSION)/golangci-lint
 
-.PHONY: all build test-host-env-adapters server server-linux-amd64 server-linux-amd64-prebuilt-ui server-linux-arm64 server-linux-arm64-prebuilt-ui server-darwin-amd64-prebuilt-ui server-darwin-arm64-prebuilt-ui agent ui test test-unit test-ui test-integration test-fleet-perf-processes test-fleet-log-scale-processes test-fleet-benchmark-processes test-coverage-report test-l2 test-l3 test-l4 test-l4-runpod-server-dial-node-onboarding test-l4-runpod-huggingface-public-download test-l4-runpod-vllm-sglang-lifecycle test-l4-autodl-node-onboarding test-l4-vast-node-onboarding test-l4-vast-server-dial-node-onboarding test-l4-gitee-ascend-partition-capability test-l4-gitee-ascend-deploy-chat test-l4-ascend-pool-partition-inference test-l4-ascend-primary test-l4-ascend-preflight test-l4-ascend-nerdctl-devinject test-l4-compshare-modelscope-public-download test-l4-compshare-offline-contracts test-l4-compshare-single-vm-tp2-dgpu test-l4-compshare-provisioning-matrix test-l4-compshare-server-dial-node-onboarding-container test-l4-compshare-two-vm-udocker-distributed test-l4-compshare-two-vm-docker-distributed test-l4-compshare-one-vm-two-logical-nodes test-l4-compshare-pd-deploy-chat-two-vm-docker prepare-compshare-golden-image test-l4-runpod test-l4-compshare test-l4-cleanup-leaked vet check-assets check-libvgpu check-perftest check-time-policy check-architecture check-tagged-build check-api-conventions check-ci-yaml check-artifacts githooks check-doc-links check-translations i18n-check i18n-translate i18n-review runtime-assets runtime-assets-probe runtime-assets-verify image-manifest image-manifest-verify fake-engine fake-engine-image fake-model clean demo run-server tidy cross release-packages dist-publish test-l4-runpod-node-onboarding test-l4-aliyun test-l4-aliyun-provisioning-matrix test-l4-aliyun-modelscope-public-download test-l4-aliyun-single-vm-tp2-dgpu test-l4-aliyun-one-vm-two-logical-nodes test-l4-aliyun-two-vm-docker-distributed test-l4-aliyun-two-vm-udocker-distributed test-l4-aliyun-pd-deploy-chat-two-vm-docker prepare-aliyun-golden-image
+.PHONY: all build test-host-env-adapters server server-linux-amd64 server-linux-amd64-prebuilt-ui server-linux-arm64 server-linux-arm64-prebuilt-ui server-darwin-amd64-prebuilt-ui server-darwin-arm64-prebuilt-ui agent ui test test-unit test-ui test-integration test-fleet-perf-processes test-fleet-log-scale-processes test-fleet-benchmark-processes test-coverage-report test-l2 test-l3 test-l4 test-l4-runpod-server-dial-node-onboarding test-l4-runpod-huggingface-public-download test-l4-runpod-vllm-sglang-lifecycle test-l4-autodl-node-onboarding test-l4-vast-node-onboarding test-l4-vast-server-dial-node-onboarding test-l4-gitee-ascend-partition-capability test-l4-gitee-ascend-deploy-chat test-l4-ascend-pool-partition-inference test-l4-ascend-primary test-l4-ascend-preflight test-l4-ascend-nerdctl-devinject test-l4-compshare-modelscope-public-download test-l4-compshare-offline-contracts test-l4-compshare-single-vm-tp2-dgpu test-l4-compshare-provisioning-matrix test-l4-compshare-server-dial-node-onboarding-container test-l4-compshare-two-vm-udocker-distributed test-l4-compshare-two-vm-docker-distributed test-l4-compshare-one-vm-two-logical-nodes test-l4-compshare-pd-deploy-chat-two-vm-docker prepare-compshare-golden-image test-l4-runpod test-l4-compshare test-l4-cleanup-leaked vet check-assets check-libvgpu check-perftest check-time-policy check-architecture check-tagged-build check-api-conventions check-ci-yaml check-artifacts githooks check-doc-links check-translations i18n-check i18n-translate i18n-review runtime-assets runtime-assets-probe runtime-assets-verify image-manifest image-manifest-verify fake-engine fake-engine-image fake-model clean demo run-server tidy cross release-packages dist-publish test-l4-runpod-node-onboarding test-l4-aliyun test-l4-aliyun-provisioning-matrix test-l4-aliyun-modelscope-public-download test-l4-aliyun-single-vm-tp2-dgpu test-l4-aliyun-one-vm-two-logical-nodes test-l4-aliyun-two-vm-docker-distributed test-l4-aliyun-two-vm-udocker-distributed test-l4-aliyun-pd-deploy-chat-two-vm-docker prepare-aliyun-golden-image agent-image agent-image-publish test-l3-kind
 
 all: build
 
@@ -57,6 +57,22 @@ docs-pdf: check-doc-links check-translations
 
 ## build: full release build — cross-compile agents (embedded) + UI + server + agent
 build: check-libvgpu ui cross-agents server agent
+
+## agent-image: the agent image a Kubernetes cluster's DaemonSet runs, built
+## into the local docker (AGENT_IMAGE, default gpuworks/gpuworks-agent:$(VERSION);
+## ARCH amd64|arm64). agent-image-publish builds amd64 + arm64 and pushes them to
+## GPUWORKS_AGENT_IMAGE_REPOS (the release pipeline's release-agent-image job).
+AGENT_IMAGE ?= gpuworks/gpuworks-agent:$(VERSION)
+NERDCTL_VERSION ?= 2.1.6
+ARCH ?= amd64
+DEBIAN_MIRROR ?= mirrors.aliyun.com
+agent-image:
+	GO="$(GO)" LDFLAGS="$(LDFLAGS)" VERSION="$(VERSION)" ARCH="$(ARCH)" AGENT_IMAGE="$(AGENT_IMAGE)" \
+	NERDCTL_VERSION="$(NERDCTL_VERSION)" DEBIAN_MIRROR="$(DEBIAN_MIRROR)" ./scripts/agent_image.sh build
+
+agent-image-publish:
+	GO="$(GO)" LDFLAGS="$(LDFLAGS)" VERSION="$(VERSION)" \
+	NERDCTL_VERSION="$(NERDCTL_VERSION)" DEBIAN_MIRROR="$(DEBIAN_MIRROR)" ./scripts/agent_image.sh publish
 
 ## server: build the control-plane binary (embeds UI + cross-compiled agents)
 server: cross-agents
@@ -187,6 +203,7 @@ test-strata-queue-assets:
 check-tagged-build:
 	CGO_ENABLED=0 $(GO) test -tags='multiproc' ./test/l2 -run '^$$'
 	CGO_ENABLED=0 $(GO) test -tags='docker' ./test/l3 -run '^$$'
+	CGO_ENABLED=0 $(GO) test -tags='kind' ./test/l3kind -run '^$$'
 	CGO_ENABLED=0 $(GO) test -tags='cloudgpu,runpod' ./test/l4 -run '^$$'
 	CGO_ENABLED=0 $(GO) test -tags='cloudgpu,compshare' ./test/l4 -run '^$$'
 	CGO_ENABLED=0 $(GO) test -tags='cloudgpu,aliyun' ./test/l4 -run '^$$'
@@ -499,6 +516,20 @@ test-l3:
 		status="$$(cat "$$status_file")"; \
 		if [ "$$status" != 0 ]; then echo "l3 failed (status $$status); full output: $$log"; exit "$$status"; fi; \
 	fi
+
+## test-l3-kind: Kubernetes node support on a real kind cluster (needs docker and
+## kind; skips without them unless GPUWORKS_TEST_STRICT=1). Builds the agent
+## image the DaemonSet runs and the fake-engine image, which the test loads
+## into the cluster.
+KIND_AGENT_IMAGE ?= gpuworks/gpuworks-agent:l3kind
+
+test-l3-kind:
+	$(MAKE) agent-image AGENT_IMAGE=$(KIND_AGENT_IMAGE)
+	$(MAKE) fake-engine-image
+	GPUWORKS_KIND_AGENT_IMAGE=$(KIND_AGENT_IMAGE) CGO_ENABLED=0 $(GO) test -count=1 -v -tags=kind -timeout=20m ./test/l3kind/
+
+test-l4-runpod-node-onboarding: cross-agents
+	GPUWORKS_TEST_STRICT=1 CGO_ENABLED=0 $(GO) test $(GO_TEST_FLAGS) -v -tags=cloudgpu,runpod -run '^TestRunpodNodeOnboarding$$' -timeout=25m ./test/l4
 
 ## Server-dialed agent on a pod, then a pod edit that renumbers its ports.
 test-l4-runpod-server-dial-node-onboarding: cross-agents

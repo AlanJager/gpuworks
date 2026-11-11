@@ -100,6 +100,10 @@
     "DGPU_QUOTA_NOT_EDITABLE": "多机或 PD 部署（{{shape}}）逐 rank 放置，不能在这里调整 dGPU 配额。",
     "DGPU_QUOTA_ASLEEP": "部署有副本在休眠：调整配额会重启实例，请先唤醒。",
     "DGPU_QUOTA_NO_ROOM": "{{node}} 的 GPU {{gpu}} 放不下：扣掉该部署自己的占用后可用 {{free_gib}} GiB，新配额需要 {{need_gib}} GiB。",
+    "KUBE_CLUSTER_INVALID": "集群的 {{field}} 不可用：{{reason}}。",
+    "KUBE_CLUSTER_NAME_TAKEN": "已有名为 {{name}} 的集群。",
+    "KUBE_CLUSTER_HAS_NODES": "集群里还有节点，先移除这些节点再删除集群。",
+    "KUBE_ENROLL_REFUSED": "接入令牌被拒绝（{{reason}}）。",
     "AUTOMATIC_PLACEMENT_UNAVAILABLE": "没有节点满足自动放置要求。请查看候选节点原因，或改为手动选择节点。",
     "AUTOMATIC_PLACEMENT_STALE": "评估后的节点或 GPU 方案已发生变化，请重新评估部署。",
     "AGENT_UPGRADE_REQUIRED": "目标节点的 agent 版本过旧；请先升级 agent，再继续操作。",
@@ -107,6 +111,7 @@
     "NODE_OFFLINE": "计算节点已离线。",
     "NODE_SCHEDULABLE": "请先停止调度或驱逐该节点，再强制撤下副本。",
     "NODE_RUNTIME_INVALID": "运行时必须是自动、Docker、nerdctl 或 runveil（API 值为 udocker）。",
+    "NODE_RUNTIME_KUBE_NODE": "Kubernetes 节点的运行时由所在集群决定，不能切换。",
     "NODE_ACCELERATOR_INVALID": "加速卡只能选自动，或这台机器上有卡的厂商。",
     "CARD_CHECKS_UNSUPPORTED": "该节点的 agent 版本过旧，不支持卡的健康检查，请先升级 agent。",
     "CARD_NOT_OWNED": "这张卡不归本节点使用（已直通给虚拟机，或没有绑定驱动），不能设为可调度。",
@@ -583,7 +588,12 @@
     "ACCELERATOR_RUNTIME_UNREPORTED": "节点尚未完整上报 {{vendor}} 所需的运行时信息，请刷新节点信息后重试。",
     "ACCELERATOR_DEVICE_UNAVAILABLE": "无法核验所选 {{vendor}} 设备，请检查设备身份和驱动诊断信息。",
     "ACCELERATOR_INVENTORY_UNAVAILABLE": "无法读取 {{vendor}} 驱动设备清单，请检查厂商命令和驱动。",
-    "ACCELERATOR_RESOURCE_UNAVAILABLE": "本次 {{vendor}} 启动所需的 {{resource}} 不可用，请检查宿主设备和容器资源配置。"
+    "ACCELERATOR_RESOURCE_UNAVAILABLE": "本次 {{vendor}} 启动所需的 {{resource}} 不可用，请检查宿主设备和容器资源配置。",
+    "KUBE_CLUSTER_SOURCE_TAKEN": "账号下的集群 {{cluster}} 已经接入过，一个集群只有一个条目；要用它的更多节点池，请修改那个条目的节点池。",
+    "KUBE_CLUSTER_NO_SOURCE": "这个集群不是从云账号接入的（或云账号已删除），gpuworks 无法访问它；请在集群里执行 kubectl 命令。",
+    "KUBE_CLUSTER_MIXED_VENDORS": "同一个集群条目的节点池必须是同一厂商，而选中的是 {{vendors}}。请只选一个厂商的节点池；暂不支持在一个条目里混合厂商。",
+    "KUBE_CLUSTER_OPERATION_FAILED": "操作集群失败（{{step}}）：{{reason}}",
+    "PROVIDER_INSTANCE_IN_CLUSTER": "这台实例是 Kubernetes 集群 {{cluster}} 的节点，由集群管理：不能单独安装 agent，也不能在这里开关机、释放或调整规格。请在「Kubernetes 集群」页签接入并管理该集群。"
   },
   "httpError": {
     "proxyPage": "HTTP {{status}}：浏览器与 gpuworks 之间的反向代理或隧道返回了它自己的错误页，server 给出的原因丢失了。直接通过 server 自身地址访问并重试，可以看到原因。"
@@ -689,24 +699,6 @@
     "account": "账户：{{name}}",
     "updateAvailable": "有可用更新",
     "updateAvailableHint": "服务端或官方目录有新版本，在设置页「版本与更新」中查看"
-  },
-  "resourcePlaceholder": {
-    "currentEntry": "当前入口",
-    "deliveryScope": "交付范围",
-    "futureCapabilities": "后续能力",
-    "k8s": {
-      "current": "当前可以在 Kubernetes 工作节点内安装 agent，并按普通计算节点纳管与调度。",
-      "description": "Kubernetes 纳管入口已预留，agentless 与 DaemonSet 接入将在后续版本实现。",
-      "next": {
-        "0": "DaemonSet 接入",
-        "1": "agentless 虚拟计算节点",
-        "2": "外部 GPU 占用注入",
-        "3": "按集群过滤与调度"
-      },
-      "primary": "打开接入向导",
-      "status": "v3 规划中",
-      "title": "Kubernetes"
-    }
   },
   "states": {
     "offline": "离线",

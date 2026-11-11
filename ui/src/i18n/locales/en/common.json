@@ -100,6 +100,10 @@
     "DGPU_QUOTA_NOT_EDITABLE": "A multi-node or PD deployment ({{shape}}) places its ranks one by one; its dGPU quota cannot be changed here.",
     "DGPU_QUOTA_ASLEEP": "A replica of this deployment is asleep. Changing the quota restarts the instances; wake it first.",
     "DGPU_QUOTA_NO_ROOM": "GPU {{gpu}} of {{node}} cannot hold it: {{free_gib}} GiB is free once the deployment's own claim is handed back, and the new quota needs {{need_gib}} GiB.",
+    "KUBE_CLUSTER_INVALID": "The cluster's {{field}} cannot be used: {{reason}}.",
+    "KUBE_CLUSTER_NAME_TAKEN": "Another cluster is already named {{name}}.",
+    "KUBE_CLUSTER_HAS_NODES": "The cluster still has nodes. Remove them first, then delete the cluster.",
+    "KUBE_ENROLL_REFUSED": "The enrollment token was refused ({{reason}}).",
     "AUTOMATIC_PLACEMENT_UNAVAILABLE": "No node can satisfy automatic placement. Review the candidate reasons or choose a node manually.",
     "AUTOMATIC_PLACEMENT_STALE": "The evaluated node or GPU plan has changed. Evaluate the deployment again.",
     "AGENT_UPGRADE_REQUIRED": "The target node is running an older agent. Upgrade the agent before continuing.",
@@ -107,6 +111,7 @@
     "NODE_OFFLINE": "The node is offline.",
     "NODE_SCHEDULABLE": "Cordon or drain the node before evicting its replicas.",
     "NODE_RUNTIME_INVALID": "Runtime must be auto, Docker, nerdctl, or runveil (API value udocker).",
+    "NODE_RUNTIME_KUBE_NODE": "A Kubernetes node's runtime is its cluster's and cannot be switched.",
     "NODE_ACCELERATOR_INVALID": "Accelerator must be auto or a vendor whose cards this machine has.",
     "CARD_CHECKS_UNSUPPORTED": "This node's agent predates card health checks; upgrade the agent first.",
     "CARD_NOT_OWNED": "This card is not this node's to use (passed through to a virtual machine, or without a driver), so it cannot be made schedulable.",
@@ -583,7 +588,12 @@
     "ACCELERATOR_RUNTIME_UNREPORTED": "The node has not reported all runtime facts required by {{vendor}}. Refresh the node inventory before retrying.",
     "ACCELERATOR_DEVICE_UNAVAILABLE": "The selected {{vendor}} devices could not be verified. Check the device identities and driver diagnostics.",
     "ACCELERATOR_INVENTORY_UNAVAILABLE": "The {{vendor}} driver inventory could not be read. Check the vendor CLI and driver.",
-    "ACCELERATOR_RESOURCE_UNAVAILABLE": "{{vendor}} requires {{resource}} for this launch. Check the host device and resolved container resources."
+    "ACCELERATOR_RESOURCE_UNAVAILABLE": "{{vendor}} requires {{resource}} for this launch. Check the host device and resolved container resources.",
+    "KUBE_CLUSTER_SOURCE_TAKEN": "Cluster {{cluster}} of the account is already connected; a cluster has one entry. To use more of its node pools, edit that entry's node pools.",
+    "KUBE_CLUSTER_NO_SOURCE": "This cluster was not connected from a cloud account (or the account was deleted), so gpuworks cannot reach it; run the kubectl command in the cluster.",
+    "KUBE_CLUSTER_MIXED_VENDORS": "The node pools of one cluster entry must all be of one vendor, but these are of {{vendors}}. Choose pools of a single vendor; mixing vendors in one entry is not supported yet.",
+    "KUBE_CLUSTER_OPERATION_FAILED": "The cluster operation failed ({{step}}): {{reason}}",
+    "PROVIDER_INSTANCE_IN_CLUSTER": "This instance is a node of Kubernetes cluster {{cluster}}, which owns it: it cannot get an agent of its own or be powered, released or resized here. Connect and manage the cluster from the Kubernetes clusters tab."
   },
   "httpError": {
     "proxyPage": "HTTP {{status}}: a reverse proxy or tunnel between the browser and gpuworks answered with its own error page, so the server's reason was lost. Retry from the server's own address to see it."
@@ -689,24 +699,6 @@
     "account": "Account: {{name}}",
     "updateAvailable": "Update available",
     "updateAvailableHint": "A newer server or official catalog is available; see Version and updates in Settings"
-  },
-  "resourcePlaceholder": {
-    "currentEntry": "Current entry point",
-    "deliveryScope": "Delivery scope",
-    "futureCapabilities": "Planned capabilities",
-    "k8s": {
-      "current": "You can currently install the agent on Kubernetes worker nodes and onboard and schedule them as ordinary compute nodes.",
-      "description": "The Kubernetes onboarding entry point is reserved. Agentless and DaemonSet onboarding will be delivered in a later version.",
-      "next": {
-        "0": "DaemonSet onboarding",
-        "1": "Agentless virtual compute nodes",
-        "2": "External GPU allocation injection",
-        "3": "Cluster-based filtering and scheduling"
-      },
-      "primary": "Open onboarding wizard",
-      "status": "Planned for v3",
-      "title": "Kubernetes"
-    }
   },
   "states": {
     "offline": "Offline",

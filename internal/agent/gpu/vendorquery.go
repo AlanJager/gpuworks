@@ -5,8 +5,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -176,7 +174,7 @@ func runVendorQuery(q *vendorQuery, b *vendorBinary, done chan struct{}, name st
 	ctx, cancel := context.WithTimeout(context.Background(), vendorQueryLimit)
 	defer cancel()
 	var buf bytes.Buffer
-	cmd := exec.CommandContext(ctx, name, args...)
+	cmd := cliCommand(ctx, name, args...)
 	killGroupOnCancel(cmd)
 	cmd.Stdout = &buf
 	cmd.Stderr = &buf

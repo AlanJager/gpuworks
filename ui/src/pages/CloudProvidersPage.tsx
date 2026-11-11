@@ -21,6 +21,8 @@ import PageHeader from "../components/PageHeader";
 import ResourceTable, { type ResourceColumn } from "../components/resourceTable/ResourceTable";
 import ProviderConfigModal from "../components/ProviderConfigModal";
 import ProviderInstancesTable from "../components/ProviderInstancesTable";
+import ProviderClustersTable from "../components/ProviderClustersTable";
+import { Tabs, TabsList, TabItem, TabPanel } from "../components/ui/tabs";
 import { formatTime } from "../i18n/datetime";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
@@ -319,14 +321,29 @@ export default function CloudProvidersPage() {
             </Button>
           }
           expandable={{
-            expandedRowRender: (p) => (
-              <ProviderInstancesTable
-                providerId={p.id}
-                kindInfo={kindInfos.find((k) => k.kind === p.kind)}
-                refreshKey={`${p.updated_at}:${instanceRefreshVersion}`}
-                showRegion={p.category !== "private_cloud"}
-              />
-            ),
+            expandedRowRender: (p) => {
+              const kindInfo = kindInfos.find((k) => k.kind === p.kind);
+              const instances = (
+                <ProviderInstancesTable
+                  providerId={p.id}
+                  kindInfo={kindInfo}
+                  refreshKey={`${p.updated_at}:${instanceRefreshVersion}`}
+                  showRegion={p.category !== "private_cloud"}
+                />
+              );
+              if (!kindInfo?.can_list_clusters) return instances;
+              // Clusters are read from the cloud when their tab is opened.
+              return (
+                <Tabs defaultValue="instances" variant="underline">
+                  <TabsList>
+                    <TabItem value="instances" label={t("tabs.instances")} />
+                    <TabItem value="clusters" label={t("tabs.clusters")} />
+                  </TabsList>
+                  <TabPanel value="instances" className="pt-4">{instances}</TabPanel>
+                  <TabPanel value="clusters" className="pt-4"><ProviderClustersTable providerId={p.id} providerName={p.name} /></TabPanel>
+                </Tabs>
+              );
+            },
           }}
         />
       </section>
@@ -351,6 +368,7 @@ const PROVIDER_LOGOS: Record<string, string> = {
   aliyun: "/provider-logos/aliyun.webp",
   autodl: "/provider-logos/autodl.webp",
   compshare: "/provider-logos/compshare.webp",
+  digitalocean: "/provider-logos/digitalocean.svg",
   runpod: "/provider-logos/runpod.webp",
   vast: "/provider-logos/vast.webp",
   zstack: "/provider-logos/zstack.svg",

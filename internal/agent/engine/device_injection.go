@@ -64,10 +64,11 @@ func applyRuntimeInjection(ws *runtime.WorkloadSpec, inj gpu.RuntimeInjection, i
 		// construct a compact container-visible inventory. Reusing the host
 		// indexes in CUDA_VISIBLE_DEVICES then hides non-zero selected cards
 		// (for example host device 1 is CUDA device 0 inside a one-card
-		// container). nerdctl's --gpus goes through the same toolkit hook.
-		// Udocker has no such remapping and continues to use the physical
-		// indexes supplied by the prober.
-		if key == "CUDA_VISIBLE_DEVICES" && (driverName == "docker" || driverName == "nerdctl") && hasDockerOption(inj.DockerArgs, "--gpus") {
+		// container). nerdctl's --gpus goes through the same toolkit hook, and
+		// the kube runtime gets the same remapping from the NVIDIA runtime
+		// class. Udocker has no such remapping and continues to use the
+		// physical indexes supplied by the prober.
+		if key == "CUDA_VISIBLE_DEVICES" && (driverName == "docker" || driverName == "nerdctl" || driverName == "kube") && hasDockerOption(inj.DockerArgs, "--gpus") {
 			value = compactDeviceIndexes(len(indexes))
 		}
 		env[key] = value

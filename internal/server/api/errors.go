@@ -18,6 +18,7 @@ const (
 	ErrorNodeOffline              = "NODE_OFFLINE"
 	ErrorNodeSchedulable          = "NODE_SCHEDULABLE"
 	ErrorNodeRuntimeInvalid       = "NODE_RUNTIME_INVALID"
+	ErrorNodeRuntimeKube          = "NODE_RUNTIME_KUBE_NODE" // a Kubernetes node's runtime is its cluster's, not a choice
 	ErrorNodeDeleteForceInvalid   = "NODE_DELETE_FORCE_INVALID"
 	ErrorNodeAcceleratorInvalid   = "NODE_ACCELERATOR_INVALID"
 	ErrorNodeAcceleratorNotOnHost = "NODE_ACCELERATOR_NOT_ON_HOST"
@@ -565,3 +566,34 @@ const WarningBatchModelWaits = "BATCH_MODEL_WAITS"
 // ErrorServerStorageFull answers any request whose write failed because the
 // server's disk is full (store.IsStorageFull), whichever handler it reached.
 const ErrorServerStorageFull = "SERVER_STORAGE_FULL"
+
+// Kubernetes cluster codes (/kube/clusters, /kube/enroll).
+const (
+	// ErrorKubeClusterInvalid: a cluster parameter cannot be used
+	// ({field}, {reason}).
+	ErrorKubeClusterInvalid = "KUBE_CLUSTER_INVALID"
+	// ErrorKubeClusterNameTaken: another cluster already has {name}.
+	ErrorKubeClusterNameTaken = "KUBE_CLUSTER_NAME_TAKEN"
+	// ErrorKubeClusterHasNodes: the cluster still has nodes; remove them first.
+	ErrorKubeClusterHasNodes = "KUBE_CLUSTER_HAS_NODES"
+	// ErrorKubeEnrollRefused: the enrollment token is unknown, revoked or
+	// belongs to another cluster ({reason}: unknown_token | other_cluster).
+	ErrorKubeEnrollRefused = "KUBE_ENROLL_REFUSED"
+	// ErrorKubeClusterSourceTaken: an entry was already made from cluster
+	// {cluster} of the cloud account.
+	ErrorKubeClusterSourceTaken = "KUBE_CLUSTER_SOURCE_TAKEN"
+	// ErrorKubeClusterNoSource: the entry was not made from a cloud
+	// account's cluster, so the server has no way into the cluster; apply
+	// the manifest with kubectl.
+	ErrorKubeClusterNoSource = "KUBE_CLUSTER_NO_SOURCE"
+	// ErrorKubeClusterOperationFailed: applying to or removing from the
+	// cluster failed at {step} (kubeconfig | api_server): {reason}.
+	ErrorKubeClusterOperationFailed = "KUBE_CLUSTER_OPERATION_FAILED"
+	// ErrorKubeClusterMixedVendors: the node pools chosen for one entry are
+	// of more than one vendor ({vendors}). An entry holds pools of one vendor
+	// for now; mixing vendors in one entry is a later step.
+	ErrorKubeClusterMixedVendors = "KUBE_CLUSTER_MIXED_VENDORS"
+	// ErrorProviderInstanceInCluster: the instance is a node of the
+	// account's Kubernetes cluster {cluster}; connect the cluster instead.
+	ErrorProviderInstanceInCluster = "PROVIDER_INSTANCE_IN_CLUSTER"
+)

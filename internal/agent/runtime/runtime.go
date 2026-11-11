@@ -231,6 +231,13 @@ type WorkloadInspector interface {
 	InspectWorkload(context.Context, string) (WorkloadInspection, error)
 }
 
+// NamedWorkloads is optional. A driver implementing it returns from Run a
+// workload name (a Kubernetes pod's) rather than the container's runtime ID,
+// so an inspection's ContainerID cannot be compared with what Run returned.
+type NamedWorkloads interface {
+	WorkloadHandleIsName() bool
+}
+
 // MountOwner identifies the host user that resolves bind-mount source paths.
 // Username is required only when a root agent switches to a dedicated runtime
 // user; direct/non-root runtimes normally leave it empty.

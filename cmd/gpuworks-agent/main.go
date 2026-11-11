@@ -33,6 +33,7 @@ import (
 	agentapp "gpuworks.ai/gpuworks/internal/agent/app"
 	agentconn "gpuworks.ai/gpuworks/internal/agent/conn"
 	"gpuworks.ai/gpuworks/internal/agent/gpu"
+	"gpuworks.ai/gpuworks/internal/agent/runtime/kube"
 	recordingruntime "gpuworks.ai/gpuworks/internal/agent/runtime/recording"
 	udockerruntime "gpuworks.ai/gpuworks/internal/agent/runtime/udocker"
 	udockernative "gpuworks.ai/gpuworks/internal/agent/runtime/udocker/native"
@@ -67,6 +68,12 @@ func main() {
 			log.Error("agent exited", "err", err)
 			os.Exit(1)
 		}
+	case "hold":
+		// What a kube node's hold pod runs: nothing, for as long as the pod
+		// keeps a card borrowed from the kubelet.
+		ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+		<-ctx.Done()
+		stop()
 	case "smoke":
 		if err := smoke(log, os.Args[2:]); err != nil && !errors.Is(err, flag.ErrHelp) {
 			log.Error("agent smoke failed", "err", err)
@@ -193,7 +200,15 @@ func run(log *slog.Logger, args []string) error {
 	fs.BoolVar(&cfg.DataLane, "data-lane", true, "open a dedicated high-throughput data lane (disable for single-connection proxies)")
 	fs.StringVar(&cfg.DCGM, "dcgm", cfg.DCGM, "optional DCGM SM-occupancy probe: off (default) | auto (opt in; enables only when dcgmi is on PATH)")
 	imagePullMaxConns := fs.Int("image-pull-max-connections", 0, "most simultaneous connections a runveil (udocker) image pull may open to one registry host (0 = automatic, up to "+strconv.Itoa(udockernative.DefaultMaxConnections)+"; 1 = one connection; at most "+strconv.Itoa(udockernative.MaxConnectionsLimit)+")")
+	enginePorts := fs.String("engine-ports", os.Getenv("GPUWORKS_ENGINE_PORTS"), "this node's own engine port range START-END (default: the server's)")
 	_ = fs.Parse(args)
+	if strings.TrimSpace(*enginePorts) != "" {
+		r, err := proto.ParsePortRange(*enginePorts)
+		if err != nil {
+			return fmt.Errorf("--engine-ports: %w", err)
+		}
+		cfg.EnginePorts = &r
+	}
 	if *imagePullMaxConns < 0 || *imagePullMaxConns > udockernative.MaxConnectionsLimit {
 		return fmt.Errorf("--image-pull-max-connections must be between 0 (automatic) and %d, got %d", udockernative.MaxConnectionsLimit, *imagePullMaxConns)
 	}
@@ -205,6 +220,17 @@ func run(log *slog.Logger, args []string) error {
 	conf, stateDir, _, err := launch.resolve(os.Getenv)
 	if err != nil {
 		return safeAgentConfigurationError(err)
+	}
+	if strings.TrimSpace(conf.Token) == "" && strings.EqualFold(conf.RuntimeDriver, kube.DriverName) {
+		// An agent of a cluster's DaemonSet starts without a node token and
+		// trades the cluster's enrollment token for one.
+		ectx, estop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+		id, err := enrollKubeNode(ectx, log, agentapp.Config{ServerURL: conf.Server, StateDir: stateDir})
+		estop()
+		if err != nil {
+			return err
+		}
+		conf.Token, cfg.KubeIdleReturn = id.NodeToken, id.IdleReturn()
 	}
 	if err := conf.Validate(); err != nil {
 		return safeAgentConfigurationError(err)
@@ -254,6 +280,12 @@ func run(log *slog.Logger, args []string) error {
 	cfg.DebugLog = tee
 	slog.SetDefault(log)
 
+	if strings.EqualFold(cfg.ForceDriver, kube.DriverName) && kube.HostCLIs(os.Getenv(kube.EnvHostCLIs), exec.LookPath) {
+		// The DaemonSet's CLIs are the host's (the manifest says when;
+		// kube.EnvHostCLIs). Before New: the prober it builds runs them.
+		log.Info("vendor CLIs run on the host")
+		gpu.RunCLIsOnHost()
+	}
 	a := agentapp.New(cfg, log)
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

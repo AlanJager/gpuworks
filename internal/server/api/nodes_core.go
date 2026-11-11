@@ -254,6 +254,12 @@ func (a *apiHandlers) updateNodeRuntime(w http.ResponseWriter, r *http.Request) 
 		writeProductError(w, http.StatusBadRequest, ErrorNodeRuntimeInvalid, "runtime must be auto, docker, nerdctl, or udocker (runveil)", nil)
 		return
 	}
+	// A Kubernetes node runs its instances as pods of its cluster: there is
+	// no runtime to pick (the node DTO offers no runtime_choices).
+	if node, err := a.d.Store.NodeByUUID(uuid); err == nil && node.KubeClusterID != 0 {
+		writeProductError(w, http.StatusConflict, ErrorNodeRuntimeKube, "a Kubernetes node's runtime is its cluster's", nil)
+		return
+	}
 	raw, err := a.d.CallNode(r.Context(), uuid, proto.RPCNodeSetRuntime, map[string]string{"runtime": preference})
 	if err != nil {
 		writeErr(w, http.StatusConflict, err)
@@ -281,6 +287,18 @@ func (a *apiHandlers) updateNodeRuntime(w http.ResponseWriter, r *http.Request) 
 }
 
 func (a *apiHandlers) upgradeNode(w http.ResponseWriter, r *http.Request) {
+	if a.d.Store != nil && a.d.CallNode != nil {
+		// A Kubernetes node's agent is a pod of its cluster's DaemonSet:
+		// its upgrade rolls the DaemonSet's image, not the binary.
+		if node, err := a.d.Store.NodeByUUID(chi.URLParam(r, "uuid")); err == nil && node.KubeClusterID != 0 {
+			if a.d.Online != nil && !a.d.Online(node.UUID) {
+				writeProductError(w, http.StatusConflict, ErrorNodeOffline, "node is offline", nil)
+				return
+			}
+			a.upgradeKubeNode(w, r, node)
+			return
+		}
+	}
 	if a.d.AgentUpgrades.Service != nil {
 		run, err := a.d.AgentUpgrades.Service.UpgradeNode(r.Context(), chi.URLParam(r, "uuid"), a.agentUpgradeActor(r))
 		if err != nil {

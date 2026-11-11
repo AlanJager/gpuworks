@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -425,7 +424,7 @@ func (p *HygonProber) run(ctx context.Context, args ...string) (string, error) {
 	// Keep the normal CLI name for shared query health tracking. Some DTK
 	// installations expose hy-smi only under their installation directory.
 	command := "hy-smi"
-	if _, err := exec.LookPath(command); err != nil {
+	if _, err := lookCLI(command); err != nil {
 		var lookupErr error
 		command, lookupErr = p.lookup(command)
 		if lookupErr != nil {
@@ -439,12 +438,12 @@ func (p *HygonProber) lookup(name string) (string, error) {
 	if p.lookPath != nil {
 		return p.lookPath(name)
 	}
-	command, err := exec.LookPath(name)
+	command, err := lookCLI(name)
 	if err == nil || name != "hy-smi" {
 		return command, err
 	}
 	for _, candidate := range []string{"/opt/dtk/bin/hy-smi", "/opt/hyhal/bin/hy-smi"} {
-		if command, err := exec.LookPath(candidate); err == nil {
+		if command, err := lookCLI(candidate); err == nil {
 			return command, nil
 		}
 	}

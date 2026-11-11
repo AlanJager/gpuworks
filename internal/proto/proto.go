@@ -394,6 +394,9 @@ type SysInfo struct {
 	// has no such module (and from an agent that predates the field). PD
 	// modes that move the KV over RDMA run only where it is loaded.
 	PeerMemory string `json:"peer_memory,omitempty"`
+	// KubeUnschedulable is a Kubernetes node's own cordon (spec.unschedulable),
+	// as its agent reads it; always false on other nodes.
+	KubeUnschedulable bool `json:"kube_unschedulable,omitempty"`
 	// RuntimeFallbackFrom is the runtime auto-detection passed over, and
 	// RuntimeFallbackReason the code saying why: it cannot give a container
 	// this node's accelerators (accelerator.RuntimeGPUBlocked*), its daemon

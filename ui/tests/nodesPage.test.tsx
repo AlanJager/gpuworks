@@ -83,7 +83,7 @@ await requestI18n.changeLanguage("en");
 const originalFetch = globalThis.fetch;
 const { default: NodesPage } = await import("../src/pages/NodesPage.tsx");
 const { DETAIL_DRAWER_WIDTH } = await import("../src/components/detail/DetailDrawer.tsx");
-const { runtimeChoices, runtimeLabel } = await import("../src/nodeDisplay.ts");
+const { runtimeLabel } = await import("../src/nodeDisplay.ts");
 import type { ListQuery, Node, NodePage } from "../src/api";
 import { list } from "./helpers/listPage.ts";
 
@@ -95,6 +95,8 @@ const onlineNode: Node = {
   os: "linux", kernel: "5.15.0", arch: "amd64", cpu_model: "EPYC 7543",
   cpu_cores: 128, mem_total_gib: 1024, disk_total_gib: 2048, gpu_count: 8,
   agent_version: "0.9.7", has_ssh_credential: true, gpus: [],
+  // What the server offers a plain Linux node (the runtime selector renders exactly these).
+  runtime_choices: ["auto", "docker", "nerdctl", "udocker"],
 };
 
 const offlineNode: Node = {
@@ -137,6 +139,7 @@ const originals = {
   node: api.node,
   storageUsage: api.storageUsage,
   storages: api.storages,
+  kubeClusters: api.kubeClusters,
   metricsQuery: api.metricsQuery,
   nodeDoctor: api.nodeDoctor,
 };
@@ -624,15 +627,25 @@ test("the detail drawer lists the node labels where the resource group used to b
   assert.ok(drawer.queryByText("Resource group") === null, "Expected the element to be absent");
 });
 
-test("a Mac offers only the automatic runtime, which picks its host driver", () => {
-  assert.deepEqual(runtimeChoices("darwin"), ["auto"]);
-  assert.deepEqual(runtimeChoices("linux"), ["auto", "docker", "nerdctl", "udocker"]);
-  assert.deepEqual(runtimeChoices(undefined), ["auto", "docker", "nerdctl", "udocker"]);
+test("a Mac's host driver label is shown as is", () => {
   assert.equal(runtimeLabel("host"), "host");
 });
 
+test("a Kubernetes node has no runtime selector, only the runtime it runs", async () => {
+  const kube = { ...onlineNode, name: "kube-gpu-1", runtime_driver: "kube", runtime_choices: undefined, kube: { cluster_id: 1, node_name: "gpu-1", unschedulable: false } };
+  stubApi([kube]);
+  api.node = async () => kube as never;
+  renderPage();
+  await waitFor(() => assert.ok(screen.getByText("kube-gpu-1")));
+  screen.getByRole("button", { name: "kube-gpu-1" }).click();
+  await waitFor(() => assert.ok(screen.queryByRole("dialog")));
+  const drawer = within(screen.queryByRole("dialog") as HTMLElement);
+  await waitFor(() => assert.ok(drawer.getByText("kube")));
+  assert.equal(screen.queryByRole("dialog")?.querySelector(".ant-select-selection-item")?.textContent ?? null, null);
+});
+
 test("the runtime selector of a Mac node offers only the automatic choice", async () => {
-  const mac = { ...onlineNode, os: "darwin", arch: "arm64", name: "mac-studio-01" };
+  const mac = { ...onlineNode, os: "darwin", arch: "arm64", name: "mac-studio-01", runtime_choices: ["auto"] };
   stubApi([mac]);
   api.node = async () => mac as never;
   renderPage();
@@ -901,4 +914,48 @@ test("a node-list refresh failure preserves an open upgrade preview and its retr
   assert.equal(submitted[0].idempotency_key, submitted[1].idempotency_key);
   assert.deepEqual(submitted[1].node_uuids, [onlineNode.uuid]);
   assert.ok(screen.getByRole("button", { name: "Recent Agent upgrades" }));
+});
+
+// What the server sends for a node that joined from a Kubernetes cluster: the
+// placement is two of its system labels (the cluster by UUID, shown by name),
+// not a field the page composes.
+const kubeNode: Node = {
+  ...onlineNode,
+  uuid: "33333333-3333-3333-3333-333333333333", name: "k8s-gpu-01", hostname: "k8s-gpu-01",
+  system_labels: [
+    { key: "gpuworks.ai/kubernetes-cluster", value: "7c1b6f0e-0000-4000-8000-000000000007", display: "prod-gpu" },
+    { key: "gpuworks.ai/kubernetes-node", value: "worker-3", display: "worker-3" },
+    { key: "gpuworks.ai/node", value: "33333333-3333-3333-3333-333333333333", display: "k8s-gpu-01" },
+  ],
+};
+
+test("a node that joined from Kubernetes shows its cluster and Kubernetes node as system labels; no K8s badge is composed", async () => {
+  stubApi([onlineNode, kubeNode]);
+  let clusterLookups = 0;
+  api.kubeClusters = async () => { clusterLookups++; return list([]) as never; };
+  renderPage();
+  const row = (await screen.findByText("k8s-gpu-01", { selector: "button span, button" })).closest("tr") as HTMLElement;
+  await waitFor(() => assert.ok(within(row).getByText("Kubernetes cluster: prod-gpu")));
+  assert.ok(within(row).queryByText(/^K8s/) === null, "no K8s badge next to the name");
+  assert.equal(clusterLookups, 0, "the page does not look up cluster names itself");
+
+  screen.getByRole("button", { name: "k8s-gpu-01" }).click();
+  await waitFor(() => assert.ok(screen.queryByRole("dialog")));
+  const drawer = within(screen.queryByRole("dialog") as HTMLElement);
+  await waitFor(() => assert.ok(drawer.getByText("Kubernetes cluster: prod-gpu")));
+  assert.ok(drawer.getByText("Kubernetes node: worker-3"));
+  assert.ok(drawer.queryByText(/^K8s/) === null);
+  assert.equal(clusterLookups, 0);
+});
+
+test("a node Kubernetes has cordoned carries the platform cordon, not a K8s badge", async () => {
+  const cordoned: Node = { ...kubeNode, scheduling: "cordoned", scheduling_by: "platform", cordon_reason: "kube_unschedulable" };
+  stubApi([cordoned]);
+  renderPage();
+  const row = (await screen.findByText("k8s-gpu-01", { selector: "button span, button" })).closest("tr") as HTMLElement;
+  await waitFor(() => assert.ok(within(row).getByText("Kubernetes cluster: prod-gpu")));
+  assert.ok(within(row).queryByText("K8s cordoned") === null);
+  screen.getByRole("button", { name: "k8s-gpu-01" }).click();
+  await waitFor(() => assert.ok(screen.queryByRole("dialog")));
+  assert.ok(within(screen.queryByRole("dialog") as HTMLElement).queryByText("K8s cordoned") === null);
 });

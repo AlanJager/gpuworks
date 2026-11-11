@@ -190,6 +190,19 @@ above), whose deployment rules admit only master and `v*` tags; a tag ruleset mu
 `v*` tags to maintainers, the counterpart of GitLab's protected tags. The docs site build needs the
 repository secret `WEBSITE_REPO` (a clone URL of the OINK theme repository carrying a read-only token).
 
+### Kubernetes Agent Image
+
+The image a Kubernetes cluster's agent DaemonSet runs (`build/agent-image/Dockerfile`, see [ADR 0052](../adr/0052-kubernetes-nodes.md)) is published by CI's
+`release-agent-image`. It sits in the `publish` stage with `release-publish` and runs after both linux build jobs succeed:
+`make agent-image-publish` (`scripts/agent_image.sh publish`) builds amd64 and arm64 in one go and pushes them to
+`docker.io/gpuworks/gpuworks-agent`, `quay.io/gpuworks/gpuworks-agent`, and `swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-agent`.
+The tag is the version the server reports, which is the image a cluster entry uses when its agent image is left empty: nightly uses the short commit plus `:nightly`, and a version tag uses `vYY.M.PATCH` plus `:latest`.
+
+- The agent in the image is built with the same `LDFLAGS` as the embedded agents; nerdctl comes from its upstream release, is verified against the sha256 pinned in the script, and is cached on the runner host.
+- Push credentials are the protected File variable `GPUWORKS_AGENT_IMAGE_DOCKER_CONFIG` (a docker `config.json` with credentials for the three registries); without it the job fails.
+- Provenance and SBOM are off: SWR refuses an OCI index that carries attestations.
+- To build one architecture locally: `make agent-image ARCH=amd64|arm64 AGENT_IMAGE=<name>`.
+
 ## Embedded Native Assets
 
 Embedded native assets include the runtime libraries, tools, and probe images listed below. They are not ordinary Go source code,

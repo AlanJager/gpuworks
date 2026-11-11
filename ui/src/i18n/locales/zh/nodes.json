@@ -523,7 +523,8 @@
       "platformLifts": "原因消失后平台会自动恢复调度。"
     },
     "cordonReason": {
-      "card_needs_host_reboot": "平台停止调度：有卡报告需要重启主机或断电重启才能恢复，同一驱动下的其他卡也可能受影响。"
+      "card_needs_host_reboot": "平台停止调度：有卡报告需要重启主机或断电重启才能恢复，同一驱动下的其他卡也可能受影响。",
+      "kube_unschedulable": "平台停止调度：Kubernetes 已停止向该节点调度（kubectl cordon/drain 或节点替换）。"
     }
   },
   "systemLabels": {
@@ -538,7 +539,9 @@
       "compute-network": "参数网络",
       "storage-sync-network": "存储同步网络",
       "serving-network": "服务网络",
-      "storage": "存储"
+      "storage": "存储",
+      "kubernetes-cluster": "Kubernetes 集群",
+      "kubernetes-node": "Kubernetes 节点"
     }
   },
   "diskUsage": {
@@ -801,6 +804,7 @@
       "offline": "离线",
       "unsupported": "平台或制品不支持",
       "legacy_unverified": "旧版下载条件待核实",
+      "kubernetes": "Kubernetes DaemonSet",
       "unknown_version": "版本未知",
       "busy": "已有升级占用",
       "unavailable": "暂不可执行"
@@ -813,6 +817,7 @@
       "artifact_missing": "目标 Agent 制品不可用。",
       "artifact_untrusted": "无法确认目标制品的版本或校验摘要。",
       "legacy_unverified": "无法确认旧 Agent 的下载条件，请单独处理此节点。",
+      "kubernetes": "Agent 运行在 Kubernetes DaemonSet 中；请单独升级该节点，以滚动更新所属集群的全部 Agent。",
       "unknown_version": "无法识别 Agent 版本。",
       "busy": "上一次升级仍占用此节点。",
       "target_changed": "目标或制品已经变化，请重新预览。",
@@ -900,6 +905,7 @@
       "busy": "卡正在服务",
       "foreign": "被平台外进程占用",
       "deferred": "平台还不知道节点在跑什么",
+      "not_held": "这张卡没有借给平台（归 Kubernetes 调度）",
       "unavailable": "宿主暂时不能检查",
       "probe_failed": "厂商工具本轮没应答"
     },

@@ -833,6 +833,78 @@ release-publish:
         GPUWORKS_RELEASE_CHANNEL: "release"
     - when: never
 
+# Push the agent image Kubernetes clusters run (build/agent-image, ADR 0052)
+# under the version the server reports, which is the image a cluster entry
+# uses when its agent image is left empty: nightly under the short commit
+# (plus :nightly), a release under its tag (plus :latest). It waits for every
+# release build, like release-publish, so an image never names a version the
+# distribution sources do not serve. GPUWORKS_AGENT_IMAGE_DOCKER_CONFIG is a
+# protected file variable holding a docker config.json with the registries'
+# credentials; without it the job fails rather than pretend it published.
+# The shell runner has docker but no Go: make runs in the pinned Go image with
+# the host's docker CLI and socket, and buildx runs from the docker CLI image
+# (scripts/agent_image.sh), so the host needs no buildx plugin.
+release-agent-image:
+  stage: publish
+  tags:
+    - gpuworks-l3
+  needs:
+    - job: release-build-linux-amd64
+    - job: release-build-linux-arm64
+  resource_group: agent-image
+  interruptible: false
+  timeout: 30m
+  variables:
+    DOCKER_GO_IMAGE: "golang:1.26@sha256:670bb5aa5349ae03b8516764718486f4f16399134bdc9acd0c46a23f043ab05c"
+    GPUWORKS_AGENT_IMAGE_REPOS: "docker.io/gpuworks/gpuworks-agent quay.io/gpuworks/gpuworks-agent swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-agent"
+  script:
+    # Mounted at its own host path: the docker CLI image that pushes is started
+    # by the host daemon, which resolves bind mounts on the host.
+    - |
+      if [ ! -s "${GPUWORKS_AGENT_IMAGE_DOCKER_CONFIG:-}" ]; then
+        echo "GPUWORKS_AGENT_IMAGE_DOCKER_CONFIG is not set, so there are no registry credentials to push the agent image with" >&2
+        exit 1
+      fi
+    - export TOOL_CACHE="$HOME/.cache/gpuworks-ci/$CI_PROJECT_ID"
+    - mkdir -p "$TOOL_CACHE/go-mod" "$TOOL_CACHE/go-build" "$TOOL_CACHE/tools" "$CI_PROJECT_DIR/.tmp"
+    - >
+      docker run --rm
+      --name "ci-gpuworks-agent-image-$CI_JOB_ID"
+      --network host
+      --user "$(id -u):$(id -g)" --group-add "$(stat -c %g /var/run/docker.sock)"
+      -v /usr/bin/docker:/usr/bin/docker:ro
+      -v /var/run/docker.sock:/var/run/docker.sock
+      -v "$CI_PROJECT_DIR:$CI_PROJECT_DIR"
+      -v "$TOOL_CACHE/go-mod:/go-cache/mod"
+      -v "$TOOL_CACHE/go-build:/go-cache/build"
+      -v "$TOOL_CACHE/tools:/go-cache/tools"
+      -v "$GPUWORKS_AGENT_IMAGE_DOCKER_CONFIG:$GPUWORKS_AGENT_IMAGE_DOCKER_CONFIG:ro"
+      -w "$CI_PROJECT_DIR"
+      -e HOME="$CI_PROJECT_DIR/.tmp"
+      -e TMPDIR="$CI_PROJECT_DIR/.tmp"
+      -e GOMODCACHE=/go-cache/mod -e GOCACHE=/go-cache/build -e GOFLAGS=-modcacherw
+      -e GOPROXY=https://goproxy.cn,direct -e GOSUMDB=sum.golang.google.cn -e GOTOOLCHAIN=local
+      -e GPUWORKS_TOOL_CACHE=/go-cache/tools
+      -e GPUWORKS_AGENT_IMAGE_REPOS
+      -e GPUWORKS_AGENT_IMAGE_DOCKER_CONFIG
+      -e GPUWORKS_RELEASE_CHANNEL
+      -e GPUWORKS_DOCKER_CLI_IMAGE=docker.m.daocloud.io/library/docker:29-cli
+      -e GPUWORKS_BUILDKIT_IMAGE=docker.m.daocloud.io/moby/buildkit:v0.25.2
+      "$DOCKER_GO_IMAGE"
+      make agent-image-publish VERSION="$GPUWORKS_RELEASE_ID" COMMIT="$CI_COMMIT_SHA"
+  # Keep these rules identical in .release-build, release-publish and
+  # release-agent-image (ADR 0040).
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+      variables:
+        GPUWORKS_RELEASE_ID: "$CI_COMMIT_SHORT_SHA"
+        GPUWORKS_RELEASE_CHANNEL: "nightly"
+    - if: '$CI_COMMIT_TAG =~ /^v[0-9]+\.[0-9]+\.[0-9]+$/'
+      variables:
+        GPUWORKS_RELEASE_ID: "$CI_COMMIT_TAG"
+        GPUWORKS_RELEASE_CHANNEL: "release"
+    - when: never
+
 # Every job below that has an `environment:` uses `action: prepare`. This
 # project has "Skip outdated deployment jobs" (ci_forward_deployment_enabled)
 # on: when a deployment starts running, GitLab drops every older running

@@ -1,0 +1,216 @@
+{
+  "page": {
+    "title": "Kubernetes",
+    "description": "Connect a Kubernetes cluster with one DaemonSet; its GPU nodes become nodes here.",
+    "breadcrumb": {
+      "platform": "AI Compute Platform",
+      "resources": "Resources",
+      "kubernetes": "Kubernetes"
+    },
+    "add": "Connect cluster",
+    "empty": "No Kubernetes cluster yet. Connect one and its GPU nodes show up in the node list."
+  },
+  "column": {
+    "name": "Name",
+    "namespace": "Namespace",
+    "vendor": "Vendor",
+    "nodes": "Nodes",
+    "clusterUid": "Cluster UID",
+    "cardReturn": "Card return",
+    "status": "Status",
+    "createdAt": "Created",
+    "actions": "Actions",
+    "source": "Source"
+  },
+  "clusterUid": {
+    "notEnrolled": "Not connected yet",
+    "notEnrolledHint": "No node has joined from this cluster yet.",
+    "troubleshoot": "Troubleshoot"
+  },
+  "returnPolicy": {
+    "afterIdle": "Returned after {{duration}} idle",
+    "keep": "Kept (never returned)"
+  },
+  "duration": {
+    "seconds": "{{count}} s",
+    "minutes": "{{count}} min",
+    "hours": "{{count}} h"
+  },
+  "status": {
+    "active": "Active",
+    "revoked": "Revoked"
+  },
+  "actions": {
+    "copyCommand": "Copy connect command",
+    "pools": "Node pools",
+    "manifest": "View manifest",
+    "revoke": "Revoke",
+    "revokeConfirm": "Revoke the connect token of {{name}}?",
+    "revokeHelp": "Nodes already connected keep working. New nodes can no longer join with this command.",
+    "revoked": "Cluster {{name}} revoked",
+    "delete": "Delete",
+    "deleteConfirm": "Delete cluster {{name}}?",
+    "deleteHelp": "Only the cluster record here is removed. Delete the DaemonSet in Kubernetes yourself. A cluster that still has nodes cannot be deleted.",
+    "deleted": "Cluster {{name}} deleted",
+    "cancel": "Cancel",
+    "failed": "The action failed",
+    "apply": "Apply to the cluster",
+    "remove": "Remove from the cluster"
+  },
+  "manifest": {
+    "title": "Manifest of {{name}}",
+    "copy": "Copy manifest",
+    "close": "Close",
+    "failed": "The manifest could not be loaded"
+  },
+  "drawer": {
+    "title": "Connect a Kubernetes cluster",
+    "name": "Name",
+    "nameRequired": "Enter a name for the cluster",
+    "namePlaceholder": "prod-gpu",
+    "serverUrl": "Server address",
+    "serverUrlHelp": "The address the agents in the cluster reach this server at. It must be reachable from the cluster's Pods.",
+    "serverUrlRequired": "Enter the server address",
+    "serverUrlInvalid": "Enter an http:// or https:// address",
+    "vendor": "Accelerator vendor",
+    "vendorHelp": "The vendor of the cards on the cluster's GPU nodes. A cluster has one.",
+    "pools": "GPU node pools",
+    "poolsHelp": "The entry runs on the nodes of the pools ticked here, which must all be of one vendor; the entry takes their vendor.",
+    "nodeSelector": "Node selector",
+    "nodeSelectorPlaceholder": "nvidia.com/gpu.present=true",
+    "nodeSelectorHelp": "Optional. Comma-separated key=value pairs; only Kubernetes nodes with all of these labels join. Empty means every node.",
+    "advanced": "Advanced",
+    "namespace": "Namespace",
+    "namespaceHelp": "Where the DaemonSet and its resources are created.",
+    "stateDir": "State directory",
+    "stateDirHelp": "The agent's directory on the host. Set a different one to let the agent run beside an agent already installed on the host; empty uses the default shown in the box.",
+    "agentImage": "Agent image",
+    "agentImagePlaceholder": "Default image",
+    "defaultsFailed": "The defaults could not be loaded",
+    "defaultsFailedHelp": "Fields left empty still take the server's defaults; the hints and the vendor list are missing.",
+    "agentImageHelp": "Empty uses the default agent image.",
+    "imagePullSecret": "Image pull secret",
+    "imagePullSecretPlaceholder": "None",
+    "imagePullSecretHelp": "For an agent image in a registry that needs a login: the name of a docker-registry Secret in the namespace, created before applying.",
+    "runtimeClass": "RuntimeClass",
+    "runtimeClassPlaceholder": "Automatic",
+    "runtimeClassHelp": "NVIDIA only: the RuntimeClass instance Pods reach the GPUs with. Empty decides on each node: the cluster's nvidia RuntimeClass when it has one (k3s), the node's default runtime otherwise (as on managed Kubernetes).",
+    "containerdSocket": "containerd socket",
+    "containerdSocketHelp": "Path on the node. Empty lets the agents find it themselves; set it only for an unusual location.",
+    "containerdSocketPlaceholder": "Auto-detect (containerd, k3s, RKE2, microk8s)",
+    "apiServer": "API server address",
+    "apiServerHelp": "Only for nodes where nothing serves Service addresses (no kube-proxy or replacement, such as KubeEdge or OpenYurt edge nodes). The address must be in the API server's certificate. Empty uses the cluster's kubernetes Service.",
+    "apiServerPlaceholder": "https://host:6443",
+    "enginePorts": "Engine port range",
+    "enginePortsHelp": "Host ports the inference engines listen on. It must not overlap the cluster's NodePort range (30000-32767 by default).",
+    "idleReturn": "Idle return",
+    "secondsUnit": "s",
+    "idleReturnSeconds": "Seconds idle before a card is returned",
+    "idleReturnHelp": "A card borrowed from Kubernetes goes back to it after sitting idle for this long.",
+    "keepCards": "Keep borrowed cards",
+    "keepCardsHelp": "Never hand borrowed cards back to Kubernetes.",
+    "submit": "Connect",
+    "cancel": "Cancel",
+    "close": "Close",
+    "fromSource": "From {{source}}: the node selector is set for the chosen node pool."
+  },
+  "created": {
+    "title": "Cluster {{name}} is ready",
+    "note": "Run this command in the cluster. The GPU nodes it selects show up in the node list by themselves.",
+    "command": "Connect command",
+    "copyCommand": "Copy connect command",
+    "secret": "The command contains the connect token. Treat it like a password.",
+    "noteSource": "Next, apply the manifest to the cluster, one way or the other:",
+    "byGpuworks": "Let gpuworks apply it",
+    "byGpuworksHelp": "gpuworks uses short-lived cluster credentials issued to the cloud account now (valid 15 minutes, discarded after use, never stored), checks first, and lists the objects for you to confirm before applying.",
+    "applyNow": "Check and apply…",
+    "byKubectl": "Or run this in the cluster yourself",
+    "applyBlocked": "gpuworks cannot apply it for you"
+  },
+  "blocked": {
+    "no_source": "This cluster was added by hand, so gpuworks has no way into it. Run the kubectl command in the cluster.",
+    "private_api": "The cloud reports this cluster's API server has no public address, so gpuworks cannot reach it. Run the kubectl command from inside the cluster's network.",
+    "revoked": "The connect token is revoked, so the manifest cannot be applied again. Removing it from the cluster still works."
+  },
+  "stalled": {
+    "title": "No node has joined yet",
+    "intro": "The cluster has waited a while for its first node and none has joined. Look at the agent DaemonSet and its Pods in the cluster:",
+    "causes": "Common causes",
+    "pull": "Pods in ImagePullBackOff: the agent image cannot be pulled. For a registry that needs a login, create a docker-registry Secret in the namespace and name it as the image pull secret when creating the cluster.",
+    "runtimeClass": "A DaemonSet event says the RuntimeClass does not exist: the cluster has no such RuntimeClass; leave it empty and the agent decides.",
+    "selector": "The DaemonSet wants 0 Pods: the node selector selects no node.",
+    "connect": "Pods run but no node appears: the agents cannot reach the server address; read the agent log.",
+    "copy": "Copy commands"
+  },
+  "source": {
+    "byHand": "Added by hand",
+    "pools_one": "{{count}} node pool",
+    "pools_other": "{{count}} node pools"
+  },
+  "pools": {
+    "title": "Node pools of {{name}}",
+    "group": "GPU node pools",
+    "intro": "The entry runs on the nodes of the ticked GPU node pools of its cloud cluster. Saving changes gpuworks's record; the cluster follows when the manifest is applied again.",
+    "legacy": "This entry selects nodes by a node selector",
+    "legacyHelp": "It was made before node pools were chosen: it selects nodes with \"{{selector}}\". Saving node pools replaces that selector, and the entry then runs on those pools alone.",
+    "loading": "Loading the cluster's node pools",
+    "loadFailed": "Cannot read the cluster's node pools",
+    "clusterGone": "The cloud account no longer lists this cluster.",
+    "none": "The cluster has no GPU node pool to choose from.",
+    "save": "Save node pools",
+    "saved": "Node pools of {{name}} saved",
+    "savedHelp": "Apply the manifest again so the cluster follows (or run kubectl apply again). Agents on node pools taken away exit; their nodes stay in the node list until they are cleaned up as offline.",
+    "applyNow": "Check and apply…"
+  },
+  "operation": {
+    "applyTitle": "Apply to the cluster · {{name}}",
+    "removeTitle": "Remove from the cluster · {{name}}",
+    "applyIntro": "gpuworks will create or update the objects below in cluster {{cluster}}, with short-lived credentials the cloud account {{account}} issues now (not stored).",
+    "removeIntro": "gpuworks will delete the objects below from cluster {{cluster}}, with short-lived credentials the cloud account {{account}} issues now (not stored): the agents, hold pods and instance pods go with the DaemonSet, and the cards go back to Kubernetes.",
+    "checking": "Asking the cluster to check these changes (dry run; nothing changes)…",
+    "checkedApply": "Checked. Nothing is applied until you confirm.",
+    "checkedRemove": "Checked. Nothing is deleted until you confirm.",
+    "applying": "Applying…",
+    "removing": "Deleting…",
+    "applied": "Applied to the cluster",
+    "appliedNext": "The selected GPU nodes appear on the Nodes page in about half a minute.",
+    "removed": "Removed from the cluster",
+    "failed": {
+      "kubeconfig": "The cloud account did not issue usable cluster credentials",
+      "api_server": "The cluster refused the operation",
+      "other": "The operation failed"
+    },
+    "planTitle": "Changes to make",
+    "resultTitle": "Result",
+    "retry": "Check again",
+    "close": "Close",
+    "cancel": "Cancel",
+    "confirmApply": "Apply",
+    "confirmRemove": "Remove",
+    "column": {
+      "kind": "Kind",
+      "name": "Name",
+      "action": "Action"
+    },
+    "plan": {
+      "create": "will create",
+      "update": "will update",
+      "delete": "will delete",
+      "absent": "absent",
+      "kept": "kept",
+      "failed": "refused",
+      "not_tried": "not tried",
+      "dependent": "created with its namespace"
+    },
+    "done": {
+      "create": "created",
+      "update": "updated",
+      "delete": "deleted",
+      "absent": "absent",
+      "kept": "kept",
+      "failed": "refused",
+      "not_tried": "not tried",
+      "dependent": "created with its namespace"
+    }
+  }
+}

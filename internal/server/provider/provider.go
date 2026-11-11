@@ -45,6 +45,9 @@ type Instance struct {
 	SSHConnections []SSHConnection `json:"ssh_connections,omitempty"`
 	// Runtime hint: "container" (no root/daemon → udocker) or "vm" (docker).
 	Kind string `json:"kind,omitempty"`
+	// Cluster is the managed Kubernetes cluster (Cluster.ExternalID) the
+	// instance is a node of; such an instance joins through the cluster.
+	Cluster string `json:"cluster,omitempty"`
 }
 
 // Zone describes a provider-supported region/availability zone pair.
@@ -103,6 +106,9 @@ type KindInfo struct {
 	// address from the provider's port mappings (ServerDialPortMapper), so
 	// the operator may leave both empty.
 	ServerDialAutoPort bool `json:"server_dial_auto_port,omitempty"`
+	// CanListClusters: the driver lists managed Kubernetes clusters
+	// (ClusterProvider).
+	CanListClusters bool `json:"can_list_clusters"`
 }
 
 // CreateInstanceRequest carries generic create/rent parameters for future
@@ -400,6 +406,7 @@ func KindInfos() []KindInfo {
 			DefaultServerDialListen: defaultServerDialListenFor(kind),
 			ServerDialSupported:     ServerDialSupported(kind),
 			ServerDialAutoPort:      isPortMapper(drv),
+			CanListClusters:         isClusterProvider(drv),
 		})
 	}
 	sort.Slice(infos, func(i, j int) bool { return infos[i].Kind < infos[j].Kind })
@@ -474,10 +481,11 @@ func credentialFieldsFor(kind string) []CredentialField {
 
 // API endpoints are shared with the drivers so form defaults match runtime defaults.
 const (
-	AutoDLEndpoint    = "https://api.autodl.com"
-	CompShareEndpoint = "https://api.compshare.cn"
-	RunPodEndpoint    = "https://api.runpod.io/v2"
-	VastEndpoint      = "https://console.vast.ai/api/v0"
+	AutoDLEndpoint       = "https://api.autodl.com"
+	CompShareEndpoint    = "https://api.compshare.cn"
+	DigitalOceanEndpoint = "https://api.digitalocean.com"
+	RunPodEndpoint       = "https://api.runpod.io/v2"
+	VastEndpoint         = "https://console.vast.ai/api/v0"
 )
 
 func defaultEndpoint(kind string) string {
@@ -486,6 +494,8 @@ func defaultEndpoint(kind string) string {
 		return AutoDLEndpoint
 	case "compshare":
 		return CompShareEndpoint
+	case "digitalocean":
+		return DigitalOceanEndpoint
 	case "runpod":
 		return RunPodEndpoint
 	case "vast":

@@ -220,6 +220,10 @@ func TestPPURuntimeInjectionUsesDriverInventory(t *testing.T) {
 		{"docker", []int{8, 12}, "0,1"},
 		{"docker", []int{12, 8}, "1,0"},
 		{"nerdctl", []int{12, 8}, "1,0"},
+		// The kube runtime's device plugin hands the pod the selected
+		// devices only, renumbered like an OCI runtime's.
+		{"kube", []int{8}, "0"},
+		{"kube", []int{12, 8}, "1,0"},
 		{"udocker", []int{8}, "8"},
 		{"udocker", []int{12, 8}, "12,8"},
 	} {

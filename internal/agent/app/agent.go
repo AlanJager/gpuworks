@@ -24,6 +24,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/agent/hostsim"
 	"gpuworks.ai/gpuworks/internal/agent/registryprobe"
 	"gpuworks.ai/gpuworks/internal/agent/runtime"
+	"gpuworks.ai/gpuworks/internal/agent/runtime/kube"
 	"gpuworks.ai/gpuworks/internal/agentconf"
 	"gpuworks.ai/gpuworks/internal/debuglog"
 	"gpuworks.ai/gpuworks/internal/proto"
@@ -72,6 +73,13 @@ type Config struct {
 	// RegistryProbe ranks an image's registries for every pull. Nil probes
 	// the real registries, or none when Driver is injected (a test harness).
 	RegistryProbe *registryprobe.Prober
+	// EnginePorts is this node's own engine port range (--engine-ports); nil
+	// uses the server's.
+	EnginePorts *proto.PortRange
+	// KubeIdleReturn is how long a card borrowed from Kubernetes outlives its
+	// last instance on a kube node (the cluster's setting, from enrollment);
+	// negative keeps borrowed cards.
+	KubeIdleReturn time.Duration
 }
 
 // Agent owns the reconnect lifecycle.
@@ -150,6 +158,10 @@ func (a *Agent) Run(ctx context.Context) error {
 	node.selfLog = a.cfg.SelfLog
 	node.debugLog = a.cfg.DebugLog
 	node.logDir = a.cfg.StateDir
+	if kd, ok := node.runtimeDriver().(*kube.Driver); ok {
+		kd.SetIdleReturn(a.cfg.KubeIdleReturn)
+		go kd.Start(ctx)
+	}
 	node.accelerator.preference = acceleratorPreference
 	node.accelerator.census = host
 	node.serverURL = serverURL
@@ -188,6 +200,7 @@ func (a *Agent) Run(ctx context.Context) error {
 			ConnectMode: connectMode(a.cfg.ConnectMode),
 			DataLane:    a.cfg.DataLane,
 			Simulated:   a.cfg.SimulatedHost,
+			EnginePorts: a.cfg.EnginePorts,
 		}
 		onReg := func(uuid, issuedToken string) error {
 			nodeUUID = uuid
@@ -270,6 +283,7 @@ func (a *Agent) runServerDial(ctx context.Context, serverURL, nodeToken string, 
 			NodeToken:   nodeToken,
 			ConnectMode: "server_dial",
 			Simulated:   a.cfg.SimulatedHost,
+			EnginePorts: a.cfg.EnginePorts,
 		}
 		onReg := func(uuid, issuedToken string) error {
 			*nodeUUID = uuid

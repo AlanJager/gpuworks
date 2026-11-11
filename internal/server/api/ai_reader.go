@@ -23,6 +23,18 @@ const maxAIReadBytes = 8 << 20
 
 var errAIReadTooLarge = errors.New("response larger than the assistant reads")
 
+// assistantReadKey marks a request context as an assistant read. It is a
+// context value, not a header, so no client can set it; handlers whose
+// answer carries a secret for administrators (the Kubernetes enrollment
+// token) leave it out when it is set, so a model never sees it.
+type assistantReadKey struct{}
+
+// isAssistantRead reports whether the request is the assistant's read.
+func isAssistantRead(r *http.Request) bool {
+	v, _ := r.Context().Value(assistantReadKey{}).(bool)
+	return v
+}
+
 // aiReader is the assistant's aihelper.APIReader for one request: it serves
 // GET requests through the same router, as the user who asked - the asker's
 // Authorization header and cookies go with every read, so the auth
@@ -79,6 +91,7 @@ func (rd *aiReader) Get(ctx context.Context, path string, query url.Values) (int
 	// as a mounted sub-router and would resolve the read against the wrong
 	// path. Each read starts its own routing.
 	ctx = context.WithValue(ctx, chi.RouteCtxKey, (*chi.Context)(nil))
+	ctx = context.WithValue(ctx, assistantReadKey{}, true)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
 	if err != nil {
 		return 0, nil, err

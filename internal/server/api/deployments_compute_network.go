@@ -75,11 +75,12 @@ func (a *apiHandlers) fillResolvedNodeFields(nodes []store.Node, out []dto.Node)
 	if err != nil {
 		providers = nil
 	}
+	facts := planning.NodeFacts{Networks: resolved, Storages: storages, Providers: providers, KubeClusters: planning.LoadKubeClusters(a.d.Store, nodes)}
 	for i := range nodes {
 		if r, ok := resolved.For(nodes[i].ID, netplan.RoleCompute); ok {
 			out[i].ComputeNetwork, out[i].ComputeAddress = r.Network.Name, r.IP
 		}
-		out[i].SystemLabels = systemLabelsDTO(planning.SystemLabels(&nodes[i], planning.NodeFacts{Networks: resolved, Storages: storages, Providers: providers}))
+		out[i].SystemLabels = systemLabelsDTO(planning.SystemLabels(&nodes[i], facts))
 	}
 }
 

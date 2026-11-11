@@ -36,6 +36,10 @@ func Router(d Deps, policies ...auth.SessionPolicy) http.Handler {
 		r.Get("/install.sh", d.InstallSh)
 	}
 
+	// Kubernetes manifest, fetched by `kubectl apply -f` with the cluster's
+	// enrollment token in place of a login.
+	r.Get("/kube/manifest.yaml", a.kubeManifestByToken)
+
 	// Data plane: OpenAI-compatible /v1. ProxyV1 owns API-key auth for every
 	// endpoint, including /v1/models and the batch files.
 	if d.ProxyV1 != nil {
@@ -44,6 +48,8 @@ func Router(d Deps, policies ...auth.SessionPolicy) http.Handler {
 
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Post("/auth/login", a.login)
+		// A Kubernetes node's agent authenticates with the enrollment token.
+		r.Post("/kube/enroll", a.kubeEnroll)
 		r.Post("/auth/logout", a.logout)
 		// Open to the sign-in page; it reveals nothing (see prefetchUpdates).
 		r.Post("/updates/prefetch", a.prefetchUpdates)
@@ -71,6 +77,15 @@ func Router(d Deps, policies ...auth.SessionPolicy) http.Handler {
 			r.Get("/nodes/facets", a.nodeFacets)
 			r.Get("/dashboard/summary", a.dashboardSummary)
 			r.With(a.managementAdmin).Post("/nodes", a.createNode)
+			r.Get("/kube/clusters", a.listKubeClusters)
+			r.Get("/kube/defaults", a.kubeDefaults)
+			r.With(a.managementAdmin).Post("/kube/clusters", a.createKubeCluster)
+			r.With(a.managementAdmin).Get("/kube/clusters/{uuid}/manifest", a.kubeClusterManifest)
+			r.With(a.managementAdmin).Post("/kube/clusters/{uuid}/revoke", a.revokeKubeCluster)
+			r.With(a.managementAdmin).Put("/kube/clusters/{uuid}/pools", a.setKubeClusterPools)
+			r.With(a.managementAdmin).Delete("/kube/clusters/{uuid}", a.deleteKubeCluster)
+			r.With(a.managementAdmin).Post("/kube/clusters/{uuid}/apply", a.applyKubeCluster)
+			r.With(a.managementAdmin).Post("/kube/clusters/{uuid}/remove", a.removeKubeCluster)
 			r.Get("/agent/rejects", a.listRejects)
 			r.Get("/agent/upgrade-errors", a.listUpgradeErrors)
 			r.With(a.managementAdmin).Post("/agent-upgrades/preview", a.previewAgentUpgrade)
@@ -284,6 +299,7 @@ func Router(d Deps, policies ...auth.SessionPolicy) http.Handler {
 			r.Put("/providers/{id}", a.updateProvider)
 			r.Delete("/providers/{id}", a.deleteProvider)
 			r.Post("/providers/{id}/sync", a.syncProvider)
+			r.Get("/providers/{id}/clusters", a.providerClusters)
 			r.Post("/providers/{id}/instances", a.createProviderInstance)
 			r.Get("/providers/{id}/instances", a.providerInstances)
 			r.Delete("/providers/{id}/instances/{externalID}", a.deleteProviderInstance)

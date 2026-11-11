@@ -175,7 +175,7 @@ export interface Node {
   scheduling_by?: "operator" | "platform";
   // cordon_reason is why the platform holds the node now; absent unless
   // scheduling_by is platform.
-  cordon_reason?: "runtime_gpu_blocked" | "card_needs_host_reboot";
+  cordon_reason?: "runtime_gpu_blocked" | "card_needs_host_reboot" | "kube_unschedulable";
   name?: string;
   token?: string;
   /** Installs this node's agent; returned with the token, and the way back
@@ -233,6 +233,8 @@ export interface Node {
   }>;
   runtime_driver?: string;
   runtime_preference?: string;
+  /** The runtime preferences the operator may set, in the order to offer; absent when the node has no choice (a Kubernetes node). */
+  runtime_choices?: string[];
   /** The operator's choice of which vendor's cards the node manages: auto or a vendor; absent is auto. */
   accelerator_preference?: string;
   /** Every vendor whose cards the agent saw on the host's bus, the managed one included. */
@@ -996,6 +998,135 @@ export interface ImageSeries {
   present_nodes: number;
   total_nodes: number;
   versions?: ImageCatalogEntry[];
+}
+
+/** The accelerator vendors a Kubernetes cluster's nodes can have. */
+export type KubeVendor = "nvidia" | "ascend" | "hygon" | "ppu";
+
+/** A Kubernetes cluster whose GPU nodes join through one DaemonSet (dto.KubeCluster). */
+export interface KubeCluster {
+  id: number;
+  uuid: string;
+  name: string;
+  namespace: string;
+  server_url: string;
+  agent_image: string;
+  node_selector: string;
+  /** Accelerator vendor of the cluster's nodes: nvidia, ascend, hygon or ppu. */
+  vendor: KubeVendor;
+  /** The agent's directory on the host. */
+  state_dir: string;
+  /**
+   * Empty for any vendor but nvidia (devices come through the agent's device plugin); for nvidia, empty uses the
+   * cluster's "nvidia" RuntimeClass when it has one and the node's default runtime otherwise.
+   */
+  runtime_class: string;
+  /** A docker-registry Secret in the namespace the agent image is pulled with; empty pulls without one. */
+  image_pull_secret: string;
+  /** Empty means the agents find the socket themselves. */
+  containerd_socket: string;
+  /** API server address the agents use instead of the "kubernetes" Service; empty uses the Service. */
+  api_server: string;
+  engine_ports: string;
+  /** Seconds a borrowed card may sit idle before it goes back; -1 keeps it. */
+  idle_return_seconds: number;
+  /** Empty until the first node enrolled. */
+  cluster_uid: string;
+  revoked: boolean;
+  node_count: number;
+  created_at: string;
+  /** Carries the enrollment token; administrators only. */
+  apply_command?: string;
+  /** No node joined for longer than the dictionary's stalled_after_seconds: worth troubleshooting. */
+  stalled: boolean;
+  /** The cloud node pools a cloud entry holds, ascending; empty for an entry made by hand. */
+  pool_ids: string[];
+  /** Whether the server can apply the manifest to the source cluster, or delete it from there. */
+  can_apply: boolean;
+  can_remove: boolean;
+  /** Why not: no_source (made by hand), private_api (the cloud says the API server has no public address), revoked (apply only). */
+  operation_blocked?: "no_source" | "private_api" | "revoked";
+  /** The cloud account cluster the entry was made from; gpuworks can then apply the manifest itself. */
+  source?: KubeClusterSource;
+}
+
+/** What the cluster form takes from the server (dto.KubeDefaults); every value is a hint, a field left empty takes it. */
+export interface KubeDefaults {
+  vendor: KubeVendor;
+  namespace: string;
+  state_dir: string;
+  engine_ports: string;
+  idle_return_seconds: number;
+  /** The idle_return_seconds value that keeps borrowed cards. */
+  idle_return_keep: number;
+  agent_image: string;
+  stalled_after_seconds: number;
+  /** The vendors a cluster can be connected for, the default first. */
+  vendors: KubeVendorInfo[];
+}
+
+export interface KubeVendorInfo {
+  id: KubeVendor;
+  /** The cluster may name a RuntimeClass for this vendor; for the others the server ignores one. */
+  runtime_class: boolean;
+}
+
+/** Where a cluster entry came from (dto.KubeClusterSource). */
+export interface KubeClusterSource {
+  provider_id: number;
+  /** Empty when the account is no longer listed. */
+  provider_name: string;
+  provider_kind: string;
+  cluster_id: string;
+}
+
+/** What an apply or removal did to each object of the manifest (dto.KubeClusterOperation). */
+export interface KubeClusterOperation {
+  dry_run: boolean;
+  results: KubeObjectResult[];
+  /** Present when the operation failed: KUBE_CLUSTER_OPERATION_FAILED. */
+  code?: string;
+  error?: string;
+  params?: { step: "kubeconfig" | "api_server"; reason: string };
+}
+
+export type KubeObjectAction = "create" | "update" | "delete" | "absent" | "kept" | "failed" | "not_tried" | "dependent";
+
+export interface KubeObjectResult {
+  kind: string;
+  name: string;
+  namespace?: string;
+  action: KubeObjectAction;
+  reason?: string;
+  error?: string;
+}
+
+/** Creates a cluster; an omitted optional field takes the server's default (dto.KubeClusterRequest). */
+export interface KubeClusterRequest {
+  name: string;
+  server_url: string;
+  namespace?: string;
+  agent_image?: string;
+  node_selector?: string;
+  /** Omitted means nvidia. */
+  vendor?: KubeVendor;
+  /** The agent's directory on the host; omitted means /opt/gpuworks. */
+  state_dir?: string;
+  /** NVIDIA only; omitted lets the agents decide on each node. */
+  runtime_class?: string;
+  /** Omitted pulls the agent image without credentials. */
+  image_pull_secret?: string;
+  /** Omitted means the agents detect it (containerd, k3s, RKE2, microk8s). */
+  containerd_socket?: string;
+  /** "https://host:port"; omitted means the cluster's "kubernetes" Service. */
+  api_server?: string;
+  engine_ports?: string;
+  idle_return_seconds?: number;
+  /** The cloud account cluster the entry is made from; both or neither. */
+  provider_id?: number;
+  provider_cluster_id?: string;
+  /** The cluster's GPU node pools the entry holds (required with a source, one vendor). */
+  provider_pool_ids?: string[];
 }
 
 // Every collection endpoint answers an envelope, never a bare array
@@ -2319,6 +2450,37 @@ export interface ProviderKindInfo {
   // The provider maps container ports: the server chooses the agent's port
   // and address when they are left empty.
   server_dial_auto_port?: boolean;
+  /** The account's managed Kubernetes clusters can be listed and connected (GET /providers/{id}/clusters). */
+  can_list_clusters?: boolean;
+}
+
+/** A managed Kubernetes cluster of a cloud account (dto.ProviderCluster), listed live. */
+export interface ProviderCluster {
+  external_id: string;
+  name: string;
+  region: string;
+  version: string;
+  /** The vendor's own word for the cluster's state. */
+  state: string;
+  running: boolean;
+  /** The API server has a public address, so gpuworks can apply the manifest itself. */
+  public_api: boolean;
+  gpu_pools: ProviderClusterPool[];
+  /** The cluster entry already made from this cluster. */
+  entry?: { uuid: string; name: string };
+}
+
+/** A GPU node pool of a ProviderCluster. */
+export interface ProviderClusterPool {
+  id: string;
+  name: string;
+  gpu_model: string;
+  /** GPUs per node. */
+  gpu_count: number;
+  nodes: number;
+  vendor: KubeVendor;
+  /** The cluster's entry holds this pool: the DaemonSet runs on its nodes. */
+  in_entry: boolean;
 }
 
 export interface ProviderInstance {
@@ -2335,6 +2497,10 @@ export interface ProviderInstance {
   ssh_connections: SSHConnection[];
   kind: string;
   node_id: number;
+  /** The instance is a node of this Kubernetes cluster of the account; it joins through the cluster. */
+  managed_cluster?: string;
+  /** What the instance allows now: power_on | power_off | install | delete. Empty for a cluster node. */
+  actions: string[];
 }
 
 export interface SSHConnection {
@@ -3929,6 +4095,22 @@ async function getText(path: string, signal?: AbortSignal): Promise<string> {
 }
 
 /** An error response as an Error in the reader's language: a product error's text, or the proxy-page explanation. */
+async function kubeClusterOperation(uuid: string, op: "apply" | "remove", dryRun: boolean): Promise<KubeClusterOperation> {
+  const res = await fetch(`/api/v1/kube/clusters/${encodeURIComponent(uuid)}/${op}`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ dry_run: dryRun }),
+  });
+  if (res.status === 424) {
+    // The cluster or the cloud refused: the body still says what happened to each object.
+    const body = (await res.clone().json().catch(() => null)) as KubeClusterOperation | null;
+    if (body && Array.isArray(body.results)) return body;
+  }
+  if (!res.ok) throw await localizedResponseError(res, `${op}: ${res.status}`);
+  return (await res.json()) as KubeClusterOperation;
+}
+
 export async function localizedResponseError(
   response: Response,
   fallback: string,
@@ -4844,6 +5026,19 @@ export const api = {
   deletePlatformToken: (id: number) => sendJSON<void>("DELETE", `/api/v1/platform-tokens/${id}`),
   mcpStatus: () => getJSON<MCPStatus>("/api/v1/mcp/status"),
   putMCPSettings: (enabled: boolean) => sendJSON<MCPStatus>("PUT", "/api/v1/mcp/settings", { enabled }),
+
+  kubeClusters: () => getJSON<List<KubeCluster>>("/api/v1/kube/clusters"),
+  kubeDefaults: () => getJSON<KubeDefaults>("/api/v1/kube/defaults"),
+  /** Replaces the node pools a cloud entry holds; the cluster follows when the manifest is applied again. */
+  setKubeClusterPools: (uuid: string, poolIds: string[]) =>
+    sendJSON<KubeCluster>("PUT", `/api/v1/kube/clusters/${encodeURIComponent(uuid)}/pools`, { provider_pool_ids: poolIds }),
+  createKubeCluster: (body: KubeClusterRequest) => sendJSON<KubeCluster>("POST", "/api/v1/kube/clusters", body),
+  kubeManifest: (uuid: string) => getText(`/api/v1/kube/clusters/${encodeURIComponent(uuid)}/manifest`),
+  revokeKubeCluster: (uuid: string) => sendJSON<KubeCluster>("POST", `/api/v1/kube/clusters/${encodeURIComponent(uuid)}/revoke`),
+  deleteKubeCluster: (uuid: string) => sendJSON<void>("DELETE", `/api/v1/kube/clusters/${encodeURIComponent(uuid)}`),
+  /** Applies (or, with remove, deletes) an entry's manifest on its cluster; a failure still carries the results it got to. */
+  kubeClusterOperation: (uuid: string, op: "apply" | "remove", dryRun: boolean) => kubeClusterOperation(uuid, op, dryRun),
+  providerClusters: (id: number) => getJSON<List<ProviderCluster>>(`/api/v1/providers/${id}/clusters`),
 
   providerKinds: () => getJSON<List<ProviderKindInfo>>("/api/v1/providers/kinds"),
   providers: () => getJSON<List<CloudProvider>>("/api/v1/providers"),
