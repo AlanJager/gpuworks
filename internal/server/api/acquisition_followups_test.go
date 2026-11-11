@@ -253,12 +253,13 @@ func TestExplicitProviderConstrainsPublicDownloadIdentity(t *testing.T) {
 	if err := h.selectExplicitWeight(&selection, &dto.ModelSource{Provider: "modelscope"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := h.resolveDeploymentModelFromTemplate(context.Background(), hf.ID, &selection, 1); err == nil {
-		t.Fatal("conflicting model_id and provider accepted")
-	}
 	model, err := h.resolveDeploymentModelFromTemplate(context.Background(), 0, &selection, 1)
 	if err != nil || model.Source != "modelscope" || model.Revision != "ms" {
 		t.Fatalf("model=%+v %v", model, err)
+	}
+	model, err = h.resolveDeploymentModelFromTemplate(context.Background(), hf.ID, &selection, 1)
+	if err != nil || model.ID != hf.ID || selection.Weight.Provider != hf.Source || selection.Weight.Revision != hf.Revision {
+		t.Fatalf("explicit model identity was not retained: model=%+v selection=%+v err=%v", model, selection.Weight, err)
 	}
 	unrelated, err := st.UpsertModel(&store.Model{Source: "huggingface", SourceID: "Other/Model", Revision: "hf"})
 	if err != nil {
@@ -354,6 +355,23 @@ func TestExplicitProviderComponentIgnoresARegisteredMirrorRow(t *testing.T) {
 			t.Fatalf("draft model = %+v, want a new modelscope row at ms-draft", model)
 		}
 	}
+	hfPrimary, err := st.UpsertModel(&store.Model{Source: "huggingface", SourceID: "Acme/Main", Revision: "hf-main"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	model, err := h.resolveDeploymentModelFromTemplate(context.Background(), hfPrimary.ID, &selection, 1)
+	if err != nil || model.ID != hfPrimary.ID {
+		t.Fatalf("selected primary model was not retained: model=%+v err=%v", model, err)
+	}
+	for _, c := range selection.Components {
+		if c.Role == "primary" {
+			if c.StoreModelID != hfPrimary.ID || c.Provider != hfPrimary.Source {
+				t.Fatalf("primary component lost the selected model: %+v", c)
+			}
+		} else if c.Name == "draft" && (c.Provider != "modelscope" || c.Revision != "ms-draft") {
+			t.Fatalf("explicit draft source changed with the primary: %+v", c)
+		}
+	}
 }
 
 // Regression: a model registered from a local directory matches a template
@@ -420,8 +438,7 @@ func TestEvaluateLocalModelOffersNoTemplateProviders(t *testing.T) {
 	if len(providers) != 0 {
 		t.Fatalf("local model offered template providers %+v", providers)
 	}
-	// A request that still names a public provider is a real conflict.
-	if ok, _, raw := evaluate(`"model_source":{"provider":"huggingface"},`); ok || !strings.Contains(raw, "conflicts with model_source.provider") {
-		t.Fatalf("explicit provider on a local model was accepted: %s", raw)
+	if ok, providers, raw := evaluate(`"model_source":{"provider":"huggingface"},`); !ok || len(providers) != 0 {
+		t.Fatalf("public provider displaced the selected local model: %s", raw)
 	}
 }
