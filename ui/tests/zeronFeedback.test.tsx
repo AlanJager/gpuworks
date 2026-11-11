@@ -46,3 +46,46 @@ test("confirm cancel invokes its callback without accepting", async () => {
   assert.equal(cancelled, true);
   assert.equal(accepted, false);
 });
+
+test("confirm honours custom labels, a disabled accept, update and destroy", async () => {
+  mount();
+  let handle!: ReturnType<typeof confirm>;
+  act(() => { handle = confirm({ title: "Drain node", okText: "Drain", cancelText: "Not now", okButtonProps: { danger: true, disabled: true } }); });
+  const drain = await screen.findByRole("button", { name: "Drain" }) as HTMLButtonElement;
+  assert.equal(drain.disabled, true);
+  assert.ok(screen.getByRole("button", { name: "Not now" }));
+  act(() => { handle.update({ title: "Drain node-2", okButtonProps: { danger: true } }); });
+  await screen.findByRole("dialog", { name: "Drain node-2" });
+  assert.equal((screen.getByRole("button", { name: "Drain" }) as HTMLButtonElement).disabled, false);
+  act(() => { handle.destroy(); });
+  await waitFor(() => assert.ok(!screen.queryByRole("dialog")));
+});
+
+test("confirm words a non-Error failure generically and ignores a second accept while pending", async () => {
+  mount();
+  let reject!: (reason: unknown) => void;
+  let calls = 0;
+  act(() => { confirm({ title: "Restart", onOk: () => { calls++; return new Promise((_, no) => { reject = no; }); } }); });
+  const accept = await screen.findByRole("button", { name: "Confirm" });
+  fireEvent.click(accept);
+  fireEvent.click(accept);
+  assert.equal(calls, 1);
+  await act(async () => reject("network"));
+  assert.equal((await screen.findByRole("alert")).textContent, "Request failed. Please retry.");
+  fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+  await waitFor(() => assert.ok(!screen.queryByRole("dialog")));
+});
+
+test("queued confirmations show one at a time, in order, and an update touches only its own", async () => {
+  mount();
+  let second!: ReturnType<typeof confirm>;
+  act(() => { confirm({ title: "First" }); second = confirm({ title: "Second" }); });
+  await screen.findByRole("dialog", { name: "First" });
+  act(() => { second.update({ title: "Second, updated" }); });
+  assert.ok(screen.getByRole("dialog", { name: "First" }), "the shown confirmation is not changed by another's update");
+  assert.equal(screen.queryByRole("dialog", { name: "Second" }), null);
+  fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
+  await screen.findByRole("dialog", { name: "Second, updated" });
+  fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
+  await waitFor(() => assert.ok(!screen.queryByRole("dialog")));
+});

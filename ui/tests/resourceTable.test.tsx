@@ -217,3 +217,68 @@ test("refreshing inline column callbacks preserves the focused row action", () =
   assert.ok(action.isConnected, "a new callback must not remount the cell");
   assert.ok(document.activeElement === action, "focus survives data/route-driven rerenders");
 });
+
+test("dragging a header resize handle follows the pointer, stops on release and is remembered", async () => {
+  renderTable();
+  const gpusHeader = () => screen.getByRole("columnheader", { name: "GPUs" });
+  const handle = () => screen.getByRole("separator", { name: "Resize GPUs" });
+  assert.equal(handle().getAttribute("aria-valuenow"), "100");
+  fireEvent.pointerDown(handle(), { clientX: 300, pointerId: 1 });
+  fireEvent.pointerMove(window, { clientX: 340, pointerId: 1 });
+  await waitFor(() => assert.equal(handle().getAttribute("aria-valuenow"), "140"));
+  fireEvent.pointerMove(window, { clientX: 360, pointerId: 1 });
+  await waitFor(() => assert.equal(gpusHeader().style.width, "160px", "the width follows the pointer live"));
+  fireEvent.pointerUp(window, { clientX: 360, pointerId: 1 });
+  fireEvent.pointerMove(window, { clientX: 500, pointerId: 1 });
+  assert.equal(handle().getAttribute("aria-valuenow"), "160", "moves after release no longer resize");
+  assert.equal(JSON.parse(localStorage.getItem(storageKey("test"))!).widths.gpus, 160);
+
+  // A drag far to the left stops at the column's minimum; a cancelled pointer ends the drag too.
+  fireEvent.pointerDown(handle(), { clientX: 300, pointerId: 2 });
+  fireEvent.pointerMove(window, { clientX: 0, pointerId: 2 });
+  await waitFor(() => assert.equal(handle().getAttribute("aria-valuenow"), "64"));
+  fireEvent.pointerCancel(window, { pointerId: 2 });
+  fireEvent.pointerMove(window, { clientX: 400, pointerId: 2 });
+  assert.equal(handle().getAttribute("aria-valuenow"), "64");
+
+  cleanup();
+  renderTable();
+  assert.equal(screen.getByRole("columnheader", { name: "GPUs" }).style.width, "64px", "the dragged width survives a reload");
+});
+
+// Hides the State column after filtering it to Offline, the way a viewer would.
+async function filterStateThenHideIt(user: ReturnType<typeof userEvent.setup>) {
+  renderTable({ data: rows.slice(0, 6) });
+  await user.click(screen.getByRole("button", { name: "Filter by State" }));
+  await user.click(await screen.findByRole("checkbox", { name: /Offline/ }));
+  await waitFor(() => assert.deepEqual(firstCells().sort(), ["node-01", "node-04"]));
+  await user.keyboard("{Escape}");
+  await user.click(screen.getByRole("button", { name: "Customize columns" }));
+  const drawer = await screen.findByRole("dialog");
+  await user.click(within(drawer).getByRole("button", { name: "Hide State" }));
+  await waitFor(() => assert.deepEqual(headerTexts(), ["Name", "GPUs", "Actions"]));
+  await user.keyboard("{Escape}");
+  await waitFor(() => assert.ok(screen.queryByRole("dialog") === null));
+}
+
+test("a filter on a column the user then hides stays listed as a chip and can be cleared", async () => {
+  const user = userEvent.setup();
+  await filterStateThenHideIt(user);
+  const active = screen.getByRole("group", { name: "Filtered" });
+  const chip = within(active).getByRole("button", { name: "Clear filter: State Offline" });
+  assert.equal(chip.textContent, "State: Offline", "the hidden column's filter is still named");
+  await user.click(chip);
+  await waitFor(() => assert.ok(screen.queryByRole("group", { name: "Filtered" }) === null));
+  assert.equal(firstCells().length, 6);
+});
+
+// Known defect: ResourceTable builds the TanStack columns from the shown
+// columns only, so a filter on a hidden column has no column to run on and
+// every row comes back, while the chip above still says "State: Offline".
+// Runs as todo (reported, not failing the suite) so it turns green on the fix.
+test("a client-side filter keeps applying while its column is hidden", async () => {
+  const user = userEvent.setup();
+  await filterStateThenHideIt(user);
+  assert.ok(screen.getByRole("button", { name: "Clear filter: State Offline" }));
+  assert.deepEqual(firstCells().sort(), ["node-01", "node-04"], "the listed filter still applies");
+});

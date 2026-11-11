@@ -196,7 +196,7 @@ test("a single vendor shows its mark once, two model rows, and folds the rest", 
   const models = await waitFor(() => { const element = panel("Hardware")?.querySelector(".is-single"); ok(element); return element!; });
   ok(models.querySelector(".dashboard-models-single-head")?.textContent?.includes("All NVIDIA"));
   assert.equal(models.querySelectorAll("img").length, 1);
-  assert.deepEqual([...models.querySelectorAll(".dashboard-model-row .dashboard-model-name")].map((name) => name.textContent), ["A100", "L20", "1 more models"]);
+  assert.deepEqual([...models.querySelectorAll(".dashboard-model-row .dashboard-model-name")].map((name) => name.textContent), ["A100", "L20", "1 more model"]);
   assert.equal(panel("Hardware").querySelector(".dashboard-subsection-tag")?.textContent, "3 models");
 });
 
@@ -485,4 +485,80 @@ test("the usage panel reads the 24-hour usage once and opens usage analytics on 
   renderPage();
   await waitFor(() => assert.equal(arrow(panel("Token usage")), "/analytics/usage?range=custom&from=1000&to=2000&gran=hour", "usage analytics opens on the window the panel shows"));
   assert.equal(calls, 1);
+});
+
+test("storage pages: Previous is off on the first page, Next is off on the last, and Previous goes back", async () => {
+  stub();
+  api.storages = async () => ({ items: [1, 2, 3, 4, 5].map((id) => ({ id, name: `shared-${id}`, type: "nfs_cache" })), total: 5 }) as never;
+  api.storage = async (id: number) => ({ id, name: `shared-${id}`, type: "nfs_cache", total_bytes: 100 * 1024 ** 3, available_bytes: 50 * 1024 ** 3, nodes: { all: [], problems: [] } }) as never;
+  renderPage();
+  const capacity = document.querySelector(".dashboard-storage")!;
+  const names = () => [...capacity.querySelectorAll(".dashboard-overview-storage-row a")].map((link) => link.textContent);
+  await waitFor(() => assert.deepEqual(names(), ["shared-1", "shared-2"]));
+  const pages = screen.getByRole("navigation", { name: "Shared storage used / total" });
+  const previous = screen.getByRole("button", { name: "Previous page" }) as HTMLButtonElement;
+  const next = screen.getByRole("button", { name: "Next page" }) as HTMLButtonElement;
+  assert.equal(previous.disabled, true);
+  ok(pages.textContent?.includes("1 / 3"));
+  fireEvent.click(next);
+  await waitFor(() => assert.deepEqual(names(), ["shared-3", "shared-4"]));
+  assert.equal(previous.disabled, false);
+  fireEvent.click(next);
+  await waitFor(() => assert.deepEqual(names(), ["shared-5"]));
+  ok(pages.textContent?.includes("3 / 3"));
+  assert.equal(next.disabled, true, "the last page has no next");
+  fireEvent.click(previous);
+  await waitFor(() => assert.deepEqual(names(), ["shared-3", "shared-4"]));
+  ok(pages.textContent?.includes("2 / 3"));
+});
+
+test("two shared storages fit one page and show no page controls", async () => {
+  stub();
+  api.storages = async () => ({ items: [1, 2].map((id) => ({ id, name: `shared-${id}`, type: "nfs_cache" })), total: 2 }) as never;
+  api.storage = async (id: number) => ({ id, name: `shared-${id}`, type: "nfs_cache", total_bytes: 100 * 1024 ** 3, available_bytes: 50 * 1024 ** 3, nodes: { all: [], problems: [] } }) as never;
+  renderPage();
+  await waitFor(() => assert.equal(document.querySelectorAll(".dashboard-overview-storage-row").length, 2));
+  assert.equal(screen.queryByRole("button", { name: "Next page" }), null);
+  assert.equal(screen.queryByRole("navigation", { name: "Shared storage used / total" }), null);
+});
+
+test("three vendors are all listed without a fold; a vendor without a logo is named in text", async () => {
+  stub();
+  api.gpus = async () => ({ items: [
+    card("a", "MI300X", "amd", 192), card("b", "P800", "kunlunxin", 96), card("c", "", "metax", 64),
+  ], overview: { total: 3, allocation: {} } }) as never;
+  renderPage();
+  const models = await waitFor(() => { const element = panel("Hardware")?.querySelector(".dashboard-models"); ok(element?.querySelector(".dashboard-model-row")); return element!; });
+  const rows = [...models.querySelectorAll(".dashboard-model-row")];
+  assert.equal(rows.length, 3);
+  ok(!rows.some((row) => row.classList.contains("is-more")), "no fold at three vendors");
+  assert.deepEqual(rows.map((row) => row.querySelector("img")?.getAttribute("alt") ?? row.querySelector(".dashboard-vendor-mark")?.textContent), ["AMD", "Kunlunxin", "Unknown Vendor"]);
+  assert.equal(rows[2].querySelector("img"), null, "an unknown vendor has no logo, only its name");
+  assert.equal(rows[2].querySelector(".dashboard-model-name")?.textContent, "Unidentified", "a card without a name is grouped as unidentified");
+});
+
+test("four vendors fold the last two into one counted row", async () => {
+  stub();
+  api.gpus = async () => ({ items: [
+    card("a", "H100", "nvidia", 80), card("b", "910B", "ascend", 64), card("c", "PPU", "ppu", 96), card("d", "M3", "apple", 16),
+  ], overview: { total: 4, allocation: {} } }) as never;
+  renderPage();
+  const models = await waitFor(() => { const element = panel("Hardware")?.querySelector(".dashboard-models"); ok(element?.querySelector(".is-more")); return element!; });
+  const rows = [...models.querySelectorAll(".dashboard-model-row")];
+  assert.equal(rows.length, 3);
+  assert.equal(rows[0].querySelector("img")?.getAttribute("alt"), "T-Head", "T-Head cards use the T-Head mark");
+  assert.equal(rows[0].querySelector("img")?.getAttribute("src"), "/vendor-logos/thead.png");
+  assert.equal(rows[2].querySelector(".dashboard-vendor-mark")?.textContent, "2 more vendors");
+  assert.equal(rows[2].querySelector(".dashboard-model-name")?.textContent, "Ascend, Apple");
+  assert.deepEqual([...rows[2].querySelectorAll(".dashboard-model-num")].map((cell) => cell.textContent), ["2 cards", "80 GiB"]);
+});
+
+test("a single AMD fleet reads All AMD and lists every model when there are no more than two", async () => {
+  stub();
+  api.gpus = async () => ({ items: [card("a", "MI300X", "amd", 192), card("b", "MI210", "amd", 64)], overview: { total: 2, allocation: {} } }) as never;
+  renderPage();
+  const models = await waitFor(() => { const element = panel("Hardware")?.querySelector(".is-single"); ok(element); return element!; });
+  ok(models.querySelector(".dashboard-models-single-head")?.textContent?.includes("All AMD"));
+  assert.deepEqual([...models.querySelectorAll(".dashboard-model-row .dashboard-model-name")].map((name) => name.textContent), ["MI300X", "MI210"]);
+  assert.equal(models.querySelector(".is-more"), null);
 });

@@ -65,14 +65,37 @@ install-state records the Registry base URL.
 
 Chrome 121 / Firefox 123 remain the browser floor. Verify the pinned production
 CSS in both; do not infer compatibility from a modern browser. Hidden dark
-preview sets both the HTML theme attribute and `dark` class. ECharts stays and
-uses Zeron chart-1…7 colors. antd icons use `ui-kit/antdIcon` for Zeron icon slots.
+preview sets both the HTML theme attribute and `dark` class. Charts already on
+ECharts use Zeron chart-1…7 colors until they move to Zeron charts (see
+"Choosing a component"). antd icons use `ui-kit/antdIcon` for Zeron icon slots.
 
 ## Verification
 
 Per change, in `ui/`: `npx tsc -b`, `npx eslint .`, `npm run build` and the
 related unit tests; from the root: `node scripts/i18n-check.mjs` and
 `./scripts/check_architecture.sh`. CI runs the full suite.
+
+**Unit tests** (`ui/tests/*.test.ts(x)`, React Testing Library under jsdom; run
+by `npm test` in `ui/`, `make test` and CI's `core-ui-test` on every pipeline).
+Each shared building block has its own test file: everything in `ui-kit/`,
+`app/`, `components/detail/`, `components/resourceTable/`, and `PageHeader` /
+`EmptyState`. The test imports it, or names its `ui/src/...` path when it drives
+it through its real host (the sidebar through `App`). A page test that happens
+to render one does not count; `ui_untested_shared_files` in `scripts/arch-constraints.txt` (max 0)
+fails the architecture check and names any that has none. Change a building
+block and its test in the same commit; add one with its test.
+
+A test states behaviour the way a user meets it: by visible text, role,
+accessible name and keyboard (Tab, Enter, Escape, focus returning to the
+opener), and covers loading, empty, error and success. Do not snapshot, mock
+Zeron or Base UI internals, or wait on fixed sleeps. Measure with
+`npm run test:coverage` (`c8 --all`); a shared building block aims at 90% of
+lines and 80% of branches, and a branch left untested is one the UI cannot
+reach. Sizes, spacing, colours and overlay stacking are not unit-tested: jsdom
+does no layout. The browser check below owns them.
+
+When a test changes its expectation, the commit says why; a reviewer checks
+that the behaviour change was intended rather than a test bent to pass.
 
 **antd inventory** (`scripts/ui_antd_inventory.mjs`). How much antd is left, per
 component, file and menu page; `ui/antd-inventory.json` is the committed
@@ -138,3 +161,24 @@ Confirmed 2026-11-06. Check every migrated page against this, by screenshot.
 | Overlays | While antd and Zeron coexist, both libraries' overlays sit on one 1000 layer (`src/theme/layers.css`): the one opened last is on top. Right-side drawers of either library open beside the AI assistant. |
 | Status words | Show a state as Zeron `Badge` with `status`, not as coloured text: dark success text reads as black. |
 
+## Choosing a component
+
+Zeron first: a new or replaced component comes from Zeron, installed with
+`scripts/zeron-registry.sh add <names>` in the change that first needs it, not
+ahead of use. Compose in `ui-kit/` only what Zeron does not have, and ask the
+product owner before doing so, or when a Zeron component costs bundle size or
+speed (measure first).
+
+| Need | Use |
+| --- | --- |
+| Page frame, header, list, detail drawer | `PageHeader`, `ResourceTable`, `DetailDrawer` (tabs, visited tabs kept) |
+| Facts in a drawer ("label: value") | Zeron `detail-list` / `info-item`, replacing antd `Descriptions` |
+| Overview blocks | `Container` tray with white panels (Page look, Blocks); Zeron `card` for a standalone card |
+| Charts | Zeron charts (`bar-chart`, `line-chart`, `area-chart`, `pie-chart`, `heatmap-chart`, …). Check bundle size (`ui_bundle_gzip_kb`) and, for large data such as the scheduling heatmap or long series, speed against the ECharts version before switching |
+| Status | Zeron `Badge` with `status` |
+| Confirm, toast, empty, progress, upload, number, segmented | `ui-kit/` compositions (`ConfirmPopover`, `feedback`, `EmptyState`, `Progress`, `FileUpload`, `NumberInput`, `Segmented`) |
+
+The registry is pinned (`ui/src/theme/zeron/source.json`); upstream changes do
+not reach the console until the pin moves. Move it when a needed component or
+fix exists only upstream, in its own change: new pin, reinstall, then the full
+checks above (unit tests, browser check with comparison).
