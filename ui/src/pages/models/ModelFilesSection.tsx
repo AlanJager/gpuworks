@@ -85,6 +85,11 @@ function NodeFileActions({ model, row, isAdmin, onChanged }: { model: Model; row
       message.error(storageErrorText(t, e));
     }
   };
+  // The legacy sync endpoint resolves the target by node; only offer a new
+  // disk retry when that resolution cannot select a different local copy.
+  const soleLocalCopy = (model.nodes ?? []).filter((copy) => copy.node_uuid === row.node_uuid && !copy.cache && (!copy.storage_type || copy.storage_type === "local")).length === 1;
+  const diskRetry = row.state === "insufficient_disk_space" && !row.cache &&
+    (row.acquisition === "download" || (row.acquisition === "peer" && (!row.storage_type || row.storage_type === "local") && Boolean(row.source_node_uuid?.trim()) && soleLocalCopy));
   const retry = () => {
     if (row.acquisition === "download" && !row.cache) {
       return run(() => row.storage_id !== undefined
@@ -97,7 +102,7 @@ function NodeFileActions({ model, row, isAdmin, onChanged }: { model: Model; row
     {row.state === "download_required" && <Tooltip title={t("action.internetDownload")} trigger={["hover", "focus"]}>
       <Button type="text" size="small" icon={<CloudDownloadOutlined />} aria-label={t("action.internetDownload")} onClick={() => run(() => api.downloadModel(model.id, row.node_uuid), t("presenceMessage.downloadStarted"))} />
     </Tooltip>}
-    {(row.state === "failed" || row.state === "download_required" || row.state === "canceled") && <Tooltip title={t("action.retry")} trigger={["hover", "focus"]}>
+    {(row.state === "failed" || row.state === "download_required" || row.state === "canceled" || diskRetry) && <Tooltip title={t("action.retry")} trigger={["hover", "focus"]}>
       <Button type="text" size="small" icon={<ReloadOutlined />} aria-label={t("action.retry")} onClick={retry} />
     </Tooltip>}
     {row.acquisition === "download" && (row.state === "pending" || row.state === "downloading") && <CancelDownload modelId={model.id} storageId={row.storage_id} nodeUuid={row.node_uuid} onChanged={onChanged} />}
@@ -124,7 +129,7 @@ function FileDetails({ row }: { row: ModelFile }) {
   const node = "node_uuid" in row;
   const tagTextColors: Record<string, string> = { red: "var(--fg-danger)", orange: "var(--fg-warning)" };
   const statusNote = row.state === "missing" && !node ? t("files.missingHint")
-    : ["failed", "download_required", "canceled"].includes(row.state) ? row.message : undefined;
+    : ["failed", "download_required", "canceled", "insufficient_disk_space"].includes(row.state) ? row.message : undefined;
   return <dl className="detail-extra">
     <div style={{ gridColumn: node ? "1 / -1" : "1 / -2" }}>
       <dt>{t(node ? "files.path" : "files.relativePath")}</dt>
@@ -145,7 +150,7 @@ function FileDetails({ row }: { row: ModelFile }) {
     )}
     {statusNote && <div style={{ gridColumn: "1 / -1" }}>
       <dt>{t("files.statusNote")}</dt>
-      <dd style={{ color: tagTextColors[presenceVisual[row.state].color] ?? "var(--fg-muted)" }}>{statusNote}</dd>
+      <dd style={{ color: tagTextColors[presenceVisual[row.state]?.color] ?? "var(--fg-muted)" }}>{statusNote}</dd>
     </div>}
   </dl>;
 }

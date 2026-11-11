@@ -172,6 +172,7 @@
     "placement": {
       "preparingModel": "Preparing model; {{count}} replica(s) have not started",
       "preparationFailed": "Model preparation failed; {{count}} replica(s) have not started",
+      "diskFull": "Insufficient model disk space; {{count}} replica(s) have not started",
       "waiting": "{{count}} replica(s) are waiting for a node",
       "candidates": "Candidate nodes",
       "requirements": "Node requirements",
@@ -685,7 +686,7 @@
     "reason": {
       "MODEL_PREPARATION_WAITING": "Waiting for preparation update",
       "MODEL_NODE_OFFLINE": "Node disconnected",
-      "MODEL_CACHE_DISK_FULL": "Insufficient cache disk space",
+      "MODEL_CACHE_DISK_FULL": "Insufficient model disk space",
       "MODEL_PREPARATION_FAILED": "Model preparation failed",
       "MODEL_STORAGE_UNRESPONSIVE": "Storage is not responding",
       "MODEL_COPY_STALLED": "No recent copy progress",
