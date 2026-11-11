@@ -215,7 +215,15 @@
     "model_unavailable_detail": "Reported failure: {{detail}}",
     "plan_failed_detail": "Reported failure: {{detail}}",
     "blockers_keep_cards": "{{blockers}} never yields and keeps its cards: also choose another card, or enable sleep for {{blockers}} and pick a yield policy that shares cards.",
-    "holders_give_way": "The other holders give way: {{holders}}."
+    "holders_give_way": "The other holders give way: {{holders}}.",
+    "disk_node": "Node: {{node}}.",
+    "disk_storage": "Storage: {{storage}}.",
+    "disk_path": "Directory: {{path}}.",
+    "disk_capacity": "Required additional space: {{required}}; available: {{available}}.",
+    "disk_required": "Required additional space: {{required}}.",
+    "disk_available": "Available space: {{available}}.",
+    "disk_register": "If these weights already exist on the node, register their directory on this model and evaluate again.",
+    "disk_register_action": "Register an existing model directory"
   },
   "shared": {
     "automatic": "Automatic",

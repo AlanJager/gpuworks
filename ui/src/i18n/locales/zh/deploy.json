@@ -215,7 +215,15 @@
     "model_unavailable_detail": "失败原因：{{detail}}",
     "plan_failed_detail": "上报的失败原因：{{detail}}",
     "blockers_keep_cards": "{{blockers}} 不自动出让，不会让卡：还要换一张卡，或为 {{blockers}} 开启休眠并选择能共卡的出让策略。",
-    "holders_give_way": "其余占卡的部署会让卡：{{holders}}。"
+    "holders_give_way": "其余占卡的部署会让卡：{{holders}}。",
+    "disk_node": "节点：{{node}}。",
+    "disk_storage": "存储：{{storage}}。",
+    "disk_path": "目录：{{path}}。",
+    "disk_capacity": "需新增空间 {{required}}，可用 {{available}}。",
+    "disk_required": "需新增空间 {{required}}。",
+    "disk_available": "可用空间 {{available}}。",
+    "disk_register": "若该节点已有这份权重，请为当前模型登记已有目录后重新评估。",
+    "disk_register_action": "登记已有模型目录"
   },
   "shared": {
     "automatic": "自动",
