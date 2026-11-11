@@ -13,11 +13,12 @@ afterEach(() => { globalThis.fetch = originalFetch; });
 test("node deletion only sends force when the caller explicitly selects it", async () => {
   const requests: { url: string; method?: string }[] = [];
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    requests.push({ url: String(input), method: init?.method });
-    return new Response('{"status":"deleted","agent_uninstalled":true}', { status: 200, headers: { "Content-Type": "application/json" } });
+    const url = String(input);
+    requests.push({ url, method: init?.method });
+    return Response.json({ status: "deleted", agent_uninstalled: !url.endsWith("?force=true") });
   }) as typeof fetch;
-  await api.deleteNode("node/one");
-  await api.deleteNode("node/one", true);
+  assert.deepEqual(await api.deleteNode("node/one"), { status: "deleted", agent_uninstalled: true });
+  assert.deepEqual(await api.deleteNode("node/one", true), { status: "deleted", agent_uninstalled: false });
   assert.deepEqual(requests, [
     { url: "/api/v1/nodes/node%2Fone", method: "DELETE" },
     { url: "/api/v1/nodes/node%2Fone?force=true", method: "DELETE" },

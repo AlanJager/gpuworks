@@ -80,6 +80,7 @@ export default function NodesPage() {
   const [deleting, setDeleting] = useState(false);
   const [editingLabels, setEditingLabels] = useState<Node | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  const deleteWithoutSSH = confirmingDelete?.has_ssh_credential === false;
   const onUpgradeEvent = (event: UpgradeEvent) => {
     const name = event.name;
     switch (event.kind) {
@@ -152,8 +153,9 @@ export default function NodesPage() {
   const deleteNode = async (node: Node) => {
     setDeleting(true);
     try {
-      await api.deleteNode(node.uuid, forceDelete);
-      message.success(t(forceDelete ? "message.forceDeleted" : "message.deleted"));
+      const result = await api.deleteNode(node.uuid, forceDelete);
+      const agentUninstalled = result?.agent_uninstalled ?? !forceDelete;
+      message.success(t(agentUninstalled ? "message.deleted" : "message.forceDeleted"));
       setConfirmingDelete(null);
       setSelectedNodeUUIDs((current) => current.filter((uuid) => uuid !== node.uuid));
       if (detail?.uuid === node.uuid) setDetail(null);
@@ -295,10 +297,14 @@ export default function NodesPage() {
       >
         <p>{confirmingDelete && nodeDisplayName(confirmingDelete)}</p>
         <p>{t("delete.description")}</p>
-        <p>{t("delete.uninstallDescription")}</p>
-        <Checkbox checked={forceDelete} disabled={deleting} onChange={(event) => setForceDelete(event.target.checked)}>
-          {t("delete.force")}
-        </Checkbox>
+        {deleteWithoutSSH ? <p role="alert">{t("delete.noSSHDescription")}</p> : (
+          <>
+            <p>{t("delete.uninstallDescription")}</p>
+            <Checkbox checked={forceDelete} disabled={deleting} onChange={(event) => setForceDelete(event.target.checked)}>
+              {t("delete.force")}
+            </Checkbox>
+          </>
+        )}
         {forceDelete && <p role="alert">{t("delete.forceWarning")}</p>}
       </Modal>
       {scheduling && (

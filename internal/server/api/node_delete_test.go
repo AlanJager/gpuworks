@@ -131,18 +131,42 @@ func TestDeleteNodeRetainsRecordsWhenUninstallFails(t *testing.T) {
 	assertNodeDeleteImageRows(t, st, node, 1)
 }
 
-func TestDeleteNodeRequiresExplicitForceWithoutSSH(t *testing.T) {
+func TestDeleteNodeWithoutSSHRemovesRecordsAndReportsAgentRetained(t *testing.T) {
 	st, node := nodeDeleteFixture(t)
 	if err := st.DeleteNodeSSHCredential(node.UUID); err != nil {
 		t.Fatal(err)
 	}
+	st.SetSecretbox(nil)
+	kicked := false
 	h := apiHandlers{d: Deps{Store: st, NodeInstaller: nodeUninstallerStub{uninstall: func(context.Context, provision.SSHProbeRequest) error {
-		t.Fatal("uninstall must not run without credentials or for force removal")
+		t.Fatal("uninstall must not run without SSH credentials")
+		return nil
+	}}, KickNode: func(uuid string) {
+		if uuid != node.UUID {
+			t.Errorf("kicked node %q, want %q", uuid, node.UUID)
+		}
+		if _, err := st.NodeByUUID(uuid); !errors.Is(err, store.ErrNotFound) {
+			t.Errorf("node kicked before record removal: %v", err)
+		}
+		kicked = true
+	}}}
+	rec := deleteNodeRequest(&h, node.UUID, "")
+	if rec.Code != http.StatusOK || !kicked {
+		t.Fatalf("ordinary delete status=%d kicked=%v body=%s", rec.Code, kicked, rec.Body.String())
+	}
+	var response map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil || len(response) != 2 || response["status"] != "deleted" || response["agent_uninstalled"] != false {
+		t.Fatalf("unexpected response: %s (%v)", rec.Body.String(), err)
+	}
+	assertNodeDeleteImageRows(t, st, node, 0)
+}
+
+func TestDeleteNodeForceSkipsSavedSSH(t *testing.T) {
+	st, node := nodeDeleteFixture(t)
+	h := apiHandlers{d: Deps{Store: st, NodeInstaller: nodeUninstallerStub{uninstall: func(context.Context, provision.SSHProbeRequest) error {
+		t.Fatal("force removal must skip SSH uninstall")
 		return nil
 	}}}}
-	if rec := deleteNodeRequest(&h, node.UUID, ""); rec.Code != http.StatusConflict {
-		t.Fatalf("normal delete without SSH status=%d", rec.Code)
-	}
 	rec := deleteNodeRequest(&h, node.UUID, "?force=true")
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"agent_uninstalled":false`) {
 		t.Fatalf("force removal must disclose no uninstall: %d %s", rec.Code, rec.Body.String())
@@ -150,19 +174,69 @@ func TestDeleteNodeRequiresExplicitForceWithoutSSH(t *testing.T) {
 	assertNodeDeleteImageRows(t, st, node, 0)
 }
 
-func TestDeleteNodeForceStillRejectsInstances(t *testing.T) {
+func TestDeleteNodeRetainsUnreadableSSHCredentials(t *testing.T) {
 	st, node := nodeDeleteFixture(t)
-	if _, err := st.CreateInstance(&store.Instance{UUID: "busy", NodeID: node.ID, State: proto.InstRunning}); err != nil {
+	wrongBox, err := auth.NewSecretbox("different-encryption-key")
+	if err != nil {
 		t.Fatal(err)
 	}
+	st.SetSecretbox(wrongBox)
 	h := apiHandlers{d: Deps{Store: st, NodeInstaller: nodeUninstallerStub{uninstall: func(context.Context, provision.SSHProbeRequest) error {
-		t.Fatal("busy node was uninstalled")
+		t.Fatal("uninstall must not run with unreadable credentials")
 		return nil
-	}}}}
-	for _, query := range []string{"", "?force=true"} {
-		if rec := deleteNodeRequest(&h, node.UUID, query); rec.Code != http.StatusConflict {
-			t.Fatalf("busy node %s status=%d", query, rec.Code)
-		}
+	}}, KickNode: func(string) { t.Error("failed deletion kicked the session") }}}
+	rec := deleteNodeRequest(&h, node.UUID, "")
+	if rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), `"code":"NODE_UNINSTALL_UNCONFIRMED"`) {
+		t.Fatalf("unreadable credential status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	retained, err := st.NodeByUUID(node.UUID)
+	if err != nil || !retained.HasSSHCredential {
+		t.Fatalf("credential presence was lost: node=%+v err=%v", retained, err)
+	}
+	assertNodeDeleteImageRows(t, st, node, 1)
+}
+
+func TestDeleteNodeStillRejectsInstances(t *testing.T) {
+	for _, hasSSH := range []bool{true, false} {
+		t.Run(fmt.Sprintf("saved-ssh=%t", hasSSH), func(t *testing.T) {
+			st, node := nodeDeleteFixture(t)
+			if !hasSSH {
+				if err := st.DeleteNodeSSHCredential(node.UUID); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if _, err := st.CreateInstance(&store.Instance{UUID: "busy", NodeID: node.ID, State: proto.InstRunning}); err != nil {
+				t.Fatal(err)
+			}
+			h := apiHandlers{d: Deps{Store: st, NodeInstaller: nodeUninstallerStub{uninstall: func(context.Context, provision.SSHProbeRequest) error {
+				t.Fatal("busy node was uninstalled")
+				return nil
+			}}}}
+			for _, query := range []string{"", "?force=true"} {
+				if rec := deleteNodeRequest(&h, node.UUID, query); rec.Code != http.StatusConflict {
+					t.Fatalf("busy node %s status=%d", query, rec.Code)
+				}
+			}
+			assertNodeDeleteImageRows(t, st, node, 1)
+		})
+	}
+}
+
+func TestDeleteNodeWithoutSSHRetainsRecordsWhenCleanupFails(t *testing.T) {
+	st, node := nodeDeleteFixture(t)
+	if err := st.DeleteNodeSSHCredential(node.UUID); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.DB().Exec(`CREATE TRIGGER reject_node_delete BEFORE DELETE ON nodes BEGIN SELECT RAISE(ABORT, 'injected delete failure'); END`).Error; err != nil {
+		t.Fatal(err)
+	}
+	h := apiHandlers{d: Deps{Store: st, KickNode: func(string) { t.Error("failed deletion kicked the session") }}}
+	rec := deleteNodeRequest(&h, node.UUID, "")
+	if rec.Code != http.StatusConflict || strings.Contains(rec.Body.String(), "agent uninstalled") {
+		t.Fatalf("cleanup failure status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	if _, err := st.NodeByUUID(node.UUID); err != nil {
+		t.Fatalf("failed cleanup removed the node: %v", err)
 	}
 	assertNodeDeleteImageRows(t, st, node, 1)
 }

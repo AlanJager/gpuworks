@@ -76,7 +76,8 @@ func (a *apiHandlers) deleteNode(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if !force {
+	agentUninstalled := !force && node.HasSSHCredential
+	if agentUninstalled {
 		if err := a.uninstallNode(r.Context(), node); err != nil {
 			writeProductError(w, http.StatusConflict, ErrorNodeUninstallUnconfirmed,
 				"agent uninstall was not confirmed; node retained: "+err.Error(), map[string]any{"detail": err.Error()})
@@ -84,7 +85,7 @@ func (a *apiHandlers) deleteNode(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if err := a.d.Store.DeleteNode(uuid); err != nil {
-		if !force {
+		if agentUninstalled {
 			err = wrapProductError(ErrorNodeDeleteCleanupFailed,
 				"agent uninstalled, but node record cleanup failed: "+err.Error(), map[string]any{"detail": err.Error()}, err)
 		}
@@ -97,7 +98,7 @@ func (a *apiHandlers) deleteNode(w http.ResponseWriter, r *http.Request) {
 	if a.d.KickNode != nil {
 		a.d.KickNode(uuid)
 	}
-	writeJSON(w, http.StatusOK, nodeDeleteResponse{Status: "deleted", AgentUninstalled: !force})
+	writeJSON(w, http.StatusOK, nodeDeleteResponse{Status: "deleted", AgentUninstalled: agentUninstalled})
 }
 
 func (a *apiHandlers) uninstallNode(ctx context.Context, node *store.Node) error {
