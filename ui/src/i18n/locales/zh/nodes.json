@@ -86,7 +86,7 @@
     "confirm": "确认删除该计算节点？",
     "description": "请先停止该计算节点上的部署实例。",
     "uninstallDescription": "普通移除会先通过 SSH 卸载 agent，再删除节点记录。",
-    "noSSHDescription": "该节点未保存 SSH 凭据。删除只会移除管理记录，请在节点上手动卸载 agent。",
+    "noSSHDescription": "该节点未保存 SSH 凭据。普通删除需要先配置 SSH 凭据，也可在节点上手动卸载 agent 后勾选“强制移除”删除管理记录。",
     "force": "强制移除：仅删除管理记录",
     "forceWarning": "节点上的 agent 可能仍在运行，请在节点可访问后手动停止。"
   },

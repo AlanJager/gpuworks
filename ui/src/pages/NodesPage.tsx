@@ -80,7 +80,6 @@ export default function NodesPage() {
   const [deleting, setDeleting] = useState(false);
   const [editingLabels, setEditingLabels] = useState<Node | null>(null);
   const [addOpen, setAddOpen] = useState(false);
-  const deleteWithoutSSH = confirmingDelete?.has_ssh_credential === false;
   const onUpgradeEvent = (event: UpgradeEvent) => {
     const name = event.name;
     switch (event.kind) {
@@ -297,14 +296,11 @@ export default function NodesPage() {
       >
         <p>{confirmingDelete && nodeDisplayName(confirmingDelete)}</p>
         <p>{t("delete.description")}</p>
-        {deleteWithoutSSH ? <p role="alert">{t("delete.noSSHDescription")}</p> : (
-          <>
-            <p>{t("delete.uninstallDescription")}</p>
-            <Checkbox checked={forceDelete} disabled={deleting} onChange={(event) => setForceDelete(event.target.checked)}>
-              {t("delete.force")}
-            </Checkbox>
-          </>
-        )}
+        <p>{t("delete.uninstallDescription")}</p>
+        {confirmingDelete?.has_ssh_credential === false && <p role="alert">{t("delete.noSSHDescription")}</p>}
+        <Checkbox checked={forceDelete} disabled={deleting} onChange={(event) => setForceDelete(event.target.checked)}>
+          {t("delete.force")}
+        </Checkbox>
         {forceDelete && <p role="alert">{t("delete.forceWarning")}</p>}
       </Modal>
       {scheduling && (

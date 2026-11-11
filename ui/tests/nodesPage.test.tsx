@@ -77,6 +77,10 @@ const { act, cleanup, fireEvent, render, screen, waitFor, within } = await impor
 const { message } = await import("antd");
 const { default: userEvent } = await import("@testing-library/user-event");
 const { api } = await import("../src/api.ts");
+const { default: requestI18n } = await import("../src/i18n/index.ts");
+requestI18n.addResourceBundle("en", "common", i18n.getResourceBundle("en", "common"), true, true);
+await requestI18n.changeLanguage("en");
+const originalFetch = globalThis.fetch;
 const { default: NodesPage } = await import("../src/pages/NodesPage.tsx");
 const { DETAIL_DRAWER_WIDTH } = await import("../src/components/detail/DetailDrawer.tsx");
 const { runtimeChoices, runtimeLabel } = await import("../src/nodeDisplay.ts");
@@ -194,6 +198,7 @@ afterEach(async () => {
     message.destroy();
   });
   Object.assign(api, originals);
+  globalThis.fetch = originalFetch;
 });
 
 function renderPage() {
@@ -347,23 +352,38 @@ test("force removal is explicit and warns that the remote agent may still run", 
   await waitFor(() => screen.getByText("Management records deleted; the agent may still be running"));
 });
 
-test("normal deletion without SSH credentials warns that the agent needs manual uninstallation", async () => {
+test("normal deletion without SSH retains the dialog and offers an explicit force retry", async () => {
   stubApi([{ ...onlineNode, has_ssh_credential: false }]);
-  let request: { uuid: string; force: boolean } | undefined;
-  api.deleteNode = async (uuid: string, force = false) => {
-    request = { uuid, force };
-    return { status: "deleted", agent_uninstalled: false };
-  };
+  const requests: string[] = [];
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    assert.equal(init?.method, "DELETE");
+    const url = String(input);
+    requests.push(url);
+    if (url.endsWith("?force=true")) return Response.json({ status: "deleted", agent_uninstalled: false });
+    return new Response('{"code":"NODE_DELETE_SSH_REQUIRED","error":"normal deletion requires saved SSH credentials to uninstall the agent; node retained. Configure SSH and retry, or uninstall the agent manually and use force=true to remove only its management record"}', { status: 409, headers: { "Content-Type": "application/json" } });
+  }) as typeof fetch;
   renderPage();
   await waitFor(() => screen.getByText("gpu-a100-node-01"));
   rowOf("gpu-a100-node-01").getByRole("button", { name: "More" }).click();
   (await waitFor(() => screen.getByRole("menuitem", { name: /Delete/ }))).click();
   const dialog = within(await waitFor(() => deleteModal()));
-  assert.match(dialog.getByRole("alert").textContent ?? "", /Uninstall the agent manually/);
-  assert.equal(dialog.queryByRole("checkbox", { name: /Force removal/ }), null);
+  assert.match(dialog.getByRole("alert").textContent ?? "", /Configure SSH credentials for normal deletion/);
+  assert.ok(dialog.getByText("Normal removal uninstalls the agent over SSH before deleting the node record."));
+  const checkbox = dialog.getByRole("checkbox", { name: /Force removal/ }) as HTMLInputElement;
+  assert.equal(checkbox.checked, false);
+  dialog.getByRole("button", { name: "Delete", exact: true }).click();
+  const explanation = "Normal deletion requires SSH to uninstall the agent, but this node has no saved SSH credentials. The node record was retained. Configure SSH credentials and retry, or uninstall the agent manually and then select Force removal to delete its management record.";
+  await screen.findByText(`Failed to delete node: ${explanation}`);
+  assert.deepEqual(requests, [`/api/v1/nodes/${onlineNode.uuid}`]);
+  assert.ok(deleteModal());
+  const retainedRow = within(screen.getByRole("table", { hidden: true })).getByText("gpu-a100-node-01").closest("tr");
+  assert.ok(retainedRow, "failed deletion retained the node row");
+  checkbox.click();
+  await waitFor(() => assert.equal(checkbox.checked, true));
+  assert.ok(dialog.getByText("The agent may still be running on the node. Stop it manually when the node is accessible."));
   const previousMessages = new Set(screen.queryAllByText("Management records deleted; the agent may still be running"));
   dialog.getByRole("button", { name: "Delete", exact: true }).click();
-  await waitFor(() => assert.deepEqual(request, { uuid: onlineNode.uuid, force: false }));
+  await waitFor(() => assert.deepEqual(requests, [`/api/v1/nodes/${onlineNode.uuid}`, `/api/v1/nodes/${onlineNode.uuid}?force=true`]));
   await waitFor(() => {
     const newMessage = screen.queryAllByText("Management records deleted; the agent may still be running")
       .find((element) => !previousMessages.has(element));
@@ -371,25 +391,25 @@ test("normal deletion without SSH credentials warns that the agent needs manual 
   });
 });
 
-test("ordinary deletion reports the server's actual uninstall result after credentials change", async () => {
+test("SSH uninstall failure explains recovery steps while keeping the deletion dialog open", async () => {
   stubApi([onlineNode]);
-  let forceRequested: boolean | undefined;
-  api.deleteNode = async (_uuid: string, force = false) => {
-    forceRequested = force;
-    return { status: "deleted", agent_uninstalled: false };
-  };
+  const requests: string[] = [];
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    assert.equal(init?.method, "DELETE");
+    requests.push(String(input));
+    return new Response('{"code":"NODE_UNINSTALL_UNCONFIRMED","error":"agent uninstall over SSH was not confirmed; node and SSH credentials retained. Fix SSH and retry, or uninstall the agent manually and use force=true to remove only its management record: SSH unreachable","params":{"detail":"SSH unreachable"}}', { status: 409, headers: { "Content-Type": "application/json" } });
+  }) as typeof fetch;
   renderPage();
   await waitFor(() => screen.getByText("gpu-a100-node-01"));
   rowOf("gpu-a100-node-01").getByRole("button", { name: "More" }).click();
   (await waitFor(() => screen.getByRole("menuitem", { name: /Delete/ }))).click();
-  const previousMessages = new Set(screen.queryAllByText("Management records deleted; the agent may still be running"));
   within(await waitFor(() => deleteModal())).getByRole("button", { name: "Delete", exact: true }).click();
-  await waitFor(() => assert.equal(forceRequested, false));
-  await waitFor(() => {
-    const newMessage = screen.queryAllByText("Management records deleted; the agent may still be running")
-      .find((element) => !previousMessages.has(element));
-    assert.ok(newMessage, "the current deletion used the server's uninstall result");
-  });
+  const explanation = "Normal deletion could not confirm that the agent was uninstalled over SSH. The node and SSH credentials were retained. Fix the SSH connection or credentials and retry, or uninstall the agent manually and then select Force removal to delete its management record. Details: SSH unreachable";
+  await screen.findByText(`Failed to delete node: ${explanation}`);
+  assert.deepEqual(requests, [`/api/v1/nodes/${onlineNode.uuid}`]);
+  assert.ok(deleteModal());
+  const retainedRow = within(screen.getByRole("table", { hidden: true })).getByText("gpu-a100-node-01").closest("tr");
+  assert.ok(retainedRow, "failed deletion retained the node row");
 });
 
 test("uninstall failure keeps the dialog open and allows an explicit force retry", async () => {
