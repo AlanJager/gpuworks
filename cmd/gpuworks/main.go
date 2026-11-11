@@ -38,6 +38,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/bus"
 	"gpuworks.ai/gpuworks/internal/server/experiencelaunch"
 	"gpuworks.ai/gpuworks/internal/server/expose"
+	"gpuworks.ai/gpuworks/internal/server/installcred"
 	"gpuworks.ai/gpuworks/internal/server/selfinstall"
 	"gpuworks.ai/gpuworks/internal/server/serverconfig"
 	"gpuworks.ai/gpuworks/internal/server/store"
@@ -357,6 +358,13 @@ func resetPassword(log *slog.Logger, args []string) error {
 		return err
 	}
 	log.Info("password reset", "user", username, "db", dbPath)
+	// As after a change in the console: the install-time record beside the
+	// database now holds a password that no longer works.
+	if file, err := store.DatabaseFilePath(dbPath); err == nil && file != "" {
+		if err := installcred.ForgetInitialCredentials(filepath.Dir(file), username, policy); err != nil {
+			log.Warn("initial admin credentials file not removed after the reset; delete it by hand", "path", installcred.CredentialsPath(filepath.Dir(file)), "err", err)
+		}
+	}
 	return nil
 }
 

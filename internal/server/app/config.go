@@ -14,6 +14,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/selflog"
 	"gpuworks.ai/gpuworks/internal/server/auth"
 	"gpuworks.ai/gpuworks/internal/server/proxy"
+	"gpuworks.ai/gpuworks/internal/server/selfinstall"
 	"gpuworks.ai/gpuworks/internal/server/serverconfig"
 	"gpuworks.ai/gpuworks/internal/storagerules"
 )
@@ -105,7 +106,7 @@ func DefaultConfig() Config {
 		Addr:                        ":" + serverconfig.DefaultPort,
 		DataDir:                     "./data",
 		VLLMImage:                   "vllm/vllm-openai:latest",
-		AdminUser:                   "admin",
+		AdminUser:                   selfinstall.DefaultAdminUser,
 		SessionIdleTimeout:          24 * time.Hour,
 		SessionMaxLifetime:          7 * 24 * time.Hour,
 		ProxyMaxBodyBytes:           proxy.DefaultMaxBodyBytes,

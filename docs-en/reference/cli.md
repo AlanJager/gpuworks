@@ -267,6 +267,7 @@ Reset a user's password by modifying the database directly, without going throug
 
 - Without `--data`, the data directory is, in order: `data_dir` from the `server.yaml` next to the binary, `data_dir` from the default installation (`/opt/gpuworks/server/server.yaml`; `~/gpuworks/server/server.yaml` on macOS), then `./data`. The installation's database is therefore found regardless of the current working directory.
 - The database file must already exist: if it does not, the command reports the path it used and where that path came from, then exits without creating an empty database.
+- On success, if the `initial-credentials` beside the database records this user, the command tries to delete it, since its password no longer works; a failure only prints a warning and does not affect the reset.
 - Run as the operator; `sudo` is not required. If database permissions are insufficient, the operation fails with the database's own permission error.
 - Do not write passwords or keys to shell history or logs.
 

@@ -95,5 +95,11 @@ func protectStartupCredentials(cfg Config, log *slog.Logger, policies ...securef
 // forgetInitialCredentials removes the install-time admin record once the
 // console has replaced the password it holds.
 func forgetInitialCredentials(cfg Config) func(username string) error {
-	return func(username string) error { return installcred.ForgetInitialCredentials(cfg.DataDir, username) }
+	return func(username string) error {
+		policy, err := startupCredentialPolicy(cfg)
+		if err != nil {
+			return err
+		}
+		return installcred.ForgetInitialCredentials(cfg.DataDir, username, policy)
+	}
 }

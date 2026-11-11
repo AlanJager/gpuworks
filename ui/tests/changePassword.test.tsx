@@ -29,16 +29,24 @@ const userEventModule = await import("@testing-library/user-event");
 const userEvent = userEventModule.default ?? userEventModule;
 const apiModule = await import("../src/api.ts");
 const UserMenu = (await import("../src/components/UserMenu.tsx")).default;
+const { SessionUserContext } = await import("../src/components/sessionUser.ts");
+type Me = Awaited<ReturnType<typeof apiModule.api.me>>;
+
+/** UserMenu as the shell renders it: under the user SessionBoundary read. */
+function menu(user: Me | undefined, onLogout: () => void) {
+  return <I18nextProvider i18n={i18n}><SessionUserContext.Provider value={user}><UserMenu onLogout={onLogout} /></SessionUserContext.Provider></I18nextProvider>;
+}
 const { LoginForm } = await import("../src/pages/LoginPage.tsx");
 
 const originalMe = apiModule.api.me;
+// The menu must not ask for the user itself; SessionBoundary already did.
+apiModule.api.me = async () => { throw new Error("UserMenu requested /auth/me"); };
 const originalFetch = globalThis.fetch;
 afterEach(() => {
   cleanup();
-  apiModule.api.me = originalMe;
   globalThis.fetch = originalFetch;
 });
-after(() => closeChannels());
+after(() => { apiModule.api.me = originalMe; closeChannels(); });
 
 const auth = locale("auth").changePassword;
 
@@ -54,8 +62,7 @@ function answer(status: number, body: unknown, sent: Sent[]) {
 }
 
 async function openForm(onLogout: () => void = () => {}) {
-  apiModule.api.me = async () => ({ id: 1, username: "admin", role: "admin", password_policy: { min_length: 8, max_length: 128 } });
-  render(<I18nextProvider i18n={i18n}><UserMenu onLogout={onLogout} /></I18nextProvider>);
+  render(menu({ id: 1, username: "admin", role: "admin", password_policy: { min_length: 8, max_length: 128 } }, onLogout));
   const user = userEvent.setup({ delay: null });
   await user.click(await screen.findByRole("button", { name: "Account: admin" }));
   await user.click(await screen.findByText("Change password"));
@@ -71,9 +78,8 @@ async function fill(user: ReturnType<typeof userEvent.setup>, current: string, n
 }
 
 test("the account menu names the user and signs out", async () => {
-  apiModule.api.me = async () => ({ id: 1, username: "ops", role: "admin" });
   let signedOut = 0;
-  render(<I18nextProvider i18n={i18n}><UserMenu onLogout={() => { signedOut++; }} /></I18nextProvider>);
+  render(menu({ id: 1, username: "ops", role: "admin" }, () => { signedOut++; }));
   const user = userEvent.setup({ delay: null });
   await user.click(await screen.findByRole("button", { name: "Account: ops" }));
   assert.ok(await screen.findByText("Change password"));
@@ -82,8 +88,7 @@ test("the account menu names the user and signs out", async () => {
 });
 
 test("the account menu falls back to the role name when the user cannot be read", async () => {
-  apiModule.api.me = async () => { throw new Error("offline"); };
-  render(<I18nextProvider i18n={i18n}><UserMenu onLogout={() => {}} /></I18nextProvider>);
+  render(menu(undefined, () => {}));
   assert.ok(await screen.findByRole("button", { name: "Account: Administrator" }));
 });
 
