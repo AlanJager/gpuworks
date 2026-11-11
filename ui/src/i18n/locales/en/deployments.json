@@ -520,6 +520,7 @@
       "resourceLimits": "VRAM {{vram}} bytes · SM {{sm}}% · backend {{backend}}"
     },
     "diagnoseButton": "AI Diagnosis",
+    "previousAttempt": "Previous attempt",
     "commandMode": {
       "manual": "Manual command"
     },

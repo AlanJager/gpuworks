@@ -520,6 +520,7 @@
       "resourceLimits": "显存 {{vram}} 字节 · SM {{sm}}% · 后端 {{backend}}"
     },
     "diagnoseButton": "AI 诊断",
+    "previousAttempt": "先前的尝试",
     "commandMode": {
       "manual": "手动命令"
     },
