@@ -37,6 +37,23 @@ type Operation struct {
 	// example and what the Playground starts with; requests are never
 	// changed by it.
 	ExampleInput map[string]string `yaml:"example_input,omitempty" json:"example_input,omitempty"`
+	// MaxReferenceImages is how many reference images an image edit accepts,
+	// each sent as one more "image" part of the multipart request. Only
+	// openai.image.edit takes it; unset means one (ReferenceImageLimit).
+	MaxReferenceImages int `yaml:"max_reference_images,omitempty" json:"max_reference_images,omitempty"`
+}
+
+// ReferenceImageLimit is how many reference images a request of this operation
+// may carry: the declared count for an image edit, one when it declares none,
+// and zero for every other operation.
+func (o Operation) ReferenceImageLimit() int {
+	if o.Type != OperationImageEdit {
+		return 0
+	}
+	if o.MaxReferenceImages > 0 {
+		return o.MaxReferenceImages
+	}
+	return 1
 }
 
 // DefaultsInput contains catalog facts that may safely select standard engine

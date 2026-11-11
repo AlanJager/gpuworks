@@ -106,7 +106,7 @@ func fullTemplateCatalog(asset []byte) inferencecatalog.FlatCatalog {
 		Name: "scripted", Engine: "vllm", Image: "gpuworks/vllm:test", Weights: weights(fullTemplateID),
 		GPUs:           inferencecatalog.GPUSelector{Vendor: "ascend"},
 		PreStartScript: "set -e\necho preparing\n  indented line\n",
-		API: &inferencecatalog.APIContract{Operations: []inferenceapi.Operation{{Type: inferenceapi.OperationChat}},
+		API: &inferencecatalog.APIContract{Operations: []inferenceapi.Operation{{Type: inferenceapi.OperationChat}, {Type: inferenceapi.OperationImageEdit, MaxReferenceImages: 4}},
 			Metrics:      &inferenceapi.Metrics{Format: "json", Map: inferenceapi.MetricMap{"totals.output_tokens": {To: "generation_tokens_total"}}},
 			RequestStats: inferenceapi.MetricMap{"timings.prompt_ms": {To: "prefill_seconds", Scale: 0.001}}},
 	}
