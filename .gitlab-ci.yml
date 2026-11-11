@@ -39,7 +39,7 @@ variables:
 
 .go-core:
   image:
-    name: golang:1.26@sha256:670bb5aa5349ae03b8516764718486f4f16399134bdc9acd0c46a23f043ab05c
+    name: golang:1.26.11@sha256:7af425da11f4fc1a9308eb704369e3f6d1c44e35bac0f874a59ade3f20fdc07e
   variables:
     # gpu3 cannot reach proxy.golang.org consistently. Keep direct fallback for
     # modules that have not reached the mainland mirrors yet.
@@ -54,7 +54,7 @@ variables:
     GOMODCACHE: "/host-go-cache/go-mod"
     GOCACHE: "/host-go-cache/go-build"
     GOFLAGS: "-modcacherw"
-    # The pinned image ships go1.26.10, exactly what go.mod requires; fail
+    # The pinned image ships go1.26.11, exactly what go.mod requires; fail
     # loudly instead of silently downloading a toolchain through GOPROXY.
     GOTOOLCHAIN: "local"
   needs:
@@ -121,7 +121,7 @@ docs-build:
   # existing gpuworks-site refresh timer.
   stage: core-prepare
   image:
-    name: golang:1.26@sha256:670bb5aa5349ae03b8516764718486f4f16399134bdc9acd0c46a23f043ab05c
+    name: golang:1.26.11@sha256:7af425da11f4fc1a9308eb704369e3f6d1c44e35bac0f874a59ade3f20fdc07e
   variables:
     # Nothing in this job reaches a public host: the Hugo binary comes from
     # the rustfs mirror on mirror1 and the oink theme is cloned by
@@ -384,7 +384,7 @@ core-lint:
       artifacts: true
   variables:
     DOCKER_DIND_IMAGE: "docker:29-dind@sha256:12e683a161823b2a839aeea999b9d960e6e1f9a97b1679ad6b441982e2d9cf07"
-    DOCKER_GO_IMAGE: "golang:1.26@sha256:670bb5aa5349ae03b8516764718486f4f16399134bdc9acd0c46a23f043ab05c"
+    DOCKER_GO_IMAGE: "golang:1.26.11@sha256:7af425da11f4fc1a9308eb704369e3f6d1c44e35bac0f874a59ade3f20fdc07e"
     # Docker Hub is intermittently unreachable from the CI runner. Keep the
     # L3 fixtures reproducible while using a public mainland mirror for their
     # busybox/Python/Alpine base images. The registry image keeps the quay
@@ -835,7 +835,7 @@ release-publish:
 # the environment's, so a new L4 job needs `action: prepare` too.
 .l4-cloud:
   image:
-    name: golang:1.26@sha256:670bb5aa5349ae03b8516764718486f4f16399134bdc9acd0c46a23f043ab05c
+    name: golang:1.26.11@sha256:7af425da11f4fc1a9308eb704369e3f6d1c44e35bac0f874a59ade3f20fdc07e
   interruptible: false
   retry: 0
   needs:
@@ -1096,7 +1096,7 @@ l4-ascend-pool-partition-inference:
       -e GPUWORKS_ASCEND_L4_CARD="$GPUWORKS_ASCEND_L4_CARD"
       -e GPUWORKS_ASCEND_NERDCTL_L4_IMAGE="$GPUWORKS_ASCEND_NERDCTL_L4_IMAGE"
       -e GPUWORKS_ASCEND_NERDCTL_L4_CARD="$GPUWORKS_ASCEND_NERDCTL_L4_CARD"
-      golang:1.26@sha256:670bb5aa5349ae03b8516764718486f4f16399134bdc9acd0c46a23f043ab05c
+      golang:1.26.11@sha256:7af425da11f4fc1a9308eb704369e3f6d1c44e35bac0f874a59ade3f20fdc07e
       sh -c "apt-get update -qq && apt-get install -y -qq openssh-client >/dev/null && cp -a /run/gpuworks-ssh/. \$HOME/.ssh/ && chown -R \$RUNNER_UID:\$RUNNER_GID \$HOME/.ssh && if ! getent passwd \$RUNNER_UID >/dev/null; then getent group \$RUNNER_GID >/dev/null || groupadd --gid \$RUNNER_GID ci-runner; useradd --uid \$RUNNER_UID --gid \$RUNNER_GID --home-dir \$CI_PROJECT_DIR/.cache/l4-home --no-create-home --shell /bin/sh ci-runner; fi && pw_home=\$(getent passwd \$RUNNER_UID | cut -d: -f6) && { [ \"\$pw_home/.ssh\" = \"\$HOME/.ssh\" ] || { mkdir -p \"\$pw_home/.ssh\" && cp -a /run/gpuworks-ssh/. \"\$pw_home/.ssh/\" && chown -R \$RUNNER_UID:\$RUNNER_GID \"\$pw_home/.ssh\"; }; } && setpriv --reuid=\$RUNNER_UID --regid=\$RUNNER_GID --clear-groups -- make test-l4-ascend-pool-partition-inference"
   artifacts:
     when: always
