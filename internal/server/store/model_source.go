@@ -76,8 +76,9 @@ func (s *Store) SourceRulesFor(dep *Deployment) (SourceRules, error) {
 //  3. Else the model is acquired: into SaveTo when it applies to the node, else
 //     into the default storage, else into another enabled local storage. A
 //     shared storage is never written automatically: one only qualifies while
-//     a write into it is under way, and a SaveTo shared storage without the
-//     model refuses rather than letting every node download its own copy.
+//     a write into it is under way (with no SaveTo, any shared storage the node
+//     reads does), and a SaveTo shared storage without the model refuses rather
+//     than letting every node download its own copy.
 //
 // Within each step SaveTo comes first, then the default storage, then storage
 // id order.
@@ -131,6 +132,18 @@ func (facts nodeModelFacts) source(rules SourceRules) ModelSource {
 // acquireSource is step 3 of ModelSourceOn over locations already in
 // preference order.
 func acquireSource(locations []ModelLocation, saveTo uint) ModelSource {
+	// With no storage chosen, any shared storage the node reads qualifies
+	// while a write of the model into it is under way - a create that fetched
+	// a template component next to its primary started one - so the node
+	// waits for that one copy rather than downloading its own. A chosen
+	// storage, local included, keeps its say.
+	if saveTo == 0 {
+		for _, loc := range locations {
+			if proto.StorageShared(loc.Storage.Type) && loc.Reason == LocationModelMissingInStore && TransferUnderWay(loc.Shared) {
+				return ModelSource{Action: SourceWaitShared, Location: loc}
+			}
+		}
+	}
 	var refused *ModelSource
 	note := func(loc ModelLocation, reason string) {
 		if refused == nil {

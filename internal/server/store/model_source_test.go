@@ -285,3 +285,40 @@ func TestNodeNeedsOwnDirectory(t *testing.T) {
 		}
 	}
 }
+
+// A create that fetches a template component into the shared storage its
+// primary sits on starts one write there; with no storage chosen, the nodes
+// that read that storage wait for it instead of each downloading into local
+// storage, and a node it does not serve, a finished or failed write, or a
+// chosen storage leave the usual order in charge.
+func TestModelSourceWaitsForAWriteUnderWayInAnySharedStorage(t *testing.T) {
+	f := newSourceFixture(t)
+	f.mount(t, f.n1, f.team, proto.StorageStateReady)
+	if src := f.source(t, f.n1, SourceRules{}); src.Action != SourceAcquire || src.Location.Storage.ID != f.local.ID {
+		t.Fatalf("nothing under way = %+v, want the default local storage", src)
+	}
+	row := f.file(t, f.team, nil, "MiniMax/MiniMax-H3-text_encoder", proto.MFDownloading)
+	if src := f.source(t, f.n1, SourceRules{}); src.Action != SourceWaitShared || src.Location.Storage.ID != f.team.ID {
+		t.Fatalf("write under way = %+v, want to wait for lab-nfs", src)
+	}
+	if src := f.source(t, f.n2, SourceRules{}); src.Action != SourceAcquire || src.Location.Storage.ID != f.local.ID {
+		t.Fatalf("n2 outside lab-nfs = %+v, want its local storage", src)
+	}
+	if src := f.source(t, f.n1, SourceRules{SaveTo: f.local.ID}); src.Action != SourceAcquire || src.Location.Storage.ID != f.local.ID {
+		t.Fatalf("local chosen = %+v, want the chosen storage", src)
+	}
+	row.State, row.Message = proto.MFFailed, "403 from the hub"
+	if _, err := f.st.UpsertModelFile(row); err != nil {
+		t.Fatal(err)
+	}
+	if src := f.source(t, f.n1, SourceRules{}); src.Action != SourceAcquire || src.Location.Storage.ID != f.local.ID {
+		t.Fatalf("failed write = %+v, want the default local storage", src)
+	}
+	row.State, row.Message = proto.MFPresent, ""
+	if _, err := f.st.UpsertModelFile(row); err != nil {
+		t.Fatal(err)
+	}
+	if src := f.source(t, f.n1, SourceRules{}); src.Action != SourceReady || src.Location.Storage.ID != f.team.ID {
+		t.Fatalf("finished write = %+v, want it read from lab-nfs", src)
+	}
+}
