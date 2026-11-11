@@ -189,9 +189,12 @@ def test_batch_selection(page, context, server, artifacts, report, locale, fixtu
     rows = page.locator('[data-slot="table-body"] [data-row-key]')
     expect(rows.first).to_be_visible(timeout=25000)
     total_rows = report["seeded"]["total"]
-    total_text = page.get_by_text(
-        format_text(total_template, count=total_rows), exact=True)
-    expect(total_text).to_be_visible()
+
+    def total_text():
+        """The footer's total, which DataTablePagination rewrites as the count changes."""
+        return page.get_by_text(re.compile(r"^\d+ (items?|条)$")).first
+
+    expect(total_text()).to_have_text(format_text(total_template, count=total_rows))
     prefix, suffix = compare_template.split("{{count}}")
     compare = page.locator("button", has_text=re.compile(
         r"^" + re.escape(prefix) + r"\d+" + re.escape(suffix) + "$"))
@@ -216,7 +219,8 @@ def test_batch_selection(page, context, server, artifacts, report, locale, fixtu
     def checked_rows():
         return [int(key) for key in rows.evaluate_all(
             "els => els.filter(e => {const c=e.querySelector('[data-slot=\"checkbox\"]');"
-            "return c && c.getAttribute('data-state')==='checked';}).map(e => e.dataset.rowKey)")]
+            "if (!c) return false; const v=c.getAttribute('aria-checked');"
+            "return v==='true' || c.hasAttribute('data-checked');}).map(e => e.dataset.rowKey)")]
 
     def header():
         return page.locator('[data-slot="table-header"]').get_by_role("checkbox").first
@@ -226,25 +230,37 @@ def test_batch_selection(page, context, server, artifacts, report, locale, fixtu
         check("ids=" in query, f"the comparison URL carries no ids: {page.url}")
         return [int(value) for value in query.split("ids=")[1].split(",")]
 
+    # The list is a ResourceTable whose column filters are ui-kit/ColumnFilter.tsx: the
+    # trigger is a button named after the column ("Filter by <title>"), the options are
+    # checkboxes labelled with the values' own text, and a tick applies at once - there is
+    # no OK button and the popup stays open until the clear control or an outside click.
+    filter_titles = [ui["list"]["column"]["mode"], ui["list"]["column"]["status"]]
+
     def filter_menu(column):
-        page.locator('[data-slot="table-head"]').filter(
-            has=page.get_by_role("button", name="filter", exact=True)
-        ).nth(column).get_by_role("button", name="filter", exact=True).click()
-        menu = page.get_by_role("menu").filter(has=page.get_by_role("checkbox"))
+        title = filter_titles[column]
+        trigger = page.get_by_role(
+            "button",
+            name=common["resourceTable"]["filterByColumn"].replace("{{name}}", title),
+            exact=True)
+        expect(trigger).to_have_count(1)
+        trigger.click()
+        menu = page.locator('[data-slot="popover-content"]').first
         expect(menu).to_be_visible()
         return menu
 
     def set_filter(column, selected):
-        """Drive the column filter's own menu, OK button included."""
+        """Tick exactly the wanted values in the column's own filter popup."""
         menu = filter_menu(column)
         for label in status_label.values():
-            option = menu.get_by_role("menuitem").filter(
-                has_text=re.compile(r"^\s*" + re.escape(label) + r"\s*$"))
+            option = menu.get_by_role("checkbox", name=label, exact=True)
             expect(option).to_have_count(1)
-            option.get_by_role("checkbox").set_checked(label in selected)
-        button(page, "确定" if locale == "zh" else "OK").click()
-        expect(menu).not_to_be_visible()
-        page.wait_for_timeout(400)
+            want = label in selected
+            checked = option.get_attribute("aria-checked") == "true"
+            if want != checked:
+                option.click()
+            page.wait_for_timeout(150)
+        page.keyboard.press("Escape")
+        page.wait_for_timeout(600)
 
     page1 = row_keys()
     check(len(page1) == PAGE_SIZE, f"the first page holds {len(page1)} rows, not {PAGE_SIZE}")
@@ -392,7 +408,7 @@ def test_batch_selection(page, context, server, artifacts, report, locale, fixtu
     # selection that the filter hides is retained and still named by Compare.
     set_filter(1, [done_label])
     filtered_total = DONE_RUNS
-    expect(total_text).to_have_text(format_text(total_template, count=filtered_total))
+    expect(total_text()).to_have_text(format_text(total_template, count=filtered_total))
     filtered_page = row_keys()
     check(len(filtered_page) == PAGE_SIZE,
           f"the filtered page holds {len(filtered_page)} rows, not {PAGE_SIZE}")
@@ -418,7 +434,7 @@ def test_batch_selection(page, context, server, artifacts, report, locale, fixtu
         page.wait_for_timeout(150)
     check(compare_count() == 2, "the pre-filter selection is not two rows")
     set_filter(1, [failed_label])
-    expect(total_text).to_have_text(format_text(total_template, count=FAILED_RUNS))
+    expect(total_text()).to_have_text(format_text(total_template, count=FAILED_RUNS))
     narrowed = row_keys()
     check(len(narrowed) == FAILED_RUNS, f"the narrowed filter shows {len(narrowed)} rows")
     check(not set(narrowed) & set(filtered_page[:2]),
@@ -446,7 +462,7 @@ def test_batch_selection(page, context, server, artifacts, report, locale, fixtu
                                           "visible": narrowed, "url": page.url}
     page.go_back()
     page.wait_for_timeout(900)
-    expect(total_text).to_have_text(format_text(total_template, count=total_rows))
+    expect(total_text()).to_have_text(format_text(total_template, count=total_rows))
     check(compare_count() == 0, "coming back from the filtered comparison kept a selection")
 
     # 11.6 unactionable row: a selected run deleted behind the browser's back stays

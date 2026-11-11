@@ -199,7 +199,7 @@ def run_case(args, report, secrets):
             assert browser_run.value.json() == run, 'Page GET differs from independent API read'
             expect(page.get_by_role('heading', name=title, exact=True)).to_be_visible()
             expect(page.locator('canvas')).to_have_count(2)
-            page.locator(f'[data-slot="table-body"] [data-row-key="{selected_seq}"]').first.click()
+            page.locator(f'.ant-table-row[data-row-key="{selected_seq}"]').first.click()
             page.locator('.ant-segmented-item').filter(has_text='TTFT').click()
             report['selected_point'] = selected_seq
             # Instrument only the final PNG callback. Product DOM/CSS and all API
@@ -220,7 +220,7 @@ def run_case(args, report, secrets):
             root = page.locator('.benchmark-report-export')
             page.evaluate('window.scrollTo(0, 0)')
             page.mouse.move(0, 0)
-            for table in root.locator('[data-slot="table-container"]').all():
+            for table in root.locator('.ant-table-body, .ant-table-content').all():
                 assert table.evaluate('(el) => el.scrollWidth <= el.clientWidth + 1'), 'Export clips selected table columns'
             bounds = root.evaluate('''el => {
                 const r=el.getBoundingClientRect();
