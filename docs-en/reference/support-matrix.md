@@ -59,7 +59,7 @@ Hygon full-GPU workloads receive the host `/opt/hyhal` through a structured moun
 
 The selection variables `HIP_VISIBLE_DEVICES` and `HYGON_VISIBLE_DEVICES` use the numbering HIP sees inside the container. Docker and nerdctl pass only the selected cards' DRM nodes, and HIP numbers them 0..N-1 in the container, so these runtimes get container ordinals: host card 2 is `0` in a one-card container. udocker/runveil binds the host's whole `/dev` and `/sys`, HIP sees every card, and the host indexes are kept. Recreate workloads after upgrading the agent for the new numbering to apply.
 
-When the two cards cannot use P2P (for example, PCIe only, across root complexes), the custom all-reduce that Hygon vLLM enables by default fails at TP > 1 startup with `HIP error: invalid device pointer` and then exits with `'CustomAllreduce' object has no attribute '_ptr'`; container permissions are not the cause (`--privileged` fails too). Add `--disable-custom-all-reduce` to the deployment's extra arguments to use RCCL instead, and inference works. Tested on K100 at TP 2.
+On hosts whose cards cannot use P2P, Hygon vLLM's custom all-reduce may fail to start at TP > 1 (`HIP error: invalid device pointer`); add `--disable-custom-all-reduce` to the extra arguments.
 
 ## Hygon Z100 / K100_AI / BW dGPU
 

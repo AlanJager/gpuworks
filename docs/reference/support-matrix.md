@@ -58,7 +58,7 @@ PPU 使用 `ppu-smi` 查询并经设备节点校验的身份，按选卡顺序�
 
 选卡变量 `HIP_VISIBLE_DEVICES` 与 `HYGON_VISIBLE_DEVICES` 按容器内 HIP 看到的编号填写。Docker 与 nerdctl 只传入所选卡的 DRM 节点，HIP 在容器里把它们编为 0..N-1，因此填容器内序号：宿主第 2 张卡在单卡容器里是 `0`。udocker/runveil 绑定宿主整个 `/dev` 与 `/sys`，HIP 能看到全部卡，因此保留宿主序号。升级 Agent 后需重新创建工作负载才会使用新的编号。
 
-两张卡之间不能 P2P 时（例如只经 PCIe、跨 root complex），海光 vLLM 默认启用的 custom all-reduce 在 TP > 1 启动时报 `HIP error: invalid device pointer`，随后以 `'CustomAllreduce' object has no attribute '_ptr'` 退出；这与容器权限无关（`--privileged` 同样失败）。在部署的额外参数里加 `--disable-custom-all-reduce` 后改走 RCCL，可正常推理。K100 上已实测 TP 2。
+部分机器的卡之间不支持 P2P，海光 vLLM 的 custom all-reduce 在 TP > 1 时可能启动失败（`HIP error: invalid device pointer`），可在额外参数里加 `--disable-custom-all-reduce`。
 
 ## 海光 Z100 / K100_AI / BW dGPU
 
