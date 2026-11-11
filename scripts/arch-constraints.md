@@ -119,6 +119,20 @@ grep -rlE "['\"]antd(/[^'\"]*)?['\"]" ui/src --include='*.ts' --include='*.tsx' 
 文件数只能拦"新文件引入 antd"，拦不住已有文件里继续加 antd 用法；逐文件的棘轮由下面的
 `ui/antd-inventory.json` 负责。
 
+### ui_untested_shared_files（基线 0，2026-11-11）
+
+意图：每个页面都会复用的 UI 构件各有自己的单元测试，改它的人改得到对应测试，新加的构件不会没有测试就进来。范围：
+`ui/src/ui-kit/**`、`ui/src/app/**`、`ui/src/components/detail/**`、`ui/src/components/resourceTable/**`，
+以及 `ui/src/components/PageHeader.tsx`、`EmptyState.tsx`。`ui/tests/` 下某个测试直接 import 它，或经真实宿主驱动它（侧栏经 App、列筛选经 ResourceTable）并在注释写明其 `ui/src/...` 路径，才算有测试；
+只被页面测试顺带渲染不算。超出时脚本列出缺测试的文件。
+
+```sh
+# 见 check_architecture.sh 的 untested_shared_ui：对范围内每个 .ts/.tsx，
+grep -rqE "['\"](\.\./)+<去掉 ui/ 与扩展名的路径>(\.tsx?)?['\"]|ui/<同一路径>\.tsx?" ui/tests --include='*.ts' --include='*.tsx'
+```
+
+排除：无。不再使用的构件直接删掉，不为它补测试。
+
 ### antd 逐文件棘轮（`ui/antd-inventory.json`，硬检查，非预算行）
 
 `check_architecture.sh` 在预算循环后运行

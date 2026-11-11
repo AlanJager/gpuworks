@@ -101,6 +101,23 @@ go_imports() {
   go list -e -f '{{.ImportPath}}	{{join .Imports " "}}' ./... 2>/dev/null
 }
 
+# untested_shared_ui lists the shared UI building blocks no test covers by
+# name: ui-kit compositions, the console shell and the page structure every
+# page reuses (PageHeader, EmptyState, ResourceTable, DetailDrawer). A test
+# counts when it imports the file, or names its ui/src/... path because it
+# drives it through its real host (the sidebar through App, a column filter
+# through ResourceTable); a page test that happens to render it does not.
+untested_shared_ui() {
+  { find ui/src/ui-kit ui/src/app ui/src/components/detail ui/src/components/resourceTable \
+      -type f \( -name '*.ts' -o -name '*.tsx' \) 2>/dev/null
+    printf '%s\n' ui/src/components/PageHeader.tsx ui/src/components/EmptyState.tsx
+  } | sort | while IFS= read -r f; do
+    [ -f "$f" ] || continue
+    module=${f#ui/}; module=${module%.*}
+    grep -rqE "['\"](\.\./)+${module}(\.tsx?)?['\"]|ui/${module}\.tsx?" ui/tests --include='*.ts' --include='*.tsx' 2>/dev/null || echo "$f"
+  done
+}
+
 # --- measurements ----------------------------------------------------------
 measure() {
   key="$1"
@@ -142,6 +159,9 @@ measure() {
     grep -rlE "['\"]@ant-design/icons(/[^'\"]*)?['\"]" ui/src \
       --include='*.ts' --include='*.tsx' 2>/dev/null \
       | grep -v '\.test\.' | grep -v '^ui/src/components/ui/' | grep -c . || true
+    ;;
+  ui_untested_shared_files)
+    untested_shared_ui | grep -c . || true
     ;;
   ui_bundle_gzip_kb)
     # Needs a fresh UI build; measured by scripts/check_ui_bundle_size.sh.
@@ -338,6 +358,10 @@ while IFS= read -r line || [ -n "$line" ]; do
   max)
     if [ "$measured" -gt "$limit" ]; then
       echo "    FAIL: $key exceeds its budget ($measured > $limit)" >&2
+      if [ "$key" = "ui_untested_shared_files" ]; then
+        echo "      add a ui/tests/<name>.test.tsx that imports each of these, or names its path if it drives it through its host (docs/dev/ui.md, Verification):" >&2
+        untested_shared_ui | sed 's/^/        /' >&2
+      fi
       failures=$((failures + 1))
     elif [ "$measured" -lt "$limit" ]; then
       echo "    WARNING: $key is below its budget ($measured < $limit); budget can be tightened" >&2
