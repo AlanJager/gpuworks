@@ -426,7 +426,7 @@ Special cases:
 the curl / Python examples under "Usage" on the template page and the initial input in Playground use it instead of a generic example, preserving it exactly (including multiple lines and trailing newlines).
 It only affects examples and initial values and never rewrites actual requests. Keys must be the operation's primary text input, and values must be nonempty. Examples also include `request_defaults`.
 
-`max_reference_images` is valid only on `openai.image.edit` and declares how many reference images one edit accepts (1–16, default 1). Each reference image is one `image` part of the multipart request, in upload order; Playground uses it to allow selecting several images, show their order, and cap the count.
+`max_reference_images` is valid only on `openai.image.edit` and declares how many reference images one edit accepts (a positive count, default 1; the platform sets no upper bound, so state what the engine actually accepts). Each reference image is one `image` part of the multipart request, in upload order; Playground uses it to allow selecting several images, show their order, and cap the count.
 
 When a template creates a deployment, if the deployment's model does not yet have its own operations, the operations declared by the template (along with model-level
 `input_modalities`) are written to the model as its initial operations. The deployment page, Playground, and its proxy read only the operations

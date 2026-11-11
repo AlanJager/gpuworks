@@ -254,8 +254,8 @@ func NormalizeContract(contract Contract) (Contract, error) {
 			if operation.Type != OperationImageEdit {
 				return Contract{}, fmt.Errorf("API operation %s: max_reference_images is only valid for %s", operation.Type, OperationImageEdit)
 			}
-			if operation.MaxReferenceImages < 1 || operation.MaxReferenceImages > maxReferenceImagesCeiling {
-				return Contract{}, fmt.Errorf("API operation %s: max_reference_images must be between 1 and %d", operation.Type, maxReferenceImagesCeiling)
+			if operation.MaxReferenceImages < 1 {
+				return Contract{}, fmt.Errorf("API operation %s: max_reference_images must be a positive count", operation.Type)
 			}
 		}
 		if err := normalizeRequestDeclaration(operation, definition); err != nil {

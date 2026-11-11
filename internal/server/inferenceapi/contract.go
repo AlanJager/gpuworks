@@ -43,10 +43,6 @@ type Operation struct {
 	MaxReferenceImages int `yaml:"max_reference_images,omitempty" json:"max_reference_images,omitempty"`
 }
 
-// maxReferenceImagesCeiling bounds a declared reference image count: a request
-// carries every image in one multipart body.
-const maxReferenceImagesCeiling = 16
-
 // ReferenceImageLimit is how many reference images a request of this operation
 // may carry: the declared count for an image edit, one when it declares none,
 // and zero for every other operation.

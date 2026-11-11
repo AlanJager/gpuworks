@@ -20,9 +20,8 @@ func TestMaxReferenceImagesDeclaration(t *testing.T) {
 	}{
 		{"unset", edit(0), 1, ""},
 		{"nine", edit(9), 9, ""},
-		{"ceiling", edit(maxReferenceImagesCeiling), maxReferenceImagesCeiling, ""},
-		{"negative", edit(-1), 0, "between 1 and 16"},
-		{"above ceiling", edit(maxReferenceImagesCeiling + 1), 0, "between 1 and 16"},
+		{"many", edit(64), 64, ""},
+		{"negative", edit(-1), 0, "positive count"},
 		{"generation", Contract{Operations: []Operation{{Type: OperationImageGenerate, MaxReferenceImages: 2}}}, 0, "only valid for openai.image.edit"},
 		{"video", Contract{Operations: []Operation{{Type: OperationVideoGenerate, MaxReferenceImages: 2}}}, 0, "only valid for openai.image.edit"},
 	} {
