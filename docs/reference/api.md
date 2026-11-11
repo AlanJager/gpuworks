@@ -664,7 +664,7 @@ macOS 忽略 `no_systemd`。
 | GET | `/api/v1/scheduling/yield-policies` | 出让策略字典：四个策略按等级从高到低，每个带 `defaults` 与可能适用的参数 `applies`，加只在另一个参数取某些值时才适用的条件 `applies_when`，各数值参数的范围 `bounds`（`at_most` 为不得超过的另一个参数）、`sleep_levels`、`unfinished`，客户端据此编辑，不另存默认值；见[出让策略](#出让策略) | JWT |
 | PUT | `/api/v1/deployments/{id}/pd` | PD 部署调整各角色副本（`roles.<role>.units`）与 `fallback`；`mode`、角色的 `tp`/`pp`、`kv_load_failure` 不可变（`PD_IMMUTABLE`）；非 PD 部署 400 `PD_NOT_PD` | JWT |
 | POST | `/api/v1/deployments/{id}/restart` | 按当前配置重建部署，重置副本重试次数；请求体可选 `strategy`（默认 `rolling`，`all` 会中断服务）；见[重启策略](#重启策略) | JWT |
-| POST | `/api/v1/evaluate` | 显存估算、调度试算与获取预估（不创建部署）：响应的 `acquisition` 含 `present`（已持有模型、目标节点读得到的存储）、`targets`（节点取模型时可保存到的存储）、`providers`（模板的权重来源）、`image`，以及请求指定了节点时的 `nodes[]`（见「评估请求与获取预估」） | JWT |
+| POST | `/api/v1/evaluate` | 显存估算、调度试算与获取预估（不创建部署）：响应的 `acquisition` 含 `present`（已持有模型、目标节点读得到的存储）、`targets`（节点取模型时可保存到的存储）、`providers`（模板的权重来源）、`image`，请求指定了节点时的 `nodes[]`，以及目标节点已知时模板组件的 `components[]`（见「评估请求与获取预估」） | JWT |
 | GET | `/api/v1/instances` | 实例列表 | JWT |
 | GET | `/api/v1/instances/{uuid}` | 实例详情。服务端推导的字段：`replica`（该实例承担的副本 `{role,index}`，不承担时缺省）、`asleep`（因睡眠不接收请求：已下令睡眠或仍在睡）、`desired_sleep`（下令的级别）、`sleep_held`（该实例的休眠由运维或定时计划下达，请求不唤醒它；保持按实例记录，唤醒只解除被唤醒实例的保持）、`can_sleep_alone` / `can_wake_alone`（能否单独睡、单独醒）；多机副本的 follower 不上报自己的睡眠级别，`sleep_level` 给的是它所在代 leader 的级别；`dist_role` 对未记录角色的旧行按 headless 与 rank 推出。部署详情里的 `instances[]` 带同样的字段，PD 角色带 `may_be_empty` | JWT |
 | GET | `/api/v1/instances/{uuid}/events` | 实例事件时间线（最新优先、游标分页、读取时折叠） | JWT |
@@ -1410,6 +1410,16 @@ PD 请求（`placement.pd`）：单元可以不写 `node_uuid`，写了的单元
 | `image_cached`、`image_cache_reason`、`weights_present` | 镜像是否已缓存（未知时带原因）与模型是否已在节点上 |
 
 单机自动放置在调度器选出节点之前不逐节点预估，调度后由选中的节点自己获取。多机与 PD 的自动放置在评估里先按此刻挑中的节点处理，与这些节点是手动写出的一样。
+
+`acquisition.components[]` 对模板里主模型以外的每个组件（单独发布的文本编码器、投机解码草稿模型等）给出目标节点的获取预估，创建部署按同一份规划行事（[ADR 0062](../adr/0062-template-components-follow-the-primary-storage.md)）：
+
+| 字段 | 语义 |
+|---|---|
+| `name`、`role`、`model`、`size_bytes` | 组件名、角色、模型（仓库 ID）与模板声明的大小 |
+| `plan` | `ready` 目标节点都已有；`shared_download` 创建时由一个节点下载一份到共享存储 `storage`（`storage_id`），目标节点读这一份，`follows_primary` 为真表示请求没选「保存到」、这是主模型所在的共享存储；`node_download` 缺它的节点各自下载到自己的存储 |
+| `nodes`、`ready_nodes` | 目标节点数与已经读得到它的节点数 |
+
+创建部署真正发起组件写入时，时间线记 `DEPLOYMENT_COMPONENT_DOWNLOAD`，含 `component`、`model`、`bytes`、`storage`、`node`（写入节点）、`follows_primary`。
 
 硬件能力不满足时，装配返回 `ACCELERATOR_FEATURE_UNSUPPORTED`（`vendor`、`feature`）；AMD 最终放置未分配设备时返回 `ACCELERATOR_DEVICE_SELECTION_REQUIRED`。自动放置在选卡尚未完成时不触发后者。候选节点的硬件或运行时限制以结构化拒绝返回；混合厂商节点按模板匹配后的候选卡判断。
 

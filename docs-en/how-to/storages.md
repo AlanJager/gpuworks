@@ -94,10 +94,14 @@ The selected storage only determines where files are saved when acquisition is n
 - If the node already has the files on its own disk, either in local storage or in an existing NFS local cache, it uses them.
 - Otherwise, if the files are on NFS mounted by the node, it reads them directly.
 - Otherwise, if the files are in NFS with local cache storage, it first copies them to this node's cache.
-- Only when none of these are available does it acquire files, first by copying within the sync group, then by downloading if that fails. It saves them to the storage selected during deployment if that storage applies to this node; otherwise, it uses the default storage, then another enabled local storage.
+- Only when none of these are available does it acquire files, first by copying within the sync group, then by downloading if that fails. It saves them to the storage selected during deployment if that storage applies to this node; otherwise, it uses the default storage, then another enabled local storage. When the deployment selected no **Save to** and a shared storage the node can read is being written with this model by a write this deployment started, the node waits for that copy and reads it instead of fetching another; a write someone else started is not waited for.
 
 The platform does not automatically download into NFS. If you select an NFS storage under **Save to** during deployment but it does not contain the model (because a download failed or the model was deleted), the replica stops and explains why.
 It does not switch to downloading a separate copy on each node.
+
+The one exception is an inference template's components, such as a text encoder kept apart from the primary model: when the primary model is already on a shared storage and the deployment selects no **Save to**, creating the deployment downloads each component that some target node cannot read into that same shared storage, written by one node. The nodes wait for it and read it there instead of each downloading to its local disk. The deployment itself still records no **Save to**.
+
+This write is visible before and after deploying: **Component weights** in the deployment form lists how each template component is acquired (ready, written into which shared storage, or downloaded by each node), and a component going into a shared storage shows the storage name, the space it takes and how to avoid it. After the create, the deployment timeline records that the component started downloading into the shared storage, naming the writer node. To avoid the write, limit the storage in the node requirements; when the form shows **Save to**, you can also choose a local storage there. Deleting the deployment does not delete this copy; delete it from the storage's file list when needed.
 
 To restrict a deployment to reading from a specific storage, such as NFS only, add "Storage: name" to the deployment's node requirements. Nodes outside that storage's scope are excluded.
 Nodes within its scope whose mounts are currently unavailable remain candidates, with the reason shown in the placement details.

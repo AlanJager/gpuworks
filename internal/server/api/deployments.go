@@ -332,7 +332,8 @@ func (a *apiHandlers) createDeploymentOnce(w http.ResponseWriter, r *http.Reques
 		writeErr(w, http.StatusBadRequest, err)
 		return
 	}
-	weightStorage, err := a.resolveSaveToStorage(req.ModelSource, model, append([]*store.Node{node}, distNodes...))
+	targets := append([]*store.Node{node}, distNodes...)
+	weightStorage, err := a.resolveSaveToStorage(req.ModelSource, model, targets)
 	if err != nil {
 		writeErr(w, http.StatusConflict, err)
 		return
@@ -340,10 +341,34 @@ func (a *apiHandlers) createDeploymentOnce(w http.ResponseWriter, r *http.Reques
 	// What the request names is what the deployment keeps: 0 leaves where a
 	// node saves a model it must fetch to the default order.
 	saveTo := a.previewSaveToStorageID(req.ModelSource, model, node)
-	rules := store.SourceRules{Pinned: store.StoragePins(reqs), SaveTo: saveTo}
-	if err := a.admitDeploymentModel(r.Context(), model, rules, append([]*store.Node{node}, distNodes...)); err != nil {
-		writeErr(w, http.StatusConflict, err)
+	components, err := a.templateComponents(selection.Components)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
 		return
+	}
+	admitted := []*store.Model{model}
+	for _, component := range components {
+		if _, err := a.resolveSaveToStorage(req.ModelSource, component.model, targets); err != nil {
+			writeErr(w, http.StatusConflict, err)
+			return
+		}
+		admitted = append(admitted, component.model)
+	}
+	// A template component no target can read yet follows the primary into
+	// the shared storage it already sits on, rather than into every node's
+	// local storage; the evaluate forecast shows the same plans. The
+	// deployment still keeps only what the request named.
+	componentPlans, err := a.planComponents(req.ModelSource, model, components, weightStorage, store.StoragePins(reqs), targets)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	rules := store.SourceRules{Pinned: store.StoragePins(reqs), SaveTo: saveTo}
+	for _, admitted := range admitted {
+		if err := a.admitDeploymentModel(r.Context(), admitted, rules, targets); err != nil {
+			writeErr(w, http.StatusConflict, err)
+			return
+		}
 	}
 	imageResolution := a.rankImage(eng.Name(), selection, req.Image, node)
 	if strings.TrimSpace(imageResolution.Image) == "" {
@@ -435,7 +460,12 @@ func (a *apiHandlers) createDeploymentOnce(w http.ResponseWriter, r *http.Reques
 	}
 	// Start the download only after validation and persistence: a rejected
 	// create must not leave an unowned transfer running.
-	if status, err := a.startSharedModelDownload(model, weightStorage, append([]*store.Node{node}, distNodes...), created.ID); err != nil {
+	if status, err := a.startSharedModelDownload(model, weightStorage, targets, created.ID); err != nil {
+		_ = a.d.Store.DeleteDeployment(created.ID)
+		writeErr(w, status, err)
+		return
+	}
+	if status, err := a.startComponentDownloads(componentPlans, targets, created.ID); err != nil {
 		_ = a.d.Store.DeleteDeployment(created.ID)
 		writeErr(w, status, err)
 		return

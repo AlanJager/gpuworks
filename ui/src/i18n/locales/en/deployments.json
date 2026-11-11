@@ -402,6 +402,7 @@
       "DEPLOYMENT_ROLLING_RESTARTED": "Rolling restart requested for {{replicas}} replicas",
       "DEPLOYMENT_ROLLING_STALLED": "Rolling restart waits: replica {{replica}} gave up after {{attempts}} failed attempts; retry it to continue",
       "DEPLOYMENT_DGPU_QUOTA_CHANGED": "dGPU memory limit {{from}} → {{to}}: {{live}} instances took it at once, {{pending}} take it at restart",
+      "DEPLOYMENT_COMPONENT_DOWNLOAD": "Started downloading component {{component}} ({{model}}, {{bytes}}) into the shared storage \"{{storage}}\", written once by {{node}} and shared by the nodes",
       "DEPLOYMENT_EDITED": "Configuration edited ({{count}}: {{fields}}); applied: {{apply}}",
       "REPLICA_RESTARTED": "Restart requested for the replica of instance {{instance}}",
       "UNIT_RETRY_EXHAUSTED": "Gave up after {{attempts}} failed attempts ({{reason}})",
