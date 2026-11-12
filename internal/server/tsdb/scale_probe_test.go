@@ -130,6 +130,7 @@ func TestScaleProbe(t *testing.T) {
 	oneNode := map[string]string{"node": fmt.Sprintf("node-%04d", nodes/2)}
 	probe("one node, last 1h, step 60s", func() int { return query(oneNode, endMS-3_600_000, 60_000) })
 	probe(fmt.Sprintf("one node, last %dh, step 300s", hours), func() int { return query(oneNode, startMS, 300_000) })
+	probe(fmt.Sprintf("fleet, last %dh, step 60s", hours), func() int { return query(nil, startMS, 60_000) })
 	probe(fmt.Sprintf("fleet, last %dh, step 300s", hours), func() int { return query(nil, startMS, 300_000) })
 
 	// WriteBatch latency while fleet scans run back to back: the shape of a

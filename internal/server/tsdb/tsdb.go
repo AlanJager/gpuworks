@@ -313,6 +313,9 @@ func (s *sqliteStore) QueryRange(metric string, matchers map[string]string, star
 	if stepMS <= 0 {
 		return nil, fmt.Errorf("stepMS must be positive, got %d", stepMS)
 	}
+	if stepMS >= seekBucketsMinStepMS {
+		return s.queryRangeBySeek(metric, matchers, startMS, endMS, stepMS)
+	}
 	clause, extraArgs, rest := indexedMatcherClause("sr.", matchers)
 	query := fmt.Sprintf(queryRangeJoinSQL, clause)
 	args := append([]any{startMS, endMS, metric}, extraArgs...)
