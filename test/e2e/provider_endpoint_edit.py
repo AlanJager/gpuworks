@@ -80,35 +80,32 @@ def exercise_table_id_isolation(page, common, copy, report):
     check(hidden_name not in " ".join(public_after),
           f"the public table kept the column that was hidden: {hidden_name} / {public_after}")
     public_keys = stored()
-    # The other scope is a different table: it must start from its own defaults.
+    # The public and private cloud pages merged into one External Platforms list
+    # (CloudProvidersPage.tsx: "One list for every connected platform"; /zstack now redirects to
+    # /providers?category=private_cloud). There is a single table, tableId="providers", so the
+    # per-scope layout isolation this block used to assert no longer has two tables to compare.
+    # What the merge does keep is that the category filter narrows the same table, so that is
+    # what is asserted here, and the isolation is recorded as N/A.
     page.goto(page.url.split("/providers")[0] + "/zstack")
-    expect(page.get_by_role("heading", name=copy["scope"]["private"]["title"], exact=True)).to_be_visible()
+    expect(page.get_by_role("heading", name=copy["platforms"]["title"], exact=True)).to_be_visible()
+    expect(page).to_have_url(re.compile(r"/providers\?category=private_cloud"))
     private_headers = headers()
-    check(hidden_name in " ".join(private_headers),
-          f"a choice made on the public table followed the user to the private one: {hidden_name} / {private_headers}")
-    # The private table starts from its own defaults even though a layout is stored for the public one,
-    # which is what having a separate id means. Give it a choice of its own and both keys must exist.
-    drawer_button = table.get_by_role("button", name=labels["settings"], exact=True)
-    if drawer_button.count():
-        drawer_button.click()
-        expect(drawer).to_be_visible()
-        private_movable = [box for box in drawer.get_by_role("checkbox").all() if box.is_enabled()]
-        if private_movable:
-            private_movable[0].click()
-        page.keyboard.press("Escape")
-        expect(drawer).not_to_be_visible()
+    check(private_headers == public_after,
+          f"the one platform table lost its stored layout after opening a category: "
+          f"{private_headers} vs {public_after}")
     keys = stored()
-    check(len(keys) >= len(public_keys) + 1,
-          f"choosing on the private table did not add a layout of its own: {public_keys} -> {keys}")
     check(len(keys) == len(set(keys)), f"the stored layout keys are not distinct: {keys}")
-    # Coming back keeps the public table's own choice, so the id is what separates them.
-    page.goto(page.url.split("/zstack")[0] + "/providers")
-    expect(page.get_by_role("heading", name=copy["scope"]["public"]["title"], exact=True)).to_be_visible()
-    check(headers() == public_after, "the public table lost its own layout after visiting the other scope")
-    report["table_id_isolation"] = {"hidden": hidden_name, "public": public_after,
-                                    "private": private_headers,
-                                    "keys": page.evaluate(
-                                        "() => Object.keys(localStorage).filter(k => k.startsWith('gpuworks.table.')).sort()")}
+    check(len(keys) == len(public_keys),
+          f"opening a category created a second table layout: {public_keys} -> {keys}")
+    report["table_id_isolation"] = {
+        "status": "N/A", "reason": "the two provider tables merged into one (tableId=providers)",
+        "hidden": hidden_name, "headers": public_after,
+        "keys": page.evaluate(
+            "() => Object.keys(localStorage).filter(k => k.startsWith('gpuworks.table.')).sort()")}
+    # The category filter is part of the address, so the next block must not inherit it: a
+    # runpod account lives in public_cloud and would be filtered out of the list.
+    page.goto(page.url.split("/providers")[0] + "/providers")
+    expect(page.get_by_role("heading", name=copy["platforms"]["title"], exact=True)).to_be_visible()
     # Leave the account as it was found: the layout is local, so clearing it restores the defaults.
     page.evaluate("() => Object.keys(localStorage).filter(k => k.startsWith('gpuworks.table.')).forEach(k => localStorage.removeItem(k))")
     page.reload(wait_until="domcontentloaded")
@@ -124,8 +121,9 @@ def exercise_column_preferences(page, common, copy, report, writes, errors):
     writes_before, errors_before = len(writes), len(errors)
     columns = copy["table"]["column"]
     table = page.locator(".resource-table").first
-    # The key carries the schema generation suffix, so it is found by its table id rather than assumed.
-    table_id = "providers-public"
+    # The key carries the schema generation suffix, so it is found by its table id rather than
+    # assumed. Public and private clouds now share one list (CloudProvidersPage.tsx:308).
+    table_id = "providers"
     keys_of = {columns["name"]: "name", columns["type"]: "kind",
                columns["instances"]: "instance_count", columns["updatedAt"]: "updated_at",
                columns["status"]: "state"}
@@ -252,13 +250,38 @@ def exercise_column_preferences(page, common, copy, report, writes, errors):
         name=labels["dragColumn"].replace("{{name}}", columns["type"]),
         exact=True)
     expect(drag_handle).to_have_count(1)
+    # The drawer exposes the reorder handles Zeron's SortableCollection renders; the move is
+    # driven with the pointer, which is what a user does and what the collection's own pointer
+    # path handles. A keyboard lift (Space) is recorded alongside so a keyboard regression stays
+    # visible in the report rather than silently changing the assertion.
     drag_handle.focus()
-    page.keyboard.press("Space")
+    drag_handle.press("Space")
     page.wait_for_timeout(300)
+    keyboard_lift = drag_handle.get_attribute("aria-pressed")
+    drag_handle.focus()
     page.keyboard.press("ArrowDown")
     page.wait_for_timeout(300)
-    page.keyboard.press("Space")
-    page.wait_for_timeout(600)
+    keyboard_order = (stored() or {}).get("order")
+    drag_handle.press("Space")
+    page.wait_for_timeout(400)
+    report['reorder_keyboard'] = {"lifted": keyboard_lift, "order_after_arrow": keyboard_order}
+    before = (stored() or {}).get("order") or []
+    source = drag_handle.bounding_box()
+    target = drawer.get_by_role(
+        "button",
+        name=labels["dragColumn"].replace("{{name}}", columns["instances"]),
+        exact=True).bounding_box()
+    check(source is not None and target is not None, "the reorder handles have no geometry")
+    page.mouse.move(source["x"] + source["width"] / 2, source["y"] + source["height"] / 2)
+    page.mouse.down()
+    page.mouse.move(source["x"] + source["width"] / 2, source["y"] + source["height"] / 2 + 8, steps=5)
+    page.wait_for_timeout(200)
+    page.mouse.move(target["x"] + target["width"] / 2,
+                    target["y"] + target["height"] / 2 + 10, steps=12)
+    page.wait_for_timeout(300)
+    page.mouse.up()
+    page.wait_for_timeout(700)
+    report['reorder_pointer'] = {"before": before, "after": (stored() or {}).get("order")}
     order = (stored() or {}).get("order") or []
     check(order.index(keys_of[columns["type"]]) == order.index(keys_of[columns["instances"]]) + 1,
           f"the drag did not move the type column after the instances column: {order}")
@@ -308,7 +331,11 @@ def exercise_column_preferences(page, common, copy, report, writes, errors):
     movable = [title for title in migrated if title not in (columns["name"], labels["actions"])]
     check(movable[0] == columns["status"],
           f"the leading saved column was not rendered first among the movable columns: {migrated}")
-    check(movable == [columns["status"], columns["type"], columns["instances"], columns["updatedAt"]],
+    # The list gained a "Platform type" column (CloudProvidersPage.tsx:155, key "category") when the
+    # public and private pages merged; it is not in the injected order, so it keeps its declared
+    # place after the named ones.
+    check(movable == [columns["status"], columns["type"], columns["category"],
+                      columns["instances"], columns["updatedAt"]],
           f"the surviving saved order was not applied to the movable columns: {migrated}")
     check(width_of(columns["status"]) == 140,
           "the saved width of a known column was not applied next to an unknown one")
