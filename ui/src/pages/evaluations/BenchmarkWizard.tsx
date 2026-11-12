@@ -432,7 +432,7 @@ export default function BenchmarkWizard({ open, meta, deployments, nodes, onSear
 						const selected = knownDeployments.get(id) || deployments.find((item) => item.id === id);
 						if (selected && !hasOperation(selected.operations, "openai.chat")) throw new Error(t("wizard.chatRequired"));
 					} }]} extra={t("wizard.chatRequired")}><Select showSearch {...(onSearchDeployments ? { filterOption: false, onSearch: onSearchDeployments } : { optionFilterProp: "label" })} options={deploymentOptions} /></Form.Item> : <>
-						<Form.Item name="base_url" label={t("wizard.baseUrl")} rules={[{ required: true }]} extra={t("wizard.baseUrlHelp")}><Input placeholder={t("wizard.baseUrlPlaceholder")} /></Form.Item>
+						<Form.Item name="base_url" label={t("wizard.baseUrl")} rules={[{ required: true, whitespace: true }]} extra={t("wizard.baseUrlHelp")}><Input placeholder={t("wizard.baseUrlPlaceholder")} /></Form.Item>
 						<OutboundHostAccess access={access} />
 						<Form.Item name="api_key" label="API Key"><Input.Password /></Form.Item>
 					</>}

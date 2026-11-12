@@ -541,7 +541,9 @@
       "systemTag": "System",
       "eventsUnavailable": "Event history unavailable",
       "retry": "Retry",
-      "earlierEventsHidden": "Earlier events are not shown"
+      "earlierEventsHidden": "Earlier events are not shown",
+      "streamFailed": "Live logs stopped: the server refused the stream",
+      "streamRetrying": "Live logs reconnecting"
     },
     "noLogs": "The instance is not running; no log stream is available",
     "noMetrics": "The instance is not running; no inference metrics are available",

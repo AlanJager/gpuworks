@@ -114,7 +114,8 @@ def versioned_fixture():
                "point_eligibility": [["Point 1 (C=1)", "eligible under declared constraints"]],
                "recommendation": "best measured point in this run: concurrency 1; objective=output_tps; output throughput 2.000 tok/s; interactivity 100.000 tok/s/user (decode only); comparison warnings and declared constraints apply; no capacity upper bound",
                "recommendation_scope": "best measured point in this run; no capacity upper bound",
-               "repeats": "see point repeat; no uncertainty estimate"}
+               "repeats": "see point repeat; no uncertainty estimate",
+               "state": "done", "failure_diagnostic": None, "warmup_attempts": []}
     # All scalar wire values are literal; no production formatter/oracle supplies expectations.
     values = dict(zip(V1_COLUMNS, [
         "1", "", "1", "1", "3.000", "3", "2.000", "100.000", "5.000", "2.000", "1.000", "1.000", "10.000", "10.000", "11.000", "11.000", "", "", "0.00%", "100.00%",

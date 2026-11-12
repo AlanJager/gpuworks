@@ -77,12 +77,14 @@ def exercise_create_dialog(page, create, k, mutations, report):
 
 
 def exercise_key_field_inventory(dialog, k, mutations):
-    """Register the only create-dialog field before a name is typed.
+    """Register the create dialog's fields before a name is typed.
 
     Name is a required textbox. It opens empty, with no unit and no control
-    range. No other field is shown. Reading it sends no key write. The later
-    submit in this run is the request and the persisted record: POST body
-    name only, then a list row of name, prefix and created_at.
+    range. The other field is the key's scope: two radios defaulting to "all
+    model services", with the deployment picker appearing only after "some" is
+    chosen. Reading the form sends no key write. The later submit in this run is
+    the request and the persisted record: POST body of name and scope, then a
+    list row of name, prefix and created_at.
     """
     before = len(mutations)
     name_label = k["table"]["name"]
@@ -97,10 +99,16 @@ def exercise_key_field_inventory(dialog, k, mutations):
     expect(required).to_have_count(1)
     expect(required).to_have_text(name_label)
     expect(dialog.locator(".ant-input-suffix, .ant-input-number")).to_have_count(0)
-    expect(dialog.get_by_role("radio")).to_have_count(0)
+    # A key now carries a scope (apikeys/KeyScope.tsx:34-41): all model services or
+    # a chosen subset. The default is the "all" radio, and the deployment picker
+    # only exists once "some" is chosen, so the create form has exactly two radios
+    # and no combobox until then.
+    scope = dialog.get_by_role("radio")
+    expect(scope).to_have_count(2)
+    expect(dialog.get_by_role("radio", name=k["scope"]["all"], exact=True)).to_be_checked()
     expect(dialog.get_by_role("combobox")).to_have_count(0)
     expect(dialog.get_by_role("switch")).to_have_count(0)
-    expect(dialog.locator(".ant-form-item")).to_have_count(1)
+    expect(dialog.locator(".ant-form-item")).to_have_count(2)
     expect(dialog.locator(".ant-form-item-hidden")).to_have_count(0)
     check(len(mutations) == before, "reading the create field sent a key write")
     return {
@@ -247,7 +255,11 @@ def test_inference_key_lifecycle(page, context, server, artifacts, report, local
     with page.expect_response(lambda r: urlsplit(r.url).path == KEY_PATH and r.request.method == "POST") as created:
         field.press("Enter")
     response = created.value
-    check(response.status == 201 and response.request.post_data_json == {"name": name} and not urlsplit(response.url).query,
+    # The default scope is submitted with the name: every model service, with an
+    # empty explicit list (apikeys/KeyScope.tsx:26-32, ALL_DEPLOYMENTS).
+    check(response.status == 201
+          and response.request.post_data_json == {"name": name, "all_deployments": True, "deployment_ids": []}
+          and not urlsplit(response.url).query,
           "incorrect inference create method/path/query/body/status")
     payload = response.json()
     check(set(payload) == {"name", "key"} and payload["name"] == name, "incorrect inference create envelope")
@@ -277,7 +289,13 @@ def test_inference_key_lifecycle(page, context, server, artifacts, report, local
     check({item["name"] for item in items} == {name, guard_name},
           f"independent GET active set drift: {[row['name'] for row in everything]}")
     item = next(item for item in items if item["name"] == name)
-    check(set(item) == {"name", "prefix", "created_at"} and item["prefix"] == secret[:12], "list fields/prefix drift or secret leak")
+    # A key now reports the scope it was created with: all_deployments plus the
+    # resolved deployments list (apikeys/KeyScope.tsx). The secret must still not
+    # appear - the prefix is the only part of the credential in the record.
+    check(set(item) == {"name", "prefix", "created_at", "all_deployments", "deployments"}
+          and item["prefix"] == secret[:12]
+          and item["all_deployments"] is True and item["deployments"] == [],
+          "list fields/prefix/scope drift or secret leak")
     check(datetime.fromisoformat(item["created_at"].replace("Z", "+00:00")).timestamp() > 0, "invalid persisted created time")
     check(secret not in page.content() and secret not in json.dumps(everything), "persisted list or DOM reveals full secret")
     report["evidence"].append({"layer": "persistence", "method": "GET", "path": KEY_PATH, "status": 200,

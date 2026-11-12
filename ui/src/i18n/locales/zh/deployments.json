@@ -541,7 +541,9 @@
       "systemTag": "系统",
       "eventsUnavailable": "事件历史加载失败",
       "retry": "重试",
-      "earlierEventsHidden": "更早的事件未显示"
+      "earlierEventsHidden": "更早的事件未显示",
+      "streamFailed": "实时日志已中断：服务端拒绝了日志流",
+      "streamRetrying": "正在重新连接实时日志"
     },
     "noLogs": "实例未运行，无日志流",
     "noMetrics": "实例未运行，无推理指标",

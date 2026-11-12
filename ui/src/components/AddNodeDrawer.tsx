@@ -357,7 +357,7 @@ export default function AddNodeDrawer({
                 label={t("add.target")}
                 name="target"
                 help={t("add.targetHelp")}
-                rules={[{ required: true, message: t("add.targetRequired") }]}
+                rules={[{ required: true, whitespace: true, message: t("add.targetRequired") }]}
               >
                 <Input placeholder="root@192.0.2.10:22" />
               </Form.Item>

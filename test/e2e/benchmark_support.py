@@ -32,6 +32,8 @@ def confirm_popconfirm(page):
 
 
 def assert_point_table(page, ui, point):
+    # The points table is still antd's Table (pages/evaluations/PointResultsTable.tsx:50,
+    # which passes its own title prop), so it keeps the antd wrapper and classes.
     table = page.locator(".ant-table-wrapper").filter(
         has=page.get_by_text(ui["pointTable"]["title"], exact=True))
     expect(table).to_have_count(1)

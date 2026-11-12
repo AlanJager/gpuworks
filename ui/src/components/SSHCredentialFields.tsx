@@ -25,12 +25,12 @@ export default function SSHCredentialFields({
       </Form.Item>
       {authMode === "platform_key" && <PlatformKeyAuthorization />}
       {(authMode === "password" || authMode === "keyboard_interactive") && (
-        <Form.Item label={t("ssh.password")} name="password" extra={authMode === "keyboard_interactive" ? `${t("ssh.keyboardInteractiveHelp")} ${t("ssh.authorizesPlatformKey")}` : t("ssh.authorizesPlatformKey")} rules={[{ required: true, message: t("ssh.passwordRequired") }]}>
+        <Form.Item label={t("ssh.password")} name="password" extra={authMode === "keyboard_interactive" ? `${t("ssh.keyboardInteractiveHelp")} ${t("ssh.authorizesPlatformKey")}` : t("ssh.authorizesPlatformKey")} rules={[{ required: true, whitespace: true, message: t("ssh.passwordRequired") }]}>
           <Input.Password autoComplete="off" />
         </Form.Item>
       )}
       {authMode === "private_key" && (
-        <Form.Item label={t("ssh.privateKey")} name="private_key_pem" extra={t("ssh.authorizesPlatformKey")} rules={[{ required: true, message: t("ssh.privateKeyRequired") }]}>
+        <Form.Item label={t("ssh.privateKey")} name="private_key_pem" extra={t("ssh.authorizesPlatformKey")} rules={[{ required: true, whitespace: true, message: t("ssh.privateKeyRequired") }]}>
           <Input.TextArea rows={6} placeholder="-----BEGIN OPENSSH PRIVATE KEY-----" />
         </Form.Item>
       )}

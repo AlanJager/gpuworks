@@ -116,10 +116,10 @@ export function NodeSSHAccess({ node, onUpdated }: { node: Node; onUpdated: Upda
         )}
       >
         <Form form={form} layout="vertical">
-          <Form.Item label={t("ssh.host")} name="host" rules={[{ required: true, message: t("ssh.hostRequired") }]}><Input placeholder="gpu.example.com" /></Form.Item>
+          <Form.Item label={t("ssh.host")} name="host" rules={[{ required: true, whitespace: true, message: t("ssh.hostRequired") }]}><Input placeholder="gpu.example.com" /></Form.Item>
           <Space align="start" style={{ width: "100%" }}>
             <Form.Item label={t("ssh.port")} name="port" rules={[{ required: true }]}><InputNumber min={1} max={65535} /></Form.Item>
-            <Form.Item label={t("ssh.user")} name="user" rules={[{ required: true, message: t("ssh.userRequired") }]}><Input placeholder="root" /></Form.Item>
+            <Form.Item label={t("ssh.user")} name="user" rules={[{ required: true, whitespace: true, message: t("ssh.userRequired") }]}><Input placeholder="root" /></Form.Item>
           </Space>
           <SSHCredentialFields authMode={authMode} onAuthModeChange={setAuthMode} />
           <Form.Item name="probe" valuePropName="checked"><Checkbox>{t("ssh.probeAfterSave")}</Checkbox></Form.Item>
