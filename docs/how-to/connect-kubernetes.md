@@ -125,7 +125,7 @@ agent 用节点自己的 DNS（`dnsPolicy: Default`），与直接装在主机�
 | 场景 | 做法 |
 |---|---|
 | 维护节点 | 在 Kubernetes 里 `kubectl cordon`：gpuworks 在下一次状态上报（一分钟内）跟着停止往该节点放新副本，`uncordon` 后同样恢复；节点的调度状态显示为平台停止调度，原因为「Kubernetes 已停止向该节点调度」 |
-| 升级 agent | 与普通节点一样：节点页勾选后点「批量升级 Agent」，或在节点详情里点「升级 Agent」。agent 运行在节点状态目录里的 `agent/gpuworks-agent`，升级原地替换这份程序，不改 DaemonSet、不访问镜像仓库，实例 Pod 不受影响；升级后的程序在 Pod 重建后仍在。批量升级预览显示「需更新 agent 镜像」的节点还在运行旧版镜像自带的程序：在该节点上单独点一次「升级 Agent」，所属集群的 DaemonSet 换到当前的 agent 镜像（仓库不变，只换 tag），之后就能批量升级。`kubectl` 里看到的镜像 tag 是运行环境版本，不代表 agent 版本，以节点页为准 |
+| 升级 agent | 与普通节点一样：节点页勾选后点「批量升级 Agent」，或在节点详情里点「升级 Agent」。agent 运行在节点状态目录里的 `agent/gpuworks-agent`，升级原地替换这份程序，不改 DaemonSet、不访问镜像仓库，实例 Pod 不受影响；升级后的程序在 Pod 重建后仍在。运行环境版本（镜像 tag）很少变化；某个版本升了它时，发布说明会写明，重新 apply 一次 manifest（`kubectl apply` 或「应用到集群」）即可。`kubectl` 里看到的镜像 tag 是运行环境版本，不代表 agent 版本，以节点页为准 |
 | 节点被删除或缩容 | 节点离线 15 分钟后，gpuworks 请同集群另一台在线节点确认；Kubernetes 里已没有该节点且其上没有实例时自动移除 |
 | 从 gpuworks 删除节点 | 只删除记录，不卸载 agent；DaemonSet 仍选中该节点时它会重新加入，需要先调整节点选择器 |
 | 卸载 | `kubectl delete -f` 同一个 manifest 地址：DaemonSet、实例 Pod、占位 Pod 一起删除，卡还给 Kubernetes |

@@ -13,7 +13,6 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/auth"
-	"gpuworks.ai/gpuworks/internal/server/kubemanifest"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -211,7 +210,7 @@ func TestKubeClusterAccess(t *testing.T) {
 	}
 }
 
-func TestKubeNodeUpgradeMovesTheDaemonSetAndDeleteNeedsNoSSH(t *testing.T) {
+func TestKubeNodeDeleteNeedsNoSSH(t *testing.T) {
 	rig := newTokenRig(t)
 	c, err := rig.st.CreateKubeCluster(store.KubeCluster{Name: "c"})
 	if err != nil {
@@ -221,26 +220,7 @@ func TestKubeNodeUpgradeMovesTheDaemonSetAndDeleteNeedsNoSSH(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var gotMethod string
-	var gotParams any
-	signer, err := auth.NewTokenSigner("platform-token-test-secret", time.Hour)
-	if err != nil {
-		t.Fatal(err)
-	}
-	rig.h = Router(Deps{AuthSigner: signer, Store: rig.st, CallNode: func(_ context.Context, uuid, method string, params any) (json.RawMessage, error) {
-		gotMethod, gotParams = method, params
-		return json.RawMessage(`{"image":"gpuworks/gpuworks-agent:r1"}`), nil
-	}})
-	rec := rig.do(rig.session, http.MethodPost, "/api/v1/nodes/"+node.UUID+"/upgrade", "")
-	if rec.Code != http.StatusAccepted || !strings.Contains(rec.Body.String(), `"status":"rolling"`) || !strings.Contains(rec.Body.String(), "gpuworks-agent:") {
-		t.Fatalf("upgrade = %d %s", rec.Code, rec.Body)
-	}
-	// An agent on its image's own binary moves the DaemonSet to the current
-	// agent image, at its runtime revision.
-	if gotMethod != proto.RPCKubeUpgrade || gotParams.(proto.KubeUpgradeParams).Version != kubemanifest.AgentImageRevision {
-		t.Fatalf("RPC = %s %+v", gotMethod, gotParams)
-	}
-	rec = rig.do(rig.session, http.MethodDelete, "/api/v1/nodes/"+node.UUID, "")
+	rec := rig.do(rig.session, http.MethodDelete, "/api/v1/nodes/"+node.UUID, "")
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"status":"deleted"`) {
 		t.Fatalf("delete kube node = %d %s", rec.Code, rec.Body)
 	}

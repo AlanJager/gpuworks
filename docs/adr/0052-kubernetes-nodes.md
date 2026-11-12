@@ -45,7 +45,7 @@ server 里有 30 余处依赖“节点后面有一个 agent”，agent 承担探
    - 镜像的 tag 是运行环境的版本（`build/agent-image/REVISION`，如 `r1`），只有基础镜像或 nerdctl 变了才升；manifest 写的就是这个 tag，与 server 版本无关。
    - 容器启动时，镜像里的 agent 把自己拷到状态目录（hostPath，Pod 重建后还在）的 `agent/gpuworks-agent` 并 exec 它；同一镜像再启动时沿用目录里的那份，换了镜像就重新拷。新拷的那份在注册前先从 server 的 `/dl/` 取一次 server 自己的 agent，与普通节点安装时装 server 的版本一致。
    - 之后的升级就是普通节点的原地升级（推送或拉取二进制、exec、注册后确认、不确认就回滚到上一份），容器重启替代 systemd 当守护者；批量升级不再跳过这样的节点（agent 以能力 `upgrade.kube_binary` 声明）。
-   - 运行旧镜像自带程序的 agent 没有这个能力：单节点升级把所属集群 DaemonSet 的 tag 换成当前运行环境版本（仓库不变），之后就走原地升级。状态目录挂成 noexec 时继续运行镜像自带的程序，同样走换镜像的路。
+   - 运行环境版本变化时，manifest 渲染出新 tag，重新 apply 一次 DaemonSet 就换到新镜像；agent 不再有修改自己 DaemonSet 的权限（Role 对 DaemonSet 只有 get）。状态目录挂成 noexec 时 agent 继续运行镜像自带的程序、不声明这个能力，升级跳过它并说明原因。
    - 镜像发布到 Docker Hub、quay.io 与华为云 SWR；条目记录从哪个仓库拉（`agent_image_source`），从云账号接入时按地域预选（阿里云中国内地地域选 SWR），手动接入时由用户选，填了自己的镜像则以它为准。
 
 ## 取舍

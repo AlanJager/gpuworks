@@ -287,20 +287,6 @@ func (a *apiHandlers) updateNodeRuntime(w http.ResponseWriter, r *http.Request) 
 }
 
 func (a *apiHandlers) upgradeNode(w http.ResponseWriter, r *http.Request) {
-	if a.d.Store != nil && a.d.CallNode != nil {
-		// A Kubernetes node's agent that runs its image's own binary is
-		// upgraded by moving its cluster's DaemonSet to the current agent
-		// image; one that runs from the node's state directory is upgraded
-		// in place like any agent, below.
-		if node, err := a.d.Store.NodeByUUID(chi.URLParam(r, "uuid")); err == nil && node.KubeClusterID != 0 && !a.nodeHasCap(node.UUID, proto.CapKubeBinaryUpgrade) {
-			if a.d.Online != nil && !a.d.Online(node.UUID) {
-				writeProductError(w, http.StatusConflict, ErrorNodeOffline, "node is offline", nil)
-				return
-			}
-			a.upgradeKubeNode(w, r, node)
-			return
-		}
-	}
 	if a.d.AgentUpgrades.Service != nil {
 		run, err := a.d.AgentUpgrades.Service.UpgradeNode(r.Context(), chi.URLParam(r, "uuid"), a.agentUpgradeActor(r))
 		if err != nil {

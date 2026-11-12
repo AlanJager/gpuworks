@@ -348,20 +348,3 @@ func (a *apiHandlers) kubeEnroll(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, dto.KubeEnrollResponse{NodeUUID: node.UUID, NodeToken: node.Token, IdleReturnSeconds: cluster.IdleReturnSeconds})
 }
-
-// upgradeKubeNode moves a Kubernetes node's cluster to the current agent
-// image: the node's agent sets its DaemonSet's tag to the image's runtime
-// revision, in the repository the DaemonSet runs from, and Kubernetes
-// replaces every agent of the cluster in turn. The new agents run from their
-// nodes' state directories and take this server's binary, so later upgrades
-// are the ordinary in-place kind.
-func (a *apiHandlers) upgradeKubeNode(w http.ResponseWriter, r *http.Request, node *store.Node) {
-	raw, err := a.d.CallNode(r.Context(), node.UUID, proto.RPCKubeUpgrade, proto.KubeUpgradeParams{Version: kubemanifest.AgentImageRevision})
-	if err != nil {
-		writeErr(w, http.StatusConflict, err)
-		return
-	}
-	var result proto.KubeUpgradeResult
-	_ = json.Unmarshal(raw, &result)
-	writeJSON(w, http.StatusAccepted, map[string]any{"status": "rolling", "image": result.Image})
-}

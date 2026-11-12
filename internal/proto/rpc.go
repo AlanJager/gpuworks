@@ -46,25 +46,10 @@ const (
 	RPCBenchCancel      = "bench.cancel"
 	RPCPartitionReprobe = "partition.reprobe"
 	RPCAgentUpgrade     = "agent.upgrade"
-	// RPCKubeUpgrade upgrades the agents of a Kubernetes node's cluster by
-	// moving its DaemonSet to the image of KubeUpgradeParams.Version.
-	RPCKubeUpgrade = "kube.upgrade"
 	// RPCKubeNodeExists asks a Kubernetes node's agent whether another node
 	// of its cluster still exists there (KubeNodeExistsParams).
 	RPCKubeNodeExists = "kube.node.exists"
 )
-
-// KubeUpgradeParams is RPCKubeUpgrade's request: the tag the agent DaemonSet's
-// image moves to, in the repository it already runs from. The server sends
-// the agent image's runtime revision; a server before it sent its version.
-type KubeUpgradeParams struct {
-	Version string `json:"version"`
-}
-
-// KubeUpgradeResult says what the DaemonSet now runs.
-type KubeUpgradeResult struct {
-	Image string `json:"image"`
-}
 
 // KubeNodeExistsParams is RPCKubeNodeExists's request.
 type KubeNodeExistsParams struct {

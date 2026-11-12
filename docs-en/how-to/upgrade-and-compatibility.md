@@ -89,8 +89,8 @@ For older agents that download their binary, the batch package remains pinned du
 
 Nodes connected through a DaemonSet are upgraded in a batch like any other: the agent runs from `agent/gpuworks-agent` in the node's state directory (`/opt/gpuworks` by default), and an upgrade replaces that program in place, without changing the DaemonSet or reaching a registry, so private registries and offline clusters are covered too.
 
-- A node the preview marks "Agent image update needed" still runs the program built into an older agent image (the batch upgrade skips it). Click **Upgrade Agent** once in the details of one of those nodes: the image of its cluster's DaemonSet moves to the tag of the current runtime version (in the same repository), Kubernetes replaces the cluster's agents in turn, and instance Pods are unaffected; from then on these nodes upgrade in a batch.
-- When the cluster uses a private registry or an image imported offline, push the image of the new tag to the registry or import it on each node before that step, or the nodes cannot pull it. The runtime version rarely changes; ordinary upgrades do not need this step.
+- A node the preview marks "State directory not executable" could not start from its state directory (for example, it is mounted noexec) and runs the program built into the image; the batch upgrade skips it. Check the state directory on the node, then delete the node's agent Pod to restart it.
+- The image tag is the runtime version and rarely changes. When a release raises it, its release notes say so: after upgrading the server, apply the manifest once more (`kubectl apply` or "Apply to the cluster") and the DaemonSet moves to the new tag; when the cluster uses a private registry or an image imported offline, push the new tag to the registry or import it on each node first.
 - A node that joins the cluster later first runs the image's own program and switches to the server's current agent before it registers; it needs no upgrade.
 
 See [Connect a Kubernetes Cluster](connect-kubernetes.md).

@@ -190,7 +190,7 @@ Kubernetes 集群的 agent DaemonSet 跑的镜像（`build/agent-image/Dockerfil
 `docker.io/gpuworks/gpuworks-agent`、`quay.io/gpuworks/gpuworks-agent`、`swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-agent`。
 tag 是运行环境版本（`build/agent-image/REVISION`，如 `r1`），也就是集群条目不填 agent 镜像时 manifest 写的那个，另加 `r1-<server 版本>` 区分各次构建。
 镜像只是 agent 的运行环境：里面的 agent 只用来在节点上播种，节点随后换成 server 自己的 agent 并原地升级，所以每次 nightly 覆盖 `r1` 不影响已接入的集群。
-只在基础镜像或 nerdctl 变化时升运行环境版本（改 `REVISION` 与 `kubemanifest.AgentImageRevision`，测试保证两者一致）。
+只在基础镜像或 nerdctl 变化时升运行环境版本（改 `REVISION` 与 `kubemanifest.AgentImageRevision`，测试保证两者一致），并在发布说明里提醒 Kubernetes 集群升级 server 后重新 apply 一次 manifest。
 
 - 镜像里的 agent 用与内嵌 agent 相同的 `LDFLAGS` 构建；nerdctl 取自上游发布并按脚本里固定的 sha256 校验，缓存在 runner 主机上。
   runner 访问 GitHub 超时，CI 的 `NERDCTL_URL_BASE` 依次列出两个 GitHub 加速地址和 GitHub 本身，sha256 决定用不用。

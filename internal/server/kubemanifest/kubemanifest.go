@@ -295,7 +295,7 @@ rules:
   - apiGroups: ["apps"]
     resources: ["daemonsets"]
     resourceNames: ["{{.Agent}}"]
-    verbs: ["get", "patch"]
+    verbs: ["get"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding

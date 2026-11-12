@@ -78,16 +78,3 @@ func TestInClusterNeedsTheEnvironment(t *testing.T) {
 		t.Fatal("InCluster outside a pod succeeded")
 	}
 }
-
-func TestStrategicMergePatchContentType(t *testing.T) {
-	var ct string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ct = r.Header.Get("Content-Type")
-		_, _ = io.WriteString(w, `{}`)
-	}))
-	defer srv.Close()
-	c := New(srv.URL, func() (string, error) { return "t", nil }, srv.Client())
-	if err := c.StrategicMergePatch(context.Background(), DaemonSetPath("n", "d"), map[string]any{}, nil); err != nil || ct != "application/strategic-merge-patch+json" {
-		t.Fatalf("content type = %q, %v", ct, err)
-	}
-}
