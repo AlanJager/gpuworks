@@ -294,4 +294,4 @@ if __name__ == "__main__":
         "test/e2e/metadata_table_checks.py", "test/e2e/metadata_table_fixture.py",
         "test/e2e/image_catalog.py", "ui/src/pages/ImagesPage.tsx", "ui/src/pages/images/ImageSeriesTable.tsx",
         "ui/src/pages/images/ImagesPageOverview.tsx", "ui/src/components/resourceTable/ResourceTable.tsx",
-        "ui/src/components/resourceTable/columnPrefs.ts", "ui/src/components/resourceTable/ResizableHeaderCell.tsx"]))
+        "ui/src/components/resourceTable/columnPrefs.ts", "ui/src/components/resourceTable/ColumnSettingsDrawer.tsx"]))
