@@ -1,4 +1,5 @@
 stages:
+  - change-record
   - core-prepare
   - core
   - release
@@ -67,10 +68,28 @@ variables:
     - job: core-ui
       artifacts: true
 
+change-record:
+  environment:
+    name: change-record
+    action: prepare
+  extends: .go-core
+  stage: change-record
+  timeout: 10m
+  # The gate compiles only its own package; it must not wait for embedded UI.
+  needs: []
+  script:
+    - ./scripts/check_ci_yaml.sh
+    - python3 -B -m unittest discover -s scripts -p test_check_ci_yaml.py
+    - CGO_ENABLED=0 go test -timeout 2m ./scripts/changerecord
+    - CGO_ENABLED=0 go run ./scripts/changerecord
+
 core-ui:
   # Keep the UI artifact in a short preparation stage so Go checks that compile
   # the embedded web UI can fan out in core.
   stage: core-prepare
+  needs:
+    - job: change-record
+      artifacts: false
   image:
     name: node:22-bookworm@sha256:0557ac14e0d45d02ed563067b82856ca5e7aa3437fa28d98d4350ea9c3d9494a
   variables:
@@ -127,6 +146,9 @@ docs-build:
   # jobs. A successful job produces the exact static tree consumed by the
   # existing gpuworks-site refresh timer.
   stage: core-prepare
+  needs:
+    - job: change-record
+      artifacts: false
   image:
     name: golang:1.26.11@sha256:7af425da11f4fc1a9308eb704369e3f6d1c44e35bac0f874a59ade3f20fdc07e
   variables:
@@ -226,7 +248,9 @@ core-ui-test:
     # This job deliberately starts independently of core-ui, so only consume a
     # cache produced by an earlier pipeline and never race to publish it.
     policy: pull
-  needs: []
+  needs:
+    - job: change-record
+      artifacts: false
   script:
     # The macOS serve adapters' tests need only the image's python3. They are
     # not part of the UI suite, so only the first shard runs them.
