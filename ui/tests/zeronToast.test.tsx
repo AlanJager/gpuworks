@@ -96,24 +96,26 @@ test("update rewrites a toast in place, an id is reused instead of stacking, and
 });
 
 test("toasts expire after their duration, the toaster default applies, and loading waits until dismissed", async () => {
-  // Toaster default 700ms (built-in 4200ms), own lifetime 30ms: bounded waits tell them apart.
-  render(<Toaster duration={700} />);
+  // Toaster default 2000ms (built-in 4200ms), own lifetime 30ms. The margins leave
+  // a loaded CI runner room: the default toast is checked long before 2000ms, and
+  // its removal is awaited for less time than the built-in default would take.
+  render(<Toaster duration={2000} />);
   act(() => {
     toast.success("Default lifetime");
     toast.info("Own lifetime", { duration: 30 });
     toast.loading("Still working");
   });
   await screen.findByText("Still working");
-  await gone("Own lifetime", 500);
+  await gone("Own lifetime", 1500);
   assert.ok(screen.getByText("Default lifetime"), "the toaster default outlives a shorter own duration");
-  await gone("Default lifetime", 2000);
+  await gone("Default lifetime", 3500);
   assert.ok(screen.getByText("Still working"), "loading has no lifetime");
   // Turning a timed toast into a persistent one (duration 0) cancels its timer.
-  act(() => { toast.info("Refreshing", { id: "refresh", duration: 300 }); });
+  act(() => { toast.info("Refreshing", { id: "refresh", duration: 1000 }); });
   await screen.findByText("Refreshing");
   act(() => { toast.update("refresh", { duration: 0 }); });
-  await new Promise((resolve) => setTimeout(resolve, 900));
-  assert.ok(screen.getByText("Refreshing"), "a toast updated to duration 0 outlives its former 300ms lifetime");
+  await new Promise((resolve) => setTimeout(resolve, 1600));
+  assert.ok(screen.getByText("Refreshing"), "a toast updated to duration 0 outlives its former 1000ms lifetime");
 });
 
 test("a static stack shows the latest toasts up to maxVisible and reports dismissals", () => {
