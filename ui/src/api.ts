@@ -3452,6 +3452,7 @@ export interface PreflightSummary {
 }
 
 export interface EvaluateResponse {
+  gpu_candidates?: GPUCandidates;
   schema_version?: number;
   diagnostics?: DiagnosticReport;
   request_id?: string;
@@ -3551,6 +3552,11 @@ export interface EvaluateResponse {
   // Whether the draft may be created with a yield policy other than never,
   // the create's own check; absent until the draft's engine is known.
   yield_policy_eligible?: Eligibility;
+}
+
+export interface GPUCandidates {
+  node_uuid: string;
+  items: { index: number; available: boolean; reason?: ScheduleReason }[];
 }
 
 // PdRoleName is the fixed pair every PD mode declares today (ADR 0028); the

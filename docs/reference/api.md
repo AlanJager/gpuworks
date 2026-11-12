@@ -1484,6 +1484,7 @@ extra_args 解析（`EXTRA_ARGS_INVALID`）、挂载（`MOUNT_CONTAINER_PATH`/`M
 | `form_values` | 表单应显示的完整值：生效配置（含字典默认与模板投影）及已将可识别参数转入结构化字段后的 `extra_args` 文本 |
 | `defaults` | 表单默认值：`model_mount`（`/model`）、`master_port`（29500）、`engine`（默认引擎） |
 | `eligible_nodes` | 每个节点按本草稿的节点条件（含厂商；手动选的那台节点本身不算条件，下拉正是用来选它的）/模板 GPU 谓词/在线状态判定，`eligible=false` 时 `reasons[]` 给原因（`node_offline`、`node_requirements_unmet`、`vendor_mismatch`、`chip_mismatch`；节点条件本身无效时每个节点都是 `node_requirements_invalid`，不会全部显示为合格）；节点下拉只渲染此列表 |
+| `gpu_candidates` | 仅手动单机评估返回 `{node_uuid, items}`；每张卡包含 `index`、`available`，不可用时含结构化 `reason`。表示当前资源可用性，不表示单卡能承载模型，也不禁止选择资源不可用的卡；UI 仍按节点卡片的 `schedulable` 控制新增选择。字段缺失表示未评估，模型/多卡/拓扑可行性继续由 `plan` 判断。 |
 | `weight_sources` | 模板 spec 声明的权重来源（`provider`/`repo_id`/`revision`/`subfolder`）+ `suggested`（服务端建议）与 `registered`（本集群已有登记行，按 repo id 身份判定）；选定后仍由客户端调注册 API |
 | `preflight` | 仅 `nnodes>1`：请求级预检结论（节点数/重复/端口范围/在线/可路由地址）。深度网络探测仍在独立预检 RPC（CLI 保留），前端不再编排 |
 | `eviction` | 当前显存不足但可通过休眠醒着的部署腾出空间时返回候选；每项含 `instance_uuid`、`deployment_id`、`deployment`、`gpu_indexes` 和 `frees_gib` |

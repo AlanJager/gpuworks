@@ -43,6 +43,10 @@ type EvictionSuggestion struct {
 // EvaluateResponse is the deploy-form feedback (argv preview + VRAM breakdown +
 // schedule plan).
 type EvaluateResponse struct {
+	// GPUCandidates describes every card's resource availability for a manual
+	// single-node draft. Unavailability is informational, not a selection ban.
+	GPUCandidates *GPUCandidates `json:"gpu_candidates,omitempty"`
+
 	// SchemaVersion versions the evaluate response contract. Clients that
 	// render fixtures assert it, so a response shape they depend on cannot
 	// drift from what the server publishes without failing a test.
@@ -139,6 +143,17 @@ type EvaluateResponse struct {
 	// policy other than never (planning.DraftYieldPolicyRefusal), the check
 	// the create makes; absent until the draft's engine is known.
 	YieldPolicyEligible *Eligibility `json:"yield_policy_eligible,omitempty"`
+}
+
+type GPUCandidates struct {
+	NodeUUID string         `json:"node_uuid"`
+	Items    []GPUCandidate `json:"items"`
+}
+
+type GPUCandidate struct {
+	Index     int             `json:"index"`
+	Available bool            `json:"available"`
+	Reason    *ScheduleReason `json:"reason,omitempty"`
 }
 
 // EvaluatePD is the preview of a PD draft (ADR 0028).

@@ -20,6 +20,10 @@ import (
 // memory-limited instance claims limit+engine-reserve), so the ledger supports
 // both whole-GPU placement and GPU sharing.
 type GPU struct {
+	// WholeGPUAllocated distinguishes an exclusive claim from shared claims
+	// that happen to fill the card; it only explains resource refusals.
+	WholeGPUAllocated bool
+
 	Index          int
 	MemoryTotal    int64
 	AllocatedBytes int64

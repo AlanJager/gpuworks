@@ -117,6 +117,8 @@ type ScheduleResult = scheduler.Result
 type ScheduleReason = scheduler.Reason
 
 type Output struct {
+	GPUCandidates []scheduler.GPUCandidate
+
 	Result    scheduler.Result
 	Breakdown estimate.Breakdown
 	Config    *modelconfig.Config
@@ -216,6 +218,7 @@ func (in Input) Evaluate(st *store.Store) Output {
 		// refuse; so is a disk that is full now.
 		for i := range snap.GPUs {
 			snap.GPUs[i].AllocatedBytes, snap.GPUs[i].SleepingBytes, snap.GPUs[i].Schedulable = 0, 0, true
+			snap.GPUs[i].WholeGPUAllocated = false
 		}
 		diskNeedBytes, runtimeImageBytes = 0, 0
 		// A storage that is not ready here, or a cache full of models in use,
@@ -225,6 +228,13 @@ func (in Input) Evaluate(st *store.Store) Output {
 		}
 	} else if storageAdmit.AvailBytes > 0 {
 		snap.DiskAvailBytes = storageAdmit.AvailBytes
+	}
+	allGPUs := snap.GPUs
+	// Inventory-only cards also need feedback, but never enter the scheduler's pool.
+	for _, gpu := range in.Node.GPUs {
+		if !accelerator.CardUsable(gpu.Ownership) {
+			allGPUs = append(allGPUs, scheduler.GPU{Index: gpu.Index})
+		}
 	}
 	if NeedsTargetPreflight(in.Node) {
 		if refusal := constrainTargetGPUs(in, &snap); refusal != nil {
@@ -287,6 +297,7 @@ func (in Input) Evaluate(st *store.Store) Output {
 			return scheduler.CandidateEvaluation{GPUMemoryBytesPerDevice: resolved.GPUMemoryMiBPerDevice << 20, Preference: resolved.Prefer}
 		}
 	}
+	out.GPUCandidates = scheduler.GPUCandidates(req, allGPUs)
 	out.Result = scheduler.Schedule(req, snap)
 	explainDiskRefusal(st, in, req, snap, &out.Result)
 	if candidateError != nil && !out.Result.OK {

@@ -355,6 +355,8 @@ func nodeSnapshot(st *store.Store, node *store.Node, dtypeOK bool, dtypeReason s
 			}
 		}
 		gpus = append(gpus, scheduler.GPU{
+			WholeGPUAllocated: a.WholeGPUAllocated,
+
 			Index: g.Index, MemoryTotal: g.MemoryTotal, AllocatedBytes: a.AllocatedBytes, SleepingBytes: a.SleepingBytes,
 			NUMANode: g.NUMANode, Schedulable: g.CanTakeWork(), HeldOutsidePlatform: g.HeldOutsidePlatform(),
 			Degraded:          accelerator.HealthDegraded(g.HealthStatus),
@@ -424,6 +426,8 @@ func runtimeDiskAvailable(node *store.Node) int64 {
 // AllocatedBytes is what awake instances claim; SleepingBytes is the residue
 // sleeping instances keep. Both kinds are listed in Instances.
 type GPUAllocation struct {
+	WholeGPUAllocated bool
+
 	AllocatedBytes int64
 	SleepingBytes  int64
 	Instances      []store.Instance
@@ -479,6 +483,7 @@ func allocateInstances(st *store.Store, node *store.Node, instances []store.Inst
 				allocation.AllocatedBytes += claim
 			default:
 				allocation.AllocatedBytes = capacity[gpuIndex]
+				allocation.WholeGPUAllocated = true
 			}
 			if allocation.AllocatedBytes > capacity[gpuIndex] {
 				allocation.AllocatedBytes = capacity[gpuIndex]

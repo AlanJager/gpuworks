@@ -681,6 +681,17 @@
       "switchHelp": "切换后会整体应用该档位的参数与拓扑"
     },
     "gpu": {
+      "notEvaluated": "资源状态未评估",
+      "resourcesUnavailable": "资源不可用：{{reason}}",
+      "resourceReason": {
+        "gpu_not_schedulable": "此 GPU 当前不可调度，请查看设备状态",
+        "gpu_index_unavailable": "此 GPU 尚无有效设备编号",
+        "gpus_held_outside_platform": "此 GPU 被平台外进程占用",
+        "no_free_gpu": "此 GPU 当前没有空闲资源",
+        "gpu_whole_allocated": "该 GPU 已被推理服务整卡占用",
+        "partition_unavailable": "此 GPU 不支持当前 dGPU 后端",
+        "no_fit": "可用显存 {{available_gib}} GiB，不足所需 {{required_gib}} GiB"
+      },
       "notReported": "节点尚未上报 GPU 明细",
       "selectionAria": "GPU 选择",
       "unavailableHealth": "GPU 不可分配：{{health}}",

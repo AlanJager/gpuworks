@@ -681,6 +681,17 @@
       "switchHelp": "Switching applies the profile's parameters and topology together"
     },
     "gpu": {
+      "notEvaluated": "Resource availability has not been evaluated",
+      "resourcesUnavailable": "Resources unavailable: {{reason}}",
+      "resourceReason": {
+        "gpu_not_schedulable": "This GPU is not schedulable; check its device state",
+        "gpu_index_unavailable": "This GPU has no usable device index",
+        "gpus_held_outside_platform": "This GPU is held by a process outside the platform",
+        "no_free_gpu": "This GPU has no free resources",
+        "gpu_whole_allocated": "This GPU is fully allocated to an inference service",
+        "partition_unavailable": "This GPU does not support the requested dGPU backend",
+        "no_fit": "Available memory {{available_gib}} GiB is below the required {{required_gib}} GiB"
+      },
       "notReported": "The node has not reported GPU details",
       "selectionAria": "GPU selection",
       "unavailableHealth": "GPU is unavailable for allocation: {{health}}",
