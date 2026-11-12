@@ -11,6 +11,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sort"
@@ -68,7 +69,14 @@ type Store interface {
 
 // sqliteStore is the SQLite-backed Store implementation.
 type sqliteStore struct {
-	db *sql.DB
+	// db is the single writer connection (SQLite allows one writer). reader is
+	// a separate query_only pool on the same WAL file for QueryRange and
+	// QueryLatest: a 30-day range scan streams and decodes rows for as long as
+	// it takes, and sharing db's one connection made every WriteBatch wait for
+	// it. For an in-memory database reader is db, since a second pool would
+	// open a different, empty database.
+	db     *sql.DB
+	reader *sql.DB
 	// retainBatchHook, when set, is called with the rows-affected count after
 	// each Retain delete pass. Test-only observability (same-package tests set
 	// it directly); nil in production.
@@ -76,8 +84,9 @@ type sqliteStore struct {
 }
 
 // OpenSQLite opens (creating if needed) a metrics database at path and returns
-// a ready Store. WAL and a busy timeout are enabled; the connection pool is
-// capped at one since SQLite has a single writer.
+// a ready Store. WAL and a busy timeout are enabled; writes go through one
+// connection since SQLite has a single writer, and queries use a small
+// read-only pool that WAL lets run alongside an in-flight write.
 func OpenSQLite(path string) (result Store, err error) {
 	defer func() { err = sqliteutil.WrapOpenError(path, err) }()
 	dsn := path + "?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=synchronous(NORMAL)"
@@ -86,11 +95,29 @@ func OpenSQLite(path string) (result Store, err error) {
 		return nil, fmt.Errorf("open sqlite: %w", err)
 	}
 	db.SetMaxOpenConns(1)
-	s := &sqliteStore{db: db}
+	s := &sqliteStore{db: db, reader: db}
 	if err := s.migrate(); err != nil {
 		_ = db.Close()
 		return nil, err
 	}
+	if path == "" || path == ":memory:" {
+		return s, nil
+	}
+	// Opened after migrate so the file and its WAL sidecars already exist.
+	// query_only makes a write routed here fail instead of becoming a second
+	// writer.
+	reader, err := sql.Open("sqlite", path+"?_pragma=query_only(1)&_pragma=busy_timeout(5000)")
+	if err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("open sqlite (read pool): %w", err)
+	}
+	reader.SetMaxOpenConns(4)
+	if err := reader.Ping(); err != nil {
+		_ = reader.Close()
+		_ = db.Close()
+		return nil, fmt.Errorf("open sqlite (read pool): %w", err)
+	}
+	s.reader = reader
 	return s, nil
 }
 
@@ -233,7 +260,7 @@ func (s *sqliteStore) QueryRange(metric string, matchers map[string]string, star
 	clause, extraArgs, rest := indexedMatcherClause("sr.", matchers)
 	query := fmt.Sprintf(queryRangeJoinSQL, clause)
 	args := append([]any{startMS, endMS, metric}, extraArgs...)
-	rows, err := s.db.Query(query, args...)
+	rows, err := s.reader.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -332,7 +359,7 @@ func (s *sqliteStore) QueryLatest(metric string, matchers map[string]string, sin
 	clause, extraArgs, rest := indexedMatcherClause("sr.", matchers)
 	query := queryLatestBaseSQL + clause + queryLatestOrderSQL
 	args := append([]any{sinceMS, endMS, metric}, extraArgs...)
-	rows, err := s.db.Query(query, args...)
+	rows, err := s.reader.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -417,9 +444,9 @@ func indexedMatcherClause(prefix string, matchers map[string]string) (clause str
 const retainDropOrphanSeriesSQL = `DELETE FROM series WHERE NOT EXISTS (SELECT 1 FROM samples WHERE samples.series_id = series.id)`
 
 // retainBatchSize bounds each Retain delete pass so a large prune never holds
-// the pool's single connection long enough to starve a concurrent writer or
-// reader; retainBatchYield is the pause between passes that gives one a fair
-// chance at the connection before the next batch starts. retainMaxBatches
+// the single writer connection long enough to starve a concurrent WriteBatch;
+// retainBatchYield is the pause between passes that gives it a fair chance at
+// the connection before the next batch starts. retainMaxBatches
 // bounds the whole call: a truly pathological backlog (a server down for a
 // long stretch, or the first prune after lowering the configured retention -
 // see docs/reference/configuration.md's upgrade note) could otherwise turn
@@ -437,10 +464,10 @@ var (
 // Retain deletes samples older than the cutoff (unix ms) in bounded batches,
 // then drops any series left with no samples at all. Each batch is its own
 // implicit transaction (there is no explicit Begin/Commit spanning batches),
-// so between passes the pool's one connection is free for a queued WriteBatch
-// or query — the previous single-transaction delete held that connection for
-// the whole prune, which on a large table starved every writer and reader
-// behind it until busy_timeout gave up. The orphan-series sweep runs once,
+// so between passes the writer connection is free for a queued WriteBatch —
+// the previous single-transaction delete held that connection for the whole
+// prune, which on a large table starved every write behind it until
+// busy_timeout gave up. The orphan-series sweep runs once,
 // after every sample batch is gone (or the batch ceiling is hit — a
 // still-referenced series is harmless, it just isn't swept until a later
 // call finishes the job): a series row is identity plus labels, and one
@@ -486,5 +513,11 @@ func (s *sqliteStore) Retain(ctx context.Context, olderThanMS int64) error {
 	return err
 }
 
-// Close releases the database handle.
-func (s *sqliteStore) Close() error { return s.db.Close() }
+// Close releases both database handles.
+func (s *sqliteStore) Close() error {
+	var readErr error
+	if s.reader != s.db {
+		readErr = s.reader.Close()
+	}
+	return errors.Join(readErr, s.db.Close())
+}
