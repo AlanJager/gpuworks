@@ -12,11 +12,11 @@ This page explains how to install the control plane and a local GPU node inside 
 - Leave roughly **50 GiB** free on the Windows system drive for a small-model smoke test (a runner image expanded in Docker can be around 30 GiB, plus weights and WSL VHDX growth).
 - Validate with a **small** model (for example Qwen3-1.7B class). A 16 GiB consumer GPU is not suitable for accepting multi-tens-of-GiB weight packs on this machine.
 
-There is no separate Windows/WSL2 install channel yet. The steps below match the recommended path and add the runtime and keep-alive settings that matter in practice.
+GPUWorks has no separate Windows installer: the control plane and the agent install inside the WSL distro the same way as on Linux. Compared with an ordinary Linux host, WSL needs two extra things: the inference runtime must be Docker, and the distro must stay running.
 
 ## Why Docker is required
 
-On WSL2, if the agent does not see a Docker daemon, it may use runveil/udocker. Starting a vLLM-class runner on that path often fails because CUDA compat `libcuda` inside the image does not work with WSL’s `/dev/dxg` path. A typical error is:
+On WSL2, if the agent does not find a usable Docker, it falls back to runveil/udocker. Starting a vLLM-class runner on that path tends to fail because CUDA compat `libcuda` inside the image does not work with WSL’s `/dev/dxg` path. A typical error is:
 
 ```text
 RuntimeError: Failed to infer device type
@@ -106,7 +106,7 @@ In the same WSL distro:
 bash <(curl -fsSL https://dl.gpuworks.ai/get.sh) --quiet --addr 0.0.0.0:8800
 ```
 
-- `--addr 0.0.0.0:8800` makes the console reachable from Windows via localhost forwarding.
+- `--addr 0.0.0.0:8800`: the default listen address is the WSL virtual NIC's address, which Windows `localhost` forwarding cannot reach, so listen on all addresses instead; the agent also connects through `127.0.0.1`. When WSL uses mirrored networking (`networkingMode=mirrored` in `.wslconfig`), this address exposes the console to your LAN: change the admin password first, and restrict inbound access to port 8800 with Windows Firewall.
 - Drop `--quiet` if you want interactive prompts. See [Install and Upgrade the Control Plane](install-server.md) for more options.
 
 Verify:

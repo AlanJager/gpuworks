@@ -12,11 +12,11 @@
 - 宿主机系统盘建议至少空出约 **50 GiB**（小模型冒烟时，runner 镜像在 Docker 中展开后可达约 30 GiB 量级，另加模型权重与 WSL 虚拟磁盘增长）。
 - 验收用小模型（例如 Qwen3-1.7B 量级）。16 GiB 消费级显存不适合用数十 GiB 权重的大模型做本机验收。
 
-官方目前没有单独的 Windows/WSL2 安装渠道；下列步骤与官方建议一致，并补上实测中必须强调的运行时与常驻配置。
+GPUWorks 没有单独的 Windows 安装包：控制面和 agent 都按 Linux 方式装在 WSL 发行版里。与普通 Linux 主机相比，WSL 上要额外处理两件事：推理运行时必须是 Docker，以及让发行版常驻。
 
 ## 为什么必须用 Docker
 
-WSL2 上 agent 在未检测到 Docker 守护进程时，可能使用 runveil/udocker。实测在该路径下启动 vLLM 类 runner 时，容易因镜像内 CUDA compat 的 `libcuda` 与 WSL 的 `/dev/dxg` 路径不兼容而失败，日志常见：
+WSL2 上 agent 在未检测到可用的 Docker 时，会改用 runveil/udocker。在该路径下启动 vLLM 类 runner 时，容易因镜像内 CUDA compat 的 `libcuda` 与 WSL 的 `/dev/dxg` 路径不兼容而失败，日志常见：
 
 ```text
 RuntimeError: Failed to infer device type
@@ -106,7 +106,7 @@ sudo systemctl restart docker
 bash <(curl -fsSL https://dl.gpuworks.ai/get.sh) --quiet --addr 0.0.0.0:8800
 ```
 
-- `--addr 0.0.0.0:8800`：便于 Windows 经 localhost 转发访问。
+- `--addr 0.0.0.0:8800`：默认监听地址是 WSL 虚拟网卡的地址，Windows 经 `localhost` 转发访问不到，所以这里改为监听所有地址，agent 也经 `127.0.0.1` 连接。WSL 使用 mirrored 网络模式（`.wslconfig` 中 `networkingMode=mirrored`）时，这个地址会把控制台暴露到局域网，务必先修改 admin 密码，并用 Windows 防火墙限制 8800 端口的入站访问。
 - 需要交互确认时去掉 `--quiet`。更多选项见[安装和升级控制面](install-server.md)。
 
 验证：
