@@ -88,7 +88,9 @@ for line in lines:
     if key:
         name, value = key.group(1), key.group(2)
         section = name
-        if name in ("stage", "extends") and value:
+        if name in ("stage", "extends", "when", "allow_failure") and value:
+            jobs[current][name] = value
+        elif name == "rules":
             jobs[current][name] = value
         elif name == "needs":
             inline = value.strip()
@@ -125,6 +127,45 @@ if stage_violations:
     print("%s: needs must name a job of an earlier stage (GitLab 14.0):" % path, file=sys.stderr)
     for job, stage, need, need_stage in stage_violations:
         print("  %s (stage %s) needs %s (stage %s)" % (job, stage, need, need_stage), file=sys.stderr)
+    raise SystemExit(1)
+
+# A needs graph bypasses stage barriers. Keep every real job behind the
+# change-record gate, including jobs that override their template's needs.
+# In contrast, a job without needs waits for successful earlier stages.
+gate = "change-record"
+gate_errors = []
+if gate not in jobs:
+    gate_errors.append("missing change-record job")
+else:
+    gate_stage = inherited(gate, "stage") or "test"
+    if order.get(gate_stage) != 0:
+        gate_errors.append("change-record must be in the first stage")
+    if inherited(gate, "needs") != []:
+        gate_errors.append("change-record must have needs: [] (no UI prerequisite)")
+    if "rules" in jobs[gate]:
+        gate_errors.append("change-record must exist in every pipeline")
+    if inherited(gate, "allow_failure") == "true" or inherited(gate, "when") not in (None, "on_success"):
+        gate_errors.append("change-record must be a mandatory on_success job")
+
+    def waits_for_gate(job, visiting=frozenset()):
+        if job == gate:
+            return True
+        if job not in jobs or job in visiting or inherited(job, "when") == "always":
+            return False
+        needs = inherited(job, "needs")
+        if needs is None:
+            stage = inherited(job, "stage") or "test"
+            return order.get(stage, -1) > order.get(gate_stage, -1)
+        return any(waits_for_gate(need, visiting | {job}) for need in needs)
+
+    for job in jobs:
+        if not job.startswith(".") and job != gate and not waits_for_gate(job):
+            gate_errors.append("%s can start without a successful change-record gate" % job)
+
+if gate_errors:
+    print("%s: change-record must finish before builds or tests:" % path, file=sys.stderr)
+    for error in gate_errors:
+        print("  %s" % error, file=sys.stderr)
     raise SystemExit(1)
 
 print("ci yaml check passed (%d jobs, %d needs)" % (len([j for j in jobs if not j.startswith(".")]), sum(len(inherited(j, "needs") or []) for j in jobs if not j.startswith("."))))

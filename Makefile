@@ -177,7 +177,13 @@ UNIT_TIMEOUT ?= 30m
 
 ## test-unit: build the embedded UI first, then run the untagged Go suite.
 ## `go test ./...` cannot compile webui without the generated embed tree.
-test-unit: ui check-time-policy check-architecture check-api-conventions check-ci-yaml check-artifacts githooks check-doc-links check-translations test-host-env-adapters test-e2e-coverage-check test-inference-template-assets test-strata-queue-assets
+test-unit: check-change-record
+	$(MAKE) test-unit-checked
+
+# A recursive boundary keeps even make -j from starting UI or tests before
+# the change-record gate succeeds.
+.PHONY: test-unit-checked
+test-unit-checked: ui check-time-policy check-architecture check-api-conventions check-ci-yaml check-artifacts githooks check-doc-links check-translations test-host-env-adapters test-e2e-coverage-check test-inference-template-assets test-strata-queue-assets
 	CGO_ENABLED=0 $(GO) test -timeout $(UNIT_TIMEOUT) $(GO_TEST_FLAGS) ./...
 	cd build/runtime-assets/hygon-vdev-helper && CGO_ENABLED=0 $(GO) test $(GO_TEST_FLAGS) ./...
 	$(MAKE) check-tagged-build
@@ -347,7 +353,8 @@ test-integration: ui
 test-coverage-report: ui
 	CGO_ENABLED=0 $(GO) test -coverprofile=coverage.out ./...
 
-test: test-unit test-ui
+test: check-change-record
+	$(MAKE) test-unit-checked test-ui
 
 check-time-policy:
 	./scripts/check_time_policy.sh
@@ -357,6 +364,14 @@ check-time-policy:
 check-architecture:
 	./scripts/check_architecture.sh
 
+## check-change-record: a contract or decision path in the diff needs a record.
+## Contract means docs/ in the same diff. Decision means a same-named
+## gpuworks-artifacts branch whose plan.md has decision and rejected.
+## The path list is scripts/change-record-rules.txt. No N/A flag.
+.PHONY: check-change-record
+check-change-record:
+	CGO_ENABLED=0 $(GO) run ./scripts/changerecord
+
 ## check-api-conventions: response envelopes and snake_case field names in
 ## internal/server/api, read off the types (docs/reference/api-conventions.md).
 check-api-conventions:
@@ -365,8 +380,10 @@ check-api-conventions:
 ## check-ci-yaml: reject '#' comments inside folded (>) scalars, which become
 ## shell comments and truncate the assembled command, and needs that name a
 ## job of the same or a later stage (GitLab 14.0 refuses the pipeline).
+## Every build/test job must also wait for the mandatory change-record gate.
 check-ci-yaml:
 	./scripts/check_ci_yaml.sh
+	python3 -B -m unittest discover -s scripts -p test_check_ci_yaml.py
 
 ## check-artifacts: verify plan-doc frontmatter (status/dates/summary) across
 ## artifacts/{work,archive,research}, that every topic directory has exactly
