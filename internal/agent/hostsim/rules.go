@@ -78,7 +78,6 @@ var rpcRules = map[string]rule{
 	// A simulated node is never a Kubernetes node: these reach the
 	// cluster's API server.
 	proto.RPCKubeNodeExists: refuse,
-	proto.RPCKubeUpgrade:    refuse,
 }
 
 // streamRules classifies every stream kind (TestEveryStreamIsClassified): a
@@ -109,6 +108,7 @@ var refusedCaps = map[string]bool{
 	proto.CapWebtermContainer:        true,
 	proto.CapWebtermContainerUdocker: true,
 	proto.CapUpgradePush:             true,
+	proto.CapKubeBinaryUpgrade:       true,
 	proto.CapStorageFiles:            true,
 	proto.CapBench:                   true,
 	proto.CapBenchWarmup:             true,

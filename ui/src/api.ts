@@ -1010,7 +1010,12 @@ export interface KubeCluster {
   name: string;
   namespace: string;
   server_url: string;
+  /** The entry's own image; empty runs the published image from agent_image_source. */
   agent_image: string;
+  /** The registry the published agent image is pulled from (dto.KubeAgentImageSource id). */
+  agent_image_source: string;
+  /** The image the entry's manifest names. */
+  effective_agent_image: string;
   node_selector: string;
   /** Accelerator vendor of the cluster's nodes: nvidia, ascend, hygon or ppu. */
   vendor: KubeVendor;
@@ -1063,6 +1068,17 @@ export interface KubeDefaults {
   stalled_after_seconds: number;
   /** The vendors a cluster can be connected for, the default first. */
   vendors: KubeVendorInfo[];
+  /** The registry an entry made by hand pulls the published agent image from. */
+  agent_image_source: string;
+  /** The registries the agent image is published to, the default first. */
+  agent_image_sources: KubeAgentImageSource[];
+}
+
+/** A registry the agent image is published to (dto.KubeAgentImageSource). */
+export interface KubeAgentImageSource {
+  id: string;
+  /** The image there, at the server's runtime revision. */
+  image: string;
 }
 
 export interface KubeVendorInfo {
@@ -1107,6 +1123,8 @@ export interface KubeClusterRequest {
   server_url: string;
   namespace?: string;
   agent_image?: string;
+  /** Omitted: Docker Hub for an entry made by hand, the registry its region reaches for one from a cloud cluster. */
+  agent_image_source?: string;
   node_selector?: string;
   /** Omitted means nvidia. */
   vendor?: KubeVendor;
@@ -2485,6 +2503,8 @@ export interface ProviderCluster {
   gpu_pools: ProviderClusterPool[];
   /** The cluster entry already made from this cluster. */
   entry?: { uuid: string; name: string };
+  /** The registry an entry made from it pulls the agent image from unless the form names another. */
+  agent_image_source: string;
 }
 
 /** A GPU node pool of a ProviderCluster. */

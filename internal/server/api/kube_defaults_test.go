@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"gpuworks.ai/gpuworks/internal/server/kubemanifest"
 	"gpuworks.ai/gpuworks/internal/server/store"
 	"gpuworks.ai/gpuworks/internal/version"
 )
@@ -18,8 +19,10 @@ func TestKubeDefaultsDictionaryOnTheWire(t *testing.T) {
 	rig := newTokenRig(t)
 	rec := rig.do(rig.session, http.MethodGet, "/api/v1/kube/defaults", "")
 	want := `{"vendor":"nvidia","namespace":"gpuworks-system","state_dir":"/opt/gpuworks","engine_ports":"40000-42767",` +
-		`"idle_return_seconds":60,"idle_return_keep":-1,"agent_image":"gpuworks/gpuworks-agent:` + version.Version + `","stalled_after_seconds":300,` +
-		`"vendors":[{"id":"nvidia","runtime_class":true},{"id":"ascend","runtime_class":false},{"id":"hygon","runtime_class":false},{"id":"ppu","runtime_class":false}]}`
+		`"idle_return_seconds":60,"idle_return_keep":-1,"agent_image":"gpuworks/gpuworks-agent:r1","stalled_after_seconds":300,` +
+		`"vendors":[{"id":"nvidia","runtime_class":true},{"id":"ascend","runtime_class":false},{"id":"hygon","runtime_class":false},{"id":"ppu","runtime_class":false}],` +
+		`"agent_image_source":"dockerhub","agent_image_sources":[{"id":"dockerhub","image":"gpuworks/gpuworks-agent:r1"},` +
+		`{"id":"swr","image":"swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-agent:r1"},{"id":"quay","image":"quay.io/gpuworks/gpuworks-agent:r1"}]}`
 	if rec.Code != http.StatusOK || strings.TrimSpace(rec.Body.String()) != want {
 		t.Fatalf("defaults = %d %s\nwant %s", rec.Code, rec.Body, want)
 	}
@@ -46,9 +49,12 @@ func TestKubeDefaultsAreWhatAnEmptyRequestTakes(t *testing.T) {
 		}
 	}
 	// The agent image is not frozen into the entry: it stays empty and the
-	// manifest runs the dictionary's image, the server's own version.
+	// manifest runs the dictionary's image at the server's runtime revision.
 	if got["agent_image"] != "" {
 		t.Errorf("agent_image: a bare request stored %v, want it left empty", got["agent_image"])
+	}
+	if got["agent_image_source"] != dict["agent_image_source"] || got["effective_agent_image"] != dict["agent_image"] {
+		t.Errorf("a bare request: source %v image %v, the dictionary says %v %v", got["agent_image_source"], got["effective_agent_image"], dict["agent_image_source"], dict["agent_image"])
 	}
 	manifest := rig.do(rig.session, http.MethodGet, "/api/v1/kube/clusters/"+got["uuid"].(string)+"/manifest", "")
 	if manifest.Code != http.StatusOK || !strings.Contains(manifest.Body.String(), fmt.Sprintf("image: %q", dict["agent_image"])) {
@@ -206,10 +212,10 @@ func TestKubeClusterOperationsWhenTheCloudCannotBeAsked(t *testing.T) {
 	}
 }
 
-// An entry that names no agent image follows the server across an upgrade:
-// the manifest rendered after it runs the new version, so applying it again
-// never moves the DaemonSet back to the version the entry was made under.
-func TestABareEntryFollowsTheServersVersion(t *testing.T) {
+// An entry that names no agent image runs the published image at the
+// server's runtime revision: a server upgrade does not move its tag, since
+// the agents are upgraded on their nodes, and an entry's own image is kept.
+func TestABareEntryRunsTheRuntimeRevisionAcrossServerVersions(t *testing.T) {
 	rig := newTokenRig(t)
 	old := version.Version
 	t.Cleanup(func() { version.Version = old })
@@ -221,12 +227,56 @@ func TestABareEntryFollowsTheServersVersion(t *testing.T) {
 	for _, tc := range []struct {
 		uuid, want string
 	}{
-		{created["uuid"].(string), `image: "gpuworks/gpuworks-agent:v26.11.2"`},
+		{created["uuid"].(string), `image: "gpuworks/gpuworks-agent:` + kubemanifest.AgentImageRevision + `"`},
 		{pinned["uuid"].(string), `image: "registry.example/gpuworks-agent:mine"`},
 	} {
 		rec := rig.do(rig.session, http.MethodGet, "/api/v1/kube/clusters/"+tc.uuid+"/manifest", "")
 		if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), tc.want) {
 			t.Errorf("manifest = %d, want %q:\n%s", rec.Code, tc.want, rec.Body)
+		}
+	}
+}
+
+// An entry made by hand names the registry its nodes reach; the manifest
+// runs the published image from there, and a registry the image is not
+// published to is refused.
+func TestKubeAgentImageSourceChoosesTheRegistry(t *testing.T) {
+	rig := newTokenRig(t)
+	rec := rig.do(rig.session, http.MethodPost, "/api/v1/kube/clusters", `{"name":"cn","server_url":"https://gw.example","agent_image_source":"swr"}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create = %d %s", rec.Code, rec.Body)
+	}
+	got := decodeKube[map[string]any](t, rec)
+	const swr = "swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-agent:r1"
+	if got["agent_image_source"] != "swr" || got["effective_agent_image"] != swr {
+		t.Fatalf("entry = %v", got)
+	}
+	manifest := rig.do(rig.session, http.MethodGet, "/api/v1/kube/clusters/"+got["uuid"].(string)+"/manifest", "")
+	if !strings.Contains(manifest.Body.String(), fmt.Sprintf("image: %q", swr)) {
+		t.Fatalf("manifest does not run %s:\n%s", swr, manifest.Body)
+	}
+	// An image of its own wins over the registry.
+	rec = rig.do(rig.session, http.MethodPost, "/api/v1/kube/clusters", `{"name":"own","server_url":"https://gw.example","agent_image_source":"swr","agent_image":"registry.example/agent:r1"}`)
+	if got := decodeKube[map[string]any](t, rec); got["effective_agent_image"] != "registry.example/agent:r1" {
+		t.Fatalf("own image entry = %v", got)
+	}
+	rec = rig.do(rig.session, http.MethodPost, "/api/v1/kube/clusters", `{"name":"bad","server_url":"https://gw.example","agent_image_source":"ghcr"}`)
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), `"field":"agent_image_source"`) {
+		t.Fatalf("unknown registry = %d %s", rec.Code, rec.Body)
+	}
+}
+
+func TestKubeAgentImageSourceForACloudClusterFollowsItsRegion(t *testing.T) {
+	for _, tc := range []struct{ kind, region, want string }{
+		{"aliyun", "cn-shanghai", "swr"},
+		{"aliyun", "cn-hangzhou", "swr"},
+		{"aliyun", "cn-hongkong", "dockerhub"},
+		{"aliyun", "ap-southeast-1", "dockerhub"},
+		{"digitalocean", "sgp1", "dockerhub"},
+		{"", "cn-shanghai", "dockerhub"},
+	} {
+		if got := kubeAgentImageSourceFor(tc.kind, tc.region); got != tc.want {
+			t.Errorf("kubeAgentImageSourceFor(%q, %q) = %q, want %q", tc.kind, tc.region, got, tc.want)
 		}
 	}
 }

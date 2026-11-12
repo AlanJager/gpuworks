@@ -7,42 +7,38 @@ The screenshots in this guide show the Chinese UI; the labels in the text are th
 **Prerequisites**:
 
 - A running gpuworks server with an address that the cloud nodes can reach (step 0).
-- GPU instance quota and stock in the cloud account, with permission to create a managed Kubernetes cluster and a private image registry.
-- `kubectl`, docker, and Go on your machine (used in step 0 to build the agent image), plus each cloud's command-line tool (`aliyun`, `doctl`, `nebius`), or use each cloud's console.
+- GPU instance quota and stock in the cloud account, with permission to create a managed Kubernetes cluster.
+- `kubectl` on your machine, plus each cloud's command-line tool (`aliyun`, `doctl`, `nebius`), or use each cloud's console.
 
 All three have been verified on real clusters: Alibaba Cloud ACK (L20), DigitalOcean DOKS (RTX 6000 Ada), and Nebius mk8s (RTX PRO 6000 Blackwell). Borrowing cards, deployment, chat, idle return, and external occupation all work.
 
 ## Overview: What You Need to Do
 
-Whichever provider you use, the flow is the same: first prepare the cluster, image, and pull credentials in the cloud, then return to gpuworks to create the cluster entry, and finally run the single `kubectl apply` command it generates once in the cluster; the GPU nodes then appear in gpuworks by themselves.
+Whichever provider you use, the flow is the same: first prepare the cluster in the cloud, then return to gpuworks to create the cluster entry (choosing the agent image registry), and finally run the single `kubectl apply` command it generates once in the cluster; the GPU nodes then appear in gpuworks by themselves.
 
 ```mermaid
 flowchart LR
-  p0["Step 0<br/>Build the agent image<br/>(make agent-image)"]
+  p0["Step 0<br/>Prepare the server address<br/>and kubectl"]
   c1["1. Create the cluster<br/>and GPU node pool in the cloud"]
-  c2["2. Push the agent image<br/>to the cloud's private registry"]
-  c3["3. Create the image pull<br/>Secret in gpuworks-system"]
-  g4["4. gpuworks “Kubernetes” page<br/>Connect the cluster, copy the command"]
-  a5["5. Run kubectl apply<br/>in the cluster"]
-  n6["6. The node appears on the Nodes page<br/>Deploy a model and chat"]
-  p0 --> c1 --> c2 --> c3 --> g4 --> a5 --> n6
+  g2["2. gpuworks “Kubernetes” page<br/>Connect the cluster (choose the agent image registry), copy the command"]
+  a3["3. Run kubectl apply<br/>in the cluster"]
+  n4["4. The node appears on the Nodes page<br/>Deploy a model and chat"]
+  p0 --> c1 --> g2 --> a3 --> n4
   classDef cloud fill:#fff7e6,stroke:#d48806,color:#613400
   classDef gw fill:#e6f4ff,stroke:#0958d9,color:#002c8c
-  class p0,c1,c2,c3,a5 cloud
-  class g4,n6 gw
+  class p0,c1,a3 cloud
+  class g2,n4 gw
 ```
 
 Yellow steps are done in the cloud, in a local command line, or with `kubectl`; blue steps are done in the gpuworks UI. How to confirm each step:
 
 | Step | Where | How to confirm |
 |---|---|---|
-| 0. Prepare | Local machine | The server address is reachable from the cloud; the local machine has a `gpuworks-agent:<version>` image |
+| 0. Prepare | Local machine | The server address is reachable from the cloud; the local machine has `kubectl` |
 | 1. Create the cluster and GPU nodes | Cloud console or command line | `kubectl` can reach the cluster, and the GPU nodes carry the label in the “GPU node label” row of the table below |
-| 2. Push the agent image | Local `docker` | `docker push` succeeds; the registry and cluster are in the same region |
-| 3. Create the pull credentials | `kubectl` | The `gpuworks-system` namespace has a docker-registry Secret |
-| 4. Connect in gpuworks | gpuworks UI | The page gives a `kubectl apply` command |
-| 5. Run apply | `kubectl` | The agent Pod is `Running` |
-| 6. Node joins, deploy | gpuworks UI | About half a minute after the Pod is `Running`, the node appears on the Nodes page; the deployed model can chat |
+| 2. Connect in gpuworks | gpuworks UI | The agent image registry is chosen, and the page gives a `kubectl apply` command |
+| 3. Run apply | `kubectl` | The agent Pod is `Running` |
+| 4. Node joins, deploy | gpuworks UI | About half a minute after the Pod is `Running`, the node appears on the Nodes page; the deployed model can chat |
 
 After connecting, one GPU node looks like this (instances and placeholder Pods appear only when a model is deployed):
 
@@ -75,18 +71,18 @@ When the cloud account has already been added on the “Public Cloud” page, yo
 
    ![The “Kubernetes clusters” tab of a cloud account](../assets/screenshots/k8s-cloud-clusters.png)
 
-2. Tick the GPU node pools you want (a cluster may have several ticked, of one vendor) and click “Connect” on that cluster. In the drawer, the name and vendor are already filled in from the node pools and the selected pools are listed, which you can change; the requirements for Server address, agent image, and image pull secret are the same as in steps 0, 2, and 3 below (the agent image must be pullable by the nodes). Click “Connect”. A cloud cluster has only one entry: to use more of its node pools later, edit that entry's node pools instead of connecting again, and node pools of different vendors cannot be mixed in one entry.
+2. Tick the GPU node pools you want (a cluster may have several ticked, of one vendor) and click “Connect” on that cluster. In the drawer, the name and vendor are already filled in from the node pools and the selected pools are listed, which you can change; the Server address requirement is the same as in step 0 below, and “Agent image registry” is preselected by the cluster's region (an ACK cluster in mainland China gets “Huawei Cloud SWR”) and can be changed under “Advanced”. Click “Connect”. A cloud cluster has only one entry: to use more of its node pools later, edit that entry's node pools instead of connecting again, and node pools of different vendors cannot be mixed in one entry.
 3. The drawer offers two choices:
    - **Check and apply**: gpuworks uses temporary cluster credentials it fetches from the cloud account on the spot (valid for 15 minutes, discarded after use, never stored) to first have the cluster run a check (dry run), lists each object to be created or updated, and applies for real only after you click “Apply”:
 
      ![The check result before applying; nothing runs until you confirm](../assets/screenshots/k8s-cloud-apply.png)
 
-   - Or, as before, copy the `kubectl apply` command and run it yourself (see step 5 below).
+   - Or, as before, copy the `kubectl apply` command and run it yourself (see step 3 below).
 4. About half a minute later the node appears on the Nodes page. The “Source” column of the “Kubernetes” page shows which cluster of which cloud account the entry came from; afterwards, “Apply to the cluster” on this entry can apply again (for example after the node pool was rebuilt), and “Remove from the cluster” likewise checks first and deletes after confirmation:
 
    ![The Source column of the Kubernetes page, with “Apply to the cluster” and “Remove from the cluster”](../assets/screenshots/k8s-cloud-source.png)
 
-   Removal deletes the whole `gpuworks-system` namespace, including any image pull secret created in it beforehand, so it must be created again before reconnecting.
+   Removal deletes the whole `gpuworks-system` namespace, including an image pull secret created in it beforehand if you use your own registry, so it must be created again before reconnecting.
 
 5. To add or remove node pools later, change the ticks on the cluster's row on the “Public Cloud” page and click “Save node pools”, or use the entry's “Node pools” action on the “Kubernetes” page. Saving changes only gpuworks's record: click “Apply to the cluster” again (or re-run `kubectl apply`) for the DaemonSet to follow. Agents on node pools taken away exit, and their nodes stay on the nodes page and are cleaned up like any offline Kubernetes node. The cluster's row shows whether each node pool is already in the entry.
 
@@ -100,26 +96,17 @@ Prerequisite: the cluster's API Server has a public address (the list shows “P
 | device plugin | Included (`nvidia.com/gpu`) | Included in 1.36; not installed by default from 1.37, see below | Included |
 | `nvidia` RuntimeClass | None; the default runtime is NVIDIA's | None | None |
 | GPU node label (used as the node selector) | `ack.node.gpu.schedule=default` | `doks.digitalocean.com/gpu-brand=nvidia` | `nebius.com/gpu=true` |
-| Image registry | ACR (private) | DOCR (private) | Nebius Container Registry (private) |
 
-So the cluster entry for all three is: vendor NVIDIA, **RuntimeClass empty**, node selector set to the label in the table above, agent image set to the address you pushed to the cloud registry, and **image pull secret** set to the name of the Secret you created in the namespace.
+So the cluster entry for all three is: vendor NVIDIA, **RuntimeClass empty**, node selector set to the label in the table above; the agent image and image pull secret are left empty, and “Agent image registry” is chosen as in each cloud's “Connect in gpuworks” table below.
 
 ## Step 0: Prepare (Same for All Three)
 
 1. **The server needs an address the nodes can reach.** The agent connects to the server outbound and needs no inbound node port, but the server address must be reachable from the cloud nodes: a public IP, domain name, or reverse proxy all work (for example `https://gpuworks.example.com`). When the server is on an internal network, first give it a public address as described in [Give the Console a Public Address](expose-public-address.md). The rest of this guide uses `https://gpuworks.example.com` to stand for it.
-2. **Prepare the agent image.** The current release has no ready-made public agent image, so build one from the source of the same version as the server and push it to the cloud provider's image registry (step 2 gives the push commands per provider). Building needs Go and docker:
-
-   ```bash
-   git checkout <server version>
-   make agent-image ARCH=amd64 AGENT_IMAGE=gpuworks-agent:<version>   # about 50 MB; use ARCH=arm64 for arm64 nodes
-   ```
-
-   > **Note**: Use the server's version number as the image tag. “Upgrade Agent” in the node details changes the image tag of the DaemonSet to the server version and keeps the repository path unchanged.
-3. **Install `kubectl` locally**, plus each cloud's command-line tool (`aliyun`, `doctl`, `nebius`), or use each cloud's console throughout.
+2. **Install `kubectl` locally**, plus each cloud's command-line tool (`aliyun`, `doctl`, `nebius`), or use each cloud's console throughout.
 
 ## Alibaba Cloud ACK
 
-Four steps in this section: create the cluster and GPU node pool, push the image to ACR, create the pull credentials, and connect in gpuworks.
+Two steps in this section: create the cluster and GPU node pool, and connect in gpuworks.
 
 ### 1. Create the Cluster and GPU Node Pool
 
@@ -139,32 +126,9 @@ kubectl get node <GPU node> -o jsonpath='{.status.allocatable.nvidia\.com/gpu}' 
 
 GPU nodes carry `ack.node.gpu.schedule=default` (whole cards, exclusive).
 
-> **Note**: ACK's shared GPU scheduling splits a card into several shares, and gpuworks does not borrow cards from such nodes (see the non-whole-card notes in [Connect a Kubernetes Cluster](connect-kubernetes.md)), so use a node pool in exclusive mode.
+> **Note**: Node pools that use ACK GPU sharing can be connected too; whole cards are borrowed as usual, see [Connect a Kubernetes Cluster](connect-kubernetes.md#集群用-hamiack-共享-gpu-或其他切分时).
 
-### 2. Push the Agent Image to ACR
-
-In the [Container Registry console](https://cr.console.aliyun.com/), use a Personal Edition instance (on first use, set the Registry login password in the console) or an Enterprise Edition instance, create a namespace (for example `my-gpuworks`) in the **same region as the cluster**, and keep the repository type private. Then:
-
-```bash
-docker login --username=<full Alibaba Cloud account name> registry.cn-shanghai.aliyuncs.com
-docker tag gpuworks-agent:<version> registry.cn-shanghai.aliyuncs.com/my-gpuworks/gpuworks-agent:<version>
-docker push registry.cn-shanghai.aliyuncs.com/my-gpuworks/gpuworks-agent:<version>
-```
-
-When the nodes and registry are in the same region, the image address can use the VPC internal domain `registry-vpc.cn-shanghai.aliyuncs.com/...`, so pulls do not go over the public network.
-
-### 3. Create the Pull Credentials
-
-```bash
-kubectl create namespace gpuworks-system
-kubectl -n gpuworks-system create secret docker-registry acr-cred \
-  --docker-server=registry-vpc.cn-shanghai.aliyuncs.com \
-  --docker-username=<full Alibaba Cloud account name> --docker-password=<Registry login password>
-```
-
-> **Note**: `--docker-server` must match the domain in the image address (if you use the public domain, write the public domain).
-
-### 4. Connect in gpuworks
+### 2. Connect in gpuworks
 
 For the UI, see [Create the Cluster in gpuworks and Apply](#在-gpuworks-里创建集群并-apply) below. Fill the fields as:
 
@@ -172,20 +136,19 @@ For the UI, see [Create the Cluster in gpuworks and Apply](#在-gpuworks-里创�
 |---|---|
 | Vendor | NVIDIA |
 | Node selector | `ack.node.gpu.schedule=default` |
-| Advanced → Agent image | `registry-vpc.cn-shanghai.aliyuncs.com/my-gpuworks/gpuworks-agent:<version>` |
-| Advanced → Image pull secret | `acr-cred` |
+| Advanced → Agent image registry | Huawei Cloud SWR (mainland China regions; Docker Hub for Hong Kong and overseas regions) |
 | Advanced → RuntimeClass | Empty |
 
 ### Things to Note on Alibaba Cloud
 
-- Nodes in mainland China cannot reach Docker Hub. Inference images need no configuration: the node probes the image registries itself and picks one it can reach, such as Huawei Cloud SWR (see [Configure Image and Model Pulls](configure-pull-settings.md)). Downloading models from ModelScope is recommended.
+- Nodes in mainland China cannot reach Docker Hub. Inference images need no configuration: the node probes the image registries itself and picks one it can reach, such as Huawei Cloud SWR (see [Configure Image and Model Pulls](configure-pull-settings.md)). The agent image is the same: when the registry is Huawei Cloud SWR, it is pulled from SWR. Downloading models from ModelScope is recommended.
 - The first deployment pulls an inference image of about 9 GB, which takes 10–20 minutes in practice; afterwards the same node starts in seconds.
 - When deleting the cluster, choose to release all resources at the same time; deleting only the node pool fails with “instances still in the scaling group”.
 - PPU (`ecs.gp7*`) instance types need the permission enabled for the account; if it is not, creating the node pool reports `InstanceType.Unauthorized`. Alibaba Cloud's container compute service ACS does not support DaemonSets, hostNetwork, or privileged containers, so it **cannot** be connected this way.
 
 ## DigitalOcean DOKS
 
-Four steps in this section: create the cluster, push the image to DOCR, create the pull credentials, and connect in gpuworks.
+Two steps in this section: create the cluster, and connect in gpuworks.
 
 ### 1. Create the Cluster
 
@@ -214,27 +177,7 @@ curl -X PUT -H "Authorization: Bearer $DIGITALOCEAN_TOKEN" -H "Content-Type: app
 
 About 10 seconds later the device plugin's DaemonSet appears in `kube-system`; the nodes are not replaced.
 
-### 2. Push the Agent Image to DOCR
-
-```bash
-doctl registry create my-gpuworks --region nyc3          # skip if you already have a registry; an account has only one DOCR
-doctl registry login
-docker tag gpuworks-agent:<version> registry.digitalocean.com/my-gpuworks/gpuworks-agent:<version>
-docker push registry.digitalocean.com/my-gpuworks/gpuworks-agent:<version>
-```
-
-### 3. Create the Pull Credentials
-
-```bash
-kubectl create namespace gpuworks-system
-doctl registry kubernetes-manifest --namespace gpuworks-system --name docr-cred | kubectl apply -f -
-```
-
-> **Note**: The DOKS console's “Integrate DOCR” attaches credentials only to the `default` service account of each namespace, while the agent uses its own service account, so create a Secret as above and enter its name in the cluster entry.
-
-> **Tip**: The single `doctl registry kubernetes-manifest` command above has not been verified on a real cluster. However you create it, the required result is the same: `gpuworks-system` has a docker-registry Secret named `docr-cred`.
-
-### 4. Connect in gpuworks
+### 2. Connect in gpuworks
 
 For the UI, see [Create the Cluster in gpuworks and Apply](#在-gpuworks-里创建集群并-apply) below. Fill the fields as:
 
@@ -242,13 +185,12 @@ For the UI, see [Create the Cluster in gpuworks and Apply](#在-gpuworks-里创�
 |---|---|
 | Vendor | NVIDIA |
 | Node selector | `doks.digitalocean.com/gpu-brand=nvidia` |
-| Advanced → Agent image | `registry.digitalocean.com/my-gpuworks/gpuworks-agent:<version>` |
-| Advanced → Image pull secret | `docr-cred` |
+| Advanced → Agent image registry | Docker Hub |
 | Advanced → RuntimeClass | Empty |
 
 ## Nebius mk8s
 
-Four steps in this section: create the cluster and GPU node group, push the image to Nebius Container Registry, create the pull credentials, and connect in gpuworks.
+Two steps in this section: create the cluster and GPU node group, and connect in gpuworks.
 
 ### 1. Create the Cluster and GPU Node Group
 
@@ -279,18 +221,85 @@ nebius mk8s node-group create -f gpu-node-group.json
 - Platform and region: `gpu-rtx6000-a` (RTX PRO 6000 Blackwell, about $1.80/h, eu-south1) was available in testing; platforms such as L40S often have no capacity, and the node group reports `NotEnoughResources` after a few minutes. Use `nebius mk8s node-group get-compatibility-matrix` to look up valid combinations of platform and Kubernetes version.
 - mk8s node groups currently cannot be preemptible (`preemptible` is rejected).
 
-### 2. Push the Agent Image to Nebius Container Registry
+### 2. Connect in gpuworks
+
+For the UI, see [Create the Cluster in gpuworks and Apply](#在-gpuworks-里创建集群并-apply) below. Fill the fields as:
+
+| Field | Value |
+|---|---|
+| Vendor | NVIDIA |
+| Node selector | `nebius.com/gpu=true` |
+| Advanced → Agent image registry | Docker Hub |
+| Advanced → RuntimeClass | Empty |
+
+### Things to Note on Nebius
+
+- The node group's Ubuntu image has no python3, so the agent logs a notice “accelerator runtime check cannot run”, which does not affect use.
+- Deleting a node group waits for the nodes to drain, about 6 minutes in practice.
+
+## When the Nodes Cannot Reach a Public Registry: Use Your Own
+
+You do not need this section by default. Use it only when the nodes can reach none of Docker Hub, Huawei Cloud SWR, and quay.io, or when the cluster may pull only from your own private registry: pull the published agent image once, push it on to the cloud provider's private registry, and then enter your own address in the cluster entry.
+
+First pull it once on a machine that can reach a public registry (docker required):
 
 ```bash
-nebius registry create --parent-id <project-id> --name my-gpuworks     # note the returned id, for example registry-e07xxxx
-nebius iam get-access-token | docker login cr.<region>.nebius.cloud --username iam --password-stdin
-docker tag gpuworks-agent:<version> cr.<region>.nebius.cloud/<registry-id without the registry- prefix>/gpuworks-agent:<version>
-docker push cr.<region>.nebius.cloud/<registry-id without the registry- prefix>/gpuworks-agent:<version>
+docker pull gpuworks/gpuworks-agent:r1
 ```
 
-Put the registry and the cluster in the same region (for example both in eu-south1).
+You can also pull the SWR address `swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-agent:r1`; in the `docker tag` commands below, replace the source image with it. Then push and create the pull credentials for your provider. Create the Secret before you click “Connect” or “Apply” in gpuworks.
 
-### 3. Create the Pull Credentials
+### Alibaba Cloud ACR
+
+In the [Container Registry console](https://cr.console.aliyun.com/), use a Personal Edition instance (on first use, set the Registry login password in the console) or an Enterprise Edition instance, create a namespace (for example `my-gpuworks`) in the **same region as the cluster**, and keep the repository type private. Then:
+
+```bash
+docker login --username=<阿里云账号全名> registry.cn-shanghai.aliyuncs.com
+docker tag gpuworks/gpuworks-agent:r1 registry.cn-shanghai.aliyuncs.com/my-gpuworks/gpuworks-agent:r1
+docker push registry.cn-shanghai.aliyuncs.com/my-gpuworks/gpuworks-agent:r1
+```
+
+When the nodes and registry are in the same region, the image address can use the VPC internal domain `registry-vpc.cn-shanghai.aliyuncs.com/...`, so pulls do not go over the public network. Create the pull credentials:
+
+```bash
+kubectl create namespace gpuworks-system
+kubectl -n gpuworks-system create secret docker-registry acr-cred \
+  --docker-server=registry-vpc.cn-shanghai.aliyuncs.com \
+  --docker-username=<阿里云账号全名> --docker-password=<Registry 登录密码>
+```
+
+> **Note**: `--docker-server` must match the domain in the image address (if you use the public domain, write the public domain).
+
+### DigitalOcean DOCR
+
+```bash
+doctl registry create my-gpuworks --region nyc3          # 已有仓库可跳过；一个账号只有一个 DOCR
+doctl registry login
+docker tag gpuworks/gpuworks-agent:r1 registry.digitalocean.com/my-gpuworks/gpuworks-agent:r1
+docker push registry.digitalocean.com/my-gpuworks/gpuworks-agent:r1
+```
+
+Create the pull credentials:
+
+```bash
+kubectl create namespace gpuworks-system
+doctl registry kubernetes-manifest --namespace gpuworks-system --name docr-cred | kubectl apply -f -
+```
+
+> **Note**: The DOKS console's “Integrate DOCR” attaches credentials only to the `default` service account of each namespace, while the agent uses its own service account, so create a Secret as above and enter its name in the cluster entry.
+
+> **Tip**: The single `doctl registry kubernetes-manifest` command above has not been verified on a real cluster. However you create it, the required result is the same: `gpuworks-system` has a docker-registry Secret named `docr-cred`.
+
+### Nebius Container Registry
+
+```bash
+nebius registry create --parent-id <project-id> --name my-gpuworks     # 记下返回的 id，例如 registry-e07xxxx
+nebius iam get-access-token | docker login cr.<region>.nebius.cloud --username iam --password-stdin
+docker tag gpuworks/gpuworks-agent:r1 cr.<region>.nebius.cloud/<registry-id 去掉 registry- 前缀>/gpuworks-agent:r1
+docker push cr.<region>.nebius.cloud/<registry-id 去掉 registry- 前缀>/gpuworks-agent:r1
+```
+
+Put the registry and the cluster in the same region (for example both in eu-south1). Create the pull credentials:
 
 ```bash
 kubectl create namespace gpuworks-system
@@ -301,34 +310,29 @@ kubectl -n gpuworks-system create secret docker-registry nebius-cred \
 
 > **Note**: IAM access tokens expire. Agents that are already running are unaffected after the token expires, but newly joined nodes cannot pull the image, so recreate this Secret with a new token.
 
-### 4. Connect in gpuworks
+### Enter Your Own Image in gpuworks
 
-For the UI, see [Create the Cluster in gpuworks and Apply](#在-gpuworks-里创建集群并-apply) below. Fill the fields as:
+Under “Advanced” in the cluster form, enter the pushed address in “Agent image” and the name of the Secret created above in “Image pull secret”; the other fields are as in each cloud's “Connect in gpuworks” table. Once “Agent image” is filled in, “Agent image registry” no longer takes effect.
 
-| Field | Value |
-|---|---|
-| Vendor | NVIDIA |
-| Node selector | `nebius.com/gpu=true` |
-| Advanced → Agent image | `cr.<region>.nebius.cloud/<id>/gpuworks-agent:<version>` |
-| Advanced → Image pull secret | `nebius-cred` |
-| Advanced → RuntimeClass | Empty |
+| Cloud | Advanced → Agent image | Advanced → Image pull secret |
+|---|---|---|
+| Alibaba Cloud ACK | `registry-vpc.cn-shanghai.aliyuncs.com/my-gpuworks/gpuworks-agent:r1` | `acr-cred` |
+| DigitalOcean DOKS | `registry.digitalocean.com/my-gpuworks/gpuworks-agent:r1` | `docr-cred` |
+| Nebius mk8s | `cr.<region>.nebius.cloud/<id>/gpuworks-agent:r1` | `nebius-cred` |
 
-### Things to Note on Nebius
-
-- The node group's Ubuntu image has no python3, so the agent logs a notice “accelerator runtime check cannot run”, which does not affect use.
-- Deleting a node group waits for the nodes to drain, about 6 minutes in practice.
+The image tag `r1` is the agent's runtime revision (base image and nerdctl) and does not follow the server's version. Routine upgrades replace the agent binary in place on the node and do not change the image, so you need to push a new tag again only when the runtime revision changes (rarely).
 
 ## Create the Cluster in gpuworks and Apply
 
-This section corresponds to steps 4 to 6 of the overview and moves back and forth between the gpuworks UI and `kubectl`: create the cluster entry, copy the command, run it in the cluster, confirm the node appears, and deploy a model.
+This section corresponds to steps 2 to 4 of the overview and moves back and forth between the gpuworks UI and `kubectl`: create the cluster entry, copy the command, run it in the cluster, confirm the node appears, and deploy a model.
 
-### Step 4: Create the Cluster Entry and Copy the Command
+### Step 2: Create the Cluster Entry and Copy the Command
 
 1. Open “Kubernetes” under “Compute” in the left navigation and click “Connect cluster” at the top right. Connected clusters are listed here (for a cluster created more than 5 minutes ago with no node joined yet, “Troubleshoot” appears next to “Not connected yet”; see [When No Node Appears](#没有节点出现时)):
 
    ![The Kubernetes page: the cluster list and the “Connect cluster” button](../assets/screenshots/k8s-clusters.png)
 
-2. Fill in the drawer that opens. The figure below uses ACK as an example; for DOKS and Nebius, use the values from their own “Connect in gpuworks” sections. Expand “Advanced” to see the agent image and image pull secret:
+2. Fill in the drawer that opens. The figure below uses ACK as an example; for DOKS and Nebius, use the values from their own “Connect in gpuworks” sections. Expand “Advanced” to see the agent image registry:
 
    ![Connect a Kubernetes cluster: the filled-in form for ACK as an example](../assets/screenshots/k8s-connect-form.png)
 
@@ -338,9 +342,8 @@ This section corresponds to steps 4 to 6 of the overview and moves back and fort
    | Server address | The public address from step 0, for example `https://gpuworks.example.com` |
    | Accelerator vendor | NVIDIA |
    | Node selector | The label in each cloud's “Connect in gpuworks” table |
-   | Advanced → Namespace | Keep `gpuworks-system` (the same namespace where the Secret was created in step 3) |
-   | Advanced → Agent image | The image address you pushed to the cloud registry |
-   | Advanced → Image pull secret | The Secret name created in step 3 |
+   | Advanced → Namespace | Keep `gpuworks-system` |
+   | Advanced → Agent image registry | The value in each cloud's “Connect in gpuworks” table |
    | Advanced → RuntimeClass | **Empty** (the gray “Automatic” in the input is only a placeholder hint) |
 
    The other fields under “Advanced” need no changes in this guide; for their meaning, see [Connect a Kubernetes Cluster](connect-kubernetes.md).
@@ -351,7 +354,7 @@ This section corresponds to steps 4 to 6 of the overview and moves back and fort
 
    > **Note**: The command contains the cluster's connect token (`token=…` in the figure is an elided form). Treat it like a password and show it only to administrators.
 
-### Step 5: Run the Command in the Cluster
+### Step 3: Run the Command in the Cluster
 
 In a terminal that can reach the cluster, run the copied command:
 
@@ -365,7 +368,7 @@ Then confirm the agent has started:
 kubectl -n gpuworks-system get daemonset,pods -o wide
 ```
 
-### Step 6: Confirm the Node Appears and Deploy a Small Model
+### Step 4: Confirm the Node Appears and Deploy a Small Model
 
 1. About half a minute after the Pod is `Running`, the node appears on gpuworks's Nodes page with a “K8s” tag, showing the card model and memory. If it never appears, see [When No Node Appears](#没有节点出现时).
 2. Deploy a small model to verify: on the Models page, add ModelScope's `Qwen/Qwen3-0.6B`, deploy it to this node, and once it is `Running`, try a message on the Playground page. During deployment, `kubectl -n gpuworks-system get pods` shows the placeholder Pod (`gpuworks-hold-*`, borrowing a card from the cloud's device plugin) and the instance Pod.
@@ -386,7 +389,7 @@ flowchart TD
   q3{"DaemonSet event reports<br/>RuntimeClass nvidia not found?"}
   q4{"Pod is running,<br/>but no node appears?"}
   f1["The node selector selects no node<br/>check labels with kubectl get nodes --show-labels"]
-  f2["Pull credentials missing or wrong<br/>check the Secret, fix it, then delete the Pod to re-pull"]
+  f2["The nodes cannot reach the chosen registry<br/>choose a reachable one; for your own private image, check the pull credentials"]
   f3["The cluster entry has a RuntimeClass<br/>delete the entry and recreate it, leaving it empty"]
   f4["The agent cannot reach the server<br/>read the agent log, confirm the node can reach the Server address"]
   start --> q1
@@ -403,7 +406,7 @@ Cause and fix for each symptom:
 
 | Symptom | Cause and fix |
 |---|---|
-| agent Pod `ImagePullBackOff`, with 401 / 403 in the events | Pull credentials missing or wrong: the Secret must be in `gpuworks-system`, its name must match the cluster entry, and `--docker-server` must match the image domain; after fixing, run `kubectl -n gpuworks-system delete pod --all` so the Pods pull again |
+| agent Pod `ImagePullBackOff` | The nodes cannot reach the chosen image registry: when a cluster in mainland China chose Docker Hub, switch to “Huawei Cloud SWR” — delete the cluster entry and connect again choosing SWR; for a cluster that is already applied you can also run `kubectl -n gpuworks-system set image ds/gpuworks-agent agent=swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-agent:r1`. If you use your own image in a private registry, 401 / 403 in the events means the pull credentials are missing or wrong: the Secret must be in `gpuworks-system`, its name must match the cluster entry, and `--docker-server` must match the image domain; after fixing, run `kubectl -n gpuworks-system delete pod --all` so the Pods pull again |
 | DaemonSet event `RuntimeClass "nvidia" not found` | The cluster entry has a RuntimeClass. Managed clusters have none; delete the cluster entry, recreate it, and leave it empty |
 | DaemonSet desired count is 0 | The node selector selects no node; check labels with `kubectl get nodes --show-labels` |
 | Pod is running, but no node appears | The agent cannot reach the server: read the error with `kubectl -n gpuworks-system logs ds/gpuworks-agent` and confirm the node can reach the Server address |
@@ -415,4 +418,4 @@ When you finish, clean up in this order:
 1. Delete the deployments in gpuworks;
 2. For a cluster connected from a cloud account, click “Remove from the cluster” on the “Kubernetes” page (checks first, deletes after confirmation); for other clusters run `kubectl delete -f '<the same manifest address>'`. Both delete the DaemonSet, placeholder Pods, and instance Pods, and the cards go back to the cluster;
 3. Delete these nodes on the gpuworks Nodes page and delete the cluster entry on the “Kubernetes” page;
-4. In the cloud console, delete the cluster (together with node pools, load balancers, and EIPs) and the image registry to avoid further charges.
+4. In the cloud console, delete the cluster (together with node pools, load balancers, and EIPs) to avoid further charges.

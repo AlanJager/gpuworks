@@ -187,15 +187,9 @@ func (c *Client) Create(ctx context.Context, path string, obj, out any) error {
 }
 
 // MergePatch applies a JSON merge patch. Lists in it replace the object's
-// lists whole; use StrategicMergePatch to change one container.
+// lists whole.
 func (c *Client) MergePatch(ctx context.Context, path string, patch any, out any) error {
 	return c.jsonCall(ctx, http.MethodPatch, path, "application/merge-patch+json", patch, out)
-}
-
-// StrategicMergePatch applies a strategic merge patch, which merges lists
-// such as a pod template's containers by their key (the container name).
-func (c *Client) StrategicMergePatch(ctx context.Context, path string, patch any, out any) error {
-	return c.jsonCall(ctx, http.MethodPatch, path, "application/strategic-merge-patch+json", patch, out)
 }
 
 // Delete deletes the object at path with the grace period given (nil keeps

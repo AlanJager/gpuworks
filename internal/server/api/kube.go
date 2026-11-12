@@ -15,7 +15,6 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"gpuworks.ai/gpuworks/internal/server/kubemanifest"
 	"gpuworks.ai/gpuworks/internal/server/store"
-	"gpuworks.ai/gpuworks/internal/version"
 )
 
 // Kubernetes clusters join as one DaemonSet (docs/adr/0052-kubernetes-nodes.md):
@@ -29,13 +28,25 @@ const (
 	kubeDefaultVendor      = accelerator.VendorNVIDIA
 	kubeDefaultStateDir    = kubemanifest.DefaultStateDir
 	kubeDefaultEnginePorts = "40000-42767"
-	kubeAgentImageRepo     = "gpuworks/gpuworks-agent"
 )
 
-// kubeDefaultAgentImage is the image an entry without one of its own runs:
-// this server's version, read when the manifest is rendered, so an upgraded
-// server's manifest moves the DaemonSet along instead of back.
-func kubeDefaultAgentImage() string { return kubeAgentImageRepo + ":" + version.Version }
+// kubeAgentImage is the image an entry's DaemonSet runs: its own, or the
+// published one from its registry at this server's runtime revision, decided
+// when the manifest is rendered so a server with a newer revision renders
+// the newer image.
+func kubeAgentImage(c store.KubeCluster) string {
+	return firstNonEmpty(c.AgentImage, kubemanifest.AgentImage(c.AgentImageSource))
+}
+
+// kubeAgentImageSourceFor is the registry a cloud cluster's nodes pull the
+// published agent image from: Huawei Cloud SWR in mainland China, where
+// Docker Hub is out of reach, Docker Hub elsewhere.
+func kubeAgentImageSourceFor(providerKind, region string) string {
+	if providerKind == "aliyun" && strings.HasPrefix(region, "cn-") && region != "cn-hongkong" {
+		return kubemanifest.AgentImageSWR
+	}
+	return kubemanifest.AgentImageDockerHub
+}
 
 func kubeManifestURL(c store.KubeCluster) string {
 	return strings.TrimRight(c.ServerURL, "/") + "/kube/manifest.yaml?token=" + url.QueryEscape(c.Token)
@@ -44,6 +55,7 @@ func kubeManifestURL(c store.KubeCluster) string {
 func kubeClusterDTO(c store.KubeCluster, v kubeEntryView) dto.KubeCluster {
 	out := dto.KubeCluster{
 		ID: c.ID, UUID: c.UUID, Name: c.Name, Namespace: c.Namespace, ServerURL: c.ServerURL, AgentImage: c.AgentImage,
+		AgentImageSource: firstNonEmpty(c.AgentImageSource, kubemanifest.AgentImageDockerHub), EffectiveAgentImage: kubeAgentImage(c),
 		Vendor: c.Vendor, NodeSelector: c.NodeSelector, RuntimeClass: c.RuntimeClass, ImagePullSecret: c.ImagePullSecret,
 		ContainerdSocket: c.ContainerdSocket, StateDir: c.StateDir, APIServer: c.APIServer,
 		EnginePorts: c.EnginePorts, IdleReturnSeconds: c.IdleReturnSeconds, ClusterUID: c.ClusterUID,
@@ -71,7 +83,7 @@ func kubeManifestParams(c store.KubeCluster, pools []store.KubeClusterPool) (kub
 	return kubemanifest.Params{
 		PoolLabel: poolLabel, PoolIDs: kubePoolIDs(pools),
 		ClusterName: c.Name, Namespace: c.Namespace, ServerURL: c.ServerURL, Token: c.Token,
-		AgentImage: firstNonEmpty(c.AgentImage, kubeDefaultAgentImage()), Vendor: firstNonEmpty(c.Vendor, kubeDefaultVendor), NodeSelector: sel, RuntimeClass: c.RuntimeClass,
+		AgentImage: kubeAgentImage(c), Vendor: firstNonEmpty(c.Vendor, kubeDefaultVendor), NodeSelector: sel, RuntimeClass: c.RuntimeClass,
 		ImagePullSecret: c.ImagePullSecret, ContainerdSocket: c.ContainerdSocket, EnginePorts: c.EnginePorts, StateDir: c.StateDir, APIServer: c.APIServer,
 	}, nil
 }
@@ -113,6 +125,7 @@ func (a *apiHandlers) createKubeCluster(w http.ResponseWriter, r *http.Request) 
 		Namespace:         firstNonEmpty(strings.TrimSpace(req.Namespace), kubeDefaultNamespace),
 		ServerURL:         strings.TrimRight(strings.TrimSpace(req.ServerURL), "/"),
 		AgentImage:        strings.TrimSpace(req.AgentImage),
+		AgentImageSource:  strings.TrimSpace(req.AgentImageSource),
 		Vendor:            accelerator.NormalizeVendor(firstNonEmpty(strings.TrimSpace(req.Vendor), kubeDefaultVendor)),
 		NodeSelector:      strings.TrimSpace(req.NodeSelector),
 		RuntimeClass:      strings.TrimSpace(req.RuntimeClass),
@@ -140,6 +153,10 @@ func (a *apiHandlers) createKubeCluster(w http.ResponseWriter, r *http.Request) 
 		kubeInvalid(w, "provider_pool_ids", "node pools belong to a cluster of a cloud account; give provider_id and provider_cluster_id")
 		return
 	}
+	if !kubemanifest.ValidAgentImageSource(c.AgentImageSource) {
+		kubeInvalid(w, "agent_image_source", "must be one of "+strings.Join(kubemanifest.AgentImageSources, ", "))
+		return
+	}
 	if c.Name == "" || len(c.Name) > 128 {
 		kubeInvalid(w, "name", "must be 1 to 128 bytes")
 		return
@@ -152,7 +169,7 @@ func (a *apiHandlers) createKubeCluster(w http.ResponseWriter, r *http.Request) 
 			kubeInvalid(w, "node_selector", "an entry made from a cloud cluster selects its nodes by node pool")
 			return
 		}
-		selected, vendor, ok := a.kubePoolSelection(w, r, *c.ProviderID, c.ProviderClusterID, req.ProviderPoolIDs, "")
+		selected, vendor, cluster, ok := a.kubePoolSelection(w, r, *c.ProviderID, c.ProviderClusterID, req.ProviderPoolIDs, "")
 		if !ok {
 			return
 		}
@@ -161,6 +178,11 @@ func (a *apiHandlers) createKubeCluster(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 		pools, c.Vendor = selected, vendor
+		if c.AgentImageSource == "" {
+			if p, err := a.d.Store.GetProvider(*c.ProviderID); err == nil {
+				c.AgentImageSource = kubeAgentImageSourceFor(p.Kind, cluster.Region)
+			}
+		}
 		if profile, ok := accelerator.KubeProfileFor(c.Vendor); ok && !profile.RuntimeClass {
 			c.RuntimeClass = ""
 		}
@@ -325,18 +347,4 @@ func (a *apiHandlers) kubeEnroll(w http.ResponseWriter, r *http.Request) {
 		a.d.Log.Info("kubernetes node enrolled", "cluster", cluster.Name, "node", node.KubeNodeName, "uuid", node.UUID)
 	}
 	writeJSON(w, http.StatusOK, dto.KubeEnrollResponse{NodeUUID: node.UUID, NodeToken: node.Token, IdleReturnSeconds: cluster.IdleReturnSeconds})
-}
-
-// upgradeKubeNode upgrades the agents of a Kubernetes node's cluster: the
-// node's agent moves its DaemonSet to this server's version, and Kubernetes
-// replaces every agent of the cluster in turn.
-func (a *apiHandlers) upgradeKubeNode(w http.ResponseWriter, r *http.Request, node *store.Node) {
-	raw, err := a.d.CallNode(r.Context(), node.UUID, proto.RPCKubeUpgrade, proto.KubeUpgradeParams{Version: version.Version})
-	if err != nil {
-		writeErr(w, http.StatusConflict, err)
-		return
-	}
-	var result proto.KubeUpgradeResult
-	_ = json.Unmarshal(raw, &result)
-	writeJSON(w, http.StatusAccepted, map[string]any{"status": "rolling", "image": result.Image})
 }

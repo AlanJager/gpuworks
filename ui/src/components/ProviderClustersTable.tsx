@@ -58,6 +58,7 @@ export default function ProviderClustersTable({ providerId, providerName }: { pr
     pool_ids: chosen(c),
     provider_id: providerId,
     provider_cluster_id: c.external_id,
+    agent_image_source: c.agent_image_source,
     source_label: `${providerName} · ${c.name} (${c.external_id})`,
   });
 

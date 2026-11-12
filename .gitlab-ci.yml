@@ -858,11 +858,10 @@ release-publish:
     - when: never
 
 # Push the agent image Kubernetes clusters run (build/agent-image, ADR 0052)
-# under the version the server reports, which is the image a cluster entry
-# uses when its agent image is left empty: nightly under the short commit
-# (plus :nightly), a release under its tag (plus :latest). It waits for every
-# release build, like release-publish, so an image never names a version the
-# distribution sources do not serve. GPUWORKS_AGENT_IMAGE_DOCKER_CONFIG is a
+# under its runtime revision (build/agent-image/REVISION), the tag a cluster
+# entry's manifest names, and under <revision>-<version>. The agent in the
+# image only seeds a node; the agents then take and upgrade to the server's
+# own binary, so a nightly moving the revision tag does no harm. GPUWORKS_AGENT_IMAGE_DOCKER_CONFIG is a
 # protected file variable holding a docker config.json with the registries'
 # credentials; without it the job fails rather than pretend it published.
 # The shell runner has docker but no Go: make runs in the pinned Go image with
@@ -915,7 +914,6 @@ release-agent-image:
       -e NERDCTL_URL_BASE
       -e GPUWORKS_AGENT_IMAGE_REPOS
       -e GPUWORKS_AGENT_IMAGE_DOCKER_CONFIG
-      -e GPUWORKS_RELEASE_CHANNEL
       -e GPUWORKS_DOCKER_CLI_IMAGE=docker.m.daocloud.io/library/docker:29-cli
       -e GPUWORKS_BUILDKIT_IMAGE=docker.m.daocloud.io/moby/buildkit:v0.25.2
       "$DOCKER_GO_IMAGE"

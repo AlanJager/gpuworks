@@ -7,6 +7,7 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/accelerator"
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
+	"gpuworks.ai/gpuworks/internal/server/kubemanifest"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -54,9 +55,20 @@ func (a *apiHandlers) kubeDefaults(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, dto.KubeDefaults{
 		Vendor: kubeDefaultVendor, Namespace: kubeDefaultNamespace, StateDir: kubeDefaultStateDir,
 		EnginePorts: kubeDefaultEnginePorts, IdleReturnSeconds: store.KubeDefaultIdleReturnSeconds,
-		IdleReturnKeep: store.KubeKeepCards, AgentImage: kubeDefaultAgentImage(),
+		IdleReturnKeep: store.KubeKeepCards, AgentImage: kubemanifest.AgentImage(kubemanifest.AgentImageDockerHub),
 		StalledAfterSeconds: int(kubeStalledAfter / time.Second), Vendors: kubeVendorList(),
+		AgentImageSource: kubemanifest.AgentImageDockerHub, AgentImageSources: kubeAgentImageSourceList(),
 	})
+}
+
+// kubeAgentImageSourceList is the registries the published agent image can
+// be pulled from, the default first, each with the image it names.
+func kubeAgentImageSourceList() []dto.KubeAgentImageSource {
+	out := make([]dto.KubeAgentImageSource, 0, len(kubemanifest.AgentImageSources))
+	for _, id := range kubemanifest.AgentImageSources {
+		out = append(out, dto.KubeAgentImageSource{ID: id, Image: kubemanifest.AgentImage(id)})
+	}
+	return out
 }
 
 // kubeClusterStalled: no node has joined for longer than kubeStalledAfter.

@@ -28,9 +28,8 @@ type Server struct {
 	mu    sync.Mutex
 	pods  map[string]*kubeapi.Pod // ns/name
 	nodes map[string]*kubeapi.Node
-	// daemonSet is kept as a generic JSON document so patches behave as
-	// the API server's do: a merge patch replaces lists whole, a strategic
-	// merge patch merges containers by name.
+	// daemonSet is the agent DaemonSet the agent reads (its UID); it is
+	// served as a generic JSON document.
 	daemonSet map[string]any
 	clusterID string
 	rv        int
@@ -186,24 +185,6 @@ func (s *Server) UpdatePod(ns, name string, fn func(*kubeapi.Pod)) {
 	}
 }
 
-// DaemonSetContainer is the agent DaemonSet's first container.
-func (s *Server) DaemonSetContainer() map[string]any {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	cs := s.daemonSet["spec"].(map[string]any)["template"].(map[string]any)["spec"].(map[string]any)["containers"].([]any)
-	if len(cs) == 0 {
-		return nil
-	}
-	return cs[0].(map[string]any)
-}
-
-// DaemonSetImage is the agent DaemonSet's current image.
-func (s *Server) DaemonSetImage() string {
-	c := s.DaemonSetContainer()
-	img, _ := c["image"].(string)
-	return img
-}
-
 // Running makes a pod's only container run.
 func Running(p *kubeapi.Pod) {
 	p.Status.Phase = "Running"
@@ -316,79 +297,16 @@ func (s *Server) serveDaemonSet(w http.ResponseWriter, r *http.Request, name str
 		s.status(w, 404, "NotFound", fmt.Sprintf("daemonsets.apps %q not found", name))
 		return
 	}
-	if r.Method == http.MethodPatch {
-		strategic := false
-		switch r.Header.Get("Content-Type") {
-		case "application/merge-patch+json":
-		case "application/strategic-merge-patch+json":
-			strategic = true
-		default:
-			s.status(w, 415, "UnsupportedMediaType", "the body of the request was in an unknown format")
-			return
-		}
-		var patch map[string]any
-		if err := json.NewDecoder(r.Body).Decode(&patch); err != nil {
-			s.status(w, 400, "BadRequest", err.Error())
-			return
-		}
-		s.mu.Lock()
-		s.daemonSet = mergeJSON(s.daemonSet, patch, strategic).(map[string]any)
-		s.mu.Unlock()
+	if r.Method != http.MethodGet {
+		// The manifest's Role grants the agent only get on its DaemonSet.
+		s.status(w, 403, "Forbidden", fmt.Sprintf("daemonsets.apps %q is forbidden: cannot %s", name, strings.ToLower(r.Method)))
+		return
 	}
 	s.mu.Lock()
 	raw, _ := json.Marshal(s.daemonSet)
 	s.mu.Unlock()
 	w.Header().Set("Content-Type", "application/json")
 	_, _ = w.Write(raw)
-}
-
-// mergeJSON applies patch to doc: maps merge key by key (null deletes),
-// anything else replaces — except, in a strategic merge, the "containers"
-// list, whose entries merge with the ones of the same name.
-func mergeJSON(doc, patch any, strategic bool) any {
-	pm, ok := patch.(map[string]any)
-	if !ok {
-		return patch
-	}
-	dm, _ := doc.(map[string]any)
-	out := map[string]any{}
-	for k, v := range dm {
-		out[k] = v
-	}
-	for k, v := range pm {
-		switch {
-		case v == nil:
-			delete(out, k)
-		case strategic && k == "containers":
-			out[k] = mergeByName(out[k], v)
-		default:
-			out[k] = mergeJSON(out[k], v, strategic)
-		}
-	}
-	return out
-}
-
-func mergeByName(doc, patch any) any {
-	have, _ := doc.([]any)
-	want, ok := patch.([]any)
-	if !ok {
-		return patch
-	}
-	out := append([]any(nil), have...)
-	for _, p := range want {
-		pm, _ := p.(map[string]any)
-		merged := false
-		for i, h := range out {
-			if hm, _ := h.(map[string]any); hm != nil && pm != nil && hm["name"] == pm["name"] {
-				out[i] = mergeJSON(hm, pm, true)
-				merged = true
-			}
-		}
-		if !merged {
-			out = append(out, p)
-		}
-	}
-	return out
 }
 
 func matches(p *kubeapi.Pod, labelSel, fieldSel string) bool {

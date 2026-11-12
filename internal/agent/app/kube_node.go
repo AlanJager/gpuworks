@@ -41,16 +41,6 @@ func (n *NodeRuntime) kubeRPC(ctx context.Context, method string, params json.Ra
 		return nil, fmt.Errorf("%s: this node does not run on Kubernetes", method)
 	}
 	switch method {
-	case proto.RPCKubeUpgrade:
-		var req proto.KubeUpgradeParams
-		if err := json.Unmarshal(params, &req); err != nil {
-			return nil, fmt.Errorf("decode %s: %w", method, err)
-		}
-		image, err := d.UpgradeDaemonSet(ctx, req.Version)
-		if err != nil {
-			return nil, err
-		}
-		return proto.KubeUpgradeResult{Image: image}, nil
 	default:
 		var req proto.KubeNodeExistsParams
 		if err := json.Unmarshal(params, &req); err != nil {

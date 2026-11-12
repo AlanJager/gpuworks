@@ -85,6 +85,16 @@ Use an administrator account. The node must be online; older agents also need ac
 
 For older agents that download their binary, the batch package remains pinned during the download. Older server-initiated agents that cannot receive an upgrade package over the connection require the manual procedure below. Upgrading does not automatically drain workloads or guarantee uninterrupted requests; verify workload recovery one node at a time for multi-node inference and PD disaggregation.
 
+### Nodes of a Kubernetes Cluster
+
+Nodes connected through a DaemonSet are upgraded in a batch like any other: the agent runs from `agent/gpuworks-agent` in the node's state directory (`/opt/gpuworks` by default), and an upgrade replaces that program in place, without changing the DaemonSet or reaching a registry, so private registries and offline clusters are covered too.
+
+- A node the preview marks "State directory not executable" could not start from its state directory (for example, it is mounted noexec) and runs the program built into the image; the batch upgrade skips it. Check the state directory on the node, then delete the node's agent Pod to restart it.
+- The image tag is the runtime version and rarely changes. When a release raises it, its release notes say so: after upgrading the server, apply the manifest once more (`kubectl apply` or "Apply to the cluster") and the DaemonSet moves to the new tag; when the cluster uses a private registry or an image imported offline, push the new tag to the registry or import it on each node first.
+- A node that joins the cluster later first runs the image's own program and switches to the server's current agent before it registers; it needs no upgrade.
+
+See [Connect a Kubernetes Cluster](connect-kubernetes.md).
+
 ### Rerun the Installation Script on the Node
 
 If you can sign in to the node, you can also rerun `/install.sh` to update the agent. Use this method if the node is offline or the old version does not support self-upgrade.

@@ -48,9 +48,16 @@ type KubeCluster struct {
 	// ServerURL is the address the agents connect to (ADR 0025: stated by the
 	// operator, never inferred).
 	ServerURL string `gorm:"size:512"`
-	// AgentImage is the image the DaemonSet runs; empty runs the server's
-	// own version of the default image, decided when the manifest is rendered.
+	// AgentImage is the image the DaemonSet runs; empty runs the published
+	// agent image from AgentImageSource, at the runtime revision of the
+	// server rendering the manifest (kubemanifest.AgentImage).
 	AgentImage string `gorm:"size:512"`
+	// AgentImageSource is the registry the published agent image is pulled
+	// from when AgentImage is empty: one of kubemanifest.AgentImageSources,
+	// empty for Docker Hub. Nothing at render time tells where a cluster's
+	// nodes can pull from, so it is chosen when the entry is made (for a
+	// cloud cluster from its region).
+	AgentImageSource string `gorm:"size:16"`
 	// Vendor is the accelerator vendor of the selected nodes; it decides the
 	// host paths the agents mount. A cluster with cards of two vendors joins
 	// as two clusters, each selecting its own nodes.
@@ -124,6 +131,15 @@ func addKubeClusterImagePullSecret(db *gorm.DB) error {
 		return nil
 	}
 	return db.Migrator().AddColumn(&KubeCluster{}, "ImagePullSecret")
+}
+
+// addKubeClusterAgentImageSource adds KubeCluster.AgentImageSource; the
+// existing entries keep Docker Hub.
+func addKubeClusterAgentImageSource(db *gorm.DB) error {
+	if !db.Migrator().HasTable(&KubeCluster{}) || db.Migrator().HasColumn(&KubeCluster{}, "AgentImageSource") {
+		return nil
+	}
+	return db.Migrator().AddColumn(&KubeCluster{}, "AgentImageSource")
 }
 
 // CreateKubeCluster stores a cluster with a fresh enrollment token, and the

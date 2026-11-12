@@ -77,7 +77,7 @@ func (a *apiHandlers) kubeClusterParams(c store.KubeCluster) (kubemanifest.Param
 // than the entry's. entryVendor is the vendor of an entry that exists (its
 // pools may not change it); empty for a new entry, whose vendor is then the
 // pools'.
-func (a *apiHandlers) kubePoolSelection(w http.ResponseWriter, r *http.Request, providerID uint, clusterID string, ids []string, entryVendor string) (pools []store.KubeClusterPool, vendor string, ok bool) {
+func (a *apiHandlers) kubePoolSelection(w http.ResponseWriter, r *http.Request, providerID uint, clusterID string, ids []string, entryVendor string) (pools []store.KubeClusterPool, vendor string, cluster provider.Cluster, ok bool) {
 	wanted := make([]string, 0, len(ids))
 	seen := map[string]bool{}
 	for _, id := range ids {
@@ -88,23 +88,23 @@ func (a *apiHandlers) kubePoolSelection(w http.ResponseWriter, r *http.Request, 
 	}
 	if len(wanted) == 0 {
 		kubeInvalid(w, "provider_pool_ids", "select at least one node pool of the cluster")
-		return nil, "", false
+		return nil, "", provider.Cluster{}, false
 	}
 	if a.d.Providers == nil {
 		writeErr(w, http.StatusServiceUnavailable, errNoProviders)
-		return nil, "", false
+		return nil, "", provider.Cluster{}, false
 	}
 	clusters, err := a.d.Providers.Clusters(r.Context(), providerID)
 	switch {
 	case errors.Is(err, store.ErrNotFound):
 		kubeInvalid(w, "provider_id", "no such cloud account")
-		return nil, "", false
+		return nil, "", provider.Cluster{}, false
 	case errors.Is(err, provider.ErrUnsupported):
 		writeErr(w, http.StatusNotImplemented, err)
-		return nil, "", false
+		return nil, "", provider.Cluster{}, false
 	case err != nil:
 		writeErr(w, statusProviderFailed, err)
-		return nil, "", false
+		return nil, "", provider.Cluster{}, false
 	}
 	var found *provider.Cluster
 	for i := range clusters {
@@ -114,7 +114,7 @@ func (a *apiHandlers) kubePoolSelection(w http.ResponseWriter, r *http.Request, 
 	}
 	if found == nil {
 		kubeInvalid(w, "provider_cluster_id", "the cloud account has no such cluster")
-		return nil, "", false
+		return nil, "", provider.Cluster{}, false
 	}
 	byID := map[string]provider.ClusterPool{}
 	for _, p := range found.GPUPools {
@@ -125,11 +125,11 @@ func (a *apiHandlers) kubePoolSelection(w http.ResponseWriter, r *http.Request, 
 		p, known := byID[id]
 		if !known {
 			kubeInvalid(w, "provider_pool_ids", "node pool "+id+" is not a GPU node pool of the cluster")
-			return nil, "", false
+			return nil, "", provider.Cluster{}, false
 		}
 		if p.LabelKey == "" {
 			kubeInvalid(w, "provider_pool_ids", "the cloud gave no label for node pool "+id)
-			return nil, "", false
+			return nil, "", provider.Cluster{}, false
 		}
 		vendors[p.Vendor] = true
 		pools = append(pools, store.KubeClusterPool{PoolID: p.ID, LabelKey: p.LabelKey})
@@ -145,12 +145,12 @@ func (a *apiHandlers) kubePoolSelection(w http.ResponseWriter, r *http.Request, 
 		sort.Strings(names)
 		writeProductError(w, http.StatusBadRequest, ErrorKubeClusterMixedVendors,
 			"the node pools of one entry must all be of one vendor, got "+strings.Join(names, ", "), map[string]any{"vendors": strings.Join(names, ", ")})
-		return nil, "", false
+		return nil, "", provider.Cluster{}, false
 	}
 	for v := range vendors {
 		vendor = v
 	}
-	return pools, vendor, true
+	return pools, vendor, *found, true
 }
 
 // setKubeClusterPools replaces the node pools an entry made from a cloud
@@ -174,7 +174,7 @@ func (a *apiHandlers) setKubeClusterPools(w http.ResponseWriter, r *http.Request
 		writeProductError(w, http.StatusConflict, ErrorKubeClusterNoSource, "the cluster was not connected from a cloud account; its nodes are chosen by its node selector", nil)
 		return
 	}
-	pools, _, ok := a.kubePoolSelection(w, r, *c.ProviderID, c.ProviderClusterID, req.ProviderPoolIDs, c.Vendor)
+	pools, _, _, ok := a.kubePoolSelection(w, r, *c.ProviderID, c.ProviderClusterID, req.ProviderPoolIDs, c.Vendor)
 	if !ok {
 		return
 	}

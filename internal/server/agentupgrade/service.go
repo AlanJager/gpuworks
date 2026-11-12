@@ -133,11 +133,12 @@ func (s *Service) preview(ctx context.Context, uuids []string, seal bool) (Previ
 			c.Eligibility, c.Reason = "already_current", "agent already matches the target"
 		case strings.TrimSpace(n.AgentVersion) == "" || n.AgentVersion == "dev":
 			c.Eligibility, c.Reason = "unknown_version", "the agent version cannot be identified"
-		case n.KubeClusterID != 0:
-			// The agent is a pod of its cluster's DaemonSet: a binary
-			// pushed into the pod is gone at its next restart. The node's
-			// own upgrade moves the DaemonSet's image instead.
-			c.Eligibility, c.Reason = "kubernetes", "the agent runs in a Kubernetes DaemonSet; upgrade the node to roll its cluster's agents"
+		case n.KubeClusterID != 0 && !slices.Contains(conn.Caps, proto.CapKubeBinaryUpgrade):
+			// An agent of a DaemonSet that could not hand over to the
+			// node's state directory (kubeboot; a noexec mount, say) runs
+			// its image's own binary, and a binary pushed into the pod is
+			// gone at its next restart.
+			c.Eligibility, c.Reason = "kubernetes", "the agent could not start from the node's state directory and runs its image's own binary, which an upgrade cannot replace"
 		case n.Arch == "" || (n.OS != "" && n.OS != "linux" && n.OS != "darwin"):
 			c.Eligibility, c.Reason = "unsupported", "agent platform is unsupported or unknown"
 		default:

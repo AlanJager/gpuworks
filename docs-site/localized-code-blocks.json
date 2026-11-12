@@ -499,8 +499,8 @@
   {
     "path": "how-to/connect-managed-kubernetes.md",
     "block_index": 0,
-    "source_sha256": "a51b034842512d44f6c8d5923b286ca173aba71a29d1d6ade0e68f6e372b90d2",
-    "translation_sha256": "ec92d83f1ebdad91412dc0ac5a9ba43dfba148de83526c7062e46945c590ca42",
+    "source_sha256": "67612afc84d4c5a55a6074c97e478d1a16d44a8ff00425b3900f9417213eee78",
+    "translation_sha256": "fef385864056e3ca73fbea3ea63cb14f8c90f6bf4fbd59692c2f5f6583234653",
     "reason": "Reviewed localization of visible diagram labels, prose formulas, writing template, or directory annotations; executable examples remain unchanged."
   },
   {
@@ -513,71 +513,36 @@
   {
     "path": "how-to/connect-managed-kubernetes.md",
     "block_index": 2,
-    "source_sha256": "888cc3445ca06e3e149bf441fd7a6f7df758805f39f08a49202ef4d1ac49a4d8",
-    "translation_sha256": "3a88ca33ef9b1c7cdae807a172e989d8c47ef20e80a53e593c3991bc628843fa",
-    "reason": "Reviewed localization of visible diagram labels, prose formulas, writing template, or directory annotations; executable examples remain unchanged."
-  },
-  {
-    "path": "how-to/connect-managed-kubernetes.md",
-    "block_index": 3,
     "source_sha256": "b3c4b3275907ae69c543bc8146a4d41f50f996a8f48c18c3bcab757038e88420",
     "translation_sha256": "feb6991c41df94bf4e4b3d704f53b5ff63a8b72f6c175e0536fb55af342974b1",
     "reason": "Reviewed localization of visible diagram labels, prose formulas, writing template, or directory annotations; executable examples remain unchanged."
   },
   {
     "path": "how-to/connect-managed-kubernetes.md",
-    "block_index": 4,
-    "source_sha256": "a5ad9e184c7514250bb8c092c62e9c0dbee96c6b0e77890df095f38101220e30",
-    "translation_sha256": "e18ddba335308f84f822e9cfe43ea32cdee5960f2b5ac165b8f2b6dc2c3d3a58",
-    "reason": "Reviewed localization of visible diagram labels, prose formulas, writing template, or directory annotations; executable examples remain unchanged."
-  },
-  {
-    "path": "how-to/connect-managed-kubernetes.md",
-    "block_index": 5,
-    "source_sha256": "4ce7bdcf75b507dc3724fa9df760758fb018ffaf04c4c8af99cb1d8d5fa5a767",
-    "translation_sha256": "6df9b17473fb94c7df6ff5a83747de314a06882ff7be5832c312f1b32f591b7f",
-    "reason": "Reviewed localization of visible diagram labels, prose formulas, writing template, or directory annotations; executable examples remain unchanged."
-  },
-  {
-    "path": "how-to/connect-managed-kubernetes.md",
-    "block_index": 6,
+    "block_index": 3,
     "source_sha256": "cc164835621a9d7f8b4de9bd676bbefed54ec29442f1fefaaf9706e561a2e8bc",
     "translation_sha256": "2d948dfdd1d7e55797ce97897a007bc2d87f03a469ea9a436659ced82d7eb925",
     "reason": "Reviewed localization of visible diagram labels, prose formulas, writing template, or directory annotations; executable examples remain unchanged."
   },
   {
     "path": "how-to/connect-managed-kubernetes.md",
-    "block_index": 8,
+    "block_index": 5,
     "source_sha256": "3ac97212aa95b66f63f6dcbc606180f06916bf5733365335b9045596f934b105",
     "translation_sha256": "c86c6e33e52ea905609b329901f40f4b5c6efe31c5d39e4734fbd32e15b2120b",
     "reason": "Reviewed localization of visible diagram labels, prose formulas, writing template, or directory annotations; executable examples remain unchanged."
   },
   {
     "path": "how-to/connect-managed-kubernetes.md",
-    "block_index": 9,
-    "source_sha256": "3d9846c263c25c77bce660a40861e12bc29b8d0cac899983d6b784ea47703f8a",
-    "translation_sha256": "8a5d9e5a22d231c8a855f9aaaa571adbfb6e1632ca1cf8c437b6c13b613372a1",
-    "reason": "Reviewed localization of visible diagram labels, prose formulas, writing template, or directory annotations; executable examples remain unchanged."
-  },
-  {
-    "path": "how-to/connect-managed-kubernetes.md",
-    "block_index": 11,
+    "block_index": 6,
     "source_sha256": "af7f55e0627f71ba6cfd42e841e6fdab5d942ac528a70e1dd5a261827fdd9e5f",
     "translation_sha256": "eed660dc8078313a322337de1380fdd2f763fa1fde10c7e23fdd5ff0a09ef0ef",
     "reason": "Reviewed localization of visible diagram labels, prose formulas, writing template, or directory annotations; executable examples remain unchanged."
   },
   {
     "path": "how-to/connect-managed-kubernetes.md",
-    "block_index": 14,
-    "source_sha256": "89014f3d40f2619cc39cea69d8d49cc8b6c2ac65ac869de12b98387813b00cd8",
-    "translation_sha256": "d73a1fe70062dc139bda560fa90d7c6a6cde896c0938391419e3694b98ea08a6",
-    "reason": "Reviewed localization of visible diagram labels, prose formulas, writing template, or directory annotations; executable examples remain unchanged."
-  },
-  {
-    "path": "how-to/connect-managed-kubernetes.md",
     "block_index": 18,
-    "source_sha256": "688fa3b3556dcda40b5138d735372956b6dc636ca0429a65b5c53b137d2837b7",
-    "translation_sha256": "1a40fb8e42fdbd8dc3c8747918eb8d91618d3f168778b3e71f79c1981c454e0c",
+    "source_sha256": "f0fbebb46ebb9a25195f53c17bab74542323aa9f096a0430dd7f22414ef2cedc",
+    "translation_sha256": "aff226f82555e0c8ec0f649f2fa8813cd5f46a38041e2df4008b3ade74cc41d9",
     "reason": "Reviewed localization of visible diagram labels, prose formulas, writing template, or directory annotations; executable examples remain unchanged."
   }
 ]

@@ -33,6 +33,8 @@ export interface KubeClusterPrefill {
   pool_ids: string[];
   provider_id: number;
   provider_cluster_id: string;
+  /** The registry the server suggests for the cluster's region. */
+  agent_image_source?: string;
   /** "Account · cluster" as the drawer names the source. */
   source_label: string;
 }
@@ -51,6 +53,7 @@ function formSchema(t: (key: string) => string) {
     namespace: z.string(),
     state_dir: z.string(),
     agent_image: z.string(),
+    agent_image_source: z.string(),
     image_pull_secret: z.string(),
     runtime_class: z.string(),
     containerd_socket: z.string(),
@@ -73,6 +76,7 @@ const FIELD_OF: Record<string, FormField_> = {
   node_selector: "node_selector",
   namespace: "namespace",
   agent_image: "agent_image",
+  agent_image_source: "agent_image_source",
   image_pull_secret: "image_pull_secret",
   runtime_class: "runtime_class",
   containerd_socket: "containerd_socket",
@@ -83,7 +87,7 @@ const FIELD_OF: Record<string, FormField_> = {
 
 // The fields inside the collapsed "Advanced" section: a refusal naming one opens it.
 const ADVANCED_FIELDS: ReadonlySet<FormField_> = new Set<FormField_>([
-  "namespace", "agent_image", "image_pull_secret", "state_dir", "runtime_class", "containerd_socket", "api_server", "engine_ports", "keep_cards", "idle_return_seconds",
+  "namespace", "agent_image_source", "agent_image", "image_pull_secret", "state_dir", "runtime_class", "containerd_socket", "api_server", "engine_ports", "keep_cards", "idle_return_seconds",
 ]);
 
 /**
@@ -100,6 +104,7 @@ function defaultsOf(prefill?: KubeClusterPrefill): FormValues {
     namespace: "",
     state_dir: "",
     agent_image: "",
+    agent_image_source: "",
     image_pull_secret: "",
     runtime_class: "",
     containerd_socket: "",
@@ -127,7 +132,7 @@ function requestOf(values: FormValues, defaults: KubeDefaults | null, poolIds: s
   }
   // Only a vendor the server says takes a RuntimeClass gets one (the others have their devices through the agent's
   // device plugin). Every empty field takes the server's default; an empty RuntimeClass is decided on each node.
-  const optional = { runtime_class: runtimeClassApplies(defaults, formVendor(values.vendor, poolIds, prefill)) ? values.runtime_class : "", image_pull_secret: values.image_pull_secret, namespace: values.namespace, state_dir: values.state_dir, agent_image: values.agent_image, node_selector: prefill ? "" : values.node_selector, containerd_socket: values.containerd_socket, api_server: values.api_server, engine_ports: values.engine_ports } as const;
+  const optional = { runtime_class: runtimeClassApplies(defaults, formVendor(values.vendor, poolIds, prefill)) ? values.runtime_class : "", image_pull_secret: values.image_pull_secret, namespace: values.namespace, state_dir: values.state_dir, agent_image: values.agent_image, agent_image_source: values.agent_image_source, node_selector: prefill ? "" : values.node_selector, containerd_socket: values.containerd_socket, api_server: values.api_server, engine_ports: values.engine_ports } as const;
   for (const [key, value] of Object.entries(optional)) {
     const text = (value ?? "").trim();
     if (text) (request as unknown as Record<string, string>)[key] = text;
@@ -138,6 +143,11 @@ function requestOf(values: FormValues, defaults: KubeDefaults | null, poolIds: s
 /** The vendor the form is for: the chosen one, or for a cloud entry the vendor of its first chosen pool; empty means the server's default. */
 function formVendor(vendor: string, poolIds: string[], prefill?: KubeClusterPrefill): string {
   return prefill ? (prefill.pools.find((p) => poolIds.includes(p.id))?.vendor ?? "") : vendor;
+}
+
+/** The registry the form is for: the chosen one, else the one the server suggests for the cloud cluster, else its default. */
+function formImageSource(source: string, defaults: KubeDefaults | null, prefill?: KubeClusterPrefill): string {
+  return source || prefill?.agent_image_source || defaults?.agent_image_source || "";
 }
 
 /** Whether the vendor (empty: the server's default one) takes a RuntimeClass; true while the dictionary is unknown, the server ignores it where it does not apply. */
@@ -157,7 +167,7 @@ export default function KubeClusterDrawer({ open, onClose, onCreated, prefill }:
   const { t: tCommon } = useTranslation("common");
   const schema = useMemo(() => formSchema(t), [t]);
   const form = useForm<FormValues>({ resolver: zodResolver(schema), shouldFocusError: false, defaultValues: defaultsOf(prefill) });
-  const [keepCards, vendor] = useWatch({ control: form.control, name: ["keep_cards", "vendor"] });
+  const [keepCards, vendor, imageSource] = useWatch({ control: form.control, name: ["keep_cards", "vendor", "agent_image_source"] });
   const { defaults, error: defaultsError } = useKubeDefaults(open);
   const formRef = useRef<HTMLFormElement>(null);
   const nameInput = useRef<HTMLInputElement | null>(null);
@@ -208,8 +218,14 @@ export default function KubeClusterDrawer({ open, onClose, onCreated, prefill }:
       <FormField control={form.control} name="namespace" label={t("drawer.namespace")} description={t("drawer.namespaceHelp")}>
         {(binding) => <Input {...binding} placeholder={defaults?.namespace} />}
       </FormField>
+      <FormField control={form.control} name="agent_image_source" label={t("drawer.agentImageSource")} description={t("drawer.agentImageSourceHelp")}>
+        {({ ref: _ref, onChange, ...binding }) => (
+          <OptionSelect {...binding} value={formImageSource(binding.value, defaults, prefill)} onChange={onChange}
+            options={(defaults?.agent_image_sources ?? []).map(({ id }) => ({ value: id, label: t(`drawer.agentImageSources.${id}`, { defaultValue: id }) }))} />
+        )}
+      </FormField>
       <FormField control={form.control} name="agent_image" label={t("drawer.agentImage")} description={t("drawer.agentImageHelp")}>
-        {(binding) => <Input {...binding} placeholder={defaults?.agent_image ?? t("drawer.agentImagePlaceholder")} />}
+        {(binding) => <Input {...binding} placeholder={(defaults?.agent_image_sources ?? []).find((s) => s.id === formImageSource(imageSource, defaults, prefill))?.image ?? t("drawer.agentImagePlaceholder")} />}
       </FormField>
       <FormField control={form.control} name="image_pull_secret" label={t("drawer.imagePullSecret")} description={t("drawer.imagePullSecretHelp")}>
         {(binding) => <Input {...binding} placeholder={t("drawer.imagePullSecretPlaceholder")} />}

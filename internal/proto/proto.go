@@ -111,6 +111,10 @@ const (
 	// CapUpgradePush: the agent accepts StreamAgentUpgrade. Older agents only
 	// upgrade by pulling /dl/ after the agent.upgrade RPC.
 	CapUpgradePush = "upgrade.push"
+	// CapKubeBinaryUpgrade: an agent of a Kubernetes DaemonSet that runs from
+	// a binary on the node's state directory, so its upgrade replaces the
+	// binary like any agent's. Without it the DaemonSet's image is changed.
+	CapKubeBinaryUpgrade = "upgrade.kube_binary"
 	// CapImagePullCandidates: image.pull accepts the whole candidate list and
 	// the agent walks it itself.
 	CapImagePullCandidates = "image.pull.candidates"

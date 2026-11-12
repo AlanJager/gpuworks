@@ -59,10 +59,10 @@ docs-pdf: check-doc-links check-translations
 build: check-libvgpu ui cross-agents server agent
 
 ## agent-image: the agent image a Kubernetes cluster's DaemonSet runs, built
-## into the local docker (AGENT_IMAGE, default gpuworks/gpuworks-agent:$(VERSION);
-## ARCH amd64|arm64). agent-image-publish builds amd64 + arm64 and pushes them to
+## into the local docker (AGENT_IMAGE, default gpuworks/gpuworks-agent:<revision
+## in build/agent-image/REVISION>; ARCH amd64|arm64). agent-image-publish builds amd64 + arm64 and pushes them to
 ## GPUWORKS_AGENT_IMAGE_REPOS (the release pipeline's release-agent-image job).
-AGENT_IMAGE ?= gpuworks/gpuworks-agent:$(VERSION)
+AGENT_IMAGE ?= gpuworks/gpuworks-agent:$(shell tr -d '[:space:]' < build/agent-image/REVISION)
 NERDCTL_VERSION ?= 2.1.6
 ARCH ?= amd64
 DEBIAN_MIRROR ?= mirrors.aliyun.com
@@ -543,7 +543,7 @@ KIND_AGENT_IMAGE ?= gpuworks/gpuworks-agent:l3kind
 test-l3-kind:
 	$(MAKE) agent-image AGENT_IMAGE=$(KIND_AGENT_IMAGE)
 	$(MAKE) fake-engine-image
-	GPUWORKS_KIND_AGENT_IMAGE=$(KIND_AGENT_IMAGE) CGO_ENABLED=0 $(GO) test -count=1 -v -tags=kind -timeout=20m ./test/l3kind/
+	GPUWORKS_KIND_AGENT_IMAGE=$(KIND_AGENT_IMAGE) CGO_ENABLED=0 $(GO) test -count=1 -v -tags=kind -timeout=30m ./test/l3kind/
 
 test-l4-runpod-node-onboarding: cross-agents
 	GPUWORKS_TEST_STRICT=1 CGO_ENABLED=0 $(GO) test $(GO_TEST_FLAGS) -v -tags=cloudgpu,runpod -run '^TestRunpodNodeOnboarding$$' -timeout=25m ./test/l4

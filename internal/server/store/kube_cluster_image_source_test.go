@@ -1,0 +1,87 @@
+package store
+
+import (
+	"fmt"
+	"testing"
+
+	"gorm.io/gorm"
+)
+
+func imageSourceDB(t *testing.T) *gorm.DB {
+	t.Helper()
+	db := nodesOnlyDB(t, "")
+	for _, ddl := range []string{kubeClustersV204,
+		`INSERT INTO kube_clusters (id, uuid, name, agent_image) VALUES (1, 'c-1', 'default-image', '')`,
+		`INSERT INTO kube_clusters (id, uuid, name, agent_image) VALUES (2, 'c-2', 'own-image', 'registry.example/agent:r1')`} {
+		if err := db.Exec(ddl).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	return db
+}
+
+func TestAgentImageSourceMigrationKeepsEntriesOnDockerHub(t *testing.T) {
+	db := imageSourceDB(t)
+	m := migrationByName(t, "kube_cluster_agent_image_source")
+	if m.Version != 206 {
+		t.Fatalf("migration version = %d, want 206", m.Version)
+	}
+	if err := migrateDB(db, []migration{m}); err != nil {
+		t.Fatal(err)
+	}
+	var rows []struct {
+		ID                           uint
+		AgentImage, AgentImageSource string
+	}
+	if err := db.Raw(`SELECT id, COALESCE(agent_image,'') AS agent_image, COALESCE(agent_image_source,'') AS agent_image_source FROM kube_clusters ORDER BY id`).Scan(&rows).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 2 || rows[0].AgentImageSource != "" || rows[1].AgentImageSource != "" || rows[1].AgentImage != "registry.example/agent:r1" {
+		t.Fatalf("entries after the migration: %+v", rows)
+	}
+	var marker struct{ Name string }
+	if err := db.Raw(`SELECT name FROM schema_migrations WHERE version = 206`).Scan(&marker).Error; err != nil || marker.Name != "kube_cluster_agent_image_source" {
+		t.Fatalf("marker = %+v, %v", marker, err)
+	}
+	if err := m.Apply(db); err != nil {
+		t.Fatalf("second application: %v", err)
+	}
+	if err := migrateDB(db, []migration{m}); err != nil {
+		t.Fatalf("migrating again: %v", err)
+	}
+}
+
+func TestAgentImageSourceMigrationRollsBack(t *testing.T) {
+	db := imageSourceDB(t)
+	m := migrationByName(t, "kube_cluster_agent_image_source")
+	if err := db.Exec(fmt.Sprintf(`CREATE TRIGGER fail_image_source_marker BEFORE INSERT ON schema_migrations WHEN NEW.version=%d BEGIN SELECT RAISE(ABORT, 'injected'); END`, m.Version)).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := migrateDB(db, []migration{m}); err == nil {
+		t.Fatal("injected marker failure did not fail the migration")
+	}
+	if db.Migrator().HasColumn("kube_clusters", "agent_image_source") {
+		t.Fatal("column survived a failed migration")
+	}
+	if err := db.Exec(`DROP TRIGGER fail_image_source_marker`).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := migrateDB(db, []migration{m}); err != nil {
+		t.Fatalf("retry: %v", err)
+	}
+	if !db.Migrator().HasColumn("kube_clusters", "agent_image_source") {
+		t.Fatal("column missing after the retry")
+	}
+}
+
+func TestAnEntryKeepsItsAgentImageSource(t *testing.T) {
+	st := openKubeStore(t)
+	c, err := st.CreateKubeCluster(KubeCluster{Name: "ack", AgentImageSource: "swr"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := st.KubeClusterByUUID(c.UUID)
+	if err != nil || got.AgentImageSource != "swr" {
+		t.Fatalf("stored entry = %+v, %v", got, err)
+	}
+}
