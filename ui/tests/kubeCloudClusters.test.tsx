@@ -24,12 +24,18 @@ afterEach(() => { cleanup(); Object.assign(api, originals); });
 beforeEach(() => { api.kubeDefaults = (async () => DEFAULTS) as never; });
 const DEFAULTS: KubeDefaults = {
   vendor: "nvidia", namespace: "gpuworks-system", state_dir: "/opt/gpuworks", engine_ports: "40000-42767", idle_return_seconds: 60, idle_return_keep: -1,
-  agent_image: "gpuworks/gpuworks-agent:v1", stalled_after_seconds: 300,
+  agent_image: "gpuworks/gpuworks-agent:r1", stalled_after_seconds: 300,
   vendors: [{ id: "nvidia", runtime_class: true }, { id: "ascend", runtime_class: false }],
+  agent_image_source: "dockerhub",
+  agent_image_sources: [
+    { id: "dockerhub", image: "gpuworks/gpuworks-agent:r1" },
+    { id: "swr", image: "swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-agent:r1" },
+    { id: "quay", image: "quay.io/gpuworks/gpuworks-agent:r1" },
+  ],
 };
 
 const gpuCluster: ProviderCluster = {
-  external_id: "c-gpu", name: "ack-gpu", region: "cn-shanghai", version: "1.35.7-aliyun.1", state: "running", running: true, public_api: true,
+  external_id: "c-gpu", name: "ack-gpu", region: "cn-shanghai", version: "1.35.7-aliyun.1", state: "running", running: true, public_api: true, agent_image_source: "swr",
   gpu_pools: [{ id: "np-l20", name: "l20", gpu_model: "NVIDIA L20", gpu_count: 1, nodes: 2, vendor: "nvidia", in_entry: false }],
 };
 const privateCluster: ProviderCluster = { ...gpuCluster, external_id: "c-private", name: "ack-private", public_api: false, gpu_pools: [] };
@@ -39,6 +45,7 @@ const newCluster: ProviderCluster = { ...gpuCluster, external_id: "c-new", name:
 function entry(overrides: Partial<KubeCluster> = {}): KubeCluster {
   return {
     id: 5, uuid: "e-5", name: "ack-gpu", namespace: "gpuworks-system", server_url: "http://localhost", agent_image: "", node_selector: "",
+    agent_image_source: "swr", effective_agent_image: "swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-agent:r1",
     vendor: "nvidia", state_dir: "/opt/gpuworks", runtime_class: "", image_pull_secret: "", containerd_socket: "", api_server: "", engine_ports: "40000-42767",
     idle_return_seconds: 60, cluster_uid: "", revoked: false, node_count: 0, created_at: new Date().toISOString(), pool_ids: ["np-l20"],
     apply_command: "kubectl apply -f 'http://localhost/kube/manifest.yaml?token=t'", stalled: false, can_apply: true, can_remove: true,
@@ -116,6 +123,10 @@ test("connecting a pool opens the form filled from the cluster, records the sour
   assert.equal(drawer.queryByPlaceholderText("nvidia.com/gpu.present=true"), null, "an entry from a cloud cluster selects by node pool, not by a selector");
   assert.equal(drawer.queryByRole("combobox", { name: field(k.drawer.vendor) }), null, "and has the vendor of its pools");
   assert.equal((drawer.getByRole("checkbox", { name: "l20 · NVIDIA L20 ×1 · 2 nodes" }) as HTMLElement).getAttribute("aria-checked"), "true");
+  await u.click(drawer.getByText(k.drawer.advanced));
+  assert.equal(drawer.getByRole("combobox", { name: field(k.drawer.agentImageSource) }).textContent, k.drawer.agentImageSources.swr,
+    "the registry the server suggests for the cluster's region");
+  assert.equal((drawer.getByLabelText(field(k.drawer.agentImage)) as HTMLInputElement).placeholder, "swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-agent:r1");
   await u.click(drawer.getByRole("button", { name: k.drawer.submit }));
   await waitFor(() => assert.equal(created.length, 1));
   assert.deepEqual(created[0], {

@@ -18,8 +18,14 @@ import type { KubeCluster, KubeDefaults } from "../src/api";
 // What GET /api/v1/kube/defaults answers: the drawer shows these as hints and sends only what was typed.
 const DEFAULTS: KubeDefaults = {
   vendor: "nvidia", namespace: "gpuworks-system", state_dir: "/opt/gpuworks", engine_ports: "40000-42767", idle_return_seconds: 60, idle_return_keep: -1,
-  agent_image: "gpuworks/gpuworks-agent:v1", stalled_after_seconds: 300,
+  agent_image: "gpuworks/gpuworks-agent:r1", stalled_after_seconds: 300,
   vendors: [{ id: "nvidia", runtime_class: true }, { id: "ascend", runtime_class: false }, { id: "hygon", runtime_class: false }, { id: "ppu", runtime_class: false }],
+  agent_image_source: "dockerhub",
+  agent_image_sources: [
+    { id: "dockerhub", image: "gpuworks/gpuworks-agent:r1" },
+    { id: "swr", image: "swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-agent:r1" },
+    { id: "quay", image: "quay.io/gpuworks/gpuworks-agent:r1" },
+  ],
 };
 
 
@@ -31,7 +37,8 @@ const APPLY = "kubectl apply -f 'https://gpuworks.example/kube/manifest.yaml?tok
 function cluster(overrides: Partial<KubeCluster> = {}): KubeCluster {
   return {
     id: 1, uuid: "c-1", name: "prod-gpu", namespace: "gpuworks-system", server_url: "https://gpuworks.example",
-    vendor: "nvidia", state_dir: "/opt/gpuworks", agent_image: "", node_selector: "nvidia.com/gpu.present=true", runtime_class: "", image_pull_secret: "",
+    vendor: "nvidia", state_dir: "/opt/gpuworks", agent_image: "", agent_image_source: "dockerhub", effective_agent_image: "gpuworks/gpuworks-agent:r1",
+    node_selector: "nvidia.com/gpu.present=true", runtime_class: "", image_pull_secret: "",
     containerd_socket: "", api_server: "", engine_ports: "40000-42767", idle_return_seconds: 600,
     cluster_uid: "7f3c2a10-aaaa-bbbb-cccc-0123456789ab", revoked: false, node_count: 3,
     created_at: "2026-10-19T08:30:00Z", apply_command: APPLY, stalled: false, pool_ids: [], can_apply: false, can_remove: false, operation_blocked: "no_source", ...overrides,
@@ -262,7 +269,8 @@ test("connecting opens a form with the server address prefilled and the server's
   assert.deepEqual([ports.value, ports.placeholder], ["", "40000-42767"]);
   const idle = form.getByLabelText(field(k.drawer.idleReturnSeconds)) as HTMLInputElement;
   assert.deepEqual([idle.value, idle.placeholder], ["", "60"]);
-  assert.equal((form.getByLabelText(field(k.drawer.agentImage)) as HTMLInputElement).placeholder, "gpuworks/gpuworks-agent:v1");
+  assert.equal(form.getByRole("combobox", { name: field(k.drawer.agentImageSource) }).textContent, k.drawer.agentImageSources.dockerhub, "the server's default registry");
+  assert.equal((form.getByLabelText(field(k.drawer.agentImage)) as HTMLInputElement).placeholder, "gpuworks/gpuworks-agent:r1", "the default registry's image");
   assert.ok(form.getByText(k.drawer.containerdSocketHelp), "the auto-detect hint");
   assert.ok(form.getByText(k.drawer.enginePortsHelp), "the NodePort hint");
 });
@@ -404,6 +412,26 @@ test("the vendor choice offers the four vendors; an Ascend cluster sends its ven
   await user.click(form.getByRole("button", { name: k.drawer.submit }));
   await waitFor(() => assert.equal(calls.createKubeCluster?.length, 1));
   assert.deepEqual(calls.createKubeCluster[0], [{ name: "npu", server_url: "http://localhost", vendor: "ascend", state_dir: "/opt/gpuworks-k8s" }]);
+});
+
+test("the agent image registry offers what the server publishes to; choosing SWR shows its image and sends the choice", async () => {
+  const calls = stubApi();
+  const { user } = renderPage();
+  await user.click((await screen.findAllByRole("button", { name: new RegExp(`${add}$`) }))[0]);
+  const form = dialog();
+  await user.type(await form.findByLabelText(field(k.drawer.name)), "cn");
+  await user.click(form.getByText(k.drawer.advanced));
+  const registry = form.getByRole("combobox", { name: field(k.drawer.agentImageSource) });
+  registry.focus();
+  await user.keyboard("{Enter}");
+  assert.deepEqual((await screen.findAllByRole("option")).map((option) => option.textContent),
+    [k.drawer.agentImageSources.dockerhub, k.drawer.agentImageSources.swr, k.drawer.agentImageSources.quay]);
+  await user.click(screen.getByRole("option", { name: k.drawer.agentImageSources.swr }));
+  await waitFor(() => assert.equal((form.getByLabelText(field(k.drawer.agentImage)) as HTMLInputElement).placeholder,
+    "swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-agent:r1"));
+  await user.click(form.getByRole("button", { name: k.drawer.submit }));
+  await waitFor(() => assert.equal(calls.createKubeCluster?.length, 1));
+  assert.deepEqual(calls.createKubeCluster[0], [{ name: "cn", server_url: "http://localhost", agent_image_source: "swr" }]);
 });
 
 test("every vendor can be chosen, and going back to NVIDIA brings the RuntimeClass field back", async () => {
