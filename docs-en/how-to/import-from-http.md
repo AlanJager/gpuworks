@@ -22,6 +22,8 @@ Directory URL sources download only from their own directories; site rules in pu
 
 In strict mode, select **Automatically add this host to the allowlist** beside the directory address. The current host is appended only when you parse or confirm registration. Existing entries are preserved; changing the hostname requires selecting it again. Reserved addresses cannot be authorized. This permission also applies to other management-node source requests, and a failed registration does not revoke host permission that was explicitly saved.
 
+**Fetch metadata again** for an existing model, community repository cards, and **Test login** in the credential list also offer authorization within the current operation. Authorization is offered only when global strict mode is enabled and the target needs permission. With restrictions off or a target already allowed, the original operation runs directly without an allowlist write. A Hugging Face metadata refresh successfully read by the browser does not request additional management-node source permission.
+
 ### Parsing Results and Directory Limits
 
 Parsing reads the directory listing page on the source server, subject to these rules:
@@ -64,6 +66,8 @@ Before starting, choose a download path based on the node's connectivity:
 4. When using a relay, select **Relay through the management server**.
 5. Click **Pull** in the page to start the download.
 
+In strict mode, select the current host for the allowlist before **Resolve**, or before **Pull** with **Relay through the management server**. The host permission is saved before the operation; starting a relay does not require a successful preview first. Automatic previews of a prefilled address do not write permission, and direct node pulls do not grant management-node access.
+
 After you confirm in the page, the address is recorded in the image's **Acquisition addresses**, so it can be selected directly on the image pages for other nodes. This also lets a retry after
 an unsuccessful pull find the download source.
 
@@ -83,7 +87,7 @@ After import, the image is `present` on the node and is used directly during dep
 | `HTTP_DIRECTORY_TOO_LARGE` | The file count or directory depth exceeds the limit. Point to the model's own directory |
 | `MODEL_SOURCE_REQUIRES_NEWER_AGENT` | The target node's agent is too old. Upgrade it first |
 | `IMAGE_ARCHIVE_URL_INVALID` | The archive URL is invalid. It must use `http`/`https` without embedded credentials |
-| `IMAGE_ARCHIVE_URL_POLICY_DENIED` | This host is not allowed yet. Ordinary private addresses need no allow list by default, and the allow checkbox is absent while “Restrict private host access” is off. When it is on, check “Automatically add this host to the allow list” beside the address; that resolve writes the host and reads the archive again. Leave it unchecked and the failure stays a message. Settings → Security & access → Outbound access policy still edits the whole list |
+| `IMAGE_ARCHIVE_URL_POLICY_DENIED` | This host is not allowed yet. Ordinary private addresses need no allow list by default, and the allow checkbox is absent while “Restrict private host access” is off. When it is on, check “Automatically add this host to the allow list” beside the address; resolving the address or starting a relay saves the selected host before continuing. Leaving it unchecked never writes permission. Settings → Security & access → Outbound access policy still edits the whole list |
 | `IMAGE_ARCHIVE_URL_POLICY_BLOCKED` | This address cannot be permitted through the allow list, for example a reserved or link-local address |
 | `IMAGE_ARCHIVE_URL_UPSTREAM_STATUS` | The archive server returned a specific HTTP status, such as 404. Check the path; this is not a network failure |
 | `IMAGE_ARCHIVE_URL_UNREACHABLE` | The server did not connect to the archive. Check the address, network, and TLS. A direct node fetch can also fail when the node cannot reach the source |

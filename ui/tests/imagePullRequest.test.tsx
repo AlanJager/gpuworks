@@ -10,7 +10,7 @@ import {
   catalogRoutes,
   communitySeries,
   i18n,
-  installFetch,
+  installFetch as installHTTPFixture,
   json,
   nightlyVersion,
   zhCommon,
@@ -25,6 +25,28 @@ const { cleanup, fireEvent, render, screen, waitFor, within } = await import("@t
 const { default: userEvent } = await import("@testing-library/user-event");
 const { message } = await import("antd");
 const { default: ImagesPage } = await import("../src/pages/ImagesPage.tsx");
+
+// Archive fixtures model the same signed-in administrator and policy/check
+// endpoints as the real source controls. DNS for archive.internal is private;
+// 169.254.169.254 is permanently blocked, even when explicitly allow-listed.
+function installFetch(handler: Handler) {
+  let policy = { restrict_private_hosts: false, allow_private_hosts: [] as string[], editable: true, revision: "r1" };
+  return installHTTPFixture(async (call) => {
+    const response = await handler(call);
+    if (response) {
+      if (call.path === "/api/v1/server/outbound-policy" && response.ok) policy = await response.clone().json();
+      return response;
+    }
+    if (call.path === "/api/v1/auth/me") return json(200, { id: 1, username: "admin", role: "admin" });
+    if (call.path === "/api/v1/server/outbound-policy" && call.method === "GET") return json(200, policy);
+    if (call.path === "/api/v1/server/outbound-policy/check") {
+      const { hosts } = JSON.parse(call.body!);
+      return json(200, { items: hosts.map((host: string) => ({ host, status: host === "169.254.169.254" ? "blocked"
+        : policy.restrict_private_hosts && host === "archive.internal" && !policy.allow_private_hosts.includes(host) ? "needs_allow" : "allowed" })), total: hosts.length });
+    }
+    return undefined;
+  });
+}
 
 const z = zhImages;
 const ARCHIVE_URL = "https://containerimages.example/vllm-nightly.tar";
@@ -231,7 +253,7 @@ test("a checked archive address writes an approvable host during resolve", async
       return json(200, { url: "http://archive.internal/image.tar", size_bytes: 2048, repo_tags: ["example/app:v1"], previewable: true });
     }
     if (call.method === "GET" && call.path === "/api/v1/server/outbound-policy") {
-      return json(200, { restrict_private_hosts: true, allow_private_hosts: ["10.0.0.8"], editable: true, revision: "r1" });
+      return json(200, { restrict_private_hosts: true, allow_private_hosts: allowed ? ["10.0.0.8", "archive.internal"] : ["10.0.0.8"], editable: true, revision: allowed ? "r2" : "r1" });
     }
     if (call.method === "PUT" && call.path === "/api/v1/server/outbound-policy") {
       writes += 1;
@@ -301,7 +323,8 @@ test("a reserved archive address explains that the allow list cannot permit it",
   render(<I18nextProvider i18n={i18n}><ImageArchiveURLImport versions={[]} onMatched={() => {}} onPrefill={() => {}} /></I18nextProvider>);
   const user = userEvent.setup({ document: dom.window.document });
   await user.type(screen.getByLabelText(z.import.url.label), "http://169.254.169.254/latest");
-  await user.click(await screen.findByRole("checkbox", { name: "自动加入 169.254.169.254 的白名单" }));
+  await screen.findByText(zhCommon.outboundAccess.blocked.replace("{{host}}", "169.254.169.254"));
+  assert.equal(screen.queryByRole("checkbox", { name: /169\.254\.169\.254/ }), null);
   await user.click(screen.getByRole("button", { name: spaced(z.import.url.resolve) }));
   const alert = await screen.findByRole("alert");
   assert.match(alert.textContent ?? "", /169\.254\.169\.254 不能通过允许列表访问/);
@@ -405,7 +428,7 @@ for (const entry of ["import", "dialog"] as const) {
       const alert = await screen.findByRole("alert");
       assert.match(alert.textContent ?? "", /archive\.internal has to be allowed before it can be used/);
       assert.match(alert.textContent ?? "", /HTTP 403 · IMAGE_ARCHIVE_URL_POLICY_DENIED/);
-      await screen.findByRole("checkbox", { name: "Automatically add archive.internal to the allow list" });
+      await screen.findByRole("checkbox", { name: "Automatically add archive.internal to the allowlist" });
       assert.equal(screen.queryByText(/RAW|private-query|server\.yaml|outbound_allow_private_hosts/), null);
     } finally {
       cleanup();

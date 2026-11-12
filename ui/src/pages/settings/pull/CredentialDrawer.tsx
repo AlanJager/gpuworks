@@ -11,6 +11,13 @@ export function isSiteToken(credential: { username: string }): boolean {
   return credential.username === "";
 }
 
+/** Match the stored credential normalization and the registry login API alias. */
+export function credentialLoginHost(host: string, site: boolean): string {
+  const entered = host.trim().toLowerCase().replace(/^https:\/\//, "").replace(/^http:\/\//, "").replace(/\/$/, "");
+  const normalized = ["index.docker.io", "registry-1.docker.io", "registry.hub.docker.com"].includes(entered) ? "docker.io" : entered;
+  return !site && normalized === "docker.io" ? "registry-1.docker.io" : normalized;
+}
+
 type CredentialKind = "registry" | "site";
 
 /**
@@ -36,10 +43,7 @@ export default function CredentialDrawer({
   const [hadSecret, setHadSecret] = useState(credential?.has_secret ?? false);
   const [kind, setKind] = useState<CredentialKind>(credential && isSiteToken(credential) ? "site" : "registry");
   const [host, setHost] = useState(credential?.host ?? "");
-  // Match store.NormalizeCredentialHost before registryAPIHost selects the login endpoint.
-  const enteredHost = host.trim().toLowerCase().replace(/^https:\/\//, "").replace(/^http:\/\//, "").replace(/\/$/, "");
-  const credentialHost = ["index.docker.io", "registry-1.docker.io", "registry.hub.docker.com"].includes(enteredHost) ? "docker.io" : enteredHost;
-  const loginHost = kind === "registry" && credentialHost === "docker.io" ? "registry-1.docker.io" : credentialHost;
+  const loginHost = credentialLoginHost(host, kind === "site");
   const outboundAccess = useOutboundHostAccess([loginHost]);
   const [username, setUsername] = useState(credential?.username ?? "");
   const [secret, setSecret] = useState("");
