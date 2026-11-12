@@ -73,6 +73,7 @@ func BuiltinTools() []Tool {
 		searchAPITool(),
 		callAPITool(),
 		searchMetricsTool(),
+		nodeConnectionDiagnosticsTool(),
 		{
 			Name:        "get_gpu_topology",
 			Description: "Get a node's GPU interconnect as the platform reads it: which cards share a fast link (NVLink or the vendor's equivalent) and which NUMA node each sits on.",

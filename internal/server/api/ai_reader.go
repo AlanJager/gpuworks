@@ -36,9 +36,9 @@ func isAssistantRead(r *http.Request) bool {
 }
 
 // aiReader is the assistant's aihelper.APIReader for one request: it serves
-// GET requests through the same router, as the user who asked - the asker's
-// Authorization header and cookies go with every read, so the auth
-// middleware applies their permissions exactly as for the UI.
+// GET requests and the fixed connection diagnostic through the same router,
+// as the user who asked. Their Authorization header and cookies go with each
+// request, so the auth middleware applies the same permissions as for the UI.
 type aiReader struct {
 	mux     *chi.Mux
 	header  http.Header
@@ -86,13 +86,19 @@ func (rd *aiReader) Get(ctx context.Context, path string, query url.Values) (int
 	if len(query) > 0 {
 		target += "?" + query.Encode()
 	}
+	return rd.readRequest(ctx, http.MethodGet, target, pattern)
+}
+
+// readRequest is shared only by the GET reader and the fixed connection probe.
+// Callers decide the allowed operation before forwarding the asker's identity.
+func (rd *aiReader) readRequest(ctx context.Context, method, target, pattern string) (int, []byte, error) {
 	// The read runs inside the asker's own request, whose context carries
 	// chi's routing state for /ai/ask; a mux that finds routing state routes
 	// as a mounted sub-router and would resolve the read against the wrong
 	// path. Each read starts its own routing.
 	ctx = context.WithValue(ctx, chi.RouteCtxKey, (*chi.Context)(nil))
 	ctx = context.WithValue(ctx, assistantReadKey{}, true)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
+	req, err := http.NewRequestWithContext(ctx, method, target, http.NoBody)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -104,7 +110,7 @@ func (rd *aiReader) Get(ctx context.Context, path string, query url.Values) (int
 	start := time.Now().UTC()
 	rd.mux.ServeHTTP(w, req)
 	if rd.log != nil {
-		rd.log.Info("ai api read", slog.String("user", rd.user), slog.String("route", pattern), slog.String("target", target),
+		rd.log.Info("ai api read", slog.String("user", rd.user), slog.String("route", pattern), slog.String("target", target), slog.String("method", method),
 			slog.Int("status", w.status), slog.Int("bytes", w.body.Len()), slog.Int64("ms", time.Since(start).Milliseconds()), slog.Bool("too_large", w.over))
 	}
 	if w.over {
