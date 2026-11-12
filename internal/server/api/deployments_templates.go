@@ -97,9 +97,6 @@ func (a *apiHandlers) resolveDeploymentModelFromTemplate(ctx context.Context, mo
 		if !templateWeightMatchesAnySource(append(specWeightSources(selection.Spec), selection.Weight), requested) {
 			return nil, fmt.Errorf("model_id %d conflicts with template model %s@%s", modelID, selection.Weight.RepoID, selection.Weight.Revision)
 		}
-		if selection.ExplicitProvider && !strings.EqualFold(strings.TrimSpace(requested.Source), strings.TrimSpace(selection.Weight.Provider)) {
-			return nil, fmt.Errorf("model_id %d uses provider %s, which conflicts with model_source.provider %s", modelID, requested.Source, selection.Weight.Provider)
-		}
 		model = requested
 	}
 	if model == nil {

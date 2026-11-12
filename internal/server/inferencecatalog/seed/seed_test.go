@@ -130,17 +130,20 @@ func TestEmbeddedCatalogSeparatesMistralRuntimeAndRepositoryWeights(t *testing.T
 	}
 }
 
+// Every Hygon spec inherits K100 PASS to the whole BW family: hy-smi on some
+// drivers reports only the series "BW", others a numbered SKU (ADR 0009).
 func TestEmbeddedCatalogMatchesReportedHygonNames(t *testing.T) {
 	catalog, err := Catalog()
 	if err != nil {
 		t.Fatal(err)
 	}
-	var specs []chipmatch.Spec
+	hygonModels := 0
 	for _, model := range catalog.Models {
-		if model.ModelID != "qwen/qwen3-0.6b" {
-			continue
-		}
+		var specs []chipmatch.Spec
 		for _, spec := range model.Specs {
+			if spec.GPUs.Vendor != "hygon" {
+				continue
+			}
 			specs = append(specs, chipmatch.Spec{
 				Name: spec.Name,
 				GPUs: chipmatch.Predicate{
@@ -151,17 +154,24 @@ func TestEmbeddedCatalogMatchesReportedHygonNames(t *testing.T) {
 				Quantization: spec.Weights.Quantization,
 			})
 		}
-	}
-	for _, name := range []string{"K100AI", "K100_AI", "BW"} {
-		selection := chipmatch.Select(chipmatch.GPU{Vendor: "hygon", Name: name}, specs, nil)
-		if !selection.Matched || selection.SpecIndex < 0 || specs[selection.SpecIndex].GPUs.Vendor != "hygon" {
-			t.Fatalf("%s selection=%+v specs=%+v", name, selection, specs)
+		if len(specs) == 0 {
+			continue
+		}
+		hygonModels++
+		for _, name := range []string{"K100", "K100AI", "K100_AI", "BW", "BW100", "BW150", "BW1000", "BW1100", "BW3000"} {
+			selection := chipmatch.Select(chipmatch.GPU{Vendor: "hygon", Name: name}, specs, nil)
+			if !selection.Matched || selection.SpecIndex < 0 {
+				t.Errorf("%s: Hygon %s matched no spec: %+v", model.ModelID, name, selection)
+			}
+		}
+		for _, name := range []string{"K500", "BWX"} {
+			if chipmatch.Select(chipmatch.GPU{Vendor: "hygon", Name: name}, specs, nil).Matched {
+				t.Errorf("%s: unqualified Hygon model %s matched", model.ModelID, name)
+			}
 		}
 	}
-	for _, name := range []string{"K500", "BW1234"} {
-		if chipmatch.Select(chipmatch.GPU{Vendor: "hygon", Name: name}, specs, nil).Matched {
-			t.Fatalf("unqualified Hygon model %s matched", name)
-		}
+	if hygonModels == 0 {
+		t.Fatal("embedded catalog has no Hygon specs")
 	}
 }
 
