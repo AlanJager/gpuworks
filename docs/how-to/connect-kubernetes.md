@@ -98,7 +98,7 @@ agent 用节点自己的 DNS（`dnsPolicy: Default`），与直接装在主机�
    - agent 镜像仓库：节点从哪里拉 agent 镜像，可选 Docker Hub（默认）、华为云 SWR、quay.io。中国内地的集群通常拉不到
      Docker Hub，选华为云 SWR。镜像的 tag 是 agent 运行环境的版本（如 `r1`），不随 server 版本变化，见下文「升级 agent」。
    - agent 镜像：填了就用你自己的镜像，不再从上面的仓库拉。节点访问不了公网时，把 `gpuworks/gpuworks-agent:r1` 推到集群能访问的
-     私有仓库（或在每个节点上 `ctr -n k8s.io images import` 导入）后填这个地址；运行环境版本变化前都不用再推。
+     私有仓库（或在每个节点上 `ctr -n k8s.io images import` 导入）后填这个地址；运行环境版本变化前都不用再推。离线环境的镜像归档见[离线环境部署](deploy-offline.md#kubernetes-集群的-agent-镜像)。
    - 镜像拉取凭据：agent 镜像放在需要登录的仓库（企业 Harbor、云厂商的私有仓库）时，先在命名空间里建一个
      docker-registry 类型的 Secret（`kubectl -n gpuworks-system create secret docker-registry regcred …`，namespace 不存在时
      先建），再在这里填它的名称。agent Pod 用它拉镜像，agent 起的占位 Pod 也沿用它。

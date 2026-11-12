@@ -69,7 +69,7 @@
   "dev/ledgers/engineering-log.md": "7419f4b1b0366890c62e5a5a7335902959de7ec0253849039f5ee6ecb9816ada",
   "dev/ledgers/ppu-support-gaps.md": "dd334db53ca533a4c76381995a3a97741ce847aed0731c5ab8e6b2f781b83fb3",
   "dev/pull-requests.md": "ae83c80992315a979ed87b12c2f470627df2f928a44036454b69237c0758d77f",
-  "dev/release.md": "68c1141569f79a44139eaa89cdf24ad1b40c5bf9ce4f7b12c5123bf1e96480bb",
+  "dev/release.md": "c17775fea97c409dba9c2b83aabe63b889ace782a64316c6899c6242d8c95b83",
   "dev/setup.md": "5761c2c8346c509732fd73ab88c96a0b614907f8a6c6dc723e40e3f8e08a2241",
   "dev/testing.md": "79a954f79e436c771713b39614c0974c418a3f25e55e51d7ea6abc8cc2c81bf4",
   "dev/ui.md": "a34931b38130bc7fd45a1200fd8a85499c6031175f4332f994a68a1a4717772a",
@@ -91,7 +91,7 @@
   "how-to/connect-nodes.md": "8a048d178612a4b77411c05214a33dd36fda18f104da0833f51df7e8b5d6426c",
   "how-to/declare-engine-metrics.md": "be1fb8eef925f9a4b1fbc20d8dbf3bc4eef9ba3b4ddb4ebc98e0581ff0ca8a49",
   "how-to/deploy-models.md": "d99a26c3b71536825bd24370269cc5326de95ab83c96792bd9ce90f2607a79d7",
-  "how-to/deploy-offline.md": "e74bf12bdaea4f05b7a3a9f3764e2d32e18258d99f9ba813f6c73c22a30f1172",
+  "how-to/deploy-offline.md": "52f5c2c82737e4082f4fdc3023db5d96607e432547cf011e1bbb7a4fa78771e7",
   "how-to/deploy-production.md": "b7375ba8e786bc8780164cbdcdcd22399b8dfc326d039d3843ab80537df4c7a5",
   "how-to/dgpu.md": "fd0c2fe315707309f24d37c9101e51dc966e65b87d59eabdc00d7c15601a7c57",
   "how-to/download-and-sync-models.md": "d0760d57e41f54499b2b2e3ccc8e23cbe69c47a6cdcb3c015b03c4ea1dc3977b",
@@ -148,7 +148,7 @@
   "releases/v26.11.2.md": "d4a50471ba467a6d564dff6048da2cc010132b4fd93d942cde9b47c91b52fb7f",
   "releases/v26.11.3.md": "c44ca1e5fe3529702a1ec290cb6b07245b55814557bc04a1016352e57198e29d",
   "adr/0052-kubernetes-nodes.md": "88d2787547d175906b05f376bae6ea46eaca4262ae45a7d5f3cfc165207d64e2",
-  "how-to/connect-kubernetes.md": "d683967a8f1598be957e1e08b568b7c09fb0527cf07229965e3a0b8eeae7a0fe",
+  "how-to/connect-kubernetes.md": "f880527f0ba42e443dba3c4972c258211f2952f28412e2cc05544ca52dc2f0de",
   "how-to/connect-managed-kubernetes.md": "dfe05e8785b5c6284dfe31117172c41f658a8f2d745535e5d47858008af1b0bf",
   "adr/0063-apply-to-cloud-clusters.md": "2e06d6da2bcbf7e2933ba7d25041dfc61cca7fadd3dc58ec82e5a27a9b0f151d"
 }
