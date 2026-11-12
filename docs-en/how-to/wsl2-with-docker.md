@@ -167,11 +167,12 @@ The node should be **online** with GPU count ≥ 1.
 
 On deploy, the agent pulls the runner selected by the catalog (for example `gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r4`; use the tag your console selects).
 
-If direct pulls are unreliable, pull from a reachable mirror and retag (tag/version change over releases):
+In mainland China, if direct pulls are unreliable, pull from Huawei Cloud SWR and retag (tag names and versions change between releases; use the one your deployment spec selects):
 
 ```bash
-docker pull <mirror>/gpuworks/gpuworks-runner:<tag>
-docker tag <mirror>/gpuworks/gpuworks-runner:<tag> gpuworks/gpuworks-runner:<tag>
+docker pull swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-runner:<tag>
+docker tag swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-runner:<tag> \
+  gpuworks/gpuworks-runner:<tag>
 ```
 
 Optional CUDA check inside the runner:

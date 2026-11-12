@@ -1,5 +1,5 @@
 {
-  "README.md": "c8a412eaa68c222a33675d999b814ced373ebf10697774a7f2fd5830cfc7f800",
+  "README.md": "7273b5b5881aec35613989b23a03d40a7481c79b355bd7cc8feab27c7bc68ac4",
   "adr/0001-image-digest-tag-pull-verify-after.md": "a6510eb2e98dba9d784c1596acd0e17ed42dcd27d3b29a988238d275ee128c54",
   "adr/0003-benchmark-engine-embedded-no-containers.md": "22f9a7a4ae72120a531c94f745d1153d159a4dfe8c3ed41e03c12b64d1bfffe8",
   "adr/0004-empty-revision-default-branch.md": "7c6bbbb35d79d97b297cf6dab71c5765c05c90a4be287e99d0efafc76c6dfd9c",
@@ -150,5 +150,6 @@
   "adr/0052-kubernetes-nodes.md": "88d2787547d175906b05f376bae6ea46eaca4262ae45a7d5f3cfc165207d64e2",
   "how-to/connect-kubernetes.md": "f880527f0ba42e443dba3c4972c258211f2952f28412e2cc05544ca52dc2f0de",
   "how-to/connect-managed-kubernetes.md": "dfe05e8785b5c6284dfe31117172c41f658a8f2d745535e5d47858008af1b0bf",
-  "adr/0063-apply-to-cloud-clusters.md": "2e06d6da2bcbf7e2933ba7d25041dfc61cca7fadd3dc58ec82e5a27a9b0f151d"
+  "adr/0063-apply-to-cloud-clusters.md": "2e06d6da2bcbf7e2933ba7d25041dfc61cca7fadd3dc58ec82e5a27a9b0f151d",
+  "how-to/wsl2-with-docker.md": "b56ec4c8639c53dea1f4c6f02d0fcc094ca45827c916418a7b53dc8766a3801f"
 }

@@ -195,7 +195,7 @@ docker run --rm --gpus all --entrypoint python3 gpuworks/gpuworks-runner:<tag> \
 curl http://127.0.0.1:8800/v1/chat/completions \
   -H "Authorization: Bearer gw-…" \
   -H "Content-Type: application/json" \
-  -d '{"model":"<served_name>","messages":[{"role":"user","content":"你好"}],"max_tokens":64}'
+  -d '{"model":"<served_name>","messages":[{"role":"user","content":"hello"}],"max_tokens":64}'
 ```
 
 期望 HTTP 200，并返回 `choices`。
