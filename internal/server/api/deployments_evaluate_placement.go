@@ -66,7 +66,8 @@ func (a *apiHandlers) evaluateAutomaticPlacement(ctx context.Context, req *dto.D
 			continue
 		}
 		plan, planErr := planning.PlanLaunch(ctx, a.d.Store, a.networks(), planning.LaunchRequest{
-			Preview: true, AllowUnresolvedImage: true, ExcludeDeploymentID: excludeDeployment, Engine: engine.Name(), Model: model, Node: node,
+			StartTimeoutSec: req.StartTimeoutSec,
+			Preview:         true, AllowUnresolvedImage: true, ExcludeDeploymentID: excludeDeployment, Engine: engine.Name(), Model: model, Node: node,
 			Selection: previewSelection, Placement: placement, Quick: quick, ExtraArgs: userExtraArgs,
 			Topology:   planning.DistTopology{NNodes: 1, Role: "standalone"},
 			Source:     planning.LaunchSourceFromRequest(image, requestOverrides),
@@ -176,7 +177,8 @@ func selectedReasons(result planning.ScheduleResult) []dto.ScheduleReason {
 func (a *apiHandlers) revalidateAutomaticPlacement(ctx context.Context, req *dto.DeployRequest, engine deploy.Engine, model *store.Model, selection templateSelection, placement planning.Placement, quick deploy.LaunchConfig, userExtraArgs []string, servedName string, node *store.Node, modelMount string, componentMounts []proto.MountSpec, requestOverrides deploy.ContainerOverrides, weightStorageID uint) error {
 	previewSelection := snapshotTemplateSelection(selection, req.Image)
 	plan, planErr := planning.PlanLaunch(ctx, a.d.Store, a.networks(), planning.LaunchRequest{
-		Preview: true, Engine: engine.Name(), Model: model, Node: node,
+		StartTimeoutSec: req.StartTimeoutSec,
+		Preview:         true, Engine: engine.Name(), Model: model, Node: node,
 		Selection: previewSelection, Placement: placement, Quick: quick, ExtraArgs: userExtraArgs,
 		Topology:   planning.DistTopology{NNodes: 1, Role: "standalone"},
 		Source:     planning.LaunchSourceFromRequest(req.Image, requestOverrides),

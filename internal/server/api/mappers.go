@@ -512,6 +512,12 @@ func (a *apiHandlers) instanceDTOFrom(rows dtoLookup, in *store.Instance) dto.In
 	if in.DesiredStateJSON != "" {
 		var spec proto.InstanceDesiredState
 		if json.Unmarshal([]byte(in.DesiredStateJSON), &spec) == nil {
+			d.StartTimeoutSec, d.StartTimeoutSource = spec.StartTimeout, spec.StartTimeoutSource
+			d.StartTimeoutConflict, d.EngineStartTimeoutSec = spec.StartTimeoutConflict, spec.EngineStartTimeoutSeconds
+			if spec.StartTimeoutSource == "" {
+				d.EngineStartTimeoutSec, d.StartTimeoutConflict = deploy.ExplainRecordedStartupBudget(spec.Engine, spec.ResolvedLaunch, spec.StartTimeout)
+			}
+			d.StartupEstimate = dto.StartupEstimateOf(spec.StartupEstimate)
 			d.PreStartArgv, d.PreStartScript = spec.PreStartArgv, spec.PreStartScript
 			d.Entrypoint, d.Argv, d.Env, d.DockerArgs, d.ModelMount = spec.Entrypoint, spec.Argv, spec.Env, spec.DockerArgs, spec.ModelMount
 			d.ShmBytes = spec.ShmBytes

@@ -180,7 +180,8 @@ func DeploymentLaunch(dep *store.Deployment, reqs map[string][]string, node *sto
 		served = model.Name
 	}
 	return LaunchRequest{
-		Engine: dep.Engine, Model: model, Node: node,
+		StartTimeoutSec: dep.StartTimeoutSec,
+		Engine:          dep.Engine, Model: model, Node: node,
 		Selection: templateLayer, Placement: placement,
 		Source: LaunchSourceFromDeployment(dep), Quick: quick, ExtraArgs: extra,
 		ModelMount: modelMount, ModelHostPath: modelHostPath, ComponentMounts: componentMounts,

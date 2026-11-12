@@ -362,7 +362,8 @@ func (a *apiHandlers) previewPDRank(env evaluatePDEnv, pd *planning.PDPlacement,
 	}
 	modelMount, componentMounts := previewComponentMounts(a.d.Store, env.selection.Components, target)
 	launch := planning.LaunchRequest{
-		Preview: true, ExcludeDeploymentID: env.excludeDeployment, Engine: env.engine.Name(), Model: env.model, Node: target,
+		StartTimeoutSec: req.StartTimeoutSec,
+		Preview:         true, ExcludeDeploymentID: env.excludeDeployment, Engine: env.engine.Name(), Model: env.model, Node: target,
 		Selection: rankSelection, Quick: env.launch.Quick, ExtraArgs: env.launch.UserResidual,
 		Source:     planning.LaunchSourceFromRequest(env.response.Image, env.requestOverrides),
 		ModelMount: modelMount, ComponentMounts: componentMounts,

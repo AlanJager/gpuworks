@@ -47,6 +47,11 @@ type EvaluateResponse struct {
 	// single-node draft. Unavailability is informational, not a selection ban.
 	GPUCandidates *GPUCandidates `json:"gpu_candidates,omitempty"`
 
+	StartupEstimate       *StartupEstimate `json:"startup_estimate,omitempty"`
+	StartTimeoutSec       int              `json:"start_timeout_sec,omitempty"`
+	StartTimeoutSource    string           `json:"start_timeout_source,omitempty"`
+	StartTimeoutConflict  bool             `json:"start_timeout_conflict,omitempty"`
+	EngineStartTimeoutSec int              `json:"engine_start_timeout_sec,omitempty"`
 	// SchemaVersion versions the evaluate response contract. Clients that
 	// render fixtures assert it, so a response shape they depend on cannot
 	// drift from what the server publishes without failing a test.

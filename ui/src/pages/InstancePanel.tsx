@@ -15,6 +15,7 @@ import type { TFunction } from "i18next";
 import { instanceEventStage } from "./instanceEvents";
 import TimeRangePicker, { type TimeRangeValue } from "../components/TimeRangePicker";
 import InstanceProgressLine from "./InstanceProgressLine";
+import InstanceStartupStatus from "./InstanceStartupStatus";
 import { useInstanceEvents } from "./useInstanceEvents";
 import { LogStream } from "./InstanceLogStream";
 import InstanceMetricsTab from "./InstanceMetricsTab";
@@ -245,6 +246,8 @@ export default function InstancePanel({ inst, params, rank, actions, imageDiffer
           </Space>
         </div>
       )}
+
+      <InstanceStartupStatus inst={inst} events={timeline.events} />
 
       {(Object.keys(inst.env || {}).length || inst.mounts?.length || inst.shm_bytes || inst.docker_args?.length) ? (
         <Collapse ghost style={{ marginTop: 8 }} items={[{ key: "runtime", label: t("instance.runtime.title"), children: <div style={{ fontSize: 12 }}>

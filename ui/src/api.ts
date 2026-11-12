@@ -1723,6 +1723,10 @@ export interface Breakdown {
   vram_limit_bytes?: number;
 }
 export interface Measured {
+  ModelLoadingSeconds?: number;
+  CompilationSeconds?: number;
+  GraphCaptureSeconds?: number;
+  StartupSeconds?: number;
   ModelWeightsGiB: number;
   KVCacheGiB: number;
   KVCacheTokens: number;
@@ -1741,9 +1745,22 @@ export interface RuntimeMount {
   purpose?: string;
 }
 
+export interface StartupEstimate {
+  weight_bytes: number;
+  method: string;
+  estimated_seconds?: number;
+  reference_mib_per_sec?: number;
+  initialization_seconds?: number;
+}
+
 export interface Instance {
   pre_start_argv?: string[];
   pre_start_script?: string;
+  start_timeout_sec?: number;
+  start_timeout_source?: string;
+  start_timeout_conflict?: boolean;
+  engine_start_timeout_sec?: number;
+  startup_estimate?: StartupEstimate;
   uuid: string;
   deployment_id: number;
   node_uuid: string;

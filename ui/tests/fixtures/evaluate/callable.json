@@ -12,6 +12,12 @@
       }
     ]
   },
+  "startup_estimate": {
+    "weight_bytes": 17179869184,
+    "method": "unsupported"
+  },
+  "start_timeout_sec": 1800,
+  "start_timeout_source": "cluster",
   "schema_version": 1,
   "diagnostics": {
     "checks": [

@@ -45,16 +45,22 @@ func (f *RequestedFeatures) Names() []string {
 // persistence and agent execution. It contains no instance identity or node
 // allocation facts; those belong to InstanceDesiredState.
 type ResolvedLaunch struct {
-	RequestedFeatures *RequestedFeatures `json:"requested_features,omitempty"`
-	CommandMode       string             `json:"command_mode,omitempty"`
-	Entrypoint        []string           `json:"entrypoint,omitempty"`
-	Argv              []string           `json:"argv"`
-	PreStartArgv      []string           `json:"pre_start_argv,omitempty"`
-	PreStartScript    string             `json:"pre_start_script,omitempty"`
-	RuntimeAssets     []RuntimeAsset     `json:"runtime_assets,omitempty"`
-	Env               map[string]string  `json:"env,omitempty"`
-	EnvLayers         LaunchEnvLayers    `json:"env_layers,omitempty"`
-	DockerArgs        []string           `json:"docker_args,omitempty"`
+	StartupEstimate *StartupEstimate `json:"startup_estimate,omitempty"`
+	// These are the resolved health budget, not a startup-time prediction.
+	StartTimeoutSeconds       int                `json:"start_timeout_seconds,omitempty"`
+	StartTimeoutSource        string             `json:"start_timeout_source,omitempty"`
+	StartTimeoutConflict      bool               `json:"start_timeout_conflict,omitempty"`
+	EngineStartTimeoutSeconds int                `json:"engine_start_timeout_seconds,omitempty"`
+	RequestedFeatures         *RequestedFeatures `json:"requested_features,omitempty"`
+	CommandMode               string             `json:"command_mode,omitempty"`
+	Entrypoint                []string           `json:"entrypoint,omitempty"`
+	Argv                      []string           `json:"argv"`
+	PreStartArgv              []string           `json:"pre_start_argv,omitempty"`
+	PreStartScript            string             `json:"pre_start_script,omitempty"`
+	RuntimeAssets             []RuntimeAsset     `json:"runtime_assets,omitempty"`
+	Env                       map[string]string  `json:"env,omitempty"`
+	EnvLayers                 LaunchEnvLayers    `json:"env_layers,omitempty"`
+	DockerArgs                []string           `json:"docker_args,omitempty"`
 	// ShmBytes is the size of the container's /dev/shm tmpfs, not a memory
 	// reservation or limit: pages count against the host only once written.
 	// It is ineffective under --ipc=host, which shares the host's /dev/shm.

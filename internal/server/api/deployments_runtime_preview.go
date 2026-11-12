@@ -33,6 +33,9 @@ func evaluateEnvLayers(res deploy.ResolvedLaunch) *dto.EnvLayers {
 // setEvaluateLaunch shows a resolved launch as the preview's command: the
 // one place the preview response takes its launch fields from.
 func setEvaluateLaunch(resp *dto.EvaluateResponse, res deploy.ResolvedLaunch) {
+	resp.StartupEstimate = dto.StartupEstimateOf(res.StartupEstimate)
+	resp.StartTimeoutSec, resp.StartTimeoutSource = res.StartTimeoutSeconds, res.StartTimeoutSource
+	resp.StartTimeoutConflict, resp.EngineStartTimeoutSec = res.StartTimeoutConflict, res.EngineStartTimeoutSeconds
 	resp.PreStartArgv, resp.PreStartScript = res.PreStartArgv, res.PreStartScript
 	resp.Entrypoint, resp.Argv, resp.Command, resp.Env = res.Entrypoint, res.Argv, launchCommand(res), res.Env
 	resp.EnvLayers = evaluateEnvLayers(res)
