@@ -198,7 +198,7 @@ The image a Kubernetes cluster's agent DaemonSet runs (`build/agent-image/Docker
 `docker.io/gpuworks/gpuworks-agent`, `quay.io/gpuworks/gpuworks-agent`, and `swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-agent`.
 The tag is the runtime revision (`build/agent-image/REVISION`, such as `r1`), which is what the manifest names when a cluster entry leaves its agent image empty, plus `r1-<server version>` to tell the builds apart.
 The image is only the agent's runtime: the agent in it only seeds a node, which then switches to the server's own agent and upgrades in place, so a nightly overwriting `r1` does not affect connected clusters.
-Raise the runtime revision only when the base image or nerdctl changes (edit `REVISION` and `kubemanifest.AgentImageRevision`; a test keeps them equal), and say in the release notes that Kubernetes clusters apply the manifest once more after the server upgrade.
+Raise the runtime revision only when the base image or nerdctl changes (edit `REVISION` and `kubemanifest.AgentImageRevision`; a test keeps them equal), and say in the release notes that Kubernetes clusters apply the manifest once more after the server upgrade; also upload `gpuworks-agent_<rN>_linux-<arch>.tar.gz` for both architectures to `gpuworks-agent/` of the Aliyun Drive offline share (`build/runner-images/pds-upload.py`, as for runner images; see `build/runner-images/README.md`).
 
 - The agent in the image is built with the same `LDFLAGS` as the embedded agents; nerdctl comes from its upstream release, is verified against the sha256 pinned in the script, and is cached on the runner host.
   The runners time out on GitHub, so CI's `NERDCTL_URL_BASE` lists two GitHub mirrors and then GitHub itself; the sha256 decides what is used.

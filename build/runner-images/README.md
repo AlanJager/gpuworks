@@ -345,3 +345,4 @@ The offline deployment doc ([`docs/how-to/deploy-offline.md`](../../docs/how-to/
   ```
 
 - Old-version archives cannot be deleted; someone has to delete or move them manually on the drive's web page, and the commit message must note this.
+- The Kubernetes agent image (`build/agent-image`) goes to `gpuworks-agent/` the same way, as `gpuworks-agent_<revision>_linux-<arch>.tar.gz` for amd64 and arm64, whenever `build/agent-image/REVISION` changes; export the published `gpuworks/gpuworks-agent:<revision>` with the reference kept in that canonical form.
