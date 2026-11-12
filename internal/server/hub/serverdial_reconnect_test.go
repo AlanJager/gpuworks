@@ -38,6 +38,9 @@ func newServerDialReconnectNode(t *testing.T) (*Hub, *store.Node, string) {
 		t.Fatal(err)
 	}
 	h := New(st, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	// Registered after Close, so this runs first. Callers register the peer
+	// shutdown even later, and that runs before the store goes away.
+	t.Cleanup(h.waitSessionWork)
 	return h, node, token
 }
 

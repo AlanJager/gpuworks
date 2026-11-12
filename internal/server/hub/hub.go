@@ -89,6 +89,10 @@ type Hub struct {
 	// usage counts agent-link failures for the usage report; nil counts
 	// nothing.
 	usage *usagereport.Counters
+
+	// sessionWork is store work a session started. Close the store only after
+	// it finishes, or a write can recreate a WAL file under a directory removal.
+	sessionWork sync.WaitGroup
 }
 
 type reconnectState struct {
@@ -493,17 +497,19 @@ func (h *Hub) acceptYamuxServer(netConn net.Conn, lane string, remoteOpt ...stri
 }
 
 func (h *Hub) serveSession(sess *Session, cleanup func(), remote string) {
+	h.sessionWork.Add(1)
+	defer h.sessionWork.Done()
 	defer cleanup()
 	h.log.Info("agent connected", "node", sess.NodeUUID, "remote", remote)
 	// Replay full desired state so the agent reconciles from a clean slate.
 	// The replay is a multi-query read that storms the store when a fleet
 	// connects at once; it must never delay this goroutine's read loop, or
 	// every RPC to the node waits behind the replay (see push.go).
-	go func() {
+	h.trackSessionWork(func() {
 		if err := sess.pushInitialState(); err != nil {
 			h.log.Warn("push initial state failed", "node", sess.NodeUUID, "err", err)
 		}
-	}()
+	})
 	sess.ctrlLoop() // blocks until the stream closes
 	h.log.Info("agent disconnected", "node", sess.NodeUUID)
 }
@@ -526,8 +532,20 @@ func (h *Hub) register(s *Session) {
 	h.mu.Unlock()
 	_ = h.store.SetNodeState(s.NodeUUID, store.NodeStateOnline)
 	_ = h.store.ClearNodeRecovery(s.NodeUUID)
-	go h.resumeDirectImageTransfers(s.NodeUUID)
+	h.trackSessionWork(func() { h.resumeDirectImageTransfers(s.NodeUUID) })
 }
+
+// trackSessionWork runs fn on a goroutine that waitSessionWork joins.
+func (h *Hub) trackSessionWork(fn func()) {
+	h.sessionWork.Add(1)
+	go func() {
+		defer h.sessionWork.Done()
+		fn()
+	}()
+}
+
+// waitSessionWork blocks until session goroutines that use the store return.
+func (h *Hub) waitSessionWork() { h.sessionWork.Wait() }
 
 // deregister removes the session and marks the node offline (unless a newer
 // session already replaced this one).
