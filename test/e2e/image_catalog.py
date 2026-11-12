@@ -290,9 +290,12 @@ def test_image_registration(page, server, artifacts, report, locale):
     expect(wrapper).to_have_css("width", "640px", timeout=12000)
     report["register_drawer_width"] = True
     report["last_step"] = "register-drawer-gap"
-    space = dialog.locator(".ant-drawer-body > .ant-space-vertical")
+    # The drawer's form column stopped being an antd Space: ImageImportDrawer.tsx:91 lays it out
+    # as a plain flex column with the same 20px gap, so the gap is read from the element itself.
+    space = dialog.locator(".ant-drawer-body > div").first
     expect(space).to_have_count(1, timeout=12000)
     expect(space).to_have_css("row-gap", "20px", timeout=12000)
+    expect(space).to_have_css("flex-direction", "column", timeout=12000)
     report["register_drawer_gap"] = True
     # 12.2: at 1440x900 the drawer's own title, its content and the control that commits it are
     # required to sit inside the drawer and inside the viewport without overlapping each other. The
