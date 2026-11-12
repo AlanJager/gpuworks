@@ -85,6 +85,19 @@ docker run --rm --gpus all --entrypoint nvidia-smi ubuntu:24.04 -L
 
 You should see the GPU listed. If Docker Hub pulls time out, configure a reachable mirror or use another accessible base image first.
 
+Runner images are tens of GiB, and the more layers download at once, the more memory and disk pressure WSL takes. Limit Docker's concurrent downloads. `nvidia-ctk` has already written the NVIDIA runtime into `/etc/docker/daemon.json`, so the command below merges this key in instead of overwriting the file:
+
+```bash
+sudo python3 - <<'EOF'
+import json, pathlib
+path = pathlib.Path("/etc/docker/daemon.json")
+config = json.loads(path.read_text()) if path.exists() else {}
+config["max-concurrent-downloads"] = 2
+path.write_text(json.dumps(config, indent=2) + "\n")
+EOF
+sudo systemctl restart docker
+```
+
 ## 3. Install the control plane
 
 In the same WSL distro:
@@ -129,7 +142,7 @@ If you still see `udocker (no docker daemon)`, ensure `docker.service` is `activ
 sudo systemctl restart gpuworks-agent
 ```
 
-### Recommended WSL agent drop-ins
+### WSL agent drop-in
 
 ```bash
 sudo mkdir -p /etc/systemd/system/gpuworks-agent.service.d
@@ -140,17 +153,11 @@ Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/u
 Environment=LD_LIBRARY_PATH=/usr/lib/wsl/lib
 EOF
 
-sudo tee /etc/systemd/system/gpuworks-agent.service.d/60-pull-conns.conf >/dev/null <<'EOF'
-[Service]
-Environment=GPUWORKS_IMAGE_PULL_MAX_CONNECTIONS=2
-EOF
-
 sudo systemctl daemon-reload
 sudo systemctl restart gpuworks-agent
 ```
 
 - `50-wsl-nvidia.conf`: so the agent finds WSL-forwarded `nvidia-smi` / CUDA user libraries and does not report `gpu_count=0`.
-- `60-pull-conns.conf`: limits pull concurrency to reduce memory spikes and WSL crashes while fetching large images.
 
 The node should be **online** with GPU count ≥ 1.
 
@@ -212,7 +219,7 @@ See [Deploy Models](deploy-models.md) for placement and scheduling details.
 | Node `gpu_count=0` | Add `50-wsl-nvidia.conf` and restart the agent |
 | Deploy fails with `Failed to infer device type` | Switch to Docker (`driver=docker`) and retry the unit; do not stay on udocker |
 | Agent log still shows udocker | `systemctl start docker`, then `systemctl restart gpuworks-agent` |
-| Image pull fills the disk or crashes WSL | Free system-drive space first; set `GPUWORKS_IMAGE_PULL_MAX_CONNECTIONS=2` |
+| Image pull fills the disk or crashes WSL | Free system-drive space first; set Docker's `max-concurrent-downloads` to 2 or 1 as in section 2 |
 | Docker Hub / image pull timeouts | Use a reachable mirror, or pre-pull and retag |
 
 ## 9. Acceptance checklist

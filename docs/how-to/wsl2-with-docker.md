@@ -85,6 +85,19 @@ docker run --rm --gpus all --entrypoint nvidia-smi ubuntu:24.04 -L
 
 应能列出本机 GPU。若 Docker Hub 拉取超时，先配置可用的镜像加速或换可访问的基础镜像，再继续。
 
+runner 镜像有数十 GiB，同时下载的层越多，WSL 的内存与磁盘压力越大。建议限制 Docker 的并发下载数。`nvidia-ctk` 已把 NVIDIA 运行时写进 `/etc/docker/daemon.json`，所以下面合并写入这一项，不覆盖原文件：
+
+```bash
+sudo python3 - <<'EOF'
+import json, pathlib
+path = pathlib.Path("/etc/docker/daemon.json")
+config = json.loads(path.read_text()) if path.exists() else {}
+config["max-concurrent-downloads"] = 2
+path.write_text(json.dumps(config, indent=2) + "\n")
+EOF
+sudo systemctl restart docker
+```
+
 ## 3. 安装控制面
 
 在同一 WSL 发行版中：
@@ -129,7 +142,7 @@ runtime driver detected driver=docker
 sudo systemctl restart gpuworks-agent
 ```
 
-### 推荐的 WSL agent 补充配置
+### WSL 上 agent 的补充配置
 
 ```bash
 sudo mkdir -p /etc/systemd/system/gpuworks-agent.service.d
@@ -140,17 +153,11 @@ Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/u
 Environment=LD_LIBRARY_PATH=/usr/lib/wsl/lib
 EOF
 
-sudo tee /etc/systemd/system/gpuworks-agent.service.d/60-pull-conns.conf >/dev/null <<'EOF'
-[Service]
-Environment=GPUWORKS_IMAGE_PULL_MAX_CONNECTIONS=2
-EOF
-
 sudo systemctl daemon-reload
 sudo systemctl restart gpuworks-agent
 ```
 
 - `50-wsl-nvidia.conf`：保证 agent 能找到 WSL 透传的 `nvidia-smi` / CUDA 用户态库，避免 `gpu_count=0`。
-- `60-pull-conns.conf`：限制拉镜像并发，降低内存尖峰与把 WSL 打崩的概率。
 
 控制台中节点应为 **在线**，且 GPU 数量 ≥ 1。
 
@@ -213,7 +220,7 @@ curl http://127.0.0.1:8800/v1/chat/completions \
 | 节点 `gpu_count=0` | 安装 `50-wsl-nvidia.conf` 后重启 agent |
 | 部署失败 `Failed to infer device type` | 确认已改用 Docker（`driver=docker`），再重试部署单元；不要停留在 udocker |
 | Agent 日志仍是 udocker | `systemctl start docker` 后 `systemctl restart gpuworks-agent` |
-| 拉镜像导致磁盘写满或 WSL 异常 | 先腾出系统盘空间；设置 `GPUWORKS_IMAGE_PULL_MAX_CONNECTIONS=2` |
+| 拉镜像导致磁盘写满或 WSL 异常 | 先腾出系统盘空间；按第 2 节把 Docker 的 `max-concurrent-downloads` 设为 2 或 1 |
 | Docker Hub / 镜像拉取超时 | 使用可用镜像源或 SWR 预拉后打标签 |
 
 ## 9. 验收清单
