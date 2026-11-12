@@ -560,6 +560,40 @@
       "none": "saved, takes effect at the next restart",
       "rolling": "rolling replacement",
       "all": "all instances replaced at once"
+    },
+    "startup": {
+      "unknown": "Startup estimate unavailable: model weight size is unknown",
+      "title": "Startup timing",
+      "budget": "Startup wait limit: {{duration}} · {{source}}",
+      "source": {
+        "deployment": "deployment setting",
+        "cluster": "cluster setting",
+        "engine": "engine configuration",
+        "harness": "test override",
+        "unknown": "recorded budget"
+      },
+      "estimate": "Rough startup estimate: {{duration}}",
+      "duration": {
+        "seconds": "{{seconds}} s",
+        "minutes": "{{minutes}} min {{seconds}} s",
+        "hours": "{{hours}} h {{minutes}} min {{seconds}} s"
+      },
+      "conflict": "The platform may stop waiting before the engine's {{duration}} wait limit. Review the deployment timeout.",
+      "elapsed": "Waiting for engine readiness: {{duration}}",
+      "slow": "Startup is taking longer than the rough estimate; still waiting within the configured limit.",
+      "observedReady": "Observed readiness wait: {{duration}}",
+      "measured": {
+        "ModelLoadingSeconds": "Weight loading: {{duration}}",
+        "CompilationSeconds": "Compilation: {{duration}}",
+        "GraphCaptureSeconds": "Graph capture: {{duration}}"
+      },
+      "measuredNote": "Engine log durations use the largest reported value per stage; stages may overlap and are not added.",
+      "unsupported": "Startup estimate unavailable for this deployment configuration",
+      "elapsedUnknown": "Readiness wait duration is unavailable",
+      "unavailable": "Startup estimate unavailable",
+      "engineDeadlineShort": "The engine's {{duration}} wait limit is shorter than the rough startup estimate and may expire before the platform limit. Review the engine configuration.",
+      "formula": "Reference formula: {{weight}} MiB ÷ {{rate}} MiB/s + {{initialization}} initialization.",
+      "referenceNote": "Throughput and initialization are fixed reference assumptions, not node measurements or a completion guarantee. This estimate does not change the startup wait limit."
     }
   },
   "instanceMetrics": {

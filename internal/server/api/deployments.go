@@ -232,6 +232,7 @@ func (a *apiHandlers) createDeploymentOnce(w http.ResponseWriter, r *http.Reques
 	}
 	pdReq.preflight(&preflightParams)
 	preflight := deploy.ResolveLaunchInput{
+		StartTimeoutSec: req.StartTimeoutSec, DefaultStartTimeoutSec: a.d.Store.DeploymentPolicy().StartTimeoutSec,
 		Engine: eng, Params: preflightParams, Image: req.Image,
 		Entrypoint: selection.Entrypoint, PreStartArgv: selection.PreStartArgv,
 		PreStartScript: selection.PreStartScript, RuntimeAssets: selection.Assets,

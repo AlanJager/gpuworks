@@ -12,6 +12,15 @@
       }
     ]
   },
+  "startup_estimate": {
+    "weight_bytes": 17179869184,
+    "method": "weight_reference",
+    "estimated_seconds": 272,
+    "reference_mib_per_sec": 512,
+    "initialization_seconds": 240
+  },
+  "start_timeout_sec": 1800,
+  "start_timeout_source": "cluster",
   "schema_version": 1,
   "diagnostics": {
     "checks": [

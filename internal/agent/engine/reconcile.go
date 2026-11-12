@@ -487,7 +487,7 @@ runFinished:
 		return
 	}
 	e.collectAndPublishRuntimeObservation(ctx, spec, id, id, epoch)
-	e.probeAndWatch(ctx, spec, id, epoch)
+	e.probeAndWatchStartup(ctx, spec, id, epoch, true)
 }
 
 func (e *Engine) invalidateRuntimeEpochLocked(uuid string) {

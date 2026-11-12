@@ -35,7 +35,8 @@ func (a *apiHandlers) checkPoolCanEverFit(ctx context.Context, req *dto.DeployRe
 	previewSelection := snapshotTemplateSelection(selection, req.Image)
 	return a.checkEverFits(ctx, reqs, func(node *store.Node) (planning.LaunchRequest, deploy.CatalogSelection, error) {
 		return planning.LaunchRequest{
-			Engine: engine.Name(), Model: model, Node: node,
+			StartTimeoutSec: req.StartTimeoutSec,
+			Engine:          engine.Name(), Model: model, Node: node,
 			Selection: previewSelection, Placement: placement, Quick: quick, ExtraArgs: userExtraArgs,
 			Topology:   planning.DistTopology{NNodes: 1, Role: "standalone"},
 			Source:     planning.LaunchSourceFromRequest(req.Image, overrides),

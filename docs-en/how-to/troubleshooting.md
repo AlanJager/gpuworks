@@ -952,10 +952,51 @@ The agent waits for the timed-out `run` to return and removes the container it c
 For a multi-node follower, the corresponding message is `headless worker readiness timed out`. If loading a large model, compiling kernels, or capturing CUDA graphs is slow, first check whether the logs show continued progress. If progress is normal, increase the startup health check budget:
 
 - Cluster default: **1800 seconds**. Change it under **Settings → Nodes & deployments → Deployments**.
-- Individual deployment: set `start_timeout_sec` under **Runtime environment → Start timeout** in the deployment form, in the range **60–86400 seconds**. Leave it blank to use the cluster default.
+- Individual deployment: set `start_timeout_sec` under **Runtime environment → Start timeout** in the deployment form, in the range **60–86400 seconds**. Leave it blank for an automatic budget using the cluster default as a floor.
 
 The budget applies while waiting for health checks after instance startup. Its value is determined when the instance is created; changes affect only instances started afterward.
 Exceeding the budget fails the startup attempt and triggers recreation according to the rules below.
+
+
+
+Instance details show the **startup wait limit** separately from the **rough startup estimate**. For managed vLLM, an explicit final `VLLM_ENGINE_READY_TIMEOUT_S` receives 30 extra seconds for probing under the automatic policy, capped at 86400 seconds. When the variable is neither explicitly set nor removed, the platform coordinates the inner wait budget. Manual commands and replaced entrypoints do not have their internal timeout inferred. An explicit deployment budget takes priority even when shorter than the engine deadline; the page reports the conflict. Probe heartbeats do not establish model-loading progress.
+
+The basic estimate covers single-node, single-model managed vLLM/SGLang starts. It separates checkpoint loading from the other engine initialization costs:
+
+```text
+estimated seconds = W / (512 * 1024 * 1024 bytes/second) + I_ref
+```
+
+`W` is the selected checkpoint size in bytes. `I_ref` is an aggregate initialization reference allowance selected by engine and recognized execution mode:
+
+| Managed engine/mode | `I_ref` |
+|---|---:|
+| SGLang | 240 seconds (4 minutes) |
+| Ordinary vLLM | 300 seconds (5 minutes) |
+| vLLM with an explicit `--omni` flag in its final command | 420 seconds (7 minutes) |
+
+The allowance combines framework startup, tokenizer, compilation, KV profiling and graph capture; it is not a sum of measured stages. The final command is authoritative: stale template arguments or mentions of `--omni` in a model name or JSON do not select that profile. Manual commands, multi-node, PD and external multi-component configurations still receive no numeric estimate.
+
+In GiB, estimated seconds are approximately `weight GiB × 2 + I_ref`:
+
+| Weight size | Ordinary vLLM | SGLang | vLLM `--omni` |
+|---|---|---|---|
+| 10 GiB | 5 min 20 s | 4 min 20 s | 7 min 20 s |
+| 50 GiB | 6 min 40 s | 5 min 40 s | 8 min 40 s |
+| 100 GiB | 8 min 20 s | 7 min 20 s | 10 min 20 s |
+| 256 GiB | 13 min 32 s | 12 min 32 s | 15 min 32 s |
+| 512 GiB | 22 min 4 s | 21 min 4 s | 24 min 4 s |
+| 1 TiB (1024 GiB) | 39 min 8 s | 38 min 8 s | 41 min 8 s |
+| 2 TiB (2048 GiB) | 1 h 13 min 16 s | 1 h 12 min 16 s | 1 h 15 min 16 s |
+
+The table uses binary size units. For decimal 1 TB (10¹² bytes), ordinary vLLM gives about 36 min 3 s. These estimates assume weights are already on the node and exclude model downloads, image pulls and queuing.
+
+**Evidence and limits**: [Breaking the Ice (MLSys 2026)](https://arxiv.org/abs/2606.07362) models initialization by stage and requires environment-specific coefficients; [ServerlessLLM (OSDI 2024)](https://www.usenix.org/conference/osdi24/presentation/fu) uses the bytes/bandwidth term for loading, which does not describe complete readiness. This implementation adopts that decomposition, while 512 MiB/s and the initialization profiles are rounded reference assumptions based on limited project measurements, **not paper coefficients, current-node benchmarks or a cross-platform calibration**.
+
+The profiles are primarily grounded in NVIDIA development-environment samples and do not improve every backend: DeepSeek and some Ascend SGLang starts may be overestimated. Caches, compilation options, model structure, CPU and storage contention still affect latency. Without separate evidence, no linear speedup is inferred from GPU or CPU-core counts, no guessed stage cost is deducted when graphs are disabled, and no runtime penalty is added. Missing weights, distributed or multi-component starts and manual commands still return unknown/unsupported; existing instances display their recorded parameters. The estimate is advisory, does not change the startup wait limit and is not a completion guarantee.
+
+Loading, compilation and graph capture seconds are displayed only when explicitly logged. Duplicate ranks contribute the maximum single duration, not a sum; stages can overlap or come from different ranks and cannot be added as a complete startup breakdown. Agent reconnection/adoption does not measure a new startup. Elapsed wait starts with the current health-check stage, excluding model download and image pulling. Exceeding the rough estimate only indicates a slower start; probes, process exit and OOM determine actual failures.
+
 
 ### Container Exits After Reaching Running
 

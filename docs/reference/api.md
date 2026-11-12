@@ -1365,7 +1365,9 @@ curl --fail-with-body -sS \
 | `routing_policy` | 多副本网关策略：`least_request`（默认）、`prefix_affinity` 或 `failover`；不属于引擎启动参数 |
 | `tokenize_enabled` | 网关是否把 `/v1/tokenize`、`/v1/detokenize` 转给该部署（见 [OpenAI 兼容网关](openai-gateway.md#分词tokenize)）：省略为开启，`false` 关闭；与引擎无关，引擎不提供时由引擎自己回错 |
 | `health_check`、`health_check_threshold_sec` | 服务的健康检查（见下「健康检查」）：`health_check` 省略时，模型提供 chat 或 embedding 就开启，否则关闭；显式 `true` 而模型两者都不提供时创建回 400 `FIELD_INVALID`。阈值 1–600 秒，省略或 0 为 60，越界时评估给字段错误、创建回 400，码均为 `FIELD_INVALID` |
-| `start_timeout_sec` | 本部署实例的启动健康检查预算（秒）：实例启动后等引擎健康检查通过的最长时间。省略或 0 表示跟随集群默认（设置 `deployment.start_timeout_sec`，出厂 1800）；否则须在 60–86400，越界时评估给字段错误、创建回 400，码均为 `FIELD_INVALID`。随部署保存，部署详情里有值时返回同名字段；值在实例创建时定下，修改只影响之后启动的实例 |
+| `start_timeout_sec` | 本部署实例的启动健康检查预算（秒）：实例启动后等引擎健康检查通过的最长时间。省略或 0 表示自动预算，以集群默认（设置 `deployment.start_timeout_sec`，出厂 1800）为下限，结合已知引擎等待上限；否则须在 60–86400，越界时评估给字段错误、创建回 400，码均为 `FIELD_INVALID`。随部署保存，部署详情里有值时返回同名字段；值在实例创建时定下，修改只影响之后启动的实例 |
+
+实例及评估响应的 `start_timeout_sec`、`start_timeout_source`、`engine_start_timeout_sec` 和 `start_timeout_conflict` 报告实际预算及冲突。`startup_estimate` 仅提供基础公式的粗略估算：`method=weight_reference` 时，`estimated_seconds = weight_bytes / (reference_mib_per_sec × 1024 × 1024) + initialization_seconds`，参考加载速率为 `512 MiB/s`；综合初始化余量按有效引擎/模式选择：SGLang `240 秒`、普通 vLLM `300 秒`、最终命令明确含 `--omni` 的 vLLM `420 秒`。这些是项目的粗略参考档，不是论文系数或节点实测；不按运行时、GPU 数或 eager 配置推断额外加减项。缺少权重时 `method=missing_weight`，不支持的配置为 `unsupported`；未知时省略数值估算及参考参数，不返回零来表示未知。估算不调整启动预算。实例 `measured` 中可选的 `StartupSeconds`、`StartupTimeoutSeconds`、`ModelLoadingSeconds`、`CompilationSeconds`、`GraphCaptureSeconds` 分别是成功健康等待、未就绪下界及日志明确耗时，彼此不能直接相加。
 
 ### 健康检查
 

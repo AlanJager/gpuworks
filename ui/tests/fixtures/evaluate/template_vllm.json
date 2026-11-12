@@ -12,6 +12,16 @@
       }
     ]
   },
+  "startup_estimate": {
+    "weight_bytes": 17179869184,
+    "method": "weight_reference",
+    "estimated_seconds": 332,
+    "reference_mib_per_sec": 512,
+    "initialization_seconds": 300
+  },
+  "start_timeout_sec": 1800,
+  "start_timeout_source": "cluster",
+  "engine_start_timeout_sec": 1770,
   "schema_version": 1,
   "diagnostics": {
     "checks": [
@@ -123,6 +133,7 @@
     "HF_HUB_OFFLINE": "1",
     "NCCL_SOCKET_IFNAME": "lo",
     "TRANSFORMERS_OFFLINE": "1",
+    "VLLM_ENGINE_READY_TIMEOUT_S": "1770",
     "VLLM_HOST_IP": "127.0.0.1"
   },
   "env_layers": {
@@ -131,6 +142,7 @@
       "HF_HUB_OFFLINE": "1",
       "NCCL_SOCKET_IFNAME": "lo",
       "TRANSFORMERS_OFFLINE": "1",
+      "VLLM_ENGINE_READY_TIMEOUT_S": "1770",
       "VLLM_HOST_IP": "127.0.0.1"
     },
     "template": {
@@ -192,6 +204,7 @@
         "HF_HUB_OFFLINE": "1",
         "NCCL_SOCKET_IFNAME": "lo",
         "TRANSFORMERS_OFFLINE": "1",
+        "VLLM_ENGINE_READY_TIMEOUT_S": "1770",
         "VLLM_HOST_IP": "127.0.0.1"
       },
       "command_mode": "engine",
@@ -203,6 +216,7 @@
           "HF_HUB_OFFLINE": "1",
           "NCCL_SOCKET_IFNAME": "lo",
           "TRANSFORMERS_OFFLINE": "1",
+          "VLLM_ENGINE_READY_TIMEOUT_S": "1770",
           "VLLM_HOST_IP": "127.0.0.1"
         },
         "template": {

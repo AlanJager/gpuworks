@@ -13,7 +13,8 @@ func evaluationLaunchRequest(env evaluatePlanEnv, node *store.Node) planning.Lau
 	selection := snapshotTemplateSelection(env.selection, env.response.Image)
 	selection.ExtraArgs = env.templateResidual
 	return planning.LaunchRequest{
-		Preview: true, AllowUnresolvedImage: true, ExcludeDeploymentID: env.excludeDeployment, Engine: env.engine.Name(), Model: env.model, Node: node,
+		StartTimeoutSec: req.StartTimeoutSec,
+		Preview:         true, AllowUnresolvedImage: true, ExcludeDeploymentID: env.excludeDeployment, Engine: env.engine.Name(), Model: env.model, Node: node,
 		Selection: selection, Placement: env.placement, Quick: env.quick, ExtraArgs: env.userExtraArgs,
 		Topology:   planning.DistTopology{NNodes: max(req.NNodes, 1), Role: "standalone"},
 		Source:     planning.LaunchSourceFromRequest(env.response.Image, env.requestOverrides),

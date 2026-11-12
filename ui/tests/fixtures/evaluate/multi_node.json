@@ -1,4 +1,11 @@
 {
+  "startup_estimate": {
+    "weight_bytes": 17179869184,
+    "method": "unsupported"
+  },
+  "start_timeout_sec": 1800,
+  "start_timeout_source": "cluster",
+  "engine_start_timeout_sec": 1770,
   "schema_version": 1,
   "diagnostics": {
     "checks": [
@@ -160,6 +167,7 @@
     "NCCL_IB_DISABLE": "1",
     "NCCL_SOCKET_IFNAME": "eth0",
     "TRANSFORMERS_OFFLINE": "1",
+    "VLLM_ENGINE_READY_TIMEOUT_S": "1770",
     "VLLM_HOST_IP": "10.0.0.1"
   },
   "env_layers": {
@@ -169,6 +177,7 @@
       "NCCL_IB_DISABLE": "1",
       "NCCL_SOCKET_IFNAME": "eth0",
       "TRANSFORMERS_OFFLINE": "1",
+      "VLLM_ENGINE_READY_TIMEOUT_S": "1770",
       "VLLM_HOST_IP": "10.0.0.1"
     }
   },
@@ -242,6 +251,7 @@
         "NCCL_IB_DISABLE": "1",
         "NCCL_SOCKET_IFNAME": "eth0",
         "TRANSFORMERS_OFFLINE": "1",
+        "VLLM_ENGINE_READY_TIMEOUT_S": "1770",
         "VLLM_HOST_IP": "10.0.0.1"
       },
       "command_mode": "engine",
@@ -254,6 +264,7 @@
           "NCCL_IB_DISABLE": "1",
           "NCCL_SOCKET_IFNAME": "eth0",
           "TRANSFORMERS_OFFLINE": "1",
+          "VLLM_ENGINE_READY_TIMEOUT_S": "1770",
           "VLLM_HOST_IP": "10.0.0.1"
         }
       }
@@ -318,6 +329,7 @@
         "NCCL_IB_DISABLE": "1",
         "NCCL_SOCKET_IFNAME": "eth0",
         "TRANSFORMERS_OFFLINE": "1",
+        "VLLM_ENGINE_READY_TIMEOUT_S": "1770",
         "VLLM_HOST_IP": "10.0.0.2"
       },
       "command_mode": "engine",
@@ -330,6 +342,7 @@
           "NCCL_IB_DISABLE": "1",
           "NCCL_SOCKET_IFNAME": "eth0",
           "TRANSFORMERS_OFFLINE": "1",
+          "VLLM_ENGINE_READY_TIMEOUT_S": "1770",
           "VLLM_HOST_IP": "10.0.0.2"
         }
       }

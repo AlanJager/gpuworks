@@ -268,7 +268,7 @@ The request body is merged into the current value, changing only the keys it con
 | Key | Factory Default | Range | Meaning |
 |---|---|---|---|
 | `pending_timeout_sec` | 600 | 5–86400 | How long to wait before marking a deployment as failed when it still cannot be placed after its weights are ready (not a queue timeout) |
-| `start_timeout_sec` | 1800 | 60–86400 | Maximum time after an instance starts to wait for the engine health check to pass. A timeout marks this startup attempt as failed and recreates the instance according to retry rules. Edit it in the "Deployment" card in Settings; an individual deployment can override it with `start_timeout_sec` ("Start timeout" under "Runtime environment" in the deployment form) |
+| `start_timeout_sec` | 1800 | 60–86400 | Floor for the automatic startup health budget; known engine deadlines can extend it up to 86400 seconds. A timeout marks this startup attempt as failed and recreates the instance according to retry rules. Edit it in the "Deployment" card in Settings; an individual deployment can override it with `start_timeout_sec` ("Start timeout" under "Runtime environment" in the deployment form) |
 | `event_retention_days` | 180 | 1–3650 | Number of days to retain the event timeline |
 | `event_retention_bytes` | 50 GiB | 64 MiB–1 TiB | Event timeline retention in bytes; whichever limit is reached first, bytes or days, applies |
 

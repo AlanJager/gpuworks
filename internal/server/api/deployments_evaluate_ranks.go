@@ -75,7 +75,8 @@ func (a *apiHandlers) evaluateRanks(env evaluateRankEnv) bool {
 			rankImage = resp.Image
 		}
 		plan, planErr := planning.PlanLaunch(ctx, a.d.Store, a.networks(), planning.LaunchRequest{
-			Preview: true, AllowUnresolvedImage: true, ExcludeDeploymentID: env.excludeDeployment, Engine: eng.Name(), Model: model, Node: rankNode,
+			StartTimeoutSec: req.StartTimeoutSec,
+			Preview:         true, AllowUnresolvedImage: true, ExcludeDeploymentID: env.excludeDeployment, Engine: eng.Name(), Model: model, Node: rankNode,
 			Selection: rankSelection, Placement: placement, Quick: quick, ExtraArgs: userExtraArgs,
 			Topology:   topology,
 			Source:     planning.LaunchSourceFromRequest(rankImage, requestOverrides),
@@ -159,6 +160,7 @@ func (a *apiHandlers) evaluateRankFallback(env evaluateRankEnv) bool {
 		Arch: arch, ArchID: archID, Vendor: vendor, ModelType: model.Arch,
 	}
 	res, launchWarnings, resolveErr := resolveRequestLaunch(deploy.ResolveLaunchInput{
+		StartTimeoutSec: req.StartTimeoutSec, DefaultStartTimeoutSec: a.d.Store.DeploymentPolicy().StartTimeoutSec,
 		Engine: eng, Params: params, Image: env.rankSelection.Image,
 		Entrypoint:   templateEntrypoint,
 		PreStartArgv: selection.PreStartArgv, PreStartScript: selection.PreStartScript,

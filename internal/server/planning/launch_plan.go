@@ -30,6 +30,8 @@ const PreviewAPIPort = 30000
 // owns. Both callers build it from what they have - the controller from stored
 // rows, the preview from a request - and neither assembles a launch itself.
 type LaunchRequest struct {
+	StartTimeoutSec        int
+	DefaultStartTimeoutSec int
 	// Preview marks an offline preview: no port is reserved and no GPU assigned,
 	// and a placement that cannot be resolved is still previewed symbolically.
 	Preview bool
@@ -125,6 +127,9 @@ func PlanLaunch(ctx context.Context, st *store.Store, networks Networks, req Lau
 	if req.Model == nil || req.Node == nil {
 		return LaunchPlan{}, fmt.Errorf("launch plan requires a model and a node")
 	}
+	if req.DefaultStartTimeoutSec <= 0 {
+		req.DefaultStartTimeoutSec = st.DeploymentPolicy().StartTimeoutSec
+	}
 	input, err := launchInput(st, req)
 	if err != nil {
 		return LaunchPlan{}, err
@@ -174,6 +179,7 @@ func PlanLaunch(ctx context.Context, st *store.Store, networks Networks, req Lau
 	}
 	plan.Params, plan.Profile = allocated.Params, allocated.Profile
 	plan.Resolved, plan.Warnings = allocated.Resolved, allocated.Warnings
+	plan.Resolved.StartupEstimate = launchStartupEstimate(req, plan.Resolved)
 	return plan, nil
 }
 
