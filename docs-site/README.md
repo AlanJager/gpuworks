@@ -28,6 +28,8 @@ HUGO_BIN=/path/to/hugo bash docs-site/build.sh
 
 构建会执行站点测试、完整翻译检查和 Hugo 生产构建，并检查中英文首页与搜索索引。首次构建还需从私有主题仓库下载 OINK：本地使用 Git 凭据，CI 使用 `WEBSITE_REPO` 变量中的只读部署令牌 URL；不要把令牌写入仓库。CI 的 `docs-build` 覆盖 `docs/`、`docs-en/`、`docs-site/` 和 CI 配置的变更。
 
+拉不到主题时（例如 fork 来的 PR 拿不到 `WEBSITE_REPO`），`bash docs-site/build.sh --check` 只执行站点测试、完整翻译检查和暂存，不下载主题、不构建站点。GitHub 的 `docs.yml` 对 fork PR 就这样运行；其他运行缺少 secret 时仍然失败。
+
 提交时必须包含新增的英文稿、图片、下载文件、模板、脚本及翻译登记 JSON；只提交已跟踪文件的修改会漏掉这些构建输入。`content/`、`public/`、`resources/`、`themes/` 和 `static/assets/` 是生成或下载目录，不应提交。验证首次构建时使用独立 Git checkout，不复制这些目录或 Hugo 缓存。
 
 ## 中英文文档

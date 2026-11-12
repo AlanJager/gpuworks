@@ -13,13 +13,22 @@ base_url_args=()
 if [ -n "${DOCS_BASE_URL:-}" ]; then
 	base_url_args=(--baseURL "$DOCS_BASE_URL")
 fi
+# --check runs every check that does not need the theme (the site tests, the
+# translation review and staging) and stops before the site build. It is for
+# runs that cannot fetch the private theme, such as pull requests from forks.
+check_only=false
+case "${1:-}" in
+	"") ;;
+	--check) check_only=true ;;
+	*) printf 'usage: %s [--check]\n' "$0" >&2; exit 2 ;;
+esac
 
 # The oink theme lives in the gpuworks_website repository; this repository
 # carries no theme files. Fetch it once when it is missing. The internal
 # repository needs authentication: under CI the WEBSITE_REPO project variable
 # carries a read-only deploy-token URL, anywhere else git uses the operator's
 # own credentials (or set WEBSITE_REPO to a URL that carries them).
-if [ ! -d "$site_root/themes/oink" ]; then
+if ! $check_only && [ ! -d "$site_root/themes/oink" ]; then
 	tmp=$(mktemp -d)
 	trap 'rm -rf "$tmp"' EXIT
 	git clone --depth 1 "$theme_repo" "$tmp/website"
@@ -30,6 +39,10 @@ fi
 python3 -m unittest discover -s "$site_root" -p 'test_*.py'
 python3 "$site_root/check_translations.py" --require-complete
 python3 "$site_root/stage_docs.py"
+if $check_only; then
+	printf 'docs checks passed; the site was not built (--check)\n'
+	exit 0
+fi
 rm -rf "$output_dir"
 mkdir -p "$output_dir"
 "$hugo_bin" --source "$site_root" --destination "$output_dir" \

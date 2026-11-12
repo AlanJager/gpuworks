@@ -3,8 +3,11 @@
 # (which prints the handbooks from this tree) through workflow_call.
 #
 # The OINK theme lives in a private repository. The WEBSITE_REPO secret holds
-# a clone URL carrying a read-only token; secrets do not reach pull requests
-# from forks, so their docs builds fail at the clone until the theme is public.
+# a clone URL carrying a read-only token. Secrets do not reach pull requests
+# from forks, so those run every check that needs no theme (build.sh --check:
+# site tests, translation review, staging) and skip the site build; Read the
+# Docs still renders the themed site for them. Every other run needs the
+# secret and fails without it, so a release cannot ship without the site.
 name: docs
 
 on:
@@ -47,15 +50,23 @@ jobs:
           tar -xzf "$name" hugo
           echo "HUGO_BIN=$RUNNER_TEMP/hugo" >> "$GITHUB_ENV"
       - name: Build the site
+        id: build
         env:
           WEBSITE_REPO: ${{ secrets.WEBSITE_REPO }}
+          FORK_PR: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
         run: |
-          test -n "$WEBSITE_REPO" || {
+          if [ -n "$WEBSITE_REPO" ]; then
+            docs-site/build.sh
+            echo "built=true" >> "$GITHUB_OUTPUT"
+          elif [ "$FORK_PR" = "true" ]; then
+            echo "::notice title=Site not built::pull requests from forks get no WEBSITE_REPO secret, so the themed site is not rendered here; Read the Docs renders it"
+            docs-site/build.sh --check
+          else
             echo "the WEBSITE_REPO secret (the OINK theme's clone URL) is not available to this run" >&2
             exit 1
-          }
-          docs-site/build.sh
-      - uses: actions/upload-artifact@v5
+          fi
+      - if: steps.build.outputs.built == 'true'
+        uses: actions/upload-artifact@v5
         with:
           name: docs-site-public
           path: docs-site/public/
