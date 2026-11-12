@@ -183,7 +183,7 @@ test-unit: check-change-record
 # A recursive boundary keeps even make -j from starting UI or tests before
 # the change-record gate succeeds.
 .PHONY: test-unit-checked
-test-unit-checked: ui check-time-policy check-architecture check-api-conventions check-ci-yaml check-artifacts githooks check-doc-links check-translations test-host-env-adapters test-e2e-coverage-check test-inference-template-assets test-strata-queue-assets
+test-unit-checked: ui check-time-policy check-architecture check-api-conventions check-ci-yaml check-artifacts githooks check-doc-links check-translations test-host-env-adapters test-e2e-coverage-check test-inference-template-assets test-strata-queue-assets test-sglang-video-cancel-assets
 	CGO_ENABLED=0 $(GO) test -timeout $(UNIT_TIMEOUT) $(GO_TEST_FLAGS) ./...
 	cd build/runtime-assets/hygon-vdev-helper && CGO_ENABLED=0 $(GO) test $(GO_TEST_FLAGS) ./...
 	$(MAKE) check-tagged-build
@@ -202,6 +202,11 @@ test-inference-template-assets:
 test-strata-queue-assets:
 	python3 -B build/strata-queue/test_strata_queue.py
 	python3 -B build/strata-queue/build.py --check
+
+.PHONY: test-sglang-video-cancel-assets
+test-sglang-video-cancel-assets:
+	python3 -B build/sglang-video-cancel/test_install.py
+	python3 -B build/sglang-video-cancel/build.py --check
 
 ## check-tagged-build: compile every build-tag suite without running it, so a
 ## refactor cannot break an opt-in lane while the untagged suite stays green
