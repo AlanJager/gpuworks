@@ -208,42 +208,35 @@ func TestTemplateAutomaticModelReadFailureDoesNotRegister(t *testing.T) {
 }
 
 func TestTemplateModelSelectionHTTP(t *testing.T) {
-	for _, conflict := range []bool{false, true} {
-		t.Run(fmt.Sprint(conflict), func(t *testing.T) {
+	for _, tc := range []struct{ modelSource, provider string }{
+		{"modelscope", "modelscope"},
+		{"modelscope", "huggingface"},
+		{"huggingface", "modelscope"},
+		{"huggingface", "huggingface"},
+	} {
+		t.Run(tc.modelSource+"/"+tc.provider, func(t *testing.T) {
 			f, _ := templateFailedRevisionFixture(t, true)
 			if err := f.h.d.Store.DB().Create(&store.GPU{NodeID: f.node.ID, Index: 0, UUID: "GPU-selection", Name: "NVIDIA H100", Vendor: "nvidia", ComputeCapability: "9.0", ArchID: "sm_90", MemoryTotal: 80 << 30}).Error; err != nil {
 				t.Fatal(err)
 			}
 			f.h.d.Online = func(uuid string) bool { return uuid == f.node.UUID }
-			provider := "modelscope"
-			if conflict {
-				provider = "huggingface"
+			selected := f.shared
+			if tc.modelSource == f.hf.Source {
+				selected = f.hf
+				if _, err := f.h.d.Store.UpsertModelFile(&store.ModelFile{ModelID: selected.ID, StorageID: f.nfs.ID, Path: "Acme/hf-ready", State: proto.MFPresent, SizeBytes: 1024}); err != nil {
+					t.Fatal(err)
+				}
 			}
-			body := fmt.Sprintf(`{"name":"selected-model","model_id":%d,"template_id":%d,"template_spec_source":"upstream","template_spec_name":"fp8-balanced","node_uuid":%q,"model_source":{"provider":%q,"storage_id":%d},"quick_params":{},"placement":{}}`, f.shared.ID, f.template.ID, f.node.UUID, provider, f.nfs.ID)
+			body := fmt.Sprintf(`{"name":"selected-model","model_id":%d,"template_id":%d,"template_spec_source":"upstream","template_spec_name":"fp8-balanced","node_uuid":%q,"model_source":{"provider":%q,"storage_id":%d},"quick_params":{},"placement":{}}`, selected.ID, f.template.ID, f.node.UUID, tc.provider, f.nfs.ID)
 			status, raw := evaluateForFieldErrors(t, f.h, body)
 			if status != http.StatusOK {
 				t.Fatalf("evaluate status=%d body=%v", status, raw)
 			}
-			if conflict {
-				errs := fieldErrorsOf(t, raw)
-				if string(raw["ok"]) != "false" || len(errs) != 1 || errs[0].Field != "model_id" || !strings.Contains(fmt.Sprint(errs[0].Params), "provider") {
-					t.Fatalf("provider conflict not explained: errors=%s", raw["errors"])
-				}
-			} else if string(raw["ok"]) != "true" || !strings.Contains(string(raw["acquisition"]), `"weights_present":true`) {
+			if string(raw["ok"]) != "true" || !strings.Contains(string(raw["acquisition"]), `"weights_present":true`) {
 				t.Fatalf("evaluation lost the readable selected artifact: ok=%s acquisition=%s", raw["ok"], raw["acquisition"])
 			}
 			rec := httptest.NewRecorder()
 			f.h.createDeployment(rec, httptest.NewRequest(http.MethodPost, "/api/v1/deployments", strings.NewReader(body)))
-			if conflict {
-				if rec.Code != http.StatusBadRequest {
-					t.Fatalf("conflicting selection accepted: %d %s", rec.Code, rec.Body.String())
-				}
-				rows, err := f.h.d.Store.ListDeployments()
-				if err != nil || len(rows) != 0 {
-					t.Fatalf("conflicting request created a deployment: rows=%+v err=%v", rows, err)
-				}
-				return
-			}
 			if rec.Code != http.StatusCreated {
 				t.Fatalf("create status=%d body=%s", rec.Code, rec.Body.String())
 			}
@@ -252,8 +245,12 @@ func TestTemplateModelSelectionHTTP(t *testing.T) {
 				t.Fatal(err)
 			}
 			stored, err := f.h.d.Store.GetDeployment(dep.ID)
-			if err != nil || stored.ModelID != f.shared.ID || !strings.Contains(stored.CatalogSelectionSnapshot, f.shared.Revision) {
+			if err != nil || stored.ModelID != selected.ID || stored.SaveToStorageID != f.nfs.ID {
 				t.Fatalf("create persisted a substituted model: deployment=%+v err=%v", stored, err)
+			}
+			snapshot, err := deploy.DecodeCatalogSelection([]byte(stored.CatalogSelectionSnapshot))
+			if err != nil || snapshot.WeightProvider != selected.Source || snapshot.WeightRevision != selected.Revision {
+				t.Fatalf("snapshot differs from selected model: snapshot=%+v model=%+v err=%v", snapshot, selected, err)
 			}
 		})
 	}
