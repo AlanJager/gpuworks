@@ -136,11 +136,13 @@ Expect:
 runtime driver detected driver=docker
 ```
 
-If you still see `udocker (no docker daemon)`, ensure `docker.service` is `active` and `/var/run/docker.sock` exists, then:
+When Docker is not chosen, the `driver` in the same log line says why:
 
-```bash
-sudo systemctl restart gpuworks-agent
-```
+- `udocker (no docker daemon)`: Docker was not found. Make sure `docker.service` is `active` and `/var/run/docker.sock` exists, then run `sudo systemctl restart gpuworks-agent`.
+- `udocker (docker daemon not answering)`: Docker is installed but not answering. The agent rechecks every minute and switches back once Docker answers and no instance is running on the node.
+- `udocker (docker cannot use the accelerators: …)`: Docker cannot give the GPU to containers, and an earlier line reads `runtime driver passed over: it cannot give containers this node's accelerators`. Configure the NVIDIA Container Toolkit as in section 2 and restart Docker.
+
+Once the node uses Docker, pin the runtime: open the node under **Compute Nodes** and choose `docker` in **Overview → Runtime**. The choice is saved, so an agent restart or reconnect does not return it to auto-detection; if Docker is unusable, this step fails with an error instead of quietly using runveil.
 
 ### WSL agent drop-in
 
@@ -207,7 +209,7 @@ See [Deploy Models](deploy-models.md) for placement and scheduling details.
 | Control plane | `systemctl is-active gpuworks` | `active` |
 | Agent | `systemctl is-active gpuworks-agent` | `active` |
 | Docker | `systemctl is-active docker` | `active` |
-| Runtime | agent log `runtime driver` | `driver=docker` |
+| Runtime | node details **Overview → Runtime** | `docker` |
 | Health | `curl http://127.0.0.1:8800/healthz` | `"status":"ok"` |
 | Browser | `http://localhost:8800` | console opens |
 
@@ -217,8 +219,8 @@ See [Deploy Models](deploy-models.md) for placement and scheduling details.
 |---|---|
 | Browser cannot open `localhost:8800` | Check whether `wsl -l -v` shows `Stopped`; set `instanceIdleTimeout=-1`, then `wsl --shutdown` and reopen |
 | Node `gpu_count=0` | Add `50-wsl-nvidia.conf` and restart the agent |
-| Deploy fails with `Failed to infer device type` | Switch to Docker (`driver=docker`) and retry the unit; do not stay on udocker |
-| Agent log still shows udocker | `systemctl start docker`, then `systemctl restart gpuworks-agent` |
+| Deploy fails with `Failed to infer device type` | The node uses runveil. Switch to Docker as in section 4, pin `docker` in **Overview → Runtime**, then retry the unit |
+| Agent log still shows udocker | Act on the reason in parentheses (section 4): with no Docker, `systemctl start docker` and restart the agent; if Docker cannot use the GPU, configure the NVIDIA Container Toolkit and restart Docker |
 | Image pull fills the disk or crashes WSL | Free system-drive space first; set Docker's `max-concurrent-downloads` to 2 or 1 as in section 2 |
 | Docker Hub / image pull timeouts | Use a reachable mirror, or pre-pull and retag |
 
@@ -226,7 +228,7 @@ See [Deploy Models](deploy-models.md) for placement and scheduling details.
 
 - [ ] `docker run --gpus all … nvidia-smi` succeeds  
 - [ ] `gpuworks`, `gpuworks-agent`, and `docker` are `active`  
-- [ ] Agent log shows `driver=docker`  
+- [ ] Agent log shows `driver=docker`, and the node runtime is pinned to `docker`  
 - [ ] Node is online with GPU count ≥ 1  
 - [ ] Small-model deployment is serving  
 - [ ] `/v1/chat/completions` returns 200  

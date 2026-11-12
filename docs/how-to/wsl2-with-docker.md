@@ -136,11 +136,13 @@ journalctl -u gpuworks-agent -n 50 --no-pager | grep 'runtime driver'
 runtime driver detected driver=docker
 ```
 
-若仍为 `udocker (no docker daemon)`：先确认 `docker.service` 为 `active` 且 `/var/run/docker.sock` 存在，再执行：
+Docker 没被选中时，同一条日志的 `driver` 会写明原因：
 
-```bash
-sudo systemctl restart gpuworks-agent
-```
+- `udocker (no docker daemon)`：没有找到 Docker。确认 `docker.service` 为 `active`、`/var/run/docker.sock` 存在，然后执行 `sudo systemctl restart gpuworks-agent`。
+- `udocker (docker daemon not answering)`：Docker 已安装但没有响应，agent 每分钟复查一次，Docker 恢复且节点上没有实例在运行时自动切回。
+- `udocker (docker cannot use the accelerators: …)`：Docker 不能把 GPU 交给容器，前面还有一行 `runtime driver passed over: it cannot give containers this node's accelerators`。按第 2 节配置 NVIDIA Container Toolkit 并重启 Docker。
+
+确认节点用上 Docker 后，把运行时固定下来：在**计算节点**中打开该节点，在**基础信息 → 运行时**里选择 `docker`。选择会保存，agent 重启或重连后不会改回自动探测；Docker 不可用时这一步会直接报错，而不是悄悄改用 runveil。
 
 ### WSL 上 agent 的补充配置
 
@@ -208,7 +210,7 @@ curl http://127.0.0.1:8800/v1/chat/completions \
 | 控制面 | `systemctl is-active gpuworks` | `active` |
 | Agent | `systemctl is-active gpuworks-agent` | `active` |
 | Docker | `systemctl is-active docker` | `active` |
-| 运行时 | agent 日志 `runtime driver` | `driver=docker` |
+| 运行时 | 节点详情**基础信息 → 运行时** | `docker` |
 | 健康检查 | `curl http://127.0.0.1:8800/healthz` | `"status":"ok"` |
 | 浏览器 | `http://localhost:8800` | 可打开控制台 |
 
@@ -218,8 +220,8 @@ curl http://127.0.0.1:8800/v1/chat/completions \
 |---|---|
 | 浏览器打不开 `localhost:8800` | 看 `wsl -l -v` 是否 `Stopped`；补齐 `instanceIdleTimeout=-1` 后 `wsl --shutdown` 再进入 |
 | 节点 `gpu_count=0` | 安装 `50-wsl-nvidia.conf` 后重启 agent |
-| 部署失败 `Failed to infer device type` | 确认已改用 Docker（`driver=docker`），再重试部署单元；不要停留在 udocker |
-| Agent 日志仍是 udocker | `systemctl start docker` 后 `systemctl restart gpuworks-agent` |
+| 部署失败 `Failed to infer device type` | 节点用的是 runveil。按第 4 节改用 Docker 并在**基础信息 → 运行时**固定为 `docker`，再重试部署单元 |
+| Agent 日志仍是 udocker | 按日志里括号中的原因处理（见第 4 节）：没有 Docker 就 `systemctl start docker` 后重启 agent；不能使用 GPU 就配置 NVIDIA Container Toolkit 后重启 Docker |
 | 拉镜像导致磁盘写满或 WSL 异常 | 先腾出系统盘空间；按第 2 节把 Docker 的 `max-concurrent-downloads` 设为 2 或 1 |
 | Docker Hub / 镜像拉取超时 | 使用可用镜像源或 SWR 预拉后打标签 |
 
@@ -227,7 +229,7 @@ curl http://127.0.0.1:8800/v1/chat/completions \
 
 - [ ] `docker run --gpus all … nvidia-smi` 成功  
 - [ ] `gpuworks`、`gpuworks-agent`、`docker` 均为 `active`  
-- [ ] Agent 日志为 `driver=docker`  
+- [ ] Agent 日志为 `driver=docker`，节点运行时已固定为 `docker`  
 - [ ] 节点在线且 GPU 数量 ≥ 1  
 - [ ] 小模型部署可服务  
 - [ ] `/v1/chat/completions` 返回 200  
