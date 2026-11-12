@@ -54,7 +54,9 @@ const (
 	RPCKubeNodeExists = "kube.node.exists"
 )
 
-// KubeUpgradeParams is RPCKubeUpgrade's request.
+// KubeUpgradeParams is RPCKubeUpgrade's request: the tag the agent DaemonSet's
+// image moves to, in the repository it already runs from. The server sends
+// the agent image's runtime revision; a server before it sent its version.
 type KubeUpgradeParams struct {
 	Version string `json:"version"`
 }

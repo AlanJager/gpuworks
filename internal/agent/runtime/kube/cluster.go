@@ -22,13 +22,13 @@ func (d *Driver) Unschedulable(ctx context.Context) (bool, error) {
 	return n.Spec.Unschedulable, nil
 }
 
-// UpgradeDaemonSet moves the agent DaemonSet to version: the same image
+// UpgradeDaemonSet moves the agent DaemonSet to tag: the same image
 // repository at that tag. Kubernetes then replaces every agent of the
 // cluster in turn; the instance pods are not the agents' and keep running.
-func (d *Driver) UpgradeDaemonSet(ctx context.Context, version string) (string, error) {
-	version = strings.TrimSpace(version)
-	if version == "" || strings.ContainsAny(version, "/@: ") {
-		return "", fmt.Errorf("version %q is not an image tag", version)
+func (d *Driver) UpgradeDaemonSet(ctx context.Context, tag string) (string, error) {
+	tag = strings.TrimSpace(tag)
+	if tag == "" || strings.ContainsAny(tag, "/@: ") {
+		return "", fmt.Errorf("%q is not an image tag", tag)
 	}
 	var ds kubeapi.DaemonSet
 	if err := d.o.API.Get(ctx, kubeapi.DaemonSetPath(d.o.Namespace, DaemonSetName), &ds); err != nil {
@@ -45,7 +45,7 @@ func (d *Driver) UpgradeDaemonSet(ctx context.Context, version string) (string, 
 	if colon := strings.LastIndex(repo, ":"); colon > strings.LastIndex(repo, "/") {
 		repo = repo[:colon]
 	}
-	image := repo + ":" + version
+	image := repo + ":" + tag
 	if image == c.Image {
 		return image, nil
 	}

@@ -23,6 +23,7 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/agent/gpu"
 	"gpuworks.ai/gpuworks/internal/agent/hostsim"
+	"gpuworks.ai/gpuworks/internal/agent/kubeboot"
 	"gpuworks.ai/gpuworks/internal/agent/netinfo"
 	"gpuworks.ai/gpuworks/internal/agent/sysinfo"
 	"gpuworks.ai/gpuworks/internal/agent/terminal"
@@ -264,6 +265,9 @@ func helloCapabilitiesForRuntime(prober gpu.Prober, runtimeDriver string) []stri
 		proto.CapStorageFiles, proto.CapCardChecks)
 	if upgradeSupported() {
 		caps = append(caps, proto.CapUpgradePush)
+		if kubeboot.Running() {
+			caps = append(caps, proto.CapKubeBinaryUpgrade)
+		}
 	}
 	if prober == nil {
 		return caps

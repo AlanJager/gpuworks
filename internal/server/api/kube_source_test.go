@@ -323,3 +323,24 @@ func TestClustersOfAnAccountThatHasNoneOrFails(t *testing.T) {
 		t.Fatalf("unknown account = %d %s", rec.Code, rec.Body)
 	}
 }
+
+// An entry made from a cloud cluster takes the registry the server suggests
+// for the cluster's region (here a kind outside mainland China's clouds, so
+// Docker Hub), unless the request names another.
+func TestACloudEntryTakesTheSuggestedAgentImageSource(t *testing.T) {
+	rig := newKubeSourceRig(t)
+	rec := rig.do(rig.session, http.MethodGet, fmt.Sprintf("/api/v1/providers/%d/clusters", rig.provider), "")
+	if !strings.Contains(rec.Body.String(), `"external_id":"c-gpu"`) || !strings.Contains(rec.Body.String(), `"agent_image_source":"dockerhub"`) {
+		t.Fatalf("clusters lack the suggested registry: %s", rec.Body)
+	}
+	suggested := decodeKube[map[string]any](t, rig.do(rig.session, http.MethodPost, "/api/v1/kube/clusters",
+		fmt.Sprintf(`{"name":"ack-gpu","server_url":"https://gw.example","provider_pool_ids":["np-1"],"provider_id":%d,"provider_cluster_id":"c-gpu"}`, rig.provider)))
+	if suggested["agent_image_source"] != "dockerhub" || suggested["effective_agent_image"] != "gpuworks/gpuworks-agent:r1" {
+		t.Fatalf("entry without a registry = %v", suggested)
+	}
+	chosen := decodeKube[map[string]any](t, rig.do(rig.session, http.MethodPost, "/api/v1/kube/clusters",
+		fmt.Sprintf(`{"name":"ack-other","server_url":"https://gw.example","provider_pool_ids":["np-o"],"provider_id":%d,"provider_cluster_id":"c-other","agent_image_source":"quay"}`, rig.provider)))
+	if chosen["agent_image_source"] != "quay" || chosen["effective_agent_image"] != "quay.io/gpuworks/gpuworks-agent:r1" {
+		t.Fatalf("entry naming a registry = %v", chosen)
+	}
+}

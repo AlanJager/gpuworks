@@ -7,6 +7,11 @@
 # into the agent's container, and Ascend's npu-smi is mounted from the host;
 # it also carries the /bin/sh and nsenter the nerdctl wrapper needs.
 #
+# The image is the agent's runtime: its tag is the revision in REVISION, and
+# changes only when what is installed here does. The agent binary it carries
+# seeds the node's state directory, which the agent then runs from and is
+# upgraded in (internal/agent/kubeboot).
+#
 # scripts/agent_image.sh prepares the build context: <arch>/gpuworks-agent
 # and <arch>/nerdctl for every platform built. The final stage only copies,
 # so one build produces amd64 and arm64 without emulation; the CA bundle
@@ -20,6 +25,8 @@ RUN sed -i "s#deb.debian.org#${DEBIAN_MIRROR}#g" /etc/apt/sources.list.d/debian.
 
 FROM ${BASE_IMAGE}
 ARG TARGETARCH
+ARG AGENT_IMAGE_REVISION
+ENV GPUWORKS_AGENT_IMAGE_REVISION=${AGENT_IMAGE_REVISION}
 COPY --from=certs /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY ${TARGETARCH}/nerdctl ${TARGETARCH}/gpuworks-agent /usr/bin/
 ENTRYPOINT ["/usr/bin/gpuworks-agent"]

@@ -517,3 +517,37 @@ func TestPreviewLeavesKubernetesNodesToTheirDaemonSet(t *testing.T) {
 		t.Fatalf("eligibility = %v, want n1 kubernetes and n2 eligible", got)
 	}
 }
+
+// An agent that runs from its node's state directory (kubeboot) is upgraded
+// like any other: the preview offers it and the dispatch sends it the binary,
+// while its neighbour on the image's own binary is still left to its
+// DaemonSet.
+func TestKubernetesAgentsOnTheStateDirectoryAreUpgradedInPlace(t *testing.T) {
+	f := newFixture(t, 2, true)
+	if err := f.st.DB().Model(&store.Node{}).Where("uuid IN ?", []string{"n1", "n2"}).Update("kube_cluster_id", 7).Error; err != nil {
+		t.Fatal(err)
+	}
+	f.tr.set("n1", Connection{SessionID: "old-n1", Version: "old", Ready: true, Caps: []string{proto.CapUpgradePush, proto.CapKubeBinaryUpgrade}})
+	p, err := f.s.Preview(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]Candidate{}
+	for _, c := range p.Nodes {
+		got[c.NodeUUID] = c
+	}
+	if got["n1"].Eligibility != "eligible" || got["n1"].Transport != "push" {
+		t.Fatalf("state-directory agent = %+v, want eligible over push", got["n1"])
+	}
+	if got["n2"].Eligibility != "kubernetes" {
+		t.Fatalf("image-binary agent = %+v, want kubernetes", got["n2"])
+	}
+	r := f.create(t, "queued", []string{"n1"}, 0)
+	f.tick(t)
+	if i := f.item(t, r.Record.ID, "n1"); i.Phase == "skipped" {
+		t.Fatalf("state-directory agent skipped at dispatch: %+v", i)
+	}
+	if f.tr.count() != 1 {
+		t.Fatalf("upgrades sent = %d, want 1", f.tr.count())
+	}
+}

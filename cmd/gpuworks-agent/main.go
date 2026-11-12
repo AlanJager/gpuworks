@@ -33,6 +33,7 @@ import (
 	agentapp "gpuworks.ai/gpuworks/internal/agent/app"
 	agentconn "gpuworks.ai/gpuworks/internal/agent/conn"
 	"gpuworks.ai/gpuworks/internal/agent/gpu"
+	"gpuworks.ai/gpuworks/internal/agent/kubeboot"
 	"gpuworks.ai/gpuworks/internal/agent/runtime/kube"
 	recordingruntime "gpuworks.ai/gpuworks/internal/agent/runtime/recording"
 	udockerruntime "gpuworks.ai/gpuworks/internal/agent/runtime/udocker"
@@ -64,6 +65,9 @@ func main() {
 	sub := os.Args[1]
 	switch sub {
 	case "run":
+		// The image of a Kubernetes DaemonSet hands over to the binary on the
+		// node's state directory; this returns only when it does not.
+		kubeboot.Boot(os.Args[1:])
 		if err := run(log, os.Args[2:]); err != nil && !errors.Is(err, flag.ErrHelp) {
 			log.Error("agent exited", "err", err)
 			os.Exit(1)
@@ -236,6 +240,9 @@ func run(log *slog.Logger, args []string) error {
 		return safeAgentConfigurationError(err)
 	}
 	cfg.ServerURL, cfg.Token, cfg.StateDir = conf.Server, conf.Token, stateDir
+	if strings.EqualFold(conf.RuntimeDriver, kube.DriverName) {
+		alignKubeAgent(log, conf.Server, conf.Token)
+	}
 	cfg.ConnectMode, cfg.ListenAddr, cfg.ForceDriver = conf.Mode(), conf.Listen, conf.RuntimeDriver
 	// The runtime reads these two where it uses them; the file is one more
 	// place they come from.

@@ -109,6 +109,7 @@ var refusedCaps = map[string]bool{
 	proto.CapWebtermContainer:        true,
 	proto.CapWebtermContainerUdocker: true,
 	proto.CapUpgradePush:             true,
+	proto.CapKubeBinaryUpgrade:       true,
 	proto.CapStorageFiles:            true,
 	proto.CapBench:                   true,
 	proto.CapBenchWarmup:             true,

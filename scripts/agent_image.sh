@@ -6,17 +6,19 @@
 #   agent_image.sh publish    amd64 + arm64, pushed to every registry (make agent-image-publish)
 #
 # The Makefile passes GO, LDFLAGS and VERSION, so the agent in the image is
-# built exactly like the one the server embeds. nerdctl comes from its GitHub
-# release, verified against the checksums below and kept in a cache directory:
+# built exactly like the one the server embeds. The image is tagged with its
+# runtime revision (build/agent-image/REVISION), which the server's manifest
+# names, and with <revision>-<version> to tell the builds apart.
+#
+# nerdctl comes from its GitHub release, verified against the checksums below and kept in a cache directory:
 # CI runners reach GitHub poorly, and a cached tarball is never fetched twice.
 # NERDCTL_URL_BASE may list several download bases, tried in order; the
 # checksum makes any mirror of the release as good as GitHub.
 #
 # Environment:
-#   VERSION                    image tag, the server's version (required)
+#   VERSION                    the server's version (required)
 #   ARCH                       build: the architecture (amd64 | arm64)
-#   AGENT_IMAGE                build: the image name (default gpuworks/gpuworks-agent:$VERSION)
-#   GPUWORKS_RELEASE_CHANNEL   publish: release adds :latest, nightly adds :nightly
+#   AGENT_IMAGE                build: the image name (default gpuworks/gpuworks-agent:<revision>)
 #   GPUWORKS_AGENT_IMAGE_REPOS publish: space-separated repositories to push to
 #   GPUWORKS_AGENT_IMAGE_DOCKER_CONFIG
 #                              publish: path to a docker config.json holding the
@@ -36,6 +38,7 @@ cache="${GPUWORKS_TOOL_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/gpuworks/tools}"
 DEBIAN_MIRROR="${DEBIAN_MIRROR:-mirrors.aliyun.com}"
 docker_cli_image="${GPUWORKS_DOCKER_CLI_IMAGE:-docker:29-cli}"
 buildkit_image="${GPUWORKS_BUILDKIT_IMAGE:-moby/buildkit:v0.25.2}"
+revision="$(tr -d '[:space:]' < build/agent-image/REVISION)"
 
 # nerdctl_sha256 is the published SHA256SUMS entry of the pinned release.
 nerdctl_sha256() {
@@ -95,15 +98,11 @@ context() {
   done
 }
 
-# tags_for turns the repositories into -t flags for this channel.
+# tags_for turns the repositories into -t flags.
 tags_for() {
   local repo
   for repo in $GPUWORKS_AGENT_IMAGE_REPOS; do
-    printf -- '-t %s:%s ' "$repo" "$VERSION"
-    case "${GPUWORKS_RELEASE_CHANNEL:-}" in
-      release) printf -- '-t %s:latest ' "$repo" ;;
-      nightly) printf -- '-t %s:nightly ' "$repo" ;;
-    esac
+    printf -- '-t %s:%s -t %s:%s-%s ' "$repo" "$revision" "$repo" "$revision" "$VERSION"
   done
 }
 
@@ -115,7 +114,8 @@ case "$mode" in
     arch="${ARCH:-amd64}"
     context "$ctx" "$arch"
     docker build --platform "linux/$arch" --network "${GPUWORKS_DOCKER_BUILD_NETWORK:-default}" --build-arg DEBIAN_MIRROR="$DEBIAN_MIRROR" \
-      -t "${AGENT_IMAGE:-gpuworks/gpuworks-agent:$VERSION}" "$ctx"
+      --build-arg AGENT_IMAGE_REVISION="$revision" \
+      -t "${AGENT_IMAGE:-gpuworks/gpuworks-agent:$revision}" "$ctx"
     ;;
   publish)
     : "${GPUWORKS_AGENT_IMAGE_REPOS:?GPUWORKS_AGENT_IMAGE_REPOS names no repository to push to}"
@@ -134,7 +134,7 @@ case "$mode" in
     docker run --rm --network host \
       -v /var/run/docker.sock:/var/run/docker.sock \
       -v "$ctx:$ctx:ro" -w "$ctx" -v "$(realpath "$auth"):/run/gpuworks-registry-auth.json:ro" \
-      -e BUILDKIT_IMAGE="$buildkit_image" -e DEBIAN_MIRROR="$DEBIAN_MIRROR" \
+      -e BUILDKIT_IMAGE="$buildkit_image" -e DEBIAN_MIRROR="$DEBIAN_MIRROR" -e REVISION="$revision" \
       "$docker_cli_image" sh -euc '
         builder="$1"; shift
         # buildx keeps its state in DOCKER_CONFIG: a directory of the
@@ -156,7 +156,7 @@ case "$mode" in
         # needs the proxy too.
         export HTTP_PROXY="$hp" HTTPS_PROXY="$sp" NO_PROXY="$np"
         docker buildx build --builder "$builder" --platform linux/amd64,linux/arm64 \
-          --provenance=false --sbom=false --build-arg DEBIAN_MIRROR="$DEBIAN_MIRROR" \
+          --provenance=false --sbom=false --build-arg DEBIAN_MIRROR="$DEBIAN_MIRROR" --build-arg AGENT_IMAGE_REVISION="$REVISION" \
           "$@" --push .
       ' sh "$builder" $(tags_for)
     echo "pushed: $(tags_for | sed 's/-t //g')"

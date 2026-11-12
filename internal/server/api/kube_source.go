@@ -58,10 +58,15 @@ func (a *apiHandlers) providerClusters(w http.ResponseWriter, r *http.Request) {
 			held[cluster][p.PoolID] = true
 		}
 	}
+	var kind string
+	if p, err := a.d.Store.GetProvider(id); err == nil {
+		kind = p.Kind
+	}
 	out := make([]dto.ProviderCluster, 0, len(clusters))
 	for _, c := range clusters {
 		pc := dto.ProviderCluster{ExternalID: c.ExternalID, Name: c.Name, Region: c.Region, Version: c.Version, State: c.State,
-			Running: c.Running, PublicAPI: c.PublicAPI, GPUPools: make([]dto.ProviderClusterPool, 0, len(c.GPUPools))}
+			Running: c.Running, PublicAPI: c.PublicAPI, GPUPools: make([]dto.ProviderClusterPool, 0, len(c.GPUPools)),
+			AgentImageSource: kubeAgentImageSourceFor(kind, c.Region)}
 		for _, p := range c.GPUPools {
 			pc.GPUPools = append(pc.GPUPools, dto.ProviderClusterPool{ID: p.ID, Name: p.Name, GPUModel: p.GPUModel, GPUCount: p.GPUCount,
 				Nodes: p.Nodes, Vendor: p.Vendor, InEntry: held[c.ExternalID][p.ID]})

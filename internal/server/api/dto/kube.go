@@ -6,25 +6,30 @@ import "time"
 // DaemonSet. ApplyCommand carries the enrollment token and is present for
 // administrators only.
 type KubeCluster struct {
-	ID                uint   `json:"id"`
-	UUID              string `json:"uuid"`
-	Name              string `json:"name"`
-	Namespace         string `json:"namespace"`
-	ServerURL         string `json:"server_url"`
-	AgentImage        string `json:"agent_image"`
-	Vendor            string `json:"vendor"`
-	NodeSelector      string `json:"node_selector"`
-	RuntimeClass      string `json:"runtime_class"`     // empty: the cluster's "nvidia" class when it has one, else the default runtime
-	ImagePullSecret   string `json:"image_pull_secret"` // empty: the agent image is pulled without credentials
-	ContainerdSocket  string `json:"containerd_socket"` // empty: the agents find it
-	StateDir          string `json:"state_dir"`
-	APIServer         string `json:"api_server"` // empty: the agents use the cluster's "kubernetes" Service
-	EnginePorts       string `json:"engine_ports"`
-	IdleReturnSeconds int    `json:"idle_return_seconds"` // -1 keeps borrowed cards
-	ClusterUID        string `json:"cluster_uid"`         // empty until the first node enrolls
-	Revoked           bool   `json:"revoked"`
-	NodeCount         int    `json:"node_count"`
-	ApplyCommand      string `json:"apply_command,omitempty"`
+	ID         uint   `json:"id"`
+	UUID       string `json:"uuid"`
+	Name       string `json:"name"`
+	Namespace  string `json:"namespace"`
+	ServerURL  string `json:"server_url"`
+	AgentImage string `json:"agent_image"` // empty: the published image from AgentImageSource
+	// AgentImageSource is the registry of the published agent image the
+	// entry uses without an image of its own; EffectiveAgentImage is the
+	// image its manifest names.
+	AgentImageSource    string `json:"agent_image_source"`
+	EffectiveAgentImage string `json:"effective_agent_image"`
+	Vendor              string `json:"vendor"`
+	NodeSelector        string `json:"node_selector"`
+	RuntimeClass        string `json:"runtime_class"`     // empty: the cluster's "nvidia" class when it has one, else the default runtime
+	ImagePullSecret     string `json:"image_pull_secret"` // empty: the agent image is pulled without credentials
+	ContainerdSocket    string `json:"containerd_socket"` // empty: the agents find it
+	StateDir            string `json:"state_dir"`
+	APIServer           string `json:"api_server"` // empty: the agents use the cluster's "kubernetes" Service
+	EnginePorts         string `json:"engine_ports"`
+	IdleReturnSeconds   int    `json:"idle_return_seconds"` // -1 keeps borrowed cards
+	ClusterUID          string `json:"cluster_uid"`         // empty until the first node enrolls
+	Revoked             bool   `json:"revoked"`
+	NodeCount           int    `json:"node_count"`
+	ApplyCommand        string `json:"apply_command,omitempty"`
 	// Stalled: no node has joined for longer than the dictionary's
 	// stalled_after_seconds (GET /kube/defaults), so it is worth looking at
 	// why. Never for a revoked cluster or one a node joined.
@@ -64,6 +69,17 @@ type KubeDefaults struct {
 	// Vendors lists the vendors a cluster can be connected for, the default
 	// first.
 	Vendors []KubeVendor `json:"vendors"`
+	// AgentImageSource is the registry an entry made by hand pulls the
+	// published agent image from when it names no image of its own;
+	// AgentImageSources lists them all, the default first.
+	AgentImageSource  string                 `json:"agent_image_source"`
+	AgentImageSources []KubeAgentImageSource `json:"agent_image_sources"`
+}
+
+// KubeAgentImageSource is a registry the agent image is published to.
+type KubeAgentImageSource struct {
+	ID    string `json:"id"`    // "dockerhub", "swr", "quay"
+	Image string `json:"image"` // the image there, at the server's runtime revision
 }
 
 // KubeVendor is one accelerator vendor of a cluster.
@@ -78,10 +94,14 @@ type KubeVendor struct {
 // KubeClusterRequest creates a cluster. Empty optional fields take the
 // defaults the response shows.
 type KubeClusterRequest struct {
-	Name              string `json:"name"`
-	ServerURL         string `json:"server_url"`
-	Namespace         string `json:"namespace,omitempty"`
-	AgentImage        string `json:"agent_image,omitempty"`
+	Name       string `json:"name"`
+	ServerURL  string `json:"server_url"`
+	Namespace  string `json:"namespace,omitempty"`
+	AgentImage string `json:"agent_image,omitempty"`
+	// AgentImageSource is the registry of the published agent image when
+	// AgentImage is empty; empty is Docker Hub for an entry made by hand, and
+	// for one made from a cloud cluster the registry its region reaches.
+	AgentImageSource  string `json:"agent_image_source,omitempty"`
 	Vendor            string `json:"vendor,omitempty"`
 	NodeSelector      string `json:"node_selector,omitempty"`
 	RuntimeClass      string `json:"runtime_class,omitempty"`
@@ -141,6 +161,10 @@ type ProviderCluster struct {
 	PublicAPI  bool                  `json:"public_api"`
 	GPUPools   []ProviderClusterPool `json:"gpu_pools"`
 	Entry      *KubeClusterRef       `json:"entry,omitempty"`
+	// AgentImageSource is the registry an entry made from the cluster pulls
+	// the published agent image from unless the request names another: the
+	// one its region reaches.
+	AgentImageSource string `json:"agent_image_source"`
 }
 
 // ProviderClusterPool is one GPU node pool of a ProviderCluster.
