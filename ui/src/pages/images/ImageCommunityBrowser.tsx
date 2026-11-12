@@ -1,10 +1,12 @@
 import { Alert, Button, Card, Empty, Input, Space, Spin, Table, Tag, Tooltip, Typography } from "antd";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api, type CommunityRepo, type CommunityRepoBrowse, type CommunityTag } from "../../api";
+import { outboundPolicyApi } from "../../outboundPolicyApi";
+import CommunityBrowseApproval from "./CommunityBrowseApproval";
 import { formatTime } from "../../i18n/datetime";
 import { searchCommunityTags } from "./tagFilter";
-import { OutboundHostAccess, useOutboundHostAccess } from "../../components/OutboundHostAccess";
+import { OutboundHostAccess, outboundHostName, useOutboundHostAccess } from "../../components/OutboundHostAccess";
 
 const { Text } = Typography;
 
@@ -56,6 +58,8 @@ export default function ImageCommunityBrowser({ onPick }: Props) {
   const [repoBrowses, setRepoBrowses] = useState<Record<string, Browse>>({});
   const [query, setQuery] = useState("");
   const [picked, setPicked] = useState("");
+  const [approvalRepo, setApprovalRepo] = useState("");
+  const requestVersion = useRef(0);
   const configured = repos?.find((repo) => repo.repo.trim() === manualRepo.trim());
   const reposReady = repos !== null && !reposError;
   const accessUnknown = Boolean(manualRepo.trim()) && (!reposReady || Boolean(configured && !configured.access_host));
@@ -101,12 +105,14 @@ export default function ImageCommunityBrowser({ onPick }: Props) {
 
   const open = async (repo: string, card?: CommunityRepo, authorize = false) => {
     const target = repo.trim();
-    if (!target) return;
+    if (!target) return false;
+    const version = ++requestVersion.current;
     setBrowse({ state: "loading", repo: target });
     setQuery("");
     try {
       if (authorize) await access.authorize();
       const result = await api.browseCommunity(target);
+      if (version !== requestVersion.current) return false;
       setRepoBrowses((current) => ({ ...current, [target]: { state: "done", repo: target, result } }));
       // A sibling path lists its own tags but belongs to its card, so the
       // card's engine and framework stand in when the answer leaves them out.
@@ -119,9 +125,38 @@ export default function ImageCommunityBrowser({ onPick }: Props) {
           framework: result.framework || card?.framework || "",
         },
       });
+      return true;
     } catch (e) {
-      setBrowse({ state: "error", repo: target, message: e instanceof Error ? e.message : String(e) });
+      if (version === requestVersion.current) setBrowse({ state: "error", repo: target, message: e instanceof Error ? e.message : String(e) });
+      return false;
     }
+  };
+
+  const addressFor = (repo: string) => {
+    const exact = repos?.find((row) => row.repo.trim() === repo.trim());
+    return exact ? exact.access_host || "" : repositoryAPIAddress(repo);
+  };
+  const cardFor = (repo: string) => repos?.find((row) => row.repo === repo)
+    ?? repos?.find((row) => row.siblings?.includes(repo));
+  const openCard = async (repo: string) => {
+    const version = ++requestVersion.current;
+    setApprovalRepo("");
+    try {
+      const policy = await outboundPolicyApi.get();
+      if (version !== requestVersion.current) return;
+      if (policy.restrict_private_hosts) {
+        const address = addressFor(repo);
+        if (!address) { setApprovalRepo(repo); return; }
+        const host = outboundHostName(address);
+        const checks = await outboundPolicyApi.checkHosts([host]);
+        if (version !== requestVersion.current) return;
+        if (checks.find((item) => item.host === host)?.status !== "allowed") { setApprovalRepo(repo); return; }
+      }
+    } catch {
+      // Listing tags remains available to members who cannot read admin policy.
+      // No permission is written when the optional approval preflight fails.
+    }
+    if (version === requestVersion.current) await open(repo, cardFor(repo));
   };
 
   const visible = useMemo(
@@ -171,7 +206,7 @@ export default function ImageCommunityBrowser({ onPick }: Props) {
                         type={activeRepo === path ? "primary" : "link"}
                         size="small"
                         style={{ padding: activeRepo === path ? undefined : 0, maxWidth: "100%", whiteSpace: "normal", textAlign: "left", height: "auto" }}
-                        onClick={() => void open(path, card)}
+                        onClick={() => void openCard(path)}
                       >
                         {path}
                       </Button>
@@ -295,6 +330,8 @@ export default function ImageCommunityBrowser({ onPick }: Props) {
           </Space>
         )}
       </Space>
+      {approvalRepo && <CommunityBrowseApproval key={approvalRepo} repo={approvalRepo} address={addressFor(approvalRepo)}
+        onBrowse={() => open(approvalRepo, cardFor(approvalRepo))} onClose={() => setApprovalRepo("")} />}
     </Card>
   );
 }
