@@ -18,12 +18,13 @@ from deployment_numeric_contract import DICTIONARY, PD_NUMBERS, PD_MODES, FIXTUR
 
 
 QUICK_KEYS = {'max_model_len', 'gpu_memory_utilization', 'max_num_batched_tokens', 'max_num_seqs',
+              'data_parallel_size',
               'kv_offloading_size', 'kv_offload_read_threads', 'kv_offload_write_threads', 'kv_disk_limit_gib'}
 TIER_KEYS = {'kv_offloading_size', 'kv_offload_read_threads', 'kv_offload_write_threads', 'kv_disk_limit_gib'}
 CORE = {'health_check_threshold_sec'}
 RESOURCE = {'replicas', 'tp', 'pp'}
 RUNTIME = {'container-overrides-shm', 'container-overrides-start-timeout'}
-ABSENT = {'data_parallel_size': 'published parallel group has no quick whitelist entry or expert tab'}
+ABSENT = {}  # every published numeric key is now reachable
 METADATA = ('key', 'type', 'control', 'group', 'layout', 'depends_on', 'min', 'max', 'step', 'default', 'automatic')
 
 
