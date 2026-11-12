@@ -95,6 +95,10 @@ agent 用节点自己的 DNS（`dnsPolicy: Default`），与直接装在主机�
    - API server 地址：只给节点上没有组件提供 Service 地址的集群用（没有 kube-proxy 或其替代品，例如 KubeEdge、
      OpenYurt 的边缘节点），写成 `https://host:port`，地址须在 API server 的证书里；留空时 agent 经集群的
      `kubernetes` Service 访问。
+   - agent 镜像仓库：节点从哪里拉 agent 镜像，可选 Docker Hub（默认）、华为云 SWR、quay.io。中国内地的集群通常拉不到
+     Docker Hub，选华为云 SWR。镜像的 tag 是 agent 运行环境的版本（如 `r1`），不随 server 版本变化，见下文「升级 agent」。
+   - agent 镜像：填了就用你自己的镜像，不再从上面的仓库拉。节点访问不了公网时，把 `gpuworks/gpuworks-agent:r1` 推到集群能访问的
+     私有仓库（或在每个节点上 `ctr -n k8s.io images import` 导入）后填这个地址；运行环境版本变化前都不用再推。
    - 镜像拉取凭据：agent 镜像放在需要登录的仓库（企业 Harbor、云厂商的私有仓库）时，先在命名空间里建一个
      docker-registry 类型的 Secret（`kubectl -n gpuworks-system create secret docker-registry regcred …`，namespace 不存在时
      先建），再在这里填它的名称。agent Pod 用它拉镜像，agent 起的占位 Pod 也沿用它。
@@ -121,7 +125,7 @@ agent 用节点自己的 DNS（`dnsPolicy: Default`），与直接装在主机�
 | 场景 | 做法 |
 |---|---|
 | 维护节点 | 在 Kubernetes 里 `kubectl cordon`：gpuworks 在下一次状态上报（一分钟内）跟着停止往该节点放新副本，`uncordon` 后同样恢复；节点的调度状态显示为平台停止调度，原因为「Kubernetes 已停止向该节点调度」 |
-| 升级 agent | 节点详情里点「升级」：把该集群的 agent DaemonSet 换到与 server 同版本的镜像，Kubernetes 依次替换各节点的 agent，实例 Pod 不受影响。也可以自己 `kubectl -n gpuworks-system set image ds/gpuworks-agent agent=<镜像>` |
+| 升级 agent | 与普通节点一样：节点页勾选后点「批量升级 Agent」，或在节点详情里点「升级 Agent」。agent 运行在节点状态目录里的 `agent/gpuworks-agent`，升级原地替换这份程序，不改 DaemonSet、不访问镜像仓库，实例 Pod 不受影响；升级后的程序在 Pod 重建后仍在。批量升级预览显示「需更新 agent 镜像」的节点还在运行旧版镜像自带的程序：在该节点上单独点一次「升级 Agent」，所属集群的 DaemonSet 换到当前的 agent 镜像（仓库不变，只换 tag），之后就能批量升级。`kubectl` 里看到的镜像 tag 是运行环境版本，不代表 agent 版本，以节点页为准 |
 | 节点被删除或缩容 | 节点离线 15 分钟后，gpuworks 请同集群另一台在线节点确认；Kubernetes 里已没有该节点且其上没有实例时自动移除 |
 | 从 gpuworks 删除节点 | 只删除记录，不卸载 agent；DaemonSet 仍选中该节点时它会重新加入，需要先调整节点选择器 |
 | 卸载 | `kubectl delete -f` 同一个 manifest 地址：DaemonSet、实例 Pod、占位 Pod 一起删除，卡还给 Kubernetes |

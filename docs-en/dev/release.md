@@ -196,9 +196,13 @@ The image a Kubernetes cluster's agent DaemonSet runs (`build/agent-image/Docker
 `release-agent-image`. It sits in the `publish` stage with `release-publish` and runs after both linux build jobs succeed:
 `make agent-image-publish` (`scripts/agent_image.sh publish`) builds amd64 and arm64 in one go and pushes them to
 `docker.io/gpuworks/gpuworks-agent`, `quay.io/gpuworks/gpuworks-agent`, and `swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-agent`.
-The tag is the version the server reports, which is the image a cluster entry uses when its agent image is left empty: nightly uses the short commit plus `:nightly`, and a version tag uses `vYY.M.PATCH` plus `:latest`.
+The tag is the runtime revision (`build/agent-image/REVISION`, such as `r1`), which is what the manifest names when a cluster entry leaves its agent image empty, plus `r1-<server version>` to tell the builds apart.
+The image is only the agent's runtime: the agent in it only seeds a node, which then switches to the server's own agent and upgrades in place, so a nightly overwriting `r1` does not affect connected clusters.
+Raise the runtime revision only when the base image or nerdctl changes (edit `REVISION` and `kubemanifest.AgentImageRevision`; a test keeps them equal).
 
 - The agent in the image is built with the same `LDFLAGS` as the embedded agents; nerdctl comes from its upstream release, is verified against the sha256 pinned in the script, and is cached on the runner host.
+  The runners time out on GitHub, so CI's `NERDCTL_URL_BASE` lists two GitHub mirrors and then GitHub itself; the sha256 decides what is used.
+- buildx's docker-container builder does not inherit the host docker's proxy: the script hands the daemon's http/https/no proxy to the builder, and the buildx client (which fetches registry tokens for buildkit) uses the same proxy.
 - Push credentials are the protected File variable `GPUWORKS_AGENT_IMAGE_DOCKER_CONFIG` (a docker `config.json` with credentials for the three registries); without it the job fails.
 - Provenance and SBOM are off: SWR refuses an OCI index that carries attestations.
 - To build one architecture locally: `make agent-image ARCH=amd64|arm64 AGENT_IMAGE=<name>`.

@@ -32,8 +32,8 @@ server 里有 30 余处依赖“节点后面有一个 agent”，agent 承担探
    NVIDIA 的，注入了 `nvidia-smi`，没注入时（k3s 默认 runc）agent 在节点上运行它；实例 Pod 用集群的 `nvidia` RuntimeClass，
    没有就用默认运行时。kubelet 用的 containerd 按 agent 容器的 shim 的 `-address` 认定，不按 socket 位置猜。
    一个集群条目一个厂商。device plugin 以非整卡分配（time-slicing、MIG、没有 HAMi 登记的 vNPU）时不借卡，卡报为外部占用并带原因；HAMi 与 ACK 共享 GPU 见第 7 条。
-6. **生命周期跟随 Kubernetes**：节点 cordon 时平台同样 cordon；升级是把 agent DaemonSet 换到 server 同版本的镜像；离线
-   15 分钟的节点经同集群在线 agent 确认已不存在且无实例时移除；节点自报引擎端口段，避开 NodePort 范围。
+6. **生命周期跟随 Kubernetes**：节点 cordon 时平台同样 cordon；离线 15 分钟的节点经同集群在线 agent 确认已不存在且无实例时
+   移除；节点自报引擎端口段，避开 NodePort 范围。升级见第 8 条（2026-11-12 修订，此前是把 DaemonSet 换到与 server 同版本的镜像）。
 7. **借卡方式随节点上的分配者而定**（2026-11-10 补充）：HAMi 与 ACK 共享 GPU 不是"一份一张卡"，按下面的办法借整卡，其余切分仍拒绝并写明原因（MIG、time-slicing、没有 HAMi 登记的 vNPU 模板）。
    - HAMi（节点有 `hami.io/node-*-register` 注解）：占位 Pod 写 `schedulerName`（默认 `hami-scheduler`，环境变量 `GPUWORKS_KUBE_HAMI_SCHEDULER` 覆盖）与 `nodeSelector kubernetes.io/hostname`，不写 `nodeName`（绕过调度器的 Pod HAMi 的 device plugin 不分配）；
      申请整张并按 UUID 指定，所以要哪张借哪张，不再先借全部再退。卡的归属以 HAMi 写在占位 Pod 上的 `hami.io/vgpu-devices-allocated` 为准并核对是整卡（kubelet 的设备 ID 是 `<UUID>-<份额号>`，不能按卡号解析）。
@@ -41,6 +41,12 @@ server 里有 30 余处依赖“节点后面有一个 agent”，agent 承担探
    - 外部占用来自同节点其他 Pod 上的分配注解（需要 agent 读本节点所有 namespace 的 Pod）；占位 Pod 被调度器留在 Pending 时，借卡失败并带调度器的原因与占着卡的 Pod。
    - 平台借着卡时节点换了模式，新调度器的账本里没有旧占位 Pod，会把同一张卡再分出去：这些卡报为外部占用并写明原因，不再按旧模式借卡，旧占位 Pod 在卡上没有实例后删除。
    - NVIDIA 的 HAMi 2.11 与 ACK 共享 GPU 的行为在阿里云 ACK 集群（k8s 1.36）上核对过；昇腾的 HAMi 只按 HAMi 文档的形态用夹具验证过，未上真机。
+8. **镜像只是 agent 的运行环境，agent 在节点的状态目录里运行和升级**（2026-11-12 补充）：
+   - 镜像的 tag 是运行环境的版本（`build/agent-image/REVISION`，如 `r1`），只有基础镜像或 nerdctl 变了才升；manifest 写的就是这个 tag，与 server 版本无关。
+   - 容器启动时，镜像里的 agent 把自己拷到状态目录（hostPath，Pod 重建后还在）的 `agent/gpuworks-agent` 并 exec 它；同一镜像再启动时沿用目录里的那份，换了镜像就重新拷。新拷的那份在注册前先从 server 的 `/dl/` 取一次 server 自己的 agent，与普通节点安装时装 server 的版本一致。
+   - 之后的升级就是普通节点的原地升级（推送或拉取二进制、exec、注册后确认、不确认就回滚到上一份），容器重启替代 systemd 当守护者；批量升级不再跳过这样的节点（agent 以能力 `upgrade.kube_binary` 声明）。
+   - 运行旧镜像自带程序的 agent 没有这个能力：单节点升级把所属集群 DaemonSet 的 tag 换成当前运行环境版本（仓库不变），之后就走原地升级。状态目录挂成 noexec 时继续运行镜像自带的程序，同样走换镜像的路。
+   - 镜像发布到 Docker Hub、quay.io 与华为云 SWR；条目记录从哪个仓库拉（`agent_image_source`），从云账号接入时按地域预选（阿里云中国内地地域选 SWR），手动接入时由用户选，填了自己的镜像则以它为准。
 
 ## 取舍
 
@@ -51,6 +57,9 @@ server 里有 30 余处依赖“节点后面有一个 agent”，agent 承担探
 - **借卡而不是关闭 device plugin**：不要求用户改动已有的 GPU Operator，k8s 账面如实；代价是借卡瞬间空闲卡会被短暂全部
   占用（其他 Pod 只会短暂 Pending），以及 time-slicing / MIG 副本的节点不能用。
 - **privileged agent**：探测、NFS 挂载传播、进入节点挂载命名空间、注册 device plugin 需要；manifest 给 namespace 打 PSA `privileged` 标签。
+- **二进制在状态目录而不是镜像里**（第 8 条）：升级不碰镜像仓库、不改 DaemonSet，私有仓库与离线集群不必每个版本推一次镜像，
+  入口与普通节点统一；代价是 `kubectl` 里看到的镜像 tag 不说明 agent 版本（以平台显示为准），集群新加的节点仍要从仓库拉一次运行环境镜像。
+  也考虑过由 server 经 agent 连接把新版本镜像分发进各节点的 containerd，再改 DaemonSet：同样不碰仓库，但每次升级要给每个节点传一份镜像，比只传二进制重。
 - **复用厂商 device plugin 而不是自带**：gpustack 自带各厂商的 device plugin 并要求关掉厂商的；gpuworks 是集群的客人，
   沿用用户已装的插件，代价是只能按整卡借，切分资源的节点不能用。
 
@@ -60,7 +69,8 @@ server 里有 30 余处依赖“节点后面有一个 agent”，agent 承担探
   快照的 `engine_port_range`。
 - 新包：`internal/server/kubemanifest`、`internal/agent/runtime/kube`（含 `kubeapi`、`podresources` 两个叶子包）。
 - agent 镜像（`build/agent-image`，debian-slim：NVIDIA 运行时挂进来的 `nvidia-smi`、宿主机的 `npu-smi` 都是 glibc
-  程序；只 COPY，amd64 与 arm64 都不需要模拟即可构建）。
+  程序；只 COPY，amd64 与 arm64 都不需要模拟即可构建）。发布 tag 为运行环境版本 `rN` 与 `rN-<server 版本>`。
+- 新包：`internal/agent/kubeboot`（第 8 条的交接与对齐）；新增持久化事实：`kube_clusters` 的 `agent_image_source`（渲染时无从得知节点能访问哪个仓库）。
 - 新增持久化事实：`kube_clusters` 的 `vendor`、`state_dir`、`api_server`（manifest 参数）。agent 用节点的 DNS
   （`dnsPolicy: Default`），不依赖集群 DNS；没有组件提供 Service 地址的节点（KubeEdge、OpenYurt 边缘节点）用
   `api_server` 直连 API server。

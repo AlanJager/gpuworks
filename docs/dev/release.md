@@ -188,9 +188,13 @@ Kubernetes 集群的 agent DaemonSet 跑的镜像（`build/agent-image/Dockerfil
 `release-agent-image` 发布：与 `release-publish` 同在 `publish` 阶段，等 linux 的两个构建 job 成功后运行
 `make agent-image-publish`（`scripts/agent_image.sh publish`），一次构建 amd64 与 arm64，推到
 `docker.io/gpuworks/gpuworks-agent`、`quay.io/gpuworks/gpuworks-agent`、`swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-agent`。
-tag 是 server 报告的版本，也就是集群条目不填 agent 镜像时用的那个：nightly 为短提交号外加 `:nightly`，版本 tag 为 `vYY.M.PATCH` 外加 `:latest`。
+tag 是运行环境版本（`build/agent-image/REVISION`，如 `r1`），也就是集群条目不填 agent 镜像时 manifest 写的那个，另加 `r1-<server 版本>` 区分各次构建。
+镜像只是 agent 的运行环境：里面的 agent 只用来在节点上播种，节点随后换成 server 自己的 agent 并原地升级，所以每次 nightly 覆盖 `r1` 不影响已接入的集群。
+只在基础镜像或 nerdctl 变化时升运行环境版本（改 `REVISION` 与 `kubemanifest.AgentImageRevision`，测试保证两者一致）。
 
 - 镜像里的 agent 用与内嵌 agent 相同的 `LDFLAGS` 构建；nerdctl 取自上游发布并按脚本里固定的 sha256 校验，缓存在 runner 主机上。
+  runner 访问 GitHub 超时，CI 的 `NERDCTL_URL_BASE` 依次列出两个 GitHub 加速地址和 GitHub 本身，sha256 决定用不用。
+- buildx 的 docker-container builder 不继承宿主 docker 的代理：脚本把 daemon 的 http/https/no proxy 交给 builder，buildx 客户端（替 buildkit 取仓库 token）也用同一套代理。
 - 推送凭据是 protected 的 File 类型变量 `GPUWORKS_AGENT_IMAGE_DOCKER_CONFIG`（一份含三个仓库凭据的 docker `config.json`），没有它 job 直接失败。
 - 关闭 provenance 与 SBOM：SWR 拒收带 attestation 的 OCI index。
 - 本机构建单架构：`make agent-image ARCH=amd64|arm64 AGENT_IMAGE=<名字>`。
