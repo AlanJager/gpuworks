@@ -51,19 +51,11 @@ func historicalLineageDB(t *testing.T, fixture string, rows ...string) string {
 	return path
 }
 
-// assertLineageConvergesOnFresh compares the tables migrations 37-42 own.
-// instances is checked for the 40 column only: both lineages keep the retired
-// run_spec_snapshot column, which no migration of this range touches.
+// assertLineageConvergesOnFresh compares the whole schema, including the
+// tables migrations 37-42 own and the leftovers 207 removes.
 func assertLineageConvergesOnFresh(t *testing.T, upgraded, fresh *gorm.DB) {
 	t.Helper()
-	for _, table := range []string{"image_series", "image_versions", "benchmark_runs", "benchmark_points"} {
-		if got, want := columnsOf(t, upgraded, table), columnsOf(t, fresh, table); !reflect.DeepEqual(got, want) {
-			t.Fatalf("%s: upgraded columns %v, fresh columns %v", table, got, want)
-		}
-	}
-	if !columnsOf(t, upgraded, "instances")["image_digest_id"] {
-		t.Fatal("instances.image_digest_id missing after upgrade")
-	}
+	assertSchemaMatches(t, schemaOf(t, upgraded), schemaOf(t, fresh))
 }
 
 func markerNames(t *testing.T, db *gorm.DB) map[int]string {
