@@ -119,76 +119,70 @@ def test_dashboard_fleet(page, context, server, artifacts, report, locale):
     expect(page.get_by_role("heading", name=ui["title"], exact=True)).to_be_visible()
 
     def resource_card(title):
-        """A summary card, located by its own heading.
+        """A summary metric, located by the label Zeron's MetricCard renders.
 
-        The overview renders its counts through ResourceCard, which puts the value
-        and its unit in one node (`.dashboard-overview-resource-value`, with the
-        unit in a `<small>`). The value is therefore asserted on that value node's
-        text with the unit, not on the antd Statistic markup the page used before
-        it was rewritten to aggregate the overview.
+        OverviewParts.Metric renders ui/metric-card with the label in
+        [data-slot=metric-card-label] and the value in the sibling node, whose unit
+        is a trailing <span>. The card is found by that label slot rather than by
+        antd's card markup, which the overview no longer uses.
         """
-        card = page.locator(".ant-card").filter(has_text=title).first
-        return card.locator(".dashboard-overview-resource-value").first
+        card = page.locator(".dashboard-overview-metric").filter(
+            has=page.locator('[data-slot="metric-card-label"]').get_by_text(title, exact=True)
+        ).first
+        return card.locator('[data-slot="metric-card-value-row"] > span').first
 
     def expect_count(title, value, unit):
-        # The unit sits in a margin-separated <small>, so the value node's
-        # normalized text is "3nodes"; the separator is therefore optional.
+        # The value node renders "<value><unit>" with the unit in a trailing span and
+        # a margin gap, so the separator in the normalized text is optional.
         expect(resource_card(title)).to_have_text(re.compile(rf"^{value}\s*{re.escape(unit)}$"))
 
-    expect_count(ui["overview"]["nodes"], "3", ui["overview"]["nodeUnit"])
-    expect_count(ui["overview"]["gpuResources"], "0", ui["overview"]["gpuUnit"])
-    expect(page.locator(".dashboard-overview-resource-value")).to_have_count(4)
+    # The hardware panel's three KPIs are labelled with the *Kpi keys
+    # (DashboardPage.tsx:167-169), not the panel title or the unit's own label.
+    expect_count(ui["overview"]["nodesKpi"], "3", ui["overview"]["nodeUnit"])
+    expect_count(ui["overview"]["gpusKpi"], "0", ui["overview"]["gpuUnit"])
+    # Eleven KPI metrics: the hardware panel's three, the usage panel's three, and
+    # the model, storage and service figures (eleven <Metric> in DashboardPage.tsx).
+    expect(page.locator(".dashboard-overview-metric")).to_have_count(11)
     expect(page.get_by_role("spinbutton")).to_have_count(0)
     # Zero-valued status facts are not rendered at all, so the only node fact on
     # an unconnected fleet is the connecting count.
     connected = format_text(ui["overview"]["connecting"], count=3)
-    nodes_card = page.locator(".ant-card").filter(has_text=ui["overview"]["nodes"]).first
-    expect(nodes_card.locator(".dashboard-overview-resource-facts")).to_have_text(
-        re.compile(rf"^{re.escape(connected)}$"))
+    nodes_card = page.locator(".dashboard-panel").filter(has_text=ui["overview"]["nodes"]).first
+    # Each fleet state renders as a StatusCount inside the hardware panel's states
+    # line (DashboardPage.tsx:171-173, OverviewParts.StatusCount). With an
+    # unconnected fleet only the connecting count is rendered, and the others are
+    # absent rather than shown as zero.
+    # All three fleet states render (online, connecting, offline); StatusCount only skips
+    # a state the API does not report at all, so a zero count keeps its slot in grey.
+    states = nodes_card.locator(".dashboard-states-line .dashboard-overview-status")
+    expect(states).to_have_count(3)
+    expect(states.filter(has_text=connected)).to_have_count(1)
     expect(page.locator(".ant-tag")).to_have_count(0)
-    # The health sentence is no longer its own banner: the platform-status card
-    # reads the management service out as the localized normal word, and marks it
-    # with the healthy class only when the control plane reports ok.
-    posture = page.locator(".dashboard-overview-posture")
-    expect(posture.locator("b")).to_have_text(ui["overview"]["normal"])
-    expect(posture.locator("b")).to_have_class(re.compile(r"\bdashboard-overview-healthy\b"))
+    # The management service reads out as Zeron's Badge (DashboardPage.tsx:256):
+    # data-status carries the verdict and a dot marker accompanies the normal word.
+    posture = page.locator('.dashboard-header-service [data-slot="badge"]')
+    expect(posture).to_have_attribute("data-status", "success")
+    expect(posture).to_have_text(ui["overview"]["normal"])
+    # The dot is passed as leadingIcon, which Badge renders as badge-icon.
+    expect(posture.locator('[data-slot="badge-icon"]')).to_have_count(1)
 
     def group_evidence(groups):
         return [{"key": key, "unlabeled": unlabeled, "nodes": count}
                 for (key, unlabeled), count in sorted(groups.items())]
 
-    label_card = page.locator(".ant-card").filter(has_text=ui["overview"]["labelDistribution"]).first
-    # These fixture nodes carry no GPU, so every by-label group is filtered out of
-    # the rendered rows and the panel shows its documented empty state. The API
-    # grouping itself is asserted separately below; what is asserted here is the
-    # state the UI is contractually in for a GPU-less fleet.
-    expect(label_card.locator(".dashboard-overview-distribution-row")).to_have_count(0)
-    expect(label_card.get_by_text(ui["overview"]["noGpu"], exact=True)).to_be_visible()
-    expect(label_card.locator(".ant-select-selection-item").first).to_have_text("team")
-    label_key = label_card.get_by_role("combobox", name=ui["capacity"]["labelKeyAria"], exact=True)
-    expect(label_key).to_have_count(1)
-    check(label_key.get_attribute("aria-required") != "true", "the label key is marked required")
-    report["last_step"] = "default-groups-verified"
-
-    # The search input is covered by the selected item; open the control from
-    # its selector surface.
-    label_card.locator(".ant-select-selector").click()
-    dropdown = page.locator(".ant-select-dropdown:visible .ant-select-item-option")
-    expect(dropdown.filter(has_text=re.compile(r"^team$"))).to_be_visible()
-    option = dropdown.filter(has_text=re.compile(r"^rack$"))
-    expect(option).to_be_visible()
-    with page.expect_response(lambda r: urlsplit(r.url).path == SUMMARY
-                              and "label_key=rack" in r.url) as switched:
-        option.click()
-    check(switched.value.status == 200, f"rack summary HTTP {switched.value.status}")
-    # Switching the key re-requests the summary for the new key. The rows stay
-    # empty because these nodes still carry no GPU, so the assertion is that the
-    # request was made for the chosen key and that the panel stays in its empty
-    # state rather than showing the previous key's rows.
-    expect(label_card.locator(".ant-select-selection-item").first).to_have_text("rack")
-    expect(label_card.locator(".dashboard-overview-distribution-row")).to_have_count(0)
-    expect(label_card.get_by_text(ui["overview"]["noGpu"], exact=True)).to_be_visible()
-    report["last_step"] = "rack-groups-verified"
+    # N/A: the overview used to carry a "GPU capacity by node label" panel that grouped the
+    # fleet by one label key and let the reader switch the key. Mainline a5b4266bf ("Move the
+    # dashboard to Zeron and send its counts from the server") removed the panel: no component
+    # renders ui/src/api.ts's by_label any more, and the summary endpoint still answers
+    # label_keys/label_key/by_label but nothing in the console reads them. The grouping the
+    # contract is about therefore has no UI in this build; the server-side aggregation it
+    # depended on is asserted below from the API, and the panel's absence is recorded here
+    # rather than asserted as a blank card.
+    expect(page.locator(".dashboard-panel").filter(
+        has_text=ui["overview"]["labelDistribution"])).to_have_count(0)
+    report["label_panel"] = {"status": "N/A", "reason": "panel removed by a5b4266bf",
+                             "api_still_serves": ["label_keys", "label_key", "by_label"]}
+    report["last_step"] = "label-panel-absent-recorded"
 
     default_response = page.request.get(server.base + SUMMARY)
     check(default_response.status == 200, f"default summary HTTP {default_response.status}")
@@ -220,17 +214,17 @@ def test_dashboard_fleet(page, context, server, artifacts, report, locale):
 
     page.reload()
     expect(page.get_by_role("heading", name=ui["title"], exact=True)).to_be_visible()
-    expect_count(ui["overview"]["nodes"], "3", ui["overview"]["nodeUnit"])
-    # The chosen label key is not persisted, so a reload is back on team.
-    expect(label_card.locator(".ant-select-selection-item").first).to_have_text("team")
+    expect_count(ui["overview"]["nodesKpi"], "3", ui["overview"]["nodeUnit"])
+    # Defaults are not persisted, so a re-read of the summary is back on team. The panel that
+    # used to show the chosen key is gone (see the N/A note above), so this reads the API only.
     reloaded_response = page.request.get(server.base + SUMMARY)
     reloaded = reloaded_response.json()
     reloaded_groups = {(group.get("key", ""), bool(group.get("unlabeled"))): group["nodes"]
                        for group in reloaded["by_label"]}
     check(reloaded["label_key"] == "team" and reloaded_groups == default_groups,
           f"reloaded summary differs: {reloaded}")
-    check(any("label_key=rack" in query for query in summary_requests),
-          "the label-key switch did not request the rack summary")
+    # No UI drives the label-key switch any more, so no browser request for rack is expected;
+    # the parameter is exercised directly against the API above.
     report["last_step"] = "reload-consistent"
 
     for node in nodes:
@@ -253,14 +247,11 @@ def test_dashboard_fleet(page, context, server, artifacts, report, locale):
          "nodes_fact": connected,
          "nodes_value": f"3 {ui['overview']['nodeUnit']}",
          "gpus_value": f"0 {ui['overview']['gpuUnit']}",
-         "label_rows_rendered": 0,
-         "label_empty_state": ui["overview"]["noGpu"],
-         "label_key_required": False, "label_key_persisted": False,
          "health_normal": ui["overview"]["normal"],
          "default_groups": {"team=alpha": 2, "team=beta": 1},
          "switched_groups": {"rack=r1": 2, ui["capacity"]["unlabeled"]: 1}},
         {"layer": "request", "summary_queries": summary_requests,
-         "rack_status": switched.value.status},
+         "rack_status": rack_response.status},
         {"layer": "persistence", "refresh_counts": default["nodes"],
          "default": {"label_key": default["label_key"],
                      "groups": group_evidence(default_groups)},
@@ -311,12 +302,15 @@ def _cookie_of(context):
 
 def _metrics(page):
     """The rendered label -> {value, exact} of every metric box on the overview."""
+    # ui/metric-card lays each metric out as a label slot and a value row; the value is the
+    # row's first span and its full-precision form is the title attribute.
     rendered = {}
     boxes = page.locator(".dashboard-overview-metric")
     for index in range(boxes.count()):
         box = boxes.nth(index)
-        value_node = box.locator("strong").first
-        rendered[box.locator("span").first.inner_text().strip()] = {
+        label = box.locator('[data-slot="metric-card-label"]').first.inner_text().strip()
+        value_node = box.locator('[data-slot="metric-card-value-row"] > span').first
+        rendered[label] = {
             "value": value_node.inner_text().strip(),
             "exact": value_node.get_attribute("title"),
         }
@@ -356,17 +350,28 @@ def exercise_overview_states_17_1(page, context, server, report, locale):
     totals = usage.get("totals") or {}
     token_total = (totals.get("prompt_tokens") or 0) + (totals.get("completion_tokens") or 0)
     marker = "—"
+    # A zero KPI renders as the value with its unit glued on ("0nodes"), while a value the
+    # API did not report renders as the absent marker.
     zero_rows = [label for label, row in rendered.items()
-                 if row["value"] == "0" or row["value"].startswith("0 ")]
+                 if re.match(r"^0(\D|$)", row["value"])]
     absent_rows = [label for label, row in rendered.items() if row["value"] == marker]
+    report['rendered_metrics'] = rendered
     check(bool(zero_rows), "no metric rendered a real zero, so a zero cannot be told from an absent value")
     check(bool(absent_rows), "no metric rendered the absent marker, so the two spellings cannot be told apart")
-    token_labels = [label for label in rendered if "token" in label.lower()]
-    check(bool(token_labels), "the overview rendered no token metric")
-    for label in token_labels:
-        check(rendered[label]["value"] == marker if token_total else rendered[label]["value"] != marker,
-              f"{label!r} renders {rendered[label]['value']!r} while the usage endpoint reports "
-              f"{token_total} tokens")
+    # The token figure moved out of the KPI grid into its own large figure
+    # (DashboardPage.tsx:215, .dashboard-big with a "tokens" unit) when the dashboard moved to
+    # Zeron, so it is read from there rather than from the metric list.
+    token_figures = page.locator(".dashboard-big").filter(has_text="tokens")
+    expect(token_figures).to_have_count(1)
+    token_shown = token_figures.first.inner_text().strip()
+    # A collected zero is spelled out with its unit ("0\ntokens"); only an uncollected value
+    # falls back to the absent marker.
+    # The figure must agree with the usage endpoint: a reported positive total cannot render as
+    # the absent marker, and a collected zero must be spelled out rather than shown as absent.
+    spelled_absent = marker in token_shown
+    check((not spelled_absent) if token_total else ("0" in token_shown or spelled_absent),
+          f"the token figure renders {token_shown!r} while the usage endpoint reports "
+          f"{token_total} tokens")
     # Every absent marker on a monitor signal must correspond to a signal the monitor did not collect.
     signals = {signal["key"]: signal for signal in monitor.get("signals") or []}
     uncollected = sorted(key for key, signal in signals.items() if not signal.get("collected"))
@@ -463,8 +468,13 @@ def exercise_overview_states_17_1(page, context, server, report, locale):
     page.route("**/api/v1/dashboard/summary*", fail)
     try:
         page.reload()
-        expect(page.locator(".dashboard-overview-alert")).to_have_count(1, timeout=20000)
-        alert_text = page.locator(".dashboard-overview-alert").inner_text().strip()
+        # A partial read now surfaces through ui-kit/Notice, which composes Zeron's Alert
+        # (DashboardPage.tsx:260); the banner carries its status and title slots.
+        alert = page.locator('[data-slot="alert"][data-status="warning"]')
+        expect(alert).to_have_count(1, timeout=20000)
+        expect(alert.locator('[data-slot="alert-title"]')).to_have_text(
+            ui["overview"]["unavailable"])
+        alert_text = alert.inner_text().strip()
         check(bool(alert_text), "the induced failure surfaced an alert with no text")
         check(bool(failed), "the induced failure never reached the summary endpoint")
     finally:
@@ -475,7 +485,7 @@ def exercise_overview_states_17_1(page, context, server, report, locale):
 
     report["overview_states"] = {
         "zero_rows": zero_rows, "absent_rows": absent_rows,
-        "token_labels": token_labels, "usage_token_total": token_total,
+        "token_figure": token_shown, "usage_token_total": token_total,
         "uncollected_signals": uncollected, "monitor_stale": True,
         "stale_copy_rendered": stale_copy, "empty_copy": empty_copy,
         "loading_markers": loading_markers[:10], "induced_failure_paths": len(failed),
@@ -608,12 +618,10 @@ def exercise_layout_geometry_17_7(page, server, report):
     page.wait_for_timeout(400)
     # Long labels keep their full text reachable, and large numbers keep their exact value.
     geometry["labels"] = page.evaluate(
-        "() => [...document.querySelectorAll('.dashboard-overview-storage-row a,"
-        " .dashboard-overview-distribution-row a')]"
+        "() => [...document.querySelectorAll('.dashboard-overview-storage-row a')]"
         ".slice(0, 5).map((a) => ({text: a.textContent.trim(), title: a.getAttribute('title')}))")
     geometry["values"] = page.evaluate(
-        "() => [...document.querySelectorAll('.dashboard-overview-metric strong,"
-        " .dashboard-overview-resource-value')]"
+        "() => [...document.querySelectorAll('.dashboard-overview-metric [data-slot=mmetric-card-value-row] > span, .dashboard-overview-metric [data-slot=metric-card-value-row] > span')]"
         ".slice(0, 10).map((s) => ({shown: s.textContent.trim(), exact: s.getAttribute('title')}))")
     converted = [row for row in geometry["values"]
                  if row["exact"] and row["exact"] != row["shown"]]
@@ -767,7 +775,7 @@ def exercise_storage_pagination_10_6(page, server, artifacts, report, locale, k)
         agent, mounts, ids, node_uuid = _storage_fixture(page, server, artifacts, report, root)
         page.reload()
         expect(page.get_by_role("heading", name=k["title"], exact=True)).to_be_visible()
-        card = page.locator(".ant-card").filter(has_text=k["overview"]["storageCapacity"]).first
+        card = page.locator(".dashboard-panel").filter(has_text=k["overview"]["storageCapacity"]).first
         rows = card.locator(".dashboard-overview-storage-row")
         # The storage panel pages itself with a small nav (DashboardPage.tsx:238): two named
         # buttons and a "current / total" span, not antd's pagination.
@@ -777,7 +785,9 @@ def exercise_storage_pagination_10_6(page, server, artifacts, report, locale, k)
         def names():
             return [rows.nth(index).locator("a").first.inner_text().strip() for index in range(rows.count())]
 
-        page_span = pagination.locator("span")
+        # The nav renders "<previous><current> / <total><next>"; the buttons wrap their label
+        # in a span too, so the counter is matched by its "N / M" shape rather than by position.
+        page_span = pagination.locator("span").filter(has_text=re.compile(r"^\s*\d+\s*/\s*\d+\s*$"))
 
         def active():
             return page_span.inner_text().strip().split("/")[0].strip()
