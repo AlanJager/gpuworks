@@ -154,14 +154,34 @@ test("controlled open state follows the caller and reports requested changes", a
 });
 
 test("defaultOpen opens the list on mount, and re-picking during the acknowledgment restarts it", async () => {
-  const opens: boolean[] = [];
-  render(<Engine defaultOpen onOpenChange={(next) => opens.push(next)} />);
-  await screen.findByRole("listbox");
-  const user = userEvent.setup();
-  await user.click(screen.getByRole("option", { name: "vLLM" }));
-  await user.click(screen.getByRole("option", { name: "SGLang" }));
-  await waitFor(() => assert.equal(trigger().textContent, "SGLang"));
-  await waitFor(() => assert.deepEqual(opens, [false]), "one close after the last acknowledgment");
+  // The acknowledgment window (selectionAckMs, 300ms in select.tsx) is shorter than
+  // two clicks can take on a loaded CI runner, so this test stretches that one
+  // timer to 5s: the second pick then always lands inside the window.
+  // select.tsx starts that timer with window.setTimeout but cancels it with the
+  // bare clearTimeout. In a browser they are one API; under jsdom the bare one is
+  // Node's and ignores jsdom's numeric ids, so route those to jsdom here.
+  const realSetTimeout = dom.window.setTimeout;
+  const realClearTimeout = globalThis.clearTimeout;
+  dom.window.setTimeout = ((handler: TimerHandler, ms?: number, ...args: unknown[]) =>
+    realSetTimeout(handler, ms === 300 ? 5000 : ms, ...args)) as typeof dom.window.setTimeout;
+  globalThis.clearTimeout = ((id?: Parameters<typeof clearTimeout>[0]) =>
+    typeof id === "number" ? dom.window.clearTimeout(id) : realClearTimeout(id)) as typeof clearTimeout;
+  try {
+    const opens: boolean[] = [];
+    render(<Engine defaultOpen onOpenChange={(next) => opens.push(next)} />);
+    await screen.findByRole("listbox");
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("option", { name: "vLLM" }));
+    await user.click(screen.getByRole("option", { name: "SGLang" }));
+    await waitFor(() => assert.equal(trigger().textContent, "SGLang"));
+    assert.deepEqual(opens, [], "still acknowledging: the second pick restarted the window instead of closing");
+    await waitFor(() => assert.deepEqual(opens, [false]), { timeout: 8000 });
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    assert.deepEqual(opens, [false], "one close after the last acknowledgment, not one per pick");
+  } finally {
+    dom.window.setTimeout = realSetTimeout;
+    globalThis.clearTimeout = realClearTimeout;
+  }
 });
 
 test("an error marks the trigger invalid and shows its message", () => {
