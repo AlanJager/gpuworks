@@ -399,7 +399,9 @@ SURFACES = {
             'inline_quota': False,
         },
         'quick-tiers': {
-            'numbers': ('max_model_len', 'max_num_batched_tokens', 'max_num_seqs', 'kv_offloading_size', 'kv_offload_read_threads', 'kv_offload_write_threads', 'kv_disk_limit_gib'),
+            # The quick form publishes the data-parallel size on every mode, tiers included
+            # (internal/server/deploy/vllm.go:55 and sglang.go:58 list it in the quick whitelist).
+            'numbers': ('data_parallel_size', 'max_model_len', 'max_num_batched_tokens', 'max_num_seqs', 'kv_offloading_size', 'kv_offload_read_threads', 'kv_offload_write_threads', 'kv_disk_limit_gib'),
             'sliders': ('gpu_memory_utilization',),
             'static': ('health_check_threshold_sec', 'replicas', 'tp', 'pp', 'container-overrides-shm', 'container-overrides-start-timeout'),
             'pd_fields': (),
