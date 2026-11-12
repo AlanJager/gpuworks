@@ -124,13 +124,13 @@ def exercise_register_full(page, server, text, form, report):
     check(any(row["id"] == series["id"] and row["name"] == series_name for row in listed), "full series missing from the list")
     expect(button(page, series_name)).to_be_visible()
     button(page, series_name).click()
-    opened = page.get_by_role("dialog", name=f"{series_name} vllm · cuda", exact=True)
+    opened = page.get_by_role("dialog", name=series_name, exact=True)
     expect(opened.get_by_role("link", name=ref, exact=True)).to_be_visible()
     page.reload()
     page.get_by_role("tab", name=text["page"]["tab"][source], exact=True).click()
     expect(button(page, series_name)).to_be_visible()
     button(page, series_name).click()
-    reopened = page.get_by_role("dialog", name=f"{series_name} vllm · cuda", exact=True)
+    reopened = page.get_by_role("dialog", name=series_name, exact=True)
     expect(reopened.get_by_role("link", name=ref, exact=True)).to_be_visible()
     check(read_detail(page, server.base, series["id"]) == detail, "full reload differs")
     reopened.locator(".ant-drawer-close").click()
@@ -174,7 +174,7 @@ def exercise_register_minimum(page, server, text, form, report):
     check(any(row["id"] == series["id"] and row["name"] == derived for row in listed), "minimum series missing from the list")
     expect(button(page, derived)).to_be_visible()
     button(page, derived).click()
-    details = page.get_by_role("dialog", name=f"{derived} vllm · cuda", exact=True)
+    details = page.get_by_role("dialog", name=derived, exact=True)
     expect(details.get_by_role("link", name=ref, exact=True)).to_be_visible()
     detail = read_detail(page, server.base, series["id"])
     saved = detail["versions"][0]
@@ -186,7 +186,7 @@ def exercise_register_minimum(page, server, text, form, report):
     page.get_by_role("tab", name=text["page"]["tab"][source], exact=True).click()
     expect(button(page, derived)).to_be_visible()
     button(page, derived).click()
-    expect(page.get_by_role("dialog", name=f"{derived} vllm · cuda", exact=True).get_by_role("link", name=ref, exact=True)).to_be_visible()
+    expect(page.get_by_role("dialog", name=derived, exact=True).get_by_role("link", name=ref, exact=True)).to_be_visible()
     check(read_detail(page, server.base, series["id"]) == detail, "minimum reload differs")
     report["register_minimum_create"] = True
     return series["id"]
@@ -495,7 +495,7 @@ def test_image_registration(page, server, artifacts, report, locale):
     open_custom(page, text)
     button(page, name).click()
     # DetailDrawer names the dialog from the series plus its engine and framework.
-    details = page.get_by_role("dialog", name=f"{name} vllm · cuda", exact=True)
+    details = page.get_by_role("dialog", name=name, exact=True)
     expect(details).to_be_in_viewport(ratio=1)
     expect(details.get_by_role("link", name=ref, exact=True)).to_be_visible()
     report["last_step"] = "register-reference-code"
