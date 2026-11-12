@@ -12,11 +12,10 @@ import {
 } from "antd";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { type ImageArchivePreview, type ImageCatalogEntry } from "../../api";
+import { api, type ImageArchivePreview, type ImageCatalogEntry } from "../../api";
 import { APIError, apiErrorText } from "../../apiError";
-import ArchiveAllowCheckbox from "./ArchiveAllowCheckbox";
+import { OutboundHostAccess, useOutboundHostAccess } from "../../components/OutboundHostAccess";
 import ArchiveURLResolveAlert from "./ArchiveURLResolveAlert";
-import { ArchiveAllowError, httpURLHost, previewArchiveURL } from "./archiveURLAllow";
 import { bytes } from "./ImagePageHelpers";
 
 const { Text } = Typography;
@@ -60,7 +59,7 @@ export default function ImageArchiveURLDialog({
   const { t } = useTranslation("images");
   const { t: tCommon } = useTranslation("common");
   const [url, setUrl] = useState(initialURL);
-  const [consentHost, setConsentHost] = useState("");
+  const access = useOutboundHostAccess([url], open);
   const [relay, setRelay] = useState(false);
   const [resolving, setResolving] = useState(false);
   const [starting, setStarting] = useState(false);
@@ -68,7 +67,7 @@ export default function ImageArchiveURLDialog({
   const [resolveError, setResolveError] = useState<Error | null>(null);
   const [startError, setStartError] = useState<Error | null>(null);
 
-  const resolve = async (address: string, allow: boolean) => {
+  const resolve = async (address: string, authorize = true) => {
     const trimmed = address.trim();
     if (!trimmed) {
       setResolveError(new Error(t("import.url.required")));
@@ -78,10 +77,11 @@ export default function ImageArchiveURLDialog({
     setResolving(true);
     setResolveError(null);
     try {
-      setPreview(await previewArchiveURL(trimmed, allow));
+      if (authorize) await access.authorize();
+      setPreview(await api.previewImageArchiveURL(trimmed));
     } catch (e) {
       setPreview(null);
-      setResolveError(e instanceof ArchiveAllowError ? new Error(t("import.url.allowFailed")) : e instanceof APIError ? e : new Error(t("import.url.failed")));
+      setResolveError(e instanceof APIError ? e : new Error(t("import.url.failed")));
     } finally {
       setResolving(false);
     }
@@ -93,7 +93,6 @@ export default function ImageArchiveURLDialog({
   useEffect(() => {
     if (!open) return;
     setUrl(initialURL);
-    setConsentHost("");
     setRelay(false);
     setPreview(null);
     setResolveError(null);
@@ -123,6 +122,7 @@ export default function ImageArchiveURLDialog({
     setStarting(true);
     setStartError(null);
     try {
+      if (relay) await access.authorize();
       await onStart(url.trim(), relay);
     } catch (e) {
       setStartError(e instanceof APIError ? e : new Error(t("action.pullFailed")));
@@ -161,17 +161,13 @@ export default function ImageArchiveURLDialog({
               setResolveError(null);
               setStartError(null);
             }}
-            onPressEnter={() => void resolve(url, httpURLHost(url) !== "" && consentHost === httpURLHost(url))}
+            onPressEnter={() => void resolve(url)}
           />
-          <Button loading={resolving} onClick={() => void resolve(url, httpURLHost(url) !== "" && consentHost === httpURLHost(url))}>
+          <Button loading={resolving} onClick={() => void resolve(url)}>
             {t("import.url.resolve")}
           </Button>
         </Space.Compact>
-        <ArchiveAllowCheckbox
-          host={httpURLHost(url)}
-          checked={httpURLHost(url) !== "" && consentHost === httpURLHost(url)}
-          onChange={(checked) => setConsentHost(checked ? httpURLHost(url) : "")}
-        />
+        <OutboundHostAccess access={access} />
         {!declared && url.trim() ? (
           <Text type="secondary">
             {t("nodeTable.archiveDialog.recordNote", { ref: version?.image_ref ?? "" })}

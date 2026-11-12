@@ -5,7 +5,7 @@ import { outboundPolicyApi, type OutboundHostCheck, type OutboundPolicy } from "
 import { Checkbox } from "./ui/checkbox";
 import { useIsAdmin } from "./useIsAdmin";
 
-function hostname(raw: string): string {
+export function outboundHostName(raw: string): string {
   const value = raw.trim();
   if (!value) return "";
   try {
@@ -40,12 +40,12 @@ export interface OutboundHostAccessState {
 /** Permission belongs to the current host, and is saved only by a form action. */
 export function useOutboundHostAccess(addresses: readonly string[], enabled = true): OutboundHostAccessState {
   const { t } = useTranslation("common");
-  const key = [...new Set(addresses.map(hostname).filter(Boolean))].join("\n");
+  const key = [...new Set(addresses.map(outboundHostName).filter(Boolean))].join("\n");
   const hosts = useMemo(() => key ? key.split("\n") : [], [key]);
   const internationalKey = [...new Set(addresses.filter((raw) => {
     const authority = raw.trim().replace(/^[a-z][a-z\d+.-]*:\/\//i, "").split(/[/?#]/, 1)[0];
     return [...authority].some((character) => character.charCodeAt(0) > 127);
-  }).map(hostname).filter(Boolean))].join("\n");
+  }).map(outboundHostName).filter(Boolean))].join("\n");
   const internationalHosts = internationalKey ? internationalKey.split("\n") : [];
   const canCheck = enabled && !internationalKey;
   const admin = useIsAdmin(canCheck && hosts.length > 0);
