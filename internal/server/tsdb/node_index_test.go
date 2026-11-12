@@ -192,9 +192,14 @@ func TestWriteAfterSweepDoesNotReuseSweptSeriesID(t *testing.T) {
 // receive the first series' samples.
 func TestFailedBatchDoesNotRememberRolledBackSeries(t *testing.T) {
 	s := openTemp(t)
-	bad := Sample{Metric: metricUtil, Labels: map[string]string{"node": "node-x", "gpu": "0"}, Value: math.NaN(), TimeMS: 1000}
-	if err := s.WriteBatch([]Sample{gpuSample("node-a", "0", 1000, 1), bad}); err == nil {
-		t.Fatal("a NaN sample should fail the batch")
+	// The trigger aborts the batch on its second sample, after node-a's
+	// series row was created in the same transaction.
+	if _, err := s.(*sqliteStore).db.Exec(`CREATE TRIGGER fail_batch BEFORE INSERT ON samples
+		WHEN NEW.value = -1 BEGIN SELECT RAISE(ABORT, 'injected'); END`); err != nil {
+		t.Fatalf("trigger: %v", err)
+	}
+	if err := s.WriteBatch([]Sample{gpuSample("node-a", "0", 1000, 1), gpuSample("node-x", "0", 1000, -1)}); err == nil {
+		t.Fatal("the injected failure did not fail the batch")
 	}
 	if err := s.WriteBatch([]Sample{gpuSample("node-b", "0", 2000, 2)}); err != nil {
 		t.Fatalf("write b: %v", err)
@@ -254,6 +259,32 @@ func TestConcurrentWriteBatchesShareSeries(t *testing.T) {
 		if err != nil || len(got) != 1 || len(got[0].Points) != 80 {
 			t.Fatalf("%s = %d series (%v), want one series with 80 points", node, len(got), err)
 		}
+	}
+}
+
+func TestWriteBatchSkipsNonFiniteValues(t *testing.T) {
+	s := openTemp(t)
+	batch := []Sample{
+		gpuSample("node-1", "0", 1000, 1),
+		gpuSample("node-1", "0", 2000, math.NaN()),
+		gpuSample("node-1", "0", 3000, math.Inf(1)),
+		gpuSample("node-1", "0", 4000, math.Inf(-1)),
+		gpuSample("node-2", "0", 1000, math.NaN()), // only non-finite: no series row
+		gpuSample("node-1", "0", 5000, 5),
+	}
+	if err := s.WriteBatch(batch); err != nil {
+		t.Fatalf("a batch with non-finite values failed: %v", err)
+	}
+	assertNodePoints(t, s, "node-1", []Point{{1000, 1}, {5000, 5}})
+	got, err := s.QueryRange(metricUtil, nil, 0, 10_000, 1000)
+	if err != nil {
+		t.Fatalf("query: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("series = %+v, want only node-1", got)
+	}
+	if _, err := json.Marshal(got); err != nil {
+		t.Fatalf("answer does not encode as JSON: %v", err)
 	}
 }
 

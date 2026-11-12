@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"sort"
 	"strings"
 	"sync"
@@ -178,6 +179,11 @@ func nullableLabel(labels map[string]string, key string) any {
 // inserts the samples in a single transaction. Duplicate (series, ts) rows are
 // replaced (last write wins). A series already written by this process is
 // found in s.ids and not upserted again.
+//
+// A NaN or infinite value is skipped rather than stored: the samples table
+// rejects NaN as NULL, which failed the whole batch (and callers drop the
+// error), and an infinity was stored but then made every answer containing
+// it fail to encode as JSON until retention removed it.
 func (s *sqliteStore) WriteBatch(samples []Sample) error {
 	if len(samples) == 0 {
 		return nil
@@ -234,6 +240,9 @@ func (s *sqliteStore) WriteBatch(samples []Sample) error {
 	// to remember: a rolled-back upsert leaves no row behind its id.
 	added := make(map[string]int64)
 	for _, sm := range samples {
+		if math.IsNaN(sm.Value) || math.IsInf(sm.Value, 0) {
+			continue
+		}
 		key := labelsKey(sm.Metric, sm.Labels)
 		id, ok := s.ids[key]
 		if !ok {
