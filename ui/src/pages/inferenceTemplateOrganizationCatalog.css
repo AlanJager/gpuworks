@@ -1,8 +1,8 @@
 .inference-template-page { min-height: calc(100vh - 116px); container-type: inline-size; }
-.template-filter-panel { border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-floating); }
+.template-filter-panel { overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-floating); }
+.template-filter-heading { display: flex; align-items: center; background: var(--surface-raised); }
 .template-filter-row { display: grid; grid-template-columns: 88px minmax(0, 1fr); align-items: start; gap: 12px; padding-block: 6px; }
 .template-filter-label { padding-block: 5px; color: var(--fg-muted); font-size: 13px; font-weight: 500; }
-.template-chip-legend { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 6px; color: var(--fg-subtle); font-size: 12px; }
 .template-chip-dot { display: inline-block; width: 6px; height: 6px; margin-right: 5px; border-radius: 50%; background: var(--success-strong); }
 .template-chip-dot.is-hypothetical { background: var(--fg-subtle); }
 .template-hardware-groups { display: flex; flex-wrap: wrap; gap: 8px 16px; }
@@ -12,7 +12,6 @@
 .template-task-filter { padding-block: 6px; }
 .template-filter-band { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-block: 8px 12px; }
 .template-filter-band .template-search { width: min(280px, 35cqw); }
-.template-compatibility-alert { margin-bottom: 12px; }
 .template-loading { display: grid; min-height: 360px; place-items: center; }
 .template-organization-browser { display: grid; grid-template-columns: 248px minmax(0, 1fr); min-width: 0; border-top: 1px solid var(--border); }
 .template-organization-sidebar { min-width: 0; padding-right: 12px; background: var(--surface-floating); border-right: 1px solid var(--border); }

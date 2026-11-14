@@ -179,18 +179,51 @@ test("catalog filters are labelled, start expanded, and retain chip and task cho
   renderList();
   await screen.findByText("DeepSeek Model");
   const user = userEvent.setup();
-  assert.ok(screen.getByText("My Chips"));
+  assert.ok(screen.getByText("Chip models"));
   assert.ok(screen.getByText("Model type"));
   assert.equal(screen.getByRole("button", { name: "Filters", exact: true }).getAttribute("aria-expanded"), "true");
   await user.click(screen.getByRole("button", { name: "H100", exact: true }));
   await user.click(within(screen.getByRole("group", { name: "Filter by task type" })).getByRole("button", { name: /^Chat/ }));
-  await user.click(screen.getByRole("button", { name: "Filters", exact: true }));
+  assert.equal(screen.getByRole("button", { name: /Filters.*H100.*Chat/ }).getAttribute("aria-expanded"), "true");
+  await user.click(screen.getByRole("button", { name: /Filters.*H100.*Chat/ }));
   const collapsed = screen.getByRole("button", { name: /Filters.*H100.*Chat/ });
   assert.equal(collapsed.getAttribute("aria-expanded"), "false");
   await user.click(collapsed);
   assert.equal(screen.getByRole("button", { name: "H100", exact: true }).getAttribute("aria-pressed"), "true");
   assert.equal(within(screen.getByRole("group", { name: "Filter by task type" })).getByRole("button", { name: /^Chat/ }).getAttribute("aria-pressed"), "true");
   assert.ok(screen.getByRole("link", { name: "DeepSeek Model" }));
+});
+
+test("the filter header summarizes choices when open or closed and clears only the panel without toggling it", async () => {
+  api.inferenceTemplates = (async () => list([upstreamModel])) as never;
+  api.detectedInferenceTemplateChips = (async () => list([{ vendor: "nvidia", name: "NVIDIA H100", cc: "9.0" }])) as never;
+  api.inferenceTemplateChips = (async () => list([])) as never;
+  renderList();
+  await screen.findByText("DeepSeek Model");
+  const user = userEvent.setup();
+  const clear = screen.getByRole("button", { name: "Clear filters", exact: true });
+  assert.equal(clear.hasAttribute("disabled"), true);
+  await user.type(screen.getByPlaceholderText("Search models or weight repositories"), "DeepSeek");
+  await user.click(screen.getByRole("button", { name: "H100", exact: true }));
+  await user.click(within(screen.getByRole("group", { name: "Filter by task type" })).getByRole("button", { name: /^Chat/ }));
+  await user.click(within(screen.getByRole("group", { name: "Engine" })).getByRole("button", { name: "vLLM", exact: true }));
+  const toggle = screen.getByRole("button", { name: /Filters.*H100.*Chat.*vLLM/ });
+  assert.equal(toggle.getAttribute("aria-expanded"), "true");
+  assert.ok(screen.queryByText(/Selected chip:/) === null);
+  await user.click(toggle);
+  assert.equal(toggle.getAttribute("aria-expanded"), "false");
+  await user.click(clear);
+  const reset = screen.getByRole("button", { name: "Filters", exact: true });
+  assert.equal(reset.getAttribute("aria-expanded"), "false");
+  assert.equal((screen.getByPlaceholderText("Search models or weight repositories") as HTMLInputElement).value, "DeepSeek");
+  await user.click(reset);
+  assert.equal(screen.getByRole("button", { name: "H100", exact: true }).getAttribute("aria-pressed"), "false");
+  const engines = within(screen.getByRole("group", { name: "Engine" }));
+  assert.equal(engines.getByRole("button", { name: "All", exact: true }).getAttribute("aria-pressed"), "true");
+  await user.click(engines.getByRole("button", { name: "vLLM", exact: true }));
+  await user.click(clear);
+  assert.equal(screen.getByRole("button", { name: "Filters", exact: true }).getAttribute("aria-expanded"), "true");
+  assert.equal(engines.getByRole("button", { name: "All", exact: true }).getAttribute("aria-pressed"), "true");
 });
 
 test("an organization's heading shows its display name and model count once without the internal identifier", async () => {
@@ -246,10 +279,10 @@ test("operation counts intersect with the selected chip and engine", async () =>
   await waitFor(() => assert.equal(operationButton("Chat").textContent, "Chat0"));
   assert.equal(operationButton("Image generation").textContent, "Image generation1");
   assert.equal(operationButton("Embeddings").textContent, "Embeddings1");
-  await userEvent.setup().click(screen.getByRole("tab", { name: "SGLang" }));
+  await userEvent.setup().click(within(screen.getByRole("group", { name: "Engine" })).getByRole("button", { name: "SGLang" }));
   await waitFor(() => assert.equal(operationButton("Chat").textContent, "Chat0"));
   assert.equal(operationButton("Embeddings").textContent, "Embeddings0", "chip and engine must match the same spec");
-  await userEvent.setup().click(screen.getByRole("tab", { name: "vLLM" }));
+  await userEvent.setup().click(within(screen.getByRole("group", { name: "Engine" })).getByRole("button", { name: "vLLM" }));
   await userEvent.setup().click(screen.getByRole("button", { name: "H100" }));
   await userEvent.setup().click(operationButton("Image generation"));
   await waitFor(() => assert.ok(screen.getByText("1 original models")));
@@ -287,7 +320,7 @@ test("returning from any model detail restores the catalog organization and filt
   await screen.findByText("DeepSeek Model");
   await userEvent.setup().click(screen.getByRole("button", { name: /PaddlePaddle/ }));
   await userEvent.setup().click(screen.getByRole("button", { name: "H100" }));
-  await userEvent.setup().click(screen.getByRole("tab", { name: "vLLM" }));
+  await userEvent.setup().click(within(screen.getByRole("group", { name: "Engine" })).getByRole("button", { name: "vLLM" }));
   await userEvent.setup().click(screen.getByText("Chat"));
   const search = screen.getByPlaceholderText("Search models or weight repositories");
   await userEvent.setup().type(search, "Paddle");
@@ -299,7 +332,7 @@ test("returning from any model detail restores the catalog organization and filt
   assert.match(container.querySelector(".template-organization-sidebar button.is-active")?.textContent || "", /PaddlePaddle/);
   assert.equal((screen.getByPlaceholderText("Search models or weight repositories") as HTMLInputElement).value, "Paddle");
   assert.equal(screen.getByRole("button", { name: "H100" }).getAttribute("aria-pressed"), "true");
-  assert.ok(screen.getByRole("tab", { name: "vLLM" }).getAttribute("aria-selected") === "true");
+  assert.ok(within(screen.getByRole("group", { name: "Engine" })).getByRole("button", { name: "vLLM" }).getAttribute("aria-pressed") === "true");
   assert.equal(screen.getByText("Chat").closest("button")?.getAttribute("aria-pressed"), "true");
 });
 
@@ -322,7 +355,7 @@ test("returning without a search term keeps the requested organization while the
 
   await screen.findByText("BGE Reranker");
   assert.match(container.querySelector(".template-organization-sidebar button.is-active")?.textContent || "", /BAAI/);
-  assert.ok(screen.getByRole("tab", { name: "vLLM" }).getAttribute("aria-selected") === "true");
+  assert.ok(within(screen.getByRole("group", { name: "Engine" })).getByRole("button", { name: "vLLM" }).getAttribute("aria-pressed") === "true");
   assert.equal(screen.queryByPlaceholderText("Search models or weight repositories")?.getAttribute("value") || "", "");
 });
 
@@ -900,7 +933,7 @@ test("a hypothetical AMD chip retains its architecture selector", async () => {
   fireEvent.click(await screen.findByRole("button", { name: /Add Chip/ }));
   const dialog = await screen.findByRole("dialog", { name: "Add Chip" });
   await userEvent.setup().click(within(dialog).getByRole("checkbox", { name: /gfx1151/ }));
-  fireEvent.click(within(dialog).getByRole("button", { name: "Add 1 models", exact: true }));
+  fireEvent.click(within(dialog).getByRole("button", { name: "Save selection", exact: true }));
   const { loadHypotheticalChips } = await import("../src/pages/InferenceTemplatesPage.tsx");
   await waitFor(() => assert.equal(loadHypotheticalChips().some((chip) => chip.vendor === "amd" && chip.arch_id === "gfx1151"), true));
 });
@@ -945,4 +978,33 @@ test("detail displays server support warnings and preferred engine without re-ev
   assert.equal((await screen.findByText("910B (A2) · INT8 W8A8 spec")).textContent, "910B (A2) · INT8 W8A8 spec");
   assert.ok(screen.getByText("server unsupported rule"));
   assert.ok(screen.getByText(i18n.t("flat.alternativeAvailable")));
+});
+
+test("removing the selected hypothetical chip clears its filter, persists removal, and preserves detected chips", async () => {
+  const hypothetical = { vendor: "amd", name: "AMD Radeon 8060S", arch_id: "gfx1151" };
+  localStorage.setItem("gpuworks.inferenceTemplates.hypotheticalChips", JSON.stringify([hypothetical]));
+  api.inferenceTemplates = (async () => list([upstreamModel])) as never;
+  api.detectedInferenceTemplateChips = (async () => list([{ vendor: "nvidia", name: "NVIDIA H100", cc: "9.0" }])) as never;
+  api.inferenceTemplateChips = (async () => list([])) as never;
+  renderList();
+  await screen.findByText("DeepSeek Model");
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("button", { name: /Radeon 8060S/ }));
+  assert.ok(screen.getByRole("button", { name: /Filters.*8060S/ }));
+  await user.click(screen.getByRole("button", { name: "Add Chip", exact: true }));
+  const picker = within(screen.getByRole("dialog", { name: "Add Chip" }));
+  assert.equal(picker.getByRole("checkbox", { name: /H100/ }).getAttribute("aria-disabled"), "true");
+  await user.click(picker.getByRole("button", { name: "AMD", exact: true }));
+  await user.click(picker.getByRole("checkbox", { name: /gfx1151/ }));
+  await user.click(picker.getByRole("button", { name: "Save selection" }));
+  await waitFor(() => assert.ok(screen.queryByRole("dialog", { name: "Add Chip" }) === null));
+  assert.deepEqual(JSON.parse(localStorage.getItem("gpuworks.inferenceTemplates.hypotheticalChips")!), []);
+  assert.ok(screen.queryByRole("button", { name: /8060S/ }) === null);
+  assert.ok(screen.getByRole("button", { name: "Filters", exact: true }));
+  assert.ok(screen.getByRole("button", { name: "H100", exact: true }));
+  cleanup();
+  renderList();
+  await screen.findByText("DeepSeek Model");
+  assert.ok(screen.queryByRole("button", { name: /8060S/ }) === null);
+  assert.ok(screen.getByRole("button", { name: "H100", exact: true }));
 });

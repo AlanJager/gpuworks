@@ -9,7 +9,6 @@ import EmptyState from "../components/EmptyState";
 import { message, confirm } from "../ui-kit/feedback";
 import { ConsoleIcon } from "../ui-kit/consoleIcons";
 import { FilterChips } from "../ui-kit/FilterChips";
-import { Segmented } from "../ui-kit/Segmented";
 import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 
@@ -165,11 +164,12 @@ export default function InferenceTemplatesPage() {
   }, [groups, activeOrganization, catalogLoading]);
 
   const activeGroup = groups.find((group) => group.key === activeOrganization);
-  const addHypothetical = (added: DetectedTemplateChip[]) => {
-    const next = [...new Map([...loadHypotheticalChips(), ...added].map(chip => [chipKey(chip), chip])).values()];
+  const applyHypothetical = (selected: DetectedTemplateChip[]) => {
+    const next = selected.filter(chip => !detectedKeys.has(chipKey(chip)));
     localStorage.setItem(hypotheticalKey, JSON.stringify(next));
-    setChips(current => [...new Map([...current, ...added].map(chip => [chipKey(chip), chip])).values()]);
-    // Adding candidates does not silently narrow the catalog to one of them.
+    setChips(current => [...next, ...current.filter(chip => detectedKeys.has(chipKey(chip)))]);
+    const retainedKeys = new Set([...detectedKeys, ...next.map(chipKey)]);
+    setSelectedChip(current => retainedKeys.has(current) ? current : "");
     setAddingChip(false);
   };
   const importCatalog = async (file: File, overwrite = false) => {
@@ -206,12 +206,18 @@ export default function InferenceTemplatesPage() {
     <TemplateWarnings warnings={importWarnings} onClose={() => setImportWarnings([])} />
 
     <Accordion className="template-filter-panel" value={filtersOpen ? "filters" : ""} onValueChange={(value: string) => setFiltersOpen(value === "filters")}>
-      <AccordionItem value="filters">
-        <AccordionTrigger className="px-3 py-2">
-          <span>{t("filters.title")}</span>
-          {!filtersOpen && <span className="ml-3 truncate text-label font-normal text-fg-muted">{[activeChip && chipDisplayLabel(activeChip), operation && t(operationLabelKey[operation]), engine].filter(Boolean).join(" · ")}</span>}
-        </AccordionTrigger>
-        <AccordionContent className="px-3 pb-3">
+      <AccordionItem value="filters" className="[&>div.pointer-events-none]:hidden">
+        <div className="template-filter-heading">
+          <div className="min-w-0 flex-1">
+            <AccordionTrigger className="px-3 py-2 [&>span]:min-w-0">
+              <span>{t("filters.title")}</span>
+              <span className="ml-3 break-words text-label font-normal text-fg-muted">{[activeChip && chipDisplayLabel(activeChip), operation && t(operationLabelKey[operation]), engine === "vllm" ? "vLLM" : engine === "sglang" ? "SGLang" : engine].filter(Boolean).join(" · ")}</span>
+            </AccordionTrigger>
+          </div>
+          <Button className="mr-2 shrink-0" variant="ghost" size="sm" disabled={!selectedChip && !operation && !engine}
+            onClick={() => { setSelectedChip(""); setOperation(""); setEngine(""); }}>{t("filters.clear")}</Button>
+        </div>
+        <AccordionContent className="relative bg-surface-floating">
           <TemplateHardwareFilters chips={chips} detectedKeys={detectedKeys} value={selectedChip}
             onChange={key => setSelectedChip(current => current === key ? "" : key)} />
           <div className="template-filter-row template-task-filter">
@@ -221,8 +227,8 @@ export default function InferenceTemplatesPage() {
           </div>
           <div className="template-filter-row">
             <span className="template-filter-label">{t("columns.engine")}</span>
-            <Segmented label={t("columns.engine")} value={engine || "all"} onChange={(value) => setEngine(value === "all" ? "" : value)}
-              options={[{ value: "all", label: t("filters.all") }, { value: "vllm", label: "vLLM" }, { value: "sglang", label: "SGLang" }]} />
+            <FilterChips label={t("columns.engine")} value={engine || "all"} onChange={(value) => setEngine(value === "all" || value === engine ? "" : value)}
+              items={[{ value: "all", label: t("filters.all") }, { value: "vllm", label: "vLLM" }, { value: "sglang", label: "SGLang" }]} />
           </div>
         </AccordionContent>
       </AccordionItem>
@@ -233,7 +239,6 @@ export default function InferenceTemplatesPage() {
         <Input className="template-search" aria-label={t("flat.search")} value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("flat.search")} />
         <span className="text-label text-fg-muted">{t("flat.modelCount", { count: visible.length })}</span>
       </div>
-      {activeChip && <Alert className="template-compatibility-alert" status="info"><AlertTitle>{t("flat.selectedChip", { chip: chipDisplayLabel(activeChip) })}</AlertTitle></Alert>}
       {catalogLoading && <div className="template-loading"><Spinner label={t("page.loading")} /></div>}
       {!catalogLoading && catalogError && <Alert status="danger"><AlertTitle>{t("page.loadFailed", { detail: catalogError })}</AlertTitle><AlertAction><Button onClick={() => void reload()}>{t("flat.retry")}</Button></AlertAction></Alert>}
       {!catalogLoading && !catalogError && !groups.length && <EmptyState description={t("flat.empty")} />}
@@ -250,7 +255,7 @@ export default function InferenceTemplatesPage() {
         </>}</main>
       </div>}
     </section>
-    {addingChip && <TemplateChipPicker catalog={catalogChips} existing={chips} onClose={() => setAddingChip(false)} onAdd={addHypothetical} />}
+    {addingChip && <TemplateChipPicker catalog={catalogChips} existing={chips} detectedKeys={detectedKeys} onClose={() => setAddingChip(false)} onApply={applyHypothetical} />}
 
   </div>;
 }
