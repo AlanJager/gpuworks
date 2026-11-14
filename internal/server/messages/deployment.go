@@ -73,4 +73,8 @@ const (
 	// so every rank would start as the same rank in the same role. missing
 	// lists the prefixed variable names the command has to reference.
 	ErrorManualCommandRankBlind = "MANUAL_COMMAND_RANK_BLIND"
+	// ErrorCommandOverrideRankBlind: a multi-node or PD request overrides
+	// Cmd outside manual mode. Such an override is one argv every rank would
+	// run as written; only a manual command is expanded per rank.
+	ErrorCommandOverrideRankBlind = "COMMAND_OVERRIDE_RANK_BLIND"
 )

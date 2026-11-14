@@ -902,6 +902,7 @@ runveil（udocker）节点拉取镜像时，agent 日志（`<state>/agent.log`�
 | `MODEL_SOURCE_UNAVAILABLE` | 409 | 本地模型在目标节点没有可用来源，或来源校验失败；查看错误详情，不将它等同于公网下载超时 |
 | `TEMPLATE_MODEL_MISMATCH` | 400 | 模板部署指定的模型（`params.model_id`）的仓库 ID 与模板任何一个权重来源都对不上（`params.repo_id`、`params.revision` 是模板解析出的来源）；平台不会改用别的模型。选该仓库的模型；本地模型可在模型详情里把来源 ID 改成模板的仓库 ID |
 | `MANUAL_COMMAND_RANK_BLIND` | 400 | 多机或 PD 部署的手工命令由所有 rank 共用，却没有引用能区分 rank 的变量（`params.missing` 列出缺少的变量名）。多机要引用 `${GPUWORKS_NODE_RANK}` 或 `${GPUWORKS_HEADLESS}`，PD 要引用 `${GPUWORKS_PD_ROLE}`；从部署页「编辑命令文本」得到的脚本初稿已经引用。已存下的部署不受影响 |
+| `COMMAND_OVERRIDE_RANK_BLIND` | 400 | 多机或 PD 部署在 `engine` 或 `image-entry` 模式下覆盖了 Cmd：这段参数会原样交给每个 rank，没有变量能区分它们。清空 Cmd 覆盖，或改用手工命令。 |
 | `DISTRIBUTED_*`、`REPLICAS_*`、`MASTER_PORT_INVALID` | 400 | 多机 / 副本参数不合法 |
 
 **显存不足**（`schedule` 原因码，见评估响应与 `schedule.explain`）：

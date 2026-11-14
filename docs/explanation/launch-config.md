@@ -100,6 +100,7 @@
 - 多机 rank 与 PD 实例的手工启动**保留系统层环境变量**（`VLLM_HOST_IP`、参数网络网卡、PD side channel 等按 rank、按节点才知道的事实），层次与 `engine` 相同：系统 → 模板 → 用户；脚本里自己 `export` 的值最后生效。单机非 PD 的手工启动仍不含系统层。
 - 部署页在多机或 PD 时点「编辑命令文本」，编辑框从服务端生成的脚本初稿开始：每类 rank（PD 角色 × 是否 headless）一条引擎命令，放在一个按 `${GPUWORKS_PD_ROLE}/${GPUWORKS_HEADLESS}`（非 PD 时只按 `${GPUWORKS_HEADLESS}`）分支的 `case` 里。初稿不含准备脚本与环境变量，准备脚本仍由平台按 rank 执行。同一类 rank 的命令有变量表达不了的差异（例如两个节点的 RDMA 设备名不同）时没有初稿，评估给出 `MANUAL_DRAFT_UNAVAILABLE` 提醒，命令不能从表单编辑。
 - 评估与创建拒绝看不出 rank 的手工命令：多机的命令必须引用 `${GPUWORKS_NODE_RANK}` 或 `${GPUWORKS_HEADLESS}`，PD 的命令必须引用 `${GPUWORKS_PD_ROLE}`（PD 实例跨多机时两条都要满足），否则返回 `MANUAL_COMMAND_RANK_BLIND`。这条规则不作用于已经存下的部署，它们照常启动。
+- 多机与 PD 部署只有手工命令能按 rank 展开。`engine` 或 `image-entry` 模式下的 Cmd 覆盖会原样交给每个 rank，评估与创建以 `COMMAND_OVERRIDE_RANK_BLIND` 拒绝；已经存下的部署同样不受影响。
 
 ## 配置环境与镜像环境
 
