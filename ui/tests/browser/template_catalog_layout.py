@@ -237,6 +237,7 @@ class TemplateCatalogLayout(unittest.TestCase):
                 const same = getComputedStyle(el).backgroundColor === getComputedStyle(probe).backgroundColor;
                 probe.remove();return same;
             })"""))
+            self.assertTrue(fallbacks.evaluate_all("els=>els.every(el=>getComputedStyle(el).color === 'rgb(255, 255, 255)')"))
             colors = fallbacks.evaluate_all('els=>els.map(el=>getComputedStyle(el).backgroundColor)')
             self.assertGreaterEqual(len(set(colors)), 3)
             before = fallbacks.evaluate_all('els=>els.map(el=>[el.textContent,getComputedStyle(el).backgroundColor])')

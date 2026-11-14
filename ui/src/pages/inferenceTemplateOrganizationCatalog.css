@@ -50,8 +50,4 @@
 }
 
 .template-organization-logo { object-fit: contain; }
-.template-organization-fallback { display: grid; place-items: center; flex: none; background: var(--chart-1); color: var(--fg-on-warning-strong); font-weight: 600; border-radius: var(--radius-md); }
-
-/* Keep categorical colors unmixed; choose legible initials on vivid surfaces. */
-.template-organization-fallback[data-color="var(--chart-1)"] { color: var(--fg-on-primary-action); }
-.dark .template-organization-fallback[data-color="var(--chart-1)"] { color: var(--fg-on-warning-strong); }
+.template-organization-fallback { display: grid; place-items: center; flex: none; background: var(--organization-avatar-1); color: var(--fg-on-primary-action); font-weight: 600; border-radius: var(--radius-md); }
