@@ -21,6 +21,7 @@
 import { mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { chromium } from "playwright-core";
+import { tableLinkFindings } from "./table-link-rules.mjs";
 
 const args = Object.fromEntries(process.argv.slice(2).reduce((pairs, arg, index, all) => {
   if (arg.startsWith("--")) pairs.push([arg.slice(2), all[index + 1]?.startsWith("--") || all[index + 1] == null ? "1" : all[index + 1]]);
@@ -193,7 +194,7 @@ async function* states(page, origin, route) {
   await page.goto(origin + route); await settle(page);
   yield { id: route, kind: "page" };
   const back = async () => { if (new URL(page.url()).pathname !== route) { await page.goto(origin + route); await settle(page); } };
-  const link = page.locator("tbody tr:not(.ant-table-measure-row) td a, tbody tr:not(.ant-table-measure-row) td button.ant-btn-link").first();
+  const link = page.locator("tbody tr:not(.ant-table-measure-row) td a, tbody tr:not(.ant-table-measure-row) td button.ant-btn-link, td.resource-table-name button[data-slot=button]").first();
   if (await link.count()) {
     await link.click().catch(() => {}); await settle(page);
     if (await openDialog(page).count()) {
@@ -244,6 +245,7 @@ async function run() {
         head.errors.length = 0;
         await head.page.mouse.move(0, 0);
         const check = await head.page.evaluate(ruleScript);
+        check.findings.push(...await head.page.evaluate(tableLinkFindings));
         let file = `${locale}-${width}-${safe(state.id)}`;
         for (let n = 2; results.some((entry) => entry.file === file); n++) file = `${locale}-${width}-${safe(state.id)}-${n}`;
         await head.page.screenshot({ path: join(out, "shots", `${file}.png`) });

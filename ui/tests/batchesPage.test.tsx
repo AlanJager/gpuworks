@@ -207,7 +207,9 @@ test("a row opens the drawer with the counts, every timestamp, metadata and the 
     output_file_id: "file-out", error_file_id: "file-err",
   })]);
   const user = mount();
-  await user.click(await screen.findByRole("button", { name: b.action.open.replace("{{id}}", "batch_full") }));
+  const nameButton = await screen.findByRole("button", { name: b.action.open.replace("{{id}}", "batch_full") });
+  assert.ok(nameButton.classList.contains("text-fg-brand"));
+  await user.click(nameButton);
   const dialog = await screen.findByRole("dialog");
   assert.equal(screen.getByTestId("loc").textContent, "/batches?detail=batch_full");
   await within(dialog).findByText("reqs.jsonl");
