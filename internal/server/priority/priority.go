@@ -189,7 +189,8 @@ func Resolve(t Table, source Source, binding Binding, requested string) (Decisio
 		return Decision{Class: t.Default}, true
 	}
 	own := t.byIDOr(binding.ClassID, t.Default)
-	requested = strings.TrimSpace(requested)
+	// Class names are lowercase, so a client's case does not matter.
+	requested = strings.ToLower(strings.TrimSpace(requested))
 	if requested == "" {
 		return Decision{Class: own}, true
 	}

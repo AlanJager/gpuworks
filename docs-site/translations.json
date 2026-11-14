@@ -154,5 +154,5 @@
   "tutorials/trace-slow-request.md": "6e582ef2a8658da1057336f4ee79f5a41179dbae69773cd0b753431027acc065",
   "adr/0064-telemetry-stream-on-the-data-lane.md": "ceba2d6e3e7fe379d5fd7364138dc06d635c137c143335caaf5f18286d88cd06",
   "adr/0065-official-catalog-read-tolerantly.md": "f20cbac164962a35b9794540337b2856e576de7c7ac26fd57d84b53c4853e7c0",
-  "explanation/request-priority.md": "5959a9ef8ea70111196bee50c7f81dd5098788662d29970878dfb3e196987bf5"
+  "explanation/request-priority.md": "4200b5a155294e300b1c17d49109c18b59f37463f5104edc2fdb7f9ebe42cb1c"
 }

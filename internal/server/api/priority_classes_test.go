@@ -97,6 +97,7 @@ func TestPriorityClassesAPI(t *testing.T) {
 	expect(rig.do(user, http.MethodPost, "/api/v1/apikeys", `{"name":"mine","priority":{"class":"critical"}}`), http.StatusForbidden, "")
 	expect(rig.do(rig.session, http.MethodPost, "/api/v1/apikeys", `{"name":"bad","priority":{"class":"platinum"}}`), http.StatusBadRequest, messages.ErrorPriorityClassInvalid)
 	expect(rig.do(rig.session, http.MethodPost, "/api/v1/apikeys", `{"name":"bad2","priority":{"policy":"strict"}}`), http.StatusBadRequest, messages.ErrorPriorityPolicyInvalid)
+	expect(rig.do(rig.session, http.MethodPost, "/api/v1/apikeys", `{"name":"bad3","priority":{"class":"high","ceiling":"low"}}`), http.StatusBadRequest, messages.ErrorPriorityClassInvalid)
 	// A refused binding leaves no key behind.
 	if list := rig.do(rig.session, http.MethodGet, "/api/v1/apikeys", "").Body.String(); strings.Contains(list, `"name":"bad`) || strings.Contains(list, `"name":"mine"`) {
 		t.Fatalf("a key refused for its priority exists: %s", list)

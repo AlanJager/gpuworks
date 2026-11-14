@@ -142,6 +142,16 @@ func (a *apiHandlers) createAPIKey(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
+		// A ceiling below the key's own class (the default's when it binds
+		// none) is refused before the key exists, as the store refuses it.
+		own := table.Default
+		if c, ok := table.ByName(parsed.Class); ok {
+			own = c
+		}
+		if c, ok := table.ByName(parsed.Ceiling); ok && store.PriorityPolicyTakesCeiling(parsed.Policy) && c.Value < own.Value {
+			writeProductError(w, http.StatusBadRequest, messages.ErrorPriorityClassInvalid, "the ceiling is below the key's class", map[string]any{"field": "priority", "class": parsed.Ceiling})
+			return
+		}
 		binding = &parsed
 	}
 	full, err := a.d.Store.CreateScopedAPIKey(req.Name, 0, scope)

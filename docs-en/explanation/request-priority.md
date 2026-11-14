@@ -50,7 +50,7 @@ On the API Keys page an administrator can bind a key:
   - **Fixed**: the header is ignored.
   - **Down only**: only classes up to the key's own.
 
-Only within ceiling has a ceiling; saving another policy drops it. A name in the header that matches no class is refused with 400 before a deployment is chosen, so nothing is forwarded and no sleeping deployment is woken. Retries of a request and its replay after preemption run at the class decided first. Batch requests ignore their key and always run at the `batch` class.
+Only within ceiling has a ceiling; saving another policy drops it. The name in the header is not case-sensitive; one that matches no class is refused with 400 before a deployment is chosen, so nothing is forwarded and no sleeping deployment is woken. Retries of a request and its replay after preemption run at the class decided first. Batch requests ignore their key and always run at the `batch` class.
 
 ## How the Gateway Writes the Priority
 

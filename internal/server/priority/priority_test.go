@@ -35,6 +35,7 @@ func TestResolve(t *testing.T) {
 		{name: "down only lowers", binding: Binding{ClassID: 2, CeilingID: 1, Policy: PolicyDownOnly}, requested: Batch, want: Batch},
 		{name: "down only never raises, whatever the ceiling", binding: Binding{ClassID: 2, CeilingID: 1, Policy: PolicyDownOnly}, requested: Critical, want: High, lowered: true},
 		{name: "an unknown class is refused", binding: Binding{ClassID: 2}, requested: "platinum", unknown: true},
+		{name: "the client's case does not matter", binding: Binding{ClassID: 2}, requested: " LOW ", want: Low},
 		{name: "a stale class id falls back to the default", binding: Binding{ClassID: 99}, want: Normal},
 	}
 	for _, tc := range cases {

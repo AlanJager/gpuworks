@@ -282,7 +282,7 @@ func (s *Store) SetAPIKeyPriority(prefix string, binding APIKeyPriority) error {
 		if err != nil {
 			return err
 		}
-		if binding.Policy != priority.PolicyWithinCeiling && binding.Policy != "" {
+		if !PriorityPolicyTakesCeiling(binding.Policy) {
 			binding.Ceiling = ""
 		}
 		ceilingID, err := priorityClassIDByName(tx, binding.Ceiling)
@@ -390,6 +390,12 @@ func PriorityPolicies() []string {
 
 // DefaultPriorityPolicy is the policy of a key that states none.
 const DefaultPriorityPolicy = string(priority.DefaultPolicy)
+
+// PriorityPolicyTakesCeiling reports whether a binding of policy keeps a
+// ceiling (SetAPIKeyPriority drops another policy's).
+func PriorityPolicyTakesCeiling(policy priority.Policy) bool {
+	return policy == priority.PolicyWithinCeiling || policy == ""
+}
 
 // PriorityCeilingPolicies are the policies a ceiling applies to.
 func PriorityCeilingPolicies() []string { return []string{string(priority.PolicyWithinCeiling)} }
