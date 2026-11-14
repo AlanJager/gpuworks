@@ -58,7 +58,7 @@
   "adr/0061-spec-display-names-written-by-hand.md": "4a31f299b87d236fbd207f0ac03cdde11b4760f337acc286eaa6d1253f188805",
   "adr/0062-template-components-follow-the-primary-storage.md": "b22644c21e502e601f3625d75f7f4e177fcfbd0e1c558f1c4840b870723c4676",
   "adr/0063-apply-to-cloud-clusters.md": "e8be4715b60825361afbb4ef4857b31d1483e5c87ef65e4fc269a6c2143153de",
-  "adr/README.md": "3ad52b536ae7c68e42cabc18c477b4f8cf4a3bd616e6c762a87948e99cb65b43",
+  "adr/README.md": "2782855046973f9b5870c4557a3745470847216c7edd2323f384f6f16f8efe2c",
   "dev/README.md": "ba5eb371a9818fce7c07eb9c833a2f92a4d05f265c6840ff390ce07571e64fa1",
   "dev/amd-hardware-validation.md": "3220b213c1296422816f73ca65d5d998c527b63af1677d3de3df4c2804e2a053",
   "dev/amd-support-design.md": "a029a001bc4b935cc19d9236f4e2ea7520b7393312ced7982533ebee97697e4a",
@@ -155,5 +155,6 @@
   "adr/0064-telemetry-stream-on-the-data-lane.md": "ceba2d6e3e7fe379d5fd7364138dc06d635c137c143335caaf5f18286d88cd06",
   "adr/0065-official-catalog-read-tolerantly.md": "f20cbac164962a35b9794540337b2856e576de7c7ac26fd57d84b53c4853e7c0",
   "explanation/request-priority.md": "4db915372627d83b4700741dcf48c9002b2eafc29412b076194d34e5207a27f1",
-  "adr/0066-agent-state-by-owner-and-lifetime.md": "146b93ea09468aa95cb07fe9fd5617c3e70e2e03284ca4a47466c12024804438"
+  "adr/0066-agent-state-by-owner-and-lifetime.md": "146b93ea09468aa95cb07fe9fd5617c3e70e2e03284ca4a47466c12024804438",
+  "adr/0067-runtime-outcomes-as-codes.md": "0d2fcd578c0e94dee1ce9840e11f219acc63b6a90138a031121f2ecb040730a6"
 }
