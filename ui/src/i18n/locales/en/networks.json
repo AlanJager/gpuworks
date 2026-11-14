@@ -85,6 +85,7 @@
     "noAttachments": "Not attached yet",
     "noNodes": "No node resolves to this network yet",
     "overrides": "Overrides: {{value}}",
+    "attachedTime": "Attached at",
     "attachedAt": "Attached {{time}}",
     "rdmaInferredHelp": "Each node uses its fastest active RDMA ports (a RoCE port needs an IPv4 address on its interface) as HCAs, and the first HCA's interface address as bootstrap; InfiniBand without IPoIB uses the management address.",
     "acceleratorInferredHelp": "Each node's rails are the accelerator cards whose port is up and has an address. The bootstrap is the host address the handshake uses, the management address by default; data moves on the cards' ports.",

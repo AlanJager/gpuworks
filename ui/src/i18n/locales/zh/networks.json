@@ -85,6 +85,7 @@
     "noAttachments": "尚未加载",
     "noNodes": "还没有节点解析到这个网络",
     "overrides": "覆盖：{{value}}",
+    "attachedTime": "关联时间",
     "attachedAt": "加载于 {{time}}",
     "rdmaInferredHelp": "每个节点的 HCA 取已激活、速率最高的一组 RDMA 端口（RoCE 端口要求网卡有 IPv4 地址）；bootstrap 取第一条 HCA 所在网卡的地址，没有 IPoIB 的 InfiniBand 用管理网地址。",
     "acceleratorInferredHelp": "每个节点的 rail 取链路 UP 且配了地址的加速卡；bootstrap 是握手用的主机地址，默认取管理网地址，数据走加速卡网口。",
