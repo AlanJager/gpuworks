@@ -287,7 +287,7 @@ test("a validation error of the dry run is reported and the form stays", async (
 
 test("clone and modify fills the same form, locks nothing and creates a new deployment", async () => {
   const user = await loaded("/deploy?from=5");
-  assert.ok(screen.getByText("Clone deployment: qwen-prod"));
+  assert.ok(screen.getByRole("heading", { name: "Clone deployment: qwen-prod" }));
   assert.equal(nameInput().value, "qwen-prod-clone");
   assert.equal(servedInput().value, "qwen-served-clone");
   assert.equal(document.querySelectorAll("fieldset.deploy-locked-group").length, 0);

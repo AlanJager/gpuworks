@@ -379,6 +379,7 @@ function DeployForm({ opened }: { opened?: OpenedDeployment }) {
             t("page.title")
           )
         }
+        breadcrumbTitle={opened ? <DeployEditTitle opened={opened} compact /> : undefined}
         description={opened ? t(`edit.description.${opened.mode}`) : t("page.description")}
         parents={[<Link key="list" to="/deployments">{t("common:navigation.deployments")}</Link>]}
         extra={

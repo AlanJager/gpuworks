@@ -287,7 +287,7 @@ test("a configured console title follows the logo in the top bar", async () => {
   assert.ok(await within(banner).findByText("Lab Console"));
 });
 
-test("a menu page has no breadcrumb; a page below one names its section and parent", async () => {
+test("a menu page has no breadcrumb; a page below one names its section, parent and current page", async () => {
   await mountApp("/apikeys");
   assert.ok(await screen.findByRole("heading", { level: 2, name: locale.apikeys.title }));
   assert.ok(screen.queryByRole("navigation", { name: "breadcrumb" }) === null);
@@ -297,7 +297,7 @@ test("a menu page has no breadcrumb; a page below one names its section and pare
   cleanup();
   await mountApp("/evaluations/compare");
   const trail = await screen.findByRole("navigation", { name: "breadcrumb" });
-  assert.deepEqual(within(trail).getAllByRole("listitem").map((item) => item.textContent), [common.navigation.groups.inference, locale.evaluations.list.breadcrumb.evaluations]);
+  assert.deepEqual(within(trail).getAllByRole("listitem").map((item) => item.textContent), [common.navigation.groups.inference, locale.evaluations.list.breadcrumb.evaluations, locale.evaluations.compare.title]);
   assert.equal(within(trail).getByRole("link", { name: locale.evaluations.list.breadcrumb.evaluations }).getAttribute("href"), "/evaluations");
   assert.equal(within(menu()).getByRole("link", { name: common.navigation.evaluations }).getAttribute("aria-current"), "page");
 });

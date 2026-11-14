@@ -43,7 +43,7 @@ test("evaluation curve leaves unknown measurements empty while drawing observed 
   render(<I18nextProvider i18n={i18n}><MemoryRouter initialEntries={["/evaluations/7"]}>
     <Routes><Route path="/evaluations/:id" element={<EvaluationDetailPage />} /></Routes>
   </MemoryRouter></I18nextProvider>);
-  await screen.findByText("Historical metrics");
+  await screen.findByRole("heading", { name: "Historical metrics" });
   const chart = await screen.findByRole("img", { name: i18n.t("common:timeSeries.ariaLabel") });
   const line = () => {
     const option = getInstanceByDom(chart as HTMLElement)!.getOption();
@@ -73,7 +73,7 @@ test("a run's data-quality warnings share one warning block, one item each", asy
   render(<I18nextProvider i18n={i18n}><MemoryRouter initialEntries={["/evaluations/8"]}>
     <Routes><Route path="/evaluations/:id" element={<EvaluationDetailPage />} /></Routes>
   </MemoryRouter></I18nextProvider>);
-  await screen.findByText("Warned run");
+  await screen.findByRole("heading", { name: "Warned run" });
   const conflict = screen.getByText(i18n.t("evaluations:benchmarkWarning.BENCHMARK_CONFLICT_OVERRIDDEN"));
   const warmup = screen.getByText(i18n.t("evaluations:benchmarkWarning.BENCHMARK_WARMUP_UNSUPPORTED"));
   assert.equal(conflict.tagName, "LI");
