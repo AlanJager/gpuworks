@@ -572,7 +572,7 @@ test("node networks card shows loaded networks and the reported inventory", asyn
   tunnel.focus();
   await waitFor(() => assert.ok(screen.getAllByRole("tooltip").some((tip) => tip.textContent === "dial tcp: i/o timeout")));
   assert.ok(screen.getByText("400G"));
-  assert.ok(screen.getAllByText(n.linkLayer.infiniband).some((el) => el.getAttribute("data-slot") === "badge"), "the detected link layer is tagged beside the loaded HCAs");
+  assert.ok(screen.getAllByText(n.linkLayer.infiniband).some((el) => !!el.closest('[data-slot="badge"]')), "the detected link layer is tagged beside the loaded HCAs");
 });
 
 test("node networks card explains an agent without inventory and a node without networks", async () => {

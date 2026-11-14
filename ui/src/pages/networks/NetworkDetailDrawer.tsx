@@ -255,7 +255,7 @@ function NetworkOverview({ detail, description, onDetail, onAttach }: {
                   </span>
                 ),
               },
-              { key: "time", title: t("detail.attachedTime"), width: 180, render: (_, a) => <span className="text-fg-muted">{t("detail.attachedAt", { time: formatTime(a.created_at) })}</span> },
+              { key: "time", title: t("detail.attachedTime"), width: 180, render: (_, a) => <span className="text-fg-muted">{formatTime(a.created_at)}</span> },
               {
                 key: "actions", width: 150, role: "actions",
                 align: "right",
