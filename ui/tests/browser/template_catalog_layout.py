@@ -230,6 +230,13 @@ class TemplateCatalogLayout(unittest.TestCase):
             expect(page.locator('[data-slot="table"]')).to_be_visible()
             fallbacks = page.locator('.template-organization-fallback')
             expect(fallbacks.first).to_be_visible()
+            self.assertTrue(fallbacks.evaluate_all("""els => els.every(el => {
+                const probe = document.createElement('span');
+                probe.style.backgroundColor = el.dataset.color;
+                el.append(probe);
+                const same = getComputedStyle(el).backgroundColor === getComputedStyle(probe).backgroundColor;
+                probe.remove();return same;
+            })"""))
             colors = fallbacks.evaluate_all('els=>els.map(el=>getComputedStyle(el).backgroundColor)')
             self.assertGreaterEqual(len(set(colors)), 3)
             before = fallbacks.evaluate_all('els=>els.map(el=>[el.textContent,getComputedStyle(el).backgroundColor])')

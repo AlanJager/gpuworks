@@ -56,7 +56,7 @@ function OrganizationAvatar({ group, size }: { group: { key: string; organizatio
   const [failed, setFailed] = useState(false);
   const icon = group.key === "my-templates" ? undefined : modelOrganizationIcon(`${group.organization}/model`);
   if (icon && !failed) return <img className="template-organization-logo" width={size} height={size} src={icon} alt="" onError={() => setFailed(true)} />;
-  return <span className="template-organization-fallback" style={{ width: size, height: size, background: `color-mix(in srgb, ${modelOrganizationColor(group.key)} 60%, var(--vendor-logo-dark))` }}>{initials(group.label)}</span>;
+  return <span className="template-organization-fallback" data-color={modelOrganizationColor(group.key)} style={{ width: size, height: size, background: modelOrganizationColor(group.key) }}>{initials(group.label)}</span>;
 }
 
 interface OrganizationGroup { key: string; organization: string; label: string; items: InferenceTemplate[] }

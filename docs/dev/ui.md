@@ -226,4 +226,4 @@ size and title size, the filter header's hit targets, and the gap between
 monitor signal cards and the service toolbar. Build the UI before this target;
 React unit tests alone do not verify computed sizes or overlaps.
 
-Organization avatars keep official images when available. Missing or failed images use initials on a stable, organization-keyed color from Zeron chart colors 1–5, darkened against the artwork canvas for legible white initials. Do not reassign colors on refresh or locale changes.
+Organization avatars keep official images when available. Missing or failed images use initials on a stable, organization-keyed, unmixed color from Zeron chart colors 1–5. Bright backgrounds use dark initials; the deeper blue uses white initials in the light theme. Do not mix gray into these categorical colors. Do not reassign colors on refresh or locale changes.
