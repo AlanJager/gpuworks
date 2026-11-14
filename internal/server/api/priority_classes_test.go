@@ -30,7 +30,7 @@ func TestPriorityClassesAPI(t *testing.T) {
 	}
 	body := rec.Body.String()
 	for _, want := range []string{
-		`"min_value":-100`, `"max_value":100`, `"policies":["within_ceiling","fixed","down_only"]`, `"default_policy":"within_ceiling"`,
+		`"min_value":-100`, `"max_value":100`, `"policies":["within_ceiling","fixed","down_only"]`, `"default_policy":"within_ceiling"`, `"ceiling_policies":["within_ceiling"]`,
 		`{"name":"critical","display_name":"","description":"","value":40,"builtin":true,"default":false,"created_at":`,
 		`{"name":"normal","display_name":"","description":"","value":0,"builtin":true,"default":true,"created_at":`,
 	} {

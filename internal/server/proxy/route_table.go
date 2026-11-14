@@ -30,6 +30,10 @@ type routeSnapshot struct {
 	// of them may take a candidate out of routing, so it rebuilds at once
 	// (urgentOn).
 	running map[string]bool
+	// prioritized holds the running instances launched with the engine's
+	// priority scheduling, of deployments that ask for it: the gateway
+	// writes request priorities only to these.
+	prioritized map[string]bool
 }
 
 type routeDeployment struct {
@@ -307,6 +311,7 @@ func (r *routeTable) build() (*routeSnapshot, error) {
 	}
 	pdRunning := map[uint][]store.Instance{}
 	running := map[string]bool{}
+	prioritized := map[string]bool{}
 	for i := range insts {
 		in := &insts[i]
 		rd := byDep[in.DeploymentID]
@@ -315,6 +320,9 @@ func (r *routeTable) build() (*routeSnapshot, error) {
 		}
 		if in.State == proto.InstRunning {
 			running[in.UUID] = true
+			if rd.dep.PriorityScheduling && deploy.SpecRunsPriority(in.DesiredStateJSON) {
+				prioritized[in.UUID] = true
+			}
 		}
 		// A multi-node replica sleeps with its leader's engine: only the
 		// leader's intent and level say whether the replica is asleep, and a
@@ -364,7 +372,7 @@ func (r *routeTable) build() (*routeSnapshot, error) {
 		serving = nil
 	}
 	r.resolveRequestStats(byDep)
-	return &routeSnapshot{builtAt: time.Now(), byName: byName, byID: byDep, nodeUUID: nodes, serving: serving, running: running}, nil
+	return &routeSnapshot{builtAt: time.Now(), byName: byName, byID: byDep, nodeUUID: nodes, serving: serving, running: running, prioritized: prioritized}, nil
 }
 
 // resolveRequestStats gives each routed deployment its request-stat rules,

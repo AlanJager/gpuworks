@@ -495,6 +495,10 @@ func (p *Proxy) serveExternal(w http.ResponseWriter, r *http.Request, selected s
 }
 
 func (p *Proxy) serveAuthenticated(w http.ResponseWriter, r *http.Request) {
+	r, ok := p.decidePriority(w, r)
+	if !ok {
+		return
+	}
 	if route, ok := inferenceapi.AuxiliaryRouteFor(r.URL.Path); ok {
 		p.serveAuxiliary(w, r, route)
 		return
@@ -551,14 +555,20 @@ func (p *Proxy) serveSelectedTarget(w http.ResponseWriter, r *http.Request, publ
 			return
 		}
 	}
+	// The fields only the gateway sets, found in one pass over the body.
+	named, err := bodyNames(r, kvTransferField, priorityField)
+	if err != nil {
+		fail(err)
+		return
+	}
 	// Only the gateway may hand KV between instances (ADR 0028).
-	cleanup, err := stripClientKVTransfer(r, p.maxBodyBytes)
+	cleanup, err := stripClientKVTransfer(r, p.maxBodyBytes, named[0])
 	defer cleanup()
 	if err != nil {
 		fail(err)
 		return
 	}
-	r, cleanupPriority, ok := p.applyRequestPriority(w, r, deploymentID)
+	r, cleanupPriority, ok := p.applyRequestPriority(w, r, deploymentID, tgt, named[1])
 	defer cleanupPriority()
 	if !ok {
 		p.releaseTarget(tgt)

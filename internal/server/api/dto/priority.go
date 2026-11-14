@@ -24,6 +24,9 @@ type PriorityClasses struct {
 	Policies []string        `json:"policies"`
 	// DefaultPolicy is the policy of a key that states none.
 	DefaultPolicy string `json:"default_policy"`
+	// CeilingPolicies are the policies a ceiling applies to; a binding of
+	// another policy has none.
+	CeilingPolicies []string `json:"ceiling_policies"`
 }
 
 // APIKeyPriority is an API key's priority binding: the class its requests

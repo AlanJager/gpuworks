@@ -111,6 +111,22 @@ func injectPriorityScheduling(b *builder, p Params) {
 	}
 }
 
+// SpecRunsPriority reports whether an instance's stored launch (its desired
+// state JSON, as json.Marshal writes it) starts the engine with priority
+// scheduling on, whoever wrote the flag.
+func SpecRunsPriority(specJSON string) bool {
+	for _, marker := range []string{
+		`"` + sglangPrioritySchedulingFlag + `"`,
+		`"` + vllmSchedulingPolicyFlag + `","` + vllmSchedulingPolicyPriority + `"`,
+		`"` + vllmSchedulingPolicyFlag + `=` + vllmSchedulingPolicyPriority + `"`,
+	} {
+		if strings.Contains(specJSON, marker) {
+			return true
+		}
+	}
+	return false
+}
+
 // PriorityFieldValue is the request "priority" value that gives a class of
 // value classValue (larger is more important) on engine, as the platform
 // launches it: vLLM handles lower values first, SGLang higher ones. ok is

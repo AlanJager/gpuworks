@@ -54,6 +54,11 @@ func TestPriorityClassesMigration(t *testing.T) {
 		key.PriorityClassID != nil || key.PriorityCeilingClassID != nil || key.PriorityPolicy != "" {
 		t.Fatalf("old key = %+v err=%v", key, err)
 	}
+	for _, col := range []string{"PriorityClassID", "PriorityCeilingClassID"} {
+		if !db.Migrator().HasIndex(&APIKey{}, col) {
+			t.Fatalf("index on %s missing", col)
+		}
+	}
 	var marker SchemaMigration
 	if err := db.First(&marker, 214).Error; err != nil || marker.Name != "priority_classes" {
 		t.Fatalf("marker = %+v err=%v", marker, err)
@@ -144,7 +149,7 @@ func TestPriorityClassLifecycle(t *testing.T) {
 	}
 	keys, _ := st.ListAPIKeys()
 	prefix := keys[0].Prefix
-	if err := st.SetAPIKeyPriority(prefix, APIKeyPriority{Class: priority.Normal, Ceiling: "gold", Policy: priority.PolicyFixed}); err != nil {
+	if err := st.SetAPIKeyPriority(prefix, APIKeyPriority{Class: priority.Normal, Ceiling: "gold", Policy: priority.PolicyWithinCeiling}); err != nil {
 		t.Fatal(err)
 	}
 	identity, _ = st.ResolveAPIKey(full)
@@ -154,8 +159,25 @@ func TestPriorityClassLifecycle(t *testing.T) {
 	}
 	normal, _ := table.ByName(priority.Normal)
 	goldClass, _ := table.ByName("gold")
-	if identity.Priority.ClassID != normal.ID || identity.Priority.CeilingID != goldClass.ID || identity.Priority.Policy != priority.PolicyFixed {
+	if identity.Priority.ClassID != normal.ID || identity.Priority.CeilingID != goldClass.ID || identity.Priority.Policy != priority.PolicyWithinCeiling {
 		t.Fatalf("bound identity = %+v", identity.Priority)
+	}
+	// Only the within-ceiling policy keeps a ceiling.
+	if err := st.SetAPIKeyPriority(prefix, APIKeyPriority{Class: priority.Normal, Ceiling: "gold", Policy: priority.PolicyFixed}); err != nil {
+		t.Fatal(err)
+	}
+	if identity, _ = st.ResolveAPIKey(full); identity.Priority.CeilingID != 0 || identity.Priority.Policy != priority.PolicyFixed {
+		t.Fatalf("fixed binding = %+v", identity.Priority)
+	}
+	// A ceiling below the key's own class (or the default's) is refused.
+	if err := st.SetAPIKeyPriority(prefix, APIKeyPriority{Class: priority.High, Ceiling: priority.Low}); !errors.Is(err, ErrPriorityClassInvalid) {
+		t.Fatalf("low ceiling = %v", err)
+	}
+	if err := st.SetAPIKeyPriority(prefix, APIKeyPriority{Ceiling: priority.Low}); !errors.Is(err, ErrPriorityClassInvalid) {
+		t.Fatalf("ceiling below the default = %v", err)
+	}
+	if err := st.SetAPIKeyPriority(prefix, APIKeyPriority{Class: priority.Normal, Ceiling: "gold", Policy: priority.PolicyWithinCeiling}); err != nil {
+		t.Fatal(err)
 	}
 	if err := st.SetAPIKeyPriority(prefix, APIKeyPriority{Class: "platinum"}); !errors.Is(err, ErrPriorityClassInvalid) {
 		t.Fatalf("unknown class = %v", err)

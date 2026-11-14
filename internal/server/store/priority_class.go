@@ -37,7 +37,9 @@ var (
 	ErrPriorityClassInvalid = errors.New("invalid priority class")
 )
 
-// priorityClassEvent is the bus topic the gateway reloads its classes on.
+// priorityClassEvent is the bus topic class changes publish on (for
+// listeners such as the console's live views; the gateway follows
+// PriorityClassGeneration instead).
 const priorityClassEvent = "priority_class"
 
 // createPriorityClasses creates the table with the built-in classes (normal
@@ -67,6 +69,15 @@ func createPriorityClasses(db *gorm.DB) error {
 	for _, col := range []string{"PriorityClassID", "PriorityCeilingClassID", "PriorityPolicy"} {
 		if !db.Migrator().HasColumn(&APIKey{}, col) {
 			if err := db.Migrator().AddColumn(&APIKey{}, col); err != nil {
+				return err
+			}
+		}
+	}
+	// AddColumn does not make the columns' indexes a fresh table has (a
+	// class delete looks the bound keys up by them).
+	for _, col := range []string{"PriorityClassID", "PriorityCeilingClassID"} {
+		if !db.Migrator().HasIndex(&APIKey{}, col) {
+			if err := db.Migrator().CreateIndex(&APIKey{}, col); err != nil {
 				return err
 			}
 		}
@@ -247,7 +258,8 @@ func (s *Store) SetDefaultPriorityClass(name string) error {
 }
 
 // APIKeyPriority is a key's priority binding by class name: Class "" binds
-// none (the default), Ceiling "" caps at the key's own class.
+// none (the default), Ceiling "" caps at the key's own class. Only the
+// within-ceiling policy has a ceiling; another policy's is dropped.
 type APIKeyPriority struct {
 	Class   string
 	Ceiling string
@@ -270,9 +282,23 @@ func (s *Store) SetAPIKeyPriority(prefix string, binding APIKeyPriority) error {
 		if err != nil {
 			return err
 		}
+		if binding.Policy != priority.PolicyWithinCeiling && binding.Policy != "" {
+			binding.Ceiling = ""
+		}
 		ceilingID, err := priorityClassIDByName(tx, binding.Ceiling)
 		if err != nil {
 			return err
+		}
+		if ceilingID != nil {
+			// A ceiling below the key's own class (the default's when it
+			// binds none) would be ignored; refuse it rather than store it.
+			own, ceiling, err := bindingValues(tx, classID, *ceilingID)
+			if err != nil {
+				return err
+			}
+			if ceiling < own {
+				return fmt.Errorf("%w: ceiling %q is below the key's class", ErrPriorityClassInvalid, binding.Ceiling)
+			}
 		}
 		policy := binding.Policy
 		if policy == priority.DefaultPolicy {
@@ -287,6 +313,24 @@ func (s *Store) SetAPIKeyPriority(prefix string, binding APIKeyPriority) error {
 		s.Bus.PublishChange("apikey", prefix, "updated")
 	}
 	return err
+}
+
+// bindingValues are the values of a binding's own class (the default class
+// when classID is nil) and of its ceiling.
+func bindingValues(tx *gorm.DB, classID *uint, ceilingID uint) (own, ceiling int, err error) {
+	var rows []PriorityClass
+	if err := tx.Select("id", "value", "is_default").Find(&rows).Error; err != nil {
+		return 0, 0, err
+	}
+	for _, r := range rows {
+		if (classID != nil && r.ID == *classID) || (classID == nil && r.IsDefault) {
+			own = r.Value
+		}
+		if r.ID == ceilingID {
+			ceiling = r.Value
+		}
+	}
+	return own, ceiling, nil
 }
 
 func priorityClassIDByName(tx *gorm.DB, name string) (*uint, error) {
@@ -346,6 +390,9 @@ func PriorityPolicies() []string {
 
 // DefaultPriorityPolicy is the policy of a key that states none.
 const DefaultPriorityPolicy = string(priority.DefaultPolicy)
+
+// PriorityCeilingPolicies are the policies a ceiling applies to.
+func PriorityCeilingPolicies() []string { return []string{string(priority.PolicyWithinCeiling)} }
 
 // ParsePriorityPolicy reads a requested policy; empty is the default.
 func ParsePriorityPolicy(text string) (priority.Policy, bool) { return priority.ParsePolicy(text) }

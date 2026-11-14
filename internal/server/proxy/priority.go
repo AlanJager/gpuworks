@@ -79,7 +79,11 @@ func (c *priorityClasses) get() priority.Table {
 			// Keep serving the last good snapshot; a later request retries.
 			return latest.table
 		}
-		return priority.NewTable(nil, 0)
+		// No snapshot yet: run at the neutral default for a while rather
+		// than have every request queue on the lock to retry the database.
+		empty := priority.NewTable(nil, 0)
+		c.snap.Store(&prioritySnapshot{table: empty, gen: gen, at: c.clock()})
+		return empty
 	}
 	c.snap.Store(&prioritySnapshot{table: table, gen: gen, at: c.clock()})
 	return table
@@ -96,8 +100,13 @@ func withPriorityBinding(ctx context.Context, binding priority.Binding) context.
 // requestPriority decides the request's class: batch requests run at the
 // batch class, requests without a key (playground, open access, probes) at
 // the default, a key's requests by its binding and the class asked for.
-// ok is false when the client named a class that does not exist.
+// ok is false when the client named a class that does not exist. A request
+// the gateway already decided (decidePriority) keeps that decision, so a
+// replay after preemption runs at the class the first attempt did.
 func (p *Proxy) requestPriority(r *http.Request) (priority.Decision, bool) {
+	if decided, ok := r.Context().Value(priorityDecisionKey{}).(priority.Decision); ok {
+		return decided, true
+	}
 	table := p.priority.get()
 	asked := r.Header.Get(priorityClassHeader)
 	r.Header.Del(priorityClassHeader)
@@ -113,12 +122,28 @@ func (p *Proxy) requestPriority(r *http.Request) (priority.Decision, bool) {
 	return priority.Resolve(table, source, binding, asked)
 }
 
-// applyRequestPriority decides the request's class, says it in the answer's
-// header, and writes the engine's priority field: the class's value, in the
-// engine's direction, when the deployment runs priority scheduling, and the
-// neutral 0 otherwise (only rewriting a body that names the field). It
-// writes the error itself when it refuses the request.
-func (p *Proxy) applyRequestPriority(w http.ResponseWriter, r *http.Request, deploymentID uint) (*http.Request, func(), bool) {
+type priorityDecisionKey struct{}
+
+// decidePriority decides the request's class once, before a deployment is
+// chosen: a class that does not exist is refused before the request takes a
+// lease or wakes a sleeping deployment, and every attempt of the request
+// (retries, a replay after preemption) runs at the same class.
+func (p *Proxy) decidePriority(w http.ResponseWriter, r *http.Request) (*http.Request, bool) {
+	decision, ok := p.requestPriority(r)
+	if !ok {
+		writeErr(w, http.StatusBadRequest, "unknown priority class in "+priorityClassHeader)
+		return r, false
+	}
+	return r.WithContext(context.WithValue(r.Context(), priorityDecisionKey{}, decision)), true
+}
+
+// applyRequestPriority says the request's class in the answer's header and
+// writes the engine's priority field: the class's value, in the engine's
+// direction, when the target instance runs priority scheduling and the path
+// generates, and the neutral 0 otherwise (only rewriting a body that names
+// the field; named says whether it does). It writes the error itself when it
+// refuses the request.
+func (p *Proxy) applyRequestPriority(w http.ResponseWriter, r *http.Request, deploymentID uint, tgt target, named bool) (*http.Request, func(), bool) {
 	decision, ok := p.requestPriority(r)
 	if !ok {
 		writeErr(w, http.StatusBadRequest, "unknown priority class in "+priorityClassHeader)
@@ -126,30 +151,34 @@ func (p *Proxy) applyRequestPriority(w http.ResponseWriter, r *http.Request, dep
 	}
 	w.Header().Set(priorityClassHeader, decision.Class.Name)
 	r = r.WithContext(context.WithValue(r.Context(), priorityClassKey{}, decision.Class.Name))
+	r.Header.Del(priorityHeader)
 	value := 0
-	if dep := p.routedDeployment(deploymentID); dep != nil && dep.PriorityScheduling {
+	if dep := p.routedDeployment(deploymentID); dep != nil && tgt.upstreamPath == "" && p.instanceRunsPriority(tgt.instanceUUID) {
 		if v, engineHas := deploy.PriorityFieldValue(dep.Engine, decision.Class.Value); engineHas {
 			value = v
 		}
 	}
-	if value == 0 {
-		cleanup, err := stripClientPriority(r, p.maxBodyBytes)
-		if err != nil {
-			writeErr(w, statusForExtractError(err), err.Error())
-			return r, cleanup, false
-		}
-		return r, cleanup, true
-	}
-	r.Header.Del(priorityHeader)
-	if !isJSONRequest(r) || r.GetBody == nil {
+	if !isJSONRequest(r) || r.GetBody == nil || (value == 0 && !named) {
 		return r, func() {}, true
 	}
-	cleanup, err := setRequestJSONField(r, priorityField, []byte(strconv.Itoa(value)), true, p.maxBodyBytes)
+	cleanup, err := setRequestJSONField(r, priorityField, []byte(strconv.Itoa(value)), value != 0, p.maxBodyBytes)
 	if err != nil {
 		writeErr(w, statusForExtractError(err), err.Error())
 		return r, cleanup, false
 	}
 	return r, cleanup, true
+}
+
+// instanceRunsPriority reports whether the instance was launched with the
+// engine's priority scheduling on (routeSnapshot.prioritized): a deployment
+// that asked for it may still run an instance without it, on a target that
+// does not allow it.
+func (p *Proxy) instanceRunsPriority(instanceUUID string) bool {
+	if p.routes == nil || instanceUUID == "" {
+		return false
+	}
+	snap := p.routes.current.Load()
+	return snap != nil && snap.prioritized[instanceUUID]
 }
 
 type priorityClassKey struct{}

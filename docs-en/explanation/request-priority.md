@@ -46,18 +46,20 @@ On the API Keys page an administrator can bind a key:
 
 - **Class**: the class the key's requests run at by default; unbound, the default class.
 - **What clients may ask for** (the policy); clients name a class with the request header `X-GPUWorks-Priority-Class: <name>`:
-  - **Within ceiling** (the default): any class up to the **ceiling**; a higher one is lowered to the ceiling. Without a ceiling it is the key's own class.
+  - **Within ceiling** (the default): any class up to the **ceiling**; a higher one is lowered to the ceiling. Without a ceiling it is the key's own class; a ceiling cannot be below the key's own class.
   - **Fixed**: the header is ignored.
   - **Down only**: only classes up to the key's own.
 
-A name in the header that matches no class is refused with 400 and not forwarded. Batch requests ignore their key and always run at the `batch` class.
+Only within ceiling has a ceiling; saving another policy drops it. A name in the header that matches no class is refused with 400 before a deployment is chosen, so nothing is forwarded and no sleeping deployment is woken. Retries of a request and its replay after preemption run at the class decided first. Batch requests ignore their key and always run at the `batch` class.
 
 ## How the Gateway Writes the Priority
 
 The gateway first decides the request's class, names it in the response header `X-GPUWorks-Priority-Class`, and then:
 
-- for a deployment with request priority on whose engine is vLLM or SGLang, writes the class value into the body's `priority` in the engine's direction: negated for vLLM (lower values run first), as is for SGLang;
-- otherwise sets a `priority` the body already has to `0`, and leaves a body without one untouched.
+- when the target instance was actually launched with priority scheduling (judged from its launch command; an instance of a deployment that asks for it but landed on an accelerator that does not allow it does not count) and the request goes to a generation endpoint, writes the class value into the body's `priority` in the engine's direction: negated for vLLM (lower values run first), as is for SGLang;
+- otherwise (auxiliary endpoints such as tokenize included) sets a `priority` the body already has to `0`, and leaves a body without one untouched.
+
+A request whose `Content-Type` has a malformed parameter (such as `application/json; x`) is still handled as JSON, so a client cannot slip past this way.
 
 Either way, a client's own `priority` field and `X-Vllm-Priority` header (vLLM uses it to override the body) never reach the engine. Both stages of a PD request are handled the same way.
 

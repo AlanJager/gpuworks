@@ -1,6 +1,7 @@
 package deploy
 
 import (
+	"encoding/json"
 	"slices"
 	"testing"
 
@@ -130,5 +131,30 @@ func TestPriorityFieldValue(t *testing.T) {
 	}
 	if _, ok := PriorityFieldValue("llamacpp", 20); ok {
 		t.Fatal("llamacpp has no priority")
+	}
+}
+
+func TestSpecRunsPriority(t *testing.T) {
+	for spec, want := range map[string]bool{
+		`{"argv":["--scheduling-policy","priority"]}`:   true,
+		`{"argv":["--scheduling-policy=priority"]}`:     true,
+		`{"argv":["--enable-priority-scheduling"]}`:     true,
+		`{"argv":["--scheduling-policy","fcfs"]}`:       false,
+		`{"argv":["--schedule-policy","lpm"]}`:          false,
+		`{"argv":["--prompt","--scheduling-policy x"]}`: false,
+		``: false,
+	} {
+		if got := SpecRunsPriority(spec); got != want {
+			t.Fatalf("SpecRunsPriority(%s) = %v", spec, got)
+		}
+	}
+	// The flags the adapters inject are the ones it recognizes.
+	vllm := BuildVLLM(Params{ModelPath: "/m", APIPort: 30000, Vendor: "nvidia", PriorityScheduling: true})
+	sg := sglangEngine{}.Build(Params{ModelPath: "/m", APIPort: 30000, TensorParallel: 1, Vendor: "nvidia", PriorityScheduling: true})
+	for _, r := range []ResolvedLaunch{vllm, sg} {
+		raw, _ := json.Marshal(map[string]any{"argv": priorityArgv(r)})
+		if !SpecRunsPriority(string(raw)) {
+			t.Fatalf("injected argv not recognized: %s", raw)
+		}
 	}
 }

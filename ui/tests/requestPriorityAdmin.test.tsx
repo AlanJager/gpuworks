@@ -50,7 +50,7 @@ after(() => {
 });
 
 const classes = (): PriorityClasses => ({
-  min_value: -100, max_value: 100, policies: ["within_ceiling", "fixed", "down_only"], default_policy: "within_ceiling",
+  min_value: -100, max_value: 100, policies: ["within_ceiling", "fixed", "down_only"], default_policy: "within_ceiling", ceiling_policies: ["within_ceiling"],
   items: [
     { name: "critical", display_name: "", description: "", value: 40, builtin: true, default: false, created_at: "" },
     { name: "gold", display_name: "Gold", description: "paying tenants", value: 30, builtin: false, default: false, created_at: "" },
@@ -135,6 +135,8 @@ test("a key's cell names its class and policy, and an administrator rebinds it",
   const user = userEvent.setup({ document: dom.window.document });
   await user.click(await screen.findByRole("button", { name: "Edit the request priority of svc" }));
   await screen.findByText("Request priority of svc");
+  // A fixed binding has no ceiling to choose.
+  assert.equal(screen.queryByLabelText("Ceiling"), null);
   await user.click(screen.getByRole("button", { name: "Save" }));
   await waitFor(() => assert.deepEqual(sent, [["gw-svc", { class: "gold", ceiling: "", policy: "fixed" }]]));
   await waitFor(() => assert.equal(changed, 1));

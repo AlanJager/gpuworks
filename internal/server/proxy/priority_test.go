@@ -28,14 +28,25 @@ type priorityRig struct {
 	hdr  []string
 }
 
-// newPriorityRig serves three deployments on one engine stub: "v" (vLLM with
-// priority scheduling), "s" (SGLang with it) and "off" (vLLM without).
+// newPriorityRig serves four deployments on one engine stub: "v" (vLLM with
+// priority scheduling), "s" (SGLang with it), "off" (vLLM without) and
+// "unlaunched" (asks for it, but its instance was launched without the flag,
+// as on a target that does not allow it).
 func newPriorityRig(t *testing.T) *priorityRig {
 	t.Helper()
 	rig := &priorityRig{}
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body map[string]any
 		_ = json.NewDecoder(r.Body).Decode(&body)
+		// As vLLM: a priority that is not an integer is a 400, the shape
+		// the engine answers (and SGLang's server dies on a huge one).
+		if v, present := body["priority"]; present {
+			if f, ok := v.(float64); !ok || f != float64(int64(f)) || f > 1e15 || f < -1e15 {
+				w.WriteHeader(http.StatusBadRequest)
+				_, _ = io.WriteString(w, `{"error":{"message":"1 validation error: body.priority","code":400}}`)
+				return
+			}
+		}
 		rig.mu.Lock()
 		rig.seen = append(rig.seen, body)
 		rig.hdr = append(rig.hdr, r.Header.Get("X-Vllm-Priority"))
@@ -60,12 +71,18 @@ func newPriorityRig(t *testing.T) *priorityRig {
 	for i, d := range []struct {
 		name, engine string
 		on           bool
-	}{{"v", "vllm", true}, {"s", "sglang", true}, {"off", "vllm", false}} {
+		spec         string
+	}{
+		{"v", "vllm", true, `{"argv":["vllm","serve","--scheduling-policy","priority"]}`},
+		{"s", "sglang", true, `{"argv":["python","-m","sglang.launch_server","--enable-priority-scheduling","--default-priority-value","0"]}`},
+		{"off", "vllm", false, `{"argv":["vllm","serve"]}`},
+		{"unlaunched", "vllm", true, `{"argv":["vllm","serve"]}`},
+	} {
 		dep, err := st.CreateDeployment(&store.Deployment{Name: d.name, ModelID: model.ID, NodeID: node.ID, ServedName: d.name, Engine: d.engine, State: "active", PriorityScheduling: d.on})
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := st.CreateInstance(&store.Instance{UUID: d.name + "-instance", DeploymentID: dep.ID, NodeID: node.ID, State: proto.InstRunning, APIPort: 30000 + i, Ports: "[30000]"}); err != nil {
+		if _, err := st.CreateInstance(&store.Instance{UUID: d.name + "-instance", DeploymentID: dep.ID, NodeID: node.ID, State: proto.InstRunning, APIPort: 30000 + i, Ports: "[30000]", DesiredStateJSON: d.spec}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -103,11 +120,19 @@ func (r *priorityRig) key(t *testing.T, binding store.APIKeyPriority) string {
 // send posts a chat to model and returns the answer and what the engine got.
 func (r *priorityRig) send(t *testing.T, key, model, asked, body string) (*httptest.ResponseRecorder, map[string]any, string) {
 	t.Helper()
+	return r.sendTyped(t, key, model, asked, body, "")
+}
+
+func (r *priorityRig) sendTyped(t *testing.T, key, model, asked, body, contentType string) (*httptest.ResponseRecorder, map[string]any, string) {
+	t.Helper()
 	if body == "" {
 		body = `{"model":"` + model + `","messages":[]}`
 	}
+	if contentType == "" {
+		contentType = "application/json"
+	}
 	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Type", contentType)
 	req.Header.Set("Authorization", "Bearer "+key)
 	req.Header.Set("X-Vllm-Priority", "-1000")
 	if asked != "" {
@@ -134,7 +159,7 @@ func TestGatewayWritesTheEnginePriority(t *testing.T) {
 
 	for _, tc := range []struct {
 		name, key, model, asked, body string
-		class                         string
+		class, contentType            string
 		engine                        any // the engine's priority field; nil: absent
 	}{
 		{name: "vllm, key's class, client value replaced", key: high, model: "v", body: `{"model":"v","priority":99,"messages":[]}`, class: "high", engine: float64(-20)},
@@ -146,9 +171,11 @@ func TestGatewayWritesTheEnginePriority(t *testing.T) {
 		{name: "fixed ignores the ask", key: fixed, model: "s", asked: "critical", class: "low", engine: float64(-20)},
 		{name: "no priority scheduling: neutral, client value replaced", key: high, model: "off", body: `{"model":"off","priority":99,"messages":[]}`, class: "high", engine: float64(0)},
 		{name: "no priority scheduling, no field: nothing written", key: high, model: "off", class: "high", engine: nil},
+		{name: "asked for but not launched with it: neutral", key: high, model: "unlaunched", body: `{"model":"unlaunched","priority":"x","messages":[]}`, class: "high", engine: float64(0)},
+		{name: "a malformed content type is still JSON", key: high, model: "off", body: `{"model":"off","priority":"crash","messages":[]}`, class: "high", engine: float64(0), contentType: "application/json; x"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			rec, seen, hdr := rig.send(t, tc.key, tc.model, tc.asked, tc.body)
+			rec, seen, hdr := rig.sendTyped(t, tc.key, tc.model, tc.asked, tc.body, tc.contentType)
 			if rec.Code != http.StatusOK {
 				t.Fatalf("status = %d %s", rec.Code, rec.Body)
 			}
@@ -241,5 +268,63 @@ func TestPriorityClassSnapshotAges(t *testing.T) {
 	clock = clock.Add(priorityClassMaxAge)
 	if cache.get().Default.Name != priority.High {
 		t.Fatal("an aged snapshot did not reload")
+	}
+}
+
+// The class is decided once: a second pass over the same request (a replay
+// after preemption) keeps it, though the header is gone by then.
+func TestPriorityDecidedOnceForReplays(t *testing.T) {
+	rig := newPriorityRig(t)
+	key := rig.key(t, store.APIKeyPriority{Class: priority.High})
+	identity, _ := rig.st.ResolveAPIKey(key)
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"s","messages":[]}`))
+	req.Header.Set(priorityClassHeader, "low")
+	req = req.WithContext(withPriorityBinding(uxrecord.WithCaller(req.Context(), uxrecord.Caller{APIKeyID: identity.KeyID, Source: uxrecord.SourceAPI}), identity.Priority))
+	decided, ok := rig.p.decidePriority(httptest.NewRecorder(), req)
+	if !ok {
+		t.Fatal("refused")
+	}
+	if decided.Header.Get(priorityClassHeader) != "" {
+		t.Fatal("the class header was forwarded")
+	}
+	for range 2 {
+		if got, ok := rig.p.requestPriority(decided); !ok || got.Class.Name != "low" {
+			t.Fatalf("replayed decision = %+v %v", got, ok)
+		}
+	}
+}
+
+// An unknown class is refused before a deployment is chosen: a sleeping or
+// missing deployment is neither woken nor named.
+func TestUnknownClassRefusedBeforeSelection(t *testing.T) {
+	rig := newPriorityRig(t)
+	key := rig.key(t, store.APIKeyPriority{})
+	rec, seen, _ := rig.send(t, key, "no-such-model", "platinum", "")
+	if rec.Code != http.StatusBadRequest || seen != nil || !strings.Contains(rec.Body.String(), "priority class") {
+		t.Fatalf("unknown class to an unknown model = %d %s", rec.Code, rec.Body)
+	}
+}
+
+// Auxiliary routes (tokenize) never get a priority written; a client's is
+// still neutralized.
+func TestAuxiliaryRoutesGetNoPriority(t *testing.T) {
+	rig := newPriorityRig(t)
+	key := rig.key(t, store.APIKeyPriority{Class: priority.High})
+	for _, body := range []string{`{"model":"v","prompt":"x"}`, `{"model":"v","prompt":"x","priority":-9}`} {
+		req := httptest.NewRequest(http.MethodPost, "/v1/tokenize", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+key)
+		rec := httptest.NewRecorder()
+		rig.p.Handler()(rec, req)
+		rig.mu.Lock()
+		seen := rig.seen
+		rig.seen, rig.hdr = nil, nil
+		rig.mu.Unlock()
+		if rec.Code != http.StatusOK || len(seen) != 1 {
+			t.Fatalf("tokenize = %d %s seen %v", rec.Code, rec.Body, seen)
+		}
+		if v, present := seen[0]["priority"]; present && v != float64(0) {
+			t.Fatalf("tokenize priority = %v", v)
+		}
 	}
 }

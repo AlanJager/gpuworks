@@ -2567,6 +2567,8 @@ export interface PriorityClasses {
   max_value: number;
   policies: string[];
   default_policy: string;
+  /** The policies a ceiling applies to; a binding of another policy has none. */
+  ceiling_policies: string[];
 }
 
 /** A deployment a restricted API key may call. */

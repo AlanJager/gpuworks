@@ -1636,7 +1636,7 @@ extra_args 解析（`EXTRA_ARGS_INVALID`）、挂载（`MOUNT_CONTAINER_PATH`/`M
 | GET | `/api/v1/apikeys` | API key 列表（不含明文），含已吊销的 key：已吊销的带 `revoked_at`（UTC 时间），未吊销的不出现该字段。`all_deployments` 为 true 时可调用全部模型服务；为 false 时只能调用 `deployments`（`[{id,name,served_name}]`）中的部署，这些部署全被删除后列表为空、key 什么都调用不了。`priority` 是 key 的请求优先级绑定 `{class, ceiling, policy}`：`class` 为空表示使用默认优先级，`ceiling` 为空表示上限等于自身优先级，`policy` 为 `within_ceiling`（默认）、`fixed` 或 `down_only`，见[请求优先级](../explanation/request-priority.md) | JWT |
 | POST | `/api/v1/apikeys` | 创建 API key；`name` 去除首尾空白后不能为空，否则返回 400 `API_KEY_NAME_REQUIRED`；明文仅创建响应中返回一次。可选 `all_deployments` 与 `deployment_ids` 限定可调用的部署：省略 `all_deployments` 时，`deployment_ids` 为空即全部部署、非空即仅这些部署；`all_deployments` 与 `deployment_ids` 矛盾（true 且非空，或 false 且为空）返回 400 `API_KEY_SCOPE_INVALID`，不存在的部署返回 400 `API_KEY_DEPLOYMENT_UNKNOWN`（`params.ids`）。可选 `priority`（形状同列表项）同时绑定请求优先级，只有管理员可以带，其他用户带上返回 403；优先级不存在返回 400 `PRIORITY_CLASS_INVALID`，策略未知返回 400 `PRIORITY_POLICY_INVALID`，此时不创建 key | JWT |
 | PUT | `/api/v1/apikeys/{prefix}/scope` | 修改未吊销 key 的可调用范围，`{"all_deployments":bool,"deployment_ids":[...]}`，`all_deployments` 必填，校验同创建；返回更新后的 key（同列表项）。下一次请求起生效；未知或已吊销的前缀返回 404 `API_KEY_NOT_FOUND` | JWT |
-| PUT | `/api/v1/apikeys/{prefix}/priority` | 绑定未吊销 key 的请求优先级，`{"class":"gold","ceiling":"","policy":"fixed"}`（形状同列表项的 `priority`）；仅管理员，其他用户 403。返回更新后的 key。下一次请求起生效；优先级不存在 400 `PRIORITY_CLASS_INVALID`，策略未知 400 `PRIORITY_POLICY_INVALID`，未知或已吊销的前缀 404 `API_KEY_NOT_FOUND` | JWT（管理员） |
+| PUT | `/api/v1/apikeys/{prefix}/priority` | 绑定未吊销 key 的请求优先级，`{"class":"gold","ceiling":"","policy":"fixed"}`（形状同列表项的 `priority`）；仅管理员，其他用户 403。`ceiling_policies` 以外的策略会去掉 `ceiling`；上限低于 key 自身的优先级（未绑定时为默认优先级）400 `PRIORITY_CLASS_INVALID`。返回更新后的 key。下一次请求起生效；优先级不存在 400 `PRIORITY_CLASS_INVALID`，策略未知 400 `PRIORITY_POLICY_INVALID`，未知或已吊销的前缀 404 `API_KEY_NOT_FOUND` | JWT（管理员） |
 | DELETE | `/api/v1/apikeys/{prefix}` | 按列表中的 12 字符 `prefix`（完整 key 的前 12 个字符，不是完整密钥）吊销 API key：吊销完成后的新请求不能再以该 key 认证，记录保留（名字留给它的历史用量），前缀不复用；成功返回 `{"status":"revoked"}`。未知前缀返回 404 `API_KEY_NOT_FOUND`；重复吊销已吊销的前缀仍返回 200，不改动原 `revoked_at`。所有 key 都吊销后网关**不**回到匿名访问：`/v1` 仍要求 key，会拒绝所有请求，直到再创建一个 key，或管理员打开安全设置里的 `inference_open_access`（见[OpenAI 兼容网关的认证](openai-gateway.md#认证)） | JWT |
 
 ## Priority Classes（请求优先级）
@@ -1645,7 +1645,7 @@ extra_args 解析（`EXTRA_ARGS_INVALID`）、挂载（`MOUNT_CONTAINER_PATH`/`M
 
 | Method | Path | 说明 | 鉴权 |
 |---|---|---|---|
-| GET | `/api/v1/priority-classes` | 优先级列表，按数值从大到小：`items[]`（`name`、`display_name`、`description`、`value`、`builtin`、`default`、`created_at`），以及 `min_value`/`max_value`（数值范围，-100 到 100）、`policies`（key 可用的策略，界面按此展示）、`default_policy` | JWT |
+| GET | `/api/v1/priority-classes` | 优先级列表，按数值从大到小：`items[]`（`name`、`display_name`、`description`、`value`、`builtin`、`default`、`created_at`），以及 `min_value`/`max_value`（数值范围，-100 到 100）、`policies`（key 可用的策略，界面按此展示）、`default_policy`、`ceiling_policies`（有上限的策略） | JWT |
 | POST | `/api/v1/priority-classes` | 新建优先级 `{"name":"gold","display_name":"Gold","description":"","value":30}`：`name` 为小写字母、数字和连字符并以字母开头、最多 32 个字符，`value` 必填且在范围内，否则 400 `PRIORITY_CLASS_INVALID`（`params.field`）；同名 409 `PRIORITY_CLASS_EXISTS`。返回 201 与新的优先级 | JWT（管理员） |
 | PUT | `/api/v1/priority-classes/{name}` | 修改 `display_name`、`description`、`value`（省略的不变）；内置优先级改数值 409 `PRIORITY_CLASS_BUILTIN`，不存在 404 `PRIORITY_CLASS_NOT_FOUND` | JWT（管理员） |
 | DELETE | `/api/v1/priority-classes/{name}` | 删除优先级，成功 204；内置优先级 409 `PRIORITY_CLASS_BUILTIN`，默认优先级或仍有未吊销 key 绑定（作为优先级或上限）409 `PRIORITY_CLASS_IN_USE`，不存在 404 `PRIORITY_CLASS_NOT_FOUND` | JWT（管理员） |

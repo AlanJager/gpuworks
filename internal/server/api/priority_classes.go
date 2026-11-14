@@ -28,7 +28,8 @@ func (a *apiHandlers) listPriorityClasses(w http.ResponseWriter, r *http.Request
 		return
 	}
 	out := dto.PriorityClasses{Items: make([]dto.PriorityClass, 0, len(rows)), MinValue: store.PriorityClassMinValue, MaxValue: store.PriorityClassMaxValue,
-		DefaultPolicy: store.DefaultPriorityPolicy, Policies: store.PriorityPolicies()}
+		DefaultPolicy: store.DefaultPriorityPolicy, Policies: store.PriorityPolicies(),
+		CeilingPolicies: store.PriorityCeilingPolicies()}
 	for _, row := range rows {
 		out.Items = append(out.Items, priorityClassDTO(row))
 	}

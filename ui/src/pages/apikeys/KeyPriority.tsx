@@ -74,9 +74,9 @@ function KeyPriorityDialog({ apiKey, classes, open, onClose, onSaved }: {
             <span className="inline-flex items-center gap-1">{t("priority.policy")}<HelpTip content={t("priority.policyHelp")} /></span>
             <OptionSelect aria-label={t("priority.policy")} value={draft.policy}
               options={classes.policies.map((p) => ({ value: p, label: t(`priority.policies.${p}`, { defaultValue: p }) }))}
-              onChange={(value) => setDraft({ ...draft, policy: value })} />
+              onChange={(value) => setDraft({ ...draft, policy: value, ceiling: classes.ceiling_policies.includes(value) ? draft.ceiling : "" })} />
           </label>
-          {draft.policy === "within_ceiling" && (
+          {classes.ceiling_policies.includes(draft.policy) && (
             <label className="flex flex-col gap-1">
               <span>{t("priority.ceiling")}</span>
               <OptionSelect aria-label={t("priority.ceiling")} value={draft.ceiling || NONE}
