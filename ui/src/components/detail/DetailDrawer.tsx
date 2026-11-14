@@ -63,14 +63,14 @@ export default function DetailDrawer({
   return (
     <SideDrawer title={title}
       open={open} onClose={onClose} width={width} className={className} deferEscapeToModal={deferEscapeToModal}
-      subtitle={subtitle} extra={extra}>
+      subtitle={subtitle} inlineSubtitle extra={extra}>
       {banner}
       {tabs && <Tabs className="detail-tabs" value={activeTab} defaultValue={tabs[0]?.key} onValueChange={changeTab} variant="underline">
-        <TabsList className="sticky top-0 z-10 bg-surface-overlay">
+        <TabsList className="sticky top-0 z-10 bg-surface-overlay my-0">
           {tabs.map((tab) => <TabItem key={tab.key} value={tab.key} label={tab.label}
             badge={tab.count == null ? undefined : <span title={tab.countTitle}>{tab.count}</span>} />)}
         </TabsList>
-        {/* Zeron's tab list overhangs 4px below itself; the panel starts 16px under the tabs, as antd's did. */}
+        {/* Keep the tab list inside its own box; panels start one block gap below. */}
         {tabs.map((tab) => <TabPanel key={tab.key} value={tab.key} keepMounted={visited.has(tab.key)} className="pt-4">{tab.children}</TabPanel>)}
       </Tabs>}
       {children}
