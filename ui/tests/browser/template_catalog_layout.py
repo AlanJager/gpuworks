@@ -5,6 +5,7 @@ Build UI first, then run make test-ui-template-catalog-layout. Fixture counts
 and hardware names are synthetic stress data, not product support claims.
 """
 import os
+from itertools import product
 from pathlib import Path
 import subprocess
 import unittest
@@ -42,10 +43,11 @@ api.detectedInferenceTemplateChips = async () => ({items:chips});
 api.inferenceTemplateChips = async () => ({items:chips});
 const drawer = new URLSearchParams(location.search).has('drawer');
 const monitor = new URLSearchParams(location.search).has('monitor');
-i18n.init({lng:'en',defaultNS:'inferenceTemplates',interpolation:{escapeValue:false},resources:{en:{
+const locale = new URLSearchParams(location.search).get('locale') || 'en';
+i18n.init({lng:locale,defaultNS:'inferenceTemplates',interpolation:{escapeValue:false},resources:{en:{
  monitoring:require('./src/i18n/locales/en/monitoring.json'),inferenceTemplates:require('./src/i18n/locales/en/inferenceTemplates.json'),common:require('./src/i18n/locales/en/common.json')
-}}}).then(()=>createRoot(document.getElementById('root')).render(h(I18nextProvider,{i18n},
- h(MemoryRouter,{initialEntries:['/inference-templates']},h('div',{style:{marginLeft:208,padding:24,minWidth:0}},
+},zh:{monitoring:require('./src/i18n/locales/zh/monitoring.json'),inferenceTemplates:require('./src/i18n/locales/zh/inferenceTemplates.json'),common:require('./src/i18n/locales/zh/common.json')}}}).then(()=>createRoot(document.getElementById('root')).render(h(I18nextProvider,{i18n},
+ h(MemoryRouter,{initialEntries:[monitor ? '/monitor' : '/inference-templates']},h('div',{style:{marginLeft:208,padding:24,minWidth:0}},
  drawer ? h(SideDrawer,{open:true,onClose(){},title:'Geometry drawer'},'Drawer body') : monitor ? h(ConfigProvider,{theme:themeConfig},h(MonitorPage)) : h(Page))))));
 """
 
@@ -69,7 +71,7 @@ class TemplateCatalogLayout(unittest.TestCase):
         cls.browser.close()
         cls.playwright.stop()
 
-    def render_page(self, width, dark=False, drawer=False, monitor=False):
+    def render_page(self, width, dark=False, drawer=False, monitor=False, locale="en"):
         page = self.browser.new_page(viewport={"width": width, "height": 1000})
         self.addCleanup(page.close)
 
@@ -84,7 +86,7 @@ class TemplateCatalogLayout(unittest.TestCase):
                 request.abort()
 
         page.route("**/*", route)
-        page.goto("http://template-layout.test/" + ("?drawer" if drawer else "?monitor" if monitor else ""))
+        page.goto("http://template-layout.test/?locale=" + locale + ("&drawer" if drawer else "&monitor" if monitor else ""))
         if dark:
             page.evaluate("document.documentElement.classList.add('dark')")
         page.add_style_tag(content=self.css)
@@ -169,30 +171,31 @@ class TemplateCatalogLayout(unittest.TestCase):
         expect(toggle).to_have_attribute('aria-expanded', 'true')
 
     def test_plain_dialog_prose_inherits_global_body_size_in_both_themes(self):
-        for dark in (False, True):
-            page = self.render_page(1280, dark=dark)
+        for locale, width, dark in product(("en", "zh"), (820, 1280, 1920), (False, True)):
+            title = "Edit chips" if locale == "en" else "编辑芯片"
+            page = self.render_page(width, dark=dark, locale=locale)
             expect(page.locator('[data-slot="table"]')).to_be_visible()
-            page.get_by_role('button', name='Edit chips', exact=True).click()
-            dialog = page.get_by_role('dialog', name='Edit chips', exact=True)
+            page.get_by_role('button', name=title, exact=True).click()
+            dialog = page.get_by_role('dialog', name=title, exact=True)
             expect(dialog).to_be_visible()
             label = dialog.locator('.template-chip-options label > span').first
             expect(label).to_be_visible()
             self.assertEqual(label.evaluate('el=>getComputedStyle(el).fontSize'), '14px')
             self.assertEqual(page.locator('body').evaluate('el=>getComputedStyle(el).fontSize'), '14px')
-            self.assertEqual(dialog.get_by_role('heading', name='Edit chips').evaluate('el=>getComputedStyle(el).fontSize'), '18px')
-            self.capture(page, f'chip-editor-{"dark" if dark else "light"}.png')
+            self.assertEqual(dialog.get_by_role('heading', name=title).evaluate('el=>getComputedStyle(el).fontSize'), '18px')
+            self.capture(page, f'chip-editor-{locale}-{width}-{"dark" if dark else "light"}.png')
 
     def test_monitor_services_have_spacing_after_signal_cards_and_a_body_sized_title(self):
-        for width in (1280, 1920):
-            page = self.render_page(width, monitor=True)
-            heading = page.get_by_role('heading', name='Service list', exact=True)
+        for locale, width, dark in product(("en", "zh"), (820, 1280, 1920), (False, True)):
+            page = self.render_page(width, monitor=True, dark=dark, locale=locale)
+            heading = page.get_by_role("heading", name="Service list" if locale == "en" else "服务列表", exact=True)
             expect(heading).to_be_visible()
             cards = page.locator('.monitor-signal-grid').bounding_box()
             toolbar = page.locator('.monitor-services-section .resource-table-toolbar').bounding_box()
-            self.assertGreaterEqual(toolbar['y'] - cards['y'] - cards['height'], 15)
+            self.assertAlmostEqual(toolbar['y'] - cards['y'] - cards['height'], 16, delta=1)
             self.assertEqual(heading.evaluate('el=>getComputedStyle(el).fontSize'), '14px')
             self.assertTrue(page.evaluate('document.documentElement.scrollWidth <= innerWidth + 1'))
-            self.capture(page, f'monitor-spacing-{width}.png')
+            self.capture(page, f'monitor-spacing-{locale}-{width}-{dark}.png')
 
     def test_drawer_has_square_corners(self):
         page = self.render_page(1280, drawer=True)
