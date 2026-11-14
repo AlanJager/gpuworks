@@ -58,6 +58,9 @@ func parseModelTolerant(name string, data []byte) (model *InferenceModel, stated
 	if yaml.Unmarshal(data, &document) != nil || len(document.Content) != 1 || document.Content[0].Kind != yaml.MappingNode {
 		return nil, 0, nil, false
 	}
+	// A spec may reuse a block another spec anchors; each spec is parsed on
+	// its own below, so every alias is replaced by what it stands for first.
+	resolveAliases(document.Content[0], 0)
 	root := document.Content[0]
 	modelID := strings.ToLower(strings.TrimSpace(yamlString(root, "model_id")))
 	if modelID == "" {
@@ -86,6 +89,25 @@ func parseModelTolerant(name string, data []byte) (model *InferenceModel, stated
 		base.Specs = append(base.Specs, one.Specs[0])
 	}
 	return &base, len(specs), skipped, true
+}
+
+// resolveAliases replaces every alias under node by the node it refers to and
+// drops the anchors, so any subtree can be marshalled without the rest of the
+// document. depth bounds a document that aliases itself.
+func resolveAliases(node *yaml.Node, depth int) {
+	if node == nil || depth > 64 {
+		return
+	}
+	node.Anchor = ""
+	for index, child := range node.Content {
+		if child.Kind == yaml.AliasNode && child.Alias != nil {
+			target := *child.Alias
+			target.Anchor = ""
+			node.Content[index] = &target
+			child = node.Content[index]
+		}
+		resolveAliases(child, depth+1)
+	}
 }
 
 // parseModelNode strictly parses the model document root with its specs
@@ -129,8 +151,6 @@ func validModels(models []packageModel, partial map[string]struct{}) ([]packageM
 		return validateFlatCatalogStructure(&FlatCatalog{Models: []InferenceModel{model}})
 	}
 	kept := make([]packageModel, 0, len(models))
-	// stated records the models that came with specs of their own.
-	stated := map[string]bool{}
 	seen := map[string]struct{}{}
 	for _, entry := range models {
 		if err := validate(entry.model); err != nil {
@@ -165,7 +185,6 @@ func validModels(models []packageModel, partial map[string]struct{}) ([]packageM
 			continue
 		}
 		seen[id] = struct{}{}
-		stated[id] = len(entry.model.Specs) > 0
 		kept = append(kept, entry)
 	}
 	// Leaving a model out can strand a spec that runs it as a component, and
@@ -206,7 +225,8 @@ func validModels(models []packageModel, partial map[string]struct{}) ([]packageM
 		for _, entry := range kept {
 			id := strings.ToLower(strings.TrimSpace(entry.model.ModelID))
 			if _, used := referenced[id]; len(entry.model.Specs) == 0 && !used {
-				if !stated[id] {
+				// A model that stated specs is already named by each of them.
+				if entry.stated == 0 {
 					skip(entry, "", fmt.Errorf("model %s requires at least one spec unless referenced as a runtime component", id))
 				}
 				changed = true

@@ -136,6 +136,51 @@ func TestLoadPackageTolerantLeavesOutWhatThisBuildCannotRead(t *testing.T) {
 	}
 }
 
+// A spec may reuse a block another spec anchors, and a model may lose every
+// spec it stated: neither is a reason of its own.
+func TestLoadPackageTolerantReadsAliasesAndNamesAModelOnce(t *testing.T) {
+	anchored := tolerantModel("org/anchored")
+	emptied := tolerantModel("org/emptied")
+	files := tolerantPackage(t, []InferenceModel{anchored, emptied, tolerantModel("org/fine")}, func(modelID, yaml string) string {
+		switch modelID {
+		case "org/anchored":
+			// The first spec anchors its args and is itself unreadable; the
+			// second, readable, spec refers to them.
+			first := strings.Index(yaml, "args:")
+			second := strings.LastIndex(yaml, "args:")
+			if first < 0 || first == second {
+				t.Fatalf("fixture has no two args blocks:\n%s", yaml)
+			}
+			end := second + strings.Index(yaml[second:], "\n") + 1
+			for strings.HasPrefix(strings.TrimLeft(yaml[end:], " "), "- ") && !strings.HasPrefix(strings.TrimLeft(yaml[end:], " "), "- name:") {
+				end += strings.Index(yaml[end:], "\n") + 1
+			}
+			yaml = yaml[:second] + "args: *shared\n" + yaml[end:]
+			yaml = yaml[:first] + "args: &shared" + yaml[first+len("args:"):]
+			return afterSpec(t, yaml, "bf16-balanced", "field_of_a_newer_server: true")
+		case "org/emptied":
+			return afterSpec(t, afterSpec(t, yaml, "next", "field_of_a_newer_server: true"), "bf16-balanced", "field_of_a_newer_server: true")
+		}
+		return yaml
+	})
+	pkg, skipped, err := LoadPackageTolerant(files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := skippedNames(skipped), []string{"org/anchored#bf16-balanced", "org/emptied#bf16-balanced", "org/emptied#next"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("skipped = %v, want %v (%+v)", got, want, skipped)
+	}
+	for _, model := range pkg.Catalog.Models {
+		if model.ModelID == "org/anchored" {
+			if len(model.Specs) != 1 || model.Specs[0].Name != "next" || !reflect.DeepEqual(model.Specs[0].Args, anchored.Specs[0].Args) {
+				t.Fatalf("anchored = %+v", model.Specs)
+			}
+			return
+		}
+	}
+	t.Fatal("org/anchored was not kept")
+}
+
 func TestLoadPackageTolerantFollowsComponentReferences(t *testing.T) {
 	target := flatFixture().Models[0]
 	target.ModelID = "org/target"

@@ -22,6 +22,8 @@ func LoadPackage(fsys fs.FS) (Package, error) {
 type packageModel struct {
 	model InferenceModel
 	file  string
+	// stated is the number of specs the file states, read or not.
+	stated int
 }
 
 // loadPackage is LoadPackage and LoadPackageTolerant. A tolerant load leaves
@@ -77,6 +79,7 @@ func loadPackage(fsys fs.FS, tolerant bool) (Package, []Skipped, error) {
 			return Package{}, nil, fmt.Errorf("read inference catalog model %s: %w", name, err)
 		}
 		model, err := parseModelYAML(data)
+		stated := len(model.Specs)
 		if err != nil {
 			if !tolerant {
 				return Package{}, nil, fmt.Errorf("parse inference catalog model %s: %w", name, err)
@@ -85,6 +88,7 @@ func loadPackage(fsys fs.FS, tolerant bool) (Package, []Skipped, error) {
 			if !ok {
 				return Package{}, nil, fmt.Errorf("parse inference catalog model %s: %w", name, err)
 			}
+			stated = specs
 			statedSpecs += specs
 			skipped = append(skipped, left...)
 			partial[path.Dir(name)] = struct{}{}
@@ -93,7 +97,7 @@ func loadPackage(fsys fs.FS, tolerant bool) (Package, []Skipped, error) {
 			}
 			model = *readable
 		} else {
-			statedSpecs += len(model.Specs)
+			statedSpecs += stated
 		}
 		modelDirectory := path.Dir(name)
 		if _, err := fs.Stat(fsys, modelDirectory+"/README.zh-CN.md"); err == nil {
@@ -106,7 +110,7 @@ func loadPackage(fsys fs.FS, tolerant bool) (Package, []Skipped, error) {
 		} else if !errors.Is(err, fs.ErrNotExist) {
 			return Package{}, nil, fmt.Errorf("inspect model %s English README: %w", model.ModelID, err)
 		}
-		models = append(models, packageModel{model: model, file: name})
+		models = append(models, packageModel{model: model, file: name, stated: stated})
 	}
 	if tolerant {
 		var left []Skipped
