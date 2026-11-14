@@ -171,7 +171,7 @@ First determine whether you are updating the original node or adding another nod
 
 `Existing agent` and `Existing node` in the precheck identify existing agents or nodes at the same address. SSH installation asks for confirmation when replacement is needed; nohup mode asks only about conflicts in the same installation directory. **Manual installation commands and offline packages do not wait for confirmation**: replacing another server's agent only prints a `WARNING`. Check carefully before running them.
 
-After replacement, the node on the other server goes offline. Its out-of-band recovery reports `foreign_agent` and does not automatically reclaim the host. For handling this, see [Troubleshooting](troubleshooting.md).
+After replacement, the node on the other server goes offline. Its out-of-band recovery reports `AGENT_INSTALL_FOREIGN_SERVER` and does not automatically reclaim the host. For handling this, see [Troubleshooting](troubleshooting.md).
 
 ## No Network Connectivity Between Node and Server
 

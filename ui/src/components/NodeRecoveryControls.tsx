@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { api, useEventPayload, type Node, type SSHCredentialInfo } from "../api";
 import SSHCredentialFields, { type SSHAuthMode } from "./SSHCredentialFields";
 import { recoveryLabel } from "../nodes/recoveryPhase";
+import { recoveryErrorText } from "../nodes/recoveryError";
 import { formatTime, formatTimeSec } from "../i18n/datetime";
 
 type Updated = (node: Node) => void;
@@ -152,7 +153,7 @@ export function NodeRecoveryStatus({ node, onUpdated }: { node: Node; onUpdated:
         <Descriptions.Item label={t("recovery.currentPhase")}><Tag color={label?.color}>{label ? t(label.key) : node.recovery_phase}</Tag></Descriptions.Item>
         <Descriptions.Item label={t("recovery.attempts")}>{node.recovery_attempts ?? 0}</Descriptions.Item>
         <Descriptions.Item label={t("recovery.lastProbe")}>{formatTime(node.last_probe_at)}</Descriptions.Item>
-        {node.last_recovery_error && <Descriptions.Item label={t("recovery.lastError")}><Typography.Text type="danger">{node.last_recovery_error}</Typography.Text></Descriptions.Item>}
+        {node.last_recovery_error && <Descriptions.Item label={t("recovery.lastError")}><Typography.Text type="danger" style={{ whiteSpace: "pre-line" }}>{recoveryErrorText(t, node.last_recovery_code, node.last_recovery_error)}</Typography.Text></Descriptions.Item>}
       </Descriptions>
       {events.length > 0 && (
         <Timeline

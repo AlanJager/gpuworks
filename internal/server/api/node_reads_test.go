@@ -81,7 +81,7 @@ func TestIdentityReadsSkipTheWholeFleet(t *testing.T) {
 	if err := r.st.SetNodeState("au-1", store.NodeStateOffline); err != nil {
 		t.Fatal(err)
 	}
-	if err := r.st.SetNodeRecoveryPhase("au-1", store.RecoveryPhaseProbing, 1, nil, ""); err != nil {
+	if err := r.st.SetNodeRecoveryPhase("au-1", store.RecoveryPhaseProbing, 1, nil, store.RecoveryError{}); err != nil {
 		t.Fatal(err)
 	}
 	storage, err := r.st.CreateStorage(&store.Storage{Name: "identity-reads", Type: proto.StorageLocal, Path: "/data/identity", AllNodes: true, Enabled: true}, nil)

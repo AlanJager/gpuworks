@@ -22,10 +22,10 @@ For each vendor's supported scope, see the [Support Matrix](../reference/support
 2. When [deploying a model](deploy-models.md), enter the **dGPU Memory (GiB)** limit, check the candidate nodes and GPU memory estimate, and submit. The platform selects a ready backend based on the node hardware: HAMi-core for NVIDIA, vcann-rt for Ascend, HGGC for PPU, libvrocm for AMD, and native vdev for Hygon Z100 / K100_AI / BW. You do not need to specify one manually.
 3. After the instance starts, return to **GPU Devices → dGPU** and confirm the slice's deployment, node, and GPU memory limit. To verify that two models share one card, follow the request checks in [Run Two Models on One GPU](../tutorials/one-gpu-two-models.md).
 
-The `status` and `reason` returned on the page determine capability:
+The `status` and the reason code `reason_code` returned on the page determine capability (see [Troubleshooting](troubleshooting.md#dgpu-capability-unavailable) for the codes and parameters):
 
 - `ready`: All runtime, dGPU asset, and per-GPU probe requirements for that backend are met, so instances with quotas can be created; NVIDIA and AMD are exempt from behavioral probes.
-- `unavailable`: At least one requirement is not met. `reason` explains why, such as an agent version too old to report a probe,
+- `unavailable`: At least one requirement is not met. `reason_code` explains why, such as an agent version too old to report a probe,
   missing dGPU assets, a runtime that has not verified container inference, or a pending or failed probe.
 
 | Unavailability Reason | Action |

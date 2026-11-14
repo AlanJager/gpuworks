@@ -419,6 +419,18 @@
       "recovered": "Out-of-band recovery succeeded and the Agent is back online",
       "probeComplete": "Out-of-band probe completed",
       "probeFailed": "Out-of-band probe failed: {{detail}}"
+    },
+    "skipped": {
+      "RECOVERY_SKIPPED_DISABLED": "Out-of-band recovery is turned off on this server.",
+      "RECOVERY_SKIPPED_IN_PROGRESS": "Recovery is already running for this node.",
+      "RECOVERY_SKIPPED_ONLINE": "The node is online.",
+      "RECOVERY_SKIPPED_NEVER_CONNECTED": "The node has never connected, so there is nothing to recover.",
+      "RECOVERY_SKIPPED_STOPPED": "The node’s cloud instance no longer exists.",
+      "RECOVERY_SKIPPED_NO_SSH_CREDENTIAL": "The node has no SSH credentials.",
+      "RECOVERY_SKIPPED_GRACE_PERIOD": "The node went offline moments ago; waiting for it to reconnect.",
+      "RECOVERY_SKIPPED_BACKOFF": "Waiting before the next recovery attempt.",
+      "RECOVERY_SKIPPED_SERVER_DIAL_BACKOFF": "The server is still trying to dial the agent.",
+      "RECOVERY_SKIPPED_REDIAL": "The cloud provider moved the agent’s address; the server dials it there."
     }
   },
   "telemetry": {

@@ -24,6 +24,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/agentconf"
 	"gpuworks.ai/gpuworks/internal/commandlog"
 	"gpuworks.ai/gpuworks/internal/proto"
+	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/internal/server/nodeaddr"
 )
 
@@ -242,7 +243,7 @@ func (i *SSHInstaller) InstallSSH(ctx context.Context, req SSHInstallRequest) (S
 				report.Checks = append(report.Checks, CheckResult{Name: "Privilege", Status: "warn", Detail: "sudo directory claim failed; using writable install directory without sudo: " + err.Error()})
 			} else if chosenDir {
 				report.Checks = append(report.Checks, CheckResult{Name: "Privilege", Status: "error", Detail: fmt.Sprintf("cannot write the chosen install directory %s: %v", report.InstallDir, err)})
-				return report, fmt.Errorf("%w %s: %v", ErrInstallDirNotWritable, report.InstallDir, err)
+				return report, failure(messages.ErrorAgentInstallDirNotWritable, fmt.Errorf("%w %s: %v", ErrInstallDirNotWritable, report.InstallDir, err))
 			} else if fallbackDir, fallbackErr := writableUserInstallDir(ctx, client); fallbackErr == nil {
 				requestedDir := report.InstallDir
 				report.InstallDir = fallbackDir
@@ -285,7 +286,7 @@ func (i *SSHInstaller) InstallSSH(ctx context.Context, req SSHInstallRequest) (S
 	bin, err := i.ReadBin(report.BinaryName)
 	if err != nil {
 		report.Checks = append(report.Checks, CheckResult{Name: "Agent binary", Status: "error", Detail: err.Error()})
-		return report, fmt.Errorf("read agent binary %s: %w", report.BinaryName, err)
+		return report, failure(messages.ErrorAgentInstallBinaryUnavailable, fmt.Errorf("read agent binary %s: %w", report.BinaryName, err))
 	}
 	report.Checks = append(report.Checks, CheckResult{Name: "Agent binary", Status: "ok", Detail: fmt.Sprintf("%s (%d bytes)", report.BinaryName, len(bin))})
 
@@ -375,7 +376,7 @@ func (i *SSHInstaller) InstallSSH(ctx context.Context, req SSHInstallRequest) (S
 	})
 	if err != nil {
 		report.Checks = append(report.Checks, CheckResult{Name: "Start agent", Status: "error", Detail: strings.TrimSpace(out) + ": " + err.Error()})
-		return report, fmt.Errorf("start agent: %w: %s", err, lastLines(out, 3))
+		return report, startFailure(out, fmt.Errorf("start agent: %w: %s", err, lastLines(out, 3)))
 	}
 	report.Checks = append(report.Checks, CheckResult{Name: "Start agent", Status: "ok", Detail: strings.TrimSpace(out)})
 	verify := verifyAgentCommand(ctx, client, report.InstallDir)
@@ -560,7 +561,7 @@ func connectOnce(ctx context.Context, user, host string, port int, methods []ssh
 	addr := net.JoinHostPort(host, strconv.Itoa(port))
 	raw, err := dialTCP(ctx, addr, timeout)
 	if err != nil {
-		return nil, fmt.Errorf("ssh dial: %w", err)
+		return nil, dialFailure(fmt.Errorf("ssh dial: %w", err))
 	}
 	conn := &identCapturingConn{Conn: raw}
 	// ssh.NewClientConn does not honor ClientConfig.Timeout when it is given an
@@ -579,7 +580,7 @@ func connectOnce(ctx context.Context, user, host string, port int, methods []ssh
 	c, chans, reqs, err := ssh.NewClientConn(conn, addr, cfg)
 	if err != nil {
 		conn.Close()
-		return nil, handshakeError(conn, err)
+		return nil, handshakeFailure(handshakeError(conn, err))
 	}
 	if err := conn.SetDeadline(time.Time{}); err != nil {
 		c.Close()
@@ -850,7 +851,7 @@ func uploadStream(ctx context.Context, client *ssh.Client, path string, data []b
 		cancelCleanup()
 		err := fmt.Errorf("upload %s timed out after %s", path, timeout)
 		execution.Finish(out.String(), err)
-		return err
+		return failure(messages.ErrorAgentInstallUploadStalled, err)
 	}
 	execution.Finish(out.String(), nil)
 	return nil

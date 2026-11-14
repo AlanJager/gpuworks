@@ -163,7 +163,8 @@ After the fix, confirm the node appears on the Nodes page and is online. When no
 ### Check Recovery Progress
 
 In the node details, check the phase, attempt count, last probe time, and last error under “Out-of-band recovery”, corresponding to
-`recovery_phase`, `recovery_attempts`, `last_probe_at`, and `last_recovery_error`.
+`recovery_phase`, `recovery_attempts`, `last_probe_at`, and `last_recovery_error`; `last_recovery_code` is the last error's code
+(`SSH_*`, `AGENT_INSTALL_*`, `RECOVERY_*`), from which the UI shows the cause, with the error text listed beneath it as evidence. Errors recorded by older versions have no code and are shown as written.
 This card appears only when `recovery_phase` is nonempty.
 
 The platform marks a node offline after receiving no heartbeat for `--stale-after` (90 seconds by default), then tries the following in order:
@@ -187,13 +188,13 @@ See [ADR 0006](../adr/0006-out-of-band-recovery-ssh-credentials.md) for the desi
 - SSH credentials saved: attempts recovery immediately, ignoring the waiting window; still skips nodes that are online, not yet connected, or have no credentials. You can save credentials with `PUT /api/v1/nodes/{uuid}/ssh`.
 - No SSH credentials saved: the UI displays an agent installation command and does not perform SSH recovery; run the command on the node to reconnect it.
 - Phase is `stopped`: the button is disabled; hover over it to see why the cloud instance was destroyed.
-- Server has `--recovery-enabled=false`: a manual trigger returns `recovery is disabled`. See [Configuration Reference](../reference/configuration.md) for parameters.
+- Server has `--recovery-enabled=false`: a manual trigger returns `skipped_code` `RECOVERY_SKIPPED_DISABLED`. See [Configuration Reference](../reference/configuration.md) for parameters.
 
 ### Resolve the Last Error
 
 **Missing SSH credentials or platform public key**
 
-Automatic recovery skips nodes without credentials; calling the recovery API directly returns `ssh credential is not configured`.
+Automatic recovery skips nodes without credentials; calling the recovery API directly returns `skipped_code` `RECOVERY_SKIPPED_NO_SSH_CREDENTIAL`.
 Add credentials, then reconnect. If the credentials contain only an address, the platform logs in using its platform key; if `has not authorized the platform key` appears, authorize the public key using the command provided in the error.
 
 **Still waiting, or automatic recovery has stopped**
@@ -204,7 +205,7 @@ Add credentials, then reconnect. If the credentials contain only an address, the
 
 **The agent is running but has no control session**
 
-For the error `agent is running but has not established a control-plane session`, recovery does not restart or reinstall the agent.
+For the error code `RECOVERY_AGENT_NOT_CONNECTED`, recovery does not restart or reinstall the agent.
 Check the agent logs and connection configuration as described in [Node Stays Connecting or Does Not Come Online](#节点一直连接中或不上线).
 
 The platform determines ownership from the server address of the agent referenced by the unit: it reads the configuration file, or the command-line `--server` for older installations.
@@ -212,7 +213,7 @@ It treats the agent as belonging to this node only if the address matches, the a
 
 **The unit belongs to another server**
 
-`foreign_agent:` is followed by the other server's address. All installations share the unit name `gpuworks-agent`, so a later installation overwrites an earlier one; recovery does not restart or reinstall another server's running unit.
+The error code is `AGENT_INSTALL_FOREIGN_SERVER`, and the error text names the other server's address. All installations share the unit name `gpuworks-agent`, so a later installation overwrites an earlier one; recovery does not restart or reinstall another server's running unit.
 
 After confirming that the other server no longer uses this host:
 
@@ -1111,26 +1112,29 @@ For the data lane mechanism, see [ADR 0024](../adr/0024-data-lane-no-ctrl-fallba
 
 ## dGPU Capability Unavailable
 
-**Symptoms**: Evaluating a deployment with a GPU memory limit returns `partition_unavailable`, or creation returns 400 `DISTRIBUTED_PARTITION_BACKEND_UNAVAILABLE`
-(message: `partition backend <id> is unavailable: <reason>`).
+**Symptoms**: Evaluating a deployment with a GPU memory limit returns `partition_unavailable`, or creation returns 400 with one of the reason codes below (when another member of a distributed deployment is unavailable, the code is
+`DISTRIBUTED_PARTITION_BACKEND_UNAVAILABLE` and `params.reason_code` is that member's reason code).
 
 **Read the status**: Check `partition_capabilities[]` in the `GET /api/v1/nodes` / `GET /api/v1/gpus` response. Each entry's `status` is only
-`ready` / `unavailable`, and `reason` is the sole source of the cause. Non-NVIDIA backends also have `probe_status` (`passed` / `skipped` / `failed`).
+`ready` / `unavailable`; when unavailable, `reason_code` gives the cause and `reason_params` its parameters, while `reason` is only the English fallback.
+Non-NVIDIA backends also have `probe_status` (`passed` / `skipped` / `failed`).
 
 **Confirm and resolve**: `nvidia-dgpu` needs no probe and checks only the runtime and assets. `ascend-dgpu` / `ppu-dgpu` require a passing probe.
 By default, the probe runs once per agent process and caches its result (it reruns when assets, GPUs, or the runtime change). After fixing the environment, restart the agent to probe again. Do not fall back to whole GPUs and treat that as success.
 For details, see [Enable and Troubleshoot dGPU](dgpu.md) and the [Support Matrix](../reference/support-matrix.md).
 
-**Possible causes (`reason` text, in evaluation order)**
+**Possible causes (`reason_code`, in evaluation order)**
 
-1. `container inference unverified: no usable docker/udocker runtime on the node`: the node has no usable runtime.
-2. `container inference unverified: <reason>`: the backend constrains the runtime (for example, PPU is verified only on Docker).
-3. `agent has not reported current dGPU safety capability; upgrade the agent`: the agent is too old.
-4. `missing dGPU assets: <file-list>`: dGPU assets are missing.
-5. `dGPU probe has not completed: …`: the probe has not returned a result yet. Wait or check the agent logs.
-6. `dGPU probe failed: <detail>`: the probe failed. If the probe is `skipped`, the message falls back to `container inference unverified: <probe-detail>` (for example, `no container runtime available on the node`). The detail comes from the probe container, such as
-   `the container runtime cannot load the embedded probe image`, `dGPU probe timed out` (15 seconds), or
-   `probe container exited with code N`.
+1. `PARTITION_RUNTIME_MISSING`: the node has no usable runtime.
+2. `PARTITION_RUNTIME_UNSUPPORTED`: the backend works only on the runtimes in `reason_params.supported_runtimes`, and the node uses `runtime` (for example, PPU is verified only on Docker and Kubernetes).
+3. `PARTITION_AGENT_UPGRADE_REQUIRED`: the agent is too old.
+4. `PARTITION_ASSETS_MISSING`: dGPU assets are missing; `missing_assets` lists the files.
+5. `PARTITION_PROBE_PENDING`: the probe has not returned a result yet (`gpu_index` is the card with no result). Wait or check the agent logs.
+6. `PARTITION_PROBE_FAILED` / `PARTITION_PROBE_SKIPPED`: the probe failed or was skipped; `probe_detail` is the probe's own output, such as
+   `the container runtime cannot load the embedded probe image`, `dGPU probe timed out` (15 seconds),
+   `probe container exited with code N`, or `no container runtime available on the node`.
+
+A request naming a backend that does not exist returns `PARTITION_BACKEND_UNKNOWN`; a backend no card on the node can use returns `PARTITION_BACKEND_NOT_ON_NODE`.
 
 When a GPU memory quota is set without specifying `partition_backend`, the platform selects a ready backend based on the candidate node. If none is available, it returns that node's capability reason;
 it does not always use the NVIDIA backend. Explicitly specifying a backend restricts selection to that backend. Specifying a backend without a positive `vram_limit_gib`

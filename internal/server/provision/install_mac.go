@@ -11,6 +11,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/launchd"
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/installscript"
+	"gpuworks.ai/gpuworks/internal/server/messages"
 )
 
 // remoteOS reports the target's kernel name as Go names it ("linux",
@@ -76,7 +77,7 @@ func (i *SSHInstaller) installMac(ctx context.Context, client *ssh.Client, req S
 	bin, err := i.ReadBin(report.BinaryName)
 	if err != nil {
 		report.Checks = append(report.Checks, CheckResult{Name: "Agent binary", Status: "error", Detail: err.Error()})
-		return report, fmt.Errorf("read agent binary %s: %w", report.BinaryName, err)
+		return report, failure(messages.ErrorAgentInstallBinaryUnavailable, fmt.Errorf("read agent binary %s: %w", report.BinaryName, err))
 	}
 	report.Checks = append(report.Checks, CheckResult{Name: "Agent binary", Status: "ok", Detail: fmt.Sprintf("%s (%d bytes)", report.BinaryName, len(bin))})
 
@@ -174,7 +175,7 @@ elif [ -e "$HOME/` + launchd.AgentPlist("") + `" ]; then echo "gui/$(id -u)"; fi
 // another server is left alone, so the caller reinstalls it for this node.
 func (i *SSHInstaller) restartMacAgent(ctx context.Context, client *ssh.Client, serverURL string) error {
 	if found, err := detectExistingAgent(ctx, client); err == nil && found.Unit && found.UnitServer != "" && found.UnitServer != trimServer(serverURL) {
-		return fmt.Errorf("the gpuworks launchd job is installed for another server (%s); not restarting it", found.UnitServer)
+		return failure(messages.ErrorAgentInstallForeignServer, fmt.Errorf("the gpuworks launchd job is installed for another server (%s); not restarting it", found.UnitServer))
 	}
 	out, err := run(ctx, client, macJobDomainCommand)
 	domain := strings.TrimSpace(out)

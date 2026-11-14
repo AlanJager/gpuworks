@@ -419,6 +419,18 @@
       "recovered": "带外恢复成功，Agent 已重新上线",
       "probeComplete": "带外探测已完成",
       "probeFailed": "带外探测失败：{{detail}}"
+    },
+    "skipped": {
+      "RECOVERY_SKIPPED_DISABLED": "本服务器已关闭带外恢复。",
+      "RECOVERY_SKIPPED_IN_PROGRESS": "该节点的恢复已在进行中。",
+      "RECOVERY_SKIPPED_ONLINE": "节点在线。",
+      "RECOVERY_SKIPPED_NEVER_CONNECTED": "节点从未连接过，无需恢复。",
+      "RECOVERY_SKIPPED_STOPPED": "节点的云实例已不存在。",
+      "RECOVERY_SKIPPED_NO_SSH_CREDENTIAL": "节点没有 SSH 凭据。",
+      "RECOVERY_SKIPPED_GRACE_PERIOD": "节点刚离线，正在等待其重新连接。",
+      "RECOVERY_SKIPPED_BACKOFF": "正在等待下一次恢复尝试。",
+      "RECOVERY_SKIPPED_SERVER_DIAL_BACKOFF": "服务器仍在尝试拨号连接 agent。",
+      "RECOVERY_SKIPPED_REDIAL": "云厂商更换了 agent 的地址，服务器改为拨号到新地址。"
     }
   },
   "telemetry": {

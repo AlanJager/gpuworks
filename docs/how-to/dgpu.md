@@ -22,10 +22,10 @@
 2. 在[部署模型](deploy-models.md)时填写 **dGPU 显存上限**，检查候选节点与显存评估结果，再提交。平台根据节点硬件选择已就绪的后端；NVIDIA 对应 HAMi-core、昇腾对应 vcann-rt、PPU 对应 ppu-slicing-shim、AMD 对应 rocm-slicing-shim、海光 Z100 / K100_AI / BW 对应原生 vdev，无需手动指定。
 3. 实例启动后，回到 **GPU 设备 → dGPU**，确认切片所属部署、节点和显存上限。需要验证两个模型共卡时，按[一张 GPU 跑两个模型](../tutorials/one-gpu-two-models.md)完成调用检查。
 
-能力以页面返回的 `status` 和 `reason` 为准：
+能力以页面返回的 `status` 和原因码 `reason_code` 为准（码与参数见[排障](troubleshooting.md#dgpu-能力-unavailable)）：
 
 - `ready`：运行时、dGPU 资产及该后端要求的逐卡探针条件全部满足，可以创建带配额的实例；NVIDIA 与 AMD 豁免行为探针。
-- `unavailable`：任一条件不满足，`reason` 说明具体原因，例如 agent 版本过旧未上报探针、
+- `unavailable`：任一条件不满足，`reason_code` 说明具体原因，例如 agent 版本过旧未上报探针、
   缺少 dGPU 资产、运行时未验证容器推理、探针尚未完成或探针失败。
 
 | 不可用原因 | 处理 |

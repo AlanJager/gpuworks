@@ -171,7 +171,7 @@ Linux 上以非 root 用户运行 agent 时，使用 runveil 需要该用户能�
 
 预检查中的 `Existing agent` 和 `Existing node` 会提示已有 agent 或同地址节点。SSH 安装在需要替换时要求确认；nohup 模式只确认同一安装目录内的冲突。**手工安装命令和离线包不会等待确认**，替换另一个 server 的 agent 时只输出 `WARNING`，执行前务必核对。
 
-替换后另一个 server 的节点会离线，其带外恢复会报 `foreign_agent`，不会自动抢回。处理方式见[排障](troubleshooting.md)。
+替换后另一个 server 的节点会离线，其带外恢复会报 `AGENT_INSTALL_FOREIGN_SERVER`，不会自动抢回。处理方式见[排障](troubleshooting.md)。
 
 ## 节点与 server 网络不通
 

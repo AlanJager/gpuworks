@@ -62,6 +62,7 @@ func nodeDTO(n *store.Node, includeToken bool) dto.Node {
 		RecoveryAttempts:      n.RecoveryAttempts,
 		LastProbeAt:           utcTimePtr(n.LastProbeAt),
 		LastRecoveryError:     n.LastRecoveryError,
+		LastRecoveryCode:      n.LastRecoveryCode,
 		HasSSHCredential:      n.HasSSHCredential,
 		CreatedAt:             utcTime(n.CreatedAt),
 		GPUs:                  make([]dto.GPU, 0, len(n.GPUs)),

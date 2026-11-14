@@ -186,6 +186,7 @@ type Node struct {
 	RecoveryAttempts   int           `json:"recovery_attempts,omitempty"`
 	LastProbeAt        *time.Time    `json:"last_probe_at,omitempty"`
 	LastRecoveryError  string        `json:"last_recovery_error,omitempty"`
+	LastRecoveryCode   string        `json:"last_recovery_code,omitempty"` // names LastRecoveryError; absent on errors recorded before codes
 	HasSSHCredential   bool          `json:"has_ssh_credential"`
 	CreatedAt          time.Time     `json:"created_at"`
 	GPUs               []GPU         `json:"gpus"`

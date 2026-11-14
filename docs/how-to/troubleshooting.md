@@ -164,7 +164,8 @@ kubectl -n <namespace> logs ds/gpuworks-agent
 ### 查看恢复进度
 
 在节点详情查看「带外恢复」的阶段、尝试次数、上次探测时间和最后错误，分别对应
-`recovery_phase`、`recovery_attempts`、`last_probe_at`、`last_recovery_error`。
+`recovery_phase`、`recovery_attempts`、`last_probe_at`、`last_recovery_error`；`last_recovery_code` 是最后错误的码
+（`SSH_*`、`AGENT_INSTALL_*`、`RECOVERY_*`），界面按它显示原因，错误原文作为证据列在下面。旧版本记下的错误没有码，原样显示。
 只有 `recovery_phase` 非空时才显示这张卡片。
 
 平台在 `--stale-after`（默认 90 秒）没有收到心跳后标记离线，依次尝试：
@@ -188,13 +189,13 @@ SSH 恢复通常执行 `systemctl restart gpuworks-agent`，没有 unit 时用 n
 - 已保存 SSH 凭据：立即尝试恢复，忽略等待窗口；仍跳过在线、未接入和无凭据的节点。凭据可通过 `PUT /api/v1/nodes/{uuid}/ssh` 写入。
 - 未保存 SSH 凭据：界面弹出 agent 安装命令，不执行 SSH 恢复；到节点运行该命令重新接入。
 - 阶段为 `stopped`：按钮置灰，悬停查看云实例已销毁的原因。
-- server 设置了 `--recovery-enabled=false`：手动触发返回 `recovery is disabled`。参数见[配置参考](../reference/configuration.md)。
+- server 设置了 `--recovery-enabled=false`：手动触发返回 `skipped_code` 为 `RECOVERY_SKIPPED_DISABLED`。参数见[配置参考](../reference/configuration.md)。
 
 ### 按最后错误处理
 
 **缺少 SSH 凭据或平台公钥**
 
-自动恢复会跳过无凭据节点；直接调用恢复 API 返回 `ssh credential is not configured`。
+自动恢复会跳过无凭据节点；直接调用恢复 API 返回 `skipped_code` 为 `RECOVERY_SKIPPED_NO_SSH_CREDENTIAL`。
 补充凭据后再重连。凭据只有地址时，平台使用平台密钥登录；出现 `has not authorized the platform key` 时，按错误给出的命令授权公钥。
 
 **还在等待，或已停止自动恢复**
@@ -205,7 +206,7 @@ SSH 恢复通常执行 `systemctl restart gpuworks-agent`，没有 unit 时用 n
 
 **agent 正在运行，但没有控制会话**
 
-错误为 `agent is running but has not established a control-plane session` 时，恢复不会重启或重装 agent。
+错误码为 `RECOVERY_AGENT_NOT_CONNECTED` 时，恢复不会重启或重装 agent。
 按[节点一直「连接中」或不上线](#节点一直连接中或不上线)检查 agent 日志和连接配置。
 
 平台用 unit 所指 agent 的 server 地址判断归属：读取配置文件，较早安装版本读取命令行 `--server`。
@@ -213,7 +214,7 @@ SSH 恢复通常执行 `systemctl restart gpuworks-agent`，没有 unit 时用 n
 
 **unit 属于另一个 server**
 
-`foreign_agent:` 后会写出另一个 server 的地址。所有安装共用 `gpuworks-agent` unit 名，后装的会覆盖先装的；恢复不会重启或重装正在运行的他人 unit。
+错误码为 `AGENT_INSTALL_FOREIGN_SERVER`，错误原文写出另一个 server 的地址。所有安装共用 `gpuworks-agent` unit 名，后装的会覆盖先装的；恢复不会重启或重装正在运行的他人 unit。
 
 确认那个 server 已不再使用这台主机后：
 
@@ -1113,26 +1114,29 @@ agent 每 15 秒检查一次运行中实例的容器。被 `docker stop`、进�
 
 ## dGPU 能力 unavailable
 
-**现象**：部署带显存上限时评估出现 `partition_unavailable`，或创建返回 400 `DISTRIBUTED_PARTITION_BACKEND_UNAVAILABLE`
-（文案 `partition backend <id> is unavailable: <reason>`）。
+**现象**：部署带显存上限时评估出现 `partition_unavailable`，或创建返回 400，码为下表中的原因码（多机部署的其他成员不可用时为
+`DISTRIBUTED_PARTITION_BACKEND_UNAVAILABLE`，`params.reason_code` 是该成员的原因码）。
 
 **读取状态**：`GET /api/v1/nodes` / `GET /api/v1/gpus` 响应里的 `partition_capabilities[]`，每项的 `status` 只有
-`ready` / `unavailable`，`reason` 是唯一原因来源；非 NVIDIA 后端另有 `probe_status`（`passed` / `skipped` / `failed`）。
+`ready` / `unavailable`；不可用时 `reason_code` 说明原因，`reason_params` 给出参数，`reason` 只是英文 fallback。
+非 NVIDIA 后端另有 `probe_status`（`passed` / `skipped` / `failed`）。
 
 **怎么确认与处理**：`nvidia-dgpu` 不需要探针，只看运行时与资产；`ascend-dgpu` / `ppu-dgpu` 要探针通过。
 探针每个 agent 进程默认跑一次并缓存（资产、GPU 或运行时变化时会重跑），修好环境后重启 agent 重新探测。不要退回整卡假装成功。
 细节见[启用和排查 dGPU](dgpu.md)、[支持矩阵](../reference/support-matrix.md)。
 
-**可能原因（`reason` 文案，按判断顺序）**
+**可能原因（`reason_code`，按判断顺序）**
 
-1. `container inference unverified: no usable docker/udocker runtime on the node`：节点没有可用运行时。
-2. `container inference unverified: <原因>`：后端对运行时有约束（如 PPU 只在 Docker 上验证）。
-3. `agent has not reported current dGPU safety capability; upgrade the agent`：agent 太旧。
-4. `missing dGPU assets: <文件列表>`：dGPU 资产缺失。
-5. `dGPU probe has not completed: …`：探针还没出结果，稍等或看 agent 日志。
-6. `dGPU probe failed: <detail>`：探针失败；探针 `skipped` 时回到 `container inference unverified: <探针 detail>`（如 `no container runtime available on the node`）。detail 来自探针容器，如
+1. `PARTITION_RUNTIME_MISSING`：节点没有可用运行时。
+2. `PARTITION_RUNTIME_UNSUPPORTED`：后端只在 `reason_params.supported_runtimes` 列出的运行时上可用，节点用的是 `runtime`（如 PPU 只在 Docker、Kubernetes 上验证）。
+3. `PARTITION_AGENT_UPGRADE_REQUIRED`：agent 太旧。
+4. `PARTITION_ASSETS_MISSING`：dGPU 资产缺失，`missing_assets` 列出文件。
+5. `PARTITION_PROBE_PENDING`：探针还没出结果（`gpu_index` 是没收到结果的卡），稍等或看 agent 日志。
+6. `PARTITION_PROBE_FAILED` / `PARTITION_PROBE_SKIPPED`：探针失败或被跳过，`probe_detail` 是探针自己的输出，如
    `the container runtime cannot load the embedded probe image`、`dGPU probe timed out`（15 秒）、
-   `probe container exited with code N`。
+   `probe container exited with code N`、`no container runtime available on the node`。
+
+请求指定了不存在的后端时为 `PARTITION_BACKEND_UNKNOWN`，指定的后端在该节点没有能用的卡时为 `PARTITION_BACKEND_NOT_ON_NODE`。
 
 有显存额度而未指定 `partition_backend` 时，平台按候选节点选择就绪的后端；没有可用后端时返回该节点的能力原因，
 并非固定使用 NVIDIA 后端。显式指定后端会限定该后端；给了后端却没给正数 `vram_limit_gib` 时，

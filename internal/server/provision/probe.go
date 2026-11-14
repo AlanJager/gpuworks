@@ -10,6 +10,7 @@ import (
 	"golang.org/x/crypto/ssh"
 
 	"gpuworks.ai/gpuworks/internal/agentconf"
+	"gpuworks.ai/gpuworks/internal/server/messages"
 )
 
 // SSHProbeRequest contains both the write-only SSH authentication material and
@@ -97,10 +98,10 @@ func (i *SSHInstaller) Probe(ctx context.Context, req SSHProbeRequest) ProbeResu
 	runningOut, runningErr := runContext(ctx, client, agentRecoveryProbeCommand(dir, req.ServerURL, req.Token))
 	if runningErr != nil {
 		err := fmt.Errorf("probe agent process: %w", runningErr)
-		return ProbeResult{Reachable: true, AgentInstalled: strings.Contains(installedOut, "installed"), Detail: err.Error(), Err: err}
+		return ProbeResult{Reachable: true, AgentInstalled: lastLine(strings.TrimSpace(installedOut)) == "installed", Detail: err.Error(), Err: err}
 	}
 	detail := strings.TrimSpace(runningOut)
-	result := ProbeResult{Reachable: true, AgentInstalled: strings.Contains(installedOut, "installed"), Detail: detail}
+	result := ProbeResult{Reachable: true, AgentInstalled: lastLine(strings.TrimSpace(installedOut)) == "installed", Detail: detail}
 	switch state, rest, _ := strings.Cut(detail, " "); state {
 	case "systemd", "process":
 		result.AgentRunning = true
@@ -157,7 +158,7 @@ func (i *SSHInstaller) RestartAgent(ctx context.Context, req SSHProbeRequest) er
 		if foreign, err := foreignUnitServer(ctx, client, req.ServerURL); err != nil {
 			return err
 		} else if foreign != "" {
-			return fmt.Errorf("gpuworks-agent unit is installed for another server (%s); not restarting it", foreign)
+			return failure(messages.ErrorAgentInstallForeignServer, fmt.Errorf("gpuworks-agent unit is installed for another server (%s); not restarting it", foreign))
 		}
 		command := "systemctl restart gpuworks-agent"
 		if needsSudo(ctx, client) {
@@ -182,7 +183,7 @@ func (i *SSHInstaller) RestartAgent(ctx context.Context, req SSHProbeRequest) er
 		return fmt.Errorf("rootless agent restart needs the node's persisted configuration: %w", err)
 	}
 	if out, err := runContext(ctx, client, "test -x "+shellQuote(dir+"/gpuworks-agent")); err != nil {
-		return fmt.Errorf("agent binary is not installed: %s: %w", strings.TrimSpace(out), err)
+		return failure(messages.ErrorAgentInstallBinaryMissing, fmt.Errorf("agent binary is not installed: %s: %w", strings.TrimSpace(out), err))
 	}
 	// Point of no return: same reasoning as the systemd branch above - the
 	// install script is the mutating action and must run to completion once

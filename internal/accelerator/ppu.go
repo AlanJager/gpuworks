@@ -1,7 +1,5 @@
 package accelerator
 
-import "strings"
-
 type ppuLogicalBackend struct{}
 
 func (ppuLogicalBackend) ID() string { return BackendPPULogical }
@@ -24,14 +22,7 @@ func (ppuLogicalBackend) NeedsInstanceTeardown() bool { return true }
 // the ledger on the host (through its hostRoot) and the instance pod
 // reaches it through an explicit hostPath mount at that same path (see
 // partition_ppu.go).
-func (ppuLogicalBackend) RuntimeConstraint(driver string) string {
-	switch strings.ToLower(strings.TrimSpace(driver)) {
-	case "docker", "kube":
-		return ""
-	default:
-		return "PPU is currently verified on the Docker or Kubernetes runtime only"
-	}
-}
+func (ppuLogicalBackend) SupportedRuntimes() []string { return []string{"docker", "kube"} }
 
 var ppuProfiles = []PartitionProfile{
 	{Backend: BackendPPULogical, Vendor: VendorPPU, Framework: "hggc", VersionPrefix: "13", VersionOptional: true, Architectures: []string{"x86_64"}, DisplayCompatibility: "HGGC 13.x × x86_64", Verified: true, ChipFamilies: []string{"ZW810E", "Beethoven"}},

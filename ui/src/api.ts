@@ -86,13 +86,26 @@ export interface GPU {
   health_guide?: GPUHealthGuide;
 }
 
+/** The facts a capability's reason_code names; probe_detail is the agent's own probe output. */
+export interface PartitionReasonParams {
+  runtime?: string;
+  supported_runtimes?: string[];
+  missing_assets?: string[];
+  gpu_index?: number;
+  probe_detail?: string;
+}
+
 export interface PartitionCapability {
   backend: string;
   display_name: string;
   vendor: string;
   maturity: "release" | "experimental" | string;
   status: "ready" | "unavailable";
+  /** English fallback of reason_code; render reason_code instead. */
   reason?: string;
+  /** Why an unavailable capability is not ready (PARTITION_*). */
+  reason_code?: string;
+  reason_params?: PartitionReasonParams;
   compatibility_summary?: string;
   compatibility_notes?: string[];
   probe_status?: "passed" | "failed" | "skipped" | string;
@@ -318,6 +331,8 @@ export interface Node {
   recovery_attempts?: number;
   last_probe_at?: string;
   last_recovery_error?: string;
+  /** Names last_recovery_error (SSH_*, AGENT_INSTALL_*, RECOVERY_*); absent on errors recorded before codes. */
+  last_recovery_code?: string;
   has_ssh_credential: boolean;
   created_at: string;
   gpus: GPU[];
@@ -374,7 +389,11 @@ export interface RecoveryOutcome {
   action: string;
   probe: SSHProbeResult;
   recovered: boolean;
+  /** Why the round did nothing (RECOVERY_SKIPPED_*); skipped_reason is its English text. */
+  skipped_code?: string;
   skipped_reason?: string;
+  /** Names error, the same code recorded on the node. */
+  error_code?: string;
   error?: string;
 }
 

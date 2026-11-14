@@ -256,7 +256,7 @@ Cookie 设置为 `HttpOnly`、`SameSite=Lax`，其中保存的是不透明会话
 | GET | `/api/v1/nodes/{uuid}/ssh` | 查看节点 SSH 凭据配置（不含明文密钥） | JWT |
 | PUT | `/api/v1/nodes/{uuid}/ssh` | 写入节点 SSH 凭据（离线恢复用） | JWT(admin) |
 | DELETE | `/api/v1/nodes/{uuid}/ssh` | 删除节点 SSH 凭据 | JWT(admin) |
-| POST | `/api/v1/nodes/{uuid}/recovery/probe` | 手动触发一次离线节点恢复探测 | JWT(admin) |
+| POST | `/api/v1/nodes/{uuid}/recovery/probe` | 手动触发一次离线节点恢复探测；什么都没做时 `skipped_code`（`RECOVERY_SKIPPED_*`）说明原因，失败时 `error_code` 是记在节点上的同一个码，`skipped_reason`、`error` 是英文原文 | JWT(admin) |
 | POST | `/api/v1/nodes/{uuid}/token/regenerate` | 重新生成节点 token（会踢掉当前连接） | JWT(admin) |
 | DELETE | `/api/v1/nodes/{uuid}` | 默认通过保存的 SSH 凭据卸载 agent（Kubernetes 节点不卸载：agent 属于集群的 DaemonSet，只要 DaemonSet 仍选中该节点就会重新接入），确认完成后删除记录，返回 `{"status":"deleted","agent_uninstalled":true}`。没有已保存的 SSH 凭据时回 409 `NODE_DELETE_SSH_REQUIRED`，保留节点并提示配置 SSH 后重试，或手动卸载后使用 `?force=true`。卸载未确认回 409 `NODE_UNINSTALL_UNCONFIRMED`，保留节点及 SSH 凭据，并提示修复 SSH 后重试或手动卸载后强制移除。显式 `?force=true` 跳过卸载，仅删除记录，返回 `agent_uninstalled:false`；两种方式均拒绝有实例的节点（409）。force 非布尔值或重复参数回 400；节点不存在回 404 | JWT |
 | GET | `/api/v1/events` | SSE 变更事件流 | JWT |
@@ -330,7 +330,7 @@ Cookie 设置为 `HttpOnly`、`SameSite=Lax`，其中保存的是不透明会话
 | 字段 | 含义 |
 |---|---|
 | `node_uuid`、`checked_at`、`connect_mode`、`saved_server_url` | 节点、报告时间、连接方向、安全保存地址；不是运行进程配置回读 |
-| `last_seen_at`、`recovery_phase`、`recovery_attempts`、`last_probe_at`、`last_recovery_error`、可选 `last_reject_reason`/`last_reject_at` | 已有上报、恢复与受控拒绝历史，不是本次执行恢复；未知拒绝原因不回显 |
+| `last_seen_at`、`recovery_phase`、`recovery_attempts`、`last_probe_at`、`last_recovery_error`、可选 `last_recovery_code`（最后错误的码，旧记录没有）、可选 `last_reject_reason`/`last_reject_at` | 已有上报、恢复与受控拒绝历史，不是本次执行恢复；未知拒绝原因不回显 |
 | `exposure` | `null` 或 `{url,state,observed_at}`，公网连接器最近记录及原时间；不是本次存活检查 |
 | `checks` | `agent_control` 表达本次RPC/离线/旧版/失败；另有可选 `ssh`、`configuration`、`node_http`。每项有 `stage`、`outcome`、`vantage`，有证据才有 `target`、`source`、`observed_at`、`http_status` |
 | `agent_report?` | 清洗后的已有 `DoctorReport`，仅白名单 `connection.*` primitive Facts；`report` 为空，不透传 Findings、typed evidence 或其他原文 |

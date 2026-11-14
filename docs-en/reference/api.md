@@ -256,7 +256,7 @@ Login, logout, and management write requests using login sessions check the requ
 | GET | `/api/v1/nodes/{uuid}/ssh` | View the node's SSH credential configuration (without plaintext keys) | JWT |
 | PUT | `/api/v1/nodes/{uuid}/ssh` | Write the node's SSH credentials (for offline recovery) | JWT(admin) |
 | DELETE | `/api/v1/nodes/{uuid}/ssh` | Delete the node's SSH credentials | JWT(admin) |
-| POST | `/api/v1/nodes/{uuid}/recovery/probe` | Manually trigger one recovery probe for an offline node | JWT(admin) |
+| POST | `/api/v1/nodes/{uuid}/recovery/probe` | Manually trigger one recovery probe for an offline node; when it does nothing, `skipped_code` (`RECOVERY_SKIPPED_*`) says why, and on failure `error_code` is the same code recorded on the node; `skipped_reason` and `error` are the English text | JWT(admin) |
 | POST | `/api/v1/nodes/{uuid}/token/regenerate` | Regenerate the node token (disconnects the current connection) | JWT(admin) |
 | DELETE | `/api/v1/nodes/{uuid}` | By default, uninstall the agent using saved SSH credentials (Kubernetes nodes are not uninstalled: the agent belongs to the cluster's DaemonSet and re-enrolls as long as the DaemonSet still selects the node), delete the record after confirming completion, and return `{"status":"deleted","agent_uninstalled":true}`. If no SSH credentials are saved, return 409 `NODE_DELETE_SSH_REQUIRED`, retain the node, and suggest configuring SSH and retrying, or manually uninstalling the agent before using `?force=true`. If uninstallation is not confirmed, return 409 `NODE_UNINSTALL_UNCONFIRMED`, retain the node and SSH credentials, and suggest fixing SSH and retrying, or manually uninstalling before force removal. Explicitly specifying `?force=true` skips uninstallation, deletes only the record, and returns `agent_uninstalled:false`; both modes reject nodes with instances (409). A non-boolean force value or repeated parameter returns 400; a nonexistent node returns 404 | JWT |
 | GET | `/api/v1/events` | SSE change event stream | JWT |
@@ -330,7 +330,7 @@ Administrators manually trigger `POST /api/v1/nodes/{uuid}/connection-diagnostic
 | Field | Meaning |
 |---|---|
 | `node_uuid`, `checked_at`, `connect_mode`, `saved_server_url` | Node, report time, direction and safe saved URL; not a process configuration readback |
-| `last_seen_at`, `recovery_phase`, `recovery_attempts`, `last_probe_at`, `last_recovery_error`, optional `last_reject_reason`/`last_reject_at` | Existing reporting/recovery and controlled rejection history, not recovery performed by this request; unknown rejection reasons are not echoed |
+| `last_seen_at`, `recovery_phase`, `recovery_attempts`, `last_probe_at`, `last_recovery_error`, optional `last_recovery_code` (the last error's code; older records have none), optional `last_reject_reason`/`last_reject_at` | Existing reporting/recovery and controlled rejection history, not recovery performed by this request; unknown rejection reasons are not echoed |
 | `exposure` | `null` or `{url,state,observed_at}`: the connector's last record and original time, not a new liveness check |
 | `checks` | `agent_control` describes this RPC, offline/old-agent or failure result; optional `ssh`, `configuration`, `node_http`. Each has `stage`, `outcome`, `vantage`, and only when observed: `target`, `source`, `observed_at`, `http_status` |
 | `agent_report?` | A sanitized existing `DoctorReport`, retaining only whitelisted primitive `connection.*` facts. `report` is empty; Findings, typed evidence and other original content are not forwarded |

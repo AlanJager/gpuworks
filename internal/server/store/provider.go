@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"gorm.io/gorm"
+
+	"gpuworks.ai/gpuworks/internal/server/messages"
 )
 
 // ---- providers ----
@@ -199,6 +201,7 @@ func removeProviderInstances(tx *gorm.DB, gone []ProviderInstance) ([]string, er
 	}
 	if err := tx.Model(&Node{}).Where("id IN ?", nodeIDs).Updates(map[string]any{
 		"recovery_phase": RecoveryPhaseStopped, "last_recovery_error": RecoveryStoppedProviderInstanceGone,
+		"last_recovery_code": messages.ErrorRecoveryProviderInstanceGone,
 	}).Error; err != nil {
 		return nil, err
 	}

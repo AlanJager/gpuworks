@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"golang.org/x/crypto/ssh"
+
+	"gpuworks.ai/gpuworks/internal/server/messages"
 )
 
 // SSH authentication modes. A request names the one the operator chose; an
@@ -54,11 +56,11 @@ func (a SSHAuth) attempts() ([]authAttempt, error) {
 	var out []authAttempt
 	platform := func() error {
 		if a.PlatformKey == nil || strings.TrimSpace(a.PlatformKey.PrivatePEM) == "" {
-			return errors.New("the platform SSH key is not available")
+			return failure(messages.ErrorSSHCredentialInvalid, errors.New("the platform SSH key is not available"))
 		}
 		signer, err := ssh.ParsePrivateKey([]byte(a.PlatformKey.PrivatePEM))
 		if err != nil {
-			return fmt.Errorf("parse platform key: %w", err)
+			return failure(messages.ErrorSSHCredentialInvalid, fmt.Errorf("parse platform key: %w", err))
 		}
 		out = append(out, authAttempt{kind: AuthPlatformKey, label: "platform key " + a.PlatformKey.Fingerprint, signer: signer})
 		return nil
@@ -66,7 +68,7 @@ func (a SSHAuth) attempts() ([]authAttempt, error) {
 	privateKey := func() error {
 		signer, err := ssh.ParsePrivateKey([]byte(a.PrivateKeyPEM))
 		if err != nil {
-			return fmt.Errorf("parse private key: %w", err)
+			return failure(messages.ErrorSSHCredentialInvalid, fmt.Errorf("parse private key: %w", err))
 		}
 		out = append(out, authAttempt{kind: AuthPrivateKey, label: "private key " + ssh.FingerprintSHA256(signer.PublicKey()), signer: signer})
 		return nil
@@ -81,7 +83,7 @@ func (a SSHAuth) attempts() ([]authAttempt, error) {
 		}
 	case AuthPassword, AuthKeyboardInteractive:
 		if a.Password == "" {
-			return nil, errors.New("ssh password is required")
+			return nil, failure(messages.ErrorSSHCredentialInvalid, errors.New("ssh password is required"))
 		}
 		label := "password"
 		if a.Mode == AuthKeyboardInteractive {
@@ -90,7 +92,7 @@ func (a SSHAuth) attempts() ([]authAttempt, error) {
 		password(a.Mode, label, a.Password)
 	case AuthPrivateKey:
 		if strings.TrimSpace(a.PrivateKeyPEM) == "" {
-			return nil, errors.New("ssh private key is required")
+			return nil, failure(messages.ErrorSSHCredentialInvalid, errors.New("ssh private key is required"))
 		}
 		if err := privateKey(); err != nil {
 			return nil, err
@@ -119,10 +121,10 @@ func (a SSHAuth) attempts() ([]authAttempt, error) {
 			password(AuthKeyboardInteractive, "keyboard-interactive password", a.Password)
 		}
 		if len(out) == 0 {
-			return nil, errors.New("no ssh credential: the platform key is not available and no password or private key was given")
+			return nil, failure(messages.ErrorSSHCredentialInvalid, errors.New("no ssh credential: the platform key is not available and no password or private key was given"))
 		}
 	default:
-		return nil, fmt.Errorf("unknown ssh auth mode %q", a.Mode)
+		return nil, failure(messages.ErrorSSHCredentialInvalid, fmt.Errorf("unknown ssh auth mode %q", a.Mode))
 	}
 	return out, nil
 }
@@ -319,6 +321,10 @@ func (e *SSHAuthError) Error() string {
 
 func (e *SSHAuthError) Unwrap() error { return e.Err }
 
+// FailureCode names the failure for FailureCode: the target rejected what
+// was offered, whatever the library error underneath says.
+func (e *SSHAuthError) FailureCode() string { return messages.ErrorSSHAuthFailed }
+
 // DialSSH opens an SSH client with auth's attempts. hostKeys may be nil for a
 // one-off connection to an endpoint whose host key is not tracked.
 func DialSSH(ctx context.Context, user, host string, port int, auth SSHAuth, timeout time.Duration, hostKeys HostKeyStore) (*ssh.Client, AuthOutcome, error) {
@@ -330,10 +336,10 @@ func DialSSH(ctx context.Context, user, host string, port int, auth SSHAuth, tim
 	client, err := connect(ctx, user, host, port, methods, timeout, hostKeys)
 	outcome := recorder.outcome(err == nil)
 	if err != nil {
-		// x/crypto/ssh reports exhausted authentication as an untyped error.
-		// No callback also means the peer offered none of our method types,
-		// not just that the TCP/host-key handshake failed before authentication.
-		if len(outcome.Tried) == 0 && !strings.Contains(err.Error(), "ssh: unable to authenticate, attempted methods ") {
+		// No callback with exhausted authentication means the peer offered
+		// none of our method types, not just that the TCP/host-key handshake
+		// failed before authentication.
+		if len(outcome.Tried) == 0 && !authExhausted(err) {
 			return nil, outcome, err // never got as far as authenticating
 		}
 		authErr := &SSHAuthError{Outcome: outcome, Err: err}
