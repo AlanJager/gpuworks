@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { Alert, Button, Card, Col, Row, Skeleton, Space, Typography } from "antd";
+import { Alert, Button, Card, Col, Row, Skeleton } from "antd";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import EmptyState from "../../components/EmptyState";
@@ -12,7 +12,6 @@ import ServiceTable from "./ServiceTable";
 import SignalTile from "./SignalTile";
 import { formatLatency, latencyUnit } from "./signalFormat";
 import TimeRangeControl, { PickedRangeNote, TimeRangeProvider, useTimeRange } from "./TimeRangeContext";
-import StateSummary from "./StateSummary";
 import InfoTitle from "./InfoTitle";
 import RequestLookup from "./RequestLookup";
 import { DistributionState, InputOutputHeatmap } from "./RequestShapeCards";
@@ -98,6 +97,7 @@ function MonitorPageContent() {
   if (data) lastData.current = data;
   const layoutData = data ?? lastData.current;
 
+  const [serviceFilterEpoch, setServiceFilterEpoch] = useState(0);
   const [filterIds, setFilterIds] = useState<number[] | null>(null);
 
   return (
@@ -140,33 +140,18 @@ function MonitorPageContent() {
                 detail={signalDetail(signal, t)}
                 valueLabel={signal.key === "token_rate" ? t("signals.tokenRateInput") : undefined}
                 denominatorLabel={signal.key === "token_rate" ? t("signals.tokenRateOutput") : undefined}
-                onClick={signal.collected ? () => setFilterIds(filterForSignal(signal.key, layoutData.services)) : undefined}
+                onClick={signal.collected ? () => { setFilterIds(filterForSignal(signal.key, layoutData.services)); setServiceFilterEpoch(value => value + 1); } : undefined}
                 tooltip={signalTooltip(signal, t)}
               />
             ))}
           </div>
 
-          <div style={{ margin: "12px 0" }}>
-            <StateSummary services={layoutData.services} onFilter={setFilterIds} />
-          </div>
 
-          <Card
-            title={t("table.service")}
-            extra={
-              filterIds && (
-                <Space size={8}>
-                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                    {t("table.filtered", { count: filterIds.length })}
-                  </Typography.Text>
-                  <Button size="small" type="link" onClick={() => setFilterIds(null)}>
-                    {t("table.clearFilter")}
-                  </Button>
-                </Space>
-              )
-            }
-          >
-            <ServiceTable services={layoutData.services} filterDeploymentIds={filterIds} onRefresh={refetch} loading={loading && !data} />
-          </Card>
+          {filterIds && <div className="mb-2 flex items-center gap-2 text-label text-fg-muted">
+            {t("table.filtered", { count: filterIds.length })}
+            <Button size="small" type="link" onClick={() => setFilterIds(null)}>{t("table.clearFilter")}</Button>
+          </div>}
+          <ServiceTable key={serviceFilterEpoch} services={layoutData.services} filterDeploymentIds={filterIds} onRefresh={refetch} loading={loading && !data} />
 
           <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
             <Col xs={24} xl={10}>

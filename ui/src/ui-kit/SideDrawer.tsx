@@ -18,7 +18,7 @@ export function SideDrawer({ open, onClose, title, subtitle, children, extra, fo
     if (deferEscapeToModal && details.reason === "escape-key" && Array.from(document.querySelectorAll<HTMLElement>(".ant-modal-wrap")).some(modal => modal.getClientRects().length > 0)) return;
     onClose();
   }}>
-    <DialogContent placement="right" className={`flex flex-col overflow-hidden ${className ?? ""}`}
+    <DialogContent placement="right" className={`rounded-none flex flex-col overflow-hidden ${className ?? ""}`}
       style={{ width: typeof width === "number" ? `min(${width}px, calc(100vw - 32px))` : width, maxWidth: "calc(100vw - 32px)" }}
       // The close button sits in the header row below. Zeron's own one is a
       // full-width sticky row laid over the header, which swallowed clicks on

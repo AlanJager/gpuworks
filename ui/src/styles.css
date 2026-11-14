@@ -3,6 +3,9 @@
 @import "./pages/images/imageSummary.css";
 
 :root {
+  /* Brand artwork keeps its original light/dark canvas, independent of the UI theme. */
+  --vendor-logo-light: #fff;
+  --vendor-logo-dark: #252d3c;
   --assistant-panel-width: 480px;
   color: var(--fg-muted);
   background: var(--surface-base);
@@ -1524,3 +1527,6 @@ tbody tr:hover > .resource-table-pinned { background-image: linear-gradient(var(
 .deployment-detail-tabs > [role="tabpanel"]:not([hidden]):has(> #deployment-instances > .replica-cascade) { overflow: hidden; scrollbar-gutter: auto; padding-inline-end: 0; }
 .deployment-detail-tabs #deployment-instances > section { flex: 1; }
 .deployment-detail-tabs #deployment-instances :is(.instance-startup-progress, [tabindex="-1"]) { scroll-margin-top: 8px; }
+
+.vendor-logo { background: var(--vendor-logo-light); padding: 2px 4px; border-radius: var(--radius-sm); }
+.vendor-logo-kunlunxin { background: var(--vendor-logo-dark); }

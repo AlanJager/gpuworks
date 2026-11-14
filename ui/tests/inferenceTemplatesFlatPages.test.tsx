@@ -112,7 +112,10 @@ function renderCatalogFlow(initialEntry = "/inference-templates") {
 }
 
 // Tests that open the editor get the server-written document of the model they show.
+const { FeedbackHost } = await import("../src/ui-kit/feedback/index.tsx");
+
 beforeEach(() => {
+  render(<I18nextProvider i18n={i18n}><FeedbackHost /></I18nextProvider>);
   api.inferenceTemplateYAML = (async (modelID: string) => serverYAML(modelID)) as never;
 });
 
@@ -128,10 +131,10 @@ test("flat catalog exposes loading, success, keyboard navigation, and chip filte
   api.detectedInferenceTemplateChips = (async () => list([{ vendor: "nvidia", name: "NVIDIA H100", cc: "9.0" }])) as never;
   api.inferenceTemplateChips = (async () => list([{ vendor: "nvidia", name: "NVIDIA H100", cc: 9, category: "Data Center", architecture: "Hopper" }])) as never;
   const { container } = renderList();
-  assert.ok(container.querySelector(".ant-spin-spinning"));
+  assert.ok(screen.getByRole("status"));
   resolvePage({ items: [upstreamModel], page: 1, page_size: 200, total: 1 } as never);
   assert.equal((await screen.findByText("DeepSeek Model")).textContent, "DeepSeek Model");
-  const open = screen.getByRole("button", { name: "DeepSeek Model" });
+  const open = screen.getByRole("link", { name: "DeepSeek Model" });
   open.focus();
   await userEvent.setup().keyboard("{Enter}");
   assert.equal(dom.window.location.pathname, "/", "MemoryRouter navigation remains isolated from the browser URL");
@@ -254,7 +257,7 @@ test("returning from any model detail restores the catalog organization and filt
   await userEvent.setup().click(screen.getByText("Chat"));
   const search = screen.getByPlaceholderText("Search models or weight repositories");
   await userEvent.setup().type(search, "Paddle");
-  await userEvent.setup().click(screen.getByRole("button", { name: "PaddleOCR VL 1.6" }));
+  await userEvent.setup().click(screen.getByRole("link", { name: "PaddleOCR VL 1.6" }));
 
   assert.ok((await screen.findAllByText("paddlepaddle/paddleocr-vl-1.6")).length >= 1);
   await userEvent.setup().click(screen.getByRole("button", { name: /Back to List/ }));
@@ -300,7 +303,7 @@ test("models inside one organization are ordered by creation date descending", a
 
   await screen.findByText("Newest Model");
   assert.deepEqual(
-    [...container.querySelectorAll(".template-model-title")].map((item) => item.textContent),
+    [...container.querySelectorAll(".resource-table-name a")].map((item) => item.textContent),
     ["Same Day Model", "Newest Model", "Older Model"],
   );
 });
@@ -862,12 +865,8 @@ test("a hypothetical AMD chip retains its architecture selector", async () => {
   render(<I18nextProvider i18n={i18n}><MemoryRouter><InferenceTemplatesPage /></MemoryRouter></I18nextProvider>);
   fireEvent.click(await screen.findByRole("button", { name: /Add Chip/ }));
   const dialog = await screen.findByRole("dialog", { name: "Add a hypothetical GPU" });
-  fireEvent.mouseDown(within(dialog).getByRole("combobox"));
-  await waitFor(() => assert.equal(document.querySelectorAll(".ant-select-item-option").length > 0, true));
-  const option = [...document.querySelectorAll(".ant-select-item-option")].find((el) => el.textContent?.includes("gfx1151"));
-  assert.equal(option !== undefined, true);
-  fireEvent.click(option!);
-  fireEvent.click(within(dialog).getByRole("button", { name: "Add", exact: true }));
+  await userEvent.setup().click(within(dialog).getByRole("checkbox", { name: /gfx1151/ }));
+  fireEvent.click(within(dialog).getByRole("button", { name: "Add 1 models", exact: true }));
   const { loadHypotheticalChips } = await import("../src/pages/InferenceTemplatesPage.tsx");
   await waitFor(() => assert.equal(loadHypotheticalChips().some((chip) => chip.vendor === "amd" && chip.arch_id === "gfx1151"), true));
 });

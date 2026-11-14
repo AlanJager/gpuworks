@@ -42,7 +42,7 @@ await i18n.use(initReactI18next).init({
 });
 
 const { MemoryRouter, Route, Routes, useLocation } = await import("react-router-dom");
-const { cleanup, render, screen, within } = await import("@testing-library/react");
+const { cleanup, render, screen, within, waitFor } = await import("@testing-library/react");
 const userEvent = (await import("@testing-library/user-event")).default;
 const { default: ServiceTable } = await import("../src/pages/monitor/ServiceTable.tsx");
 import type { MonitorService } from "../src/api";
@@ -135,7 +135,7 @@ test("below the md breakpoint only service, state, health and TTFT show", () => 
   renderTable();
   const headerRow = screen.getAllByRole("row")[0];
   const headers = within(headerRow).getAllByRole("columnheader").map((h) => h.textContent);
-  assert.deepEqual(headers, ["Service", "State", "Health", "TTFT p95"]);
+  assert.deepEqual(headers, ["Service name", "State", "Health", "TTFT p95"]);
 });
 
 test("at or above the md breakpoint every column shows", () => {
@@ -192,4 +192,16 @@ test("the TTFT p95 column carries its unit and reads seconds from 1 s", () => {
   const cells = (name: string) => within(screen.getByText(name).closest("tr")!).getAllByRole("cell").map((cell) => cell.textContent);
   assert.ok(cells(slow[0].name).includes("39s"), String(cells(slow[0].name)));
   assert.ok(cells(services[1].name).includes(`${services[1].ttft_p95_ms} ms`), String(cells(services[1].name)));
+});
+
+test("state count shortcuts and the column filter share one selection", async () => {
+  renderTable();
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("button", { name: "Starting 1" }));
+  await waitFor(() => assert.equal(screen.getByRole("button", { name: "Starting 1" }).getAttribute("aria-pressed"), "true"));
+  await user.click(screen.getByRole("button", { name: "Clear filter: State Starting" }));
+  await waitFor(() => assert.equal(screen.getByRole("button", { name: "Starting 1" }).getAttribute("aria-pressed"), "false"));
+  await user.click(screen.getByRole("button", { name: "Filter by State" }));
+  await user.click(await screen.findByRole("checkbox", { name: /Starting/ }));
+  await waitFor(() => assert.equal(screen.getByRole("button", { name: "Starting 1" }).getAttribute("aria-pressed"), "true"));
 });

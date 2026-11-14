@@ -1,5 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Badge } from "antd";
+import { Badge } from "../../components/ui/badge";
+import StateSummary from "./StateSummary";
+import { STATE_BADGE } from "./serviceStates";
 import { useTranslation } from "react-i18next";
 import { Link, useNavigate } from "react-router-dom";
 import type { HealthStatus, MonitorService } from "../../api";
@@ -46,18 +48,7 @@ function useNarrow(breakpointPx = NARROW_BREAKPOINT): boolean {
   return narrow;
 }
 
-export const STATE_BADGE: Record<MonitorService["state"], "success" | "processing" | "default" | "error" | "warning"> = {
-  running: "success",
-  offline: "warning",
-  starting: "processing",
-  stopped: "default",
-  failed: "error",
-  asleep: "warning",
-};
 
-// STATE_ORDER lists service states serving first, then the ones that
-// need a look, then the deliberately stopped.
-export const STATE_ORDER: MonitorService["state"][] = ["running", "starting", "asleep", "offline", "failed", "stopped"];
 
 function num(value: number | null, digits = 0): ReactNode {
   return value == null ? <Dash /> : value.toFixed(digits);
@@ -95,6 +86,7 @@ export default function ServiceTable({
   const { t } = useTranslation("monitoring");
   const { t: tCommon } = useTranslation("common");
   const navigate = useNavigate();
+  const [stateFilter, setStateFilter] = useState<string[]>([]);
   const narrow = useNarrow();
 
   const rows = filterDeploymentIds ? services.filter((s) => filterDeploymentIds.includes(s.deployment_id)) : services;
@@ -103,7 +95,7 @@ export default function ServiceTable({
     {
       key: "service",
       role: "name",
-      title: t("table.service"),
+      title: t("table.serviceName"),
       width: SERVICE_COL_WIDTH,
       sortValue: (row) => row.name,
       render: (_: unknown, row: MonitorService) => (
@@ -117,13 +109,14 @@ export default function ServiceTable({
     },
     {
       key: "state",
+      filteredValue: stateFilter,
       title: t("table.state"),
       width: 110,
       sortValue: (row) => row.state,
       filters: [...new Set(services.map((row) => row.state))].map((state) => ({ value: state, text: t(`states.${state}`, { defaultValue: state }) })),
       onFilter: (value, row) => row.state === value,
       render: (_: unknown, row: MonitorService) => (
-        <Badge status={STATE_BADGE[row.state] ?? "default"} text={t(`states.${row.state}`, { defaultValue: row.state })} />
+        <Badge variant="dot" status={STATE_BADGE[row.state] ?? "neutral"}>{t(`states.${row.state}`, { defaultValue: row.state })}</Badge>
       ),
     },
     {
@@ -168,10 +161,13 @@ export default function ServiceTable({
   const columns = narrow ? narrowOrder.map((key) => byKey.get(key)!) : allColumns;
 
   return (
+    <section className="min-w-0">
     <ResourceTable<MonitorService>
       tableId={narrow ? "monitor-services-narrow" : "monitor-services"}
       rowKey="deployment_id"
       columns={columns}
+      toolbar={<div className="flex flex-wrap items-center gap-4"><h2 className="text-title font-semibold">{t("table.service")}</h2><StateSummary services={services} selected={stateFilter} onSelect={state => setStateFilter(current => current.length === 1 && current[0] === state ? [] : [state])} /></div>}
+      onFilterStateChange={filters => setStateFilter(filters.state ?? [])}
       data={rows}
       loading={loading}
       error={error}
@@ -183,5 +179,6 @@ export default function ServiceTable({
       // and stays in the accessibility tree as a row, not a link.
       onRow={(row) => ({ onClick: () => navigate(`/monitor/d/${row.deployment_id}`), className: "gpu-clickable-row" })}
     />
+    </section>
   );
 }

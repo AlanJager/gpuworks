@@ -239,6 +239,11 @@ test-ui-playground-layout:
 test-ui-agent-upgrade-results-layout:
 	python3 -B ui/tests/browser/agent_upgrade_results_layout.py
 
+.PHONY: test-ui-template-catalog-layout
+## Real Chromium catalog geometry at 1280/1920, both themes; build UI first.
+test-ui-template-catalog-layout:
+	python3 -B ui/tests/browser/template_catalog_layout.py
+
 .PHONY: ensure-bins
 ## ensure-bins: the E2E entry points need bin/gpuworks and bin/gpuworks-agent,
 ## but a full `make build` (UI bundle plus every cross-compiled agent) takes

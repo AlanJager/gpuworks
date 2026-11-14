@@ -1,0 +1,51 @@
+import { createI18n } from "./helpers/dom.ts";
+import assert from "node:assert/strict";
+import { afterEach, test } from "node:test";
+import React from "react";
+import { I18nextProvider } from "react-i18next";
+import type { DetectedTemplateChip, InferenceTemplateChip } from "../src/api";
+const { i18n } = await createI18n(["inferenceTemplates"]);
+const { cleanup, render, screen, within } = await import("@testing-library/react");
+const userEvent = (await import("@testing-library/user-event")).default;
+const { TemplateChipPicker } = await import("../src/pages/inferenceTemplates/TemplateChipPicker");
+const { TemplateHardwareFilters } = await import("../src/pages/inferenceTemplates/TemplateHardwareFilters");
+const { chipKey } = await import("../src/pages/inferenceTemplateFlat");
+afterEach(cleanup);
+const detected: DetectedTemplateChip = { vendor: "nvidia", name: "NVIDIA H100", cc: "9" };
+const catalog: InferenceTemplateChip[] = [
+  { vendor: "nvidia", name: "NVIDIA H100", cc: 9, category: "server", architecture: "Hopper" },
+  { vendor: "nvidia", name: "NVIDIA A100", cc: 8, category: "server", architecture: "Ampere" },
+  { vendor: "amd", name: "AMD Radeon 8060S", arch_id: "gfx1151", category: "consumer", architecture: "RDNA" },
+];
+const wrap = (children: React.ReactNode) => <I18nextProvider i18n={i18n}>{children}</I18nextProvider>;
+
+test("hardware groups show one vendor logo for multiple models and distinguish detected from hypothetical sources", () => {
+  const other = { vendor: "nvidia", name: "NVIDIA A100", cc: "8" };
+  const { container } = render(wrap(<TemplateHardwareFilters chips={[detected, other]} detectedKeys={new Set([chipKey(detected)])} value="" onChange={() => {}} />));
+  assert.equal(container.querySelectorAll('img[alt="NVIDIA"]').length, 1);
+  assert.ok(within(screen.getByRole("button", { name: "H100" })).getByTitle("Detected in this environment"));
+  assert.ok(within(screen.getByRole("button", { name: "A100" })).getByTitle("Hypothetical model"));
+});
+
+test("GPU picker preserves selections across vendors, supports removal, and submits complete hardware identities", async () => {
+  let saved: DetectedTemplateChip[] = [];
+  render(wrap(<TemplateChipPicker catalog={catalog} existing={[detected]} onClose={() => {}} onAdd={chips => { saved = chips; }} />));
+  const user = userEvent.setup();
+  assert.equal(screen.getByRole("checkbox", { name: /H100/ }).getAttribute("aria-disabled"), "true");
+  await user.click(screen.getByRole("checkbox", { name: "A100" }));
+  await user.click(screen.getByRole("button", { name: "AMD", exact: true }));
+  await user.click(screen.getByRole("checkbox", { name: /gfx1151/ }));
+  await user.click(screen.getByRole("button", { name: "A100 ×" }));
+  await user.click(screen.getByRole("button", { name: "Add 1 models" }));
+  assert.deepEqual(saved, [{ vendor: "amd", name: "AMD Radeon 8060S", cc: undefined, arch_id: "gfx1151" }]);
+});
+
+test("search finds models across brands and cancelling never submits the staged selection", async () => {
+  let adds = 0, closes = 0;
+  render(wrap(<TemplateChipPicker catalog={catalog} existing={[]} onClose={() => { closes++; }} onAdd={() => { adds++; }} />));
+  const user = userEvent.setup();
+  await user.type(screen.getByRole("textbox", { name: "Search vendor or model" }), "8060");
+  await user.click(screen.getByRole("checkbox", { name: /gfx1151/ }));
+  await user.click(screen.getByRole("button", { name: "Cancel", exact: true }));
+  assert.equal(closes, 1); assert.equal(adds, 0);
+});

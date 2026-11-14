@@ -83,7 +83,7 @@ export function compareSortValues(a: SortValue, b: SortValue): number {
 
 const EMPTY_ROWS: never[] = [];
 export default function ResourceTable<T extends object>({ tableId, columns, data, rowKey, loading, error, onRefresh, updatedAt,
-  toolbar, toolbarExtra, pagination, sort, onSortChange, onFiltersChange, rowSelection, expandable, onRow,
+  toolbar, toolbarExtra, pagination, sort, onSortChange, onFiltersChange, onFilterStateChange, rowSelection, expandable, onRow,
   emptyDescription, emptyKind = "data", emptyAction, filteredEmptyDescription, columnSettings = true,
 }: {
   tableId: string; columns: ResourceColumn<T>[]; data?: T[]; rowKey: TableProps<T>["rowKey"];
@@ -91,6 +91,8 @@ export default function ResourceTable<T extends object>({ tableId, columns, data
   toolbar?: ReactNode; toolbarExtra?: ReactNode; pagination?: TablePaginationConfig | false;
   sort?: ServerSort | null; onSortChange?: (sort: ServerSort | null) => void;
   onFiltersChange?: (filters: Record<string, string[]>) => void;
+  /** Observe local filters without opting into server-side filtering. */
+  onFilterStateChange?: (filters: Record<string, string[]>) => void;
   rowSelection?: TableProps<T>["rowSelection"]; expandable?: TableProps<T>["expandable"]; onRow?: TableProps<T>["onRow"];
   emptyDescription?: string; emptyKind?: EmptyStateKind; emptyAction?: ReactNode;
   /** What an empty list says when column filters are in effect: nothing matches them, with a way to clear them. A list
@@ -168,7 +170,9 @@ export default function ResourceTable<T extends object>({ tableId, columns, data
       const next = typeof updater === "function" ? updater(allFilters) : updater;
       setFilters(next);
       if (!pagination) setLocalPage((current) => ({ ...current, pageIndex: 0 }));
-      onFiltersChange?.(Object.fromEntries(columns.filter((column) => column.filters).map((column) => [column.key, (next.find((item) => item.id === column.key)?.value as unknown[] ?? []).map(String)])));
+      const values = Object.fromEntries(columns.filter(column => column.filters).map(column => [column.key, (next.find(item => item.id === column.key)?.value as unknown[] ?? []).map(String)]));
+      onFilterStateChange?.(values);
+      onFiltersChange?.(values);
     },
     onRowSelectionChange: (updater) => {
       const next = typeof updater === "function" ? updater(selection) : updater;

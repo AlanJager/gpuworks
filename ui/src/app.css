@@ -4,6 +4,7 @@
 /* Product overrides stay stable when a theme change reinserts antd styles.
    The app-content flex constraint is explicit in styles.css. */
 @import "./styles.css" layer(legacy);
+@import "./theme/tableDimensions.css" layer(utilities);
 @import "tw-animate-css";
 
 @custom-variant dark (&:is(.dark *));

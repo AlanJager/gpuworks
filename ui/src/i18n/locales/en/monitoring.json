@@ -64,9 +64,10 @@
     "count": "{{state}} {{count}}"
   },
   "table": {
+    "serviceName": "Service name",
     "state": "State",
     "health": "Health",
-    "service": "Service",
+    "service": "Service list",
     "replicas": "Replicas",
     "requestRate": "Req/s",
     "ttftP95": "TTFT p95",

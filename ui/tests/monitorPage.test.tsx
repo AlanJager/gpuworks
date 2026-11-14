@@ -125,7 +125,7 @@ test("renders signals, the service state counts and the service table on success
   renderPage();
   await waitFor(() => assert.ok(screen.getByText("Qwen3-32B")));
   assert.ok(screen.getByRole("button", { name: /Ready replicas/ }));
-  assert.ok(screen.getByText("Service state"));
+  assert.ok(screen.getByRole("group", { name: "Service state" }));
   assert.equal(screen.queryByText("Health checks"), null);
   // One link per state present, serving first.
   const counts = ["Running 8", "Starting 1", "Asleep 1", "Failed 1"];
@@ -166,7 +166,7 @@ test("clicking the ready replicas tile narrows the table to the services short o
   renderPage();
   await waitFor(() => assert.ok(screen.getByText("Qwen3-32B")));
   screen.getByRole("button", { name: /^Ready replicas/ }).click();
-  await waitFor(() => assert.ok(screen.getByText("Clear filter")));
+  await waitFor(() => assert.ok(screen.getByRole("button", { name: "Clear filter", exact: true })));
   assert.ok(screen.getByText("Llama-3.1-70B"));
   assert.ok(screen.getByText("ChatGLM3-6B"));
   assert.equal(screen.queryByText("Qwen3-32B"), null);
@@ -177,10 +177,10 @@ test("clicking a service state count narrows the table to the services in that s
   renderPage();
   await waitFor(() => assert.ok(screen.getByText("Qwen3-32B")));
   screen.getByRole("button", { name: "Starting 1" }).click();
-  await waitFor(() => assert.ok(screen.getByText("Clear filter")));
+  await waitFor(() => assert.ok(screen.getByRole("button", { name: "Clear filter: State Starting" })));
   assert.ok(screen.getByText("Llama-3.1-70B"));
   assert.equal(screen.queryByText("Qwen3-32B"), null);
-  screen.getByText("Clear filter").click();
+  screen.getByRole("button", { name: "Clear filter: State Starting" }).click();
   await waitFor(() => assert.ok(screen.getByText("Qwen3-32B")));
 });
 
@@ -189,9 +189,9 @@ test("a fleet total signal has no per-service verdict behind it: clicking it cle
   renderPage();
   await waitFor(() => assert.ok(screen.getByText("Qwen3-32B")));
   screen.getByRole("button", { name: "Starting 1" }).click();
-  await waitFor(() => assert.ok(screen.getByText("Clear filter")));
+  await waitFor(() => assert.ok(screen.getByRole("button", { name: "Clear filter: State Starting" })));
   screen.getByRole("button", { name: /^Waiting p95/ }).click();
-  await waitFor(() => assert.equal(screen.queryByText("Clear filter") === null, true));
+  await waitFor(() => assert.equal(screen.queryByRole("button", { name: "Clear filter: State Starting" }) === null, true));
   assert.ok(screen.getByText("Qwen3-32B"));
   assert.ok(screen.getByText("Qwen2.5-7B-Instruct"));
 });
@@ -209,7 +209,7 @@ test("an uncollected signal tile is not clickable and is marked aria-disabled", 
   assert.equal(tpotTile.getAttribute("aria-disabled"), "true");
   tpotTile.click();
   // Clicking must not produce a filter chip - there is nothing to filter by.
-  assert.equal(screen.queryByText("Clear filter"), null);
+  assert.equal(screen.queryByRole("button", { name: "Clear filter: State Starting" }), null);
 });
 
 test("the request_rate signal is collected:false in the fixture and renders the muted not-collected state", async () => {
@@ -341,7 +341,7 @@ test("changing range preserves the selected service filter", async () => {
   await waitFor(() => assert.ok(screen.getByText("Qwen3-32B")));
   await userEvent.setup().click(screen.getByRole("button", { name: "Starting 1" }));
   await userEvent.setup().click(screen.getByText("24h"));
-  await waitFor(() => assert.ok(screen.getByText("Clear filter")));
+  await waitFor(() => assert.ok(screen.getByRole("button", { name: "Clear filter: State Starting" })));
   assert.ok(screen.getByText("Llama-3.1-70B"));
   assert.equal(screen.queryByText("Qwen3-32B"), null);
 });
