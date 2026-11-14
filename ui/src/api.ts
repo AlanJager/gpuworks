@@ -1825,6 +1825,15 @@ export interface OfficialInferenceCatalogResult {
   models: number;
   package_digest: string;
   version: string;
+  /** What the server left out because it cannot read it; absent when nothing was. */
+  skipped?: OfficialInferenceCatalogSkipped[];
+}
+
+/** A model, or one spec of it when `spec` is set, that needs a newer server. */
+export interface OfficialInferenceCatalogSkipped {
+  model_id: string;
+  spec?: string;
+  reason: string;
 }
 
 /** What "check for updates" and a manifest upload changed in the system catalog. */

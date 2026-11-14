@@ -130,6 +130,34 @@ test("updating a catalog applies it and checks again", async () => {
   }
 });
 
+test("a template update names what needs a newer server and keeps it on the page", async () => {
+  const s = stub([statusFixture(), statusFixture({ template_catalog: { current: "2026-10-11.aabbccdd", latest: "2026-10-11.aabbccdd", update_available: false, compatible: true } })]);
+  const skipped = [
+    { model_id: "org/whole", reason: "field future_field not found in type inferencecatalog.InferenceModel" },
+    { model_id: "org/partial", spec: "bf16-next", reason: "field future_spec_field not found in type inferencecatalog.InferenceSpec" },
+    ...Array.from({ length: 21 }, (_, index) => ({ model_id: `org/many-${index}`, spec: "s", reason: "newer" })),
+  ];
+  apiModule.api.syncInferenceTemplates = async () => { s.calls.push("syncTemplates"); return { models: 380, package_digest: "aabbccdd", version: "2026-10-11.aabbccdd", skipped }; };
+  try {
+    renderCard();
+    assert.equal(screen.queryByRole("list", { name: u.templatesSkippedList }), null, "nothing is listed before an update");
+    const apply = await waitFor(() => within(row(u.templates)).getByRole("button", { name: u.apply }));
+    await userEvent.click(apply);
+    const list = await waitFor(() => screen.getByRole("list", { name: u.templatesSkippedList }));
+    assert.ok(screen.getByText(u.templatesSkipped_other.replace("{{count}}", "23")));
+    assert.ok(screen.getByText(u.templatesSkippedHelp));
+    assert.ok(within(list).getByText("org/whole"));
+    assert.equal(within(list).getByText("org/partial · bf16-next").closest("li")?.title, skipped[1].reason);
+    assert.equal(within(list).getAllByRole("listitem").length, 20, "a long list is cut");
+    assert.ok(screen.getByText(u.templatesSkippedMore_other.replace("{{count}}", "3")));
+    // The list outlives the status refresh that follows the update.
+    await waitFor(() => assert.ok(within(row(u.templates)).getByText(u.upToDate)));
+    assert.ok(screen.getByRole("list", { name: u.templatesSkippedList }));
+  } finally {
+    s.restore();
+  }
+});
+
 test("uploads go to the official endpoints even when no source answers", async () => {
   const s = stub([statusFixture({
     available: false, source: undefined,

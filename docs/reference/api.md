@@ -634,8 +634,8 @@ macOS 忽略 `no_systemd`。
 | POST | `/api/v1/inference-templates/clone` | 克隆模板为可编辑的用户 spec | JWT(admin) |
 | POST | `/api/v1/inference-templates/evaluate` | 检查平铺 YAML 或目录包，不写入；请求与 `import` 相同，支持 `?overwrite=true`。返回 200 `{valid, errors, warnings}`；检查范围与结果见[导入前检查](#导入前检查) | JWT(admin) |
 | POST | `/api/v1/inference-templates/import` | 导入模板/目录包；成功返回 `{models, package_digest}`，有警告时多一个 `warnings`（同 `evaluate`，无警告时不出现该字段） | JWT(admin) |
-| POST | `/api/v1/inference-templates/sync` | 「检查更新」：从发布通道取官方推理模板目录包，按 upstream 来源对账（用户档位不动）；请求体忽略。返回 `{models, package_digest, version}`；目录包 schema 高于本 server 时 409 `UPDATE_CATALOG_INCOMPATIBLE`；目录包解析或校验不过时 400 `OFFICIAL_CATALOG_NEEDS_NEWER_SERVER`（`params.error` 带原始报错，界面提示该版本推理模板依赖最新版本服务端）；其余错误见[目录导入结果](#目录导入结果) | JWT(admin) |
-| POST | `/api/v1/inference-templates/official` | 上传官方推理模板目录包（请求体为 `.tar.gz` 目录包，上限 32 MiB），与「检查更新」走同一条 upstream 对账；不是目录包时 400 `OFFICIAL_CATALOG_PACKAGE_REQUIRED`，解析或校验不过时 400 `OFFICIAL_CATALOG_NEEDS_NEWER_SERVER` | JWT(admin) |
+| POST | `/api/v1/inference-templates/sync` | 「检查更新」：从发布通道取官方推理模板目录包，按 upstream 来源对账（用户档位不动）；请求体忽略。返回 `{models, package_digest, version}`；本 server 读不懂的模型或 spec 被跳过并保持原样，此时多一个 `skipped: [{model_id, spec?, reason}]`（跳过整个模型时不带 `spec`，见[官方目录包里读不懂的内容](inference-catalog-package.md#官方目录包里读不懂的内容)）；目录包 schema 高于本 server 时 409 `UPDATE_CATALOG_INCOMPATIBLE`；目录包整体读不了（损坏、清单不符，或没有一个模型读得懂）时 400 `OFFICIAL_CATALOG_NEEDS_NEWER_SERVER`（`params.error` 带原始报错，界面提示该版本推理模板依赖最新版本服务端）；其余错误见[目录导入结果](#目录导入结果) | JWT(admin) |
+| POST | `/api/v1/inference-templates/official` | 上传官方推理模板目录包（请求体为 `.tar.gz` 目录包，上限 32 MiB），与「检查更新」走同一条 upstream 对账，返回与跳过规则相同；不是目录包时 400 `OFFICIAL_CATALOG_PACKAGE_REQUIRED`，目录包整体读不了时 400 `OFFICIAL_CATALOG_NEEDS_NEWER_SERVER` | JWT(admin) |
 
 模板包结构与导入规则见[可执行推理目录包](inference-catalog-package.md)。
 
