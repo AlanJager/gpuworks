@@ -138,19 +138,19 @@ func ValidateLaunchConfigForEngine(engine string, q LaunchConfig) error {
 	}
 	_, chunkedPrefillSupported := params["enable_chunked_prefill"]
 	if chunkedPrefillSupported && q.EnableChunkedPrefill != nil && !*q.EnableChunkedPrefill && q.MaxNumBatchedTokens > 0 && q.MaxModelLen > 0 && q.MaxNumBatchedTokens < q.MaxModelLen {
-		return fmt.Errorf("max_num_batched_tokens must be at least max_model_len when chunked prefill is disabled")
+		return paramErrorf("max_num_batched_tokens", "max_num_batched_tokens must be at least max_model_len when chunked prefill is disabled")
 	}
 	if q.MaxNumBatchedTokens > 0 && q.MaxNumSeqs > 0 && q.MaxNumBatchedTokens < q.MaxNumSeqs {
-		return fmt.Errorf("max_num_batched_tokens must be at least max_num_seqs")
+		return paramErrorf("max_num_batched_tokens", "max_num_batched_tokens must be at least max_num_seqs")
 	}
 	if q.LongPrefillTokenThreshold > 0 && q.MaxModelLen > 0 && q.LongPrefillTokenThreshold > q.MaxModelLen {
-		return fmt.Errorf("long_prefill_token_threshold must not exceed max_model_len")
+		return paramErrorf("long_prefill_token_threshold", "long_prefill_token_threshold must not exceed max_model_len")
 	}
 	if q.LoRA && q.SpeculativeTokens > 0 && q.MaxNumBatchedTokens > 0 && q.MaxNumSeqs > 0 && q.MaxNumBatchedTokens < q.MaxNumSeqs*(q.SpeculativeTokens+1) {
-		return fmt.Errorf("max_num_batched_tokens is too small for LoRA speculative decoding")
+		return paramErrorf("max_num_batched_tokens", "max_num_batched_tokens is too small for LoRA speculative decoding")
 	}
 	if q.KVDiskOffload && q.KVOffloadingSize <= 0 {
-		return fmt.Errorf("disk KV offload requires the memory offload tier")
+		return paramErrorf("kv_disk_offload", "disk KV offload requires the memory offload tier")
 	}
 	if q.KVDiskOffload {
 		clean := filepath.Clean(q.SharedKVDir)
@@ -161,7 +161,7 @@ func ValidateLaunchConfigForEngine(engine string, q LaunchConfig) error {
 		}
 	}
 	if q.KVOffloadBlockSize > 0 && q.GPUBlockSize > 0 && q.KVOffloadBlockSize%q.GPUBlockSize != 0 {
-		return fmt.Errorf("KV offload block size must be a multiple of the GPU block size")
+		return paramErrorf("kv_offload_block_size", "KV offload block size must be a multiple of the GPU block size")
 	}
 	for name, value := range map[string]string{
 		"rope_scaling":        q.RopeScaling,
@@ -200,7 +200,7 @@ func validateParameterDependencyValues(params map[string]engineParam, q LaunchCo
 			continue
 		}
 		if !dependencyValueEnabled(values[spec.DependsOn]) {
-			return fmt.Errorf("%s requires %s to be enabled", key, spec.DependsOn)
+			return paramErrorf(key, "%s requires %s to be enabled", key, spec.DependsOn)
 		}
 	}
 	return nil
@@ -267,7 +267,7 @@ func validateAgainstDictionary(engine string, params map[string]engineParam, q L
 			if neutralParameterValue(definition, engine, value) {
 				continue
 			}
-			return fmt.Errorf("%s is not supported by %s", definition.Key, engine)
+			return paramErrorf(definition.Key, "%s is not supported by %s", definition.Key, engine)
 		}
 		switch spec.Type {
 		case "enum":
@@ -275,23 +275,23 @@ func validateAgainstDictionary(engine string, params map[string]engineParam, q L
 			if text == "" || len(spec.Enum) == 0 || containsString(spec.Enum, text) {
 				continue
 			}
-			return fmt.Errorf("%s %q is not supported by %s", spec.Key, text, engine)
+			return paramErrorf(spec.Key, "%s %q is not supported by %s", spec.Key, text, engine)
 		case "integer", "number":
 			number, ok := toFloat(value)
 			if !ok {
 				continue
 			}
 			if number < 0 {
-				return fmt.Errorf("%s must not be negative", spec.Key)
+				return paramErrorf(spec.Key, "%s must not be negative", spec.Key)
 			}
 			if number == 0 {
 				continue // nobody stated this parameter
 			}
 			if spec.Min != nil && number < *spec.Min {
-				return fmt.Errorf("%s must be at least %v", spec.Key, *spec.Min)
+				return paramErrorf(spec.Key, "%s must be at least %v", spec.Key, *spec.Min)
 			}
 			if spec.Max != nil && number > *spec.Max {
-				return fmt.Errorf("%s must be at most %v", spec.Key, *spec.Max)
+				return paramErrorf(spec.Key, "%s must be at most %v", spec.Key, *spec.Max)
 			}
 		}
 	}

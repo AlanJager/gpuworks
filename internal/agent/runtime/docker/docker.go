@@ -62,28 +62,6 @@ func (d *Driver) Detect(ctx context.Context) (bool, error) {
 	return true, nil
 }
 
-// daemonNotReady reports whether a failed `docker info` is a daemon that has
-// not come up or is too busy to answer, rather than one this agent may not
-// use. dockerd starting at boot leaves the socket refusing connections;
-// dockerd pulling a large image answers slower than the timeout.
-func daemonNotReady(ctxErr error, stderr string) bool {
-	if errors.Is(ctxErr, context.DeadlineExceeded) {
-		return true
-	}
-	text := strings.ToLower(stderr)
-	if strings.Contains(text, "permission denied") {
-		return false
-	}
-	return strings.Contains(text, "cannot connect to the docker daemon") || strings.Contains(text, "connection refused") || strings.Contains(text, "is the docker daemon running")
-}
-
-func firstLine(stderr string, err error) string {
-	if line, _, _ := strings.Cut(strings.TrimSpace(stderr), "\n"); line != "" {
-		return line
-	}
-	return err.Error()
-}
-
 // localDockerHost resolves the endpoint Docker can use without shelling out.
 // GPUWorks workloads depend on local bind mounts, so tcp/ssh endpoints and
 // non-default contexts are not valid node runtimes.
@@ -125,7 +103,7 @@ func (d *Driver) ImageExists(ctx context.Context, image string) (bool, error) {
 	if err == nil {
 		return true, nil
 	}
-	if strings.Contains(strings.ToLower(string(out)), "no such image:") {
+	if cliNoSuchImage(string(out)) {
 		return false, nil
 	}
 	return false, fmt.Errorf("docker image inspect: %w: %s", err, strings.TrimSpace(string(out)))
@@ -151,6 +129,12 @@ func (d *Driver) InspectImage(ctx context.Context, image string) (runtime.ImageI
 	// and the template engine treats a missing map key as an error.
 	out, err := output(ctx, 10*time.Second, "image", "inspect", "--format", "{{json .}}", image)
 	if err != nil {
+		if ctx.Err() == nil && cliNoSuchImage(out) {
+			return runtime.ImageInspection{}, fmt.Errorf("docker image inspect: %w: %s", runtime.ErrImageNotFound, strings.TrimSpace(out))
+		}
+		if ctx.Err() == nil && cliPermissionDenied(err, out) {
+			return runtime.ImageInspection{}, fmt.Errorf("docker image inspect: %w: %s", runtime.ErrPermissionDenied, strings.TrimSpace(out))
+		}
 		return runtime.ImageInspection{}, fmt.Errorf("docker image inspect: %w: %s", err, strings.TrimSpace(out))
 	}
 	var raw struct {
@@ -250,7 +234,7 @@ func (d *Driver) PullImage(ctx context.Context, image string, onLine func(string
 	if err != nil {
 		slog.Warn("runtime command failed", "runtime", "docker", "args", []string{"pull", image}, "err", err, "stderr_tail", scan.tail)
 		if scan.tail != "" {
-			return fmt.Errorf("docker pull: %w: %s", err, scan.tail)
+			return runtime.MarkPullFailure(fmt.Errorf("docker pull: %w: %s", err, scan.tail), runtime.PullOutputFailure(scan.tail))
 		}
 	}
 	return err
@@ -416,9 +400,8 @@ func (d *Driver) Remove(ctx context.Context, id string) error {
 }
 
 func (d *Driver) remove(ctx context.Context, id string) error {
-	// The daemon's "No such container" is in the CLI output, not in err.
 	out, err := outputMutating(ctx, 30*time.Second, "rm", "-f", id)
-	if err != nil && strings.Contains(out, "No such container") {
+	if cliAnsweredNoSuchContainer(err, out) {
 		return nil
 	}
 	return err
@@ -432,8 +415,7 @@ func (d *Driver) Status(ctx context.Context, id string) (runtime.Status, error) 
 	format := "{{.State.Running}}|{{.State.ExitCode}}|{{.State.OOMKilled}}|{{if .State.Health}}{{.State.Health.Status}}{{end}}"
 	out, err := output(ctx, 10*time.Second, "inspect", "--format", format, id)
 	if err != nil {
-		detail := strings.ToLower(out + " " + err.Error())
-		if strings.Contains(detail, "no such object") || strings.Contains(detail, "no such container") {
+		if cliAnsweredNoSuchContainer(err, out) {
 			return runtime.Status{Exists: false}, nil
 		}
 		return runtime.Status{}, err
@@ -550,7 +532,7 @@ func output(ctx context.Context, timeout time.Duration, args ...string) (string,
 		// the command (the image inventory asks this of every absent catalog
 		// image every minute).
 		level := slog.LevelWarn
-		if lower := strings.ToLower(msg); strings.Contains(lower, "no such image:") || strings.Contains(lower, "no such object") {
+		if cliNoSuchImage(msg) || cliNoSuchObject(msg) {
 			level = slog.LevelDebug
 		}
 		slog.Log(ctx, level, "runtime command failed", "runtime", "docker", "args", args, "err", err, "stderr_tail", msg)

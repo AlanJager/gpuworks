@@ -350,7 +350,7 @@ func (c *Controller) reconcileStorageCache(ctx context.Context, storageID, nodeI
 		}
 		for _, entry := range entries {
 			if !entry.Evictable() {
-				return finish("completed", errors.New("protected_entries_remain"))
+				return finish("completed", errors.New(store.CacheOperationProtectedEntriesRemain))
 			}
 		}
 	}

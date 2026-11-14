@@ -33,6 +33,11 @@ type Message struct {
 type StreamOptions struct {
 	IncludeUsage bool `json:"include_usage"`
 }
+
+// ErrModelsEndpointNotFound is a GET /v1/models answered 404: the base URL is
+// not the root of an OpenAI-compatible API.
+var ErrModelsEndpointNotFound = errors.New("models endpoint not found")
+
 type Client struct {
 	HTTP            *http.Client
 	BaseURL, APIKey string
@@ -93,6 +98,9 @@ func (c Client) Models(ctx context.Context) (models []Model, err error) {
 	defer resp.Body.Close()
 	if resp.StatusCode/100 != 2 {
 		b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		if resp.StatusCode == http.StatusNotFound {
+			return nil, fmt.Errorf("%w: models endpoint returned %s: %s", ErrModelsEndpointNotFound, resp.Status, string(b))
+		}
 		return nil, fmt.Errorf("models endpoint returned %s: %s", resp.Status, string(b))
 	}
 	var body struct {

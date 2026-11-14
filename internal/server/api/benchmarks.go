@@ -521,7 +521,7 @@ func (a *apiHandlers) listBenchmarkModels(w http.ResponseWriter, r *http.Request
 }
 
 func writeBenchmarkProbeError(w http.ResponseWriter, err error, normalizedURL string) {
-	if strings.Contains(strings.ToLower(err.Error()), "404") || strings.Contains(strings.ToLower(err.Error()), "not found") {
+	if errors.Is(err, loadgen.ErrModelsEndpointNotFound) || errors.Is(err, proto.ErrBenchEndpointNotFound) {
 		writeProductError(w, http.StatusConflict, ErrorBenchmarkEndpointNotFound, "The models endpoint was not found. Confirm that the URL is the root of an OpenAI-compatible endpoint.", map[string]any{"url": normalizedURL, "detail": "the endpoint could not be probed"})
 		return
 	}

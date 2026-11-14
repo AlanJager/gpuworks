@@ -3219,6 +3219,8 @@ export interface BenchmarkRun {
     };
   };
   error?: string;
+  /** The failed run's code; the console renders it from the code (benchmarkError.<code>). */
+  failure?: ProductMessage;
   best_point?: BenchmarkPointSummary;
   points?: BenchmarkPoint[];
   created_at: string;

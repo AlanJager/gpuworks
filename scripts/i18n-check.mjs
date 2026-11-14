@@ -276,7 +276,9 @@ const productErrorSourceFiles = [
   ...fs.readdirSync(messagesDir).filter((name) => name.endsWith(".go") && !name.endsWith("_test.go")).sort().map((name) => path.join(messagesDir, name)),
   path.join(root, "internal/server/api/errors.go"),
   path.join(root, "internal/server/proxy/api_errors.go"),
-  path.join(root, "internal/proto/runtime_failure.go"),
+  // Every proto file: agent-produced codes (runtime failures, RPC refusals)
+  // reach the console through the same ProductMessage path.
+  ...fs.readdirSync(path.join(root, "internal/proto")).filter((name) => name.endsWith(".go") && !name.endsWith("_test.go")).sort().map((name) => path.join(root, "internal/proto", name)),
 ];
 const productErrorSources = productErrorSourceFiles.map((file) => fs.readFileSync(file, "utf8"));
 const productErrorCodes = new Set(

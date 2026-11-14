@@ -460,6 +460,9 @@ func (n *NodeRuntime) OnRPC(ctx context.Context, method string, params json.RawM
 			return nil, err
 		}
 		defer resp.Body.Close()
+		if resp.StatusCode == http.StatusNotFound {
+			return nil, &proto.RPCError{Code: proto.ErrorBenchEndpointNotFound, Message: "models probe returned " + resp.Status}
+		}
 		if resp.StatusCode/100 != 2 {
 			return nil, errors.New("models probe returned " + resp.Status)
 		}

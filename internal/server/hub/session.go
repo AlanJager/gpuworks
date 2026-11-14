@@ -315,7 +315,7 @@ func (s *Session) handle(env proto.Envelope) {
 		}
 		if status.State == "failed" {
 			s.hub.setUpgradeError(s.NodeUUID, status.Error)
-			s.observeUpgradeFailure(status.Error)
+			s.observeUpgradeFailure(status)
 			s.hub.log.Error("agent self-upgrade failed", "node", s.NodeUUID, "err", status.Error)
 		} else {
 			s.hub.log.Warn("unknown agent upgrade status", "node", s.NodeUUID, "state", status.State, "err", status.Error)

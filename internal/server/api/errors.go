@@ -1,9 +1,6 @@
 package api
 
 import (
-	"errors"
-	"net/http"
-
 	"gpuworks.ai/gpuworks/internal/server/messages"
 )
 
@@ -422,18 +419,6 @@ const (
 // repair except by marking another row first.
 const ErrorAIDefaultRequired = "AI_DEFAULT_REQUIRED"
 
-func productError(code, fallback string, params map[string]any) error {
-	return messages.NewProductError(code, fallback, params)
-}
-
-func wrapProductError(code, fallback string, params map[string]any, cause error) error {
-	return messages.WrapProductError(code, fallback, params, cause)
-}
-
-func writeProductError(w http.ResponseWriter, status int, code, fallback string, params map[string]any) {
-	writeErr(w, status, productError(code, fallback, params))
-}
-
 // Automatic placement of multi-node and PD deployments (placement_mode
 // "auto"; deployments_auto_units.go).
 const (
@@ -503,12 +488,6 @@ const (
 	ErrorInstanceNotServing          = messages.ErrorInstanceNotServing
 	ErrorSleepRoleCannotEmpty        = messages.ErrorSleepRoleCannotEmpty
 )
-
-// containsProductCode reports whether err is, or wraps, the product error code.
-func containsProductCode(err error, code string) bool {
-	var product *messages.ProductError
-	return err != nil && errors.As(err, &product) && product.Code() == code
-}
 
 // Storage files codes (ADR 0053; storage_files*.go): why browsing, a transfer
 // or a change to a storage's files was refused.

@@ -13,9 +13,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
-const fieldQuickParamsUnset = "quick_params_unset"
-
-const fieldExtraArgs = "extra_args"
+const fieldExtraArgs = deploy.ParamFieldExtraArgs
 
 const FieldContainerMounts = "container_mount_rows"
 
@@ -97,21 +95,12 @@ func launchErrorField(fallback string, productErr *messages.ProductError) string
 }
 
 // launchErrorFieldFor answers the form field a plain launch-materialization
-// error belongs to, classified by the message shape it has always had.
+// error belongs to: the field its rule names (deploy.ParamError), else the
+// caller's.
 func launchErrorFieldFor(fallback string, err error) string {
-	message := err.Error()
-	switch {
-	case strings.HasPrefix(message, "invalid quick_params_unset"):
-		return fieldQuickParamsUnset
-	case strings.HasPrefix(message, "argument text"), strings.HasPrefix(message, "parse argument JSON"):
-		return fieldExtraArgs
-	case strings.HasPrefix(message, "invalid quick_params: "):
-		// Every rule behind that prefix starts its sentence with the key it
-		// judges; the exceptions are typed as ProductErrors with a key param.
-		key, _, _ := strings.Cut(strings.TrimPrefix(message, "invalid quick_params: "), " ")
-		if key != "" {
-			return key
-		}
+	var paramErr *deploy.ParamError
+	if errors.As(err, &paramErr) && paramErr.Key != "" {
+		return paramErr.Key
 	}
 	return fallback
 }

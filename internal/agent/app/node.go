@@ -551,7 +551,7 @@ func partitionAssetFingerprint(reports []proto.AssetReport) string {
 
 func (n *NodeRuntime) StreamLogs(ctx context.Context, ref string, follow bool, w io.Writer) error {
 	if n.engine == nil {
-		return errUnknownRPC("no runtime")
+		return errors.New("no container runtime is configured")
 	}
 	name := n.engine.ContainerNameFor(ref)
 	rc, err := n.engine.Driver().Logs(ctx, name, follow, 200)
@@ -594,7 +594,4 @@ func (n *NodeRuntime) listContainers(ctx context.Context) ([]string, error) {
 	return driver.ListContainers(ctx)
 }
 
-type rpcError string
-
-func (e rpcError) Error() string   { return string(e) }
-func errUnknownRPC(m string) error { return rpcError("unknown rpc method: " + m) }
+func errUnknownRPC(m string) error { return proto.UnknownRPCMethod(m) }

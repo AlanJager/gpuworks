@@ -111,6 +111,9 @@ func (d *Driver) AttachSSHKey(ctx context.Context, creds provider.Credentials, e
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return fmt.Errorf("vast: decode attach SSH key response: %w", err)
 	}
+	// External text: vast.ai answers a key that is already attached with
+	// success=false and only says so in msg ("... already associated with
+	// this instance"); that is the state this call wants.
 	if !result.Success && !strings.Contains(strings.ToLower(result.Message), "already associated") {
 		return fmt.Errorf("vast: attach SSH key failed: %s", firstNonEmpty(result.Message, "provider rejected request"))
 	}

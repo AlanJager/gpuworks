@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
 	"strings"
 
@@ -20,6 +21,30 @@ import (
 // runtime or one the agent may not use (permission denied), which Detect
 // reports as plain false.
 var ErrDaemonNotReady = errors.New("container daemon is installed but not answering")
+
+// ErrImageNotFound is what an ImageInspector returns when the runtime itself
+// answered that the image is not in its local store, as opposed to a runtime
+// that could not be asked. Drivers recognize the answer in their CLI adapter
+// and wrap this sentinel; callers use errors.Is.
+var ErrImageNotFound = errors.New("image is not in the local store")
+
+// ErrContainerNotFound is what InspectWorkload returns when the runtime
+// answered that no such container (or pod container) exists. Drivers
+// recognize the answer where they asked and wrap this sentinel.
+var ErrContainerNotFound = errors.New("no such container")
+
+// ErrPermissionDenied is what an inspection returns when the runtime refused
+// the agent: the CLI could not reach its socket for lack of permission, or
+// the API server answered 403. Drivers recognize the refusal in their adapter
+// and wrap this sentinel; an os error (EACCES, EPERM) matches it as well
+// through IsPermissionDenied.
+var ErrPermissionDenied = errors.New("runtime refused the agent permission")
+
+// IsPermissionDenied reports whether err is a runtime refusal of permission:
+// ErrPermissionDenied from a driver, or an os-level EACCES/EPERM.
+func IsPermissionDenied(err error) bool {
+	return errors.Is(err, ErrPermissionDenied) || errors.Is(err, fs.ErrPermission)
+}
 
 type pullProxyContextKey struct{}
 

@@ -207,7 +207,7 @@ func ParseArgsText(input string) ([]string, error) {
 	if strings.HasPrefix(input, "[") {
 		var args []string
 		if err := json.Unmarshal([]byte(input), &args); err != nil {
-			return nil, fmt.Errorf("parse argument JSON array: %w", err)
+			return nil, &ParamError{Key: ParamFieldExtraArgs, Err: fmt.Errorf("parse argument JSON array: %w", err)}
 		}
 		return args, nil
 	}
@@ -259,10 +259,10 @@ func ParseArgsText(input string) ([]string, error) {
 		hasToken = true
 	}
 	if escaped {
-		return nil, fmt.Errorf("argument text ends with an escape")
+		return nil, paramErrorf(ParamFieldExtraArgs, "argument text ends with an escape")
 	}
 	if quote != 0 {
-		return nil, fmt.Errorf("argument text has an unterminated quote")
+		return nil, paramErrorf(ParamFieldExtraArgs, "argument text has an unterminated quote")
 	}
 	flush()
 	return args, nil
