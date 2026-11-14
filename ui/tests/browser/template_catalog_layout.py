@@ -78,7 +78,7 @@ class TemplateCatalogLayout(unittest.TestCase):
         def route(request):
             path = urlparse(request.request.url).path
             asset = UI / "public" / path.lstrip("/")
-            if path.startswith("/assets/") and asset.is_file():
+            if path.startswith(("/assets/", "/model-org-icons/", "/vendor-logos/")) and asset.is_file():
                 request.fulfill(path=str(asset))
             elif path == "/":
                 request.fulfill(content_type="text/html", body='<!doctype html><div id="root"></div>')
@@ -233,9 +233,12 @@ class TemplateCatalogLayout(unittest.TestCase):
             colors = fallbacks.evaluate_all('els=>els.map(el=>getComputedStyle(el).backgroundColor)')
             self.assertGreaterEqual(len(set(colors)), 3)
             before = fallbacks.evaluate_all('els=>els.map(el=>[el.textContent,getComputedStyle(el).backgroundColor])')
-            page.reload()
-            expect(page.locator('[data-slot="table"]')).to_be_visible()
-            self.assertEqual(before, fallbacks.evaluate_all('els=>els.map(el=>[el.textContent,getComputedStyle(el).backgroundColor])'))
+            fresh = self.render_page(1280, dark=dark)
+            expect(fresh.locator('[data-slot="table"]')).to_be_visible()
+            self.assertEqual(before, fresh.locator('.template-organization-fallback').evaluate_all('els=>els.map(el=>[el.textContent,getComputedStyle(el).backgroundColor])'))
+            official = page.locator('img.template-organization-logo[src="/model-org-icons/deepseek-ai.webp"]')
+            expect(official).to_be_visible()
+            page.wait_for_function("() => document.querySelector('img.template-organization-logo[src=\"/model-org-icons/deepseek-ai.webp\"]')?.naturalWidth === 96")
             self.capture(page, f'organization-colors-{dark}.png')
 
     def test_drawer_has_square_corners(self):
