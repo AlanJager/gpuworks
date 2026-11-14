@@ -218,8 +218,8 @@ button, input, textarea, select { letter-spacing: 0; }
 .page-header { container: page-header / inline-size; margin-bottom: 16px; }
 .page-header-copy { flex: 1 1 280px; min-width: 0; }
 .page-header-breadcrumb { margin-bottom: 6px; font-size: 12px; line-height: 16px; color: var(--fg-subtle); }
-.page-header-breadcrumb a { color: var(--fg-subtle); }
-.page-header-breadcrumb a:hover { color: var(--fg-brand); }
+.page-header-breadcrumb a { color: var(--fg-brand); }
+.page-header-breadcrumb a:hover { text-decoration: underline; }
 .page-header-title { display: flex; min-width: 0; align-items: center; gap: 8px; }
 .page-header-title::before { flex: none; width: 4px; height: 18px; border-radius: 2px; background: linear-gradient(180deg, var(--brand), var(--info-surface-raised)); content: ""; }
 .page-header-description { margin-top: 4px; }

@@ -48,7 +48,7 @@ export default function PageHeader({
       <ZeronPageHeader className="px-0">
         <PageHeaderContent className="page-header-copy">
           <div className="min-w-0">
-            {trail.length > 0 && <Breadcrumb className="page-header-breadcrumb [&_a]:text-fg-brand [&_a:hover]:underline"><BreadcrumbList className="gap-1.5 text-label text-fg-subtle sm:gap-1.5">
+            {trail.length > 0 && <Breadcrumb className="page-header-breadcrumb"><BreadcrumbList className="gap-1.5 text-label text-fg-subtle sm:gap-1.5">
               {trail.map((item, index) => <Fragment key={index}>
                 {index > 0 && <BreadcrumbSeparator />}
                 <BreadcrumbItem>{item}</BreadcrumbItem>

@@ -350,7 +350,7 @@ test("returning without a search term keeps the requested organization while the
   api.inferenceTemplateChips = (async () => list([])) as never;
   const { container } = renderCatalogFlow("/inference-templates/baai/bge-reranker-v2-m3?from=organization%3Dbaai%26engine%3Dvllm");
 
-  await screen.findByText("BGE Reranker");
+  await screen.findByRole("heading", { name: "BGE Reranker" });
   // The breadcrumb returns to the same filtered list as the back button.
   const crumb = container.querySelector(".page-header-breadcrumb a") as HTMLAnchorElement;
   assert.equal(crumb.getAttribute("href"), "/inference-templates?organization=baai&engine=vllm");

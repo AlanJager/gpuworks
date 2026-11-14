@@ -8,7 +8,7 @@ export function tableLinkFindings() {
   const dialogs = [...document.querySelectorAll('[role="dialog"]')].filter(visible);
   const root = dialogs.at(-1) ?? document.querySelector('.app-shell') ?? document.body;
   const findings = [];
-  const candidates = root.querySelectorAll('td a[href], td.resource-table-name button, button.hm-node-name');
+  const candidates = root.querySelectorAll('td a[href], td.resource-table-name button, button.hm-node-name, .page-header-breadcrumb a[href]');
   for (const el of candidates) {
     if (!visible(el) || el.closest('[aria-disabled="true"], [disabled]') || el.querySelector('button')) continue;
     if (el.tagName === 'A' && el.matches('.ant-btn, [data-slot="button"], [role="button"]')) continue;
@@ -18,7 +18,10 @@ export function tableLinkFindings() {
     probe.style.color = 'var(--fg-brand)';
     el.append(probe);
     const brand = getComputedStyle(probe).color;
-    const allowed = [brand];
+    // Legacy antd text links use the primary brand token; Zeron uses fg-brand.
+    // They differ in dark mode but are both intentional theme colors.
+    probe.style.color = 'var(--brand)';
+    const allowed = [brand, getComputedStyle(probe).color];
     if (el.matches(':hover, :active, :focus-visible')) {
       for (const token of ['--brand-hover', '--brand-active']) {
         probe.style.color = `var(${token})`;
@@ -36,7 +39,7 @@ export function tableLinkFindings() {
     }
     if (mismatch) {
       const box = el.getBoundingClientRect();
-      findings.push({ rule: 'table-link-color', element: el.textContent.trim().slice(0, 60), detail: `${mismatch}; expected brand ${brand}`, box: { x: box.x, y: box.y, w: box.width, h: box.height } });
+      findings.push({ rule: el.closest('.page-header-breadcrumb') ? 'breadcrumb-link-color' : 'table-link-color', element: el.textContent.trim().slice(0, 60), detail: `${mismatch}; expected brand ${brand}`, box: { x: box.x, y: box.y, w: box.width, h: box.height } });
     }
   }
   return findings;

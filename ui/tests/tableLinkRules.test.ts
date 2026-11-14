@@ -39,5 +39,6 @@ test("browser gate catches plain name buttons, black anchors and child color ove
 
 test("browser gate accepts themed text and excludes disabled, icon and action buttons", () => {
   assert.deepEqual(check('<td class="resource-table-name"><button style="color:var(--fg-brand)"><span>Name</span></button></td><td><a href="/nodes" style="color:var(--fg-brand)">Node</a></td>'), []);
+  assert.deepEqual(check('<td class="resource-table-name"><button style="color:var(--brand)">Legacy primary</button></td>'), []);
   assert.deepEqual(check('<td class="resource-table-name"><button disabled>Name</button><button aria-label="Copy"><svg /></button></td><td><button>Delete</button><a href="/nodes" aria-disabled="true">Node</a><a class="ant-btn" href="/export">Export</a><span>Plain</span></td>'), []);
 });
