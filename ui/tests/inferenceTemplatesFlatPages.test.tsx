@@ -172,6 +172,38 @@ test("catalog starts unfiltered, keeps organization logos and cross-organization
   assert.equal((await screen.findByText("DeepSeek Model")).textContent, "DeepSeek Model");
 });
 
+test("catalog filters are labelled, start expanded, and retain chip and task choices when collapsed", async () => {
+  api.inferenceTemplates = (async () => list([upstreamModel])) as never;
+  api.detectedInferenceTemplateChips = (async () => list([{ vendor: "nvidia", name: "NVIDIA H100", cc: "9.0" }])) as never;
+  api.inferenceTemplateChips = (async () => list([])) as never;
+  renderList();
+  await screen.findByText("DeepSeek Model");
+  const user = userEvent.setup();
+  assert.ok(screen.getByText("My Chips"));
+  assert.ok(screen.getByText("Model type"));
+  assert.equal(screen.getByRole("button", { name: "Filters", exact: true }).getAttribute("aria-expanded"), "true");
+  await user.click(screen.getByRole("button", { name: "H100", exact: true }));
+  await user.click(within(screen.getByRole("group", { name: "Filter by task type" })).getByRole("button", { name: /^Chat/ }));
+  await user.click(screen.getByRole("button", { name: "Filters", exact: true }));
+  const collapsed = screen.getByRole("button", { name: /Filters.*H100.*Chat/ });
+  assert.equal(collapsed.getAttribute("aria-expanded"), "false");
+  await user.click(collapsed);
+  assert.equal(screen.getByRole("button", { name: "H100", exact: true }).getAttribute("aria-pressed"), "true");
+  assert.equal(within(screen.getByRole("group", { name: "Filter by task type" })).getByRole("button", { name: /^Chat/ }).getAttribute("aria-pressed"), "true");
+  assert.ok(screen.getByRole("link", { name: "DeepSeek Model" }));
+});
+
+test("an organization's heading shows its display name and model count once without the internal identifier", async () => {
+  api.inferenceTemplates = (async () => list([{ ...upstreamModel, source: "user" }])) as never;
+  api.detectedInferenceTemplateChips = (async () => list([])) as never;
+  api.inferenceTemplateChips = (async () => list([])) as never;
+  const { container } = renderList();
+  await screen.findByRole("heading", { name: "My Templates", exact: true });
+  const main = container.querySelector<HTMLElement>(".template-organization-main")!;
+  assert.equal(within(main).getAllByText("1 models").length, 1);
+  assert.ok(within(main).queryByText("my-templates") === null);
+});
+
 test("my chips use short GPU names and reserve compute capability for an unknown vGPU model", async () => {
   api.inferenceTemplates = (async () => ({ items: [upstreamModel], page: 1, page_size: 200, total: 1 })) as never;
   api.detectedInferenceTemplateChips = (async () => list([
@@ -866,7 +898,7 @@ test("a hypothetical AMD chip retains its architecture selector", async () => {
   api.inferenceTemplateChips = (async () => list([{ vendor: "amd", name: "AMD Radeon 8060S", category: "workstation-consumer", architecture: "RDNA 3.5", arch_id: "gfx1151" }])) as never;
   render(<I18nextProvider i18n={i18n}><MemoryRouter><InferenceTemplatesPage /></MemoryRouter></I18nextProvider>);
   fireEvent.click(await screen.findByRole("button", { name: /Add Chip/ }));
-  const dialog = await screen.findByRole("dialog", { name: "Add a hypothetical GPU" });
+  const dialog = await screen.findByRole("dialog", { name: "Add Chip" });
   await userEvent.setup().click(within(dialog).getByRole("checkbox", { name: /gfx1151/ }));
   fireEvent.click(within(dialog).getByRole("button", { name: "Add 1 models", exact: true }));
   const { loadHypotheticalChips } = await import("../src/pages/InferenceTemplatesPage.tsx");

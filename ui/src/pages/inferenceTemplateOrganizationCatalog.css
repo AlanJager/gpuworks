@@ -1,7 +1,8 @@
 .inference-template-page { min-height: calc(100vh - 116px); container-type: inline-size; }
-.template-hardware-filters { margin-bottom: 12px; }
-.template-hardware-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; color: var(--fg-subtle); font-size: 12px; }
-.template-chip-legend { display: flex; gap: 12px; flex-wrap: wrap; }
+.template-filter-panel { border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-floating); }
+.template-filter-row { display: grid; grid-template-columns: 88px minmax(0, 1fr); align-items: start; gap: 12px; padding-block: 6px; }
+.template-filter-label { padding-block: 5px; color: var(--fg-muted); font-size: 13px; font-weight: 500; }
+.template-chip-legend { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 6px; color: var(--fg-subtle); font-size: 12px; }
 .template-chip-dot { display: inline-block; width: 6px; height: 6px; margin-right: 5px; border-radius: 50%; background: var(--success-strong); }
 .template-chip-dot.is-hypothetical { background: var(--fg-subtle); }
 .template-hardware-groups { display: flex; flex-wrap: wrap; gap: 8px 16px; }
@@ -26,7 +27,7 @@
 .template-organization-main { min-width: 0; padding-left: 16px; }
 .template-organization-heading { display: flex; align-items: center; gap: 12px; min-height: 76px; }
 .template-organization-heading > div { min-width: 0; }
-.template-organization-heading h3 { margin: 0; font-size: 16px; overflow-wrap: anywhere; }
+.template-organization-heading h3 { margin: 0; font-size: 16px; font-weight: 600; overflow-wrap: anywhere; }
 .template-organization-logo { flex: none; border: 0; border-radius: 0; background: transparent; }
 .template-organization-logo img { object-fit: contain; }
 .template-table-vendors, .template-table-tags { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; min-width: 0; }
@@ -49,4 +50,4 @@
 }
 
 .template-organization-logo { object-fit: contain; }
-.template-organization-fallback { display: grid; place-items: center; flex: none; background: var(--selection); color: var(--fg-brand); border-radius: var(--radius-md); }
+.template-organization-fallback { display: grid; place-items: center; flex: none; background: var(--vendor-logo-dark); color: var(--fg-on-primary-action); font-weight: 600; border-radius: var(--radius-md); }

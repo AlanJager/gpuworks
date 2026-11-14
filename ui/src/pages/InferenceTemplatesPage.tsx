@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Alert, AlertTitle, AlertAction } from "../components/ui/alert";
 import { Button } from "../components/ui/button";
 import { Tooltip } from "../components/ui/tooltip";
+import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "../components/ui/accordion";
 import { Input } from "../components/ui/input";
 import { Spinner } from "../ui-kit/Spinner";
 import EmptyState from "../components/EmptyState";
@@ -75,6 +76,7 @@ export default function InferenceTemplatesPage() {
   const [catalogChips, setCatalogChips] = useState<InferenceTemplateChip[]>([]);
   const [selectedChip, setSelectedChip] = useState(() => urlSearch.get("chip") || "");
   const [addingChip, setAddingChip] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(true);
   const [importWarnings, setImportWarnings] = useState<InferenceTemplateIssue[]>([]);
   const [detectedKeys, setDetectedKeys] = useState<Set<string>>(new Set());
   const [query, setQuery] = useState(() => urlSearch.get("query") || "");
@@ -203,18 +205,33 @@ export default function InferenceTemplatesPage() {
     </div>} />
     <TemplateWarnings warnings={importWarnings} onClose={() => setImportWarnings([])} />
 
-    <TemplateHardwareFilters chips={chips} detectedKeys={detectedKeys} value={selectedChip}
-      onChange={key => setSelectedChip(current => current === key ? "" : key)} />
+    <Accordion className="template-filter-panel" value={filtersOpen ? "filters" : ""} onValueChange={(value: string) => setFiltersOpen(value === "filters")}>
+      <AccordionItem value="filters">
+        <AccordionTrigger className="px-3 py-2">
+          <span>{t("filters.title")}</span>
+          {!filtersOpen && <span className="ml-3 truncate text-label font-normal text-fg-muted">{[activeChip && chipDisplayLabel(activeChip), operation && t(operationLabelKey[operation]), engine].filter(Boolean).join(" · ")}</span>}
+        </AccordionTrigger>
+        <AccordionContent className="px-3 pb-3">
+          <TemplateHardwareFilters chips={chips} detectedKeys={detectedKeys} value={selectedChip}
+            onChange={key => setSelectedChip(current => current === key ? "" : key)} />
+          <div className="template-filter-row template-task-filter">
+            <span className="template-filter-label">{t("filters.modelType")}</span>
+            <FilterChips label={t("filters.operationAria")} value={operation} onChange={(value) => setOperation((current) => current === value ? "" : value)}
+              items={operationTypes.map((value) => ({ value, label: t(operationLabelKey[value]), count: operationCounts[value] }))} />
+          </div>
+          <div className="template-filter-row">
+            <span className="template-filter-label">{t("columns.engine")}</span>
+            <Segmented label={t("columns.engine")} value={engine || "all"} onChange={(value) => setEngine(value === "all" ? "" : value)}
+              options={[{ value: "all", label: t("filters.all") }, { value: "vllm", label: "vLLM" }, { value: "sglang", label: "SGLang" }]} />
+          </div>
+        </AccordionContent>
+      </AccordionItem>
+    </Accordion>
 
     <section className="template-catalog-card">
-      <div className="template-task-filter">
-        <FilterChips label={t("filters.operationAria")} value={operation} onChange={(value) => setOperation((current) => current === value ? "" : value)}
-          items={operationTypes.map((value) => ({ value, label: t(operationLabelKey[value]), count: operationCounts[value] }))} />
-      </div>
       <div className="template-filter-band">
-        <Segmented label={t("columns.engine")} value={engine || "all"} onChange={(value) => setEngine(value === "all" ? "" : value)}
-          options={[{ value: "all", label: t("filters.all") }, { value: "vllm", label: "vLLM" }, { value: "sglang", label: "SGLang" }]} />
-        <div className="flex flex-wrap items-center gap-2"><Input className="template-search" aria-label={t("flat.search")} value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("flat.search")} /><span className="text-label text-fg-muted">{t("flat.modelCount", { count: visible.length })}</span></div>
+        <Input className="template-search" aria-label={t("flat.search")} value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("flat.search")} />
+        <span className="text-label text-fg-muted">{t("flat.modelCount", { count: visible.length })}</span>
       </div>
       {activeChip && <Alert className="template-compatibility-alert" status="info"><AlertTitle>{t("flat.selectedChip", { chip: chipDisplayLabel(activeChip) })}</AlertTitle></Alert>}
       {catalogLoading && <div className="template-loading"><Spinner label={t("page.loading")} /></div>}
@@ -228,7 +245,7 @@ export default function InferenceTemplatesPage() {
           </button>)}
         </nav></aside>
         <main className="template-organization-main">{activeGroup && <>
-          <header className="template-organization-heading"><OrganizationAvatar key={activeGroup.key} group={activeGroup} size={42} /><div><h3>{activeGroup.label}</h3><span className="text-label text-fg-muted">{activeGroup.organization} · {t("models.count", { count: activeGroup.items.length })}</span></div></header>
+          <header className="template-organization-heading"><OrganizationAvatar key={activeGroup.key} group={activeGroup} size={42} /><div><h3>{activeGroup.label}</h3><span className="text-label text-fg-muted">{t("models.count", { count: activeGroup.items.length })}</span></div></header>
           <TemplateCatalogTable models={activeGroup.items} catalogQuery={catalogQuery} onRefresh={() => void reload()} />
         </>}</main>
       </div>}

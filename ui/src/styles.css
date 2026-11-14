@@ -1020,8 +1020,8 @@ tbody tr:hover > .resource-table-pinned { background-image: linear-gradient(var(
 .resource-table-toolbar-left { display: flex; flex: 1 1 auto; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
 .resource-table-toolbar-right { flex: 0 0 auto; margin-left: auto; min-height: 32px; }
 .resource-table { container: resource-table / inline-size; }
-/* Filters in effect, between the toolbar and the table. */
-.resource-table-filters { margin: -4px 0 12px; }
+/* Active filters share the toolbar with refresh and column settings. */
+.resource-table-filters { min-width: 0; }
 @container resource-table (max-width: 640px) { .resource-table-toolbar { flex-wrap: wrap; } }
 .resource-table-updated { font-size: 12px; white-space: nowrap; }
 .resource-table .ant-table-thead > tr > th { white-space: nowrap; }

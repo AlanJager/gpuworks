@@ -102,6 +102,11 @@ class TemplateCatalogLayout(unittest.TestCase):
                         label = page.locator('.template-organization-sidebar nav strong').filter(has_text=name)
                         expect(label).to_be_visible()
                         self.assertTrue(label.evaluate('el => el.scrollWidth <= el.clientWidth + 1'))
+                    chip_label = page.locator('.template-hardware-filters > .template-filter-label').bounding_box()
+                    first_brand = page.locator('.template-hardware-group').first.bounding_box()
+                    self.assertLess(abs(chip_label['y'] - first_brand['y']), 8)
+                    self.assertGreater(first_brand['x'], chip_label['x'] + chip_label['width'])
+                    expect(page.get_by_text('Model type', exact=True)).to_be_visible()
                     heights = page.locator('[data-slot="table-head"]').evaluate_all('els=>els.map(el=>el.getBoundingClientRect().height)')
                     self.assertTrue(all(abs(height-44) <= 1 for height in heights), heights)
                     self.assertTrue(page.evaluate('document.documentElement.scrollWidth <= innerWidth + 1'))
@@ -113,6 +118,20 @@ class TemplateCatalogLayout(unittest.TestCase):
                     name_cell = page.locator('.resource-table-name').first
                     self.assertGreaterEqual(name_cell.bounding_box()['x'], container.bounding_box()['x'] - 1)
                     self.capture(page, f'templates-{width}-{"dark" if dark else "light"}.png')
+
+    def test_collapsing_filters_returns_space_to_the_catalog(self):
+        page = self.render_page(1280)
+        table = page.locator('[data-slot="table"]')
+        expect(table).to_be_visible()
+        before = table.bounding_box()['y']
+        toggle = page.get_by_role('button', name='Filters', exact=True)
+        expect(toggle).to_have_attribute('aria-expanded', 'true')
+        toggle.click()
+        expect(toggle).to_have_attribute('aria-expanded', 'false')
+        expect(page.locator('.template-hardware-filters')).not_to_be_visible()
+        self.assertLess(table.bounding_box()['y'], before - 80)
+        toggle.click()
+        expect(page.locator('.template-hardware-filters')).to_be_visible()
 
     def test_drawer_has_square_corners(self):
         page = self.render_page(1280, drawer=True)

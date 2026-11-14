@@ -37,6 +37,5 @@ export function TemplateCatalogTable({ models, catalogQuery, onRefresh }: {
     { key: "engine", title: t("columns.engine"), width: 150, render: (_, model) => <div className="template-table-tags">{[...new Set(model.specs.map(spec => spec.engine))].map(engine => <Badge key={engine} size="sm">{engine}</Badge>)}</div> },
   ];
   return <ResourceTable tableId="inference-template-catalog" rowKey="model_id" columns={columns} data={models}
-    toolbar={<span className="text-label text-fg-muted">{t("models.count", { count: models.length })}</span>}
     onRefresh={onRefresh} pagination={false} emptyDescription={t("flat.empty")} filteredEmptyDescription={t("flat.empty")} />;
 }

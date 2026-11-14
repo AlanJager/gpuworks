@@ -208,7 +208,19 @@ export default function ResourceTable<T extends object>({ tableId, columns, data
   }).filter((item) => item.values.length > 0);
   return <div className="resource-table">
     <div className="resource-table-toolbar">
-      <div className="resource-table-toolbar-left">{toolbar}</div>
+      <div className="resource-table-toolbar-left">{toolbar}
+        {/* Filters are set from the column header funnels; the ones in effect are listed here
+            as "column: values" so a filter on an off-screen column is never invisible. */}
+        {activeFilters.length > 0 && <div className="resource-table-filters flex flex-wrap items-center gap-1.5" role="group" aria-label={t("resourceTable.activeFilters")}>
+          <span className="text-label text-fg-subtle">{t("resourceTable.activeFilters")}</span>
+          {activeFilters.map(({ column, values }) => <Button key={column.key} size="xs" variant="tertiary" className="resource-table-filter-chip" trailingIcon={ClearIcon}
+            aria-label={t("resourceTable.clearFilter", { name: labelOf(column), values: values.join(t("resourceTable.valueSeparator")) })}
+            onClick={() => table.setColumnFilters((current) => current.filter((item) => item.id !== column.key))}>
+            <span className="font-semibold">{labelOf(column)}</span>{t("resourceTable.filterValues", { values: values.join(t("resourceTable.valueSeparator")) })}
+          </Button>)}
+          {activeFilters.length > 1 && <Button size="xs" variant="ghost" className="text-fg-brand" onClick={() => table.resetColumnFilters()}>{t("resourceTable.clearFilters")}</Button>}
+        </div>}
+      </div>
       <div className="resource-table-toolbar-right flex flex-nowrap items-center gap-2">
         {toolbarExtra}{updatedAt && <span className="resource-table-updated whitespace-nowrap text-label text-fg-muted" title={t("dataTable.updatedAt", { time: formatTime(updatedAt) })}>{t("dataTable.updatedAt", { time: formatClock(updatedAt) })}</span>}
         {/* Same family and size as the menu and top bar: HugeIcons at 16px in a 32px control that lines up with the search box. */}
@@ -216,17 +228,6 @@ export default function ResourceTable<T extends object>({ tableId, columns, data
         {columnSettings && <Button iconOnly variant="tertiary" className="[&_svg]:size-4!" aria-label={t("resourceTable.settings")} onClick={() => setSettingsOpen(true)}><ColumnsIcon /></Button>}
       </div>
     </div>
-    {/* Filters are set from the column header funnels; the ones in effect are listed here
-        as "column: values" so a filter on an off-screen column is never invisible. */}
-    {activeFilters.length > 0 && <div className="resource-table-filters flex flex-wrap items-center gap-1.5" role="group" aria-label={t("resourceTable.activeFilters")}>
-      <span className="text-label text-fg-subtle">{t("resourceTable.activeFilters")}</span>
-      {activeFilters.map(({ column, values }) => <Button key={column.key} size="xs" variant="tertiary" className="resource-table-filter-chip" trailingIcon={ClearIcon}
-        aria-label={t("resourceTable.clearFilter", { name: labelOf(column), values: values.join(t("resourceTable.valueSeparator")) })}
-        onClick={() => table.setColumnFilters((current) => current.filter((item) => item.id !== column.key))}>
-        <span className="font-semibold">{labelOf(column)}</span>{t("resourceTable.filterValues", { values: values.join(t("resourceTable.valueSeparator")) })}
-      </Button>)}
-      {activeFilters.length > 1 && <Button size="xs" variant="ghost" className="text-fg-brand" onClick={() => table.resetColumnFilters()}>{t("resourceTable.clearFilters")}</Button>}
-    </div>}
     {error ? <div role="alert" className="flex flex-wrap items-center gap-2 text-fg-danger"><strong>{t("dataTable.loadFailed")}</strong><span>{error.message}</span>{onRefresh && <Button onClick={onRefresh}>{t("actions.retry")}</Button>}</div> : <>
       {loading && <Spinner label={t("dataTable.refresh")} />}
       {/* DataTable has no row-props or header-cell slot at the pinned release. Table preserves

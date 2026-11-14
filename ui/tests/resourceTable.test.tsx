@@ -380,7 +380,9 @@ test("observing local filters does not disable filtering and clearing notifies t
   await waitFor(() => assert.deepEqual(firstCells().sort(), ["node-01", "node-04"]));
   assert.deepEqual(changes.at(-1)?.state, ["offline"]);
   await user.keyboard("{Escape}");
-  await user.click(screen.getByRole("button", { name: /^Clear filter: State Offline/ }));
+  const toolbar = screen.getByRole("button", { name: "Customize columns" }).closest(".resource-table-toolbar") as HTMLElement;
+  assert.ok(within(toolbar).getByRole("group", { name: "Filtered" }));
+  await user.click(within(toolbar).getByRole("button", { name: /^Clear filter: State Offline/ }));
   await waitFor(() => assert.equal(firstCells().length, 6));
   assert.deepEqual(changes.at(-1)?.state, []);
 });
