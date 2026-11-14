@@ -166,7 +166,7 @@ export default function ServiceTable({
       tableId={narrow ? "monitor-services-narrow" : "monitor-services"}
       rowKey="deployment_id"
       columns={columns}
-      toolbar={<div className="flex flex-wrap items-center gap-4"><h2 className="text-title font-semibold">{t("table.service")}</h2><StateSummary services={services} selected={stateFilter} onSelect={state => { onStateShortcut?.(); setStateFilter(current => current.length === 1 && current[0] === state ? [] : [state]); }} /></div>}
+      toolbar={<div className="flex flex-wrap items-center gap-4"><h2 className="m-0 text-body font-semibold">{t("table.service")}</h2><StateSummary services={services} selected={stateFilter} onSelect={state => { onStateShortcut?.(); setStateFilter(current => current.length === 1 && current[0] === state ? [] : [state]); }} /></div>}
       onFilterStateChange={filters => setStateFilter(filters.state ?? [])}
       data={rows}
       loading={loading}

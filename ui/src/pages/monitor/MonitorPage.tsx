@@ -146,12 +146,13 @@ function MonitorPageContent() {
             ))}
           </div>
 
-
+          <div className="monitor-services-section mt-4">
           {filterIds && <div className="mb-2 flex items-center gap-2 text-label text-fg-muted">
             {t("table.filtered", { count: filterIds.length })}
             <Button size="small" type="link" onClick={() => setFilterIds(null)}>{t("table.clearFilter")}</Button>
           </div>}
           <ServiceTable key={serviceFilterEpoch} services={layoutData.services} filterDeploymentIds={filterIds} onStateShortcut={() => setFilterIds(null)} onRefresh={refetch} loading={loading && !data} />
+          </div>
 
           <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
             <Col xs={24} xl={10}>

@@ -930,8 +930,8 @@ test("a hypothetical AMD chip retains its architecture selector", async () => {
   api.detectedInferenceTemplateChips = (async () => list([])) as never;
   api.inferenceTemplateChips = (async () => list([{ vendor: "amd", name: "AMD Radeon 8060S", category: "workstation-consumer", architecture: "RDNA 3.5", arch_id: "gfx1151" }])) as never;
   render(<I18nextProvider i18n={i18n}><MemoryRouter><InferenceTemplatesPage /></MemoryRouter></I18nextProvider>);
-  fireEvent.click(await screen.findByRole("button", { name: /Add Chip/ }));
-  const dialog = await screen.findByRole("dialog", { name: "Add Chip" });
+  fireEvent.click(await screen.findByRole("button", { name: /Edit chips/ }));
+  const dialog = await screen.findByRole("dialog", { name: "Edit chips" });
   await userEvent.setup().click(within(dialog).getByRole("checkbox", { name: /gfx1151/ }));
   fireEvent.click(within(dialog).getByRole("button", { name: "Save selection", exact: true }));
   const { loadHypotheticalChips } = await import("../src/pages/InferenceTemplatesPage.tsx");
@@ -991,13 +991,13 @@ test("removing the selected hypothetical chip clears its filter, persists remova
   const user = userEvent.setup();
   await user.click(screen.getByRole("button", { name: /Radeon 8060S/ }));
   assert.ok(screen.getByRole("button", { name: /Filters.*8060S/ }));
-  await user.click(screen.getByRole("button", { name: "Add Chip", exact: true }));
-  const picker = within(screen.getByRole("dialog", { name: "Add Chip" }));
+  await user.click(screen.getByRole("button", { name: "Edit chips", exact: true }));
+  const picker = within(screen.getByRole("dialog", { name: "Edit chips" }));
   assert.equal(picker.getByRole("checkbox", { name: /H100/ }).getAttribute("aria-disabled"), "true");
   await user.click(picker.getByRole("button", { name: "AMD", exact: true }));
   await user.click(picker.getByRole("checkbox", { name: /gfx1151/ }));
   await user.click(picker.getByRole("button", { name: "Save selection" }));
-  await waitFor(() => assert.ok(screen.queryByRole("dialog", { name: "Add Chip" }) === null));
+  await waitFor(() => assert.ok(screen.queryByRole("dialog", { name: "Edit chips" }) === null));
   assert.deepEqual(JSON.parse(localStorage.getItem("gpuworks.inferenceTemplates.hypotheticalChips")!), []);
   assert.ok(screen.queryByRole("button", { name: /8060S/ }) === null);
   assert.ok(screen.getByRole("button", { name: "Filters", exact: true }));

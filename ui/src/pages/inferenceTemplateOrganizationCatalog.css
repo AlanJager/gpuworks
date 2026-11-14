@@ -1,6 +1,7 @@
 .inference-template-page { min-height: calc(100vh - 116px); container-type: inline-size; }
 .template-filter-panel { overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-floating); }
-.template-filter-heading { display: flex; align-items: center; background: var(--surface-raised); }
+.template-filter-heading { position: relative; background: var(--surface-raised); }
+.template-filter-clear { position: absolute; right: 36px; top: 50%; transform: translateY(-50%); }
 .template-filter-row { display: grid; grid-template-columns: 88px minmax(0, 1fr); align-items: start; gap: 12px; padding-block: 6px; }
 .template-filter-label { padding-block: 5px; color: var(--fg-muted); font-size: 13px; font-weight: 500; }
 .template-chip-dot { display: inline-block; width: 6px; height: 6px; margin-right: 5px; border-radius: 50%; background: var(--success-strong); }

@@ -15,7 +15,10 @@
 
 * { box-sizing: border-box; }
 html, body, #root { min-width: 320px; min-height: 100%; margin: 0; }
-body { background: var(--surface-base); }
+/* Portal content sits outside .app-shell: plain prose must inherit the same
+   body token there. Explicit text-label/title/heading utilities still win. */
+body { background: var(--surface-base); font-size: var(--font-size-body); line-height: var(--line-height-body); }
+:where([role="dialog"], [role="alertdialog"]) { font-size: var(--font-size-body); line-height: var(--line-height-body); }
 button, input, textarea, select { letter-spacing: 0; }
 :focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
 

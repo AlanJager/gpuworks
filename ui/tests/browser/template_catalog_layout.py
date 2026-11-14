@@ -21,6 +21,12 @@ const {I18nextProvider} = require('react-i18next');
 const {api} = require('./src/api');
 const Page = require('./src/pages/InferenceTemplatesPage').default;
 const {SideDrawer} = require('./src/ui-kit/SideDrawer');
+const MonitorPage = require('./src/pages/monitor/MonitorPage').default;
+const {ConfigProvider} = require('antd');
+const {themeConfig} = require('./src/theme/tokens');
+api.monitorOverview = async () => require('./tests/fixtures/monitor-overview.json');
+api.monitorDistributions = async () => ({from_ms:0,to_ms:0,token_buckets:[0,2,4],ttft_bounds_ms:[100],input_output:[],uncached_ttft:[],coverage:{total:0,with_usage:0,with_cache:0}});
+api.monitorMetrics = async () => ({items:[]});
 const i18n = require('i18next').createInstance();
 const h = React.createElement;
 const vendors = ['nvidia', 'ascend', 'amd', 'hygon', 'ppu', 'kunlunxin'];
@@ -35,11 +41,12 @@ api.inferenceTemplates = async () => ({items:models,total:models.length,page:1,p
 api.detectedInferenceTemplateChips = async () => ({items:chips});
 api.inferenceTemplateChips = async () => ({items:chips});
 const drawer = new URLSearchParams(location.search).has('drawer');
+const monitor = new URLSearchParams(location.search).has('monitor');
 i18n.init({lng:'en',defaultNS:'inferenceTemplates',interpolation:{escapeValue:false},resources:{en:{
- inferenceTemplates:require('./src/i18n/locales/en/inferenceTemplates.json'),common:require('./src/i18n/locales/en/common.json')
+ monitoring:require('./src/i18n/locales/en/monitoring.json'),inferenceTemplates:require('./src/i18n/locales/en/inferenceTemplates.json'),common:require('./src/i18n/locales/en/common.json')
 }}}).then(()=>createRoot(document.getElementById('root')).render(h(I18nextProvider,{i18n},
  h(MemoryRouter,{initialEntries:['/inference-templates']},h('div',{style:{marginLeft:208,padding:24,minWidth:0}},
- drawer ? h(SideDrawer,{open:true,onClose(){},title:'Geometry drawer'},'Drawer body') : h(Page))))));
+ drawer ? h(SideDrawer,{open:true,onClose(){},title:'Geometry drawer'},'Drawer body') : monitor ? h(ConfigProvider,{theme:themeConfig},h(MonitorPage)) : h(Page))))));
 """
 
 
@@ -62,7 +69,7 @@ class TemplateCatalogLayout(unittest.TestCase):
         cls.browser.close()
         cls.playwright.stop()
 
-    def render_page(self, width, dark=False, drawer=False):
+    def render_page(self, width, dark=False, drawer=False, monitor=False):
         page = self.browser.new_page(viewport={"width": width, "height": 1000})
         self.addCleanup(page.close)
 
@@ -77,7 +84,7 @@ class TemplateCatalogLayout(unittest.TestCase):
                 request.abort()
 
         page.route("**/*", route)
-        page.goto("http://template-layout.test/" + ("?drawer" if drawer else ""))
+        page.goto("http://template-layout.test/" + ("?drawer" if drawer else "?monitor" if monitor else ""))
         if dark:
             page.evaluate("document.documentElement.classList.add('dark')")
         page.add_style_tag(content=self.css)
@@ -137,6 +144,55 @@ class TemplateCatalogLayout(unittest.TestCase):
         self.assertLess(table.bounding_box()['y'], before - 80)
         toggle.click()
         expect(page.locator('.template-hardware-filters')).to_be_visible()
+
+    def test_header_hit_area_excludes_clear_and_chevron_is_last(self):
+        page = self.render_page(1280)
+        expect(page.locator('[data-slot="table"]')).to_be_visible()
+        header = page.locator('.template-filter-heading')
+        toggle = header.locator('button[aria-expanded]')
+        clear = header.get_by_role('button', name='Clear filters', exact=True)
+        arrow = toggle.locator(':scope > span').last
+        self.assertGreater(arrow.bounding_box()['x'], clear.bounding_box()['x'] + clear.bounding_box()['width'])
+        # Even while disabled, the clear button must not leak its click to the
+        # full-width collapse trigger beneath it.
+        box = clear.bounding_box()
+        page.mouse.click(box['x'] + box['width']/2, box['y'] + box['height']/2)
+        expect(toggle).to_have_attribute('aria-expanded', 'true')
+        box = header.bounding_box()
+        page.mouse.click(box['x'] + 3, box['y'] + box['height']/2)
+        expect(toggle).to_have_attribute('aria-expanded', 'false')
+        page.mouse.click(box['x'] + box['width'] - 4, box['y'] + box['height']/2)
+        expect(toggle).to_have_attribute('aria-expanded', 'true')
+        expect(page.locator('.template-hardware-filters')).to_be_visible()
+        page.locator('.template-hardware-filters button').first.click()
+        clear.click()
+        expect(toggle).to_have_attribute('aria-expanded', 'true')
+
+    def test_plain_dialog_prose_inherits_global_body_size_in_both_themes(self):
+        for dark in (False, True):
+            page = self.render_page(1280, dark=dark)
+            expect(page.locator('[data-slot="table"]')).to_be_visible()
+            page.get_by_role('button', name='Edit chips', exact=True).click()
+            dialog = page.get_by_role('dialog', name='Edit chips', exact=True)
+            expect(dialog).to_be_visible()
+            label = dialog.locator('.template-chip-options label > span').first
+            expect(label).to_be_visible()
+            self.assertEqual(label.evaluate('el=>getComputedStyle(el).fontSize'), '14px')
+            self.assertEqual(page.locator('body').evaluate('el=>getComputedStyle(el).fontSize'), '14px')
+            self.assertEqual(dialog.get_by_role('heading', name='Edit chips').evaluate('el=>getComputedStyle(el).fontSize'), '18px')
+            self.capture(page, f'chip-editor-{"dark" if dark else "light"}.png')
+
+    def test_monitor_services_have_spacing_after_signal_cards_and_a_body_sized_title(self):
+        for width in (1280, 1920):
+            page = self.render_page(width, monitor=True)
+            heading = page.get_by_role('heading', name='Service list', exact=True)
+            expect(heading).to_be_visible()
+            cards = page.locator('.monitor-signal-grid').bounding_box()
+            toolbar = page.locator('.monitor-services-section .resource-table-toolbar').bounding_box()
+            self.assertGreaterEqual(toolbar['y'] - cards['y'] - cards['height'], 15)
+            self.assertEqual(heading.evaluate('el=>getComputedStyle(el).fontSize'), '14px')
+            self.assertTrue(page.evaluate('document.documentElement.scrollWidth <= innerWidth + 1'))
+            self.capture(page, f'monitor-spacing-{width}.png')
 
     def test_drawer_has_square_corners(self):
         page = self.render_page(1280, drawer=True)

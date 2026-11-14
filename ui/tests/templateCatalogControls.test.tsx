@@ -34,7 +34,7 @@ test("GPU picker preserves selections across vendors, supports removal, and subm
   let saved: DetectedTemplateChip[] = [];
   render(wrap(<TemplateChipPicker catalog={catalog} existing={[detected]} detectedKeys={new Set([chipKey(detected)])} onClose={() => {}} onApply={chips => { saved = chips; }} />));
   const user = userEvent.setup();
-  assert.ok(screen.getByRole("dialog", { name: "Add Chip", exact: true }));
+  assert.ok(screen.getByRole("dialog", { name: "Edit chips", exact: true }));
   assert.equal(screen.getByRole("checkbox", { name: /H100/ }).getAttribute("aria-disabled"), "true");
   await user.click(screen.getByRole("checkbox", { name: "A100" }));
   await user.click(screen.getByRole("button", { name: "AMD", exact: true }));

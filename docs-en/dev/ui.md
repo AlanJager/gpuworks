@@ -211,3 +211,21 @@ The registry is pinned (`ui/src/theme/zeron/source.json`); upstream changes do
 not reach the console until the pin moves. Move it when a needed component or
 fix exists only upstream, in its own change: new pin, reinstall, then the full
 checks above (unit tests, browser check with comparison).
+
+## Product typography defaults
+
+Console body text is 14px (`--font-size-body`) with the shared body line height.
+Both `body` and portal dialog roots inherit these product defaults from
+`styles.css`; bare text in a dialog must not fall back to the browser's 16px
+default. Keep Zeron managed sources unchanged. Use `text-body` for ordinary
+content, `text-label` for 12px supporting text, and `text-title` for 18px page
+or dialog titles. A list toolbar title uses body size and semibold weight.
+Do not rely on an ancestor inside the page to size a portal, or use an arbitrary
+font-size on each new dialog.
+
+After changing typography or popup composition, run the Chromium geometry
+checks at 1280 and 1920 widths, including both themes.
+`make test-ui-template-catalog-layout` checks the chip editor's computed body
+size and title size, the filter header's hit targets, and the gap between
+monitor signal cards and the service toolbar. Build the UI before this target;
+React unit tests alone do not verify computed sizes or overlaps.

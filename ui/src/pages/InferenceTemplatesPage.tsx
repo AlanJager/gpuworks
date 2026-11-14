@@ -201,20 +201,20 @@ export default function InferenceTemplatesPage() {
     <PageHeader title={t("page.title")} description={t("flat.description")} extra={<div className="flex flex-wrap items-center gap-2">
       <input ref={fileRef} aria-label={t("flat.importTemplates")} hidden type="file" accept={inferenceCatalogFileAccept} onChange={(event) => { const file = event.target.files?.[0]; if (file) void importCatalog(file); event.target.value = ""; }} />
       <Tooltip content={t("flat.importHint")}><Button leadingIcon={ConsoleIcon.upload} onClick={() => fileRef.current?.click()}>{t("flat.importTemplates")}</Button></Tooltip>
-      <Button onClick={() => setAddingChip(true)}>{t("chips.add")}</Button>
+      <Button onClick={() => setAddingChip(true)}>{t("chips.edit")}</Button>
     </div>} />
     <TemplateWarnings warnings={importWarnings} onClose={() => setImportWarnings([])} />
 
     <Accordion className="template-filter-panel" value={filtersOpen ? "filters" : ""} onValueChange={(value: string) => setFiltersOpen(value === "filters")}>
       <AccordionItem value="filters" className="[&>div.pointer-events-none]:hidden">
         <div className="template-filter-heading">
-          <div className="min-w-0 flex-1">
-            <AccordionTrigger className="px-3 py-2 [&>span]:min-w-0">
+          <div className="min-w-0 w-full">
+            <AccordionTrigger className="px-3 py-2 [&>span]:min-w-0 [&>span:first-child]:pr-28">
               <span>{t("filters.title")}</span>
               <span className="ml-3 break-words text-label font-normal text-fg-muted">{[activeChip && chipDisplayLabel(activeChip), operation && t(operationLabelKey[operation]), engine === "vllm" ? "vLLM" : engine === "sglang" ? "SGLang" : engine].filter(Boolean).join(" · ")}</span>
             </AccordionTrigger>
           </div>
-          <Button className="mr-2 shrink-0" variant="ghost" size="sm" disabled={!selectedChip && !operation && !engine}
+          <Button className="template-filter-clear z-action disabled:pointer-events-auto" variant="ghost" size="sm" disabled={!selectedChip && !operation && !engine}
             onClick={() => { setSelectedChip(""); setOperation(""); setEngine(""); }}>{t("filters.clear")}</Button>
         </div>
         <AccordionContent className="relative bg-surface-floating">

@@ -34,7 +34,7 @@ export function TemplateChipPicker({ catalog, existing, detectedKeys, onClose, o
   const shown = chips.filter(chip => needle ? `${chipDisplayLabel(chip)} ${t(`vendor.${chip.vendor}`, { defaultValue: chip.vendor })}`.toLowerCase().includes(needle) : chip.vendor === activeVendor);
   return <Dialog open onOpenChange={open => { if (!open) onClose(); }}>
     <DialogContent size="lg" className="w-[min(720px,calc(100vw-32px))] max-w-none">
-      <DialogHeader><DialogTitle>{t("chips.add")}</DialogTitle></DialogHeader>
+      <DialogHeader><DialogTitle>{t("chips.edit")}</DialogTitle></DialogHeader>
       <Input aria-label={t("chips.search")} placeholder={t("chips.search")} value={query} onChange={event => setQuery(event.target.value)} />
       <div className="template-chip-picker">
         <nav aria-label={t("columns.vendor")}>{vendors.map(item => <Button key={item} variant="ghost" active={item === activeVendor} onClick={() => { setVendor(item); setQuery(""); }} aria-label={t(`vendor.${item}`, { defaultValue: item })}><VendorLogo vendor={item} size={18} /></Button>)}</nav>
