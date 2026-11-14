@@ -806,3 +806,65 @@ find internal/server/store -type f -name '*.go' ! -name '*_test.go' | sort \
 
 `internal/proto` 那条只匹配 import 列表，绝不匹配包自身的 import path——否则
 `./internal/proto` 会因为自己的路径里含 `gpuworks/` 而永远"违规"。
+
+### ADR 0067 guards（初值均为 0）
+
+意图：失败、拒绝与检查结果以「码 + 参数」表达，不以英文散文表达，也不让下游再去解析散文
+（[ADR 0067](../docs/adr/0067-runtime-outcomes-as-codes.md)）。五个键都只许保持 0；实测命令即
+`scripts/check_architecture.sh` 中同名的 `*_hits` 函数，非测试 Go 文件。另有一条不走预算、由
+`make i18n-check` 直接拦截的规则：`internal/proto`、`internal/server/messages` 中的每个 UPPER_SNAKE
+常量，以及别处名为 `Error…`/`Warning…`/`Failure…`/`Reason…`/`Code…` 的 UPPER_SNAKE 常量，都必须在
+`ui/src/i18n/locales/{en,zh}` 中有文案。
+
+#### error_text_classification
+
+按错误文本判断类别：`strings.Contains/HasPrefix/Cut…` 作用于 `err`/`msg`/`message`/`detail`/`reason`/
+`stderr`/`output`，`err.Error() ==`，`switch x.Error()`，以及对 `.Error()` 的正则匹配。仓库自己产生的
+error 一律用 `errors.Is/As`。排除的是**调用外部系统的适配器**，每个文件只在那里按文本识别并当场转成
+哨兵或码：
+
+| 文件 | 包装的外部系统 |
+|---|---|
+| `internal/agent/modelfetch/retry.go` | Go net/http 的 HTTP/2、TLS 错误（类型未导出） |
+| `internal/agent/runtime/docker/cli_answers.go` | docker CLI 的输出 |
+| `internal/server/logstore/query.go` | glebarez SQLite 驱动的 FTS5 语法错误（只给通用 SQLITE_ERROR） |
+| `internal/server/uxstore/query.go` | 同一驱动的 "no such table" |
+| `internal/server/provider/compshare/api_error.go` | CompShare（UCloud）API 的错误消息 |
+| `internal/server/provider/vast/vast.go` | vast.ai 绑定 SSH 公钥的 "already associated" |
+| `internal/server/provision/ssh_failure.go` | x/crypto/ssh 未导出类型的认证耗尽错误 |
+| `internal/server/provision/install_command.go`、`probe.go` | 远端主机上安装/探测命令的标准输出 |
+| `internal/server/inferencecatalog/package_tolerant.go` | gopkg.in/yaml 的解码错误：只取第一行作为跳过原因，不据此分类 |
+| `internal/server/hub/benchmark_failure_code.go` | 老 agent 的评测失败消息（混合版本集群的长期读入边界） |
+| `internal/server/store/instance_runtime_failure.go` | 老 agent 端口拒绝的消息前缀（同上） |
+| `internal/testenv/cloudprovider/aliyun_api.go`、`aliyun_infra.go` | 阿里云 ECS 的锁定原因与错误码（测试 harness） |
+| `internal/integrationtest/fleet/gateway.go` | 去掉网络错误里的端口以归并报告行，不做分类（测试 harness） |
+
+不匹配正则、但同样只在适配器里识别文本的还有 `runtime/nerdctl/cli_answers.go`、`runtime/pull_failure.go`、
+`expose/stream.go`、`storagemount/classify.go`、`autodl/api_answer.go`、`hub/rpc_remote_error.go`。
+
+#### instance_failed_without_reason
+
+不经结构化原因就把实例置为 `failed`：`State: proto.InstFailed`、`SetInstanceState(…InstFailed)`、
+`reportState(…InstFailed)`、`Update("state", InstFailed)`，以及按消息前缀判断端口拒绝。agent 侧唯一入口是
+`internal/agent/engine/runtime_failure.go` 的 `reportFailed`（排除），server 侧唯一入口是
+`store.SetInstanceFailed`（以参数传 `proto.InstFailed`，模式不匹配）。
+
+#### gateway_error_bypass
+
+绕过网关码表写错误：`proxy` 包里的 `writeErr(`、`"gpuworks_proxy"` 类型字面量、API/网关/hub/batch 里的
+`http.Error(`、server 里手写的 `{"error":` JSON。排除：`api/security_headers.go`（非 `/api` 路径的纯文本
+分支）、两个写入器本身（`messages/http.go`、`api/responses.go`）、`api/inference_templates_official.go`
+（参数键恰好名为 `error`）。
+
+#### legacy_check_vocabulary
+
+检查结果的旧词与字面量：`DoctorFinding`/`CardCheck` 字面量里写死的状态/码/id 字符串、`DoctorLevel`、
+`accelerator.Check*`、卡检查的 `"pending"`、provision/provider 的 `ok|error|passed|failed|skipped`、
+`InstallCheck` 副本、部署诊断的 `passed|failed|blocked|unknown|pending|not_applicable`、节点诊断的
+`info|incomplete|completed|unavailable`。排除：`internal/proto/check_compat.go`，老 agent 旧词的唯一读入边界。
+
+#### console_unlinked_code_packages
+
+`make i18n-check` 不要求其码有 locale 文案的包（目前只有 `internal/templateprobe`：目录维护者的 CLI 以英文输出它的
+失败族）必须不被 `cmd/gpuworks`、`cmd/gpuworks-agent` 链接。计数是这两个二进制依赖图里出现该包的次数。
+一旦控制台要展示这些码，就从 i18n-check 的排除表里删掉它并补文案，而不是放宽这条预算。

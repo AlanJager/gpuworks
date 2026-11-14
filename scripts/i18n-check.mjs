@@ -306,6 +306,53 @@ for (const [index, source] of productErrorSources.entries()) {
   }
 }
 
+// ADR 0067: every product code a client renders has en and zh text. A product
+// code is an UPPER_SNAKE string constant declared in internal/proto or
+// internal/server/messages, or anywhere else under internal/ and pkg/ under an
+// identifier that names it a code (Error..., Warning..., Failure..., Reason...,
+// Code..., or containing one of the first four as a word). The text may live in any namespace
+// (apiError, a feature's own reason table); plural forms count.
+const codeName = /^(?:[Ee]rror|[Ww]arning|[Ff]ailure|[Rr]eason|[Cc]ode)|(?:Error|Warning|Failure|Reason)(?:[A-Z]|$)/;
+const codePackageDirs = [path.join(root, "internal/proto"), messagesDir];
+const leafKeys = new Map();
+for (const [name, map] of localeMaps) {
+  const language = name.split("/")[0];
+  const keys = leafKeys.get(language) ?? new Set();
+  for (const key of map.keys()) {
+    // Every path segment counts: a code may name a leaf string or an object
+    // of texts (an assistant finding's title and fix).
+    for (const segment of key.split(".")) {
+      keys.add(segment);
+      keys.add(segment.replace(/_(?:zero|one|two|few|many|other)$/, ""));
+    }
+  }
+  leafKeys.set(language, keys);
+}
+// Packages that neither binary links: their codes are read by catalog
+// maintainers in a CLI's English output, never rendered by the console.
+// check_architecture.sh's console_unlinked_code_packages proves each one stays
+// out of cmd/gpuworks and cmd/gpuworks-agent.
+const consoleUnlinkedCodePackages = [path.join(root, "internal/templateprobe")];
+const runtimeCodes = new Map();
+for (const top of ["internal", "pkg"]) {
+  for (const file of filesUnder(path.join(root, top), ".go")) {
+    if (file.endsWith("_test.go") || file.includes(`${path.sep}testdata${path.sep}`)) continue;
+    if (consoleUnlinkedCodePackages.includes(path.dirname(file))) continue;
+    const inCodePackage = codePackageDirs.includes(path.dirname(file));
+    const source = fs.readFileSync(file, "utf8");
+    for (const match of source.matchAll(/^\s*(?:const\s+)?([A-Za-z]\w*)\s*(?:[A-Za-z.]+\s*)?=\s*"([A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+)"/gm)) {
+      const [, name, code] = match;
+      if (!inCodePackage && !codeName.test(name)) continue;
+      if (!runtimeCodes.has(code)) runtimeCodes.set(code, `${path.relative(root, file)}:${source.slice(0, match.index).split("\n").length}`);
+    }
+  }
+}
+for (const [code, where] of runtimeCodes) {
+  for (const language of ["en", "zh"]) {
+    if (!leafKeys.get(language)?.has(code)) errors.push(`${where}: product code ${code} has no ${language} locale text (ADR 0067)`);
+  }
+}
+
 // Product-facing API errors must enter through the stable-code helpers. Keep
 // raw lower-level errors on writeErr, but reject new hand-authored product
 // messages, CJK fallbacks, and unregistered raw string codes.
