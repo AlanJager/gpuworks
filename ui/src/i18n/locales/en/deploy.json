@@ -522,6 +522,8 @@
     "commonEnv": "Common series environment variables:",
     "entrypointOverride": "Entrypoint Override",
     "cmdOverride": "Cmd Override",
+    "cmdOverrideManual": "Set by the manual command",
+    "cmdOverrideManualHelp": "A manual command is a multi-line script; edit it in the command editor of the launch preview.",
     "inheritImage": "Use image default",
     "deepseekTitle": "DeepSeek MLA Compatibility Note",
     "deepseekDescription": "The platform automatically uses fp8 KV cache in compatible scenarios. To override it, specify the value explicitly in custom arguments.",
