@@ -111,6 +111,20 @@ func injectPriorityScheduling(b *builder, p Params) {
 	}
 }
 
+// PriorityFieldValue is the request "priority" value that gives a class of
+// value classValue (larger is more important) on engine, as the platform
+// launches it: vLLM handles lower values first, SGLang higher ones. ok is
+// false for an engine without priority scheduling.
+func PriorityFieldValue(engine string, classValue int) (int, bool) {
+	switch engine {
+	case EngineVLLM:
+		return -classValue, true
+	case EngineSGLang:
+		return classValue, true
+	}
+	return 0, false
+}
+
 // lastFlagValue is the value the last occurrence of flag gives in args, in
 // either "--flag value" or "--flag=value" form; argparse keeps the last.
 func lastFlagValue(args []string, flag string) (string, bool) {

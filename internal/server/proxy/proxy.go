@@ -63,7 +63,9 @@ type Proxy struct {
 	// acct is proxy request accounting (accounting.go). A nil *Accountant is
 	// valid and every method on it no-ops, so a Proxy built without
 	// SetAccountant behaves exactly as it did before accounting existed.
-	acct       *Accountant
+	acct *Accountant
+	// priority is the snapshot of request priority classes (priority.go).
+	priority   *priorityClasses
 	routes     *routeTable
 	serving    *servingDialer
 	balancer   *balancer
@@ -184,6 +186,7 @@ func New(st *store.Store, networks Networks, hub Tunneler, log *slog.Logger, max
 	p.load = newEngineLoad()
 	p.balancer = newBalancer(p.load)
 	p.routes = newRouteTable(st, networks, hub, log)
+	p.priority = &priorityClasses{store: st}
 	p.serving = newServingDialer(log, func(nodeUUID string, status store.ServingForwardStatus) {
 		if st == nil {
 			return
@@ -345,7 +348,7 @@ func (p *Proxy) Handler() http.HandlerFunc {
 		if !ok {
 			return
 		}
-		r = r.WithContext(withKeyScope(uxrecord.WithCaller(r.Context(), caller), identity))
+		r = r.WithContext(withPriorityBinding(withKeyScope(uxrecord.WithCaller(r.Context(), caller), identity), identity.Priority))
 		r.Header.Del(instanceHeader) // pinning is an internal-entry feature
 		p.serveAuthenticated(w, r)
 	}
@@ -555,10 +558,11 @@ func (p *Proxy) serveSelectedTarget(w http.ResponseWriter, r *http.Request, publ
 		fail(err)
 		return
 	}
-	cleanupPriority, err := stripClientPriority(r, p.maxBodyBytes)
+	r, cleanupPriority, ok := p.applyRequestPriority(w, r, deploymentID)
 	defer cleanupPriority()
-	if err != nil {
-		fail(err)
+	if !ok {
+		p.releaseTarget(tgt)
+		p.acctFor(r.Context()).RecordImmediate(deploymentID, http.StatusBadRequest, false)
 		return
 	}
 	proceed, cleanupPD := p.servePrefillStage(w, r, &tgt, deploymentID)

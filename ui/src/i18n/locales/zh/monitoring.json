@@ -297,6 +297,7 @@
       "prefill_pd": "首 token 重算"
     },
     "detail": {
+      "priority": "请求优先级：{{name}}",
       "input": "输入 {{input}} token · 命中 {{cached}} · 未命中 {{uncached}}",
       "output": "输出 {{output}} token",
       "outputReasoning": "输出 {{output}} token，其中思考 {{reasoning}}",

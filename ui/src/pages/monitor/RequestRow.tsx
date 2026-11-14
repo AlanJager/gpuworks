@@ -90,6 +90,7 @@ export function RequestDetailLines({ r, replica }: { r: MonitorRequest; replica:
   const lines: string[] = [];
   const at = (kind: SegmentKind) => phases.segments.filter((s) => s.kind === kind).reduce((sum, s) => sum + s.ms, 0);
   lines.push(`${callerName(r, t)} · ${clock(r.received_ms)}${replica ? ` · ${replica}` : ""}`);
+  if (r.priority_class) lines.push(t("requests.detail.priority", { name: r.priority_class }));
   if (r.prompt_tokens != null) {
     lines.push(
       t("requests.detail.input", {

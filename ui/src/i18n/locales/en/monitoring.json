@@ -297,6 +297,7 @@
       "prefill_pd": "First-token recompute"
     },
     "detail": {
+      "priority": "Request priority: {{name}}",
       "input": "Input {{input}} tokens · cached {{cached}} · uncached {{uncached}}",
       "output": "Output {{output}} tokens",
       "outputReasoning": "Output {{output}} tokens, {{reasoning}} of them reasoning",

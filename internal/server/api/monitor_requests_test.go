@@ -145,7 +145,7 @@ func TestMonitorRequestsWireJSON(t *testing.T) {
 		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
 	}
 	want := `{"view":"history","as_of":5000,"counts":null,"requests":[{"id":"r1","trace_id":"4bf92f3577b34da6a3ce929d0e0e4736","deployment_id":7,"received_ms":4000,"phase":"done",` +
-		`"age_ms":null,"instance_uuid":"","api_key_id":3,"api_key_name":"app","user_id":0,"source":"api","stream":true,` +
+		`"age_ms":null,"instance_uuid":"","api_key_id":3,"api_key_name":"app","priority_class":"","user_id":0,"source":"api","stream":true,` +
 		`"body_bytes":120,"images":0,"dispatch_ms":null,"first_byte_ms":null,"first_think_ms":null,"first_answer_ms":null,` +
 		`"last_chunk_ms":null,"end_ms":null,"events":4,"think_events":0,"max_gap_ms":null,"status":200,"outcome":"ok",` +
 		`"finish_reason":"stop","result":"completed","prompt_tokens":900,"cached_tokens":null,"completion_tokens":null,"reasoning_tokens":null,` +
@@ -353,7 +353,7 @@ func TestMonitorRequestLookupWireJSON(t *testing.T) {
 		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
 	}
 	want := `{"as_of":9000,"from_ms":1000,"to_ms":5000,"window":"requested","requests":[{"id":"r1","trace_id":"4bf92f3577b34da6a3ce929d0e0e4736",` +
-		`"deployment_id":7,"received_ms":4000,"phase":"done","age_ms":null,"instance_uuid":"","api_key_id":0,"api_key_name":"","user_id":0,` +
+		`"deployment_id":7,"received_ms":4000,"phase":"done","age_ms":null,"instance_uuid":"","api_key_id":0,"api_key_name":"","priority_class":"","user_id":0,` +
 		`"source":"api","stream":false,"body_bytes":0,"images":0,"dispatch_ms":null,"first_byte_ms":null,"first_think_ms":null,` +
 		`"first_answer_ms":null,"last_chunk_ms":null,"end_ms":null,"events":0,"think_events":0,"max_gap_ms":null,"status":200,` +
 		`"outcome":"ok","finish_reason":"","result":"completed","prompt_tokens":null,"cached_tokens":null,"completion_tokens":null,` +

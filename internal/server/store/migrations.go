@@ -1345,6 +1345,7 @@ var migrations = []migration{
 	{Version: 211, Name: "ai_config_proxy_and_image_input", Apply: addAIConfigProxyAndImageInput},
 	{Version: 212, Name: "provider_synced_at", Apply: addProviderSyncedAt},
 	{Version: 213, Name: "deployment_priority_scheduling", Apply: addDeploymentPriorityScheduling},
+	{Version: 214, Name: "priority_classes", Apply: createPriorityClasses},
 }
 
 // modelFileNetworkColumns are the columns migrations 76 and 77 added to

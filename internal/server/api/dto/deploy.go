@@ -437,6 +437,8 @@ type APIKey struct {
 	// Deployments, which may have become empty when they were all deleted.
 	AllDeployments bool               `json:"all_deployments"`
 	Deployments    []APIKeyDeployment `json:"deployments"`
+	// Priority is the key's request priority binding.
+	Priority APIKeyPriority `json:"priority"`
 }
 
 // APIKeyDeployment is a deployment a restricted API key may call.

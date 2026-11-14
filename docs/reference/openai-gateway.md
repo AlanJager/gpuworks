@@ -75,7 +75,9 @@ server 的 `/v1/*` 默认要求 API key 鉴权，规则见下文[认证](#认证
 
 ## 请求优先级
 
-客户端不能自己决定请求的优先级。网关对每个 `/v1` 请求去掉 `X-Vllm-Priority` 请求头，并把 JSON 请求体顶层的 `priority` 改为 `0`（两个引擎都把 0 当作中性值，vLLM 不接受 `null`）；请求体不含 `priority` 时原样转发。部署是否按优先级调度见[请求优先级](../explanation/request-priority.md)。
+请求的优先级由网关决定：按 API 令牌绑定的优先级类，以及客户端用请求头 `X-GPUWorks-Priority-Class: <名称>` 在令牌允许范围内的指定；批处理请求固定为 `batch` 类。名称不存在时返回 400。响应头 `X-GPUWorks-Priority-Class` 给出请求实际使用的类。
+
+部署开启了请求优先级时，网关把类的数值按引擎方向写进请求体的 `priority`；否则把已有的 `priority` 改为 `0`。客户端自带的 `priority` 字段和 `X-Vllm-Priority` 请求头都不会到达引擎。详见[请求优先级](../explanation/request-priority.md)。
 
 ## Trace context
 

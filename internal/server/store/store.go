@@ -31,6 +31,8 @@ type Store struct {
 	fleetNodes fleetNodeCache
 	// scheduleEvents counts the scheduling events written (ScheduleEventCount).
 	scheduleEvents atomic.Uint64
+	// priorityGen counts priority class changes (PriorityClassGeneration).
+	priorityGen atomic.Uint64
 	// readDB is a second connection pool (same database file) dedicated to
 	// hot, pure-read paths (ListNodes, ListDeployments, ListInstances, the
 	// timeline reads, InstanceByUUID — see reader()): under WAL, readers do

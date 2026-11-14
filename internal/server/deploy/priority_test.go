@@ -120,3 +120,15 @@ func TestPrioritySchedulingInjection(t *testing.T) {
 		t.Fatalf("stated argv = %v", argv)
 	}
 }
+
+func TestPriorityFieldValue(t *testing.T) {
+	if v, ok := PriorityFieldValue(EngineVLLM, 20); !ok || v != -20 {
+		t.Fatalf("vllm = %d %v", v, ok)
+	}
+	if v, ok := PriorityFieldValue(EngineSGLang, 20); !ok || v != 20 {
+		t.Fatalf("sglang = %d %v", v, ok)
+	}
+	if _, ok := PriorityFieldValue("llamacpp", 20); ok {
+		t.Fatal("llamacpp has no priority")
+	}
+}

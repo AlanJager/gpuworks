@@ -82,6 +82,10 @@ func (o Outcome) String() string {
 type Request struct {
 	// ID is the gateway request id (the X-Request-ID the client saw).
 	ID string
+	// PriorityClass is the priority class the gateway ran the request at
+	// (the class's name when it ran; "" for a request from before classes,
+	// or one refused before the gateway decided it).
+	PriorityClass string
 	// Trace is the gateway's span of the request (W3C trace context, ADR
 	// 0046). The request store keeps its trace id; the span id, the
 	// caller's span, the sampling decision and the tracestate only travel

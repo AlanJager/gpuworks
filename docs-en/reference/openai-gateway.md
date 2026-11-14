@@ -75,7 +75,9 @@ You can disable tokenization forwarding for each deployment: set `tokenize_enabl
 
 ## Request Priority
 
-Clients cannot set a request's priority themselves. On every `/v1` request the gateway removes the `X-Vllm-Priority` header and sets a top-level `priority` in a JSON body to `0` (both engines read 0 as the neutral level, and vLLM rejects `null`); a body without `priority` is forwarded as sent. Whether a deployment schedules by priority is described in [Request Priority](../explanation/request-priority.md).
+The gateway decides a request's priority: from the priority class its API key is bound to, and the class the client names with the request header `X-GPUWorks-Priority-Class: <name>` within what the key allows; batch requests always run at the `batch` class. A name that matches no class returns 400. The response header `X-GPUWorks-Priority-Class` names the class the request ran at.
+
+For a deployment with request priority on, the gateway writes the class value into the body's `priority` in the engine's direction; otherwise it sets an existing `priority` to `0`. A client's own `priority` field and `X-Vllm-Priority` header never reach the engine. See [Request Priority](../explanation/request-priority.md).
 
 ## Trace Context
 

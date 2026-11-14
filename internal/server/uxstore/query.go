@@ -33,6 +33,8 @@ type RequestQuery struct {
 	APIKeyID uint
 	// InstanceUUID narrows to one replica; "" is any.
 	InstanceUUID string
+	// PriorityClass narrows to the requests run at one class; "" is any.
+	PriorityClass string
 	// Results keeps the requests of these results (uxrecord.ResultOf);
 	// empty is every result.
 	Results []uxrecord.Result
@@ -82,7 +84,8 @@ const reqColumns = `r.seq, r.id, r.ts, r.deployment_id, r.instance_uuid, r.api_k
 	r.first_answer_ms, r.last_chunk_ms, r.end_ms, r.events, r.think_events, r.max_gap_ms, r.status,
 	r.outcome, r.finish_reason, r.usage, r.prompt_tokens, r.completion_tokens, r.cached_tokens,
 	r.reasoning_tokens, r.engine_queue_ms, r.engine_prefill_ms, r.engine_decode_ms, r.weight, r.trace_id,
-	r.pd_prefill_ms, r.pd_prefill_queue_ms, r.pd_prefill_compute_ms, r.pd_prefill_instance, r.pd_fallback`
+	r.pd_prefill_ms, r.pd_prefill_queue_ms, r.pd_prefill_compute_ms, r.pd_prefill_instance, r.pd_fallback,
+	r.priority_class`
 
 func scanRequest(rows *sql.Rows, seq *int64) (uxrecord.Request, error) {
 	var r uxrecord.Request
@@ -95,7 +98,8 @@ func scanRequest(rows *sql.Rows, seq *int64) (uxrecord.Request, error) {
 		&r.MaxGapMS, &r.Status, &outcome, &r.FinishReason, &r.Usage, &r.PromptTokens,
 		&r.CompletionTokens, &r.CachedTokens, &r.ReasoningTokens, &r.EngineQueueMS,
 		&r.EnginePrefillMS, &r.EngineDecodeMS, &r.Weight, &trace,
-		&pd.PrefillMS, &pd.PrefillQueueMS, &pd.PrefillComputeMS, &pd.PrefillInstance, &pd.Fallback)
+		&pd.PrefillMS, &pd.PrefillQueueMS, &pd.PrefillComputeMS, &pd.PrefillInstance, &pd.Fallback,
+		&r.PriorityClass)
 	r.Source, r.Outcome = uxrecord.Source(source), uxrecord.Outcome(outcome)
 	if len(trace) == len(r.Trace.Trace) {
 		copy(r.Trace.Trace[:], trace)
@@ -129,6 +133,10 @@ func requestSQL(day string, q RequestQuery, cur *cursor, limit int) (string, []a
 	if q.APIKeyID != 0 {
 		where = append(where, "r.api_key_id = ?")
 		args = append(args, q.APIKeyID)
+	}
+	if q.PriorityClass != "" {
+		where = append(where, "r.priority_class = ?")
+		args = append(args, q.PriorityClass)
 	}
 	if q.FromMS > 0 {
 		where = append(where, "r.ts >= ?")

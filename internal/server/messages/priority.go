@@ -33,3 +33,21 @@ func PrioritySchedulingRefusalFallback(code string) string {
 	}
 	return "priority scheduling is unavailable"
 }
+
+// Product error codes of request priority classes and key bindings
+// (internal/server/api/priority_classes.go).
+const (
+	// ErrorPriorityClassInvalid: a class name or value out of bounds
+	// ({field}), or a binding naming no class.
+	ErrorPriorityClassInvalid = "PRIORITY_CLASS_INVALID"
+	// ErrorPriorityClassExists: a class with the name already exists.
+	ErrorPriorityClassExists = "PRIORITY_CLASS_EXISTS"
+	// ErrorPriorityClassBuiltin: a built-in class keeps its name and value.
+	ErrorPriorityClassBuiltin = "PRIORITY_CLASS_BUILTIN"
+	// ErrorPriorityClassInUse: the class is the default or bound to a live key.
+	ErrorPriorityClassInUse = "PRIORITY_CLASS_IN_USE"
+	// ErrorPriorityClassNotFound: no class has the name.
+	ErrorPriorityClassNotFound = "PRIORITY_CLASS_NOT_FOUND"
+	// ErrorPriorityPolicyInvalid: a key policy that is none of the known ones ({policy}).
+	ErrorPriorityPolicyInvalid = "PRIORITY_POLICY_INVALID"
+)

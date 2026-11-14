@@ -51,7 +51,10 @@ type MonitorRequest struct {
 	APIKeyID     uint   `json:"api_key_id"`
 	// APIKeyName is the key's name; empty for none or a deleted key.
 	APIKeyName string `json:"api_key_name"`
-	UserID     uint   `json:"user_id"`
+	// PriorityClass is the priority class the gateway ran the request at;
+	// empty for a request recorded before classes, or still in flight.
+	PriorityClass string `json:"priority_class"`
+	UserID        uint   `json:"user_id"`
 	// Source is "api", "playground" or "batch".
 	Source    string `json:"source"`
 	Stream    bool   `json:"stream"`
@@ -181,6 +184,8 @@ type MonitorRequestsQuery struct {
 	APIKeyID     uint
 	// InstanceUUID narrows to one replica.
 	InstanceUUID string
+	// PriorityClass narrows history to the requests run at one class.
+	PriorityClass string
 	// Results, MinEndMS and MaxEndMS filter history by result and by
 	// end-to-end time.
 	Results            []string

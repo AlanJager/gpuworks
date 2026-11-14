@@ -147,6 +147,7 @@
     }
   },
   "quality": {
+    "byClass": {"title": "按请求优先级", "help": "按网关给请求的优先级类分别统计。高优先级持续占满引擎时，低优先级可能长时间排队，全局指标看不出来，这里分开看。「未记录」是启用优先级之前的请求，类未知。", "class": "优先级", "requests": "请求数", "success": "成功率", "ttftP50": "TTFT P50", "ttftP95": "TTFT P95", "e2eP50": "端到端 P50", "e2eP95": "端到端 P95", "unknown": "未记录"},
     "cards": {
       "requests": "请求数",
       "completed": "正常完成 {{count}}",

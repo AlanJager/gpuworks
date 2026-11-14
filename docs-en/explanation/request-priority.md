@@ -24,14 +24,49 @@ It cannot be turned on in the following cases; the deployment form gives the rea
 
 When the conflict comes from the inference template (some templates use `--schedule-policy lpm` for prefix-cache hits), the switch offers one click: it adds `--schedule-policy fcfs` to the custom arguments, overriding the template's value, and evaluation then judges again. Doing so loses the original policy's optimization. When the conflict comes from the user's own arguments, the user changes them.
 
-## How the Gateway Handles Priority
+## Priority Classes
 
-Clients cannot decide a priority themselves. On every `/v1` request the gateway:
+A priority class is a name and a value, **larger is more important**, from -100 to 100. Classes are managed under Settings → Nodes and Deployments → Request priority, by administrators only. Five classes are built in:
 
-- removes the `X-Vllm-Priority` header (vLLM uses it to override the priority in the body);
-- sets a top-level `priority` in a JSON body to `0`. Both engines read 0 as the neutral level; vLLM rejects `null`, so the field is not emptied. A body without `priority` is forwarded as sent, without copying it.
+| Name | Value | Use |
+|---|---|---|
+| `critical` | 40 | Critical workloads |
+| `high` | 20 | |
+| `normal` | 0 | The initial default |
+| `low` | -20 | |
+| `batch` | -40 | Always used by batch requests |
 
-Both stages of a PD request are handled the same way.
+A built-in class can only change its display name and description; its name and value stay and it cannot be deleted. Administrators may create their own classes. Between two classes more than 10 apart, SGLang lets the higher preempt a running lower one; 10 or less only changes queue order.
+
+One class is the **default**: it is used by API keys bound to no class, the playground and requests without a key (when an administrator turned on anonymous access). The default cannot be deleted, nor can a class bound to an active key.
+
+## Key Binding and Client Choice
+
+On the API Keys page an administrator can bind a key:
+
+- **Class**: the class the key's requests run at by default; unbound, the default class.
+- **What clients may ask for** (the policy); clients name a class with the request header `X-GPUWorks-Priority-Class: <name>`:
+  - **Within ceiling** (the default): any class up to the **ceiling**; a higher one is lowered to the ceiling. Without a ceiling it is the key's own class.
+  - **Fixed**: the header is ignored.
+  - **Down only**: only classes up to the key's own.
+
+A name in the header that matches no class is refused with 400 and not forwarded. Batch requests ignore their key and always run at the `batch` class.
+
+## How the Gateway Writes the Priority
+
+The gateway first decides the request's class, names it in the response header `X-GPUWorks-Priority-Class`, and then:
+
+- for a deployment with request priority on whose engine is vLLM or SGLang, writes the class value into the body's `priority` in the engine's direction: negated for vLLM (lower values run first), as is for SGLang;
+- otherwise sets a `priority` the body already has to `0`, and leaves a body without one untouched.
+
+Either way, a client's own `priority` field and `X-Vllm-Priority` header (vLLM uses it to override the body) never reach the engine. Both stages of a PD request are handled the same way.
+
+A class change applies to the next request on the server that made it; with several servers, the others follow within 5 seconds. A key binding change applies from that key's next request.
+
+## Observation
+
+- Every request record carries `priority_class` (the name of the class the request ran at), shown in the request detail; the request records API can filter by it (the `priority_class` parameter).
+- The Service quality page of Operations analytics has a "By request priority" table giving each class's requests, success rate and first-token and end-to-end quantiles. A low class can queue for long while a high one keeps the engine saturated, which the totals hide; this table shows it. Requests from before priority classes count as "Unrecorded", their class unknown.
 
 ## Effects and Limits
 
