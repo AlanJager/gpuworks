@@ -1,7 +1,6 @@
 package inferencecatalog
 
 import (
-
 	"gpuworks.ai/gpuworks/internal/engines"
 	"gpuworks.ai/gpuworks/internal/server/deploy"
 	"gpuworks.ai/gpuworks/internal/server/messages"
