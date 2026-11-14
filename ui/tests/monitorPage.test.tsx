@@ -172,6 +172,23 @@ test("clicking the ready replicas tile narrows the table to the services short o
   assert.equal(screen.queryByText("Qwen3-32B"), null);
 });
 
+test("state shortcuts replace signal narrowing and signal shortcuts replace state narrowing", async () => {
+  api.monitorOverview = async () => overview;
+  renderPage();
+  await waitFor(() => assert.ok(screen.getByText("Qwen3-32B")));
+  screen.getByRole("button", { name: /^Ready replicas/ }).click();
+  await waitFor(() => assert.ok(screen.queryByText("Qwen3-32B") === null));
+  screen.getByRole("button", { name: "Running 8", exact: true }).click();
+  await waitFor(() => assert.ok(screen.getByText("Qwen3-32B")));
+  assert.equal(screen.queryByText("Llama-3.1-70B"), null);
+  assert.equal(screen.queryByRole("button", { name: "Clear filter", exact: true }), null);
+  screen.getByRole("button", { name: /^Ready replicas/ }).click();
+  await waitFor(() => assert.ok(screen.getByText("Llama-3.1-70B")));
+  assert.ok(screen.getByText("ChatGLM3-6B"));
+  assert.equal(screen.queryByText("Qwen3-32B"), null);
+  assert.equal(screen.queryByRole("button", { name: "Clear filter: State Running" }), null);
+});
+
 test("clicking a service state count narrows the table to the services in that state", async () => {
   api.monitorOverview = async () => overview;
   renderPage();

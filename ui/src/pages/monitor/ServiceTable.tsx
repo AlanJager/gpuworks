@@ -48,8 +48,6 @@ function useNarrow(breakpointPx = NARROW_BREAKPOINT): boolean {
   return narrow;
 }
 
-
-
 function num(value: number | null, digits = 0): ReactNode {
   return value == null ? <Dash /> : value.toFixed(digits);
 }
@@ -76,12 +74,14 @@ export default function ServiceTable({
   error,
   onRefresh,
   filterDeploymentIds,
+  onStateShortcut,
 }: {
   services: MonitorService[];
   loading?: boolean;
   error?: Error | null;
   onRefresh?: () => void;
   filterDeploymentIds?: number[] | null;
+  onStateShortcut?: () => void;
 }) {
   const { t } = useTranslation("monitoring");
   const { t: tCommon } = useTranslation("common");
@@ -166,7 +166,7 @@ export default function ServiceTable({
       tableId={narrow ? "monitor-services-narrow" : "monitor-services"}
       rowKey="deployment_id"
       columns={columns}
-      toolbar={<div className="flex flex-wrap items-center gap-4"><h2 className="text-title font-semibold">{t("table.service")}</h2><StateSummary services={services} selected={stateFilter} onSelect={state => setStateFilter(current => current.length === 1 && current[0] === state ? [] : [state])} /></div>}
+      toolbar={<div className="flex flex-wrap items-center gap-4"><h2 className="text-title font-semibold">{t("table.service")}</h2><StateSummary services={services} selected={stateFilter} onSelect={state => { onStateShortcut?.(); setStateFilter(current => current.length === 1 && current[0] === state ? [] : [state]); }} /></div>}
       onFilterStateChange={filters => setStateFilter(filters.state ?? [])}
       data={rows}
       loading={loading}

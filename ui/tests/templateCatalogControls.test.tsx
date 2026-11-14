@@ -49,3 +49,15 @@ test("search finds models across brands and cancelling never submits the staged 
   await user.click(screen.getByRole("button", { name: "Cancel", exact: true }));
   assert.equal(closes, 1); assert.equal(adds, 0);
 });
+
+test("opening the picker before the catalog arrives selects the first available brand when it loads", async () => {
+  let saved: DetectedTemplateChip[] = [];
+  const props = { existing: [], onClose() {}, onAdd(chips: DetectedTemplateChip[]) { saved = chips; } };
+  const { rerender } = render(wrap(<TemplateChipPicker {...props} catalog={[]} />));
+  assert.equal(screen.queryAllByRole("checkbox").length, 0);
+  rerender(wrap(<TemplateChipPicker {...props} catalog={catalog} />));
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("checkbox", { name: "A100" }));
+  await user.click(screen.getByRole("button", { name: "Add 1 models" }));
+  assert.deepEqual(saved, [{ vendor: "nvidia", name: "NVIDIA A100", cc: "8", arch_id: undefined }]);
+});

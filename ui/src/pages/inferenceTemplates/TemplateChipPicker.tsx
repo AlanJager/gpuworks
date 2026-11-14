@@ -20,18 +20,19 @@ export function TemplateChipPicker({ catalog, existing, onClose, onAdd }: {
   const chips = [...new Map(catalog.map(chip => { const normalized = normalizeCatalogChip(chip); return [chipKey(normalized), normalized]; })).values()];
   const vendors = [...new Set(chips.map(chip => chip.vendor))].sort(compareVendors);
   const [vendor, setVendor] = useState(vendors[0] || "");
+  const activeVendor = vendors.includes(vendor) ? vendor : vendors[0] || "";
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const existingKeys = new Set(existing.map(chipKey));
   const pending = chips.filter(chip => selected.has(chipKey(chip)) && !existingKeys.has(chipKey(chip)));
   const needle = query.trim().toLowerCase();
-  const shown = chips.filter(chip => needle ? `${chipDisplayLabel(chip)} ${t(`vendor.${chip.vendor}`, { defaultValue: chip.vendor })}`.toLowerCase().includes(needle) : chip.vendor === vendor);
+  const shown = chips.filter(chip => needle ? `${chipDisplayLabel(chip)} ${t(`vendor.${chip.vendor}`, { defaultValue: chip.vendor })}`.toLowerCase().includes(needle) : chip.vendor === activeVendor);
   return <Dialog open onOpenChange={open => { if (!open) onClose(); }}>
     <DialogContent size="lg" className="w-[min(720px,calc(100vw-32px))] max-w-none">
       <DialogHeader><DialogTitle>{t("flat.addHypothetical")}</DialogTitle></DialogHeader>
       <Input aria-label={t("chips.search")} placeholder={t("chips.search")} value={query} onChange={event => setQuery(event.target.value)} />
       <div className="template-chip-picker">
-        <nav aria-label={t("columns.vendor")}>{vendors.map(item => <Button key={item} variant="ghost" active={item === vendor} onClick={() => { setVendor(item); setQuery(""); }} aria-label={t(`vendor.${item}`, { defaultValue: item })}><VendorLogo vendor={item} size={18} /></Button>)}</nav>
+        <nav aria-label={t("columns.vendor")}>{vendors.map(item => <Button key={item} variant="ghost" active={item === activeVendor} onClick={() => { setVendor(item); setQuery(""); }} aria-label={t(`vendor.${item}`, { defaultValue: item })}><VendorLogo vendor={item} size={18} /></Button>)}</nav>
         <div className="template-chip-options">{shown.map(chip => { const key = chipKey(chip); const locked = existingKeys.has(key); return <label key={key}>
           <Checkbox checked={locked || selected.has(key)} disabled={locked} onCheckedChange={checked => setSelected(current => { const next = new Set(current); if (checked) next.add(key); else next.delete(key); return next; })} />
           <span>{chipDisplayLabel(chip)}</span>{locked && <small>{t("chips.alreadyAdded")}</small>}
