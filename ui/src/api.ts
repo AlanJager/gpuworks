@@ -152,6 +152,8 @@ export interface NodeReplica {
   drain_reason?: ScheduleMessage;
   drain_reason_at?: string;
   drain_message?: string;
+  /** The failed attempt's structured reason; absent for an older attempt. */
+  drain_failure?: ProductMessage;
 }
 
 export interface NodeReplicas {
@@ -1956,7 +1958,7 @@ export interface Instance {
   image: string;
   image_digest_id?: string;
   message: string;
-  runtime_failure?: { code: string; params?: Record<string, unknown>; message: string };
+  runtime_failure?: ProductMessage;
   container_id?: string;
   phase?: string;
   progress?: number;

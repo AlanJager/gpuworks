@@ -1,7 +1,7 @@
 import { useIcon } from "../lib/icon-context";
 import StartupStatusIcon from "./StartupStatusIcon";
 import DeploymentInfoField, { DeploymentInfoList } from "./DeploymentInfoField";
-import { productMessageText } from "../apiError";
+import { runtimeFailureText, isProductMessage } from "../runtimeFailure";
 import { useState, type Ref } from "react";
 import { storageDetailPath } from "./storage/storageLinks";
 import { launchCommand } from "./deploy/launchCommand";
@@ -60,9 +60,9 @@ export type InstanceView = "details" | "metrics";
 
 export default function InstancePanel({ inst, readyModel, sleepable, params, rank, imageDiffers, previousAttempt, nodeName, showNode, metricsRef }: { inst: Instance; readyModel?: ReadyModel; previousAttempt?: boolean; nodeName?: string; showNode?: boolean; metricsRef?: Ref<HTMLDivElement>; sleepable?: boolean; params?: Record<string, unknown>; rank?: DistRank; imageDiffers?: boolean }) {
   const { t } = useTranslation("deployments");
-  const { t: tCommon } = useTranslation("common");
+  const { t: tCommon } = useTranslation(["common", "ai"]);
   const ChevronDown = useIcon("chevron-down");
-  const messageText = (inst.runtime_failure ? productMessageText(tCommon, inst.runtime_failure) : inst.message)?.trim();
+  const messageText = (inst.runtime_failure ? runtimeFailureText(tCommon, inst.runtime_failure) : inst.message)?.trim();
   const diagnosis = inst.state === "failed" && (
     <AIAssistant task="instance.diagnose"
       subject={{ kind: "instance", uuid: inst.uuid, label: inst.uuid.slice(0, 8) }}
@@ -287,11 +287,11 @@ export default function InstancePanel({ inst, readyModel, sleepable, params, ran
 function InstanceStartupProgress({ inst, events, readyModel, nodeName, failure }: { inst: Instance; events: InstanceEvent[]; readyModel?: ReadyModel; nodeName?: string; failure?: InstanceEvent }) {
   const { t, i18n } = useTranslation("deployments");
   const durationUnits = i18n.getFixedT("en", "deployments");
-  const { t: tCommon } = useTranslation("common");
+  const { t: tCommon } = useTranslation(["common", "ai"]);
   const failed = Boolean(failure);
   const lastPhase = failure?.params?.prev_phase;
   const current = (failed && typeof lastPhase === "string" && lastPhase) || inst.phase || inst.state;
-  const stages = startupStages(events, current);
+  const stages = startupStages(events, current, tCommon);
   const firstImageStage = stages.find(stage => stage.phase.startsWith("image_"));
   const downloading = inst.state === "pulling" && current === "image_pull" && (inst.progress ?? 0) < 1;
   const percent = typeof inst.progress === "number" && inst.progress > 0 ? Math.min(100, Math.round(inst.progress * 100)) : undefined;
@@ -347,7 +347,7 @@ function InstanceStartupProgress({ inst, events, readyModel, nodeName, failure }
  * backwards: a stage list that ran the other way would read as the startup
  * happening in reverse.
  */
-function startupStages(events: InstanceEvent[], current: string) {
+function startupStages(events: InstanceEvent[], current: string, tCommon: TFunction<["common", "ai"]>) {
   type Stage = { phase: string; message?: string; recordedAt?: string; endEvent?: InstanceEvent };
   const stages = new Map<string, Stage>();
   let previous: Stage | undefined;
@@ -356,6 +356,9 @@ function startupStages(events: InstanceEvent[], current: string) {
     if (previous && previous.phase === event.params?.prev_phase) previous.endEvent = event;
     const stage = event.code === "INSTANCE_CREATED" ? { phase: event.code, message: "" } : instanceEventStage(event);
     if (!stage) continue;
+    // A failed transition's reason is rendered from its code, not its detail.
+    const failure = event.params?.failure;
+    if (isProductMessage(failure)) stage.message = runtimeFailureText(tCommon, failure);
     if (previous?.phase === stage.phase) {
       if (stage.message) previous.message = stage.message;
       continue;

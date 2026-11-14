@@ -230,17 +230,19 @@ func (e *Engine) reclaimInstance(ctx context.Context, uuid string) error {
 	return nil
 }
 
-func (e *Engine) failAfterContainer(ctx context.Context, spec proto.InstanceDesiredState, message string, measured ...json.RawMessage) {
+// failAfterContainer reclaims a container that failed to start and reports
+// the failure, or reports it removing while the reclaim is pending.
+func (e *Engine) failAfterContainer(ctx context.Context, spec proto.InstanceDesiredState, failure proto.RuntimeFailure, message string, measured ...json.RawMessage) {
 	var observation json.RawMessage
 	if len(measured) > 0 {
 		observation = measured[0]
 	}
 	if err := e.reclaimInstance(ctx, spec.UUID); err != nil {
 		e.log.Error("failed instance cleanup pending", "uuid", spec.UUID, "err", err)
-		e.report(proto.InstanceStatus{UUID: spec.UUID, State: proto.InstRemoving, Message: message + "; cleanup pending: " + err.Error(), Measured: observation})
+		e.reportCleanupPending(spec.UUID, failure, message+"; cleanup pending: "+err.Error(), observation)
 		return
 	}
-	e.report(proto.InstanceStatus{UUID: spec.UUID, State: proto.InstFailed, Message: message, Measured: observation})
+	e.reportFailed(spec.UUID, failure, message, failedStatus{Measured: observation})
 }
 
 // removeContainer stops and deletes the instance's container, reporting the

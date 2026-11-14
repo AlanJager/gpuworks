@@ -265,6 +265,9 @@ type NodeReplica struct {
 	DrainReason   *ScheduleReason `json:"drain_reason,omitempty"`
 	DrainReasonAt *time.Time      `json:"drain_reason_at,omitempty"`
 	DrainMessage  string          `json:"drain_message,omitempty"`
+	// DrainFailure is the failed attempt's structured reason; absent for an
+	// attempt without one, whose DrainMessage is all there is.
+	DrainFailure *ProductMessage `json:"drain_failure,omitempty"`
 }
 
 // NodeEviction is what POST /nodes/{uuid}/evict took off the node: the

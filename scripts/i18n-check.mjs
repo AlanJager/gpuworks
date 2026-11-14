@@ -188,6 +188,23 @@ for (const dictionary of serverDictionaries) {
   }
 }
 
+// Engine failure codes (pkg/enginelog) reach the console as the causes of an
+// instance's runtime failure and as the assistant's findings; each needs a
+// title in every language, and no finding key may outlive its code.
+const engineFailureSource = fs.readFileSync(path.join(root, "pkg/enginelog/failure.go"), "utf8");
+const engineFailureCodes = new Set([...engineFailureSource.matchAll(/\bCode\w+\s*=\s*"([A-Z0-9_]+)"/g)].map((match) => match[1]));
+if (engineFailureCodes.size === 0) errors.push("no engine failure codes found in pkg/enginelog/failure.go");
+for (const language of languages) {
+  const aiLocale = localeMaps.get(`${language}/ai.json`) ?? new Map();
+  for (const code of engineFailureCodes) {
+    if (!aiLocale.has(`finding.${code}.title`)) errors.push(`${language}/ai.json:finding.${code}.title: missing engine failure translation`);
+  }
+  for (const key of aiLocale.keys()) {
+    const match = key.match(/^finding\.([A-Za-z0-9_]+)\.title$/);
+    if (match && !engineFailureCodes.has(match[1])) errors.push(`${language}/ai.json:${key}: no matching engine failure code`);
+  }
+}
+
 // Deployment warnings are a code-only wire contract. Keep their locale
 // resources in lockstep with both named backend constants and W1-W10 emitted
 // directly by the performance validator.

@@ -90,7 +90,7 @@ func TestKnownInstanceFailureEndsWaitingRequest(t *testing.T) {
 			case <-time.After(5 * time.Second):
 				t.Fatal("request did not reach failure trigger phase")
 			}
-			if err := p.store.SetInstanceState("omni-instance", proto.InstFailed, "container exited (code -6)"); err != nil {
+			if err := p.store.SetInstanceFailed("omni-instance", proto.RuntimeFailure{Code: proto.ErrorContainerExited}, "container exited (code -6)"); err != nil {
 				t.Fatal(err)
 			}
 			select {

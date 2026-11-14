@@ -243,7 +243,7 @@ Cookie 设置为 `HttpOnly`、`SameSite=Lax`，其中保存的是不透明会话
 | GET | `/api/v1/nodes/{uuid}/health-checks/detail?pcie_bdf=&check=` | 一张卡一项检查最近一次运行的详情（`last`；`last` 是跳过时另给 `last_ran`；更早出过问题时给 `last_problem`；每次运行含 `state`、`reason`、`at`、`duration_ms`、`probe` 复核命令、`evidence`），经 RPC 向 agent 取，agent 只读内存、不跑命令。同一格并发请求只发一次，答案复用 5 秒；每节点最多 2 个、全局最多 16 个在途请求，超出 429（带 `Retry-After`）。缺卡或检查名非法 400 `FIELD_INVALID`；节点离线 409 `NODE_OFFLINE`；agent 版本过旧 409 `CARD_CHECKS_UNSUPPORTED`（两者都不发 RPC） | JWT |
 | GET | `/api/v1/nodes/{uuid}/health-records` | 节点的失败记录（某项检查告警或失败的一段时间）：进行中的在前，其余新的在前；`?pcie_bdf=`（或 `uuid=`）、`?check=` 筛选，`page`/`page_size` 分页（默认每页 50）。每条含 `card_ident`、仍在节点上的卡的 `card_index`/`card_name`/`pcie_bdf`（已移除的卡 `removed` 为 true）、`check`、`level`（`warn`/`fail`）、`reason`、`started_at`、`ended_at`（进行中没有）、`last_seen_at`、`duration_seconds`、`count`、`flapping`、`ongoing`、`first_evidence`、`latest_evidence`；`retention_days` 是保留天数（30） | JWT |
 | POST | `/api/v1/nodes/{uuid}/gpus/recheck` | 立即对一张卡做一次运行时检查：`{"pcie_bdf":"0000:3f:00.0"}`（或 `uuid`）。结果像周期检查一样记到卡上，下一次上报卡的状态随之变化；返回同 `health-checks/detail` 的运行时检查详情（卡正在服务、被平台外进程占用或宿主暂时不能检查时 `last.state` 为 `skip`）。错误同上 | JWT |
-| GET | `/api/v1/nodes/{uuid}/replicas` | 节点上仍在运行的实例与驱逐对它的处理：`{"scheduling", "items": [{"instance", "deployment_id", "deployment", "state", "kind"}]}`，`kind` 为 `pool`（迁到别的节点）、`pinned`（部署只钉在这台，等待）或 `named`（多机、PD 的 rank：驱逐时先在别的节点起替代，运行后切过去，没有节点可去则等待；强制驱逐才立即撤下）；已停止、已失败的实例不列。驱逐时还可返回 `drain_reason`（最近的结构化调度反馈）、`drain_reason_at`、`drain_message`（其他节点最近一次失败尝试的信息）。这些是现有观测，不是新的驱逐状态；反馈时间用于辨别历史记录。 驱逐时还可返回顶层 `drain_offline`，表示当前 agent 连接已离线，退役和容器移除尚无法确认；重连后此标记清除。 | JWT |
+| GET | `/api/v1/nodes/{uuid}/replicas` | 节点上仍在运行的实例与驱逐对它的处理：`{"scheduling", "items": [{"instance", "deployment_id", "deployment", "state", "kind"}]}`，`kind` 为 `pool`（迁到别的节点）、`pinned`（部署只钉在这台，等待）或 `named`（多机、PD 的 rank：驱逐时先在别的节点起替代，运行后切过去，没有节点可去则等待；强制驱逐才立即撤下）；已停止、已失败的实例不列。驱逐时还可返回 `drain_reason`（最近的结构化调度反馈）、`drain_reason_at`、`drain_message`（其他节点最近一次失败尝试的英文信息）与 `drain_failure`（该尝试的结构化失败原因，形状同实例的 `runtime_failure`；旧尝试缺省）。这些是现有观测，不是新的驱逐状态；反馈时间用于辨别历史记录。 驱逐时还可返回顶层 `drain_offline`，表示当前 agent 连接已离线，退役和容器移除尚无法确认；重连后此标记清除。 | JWT |
 | POST | `/api/v1/nodes/{uuid}/evict` | 强制驱逐：不等替代副本，把节点上每个副本立即撤下（所在副本的 leader 进入排空，follower 随之），副本在能放的地方重建，不计入重试次数；返回 `{"evicted": [leader UUID…]}`（202）。节点仍可调度时 409 `NODE_SCHEDULABLE` | JWT |
 | PUT | `/api/v1/nodes/{uuid}/labels` | 替换节点标签（key/value；空对象清空）。键名不得使用平台保留的 `gpuworks.ai/` 命名空间及其子域 | JWT |
 | PATCH | `/api/v1/nodes/{uuid}/name` | 重命名节点 | JWT |
@@ -699,7 +699,7 @@ macOS 忽略 `no_systemd`。
 | POST | `/api/v1/deployments/{id}/restart` | 按当前配置重建部署，重置副本重试次数；请求体可选 `strategy`（默认 `rolling`，`all` 会中断服务）；见[重启策略](#重启策略) | JWT |
 | POST | `/api/v1/evaluate` | 显存估算、调度试算与获取预估（不创建部署）：响应的 `acquisition` 含 `present`（已持有模型、目标节点读得到的存储）、`targets`（节点取模型时可保存到的存储）、`providers`（模板的权重来源）、`image`，请求指定了节点时的 `nodes[]`，以及目标节点已知时模板组件的 `components[]`（见「评估请求与获取预估」） | JWT |
 | GET | `/api/v1/instances` | 实例列表，新的在前；带 `page`/`page_size` 时分页返回（`{items,page,page_size,total}`，见“错误与响应约定”），并可按 `q`（实例 UUID、所属部署名或节点名的子串，不区分大小写）与 `state`（实例自身状态，逗号分隔：`pending`、`pulling`、`starting`、`optimizing`、`running`、`draining`、`removing`、`stopped`、`failed`、`pending-removal`，其他值 400 `LIST_FILTER_INVALID`）筛选；不带分页参数时返回全部实例 | JWT |
-| GET | `/api/v1/instances/{uuid}` | 实例详情。服务端推导的字段：`replica`（该实例承担的副本 `{role,index}`，不承担时缺省）、`asleep`（因睡眠不接收请求：已下令睡眠或仍在睡）、`desired_sleep`（下令的级别）、`sleep_held`（该实例的休眠由运维或定时计划下达，请求不唤醒它；保持按实例记录，唤醒只解除被唤醒实例的保持）、`can_sleep_alone` / `can_wake_alone`（能否单独睡、单独醒）；多机副本的 follower 不上报自己的睡眠级别，`sleep_level` 给的是它所在代 leader 的级别；`dist_role` 对未记录角色的旧行按 headless 与 rank 推出。部署详情里的 `instances[]` 带同样的字段，PD 角色带 `may_be_empty` | JWT |
+| GET | `/api/v1/instances/{uuid}` | 实例详情。服务端推导的字段：`replica`（该实例承担的副本 `{role,index}`，不承担时缺省）、`asleep`（因睡眠不接收请求：已下令睡眠或仍在睡）、`desired_sleep`（下令的级别）、`sleep_held`（该实例的休眠由运维或定时计划下达，请求不唤醒它；保持按实例记录，唤醒只解除被唤醒实例的保持）、`can_sleep_alone` / `can_wake_alone`（能否单独睡、单独醒）；多机副本的 follower 不上报自己的睡眠级别，`sleep_level` 给的是它所在代 leader 的级别；`dist_role` 对未记录角色的旧行按 headless 与 rank 推出。失败的实例带 `runtime_failure`（`{code, params, message}`）：`code` 为失败码（如 `CONTAINER_EXITED`、`ENGINE_HEALTH_TIMEOUT`），`params` 为原因的类型化字段（`phase`、`exit_code`、`oom_killed`、`port`、`resource`、`detail`、`rank`、`node`、`evidence`，以及 `causes`：引擎输出显示的已知故障，各自为 `{code, params, message}`），`message` 为英文 fallback；老 agent 上报或旧行没有该字段，只有 `message`。部署详情里的 `instances[]` 带同样的字段，PD 角色带 `may_be_empty` | JWT |
 | GET | `/api/v1/instances/{uuid}/events` | 实例事件时间线（最新优先、游标分页、读取时折叠） | JWT |
 | GET | `/api/v1/instances/{uuid}/launch-facts` | 实例启动事实三层投影（intent/resolved/runtime observation，unknown 不降级，敏感文本脱敏） | JWT |
 | GET | `/api/v1/instances/{uuid}/logs` | 实例容器日志（SSE，经 agent logtail 隧道） | JWT |
@@ -1866,7 +1866,7 @@ server 只有渠道版本更新时才标记 `update_available`。两份目录还
 
 时间线会在**读取时合并连续重复事件**：同一实例内，`kind`、`code`、`state`、`phase` 都相同的连续记录，
 只返回最新的一条。因此，旧库里大量重复的进度上报会呈现为较少的状态里程碑。
-带 `code` 的记录用 `params` 承载详细值，不再重复下发 `data` 原文；早于 code 机制的历史记录仍带 `data`。
+带 `code` 的记录用 `params` 承载详细值，不再重复下发 `data` 原文；早于 code 机制的历史记录仍带 `data`。进入 `failed` 的记录在 `params.failure` 带结构化失败原因（形状同实例的 `runtime_failure`），`params.detail` 仍是英文 fallback。
 
 
 | Method | Path | 说明 | 鉴权 |
@@ -1985,7 +1985,7 @@ trace id 为 32 位十六进制、不区分大小写，查询该 trace 的全部
 | POST | `/api/v1/ai/configs/test` | 用表单里尚未保存的 `base_url`/`api_key`/`model` 试连一次，不落库。10 秒超时，走与 AI 助手相同的出站策略。返回 `{outcome, status, detail, base_url, latency_ms}`，`outcome` 区分 `ok`、`connection`（DNS/连接/超时）、`blocked`（被出站策略拒绝）、`auth`（401/403 鉴权失败）、`path`（404 且未提到模型，地址不对）、`model`（服务端没有该模型）、`http`（其他状态或不是补全响应）。`detail` 是服务端的原话（截短、隐去密钥）。编辑弹窗带 `id` 且 `api_key` 为空时复用已存密钥，仅当 `base_url` 与已存地址一致。请求按 `proxy_mode`/`proxy_url` 走代理，`custom` 且 `proxy_url` 为空时用已存代理。带 `check_image: true` 且文字调用成功时再发一张小图，返回 `image`：`accepted`（回答认出了图片的颜色）、`ignored`（应答了但没有看到图片，如上游静默丢弃图片）、`rejected`（因图片被拒，400/415/422 且未提到模型）、`unknown`（无法判断），以及 `image_status`、`image_detail` | JWT |
 | GET | `/api/v1/ai/available` | AI 助手是否可用（是否已配置 LLM）：`{available, image_input, images?}`。当前使用的 AI 服务开了「支持图片输入」时 `image_input` 为 `true`，并带 `images:{per_message, per_request, max_bytes, max_side}`（每条消息、每次请求的图片数上限，单张字节上限，控制台缩图的最长边） | JWT |
 | POST | `/api/v1/ai/ask` | 让 AI 助手执行任务，支持普通响应和 SSE；完整字段与条件见[AI 提问的请求与响应](#ai-提问的请求与响应) | JWT |
-| GET | `/api/v1/ai/instances/{uuid}/findings` | 失败实例日志命中的已知故障：`{items:[{code, evidence:[{line}]}], total}`，`code` 稳定、文案由前端渲染。不需要 LLM；实例不存在 404 | JWT |
+| GET | `/api/v1/ai/instances/{uuid}/findings` | 失败实例的已知引擎故障：`{items:[{code, evidence:[{line}]}], total}`，`code` 为 `pkg/enginelog` 的 UPPER_SNAKE 失败码、文案由前端渲染。实例带结构化失败原因时取 agent 上报的 `causes`，不再匹配日志；老 agent 的实例才对其日志做匹配。不需要 LLM；实例不存在 404 | JWT |
 | GET | `/api/v1/ai/models/{id}/fit` | 模型在在线集群各类加速卡上的物理适配，不代表当前空闲资源。返回 `weight_bytes`、`dtype` 与各卡型的 `rows`：`cards/unusable`（可用/故障卡数）、`dtype_supported`、`fast_link_cards`（NVLink 等高速互联组最大卡数）、`fits`、最小 `tp` 和余量 `headroom_bytes`；不需要 LLM，模型不存在 404。见[模型适配结果](#模型适配结果) | JWT |
 
 ### 模型适配结果

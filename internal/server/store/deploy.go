@@ -707,10 +707,7 @@ func (s *Store) updateInstanceStatus(inst *Instance, st proto.InstanceStatus) er
 		updates["state"] = st.State
 		updates["container_id"] = st.ContainerID
 		updates["message"] = st.Message
-		updates["runtime_failure"] = ""
-		if st.RuntimeFailure != nil {
-			updates["runtime_failure"] = string(mustJSON(st.RuntimeFailure))
-		}
+		updates["runtime_failure"] = storedRuntimeFailure(st.RuntimeFailure)
 		updates["phase"] = st.Phase
 		updates["progress"] = st.Progress
 		updates["bytes_done"] = st.BytesDone
@@ -867,10 +864,10 @@ func (s *Store) updateInstanceStatus(inst *Instance, st proto.InstanceStatus) er
 	// of the phase it ends, so the timeline says more with twenty rows than the
 	// old one said with seventy thousand.
 	if st.State != "" && (prev != st.State || prevPhase != st.Phase) {
-		params := map[string]any{
+		params := withEventFailure(map[string]any{
 			"state": st.State, "phase": st.Phase, "detail": st.Message,
 			"progress": st.Progress, "bytes_done": st.BytesDone, "bytes_total": st.BytesTotal, "rate_bps": st.RateBPS,
-		}
+		}, st.RuntimeFailure)
 		s.addPhaseSummary(params, inst, prev, prevPhase)
 		s.AddInstanceEventCode(inst, "state", instanceEventStatusUpdated, params)
 		if prev != st.State && (st.State == proto.InstRunning || st.State == proto.InstStopped) {
@@ -912,22 +909,6 @@ func (s *Store) addPhaseSummary(params map[string]any, inst *Instance, prevState
 	if seconds := elapsed.Seconds(); seconds > 0 && inst.BytesDone > 0 {
 		params["prev_rate_bps"] = int64(float64(inst.BytesDone) / seconds)
 	}
-}
-
-// SetInstanceState updates just the state (server-driven transitions).
-func (s *Store) SetInstanceState(uuid, state, message string) error {
-	inst, err := s.InstanceByUUID(uuid)
-	if err != nil {
-		return err
-	}
-	if err := s.db.Model(&Instance{}).Where("id = ?", inst.ID).
-		Updates(map[string]any{"state": state, "message": message, "runtime_failure": ""}).Error; err != nil {
-		return err
-	}
-	s.Bus.Advance("instance") // announced after the event row; see Bus.Advance
-	s.AddInstanceEventCode(inst, "state", instanceEventStateChanged, map[string]any{"state": state, "detail": message})
-	s.Bus.PublishChange("instance", uuid, state)
-	return nil
 }
 
 // DeleteInstance removes an instance (after the agent confirms teardown).

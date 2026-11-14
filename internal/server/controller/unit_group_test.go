@@ -86,6 +86,9 @@ func TestMultiNodeStoppedRankFailsItsGeneration(t *testing.T) {
 	if leader.State != proto.InstFailed || !strings.Contains(leader.Message, "rank 1") {
 		t.Fatalf("leader = %s %q", leader.State, leader.Message)
 	}
+	if f := leader.Failure(); f == nil || f.Code != proto.ErrorUnitRankGone || f.Rank == nil || *f.Rank != 1 || f.Node == "" {
+		t.Fatalf("gone rank reason = %+v", f)
+	}
 	if !removedByHub(hub, nodes[0].UUID, rows[0].UUID) {
 		t.Fatal("the running leader's container was not removed")
 	}
@@ -179,6 +182,29 @@ func TestDistributedLabelsRejectAllRanksBeforeFirstInstance(t *testing.T) {
 	instances, err := st.InstancesForDeployment(dep.ID)
 	if err != nil || len(instances) != 0 {
 		t.Fatalf("a partial collective was scheduled: instances=%+v err=%v", instances, err)
+	}
+}
+
+// A rank that failed with a structured reason passes its own code to the
+// leader, which records which rank and node it was.
+func TestMultiNodeFailedRankPassesItsReasonToTheLeader(t *testing.T) {
+	st, dep, nodes, rows := groupFixture(t, "reasoned_rank", store.Deployment{VRAMLimitBytes: 4 << 30}, [2]string{proto.InstRunning, proto.InstStarting})
+	hub := &distributedTestHub{online: map[string]bool{nodes[0].UUID: true, nodes[1].UUID: true}, updates: map[string][]proto.StateUpdate{}}
+	c := New(st, hub, nil)
+	c.SetRetryPolicy(0, 3)
+	exit := 1
+	if err := st.UpdateInstanceStatus(proto.InstanceStatus{UUID: rows[1].UUID, State: proto.InstFailed, Message: "headless worker exited (code 1)",
+		RuntimeFailure: &proto.RuntimeFailure{Code: proto.ErrorContainerExited, ExitCode: &exit, Phase: proto.PhaseHealthCheck, Causes: []proto.FailureCause{{Code: "NCCL_FAILURE"}}}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.reconcileDeployment(context.Background(), dep.ID); err != nil {
+		t.Fatal(err)
+	}
+	leader, _ := st.InstanceByUUID(rows[0].UUID)
+	f := leader.Failure()
+	if leader.State != proto.InstFailed || f == nil || f.Code != proto.ErrorContainerExited || f.ExitCode == nil || *f.ExitCode != 1 ||
+		len(f.Causes) != 1 || f.Causes[0].Code != "NCCL_FAILURE" || f.Rank == nil || *f.Rank != 1 || f.Node != nodes[1].DisplayName() {
+		t.Fatalf("leader = %s %q reason %+v", leader.State, leader.Message, f)
 	}
 }
 
@@ -289,6 +315,9 @@ func TestMultiNodeOfflineRankGetsGraceThenFailsItsGeneration(t *testing.T) {
 	if len(rows) != 2 || leader == nil || leader.State != proto.InstFailed || !strings.Contains(leader.Message, "offline") ||
 		offline == nil || offline.State != proto.InstRemoving {
 		t.Fatalf("after grace = %+v", rows)
+	}
+	if f := leader.Failure(); f == nil || f.Code != proto.ErrorUnitRankNodeOffline || f.Rank == nil || *f.Rank != 1 || f.Node != nodes[1].DisplayName() {
+		t.Fatalf("offline rank reason = %+v", f)
 	}
 	for _, inst := range initial {
 		if inst.NodeID == nodes[0].ID && !removedByHub(hub, nodes[0].UUID, inst.UUID) {
@@ -482,6 +511,11 @@ func TestDistributedReconcileSchedulesResetsAndRemovesEveryRank(t *testing.T) {
 	failedLeader, _ := st.InstanceByUUID(leader.UUID)
 	if failedLeader.State != proto.InstFailed || !strings.Contains(failedLeader.Message, "collective failed") {
 		t.Fatalf("leader after rank failure = %s %q", failedLeader.State, failedLeader.Message)
+	}
+	// The rank's report came without a reason (an older agent): the leader
+	// carries the rank's message as the detail of a generic rank failure.
+	if f := failedLeader.Failure(); f == nil || f.Code != proto.ErrorUnitRankFailed || f.Detail != "collective failed" || f.Rank == nil || *f.Rank != 1 {
+		t.Fatalf("failed rank reason = %+v", f)
 	}
 	retired, _ := st.InstanceByUUID(follower.UUID)
 	if retired.State != proto.InstRemoving {

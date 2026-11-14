@@ -44,6 +44,8 @@ func TestCachedRouteRejectsKnownNonRunningInstance(t *testing.T) {
 				err = updateInstanceRow(st, inst.UUID, map[string]any{"api_port": 30002})
 			case "headless":
 				err = updateInstanceRow(st, inst.UUID, map[string]any{"headless": true})
+			case proto.InstFailed:
+				err = st.SetInstanceFailed(inst.UUID, proto.RuntimeFailure{Code: proto.ErrorContainerExited}, "engine exited; recovery pending")
 			default:
 				err = st.SetInstanceState(inst.UUID, state, "engine exited; recovery pending")
 			}
