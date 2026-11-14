@@ -75,7 +75,7 @@ export default function ManagementNodesTable({ nodes, onChanged }: { nodes: Netw
 
   // The header says what the switch is about; hovering it says what turning it off does.
   const roleColumn = (role: NetworkRole): ResourceColumn<NetworkNode> => ({
-    width: 130, label: t(`role.${role}`),
+    width: 120, label: t(`role.${role}`),
     title: (
       <span className="inline-flex items-center gap-1">{t(`role.${role}`)}<HelpTip content={t(`management.roleTip.${role}`)} /></span>
     ),
@@ -93,7 +93,7 @@ export default function ManagementNodesTable({ nodes, onChanged }: { nodes: Netw
             aria-busy={busy === key}
             onCheckedChange={(on) => void apply([n.node_uuid], on ? [role] : [], on ? [] : [role], key)}
           />
-          {allowed && !n.roles.includes(role) && <span className="text-fg-muted">{t("management.dedicated")}</span>}
+          {allowed && !n.roles.includes(role) && <span className="text-label text-fg-muted">{t("management.dedicated")}</span>}
         </div>
       );
     },
@@ -102,10 +102,9 @@ export default function ManagementNodesTable({ nodes, onChanged }: { nodes: Netw
   const columns: ResourceColumn<NetworkNode>[] = [
     {
       title: t("nodeTable.node"),
-      dataIndex: "node_name", key: "node", width: 150, role: "name",
-      render: (_, n) => <span><Link to="/nodes" state={{ nodeUUID: n.node_uuid }} className="detail-name-cap" title={n.node_name} onClick={(event) => event.stopPropagation()}>{n.node_name}</Link><WarningMark warnings={n.warnings} /></span>,
+      dataIndex: "node_name", key: "node", width: 210, role: "name",
+      render: (_, n) => <div className="min-w-0"><span><Link to="/nodes" state={{ nodeUUID: n.node_uuid }} className="detail-name-cap" title={n.node_name} onClick={(event) => event.stopPropagation()}>{n.node_name}</Link><WarningMark warnings={n.warnings} /></span><div className="truncate text-label text-fg-muted" title={[n.interface, n.ip].filter(Boolean).join(" · ")}><Endpoint iface={n.interface} ip={n.ip} /></div></div>,
     },
-    { title: t("management.address"), key: "endpoint", width: 190, render: (_, n) => <Endpoint iface={n.interface} ip={n.ip} /> },
     ...ROLES.map(roleColumn),
   ];
   // A node's labels sit one step down: the row keeps the node, its address

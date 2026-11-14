@@ -21,7 +21,7 @@ import NetworkDetailDrawer from '/src/pages/networks/NetworkDetailDrawer.tsx';im
 const bundles=import.meta.glob('/src/i18n/locales/*/*.json',{eager:true,import:'default'});const resources={};for(const [path,data] of Object.entries(bundles)){const parts=path.split('/');(resources[parts.at(-2)]??={})[parts.at(-1).replace('.json','')]=data;}
 const locale=new URLSearchParams(location.search).get('locale');const i18n=createInstance();await i18n.use(initReactI18next).init({lng:locale,resources,defaultNS:'common',interpolation:{escapeValue:false}});
 const e=React.createElement,view=createRoot(document.getElementById('root'));const detail=${JSON.stringify(network)};
-api.me=async()=>({username:'layout-reader',role:'member'});api.network=async(id)=>id===0?{...detail,id:0,builtin:true,type:'host_ethernet'}:detail;
+api.me=async()=>({username:'layout-admin',role:'admin'});api.network=async(id)=>id===0?{...detail,id:0,builtin:true,type:'host_ethernet'}:detail;
 const node={uuid:'layout-node',recovery_phase:'recovered',recovery_attempts:1,last_probe_at:'2026-11-14T10:00:00Z'};
 window.renderCase=(kind)=>{const child=kind.startsWith('node')?e(DetailDrawer,{key:kind,open:true,onClose:()=>{},title:'GPU server',subtitle:'gpu-server-01',banner:e(NodeRecoveryStatus,{node:kind==='node-empty'?{...node,recovery_phase:''}:node,onUpdated:()=>{}}),tabs:[{key:'basic',label:i18n.t('detail.tab.basic',{ns:'nodes'}),children:e('div',null,'Node details')}]}):e(NetworkDetailDrawer,{key:kind,id:kind==='management'?0:detail.id,onTab:()=>{},onClose:()=>{},onChanged:()=>{}});view.render(e(StyleProvider,{layer:true},e(I18nextProvider,{i18n},e(ConfigProvider,{theme:{algorithm:darkPreview?antdTheme.darkAlgorithm:antdTheme.defaultAlgorithm,...themeConfig}},e(MemoryRouter,null,child)))));};window.ready=true;
 </script></body></html>`;
@@ -38,15 +38,17 @@ try {
     for(const kind of ['node','node-empty','network','management']) {
       await page.evaluate(kind=>window.renderCase(kind),kind);
       await page.getByRole('tablist').waitFor();
+      if(kind==='management') await page.getByRole('checkbox').first().waitFor();
       await page.waitForFunction(()=>Array.from(document.getAnimations()).every(animation=>animation.playState!=='running'));
       const metrics=await page.evaluate(()=>{
         const body=document.querySelector('.detail-body'),tabs=body.querySelector('[role=tablist]'),banner=body.querySelector('section'),heading=body.querySelector('h5');
-        return {overflow:body.scrollWidth-body.clientWidth,tabMargin:getComputedStyle(tabs).marginTop,bannerGap:banner?tabs.getBoundingClientRect().top-banner.getBoundingClientRect().bottom:null,headingOffset:heading&&banner?heading.getBoundingClientRect().top-body.getBoundingClientRect().top:null,tableCount:body.querySelectorAll('[data-slot=table]').length};
+        return {overflow:body.scrollWidth-body.clientWidth,tabMargin:getComputedStyle(tabs).marginTop,bannerGap:banner?tabs.getBoundingClientRect().top-banner.getBoundingClientRect().bottom:null,headingOffset:heading&&banner?heading.getBoundingClientRect().top-body.getBoundingClientRect().top:null,tableCount:body.querySelectorAll('[data-slot=table]').length,tableOverflow:Math.max(0,...Array.from(body.querySelectorAll('[data-slot="table-container"]')).map(el=>el.scrollWidth-el.clientWidth))};
       });
       assert.ok(metrics.overflow<=1,JSON.stringify({theme,locale,width,kind,metrics}));
       assert.equal(metrics.tabMargin,'0px');
       if(kind==='node'){assert.equal(metrics.bannerGap,16);assert.equal(metrics.headingOffset,0);}
       if(kind==='node-empty') assert.equal(metrics.bannerGap,null);
+      if(kind==='management') assert.ok(metrics.tableOverflow<=1,'management role switches must fit: '+JSON.stringify(metrics));
       results.push({theme,locale,width,kind,...metrics});
       await page.screenshot({path:resolve(out,`${kind}-${theme}-${locale}-${width}.png`)});
     }

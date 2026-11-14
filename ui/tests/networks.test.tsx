@@ -544,11 +544,17 @@ test("editing a node attachment prefills and sends its overrides", async () => {
   const dialog = await modalDialog();
   assert.ok(within(dialog).getByText(n.attach.editBootstrapTitle));
   assert.equal((within(dialog).getByRole("combobox", { name: n.attach.interfaceIB }) as HTMLInputElement).value, "bond0");
+  const iface = within(dialog).getByRole("combobox", { name: n.attach.interfaceIB });
+  await user.clear(iface);
+  await user.type(iface, "bond-custom");
+  await user.keyboard("{Escape}");
+  await user.tab();
+  await waitFor(() => assert.equal((iface as HTMLInputElement).value, "bond-custom", "closing suggestions preserves a manually typed interface"));
   const ip = within(dialog).getByLabelText(n.attach.ip);
   await user.type(ip, "10.20.1.17");
   await user.click(within(dialog).getByRole("button", { name: n.actions.save }));
   await waitFor(() => assert.equal(calls.length, 1));
-  assert.deepEqual(calls[0], [1, 3, { interface: "bond0", ip: "10.20.1.17", hcas: ["mlx5_0", "mlx5_9:1"] }]);
+  assert.deepEqual(calls[0], [1, 3, { interface: "bond-custom", ip: "10.20.1.17", hcas: ["mlx5_0", "mlx5_9:1"] }]);
 });
 
 test("node networks card shows loaded networks and the reported inventory", async () => {
