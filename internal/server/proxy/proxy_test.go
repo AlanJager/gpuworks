@@ -549,9 +549,11 @@ func TestProxyMultipartErrorsUseOpenAIShape(t *testing.T) {
 				Error struct {
 					Message string `json:"message"`
 					Type    string `json:"type"`
+					Code    string `json:"code"`
 				} `json:"error"`
 			}
-			if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil || result.Error.Message == "" || result.Error.Type != "gpuworks_proxy" {
+			if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil || result.Error.Message == "" || result.Error.Type != "invalid_request_error" ||
+				(result.Error.Code != ErrorModelRequired && result.Error.Code != ErrorRequestBodyInvalid) {
 				t.Fatalf("OpenAI error = %+v, decode err=%v", result, err)
 			}
 		})
@@ -636,14 +638,14 @@ func TestDistributedSelectionRequiresEveryRankAndRoutesOnlyLeader(t *testing.T) 
 	p := New(st, storeNetworks(st), readinessTestHub{online: map[string]bool{"node-a": true, "node-b": true}}, nil, 0)
 	t.Cleanup(p.Close)
 
-	_, _, status, message, _ := p.selectDeploymentInstance("qwen-72b")
+	_, _, status, message, _ := p.selectStatus("qwen-72b")
 	if status != http.StatusServiceUnavailable || !strings.Contains(message, "every rank running") {
 		t.Fatalf("partial group selection = status %d message %q", status, message)
 	}
 	if err := st.UpdateInstanceStatus(proto.InstanceStatus{UUID: follower.UUID, State: proto.InstRunning}); err != nil {
 		t.Fatal(err)
 	}
-	_, tgt, status, message, _ := p.selectDeploymentInstance("qwen-72b")
+	_, tgt, status, message, _ := p.selectStatus("qwen-72b")
 	if status != 0 || message != "" || tgt.nodeUUID != "node-a" || tgt.port != leader.APIPort {
 		t.Fatalf("ready group target = %+v status=%d message=%q", tgt, status, message)
 	}
@@ -654,17 +656,17 @@ func TestDistributedSelectionRequiresEveryRankAndRoutesOnlyLeader(t *testing.T) 
 		}
 	}
 	setAttempt(2)
-	if _, _, status, _, _ = p.selectDeploymentInstance("qwen-72b"); status != http.StatusServiceUnavailable {
+	if _, _, status, _, _ = p.selectStatus("qwen-72b"); status != http.StatusServiceUnavailable {
 		t.Fatalf("stale group generation status = %d, want 503", status)
 	}
 	setAttempt(1)
-	if _, _, status, _, _ = p.selectDeploymentInstance("qwen-72b"); status != 0 {
+	if _, _, status, _, _ = p.selectStatus("qwen-72b"); status != 0 {
 		t.Fatalf("restored generation status = %d, want routable", status)
 	}
 	if err := st.UpdateInstanceStatus(proto.InstanceStatus{UUID: follower.UUID, State: proto.InstFailed}); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, status, _, _ = p.selectDeploymentInstance("qwen-72b"); status != http.StatusServiceUnavailable {
+	if _, _, status, _, _ = p.selectStatus("qwen-72b"); status != http.StatusServiceUnavailable {
 		t.Fatalf("failed follower status = %d, want 503", status)
 	}
 }
@@ -712,7 +714,7 @@ func TestSelectInstanceReturns503ForAsleepOrNonRoutableSingleInstance(t *testing
 			}
 			p := New(st, storeNetworks(st), readinessTestHub{online: map[string]bool{"single-node": true}}, nil, 0)
 			t.Cleanup(p.Close)
-			_, _, status, msg, asleep := p.selectDeploymentInstance("model")
+			_, _, status, msg, asleep := p.selectStatus("model")
 			if status != http.StatusServiceUnavailable || !strings.Contains(msg, tc.wantMsg) || asleep != tc.wantAsleep {
 				t.Fatalf("selection status=%d message=%q asleep=%v, want 503 containing %q asleep=%v", status, msg, asleep, tc.wantMsg, tc.wantAsleep)
 			}
@@ -752,7 +754,7 @@ func TestSelectDeploymentInstanceSkipsNewerPendingRollout(t *testing.T) {
 
 	p := New(st, storeNetworks(st), readinessTestHub{online: map[string]bool{"rollout-node": true}}, nil, 0)
 	t.Cleanup(p.Close)
-	selected, target, status, message, asleep := p.selectDeploymentInstance("stable-name")
+	selected, target, status, message, asleep := p.selectStatus("stable-name")
 	if status != 0 || message != "" || asleep || selected == nil || selected.ID != serving.ID || target.nodeUUID != "rollout-node" || target.port != 30001 {
 		t.Fatalf("selection deployment=%+v target=%+v status=%d message=%q asleep=%v", selected, target, status, message, asleep)
 	}
@@ -789,13 +791,13 @@ func TestSelectInstanceReturns503OnceSleepIsOrdered(t *testing.T) {
 	}
 	p := New(st, storeNetworks(st), readinessTestHub{online: map[string]bool{"ordered-node": true}}, nil, 0)
 	t.Cleanup(p.Close)
-	if _, _, status, msg, asleep := p.selectDeploymentInstance("model"); status != 0 || asleep {
+	if _, _, status, msg, asleep := p.selectStatus("model"); status != 0 || asleep {
 		t.Fatalf("awake instance not routable: %d %q", status, msg)
 	}
 	if err := st.SetDeploymentSleep(dep.ID, 1); err != nil {
 		t.Fatal(err)
 	}
-	_, _, status, msg, asleep := p.selectDeploymentInstance("model")
+	_, _, status, msg, asleep := p.selectStatus("model")
 	if status != http.StatusServiceUnavailable || !asleep || !strings.Contains(msg, "model is asleep") {
 		t.Fatalf("ordered-to-sleep selection = %d %q asleep=%v, want 503 asleep", status, msg, asleep)
 	}

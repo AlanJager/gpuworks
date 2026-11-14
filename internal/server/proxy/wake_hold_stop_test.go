@@ -12,7 +12,7 @@ import (
 
 // stoppingBody is the literal wire body of a request refused because the
 // server stops.
-const stoppingBody = `{"error":{"message":"the server is restarting; send the request again","type":"gpuworks_proxy"}}` + "\n"
+const stoppingBody = `{"error":{"message":"the server is restarting; send the request again","type":"server_error","code":"SERVER_RESTARTING","param":null}}` + "\n"
 
 // waitHeld waits until the gateway holds n requests for the deployment.
 func waitHeld(t *testing.T, p *Proxy, depID uint, n int) {

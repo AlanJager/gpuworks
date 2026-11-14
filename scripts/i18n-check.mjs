@@ -258,6 +258,7 @@ const messagesDir = path.join(root, "internal/server/messages");
 const productErrorSourceFiles = [
   ...fs.readdirSync(messagesDir).filter((name) => name.endsWith(".go") && !name.endsWith("_test.go")).sort().map((name) => path.join(messagesDir, name)),
   path.join(root, "internal/server/api/errors.go"),
+  path.join(root, "internal/server/proxy/api_errors.go"),
   path.join(root, "internal/proto/runtime_failure.go"),
 ];
 const productErrorSources = productErrorSourceFiles.map((file) => fs.readFileSync(file, "utf8"));

@@ -13,7 +13,7 @@ The only exception is an explicit administrator switch: the `inference_open_acce
 - An unreadable setting counts as off: a failed read never lets a request without a key through; the request is treated as one that must carry a key.
 - Revoking a key does not change the decision: revoking the last key does not reopen the gateway, and `/v1` refuses every request until another key is created or an administrator turns the switch on.
 
-The rule covers every `/v1` route, including `/v1/models`, `/v1/files`, `/v1/batches`, `/v1/tokenize`, and `/v1/detokenize`. The 401 body depends on the entry point: gateway routes return `{"error":{"message":"invalid or missing API key","type":"gpuworks_proxy"}}`, while Files and Batches return the OpenAI-format `invalid_api_key`; see [Differences and Troubleshooting](#differences-and-troubleshooting).
+The rule covers every `/v1` route, including `/v1/models`, `/v1/files`, `/v1/batches`, `/v1/tokenize`, and `/v1/detokenize`. The 401 code depends on the entry point: gateway routes return `INVALID_API_KEY` (`type` `authentication_error`; see [Errors](#errors)), while Files and Batches return the OpenAI-format `invalid_api_key`.
 
 `GET /v1/models` lists the served names the gateway can route right now (read from the gateway's event-driven route table, not the database): active deployments only, each served name once, in name order; a scoped key sees only the served names of deployments it may call. A deployment just created or stopped appears or disappears once the route table rebuilds: at most about 0.5 s after the deployment's event, and every 2 s regardless.
 
@@ -48,7 +48,7 @@ Deployments with multiple replicas use least-request selection by default, prefe
 - After a connection-level failure, the gateway retries on another replica only if the request can still be replayed.
 - Once an upstream response is received, including a 5xx response, the gateway does not retry.
 - If an instance cannot serve because it is sleeping, starting, or has a nonzero rank, the gateway returns 503 and preserves retry semantics.
-- When the server stops gracefully, a request waiting for a sleeping deployment to wake returns 503 with `Retry-After: 10` and the message `the server is restarting; send the request again`; send it again.
+- When the server stops gracefully, a request waiting for a sleeping deployment to wake returns 503 `SERVER_RESTARTING` with `Retry-After: 10`; send it again.
 
 A deployment can select `least_request`, `prefix_affinity`, or `failover` through the management API `PUT /api/v1/deployments/{id}/routing`. Prefix affinity first reads `X-GPUWorks-Affinity-Key` and also supports extracting a stable key from chat messages, prompt, or input. This header is not forwarded to the engine.
 
@@ -179,6 +179,59 @@ PD disaggregation assigns input prompt computation and subsequent generation to 
 
 The replacement affects only this cache hit count; other `usage` fields still come from decode. The gateway rewrites the number in place, padding with spaces if it becomes shorter to preserve `Content-Length`. If the new value requires more digits than the original, it is not rewritten. The client, platform request record, gateway counters, and exported trace all use the same number.
 
+## Errors
+
+Errors the gateway gives itself (refusals before forwarding, failed connections to the engine) use the OpenAI shape, with a stable UPPER_SNAKE `code`:
+
+```json
+{"error": {"message": "no deployment serves model qwen", "type": "not_found_error", "code": "MODEL_NOT_FOUND", "param": "model", "params": {"model": "qwen"}}}
+```
+
+| Field | Purpose |
+|---|---|
+| `message` | An English description; do not build handling branches by matching it |
+| `type` | The OpenAI error type: `invalid_request_error`, `authentication_error`, `permission_error`, `not_found_error`, `server_error` |
+| `code` | The stable error code that tells causes apart |
+| `param` | The request field the error is about, `null` for none |
+| `params` | The values filled into `message`, for clients that localize it; omitted when there are none |
+
+Every `/v1` response, including a request refused before forwarding, carries `X-Request-ID`. The engine's own error responses are forwarded unchanged when that is safe, in the engine's shape; Files and Batches answer in OpenAI's format with its lower-case codes, see [REST API Reference](api.md#batches).
+
+| `code` | Status | `type` | `param` | Meaning |
+|---|---|---|---|---|
+| `INVALID_API_KEY` | 401 | `authentication_error` | — | The API key is missing or invalid |
+| `MODEL_ACCESS_DENIED` | 403 | `permission_error` | `model` | This API key may not call the model (`params.model`) |
+| `MODEL_REQUIRED` | 400 | `invalid_request_error` | `model` | The request names no `model` |
+| `REQUEST_BODY_INVALID` | 400 | `invalid_request_error` | — | The request body cannot be read (multipart without a boundary, not a JSON object); `params.detail` says why |
+| `REQUEST_TOO_LARGE` | 413 | `invalid_request_error` | — | The request body exceeds the limit (`params.max_bytes`) |
+| `METHOD_NOT_ALLOWED` | 405 | `invalid_request_error` | — | The route only accepts `params.method` (such as `GET /v1/tokenize`); the response carries `Allow` |
+| `CHAT_INPUT_UNREADABLE` | 400 | `invalid_request_error` | `messages` | The chat input's media types cannot be checked |
+| `MODEL_INPUT_MODALITY_UNSUPPORTED` | 400 | `invalid_request_error` | `messages` | The model does not take this input (`params.modality`, `params.supported`) |
+| `MODEL_NOT_FOUND` | 404 | `not_found_error` | `model` | No deployment serves the model name |
+| `MODEL_ROUTE_NOT_EXPOSED` | 404 | `not_found_error` | — | The deployment's contract does not offer the route (Playground) |
+| `TOKENIZE_DISABLED` | 404 | `not_found_error` | — | The deployment turned tokenize forwarding off |
+| `ROUTE_NOT_FOUND` | 404 | `not_found_error` | — | This listening address does not serve `/v1` (only the console or agent function) |
+| `INSTANCE_NOT_FOUND` | 404 | `not_found_error` | — | The pinned instance does not exist |
+| `INSTANCE_MODEL_MISMATCH` | 404 | `not_found_error` | `model` | The pinned instance does not serve the model |
+| `MODEL_ASLEEP` | 503 | `server_error` | — | The deployment sleeps; wake deployment `params.deployment_id`, or wait for its schedule or a waiting wake; may carry `Retry-After` |
+| `INSTANCE_ASLEEP` | 503 | `server_error` | — | The pinned instance's deployment sleeps |
+| `INSTANCE_NOT_RUNNING` | 503 | `server_error` | — | The pinned instance is not running |
+| `INSTANCE_OFFLINE` | 503 | `server_error` | — | The pinned instance's node is offline |
+| `MODEL_NOT_READY` | 503 | `server_error` | — | No instance is running yet; it may still be starting |
+| `DEPLOYMENT_START_FAILED` | 503 | `server_error` | — | The deployment stopped retrying its start; see the deployment list |
+| `DISTRIBUTED_NOT_READY` | 503 | `server_error` | — | No replica of the multi-node deployment has every rank running on an online node |
+| `DISTRIBUTED_LEADER_OFFLINE` | 503 | `server_error` | — | The node of the multi-node deployment's rank 0 is offline |
+| `PD_PLACEMENT_UNREADABLE` | 503 | `server_error` | — | The PD deployment's placement cannot be read |
+| `PD_PREFILL_UNAVAILABLE` | 503 | `server_error` | — | No prefill instance can take the request (`params.reason`); carries `Retry-After: 2` |
+| `WAKE_REQUEST_ENDED` | 503 | `server_error` | — | The client left while the model woke |
+| `SERVER_RESTARTING` | 503 | `server_error` | — | The server is stopping; carries `Retry-After: 10`; send again |
+| `UPSTREAM_UNAVAILABLE` | 502 | `server_error` | — | The tunnel or connection to the engine failed (`params.detail`) |
+| `DATA_LANE_UNAVAILABLE` | 503 | `server_error` | — | The node's data lane disconnected and did not reconnect within 5 seconds; carries `Retry-After: 2`; retryable |
+| `INSTANCE_UNAVAILABLE` | 503 | `server_error` | — | The instance stopped or restarted under the request; carries `Retry-After: 2`; retryable |
+| `UPSTREAM_REJECTED` | The engine's | By status | — | When the engine's error body is too large or may echo input, the gateway rewrites it under this code; `params.detail` is the bounded engine text |
+| `EXTERNAL_*` | 400/404/500/502 | By status | — | Playground external model errors: `EXTERNAL_ROUTE_UNSUPPORTED`, `EXTERNAL_MODEL_INVALID`, `EXTERNAL_MODEL_NOT_FOUND`, `EXTERNAL_ENDPOINT_INVALID`, `EXTERNAL_KEY_UNREADABLE`, `EXTERNAL_REQUEST_INVALID`, `EXTERNAL_UPSTREAM_UNAVAILABLE` |
+| `INTERNAL_ERROR` | 500 | `server_error` | — | An internal gateway error |
+
 ## Playground
 
 The model list shows only deployed models that declare inference API operations. External models in global settings are used by the AI assistant and are not automatically added to Playground.
@@ -193,9 +246,9 @@ The gateway does not emulate all OpenAI product APIs. For the exact capabilities
 
 | Status code | What to check |
 |---|---|
-| 401 | Check `Authorization: Bearer <key>` first. When no key is sent at all, confirm whether anonymous access is really wanted (see [Authentication](#authentication)); `/v1` refuses every request without a key by default |
-| 404 | Check the `model` name; for Playground, also check the contract |
-| 503 | Check instance status, sleep/wake, and whether the node is online |
-| 502 | Check tunnel and engine logs |
+| 401 `INVALID_API_KEY` | Check `Authorization: Bearer <key>` first. When no key is sent at all, confirm whether anonymous access is really wanted (see [Authentication](#authentication)); `/v1` refuses every request without a key by default |
+| 404 `MODEL_NOT_FOUND` / `MODEL_ROUTE_NOT_EXPOSED` | Check the `model` name; for Playground, also check the contract |
+| 503 | Look up the `code` in [Errors](#errors): asleep, starting, node offline, or data lane reconnecting |
+| 502 `UPSTREAM_UNAVAILABLE` | Check tunnel and engine logs |
 
 Streaming SSE and binary responses (such as WAV) are forwarded with their original content type without truncation.

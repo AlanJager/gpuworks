@@ -3,7 +3,6 @@ package proxy
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"net/http/httputil"
@@ -39,7 +38,7 @@ func (p *Proxy) PlaygroundHandler(box *auth.Secretbox) http.HandlerFunc {
 		modelName, cleanup, err := extractModel(r, p.maxBodyBytes)
 		defer cleanup()
 		if err != nil {
-			writeErr(w, statusForExtractError(err), err.Error())
+			writeRefusal(w, r, requestRefusal(err))
 			return
 		}
 		if strings.HasPrefix(modelName, "external:") {
@@ -55,23 +54,23 @@ func (p *Proxy) PlaygroundHandler(box *auth.Secretbox) http.HandlerFunc {
 		}
 		// A pinned refusal for sleep is the same event the load balancing path
 		// accounts as asleep_503, not a generic 5xx.
-		deployment, tgt, pinned, status, message, asleep := p.pinnedTarget(r, modelName)
+		deployment, tgt, pinned, rejection, asleep := p.pinnedTarget(r, modelName)
 		if !pinned {
 			affinity := p.affinityKey(modelName, r)
-			deployment, tgt, status, message, asleep = p.selectForRequest(r.Context(), modelName, affinity)
-			if status != 0 && asleep {
-				deployment, tgt, status, message, asleep = p.holdForWake(r.Context(), w, modelName, affinity, deployment)
+			deployment, tgt, rejection, asleep = p.selectForRequest(r.Context(), modelName, affinity)
+			if rejection != nil && asleep {
+				deployment, tgt, rejection, asleep = p.holdForWake(r.Context(), w, modelName, affinity, deployment)
 			}
 		}
-		if status != 0 {
-			p.acct.RecordImmediate(deploymentIDOrZero(deployment), status, asleep)
-			writeErr(w, status, message)
+		if rejection != nil {
+			p.acct.RecordImmediate(deploymentIDOrZero(deployment), rejection.status(), asleep)
+			writeRefusal(w, r, rejection)
 			return
 		}
 		contract := inferenceapi.ResolveDeploymentContract(p.store, deployment)
 		if !inferenceapi.AllowsContractRequest(contract, r.Method, r.URL.Path) {
 			p.acct.RecordImmediate(deployment.ID, http.StatusNotFound, false)
-			writeErr(w, http.StatusNotFound, fmt.Sprintf("deployment %s does not expose %s %s", modelName, r.Method, r.URL.Path))
+			writeAPIError(w, r, ErrorModelRouteNotExposed, map[string]any{"model": modelName, "method": r.Method, "path": r.URL.Path})
 			return
 		}
 		p.serveSelectedTarget(w, r, modelName, tgt, deployment.ID)
@@ -91,22 +90,22 @@ func deploymentIDOrZero(dep *store.Deployment) uint {
 func (p *Proxy) serveExternal(w http.ResponseWriter, r *http.Request, selected string, box *auth.Secretbox) {
 	tail := strings.TrimPrefix(r.URL.Path, "/api/v1/playground/v1")
 	if tail != "/chat/completions" {
-		writeErr(w, http.StatusNotFound, "external playground models only support chat completions")
+		writeAPIError(w, r, ErrorExternalRouteUnsupported, nil)
 		return
 	}
 	parts := strings.SplitN(selected, ":", 3)
 	if len(parts) != 3 {
-		writeErr(w, http.StatusBadRequest, "invalid external playground model")
+		writeAPIError(w, r, ErrorExternalModelInvalid, nil)
 		return
 	}
 	id, err := strconv.ParseUint(parts[1], 10, 64)
 	if err != nil {
-		writeErr(w, http.StatusBadRequest, "invalid external playground model")
+		writeAPIError(w, r, ErrorExternalModelInvalid, nil)
 		return
 	}
 	configs, err := p.store.ListAIConfigs()
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err.Error())
+		writeAPIError(w, r, ErrorGatewayInternal, map[string]any{"detail": err.Error()})
 		return
 	}
 	var config *store.AIConfig
@@ -117,28 +116,28 @@ func (p *Proxy) serveExternal(w http.ResponseWriter, r *http.Request, selected s
 		}
 	}
 	if config == nil {
-		writeErr(w, http.StatusNotFound, "external playground model no longer exists")
+		writeAPIError(w, r, ErrorExternalModelNotFound, nil)
 		return
 	}
 	key, err := store.DecryptAIKey(box, config.APIKey)
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "decrypt external endpoint key: "+err.Error())
+		writeAPIError(w, r, ErrorExternalKeyUnreadable, map[string]any{"detail": err.Error()})
 		return
 	}
 	base, err := url.Parse(strings.TrimRight(config.BaseURL, "/"))
 	if err != nil || (base.Scheme != "http" && base.Scheme != "https") || base.Host == "" {
-		writeErr(w, http.StatusBadRequest, "external endpoint has an invalid base URL")
+		writeAPIError(w, r, ErrorExternalEndpointInvalid, nil)
 		return
 	}
 	var body map[string]any
 	if err := json.NewDecoder(io.LimitReader(r.Body, 64<<20)).Decode(&body); err != nil {
-		writeErr(w, http.StatusBadRequest, "external playground requests must be JSON: "+err.Error())
+		writeAPIError(w, r, ErrorExternalRequestInvalid, map[string]any{"detail": err.Error()})
 		return
 	}
 	body["model"] = config.Model
 	encoded, err := json.Marshal(body)
 	if err != nil {
-		writeErr(w, http.StatusBadRequest, err.Error())
+		writeAPIError(w, r, ErrorExternalRequestInvalid, map[string]any{"detail": err.Error()})
 		return
 	}
 	r.Body = io.NopCloser(bytes.NewReader(encoded))
@@ -157,9 +156,9 @@ func (p *Proxy) serveExternal(w http.ResponseWriter, r *http.Request, selected s
 		},
 		FlushInterval:  -1,
 		ModifyResponse: boundUpstreamError,
-		ErrorHandler: func(w http.ResponseWriter, _ *http.Request, err error) {
+		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
 			p.log.Warn("external playground upstream error", "err", err)
-			writeErr(w, http.StatusBadGateway, "external upstream error: "+err.Error())
+			writeAPIError(w, r, ErrorExternalUpstreamUnavailable, map[string]any{"detail": err.Error()})
 		},
 	}
 	rp.ServeHTTP(w, r)

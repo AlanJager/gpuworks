@@ -50,7 +50,7 @@ func TestCachedRouteRejectsKnownNonRunningInstance(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			_, tgt, status, message, _ := p.selectDeploymentInstance("model")
+			_, tgt, status, message, _ := p.selectStatus("model")
 			if state == "port changed" {
 				if status != 0 || tgt.port != 30002 {
 					t.Fatalf("changed port not refreshed: status=%d target=%+v", status, tgt)
@@ -80,7 +80,7 @@ func TestCachedRouteRejectsKnownNonRunningInstance(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			_, tgt, status, message, _ = p.selectDeploymentInstance("model")
+			_, tgt, status, message, _ = p.selectStatus("model")
 			if status != 0 || tgt.instanceUUID != inst.UUID {
 				t.Fatalf("recovered instance not routed: status=%d message=%q", status, message)
 			}

@@ -56,7 +56,7 @@ func ensureReplayableBody(r *http.Request, maxBody int64) (func(), error) {
 // errNotUTF8JSON refuses a JSON body in another encoding: a JSON parser that
 // detects UTF-16 or UTF-32 (Python's does) reads keys a byte search for the
 // gateway-owned fields cannot see.
-var errNotUTF8JSON = &httpError{status: http.StatusBadRequest, msg: "request body must be UTF-8 JSON"}
+var errNotUTF8JSON = refuse(ErrorRequestBodyNotUTF8, nil)
 
 // ownedJSONBody reports whether the gateway owns fields in the request body:
 // any body an engine may parse as JSON, which is one declared JSON (or not

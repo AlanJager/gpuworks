@@ -11,6 +11,9 @@ import (
 // old clients receive an actionable error string; the UI translates the stable
 // code and params from common.json.
 const (
+	// ErrorResponseEncodingFailed: a response's data could not be encoded
+	// as JSON, so the server answered this error instead.
+	ErrorResponseEncodingFailed   = "RESPONSE_ENCODING_FAILED"
 	ErrorAgentUpgradeRefused      = "AGENT_UPGRADE_REFUSED"
 	ErrorModelCacheRetryBlocked   = "MODEL_CACHE_RETRY_BLOCKED"
 	ErrorNodeLabelsInvalid        = "NODE_LABELS_INVALID"

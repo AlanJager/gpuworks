@@ -1088,25 +1088,25 @@ After retrying, check events and logs again and confirm that the new instance en
 
 ## Gateway Returns 401, 404, or 503
 
-The gateway error body differs from the management API: `{"error":{"message":"…","type":"gpuworks_proxy"}}`. There is no `code`; use `message` to identify the error.
+The gateway error body has the OpenAI shape: `{"error":{"message":"…","type":"…","code":"…","param":…}}`. Identify the error by `code`; `message` is an English description. Every response carries `X-Request-ID`, which you can look up in the request records. For the code table, see [OpenAI-Compatible Gateway](../reference/openai-gateway.md#errors).
 
-| Status | message | Cause and action |
+| Status | code | Cause and action |
 |---|---|---|
-| 401 | `invalid or missing API key` | `Authorization: Bearer <key>` is missing, or the key was deleted or is invalid. `/v1` requires a key by default and refuses every request even when the database contains **no keys at all**; for genuinely keyless access an administrator turns on "Accept /v1 inference requests without a token" (`inference_open_access`) under **Settings → Security** |
-| 400 | `request body must specify a model` | The request body has no `model` |
-| 404 | `no deployment serves model <name>` | The model name is not the deployment's served name (list names with `GET /v1/models`), or the deployment has stopped |
-| 404 | `deployment <name> does not expose <METHOD> <path>` | Only the playground (`/api/v1/playground/v1/*`) performs contract checks and returns this error: the deployment's API contract does not include this endpoint (for example, calling `/v1/embeddings` on a Chat model). Use `GET /api/v1/playground/openapi.json` to view its declared endpoints. The public `/v1` does not perform this check; it forwards the request unchanged to the engine, which returns its own 404 or other response |
-| 404 | (The entire `/v1` path returns 404) | The listener you accessed does not serve the inference API. Check `listen.gateway` |
-| 503 | `model is asleep; wake it first (console, or POST /api/v1/deployments/<id>/wake; a schedule or a waiting wake may also wake it)` | No awake replica is available to serve requests. Wake it in the console or call `POST /api/v1/deployments/{id}/wake`; a schedule or a waiting wake also wakes it, see the [Scheduling Analysis](scheduling-center.md). Once sleep intent is issued, selected instances stop accepting new requests |
-| 503 | `no running instance for <name> (still starting?)` | No running replica: it is still starting, has failed, has been stopped, or its node is offline. Check instance status |
-| 503 | `distributed model <name> is not ready: rank N is unavailable`, `distributed model leader is offline for <name>`, `distributed model leader is not ready for <name>`, `distributed deployment node set is incomplete for <name>` | A rank or the leader in a multi-node deployment is not ready |
-| 503 + `Retry-After: 2` | `upstream error: … data lane unavailable: … did not reattach within 5s` | The node data lane did not reconnect within 5 seconds of disconnecting. **Retryable**; there is no fallback to the control lane |
-| 503 + `Retry-After: 2` | `upstream error: … data lane unavailable: … data lane closed under an open stream: …` | The data lane disconnected after the request reached the node but before a response arrived. **Retryable**. If it disconnects after the response starts, the client receives a truncated response |
-| 503 + `Retry-After: 2` | `no prefill instance could take the request (…)` | The PD deployment has no available prefill instance |
-| 502 | `upstream error: …` | The tunnel or connection to the engine failed. Check node connectivity and engine logs |
-| 413 | `request body exceeds N bytes` | Exceeds `--proxy-max-body-bytes` (default: 256 MiB) |
+| 401 | `INVALID_API_KEY` | `Authorization: Bearer <key>` is missing, or the key was deleted or is invalid. `/v1` requires a key by default and refuses every request even when the database contains **no keys at all**; for genuinely keyless access an administrator turns on "Accept /v1 inference requests without a token" (`inference_open_access`) under **Settings → Security** |
+| 400 | `MODEL_REQUIRED` | The request body has no `model` |
+| 404 | `MODEL_NOT_FOUND` | The model name is not the deployment's served name (list names with `GET /v1/models`), or the deployment has stopped |
+| 404 | `MODEL_ROUTE_NOT_EXPOSED` | Only the playground (`/api/v1/playground/v1/*`) performs contract checks and returns this error: the deployment's API contract does not include this endpoint (for example, calling `/v1/embeddings` on a Chat model). Use `GET /api/v1/playground/openapi.json` to view its declared endpoints. The public `/v1` does not perform this check; it forwards the request unchanged to the engine, which returns its own 404 or other response |
+| 404 | `ROUTE_NOT_FOUND` | The listener you accessed does not serve the inference API. Check `listen.gateway` |
+| 503 | `MODEL_ASLEEP` | No awake replica is available to serve requests. Wake it in the console or call `POST /api/v1/deployments/{id}/wake`; a schedule or a waiting wake also wakes it, see the [Scheduling Analysis](scheduling-center.md). Once sleep intent is issued, selected instances stop accepting new requests |
+| 503 | `MODEL_NOT_READY`, `DEPLOYMENT_START_FAILED` | No running replica: it is still starting, has failed, has been stopped, or its node is offline. Check instance status |
+| 503 | `DISTRIBUTED_NOT_READY`, `DISTRIBUTED_LEADER_OFFLINE` | A rank or the leader in a multi-node deployment is not ready |
+| 503 + `Retry-After: 2` | `DATA_LANE_UNAVAILABLE` (`message` contains `did not reattach within 5s`) | The node data lane did not reconnect within 5 seconds of disconnecting. **Retryable**; there is no fallback to the control lane |
+| 503 + `Retry-After: 2` | `DATA_LANE_UNAVAILABLE` (`message` contains `data lane closed under an open stream`) | The data lane disconnected after the request reached the node but before a response arrived. **Retryable**. If it disconnects after the response starts, the client receives a truncated response |
+| 503 + `Retry-After: 2` | `PD_PREFILL_UNAVAILABLE` | The PD deployment has no available prefill instance |
+| 502 | `UPSTREAM_UNAVAILABLE` | The tunnel or connection to the engine failed. Check node connectivity and engine logs |
+| 413 | `REQUEST_TOO_LARGE` | Exceeds `--proxy-max-body-bytes` (default: 256 MiB) |
 
-Only the data-lane-unavailable and PD-no-prefill categories of 503 include `Retry-After`. For 503 responses caused by sleeping or starting instances, resolve the instance issue first instead of retrying.
+Only three kinds of 503 carry `Retry-After: 2`: data lane unavailable, an instance that stopped under the request (`INSTANCE_UNAVAILABLE`), and PD without a prefill instance; a stopping server (`SERVER_RESTARTING`) carries `Retry-After: 10`. For 503 responses caused by sleeping or starting instances, resolve the instance issue first instead of retrying.
 For the data lane mechanism, see [ADR 0024](../adr/0024-data-lane-no-ctrl-fallback.md). For other differences, see [OpenAI-Compatible Gateway](../reference/openai-gateway.md).
 
 ## dGPU Capability Unavailable

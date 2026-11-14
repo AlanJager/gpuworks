@@ -326,7 +326,7 @@ func (a *apiHandlers) importInferenceTemplates(w http.ResponseWriter, r *http.Re
 	overwrite, _ := strconv.ParseBool(r.URL.Query().Get("overwrite"))
 	catalog, digest, created, err := a.decodeInferenceCatalog(raw)
 	if err != nil {
-		writeErr(w, http.StatusBadRequest, err)
+		writeErr(w, http.StatusBadRequest, catalogInvalid(err))
 		return
 	}
 	if digest == "" {
@@ -355,7 +355,7 @@ func (a *apiHandlers) importInferenceTemplates(w http.ResponseWriter, r *http.Re
 	models, err := a.importedStoreModels(catalog)
 	if err != nil {
 		a.removeCatalogPackageOnFailure(digest, created)
-		writeErr(w, http.StatusBadRequest, err)
+		writeErr(w, http.StatusBadRequest, catalogInvalid(err))
 		return
 	}
 	for index := range models {

@@ -174,7 +174,7 @@ func TestProviderInstanceReleaseAndSyncDropReleasedRows(t *testing.T) {
 
 	// A vendor failure surfaces as 502 and keeps the row.
 	drv.set(func() { drv.deleteErr = errors.New("vendor: instance is locked") })
-	expect(call(http.MethodDelete, base+"/instances/uhost-a", token), http.StatusFailedDependency, `{"error":"vendor: instance is locked"}`)
+	expect(call(http.MethodDelete, base+"/instances/uhost-a", token), http.StatusFailedDependency, `{"code":"FAILED_DEPENDENCY","error":"vendor: instance is locked"}`)
 	expect(call(http.MethodGet, base+"/instances", token), http.StatusOK, `{"items":[`+rowA+","+rowB+`],"total":2}`)
 
 	// A confirmed release drops the row immediately, without a sync.
@@ -191,7 +191,7 @@ func TestProviderInstanceReleaseAndSyncDropReleasedRows(t *testing.T) {
 		delete(drv.instances, "uhost-b")
 		drv.listErr = errors.New("vendor: HTTP 503")
 	})
-	expect(call(http.MethodPost, base+"/sync", token), http.StatusFailedDependency, `{"error":"vendor: HTTP 503"}`)
+	expect(call(http.MethodPost, base+"/sync", token), http.StatusFailedDependency, `{"code":"FAILED_DEPENDENCY","error":"vendor: HTTP 503"}`)
 	expect(call(http.MethodGet, base+"/instances", token), http.StatusOK, `{"items":[`+rowB+`],"total":1}`)
 	drv.set(func() { drv.listErr = nil })
 	expect(call(http.MethodPost, base+"/sync", token), http.StatusOK, `{"count":0,"instances":[]}`)

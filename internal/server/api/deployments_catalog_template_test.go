@@ -120,10 +120,10 @@ func TestCatalogTemplateExportErrors(t *testing.T) {
 		status int
 		code   string
 	}{
-		{"unknown deployment", store.ErrNotFound, http.StatusNotFound, ""},
+		{"unknown deployment", store.ErrNotFound, http.StatusNotFound, messages.ErrorNotFound},
 		{"not exportable", messages.NewProductError(messages.ErrorTemplateExportUnavailable, "x", map[string]any{"reason": "not_running"}), http.StatusConflict, messages.ErrorTemplateExportUnavailable},
 		{"command not reproducible", messages.NewProductError(deploy.ErrorLaunchNotExportable, "x", map[string]any{"engine": "vllm"}), http.StatusConflict, deploy.ErrorLaunchNotExportable},
-		{"store failure", fmt.Errorf("disk I/O error"), http.StatusInternalServerError, ""},
+		{"store failure", fmt.Errorf("disk I/O error"), http.StatusInternalServerError, messages.ErrorInternal},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

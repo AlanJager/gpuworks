@@ -210,7 +210,7 @@ var aiStreamPing = 10 * time.Second
 func (a *apiHandlers) aiAskStream(w http.ResponseWriter, r *http.Request, req aihelper.AskRequest) {
 	fl, ok := w.(http.Flusher)
 	if !ok {
-		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
+		writeErr(w, http.StatusInternalServerError, errStreamingUnsupported)
 		return
 	}
 	events, err := a.d.AI.AskStream(r.Context(), req)
