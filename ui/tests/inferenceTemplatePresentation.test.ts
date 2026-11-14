@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import {
+  modelOrganizationColor,
   modelOrganizationIcon,
   modelOrganizationIconOrganizations,
   modelOrganizationGroups,
@@ -67,4 +68,14 @@ test("Hygon compute vendor uses the reviewed horizontal WebP logo", async () => 
   const data = await readFile(new URL("../public/vendor-logos/hygon.webp", import.meta.url));
   assert.equal(data.subarray(0, 4).toString("ascii"), "RIFF");
   assert.equal(data.subarray(8, 12).toString("ascii"), "WEBP");
+});
+
+test("organization fallback colors are stable and varied across missing-logo organizations", () => {
+  const organizations = ["baseten", "fishaudio", "tinyllama", "lmsys", "opendatalab", "my-templates"];
+  const colors = organizations.map(modelOrganizationColor);
+  assert.ok(new Set(colors).size >= 3);
+  organizations.reverse().forEach(org => {
+    assert.equal(modelOrganizationColor(org.toUpperCase()), modelOrganizationColor(org));
+    assert.match(modelOrganizationColor(org), /^var\(--chart-[1-5]\)$/);
+  });
 });

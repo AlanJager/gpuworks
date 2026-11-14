@@ -22,7 +22,7 @@ import { TemplateChipPicker } from "./inferenceTemplates/TemplateChipPicker";
 import { chipDisplayLabel, chipKey } from "./inferenceTemplateFlat.ts";
 import { operationLabelKey, operationTypes } from "../modelInference";
 import type { OperationType } from "../inferenceApi";
-import { modelOrganizationIcon, modelOrganizationKey, modelOrganizationName } from "./inferenceTemplatePresentation.ts";
+import { modelOrganizationColor, modelOrganizationIcon, modelOrganizationKey, modelOrganizationName } from "./inferenceTemplatePresentation.ts";
 
 const hypotheticalKey = "gpuworks.inferenceTemplates.hypotheticalChips";
 const pageSize = 200;
@@ -56,7 +56,7 @@ function OrganizationAvatar({ group, size }: { group: { key: string; organizatio
   const [failed, setFailed] = useState(false);
   const icon = group.key === "my-templates" ? undefined : modelOrganizationIcon(`${group.organization}/model`);
   if (icon && !failed) return <img className="template-organization-logo" width={size} height={size} src={icon} alt="" onError={() => setFailed(true)} />;
-  return <span className="template-organization-fallback" style={{ width: size, height: size }}>{initials(group.label)}</span>;
+  return <span className="template-organization-fallback" style={{ width: size, height: size, background: `color-mix(in srgb, ${modelOrganizationColor(group.key)} 60%, var(--vendor-logo-dark))` }}>{initials(group.label)}</span>;
 }
 
 interface OrganizationGroup { key: string; organization: string; label: string; items: InferenceTemplate[] }

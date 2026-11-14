@@ -138,3 +138,11 @@ export function modelOrganizationIcon(modelID: string) {
   const organization = modelOrganizationKey(modelID);
   return modelOrganizationIconSet.has(organization) ? `/model-org-icons/${organization}.webp` : undefined;
 }
+
+// Stable by organization identity, independent of language, ordering or refresh.
+// Use Zeron's categorical palette, excluding gray and alarm red.
+export function modelOrganizationColor(organization: string): string {
+  let hash = 0;
+  for (const character of organization.trim().toLowerCase()) hash = (Math.imul(hash, 31) + character.charCodeAt(0)) >>> 0;
+  return `var(--chart-${[1, 2, 3, 4, 5][hash % 5]})`;
+}
