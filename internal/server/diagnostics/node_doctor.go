@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/proto"
+	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/internal/server/rpccontext"
 )
 
@@ -43,14 +44,14 @@ func (d *DoctorService) Diagnose(ctx context.Context, uuid string, inspect bool)
 		}
 	}
 	report := d.Connection.Diagnose(ctx, node, inspect)
-	for _, stage := range []string{"host", "runtimes", "accelerators"} {
-		report.Checks = append(report.Checks, DoctorCheck{Stage: stage, Status: "unavailable", Reason: "requires_agent", Vantage: "node"})
+	for _, stage := range []string{stageHost, stageRuntimes, stageAccelerators} {
+		report.Checks = append(report.Checks, DoctorCheck{Stage: stage, Status: proto.CheckSkip, Code: messages.DoctorRequiresAgent, Vantage: "node"})
 	}
 	report.Summary = doctorSummary(report.Checks)
 	var text strings.Builder
 	text.WriteString("Node diagnostics\n")
 	for _, check := range report.Checks {
-		fmt.Fprintf(&text, "%s: %s (%s)\n", check.Stage, check.Status, check.Reason)
+		fmt.Fprintf(&text, "%s: %s (%s)\n", check.Stage, check.Status, check.Code)
 	}
 	text.WriteString("Host, runtime and accelerator checks require a connected Agent.\n")
 	report.Report = text.String()

@@ -6,6 +6,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/agentconf"
 	"gpuworks.ai/gpuworks/internal/server/diagnostics"
 	"gpuworks.ai/gpuworks/internal/server/hub"
+	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/internal/server/provision"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
@@ -26,14 +27,14 @@ func newNodeDoctor(st *store.Store, h *hub.Hub, installer *provision.SSHInstalle
 		},
 		Connection: diagnostics.ConnectionDiagnoser{
 			Inspect: func(ctx context.Context, uuid string) provision.AccessInspection {
-				out := provision.AccessInspection{SSH: "unavailable", Installation: "unavailable", Process: "unavailable", Reason: "credentials_unavailable"}
+				out := provision.NewAccessInspection(messages.DoctorCredentialsUnavailable)
 				node, err := st.NodeByUUID(uuid)
 				if err != nil || !node.HasSSHCredential {
 					return out
 				}
 				row, secrets, err := st.GetNodeSSHCredential(uuid)
 				if err != nil {
-					out.Reason = "credential_error"
+					out.Code = messages.DoctorCredentialError
 					return out
 				}
 				var platformKey *provision.PlatformKey

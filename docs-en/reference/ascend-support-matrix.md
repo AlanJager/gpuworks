@@ -102,7 +102,7 @@ The GLM-5.3-Flash Docker result applies only to the pinned rc2 A3 image under na
 
 Shared Ascend container device nodes (`davinci_manager`, `devmm_svm`, `hisi_hdc`, `ummu` and `uburma`) are passed through only when present on the host; every selected `/dev/davinciN` must be passed to the container. Multi-node specs do not hardcode interface names. The agent discovers the interface from the node's advertised IP and fills the collective-communication variables, while explicit settings retain precedence.
 
-Nodes with host CANN check each die by creating an ACL context and allocating 4 KiB. Only failure explicitly attributable to that die marks it `runtime_unusable`. A driver-only node without `libascendcl.so` skips the check rather than treating a missing tool as a hardware fault. See [Runtime-Unusable Cards](../how-to/troubleshooting.md#某张卡运行时不可用或驱动初始化失败) for failure classification, backoff and diagnosis.
+Nodes with host CANN check each die by creating an ACL context and allocating 4 KiB. Only failure explicitly attributable to that die marks it `RUNTIME_UNUSABLE`. A driver-only node without `libascendcl.so` skips the check rather than treating a missing tool as a hardware fault. See [Runtime-Unusable Cards](../how-to/troubleshooting.md#某张卡运行时不可用或驱动初始化失败) for failure classification, backoff and diagnosis.
 
 ## Coverage Levels
 

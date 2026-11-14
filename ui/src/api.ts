@@ -470,18 +470,22 @@ export interface GPUHealthField {
   value: string;
 }
 
+/** The five check statuses (ADR 0067). skip and na are never a pass. */
+export type CheckStatus = "pass" | "warn" | "fail" | "skip" | "na";
+
 // Card health checks: GET /nodes/{uuid}/health-checks lays a node's card
-// checks out as a table, the server deciding the columns, each cell's state
-// and staleness, the worst state per card and whether a recheck is offered.
-export type CardCheckState = "pass" | "warn" | "fail" | "skip" | "pending" | "na";
+// checks out as a table, the server deciding the columns, each cell's status,
+// code and staleness, the worst status per card and whether a recheck is
+// offered.
 export interface CardHealthColumn {
   id: string;
   period_seconds: number;
 }
 export interface CardHealthCell {
   check: string;
-  state: CardCheckState;
-  reason?: string;
+  status: CheckStatus;
+  /** What a warning or failure found, or why a skipped check did not run. */
+  code?: string;
   checked_at?: string;
   duration_ms?: number;
   stale: boolean;
@@ -492,7 +496,7 @@ export interface CardHealthCard {
   pcie_bdf?: string;
   name?: string;
   index: number;
-  worst: "pass" | "warn" | "fail";
+  worst: CheckStatus;
   can_recheck: boolean;
   cells: CardHealthCell[];
 }
@@ -515,8 +519,8 @@ export interface CardHealthRecord {
   pcie_bdf?: string;
   removed: boolean;
   check: string;
-  level: "warn" | "fail";
-  reason?: string;
+  status: "warn" | "fail";
+  code?: string;
   started_at: string;
   ended_at?: string;
   last_seen_at: string;
@@ -535,8 +539,8 @@ export interface CardHealthRecords {
   retention_days: number;
 }
 export interface CardCheckRun {
-  state: CardCheckState;
-  reason?: string;
+  status: CheckStatus;
+  code?: string;
   at: string;
   duration_ms?: number;
   probe?: string;
@@ -595,9 +599,11 @@ export interface DoctorTarget {
   processes?: { pid: number; name: string }[];
 }
 
+/** A doctor check that failed, warned or did not run (skip, with why in code). */
 export interface DoctorFinding {
+  id?: string;
+  status: "fail" | "warn" | "skip";
   code: string;
-  level: "warning" | "error";
   targets?: DoctorTarget[];
   disk?: DoctorDisk;
   probe?: string;
@@ -608,8 +614,8 @@ export interface DoctorFinding {
 /** A check in the Server's unified node diagnosis. */
 export interface NodeDoctorCheck {
   stage: string;
-  status: "passed" | "failed" | "warning" | "info" | "unavailable";
-  reason: string;
+  status: CheckStatus;
+  code: string;
   vantage: string;
   target?: string;
   source?: string;
@@ -619,7 +625,7 @@ export interface NodeDoctorCheck {
 
 export interface NodeDoctorReport {
   checked_at?: string;
-  summary?: string;
+  summary?: CheckStatus;
   checks?: NodeDoctorCheck[];
   report: string;
   host?: {

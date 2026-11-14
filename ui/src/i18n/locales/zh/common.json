@@ -979,97 +979,97 @@
     },
     "noDeviceIndex": "没有设备序号",
     "code": {
-      "runtime_unusable": {
+      "RUNTIME_UNUSABLE": {
         "label": "运行时无法使用",
         "summary": "卡能被列出、看起来正常，但加速卡运行时用不了它：在它上面创建上下文失败。",
         "action": "在节点上用 dmesg 查看驱动报错。一张卡初始化失败可能导致整台机器的卡都用不了，所以也要看其他卡的结论；通常需要复位出问题的卡，有时需要重启主机。"
       },
-      "telemetry_unavailable": {
+      "TELEMETRY_UNAVAILABLE": {
         "label": "诊断数据缺失",
         "summary": "卡的身份可确认，但 ECC 计数等诊断字段未返回有效数值。",
         "action": "查看记录的字段及驱动配置。此警告不阻止调度，但不能将缺失的计数视为零错误。"
       },
-      "inventory_identity_invalid": {
+      "INVENTORY_IDENTITY_INVALID": {
         "label": "设备身份无效",
         "summary": "厂商清单返回缺失、重复或不一致的设备身份字段。",
         "action": "检查 card_validation 证据，并对照 xpu-smi 输出、PCI 与设备映射。"
       },
-      "vendor_cli_unanswered": {
+      "VENDOR_CLI_UNANSWERED": {
         "label": "读不到信息",
         "summary": "卡已绑定厂商驱动，但本轮厂商工具没有返回，因此除 PCI 标识外对这张卡一无所知。驱动本身可能是好的。",
         "action": "看节点上的 GPU 探测错误了解工具为什么没返回，并在节点上手动执行一次 smi 命令。工具卡住通常意味着驱动卡在某一张卡上。"
       },
-      "driver_init_failed": {
+      "DRIVER_INIT_FAILED": {
         "label": "驱动初始化失败",
         "summary": "卡已绑定厂商驱动，但驱动没能把它带起来，因此厂商工具不会列出它，任何程序也用不了。",
         "action": "在节点上用 dmesg 查看驱动报错（NVIDIA 看 NVRM 行，如 \"RmInitAdapter failed\"）。通常需要复位这张卡，有时需要重启主机；如果这张卡本不该归本机使用，把它从厂商驱动解绑。"
       },
-      "pcie_link_degraded": {
+      "PCIE_LINK_DEGRADED": {
         "label": "PCIe 链路降级",
         "summary": "卡到根端口之间有一段 PCIe 链路的通道数（或卡在忙时的速率）低于两端都支持的值，连续多次上报都如此。卡还能用，但加载模型和传数据更慢，健康卡不够时才会用它。",
         "action": "用下面的命令看这段链路两端的能力和当前协商值。通常是卡没插好、转接卡或线缆问题，或 BIOS 把插槽设成了低速；在主机空闲时检查并重新插拔。"
       },
-      "pcie_errors": {
+      "PCIE_ERRORS": {
         "label": "PCIe 报错",
         "summary": "卡到根端口之间的 PCIe 设备新报告了可恢复的错误。卡还能用，15 分钟内没有新错误就自动恢复。",
         "action": "用下面的命令看错误计数，并在 dmesg 里查 AER 记录。反复出现通常是链路或插槽的信号问题。"
       },
-      "pcie_fatal_errors": {
+      "PCIE_FATAL_ERRORS": {
         "label": "PCIe 致命错误",
         "summary": "卡到根端口之间的 PCIe 设备新报告了致命错误，链路需要重置。在这张卡的运行时检查重新通过之前，它不会被分配。",
         "action": "用下面的命令看错误计数，并在 dmesg 里查 AER 记录。通常需要复位这张卡或重启主机；反复出现请联系硬件厂商。"
       },
-      "nvlink_down": {
+      "NVLINK_DOWN": {
         "label": "NVLink 掉线",
         "summary": "这张卡当前活动的 NVLink 少于它曾经有过的数量，连续两次检查都如此。卡还能用，但跨卡的计算会变慢，调度时不再把它和原来互联的卡视为一组。",
         "action": "用下面的命令看每条链路的状态与错误计数，并在 dmesg 里查 Xid 74。通常需要复位卡或重启主机；NVSwitch 机型还要检查 Fabric Manager。"
       },
-      "memory_repair_pending": {
+      "MEMORY_REPAIR_PENDING": {
         "label": "待复位",
         "summary": "该卡存在待替换的显存行或显存页，替换将在下次复位后生效。",
         "action": "在卡空闲时执行以下命令复位；复位未成功时，重启主机。"
       },
-      "memory_uncorrectable_errors": {
+      "MEMORY_UNCORRECTABLE_ERRORS": {
         "label": "显存故障",
         "summary": "自驱动加载或上次复位以来，该卡出现了不可纠正的显存错误。",
         "action": "在卡空闲时执行以下命令复位；复位后错误计数再次增长时，请联系硬件厂商。"
       },
-      "memory_remap_failed": {
+      "MEMORY_REMAP_FAILED": {
         "label": "显存故障",
         "summary": "该卡的显存行替换失败。",
         "action": "请联系硬件厂商。"
       },
-      "reset_required": {
+      "RESET_REQUIRED": {
         "label": "需要复位",
         "summary": "驱动报告了需要复位加速卡才能恢复的事件。",
         "action": "在卡空闲时执行以下命令复位。"
       },
-      "reboot_required": {
+      "REBOOT_REQUIRED": {
         "label": "需要重启主机",
         "summary": "驱动报告了需要重启主机才能恢复的事件。",
         "action": "请在主机空闲时重启主机。"
       },
-      "power_cycle_required": {
+      "POWER_CYCLE_REQUIRED": {
         "label": "需要断电重启",
         "summary": "驱动报告了需要主机断电后重新上电才能恢复的事件。",
         "action": "请将主机断电后重新上电。"
       },
-      "vendor_health_warning": {
+      "VENDOR_HEALTH_WARNING": {
         "label": "告警",
         "summary": "厂商工具报告该卡处于告警（Warning）状态，原因见错误码与错误信息。",
         "action": "请根据错误码查阅厂商文档中的说明。"
       },
-      "vendor_health_fault": {
+      "VENDOR_HEALTH_FAULT": {
         "label": "故障",
         "summary": "厂商工具报告该卡处于重要告警（Alarm）或紧急告警（Critical）状态，原因见错误码与错误信息。",
         "action": "请根据错误码查阅厂商文档中的说明。"
       },
-      "memory_error_history": {
+      "MEMORY_ERROR_HISTORY": {
         "label": "正常",
         "summary": "该卡有历史显存错误记录，对应的显存页已隔离或显存行已替换。该记录为累计值，复位后不会清零。",
         "action": ""
       },
-      "inventory_incomplete": {
+      "INVENTORY_INCOMPLETE": {
         "summary": "驱动报告的卡数与设备清单行数不一致。 已核验的卡仍可使用，但设备清单可能不完整。",
         "action": "对照厂商设备清单与 PCI 设备并检查驱动日志；平台不会猜测缺失卡的身份。",
         "label": "设备清单不完整"

@@ -485,18 +485,18 @@ func TestParseNVIDIAInfoHealthLevels(t *testing.T) {
 	}{
 		{"clean", "0, 0, No, No, No", true, "OK", "", ""},
 		{"fields the card does not support are not judged", "[N/A], [N/A], [N/A], [N/A], [N/A]", true, "OK", "", ""},
-		{"volatile errors stop scheduling", "3, 8, No, No, No", false, "Error", "memory_uncorrectable_errors",
+		{"volatile errors stop scheduling", "3, 8, No, No, No", false, "Error", "MEMORY_UNCORRECTABLE_ERRORS",
 			"ecc.errors.uncorrected.volatile.total=3\necc.errors.uncorrected.aggregate.total=8"},
 		// The aggregate counter is lifetime history a reset never clears.
-		{"aggregate history stays healthy", "0, 1, No, [N/A], [N/A]", true, "OK", "memory_error_history",
+		{"aggregate history stays healthy", "0, 1, No, [N/A], [N/A]", true, "OK", "MEMORY_ERROR_HISTORY",
 			"ecc.errors.uncorrected.aggregate.total=1"},
-		{"pending row replacement stays schedulable", "0, 0, [N/A], Yes, No", true, "Warning", "memory_repair_pending",
+		{"pending row replacement stays schedulable", "0, 0, [N/A], Yes, No", true, "Warning", "MEMORY_REPAIR_PENDING",
 			"remapped_rows.pending=Yes"},
-		{"pending page retirement stays schedulable", "0, 0, Yes, [N/A], [N/A]", true, "Warning", "memory_repair_pending",
+		{"pending page retirement stays schedulable", "0, 0, Yes, [N/A], [N/A]", true, "Warning", "MEMORY_REPAIR_PENDING",
 			"retired_pages.pending=Yes"},
-		{"failed replacement stops scheduling", "0, 0, No, Yes, Yes", false, "Error", "memory_remap_failed",
+		{"failed replacement stops scheduling", "0, 0, No, Yes, Yes", false, "Error", "MEMORY_REMAP_FAILED",
 			"remapped_rows.pending=Yes\nremapped_rows.failure=Yes"},
-		{"older driver answers only the ECC pair", "3, 8", false, "Error", "memory_uncorrectable_errors",
+		{"older driver answers only the ECC pair", "3, 8", false, "Error", "MEMORY_UNCORRECTABLE_ERRORS",
 			"ecc.errors.uncorrected.volatile.total=3\necc.errors.uncorrected.aggregate.total=8"},
 	}
 	for _, tc := range cases {
@@ -535,7 +535,7 @@ func TestNVIDIAProbeFallsBackWhenDriverRejectsHealthFields(t *testing.T) {
 	if len(queries) != 3 || strings.Contains(queries[2], "remapped_rows") || !strings.Contains(queries[2], "ecc.errors.uncorrected.aggregate.total") {
 		t.Fatalf("queries = %q", queries)
 	}
-	if gpus[0].Healthy || gpus[0].HealthCode != "memory_uncorrectable_errors" {
+	if gpus[0].Healthy || gpus[0].HealthCode != "MEMORY_UNCORRECTABLE_ERRORS" {
 		t.Fatalf("gpu = %+v", gpus[0])
 	}
 	// The next probe starts where this driver answered: the fields it does

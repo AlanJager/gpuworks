@@ -11,6 +11,7 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/diagnostics"
+	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -23,7 +24,7 @@ type accessDoctorStub struct {
 func (d *accessDoctorStub) Diagnose(_ context.Context, _ string, allowed bool) (diagnostics.DoctorReport, error) {
 	d.allowed = allowed
 	d.calls++
-	return diagnostics.DoctorReport{DoctorReport: proto.DoctorReport{Report: "partial"}, CheckedAt: time.Date(2026, 11, 9, 0, 0, 0, 0, time.UTC), Summary: "unavailable", Checks: []diagnostics.DoctorCheck{{Stage: "authentication", Status: "unavailable", Reason: "authentication_not_checked", Vantage: "node"}}}, d.err
+	return diagnostics.DoctorReport{DoctorReport: proto.DoctorReport{Report: "partial"}, CheckedAt: time.Date(2026, 11, 9, 0, 0, 0, 0, time.UTC), Summary: proto.CheckSkip, Checks: []diagnostics.DoctorCheck{{Stage: "authentication", Status: proto.CheckSkip, Code: messages.DoctorAuthenticationNotChecked, Vantage: "node"}}}, d.err
 }
 
 func TestNodeDoctorAccessReportWithoutOnlineRPC(t *testing.T) {
@@ -44,7 +45,7 @@ func TestNodeDoctorAccessReportWithoutOnlineRPC(t *testing.T) {
 	}
 	var report diagnostics.DoctorReport
 	_ = json.Unmarshal(w.Body.Bytes(), &report)
-	if report.Checks[0].Status != "unavailable" || report.Checks[0].ObservedAt != nil {
+	if report.Checks[0].Status != proto.CheckSkip || report.Checks[0].ObservedAt != nil {
 		t.Fatal("missing evidence acquired a verdict or timestamp")
 	}
 }

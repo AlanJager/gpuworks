@@ -44,7 +44,7 @@ func doctorUCXNetlinkHang(ctx context.Context, r *proto.DoctorReport) {
 		evidence = append([]proto.DoctorField{{Name: "kernel", Value: hang.Kernel}}, evidence...)
 	}
 	r.Findings = append(r.Findings, proto.DoctorFinding{
-		Code: proto.DoctorUCXNetlinkHang, Level: proto.DoctorLevelWarning,
+		ID: proto.DoctorCheckUCXNetlink, Status: proto.CheckWarn, Code: proto.DoctorUCXNetlinkHang,
 		Probe:    "agent: RTM_GETROUTE dump (AF_INET6) over a NETLINK_ROUTE socket",
 		Evidence: evidence,
 		Recheck:  "sysctl net.ipv6.conf.all.disable_ipv6 net.ipv6.conf.default.disable_ipv6",

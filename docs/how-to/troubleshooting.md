@@ -261,7 +261,7 @@ CLI 可在节点执行 `gpuworks-agent doctor`；退出码恒为 `0`，应读取
 | **已直通**、**未绑定驱动**、**被其它驱动占用** | 先确认卡的预期归属；这些卡不参与本节点调度，不要直接按硬件故障处理 |
 | 宿主能看到卡，容器看不到 | 查看 **运行时**或**运行时插件**提示；修复插件或工作负载用户的设备权限，再检查调度是否恢复 |
 | **被平台外的进程占用** | 核对显示的进程和显存占用，确认可以停止后再释放；不直接终止未知业务进程 |
-| `accelerator_unrecognized` | 保存报告中的 BDF、`vendor:device`、class 和驱动信息，用于补充设备识别 |
+| `ACCELERATOR_UNRECOGNIZED` | 保存报告中的 BDF、`vendor:device`、class 和驱动信息，用于补充设备识别 |
 
 处理后重新运行诊断，确认卡的健康、分配状态与实际设备一致；节点 **在线**只证明连接正常。
 
@@ -337,9 +337,9 @@ Xid / NVRM 报错。
 
 ### 某张卡运行时不可用或驱动初始化失败
 
-**`runtime_unusable`：加速卡运行时上下文创建失败**
+**`RUNTIME_UNUSABLE`：加速卡运行时上下文创建失败**
 
-某张卡健康是「运行时无法使用」（`runtime_unusable`）：加速卡运行时冒烟每 15 分钟逐卡跑一轮，
+某张卡健康是「运行时无法使用」（`RUNTIME_UNUSABLE`）：加速卡运行时冒烟每 15 分钟逐卡跑一轮，
 只点名这一张卡；正在跑实例的卡、被平台外进程占用的卡跳过，驱动不应答时整轮跳过，冒烟不改变节点连接状态。
 NVIDIA 需要 `python3` 和 `libcuda.so.1`，在这张卡上创建 CUDA 上下文；一张卡初始化失败常常让整机的
 `cuInit` 都失败，所以要连别的卡的结论一起看。昇腾在主机装有 CANN 时用 `python3` + `libascendcl.so`
@@ -355,9 +355,9 @@ NVIDIA 需要 `python3` 和 `libcuda.so.1`，在这张卡上创建 CUDA 上下�
 不在 udocker 上做。容器起不来、镜像里没有运行时或 python 都算主机的问题，不判卡故障。Apple 不做。
 
 **点「诊断」会立刻对 NVIDIA、昇腾、海光、PPU 做同一项逐卡（昇腾逐 die）检查**：节点详情的「诊断」与 `gpuworks-agent doctor` 对本节点拥有的每张 die 按需跑一遍上面这项运行时检查
-（和周期检查是同一段代码，不另写一套），所以周期检查已经判为 `runtime_unusable` 的 die，诊断里一定看得到。
-失败的 die 在加速卡表里显示「运行时无法使用」，并在 **需要处理** 里按 die 列出一项 `runtime_unusable`（级别「错误」，依据与周期检查记录的相同）；
-表里已有更具体的厂商结论（如 `reset_required`）时，表中仍显示那一条，`runtime_unusable` 照样单独列出。
+（和周期检查是同一段代码，不另写一套），所以周期检查已经判为 `RUNTIME_UNUSABLE` 的 die，诊断里一定看得到。
+失败的 die 在加速卡表里显示「运行时无法使用」，并在 **需要处理** 里按 die 列出一项 `RUNTIME_UNUSABLE`（结果「失败」，依据与周期检查记录的相同）；
+表里已有更具体的厂商结论（如 `RESET_REQUIRED`）时，表中仍显示那一条，`RUNTIME_UNUSABLE` 照样单独列出。
 「信息」里的 **逐卡运行时检查**（`card_runtime`）给出汇总：通过、失败、未检查各几张。
 NVIDIA 另有整机的 CUDA、P2P、NCCL 检查：整机 CUDA 检查让所有卡同时可见，只回答驱动能否初始化、第一张可见卡能否建 context，每张卡的结论看逐卡检查。
 
@@ -385,7 +385,7 @@ NVIDIA 另有整机的 CUDA、P2P、NCCL 检查：整机 CUDA 检查让所有卡
 
 直通给虚拟机的 die 不属于本节点，不在这项检查里，表中照旧显示「已直通」。独立运行 `gpuworks-agent doctor` 时没有 agent 的实例信息，会对所有 die 都做检查。
 
-只有检查明确说「是这张 die 失败」才会把卡判为 `runtime_unusable`：库加载不了、库不是 CANN、
+只有检查明确说「是这张 die 失败」才会把卡判为 `RUNTIME_UNUSABLE`：库加载不了、库不是 CANN、
 `aclInit` 失败、进程崩了或输出无法解读，都算宿主侧的结论（这些情况整机每张 die 都会一样失败），
 本轮就此中止、不记到任何卡上，原因可以在节点诊断（或 `gpuworks-agent doctor`）的「逐卡运行时检查」里看到。
 拿到 die 并分配成功之后的释放动作（`aclrtFree`、`aclrtResetDevice` 等）失败只打印不判故障，
@@ -398,17 +398,17 @@ NVIDIA 另有整机的 CUDA、P2P、NCCL 检查：整机 CUDA 检查让所有卡
 agent 不会再启动第二个检查去排在同一把驱动锁后面。这期间卡住的那张卡记为失败，其余卡保留上一次结果
 （没检查过的卡没有结论，不会被当成故障），原因同样在 `gpuworks-agent doctor` 里可见。
 
-**`driver_init_failed`：驱动没有带起这张卡**
+**`DRIVER_INIT_FAILED`：驱动没有带起这张卡**
 
-某张卡健康是「驱动初始化失败」（`driver_init_failed`，仅 NVIDIA）：卡在 PCI 上存在、仍绑定 nvidia 驱动，
+某张卡健康是「驱动初始化失败」（`DRIVER_INIT_FAILED`，仅 NVIDIA）：卡在 PCI 上存在、仍绑定 nvidia 驱动，
 但 `nvidia-smi` 列出的卡里没有它，通常是驱动没能把它带起来
 （`dmesg` 里有 `RmInitAdapter failed`、`Possible bad register read`、`GPU may need to be reset`）。
 这类卡仍然出现在加速卡列表里（卡插在机器上是既定事实，agent 直接读 sysfs 枚举 PCI，毫秒级，不依赖驱动），
 只是不可调度，型号取自 `pci.ids`。这类主机上 CUDA 往往整体不可用，部署前先在节点上确认，必要时复位这些卡。
 
-**`vendor_cli_unanswered`：暂时读不到卡的信息**
+**`VENDOR_CLI_UNANSWERED`：暂时读不到卡的信息**
 
-某张卡健康是「读不到信息」（`vendor_cli_unanswered`）：卡绑定着厂商驱动，但本轮厂商 CLI 根本没应答
+某张卡健康是「读不到信息」（`VENDOR_CLI_UNANSWERED`）：卡绑定着厂商驱动，但本轮厂商 CLI 根本没应答
 （超时，或没装），除 PCI 标识外一无所知——这不等于卡坏了。看节点的 GPU 探测错误，并在节点上手动跑一次 CLI。
 
 ### 宿主看得到卡，容器看不到
@@ -444,10 +444,10 @@ agent 每分钟复查一次：被跳过的运行时能用了，节点上没有�
 
 **有卡需要重启主机才能恢复时**
 
-卡报告 `reboot_required` 或 `power_cycle_required`（比如 NVIDIA Xid 79、驱动要求的恢复动作是重启）时，平台同样停止整个节点的调度：
+卡报告 `REBOOT_REQUIRED` 或 `POWER_CYCLE_REQUIRED`（比如 NVIDIA Xid 79、驱动要求的恢复动作是重启）时，平台同样停止整个节点的调度：
 重启主机之外没有办法让这张卡恢复，同一驱动下的其他卡也可能受影响。规则和上面一样——悬停「已停止调度」可看原因；
 管理员可以先手动恢复调度去试部署一个模型，原因还在时下一次上报（约 1 分钟）会再次停止；
-主机重启后卡恢复正常，第一次上报平台自动恢复调度。只需复位卡的故障（`reset_required`）不停止整个节点，只停这张卡。
+主机重启后卡恢复正常，第一次上报平台自动恢复调度。只需复位卡的故障（`RESET_REQUIRED`）不停止整个节点，只停这张卡。
 
 ### 卡已直通、未绑定驱动或被其他驱动占用
 
@@ -474,8 +474,8 @@ GPUDirect RDMA 只在宿主有 RDMA 网卡时检查厂商的 peer memory 模块�
 | 状态 | 含义 |
 |---|---|
 | 通过 / 告警 / 失败 | 这项检查最近一次的结论 |
-| 跳过 | 最近一次没做，带原因：卡正在服务、被平台外进程占用、平台还不知道节点在跑什么、宿主暂时不能检查（驱动无响应、运行时缺失、上一次检查还没返回），或厂商工具这一轮没应答 |
-| 等待 | agent 启动后这项检查还没做过 |
+| 未检查 | 最近一次没做，带原因：卡正在服务、被平台外进程占用、平台还不知道节点在跑什么、宿主暂时不能检查（驱动无响应、运行时缺失、上一次检查还没返回）、厂商工具这一轮没应答，或 agent 启动后还没运行过。未检查不算通过 |
+| 不适用 | 这张卡没有这项检查要看的东西（比如没有 NVLink、宿主不报 AER），格子是虚线框 |
 | 陈旧 | 超过两次上报周期（约 2.5 分钟）没有新的上报，或节点离线：显示最后已知的结论，不代表现在 |
 
 对节点上所有卡都不适用的检查（比如没有 NVLink）整列不显示。
@@ -528,7 +528,7 @@ server 重启后进行中的记录接着记；重启前最多一小时内的次�
 
 ### 诊断发现未识别的加速卡
 
-doctor 里出现「有未识别的加速卡设备」（`accelerator_unrecognized`）：本机有属于已支持厂商的
+doctor 里出现「有未识别的加速卡设备」（`ACCELERATOR_UNRECOGNIZED`）：本机有属于已支持厂商的
 PCI 设备，但不符合该厂商任何一条识别规则——通常是我们还没见过的新型号。把报告里的 BDF、
 `vendor:device`、class 和绑定驱动发给我们即可补上。这类设备不在加速卡列表里，也不参与调度。
 
@@ -545,10 +545,16 @@ PCI 设备，但不符合该厂商任何一条识别规则——通常是我们�
 只有厂商工具本身给出恢复方式时，才提供 **处理** 命令，例如复位。
 
 检查项目包括加速卡健康（见下一节）、磁盘可用空间不足 10%（根分区、模型目录、容器数据目录、存储）、
-已选用的容器运行时无响应、加速卡工具执行失败，NVIDIA 的 CUDA 初始化失败和多卡通信检查失败，以及逐卡（昇腾逐 die）运行时检查失败（`runtime_unusable`）。被平台外进程占用的卡不检查，列为未检查。
+已选用的容器运行时无响应、加速卡工具执行失败，NVIDIA 的 CUDA 初始化失败和多卡通信检查失败，以及逐卡（昇腾逐 die）运行时检查失败（`RUNTIME_UNUSABLE`）。被平台外进程占用的卡不检查，列为未检查。
+
+每一项的结果是失败、告警或**未检查**之一。该做却没做成的检查不会省略，而是列为未检查并给出原因码：读不到挂载表（`MOUNT_TABLE_UNREADABLE`）、
+CUDA 检查没通过所以没跑多卡检查（`CUDA_CHECK_NOT_PASSED`）、宿主缺少检查需要的东西（`CHECK_PREREQUISITE_MISSING`，如没装 torch）、
+读取的命令失败（`CHECK_TOOL_FAILED`）、诊断被取消或超时（`CHECK_CANCELLED`、`CHECK_BUDGET_EXHAUSTED`）、卡没有设备号（`CARD_UNADDRESSABLE`），
+以及逐卡检查沿用卡健康检查的跳过原因（卡正在服务、被平台外进程占用等）。单卡主机的多卡检查不适用，不列出。
+「诊断」顶部的结论与每个阶段取其中最严重的一项：失败、告警、未检查、通过依次递减，有未检查的阶段不会显示为通过。
 
 运行时与文件系统方面另有五项（见[运行时初始化失败与容器节点的文件系统](#运行时初始化失败与容器节点的文件系统)）：
-`runtime_provision_failed`（运行时初始化失败）、`runtime_state_untraversable`（专用运行用户进不了 agent 目录）、`path_noexec`、`path_read_only`、`path_ephemeral`。
+`RUNTIME_PROVISION_FAILED`（运行时初始化失败）、`RUNTIME_STATE_UNTRAVERSABLE`（专用运行用户进不了 agent 目录）、`PATH_NOEXEC`、`PATH_READ_ONLY`、`PATH_EPHEMERAL`。
 
 **其他栏目**
 
@@ -566,9 +572,9 @@ PCI 设备，但不符合该厂商任何一条识别规则——通常是我们�
 
 | 级别 | 调度 | 含义 |
 |---|---|---|
-| 正常 | 照常 | 无发现，或只有已处理的历史错误（`memory_error_history`） |
-| 告警 | 照常，但健康卡不够时才用（评估结果带 `degraded_gpus_used`） | `memory_repair_pending`（待复位）、`vendor_health_warning`（厂商工具 Warning）、`pcie_link_degraded`（PCIe 链路降级）、`pcie_errors`（PCIe 可恢复错误）、`nvlink_down`（NVLink 掉线） |
-| 故障 | 停止 | `memory_uncorrectable_errors`、`memory_remap_failed`、`reset_required`、`reboot_required`、`power_cycle_required`、`vendor_health_fault`、`runtime_unusable`（运行时用不了这张卡）、`driver_init_failed`（驱动没带起来）、`vendor_cli_unanswered`（厂商 CLI 没应答，读不到信息）、`pcie_fatal_errors`（PCIe 致命错误） |
+| 正常 | 照常 | 无发现，或只有已处理的历史错误（`MEMORY_ERROR_HISTORY`） |
+| 告警 | 照常，但健康卡不够时才用（评估结果带 `degraded_gpus_used`） | `MEMORY_REPAIR_PENDING`（待复位）、`VENDOR_HEALTH_WARNING`（厂商工具 Warning）、`PCIE_LINK_DEGRADED`（PCIe 链路降级）、`PCIE_ERRORS`（PCIe 可恢复错误）、`NVLINK_DOWN`（NVLink 掉线） |
+| 故障 | 停止 | `MEMORY_UNCORRECTABLE_ERRORS`、`MEMORY_REMAP_FAILED`、`RESET_REQUIRED`、`REBOOT_REQUIRED`、`POWER_CYCLE_REQUIRED`、`VENDOR_HEALTH_FAULT`、`RUNTIME_UNUSABLE`（运行时用不了这张卡）、`DRIVER_INIT_FAILED`（驱动没带起来）、`VENDOR_CLI_UNANSWERED`（厂商 CLI 没应答，读不到信息）、`PCIE_FATAL_ERRORS`（PCIe 致命错误） |
 
 「能不能用」是一个结论，由 server 在存卡时判定一次（健康等级、卡的归属、平台外占用三者合一），
 API 的 `schedulable` 字段就是它，界面与调度都读这一个字段，不各自再推一遍。**不要读 `healthy`**：
@@ -612,8 +618,8 @@ API 的 `schedulable` 字段就是它，界面与调度都读这一个字段，�
 
 **现象**：所有部署都失败，出现 `runveil runtime unavailable: <原因>`；较早版本可能显示
 `udocker runtime unavailable` 或 `prepare udocker ownership`。节点诊断也可能报告
-`runtime_provision_failed`、`runtime_state_untraversable`、`path_noexec`、`path_read_only`、`path_ephemeral`。
-启动日志或实例报 `fork/exec …/udocker/bin/proot-…: permission denied` 时，先看 `runtime_state_untraversable`。
+`RUNTIME_PROVISION_FAILED`、`RUNTIME_STATE_UNTRAVERSABLE`、`PATH_NOEXEC`、`PATH_READ_ONLY`、`PATH_EPHEMERAL`。
+启动日志或实例报 `fork/exec …/udocker/bin/proot-…: permission denied` 时，先看 `RUNTIME_STATE_UNTRAVERSABLE`。
 
 ### 先确认出问题的路径
 
@@ -643,9 +649,9 @@ udocker 初始化会试建带 `:` 的文件；镜像层 `sha256:<hex>`、Debian 
 
 | 检查结果 | 处理 |
 |---|---|
-| `path_noexec`（错误） | udocker 或 agent 目录所在挂载带 `noexec`；调整挂载或换到允许执行的目录 |
-| `path_read_only`（错误） | 模型、udocker 或 agent 目录所在挂载只读；调整挂载或换到可写目录 |
-| `path_ephemeral`（告警） | 模型、udocker 或 agent 目录位于容器自身的 overlay 层；重建后丢失，按上面的持久性条件选目录 |
+| `PATH_NOEXEC`（失败） | udocker 或 agent 目录所在挂载带 `noexec`；调整挂载或换到允许执行的目录 |
+| `PATH_READ_ONLY`（失败） | 模型、udocker 或 agent 目录所在挂载只读；调整挂载或换到可写目录 |
+| `PATH_EPHEMERAL`（告警） | 模型、udocker 或 agent 目录位于容器自身的 overlay 层；重建后丢失，按上面的持久性条件选目录 |
 
 路径检查读取 `/proc/self/mountinfo`，可用 `findmnt -T <路径>` 复核。
 容器层检查用于存在 `/.dockerenv` 或 `/run/.containerenv` 的节点。
@@ -666,7 +672,7 @@ root agent 以专用用户 `udocker` 启动工作负载。agent 会自己开放�
 若其中某一级不允许 `udocker` 进入（典型是装在 `/root/…` 或 0700 的私有主目录下），每次启动都会报
 `fork/exec …/udocker/bin/proot-…: permission denied`，而其他功能（镜像管理、`runveil ps`）照常，不易看出原因。
 
-`runtime_state_untraversable`（错误）给出第一个挡住的目录、它的权限和属主、判断所用的运行用户，以及修复命令。处理：
+`RUNTIME_STATE_UNTRAVERSABLE`（失败）给出第一个挡住的目录、它的权限和属主、判断所用的运行用户，以及修复命令。处理：
 
 - 执行证据里的 `chmod o+x <目录>`：只授予进入权限，不能列目录或写入；
 - 或把 agent 重装到不在该目录之下的安装目录（如 `/opt/gpuworks`）。
@@ -678,7 +684,7 @@ root agent 以专用用户 `udocker` 启动工作负载。agent 会自己开放�
 
 **其他初始化失败**
 
-`runtime_provision_failed` 会保留目录创建、PRoot 释放、chown、文件名等错误全文；chown 错误包含命令的 stderr。
+`RUNTIME_PROVISION_FAILED` 会保留目录创建、PRoot 释放、chown、文件名等错误全文；chown 错误包含命令的 stderr。
 按其中的依据和复核命令处理。拉镜像遇到此错误时会立即以 `udocker runtime unavailable: <原因>` 失败，不逐一尝试镜像源，也不写成 `all image sources failed`；此时应修节点环境。
 
 ### 确认恢复
@@ -720,7 +726,7 @@ Docker Desktop 的容器在没有 Metal 的虚拟机里）；NVIDIA 节点上给
 runveil 只要 Linux 的 amd64 / arm64，
 默认启动器不需要 Python。三者都不可用时日志为
 `no usable container runtime (docker/nerdctl/udocker); deployments disabled on this node`，节点仍可上线、
-上报 GPU，但调度以 `runtime_unavailable` 拒绝，dGPU 原因为 `no usable docker/udocker runtime on the node`。
+上报 GPU，但调度以 `RUNTIME_UNAVAILABLE` 拒绝，dGPU 原因为 `no usable docker/udocker runtime on the node`。
 可用 `--driver` 或 `GPUWORKS_RUNTIME_DRIVER` 强制（`docker|udocker|nerdctl|host|none`；`host` 只在 macOS、`udocker` 只在 Linux 可用，
 强制了本机系统跑不了的 driver 或非法值时只在 agent 日志里记原因，节点按无运行时继续运行），
 或 `PATCH /api/v1/nodes/{uuid}/runtime` 改偏好（`auto/docker/nerdctl/udocker`）。
@@ -953,7 +959,7 @@ runveil（udocker）节点拉取镜像时，agent 日志（`<state>/agent.log`�
 | `sleep_residue_blocks_startup` | 休眠实例的残留显存挡住了启动 |
 | `engine_ports_exhausted` | 节点引擎端口区间用尽 |
 | `insufficient_disk` / `insufficient_runtime_disk` | 权重盘 / 运行时盘不足 |
-| `runtime_unavailable` / `serving_unavailable` | 节点没有容器运行时 / 没有可承担服务流量的网络 |
+| `RUNTIME_UNAVAILABLE` / `serving_unavailable` | 节点没有容器运行时 / 没有可承担服务流量的网络 |
 | `image_source_forbidden` | 节点适用的拉取来源规则让镜像无处可拉（参数 `node`、`image`），见[镜像拉取失败](#镜像拉取失败) |
 | `partition_unavailable` | 需要 dGPU 后端但节点没有就绪的，见 dGPU 一节 |
 

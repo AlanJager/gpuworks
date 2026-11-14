@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"gpuworks.ai/gpuworks/internal/proto"
+	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/internal/server/provision"
 )
 
@@ -65,9 +67,9 @@ func TestDoctorAccessSSHDirectionMatrixReturnsPartialReport(t *testing.T) {
 				d := DoctorService{Nodes: nodes, Settings: func(string) (ConnectionNode, error) { return node, nil }, Connection: ConnectionDiagnoser{
 					Inspect: func(context.Context, string) provision.AccessInspection {
 						if !ssh {
-							return provision.AccessInspection{Reason: "credentials_unavailable"}
+							return provision.NewAccessInspection(messages.DoctorCredentialsUnavailable)
 						}
-						return provision.AccessInspection{SSH: "passed", Installation: "passed", Process: "passed", ObservedAt: time.Now(), Connection: provision.ConnectionCheck{Outcome: "http_ok", Target: node.ServerURL + "/healthz", ObservedAt: time.Now()}}
+						return provision.AccessInspection{SSH: proto.CheckPass, Installation: proto.CheckPass, Process: proto.CheckPass, ObservedAt: time.Now(), Connection: provision.ConnectionCheck{Outcome: "http_ok", Target: node.ServerURL + "/healthz", ObservedAt: time.Now()}}.WithConnectionResult()
 					},
 					Dial: func(context.Context, string, string) (net.Conn, error) {
 						probes++
@@ -86,18 +88,18 @@ func TestDoctorAccessSSHDirectionMatrixReturnsPartialReport(t *testing.T) {
 					t.Fatalf("unexpected checks: %v", stages)
 				}
 				process := checkByStage(t, got, "process")
-				if ssh && process.Status != "passed" || !ssh && process.Status != "unavailable" {
+				if ssh && process.Status != proto.CheckPass || !ssh && process.Status != proto.CheckSkip {
 					t.Fatalf("%+v", process)
 				}
 				connection := checkByStage(t, got, "connection")
 				if mode == "server_dial" {
-					if probes != 1 || connection.Status != "failed" || connection.Reason != "timeout" || connection.Vantage != "control_plane" {
+					if probes != 1 || connection.Status != proto.CheckFail || connection.Code != "TIMEOUT" || connection.Vantage != "control_plane" {
 						t.Fatalf("%+v probes=%d", connection, probes)
 					}
-				} else if probes != 0 || (ssh && connection.Status != "passed") || (!ssh && connection.Status != "unavailable") {
+				} else if probes != 0 || (ssh && connection.Status != proto.CheckPass) || (!ssh && connection.Status != proto.CheckSkip) {
 					t.Fatalf("wrong direction %+v", connection)
 				}
-				if checkByStage(t, got, "authentication").Status != "unavailable" {
+				if checkByStage(t, got, "authentication").Status != proto.CheckSkip {
 					t.Fatal("network failure became authentication failure")
 				}
 			})
@@ -113,17 +115,17 @@ func TestDoctorAccessTCPReachabilityNeverProvesAuthentication(t *testing.T) {
 	defer listener.Close()
 	d := ConnectionDiagnoser{}
 	report := d.Diagnose(context.Background(), ConnectionNode{Mode: "server_dial", Address: listener.Addr().String()}, true)
-	if checkByStage(t, report, "connection").Status != "passed" || checkByStage(t, report, "authentication").Status != "unavailable" {
+	if checkByStage(t, report, "connection").Status != proto.CheckPass || checkByStage(t, report, "authentication").Status != proto.CheckSkip {
 		t.Fatalf("%+v", report)
 	}
 }
 
 func TestDoctorAccessRefusalAndSSHFailureAreIndependent(t *testing.T) {
 	d := ConnectionDiagnoser{Inspect: func(context.Context, string) provision.AccessInspection {
-		return provision.AccessInspection{SSH: "failed", Reason: "ssh_unavailable"}
+		return provision.AccessInspection{SSH: proto.CheckFail, Code: messages.DoctorSSHUnavailable}
 	}, Dial: func(context.Context, string, string) (net.Conn, error) { return nil, syscall.ECONNREFUSED }}
 	report := d.Diagnose(context.Background(), ConnectionNode{Mode: "server_dial", Address: "127.0.0.1:18800"}, true)
-	if checkByStage(t, report, "connection").Reason != "refused" || checkByStage(t, report, "installation").Status != "unavailable" {
+	if checkByStage(t, report, "connection").Code != "REFUSED" || checkByStage(t, report, "installation").Status != proto.CheckSkip {
 		t.Fatalf("%+v", report)
 	}
 }
@@ -137,21 +139,21 @@ func TestDoctorAccessKeepsPartialEvidenceAfterInspectionTimeout(t *testing.T) {
 	for _, mode := range []string{"agent_dial", "server_dial"} {
 		t.Run(mode, func(t *testing.T) {
 			d := ConnectionDiagnoser{Inspect: func(context.Context, string) provision.AccessInspection {
-				return provision.AccessInspection{SSH: "passed", Installation: "passed", Process: "unavailable", Reason: "timeout", ObservedAt: time.Now()}
+				return provision.AccessInspection{SSH: proto.CheckPass, Installation: proto.CheckPass, Process: proto.CheckSkip, Code: messages.DoctorTimeout, ObservedAt: time.Now()}
 			}}
 			report := d.Diagnose(context.Background(), ConnectionNode{Mode: mode, ServerURL: "http://server", Address: listener.Addr().String()}, true)
-			if installed := checkByStage(t, report, "installation"); installed.Status != "passed" || installed.ObservedAt == nil {
+			if installed := checkByStage(t, report, "installation"); installed.Status != proto.CheckPass || installed.ObservedAt == nil {
 				t.Fatalf("completed installation evidence lost: %+v", installed)
 			}
-			if process := checkByStage(t, report, "process"); process.Status != "unavailable" || process.Reason != "timeout" {
+			if process := checkByStage(t, report, "process"); process.Status != proto.CheckSkip || process.Code != "TIMEOUT" {
 				t.Fatalf("unfinished process inspection acquired a verdict: %+v", process)
 			}
 			connection := checkByStage(t, report, "connection")
 			if mode == "agent_dial" {
-				if connection.Status != "unavailable" || connection.Reason != "timeout" || connection.ObservedAt != nil {
+				if connection.Status != proto.CheckSkip || connection.Code != "TIMEOUT" || connection.ObservedAt != nil {
 					t.Fatalf("unexecuted HTTP probe acquired a verdict: %+v", connection)
 				}
-			} else if connection.Status != "passed" || connection.Reason != "tcp_connected" {
+			} else if connection.Status != proto.CheckPass || connection.Code != "TCP_CONNECTED" {
 				t.Fatalf("SSH timeout blocked independent TCP probe: %+v", connection)
 			}
 		})
@@ -165,14 +167,14 @@ func TestDoctorAccessPermissionAndCancellation(t *testing.T) {
 	}, Dial: func(context.Context, string, string) (net.Conn, error) { t.Fatal("unauthorized dial"); return nil, nil }}
 	report := d.Diagnose(context.Background(), ConnectionNode{Mode: "server_dial", Address: "127.0.0.1:18800"}, false)
 	for _, c := range report.Checks {
-		if c.Status != "unavailable" || c.Reason != "administrator_required" {
+		if c.Status != proto.CheckSkip || c.Code != "ADMINISTRATOR_REQUIRED" {
 			t.Fatalf("%+v", c)
 		}
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	report = ConnectionDiagnoser{}.Diagnose(ctx, ConnectionNode{Mode: "server_dial", Address: "127.0.0.1:18800"}, true)
-	if c := checkByStage(t, report, "connection"); c.Status != "unavailable" || c.Reason != "cancelled" {
+	if c := checkByStage(t, report, "connection"); c.Status != proto.CheckSkip || c.Code != "CANCELLED" {
 		t.Fatalf("%+v", c)
 	}
 }
@@ -200,29 +202,29 @@ func TestDoctorAccessDisconnectDuringRPCAndMalformedResponse(t *testing.T) {
 
 func TestDoctorAccessNodeHTTPChecksRemainSeparateFromAuthentication(t *testing.T) {
 	for _, tc := range []struct{ outcome, status, reason string }{
-		{"http_ok", "passed", "http_connected"},
-		{"http_error", "failed", "http_error"},
-		{"timeout", "failed", "timeout"},
-		{"dns", "failed", "dns"},
-		{"tls", "failed", "tls"},
-		{"tool_missing", "unavailable", "tool_missing"},
-		{"identity_unverified", "unavailable", "identity_unverified"},
-		{"secret=private", "unavailable", "inspection_unavailable"},
+		{"http_ok", proto.CheckPass, "HTTP_CONNECTED"},
+		{"http_error", proto.CheckFail, "HTTP_ERROR"},
+		{"timeout", proto.CheckFail, "TIMEOUT"},
+		{"dns", proto.CheckFail, "DNS"},
+		{"tls", proto.CheckFail, "TLS"},
+		{"tool_missing", proto.CheckSkip, "TOOL_MISSING"},
+		{"identity_unverified", proto.CheckSkip, "IDENTITY_UNVERIFIED"},
+		{"secret=private", proto.CheckSkip, "INSPECTION_UNAVAILABLE"},
 	} {
 		t.Run(tc.outcome, func(t *testing.T) {
 			at := time.Now().UTC()
 			d := ConnectionDiagnoser{Inspect: func(context.Context, string) provision.AccessInspection {
-				return provision.AccessInspection{SSH: "passed", Connection: provision.ConnectionCheck{Outcome: tc.outcome, Target: "http://server/healthz", ObservedAt: at}}
+				return provision.AccessInspection{SSH: proto.CheckPass, Connection: provision.ConnectionCheck{Outcome: tc.outcome, Target: "http://server/healthz", ObservedAt: at}}.WithConnectionResult()
 			}, Dial: func(context.Context, string, string) (net.Conn, error) {
 				t.Fatal("agent_dial probed from Server")
 				return nil, nil
 			}}
 			r := d.Diagnose(context.Background(), ConnectionNode{Mode: "agent_dial", ServerURL: "http://server/"}, true)
 			c := checkByStage(t, r, "connection")
-			if c.Status != tc.status || c.Reason != tc.reason || c.Source != "http_probe" || c.Vantage != "node" || c.ObservedAt == nil || !c.ObservedAt.Equal(at) {
+			if c.Status != tc.status || c.Code != tc.reason || c.Source != "http_probe" || c.Vantage != "node" || c.ObservedAt == nil || !c.ObservedAt.Equal(at) {
 				t.Fatalf("%+v", c)
 			}
-			if auth := checkByStage(t, r, "authentication"); auth.Status != "unavailable" || auth.ObservedAt != nil {
+			if auth := checkByStage(t, r, "authentication"); auth.Status != proto.CheckSkip || auth.ObservedAt != nil {
 				t.Fatalf("HTTP check invented authentication: %+v", auth)
 			}
 		})
@@ -237,24 +239,24 @@ func TestDoctorAccessRunsNewChecksForEachRequest(t *testing.T) {
 		if calls == 2 {
 			outcome = "http_ok"
 		}
-		return provision.AccessInspection{SSH: "passed", Connection: provision.ConnectionCheck{Target: "http://server/healthz", Outcome: outcome, ObservedAt: time.Now()}}
+		return provision.AccessInspection{SSH: proto.CheckPass, Connection: provision.ConnectionCheck{Target: "http://server/healthz", Outcome: outcome, ObservedAt: time.Now()}}.WithConnectionResult()
 	}}
 	node := ConnectionNode{Mode: "agent_dial", ServerURL: "http://server"}
 	first := d.Diagnose(context.Background(), node, true)
 	second := d.Diagnose(context.Background(), node, true)
-	if calls != 2 || checkByStage(t, first, "connection").Status != "failed" || checkByStage(t, second, "connection").Status != "passed" {
+	if calls != 2 || checkByStage(t, first, "connection").Status != proto.CheckFail || checkByStage(t, second, "connection").Status != proto.CheckPass {
 		t.Fatalf("reused previous result: first=%+v second=%+v calls=%d", first, second, calls)
 	}
 }
 
 func TestDoctorAccessRejectsUnrelatedOrUnsafeTarget(t *testing.T) {
 	d := ConnectionDiagnoser{Inspect: func(context.Context, string) provision.AccessInspection {
-		return provision.AccessInspection{SSH: "passed", Connection: provision.ConnectionCheck{Target: "http://other/healthz", Outcome: "http_ok"}}
+		return provision.AccessInspection{SSH: proto.CheckPass, Connection: provision.ConnectionCheck{Target: "http://other/healthz", Outcome: "http_ok"}}.WithConnectionResult()
 	}}
 	for _, target := range []string{"http://server", "http://user:secret@server", "http://server?secret=private", "http://server/private", "http://server/%70rivate"} {
 		r := d.Diagnose(context.Background(), ConnectionNode{Mode: "agent_dial", ServerURL: target, Token: "private"}, true)
 		c := checkByStage(t, r, "connection")
-		if c.Status != "unavailable" || strings.Contains(c.Target, "secret") || strings.Contains(c.Target, "private") {
+		if c.Status != proto.CheckSkip || strings.Contains(c.Target, "secret") || strings.Contains(c.Target, "private") {
 			t.Fatalf("unrelated/unsafe target used: %+v", c)
 		}
 	}

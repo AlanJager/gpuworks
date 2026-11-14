@@ -25,13 +25,13 @@ func TestDoctorUCXNetlinkHangReportsAnAffectedHostWithLiteralFixes(t *testing.T)
 	for _, e := range f.Evidence {
 		fields[e.Name] = e.Value
 	}
-	if f.Code != proto.DoctorUCXNetlinkHang || f.Level != proto.DoctorLevelWarning || fields["kernel"] != "5.15.0-203-generic" ||
+	if f.ID != proto.DoctorCheckUCXNetlink || f.Code != proto.DoctorUCXNetlinkHang || f.Status != proto.CheckWarn || fields["kernel"] != "5.15.0-203-generic" ||
 		fields["fix"] != "sudo sysctl -w net.ipv6.conf.all.disable_ipv6=1 net.ipv6.conf.default.disable_ipv6=1" ||
 		!strings.Contains(fields["fix_persist"], "/etc/sysctl.d/90-gpuworks-ucx.conf") {
 		t.Fatalf("finding = %+v", f)
 	}
 	r.Report = renderDoctorText(r)
-	if !strings.Contains(r.Report, "ucx_netlink_hang") || !strings.Contains(r.Report, "disable_ipv6=1") {
+	if !strings.Contains(r.Report, proto.DoctorUCXNetlinkHang) || !strings.Contains(r.Report, "disable_ipv6=1") {
 		t.Fatalf("text = %s", r.Report)
 	}
 

@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/agentconf"
+	"gpuworks.ai/gpuworks/internal/proto"
+	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/internal/server/provision"
 )
 
@@ -26,17 +28,17 @@ type ConnectionDiagnoser struct {
 	Dial    func(context.Context, string, string) (net.Conn, error)
 }
 
-func accessCheck(stage, vantage, reason string) DoctorCheck {
-	return DoctorCheck{Stage: stage, Vantage: vantage, Status: "unavailable", Reason: reason}
+func accessCheck(stage, vantage, code string) DoctorCheck {
+	return DoctorCheck{Stage: stage, Vantage: vantage, Status: proto.CheckSkip, Code: code}
 }
 
 func (d ConnectionDiagnoser) Diagnose(ctx context.Context, node ConnectionNode, permitted bool) DoctorReport {
-	out := DoctorReport{CheckedAt: time.Now().UTC(), Summary: "incomplete"}
-	ssh := accessCheck("ssh", "control_plane", "credentials_unavailable")
-	installed := accessCheck("installation", "node", "inspection_unavailable")
-	process := accessCheck("process", "node", "inspection_unavailable")
-	connection := accessCheck("connection", "node", "credentials_unavailable")
-	authentication := accessCheck("authentication", "node", "authentication_not_checked")
+	out := DoctorReport{CheckedAt: time.Now().UTC()}
+	ssh := accessCheck("ssh", "control_plane", messages.DoctorCredentialsUnavailable)
+	installed := accessCheck("installation", "node", messages.DoctorInspectionUnavailable)
+	process := accessCheck("process", "node", messages.DoctorInspectionUnavailable)
+	connection := accessCheck("connection", "node", messages.DoctorCredentialsUnavailable)
+	authentication := accessCheck("authentication", "node", messages.DoctorAuthenticationNotChecked)
 	if node.Mode == agentconf.ServerDial {
 		connection.Vantage, authentication.Vantage = "control_plane", "control_plane"
 		connection.Target = safeDialAddress(node.Address, node.Token)
@@ -45,62 +47,57 @@ func (d ConnectionDiagnoser) Diagnose(ctx context.Context, node ConnectionNode, 
 	}
 	if !permitted {
 		for _, c := range []*DoctorCheck{&ssh, &installed, &process, &connection, &authentication} {
-			c.Reason = "administrator_required"
+			c.Code = messages.DoctorAdministratorRequired
 		}
 	} else {
-		inspection := provision.AccessInspection{Reason: "credentials_unavailable"}
+		inspection := provision.NewAccessInspection(messages.DoctorCredentialsUnavailable)
 		if d.Inspect != nil && ctx.Err() == nil {
 			inspection = d.Inspect(ctx, node.UUID)
 		}
-		ssh.Status, ssh.Reason = validAccessStatus(inspection.SSH), inspection.Reason
-		installed.Status, process.Status = validAccessStatus(inspection.Installation), validAccessStatus(inspection.Process)
-		installed.Reason, process.Reason = inspection.Reason, inspection.Reason
+		ssh.Status, ssh.Code = checkStatus(inspection.SSH), inspection.Code
+		installed.Status, process.Status = checkStatus(inspection.Installation), checkStatus(inspection.Process)
+		installed.Code, process.Code = inspection.Code, inspection.Code
 		for _, c := range []*DoctorCheck{&ssh, &installed, &process} {
 			c.Source = "ssh"
 			setObserved(c, inspection.ObservedAt)
 		}
-		if ssh.Status == "passed" {
-			ssh.Reason = "ssh_connected"
+		if ssh.Status == proto.CheckPass {
+			ssh.Code = messages.DoctorSSHConnected
 		}
-		if installed.Status == "passed" {
-			installed.Reason = "installed"
-		} else if installed.Status == "failed" {
-			installed.Reason = "not_installed"
+		if installed.Status == proto.CheckPass {
+			installed.Code = messages.DoctorInstalled
+		} else if installed.Status == proto.CheckFail {
+			installed.Code = messages.DoctorNotInstalled
 		}
-		if process.Status == "passed" {
-			process.Reason = "running"
-		} else if process.Status == "failed" {
-			process.Reason = "not_running"
+		if process.Status == proto.CheckPass {
+			process.Code = messages.DoctorRunning
+		} else if process.Status == proto.CheckFail {
+			process.Code = messages.DoctorNotRunning
 		}
 		if node.Mode == agentconf.ServerDial {
 			connection = d.probe(ctx, connection)
 		} else {
-			connection.Reason = inspection.Reason
+			connection.Code = inspection.Code
 			if connection.Target == "" {
-				connection.Reason = "invalid_address"
-			} else if ssh.Status == "passed" && inspection.Connection.Target == connection.Target {
+				connection.Code = messages.DoctorInvalidAddress
+			} else if ssh.Status == proto.CheckPass && inspection.Connection.Target == connection.Target {
 				connection.Source = "http_probe"
 				setObserved(&connection, inspection.Connection.ObservedAt)
-				switch outcome := inspection.Connection.Outcome; outcome {
-				case "http_ok":
-					connection.Status, connection.Reason = "passed", "http_connected"
-				case "dns", "connect", "tls", "timeout", "http_error", "transport":
-					connection.Status, connection.Reason = "failed", outcome
-				case "tool_missing", "identity_unverified", "cancelled":
-					connection.Reason = outcome
-				default:
-					connection.Reason = "inspection_unavailable"
+				if inspection.ConnectionStatus != "" {
+					connection.Status, connection.Code = inspection.ConnectionStatus, inspection.ConnectionCode
+				} else {
+					connection.Code = messages.DoctorInspectionUnavailable
 				}
 			}
 		}
 		if ctx.Err() != nil {
-			reason := "cancelled"
+			code := messages.DoctorCancelled
 			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-				reason = "timeout"
+				code = messages.DoctorTimeout
 			}
 			for _, c := range []*DoctorCheck{&ssh, &installed, &process, &connection} {
-				if c.Status == "unavailable" {
-					c.Reason = reason
+				if c.Status == proto.CheckSkip {
+					c.Code = code
 				}
 			}
 		}
@@ -110,11 +107,13 @@ func (d ConnectionDiagnoser) Diagnose(ctx context.Context, node ConnectionNode, 
 	return out
 }
 
-func validAccessStatus(s string) string {
-	if s == "passed" || s == "failed" {
+// checkStatus is an inspection stage's status, or skip for one the inspection
+// did not state.
+func checkStatus(s string) string {
+	if proto.ValidCheckStatus(s) {
 		return s
 	}
-	return "unavailable"
+	return proto.CheckSkip
 }
 
 func setObserved(check *DoctorCheck, at time.Time) {
@@ -145,7 +144,7 @@ func nodeHTTPProbeTarget(server, token string) string {
 
 func (d ConnectionDiagnoser) probe(ctx context.Context, check DoctorCheck) DoctorCheck {
 	if check.Target == "" {
-		check.Reason = "invalid_address"
+		check.Code = messages.DoctorInvalidAddress
 		return check
 	}
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
@@ -159,18 +158,18 @@ func (d ConnectionDiagnoser) probe(ctx context.Context, check DoctorCheck) Docto
 	check.Source = "tcp_probe"
 	if err == nil {
 		conn.Close()
-		check.Status, check.Reason = "passed", "tcp_connected"
+		check.Status, check.Code = proto.CheckPass, messages.DoctorTCPConnected
 		return check
 	}
-	check.Status, check.Reason = "failed", "connect"
+	check.Status, check.Code = proto.CheckFail, messages.DoctorConnect
 	var netErr net.Error
 	switch {
 	case errors.Is(ctx.Err(), context.Canceled):
-		check.Status, check.Reason = "unavailable", "cancelled"
+		check.Status, check.Code = proto.CheckSkip, messages.DoctorCancelled
 	case errors.Is(err, context.DeadlineExceeded) || (errors.As(err, &netErr) && netErr.Timeout()):
-		check.Reason = "timeout"
+		check.Code = messages.DoctorTimeout
 	case errors.Is(err, syscall.ECONNREFUSED):
-		check.Reason = "refused"
+		check.Code = messages.DoctorRefused
 	}
 	return check
 }
