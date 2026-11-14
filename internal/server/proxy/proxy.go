@@ -555,24 +555,9 @@ func (p *Proxy) serveSelectedTarget(w http.ResponseWriter, r *http.Request, publ
 			return
 		}
 	}
-	// The fields only the gateway sets, found in one pass over the body.
-	named, err := bodyNames(r, kvTransferField, priorityField)
-	if err != nil {
-		fail(err)
-		return
-	}
-	// Only the gateway may hand KV between instances (ADR 0028).
-	cleanup, err := stripClientKVTransfer(r, p.maxBodyBytes, named[0])
-	defer cleanup()
-	if err != nil {
-		fail(err)
-		return
-	}
-	r, cleanupPriority, ok := p.applyRequestPriority(w, r, deploymentID, tgt, named[1])
-	defer cleanupPriority()
+	r, cleanupOwned, ok := p.ownGatewayFields(w, r, tgt, deploymentID, fail)
+	defer cleanupOwned()
 	if !ok {
-		p.releaseTarget(tgt)
-		p.acctFor(r.Context()).RecordImmediate(deploymentID, http.StatusBadRequest, false)
 		return
 	}
 	proceed, cleanupPD := p.servePrefillStage(w, r, &tgt, deploymentID)

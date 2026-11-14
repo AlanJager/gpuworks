@@ -169,6 +169,32 @@ func (p *Proxy) applyRequestPriority(w http.ResponseWriter, r *http.Request, dep
 	return r, cleanup, true
 }
 
+// ownGatewayFields sets the request fields only the gateway may set,
+// found in one pass over the body: a client's kv_transfer_params is
+// neutralized (ADR 0028) and the priority written (applyRequestPriority).
+// fail answers a read or rewrite error; a refused class is answered and
+// accounted here. ok is false when the request was answered.
+func (p *Proxy) ownGatewayFields(w http.ResponseWriter, r *http.Request, tgt target, deploymentID uint, fail func(error)) (*http.Request, func(), bool) {
+	named, err := bodyNames(r, kvTransferField, priorityField)
+	if err != nil {
+		fail(err)
+		return r, func() {}, false
+	}
+	cleanupKV, err := stripClientKVTransfer(r, p.maxBodyBytes, named[0])
+	if err != nil {
+		cleanupKV()
+		fail(err)
+		return r, func() {}, false
+	}
+	r, cleanupPriority, ok := p.applyRequestPriority(w, r, deploymentID, tgt, named[1])
+	cleanup := func() { cleanupPriority(); cleanupKV() }
+	if !ok {
+		p.releaseTarget(tgt)
+		p.acctFor(r.Context()).RecordImmediate(deploymentID, http.StatusBadRequest, false)
+	}
+	return r, cleanup, ok
+}
+
 // instanceRunsPriority reports whether the instance was launched with the
 // engine's priority scheduling on (routeSnapshot.prioritized): a deployment
 // that asked for it may still run an instance without it, on a target that
