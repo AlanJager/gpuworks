@@ -11,7 +11,7 @@ import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { api } from "../../api";
 import type { NetworkAttachment, NetworkDetail, NetworkNode } from "../../networkTypes";
-import DetailDrawer, { DetailExtra } from "../../components/detail/DetailDrawer";
+import DetailDrawer from "../../components/detail/DetailDrawer";
 import DetailSection from "../../components/detail/DetailSection";
 import { formatTime } from "../../i18n/datetime";
 import AttachNetworkModal from "./AttachNetworkModal";
@@ -277,7 +277,7 @@ function NetworkOverview({ detail, description, onDetail, onAttach }: {
           columns={nodeColumns}
           data={detail.nodes}
           emptyDescription={t("detail.noNodes")}
-          expandable={{ expandedRowRender: (n) => <DetailExtra columns={extraColumns} record={n} />, expandRowByClick: true }}
+          expandable={{ expandedRowRender: (n) => <dl className="grid gap-3 text-body">{extraColumns.map(column => <div key={column.key}><dt className="mb-1 text-label text-fg-muted">{column.title}</dt><dd className="min-w-0 break-words">{column.render(undefined, n)}</dd></div>)}</dl>, expandRowByClick: true }}
         />
       </DetailSection>
     </>
