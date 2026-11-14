@@ -107,9 +107,14 @@ func (i *SSHInstaller) InspectAccess(ctx context.Context, req SSHProbeRequest) A
 	client, _, err := DialSSH(ctx, normalized.User, normalized.Host, normalized.Port, normalized.SSHAuth, i.timeout(), i.HostKeys)
 	out.ObservedAt = time.Now().UTC()
 	if err != nil {
-		// Every way the SSH connection can fail is one code here
-		// (SSH_UNAVAILABLE); a context that ended first is not a failure.
-		out.SSH, out.Code = proto.CheckFail, inspectionContextCode(ctx, messages.DoctorSSHUnavailable)
+		// The SSH adapter names how the connection failed (SSH_AUTH_FAILED,
+		// SSH_HOST_KEY_MISMATCH, ...); SSH_UNAVAILABLE is left for a failure
+		// it could not name. A context that ended first is not a failure.
+		code, named := FailureCode(err)
+		if !named {
+			code = messages.DoctorSSHUnavailable
+		}
+		out.SSH, out.Code = proto.CheckFail, inspectionContextCode(ctx, code)
 		if ctx.Err() != nil {
 			out.SSH = proto.CheckSkip
 		}

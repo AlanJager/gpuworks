@@ -164,3 +164,14 @@ test("a check status this client does not know is shown by its value, not as pas
   assert.ok(within(connection).getByText("FUTURE_CODE"));
   assert.equal(within(connection).queryByText(locale.nodes.doctorChecks.status.pass), null);
 });
+
+test("an SSH stage shows the SSH adapter's code in the reader's language", async () => {
+  const withCommon = (await createI18n(["nodes", "common"], "zh")).i18n;
+  const ssh: Report = {
+    report: "partial report", checked_at: "2026-11-09T10:00:00Z", summary: "fail",
+    checks: [{ stage: "ssh", status: "fail", code: "SSH_AUTH_FAILED", vantage: "control_plane" }],
+  };
+  render(<I18nextProvider i18n={withCommon}><NodeDoctorReport report={ssh} /></I18nextProvider>);
+  assert.ok(screen.getByText("节点拒绝了 SSH 凭据。"));
+  assert.equal(screen.queryByText("SSH_AUTH_FAILED"), null);
+});

@@ -202,3 +202,23 @@ func TestAccessInspectionRejectsMalformedPartialOutput(t *testing.T) {
 		}
 	}
 }
+
+// A real SSH server refusing the password and a closed port: the inspection
+// carries the SSH adapter's own code for each, not one catch-all.
+func TestAccessInspectionNamesHowTheSSHConnectionFailed(t *testing.T) {
+	host, port := startFakeSSHServer(t, "tester", "pw", func(string, io.Reader) (string, string, uint32) { return "", "", 0 })
+	got := NewSSHInstaller(nil).InspectAccess(context.Background(), SSHProbeRequest{Host: host, Port: port, User: "tester", Token: "owned", ConnectMode: "server_dial", SSHAuth: SSHAuth{Password: "wrong"}})
+	if got.SSH != proto.CheckFail || got.Code != messages.ErrorSSHAuthFailed {
+		t.Fatalf("wrong password: %+v, want fail %s", got, messages.ErrorSSHAuthFailed)
+	}
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	closed := listener.Addr().(*net.TCPAddr).Port
+	_ = listener.Close()
+	got = NewSSHInstaller(nil).InspectAccess(context.Background(), SSHProbeRequest{Host: "127.0.0.1", Port: closed, User: "tester", Token: "owned", ConnectMode: "server_dial", SSHAuth: SSHAuth{Password: "pw"}})
+	if got.SSH != proto.CheckFail || got.Code != messages.ErrorSSHUnreachable {
+		t.Fatalf("closed port: %+v, want fail %s", got, messages.ErrorSSHUnreachable)
+	}
+}
