@@ -91,7 +91,8 @@ func TestCheckManualCommandRanks(t *testing.T) {
 		missing string
 	}{
 		{"single node", dto.DeployRequest{NNodes: 1, ContainerOverrides: manual("vllm serve")}, ""},
-		{"engine mode", dto.DeployRequest{NNodes: 2, ContainerOverrides: map[string]any{"cmd_display": `["vllm","serve"]`}}, ""},
+		{"engine mode, one node", dto.DeployRequest{NNodes: 1, ContainerOverrides: map[string]any{"cmd_display": `["vllm","serve"]`}}, ""},
+		{"engine mode without a command", dto.DeployRequest{NNodes: 2, ContainerOverrides: map[string]any{"entrypoint_display": `["vllm"]`}}, ""},
 		{"empty manual command", dto.DeployRequest{NNodes: 2, ContainerOverrides: manual("  ")}, ""},
 		{"multi-node blind", dto.DeployRequest{NNodes: 2, ContainerOverrides: manual("vllm serve --node-rank ${NODE_RANK}")}, "[GPUWORKS_NODE_RANK]"},
 		{"multi-node by rank", dto.DeployRequest{NNodes: 2, ContainerOverrides: manual("vllm serve --node-rank ${GPUWORKS_NODE_RANK}")}, ""},
@@ -110,6 +111,29 @@ func TestCheckManualCommandRanks(t *testing.T) {
 			var product *messages.ProductError
 			if !errors.As(err, &product) || product.Code() != messages.ErrorManualCommandRankBlind || fmt.Sprint(product.Params()["missing"]) != tc.missing {
 				t.Fatalf("err = %v, want %s missing %s", err, messages.ErrorManualCommandRankBlind, tc.missing)
+			}
+		})
+	}
+}
+
+// Outside manual mode a Cmd override is handed to every rank as written.
+func TestCheckCommandOverrideOfSeveralRanks(t *testing.T) {
+	pd := map[string]any{"pd": map[string]any{"mode": "vllm-nixl", "roles": map[string]any{
+		"prefill": map[string]any{"tp": 1, "units": []any{map[string]any{"node_uuid": "a"}}},
+		"decode":  map[string]any{"tp": 1, "units": []any{map[string]any{"node_uuid": "b"}}},
+	}}}
+	for _, tc := range []struct {
+		name string
+		req  dto.DeployRequest
+	}{
+		{"multi-node engine", dto.DeployRequest{NNodes: 2, ContainerOverrides: map[string]any{"cmd_display": `["vllm","serve"]`}}},
+		{"multi-node image-entry", dto.DeployRequest{NNodes: 2, ContainerOverrides: map[string]any{"command_mode": "image-entry", "cmd_display": `["serve"]`}}},
+		{"pd engine", dto.DeployRequest{Placement: pd, ContainerOverrides: map[string]any{"cmd_display": `["vllm","serve","${GPUWORKS_PD_ROLE}"]`}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var product *messages.ProductError
+			if err := checkManualCommandRanks(&tc.req); !errors.As(err, &product) || product.Code() != messages.ErrorCommandOverrideRankBlind {
+				t.Fatalf("err = %v, want %s", err, messages.ErrorCommandOverrideRankBlind)
 			}
 		})
 	}

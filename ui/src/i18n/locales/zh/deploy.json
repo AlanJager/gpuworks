@@ -522,6 +522,8 @@
     "commonEnv": "系列常用环境变量：",
     "entrypointOverride": "Entrypoint 覆盖",
     "cmdOverride": "Cmd 覆盖",
+    "cmdOverrideManual": "由手工命令决定",
+    "cmdOverrideManualHelp": "手工命令是多行脚本，请在“启动配置预览”的命令编辑器里修改。",
     "inheritImage": "沿用镜像默认",
     "deepseekTitle": "DeepSeek MLA 兼容提示",
     "deepseekDescription": "兼容场景下平台会自动使用 fp8 KV cache；如需覆盖，请在自定义参数中显式指定。",

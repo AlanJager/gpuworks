@@ -186,6 +186,7 @@
     "DIGEST_IMAGE_UNSUPPORTED": "Digest image references are not supported in this release. Use a tagged image reference.",
     "MODEL_SOURCE_UNAVAILABLE": "The model source is unavailable; deployment was not created.",
     "MANUAL_COMMAND_RANK_BLIND": "Every rank of a multi-node or PD deployment runs this manual command, and it references none of {{missing}}, so all ranks would start alike. Reference the variables (the server's script draft does), or return to the form.",
+    "COMMAND_OVERRIDE_RANK_BLIND": "A multi-node or PD deployment cannot override Cmd in engine or image-entry mode: every rank would get these arguments as written. Clear the Cmd override, or use a manual command, whose platform variables the server fills in per rank.",
     "TEMPLATE_MODEL_MISMATCH": "The selected model (ID {{model_id}}) is not the repository {{repo_id}} this template's weights come from, and the platform does not substitute your choice. Select a model of that repository, or change the local model's source id in its details.",
     "MOUNT_TARGET_DUPLICATE": "Two mounts target {{target}} inside the container. The platform already mounts that path (the KV disk tier uses one), so remove the duplicate mount row or choose another container path.",
     "MOUNT_MODEL_NOT_FOUND": "The model a mount row names (ID {{model_id}}) does not exist; it may have been deleted. Choose another model or remove the mount row.",

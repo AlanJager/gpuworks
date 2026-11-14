@@ -152,6 +152,58 @@ func TestManualCommandRankBlindRefusedByEvaluateAndCreate(t *testing.T) {
 	}
 }
 
+// A Cmd override outside manual mode is one argv for every rank, with no
+// variable to tell them apart: evaluation and creation refuse it for a
+// multi-node and a PD deployment, in engine and image-entry mode alike. One
+// launch keeps the override.
+func TestCommandOverrideOutsideManualModeRefusedForSeveralRanks(t *testing.T) {
+	r := newAutoRig(t, 2)
+	override := func(mode string) string {
+		raw, err := json.Marshal(map[string]any{"command_mode": mode, "cmd_display": `["serve","/model","--node-rank","0"]`})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return `,"container_overrides":` + string(raw)
+	}
+	for _, mode := range []string{"", "engine", "image-entry"} {
+		for _, tc := range []struct {
+			name string
+			body func(name, extra string) string
+		}{
+			{"multi-node", r.pinnedMultiBody},
+			{"multi-node automatic", r.multiBody},
+			{"pd", r.pinnedPDBody},
+		} {
+			t.Run(tc.name+" "+mode, func(t *testing.T) {
+				resp := r.evaluateBody(t, tc.body("override", override(mode)))
+				var refusal *dto.FieldError
+				for index, item := range resp.Errors {
+					if item.Code == messages.ErrorCommandOverrideRankBlind {
+						refusal = &resp.Errors[index]
+					}
+				}
+				if resp.OK || refusal == nil || refusal.Field != "container_cmd" {
+					t.Fatalf("evaluate = ok %t errors %+v, want a container_cmd %s", resp.OK, resp.Errors, messages.ErrorCommandOverrideRankBlind)
+				}
+				rec := r.do(r.session, http.MethodPost, "/api/v1/deployments", tc.body("override", override(mode)))
+				if code, _ := errorBody(t, rec.Body.String()); rec.Code != http.StatusBadRequest || code != messages.ErrorCommandOverrideRankBlind {
+					t.Fatalf("create = %d %s, want 400 %s", rec.Code, rec.Body, messages.ErrorCommandOverrideRankBlind)
+				}
+			})
+		}
+	}
+	single := fmt.Sprintf(`{"name":"single","served_name":"single","model_id":%d,"engine":"vllm","image":"vllm/vllm-openai:v0.25.1","quick_params":{"max_model_len":4096},"node_uuid":"au-1"%s}`, r.modelID, override("engine"))
+	resp := r.evaluateBody(t, single)
+	for _, item := range resp.Errors {
+		if item.Code == messages.ErrorCommandOverrideRankBlind {
+			t.Fatalf("single launch refused: %+v", resp.Errors)
+		}
+	}
+	if command := strings.Join(resp.Command, " "); !strings.Contains(command, "--node-rank 0") {
+		t.Fatalf("single launch command = %q, want the override kept", command)
+	}
+}
+
 // One launch keeps the manual command as it was: no draft, no refusal, and a
 // bare ${MODEL_PATH} is the user's shell variable, not the platform's.
 func TestSingleNodeManualCommandUnchanged(t *testing.T) {
