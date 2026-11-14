@@ -546,8 +546,13 @@ test("editing a node attachment prefills and sends its overrides", async () => {
   assert.equal((within(dialog).getByRole("combobox", { name: n.attach.interfaceIB }) as HTMLInputElement).value, "bond0");
   const iface = within(dialog).getByRole("combobox", { name: n.attach.interfaceIB });
   await user.clear(iface);
-  await user.type(iface, "bond-custom");
+  await user.type(iface, "bond");
+  await waitFor(() => assert.equal(iface.getAttribute("aria-expanded"), "true"));
   await user.keyboard("{Escape}");
+  assert.ok(dialog.isConnected, "Escape closes interface suggestions, not the editor");
+  assert.equal((iface as HTMLInputElement).value, "bond");
+  await user.clear(iface);
+  await user.type(iface, "bond-custom");
   await user.tab();
   await waitFor(() => assert.equal((iface as HTMLInputElement).value, "bond-custom", "closing suggestions preserves a manually typed interface"));
   const ip = within(dialog).getByLabelText(n.attach.ip);
