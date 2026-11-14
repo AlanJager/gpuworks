@@ -1344,6 +1344,7 @@ var migrations = []migration{
 	{Version: 210, Name: "kube_cluster_drop_vendor", Apply: dropKubeClusterVendor},
 	{Version: 211, Name: "ai_config_proxy_and_image_input", Apply: addAIConfigProxyAndImageInput},
 	{Version: 212, Name: "provider_synced_at", Apply: addProviderSyncedAt},
+	{Version: 213, Name: "deployment_priority_scheduling", Apply: addDeploymentPriorityScheduling},
 }
 
 // modelFileNetworkColumns are the columns migrations 76 and 77 added to

@@ -73,6 +73,10 @@ Tokenization is not inference traffic: it does not count toward gateway request 
 
 You can disable tokenization forwarding for each deployment: set `tokenize_enabled: false` when creating it, or use `PUT /api/v1/deployments/{id}/tokenize` (see [API Reference](api.md)). It is enabled by default. When disabled, the gateway returns 404 directly (`deployment <model> does not expose POST /v1/tokenize: tokenize is turned off for it`) without contacting the engine. The setting takes effect through the gateway routing table without restarting instances. Engines other than vLLM and SGLang may not provide tokenization endpoints; in that case, requests receive the engine's own error.
 
+## Request Priority
+
+Clients cannot set a request's priority themselves. On every `/v1` request the gateway removes the `X-Vllm-Priority` header and sets a top-level `priority` in a JSON body to `0` (both engines read 0 as the neutral level, and vLLM rejects `null`); a body without `priority` is forwarded as sent. Whether a deployment schedules by priority is described in [Request Priority](../explanation/request-priority.md).
+
 ## Trace Context
 
 Trace context **correlates records for the same call across different systems**. For example, when a request passes through an upstream gateway, GPUWorks, and an inference engine, you can use it to identify which stage takes time or fails. GPUWorks automatically establishes trace context for each forwarded request; ordinary inference calls do not require you to fill in this information manually.

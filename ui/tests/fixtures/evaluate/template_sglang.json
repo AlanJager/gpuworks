@@ -101,6 +101,9 @@
     "127.0.0.1",
     "--port",
     "30000",
+    "--enable-priority-scheduling",
+    "--default-priority-value",
+    "0",
     "--log-level",
     "info",
     "--enable-metrics",
@@ -121,6 +124,9 @@
     "127.0.0.1",
     "--port",
     "30000",
+    "--enable-priority-scheduling",
+    "--default-priority-value",
+    "0",
     "--log-level",
     "info",
     "--enable-metrics",
@@ -164,6 +170,9 @@
         "127.0.0.1",
         "--port",
         "30000",
+        "--enable-priority-scheduling",
+        "--default-priority-value",
+        "0",
         "--log-level",
         "info",
         "--enable-metrics",
@@ -184,6 +193,9 @@
         "127.0.0.1",
         "--port",
         "30000",
+        "--enable-priority-scheduling",
+        "--default-priority-value",
+        "0",
         "--log-level",
         "info",
         "--enable-metrics",
@@ -442,5 +454,8 @@
     "ok": false,
     "reason": "SLEEP_NOT_ENABLED"
   },
-  "health_checkable": false
+  "health_checkable": false,
+  "priority_scheduling": {
+    "ok": true
+  }
 }

@@ -555,6 +555,12 @@ func (p *Proxy) serveSelectedTarget(w http.ResponseWriter, r *http.Request, publ
 		fail(err)
 		return
 	}
+	cleanupPriority, err := stripClientPriority(r, p.maxBodyBytes)
+	defer cleanupPriority()
+	if err != nil {
+		fail(err)
+		return
+	}
 	proceed, cleanupPD := p.servePrefillStage(w, r, &tgt, deploymentID)
 	defer cleanupPD()
 	if !proceed {

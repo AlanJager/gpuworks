@@ -199,7 +199,7 @@ func DeploymentLaunch(dep *store.Deployment, reqs map[string][]string, node *sto
 		Selection: templateLayer, Placement: placement,
 		Source: source, Quick: quick, ExtraArgs: extra,
 		ModelMount: modelMount, ModelHostPath: modelHostPath, ComponentMounts: componentMounts, ModelPaths: modelPaths,
-		ServedName: served, Sleepable: dep.Sleepable, MasterAddr: dep.MasterAddr, MasterPort: dep.MasterPort,
+		ServedName: served, Sleepable: dep.Sleepable, PriorityScheduling: dep.PriorityScheduling, MasterAddr: dep.MasterAddr, MasterPort: dep.MasterPort,
 		YieldPolicy:    dep.YieldPolicy,
 		VRAMLimitBytes: dep.VRAMLimitBytes, PartitionBackend: dep.PartitionBackend,
 		APIContract: DeploymentAPIContract(model, templateLayer.APIContract),

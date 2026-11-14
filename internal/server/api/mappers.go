@@ -74,6 +74,7 @@ func (a *apiHandlers) deploymentDTOFrom(rows deployment.Rows, d *store.Deploymen
 	out.ExtraArgs = d.ExtraArgs
 	out.Health = a.deploymentHealth(d)
 	out.TokenizeEnabled = !d.TokenizeDisabled
+	out.PriorityScheduling = d.PriorityScheduling
 	out.YieldPolicy = dto.YieldPolicyOf(d.Policy())
 	out.WakeWaitLimitSec = int(automation.DefaultWakeWaitLimit / time.Second)
 	out.YieldPolicyEligible = dto.EligibilityOf(planning.YieldPolicyRefusal(d))

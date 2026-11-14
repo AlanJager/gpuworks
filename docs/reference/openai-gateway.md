@@ -73,6 +73,10 @@ server 的 `/v1/*` 默认要求 API key 鉴权，规则见下文[认证](#认证
 
 每个部署可以关掉分词转发：创建时 `tokenize_enabled: false`，或 `PUT /api/v1/deployments/{id}/tokenize`（见 [API 参考](api.md)）；默认开启。关掉后网关直接回 404（`deployment <model> does not expose POST /v1/tokenize: tokenize is turned off for it`），不联系引擎。开关随网关路由表生效，不重启实例。vLLM、SGLang 以外的引擎未必提供分词接口，届时请求收到引擎自己的错误。
 
+## 请求优先级
+
+客户端不能自己决定请求的优先级。网关对每个 `/v1` 请求去掉 `X-Vllm-Priority` 请求头，并把 JSON 请求体顶层的 `priority` 改为 `0`（两个引擎都把 0 当作中性值，vLLM 不接受 `null`）；请求体不含 `priority` 时原样转发。部署是否按优先级调度见[请求优先级](../explanation/request-priority.md)。
+
 ## Trace context
 
 追踪上下文用于把**同一次调用在不同系统中的记录关联起来**。例如，请求经过上游网关、GPUWorks 和推理引擎时，可以据此查出哪一段耗时或失败。GPUWorks 会为每个转发请求自动建立追踪上下文；普通推理调用不需要手工填写这些信息。

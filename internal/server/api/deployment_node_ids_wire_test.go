@@ -28,7 +28,7 @@ func TestDeploymentDTONodeIDsWire(t *testing.T) {
 	const tail = `"node_requirements":{},"placement_strategy":"spread","served_name":"","desired_state":"active","runtime_state":"pending","state":"pending","sleepable":false,"replicas":0,"max_replicas":1024,"routing_policy":"least_request",`
 	// No replica runs, and the check is off.
 	const ready = `"ready_replicas":0,`
-	const health = `"health":{"status":"off","threshold_sec":60,"last":null,"recent_mean_ms":null,"recent_ok":0,"recent":[]},"tokenize_enabled":true,` +
+	const health = `"health":{"status":"off","threshold_sec":60,"last":null,"recent_mean_ms":null,"recent_ok":0,"recent":[]},"tokenize_enabled":true,"priority_scheduling":false,` +
 		// A new deployment is resident (never yields, no auto sleep) and moves a
 		// replica off a node offline for ten minutes.
 		`"node_replacement":{"after_sec":600},"yield_policy":{"policy":"never"},"sleep_held":false,"sleep_wakes_on_request":false,`

@@ -146,6 +146,7 @@ func BuildVLLM(p Params) ResolvedLaunch {
 			env["VLLM_CUDART_SO_PATH"] = vllmHygonCUDARTPath
 		}
 	}
+	injectPriorityScheduling(b, p)
 	// Multi-machine: mp backend + node coordination (plan §5). vllm gathers the
 	// leader + followers into one engine; only the leader exposes the endpoint.
 	if p.NNodes > 1 {

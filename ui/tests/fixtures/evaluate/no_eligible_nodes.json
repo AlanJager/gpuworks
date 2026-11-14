@@ -23,6 +23,8 @@
     "30000",
     "--tensor-parallel-size",
     "$TP_SIZE",
+    "--scheduling-policy",
+    "priority",
     "--enable-prompt-tokens-details",
     "--gpu-memory-utilization",
     "0.9"
@@ -37,6 +39,8 @@
     "30000",
     "--tensor-parallel-size",
     "$TP_SIZE",
+    "--scheduling-policy",
+    "priority",
     "--enable-prompt-tokens-details",
     "--gpu-memory-utilization",
     "0.9"
@@ -368,5 +372,8 @@
     "ok": false,
     "reason": "SLEEP_NOT_ENABLED"
   },
-  "health_checkable": false
+  "health_checkable": false,
+  "priority_scheduling": {
+    "ok": true
+  }
 }

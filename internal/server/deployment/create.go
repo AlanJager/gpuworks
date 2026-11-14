@@ -245,6 +245,10 @@ func (s *Service) createOnce(ctx context.Context, req dto.DeployRequest) (*store
 	if err != nil {
 		return nil, invalid(err)
 	}
+	priorityScheduling, err := ResolvePriorityScheduling(req.PriorityScheduling, PrioritySchedulingOf(eng.Name(), targetVendor, pdReq != nil, selection.ExtraArgs, launch.UserResidual))
+	if err != nil {
+		return nil, invalid(err)
+	}
 	// Warnings are surfaced by evaluate before submit; keep the same helper in
 	// this path as a guard for API clients that submit without evaluating.
 	_ = deploy.PerformanceWarnings(quick, userExtraArgs, model.Arch, 0)
@@ -382,6 +386,7 @@ func (s *Service) createOnce(ctx context.Context, req dto.DeployRequest) (*store
 		HealthCheck:             healthCheck,
 		HealthCheckThresholdSec: healthThreshold,
 		TokenizeDisabled:        req.TokenizeEnabled != nil && !*req.TokenizeEnabled,
+		PriorityScheduling:      priorityScheduling,
 		VRAMLimitBytes:          int64(req.VRAMLimitGiB * (1 << 30)),
 		StartTimeoutSec:         req.StartTimeoutSec,
 		PartitionBackend:        req.PartitionBackend,

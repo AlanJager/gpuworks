@@ -155,6 +155,9 @@ type Deployment struct {
 	// TokenizeEnabled says whether the gateway forwards /v1/tokenize and
 	// /v1/detokenize to the deployment's engine.
 	TokenizeEnabled bool `json:"tokenize_enabled"`
+	// PriorityScheduling says whether the deployment asked for its engine's
+	// per-request priority scheduling (applied when the launch allows it).
+	PriorityScheduling bool `json:"priority_scheduling"`
 	// NodeReplacement is how long a node may stay offline before its
 	// replicas move (after_sec 0 never moves them).
 	NodeReplacement NodeReplacement `json:"node_replacement"`
@@ -495,14 +498,18 @@ type DeployRequest struct {
 	HealthCheckThresholdSec int `json:"health_check_threshold_sec,omitempty"`
 	// TokenizeEnabled opens or closes the gateway's /v1/tokenize and
 	// /v1/detokenize for the deployment; absent, they are open.
-	TokenizeEnabled  *bool  `json:"tokenize_enabled,omitempty"`
-	PartitionBackend string `json:"partition_backend,omitempty"`
-	DistGroup        string `json:"dist_group,omitempty"`
-	DistRole         string `json:"dist_role,omitempty"`
-	NNodes           int    `json:"nnodes,omitempty"`
-	NodeRank         int    `json:"node_rank,omitempty"`
-	MasterAddr       string `json:"master_addr,omitempty"`
-	MasterPort       int    `json:"master_port,omitempty"`
+	TokenizeEnabled *bool `json:"tokenize_enabled,omitempty"`
+	// PriorityScheduling turns the engine's per-request priority scheduling
+	// on or off; absent, it is on when the launch allows it
+	// (EvaluateResponse.PriorityScheduling).
+	PriorityScheduling *bool  `json:"priority_scheduling,omitempty"`
+	PartitionBackend   string `json:"partition_backend,omitempty"`
+	DistGroup          string `json:"dist_group,omitempty"`
+	DistRole           string `json:"dist_role,omitempty"`
+	NNodes             int    `json:"nnodes,omitempty"`
+	NodeRank           int    `json:"node_rank,omitempty"`
+	MasterAddr         string `json:"master_addr,omitempty"`
+	MasterPort         int    `json:"master_port,omitempty"`
 }
 
 // ModelSource is what a deploy request says about the model's files: the

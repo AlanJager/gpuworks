@@ -50,6 +50,7 @@ import DeploySubmissionError from "./deploy/DeploySubmissionError";
 import useDeploymentIdentity from "./deploy/useDeploymentIdentity";
 import useDeployFormChanges from "./deploy/useDeployFormChanges";
 import HealthCheckFields from "./deploy/HealthCheckFields";
+import { PrioritySchedulingLabel, PrioritySchedulingSwitch, withFixArgs } from "./deploy/PrioritySchedulingField";
 import TokenizeField from "./deploy/TokenizeField";
 import DeployNoOperationsNotice from "./deploy/DeployNoOperationsNotice";
 import { localizedText } from "../i18n/localizedText";
@@ -430,12 +431,20 @@ function DeployForm({ opened }: { opened?: OpenedDeployment }) {
             />
             <Form.Item noStyle shouldUpdate={(prev, next) => prev.replicas !== next.replicas}>
               {({ getFieldValue }) => getFieldValue("replicas") > 1 ? (
-                <Form.Item name="routing_policy" label={<Space size={4}>{t("routing.policy")}<RoutingPolicyHelp policies={routingPolicies.data?.items ?? []} /></Space>} extra={t("routing.help")}>
+                <Form.Item name="routing_policy" label={<span className="inline-flex items-center gap-1">{t("routing.policy")}<RoutingPolicyHelp policies={routingPolicies.data?.items ?? []} /></span>} extra={t("routing.help")}>
                   <Select loading={routingPolicies.loading} options={routingOptions} />
                 </Form.Item>
               ) : null}
             </Form.Item>
             <HealthCheckFields healthCheckable={evalResult?.health_checkable} />
+            <Form.Item name="priority_scheduling" label={<PrioritySchedulingLabel />}>
+              <PrioritySchedulingSwitch
+                eligibility={evalResult?.priority_scheduling}
+                onApplyFix={(fixArgs) =>
+                  form.setFieldsValue({ extra_args: withFixArgs(form.getFieldValue("extra_args"), fixArgs), priority_scheduling: undefined })
+                }
+              />
+            </Form.Item>
             <TokenizeField />
           </section>
           <div className="deploy-config-layout">

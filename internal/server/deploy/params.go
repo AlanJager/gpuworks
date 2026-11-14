@@ -359,23 +359,27 @@ type Params struct {
 	// engine injects, over the whole deployment (package parallelism): on N
 	// nodes each runs TensorParallel×PipelineParallel×DataParallel/N GPUs,
 	// which is AssignedGPUs.
-	TensorParallel    int
-	PipelineParallel  int
-	DataParallel      int
-	Sleepable         bool
-	VRAMLimitBytes    int64
-	SMLimitPct        int
-	Partitioned       bool
-	PartitionBackend  string
-	Quick             LaunchConfig
-	TemplateArgs      []string // template passthrough (below structured form values)
-	TemplateEnv       map[string]string
-	ExtraArgs         []string // user free-form (highest priority)
-	Arch              string   // architecture family / model type for quirks
-	ArchID            string   // vendor-specific arch identifier, e.g. sm_90, 910B4
-	ComputeCapability string   // NVIDIA compute capability, e.g. 7.5 or 8.0
-	Vendor            string   // nvidia | ascend | amd | hygon
-	ModelType         string
+	TensorParallel   int
+	PipelineParallel int
+	DataParallel     int
+	Sleepable        bool
+	// PriorityScheduling is the deployment's request for per-request
+	// priority scheduling; the engine adapter turns it on only when the
+	// launch allows it (PrioritySchedulingRefusal).
+	PriorityScheduling bool
+	VRAMLimitBytes     int64
+	SMLimitPct         int
+	Partitioned        bool
+	PartitionBackend   string
+	Quick              LaunchConfig
+	TemplateArgs       []string // template passthrough (below structured form values)
+	TemplateEnv        map[string]string
+	ExtraArgs          []string // user free-form (highest priority)
+	Arch               string   // architecture family / model type for quirks
+	ArchID             string   // vendor-specific arch identifier, e.g. sm_90, 910B4
+	ComputeCapability  string   // NVIDIA compute capability, e.g. 7.5 or 8.0
+	Vendor             string   // nvidia | ascend | amd | hygon
+	ModelType          string
 	// PositionalModel uses the modern `vllm serve <model>` CLI (model positional
 	// via Entrypoint) instead of the `--model` api_server flag. Default true.
 	PositionalModel bool

@@ -379,5 +379,14 @@
     "ok": false,
     "reason": "SLEEP_NOT_ENABLED"
   },
-  "health_checkable": false
+  "health_checkable": false,
+  "priority_scheduling": {
+    "ok": false,
+    "refusal": {
+      "code": "PRIORITY_SCHEDULING_ENGINE_UNSUPPORTED",
+      "params": {
+        "engine": "callable"
+      }
+    }
+  }
 }

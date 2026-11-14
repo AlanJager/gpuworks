@@ -118,6 +118,7 @@ func (sglangEngine) Build(p Params) ResolvedLaunch {
 			b.injectKV("--dist-init-addr", net.JoinHostPort(p.MasterAddr, p.masterPortText()))
 		}
 	}
+	injectPriorityScheduling(b, p)
 	q := p.Quick
 	if q.LogLevel != "" {
 		b.injectDictionary("log_level", q.LogLevel)

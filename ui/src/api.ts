@@ -2223,6 +2223,9 @@ export interface Deployment {
   // tokenize_enabled says whether the gateway forwards /v1/tokenize and
   // /v1/detokenize to the deployment's engine.
   tokenize_enabled: boolean;
+  // priority_scheduling says whether the deployment asked for its engine's
+  // per-request priority scheduling (applied when the launch allows it).
+  priority_scheduling: boolean;
   created_at: string;
   // quick_params is the deployment's complete launch configuration, keyed by
   // the parameter dictionary's keys. Panels read the values the deployment was
@@ -3879,6 +3882,19 @@ export interface EvaluateResponse {
   // draft's includes the template's operations); absent until the draft's
   // model is resolved.
   health_checkable?: boolean;
+  // Whether a deployment of this draft may run its engine with per-request
+  // priority scheduling, judged on the arguments the engine will receive;
+  // absent until the draft's engine is known.
+  priority_scheduling?: PrioritySchedulingEligibility;
+}
+
+// PrioritySchedulingEligibility is the server's answer for the priority
+// scheduling switch: a refusal carries its product code with params, and
+// fix_args when adding those arguments clears it.
+export interface PrioritySchedulingEligibility {
+  ok: boolean;
+  refusal?: ProductWarning;
+  fix_args?: string[];
 }
 
 export interface GPUCandidates {

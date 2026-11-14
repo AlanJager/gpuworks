@@ -285,6 +285,20 @@ func TestPDClientKVTransferParamsNeverReachAnEngine(t *testing.T) {
 	}
 }
 
+// A client's priority reaches neither half of a two-stage request.
+func TestPDClientPriorityNeverReachesAnEngine(t *testing.T) {
+	h := newPDHarness(t, 1, "")
+	if rec := h.do(t, "/v1/completions", `{"model":"pd","prompt":"x","max_tokens":4,"priority":-50}`); rec.Code != http.StatusOK {
+		t.Fatalf("response = %d", rec.Code)
+	}
+	if got := h.prefills[0].bodies[0]["priority"]; got != float64(0) {
+		t.Fatalf("prefill priority = %v", got)
+	}
+	if got := h.decode.bodies[0]["priority"]; got != float64(0) {
+		t.Fatalf("decode priority = %v", got)
+	}
+}
+
 func TestPDFallbackToDecode(t *testing.T) {
 	for _, c := range []struct {
 		name, mode, reason string
