@@ -132,6 +132,10 @@ test("flat catalog exposes loading, success, keyboard navigation, and chip filte
   api.inferenceTemplateChips = (async () => list([{ vendor: "nvidia", name: "NVIDIA H100", cc: 9, category: "Data Center", architecture: "Hopper" }])) as never;
   const { container } = renderList();
   assert.ok(screen.getByRole("status"));
+  const importButton = screen.getByRole("button", { name: "Import Templates" });
+  assert.ok(importButton.classList.contains("text-fg-on-primary-action"));
+  assert.ok(importButton.querySelector('[data-slot="button-leading-icon"]'));
+  assert.ok(screen.getByRole("button", { name: "Edit chips" }).classList.contains("text-fg-default"));
   resolvePage({ items: [upstreamModel], page: 1, page_size: 200, total: 1 } as never);
   assert.equal((await screen.findByText("DeepSeek Model")).textContent, "DeepSeek Model");
   const open = screen.getByRole("link", { name: "DeepSeek Model" });

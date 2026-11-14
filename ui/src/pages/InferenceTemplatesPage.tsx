@@ -200,8 +200,8 @@ export default function InferenceTemplatesPage() {
   return <div className="resource-page inference-template-page inference-templates-page">
     <PageHeader title={t("page.title")} description={t("flat.description")} extra={<div className="flex flex-wrap items-center gap-2">
       <input ref={fileRef} aria-label={t("flat.importTemplates")} hidden type="file" accept={inferenceCatalogFileAccept} onChange={(event) => { const file = event.target.files?.[0]; if (file) void importCatalog(file); event.target.value = ""; }} />
-      <Tooltip content={t("flat.importHint")}><Button leadingIcon={ConsoleIcon.upload} onClick={() => fileRef.current?.click()}>{t("flat.importTemplates")}</Button></Tooltip>
-      <Button onClick={() => setAddingChip(true)}>{t("chips.edit")}</Button>
+      <Button variant="secondary" onClick={() => setAddingChip(true)}>{t("chips.edit")}</Button>
+      <Tooltip content={t("flat.importHint")}><Button variant="primary" leadingIcon={ConsoleIcon.add} onClick={() => fileRef.current?.click()}>{t("flat.importTemplates")}</Button></Tooltip>
     </div>} />
     <TemplateWarnings warnings={importWarnings} onClose={() => setImportWarnings([])} />
 
