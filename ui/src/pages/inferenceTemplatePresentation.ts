@@ -142,7 +142,10 @@ export function modelOrganizationIcon(modelID: string) {
 // Stable by organization identity, independent of language, ordering or refresh.
 // Deeper product artwork shades keep the categorical hues and white initials.
 export function modelOrganizationColor(organization: string): string {
+  const key = organization.trim().toLowerCase();
+  // The pinned personal catalog starts with a vivid purple identity.
+  if (key === "my-templates") return "var(--organization-avatar-5)";
   let hash = 0;
-  for (const character of organization.trim().toLowerCase()) hash = (Math.imul(hash, 31) + character.charCodeAt(0)) >>> 0;
+  for (const character of key) hash = (Math.imul(hash, 31) + character.charCodeAt(0)) >>> 0;
   return `var(--organization-avatar-${[1, 2, 3, 4, 5][hash % 5]})`;
 }

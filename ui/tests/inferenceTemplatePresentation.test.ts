@@ -71,6 +71,8 @@ test("Hygon compute vendor uses the reviewed horizontal WebP logo", async () => 
 });
 
 test("organization fallback colors are stable and varied across missing-logo organizations", () => {
+  assert.equal(modelOrganizationColor("my-templates"), "var(--organization-avatar-5)");
+  assert.equal(modelOrganizationColor(" MY-TEMPLATES "), "var(--organization-avatar-5)");
   const organizations = ["baseten", "fishaudio", "tinyllama", "lmsys", "opendatalab", "my-templates"];
   const colors = organizations.map(modelOrganizationColor);
   assert.ok(new Set(colors).size >= 3);
