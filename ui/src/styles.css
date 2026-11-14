@@ -227,6 +227,15 @@ button, input, textarea, select { letter-spacing: 0; }
 .resource-table-name .ant-btn-link { padding-inline: 0; }
 /* Every body cell draws its row rule, so the opaque pinned cells (scrolled
    columns pass under them) keep it in line; they also draw the row hover. */
+/* Text navigation in both Zeron and remaining antd tables uses the brand
+   affordance. Button links and disabled controls retain their own variants. */
+:where([data-slot="table-cell"], .ant-table-cell) a[href]:not(:where(.ant-btn, [data-slot="button"], [role="button"], [aria-disabled="true"])):not(:has(button, [data-slot="button"])) {
+  color: var(--fg-brand);
+}
+:where([data-slot="table-cell"], .ant-table-cell) a[href]:not(:where(.ant-btn, [data-slot="button"], [role="button"], [aria-disabled="true"])):not(:has(button, [data-slot="button"])):hover {
+  text-decoration: underline;
+}
+/* Body cells, including opaque pinned cells, keep consistent row separators. */
 .resource-table-cell { border-bottom: 1px solid var(--border); }
 tbody tr:last-child > .resource-table-cell { border-bottom: 0; }
 tbody tr:hover > .resource-table-pinned { background-image: linear-gradient(var(--hover), var(--hover)); }

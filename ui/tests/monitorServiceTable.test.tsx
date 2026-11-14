@@ -207,15 +207,17 @@ test("state count shortcuts and the column filter share one selection", async ()
 });
 
 
-test("offline services use neutral status in both the summary and table while failed services stay danger", () => {
+test("offline services use warning status in both the summary and table while failed services stay danger", () => {
   renderTable({ services: [
     { ...services[0], deployment_id: 9001, name: "Offline service", state: "offline" },
     { ...services[0], deployment_id: 9002, name: "Failed service", state: "failed" },
   ] });
+  assert.ok(screen.getByRole("heading", { name: "Inference Services" }));
+  assert.equal(screen.getByRole("link", { name: "Offline service" }).getAttribute("href"), "/monitor/d/9001");
   const offline = screen.getByText("Offline service").closest("tr")!;
   const failed = screen.getByText("Failed service").closest("tr")!;
-  assert.equal(within(offline).getByText("Offline", { exact: true }).closest('[data-slot="badge"]')?.getAttribute("data-status"), "neutral");
+  assert.equal(within(offline).getByText("Offline", { exact: true }).closest('[data-slot="badge"]')?.getAttribute("data-status"), "warning");
   assert.equal(within(failed).getByText("Failed", { exact: true }).closest('[data-slot="badge"]')?.getAttribute("data-status"), "danger");
   const summary = screen.getByRole("group", { name: "Service state" });
-  assert.equal(within(summary).getByRole("button", { name: "Offline 1" }).querySelector('[data-slot="badge"]')?.getAttribute("data-status"), "neutral");
+  assert.equal(within(summary).getByRole("button", { name: "Offline 1" }).querySelector('[data-slot="badge"]')?.getAttribute("data-status"), "warning");
 });

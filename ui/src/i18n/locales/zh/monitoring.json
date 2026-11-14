@@ -67,7 +67,7 @@
     "serviceName": "服务名称",
     "state": "状态",
     "health": "健康",
-    "service": "服务列表",
+    "service": "推理服务",
     "replicas": "副本",
     "requestRate": "req/s",
     "ttftP95": "TTFT p95",

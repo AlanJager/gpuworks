@@ -161,7 +161,7 @@ Confirmed 2026-11-06. Check every migrated page against this, by screenshot.
 | Blocks | Section title 16/600 above a `Container` tray (radius 16, `rounded-2xl`); white panels inside at radius 12 (`rounded-xl`), panel title 14/600. |
 | Controls | Zeron component defaults; do not restyle buttons or inputs per page. |
 | Tables | `ResourceTable`: a sortable title is Zeron's `DataTableColumnHeader` (up/down mark, menu Ascending / Descending / Clear); a filterable column shows a funnel (`ui-kit/ColumnFilter`, blue while applied), the only place column filters are set; filters in effect are listed between the toolbar and the table as "column: values" chips, each clearable, plus "clear filters". The toolbar holds search and page-specific controls only. Its refresh and column-settings buttons, and the row expand chevron, are part of `ResourceTable` and use `ui-kit/consoleIcons` at 16px; pages do not add their own. Pinned header cells keep the header grey. |
-| Table text | Cells 14px regular (medium-size Zeron table); a second line or a tag is 12px. Names are not bold; a name link starts flush with its title. Titles are 14/600 and never overlap: an unresized column is at least as wide as its title and marks, a narrowed one cuts the title with an ellipsis. |
+| Table text | Cells 14px regular (medium-size Zeron table); a second line or a tag is 12px. Names are not bold; a name link starts flush with its title. Text links in table cells use the brand color and underline on hover; shared product CSS covers Zeron and legacy antd tables, excluding button links and disabled controls. Titles are 14/600 and never overlap: an unresized column is at least as wide as its title and marks, a narrowed one cuts the title with an ellipsis. |
 | Overlays | While antd and Zeron coexist, both libraries' overlays sit on one 1000 layer (`src/theme/layers.css`): the one opened last is on top. Right-side drawers of either library open beside the AI assistant. |
 | Status words | Show a state as Zeron `Badge` with `status`, not as coloured text: dark success text reads as black. |
 
@@ -229,3 +229,5 @@ checks at 1280 and 1920 widths, including both themes.
 size and title size, the filter header's hit targets, and the gap between
 monitor signal cards and the service toolbar. Build the UI before this target;
 React unit tests alone do not verify computed sizes or overlaps.
+
+Organization avatars keep official images when available. Missing or failed images use initials on a stable, organization-keyed color from Zeron chart colors 1–5, darkened against the artwork canvas for legible white initials. Do not reassign colors on refresh or locale changes.

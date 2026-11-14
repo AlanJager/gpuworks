@@ -67,7 +67,7 @@
     "serviceName": "Service name",
     "state": "State",
     "health": "Health",
-    "service": "Service list",
+    "service": "Inference Services",
     "replicas": "Replicas",
     "requestRate": "Req/s",
     "ttftP95": "TTFT p95",

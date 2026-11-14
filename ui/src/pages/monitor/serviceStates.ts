@@ -2,7 +2,7 @@ import type { MonitorService } from "../../api";
 
 export const STATE_BADGE: Record<MonitorService["state"], "success" | "info" | "neutral" | "danger" | "warning"> = {
   running: "success",
-  offline: "neutral",
+  offline: "warning",
   starting: "info",
   stopped: "neutral",
   failed: "danger",

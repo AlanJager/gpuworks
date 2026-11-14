@@ -32,7 +32,7 @@ const i18n = require('i18next').createInstance();
 const h = React.createElement;
 const vendors = ['nvidia', 'ascend', 'amd', 'hygon', 'ppu', 'kunlunxin'];
 const chips = vendors.flatMap(vendor => Array.from({length:8}, (_,i) => ({vendor, name:`MOCK-${vendor}-${i}`})));
-const models = ['black-forest-labs', 'thinkingmachines', 'deepseek-ai'].flatMap(org => Array.from({length:12}, (_,i) => ({
+const models = ['black-forest-labs', 'thinkingmachines', 'deepseek-ai', 'baseten', 'fishaudio', 'tinyllama'].flatMap(org => Array.from({length:12}, (_,i) => ({
  id:`${org}-${i}`, model_id:`${org}/MOCK-long-model-name-${i}`, source:'upstream',
  specs:vendors.map((vendor,j)=>({id:j,name:`MOCK-spec-${j}`,engine:'vllm',quantization:'fp8',
  gpus:{vendor,name:`MOCK-${vendor}-0`},weight_sources:[{provider:'huggingface',repo_id:`${org}/MOCK-weights-${i}`}],
@@ -188,14 +188,33 @@ class TemplateCatalogLayout(unittest.TestCase):
     def test_monitor_services_have_spacing_after_signal_cards_and_a_body_sized_title(self):
         for locale, width, dark in product(("en", "zh"), (820, 1280, 1920), (False, True)):
             page = self.render_page(width, monitor=True, dark=dark, locale=locale)
-            heading = page.get_by_role("heading", name="Service list" if locale == "en" else "服务列表", exact=True)
+            heading = page.get_by_role("heading", name="Inference Services" if locale == "en" else "推理服务", exact=True)
             expect(heading).to_be_visible()
+            link = page.locator('.monitor-services-section td a[href]').first
+            expect(link).to_be_visible()
+            self.assertTrue(link.evaluate("el => {const probe=document.createElement('span');probe.style.color='var(--fg-brand)';el.append(probe);const matches=getComputedStyle(el).color===getComputedStyle(probe).color;probe.remove();return matches}"))
+            link.hover()
+            self.assertIn('underline', link.evaluate('el=>getComputedStyle(el).textDecorationLine'))
             cards = page.locator('.monitor-signal-grid').bounding_box()
             toolbar = page.locator('.monitor-services-section .resource-table-toolbar').bounding_box()
             self.assertAlmostEqual(toolbar['y'] - cards['y'] - cards['height'], 16, delta=1)
             self.assertEqual(heading.evaluate('el=>getComputedStyle(el).fontSize'), '14px')
             self.assertTrue(page.evaluate('document.documentElement.scrollWidth <= innerWidth + 1'))
             self.capture(page, f'monitor-spacing-{locale}-{width}-{dark}.png')
+
+    def test_missing_organization_logos_use_stable_varied_colors(self):
+        for dark in (False, True):
+            page = self.render_page(1280, dark=dark)
+            expect(page.locator('[data-slot="table"]')).to_be_visible()
+            fallbacks = page.locator('.template-organization-fallback')
+            expect(fallbacks.first).to_be_visible()
+            colors = fallbacks.evaluate_all('els=>els.map(el=>getComputedStyle(el).backgroundColor)')
+            self.assertGreaterEqual(len(set(colors)), 3)
+            before = fallbacks.evaluate_all('els=>els.map(el=>[el.textContent,getComputedStyle(el).backgroundColor])')
+            page.reload()
+            expect(page.locator('[data-slot="table"]')).to_be_visible()
+            self.assertEqual(before, fallbacks.evaluate_all('els=>els.map(el=>[el.textContent,getComputedStyle(el).backgroundColor])'))
+            self.capture(page, f'organization-colors-{dark}.png')
 
     def test_drawer_has_square_corners(self):
         page = self.render_page(1280, drawer=True)
