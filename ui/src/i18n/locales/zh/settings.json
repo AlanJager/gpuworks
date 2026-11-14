@@ -490,20 +490,10 @@
       "download": "下载",
       "item": "内容",
       "note": "说明",
-      "truncated": "已达大小上限，只保留了部分",
       "bundleState": {
         "running": "收集中",
         "ready": "可下载",
         "failed": "失败"
-      },
-      "itemState": {
-        "collected": "已收集",
-        "skipped": "已跳过",
-        "failed": "失败"
-      },
-      "itemReason": {
-        "offline": "节点离线",
-        "unsupported": "该节点的 agent 版本不支持"
       }
     },
     "debug": {

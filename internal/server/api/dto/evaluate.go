@@ -259,16 +259,30 @@ type WeightSourceOption struct {
 }
 
 // PreflightCheck is one structural preflight judgement an evaluation answers
-// inline: the request-level rules (node count, duplicates, port) and each
-// named node's presence, online state and routable address. Deep network
-// probing stays with the preflight RPC.
+// inline: the request-level rules (node count, node list, port) and each
+// named node's presence and online state, then whether the nodes share a
+// network. Deep network probing stays with the preflight RPC.
+//
+// The shape is the ADR 0067 check result: ID names the check (lower_snake; a
+// per-node check repeats its ID with params.node), Status is one of
+// proto.CheckPass/Warn/Fail/Skip/NA, Code (UPPER_SNAKE) and Params say what
+// was found, Message is the English fallback. A check not run because an
+// earlier one failed is skip, and BlockedBy names that check. Evidence is
+// text the platform does not own (none today on this path) and is never the
+// message.
 type PreflightCheck struct {
-	Code    string         `json:"code,omitempty"`
-	Params  map[string]any `json:"params,omitempty"`
-	Message string         `json:"message,omitempty"`
+	ID        string         `json:"id"`
+	Status    string         `json:"status"`
+	Code      string         `json:"code"`
+	Params    map[string]any `json:"params,omitempty"`
+	Message   string         `json:"message,omitempty"`
+	Evidence  string         `json:"evidence,omitempty"`
+	BlockedBy []string       `json:"blocked_by,omitempty"`
 }
 
 // PreflightSummary is the inline preflight answer for a multi-node draft.
+// Checks lists every check, passing ones included; OK is true when none of
+// them failed.
 type PreflightSummary struct {
 	OK     bool             `json:"ok"`
 	Checks []PreflightCheck `json:"checks,omitempty"`

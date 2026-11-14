@@ -1136,14 +1136,6 @@
     "truncated": "Some check details were omitted because the report reached its size limit.",
     "storageAction": "Open storage status",
     "modelAction": "Open model copies",
-    "status": {
-      "passed": "Passed",
-      "failed": "Failed",
-      "pending": "Waiting",
-      "blocked": "Not executed",
-      "unknown": "Not observed",
-      "not_applicable": "Not applicable"
-    },
     "object": {
       "node": "Node: {{name}}",
       "storage": "Storage: {{name}}",

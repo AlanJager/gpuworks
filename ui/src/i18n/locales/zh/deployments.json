@@ -1088,11 +1088,6 @@
     "notVerified": "有接口实测失败，这份模板不能保存。下面的 YAML 只供排查。",
     "checks": "API 实测",
     "noOperations": "模型没有声明接口，没有可实测的操作。",
-    "check": {
-      "passed": "应答 HTTP {{status}}",
-      "failed": "失败：HTTP {{status}} {{detail}}",
-      "notTested": "未实测（实测耗时或成本高，YAML 中已注明）"
-    },
     "notes": "模板写了什么、缺什么",
     "note": {
       "local_weights": "此模板引用已注册的本地权重 {{repo_id}}，不包含模型文件。在其他集群使用模板前，请先注册这些权重。",

@@ -282,9 +282,12 @@ func (s *recordingSigner) SignWithAlgorithm(rand io.Reader, data []byte, algorit
 }
 
 // Check summarizes the attempts for a report.
+// The tried credentials, each with its verdict, are the evidence; the
+// params name the method that worked (a provision.Auth* value) and how many
+// were tried.
 func (o AuthOutcome) Check() CheckResult {
 	if len(o.Tried) == 0 {
-		return CheckResult{Name: "SSH authentication", Status: "error", Detail: "no credential was offered"}
+		return FailCheck(CheckIDSSHAuth, messages.CheckSSHNoCredential, "no credential was offered", nil)
 	}
 	steps := make([]string, len(o.Tried))
 	for i, label := range o.Tried {
@@ -294,11 +297,13 @@ func (o AuthOutcome) Check() CheckResult {
 		}
 		steps[i] = label + " " + verdict
 	}
-	status := "ok"
+	evidence := strings.Join(steps, " → ")
 	if o.Used == "" {
-		status = "error"
+		return FailCheck(CheckIDSSHAuth, messages.CheckSSHAuthRejected, "the target rejected every credential offered",
+			map[string]any{"attempts": len(o.Tried)}).WithEvidence(evidence)
 	}
-	return CheckResult{Name: "SSH authentication", Status: status, Detail: strings.Join(steps, " → ")}
+	return PassCheck(CheckIDSSHAuth, messages.CheckSSHLoggedIn, "logged in with "+o.Used,
+		map[string]any{"method": o.Used, "attempts": len(o.Tried)}).WithEvidence(evidence)
 }
 
 // SSHAuthError is authentication that could not complete, with what was tried.
@@ -392,35 +397,25 @@ echo "$state $file"`, shellQuote(match), shellQuote(publicKey))
 // failure is a warning: the install itself succeeded, and the caller keeps
 // the credential that worked.
 func AuthorizePlatformKey(ctx context.Context, client *ssh.Client, auth SSHAuth, outcome AuthOutcome) (CheckResult, bool) {
-	check := CheckResult{Name: "Platform key"}
 	if auth.PlatformKey == nil {
-		check.Status, check.Detail = "warn", "the platform SSH key is not available; the credential that worked is kept"
-		return check, false
+		return SkipCheck(CheckIDPlatformKey, messages.CheckPlatformKeyUnavailable, "the platform SSH key is not available; the credential that worked is kept", nil), false
 	}
 	if outcome.Used == AuthPlatformKey {
-		check.Status, check.Detail = "ok", "authorized (used to log in)"
-		return check, true
+		return PassCheck(CheckIDPlatformKey, messages.CheckPlatformKeyUsed, "authorized (used to log in)", nil), true
 	}
 	out, err := runContext(ctx, client, authorizeKeyScript(auth.PlatformKey.PublicKey))
 	if err != nil {
-		detail := strings.TrimSpace(out)
-		if detail != "" {
-			detail += ": "
-		}
-		check.Status, check.Detail = "warn", "could not add the platform key to authorized_keys: "+detail+err.Error()
-		return check, false
+		return WarnCheck(CheckIDPlatformKey, messages.CheckPlatformKeyAddFailed, "could not add the platform key to authorized_keys", nil).WithEvidence(outputEvidence(out, err)), false
 	}
 	state, file, _ := strings.Cut(strings.TrimSpace(lastLine(out)), " ")
 	switch state {
 	case "present":
-		check.Status, check.Detail = "ok", "already in "+file
+		return PassCheck(CheckIDPlatformKey, messages.CheckPlatformKeyPresent, "already in "+file, map[string]any{"file": file}), true
 	case "added":
-		check.Status, check.Detail = "ok", "added to "+file
+		return PassCheck(CheckIDPlatformKey, messages.CheckPlatformKeyAdded, "added to "+file, map[string]any{"file": file}), true
 	default:
-		check.Status, check.Detail = "warn", "unexpected output while adding the platform key: "+strings.TrimSpace(out)
-		return check, false
+		return WarnCheck(CheckIDPlatformKey, messages.CheckPlatformKeyAddFailed, "could not add the platform key to authorized_keys", nil).WithEvidence(out), false
 	}
-	return check, true
 }
 
 // platformKeyPresentScript reports, without changing anything, whether the
@@ -438,18 +433,16 @@ if [ -f "$file" ] && grep -qF -- %s "$file"; then echo "present $file"; else ech
 // PlatformKeyPresence is the precheck's read-only view of the platform key:
 // already authorized, or to be added by the install.
 func PlatformKeyPresence(ctx context.Context, client *ssh.Client, publicKey string) CheckResult {
-	check := CheckResult{Name: "Platform key", Status: "ok"}
 	out, err := runContext(ctx, client, platformKeyPresentScript(publicKey))
 	state, file, _ := strings.Cut(strings.TrimSpace(lastLine(out)), " ")
 	switch {
 	case err != nil:
-		check.Status, check.Detail = "warn", "could not read authorized_keys: "+err.Error()
+		return WarnCheck(CheckIDPlatformKey, messages.CheckPlatformKeyUnreadable, "could not read authorized_keys", nil).WithEvidence(outputEvidence(out, err))
 	case state == "present":
-		check.Detail = "already in " + file
+		return PassCheck(CheckIDPlatformKey, messages.CheckPlatformKeyPresent, "already in "+file, map[string]any{"file": file})
 	default:
-		check.Detail = "not in " + file + " yet; the install adds it"
+		return PassCheck(CheckIDPlatformKey, messages.CheckPlatformKeyPending, "not in "+file+" yet; the install adds it", map[string]any{"file": file})
 	}
-	return check
 }
 
 func lastLine(s string) string {

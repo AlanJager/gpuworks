@@ -549,13 +549,15 @@ func testCompsharePreflight(t *testing.T, first, second *cloudTestEnv) error {
 	var result struct {
 		OK    bool `json:"ok"`
 		Pairs []struct {
-			SourceUUID      string  `json:"source_uuid"`
-			TargetUUID      string  `json:"target_uuid"`
-			Reachable       bool    `json:"reachable"`
-			BandwidthTested bool    `json:"bandwidth_tested"`
-			Gbps            float64 `json:"gbps"`
-			Error           string  `json:"error"`
-			BandwidthError  string  `json:"bandwidth_error"`
+			SourceUUID        string  `json:"source_uuid"`
+			TargetUUID        string  `json:"target_uuid"`
+			Reachable         bool    `json:"reachable"`
+			BandwidthTested   bool    `json:"bandwidth_tested"`
+			Gbps              float64 `json:"gbps"`
+			Status            string  `json:"status"`
+			Code              string  `json:"code"`
+			Evidence          string  `json:"evidence"`
+			BandwidthEvidence string  `json:"bandwidth_evidence"`
 		} `json:"pairs"`
 	}
 	if err := json.Unmarshal(data, &result); err != nil {
@@ -565,7 +567,7 @@ func testCompsharePreflight(t *testing.T, first, second *cloudTestEnv) error {
 		return fmt.Errorf("distributed preflight failed: %s", data)
 	}
 	for _, pair := range result.Pairs {
-		if !pair.Reachable || !pair.BandwidthTested || pair.Gbps <= 0 || pair.Error != "" || pair.BandwidthError != "" {
+		if !pair.Reachable || !pair.BandwidthTested || pair.Gbps <= 0 || pair.Status != "pass" || pair.Evidence != "" || pair.BandwidthEvidence != "" {
 			return fmt.Errorf("distributed preflight pair failed: %+v", pair)
 		}
 		t.Logf("CompShare private network %s -> %s: %.3f Gbps", pair.SourceUUID, pair.TargetUUID, pair.Gbps)

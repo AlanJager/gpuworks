@@ -1136,14 +1136,6 @@
     "truncated": "检查明细达到大小上限，部分内容未显示。",
     "storageAction": "查看存储状态",
     "modelAction": "查看模型副本",
-    "status": {
-      "passed": "通过",
-      "failed": "失败",
-      "pending": "等待中",
-      "blocked": "未执行",
-      "unknown": "尚未观测",
-      "not_applicable": "不适用"
-    },
     "object": {
       "node": "节点：{{name}}",
       "storage": "存储：{{name}}",

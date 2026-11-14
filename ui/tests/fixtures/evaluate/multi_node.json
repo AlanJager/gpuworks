@@ -11,7 +11,7 @@
     "checks": [
       {
         "id": "model-record:1:1:1",
-        "status": "unknown",
+        "status": "skip",
         "message": {
           "code": "MODEL_SOURCE_UNAVAILABLE",
           "params": {
@@ -31,7 +31,7 @@
       },
       {
         "id": "model-source:1:1:1",
-        "status": "unknown",
+        "status": "skip",
         "message": {
           "code": "MODEL_SOURCE_UNAVAILABLE",
           "params": {
@@ -51,7 +51,7 @@
       },
       {
         "id": "model-record:1:3:1",
-        "status": "unknown",
+        "status": "skip",
         "message": {
           "code": "MODEL_SOURCE_UNAVAILABLE",
           "params": {
@@ -71,7 +71,7 @@
       },
       {
         "id": "model-source:1:3:1",
-        "status": "unknown",
+        "status": "skip",
         "message": {
           "code": "MODEL_SOURCE_UNAVAILABLE",
           "params": {
@@ -91,7 +91,7 @@
       },
       {
         "id": "model-metadata:1:0:0",
-        "status": "unknown",
+        "status": "skip",
         "message": {
           "code": "MODEL_SOURCE_UNAVAILABLE",
           "params": {
@@ -541,7 +541,60 @@
     ]
   },
   "preflight": {
-    "ok": true
+    "ok": true,
+    "checks": [
+      {
+        "id": "node_count",
+        "status": "pass",
+        "code": "PREFLIGHT_NODE_COUNT_OK",
+        "params": {
+          "count": 2
+        },
+        "message": "2 nodes selected"
+      },
+      {
+        "id": "node_list",
+        "status": "pass",
+        "code": "PREFLIGHT_NODE_LIST_OK",
+        "message": "every node is selected once"
+      },
+      {
+        "id": "port_range",
+        "status": "pass",
+        "code": "PREFLIGHT_PORT_OK",
+        "params": {
+          "port": 29500
+        },
+        "message": "port 29500 is in range"
+      },
+      {
+        "id": "node_online",
+        "status": "pass",
+        "code": "PREFLIGHT_NODE_ONLINE",
+        "params": {
+          "node": "fixture-node"
+        },
+        "message": "node fixture-node is online"
+      },
+      {
+        "id": "node_online",
+        "status": "pass",
+        "code": "PREFLIGHT_NODE_ONLINE",
+        "params": {
+          "node": "fixture-peer"
+        },
+        "message": "node fixture-peer is online"
+      },
+      {
+        "id": "shared_network",
+        "status": "pass",
+        "code": "PREFLIGHT_SHARED_NETWORK_OK",
+        "params": {
+          "network": "management"
+        },
+        "message": "the nodes share network management"
+      }
+    ]
   },
   "parallelism": {
     "tp": 2,

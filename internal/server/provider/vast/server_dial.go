@@ -108,7 +108,7 @@ func (d *Driver) installServerDial(ctx context.Context, creds provider.Credentia
 		return provider.InstallReport{}, fmt.Errorf("vast: %w", err)
 	}
 	listen, address := req.ServerDialListen, req.ServerDialAddress
-	var chosen provider.InstallCheck
+	var chosen provision.CheckResult
 	// The platform key was attached a moment ago: wait for Vast to apply it
 	// before the installer logs in.
 	client, _, err := d.dialFresh(ctx, user, req.Instance.PublicIP, port, auth)
@@ -132,7 +132,7 @@ func (d *Driver) installServerDial(ctx context.Context, creds provider.Credentia
 		}
 		listen = provider.ListenOnPort(container)
 		address = net.JoinHostPort(in.PublicIPAddr, strconv.Itoa(mapped[container]))
-		chosen = provider.InstallCheck{Name: "Server-dial port", Status: "ok", Detail: fmt.Sprintf("container port %d, mapped to %s", container, address)}
+		chosen = provider.ServerDialPortCheck(container, address, false, false, fmt.Sprintf("container port %d, mapped to %s", container, address))
 	}
 	installer := provision.NewSSHInstaller(provision.AgentBinaryReader(req.ReadAgentBinary))
 	report, err := installer.InstallSSH(ctx, provision.SSHInstallRequest{
@@ -151,8 +151,8 @@ func (d *Driver) installServerDial(ctx context.Context, creds provider.Credentia
 		return provider.InstallReport{}, fmt.Errorf("vast: install agent: %w", err)
 	}
 	out := provider.ReportFromSSHInstall(report)
-	if chosen.Name != "" {
-		out.Checks = append([]provider.InstallCheck{chosen}, out.Checks...)
+	if chosen.ID != "" {
+		out.Checks = append([]provision.CheckResult{chosen}, out.Checks...)
 	}
 	out.ServerDialListen, out.ServerDialAddress = listen, address
 	return out, nil

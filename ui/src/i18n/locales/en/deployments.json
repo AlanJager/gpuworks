@@ -1088,11 +1088,6 @@
     "notVerified": "A tested operation failed, so this template cannot be saved. The YAML is shown for troubleshooting.",
     "checks": "API checks",
     "noOperations": "The model declares no operations, so nothing was tested.",
-    "check": {
-      "passed": "answered HTTP {{status}}",
-      "failed": "failed: HTTP {{status}} {{detail}}",
-      "notTested": "not tested (slow or costly to test; the YAML says so)"
-    },
     "notes": "What the template states and what is missing",
     "note": {
       "local_weights": "This template references the registered local weights {{repo_id}}; it does not include the model files. Register these weights before using the template on another cluster.",

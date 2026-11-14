@@ -1,4 +1,6 @@
 import type { PeerTransferSnapshot } from "./peerTransferTypes";
+import type { CheckStatus } from "./checkStatus";
+export type { CheckStatus } from "./checkStatus";
 export type * from "./peerTransferTypes";
 import type { ServerBuildInfo } from "./serverBuildInfo";
 import type { BenchmarkPointEvidence } from "./benchmarkEvidenceTypes";
@@ -413,10 +415,17 @@ export interface SSHPrecheckRequest {
   host_address?: string;
 }
 
+/** One onboarding check (ADR 0067): which check (id), how it came out (one
+ * of the five check statuses), the outcome as a code with params (rendered
+ * from apiError.<code>, message being the English fallback), and what a
+ * command or provider answered (evidence). */
 export interface CheckResult {
-  name: string;
-  status: "ok" | "warn" | "error";
-  detail?: string;
+  id: string;
+  status: CheckStatus;
+  code?: string;
+  params?: Record<string, unknown>;
+  message?: string;
+  evidence?: string;
 }
 
 export interface SSHPrecheckReport {
@@ -469,9 +478,6 @@ export interface GPUHealthField {
   name: string;
   value: string;
 }
-
-/** The five check statuses (ADR 0067). skip and na are never a pass. */
-export type CheckStatus = "pass" | "warn" | "fail" | "skip" | "na";
 
 // Card health checks: GET /nodes/{uuid}/health-checks lays a node's card
 // checks out as a table, the server deciding the columns, each cell's status,
@@ -3523,13 +3529,16 @@ export interface InferenceTemplateIssue {
 // flat catalog template (docs/how-to/save-deployment-as-template.md). The
 // server tests the cheap operations before it writes the YAML; notes are the
 // facts the YAML comments state, by stable code.
+/** One operation the export tested, or did not (status skip, code says why). */
 export interface CatalogTemplateCheck {
+  id: string;
   operation: string;
-  endpoint?: string;
-  tested: boolean;
-  passed: boolean;
-  http_status?: number;
-  message?: string;
+  status: string;
+  code: string;
+  params?: Record<string, unknown>;
+  message: string;
+  /** What the gateway answered instead of an answer; external text. */
+  evidence?: string;
 }
 
 export interface CatalogTemplateExport {
@@ -3827,10 +3836,17 @@ export interface WeightSourceOption {
   registered: boolean;
 }
 
+/** One inline preflight check (ADR 0067): id names the check (a per-node
+ * check repeats it with params.node), status is one of the five check
+ * statuses, code + params render the text, message is the fallback. */
 export interface PreflightCheck {
-  code?: string;
+  id: string;
+  status: string;
+  code: string;
   params?: Record<string, unknown>;
   message?: string;
+  evidence?: string;
+  blocked_by?: string[];
 }
 
 export interface PreflightSummary {
@@ -4038,7 +4054,14 @@ export interface EvaluateRankCommand {
   };
 }
 
+/** One directed pair of the network preflight, as a check result: status is
+ * pass or fail; evidence is the agent's own text, never the message. */
 export interface DistributedPreflightPair {
+  id: string;
+  status: string;
+  code: string;
+  params?: Record<string, unknown>;
+  message?: string;
   source_uuid: string;
   target_uuid: string;
   target: string;
@@ -4050,14 +4073,13 @@ export interface DistributedPreflightPair {
   bytes_sent?: number;
   bytes_received?: number;
   duration_seconds?: number;
-  error?: string;
-  bandwidth_error?: string;
+  evidence?: string;
+  bandwidth_evidence?: string;
 }
 
 export interface DistributedPreflightResponse {
   ok: boolean;
   pairs: DistributedPreflightPair[];
-  warnings?: string[];
 }
 
 // --- Metrics & logs --------------------------------------------------------

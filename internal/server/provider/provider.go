@@ -199,7 +199,7 @@ type InstallResult struct {
 	ConnectMode       string
 	ServerDialListen  string
 	ServerDialAddress string
-	InstallChecks     []InstallCheck
+	InstallChecks     []provision.CheckResult
 	SSHConnection     *SSHConnection
 	SSHAttempts       []SSHAttempt
 }
@@ -231,15 +231,6 @@ func IsRetryableSSHConnectionError(err error) bool {
 	return errors.As(err, &target)
 }
 
-// InstallCheck is a provider-install observation surfaced by the API. It is
-// intentionally provider-package-local so drivers can report SSH installer
-// details without coupling the driver interface to the provision package.
-type InstallCheck struct {
-	Name   string `json:"name"`
-	Status string `json:"status"`
-	Detail string `json:"detail,omitempty"`
-}
-
 // ReportingDriver is an optional extension for drivers that can return
 // detailed installation checks. The base Driver interface remains unchanged
 // for provider-native transports and test drivers.
@@ -252,9 +243,9 @@ type ReportingDriver interface {
 // data in detail responses before their list endpoint catches up.
 // CommandPrechecker is an optional driver capability: run the install
 // precheck through a provider command channel (ConnectionCloudAssistant)
-// instead of SSH. The checks use the provision check names.
+// instead of SSH. The checks use the provision check ids.
 type CommandPrechecker interface {
-	PrecheckCommand(ctx context.Context, creds Credentials, inst Instance, connection SSHConnection, req CommandPrecheckRequest) ([]InstallCheck, error)
+	PrecheckCommand(ctx context.Context, creds Credentials, inst Instance, connection SSHConnection, req CommandPrecheckRequest) ([]provision.CheckResult, error)
 }
 
 // CommandPrecheckRequest is what a command-channel precheck needs to know.
@@ -268,7 +259,7 @@ type InstanceGetter interface {
 }
 
 type InstallReport struct {
-	Checks []InstallCheck `json:"checks"`
+	Checks []provision.CheckResult `json:"checks"`
 	// AuthUsed is the provision.Auth* credential the instance accepted, ""
 	// when the driver does not report it.
 	AuthUsed string `json:"auth_used,omitempty"`

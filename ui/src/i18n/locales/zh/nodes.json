@@ -167,12 +167,10 @@
       "item": "检查项",
       "status": "状态",
       "detail": "详情",
-      "ok": "通过",
-      "warn": "警告",
-      "error": "失败",
       "okCount": "通过 {{count}}",
       "warnCount": "警告 {{count}}",
-      "errorCount": "失败 {{count}}"
+      "errorCount": "失败 {{count}}",
+      "skipCount": "未检查 {{count}}"
     }
   },
   "rejects": {

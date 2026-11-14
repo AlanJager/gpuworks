@@ -119,11 +119,11 @@ func (i *SSHInstaller) Probe(ctx context.Context, req SSHProbeRequest) ProbeResu
 func (i *SSHInstaller) AuthorizePlatformKey(ctx context.Context, req SSHProbeRequest) (CheckResult, bool) {
 	user, host, port, err := probeEndpoint(req)
 	if err != nil {
-		return CheckResult{Name: "Platform key", Status: "warn", Detail: err.Error()}, false
+		return WarnCheck(CheckIDPlatformKey, messages.CheckPlatformKeyLoginFailed, "could not log in to add the platform key", nil).WithEvidence(err.Error()), false
 	}
 	client, outcome, err := DialSSH(ctx, user, host, port, req.SSHAuth, i.timeout(), i.HostKeys)
 	if err != nil {
-		return CheckResult{Name: "Platform key", Status: "warn", Detail: "could not log in to add the platform key: " + err.Error()}, false
+		return WarnCheck(CheckIDPlatformKey, messages.CheckPlatformKeyLoginFailed, "could not log in to add the platform key", nil).WithEvidence(err.Error()), false
 	}
 	defer client.Close()
 	return AuthorizePlatformKey(ctx, client, req.SSHAuth, outcome)

@@ -292,7 +292,7 @@ func TestCatalogTemplatesExportsAStoredDeployment(t *testing.T) {
 	if !slices.Equal(out.ExcludedEnv, []string{"HF_TOKEN"}) || strings.Contains(out.YAML, "secret") {
 		t.Fatalf("excluded env = %q; yaml leaks the token: %v", out.ExcludedEnv, strings.Contains(out.YAML, "secret"))
 	}
-	if len(out.Checks) != 1 || !out.Checks[0].Passed || len(out.Notes) == 0 || out.Notes[0].Code != templateexport.NoteVerifiedOn {
+	if len(out.Checks) != 1 || out.Checks[0].Status != proto.CheckPass || out.Checks[0].Code != messages.CheckTemplateOperationAnswered || out.Checks[0].Params.HTTPStatus != 200 || len(out.Notes) == 0 || out.Notes[0].Code != templateexport.NoteVerifiedOn {
 		t.Fatalf("checks %+v notes %+v", out.Checks, out.Notes)
 	}
 	if _, err := inferencecatalog.ParseYAML([]byte(out.YAML)); err != nil {

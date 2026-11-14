@@ -167,12 +167,10 @@
       "item": "Check",
       "status": "Status",
       "detail": "Details",
-      "ok": "Passed",
-      "warn": "Warning",
-      "error": "Failed",
       "okCount": "Passed {{count}}",
       "warnCount": "Warnings {{count}}",
-      "errorCount": "Failed {{count}}"
+      "errorCount": "Failed {{count}}",
+      "skipCount": "Not checked {{count}}"
     }
   },
   "rejects": {

@@ -3,6 +3,7 @@ import { Button, Checkbox, Descriptions, Form, Input, InputNumber, Modal, Popcon
 import { useTranslation } from "react-i18next";
 import { api, useEventPayload, type Node, type SSHCredentialInfo } from "../api";
 import SSHCredentialFields, { type SSHAuthMode } from "./SSHCredentialFields";
+import { onboardingCheckText } from "./OnboardingChecks";
 import { recoveryLabel } from "../nodes/recoveryPhase";
 import { recoveryErrorText } from "../nodes/recoveryError";
 import { formatTime, formatTimeSec } from "../i18n/datetime";
@@ -18,6 +19,7 @@ const authModeLabel: Record<SSHAuthMode, string> = {
 
 export function NodeSSHAccess({ node, onUpdated }: { node: Node; onUpdated: Updated }) {
   const { t } = useTranslation("nodes");
+  const { t: tCommon } = useTranslation("common");
   const [form] = Form.useForm<{ host: string; port: number; user: string; password?: string; private_key_pem?: string; probe?: boolean }>();
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -61,10 +63,10 @@ export function NodeSSHAccess({ node, onUpdated }: { node: Node; onUpdated: Upda
       setInfo(saved);
       onUpdated(await api.node(node.uuid));
       setOpen(false);
-      if (saved.platform_key?.status === "ok") {
+      if (saved.platform_key?.status === "pass") {
         message.success(t("ssh.message.switchedToPlatformKey"));
       } else if (saved.platform_key) {
-        message.warning(t("ssh.message.platformKeyNotAuthorized", { detail: saved.platform_key.detail || "" }));
+        message.warning(t("ssh.message.platformKeyNotAuthorized", { detail: onboardingCheckText(tCommon, saved.platform_key) }));
       }
       if (saved.probe?.foreign_server_url) {
         message.warning(t("ssh.message.savedProbeForeignAgent", { server: saved.probe.foreign_server_url }));

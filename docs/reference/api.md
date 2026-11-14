@@ -374,11 +374,13 @@ SSH 的 `vantage=control_plane` 描述控制面登录节点；HTTP 的 `vantage=
 
 安装成功或保存凭据时仍尝试授权平台公钥，成功后清除密码/私钥，授权失败才保留所用凭据。`GET /api/v1/nodes/{uuid}/ssh` 的 `auth_mode` 表示保存的凭据类型，不保存本次选择的协议：保留口令时为 `password`，不回传 `keyboard_interactive`；空凭据为 `platform_key`，私钥为 `private_key`。响应不含明文口令或私钥，`has_password` / `has_private_key` 表示是否保存；后续恢复使用上述自动顺序。
 
+预检查、SSH 安装（`checks`）、云主机安装（`checks`、`precheck_details`、`install_details`）和保存 SSH 凭据（`platform_key`）返回的每一项检查都是同一形状 `{id, status, code?, params?, message?, evidence?}`：`id` 为 lower_snake 的检查标识（如 `ssh_auth`、`install_dir_space`、`server_reachability`）；`status` 只取 `pass`/`warn`/`fail`/`skip`/`na`，`skip` 表示应查但没查成（探测超时、缺少前提），`na` 表示不适用于这台主机，二者都不是通过；`code` 为 UPPER_SNAKE 的结果码，`params` 为其插值参数，客户端按 `apiError.<code>` 渲染，`message` 只是英文 fallback；`evidence` 是远端命令、SSH 或云厂商 API 返回的原文，不作为说明文字。没有 `code` 的 `pass` 只报告所观察到的内容（在 `evidence` 里）。云主机安装的 `checks` 固定为 `precheck`（预检查各项中最严重的状态，`params.checks` 列出需关注项的 id）、`install_agent`，以及 `agent_dial` 或 `server_dial`。
+
 `POST /api/v1/nodes/precheck` 检查主机环境，连通性检查按连接模式和检测结果返回，可能包含：
 
-- `Server reachability`：节点能否访问 server。
-- `Server to agent`：server 能否拨通 `host_address`（缺省为 SSH 主机）。地址带端口时用该端口，否则取 `server_dial_listen` 的端口（默认 `0.0.0.0:18800`）；`server_dial` 模式下不通属于错误，而非警告。
-- `Connectivity`：连通性总结。处理方法见[节点与 server 网络不通](../how-to/connect-nodes.md#节点与-server-网络不通)。
+- `server_reachability`：节点能否访问 server。
+- `server_to_agent`：server 能否拨通 `host_address`（缺省为 SSH 主机）。地址带端口时用该端口，否则取 `server_dial_listen` 的端口（默认 `0.0.0.0:18800`）；`server_dial` 模式下不通为 `fail`，而非 `warn`。
+- `connectivity`：连通性总结。处理方法见[节点与 server 网络不通](../how-to/connect-nodes.md#节点与-server-网络不通)。
 
 `agent_dial` 能连通 server 时，不显示后两项。
 
@@ -658,7 +660,7 @@ macOS 忽略 `no_systemd`。
 |---|---|---|---|
 | GET | `/api/v1/deployments` | 部署列表；带 `page`/`page_size` 时分页返回列表列并可按 `q`/`state` 筛选（见“错误与响应约定”）。`state` 取值含 `sleeping`/`asleep`，行上另有 `asleep_replicas`、`sleep_level`，见[部署的睡眠状态](#部署的睡眠状态stateasleep_replicassleep_level) | JWT |
 | GET | `/api/v1/routing-policies` | 服务端下发的多副本路由策略及本地化说明 | JWT |
-| POST | `/api/v1/deployments/preflight` | 多机推理部署前置检查（rank 分配、网络探测） | JWT |
+| POST | `/api/v1/deployments/preflight` | 多机推理部署前置检查（rank 分配、网络探测）。请求 `{node_uuids, port?, master_addr?, bandwidth?, seconds?}`；返回 `{ok, pairs}`，每个有向节点对是一项检查结果：`id` 为 `node_pair`，`status` 为 `pass` 或 `fail`，`code` 为 `PREFLIGHT_PAIR_REACHABLE`、`PREFLIGHT_PAIR_UNREACHABLE`、`PREFLIGHT_LISTENER_FAILED`、`PREFLIGHT_PROBE_FAILED` 或 `PREFLIGHT_BANDWIDTH_NOT_MEASURED`，`params` 含 `source`、`target`、`address`（监听失败另有 `port`），`message` 为英文 fallback；另有 `source_uuid`、`target_uuid`、`target`、`reachable`、`rtt_ms_p50`、`rtt_ms_p99`、`gbps`、`bandwidth_tested`、`bytes_sent`、`bytes_received`、`duration_seconds`。`evidence`、`bandwidth_evidence` 是 agent 或 RPC 的原话，只作证据。任一节点对 `fail` 时 `ok` 为 false | JWT |
 | POST | `/api/v1/deployments` | 创建部署（`model_source` 只有 `{storage_id, provider}`：保存模型的存储与运行哪家权重来源，不接受镜像获取方式；`placement.pd` 为 PD 分离部署，见下）。对外模型名被未在删除的部署占用时返回 409 `SERVED_NAME_IN_USE`，`params` 包含 `served_name`、`deployment`、`deployment_id`；不填写时取模型名，同样校验 | JWT |
 | GET | `/api/v1/deployments/{id}/candidates` | 查询下一个副本的候选池；`status` 为 `room/busy/unmet/cordoned/offline`，支持 `offset`、`limit`（1–200，默认 50）。返回全量 `counts`、`unmet_by_key` 与一页 `items`；`room` 不保证能放下模型，需结合部署的 `placement_status` 判断。见[候选池查询](#候选池查询) | JWT |
 | GET | `/api/v1/deployments/{id}/draft` | 把部署读回成创建它的请求（`deployment`），附 `revision` 与不可编辑字段 `locked`；部署页的编辑与「克隆并修改」由此回填。见[编辑部署](#编辑部署) | JWT |
@@ -723,7 +725,7 @@ macOS 忽略 `no_systemd`。
   "yaml": "# Saved from GPUWorks deployment \"olmo\" (id 12).\n# Verified on 1 x NVIDIA H20.\n...",
   "verified": true,
   "saveable": true,
-  "checks": [{"operation": "openai.chat", "endpoint": "/v1/chat/completions", "tested": true, "passed": true, "http_status": 200}],
+  "checks": [{"id": "operation_reply", "operation": "openai.chat", "status": "pass", "code": "TEMPLATE_OPERATION_ANSWERED", "params": {"operation": "openai.chat", "endpoint": "/v1/chat/completions", "http_status": 200}, "message": "openai.chat answered with HTTP 200"}],
   "notes": [{"code": "verified_on", "params": {"gpu": "NVIDIA H20", "count": 1}}],
   "excluded_env": ["HF_TOKEN"],
   "evidence": "GPUWorks template test record\n..."
@@ -731,7 +733,7 @@ macOS 忽略 `no_systemd`。
 ```
 
 - `yaml` 可原样导入，开头的注释与 `notes` 说的是同一组事实；注释是英文，界面按 `notes` 的 `code` 与 `params` 本地化。
-- `checks`：chat、completions、embeddings、System One 决策各发一个与健康检查相同的最小请求（`tested: true`）；视频、图片、语音等操作不发请求，`tested: false`，并有一条 `operation_not_tested`。
+- `checks`：每个操作一项检查，`id` 都是 `operation_reply`，`operation` 指明哪个操作。chat、completions、embeddings、System One 决策各发一个与健康检查相同的最小请求：应答 2xx 为 `status: "pass"`（`TEMPLATE_OPERATION_ANSWERED`），否则为 `fail`，`code` 为 `TEMPLATE_OPERATION_HTTP_ERROR`、`TEMPLATE_OPERATION_NO_REPLICA`、`TEMPLATE_OPERATION_TIMED_OUT` 或 `TEMPLATE_OPERATION_REPLY_INCOMPLETE`，网关或引擎返回的原文只放在 `evidence`。视频、图片、语音等操作不发请求，`status: "skip"`，`code` 为 `TEMPLATE_OPERATION_NOT_PROBED`（没有声明接口地址时为 `TEMPLATE_OPERATION_NO_ENDPOINT`），并有一条 `operation_not_tested`。`params` 带 `operation`、`endpoint?`、`http_status?`，`message` 是英文 fallback。
 - 有操作实测失败时 `verified`、`saveable` 都是 `false`，`yaml` 只供排查。
 - `notes` 的 `code`：`verified_on`、`operation_passed`、`operation_failed`、`operation_not_tested`、`kv_bytes_per_token` 缺失时的 `kv_bytes_missing`、`model_config_missing`、`placement_omitted`（`gpu_count`、`gpu_memory_mib`）、`vram_limit`、`env_excluded`、`parameters_dropped`（没有引擎 flag 承载的设置，如 `cpu_cores`）、`container_overrides_omitted`。
 - `evidence` 是提交上游时附带的纯文本测试记录。
@@ -1504,7 +1506,8 @@ extra_args 解析（`EXTRA_ARGS_INVALID`）、挂载（`MOUNT_CONTAINER_PATH`/`M
 | `eligible_nodes` | 每个节点按本草稿的节点条件（含厂商；手动选的那台节点本身不算条件，下拉正是用来选它的）/模板 GPU 谓词/在线状态判定，`eligible=false` 时 `reasons[]` 给原因（`node_offline`、`node_requirements_unmet`、`vendor_mismatch`、`chip_mismatch`；节点条件本身无效时每个节点都是 `node_requirements_invalid`，不会全部显示为合格）；节点下拉只渲染此列表 |
 | `gpu_candidates` | 仅手动单机评估返回 `{node_uuid, items}`；每张卡包含 `index`、`available`，不可用时含结构化 `reason`。表示当前资源可用性，不表示单卡能承载模型，也不禁止选择资源不可用的卡；UI 仍按节点卡片的 `schedulable` 控制新增选择。字段缺失表示未评估，模型/多卡/拓扑可行性继续由 `plan` 判断。 |
 | `weight_sources` | 模板 spec 声明的权重来源（`provider`/`repo_id`/`revision`/`subfolder`）+ `suggested`（服务端建议）与 `registered`（本集群已有登记行，按 repo id 身份判定）；选定后仍由客户端调注册 API |
-| `preflight` | 仅 `nnodes>1`：请求级预检结论（节点数/重复/端口范围/在线/可路由地址）。深度网络探测仍在独立预检 RPC（CLI 保留），前端不再编排 |
+| `preflight` | 仅 `nnodes>1`：请求级预检 `{ok, checks}`。`checks` 列出查过的每一项（通过的也列出）：`id` 为 `node_count`、`node_list`、`port_range`、`node_online`（每个节点一项，`params.node` 为节点）或 `shared_network`；`status` 只取 `pass`/`warn`/`fail`/`skip`/`na`；`code` 与 `params` 给出结果，`message` 为英文 fallback；因前面的检查失败而未执行的项为 `skip`、`code` 为 `PREFLIGHT_BLOCKED`，`blocked_by` 给出挡住它的检查 id；`evidence` 只在没有码能说明原因时带原始错误。没有 `fail` 时 `ok` 为 true。深度网络探测仍在独立预检 RPC（CLI 保留），前端不再编排 |
+| `diagnostics` | 模型获取的检查说明 `{checks, truncated?}`（创建被拒时也在错误体里）：每项 `id`、`status`（只取 `pass`/`warn`/`fail`/`skip`/`na`；`warn` 为副本或传输仍在进行、启动时要填缓存；`skip` 为没查或没观测到，被前面的检查挡住时带 `blocked_by`；`na` 为不适用）、`message`（`{code, params, message}`，`params.reason` 为具体原因，`params.observer` 为证据来源），最多 128 项、64 KiB，超出时 `truncated` 为 true |
 | `eviction` | 当前显存不足但可通过休眠醒着的部署腾出空间时返回候选；每项含 `instance_uuid`、`deployment_id`、`deployment`、`gpu_indexes` 和 `frees_gib` |
 
 服务端按当前引擎字典填充参数默认值（含引擎专用默认），依赖未启用的参数不填默认。
@@ -1743,7 +1746,7 @@ RunPod 需要开放端口或补平台公钥时，先返回 409 `INSTANCE_RESTART
 | GET | `/api/v1/diagnostics/debug-session` | 当前调试采集（或上一次）`{session, limits}`：`session` 为 `{id, started_by, started_at, until, max_bytes, deployment_ids, nodes: [{uuid, name, state, reason?}], open, ended?, ended_at?, server_log_bytes, request_bytes, requests}`，从未开过时为 `null`；`limits` 是时长与大小的默认值和上限。节点 `state` 为 `collecting`、`skipped`（`reason` 为 `offline` 或 `unsupported`）或 `failed`；`ended` 为 `deadline`、`size_limit` 或 `stopped` | JWT(admin) |
 | POST | `/api/v1/diagnostics/debug-session` | 开始调试采集 `{duration_seconds?, max_bytes?, deployment_ids?, node_uuids?}`（省略取默认值 600 秒、10 GiB），返回 201 与状态。时长不在 60–3600 秒或大小不在 1 MiB–50 GiB 时 400 `DEBUG_SESSION_INVALID`（`params.field`、`params.max`），部署或节点不存在 400 `DIAGNOSTICS_SCOPE_UNKNOWN`，已有采集 409 `DEBUG_SESSION_OPEN`，服务端未启用诊断 404 `DIAGNOSTICS_UNAVAILABLE` | JWT(admin) |
 | DELETE | `/api/v1/diagnostics/debug-session` | 停止调试采集，返回状态；没有进行中的采集时返回上一次的状态 | JWT(admin) |
-| GET | `/api/v1/diagnostics/bundles` | 保留中的诊断信息收集 `{bundles, limits}`，新的在前；每项为 `{id, requested_by, created_at, finished_at?, from, to, deployment_ids, instance_uuids, node_uuids, doctor, state, error?, size_bytes, items: [{name, state, reason?, bytes, truncated?}]}`，`state` 为 `running`、`ready` 或 `failed` | JWT(admin) |
+| GET | `/api/v1/diagnostics/bundles` | 保留中的诊断信息收集 `{bundles, limits}`，新的在前；每项为 `{id, requested_by, created_at, finished_at?, from, to, deployment_ids, instance_uuids, node_uuids, doctor, state, error?, size_bytes, items: [{id, path, status, code?, params?, message?, evidence?, bytes}]}`，`state` 为 `running`、`ready` 或 `failed`。每个 item 是一项检查：`path` 是它在压缩包里的位置，`id` 是内容类别（`server_log`、`node_agent_log`、`node`、`records` 等）；`status` 为 `pass`（完整收集）、`warn`（达到大小上限只保留部分，`DIAGNOSTICS_ITEM_TRUNCATED`）、`skip`（未读取：节点离线 `DIAGNOSTICS_NODE_OFFLINE`，或 agent 版本不支持 `DIAGNOSTICS_AGENT_UNSUPPORTED`）或 `fail`（`DIAGNOSTICS_ITEM_READ_FAILED`、`DIAGNOSTICS_ITEM_STAGE_FAILED`，读取的错误原文在 `evidence`）；旧版 server 写下的收集照常列出 | JWT(admin) |
 | POST | `/api/v1/diagnostics/bundles` | 开始收集 `{from?, to?, deployment_ids?, instance_uuids?, node_uuids?, doctor?}`（RFC 3339；都省略为最近 1 小时；`doctor` 默认 `true`），返回 202 与 `state: "running"` 的收集。时间范围无效或超过 7 天、节点或实例超过 64 个时 400 `DIAGNOSTICS_BUNDLE_INVALID`，部署或节点不存在 400 `DIAGNOSTICS_SCOPE_UNKNOWN`，已有收集在进行 409 `DIAGNOSTICS_BUNDLE_RUNNING` | JWT(admin) |
 | GET | `/api/v1/diagnostics/bundles/{id}` | 一次收集的状态；不存在时 404 `DIAGNOSTICS_BUNDLE_NOT_FOUND` | JWT(admin) |
 | GET | `/api/v1/diagnostics/bundles/{id}/download` | 下载已完成的收集（`application/gzip`，`gpuworks-diagnostics-<id>.tar.gz`）；不存在或未完成时 404 `DIAGNOSTICS_BUNDLE_NOT_FOUND` | JWT(admin) |

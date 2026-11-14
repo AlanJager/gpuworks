@@ -1307,7 +1307,7 @@ server 停机错过的计划只补 12 小时内最新的一次。计划的 `next
 
 | 路径 | 内容 |
 |---|---|
-| `manifest.json` | 本次收集的范围、server 版本，以及每一项是已收集、已跳过（节点离线、agent 版本不支持）还是失败 |
+| `manifest.json` | 本次收集的范围、server 版本，以及每一项的检查结果：`pass` 完整收集、`warn` 达到大小上限只保留部分、`skip` 未读取（节点离线、agent 版本不支持）、`fail` 读取失败（附错误原文） |
 | `server/disk.json` | server 的数据、日志、备份目录与 SQLite 临时目录：所在文件系统的总量与剩余量，以及每个目录下各项的大小（从大到小） |
 | `server/gpuworks-server.log` | 时间范围内的 server 日志（含 info，日志页只有 warn 以上） |
 | `nodes/<uuid>/agent.log`、`doctor.json` | 所选节点（不选时为所选部署的实例所在节点）的 agent 日志与诊断报告 |

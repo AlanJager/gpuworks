@@ -42,9 +42,9 @@ test("the install dialog offers Cloud Assistant by name and reports it was used"
       return {
         status: "installing", connect_mode: "agent_dial", ssh_connection: assistant,
         checks: [
-          { name: "precheck", status: "ok", detail: "all 5 checks passed" },
-          { name: "install agent", status: "ok", detail: "gpuworks: agent started via systemd." },
-          { name: "agent_dial", status: "ok", detail: "agent session established" },
+          { id: "precheck", status: "pass", code: "CHECK_PRECHECK_PASSED", params: { total: "5" }, message: "all 5 precheck items passed" },
+          { id: "install_agent", status: "pass", code: "CHECK_AGENT_STARTED", message: "agent started", evidence: "gpuworks: agent started via systemd." },
+          { id: "agent_dial", status: "pass", code: "CHECK_AGENT_SESSION_ESTABLISHED", message: "agent session established" },
         ],
       };
     },

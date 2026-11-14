@@ -1305,7 +1305,7 @@ When you cannot log in to the customer's servers, have an administrator work in 
 
 | Path | Content |
 |---|---|
-| `manifest.json` | The collection's scope, the server version, and whether each part was collected, skipped (node offline, agent version without support) or failed |
+| `manifest.json` | The collection's scope, the server version, and each part's check result: `pass` collected whole, `warn` cut at its size limit, `skip` not read (node offline, agent version without support), `fail` the read failed (with its error text) |
 | `server/disk.json` | The server's data, log and backup directories and SQLite's temporary directory: their filesystems' size and free space, and the size of each entry in every directory (largest first) |
 | `server/gpuworks-server.log` | The server log in the time range (info included; the Logs page has warn and above only) |
 | `nodes/<uuid>/agent.log`, `doctor.json` | The chosen nodes' (without a choice, the nodes of the chosen deployments' instances) agent logs and diagnosis reports |
