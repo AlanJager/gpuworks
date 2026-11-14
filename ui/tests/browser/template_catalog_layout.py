@@ -202,6 +202,28 @@ class TemplateCatalogLayout(unittest.TestCase):
             self.assertTrue(page.evaluate('document.documentElement.scrollWidth <= innerWidth + 1'))
             self.capture(page, f'monitor-spacing-{locale}-{width}-{dark}.png')
 
+    def test_shared_table_text_links_keep_button_and_disabled_variants(self):
+        for dark in (False, True):
+            page = self.render_page(1280, monitor=True, dark=dark)
+            expect(page.locator('.monitor-services-section td a[href]').first).to_be_visible()
+            result = page.evaluate("""() => {
+                const host = document.createElement('table');
+                host.innerHTML = `<tbody><tr>
+                  <td data-slot="table-cell"><a href="/nodes">Node</a><a href="/nodes" aria-disabled="true" class="text-fg-muted">Disabled</a><a href="/nodes" data-slot="button" class="text-fg-on-primary-action">Button</a><span>Plain</span></td>
+                  <td class="ant-table-cell"><a href="/gpus">GPU</a><a class="ant-btn text-fg-danger" href="/delete">Action</a></td>
+                </tr></tbody>`;
+                document.body.append(host);
+                const probe = document.createElement('span'); host.append(probe);
+                const token = name => {probe.style.color=`var(--${name})`;return getComputedStyle(probe).color};
+                const colors = [...host.querySelectorAll('a')].map(el=>getComputedStyle(el).color);
+                const expected = ['fg-brand','fg-muted','fg-on-primary-action','fg-brand','fg-danger'].map(token);
+                const plain = getComputedStyle(host.querySelector('td span')).color;
+                const cell = getComputedStyle(host.querySelector('td')).color;
+                host.remove();return {colors,expected,plain,cell};
+            }""")
+            self.assertEqual(result['colors'], result['expected'])
+            self.assertEqual(result['plain'], result['cell'])
+
     def test_missing_organization_logos_use_stable_varied_colors(self):
         for dark in (False, True):
             page = self.render_page(1280, dark=dark)
