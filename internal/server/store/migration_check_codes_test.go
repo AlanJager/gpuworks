@@ -7,7 +7,7 @@ import (
 )
 
 // legacyCheckCodes is a store whose card rows and failure records were written
-// before migration 216, exactly as an older server stored them: lower_snake
+// before migration 217, exactly as an older server stored them: lower_snake
 // codes beside rows already in UPPER_SNAKE and rows with none.
 func legacyCheckCodes(t *testing.T) *Store {
 	t.Helper()
@@ -21,7 +21,7 @@ func legacyCheckCodes(t *testing.T) *Store {
 		sql  string
 		args []any
 	}{
-		{`DELETE FROM schema_migrations WHERE version = 216`, nil},
+		{`DELETE FROM schema_migrations WHERE version = 217`, nil},
 		{`INSERT INTO gpus (node_id, ident, "index", uuid, health_status, health_code) VALUES (?, 'uuid:GPU-0', 0, 'GPU-0', 'Error', 'runtime_unusable')`, []any{node.ID}},
 		{`INSERT INTO gpus (node_id, ident, "index", uuid, health_status, health_code) VALUES (?, 'uuid:GPU-1', 1, 'GPU-1', 'Warning', 'PCIE_LINK_DEGRADED')`, []any{node.ID}},
 		{`INSERT INTO gpus (node_id, ident, "index", uuid, health_status, health_code) VALUES (?, 'uuid:GPU-2', 2, 'GPU-2', 'OK', '')`, []any{node.ID}},
@@ -50,7 +50,7 @@ func storedCheckCodes(t *testing.T, s *Store) (cards, records []string) {
 
 func TestCheckCodesMigrationUpperCasesStoredCodesOnceAndIdempotently(t *testing.T) {
 	s := legacyCheckCodes(t)
-	m := migrationByVersion(t, 216)
+	m := migrationByVersion(t, 217)
 	if err := migrateDB(s.db, []migration{m}); err != nil {
 		t.Fatal(err)
 	}
@@ -71,11 +71,11 @@ func TestCheckCodesMigrationUpperCasesStoredCodesOnceAndIdempotently(t *testing.
 		t.Fatalf("open = %+v, %v", open, err)
 	}
 	var marker SchemaMigration
-	if err := s.db.First(&marker, 216).Error; err != nil || marker.Name != "check_codes_upper_snake" {
+	if err := s.db.First(&marker, 217).Error; err != nil || marker.Name != "check_codes_upper_snake" {
 		t.Fatalf("marker = %+v, %v", marker, err)
 	}
 	// Run again: nothing changes.
-	if err := s.db.Exec(`DELETE FROM schema_migrations WHERE version = 216`).Error; err != nil {
+	if err := s.db.Exec(`DELETE FROM schema_migrations WHERE version = 217`).Error; err != nil {
 		t.Fatal(err)
 	}
 	if err := migrateDB(s.db, []migration{m}); err != nil {
@@ -98,12 +98,12 @@ func TestCheckCodesMigrationRollsBackCodesAndMarkerTogether(t *testing.T) {
 			s := legacyCheckCodes(t)
 			trigger := `CREATE TRIGGER fail_check_codes BEFORE UPDATE ON card_health_episodes BEGIN SELECT RAISE(ABORT, 'injected record failure'); END`
 			if stage == "marker" {
-				trigger = `CREATE TRIGGER fail_check_codes BEFORE INSERT ON schema_migrations WHEN NEW.version = 216 BEGIN SELECT RAISE(ABORT, 'injected marker failure'); END`
+				trigger = `CREATE TRIGGER fail_check_codes BEFORE INSERT ON schema_migrations WHEN NEW.version = 217 BEGIN SELECT RAISE(ABORT, 'injected marker failure'); END`
 			}
 			if err := s.db.Exec(trigger).Error; err != nil {
 				t.Fatal(err)
 			}
-			m := migrationByVersion(t, 216)
+			m := migrationByVersion(t, 217)
 			if err := migrateDB(s.db, []migration{m}); err == nil {
 				t.Fatal("injected failure did not abort the migration")
 			}
@@ -112,7 +112,7 @@ func TestCheckCodesMigrationRollsBackCodesAndMarkerTogether(t *testing.T) {
 				t.Fatalf("partial rewrite committed: %q %q", cards, records)
 			}
 			var count int64
-			if err := s.db.Model(&SchemaMigration{}).Where("version = 216").Count(&count).Error; err != nil || count != 0 {
+			if err := s.db.Model(&SchemaMigration{}).Where("version = 217").Count(&count).Error; err != nil || count != 0 {
 				t.Fatalf("marker of a failed migration = %d, %v", count, err)
 			}
 			if err := s.db.Exec(`DROP TRIGGER fail_check_codes`).Error; err != nil {
