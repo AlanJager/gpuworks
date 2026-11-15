@@ -245,7 +245,7 @@ func TestMonitorSignalNoRecentRequestsDetailRoundTrips(t *testing.T) {
 
 func TestMonitorOverviewEmptyListsAreEmptyNotNull(t *testing.T) {
 	overview := MonitorOverview{
-		Signals:    []MonitorSignal{},
+		Signals:     []MonitorSignal{},
 		Services:    []MonitorServiceRow{},
 		StateCounts: []MonitorStateCount{},
 		VRAMByNode:  []MonitorVRAMNode{},
