@@ -12,6 +12,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"gpuworks.ai/gpuworks/internal/server/deployment"
+	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
 // wholeListRead is a read of every deployment or every instance.
@@ -101,5 +102,54 @@ func TestDashboardAndStateFilterReadTheSnapshotStates(t *testing.T) {
 		if n := tableReads.Load(); n != 0 {
 			t.Fatalf("%s: 3 unchanged requests read every deployment or instance %d times, want 0", path, n)
 		}
+	}
+}
+
+// The controller placing a deployment that has no instance yet changes its
+// state with nothing written: on a node whose model needs a download it reads
+// failed. The state filter reads that at once, as the row the list shows
+// does.
+func TestStateFilterFollowsTheControllersPlacement(t *testing.T) {
+	f := newListFixture(t, 0)
+	model, err := f.st.UpsertModel(&store.Model{Source: "huggingface", SourceID: "org/placed", Revision: "main", Name: "org/placed"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	nodes, err := f.st.ListNodes()
+	if err != nil || len(nodes) == 0 {
+		t.Fatalf("nodes %v: %v", nodes, err)
+	}
+	node := nodes[0]
+	if _, err := f.st.UpsertModelFile(&store.ModelFile{ModelID: model.ID, NodeID: node.ID, State: proto.MFDownloadRequired, Path: "/placed"}); err != nil {
+		t.Fatal(err)
+	}
+	dep, err := f.st.CreateDeployment(&store.Deployment{Name: "placed", ModelID: model.ID, Replicas: 1, State: store.DeployActive})
+	if err != nil {
+		t.Fatal(err)
+	}
+	prep := newTestPreparation()
+	f.handler.d.Preparation = prep
+	f.handler.d.Lists = deployment.NewLists(f.st, prep, nil)
+	filtered := func(state string) map[string]string {
+		t.Helper()
+		var page dto.ListPage[dto.Deployment]
+		if err := json.Unmarshal(f.get(t, f.handler.listDeployments, "/api/v1/deployments?page=1&page_size=50&state="+state), &page); err != nil {
+			t.Fatal(err)
+		}
+		out := map[string]string{}
+		for _, row := range page.Items {
+			out[row.Name] = row.State
+		}
+		return out
+	}
+	if got := filtered("pending"); got[dep.Name] != "pending" {
+		t.Fatalf("before a placement the pending filter lists %v, want %q pending", got, dep.Name)
+	}
+	prep.place(dep.ID, node.ID)
+	if got := filtered("failed"); got[dep.Name] != "failed" {
+		t.Fatalf("after the controller's placement the failed filter lists %v, want %q failed", got, dep.Name)
+	}
+	if got := filtered("pending"); got[dep.Name] != "" {
+		t.Fatalf("after the controller's placement the pending filter still lists %q as %q", dep.Name, got[dep.Name])
 	}
 }

@@ -27,7 +27,14 @@ func (l *ListRows) States() map[uint]string {
 	c := l.states
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.states != nil && (c.until.IsZero() || time.Now().Before(c.until)) {
+	// One instant decides both which deployments are past the timeout and
+	// when the next one passes it: one taken twice would miss a deployment
+	// crossing the deadline between the two.
+	now := time.Now()
+	if l.now != nil {
+		now = l.now()
+	}
+	if c.states != nil && (c.until.IsZero() || now.Before(c.until)) {
 		return c.states
 	}
 	// Worked out from the rows as built, not a page Fresh read again: the
@@ -40,13 +47,13 @@ func (l *ListRows) States() map[uint]string {
 	for i := range l.deploymentRows {
 		d := &l.deploymentRows[i]
 		insts := l.instancesByDeployment[d.ID]
-		states[d.ID] = EffectiveState(d, RuntimeState(rows, d, insts, RecordedModelProgress(rows, d)), FactsFor(rows, d, insts))
+		states[d.ID] = EffectiveState(d, runtimeStateAt(rows, d, insts, RecordedModelProgress(rows, d), now), FactsFor(rows, d, insts))
 		if len(insts) > 0 {
 			continue
 		}
 		// scheduleStalled measures from the first scheduling event.
 		if ev, found := l.FirstScheduleEvent(d.ID); found {
-			if at := ev.CreatedAt.Add(l.timeout); time.Now().Before(at) && (until.IsZero() || at.Before(until)) {
+			if at := scheduleStallDeadline(rows, ev); now.Before(at) && (until.IsZero() || at.Before(until)) {
 				until = at
 			}
 		}

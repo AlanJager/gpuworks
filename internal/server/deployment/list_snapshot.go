@@ -25,7 +25,8 @@ var listTopics = []string{"deployment", "instance", "model", "modelfile", "stora
 //
 // A read rebuilds the snapshot when a change it is read from has been
 // announced since it was built: a non-progress event of listTopics, a
-// scheduling event, a node's identity, state or labels. A deployment created,
+// scheduling event, a node's identity, state or labels, a change of the
+// nodes the controller chose for a deployment (PreparationGeneration). A deployment created,
 // stopped or deleted is therefore on the very next page. A write nothing
 // announces is seen within listsMaxAge.
 //
@@ -98,13 +99,14 @@ func (l *Lists) Rows() (*ListRows, error) {
 		return nil, err
 	}
 	rows.shared = true
+	rows.now = l.now
 	l.rows, l.started, l.marks = rows, now, marks
 	return rows, nil
 }
 
 // marks0 are the counts a snapshot is current against.
 func (l *Lists) marks0() []uint64 {
-	marks := make([]uint64, 0, len(listTopics)+1)
+	marks := make([]uint64, 0, len(listTopics)+2)
 	for _, topic := range listTopics {
 		var g uint64
 		if l.st.Bus != nil {
@@ -112,7 +114,14 @@ func (l *Lists) marks0() []uint64 {
 		}
 		marks = append(marks, g)
 	}
-	return append(marks, l.st.ScheduleEventCount())
+	// The nodes the controller chose for deployments with no instance yet
+	// decide their state (their model files there) and change with nothing
+	// announced.
+	var placements uint64
+	if l.prep != nil {
+		placements = l.prep.PreparationGeneration()
+	}
+	return append(marks, l.st.ScheduleEventCount(), placements)
 }
 
 // sameNodeIdentities reports whether nodes are the ones rows were built

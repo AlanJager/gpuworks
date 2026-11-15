@@ -18,6 +18,10 @@ type ModelPreparation interface {
 	ModelCopyObservation(file *store.ModelFile) (proto.ModelFileStatus, bool)
 	CachePhase(ref store.FileRef) string
 	PreparationNodes(dep *store.Deployment) []uint
+	// PreparationGeneration counts the changes of what PreparationNodes
+	// answers. The choice is in memory and no change of it is announced, so
+	// a snapshot that keeps states across reads (Lists) compares it.
+	PreparationGeneration() uint64
 	// RetryCacheCopy restarts a failed cache copy (controller.RetryCacheCopy).
 	RetryCacheCopy(ctx context.Context, ref store.FileRef) error
 }
