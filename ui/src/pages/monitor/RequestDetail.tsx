@@ -1,6 +1,7 @@
 import type { TFunction } from "i18next";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { TooltipPortalContainer } from "../../components/ui/tooltip";
 import type { MonitorRequest, MonitorRequestSegment, SegmentKind } from "../../monitorRequestsApi";
 import { HelpTip } from "../../ui-kit/HelpTip";
 import { formatMS, liveEventRate } from "./requestShape";
@@ -152,6 +153,20 @@ export function RequestDetailLines({ r, replica }: { r: MonitorRequest; replica:
           ))}
         </div>
       ))}
+    </div>
+  );
+}
+
+// RequestHoverCard is the detail inside a row's hover card. The card is a
+// popup of its own on a dark surface, so the help popups open inside it
+// (else they open beneath it) and the help icons take the card's text colour.
+export function RequestHoverCard({ r, replica }: { r: MonitorRequest; replica: string }) {
+  const [card, setCard] = useState<HTMLDivElement | null>(null);
+  return (
+    <div ref={setCard} className="monitor-request-card">
+      <TooltipPortalContainer value={card}>
+        <RequestDetailLines r={r} replica={replica} />
+      </TooltipPortalContainer>
     </div>
   );
 }

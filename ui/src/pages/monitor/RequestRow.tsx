@@ -29,7 +29,7 @@ export function segmentLabel(kind: SegmentKind, pd: boolean, t: TFunction): stri
   return t(`requests.segment.${kind}`);
 }
 
-import { callerLabel, RequestDetailLines } from "./RequestDetail";
+import { callerLabel, RequestDetailLines, RequestHoverCard } from "./RequestDetail";
 export { callerLabel as callerName, RequestDetailLines };
 
 function clock(ms: number): string {
@@ -106,7 +106,7 @@ export default function RequestRow({
   const ttft = r.ttft_ms != null ? formatMS(r.ttft_ms) : null;
   const replica = place ?? replicaText(r, replicaLabel, t);
   return (
-    <Tooltip title={<RequestDetailLines r={r} replica={replica} />} trigger={["hover", "focus"]} placement="topLeft" mouseEnterDelay={0.15} styles={{ root: { maxWidth: 380 } }}>
+    <Tooltip title={<RequestHoverCard r={r} replica={replica} />} trigger={["hover", "focus"]} placement="topLeft" mouseEnterDelay={0.15} styles={{ root: { maxWidth: 380 } }}>
       <div
         className="monitor-request-row"
         tabIndex={0}

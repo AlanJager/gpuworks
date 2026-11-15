@@ -273,7 +273,7 @@
     "deletedKey": "Key #{{id}}",
     "body": "请求体 {{size}}",
     "bodyImages": "请求体 {{size}} · {{count}} 张图",
-    "chunks": "已收 {{count}} 块",
+    "chunks": "已收 {{count}} chunk",
     "nonStream": "非流式",
     "input": "输入 {{input}}",
     "inputCached": "输入 {{input}}（命中 {{cached}}）",
