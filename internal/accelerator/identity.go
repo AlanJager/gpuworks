@@ -1,6 +1,7 @@
 package accelerator
 
 import (
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -262,7 +263,7 @@ func ArchBrand(family string) string {
 // it on purpose: that working set is the ceiling for every GPU user on the
 // Mac - the window server and the owner's own applications - not the engine's
 // alone.
-var unifiedMemoryModels = []string{"GB10", "RTX Spark", "M1", "M2", "M3", "M4", "M5", "M6"}
+var unifiedMemoryModels = [][]string{{"GB10"}, {"RTX", "Spark"}, {"M1"}, {"M2"}, {"M3"}, {"M4"}, {"M5"}, {"M6"}}
 
 // UnifiedMemory reports whether this GPU model addresses the host's memory
 // pool instead of its own device memory. name may be raw, as a probe reports
@@ -278,19 +279,8 @@ var unifiedMemoryModels = []string{"GB10", "RTX Spark", "M1", "M2", "M3", "M4", 
 // side carries a rule of its own and nothing about it is persisted.
 func UnifiedMemory(name string) bool {
 	fields := strings.Fields(NormalizeGPUName(name))
-	for _, model := range unifiedMemoryModels {
-		tokens := strings.Fields(model)
-		if len(tokens) == 0 || len(tokens) > len(fields) {
-			continue
-		}
-		unified := true
-		for i, token := range tokens {
-			if !strings.EqualFold(fields[i], token) {
-				unified = false
-				break
-			}
-		}
-		if unified {
+	for _, tokens := range unifiedMemoryModels {
+		if len(tokens) <= len(fields) && slices.EqualFunc(fields[:len(tokens)], tokens, strings.EqualFold) {
 			return true
 		}
 	}
