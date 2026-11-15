@@ -4,7 +4,7 @@ import StateSummary from "./StateSummary";
 import { STATE_BADGE } from "./serviceStates";
 import { useTranslation } from "react-i18next";
 import { Link, useNavigate } from "react-router-dom";
-import type { HealthStatus, MonitorService } from "../../api";
+import type { HealthStatus, MonitorService, MonitorStateCount } from "../../api";
 import { HealthCheckHelp, HealthTag } from "../../components/DeploymentHealth";
 import ResourceTable, { type ResourceColumn } from "../../components/resourceTable/ResourceTable";
 import { colors } from "../../theme/tokens";
@@ -73,23 +73,37 @@ export default function ServiceTable({
   loading,
   error,
   onRefresh,
-  filterDeploymentIds,
-  onStateShortcut,
+  stateCounts,
+  stateFilter: stateFilterProp,
+  onStateFilterChange,
+  signalFilter,
+  onClearSignalFilter,
 }: {
   services: MonitorService[];
+  /** The overview's state_counts: the state summary and the state column's choices, in the server's order. */
+  stateCounts: MonitorStateCount[];
   loading?: boolean;
   error?: Error | null;
   onRefresh?: () => void;
-  filterDeploymentIds?: number[] | null;
-  onStateShortcut?: () => void;
+  /** The state filter, shared by the state summary and the state column; uncontrolled when absent. */
+  stateFilter?: string[];
+  onStateFilterChange?: (states: string[]) => void;
+  /** A signal tile's narrowing to some services, listed as a toolbar filter. */
+  signalFilter?: { label: string; deploymentIds: number[] } | null;
+  onClearSignalFilter?: () => void;
 }) {
   const { t } = useTranslation("monitoring");
   const { t: tCommon } = useTranslation("common");
   const navigate = useNavigate();
-  const [stateFilter, setStateFilter] = useState<string[]>([]);
+  const [ownStateFilter, setOwnStateFilter] = useState<string[]>([]);
+  const stateFilter = stateFilterProp ?? ownStateFilter;
+  const setStateFilter = (next: string[]) => {
+    if (!stateFilterProp) setOwnStateFilter(next);
+    onStateFilterChange?.(next);
+  };
   const narrow = useNarrow();
 
-  const rows = filterDeploymentIds ? services.filter((s) => filterDeploymentIds.includes(s.deployment_id)) : services;
+  const rows = signalFilter ? services.filter((s) => signalFilter.deploymentIds.includes(s.deployment_id)) : services;
 
   const allColumns: ResourceColumn<MonitorService>[] = [
     {
@@ -113,7 +127,10 @@ export default function ServiceTable({
       title: t("table.state"),
       width: 110,
       sortValue: (row) => row.state,
-      filters: [...new Set(services.map((row) => row.state))].map((state) => ({ value: state, text: t(`states.${state}`, { defaultValue: state }) })),
+      // The summary shows the single picked state as its pressed chip; a
+      // multi-state pick from the funnel keeps the toolbar chip.
+      filterChip: stateFilter.length !== 1,
+      filters: stateCounts.filter((item) => item.count > 0 || stateFilter.includes(item.state)).map(({ state }) => ({ value: state, text: t(`states.${state}`, { defaultValue: state }) })),
       onFilter: (value, row) => row.state === value,
       render: (_: unknown, row: MonitorService) => (
         <Badge variant="dot" status={STATE_BADGE[row.state] ?? "neutral"}>{t(`states.${row.state}`, { defaultValue: row.state })}</Badge>
@@ -166,8 +183,9 @@ export default function ServiceTable({
       tableId={narrow ? "monitor-services-narrow" : "monitor-services"}
       rowKey="deployment_id"
       columns={columns}
-      toolbar={<div className="flex flex-wrap items-center gap-4"><h2 className="m-0 text-body font-semibold">{t("table.service")}</h2><StateSummary services={services} selected={stateFilter} onSelect={state => { onStateShortcut?.(); setStateFilter(current => current.length === 1 && current[0] === state ? [] : [state]); }} /></div>}
-      onFilterStateChange={filters => setStateFilter(filters.state ?? [])}
+      toolbar={<div className="flex flex-wrap items-center gap-4"><h2 className="m-0 text-body font-semibold">{t("table.service")}</h2><StateSummary counts={stateCounts} selected={stateFilter} onSelect={state => setStateFilter(state === null || (stateFilter.length === 1 && stateFilter[0] === state) ? [] : [state])} /></div>}
+      onFilterStateChange={filters => { const next = filters.state ?? []; if (next.join("|") !== stateFilter.join("|")) setStateFilter(next); }}
+      extraFilters={signalFilter ? [{ key: "signal", name: t("table.signalFilter"), value: signalFilter.label, onClear: () => onClearSignalFilter?.() }] : undefined}
       data={rows}
       loading={loading}
       error={error}

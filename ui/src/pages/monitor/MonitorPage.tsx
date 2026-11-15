@@ -97,8 +97,20 @@ function MonitorPageContent() {
   if (data) lastData.current = data;
   const layoutData = data ?? lastData.current;
 
-  const [serviceFilterEpoch, setServiceFilterEpoch] = useState(0);
-  const [filterIds, setFilterIds] = useState<number[] | null>(null);
+  // The service table's narrowings: the state filter (summary and column
+  // funnel) and a signal tile's. Picking either replaces the other; both
+  // live here so the table keeps its sort, other filters and page.
+  const [stateFilter, setStateFilter] = useState<string[]>([]);
+  const [signalFilter, setSignalFilter] = useState<{ key: string; deploymentIds: number[] } | null>(null);
+  const pickSignal = (key: string, services: MonitorService[]) => {
+    const ids = filterForSignal(key, services);
+    setSignalFilter(ids ? { key, deploymentIds: ids } : null);
+    setStateFilter([]);
+  };
+  const pickStates = (states: string[]) => {
+    setStateFilter(states);
+    if (states.length > 0) setSignalFilter(null);
+  };
 
   return (
     <div>
@@ -140,18 +152,16 @@ function MonitorPageContent() {
                 detail={signalDetail(signal, t)}
                 valueLabel={signal.key === "token_rate" ? t("signals.tokenRateInput") : undefined}
                 denominatorLabel={signal.key === "token_rate" ? t("signals.tokenRateOutput") : undefined}
-                onClick={signal.collected ? () => { setFilterIds(filterForSignal(signal.key, layoutData.services)); setServiceFilterEpoch(value => value + 1); } : undefined}
+                onClick={signal.collected ? () => pickSignal(signal.key, layoutData.services) : undefined}
                 tooltip={signalTooltip(signal, t)}
               />
             ))}
           </div>
 
           <div className="monitor-services-section mt-4">
-          {filterIds && <div className="mb-2 flex items-center gap-2 text-label text-fg-muted">
-            {t("table.filtered", { count: filterIds.length })}
-            <Button size="small" type="link" onClick={() => setFilterIds(null)}>{t("table.clearFilter")}</Button>
-          </div>}
-          <ServiceTable key={serviceFilterEpoch} services={layoutData.services} filterDeploymentIds={filterIds} onStateShortcut={() => setFilterIds(null)} onRefresh={refetch} loading={loading && !data} />
+          <ServiceTable services={layoutData.services} stateCounts={layoutData.state_counts} stateFilter={stateFilter} onStateFilterChange={pickStates}
+            signalFilter={signalFilter && { label: t(`signals.${signalFilter.key}`), deploymentIds: signalFilter.deploymentIds }} onClearSignalFilter={() => setSignalFilter(null)}
+            onRefresh={refetch} loading={loading && !data} />
           </div>
 
           <Row gutter={[16, 16]} style={{ marginTop: 16 }}>

@@ -386,3 +386,53 @@ test("observing local filters does not disable filtering and clearing notifies t
   await waitFor(() => assert.equal(firstCells().length, 6));
   assert.deepEqual(changes.at(-1)?.state, []);
 });
+
+test("a filter its owner applies outside the columns is listed with the column chips, and clearing hands it back to the owner", async () => {
+  const user = userEvent.setup();
+  function Owner() {
+    const [narrowed, setNarrowed] = React.useState(true);
+    const data = narrowed ? rows.slice(0, 6).filter((row) => row.gpus > 3) : rows.slice(0, 6);
+    return <ResourceTable<Row> tableId="test" rowKey="id" columns={columns()} data={data}
+      extraFilters={narrowed ? [{ key: "busy", name: "Signal", value: "Busy nodes", onClear: () => setNarrowed(false) }] : []} />;
+  }
+  render(<I18nextProvider i18n={i18n}><Owner /></I18nextProvider>);
+  const toolbar = screen.getByRole("button", { name: "Customize columns" }).closest(".resource-table-toolbar") as HTMLElement;
+  const active = within(toolbar).getByRole("group", { name: "Filtered" });
+  const chip = within(active).getByRole("button", { name: "Clear filter: Signal Busy nodes" });
+  assert.equal(chip.textContent, "Signal: Busy nodes");
+  assert.equal(within(active).queryByRole("button", { name: "Clear filters" }), null, "one filter needs no clear-all");
+  assert.ok(firstCells().length < 6);
+  await user.click(chip);
+  await waitFor(() => assert.equal(screen.queryByRole("group", { name: "Filtered" }), null));
+  assert.equal(firstCells().length, 6, "the owner dropped its narrowing");
+});
+
+test("Clear filters clears an owner's filter together with the column filters", async () => {
+  const user = userEvent.setup();
+  function Owner() {
+    const [narrowed, setNarrowed] = React.useState(true);
+    const data = narrowed ? rows.slice(0, 6).filter((row) => row.gpus > 3) : rows.slice(0, 6);
+    return <ResourceTable<Row> tableId="test" rowKey="id" columns={columns()} data={data}
+      extraFilters={narrowed ? [{ key: "busy", name: "Signal", value: "Busy nodes", onClear: () => setNarrowed(false) }] : []} />;
+  }
+  render(<I18nextProvider i18n={i18n}><Owner /></I18nextProvider>);
+  await user.click(screen.getByRole("button", { name: "Filter by State" }));
+  await user.click(await screen.findByRole("checkbox", { name: /Online/ }));
+  await user.keyboard("{Escape}");
+  const active = await screen.findByRole("group", { name: "Filtered" });
+  await waitFor(() => assert.ok(within(active).getByRole("button", { name: /^Clear filter: State Online/ })));
+  assert.ok(within(active).getByRole("button", { name: "Clear filter: Signal Busy nodes" }));
+  await user.click(within(active).getByRole("button", { name: "Clear filters" }));
+  await waitFor(() => assert.equal(screen.queryByRole("group", { name: "Filtered" }), null));
+  assert.equal(firstCells().length, 6, "every row is back");
+});
+
+test("a column whose owner shows its filter itself still filters but lists no chip", () => {
+  const quiet = columns().map((column) => column.key === "state" ? { ...column, filterChip: false, filteredValue: ["offline"] } : column);
+  renderTable({ data: rows.slice(0, 6), columns: quiet });
+  assert.deepEqual(firstCells(), ["node-01", "node-04"]);
+  assert.equal(screen.queryByRole("group", { name: "Filtered" }), null);
+  cleanup();
+  renderTable({ data: onlineRows, columns: quiet, filteredEmptyDescription: "Nothing matches the filters" });
+  assert.ok(within(emptyCell()).getByText("Nothing matches the filters"), "a filter without a chip still counts as filtering");
+});

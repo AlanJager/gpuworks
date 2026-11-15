@@ -8,7 +8,3 @@ export const STATE_BADGE: Record<MonitorService["state"], "success" | "info" | "
   failed: "danger",
   asleep: "warning",
 };
-
-// STATE_ORDER lists service states serving first, then the ones that
-// need a look, then the deliberately stopped.
-export const STATE_ORDER: MonitorService["state"][] = ["running", "starting", "asleep", "offline", "failed", "stopped"];

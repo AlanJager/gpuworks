@@ -60,7 +60,17 @@ export type ResourceColumn<T> = Omit<ColumnType<T>, "key" | "width" | "fixed" | 
   sortValue?: (row: T) => SortValue;
   /** The list is sorted by the server under this column's key. */
   serverSort?: boolean;
+  /** false: the owner shows this column's filter itself (a pressed shortcut), so the toolbar lists no chip for it. */
+  filterChip?: boolean;
 };
+
+/** A filter the owner applies outside the columns (a narrowing from elsewhere on the page), listed beside the column filters. */
+export interface ToolbarFilter {
+  key: string;
+  name: string;
+  value: string;
+  onClear: () => void;
+}
 
 export interface ServerSort {
   key: string;
@@ -82,9 +92,10 @@ export function compareSortValues(a: SortValue, b: SortValue): number {
 
 
 const EMPTY_ROWS: never[] = [];
+const EMPTY_FILTERS: ToolbarFilter[] = [];
 export default function ResourceTable<T extends object>({ tableId, columns, data, rowKey, loading, error, onRefresh, updatedAt,
   toolbar, toolbarExtra, pagination, sort, onSortChange, onFiltersChange, onFilterStateChange, rowSelection, expandable, onRow,
-  emptyDescription, emptyKind = "data", emptyAction, filteredEmptyDescription, columnSettings = true,
+  emptyDescription, emptyKind = "data", emptyAction, filteredEmptyDescription, columnSettings = true, extraFilters = EMPTY_FILTERS,
 }: {
   tableId: string; columns: ResourceColumn<T>[]; data?: T[]; rowKey: TableProps<T>["rowKey"];
   loading?: boolean; error?: Error | null; onRefresh?: () => void; updatedAt?: Date | null;
@@ -98,6 +109,8 @@ export default function ResourceTable<T extends object>({ tableId, columns, data
   /** What an empty list says when column filters are in effect: nothing matches them, with a way to clear them. A list
    *  without it keeps emptyDescription, which its owner may already word for filtering. */
   filteredEmptyDescription?: string; columnSettings?: boolean;
+  /** Filters set outside the columns, applied by the owner to data: listed and cleared with the column filters. */
+  extraFilters?: ToolbarFilter[];
 }) {
   const { t } = useTranslation("common");
   const rows = data ?? EMPTY_ROWS;
@@ -206,19 +219,25 @@ export default function ResourceTable<T extends object>({ tableId, columns, data
     const text = (key: string) => { const option = column.filters!.find((item) => String(item.value) === key); return option && typeof option.text === "string" ? option.text : key; };
     return { column, values: picked.map(text) };
   }).filter((item) => item.values.length > 0);
+  const chips = activeFilters.filter(({ column }) => column.filterChip !== false);
+  const chipCount = chips.length + extraFilters.length;
+  const filtered = activeFilters.length > 0 || extraFilters.length > 0;
+  const clearAll = () => { table.resetColumnFilters(); extraFilters.forEach((filter) => filter.onClear()); };
+  const chipButton = (key: string, name: string, values: string, onClick: () => void) => <Button key={key} size="xs" variant="tertiary" className="resource-table-filter-chip" trailingIcon={ClearIcon}
+    aria-label={t("resourceTable.clearFilter", { name, values })} onClick={onClick}>
+    <span className="font-semibold">{name}</span>{t("resourceTable.filterValues", { values })}
+  </Button>;
   return <div className="resource-table">
     <div className="resource-table-toolbar">
       <div className="resource-table-toolbar-left">{toolbar}
         {/* Filters are set from the column header funnels; the ones in effect are listed here
             as "column: values" so a filter on an off-screen column is never invisible. */}
-        {activeFilters.length > 0 && <div className="resource-table-filters flex flex-wrap items-center gap-1.5" role="group" aria-label={t("resourceTable.activeFilters")}>
+        {chipCount > 0 && <div className="resource-table-filters flex flex-wrap items-center gap-1.5" role="group" aria-label={t("resourceTable.activeFilters")}>
           <span className="text-label text-fg-subtle">{t("resourceTable.activeFilters")}</span>
-          {activeFilters.map(({ column, values }) => <Button key={column.key} size="xs" variant="tertiary" className="resource-table-filter-chip" trailingIcon={ClearIcon}
-            aria-label={t("resourceTable.clearFilter", { name: labelOf(column), values: values.join(t("resourceTable.valueSeparator")) })}
-            onClick={() => table.setColumnFilters((current) => current.filter((item) => item.id !== column.key))}>
-            <span className="font-semibold">{labelOf(column)}</span>{t("resourceTable.filterValues", { values: values.join(t("resourceTable.valueSeparator")) })}
-          </Button>)}
-          {activeFilters.length > 1 && <Button size="xs" variant="ghost" className="text-fg-brand" onClick={() => table.resetColumnFilters()}>{t("resourceTable.clearFilters")}</Button>}
+          {chips.map(({ column, values }) => chipButton(column.key, labelOf(column), values.join(t("resourceTable.valueSeparator")),
+            () => table.setColumnFilters((current) => current.filter((item) => item.id !== column.key))))}
+          {extraFilters.map((filter) => chipButton(`extra:${filter.key}`, filter.name, filter.value, filter.onClear))}
+          {chipCount > 1 && <Button size="xs" variant="ghost" className="text-fg-brand" onClick={clearAll}>{t("resourceTable.clearFilters")}</Button>}
         </div>}
       </div>
       <div className="resource-table-toolbar-right flex flex-nowrap items-center gap-2">
@@ -285,8 +304,8 @@ export default function ResourceTable<T extends object>({ tableId, columns, data
           {!table.getRowModel().rows.length && <TableRow><TableCell colSpan={arranged.length + (rowSelection ? 1 : 0) + (expandable ? 1 : 0)}>{/* The empty state holds to the visible part of a table wider than its container (100cqw
               is the container's width, the cell pads 12px a side), so it centers in what the user sees. */}
             {/* Filtered down to nothing is not "no data": say the filters match nothing, and offer to clear them. */}
-            {!loading && <div className="sticky left-3 w-[calc(100cqw-1.5rem)]">{activeFilters.length > 0 && filteredEmptyDescription
-              ? <EmptyState kind={emptyKind} description={filteredEmptyDescription} action={<Button variant="secondary" onClick={() => table.resetColumnFilters()}>{t("resourceTable.clearFilters")}</Button>} />
+            {!loading && <div className="sticky left-3 w-[calc(100cqw-1.5rem)]">{filtered && filteredEmptyDescription
+              ? <EmptyState kind={emptyKind} description={filteredEmptyDescription} action={<Button variant="secondary" onClick={clearAll}>{t("resourceTable.clearFilters")}</Button>} />
               : <EmptyState kind={emptyKind} description={emptyDescription ?? t("dataTable.empty")} action={emptyAction} />}</div>}</TableCell></TableRow>}
         </TableBody>
       </Table>

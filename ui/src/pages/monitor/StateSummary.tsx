@@ -1,19 +1,32 @@
 import { useTranslation } from "react-i18next";
-import type { MonitorService } from "../../api";
-import { Button } from "../../components/ui/button";
+import type { MonitorService, MonitorStateCount } from "../../api";
 import { Badge } from "../../components/ui/badge";
-import { STATE_BADGE, STATE_ORDER } from "./serviceStates";
+import { FilterChips } from "../../ui-kit/FilterChips";
+import { STATE_BADGE } from "./serviceStates";
 
-export default function StateSummary({ services, selected, onSelect }: {
-  services: MonitorService[]; selected: string[]; onSelect: (state: MonitorService["state"]) => void;
+const ALL = "all";
+
+/**
+ * StateSummary is the service table's state filter as one-choice chips:
+ * "All N" and each state the server counted, in the server's order
+ * (overview state_counts). It shows the state column filter's own
+ * selection: none lights "All", exactly one lights that state, and a
+ * multi-state pick from the column lights none (the toolbar chip names it).
+ */
+export default function StateSummary({ counts, selected, onSelect }: {
+  counts: MonitorStateCount[]; selected: string[]; onSelect: (state: MonitorService["state"] | null) => void;
 }) {
   const { t } = useTranslation("monitoring");
-  const counts = new Map<MonitorService["state"], number>();
-  for (const service of services) counts.set(service.state, (counts.get(service.state) ?? 0) + 1);
-  return <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={t("stateSummary.title")}>
-    {STATE_ORDER.filter(state => counts.has(state)).map(state => <Button key={state} variant="ghost" size="sm"
-      active={selected.includes(state)} aria-pressed={selected.includes(state)} onClick={() => onSelect(state)}>
-      <Badge variant="plain" status={STATE_BADGE[state]}>{t("stateSummary.count", { state: t(`states.${state}`), count: counts.get(state) })}</Badge>
-    </Button>)}
-  </div>;
+  const total = counts.reduce((sum, item) => sum + item.count, 0);
+  const shown = counts.filter((item) => item.count > 0 || selected.includes(item.state));
+  const value = selected.length === 0 ? ALL : selected.length === 1 ? selected[0] : "";
+  return <FilterChips label={t("stateSummary.title")} value={value}
+    onChange={(next) => onSelect(next === ALL ? null : next as MonitorService["state"])}
+    items={[
+      { value: ALL, label: t("stateSummary.all", { count: total }) },
+      ...shown.map((item) => ({
+        value: item.state as string,
+        label: <Badge variant="plain" status={STATE_BADGE[item.state] ?? "neutral"}>{t("stateSummary.count", { state: t(`states.${item.state}`, { defaultValue: item.state }), count: item.count })}</Badge>,
+      })),
+    ]} />;
 }

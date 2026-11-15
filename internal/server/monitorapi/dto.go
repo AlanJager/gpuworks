@@ -187,6 +187,25 @@ func deploymentState(deployment monitor.DeploymentRef) string {
 	}
 }
 
+// serviceStates is deploymentState's whole vocabulary in the order the
+// overview's state summary lists it: serving first, then the ones that need
+// a look, then the deliberately stopped.
+var serviceStates = []string{"running", "starting", "asleep", "offline", "failed", "stopped"}
+
+// stateCountsDTO counts the overview's own rows by state, one entry per
+// serviceStates state: it reads nothing beyond the rows already built.
+func stateCountsDTO(rows []dto.MonitorServiceRow) []dto.MonitorStateCount {
+	counts := make(map[string]int, len(serviceStates))
+	for _, row := range rows {
+		counts[row.State]++
+	}
+	out := make([]dto.MonitorStateCount, 0, len(serviceStates))
+	for _, state := range serviceStates {
+		out = append(out, dto.MonitorStateCount{State: state, Count: counts[state]})
+	}
+	return out
+}
+
 // replicaState is deploymentState's per-instance sibling, for
 // replicas[].state in the /monitor/deployments/{id} response.
 func replicaState(inst monitor.InstanceRef) string {
