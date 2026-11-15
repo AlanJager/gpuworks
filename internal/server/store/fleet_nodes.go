@@ -60,9 +60,13 @@ func (s *Store) EnableFleetNodeSnapshot(now func() time.Time) {
 // snapshot is on. Each caller gets its own copy, which it may sort or change.
 //
 // The snapshot is rebuilt on the next read after any node change a node event
-// announces, so a page reloaded after a rename, a cordon or a delete shows it;
-// after routine reports only once per fleetNodesReportWindow; and at least
-// every fleetNodesMaxAge for writes that announce nothing. Reads are
+// announces, so a page reloaded after a rename, a cordon or a delete shows it,
+// and after a status report that changed what placement decides on (a card's
+// health or set, a process outside the platform on a card, the runtime,
+// partition or network facts: UpdateNodeStatus); after other routine reports
+// only once per fleetNodesReportWindow (disk usage among them, which moves on
+// every report); and at least every fleetNodesMaxAge for writes that announce
+// nothing. Reads are
 // serialized, so readers that miss together share one rebuild: those that
 // waited behind it take its rows unless a change landed meanwhile.
 func (s *Store) FleetNodes() ([]Node, error) {
@@ -84,12 +88,15 @@ func (s *Store) FleetNodes() ([]Node, error) {
 
 // rebuildFleetNodes reads the fleet into the snapshot; the caller holds the
 // lock. The counts are read before the rows: a change that lands while the
-// rows are read makes the next read rebuild again.
+// rows are read makes the next read rebuild again. A failed read drops the
+// snapshot, so the next read tries again instead of answering from rows
+// older than what this rebuild was for.
 func (s *Store) rebuildFleetNodes(now time.Time) error {
 	c := &s.fleetNodes
 	changes, reports := c.changes.Load(), c.reports.Load()
 	rows, err := s.ListNodes()
 	if err != nil {
+		c.rows, c.ok = nil, false
 		return err
 	}
 	c.rows, c.ok, c.started, c.changesAt, c.reportsAt = rows, true, now, changes, reports
@@ -126,7 +133,9 @@ func (s *Store) RefreshFleetNodes() error {
 }
 
 // noteNodeChange counts a node change for FleetNodes: a routine status report
-// waits for the report window, anything else is seen by the next read.
+// waits for the report window, anything else is seen by the next read. A
+// status report that changed what placement decides on also counts as a
+// change (UpdateNodeStatus, nodePlacementFacts).
 func (s *Store) noteNodeChange(reason string) {
 	if reason == NodeChangeStatus {
 		s.fleetNodes.reports.Add(1)

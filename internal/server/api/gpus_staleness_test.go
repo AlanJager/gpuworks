@@ -144,3 +144,58 @@ func TestGPUInventoryRebuildReadsAFixedNumberOfStatements(t *testing.T) {
 		t.Fatalf("a rebuild ran %d statements for 3 nodes and %d for 15: it reads per node or per deployment", small, large)
 	}
 }
+
+// As the server runs it, the GPU page reads the shared node snapshot. A card
+// reporting a fault inside the snapshot's report window - another reader
+// rebuilt it a moment ago - is still on the page past the refresh floor: a
+// rebuild that took the snapshot's older rows would keep showing the card OK
+// until the cache's twenty-second limit, with no event left to rebuild it.
+func TestGPUInventoryOnTheNodeSnapshotShowsACardFaultPastTheFloor(t *testing.T) {
+	events := bus.New()
+	st, err := store.Open("file:gpu_inventory_fleet_snapshot?mode=memory&cache=shared", events)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	node, err := st.RegisterNode("gpu-snap", store.HashToken("gpu-snap"), "gpu-snap")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetNodeState(node.UUID, store.NodeStateOnline); err != nil {
+		t.Fatal(err)
+	}
+	report := func(health string) {
+		t.Helper()
+		if err := st.UpdateNodeStatus(node.UUID, proto.NodeStatus{
+			Sys:  proto.SysInfo{Hostname: "gpu-snap", GPUVendor: "nvidia"},
+			GPUs: []proto.GPUInfo{{Index: 0, UUID: "GPU-snap", Name: "NVIDIA A100", Vendor: "nvidia", MemoryTotalBytes: 80 << 30, Healthy: health == "OK", HealthStatus: health}},
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	report("OK")
+	// The snapshot's clock stands still: every read below is inside its
+	// report window.
+	frozen := time.Date(2026, 11, 15, 10, 0, 0, 0, time.UTC)
+	st.EnableFleetNodeSnapshot(func() time.Time { return frozen })
+	h := apiHandlers{d: Deps{Store: st, Bus: events}}
+	health := func() string {
+		t.Helper()
+		inv, err := h.currentGPUInventory()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(inv.physical.Items) != 1 {
+			t.Fatalf("cards = %+v", inv.physical.Items)
+		}
+		return inv.physical.Items[0].HealthStatus
+	}
+	if got := health(); got != "OK" {
+		t.Fatalf("first read health = %q", got)
+	}
+	report("Error")
+	h.gpuCacheAt = time.Now().Add(-gpuInventoryRefreshFloor - time.Second)
+	if got := health(); got != "Error" {
+		t.Errorf("card reported Error inside the snapshot's window; past the refresh floor the page shows %q", got)
+	}
+}

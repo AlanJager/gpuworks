@@ -158,3 +158,31 @@ func TestOperatorChoicesReadTheNodesAsTheyAreNow(t *testing.T) {
 		t.Fatalf("an operator's choice planned on the card as it was before the report: %+v", facts.Nodes)
 	}
 }
+
+// A reconcile the status batch did not start - a deployment created, an
+// instance failing - inside the report window still plans on a card's fault
+// the agent just reported: a report that changes what placement decides on is
+// seen by the snapshot's next read, so nothing is placed on the faulted card.
+func TestAReconcileInsideTheReportWindowDoesNotPlaceOnAFaultedCard(t *testing.T) {
+	st, hub, nodes, model := poolFixture(t, "ctrl_fault_window", 1, 1)
+	now := time.Date(2026, 11, 15, 9, 0, 0, 0, time.UTC)
+	st.EnableFleetNodeSnapshot(func() time.Time { return now })
+	c := New(st, hub, nil)
+	if _, err := st.FleetNodes(); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.UpdateNodeStatus(nodes[0].UUID, proto.NodeStatus{
+		Sys:  proto.SysInfo{Hostname: nodes[0].UUID, Arch: "amd64", GPUVendor: "nvidia", Framework: "cuda", FrameworkVersion: "12.4"},
+		GPUs: []proto.GPUInfo{{Index: 0, UUID: nodes[0].UUID + "-gpu-0", Name: "NVIDIA A100-SXM4-80GB", Vendor: "nvidia", ArchID: "sm_80", ComputeCapability: "8.0", MemoryTotalBytes: 80 << 30, Healthy: false}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(time.Second) // inside the window; no status batch ran
+	dep := poolDeployment(t, st, model, nodes[0].ID, 1, store.PlacementSpread, nil)
+	if err := c.reconcileDeployment(context.Background(), dep.ID); err != nil {
+		t.Fatal(err)
+	}
+	if got := replicaNodes(t, st, dep.ID); len(got) != 0 {
+		t.Fatalf("a replica was placed on %v, whose only card just reported a fault", got)
+	}
+}
